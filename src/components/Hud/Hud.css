@@ -1,0 +1,68 @@
+.hud {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  background: linear-gradient(180deg, rgba(7, 10, 18, 0.95) 0%, rgba(7, 10, 18, 0.55) 80%, transparent 100%);
+  backdrop-filter: blur(2px);
+}
+
+.hud-stat {
+  flex: 1;
+  min-width: 0;
+}
+
+.hud-stat-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+
+.hud-bar {
+  height: 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  border: 1px solid var(--panel-border);
+}
+
+.hud-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease, background 0.3s ease;
+}
+
+.hud-bar-suspicion {
+  background: linear-gradient(90deg, var(--neon-yellow), #ff4444);
+}
+
+.hud-bar-reputation {
+  background: linear-gradient(90deg, var(--neon-cyan), #5cf2ff);
+}
+
+.hud-gold {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--neon-yellow);
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  padding: 6px 12px;
+  white-space: nowrap;
+}
+
+.hud-gold-icon {
+  font-size: 9px;
+}
