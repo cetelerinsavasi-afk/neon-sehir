@@ -1,4 +1,28 @@
+import { usePlayer } from '../../hooks/usePlayer';
+import FactoryScreen from '../FactoryScreen/FactoryScreen';
+import ProfessionPicker from '../ProfessionPicker/ProfessionPicker';
 import './RegionModal.css';
+
+// Faz 2 kapsamında gerçek içeriği hazır olan ekranlar. Diğerleri hâlâ
+// "yakında" placeholder'ı gösteriyor — ilgili faz tamamlandıkça buraya
+// yeni case'ler eklenecek.
+function ScreenContent({ screen }) {
+  const { player } = usePlayer();
+
+  switch (screen) {
+    case 'fabrika':
+      return <FactoryScreen />;
+    case 'ev':
+      return <ProfessionPicker currentProfession={player?.profession} />;
+    default:
+      return (
+        <p className="region-modal-body">
+          Bu mekanik henüz geliştirilmedi. Master prompttaki ilgili faz
+          tamamlandığında burada gerçek içerik açılacak.
+        </p>
+      );
+  }
+}
 
 export default function RegionModal({ region, onClose }) {
   if (!region) return null;
@@ -11,10 +35,9 @@ export default function RegionModal({ region, onClose }) {
         <p className="region-modal-screen">
           Ekran: <code>{region.screen}</code>
         </p>
-        <p className="region-modal-body">
-          Bu mekanik henüz geliştirilmedi. Master prompttaki ilgili faz
-          tamamlandığında burada gerçek içerik açılacak.
-        </p>
+        <div className="region-modal-content">
+          <ScreenContent screen={region.screen} />
+        </div>
         <button className="region-modal-close" onClick={onClose}>
           Kapat
         </button>

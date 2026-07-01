@@ -71,6 +71,12 @@
   color: var(--text-dim);
 }
 
+.region-modal-content {
+  margin-bottom: 20px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
 .region-modal-close {
   width: 100%;
   padding: 12px;

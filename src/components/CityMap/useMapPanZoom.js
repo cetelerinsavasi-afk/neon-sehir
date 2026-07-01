@@ -89,16 +89,17 @@ export function useMapPanZoom(viewportRef, wrapRef) {
     }
 
     if (dragStart.current) {
-      const dx = e.clientX - dragStart.current.x;
-      const dy = e.clientY - dragStart.current.y;
+      // dragStart.current'ı burada yerel değişkenlere yakalıyoruz.
+      // setTransform'un fonksiyon güncelleyicisi React tarafından ERTELENMİŞ
+      // olarak çalıştırılabilir; o ana kadar bir pointerup/endPointer
+      // dragStart.current'ı null'a çekmiş olabilir. Mutable ref'i doğrudan
+      // güncelleyici içinde okumak "Cannot read properties of null" hatasına
+      // yol açıyordu — yerel kopya bu race condition'ı ortadan kaldırır.
+      const { x: startX, y: startY, tx, ty } = dragStart.current;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
       movedDistance.current = Math.max(movedDistance.current, Math.hypot(dx, dy));
-      setTransform((prev) =>
-        clampTransform({
-          ...prev,
-          x: dragStart.current.tx + dx,
-          y: dragStart.current.ty + dy,
-        })
-      );
+      setTransform((prev) => clampTransform({ ...prev, x: tx + dx, y: ty + dy }));
     }
   }, [clampTransform]);
 

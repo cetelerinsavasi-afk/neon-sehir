@@ -1,0 +1,75 @@
+.factory-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.factory-hint {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.factory-hint strong {
+  color: var(--neon-cyan);
+}
+
+.factory-action {
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.factory-action:hover:not(:disabled) {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.factory-action:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.factory-action.small {
+  padding: 8px 12px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.factory-machine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.factory-machine-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.factory-machine-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.factory-machine-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.factory-error {
+  color: var(--neon-pink);
+  font-size: 12px;
+  margin: 0;
+}

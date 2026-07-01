@@ -12,6 +12,16 @@ dist
 dist-ssr
 *.local
 
+# Ortam değişkenleri — asla commit edilmemeli
+.env
+.env.local
+
+# Firebase CLI yerel dosyaları
+.firebase
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

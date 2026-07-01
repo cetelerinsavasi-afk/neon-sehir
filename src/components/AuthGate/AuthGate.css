@@ -1,0 +1,65 @@
+.auth-gate {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: radial-gradient(ellipse at top, #0c1322 0%, var(--bg) 60%);
+  padding: 24px;
+  text-align: center;
+}
+
+.auth-gate-title {
+  margin: 0;
+  font-size: 26px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: linear-gradient(90deg, var(--neon-cyan), var(--neon-pink));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.auth-gate-subtitle {
+  margin: 0 0 10px;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
+.auth-gate-button {
+  padding: 12px 22px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.auth-gate-button:hover {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.auth-gate-error {
+  color: var(--neon-pink);
+  font-size: 12px;
+  max-width: 320px;
+}
+
+.auth-gate-spinner {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 3px solid var(--panel-border);
+  border-top-color: var(--neon-cyan);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

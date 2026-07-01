@@ -2,6 +2,79 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // ---------------------------------------------------------------------
+    // users/{uid} — oyuncu profili.
+    // Tüm kritik alanlar (gold, suspicion, profession vb.) sadece Cloud
+    // Functions (Admin SDK) tarafından yazılabilir; Admin SDK bu kuralları
+    // zaten bypass eder. İstemcinin doğrudan yazması burada tamamen
+    // engellenmiştir (Bölüm 15).
+    // ---------------------------------------------------------------------
+    match /users/{uid} {
+      allow read: if isSelf(uid);
+      allow write: if false;
+
+      // isPolice — Bölüm 14 gereği sadece doküman sahibi okuyabilir.
+      // Cloud Functions (soygun/heist mantığı, Faz 5) Admin SDK ile
+      // bu kısıtlamayı bypass ederek okuyabilir.
+      match /private/{docId} {
+        allow read: if isSelf(uid);
+        allow write: if false;
+      }
+
+      match /productionMachines/{machineId} {
+        allow read: if isSelf(uid);
+        allow write: if false;
+      }
+
+      match /inventory/{itemId} {
+        allow read: if isSelf(uid);
+        allow write: if false;
+      }
+    }
+
+    // ---------------------------------------------------------------------
+    // dailyActions/{uid}_{YYYY-MM-DD} — günlük hak takibi.
+    // Sadece kendi dokümanını okuyabilir; ID formatı "{uid}_..." olduğu
+    // için split ile kontrol ediyoruz.
+    // ---------------------------------------------------------------------
+    match /dailyActions/{docId} {
+      allow read: if isSignedIn() && docId.split('_')[0] == request.auth.uid;
+      allow write: if false;
+    }
+
+    // ---------------------------------------------------------------------
+    // Herkese açık, salt-okunur veriler (Cloud Functions tarafından yazılır)
+    // ---------------------------------------------------------------------
+    match /investments/{date} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /shipSchedule/{date} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /weapons/{weaponId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /vehicles/{vehicleId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // Tanımlanmamış her şey varsayılan olarak kapalı.
     match /{document=**} {
       allow read, write: if false;
     }
