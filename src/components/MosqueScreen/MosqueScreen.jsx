@@ -4,10 +4,10 @@ import { prayAtMosque } from '../../services/gameActions';
 export default function MosqueScreen() {
   return (
     <SimpleActionScreen
-      signInMessage="Dua etmek için giriş yapmalısın."
-      description="Günde bir kez dua ederek şüphe puanını azaltabilirsin. Ücretsiz."
-      buttonLabel="Dua Et (Şüphe -5)"
-      doneLabel="Bugün zaten dua ettin"
+      signInMessage="İbadet etmek için giriş yapmalısın."
+      description="Günde bir kez ibadet ederek şüphe puanını azaltabilirsin. Ücretsiz."
+      buttonLabel="İbadet Et (Şüphe -5)"
+      doneLabel="Bugün zaten ibadet ettin"
       dailyFlagKey="prayed"
       actionFn={prayAtMosque}
     />

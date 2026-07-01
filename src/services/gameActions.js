@@ -6,8 +6,12 @@ import { functions } from '../firebase';
  * Hepsi Cloud Functions üzerinden çalışır; istemci asla gold/suspicion
  * gibi alanları doğrudan Firestore'a yazmaz (Bölüm 15).
  */
-export const chooseProfession = (profession) =>
-  httpsCallable(functions, 'chooseProfession')({ profession });
+export const applyForPolice = () => httpsCallable(functions, 'applyForPolice')();
+
+export const resignFromPolice = () => httpsCallable(functions, 'resignFromPolice')();
+
+export const cancelPendingPoliceChange = () =>
+  httpsCallable(functions, 'cancelPendingPoliceChange')();
 
 export const factoryWork = () => httpsCallable(functions, 'factoryWork')();
 
@@ -27,6 +31,9 @@ export const upgradeVehicle = (vehicleId, upgradeType) =>
 
 export const sellMaterial = (materialType, quantity) =>
   httpsCallable(functions, 'sellMaterial')({ materialType, quantity });
+
+export const buyMaterialFromGarage = (materialType, quantity) =>
+  httpsCallable(functions, 'buyMaterialFromGarage')({ materialType, quantity });
 
 export const buyWeapon = (catalogId) =>
   httpsCallable(functions, 'buyWeapon')({ catalogId });
@@ -141,8 +148,8 @@ export const cancelRaceRoom = (roomId) =>
 export const rollDice = (roomId, useNitro, useTurbo) =>
   httpsCallable(functions, 'rollDice')({ roomId, useNitro, useTurbo });
 
-export const resolveTurnTimeout = (roomId) =>
-  httpsCallable(functions, 'resolveTurnTimeout')({ roomId });
+export const autoRoll = (roomId, targetUid) =>
+  httpsCallable(functions, 'autoRoll')({ roomId, targetUid });
 
 export const raceBuyAtStation = (roomId, item) =>
   httpsCallable(functions, 'raceBuyAtStation')({ roomId, item });

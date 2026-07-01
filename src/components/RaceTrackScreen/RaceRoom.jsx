@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   cancelRaceRoom,
   rollDice,
-  resolveTurnTimeout,
+  autoRoll,
   raceBuyAtStation,
   raceBuyOffsiteFuel,
   raceBuyNitro,
@@ -12,7 +12,7 @@ import InfoIcon from '../InfoIcon/InfoIcon';
 import './RaceTrackScreen.css';
 
 const RULES_TEXT =
-  'Vites = atacağın zar sayısı. Her adım +1 altın, -1 benzin kazandırır/harcar. Her 100 kareyi geçince +50 altın bonus. 500. kareye ilk ulaşan kazanır. Her 10 karede bir istasyon var. 10 saniye içinde zar atmazsan otomatik atılır.';
+  'Vites = atacağın zar sayısı. Her adım +1 altın, -1 benzin. Her 100 kareyi geçince +50 altın bonus. 500. kareye ilk ulaşan kazanır. Her 10 karede bir istasyon var. Benzinin biterse yarışı direkt kaybedersin. 10 saniyede bir zar otomatik atılır, istersen daha erken de atabilirsin.';
 
 function useCountdown(deadline) {
   const [secondsLeft, setSecondsLeft] = useState(null);
@@ -34,34 +34,47 @@ function useCountdown(deadline) {
   return secondsLeft;
 }
 
-export default function RaceRoom({ room, myUid }) {
+// Bir oyuncunun kişisel sayacı dolduğunda otomatik zar atmasını tetikler.
+// Bu hook HEM kendi hem rakip için çalıştırılır — böylece rakip uygulamayı
+// kapatsa bile, benim istemcim onun adına otomatik atışı tetikleyebilir.
+function useAutoRollWatcher(roomId, player, uid, active) {
+  const firedForDeadline = useRef(null);
+
+  useEffect(() => {
+    if (!active || !player || player.finished || player.lostByFuel) return;
+    const deadline = player.nextRollAt;
+    if (!deadline?.toMillis) return;
+
+    const key = `${uid}-${deadline.toMillis()}`;
+    const check = () => {
+      if (deadline.toMillis() <= Date.now() && firedForDeadline.current !== key) {
+        firedForDeadline.current = key;
+        autoRoll(roomId, uid).catch(() => {});
+      }
+    };
+    check();
+    const id = setInterval(check, 500);
+    return () => clearInterval(id);
+  }, [roomId, player, uid, active]);
+}
+
+export default function RaceRoom({ room, myUid, onDismissFinished }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [lastRoll, setLastRoll] = useState(null);
-  const timeoutFired = useRef(false);
 
-  const secondsLeft = useCountdown(room.turnDeadline);
   const otherUid = room.participantUids?.find((u) => u !== myUid);
   const me = room.players?.[myUid];
   const other = otherUid ? room.players?.[otherUid] : null;
+  const racing = room.status === 'racing';
 
-  // Süre dolunca (ve henüz kimse tetiklemediyse) sunucuya haber ver.
-  useEffect(() => {
-    timeoutFired.current = false;
-  }, [room.currentTurn]);
+  const mySecondsLeft = useCountdown(me?.nextRollAt);
+  const otherSecondsLeft = useCountdown(other?.nextRollAt);
 
-  useEffect(() => {
-    if (
-      room.status === 'racing' &&
-      secondsLeft === 0 &&
-      !timeoutFired.current &&
-      me &&
-      !me.hasRolledThisTurn
-    ) {
-      timeoutFired.current = true;
-      resolveTurnTimeout(room.id).catch(() => {});
-    }
-  }, [secondsLeft, room.status, room.id, me]);
+  // Hem kendim hem rakip için otomatik atış izleyicisi — ikisi de aktif
+  // olmalı ki tek taraf kapansa bile diğerinin istemcisi yarışı ilerletsin.
+  useAutoRollWatcher(room.id, me, myUid, racing);
+  useAutoRollWatcher(room.id, other, otherUid, racing);
 
   const run = async (key, fn) => {
     setBusy(true);
@@ -91,16 +104,20 @@ export default function RaceRoom({ room, myUid }) {
 
   if (room.status === 'finished') {
     const won = room.winnerUid === myUid;
-    const draw = room.winnerUid === 'draw';
+    const noContest = !room.winnerUid;
     return (
       <div className="race-screen">
-        <p className={`race-result ${won ? 'win' : draw ? '' : 'lose'}`}>
-          {draw ? 'Berabere!' : won ? 'Kazandın!' : 'Kaybettin.'}
+        <p className={`race-result ${won ? 'win' : noContest ? '' : 'lose'}`}>
+          {noContest ? 'Yarış sonuçsuz bitti.' : won ? 'Kazandın!' : 'Kaybettin.'}
         </p>
+        {me?.lostByFuel && <p className="race-hint">Benzinin bitti ve yarışı kaybettin.</p>}
         <p className="race-hint">
-          Kazandığın yarış-içi altın ({(me?.raceGold ?? 0).toLocaleString('tr-TR')}) ve bahis
+          Kazandığın yarış-içi altın ({(me?.raceGold ?? 0).toLocaleString('tr-TR')}) ve varsa bahis
           payın hesabına eklendi.
         </p>
+        <button className="race-btn primary" onClick={onDismissFinished}>
+          Lobiye Dön
+        </button>
       </div>
     );
   }
@@ -110,7 +127,6 @@ export default function RaceRoom({ room, myUid }) {
   }
 
   const atStation = me.position % 10 === 0;
-  const myTurnDone = me.hasRolledThisTurn;
 
   const handleRoll = async (useNitro, useTurbo) => {
     const res = await run('roll', () => rollDice(room.id, useNitro, useTurbo));
@@ -136,58 +152,50 @@ export default function RaceRoom({ room, myUid }) {
         <span>{other.displayName}: {other.position}/500</span>
       </div>
 
-      <div className={`race-turn-banner${myTurnDone ? ' waiting' : ''}`}>
-        {myTurnDone
-          ? `Zar attın, rakibi bekliyoruz… (${secondsLeft ?? '—'}s)`
-          : `Sıra sende! Zar atmak için ${secondsLeft ?? '—'} saniyen var.`}
+      <div className="race-turn-banner">
+        {me.fuel <= 0
+          ? 'Benzinin bitti! Hemen benzin almazsan bir sonraki atışta yarışı kaybedersin.'
+          : `Bir sonraki otomatik zar: ${mySecondsLeft ?? '—'}s (istersen hemen atabilirsin)`}
       </div>
+      <p className="race-hint">Rakibin bir sonraki otomatik zarı: {otherSecondsLeft ?? '—'}s</p>
 
       <div className="race-stats-grid">
         <span>Vites {me.gear}/{me.maxGear}</span>
-        <span>Benzin {me.fuel}/{me.maxFuel}</span>
+        <span className={me.fuel <= 0 ? 'race-stat-danger' : ''}>Benzin {me.fuel}/{me.maxFuel}</span>
         <span>Yarış altını {me.raceGold}</span>
         {me.turboCount > 0 && <span>Turbo × {me.turboCount}</span>}
       </div>
 
       <div className="race-section">
-        <p className="race-section-title">1. Vites Ayarla (isteğe bağlı)</p>
         <div className="race-controls">
           <button
             className="race-btn small"
-            disabled={busy || myTurnDone || me.gear <= 1}
+            disabled={busy || me.gear <= 1}
             onClick={() => run('gear-', () => raceChangeGear(room.id, -1))}
           >
             Vites −
           </button>
           <button
             className="race-btn small"
-            disabled={busy || myTurnDone || me.gear >= me.maxGear}
+            disabled={busy || me.gear >= me.maxGear}
             onClick={() => run('gear+', () => raceChangeGear(room.id, 1))}
           >
             Vites +
           </button>
           <button
             className="race-btn small"
-            disabled={busy || myTurnDone || me.raceGold < 20}
+            disabled={busy || me.raceGold < 20}
             onClick={() => run('nitro', () => raceBuyNitro(room.id))}
           >
             Nitro Al (20)
           </button>
         </div>
-      </div>
-
-      <div className="race-section">
-        <p className="race-section-title">2. Zar At</p>
         <div className="race-controls">
-          <button
-            className="race-btn primary"
-            disabled={busy || myTurnDone}
-            onClick={() => handleRoll(me.nitroActive, false)}
-          >
+          <button className="race-btn primary" disabled={busy} onClick={() => handleRoll(me.nitroActive, false)}>
             {me.nitroActive ? 'Zar At (Nitro Aktif)' : 'Zar At'}
           </button>
           {me.turboCount > 0 && (
-            <button className="race-btn small" disabled={busy || myTurnDone} onClick={() => handleRoll(false, true)}>
+            <button className="race-btn small" disabled={busy} onClick={() => handleRoll(false, true)}>
               Turbo ile At
             </button>
           )}
@@ -223,17 +231,15 @@ export default function RaceRoom({ room, myUid }) {
         </div>
       )}
 
-      {!atStation && me.fuel <= 0 && (
-        <button
-          className="race-btn"
-          disabled={busy || me.raceGold < 100}
-          onClick={() => run('offsite-fuel', () => raceBuyOffsiteFuel(room.id))}
-        >
-          Benzinin Bitti — İstasyon Dışı Benzin Al (100)
-        </button>
-      )}
+      <button
+        className={`race-btn${me.fuel <= 0 ? ' primary' : ''}`}
+        disabled={busy || me.raceGold < 100}
+        onClick={() => run('offsite-fuel', () => raceBuyOffsiteFuel(room.id))}
+      >
+        İstasyon Dışı Benzin Al (100, her zaman tam dolum)
+      </button>
 
-      {lastRoll && (
+      {lastRoll && !lastRoll.outOfFuel && (
         <p className="race-hint">
           Son atışın: {lastRoll.rolledSum} zar × {lastRoll.multiplier} = {lastRoll.steps} adım, +
           {lastRoll.goldEarned} altın

@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useInventory } from '../../hooks/useInventory';
-import { upgradeVehicle, sellMaterial } from '../../services/gameActions';
+import { upgradeVehicle, sellMaterial, buyMaterialFromGarage } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import HeistPanel from '../HeistPanel/HeistPanel';
 import './GarageScreen.css';
 
 const SELL_PRICE = 250; // Bölüm 8.2
+const BUY_PRICE = 500;
 
 export default function GarageScreen() {
   const { user } = useAuth();
@@ -40,27 +41,45 @@ export default function GarageScreen() {
       <div className="garage-inventory">
         <div className="garage-material">
           <span>Vites malzemesi: {vitesQty}</span>
-          {vitesQty > 0 && (
+          <div className="garage-material-actions">
             <button
               className="garage-sell-btn"
-              disabled={busy === 'sell-vites'}
-              onClick={() => run('sell-vites', () => sellMaterial('vitesUpgrade', vitesQty))}
+              disabled={busy === 'buy-vites'}
+              onClick={() => run('buy-vites', () => buyMaterialFromGarage('vitesUpgrade', 1))}
             >
-              Hepsini Sat ({(vitesQty * SELL_PRICE).toLocaleString('tr-TR')} altın)
+              1 Adet Al ({BUY_PRICE} altın)
             </button>
-          )}
+            {vitesQty > 0 && (
+              <button
+                className="garage-sell-btn"
+                disabled={busy === 'sell-vites'}
+                onClick={() => run('sell-vites', () => sellMaterial('vitesUpgrade', vitesQty))}
+              >
+                Hepsini Sat ({(vitesQty * SELL_PRICE).toLocaleString('tr-TR')} altın)
+              </button>
+            )}
+          </div>
         </div>
         <div className="garage-material">
           <span>Depo malzemesi: {depoQty}</span>
-          {depoQty > 0 && (
+          <div className="garage-material-actions">
             <button
               className="garage-sell-btn"
-              disabled={busy === 'sell-depo'}
-              onClick={() => run('sell-depo', () => sellMaterial('depoUpgrade', depoQty))}
+              disabled={busy === 'buy-depo'}
+              onClick={() => run('buy-depo', () => buyMaterialFromGarage('depoUpgrade', 1))}
             >
-              Hepsini Sat ({(depoQty * SELL_PRICE).toLocaleString('tr-TR')} altın)
+              1 Adet Al ({BUY_PRICE} altın)
             </button>
-          )}
+            {depoQty > 0 && (
+              <button
+                className="garage-sell-btn"
+                disabled={busy === 'sell-depo'}
+                onClick={() => run('sell-depo', () => sellMaterial('depoUpgrade', depoQty))}
+              >
+                Hepsini Sat ({(depoQty * SELL_PRICE).toLocaleString('tr-TR')} altın)
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

@@ -54,37 +54,20 @@ function GoldAmountAction({ label, onSubmit, busy, unitPrice }) {
   );
 }
 
-export default function BankScreen() {
-  const { user } = useAuth();
-  const { player } = usePlayer();
-  const { prices } = useInvestmentPrices();
-  const [busy, setBusy] = useState(null);
-  const [error, setError] = useState(null);
+const TABS = [
+  { id: 'yatirimlar', label: 'Yatırımlar' },
+  { id: 'krediler', label: 'Krediler' },
+  { id: 'cezalar', label: 'Cezalar' },
+];
 
-  if (!user) {
-    return <SignInPrompt message="Bankayı kullanmak için giriş yapmalısın." />;
-  }
-
+function InvestmentsTab({ player, prices, busy, error, run }) {
   const gold = player?.gold ?? 0;
   const bankBalance = player?.bankBalance ?? 0;
-  const debtToState = player?.debtToState ?? 0;
   const diamondHoldings = player?.diamondHoldings ?? 0;
   const cryptoHoldings = player?.cryptoHoldings ?? 0;
 
-  const run = async (key, fn) => {
-    setBusy(key);
-    setError(null);
-    try {
-      await fn();
-    } catch (err) {
-      setError(err.message || 'İşlem başarısız.');
-    } finally {
-      setBusy(null);
-    }
-  };
-
   return (
-    <div className="bank-screen">
+    <>
       <div className="bank-section">
         <div className="bank-section-row">
           <span>Cepteki altın</span>
@@ -94,17 +77,6 @@ export default function BankScreen() {
           <span>Banka bakiyesi</span>
           <strong className="bank-highlight">{bankBalance.toLocaleString('tr-TR')}</strong>
         </div>
-        {debtToState > 0 && (
-          <div className="bank-section-row">
-            <span>Devlete borcun</span>
-            <strong className="bank-debt">{debtToState.toLocaleString('tr-TR')}</strong>
-          </div>
-        )}
-        {debtToState > 0 && (
-          <p className="bank-hint bank-debt-hint">
-            Borcun bitene kadar kazandığın her paranın yarısı otomatik borca gidiyor.
-          </p>
-        )}
         <p className="bank-hint">Banka bakiyesi her gün %1 faiz kazanır.</p>
         <GoldAmountAction
           label="Yatır"
@@ -191,9 +163,78 @@ export default function BankScreen() {
           </button>
         )}
       </div>
-
       {error && <p className="bank-error">{error}</p>}
-      <VehicleLoanSection />
+    </>
+  );
+}
+
+function PenaltiesTab({ player }) {
+  const debtToState = player?.debtToState ?? 0;
+
+  return (
+    <div className="bank-section">
+      <p className="bank-section-title">Devlete Borcun</p>
+      <div className="bank-section-row">
+        <span>Toplam borç</span>
+        <strong className="bank-debt">{debtToState.toLocaleString('tr-TR')}</strong>
+      </div>
+      {debtToState > 0 ? (
+        <p className="bank-hint bank-debt-hint">
+          Bu borç, yakalandığın soygunlardan geliyor. Borç bitene kadar kazandığın her paranın
+          yarısı otomatik olarak buraya kesiliyor — hiç ödemesen bile zamanla erir. İstersen
+          Yatırımlar sekmesindeki bakiyenden gönüllü olarak da ödeyebilirsin (yakında).
+        </p>
+      ) : (
+        <p className="bank-hint">Şu an devlete borcun yok.</p>
+      )}
+    </div>
+  );
+}
+
+export default function BankScreen() {
+  const { user } = useAuth();
+  const { player } = usePlayer();
+  const { prices } = useInvestmentPrices();
+  const [tab, setTab] = useState('yatirimlar');
+  const [busy, setBusy] = useState(null);
+  const [error, setError] = useState(null);
+
+  if (!user) {
+    return <SignInPrompt message="Bankayı kullanmak için giriş yapmalısın." />;
+  }
+
+  const run = async (key, fn) => {
+    setBusy(key);
+    setError(null);
+    try {
+      await fn();
+    } catch (err) {
+      setError(err.message || 'İşlem başarısız.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="bank-screen">
+      <div className="bank-tabs">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            className={`bank-tab-btn${tab === t.id ? ' active' : ''}`}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'yatirimlar' && (
+        <InvestmentsTab player={player} prices={prices} busy={busy} error={error} run={run} />
+      )}
+      {tab === 'krediler' && <VehicleLoanSection />}
+      {tab === 'cezalar' && <PenaltiesTab player={player} />}
+
       <HeistPanel target="banka" />
     </div>
   );

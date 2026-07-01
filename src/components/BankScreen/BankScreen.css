@@ -4,6 +4,30 @@
   gap: 14px;
 }
 
+.bank-tabs {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid var(--panel-border);
+  padding-bottom: 8px;
+}
+
+.bank-tab-btn {
+  flex: 1;
+  padding: 8px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.bank-tab-btn.active {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+  background: rgba(25, 232, 255, 0.08);
+}
+
 .bank-section {
   display: flex;
   flex-direction: column;

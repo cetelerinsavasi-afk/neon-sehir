@@ -6,7 +6,7 @@ import { useMessages } from '../../hooks/useMessages';
 import './PhoneScreen.css';
 
 const APPS = [
-  { id: 'ikinci-el', label: '2.', note: 'İkinci El Satış', enabled: true },
+  { id: 'ikinci-el', label: '2', note: 'İkinci El Satış', enabled: true },
   { id: 'banka', label: '🏦', note: 'Banka', enabled: true },
   { id: 'sms', label: '✉️', note: 'SMS', enabled: true },
 ];
@@ -57,7 +57,7 @@ export default function PhoneScreen({ onClose }) {
             disabled={!app.enabled}
             onClick={() => app.enabled && setOpenApp(app.id)}
           >
-            <span className="phone-app-icon">
+            <span className={`phone-app-icon${app.id === 'ikinci-el' ? ' phone-app-icon-2el' : ''}`}>
               {app.label}
               {app.id === 'sms' && unreadCount > 0 && (
                 <span className="phone-app-badge">{unreadCount}</span>

@@ -1,7 +1,4 @@
-import { useAuth } from '../../contexts/AuthContext';
-import { usePlayer } from '../../hooks/usePlayer';
 import FactoryScreen from '../FactoryScreen/FactoryScreen';
-import ProfessionPicker from '../ProfessionPicker/ProfessionPicker';
 import VehicleGalleryScreen from '../VehicleGalleryScreen/VehicleGalleryScreen';
 import GarageScreen from '../GarageScreen/GarageScreen';
 import WeaponShopScreen from '../WeaponShopScreen/WeaponShopScreen';
@@ -13,15 +10,13 @@ import LimanDepoScreen from '../LimanDepoScreen/LimanDepoScreen';
 import ParkScreen from '../ParkScreen/ParkScreen';
 import RaceTrackScreen from '../RaceTrackScreen/RaceTrackScreen';
 import CasinoScreen from '../CasinoScreen/CasinoScreen';
-import SignInPrompt from '../SignInPrompt/SignInPrompt';
+import HomeScreen from '../HomeScreen/HomeScreen';
 import './RegionModal.css';
 
 // Faz 2+3+4+5+6 kapsamında gerçek içeriği hazır olan ekranlar. Diğerleri
 // hâlâ "yakında" placeholder'ı gösteriyor — ilgili faz tamamlandıkça buraya
 // yeni case'ler eklenecek.
 function ScreenContent({ region }) {
-  const { user } = useAuth();
-  const { player } = usePlayer();
   const { screen } = region;
 
   switch (screen) {
@@ -50,10 +45,7 @@ function ScreenContent({ region }) {
     case 'casino':
       return <CasinoScreen />;
     case 'ev':
-      if (!user) {
-        return <SignInPrompt message="Meslek seçmek için giriş yapmalısın." />;
-      }
-      return <ProfessionPicker currentProfession={player?.profession} />;
+      return <HomeScreen />;
     default:
       return (
         <p className="region-modal-body">
@@ -72,9 +64,6 @@ export default function RegionModal({ region, onClose }) {
       <div className="region-modal" onClick={(e) => e.stopPropagation()}>
         <div className="region-modal-handle" />
         <h2 className="region-modal-title">{region.name}</h2>
-        <p className="region-modal-screen">
-          Ekran: <code>{region.screen}</code>
-        </p>
         <div className="region-modal-content">
           <ScreenContent region={region} />
         </div>

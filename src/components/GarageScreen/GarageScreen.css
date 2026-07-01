@@ -23,6 +23,11 @@
   color: var(--text-dim);
 }
 
+.garage-material-actions {
+  display: flex;
+  gap: 6px;
+}
+
 .garage-sell-btn {
   padding: 6px 10px;
   border-radius: 6px;

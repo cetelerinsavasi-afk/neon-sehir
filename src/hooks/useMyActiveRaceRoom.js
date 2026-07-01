@@ -3,11 +3,14 @@ import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 
+const RECENT_FINISH_WINDOW_MS = 2 * 60 * 1000; // sonuç ekranını 2 dk göster
+
 /**
  * useMyActiveRaceRoom — participantUids dizisinde kendi uid'im geçen ve
- * hâlâ 'waiting' ya da 'racing' durumundaki oda var mı diye bakar.
- * array-contains tek başına kullanıldığı için composite index gerektirmez;
- * status filtresi bilerek client tarafında uygulanıyor.
+ * hâlâ 'waiting'/'racing' durumunda OLAN ya da yakın zamanda (son 2 dk
+ * içinde) 'finished' olmuş oda var mı diye bakar (sonuç ekranının
+ * gösterilebilmesi için). array-contains tek başına kullanıldığı için
+ * composite index gerektirmez; durum/tarih filtresi client-side.
  */
 export function useMyActiveRaceRoom() {
   const { user } = useAuth();
@@ -28,9 +31,17 @@ export function useMyActiveRaceRoom() {
     const unsubscribe = onSnapshot(
       q,
       (snap) => {
+        const now = Date.now();
         const active = snap.docs
           .map((d) => ({ id: d.id, ...d.data() }))
-          .find((r) => r.status === 'waiting' || r.status === 'racing');
+          .find((r) => {
+            if (r.status === 'waiting' || r.status === 'racing') return true;
+            if (r.status === 'finished') {
+              const finishedMs = r.finishedAt?.toMillis?.() ?? 0;
+              return now - finishedMs < RECENT_FINISH_WINDOW_MS;
+            }
+            return false;
+          });
         setRoom(active || null);
         setLoading(false);
       },

@@ -186,6 +186,11 @@
   font-size: 12px;
 }
 
+.race-stat-danger {
+  color: var(--neon-pink);
+  font-weight: 700;
+}
+
 .race-timer {
   margin: 0;
   font-size: 12px;
