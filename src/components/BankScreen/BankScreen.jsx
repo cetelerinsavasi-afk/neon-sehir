@@ -10,6 +10,7 @@ import {
   sellAllInvestment,
 } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
+import HeistPanel from '../HeistPanel/HeistPanel';
 import './BankScreen.css';
 
 function formatUnits(n) {
@@ -179,6 +180,7 @@ export default function BankScreen() {
       </div>
 
       {error && <p className="bank-error">{error}</p>}
+      <HeistPanel target="banka" />
     </div>
   );
 }

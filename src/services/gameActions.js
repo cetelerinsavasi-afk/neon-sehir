@@ -54,3 +54,14 @@ export const sellInvestment = (assetType, amount) =>
 
 export const sellAllInvestment = (assetType) =>
   httpsCallable(functions, 'sellInvestment')({ assetType, all: true });
+
+// --- Faz 5: Şüphe Yönetimi ve Soygun ---
+
+export const prayAtMosque = () => httpsCallable(functions, 'prayAtMosque')();
+
+export const bribePolice = () => httpsCallable(functions, 'bribePolice')();
+
+export const buyFromVendor = () => httpsCallable(functions, 'buyFromVendor')();
+
+export const attemptHeist = (target) =>
+  httpsCallable(functions, 'attemptHeist')({ target });

@@ -6,10 +6,13 @@ import VehicleGalleryScreen from '../VehicleGalleryScreen/VehicleGalleryScreen';
 import GarageScreen from '../GarageScreen/GarageScreen';
 import WeaponShopScreen from '../WeaponShopScreen/WeaponShopScreen';
 import BankScreen from '../BankScreen/BankScreen';
+import MosqueScreen from '../MosqueScreen/MosqueScreen';
+import PoliceStationScreen from '../PoliceStationScreen/PoliceStationScreen';
+import VendorScreen from '../VendorScreen/VendorScreen';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import './RegionModal.css';
 
-// Faz 2+3+4 kapsamında gerçek içeriği hazır olan ekranlar. Diğerleri hâlâ
+// Faz 2+3+4+5 kapsamında gerçek içeriği hazır olan ekranlar. Diğerleri hâlâ
 // "yakında" placeholder'ı gösteriyor — ilgili faz tamamlandıkça buraya
 // yeni case'ler eklenecek.
 function ScreenContent({ screen }) {
@@ -27,6 +30,12 @@ function ScreenContent({ screen }) {
       return <WeaponShopScreen />;
     case 'banka':
       return <BankScreen />;
+    case 'ibadet':
+      return <MosqueScreen />;
+    case 'rüşvet':
+      return <PoliceStationScreen />;
+    case 'seyyar-satici':
+      return <VendorScreen />;
     case 'ev':
       if (!user) {
         return <SignInPrompt message="Meslek seçmek için giriş yapmalısın." />;

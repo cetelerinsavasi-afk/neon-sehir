@@ -1,0 +1,63 @@
+.heist-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #140508;
+  border: 1px solid rgba(255, 46, 140, 0.35);
+  border-radius: 10px;
+  padding: 12px;
+  margin-top: 4px;
+}
+
+.heist-panel-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--neon-pink);
+}
+
+.heist-panel-risk {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.heist-panel-btn {
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 46, 140, 0.5);
+  background: rgba(255, 46, 140, 0.12);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  margin-top: 4px;
+}
+
+.heist-panel-btn:hover:not(:disabled) {
+  background: rgba(255, 46, 140, 0.22);
+}
+
+.heist-panel-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.heist-panel-result {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.heist-panel-result.success {
+  color: var(--neon-yellow);
+}
+
+.heist-panel-result.fail {
+  color: var(--text-dim);
+}
+
+.heist-panel-error {
+  color: var(--neon-pink);
+  font-size: 11px;
+  margin: 0;
+}

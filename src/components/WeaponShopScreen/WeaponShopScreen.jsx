@@ -11,6 +11,7 @@ import {
   sellSilahMaterial,
 } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
+import HeistPanel from '../HeistPanel/HeistPanel';
 import './WeaponShopScreen.css';
 
 export default function WeaponShopScreen() {
@@ -106,6 +107,7 @@ export default function WeaponShopScreen() {
       )}
 
       {error && <p className="weapon-shop-error">{error}</p>}
+      <HeistPanel target="silah-magazasi" />
     </div>
   );
 }

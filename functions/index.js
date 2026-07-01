@@ -776,3 +776,165 @@ export const sellInvestment = onCall(async (request) => {
 
   return { ok: true, unitPrice, totalValue };
 });
+
+// =============================================================================
+// FAZ 5 — ŞÜPHE YÖNETİMİ VE SOYGUN SİSTEMİ (Bölüm 13, 14)
+// =============================================================================
+
+function clampSuspicion(v) {
+  return clamp(Math.round(v), 0, 100);
+}
+
+// ---------------------------------------------------------------------------
+// prayAtMosque — Camii: günde 1 kez, ücretsiz, şüphe -5.
+// ---------------------------------------------------------------------------
+export const prayAtMosque = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const dateKey = istanbulDateKey();
+  const userRef = db.collection('users').doc(uid);
+  const dailyRef = db.collection('dailyActions').doc(`${uid}_${dateKey}`);
+
+  await db.runTransaction(async (tx) => {
+    const [userSnap, dailySnap] = await Promise.all([tx.get(userRef), tx.get(dailyRef)]);
+    const user = userSnap.data();
+    if (dailySnap.exists && dailySnap.data().prayed) {
+      throw new HttpsError('failed-precondition', 'Bugün zaten dua ettin.');
+    }
+    tx.update(userRef, { suspicion: clampSuspicion((user?.suspicion || 0) - 5) });
+    tx.set(dailyRef, { prayed: true }, { merge: true });
+  });
+
+  return { ok: true };
+});
+
+// ---------------------------------------------------------------------------
+// bribePolice — Karakol: günde 1 kez, 3000 altın, şüphe -10.
+// ---------------------------------------------------------------------------
+const BRIBE_COST = 3000;
+
+export const bribePolice = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const dateKey = istanbulDateKey();
+  const userRef = db.collection('users').doc(uid);
+  const dailyRef = db.collection('dailyActions').doc(`${uid}_${dateKey}`);
+
+  await db.runTransaction(async (tx) => {
+    const [userSnap, dailySnap] = await Promise.all([tx.get(userRef), tx.get(dailyRef)]);
+    const user = userSnap.data();
+    if (dailySnap.exists && dailySnap.data().bribed) {
+      throw new HttpsError('failed-precondition', 'Bugün zaten rüşvet verdin.');
+    }
+    if (!user || (user.gold || 0) < BRIBE_COST) {
+      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    }
+    tx.update(userRef, {
+      gold: admin.firestore.FieldValue.increment(-BRIBE_COST),
+      suspicion: clampSuspicion((user.suspicion || 0) - 10),
+    });
+    tx.set(dailyRef, { bribed: true }, { merge: true });
+  });
+
+  return { ok: true };
+});
+
+// ---------------------------------------------------------------------------
+// buyFromVendor — Seyyar Satıcı: günde 1 kez (4 satıcı ortak hak), 200 altın,
+// şüphe -5, saygınlık +5.
+// ---------------------------------------------------------------------------
+const VENDOR_COST = 200;
+
+export const buyFromVendor = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const dateKey = istanbulDateKey();
+  const userRef = db.collection('users').doc(uid);
+  const dailyRef = db.collection('dailyActions').doc(`${uid}_${dateKey}`);
+
+  await db.runTransaction(async (tx) => {
+    const [userSnap, dailySnap] = await Promise.all([tx.get(userRef), tx.get(dailyRef)]);
+    const user = userSnap.data();
+    if (dailySnap.exists && dailySnap.data().vendorPurchase) {
+      throw new HttpsError('failed-precondition', 'Bugün zaten seyyar satıcıdan alışveriş yaptın.');
+    }
+    if (!user || (user.gold || 0) < VENDOR_COST) {
+      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    }
+    tx.update(userRef, {
+      gold: admin.firestore.FieldValue.increment(-VENDOR_COST),
+      suspicion: clampSuspicion((user.suspicion || 0) - 5),
+      reputation: clamp(Math.round((user.reputation || 0) + 5), 0, 100),
+    });
+    tx.set(dailyRef, { vendorPurchase: true }, { merge: true });
+  });
+
+  return { ok: true };
+});
+
+// ---------------------------------------------------------------------------
+// attemptHeist — Bölüm 13 soygun sistemi.
+// Basitleştirme: bu sürümde tek oyunculu, anlık sonuçlanan bir soygun var.
+// Polis oyuncularının soygunlara canlı müdahalesi (Bölüm 14'teki
+// policeInfiltrators mantığı) çok oyunculu koordinasyon gerektirdiği için
+// ayrı bir fazda ele alınacak — şimdilik başarı şansı sahip olunan en
+// güçlü silaha ve mevcut şüpheye göre hesaplanıyor.
+// ---------------------------------------------------------------------------
+const HEIST_CONFIG = {
+  banka: { suspicionCost: 50, rewardMin: 50000, rewardMax: 100000, baseChance: 0.35 },
+  'araba-galerisi': { suspicionCost: 25, rewardMin: 10000, rewardMax: 30000, baseChance: 0.5 },
+  'silah-magazasi': { suspicionCost: 25, rewardMin: 8000, rewardMax: 20000, baseChance: 0.5 },
+};
+
+export const attemptHeist = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { target } = request.data || {};
+  const config = HEIST_CONFIG[target];
+  if (!config) {
+    throw new HttpsError('invalid-argument', 'Geçersiz soygun hedefi.');
+  }
+
+  const dateKey = istanbulDateKey();
+  const dailyRefId = `${uid}_${dateKey}`;
+  const dailyRef = db.collection('dailyActions').doc(dailyRefId);
+  const userRef = db.collection('users').doc(uid);
+
+  const [dailySnap, weaponsSnap] = await Promise.all([
+    dailyRef.get(),
+    db.collection('weapons').where('ownerId', '==', uid).get(),
+  ]);
+  if (dailySnap.exists && dailySnap.data().heist?.[target]) {
+    throw new HttpsError('failed-precondition', 'Bu hedefi bugün zaten denedin.');
+  }
+
+  let maxPower = 0;
+  weaponsSnap.forEach((d) => {
+    maxPower = Math.max(maxPower, d.data().power || 0);
+  });
+
+  let result = null;
+  await db.runTransaction(async (tx) => {
+    const userSnap = await tx.get(userRef);
+    const user = userSnap.data();
+    if (!user) {
+      throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
+    }
+    const suspicion = user.suspicion || 0;
+    const chance = clamp(
+      config.baseChance + Math.min(maxPower / 50000, 1) * 0.2 - suspicion * 0.003,
+      0.1,
+      0.9
+    );
+    const success = Math.random() < chance;
+    const reward = success
+      ? Math.round(config.rewardMin + Math.random() * (config.rewardMax - config.rewardMin))
+      : 0;
+
+    tx.update(userRef, {
+      suspicion: clampSuspicion(suspicion + config.suspicionCost),
+      ...(success ? { gold: admin.firestore.FieldValue.increment(reward) } : {}),
+    });
+    tx.set(dailyRef, { heist: { [target]: true } }, { merge: true });
+
+    result = { success, reward, chance: Math.round(chance * 100) };
+  });
+
+  return { ok: true, ...result };
+});

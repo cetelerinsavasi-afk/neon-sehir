@@ -1,0 +1,38 @@
+.simple-action-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.simple-action-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.simple-action-btn {
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.simple-action-btn:hover:not(:disabled) {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.simple-action-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.simple-action-error {
+  color: var(--neon-pink);
+  font-size: 12px;
+  margin: 0;
+}
