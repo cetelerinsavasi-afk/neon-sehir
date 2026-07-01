@@ -41,6 +41,21 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+// addDaysToDateKey — "YYYY-MM-DD" formatındaki bir tarihe gün ekler/çıkarır.
+// Bunu, Firestore'da "en son kaydı bul" için orderBy('__name__') sorgusu
+// kullanmak YERİNE tercih ediyoruz: o sorgu composite index istiyor ve
+// index yoksa Cloud Function'ı 500 hatasıyla çökertiyordu. Tarihi
+// hesaplamak deterministik ve index gerektirmiyor.
+function addDaysToDateKey(dateKey, days) {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  const yyyy = dt.getUTCFullYear();
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 // ---------------------------------------------------------------------------
 // initializePlayer — ilk girişte users/{uid} dokümanını sunucu tarafında oluşturur.
 // İstemci başlangıç altını/mesleği gibi kritik alanları asla kendisi yazamaz.
@@ -286,12 +301,11 @@ export const dailyReset = onSchedule(
     // 3) Yatırım araçları — elmas %1-%10, kripto %1-%50 rastgele değişim (Bölüm 13)
     const prevInvestSnap = await db
       .collection('investments')
-      .orderBy('__name__', 'desc')
-      .limit(1)
+      .doc(addDaysToDateKey(dateKey, -1))
       .get();
-    const prev = prevInvestSnap.empty
-      ? { diamondPrice: 1000, cryptoPrice: 100000 }
-      : prevInvestSnap.docs[0].data();
+    const prev = prevInvestSnap.exists
+      ? prevInvestSnap.data()
+      : { diamondPrice: 1000, cryptoPrice: 100000 };
     const diamondChangePct = (Math.random() * 0.09 + 0.01) * (Math.random() < 0.5 ? -1 : 1);
     const cryptoChangePct = (Math.random() * 0.49 + 0.01) * (Math.random() < 0.5 ? -1 : 1);
     const diamondPrice = clamp(
@@ -312,10 +326,9 @@ export const dailyReset = onSchedule(
     // 4) Gemi takvimi bir gün ilerler — 4 günlük döngü (Bölüm 12)
     const prevShipSnap = await db
       .collection('shipSchedule')
-      .orderBy('__name__', 'desc')
-      .limit(1)
+      .doc(addDaysToDateKey(dateKey, -1))
       .get();
-    const prevDay = prevShipSnap.empty ? 4 : prevShipSnap.docs[0].data().dayInCycle;
+    const prevDay = prevShipSnap.exists ? prevShipSnap.data().dayInCycle : 4;
     const nextDay = (prevDay % 4) + 1;
     const statusByDay = {
       1: 'docking', // gemi şehirde, mal indiriyor
@@ -625,13 +638,12 @@ async function getCurrentPrices() {
   const dateKey = istanbulDateKey();
   const todaySnap = await db.collection('investments').doc(dateKey).get();
   if (todaySnap.exists) return todaySnap.data();
-  // Bugün için dailyReset henüz çalışmadıysa en son kaydı kullan.
-  const prevSnap = await db
+  // Bugün için dailyReset henüz çalışmadıysa dünün kaydına bak.
+  const yesterdaySnap = await db
     .collection('investments')
-    .orderBy('__name__', 'desc')
-    .limit(1)
+    .doc(addDaysToDateKey(dateKey, -1))
     .get();
-  return prevSnap.empty ? DEFAULT_PRICES : prevSnap.docs[0].data();
+  return yesterdaySnap.exists ? yesterdaySnap.data() : DEFAULT_PRICES;
 }
 
 // ---------------------------------------------------------------------------

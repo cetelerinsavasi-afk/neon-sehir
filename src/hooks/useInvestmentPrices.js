@@ -1,26 +1,42 @@
 import { useEffect, useState } from 'react';
-import { collection, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 
 const DEFAULT_PRICES = { diamondPrice: 1000, cryptoPrice: 100000 };
 
+function istanbulDateKey() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Istanbul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
 /**
- * useInvestmentPrices — investments/{YYYY-MM-DD} koleksiyonundaki en güncel
- * (en son tarihli) dokümanı canlı dinler. Fiyatlar dailyReset Cloud
- * Function'ı tarafından her gün 00:00'da güncellenir (Bölüm 13).
+ * useInvestmentPrices — investments/{bugünün-tarihi} dokümanını canlı dinler.
+ * Fiyatlar dailyReset Cloud Function'ı tarafından her gün 00:00'da
+ * güncellenir (Bölüm 13). Bugünkü doküman henüz oluşmadıysa (dailyReset
+ * hiç çalışmadıysa) varsayılan fiyatlar gösterilir — gerçek alım/satım
+ * fiyatı her zaman sunucuda (Cloud Function içinde) otoriter şekilde
+ * hesaplanır, burası sadece önizleme.
+ *
+ * NOT: Daha önce "en son kaydı bul" için orderBy('__name__') sorgusu
+ * kullanılıyordu; bu Firestore'da composite index istiyor ve index
+ * yokken sorgu tamamen başarısız oluyordu. Bugünün tarih anahtarını
+ * doğrudan hesaplayıp o dokümanı dinlemek hem daha basit hem index'e
+ * hiç ihtiyaç duymuyor.
  */
 export function useInvestmentPrices() {
   const [prices, setPrices] = useState(DEFAULT_PRICES);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const q = query(collection(db, 'investments'), orderBy('__name__', 'desc'), limit(1));
+    const ref = doc(db, 'investments', istanbulDateKey());
     const unsubscribe = onSnapshot(
-      q,
+      ref,
       (snap) => {
-        if (!snap.empty) {
-          setPrices(snap.docs[0].data());
-        }
+        setPrices(snap.exists() ? snap.data() : DEFAULT_PRICES);
         setLoading(false);
       },
       (err) => {
