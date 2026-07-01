@@ -3,6 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useInventory } from '../../hooks/useInventory';
 import { sellContrabandAtPark } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
+import InfoIcon from '../InfoIcon/InfoIcon';
 import './ParkScreen.css';
 
 const PARK_SELL_PRICE = 5000;
@@ -38,12 +39,9 @@ export default function ParkScreen() {
   return (
     <div className="park-screen">
       <p className="park-hint">
-        Sokakta kaçak mal satarsan Depo'ya göre çok daha fazla kazanırsın (
-        <strong>{PARK_SELL_PRICE.toLocaleString('tr-TR')} altın/adet</strong>), ama her satış
-        şüpheni <strong>+5</strong> artırır.
-      </p>
-      <p className="park-hint">
-        Sahip olduğun kaçak mal: <strong>{contrabandQty} adet</strong>
+        Sahip olduğun kaçak mal: <strong>{contrabandQty} adet</strong> · Satış fiyatı{' '}
+        {PARK_SELL_PRICE.toLocaleString('tr-TR')} altın/adet
+        <InfoIcon text="Depo'ya satmaktan çok daha fazla kazanırsın ama her satış şüpheni +5 artırır." />
       </p>
       <div className="park-row">
         <input

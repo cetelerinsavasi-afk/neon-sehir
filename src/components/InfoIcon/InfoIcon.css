@@ -1,0 +1,49 @@
+.info-icon-wrap {
+  position: relative;
+  display: inline-flex;
+  margin-left: 6px;
+}
+
+.info-icon-btn {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--text-dim);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 10px;
+  font-style: italic;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.info-icon-btn:hover {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.info-icon-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+
+.info-icon-popover {
+  position: absolute;
+  z-index: 61;
+  top: 22px;
+  left: 0;
+  width: 220px;
+  background: #0a0308;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}

@@ -115,6 +115,32 @@
   margin: 0;
 }
 
+.race-panel-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+}
+
+.race-turn-banner {
+  text-align: center;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(25, 232, 255, 0.12);
+  border: 1px solid var(--neon-cyan);
+  color: var(--neon-cyan);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.race-turn-banner.waiting {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--panel-border);
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
 .race-track-bar {
   position: relative;
   height: 18px;

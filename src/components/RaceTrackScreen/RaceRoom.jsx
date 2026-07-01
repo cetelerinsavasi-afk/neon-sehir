@@ -8,7 +8,11 @@ import {
   raceBuyNitro,
   raceChangeGear,
 } from '../../services/gameActions';
+import InfoIcon from '../InfoIcon/InfoIcon';
 import './RaceTrackScreen.css';
+
+const RULES_TEXT =
+  'Vites = atacağın zar sayısı. Her adım +1 altın, -1 benzin kazandırır/harcar. Her 100 kareyi geçince +50 altın bonus. 500. kareye ilk ulaşan kazanır. Her 10 karede bir istasyon var. 10 saniye içinde zar atmazsan otomatik atılır.';
 
 function useCountdown(deadline) {
   const [secondsLeft, setSecondsLeft] = useState(null);
@@ -94,8 +98,8 @@ export default function RaceRoom({ room, myUid }) {
           {draw ? 'Berabere!' : won ? 'Kazandın!' : 'Kaybettin.'}
         </p>
         <p className="race-hint">
-          Senin toplam kazancın: {(me?.raceGold ?? 0).toLocaleString('tr-TR')} altın + bahis payı
-          zaten hesabına eklendi.
+          Kazandığın yarış-içi altın ({(me?.raceGold ?? 0).toLocaleString('tr-TR')}) ve bahis
+          payın hesabına eklendi.
         </p>
       </div>
     );
@@ -115,6 +119,11 @@ export default function RaceRoom({ room, myUid }) {
 
   return (
     <div className="race-screen">
+      <p className="race-panel-title">
+        Yarış
+        <InfoIcon text={RULES_TEXT} />
+      </p>
+
       <div className="race-track-bar">
         <div className="race-track-fill me" style={{ width: `${(me.position / 500) * 100}%` }} />
         <div
@@ -127,58 +136,67 @@ export default function RaceRoom({ room, myUid }) {
         <span>{other.displayName}: {other.position}/500</span>
       </div>
 
+      <div className={`race-turn-banner${myTurnDone ? ' waiting' : ''}`}>
+        {myTurnDone
+          ? `Zar attın, rakibi bekliyoruz… (${secondsLeft ?? '—'}s)`
+          : `Sıra sende! Zar atmak için ${secondsLeft ?? '—'} saniyen var.`}
+      </div>
+
+      <div className="race-stats-grid">
+        <span>Vites {me.gear}/{me.maxGear}</span>
+        <span>Benzin {me.fuel}/{me.maxFuel}</span>
+        <span>Yarış altını {me.raceGold}</span>
+        {me.turboCount > 0 && <span>Turbo × {me.turboCount}</span>}
+      </div>
+
       <div className="race-section">
-        <p className="race-section-title">Durumun</p>
-        <div className="race-stats-grid">
-          <span>Vites: {me.gear}/{me.maxGear}</span>
-          <span>Benzin: {me.fuel}/{me.maxFuel}</span>
-          <span>Yarış altını: {me.raceGold}</span>
-          <span>Turbo: {me.turboCount}</span>
+        <p className="race-section-title">1. Vites Ayarla (isteğe bağlı)</p>
+        <div className="race-controls">
+          <button
+            className="race-btn small"
+            disabled={busy || myTurnDone || me.gear <= 1}
+            onClick={() => run('gear-', () => raceChangeGear(room.id, -1))}
+          >
+            Vites −
+          </button>
+          <button
+            className="race-btn small"
+            disabled={busy || myTurnDone || me.gear >= me.maxGear}
+            onClick={() => run('gear+', () => raceChangeGear(room.id, 1))}
+          >
+            Vites +
+          </button>
+          <button
+            className="race-btn small"
+            disabled={busy || myTurnDone || me.raceGold < 20}
+            onClick={() => run('nitro', () => raceBuyNitro(room.id))}
+          >
+            Nitro Al (20)
+          </button>
         </div>
       </div>
 
-      <p className="race-timer">
-        {secondsLeft !== null ? `Süre: ${secondsLeft}s` : ''} {myTurnDone ? '(zar attın, rakip bekleniyor)' : ''}
-      </p>
-
-      <div className="race-controls">
-        <button
-          className="race-btn small"
-          disabled={busy || myTurnDone || me.gear <= 1}
-          onClick={() => run('gear-', () => raceChangeGear(room.id, -1))}
-        >
-          Vites −
-        </button>
-        <button
-          className="race-btn small"
-          disabled={busy || myTurnDone || me.gear >= me.maxGear}
-          onClick={() => run('gear+', () => raceChangeGear(room.id, 1))}
-        >
-          Vites +
-        </button>
-        <button
-          className="race-btn small"
-          disabled={busy || myTurnDone || me.raceGold < 20}
-          onClick={() => run('nitro', () => raceBuyNitro(room.id))}
-        >
-          Nitro Al (20)
-        </button>
-      </div>
-
-      <div className="race-controls">
-        <button className="race-btn primary" disabled={busy || myTurnDone} onClick={() => handleRoll(me.nitroActive, false)}>
-          {me.nitroActive ? 'Zar At (Nitro Aktif)' : 'Zar At'}
-        </button>
-        {me.turboCount > 0 && (
-          <button className="race-btn small" disabled={busy || myTurnDone} onClick={() => handleRoll(false, true)}>
-            Turbo ile At ({me.turboCount})
+      <div className="race-section">
+        <p className="race-section-title">2. Zar At</p>
+        <div className="race-controls">
+          <button
+            className="race-btn primary"
+            disabled={busy || myTurnDone}
+            onClick={() => handleRoll(me.nitroActive, false)}
+          >
+            {me.nitroActive ? 'Zar At (Nitro Aktif)' : 'Zar At'}
           </button>
-        )}
+          {me.turboCount > 0 && (
+            <button className="race-btn small" disabled={busy || myTurnDone} onClick={() => handleRoll(false, true)}>
+              Turbo ile At
+            </button>
+          )}
+        </div>
       </div>
 
       {atStation && (
         <div className="race-section">
-          <p className="race-section-title">Benzin İstasyonu</p>
+          <p className="race-section-title">Benzin İstasyonundasın</p>
           <div className="race-controls">
             <button
               className="race-btn small"
@@ -211,13 +229,13 @@ export default function RaceRoom({ room, myUid }) {
           disabled={busy || me.raceGold < 100}
           onClick={() => run('offsite-fuel', () => raceBuyOffsiteFuel(room.id))}
         >
-          İstasyon Dışı Benzin (100)
+          Benzinin Bitti — İstasyon Dışı Benzin Al (100)
         </button>
       )}
 
       {lastRoll && (
         <p className="race-hint">
-          Son atış: {lastRoll.rolledSum} zar × {lastRoll.multiplier} = {lastRoll.steps} adım, +
+          Son atışın: {lastRoll.rolledSum} zar × {lastRoll.multiplier} = {lastRoll.steps} adım, +
           {lastRoll.goldEarned} altın
         </p>
       )}

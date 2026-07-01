@@ -1298,18 +1298,18 @@ const HEIST_CONFIG = {
   araba_galerisi: { suspicionCost: 25, reward: 100000, requiredPower: 50000 },
   modifiye_garaji: { suspicionCost: 25, reward: 20000, requiredPower: 20000 },
   fabrika: { suspicionCost: 25, reward: 4000, requiredPower: 10000 },
-  seyyar_satici_1: { suspicionCost: 25, reward: 1000, requiredPower: 4500 },
-  seyyar_satici_2: { suspicionCost: 25, reward: 500, requiredPower: 3000 },
-  seyyar_satici_3: { suspicionCost: 25, reward: 200, requiredPower: 1500 },
-  seyyar_satici_4: { suspicionCost: 25, reward: 100, requiredPower: 1000 },
+  seyyar_satici_1: { suspicionCost: 5, reward: 1000, requiredPower: 4500 },
+  seyyar_satici_2: { suspicionCost: 5, reward: 500, requiredPower: 3000 },
+  seyyar_satici_3: { suspicionCost: 5, reward: 200, requiredPower: 1500 },
+  seyyar_satici_4: { suspicionCost: 5, reward: 100, requiredPower: 1000 },
 };
 
-// Yakalanma cezası: TAM tutar kasaya gider — önce mevcut altından, yetmeyen
-// kısım devlete borç olarak yazılır (Bölüm 5, 10, 13).
-function applyCapturePenalty(currentGold, amount) {
-  const fromGold = Math.min(currentGold || 0, amount);
-  const debtAdded = amount - fromGold;
-  return { fromGold, debtAdded };
+// Yakalanma cezası: TAM tutar devlete BORÇ yazılır — cepten HİÇ kesilmez.
+// Oyuncu Banka'dan istediği zaman, istediği miktarda öder; hiç ödemezse bile
+// borç, kazandığı her paranın otomatik %50'siyle (splitIncomeForDebt) kendi
+// kendine erir (Bölüm 10).
+function applyCapturePenalty(amount) {
+  return { debtAdded: amount };
 }
 
 async function getMaxWeaponPower(uid) {
@@ -1371,8 +1371,7 @@ export const attemptHeist = onCall(async (request) => {
     };
 
     if (caught) {
-      const { fromGold, debtAdded } = applyCapturePenalty(user.gold, reward);
-      updates.gold = admin.firestore.FieldValue.increment(-fromGold);
+      const { debtAdded } = applyCapturePenalty(reward);
       updates.debtToState = admin.firestore.FieldValue.increment(debtAdded);
     } else {
       const { goldDelta, debtDelta } = splitIncomeForDebt(user.debtToState, reward);
@@ -1764,11 +1763,10 @@ export const executeHeistPlan = onCall(async (request) => {
       const data = userSnaps[i].data();
       const currentSuspicion = data?.suspicion || 0;
       const currentReputation = data?.reputation || 0;
-      const { fromGold, debtAdded } = applyCapturePenalty(data?.gold, perCivilianPenalty);
+      const { debtAdded } = applyCapturePenalty(perCivilianPenalty);
       batch.update(db.collection('users').doc(participants[i].uid), {
         suspicion: clampSuspicion(currentSuspicion + config.suspicionCost),
         reputation: clampSuspicion(currentReputation - config.suspicionCost),
-        gold: admin.firestore.FieldValue.increment(-fromGold),
         debtToState: admin.firestore.FieldValue.increment(debtAdded),
       });
     });
@@ -1791,8 +1789,7 @@ export const executeHeistPlan = onCall(async (request) => {
         reputation: clampSuspicion(currentReputation - config.suspicionCost),
       };
       if (anyCaught) {
-        const { fromGold, debtAdded } = applyCapturePenalty(data?.gold, perPersonAmount);
-        updates.gold = admin.firestore.FieldValue.increment(-fromGold);
+        const { debtAdded } = applyCapturePenalty(perPersonAmount);
         updates.debtToState = admin.firestore.FieldValue.increment(debtAdded);
       } else {
         const { goldDelta, debtDelta } = splitIncomeForDebt(data?.debtToState, perPersonAmount);
@@ -2014,6 +2011,62 @@ export const joinRaceRoom = onCall(async (request) => {
 });
 
 // ---------------------------------------------------------------------------
+// performRoll — bir oyuncunun zar atışını hesaplar (vites kadar zar,
+// nitro/turbo x2, tekerlek bonusu, benzin tüketimi, altın kazancı, 100
+// kare eşiği). Hem manuel "Zar At" tıklamasında (rollDice) hem de 10
+// saniyelik süre dolduğunda otomatik atışta (resolveTurnTimeout) kullanılır
+// — ikisi de AYNI mantığı izlemeli, oyun kafa karıştırmasın diye.
+// ---------------------------------------------------------------------------
+function performRoll(me, { useNitro = false, useTurbo = false } = {}) {
+  let stepSum = 0;
+  for (let i = 0; i < me.gear; i++) stepSum += rollDie();
+
+  let multiplier = 1;
+  let nitroUsed = false;
+  let turboUsed = false;
+  if (useTurbo && me.turboCount > 0) {
+    multiplier = 2;
+    turboUsed = true;
+  } else if (useNitro && me.nitroActive) {
+    multiplier = 2;
+    nitroUsed = true;
+  }
+
+  const rolledSteps = stepSum * multiplier + me.wheelBonus;
+  const actualSteps = Math.min(rolledSteps, Math.max(me.fuel, 0));
+  const beforePos = me.position;
+  const afterPos = Math.min(beforePos + actualSteps, RACE_TRACK_LENGTH);
+  const movedSteps = afterPos - beforePos;
+
+  let goldEarned = movedSteps;
+  const beforeMilestone = Math.floor(beforePos / 100);
+  const afterMilestone = Math.floor(afterPos / 100);
+  if (afterMilestone > beforeMilestone) {
+    goldEarned += (afterMilestone - beforeMilestone) * 50;
+  }
+
+  const newFuel = Math.min(Math.max(0, me.fuel - movedSteps) + me.fuelSavingBonus, me.maxFuel);
+
+  return {
+    updated: {
+      ...me,
+      position: afterPos,
+      fuel: newFuel,
+      raceGold: me.raceGold + goldEarned,
+      hasRolledThisTurn: true,
+      lastRollSteps: movedSteps,
+      finished: afterPos >= RACE_TRACK_LENGTH,
+      nitroActive: nitroUsed ? false : me.nitroActive,
+      turboCount: turboUsed ? me.turboCount - 1 : me.turboCount,
+    },
+    stepSum,
+    multiplier,
+    movedSteps,
+    goldEarned,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // rollDice — sırayla zar atma. Vites = zar sayısı. Nitro/turbo x2 mesafe.
 // İkisi de attıysa turu kapatır: kazanan/beraberlik kontrolü + ödeme.
 // ---------------------------------------------------------------------------
@@ -2052,46 +2105,10 @@ export const rollDice = onCall(async (request) => {
     ]);
 
     // --- Zar at ---
-    let stepSum = 0;
-    for (let i = 0; i < me.gear; i++) stepSum += rollDie();
-
-    let multiplier = 1;
-    let nitroUsed = false;
-    let turboUsed = false;
-    if (useTurbo && me.turboCount > 0) {
-      multiplier = 2;
-      turboUsed = true;
-    } else if (useNitro && me.nitroActive) {
-      multiplier = 2;
-      nitroUsed = true;
-    }
-
-    const rolledSteps = stepSum * multiplier + me.wheelBonus;
-    const actualSteps = Math.min(rolledSteps, Math.max(me.fuel, 0));
-    const beforePos = me.position;
-    const afterPos = Math.min(beforePos + actualSteps, RACE_TRACK_LENGTH);
-    const movedSteps = afterPos - beforePos;
-
-    let goldEarned = movedSteps;
-    const beforeMilestone = Math.floor(beforePos / 100);
-    const afterMilestone = Math.floor(afterPos / 100);
-    if (afterMilestone > beforeMilestone) {
-      goldEarned += (afterMilestone - beforeMilestone) * 50;
-    }
-
-    const newFuel = Math.min(Math.max(0, me.fuel - movedSteps) + me.fuelSavingBonus, me.maxFuel);
-
-    const updatedMe = {
-      ...me,
-      position: afterPos,
-      fuel: newFuel,
-      raceGold: me.raceGold + goldEarned,
-      hasRolledThisTurn: true,
-      lastRollSteps: movedSteps,
-      finished: afterPos >= RACE_TRACK_LENGTH,
-      nitroActive: nitroUsed ? false : me.nitroActive,
-      turboCount: turboUsed ? me.turboCount - 1 : me.turboCount,
-    };
+    const { updated: updatedMe, stepSum, multiplier, movedSteps, goldEarned } = performRoll(me, {
+      useNitro,
+      useTurbo,
+    });
 
     const bothRolled = !other || other.hasRolledThisTurn;
 
@@ -2203,7 +2220,10 @@ export const resolveTurnTimeout = onCall(async (request) => {
     const players = { ...room.players };
     uids.forEach((u) => {
       if (!players[u].hasRolledThisTurn) {
-        players[u] = { ...players[u], hasRolledThisTurn: true, lastRollSteps: 0 };
+        // Süre doldu, oyuncu zar atmadı — otomatik olarak ATILIR (aynı
+        // performRoll mantığı, zaten aldıysa nitroActive otomatik kullanılır).
+        const { updated } = performRoll(players[u], { useNitro: players[u].nitroActive });
+        players[u] = updated;
       }
     });
 

@@ -11,6 +11,7 @@ import {
   kickFromHeistPlan,
   executeHeistPlan,
 } from '../../services/gameActions';
+import InfoIcon from '../InfoIcon/InfoIcon';
 import './HeistPanel.css';
 
 const LABELS = {
@@ -29,34 +30,34 @@ const LABELS = {
     suspicionCost: 25,
   },
   fabrika: { title: 'Fabrika Soygunu', requiredPower: 10000, reward: 4000, suspicionCost: 25 },
-  seyyar_satici_1: { title: 'Kokoreçciye Haraç', requiredPower: 4500, reward: 1000, suspicionCost: 25 },
-  seyyar_satici_2: { title: 'Simitçiye Haraç', requiredPower: 3000, reward: 500, suspicionCost: 25 },
-  seyyar_satici_3: { title: 'Dönerciye Haraç', requiredPower: 1500, reward: 200, suspicionCost: 25 },
-  seyyar_satici_4: { title: 'Köfteciye Haraç', requiredPower: 1000, reward: 100, suspicionCost: 25 },
+  seyyar_satici_1: { title: 'Kokoreçciye Haraç', requiredPower: 4500, reward: 1000, suspicionCost: 5 },
+  seyyar_satici_2: { title: 'Simitçiye Haraç', requiredPower: 3000, reward: 500, suspicionCost: 5 },
+  seyyar_satici_3: { title: 'Dönerciye Haraç', requiredPower: 1500, reward: 200, suspicionCost: 5 },
+  seyyar_satici_4: { title: 'Köfteciye Haraç', requiredPower: 1000, reward: 100, suspicionCost: 5 },
 };
 
 function resultMessage(res) {
   if (!res.started) {
     if (res.reason === 'insufficient_power') {
-      return `Soygun başlamadı — güç yetersiz (gerekli: ${res.requiredPower.toLocaleString('tr-TR')}). Şüphe artmadı.`;
+      return `Güç yetersiz (gerekli: ${res.requiredPower.toLocaleString('tr-TR')}). Soygun başlamadı, şüphe artmadı.`;
     }
     return 'Soygun başlamadı.';
   }
   // Solo soygun: { success, caught, reward }
   if (res.reward !== undefined) {
     if (res.caught) {
-      return `Yakalandın! ${res.reward.toLocaleString('tr-TR')} altın ceza kasaya gitti (önce altınından kesildi, yetmeyen kısım devlete borç yazıldı). Şüphen arttı.`;
+      return `Yakalandın! ${res.reward.toLocaleString('tr-TR')} altın devlete borç yazıldı.`;
     }
-    return `Başarılı! ${res.reward.toLocaleString('tr-TR')} altın kazandın (borcun varsa yarısı borca gitti). Şüphen arttı.`;
+    return `Başarılı! ${res.reward.toLocaleString('tr-TR')} altın kazandın.`;
   }
   // Ekip soygunu: { busted, caughtBySuspicion, totalReward }
   if (res.busted) {
-    return 'Ekipte sızmış bir polis vardı! Soygun yakalandı — payınız ceza olarak kasaya gitti.';
+    return 'Ekibe polis sızmıştı! Payınız borç olarak yazıldı.';
   }
   if (res.caughtBySuspicion) {
-    return 'Ekipten biri yakalandı, tüm soygun başarısız oldu — herkesin payı ceza olarak kasaya gitti.';
+    return 'Ekipten biri yakalandı, herkesin payı borç olarak yazıldı.';
   }
-  return `Ekip başarılı! Toplam ${res.totalReward.toLocaleString('tr-TR')} altın katılımcılara eşit bölündü.`;
+  return `Ekip başarılı! ${res.totalReward.toLocaleString('tr-TR')} altın katılımcılara bölündü.`;
 }
 
 function PlanCard({ plan, myUid, onChanged }) {
@@ -175,15 +176,17 @@ export default function HeistPanel({ target }) {
 
   return (
     <div className="heist-panel">
-      <p className="heist-panel-title">{meta.title}</p>
+      <p className="heist-panel-title">
+        {meta.title}
+        <InfoIcon
+          text={
+            'Tek başına: yakalanma ihtimalin = mevcut şüphen. Ekip: en fazla 4 kişi, plan 24 saat açık kalır. Ekipte biri yakalanırsa ya da sızan bir polis varsa TÜM ekip yakalanır. Ceza cepten kesilmez, devlete borç yazılır — Banka\'dan istediğin zaman öde, ya da kazandığın paranın yarısı otomatik borcu kapatsın.'
+          }
+        />
+      </p>
       <p className="heist-panel-risk">
         Ödül: {meta.reward.toLocaleString('tr-TR')} altın · Şüphe +{meta.suspicionCost} · Gerekli
         güç: {meta.requiredPower.toLocaleString('tr-TR')}
-      </p>
-      <p className="heist-panel-hint">
-        Tek başına: yakalanma ihtimalin = mevcut şüphe yüzden (0 şüphe = 0 risk). Ekip: en fazla 4
-        kişi, plan 24 saat açık kalır. Ekipte biri yakalanırsa ya da içeri sızan bir polis varsa
-        TÜM ekip yakalanır — ceza önce altınından kesilir, yetmeyen kısım borca yazılır.
       </p>
 
       <div className="heist-panel-solo-row">
