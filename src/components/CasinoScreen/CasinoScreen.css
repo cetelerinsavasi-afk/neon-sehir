@@ -1,0 +1,92 @@
+.casino-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.casino-jackpot-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: #05070c;
+  border: 1px solid rgba(255, 210, 63, 0.4);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.casino-jackpot-label {
+  margin: 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.casino-jackpot-value {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 800;
+  color: #ffd23f;
+}
+
+.casino-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.casino-row {
+  display: flex;
+  gap: 8px;
+}
+
+.casino-input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.casino-btn {
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 210, 63, 0.5);
+  background: rgba(255, 210, 63, 0.12);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.casino-btn:hover:not(:disabled) {
+  background: rgba(255, 210, 63, 0.22);
+}
+
+.casino-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.casino-error {
+  color: var(--neon-pink);
+  font-size: 12px;
+  margin: 0;
+}
+
+.casino-winner-card {
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.casino-winner-name {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--neon-cyan);
+}

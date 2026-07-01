@@ -1,0 +1,132 @@
+.market-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.market-section-title {
+  margin: 6px 0 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.market-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.market-sell-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.market-type-row {
+  display: flex;
+  gap: 6px;
+}
+
+.market-type-btn {
+  flex: 1;
+  padding: 8px 4px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.market-type-btn.active {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.market-select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.market-row {
+  display: flex;
+  gap: 8px;
+}
+
+.market-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.market-btn {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.market-btn:hover:not(:disabled) {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.market-btn.primary {
+  border-color: rgba(255, 46, 140, 0.5);
+  background: rgba(255, 46, 140, 0.12);
+}
+
+.market-btn.small {
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
+.market-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.market-listing-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: #0a0308;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 12px;
+}
+
+.market-seller {
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.market-error {
+  color: var(--neon-pink);
+  font-size: 12px;
+  margin: 0;
+}

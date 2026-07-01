@@ -59,6 +59,12 @@
   padding: 28px 20px;
 }
 
+.phone-app-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
 .phone-app {
   display: flex;
   flex-direction: column;

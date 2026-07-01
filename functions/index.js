@@ -476,6 +476,58 @@ export const dailyReset = onSchedule(
     });
     await Promise.all(debtSmsPromises);
 
+    // 9) Piyango çekilişi (Bölüm 11): bir önceki günün biletlerine göre
+    // ağırlıklı rastgele kazanan seçilir, jackpot'un tamamı verilir.
+    const prevDateKey = addDaysToDateKey(dateKey, -1);
+    const prevLotteryRef = db.collection('lottery').doc(prevDateKey);
+    const prevLotterySnap = await prevLotteryRef.get();
+    if (prevLotterySnap.exists && !prevLotterySnap.data().drawnAt) {
+      const lottery = prevLotterySnap.data();
+      if (lottery.totalTickets > 0) {
+        const ticketsSnap = await prevLotteryRef.collection('tickets').get();
+        const roll = Math.random() * lottery.totalTickets;
+        let cumulative = 0;
+        let winnerUid = null;
+        let winnerName = null;
+        for (const ticketDoc of ticketsSnap.docs) {
+          const t = ticketDoc.data();
+          cumulative += t.count || 0;
+          if (roll < cumulative) {
+            winnerUid = t.uid;
+            winnerName = t.displayName;
+            break;
+          }
+        }
+        if (winnerUid) {
+          const winnerRef = db.collection('users').doc(winnerUid);
+          const winnerSnap = await winnerRef.get();
+          const { goldDelta, debtDelta } = splitIncomeForDebt(
+            winnerSnap.data()?.debtToState,
+            lottery.jackpot
+          );
+          await winnerRef.update({
+            gold: admin.firestore.FieldValue.increment(goldDelta),
+            debtToState: admin.firestore.FieldValue.increment(debtDelta),
+          });
+          await prevLotteryRef.update({
+            winnerUid,
+            winnerName,
+            winnerAmount: lottery.jackpot,
+            drawnAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          await winnerRef.collection('messages').add({
+            text: `Tebrikler! Piyangodan ${lottery.jackpot.toLocaleString('tr-TR')} altın kazandın.`,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            read: false,
+            type: 'lottery_win',
+          });
+        }
+      } else {
+        // Kimse bilet almadıysa kazanan yok, sadece çekiliş yapıldı olarak işaretlenir.
+        await prevLotteryRef.update({ drawnAt: admin.firestore.FieldValue.serverTimestamp() });
+      }
+    }
+
     console.log(`dailyReset tamamlandı: ${dateKey}`);
   }
 );
@@ -1060,6 +1112,69 @@ export const repayVehicleLoan = onCall(async (request) => {
         ? { mortgaged: false, seizedByBank: false, loanPrincipal: 0, loanTotalOwed: 0, loanPaid: 0 }
         : {}),
     });
+  });
+
+  return { ok: true };
+});
+
+// =============================================================================
+// CASINO — PİYANGO (Bölüm 11)
+// =============================================================================
+//
+// - Bilet: 100 altın. Günün jackpot'u 1000 altından başlar, satılan her
+//   biletin tam bedeli (100 altın × adet) jackpot'a eklenir.
+// - Kazanma şansı = oyuncunun bilet sayısı / o güne ait toplam bilet sayısı
+//   (ağırlıklı rastgele) — dailyReset içinde (00:00) bir önceki günün
+//   çekilişi yapılır, jackpot'un tamamı kazanana verilir.
+// - lottery/{dateKey}: jackpot, totalTickets, winnerUid, winnerAmount, drawnAt
+// - lottery/{dateKey}/tickets/{uid}: uid, displayName, count
+// =============================================================================
+
+const LOTTERY_TICKET_PRICE = 100;
+const LOTTERY_BASE_JACKPOT = 1000;
+
+export const buyLotteryTicket = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const qty = Number(request.data?.quantity);
+  if (!Number.isInteger(qty) || qty <= 0) {
+    throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
+  }
+  const cost = qty * LOTTERY_TICKET_PRICE;
+  const dateKey = istanbulDateKey();
+  const userRef = db.collection('users').doc(uid);
+  const lotteryRef = db.collection('lottery').doc(dateKey);
+  const ticketRef = lotteryRef.collection('tickets').doc(uid);
+
+  await db.runTransaction(async (tx) => {
+    const [userSnap, lotterySnap] = await Promise.all([tx.get(userRef), tx.get(lotteryRef)]);
+    const user = userSnap.data();
+    if (!user || (user.gold || 0) < cost) {
+      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    }
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-cost) });
+    if (!lotterySnap.exists) {
+      tx.set(lotteryRef, {
+        jackpot: LOTTERY_BASE_JACKPOT + cost,
+        totalTickets: qty,
+        winnerUid: null,
+        winnerAmount: null,
+        drawnAt: null,
+      });
+    } else {
+      tx.update(lotteryRef, {
+        jackpot: admin.firestore.FieldValue.increment(cost),
+        totalTickets: admin.firestore.FieldValue.increment(qty),
+      });
+    }
+    tx.set(
+      ticketRef,
+      {
+        uid,
+        displayName: user.displayName || 'Oyuncu',
+        count: admin.firestore.FieldValue.increment(qty),
+      },
+      { merge: true }
+    );
   });
 
   return { ok: true };
@@ -2253,6 +2368,265 @@ export const raceChangeGear = onCall(async (request) => {
     }
     const newGear = clamp(me.gear + d, 1, me.maxGear);
     tx.update(roomRef, { [`players.${uid}`]: { ...me, gear: newGear } });
+  });
+
+  return { ok: true };
+});
+
+// =============================================================================
+// TELEFON — "2." İKİNCİ EL SATIŞ UYGULAMASI (Bölüm 9.1)
+// =============================================================================
+//
+// Oyuncular araçlarını, silahlarını, geliştirme malzemelerini ve geliştirme
+// makinelerini diğer oyunculara satabilir. itemType'a göre 4 farklı akış:
+//   - vehicle: vehicles/{id} üzerinde 'listed' bayrağı — ipotekli/el konulmuş
+//     araç listelenemez.
+//   - weapon: weapons/{id} üzerinde 'listed' bayrağı.
+//   - material: envanterden miktar ANINDA düşülür (rezerve edilir), iptal
+//     edilirse geri eklenir.
+//   - machine: productionMachines/{uid}/{machineType}.owned ANINDA false
+//     yapılır (rezerve edilir), iptal edilirse geri owned:true yapılır.
+// marketplaceListings/{listingId}: sellerId, itemType, price, sold, ...
+// =============================================================================
+
+const MATERIAL_TYPES = ['depoUpgrade', 'vitesUpgrade', 'silahUpgrade', 'yasakliMadde'];
+
+export const createListing = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { itemType, itemId, materialType, quantity, machineType, price } = request.data || {};
+  const priceNum = Number(price);
+  if (!Number.isInteger(priceNum) || priceNum <= 0) {
+    throw new HttpsError('invalid-argument', 'Geçersiz fiyat.');
+  }
+
+  const listingRef = db.collection('marketplaceListings').doc();
+  const userSnap = await db.collection('users').doc(uid).get();
+  const sellerName = userSnap.data()?.displayName || 'Oyuncu';
+
+  if (itemType === 'vehicle') {
+    const vehicleRef = db.collection('vehicles').doc(itemId);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(vehicleRef);
+      const v = snap.data();
+      if (!snap.exists || v.ownerId !== uid) {
+        throw new HttpsError('failed-precondition', 'Bu araç size ait değil.');
+      }
+      if (v.mortgaged || v.seizedByBank) {
+        throw new HttpsError('failed-precondition', 'İpotekli/el konulmuş araç satılamaz.');
+      }
+      if (v.listed) {
+        throw new HttpsError('failed-precondition', 'Bu araç zaten listelenmiş.');
+      }
+      tx.update(vehicleRef, { listed: true });
+      tx.set(listingRef, {
+        sellerId: uid,
+        sellerName,
+        itemType,
+        vehicleId: itemId,
+        vehicleModel: v.model,
+        price: priceNum,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        sold: false,
+      });
+    });
+  } else if (itemType === 'weapon') {
+    const weaponRef = db.collection('weapons').doc(itemId);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(weaponRef);
+      const w = snap.data();
+      if (!snap.exists || w.ownerId !== uid) {
+        throw new HttpsError('failed-precondition', 'Bu silah size ait değil.');
+      }
+      if (w.listed) {
+        throw new HttpsError('failed-precondition', 'Bu silah zaten listelenmiş.');
+      }
+      tx.update(weaponRef, { listed: true });
+      tx.set(listingRef, {
+        sellerId: uid,
+        sellerName,
+        itemType,
+        weaponId: itemId,
+        weaponName: w.name,
+        price: priceNum,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        sold: false,
+      });
+    });
+  } else if (itemType === 'material') {
+    if (!MATERIAL_TYPES.includes(materialType)) {
+      throw new HttpsError('invalid-argument', 'Geçersiz malzeme türü.');
+    }
+    const qty = Number(quantity);
+    if (!Number.isInteger(qty) || qty <= 0) {
+      throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
+    }
+    const inventoryRef = db.collection('users').doc(uid).collection('inventory').doc(materialType);
+    await db.runTransaction(async (tx) => {
+      const invSnap = await tx.get(inventoryRef);
+      const have = invSnap.exists ? invSnap.data().quantity || 0 : 0;
+      if (have < qty) {
+        throw new HttpsError('failed-precondition', 'Yeterli malzemeniz yok.');
+      }
+      tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-qty) }, { merge: true });
+      tx.set(listingRef, {
+        sellerId: uid,
+        sellerName,
+        itemType,
+        materialType,
+        quantity: qty,
+        price: priceNum,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        sold: false,
+      });
+    });
+  } else if (itemType === 'machine') {
+    if (!VALID_MACHINES.includes(machineType)) {
+      throw new HttpsError('invalid-argument', 'Geçersiz makine türü.');
+    }
+    const machineRef = db.collection('users').doc(uid).collection('productionMachines').doc(machineType);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(machineRef);
+      if (!snap.exists || !snap.data().owned) {
+        throw new HttpsError('failed-precondition', 'Bu makineye sahip değilsiniz.');
+      }
+      tx.update(machineRef, { owned: false });
+      tx.set(listingRef, {
+        sellerId: uid,
+        sellerName,
+        itemType,
+        machineType,
+        price: priceNum,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        sold: false,
+      });
+    });
+  } else {
+    throw new HttpsError('invalid-argument', 'Geçersiz ürün türü.');
+  }
+
+  return { ok: true, listingId: listingRef.id };
+});
+
+export const cancelListing = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { listingId } = request.data || {};
+  const listingRef = db.collection('marketplaceListings').doc(listingId);
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(listingRef);
+    if (!snap.exists) {
+      throw new HttpsError('failed-precondition', 'İlan bulunamadı.');
+    }
+    const listing = snap.data();
+    if (listing.sellerId !== uid) {
+      throw new HttpsError('permission-denied', 'Bu ilan size ait değil.');
+    }
+    if (listing.sold) {
+      throw new HttpsError('failed-precondition', 'Bu ilan zaten satılmış.');
+    }
+
+    if (listing.itemType === 'vehicle') {
+      tx.update(db.collection('vehicles').doc(listing.vehicleId), { listed: false });
+    } else if (listing.itemType === 'weapon') {
+      tx.update(db.collection('weapons').doc(listing.weaponId), { listed: false });
+    } else if (listing.itemType === 'material') {
+      const inventoryRef = db
+        .collection('users')
+        .doc(uid)
+        .collection('inventory')
+        .doc(listing.materialType);
+      tx.set(
+        inventoryRef,
+        { quantity: admin.firestore.FieldValue.increment(listing.quantity) },
+        { merge: true }
+      );
+    } else if (listing.itemType === 'machine') {
+      const machineRef = db
+        .collection('users')
+        .doc(uid)
+        .collection('productionMachines')
+        .doc(listing.machineType);
+      tx.update(machineRef, { owned: true });
+    }
+
+    tx.update(listingRef, { sold: true, cancelled: true });
+  });
+
+  return { ok: true };
+});
+
+export const buyListing = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { listingId } = request.data || {};
+  const listingRef = db.collection('marketplaceListings').doc(listingId);
+  const buyerRef = db.collection('users').doc(uid);
+
+  await db.runTransaction(async (tx) => {
+    const [listingSnap, buyerSnap] = await Promise.all([tx.get(listingRef), tx.get(buyerRef)]);
+    if (!listingSnap.exists) {
+      throw new HttpsError('failed-precondition', 'İlan bulunamadı.');
+    }
+    const listing = listingSnap.data();
+    if (listing.sold) {
+      throw new HttpsError('failed-precondition', 'Bu ilan zaten satılmış.');
+    }
+    if (listing.sellerId === uid) {
+      throw new HttpsError('failed-precondition', 'Kendi ilanını satın alamazsın.');
+    }
+    const buyer = buyerSnap.data();
+    if (!buyer || (buyer.gold || 0) < listing.price) {
+      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    }
+
+    // Firestore transaction kuralı: TÜM okumalar yazmalardan önce olmalı.
+    const sellerRef = db.collection('users').doc(listing.sellerId);
+    const sellerSnap = await tx.get(sellerRef);
+
+    // Alıcıdan tam fiyat düşülür.
+    tx.update(buyerRef, { gold: admin.firestore.FieldValue.increment(-listing.price) });
+
+    // Satıcıya gelir — borç varsa Bölüm 10 kuralına göre bölüştürülür.
+    const { goldDelta, debtDelta } = splitIncomeForDebt(
+      sellerSnap.data()?.debtToState,
+      listing.price
+    );
+    tx.update(sellerRef, {
+      gold: admin.firestore.FieldValue.increment(goldDelta),
+      debtToState: admin.firestore.FieldValue.increment(debtDelta),
+    });
+
+    // Ürünü transfer et.
+    if (listing.itemType === 'vehicle') {
+      tx.update(db.collection('vehicles').doc(listing.vehicleId), {
+        ownerId: uid,
+        listed: false,
+      });
+    } else if (listing.itemType === 'weapon') {
+      tx.update(db.collection('weapons').doc(listing.weaponId), {
+        ownerId: uid,
+        listed: false,
+      });
+    } else if (listing.itemType === 'material') {
+      const inventoryRef = db
+        .collection('users')
+        .doc(uid)
+        .collection('inventory')
+        .doc(listing.materialType);
+      tx.set(
+        inventoryRef,
+        { quantity: admin.firestore.FieldValue.increment(listing.quantity) },
+        { merge: true }
+      );
+    } else if (listing.itemType === 'machine') {
+      const machineRef = db
+        .collection('users')
+        .doc(uid)
+        .collection('productionMachines')
+        .doc(listing.machineType);
+      tx.set(machineRef, { owned: true, lastCollectedAt: null }, { merge: true });
+    }
+
+    tx.update(listingRef, { sold: true, buyerId: uid, soldAt: admin.firestore.FieldValue.serverTimestamp() });
   });
 
   return { ok: true };

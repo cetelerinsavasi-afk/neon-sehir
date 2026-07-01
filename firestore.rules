@@ -96,6 +96,25 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // lottery/{dateKey} — piyango. Herkes güncel jackpot'u ve geçmiş
+    // kazananları görebilmeli; yazma sadece Cloud Functions ile.
+    match /lottery/{dateKey} {
+      allow read: if isSignedIn();
+      allow write: if false;
+
+      match /tickets/{ticketUid} {
+        allow read: if isSignedIn();
+        allow write: if false;
+      }
+    }
+
+    // marketplaceListings/{listingId} — 2. el satış ilanları (Bölüm 9.1).
+    // Herkes ilanları görüp satın alabilmeli; yazma sadece Cloud Functions.
+    match /marketplaceListings/{listingId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
     match /weapons/{weaponId} {
       allow read: if isSignedIn();
       allow write: if false;

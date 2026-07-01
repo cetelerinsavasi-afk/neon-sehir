@@ -1,29 +1,41 @@
 import { useState } from 'react';
 import MessagesScreen from '../MessagesScreen/MessagesScreen';
+import MarketplaceScreen from '../MarketplaceScreen/MarketplaceScreen';
+import BankScreen from '../BankScreen/BankScreen';
 import { useMessages } from '../../hooks/useMessages';
 import './PhoneScreen.css';
 
 const APPS = [
-  { id: 'ikinci-el', label: '2.', note: 'İkinci El Satış', enabled: false },
-  { id: 'banka', label: '🏦', note: 'Banka', enabled: false },
+  { id: 'ikinci-el', label: '2.', note: 'İkinci El Satış', enabled: true },
+  { id: 'banka', label: '🏦', note: 'Banka', enabled: true },
   { id: 'sms', label: '✉️', note: 'SMS', enabled: true },
 ];
+
+const APP_TITLES = {
+  'ikinci-el': 'İkinci El Satış',
+  banka: 'Banka',
+  sms: 'SMS',
+};
 
 export default function PhoneScreen({ onClose }) {
   const [openApp, setOpenApp] = useState(null);
   const { messages } = useMessages();
   const unreadCount = messages.filter((m) => !m.read).length;
 
-  if (openApp === 'sms') {
+  if (openApp) {
     return (
       <div className="phone-screen">
         <div className="phone-screen-header">
           <button className="phone-back" onClick={() => setOpenApp(null)}>
             ← Uygulamalara dön
           </button>
-          <span className="phone-clock">SMS</span>
+          <span className="phone-clock">{APP_TITLES[openApp]}</span>
         </div>
-        <MessagesScreen />
+        <div className="phone-app-body">
+          {openApp === 'sms' && <MessagesScreen />}
+          {openApp === 'ikinci-el' && <MarketplaceScreen />}
+          {openApp === 'banka' && <BankScreen />}
+        </div>
       </div>
     );
   }
@@ -55,10 +67,6 @@ export default function PhoneScreen({ onClose }) {
           </button>
         ))}
       </div>
-
-      <p className="phone-placeholder-note">
-        Diğer telefon uygulamaları ilerleyen fazlarda geliştirilecek (Bölüm 9).
-      </p>
     </div>
   );
 }

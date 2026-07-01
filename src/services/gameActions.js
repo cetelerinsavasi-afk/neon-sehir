@@ -63,6 +63,20 @@ export const takeVehicleLoan = (vehicleId, termDays) =>
 export const repayVehicleLoan = (vehicleId, amount) =>
   httpsCallable(functions, 'repayVehicleLoan')({ vehicleId, amount });
 
+// --- Casino: Piyango (Bölüm 11) ---
+
+export const buyLotteryTicket = (quantity) =>
+  httpsCallable(functions, 'buyLotteryTicket')({ quantity });
+
+// --- Telefon: "2." İkinci El Satış (Bölüm 9.1) ---
+
+export const createListing = (payload) => httpsCallable(functions, 'createListing')(payload);
+
+export const cancelListing = (listingId) =>
+  httpsCallable(functions, 'cancelListing')({ listingId });
+
+export const buyListing = (listingId) => httpsCallable(functions, 'buyListing')({ listingId });
+
 // --- Faz 5: Şüphe Yönetimi ve Soygun ---
 
 export const prayAtMosque = () => httpsCallable(functions, 'prayAtMosque')();
