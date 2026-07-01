@@ -2,10 +2,13 @@ import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import FactoryScreen from '../FactoryScreen/FactoryScreen';
 import ProfessionPicker from '../ProfessionPicker/ProfessionPicker';
+import VehicleGalleryScreen from '../VehicleGalleryScreen/VehicleGalleryScreen';
+import GarageScreen from '../GarageScreen/GarageScreen';
+import WeaponShopScreen from '../WeaponShopScreen/WeaponShopScreen';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import './RegionModal.css';
 
-// Faz 2 kapsamında gerçek içeriği hazır olan ekranlar. Diğerleri hâlâ
+// Faz 2+3 kapsamında gerçek içeriği hazır olan ekranlar. Diğerleri hâlâ
 // "yakında" placeholder'ı gösteriyor — ilgili faz tamamlandıkça buraya
 // yeni case'ler eklenecek.
 function ScreenContent({ screen }) {
@@ -15,6 +18,12 @@ function ScreenContent({ screen }) {
   switch (screen) {
     case 'fabrika':
       return <FactoryScreen />;
+    case 'araba-galerisi':
+      return <VehicleGalleryScreen />;
+    case 'modifiye-garaji':
+      return <GarageScreen />;
+    case 'silah-magazasi':
+      return <WeaponShopScreen />;
     case 'ev':
       if (!user) {
         return <SignInPrompt message="Meslek seçmek için giriş yapmalısın." />;

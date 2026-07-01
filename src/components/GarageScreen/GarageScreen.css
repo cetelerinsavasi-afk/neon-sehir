@@ -1,0 +1,107 @@
+.garage-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.garage-inventory {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.garage-material {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.garage-sell-btn {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--neon-yellow);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.garage-sell-btn:hover:not(:disabled) {
+  border-color: var(--neon-cyan);
+}
+
+.garage-sell-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.garage-hint {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: 0;
+}
+
+.garage-hint strong {
+  color: var(--neon-cyan);
+}
+
+.garage-vehicle {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.garage-vehicle-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.garage-vehicle-stats {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.garage-vehicle-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.garage-action {
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.garage-action:hover:not(:disabled) {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.garage-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.garage-error {
+  color: var(--neon-pink);
+  font-size: 12px;
+  margin: 0;
+}

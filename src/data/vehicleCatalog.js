@@ -11,16 +11,16 @@
 //   turboCount    — araçla birlikte gelen sabit turbo sayısı (Bölüm 8.7'de yarışta kullanılır)
 //   image         — galeri/profil görseli
 
-import v01 from '../assets/vehicles/vehicle-01.png';
-import v02 from '../assets/vehicles/vehicle-02.png';
-import v03 from '../assets/vehicles/vehicle-03.png';
-import v04 from '../assets/vehicles/vehicle-04.png';
-import v05 from '../assets/vehicles/vehicle-05.png';
-import v06 from '../assets/vehicles/vehicle-06.png';
-import v07 from '../assets/vehicles/vehicle-07.png';
-import v08 from '../assets/vehicles/vehicle-08.png';
-import v09 from '../assets/vehicles/vehicle-09.png';
-import v10 from '../assets/vehicles/vehicle-10.png';
+import v01 from '../assets/vehicles/vehicle-01.jpg';
+import v02 from '../assets/vehicles/vehicle-02.jpg';
+import v03 from '../assets/vehicles/vehicle-03.jpg';
+import v04 from '../assets/vehicles/vehicle-04.jpg';
+import v05 from '../assets/vehicles/vehicle-05.jpg';
+import v06 from '../assets/vehicles/vehicle-06.jpg';
+import v07 from '../assets/vehicles/vehicle-07.jpg';
+import v08 from '../assets/vehicles/vehicle-08.jpg';
+import v09 from '../assets/vehicles/vehicle-09.jpg';
+import v10 from '../assets/vehicles/vehicle-10.jpg';
 
 export const vehicleCatalog = [
   { id: 1, name: 'Klasik Tur Arabası', gearLevel: 2, baseTank: 100, price: 1000, storage: 1, turboCount: 0, image: v01 },

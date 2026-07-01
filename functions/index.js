@@ -2,6 +2,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { setGlobalOptions } from 'firebase-functions/v2';
 import admin from 'firebase-admin';
+import { VEHICLE_CATALOG, WEAPON_CATALOG } from './catalogData.js';
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -332,3 +333,284 @@ export const dailyReset = onSchedule(
     console.log(`dailyReset tamamlandı: ${dateKey}`);
   }
 );
+
+// =============================================================================
+// FAZ 3 — ARABA VE SİLAH SİSTEMİ (Bölüm 8.1, 8.2, 8.3)
+// =============================================================================
+
+const UPGRADE_MATERIAL_PRICE = 100; // Bölüm 8.3 — gelişim malzemesi alım fiyatı
+const UPGRADE_MATERIAL_REFUND = 50; // Bölüm 8.3 — geri satış fiyatı
+const MATERIAL_SELL_PRICE = { depoUpgrade: 250, vitesUpgrade: 250 }; // Bölüm 8.2 — Modifiye Garajı'na satış
+
+// ---------------------------------------------------------------------------
+// buyVehicle — Araba Galerisi'nden araç satın alma (Bölüm 2, 13).
+// Basitleştirme: oyuncu aynı katalog modelinden yalnızca bir adet
+// sahip olabilir (envanter/UI karmaşıklığını sınırlamak için).
+// ---------------------------------------------------------------------------
+export const buyVehicle = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { catalogId } = request.data || {};
+  const catalogEntry = VEHICLE_CATALOG[catalogId];
+  if (!catalogEntry) {
+    throw new HttpsError('invalid-argument', 'Geçersiz araç.');
+  }
+
+  const userRef = db.collection('users').doc(uid);
+  const vehiclesRef = db.collection('vehicles');
+
+  await db.runTransaction(async (tx) => {
+    const [userSnap, existingSnap] = await Promise.all([
+      tx.get(userRef),
+      tx.get(
+        vehiclesRef
+          .where('ownerId', '==', uid)
+          .where('catalogId', '==', Number(catalogId))
+      ),
+    ]);
+    const user = userSnap.data();
+    if (!existingSnap.empty) {
+      throw new HttpsError('failed-precondition', 'Bu modele zaten sahipsiniz.');
+    }
+    if (!user || (user.gold || 0) < catalogEntry.price) {
+      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    }
+
+    tx.set(
+      userRef,
+      { gold: admin.firestore.FieldValue.increment(-catalogEntry.price) },
+      { merge: true }
+    );
+    const newVehicleRef = vehiclesRef.doc();
+    tx.set(newVehicleRef, {
+      ownerId: uid,
+      catalogId: Number(catalogId),
+      model: catalogEntry.name,
+      baseGalleryValue: catalogEntry.price,
+      gearLevel: catalogEntry.gearLevel,
+      baseTank: catalogEntry.baseTank,
+      tankBonus: 0,
+      gearUpgraded: false,
+      tankUpgraded: false,
+      storage: catalogEntry.storage,
+      turboCount: catalogEntry.turboCount,
+      mortgaged: false,
+      purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  });
+
+  return { ok: true };
+});
+
+// ---------------------------------------------------------------------------
+// upgradeVehicle — Modifiye Garajı'nda araç geliştirme (Bölüm 8.1).
+// 2 adet ilgili malzeme harcanır; her geliştirme türü araç başına 1 kez.
+// ---------------------------------------------------------------------------
+export const upgradeVehicle = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { vehicleId, upgradeType } = request.data || {};
+  if (!['gear', 'tank'].includes(upgradeType)) {
+    throw new HttpsError('invalid-argument', 'Geçersiz geliştirme türü.');
+  }
+
+  const vehicleRef = db.collection('vehicles').doc(vehicleId);
+  const materialType = upgradeType === 'gear' ? 'vitesUpgrade' : 'depoUpgrade';
+  const inventoryRef = db.collection('users').doc(uid).collection('inventory').doc(materialType);
+
+  await db.runTransaction(async (tx) => {
+    const [vehicleSnap, inventorySnap] = await Promise.all([
+      tx.get(vehicleRef),
+      tx.get(inventoryRef),
+    ]);
+    const vehicle = vehicleSnap.data();
+    if (!vehicleSnap.exists || vehicle.ownerId !== uid) {
+      throw new HttpsError('failed-precondition', 'Bu araç size ait değil.');
+    }
+    const flagField = upgradeType === 'gear' ? 'gearUpgraded' : 'tankUpgraded';
+    if (vehicle[flagField]) {
+      throw new HttpsError('failed-precondition', 'Bu geliştirme zaten uygulanmış.');
+    }
+    const qty = inventorySnap.exists ? inventorySnap.data().quantity || 0 : 0;
+    if (qty < 2) {
+      throw new HttpsError('failed-precondition', 'Yetersiz geliştirme malzemesi (2 adet gerekli).');
+    }
+
+    tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-2) }, { merge: true });
+    if (upgradeType === 'gear') {
+      tx.update(vehicleRef, {
+        gearLevel: admin.firestore.FieldValue.increment(1),
+        gearUpgraded: true,
+      });
+    } else {
+      tx.update(vehicleRef, {
+        tankBonus: admin.firestore.FieldValue.increment(50),
+        tankUpgraded: true,
+      });
+    }
+  });
+
+  return { ok: true };
+});
+
+// ---------------------------------------------------------------------------
+// sellMaterial — üretilen depo/vites malzemesini Modifiye Garajı'na satma
+// (Bölüm 8.2 — 250 altın/adet).
+// ---------------------------------------------------------------------------
+export const sellMaterial = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { materialType, quantity } = request.data || {};
+  const unitPrice = MATERIAL_SELL_PRICE[materialType];
+  const qty = Number(quantity);
+  if (!unitPrice || !Number.isInteger(qty) || qty <= 0) {
+    throw new HttpsError('invalid-argument', 'Geçersiz malzeme veya miktar.');
+  }
+
+  const userRef = db.collection('users').doc(uid);
+  const inventoryRef = userRef.collection('inventory').doc(materialType);
+
+  await db.runTransaction(async (tx) => {
+    const invSnap = await tx.get(inventoryRef);
+    const have = invSnap.exists ? invSnap.data().quantity || 0 : 0;
+    if (have < qty) {
+      throw new HttpsError('failed-precondition', 'Yeterli malzemeniz yok.');
+    }
+    tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-qty) }, { merge: true });
+    tx.set(
+      userRef,
+      { gold: admin.firestore.FieldValue.increment(qty * unitPrice) },
+      { merge: true }
+    );
+  });
+
+  return { ok: true, earned: qty * unitPrice };
+});
+
+// ---------------------------------------------------------------------------
+// buyWeapon — Silah Mağazası'ndan silah satın alma (Bölüm 8.3, 13).
+// Araçların aksine birden fazla adet aynı modelden alınabilir (yedek silah
+// mantıklı bir oyun senaryosu).
+// ---------------------------------------------------------------------------
+export const buyWeapon = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { catalogId } = request.data || {};
+  const catalogEntry = WEAPON_CATALOG[catalogId];
+  if (!catalogEntry) {
+    throw new HttpsError('invalid-argument', 'Geçersiz silah.');
+  }
+
+  const userRef = db.collection('users').doc(uid);
+  const weaponsRef = db.collection('weapons');
+
+  await db.runTransaction(async (tx) => {
+    const userSnap = await tx.get(userRef);
+    const user = userSnap.data();
+    if (!user || (user.gold || 0) < catalogEntry.price) {
+      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    }
+    tx.set(
+      userRef,
+      { gold: admin.firestore.FieldValue.increment(-catalogEntry.price) },
+      { merge: true }
+    );
+    const newWeaponRef = weaponsRef.doc();
+    tx.set(newWeaponRef, {
+      ownerId: uid,
+      catalogId: Number(catalogId),
+      name: catalogEntry.name,
+      basePrice: catalogEntry.price,
+      basePower: catalogEntry.power,
+      power: catalogEntry.power,
+      level: 1,
+      purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  });
+
+  return { ok: true };
+});
+
+// ---------------------------------------------------------------------------
+// upgradeWeapon — silah geliştirme (Bölüm 8.3).
+// Seviye 2: güç ×1.5. Seviye 3 (max): güç ×2 (başlangıcın 2 katı).
+// Her seviye 1 gelişim malzemesi harcar.
+// ---------------------------------------------------------------------------
+export const upgradeWeapon = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { weaponId } = request.data || {};
+
+  const weaponRef = db.collection('weapons').doc(weaponId);
+  const inventoryRef = db.collection('users').doc(uid).collection('inventory').doc('silahUpgrade');
+
+  await db.runTransaction(async (tx) => {
+    const [weaponSnap, inventorySnap] = await Promise.all([
+      tx.get(weaponRef),
+      tx.get(inventoryRef),
+    ]);
+    const weapon = weaponSnap.data();
+    if (!weaponSnap.exists || weapon.ownerId !== uid) {
+      throw new HttpsError('failed-precondition', 'Bu silah size ait değil.');
+    }
+    if (weapon.level >= 3) {
+      throw new HttpsError('failed-precondition', 'Bu silah zaten maksimum seviyede.');
+    }
+    const qty = inventorySnap.exists ? inventorySnap.data().quantity || 0 : 0;
+    if (qty < 1) {
+      throw new HttpsError('failed-precondition', 'Yetersiz gelişim malzemesi (1 adet gerekli).');
+    }
+
+    const newLevel = weapon.level + 1;
+    const multiplier = newLevel === 2 ? 1.5 : 2;
+    const newPower = Math.round(weapon.basePower * multiplier);
+
+    tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-1) }, { merge: true });
+    tx.update(weaponRef, { level: newLevel, power: newPower });
+  });
+
+  return { ok: true };
+});
+
+// ---------------------------------------------------------------------------
+// buySilahMaterial / sellSilahMaterial — Silah Mağazası'nda gelişim
+// malzemesi alım-satımı (Bölüm 8.3 — 100 altına al, 50 altına sat).
+// ---------------------------------------------------------------------------
+export const buySilahMaterial = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const userRef = db.collection('users').doc(uid);
+  const inventoryRef = userRef.collection('inventory').doc('silahUpgrade');
+
+  await db.runTransaction(async (tx) => {
+    const userSnap = await tx.get(userRef);
+    const user = userSnap.data();
+    if (!user || (user.gold || 0) < UPGRADE_MATERIAL_PRICE) {
+      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    }
+    tx.set(
+      userRef,
+      { gold: admin.firestore.FieldValue.increment(-UPGRADE_MATERIAL_PRICE) },
+      { merge: true }
+    );
+    tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(1) }, { merge: true });
+  });
+
+  return { ok: true };
+});
+
+export const sellSilahMaterial = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const userRef = db.collection('users').doc(uid);
+  const inventoryRef = userRef.collection('inventory').doc('silahUpgrade');
+
+  await db.runTransaction(async (tx) => {
+    const invSnap = await tx.get(inventoryRef);
+    const have = invSnap.exists ? invSnap.data().quantity || 0 : 0;
+    if (have < 1) {
+      throw new HttpsError('failed-precondition', 'Satacak gelişim malzemeniz yok.');
+    }
+    tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-1) }, { merge: true });
+    tx.set(
+      userRef,
+      { gold: admin.firestore.FieldValue.increment(UPGRADE_MATERIAL_REFUND) },
+      { merge: true }
+    );
+  });
+
+  return { ok: true };
+});

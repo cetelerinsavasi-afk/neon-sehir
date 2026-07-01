@@ -9,12 +9,12 @@
 //   price   — mağaza satış fiyatı (altın)
 //   image   — mağaza/envanter görseli
 
-import w01 from '../assets/weapons/weapon-01.png';
-import w02 from '../assets/weapons/weapon-02.png';
-import w03 from '../assets/weapons/weapon-03.png';
-import w04 from '../assets/weapons/weapon-04.png';
-import w05 from '../assets/weapons/weapon-05.png';
-import w06 from '../assets/weapons/weapon-06.png';
+import w01 from '../assets/weapons/weapon-01.jpg';
+import w02 from '../assets/weapons/weapon-02.jpg';
+import w03 from '../assets/weapons/weapon-03.jpg';
+import w04 from '../assets/weapons/weapon-04.jpg';
+import w05 from '../assets/weapons/weapon-05.jpg';
+import w06 from '../assets/weapons/weapon-06.jpg';
 
 export const weaponCatalog = [
   { id: 1, name: 'Tabanca', power: 1000, price: 100, image: w01 },

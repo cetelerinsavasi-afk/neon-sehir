@@ -1,0 +1,127 @@
+.weapon-shop {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.weapon-shop-material {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.weapon-shop-material-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.weapon-shop-small-btn {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.weapon-shop-small-btn:hover:not(:disabled) {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.weapon-shop-small-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.weapon-shop-heading {
+  margin: 4px 0 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.weapon-card,
+.weapon-owned-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.weapon-card-image {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: var(--panel);
+  flex-shrink: 0;
+}
+
+.weapon-card-info,
+.weapon-owned-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.weapon-card-name,
+.weapon-owned-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.weapon-owned-level {
+  font-size: 10px;
+  color: var(--neon-pink);
+  font-weight: 400;
+}
+
+.weapon-card-stats,
+.weapon-owned-power {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.weapon-card-buy {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.weapon-card-buy:hover:not(:disabled) {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.weapon-card-buy:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.weapon-shop-error {
+  color: var(--neon-pink);
+  font-size: 12px;
+  margin: 0;
+}
