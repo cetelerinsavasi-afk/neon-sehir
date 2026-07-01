@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 const MIN_SCALE = 1; // taban ölçek: ekrana tam sığdırılmış hâl. Bunun altına inilemez (ekstra uzaklaştırma yok).
 const MAX_SCALE = 2.5;
-const DRAG_THRESHOLD = 8; // px — bunun altındaki hareket "tıklama" sayılır, üstü "sürükleme"
+const TAP_THRESHOLD = 8; // px — bunun altındaki hareket "tıklama/dokunma" sayılır, üstü "sürükleme"
 
 /**
  * useMapPanZoom — tek elle sürükleme, iki parmakla pinch-zoom (mobil),
@@ -12,14 +12,21 @@ const DRAG_THRESHOLD = 8; // px — bunun altındaki hareket "tıklama" sayılı
  * Kullanıcı sadece İÇERİ yakınlaştırabilir (scale 1 → 2.5); bu taban ölçeğin
  * altına inilemez, böylece haritanın bir kısmı asla ekran dışına taşmaz.
  *
- * ÖNEMLİ: Sınır (clamp) hesaplamaları için harita ve ekran boyutu HER SEFERİNDE
- * canlı ölçülür (önbelleğe alınmaz). Mobil tarayıcılarda adres çubuğu
- * gizlenip/çıktığında ekran yüksekliği (dvh) anlık değişir; bu değeri
- * önbellekleyip sadece 'resize' event'inde güncellemek, dokunma sırasında
- * eski bir boyutla hesap yapılmasına ve haritanın sınır dışına kaçıp
- * "kaybolmasına" yol açıyordu. Canlı ölçüm bu sorunu çözer.
+ * ÖNEMLİ #1: Sınır (clamp) hesaplamaları için harita ve ekran boyutu HER
+ * SEFERİNDE canlı ölçülür (önbelleğe alınmaz) — mobil adres çubuğu
+ * gizlenip/çıktığında dvh anlık değiştiği için önbellek eski kalıp haritayı
+ * sınır dışına kaçırıyordu.
+ *
+ * ÖNEMLİ #2: Bölge tıklamaları native `click` event'ine DEĞİL, `onTap`
+ * callback'ine dayanır. `setPointerCapture` kullanıldığında bazı
+ * tarayıcılarda `click` event'i hiç tetiklenmeyebiliyor (pointer capture
+ * sonraki tüm işaretçi olaylarını yakalayan elemente yönlendiriyor); bu
+ * yüzden "bu bir dokunma mı sürükleme mi" kararını burada veriyoruz ve
+ * gerçek DOM tıklamasına güvenmek yerine `onTap(clientX, clientY)` ile
+ * dışarıya bildiriyoruz. CityMap bu koordinatla elementFromPoint kullanarak
+ * hangi bölgeye dokunulduğunu kendisi buluyor.
  */
-export function useMapPanZoom(viewportRef, wrapRef) {
+export function useMapPanZoom(viewportRef, wrapRef, onTap) {
   const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
 
@@ -27,15 +34,12 @@ export function useMapPanZoom(viewportRef, wrapRef) {
   const dragStart = useRef(null);
   const pinchStart = useRef(null);
   const movedDistance = useRef(0);
-  const suppressNextClick = useRef(false);
+  const wasMultiTouch = useRef(false);
 
   const clampTransform = useCallback((next) => {
     const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, next.scale));
     const vp = viewportRef.current;
     const wrap = wrapRef.current;
-    // offsetWidth/offsetHeight, transform (scale/translate) uygulanmış olsa
-    // bile her zaman GERÇEK (transform öncesi) layout boyutunu verir —
-    // bu yüzden burada "taban boyut" olarak güvenle kullanılabilir.
     const vw = vp?.clientWidth ?? 0;
     const vh = vp?.clientHeight ?? 0;
     const w = wrap?.offsetWidth ?? 0;
@@ -54,9 +58,10 @@ export function useMapPanZoom(viewportRef, wrapRef) {
   const onPointerDown = useCallback((e) => {
     viewportRef.current?.setPointerCapture(e.pointerId);
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    movedDistance.current = 0;
 
     if (pointers.current.size === 1) {
+      movedDistance.current = 0;
+      wasMultiTouch.current = false;
       dragStart.current = {
         x: e.clientX,
         y: e.clientY,
@@ -65,6 +70,7 @@ export function useMapPanZoom(viewportRef, wrapRef) {
       };
       setIsDragging(true);
     } else if (pointers.current.size === 2) {
+      wasMultiTouch.current = true;
       const [p1, p2] = [...pointers.current.values()];
       pinchStart.current = {
         distance: getDistance(p1, p2),
@@ -84,17 +90,10 @@ export function useMapPanZoom(viewportRef, wrapRef) {
       const ratio = newDistance / (pinchStart.current.distance || 1);
       const nextScale = pinchStart.current.scale * ratio;
       setTransform((prev) => clampTransform({ ...prev, scale: nextScale }));
-      movedDistance.current += 100; // pinch = kesin sürükleme, tıklama sayılmasın
       return;
     }
 
     if (dragStart.current) {
-      // dragStart.current'ı burada yerel değişkenlere yakalıyoruz.
-      // setTransform'un fonksiyon güncelleyicisi React tarafından ERTELENMİŞ
-      // olarak çalıştırılabilir; o ana kadar bir pointerup/endPointer
-      // dragStart.current'ı null'a çekmiş olabilir. Mutable ref'i doğrudan
-      // güncelleyici içinde okumak "Cannot read properties of null" hatasına
-      // yol açıyordu — yerel kopya bu race condition'ı ortadan kaldırır.
       const { x: startX, y: startY, tx, ty } = dragStart.current;
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
@@ -106,11 +105,14 @@ export function useMapPanZoom(viewportRef, wrapRef) {
   const endPointer = useCallback((e) => {
     pointers.current.delete(e.pointerId);
 
-    if (movedDistance.current > DRAG_THRESHOLD) {
-      suppressNextClick.current = true;
-      setTimeout(() => {
-        suppressNextClick.current = false;
-      }, 50);
+    // Tek parmak/fare ile, ciddi bir hareket olmadan bırakıldıysa: bu bir
+    // "dokunma/tıklama"dır — dışarıya bildir, CityMap hangi bölge olduğunu bulsun.
+    if (
+      !wasMultiTouch.current &&
+      movedDistance.current <= TAP_THRESHOLD &&
+      pointers.current.size === 0
+    ) {
+      onTap?.(e.clientX, e.clientY);
     }
 
     if (pointers.current.size === 1) {
@@ -128,7 +130,7 @@ export function useMapPanZoom(viewportRef, wrapRef) {
       pinchStart.current = null;
       setIsDragging(false);
     }
-  }, [transform]);
+  }, [transform, onTap]);
 
   // Fare tekerleği ile zoom (masaüstünde test için). Pasif olmayan native listener gerekiyor.
   useEffect(() => {
@@ -165,8 +167,6 @@ export function useMapPanZoom(viewportRef, wrapRef) {
     setTransform({ scale: 1, x: 0, y: 0 });
   }, []);
 
-  const shouldSuppressClick = useCallback(() => suppressNextClick.current, []);
-
   return {
     transform,
     isDragging,
@@ -177,6 +177,5 @@ export function useMapPanZoom(viewportRef, wrapRef) {
       onPointerCancel: endPointer,
       onDoubleClick: reset,
     },
-    shouldSuppressClick,
   };
 }

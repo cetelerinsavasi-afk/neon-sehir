@@ -1,0 +1,64 @@
+.sign-in-banner-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 30; /* HUD'un (20) üstünde, telefon ekranının (50) altında */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none; /* katmanın kendisi tıklamayı geçirsin, harita altında kalsın */
+  padding: 20px;
+}
+
+.sign-in-banner {
+  pointer-events: auto; /* sadece panelin kendisi tıklanabilir */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  padding: 24px 28px;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.5), 0 0 24px rgba(25, 232, 255, 0.12);
+  max-width: 300px;
+}
+
+.sign-in-banner-title {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: linear-gradient(90deg, var(--neon-cyan), var(--neon-pink));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.sign-in-banner-subtitle {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.sign-in-banner-button {
+  padding: 12px 20px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: #05070c;
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+  width: 100%;
+}
+
+.sign-in-banner-button:hover {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.sign-in-banner-error {
+  color: var(--neon-pink);
+  font-size: 11px;
+  margin: 4px 0 0;
+}
