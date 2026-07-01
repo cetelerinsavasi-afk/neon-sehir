@@ -1,0 +1,89 @@
+.bank-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.bank-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.bank-section-title {
+  margin: 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.bank-section-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.bank-highlight {
+  color: var(--neon-cyan);
+}
+
+.bank-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.bank-amount-action {
+  display: flex;
+  gap: 8px;
+}
+
+.bank-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.bank-input:focus {
+  outline: none;
+  border-color: var(--neon-cyan);
+}
+
+.bank-btn {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.bank-btn:hover:not(:disabled) {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.bank-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.bank-error {
+  color: var(--neon-pink);
+  font-size: 12px;
+  margin: 0;
+}

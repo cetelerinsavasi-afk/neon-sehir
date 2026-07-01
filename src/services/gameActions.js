@@ -37,3 +37,17 @@ export const upgradeWeapon = (weaponId) =>
 export const buySilahMaterial = () => httpsCallable(functions, 'buySilahMaterial')();
 
 export const sellSilahMaterial = () => httpsCallable(functions, 'sellSilahMaterial')();
+
+// --- Faz 4: Banka ve Yatırım ---
+
+export const depositToBank = (amount) =>
+  httpsCallable(functions, 'depositToBank')({ amount });
+
+export const withdrawFromBank = (amount) =>
+  httpsCallable(functions, 'withdrawFromBank')({ amount });
+
+export const buyInvestment = (assetType, quantity) =>
+  httpsCallable(functions, 'buyInvestment')({ assetType, quantity });
+
+export const sellInvestment = (assetType, quantity) =>
+  httpsCallable(functions, 'sellInvestment')({ assetType, quantity });

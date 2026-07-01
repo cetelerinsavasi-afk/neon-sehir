@@ -614,3 +614,137 @@ export const sellSilahMaterial = onCall(async (request) => {
 
   return { ok: true };
 });
+
+// =============================================================================
+// FAZ 4 — BANKA VE YATIRIM SİSTEMİ (Bölüm 13)
+// =============================================================================
+
+const DEFAULT_PRICES = { diamondPrice: 1000, cryptoPrice: 100000 };
+
+async function getCurrentPrices() {
+  const dateKey = istanbulDateKey();
+  const todaySnap = await db.collection('investments').doc(dateKey).get();
+  if (todaySnap.exists) return todaySnap.data();
+  // Bugün için dailyReset henüz çalışmadıysa en son kaydı kullan.
+  const prevSnap = await db
+    .collection('investments')
+    .orderBy('__name__', 'desc')
+    .limit(1)
+    .get();
+  return prevSnap.empty ? DEFAULT_PRICES : prevSnap.docs[0].data();
+}
+
+// ---------------------------------------------------------------------------
+// depositToBank / withdrawFromBank — altın ↔ banka bakiyesi.
+// Bakiye, dailyReset tarafından her gün %1 faiz kazanır.
+// ---------------------------------------------------------------------------
+export const depositToBank = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const amt = Number(request.data?.amount);
+  if (!Number.isInteger(amt) || amt <= 0) {
+    throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
+  }
+  const userRef = db.collection('users').doc(uid);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(userRef);
+    const user = snap.data();
+    if (!user || (user.gold || 0) < amt) {
+      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    }
+    tx.update(userRef, {
+      gold: admin.firestore.FieldValue.increment(-amt),
+      bankBalance: admin.firestore.FieldValue.increment(amt),
+    });
+  });
+  return { ok: true };
+});
+
+export const withdrawFromBank = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const amt = Number(request.data?.amount);
+  if (!Number.isInteger(amt) || amt <= 0) {
+    throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
+  }
+  const userRef = db.collection('users').doc(uid);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(userRef);
+    const user = snap.data();
+    if (!user || (user.bankBalance || 0) < amt) {
+      throw new HttpsError('failed-precondition', 'Yetersiz banka bakiyesi.');
+    }
+    tx.update(userRef, {
+      gold: admin.firestore.FieldValue.increment(amt),
+      bankBalance: admin.firestore.FieldValue.increment(-amt),
+    });
+  });
+  return { ok: true };
+});
+
+// ---------------------------------------------------------------------------
+// buyInvestment / sellInvestment — elmas/kripto alım-satımı, güncel fiyattan.
+// Fiyatlar dailyReset tarafından her gün rastgele güncellenir.
+// ---------------------------------------------------------------------------
+export const buyInvestment = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { assetType } = request.data || {};
+  const qty = Number(request.data?.quantity);
+  if (!['diamond', 'crypto'].includes(assetType)) {
+    throw new HttpsError('invalid-argument', 'Geçersiz yatırım aracı.');
+  }
+  if (!Number.isInteger(qty) || qty <= 0) {
+    throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
+  }
+
+  const prices = await getCurrentPrices();
+  const unitPrice = assetType === 'diamond' ? prices.diamondPrice : prices.cryptoPrice;
+  const totalCost = unitPrice * qty;
+  const holdingsField = assetType === 'diamond' ? 'diamondHoldings' : 'cryptoHoldings';
+
+  const userRef = db.collection('users').doc(uid);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(userRef);
+    const user = snap.data();
+    if (!user || (user.gold || 0) < totalCost) {
+      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    }
+    tx.update(userRef, {
+      gold: admin.firestore.FieldValue.increment(-totalCost),
+      [holdingsField]: admin.firestore.FieldValue.increment(qty),
+    });
+  });
+
+  return { ok: true, unitPrice, totalCost };
+});
+
+export const sellInvestment = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { assetType } = request.data || {};
+  const qty = Number(request.data?.quantity);
+  if (!['diamond', 'crypto'].includes(assetType)) {
+    throw new HttpsError('invalid-argument', 'Geçersiz yatırım aracı.');
+  }
+  if (!Number.isInteger(qty) || qty <= 0) {
+    throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
+  }
+
+  const prices = await getCurrentPrices();
+  const unitPrice = assetType === 'diamond' ? prices.diamondPrice : prices.cryptoPrice;
+  const totalValue = unitPrice * qty;
+  const holdingsField = assetType === 'diamond' ? 'diamondHoldings' : 'cryptoHoldings';
+
+  const userRef = db.collection('users').doc(uid);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(userRef);
+    const user = snap.data();
+    const have = user?.[holdingsField] || 0;
+    if (have < qty) {
+      throw new HttpsError('failed-precondition', 'Yeterli varlığınız yok.');
+    }
+    tx.update(userRef, {
+      gold: admin.firestore.FieldValue.increment(totalValue),
+      [holdingsField]: admin.firestore.FieldValue.increment(-qty),
+    });
+  });
+
+  return { ok: true, unitPrice, totalValue };
+});

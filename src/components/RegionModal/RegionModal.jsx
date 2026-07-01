@@ -5,10 +5,11 @@ import ProfessionPicker from '../ProfessionPicker/ProfessionPicker';
 import VehicleGalleryScreen from '../VehicleGalleryScreen/VehicleGalleryScreen';
 import GarageScreen from '../GarageScreen/GarageScreen';
 import WeaponShopScreen from '../WeaponShopScreen/WeaponShopScreen';
+import BankScreen from '../BankScreen/BankScreen';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import './RegionModal.css';
 
-// Faz 2+3 kapsamında gerçek içeriği hazır olan ekranlar. Diğerleri hâlâ
+// Faz 2+3+4 kapsamında gerçek içeriği hazır olan ekranlar. Diğerleri hâlâ
 // "yakında" placeholder'ı gösteriyor — ilgili faz tamamlandıkça buraya
 // yeni case'ler eklenecek.
 function ScreenContent({ screen }) {
@@ -24,6 +25,8 @@ function ScreenContent({ screen }) {
       return <GarageScreen />;
     case 'silah-magazasi':
       return <WeaponShopScreen />;
+    case 'banka':
+      return <BankScreen />;
     case 'ev':
       if (!user) {
         return <SignInPrompt message="Meslek seçmek için giriş yapmalısın." />;
