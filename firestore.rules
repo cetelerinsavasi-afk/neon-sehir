@@ -89,6 +89,13 @@ service cloud.firestore {
       }
     }
 
+    // raceRooms/{roomId} — yarış pisti odaları. Herkes açık odaları görüp
+    // katılabilmeli; yazma sadece Cloud Functions ile.
+    match /raceRooms/{roomId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
     match /weapons/{weaponId} {
       allow read: if isSignedIn();
       allow write: if false;

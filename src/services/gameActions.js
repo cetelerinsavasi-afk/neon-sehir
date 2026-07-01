@@ -104,3 +104,32 @@ export const executeHeistPlan = (planId) =>
 
 export const markMessageRead = (messageId) =>
   httpsCallable(functions, 'markMessageRead')({ messageId });
+
+// --- Faz 9: Yarış Pisti ---
+
+export const createRaceRoom = (vehicleId, betAmount) =>
+  httpsCallable(functions, 'createRaceRoom')({ vehicleId, betAmount });
+
+export const joinRaceRoom = (roomId, vehicleId) =>
+  httpsCallable(functions, 'joinRaceRoom')({ roomId, vehicleId });
+
+export const cancelRaceRoom = (roomId) =>
+  httpsCallable(functions, 'cancelRaceRoom')({ roomId });
+
+export const rollDice = (roomId, useNitro, useTurbo) =>
+  httpsCallable(functions, 'rollDice')({ roomId, useNitro, useTurbo });
+
+export const resolveTurnTimeout = (roomId) =>
+  httpsCallable(functions, 'resolveTurnTimeout')({ roomId });
+
+export const raceBuyAtStation = (roomId, item) =>
+  httpsCallable(functions, 'raceBuyAtStation')({ roomId, item });
+
+export const raceBuyOffsiteFuel = (roomId) =>
+  httpsCallable(functions, 'raceBuyOffsiteFuel')({ roomId });
+
+export const raceBuyNitro = (roomId) =>
+  httpsCallable(functions, 'raceBuyNitro')({ roomId });
+
+export const raceChangeGear = (roomId, delta) =>
+  httpsCallable(functions, 'raceChangeGear')({ roomId, delta });

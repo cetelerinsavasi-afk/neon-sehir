@@ -11,6 +11,7 @@ import PoliceStationScreen from '../PoliceStationScreen/PoliceStationScreen';
 import VendorScreen from '../VendorScreen/VendorScreen';
 import LimanDepoScreen from '../LimanDepoScreen/LimanDepoScreen';
 import ParkScreen from '../ParkScreen/ParkScreen';
+import RaceTrackScreen from '../RaceTrackScreen/RaceTrackScreen';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import './RegionModal.css';
 
@@ -43,6 +44,8 @@ function ScreenContent({ region }) {
       return <LimanDepoScreen />;
     case 'park':
       return <ParkScreen />;
+    case 'yaris-pisti':
+      return <RaceTrackScreen />;
     case 'ev':
       if (!user) {
         return <SignInPrompt message="Meslek seçmek için giriş yapmalısın." />;

@@ -1400,3 +1400,481 @@ export const markMessageRead = onCall(async (request) => {
   });
   return { ok: true };
 });
+
+// =============================================================================
+// FAZ 9 — YARIŞ PİSTİ (Bölüm 8.7)
+// =============================================================================
+//
+// Kurallar (master promptan birebir):
+//   - Pist 500 kare. Oyuncular 1. viteste başlar, vites = atılacak zar sayısı.
+//   - Başlangıç: 50 (yarış-içi) altın. Her 1 kare ilerleme = +1 altın, -1 benzin.
+//   - Her 100 kareyi geçince ekstra +50 altın.
+//   - 500. kareyi ilk tamamlayan kazanır. Aynı turda ikisi de bitirirse berabere.
+//   - Her 10 karede istasyon: benzin 10 altın (tam doldur), tekerlek +1 adım/zar
+//     kalıcı 20 altın, benzin tasarrufu +1 benzin/zar kalıcı 30 altın.
+//   - İstasyon dışı benzin: 100 altın, tam dolum.
+//   - Nitro: 20 altın, o elde zarı x2 yapar. Turbo: araca özel, ücretsiz,
+//     elde envanterdeki turbo sayısı kadar kullanılabilir, aynı etki.
+//   - Her tur 10 saniye; ikisi de attığında ya da süre dolunca tur kapanır.
+//   - Zar 6 yüzeyli standart zar kabul edildi (promptta belirtilmemişti).
+// =============================================================================
+
+const RACE_TRACK_LENGTH = 500;
+const RACE_TURN_SECONDS = 10;
+const RACE_STATION_PRICES = { refuel: 10, wheel: 20, fuelSaving: 30 };
+
+function rollDie() {
+  return Math.floor(Math.random() * 6) + 1;
+}
+
+async function getVehicleForRace(uid, vehicleId) {
+  const vSnap = await db.collection('vehicles').doc(vehicleId).get();
+  if (!vSnap.exists || vSnap.data().ownerId !== uid) {
+    throw new HttpsError('failed-precondition', 'Bu araç size ait değil.');
+  }
+  return vSnap.data();
+}
+
+function freshRacePlayerState(displayName, vehicleId, vehicle) {
+  const maxFuel = (vehicle.baseTank || 0) + (vehicle.tankBonus || 0);
+  return {
+    displayName,
+    vehicleId,
+    position: 0,
+    gear: 1,
+    maxGear: vehicle.gearLevel || 1,
+    fuel: maxFuel,
+    maxFuel,
+    raceGold: 50,
+    wheelBonus: 0,
+    fuelSavingBonus: 0,
+    nitroActive: false,
+    turboCount: vehicle.turboCount || 0,
+    hasRolledThisTurn: false,
+    lastRollSteps: null,
+    finished: false,
+  };
+}
+
+function requirePlayerInRoom(room, uid) {
+  const me = room.players?.[uid];
+  if (!me) {
+    throw new HttpsError('failed-precondition', 'Bu odada değilsin.');
+  }
+  return me;
+}
+
+// ---------------------------------------------------------------------------
+// createRaceRoom / joinRaceRoom / cancelRaceRoom
+// ---------------------------------------------------------------------------
+export const createRaceRoom = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { vehicleId, betAmount } = request.data || {};
+  const amount = Number(betAmount);
+  if (!Number.isInteger(amount) || amount <= 0) {
+    throw new HttpsError('invalid-argument', 'Geçersiz bahis miktarı.');
+  }
+  const vehicle = await getVehicleForRace(uid, vehicleId);
+
+  const userRef = db.collection('users').doc(uid);
+  const roomRef = db.collection('raceRooms').doc();
+
+  await db.runTransaction(async (tx) => {
+    const userSnap = await tx.get(userRef);
+    const user = userSnap.data();
+    if (!user || (user.gold || 0) < amount) {
+      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    }
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-amount) });
+    tx.set(roomRef, {
+      status: 'waiting',
+      betAmount: amount,
+      creatorUid: uid,
+      participantUids: [uid],
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      currentTurn: 0,
+      turnDeadline: null,
+      winnerUid: null,
+      players: {
+        [uid]: freshRacePlayerState(user.displayName || 'Oyuncu', vehicleId, vehicle),
+      },
+    });
+  });
+
+  return { ok: true, roomId: roomRef.id };
+});
+
+export const cancelRaceRoom = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { roomId } = request.data || {};
+  const roomRef = db.collection('raceRooms').doc(roomId);
+
+  await db.runTransaction(async (tx) => {
+    const roomSnap = await tx.get(roomRef);
+    if (!roomSnap.exists) throw new HttpsError('failed-precondition', 'Oda bulunamadı.');
+    const room = roomSnap.data();
+    if (room.creatorUid !== uid || room.status !== 'waiting') {
+      throw new HttpsError('failed-precondition', 'Bu oda iptal edilemez.');
+    }
+    tx.update(db.collection('users').doc(uid), {
+      gold: admin.firestore.FieldValue.increment(room.betAmount),
+    });
+    tx.update(roomRef, { status: 'cancelled' });
+  });
+
+  return { ok: true };
+});
+
+export const joinRaceRoom = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { roomId, vehicleId } = request.data || {};
+  const vehicle = await getVehicleForRace(uid, vehicleId);
+  const roomRef = db.collection('raceRooms').doc(roomId);
+  const userRef = db.collection('users').doc(uid);
+
+  await db.runTransaction(async (tx) => {
+    const [roomSnap, userSnap] = await Promise.all([tx.get(roomRef), tx.get(userRef)]);
+    if (!roomSnap.exists || roomSnap.data().status !== 'waiting') {
+      throw new HttpsError('failed-precondition', 'Bu oda artık açık değil.');
+    }
+    const room = roomSnap.data();
+    if (room.creatorUid === uid) {
+      throw new HttpsError('failed-precondition', 'Kendi odana katılamazsın.');
+    }
+    const user = userSnap.data();
+    if (!user || (user.gold || 0) < room.betAmount) {
+      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    }
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-room.betAmount) });
+    tx.update(roomRef, {
+      status: 'racing',
+      currentTurn: 1,
+      participantUids: admin.firestore.FieldValue.arrayUnion(uid),
+      turnDeadline: admin.firestore.Timestamp.fromMillis(Date.now() + RACE_TURN_SECONDS * 1000),
+      [`players.${uid}`]: freshRacePlayerState(user.displayName || 'Oyuncu', vehicleId, vehicle),
+    });
+  });
+
+  return { ok: true };
+});
+
+// ---------------------------------------------------------------------------
+// rollDice — sırayla zar atma. Vites = zar sayısı. Nitro/turbo x2 mesafe.
+// İkisi de attıysa turu kapatır: kazanan/beraberlik kontrolü + ödeme.
+// ---------------------------------------------------------------------------
+export const rollDice = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { roomId, useNitro, useTurbo } = request.data || {};
+  const roomRef = db.collection('raceRooms').doc(roomId);
+
+  let outcome = null;
+  await db.runTransaction(async (tx) => {
+    const roomSnap = await tx.get(roomRef);
+    if (!roomSnap.exists) throw new HttpsError('failed-precondition', 'Oda bulunamadı.');
+    const room = roomSnap.data();
+    if (room.status !== 'racing') {
+      throw new HttpsError('failed-precondition', 'Yarış aktif değil.');
+    }
+    const me = requirePlayerInRoom(room, uid);
+    if (me.hasRolledThisTurn) {
+      throw new HttpsError('failed-precondition', 'Bu tur zaten zar attın.');
+    }
+    if (me.finished) {
+      throw new HttpsError('failed-precondition', 'Yarışı zaten bitirdin.');
+    }
+
+    const otherUid = room.participantUids.find((u) => u !== uid);
+    const other = otherUid ? room.players[otherUid] : null;
+
+    // Her ihtimale karşı (tur kapanıp ödeme gerekebilir) her iki oyuncunun
+    // users/{uid} dokümanını ŞİMDİDEN oku — Firestore transaction kuralı:
+    // tüm okumalar yazmalardan önce olmalı.
+    const meUserRef = db.collection('users').doc(uid);
+    const otherUserRef = otherUid ? db.collection('users').doc(otherUid) : null;
+    const [meUserSnap, otherUserSnap] = await Promise.all([
+      tx.get(meUserRef),
+      otherUserRef ? tx.get(otherUserRef) : Promise.resolve(null),
+    ]);
+
+    // --- Zar at ---
+    let stepSum = 0;
+    for (let i = 0; i < me.gear; i++) stepSum += rollDie();
+
+    let multiplier = 1;
+    let nitroUsed = false;
+    let turboUsed = false;
+    if (useTurbo && me.turboCount > 0) {
+      multiplier = 2;
+      turboUsed = true;
+    } else if (useNitro && me.nitroActive) {
+      multiplier = 2;
+      nitroUsed = true;
+    }
+
+    const rolledSteps = stepSum * multiplier + me.wheelBonus;
+    const actualSteps = Math.min(rolledSteps, Math.max(me.fuel, 0));
+    const beforePos = me.position;
+    const afterPos = Math.min(beforePos + actualSteps, RACE_TRACK_LENGTH);
+    const movedSteps = afterPos - beforePos;
+
+    let goldEarned = movedSteps;
+    const beforeMilestone = Math.floor(beforePos / 100);
+    const afterMilestone = Math.floor(afterPos / 100);
+    if (afterMilestone > beforeMilestone) {
+      goldEarned += (afterMilestone - beforeMilestone) * 50;
+    }
+
+    const newFuel = Math.min(Math.max(0, me.fuel - movedSteps) + me.fuelSavingBonus, me.maxFuel);
+
+    const updatedMe = {
+      ...me,
+      position: afterPos,
+      fuel: newFuel,
+      raceGold: me.raceGold + goldEarned,
+      hasRolledThisTurn: true,
+      lastRollSteps: movedSteps,
+      finished: afterPos >= RACE_TRACK_LENGTH,
+      nitroActive: nitroUsed ? false : me.nitroActive,
+      turboCount: turboUsed ? me.turboCount - 1 : me.turboCount,
+    };
+
+    const bothRolled = !other || other.hasRolledThisTurn;
+
+    if (!bothRolled) {
+      tx.update(roomRef, { [`players.${uid}`]: updatedMe });
+      outcome = { steps: movedSteps, rolledSum: stepSum, multiplier, goldEarned, raceOver: false };
+      return;
+    }
+
+    // --- Tur kapanıyor: kazanan/beraberlik kontrolü ---
+    const meFinished = updatedMe.finished;
+    const otherFinished = Boolean(other?.finished);
+    let winnerUid = null;
+    let raceOver = false;
+    if (meFinished && otherFinished) {
+      winnerUid = 'draw';
+      raceOver = true;
+    } else if (meFinished) {
+      winnerUid = uid;
+      raceOver = true;
+    } else if (otherFinished) {
+      winnerUid = otherUid;
+      raceOver = true;
+    }
+
+    const updates = { [`players.${uid}`]: updatedMe };
+
+    if (raceOver) {
+      updates.status = 'finished';
+      updates.winnerUid = winnerUid;
+      const pot = room.betAmount * 2;
+      const meAmount =
+        (winnerUid === 'draw' ? room.betAmount : winnerUid === uid ? pot : 0) + updatedMe.raceGold;
+      tx.update(meUserRef, { gold: admin.firestore.FieldValue.increment(meAmount) });
+      if (otherUserRef && other) {
+        const otherAmount =
+          (winnerUid === 'draw' ? room.betAmount : winnerUid === otherUid ? pot : 0) +
+          other.raceGold;
+        tx.update(otherUserRef, { gold: admin.firestore.FieldValue.increment(otherAmount) });
+      }
+    } else {
+      updates.currentTurn = admin.firestore.FieldValue.increment(1);
+      updates.turnDeadline = admin.firestore.Timestamp.fromMillis(
+        Date.now() + RACE_TURN_SECONDS * 1000
+      );
+      updates[`players.${uid}`] = { ...updatedMe, hasRolledThisTurn: false };
+      if (otherUid && other) {
+        updates[`players.${otherUid}`] = { ...other, hasRolledThisTurn: false };
+      }
+    }
+
+    tx.update(roomRef, updates);
+    outcome = { steps: movedSteps, rolledSum: stepSum, multiplier, goldEarned, raceOver, winnerUid };
+  });
+
+  return { ok: true, ...outcome };
+});
+
+// ---------------------------------------------------------------------------
+// resolveTurnTimeout — 10 saniyelik süre dolduğunda client tarafından
+// çağrılır. Henüz atmayan oyuncu(lar) o tur için 0 adım almış sayılır.
+// ---------------------------------------------------------------------------
+export const resolveTurnTimeout = onCall(async (request) => {
+  requireAuth(request);
+  const { roomId } = request.data || {};
+  const roomRef = db.collection('raceRooms').doc(roomId);
+
+  await db.runTransaction(async (tx) => {
+    const roomSnap = await tx.get(roomRef);
+    if (!roomSnap.exists) return;
+    const room = roomSnap.data();
+    if (room.status !== 'racing') return;
+    if (!room.turnDeadline || room.turnDeadline.toMillis() > Date.now()) {
+      throw new HttpsError('failed-precondition', 'Süre henüz dolmadı.');
+    }
+    const uids = room.participantUids;
+    const allRolled = uids.every((u) => room.players[u]?.hasRolledThisTurn);
+    if (allRolled) return;
+
+    const userRefs = uids.map((u) => db.collection('users').doc(u));
+    const userSnaps = await Promise.all(userRefs.map((r) => tx.get(r)));
+
+    const players = { ...room.players };
+    uids.forEach((u) => {
+      if (!players[u].hasRolledThisTurn) {
+        players[u] = { ...players[u], hasRolledThisTurn: true, lastRollSteps: 0 };
+      }
+    });
+
+    const finishedUids = uids.filter((u) => players[u].finished);
+    let winnerUid = null;
+    let raceOver = false;
+    if (finishedUids.length === 2) {
+      winnerUid = 'draw';
+      raceOver = true;
+    } else if (finishedUids.length === 1) {
+      winnerUid = finishedUids[0];
+      raceOver = true;
+    }
+
+    const updates = {};
+    uids.forEach((u) => {
+      updates[`players.${u}`] = {
+        ...players[u],
+        hasRolledThisTurn: raceOver ? true : false,
+      };
+    });
+
+    if (raceOver) {
+      updates.status = 'finished';
+      updates.winnerUid = winnerUid;
+      const pot = room.betAmount * 2;
+      uids.forEach((u, i) => {
+        const p = players[u];
+        let amount = p.raceGold;
+        if (winnerUid === 'draw') amount += room.betAmount;
+        else if (winnerUid === u) amount += pot;
+        tx.update(userRefs[i], { gold: admin.firestore.FieldValue.increment(amount) });
+      });
+    } else {
+      updates.currentTurn = admin.firestore.FieldValue.increment(1);
+      updates.turnDeadline = admin.firestore.Timestamp.fromMillis(
+        Date.now() + RACE_TURN_SECONDS * 1000
+      );
+    }
+
+    tx.update(roomRef, updates);
+  });
+
+  return { ok: true };
+});
+
+// ---------------------------------------------------------------------------
+// Yarış içi satın almalar (istasyon, istasyon dışı benzin, nitro) ve vites.
+// ---------------------------------------------------------------------------
+export const raceBuyAtStation = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { roomId, item } = request.data || {};
+  if (!RACE_STATION_PRICES[item]) {
+    throw new HttpsError('invalid-argument', 'Geçersiz ürün.');
+  }
+  const roomRef = db.collection('raceRooms').doc(roomId);
+
+  await db.runTransaction(async (tx) => {
+    const roomSnap = await tx.get(roomRef);
+    const room = roomSnap.data();
+    if (!room || room.status !== 'racing') {
+      throw new HttpsError('failed-precondition', 'Yarış aktif değil.');
+    }
+    const me = requirePlayerInRoom(room, uid);
+    if (me.position % 10 !== 0) {
+      throw new HttpsError('failed-precondition', 'Şu an bir benzin istasyonunda değilsin.');
+    }
+    const price = RACE_STATION_PRICES[item];
+    if (me.raceGold < price) {
+      throw new HttpsError('failed-precondition', 'Yeterli yarış altının yok.');
+    }
+    const updated = { ...me, raceGold: me.raceGold - price };
+    if (item === 'refuel') updated.fuel = updated.maxFuel;
+    if (item === 'wheel') updated.wheelBonus += 1;
+    if (item === 'fuelSaving') updated.fuelSavingBonus += 1;
+    tx.update(roomRef, { [`players.${uid}`]: updated });
+  });
+
+  return { ok: true };
+});
+
+export const raceBuyOffsiteFuel = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { roomId } = request.data || {};
+  const roomRef = db.collection('raceRooms').doc(roomId);
+
+  await db.runTransaction(async (tx) => {
+    const roomSnap = await tx.get(roomRef);
+    const room = roomSnap.data();
+    if (!room || room.status !== 'racing') {
+      throw new HttpsError('failed-precondition', 'Yarış aktif değil.');
+    }
+    const me = requirePlayerInRoom(room, uid);
+    if (me.raceGold < 100) {
+      throw new HttpsError('failed-precondition', 'Yeterli yarış altının yok.');
+    }
+    tx.update(roomRef, {
+      [`players.${uid}`]: { ...me, raceGold: me.raceGold - 100, fuel: me.maxFuel },
+    });
+  });
+
+  return { ok: true };
+});
+
+export const raceBuyNitro = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { roomId } = request.data || {};
+  const roomRef = db.collection('raceRooms').doc(roomId);
+
+  await db.runTransaction(async (tx) => {
+    const roomSnap = await tx.get(roomRef);
+    const room = roomSnap.data();
+    if (!room || room.status !== 'racing') {
+      throw new HttpsError('failed-precondition', 'Yarış aktif değil.');
+    }
+    const me = requirePlayerInRoom(room, uid);
+    if (me.hasRolledThisTurn) {
+      throw new HttpsError('failed-precondition', 'Bu tur zaten zar attın.');
+    }
+    if (me.raceGold < 20) {
+      throw new HttpsError('failed-precondition', 'Yeterli yarış altının yok.');
+    }
+    tx.update(roomRef, {
+      [`players.${uid}`]: { ...me, raceGold: me.raceGold - 20, nitroActive: true },
+    });
+  });
+
+  return { ok: true };
+});
+
+export const raceChangeGear = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { roomId, delta } = request.data || {};
+  const d = Number(delta);
+  if (d !== 1 && d !== -1) {
+    throw new HttpsError('invalid-argument', 'Geçersiz vites değişimi.');
+  }
+  const roomRef = db.collection('raceRooms').doc(roomId);
+
+  await db.runTransaction(async (tx) => {
+    const roomSnap = await tx.get(roomRef);
+    const room = roomSnap.data();
+    if (!room || room.status !== 'racing') {
+      throw new HttpsError('failed-precondition', 'Yarış aktif değil.');
+    }
+    const me = requirePlayerInRoom(room, uid);
+    if (me.hasRolledThisTurn) {
+      throw new HttpsError('failed-precondition', 'Bu tur zaten zar attın.');
+    }
+    const newGear = clamp(me.gear + d, 1, me.maxGear);
+    tx.update(roomRef, { [`players.${uid}`]: { ...me, gear: newGear } });
+  });
+
+  return { ok: true };
+});
