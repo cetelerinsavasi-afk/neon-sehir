@@ -46,8 +46,11 @@ export const depositToBank = (amount) =>
 export const withdrawFromBank = (amount) =>
   httpsCallable(functions, 'withdrawFromBank')({ amount });
 
-export const buyInvestment = (assetType, quantity) =>
-  httpsCallable(functions, 'buyInvestment')({ assetType, quantity });
+export const buyInvestment = (assetType, amount) =>
+  httpsCallable(functions, 'buyInvestment')({ assetType, amount });
 
-export const sellInvestment = (assetType, quantity) =>
-  httpsCallable(functions, 'sellInvestment')({ assetType, quantity });
+export const sellInvestment = (assetType, amount) =>
+  httpsCallable(functions, 'sellInvestment')({ assetType, amount });
+
+export const sellAllInvestment = (assetType) =>
+  httpsCallable(functions, 'sellInvestment')({ assetType, all: true });

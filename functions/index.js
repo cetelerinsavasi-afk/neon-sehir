@@ -681,68 +681,84 @@ export const withdrawFromBank = onCall(async (request) => {
 });
 
 // ---------------------------------------------------------------------------
-// buyInvestment / sellInvestment — elmas/kripto alım-satımı, güncel fiyattan.
-// Fiyatlar dailyReset tarafından her gün rastgele güncellenir.
+// buyInvestment / sellInvestment — elmas/kripto alım-satımı.
+// ADET DEĞİL, ALTIN TUTARI bazlı: oyuncu "100 altınlık kripto al" der,
+// sistem güncel fiyata bölüp kesirli miktar (ör. 0.001 adet) verir. Bu
+// sayede kripto gibi pahalı araçlar da küçük bütçelerle alınabilir.
+// Bu yüzden holdings alanları KESİRLİ (float) sayılardır.
 // ---------------------------------------------------------------------------
 export const buyInvestment = onCall(async (request) => {
   const uid = requireAuth(request);
   const { assetType } = request.data || {};
-  const qty = Number(request.data?.quantity);
+  const goldAmount = Number(request.data?.amount);
   if (!['diamond', 'crypto'].includes(assetType)) {
     throw new HttpsError('invalid-argument', 'Geçersiz yatırım aracı.');
   }
-  if (!Number.isInteger(qty) || qty <= 0) {
-    throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
+  if (!Number.isInteger(goldAmount) || goldAmount <= 0) {
+    throw new HttpsError('invalid-argument', 'Geçersiz altın miktarı.');
   }
 
   const prices = await getCurrentPrices();
   const unitPrice = assetType === 'diamond' ? prices.diamondPrice : prices.cryptoPrice;
-  const totalCost = unitPrice * qty;
+  const units = goldAmount / unitPrice;
   const holdingsField = assetType === 'diamond' ? 'diamondHoldings' : 'cryptoHoldings';
 
   const userRef = db.collection('users').doc(uid);
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(userRef);
     const user = snap.data();
-    if (!user || (user.gold || 0) < totalCost) {
+    if (!user || (user.gold || 0) < goldAmount) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
     tx.update(userRef, {
-      gold: admin.firestore.FieldValue.increment(-totalCost),
-      [holdingsField]: admin.firestore.FieldValue.increment(qty),
+      gold: admin.firestore.FieldValue.increment(-goldAmount),
+      [holdingsField]: admin.firestore.FieldValue.increment(units),
     });
   });
 
-  return { ok: true, unitPrice, totalCost };
+  return { ok: true, unitPrice, units };
 });
 
+// sellInvestment: ya belirli bir altın tutarı karşılığı satar ({amount}),
+// ya da elindeki tüm varlığı satar ({all: true}) — kesirli miktarları elle
+// girmek zor olduğu için "tümünü sat" kısayolu eklendi.
 export const sellInvestment = onCall(async (request) => {
   const uid = requireAuth(request);
-  const { assetType } = request.data || {};
-  const qty = Number(request.data?.quantity);
+  const { assetType, all } = request.data || {};
   if (!['diamond', 'crypto'].includes(assetType)) {
     throw new HttpsError('invalid-argument', 'Geçersiz yatırım aracı.');
-  }
-  if (!Number.isInteger(qty) || qty <= 0) {
-    throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
   }
 
   const prices = await getCurrentPrices();
   const unitPrice = assetType === 'diamond' ? prices.diamondPrice : prices.cryptoPrice;
-  const totalValue = unitPrice * qty;
   const holdingsField = assetType === 'diamond' ? 'diamondHoldings' : 'cryptoHoldings';
 
   const userRef = db.collection('users').doc(uid);
+  let totalValue = 0;
+
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(userRef);
     const user = snap.data();
     const have = user?.[holdingsField] || 0;
-    if (have < qty) {
-      throw new HttpsError('failed-precondition', 'Yeterli varlığınız yok.');
+
+    let units;
+    if (all) {
+      units = have;
+    } else {
+      const goldAmount = Number(request.data?.amount);
+      if (!Number.isInteger(goldAmount) || goldAmount <= 0) {
+        throw new HttpsError('invalid-argument', 'Geçersiz altın miktarı.');
+      }
+      units = goldAmount / unitPrice;
+      if (units > have + 1e-9) {
+        throw new HttpsError('failed-precondition', 'Yeterli varlığınız yok.');
+      }
     }
+    totalValue = Math.floor(units * unitPrice);
+
     tx.update(userRef, {
       gold: admin.firestore.FieldValue.increment(totalValue),
-      [holdingsField]: admin.firestore.FieldValue.increment(-qty),
+      [holdingsField]: admin.firestore.FieldValue.increment(-units),
     });
   });
 

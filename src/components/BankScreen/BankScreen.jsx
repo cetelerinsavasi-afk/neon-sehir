@@ -7,15 +7,24 @@ import {
   withdrawFromBank,
   buyInvestment,
   sellInvestment,
+  sellAllInvestment,
 } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import './BankScreen.css';
 
-function AmountAction({ label, max, onSubmit, busy, disabled }) {
+function formatUnits(n) {
+  return n.toLocaleString('tr-TR', { maximumFractionDigits: 6 });
+}
+
+// Altın tutarı bazlı aksiyon: kullanıcı "kaç altınlık" işlem yapmak
+// istediğini girer, adet değil. unitPrice verilirse kaç adet karşılığı
+// geleceğini canlı önizleme olarak gösterir.
+function GoldAmountAction({ label, onSubmit, busy, unitPrice }) {
   const [value, setValue] = useState('');
+  const amount = Math.floor(Number(value));
+  const preview = unitPrice && amount > 0 ? amount / unitPrice : null;
 
   const handleSubmit = async () => {
-    const amount = Math.floor(Number(value));
     if (!amount || amount <= 0) return;
     await onSubmit(amount);
     setValue('');
@@ -23,16 +32,20 @@ function AmountAction({ label, max, onSubmit, busy, disabled }) {
 
   return (
     <div className="bank-amount-action">
-      <input
-        type="number"
-        min="1"
-        max={max}
-        placeholder="Miktar"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        className="bank-input"
-      />
-      <button className="bank-btn" disabled={busy || disabled || !value} onClick={handleSubmit}>
+      <div className="bank-amount-input-wrap">
+        <input
+          type="number"
+          min="1"
+          placeholder="Altın miktarı"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          className="bank-input"
+        />
+        {preview !== null && (
+          <span className="bank-amount-preview">≈ {formatUnits(preview)} adet</span>
+        )}
+      </div>
+      <button className="bank-btn" disabled={busy || !amount} onClick={handleSubmit}>
         {busy ? '…' : label}
       </button>
     </div>
@@ -55,11 +68,11 @@ export default function BankScreen() {
   const diamondHoldings = player?.diamondHoldings ?? 0;
   const cryptoHoldings = player?.cryptoHoldings ?? 0;
 
-  const run = async (key, fn, amount) => {
+  const run = async (key, fn) => {
     setBusy(key);
     setError(null);
     try {
-      await fn(amount);
+      await fn();
     } catch (err) {
       setError(err.message || 'İşlem başarısız.');
     } finally {
@@ -79,17 +92,15 @@ export default function BankScreen() {
           <strong className="bank-highlight">{bankBalance.toLocaleString('tr-TR')}</strong>
         </div>
         <p className="bank-hint">Banka bakiyesi her gün %1 faiz kazanır.</p>
-        <AmountAction
+        <GoldAmountAction
           label="Yatır"
-          max={gold}
           busy={busy === 'deposit'}
-          onSubmit={(amount) => run('deposit', depositToBank, amount)}
+          onSubmit={(amount) => run('deposit', () => depositToBank(amount))}
         />
-        <AmountAction
+        <GoldAmountAction
           label="Çek"
-          max={bankBalance}
           busy={busy === 'withdraw'}
-          onSubmit={(amount) => run('withdraw', withdrawFromBank, amount)}
+          onSubmit={(amount) => run('withdraw', () => withdrawFromBank(amount))}
         />
       </div>
 
@@ -101,19 +112,33 @@ export default function BankScreen() {
         </div>
         <div className="bank-section-row">
           <span>Sahip olduğun</span>
-          <strong>{diamondHoldings.toLocaleString('tr-TR')} adet</strong>
+          <strong>
+            {formatUnits(diamondHoldings)} adet (
+            {Math.floor(diamondHoldings * (prices.diamondPrice ?? 0)).toLocaleString('tr-TR')}{' '}
+            altın değerinde)
+          </strong>
         </div>
-        <AmountAction
+        <GoldAmountAction
           label="Al"
+          unitPrice={prices.diamondPrice}
           busy={busy === 'buy-diamond'}
-          onSubmit={(qty) => run('buy-diamond', (q) => buyInvestment('diamond', q), qty)}
+          onSubmit={(amount) => run('buy-diamond', () => buyInvestment('diamond', amount))}
         />
-        <AmountAction
+        <GoldAmountAction
           label="Sat"
-          max={diamondHoldings}
+          unitPrice={prices.diamondPrice}
           busy={busy === 'sell-diamond'}
-          onSubmit={(qty) => run('sell-diamond', (q) => sellInvestment('diamond', q), qty)}
+          onSubmit={(amount) => run('sell-diamond', () => sellInvestment('diamond', amount))}
         />
+        {diamondHoldings > 0 && (
+          <button
+            className="bank-sell-all"
+            disabled={busy === 'sell-all-diamond'}
+            onClick={() => run('sell-all-diamond', () => sellAllInvestment('diamond'))}
+          >
+            Tüm Elmasları Sat
+          </button>
+        )}
       </div>
 
       <div className="bank-section">
@@ -124,19 +149,33 @@ export default function BankScreen() {
         </div>
         <div className="bank-section-row">
           <span>Sahip olduğun</span>
-          <strong>{cryptoHoldings.toLocaleString('tr-TR')} adet</strong>
+          <strong>
+            {formatUnits(cryptoHoldings)} adet (
+            {Math.floor(cryptoHoldings * (prices.cryptoPrice ?? 0)).toLocaleString('tr-TR')} altın
+            değerinde)
+          </strong>
         </div>
-        <AmountAction
+        <GoldAmountAction
           label="Al"
+          unitPrice={prices.cryptoPrice}
           busy={busy === 'buy-crypto'}
-          onSubmit={(qty) => run('buy-crypto', (q) => buyInvestment('crypto', q), qty)}
+          onSubmit={(amount) => run('buy-crypto', () => buyInvestment('crypto', amount))}
         />
-        <AmountAction
+        <GoldAmountAction
           label="Sat"
-          max={cryptoHoldings}
+          unitPrice={prices.cryptoPrice}
           busy={busy === 'sell-crypto'}
-          onSubmit={(qty) => run('sell-crypto', (q) => sellInvestment('crypto', q), qty)}
+          onSubmit={(amount) => run('sell-crypto', () => sellInvestment('crypto', amount))}
         />
+        {cryptoHoldings > 0 && (
+          <button
+            className="bank-sell-all"
+            disabled={busy === 'sell-all-crypto'}
+            onClick={() => run('sell-all-crypto', () => sellAllInvestment('crypto'))}
+          >
+            Tüm Kriptoları Sat
+          </button>
+        )}
       </div>
 
       {error && <p className="bank-error">{error}</p>}
