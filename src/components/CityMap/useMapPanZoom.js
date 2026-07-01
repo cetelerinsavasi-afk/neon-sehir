@@ -11,42 +11,35 @@ const DRAG_THRESHOLD = 8; // px — bunun altındaki hareket "tıklama" sayılı
  * Harita varsayılan olarak ekrana tam sığacak şekilde ölçeklenir (letterbox).
  * Kullanıcı sadece İÇERİ yakınlaştırabilir (scale 1 → 2.5); bu taban ölçeğin
  * altına inilemez, böylece haritanın bir kısmı asla ekran dışına taşmaz.
+ *
+ * ÖNEMLİ: Sınır (clamp) hesaplamaları için harita ve ekran boyutu HER SEFERİNDE
+ * canlı ölçülür (önbelleğe alınmaz). Mobil tarayıcılarda adres çubuğu
+ * gizlenip/çıktığında ekran yüksekliği (dvh) anlık değişir; bu değeri
+ * önbellekleyip sadece 'resize' event'inde güncellemek, dokunma sırasında
+ * eski bir boyutla hesap yapılmasına ve haritanın sınır dışına kaçıp
+ * "kaybolmasına" yol açıyordu. Canlı ölçüm bu sorunu çözer.
  */
 export function useMapPanZoom(viewportRef, wrapRef) {
   const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
 
-  const baseSize = useRef({ w: 0, h: 0 });
   const pointers = useRef(new Map());
   const dragStart = useRef(null);
   const pinchStart = useRef(null);
   const movedDistance = useRef(0);
   const suppressNextClick = useRef(false);
 
-  // Ölçek=1 anındaki gerçek piksel boyutunu ölç (resize'da yeniden ölç).
-  useEffect(() => {
-    const measure = () => {
-      if (!wrapRef.current) return;
-      baseSize.current = {
-        w: wrapRef.current.offsetWidth,
-        h: wrapRef.current.offsetHeight,
-      };
-    };
-    measure();
-    window.addEventListener('resize', measure);
-    window.addEventListener('orientationchange', measure);
-    return () => {
-      window.removeEventListener('resize', measure);
-      window.removeEventListener('orientationchange', measure);
-    };
-  }, [wrapRef]);
-
   const clampTransform = useCallback((next) => {
     const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, next.scale));
     const vp = viewportRef.current;
+    const wrap = wrapRef.current;
+    // offsetWidth/offsetHeight, transform (scale/translate) uygulanmış olsa
+    // bile her zaman GERÇEK (transform öncesi) layout boyutunu verir —
+    // bu yüzden burada "taban boyut" olarak güvenle kullanılabilir.
     const vw = vp?.clientWidth ?? 0;
     const vh = vp?.clientHeight ?? 0;
-    const { w, h } = baseSize.current;
+    const w = wrap?.offsetWidth ?? 0;
+    const h = wrap?.offsetHeight ?? 0;
     const overflowX = Math.max(0, (w * scale - vw) / 2);
     const overflowY = Math.max(0, (h * scale - vh) / 2);
     return {
@@ -54,10 +47,9 @@ export function useMapPanZoom(viewportRef, wrapRef) {
       x: Math.min(overflowX, Math.max(-overflowX, next.x)),
       y: Math.min(overflowY, Math.max(-overflowY, next.y)),
     };
-  }, [viewportRef]);
+  }, [viewportRef, wrapRef]);
 
   const getDistance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-  const getMidpoint = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 
   const onPointerDown = useCallback((e) => {
     viewportRef.current?.setPointerCapture(e.pointerId);
@@ -77,9 +69,6 @@ export function useMapPanZoom(viewportRef, wrapRef) {
       pinchStart.current = {
         distance: getDistance(p1, p2),
         scale: transform.scale,
-        midpoint: getMidpoint(p1, p2),
-        tx: transform.x,
-        ty: transform.y,
       };
       dragStart.current = null;
     }
@@ -94,9 +83,7 @@ export function useMapPanZoom(viewportRef, wrapRef) {
       const newDistance = getDistance(p1, p2);
       const ratio = newDistance / (pinchStart.current.distance || 1);
       const nextScale = pinchStart.current.scale * ratio;
-      setTransform((prev) =>
-        clampTransform({ ...prev, scale: nextScale })
-      );
+      setTransform((prev) => clampTransform({ ...prev, scale: nextScale }));
       movedDistance.current += 100; // pinch = kesin sürükleme, tıklama sayılmasın
       return;
     }
@@ -120,7 +107,6 @@ export function useMapPanZoom(viewportRef, wrapRef) {
 
     if (movedDistance.current > DRAG_THRESHOLD) {
       suppressNextClick.current = true;
-      // Kısa bir gecikmeyle bayrağı geri al; bir sonraki gerçek tıklamayı etkilemesin.
       setTimeout(() => {
         suppressNextClick.current = false;
       }, 50);
@@ -155,6 +141,24 @@ export function useMapPanZoom(viewportRef, wrapRef) {
     el.addEventListener('wheel', handleWheel, { passive: false });
     return () => el.removeEventListener('wheel', handleWheel);
   }, [viewportRef, clampTransform]);
+
+  // Ekran boyutu değişince (adres çubuğu gizlenmesi, döndürme, klavye açılması vb.)
+  // mevcut transform'u yeni sınırlara göre yeniden kelepçele — sınır dışında kalmasın.
+  useEffect(() => {
+    const revalidate = () => setTransform((prev) => clampTransform(prev));
+    window.addEventListener('resize', revalidate);
+    window.addEventListener('orientationchange', revalidate);
+    let vv;
+    if (window.visualViewport) {
+      vv = window.visualViewport;
+      vv.addEventListener('resize', revalidate);
+    }
+    return () => {
+      window.removeEventListener('resize', revalidate);
+      window.removeEventListener('orientationchange', revalidate);
+      vv?.removeEventListener('resize', revalidate);
+    };
+  }, [clampTransform]);
 
   const reset = useCallback(() => {
     setTransform({ scale: 1, x: 0, y: 0 });
