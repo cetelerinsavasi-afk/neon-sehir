@@ -16,6 +16,7 @@ export default function SimpleActionScreen({
   buttonLabel,
   doneLabel,
   dailyFlagKey,
+  isDone,
   goldCost = 0,
   actionFn,
 }) {
@@ -29,7 +30,9 @@ export default function SimpleActionScreen({
     return <SignInPrompt message={signInMessage} />;
   }
 
-  const done = Boolean(actions[dailyFlagKey]);
+  // isDone verilirse (ör. satıcıya-özel nested kontrol) onu kullan,
+  // yoksa basit düz alan kontrolüne düş (Camii, Karakol gibi).
+  const done = isDone ? isDone(actions) : Boolean(actions[dailyFlagKey]);
   const gold = player?.gold ?? 0;
 
   const handleClick = async () => {

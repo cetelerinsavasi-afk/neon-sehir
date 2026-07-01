@@ -1,0 +1,63 @@
+.park-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.park-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.park-hint strong {
+  color: var(--neon-pink);
+}
+
+.park-row {
+  display: flex;
+  gap: 8px;
+}
+
+.park-input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.park-input:focus {
+  outline: none;
+  border-color: var(--neon-pink);
+}
+
+.park-btn {
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 46, 140, 0.5);
+  background: rgba(255, 46, 140, 0.12);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.park-btn:hover:not(:disabled) {
+  background: rgba(255, 46, 140, 0.22);
+}
+
+.park-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.park-error {
+  color: var(--neon-pink);
+  font-size: 12px;
+  margin: 0;
+}

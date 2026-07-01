@@ -12,12 +12,13 @@ const db = admin.firestore();
 setGlobalOptions({ region: 'europe-west1' });
 
 const VALID_PROFESSIONS = ['isci', 'uretici', 'polis'];
-const VALID_MACHINES = ['depoUpgrade', 'vitesUpgrade', 'silahUpgrade'];
+const VALID_MACHINES = ['depoUpgrade', 'vitesUpgrade', 'silahUpgrade', 'yasakliMadde'];
 const MACHINE_PRICE = 100000; // Bölüm 8.2
 const DAILY_OUTPUT = {
   depoUpgrade: 10,
   vitesUpgrade: 10,
   silahUpgrade: 50,
+  yasakliMadde: 1, // kaçakçılık üretimi kasıtlı olarak çok kısıtlı
 };
 
 function requireAuth(request) {
@@ -342,6 +343,36 @@ export const dailyReset = onSchedule(
       // Gerçek şehir listesi Faz 7'de eklenecek.
       destinationCity: null,
     });
+
+    // 6) Gemi şehre döndüyse (dayInCycle=1), bekleyen Liman siparişlerini
+    // ilgili oyuncuların envanterine ekle ve sipariş kayıtlarını temizle.
+    if (nextDay === 1) {
+      const ordersSnap = await db.collection('limanOrders').get();
+      const deliveries = [];
+      for (const orderDoc of ordersSnap.docs) {
+        const data = orderDoc.data();
+        const targetUid = orderDoc.id;
+        let hasAny = false;
+        for (const materialType of ['depoUpgrade', 'vitesUpgrade', 'silahUpgrade']) {
+          const qty = data[materialType] || 0;
+          if (qty > 0) {
+            hasAny = true;
+            const invRef = db
+              .collection('users')
+              .doc(targetUid)
+              .collection('inventory')
+              .doc(materialType);
+            deliveries.push(
+              invRef.set({ quantity: admin.firestore.FieldValue.increment(qty) }, { merge: true })
+            );
+          }
+        }
+        if (hasAny) {
+          deliveries.push(orderDoc.ref.delete());
+        }
+      }
+      await Promise.all(deliveries);
+    }
 
     console.log(`dailyReset tamamlandı: ${dateKey}`);
   }
@@ -838,13 +869,18 @@ export const bribePolice = onCall(async (request) => {
 });
 
 // ---------------------------------------------------------------------------
-// buyFromVendor — Seyyar Satıcı: günde 1 kez (4 satıcı ortak hak), 200 altın,
+// buyFromVendor — Seyyar Satıcı: her satıcının KENDİ günlük hakkı var
+// (Kokoreçci, Simitçi, Dönerci, Köfteci birbirinden bağımsız), 1000 altın,
 // şüphe -5, saygınlık +5.
 // ---------------------------------------------------------------------------
 const VENDOR_COST = 1000;
 
 export const buyFromVendor = onCall(async (request) => {
   const uid = requireAuth(request);
+  const { vendorId } = request.data || {};
+  if (!vendorId) {
+    throw new HttpsError('invalid-argument', 'Geçersiz satıcı.');
+  }
   const dateKey = istanbulDateKey();
   const userRef = db.collection('users').doc(uid);
   const dailyRef = db.collection('dailyActions').doc(`${uid}_${dateKey}`);
@@ -852,8 +888,8 @@ export const buyFromVendor = onCall(async (request) => {
   await db.runTransaction(async (tx) => {
     const [userSnap, dailySnap] = await Promise.all([tx.get(userRef), tx.get(dailyRef)]);
     const user = userSnap.data();
-    if (dailySnap.exists && dailySnap.data().vendorPurchase) {
-      throw new HttpsError('failed-precondition', 'Bugün zaten seyyar satıcıdan alışveriş yaptın.');
+    if (dailySnap.exists && dailySnap.data().vendorPurchases?.[vendorId]) {
+      throw new HttpsError('failed-precondition', 'Bu satıcıdan bugün zaten alışveriş yaptın.');
     }
     if (!user || (user.gold || 0) < VENDOR_COST) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
@@ -863,7 +899,7 @@ export const buyFromVendor = onCall(async (request) => {
       suspicion: clampSuspicion((user.suspicion || 0) - 5),
       reputation: clamp(Math.round((user.reputation || 0) + 5), 0, 100),
     });
-    tx.set(dailyRef, { vendorPurchase: true }, { merge: true });
+    tx.set(dailyRef, { vendorPurchases: { [vendorId]: true } }, { merge: true });
   });
 
   return { ok: true };
@@ -937,4 +973,144 @@ export const attemptHeist = onCall(async (request) => {
   });
 
   return { ok: true, ...result };
+});
+
+// =============================================================================
+// FAZ 6 — DEPO, PARK VE LİMAN (KAÇAKÇILIK) SİSTEMİ
+// =============================================================================
+
+const CONTRABAND_DEPO_BUY_PRICE = 4000; // Depo'dan alış
+const CONTRABAND_DEPO_SELL_PRICE = 2500; // Depo'ya satış — şüphe ARTMAZ
+const CONTRABAND_PARK_SELL_PRICE = 5000; // Park'ta satış — şüphe +5 (kaynağı fark etmez)
+const PARK_SUSPICION_COST = 5;
+
+// ---------------------------------------------------------------------------
+// buyContrabandFromDepo / sellContrabandToDepo — güvenli, şüphesiz kanal.
+// ---------------------------------------------------------------------------
+export const buyContrabandFromDepo = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const qty = Number(request.data?.quantity);
+  if (!Number.isInteger(qty) || qty <= 0) {
+    throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
+  }
+  const totalCost = qty * CONTRABAND_DEPO_BUY_PRICE;
+  const userRef = db.collection('users').doc(uid);
+  const inventoryRef = userRef.collection('inventory').doc('yasakliMadde');
+
+  await db.runTransaction(async (tx) => {
+    const userSnap = await tx.get(userRef);
+    const user = userSnap.data();
+    if (!user || (user.gold || 0) < totalCost) {
+      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    }
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-totalCost) });
+    tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(qty) }, { merge: true });
+  });
+
+  return { ok: true };
+});
+
+export const sellContrabandToDepo = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const qty = Number(request.data?.quantity);
+  if (!Number.isInteger(qty) || qty <= 0) {
+    throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
+  }
+  const userRef = db.collection('users').doc(uid);
+  const inventoryRef = userRef.collection('inventory').doc('yasakliMadde');
+
+  await db.runTransaction(async (tx) => {
+    const invSnap = await tx.get(inventoryRef);
+    const have = invSnap.exists ? invSnap.data().quantity || 0 : 0;
+    if (have < qty) {
+      throw new HttpsError('failed-precondition', 'Yeterli malınız yok.');
+    }
+    tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-qty) }, { merge: true });
+    tx.update(userRef, {
+      gold: admin.firestore.FieldValue.increment(qty * CONTRABAND_DEPO_SELL_PRICE),
+    });
+  });
+
+  return { ok: true, earned: qty * CONTRABAND_DEPO_SELL_PRICE };
+});
+
+// ---------------------------------------------------------------------------
+// sellContrabandAtPark — riskli kanal, +5 şüphe (kaynağı fark etmez: ister
+// kendin üret, ister Depo'dan al, Park'ta satmak her zaman şüphe artırır).
+// ---------------------------------------------------------------------------
+export const sellContrabandAtPark = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const qty = Number(request.data?.quantity);
+  if (!Number.isInteger(qty) || qty <= 0) {
+    throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
+  }
+  const userRef = db.collection('users').doc(uid);
+  const inventoryRef = userRef.collection('inventory').doc('yasakliMadde');
+
+  await db.runTransaction(async (tx) => {
+    const [invSnap, userSnap] = await Promise.all([tx.get(inventoryRef), tx.get(userRef)]);
+    const have = invSnap.exists ? invSnap.data().quantity || 0 : 0;
+    if (have < qty) {
+      throw new HttpsError('failed-precondition', 'Yeterli malınız yok.');
+    }
+    const user = userSnap.data();
+    tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-qty) }, { merge: true });
+    tx.update(userRef, {
+      gold: admin.firestore.FieldValue.increment(qty * CONTRABAND_PARK_SELL_PRICE),
+      suspicion: clampSuspicion((user.suspicion || 0) + PARK_SUSPICION_COST),
+    });
+  });
+
+  return { ok: true, earned: qty * CONTRABAND_PARK_SELL_PRICE };
+});
+
+// ---------------------------------------------------------------------------
+// placeLimanOrder — Liman'dan toplu/ucuz malzeme siparişi.
+// Limitler GÜNLÜK değil, geminin turu boyunca geçerli: limanOrders/{uid}
+// dokümanı sadece gemi şehre döndüğünde (dayInCycle=1) sıfırlanır/teslim
+// edilir (bkz. dailyReset). Basitleştirme: siparişin tam olarak hangi
+// yükleme penceresinde (2. veya 3. gün) verildiği ayırt edilmiyor — her
+// sipariş, geminin şehre bir sonraki dönüşünde teslim edilir.
+// ---------------------------------------------------------------------------
+const LIMAN_PRICES = { depoUpgrade: 400, vitesUpgrade: 400, silahUpgrade: 80 };
+const LIMAN_MAX_PER_CYCLE = { depoUpgrade: 10, vitesUpgrade: 10, silahUpgrade: 50 };
+
+export const placeLimanOrder = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { materialType } = request.data || {};
+  const qty = Number(request.data?.quantity);
+  if (!LIMAN_PRICES[materialType]) {
+    throw new HttpsError('invalid-argument', 'Geçersiz malzeme.');
+  }
+  if (!Number.isInteger(qty) || qty <= 0) {
+    throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
+  }
+
+  const unitPrice = LIMAN_PRICES[materialType];
+  const maxPerCycle = LIMAN_MAX_PER_CYCLE[materialType];
+  const totalCost = unitPrice * qty;
+
+  const userRef = db.collection('users').doc(uid);
+  const orderRef = db.collection('limanOrders').doc(uid);
+
+  await db.runTransaction(async (tx) => {
+    const [userSnap, orderSnap] = await Promise.all([tx.get(userRef), tx.get(orderRef)]);
+    const user = userSnap.data();
+    const existing = orderSnap.exists ? orderSnap.data()[materialType] || 0 : 0;
+
+    if (existing + qty > maxPerCycle) {
+      throw new HttpsError(
+        'failed-precondition',
+        `Bu tur için en fazla ${maxPerCycle} adet sipariş verebilirsin (şu ana kadar sipariş verdiğin: ${existing}).`
+      );
+    }
+    if (!user || (user.gold || 0) < totalCost) {
+      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    }
+
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-totalCost) });
+    tx.set(orderRef, { [materialType]: admin.firestore.FieldValue.increment(qty) }, { merge: true });
+  });
+
+  return { ok: true };
 });

@@ -64,6 +64,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // limanOrders/{uid} — oyuncunun mevcut turdaki bekleyen Liman siparişi.
+    // Sadece kendi siparişini görebilir; yazma sadece Cloud Functions ile.
+    match /limanOrders/{orderUid} {
+      allow read: if isSignedIn() && orderUid == request.auth.uid;
+      allow write: if false;
+    }
+
     match /weapons/{weaponId} {
       allow read: if isSignedIn();
       allow write: if false;

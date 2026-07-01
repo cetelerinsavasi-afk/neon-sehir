@@ -11,6 +11,7 @@ const MACHINES = [
   { id: 'depoUpgrade', label: 'Depo Geliştirme Makinesi', dailyOutput: 10 },
   { id: 'vitesUpgrade', label: 'Vites Geliştirme Makinesi', dailyOutput: 10 },
   { id: 'silahUpgrade', label: 'Silah Geliştirme Makinesi', dailyOutput: 50 },
+  { id: 'yasakliMadde', label: 'Yasaklı Madde Üretim Makinesi', dailyOutput: 1 },
 ];
 const MACHINE_PRICE = 100000;
 

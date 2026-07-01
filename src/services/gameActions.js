@@ -61,7 +61,22 @@ export const prayAtMosque = () => httpsCallable(functions, 'prayAtMosque')();
 
 export const bribePolice = () => httpsCallable(functions, 'bribePolice')();
 
-export const buyFromVendor = () => httpsCallable(functions, 'buyFromVendor')();
+export const buyFromVendor = (vendorId) =>
+  httpsCallable(functions, 'buyFromVendor')({ vendorId });
 
 export const attemptHeist = (target) =>
   httpsCallable(functions, 'attemptHeist')({ target });
+
+// --- Faz 6: Depo, Park, Liman (kaçakçılık) ---
+
+export const buyContrabandFromDepo = (quantity) =>
+  httpsCallable(functions, 'buyContrabandFromDepo')({ quantity });
+
+export const sellContrabandToDepo = (quantity) =>
+  httpsCallable(functions, 'sellContrabandToDepo')({ quantity });
+
+export const sellContrabandAtPark = (quantity) =>
+  httpsCallable(functions, 'sellContrabandAtPark')({ quantity });
+
+export const placeLimanOrder = (materialType, quantity) =>
+  httpsCallable(functions, 'placeLimanOrder')({ materialType, quantity });

@@ -9,15 +9,18 @@ import BankScreen from '../BankScreen/BankScreen';
 import MosqueScreen from '../MosqueScreen/MosqueScreen';
 import PoliceStationScreen from '../PoliceStationScreen/PoliceStationScreen';
 import VendorScreen from '../VendorScreen/VendorScreen';
+import LimanDepoScreen from '../LimanDepoScreen/LimanDepoScreen';
+import ParkScreen from '../ParkScreen/ParkScreen';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import './RegionModal.css';
 
-// Faz 2+3+4+5 kapsamında gerçek içeriği hazır olan ekranlar. Diğerleri hâlâ
-// "yakında" placeholder'ı gösteriyor — ilgili faz tamamlandıkça buraya
+// Faz 2+3+4+5+6 kapsamında gerçek içeriği hazır olan ekranlar. Diğerleri
+// hâlâ "yakında" placeholder'ı gösteriyor — ilgili faz tamamlandıkça buraya
 // yeni case'ler eklenecek.
-function ScreenContent({ screen }) {
+function ScreenContent({ region }) {
   const { user } = useAuth();
   const { player } = usePlayer();
+  const { screen } = region;
 
   switch (screen) {
     case 'fabrika':
@@ -35,7 +38,11 @@ function ScreenContent({ screen }) {
     case 'rüşvet':
       return <PoliceStationScreen />;
     case 'seyyar-satici':
-      return <VendorScreen />;
+      return <VendorScreen vendorId={region.id} vendorName={region.name} />;
+    case 'liman-depo':
+      return <LimanDepoScreen />;
+    case 'park':
+      return <ParkScreen />;
     case 'ev':
       if (!user) {
         return <SignInPrompt message="Meslek seçmek için giriş yapmalısın." />;
@@ -63,7 +70,7 @@ export default function RegionModal({ region, onClose }) {
           Ekran: <code>{region.screen}</code>
         </p>
         <div className="region-modal-content">
-          <ScreenContent screen={region.screen} />
+          <ScreenContent region={region} />
         </div>
         <button className="region-modal-close" onClick={onClose}>
           Kapat
