@@ -841,7 +841,7 @@ export const bribePolice = onCall(async (request) => {
 // buyFromVendor — Seyyar Satıcı: günde 1 kez (4 satıcı ortak hak), 200 altın,
 // şüphe -5, saygınlık +5.
 // ---------------------------------------------------------------------------
-const VENDOR_COST = 200;
+const VENDOR_COST = 1000;
 
 export const buyFromVendor = onCall(async (request) => {
   const uid = requireAuth(request);

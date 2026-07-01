@@ -8,11 +8,11 @@ export default function VendorScreen() {
   return (
     <SimpleActionScreen
       signInMessage="Alışveriş yapmak için giriş yapmalısın."
-      description="Günde bir kez, 200 altına küçük bir şeyler alarak hem şüpheni azalt hem saygınlık kazan."
-      buttonLabel="Alışveriş Yap (200 altın)"
+      description="Günde bir kez, 1000 altına küçük bir şeyler alarak hem şüpheni azalt hem saygınlık kazan."
+      buttonLabel="Alışveriş Yap (1000 altın)"
       doneLabel="Bugün zaten alışveriş yaptın"
       dailyFlagKey="vendorPurchase"
-      goldCost={200}
+      goldCost={1000}
       actionFn={buyFromVendor}
     />
   );
