@@ -5,6 +5,7 @@ import { useDailyActions } from '../../hooks/useDailyActions';
 import { useProductionMachines } from '../../hooks/useProductionMachines';
 import { factoryWork, buyProductionMachine, collectProduction } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
+import HeistPanel from '../HeistPanel/HeistPanel';
 import './FactoryScreen.css';
 
 const MACHINES = [
@@ -69,6 +70,7 @@ export default function FactoryScreen() {
           {alreadyWorked ? 'Bugün zaten çalıştın' : busy === 'work' ? 'Çalışılıyor…' : 'Çalış (100 altın)'}
         </button>
         {error && <p className="factory-error">{error}</p>}
+        <HeistPanel target="fabrika" />
       </div>
     );
   }
@@ -112,6 +114,7 @@ export default function FactoryScreen() {
           );
         })}
         {error && <p className="factory-error">{error}</p>}
+        <HeistPanel target="fabrika" />
       </div>
     );
   }

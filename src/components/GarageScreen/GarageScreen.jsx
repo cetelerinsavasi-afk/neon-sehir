@@ -4,6 +4,7 @@ import { useVehicles } from '../../hooks/useVehicles';
 import { useInventory } from '../../hooks/useInventory';
 import { upgradeVehicle, sellMaterial } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
+import HeistPanel from '../HeistPanel/HeistPanel';
 import './GarageScreen.css';
 
 const SELL_PRICE = 250; // Bölüm 8.2
@@ -94,6 +95,7 @@ export default function GarageScreen() {
         ))
       )}
       {error && <p className="garage-error">{error}</p>}
+      <HeistPanel target="modifiye_garaji" />
     </div>
   );
 }

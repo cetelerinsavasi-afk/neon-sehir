@@ -34,6 +34,10 @@
   color: var(--neon-cyan);
 }
 
+.bank-debt-hint {
+  color: var(--neon-pink);
+}
+
 .bank-debt {
   color: var(--neon-pink);
 }

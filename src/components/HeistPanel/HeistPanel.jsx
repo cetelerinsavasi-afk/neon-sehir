@@ -14,17 +14,25 @@ import {
 import './HeistPanel.css';
 
 const LABELS = {
-  banka: { title: 'Banka Soygunu', risk: '+50 şüphe. Ekipte sızmış polis varsa yakalanırsın.', requiredPower: 60000 },
-  'araba-galerisi': {
+  banka: { title: 'Banka Soygunu', requiredPower: 100000, reward: 500000, suspicionCost: 50 },
+  casino: { title: 'Casino Soygunu', requiredPower: 70000, reward: 200000, suspicionCost: 25 },
+  araba_galerisi: {
     title: 'Galeri Soygunu',
-    risk: '+25 şüphe. Ekipte sızmış polis varsa yakalanırsın.',
-    requiredPower: 15000,
+    requiredPower: 50000,
+    reward: 100000,
+    suspicionCost: 25,
   },
-  'silah-magazasi': {
-    title: 'Mağaza Soygunu',
-    risk: '+25 şüphe. Ekipte sızmış polis varsa yakalanırsın.',
-    requiredPower: 15000,
+  modifiye_garaji: {
+    title: 'Garaj Soygunu',
+    requiredPower: 20000,
+    reward: 20000,
+    suspicionCost: 25,
   },
+  fabrika: { title: 'Fabrika Soygunu', requiredPower: 10000, reward: 4000, suspicionCost: 25 },
+  seyyar_satici_1: { title: 'Kokoreçciye Haraç', requiredPower: 4500, reward: 1000, suspicionCost: 25 },
+  seyyar_satici_2: { title: 'Simitçiye Haraç', requiredPower: 3000, reward: 500, suspicionCost: 25 },
+  seyyar_satici_3: { title: 'Dönerciye Haraç', requiredPower: 1500, reward: 200, suspicionCost: 25 },
+  seyyar_satici_4: { title: 'Köfteciye Haraç', requiredPower: 1000, reward: 100, suspicionCost: 25 },
 };
 
 function resultMessage(res) {
@@ -37,16 +45,16 @@ function resultMessage(res) {
   // Solo soygun: { success, caught, reward }
   if (res.reward !== undefined) {
     if (res.caught) {
-      return `Yakalandın! ${res.reward.toLocaleString('tr-TR')} altını devlete borç olarak yazdın. Şüphen arttı.`;
+      return `Yakalandın! ${res.reward.toLocaleString('tr-TR')} altın ceza kasaya gitti (önce altınından kesildi, yetmeyen kısım devlete borç yazıldı). Şüphen arttı.`;
     }
-    return `Başarılı! ${res.reward.toLocaleString('tr-TR')} altın kazandın. Şüphen arttı.`;
+    return `Başarılı! ${res.reward.toLocaleString('tr-TR')} altın kazandın (borcun varsa yarısı borca gitti). Şüphen arttı.`;
   }
   // Ekip soygunu: { busted, caughtBySuspicion, totalReward }
   if (res.busted) {
-    return 'Ekipte sızmış bir polis vardı! Soygun yakalandı — payınız devlete borç yazıldı.';
+    return 'Ekipte sızmış bir polis vardı! Soygun yakalandı — payınız ceza olarak kasaya gitti.';
   }
   if (res.caughtBySuspicion) {
-    return 'Ekipten biri yakalandı, tüm soygun başarısız oldu — herkesin payı devlete borç yazıldı.';
+    return 'Ekipten biri yakalandı, tüm soygun başarısız oldu — herkesin payı ceza olarak kasaya gitti.';
   }
   return `Ekip başarılı! Toplam ${res.totalReward.toLocaleString('tr-TR')} altın katılımcılara eşit bölündü.`;
 }
@@ -77,7 +85,7 @@ function PlanCard({ plan, myUid, onChanged }) {
   return (
     <div className="heist-plan-card">
       <p className="heist-plan-meta">
-        {participants.length} kişi · Toplam güç {totalPower.toLocaleString('tr-TR')} /{' '}
+        {participants.length}/4 kişi · Toplam güç {totalPower.toLocaleString('tr-TR')} /{' '}
         {required.toLocaleString('tr-TR')}
       </p>
       <ul className="heist-plan-members">
@@ -98,8 +106,12 @@ function PlanCard({ plan, myUid, onChanged }) {
       </ul>
       <div className="heist-plan-actions">
         {!isMember && (
-          <button className="heist-plan-btn" disabled={busy} onClick={() => run(() => joinHeistPlan(plan.id))}>
-            Katıl
+          <button
+            className="heist-plan-btn"
+            disabled={busy || participants.length >= 4}
+            onClick={() => run(() => joinHeistPlan(plan.id))}
+          >
+            {participants.length >= 4 ? 'Dolu' : 'Katıl'}
           </button>
         )}
         {isMember && !isCreator && (
@@ -165,12 +177,13 @@ export default function HeistPanel({ target }) {
     <div className="heist-panel">
       <p className="heist-panel-title">{meta.title}</p>
       <p className="heist-panel-risk">
-        {meta.risk} · Gerekli güç: {meta.requiredPower.toLocaleString('tr-TR')}
+        Ödül: {meta.reward.toLocaleString('tr-TR')} altın · Şüphe +{meta.suspicionCost} · Gerekli
+        güç: {meta.requiredPower.toLocaleString('tr-TR')}
       </p>
       <p className="heist-panel-hint">
-        Yakalanma ihtimalin = mevcut şüphe yüzden (şüphen 0 ise risk de yok). Ekipte: biri bile
-        yakalanırsa TÜM ekip başarısız sayılır. İçeri sızan bir polis varsa da aynı şekilde
-        yakalanırsınız — ikisinde de payınız devlete borç yazılır.
+        Tek başına: yakalanma ihtimalin = mevcut şüphe yüzden (0 şüphe = 0 risk). Ekip: en fazla 4
+        kişi, plan 24 saat açık kalır. Ekipte biri yakalanırsa ya da içeri sızan bir polis varsa
+        TÜM ekip yakalanır — ceza önce altınından kesilir, yetmeyen kısım borca yazılır.
       </p>
 
       <div className="heist-panel-solo-row">

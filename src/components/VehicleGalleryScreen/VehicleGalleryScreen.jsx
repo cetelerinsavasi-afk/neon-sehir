@@ -60,7 +60,7 @@ export default function VehicleGalleryScreen() {
         );
       })}
       {error && <p className="vehicle-gallery-error">{error}</p>}
-      <HeistPanel target="araba-galerisi" />
+      <HeistPanel target="araba_galerisi" />
     </div>
   );
 }

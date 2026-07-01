@@ -25,7 +25,8 @@ function VehiclePicker({ vehicles, value, onChange }) {
 }
 
 export default function RaceLobby({ myUid }) {
-  const { vehicles } = useVehicles();
+  const { vehicles: allVehicles } = useVehicles();
+  const vehicles = allVehicles.filter((v) => !v.seizedByBank);
   const { rooms } = useOpenRaceRooms();
   const [myVehicleId, setMyVehicleId] = useState('');
   const [betAmount, setBetAmount] = useState('');

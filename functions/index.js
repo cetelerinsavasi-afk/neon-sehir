@@ -42,6 +42,22 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+// ---------------------------------------------------------------------------
+// splitIncomeForDebt — Bölüm 10 (Borç Sistemi):
+// "Borç bitene kadar: her kaynaktan kazanılan paranın %50'si otomatik
+// borca gider, kalan %50 kendisine kalır."
+// Her yerde (işçilik, satış, soygun, yarış, faiz, vb.) kazanılan altın bu
+// fonksiyondan geçirilip {goldDelta, debtDelta} olarak uygulanmalı.
+// ---------------------------------------------------------------------------
+function splitIncomeForDebt(currentDebt, amount) {
+  const debt = currentDebt || 0;
+  if (debt <= 0 || amount <= 0) {
+    return { goldDelta: amount, debtDelta: 0 };
+  }
+  const repay = Math.min(Math.floor(amount / 2), debt);
+  return { goldDelta: amount - repay, debtDelta: -repay };
+}
+
 // addDaysToDateKey — "YYYY-MM-DD" formatındaki bir tarihe gün ekler/çıkarır.
 // Bunu, Firestore'da "en son kaydı bul" için orderBy('__name__') sorgusu
 // kullanmak YERİNE tercih ediyoruz: o sorgu composite index istiyor ve
@@ -158,7 +174,15 @@ export const factoryWork = onCall(async (request) => {
     if (dailySnap.exists && dailySnap.data().factoryWork) {
       throw new HttpsError('failed-precondition', 'Bugün zaten çalıştınız.');
     }
-    tx.set(userRef, { gold: admin.firestore.FieldValue.increment(100) }, { merge: true });
+    const { goldDelta, debtDelta } = splitIncomeForDebt(user.debtToState, 100);
+    tx.set(
+      userRef,
+      {
+        gold: admin.firestore.FieldValue.increment(goldDelta),
+        debtToState: admin.firestore.FieldValue.increment(debtDelta),
+      },
+      { merge: true }
+    );
     tx.set(dailyRef, { factoryWork: true }, { merge: true });
   });
 
@@ -278,8 +302,10 @@ export const dailyReset = onSchedule(
     policeSnap.forEach((docSnap) => {
       const user = docSnap.data();
       if (user.suspicion === 0) {
+        const { goldDelta, debtDelta } = splitIncomeForDebt(user.debtToState, 500);
         policeBatch.update(docSnap.ref, {
-          gold: admin.firestore.FieldValue.increment(500),
+          gold: admin.firestore.FieldValue.increment(goldDelta),
+          debtToState: admin.firestore.FieldValue.increment(debtDelta),
         });
       }
     });
@@ -374,6 +400,82 @@ export const dailyReset = onSchedule(
       await Promise.all(deliveries);
     }
 
+    // 7) Araç kredileri (Bölüm 8.4, 9.3): vadesi geçmiş & tam ödenmemiş
+    // krediler el konur (ödenen kısım iade edilir); aktif, henüz el
+    // konulmamış kredisi olanlara hatırlatma SMS'i gönderilir. Tek eşitlik
+    // filtresi (mortgaged) kullanılıyor, vade karşılaştırması JS'de
+    // yapılıyor — composite index riski yok.
+    const mortgagedSnap = await db.collection('vehicles').where('mortgaged', '==', true).get();
+    const loanBatch = db.batch();
+    const loanSmsPromises = [];
+    const nowMillis = Date.now();
+    mortgagedSnap.forEach((docSnap) => {
+      const v = docSnap.data();
+      const paid = v.loanPaid || 0;
+      const totalOwed = v.loanTotalOwed || 0;
+      const dueMillis = v.loanDueAt?.toMillis?.() ?? 0;
+      if (v.seizedByBank || paid >= totalOwed) {
+        return;
+      }
+      if (dueMillis <= nowMillis) {
+        // Vade doldu, borç tam ödenmedi — ödenen kısım iade, araç el konur.
+        loanBatch.update(db.collection('users').doc(v.ownerId), {
+          gold: admin.firestore.FieldValue.increment(paid),
+        });
+        loanBatch.update(docSnap.ref, { seizedByBank: true, loanPaid: 0 });
+        loanSmsPromises.push(
+          db
+            .collection('users')
+            .doc(v.ownerId)
+            .collection('messages')
+            .add({
+              text: `Banka: ${v.model} aracınızın kredi vadesi doldu, borç tam ödenmediği için araca el konuldu. Kalan borcunuzu (${totalOwed.toLocaleString('tr-TR')} altın) öderseniz aracınızı geri alabilirsiniz.`,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              read: false,
+              type: 'loan_seized',
+            })
+        );
+      } else {
+        const remaining = totalOwed - paid;
+        const daysLeft = Math.max(0, Math.ceil((dueMillis - nowMillis) / (24 * 60 * 60 * 1000)));
+        loanSmsPromises.push(
+          db
+            .collection('users')
+            .doc(v.ownerId)
+            .collection('messages')
+            .add({
+              text: `Banka: ${v.model} aracınız için kalan borcunuz ${remaining.toLocaleString('tr-TR')} altın. Vadeye ${daysLeft} gün kaldı.`,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              read: false,
+              type: 'loan_reminder',
+            })
+        );
+      }
+    });
+    if (!mortgagedSnap.empty) await loanBatch.commit();
+    await Promise.all(loanSmsPromises);
+
+    // 8) Devlete borcu olanlara hatırlatma SMS'i (Bölüm 9.3). Tek alanda
+    // range sorgusu (debtToState > 0) composite index istemiyor.
+    const debtSnap = await db.collection('users').where('debtToState', '>', 0).get();
+    const debtSmsPromises = [];
+    debtSnap.forEach((docSnap) => {
+      const debt = docSnap.data().debtToState || 0;
+      debtSmsPromises.push(
+        db
+          .collection('users')
+          .doc(docSnap.id)
+          .collection('messages')
+          .add({
+            text: `Devlete borcunuz ${debt.toLocaleString('tr-TR')} altın. Borç bitene kadar kazandığınız her paranın yarısı otomatik borca gidiyor.`,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            read: false,
+            type: 'debt_reminder',
+          })
+      );
+    });
+    await Promise.all(debtSmsPromises);
+
     console.log(`dailyReset tamamlandı: ${dateKey}`);
   }
 );
@@ -438,9 +540,21 @@ export const buyVehicle = onCall(async (request) => {
       storage: catalogEntry.storage,
       turboCount: catalogEntry.turboCount,
       mortgaged: false,
+      seizedByBank: false,
       purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
   });
+
+  await db
+    .collection('users')
+    .doc(uid)
+    .collection('messages')
+    .add({
+      text: `Banka: yeni ${catalogEntry.name} aracınızı ipotek ederek kredi çekebilirsiniz. Detaylar için Banka'ya uğrayın.`,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      read: false,
+      type: 'loan_offer',
+    });
 
   return { ok: true };
 });
@@ -512,15 +626,22 @@ export const sellMaterial = onCall(async (request) => {
   const inventoryRef = userRef.collection('inventory').doc(materialType);
 
   await db.runTransaction(async (tx) => {
-    const invSnap = await tx.get(inventoryRef);
+    const [invSnap, userSnap] = await Promise.all([tx.get(inventoryRef), tx.get(userRef)]);
     const have = invSnap.exists ? invSnap.data().quantity || 0 : 0;
     if (have < qty) {
       throw new HttpsError('failed-precondition', 'Yeterli malzemeniz yok.');
     }
     tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-qty) }, { merge: true });
+    const { goldDelta, debtDelta } = splitIncomeForDebt(
+      userSnap.data()?.debtToState,
+      qty * unitPrice
+    );
     tx.set(
       userRef,
-      { gold: admin.firestore.FieldValue.increment(qty * unitPrice) },
+      {
+        gold: admin.firestore.FieldValue.increment(goldDelta),
+        debtToState: admin.firestore.FieldValue.increment(debtDelta),
+      },
       { merge: true }
     );
   });
@@ -596,15 +717,24 @@ export const upgradeWeapon = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Bu silah zaten maksimum seviyede.');
     }
     const qty = inventorySnap.exists ? inventorySnap.data().quantity || 0 : 0;
-    if (qty < 1) {
-      throw new HttpsError('failed-precondition', 'Yetersiz gelişim malzemesi (1 adet gerekli).');
+    // Bölüm 8.3: "Gereken malzeme miktarı (seviye başı) = silah fiyatı / 100."
+    const requiredQty = Math.round(weapon.basePrice / 100);
+    if (qty < requiredQty) {
+      throw new HttpsError(
+        'failed-precondition',
+        `Yetersiz gelişim malzemesi (${requiredQty} adet gerekli, ${qty} adedin var).`
+      );
     }
 
     const newLevel = weapon.level + 1;
     const multiplier = newLevel === 2 ? 1.5 : 2;
     const newPower = Math.round(weapon.basePower * multiplier);
 
-    tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-1) }, { merge: true });
+    tx.set(
+      inventoryRef,
+      { quantity: admin.firestore.FieldValue.increment(-requiredQty) },
+      { merge: true }
+    );
     tx.update(weaponRef, { level: newLevel, power: newPower });
   });
 
@@ -643,15 +773,22 @@ export const sellSilahMaterial = onCall(async (request) => {
   const inventoryRef = userRef.collection('inventory').doc('silahUpgrade');
 
   await db.runTransaction(async (tx) => {
-    const invSnap = await tx.get(inventoryRef);
+    const [invSnap, userSnap] = await Promise.all([tx.get(inventoryRef), tx.get(userRef)]);
     const have = invSnap.exists ? invSnap.data().quantity || 0 : 0;
     if (have < 1) {
       throw new HttpsError('failed-precondition', 'Satacak gelişim malzemeniz yok.');
     }
     tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-1) }, { merge: true });
+    const { goldDelta, debtDelta } = splitIncomeForDebt(
+      userSnap.data()?.debtToState,
+      UPGRADE_MATERIAL_REFUND
+    );
     tx.set(
       userRef,
-      { gold: admin.firestore.FieldValue.increment(UPGRADE_MATERIAL_REFUND) },
+      {
+        gold: admin.firestore.FieldValue.increment(goldDelta),
+        debtToState: admin.firestore.FieldValue.increment(debtDelta),
+      },
       { merge: true }
     );
   });
@@ -809,6 +946,126 @@ export const sellInvestment = onCall(async (request) => {
 });
 
 // =============================================================================
+// BANKA KREDİSİ — ARAÇ İPOTEĞİ (Bölüm 8.4)
+// =============================================================================
+//
+// - Kredi limiti = aracın galerideki GÜNCEL DEĞERİ (baseGalleryValue) —
+//   geliştirmeler (vites/depo) limiti ARTIRMAZ.
+// - Vade: 10 gün → %20 faiz, 20 gün → %40 faiz (tek seferlik, anaparaya
+//   eklenir). Ödeme dilim dilim veya tek seferde yapılabilir.
+// - Vade dolup borç tam ödenmemişse: o ana kadar ödenen kısım oyuncuya
+//   İADE edilir, araç bankaya el konur (seizedByBank). Kalan borç (tam
+//   loanTotalOwed) sonradan ödenirse araç geri alınır; ödenmezse araç
+//   kalıcı olarak bankada kalır.
+// =============================================================================
+
+const LOAN_TERMS = {
+  10: 0.2,
+  20: 0.4,
+};
+
+export const takeVehicleLoan = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { vehicleId, termDays } = request.data || {};
+  const interestRate = LOAN_TERMS[termDays];
+  if (!interestRate) {
+    throw new HttpsError('invalid-argument', 'Vade 10 ya da 20 gün olmalı.');
+  }
+
+  const vehicleRef = db.collection('vehicles').doc(vehicleId);
+  const userRef = db.collection('users').doc(uid);
+  let totalOwedForSms = 0;
+
+  await db.runTransaction(async (tx) => {
+    const vehicleSnap = await tx.get(vehicleRef);
+    const vehicle = vehicleSnap.data();
+    if (!vehicleSnap.exists || vehicle.ownerId !== uid) {
+      throw new HttpsError('failed-precondition', 'Bu araç size ait değil.');
+    }
+    if (vehicle.mortgaged) {
+      throw new HttpsError('failed-precondition', 'Bu araç zaten ipotekli.');
+    }
+    if (vehicle.seizedByBank) {
+      throw new HttpsError('failed-precondition', 'Bu araç bankaya el konulmuş durumda.');
+    }
+
+    const principal = vehicle.baseGalleryValue;
+    const totalOwed = Math.round(principal * (1 + interestRate));
+    totalOwedForSms = totalOwed;
+    const now = Date.now();
+
+    tx.update(vehicleRef, {
+      mortgaged: true,
+      seizedByBank: false,
+      loanPrincipal: principal,
+      loanTotalOwed: totalOwed,
+      loanPaid: 0,
+      loanTermDays: termDays,
+      loanStartedAt: admin.firestore.Timestamp.fromMillis(now),
+      loanDueAt: admin.firestore.Timestamp.fromMillis(now + termDays * 24 * 60 * 60 * 1000),
+    });
+    // Kredi anaparası BORÇLANILAN paradır, "kazanç" değildir — borç
+    // bölüştürme (Bölüm 10) kredi kullanımına uygulanmaz.
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(principal) });
+  });
+
+  await db
+    .collection('users')
+    .doc(uid)
+    .collection('messages')
+    .add({
+      text: `Banka: aracınız için ${termDays} günlük kredi başladı. Vade sonuna kadar toplam ${totalOwedForSms.toLocaleString('tr-TR')} altın ödemelisiniz.`,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      read: false,
+      type: 'loan_started',
+    });
+
+  return { ok: true };
+});
+
+export const repayVehicleLoan = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { vehicleId, amount } = request.data || {};
+  const amt = Number(amount);
+  if (!Number.isInteger(amt) || amt <= 0) {
+    throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
+  }
+
+  const vehicleRef = db.collection('vehicles').doc(vehicleId);
+  const userRef = db.collection('users').doc(uid);
+
+  await db.runTransaction(async (tx) => {
+    const [vehicleSnap, userSnap] = await Promise.all([tx.get(vehicleRef), tx.get(userRef)]);
+    const vehicle = vehicleSnap.data();
+    const user = userSnap.data();
+    if (!vehicleSnap.exists || vehicle.ownerId !== uid) {
+      throw new HttpsError('failed-precondition', 'Bu araç size ait değil.');
+    }
+    if (!vehicle.mortgaged) {
+      throw new HttpsError('failed-precondition', 'Bu aracın aktif bir kredisi yok.');
+    }
+    if (!user || (user.gold || 0) < amt) {
+      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    }
+
+    const remaining = vehicle.loanTotalOwed - (vehicle.loanPaid || 0);
+    const applied = Math.min(amt, remaining);
+    const newPaid = (vehicle.loanPaid || 0) + applied;
+    const fullyPaid = newPaid >= vehicle.loanTotalOwed;
+
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-applied) });
+    tx.update(vehicleRef, {
+      loanPaid: newPaid,
+      ...(fullyPaid
+        ? { mortgaged: false, seizedByBank: false, loanPrincipal: 0, loanTotalOwed: 0, loanPaid: 0 }
+        : {}),
+    });
+  });
+
+  return { ok: true };
+});
+
+// =============================================================================
 // FAZ 5 — ŞÜPHE YÖNETİMİ VE SOYGUN SİSTEMİ (Bölüm 13, 14)
 // =============================================================================
 
@@ -913,14 +1170,32 @@ export const buyFromVendor = onCall(async (request) => {
 //   - Güç yetersizse soygun hiç BAŞLAMAZ, şüphe artmaz. (Ekip kurulmalı.)
 //   - Tek başınayken sızma riski yok (kimse yanında yok), AMA yakalanma
 //     riski mevcut şüpheye bağlı: yakalanma ihtimali = şüphe yüzdesi.
-//     Şüphen 0 ise yakalanma riskin de yoktur. Yakalanırsan kazanacağın
-//     parayı devlete BORÇ olarak ödersin (bkz. debtToState).
+//     Şüphen 0 ise yakalanma riskin de yoktur.
+//   - Yakalanırsan: çalmaya çalıştığın TAM tutar (Bölüm 5/13) ceza olarak
+//     kasaya gider — önce mevcut altınından kesilir, yetmezse kalanı
+//     devlete borç yazılır (Bölüm 10).
+//   - Başarılı olursan ödül, borç varsa Bölüm 10 kuralına göre (%50 borca,
+//     %50 sana) bölüştürülür.
 // ---------------------------------------------------------------------------
 const HEIST_CONFIG = {
-  banka: { suspicionCost: 50, rewardMin: 50000, rewardMax: 100000, requiredPower: 60000 },
-  'araba-galerisi': { suspicionCost: 25, rewardMin: 10000, rewardMax: 30000, requiredPower: 15000 },
-  'silah-magazasi': { suspicionCost: 25, rewardMin: 8000, rewardMax: 20000, requiredPower: 15000 },
+  banka: { suspicionCost: 50, reward: 500000, requiredPower: 100000 },
+  casino: { suspicionCost: 25, reward: 200000, requiredPower: 70000 },
+  araba_galerisi: { suspicionCost: 25, reward: 100000, requiredPower: 50000 },
+  modifiye_garaji: { suspicionCost: 25, reward: 20000, requiredPower: 20000 },
+  fabrika: { suspicionCost: 25, reward: 4000, requiredPower: 10000 },
+  seyyar_satici_1: { suspicionCost: 25, reward: 1000, requiredPower: 4500 },
+  seyyar_satici_2: { suspicionCost: 25, reward: 500, requiredPower: 3000 },
+  seyyar_satici_3: { suspicionCost: 25, reward: 200, requiredPower: 1500 },
+  seyyar_satici_4: { suspicionCost: 25, reward: 100, requiredPower: 1000 },
 };
+
+// Yakalanma cezası: TAM tutar kasaya gider — önce mevcut altından, yetmeyen
+// kısım devlete borç olarak yazılır (Bölüm 5, 10, 13).
+function applyCapturePenalty(currentGold, amount) {
+  const fromGold = Math.min(currentGold || 0, amount);
+  const debtAdded = amount - fromGold;
+  return { fromGold, debtAdded };
+}
 
 async function getMaxWeaponPower(uid) {
   const snap = await db.collection('weapons').where('ownerId', '==', uid).get();
@@ -973,17 +1248,24 @@ export const attemptHeist = onCall(async (request) => {
     }
     const suspicion = user.suspicion || 0;
     const caught = Math.random() < suspicion / 100;
-    const reward = Math.round(
-      config.rewardMin + Math.random() * (config.rewardMax - config.rewardMin)
-    );
+    const reward = config.reward;
 
-    tx.update(userRef, {
+    const updates = {
       suspicion: clampSuspicion(suspicion + config.suspicionCost),
       reputation: clampSuspicion((user.reputation || 0) - config.suspicionCost),
-      ...(caught
-        ? { debtToState: admin.firestore.FieldValue.increment(reward) }
-        : { gold: admin.firestore.FieldValue.increment(reward) }),
-    });
+    };
+
+    if (caught) {
+      const { fromGold, debtAdded } = applyCapturePenalty(user.gold, reward);
+      updates.gold = admin.firestore.FieldValue.increment(-fromGold);
+      updates.debtToState = admin.firestore.FieldValue.increment(debtAdded);
+    } else {
+      const { goldDelta, debtDelta } = splitIncomeForDebt(user.debtToState, reward);
+      updates.gold = admin.firestore.FieldValue.increment(goldDelta);
+      updates.debtToState = admin.firestore.FieldValue.increment(debtDelta);
+    }
+
+    tx.update(userRef, updates);
     tx.set(dailyRef, { heist: { [target]: true } }, { merge: true });
 
     result = { started: true, success: !caught, caught, reward };
@@ -1037,14 +1319,19 @@ export const sellContrabandToDepo = onCall(async (request) => {
   const inventoryRef = userRef.collection('inventory').doc('yasakliMadde');
 
   await db.runTransaction(async (tx) => {
-    const invSnap = await tx.get(inventoryRef);
+    const [invSnap, userSnap] = await Promise.all([tx.get(inventoryRef), tx.get(userRef)]);
     const have = invSnap.exists ? invSnap.data().quantity || 0 : 0;
     if (have < qty) {
       throw new HttpsError('failed-precondition', 'Yeterli malınız yok.');
     }
     tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-qty) }, { merge: true });
+    const { goldDelta, debtDelta } = splitIncomeForDebt(
+      userSnap.data()?.debtToState,
+      qty * CONTRABAND_DEPO_SELL_PRICE
+    );
     tx.update(userRef, {
-      gold: admin.firestore.FieldValue.increment(qty * CONTRABAND_DEPO_SELL_PRICE),
+      gold: admin.firestore.FieldValue.increment(goldDelta),
+      debtToState: admin.firestore.FieldValue.increment(debtDelta),
     });
   });
 
@@ -1072,8 +1359,13 @@ export const sellContrabandAtPark = onCall(async (request) => {
     }
     const user = userSnap.data();
     tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-qty) }, { merge: true });
+    const { goldDelta, debtDelta } = splitIncomeForDebt(
+      user?.debtToState,
+      qty * CONTRABAND_PARK_SELL_PRICE
+    );
     tx.update(userRef, {
-      gold: admin.firestore.FieldValue.increment(qty * CONTRABAND_PARK_SELL_PRICE),
+      gold: admin.firestore.FieldValue.increment(goldDelta),
+      debtToState: admin.firestore.FieldValue.increment(debtDelta),
       suspicion: clampSuspicion((user.suspicion || 0) + PARK_SUSPICION_COST),
     });
   });
@@ -1154,7 +1446,9 @@ export const placeLimanOrder = onCall(async (request) => {
 //     gösterilmez; users/{uid} zaten sadece sahibi tarafından okunabiliyor.
 // =============================================================================
 
-const HEIST_TARGETS = ['banka', 'araba-galerisi', 'silah-magazasi'];
+const HEIST_TARGETS = Object.keys(HEIST_CONFIG);
+const HEIST_PLAN_MAX_PARTICIPANTS = 4;
+const HEIST_PLAN_DURATION_MS = 24 * 60 * 60 * 1000;
 
 export const createHeistPlan = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -1183,6 +1477,7 @@ export const createHeistPlan = onCall(async (request) => {
     creatorUid: uid,
     status: 'open',
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + HEIST_PLAN_DURATION_MS),
   });
   await planRef.collection('participants').doc(uid).set({
     uid,
@@ -1210,6 +1505,15 @@ export const joinHeistPlan = onCall(async (request) => {
     throw new HttpsError('failed-precondition', 'Bu soygun planı artık açık değil.');
   }
   const plan = planSnap.data();
+  if (plan.expiresAt && plan.expiresAt.toMillis() <= Date.now()) {
+    await planRef.update({ status: 'expired' });
+    throw new HttpsError('failed-precondition', 'Bu soygun planının 24 saatlik süresi doldu.');
+  }
+
+  const participantsSnap = await planRef.collection('participants').get();
+  if (participantsSnap.size >= HEIST_PLAN_MAX_PARTICIPANTS) {
+    throw new HttpsError('failed-precondition', 'Bu ekip zaten dolu (en fazla 4 kişi).');
+  }
 
   const userSnap = await db.collection('users').doc(uid).get();
   const user = userSnap.data();
@@ -1320,31 +1624,37 @@ export const executeHeistPlan = onCall(async (request) => {
   const busted = policeIdx.length > 0;
   let caughtBySuspicion = false;
 
-  const totalReward = Math.round(
-    config.rewardMin + Math.random() * (config.rewardMax - config.rewardMin)
-  );
+  const totalReward = config.reward;
   const dateKey = istanbulDateKey();
   const batch = db.batch();
 
   if (busted) {
-    // Sızan polis(ler) engelledikleri parayı bölüşür; soyguncular aynı
-    // miktarı devlete BORÇ olarak öder (altın düşmez, debtToState artar).
+    // Sızan polis(ler) engelledikleri parayı bölüşür (gerçek kazanç —
+    // borç varsa %50'si borca gider); soyguncular aynı miktarı devlete
+    // BORÇ olarak öder — önce mevcut altınlarından kesilir, yetmeyen kısım
+    // borca yazılır (Bölüm 10).
     const perPoliceEarning = Math.floor(totalReward / policeIdx.length);
-    const perCivilianDebt =
+    const perCivilianPenalty =
       civilianIdx.length > 0 ? Math.floor(totalReward / civilianIdx.length) : 0;
 
     policeIdx.forEach((i) => {
+      const currentDebt = userSnaps[i].data()?.debtToState || 0;
+      const { goldDelta, debtDelta } = splitIncomeForDebt(currentDebt, perPoliceEarning);
       batch.update(db.collection('users').doc(participants[i].uid), {
-        gold: admin.firestore.FieldValue.increment(perPoliceEarning),
+        gold: admin.firestore.FieldValue.increment(goldDelta),
+        debtToState: admin.firestore.FieldValue.increment(debtDelta),
       });
     });
     civilianIdx.forEach((i) => {
-      const currentSuspicion = userSnaps[i].data()?.suspicion || 0;
-      const currentReputation = userSnaps[i].data()?.reputation || 0;
+      const data = userSnaps[i].data();
+      const currentSuspicion = data?.suspicion || 0;
+      const currentReputation = data?.reputation || 0;
+      const { fromGold, debtAdded } = applyCapturePenalty(data?.gold, perCivilianPenalty);
       batch.update(db.collection('users').doc(participants[i].uid), {
         suspicion: clampSuspicion(currentSuspicion + config.suspicionCost),
         reputation: clampSuspicion(currentReputation - config.suspicionCost),
-        debtToState: admin.firestore.FieldValue.increment(perCivilianDebt),
+        gold: admin.firestore.FieldValue.increment(-fromGold),
+        debtToState: admin.firestore.FieldValue.increment(debtAdded),
       });
     });
   } else {
@@ -1352,21 +1662,29 @@ export const executeHeistPlan = onCall(async (request) => {
     // bir yakalanma riski var (yakalanma ihtimali = o kişinin şüphe %'si;
     // şüphesi 0 olan biri hiç yakalanmaz). Katılımcılardan BİRİ bile
     // yakalanırsa TÜM soygun başarısız sayılır ve herkes payını devlete
-    // borç olarak öder.
+    // borç olarak öder (önce mevcut altından kesilir, kalan borç yazılır).
     const suspicions = userSnaps.map((s) => s.data()?.suspicion || 0);
     const anyCaught = suspicions.some((s) => Math.random() < s / 100);
 
     const perPersonAmount = Math.floor(totalReward / participants.length);
     participants.forEach((p, i) => {
+      const data = userSnaps[i].data();
       const currentSuspicion = suspicions[i];
-      const currentReputation = userSnaps[i].data()?.reputation || 0;
-      batch.update(db.collection('users').doc(p.uid), {
+      const currentReputation = data?.reputation || 0;
+      const updates = {
         suspicion: clampSuspicion(currentSuspicion + config.suspicionCost),
         reputation: clampSuspicion(currentReputation - config.suspicionCost),
-        ...(anyCaught
-          ? { debtToState: admin.firestore.FieldValue.increment(perPersonAmount) }
-          : { gold: admin.firestore.FieldValue.increment(perPersonAmount) }),
-      });
+      };
+      if (anyCaught) {
+        const { fromGold, debtAdded } = applyCapturePenalty(data?.gold, perPersonAmount);
+        updates.gold = admin.firestore.FieldValue.increment(-fromGold);
+        updates.debtToState = admin.firestore.FieldValue.increment(debtAdded);
+      } else {
+        const { goldDelta, debtDelta } = splitIncomeForDebt(data?.debtToState, perPersonAmount);
+        updates.gold = admin.firestore.FieldValue.increment(goldDelta);
+        updates.debtToState = admin.firestore.FieldValue.increment(debtDelta);
+      }
+      batch.update(db.collection('users').doc(p.uid), updates);
     });
 
     if (anyCaught) {
@@ -1387,6 +1705,28 @@ export const executeHeistPlan = onCall(async (request) => {
   await batch.commit();
 
   return { ok: true, started: true, busted, caughtBySuspicion, totalReward };
+});
+
+// ---------------------------------------------------------------------------
+// expireHeistPlans — Bölüm 13: "24 saat dolup güç yetmezse plan iptal
+// olur." Saatte bir çalışıp süresi dolmuş 'open' planları 'expired' yapar.
+// ---------------------------------------------------------------------------
+export const expireHeistPlans = onSchedule({ schedule: 'every 60 minutes' }, async () => {
+  const now = Date.now();
+  // Tek eşitlik filtresi (status) — expiresAt karşılaştırması burada,
+  // JS tarafında yapılıyor ki composite index gerekmesin (bkz. dailyReset
+  // ile yaşadığımız orderBy('__name__') sorunu — aynı hatayı tekrarlamıyoruz).
+  const openSnap = await db.collection('heistPlans').where('status', '==', 'open').get();
+  const batch = db.batch();
+  let any = false;
+  openSnap.forEach((doc) => {
+    const expiresAt = doc.data().expiresAt;
+    if (expiresAt && expiresAt.toMillis() <= now) {
+      batch.update(doc.ref, { status: 'expired' });
+      any = true;
+    }
+  });
+  if (any) await batch.commit();
 });
 
 // ---------------------------------------------------------------------------
@@ -1667,15 +2007,41 @@ export const rollDice = onCall(async (request) => {
     if (raceOver) {
       updates.status = 'finished';
       updates.winnerUid = winnerUid;
-      const pot = room.betAmount * 2;
-      const meAmount =
-        (winnerUid === 'draw' ? room.betAmount : winnerUid === uid ? pot : 0) + updatedMe.raceGold;
-      tx.update(meUserRef, { gold: admin.firestore.FieldValue.increment(meAmount) });
+      const pot = room.betAmount;
+
+      // Kendi bahsini geri almak "kazanç" değildir (split edilmez); rakibin
+      // bahsini almak ve yarış-içi altın GERÇEK kazançtır (Bölüm 10'a göre
+      // borç varsa %50'si borca gider).
+      let meRefund = 0;
+      let meWinnings = 0;
+      if (winnerUid === 'draw') {
+        meRefund = pot;
+      } else if (winnerUid === uid) {
+        meRefund = pot;
+        meWinnings = pot;
+      }
+      const meSplittable = meWinnings + updatedMe.raceGold;
+      const meSplit = splitIncomeForDebt(meUserSnap.data()?.debtToState, meSplittable);
+      tx.update(meUserRef, {
+        gold: admin.firestore.FieldValue.increment(meRefund + meSplit.goldDelta),
+        debtToState: admin.firestore.FieldValue.increment(meSplit.debtDelta),
+      });
+
       if (otherUserRef && other) {
-        const otherAmount =
-          (winnerUid === 'draw' ? room.betAmount : winnerUid === otherUid ? pot : 0) +
-          other.raceGold;
-        tx.update(otherUserRef, { gold: admin.firestore.FieldValue.increment(otherAmount) });
+        let otherRefund = 0;
+        let otherWinnings = 0;
+        if (winnerUid === 'draw') {
+          otherRefund = pot;
+        } else if (winnerUid === otherUid) {
+          otherRefund = pot;
+          otherWinnings = pot;
+        }
+        const otherSplittable = otherWinnings + other.raceGold;
+        const otherSplit = splitIncomeForDebt(otherUserSnap?.data()?.debtToState, otherSplittable);
+        tx.update(otherUserRef, {
+          gold: admin.firestore.FieldValue.increment(otherRefund + otherSplit.goldDelta),
+          debtToState: admin.firestore.FieldValue.increment(otherSplit.debtDelta),
+        });
       }
     } else {
       updates.currentTurn = admin.firestore.FieldValue.increment(1);
@@ -1748,13 +2114,26 @@ export const resolveTurnTimeout = onCall(async (request) => {
     if (raceOver) {
       updates.status = 'finished';
       updates.winnerUid = winnerUid;
-      const pot = room.betAmount * 2;
+      const pot = room.betAmount;
       uids.forEach((u, i) => {
         const p = players[u];
-        let amount = p.raceGold;
-        if (winnerUid === 'draw') amount += room.betAmount;
-        else if (winnerUid === u) amount += pot;
-        tx.update(userRefs[i], { gold: admin.firestore.FieldValue.increment(amount) });
+        let refund = 0;
+        let winnings = 0;
+        if (winnerUid === 'draw') {
+          refund = pot;
+        } else if (winnerUid === u) {
+          refund = pot;
+          winnings = pot;
+        }
+        const splittable = winnings + p.raceGold;
+        const { goldDelta, debtDelta } = splitIncomeForDebt(
+          userSnaps[i].data()?.debtToState,
+          splittable
+        );
+        tx.update(userRefs[i], {
+          gold: admin.firestore.FieldValue.increment(refund + goldDelta),
+          debtToState: admin.firestore.FieldValue.increment(debtDelta),
+        });
       });
     } else {
       updates.currentTurn = admin.firestore.FieldValue.increment(1);

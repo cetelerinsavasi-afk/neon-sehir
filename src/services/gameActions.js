@@ -55,6 +55,14 @@ export const sellInvestment = (assetType, amount) =>
 export const sellAllInvestment = (assetType) =>
   httpsCallable(functions, 'sellInvestment')({ assetType, all: true });
 
+// --- Banka Kredisi: Araç İpoteği (Bölüm 8.4) ---
+
+export const takeVehicleLoan = (vehicleId, termDays) =>
+  httpsCallable(functions, 'takeVehicleLoan')({ vehicleId, termDays });
+
+export const repayVehicleLoan = (vehicleId, amount) =>
+  httpsCallable(functions, 'repayVehicleLoan')({ vehicleId, amount });
+
 // --- Faz 5: Şüphe Yönetimi ve Soygun ---
 
 export const prayAtMosque = () => httpsCallable(functions, 'prayAtMosque')();

@@ -11,6 +11,7 @@ import {
 } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import HeistPanel from '../HeistPanel/HeistPanel';
+import VehicleLoanSection from './VehicleLoanSection';
 import './BankScreen.css';
 
 function formatUnits(n) {
@@ -98,6 +99,11 @@ export default function BankScreen() {
             <span>Devlete borcun</span>
             <strong className="bank-debt">{debtToState.toLocaleString('tr-TR')}</strong>
           </div>
+        )}
+        {debtToState > 0 && (
+          <p className="bank-hint bank-debt-hint">
+            Borcun bitene kadar kazandığın her paranın yarısı otomatik borca gidiyor.
+          </p>
         )}
         <p className="bank-hint">Banka bakiyesi her gün %1 faiz kazanır.</p>
         <GoldAmountAction
@@ -187,6 +193,7 @@ export default function BankScreen() {
       </div>
 
       {error && <p className="bank-error">{error}</p>}
+      <VehicleLoanSection />
       <HeistPanel target="banka" />
     </div>
   );

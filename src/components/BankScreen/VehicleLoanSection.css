@@ -1,0 +1,132 @@
+.loan-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.loan-section-title {
+  margin: 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.loan-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.loan-take {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.loan-select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.loan-term-row {
+  display: flex;
+  gap: 8px;
+}
+
+.loan-term-btn {
+  flex: 1;
+  padding: 8px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.loan-term-btn.active {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.loan-btn {
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.loan-btn:hover:not(:disabled) {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.loan-btn.primary {
+  border-color: rgba(255, 46, 140, 0.5);
+  background: rgba(255, 46, 140, 0.12);
+}
+
+.loan-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.loan-active-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #0a0308;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.loan-active-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.loan-seized-tag {
+  color: var(--neon-pink);
+  font-size: 10px;
+  border: 1px solid var(--neon-pink);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 6px;
+}
+
+.loan-repay-row {
+  display: flex;
+  gap: 8px;
+}
+
+.loan-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.loan-error {
+  color: var(--neon-pink);
+  font-size: 11px;
+  margin: 0;
+}
