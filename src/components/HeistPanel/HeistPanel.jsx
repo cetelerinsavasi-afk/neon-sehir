@@ -1,24 +1,131 @@
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDailyActions } from '../../hooks/useDailyActions';
-import { attemptHeist } from '../../services/gameActions';
+import { useOpenHeistPlans } from '../../hooks/useOpenHeistPlans';
+import { useHeistPlanParticipants } from '../../hooks/useHeistPlanParticipants';
+import {
+  attemptHeist,
+  createHeistPlan,
+  joinHeistPlan,
+  leaveHeistPlan,
+  kickFromHeistPlan,
+  executeHeistPlan,
+} from '../../services/gameActions';
 import './HeistPanel.css';
 
 const LABELS = {
-  banka: { title: 'Banka Soygunu', risk: 'Çok yüksek şüphe artışı (+50)' },
-  'araba-galerisi': { title: 'Galeri Soygunu', risk: 'Yüksek şüphe artışı (+25)' },
-  'silah-magazasi': { title: 'Mağaza Soygunu', risk: 'Yüksek şüphe artışı (+25)' },
+  banka: { title: 'Banka Soygunu', risk: '+50 şüphe. Ekipte sızmış polis varsa yakalanırsın.', requiredPower: 60000 },
+  'araba-galerisi': {
+    title: 'Galeri Soygunu',
+    risk: '+25 şüphe. Ekipte sızmış polis varsa yakalanırsın.',
+    requiredPower: 15000,
+  },
+  'silah-magazasi': {
+    title: 'Mağaza Soygunu',
+    risk: '+25 şüphe. Ekipte sızmış polis varsa yakalanırsın.',
+    requiredPower: 15000,
+  },
 };
 
-/**
- * HeistPanel — tek oyunculu, anlık sonuçlanan basitleştirilmiş soygun.
- * Başarı şansı sahip olunan en güçlü silaha ve mevcut şüpheye göre sunucuda
- * hesaplanır (bkz. functions/index.js attemptHeist). Polis oyuncularının
- * canlı müdahalesi (Bölüm 14) sonraki bir fazda eklenecek.
- */
+function resultMessage(res) {
+  if (!res.started) {
+    if (res.reason === 'insufficient_power') {
+      return `Soygun başlamadı — güç yetersiz (gerekli: ${res.requiredPower.toLocaleString('tr-TR')}). Şüphe artmadı.`;
+    }
+    return 'Soygun başlamadı.';
+  }
+  // Solo soygun: { success, caught, reward }
+  if (res.reward !== undefined) {
+    if (res.caught) {
+      return `Yakalandın! ${res.reward.toLocaleString('tr-TR')} altını devlete borç olarak yazdın. Şüphen arttı.`;
+    }
+    return `Başarılı! ${res.reward.toLocaleString('tr-TR')} altın kazandın. Şüphen arttı.`;
+  }
+  // Ekip soygunu: { busted, caughtBySuspicion, totalReward }
+  if (res.busted) {
+    return 'Ekipte sızmış bir polis vardı! Soygun yakalandı — payınız devlete borç yazıldı.';
+  }
+  if (res.caughtBySuspicion) {
+    return 'Ekipten biri yakalandı, tüm soygun başarısız oldu — herkesin payı devlete borç yazıldı.';
+  }
+  return `Ekip başarılı! Toplam ${res.totalReward.toLocaleString('tr-TR')} altın katılımcılara eşit bölündü.`;
+}
+
+function PlanCard({ plan, myUid, onChanged }) {
+  const { participants } = useHeistPlanParticipants(plan.id);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  const totalPower = participants.reduce((sum, p) => sum + (p.weaponPower || 0), 0);
+  const isMember = participants.some((p) => p.uid === myUid);
+  const isCreator = plan.creatorUid === myUid;
+  const required = LABELS[plan.target]?.requiredPower || 0;
+
+  const run = async (fn) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fn();
+      onChanged?.(res?.data);
+    } catch (err) {
+      setError(err.message || 'İşlem başarısız.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="heist-plan-card">
+      <p className="heist-plan-meta">
+        {participants.length} kişi · Toplam güç {totalPower.toLocaleString('tr-TR')} /{' '}
+        {required.toLocaleString('tr-TR')}
+      </p>
+      <ul className="heist-plan-members">
+        {participants.map((p) => (
+          <li key={p.uid}>
+            {p.displayName} ({(p.weaponPower || 0).toLocaleString('tr-TR')})
+            {isCreator && p.uid !== myUid && (
+              <button
+                className="heist-plan-kick"
+                disabled={busy}
+                onClick={() => run(() => kickFromHeistPlan(plan.id, p.uid))}
+              >
+                çıkar
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      <div className="heist-plan-actions">
+        {!isMember && (
+          <button className="heist-plan-btn" disabled={busy} onClick={() => run(() => joinHeistPlan(plan.id))}>
+            Katıl
+          </button>
+        )}
+        {isMember && !isCreator && (
+          <button className="heist-plan-btn" disabled={busy} onClick={() => run(() => leaveHeistPlan(plan.id))}>
+            Ayrıl
+          </button>
+        )}
+        {isCreator && (
+          <button
+            className="heist-plan-btn primary"
+            disabled={busy || totalPower < required}
+            onClick={() => run(() => executeHeistPlan(plan.id))}
+          >
+            {totalPower < required ? 'Güç yetersiz' : 'Soygunu Başlat'}
+          </button>
+        )}
+      </div>
+      {error && <p className="heist-panel-error">{error}</p>}
+    </div>
+  );
+}
+
 export default function HeistPanel({ target }) {
   const { user } = useAuth();
   const { actions } = useDailyActions();
+  const { plans } = useOpenHeistPlans(target);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
@@ -28,7 +135,7 @@ export default function HeistPanel({ target }) {
   const meta = LABELS[target];
   const done = Boolean(actions.heist?.[target]);
 
-  const handleAttempt = async () => {
+  const handleSoloAttempt = async () => {
     setBusy(true);
     setError(null);
     setResult(null);
@@ -42,21 +149,65 @@ export default function HeistPanel({ target }) {
     }
   };
 
+  const handleCreatePlan = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await createHeistPlan(target);
+    } catch (err) {
+      setError(err.message || 'Plan oluşturulamadı.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="heist-panel">
       <p className="heist-panel-title">{meta.title}</p>
-      <p className="heist-panel-risk">{meta.risk}</p>
-      <button className="heist-panel-btn" disabled={done || busy} onClick={handleAttempt}>
-        {done ? 'Bugün zaten denedin' : busy ? 'Soyuluyor…' : 'Soygunu Dene'}
-      </button>
+      <p className="heist-panel-risk">
+        {meta.risk} · Gerekli güç: {meta.requiredPower.toLocaleString('tr-TR')}
+      </p>
+      <p className="heist-panel-hint">
+        Yakalanma ihtimalin = mevcut şüphe yüzden (şüphen 0 ise risk de yok). Ekipte: biri bile
+        yakalanırsa TÜM ekip başarısız sayılır. İçeri sızan bir polis varsa da aynı şekilde
+        yakalanırsınız — ikisinde de payınız devlete borç yazılır.
+      </p>
+
+      <div className="heist-panel-solo-row">
+        <button className="heist-panel-btn" disabled={done || busy} onClick={handleSoloAttempt}>
+          {done ? 'Bugün zaten denedin' : busy ? 'Soyuluyor…' : 'Tek Başına Dene'}
+        </button>
+        <button className="heist-panel-btn secondary" disabled={done || busy} onClick={handleCreatePlan}>
+          Ekip Kur
+        </button>
+      </div>
+
       {result && (
-        <p className={`heist-panel-result ${result.success ? 'success' : 'fail'}`}>
-          {result.success
-            ? `Başarılı! ${result.reward.toLocaleString('tr-TR')} altın kazandın (şans: %${result.chance}).`
-            : `Yakalandın, boşuna gitti (şans: %${result.chance}).`}
+        <p
+          className={`heist-panel-result ${
+            result.started && !result.caught && !result.busted && !result.caughtBySuspicion
+              ? 'success'
+              : ''
+          }`}
+        >
+          {resultMessage(result)}
         </p>
       )}
       {error && <p className="heist-panel-error">{error}</p>}
+
+      {plans.length > 0 && (
+        <div className="heist-plan-list">
+          <p className="heist-plan-list-title">Açık Ekip Planları</p>
+          {plans.map((plan) => (
+            <PlanCard
+              key={plan.id}
+              plan={plan}
+              myUid={user.uid}
+              onChanged={(data) => data && setResult(data)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

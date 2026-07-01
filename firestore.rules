@@ -39,6 +39,12 @@ service cloud.firestore {
         allow read: if isSelf(uid);
         allow write: if false;
       }
+
+      // messages/{msgId} — SMS gelen kutusu (soygun sızma uyarısı vb.).
+      match /messages/{msgId} {
+        allow read: if isSelf(uid);
+        allow write: if false;
+      }
     }
 
     // ---------------------------------------------------------------------
@@ -69,6 +75,18 @@ service cloud.firestore {
     match /limanOrders/{orderUid} {
       allow read: if isSignedIn() && orderUid == request.auth.uid;
       allow write: if false;
+    }
+
+    // heistPlans/{planId} — ekip soygun planları. Herkes görüp katılabilmeli,
+    // bu yüzden herkese açık okunur; yazma sadece Cloud Functions ile.
+    match /heistPlans/{planId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+
+      match /participants/{participantUid} {
+        allow read: if isSignedIn();
+        allow write: if false;
+      }
     }
 
     match /weapons/{weaponId} {

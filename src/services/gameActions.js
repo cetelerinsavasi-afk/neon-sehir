@@ -80,3 +80,27 @@ export const sellContrabandAtPark = (quantity) =>
 
 export const placeLimanOrder = (materialType, quantity) =>
   httpsCallable(functions, 'placeLimanOrder')({ materialType, quantity });
+
+// --- Faz 7: Ekip Soygunu ---
+// (Polisin rolü sızmaktır — kendi soygun/plan başlatamaz, ama başkasının
+// planına joinHeistPlan ile katılabilir. Ayrı bir "nöbet" mekaniği yok.)
+
+export const createHeistPlan = (target) =>
+  httpsCallable(functions, 'createHeistPlan')({ target });
+
+export const joinHeistPlan = (planId) =>
+  httpsCallable(functions, 'joinHeistPlan')({ planId });
+
+export const leaveHeistPlan = (planId) =>
+  httpsCallable(functions, 'leaveHeistPlan')({ planId });
+
+export const kickFromHeistPlan = (planId, targetUid) =>
+  httpsCallable(functions, 'kickFromHeistPlan')({ planId, targetUid });
+
+export const executeHeistPlan = (planId) =>
+  httpsCallable(functions, 'executeHeistPlan')({ planId });
+
+// --- SMS gelen kutusu ---
+
+export const markMessageRead = (messageId) =>
+  httpsCallable(functions, 'markMessageRead')({ messageId });

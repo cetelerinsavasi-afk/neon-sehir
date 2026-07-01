@@ -34,6 +34,10 @@
   color: var(--neon-cyan);
 }
 
+.bank-debt {
+  color: var(--neon-pink);
+}
+
 .bank-hint {
   margin: 0;
   font-size: 11px;

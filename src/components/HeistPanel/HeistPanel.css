@@ -22,6 +22,14 @@
   color: var(--text-dim);
 }
 
+.heist-panel-hint {
+  margin: 0;
+  font-size: 10px;
+  color: var(--text-dim);
+  line-height: 1.4;
+  opacity: 0.8;
+}
+
 .heist-panel-btn {
   padding: 10px;
   border-radius: 8px;
@@ -56,8 +64,113 @@
   color: var(--text-dim);
 }
 
+.heist-panel-solo-row {
+  display: flex;
+  gap: 8px;
+}
+
+.heist-panel-solo-row .heist-panel-btn {
+  flex: 1;
+  margin-top: 0;
+}
+
+.heist-panel-btn.secondary {
+  background: transparent;
+  border-style: dashed;
+}
+
 .heist-panel-error {
   color: var(--neon-pink);
   font-size: 11px;
   margin: 0;
+}
+
+.heist-plan-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(255, 46, 140, 0.3);
+}
+
+.heist-plan-list-title {
+  margin: 0;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.heist-plan-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #0a0308;
+  border: 1px solid rgba(255, 46, 140, 0.25);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.heist-plan-meta {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.heist-plan-members {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+}
+
+.heist-plan-members li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.heist-plan-kick {
+  border: none;
+  background: none;
+  color: var(--neon-pink);
+  font-size: 10px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.heist-plan-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.heist-plan-btn {
+  flex: 1;
+  padding: 6px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.heist-plan-btn:hover:not(:disabled) {
+  border-color: var(--neon-cyan);
+}
+
+.heist-plan-btn.primary {
+  border-color: rgba(255, 46, 140, 0.5);
+  background: rgba(255, 46, 140, 0.12);
+}
+
+.heist-plan-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }

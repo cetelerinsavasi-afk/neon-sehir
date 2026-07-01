@@ -871,7 +871,7 @@ export const bribePolice = onCall(async (request) => {
 // ---------------------------------------------------------------------------
 // buyFromVendor — Seyyar Satıcı: her satıcının KENDİ günlük hakkı var
 // (Kokoreçci, Simitçi, Dönerci, Köfteci birbirinden bağımsız), 1000 altın,
-// şüphe -5, saygınlık +5.
+// şüphe -5, saygınlık +10.
 // ---------------------------------------------------------------------------
 const VENDOR_COST = 1000;
 
@@ -897,7 +897,7 @@ export const buyFromVendor = onCall(async (request) => {
     tx.update(userRef, {
       gold: admin.firestore.FieldValue.increment(-VENDOR_COST),
       suspicion: clampSuspicion((user.suspicion || 0) - 5),
-      reputation: clamp(Math.round((user.reputation || 0) + 5), 0, 100),
+      reputation: clamp(Math.round((user.reputation || 0) + 10), 0, 100),
     });
     tx.set(dailyRef, { vendorPurchases: { [vendorId]: true } }, { merge: true });
   });
@@ -906,18 +906,30 @@ export const buyFromVendor = onCall(async (request) => {
 });
 
 // ---------------------------------------------------------------------------
-// attemptHeist — Bölüm 13 soygun sistemi.
-// Basitleştirme: bu sürümde tek oyunculu, anlık sonuçlanan bir soygun var.
-// Polis oyuncularının soygunlara canlı müdahalesi (Bölüm 14'teki
-// policeInfiltrators mantığı) çok oyunculu koordinasyon gerektirdiği için
-// ayrı bir fazda ele alınacak — şimdilik başarı şansı sahip olunan en
-// güçlü silaha ve mevcut şüpheye göre hesaplanıyor.
+// attemptHeist — Bölüm 13/14 soygun sistemi (TEK BAŞINA).
+// Kurallar:
+//   - Polis mesleğindeki oyuncular soygun BAŞLATAMAZ (ne solo ne ekip
+//     kurarak) — onların rolü sızmak, soymak değil.
+//   - Güç yetersizse soygun hiç BAŞLAMAZ, şüphe artmaz. (Ekip kurulmalı.)
+//   - Tek başınayken sızma riski yok (kimse yanında yok), AMA yakalanma
+//     riski mevcut şüpheye bağlı: yakalanma ihtimali = şüphe yüzdesi.
+//     Şüphen 0 ise yakalanma riskin de yoktur. Yakalanırsan kazanacağın
+//     parayı devlete BORÇ olarak ödersin (bkz. debtToState).
 // ---------------------------------------------------------------------------
 const HEIST_CONFIG = {
-  banka: { suspicionCost: 50, rewardMin: 50000, rewardMax: 100000, baseChance: 0.35 },
-  'araba-galerisi': { suspicionCost: 25, rewardMin: 10000, rewardMax: 30000, baseChance: 0.5 },
-  'silah-magazasi': { suspicionCost: 25, rewardMin: 8000, rewardMax: 20000, baseChance: 0.5 },
+  banka: { suspicionCost: 50, rewardMin: 50000, rewardMax: 100000, requiredPower: 60000 },
+  'araba-galerisi': { suspicionCost: 25, rewardMin: 10000, rewardMax: 30000, requiredPower: 15000 },
+  'silah-magazasi': { suspicionCost: 25, rewardMin: 8000, rewardMax: 20000, requiredPower: 15000 },
 };
+
+async function getMaxWeaponPower(uid) {
+  const snap = await db.collection('weapons').where('ownerId', '==', uid).get();
+  let maxPower = 0;
+  snap.forEach((d) => {
+    maxPower = Math.max(maxPower, d.data().power || 0);
+  });
+  return maxPower;
+}
 
 export const attemptHeist = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -928,23 +940,30 @@ export const attemptHeist = onCall(async (request) => {
   }
 
   const dateKey = istanbulDateKey();
-  const dailyRefId = `${uid}_${dateKey}`;
-  const dailyRef = db.collection('dailyActions').doc(dailyRefId);
+  const dailyRef = db.collection('dailyActions').doc(`${uid}_${dateKey}`);
   const userRef = db.collection('users').doc(uid);
 
-  const [dailySnap, weaponsSnap] = await Promise.all([
-    dailyRef.get(),
-    db.collection('weapons').where('ownerId', '==', uid).get(),
-  ]);
+  const [dailySnap, userSnap0] = await Promise.all([dailyRef.get(), userRef.get()]);
+  if (userSnap0.data()?.profession === 'polis') {
+    throw new HttpsError('failed-precondition', 'Polis mesleğindeyken soygun başlatamazsın.');
+  }
   if (dailySnap.exists && dailySnap.data().heist?.[target]) {
     throw new HttpsError('failed-precondition', 'Bu hedefi bugün zaten denedin.');
   }
 
-  let maxPower = 0;
-  weaponsSnap.forEach((d) => {
-    maxPower = Math.max(maxPower, d.data().power || 0);
-  });
+  const maxPower = await getMaxWeaponPower(uid);
+  if (maxPower < config.requiredPower) {
+    // Soygun hiç başlamadı — şüphe kesinlikle artmaz.
+    return {
+      ok: true,
+      started: false,
+      reason: 'insufficient_power',
+      requiredPower: config.requiredPower,
+      yourPower: maxPower,
+    };
+  }
 
+  // Soygun BAŞLADI — şüphe artık kesin artacak. Yakalanma ihtimali = şüphe %.
   let result = null;
   await db.runTransaction(async (tx) => {
     const userSnap = await tx.get(userRef);
@@ -953,23 +972,21 @@ export const attemptHeist = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
     }
     const suspicion = user.suspicion || 0;
-    const chance = clamp(
-      config.baseChance + Math.min(maxPower / 50000, 1) * 0.2 - suspicion * 0.003,
-      0.1,
-      0.9
+    const caught = Math.random() < suspicion / 100;
+    const reward = Math.round(
+      config.rewardMin + Math.random() * (config.rewardMax - config.rewardMin)
     );
-    const success = Math.random() < chance;
-    const reward = success
-      ? Math.round(config.rewardMin + Math.random() * (config.rewardMax - config.rewardMin))
-      : 0;
 
     tx.update(userRef, {
       suspicion: clampSuspicion(suspicion + config.suspicionCost),
-      ...(success ? { gold: admin.firestore.FieldValue.increment(reward) } : {}),
+      reputation: clampSuspicion((user.reputation || 0) - config.suspicionCost),
+      ...(caught
+        ? { debtToState: admin.firestore.FieldValue.increment(reward) }
+        : { gold: admin.firestore.FieldValue.increment(reward) }),
     });
     tx.set(dailyRef, { heist: { [target]: true } }, { merge: true });
 
-    result = { success, reward, chance: Math.round(chance * 100) };
+    result = { started: true, success: !caught, caught, reward };
   });
 
   return { ok: true, ...result };
@@ -1112,5 +1129,274 @@ export const placeLimanOrder = onCall(async (request) => {
     tx.set(orderRef, { [materialType]: admin.firestore.FieldValue.increment(qty) }, { merge: true });
   });
 
+  return { ok: true };
+});
+
+
+// =============================================================================
+// FAZ 7 — EKİP SOYGUN SİSTEMİ (Bölüm 13, 14)
+// =============================================================================
+//
+// ÖNEMLİ — polislerin rolü "nöbet tutup engellemek" DEĞİL, "sızmak"tır:
+//   - Polis mesleğindeki oyuncular kendi soygunlarını başlatamaz (attemptHeist
+//     ve createHeistPlan bunu reddeder).
+//   - Ama polis, BAŞKASININ kurduğu bir ekip soygun planına sivil gibi
+//     katılabilir (joinHeistPlan'da hiçbir kısıtlama yok — bilerek).
+//   - Plan yürütüldüğünde (executeHeistPlan), ekipteki HERKESİN gerçek
+//     mesleği gizlice (sadece sunucuda, Admin SDK ile) kontrol edilir.
+//     Aralarında polis varsa soygun "yakalanmış" sayılır:
+//       * Soyguncular (polis olmayanlar) kazanacakları parayı DEVLETE BORÇ
+//         olarak öderler (debtToState alanına eklenir, altın düşmez).
+//       * Sızan polis(ler) engelledikleri parayı kendi aralarında bölüşür.
+//     Ekipte hiç polis yoksa soygun normal şekilde başarılı olur, ödül
+//     tüm katılımcılara eşit bölünür.
+//   - Hiçbir zaman kimin polis olduğu diğer katılımcılara (ya da istemciye)
+//     gösterilmez; users/{uid} zaten sadece sahibi tarafından okunabiliyor.
+// =============================================================================
+
+const HEIST_TARGETS = ['banka', 'araba-galerisi', 'silah-magazasi'];
+
+export const createHeistPlan = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { target } = request.data || {};
+  if (!HEIST_TARGETS.includes(target)) {
+    throw new HttpsError('invalid-argument', 'Geçersiz soygun hedefi.');
+  }
+
+  const userSnap = await db.collection('users').doc(uid).get();
+  const user = userSnap.data();
+  if (user?.profession === 'polis') {
+    throw new HttpsError('failed-precondition', 'Polis mesleğindeyken soygun planı kuramazsın.');
+  }
+
+  const dateKey = istanbulDateKey();
+  const dailySnap = await db.collection('dailyActions').doc(`${uid}_${dateKey}`).get();
+  if (dailySnap.exists && dailySnap.data().heist?.[target]) {
+    throw new HttpsError('failed-precondition', 'Bu hedefi bugün zaten denedin.');
+  }
+
+  const myPower = await getMaxWeaponPower(uid);
+
+  const planRef = db.collection('heistPlans').doc();
+  await planRef.set({
+    target,
+    creatorUid: uid,
+    status: 'open',
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  await planRef.collection('participants').doc(uid).set({
+    uid,
+    displayName: user?.displayName || 'Oyuncu',
+    weaponPower: myPower,
+    joinedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return { ok: true, planId: planRef.id };
+});
+
+// joinHeistPlan — KASITLI OLARAK meslek kontrolü yok. Polisler de dahil
+// herkes katılabilir; bu, sızma mekaniğinin ta kendisi.
+//
+// Sızma uyarısı: bir polis plana katıldığında, plan SAHİBİNİN saygınlığına
+// bağlı bir ihtimalle "içeride polis olabilir" diye esnaftan SMS gelir.
+// İhtimal = saygınlık yüzdesi birebir (saygınlık 40 ise %40, 100 ise kesin).
+// Bir kez başarılı uyarı gönderildiyse plan için tekrar gönderilmez.
+export const joinHeistPlan = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { planId } = request.data || {};
+  const planRef = db.collection('heistPlans').doc(planId);
+  const planSnap = await planRef.get();
+  if (!planSnap.exists || planSnap.data().status !== 'open') {
+    throw new HttpsError('failed-precondition', 'Bu soygun planı artık açık değil.');
+  }
+  const plan = planSnap.data();
+
+  const userSnap = await db.collection('users').doc(uid).get();
+  const user = userSnap.data();
+  const myPower = await getMaxWeaponPower(uid);
+
+  await planRef.collection('participants').doc(uid).set({
+    uid,
+    displayName: user?.displayName || 'Oyuncu',
+    weaponPower: myPower,
+    joinedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  if (user?.profession === 'polis' && !plan.policeWarningSent) {
+    const creatorSnap = await db.collection('users').doc(plan.creatorUid).get();
+    const creatorReputation = creatorSnap.data()?.reputation || 0;
+    if (Math.random() * 100 < creatorReputation) {
+      await planRef.update({ policeWarningSent: true });
+      await db
+        .collection('users')
+        .doc(plan.creatorUid)
+        .collection('messages')
+        .add({
+          text: 'Esnaftan bir haber var: kurduğun soygun planına içeriden biri sızmış olabilir.',
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          read: false,
+          type: 'heist_warning',
+          planId,
+        });
+    }
+  }
+
+  return { ok: true };
+});
+
+export const leaveHeistPlan = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { planId } = request.data || {};
+  await db.collection('heistPlans').doc(planId).collection('participants').doc(uid).delete();
+  return { ok: true };
+});
+
+export const kickFromHeistPlan = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { planId, targetUid } = request.data || {};
+  const planRef = db.collection('heistPlans').doc(planId);
+  const planSnap = await planRef.get();
+  if (!planSnap.exists || planSnap.data().creatorUid !== uid) {
+    throw new HttpsError('permission-denied', 'Sadece planı kuran kişi katılımcı çıkarabilir.');
+  }
+  if (targetUid === uid) {
+    throw new HttpsError(
+      'invalid-argument',
+      'Kendini çıkaramazsın, planı silmek için farklı bir yol gerekir.'
+    );
+  }
+  await planRef.collection('participants').doc(targetUid).delete();
+  return { ok: true };
+});
+
+// executeHeistPlan — ekip gücü yeterliyse soygunu yürütür. Sonucu belirleyen
+// TEK şey, ekipte sızmış polis olup olmadığıdır (bkz. dosya başındaki not).
+export const executeHeistPlan = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { planId } = request.data || {};
+  const planRef = db.collection('heistPlans').doc(planId);
+  const planSnap = await planRef.get();
+  if (!planSnap.exists) {
+    throw new HttpsError('failed-precondition', 'Plan bulunamadı.');
+  }
+  const plan = planSnap.data();
+  if (plan.creatorUid !== uid) {
+    throw new HttpsError('permission-denied', 'Sadece planı kuran kişi soygunu başlatabilir.');
+  }
+  if (plan.status !== 'open') {
+    throw new HttpsError('failed-precondition', 'Bu plan zaten sonuçlanmış.');
+  }
+
+  const config = HEIST_CONFIG[plan.target];
+  const participantsSnap = await planRef.collection('participants').get();
+  const participants = participantsSnap.docs.map((d) => d.data());
+  if (participants.length === 0) {
+    throw new HttpsError('failed-precondition', 'Ekipte kimse yok.');
+  }
+
+  const totalPower = participants.reduce((sum, p) => sum + (p.weaponPower || 0), 0);
+  if (totalPower < config.requiredPower) {
+    // Soygun hiç başlamadı — kimsenin şüphesi/borcu değişmez.
+    return {
+      ok: true,
+      started: false,
+      reason: 'insufficient_power',
+      requiredPower: config.requiredPower,
+      totalPower,
+    };
+  }
+
+  // Her katılımcının GERÇEK mesleğini gizlice kontrol et (sadece burada,
+  // Admin SDK ile — hiçbir katılımcıya asla gösterilmez).
+  const userSnaps = await Promise.all(
+    participants.map((p) => db.collection('users').doc(p.uid).get())
+  );
+  const policeIdx = [];
+  const civilianIdx = [];
+  userSnaps.forEach((snap, i) => {
+    if (snap.data()?.profession === 'polis') policeIdx.push(i);
+    else civilianIdx.push(i);
+  });
+  const busted = policeIdx.length > 0;
+  let caughtBySuspicion = false;
+
+  const totalReward = Math.round(
+    config.rewardMin + Math.random() * (config.rewardMax - config.rewardMin)
+  );
+  const dateKey = istanbulDateKey();
+  const batch = db.batch();
+
+  if (busted) {
+    // Sızan polis(ler) engelledikleri parayı bölüşür; soyguncular aynı
+    // miktarı devlete BORÇ olarak öder (altın düşmez, debtToState artar).
+    const perPoliceEarning = Math.floor(totalReward / policeIdx.length);
+    const perCivilianDebt =
+      civilianIdx.length > 0 ? Math.floor(totalReward / civilianIdx.length) : 0;
+
+    policeIdx.forEach((i) => {
+      batch.update(db.collection('users').doc(participants[i].uid), {
+        gold: admin.firestore.FieldValue.increment(perPoliceEarning),
+      });
+    });
+    civilianIdx.forEach((i) => {
+      const currentSuspicion = userSnaps[i].data()?.suspicion || 0;
+      const currentReputation = userSnaps[i].data()?.reputation || 0;
+      batch.update(db.collection('users').doc(participants[i].uid), {
+        suspicion: clampSuspicion(currentSuspicion + config.suspicionCost),
+        reputation: clampSuspicion(currentReputation - config.suspicionCost),
+        debtToState: admin.firestore.FieldValue.increment(perCivilianDebt),
+      });
+    });
+  } else {
+    // Ekipte sızmış polis yok — ama herkesin KENDİ şüphesine göre bağımsız
+    // bir yakalanma riski var (yakalanma ihtimali = o kişinin şüphe %'si;
+    // şüphesi 0 olan biri hiç yakalanmaz). Katılımcılardan BİRİ bile
+    // yakalanırsa TÜM soygun başarısız sayılır ve herkes payını devlete
+    // borç olarak öder.
+    const suspicions = userSnaps.map((s) => s.data()?.suspicion || 0);
+    const anyCaught = suspicions.some((s) => Math.random() < s / 100);
+
+    const perPersonAmount = Math.floor(totalReward / participants.length);
+    participants.forEach((p, i) => {
+      const currentSuspicion = suspicions[i];
+      const currentReputation = userSnaps[i].data()?.reputation || 0;
+      batch.update(db.collection('users').doc(p.uid), {
+        suspicion: clampSuspicion(currentSuspicion + config.suspicionCost),
+        reputation: clampSuspicion(currentReputation - config.suspicionCost),
+        ...(anyCaught
+          ? { debtToState: admin.firestore.FieldValue.increment(perPersonAmount) }
+          : { gold: admin.firestore.FieldValue.increment(perPersonAmount) }),
+      });
+    });
+
+    if (anyCaught) {
+      caughtBySuspicion = true;
+    }
+  }
+
+  // Herkesin (polis dahil) o hedef için günlük hakkı bugün için tükenir.
+  participants.forEach((p) => {
+    const dailyRef = db.collection('dailyActions').doc(`${p.uid}_${dateKey}`);
+    batch.set(dailyRef, { heist: { [plan.target]: true } }, { merge: true });
+  });
+
+  batch.update(planRef, {
+    status: 'executed',
+    result: { busted, caughtBySuspicion, totalReward },
+  });
+  await batch.commit();
+
+  return { ok: true, started: true, busted, caughtBySuspicion, totalReward };
+});
+
+// ---------------------------------------------------------------------------
+// markMessageRead — SMS gelen kutusundaki bir mesajı okundu olarak işaretler.
+// ---------------------------------------------------------------------------
+export const markMessageRead = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { messageId } = request.data || {};
+  await db.collection('users').doc(uid).collection('messages').doc(messageId).update({
+    read: true,
+  });
   return { ok: true };
 });

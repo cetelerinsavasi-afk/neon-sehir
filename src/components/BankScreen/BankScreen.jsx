@@ -66,6 +66,7 @@ export default function BankScreen() {
 
   const gold = player?.gold ?? 0;
   const bankBalance = player?.bankBalance ?? 0;
+  const debtToState = player?.debtToState ?? 0;
   const diamondHoldings = player?.diamondHoldings ?? 0;
   const cryptoHoldings = player?.cryptoHoldings ?? 0;
 
@@ -92,6 +93,12 @@ export default function BankScreen() {
           <span>Banka bakiyesi</span>
           <strong className="bank-highlight">{bankBalance.toLocaleString('tr-TR')}</strong>
         </div>
+        {debtToState > 0 && (
+          <div className="bank-section-row">
+            <span>Devlete borcun</span>
+            <strong className="bank-debt">{debtToState.toLocaleString('tr-TR')}</strong>
+          </div>
+        )}
         <p className="bank-hint">Banka bakiyesi her gün %1 faiz kazanır.</p>
         <GoldAmountAction
           label="Yatır"
