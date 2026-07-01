@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { AuthProvider } from './contexts/AuthContext';
-import AuthGate from './components/AuthGate/AuthGate';
 import Hud from './components/Hud/Hud';
 import CityMap from './components/CityMap/CityMap';
 import PhoneButton from './components/Phone/PhoneButton';
@@ -10,6 +9,9 @@ import { usePlayer } from './hooks/usePlayer';
 import './styles/theme.css';
 import './App.css';
 
+// Harita, HUD ve telefon giriş yapmadan da görülebilir/gezilebilir —
+// giriş sadece gerçek bir aksiyon (meslek seçme, fabrikada çalışma vb.)
+// denendiğinde, o aksiyonun içinde (RegionModal → SignInPrompt) istenir.
 function GameShell() {
   const [activeRegion, setActiveRegion] = useState(null);
   const [phoneOpen, setPhoneOpen] = useState(false);
@@ -43,9 +45,7 @@ function GameShell() {
 export default function App() {
   return (
     <AuthProvider>
-      <AuthGate>
-        <GameShell />
-      </AuthGate>
+      <GameShell />
     </AuthProvider>
   );
 }

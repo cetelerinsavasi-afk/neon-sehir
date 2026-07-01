@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useDailyActions } from '../../hooks/useDailyActions';
 import { useProductionMachines } from '../../hooks/useProductionMachines';
 import { factoryWork, buyProductionMachine, collectProduction } from '../../services/gameActions';
+import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import './FactoryScreen.css';
 
 const MACHINES = [
@@ -13,11 +15,18 @@ const MACHINES = [
 const MACHINE_PRICE = 100000;
 
 export default function FactoryScreen() {
+  const { user } = useAuth();
   const { player } = usePlayer();
   const { actions } = useDailyActions();
   const { machines } = useProductionMachines();
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
+
+  if (!user) {
+    return (
+      <SignInPrompt message="Fabrikada çalışmak veya üretim makinesi kurmak için giriş yapmalısın." />
+    );
+  }
 
   const run = async (key, fn) => {
     setBusy(key);
