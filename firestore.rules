@@ -115,6 +115,19 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // globalChat/{msgId} — ChatsApp, tüm oyunculara açık genel sohbet.
+    match /globalChat/{msgId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // usernames/{lowercaseName} — benzersiz oyun içi isim rezervasyonu.
+    // Sadece varlık kontrolü için okunabilir; yazma Cloud Functions ile.
+    match /usernames/{name} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
     match /weapons/{weaponId} {
       allow read: if isSignedIn();
       allow write: if false;

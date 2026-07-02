@@ -2,14 +2,14 @@ import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useInventory } from '../../hooks/useInventory';
-import { upgradeVehicle, sellMaterial, buyMaterialFromGarage } from '../../services/gameActions';
+import { upgradeVehicle } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
-import HeistPanel from '../HeistPanel/HeistPanel';
+import InfoIcon from '../InfoIcon/InfoIcon';
 import './GarageScreen.css';
 
-const SELL_PRICE = 250; // Bölüm 8.2
-const BUY_PRICE = 500;
-
+// Modifiye Garajı SADECE araç geliştirme yapılan bir yer — malzeme
+// alım/satımı buradan kaldırıldı (alım: Telefon > Amazor, satım: Liman &
+// Depo > Depo).
 export default function GarageScreen() {
   const { user } = useAuth();
   const { vehicles } = useVehicles();
@@ -38,50 +38,10 @@ export default function GarageScreen() {
 
   return (
     <div className="garage-screen">
-      <div className="garage-inventory">
-        <div className="garage-material">
-          <span>Vites malzemesi: {vitesQty}</span>
-          <div className="garage-material-actions">
-            <button
-              className="garage-sell-btn"
-              disabled={busy === 'buy-vites'}
-              onClick={() => run('buy-vites', () => buyMaterialFromGarage('vitesUpgrade', 1))}
-            >
-              1 Adet Al ({BUY_PRICE} altın)
-            </button>
-            {vitesQty > 0 && (
-              <button
-                className="garage-sell-btn"
-                disabled={busy === 'sell-vites'}
-                onClick={() => run('sell-vites', () => sellMaterial('vitesUpgrade', vitesQty))}
-              >
-                Hepsini Sat ({(vitesQty * SELL_PRICE).toLocaleString('tr-TR')} altın)
-              </button>
-            )}
-          </div>
-        </div>
-        <div className="garage-material">
-          <span>Depo malzemesi: {depoQty}</span>
-          <div className="garage-material-actions">
-            <button
-              className="garage-sell-btn"
-              disabled={busy === 'buy-depo'}
-              onClick={() => run('buy-depo', () => buyMaterialFromGarage('depoUpgrade', 1))}
-            >
-              1 Adet Al ({BUY_PRICE} altın)
-            </button>
-            {depoQty > 0 && (
-              <button
-                className="garage-sell-btn"
-                disabled={busy === 'sell-depo'}
-                onClick={() => run('sell-depo', () => sellMaterial('depoUpgrade', depoQty))}
-              >
-                Hepsini Sat ({(depoQty * SELL_PRICE).toLocaleString('tr-TR')} altın)
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+      <p className="garage-hint">
+        Elindeki malzeme: Vites {vitesQty} · Depo {depoQty}
+        <InfoIcon text="Malzeme almak için Telefon > Amazor'a, satmak için Liman & Depo > Depo'ya git." />
+      </p>
 
       {vehicles.length === 0 ? (
         <p className="garage-hint">
@@ -114,7 +74,6 @@ export default function GarageScreen() {
         ))
       )}
       {error && <p className="garage-error">{error}</p>}
-      <HeistPanel target="modifiye_garaji" />
     </div>
   );
 }

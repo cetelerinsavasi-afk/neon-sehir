@@ -4,15 +4,14 @@ import { usePlayer } from '../../hooks/usePlayer';
 import { useWeapons } from '../../hooks/useWeapons';
 import { useInventory } from '../../hooks/useInventory';
 import { weaponCatalog } from '../../data/weaponCatalog';
-import {
-  buyWeapon,
-  upgradeWeapon,
-  buySilahMaterial,
-  sellSilahMaterial,
-} from '../../services/gameActions';
+import { buyWeapon, upgradeWeapon } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
+import InfoIcon from '../InfoIcon/InfoIcon';
 import './WeaponShopScreen.css';
 
+// Silah Mağazası SADECE silah satın alma ve mevcut silahları geliştirme
+// yapılan bir yer — gelişim malzemesi alım/satımı buradan kaldırıldı
+// (alım: Telefon > Amazor, satım: Liman & Depo > Depo).
 export default function WeaponShopScreen() {
   const { user } = useAuth();
   const { player } = usePlayer();
@@ -42,25 +41,10 @@ export default function WeaponShopScreen() {
 
   return (
     <div className="weapon-shop">
-      <div className="weapon-shop-material">
-        <span>Gelişim malzemesi: {materialQty}</span>
-        <div className="weapon-shop-material-buttons">
-          <button
-            className="weapon-shop-small-btn"
-            disabled={busy === 'buy-material' || gold < 100}
-            onClick={() => run('buy-material', buySilahMaterial)}
-          >
-            Al (100 altın)
-          </button>
-          <button
-            className="weapon-shop-small-btn"
-            disabled={busy === 'sell-material' || materialQty < 1}
-            onClick={() => run('sell-material', sellSilahMaterial)}
-          >
-            Sat (50 altın)
-          </button>
-        </div>
-      </div>
+      <p className="weapon-shop-material">
+        Gelişim malzemesi: {materialQty}
+        <InfoIcon text="Malzeme almak için Telefon > Amazor'a, satmak için Liman & Depo > Depo'ya git." />
+      </p>
 
       <p className="weapon-shop-heading">Mağaza</p>
       {weaponCatalog.map((w) => (

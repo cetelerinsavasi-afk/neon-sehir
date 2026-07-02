@@ -1,0 +1,81 @@
+.amazor-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.amazor-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.amazor-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.amazor-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.amazor-item-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.amazor-item-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.amazor-item-row {
+  display: flex;
+  gap: 8px;
+}
+
+.amazor-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.amazor-btn {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid #ffd23f;
+  background: rgba(255, 210, 63, 0.12);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.amazor-btn:hover:not(:disabled) {
+  background: rgba(255, 210, 63, 0.22);
+}
+
+.amazor-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.amazor-error {
+  color: var(--neon-pink);
+  font-size: 12px;
+  margin: 0;
+}

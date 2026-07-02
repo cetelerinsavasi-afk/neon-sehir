@@ -1,5 +1,4 @@
 import SimpleActionScreen from '../SimpleActionScreen/SimpleActionScreen';
-import HeistPanel from '../HeistPanel/HeistPanel';
 import { buyFromVendor } from '../../services/gameActions';
 
 // Şehirdeki 4 seyyar satıcı (Kokoreçci, Simitçi, Dönerci, Köfteci) birbirinden
@@ -18,7 +17,6 @@ export default function VendorScreen({ vendorId, vendorName }) {
         goldCost={1000}
         actionFn={() => buyFromVendor(vendorId)}
       />
-      <HeistPanel target={vendorId} />
     </div>
   );
 }

@@ -10,7 +10,6 @@ import {
   sellAllInvestment,
 } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
-import HeistPanel from '../HeistPanel/HeistPanel';
 import VehicleLoanSection from './VehicleLoanSection';
 import './BankScreen.css';
 
@@ -18,38 +17,73 @@ function formatUnits(n) {
   return n.toLocaleString('tr-TR', { maximumFractionDigits: 6 });
 }
 
-// Altın tutarı bazlı aksiyon: kullanıcı "kaç altınlık" işlem yapmak
-// istediğini girer, adet değil. unitPrice verilirse kaç adet karşılığı
-// geleceğini canlı önizleme olarak gösterir.
-function GoldAmountAction({ label, onSubmit, busy, unitPrice }) {
+function ChangeBadge({ pct }) {
+  if (pct === undefined || pct === null) return null;
+  const positive = pct >= 0;
+  return (
+    <span className={`bank-change-badge ${positive ? 'up' : 'down'}`}>
+      {positive ? '▲' : '▼'} {Math.abs(pct)}%
+    </span>
+  );
+}
+
+// Al/Sat butonlu, tıklanınca altta ilgili işlemin girdi paneli açılan
+// aksiyon bileşeni — eskiden iki kutu alt alta duruyordu, artık tek
+// butona basınca ihtiyacın olan panel açılıyor.
+function TradeToggle({ buyLabel, sellLabel, onBuy, onSell, unitPrice, busy }) {
+  const [mode, setMode] = useState(null); // 'buy' | 'sell' | null
   const [value, setValue] = useState('');
   const amount = Math.floor(Number(value));
   const preview = unitPrice && amount > 0 ? amount / unitPrice : null;
 
-  const handleSubmit = async () => {
-    if (!amount || amount <= 0) return;
-    await onSubmit(amount);
+  const openMode = (m) => {
+    setMode(mode === m ? null : m);
     setValue('');
   };
 
+  const handleSubmit = async () => {
+    if (!amount || amount <= 0) return;
+    if (mode === 'buy') await onBuy(amount);
+    else await onSell(amount);
+    setValue('');
+    setMode(null);
+  };
+
   return (
-    <div className="bank-amount-action">
-      <div className="bank-amount-input-wrap">
-        <input
-          type="number"
-          min="1"
-          placeholder="Altın miktarı"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          className="bank-input"
-        />
-        {preview !== null && (
-          <span className="bank-amount-preview">≈ {formatUnits(preview)} adet</span>
-        )}
+    <div className="bank-trade">
+      <div className="bank-trade-buttons">
+        <button
+          className={`bank-trade-btn${mode === 'buy' ? ' active' : ''}`}
+          onClick={() => openMode('buy')}
+        >
+          {buyLabel}
+        </button>
+        <button
+          className={`bank-trade-btn${mode === 'sell' ? ' active' : ''}`}
+          onClick={() => openMode('sell')}
+        >
+          {sellLabel}
+        </button>
       </div>
-      <button className="bank-btn" disabled={busy || !amount} onClick={handleSubmit}>
-        {busy ? '…' : label}
-      </button>
+      {mode && (
+        <div className="bank-trade-panel">
+          <input
+            type="number"
+            min="1"
+            placeholder="Altın miktarı"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            className="bank-input"
+            autoFocus
+          />
+          {preview !== null && (
+            <span className="bank-amount-preview">≈ {formatUnits(preview)} adet</span>
+          )}
+          <button className="bank-btn primary" disabled={busy || !amount} onClick={handleSubmit}>
+            {busy ? '…' : 'Onayla'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -78,20 +112,19 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
           <strong className="bank-highlight">{bankBalance.toLocaleString('tr-TR')}</strong>
         </div>
         <p className="bank-hint">Banka bakiyesi her gün %1 faiz kazanır.</p>
-        <GoldAmountAction
-          label="Yatır"
-          busy={busy === 'deposit'}
-          onSubmit={(amount) => run('deposit', () => depositToBank(amount))}
-        />
-        <GoldAmountAction
-          label="Çek"
-          busy={busy === 'withdraw'}
-          onSubmit={(amount) => run('withdraw', () => withdrawFromBank(amount))}
+        <TradeToggle
+          buyLabel="Yatır"
+          sellLabel="Çek"
+          busy={busy === 'deposit' || busy === 'withdraw'}
+          onBuy={(amount) => run('deposit', () => depositToBank(amount))}
+          onSell={(amount) => run('withdraw', () => withdrawFromBank(amount))}
         />
       </div>
 
       <div className="bank-section">
-        <p className="bank-section-title">Elmas</p>
+        <p className="bank-section-title">
+          Elmas <ChangeBadge pct={prices.diamondChangePct} />
+        </p>
         <div className="bank-section-row">
           <span>Güncel fiyat</span>
           <strong>{(prices.diamondPrice ?? 0).toLocaleString('tr-TR')} altın/adet</strong>
@@ -104,17 +137,13 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
             altın değerinde)
           </strong>
         </div>
-        <GoldAmountAction
-          label="Al"
+        <TradeToggle
+          buyLabel="Al"
+          sellLabel="Sat"
           unitPrice={prices.diamondPrice}
-          busy={busy === 'buy-diamond'}
-          onSubmit={(amount) => run('buy-diamond', () => buyInvestment('diamond', amount))}
-        />
-        <GoldAmountAction
-          label="Sat"
-          unitPrice={prices.diamondPrice}
-          busy={busy === 'sell-diamond'}
-          onSubmit={(amount) => run('sell-diamond', () => sellInvestment('diamond', amount))}
+          busy={busy === 'buy-diamond' || busy === 'sell-diamond'}
+          onBuy={(amount) => run('buy-diamond', () => buyInvestment('diamond', amount))}
+          onSell={(amount) => run('sell-diamond', () => sellInvestment('diamond', amount))}
         />
         {diamondHoldings > 0 && (
           <button
@@ -128,7 +157,9 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
       </div>
 
       <div className="bank-section">
-        <p className="bank-section-title">Kripto</p>
+        <p className="bank-section-title">
+          Kripto <ChangeBadge pct={prices.cryptoChangePct} />
+        </p>
         <div className="bank-section-row">
           <span>Güncel fiyat</span>
           <strong>{(prices.cryptoPrice ?? 0).toLocaleString('tr-TR')} altın/adet</strong>
@@ -141,17 +172,13 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
             değerinde)
           </strong>
         </div>
-        <GoldAmountAction
-          label="Al"
+        <TradeToggle
+          buyLabel="Al"
+          sellLabel="Sat"
           unitPrice={prices.cryptoPrice}
-          busy={busy === 'buy-crypto'}
-          onSubmit={(amount) => run('buy-crypto', () => buyInvestment('crypto', amount))}
-        />
-        <GoldAmountAction
-          label="Sat"
-          unitPrice={prices.cryptoPrice}
-          busy={busy === 'sell-crypto'}
-          onSubmit={(amount) => run('sell-crypto', () => sellInvestment('crypto', amount))}
+          busy={busy === 'buy-crypto' || busy === 'sell-crypto'}
+          onBuy={(amount) => run('buy-crypto', () => buyInvestment('crypto', amount))}
+          onSell={(amount) => run('sell-crypto', () => sellInvestment('crypto', amount))}
         />
         {cryptoHoldings > 0 && (
           <button
@@ -181,8 +208,7 @@ function PenaltiesTab({ player }) {
       {debtToState > 0 ? (
         <p className="bank-hint bank-debt-hint">
           Bu borç, yakalandığın soygunlardan geliyor. Borç bitene kadar kazandığın her paranın
-          yarısı otomatik olarak buraya kesiliyor — hiç ödemesen bile zamanla erir. İstersen
-          Yatırımlar sekmesindeki bakiyenden gönüllü olarak da ödeyebilirsin (yakında).
+          yarısı otomatik olarak buraya kesiliyor — hiç ödemesen bile zamanla erir.
         </p>
       ) : (
         <p className="bank-hint">Şu an devlete borcun yok.</p>
@@ -234,8 +260,6 @@ export default function BankScreen() {
       )}
       {tab === 'krediler' && <VehicleLoanSection />}
       {tab === 'cezalar' && <PenaltiesTab player={player} />}
-
-      <HeistPanel target="banka" />
     </div>
   );
 }

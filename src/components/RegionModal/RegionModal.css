@@ -44,10 +44,34 @@
   margin: 6px auto 16px;
 }
 
+.region-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
 .region-modal-title {
-  margin: 0 0 6px;
+  margin: 0;
   font-size: 18px;
   color: var(--neon-pink);
+}
+
+.region-modal-heist-btn {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--neon-pink);
+  background: rgba(255, 46, 140, 0.12);
+  color: var(--neon-pink);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.region-modal-heist-btn:hover {
+  background: rgba(255, 46, 140, 0.22);
 }
 
 .region-modal-screen {

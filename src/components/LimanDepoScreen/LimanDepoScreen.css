@@ -1,116 +1,29 @@
-.liman-depo-screen {
+.liman-depo-tabs-screen {
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
 
-.liman-depo-section {
+.liman-depo-tabs {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  background: #05070c;
-  border: 1px solid var(--panel-border);
-  border-radius: 10px;
-  padding: 12px;
-}
-
-.liman-depo-section-title {
-  margin: 0;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-dim);
-}
-
-.liman-depo-ship-status {
-  margin: 0;
-  font-size: 13px;
-  color: var(--neon-cyan);
-}
-
-.liman-depo-hint {
-  margin: 0;
-  font-size: 11px;
-  color: var(--text-dim);
-}
-
-.liman-depo-row {
-  display: flex;
-  gap: 8px;
-}
-
-.liman-depo-input {
-  flex: 1;
-  min-width: 0;
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--panel-border);
-  background: var(--panel);
-  color: var(--text);
-  font-size: 12px;
-}
-
-.liman-depo-input:focus {
-  outline: none;
-  border-color: var(--neon-cyan);
-}
-
-.liman-depo-input:disabled {
-  opacity: 0.5;
-}
-
-.liman-depo-btn {
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--panel-border);
-  background: var(--panel);
-  color: var(--text);
-  font-size: 11px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.liman-depo-btn:hover:not(:disabled) {
-  border-color: var(--neon-cyan);
-  color: var(--neon-cyan);
-}
-
-.liman-depo-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.liman-order-row {
-  display: flex;
-  flex-direction: column;
   gap: 6px;
-  padding-top: 6px;
-  border-top: 1px dashed var(--panel-border);
+  border-bottom: 1px solid var(--panel-border);
+  padding-bottom: 8px;
 }
 
-.liman-order-row:first-of-type {
-  border-top: none;
-  padding-top: 0;
-}
-
-.liman-order-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.liman-order-label {
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.liman-order-meta {
-  font-size: 10px;
+.liman-depo-tab-btn {
+  flex: 1;
+  padding: 8px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
   color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
 }
 
-.liman-depo-error {
-  color: var(--neon-pink);
-  font-size: 12px;
-  margin: 0;
+.liman-depo-tab-btn.active {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+  background: rgba(25, 232, 255, 0.08);
 }

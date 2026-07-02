@@ -5,7 +5,6 @@ import { useVehicles } from '../../hooks/useVehicles';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
 import { buyVehicle } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
-import HeistPanel from '../HeistPanel/HeistPanel';
 import './VehicleGalleryScreen.css';
 
 export default function VehicleGalleryScreen() {
@@ -60,7 +59,6 @@ export default function VehicleGalleryScreen() {
         );
       })}
       {error && <p className="vehicle-gallery-error">{error}</p>}
-      <HeistPanel target="araba_galerisi" />
     </div>
   );
 }

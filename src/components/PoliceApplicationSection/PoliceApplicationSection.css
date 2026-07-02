@@ -1,0 +1,61 @@
+.police-app-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 12px;
+  margin-top: 12px;
+}
+
+.police-app-title {
+  margin: 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+}
+
+.police-app-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.police-app-hint strong {
+  color: var(--neon-cyan);
+}
+
+.police-app-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.police-app-btn {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.police-app-btn:hover:not(:disabled) {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.police-app-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.police-app-error {
+  color: var(--neon-pink);
+  font-size: 12px;
+  margin: 0;
+}

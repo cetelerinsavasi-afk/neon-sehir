@@ -4,15 +4,8 @@ import { usePlayer } from '../../hooks/usePlayer';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useWeapons } from '../../hooks/useWeapons';
 import { useInventory } from '../../hooks/useInventory';
-import {
-  applyForPolice,
-  resignFromPolice,
-  cancelPendingPoliceChange,
-  upgradeVehicle,
-  upgradeWeapon,
-} from '../../services/gameActions';
+import { setDisplayName, upgradeVehicle, upgradeWeapon } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
-import InfoIcon from '../InfoIcon/InfoIcon';
 import './HomeScreen.css';
 
 const MATERIAL_LABELS = {
@@ -22,53 +15,49 @@ const MATERIAL_LABELS = {
   yasakliMadde: 'Yasaklı Madde',
 };
 
-function PoliceSection({ player }) {
+function ProfileSection({ player }) {
+  const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [ok, setOk] = useState(false);
 
-  const run = async (fn) => {
+  const handleSave = async () => {
+    if (!name.trim()) return;
     setBusy(true);
     setError(null);
+    setOk(false);
     try {
-      await fn();
+      await setDisplayName(name.trim());
+      setOk(true);
+      setName('');
     } catch (err) {
-      setError(err.message || 'İşlem başarısız.');
+      setError(err.message || 'İsim kaydedilemedi.');
     } finally {
       setBusy(false);
     }
   };
 
-  const isPolice = player?.profession === 'polis';
-  const pending = player?.pendingPoliceChange;
-
   return (
     <div className="home-section">
-      <p className="home-section-title">
-        Polislik
-        <InfoIcon text="Başvuru ya da istifa anlık değil — bir sonraki gece yarısı (00:00) işleme alınır. Başvurmak için şüphen %0 olmalı ve bir silahın olmalı." />
-      </p>
+      <p className="home-section-title">Profilin</p>
       <p className="home-hint">
-        Şu an: <strong>{isPolice ? 'Polissin' : 'Sivilsin'}</strong>
-        {pending === 'apply' && ' · Başvurun bu gece işlenecek'}
-        {pending === 'resign' && ' · İstifan bu gece işlenecek'}
+        Şu anki oyun içi adın: <strong>{player?.displayName || '—'}</strong>
       </p>
       <div className="home-controls">
-        {!isPolice && !pending && (
-          <button className="home-btn" disabled={busy} onClick={() => run(applyForPolice)}>
-            Polislik Başvurusu Yap
-          </button>
-        )}
-        {isPolice && !pending && (
-          <button className="home-btn" disabled={busy} onClick={() => run(resignFromPolice)}>
-            İstifa Et
-          </button>
-        )}
-        {pending && (
-          <button className="home-btn" disabled={busy} onClick={() => run(cancelPendingPoliceChange)}>
-            İsteği İptal Et
-          </button>
-        )}
+        <input
+          type="text"
+          placeholder="Yeni isim (3-20 karakter)"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="home-input"
+          maxLength={20}
+        />
+        <button className="home-btn" disabled={busy || !name.trim()} onClick={handleSave}>
+          Kaydet
+        </button>
       </div>
+      <p className="home-hint">Her ismi sadece tek bir oyuncu kullanabilir.</p>
+      {ok && <p className="home-success">İsmin güncellendi!</p>}
       {error && <p className="home-error">{error}</p>}
     </div>
   );
@@ -122,6 +111,7 @@ function WeaponCard({ weapon, materialQty, busy, onUpgrade }) {
   );
 }
 
+// Ev — oyuncunun profili. Polislik başvurusu artık burada değil, Karakol'da.
 export default function HomeScreen() {
   const { user } = useAuth();
   const { player } = usePlayer();
@@ -154,7 +144,7 @@ export default function HomeScreen() {
 
   return (
     <div className="home-screen">
-      <PoliceSection player={player} />
+      <ProfileSection player={player} />
 
       <div className="home-section">
         <p className="home-section-title">Araçların</p>

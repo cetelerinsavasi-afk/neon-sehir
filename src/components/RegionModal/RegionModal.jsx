@@ -13,9 +13,21 @@ import CasinoScreen from '../CasinoScreen/CasinoScreen';
 import HomeScreen from '../HomeScreen/HomeScreen';
 import './RegionModal.css';
 
-// Faz 2+3+4+5+6 kapsamında gerçek içeriği hazır olan ekranlar. Diğerleri
-// hâlâ "yakında" placeholder'ı gösteriyor — ilgili faz tamamlandıkça buraya
-// yeni case'ler eklenecek.
+// screen -> soygun hedefi eşlemesi. Soygunlar artık haritadaki her mekanın
+// kendi ekranında DEĞİL, tek bir global Soygun ekranında yapılıyor —
+// buradaki "Soygun" köşe butonu o ekranı ilgili hedefle açar.
+function getHeistTarget(region) {
+  const map = {
+    banka: 'banka',
+    casino: 'casino',
+    'araba-galerisi': 'araba_galerisi',
+    'modifiye-garaji': 'modifiye_garaji',
+    fabrika: 'fabrika',
+  };
+  if (region.screen === 'seyyar-satici') return region.id;
+  return map[region.screen] || null;
+}
+
 function ScreenContent({ region }) {
   const { screen } = region;
 
@@ -56,14 +68,26 @@ function ScreenContent({ region }) {
   }
 }
 
-export default function RegionModal({ region, onClose }) {
+export default function RegionModal({ region, onClose, onOpenHeist }) {
   if (!region) return null;
+
+  const heistTarget = getHeistTarget(region);
 
   return (
     <div className="region-modal-backdrop" onClick={onClose}>
       <div className="region-modal" onClick={(e) => e.stopPropagation()}>
         <div className="region-modal-handle" />
-        <h2 className="region-modal-title">{region.name}</h2>
+        <div className="region-modal-header">
+          <h2 className="region-modal-title">{region.name}</h2>
+          {heistTarget && (
+            <button
+              className="region-modal-heist-btn"
+              onClick={() => onOpenHeist?.(heistTarget)}
+            >
+              Soygun
+            </button>
+          )}
+        </div>
         <div className="region-modal-content">
           <ScreenContent region={region} />
         </div>

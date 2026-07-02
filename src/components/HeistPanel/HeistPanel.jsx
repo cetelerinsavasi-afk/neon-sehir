@@ -9,12 +9,13 @@ import {
   joinHeistPlan,
   leaveHeistPlan,
   kickFromHeistPlan,
+  cancelHeistPlan,
   executeHeistPlan,
 } from '../../services/gameActions';
 import InfoIcon from '../InfoIcon/InfoIcon';
 import './HeistPanel.css';
 
-const LABELS = {
+export const HEIST_LABELS = {
   banka: { title: 'Banka Soygunu', requiredPower: 100000, reward: 500000, suspicionCost: 50 },
   casino: { title: 'Casino Soygunu', requiredPower: 70000, reward: 200000, suspicionCost: 25 },
   araba_galerisi: {
@@ -75,7 +76,7 @@ function PlanCard({ plan, myUid, onChanged }) {
   const totalPower = participants.reduce((sum, p) => sum + (p.weaponPower || 0), 0);
   const isMember = participants.some((p) => p.uid === myUid);
   const isCreator = plan.creatorUid === myUid;
-  const required = LABELS[plan.target]?.requiredPower || 0;
+  const required = HEIST_LABELS[plan.target]?.requiredPower || 0;
 
   const run = async (fn) => {
     setBusy(true);
@@ -141,6 +142,15 @@ function PlanCard({ plan, myUid, onChanged }) {
             {totalPower < required ? 'Güç yetersiz' : 'Soygunu Başlat'}
           </button>
         )}
+        {isCreator && (
+          <button
+            className="heist-plan-btn danger"
+            disabled={busy}
+            onClick={() => run(() => cancelHeistPlan(plan.id))}
+          >
+            Planı İptal Et
+          </button>
+        )}
       </div>
       {error && <p className="heist-panel-error">{error}</p>}
     </div>
@@ -158,7 +168,7 @@ export default function HeistPanel({ target }) {
 
   if (!user) return null;
 
-  const meta = LABELS[target];
+  const meta = HEIST_LABELS[target];
   const done = Boolean(actions.heist?.[target]);
 
   const handleAttempt = async () => {

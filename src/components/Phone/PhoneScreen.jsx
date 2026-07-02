@@ -2,6 +2,8 @@ import { useState } from 'react';
 import MessagesScreen from '../MessagesScreen/MessagesScreen';
 import MarketplaceScreen from '../MarketplaceScreen/MarketplaceScreen';
 import BankScreen from '../BankScreen/BankScreen';
+import AmazorScreen from '../AmazorScreen/AmazorScreen';
+import ChatsAppScreen from '../ChatsAppScreen/ChatsAppScreen';
 import { useMessages } from '../../hooks/useMessages';
 import './PhoneScreen.css';
 
@@ -9,12 +11,16 @@ const APPS = [
   { id: 'ikinci-el', label: '2', note: 'İkinci El Satış', enabled: true },
   { id: 'banka', label: '🏦', note: 'Banka', enabled: true },
   { id: 'sms', label: '✉️', note: 'SMS', enabled: true },
+  { id: 'amazor', label: 'A', note: 'Amazor', enabled: true },
+  { id: 'chatsapp', label: '💬', note: 'ChatsApp', enabled: true },
 ];
 
 const APP_TITLES = {
   'ikinci-el': 'İkinci El Satış',
   banka: 'Banka',
   sms: 'SMS',
+  amazor: 'Amazor',
+  chatsapp: 'ChatsApp',
 };
 
 export default function PhoneScreen({ onClose }) {
@@ -35,6 +41,8 @@ export default function PhoneScreen({ onClose }) {
           {openApp === 'sms' && <MessagesScreen />}
           {openApp === 'ikinci-el' && <MarketplaceScreen />}
           {openApp === 'banka' && <BankScreen />}
+          {openApp === 'amazor' && <AmazorScreen />}
+          {openApp === 'chatsapp' && <ChatsAppScreen />}
         </div>
       </div>
     );
@@ -57,7 +65,11 @@ export default function PhoneScreen({ onClose }) {
             disabled={!app.enabled}
             onClick={() => app.enabled && setOpenApp(app.id)}
           >
-            <span className={`phone-app-icon${app.id === 'ikinci-el' ? ' phone-app-icon-2el' : ''}`}>
+            <span
+              className={`phone-app-icon${app.id === 'ikinci-el' ? ' phone-app-icon-2el' : ''}${
+                app.id === 'amazor' ? ' phone-app-icon-amazor' : ''
+              }${app.id === 'chatsapp' ? ' phone-app-icon-chatsapp' : ''}`}
+            >
               {app.label}
               {app.id === 'sms' && unreadCount > 0 && (
                 <span className="phone-app-badge">{unreadCount}</span>

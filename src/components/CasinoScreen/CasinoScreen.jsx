@@ -3,7 +3,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useLottery } from '../../hooks/useLottery';
 import { buyLotteryTicket } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
-import HeistPanel from '../HeistPanel/HeistPanel';
 import './CasinoScreen.css';
 
 const TICKET_PRICE = 100;
@@ -70,7 +69,6 @@ export default function CasinoScreen() {
         </div>
       )}
 
-      <HeistPanel target="casino" />
     </div>
   );
 }

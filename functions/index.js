@@ -382,7 +382,13 @@ export const dailyReset = onSchedule(
     await db
       .collection('investments')
       .doc(dateKey)
-      .set({ diamondPrice, cryptoPrice, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+      .set({
+        diamondPrice,
+        cryptoPrice,
+        diamondChangePct: Math.round(diamondChangePct * 1000) / 10,
+        cryptoChangePct: Math.round(cryptoChangePct * 1000) / 10,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
 
     // 4) Gemi takvimi bir gün ilerler — 4 günlük döngü (Bölüm 12)
     const prevShipSnap = await db
@@ -570,7 +576,6 @@ export const dailyReset = onSchedule(
 // FAZ 3 — ARABA VE SİLAH SİSTEMİ (Bölüm 8.1, 8.2, 8.3)
 // =============================================================================
 
-const UPGRADE_MATERIAL_PRICE = 100; // Bölüm 8.3 — gelişim malzemesi alım fiyatı
 const UPGRADE_MATERIAL_REFUND = 50; // Bölüm 8.3 — geri satış fiyatı
 const MATERIAL_SELL_PRICE = { depoUpgrade: 250, vitesUpgrade: 250 }; // Bölüm 8.2 — Modifiye Garajı'na satış
 
@@ -696,23 +701,29 @@ export const upgradeVehicle = onCall(async (request) => {
 });
 
 // ---------------------------------------------------------------------------
-// buyMaterialFromGarage — Modifiye Garajı'ndan depo/vites geliştirme
-// malzemesi satın alma (üretim makinesi/Liman siparişi olmadan da
-// geliştirme yapabilmek için), 500 altın/adet.
+// buyFromAmazor — Telefon > Amazor uygulamasından yasaklı madde/depo/vites/
+// silah geliştirme malzemesi satın alma. Anında teslim edilir.
+// Modifiye Garajı ve Silah Mağazası'ndan malzeme alım/satımı KALDIRILDI —
+// tüm malzeme alımı artık Amazor'dan, tüm satımı Liman & Depo > Depo'dan.
 // ---------------------------------------------------------------------------
-const GARAGE_MATERIAL_BUY_PRICE = 500;
+const AMAZOR_PRICES = {
+  yasakliMadde: 4000,
+  vitesUpgrade: 500,
+  depoUpgrade: 500,
+  silahUpgrade: 100,
+};
 
-export const buyMaterialFromGarage = onCall(async (request) => {
+export const buyFromAmazor = onCall(async (request) => {
   const uid = requireAuth(request);
   const { materialType, quantity } = request.data || {};
-  if (!['depoUpgrade', 'vitesUpgrade'].includes(materialType)) {
+  if (!AMAZOR_PRICES[materialType]) {
     throw new HttpsError('invalid-argument', 'Geçersiz malzeme türü.');
   }
   const qty = Number(quantity);
   if (!Number.isInteger(qty) || qty <= 0) {
     throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
   }
-  const totalCost = qty * GARAGE_MATERIAL_BUY_PRICE;
+  const totalCost = qty * AMAZOR_PRICES[materialType];
   const userRef = db.collection('users').doc(uid);
   const inventoryRef = userRef.collection('inventory').doc(materialType);
 
@@ -730,8 +741,8 @@ export const buyMaterialFromGarage = onCall(async (request) => {
 });
 
 // ---------------------------------------------------------------------------
-// sellMaterial — üretilen depo/vites malzemesini Modifiye Garajı'na satma
-// (Bölüm 8.2 — 250 altın/adet).
+// sellMaterial — üretilen depo/vites malzemesini Liman & Depo > Depo'ya
+// satma (Bölüm 8.2 — 250 altın/adet).
 // ---------------------------------------------------------------------------
 export const sellMaterial = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -862,30 +873,9 @@ export const upgradeWeapon = onCall(async (request) => {
 });
 
 // ---------------------------------------------------------------------------
-// buySilahMaterial / sellSilahMaterial — Silah Mağazası'nda gelişim
-// malzemesi alım-satımı (Bölüm 8.3 — 100 altına al, 50 altına sat).
+// sellSilahMaterial — Liman & Depo > Depo'da gelişim malzemesi satışı
+// (Bölüm 8.3 — 50 altın/adet). Alım artık Telefon > Amazor'dan yapılıyor.
 // ---------------------------------------------------------------------------
-export const buySilahMaterial = onCall(async (request) => {
-  const uid = requireAuth(request);
-  const userRef = db.collection('users').doc(uid);
-  const inventoryRef = userRef.collection('inventory').doc('silahUpgrade');
-
-  await db.runTransaction(async (tx) => {
-    const userSnap = await tx.get(userRef);
-    const user = userSnap.data();
-    if (!user || (user.gold || 0) < UPGRADE_MATERIAL_PRICE) {
-      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
-    }
-    tx.set(
-      userRef,
-      { gold: admin.firestore.FieldValue.increment(-UPGRADE_MATERIAL_PRICE) },
-      { merge: true }
-    );
-    tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(1) }, { merge: true });
-  });
-
-  return { ok: true };
-});
 
 export const sellSilahMaterial = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -1492,37 +1482,14 @@ export const attemptHeist = onCall(async (request) => {
 // FAZ 6 — DEPO, PARK VE LİMAN (KAÇAKÇILIK) SİSTEMİ
 // =============================================================================
 
-const CONTRABAND_DEPO_BUY_PRICE = 4000; // Depo'dan alış
 const CONTRABAND_DEPO_SELL_PRICE = 2500; // Depo'ya satış — şüphe ARTMAZ
 const CONTRABAND_PARK_SELL_PRICE = 5000; // Park'ta satış — şüphe +5 (kaynağı fark etmez)
 const PARK_SUSPICION_COST = 5;
 
 // ---------------------------------------------------------------------------
-// buyContrabandFromDepo / sellContrabandToDepo — güvenli, şüphesiz kanal.
+// sellContrabandToDepo — güvenli, şüphesiz satış kanalı. Alım artık
+// Telefon > Amazor'dan yapılıyor (4000 altın/adet, aynı fiyat).
 // ---------------------------------------------------------------------------
-export const buyContrabandFromDepo = onCall(async (request) => {
-  const uid = requireAuth(request);
-  const qty = Number(request.data?.quantity);
-  if (!Number.isInteger(qty) || qty <= 0) {
-    throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
-  }
-  const totalCost = qty * CONTRABAND_DEPO_BUY_PRICE;
-  const userRef = db.collection('users').doc(uid);
-  const inventoryRef = userRef.collection('inventory').doc('yasakliMadde');
-
-  await db.runTransaction(async (tx) => {
-    const userSnap = await tx.get(userRef);
-    const user = userSnap.data();
-    if (!user || (user.gold || 0) < totalCost) {
-      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
-    }
-    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-totalCost) });
-    tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(qty) }, { merge: true });
-  });
-
-  return { ok: true };
-});
-
 export const sellContrabandToDepo = onCall(async (request) => {
   const uid = requireAuth(request);
   const qty = Number(request.data?.quantity);
@@ -1795,6 +1762,21 @@ export const kickFromHeistPlan = onCall(async (request) => {
   return { ok: true };
 });
 
+export const cancelHeistPlan = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { planId } = request.data || {};
+  const planRef = db.collection('heistPlans').doc(planId);
+  const planSnap = await planRef.get();
+  if (!planSnap.exists || planSnap.data().creatorUid !== uid) {
+    throw new HttpsError('permission-denied', 'Sadece planı kuran kişi iptal edebilir.');
+  }
+  if (planSnap.data().status !== 'open') {
+    throw new HttpsError('failed-precondition', 'Bu plan zaten sonuçlanmış.');
+  }
+  await planRef.update({ status: 'cancelled' });
+  return { ok: true };
+});
+
 // executeHeistPlan — ekip gücü yeterliyse soygunu yürütür. Sonucu belirleyen
 // TEK şey, ekipte sızmış polis olup olmadığıdır (bkz. dosya başındaki not).
 export const executeHeistPlan = onCall(async (request) => {
@@ -1973,6 +1955,69 @@ export const markMessageRead = onCall(async (request) => {
   await db.collection('users').doc(uid).collection('messages').doc(messageId).update({
     read: true,
   });
+  return { ok: true };
+});
+
+// ---------------------------------------------------------------------------
+// sendChatMessage — Telefon > ChatsApp. Tüm oyuncuların ortak kullandığı
+// tek genel sohbet kanalı.
+// ---------------------------------------------------------------------------
+const CHAT_MAX_LENGTH = 300;
+
+export const sendChatMessage = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const text = String(request.data?.text || '').trim();
+  if (!text) {
+    throw new HttpsError('invalid-argument', 'Mesaj boş olamaz.');
+  }
+  if (text.length > CHAT_MAX_LENGTH) {
+    throw new HttpsError('invalid-argument', `Mesaj en fazla ${CHAT_MAX_LENGTH} karakter olabilir.`);
+  }
+  const userSnap = await db.collection('users').doc(uid).get();
+  const displayName = userSnap.data()?.displayName || 'Oyuncu';
+
+  await db.collection('globalChat').add({
+    uid,
+    displayName,
+    text,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return { ok: true };
+});
+
+// ---------------------------------------------------------------------------
+// setDisplayName — Ev'de oyuncunun kendi belirlediği, benzersiz oyun içi
+// isim. usernames/{lowercaseName} dokümanı rezervasyon için kullanılır;
+// aynı ismi sadece tek kişi alabilir. Eski isim varsa serbest bırakılır.
+// ---------------------------------------------------------------------------
+export const setDisplayName = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const raw = String(request.data?.displayName || '').trim();
+  if (raw.length < 3 || raw.length > 20) {
+    throw new HttpsError('invalid-argument', 'İsim 3-20 karakter arasında olmalı.');
+  }
+  if (!/^[a-zA-Z0-9ğüşöçıİĞÜŞÖÇ_ ]+$/.test(raw)) {
+    throw new HttpsError('invalid-argument', 'İsim geçersiz karakterler içeriyor.');
+  }
+  const key = raw.toLocaleLowerCase('tr-TR');
+  const userRef = db.collection('users').doc(uid);
+  const newNameRef = db.collection('usernames').doc(key);
+
+  await db.runTransaction(async (tx) => {
+    const [userSnap, newNameSnap] = await Promise.all([tx.get(userRef), tx.get(newNameRef)]);
+    const user = userSnap.data();
+    if (newNameSnap.exists && newNameSnap.data().uid !== uid) {
+      throw new HttpsError('already-exists', 'Bu isim zaten alınmış.');
+    }
+    const oldNameKey = user?.displayNameKey;
+    if (oldNameKey && oldNameKey !== key) {
+      tx.delete(db.collection('usernames').doc(oldNameKey));
+    }
+    tx.set(newNameRef, { uid });
+    tx.update(userRef, { displayName: raw, displayNameKey: key });
+  });
+
   return { ok: true };
 });
 

@@ -1,0 +1,108 @@
+.heist-screen-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.heist-screen {
+  width: 100%;
+  max-width: 480px;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: var(--bg);
+  border-top: 1px solid var(--panel-border);
+  border-radius: 16px 16px 0 0;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.heist-screen-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.heist-screen-power {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-dim);
+}
+
+.heist-screen-power strong {
+  color: var(--neon-cyan);
+}
+
+.heist-screen-close {
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  color: var(--text);
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+}
+
+.heist-screen-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.heist-target-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 12px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.heist-target-card:hover {
+  border-color: var(--neon-cyan);
+}
+
+.heist-target-name {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.heist-target-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.heist-target-status {
+  font-size: 11px;
+  color: var(--neon-pink);
+}
+
+.heist-target-status.ready {
+  color: var(--neon-cyan);
+}
+
+.heist-screen-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.heist-screen-back {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}

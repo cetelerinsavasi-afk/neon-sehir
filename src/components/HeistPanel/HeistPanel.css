@@ -192,6 +192,10 @@
   background: rgba(255, 46, 140, 0.12);
 }
 
+.heist-plan-btn.danger {
+  color: var(--neon-pink);
+}
+
 .heist-plan-btn:disabled {
   opacity: 0.5;
   cursor: default;

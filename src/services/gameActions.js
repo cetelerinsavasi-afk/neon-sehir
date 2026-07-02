@@ -32,8 +32,8 @@ export const upgradeVehicle = (vehicleId, upgradeType) =>
 export const sellMaterial = (materialType, quantity) =>
   httpsCallable(functions, 'sellMaterial')({ materialType, quantity });
 
-export const buyMaterialFromGarage = (materialType, quantity) =>
-  httpsCallable(functions, 'buyMaterialFromGarage')({ materialType, quantity });
+export const buyFromAmazor = (materialType, quantity) =>
+  httpsCallable(functions, 'buyFromAmazor')({ materialType, quantity });
 
 export const buyWeapon = (catalogId) =>
   httpsCallable(functions, 'buyWeapon')({ catalogId });
@@ -41,7 +41,6 @@ export const buyWeapon = (catalogId) =>
 export const upgradeWeapon = (weaponId) =>
   httpsCallable(functions, 'upgradeWeapon')({ weaponId });
 
-export const buySilahMaterial = () => httpsCallable(functions, 'buySilahMaterial')();
 
 export const sellSilahMaterial = () => httpsCallable(functions, 'sellSilahMaterial')();
 
@@ -98,8 +97,6 @@ export const attemptHeist = (target) =>
 
 // --- Faz 6: Depo, Park, Liman (kaçakçılık) ---
 
-export const buyContrabandFromDepo = (quantity) =>
-  httpsCallable(functions, 'buyContrabandFromDepo')({ quantity });
 
 export const sellContrabandToDepo = (quantity) =>
   httpsCallable(functions, 'sellContrabandToDepo')({ quantity });
@@ -126,6 +123,9 @@ export const leaveHeistPlan = (planId) =>
 export const kickFromHeistPlan = (planId, targetUid) =>
   httpsCallable(functions, 'kickFromHeistPlan')({ planId, targetUid });
 
+export const cancelHeistPlan = (planId) =>
+  httpsCallable(functions, 'cancelHeistPlan')({ planId });
+
 export const executeHeistPlan = (planId) =>
   httpsCallable(functions, 'executeHeistPlan')({ planId });
 
@@ -133,6 +133,15 @@ export const executeHeistPlan = (planId) =>
 
 export const markMessageRead = (messageId) =>
   httpsCallable(functions, 'markMessageRead')({ messageId });
+
+// --- ChatsApp (genel sohbet) ---
+
+export const sendChatMessage = (text) => httpsCallable(functions, 'sendChatMessage')({ text });
+
+// --- Ev: oyuncu profili ---
+
+export const setDisplayName = (displayName) =>
+  httpsCallable(functions, 'setDisplayName')({ displayName });
 
 // --- Faz 9: Yarış Pisti ---
 

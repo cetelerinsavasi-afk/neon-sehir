@@ -72,17 +72,66 @@
   color: var(--text-dim);
 }
 
-.bank-amount-action {
+.bank-trade {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bank-trade-buttons {
   display: flex;
   gap: 8px;
 }
 
-.bank-amount-input-wrap {
+.bank-trade-btn {
   flex: 1;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bank-trade-btn:hover {
+  border-color: var(--neon-cyan);
+}
+
+.bank-trade-btn.active {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+  background: rgba(25, 232, 255, 0.08);
+}
+
+.bank-trade-panel {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  min-width: 0;
+  gap: 6px;
+  padding: 10px;
+  background: #0a0308;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+}
+
+.bank-btn.primary {
+  border-color: rgba(255, 46, 140, 0.5);
+  background: rgba(255, 46, 140, 0.12);
+}
+
+.bank-change-badge {
+  font-size: 11px;
+  font-weight: 700;
+  margin-left: 6px;
+}
+
+.bank-change-badge.up {
+  color: var(--neon-cyan);
+}
+
+.bank-change-badge.down {
+  color: var(--neon-pink);
 }
 
 .bank-amount-preview {
