@@ -66,6 +66,16 @@
   gap: 8px;
 }
 
+.market-material-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.market-input-wide {
+  width: 100%;
+}
+
 .market-input {
   flex: 1;
   min-width: 0;

@@ -116,7 +116,8 @@ function SellForm({ onCreated }) {
           <option value="">Araç seç…</option>
           {sellableVehicles.map((v) => (
             <option key={v.id} value={v.id}>
-              {v.model}
+              {v.model} (Vites {v.gearLevel}, Depo {v.baseTank + (v.tankBonus || 0)}L
+              {v.turboCount > 0 ? `, Turbo ×${v.turboCount}` : ''})
             </option>
           ))}
         </select>
@@ -134,7 +135,7 @@ function SellForm({ onCreated }) {
       )}
 
       {itemType === 'material' && (
-        <div className="market-row">
+        <div className="market-material-form">
           <select
             className="market-select"
             value={materialType}
@@ -150,10 +151,10 @@ function SellForm({ onCreated }) {
             type="number"
             min="1"
             max={inventory[materialType] || 0}
-            placeholder="Adet"
+            placeholder="Kaç adet satmak istiyorsun?"
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
-            className="market-input"
+            className="market-input market-input-wide"
           />
         </div>
       )}

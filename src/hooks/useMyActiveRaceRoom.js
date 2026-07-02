@@ -35,7 +35,7 @@ export function useMyActiveRaceRoom() {
         const active = snap.docs
           .map((d) => ({ id: d.id, ...d.data() }))
           .find((r) => {
-            if (r.status === 'waiting' || r.status === 'racing') return true;
+            if (r.status === 'waiting' || r.status === 'ready' || r.status === 'racing') return true;
             if (r.status === 'finished') {
               const finishedMs = r.finishedAt?.toMillis?.() ?? 0;
               return now - finishedMs < RECENT_FINISH_WINDOW_MS;

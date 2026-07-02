@@ -12,7 +12,7 @@ function istanbulDateKey() {
 }
 
 const STATUS_LABELS = {
-  docking: 'Gemi geldi, mal indiriliyor! Siparişlerin envanterine eklendi.',
+  docking: 'Gemi bugün şehirde, mal indiriyor.',
   departing: 'Gemi şehirden ayrılıyor. Şimdi verdiğin sipariş yükleme sırasında gemiye eklenir.',
   loading: 'Gemi diğer şehirde mal yüklüyor — sipariş vermek için son gün!',
   in_transit: 'Gemi yolda, şehre dönmesine 1 gün kaldı.',

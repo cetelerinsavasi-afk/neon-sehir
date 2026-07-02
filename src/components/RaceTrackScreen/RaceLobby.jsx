@@ -91,25 +91,33 @@ export default function RaceLobby({ myUid }) {
       <div className="race-section">
         <p className="race-section-title">Açık Odalar</p>
         {otherRooms.length === 0 && <p className="race-hint">Şu an açık oda yok.</p>}
-        {otherRooms.map((r) => (
-          <div key={r.id} className="race-room-card">
-            <p className="race-room-meta">
-              Bahis: {r.betAmount.toLocaleString('tr-TR')} altın
-            </p>
-            <VehiclePicker
-              vehicles={vehicles}
-              value={joinVehicleByRoom[r.id] || ''}
-              onChange={(v) => setJoinVehicleByRoom((prev) => ({ ...prev, [r.id]: v }))}
-            />
-            <button
-              className="race-btn"
-              disabled={busy || !joinVehicleByRoom[r.id]}
-              onClick={() => handleJoin(r.id)}
-            >
-              Katıl
-            </button>
-          </div>
-        ))}
+        {otherRooms.map((r) => {
+          const creatorInfo = r.players?.[r.creatorUid];
+          return (
+            <div key={r.id} className="race-room-card">
+              <p className="race-room-meta">Bahis: {r.betAmount.toLocaleString('tr-TR')} altın</p>
+              {creatorInfo && (
+                <p className="race-room-creator">
+                  {creatorInfo.displayName} — {creatorInfo.vehicleModel} (Vites{' '}
+                  {creatorInfo.maxGear}, Depo {creatorInfo.maxFuel}L
+                  {creatorInfo.turboTotal > 0 ? `, Turbo ×${creatorInfo.turboTotal}` : ''})
+                </p>
+              )}
+              <VehiclePicker
+                vehicles={vehicles}
+                value={joinVehicleByRoom[r.id] || ''}
+                onChange={(v) => setJoinVehicleByRoom((prev) => ({ ...prev, [r.id]: v }))}
+              />
+              <button
+                className="race-btn"
+                disabled={busy || !joinVehicleByRoom[r.id]}
+                onClick={() => handleJoin(r.id)}
+              >
+                Katıl
+              </button>
+            </div>
+          );
+        })}
       </div>
 
       {error && <p className="race-error">{error}</p>}

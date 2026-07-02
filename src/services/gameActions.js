@@ -151,14 +151,18 @@ export const createRaceRoom = (vehicleId, betAmount) =>
 export const joinRaceRoom = (roomId, vehicleId) =>
   httpsCallable(functions, 'joinRaceRoom')({ roomId, vehicleId });
 
+export const declineOpponent = (roomId) =>
+  httpsCallable(functions, 'declineOpponent')({ roomId });
+
+export const startRace = (roomId) => httpsCallable(functions, 'startRace')({ roomId });
+
 export const cancelRaceRoom = (roomId) =>
   httpsCallable(functions, 'cancelRaceRoom')({ roomId });
 
 export const rollDice = (roomId, useNitro, useTurbo) =>
   httpsCallable(functions, 'rollDice')({ roomId, useNitro, useTurbo });
 
-export const autoRoll = (roomId, targetUid) =>
-  httpsCallable(functions, 'autoRoll')({ roomId, targetUid });
+export const autoRoll = (roomId) => httpsCallable(functions, 'autoRoll')({ roomId });
 
 export const raceBuyAtStation = (roomId, item) =>
   httpsCallable(functions, 'raceBuyAtStation')({ roomId, item });
