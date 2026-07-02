@@ -90,3 +90,31 @@
   font-size: 13px;
   color: var(--neon-cyan);
 }
+
+.casino-tabs-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.casino-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.casino-tab-btn {
+  flex: 1;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.casino-tab-btn.active {
+  border-color: #ffd23f;
+  color: #ffd23f;
+  background: rgba(255, 210, 63, 0.08);
+}

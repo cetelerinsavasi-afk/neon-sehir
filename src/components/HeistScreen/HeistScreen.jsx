@@ -74,7 +74,7 @@ export default function HeistScreen({ initialTarget, onClose }) {
                 <span className="heist-target-name">{meta.title}</span>
                 <span className="heist-target-meta">
                   Güvenlik: {meta.requiredPower.toLocaleString('tr-TR')} · Ödül:{' '}
-                  {meta.reward.toLocaleString('tr-TR')} altın
+                  {meta.reward.toLocaleString('tr-TR')} altın · Şüphe: +{meta.suspicionCost}
                 </span>
                 <span className={`heist-target-status ${myPower >= meta.requiredPower ? 'ready' : ''}`}>
                   {myPower >= meta.requiredPower ? 'Gücün yetiyor' : 'Ekip gerekir'}

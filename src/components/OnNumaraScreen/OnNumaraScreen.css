@@ -1,0 +1,240 @@
+.onnumara-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.onnumara-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+}
+
+.onnumara-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.onnumara-section-title {
+  margin: 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.onnumara-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.onnumara-capacity-row {
+  display: flex;
+  gap: 6px;
+}
+
+.onnumara-cap-btn {
+  flex: 1;
+  padding: 8px 4px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.onnumara-cap-btn.active {
+  border-color: #ffd23f;
+  color: #ffd23f;
+  background: rgba(255, 210, 63, 0.08);
+}
+
+.onnumara-row {
+  display: flex;
+  gap: 8px;
+}
+
+.onnumara-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.onnumara-btn {
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.onnumara-btn:hover:not(:disabled) {
+  border-color: #ffd23f;
+  color: #ffd23f;
+}
+
+.onnumara-btn.primary {
+  border-color: #ffd23f;
+  background: rgba(255, 210, 63, 0.12);
+}
+
+.onnumara-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.onnumara-table-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: #0a0308;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 12px;
+}
+
+.onnumara-error {
+  color: var(--neon-pink);
+  font-size: 12px;
+  margin: 0;
+}
+
+.onnumara-table-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.onnumara-cards {
+  display: flex;
+  gap: 6px;
+}
+
+.onnumara-card {
+  width: 34px;
+  height: 46px;
+  border-radius: 6px;
+  background: linear-gradient(160deg, #fff, #e9e2cb);
+  color: #081210;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.onnumara-seat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.onnumara-seat.active {
+  border-color: #ffd23f;
+  box-shadow: 0 0 12px rgba(255, 210, 63, 0.25);
+}
+
+.onnumara-seat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.onnumara-seat-name {
+  font-weight: 600;
+  position: relative;
+}
+
+.onnumara-reaction {
+  margin-left: 6px;
+  font-size: 16px;
+}
+
+.onnumara-status-pill {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-dim);
+}
+
+.onnumara-status-pill.bust {
+  background: rgba(255, 46, 140, 0.15);
+  color: var(--neon-pink);
+}
+
+.onnumara-status-pill.won {
+  background: rgba(255, 210, 63, 0.15);
+  color: #ffd23f;
+}
+
+.onnumara-status-pill.stand {
+  background: rgba(25, 232, 255, 0.12);
+  color: var(--neon-cyan);
+}
+
+.onnumara-turn-banner {
+  text-align: center;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(255, 210, 63, 0.12);
+  border: 1px solid #ffd23f;
+  color: #ffd23f;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.onnumara-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.onnumara-controls .onnumara-btn {
+  flex: 1;
+}
+
+.onnumara-emoji-row {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.onnumara-emoji-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.onnumara-emoji-btn:hover {
+  border-color: #ffd23f;
+}

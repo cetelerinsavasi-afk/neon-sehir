@@ -167,9 +167,26 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
         <InfoIcon text={RULES_TEXT} />
       </p>
 
-      <div className="race-track-bar">
-        <div className="race-track-fill me" style={{ width: `${(me.position / 300) * 100}%` }} />
-        <div className="race-track-fill other" style={{ width: `${(other.position / 300) * 100}%` }} />
+      <div className="race-track">
+        <div className="race-track-ticks">
+          {Array.from({ length: 29 }, (_, i) => (i + 1) * 10).map((pos) => (
+            <div
+              key={pos}
+              className={`race-tick${pos % 100 === 0 ? ' major' : ''}`}
+              style={{ left: `${(pos / 300) * 100}%` }}
+            />
+          ))}
+        </div>
+        <div className="race-track-finish" />
+        <div className="race-car me" style={{ left: `${Math.min(96, (me.position / 300) * 100)}%` }}>
+          🏎️
+        </div>
+        <div
+          className="race-car other"
+          style={{ left: `${Math.min(96, (other.position / 300) * 100)}%` }}
+        >
+          🚙
+        </div>
       </div>
       <div className="race-positions">
         <span>Sen: {me.position}/300</span>
@@ -182,7 +199,7 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
           <span className="race-stat-value">{me.fuel}/{me.maxFuel}</span>
         </div>
         <div className="race-stat-box gold">
-          <span className="race-stat-emoji">🪙</span>
+          <span className="race-stat-coin" />
           <span className="race-stat-value">{me.raceGold}</span>
         </div>
         {me.turboCount > 0 && (
@@ -193,41 +210,69 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
         )}
       </div>
 
-      <DiceRoll rollKey={`${me.position}-${me.lastRollDice?.join(',')}`} dice={me.lastRollDice} />
+      <div className="race-dice-row">
+        <div className="race-dice-col">
+          <span className="race-dice-owner">Sen</span>
+          <DiceRoll rollKey={`${me.position}-${me.lastRollDice?.join(',')}`} dice={me.lastRollDice} />
+          {me.lastRollBoost && (
+            <span className="race-boost-badge">
+              {me.lastRollBoost === 'combo' ? '🔥🚀 Kombo ×3' : me.lastRollBoost === 'nitro' ? '🔥 Nitro ×2' : '🚀 Turbo ×2'}
+            </span>
+          )}
+        </div>
+        <div className="race-dice-col">
+          <span className="race-dice-owner">{other.displayName}</span>
+          <DiceRoll
+            rollKey={`o-${other.position}-${other.lastRollDice?.join(',')}`}
+            dice={other.lastRollDice}
+          />
+          {other.lastRollBoost && (
+            <span className="race-boost-badge">
+              {other.lastRollBoost === 'combo' ? '🔥🚀 Kombo ×3' : other.lastRollBoost === 'nitro' ? '🔥 Nitro ×2' : '🚀 Turbo ×2'}
+            </span>
+          )}
+        </div>
+      </div>
 
       {!me.hasRolledOnce && (
         <p className="race-hint">İlk turda herkes 1 zar atar, vites 1'de sabit.</p>
       )}
 
-      <div className="race-gear-stepper">
-        <span className="race-gear-label">Vites</span>
+      <div className="race-gear-nitro-row">
+        <div className="race-gear-stepper">
+          <span className="race-gear-label">Vites</span>
+          <button
+            className="race-gear-btn"
+            disabled={busy || !isMyTurn || !me.hasRolledOnce || me.gear <= 1}
+            onClick={() => run('gear-', () => raceChangeGear(room.id, -1))}
+          >
+            −
+          </button>
+          <span className="race-gear-value">{me.gear}</span>
+          <button
+            className="race-gear-btn"
+            disabled={busy || !isMyTurn || !me.hasRolledOnce || me.gear >= me.maxGear}
+            onClick={() => run('gear+', () => raceChangeGear(room.id, 1))}
+          >
+            +
+          </button>
+        </div>
         <button
-          className="race-gear-btn"
-          disabled={busy || !isMyTurn || !me.hasRolledOnce || me.gear <= 1}
-          onClick={() => run('gear-', () => raceChangeGear(room.id, -1))}
+          className="race-nitro-btn"
+          disabled={busy || !isMyTurn || me.raceGold < 20 || me.nitroActive}
+          onClick={() => run('nitro', () => raceBuyNitro(room.id))}
         >
-          −
-        </button>
-        <span className="race-gear-value">{me.gear}</span>
-        <button
-          className="race-gear-btn"
-          disabled={busy || !isMyTurn || !me.hasRolledOnce || me.gear >= me.maxGear}
-          onClick={() => run('gear+', () => raceChangeGear(room.id, 1))}
-        >
-          +
+          {me.nitroActive ? '🔥 Nitro Alındı' : '🔥 Nitro (20)'}
         </button>
       </div>
 
-      <div className="race-controls">
-        <button className="race-nitro-btn" disabled={busy || !isMyTurn || me.raceGold < 20} onClick={() => run('nitro', () => raceBuyNitro(room.id))}>
-          🔥 Nitro (20)
-        </button>
-        {me.turboCount > 0 && (
+      {me.turboCount > 0 && (
+        <div className="race-controls">
           <button className="race-btn small" disabled={busy || !isMyTurn} onClick={() => handleRoll(false, true)}>
             Turbo ile At
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       <button className="race-roll-btn" disabled={busy || !isMyTurn} onClick={() => handleRoll(me.nitroActive, false)}>
         {rollButtonLabel()}
@@ -236,10 +281,14 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
       {isMyTurn && (
         <button
           className={`race-btn${me.fuel <= 0 ? ' primary' : ''}`}
-          disabled={busy || me.raceGold < refuelPrice}
+          disabled={busy || me.raceGold < refuelPrice || me.fuel >= me.maxFuel}
           onClick={() => run('refuel', () => raceRefuel(room.id))}
         >
-          {atStation ? `⛽ Şu an istasyondasın — Benzin Doldur (${refuelPrice})` : `⛽ Benzin Doldur (${refuelPrice})`}
+          {me.fuel >= me.maxFuel
+            ? '⛽ Benzin Dolu'
+            : atStation
+              ? `⛽ Şu an istasyondasın — Benzin Doldur (${refuelPrice})`
+              : `⛽ Benzin Doldur (${refuelPrice})`}
         </button>
       )}
 

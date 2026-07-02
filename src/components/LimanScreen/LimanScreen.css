@@ -118,3 +118,15 @@
 .liman-highlight {
   color: var(--neon-cyan);
 }
+
+.liman-pending-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.liman-btn.small {
+  padding: 6px 10px;
+  font-size: 10px;
+}

@@ -95,7 +95,7 @@ export const initializePlayer = onCall(async (request) => {
     tx.set(userRef, {
       displayName: request.auth.token.name || 'Oyuncu',
       xp: 0,
-      gold: 0,
+      gold: 2000,
       suspicion: 0,
       reputation: 0,
       profession: null,
@@ -150,6 +150,9 @@ export const applyForPolice = onCall(async (request) => {
   return { ok: true };
 });
 
+// İstifa artık ANLIK — 00:00 beklemeye gerek yok (soygun parası çalma
+// istismarı sadece polis OLMAKLA ilgiliydi, istifa etmek bu riski
+// taşımıyor). Onay istemek client tarafında yapılıyor.
 export const resignFromPolice = onCall(async (request) => {
   const uid = requireAuth(request);
   const userRef = db.collection('users').doc(uid);
@@ -159,11 +162,9 @@ export const resignFromPolice = onCall(async (request) => {
   if (!user || user.profession !== 'polis') {
     throw new HttpsError('failed-precondition', 'Polis değilsin.');
   }
-  if (user.pendingPoliceChange) {
-    throw new HttpsError('failed-precondition', 'Bekleyen bir isteğin zaten var.');
-  }
 
-  await userRef.update({ pendingPoliceChange: 'resign' });
+  await userRef.update({ profession: null, pendingPoliceChange: null });
+  await userRef.collection('private').doc('meta').set({ isPolice: false }, { merge: true });
   return { ok: true };
 });
 
@@ -311,29 +312,37 @@ export const dailyReset = onSchedule(
   async () => {
     const dateKey = istanbulDateKey();
 
-    // 0) Bekleyen polislik başvuru/istifalarını işle (Bölüm 7): anlık meslek
-    // değişimiyle istismarı önlemek için başvuru/istifa hep bir sonraki
-    // 00:00'da gerçekleşir.
+    // 0) Bekleyen polislik başvurularını işle (Bölüm 7): anlık meslek
+    // değişimiyle istismarı önlemek için başvuru bir sonraki 00:00'da
+    // gerçekleşir. İstifa artık ANLIK (resignFromPolice), burada işlenmez.
     const pendingApplySnap = await db
       .collection('users')
       .where('pendingPoliceChange', '==', 'apply')
       .get();
-    const pendingResignSnap = await db
-      .collection('users')
-      .where('pendingPoliceChange', '==', 'resign')
-      .get();
     const pendingBatch = db.batch();
+    const policeApprovedSmsList = [];
     pendingApplySnap.forEach((docSnap) => {
       pendingBatch.update(docSnap.ref, { profession: 'polis', pendingPoliceChange: null });
       pendingBatch.set(docSnap.ref.collection('private').doc('meta'), { isPolice: true }, { merge: true });
+      policeApprovedSmsList.push(docSnap.id);
     });
-    pendingResignSnap.forEach((docSnap) => {
-      pendingBatch.update(docSnap.ref, { profession: null, pendingPoliceChange: null });
-      pendingBatch.set(docSnap.ref.collection('private').doc('meta'), { isPolice: false }, { merge: true });
-    });
-    if (!pendingApplySnap.empty || !pendingResignSnap.empty) await pendingBatch.commit();
+    if (!pendingApplySnap.empty) await pendingBatch.commit();
+    await Promise.all(
+      policeApprovedSmsList.map((uidTarget) =>
+        db
+          .collection('users')
+          .doc(uidTarget)
+          .collection('messages')
+          .add({
+            text: 'Polislik başvurun onaylandı! Artık polissin. Günlük maaşın Karakol üzerinden işlenecek.',
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            read: false,
+            type: 'police_approved',
+          })
+      )
+    );
 
-    // 1) Polis maaşı — 500 altın, sadece suspicion=0 olan polislere (Bölüm 7)
+    // 1) Polis maaşı — 1000 altın, sadece suspicion=0 olan polislere (Bölüm 7)
     const policeSnap = await db
       .collection('users')
       .where('profession', '==', 'polis')
@@ -342,7 +351,7 @@ export const dailyReset = onSchedule(
     policeSnap.forEach((docSnap) => {
       const user = docSnap.data();
       if (user.suspicion === 0) {
-        const { goldDelta, debtDelta } = splitIncomeForDebt(user.debtToState, 500);
+        const { goldDelta, debtDelta } = splitIncomeForDebt(user.debtToState, 1000);
         policeBatch.update(docSnap.ref, {
           gold: admin.firestore.FieldValue.increment(goldDelta),
           debtToState: admin.firestore.FieldValue.increment(debtDelta),
@@ -1195,6 +1204,12 @@ export const takeVehicleLoan = onCall(async (request) => {
     if (vehicle.seizedByBank) {
       throw new HttpsError('failed-precondition', 'Bu araç bankaya el konulmuş durumda.');
     }
+    if (vehicle.listed) {
+      throw new HttpsError(
+        'failed-precondition',
+        '2. el satışta olan bir araca kredi çekemezsin.'
+      );
+    }
 
     const principal = vehicle.baseGalleryValue;
     const totalOwed = Math.round(principal * (1 + interestRate));
@@ -1461,9 +1476,9 @@ const HEIST_CONFIG = {
   modifiye_garaji: { suspicionCost: 25, reward: 20000, requiredPower: 20000 },
   fabrika: { suspicionCost: 25, reward: 4000, requiredPower: 10000 },
   seyyar_satici_1: { suspicionCost: 5, reward: 1600, requiredPower: 4500 },
-  seyyar_satici_2: { suspicionCost: 5, reward: 800, requiredPower: 3000 },
-  seyyar_satici_3: { suspicionCost: 5, reward: 400, requiredPower: 1500 },
-  seyyar_satici_4: { suspicionCost: 5, reward: 200, requiredPower: 1000 },
+  seyyar_satici_2: { suspicionCost: 5, reward: 1200, requiredPower: 3000 },
+  seyyar_satici_3: { suspicionCost: 5, reward: 800, requiredPower: 1500 },
+  seyyar_satici_4: { suspicionCost: 5, reward: 400, requiredPower: 1000 },
 };
 
 // Yakalanma cezası: TAM tutar devlete BORÇ yazılır — cepten HİÇ kesilmez.
@@ -1509,8 +1524,8 @@ export const attemptHeist = onCall(async (request) => {
   const userRef = db.collection('users').doc(uid);
 
   const [dailySnap, userSnap0] = await Promise.all([dailyRef.get(), userRef.get()]);
-  if (userSnap0.data()?.profession === 'polis') {
-    throw new HttpsError('failed-precondition', 'Polis mesleğindeyken soygun başlatamazsın.');
+  if (userSnap0.data()?.profession === 'polis' || userSnap0.data()?.pendingPoliceChange === 'apply') {
+    throw new HttpsError('failed-precondition', 'Polis mesleğindeyken/başvurun beklerken soygun başlatamazsın.');
   }
   if (dailySnap.exists && dailySnap.data().heist?.[target]) {
     throw new HttpsError('failed-precondition', 'Bu hedefi bugün zaten denedin.');
@@ -1636,10 +1651,10 @@ export const sellContrabandAtPark = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Yeterli malınız yok.');
     }
     const user = userSnap.data();
-    if (user?.profession === 'polis') {
+    if (user?.profession === 'polis' || user?.pendingPoliceChange === 'apply') {
       throw new HttpsError(
         'failed-precondition',
-        'Polis mesleğindeyken şüpheni artıracak hiçbir şey yapamazsın.'
+        'Polis mesleğindeyken/başvurun beklerken şüpheni artıracak hiçbir şey yapamazsın.'
       );
     }
     tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-qty) }, { merge: true });
@@ -1721,6 +1736,42 @@ export const placeLimanOrder = onCall(async (request) => {
   return { ok: true, bucket };
 });
 
+// cancelLimanOrder — henüz teslim edilmemiş (loaded ya da pending
+// kovasındaki) bir siparişi iptal edip parasını iade eder.
+export const cancelLimanOrder = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { materialType } = request.data || {};
+  if (!LIMAN_PRICES[materialType]) {
+    throw new HttpsError('invalid-argument', 'Geçersiz malzeme.');
+  }
+  const unitPrice = LIMAN_PRICES[materialType];
+  const userRef = db.collection('users').doc(uid);
+  const orderRef = db.collection('limanOrders').doc(uid);
+
+  await db.runTransaction(async (tx) => {
+    const orderSnap = await tx.get(orderRef);
+    if (!orderSnap.exists) {
+      throw new HttpsError('failed-precondition', 'İptal edilecek sipariş yok.');
+    }
+    const order = orderSnap.data();
+    const loadedQty = order.loaded?.[materialType] || 0;
+    const pendingQty = order.pending?.[materialType] || 0;
+    const totalQty = loadedQty + pendingQty;
+    if (totalQty === 0) {
+      throw new HttpsError('failed-precondition', 'Bu malzeme için bekleyen siparişin yok.');
+    }
+    const refund = totalQty * unitPrice;
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(refund) });
+    tx.update(orderRef, {
+      [`loaded.${materialType}`]: 0,
+      [`pending.${materialType}`]: 0,
+    });
+  });
+
+  return { ok: true };
+});
+
+
 
 // =============================================================================
 // FAZ 7 — EKİP SOYGUN SİSTEMİ (Bölüm 13, 14)
@@ -1756,8 +1807,8 @@ export const createHeistPlan = onCall(async (request) => {
 
   const userSnap = await db.collection('users').doc(uid).get();
   const user = userSnap.data();
-  if (user?.profession === 'polis') {
-    throw new HttpsError('failed-precondition', 'Polis mesleğindeyken soygun planı kuramazsın.');
+  if (user?.profession === 'polis' || user?.pendingPoliceChange === 'apply') {
+    throw new HttpsError('failed-precondition', 'Polis mesleğindeyken/başvurun beklerken soygun planı kuramazsın.');
   }
 
   const dateKey = istanbulDateKey();
@@ -1948,6 +1999,7 @@ export const executeHeistPlan = onCall(async (request) => {
   const dateKey = istanbulDateKey();
   const batch = db.batch();
   const captureSmsList = []; // { uid, penaltyAmount, newTotalDebt }
+  const policeEarningSmsList = []; // { uid, amount }
 
   if (busted) {
     // Sızan polis(ler) engelledikleri parayı bölüşür (gerçek kazanç —
@@ -1965,6 +2017,7 @@ export const executeHeistPlan = onCall(async (request) => {
         gold: admin.firestore.FieldValue.increment(goldDelta),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
       });
+      policeEarningSmsList.push({ uid: participants[i].uid, amount: perPoliceEarning });
     });
     civilianIdx.forEach((i) => {
       const data = userSnaps[i].data();
@@ -2035,6 +2088,20 @@ export const executeHeistPlan = onCall(async (request) => {
 
   await Promise.all(
     captureSmsList.map((c) => sendCaptureSms(c.uid, c.penaltyAmount, c.newTotalDebt))
+  );
+  await Promise.all(
+    policeEarningSmsList.map((p) =>
+      db
+        .collection('users')
+        .doc(p.uid)
+        .collection('messages')
+        .add({
+          text: `Sızdığın soygunu çökerttin! ${p.amount.toLocaleString('tr-TR')} altın ödül kazandın.`,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          read: false,
+          type: 'police_bust_reward',
+        })
+    )
   );
 
   return { ok: true, started: true, busted, caughtBySuspicion, totalReward };
@@ -2274,6 +2341,7 @@ function performRoll(me, { useNitro = false, useTurbo = false } = {}) {
   let multiplier = 1;
   if (nitroUsed && turboUsed) multiplier = 3;
   else if (nitroUsed || turboUsed) multiplier = 2;
+  const boost = nitroUsed && turboUsed ? 'combo' : nitroUsed ? 'nitro' : turboUsed ? 'turbo' : null;
 
   const rolledSteps = stepSum * multiplier + me.wheelBonus;
   const actualSteps = Math.min(rolledSteps, Math.max(me.fuel, 0));
@@ -2300,6 +2368,7 @@ function performRoll(me, { useNitro = false, useTurbo = false } = {}) {
       lastRollSum: stepSum,
       lastRollDice: diceValues,
       lastRollMultiplier: multiplier,
+      lastRollBoost: boost,
       finished: afterPos >= RACE_TRACK_LENGTH,
       nitroActive: nitroUsed ? false : me.nitroActive,
       turboCount: turboUsed ? me.turboCount - 1 : me.turboCount,
@@ -2616,7 +2685,34 @@ async function resolveRoll({ roomId, uid, useNitro, useTurbo }) {
       return;
     }
 
-    // Bitirmedi — sıra karşı tarafa geçer.
+    // Bitirmedi. Bu atışla benzini TAM 0'a düştüyse yarış ANINDA biter —
+    // rakibe sıra geçip "bir tur daha şans" verilmez (kullanıcı ısrarla
+    // bunu istedi: benzin 0 görüldüğü an oyun biter).
+    if (meUpdated.fuel <= 0) {
+      const meFinal = { ...meUpdated, lostByFuel: true };
+      const players = { ...room.players, [uid]: meFinal };
+      finalizeRace({
+        tx,
+        roomRef,
+        room,
+        winnerUid: otherUid || null,
+        players,
+        userRefs,
+        userSnaps,
+      });
+      outcome = {
+        steps: movedSteps,
+        rolledSum: stepSum,
+        multiplier,
+        goldEarned,
+        outOfFuel: true,
+        raceOver: true,
+        winnerUid: otherUid || null,
+      };
+      return;
+    }
+
+    // Sıra karşı tarafa geçer.
     tx.update(roomRef, {
       [`players.${uid}`]: meUpdated,
       currentTurnUid: otherUid,
@@ -2683,6 +2779,9 @@ export const raceRefuel = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Sıra sende değil.');
     }
     const me = requirePlayerInRoom(room, uid);
+    if (me.fuel >= me.maxFuel) {
+      throw new HttpsError('failed-precondition', 'Benzinin zaten dolu.');
+    }
     const atStation = me.position % 10 === 0;
     const price = atStation ? RACE_STATION_PRICES.refuel : RACE_OFFSITE_FUEL_PRICE;
     if (me.raceGold < price) {
@@ -2712,6 +2811,9 @@ export const raceBuyNitro = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Sıra sende değil.');
     }
     const me = requirePlayerInRoom(room, uid);
+    if (me.nitroActive) {
+      throw new HttpsError('failed-precondition', 'Bu tur zaten nitro aldın.');
+    }
     if (me.raceGold < 20) {
       throw new HttpsError('failed-precondition', 'Yeterli yarış altının yok.');
     }
@@ -2811,6 +2913,7 @@ export const createListing = onCall(async (request) => {
         itemType,
         vehicleId: itemId,
         vehicleModel: v.model,
+        vehicleCatalogId: v.catalogId,
         vehicleGearLevel: v.gearLevel,
         vehicleTank: (v.baseTank || 0) + (v.tankBonus || 0),
         vehicleGearUpgraded: Boolean(v.gearUpgraded),
@@ -2822,6 +2925,20 @@ export const createListing = onCall(async (request) => {
     });
   } else if (itemType === 'weapon') {
     const weaponRef = db.collection('weapons').doc(itemId);
+    const sellerSnap0 = await db.collection('users').doc(uid).get();
+    if (sellerSnap0.data()?.profession === 'polis') {
+      const myWeaponsSnap = await db
+        .collection('weapons')
+        .where('ownerId', '==', uid)
+        .get();
+      const unlistedCount = myWeaponsSnap.docs.filter((d) => !d.data().listed).length;
+      if (unlistedCount <= 1) {
+        throw new HttpsError(
+          'failed-precondition',
+          'Polis olarak her zaman en az 1 silahın kalmalı, hepsini satışa çıkaramazsın.'
+        );
+      }
+    }
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(weaponRef);
       const w = snap.data();
@@ -2838,6 +2955,7 @@ export const createListing = onCall(async (request) => {
         itemType,
         weaponId: itemId,
         weaponName: w.name,
+        weaponCatalogId: w.catalogId,
         weaponLevel: w.level,
         weaponPower: w.power,
         price: priceNum,
@@ -3043,5 +3161,383 @@ export const buyListing = onCall(async (request) => {
       type: 'marketplace_sale',
     });
 
+  return { ok: true };
+});
+
+// =============================================================================
+// CASINO — "10 NUMARA" KART OYUNU (kullanıcının verdiği prototipe göre)
+// =============================================================================
+//
+// Kurallar:
+//   - Masa kapasitesi 1-4 insan oyuncu (+ her zaman kurpiyer). 1 kişilik
+//     masa doğrudan kurpiyere karşı oynanır.
+//   - Masa KALICI: bir tur bitince aynı masada yeni tur (yeni el) başlanabilir.
+//   - Masayı kuran, kart dağıtma anında masada oturan herkesi o TURA dahil
+//     eder. Tur devam ederken katılan biri, bir SONRAKİ dağıtımda dahil olur.
+//   - Bahis, dağıtım anında herkesten (kurpiyer hariç) tek seferlik kesilir,
+//     ortaya (pot) toplanır. Amaç 10'a en yakın (aşmadan) toplamı yapmak.
+//   - Kart değerleri 1-5. Toplam 10'u geçerse (bust) elenir.
+//   - Her oyuncunun hamlesi (kart çek/pas) için 10 saniyesi var; süre
+//     dolarsa otomatik pas geçilir.
+//   - Herkes bitince kurpiyer otomatik oynar (8'e kadar çeker). Kazanan(lar)
+//     — kurpiyer dahil en yüksek (elenmemiş) toplamı yapan(lar) — arasında
+//     kurpiyer varsa pot kimseye ödenmez (kasaya gider); sadece insan
+//     oyuncular kazandıysa pot aralarında eşit bölünür.
+//   - 10 Numara'dan kazanılan para ASLA otomatik borca gitmez (Bölüm 10
+//     istisnası — kullanıcının özel talebi).
+//   - Bahis miktarı kadar altının yoksa masaya giremezsin; tur esnasında
+//     (dağıtım anında) altının bahisin altındaysa masadan atılırsın.
+// =============================================================================
+
+const ON_NUMARA_TARGET = 10;
+const ON_NUMARA_DEALER_STAND_AT = 8;
+const ON_NUMARA_TURN_SECONDS = 10;
+const ON_NUMARA_EMOJIS = ['😂', '😢', '😡', '😮', '👍', '🔥'];
+
+function drawOnNumaraCard() {
+  return 1 + Math.floor(Math.random() * 5);
+}
+
+function sumCards(cards) {
+  return cards.reduce((a, b) => a + b, 0);
+}
+
+export const createOnNumaraTable = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { capacity, betAmount } = request.data || {};
+  const cap = Number(capacity);
+  const bet = Number(betAmount);
+  if (![1, 2, 3, 4].includes(cap)) {
+    throw new HttpsError('invalid-argument', 'Masa kapasitesi 1-4 arasında olmalı.');
+  }
+  if (!Number.isInteger(bet) || bet <= 0) {
+    throw new HttpsError('invalid-argument', 'Geçersiz bahis miktarı.');
+  }
+  const userSnap = await db.collection('users').doc(uid).get();
+  const user = userSnap.data();
+  if (!user || (user.gold || 0) < bet) {
+    throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+  }
+
+  const tableRef = db.collection('onNumaraTables').doc();
+  await tableRef.set({
+    status: 'open',
+    capacity: cap,
+    betAmount: bet,
+    creatorUid: uid,
+    seatOrder: [uid],
+    seats: { [uid]: { displayName: user.displayName || 'Oyuncu' } },
+    round: null,
+    reactions: {},
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return { ok: true, tableId: tableRef.id };
+});
+
+export const joinOnNumaraTable = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { tableId } = request.data || {};
+  const tableRef = db.collection('onNumaraTables').doc(tableId);
+
+  await db.runTransaction(async (tx) => {
+    const [tableSnap, userSnap] = await Promise.all([
+      tx.get(tableRef),
+      tx.get(db.collection('users').doc(uid)),
+    ]);
+    if (!tableSnap.exists) throw new HttpsError('failed-precondition', 'Masa bulunamadı.');
+    const table = tableSnap.data();
+    if (table.seats[uid]) throw new HttpsError('failed-precondition', 'Zaten bu masadasın.');
+    if (table.seatOrder.length >= table.capacity) {
+      throw new HttpsError('failed-precondition', 'Masa dolu.');
+    }
+    const user = userSnap.data();
+    if (!user || (user.gold || 0) < table.betAmount) {
+      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    }
+    tx.update(tableRef, {
+      seatOrder: admin.firestore.FieldValue.arrayUnion(uid),
+      [`seats.${uid}`]: { displayName: user.displayName || 'Oyuncu' },
+    });
+  });
+
+  return { ok: true };
+});
+
+export const leaveOnNumaraTable = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { tableId } = request.data || {};
+  const tableRef = db.collection('onNumaraTables').doc(tableId);
+
+  await db.runTransaction(async (tx) => {
+    const tableSnap = await tx.get(tableRef);
+    if (!tableSnap.exists) return;
+    const table = tableSnap.data();
+    const newSeatOrder = (table.seatOrder || []).filter((u) => u !== uid);
+    tx.update(tableRef, {
+      seatOrder: newSeatOrder,
+      [`seats.${uid}`]: admin.firestore.FieldValue.delete(),
+    });
+  });
+
+  return { ok: true };
+});
+
+// dealCards — masayı kuran, oturan herkesle yeni bir el başlatır.
+export const dealOnNumaraCards = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { tableId } = request.data || {};
+  const tableRef = db.collection('onNumaraTables').doc(tableId);
+
+  await db.runTransaction(async (tx) => {
+    const tableSnap = await tx.get(tableRef);
+    if (!tableSnap.exists) throw new HttpsError('failed-precondition', 'Masa bulunamadı.');
+    const table = tableSnap.data();
+    if (table.creatorUid !== uid) {
+      throw new HttpsError('permission-denied', 'Sadece masayı kuran kart dağıtabilir.');
+    }
+    if (table.round && table.round.phase === 'playing') {
+      throw new HttpsError('failed-precondition', 'Bu el zaten devam ediyor.');
+    }
+
+    // Bahis karşılayamayanları masadan at, kalanları kontrol et.
+    const seatUids = table.seatOrder || [];
+    const userRefs = seatUids.map((u) => db.collection('users').doc(u));
+    const userSnaps = await Promise.all(userRefs.map((r) => tx.get(r)));
+    const eligible = [];
+    const kicked = [];
+    seatUids.forEach((u, i) => {
+      const g = userSnaps[i].data()?.gold || 0;
+      if (g >= table.betAmount) eligible.push(u);
+      else kicked.push(u);
+    });
+    if (eligible.length === 0) {
+      throw new HttpsError('failed-precondition', 'Masada yeterli altınlı kimse yok.');
+    }
+
+    // Bahisleri kes.
+    eligible.forEach((u) => {
+      const ref = db.collection('users').doc(u);
+      tx.update(ref, { gold: admin.firestore.FieldValue.increment(-table.betAmount) });
+    });
+
+    // Kartları dağıt.
+    const hands = {};
+    eligible.forEach((u) => {
+      const cards = [drawOnNumaraCard(), drawOnNumaraCard()];
+      const total = sumCards(cards);
+      hands[u] = { cards, status: total >= ON_NUMARA_TARGET ? 'stand' : 'playing' };
+    });
+    const dealerCards = [drawOnNumaraCard(), drawOnNumaraCard()];
+
+    // İlk sırası "playing" durumunda olan katılımcı.
+    const firstTurnUid = eligible.find((u) => hands[u].status === 'playing') || null;
+
+    const newSeats = { ...table.seats };
+    const newSeatOrder = eligible.slice();
+    kicked.forEach((u) => {
+      delete newSeats[u];
+    });
+
+    tx.update(tableRef, {
+      seats: newSeats,
+      seatOrder: newSeatOrder,
+      round: {
+        phase: firstTurnUid ? 'playing' : 'dealer',
+        participants: eligible,
+        hands,
+        dealerCards,
+        dealerStatus: 'playing',
+        pot: table.betAmount * eligible.length,
+        currentTurnUid: firstTurnUid,
+        turnDeadline: firstTurnUid
+          ? admin.firestore.Timestamp.fromMillis(Date.now() + ON_NUMARA_TURN_SECONDS * 1000)
+          : null,
+        result: null,
+      },
+    });
+  });
+
+  // Eğer kimsenin ilk hamlesi yoksa (herkes 10'a ulaştıysa) doğrudan
+  // kurpiyer aşamasına geç.
+  await resolveOnNumaraIfDealerPhase(tableId);
+
+  return { ok: true };
+});
+
+// Sıradaki "playing" katılımcıyı bulur; yoksa null (kurpiyer sırası demek).
+function findNextTurnUid(participants, hands, afterUid) {
+  const startIdx = afterUid ? participants.indexOf(afterUid) + 1 : 0;
+  for (let i = startIdx; i < participants.length; i++) {
+    if (hands[participants[i]].status === 'playing') return participants[i];
+  }
+  return null;
+}
+
+// Kurpiyer otomatik oynar + sonucu belirler (aynı transaction dışında,
+// ayrı bir adım olarak çağrılabilir — dealOnNumaraCards ve
+// resolveOnNumaraAction tarafından kullanılır).
+async function resolveOnNumaraIfDealerPhase(tableId) {
+  const tableRef = db.collection('onNumaraTables').doc(tableId);
+
+  await db.runTransaction(async (tx) => {
+    const tableSnap = await tx.get(tableRef);
+    if (!tableSnap.exists) return;
+    const table = tableSnap.data();
+    const round = table.round;
+    if (!round || round.phase !== 'dealer') return;
+
+    // Kurpiyer: 8'e ulaşana ya da patlayana kadar çeker.
+    let dealerCards = [...round.dealerCards];
+    let dealerStatus = 'playing';
+    while (true) {
+      const total = sumCards(dealerCards);
+      if (total > ON_NUMARA_TARGET) {
+        dealerStatus = 'bust';
+        break;
+      }
+      if (total >= ON_NUMARA_DEALER_STAND_AT) {
+        dealerStatus = 'stand';
+        break;
+      }
+      dealerCards.push(drawOnNumaraCard());
+    }
+
+    // Kazananları belirle.
+    const participants = round.participants;
+    const hands = round.hands;
+    const contenders = participants.filter((u) => hands[u].status !== 'bust');
+    const dealerIn = dealerStatus !== 'bust';
+    const dealerSum = sumCards(dealerCards);
+
+    let bestSum = dealerIn ? dealerSum : -1;
+    contenders.forEach((u) => {
+      const s = sumCards(hands[u].cards);
+      if (s > bestSum) bestSum = s;
+    });
+
+    const humanWinners = contenders.filter((u) => sumCards(hands[u].cards) === bestSum);
+    const dealerWins = dealerIn && dealerSum === bestSum;
+
+    // Firestore transaction kuralı: tüm okumalar yazmalardan önce.
+    const winnerRefs = !dealerWins ? humanWinners.map((u) => db.collection('users').doc(u)) : [];
+
+    const updatedHands = { ...hands };
+    if (!dealerWins && humanWinners.length > 0) {
+      const share = Math.floor(round.pot / humanWinners.length);
+      humanWinners.forEach((u, i) => {
+        updatedHands[u] = { ...hands[u], status: 'won' };
+        // 10 Numara kazancı borca gitmez — direkt altına eklenir.
+        tx.update(winnerRefs[i], { gold: admin.firestore.FieldValue.increment(share) });
+      });
+    }
+
+    tx.update(tableRef, {
+      round: {
+        ...round,
+        phase: 'resolved',
+        dealerCards,
+        dealerStatus,
+        hands: updatedHands,
+        currentTurnUid: null,
+        turnDeadline: null,
+        result: {
+          winners: dealerWins ? [] : humanWinners,
+          dealerWon: dealerWins,
+          bestSum,
+          share: !dealerWins && humanWinners.length > 0 ? Math.floor(round.pot / humanWinners.length) : 0,
+        },
+      },
+    });
+  });
+}
+
+// Ortak hamle çözümleme — onNumaraHit / onNumaraStand / autoStand kullanır.
+async function resolveOnNumaraAction({ tableId, uid, action }) {
+  const tableRef = db.collection('onNumaraTables').doc(tableId);
+
+  await db.runTransaction(async (tx) => {
+    const tableSnap = await tx.get(tableRef);
+    if (!tableSnap.exists) throw new HttpsError('failed-precondition', 'Masa bulunamadı.');
+    const table = tableSnap.data();
+    const round = table.round;
+    if (!round || round.phase !== 'playing' || round.currentTurnUid !== uid) {
+      throw new HttpsError('failed-precondition', 'Sıra sende değil.');
+    }
+
+    const hand = { ...round.hands[uid] };
+    if (action === 'hit') {
+      hand.cards = [...hand.cards, drawOnNumaraCard()];
+      const total = sumCards(hand.cards);
+      if (total > ON_NUMARA_TARGET) hand.status = 'bust';
+      else if (total >= ON_NUMARA_TARGET) hand.status = 'stand';
+      // total < 10 ise 'playing' kalır, aynı oyuncunun sırası devam eder.
+    } else {
+      hand.status = 'stand';
+    }
+
+    const newHands = { ...round.hands, [uid]: hand };
+    const stillMyTurn = hand.status === 'playing';
+    const nextTurnUid = stillMyTurn ? uid : findNextTurnUid(round.participants, newHands, uid);
+
+    tx.update(tableRef, {
+      round: {
+        ...round,
+        hands: newHands,
+        phase: nextTurnUid ? 'playing' : 'dealer',
+        currentTurnUid: nextTurnUid,
+        turnDeadline: nextTurnUid
+          ? admin.firestore.Timestamp.fromMillis(Date.now() + ON_NUMARA_TURN_SECONDS * 1000)
+          : null,
+      },
+    });
+  });
+
+  await resolveOnNumaraIfDealerPhase(tableId);
+}
+
+export const onNumaraHit = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { tableId } = request.data || {};
+  await resolveOnNumaraAction({ tableId, uid, action: 'hit' });
+  return { ok: true };
+});
+
+export const onNumaraStand = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { tableId } = request.data || {};
+  await resolveOnNumaraAction({ tableId, uid, action: 'stand' });
+  return { ok: true };
+});
+
+// onNumaraAutoStand — 10 saniye dolunca herhangi bir bağlı istemci
+// tarafından tetiklenir, sırası gelen oyuncuyu otomatik pas geçirir.
+export const onNumaraAutoStand = onCall(async (request) => {
+  requireAuth(request);
+  const { tableId } = request.data || {};
+  const tableSnap = await db.collection('onNumaraTables').doc(tableId).get();
+  if (!tableSnap.exists) return { ok: true, skipped: true };
+  const round = tableSnap.data().round;
+  if (!round || round.phase !== 'playing' || !round.turnDeadline) {
+    return { ok: true, skipped: true };
+  }
+  if (round.turnDeadline.toMillis() > Date.now()) {
+    return { ok: true, skipped: true };
+  }
+  await resolveOnNumaraAction({ tableId, uid: round.currentTurnUid, action: 'stand' });
+  return { ok: true };
+});
+
+// sendOnNumaraEmoji — masadaki oyunculara kısa ömürlü emoji tepkisi.
+export const sendOnNumaraEmoji = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { tableId, emoji } = request.data || {};
+  if (!ON_NUMARA_EMOJIS.includes(emoji)) {
+    throw new HttpsError('invalid-argument', 'Geçersiz emoji.');
+  }
+  await db
+    .collection('onNumaraTables')
+    .doc(tableId)
+    .update({ [`reactions.${uid}`]: { emoji, at: Date.now() } });
   return { ok: true };
 });

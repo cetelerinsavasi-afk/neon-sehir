@@ -129,35 +129,61 @@
   align-items: center;
 }
 
-.race-track-bar {
+.race-track {
   position: relative;
-  height: 18px;
-  background: var(--panel);
+  height: 56px;
+  background: linear-gradient(180deg, #1a1a1a, #0d0d0d);
   border: 1px solid var(--panel-border);
-  border-radius: 999px;
+  border-radius: 10px;
   overflow: hidden;
+  margin: 6px 0;
 }
 
-.race-track-fill {
+.race-track-ticks {
+  position: absolute;
+  inset: 0;
+}
+
+.race-tick {
   position: absolute;
   top: 0;
-  left: 0;
-  height: 100%;
-  transition: width 0.3s ease;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.08);
 }
 
-.race-track-fill.me {
-  background: var(--neon-cyan);
-  opacity: 0.9;
-  height: 50%;
+.race-tick.major {
+  width: 2px;
+  background: rgba(255, 210, 63, 0.35);
+}
+
+.race-track-finish {
+  position: absolute;
   top: 0;
+  bottom: 0;
+  right: 0;
+  width: 6px;
+  background: repeating-linear-gradient(
+    45deg,
+    #fff 0 4px,
+    #111 4px 8px
+  );
 }
 
-.race-track-fill.other {
-  background: var(--neon-pink);
-  opacity: 0.9;
-  height: 50%;
-  top: 50%;
+.race-car {
+  position: absolute;
+  font-size: 22px;
+  transition: left 0.5s ease;
+  transform: translateX(-4px);
+}
+
+.race-car.me {
+  top: 4px;
+}
+
+.race-car.other {
+  top: 28px;
+  filter: hue-rotate(150deg);
 }
 
 .race-positions {
@@ -165,6 +191,47 @@
   justify-content: space-between;
   font-size: 11px;
   color: var(--text-dim);
+}
+
+.race-dice-row {
+  display: flex;
+  gap: 8px;
+}
+
+.race-dice-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+}
+
+.race-dice-owner {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.race-gear-nitro-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.race-gear-nitro-row .race-gear-stepper {
+  flex: 1;
+}
+
+.race-gear-nitro-row .race-nitro-btn {
+  flex: 1;
+}
+
+.race-stat-coin {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff5c2, #ffd23f 55%, #b8860b 100%);
+  box-shadow: 0 0 4px rgba(255, 210, 63, 0.6);
+  display: inline-block;
 }
 
 .race-stat-boxes {
@@ -345,4 +412,11 @@
   0% { transform: rotate(0deg) scale(1); }
   50% { transform: rotate(180deg) scale(1.3); }
   100% { transform: rotate(360deg) scale(1); }
+}
+
+.race-boost-badge {
+  font-size: 10px;
+  color: #ff9900;
+  font-weight: 700;
+  text-align: center;
 }

@@ -32,9 +32,9 @@ export const HEIST_LABELS = {
   },
   fabrika: { title: 'Fabrika Soygunu', requiredPower: 10000, reward: 4000, suspicionCost: 25 },
   seyyar_satici_1: { title: 'Kokoreçciye Haraç', requiredPower: 4500, reward: 1600, suspicionCost: 5 },
-  seyyar_satici_2: { title: 'Simitçiye Haraç', requiredPower: 3000, reward: 800, suspicionCost: 5 },
-  seyyar_satici_3: { title: 'Dönerciye Haraç', requiredPower: 1500, reward: 400, suspicionCost: 5 },
-  seyyar_satici_4: { title: 'Köfteciye Haraç', requiredPower: 1000, reward: 200, suspicionCost: 5 },
+  seyyar_satici_2: { title: 'Simitçiye Haraç', requiredPower: 3000, reward: 1200, suspicionCost: 5 },
+  seyyar_satici_3: { title: 'Dönerciye Haraç', requiredPower: 1500, reward: 800, suspicionCost: 5 },
+  seyyar_satici_4: { title: 'Köfteciye Haraç', requiredPower: 1000, reward: 400, suspicionCost: 5 },
 };
 
 const RULES_TEXT =
@@ -66,6 +66,13 @@ function suspicionClass(s) {
   if (s >= 50) return 'heist-suspicion-high';
   if (s >= 20) return 'heist-suspicion-mid';
   return 'heist-suspicion-low';
+}
+
+// 0-20 arası şüpheyi TAM sayı olarak göstermiyoruz — yoksa şüphesi tam 0
+// olan (polis olma şartı) bir katılımcı hemen ifşa olurdu.
+function suspicionLabel(s) {
+  if (s <= 20) return '%0-20';
+  return `%${s}`;
 }
 
 function PlanCard({ plan, myUid, onChanged }) {
@@ -104,7 +111,7 @@ function PlanCard({ plan, myUid, onChanged }) {
               {p.displayName} ({(p.weaponPower || 0).toLocaleString('tr-TR')} güç)
             </span>
             <span className={`heist-suspicion-badge ${suspicionClass(p.suspicion || 0)}`}>
-              şüphe %{p.suspicion || 0}
+              şüphe {suspicionLabel(p.suspicion || 0)}
             </span>
             {isCreator && p.uid !== myUid && (
               <button

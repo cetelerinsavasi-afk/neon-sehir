@@ -71,6 +71,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // onNumaraTables/{tableId} — "10 Numara" kart oyunu masaları.
+    match /onNumaraTables/{tableId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
     match /shipSchedule/{date} {
       allow read: if isSignedIn();
       allow write: if false;

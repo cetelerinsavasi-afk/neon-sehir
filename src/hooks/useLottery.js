@@ -1,16 +1,15 @@
 import { useEffect, useState } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
+import { useAuth } from '../contexts/AuthContext';
 
 function istanbulDateKey(offsetDays = 0) {
-  const d = new Date();
-  d.setDate(d.getDate() + offsetDays);
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Istanbul',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(d);
+  }).format(new Date(Date.now() + offsetDays * 24 * 60 * 60 * 1000));
 }
 
 function useLotteryDoc(dateKey) {
@@ -38,11 +37,28 @@ function useLotteryDoc(dateKey) {
 }
 
 /**
- * useLottery — bugünün canlı jackpot/bilet durumunu ve dünün kazananını
- * birlikte döner.
+ * useLottery — bugünün canlı jackpot/bilet durumunu, dünün kazananını ve
+ * kendi bugünkü bilet sayımı birlikte döner.
  */
 export function useLottery() {
+  const { user } = useAuth();
   const today = useLotteryDoc(istanbulDateKey(0));
   const yesterday = useLotteryDoc(istanbulDateKey(-1));
-  return { today: today.data, yesterday: yesterday.data, loading: today.loading };
+  const [myTickets, setMyTickets] = useState(0);
+
+  useEffect(() => {
+    if (!user) {
+      setMyTickets(0);
+      return;
+    }
+    const ref = doc(db, 'lottery', istanbulDateKey(0), 'tickets', user.uid);
+    const unsubscribe = onSnapshot(
+      ref,
+      (snap) => setMyTickets(snap.exists() ? snap.data().count || 0 : 0),
+      (err) => console.error('myTickets dinleme hatası:', err)
+    );
+    return unsubscribe;
+  }, [user]);
+
+  return { today: today.data, yesterday: yesterday.data, myTickets, loading: today.loading };
 }

@@ -6,6 +6,8 @@ import { useInventory } from '../../hooks/useInventory';
 import { useProductionMachines } from '../../hooks/useProductionMachines';
 import { useMarketplaceListings } from '../../hooks/useMarketplaceListings';
 import { createListing, cancelListing, buyListing } from '../../services/gameActions';
+import { vehicleCatalog } from '../../data/vehicleCatalog';
+import { weaponCatalog } from '../../data/weaponCatalog';
 import './MarketplaceScreen.css';
 
 const MATERIAL_LABELS = {
@@ -20,6 +22,26 @@ const MACHINE_LABELS = {
   silahUpgrade: 'Silah Geliştirme Makinesi',
   yasakliMadde: 'Yasaklı Madde Üretim Makinesi',
 };
+const MATERIAL_EMOJIS = {
+  depoUpgrade: '📦',
+  vitesUpgrade: '⚙️',
+  silahUpgrade: '🔧',
+  yasakliMadde: '💊',
+};
+
+const TABS = [
+  { id: 'vehicle', label: 'Araç' },
+  { id: 'weapon', label: 'Silah' },
+  { id: 'material', label: 'Malzeme' },
+  { id: 'machine', label: 'Makine' },
+];
+
+function vehicleImage(catalogId) {
+  return vehicleCatalog.find((v) => v.id === catalogId)?.image;
+}
+function weaponImage(catalogId) {
+  return weaponCatalog.find((w) => w.id === catalogId)?.image;
+}
 
 function listingLabel(listing) {
   if (listing.itemType === 'vehicle') {
@@ -33,7 +55,7 @@ function listingLabel(listing) {
   if (listing.itemType === 'weapon') {
     return listing.weaponLevel > 1
       ? `${listing.weaponName} (Sv. ${listing.weaponLevel}, Güç ${listing.weaponPower?.toLocaleString('tr-TR')} — geliştirilmiş)`
-      : listing.weaponName;
+      : `${listing.weaponName} (Güç ${listing.weaponPower?.toLocaleString('tr-TR')})`;
   }
   if (listing.itemType === 'material')
     return `${MATERIAL_LABELS[listing.materialType] || listing.materialType} × ${listing.quantity}`;
@@ -41,7 +63,7 @@ function listingLabel(listing) {
   return 'Ürün';
 }
 
-function SellForm({ onCreated }) {
+function SellForm({ onCreated, onClose }) {
   const { vehicles } = useVehicles();
   const { weapons } = useWeapons();
   const { inventory } = useInventory();
@@ -82,6 +104,7 @@ function SellForm({ onCreated }) {
       setQuantity('');
       setPrice('');
       onCreated?.();
+      onClose?.();
     } catch (err) {
       setError(err.message || 'İlan oluşturulamadı.');
     } finally {
@@ -90,99 +113,134 @@ function SellForm({ onCreated }) {
   };
 
   return (
-    <div className="market-sell-form">
-      <div className="market-type-row">
-        {[
-          ['vehicle', 'Araç'],
-          ['weapon', 'Silah'],
-          ['material', 'Malzeme'],
-          ['machine', 'Makine'],
-        ].map(([key, label]) => (
-          <button
-            key={key}
-            className={`market-type-btn${itemType === key ? ' active' : ''}`}
-            onClick={() => {
-              setItemType(key);
-              setSelectedId('');
-            }}
-          >
-            {label}
+    <div className="market-sell-backdrop" onClick={onClose}>
+      <div className="market-sell-form" onClick={(e) => e.stopPropagation()}>
+        <div className="market-sell-header">
+          <p className="market-section-title">İlan Ver</p>
+          <button className="market-sell-close" onClick={onClose}>
+            ✕
           </button>
-        ))}
-      </div>
+        </div>
 
-      {itemType === 'vehicle' && (
-        <select className="market-select" value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
-          <option value="">Araç seç…</option>
-          {sellableVehicles.map((v) => (
-            <option key={v.id} value={v.id}>
-              {v.model} (Vites {v.gearLevel}, Depo {v.baseTank + (v.tankBonus || 0)}L
-              {v.turboCount > 0 ? `, Turbo ×${v.turboCount}` : ''})
-            </option>
+        <div className="market-type-row">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              className={`market-type-btn${itemType === t.id ? ' active' : ''}`}
+              onClick={() => {
+                setItemType(t.id);
+                setSelectedId('');
+              }}
+            >
+              {t.label}
+            </button>
           ))}
-        </select>
-      )}
+        </div>
 
-      {itemType === 'weapon' && (
-        <select className="market-select" value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
-          <option value="">Silah seç…</option>
-          {sellableWeapons.map((w) => (
-            <option key={w.id} value={w.id}>
-              {w.name} (Sv. {w.level})
-            </option>
-          ))}
-        </select>
-      )}
-
-      {itemType === 'material' && (
-        <div className="market-material-form">
-          <select
-            className="market-select"
-            value={materialType}
-            onChange={(e) => setMaterialType(e.target.value)}
-          >
-            {Object.entries(MATERIAL_LABELS).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label} (elinde: {inventory[key] || 0})
+        {itemType === 'vehicle' && (
+          <select className="market-select" value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
+            <option value="">Araç seç…</option>
+            {sellableVehicles.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.model} (Vites {v.gearLevel}, Depo {v.baseTank + (v.tankBonus || 0)}L
+                {v.turboCount > 0 ? `, Turbo ×${v.turboCount}` : ''})
               </option>
             ))}
           </select>
+        )}
+
+        {itemType === 'weapon' && (
+          <select className="market-select" value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
+            <option value="">Silah seç…</option>
+            {sellableWeapons.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.name} (Sv. {w.level}, Güç {w.power.toLocaleString('tr-TR')})
+              </option>
+            ))}
+          </select>
+        )}
+
+        {itemType === 'material' && (
+          <div className="market-material-form">
+            <select
+              className="market-select"
+              value={materialType}
+              onChange={(e) => setMaterialType(e.target.value)}
+            >
+              {Object.entries(MATERIAL_LABELS).map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label} (elinde: {inventory[key] || 0})
+                </option>
+              ))}
+            </select>
+            <input
+              type="number"
+              min="1"
+              max={inventory[materialType] || 0}
+              placeholder="Kaç adet satmak istiyorsun?"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              className="market-input market-input-wide"
+            />
+          </div>
+        )}
+
+        {itemType === 'machine' && (
+          <select className="market-select" value={machineType} onChange={(e) => setMachineType(e.target.value)}>
+            {Object.entries(MACHINE_LABELS).map(([key, label]) => (
+              <option key={key} value={key} disabled={!machines[key]?.owned}>
+                {label} {machines[key]?.owned ? '' : '(sahip değilsin)'}
+              </option>
+            ))}
+          </select>
+        )}
+
+        <div className="market-row">
           <input
             type="number"
             min="1"
-            max={inventory[materialType] || 0}
-            placeholder="Kaç adet satmak istiyorsun?"
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
-            className="market-input market-input-wide"
+            placeholder="Satış fiyatı (altın)"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            className="market-input"
           />
+          <button className="market-btn primary" disabled={busy || !price} onClick={handleSubmit}>
+            İlan Ver
+          </button>
         </div>
-      )}
-
-      {itemType === 'machine' && (
-        <select className="market-select" value={machineType} onChange={(e) => setMachineType(e.target.value)}>
-          {Object.entries(MACHINE_LABELS).map(([key, label]) => (
-            <option key={key} value={key} disabled={!machines[key]?.owned}>
-              {label} {machines[key]?.owned ? '' : '(sahip değilsin)'}
-            </option>
-          ))}
-        </select>
-      )}
-
-      <div className="market-row">
-        <input
-          type="number"
-          min="1"
-          placeholder="Satış fiyatı (altın)"
-          value={price}
-          onChange={(e) => setPrice(e.target.value)}
-          className="market-input"
-        />
-        <button className="market-btn primary" disabled={busy || !price} onClick={handleSubmit}>
-          İlan Ver
-        </button>
+        {error && <p className="market-error">{error}</p>}
       </div>
-      {error && <p className="market-error">{error}</p>}
+    </div>
+  );
+}
+
+function ListingCard({ listing, isMine, busy, onCancel, onBuy }) {
+  let media = null;
+  if (listing.itemType === 'vehicle') {
+    const img = vehicleImage(listing.vehicleCatalogId);
+    media = img ? <img className="market-card-photo" src={img} alt={listing.vehicleModel} /> : null;
+  } else if (listing.itemType === 'weapon') {
+    const img = weaponImage(listing.weaponCatalogId);
+    media = img ? <img className="market-card-photo" src={img} alt={listing.weaponName} /> : null;
+  } else if (listing.itemType === 'material') {
+    media = <span className="market-card-emoji">{MATERIAL_EMOJIS[listing.materialType] || '📦'}</span>;
+  } else if (listing.itemType === 'machine') {
+    media = <span className="market-card-emoji">{MATERIAL_EMOJIS[listing.machineType] || '🏭'}</span>;
+  }
+
+  return (
+    <div className="market-listing-card">
+      {media}
+      <div className="market-listing-info">
+        <span className="market-listing-label">{listingLabel(listing)}</span>
+        <span className="market-listing-price">
+          {listing.price.toLocaleString('tr-TR')} altın
+          {!isMine && <span className="market-seller"> · {listing.sellerName}</span>}
+        </span>
+      </div>
+      <button className="market-btn small" disabled={busy} onClick={isMine ? onCancel : onBuy}>
+        {isMine ? 'İptal Et' : 'Satın Al'}
+      </button>
     </div>
   );
 }
@@ -190,6 +248,8 @@ function SellForm({ onCreated }) {
 export default function MarketplaceScreen() {
   const { user } = useAuth();
   const { listings } = useMarketplaceListings();
+  const [tab, setTab] = useState('vehicle');
+  const [showSellForm, setShowSellForm] = useState(false);
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
 
@@ -205,50 +265,58 @@ export default function MarketplaceScreen() {
     }
   };
 
-  const myListings = listings.filter((l) => l.sellerId === user?.uid);
-  const otherListings = listings.filter((l) => l.sellerId !== user?.uid);
+  const tabListings = listings.filter((l) => l.itemType === tab);
+  const myListings = tabListings.filter((l) => l.sellerId === user?.uid);
+  const otherListings = tabListings.filter((l) => l.sellerId !== user?.uid);
 
   return (
     <div className="market-screen">
-      <p className="market-section-title">İlan Ver</p>
-      <SellForm />
+      <div className="market-header-row">
+        <div className="market-tabs">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              className={`market-tab-btn${tab === t.id ? ' active' : ''}`}
+              onClick={() => setTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <button className="market-btn primary" onClick={() => setShowSellForm(true)}>
+          + İlan Ver
+        </button>
+      </div>
 
       {myListings.length > 0 && (
         <>
           <p className="market-section-title">İlanlarım</p>
           {myListings.map((l) => (
-            <div key={l.id} className="market-listing-card">
-              <span>{listingLabel(l)} — {l.price.toLocaleString('tr-TR')} altın</span>
-              <button
-                className="market-btn small"
-                disabled={busy === l.id}
-                onClick={() => run(l.id, () => cancelListing(l.id))}
-              >
-                İptal Et
-              </button>
-            </div>
+            <ListingCard
+              key={l.id}
+              listing={l}
+              isMine
+              busy={busy === l.id}
+              onCancel={() => run(l.id, () => cancelListing(l.id))}
+            />
           ))}
         </>
       )}
 
       <p className="market-section-title">Diğer İlanlar</p>
-      {otherListings.length === 0 && <p className="market-hint">Şu an başka ilan yok.</p>}
+      {otherListings.length === 0 && <p className="market-hint">Bu kategoride başka ilan yok.</p>}
       {otherListings.map((l) => (
-        <div key={l.id} className="market-listing-card">
-          <span>
-            {listingLabel(l)} — {l.price.toLocaleString('tr-TR')} altın
-            <span className="market-seller"> · {l.sellerName}</span>
-          </span>
-          <button
-            className="market-btn small"
-            disabled={busy === l.id}
-            onClick={() => run(l.id, () => buyListing(l.id))}
-          >
-            Satın Al
-          </button>
-        </div>
+        <ListingCard
+          key={l.id}
+          listing={l}
+          isMine={false}
+          busy={busy === l.id}
+          onBuy={() => run(l.id, () => buyListing(l.id))}
+        />
       ))}
       {error && <p className="market-error">{error}</p>}
+
+      {showSellForm && <SellForm onClose={() => setShowSellForm(false)} />}
     </div>
   );
 }

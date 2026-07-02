@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useShipSchedule } from '../../hooks/useShipSchedule';
 import { usePendingLimanOrder } from '../../hooks/usePendingLimanOrder';
-import { placeLimanOrder } from '../../services/gameActions';
+import { placeLimanOrder, cancelLimanOrder } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import './LimanScreen.css';
 
@@ -106,9 +106,18 @@ export default function LimanScreen() {
           <>
             {LIMAN_MATERIALS.map((m) =>
               (loaded[m.id] || 0) > 0 ? (
-                <p key={`loaded-${m.id}`} className="liman-hint">
-                  {m.label}: {loaded[m.id]} adet
-                </p>
+                <div key={`loaded-${m.id}`} className="liman-pending-row">
+                  <p className="liman-hint">
+                    {m.label}: {loaded[m.id]} adet
+                  </p>
+                  <button
+                    className="liman-btn small"
+                    disabled={busy === `cancel-${m.id}`}
+                    onClick={() => run(`cancel-${m.id}`, () => cancelLimanOrder(m.id))}
+                  >
+                    İptal Et
+                  </button>
+                </div>
               ) : null
             )}
             <p className="liman-hint liman-highlight">
@@ -123,9 +132,18 @@ export default function LimanScreen() {
           <>
             {LIMAN_MATERIALS.map((m) =>
               (pending[m.id] || 0) > 0 ? (
-                <p key={`pending-${m.id}`} className="liman-hint">
-                  {m.label}: {pending[m.id]} adet (ertelendi)
-                </p>
+                <div key={`pending-${m.id}`} className="liman-pending-row">
+                  <p className="liman-hint">
+                    {m.label}: {pending[m.id]} adet (ertelendi)
+                  </p>
+                  <button
+                    className="liman-btn small"
+                    disabled={busy === `cancel-${m.id}`}
+                    onClick={() => run(`cancel-${m.id}`, () => cancelLimanOrder(m.id))}
+                  >
+                    İptal Et
+                  </button>
+                </div>
               ) : null
             )}
             <p className="liman-hint">

@@ -107,6 +107,9 @@ export const sellContrabandAtPark = (quantity) =>
 export const placeLimanOrder = (materialType, quantity) =>
   httpsCallable(functions, 'placeLimanOrder')({ materialType, quantity });
 
+export const cancelLimanOrder = (materialType) =>
+  httpsCallable(functions, 'cancelLimanOrder')({ materialType });
+
 // --- Faz 7: Ekip Soygunu ---
 // (Polisin rolü sızmaktır — kendi soygun/plan başlatamaz, ama başkasının
 // planına joinHeistPlan ile katılabilir. Ayrı bir "nöbet" mekaniği yok.)
@@ -171,3 +174,27 @@ export const raceBuyNitro = (roomId) =>
 
 export const raceChangeGear = (roomId, delta) =>
   httpsCallable(functions, 'raceChangeGear')({ roomId, delta });
+
+// --- Casino: "10 Numara" ---
+
+export const createOnNumaraTable = (capacity, betAmount) =>
+  httpsCallable(functions, 'createOnNumaraTable')({ capacity, betAmount });
+
+export const joinOnNumaraTable = (tableId) =>
+  httpsCallable(functions, 'joinOnNumaraTable')({ tableId });
+
+export const leaveOnNumaraTable = (tableId) =>
+  httpsCallable(functions, 'leaveOnNumaraTable')({ tableId });
+
+export const dealOnNumaraCards = (tableId) =>
+  httpsCallable(functions, 'dealOnNumaraCards')({ tableId });
+
+export const onNumaraHit = (tableId) => httpsCallable(functions, 'onNumaraHit')({ tableId });
+
+export const onNumaraStand = (tableId) => httpsCallable(functions, 'onNumaraStand')({ tableId });
+
+export const onNumaraAutoStand = (tableId) =>
+  httpsCallable(functions, 'onNumaraAutoStand')({ tableId });
+
+export const sendOnNumaraEmoji = (tableId, emoji) =>
+  httpsCallable(functions, 'sendOnNumaraEmoji')({ tableId, emoji });
