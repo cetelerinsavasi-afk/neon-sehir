@@ -24,7 +24,7 @@ function VehiclePicker({ vehicles, value, onChange }) {
   );
 }
 
-export default function RaceLobby({ myUid }) {
+export default function RaceLobby({ myUid, onEnterRoom }) {
   const { vehicles: allVehicles } = useVehicles();
   const vehicles = allVehicles.filter((v) => !v.seizedByBank);
   const { rooms } = useOpenRaceRooms();
@@ -40,7 +40,10 @@ export default function RaceLobby({ myUid }) {
     setBusy(true);
     setError(null);
     try {
-      await createRaceRoom(myVehicleId, amount);
+      const res = await createRaceRoom(myVehicleId, amount);
+      // Sorgunun bu yeni odayı "yakalamasını" beklemeden anında ona geç —
+      // "oda kurduğumda kurduğum oda gözükmüyor" hatasının kaynağı buydu.
+      if (res?.data?.roomId) onEnterRoom(res.data.roomId);
     } catch (err) {
       setError(err.message || 'Oda kurulamadı.');
     } finally {
@@ -55,6 +58,7 @@ export default function RaceLobby({ myUid }) {
     setError(null);
     try {
       await joinRaceRoom(roomId, vehicleId);
+      onEnterRoom(roomId);
     } catch (err) {
       setError(err.message || 'Odaya katılamadın.');
     } finally {

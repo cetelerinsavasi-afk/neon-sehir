@@ -164,11 +164,7 @@ export const rollDice = (roomId, useNitro, useTurbo) =>
 
 export const autoRoll = (roomId) => httpsCallable(functions, 'autoRoll')({ roomId });
 
-export const raceBuyAtStation = (roomId, item) =>
-  httpsCallable(functions, 'raceBuyAtStation')({ roomId, item });
-
-export const raceBuyOffsiteFuel = (roomId) =>
-  httpsCallable(functions, 'raceBuyOffsiteFuel')({ roomId });
+export const raceRefuel = (roomId) => httpsCallable(functions, 'raceRefuel')({ roomId });
 
 export const raceBuyNitro = (roomId) =>
   httpsCallable(functions, 'raceBuyNitro')({ roomId });

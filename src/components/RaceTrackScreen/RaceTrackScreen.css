@@ -129,24 +129,6 @@
   align-items: center;
 }
 
-.race-turn-banner {
-  text-align: center;
-  padding: 8px;
-  border-radius: 8px;
-  background: rgba(25, 232, 255, 0.12);
-  border: 1px solid var(--neon-cyan);
-  color: var(--neon-cyan);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.race-turn-banner.waiting {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: var(--panel-border);
-  color: var(--text-dim);
-  font-weight: 400;
-}
-
 .race-track-bar {
   position: relative;
   height: 18px;
@@ -185,23 +167,129 @@
   color: var(--text-dim);
 }
 
-.race-stats-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  font-size: 12px;
+.race-stat-boxes {
+  display: flex;
+  gap: 8px;
 }
 
-.race-stat-danger {
-  color: var(--neon-pink);
+.race-stat-box {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 6px;
+  border-radius: 10px;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  font-size: 15px;
   font-weight: 700;
 }
 
-.race-timer {
-  margin: 0;
-  font-size: 12px;
+.race-stat-box.danger {
+  border-color: var(--neon-pink);
+  color: var(--neon-pink);
+  animation: pulse-danger 1s infinite;
+}
+
+.race-stat-box.gold {
+  border-color: #ffd23f;
+  color: #ffd23f;
+}
+
+.race-stat-box.turbo {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+@keyframes pulse-danger {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.race-stat-emoji {
+  font-size: 20px;
+}
+
+.race-gear-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 10px;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+}
+
+.race-gear-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.race-gear-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--neon-cyan);
+  background: rgba(25, 232, 255, 0.1);
+  color: var(--neon-cyan);
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.race-gear-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.race-gear-value {
+  font-size: 22px;
+  font-weight: 800;
+  min-width: 24px;
   text-align: center;
-  color: var(--neon-yellow, #ffd23f);
+}
+
+.race-nitro-btn {
+  flex: 1;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid #ff7a1a;
+  background: linear-gradient(180deg, rgba(255, 122, 26, 0.2), rgba(255, 46, 140, 0.1));
+  color: #ffb347;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.race-nitro-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.race-roll-btn {
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--neon-pink);
+  background: rgba(255, 46, 140, 0.15);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.race-roll-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+  border-color: var(--panel-border);
+  background: var(--panel);
+  color: var(--text-dim);
 }
 
 .race-controls {
@@ -228,21 +316,28 @@
 .dice-roll {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   justify-content: center;
-  padding: 8px;
+  flex-wrap: wrap;
+  padding: 10px;
   background: #05070c;
   border: 1px solid var(--panel-border);
   border-radius: 8px;
   font-size: 13px;
 }
 
-.dice-roll-icon {
-  font-size: 22px;
+.dice-face {
+  font-size: 28px;
   display: inline-block;
 }
 
-.dice-roll.rolling .dice-roll-icon {
+.dice-roll-sum {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-left: 4px;
+}
+
+.dice-roll.rolling .dice-face {
   animation: dice-spin 0.5s ease;
 }
 

@@ -2207,7 +2207,8 @@ export const setDisplayName = onCall(async (request) => {
 
 const RACE_TRACK_LENGTH = 300;
 const RACE_TURN_SECONDS = 10;
-const RACE_STATION_PRICES = { refuel: 10, wheel: 20, fuelSaving: 30 };
+const RACE_STATION_PRICES = { refuel: 10 };
+const RACE_OFFSITE_FUEL_PRICE = 100;
 
 function rollDie() {
   return Math.floor(Math.random() * 6) + 1;
@@ -2260,8 +2261,13 @@ function requirePlayerInRoom(room, uid) {
 // tek başına x2, ikisi birden (kombo) x3.
 function performRoll(me, { useNitro = false, useTurbo = false } = {}) {
   const diceCount = me.hasRolledOnce ? me.gear : 1;
+  const diceValues = [];
   let stepSum = 0;
-  for (let i = 0; i < diceCount; i++) stepSum += rollDie();
+  for (let i = 0; i < diceCount; i++) {
+    const v = rollDie();
+    diceValues.push(v);
+    stepSum += v;
+  }
 
   const nitroUsed = Boolean(useNitro && me.nitroActive);
   const turboUsed = Boolean(useTurbo && me.turboCount > 0);
@@ -2292,6 +2298,7 @@ function performRoll(me, { useNitro = false, useTurbo = false } = {}) {
       raceGold: me.raceGold + goldEarned,
       lastRollSteps: movedSteps,
       lastRollSum: stepSum,
+      lastRollDice: diceValues,
       lastRollMultiplier: multiplier,
       finished: afterPos >= RACE_TRACK_LENGTH,
       nitroActive: nitroUsed ? false : me.nitroActive,
@@ -2656,45 +2663,15 @@ export const autoRoll = onCall(async (request) => {
 // Yarış içi satın almalar (istasyon, istasyon dışı benzin, nitro) ve vites —
 // hepsi sadece SIRASI GELEN oyuncu tarafından kullanılabilir.
 // ---------------------------------------------------------------------------
-export const raceBuyAtStation = onCall(async (request) => {
-  const uid = requireAuth(request);
-  const { roomId, item } = request.data || {};
-  if (!RACE_STATION_PRICES[item]) {
-    throw new HttpsError('invalid-argument', 'Geçersiz ürün.');
-  }
-  const roomRef = db.collection('raceRooms').doc(roomId);
-
-  await db.runTransaction(async (tx) => {
-    const roomSnap = await tx.get(roomRef);
-    const room = roomSnap.data();
-    if (!room || room.status !== 'racing') {
-      throw new HttpsError('failed-precondition', 'Yarış aktif değil.');
-    }
-    if (room.currentTurnUid !== uid && room.finalTurnFor !== uid) {
-      throw new HttpsError('failed-precondition', 'Sıra sende değil.');
-    }
-    const me = requirePlayerInRoom(room, uid);
-    if (me.position % 10 !== 0) {
-      throw new HttpsError('failed-precondition', 'Şu an bir benzin istasyonunda değilsin.');
-    }
-    const price = RACE_STATION_PRICES[item];
-    if (me.raceGold < price) {
-      throw new HttpsError('failed-precondition', 'Yeterli yarış altının yok.');
-    }
-    const updated = { ...me, raceGold: me.raceGold - price };
-    if (item === 'refuel') updated.fuel = updated.maxFuel;
-    if (item === 'wheel') updated.wheelBonus += 1;
-    if (item === 'fuelSaving') updated.fuelSavingBonus += 1;
-    tx.update(roomRef, { [`players.${uid}`]: updated });
-  });
-
-  return { ok: true };
-});
-
-export const raceBuyOffsiteFuel = onCall(async (request) => {
+// raceRefuel — akıllı benzin doldurma: oyuncu tam bir istasyon karesindeyse
+// (10 karede bir) 10 altına, değilse 100 altına tam dolum yapar. Tekerlek
+// geliştirme / benzin tasarrufu seçenekleri kaldırıldı — istasyonda SADECE
+// benzin doldurma var.
+export const raceRefuel = onCall(async (request) => {
   const uid = requireAuth(request);
   const { roomId } = request.data || {};
   const roomRef = db.collection('raceRooms').doc(roomId);
+  let outcomePrice = null;
 
   await db.runTransaction(async (tx) => {
     const roomSnap = await tx.get(roomRef);
@@ -2706,15 +2683,18 @@ export const raceBuyOffsiteFuel = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Sıra sende değil.');
     }
     const me = requirePlayerInRoom(room, uid);
-    if (me.raceGold < 100) {
+    const atStation = me.position % 10 === 0;
+    const price = atStation ? RACE_STATION_PRICES.refuel : RACE_OFFSITE_FUEL_PRICE;
+    if (me.raceGold < price) {
       throw new HttpsError('failed-precondition', 'Yeterli yarış altının yok.');
     }
+    outcomePrice = price;
     tx.update(roomRef, {
-      [`players.${uid}`]: { ...me, raceGold: me.raceGold - 100, fuel: me.maxFuel },
+      [`players.${uid}`]: { ...me, raceGold: me.raceGold - price, fuel: me.maxFuel },
     });
   });
 
-  return { ok: true };
+  return { ok: true, price: outcomePrice };
 });
 
 export const raceBuyNitro = onCall(async (request) => {

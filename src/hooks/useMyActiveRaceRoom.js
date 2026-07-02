@@ -3,14 +3,13 @@ import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 
-const RECENT_FINISH_WINDOW_MS = 2 * 60 * 1000; // sonuç ekranını 2 dk göster
-
 /**
  * useMyActiveRaceRoom — participantUids dizisinde kendi uid'im geçen ve
- * hâlâ 'waiting'/'racing' durumunda OLAN ya da yakın zamanda (son 2 dk
- * içinde) 'finished' olmuş oda var mı diye bakar (sonuç ekranının
- * gösterilebilmesi için). array-contains tek başına kullanıldığı için
- * composite index gerektirmez; durum/tarih filtresi client-side.
+ * hâlâ 'waiting'/'ready'/'racing' durumunda olan oda var mı diye bakar.
+ * Sadece HENÜZ BİTMEMİŞ odaları döner — bitmiş bir yarışın sonuç ekranını
+ * göstermek RaceTrackScreen'de roomId bazlı ayrı bir takiple yapılıyor
+ * (bkz. useRaceRoomById), bu sayede eski bitmiş bir oda burada asla tekrar
+ * "yakalanıp" kullanıcıyı istemeden sonuç ekranına döndürmüyor.
  */
 export function useMyActiveRaceRoom() {
   const { user } = useAuth();
@@ -31,17 +30,9 @@ export function useMyActiveRaceRoom() {
     const unsubscribe = onSnapshot(
       q,
       (snap) => {
-        const now = Date.now();
         const active = snap.docs
           .map((d) => ({ id: d.id, ...d.data() }))
-          .find((r) => {
-            if (r.status === 'waiting' || r.status === 'ready' || r.status === 'racing') return true;
-            if (r.status === 'finished') {
-              const finishedMs = r.finishedAt?.toMillis?.() ?? 0;
-              return now - finishedMs < RECENT_FINISH_WINDOW_MS;
-            }
-            return false;
-          });
+          .find((r) => r.status === 'waiting' || r.status === 'ready' || r.status === 'racing');
         setRoom(active || null);
         setLoading(false);
       },

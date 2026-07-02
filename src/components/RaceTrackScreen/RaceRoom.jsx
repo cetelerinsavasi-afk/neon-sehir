@@ -5,8 +5,7 @@ import {
   startRace,
   rollDice,
   autoRoll,
-  raceBuyAtStation,
-  raceBuyOffsiteFuel,
+  raceRefuel,
   raceBuyNitro,
   raceChangeGear,
 } from '../../services/gameActions';
@@ -37,9 +36,6 @@ function useCountdown(deadline) {
   return secondsLeft;
 }
 
-// Sıra kimdeyse (ya da adalet kuralı gereği son hamle hakkı kimdeyse) o
-// oyuncu için süre dolunca herhangi bir bağlı istemci otomatik atışı
-// tetikler.
 function useAutoRollWatcher(roomId, deadline, active) {
   const firedFor = useRef(null);
 
@@ -152,10 +148,16 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
   }
 
   const atStation = me.position % 10 === 0;
-  const diceCount = me.hasRolledOnce ? me.gear : 1;
+  const refuelPrice = atStation ? 10 : 100;
 
   const handleRoll = async (useNitro, useTurbo) => {
     await run('roll', () => rollDice(room.id, useNitro, useTurbo));
+  };
+
+  const rollButtonLabel = () => {
+    if (!isMyTurn) return `${other.displayName}'in sırası… (${secondsLeft ?? '—'}s)`;
+    if (isFinalTurnForMe) return `Son hamlen! Zar At (${secondsLeft ?? '—'}s)`;
+    return me.nitroActive ? `Zar At — Nitro Aktif (${secondsLeft ?? '—'}s)` : `Zar At (${secondsLeft ?? '—'}s)`;
   };
 
   return (
@@ -174,111 +176,70 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
         <span>{other.displayName}: {other.position}/300</span>
       </div>
 
-      <div className={`race-turn-banner${isMyTurn ? '' : ' waiting'}`}>
-        {isFinalTurnForMe
-          ? `Son hamle hakkın! Bitirirsen berabere olur. (${secondsLeft ?? '—'}s)`
-          : isMyTurn
-            ? `Sıra sende! (${secondsLeft ?? '—'}s)`
-            : `${other.displayName}'in sırası… (${secondsLeft ?? '—'}s)`}
+      <div className="race-stat-boxes">
+        <div className={`race-stat-box${me.fuel <= 0 ? ' danger' : ''}`}>
+          <span className="race-stat-emoji">⛽</span>
+          <span className="race-stat-value">{me.fuel}/{me.maxFuel}</span>
+        </div>
+        <div className="race-stat-box gold">
+          <span className="race-stat-emoji">🪙</span>
+          <span className="race-stat-value">{me.raceGold}</span>
+        </div>
+        {me.turboCount > 0 && (
+          <div className="race-stat-box turbo">
+            <span className="race-stat-emoji">🚀</span>
+            <span className="race-stat-value">×{me.turboCount}</span>
+          </div>
+        )}
       </div>
 
-      <DiceRoll
-        rollKey={`${me.lastRollSum}-${me.lastRollMultiplier}-${me.position}`}
-        sum={me.lastRollSum}
-        count={diceCount}
-      />
-
-      <div className="race-stats-grid">
-        <span>Vites {me.gear}/{me.maxGear}</span>
-        <span className={me.fuel <= 0 ? 'race-stat-danger' : ''}>Benzin {me.fuel}/{me.maxFuel}</span>
-        <span>Yarış altını {me.raceGold}</span>
-        {me.turboCount > 0 && <span>Turbo × {me.turboCount}</span>}
-      </div>
+      <DiceRoll rollKey={`${me.position}-${me.lastRollDice?.join(',')}`} dice={me.lastRollDice} />
 
       {!me.hasRolledOnce && (
         <p className="race-hint">İlk turda herkes 1 zar atar, vites 1'de sabit.</p>
       )}
 
-      <div className="race-section">
-        <div className="race-controls">
-          <button
-            className="race-btn small"
-            disabled={busy || !isMyTurn || !me.hasRolledOnce || me.gear <= 1}
-            onClick={() => run('gear-', () => raceChangeGear(room.id, -1))}
-          >
-            Vites −
-          </button>
-          <button
-            className="race-btn small"
-            disabled={busy || !isMyTurn || !me.hasRolledOnce || me.gear >= me.maxGear}
-            onClick={() => run('gear+', () => raceChangeGear(room.id, 1))}
-          >
-            Vites +
-          </button>
-          <button
-            className="race-btn small"
-            disabled={busy || !isMyTurn || me.raceGold < 20}
-            onClick={() => run('nitro', () => raceBuyNitro(room.id))}
-          >
-            Nitro Al (20)
-          </button>
-        </div>
-        <div className="race-controls">
-          <button
-            className="race-btn primary"
-            disabled={busy || !isMyTurn}
-            onClick={() => handleRoll(me.nitroActive, false)}
-          >
-            {me.nitroActive ? 'Zar At (Nitro Aktif)' : 'Zar At'}
-          </button>
-          {me.turboCount > 0 && (
-            <button
-              className="race-btn small"
-              disabled={busy || !isMyTurn}
-              onClick={() => handleRoll(false, true)}
-            >
-              Turbo ile At
-            </button>
-          )}
-        </div>
+      <div className="race-gear-stepper">
+        <span className="race-gear-label">Vites</span>
+        <button
+          className="race-gear-btn"
+          disabled={busy || !isMyTurn || !me.hasRolledOnce || me.gear <= 1}
+          onClick={() => run('gear-', () => raceChangeGear(room.id, -1))}
+        >
+          −
+        </button>
+        <span className="race-gear-value">{me.gear}</span>
+        <button
+          className="race-gear-btn"
+          disabled={busy || !isMyTurn || !me.hasRolledOnce || me.gear >= me.maxGear}
+          onClick={() => run('gear+', () => raceChangeGear(room.id, 1))}
+        >
+          +
+        </button>
       </div>
 
-      {atStation && isMyTurn && (
-        <div className="race-section">
-          <p className="race-section-title">Benzin İstasyonundasın</p>
-          <div className="race-controls">
-            <button
-              className="race-btn small"
-              disabled={busy || me.raceGold < 10}
-              onClick={() => run('refuel', () => raceBuyAtStation(room.id, 'refuel'))}
-            >
-              Benzin Doldur (10)
-            </button>
-            <button
-              className="race-btn small"
-              disabled={busy || me.raceGold < 20}
-              onClick={() => run('wheel', () => raceBuyAtStation(room.id, 'wheel'))}
-            >
-              Tekerlek Geliştir (20)
-            </button>
-            <button
-              className="race-btn small"
-              disabled={busy || me.raceGold < 30}
-              onClick={() => run('saving', () => raceBuyAtStation(room.id, 'fuelSaving'))}
-            >
-              Benzin Tasarrufu (30)
-            </button>
-          </div>
-        </div>
-      )}
+      <div className="race-controls">
+        <button className="race-nitro-btn" disabled={busy || !isMyTurn || me.raceGold < 20} onClick={() => run('nitro', () => raceBuyNitro(room.id))}>
+          🔥 Nitro (20)
+        </button>
+        {me.turboCount > 0 && (
+          <button className="race-btn small" disabled={busy || !isMyTurn} onClick={() => handleRoll(false, true)}>
+            Turbo ile At
+          </button>
+        )}
+      </div>
 
-      {isMyTurn && me.fuel <= 0 && (
+      <button className="race-roll-btn" disabled={busy || !isMyTurn} onClick={() => handleRoll(me.nitroActive, false)}>
+        {rollButtonLabel()}
+      </button>
+
+      {isMyTurn && (
         <button
-          className="race-btn primary"
-          disabled={busy || me.raceGold < 100}
-          onClick={() => run('offsite-fuel', () => raceBuyOffsiteFuel(room.id))}
+          className={`race-btn${me.fuel <= 0 ? ' primary' : ''}`}
+          disabled={busy || me.raceGold < refuelPrice}
+          onClick={() => run('refuel', () => raceRefuel(room.id))}
         >
-          Benzinin Bitti — İstasyon Dışı Benzin Al (100)
+          {atStation ? `⛽ Şu an istasyondasın — Benzin Doldur (${refuelPrice})` : `⛽ Benzin Doldur (${refuelPrice})`}
         </button>
       )}
 

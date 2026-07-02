@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 
-// Zar atıldığında kısa bir "sallanma" animasyonu gösterip son sonuçlarda
-// karar kılan basit bir görsel bileşen.
-export default function DiceRoll({ rollKey, sum, count }) {
+const DIE_FACES = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+
+// Zar atıldığında kısa bir "sallanma" animasyonu + atılan HER zarın kendi
+// sonucunu ayrı ayrı gösteren görsel bileşen.
+export default function DiceRoll({ rollKey, dice }) {
   const [rolling, setRolling] = useState(false);
 
   useEffect(() => {
@@ -12,14 +14,16 @@ export default function DiceRoll({ rollKey, sum, count }) {
     return () => clearTimeout(t);
   }, [rollKey]);
 
-  if (sum === null || sum === undefined) return null;
+  if (!dice || dice.length === 0) return null;
 
   return (
     <div className={`dice-roll${rolling ? ' rolling' : ''}`}>
-      <span className="dice-roll-icon">🎲</span>
-      <span className="dice-roll-text">
-        {count} zar → toplam {sum}
-      </span>
+      {dice.map((v, i) => (
+        <span key={i} className="dice-face">
+          {DIE_FACES[v] || v}
+        </span>
+      ))}
+      <span className="dice-roll-sum">= {dice.reduce((a, b) => a + b, 0)}</span>
     </div>
   );
 }
