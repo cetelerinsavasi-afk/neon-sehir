@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useInvestmentPrices } from '../../hooks/useInvestmentPrices';
+import { useInvestmentHistory } from '../../hooks/useInvestmentHistory';
 import {
   depositToBank,
   withdrawFromBank,
@@ -10,6 +11,7 @@ import {
   sellAllInvestment,
 } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
+import PriceChart from '../PriceChart/PriceChart';
 import VehicleLoanSection from './VehicleLoanSection';
 import './BankScreen.css';
 
@@ -99,6 +101,9 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
   const bankBalance = player?.bankBalance ?? 0;
   const diamondHoldings = player?.diamondHoldings ?? 0;
   const cryptoHoldings = player?.cryptoHoldings ?? 0;
+  const { history } = useInvestmentHistory();
+  const diamondPoints = history.map((h) => h.diamondPrice).filter((v) => v !== undefined);
+  const cryptoPoints = history.map((h) => h.cryptoPrice).filter((v) => v !== undefined);
 
   return (
     <>
@@ -125,6 +130,7 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
         <p className="bank-section-title">
           Elmas <ChangeBadge pct={prices.diamondChangePct} />
         </p>
+        <PriceChart points={diamondPoints} color="#19e8ff" />
         <div className="bank-section-row">
           <span>Güncel fiyat</span>
           <strong>{(prices.diamondPrice ?? 0).toLocaleString('tr-TR')} altın/adet</strong>
@@ -160,6 +166,7 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
         <p className="bank-section-title">
           Kripto <ChangeBadge pct={prices.cryptoChangePct} />
         </p>
+        <PriceChart points={cryptoPoints} color="#ff2e8c" />
         <div className="bank-section-row">
           <span>Güncel fiyat</span>
           <strong>{(prices.cryptoPrice ?? 0).toLocaleString('tr-TR')} altın/adet</strong>

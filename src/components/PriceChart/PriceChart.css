@@ -1,0 +1,11 @@
+.price-chart {
+  width: 100%;
+  height: 60px;
+  display: block;
+}
+
+.price-chart-empty {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin: 0;
+}

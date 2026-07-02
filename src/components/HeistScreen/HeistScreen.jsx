@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useWeapons } from '../../hooks/useWeapons';
 import HeistPanel, { HEIST_LABELS } from '../HeistPanel/HeistPanel';
+import MyWeaponsPanel from './MyWeaponsPanel';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import './HeistScreen.css';
 
@@ -9,9 +10,13 @@ export default function HeistScreen({ initialTarget, onClose }) {
   const { user } = useAuth();
   const { weapons } = useWeapons();
   const [selected, setSelected] = useState(initialTarget || null);
+  const [view, setView] = useState('targets'); // 'targets' | 'weapons'
 
   useEffect(() => {
-    if (initialTarget) setSelected(initialTarget);
+    if (initialTarget) {
+      setSelected(initialTarget);
+      setView('targets');
+    }
   }, [initialTarget]);
 
   if (!user) {
@@ -38,7 +43,27 @@ export default function HeistScreen({ initialTarget, onClose }) {
           </button>
         </div>
 
-        {!selected && (
+        <div className="heist-screen-tabs">
+          <button
+            className={`heist-screen-tab${view === 'targets' ? ' active' : ''}`}
+            onClick={() => {
+              setView('targets');
+              setSelected(null);
+            }}
+          >
+            Hedefler
+          </button>
+          <button
+            className={`heist-screen-tab${view === 'weapons' ? ' active' : ''}`}
+            onClick={() => setView('weapons')}
+          >
+            Silahlarım
+          </button>
+        </div>
+
+        {view === 'weapons' && <MyWeaponsPanel />}
+
+        {view === 'targets' && !selected && (
           <div className="heist-screen-list">
             {Object.entries(HEIST_LABELS).map(([target, meta]) => (
               <button
@@ -59,7 +84,7 @@ export default function HeistScreen({ initialTarget, onClose }) {
           </div>
         )}
 
-        {selected && (
+        {view === 'targets' && selected && (
           <div className="heist-screen-detail">
             <button className="heist-screen-back" onClick={() => setSelected(null)}>
               ← Tüm hedefler

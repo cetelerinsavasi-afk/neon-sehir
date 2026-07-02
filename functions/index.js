@@ -359,36 +359,8 @@ export const dailyReset = onSchedule(
     });
     if (!bankSnap.empty) await bankBatch.commit();
 
-    // 3) Yatırım araçları — elmas %1-%10, kripto %1-%50 rastgele değişim (Bölüm 13)
-    const prevInvestSnap = await db
-      .collection('investments')
-      .doc(addDaysToDateKey(dateKey, -1))
-      .get();
-    const prev = prevInvestSnap.exists
-      ? prevInvestSnap.data()
-      : { diamondPrice: 1000, cryptoPrice: 100000 };
-    const diamondChangePct = (Math.random() * 0.09 + 0.01) * (Math.random() < 0.5 ? -1 : 1);
-    const cryptoChangePct = (Math.random() * 0.49 + 0.01) * (Math.random() < 0.5 ? -1 : 1);
-    const diamondPrice = clamp(
-      Math.round(prev.diamondPrice * (1 + diamondChangePct)),
-      100,
-      10000
-    );
-    const cryptoPrice = clamp(
-      Math.round(prev.cryptoPrice * (1 + cryptoChangePct)),
-      10000,
-      1000000
-    );
-    await db
-      .collection('investments')
-      .doc(dateKey)
-      .set({
-        diamondPrice,
-        cryptoPrice,
-        diamondChangePct: Math.round(diamondChangePct * 1000) / 10,
-        cryptoChangePct: Math.round(cryptoChangePct * 1000) / 10,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+    // 3) Yatırım araçları artık günde 1 kez değil, saatte 1 kez ayrı bir
+    // Cloud Function (hourlyInvestmentUpdate) tarafından güncelleniyor.
 
     // 4) Gemi takvimi bir gün ilerler — 4 günlük döngü (Bölüm 12)
     const prevShipSnap = await db
@@ -573,6 +545,70 @@ export const dailyReset = onSchedule(
 );
 
 // =============================================================================
+// hourlyInvestmentUpdate — elmas/kripto fiyatları artık günde 1 kez değil,
+// SAATTE 1 kez (günde 24 kez) rastgele hareket ediyor.
+//   - Elmas: %1-%4 arası
+//   - Kripto: %1-%20 arası
+// Güncel fiyat investments/current dokümanında tutulur (alım/satım
+// fonksiyonları buradan okur); her saatlik hareket ayrıca
+// investmentHistory koleksiyonuna çizgi grafik için kaydedilir. 30
+// günden eski geçmiş kayıtları otomatik temizlenir.
+// =============================================================================
+export const hourlyInvestmentUpdate = onSchedule(
+  { schedule: 'every 1 hours', timeZone: 'Europe/Istanbul' },
+  async () => {
+    const currentRef = db.collection('investments').doc('current');
+    const currentSnap = await currentRef.get();
+    const prev = currentSnap.exists
+      ? currentSnap.data()
+      : { diamondPrice: 1000, cryptoPrice: 100000 };
+
+    const diamondChangePct = (Math.random() * 0.03 + 0.01) * (Math.random() < 0.5 ? -1 : 1);
+    const cryptoChangePct = (Math.random() * 0.19 + 0.01) * (Math.random() < 0.5 ? -1 : 1);
+    const diamondPrice = clamp(Math.round(prev.diamondPrice * (1 + diamondChangePct)), 100, 10000);
+    const cryptoPrice = clamp(
+      Math.round(prev.cryptoPrice * (1 + cryptoChangePct)),
+      10000,
+      1000000
+    );
+
+    const roundedDiamondPct = Math.round(diamondChangePct * 1000) / 10;
+    const roundedCryptoPct = Math.round(cryptoChangePct * 1000) / 10;
+    const now = admin.firestore.FieldValue.serverTimestamp();
+
+    await currentRef.set({
+      diamondPrice,
+      cryptoPrice,
+      diamondChangePct: roundedDiamondPct,
+      cryptoChangePct: roundedCryptoPct,
+      updatedAt: now,
+    });
+
+    await db.collection('investmentHistory').add({
+      diamondPrice,
+      cryptoPrice,
+      diamondChangePct: roundedDiamondPct,
+      cryptoChangePct: roundedCryptoPct,
+      createdAt: now,
+    });
+
+    // 30 günden eski geçmiş kayıtlarını temizle (24/gün × 30 = ~720 kayıt
+    // sınırı civarında tutulur).
+    const cutoff = admin.firestore.Timestamp.fromMillis(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const oldSnap = await db
+      .collection('investmentHistory')
+      .where('createdAt', '<', cutoff)
+      .limit(200)
+      .get();
+    if (!oldSnap.empty) {
+      const cleanupBatch = db.batch();
+      oldSnap.forEach((doc) => cleanupBatch.delete(doc.ref));
+      await cleanupBatch.commit();
+    }
+  }
+);
+
+// =============================================================================
 // FAZ 3 — ARABA VE SİLAH SİSTEMİ (Bölüm 8.1, 8.2, 8.3)
 // =============================================================================
 
@@ -678,12 +714,22 @@ export const upgradeVehicle = onCall(async (request) => {
     if (vehicle[flagField]) {
       throw new HttpsError('failed-precondition', 'Bu geliştirme zaten uygulanmış.');
     }
+    // Malzeme gereksinimi aracın fiyatıyla doğru orantılı: 1000₺ araba
+    // için 2 malzeme, 100.000₺ araba için 200 malzeme (oran: fiyat/500).
+    const requiredQty = Math.max(2, Math.round((vehicle.baseGalleryValue || 0) / 500));
     const qty = inventorySnap.exists ? inventorySnap.data().quantity || 0 : 0;
-    if (qty < 2) {
-      throw new HttpsError('failed-precondition', 'Yetersiz geliştirme malzemesi (2 adet gerekli).');
+    if (qty < requiredQty) {
+      throw new HttpsError(
+        'failed-precondition',
+        `Yetersiz geliştirme malzemesi (${requiredQty} adet gerekli, ${qty} adedin var).`
+      );
     }
 
-    tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-2) }, { merge: true });
+    tx.set(
+      inventoryRef,
+      { quantity: admin.firestore.FieldValue.increment(-requiredQty) },
+      { merge: true }
+    );
     if (upgradeType === 'gear') {
       tx.update(vehicleRef, {
         gearLevel: admin.firestore.FieldValue.increment(1),
@@ -913,15 +959,8 @@ export const sellSilahMaterial = onCall(async (request) => {
 const DEFAULT_PRICES = { diamondPrice: 1000, cryptoPrice: 100000 };
 
 async function getCurrentPrices() {
-  const dateKey = istanbulDateKey();
-  const todaySnap = await db.collection('investments').doc(dateKey).get();
-  if (todaySnap.exists) return todaySnap.data();
-  // Bugün için dailyReset henüz çalışmadıysa dünün kaydına bak.
-  const yesterdaySnap = await db
-    .collection('investments')
-    .doc(addDaysToDateKey(dateKey, -1))
-    .get();
-  return yesterdaySnap.exists ? yesterdaySnap.data() : DEFAULT_PRICES;
+  const snap = await db.collection('investments').doc('current').get();
+  return snap.exists ? snap.data() : DEFAULT_PRICES;
 }
 
 // ---------------------------------------------------------------------------
@@ -1539,6 +1578,12 @@ export const sellContrabandAtPark = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Yeterli malınız yok.');
     }
     const user = userSnap.data();
+    if (user?.profession === 'polis') {
+      throw new HttpsError(
+        'failed-precondition',
+        'Polis mesleğindeyken şüpheni artıracak hiçbir şey yapamazsın.'
+      );
+    }
     tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-qty) }, { merge: true });
     const { goldDelta, debtDelta } = splitIncomeForDebt(
       user?.debtToState,
@@ -2578,6 +2623,10 @@ export const createListing = onCall(async (request) => {
         itemType,
         vehicleId: itemId,
         vehicleModel: v.model,
+        vehicleGearLevel: v.gearLevel,
+        vehicleTank: (v.baseTank || 0) + (v.tankBonus || 0),
+        vehicleGearUpgraded: Boolean(v.gearUpgraded),
+        vehicleTankUpgraded: Boolean(v.tankUpgraded),
         price: priceNum,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         sold: false,
@@ -2601,6 +2650,8 @@ export const createListing = onCall(async (request) => {
         itemType,
         weaponId: itemId,
         weaponName: w.name,
+        weaponLevel: w.level,
+        weaponPower: w.power,
         price: priceNum,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         sold: false,

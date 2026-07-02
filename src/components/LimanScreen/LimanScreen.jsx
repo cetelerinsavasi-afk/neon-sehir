@@ -14,7 +14,7 @@ const LIMAN_MATERIALS = [
 
 export default function LimanScreen() {
   const { user } = useAuth();
-  const { statusLabel } = useShipSchedule();
+  const { statusLabel, schedule } = useShipSchedule();
   const { order } = usePendingLimanOrder();
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
@@ -86,6 +86,32 @@ export default function LimanScreen() {
       </div>
 
       {error && <p className="liman-error">{error}</p>}
+
+      <div className="liman-section">
+        <p className="liman-section-title">Bekleyen Siparişlerin</p>
+        {(() => {
+          const hasAny = LIMAN_MATERIALS.some((m) => (order[m.id] || 0) > 0);
+          if (!hasAny) return <p className="liman-hint">Bekleyen bir siparişin yok.</p>;
+          const dayInCycle = schedule?.dayInCycle;
+          const daysLeft = dayInCycle ? (5 - dayInCycle) % 4 : null;
+          return (
+            <>
+              {LIMAN_MATERIALS.map((m) =>
+                (order[m.id] || 0) > 0 ? (
+                  <p key={m.id} className="liman-hint">
+                    {m.label}: {order[m.id]} adet
+                  </p>
+                ) : null
+              )}
+              <p className="liman-hint">
+                {daysLeft === 0
+                  ? 'Gemi bugün şehirde — siparişlerin envanterine eklendi.'
+                  : `Gemi şehre dönmesine ${daysLeft} gün kaldı, o zaman teslim edilecek.`}
+              </p>
+            </>
+          );
+        })()}
+      </div>
     </div>
   );
 }

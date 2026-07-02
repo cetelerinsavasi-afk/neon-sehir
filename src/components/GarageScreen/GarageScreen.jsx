@@ -10,6 +10,11 @@ import './GarageScreen.css';
 // Modifiye Garajı SADECE araç geliştirme yapılan bir yer — malzeme
 // alım/satımı buradan kaldırıldı (alım: Telefon > Amazor, satım: Liman &
 // Depo > Depo).
+function requiredQty(vehicle) {
+  // Fiyatla doğru orantılı: 1000₺ araba için 2 malzeme, 100.000₺ için 200.
+  return Math.max(2, Math.round((vehicle.baseGalleryValue || 0) / 500));
+}
+
 export default function GarageScreen() {
   const { user } = useAuth();
   const { vehicles } = useVehicles();
@@ -57,17 +62,17 @@ export default function GarageScreen() {
             <div className="garage-vehicle-actions">
               <button
                 className="garage-action"
-                disabled={v.gearUpgraded || vitesQty < 2 || busy === `${v.id}-gear`}
+                disabled={v.gearUpgraded || vitesQty < requiredQty(v) || busy === `${v.id}-gear`}
                 onClick={() => run(`${v.id}-gear`, () => upgradeVehicle(v.id, 'gear'))}
               >
-                {v.gearUpgraded ? 'Vites Geliştirildi' : 'Vites Geliştir (2 malzeme)'}
+                {v.gearUpgraded ? 'Vites Geliştirildi' : `Vites Geliştir (${requiredQty(v)} malzeme)`}
               </button>
               <button
                 className="garage-action"
-                disabled={v.tankUpgraded || depoQty < 2 || busy === `${v.id}-tank`}
+                disabled={v.tankUpgraded || depoQty < requiredQty(v) || busy === `${v.id}-tank`}
                 onClick={() => run(`${v.id}-tank`, () => upgradeVehicle(v.id, 'tank'))}
               >
-                {v.tankUpgraded ? 'Depo Geliştirildi' : 'Depo Geliştir (2 malzeme)'}
+                {v.tankUpgraded ? 'Depo Geliştirildi' : `Depo Geliştir (${requiredQty(v)} malzeme)`}
               </button>
             </div>
           </div>

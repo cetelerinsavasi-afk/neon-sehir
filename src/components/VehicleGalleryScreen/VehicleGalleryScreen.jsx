@@ -43,7 +43,7 @@ export default function VehicleGalleryScreen() {
             <div className="vehicle-card-info">
               <span className="vehicle-card-name">{car.name}</span>
               <span className="vehicle-card-stats">
-                Vites {car.gearLevel} · Depo {car.baseTank}L · Bagaj {car.storage}
+                Vites {car.gearLevel} · Depo {car.baseTank}L
                 {car.turboCount > 0 ? ` · ${car.turboCount} Turbo` : ''}
               </span>
               <span className="vehicle-card-price">{car.price.toLocaleString('tr-TR')} altın</span>

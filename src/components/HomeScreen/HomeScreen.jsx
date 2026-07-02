@@ -63,7 +63,13 @@ function ProfileSection({ player }) {
   );
 }
 
+function vehicleRequiredQty(vehicle) {
+  // Fiyatla doğru orantılı: 1000₺ araba için 2 malzeme, 100.000₺ için 200.
+  return Math.max(2, Math.round((vehicle.baseGalleryValue || 0) / 500));
+}
+
 function VehicleCard({ vehicle, materialsQty, busy, onUpgrade }) {
+  const req = vehicleRequiredQty(vehicle);
   return (
     <div className="home-item-card">
       <span className="home-item-name">{vehicle.model}</span>
@@ -75,17 +81,17 @@ function VehicleCard({ vehicle, materialsQty, busy, onUpgrade }) {
       <div className="home-controls">
         <button
           className="home-btn small"
-          disabled={vehicle.gearUpgraded || materialsQty.vites < 2 || busy === `${vehicle.id}-gear`}
+          disabled={vehicle.gearUpgraded || materialsQty.vites < req || busy === `${vehicle.id}-gear`}
           onClick={() => onUpgrade(vehicle.id, 'gear')}
         >
-          {vehicle.gearUpgraded ? 'Vites Geliştirildi' : 'Vites Geliştir (2 malzeme)'}
+          {vehicle.gearUpgraded ? 'Vites Geliştirildi' : `Vites Geliştir (${req} malzeme)`}
         </button>
         <button
           className="home-btn small"
-          disabled={vehicle.tankUpgraded || materialsQty.depo < 2 || busy === `${vehicle.id}-tank`}
+          disabled={vehicle.tankUpgraded || materialsQty.depo < req || busy === `${vehicle.id}-tank`}
           onClick={() => onUpgrade(vehicle.id, 'tank')}
         >
-          {vehicle.tankUpgraded ? 'Depo Geliştirildi' : 'Depo Geliştir (2 malzeme)'}
+          {vehicle.tankUpgraded ? 'Depo Geliştirildi' : `Depo Geliştir (${req} malzeme)`}
         </button>
       </div>
     </div>

@@ -48,6 +48,94 @@
   cursor: pointer;
 }
 
+.heist-screen-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.heist-screen-tab {
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.heist-screen-tab.active {
+  border-color: var(--neon-pink);
+  color: var(--neon-pink);
+  background: rgba(255, 46, 140, 0.08);
+}
+
+.heist-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.heist-weapons-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.heist-weapon-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.heist-weapon-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.heist-weapon-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.heist-weapon-level {
+  color: var(--neon-cyan);
+  font-weight: 400;
+  font-size: 11px;
+}
+
+.heist-weapon-power {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.heist-weapon-btn {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.heist-weapon-btn:hover:not(:disabled) {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.heist-weapon-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .heist-screen-list {
   display: flex;
   flex-direction: column;

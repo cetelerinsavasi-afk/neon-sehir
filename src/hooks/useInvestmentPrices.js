@@ -4,35 +4,18 @@ import { db } from '../firebase';
 
 const DEFAULT_PRICES = { diamondPrice: 1000, cryptoPrice: 100000 };
 
-function istanbulDateKey() {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Istanbul',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date());
-}
-
 /**
- * useInvestmentPrices — investments/{bugünün-tarihi} dokümanını canlı dinler.
- * Fiyatlar dailyReset Cloud Function'ı tarafından her gün 00:00'da
- * güncellenir (Bölüm 13). Bugünkü doküman henüz oluşmadıysa (dailyReset
- * hiç çalışmadıysa) varsayılan fiyatlar gösterilir — gerçek alım/satım
- * fiyatı her zaman sunucuda (Cloud Function içinde) otoriter şekilde
- * hesaplanır, burası sadece önizleme.
- *
- * NOT: Daha önce "en son kaydı bul" için orderBy('__name__') sorgusu
- * kullanılıyordu; bu Firestore'da composite index istiyor ve index
- * yokken sorgu tamamen başarısız oluyordu. Bugünün tarih anahtarını
- * doğrudan hesaplayıp o dokümanı dinlemek hem daha basit hem index'e
- * hiç ihtiyaç duymuyor.
+ * useInvestmentPrices — investments/current dokümanını canlı dinler.
+ * Fiyatlar artık günde 1 kez değil, hourlyInvestmentUpdate Cloud Function'ı
+ * tarafından SAATTE 1 kez güncelleniyor. Gerçek alım/satım fiyatı her
+ * zaman sunucuda otoriter şekilde hesaplanır, burası sadece önizleme.
  */
 export function useInvestmentPrices() {
   const [prices, setPrices] = useState(DEFAULT_PRICES);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const ref = doc(db, 'investments', istanbulDateKey());
+    const ref = doc(db, 'investments', 'current');
     const unsubscribe = onSnapshot(
       ref,
       (snap) => {

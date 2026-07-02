@@ -22,8 +22,19 @@ const MACHINE_LABELS = {
 };
 
 function listingLabel(listing) {
-  if (listing.itemType === 'vehicle') return listing.vehicleModel;
-  if (listing.itemType === 'weapon') return listing.weaponName;
+  if (listing.itemType === 'vehicle') {
+    const upgrades = [];
+    if (listing.vehicleGearUpgraded) upgrades.push(`Vites ${listing.vehicleGearLevel}`);
+    if (listing.vehicleTankUpgraded) upgrades.push(`Depo ${listing.vehicleTank}L`);
+    return upgrades.length > 0
+      ? `${listing.vehicleModel} (${upgrades.join(', ')} — geliştirilmiş)`
+      : listing.vehicleModel;
+  }
+  if (listing.itemType === 'weapon') {
+    return listing.weaponLevel > 1
+      ? `${listing.weaponName} (Sv. ${listing.weaponLevel}, Güç ${listing.weaponPower?.toLocaleString('tr-TR')} — geliştirilmiş)`
+      : listing.weaponName;
+  }
   if (listing.itemType === 'material')
     return `${MATERIAL_LABELS[listing.materialType] || listing.materialType} × ${listing.quantity}`;
   if (listing.itemType === 'machine') return MACHINE_LABELS[listing.machineType] || listing.machineType;
