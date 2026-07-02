@@ -2547,6 +2547,46 @@ export const declineOpponent = onCall(async (request) => {
   return { ok: true };
 });
 
+// forfeitRace — yarış devam ederken ("racing") oyuncu ekrandan çıkarsa
+// çağrılır: çıkan oyuncu ANINDA kaybetmiş sayılır, rakip kazanır.
+export const forfeitRace = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { roomId } = request.data || {};
+  const roomRef = db.collection('raceRooms').doc(roomId);
+
+  await db.runTransaction(async (tx) => {
+    const roomSnap = await tx.get(roomRef);
+    if (!roomSnap.exists) return;
+    const room = roomSnap.data();
+    if (room.status !== 'racing') {
+      throw new HttpsError('failed-precondition', 'Yarış aktif değil.');
+    }
+    const me = requirePlayerInRoom(room, uid);
+    const otherUid = room.participantUids.find((u) => u !== uid);
+    const other = otherUid ? room.players[otherUid] : null;
+
+    const userRefs = {};
+    const userSnaps = {};
+    for (const u of room.participantUids) {
+      userRefs[u] = db.collection('users').doc(u);
+      userSnaps[u] = await tx.get(userRefs[u]);
+    }
+
+    const players = { ...room.players, [uid]: { ...me, forfeited: true } };
+    finalizeRace({
+      tx,
+      roomRef,
+      room,
+      winnerUid: otherUid || null,
+      players,
+      userRefs,
+      userSnaps,
+    });
+  });
+
+  return { ok: true };
+});
+
 // startRace — kurucu, rakibi kabul edip yarışı başlatır. 1. Oyuncu (kurucu)
 // ile başlar, ikisinin de vitesi 1'e sabitlenir (1. tur kuralı).
 export const startRace = onCall(async (request) => {
@@ -3274,10 +3314,21 @@ export const leaveOnNumaraTable = onCall(async (request) => {
     if (!tableSnap.exists) return;
     const table = tableSnap.data();
     const newSeatOrder = (table.seatOrder || []).filter((u) => u !== uid);
-    tx.update(tableRef, {
+
+    const updates = {
       seatOrder: newSeatOrder,
       [`seats.${uid}`]: admin.firestore.FieldValue.delete(),
-    });
+    };
+
+    if (newSeatOrder.length === 0) {
+      // Masada kimse kalmadı — "Açık Masalar"dan kaybolsun.
+      updates.status = 'closed';
+    } else if (table.creatorUid === uid) {
+      // Masayı kuran ayrıldı — kart dağıtma yetkisi sıradaki oyuncuya geçer.
+      updates.creatorUid = newSeatOrder[0];
+    }
+
+    tx.update(tableRef, updates);
   });
 
   return { ok: true };

@@ -162,6 +162,8 @@ export const startRace = (roomId) => httpsCallable(functions, 'startRace')({ roo
 export const cancelRaceRoom = (roomId) =>
   httpsCallable(functions, 'cancelRaceRoom')({ roomId });
 
+export const forfeitRace = (roomId) => httpsCallable(functions, 'forfeitRace')({ roomId });
+
 export const rollDice = (roomId, useNitro, useTurbo) =>
   httpsCallable(functions, 'rollDice')({ roomId, useNitro, useTurbo });
 

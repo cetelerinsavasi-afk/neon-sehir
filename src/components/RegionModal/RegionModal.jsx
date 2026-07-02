@@ -28,7 +28,7 @@ function getHeistTarget(region) {
   return map[region.screen] || null;
 }
 
-function ScreenContent({ region }) {
+function ScreenContent({ region, onEnterRace, onEnterTable }) {
   const { screen } = region;
 
   switch (screen) {
@@ -53,9 +53,9 @@ function ScreenContent({ region }) {
     case 'park':
       return <ParkScreen />;
     case 'yaris-pisti':
-      return <RaceTrackScreen />;
+      return <RaceTrackScreen onEnterRace={onEnterRace} />;
     case 'casino':
-      return <CasinoScreen />;
+      return <CasinoScreen onEnterTable={onEnterTable} />;
     case 'ev':
       return <HomeScreen />;
     default:
@@ -68,7 +68,7 @@ function ScreenContent({ region }) {
   }
 }
 
-export default function RegionModal({ region, onClose, onOpenHeist }) {
+export default function RegionModal({ region, onClose, onOpenHeist, onEnterRace, onEnterTable }) {
   if (!region) return null;
 
   const heistTarget = getHeistTarget(region);
@@ -89,7 +89,7 @@ export default function RegionModal({ region, onClose, onOpenHeist }) {
           )}
         </div>
         <div className="region-modal-content">
-          <ScreenContent region={region} />
+          <ScreenContent region={region} onEnterRace={onEnterRace} onEnterTable={onEnterTable} />
         </div>
         <button className="region-modal-close" onClick={onClose}>
           Kapat

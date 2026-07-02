@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Hud from './components/Hud/Hud';
 import CityMap from './components/CityMap/CityMap';
 import BottomBar from './components/BottomBar/BottomBar';
@@ -7,7 +7,10 @@ import PhoneScreen from './components/Phone/PhoneScreen';
 import RegionModal from './components/RegionModal/RegionModal';
 import HeistScreen from './components/HeistScreen/HeistScreen';
 import SignInBanner from './components/SignInBanner/SignInBanner';
+import RaceFullScreen from './components/RaceTrackScreen/RaceFullScreen';
+import OnNumaraFullScreen from './components/OnNumaraScreen/OnNumaraFullScreen';
 import { usePlayer } from './hooks/usePlayer';
+import { useMyActiveRaceRoom } from './hooks/useMyActiveRaceRoom';
 import './styles/theme.css';
 import './App.css';
 
@@ -16,10 +19,18 @@ import './App.css';
 // yol sağlar. Bir aksiyon (fabrikada çalışma vb.) denendiğinde ayrıca
 // RegionModal içinde de SignInPrompt gösterilir.
 function GameShell() {
+  const { user } = useAuth();
   const [activeRegion, setActiveRegion] = useState(null);
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [heistTarget, setHeistTarget] = useState(undefined); // undefined=kapalı, null=açık/hedefsiz
+  const [activeRaceRoomId, setActiveRaceRoomId] = useState(null);
+  const [activeTableId, setActiveTableId] = useState(null);
   const { player } = usePlayer();
+
+  // Aktif bir yarışım varsa (kurdum/katıldım/devam ediyor), harita üzerinde
+  // gezinirken bile tam ekran yarış ekranını otomatik açık tut.
+  const { room: myActiveRoom } = useMyActiveRaceRoom();
+  const effectiveRaceRoomId = activeRaceRoomId || myActiveRoom?.id || null;
 
   const handleRegionClick = (regionId, regionMeta) => {
     setActiveRegion(regionMeta);
@@ -28,6 +39,16 @@ function GameShell() {
   const openHeistScreen = (target) => {
     setActiveRegion(null);
     setHeistTarget(target ?? null);
+  };
+
+  const openRace = (roomId) => {
+    setActiveRegion(null);
+    setActiveRaceRoomId(roomId);
+  };
+
+  const openTable = (tableId) => {
+    setActiveRegion(null);
+    setActiveTableId(tableId);
   };
 
   return (
@@ -52,10 +73,28 @@ function GameShell() {
         region={activeRegion}
         onClose={() => setActiveRegion(null)}
         onOpenHeist={openHeistScreen}
+        onEnterRace={openRace}
+        onEnterTable={openTable}
       />
 
       {heistTarget !== undefined && (
         <HeistScreen initialTarget={heistTarget} onClose={() => setHeistTarget(undefined)} />
+      )}
+
+      {effectiveRaceRoomId && user && (
+        <RaceFullScreen
+          roomId={effectiveRaceRoomId}
+          myUid={user.uid}
+          onExit={() => setActiveRaceRoomId(null)}
+        />
+      )}
+
+      {activeTableId && user && (
+        <OnNumaraFullScreen
+          tableId={activeTableId}
+          myUid={user.uid}
+          onExit={() => setActiveTableId(null)}
+        />
       )}
     </div>
   );

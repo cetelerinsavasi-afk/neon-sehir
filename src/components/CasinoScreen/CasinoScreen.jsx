@@ -1,8 +1,6 @@
 import { useState } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
 import LotteryScreen from '../LotteryScreen/LotteryScreen';
 import OnNumaraScreen from '../OnNumaraScreen/OnNumaraScreen';
-import OnNumaraTable from '../OnNumaraScreen/OnNumaraTable';
 import './CasinoScreen.css';
 
 const TABS = [
@@ -10,10 +8,11 @@ const TABS = [
   { id: 'piyango', label: 'Piyango' },
 ];
 
-export default function CasinoScreen() {
-  const { user } = useAuth();
+// Aktif bir masaya girildiğinde tam ekran gösterim App.jsx seviyesinde
+// (OnNumaraFullScreen ile) yönetiliyor — bu bileşen sadece lobiyi/sekmeleri
+// gösterir.
+export default function CasinoScreen({ onEnterTable }) {
   const [tab, setTab] = useState('onnumara');
-  const [viewingTableId, setViewingTableId] = useState(null);
 
   return (
     <div className="casino-tabs-screen">
@@ -29,17 +28,7 @@ export default function CasinoScreen() {
         ))}
       </div>
 
-      {tab === 'onnumara' &&
-        (viewingTableId ? (
-          <OnNumaraTable
-            tableId={viewingTableId}
-            myUid={user?.uid}
-            onLeave={() => setViewingTableId(null)}
-          />
-        ) : (
-          <OnNumaraScreen onEnterTable={setViewingTableId} />
-        ))}
-
+      {tab === 'onnumara' && <OnNumaraScreen onEnterTable={onEnterTable} />}
       {tab === 'piyango' && <LotteryScreen />}
     </div>
   );

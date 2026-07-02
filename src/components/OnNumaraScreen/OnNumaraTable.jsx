@@ -8,9 +8,14 @@ import {
   sendOnNumaraEmoji,
 } from '../../services/gameActions';
 import { useOnNumaraTableById } from '../../hooks/useOnNumaraTableById';
-import './OnNumaraScreen.css';
+import './OnNumaraTable.css';
 
 const EMOJIS = ['😂', '😢', '😡', '😮', '👍', '🔥'];
+const TARGET = 10;
+
+function sumOf(cards) {
+  return cards.reduce((a, b) => a + b, 0);
+}
 
 function useCountdown(deadline) {
   const [secondsLeft, setSecondsLeft] = useState(null);
@@ -44,14 +49,45 @@ function useAutoStandWatcher(tableId, deadline, active) {
   }, [tableId, deadline, active]);
 }
 
-function CardsRow({ cards, hidden }) {
+function statusInfo(status) {
+  if (status === 'bust') return { cls: 'bust', text: 'Elendi' };
+  if (status === 'stand') return { cls: 'stand', text: 'Pas' };
+  if (status === 'won') return { cls: 'win', text: 'Kazandı' };
+  return { cls: '', text: 'Oynuyor' };
+}
+
+function Seat({ name, cards, status, hidden, isActive, isDealer, reaction, secondsLeft }) {
+  const revealed = !hidden;
+  const total = revealed ? sumOf(cards) : cards.length ? '?' : '–';
+  const pct = revealed ? Math.min(100, (sumOf(cards) / TARGET) * 100) : 0;
+  const { cls, text } = statusInfo(status);
+
   return (
-    <div className="onnumara-cards">
-      {cards.map((c, i) => (
-        <span key={i} className="onnumara-card">
-          {hidden ? '🂠' : c}
+    <div className={`onn-seat${isDealer ? ' onn-seat-dealer' : ''}${isActive ? ' onn-seat-active' : ''}`}>
+      <div className="onn-seat-head">
+        <span className="onn-seat-name">
+          <span className="onn-chip-dot" />
+          {name}
+          {reaction && <span className="onn-reaction">{reaction}</span>}
         </span>
-      ))}
+        <span className={`onn-status-pill ${cls}`}>{text}</span>
+      </div>
+      <div className="onn-cards">
+        {cards.map((c, i) => (
+          <span key={i} className={`onn-card${hidden ? ' onn-card-back' : ''}`}>
+            {hidden ? '' : c}
+          </span>
+        ))}
+      </div>
+      <div className="onn-sum-row">
+        <span className="onn-sum">
+          Toplam: <strong>{total}</strong>
+        </span>
+        {isActive && secondsLeft !== null && <span className="onn-seat-timer">{secondsLeft}s</span>}
+        <div className="onn-gauge">
+          <div className="onn-gauge-fill" style={{ width: `${pct}%` }} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -79,7 +115,7 @@ export default function OnNumaraTable({ tableId, myUid, onLeave }) {
   };
 
   if (!table) {
-    return <p className="onnumara-hint">Masa yükleniyor…</p>;
+    return <p className="onn-hint">Masa yükleniyor…</p>;
   }
 
   const isCreator = table.creatorUid === myUid;
@@ -88,113 +124,98 @@ export default function OnNumaraTable({ tableId, myUid, onLeave }) {
   const dealerHidden = round && round.phase !== 'resolved' && round.phase !== 'dealer';
 
   return (
-    <div className="onnumara-screen">
-      <div className="onnumara-section">
-        <div className="onnumara-table-header">
-          <span>
-            {table.capacity} kişilik · Bahis {table.betAmount.toLocaleString('tr-TR')} altın
-            {round?.pot ? ` · Pot: ${round.pot.toLocaleString('tr-TR')}` : ''}
-          </span>
-          <button className="onnumara-btn" disabled={busy} onClick={() => run('leave', async () => { await leaveOnNumaraTable(tableId); onLeave(); })}>
-            Masadan Ayrıl
-          </button>
-        </div>
+    <div className="onn-table">
+      <div className="onn-pot-row">
+        <div className="onn-pot-badge">POT: {(round?.pot || 0).toLocaleString('tr-TR')}</div>
       </div>
+      <p className="onn-table-meta">
+        {table.capacity} kişilik masa · Bahis {table.betAmount.toLocaleString('tr-TR')} altın
+      </p>
 
-      <div className="onnumara-section">
-        <p className="onnumara-section-title">Kurpiyer</p>
-        {round ? (
-          <CardsRow cards={round.dealerCards} hidden={dealerHidden} />
-        ) : (
-          <p className="onnumara-hint">Henüz el başlamadı.</p>
-        )}
-        {round?.phase === 'resolved' && (
-          <p className="onnumara-hint">
-            Toplam: {round.dealerCards.reduce((a, b) => a + b, 0)} ({round.dealerStatus === 'bust' ? 'Elendi' : 'Durdu'})
-          </p>
-        )}
+      <div className="onn-seats">
+        <Seat
+          name="Kurpiyer"
+          cards={round?.dealerCards || []}
+          status={round?.dealerStatus || 'playing'}
+          hidden={Boolean(dealerHidden)}
+          isDealer
+          isActive={false}
+          secondsLeft={null}
+        />
+        {table.seatOrder.map((uid) => {
+          const seat = table.seats[uid];
+          const hand = round?.hands?.[uid];
+          const reaction = table.reactions?.[uid];
+          const showReaction = reaction && Date.now() - reaction.at < 4000;
+          return (
+            <Seat
+              key={uid}
+              name={`${seat?.displayName || 'Oyuncu'}${uid === myUid ? ' (Sen)' : ''}`}
+              cards={hand?.cards || []}
+              status={hand?.status || (round ? 'playing' : 'idle')}
+              hidden={false}
+              isDealer={false}
+              isActive={round?.currentTurnUid === uid}
+              reaction={showReaction ? reaction.emoji : null}
+              secondsLeft={round?.currentTurnUid === uid ? secondsLeft : null}
+            />
+          );
+        })}
       </div>
-
-      {table.seatOrder.map((uid) => {
-        const seat = table.seats[uid];
-        const hand = round?.hands?.[uid];
-        const reaction = table.reactions?.[uid];
-        const showReaction = reaction && Date.now() - reaction.at < 4000;
-        return (
-          <div key={uid} className={`onnumara-seat${round?.currentTurnUid === uid ? ' active' : ''}`}>
-            <div className="onnumara-seat-head">
-              <span className="onnumara-seat-name">
-                {seat?.displayName || 'Oyuncu'} {uid === myUid && '(Sen)'}
-                {showReaction && <span className="onnumara-reaction">{reaction.emoji}</span>}
-              </span>
-              {hand && (
-                <span className={`onnumara-status-pill ${hand.status}`}>
-                  {hand.status === 'bust'
-                    ? 'Elendi'
-                    : hand.status === 'won'
-                      ? 'Kazandı'
-                      : hand.status === 'stand'
-                        ? 'Pas'
-                        : 'Oynuyor'}
-                </span>
-              )}
-            </div>
-            {hand && <CardsRow cards={hand.cards} hidden={false} />}
-            {hand && <p className="onnumara-hint">Toplam: {hand.cards.reduce((a, b) => a + b, 0)}</p>}
-          </div>
-        );
-      })}
 
       {round?.phase === 'resolved' && round.result && (
-        <div className="onnumara-section">
-          <p className="onnumara-section-title">Sonuç</p>
-          <p className="onnumara-hint">
-            {round.result.dealerWon
-              ? 'Kurpiyer kazandı, pot kimseye ödenmedi.'
-              : round.result.winners.length > 0
-                ? `Kazanan(lar): ${round.result.winners
-                    .map((u) => table.seats[u]?.displayName || 'Oyuncu')
-                    .join(', ')} · Pay: ${round.result.share.toLocaleString('tr-TR')} altın`
-                : 'Herkes elendi, pot kimseye ödenmedi.'}
-          </p>
-        </div>
+        <p className="onn-log">
+          {round.result.dealerWon
+            ? 'Kurpiyer kazandı, pot kimseye ödenmedi.'
+            : round.result.winners.length > 0
+              ? `Kazanan: ${round.result.winners
+                  .map((u) => table.seats[u]?.displayName || 'Oyuncu')
+                  .join(', ')} · Pay: ${round.result.share.toLocaleString('tr-TR')} altın`
+              : 'Herkes elendi, pot kimseye ödenmedi.'}
+        </p>
       )}
 
-      {isMyTurn && (
-        <div className="onnumara-turn-banner">
-          Sıra sende! ({secondsLeft ?? '—'}s)
-        </div>
-      )}
-
-      <div className="onnumara-controls">
+      <div className="onn-controls">
         {canDeal && iAmSeated && (
-          <button className="onnumara-btn primary" disabled={busy} onClick={() => run('deal', () => dealOnNumaraCards(tableId))}>
+          <button className="onn-btn-deal" disabled={busy} onClick={() => run('deal', () => dealOnNumaraCards(tableId))}>
             Kart Dağıt
           </button>
         )}
         {isMyTurn && (
           <>
-            <button className="onnumara-btn primary" disabled={busy} onClick={() => run('hit', () => onNumaraHit(tableId))}>
+            <button className="onn-btn-hit" disabled={busy} onClick={() => run('hit', () => onNumaraHit(tableId))}>
               Kart Çek
             </button>
-            <button className="onnumara-btn" disabled={busy} onClick={() => run('stand', () => onNumaraStand(tableId))}>
+            <button className="onn-btn-stand" disabled={busy} onClick={() => run('stand', () => onNumaraStand(tableId))}>
               Pas
             </button>
           </>
         )}
+        <button
+          className="onn-btn-leave"
+          disabled={busy}
+          onClick={() =>
+            run('leave', async () => {
+              await leaveOnNumaraTable(tableId);
+              onLeave();
+            })
+          }
+        >
+          Masadan Ayrıl
+        </button>
       </div>
 
       {iAmSeated && (
-        <div className="onnumara-emoji-row">
+        <div className="onn-emoji-row">
           {EMOJIS.map((e) => (
-            <button key={e} className="onnumara-emoji-btn" onClick={() => sendOnNumaraEmoji(tableId, e).catch(() => {})}>
+            <button key={e} className="onn-emoji-btn" onClick={() => sendOnNumaraEmoji(tableId, e).catch(() => {})}>
               {e}
             </button>
           ))}
         </div>
       )}
 
-      {error && <p className="onnumara-error">{error}</p>}
+      {error && <p className="onn-error">{error}</p>}
     </div>
   );
 }

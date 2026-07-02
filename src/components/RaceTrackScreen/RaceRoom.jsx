@@ -86,7 +86,7 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
     return (
       <div className="race-screen">
         <p className="race-hint">Rakip bekleniyor… Bahis: {room.betAmount.toLocaleString('tr-TR')} altın</p>
-        <button className="race-btn" disabled={busy} onClick={() => run('cancel', () => cancelRaceRoom(room.id))}>
+        <button className="race-btn" disabled={busy} onClick={() => run('cancel', () => cancelRaceRoom(room.id).then(onDismissFinished))}>
           Odayı İptal Et
         </button>
         {error && <p className="race-error">{error}</p>}

@@ -174,7 +174,7 @@
   position: absolute;
   font-size: 22px;
   transition: left 0.5s ease;
-  transform: translateX(-4px);
+  transform: translateX(-4px) scaleX(-1);
 }
 
 .race-car.me {
