@@ -456,6 +456,21 @@
   color: var(--neon-pink);
 }
 
+.race-result-amount {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.race-result-amount.win {
+  color: #3ddc84;
+}
+
+.race-result-amount.lose {
+  color: var(--neon-pink);
+}
+
 .dice-roll {
   display: flex;
   align-items: center;

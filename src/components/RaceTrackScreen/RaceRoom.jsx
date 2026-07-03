@@ -14,11 +14,12 @@ import DiceRoll from './DiceRoll';
 import './RaceTrackScreen.css';
 
 const RULES_TEXT =
-  'Sırayla oynanır, her hamle için 10 saniyen var. 1. tur herkes 1 zar atar (vites 1). Sonraki turlarda vites ±1 değişebilir. 300. kareye ilk ulaşan kazanır — ama sen ilk başlarsan rakibine bir son hamle hakkı verilir, o da biterse berabere olur. Benzinin biterse anında kaybedersin.';
+  '300 karelik pisti ilk tamamlayan bahsi kazanır. Benzinin biterse direkt kaybedersin, benzin istasyonlarında benzin oldukça ucuzdur, geldiysen benzin almadan geçme.';
 
 // Yardımcı ipucu — birden fazla durum aynı anda geçerli olabileceği için
 // öncelik sırasına göre TEK bir mesaj seçilir (en acil/işe yarar olan üstte).
 function getHintInfo(me, other, atStation) {
+  if (me.position === 0) return { text: '🏁 Bitiş çizgisini ilk geçen kazanır!', tone: 'info' };
   if (atStation) return { text: '📍 İstasyondasın — ucuza benzin alabilirsin!', tone: 'info' };
   if (me.fuel < 20) return { text: '⚠️ Benzinin azalıyor, doldurmalısın!', tone: 'warning' };
   if (me.hasRolledOnce && me.gear < me.maxGear) return { text: '⬆️ Vites arttırabilirsin.', tone: 'info' };
@@ -138,16 +139,18 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
     const won = room.winnerUid === myUid;
     const isDraw = room.winnerUid === 'draw';
     const noContest = !room.winnerUid;
+    const bet = room.betAmount || 0;
     return (
       <div className="race-screen">
         <p className={`race-result ${won ? 'win' : isDraw || noContest ? '' : 'lose'}`}>
-          {isDraw ? 'Berabere! Bahisleriniz iade edildi.' : noContest ? 'Yarış sonuçsuz bitti.' : won ? 'Kazandın!' : 'Kaybettin.'}
+          {isDraw ? 'Berabere! Bahisleriniz iade edildi.' : noContest ? 'Yarış sonuçsuz bitti.' : won ? 'Yarışı kazandın!' : 'Yarışı kaybettin.'}
         </p>
         {me?.lostByFuel && <p className="race-hint">Benzinin bitti ve yarışı kaybettin.</p>}
-        <p className="race-hint">
-          Kazandığın yarış-içi altın ({(me?.raceGold ?? 0).toLocaleString('tr-TR')}) ve varsa bahis
-          payın hesabına eklendi.
-        </p>
+        {!isDraw && !noContest && (
+          <p className={`race-result-amount ${won ? 'win' : 'lose'}`}>
+            {won ? `+${(bet * 2).toLocaleString('tr-TR')}` : `-${bet.toLocaleString('tr-TR')}`} altın
+          </p>
+        )}
         <button className="race-btn primary" onClick={onDismissFinished}>
           Lobiye Dön
         </button>

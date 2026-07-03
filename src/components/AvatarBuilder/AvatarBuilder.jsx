@@ -172,15 +172,17 @@ export default function AvatarBuilder({ onBack }) {
   return (
     <div className="avb-builder">
       <div className="avb-sticky-header">
-        <button className="avb-header-btn" onClick={onBack}>
-          ← Profil
-        </button>
+        <div className="avb-header-buttons-row">
+          <button className="avb-header-btn" onClick={onBack}>
+            ← Profil
+          </button>
+          <button className="avb-header-btn primary" disabled={busy} onClick={handleSave}>
+            {busy ? '…' : '💾 Kaydet'}
+          </button>
+        </div>
         <div className="avb-header-preview">
           <AvatarSvg avatar={avatar} />
         </div>
-        <button className="avb-header-btn primary" disabled={busy} onClick={handleSave}>
-          {busy ? '…' : '💾 Kaydet'}
-        </button>
       </div>
 
       {ok && <p className="avb-success">Kaydedildi!</p>}
