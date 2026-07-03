@@ -107,6 +107,7 @@
 }
 
 .phone-app-icon-amazor {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -117,6 +118,18 @@
   color: #ff9900;
   font-weight: 800;
   font-size: 18px;
+}
+
+.phone-app-icon-amazor::after {
+  content: '(';
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  transform: translateX(-50%) rotate(-90deg);
+  font-size: 13px;
+  font-weight: 700;
+  color: #ff9900;
+  line-height: 1;
 }
 
 .phone-app-icon-chatsapp {
@@ -159,4 +172,17 @@
   text-align: center;
   font-size: 12px;
   color: var(--text-dim);
+}
+
+.phone-app-icon-banka {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: #1d5fd6;
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 18px;
 }

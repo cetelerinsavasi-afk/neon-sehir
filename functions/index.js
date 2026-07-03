@@ -197,7 +197,7 @@ export const factoryWork = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Polis mesleğindeyken fabrikada çalışamazsın.');
     }
     if (dailySnap.exists && dailySnap.data().factoryWork) {
-      throw new HttpsError('failed-precondition', 'Bugün zaten çalıştınız.');
+      throw new HttpsError('failed-precondition', 'Bugün çalıştınız.');
     }
     const { goldDelta, debtDelta } = splitIncomeForDebt(user.debtToState, FACTORY_WAGE);
     tx.set(
@@ -618,14 +618,22 @@ export const hourlyInvestmentUpdate = onSchedule(
       ? currentSnap.data()
       : { diamondPrice: 1000, cryptoPrice: 100000 };
 
-    const diamondChangePct = (Math.random() * 0.03 + 0.01) * (Math.random() < 0.5 ? -1 : 1);
-    const cryptoChangePct = (Math.random() * 0.19 + 0.01) * (Math.random() < 0.5 ? -1 : 1);
-    const diamondPrice = clamp(Math.round(prev.diamondPrice * (1 + diamondChangePct)), 100, 10000);
-    const cryptoPrice = clamp(
-      Math.round(prev.cryptoPrice * (1 + cryptoChangePct)),
-      10000,
-      1000000
-    );
+    // Asimetrik oynaklık: düşüş oranı artış oranından biraz daha küçük
+    // tutuluyor (kullanıcı revizesi) — aksi halde eşit oranlı rastgele
+    // yürüyüş "düşmeye meyilli" oluyor (ör. %50 düşüp tekrar eski seviyeye
+    // gelmek için %100 artış gerekir). Üst/alt sınır YOK — fiyat doğal
+    // akışına bırakılıyor, sadece 1 altına inmesin diye güvenlik tabanı var.
+    const diamondUp = Math.random() < 0.5;
+    const diamondChangePct = diamondUp
+      ? Math.random() * 0.04 + 0.01 // %1-5 artış
+      : -(Math.random() * 0.03 + 0.01); // %1-4 düşüş
+    const cryptoUp = Math.random() < 0.5;
+    const cryptoChangePct = cryptoUp
+      ? Math.random() * 0.09 + 0.01 // %1-10 artış
+      : -(Math.random() * 0.07 + 0.01); // %1-8 düşüş
+
+    const diamondPrice = Math.max(1, Math.round(prev.diamondPrice * (1 + diamondChangePct)));
+    const cryptoPrice = Math.max(1, Math.round(prev.cryptoPrice * (1 + cryptoChangePct)));
 
     const roundedDiamondPct = Math.round(diamondChangePct * 1000) / 10;
     const roundedCryptoPct = Math.round(cryptoChangePct * 1000) / 10;
@@ -1360,10 +1368,20 @@ export const prayAtMosque = onCall(async (request) => {
     const [userSnap, dailySnap] = await Promise.all([tx.get(userRef), tx.get(dailyRef)]);
     const user = userSnap.data();
     if (dailySnap.exists && dailySnap.data().prayed) {
-      throw new HttpsError('failed-precondition', 'Bugün zaten dua ettin.');
+      throw new HttpsError('failed-precondition', 'Bugün ibadet ettin.');
     }
     tx.update(userRef, { suspicion: clampSuspicion((user?.suspicion || 0) - 5) });
     tx.set(dailyRef, { prayed: true }, { merge: true });
+    // Bugünkü Cemaat listesi için — Camii ekranında avatar+isimle gösterilir.
+    tx.set(
+      db.collection('mosqueAttendance').doc(dateKey).collection('members').doc(uid),
+      {
+        uid,
+        displayName: user?.displayName || 'Oyuncu',
+        avatar: user?.avatar || null,
+        prayedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }
+    );
   });
 
   return { ok: true };
@@ -1701,10 +1719,9 @@ export const sellContrabandAtPark = onCall(async (request) => {
 // 'in_transit' durumundaysa (gün 1, 4) sipariş 'pending' kovasına gider —
 // ancak gemi bir sonraki kez yola çıktığında (gün 2) 'loaded'a taşınır,
 // yani teslimat bir tur daha gecikir (bkz. dailyReset).
-// Limitler (10/10/50) 'loaded'+'pending' toplamına göre uygulanır.
+// Miktar limiti yok — istediğin kadar sipariş verebilirsin.
 // ---------------------------------------------------------------------------
 const LIMAN_PRICES = { depoUpgrade: 400, vitesUpgrade: 400, silahUpgrade: 80 };
-const LIMAN_MAX_PER_CYCLE = { depoUpgrade: 10, vitesUpgrade: 10, silahUpgrade: 50 };
 
 export const placeLimanOrder = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -1718,7 +1735,6 @@ export const placeLimanOrder = onCall(async (request) => {
   }
 
   const unitPrice = LIMAN_PRICES[materialType];
-  const maxPerCycle = LIMAN_MAX_PER_CYCLE[materialType];
   const totalCost = unitPrice * qty;
 
   const dateKey = istanbulDateKey();
@@ -1730,18 +1746,9 @@ export const placeLimanOrder = onCall(async (request) => {
   const orderRef = db.collection('limanOrders').doc(uid);
 
   await db.runTransaction(async (tx) => {
-    const [userSnap, orderSnap] = await Promise.all([tx.get(userRef), tx.get(orderRef)]);
+    const [userSnap] = await Promise.all([tx.get(userRef)]);
     const user = userSnap.data();
-    const order = orderSnap.exists ? orderSnap.data() : {};
-    const existing =
-      (order.loaded?.[materialType] || 0) + (order.pending?.[materialType] || 0);
 
-    if (existing + qty > maxPerCycle) {
-      throw new HttpsError(
-        'failed-precondition',
-        `Bu tur için en fazla ${maxPerCycle} adet sipariş verebilirsin (şu ana kadar sipariş verdiğin: ${existing}).`
-      );
-    }
     if (!user || (user.gold || 0) < totalCost) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }

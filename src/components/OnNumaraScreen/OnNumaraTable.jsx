@@ -152,7 +152,7 @@ export default function OnNumaraTable({ tableId, myUid, onLeave }) {
           const seat = table.seats[uid];
           const hand = round?.hands?.[uid];
           const reaction = table.reactions?.[uid];
-          const showReaction = reaction && Date.now() - reaction.at < 4000;
+          const showReaction = reaction && Date.now() - reaction.at < 3000;
           return (
             <Seat
               key={uid}

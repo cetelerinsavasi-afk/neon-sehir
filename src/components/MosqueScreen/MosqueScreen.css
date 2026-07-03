@@ -1,0 +1,38 @@
+.mosque-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.mosque-congregation {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.mosque-congregation-title {
+  margin: 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.mosque-congregation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.mosque-member {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}

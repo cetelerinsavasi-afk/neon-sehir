@@ -77,6 +77,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // mosqueAttendance/{dateKey}/members/{uid} — "Bugünkü Cemaat" listesi.
+    match /mosqueAttendance/{dateKey}/members/{uid} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
     match /shipSchedule/{date} {
       allow read: if isSignedIn();
       allow write: if false;

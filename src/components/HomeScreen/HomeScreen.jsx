@@ -122,14 +122,14 @@ function VehicleCard({ vehicle, materialsQty, busy, onUpgrade }) {
             disabled={vehicle.gearUpgraded || materialsQty.vites < req || busy === `${vehicle.id}-gear`}
             onClick={() => onUpgrade(vehicle.id, 'gear')}
           >
-            {vehicle.gearUpgraded ? 'Vites Geliştirildi' : `Vites Geliştir (${req} malzeme)`}
+            {vehicle.gearUpgraded ? 'Vites Geliştirildi' : `Vites Geliştir (${req} malzeme) +1 vites`}
           </button>
           <button
             className="home-btn small"
             disabled={vehicle.tankUpgraded || materialsQty.depo < req || busy === `${vehicle.id}-tank`}
             onClick={() => onUpgrade(vehicle.id, 'tank')}
           >
-            {vehicle.tankUpgraded ? 'Depo Geliştirildi' : `Depo Geliştir (${req} malzeme)`}
+            {vehicle.tankUpgraded ? 'Depo Geliştirildi' : `Depo Geliştir (${req} malzeme) +50 depo`}
           </button>
         </div>
       </div>
@@ -140,6 +140,9 @@ function VehicleCard({ vehicle, materialsQty, busy, onUpgrade }) {
 function WeaponCard({ weapon, materialQty, busy, onUpgrade }) {
   const requiredQty = Math.round(weapon.basePrice / 100);
   const img = weaponImage(weapon.catalogId);
+  const nextMultiplier = weapon.level === 1 ? 1.5 : 2;
+  const nextPower = Math.round(weapon.basePower * nextMultiplier);
+  const powerGain = nextPower - weapon.power;
   return (
     <div className="home-item-card">
       {img && <img className="home-item-photo" src={img} alt={weapon.name} />}
@@ -153,7 +156,9 @@ function WeaponCard({ weapon, materialQty, busy, onUpgrade }) {
           disabled={weapon.level >= 3 || materialQty < requiredQty || busy === `${weapon.id}-w`}
           onClick={() => onUpgrade(weapon.id)}
         >
-          {weapon.level >= 3 ? 'Maks. Seviye' : `Geliştir (${requiredQty} malzeme)`}
+          {weapon.level >= 3
+            ? 'Maks. Seviye'
+            : `Geliştir (${requiredQty} malzeme) +${powerGain.toLocaleString('tr-TR')} güç`}
         </button>
       </div>
     </div>

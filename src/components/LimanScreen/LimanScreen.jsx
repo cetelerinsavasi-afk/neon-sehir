@@ -9,9 +9,9 @@ import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './LimanScreen.css';
 
 const LIMAN_MATERIALS = [
-  { id: 'depoUpgrade', label: 'Depo Geliştirme Malzemesi', price: 400, max: 10, emoji: '📦' },
-  { id: 'vitesUpgrade', label: 'Vites Geliştirme Malzemesi', price: 400, max: 10, emoji: '⚙️' },
-  { id: 'silahUpgrade', label: 'Silah Geliştirme Malzemesi', price: 80, max: 50, emoji: '🔧' },
+  { id: 'depoUpgrade', label: 'Depo Geliştirme Malzemesi', price: 400, emoji: '📦' },
+  { id: 'vitesUpgrade', label: 'Vites Geliştirme Malzemesi', price: 400, emoji: '⚙️' },
+  { id: 'silahUpgrade', label: 'Silah Geliştirme Malzemesi', price: 80, emoji: '🔧' },
 ];
 
 export default function LimanScreen() {
@@ -63,7 +63,6 @@ export default function LimanScreen() {
         </p>
         {LIMAN_MATERIALS.map((m) => {
           const ordered = (loaded[m.id] || 0) + (pending[m.id] || 0);
-          const remaining = m.max - ordered;
           const qty = amounts[m.id] || 0;
           return (
             <div key={m.id} className="liman-order-row">
@@ -72,29 +71,22 @@ export default function LimanScreen() {
                 <div className="liman-order-info">
                   <span className="liman-order-label">{m.label}</span>
                   <span className="liman-order-meta">
-                    {m.price} altın/adet · Bu tur sipariş: {ordered}/{m.max}
+                    {m.price} altın/adet · Bu tur sipariş verdiğin: {ordered}
                   </span>
                 </div>
               </div>
-              {remaining > 0 ? (
-                <>
-                  <QuantityStepper
-                    value={qty}
-                    onChange={(v) => setAmount(m.id, v)}
-                    max={remaining}
-                    quickAmounts={[1, 5]}
-                  />
-                  <button
-                    className="liman-btn"
-                    disabled={busy === m.id || !qty}
-                    onClick={() => run(m.id, () => placeLimanOrder(m.id, qty))}
-                  >
-                    {qty > 0 ? `Sipariş Ver — ${(m.price * qty).toLocaleString('tr-TR')} altın` : 'Sipariş Ver'}
-                  </button>
-                </>
-              ) : (
-                <p className="liman-hint">Bu tur için sipariş hakkın doldu.</p>
-              )}
+              <QuantityStepper
+                value={qty}
+                onChange={(v) => setAmount(m.id, v)}
+                quickAmounts={[1, 5, 10]}
+              />
+              <button
+                className="liman-btn"
+                disabled={busy === m.id || !qty}
+                onClick={() => run(m.id, () => placeLimanOrder(m.id, qty))}
+              >
+                {qty > 0 ? `Sipariş Ver — ${(m.price * qty).toLocaleString('tr-TR')} altın` : 'Sipariş Ver'}
+              </button>
             </div>
           );
         })}

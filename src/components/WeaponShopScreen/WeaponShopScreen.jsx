@@ -4,11 +4,10 @@ import { usePlayer } from '../../hooks/usePlayer';
 import { weaponCatalog } from '../../data/weaponCatalog';
 import { buyWeapon } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
-import InfoIcon from '../InfoIcon/InfoIcon';
 import './WeaponShopScreen.css';
 
-// Silah Mağazası SADECE silah SATIN ALMA yeri — geliştirme artık Soygun
-// ekranı > Silahlarım'dan yapılıyor.
+// Silah Mağazası SADECE silah SATIN ALMA yeri — geliştirme Profil'den
+// yapılıyor.
 export default function WeaponShopScreen() {
   const { user } = useAuth();
   const { player } = usePlayer();
@@ -35,10 +34,6 @@ export default function WeaponShopScreen() {
 
   return (
     <div className="weapon-shop">
-      <p className="weapon-shop-material">
-        Silah geliştirmek için <InfoIcon text="Silah geliştirme işlemleri Soygun ekranı > Silahlarım sekmesinden yapılıyor." /> Soygun ekranına bak.
-      </p>
-
       {weaponCatalog.map((w) => (
         <div key={w.id} className="weapon-card">
           <img className="weapon-card-image" src={w.image} alt={w.name} />

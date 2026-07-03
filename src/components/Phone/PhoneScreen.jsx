@@ -9,7 +9,7 @@ import './PhoneScreen.css';
 
 const APPS = [
   { id: 'ikinci-el', label: '2', note: 'İkinci El Satış', enabled: true },
-  { id: 'banka', label: '🏦', note: 'Banka', enabled: true },
+  { id: 'banka', label: 'P', note: 'Parara Bank', enabled: true },
   { id: 'sms', label: '✉️', note: 'SMS', enabled: true },
   { id: 'amazor', label: 'A', note: 'Amazor Market', enabled: true },
   { id: 'chatsapp', label: '💬', note: 'ChatsApp', enabled: true },
@@ -17,7 +17,7 @@ const APPS = [
 
 const APP_TITLES = {
   'ikinci-el': 'İkinci El Satış',
-  banka: 'Banka',
+  banka: 'Parara Bank',
   sms: 'SMS',
   amazor: 'Amazor Market',
   chatsapp: 'ChatsApp',
@@ -68,7 +68,9 @@ export default function PhoneScreen({ onClose }) {
             <span
               className={`phone-app-icon${app.id === 'ikinci-el' ? ' phone-app-icon-2el' : ''}${
                 app.id === 'amazor' ? ' phone-app-icon-amazor' : ''
-              }${app.id === 'chatsapp' ? ' phone-app-icon-chatsapp' : ''}`}
+              }${app.id === 'chatsapp' ? ' phone-app-icon-chatsapp' : ''}${
+                app.id === 'banka' ? ' phone-app-icon-banka' : ''
+              }`}
             >
               {app.label}
               {app.id === 'sms' && unreadCount > 0 && (
