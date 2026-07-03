@@ -13,6 +13,7 @@ import {
   executeHeistPlan,
 } from '../../services/gameActions';
 import InfoIcon from '../InfoIcon/InfoIcon';
+import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import './HeistPanel.css';
 
 export const HEIST_LABELS = {
@@ -107,7 +108,8 @@ function PlanCard({ plan, myUid, onChanged }) {
       <ul className="heist-plan-members">
         {participants.map((p) => (
           <li key={p.uid}>
-            <span>
+            <span className="heist-plan-member-name">
+              <AvatarSvg avatar={p.avatar} size={22} rounded />
               {p.displayName} ({(p.weaponPower || 0).toLocaleString('tr-TR')} güç)
             </span>
             <span className={`heist-suspicion-badge ${suspicionClass(p.suspicion || 0)}`}>

@@ -148,6 +148,8 @@ export const sendChatMessage = (text) => httpsCallable(functions, 'sendChatMessa
 export const setDisplayName = (displayName) =>
   httpsCallable(functions, 'setDisplayName')({ displayName });
 
+export const setAvatar = (avatar) => httpsCallable(functions, 'setAvatar')({ avatar });
+
 // --- Faz 9: Yarış Pisti ---
 
 export const createRaceRoom = (vehicleId, betAmount) =>

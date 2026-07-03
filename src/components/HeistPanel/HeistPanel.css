@@ -135,6 +135,12 @@
   gap: 6px;
 }
 
+.heist-plan-member-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .heist-plan-kick {
   border: none;
   background: none;

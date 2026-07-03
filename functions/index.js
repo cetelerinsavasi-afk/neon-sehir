@@ -1856,6 +1856,7 @@ export const createHeistPlan = onCall(async (request) => {
   await planRef.collection('participants').doc(uid).set({
     uid,
     displayName: user?.displayName || 'Oyuncu',
+    avatar: user?.avatar || null,
     weaponPower: myPower,
     suspicion: user?.suspicion || 0,
     joinedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1897,6 +1898,7 @@ export const joinHeistPlan = onCall(async (request) => {
   await planRef.collection('participants').doc(uid).set({
     uid,
     displayName: user?.displayName || 'Oyuncu',
+    avatar: user?.avatar || null,
     weaponPower: myPower,
     suspicion: user?.suspicion || 0,
     joinedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -2178,10 +2180,12 @@ export const sendChatMessage = onCall(async (request) => {
   }
   const userSnap = await db.collection('users').doc(uid).get();
   const displayName = userSnap.data()?.displayName || 'Oyuncu';
+  const avatar = userSnap.data()?.avatar || null;
 
   await db.collection('globalChat').add({
     uid,
     displayName,
+    avatar,
     text,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
@@ -2221,6 +2225,52 @@ export const setDisplayName = onCall(async (request) => {
     tx.update(userRef, { displayName: raw, displayNameKey: key });
   });
 
+  return { ok: true };
+});
+
+// ---------------------------------------------------------------------------
+// setAvatar — Profil'de oluşturulan avatarı kaydeder. Tüm alanlar
+// AVATAR_OPTIONS'a (enum) ya da hex renk formatına karşı doğrulanır — bu
+// veri daha sonra ham SVG markup'ına gömüleceği için (bkz. client
+// avatarShapes.js) enjeksiyon riskine karşı sıkı doğrulama şart.
+// ---------------------------------------------------------------------------
+const AVATAR_ENUM_OPTIONS = {
+  gender: ['erkek', 'kadin'],
+  build: ['zayif', 'standart', 'iri'],
+  hairStyle: ['kel', 'short', 'slick', 'wavy', 'long', 'mohawk', 'afro', 'bun', 'braids', 'undercut'],
+  facialHair: ['none', 'mustache', 'goatee', 'short', 'full', 'sideburns', 'vandyke'],
+  faceAcc: ['none', 'sunglasses', 'scar', 'cigar', 'eyepatch', 'mask', 'monocle'],
+  earring: ['yok', 'sol', 'sag', 'cift'],
+  tattoo: ['yok', 'gozyasi', 'yildiz', 'boyunsembol', 'boyunyazi'],
+  clothing: ['suit', 'tuxedo', 'leather', 'hawaii', 'jumpsuit', 'hoodie', 'police', 'vest'],
+  neckAcc: ['none', 'tie', 'bow', 'chain', 'scarf', 'dogtag'],
+  hat: ['none', 'fedora', 'beret', 'bandana', 'cap', 'crown', 'tophat', 'hoodup', 'helmet', 'policecap'],
+  heldItem: ['yok', 'tabanca', 'bicak', 'sopa', 'para', 'canta'],
+};
+const AVATAR_COLOR_FIELDS = ['skin', 'eyeColor', 'hairColor', 'clothColor', 'hatColor'];
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+
+export const setAvatar = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const input = request.data?.avatar || {};
+  const avatar = {};
+
+  for (const [field, allowed] of Object.entries(AVATAR_ENUM_OPTIONS)) {
+    const v = input[field];
+    if (!allowed.includes(v)) {
+      throw new HttpsError('invalid-argument', `Geçersiz avatar alanı: ${field}`);
+    }
+    avatar[field] = v;
+  }
+  for (const field of AVATAR_COLOR_FIELDS) {
+    const v = input[field];
+    if (typeof v !== 'string' || !HEX_COLOR_RE.test(v)) {
+      throw new HttpsError('invalid-argument', `Geçersiz avatar rengi: ${field}`);
+    }
+    avatar[field] = v;
+  }
+
+  await db.collection('users').doc(uid).update({ avatar });
   return { ok: true };
 });
 
@@ -3417,7 +3467,10 @@ export const dealOnNumaraCards = onCall(async (request) => {
         hands,
         dealerCards,
         dealerStatus: 'playing',
-        pot: table.betAmount * eligible.length,
+        // Kurpiyer de ortaya kendi bahsi kadar para koyar (Bölüm — kullanıcı
+        // revizesi: "kasa hep daha fazla kazanmaya meyilli" olmasın diye).
+        // İyi oynayan tek başına da kurpiyerden para kazanabilsin.
+        pot: table.betAmount * (eligible.length + 1),
         currentTurnUid: firstTurnUid,
         turnDeadline: firstTurnUid
           ? admin.firestore.Timestamp.fromMillis(Date.now() + ON_NUMARA_TURN_SECONDS * 1000)
@@ -3472,7 +3525,12 @@ async function resolveOnNumaraIfDealerPhase(tableId) {
       dealerCards.push(drawOnNumaraCard());
     }
 
-    // Kazananları belirle.
+    // Kazananları belirle — kurpiyer de (kendi payını koyduğu için) bir
+    // "yarışmacı" gibi değerlendirilir. En yüksek toplamı yapanlar arasında
+    // kurpiyer de varsa, pot o kadar kişiye bölünür ama kurpiyerin payı
+    // kimseye ödenmez (kasada kalır) — böylece TAM beraberlikte oyuncu da
+    // payını alır, kurpiyer TEK BAŞINA en yüksek toplamı yaparsa kimse
+    // ödeme almaz.
     const participants = round.participants;
     const hands = round.hands;
     const contenders = participants.filter((u) => hands[u].status !== 'bust');
@@ -3486,14 +3544,15 @@ async function resolveOnNumaraIfDealerPhase(tableId) {
     });
 
     const humanWinners = contenders.filter((u) => sumCards(hands[u].cards) === bestSum);
-    const dealerWins = dealerIn && dealerSum === bestSum;
+    const dealerIsWinner = dealerIn && dealerSum === bestSum;
+    const totalWinnerSlots = humanWinners.length + (dealerIsWinner ? 1 : 0);
 
     // Firestore transaction kuralı: tüm okumalar yazmalardan önce.
-    const winnerRefs = !dealerWins ? humanWinners.map((u) => db.collection('users').doc(u)) : [];
+    const winnerRefs = humanWinners.map((u) => db.collection('users').doc(u));
 
     const updatedHands = { ...hands };
-    if (!dealerWins && humanWinners.length > 0) {
-      const share = Math.floor(round.pot / humanWinners.length);
+    const share = totalWinnerSlots > 0 ? Math.floor(round.pot / totalWinnerSlots) : 0;
+    if (humanWinners.length > 0 && share > 0) {
       humanWinners.forEach((u, i) => {
         updatedHands[u] = { ...hands[u], status: 'won' };
         // 10 Numara kazancı borca gitmez — direkt altına eklenir.
@@ -3511,10 +3570,11 @@ async function resolveOnNumaraIfDealerPhase(tableId) {
         currentTurnUid: null,
         turnDeadline: null,
         result: {
-          winners: dealerWins ? [] : humanWinners,
-          dealerWon: dealerWins,
+          winners: humanWinners,
+          dealerWon: dealerIsWinner && humanWinners.length === 0,
+          dealerTied: dealerIsWinner && humanWinners.length > 0,
           bestSum,
-          share: !dealerWins && humanWinners.length > 0 ? Math.floor(round.pot / humanWinners.length) : 0,
+          share,
         },
       },
     });

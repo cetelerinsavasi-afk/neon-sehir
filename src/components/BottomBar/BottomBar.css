@@ -42,3 +42,13 @@
   border-color: var(--neon-pink);
   box-shadow: 0 0 24px rgba(255, 46, 140, 0.45);
 }
+
+.bottom-bar-btn.profile {
+  color: #e8c766;
+  box-shadow: 0 0 18px rgba(232, 199, 102, 0.25);
+}
+
+.bottom-bar-btn.profile:hover {
+  border-color: #e8c766;
+  box-shadow: 0 0 24px rgba(232, 199, 102, 0.45);
+}

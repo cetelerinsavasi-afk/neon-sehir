@@ -176,7 +176,9 @@ export default function OnNumaraTable({ tableId, myUid, onLeave }) {
             : round.result.winners.length > 0
               ? `Kazanan: ${round.result.winners
                   .map((u) => table.seats[u]?.displayName || 'Oyuncu')
-                  .join(', ')} · Pay: ${round.result.share.toLocaleString('tr-TR')} altın`
+                  .join(', ')} · Pay: ${round.result.share.toLocaleString('tr-TR')} altın${
+                  round.result.dealerTied ? ' (kurpiyerle berabere, pot bölündü)' : ''
+                }`
               : 'Herkes elendi, pot kimseye ödenmedi.'}
         </p>
       )}

@@ -9,6 +9,7 @@ import HeistScreen from './components/HeistScreen/HeistScreen';
 import SignInBanner from './components/SignInBanner/SignInBanner';
 import RaceFullScreen from './components/RaceTrackScreen/RaceFullScreen';
 import OnNumaraFullScreen from './components/OnNumaraScreen/OnNumaraFullScreen';
+import ProfileFullScreen from './components/ProfileFullScreen/ProfileFullScreen';
 import { usePlayer } from './hooks/usePlayer';
 import { useMyActiveRaceRoom } from './hooks/useMyActiveRaceRoom';
 import './styles/theme.css';
@@ -25,6 +26,7 @@ function GameShell() {
   const [heistTarget, setHeistTarget] = useState(undefined); // undefined=kapalı, null=açık/hedefsiz
   const [activeRaceRoomId, setActiveRaceRoomId] = useState(null);
   const [activeTableId, setActiveTableId] = useState(null);
+  const [profileOpen, setProfileOpen] = useState(false);
   const { player } = usePlayer();
 
   // Aktif bir yarışım varsa (kurdum/katıldım/devam ediyor), harita üzerinde
@@ -65,9 +67,14 @@ function GameShell() {
 
       <SignInBanner />
 
-      <BottomBar onPhoneClick={() => setPhoneOpen(true)} onHeistClick={() => openHeistScreen(null)} />
+      <BottomBar
+        onPhoneClick={() => setPhoneOpen(true)}
+        onHeistClick={() => openHeistScreen(null)}
+        onProfileClick={() => setProfileOpen(true)}
+      />
 
       {phoneOpen && <PhoneScreen onClose={() => setPhoneOpen(false)} />}
+      {profileOpen && <ProfileFullScreen onClose={() => setProfileOpen(false)} />}
 
       <RegionModal
         region={activeRegion}

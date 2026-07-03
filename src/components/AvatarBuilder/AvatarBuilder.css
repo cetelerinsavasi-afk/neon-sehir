@@ -1,0 +1,139 @@
+.avb-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.avb-preview-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.avb-preview-stage {
+  width: 180px;
+  height: 225px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+}
+
+.avb-random-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid #d4af37;
+  background: rgba(212, 175, 55, 0.1);
+  color: #e8c766;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.avb-row {
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.avb-row-title {
+  margin: 0 0 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.avb-hint {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.avb-name-input {
+  width: 100%;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #d4af37;
+  background: #0c1120;
+  color: #e8c766;
+  font-size: 14px;
+  text-transform: uppercase;
+}
+
+.avb-opt-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.avb-opt-btn {
+  padding: 7px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.avb-opt-btn.active {
+  border-color: #d4af37;
+  color: #e8c766;
+  background: rgba(212, 175, 55, 0.12);
+}
+
+.avb-swatch-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.avb-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  cursor: pointer;
+  padding: 0;
+}
+
+.avb-swatch.active {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px #05070c, 0 0 0 3px #d4af37;
+}
+
+.avb-save-btn {
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid #d4af37;
+  background: linear-gradient(135deg, #d4af37, #a67c1e);
+  color: #1a1406;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.avb-save-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.avb-success {
+  color: var(--neon-cyan);
+  font-size: 12px;
+  text-align: center;
+  margin: 0;
+}
+
+.avb-error {
+  color: var(--neon-pink);
+  font-size: 12px;
+  text-align: center;
+  margin: 0;
+}

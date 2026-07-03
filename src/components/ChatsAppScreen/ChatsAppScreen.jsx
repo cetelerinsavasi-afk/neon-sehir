@@ -3,6 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useGlobalChat } from '../../hooks/useGlobalChat';
 import { sendChatMessage } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
+import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import './ChatsAppScreen.css';
 
 function formatTime(ts) {
@@ -45,10 +46,17 @@ export default function ChatsAppScreen() {
     <div className="chatsapp-screen">
       <div className="chatsapp-messages">
         {messages.map((m) => (
-          <div key={m.id} className={`chatsapp-bubble${m.uid === user.uid ? ' mine' : ''}`}>
-            <span className="chatsapp-sender">{m.displayName}</span>
-            <span className="chatsapp-text">{m.text}</span>
-            <span className="chatsapp-time">{formatTime(m.createdAt)}</span>
+          <div key={m.id} className={`chatsapp-row${m.uid === user.uid ? ' mine' : ''}`}>
+            {m.uid !== user.uid && (
+              <div className="chatsapp-avatar">
+                <AvatarSvg avatar={m.avatar} size={28} rounded />
+              </div>
+            )}
+            <div className={`chatsapp-bubble${m.uid === user.uid ? ' mine' : ''}`}>
+              <span className="chatsapp-sender">{m.displayName}</span>
+              <span className="chatsapp-text">{m.text}</span>
+              <span className="chatsapp-time">{formatTime(m.createdAt)}</span>
+            </div>
           </div>
         ))}
         <div ref={bottomRef} />

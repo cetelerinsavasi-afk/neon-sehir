@@ -1,0 +1,37 @@
+.profile-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+.profile-fullscreen-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.profile-fullscreen-title {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.profile-fullscreen-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.profile-fullscreen-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}

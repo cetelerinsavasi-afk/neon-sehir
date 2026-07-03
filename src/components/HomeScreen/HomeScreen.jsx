@@ -4,8 +4,12 @@ import { usePlayer } from '../../hooks/usePlayer';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useWeapons } from '../../hooks/useWeapons';
 import { useInventory } from '../../hooks/useInventory';
-import { setDisplayName, upgradeVehicle, upgradeWeapon } from '../../services/gameActions';
+import { upgradeVehicle, upgradeWeapon } from '../../services/gameActions';
+import { vehicleCatalog } from '../../data/vehicleCatalog';
+import { weaponCatalog } from '../../data/weaponCatalog';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
+import AvatarSvg from '../AvatarSvg/AvatarSvg';
+import AvatarBuilder from '../AvatarBuilder/AvatarBuilder';
 import './HomeScreen.css';
 
 const MATERIAL_LABELS = {
@@ -14,51 +18,30 @@ const MATERIAL_LABELS = {
   silahUpgrade: 'Silah Geliştirme Malzemesi',
   yasakliMadde: 'Yasaklı Madde',
 };
+const MATERIAL_EMOJIS = {
+  depoUpgrade: '📦',
+  vitesUpgrade: '⚙️',
+  silahUpgrade: '🔧',
+  yasakliMadde: '💊',
+};
 
-function ProfileSection({ player }) {
-  const [name, setName] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
-  const [ok, setOk] = useState(false);
+function vehicleImage(catalogId) {
+  return vehicleCatalog.find((v) => v.id === catalogId)?.image;
+}
+function weaponImage(catalogId) {
+  return weaponCatalog.find((w) => w.id === catalogId)?.image;
+}
 
-  const handleSave = async () => {
-    if (!name.trim()) return;
-    setBusy(true);
-    setError(null);
-    setOk(false);
-    try {
-      await setDisplayName(name.trim());
-      setOk(true);
-      setName('');
-    } catch (err) {
-      setError(err.message || 'İsim kaydedilemedi.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
+function ProfileHeader({ player, onEditAvatar }) {
   return (
-    <div className="home-section">
-      <p className="home-section-title">Profilin</p>
-      <p className="home-hint">
-        Şu anki oyun içi adın: <strong>{player?.displayName || '—'}</strong>
-      </p>
-      <div className="home-controls">
-        <input
-          type="text"
-          placeholder="Yeni isim (3-20 karakter)"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="home-input"
-          maxLength={20}
-        />
-        <button className="home-btn" disabled={busy || !name.trim()} onClick={handleSave}>
-          Kaydet
-        </button>
+    <div className="home-profile-header">
+      <div className="home-avatar-frame">
+        <AvatarSvg avatar={player?.avatar} />
       </div>
-      <p className="home-hint">Her ismi sadece tek bir oyuncu kullanabilir.</p>
-      {ok && <p className="home-success">İsmin güncellendi!</p>}
-      {error && <p className="home-error">{error}</p>}
+      <p className="home-profile-name">{player?.displayName || 'İsimsiz'}</p>
+      <button className="home-btn" onClick={onEditAvatar}>
+        🎭 Avatarımı Düzenle
+      </button>
     </div>
   );
 }
@@ -70,29 +53,33 @@ function vehicleRequiredQty(vehicle) {
 
 function VehicleCard({ vehicle, materialsQty, busy, onUpgrade }) {
   const req = vehicleRequiredQty(vehicle);
+  const img = vehicleImage(vehicle.catalogId);
   return (
     <div className="home-item-card">
-      <span className="home-item-name">{vehicle.model}</span>
-      <span className="home-item-stats">
-        Vites {vehicle.gearLevel} · Depo {vehicle.baseTank + (vehicle.tankBonus || 0)}L
-        {vehicle.mortgaged && !vehicle.seizedByBank && ' · İpotekli'}
-        {vehicle.seizedByBank && ' · Bankaya el konuldu'}
-      </span>
-      <div className="home-controls">
-        <button
-          className="home-btn small"
-          disabled={vehicle.gearUpgraded || materialsQty.vites < req || busy === `${vehicle.id}-gear`}
-          onClick={() => onUpgrade(vehicle.id, 'gear')}
-        >
-          {vehicle.gearUpgraded ? 'Vites Geliştirildi' : `Vites Geliştir (${req} malzeme)`}
-        </button>
-        <button
-          className="home-btn small"
-          disabled={vehicle.tankUpgraded || materialsQty.depo < req || busy === `${vehicle.id}-tank`}
-          onClick={() => onUpgrade(vehicle.id, 'tank')}
-        >
-          {vehicle.tankUpgraded ? 'Depo Geliştirildi' : `Depo Geliştir (${req} malzeme)`}
-        </button>
+      {img && <img className="home-item-photo" src={img} alt={vehicle.model} />}
+      <div className="home-item-body">
+        <span className="home-item-name">{vehicle.model}</span>
+        <span className="home-item-stats">
+          Vites {vehicle.gearLevel} · Depo {vehicle.baseTank + (vehicle.tankBonus || 0)}L
+          {vehicle.mortgaged && !vehicle.seizedByBank && ' · İpotekli'}
+          {vehicle.seizedByBank && ' · Bankaya el konuldu'}
+        </span>
+        <div className="home-controls">
+          <button
+            className="home-btn small"
+            disabled={vehicle.gearUpgraded || materialsQty.vites < req || busy === `${vehicle.id}-gear`}
+            onClick={() => onUpgrade(vehicle.id, 'gear')}
+          >
+            {vehicle.gearUpgraded ? 'Vites Geliştirildi' : `Vites Geliştir (${req} malzeme)`}
+          </button>
+          <button
+            className="home-btn small"
+            disabled={vehicle.tankUpgraded || materialsQty.depo < req || busy === `${vehicle.id}-tank`}
+            onClick={() => onUpgrade(vehicle.id, 'tank')}
+          >
+            {vehicle.tankUpgraded ? 'Depo Geliştirildi' : `Depo Geliştir (${req} malzeme)`}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -100,24 +87,29 @@ function VehicleCard({ vehicle, materialsQty, busy, onUpgrade }) {
 
 function WeaponCard({ weapon, materialQty, busy, onUpgrade }) {
   const requiredQty = Math.round(weapon.basePrice / 100);
+  const img = weaponImage(weapon.catalogId);
   return (
     <div className="home-item-card">
-      <span className="home-item-name">
-        {weapon.name} <span className="home-item-level">Sv. {weapon.level}</span>
-      </span>
-      <span className="home-item-stats">Güç: {weapon.power.toLocaleString('tr-TR')}</span>
-      <button
-        className="home-btn small"
-        disabled={weapon.level >= 3 || materialQty < requiredQty || busy === `${weapon.id}-w`}
-        onClick={() => onUpgrade(weapon.id)}
-      >
-        {weapon.level >= 3 ? 'Maks. Seviye' : `Geliştir (${requiredQty} malzeme)`}
-      </button>
+      {img && <img className="home-item-photo" src={img} alt={weapon.name} />}
+      <div className="home-item-body">
+        <span className="home-item-name">
+          {weapon.name} <span className="home-item-level">Sv. {weapon.level}</span>
+        </span>
+        <span className="home-item-stats">Güç: {weapon.power.toLocaleString('tr-TR')}</span>
+        <button
+          className="home-btn small"
+          disabled={weapon.level >= 3 || materialQty < requiredQty || busy === `${weapon.id}-w`}
+          onClick={() => onUpgrade(weapon.id)}
+        >
+          {weapon.level >= 3 ? 'Maks. Seviye' : `Geliştir (${requiredQty} malzeme)`}
+        </button>
+      </div>
     </div>
   );
 }
 
-// Ev — oyuncunun profili. Polislik başvurusu artık burada değil, Karakol'da.
+// Ev / Profil — şu an aynı işleve sahip. Polislik başvurusu artık burada
+// değil, Karakol'da.
 export default function HomeScreen() {
   const { user } = useAuth();
   const { player } = usePlayer();
@@ -126,9 +118,21 @@ export default function HomeScreen() {
   const { inventory } = useInventory();
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
+  const [editingAvatar, setEditingAvatar] = useState(false);
 
   if (!user) {
     return <SignInPrompt message="Evine girmek için giriş yapmalısın." />;
+  }
+
+  if (editingAvatar) {
+    return (
+      <div className="home-screen">
+        <button className="home-back-btn" onClick={() => setEditingAvatar(false)}>
+          ← Profile Dön
+        </button>
+        <AvatarBuilder />
+      </div>
+    );
   }
 
   const run = async (key, fn) => {
@@ -150,7 +154,7 @@ export default function HomeScreen() {
 
   return (
     <div className="home-screen">
-      <ProfileSection player={player} />
+      <ProfileHeader player={player} onEditAvatar={() => setEditingAvatar(true)} />
 
       <div className="home-section">
         <p className="home-section-title">Araçların</p>
@@ -183,9 +187,12 @@ export default function HomeScreen() {
       <div className="home-section">
         <p className="home-section-title">Malzemelerin</p>
         {Object.entries(MATERIAL_LABELS).map(([key, label]) => (
-          <p key={key} className="home-hint">
-            {label}: {inventory[key] || 0}
-          </p>
+          <div key={key} className="home-material-row">
+            <span className="home-material-emoji">{MATERIAL_EMOJIS[key]}</span>
+            <span className="home-hint">
+              {label}: {inventory[key] || 0}
+            </span>
+          </div>
         ))}
       </div>
 
