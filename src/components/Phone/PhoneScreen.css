@@ -118,12 +118,14 @@
   color: #ff9900;
   font-weight: 800;
   font-size: 18px;
+  padding-bottom: 7px;
+  box-sizing: border-box;
 }
 
 .phone-app-icon-amazor::after {
   content: '(';
   position: absolute;
-  bottom: 3px;
+  bottom: 1px;
   left: 50%;
   transform: translateX(-50%) rotate(-90deg);
   font-size: 13px;
@@ -185,4 +187,8 @@
   color: #ffffff;
   font-weight: 800;
   font-size: 18px;
+}
+
+.phone-install-row {
+  padding: 0 20px 20px;
 }

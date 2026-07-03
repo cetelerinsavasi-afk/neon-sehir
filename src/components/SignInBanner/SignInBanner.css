@@ -41,6 +41,29 @@
   color: var(--text-dim);
 }
 
+.sign-in-referral-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: #05070c;
+  color: var(--text);
+  font-size: 12px;
+  text-align: center;
+}
+
+.sign-in-referral-input:focus {
+  outline: none;
+  border-color: var(--neon-cyan);
+}
+
+.sign-in-referral-hint {
+  margin: 0;
+  font-size: 10px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
 .sign-in-banner-button {
   padding: 12px 20px;
   border-radius: 10px;

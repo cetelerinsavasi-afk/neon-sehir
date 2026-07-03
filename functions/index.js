@@ -83,19 +83,42 @@ function addDaysToDateKey(dateKey, days) {
 // initializePlayer — ilk girişte users/{uid} dokümanını sunucu tarafında oluşturur.
 // İstemci başlangıç altını/mesleği gibi kritik alanları asla kendisi yazamaz.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// initializePlayer — yeni oyuncu kaydı. İsteğe bağlı referralCode (bir
+// başka oyuncunun benzersiz oyun içi ismi) girilirse:
+//   - Yeni oyuncu normal 2000 yerine 3000 altınla başlar.
+//   - Referans sahibi 2000 altın bonus kazanır + SMS ile haberdar edilir.
+// ---------------------------------------------------------------------------
 export const initializePlayer = onCall(async (request) => {
   const uid = requireAuth(request);
   const userRef = db.collection('users').doc(uid);
   const privateRef = userRef.collection('private').doc('meta');
+  const rawReferral = String(request.data?.referralCode || '').trim();
+  const referralKey = rawReferral ? rawReferral.toLocaleLowerCase('tr-TR') : null;
+
+  let referrerUid = null;
 
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(userRef);
     if (snap.exists) return; // zaten var, dokunma
 
+    // Referans kodu — TÜM okumalar yazmalardan önce olmalı.
+    let referrerSnap = null;
+    if (referralKey) {
+      const nameSnap = await tx.get(db.collection('usernames').doc(referralKey));
+      if (nameSnap.exists && nameSnap.data().uid !== uid) {
+        referrerUid = nameSnap.data().uid;
+        referrerSnap = await tx.get(db.collection('users').doc(referrerUid));
+        if (!referrerSnap.exists) referrerUid = null;
+      }
+    }
+
+    const startingGold = referrerUid ? 3000 : 2000;
+
     tx.set(userRef, {
       displayName: request.auth.token.name || 'Oyuncu',
       xp: 0,
-      gold: 2000,
+      gold: startingGold,
       suspicion: 0,
       reputation: 0,
       profession: null,
@@ -104,10 +127,30 @@ export const initializePlayer = onCall(async (request) => {
       bankDebt: null,
       lastDailyResetAt: null,
       avatarConfig: null,
+      referredBy: referrerUid,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     // isPolice, Bölüm 14 gereği ayrı ve gizli bir alt dokümanda tutulur.
     tx.set(privateRef, { isPolice: false });
+
+    if (referrerUid) {
+      const REFERRAL_BONUS = 2000;
+      const { goldDelta, debtDelta } = splitIncomeForDebt(
+        referrerSnap.data()?.debtToState,
+        REFERRAL_BONUS
+      );
+      tx.update(db.collection('users').doc(referrerUid), {
+        gold: admin.firestore.FieldValue.increment(goldDelta),
+        debtToState: admin.firestore.FieldValue.increment(debtDelta),
+      });
+      const smsRef = db.collection('users').doc(referrerUid).collection('messages').doc();
+      tx.set(smsRef, {
+        text: `${request.auth.token.name || 'Yeni bir oyuncu'} senin referans kodunla katıldı! 2000 altın bonus kazandın.`,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        read: false,
+        type: 'referral_bonus',
+      });
+    }
   });
 
   return { ok: true };

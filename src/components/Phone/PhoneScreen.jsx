@@ -4,6 +4,7 @@ import MarketplaceScreen from '../MarketplaceScreen/MarketplaceScreen';
 import BankScreen from '../BankScreen/BankScreen';
 import AmazorScreen from '../AmazorScreen/AmazorScreen';
 import ChatsAppScreen from '../ChatsAppScreen/ChatsAppScreen';
+import InstallAppButton from '../InstallAppButton/InstallAppButton';
 import { useMessages } from '../../hooks/useMessages';
 import './PhoneScreen.css';
 
@@ -80,6 +81,10 @@ export default function PhoneScreen({ onClose }) {
             <span className="phone-app-name">{app.note}</span>
           </button>
         ))}
+      </div>
+
+      <div className="phone-install-row">
+        <InstallAppButton />
       </div>
     </div>
   );
