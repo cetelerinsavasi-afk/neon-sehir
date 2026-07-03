@@ -3,13 +3,14 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useInventory } from '../../hooks/useInventory';
 import { buyFromAmazor } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
+import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './AmazorScreen.css';
 
 const ITEMS = [
-  { id: 'yasakliMadde', label: 'Yasaklı Madde', price: 4000 },
-  { id: 'vitesUpgrade', label: 'Vites Geliştirme Malzemesi', price: 500 },
-  { id: 'depoUpgrade', label: 'Depo Geliştirme Malzemesi', price: 500 },
-  { id: 'silahUpgrade', label: 'Silah Geliştirme Malzemesi', price: 100 },
+  { id: 'yasakliMadde', label: 'Yasaklı Madde', price: 4000, emoji: '💊' },
+  { id: 'vitesUpgrade', label: 'Vites Geliştirme Malzemesi', price: 500, emoji: '⚙️' },
+  { id: 'depoUpgrade', label: 'Depo Geliştirme Malzemesi', price: 500, emoji: '📦' },
+  { id: 'silahUpgrade', label: 'Silah Geliştirme Malzemesi', price: 100, emoji: '🔧' },
 ];
 
 export default function AmazorScreen() {
@@ -28,7 +29,7 @@ export default function AmazorScreen() {
     setError(null);
     try {
       await fn();
-      setAmounts((prev) => ({ ...prev, [key]: '' }));
+      setAmounts((prev) => ({ ...prev, [key]: 0 }));
     } catch (err) {
       setError(err.message || 'Satın alma başarısız.');
     } finally {
@@ -38,34 +39,35 @@ export default function AmazorScreen() {
 
   return (
     <div className="amazor-screen">
-      <p className="amazor-hint">Anında teslimat — sipariş verince malzeme direkt envanterine eklenir.</p>
-      {ITEMS.map((item) => (
-        <div key={item.id} className="amazor-item">
-          <div className="amazor-item-info">
-            <span className="amazor-item-name">{item.label}</span>
-            <span className="amazor-item-meta">
-              {item.price.toLocaleString('tr-TR')} altın/adet · Elinde: {inventory[item.id] || 0}
-            </span>
-          </div>
-          <div className="amazor-item-row">
-            <input
-              type="number"
-              min="1"
-              placeholder="Adet"
-              value={amounts[item.id] || ''}
-              onChange={(e) => setAmounts((prev) => ({ ...prev, [item.id]: e.target.value }))}
-              className="amazor-input"
+      <p className="amazor-hint">📦 Anında teslimat — sipariş verince malzeme direkt envanterine eklenir.</p>
+      {ITEMS.map((item) => {
+        const qty = amounts[item.id] || 0;
+        return (
+          <div key={item.id} className="amazor-item">
+            <div className="amazor-item-top">
+              <span className="amazor-item-emoji">{item.emoji}</span>
+              <div className="amazor-item-info">
+                <span className="amazor-item-name">{item.label}</span>
+                <span className="amazor-item-meta">
+                  {item.price.toLocaleString('tr-TR')} altın/adet · Elinde: {inventory[item.id] || 0}
+                </span>
+              </div>
+            </div>
+            <QuantityStepper
+              value={qty}
+              onChange={(v) => setAmounts((prev) => ({ ...prev, [item.id]: v }))}
+              quickAmounts={[1, 5, 10]}
             />
             <button
               className="amazor-btn"
-              disabled={busy === item.id || !amounts[item.id]}
-              onClick={() => run(item.id, () => buyFromAmazor(item.id, Number(amounts[item.id])))}
+              disabled={busy === item.id || !qty}
+              onClick={() => run(item.id, () => buyFromAmazor(item.id, qty))}
             >
-              Satın Al
+              {qty > 0 ? `Satın Al — ${(item.price * qty).toLocaleString('tr-TR')} altın` : 'Satın Al'}
             </button>
           </div>
-        </div>
-      ))}
+        );
+      })}
       {error && <p className="amazor-error">{error}</p>}
     </div>
   );

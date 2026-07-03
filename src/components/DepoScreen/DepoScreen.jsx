@@ -7,13 +7,14 @@ import {
   sellContrabandToDepo,
 } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
+import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './DepoScreen.css';
 
 const ITEMS = [
-  { id: 'yasakliMadde', label: 'Yasaklı Madde', price: 2500, sell: (qty) => sellContrabandToDepo(qty) },
-  { id: 'vitesUpgrade', label: 'Vites Geliştirme Malzemesi', price: 250, sell: (qty) => sellMaterial('vitesUpgrade', qty) },
-  { id: 'depoUpgrade', label: 'Depo Geliştirme Malzemesi', price: 250, sell: (qty) => sellMaterial('depoUpgrade', qty) },
-  { id: 'silahUpgrade', label: 'Silah Geliştirme Malzemesi', price: 50, sell: () => sellSilahMaterial() },
+  { id: 'yasakliMadde', label: 'Yasaklı Madde', price: 2500, emoji: '💊', sell: (qty) => sellContrabandToDepo(qty) },
+  { id: 'vitesUpgrade', label: 'Vites Geliştirme Malzemesi', price: 250, emoji: '⚙️', sell: (qty) => sellMaterial('vitesUpgrade', qty) },
+  { id: 'depoUpgrade', label: 'Depo Geliştirme Malzemesi', price: 250, emoji: '📦', sell: (qty) => sellMaterial('depoUpgrade', qty) },
+  { id: 'silahUpgrade', label: 'Silah Geliştirme Malzemesi', price: 50, emoji: '🔧', sell: () => sellSilahMaterial() },
 ];
 
 export default function DepoScreen() {
@@ -32,7 +33,7 @@ export default function DepoScreen() {
     setError(null);
     try {
       await fn();
-      setAmounts((prev) => ({ ...prev, [key]: '' }));
+      setAmounts((prev) => ({ ...prev, [key]: 0 }));
     } catch (err) {
       setError(err.message || 'Satış başarısız.');
     } finally {
@@ -42,17 +43,21 @@ export default function DepoScreen() {
 
   return (
     <div className="depo-screen">
-      <p className="depo-hint">Elindeki malzemeyi anında satabilirsin.</p>
+      <p className="depo-hint">💰 Elindeki malzemeyi anında satabilirsin.</p>
       {ITEMS.map((item) => {
         const owned = inventory[item.id] || 0;
         const isSilah = item.id === 'silahUpgrade';
+        const qty = amounts[item.id] || 0;
         return (
           <div key={item.id} className="depo-item">
-            <div className="depo-item-info">
-              <span className="depo-item-name">{item.label}</span>
-              <span className="depo-item-meta">
-                {item.price.toLocaleString('tr-TR')} altın/adet · Elinde: {owned}
-              </span>
+            <div className="depo-item-top">
+              <span className="depo-item-emoji">{item.emoji}</span>
+              <div className="depo-item-info">
+                <span className="depo-item-name">{item.label}</span>
+                <span className="depo-item-meta">
+                  {item.price.toLocaleString('tr-TR')} altın/adet · Elinde: {owned}
+                </span>
+              </div>
             </div>
             {isSilah ? (
               <button
@@ -60,27 +65,24 @@ export default function DepoScreen() {
                 disabled={busy === item.id || owned < 1}
                 onClick={() => run(item.id, () => item.sell())}
               >
-                1 Adet Sat
+                1 Adet Sat ({item.price} altın)
               </button>
             ) : (
-              <div className="depo-item-row">
-                <input
-                  type="number"
-                  min="1"
+              <>
+                <QuantityStepper
+                  value={qty}
+                  onChange={(v) => setAmounts((prev) => ({ ...prev, [item.id]: v }))}
                   max={owned}
-                  placeholder="Adet"
-                  value={amounts[item.id] || ''}
-                  onChange={(e) => setAmounts((prev) => ({ ...prev, [item.id]: e.target.value }))}
-                  className="depo-input"
+                  quickAmounts={[1, 5]}
                 />
                 <button
                   className="depo-btn"
-                  disabled={busy === item.id || !amounts[item.id] || Number(amounts[item.id]) > owned}
-                  onClick={() => run(item.id, () => item.sell(Number(amounts[item.id])))}
+                  disabled={busy === item.id || !qty}
+                  onClick={() => run(item.id, () => item.sell(qty))}
                 >
-                  Sat
+                  {qty > 0 ? `Sat — ${(item.price * qty).toLocaleString('tr-TR')} altın` : 'Sat'}
                 </button>
-              </div>
+              </>
             )}
           </div>
         );

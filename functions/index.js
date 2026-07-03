@@ -193,6 +193,9 @@ export const factoryWork = onCall(async (request) => {
     if (!user) {
       throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
     }
+    if (user.profession === 'polis') {
+      throw new HttpsError('failed-precondition', 'Polis mesleğindeyken fabrikada çalışamazsın.');
+    }
     if (dailySnap.exists && dailySnap.data().factoryWork) {
       throw new HttpsError('failed-precondition', 'Bugün zaten çalıştınız.');
     }
@@ -208,7 +211,7 @@ export const factoryWork = onCall(async (request) => {
     tx.set(dailyRef, { factoryWork: true }, { merge: true });
   });
 
-  return { ok: true, earned: 100 };
+  return { ok: true, earned: FACTORY_WAGE };
 });
 
 // ---------------------------------------------------------------------------
@@ -342,23 +345,8 @@ export const dailyReset = onSchedule(
       )
     );
 
-    // 1) Polis maaşı — 1000 altın, sadece suspicion=0 olan polislere (Bölüm 7)
-    const policeSnap = await db
-      .collection('users')
-      .where('profession', '==', 'polis')
-      .get();
-    const policeBatch = db.batch();
-    policeSnap.forEach((docSnap) => {
-      const user = docSnap.data();
-      if (user.suspicion === 0) {
-        const { goldDelta, debtDelta } = splitIncomeForDebt(user.debtToState, 1000);
-        policeBatch.update(docSnap.ref, {
-          gold: admin.firestore.FieldValue.increment(goldDelta),
-          debtToState: admin.firestore.FieldValue.increment(debtDelta),
-        });
-      }
-    });
-    if (!policeSnap.empty) await policeBatch.commit();
+    // Not: Polis maaşı artık otomatik dağıtılmıyor — Karakol'da günde 1 kez
+    // manuel talep ediliyor (bkz. claimPoliceSalary).
 
     // 2) Banka mevduat faizi — günlük %1 (Bölüm 13)
     const bankSnap = await db.collection('users').where('bankBalance', '>', 0).get();
@@ -1384,6 +1372,7 @@ export const prayAtMosque = onCall(async (request) => {
 // bribePolice — Karakol: günde 1 kez, 3000 altın, şüphe -10.
 // ---------------------------------------------------------------------------
 const BRIBE_COST = 3000;
+const POLICE_SALARY = 1000;
 
 export const bribePolice = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -1405,6 +1394,37 @@ export const bribePolice = onCall(async (request) => {
       suspicion: clampSuspicion((user.suspicion || 0) - 10),
     });
     tx.set(dailyRef, { bribed: true }, { merge: true });
+  });
+
+  return { ok: true };
+});
+
+// claimPoliceSalary — Karakol'da günde 1 kez, sadece şüphesi 0 olan
+// polislerin manuel talep ettiği 1000 altın maaş.
+export const claimPoliceSalary = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const dateKey = istanbulDateKey();
+  const userRef = db.collection('users').doc(uid);
+  const dailyRef = db.collection('dailyActions').doc(`${uid}_${dateKey}`);
+
+  await db.runTransaction(async (tx) => {
+    const [userSnap, dailySnap] = await Promise.all([tx.get(userRef), tx.get(dailyRef)]);
+    const user = userSnap.data();
+    if (!user || user.profession !== 'polis') {
+      throw new HttpsError('failed-precondition', 'Polis değilsin.');
+    }
+    if ((user.suspicion || 0) !== 0) {
+      throw new HttpsError('failed-precondition', 'Maaş almak için şüphe puanın %0 olmalı.');
+    }
+    if (dailySnap.exists && dailySnap.data().policeSalaryClaimed) {
+      throw new HttpsError('failed-precondition', 'Bugün zaten maaşını aldın.');
+    }
+    const { goldDelta, debtDelta } = splitIncomeForDebt(user.debtToState, POLICE_SALARY);
+    tx.update(userRef, {
+      gold: admin.firestore.FieldValue.increment(goldDelta),
+      debtToState: admin.firestore.FieldValue.increment(debtDelta),
+    });
+    tx.set(dailyRef, { policeSalaryClaimed: true }, { merge: true });
   });
 
   return { ok: true };
@@ -2384,29 +2404,27 @@ function performRoll(me, { useNitro = false, useTurbo = false } = {}) {
 
 // Yarışı ödemeyle kapatır: kazanana bahis havuzu (ya da berabere ise her
 // ikisine kendi bahsi), herkese kendi yarış-içi altını.
+// Yarış-içi altın (raceGold) SADECE yarış sırasında geçerli bir kaynak —
+// yarış bitince gerçek bakiyeye hiç aktarılmaz. Kazanan sadece bahis
+// havuzunu (pot) alır, berabere olursa herkes kendi bahsini geri alır.
 function finalizeRace({ tx, roomRef, room, winnerUid, players, userRefs, userSnaps }) {
   const pot = room.betAmount;
   const uids = Object.keys(players);
 
   uids.forEach((u) => {
-    let refund = 0;
-    let winnings = 0;
+    let amount = 0;
     if (winnerUid === 'draw') {
-      refund = pot;
+      amount = pot; // kendi bahsini geri al
     } else if (winnerUid === u) {
-      refund = pot;
-      winnings = pot;
+      amount = pot * 2; // ortadaki bahsin tamamı
     }
-    const raceGold = players[u]?.raceGold || 0;
-    const splittable = winnings + raceGold;
-    const { goldDelta, debtDelta } = splitIncomeForDebt(
-      userSnaps[u]?.data()?.debtToState,
-      splittable
-    );
-    tx.update(userRefs[u], {
-      gold: admin.firestore.FieldValue.increment(refund + goldDelta),
-      debtToState: admin.firestore.FieldValue.increment(debtDelta),
-    });
+    if (amount > 0) {
+      const { goldDelta, debtDelta } = splitIncomeForDebt(userSnaps[u]?.data()?.debtToState, amount);
+      tx.update(userRefs[u], {
+        gold: admin.firestore.FieldValue.increment(goldDelta),
+        debtToState: admin.firestore.FieldValue.increment(debtDelta),
+      });
+    }
   });
 
   const playerUpdates = {};

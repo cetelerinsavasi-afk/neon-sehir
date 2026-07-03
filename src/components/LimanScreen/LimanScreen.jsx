@@ -4,12 +4,14 @@ import { useShipSchedule } from '../../hooks/useShipSchedule';
 import { usePendingLimanOrder } from '../../hooks/usePendingLimanOrder';
 import { placeLimanOrder, cancelLimanOrder } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
+import InfoIcon from '../InfoIcon/InfoIcon';
+import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './LimanScreen.css';
 
 const LIMAN_MATERIALS = [
-  { id: 'depoUpgrade', label: 'Depo Geliştirme Malzemesi', price: 400, max: 10 },
-  { id: 'vitesUpgrade', label: 'Vites Geliştirme Malzemesi', price: 400, max: 10 },
-  { id: 'silahUpgrade', label: 'Silah Geliştirme Malzemesi', price: 80, max: 50 },
+  { id: 'depoUpgrade', label: 'Depo Geliştirme Malzemesi', price: 400, max: 10, emoji: '📦' },
+  { id: 'vitesUpgrade', label: 'Vites Geliştirme Malzemesi', price: 400, max: 10, emoji: '⚙️' },
+  { id: 'silahUpgrade', label: 'Silah Geliştirme Malzemesi', price: 80, max: 50, emoji: '🔧' },
 ];
 
 export default function LimanScreen() {
@@ -55,42 +57,44 @@ export default function LimanScreen() {
       </div>
 
       <div className="liman-section">
-        <p className="liman-section-title">Toplu Sipariş</p>
-        <p className="liman-hint">
-          Gemi yolda ya da mal yüklüyorken ({'"'}mal yükleniyor{'"'} durumunda) verilen siparişler
-          gemi şehre döndüğünde gelir. Gemi şehirdeyken ya da dönüş yolundayken verilen siparişler
-          bir tur daha gecikir.
+        <p className="liman-section-title">
+          Toplu Sipariş
+          <InfoIcon text='Gemi yolda ya da mal yüklüyorken ("mal yükleniyor" durumunda) verilen siparişler gemi şehre döndüğünde gelir. Gemi şehirdeyken ya da dönüş yolundayken verilen siparişler bir tur daha gecikir.' />
         </p>
         {LIMAN_MATERIALS.map((m) => {
           const ordered = (loaded[m.id] || 0) + (pending[m.id] || 0);
           const remaining = m.max - ordered;
+          const qty = amounts[m.id] || 0;
           return (
             <div key={m.id} className="liman-order-row">
-              <div className="liman-order-info">
-                <span className="liman-order-label">{m.label}</span>
-                <span className="liman-order-meta">
-                  {m.price} altın/adet · Bu tur sipariş: {ordered}/{m.max}
-                </span>
+              <div className="liman-order-top">
+                <span className="liman-order-emoji">{m.emoji}</span>
+                <div className="liman-order-info">
+                  <span className="liman-order-label">{m.label}</span>
+                  <span className="liman-order-meta">
+                    {m.price} altın/adet · Bu tur sipariş: {ordered}/{m.max}
+                  </span>
+                </div>
               </div>
-              <div className="liman-input-row">
-                <input
-                  type="number"
-                  min="1"
-                  max={remaining}
-                  placeholder="Adet"
-                  value={amounts[m.id] || ''}
-                  onChange={(e) => setAmount(m.id, e.target.value)}
-                  className="liman-input"
-                  disabled={remaining <= 0}
-                />
-                <button
-                  className="liman-btn"
-                  disabled={busy === m.id || !amounts[m.id] || remaining <= 0}
-                  onClick={() => run(m.id, () => placeLimanOrder(m.id, Number(amounts[m.id])))}
-                >
-                  {remaining <= 0 ? 'Bu tur doldu' : 'Sipariş Ver'}
-                </button>
-              </div>
+              {remaining > 0 ? (
+                <>
+                  <QuantityStepper
+                    value={qty}
+                    onChange={(v) => setAmount(m.id, v)}
+                    max={remaining}
+                    quickAmounts={[1, 5]}
+                  />
+                  <button
+                    className="liman-btn"
+                    disabled={busy === m.id || !qty}
+                    onClick={() => run(m.id, () => placeLimanOrder(m.id, qty))}
+                  >
+                    {qty > 0 ? `Sipariş Ver — ${(m.price * qty).toLocaleString('tr-TR')} altın` : 'Sipariş Ver'}
+                  </button>
+                </>
+              ) : (
+                <p className="liman-hint">Bu tur için sipariş hakkın doldu.</p>
+              )}
             </div>
           );
         })}

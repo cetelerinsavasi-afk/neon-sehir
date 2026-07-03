@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { usePlayer } from '../../hooks/usePlayer';
+import { useDailyActions } from '../../hooks/useDailyActions';
 import {
   applyForPolice,
   resignFromPolice,
   cancelPendingPoliceChange,
+  claimPoliceSalary,
 } from '../../services/gameActions';
 import InfoIcon from '../InfoIcon/InfoIcon';
 import PoliceBooklet from '../PoliceBooklet/PoliceBooklet';
@@ -14,6 +16,7 @@ import './PoliceApplicationSection.css';
 // önlemek için), ama İSTİFA artık ANLIK (onay istenerek).
 export default function PoliceApplicationSection() {
   const { player } = usePlayer();
+  const { actions } = useDailyActions();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [showBooklet, setShowBooklet] = useState(false);
@@ -33,6 +36,8 @@ export default function PoliceApplicationSection() {
 
   const isPolice = player?.profession === 'polis';
   const pending = player?.pendingPoliceChange;
+  const salaryClaimed = Boolean(actions.policeSalaryClaimed);
+  const canClaimSalary = isPolice && (player?.suspicion || 0) === 0;
 
   return (
     <div className="police-app-section">
@@ -49,6 +54,23 @@ export default function PoliceApplicationSection() {
         Şu an: <strong>{isPolice ? 'Polissin' : 'Sivilsin'}</strong>
         {pending === 'apply' && ' · Başvurun bu gece işlenecek'}
       </p>
+
+      {isPolice && (
+        <div className="police-salary-box">
+          <span className="police-salary-emoji">💰</span>
+          <div className="police-salary-info">
+            <span className="police-salary-title">Günlük Maaş</span>
+            <span className="police-salary-amount">1000 altın</span>
+          </div>
+          <button
+            className="police-app-btn primary"
+            disabled={busy || salaryClaimed || !canClaimSalary}
+            onClick={() => run(claimPoliceSalary)}
+          >
+            {salaryClaimed ? 'Bugün Alındı' : canClaimSalary ? 'Maaşı Al' : 'Şüphen 0 Olmalı'}
+          </button>
+        </div>
+      )}
 
       {confirmingResign ? (
         <div className="police-app-confirm">

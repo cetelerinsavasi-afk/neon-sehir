@@ -283,3 +283,22 @@
   text-align: center;
   margin: 0;
 }
+
+.onn-gold-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--onn-gold-soft);
+}
+
+.onn-gold-coin {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff5c2, #ffd23f 55%, #b8860b 100%);
+  box-shadow: 0 0 4px rgba(255, 210, 63, 0.6);
+  display: inline-block;
+}

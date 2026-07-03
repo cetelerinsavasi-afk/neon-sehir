@@ -1,0 +1,61 @@
+.qty-stepper {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.qty-stepper-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+
+.qty-stepper-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--neon-cyan);
+  background: rgba(25, 232, 255, 0.1);
+  color: var(--neon-cyan);
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qty-stepper-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.qty-stepper-value {
+  font-size: 22px;
+  font-weight: 800;
+  min-width: 36px;
+  text-align: center;
+}
+
+.qty-stepper-quick {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.qty-stepper-quick-btn {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.qty-stepper-quick-btn:hover {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}

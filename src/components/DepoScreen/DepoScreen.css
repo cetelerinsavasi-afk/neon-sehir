@@ -20,6 +20,16 @@
   padding: 12px;
 }
 
+.depo-item-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.depo-item-emoji {
+  font-size: 26px;
+}
+
 .depo-item-info {
   display: flex;
   flex-direction: column;
@@ -36,29 +46,15 @@
   color: var(--text-dim);
 }
 
-.depo-item-row {
-  display: flex;
-  gap: 8px;
-}
-
-.depo-input {
-  flex: 1;
-  min-width: 0;
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--panel-border);
-  background: var(--panel);
-  color: var(--text);
-  font-size: 12px;
-}
-
 .depo-btn {
-  padding: 8px 14px;
+  width: 100%;
+  padding: 10px 14px;
   border-radius: 8px;
   border: 1px solid var(--panel-border);
   background: var(--panel);
   color: var(--text);
   font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
 }
 

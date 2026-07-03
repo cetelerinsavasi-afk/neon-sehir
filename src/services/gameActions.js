@@ -89,6 +89,8 @@ export const prayAtMosque = () => httpsCallable(functions, 'prayAtMosque')();
 
 export const bribePolice = () => httpsCallable(functions, 'bribePolice')();
 
+export const claimPoliceSalary = () => httpsCallable(functions, 'claimPoliceSalary')();
+
 export const buyFromVendor = (vendorId) =>
   httpsCallable(functions, 'buyFromVendor')({ vendorId });
 

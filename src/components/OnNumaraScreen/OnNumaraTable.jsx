@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { usePlayer } from '../../hooks/usePlayer';
 import {
   dealOnNumaraCards,
   onNumaraHit,
@@ -94,6 +95,7 @@ function Seat({ name, cards, status, hidden, isActive, isDealer, reaction, secon
 
 export default function OnNumaraTable({ tableId, myUid, onLeave }) {
   const { table } = useOnNumaraTableById(tableId);
+  const { player } = usePlayer();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -125,6 +127,10 @@ export default function OnNumaraTable({ tableId, myUid, onLeave }) {
 
   return (
     <div className="onn-table">
+      <div className="onn-gold-row">
+        <span className="onn-gold-coin" />
+        <span className="onn-gold-value">{(player?.gold ?? 0).toLocaleString('tr-TR')}</span>
+      </div>
       <div className="onn-pot-row">
         <div className="onn-pot-badge">POT: {(round?.pot || 0).toLocaleString('tr-TR')}</div>
       </div>

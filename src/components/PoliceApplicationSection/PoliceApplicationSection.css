@@ -91,3 +91,40 @@
   border-color: var(--neon-pink);
   color: var(--neon-pink);
 }
+
+.police-salary-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 210, 63, 0.08);
+  border: 1px solid #ffd23f;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.police-salary-emoji {
+  font-size: 24px;
+}
+
+.police-salary-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.police-salary-title {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.police-salary-amount {
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffd23f;
+}
+
+.police-app-btn.primary {
+  border-color: #ffd23f;
+  color: #ffd23f;
+  background: rgba(255, 210, 63, 0.1);
+}
