@@ -16,6 +16,18 @@ import './RaceTrackScreen.css';
 const RULES_TEXT =
   'Sırayla oynanır, her hamle için 10 saniyen var. 1. tur herkes 1 zar atar (vites 1). Sonraki turlarda vites ±1 değişebilir. 300. kareye ilk ulaşan kazanır — ama sen ilk başlarsan rakibine bir son hamle hakkı verilir, o da biterse berabere olur. Benzinin biterse anında kaybedersin.';
 
+// Yardımcı ipucu — birden fazla durum aynı anda geçerli olabileceği için
+// öncelik sırasına göre TEK bir mesaj seçilir (en acil/işe yarar olan üstte).
+function getHintInfo(me, other, atStation) {
+  if (atStation) return { text: '📍 İstasyondasın — ucuza benzin alabilirsin!', tone: 'info' };
+  if (me.fuel < 20) return { text: '⚠️ Benzinin azalıyor, doldurmalısın!', tone: 'warning' };
+  if (me.hasRolledOnce && me.gear < me.maxGear) return { text: '⬆️ Vites arttırabilirsin.', tone: 'info' };
+  if (me.raceGold > 150) return { text: '🔥 Nitro kullanabilirsin!', tone: 'info' };
+  if (me.position > other.position) return { text: 'Şu an öndesin.', tone: 'good' };
+  if (me.position < other.position) return { text: 'Şu an geridesin.', tone: 'neutral' };
+  return { text: 'Berabersiniz.', tone: 'neutral' };
+}
+
 function useCountdown(deadline) {
   const [secondsLeft, setSecondsLeft] = useState(null);
 
@@ -149,6 +161,7 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
 
   const atStation = me.position % 10 === 0;
   const refuelPrice = atStation ? 10 : 100;
+  const hintInfo = getHintInfo(me, other, atStation);
 
   const handleRoll = async (useNitro, useTurbo) => {
     await run('roll', () => rollDice(room.id, useNitro, useTurbo));
@@ -194,20 +207,31 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
       </div>
 
       <div className="race-stat-boxes">
-        <div className={`race-stat-box${me.fuel <= 0 ? ' danger' : ''}`}>
-          <span className="race-stat-emoji">⛽</span>
-          <span className="race-stat-value">{me.fuel}/{me.maxFuel}</span>
-        </div>
-        <div className="race-stat-box gold">
-          <span className="race-stat-coin" />
-          <span className="race-stat-value">{me.raceGold}</span>
-        </div>
-        {me.turboCount > 0 && (
-          <div className="race-stat-box turbo">
-            <span className="race-stat-emoji">🚀</span>
-            <span className="race-stat-value">×{me.turboCount}</span>
+        <div
+          className={`race-stat-box-combo${
+            me.fuel <= 0 ? ' danger' : me.fuel < 20 ? ' warning' : ''
+          }`}
+        >
+          <div className="race-stat-combo-row">
+            <span className="race-stat-emoji">⛽</span>
+            <span className="race-stat-value">{me.fuel}/{me.maxFuel}</span>
           </div>
-        )}
+          <div className="race-fuel-bar">
+            <div
+              className="race-fuel-bar-fill"
+              style={{ width: `${Math.max(0, Math.min(100, (me.fuel / me.maxFuel) * 100))}%` }}
+            />
+          </div>
+          <div className="race-stat-combo-row">
+            <span className="race-stat-coin" />
+            <span className="race-stat-value">{me.raceGold}</span>
+          </div>
+        </div>
+
+        <div className={`race-hint-box ${hintInfo.tone}`}>
+          <p>{hintInfo.text}</p>
+          {me.turboCount > 0 && <span className="race-hint-turbo">🚀 Turbo ×{me.turboCount}</span>}
+        </div>
       </div>
 
       <div className="race-dice-row">
@@ -259,10 +283,10 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
         </div>
         <button
           className="race-nitro-btn"
-          disabled={busy || !isMyTurn || me.raceGold < 20 || me.nitroActive}
+          disabled={busy || !isMyTurn || me.raceGold < 50 || me.nitroActive}
           onClick={() => run('nitro', () => raceBuyNitro(room.id))}
         >
-          {me.nitroActive ? '🔥 Nitro Alındı' : '🔥 Nitro (20)'}
+          {me.nitroActive ? '🔥 Nitro Alındı' : '🔥 Nitro (50)'}
         </button>
       </div>
 
@@ -280,14 +304,14 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
 
       {isMyTurn && (
         <button
-          className={`race-btn${me.fuel <= 0 ? ' primary' : ''}`}
+          className={`race-btn${me.fuel <= 0 ? ' primary' : ''}${atStation && me.fuel < me.maxFuel ? ' station' : ''}`}
           disabled={busy || me.raceGold < refuelPrice || me.fuel >= me.maxFuel}
           onClick={() => run('refuel', () => raceRefuel(room.id))}
         >
           {me.fuel >= me.maxFuel
             ? '⛽ Benzin Dolu'
             : atStation
-              ? `⛽ Şu an istasyondasın — Benzin Doldur (${refuelPrice})`
+              ? `⛽ İSTASYONDASIN — Benzin Doldur (${refuelPrice})`
               : `⛽ Benzin Doldur (${refuelPrice})`}
         </button>
       )}

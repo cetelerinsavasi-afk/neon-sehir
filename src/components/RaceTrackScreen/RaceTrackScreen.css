@@ -237,36 +237,112 @@
 .race-stat-boxes {
   display: flex;
   gap: 8px;
+  align-items: stretch;
 }
 
-.race-stat-box {
+.race-stat-box-combo {
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 10px 6px;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px;
   border-radius: 10px;
   background: #05070c;
   border: 1px solid var(--panel-border);
-  font-size: 15px;
-  font-weight: 700;
 }
 
-.race-stat-box.danger {
+.race-stat-box-combo.warning {
+  border-color: #ffd23f;
+}
+
+.race-stat-box-combo.danger {
   border-color: var(--neon-pink);
-  color: var(--neon-pink);
   animation: pulse-danger 1s infinite;
 }
 
-.race-stat-box.gold {
+.race-stat-combo-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.race-stat-box-combo.warning .race-stat-combo-row:first-child {
+  color: #ffd23f;
+}
+
+.race-stat-box-combo.danger .race-stat-combo-row:first-child {
+  color: var(--neon-pink);
+}
+
+.race-stat-box-combo .race-stat-combo-row:last-child {
+  color: #ffd23f;
+}
+
+.race-fuel-bar {
+  height: 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.race-fuel-bar-fill {
+  height: 100%;
+  background: var(--neon-cyan);
+  transition: width 0.4s ease;
+}
+
+.race-stat-box-combo.warning .race-fuel-bar-fill {
+  background: #ffd23f;
+}
+
+.race-stat-box-combo.danger .race-fuel-bar-fill {
+  background: var(--neon-pink);
+}
+
+.race-hint-box {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 10px;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  text-align: center;
+}
+
+.race-hint-box p {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.race-hint-box.info {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.race-hint-box.warning {
   border-color: #ffd23f;
   color: #ffd23f;
 }
 
-.race-stat-box.turbo {
-  border-color: var(--neon-cyan);
-  color: var(--neon-cyan);
+.race-hint-box.good {
+  border-color: #3ddc84;
+  color: #3ddc84;
+}
+
+.race-hint-box.neutral {
+  color: var(--text-dim);
+}
+
+.race-hint-turbo {
+  font-size: 10px;
+  color: var(--text-dim);
 }
 
 @keyframes pulse-danger {
@@ -419,4 +495,17 @@
   color: #ff9900;
   font-weight: 700;
   text-align: center;
+}
+
+.race-btn.station {
+  border-color: var(--neon-cyan);
+  background: rgba(25, 232, 255, 0.15);
+  color: var(--neon-cyan);
+  font-weight: 700;
+  animation: station-pulse 1.2s infinite;
+}
+
+@keyframes station-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(25, 232, 255, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(25, 232, 255, 0); }
 }

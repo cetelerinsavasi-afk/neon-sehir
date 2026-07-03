@@ -2347,6 +2347,7 @@ const RACE_TRACK_LENGTH = 300;
 const RACE_TURN_SECONDS = 10;
 const RACE_STATION_PRICES = { refuel: 10 };
 const RACE_OFFSITE_FUEL_PRICE = 100;
+const RACE_NITRO_PRICE = 50;
 
 function rollDie() {
   return Math.floor(Math.random() * 6) + 1;
@@ -2923,11 +2924,11 @@ export const raceBuyNitro = onCall(async (request) => {
     if (me.nitroActive) {
       throw new HttpsError('failed-precondition', 'Bu tur zaten nitro aldın.');
     }
-    if (me.raceGold < 20) {
+    if (me.raceGold < RACE_NITRO_PRICE) {
       throw new HttpsError('failed-precondition', 'Yeterli yarış altının yok.');
     }
     tx.update(roomRef, {
-      [`players.${uid}`]: { ...me, raceGold: me.raceGold - 20, nitroActive: true },
+      [`players.${uid}`]: { ...me, raceGold: me.raceGold - RACE_NITRO_PRICE, nitroActive: true },
     });
   });
 
