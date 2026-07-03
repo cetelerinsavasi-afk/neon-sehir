@@ -980,19 +980,20 @@ export const upgradeWeapon = onCall(async (request) => {
 
 export const sellSilahMaterial = onCall(async (request) => {
   const uid = requireAuth(request);
+  const qty = Math.max(1, Number(request.data?.quantity) || 1);
   const userRef = db.collection('users').doc(uid);
   const inventoryRef = userRef.collection('inventory').doc('silahUpgrade');
 
   await db.runTransaction(async (tx) => {
     const [invSnap, userSnap] = await Promise.all([tx.get(inventoryRef), tx.get(userRef)]);
     const have = invSnap.exists ? invSnap.data().quantity || 0 : 0;
-    if (have < 1) {
-      throw new HttpsError('failed-precondition', 'Satacak gelişim malzemeniz yok.');
+    if (have < qty) {
+      throw new HttpsError('failed-precondition', 'Satacak yeterli gelişim malzemeniz yok.');
     }
-    tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-1) }, { merge: true });
+    tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-qty) }, { merge: true });
     const { goldDelta, debtDelta } = splitIncomeForDebt(
       userSnap.data()?.debtToState,
-      UPGRADE_MATERIAL_REFUND
+      UPGRADE_MATERIAL_REFUND * qty
     );
     tx.set(
       userRef,

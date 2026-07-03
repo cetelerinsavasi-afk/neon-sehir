@@ -21,7 +21,7 @@ export default function AmazorScreen() {
   const [error, setError] = useState(null);
 
   if (!user) {
-    return <SignInPrompt message="Amazor'u kullanmak için giriş yapmalısın." />;
+    return <SignInPrompt message="Amazor Market'i kullanmak için giriş yapmalısın." />;
   }
 
   const run = async (key, fn) => {

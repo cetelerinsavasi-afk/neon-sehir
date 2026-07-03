@@ -42,7 +42,8 @@ export const upgradeWeapon = (weaponId) =>
   httpsCallable(functions, 'upgradeWeapon')({ weaponId });
 
 
-export const sellSilahMaterial = () => httpsCallable(functions, 'sellSilahMaterial')();
+export const sellSilahMaterial = (quantity) =>
+  httpsCallable(functions, 'sellSilahMaterial')({ quantity });
 
 // --- Faz 4: Banka ve Yatırım ---
 

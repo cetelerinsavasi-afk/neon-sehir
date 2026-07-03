@@ -11,7 +11,7 @@ const APPS = [
   { id: 'ikinci-el', label: '2', note: 'İkinci El Satış', enabled: true },
   { id: 'banka', label: '🏦', note: 'Banka', enabled: true },
   { id: 'sms', label: '✉️', note: 'SMS', enabled: true },
-  { id: 'amazor', label: 'A', note: 'Amazor', enabled: true },
+  { id: 'amazor', label: 'A', note: 'Amazor Market', enabled: true },
   { id: 'chatsapp', label: '💬', note: 'ChatsApp', enabled: true },
 ];
 
@@ -19,7 +19,7 @@ const APP_TITLES = {
   'ikinci-el': 'İkinci El Satış',
   banka: 'Banka',
   sms: 'SMS',
-  amazor: 'Amazor',
+  amazor: 'Amazor Market',
   chatsapp: 'ChatsApp',
 };
 

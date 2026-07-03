@@ -85,6 +85,40 @@
   font-size: 16px;
   font-weight: 700;
   color: #e8c766;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.home-name-edit-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px;
+  opacity: 0.8;
+}
+
+.home-name-edit-btn:hover {
+  opacity: 1;
+}
+
+.home-name-edit-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.home-name-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #d4af37;
+  background: #0c1120;
+  color: #e8c766;
+  font-size: 13px;
+  text-transform: uppercase;
 }
 
 .home-back-btn {

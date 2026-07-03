@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   AVATAR_OPTIONS,
   DEFAULT_AVATAR,
@@ -115,13 +115,26 @@ function randomFrom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-export default function AvatarBuilder() {
+export default function AvatarBuilder({ onBack }) {
   const { player } = usePlayer();
-  const [avatar, setLocalAvatar] = useState(player?.avatar || DEFAULT_AVATAR);
+  const [avatar, setLocalAvatar] = useState(DEFAULT_AVATAR);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [ok, setOk] = useState(false);
+
+  // player Firestore'dan ASENKRON geliyor — component ilk mount olduğunda
+  // henüz yüklenmemiş olabilir. useState'in başlangıç değeri sadece BİR
+  // kez okunduğu için, player sonradan gelirse eski koddaki gibi hep
+  // DEFAULT_AVATAR'da kalıyordu. Burada player ilk geldiğinde TEK SEFER
+  // senkronize ediyoruz; sonraki oturum içi düzenlemeler asla ezilmiyor.
+  const syncedOnce = useRef(false);
+  useEffect(() => {
+    if (!syncedOnce.current && player) {
+      if (player.avatar) setLocalAvatar(player.avatar);
+      syncedOnce.current = true;
+    }
+  }, [player]);
 
   const update = (field, value) => setLocalAvatar((prev) => ({ ...prev, [field]: value }));
 
@@ -158,14 +171,24 @@ export default function AvatarBuilder() {
 
   return (
     <div className="avb-builder">
-      <div className="avb-preview-card">
-        <div className="avb-preview-stage">
+      <div className="avb-sticky-header">
+        <button className="avb-header-btn" onClick={onBack}>
+          ← Profil
+        </button>
+        <div className="avb-header-preview">
           <AvatarSvg avatar={avatar} />
         </div>
-        <button className="avb-random-btn" onClick={randomize}>
-          🎲 Rastgele
+        <button className="avb-header-btn primary" disabled={busy} onClick={handleSave}>
+          {busy ? '…' : '💾 Kaydet'}
         </button>
       </div>
+
+      {ok && <p className="avb-success">Kaydedildi!</p>}
+      {error && <p className="avb-error">{error}</p>}
+
+      <button className="avb-random-btn" onClick={randomize}>
+        🎲 Rastgele
+      </button>
 
       <div className="avb-row">
         <p className="avb-row-title">Kod Adı (Oyun İçi İsmin)</p>
@@ -201,12 +224,6 @@ export default function AvatarBuilder() {
           onSelect={(v) => update(field, v)}
         />
       ))}
-
-      <button className="avb-save-btn" disabled={busy} onClick={handleSave}>
-        {busy ? 'Kaydediliyor…' : 'Avatarı Kaydet'}
-      </button>
-      {ok && <p className="avb-success">Kaydedildi!</p>}
-      {error && <p className="avb-error">{error}</p>}
     </div>
   );
 }

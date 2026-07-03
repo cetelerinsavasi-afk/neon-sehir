@@ -4,7 +4,7 @@ import { usePlayer } from '../../hooks/usePlayer';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useWeapons } from '../../hooks/useWeapons';
 import { useInventory } from '../../hooks/useInventory';
-import { upgradeVehicle, upgradeWeapon } from '../../services/gameActions';
+import { upgradeVehicle, upgradeWeapon, setDisplayName } from '../../services/gameActions';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
 import { weaponCatalog } from '../../data/weaponCatalog';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
@@ -33,12 +33,64 @@ function weaponImage(catalogId) {
 }
 
 function ProfileHeader({ player, onEditAvatar }) {
+  const [editingName, setEditingName] = useState(false);
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleSave = async () => {
+    if (!name.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await setDisplayName(name.trim());
+      setEditingName(false);
+      setName('');
+    } catch (err) {
+      setError(err.message || 'İsim kaydedilemedi.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="home-profile-header">
       <div className="home-avatar-frame">
         <AvatarSvg avatar={player?.avatar} />
       </div>
-      <p className="home-profile-name">{player?.displayName || 'İsimsiz'}</p>
+
+      {editingName ? (
+        <div className="home-name-edit-row">
+          <input
+            type="text"
+            className="home-name-input"
+            placeholder={player?.displayName || 'İsim'}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={20}
+            autoFocus
+          />
+          <button className="home-btn small" disabled={busy || !name.trim()} onClick={handleSave}>
+            Kaydet
+          </button>
+          <button className="home-btn small" disabled={busy} onClick={() => setEditingName(false)}>
+            Vazgeç
+          </button>
+        </div>
+      ) : (
+        <p className="home-profile-name">
+          {player?.displayName || 'İsimsiz'}
+          <button
+            className="home-name-edit-btn"
+            onClick={() => setEditingName(true)}
+            aria-label="İsmi düzenle"
+          >
+            ✏️
+          </button>
+        </p>
+      )}
+      {error && <p className="home-error">{error}</p>}
+
       <button className="home-btn" onClick={onEditAvatar}>
         🎭 Avatarımı Düzenle
       </button>
@@ -125,14 +177,7 @@ export default function HomeScreen() {
   }
 
   if (editingAvatar) {
-    return (
-      <div className="home-screen">
-        <button className="home-back-btn" onClick={() => setEditingAvatar(false)}>
-          ← Profile Dön
-        </button>
-        <AvatarBuilder />
-      </div>
-    );
+    return <AvatarBuilder onBack={() => setEditingAvatar(false)} />;
   }
 
   const run = async (key, fn) => {
