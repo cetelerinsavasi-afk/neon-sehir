@@ -4,28 +4,54 @@
   gap: 14px;
 }
 
-.bank-tabs {
+.bank-picker {
   display: flex;
-  gap: 6px;
-  border-bottom: 1px solid var(--panel-border);
-  padding-bottom: 8px;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.bank-tab-btn {
-  flex: 1;
-  padding: 8px 6px;
+.bank-picker-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 20px;
+  border-radius: 14px;
+  border: 1px solid var(--panel-border);
+  background: #05070c;
+  color: var(--text);
+  cursor: pointer;
+  text-align: center;
+}
+
+.bank-picker-card:hover {
+  border-color: var(--neon-cyan);
+}
+
+.bank-picker-emoji {
+  font-size: 34px;
+}
+
+.bank-picker-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.bank-picker-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.bank-back-btn {
+  align-self: flex-start;
+  padding: 8px 12px;
   border-radius: 8px;
   border: 1px solid var(--panel-border);
   background: var(--panel);
-  color: var(--text-dim);
+  color: var(--text);
   font-size: 12px;
   cursor: pointer;
-}
-
-.bank-tab-btn.active {
-  border-color: var(--neon-cyan);
-  color: var(--neon-cyan);
-  background: rgba(25, 232, 255, 0.08);
 }
 
 .bank-section {

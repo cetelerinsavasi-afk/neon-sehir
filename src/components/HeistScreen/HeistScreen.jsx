@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useWeapons } from '../../hooks/useWeapons';
+import { useOpenHeistPlanCounts } from '../../hooks/useOpenHeistPlanCounts';
 import HeistPanel, { HEIST_LABELS } from '../HeistPanel/HeistPanel';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import './HeistScreen.css';
@@ -9,6 +10,7 @@ import './HeistScreen.css';
 export default function HeistScreen({ initialTarget, onClose }) {
   const { user } = useAuth();
   const { weapons } = useWeapons();
+  const planCounts = useOpenHeistPlanCounts();
   const [selected, setSelected] = useState(initialTarget || null);
 
   useEffect(() => {
@@ -47,7 +49,12 @@ export default function HeistScreen({ initialTarget, onClose }) {
                 className="heist-target-card"
                 onClick={() => setSelected(target)}
               >
-                <span className="heist-target-name">{meta.title}</span>
+                <span className="heist-target-name">
+                  {meta.title}
+                  {planCounts[target] > 0 && (
+                    <span className="heist-target-plan-badge">({planCounts[target]})</span>
+                  )}
+                </span>
                 <span className="heist-target-meta">
                   Güvenlik: {meta.requiredPower.toLocaleString('tr-TR')} · Ödül:{' '}
                   {meta.reward.toLocaleString('tr-TR')} altın · Şüphe: +{meta.suspicionCost}

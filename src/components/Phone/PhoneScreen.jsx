@@ -6,6 +6,7 @@ import AmazorScreen from '../AmazorScreen/AmazorScreen';
 import ChatsAppScreen from '../ChatsAppScreen/ChatsAppScreen';
 import InstallAppButton from '../InstallAppButton/InstallAppButton';
 import { useMessages } from '../../hooks/useMessages';
+import { useUnreadNotifications, markChatsAppSeen } from '../../hooks/useUnreadNotifications';
 import './PhoneScreen.css';
 
 const APPS = [
@@ -28,6 +29,12 @@ export default function PhoneScreen({ onClose }) {
   const [openApp, setOpenApp] = useState(null);
   const { messages } = useMessages();
   const unreadCount = messages.filter((m) => !m.read).length;
+  const { chatsAppHasNew } = useUnreadNotifications();
+
+  const handleOpenApp = (id) => {
+    setOpenApp(id);
+    if (id === 'chatsapp') markChatsAppSeen();
+  };
 
   if (openApp) {
     return (
@@ -64,7 +71,7 @@ export default function PhoneScreen({ onClose }) {
             key={app.id}
             className="phone-app"
             disabled={!app.enabled}
-            onClick={() => app.enabled && setOpenApp(app.id)}
+            onClick={() => app.enabled && handleOpenApp(app.id)}
           >
             <span
               className={`phone-app-icon${app.id === 'ikinci-el' ? ' phone-app-icon-2el' : ''}${
@@ -77,6 +84,7 @@ export default function PhoneScreen({ onClose }) {
               {app.id === 'sms' && unreadCount > 0 && (
                 <span className="phone-app-badge">{unreadCount}</span>
               )}
+              {app.id === 'chatsapp' && chatsAppHasNew && <span className="phone-app-dot" />}
             </span>
             <span className="phone-app-name">{app.note}</span>
           </button>

@@ -1366,6 +1366,41 @@ export const repayVehicleLoan = onCall(async (request) => {
   return { ok: true };
 });
 
+// ---------------------------------------------------------------------------
+// repayStateDebt — Banka > Cezalar'dan devlete olan borcu ELLE ödeme.
+// Normalde borç varken kazancının yarısı otomatik kesiliyor (Bölüm 10),
+// ama oyuncu isterse cebindeki altınla borcunu doğrudan da kapatabilir.
+// ---------------------------------------------------------------------------
+export const repayStateDebt = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const amt = Number(request.data?.amount);
+  if (!Number.isInteger(amt) || amt <= 0) {
+    throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
+  }
+
+  const userRef = db.collection('users').doc(uid);
+
+  await db.runTransaction(async (tx) => {
+    const userSnap = await tx.get(userRef);
+    const user = userSnap.data();
+    if (!user) throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
+    const debt = user.debtToState || 0;
+    if (debt <= 0) {
+      throw new HttpsError('failed-precondition', 'Devlete borcun yok.');
+    }
+    if ((user.gold || 0) < amt) {
+      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    }
+    const applied = Math.min(amt, debt);
+    tx.update(userRef, {
+      gold: admin.firestore.FieldValue.increment(-applied),
+      debtToState: admin.firestore.FieldValue.increment(-applied),
+    });
+  });
+
+  return { ok: true };
+});
+
 // =============================================================================
 // CASINO — PİYANGO (Bölüm 11)
 // =============================================================================

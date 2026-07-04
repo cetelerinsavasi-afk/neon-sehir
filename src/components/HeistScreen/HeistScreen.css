@@ -164,6 +164,12 @@
   font-weight: 700;
 }
 
+.heist-target-plan-badge {
+  margin-left: 6px;
+  color: #ffd23f;
+  font-weight: 800;
+}
+
 .heist-target-meta {
   font-size: 11px;
   color: var(--text-dim);

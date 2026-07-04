@@ -21,12 +21,26 @@ export default function PoliceApplicationSection() {
   const [error, setError] = useState(null);
   const [showBooklet, setShowBooklet] = useState(false);
   const [confirmingResign, setConfirmingResign] = useState(false);
+  const [salarySuccess, setSalarySuccess] = useState(false);
 
   const run = async (fn) => {
     setBusy(true);
     setError(null);
     try {
       await fn();
+    } catch (err) {
+      setError(err.message || 'İşlem başarısız.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleClaimSalary = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await claimPoliceSalary();
+      setSalarySuccess(true);
     } catch (err) {
       setError(err.message || 'İşlem başarısız.');
     } finally {
@@ -65,12 +79,13 @@ export default function PoliceApplicationSection() {
           <button
             className="police-app-btn primary"
             disabled={busy || salaryClaimed || !canClaimSalary}
-            onClick={() => run(claimPoliceSalary)}
+            onClick={handleClaimSalary}
           >
             {salaryClaimed ? 'Bugün Alındı' : canClaimSalary ? 'Maaşı Al' : 'Şüphen 0 Olmalı'}
           </button>
         </div>
       )}
+      {salarySuccess && <p className="police-salary-success">+1000 altın hesabına eklendi!</p>}
 
       {confirmingResign ? (
         <div className="police-app-confirm">

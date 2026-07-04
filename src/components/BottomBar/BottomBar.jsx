@@ -1,6 +1,9 @@
+import { useUnreadNotifications } from '../../hooks/useUnreadNotifications';
 import './BottomBar.css';
 
 export default function BottomBar({ onPhoneClick, onHeistClick, onProfileClick }) {
+  const { totalBadge } = useUnreadNotifications();
+
   return (
     <div className="bottom-bar">
       <button className="bottom-bar-btn danger" onClick={onHeistClick} aria-label="Soygun">
@@ -16,6 +19,7 @@ export default function BottomBar({ onPhoneClick, onHeistClick, onProfileClick }
           <rect x="6" y="2" width="12" height="20" rx="2" />
           <line x1="11" y1="18" x2="13" y2="18" />
         </svg>
+        {totalBadge > 0 && <span className="bottom-bar-badge">{totalBadge > 9 ? '9+' : totalBadge}</span>}
       </button>
       <button className="bottom-bar-btn profile" onClick={onProfileClick} aria-label="Profil">
         <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="2">

@@ -52,3 +52,25 @@
   border-color: #e8c766;
   box-shadow: 0 0 24px rgba(232, 199, 102, 0.45);
 }
+
+.bottom-bar-btn {
+  position: relative;
+}
+
+.bottom-bar-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--neon-pink);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--bg, #070a12);
+}

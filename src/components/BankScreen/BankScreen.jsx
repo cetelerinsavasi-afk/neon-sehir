@@ -9,9 +9,11 @@ import {
   buyInvestment,
   sellInvestment,
   sellAllInvestment,
+  repayStateDebt,
 } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import PriceChart from '../PriceChart/PriceChart';
+import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import VehicleLoanSection from './VehicleLoanSection';
 import './BankScreen.css';
 
@@ -89,12 +91,6 @@ function TradeToggle({ buyLabel, sellLabel, onBuy, onSell, unitPrice, busy }) {
     </div>
   );
 }
-
-const TABS = [
-  { id: 'yatirimlar', label: 'Yatırımlar' },
-  { id: 'krediler', label: 'Krediler' },
-  { id: 'cezalar', label: 'Cezalar' },
-];
 
 function InvestmentsTab({ player, prices, busy, error, run }) {
   const gold = player?.gold ?? 0;
@@ -202,8 +198,11 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
   );
 }
 
-function PenaltiesTab({ player }) {
+function PenaltiesTab({ player, busy, error, run }) {
   const debtToState = player?.debtToState ?? 0;
+  const gold = player?.gold ?? 0;
+  const [amount, setAmount] = useState(0);
+  const maxPayable = Math.min(gold, debtToState);
 
   return (
     <div className="bank-section">
@@ -213,10 +212,27 @@ function PenaltiesTab({ player }) {
         <strong className="bank-debt">{debtToState.toLocaleString('tr-TR')}</strong>
       </div>
       {debtToState > 0 ? (
-        <p className="bank-hint bank-debt-hint">
-          Bu borç, yakalandığın soygunlardan geliyor. Borç bitene kadar kazandığın her paranın
-          yarısı otomatik olarak buraya kesiliyor — hiç ödemesen bile zamanla erir.
-        </p>
+        <>
+          <p className="bank-hint bank-debt-hint">
+            Bu borç, yakalandığın soygunlardan geliyor. Ödemesen bile kazandığın her paranın
+            yarısı otomatik olarak buraya kesiliyor — ama istersen cebindeki altınla da elle
+            kapatabilirsin.
+          </p>
+          <QuantityStepper
+            value={amount}
+            onChange={setAmount}
+            max={maxPayable}
+            quickAmounts={[100, 500, 1000]}
+          />
+          <button
+            className="bank-btn primary"
+            disabled={busy === 'repay-debt' || !amount}
+            onClick={() => run('repay-debt', () => repayStateDebt(amount))}
+          >
+            {amount > 0 ? `Öde — ${amount.toLocaleString('tr-TR')} altın` : 'Öde'}
+          </button>
+          {error && <p className="bank-error">{error}</p>}
+        </>
       ) : (
         <p className="bank-hint">Şu an devlete borcun yok.</p>
       )}
@@ -224,11 +240,17 @@ function PenaltiesTab({ player }) {
   );
 }
 
+const CARDS = [
+  { id: 'yatirimlar', label: 'Yatırımlar', emoji: '📈', desc: 'Elmas ve kripto al-sat, faize para yatır.' },
+  { id: 'krediler', label: 'Krediler', emoji: '🚗', desc: 'Aracına kredi çek ya da borcunu öde.' },
+  { id: 'cezalar', label: 'Cezalar', emoji: '⚖️', desc: 'Devlete olan borcunu gör ve öde.' },
+];
+
 export default function BankScreen() {
   const { user } = useAuth();
   const { player } = usePlayer();
   const { prices } = useInvestmentPrices();
-  const [tab, setTab] = useState('yatirimlar');
+  const [tab, setTab] = useState(null);
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
 
@@ -248,25 +270,31 @@ export default function BankScreen() {
     }
   };
 
-  return (
-    <div className="bank-screen">
-      <div className="bank-tabs">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            className={`bank-tab-btn${tab === t.id ? ' active' : ''}`}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
+  if (!tab) {
+    return (
+      <div className="bank-picker">
+        {CARDS.map((c) => (
+          <button key={c.id} className="bank-picker-card" onClick={() => setTab(c.id)}>
+            <span className="bank-picker-emoji">{c.emoji}</span>
+            <span className="bank-picker-title">{c.label}</span>
+            <span className="bank-picker-desc">{c.desc}</span>
           </button>
         ))}
       </div>
+    );
+  }
+
+  return (
+    <div className="bank-screen">
+      <button className="bank-back-btn" onClick={() => setTab(null)}>
+        ← Geri
+      </button>
 
       {tab === 'yatirimlar' && (
         <InvestmentsTab player={player} prices={prices} busy={busy} error={error} run={run} />
       )}
       {tab === 'krediler' && <VehicleLoanSection />}
-      {tab === 'cezalar' && <PenaltiesTab player={player} />}
+      {tab === 'cezalar' && <PenaltiesTab player={player} busy={busy} error={error} run={run} />}
     </div>
   );
 }

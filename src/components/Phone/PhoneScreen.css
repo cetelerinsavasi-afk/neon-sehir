@@ -164,6 +164,17 @@
   padding: 0 3px;
 }
 
+.phone-app-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--neon-pink);
+  border: 2px solid #232f3e;
+}
+
 .phone-app-name {
   font-size: 11px;
   text-align: center;

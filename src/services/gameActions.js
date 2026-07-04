@@ -70,6 +70,9 @@ export const takeVehicleLoan = (vehicleId, termDays) =>
 export const repayVehicleLoan = (vehicleId, amount) =>
   httpsCallable(functions, 'repayVehicleLoan')({ vehicleId, amount });
 
+export const repayStateDebt = (amount) =>
+  httpsCallable(functions, 'repayStateDebt')({ amount });
+
 // --- Casino: Piyango (Bölüm 11) ---
 
 export const buyLotteryTicket = (quantity) =>
