@@ -1,6 +1,8 @@
 .app-shell {
-  position: relative;
-  width: 100vw;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100vh;
   height: 100dvh;
   overflow: hidden;
   background: var(--bg);

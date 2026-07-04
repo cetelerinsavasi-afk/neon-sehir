@@ -7,7 +7,7 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 10px 14px;
+  padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
   background: linear-gradient(180deg, rgba(7, 10, 18, 0.95) 0%, rgba(7, 10, 18, 0.55) 80%, transparent 100%);
   backdrop-filter: blur(2px);
 }
