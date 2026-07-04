@@ -39,7 +39,7 @@ export default function QuantityStepper({ value, onChange, max, step = 1, quickA
               key={q}
               type="button"
               className="qty-stepper-quick-btn"
-              onClick={() => onChange(clamp(q))}
+              onClick={() => onChange(clamp(num + q))}
             >
               {q}
             </button>

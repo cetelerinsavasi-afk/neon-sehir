@@ -73,3 +73,25 @@
   font-size: 12px;
   margin: 0;
 }
+
+.depo-mode-row {
+  display: flex;
+  gap: 6px;
+}
+
+.depo-mode-btn {
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.depo-mode-btn.active {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+  background: rgba(25, 232, 255, 0.08);
+}

@@ -98,21 +98,58 @@ export default function OnNumaraTable({ tableId, myUid, onLeave }) {
   const { player } = usePlayer();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  // "Kart Çek" sunucuda işlendikten hemen sonra buton tekrar aktif olursa,
+  // ama Firestore dinleyicisi (onSnapshot) henüz yeni kart sayısını
+  // yansıtmadıysa, oyuncu "hiçbir şey olmadı" sanıp tekrar basıyor ve
+  // GERÇEKTEN 2. bir kart çekiliyordu. Çözüm: hamle sonrası, dinleyici
+  // gerçekten yeni durumu (kart sayısı arttı / sıra değişti / faz
+  // değişti) yansıtana kadar butonu kilitli tutuyoruz.
+  const pendingConfirmRef = useRef(null);
 
   const round = table?.round;
   const isMyTurn = round?.phase === 'playing' && round.currentTurnUid === myUid;
   const secondsLeft = useCountdown(round?.turnDeadline);
   useAutoStandWatcher(tableId, round?.turnDeadline, round?.phase === 'playing');
 
-  const run = async (key, fn) => {
+  useEffect(() => {
+    const pending = pendingConfirmRef.current;
+    if (!pending) return;
+    const myCardsNow = round?.hands?.[myUid]?.cards?.length || 0;
+    const changed =
+      myCardsNow > pending.cardsBefore ||
+      round?.currentTurnUid !== pending.turnUidBefore ||
+      round?.phase !== pending.phaseBefore;
+    if (changed) {
+      pendingConfirmRef.current = null;
+      setBusy(false);
+    }
+  }, [round, myUid]);
+
+  const run = async (key, fn, { waitForConfirm = false } = {}) => {
     setBusy(true);
     setError(null);
     try {
       await fn();
+      if (waitForConfirm) {
+        pendingConfirmRef.current = {
+          cardsBefore: round?.hands?.[myUid]?.cards?.length || 0,
+          turnUidBefore: round?.currentTurnUid ?? null,
+          phaseBefore: round?.phase ?? null,
+        };
+        // Güvenlik: dinleyici 4 saniyede hâlâ güncellenmediyse yine de
+        // kilidi aç — oyuncu ekranda sonsuza dek kilitli kalmasın.
+        setTimeout(() => {
+          if (pendingConfirmRef.current) {
+            pendingConfirmRef.current = null;
+            setBusy(false);
+          }
+        }, 4000);
+        return;
+      }
     } catch (err) {
       setError(err.message || 'İşlem başarısız.');
     } finally {
-      setBusy(false);
+      if (!waitForConfirm) setBusy(false);
     }
   };
 
@@ -191,10 +228,10 @@ export default function OnNumaraTable({ tableId, myUid, onLeave }) {
         )}
         {isMyTurn && (
           <>
-            <button className="onn-btn-hit" disabled={busy} onClick={() => run('hit', () => onNumaraHit(tableId))}>
-              Kart Çek
+            <button className="onn-btn-hit" disabled={busy} onClick={() => run('hit', () => onNumaraHit(tableId), { waitForConfirm: true })}>
+              {busy ? 'Çekiliyor…' : 'Kart Çek'}
             </button>
-            <button className="onn-btn-stand" disabled={busy} onClick={() => run('stand', () => onNumaraStand(tableId))}>
+            <button className="onn-btn-stand" disabled={busy} onClick={() => run('stand', () => onNumaraStand(tableId), { waitForConfirm: true })}>
               Pas
             </button>
           </>

@@ -1,29 +1,55 @@
-.liman-depo-tabs-screen {
+.liman-depo-picker {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
-.liman-depo-tabs {
+.liman-depo-card {
   display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 6px;
-  border-bottom: 1px solid var(--panel-border);
-  padding-bottom: 8px;
+  padding: 20px;
+  border-radius: 14px;
+  border: 1px solid var(--panel-border);
+  background: #05070c;
+  color: var(--text);
+  cursor: pointer;
+  text-align: center;
 }
 
-.liman-depo-tab-btn {
-  flex: 1;
-  padding: 8px 6px;
+.liman-depo-card:hover {
+  border-color: var(--neon-cyan);
+}
+
+.liman-depo-card-emoji {
+  font-size: 34px;
+}
+
+.liman-depo-card-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.liman-depo-card-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.liman-depo-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.liman-depo-back {
+  align-self: flex-start;
+  padding: 8px 12px;
   border-radius: 8px;
   border: 1px solid var(--panel-border);
   background: var(--panel);
-  color: var(--text-dim);
+  color: var(--text);
   font-size: 12px;
   cursor: pointer;
-}
-
-.liman-depo-tab-btn.active {
-  border-color: var(--neon-cyan);
-  color: var(--neon-cyan);
-  background: rgba(25, 232, 255, 0.08);
 }

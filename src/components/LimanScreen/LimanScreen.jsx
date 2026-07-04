@@ -12,6 +12,7 @@ const LIMAN_MATERIALS = [
   { id: 'depoUpgrade', label: 'Depo Geliştirme Malzemesi', price: 400, emoji: '📦' },
   { id: 'vitesUpgrade', label: 'Vites Geliştirme Malzemesi', price: 400, emoji: '⚙️' },
   { id: 'silahUpgrade', label: 'Silah Geliştirme Malzemesi', price: 80, emoji: '🔧' },
+  { id: 'yasakliMadde', label: 'Yasaklı Madde', price: 3200, emoji: '💊' },
 ];
 
 export default function LimanScreen() {
@@ -78,7 +79,7 @@ export default function LimanScreen() {
               <QuantityStepper
                 value={qty}
                 onChange={(v) => setAmount(m.id, v)}
-                quickAmounts={[1, 5, 10]}
+                quickAmounts={[1, 5, 10, 100]}
               />
               <button
                 className="liman-btn"

@@ -5,21 +5,31 @@ import {
   sellMaterial,
   sellSilahMaterial,
   sellContrabandToDepo,
+  buyFromAmazor,
 } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './DepoScreen.css';
 
-const ITEMS = [
+const SELL_ITEMS = [
   { id: 'yasakliMadde', label: 'Yasaklı Madde', price: 2500, emoji: '💊', sell: (qty) => sellContrabandToDepo(qty) },
   { id: 'vitesUpgrade', label: 'Vites Geliştirme Malzemesi', price: 250, emoji: '⚙️', sell: (qty) => sellMaterial('vitesUpgrade', qty) },
   { id: 'depoUpgrade', label: 'Depo Geliştirme Malzemesi', price: 250, emoji: '📦', sell: (qty) => sellMaterial('depoUpgrade', qty) },
   { id: 'silahUpgrade', label: 'Silah Geliştirme Malzemesi', price: 50, emoji: '🔧', sell: (qty) => sellSilahMaterial(qty) },
 ];
 
+// Depo'da alım fiyatları Amazor ile BİREBİR AYNI (kullanıcı revizesi).
+const BUY_ITEMS = [
+  { id: 'yasakliMadde', label: 'Yasaklı Madde', price: 4000, emoji: '💊' },
+  { id: 'vitesUpgrade', label: 'Vites Geliştirme Malzemesi', price: 500, emoji: '⚙️' },
+  { id: 'depoUpgrade', label: 'Depo Geliştirme Malzemesi', price: 500, emoji: '📦' },
+  { id: 'silahUpgrade', label: 'Silah Geliştirme Malzemesi', price: 100, emoji: '🔧' },
+];
+
 export default function DepoScreen() {
   const { user } = useAuth();
   const { inventory } = useInventory();
+  const [mode, setMode] = useState('sell');
   const [amounts, setAmounts] = useState({});
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
@@ -35,16 +45,36 @@ export default function DepoScreen() {
       await fn();
       setAmounts((prev) => ({ ...prev, [key]: 0 }));
     } catch (err) {
-      setError(err.message || 'Satış başarısız.');
+      setError(err.message || 'İşlem başarısız.');
     } finally {
       setBusy(null);
     }
   };
 
+  const items = mode === 'sell' ? SELL_ITEMS : BUY_ITEMS;
+
   return (
     <div className="depo-screen">
-      <p className="depo-hint">💰 Elindeki malzemeyi anında satabilirsin.</p>
-      {ITEMS.map((item) => {
+      <div className="depo-mode-row">
+        <button
+          className={`depo-mode-btn${mode === 'sell' ? ' active' : ''}`}
+          onClick={() => setMode('sell')}
+        >
+          Sat
+        </button>
+        <button
+          className={`depo-mode-btn${mode === 'buy' ? ' active' : ''}`}
+          onClick={() => setMode('buy')}
+        >
+          Al
+        </button>
+      </div>
+      <p className="depo-hint">
+        {mode === 'sell'
+          ? '💰 Elindeki malzemeyi anında satabilirsin.'
+          : '📦 İstediğin malzemeyi anında satın alabilirsin (Amazor ile aynı fiyat).'}
+      </p>
+      {items.map((item) => {
         const owned = inventory[item.id] || 0;
         const qty = amounts[item.id] || 0;
         return (
@@ -61,15 +91,21 @@ export default function DepoScreen() {
             <QuantityStepper
               value={qty}
               onChange={(v) => setAmounts((prev) => ({ ...prev, [item.id]: v }))}
-              max={owned}
-              quickAmounts={[1, 5]}
+              max={mode === 'sell' ? owned : undefined}
+              quickAmounts={[1, 5, 10, 100]}
             />
             <button
               className="depo-btn"
               disabled={busy === item.id || !qty}
-              onClick={() => run(item.id, () => item.sell(qty))}
+              onClick={() =>
+                run(item.id, () => (mode === 'sell' ? item.sell(qty) : buyFromAmazor(item.id, qty)))
+              }
             >
-              {qty > 0 ? `Sat — ${(item.price * qty).toLocaleString('tr-TR')} altın` : 'Sat'}
+              {qty > 0
+                ? `${mode === 'sell' ? 'Sat' : 'Satın Al'} — ${(item.price * qty).toLocaleString('tr-TR')} altın`
+                : mode === 'sell'
+                  ? 'Sat'
+                  : 'Satın Al'}
             </button>
           </div>
         );

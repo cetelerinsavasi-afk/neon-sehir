@@ -483,7 +483,7 @@ export const dailyReset = onSchedule(
         const hasPending = Object.values(pending).some((q) => q > 0);
         if (!hasPending) return;
         const updates = {};
-        for (const materialType of ['depoUpgrade', 'vitesUpgrade', 'silahUpgrade']) {
+        for (const materialType of ['depoUpgrade', 'vitesUpgrade', 'silahUpgrade', 'yasakliMadde']) {
           const qty = pending[materialType] || 0;
           if (qty > 0) {
             updates[`loaded.${materialType}`] = admin.firestore.FieldValue.increment(qty);
@@ -504,7 +504,7 @@ export const dailyReset = onSchedule(
         const loaded = data.loaded || {};
         const targetUid = orderDoc.id;
         const delivered = [];
-        for (const materialType of ['depoUpgrade', 'vitesUpgrade', 'silahUpgrade']) {
+        for (const materialType of ['depoUpgrade', 'vitesUpgrade', 'silahUpgrade', 'yasakliMadde']) {
           const qty = loaded[materialType] || 0;
           if (qty > 0) {
             delivered.push({ materialType, qty });
@@ -1803,7 +1803,7 @@ export const sellContrabandAtPark = onCall(async (request) => {
 // yani teslimat bir tur daha gecikir (bkz. dailyReset).
 // Miktar limiti yok — istediğin kadar sipariş verebilirsin.
 // ---------------------------------------------------------------------------
-const LIMAN_PRICES = { depoUpgrade: 400, vitesUpgrade: 400, silahUpgrade: 80 };
+const LIMAN_PRICES = { depoUpgrade: 400, vitesUpgrade: 400, silahUpgrade: 80, yasakliMadde: 3200 };
 
 export const placeLimanOrder = onCall(async (request) => {
   const uid = requireAuth(request);

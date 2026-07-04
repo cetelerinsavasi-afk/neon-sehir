@@ -56,7 +56,7 @@ export default function AmazorScreen() {
             <QuantityStepper
               value={qty}
               onChange={(v) => setAmounts((prev) => ({ ...prev, [item.id]: v }))}
-              quickAmounts={[1, 5, 10]}
+              quickAmounts={[1, 5, 10, 100]}
             />
             <button
               className="amazor-btn"

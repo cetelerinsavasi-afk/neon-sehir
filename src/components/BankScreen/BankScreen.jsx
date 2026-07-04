@@ -113,10 +113,10 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
           <strong>{gold.toLocaleString('tr-TR')}</strong>
         </div>
         <div className="bank-section-row">
-          <span>Faizdeki Para</span>
+          <span>Faizdeki Altın</span>
           <strong className="bank-highlight">{bankBalance.toLocaleString('tr-TR')}</strong>
         </div>
-        <p className="bank-hint">Faizdeki paran her gün %1 faiz kazandırır.</p>
+        <p className="bank-hint">Faizdeki altının her gün %1 faiz kazandırır.</p>
         <TradeToggle
           buyLabel="Yatır"
           sellLabel="Çek"
