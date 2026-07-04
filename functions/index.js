@@ -1627,10 +1627,10 @@ export const buyFromVendor = onCall(async (request) => {
 // ---------------------------------------------------------------------------
 const HEIST_CONFIG = {
   banka: { suspicionCost: 50, reward: 500000, requiredPower: 100000 },
-  casino: { suspicionCost: 25, reward: 200000, requiredPower: 70000 },
-  araba_galerisi: { suspicionCost: 25, reward: 100000, requiredPower: 50000 },
-  modifiye_garaji: { suspicionCost: 25, reward: 20000, requiredPower: 20000 },
-  fabrika: { suspicionCost: 25, reward: 4000, requiredPower: 10000 },
+  casino: { suspicionCost: 40, reward: 200000, requiredPower: 70000 },
+  araba_galerisi: { suspicionCost: 30, reward: 100000, requiredPower: 50000 },
+  modifiye_garaji: { suspicionCost: 20, reward: 20000, requiredPower: 20000 },
+  fabrika: { suspicionCost: 10, reward: 4000, requiredPower: 10000 },
   seyyar_satici_1: { suspicionCost: 5, reward: 1600, requiredPower: 4500 },
   seyyar_satici_2: { suspicionCost: 5, reward: 1200, requiredPower: 3000 },
   seyyar_satici_3: { suspicionCost: 5, reward: 800, requiredPower: 1500 },
