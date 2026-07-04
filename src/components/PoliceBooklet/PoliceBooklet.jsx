@@ -12,7 +12,7 @@ const PAGES = [
   },
   {
     title: 'Polisler Ne Kadar Kazanır',
-    body: ['Günlük 1000 altın maaşları vardır.', 'Çökerttikleri soygunlardaki ödüllerin tamamını kazanırlar.'],
+    body: ['Günlük 2000 altın maaşları vardır.', 'Çökerttikleri soygunlardaki ödüllerin tamamını kazanırlar.'],
   },
   {
     title: 'Polis Olmak İçin Ne Gerekir',

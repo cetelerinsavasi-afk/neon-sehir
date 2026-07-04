@@ -13,7 +13,7 @@ setGlobalOptions({ region: 'europe-west1' });
 
 const VALID_MACHINES = ['depoUpgrade', 'vitesUpgrade', 'silahUpgrade', 'yasakliMadde'];
 const MACHINE_PRICE = 100000; // Bölüm 8.2
-const FACTORY_WAGE = 500; // Bölüm 6 — işçilik günlük ücreti
+const FACTORY_WAGE = 1000; // Bölüm 6 — işçilik günlük ücreti
 const DAILY_OUTPUT = {
   depoUpgrade: 10,
   vitesUpgrade: 10,
@@ -1508,7 +1508,7 @@ export const prayAtMosque = onCall(async (request) => {
 // bribePolice — Karakol: günde 1 kez, 3000 altın, şüphe -10.
 // ---------------------------------------------------------------------------
 const BRIBE_COST = 3000;
-const POLICE_SALARY = 1000;
+const POLICE_SALARY = 2000;
 
 export const bribePolice = onCall(async (request) => {
   const uid = requireAuth(request);

@@ -41,7 +41,7 @@ export default function ParkScreen() {
       <p className="park-hint">
         Sahip olduğun kaçak mal: <strong>{contrabandQty} adet</strong> · Satış fiyatı{' '}
         {PARK_SELL_PRICE.toLocaleString('tr-TR')} altın/adet
-        <InfoIcon text="Depo'ya satmaktan çok daha fazla kazanırsın ama her satış şüpheni +5 artırır." />
+        <InfoIcon text="Park'ta yasaklı madde satışı yüksek kazançlıdır ama her satış şüpheni +5 artırır." />
       </p>
       <div className="park-row">
         <input

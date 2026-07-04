@@ -6,7 +6,7 @@ import BankScreen from '../BankScreen/BankScreen';
 import MosqueScreen from '../MosqueScreen/MosqueScreen';
 import PoliceStationScreen from '../PoliceStationScreen/PoliceStationScreen';
 import VendorScreen from '../VendorScreen/VendorScreen';
-import LimanDepoScreen from '../LimanDepoScreen/LimanDepoScreen';
+import LimanScreen from '../LimanScreen/LimanScreen';
 import ParkScreen from '../ParkScreen/ParkScreen';
 import RaceTrackScreen from '../RaceTrackScreen/RaceTrackScreen';
 import CasinoScreen from '../CasinoScreen/CasinoScreen';
@@ -49,7 +49,7 @@ function ScreenContent({ region, onEnterRace, onEnterTable }) {
     case 'seyyar-satici':
       return <VendorScreen vendorId={region.id} vendorName={region.name} />;
     case 'liman-depo':
-      return <LimanDepoScreen />;
+      return <LimanScreen />;
     case 'park':
       return <ParkScreen />;
     case 'yaris-pisti':

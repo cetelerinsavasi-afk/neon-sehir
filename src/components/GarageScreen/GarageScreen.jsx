@@ -45,7 +45,7 @@ export default function GarageScreen() {
     <div className="garage-screen">
       <p className="garage-hint">
         Elindeki malzeme: Vites {vitesQty} · Depo {depoQty}
-        <InfoIcon text="Malzeme almak için Telefon > Amazor'a, satmak için Liman & Depo > Depo'ya git." />
+        <InfoIcon text="Malzeme almak için Telefon > Amazor'a git." />
       </p>
 
       {vehicles.length === 0 ? (
