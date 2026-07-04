@@ -205,3 +205,18 @@
   font-size: 12px;
   margin: 0;
 }
+
+.home-referral-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 210, 63, 0.08);
+  border: 1px solid #ffd23f;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.home-referral-emoji {
+  font-size: 22px;
+  flex-shrink: 0;
+}

@@ -7,6 +7,7 @@ import PhoneScreen from './components/Phone/PhoneScreen';
 import RegionModal from './components/RegionModal/RegionModal';
 import HeistScreen from './components/HeistScreen/HeistScreen';
 import SignInBanner from './components/SignInBanner/SignInBanner';
+import ReferralPrompt from './components/ReferralPrompt/ReferralPrompt';
 import RaceFullScreen from './components/RaceTrackScreen/RaceFullScreen';
 import OnNumaraFullScreen from './components/OnNumaraScreen/OnNumaraFullScreen';
 import ProfileFullScreen from './components/ProfileFullScreen/ProfileFullScreen';
@@ -66,6 +67,7 @@ function GameShell() {
       </main>
 
       <SignInBanner />
+      <ReferralPrompt />
 
       <BottomBar
         onPhoneClick={() => setPhoneOpen(true)}

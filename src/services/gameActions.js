@@ -92,6 +92,9 @@ export const bribePolice = () => httpsCallable(functions, 'bribePolice')();
 
 export const claimPoliceSalary = () => httpsCallable(functions, 'claimPoliceSalary')();
 
+export const applyReferralCode = (referralCode) =>
+  httpsCallable(functions, 'applyReferralCode')({ referralCode });
+
 export const buyFromVendor = (vendorId) =>
   httpsCallable(functions, 'buyFromVendor')({ vendorId });
 

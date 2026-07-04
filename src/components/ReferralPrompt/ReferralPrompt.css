@@ -1,0 +1,96 @@
+.referral-prompt-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.referral-prompt {
+  width: 100%;
+  max-width: 320px;
+  background: var(--bg);
+  border: 1px solid var(--neon-cyan);
+  border-radius: 16px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: center;
+  box-shadow: 0 0 40px rgba(25, 232, 255, 0.15);
+}
+
+.referral-prompt-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--neon-cyan);
+}
+
+.referral-prompt-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.referral-prompt-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: #05070c;
+  color: var(--text);
+  font-size: 13px;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.referral-prompt-input:focus {
+  outline: none;
+  border-color: var(--neon-cyan);
+}
+
+.referral-prompt-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.referral-prompt-btn {
+  flex: 1;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.referral-prompt-btn.primary {
+  border-color: var(--neon-cyan);
+  background: rgba(25, 232, 255, 0.12);
+  color: var(--neon-cyan);
+  font-weight: 700;
+}
+
+.referral-prompt-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.referral-prompt-error {
+  margin: 0;
+  color: var(--neon-pink);
+  font-size: 11px;
+}
+
+.referral-prompt-success {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--neon-cyan);
+}

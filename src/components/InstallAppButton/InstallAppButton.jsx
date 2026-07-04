@@ -23,7 +23,7 @@ export default function InstallAppButton() {
   return (
     <>
       <button className="install-app-btn" onClick={handleClick}>
-        📲 Ana Ekrana Ekle
+        📲 Oyunu Ana Ekrana Ekle
       </button>
 
       {showIosGuide && (

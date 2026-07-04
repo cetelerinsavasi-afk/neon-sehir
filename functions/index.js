@@ -84,41 +84,27 @@ function addDaysToDateKey(dateKey, days) {
 // İstemci başlangıç altını/mesleği gibi kritik alanları asla kendisi yazamaz.
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
-// initializePlayer — yeni oyuncu kaydı. İsteğe bağlı referralCode (bir
-// başka oyuncunun benzersiz oyun içi ismi) girilirse:
-//   - Yeni oyuncu normal 2000 yerine 3000 altınla başlar.
-//   - Referans sahibi 2000 altın bonus kazanır + SMS ile haberdar edilir.
+// initializePlayer — yeni oyuncu kaydı. Her zaman 2000 altınla başlar.
+// Referans kodu artık BURADA değil, girişten SONRA (sadece yeni hesaplar
+// için gösterilen ayrı bir adımda) applyReferralCode ile uygulanıyor —
+// bu sayede giriş ekranı sadece giriş yapmaya odaklanıyor, referans
+// teşviki yalnızca gerçekten yeni oyunculara gösteriliyor.
 // ---------------------------------------------------------------------------
 export const initializePlayer = onCall(async (request) => {
   const uid = requireAuth(request);
   const userRef = db.collection('users').doc(uid);
   const privateRef = userRef.collection('private').doc('meta');
-  const rawReferral = String(request.data?.referralCode || '').trim();
-  const referralKey = rawReferral ? rawReferral.toLocaleLowerCase('tr-TR') : null;
-
-  let referrerUid = null;
+  let isNewPlayer = false;
 
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(userRef);
     if (snap.exists) return; // zaten var, dokunma
 
-    // Referans kodu — TÜM okumalar yazmalardan önce olmalı.
-    let referrerSnap = null;
-    if (referralKey) {
-      const nameSnap = await tx.get(db.collection('usernames').doc(referralKey));
-      if (nameSnap.exists && nameSnap.data().uid !== uid) {
-        referrerUid = nameSnap.data().uid;
-        referrerSnap = await tx.get(db.collection('users').doc(referrerUid));
-        if (!referrerSnap.exists) referrerUid = null;
-      }
-    }
-
-    const startingGold = referrerUid ? 3000 : 2000;
-
+    isNewPlayer = true;
     tx.set(userRef, {
       displayName: request.auth.token.name || 'Oyuncu',
       xp: 0,
-      gold: startingGold,
+      gold: 2000,
       suspicion: 0,
       reputation: 0,
       profession: null,
@@ -127,30 +113,83 @@ export const initializePlayer = onCall(async (request) => {
       bankDebt: null,
       lastDailyResetAt: null,
       avatarConfig: null,
-      referredBy: referrerUid,
+      referredBy: null,
+      referralUsed: false,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     // isPolice, Bölüm 14 gereği ayrı ve gizli bir alt dokümanda tutulur.
     tx.set(privateRef, { isPolice: false });
+  });
 
-    if (referrerUid) {
-      const REFERRAL_BONUS = 2000;
-      const { goldDelta, debtDelta } = splitIncomeForDebt(
-        referrerSnap.data()?.debtToState,
-        REFERRAL_BONUS
-      );
-      tx.update(db.collection('users').doc(referrerUid), {
-        gold: admin.firestore.FieldValue.increment(goldDelta),
-        debtToState: admin.firestore.FieldValue.increment(debtDelta),
-      });
-      const smsRef = db.collection('users').doc(referrerUid).collection('messages').doc();
-      tx.set(smsRef, {
-        text: `${request.auth.token.name || 'Yeni bir oyuncu'} senin referans kodunla katıldı! 2000 altın bonus kazandın.`,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        read: false,
-        type: 'referral_bonus',
-      });
+  return { ok: true, isNewPlayer };
+});
+
+// ---------------------------------------------------------------------------
+// applyReferralCode — YENİ hesaplar girişten hemen sonra (ilk 15 dakika
+// içinde, sadece bir kez) bir referans kodu (başka bir oyuncunun oyun içi
+// ismi) girebilir:
+//   - Kendisi +1000 altın bonus kazanır (2000 + 1000 = 3000 toplam).
+//   - Referans sahibi +2000 altın bonus kazanır + SMS ile haberdar edilir.
+// ---------------------------------------------------------------------------
+export const applyReferralCode = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const rawReferral = String(request.data?.referralCode || '').trim();
+  if (!rawReferral) {
+    throw new HttpsError('invalid-argument', 'Referans kodu boş olamaz.');
+  }
+  const referralKey = rawReferral.toLocaleLowerCase('tr-TR');
+  const userRef = db.collection('users').doc(uid);
+
+  await db.runTransaction(async (tx) => {
+    const userSnap = await tx.get(userRef);
+    const user = userSnap.data();
+    if (!user) throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
+    if (user.referralUsed) {
+      throw new HttpsError('failed-precondition', 'Referans kodu zaten kullanıldı.');
     }
+    const createdAtMs = user.createdAt?.toMillis?.() ?? 0;
+    if (Date.now() - createdAtMs > 15 * 60 * 1000) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Referans kodu sadece hesabını oluşturduktan kısa süre sonra girilebilir.'
+      );
+    }
+
+    const nameSnap = await tx.get(db.collection('usernames').doc(referralKey));
+    if (!nameSnap.exists || nameSnap.data().uid === uid) {
+      throw new HttpsError('failed-precondition', 'Geçersiz referans kodu.');
+    }
+    const referrerUid = nameSnap.data().uid;
+    const referrerRef = db.collection('users').doc(referrerUid);
+    const referrerSnap = await tx.get(referrerRef);
+    if (!referrerSnap.exists) {
+      throw new HttpsError('failed-precondition', 'Geçersiz referans kodu.');
+    }
+
+    const REFERRAL_NEW_PLAYER_BONUS = 1000;
+    const REFERRAL_REFERRER_BONUS = 2000;
+
+    tx.update(userRef, {
+      gold: admin.firestore.FieldValue.increment(REFERRAL_NEW_PLAYER_BONUS),
+      referredBy: referrerUid,
+      referralUsed: true,
+    });
+
+    const { goldDelta, debtDelta } = splitIncomeForDebt(
+      referrerSnap.data()?.debtToState,
+      REFERRAL_REFERRER_BONUS
+    );
+    tx.update(referrerRef, {
+      gold: admin.firestore.FieldValue.increment(goldDelta),
+      debtToState: admin.firestore.FieldValue.increment(debtDelta),
+    });
+    const smsRef = referrerRef.collection('messages').doc();
+    tx.set(smsRef, {
+      text: `${user.displayName || 'Yeni bir oyuncu'} senin referans kodunla katıldı! 2000 altın bonus kazandın.`,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      read: false,
+      type: 'referral_bonus',
+    });
   });
 
   return { ok: true };
@@ -1747,7 +1786,7 @@ export const sellContrabandAtPark = onCall(async (request) => {
     tx.update(userRef, {
       gold: admin.firestore.FieldValue.increment(goldDelta),
       debtToState: admin.firestore.FieldValue.increment(debtDelta),
-      suspicion: clampSuspicion((user.suspicion || 0) + PARK_SUSPICION_COST),
+      suspicion: clampSuspicion((user.suspicion || 0) + PARK_SUSPICION_COST * qty),
     });
   });
 

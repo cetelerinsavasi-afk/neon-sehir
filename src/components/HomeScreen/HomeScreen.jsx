@@ -206,6 +206,14 @@ export default function HomeScreen() {
     <div className="home-screen">
       <ProfileHeader player={player} onEditAvatar={() => setEditingAvatar(true)} />
 
+      <div className="home-referral-box">
+        <span className="home-referral-emoji">🎁</span>
+        <p className="home-hint">
+          Referans Kodun: <strong>{player?.displayName || '—'}</strong> — bu kodu kullanarak
+          katılan her yeni oyuncu için <strong>2000 altın</strong> kazanırsın!
+        </p>
+      </div>
+
       <div className="home-section">
         <p className="home-section-title">Araçların</p>
         {vehicles.length === 0 && <p className="home-hint">Henüz bir aracın yok.</p>}
