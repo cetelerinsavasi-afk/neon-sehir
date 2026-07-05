@@ -16,24 +16,40 @@ export const HAIR_COLORS = [
 ];
 export const CLOTH_COLORS = ['#22262f', '#0d0d0d', '#5c1a24', '#1d3d5c', '#3a2f1d', '#4a1d5c', '#1d5c3a', '#8a1d1d', '#e8e6df', '#7d7d3a'];
 export const HAT_COLORS = ['#0d0d0d', '#3a2f1d', '#5c1a24', '#1d3d5c', '#d4af37', '#e8e6df', '#4a1d5c', '#1d5c3a'];
+export const LIP_COLORS = ['#a85a52', '#8a3a3a', '#c9636b', '#7a3048', '#b06a4a', '#d48a8a', '#5c2e2e', '#e8998a'];
 
 export const AVATAR_OPTIONS = {
   gender: ['erkek', 'kadin'],
   build: ['zayif', 'standart', 'iri'],
-  hairStyle: ['kel', 'short', 'slick', 'wavy', 'long', 'mohawk', 'afro', 'bun', 'braids', 'undercut'],
-  facialHair: ['none', 'mustache', 'goatee', 'short', 'full', 'sideburns', 'vandyke'],
-  faceAcc: ['none', 'sunglasses', 'scar', 'cigar', 'eyepatch', 'mask', 'monocle'],
+  faceShape: ['oval', 'round', 'square', 'heart', 'long', 'diamond'],
+  hairStyle: [
+    'kel', 'short', 'slick', 'wavy', 'long', 'mohawk', 'afro', 'bun', 'braids', 'undercut',
+    'ponytail', 'curly', 'pixie',
+  ],
+  eyebrowShape: ['straight', 'arched', 'thick', 'thin', 'angled', 'unibrow'],
+  eyeShape: ['almond', 'round', 'narrow', 'wide', 'hooded', 'downturned'],
+  eyelash: ['none', 'natural', 'long', 'dramatic'],
+  noseShape: ['small', 'straight', 'wide', 'button', 'aquiline', 'flat'],
+  mouthShape: ['neutral', 'smile', 'smirk', 'full', 'thin', 'open'],
+  facialHair: ['none', 'mustache', 'goatee', 'short', 'full', 'sideburns', 'vandyke', 'chinstrap', 'horseshoe'],
+  faceAcc: ['none', 'sunglasses', 'scar', 'cigar', 'eyepatch', 'mask', 'monocle', 'freckles', 'piercing'],
   earring: ['yok', 'sol', 'sag', 'cift'],
-  tattoo: ['yok', 'gozyasi', 'yildiz', 'boyunsembol', 'boyunyazi'],
-  clothing: ['suit', 'tuxedo', 'leather', 'hawaii', 'jumpsuit', 'hoodie', 'police', 'vest'],
+  tattoo: ['yok', 'gozyasi', 'yildiz', 'boyunsembol', 'boyunyazi', 'yuzsembol', 'kolyazi'],
+  clothing: ['suit', 'tuxedo', 'leather', 'hawaii', 'jumpsuit', 'hoodie', 'police', 'vest', 'tanktop', 'trenchcoat'],
   neckAcc: ['none', 'tie', 'bow', 'chain', 'scarf', 'dogtag'],
-  hat: ['none', 'fedora', 'beret', 'bandana', 'cap', 'crown', 'tophat', 'hoodup', 'helmet', 'policecap'],
-  heldItem: ['yok', 'tabanca', 'bicak', 'sopa', 'para', 'canta'],
+  hat: [
+    'none', 'fedora', 'beret', 'bandana', 'cap', 'crown', 'tophat', 'hoodup', 'helmet',
+    'policecap', 'beanie', 'headband',
+  ],
+  heldItem: ['yok', 'tabanca', 'bicak', 'sopa', 'para', 'canta', 'telefon', 'kadeh'],
 };
 
 export const DEFAULT_AVATAR = {
   gender: 'erkek', build: 'standart', skin: '#c68863', eyeColor: '#3b2a1a',
+  faceShape: 'oval',
   hairStyle: 'short', hairColor: '#2b2118',
+  eyebrowShape: 'straight', eyeShape: 'almond', eyelash: 'none',
+  noseShape: 'small', mouthShape: 'neutral', lipColor: '#a85a52',
   facialHair: 'none', faceAcc: 'none', earring: 'yok', tattoo: 'yok',
   clothing: 'suit', clothColor: '#22262f', neckAcc: 'tie',
   hat: 'none', hatColor: '#0d0d0d', heldItem: 'yok',
@@ -53,9 +69,22 @@ function shadeColor(hex, percent) {
 }
 
 function headShape(s) {
-  const rx = s.gender === 'kadin' ? 54 : 58;
-  const ry = s.gender === 'kadin' ? 64 : 66;
-  return `<ellipse cx="160" cy="170" rx="${rx}" ry="${ry}" fill="${s.skin}"/>`;
+  const slim = s.gender === 'kadin';
+  switch (s.faceShape) {
+    case 'round':
+      return `<ellipse cx="160" cy="170" rx="${slim ? 58 : 62}" ry="${slim ? 58 : 60}" fill="${s.skin}"/>`;
+    case 'square':
+      return `<path d="M102,140 Q102,106 160,104 Q218,106 218,140 L218,192 Q218,232 160,236 Q102,232 102,192 Z" fill="${s.skin}"/>`;
+    case 'heart':
+      return `<path d="M104,148 Q104,104 160,102 Q216,104 216,148 Q216,192 160,238 Q104,192 104,148 Z" fill="${s.skin}"/>`;
+    case 'long':
+      return `<ellipse cx="160" cy="176" rx="${slim ? 50 : 54}" ry="${slim ? 74 : 76}" fill="${s.skin}"/>`;
+    case 'diamond':
+      return `<path d="M160,102 Q200,130 210,170 Q200,214 160,238 Q120,214 110,170 Q120,130 160,102 Z" fill="${s.skin}"/>`;
+    case 'oval':
+    default:
+      return `<ellipse cx="160" cy="170" rx="${slim ? 54 : 58}" ry="${slim ? 64 : 66}" fill="${s.skin}"/>`;
+  }
 }
 
 function earsShape(s) {
@@ -67,18 +96,116 @@ function neckShape(s) {
   return `<rect x="140" y="222" width="40" height="52" rx="8" fill="${s.skin}"/>`;
 }
 
-function faceFeatures(s) {
+function eyebrowShape(s) {
+  const c = s.hairColor;
+  switch (s.eyebrowShape) {
+    case 'arched':
+      return `<path d="M126,153 Q138,141 151,150" stroke="${c}" stroke-width="5" fill="none" stroke-linecap="round"/>
+              <path d="M169,150 Q182,141 194,153" stroke="${c}" stroke-width="5" fill="none" stroke-linecap="round"/>`;
+    case 'thick':
+      return `<rect x="124" y="146" width="27" height="9" rx="4" fill="${c}" transform="rotate(-4 137 150)"/>
+              <rect x="169" y="146" width="27" height="9" rx="4" fill="${c}" transform="rotate(4 183 150)"/>`;
+    case 'thin':
+      return `<rect x="128" y="150" width="20" height="2.5" rx="1.2" fill="${c}" transform="rotate(-3 138 151)"/>
+              <rect x="172" y="150" width="20" height="2.5" rx="1.2" fill="${c}" transform="rotate(3 182 151)"/>`;
+    case 'angled':
+      return `<path d="M126,156 L151,146" stroke="${c}" stroke-width="5" stroke-linecap="round"/>
+              <path d="M169,146 L194,156" stroke="${c}" stroke-width="5" stroke-linecap="round"/>`;
+    case 'unibrow':
+      return `<rect x="126" y="149" width="68" height="6" rx="3" fill="${c}"/>`;
+    case 'straight':
+    default:
+      return `<rect x="126" y="149" width="24" height="6" rx="3" fill="${c}" transform="rotate(-4 138 152)"/>
+              <rect x="170" y="149" width="24" height="6" rx="3" fill="${c}" transform="rotate(4 182 152)"/>`;
+  }
+}
+
+function eyeShape(s) {
+  let rx = 10, ry = 6.5, pupilR = 4.2;
+  switch (s.eyeShape) {
+    case 'round':
+      rx = 8; ry = 8; pupilR = 4.6;
+      break;
+    case 'narrow':
+      rx = 10.5; ry = 4; pupilR = 3.2;
+      break;
+    case 'wide':
+      rx = 12.5; ry = 7; pupilR = 4.6;
+      break;
+    case 'hooded':
+      rx = 10; ry = 6;
+      break;
+    case 'downturned':
+      rx = 10; ry = 6.5;
+      break;
+    case 'almond':
+    default:
+      break;
+  }
+  const eyeAt = (x) => `
+    <ellipse cx="${x}" cy="169" rx="${rx}" ry="${ry}" fill="#f4f1e8"/>
+    <circle cx="${x}" cy="169" r="${pupilR}" fill="${s.eyeColor}"/>`;
+  let hoodedLid = '';
+  if (s.eyeShape === 'hooded') {
+    const lidColor = shadeColor(s.skin, -18);
+    hoodedLid = `
+    <path d="M127,165 Q138,159 149,165" stroke="${lidColor}" stroke-width="4" fill="none"/>
+    <path d="M171,165 Q182,159 193,165" stroke="${lidColor}" stroke-width="4" fill="none"/>`;
+  }
+  return eyeAt(138) + eyeAt(182) + hoodedLid;
+}
+
+function eyelashShape(s) {
+  if (!s.eyelash || s.eyelash === 'none') return '';
+  const len = s.eyelash === 'dramatic' ? 7 : s.eyelash === 'long' ? 5 : 3;
+  const count = s.eyelash === 'dramatic' ? 3 : 2;
+  let out = '';
+  [138, 182].forEach((x, i) => {
+    const dir = i === 0 ? -1 : 1;
+    for (let k = 0; k < count; k++) {
+      const ox = x + dir * (7 - k * 3);
+      out += `<line x1="${ox}" y1="163" x2="${ox + dir * 2}" y2="${163 - len}" stroke="#1a1a1a" stroke-width="1.4" stroke-linecap="round"/>`;
+    }
+  });
+  return out;
+}
+
+function noseShape(s) {
   const shade = shadeColor(s.skin, -30);
-  return `
-    <rect x="126" y="149" width="24" height="6" rx="3" fill="${s.hairColor}" transform="rotate(-4 138 152)"/>
-    <rect x="170" y="149" width="24" height="6" rx="3" fill="${s.hairColor}" transform="rotate(4 182 152)"/>
-    <ellipse cx="138" cy="169" rx="10" ry="6.5" fill="#f4f1e8"/>
-    <ellipse cx="182" cy="169" rx="10" ry="6.5" fill="#f4f1e8"/>
-    <circle cx="138" cy="169" r="4.2" fill="${s.eyeColor}"/>
-    <circle cx="182" cy="169" r="4.2" fill="${s.eyeColor}"/>
-    <path d="M158,173 Q154,186 150,191" stroke="${shade}" stroke-width="2" fill="none" stroke-linecap="round"/>
-    <path d="M141,207 Q160,214 179,207" stroke="${shade}" stroke-width="3" fill="none" stroke-linecap="round"/>
-  `;
+  switch (s.noseShape) {
+    case 'button':
+      return `<circle cx="160" cy="184" r="4" fill="${shade}" opacity="0.55"/>`;
+    case 'wide':
+      return `<path d="M155,173 Q150,190 145,193 Q160,198 175,193 Q170,190 165,173" stroke="${shade}" stroke-width="2" fill="none" stroke-linecap="round"/>`;
+    case 'aquiline':
+      return `<path d="M158,172 Q163,180 157,186 Q154,189 150,191" stroke="${shade}" stroke-width="2" fill="none" stroke-linecap="round"/>`;
+    case 'flat':
+      return `<path d="M158,178 Q156,184 154,186" stroke="${shade}" stroke-width="1.6" fill="none" stroke-linecap="round" opacity="0.7"/>`;
+    case 'straight':
+      return `<path d="M158,170 Q155,185 152,192" stroke="${shade}" stroke-width="2" fill="none" stroke-linecap="round"/>`;
+    case 'small':
+    default:
+      return `<path d="M158,173 Q154,186 150,191" stroke="${shade}" stroke-width="2" fill="none" stroke-linecap="round"/>`;
+  }
+}
+
+function mouthShape(s) {
+  const c = s.lipColor;
+  switch (s.mouthShape) {
+    case 'smile':
+      return `<path d="M138,205 Q160,220 182,205" stroke="${c}" stroke-width="3.5" fill="none" stroke-linecap="round"/>`;
+    case 'smirk':
+      return `<path d="M141,208 Q162,212 181,201" stroke="${c}" stroke-width="3" fill="none" stroke-linecap="round"/>`;
+    case 'full':
+      return `<path d="M138,204 Q160,216 182,204 Q160,213 138,204 Z" fill="${c}"/>`;
+    case 'thin':
+      return `<path d="M144,208 Q160,210 176,208" stroke="${c}" stroke-width="1.8" fill="none" stroke-linecap="round"/>`;
+    case 'open':
+      return `<ellipse cx="160" cy="209" rx="10" ry="6" fill="#3a1414"/><ellipse cx="160" cy="207" rx="10" ry="3" fill="${c}"/>`;
+    case 'neutral':
+    default:
+      return `<path d="M141,207 Q160,214 179,207" stroke="${c}" stroke-width="3" fill="none" stroke-linecap="round"/>`;
+  }
 }
 
 function facialHairShape(s) {
@@ -98,6 +225,12 @@ function facialHairShape(s) {
     case 'vandyke':
       return `<path d="M136,199 Q160,208 184,199 Q160,193 136,199 Z" fill="${c}"/>
               <path d="M150,210 Q160,236 170,210 Q160,220 150,210 Z" fill="${c}"/>`;
+    case 'chinstrap':
+      return `<path d="M104,180 Q102,220 160,232 Q218,220 216,180 L212,180 Q212,214 160,224 Q108,214 108,180 Z" fill="${c}"/>`;
+    case 'horseshoe':
+      return `<path d="M136,199 Q160,208 184,199 Q160,193 136,199 Z" fill="${c}"/>
+              <path d="M136,199 L134,232" stroke="${c}" stroke-width="8" stroke-linecap="round"/>
+              <path d="M184,199 L186,232" stroke="${c}" stroke-width="8" stroke-linecap="round"/>`;
     default:
       return '';
   }
@@ -126,6 +259,11 @@ function hairBackShape(s) {
     `;
   }
   if (s.hairStyle === 'afro') return `<circle cx="160" cy="128" r="68" fill="${c}"/>`;
+  if (s.hairStyle === 'ponytail') {
+    const d = shadeColor(c, -20);
+    return `<path d="M204,120 Q234,150 224,220 Q216,260 202,250 Q214,190 196,140 Z" fill="${c}"/>
+            <ellipse cx="206" cy="118" rx="7" ry="5" fill="${d}"/>`;
+  }
   return '';
 }
 
@@ -156,6 +294,18 @@ function hairFrontShape(s) {
       return `<path d="${base}" fill="${c}"/>`;
     case 'undercut':
       return `<path d="M120,140 C120,102 138,104 160,104 C182,104 200,102 200,140 C200,118 182,110 160,110 C138,110 120,118 120,140 Z" fill="${c}"/>`;
+    case 'ponytail':
+      return `<path d="${base}" fill="${c}"/>`;
+    case 'curly':
+      return `<path d="${base}" fill="${c}"/>
+              <circle cx="112" cy="120" r="12" fill="${c}"/>
+              <circle cx="136" cy="102" r="13" fill="${c}"/>
+              <circle cx="162" cy="96" r="13" fill="${c}"/>
+              <circle cx="188" cy="102" r="13" fill="${c}"/>
+              <circle cx="210" cy="120" r="12" fill="${c}"/>`;
+    case 'pixie':
+      return `<path d="M108,148 C108,108 132,102 160,102 C182,102 202,108 208,132 C198,118 178,110 158,112 C136,114 116,124 112,150 Z" fill="${c}"/>
+              <path d="M108,132 Q98,144 104,158" stroke="${c}" stroke-width="8" fill="none" stroke-linecap="round"/>`;
     default:
       return '';
   }
@@ -197,6 +347,12 @@ function hatShape(s) {
               <rect x="140" y="96" width="40" height="10" rx="3" fill="${accent}"/>
               <circle cx="160" cy="100" r="6" fill="#d4af37"/>
               <ellipse cx="160" cy="130" rx="70" ry="10" fill="#0d0d0d"/>`;
+    case 'beanie':
+      return `<path d="M100,150 Q100,90 160,88 Q220,90 220,150 Q220,158 210,158 L110,158 Q100,158 100,150 Z" fill="${c}"/>
+              <rect x="100" y="140" width="120" height="18" rx="6" fill="${accent}"/>`;
+    case 'headband':
+      return `<rect x="100" y="128" width="120" height="16" rx="8" fill="${c}"/>
+              <circle cx="160" cy="136" r="6" fill="${accent}"/>`;
     default:
       return '';
   }
@@ -225,6 +381,15 @@ function faceAccShape(s) {
     case 'monocle':
       return `<circle cx="182" cy="169" r="13" fill="none" stroke="#d4af37" stroke-width="2.5"/>
               <line x1="193" y1="180" x2="204" y2="220" stroke="#d4af37" stroke-width="1.5"/>`;
+    case 'freckles':
+      return `<circle cx="128" cy="180" r="1.6" fill="#7a4a30" opacity="0.6"/>
+              <circle cx="134" cy="185" r="1.6" fill="#7a4a30" opacity="0.6"/>
+              <circle cx="124" cy="188" r="1.6" fill="#7a4a30" opacity="0.6"/>
+              <circle cx="192" cy="180" r="1.6" fill="#7a4a30" opacity="0.6"/>
+              <circle cx="186" cy="185" r="1.6" fill="#7a4a30" opacity="0.6"/>
+              <circle cx="196" cy="188" r="1.6" fill="#7a4a30" opacity="0.6"/>`;
+    case 'piercing':
+      return `<circle cx="150" cy="204" r="2" fill="#d4af37"/>`;
     default:
       return '';
   }
@@ -297,6 +462,20 @@ function torsoShape(s) {
         <path d="M198,262 L164,262 L164,340 L198,332 Z" fill="${dark}"/>
         <rect x="142" y="270" width="36" height="70" fill="#e8e6df" opacity="0.9"/>`;
       break;
+    case 'tanktop':
+      details = `
+        <path d="M126,262 L138,262 L138,400 L126,400 Z" fill="${dark}"/>
+        <path d="M194,262 L182,262 L182,400 L194,400 Z" fill="${dark}"/>`;
+      break;
+    case 'trenchcoat':
+      base = `<path d="M${B.tl - 10},${B.ty} L${B.tr + 10},${B.ty} L${B.br + 6},400 L${B.bl - 6},400 Z" fill="${c}"/>`;
+      details = `
+        <line x1="160" y1="264" x2="160" y2="398" stroke="${dark}" stroke-width="2"/>
+        <rect x="132" y="290" width="14" height="14" rx="2" fill="${dark}"/>
+        <rect x="174" y="290" width="14" height="14" rx="2" fill="${dark}"/>
+        <path d="M126,262 L156,262 L142,296 Z" fill="${dark}"/>
+        <path d="M194,262 L164,262 L178,296 Z" fill="${dark}"/>`;
+      break;
     default:
       break;
   }
@@ -348,6 +527,11 @@ function tattooShape(s) {
               <line x1="160" y1="236" x2="160" y2="254" stroke="#2a3a55" stroke-width="2"/>`;
     case 'boyunyazi':
       return `<text x="160" y="250" font-family="Special Elite, monospace" font-size="9" fill="#2a3a55" text-anchor="middle" letter-spacing="1">MAFYA</text>`;
+    case 'yuzsembol':
+      return `<path d="M126,180 L132,192" stroke="#2a3a55" stroke-width="1.6" stroke-linecap="round"/>
+              <path d="M126,192 L132,180" stroke="#2a3a55" stroke-width="1.6" stroke-linecap="round"/>`;
+    case 'kolyazi':
+      return `<text x="160" y="245" font-family="Special Elite, monospace" font-size="7" fill="#2a3a55" text-anchor="middle" letter-spacing="0.5">SADAKAT</text>`;
     default:
       return '';
   }
@@ -381,6 +565,18 @@ function heldItemShape(s) {
                 <path d="M6,10 Q19,-6 32,10" fill="none" stroke="#3a2f1d" stroke-width="4"/>
                 <rect x="15" y="20" width="8" height="8" fill="#d4af37"/>
               </g>`;
+    case 'telefon':
+      return `<g transform="translate(240,300) rotate(-6)">
+                <rect x="0" y="0" width="20" height="36" rx="4" fill="#111"/>
+                <rect x="2" y="4" width="16" height="26" fill="#4ab8e0"/>
+              </g>`;
+    case 'kadeh':
+      return `<g transform="translate(238,296)">
+                <path d="M2,0 L22,0 L16,16 Q12,20 8,16 Z" fill="none" stroke="#d4af37" stroke-width="2"/>
+                <path d="M4,3 L20,3 L15,14 Q12,17 9,14 Z" fill="#8a1d3a" opacity="0.85"/>
+                <line x1="12" y1="18" x2="12" y2="30" stroke="#d4af37" stroke-width="2"/>
+                <line x1="6" y1="30" x2="18" y2="30" stroke="#d4af37" stroke-width="2"/>
+              </g>`;
     default:
       return '';
   }
@@ -400,7 +596,11 @@ export function buildAvatarSvgInner(rawState) {
   svg += headShape(s);
   svg += earsShape(s);
   svg += earringShape(s);
-  svg += faceFeatures(s);
+  svg += eyebrowShape(s);
+  svg += eyeShape(s);
+  svg += eyelashShape(s);
+  svg += noseShape(s);
+  svg += mouthShape(s);
   svg += tattooShape(s);
   svg += facialHairShape(s);
   svg += hairFrontShape(s);

@@ -2362,17 +2362,29 @@ export const setDisplayName = onCall(async (request) => {
 const AVATAR_ENUM_OPTIONS = {
   gender: ['erkek', 'kadin'],
   build: ['zayif', 'standart', 'iri'],
-  hairStyle: ['kel', 'short', 'slick', 'wavy', 'long', 'mohawk', 'afro', 'bun', 'braids', 'undercut'],
-  facialHair: ['none', 'mustache', 'goatee', 'short', 'full', 'sideburns', 'vandyke'],
-  faceAcc: ['none', 'sunglasses', 'scar', 'cigar', 'eyepatch', 'mask', 'monocle'],
+  faceShape: ['oval', 'round', 'square', 'heart', 'long', 'diamond'],
+  hairStyle: [
+    'kel', 'short', 'slick', 'wavy', 'long', 'mohawk', 'afro', 'bun', 'braids', 'undercut',
+    'ponytail', 'curly', 'pixie',
+  ],
+  eyebrowShape: ['straight', 'arched', 'thick', 'thin', 'angled', 'unibrow'],
+  eyeShape: ['almond', 'round', 'narrow', 'wide', 'hooded', 'downturned'],
+  eyelash: ['none', 'natural', 'long', 'dramatic'],
+  noseShape: ['small', 'straight', 'wide', 'button', 'aquiline', 'flat'],
+  mouthShape: ['neutral', 'smile', 'smirk', 'full', 'thin', 'open'],
+  facialHair: ['none', 'mustache', 'goatee', 'short', 'full', 'sideburns', 'vandyke', 'chinstrap', 'horseshoe'],
+  faceAcc: ['none', 'sunglasses', 'scar', 'cigar', 'eyepatch', 'mask', 'monocle', 'freckles', 'piercing'],
   earring: ['yok', 'sol', 'sag', 'cift'],
-  tattoo: ['yok', 'gozyasi', 'yildiz', 'boyunsembol', 'boyunyazi'],
-  clothing: ['suit', 'tuxedo', 'leather', 'hawaii', 'jumpsuit', 'hoodie', 'police', 'vest'],
+  tattoo: ['yok', 'gozyasi', 'yildiz', 'boyunsembol', 'boyunyazi', 'yuzsembol', 'kolyazi'],
+  clothing: ['suit', 'tuxedo', 'leather', 'hawaii', 'jumpsuit', 'hoodie', 'police', 'vest', 'tanktop', 'trenchcoat'],
   neckAcc: ['none', 'tie', 'bow', 'chain', 'scarf', 'dogtag'],
-  hat: ['none', 'fedora', 'beret', 'bandana', 'cap', 'crown', 'tophat', 'hoodup', 'helmet', 'policecap'],
-  heldItem: ['yok', 'tabanca', 'bicak', 'sopa', 'para', 'canta'],
+  hat: [
+    'none', 'fedora', 'beret', 'bandana', 'cap', 'crown', 'tophat', 'hoodup', 'helmet',
+    'policecap', 'beanie', 'headband',
+  ],
+  heldItem: ['yok', 'tabanca', 'bicak', 'sopa', 'para', 'canta', 'telefon', 'kadeh'],
 };
-const AVATAR_COLOR_FIELDS = ['skin', 'eyeColor', 'hairColor', 'clothColor', 'hatColor'];
+const AVATAR_COLOR_FIELDS = ['skin', 'eyeColor', 'hairColor', 'clothColor', 'hatColor', 'lipColor'];
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
 export const setAvatar = onCall(async (request) => {

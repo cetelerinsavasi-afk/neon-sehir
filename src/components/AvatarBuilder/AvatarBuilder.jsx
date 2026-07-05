@@ -7,6 +7,7 @@ import {
   HAIR_COLORS,
   CLOTH_COLORS,
   HAT_COLORS,
+  LIP_COLORS,
 } from '../../lib/avatarShapes';
 import { usePlayer } from '../../hooks/usePlayer';
 import { setAvatar, setDisplayName } from '../../services/gameActions';
@@ -16,11 +17,46 @@ import './AvatarBuilder.css';
 const OPTION_LABELS = {
   gender: { title: 'Beden Tipi', values: { erkek: 'Erkek', kadin: 'Kadın' } },
   build: { title: 'Vücut Yapısı', values: { zayif: 'Zayıf', standart: 'Standart', iri: 'İri Yarı' } },
+  faceShape: {
+    title: 'Kafa Tipi',
+    values: {
+      oval: 'Oval', round: 'Yuvarlak', square: 'Köşeli', heart: 'Kalp', long: 'Uzun', diamond: 'Elmas',
+    },
+  },
+  eyebrowShape: {
+    title: 'Kaş',
+    values: {
+      straight: 'Düz', arched: 'Kemerli', thick: 'Kalın', thin: 'İnce', angled: 'Çatık', unibrow: 'Çatık Birleşik',
+    },
+  },
+  eyeShape: {
+    title: 'Göz Şekli',
+    values: {
+      almond: 'Badem', round: 'Yuvarlak', narrow: 'Dar', wide: 'İri', hooded: 'Kapaklı', downturned: 'Düşük Köşeli',
+    },
+  },
+  eyelash: {
+    title: 'Kirpik',
+    values: { none: 'Yok', natural: 'Doğal', long: 'Uzun', dramatic: 'Gösterişli' },
+  },
+  noseShape: {
+    title: 'Burun',
+    values: {
+      small: 'Küçük', straight: 'Düz', wide: 'Geniş', button: 'Ufak Yuvarlak', aquiline: 'Kemerli', flat: 'Basık',
+    },
+  },
+  mouthShape: {
+    title: 'Ağız Yapısı',
+    values: {
+      neutral: 'Nötr', smile: 'Gülümseyen', smirk: 'Yan Gülüş', full: 'Dolgun', thin: 'İnce', open: 'Aralık',
+    },
+  },
   hairStyle: {
     title: 'Saç Stili',
     values: {
       kel: 'Kel', short: 'Kısa', slick: 'Taramalı', wavy: 'Dalgalı', long: 'Uzun',
       mohawk: 'Mohawk', afro: 'Afro', bun: 'Topuz', braids: 'Örgü', undercut: 'Undercut',
+      ponytail: 'At Kuyruğu', curly: 'Kıvırcık', pixie: 'Pixie Kesim',
     },
   },
   facialHair: {
@@ -28,6 +64,7 @@ const OPTION_LABELS = {
     values: {
       none: 'Yok', mustache: 'Bıyık', goatee: 'Çene Sakalı', short: 'Kısa Sakal',
       full: 'Gür Sakal', sideburns: 'Favori', vandyke: 'Van Dyke',
+      chinstrap: 'Çene Bandı Sakal', horseshoe: 'At Nalı Bıyık',
     },
   },
   faceAcc: {
@@ -35,18 +72,23 @@ const OPTION_LABELS = {
     values: {
       none: 'Yok', sunglasses: 'Güneş Gözlüğü', scar: 'Yara İzi', cigar: 'Puro',
       eyepatch: 'Göz Bandı', mask: 'Kar Maskesi', monocle: 'Monokl',
+      freckles: 'Çil', piercing: 'Piercing',
     },
   },
   earring: { title: 'Küpe', values: { yok: 'Yok', sol: 'Sol Kulak', sag: 'Sağ Kulak', cift: 'Çift Kulak' } },
   tattoo: {
     title: 'Dövme',
-    values: { yok: 'Yok', gozyasi: 'Gözyaşı', yildiz: 'Yıldız', boyunsembol: 'Boyun Sembolü', boyunyazi: 'Boyun Yazısı' },
+    values: {
+      yok: 'Yok', gozyasi: 'Gözyaşı', yildiz: 'Yıldız', boyunsembol: 'Boyun Sembolü',
+      boyunyazi: 'Boyun Yazısı', yuzsembol: 'Yüz Sembolü', kolyazi: 'Boyun Yazısı 2',
+    },
   },
   clothing: {
     title: 'Kombin',
     values: {
       suit: 'Takım Elbise', tuxedo: 'Smokin', leather: 'Deri Mont', hawaii: 'Casino Gömleği',
       jumpsuit: 'İşçi Tulumu', hoodie: 'Kapüşonlu', police: 'Polis Üniforması', vest: 'Yelek',
+      tanktop: 'Atlet', trenchcoat: 'Pardösü',
     },
   },
   neckAcc: {
@@ -57,18 +99,23 @@ const OPTION_LABELS = {
     title: 'Baş Aksesuarı',
     values: {
       none: 'Yok', fedora: 'Fötr Şapka', beret: 'Bere', bandana: 'Bandana', cap: 'Kasket',
-      crown: 'Patron Tacı', tophat: 'Silindir Şapka', hoodup: 'Kapüşon (Kapalı)', helmet: 'Motor Kaskı', policecap: 'Polis Şapkası',
+      crown: 'Patron Tacı', tophat: 'Silindir Şapka', hoodup: 'Kapüşon (Kapalı)', helmet: 'Motor Kaskı',
+      policecap: 'Polis Şapkası', beanie: 'Bere (Yünlü)', headband: 'Kafa Bandı',
     },
   },
   heldItem: {
     title: 'Elde Taşınan',
-    values: { yok: 'Yok', tabanca: 'Tabanca', bicak: 'Bıçak', sopa: 'Beyzbol Sopası', para: 'Para Destesi', canta: 'Çanta' },
+    values: {
+      yok: 'Yok', tabanca: 'Tabanca', bicak: 'Bıçak', sopa: 'Beyzbol Sopası', para: 'Para Destesi',
+      canta: 'Çanta', telefon: 'Telefon', kadeh: 'Kadeh',
+    },
   },
 };
 
 const COLOR_GROUPS = {
   skin: { title: 'Ten Tonu', colors: SKIN_TONES },
   eyeColor: { title: 'Göz Rengi', colors: EYE_COLORS },
+  lipColor: { title: 'Dudak Rengi', colors: LIP_COLORS },
   hairColor: { title: 'Saç Rengi', colors: HAIR_COLORS },
   clothColor: { title: 'Kıyafet Rengi', colors: CLOTH_COLORS },
   hatColor: { title: 'Aksesuar Rengi', colors: HAT_COLORS },
@@ -145,6 +192,7 @@ export default function AvatarBuilder({ onBack }) {
     });
     next.skin = randomFrom(SKIN_TONES);
     next.eyeColor = randomFrom(EYE_COLORS);
+    next.lipColor = randomFrom(LIP_COLORS);
     next.hairColor = randomFrom(HAIR_COLORS);
     next.clothColor = randomFrom(CLOTH_COLORS);
     next.hatColor = randomFrom(HAT_COLORS);
