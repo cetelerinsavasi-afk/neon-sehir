@@ -4,7 +4,8 @@ import { buildAvatarSvgInner, DEFAULT_AVATAR } from '../../lib/avatarShapes';
 // size verilirse sabit boyutlu, yuvarlak bir ikon olarak render edilir
 // (chat, soygun planı katılımcı listesi gibi küçük gösterimlerde).
 export default function AvatarSvg({ avatar, size, rounded = false }) {
-  const inner = buildAvatarSvgInner(avatar || DEFAULT_AVATAR);
+  const a = avatar || DEFAULT_AVATAR;
+  const inner = buildAvatarSvgInner(a);
 
   const style = size
     ? { width: size, height: size, borderRadius: rounded ? '50%' : 8, overflow: 'hidden', flexShrink: 0 }
@@ -15,7 +16,7 @@ export default function AvatarSvg({ avatar, size, rounded = false }) {
       <svg
         viewBox="0 0 320 400"
         xmlns="http://www.w3.org/2000/svg"
-        style={{ width: '100%', height: '100%', display: 'block', background: '#080b13' }}
+        style={{ width: '100%', height: '100%', display: 'block', background: a.background || '#080b13' }}
         dangerouslySetInnerHTML={{ __html: inner }}
       />
     </div>

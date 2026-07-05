@@ -74,6 +74,7 @@ export default function OnNumaraScreen({ onEnterTable }) {
             </button>
           ))}
         </div>
+        <p className="onnumara-bet-label">Bahsi Belirle: <strong>{betAmount.toLocaleString('tr-TR')} altın</strong></p>
         <QuantityStepper value={betAmount} onChange={setBetAmount} quickAmounts={[1, 10, 100, 1000]} />
         <button className="onnumara-btn primary" disabled={busy || !betAmount} onClick={handleCreate}>
           {betAmount > 0 ? `Masa Kur — ${betAmount.toLocaleString('tr-TR')} altın bahis` : 'Masa Kur'}

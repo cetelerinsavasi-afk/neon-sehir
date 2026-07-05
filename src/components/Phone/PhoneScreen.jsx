@@ -26,8 +26,8 @@ const APP_TITLES = {
   chatsapp: 'ChatsApp',
 };
 
-export default function PhoneScreen({ onClose }) {
-  const [openApp, setOpenApp] = useState(null);
+export default function PhoneScreen({ onClose, initialApp = null }) {
+  const [openApp, setOpenApp] = useState(initialApp);
   const { messages } = useMessages();
   const { player } = usePlayer();
   const unreadCount = messages.filter((m) => !m.read).length;

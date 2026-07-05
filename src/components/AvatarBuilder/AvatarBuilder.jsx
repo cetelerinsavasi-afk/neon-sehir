@@ -8,6 +8,7 @@ import {
   CLOTH_COLORS,
   HAT_COLORS,
   LIP_COLORS,
+  BACKGROUND_COLORS,
 } from '../../lib/avatarShapes';
 import { usePlayer } from '../../hooks/usePlayer';
 import { setAvatar, setDisplayName } from '../../services/gameActions';
@@ -114,12 +115,40 @@ const OPTION_LABELS = {
 
 const COLOR_GROUPS = {
   skin: { title: 'Ten Tonu', colors: SKIN_TONES },
+  background: { title: 'Arka Plan', colors: BACKGROUND_COLORS },
   eyeColor: { title: 'Göz Rengi', colors: EYE_COLORS },
   lipColor: { title: 'Dudak Rengi', colors: LIP_COLORS },
   hairColor: { title: 'Saç Rengi', colors: HAIR_COLORS },
   clothColor: { title: 'Kıyafet Rengi', colors: CLOTH_COLORS },
   hatColor: { title: 'Aksesuar Rengi', colors: HAT_COLORS },
 };
+
+const ROW_ORDER = [
+  { type: 'option', field: 'gender' },
+  { type: 'option', field: 'build' },
+  { type: 'option', field: 'faceShape' },
+  { type: 'color', field: 'skin' },
+  { type: 'color', field: 'background' },
+  { type: 'option', field: 'eyebrowShape' },
+  { type: 'option', field: 'eyeShape' },
+  { type: 'color', field: 'eyeColor' },
+  { type: 'option', field: 'eyelash' },
+  { type: 'option', field: 'noseShape' },
+  { type: 'option', field: 'mouthShape' },
+  { type: 'color', field: 'lipColor' },
+  { type: 'option', field: 'hairStyle' },
+  { type: 'color', field: 'hairColor' },
+  { type: 'option', field: 'facialHair' },
+  { type: 'option', field: 'faceAcc' },
+  { type: 'option', field: 'earring' },
+  { type: 'option', field: 'tattoo' },
+  { type: 'option', field: 'clothing' },
+  { type: 'color', field: 'clothColor' },
+  { type: 'option', field: 'neckAcc' },
+  { type: 'option', field: 'hat' },
+  { type: 'color', field: 'hatColor' },
+  { type: 'option', field: 'heldItem' },
+];
 
 function OptionRow({ title, values, current, onSelect }) {
   return (
@@ -191,6 +220,7 @@ export default function AvatarBuilder({ onBack }) {
       next[field] = randomFrom(values);
     });
     next.skin = randomFrom(SKIN_TONES);
+    next.background = randomFrom(BACKGROUND_COLORS);
     next.eyeColor = randomFrom(EYE_COLORS);
     next.lipColor = randomFrom(LIP_COLORS);
     next.hairColor = randomFrom(HAIR_COLORS);
@@ -255,25 +285,30 @@ export default function AvatarBuilder({ onBack }) {
         />
       </div>
 
-      {Object.entries(OPTION_LABELS).map(([field, { title, values }]) => (
-        <OptionRow
-          key={field}
-          title={title}
-          values={values}
-          current={avatar[field]}
-          onSelect={(v) => update(field, v)}
-        />
-      ))}
-
-      {Object.entries(COLOR_GROUPS).map(([field, { title, colors }]) => (
-        <ColorRow
-          key={field}
-          title={title}
-          colors={colors}
-          current={avatar[field]}
-          onSelect={(v) => update(field, v)}
-        />
-      ))}
+      {ROW_ORDER.map(({ type, field }) => {
+        if (type === 'option') {
+          const { title, values } = OPTION_LABELS[field];
+          return (
+            <OptionRow
+              key={field}
+              title={title}
+              values={values}
+              current={avatar[field]}
+              onSelect={(v) => update(field, v)}
+            />
+          );
+        }
+        const { title, colors } = COLOR_GROUPS[field];
+        return (
+          <ColorRow
+            key={field}
+            title={title}
+            colors={colors}
+            current={avatar[field]}
+            onSelect={(v) => update(field, v)}
+          />
+        );
+      })}
     </div>
   );
 }

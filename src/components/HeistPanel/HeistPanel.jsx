@@ -3,6 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useDailyActions } from '../../hooks/useDailyActions';
 import { useOpenHeistPlans } from '../../hooks/useOpenHeistPlans';
 import { useHeistPlanParticipants } from '../../hooks/useHeistPlanParticipants';
+import { useWeapons } from '../../hooks/useWeapons';
 import {
   attemptHeist,
   createHeistPlan,
@@ -170,6 +171,7 @@ export default function HeistPanel({ target }) {
   const { user } = useAuth();
   const { actions } = useDailyActions();
   const { plans } = useOpenHeistPlans(target);
+  const { weapons } = useWeapons();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
@@ -179,6 +181,8 @@ export default function HeistPanel({ target }) {
 
   const meta = HEIST_LABELS[target];
   const done = Boolean(actions.heist?.[target]);
+  const myPower = weapons.reduce((max, w) => Math.max(max, w.power || 0), 0);
+  const needsTeam = myPower < meta.requiredPower;
 
   const handleAttempt = async () => {
     setBusy(true);
@@ -220,9 +224,17 @@ export default function HeistPanel({ target }) {
         güç: {meta.requiredPower.toLocaleString('tr-TR')}
       </p>
 
-      <button className="heist-panel-btn primary" disabled={done || busy} onClick={handleAttempt}>
-        {done ? 'Bugün zaten denedin' : busy ? 'Soyuluyor…' : 'Soygun Yap'}
-      </button>
+      {needsTeam ? (
+        plans.length === 0 && (
+          <button className="heist-panel-btn secondary" disabled={done || busy} onClick={handleCreatePlan}>
+            Ekip Kur
+          </button>
+        )
+      ) : (
+        <button className="heist-panel-btn primary" disabled={done || busy} onClick={handleAttempt}>
+          {done ? 'Bugün zaten denedin' : busy ? 'Soyuluyor…' : 'Soygun Yap'}
+        </button>
+      )}
 
       {result && (
         <p
@@ -237,14 +249,9 @@ export default function HeistPanel({ target }) {
       )}
       {error && <p className="heist-panel-error">{error}</p>}
 
-      {(showTeamForming || plans.length > 0) && (
+      {(needsTeam || showTeamForming || plans.length > 0) && (
         <div className="heist-plan-list">
           <p className="heist-plan-list-title">Ekip Soygunu</p>
-          {plans.length === 0 && (
-            <button className="heist-panel-btn secondary" disabled={done || busy} onClick={handleCreatePlan}>
-              Ekip Kur
-            </button>
-          )}
           {plans.map((plan) => (
             <PlanCard
               key={plan.id}

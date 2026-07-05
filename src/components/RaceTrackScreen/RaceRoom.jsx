@@ -70,6 +70,12 @@ function useAutoRollWatcher(roomId, deadline, active) {
 export default function RaceRoom({ room, myUid, onDismissFinished }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  // 10 Numara'da yaşadığımız aynı sorun burada da vardı: zar atıldıktan
+  // hemen sonra buton tekrar aktif oluyordu ama Firestore dinleyicisi
+  // henüz yeni pozisyonu/sırayı yansıtmamışken oyuncu tekrar basıp
+  // GERÇEKTEN 2. kez zar atabiliyordu. Aynı "onaylanana kadar kilitli
+  // kal" çözümünü burada da uyguluyoruz.
+  const pendingConfirmRef = useRef(null);
 
   const otherUid = room.participantUids?.find((u) => u !== myUid);
   const me = room.players?.[myUid];
@@ -81,17 +87,47 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
   const secondsLeft = useCountdown(room.turnDeadline);
   useAutoRollWatcher(room.id, room.turnDeadline, racing);
 
-  const run = async (key, fn) => {
+  useEffect(() => {
+    const pending = pendingConfirmRef.current;
+    if (!pending) return;
+    const changed =
+      room.status !== 'racing' ||
+      room.currentTurnUid !== pending.turnUidBefore ||
+      room.finalTurnFor !== pending.finalTurnForBefore ||
+      (me && me.position !== pending.positionBefore) ||
+      (me && me.fuel !== pending.fuelBefore);
+    if (changed) {
+      pendingConfirmRef.current = null;
+      setBusy(false);
+    }
+  }, [room, me]);
+
+  const run = async (key, fn, { waitForConfirm = false } = {}) => {
     setBusy(true);
     setError(null);
     try {
       const res = await fn();
+      if (waitForConfirm) {
+        pendingConfirmRef.current = {
+          turnUidBefore: room.currentTurnUid,
+          finalTurnForBefore: room.finalTurnFor,
+          positionBefore: me?.position,
+          fuelBefore: me?.fuel,
+        };
+        setTimeout(() => {
+          if (pendingConfirmRef.current) {
+            pendingConfirmRef.current = null;
+            setBusy(false);
+          }
+        }, 4000);
+        return res;
+      }
       return res;
     } catch (err) {
       setError(err.message || 'İşlem başarısız.');
       return null;
     } finally {
-      setBusy(false);
+      if (!waitForConfirm) setBusy(false);
     }
   };
 
@@ -167,11 +203,12 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
   const hintInfo = getHintInfo(me, other, atStation);
 
   const handleRoll = async (useNitro, useTurbo) => {
-    await run('roll', () => rollDice(room.id, useNitro, useTurbo));
+    await run('roll', () => rollDice(room.id, useNitro, useTurbo), { waitForConfirm: true });
   };
 
   const rollButtonLabel = () => {
     if (!isMyTurn) return `${other.displayName}'in sırası… (${secondsLeft ?? '—'}s)`;
+    if (busy) return 'Atılıyor…';
     if (isFinalTurnForMe) return `Son hamlen! Zar At (${secondsLeft ?? '—'}s)`;
     return me.nitroActive ? `Zar At — Nitro Aktif (${secondsLeft ?? '—'}s)` : `Zar At (${secondsLeft ?? '—'}s)`;
   };

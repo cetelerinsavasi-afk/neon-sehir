@@ -12,6 +12,7 @@ import RaceFullScreen from './components/RaceTrackScreen/RaceFullScreen';
 import RaceBubble from './components/RaceTrackScreen/RaceBubble';
 import OnNumaraFullScreen from './components/OnNumaraScreen/OnNumaraFullScreen';
 import ProfileFullScreen from './components/ProfileFullScreen/ProfileFullScreen';
+import TopNotificationBanner from './components/TopNotificationBanner/TopNotificationBanner';
 import { usePlayer } from './hooks/usePlayer';
 import { useMyActiveRaceRoom } from './hooks/useMyActiveRaceRoom';
 import './styles/theme.css';
@@ -25,6 +26,7 @@ function GameShell() {
   const { user } = useAuth();
   const [activeRegion, setActiveRegion] = useState(null);
   const [phoneOpen, setPhoneOpen] = useState(false);
+  const [phoneInitialApp, setPhoneInitialApp] = useState(null);
   const [heistTarget, setHeistTarget] = useState(undefined); // undefined=kapalı, null=açık/hedefsiz
   const [activeRaceRoomId, setActiveRaceRoomId] = useState(null);
   const [raceExpanded, setRaceExpanded] = useState(false);
@@ -87,7 +89,21 @@ function GameShell() {
         onProfileClick={() => setProfileOpen(true)}
       />
 
-      {phoneOpen && <PhoneScreen onClose={() => setPhoneOpen(false)} />}
+      {phoneOpen && (
+        <PhoneScreen
+          onClose={() => {
+            setPhoneOpen(false);
+            setPhoneInitialApp(null);
+          }}
+          initialApp={phoneInitialApp}
+        />
+      )}
+      <TopNotificationBanner
+        onOpenPhone={(type) => {
+          setPhoneInitialApp(type === 'sms' ? 'sms' : 'chatsapp');
+          setPhoneOpen(true);
+        }}
+      />
       {profileOpen && <ProfileFullScreen onClose={() => setProfileOpen(false)} />}
 
       <RegionModal

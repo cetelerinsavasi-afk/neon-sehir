@@ -19,7 +19,7 @@ const MATERIAL_LABELS = {
   yasakliMadde: 'Yasaklı Madde',
 };
 const MATERIAL_EMOJIS = {
-  depoUpgrade: '📦',
+  depoUpgrade: '🛢️',
   vitesUpgrade: '⚙️',
   silahUpgrade: '🔧',
   yasakliMadde: '💊',

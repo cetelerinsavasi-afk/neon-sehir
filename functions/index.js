@@ -2010,6 +2010,12 @@ export const joinHeistPlan = onCall(async (request) => {
     await planRef.update({ status: 'expired' });
     throw new HttpsError('failed-precondition', 'Bu soygun planının 24 saatlik süresi doldu.');
   }
+  if ((plan.removedUids || []).includes(uid)) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Bu ekipten ayrıldın/atıldın, tekrar katılamazsın.'
+    );
+  }
 
   const participantsSnap = await planRef.collection('participants').get();
   if (participantsSnap.size >= HEIST_PLAN_MAX_PARTICIPANTS) {
@@ -2019,6 +2025,7 @@ export const joinHeistPlan = onCall(async (request) => {
   const userSnap = await db.collection('users').doc(uid).get();
   const user = userSnap.data();
   const myPower = await getMaxWeaponPower(uid);
+  const iAmPolice = user?.profession === 'polis';
 
   await planRef.collection('participants').doc(uid).set({
     uid,
@@ -2029,17 +2036,35 @@ export const joinHeistPlan = onCall(async (request) => {
     joinedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
-  if (user?.profession === 'polis' && !plan.policeWarningSent) {
-    const creatorSnap = await db.collection('users').doc(plan.creatorUid).get();
-    const creatorReputation = creatorSnap.data()?.reputation || 0;
-    if (Math.random() * 100 < creatorReputation) {
-      await planRef.update({ policeWarningSent: true });
+  // Şüphe uyarı sistemi (Bölüm 7 kullanıcı revizesi): saygınlık oranımıza
+  // göre (örn %50 saygınlık = %50 ihtimal), KATILDIĞIMIZ ya da
+  // KURDUĞUMUZ ekibe hâlihazırda bir polis sızmışsa YA DA az önce
+  // sızdıysa, bunu (belli belirsiz) bir SMS ile öğrenebiliriz. Her
+  // sivil kendi saygınlığına göre BAĞIMSIZ olarak "sezip sezmediğini"
+  // dener; aynı sivil aynı plan için birden fazla kez uyarılmaz
+  // (warnedUids).
+  const warnedUids = new Set(plan.warnedUids || []);
+  const existingProfessions = {}; // uid -> user verisi (sadece gerektiğinde çekilir)
+
+  async function maybeWarn(targetUid) {
+    if (targetUid === uid && iAmPolice) return; // polisin kendisini uyarmayız
+    if (warnedUids.has(targetUid)) return;
+    let targetUser = existingProfessions[targetUid];
+    if (!targetUser) {
+      const s = await db.collection('users').doc(targetUid).get();
+      targetUser = s.data() || {};
+      existingProfessions[targetUid] = targetUser;
+    }
+    if (targetUser.profession === 'polis') return; // polisi uyarmayız
+    const reputation = targetUser.reputation || 0;
+    if (Math.random() * 100 < reputation) {
+      warnedUids.add(targetUid);
       await db
         .collection('users')
-        .doc(plan.creatorUid)
+        .doc(targetUid)
         .collection('messages')
         .add({
-          text: 'Esnaftan bir haber var: kurduğun soygun planına içeriden biri sızmış olabilir.',
+          text: 'İçgüdülerin seni uyarıyor: bu ekipte tanımadığın/güvenmediğin biri olabilir. Dikkatli ol.',
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           read: false,
           type: 'heist_warning',
@@ -2048,13 +2073,44 @@ export const joinHeistPlan = onCall(async (request) => {
     }
   }
 
+  if (iAmPolice) {
+    // Ben polisim ve az önce sızdım — plandaki MEVCUT sivillerin her biri
+    // kendi saygınlığına göre bunu sezebilir.
+    for (const doc of participantsSnap.docs) {
+      if (doc.id === uid) continue;
+      await maybeWarn(doc.id);
+    }
+  } else {
+    // Ben sivilim — plana daha önce sızmış bir polis varsa, KENDİ
+    // saygınlığıma göre bunu sezip sezemeyeceğimi dene.
+    let alreadyHasPolice = false;
+    for (const doc of participantsSnap.docs) {
+      if (doc.id === uid) continue;
+      const s = await db.collection('users').doc(doc.id).get();
+      const u = s.data() || {};
+      existingProfessions[doc.id] = u;
+      if (u.profession === 'polis') {
+        alreadyHasPolice = true;
+        break;
+      }
+    }
+    if (alreadyHasPolice) await maybeWarn(uid);
+  }
+
+  if (warnedUids.size > (plan.warnedUids || []).length) {
+    await planRef.update({ warnedUids: Array.from(warnedUids) });
+  }
+
   return { ok: true };
 });
 
 export const leaveHeistPlan = onCall(async (request) => {
   const uid = requireAuth(request);
   const { planId } = request.data || {};
-  await db.collection('heistPlans').doc(planId).collection('participants').doc(uid).delete();
+  const planRef = db.collection('heistPlans').doc(planId);
+  await planRef.collection('participants').doc(uid).delete();
+  // Çıkan oyuncu bu plana bir daha katılamaz.
+  await planRef.update({ removedUids: admin.firestore.FieldValue.arrayUnion(uid) });
   return { ok: true };
 });
 
@@ -2073,6 +2129,8 @@ export const kickFromHeistPlan = onCall(async (request) => {
     );
   }
   await planRef.collection('participants').doc(targetUid).delete();
+  // Atılan oyuncu bu plana bir daha katılamaz.
+  await planRef.update({ removedUids: admin.firestore.FieldValue.arrayUnion(targetUid) });
   return { ok: true };
 });
 
@@ -2384,7 +2442,7 @@ const AVATAR_ENUM_OPTIONS = {
   ],
   heldItem: ['yok', 'tabanca', 'bicak', 'sopa', 'para', 'canta', 'telefon', 'kadeh'],
 };
-const AVATAR_COLOR_FIELDS = ['skin', 'eyeColor', 'hairColor', 'clothColor', 'hatColor', 'lipColor'];
+const AVATAR_COLOR_FIELDS = ['skin', 'eyeColor', 'hairColor', 'clothColor', 'hatColor', 'lipColor', 'background'];
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
 export const setAvatar = onCall(async (request) => {

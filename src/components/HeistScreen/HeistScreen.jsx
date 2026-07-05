@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useWeapons } from '../../hooks/useWeapons';
 import { useOpenHeistPlanCounts } from '../../hooks/useOpenHeistPlanCounts';
+import { useMyActiveHeistPlan } from '../../hooks/useMyActiveHeistPlan';
 import HeistPanel, { HEIST_LABELS } from '../HeistPanel/HeistPanel';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import './HeistScreen.css';
@@ -11,6 +12,7 @@ export default function HeistScreen({ initialTarget, onClose }) {
   const { user } = useAuth();
   const { weapons } = useWeapons();
   const planCounts = useOpenHeistPlanCounts();
+  const myActivePlan = useMyActiveHeistPlan();
   const [selected, setSelected] = useState(initialTarget || null);
 
   useEffect(() => {
@@ -36,6 +38,14 @@ export default function HeistScreen({ initialTarget, onClose }) {
           <p className="heist-screen-power">
             Gücün: <strong>{myPower.toLocaleString('tr-TR')}</strong>
           </p>
+          {myActivePlan && (
+            <button
+              className="heist-screen-myplan-btn"
+              onClick={() => setSelected(myActivePlan.target)}
+            >
+              Ekip Soygunlarım
+            </button>
+          )}
           <button className="heist-screen-close" onClick={onClose}>
             ✕
           </button>

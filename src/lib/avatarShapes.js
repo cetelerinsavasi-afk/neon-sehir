@@ -17,6 +17,9 @@ export const HAIR_COLORS = [
 export const CLOTH_COLORS = ['#22262f', '#0d0d0d', '#5c1a24', '#1d3d5c', '#3a2f1d', '#4a1d5c', '#1d5c3a', '#8a1d1d', '#e8e6df', '#7d7d3a'];
 export const HAT_COLORS = ['#0d0d0d', '#3a2f1d', '#5c1a24', '#1d3d5c', '#d4af37', '#e8e6df', '#4a1d5c', '#1d5c3a'];
 export const LIP_COLORS = ['#a85a52', '#8a3a3a', '#c9636b', '#7a3048', '#b06a4a', '#d48a8a', '#5c2e2e', '#e8998a'];
+export const BACKGROUND_COLORS = [
+  '#080b13', '#0a1f18', '#1d3557', '#3a1d1d', '#3a1d4a', '#1d3a2e', '#4a3a1d', '#2b2b2b', '#5c1a24', '#0d3a3a',
+];
 
 export const AVATAR_OPTIONS = {
   gender: ['erkek', 'kadin'],
@@ -47,6 +50,7 @@ export const AVATAR_OPTIONS = {
 export const DEFAULT_AVATAR = {
   gender: 'erkek', build: 'standart', skin: '#c68863', eyeColor: '#3b2a1a',
   faceShape: 'oval',
+  background: '#080b13',
   hairStyle: 'short', hairColor: '#2b2118',
   eyebrowShape: 'straight', eyeShape: 'almond', eyelash: 'none',
   noseShape: 'small', mouthShape: 'neutral', lipColor: '#a85a52',

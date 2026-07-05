@@ -23,7 +23,7 @@ const MACHINE_LABELS = {
   yasakliMadde: 'Yasaklı Madde Üretim Makinesi',
 };
 const MATERIAL_EMOJIS = {
-  depoUpgrade: '📦',
+  depoUpgrade: '🛢️',
   vitesUpgrade: '⚙️',
   silahUpgrade: '🔧',
   yasakliMadde: '💊',

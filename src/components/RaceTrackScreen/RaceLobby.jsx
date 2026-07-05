@@ -74,6 +74,7 @@ export default function RaceLobby({ myUid, onEnterRoom }) {
       <div className="race-section">
         <p className="race-section-title">Oda Kur</p>
         <VehiclePicker vehicles={vehicles} value={myVehicleId} onChange={setMyVehicleId} />
+        <p className="race-bet-label">Bahsi Belirle: <strong>{betAmount.toLocaleString('tr-TR')} altın</strong></p>
         <QuantityStepper value={betAmount} onChange={setBetAmount} quickAmounts={[1, 10, 100, 1000]} />
         <button
           className="race-btn primary"

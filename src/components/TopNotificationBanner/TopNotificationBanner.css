@@ -1,0 +1,43 @@
+.top-notif-banner {
+  position: fixed;
+  top: calc(8px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(360px, 92vw);
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--neon-cyan);
+  background: rgba(14, 19, 32, 0.97);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  animation: top-notif-slide 0.3s ease;
+}
+
+.top-notif-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.top-notif-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes top-notif-slide {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
