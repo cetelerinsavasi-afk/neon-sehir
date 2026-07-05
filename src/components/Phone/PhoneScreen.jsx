@@ -6,6 +6,7 @@ import AmazorScreen from '../AmazorScreen/AmazorScreen';
 import ChatsAppScreen from '../ChatsAppScreen/ChatsAppScreen';
 import InstallAppButton from '../InstallAppButton/InstallAppButton';
 import { useMessages } from '../../hooks/useMessages';
+import { usePlayer } from '../../hooks/usePlayer';
 import { useUnreadNotifications, markChatsAppSeen } from '../../hooks/useUnreadNotifications';
 import './PhoneScreen.css';
 
@@ -28,6 +29,7 @@ const APP_TITLES = {
 export default function PhoneScreen({ onClose }) {
   const [openApp, setOpenApp] = useState(null);
   const { messages } = useMessages();
+  const { player } = usePlayer();
   const unreadCount = messages.filter((m) => !m.read).length;
   const { chatsAppHasNew } = useUnreadNotifications();
 
@@ -44,6 +46,12 @@ export default function PhoneScreen({ onClose }) {
             ← Uygulamalara dön
           </button>
           <span className="phone-clock">{APP_TITLES[openApp]}</span>
+          {openApp === 'banka' && (
+            <span className="phone-header-gold">
+              <span className="phone-header-gold-coin" />
+              {(player?.gold ?? 0).toLocaleString('tr-TR')}
+            </span>
+          )}
         </div>
         <div className="phone-app-body">
           {openApp === 'sms' && <MessagesScreen />}

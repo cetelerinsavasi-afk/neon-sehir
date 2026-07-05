@@ -235,6 +235,12 @@ function ListingCard({ listing, isMine, busy, onCancel, onBuy }) {
         <span className="market-listing-label">{listingLabel(listing)}</span>
         <span className="market-listing-price">
           {listing.price.toLocaleString('tr-TR')} altın
+          {listing.itemType === 'material' && listing.quantity > 0 && (
+            <span className="market-unit-price">
+              {' '}
+              (adet fiyatı: {Math.round(listing.price / listing.quantity).toLocaleString('tr-TR')} altın)
+            </span>
+          )}
           {!isMine && <span className="market-seller"> · {listing.sellerName}</span>}
         </span>
       </div>
@@ -249,6 +255,7 @@ export default function MarketplaceScreen() {
   const { user } = useAuth();
   const { listings } = useMarketplaceListings();
   const [tab, setTab] = useState('vehicle');
+  const [materialFilter, setMaterialFilter] = useState('all');
   const [showSellForm, setShowSellForm] = useState(false);
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
@@ -265,7 +272,9 @@ export default function MarketplaceScreen() {
     }
   };
 
-  const tabListings = listings.filter((l) => l.itemType === tab);
+  const tabListings = listings
+    .filter((l) => l.itemType === tab)
+    .filter((l) => tab !== 'material' || materialFilter === 'all' || l.materialType === materialFilter);
   const myListings = tabListings.filter((l) => l.sellerId === user?.uid);
   const otherListings = tabListings.filter((l) => l.sellerId !== user?.uid);
 
@@ -287,6 +296,21 @@ export default function MarketplaceScreen() {
           + İlan Ver
         </button>
       </div>
+
+      {tab === 'material' && (
+        <select
+          className="market-material-filter"
+          value={materialFilter}
+          onChange={(e) => setMaterialFilter(e.target.value)}
+        >
+          <option value="all">Tüm malzemeler</option>
+          {Object.entries(MATERIAL_LABELS).map(([key, label]) => (
+            <option key={key} value={key}>
+              {label}
+            </option>
+          ))}
+        </select>
+      )}
 
       {myListings.length > 0 && (
         <>

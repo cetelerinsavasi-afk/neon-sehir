@@ -32,7 +32,7 @@ export default function QuantityStepper({ value, onChange, max, step = 1, quickA
           +
         </button>
       </div>
-      {quickAmounts.length > 0 && (
+      {(quickAmounts.length > 0 || num > 0) && (
         <div className="qty-stepper-quick">
           {quickAmounts.map((q) => (
             <button
@@ -47,6 +47,15 @@ export default function QuantityStepper({ value, onChange, max, step = 1, quickA
           {max !== undefined && max > 0 && (
             <button type="button" className="qty-stepper-quick-btn" onClick={() => onChange(max)}>
               Hepsi ({max})
+            </button>
+          )}
+          {num > 0 && (
+            <button
+              type="button"
+              className="qty-stepper-quick-btn reset"
+              onClick={() => onChange(0)}
+            >
+              Sıfırla
             </button>
           )}
         </div>

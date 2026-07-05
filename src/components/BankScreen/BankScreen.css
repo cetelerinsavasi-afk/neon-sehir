@@ -227,3 +227,33 @@
   font-size: 12px;
   margin: 0;
 }
+
+.bank-total-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: linear-gradient(180deg, rgba(255, 210, 63, 0.1), transparent);
+  border: 1px solid #ffd23f;
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+}
+
+.bank-total-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.bank-total-value {
+  font-size: 26px;
+  font-weight: 800;
+  color: #ffd23f;
+}
+
+.bank-total-breakdown {
+  font-size: 10px;
+  color: var(--text-dim);
+}

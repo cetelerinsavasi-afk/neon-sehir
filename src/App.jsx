@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Hud from './components/Hud/Hud';
 import CityMap from './components/CityMap/CityMap';
@@ -9,6 +9,7 @@ import HeistScreen from './components/HeistScreen/HeistScreen';
 import SignInBanner from './components/SignInBanner/SignInBanner';
 import ReferralPrompt from './components/ReferralPrompt/ReferralPrompt';
 import RaceFullScreen from './components/RaceTrackScreen/RaceFullScreen';
+import RaceBubble from './components/RaceTrackScreen/RaceBubble';
 import OnNumaraFullScreen from './components/OnNumaraScreen/OnNumaraFullScreen';
 import ProfileFullScreen from './components/ProfileFullScreen/ProfileFullScreen';
 import { usePlayer } from './hooks/usePlayer';
@@ -26,14 +27,24 @@ function GameShell() {
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [heistTarget, setHeistTarget] = useState(undefined); // undefined=kapalı, null=açık/hedefsiz
   const [activeRaceRoomId, setActiveRaceRoomId] = useState(null);
+  const [raceExpanded, setRaceExpanded] = useState(false);
   const [activeTableId, setActiveTableId] = useState(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const { player } = usePlayer();
 
   // Aktif bir yarışım varsa (kurdum/katıldım/devam ediyor), harita üzerinde
-  // gezinirken bile tam ekran yarış ekranını otomatik açık tut.
+  // gezinirken bile takip etmeye devam et — ama rakip beklenirken tüm
+  // ekranı KAPLAMASIN, sadece küçük bir yuvarlak göstersin (bkz.
+  // RaceBubble). Yarış gerçekten başladığında (status='racing') otomatik
+  // olarak tam ekrana geçer.
   const { room: myActiveRoom } = useMyActiveRaceRoom();
   const effectiveRaceRoomId = activeRaceRoomId || myActiveRoom?.id || null;
+
+  useEffect(() => {
+    if (myActiveRoom?.status === 'racing') {
+      setRaceExpanded(true);
+    }
+  }, [myActiveRoom?.status]);
 
   const handleRegionClick = (regionId, regionMeta) => {
     setActiveRegion(regionMeta);
@@ -47,6 +58,7 @@ function GameShell() {
   const openRace = (roomId) => {
     setActiveRegion(null);
     setActiveRaceRoomId(roomId);
+    setRaceExpanded(false);
   };
 
   const openTable = (tableId) => {
@@ -90,12 +102,20 @@ function GameShell() {
         <HeistScreen initialTarget={heistTarget} onClose={() => setHeistTarget(undefined)} />
       )}
 
-      {effectiveRaceRoomId && user && (
+      {effectiveRaceRoomId && user && raceExpanded && (
         <RaceFullScreen
           roomId={effectiveRaceRoomId}
           myUid={user.uid}
-          onExit={() => setActiveRaceRoomId(null)}
+          onCollapse={() => setRaceExpanded(false)}
+          onExit={() => {
+            setActiveRaceRoomId(null);
+            setRaceExpanded(false);
+          }}
         />
+      )}
+
+      {effectiveRaceRoomId && user && !raceExpanded && (
+        <RaceBubble roomId={effectiveRaceRoomId} onExpand={() => setRaceExpanded(true)} />
       )}
 
       {activeTableId && user && (

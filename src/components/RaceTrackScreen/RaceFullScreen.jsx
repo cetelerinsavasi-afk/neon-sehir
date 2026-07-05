@@ -4,7 +4,10 @@ import { forfeitRace } from '../../services/gameActions';
 import RaceRoom from './RaceRoom';
 import './RaceFullScreen.css';
 
-export default function RaceFullScreen({ roomId, myUid, onExit }) {
+// onCollapse: rakip beklenirken (henüz yarış başlamamışken) ekranı küçük
+// bir yuvarlağa küçültür — oda hâlâ aktif kalır, harita gezilebilir.
+// onExit: odadan TAMAMEN çıkar (yarış bittiğinde ya da forfeit sonrası).
+export default function RaceFullScreen({ roomId, myUid, onCollapse, onExit }) {
   const { room } = useRaceRoomById(roomId);
   const [confirmingExit, setConfirmingExit] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -20,6 +23,8 @@ export default function RaceFullScreen({ roomId, myUid, onExit }) {
   const handleCloseAttempt = () => {
     if (room.status === 'racing') {
       setConfirmingExit(true);
+    } else if (room.status === 'waiting' || room.status === 'ready') {
+      onCollapse();
     } else {
       onExit();
     }
@@ -43,7 +48,7 @@ export default function RaceFullScreen({ roomId, myUid, onExit }) {
       <div className="race-fullscreen-header">
         <span className="race-fullscreen-title">🏁 Yarış Pisti</span>
         <button className="race-fullscreen-close" onClick={handleCloseAttempt}>
-          ✕
+          {room.status === 'waiting' || room.status === 'ready' ? '⌄' : '✕'}
         </button>
       </div>
       <div className="race-fullscreen-body">

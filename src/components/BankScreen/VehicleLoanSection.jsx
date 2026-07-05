@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useVehicles } from '../../hooks/useVehicles';
 import { takeVehicleLoan, repayVehicleLoan } from '../../services/gameActions';
+import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './VehicleLoanSection.css';
 
 const TERMS = [
@@ -91,30 +92,21 @@ export default function VehicleLoanSection() {
             <p className="loan-hint">
               Kalan borç: {remaining.toLocaleString('tr-TR')} altın · Vade: {formatDate(v.loanDueAt)}
             </p>
-            <div className="loan-repay-row">
-              <input
-                type="number"
-                min="1"
-                max={remaining}
-                placeholder="Ödeme miktarı"
-                value={repayAmounts[v.id] || ''}
-                onChange={(e) =>
-                  setRepayAmounts((prev) => ({ ...prev, [v.id]: e.target.value }))
-                }
-                className="loan-input"
-              />
-              <button
-                className="loan-btn"
-                disabled={busy === `repay-${v.id}` || !repayAmounts[v.id]}
-                onClick={() =>
-                  run(`repay-${v.id}`, () =>
-                    repayVehicleLoan(v.id, Number(repayAmounts[v.id]))
-                  )
-                }
-              >
-                Öde
-              </button>
-            </div>
+            <QuantityStepper
+              value={repayAmounts[v.id] || 0}
+              onChange={(v2) => setRepayAmounts((prev) => ({ ...prev, [v.id]: v2 }))}
+              max={remaining}
+              quickAmounts={[100, 500, 1000]}
+            />
+            <button
+              className="loan-btn"
+              disabled={busy === `repay-${v.id}` || !repayAmounts[v.id]}
+              onClick={() =>
+                run(`repay-${v.id}`, () => repayVehicleLoan(v.id, Number(repayAmounts[v.id])))
+              }
+            >
+              {repayAmounts[v.id] > 0 ? `Öde — ${Number(repayAmounts[v.id]).toLocaleString('tr-TR')} altın` : 'Öde'}
+            </button>
           </div>
         );
       })}

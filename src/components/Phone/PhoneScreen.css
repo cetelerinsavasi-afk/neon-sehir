@@ -203,3 +203,20 @@
 .phone-install-row {
   padding: 0 20px 20px;
 }
+
+.phone-header-gold {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffd23f;
+}
+
+.phone-header-gold-coin {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff5c2, #ffd23f 55%, #b8860b 100%);
+  display: inline-block;
+}

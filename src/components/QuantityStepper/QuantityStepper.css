@@ -59,3 +59,8 @@
   border-color: var(--neon-cyan);
   color: var(--neon-cyan);
 }
+
+.qty-stepper-quick-btn.reset {
+  border-color: var(--neon-pink);
+  color: var(--neon-pink);
+}

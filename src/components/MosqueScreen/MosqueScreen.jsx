@@ -12,7 +12,7 @@ export default function MosqueScreen() {
       <SimpleActionScreen
         signInMessage="İbadet etmek için giriş yapmalısın."
         description="Günde bir kez ibadet ederek şüphe puanını azaltabilirsin. Ücretsiz."
-        buttonLabel="İbadet Et (Şüphe -5)"
+        buttonLabel="İbadet Et (Şüphe -10)"
         doneLabel="Bugün ibadet ettin"
         dailyFlagKey="prayed"
         actionFn={prayAtMosque}

@@ -93,21 +93,28 @@ function TradeToggle({ buyLabel, sellLabel, onBuy, onSell, unitPrice, busy }) {
 }
 
 function InvestmentsTab({ player, prices, busy, error, run }) {
-  const gold = player?.gold ?? 0;
   const bankBalance = player?.bankBalance ?? 0;
   const diamondHoldings = player?.diamondHoldings ?? 0;
   const cryptoHoldings = player?.cryptoHoldings ?? 0;
   const { history } = useInvestmentHistory();
   const diamondPoints = history.map((h) => h.diamondPrice).filter((v) => v !== undefined);
   const cryptoPoints = history.map((h) => h.cryptoPrice).filter((v) => v !== undefined);
+  const diamondValue = Math.floor(diamondHoldings * (prices.diamondPrice ?? 0));
+  const cryptoValue = Math.floor(cryptoHoldings * (prices.cryptoPrice ?? 0));
+  const totalInvestments = bankBalance + diamondValue + cryptoValue;
 
   return (
     <>
+      <div className="bank-total-card">
+        <span className="bank-total-label">Tüm Yatırımların</span>
+        <span className="bank-total-value">{totalInvestments.toLocaleString('tr-TR')} altın</span>
+        <span className="bank-total-breakdown">
+          Faizdeki: {bankBalance.toLocaleString('tr-TR')} · Elmas: {diamondValue.toLocaleString('tr-TR')} · Kripto:{' '}
+          {cryptoValue.toLocaleString('tr-TR')}
+        </span>
+      </div>
+
       <div className="bank-section">
-        <div className="bank-section-row">
-          <span>Cepteki altın</span>
-          <strong>{gold.toLocaleString('tr-TR')}</strong>
-        </div>
         <div className="bank-section-row">
           <span>Faizdeki Altın</span>
           <strong className="bank-highlight">{bankBalance.toLocaleString('tr-TR')}</strong>

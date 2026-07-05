@@ -4,6 +4,7 @@ import { useOpenOnNumaraTables } from '../../hooks/useOpenOnNumaraTables';
 import { createOnNumaraTable, joinOnNumaraTable } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import InfoIcon from '../InfoIcon/InfoIcon';
+import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './OnNumaraScreen.css';
 
 const RULES_TEXT =
@@ -13,7 +14,7 @@ export default function OnNumaraScreen({ onEnterTable }) {
   const { user } = useAuth();
   const { tables } = useOpenOnNumaraTables();
   const [capacity, setCapacity] = useState(1);
-  const [betAmount, setBetAmount] = useState('');
+  const [betAmount, setBetAmount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -73,19 +74,10 @@ export default function OnNumaraScreen({ onEnterTable }) {
             </button>
           ))}
         </div>
-        <div className="onnumara-row">
-          <input
-            type="number"
-            min="1"
-            placeholder="Bahis miktarı (altın)"
-            value={betAmount}
-            onChange={(e) => setBetAmount(e.target.value)}
-            className="onnumara-input"
-          />
-          <button className="onnumara-btn primary" disabled={busy || !betAmount} onClick={handleCreate}>
-            Masa Kur
-          </button>
-        </div>
+        <QuantityStepper value={betAmount} onChange={setBetAmount} quickAmounts={[1, 10, 100, 1000]} />
+        <button className="onnumara-btn primary" disabled={busy || !betAmount} onClick={handleCreate}>
+          {betAmount > 0 ? `Masa Kur — ${betAmount.toLocaleString('tr-TR')} altın bahis` : 'Masa Kur'}
+        </button>
       </div>
 
       <div className="onnumara-section">

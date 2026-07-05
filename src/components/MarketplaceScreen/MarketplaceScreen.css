@@ -236,3 +236,18 @@
   font-size: 12px;
   margin: 0;
 }
+
+.market-unit-price {
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.market-material-filter {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+}

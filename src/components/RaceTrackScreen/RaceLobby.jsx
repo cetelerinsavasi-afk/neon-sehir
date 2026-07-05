@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useOpenRaceRooms } from '../../hooks/useOpenRaceRooms';
 import { createRaceRoom, joinRaceRoom } from '../../services/gameActions';
+import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './RaceTrackScreen.css';
 
 function VehiclePicker({ vehicles, value, onChange }) {
@@ -29,7 +30,7 @@ export default function RaceLobby({ myUid, onEnterRoom }) {
   const vehicles = allVehicles.filter((v) => !v.seizedByBank);
   const { rooms } = useOpenRaceRooms();
   const [myVehicleId, setMyVehicleId] = useState('');
-  const [betAmount, setBetAmount] = useState('');
+  const [betAmount, setBetAmount] = useState(0);
   const [joinVehicleByRoom, setJoinVehicleByRoom] = useState({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -73,23 +74,14 @@ export default function RaceLobby({ myUid, onEnterRoom }) {
       <div className="race-section">
         <p className="race-section-title">Oda Kur</p>
         <VehiclePicker vehicles={vehicles} value={myVehicleId} onChange={setMyVehicleId} />
-        <div className="race-row">
-          <input
-            type="number"
-            min="1"
-            placeholder="Bahis miktarı (altın)"
-            value={betAmount}
-            onChange={(e) => setBetAmount(e.target.value)}
-            className="race-input"
-          />
-          <button
-            className="race-btn primary"
-            disabled={busy || !myVehicleId || !betAmount}
-            onClick={handleCreate}
-          >
-            Oda Kur
-          </button>
-        </div>
+        <QuantityStepper value={betAmount} onChange={setBetAmount} quickAmounts={[1, 10, 100, 1000]} />
+        <button
+          className="race-btn primary"
+          disabled={busy || !myVehicleId || !betAmount}
+          onClick={handleCreate}
+        >
+          {betAmount > 0 ? `Oda Kur — ${betAmount.toLocaleString('tr-TR')} altın bahis` : 'Oda Kur'}
+        </button>
       </div>
 
       <div className="race-section">

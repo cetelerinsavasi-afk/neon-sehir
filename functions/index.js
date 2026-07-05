@@ -1487,7 +1487,7 @@ export const prayAtMosque = onCall(async (request) => {
     if (dailySnap.exists && dailySnap.data().prayed) {
       throw new HttpsError('failed-precondition', 'Bugün ibadet ettin.');
     }
-    tx.update(userRef, { suspicion: clampSuspicion((user?.suspicion || 0) - 5) });
+    tx.update(userRef, { suspicion: clampSuspicion((user?.suspicion || 0) - 10) });
     tx.set(dailyRef, { prayed: true }, { merge: true });
     // Bugünkü Cemaat listesi için — Camii ekranında avatar+isimle gösterilir.
     tx.set(
