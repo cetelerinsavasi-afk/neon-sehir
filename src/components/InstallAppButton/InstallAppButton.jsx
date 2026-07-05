@@ -5,19 +5,26 @@ import './InstallAppButton.css';
 export default function InstallAppButton() {
   const { installed, canPromptNatively, isIos, promptInstall } = usePwaInstall();
   const [showIosGuide, setShowIosGuide] = useState(false);
+  const [preparing, setPreparing] = useState(false);
 
   if (installed) return null;
 
   const handleClick = async () => {
     if (canPromptNatively) {
       await promptInstall();
-    } else if (isIos) {
-      setShowIosGuide(true);
-    } else {
-      // Tarayıcı native prompt vermiyor (henüz kriterleri karşılamamış
-      // olabilir) — yine de kısa bir yönlendirme gösterelim.
-      setShowIosGuide(true);
+      return;
     }
+    if (isIos) {
+      setShowIosGuide(true);
+      return;
+    }
+    // Android/diğer: tarayıcı "yükleme hazır" sinyalini (beforeinstallprompt)
+    // henüz göndermemiş olabilir — bu event sayfa açıldıktan biraz sonra
+    // gelebiliyor. Kılavuz göstermek yerine, işareti koyup birazdan
+    // OTOMATİK açılmasını bekliyoruz (bkz. usePwaInstall).
+    await promptInstall();
+    setPreparing(true);
+    setTimeout(() => setPreparing(false), 5000);
   };
 
   return (
@@ -25,6 +32,12 @@ export default function InstallAppButton() {
       <button className="install-app-btn" onClick={handleClick}>
         📲 Oyunu Ana Ekrana Ekle
       </button>
+      {preparing && (
+        <p className="install-app-preparing">
+          Hazırlanıyor… birkaç saniye içinde yükleme penceresi açılacak. Açılmazsa tarayıcı
+          menüsünden "Ana ekrana ekle" seçeneğini kullanabilirsin.
+        </p>
+      )}
 
       {showIosGuide && (
         <div className="install-guide-backdrop" onClick={() => setShowIosGuide(false)}>

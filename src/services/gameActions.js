@@ -110,8 +110,7 @@ export const attemptHeist = (target) =>
 export const sellContrabandToDepo = (quantity) =>
   httpsCallable(functions, 'sellContrabandToDepo')({ quantity });
 
-export const sellContrabandAtPark = (quantity) =>
-  httpsCallable(functions, 'sellContrabandAtPark')({ quantity });
+export const sellContrabandAtPark = () => httpsCallable(functions, 'sellContrabandAtPark')();
 
 export const placeLimanOrder = (materialType, quantity) =>
   httpsCallable(functions, 'placeLimanOrder')({ materialType, quantity });

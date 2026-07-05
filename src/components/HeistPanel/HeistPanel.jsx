@@ -4,6 +4,7 @@ import { useDailyActions } from '../../hooks/useDailyActions';
 import { useOpenHeistPlans } from '../../hooks/useOpenHeistPlans';
 import { useHeistPlanParticipants } from '../../hooks/useHeistPlanParticipants';
 import { useWeapons } from '../../hooks/useWeapons';
+import { useMyActiveHeistPlans } from '../../hooks/useMyActiveHeistPlan';
 import {
   attemptHeist,
   createHeistPlan,
@@ -172,6 +173,7 @@ export default function HeistPanel({ target }) {
   const { actions } = useDailyActions();
   const { plans } = useOpenHeistPlans(target);
   const { weapons } = useWeapons();
+  const myActivePlans = useMyActiveHeistPlans();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
@@ -183,6 +185,9 @@ export default function HeistPanel({ target }) {
   const done = Boolean(actions.heist?.[target]);
   const myPower = weapons.reduce((max, w) => Math.max(max, w.power || 0), 0);
   const needsTeam = myPower < meta.requiredPower;
+  // Kısıtlama HEDEFE ÖZEL: bu hedefte zaten bir ekibim varsa yeni bir
+  // tane kuramam, ama başka hedeflerdeki ekiplerim bunu etkilemez.
+  const alreadyInThisTarget = myActivePlans.some((p) => p.target === target);
 
   const handleAttempt = async () => {
     setBusy(true);
@@ -225,7 +230,7 @@ export default function HeistPanel({ target }) {
       </p>
 
       {needsTeam ? (
-        plans.length === 0 && (
+        !alreadyInThisTarget && (
           <button className="heist-panel-btn secondary" disabled={done || busy} onClick={handleCreatePlan}>
             Ekip Kur
           </button>
@@ -251,7 +256,7 @@ export default function HeistPanel({ target }) {
 
       {(needsTeam || showTeamForming || plans.length > 0) && (
         <div className="heist-plan-list">
-          <p className="heist-plan-list-title">Ekip Soygunu</p>
+          <p className="heist-plan-list-title">Ekip Soygunları ({plans.length})</p>
           {plans.map((plan) => (
             <PlanCard
               key={plan.id}

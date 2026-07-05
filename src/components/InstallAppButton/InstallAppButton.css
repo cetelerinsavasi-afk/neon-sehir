@@ -70,3 +70,11 @@
   font-size: 13px;
   cursor: pointer;
 }
+
+.install-app-preparing {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: center;
+  line-height: 1.4;
+}

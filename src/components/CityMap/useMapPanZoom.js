@@ -2,7 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 const MIN_SCALE = 1; // taban ölçek: ekrana tam sığdırılmış hâl. Bunun altına inilemez (ekstra uzaklaştırma yok).
 const MAX_SCALE = 2.5;
-const TAP_THRESHOLD = 8; // px — bunun altındaki hareket "tıklama/dokunma" sayılır, üstü "sürükleme"
+const TAP_THRESHOLD = 20; // px — bunun altındaki hareket "tıklama/dokunma" sayılır, üstü "sürükleme".
+// Not: Bu değer önceden 8px'ti ama bazı Android cihaz/tarayıcı kombinasyonları
+// kısa bir dokunuşta bile iOS'a göre belirgin şekilde daha fazla koordinat
+// titreşimi (jitter) raporluyor — eşik çok dar olunca gerçek bir tıklama
+// yanlışlıkla "sürükleme" sanılıp yok sayılıyor, kullanıcı parmağını
+// kıpırdatmadan basılı tutmak zorunda kalıyormuş gibi hissediyordu. 20px,
+// gerçek harita sürüklemesini (tipik olarak 30px+) hâlâ net ayırt ederken
+// dokunma hassasiyetindeki cihaz farklarını tolere ediyor.
 
 /**
  * useMapPanZoom — tek elle sürükleme, iki parmakla pinch-zoom (mobil),

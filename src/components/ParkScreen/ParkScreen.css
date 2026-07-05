@@ -61,3 +61,32 @@
   font-size: 12px;
   margin: 0;
 }
+
+.park-suspicion-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--neon-pink);
+  font-weight: 600;
+}
+
+.park-btn.primary {
+  width: 100%;
+  padding: 12px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.park-result {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.park-result.success {
+  color: var(--neon-cyan);
+}
+
+.park-result.caught {
+  color: var(--neon-pink);
+}

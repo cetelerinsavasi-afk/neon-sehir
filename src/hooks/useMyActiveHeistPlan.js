@@ -4,41 +4,43 @@ import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 
 /**
- * useMyActiveHeistPlan — kullanıcının hâlihazırda kurduğu ya da katıldığı,
- * hâlâ açık (status='open') bir ekip soygun planı var mı diye bakar.
- * Soygun ekranında "Ekip Soygunlarım" hızlı erişim butonu için kullanılır.
+ * useMyActiveHeistPlans — kullanıcının hâlihazırda kurduğu ya da katıldığı,
+ * hâlâ açık (status='open') TÜM ekip soygun planlarını döner (birden
+ * fazla olabilir — kısıtlama HEDEFE ÖZELDİR: aynı anda farklı hedeflerde
+ * ayrı ekiplerde olabilirsin, sadece aynı hedefte ikinci bir ekipte
+ * olamazsın). Soygun ekranında "Ekip Soygunlarım" hızlı erişimi ve
+ * "bu hedefte zaten bir ekibim var mı" kontrolü için kullanılır.
  */
-export function useMyActiveHeistPlan() {
+export function useMyActiveHeistPlans() {
   const { user } = useAuth();
-  const [planInfo, setPlanInfo] = useState(null);
+  const [plans, setPlans] = useState([]);
 
   useEffect(() => {
     if (!user) {
-      setPlanInfo(null);
+      setPlans([]);
       return;
     }
     const q = query(collection(db, 'heistPlans'), where('status', '==', 'open'));
     const unsubscribe = onSnapshot(q, async (snap) => {
-      const created = snap.docs.find((d) => d.data().creatorUid === user.uid);
-      if (created) {
-        setPlanInfo({ planId: created.id, target: created.data().target });
-        return;
-      }
+      const mine = [];
       for (const d of snap.docs) {
+        if (d.data().creatorUid === user.uid) {
+          mine.push({ planId: d.id, target: d.data().target });
+          continue;
+        }
         try {
           const pSnap = await getDoc(doc(db, 'heistPlans', d.id, 'participants', user.uid));
           if (pSnap.exists()) {
-            setPlanInfo({ planId: d.id, target: d.data().target });
-            return;
+            mine.push({ planId: d.id, target: d.data().target });
           }
         } catch {
           // yoksay, sıradaki plana bak
         }
       }
-      setPlanInfo(null);
+      setPlans(mine);
     });
     return unsubscribe;
   }, [user]);
 
-  return planInfo;
+  return plans;
 }

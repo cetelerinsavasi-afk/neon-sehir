@@ -1791,19 +1791,22 @@ export const sellContrabandToDepo = onCall(async (request) => {
 // sellContrabandAtPark — riskli kanal, +5 şüphe (kaynağı fark etmez: ister
 // kendin üret, ister Depo'dan al, Park'ta satmak her zaman şüphe artırır).
 // ---------------------------------------------------------------------------
+// sellContrabandAtPark — Park'ta yasaklı madde satışı, TEK SEFERDE 1 adet.
+// Her satışta, o anki şüphe yüzdesi kadar ihtimalle polis tarafından
+// yakalanma riski var (şüphe %40 ise %40 ihtimalle yakalanırsın).
+// Yakalanırsan: mal yine elden gider ama kazanacağın altın YERİNE aynı
+// miktar (5000) devlete borç yazılır — hiç cepten kesilmez, tamamı borca
+// gider (Bölüm 10 kuralı). Yakalanmazsan normal şekilde kazanırsın.
 export const sellContrabandAtPark = onCall(async (request) => {
   const uid = requireAuth(request);
-  const qty = Number(request.data?.quantity);
-  if (!Number.isInteger(qty) || qty <= 0) {
-    throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
-  }
   const userRef = db.collection('users').doc(uid);
   const inventoryRef = userRef.collection('inventory').doc('yasakliMadde');
+  let outcome = null;
 
   await db.runTransaction(async (tx) => {
     const [invSnap, userSnap] = await Promise.all([tx.get(inventoryRef), tx.get(userRef)]);
     const have = invSnap.exists ? invSnap.data().quantity || 0 : 0;
-    if (have < qty) {
+    if (have < 1) {
       throw new HttpsError('failed-precondition', 'Yeterli malınız yok.');
     }
     const user = userSnap.data();
@@ -1813,19 +1816,40 @@ export const sellContrabandAtPark = onCall(async (request) => {
         'Polis mesleğindeyken/başvurun beklerken şüpheni artıracak hiçbir şey yapamazsın.'
       );
     }
-    tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-qty) }, { merge: true });
-    const { goldDelta, debtDelta } = splitIncomeForDebt(
-      user?.debtToState,
-      qty * CONTRABAND_PARK_SELL_PRICE
-    );
-    tx.update(userRef, {
-      gold: admin.firestore.FieldValue.increment(goldDelta),
-      debtToState: admin.firestore.FieldValue.increment(debtDelta),
-      suspicion: clampSuspicion((user.suspicion || 0) + PARK_SUSPICION_COST * qty),
-    });
+
+    const currentSuspicion = user.suspicion || 0;
+    const caught = Math.random() * 100 < currentSuspicion;
+    const newSuspicion = clampSuspicion(currentSuspicion + PARK_SUSPICION_COST);
+
+    // Mal her durumda elden gider — satıldı ya da polis el koydu.
+    tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-1) }, { merge: true });
+
+    if (caught) {
+      const newTotalDebt = (user.debtToState || 0) + CONTRABAND_PARK_SELL_PRICE;
+      tx.update(userRef, {
+        debtToState: newTotalDebt,
+        suspicion: newSuspicion,
+      });
+      outcome = { caught: true, penalty: CONTRABAND_PARK_SELL_PRICE, newTotalDebt };
+    } else {
+      const { goldDelta, debtDelta } = splitIncomeForDebt(
+        user.debtToState,
+        CONTRABAND_PARK_SELL_PRICE
+      );
+      tx.update(userRef, {
+        gold: admin.firestore.FieldValue.increment(goldDelta),
+        debtToState: admin.firestore.FieldValue.increment(debtDelta),
+        suspicion: newSuspicion,
+      });
+      outcome = { caught: false, earned: CONTRABAND_PARK_SELL_PRICE };
+    }
   });
 
-  return { ok: true, earned: qty * CONTRABAND_PARK_SELL_PRICE };
+  if (outcome.caught) {
+    await sendCaptureSms(uid, outcome.penalty, outcome.newTotalDebt);
+  }
+
+  return { ok: true, ...outcome };
 });
 
 // ---------------------------------------------------------------------------
@@ -1943,6 +1967,25 @@ const HEIST_TARGETS = Object.keys(HEIST_CONFIG);
 const HEIST_PLAN_MAX_PARTICIPANTS = 4;
 const HEIST_PLAN_DURATION_MS = 24 * 60 * 60 * 1000;
 
+// isAlreadyInActiveHeistPlanForTarget — bir oyuncunun (kurucu ya da
+// katılımcı olarak) BELİRLİ BİR HEDEF için hâlâ açık bir ekip soygun
+// planında olup olmadığını kontrol eder. Kısıtlama HEDEFE ÖZELDİR: aynı
+// anda farklı hedeflerde (örn. hem Fabrika hem Garaj) ayrı ekiplerde
+// olabilirsin, ama AYNI hedefte ikinci bir ekipte olamazsın.
+async function isAlreadyInActiveHeistPlanForTarget(uid, target) {
+  const openSnap = await db
+    .collection('heistPlans')
+    .where('status', '==', 'open')
+    .where('target', '==', target)
+    .get();
+  for (const doc of openSnap.docs) {
+    if (doc.data().creatorUid === uid) return true;
+    const pSnap = await doc.ref.collection('participants').doc(uid).get();
+    if (pSnap.exists) return true;
+  }
+  return false;
+}
+
 export const createHeistPlan = onCall(async (request) => {
   const uid = requireAuth(request);
   const { target } = request.data || {};
@@ -1954,6 +1997,12 @@ export const createHeistPlan = onCall(async (request) => {
   const user = userSnap.data();
   if (user?.profession === 'polis' || user?.pendingPoliceChange === 'apply') {
     throw new HttpsError('failed-precondition', 'Polis mesleğindeyken/başvurun beklerken soygun planı kuramazsın.');
+  }
+  if (await isAlreadyInActiveHeistPlanForTarget(uid, target)) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Bu hedefte zaten aktif bir ekip soygunundasın — önce ondan ayrılman/onu bitirmen gerekir.'
+    );
   }
 
   const dateKey = istanbulDateKey();
@@ -2014,6 +2063,12 @@ export const joinHeistPlan = onCall(async (request) => {
     throw new HttpsError(
       'failed-precondition',
       'Bu ekipten ayrıldın/atıldın, tekrar katılamazsın.'
+    );
+  }
+  if (plan.creatorUid !== uid && (await isAlreadyInActiveHeistPlanForTarget(uid, plan.target))) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Bu hedefte zaten aktif bir ekip soygunundasın — önce ondan ayrılman/onu bitirmen gerekir.'
     );
   }
 
