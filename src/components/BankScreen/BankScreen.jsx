@@ -32,25 +32,32 @@ function ChangeBadge({ pct }) {
 }
 
 // Al/Sat butonlu, tıklanınca altta ilgili işlemin girdi paneli açılan
-// aksiyon bileşeni — eskiden iki kutu alt alta duruyordu, artık tek
-// butona basınca ihtiyacın olan panel açılıyor.
-function TradeToggle({ buyLabel, sellLabel, onBuy, onSell, unitPrice, busy }) {
+// aksiyon bileşeni. Panel boş bir kutu yerine buton bazlı bir miktar
+// seçiciyle (QuantityStepper) açılır. Oyuncular "Onayla" butonunu fark
+// etmeyip tekrar Al/Sat'a basmayı daha mantıklı bulduğu için: panel zaten
+// açıkken AYNI butona tekrar basmak artık paneli KAPATMIYOR, bir miktar
+// girilmişse doğrudan İŞLEMİ ONAYLIYOR.
+function TradeToggle({ buyLabel, sellLabel, onBuy, onSell, unitPrice, busy, maxBuy, maxSell }) {
   const [mode, setMode] = useState(null); // 'buy' | 'sell' | null
-  const [value, setValue] = useState('');
-  const amount = Math.floor(Number(value));
+  const [amount, setAmount] = useState(0);
   const preview = unitPrice && amount > 0 ? amount / unitPrice : null;
 
-  const openMode = (m) => {
-    setMode(mode === m ? null : m);
-    setValue('');
+  const handleSubmit = async (m) => {
+    if (!amount || amount <= 0) return;
+    if (m === 'buy') await onBuy(amount);
+    else await onSell(amount);
+    setAmount(0);
+    setMode(null);
   };
 
-  const handleSubmit = async () => {
-    if (!amount || amount <= 0) return;
-    if (mode === 'buy') await onBuy(amount);
-    else await onSell(amount);
-    setValue('');
-    setMode(null);
+  const handleClick = (m) => {
+    if (mode === m) {
+      // Aynı butona ikinci kez basıldı — bir miktar seçilmişse onayla.
+      if (amount > 0) handleSubmit(m);
+      return;
+    }
+    setMode(m);
+    setAmount(0);
   };
 
   return (
@@ -58,33 +65,34 @@ function TradeToggle({ buyLabel, sellLabel, onBuy, onSell, unitPrice, busy }) {
       <div className="bank-trade-buttons">
         <button
           className={`bank-trade-btn${mode === 'buy' ? ' active' : ''}`}
-          onClick={() => openMode('buy')}
+          onClick={() => handleClick('buy')}
         >
           {buyLabel}
         </button>
         <button
           className={`bank-trade-btn${mode === 'sell' ? ' active' : ''}`}
-          onClick={() => openMode('sell')}
+          onClick={() => handleClick('sell')}
         >
           {sellLabel}
         </button>
       </div>
       {mode && (
         <div className="bank-trade-panel">
-          <input
-            type="number"
-            min="1"
-            placeholder="Altın miktarı"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            className="bank-input"
-            autoFocus
+          <QuantityStepper
+            value={amount}
+            onChange={setAmount}
+            max={mode === 'buy' ? maxBuy : maxSell}
+            quickAmounts={[10, 100, 1000, 10000]}
           />
           {preview !== null && (
             <span className="bank-amount-preview">≈ {formatUnits(preview)} adet</span>
           )}
-          <button className="bank-btn primary" disabled={busy || !amount} onClick={handleSubmit}>
-            {busy ? '…' : 'Onayla'}
+          <button
+            className="bank-btn primary"
+            disabled={busy || !amount}
+            onClick={() => handleSubmit(mode)}
+          >
+            {busy ? '…' : `Onayla — ${amount.toLocaleString('tr-TR')} altın`}
           </button>
         </div>
       )}
@@ -124,6 +132,8 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
           buyLabel="Yatır"
           sellLabel="Çek"
           busy={busy === 'deposit' || busy === 'withdraw'}
+          maxBuy={player?.gold ?? 0}
+          maxSell={bankBalance}
           onBuy={(amount) => run('deposit', () => depositToBank(amount))}
           onSell={(amount) => run('withdraw', () => withdrawFromBank(amount))}
         />
@@ -151,6 +161,8 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
           sellLabel="Sat"
           unitPrice={prices.diamondPrice}
           busy={busy === 'buy-diamond' || busy === 'sell-diamond'}
+          maxBuy={player?.gold ?? 0}
+          maxSell={diamondValue}
           onBuy={(amount) => run('buy-diamond', () => buyInvestment('diamond', amount))}
           onSell={(amount) => run('sell-diamond', () => sellInvestment('diamond', amount))}
         />
@@ -187,6 +199,8 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
           sellLabel="Sat"
           unitPrice={prices.cryptoPrice}
           busy={busy === 'buy-crypto' || busy === 'sell-crypto'}
+          maxBuy={player?.gold ?? 0}
+          maxSell={cryptoValue}
           onBuy={(amount) => run('buy-crypto', () => buyInvestment('crypto', amount))}
           onSell={(amount) => run('sell-crypto', () => sellInvestment('crypto', amount))}
         />

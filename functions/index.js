@@ -13,7 +13,7 @@ setGlobalOptions({ region: 'europe-west1' });
 
 const VALID_MACHINES = ['depoUpgrade', 'vitesUpgrade', 'silahUpgrade', 'yasakliMadde'];
 const MACHINE_PRICE = 100000; // Bölüm 8.2
-const FACTORY_WAGE = 1000; // Bölüm 6 — işçilik günlük ücreti
+const FACTORY_WAGE = 2000; // Bölüm 6 — işçilik günlük ücreti
 const DAILY_OUTPUT = {
   depoUpgrade: 10,
   vitesUpgrade: 10,
@@ -1507,8 +1507,8 @@ export const prayAtMosque = onCall(async (request) => {
 // ---------------------------------------------------------------------------
 // bribePolice — Karakol: günde 1 kez, 3000 altın, şüphe -10.
 // ---------------------------------------------------------------------------
-const BRIBE_COST = 3000;
-const POLICE_SALARY = 2000;
+const BRIBE_COST = 4000;
+const POLICE_SALARY = 4000;
 
 export const bribePolice = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -1527,7 +1527,7 @@ export const bribePolice = onCall(async (request) => {
     }
     tx.update(userRef, {
       gold: admin.firestore.FieldValue.increment(-BRIBE_COST),
-      suspicion: clampSuspicion((user.suspicion || 0) - 10),
+      suspicion: clampSuspicion((user.suspicion || 0) - 20),
     });
     tx.set(dailyRef, { bribed: true }, { merge: true });
   });
@@ -1572,6 +1572,15 @@ export const claimPoliceSalary = onCall(async (request) => {
 // şüphe -5, saygınlık +10.
 // ---------------------------------------------------------------------------
 const VENDOR_COST = 1000;
+// Dönerci ve Köfteci'de alışveriş eşiği daha düşük (500 altın) —
+// diğerleri (Kokoreçci, Simitçi) 1000 altın olarak kalıyor.
+const VENDOR_COSTS = {
+  seyyar_satici_3: 500, // Dönerci
+  seyyar_satici_4: 500, // Köfteci
+};
+function vendorCostFor(vendorId) {
+  return VENDOR_COSTS[vendorId] ?? VENDOR_COST;
+}
 
 export const buyFromVendor = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -1596,11 +1605,11 @@ export const buyFromVendor = onCall(async (request) => {
         'Bu satıcıdan bugün haraç kestin, aynı gün alışveriş yapamazsın.'
       );
     }
-    if (!user || (user.gold || 0) < VENDOR_COST) {
+    if (!user || (user.gold || 0) < vendorCostFor(vendorId)) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
     tx.update(userRef, {
-      gold: admin.firestore.FieldValue.increment(-VENDOR_COST),
+      gold: admin.firestore.FieldValue.increment(-vendorCostFor(vendorId)),
       suspicion: clampSuspicion((user.suspicion || 0) - 5),
       reputation: clamp(Math.round((user.reputation || 0) + 10), 0, 100),
     });
@@ -2071,6 +2080,16 @@ export const joinHeistPlan = onCall(async (request) => {
       'Bu hedefte zaten aktif bir ekip soygunundasın — önce ondan ayrılman/onu bitirmen gerekir.'
     );
   }
+  {
+    const dateKey = istanbulDateKey();
+    const dailySnap = await db.collection('dailyActions').doc(`${uid}_${dateKey}`).get();
+    if (dailySnap.exists && dailySnap.data().heist?.[plan.target]) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Bu hedefi bugün zaten soydun (tek başına ya da ekiple) — aynı gün tekrar katılamazsın.'
+      );
+    }
+  }
 
   const participantsSnap = await planRef.collection('participants').get();
   if (participantsSnap.size >= HEIST_PLAN_MAX_PARTICIPANTS) {
@@ -2387,6 +2406,28 @@ export const expireHeistPlans = onSchedule({ schedule: 'every 60 minutes' }, asy
     }
   });
   if (any) await batch.commit();
+});
+
+// expireRaceRooms — 5 dakika boyunca rakip bulamayan (status='waiting')
+// yarış odalarını otomatik iptal eder, kurucunun bahsini iade eder.
+export const expireRaceRooms = onSchedule({ schedule: 'every 5 minutes' }, async () => {
+  const now = Date.now();
+  const FIVE_MIN = 5 * 60 * 1000;
+  const waitingSnap = await db.collection('raceRooms').where('status', '==', 'waiting').get();
+  const refunds = [];
+  waitingSnap.forEach((doc) => {
+    const room = doc.data();
+    const createdAtMs = room.createdAt?.toMillis?.() ?? 0;
+    if (createdAtMs && now - createdAtMs >= FIVE_MIN) {
+      refunds.push(
+        db.collection('users').doc(room.creatorUid).update({
+          gold: admin.firestore.FieldValue.increment(room.betAmount),
+        }),
+        doc.ref.update({ status: 'cancelled' })
+      );
+    }
+  });
+  if (refunds.length) await Promise.all(refunds);
 });
 
 // ---------------------------------------------------------------------------
@@ -2860,6 +2901,38 @@ export const declineOpponent = onCall(async (request) => {
       status: 'waiting',
       participantUids: [uid],
       [`players.${joinerUid}`]: admin.firestore.FieldValue.delete(),
+    });
+  });
+
+  return { ok: true };
+});
+
+// leaveRaceRoomAsJoiner — KATILAN oyuncu (kurucu değil), kurucu yarışı
+// uzun süre başlatmıyorsa ya da vazgeçtiyse odadan ayrılabilir. Bahsi
+// iade edilir, oda kurucu ile birlikte 'waiting' durumuna döner (yeni bir
+// rakip bekleyebilir).
+export const leaveRaceRoomAsJoiner = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { roomId } = request.data || {};
+  const roomRef = db.collection('raceRooms').doc(roomId);
+
+  await db.runTransaction(async (tx) => {
+    const roomSnap = await tx.get(roomRef);
+    if (!roomSnap.exists) throw new HttpsError('failed-precondition', 'Oda bulunamadı.');
+    const room = roomSnap.data();
+    if (room.status !== 'ready' || room.creatorUid === uid) {
+      throw new HttpsError('failed-precondition', 'Bu işlem şu an yapılamaz.');
+    }
+    if (!room.participantUids.includes(uid)) {
+      throw new HttpsError('failed-precondition', 'Bu odada değilsin.');
+    }
+    tx.update(db.collection('users').doc(uid), {
+      gold: admin.firestore.FieldValue.increment(room.betAmount),
+    });
+    tx.update(roomRef, {
+      status: 'waiting',
+      participantUids: [room.creatorUid],
+      [`players.${uid}`]: admin.firestore.FieldValue.delete(),
     });
   });
 
@@ -3776,18 +3849,47 @@ async function resolveOnNumaraIfDealerPhase(tableId) {
       dealerCards.push(drawOnNumaraCard());
     }
 
-    // Kazananları belirle — kurpiyer de (kendi payını koyduğu için) bir
-    // "yarışmacı" gibi değerlendirilir. En yüksek toplamı yapanlar arasında
-    // kurpiyer de varsa, pot o kadar kişiye bölünür ama kurpiyerin payı
-    // kimseye ödenmez (kasada kalır) — böylece TAM beraberlikte oyuncu da
-    // payını alır, kurpiyer TEK BAŞINA en yüksek toplamı yaparsa kimse
-    // ödeme almaz.
     const participants = round.participants;
     const hands = round.hands;
     const contenders = participants.filter((u) => hands[u].status !== 'bust');
     const dealerIn = dealerStatus !== 'bust';
     const dealerSum = sumCards(dealerCards);
 
+    // Kurpiyer DE battı, oyuncu(lar) da battı — kimse "kazanmadı" ama
+    // kimse de "kaybetmedi" sayılır: BERABERE, herkes kendi bahsini geri
+    // alır (cepten hiçbir şey eksilmez).
+    if (!dealerIn && contenders.length === 0) {
+      const refundRefs = participants.map((u) => db.collection('users').doc(u));
+      participants.forEach((u, i) => {
+        tx.update(refundRefs[i], { gold: admin.firestore.FieldValue.increment(table.betAmount) });
+      });
+      tx.update(tableRef, {
+        round: {
+          ...round,
+          phase: 'resolved',
+          dealerCards,
+          dealerStatus,
+          currentTurnUid: null,
+          turnDeadline: null,
+          result: {
+            winners: [],
+            dealerWon: false,
+            dealerTied: false,
+            draw: true,
+            bestSum: null,
+            share: 0,
+          },
+        },
+      });
+      return;
+    }
+
+    // Kazananları belirle — kurpiyer de (kendi payını koyduğu için) bir
+    // "yarışmacı" gibi değerlendirilir. En yüksek toplamı yapanlar arasında
+    // kurpiyer de varsa, pot o kadar kişiye bölünür ama kurpiyerin payı
+    // kimseye ödenmez (kasada kalır) — böylece TAM beraberlikte oyuncu da
+    // payını alır, kurpiyer TEK BAŞINA en yüksek toplamı yaparsa kimse
+    // ödeme almaz.
     let bestSum = dealerIn ? dealerSum : -1;
     contenders.forEach((u) => {
       const s = sumCards(hands[u].cards);

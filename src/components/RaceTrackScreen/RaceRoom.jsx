@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   cancelRaceRoom,
   declineOpponent,
+  leaveRaceRoomAsJoiner,
   startRace,
   rollDice,
   autoRoll,
@@ -149,6 +150,16 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
       return (
         <div className="race-screen">
           <p className="race-hint">Odaya katıldın, oda sahibinin yarışı başlatması bekleniyor…</p>
+          <button
+            className="race-btn"
+            disabled={busy}
+            onClick={() =>
+              run('leave-joiner', () => leaveRaceRoomAsJoiner(room.id).then(onDismissFinished))
+            }
+          >
+            Odadan Ayrıl
+          </button>
+          {error && <p className="race-error">{error}</p>}
         </div>
       );
     }

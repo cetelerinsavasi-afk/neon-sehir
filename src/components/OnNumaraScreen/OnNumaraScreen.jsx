@@ -8,7 +8,7 @@ import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './OnNumaraScreen.css';
 
 const RULES_TEXT =
-  "Amaç 10'a en yakın (aşmadan) toplamı yapmak. Kartlar 1-5. 10'u geçersen elenirsin. Hamlen için 10 saniyen var. Kurpiyer de senin kadar ortaya para koyar — sadece oyuncular değil, kurpiyer de yarışır. Herkes bitince kurpiyer 8'e kadar çeker. Kurpiyer tek başına kazanırsa pot kimseye ödenmez, kurpiyerle berabere kalırsan potu paylaşırsın. 10 Numara kazancı asla otomatik borca gitmez.";
+  "Amaç 10'a en yakın (aşmadan) toplamı yapmak. Kartlar 1-5. 10'u geçersen elenirsin. Hamlen için 10 saniyen var. Kurpiyer de senin kadar ortaya para koyar — sadece oyuncular değil, kurpiyer de yarışır. Herkes bitince kurpiyer 8'e kadar çeker. Kurpiyer tek başına kazanırsa pot kimseye ödenmez, kurpiyerle berabere kalırsan potu paylaşırsın. Sen de kurpiyer de elenirsen berabere sayılır, bahsin iade edilir. 10 Numara kazancı asla otomatik borca gitmez.";
 
 export default function OnNumaraScreen({ onEnterTable }) {
   const { user } = useAuth();

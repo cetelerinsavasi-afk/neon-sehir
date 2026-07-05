@@ -167,6 +167,9 @@ export const joinRaceRoom = (roomId, vehicleId) =>
 export const declineOpponent = (roomId) =>
   httpsCallable(functions, 'declineOpponent')({ roomId });
 
+export const leaveRaceRoomAsJoiner = (roomId) =>
+  httpsCallable(functions, 'leaveRaceRoomAsJoiner')({ roomId });
+
 export const startRace = (roomId) => httpsCallable(functions, 'startRace')({ roomId });
 
 export const cancelRaceRoom = (roomId) =>

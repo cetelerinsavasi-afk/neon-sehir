@@ -1,3 +1,4 @@
+import InfoIcon from '../InfoIcon/InfoIcon';
 import './Hud.css';
 
 /**
@@ -9,7 +10,10 @@ export default function Hud({ suspicion = 0, reputation = 0, gold = 0 }) {
     <div className="hud">
       <div className="hud-stat">
         <div className="hud-stat-label">
-          <span>Şüphe</span>
+          <span>
+            Şüphe
+            <InfoIcon text="Şüphe yüzdeniz = suç işlerken yakalanma riskiniz." />
+          </span>
           <span>{suspicion}%</span>
         </div>
         <div className="hud-bar">
@@ -22,7 +26,10 @@ export default function Hud({ suspicion = 0, reputation = 0, gold = 0 }) {
 
       <div className="hud-stat">
         <div className="hud-stat-label">
-          <span>Saygınlık</span>
+          <span>
+            Saygınlık
+            <InfoIcon text="Saygınlık yüzdeniz = ekip soygunlarında içeriye polis sızdıysa esnafların sizi uyarma şansı." />
+          </span>
           <span>{reputation}%</span>
         </div>
         <div className="hud-bar">

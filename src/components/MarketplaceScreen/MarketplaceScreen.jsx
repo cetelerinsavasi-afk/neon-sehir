@@ -8,6 +8,7 @@ import { useMarketplaceListings } from '../../hooks/useMarketplaceListings';
 import { createListing, cancelListing, buyListing } from '../../services/gameActions';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
 import { weaponCatalog } from '../../data/weaponCatalog';
+import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './MarketplaceScreen.css';
 
 const MATERIAL_LABELS = {
@@ -72,9 +73,9 @@ function SellForm({ onCreated, onClose }) {
   const [itemType, setItemType] = useState('vehicle');
   const [selectedId, setSelectedId] = useState('');
   const [materialType, setMaterialType] = useState('depoUpgrade');
-  const [quantity, setQuantity] = useState('');
+  const [quantity, setQuantity] = useState(0);
   const [machineType, setMachineType] = useState('depoUpgrade');
-  const [price, setPrice] = useState('');
+  const [price, setPrice] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -82,27 +83,25 @@ function SellForm({ onCreated, onClose }) {
   const sellableWeapons = weapons.filter((w) => !w.listed);
 
   const handleSubmit = async () => {
-    const priceNum = Number(price);
-    if (!priceNum || priceNum <= 0) return;
+    if (!price || price <= 0) return;
     setBusy(true);
     setError(null);
     try {
       if (itemType === 'vehicle') {
         if (!selectedId) return;
-        await createListing({ itemType, itemId: selectedId, price: priceNum });
+        await createListing({ itemType, itemId: selectedId, price });
       } else if (itemType === 'weapon') {
         if (!selectedId) return;
-        await createListing({ itemType, itemId: selectedId, price: priceNum });
+        await createListing({ itemType, itemId: selectedId, price });
       } else if (itemType === 'material') {
-        const qty = Number(quantity);
-        if (!qty || qty <= 0) return;
-        await createListing({ itemType, materialType, quantity: qty, price: priceNum });
+        if (!quantity || quantity <= 0) return;
+        await createListing({ itemType, materialType, quantity, price });
       } else if (itemType === 'machine') {
-        await createListing({ itemType, machineType, price: priceNum });
+        await createListing({ itemType, machineType, price });
       }
       setSelectedId('');
-      setQuantity('');
-      setPrice('');
+      setQuantity(0);
+      setPrice(0);
       onCreated?.();
       onClose?.();
     } catch (err) {
@@ -173,14 +172,11 @@ function SellForm({ onCreated, onClose }) {
                 </option>
               ))}
             </select>
-            <input
-              type="number"
-              min="1"
-              max={inventory[materialType] || 0}
-              placeholder="Kaç adet satmak istiyorsun?"
+            <QuantityStepper
               value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              className="market-input market-input-wide"
+              onChange={setQuantity}
+              max={inventory[materialType] || 0}
+              quickAmounts={[10, 100, 1000]}
             />
           </div>
         )}
@@ -195,14 +191,14 @@ function SellForm({ onCreated, onClose }) {
           </select>
         )}
 
-        <div className="market-row">
-          <input
-            type="number"
-            min="1"
-            placeholder="Satış fiyatı (altın)"
+        <div className="market-price-form">
+          <p className="market-price-label">
+            Satış Fiyatı: <strong>{price.toLocaleString('tr-TR')} altın</strong>
+          </p>
+          <QuantityStepper
             value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            className="market-input"
+            onChange={setPrice}
+            quickAmounts={[10, 100, 1000, 10000, 100000]}
           />
           <button className="market-btn primary" disabled={busy || !price} onClick={handleSubmit}>
             İlan Ver

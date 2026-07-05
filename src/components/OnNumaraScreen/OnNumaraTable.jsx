@@ -208,15 +208,17 @@ export default function OnNumaraTable({ tableId, myUid, onLeave }) {
 
       {round?.phase === 'resolved' && round.result && (
         <p className="onn-log">
-          {round.result.dealerWon
-            ? 'Kurpiyer kazandı, pot kimseye ödenmedi.'
-            : round.result.winners.length > 0
-              ? `Kazanan: ${round.result.winners
-                  .map((u) => table.seats[u]?.displayName || 'Oyuncu')
-                  .join(', ')} · Pay: ${round.result.share.toLocaleString('tr-TR')} altın${
-                  round.result.dealerTied ? ' (kurpiyerle berabere, pot bölündü)' : ''
-                }`
-              : 'Herkes elendi, pot kimseye ödenmedi.'}
+          {round.result.draw
+            ? 'Berabere! Kurpiyer de sen de elendiniz — bahsin iade edildi.'
+            : round.result.dealerWon
+              ? 'Kurpiyer kazandı, pot kimseye ödenmedi.'
+              : round.result.winners.length > 0
+                ? `Kazanan: ${round.result.winners
+                    .map((u) => table.seats[u]?.displayName || 'Oyuncu')
+                    .join(', ')} · Pay: ${round.result.share.toLocaleString('tr-TR')} altın${
+                    round.result.dealerTied ? ' (kurpiyerle berabere, pot bölündü)' : ''
+                  }`
+                : 'Herkes elendi, pot kimseye ödenmedi.'}
         </p>
       )}
 
