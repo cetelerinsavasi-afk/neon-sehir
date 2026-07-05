@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { regions } from '../../data/regions';
 import mapImage from '../../assets/sehir-haritasi.jpg';
 import { useMapPanZoom } from './useMapPanZoom';
+import MapAmbience from './MapAmbience';
 import './CityMap.css';
 
 /**
@@ -56,6 +57,7 @@ export default function CityMap({ onRegionClick }) {
       >
         <div className="map-aspect">
           <img src={mapImage} alt="Neon Şehir Haritası" draggable={false} />
+          <MapAmbience />
           {regions.map((r, i) => (
             <div
               key={`${r.id}-${i}`}

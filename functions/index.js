@@ -2271,8 +2271,6 @@ export const executeHeistPlan = onCall(async (request) => {
     if (snap.data()?.profession === 'polis') policeIdx.push(i);
     else civilianIdx.push(i);
   });
-  const busted = policeIdx.length > 0;
-  let caughtBySuspicion = false;
 
   const totalReward = config.reward;
   const dateKey = istanbulDateKey();
@@ -2280,11 +2278,44 @@ export const executeHeistPlan = onCall(async (request) => {
   const captureSmsList = []; // { uid, penaltyAmount, newTotalDebt }
   const policeEarningSmsList = []; // { uid, amount }
 
-  if (busted) {
-    // Sızan polis(ler) engelledikleri parayı bölüşür (gerçek kazanç —
-    // borç varsa %50'si borca gider); soyguncular aynı miktarı devlete
-    // BORÇ olarak öder — önce mevcut altınlarından kesilir, yetmeyen kısım
-    // borca yazılır (Bölüm 10).
+  // ADIM 1 — ÖNCE, polis hiç yokmuş GİBİ, her katılımcının KENDİ
+  // şüphesine göre bağımsız bir yakalanma riski test edilir (yakalanma
+  // ihtimali = o kişinin şüphe %'si). Katılımcılardan BİRİ bile böyle
+  // yakalanırsa TÜM soygun şüpheden dolayı başarısız sayılır — bu
+  // durumda ekipte sızmış bir polis olsa BİLE o ödül ALAMAZ (yakalanma
+  // sebebi polis işi değil, şüphe olduğu için).
+  const suspicions = userSnaps.map((s) => s.data()?.suspicion || 0);
+  const caughtBySuspicion = suspicions.some((s) => Math.random() * 100 < s);
+  const busted = !caughtBySuspicion && policeIdx.length > 0;
+
+  if (caughtBySuspicion) {
+    // Şüpheden yakalandılar. Ceza sadece SİVİLLERE uygulanır (varsa
+    // sızmış polis bu turda ne ödül alır ne cezalandırılır — kimliği
+    // hâlâ gizli kalır).
+    const perCivilianPenalty =
+      civilianIdx.length > 0 ? Math.floor(totalReward / civilianIdx.length) : 0;
+    civilianIdx.forEach((i) => {
+      const data = userSnaps[i].data();
+      const currentSuspicion = data?.suspicion || 0;
+      const currentReputation = data?.reputation || 0;
+      const { debtAdded } = applyCapturePenalty(perCivilianPenalty);
+      batch.update(db.collection('users').doc(participants[i].uid), {
+        suspicion: clampSuspicion(currentSuspicion + config.suspicionCost),
+        reputation: clampSuspicion(currentReputation - config.suspicionCost),
+        debtToState: admin.firestore.FieldValue.increment(debtAdded),
+      });
+      captureSmsList.push({
+        uid: participants[i].uid,
+        penaltyAmount: perCivilianPenalty,
+        newTotalDebt: (data?.debtToState || 0) + debtAdded,
+      });
+    });
+  } else if (busted) {
+    // ADIM 2 — Şüpheden yakalanmadılar AMA ekipte sızmış polis varsa,
+    // polis artık YÜZDE YÜZ yakalar (kendi başarısı sayesinde), ödülü
+    // tam alır; soyguncular aynı miktarı devlete BORÇ olarak öder (önce
+    // mevcut altınlarından kesilir, yetmeyen kısım borca yazılır —
+    // Bölüm 10).
     const perPoliceEarning = Math.floor(totalReward / policeIdx.length);
     const perCivilianPenalty =
       civilianIdx.length > 0 ? Math.floor(totalReward / civilianIdx.length) : 0;
@@ -2315,42 +2346,21 @@ export const executeHeistPlan = onCall(async (request) => {
       });
     });
   } else {
-    // Ekipte sızmış polis yok — ama herkesin KENDİ şüphesine göre bağımsız
-    // bir yakalanma riski var (yakalanma ihtimali = o kişinin şüphe %'si;
-    // şüphesi 0 olan biri hiç yakalanmaz). Katılımcılardan BİRİ bile
-    // yakalanırsa TÜM soygun başarısız sayılır ve herkes payını devlete
-    // borç olarak öder (önce mevcut altından kesilir, kalan borç yazılır).
-    const suspicions = userSnaps.map((s) => s.data()?.suspicion || 0);
-    const anyCaught = suspicions.some((s) => Math.random() < s / 100);
-
+    // Ne şüpheden yakalandılar ne de ekipte polis var — soygun başarılı,
+    // ödül tüm katılımcılara eşit bölünür.
     const perPersonAmount = Math.floor(totalReward / participants.length);
     participants.forEach((p, i) => {
       const data = userSnaps[i].data();
       const currentSuspicion = suspicions[i];
       const currentReputation = data?.reputation || 0;
-      const updates = {
+      const { goldDelta, debtDelta } = splitIncomeForDebt(data?.debtToState, perPersonAmount);
+      batch.update(db.collection('users').doc(p.uid), {
         suspicion: clampSuspicion(currentSuspicion + config.suspicionCost),
         reputation: clampSuspicion(currentReputation - config.suspicionCost),
-      };
-      if (anyCaught) {
-        const { debtAdded } = applyCapturePenalty(perPersonAmount);
-        updates.debtToState = admin.firestore.FieldValue.increment(debtAdded);
-        captureSmsList.push({
-          uid: p.uid,
-          penaltyAmount: perPersonAmount,
-          newTotalDebt: (data?.debtToState || 0) + debtAdded,
-        });
-      } else {
-        const { goldDelta, debtDelta } = splitIncomeForDebt(data?.debtToState, perPersonAmount);
-        updates.gold = admin.firestore.FieldValue.increment(goldDelta);
-        updates.debtToState = admin.firestore.FieldValue.increment(debtDelta);
-      }
-      batch.update(db.collection('users').doc(p.uid), updates);
+        gold: admin.firestore.FieldValue.increment(goldDelta),
+        debtToState: admin.firestore.FieldValue.increment(debtDelta),
+      });
     });
-
-    if (anyCaught) {
-      caughtBySuspicion = true;
-    }
   }
 
   // Herkesin (polis dahil) o hedef için günlük hakkı bugün için tükenir.
