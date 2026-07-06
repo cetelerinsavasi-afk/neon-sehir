@@ -8,12 +8,12 @@ import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import './FactoryScreen.css';
 
 const MACHINES = [
-  { id: 'depoUpgrade', label: 'Depo Geliştirme Makinesi', dailyOutput: 10 },
-  { id: 'vitesUpgrade', label: 'Vites Geliştirme Makinesi', dailyOutput: 10 },
-  { id: 'silahUpgrade', label: 'Silah Geliştirme Makinesi', dailyOutput: 50 },
-  { id: 'yasakliMadde', label: 'Yasaklı Madde Üretim Makinesi', dailyOutput: 1 },
+  { id: 'depoUpgrade', label: 'Depo Geliştirme Makinesi', dailyOutput: 20 },
+  { id: 'vitesUpgrade', label: 'Vites Geliştirme Makinesi', dailyOutput: 20 },
+  { id: 'silahUpgrade', label: 'Silah Geliştirme Makinesi', dailyOutput: 100 },
+  { id: 'yasakliMadde', label: 'Yasaklı Madde Üretim Makinesi', dailyOutput: 2 },
 ];
-const MACHINE_PRICE = 100000;
+const MACHINE_PRICE = 150000;
 const FACTORY_WAGE = 3000;
 
 // Meslek seçimi kaldırıldı — işçilik (günlük 3000 altın) ve üretim

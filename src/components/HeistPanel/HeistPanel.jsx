@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDailyActions } from '../../hooks/useDailyActions';
 import { useOpenHeistPlans } from '../../hooks/useOpenHeistPlans';
@@ -13,9 +13,11 @@ import {
   kickFromHeistPlan,
   cancelHeistPlan,
   executeHeistPlan,
+  refreshHeistPlanParticipants,
 } from '../../services/gameActions';
 import InfoIcon from '../InfoIcon/InfoIcon';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
+import ResultModal from '../ResultModal/ResultModal';
 import './HeistPanel.css';
 
 export const HEIST_LABELS = {
@@ -65,9 +67,23 @@ function resultMessage(res) {
   return `Ekip başarılı! ${res.totalReward.toLocaleString('tr-TR')} altın katılımcılara bölündü.`;
 }
 
+function isResultSuccess(res) {
+  if (!res.started) return null; // nötr — modal açılmaz
+  if (res.reward !== undefined) return !res.caught;
+  if (res.busted || res.caughtBySuspicion) return false;
+  return true;
+}
+
+function resultTitle(res) {
+  const success = isResultSuccess(res);
+  if (success === true) return 'Soygun Başarılı! 🎉';
+  if (success === false) return 'Yakalandın!';
+  return 'Soygun Başlamadı';
+}
+
 function suspicionClass(s) {
-  if (s >= 50) return 'heist-suspicion-high';
-  if (s >= 20) return 'heist-suspicion-mid';
+  if (s > 50) return 'heist-suspicion-high';
+  if (s > 20) return 'heist-suspicion-mid';
   return 'heist-suspicion-low';
 }
 
@@ -82,6 +98,17 @@ function PlanCard({ plan, myUid, onChanged }) {
   const { participants } = useHeistPlanParticipants(plan.id);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+
+  // Katılımcıların güç/şüphe değerleri plana KATILDIKLARI ANDA alınan
+  // donmuş bir kopyaydı — güncel tutmak için, kart görünürken periyodik
+  // olarak (ve açılır açılmaz bir kez) sunucudan tazeliyoruz.
+  useEffect(() => {
+    refreshHeistPlanParticipants(plan.id).catch(() => {});
+    const id = setInterval(() => {
+      refreshHeistPlanParticipants(plan.id).catch(() => {});
+    }, 15000);
+    return () => clearInterval(id);
+  }, [plan.id]);
 
   const totalPower = participants.reduce((sum, p) => sum + (p.weaponPower || 0), 0);
   const isMember = participants.some((p) => p.uid === myUid);
@@ -182,7 +209,7 @@ export default function HeistPanel({ target }) {
   if (!user) return null;
 
   const meta = HEIST_LABELS[target];
-  const done = Boolean(actions.heist?.[target]);
+  const done = Boolean(actions.heist?.[target]) || Boolean(actions.vendorPurchases?.[target]);
   const myPower = weapons.reduce((max, w) => Math.max(max, w.power || 0), 0);
   const needsTeam = myPower < meta.requiredPower;
   // Kısıtlama HEDEFE ÖZEL: bu hedefte zaten bir ekibim varsa yeni bir
@@ -237,7 +264,13 @@ export default function HeistPanel({ target }) {
         )
       ) : (
         <button className="heist-panel-btn primary" disabled={done || busy} onClick={handleAttempt}>
-          {done ? 'Bugün zaten denedin' : busy ? 'Soyuluyor…' : 'Soygun Yap'}
+          {done
+            ? actions.vendorPurchases?.[target]
+              ? 'Bugün buradan alışveriş yaptın'
+              : 'Bugün zaten denedin'
+            : busy
+              ? 'Soyuluyor…'
+              : 'Soygun Yap'}
         </button>
       )}
 
@@ -253,6 +286,15 @@ export default function HeistPanel({ target }) {
         </p>
       )}
       {error && <p className="heist-panel-error">{error}</p>}
+
+      {result && result.started && (
+        <ResultModal
+          title={resultTitle(result)}
+          message={resultMessage(result)}
+          tone={isResultSuccess(result) ? 'success' : 'fail'}
+          onClose={() => setResult(null)}
+        />
+      )}
 
       {(needsTeam || showTeamForming || plans.length > 0) && (
         <div className="heist-plan-list">

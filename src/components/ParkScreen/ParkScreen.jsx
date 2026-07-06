@@ -5,6 +5,7 @@ import { useInventory } from '../../hooks/useInventory';
 import { sellContrabandAtPark } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import InfoIcon from '../InfoIcon/InfoIcon';
+import ResultModal from '../ResultModal/ResultModal';
 import './ParkScreen.css';
 
 const PARK_SELL_PRICE = 5000;
@@ -52,11 +53,16 @@ export default function ParkScreen() {
       </button>
 
       {result && (
-        <p className={`park-result ${result.caught ? 'caught' : 'success'}`}>
-          {result.caught
-            ? `Yakalandın! ${result.penalty.toLocaleString('tr-TR')} altın devlete borç yazıldı.`
-            : `Satıldı! +${result.earned.toLocaleString('tr-TR')} altın kazandın.`}
-        </p>
+        <ResultModal
+          title={result.caught ? 'Yakalandın!' : 'Satış Başarılı! 🎉'}
+          message={
+            result.caught
+              ? `${result.penalty.toLocaleString('tr-TR')} altın devlete borç yazıldı.`
+              : `+${result.earned.toLocaleString('tr-TR')} altın kazandın.`
+          }
+          tone={result.caught ? 'fail' : 'success'}
+          onClose={() => setResult(null)}
+        />
       )}
       {error && <p className="park-error">{error}</p>}
     </div>

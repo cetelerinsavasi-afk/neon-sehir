@@ -1,0 +1,84 @@
+.result-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.result-modal {
+  width: 100%;
+  max-width: 320px;
+  background: var(--bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  animation: result-modal-pop 0.25s ease;
+}
+
+.result-modal.success {
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 40px rgba(25, 232, 255, 0.2);
+}
+
+.result-modal.fail {
+  border-color: var(--neon-pink);
+  box-shadow: 0 0 40px rgba(255, 46, 140, 0.2);
+}
+
+.result-modal-icon {
+  font-size: 36px;
+}
+
+.result-modal-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.result-modal.success .result-modal-title {
+  color: var(--neon-cyan);
+}
+
+.result-modal.fail .result-modal-title {
+  color: var(--neon-pink);
+}
+
+.result-modal-message {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.result-modal-close {
+  margin-top: 6px;
+  width: 100%;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+@keyframes result-modal-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

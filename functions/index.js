@@ -12,13 +12,13 @@ const db = admin.firestore();
 setGlobalOptions({ region: 'europe-west1' });
 
 const VALID_MACHINES = ['depoUpgrade', 'vitesUpgrade', 'silahUpgrade', 'yasakliMadde'];
-const MACHINE_PRICE = 100000; // Bölüm 8.2
+const MACHINE_PRICE = 150000; // Bölüm 8.2
 const FACTORY_WAGE = 3000; // Bölüm 6 — işçilik günlük ücreti
 const DAILY_OUTPUT = {
-  depoUpgrade: 10,
-  vitesUpgrade: 10,
-  silahUpgrade: 50,
-  yasakliMadde: 1, // kaçakçılık üretimi kasıtlı olarak çok kısıtlı
+  depoUpgrade: 20,
+  vitesUpgrade: 20,
+  silahUpgrade: 100,
+  yasakliMadde: 2, // kaçakçılık üretimi kasıtlı olarak çok kısıtlı
 };
 
 function requireAuth(request) {
@@ -484,6 +484,33 @@ export const dailyReset = onSchedule(
       // Gerçek şehir listesi Faz 7'de eklenecek.
       destinationCity: null,
     });
+
+    // 4b) Gemi diğer şehirde mal yüklemeye başladığında (gün 3) TÜM
+    // oyunculara bilgilendirme SMS'i gönder — bu, ucuz fiyattan sipariş
+    // vermek için son gün (2 gün sonra teslim edilecek).
+    if (nextDay === 3) {
+      const allUsersSnap = await db.collection('users').get();
+      const smsBatches = [];
+      let currentBatch = db.batch();
+      let opCount = 0;
+      allUsersSnap.forEach((docSnap) => {
+        const msgRef = docSnap.ref.collection('messages').doc();
+        currentBatch.set(msgRef, {
+          text: 'Gemiye mal yükleniyor. Sipariş vermek için son gün — 2 gün sonra teslim edilecek. Tüm ürünler %20 daha ucuz!',
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          read: false,
+          type: 'ship_loading',
+        });
+        opCount += 1;
+        if (opCount >= 400) {
+          smsBatches.push(currentBatch.commit());
+          currentBatch = db.batch();
+          opCount = 0;
+        }
+      });
+      if (opCount > 0) smsBatches.push(currentBatch.commit());
+      await Promise.all(smsBatches);
+    }
 
     // 5) Liman siparişleri — İKİ KOVA sistemi (Bölüm 12 kullanıcı revizesi):
     //    - Gemi 'departing'e geçtiğinde (gün 2 başladığında): o ana kadar
@@ -2077,6 +2104,40 @@ export const createHeistPlan = onCall(async (request) => {
 // bağlı bir ihtimalle "içeride polis olabilir" diye esnaftan SMS gelir.
 // İhtimal = saygınlık yüzdesi birebir (saygınlık 40 ise %40, 100 ise kesin).
 // Bir kez başarılı uyarı gönderildiyse plan için tekrar gönderilmez.
+// refreshHeistPlanParticipants — plan katılımcı listesindeki güç/şüphe
+// alanları JOIN ANINDAKİ değerlerin donmuş (statik) bir kopyasıydı.
+// Firestore güvenlik kuralları oyuncuların birbirinin users/{uid}
+// dokümanını doğrudan okumasına izin vermediği için, plan görüntülenirken
+// istemci bu fonksiyonu çağırır — Admin SDK ile HERKESİN güncel güç/şüphe
+// değerlerini okuyup katılımcı alt dokümanlarına yazar, böylece canlı
+// dinleyici (onSnapshot) güncel veriyi görür.
+export const refreshHeistPlanParticipants = onCall(async (request) => {
+  requireAuth(request);
+  const { planId } = request.data || {};
+  const planRef = db.collection('heistPlans').doc(planId);
+  const participantsSnap = await planRef.collection('participants').get();
+  if (participantsSnap.empty) return { ok: true };
+
+  const updates = await Promise.all(
+    participantsSnap.docs.map(async (doc) => {
+      const uid = doc.id;
+      const [userSnap, power] = await Promise.all([
+        db.collection('users').doc(uid).get(),
+        getMaxWeaponPower(uid),
+      ]);
+      return { ref: doc.ref, suspicion: userSnap.data()?.suspicion || 0, power };
+    })
+  );
+
+  const batch = db.batch();
+  updates.forEach(({ ref, suspicion, power }) => {
+    batch.update(ref, { suspicion, weaponPower: power });
+  });
+  await batch.commit();
+
+  return { ok: true };
+});
+
 export const joinHeistPlan = onCall(async (request) => {
   const uid = requireAuth(request);
   const { planId } = request.data || {};
@@ -2109,6 +2170,12 @@ export const joinHeistPlan = onCall(async (request) => {
       throw new HttpsError(
         'failed-precondition',
         'Bu hedefi bugün zaten soydun (tek başına ya da ekiple) — aynı gün tekrar katılamazsın.'
+      );
+    }
+    if (dailySnap.exists && dailySnap.data().vendorPurchases?.[plan.target]) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Bu satıcıdan bugün alışveriş yaptın, aynı gün haraç kesemezsin.'
       );
     }
   }
