@@ -13,7 +13,7 @@ setGlobalOptions({ region: 'europe-west1' });
 
 const VALID_MACHINES = ['depoUpgrade', 'vitesUpgrade', 'silahUpgrade', 'yasakliMadde'];
 const MACHINE_PRICE = 100000; // Bölüm 8.2
-const FACTORY_WAGE = 2000; // Bölüm 6 — işçilik günlük ücreti
+const FACTORY_WAGE = 3000; // Bölüm 6 — işçilik günlük ücreti
 const DAILY_OUTPUT = {
   depoUpgrade: 10,
   vitesUpgrade: 10,
@@ -36,6 +36,24 @@ function istanbulDateKey(date = new Date()) {
     month: '2-digit',
     day: '2-digit',
   }).format(date);
+}
+
+// istanbulPrayerWindow — günü 5 "vakite" böler (kullanıcı revizesi):
+// 1: 00-12, 2: 12-15, 3: 15-18, 4: 18-21, 5: 21-24. Camii'de günde 5 kez
+// ibadet edilebilir, her vakitte bir kez.
+function istanbulPrayerWindow(date = new Date()) {
+  const hour = Number(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Istanbul',
+      hour: '2-digit',
+      hour12: false,
+    }).format(date)
+  );
+  if (hour < 12) return 1;
+  if (hour < 15) return 2;
+  if (hour < 18) return 3;
+  if (hour < 21) return 4;
+  return 5;
 }
 
 function clamp(value, min, max) {
@@ -1478,20 +1496,26 @@ function clampSuspicion(v) {
 export const prayAtMosque = onCall(async (request) => {
   const uid = requireAuth(request);
   const dateKey = istanbulDateKey();
+  const win = istanbulPrayerWindow();
   const userRef = db.collection('users').doc(uid);
   const dailyRef = db.collection('dailyActions').doc(`${uid}_${dateKey}`);
 
   await db.runTransaction(async (tx) => {
     const [userSnap, dailySnap] = await Promise.all([tx.get(userRef), tx.get(dailyRef)]);
     const user = userSnap.data();
-    if (dailySnap.exists && dailySnap.data().prayed) {
-      throw new HttpsError('failed-precondition', 'Bugün ibadet ettin.');
+    if (dailySnap.exists && dailySnap.data().prayedWindows?.[win]) {
+      throw new HttpsError('failed-precondition', 'Bu vakitte zaten ibadet ettin.');
     }
-    tx.update(userRef, { suspicion: clampSuspicion((user?.suspicion || 0) - 10) });
-    tx.set(dailyRef, { prayed: true }, { merge: true });
-    // Bugünkü Cemaat listesi için — Camii ekranında avatar+isimle gösterilir.
+    tx.update(userRef, { suspicion: clampSuspicion((user?.suspicion || 0) - 5) });
+    tx.set(dailyRef, { prayedWindows: { [win]: true } }, { merge: true });
+    // "X. Vakitteki Cemaat" listesi için — Camii ekranında avatar+isimle
+    // gösterilir. Vakite göre AYRI bir doküman altında tutuluyor.
     tx.set(
-      db.collection('mosqueAttendance').doc(dateKey).collection('members').doc(uid),
+      db
+        .collection('mosqueAttendance')
+        .doc(`${dateKey}_w${win}`)
+        .collection('members')
+        .doc(uid),
       {
         uid,
         displayName: user?.displayName || 'Oyuncu',
@@ -1501,14 +1525,14 @@ export const prayAtMosque = onCall(async (request) => {
     );
   });
 
-  return { ok: true };
+  return { ok: true, window: win };
 });
 
 // ---------------------------------------------------------------------------
 // bribePolice — Karakol: günde 1 kez, 3000 altın, şüphe -10.
 // ---------------------------------------------------------------------------
-const BRIBE_COST = 4000;
-const POLICE_SALARY = 4000;
+const BRIBE_COST = 3000;
+const POLICE_SALARY = 6000;
 
 export const bribePolice = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -1571,13 +1595,11 @@ export const claimPoliceSalary = onCall(async (request) => {
 // (Kokoreçci, Simitçi, Dönerci, Köfteci birbirinden bağımsız), 1000 altın,
 // şüphe -5, saygınlık +10.
 // ---------------------------------------------------------------------------
-const VENDOR_COST = 1000;
-// Dönerci ve Köfteci'de alışveriş eşiği daha düşük (500 altın) —
-// diğerleri (Kokoreçci, Simitçi) 1000 altın olarak kalıyor.
-const VENDOR_COSTS = {
-  seyyar_satici_3: 500, // Dönerci
-  seyyar_satici_4: 500, // Köfteci
-};
+const VENDOR_COST = 500;
+// Not: Tüm seyyar satıcılarda alışveriş artık aynı fiyat (500 altın),
+// bu yüzden özel bir eşleme gerekmiyor — VENDOR_COSTS boş bırakıldı,
+// vendorCostFor() her zaman VENDOR_COST'a döner.
+const VENDOR_COSTS = {};
 function vendorCostFor(vendorId) {
   return VENDOR_COSTS[vendorId] ?? VENDOR_COST;
 }
@@ -1639,11 +1661,11 @@ const HEIST_CONFIG = {
   casino: { suspicionCost: 40, reward: 200000, requiredPower: 70000 },
   araba_galerisi: { suspicionCost: 30, reward: 100000, requiredPower: 50000 },
   modifiye_garaji: { suspicionCost: 20, reward: 20000, requiredPower: 20000 },
-  fabrika: { suspicionCost: 10, reward: 4000, requiredPower: 10000 },
-  seyyar_satici_1: { suspicionCost: 5, reward: 1600, requiredPower: 4500 },
-  seyyar_satici_2: { suspicionCost: 5, reward: 1200, requiredPower: 3000 },
-  seyyar_satici_3: { suspicionCost: 5, reward: 800, requiredPower: 1500 },
-  seyyar_satici_4: { suspicionCost: 5, reward: 400, requiredPower: 1000 },
+  fabrika: { suspicionCost: 10, reward: 5000, requiredPower: 10000 },
+  seyyar_satici_1: { suspicionCost: 5, reward: 2500, requiredPower: 4500 },
+  seyyar_satici_2: { suspicionCost: 5, reward: 2000, requiredPower: 3000 },
+  seyyar_satici_3: { suspicionCost: 5, reward: 1500, requiredPower: 1500 },
+  seyyar_satici_4: { suspicionCost: 5, reward: 1000, requiredPower: 1000 },
 };
 
 // Yakalanma cezası: TAM tutar devlete BORÇ yazılır — cepten HİÇ kesilmez.

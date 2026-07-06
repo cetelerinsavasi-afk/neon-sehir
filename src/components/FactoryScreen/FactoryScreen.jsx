@@ -14,9 +14,9 @@ const MACHINES = [
   { id: 'yasakliMadde', label: 'Yasaklı Madde Üretim Makinesi', dailyOutput: 1 },
 ];
 const MACHINE_PRICE = 100000;
-const FACTORY_WAGE = 2000;
+const FACTORY_WAGE = 3000;
 
-// Meslek seçimi kaldırıldı — işçilik (günlük 2000 altın) ve üretim
+// Meslek seçimi kaldırıldı — işçilik (günlük 3000 altın) ve üretim
 // makineleri herkese açık, aynı anda ikisi de kullanılabilir.
 export default function FactoryScreen() {
   const { user } = useAuth();

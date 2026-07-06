@@ -74,7 +74,7 @@ export default function PoliceApplicationSection() {
           <span className="police-salary-emoji">💰</span>
           <div className="police-salary-info">
             <span className="police-salary-title">Günlük Maaş</span>
-            <span className="police-salary-amount">4000 altın</span>
+            <span className="police-salary-amount">6000 altın</span>
           </div>
           <button
             className="police-app-btn primary"
@@ -85,7 +85,7 @@ export default function PoliceApplicationSection() {
           </button>
         </div>
       )}
-      {salarySuccess && <p className="police-salary-success">+4000 altın hesabına eklendi!</p>}
+      {salarySuccess && <p className="police-salary-success">+6000 altın hesabına eklendi!</p>}
 
       {confirmingResign ? (
         <div className="police-app-confirm">

@@ -2,9 +2,16 @@ import { useState } from 'react';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useOpenRaceRooms } from '../../hooks/useOpenRaceRooms';
 import { createRaceRoom, joinRaceRoom } from '../../services/gameActions';
+import { vehicleCatalog } from '../../data/vehicleCatalog';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './RaceTrackScreen.css';
 
+function vehicleImage(catalogId) {
+  return vehicleCatalog.find((v) => v.id === catalogId)?.image;
+}
+
+// Araçlar artık düz bir <select> değil, fotoğraflı, tıklanabilir kartlar
+// olarak gösteriliyor (HTML <option> içine resim koyulamıyor).
 function VehiclePicker({ vehicles, value, onChange }) {
   if (vehicles.length === 0) {
     return (
@@ -14,14 +21,73 @@ function VehiclePicker({ vehicles, value, onChange }) {
     );
   }
   return (
-    <select className="race-select" value={value} onChange={(e) => onChange(e.target.value)}>
-      <option value="">Araç seç…</option>
-      {vehicles.map((v) => (
-        <option key={v.id} value={v.id}>
-          {v.model} (Vites {v.gearLevel}, Depo {v.baseTank + (v.tankBonus || 0)}L)
-        </option>
-      ))}
-    </select>
+    <div className="race-vehicle-picker">
+      {vehicles.map((v) => {
+        const img = vehicleImage(v.catalogId);
+        const selected = value === v.id;
+        return (
+          <button
+            key={v.id}
+            className={`race-vehicle-card${selected ? ' selected' : ''}`}
+            onClick={() => onChange(v.id)}
+          >
+            {img && <img className="race-vehicle-photo" src={img} alt={v.model} />}
+            <span className="race-vehicle-name">{v.model}</span>
+            <span className="race-vehicle-stats">
+              Vites {v.gearLevel} · Depo {v.baseTank + (v.tankBonus || 0)}L
+              {v.turboCount > 0 ? ` · Turbo ×${v.turboCount}` : ''}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function CreateRoomModal({ vehicles, onClose, onCreated }) {
+  const [myVehicleId, setMyVehicleId] = useState('');
+  const [betAmount, setBetAmount] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleCreate = async () => {
+    if (!myVehicleId || !betAmount) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await createRaceRoom(myVehicleId, betAmount);
+      if (res?.data?.roomId) onCreated(res.data.roomId);
+    } catch (err) {
+      setError(err.message || 'Oda kurulamadı.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="race-create-backdrop" onClick={onClose}>
+      <div className="race-create-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="race-create-header">
+          <p className="race-section-title">Oda Kur</p>
+          <button className="race-create-close" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+        <VehiclePicker vehicles={vehicles} value={myVehicleId} onChange={setMyVehicleId} />
+        <p className="race-bet-label">
+          Bahsi Belirle: <strong>{betAmount.toLocaleString('tr-TR')} altın</strong>
+        </p>
+        <QuantityStepper value={betAmount} onChange={setBetAmount} quickAmounts={[1, 10, 100, 1000]} />
+        <button
+          className="race-btn primary"
+          disabled={busy || !myVehicleId || !betAmount}
+          onClick={handleCreate}
+        >
+          {betAmount > 0 ? `Oda Kur — ${betAmount.toLocaleString('tr-TR')} altın bahis` : 'Oda Kur'}
+        </button>
+        {error && <p className="race-error">{error}</p>}
+      </div>
+    </div>
   );
 }
 
@@ -29,28 +95,10 @@ export default function RaceLobby({ myUid, onEnterRoom }) {
   const { vehicles: allVehicles } = useVehicles();
   const vehicles = allVehicles.filter((v) => !v.seizedByBank);
   const { rooms } = useOpenRaceRooms();
-  const [myVehicleId, setMyVehicleId] = useState('');
-  const [betAmount, setBetAmount] = useState(0);
+  const [showCreate, setShowCreate] = useState(false);
   const [joinVehicleByRoom, setJoinVehicleByRoom] = useState({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-
-  const handleCreate = async () => {
-    const amount = Number(betAmount);
-    if (!myVehicleId || !amount || amount <= 0) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await createRaceRoom(myVehicleId, amount);
-      // Sorgunun bu yeni odayı "yakalamasını" beklemeden anında ona geç —
-      // "oda kurduğumda kurduğum oda gözükmüyor" hatasının kaynağı buydu.
-      if (res?.data?.roomId) onEnterRoom(res.data.roomId);
-    } catch (err) {
-      setError(err.message || 'Oda kurulamadı.');
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const handleJoin = async (roomId) => {
     const vehicleId = joinVehicleByRoom[roomId];
@@ -71,19 +119,9 @@ export default function RaceLobby({ myUid, onEnterRoom }) {
 
   return (
     <div className="race-screen">
-      <div className="race-section">
-        <p className="race-section-title">Oda Kur</p>
-        <VehiclePicker vehicles={vehicles} value={myVehicleId} onChange={setMyVehicleId} />
-        <p className="race-bet-label">Bahsi Belirle: <strong>{betAmount.toLocaleString('tr-TR')} altın</strong></p>
-        <QuantityStepper value={betAmount} onChange={setBetAmount} quickAmounts={[1, 10, 100, 1000]} />
-        <button
-          className="race-btn primary"
-          disabled={busy || !myVehicleId || !betAmount}
-          onClick={handleCreate}
-        >
-          {betAmount > 0 ? `Oda Kur — ${betAmount.toLocaleString('tr-TR')} altın bahis` : 'Oda Kur'}
-        </button>
-      </div>
+      <button className="race-btn primary race-create-open-btn" onClick={() => setShowCreate(true)}>
+        + Oda Kur
+      </button>
 
       <div className="race-section">
         <p className="race-section-title">Açık Odalar</p>
@@ -118,6 +156,14 @@ export default function RaceLobby({ myUid, onEnterRoom }) {
       </div>
 
       {error && <p className="race-error">{error}</p>}
+
+      {showCreate && (
+        <CreateRoomModal
+          vehicles={vehicles}
+          onClose={() => setShowCreate(false)}
+          onCreated={onEnterRoom}
+        />
+      )}
     </div>
   );
 }

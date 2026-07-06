@@ -7,11 +7,11 @@ export default function PoliceStationScreen() {
     <div>
       <SimpleActionScreen
         signInMessage="Rüşvet vermek için giriş yapmalısın."
-        description="Günde bir kez, 4000 altın karşılığında şüphe puanını azaltabilirsin."
-        buttonLabel="Rüşvet Ver (4000 altın, Şüphe -20)"
+        description="Günde bir kez, 3000 altın karşılığında şüphe puanını azaltabilirsin."
+        buttonLabel="Rüşvet Ver (3000 altın, Şüphe -20)"
         doneLabel="Bugün zaten rüşvet verdin"
         dailyFlagKey="bribed"
-        goldCost={4000}
+        goldCost={3000}
         actionFn={bribePolice}
       />
       <PoliceApplicationSection />
