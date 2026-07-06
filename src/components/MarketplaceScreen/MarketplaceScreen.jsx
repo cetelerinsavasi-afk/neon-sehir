@@ -137,63 +137,122 @@ function SellForm({ onCreated, onClose }) {
         </div>
 
         {itemType === 'vehicle' && (
-          <select className="market-select" value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
-            <option value="">Araç seç…</option>
-            {sellableVehicles.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.model} (Vites {v.gearLevel}, Depo {v.baseTank + (v.tankBonus || 0)}L
-                {v.turboCount > 0 ? `, Turbo ×${v.turboCount}` : ''})
-              </option>
-            ))}
-          </select>
+          <>
+            <p className="market-step-label">1. Aracını Seç</p>
+            <div className="market-item-picker">
+              {sellableVehicles.length === 0 && (
+                <p className="market-hint">Satışa uygun (ipoteksiz, el konulmamış) bir aracın yok.</p>
+              )}
+              {sellableVehicles.map((v) => {
+                const img = vehicleImage(v.catalogId);
+                const selected = selectedId === v.id;
+                return (
+                  <button
+                    key={v.id}
+                    className={`market-item-card${selected ? ' selected' : ''}`}
+                    onClick={() => setSelectedId(v.id)}
+                  >
+                    {img && <img className="market-item-photo" src={img} alt={v.model} />}
+                    <span className="market-item-name">{v.model}</span>
+                    <span className="market-item-stats">
+                      Vites {v.gearLevel} · Depo {v.baseTank + (v.tankBonus || 0)}L
+                      {v.turboCount > 0 ? ` · Turbo ×${v.turboCount}` : ''}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
         )}
 
         {itemType === 'weapon' && (
-          <select className="market-select" value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
-            <option value="">Silah seç…</option>
-            {sellableWeapons.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name} (Sv. {w.level}, Güç {w.power.toLocaleString('tr-TR')})
-              </option>
-            ))}
-          </select>
+          <>
+            <p className="market-step-label">1. Silahını Seç</p>
+            <div className="market-item-picker">
+              {sellableWeapons.length === 0 && (
+                <p className="market-hint">Satışa çıkarılabilir bir silahın yok.</p>
+              )}
+              {sellableWeapons.map((w) => {
+                const img = weaponImage(w.catalogId);
+                const selected = selectedId === w.id;
+                return (
+                  <button
+                    key={w.id}
+                    className={`market-item-card${selected ? ' selected' : ''}`}
+                    onClick={() => setSelectedId(w.id)}
+                  >
+                    {img && <img className="market-item-photo" src={img} alt={w.name} />}
+                    <span className="market-item-name">{w.name}</span>
+                    <span className="market-item-stats">
+                      Sv. {w.level} · Güç {w.power.toLocaleString('tr-TR')}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
         )}
 
         {itemType === 'material' && (
-          <div className="market-material-form">
-            <select
-              className="market-select"
-              value={materialType}
-              onChange={(e) => setMaterialType(e.target.value)}
-            >
-              {Object.entries(MATERIAL_LABELS).map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label} (elinde: {inventory[key] || 0})
-                </option>
-              ))}
-            </select>
+          <>
+            <p className="market-step-label">1. Malzeme Seç</p>
+            <div className="market-item-picker">
+              {Object.entries(MATERIAL_LABELS).map(([key, label]) => {
+                const selected = materialType === key;
+                return (
+                  <button
+                    key={key}
+                    className={`market-item-card${selected ? ' selected' : ''}`}
+                    onClick={() => setMaterialType(key)}
+                  >
+                    <span className="market-item-emoji-large">{MATERIAL_EMOJIS[key]}</span>
+                    <span className="market-item-name">{label}</span>
+                    <span className="market-item-stats">Elinde: {inventory[key] || 0} adet</span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="market-step-label">2. Satılacak Miktarı Belirle</p>
+            <p className="market-price-label">
+              <strong>{quantity.toLocaleString('tr-TR')} adet</strong> satılacak
+            </p>
             <QuantityStepper
               value={quantity}
               onChange={setQuantity}
               max={inventory[materialType] || 0}
               quickAmounts={[10, 100, 1000]}
             />
-          </div>
+          </>
         )}
 
         {itemType === 'machine' && (
-          <select className="market-select" value={machineType} onChange={(e) => setMachineType(e.target.value)}>
-            {Object.entries(MACHINE_LABELS).map(([key, label]) => (
-              <option key={key} value={key} disabled={!machines[key]?.owned}>
-                {label} {machines[key]?.owned ? '' : '(sahip değilsin)'}
-              </option>
-            ))}
-          </select>
+          <>
+            <p className="market-step-label">1. Makine Seç</p>
+            <div className="market-item-picker">
+              {Object.entries(MACHINE_LABELS).map(([key, label]) => {
+                const owned = machines[key]?.owned;
+                const selected = machineType === key;
+                return (
+                  <button
+                    key={key}
+                    className={`market-item-card${selected ? ' selected' : ''}`}
+                    disabled={!owned}
+                    onClick={() => setMachineType(key)}
+                  >
+                    <span className="market-item-emoji-large">{MATERIAL_EMOJIS[key]}</span>
+                    <span className="market-item-name">{label}</span>
+                    <span className="market-item-stats">{owned ? 'Sahipsin' : 'Sahip değilsin'}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
         )}
 
+        <p className="market-step-label">{itemType === 'material' ? '3' : '2'}. Satış Fiyatını Belirle</p>
         <div className="market-price-form">
           <p className="market-price-label">
-            Satış Fiyatı: <strong>{price.toLocaleString('tr-TR')} altın</strong>
+            <strong>{price.toLocaleString('tr-TR')} altına</strong> satılacak
           </p>
           <QuantityStepper
             value={price}

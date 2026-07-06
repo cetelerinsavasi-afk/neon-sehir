@@ -33,11 +33,11 @@ export const HEIST_LABELS = {
     reward: 20000,
     suspicionCost: 20,
   },
-  fabrika: { title: 'Fabrika Soygunu', requiredPower: 10000, reward: 4000, suspicionCost: 10 },
-  seyyar_satici_1: { title: 'Kokoreçciye Haraç', requiredPower: 4500, reward: 1600, suspicionCost: 5 },
-  seyyar_satici_2: { title: 'Simitçiye Haraç', requiredPower: 3000, reward: 1200, suspicionCost: 5 },
-  seyyar_satici_3: { title: 'Dönerciye Haraç', requiredPower: 1500, reward: 800, suspicionCost: 5 },
-  seyyar_satici_4: { title: 'Köfteciye Haraç', requiredPower: 1000, reward: 400, suspicionCost: 5 },
+  fabrika: { title: 'Fabrika Soygunu', requiredPower: 10000, reward: 5000, suspicionCost: 10 },
+  seyyar_satici_1: { title: 'Kokoreçciye Haraç', requiredPower: 4500, reward: 2500, suspicionCost: 5 },
+  seyyar_satici_2: { title: 'Simitçiye Haraç', requiredPower: 3000, reward: 2000, suspicionCost: 5 },
+  seyyar_satici_3: { title: 'Dönerciye Haraç', requiredPower: 1500, reward: 1500, suspicionCost: 5 },
+  seyyar_satici_4: { title: 'Köfteciye Haraç', requiredPower: 1000, reward: 1000, suspicionCost: 5 },
 };
 
 const RULES_TEXT =
