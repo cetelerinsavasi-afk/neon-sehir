@@ -103,13 +103,16 @@ function TradeToggle({ buyLabel, sellLabel, onBuy, onSell, unitPrice, busy, maxB
 function InvestmentsTab({ player, prices, busy, error, run }) {
   const bankBalance = player?.bankBalance ?? 0;
   const diamondHoldings = player?.diamondHoldings ?? 0;
+  const stockHoldings = player?.stockHoldings ?? 0;
   const cryptoHoldings = player?.cryptoHoldings ?? 0;
   const { history } = useInvestmentHistory();
   const diamondPoints = history.map((h) => h.diamondPrice).filter((v) => v !== undefined);
+  const stockPoints = history.map((h) => h.stockPrice).filter((v) => v !== undefined);
   const cryptoPoints = history.map((h) => h.cryptoPrice).filter((v) => v !== undefined);
   const diamondValue = Math.floor(diamondHoldings * (prices.diamondPrice ?? 0));
+  const stockValue = Math.floor(stockHoldings * (prices.stockPrice ?? 0));
   const cryptoValue = Math.floor(cryptoHoldings * (prices.cryptoPrice ?? 0));
-  const totalInvestments = bankBalance + diamondValue + cryptoValue;
+  const totalInvestments = bankBalance + diamondValue + stockValue + cryptoValue;
 
   return (
     <>
@@ -117,8 +120,8 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
         <span className="bank-total-label">Tüm Yatırımların</span>
         <span className="bank-total-value">{totalInvestments.toLocaleString('tr-TR')} altın</span>
         <span className="bank-total-breakdown">
-          Faizdeki: {bankBalance.toLocaleString('tr-TR')} · Elmas: {diamondValue.toLocaleString('tr-TR')} · Kripto:{' '}
-          {cryptoValue.toLocaleString('tr-TR')}
+          Faizdeki: {bankBalance.toLocaleString('tr-TR')} · Elmas: {diamondValue.toLocaleString('tr-TR')} · Hisse:{' '}
+          {stockValue.toLocaleString('tr-TR')} · Kripto: {cryptoValue.toLocaleString('tr-TR')}
         </span>
       </div>
 
@@ -173,6 +176,44 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
             onClick={() => run('sell-all-diamond', () => sellAllInvestment('diamond'))}
           >
             Tüm Elmasları Sat
+          </button>
+        )}
+      </div>
+
+      <div className="bank-section">
+        <p className="bank-section-title">
+          Hisse Senedi <ChangeBadge pct={prices.stockChangePct} />
+        </p>
+        <PriceChart points={stockPoints} color="#ffd23f" />
+        <div className="bank-section-row">
+          <span>Güncel fiyat</span>
+          <strong>{(prices.stockPrice ?? 0).toLocaleString('tr-TR')} altın/adet</strong>
+        </div>
+        <div className="bank-section-row">
+          <span>Sahip olduğun</span>
+          <strong>
+            {formatUnits(stockHoldings)} adet (
+            {Math.floor(stockHoldings * (prices.stockPrice ?? 0)).toLocaleString('tr-TR')} altın
+            değerinde)
+          </strong>
+        </div>
+        <TradeToggle
+          buyLabel="Al"
+          sellLabel="Sat"
+          unitPrice={prices.stockPrice}
+          busy={busy === 'buy-stock' || busy === 'sell-stock'}
+          maxBuy={player?.gold ?? 0}
+          maxSell={stockValue}
+          onBuy={(amount) => run('buy-stock', () => buyInvestment('stock', amount))}
+          onSell={(amount) => run('sell-stock', () => sellInvestment('stock', amount))}
+        />
+        {stockHoldings > 0 && (
+          <button
+            className="bank-sell-all"
+            disabled={busy === 'sell-all-stock'}
+            onClick={() => run('sell-all-stock', () => sellAllInvestment('stock'))}
+          >
+            Tüm Hisseleri Sat
           </button>
         )}
       </div>

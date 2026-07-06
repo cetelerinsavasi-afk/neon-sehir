@@ -9,10 +9,14 @@ import {
   raceRefuel,
   raceBuyNitro,
   raceChangeGear,
+  sendRaceEmoji,
 } from '../../services/gameActions';
+import { reconnectFirestore } from '../../lib/reconnectFirestore';
 import InfoIcon from '../InfoIcon/InfoIcon';
 import DiceRoll from './DiceRoll';
 import './RaceTrackScreen.css';
+
+const RACE_EMOJIS = ['😂', '😢', '😡', '😮', '👍', '🔥'];
 
 const RULES_TEXT =
   '300 karelik pisti ilk tamamlayan bahsi kazanır. Benzinin biterse direkt kaybedersin, benzin istasyonlarında benzin oldukça ucuzdur, geldiysen benzin almadan geçme.';
@@ -81,6 +85,12 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
   const otherUid = room.participantUids?.find((u) => u !== myUid);
   const me = room.players?.[myUid];
   const other = otherUid ? room.players?.[otherUid] : null;
+  const myReactionData = room.reactions?.[myUid];
+  const myReaction =
+    myReactionData && Date.now() - myReactionData.at < 3000 ? myReactionData.emoji : null;
+  const otherReactionData = otherUid ? room.reactions?.[otherUid] : null;
+  const otherReaction =
+    otherReactionData && Date.now() - otherReactionData.at < 3000 ? otherReactionData.emoji : null;
   const racing = room.status === 'racing';
   const isMyTurn = room.currentTurnUid === myUid || room.finalTurnFor === myUid;
   const isFinalTurnForMe = room.finalTurnFor === myUid;
@@ -253,9 +263,35 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
         </div>
       </div>
       <div className="race-positions">
-        <span>Sen: {me.position}/300</span>
-        <span>{other.displayName}: {other.position}/300</span>
+        <span className="race-position-label">
+          Sen: {me.position}/300
+          {myReaction && <span className="race-reaction">{myReaction}</span>}
+        </span>
+        <span className="race-position-label">
+          {other.displayName}: {other.position}/300
+          {otherReaction && <span className="race-reaction">{otherReaction}</span>}
+        </span>
       </div>
+
+      <div className="race-emoji-row">
+        {RACE_EMOJIS.map((e) => (
+          <button
+            key={e}
+            className="race-emoji-btn"
+            onClick={() => sendRaceEmoji(room.id, e).catch(() => {})}
+          >
+            {e}
+          </button>
+        ))}
+        <button
+          className="race-emoji-btn race-refresh-btn"
+          onClick={() => reconnectFirestore()}
+          aria-label="Yenile"
+        >
+          🔄
+        </button>
+      </div>
+      <p className="race-refresh-hint">Oyun donduysa 🔄 yenile butonuna bas.</p>
 
       <div className="race-stat-boxes">
         <div

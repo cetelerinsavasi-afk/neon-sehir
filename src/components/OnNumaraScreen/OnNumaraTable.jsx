@@ -9,6 +9,7 @@ import {
   sendOnNumaraEmoji,
 } from '../../services/gameActions';
 import { useOnNumaraTableById } from '../../hooks/useOnNumaraTableById';
+import { reconnectFirestore } from '../../lib/reconnectFirestore';
 import './OnNumaraTable.css';
 
 const EMOJIS = ['😂', '😢', '😡', '😮', '👍', '🔥'];
@@ -259,8 +260,16 @@ export default function OnNumaraTable({ tableId, myUid, onLeave }) {
               {e}
             </button>
           ))}
+          <button
+            className="onn-emoji-btn onn-refresh-btn"
+            onClick={() => reconnectFirestore()}
+            aria-label="Yenile"
+          >
+            🔄
+          </button>
         </div>
       )}
+      {iAmSeated && <p className="onn-refresh-hint">Oyun donduysa 🔄 yenile butonuna bas.</p>}
 
       {error && <p className="onn-error">{error}</p>}
     </div>

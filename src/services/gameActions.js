@@ -216,3 +216,6 @@ export const onNumaraAutoStand = (tableId) =>
 
 export const sendOnNumaraEmoji = (tableId, emoji) =>
   httpsCallable(functions, 'sendOnNumaraEmoji')({ tableId, emoji });
+
+export const sendRaceEmoji = (roomId, emoji) =>
+  httpsCallable(functions, 'sendRaceEmoji')({ roomId, emoji });

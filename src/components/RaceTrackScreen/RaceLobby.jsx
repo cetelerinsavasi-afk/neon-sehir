@@ -77,7 +77,7 @@ function CreateRoomModal({ vehicles, onClose, onCreated }) {
         <p className="race-bet-label">
           Bahsi Belirle: <strong>{betAmount.toLocaleString('tr-TR')} altın</strong>
         </p>
-        <QuantityStepper value={betAmount} onChange={setBetAmount} quickAmounts={[1, 10, 100, 1000]} />
+        <QuantityStepper value={betAmount} onChange={setBetAmount} quickAmounts={[10, 100, 1000]} />
         <button
           className="race-btn primary"
           disabled={busy || !myVehicleId || !betAmount}

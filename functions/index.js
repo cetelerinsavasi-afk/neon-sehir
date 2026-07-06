@@ -743,41 +743,52 @@ export const hourlyInvestmentUpdate = onSchedule(
     const currentSnap = await currentRef.get();
     const prev = currentSnap.exists
       ? currentSnap.data()
-      : { diamondPrice: 1000, cryptoPrice: 100000 };
+      : { diamondPrice: 1000, stockPrice: 10000, cryptoPrice: 100000 };
 
     // Asimetrik oynaklık: düşüş oranı artış oranından biraz daha küçük
     // tutuluyor (kullanıcı revizesi) — aksi halde eşit oranlı rastgele
     // yürüyüş "düşmeye meyilli" oluyor (ör. %50 düşüp tekrar eski seviyeye
     // gelmek için %100 artış gerekir). Üst/alt sınır YOK — fiyat doğal
     // akışına bırakılıyor, sadece 1 altına inmesin diye güvenlik tabanı var.
+    // Sıralama (oynaklık artan): Elmas < Hisse Senedi < Kripto.
     const diamondUp = Math.random() < 0.5;
     const diamondChangePct = diamondUp
       ? Math.random() * 0.04 + 0.01 // %1-5 artış
       : -(Math.random() * 0.03 + 0.01); // %1-4 düşüş
-    const cryptoUp = Math.random() < 0.5;
-    const cryptoChangePct = cryptoUp
+    const stockUp = Math.random() < 0.5;
+    const stockChangePct = stockUp
       ? Math.random() * 0.09 + 0.01 // %1-10 artış
       : -(Math.random() * 0.07 + 0.01); // %1-8 düşüş
+    const cryptoUp = Math.random() < 0.5;
+    const cryptoChangePct = cryptoUp
+      ? Math.random() * 0.19 + 0.01 // %1-20 artış
+      : -(Math.random() * 0.15 + 0.01); // %1-16 düşüş
 
     const diamondPrice = Math.max(1, Math.round(prev.diamondPrice * (1 + diamondChangePct)));
+    const stockPrice = Math.max(1, Math.round((prev.stockPrice ?? 10000) * (1 + stockChangePct)));
     const cryptoPrice = Math.max(1, Math.round(prev.cryptoPrice * (1 + cryptoChangePct)));
 
     const roundedDiamondPct = Math.round(diamondChangePct * 1000) / 10;
+    const roundedStockPct = Math.round(stockChangePct * 1000) / 10;
     const roundedCryptoPct = Math.round(cryptoChangePct * 1000) / 10;
     const now = admin.firestore.FieldValue.serverTimestamp();
 
     await currentRef.set({
       diamondPrice,
+      stockPrice,
       cryptoPrice,
       diamondChangePct: roundedDiamondPct,
+      stockChangePct: roundedStockPct,
       cryptoChangePct: roundedCryptoPct,
       updatedAt: now,
     });
 
     await db.collection('investmentHistory').add({
       diamondPrice,
+      stockPrice,
       cryptoPrice,
       diamondChangePct: roundedDiamondPct,
+      stockChangePct: roundedStockPct,
       cryptoChangePct: roundedCryptoPct,
       createdAt: now,
     });
@@ -1147,7 +1158,7 @@ export const sellSilahMaterial = onCall(async (request) => {
 // FAZ 4 — BANKA VE YATIRIM SİSTEMİ (Bölüm 13)
 // =============================================================================
 
-const DEFAULT_PRICES = { diamondPrice: 1000, cryptoPrice: 100000 };
+const DEFAULT_PRICES = { diamondPrice: 1000, stockPrice: 10000, cryptoPrice: 100000 };
 
 async function getCurrentPrices() {
   const snap = await db.collection('investments').doc('current').get();
@@ -1207,11 +1218,18 @@ export const withdrawFromBank = onCall(async (request) => {
 // sayede kripto gibi pahalı araçlar da küçük bütçelerle alınabilir.
 // Bu yüzden holdings alanları KESİRLİ (float) sayılardır.
 // ---------------------------------------------------------------------------
+const INVESTMENT_PRICE_FIELD = { diamond: 'diamondPrice', stock: 'stockPrice', crypto: 'cryptoPrice' };
+const INVESTMENT_HOLDINGS_FIELD = {
+  diamond: 'diamondHoldings',
+  stock: 'stockHoldings',
+  crypto: 'cryptoHoldings',
+};
+
 export const buyInvestment = onCall(async (request) => {
   const uid = requireAuth(request);
   const { assetType } = request.data || {};
   const goldAmount = Number(request.data?.amount);
-  if (!['diamond', 'crypto'].includes(assetType)) {
+  if (!INVESTMENT_PRICE_FIELD[assetType]) {
     throw new HttpsError('invalid-argument', 'Geçersiz yatırım aracı.');
   }
   if (!Number.isInteger(goldAmount) || goldAmount <= 0) {
@@ -1219,9 +1237,9 @@ export const buyInvestment = onCall(async (request) => {
   }
 
   const prices = await getCurrentPrices();
-  const unitPrice = assetType === 'diamond' ? prices.diamondPrice : prices.cryptoPrice;
+  const unitPrice = prices[INVESTMENT_PRICE_FIELD[assetType]];
   const units = goldAmount / unitPrice;
-  const holdingsField = assetType === 'diamond' ? 'diamondHoldings' : 'cryptoHoldings';
+  const holdingsField = INVESTMENT_HOLDINGS_FIELD[assetType];
 
   const userRef = db.collection('users').doc(uid);
   await db.runTransaction(async (tx) => {
@@ -1245,13 +1263,13 @@ export const buyInvestment = onCall(async (request) => {
 export const sellInvestment = onCall(async (request) => {
   const uid = requireAuth(request);
   const { assetType, all } = request.data || {};
-  if (!['diamond', 'crypto'].includes(assetType)) {
+  if (!INVESTMENT_PRICE_FIELD[assetType]) {
     throw new HttpsError('invalid-argument', 'Geçersiz yatırım aracı.');
   }
 
   const prices = await getCurrentPrices();
-  const unitPrice = assetType === 'diamond' ? prices.diamondPrice : prices.cryptoPrice;
-  const holdingsField = assetType === 'diamond' ? 'diamondHoldings' : 'cryptoHoldings';
+  const unitPrice = prices[INVESTMENT_PRICE_FIELD[assetType]];
+  const holdingsField = INVESTMENT_HOLDINGS_FIELD[assetType];
 
   const userRef = db.collection('users').doc(uid);
   let totalValue = 0;
@@ -2529,6 +2547,66 @@ export const expireRaceRooms = onSchedule({ schedule: 'every 5 minutes' }, async
   if (refunds.length) await Promise.all(refunds);
 });
 
+// expireOldMarketplaceListings — 7 gündür satılmayan 2. el ilanlarını
+// otomatik kaldırır, ürünü/malzemeyi/makineyi sahibine iade eder
+// (cancelListing ile birebir aynı iade mantığı), satıcıya SMS atar.
+export const expireOldMarketplaceListings = onSchedule({ schedule: 'every 24 hours' }, async () => {
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const openSnap = await db.collection('marketplaceListings').where('sold', '==', false).get();
+
+  const jobs = [];
+  openSnap.forEach((doc) => {
+    const listing = doc.data();
+    const createdAtMs = listing.createdAt?.toMillis?.() ?? 0;
+    if (!createdAtMs || now - createdAtMs < SEVEN_DAYS_MS) return;
+
+    jobs.push(
+      (async () => {
+        await db.runTransaction(async (tx) => {
+          const snap = await tx.get(doc.ref);
+          if (!snap.exists || snap.data().sold) return;
+          const l = snap.data();
+
+          if (l.itemType === 'vehicle') {
+            tx.update(db.collection('vehicles').doc(l.vehicleId), { listed: false });
+          } else if (l.itemType === 'weapon') {
+            tx.update(db.collection('weapons').doc(l.weaponId), { listed: false });
+          } else if (l.itemType === 'material') {
+            const inventoryRef = db
+              .collection('users')
+              .doc(l.sellerId)
+              .collection('inventory')
+              .doc(l.materialType);
+            tx.set(
+              inventoryRef,
+              { quantity: admin.firestore.FieldValue.increment(l.quantity) },
+              { merge: true }
+            );
+          } else if (l.itemType === 'machine') {
+            const machineRef = db
+              .collection('users')
+              .doc(l.sellerId)
+              .collection('productionMachines')
+              .doc(l.machineType);
+            tx.update(machineRef, { owned: true });
+          }
+
+          tx.update(doc.ref, { sold: true, cancelled: true, expiredAutomatically: true });
+          tx.set(db.collection('users').doc(l.sellerId).collection('messages').doc(), {
+            text: '7 gündür satılmayan bir ilanın otomatik kaldırıldı, ürünün sana iade edildi.',
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            read: false,
+            type: 'listing_expired',
+          });
+        });
+      })()
+    );
+  });
+
+  if (jobs.length) await Promise.all(jobs);
+});
+
 // ---------------------------------------------------------------------------
 // markMessageRead — SMS gelen kutusundaki bir mesajı okundu olarak işaretler.
 // ---------------------------------------------------------------------------
@@ -3724,6 +3802,22 @@ const ON_NUMARA_TARGET = 10;
 const ON_NUMARA_DEALER_STAND_AT = 8;
 const ON_NUMARA_TURN_SECONDS = 10;
 const ON_NUMARA_EMOJIS = ['😂', '😢', '😡', '😮', '👍', '🔥'];
+const RACE_EMOJIS = ['😂', '😢', '😡', '😮', '👍', '🔥'];
+
+// sendRaceEmoji — 10 Numara'daki emoji tepki sistemiyle birebir aynı,
+// yarış odaları için.
+export const sendRaceEmoji = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { roomId, emoji } = request.data || {};
+  if (!RACE_EMOJIS.includes(emoji)) {
+    throw new HttpsError('invalid-argument', 'Geçersiz emoji.');
+  }
+  await db
+    .collection('raceRooms')
+    .doc(roomId)
+    .update({ [`reactions.${uid}`]: { emoji, at: Date.now() } });
+  return { ok: true };
+});
 
 function drawOnNumaraCard() {
   return 1 + Math.floor(Math.random() * 5);

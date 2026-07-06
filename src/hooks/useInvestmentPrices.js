@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 
-const DEFAULT_PRICES = { diamondPrice: 1000, cryptoPrice: 100000 };
+const DEFAULT_PRICES = { diamondPrice: 1000, stockPrice: 10000, cryptoPrice: 100000 };
 
 /**
  * useInvestmentPrices — investments/current dokümanını canlı dinler.

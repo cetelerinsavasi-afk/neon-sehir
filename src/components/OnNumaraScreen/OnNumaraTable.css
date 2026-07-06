@@ -333,3 +333,15 @@
   box-shadow: 0 0 4px rgba(255, 210, 63, 0.6);
   display: inline-block;
 }
+
+.onn-refresh-btn {
+  border-color: var(--onn-teal, #19e8ff);
+  opacity: 0.85;
+}
+
+.onn-refresh-hint {
+  margin: 2px 0 0;
+  font-size: 10px;
+  color: var(--text-dim);
+  text-align: center;
+}
