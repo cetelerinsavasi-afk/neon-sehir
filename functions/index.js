@@ -3985,9 +3985,10 @@ export const dealOnNumaraCards = onCall(async (request) => {
       delete newSeats[u];
     });
     eligible.forEach((u) => {
+      const prevNet = typeof newSeats[u]?.netChange === 'number' ? newSeats[u].netChange : 0;
       newSeats[u] = {
         ...newSeats[u],
-        netChange: admin.firestore.FieldValue.increment(-table.betAmount),
+        netChange: prevNet - table.betAmount,
       };
     });
 
@@ -4073,9 +4074,10 @@ async function resolveOnNumaraIfDealerPhase(tableId) {
       participants.forEach((u, i) => {
         tx.update(refundRefs[i], { gold: admin.firestore.FieldValue.increment(table.betAmount) });
         if (newSeatsRefund[u]) {
+          const prevNet = typeof newSeatsRefund[u].netChange === 'number' ? newSeatsRefund[u].netChange : 0;
           newSeatsRefund[u] = {
             ...newSeatsRefund[u],
-            netChange: admin.firestore.FieldValue.increment(table.betAmount),
+            netChange: prevNet + table.betAmount,
           };
         }
       });
@@ -4129,9 +4131,10 @@ async function resolveOnNumaraIfDealerPhase(tableId) {
         // 10 Numara kazancı borca gitmez — direkt altına eklenir.
         tx.update(winnerRefs[i], { gold: admin.firestore.FieldValue.increment(share) });
         if (newSeatsWin[u]) {
+          const prevNet = typeof newSeatsWin[u].netChange === 'number' ? newSeatsWin[u].netChange : 0;
           newSeatsWin[u] = {
             ...newSeatsWin[u],
-            netChange: admin.firestore.FieldValue.increment(share),
+            netChange: prevNet + share,
           };
         }
       });
