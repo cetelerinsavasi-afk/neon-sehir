@@ -37,6 +37,33 @@ const TABS = [
   { id: 'machine', label: 'Makine' },
 ];
 
+// Fiyat sınırları — hesaplar arası para aklamayı önlemek için backend'de
+// de AYNI kurallarla doğrulanıyor (bkz. functions/index.js createListing).
+// Burası sadece kullanıcıya yol göstermek için.
+const AMAZOR_PRICES = { yasakliMadde: 4000, vitesUpgrade: 500, depoUpgrade: 500, silahUpgrade: 100 };
+const MACHINE_PRICE = 150000;
+
+function vehiclePriceRange(vehicle) {
+  const base = vehicleCatalog.find((v) => v.id === vehicle.catalogId)?.price || 0;
+  const mult = vehicle.gearUpgraded && vehicle.tankUpgraded ? 3 : vehicle.gearUpgraded || vehicle.tankUpgraded ? 2 : 1;
+  const max = base * mult;
+  return { min: Math.floor(max / 2), max };
+}
+
+function weaponPriceRange(weapon) {
+  const base = weaponCatalog.find((w) => w.id === weapon.catalogId)?.price || 0;
+  const mult = weapon.level || 1;
+  const max = base * mult;
+  return { min: Math.floor(max / 2), max };
+}
+
+function materialPriceRange(materialType, qty) {
+  const max = AMAZOR_PRICES[materialType] * qty;
+  return { min: Math.floor((AMAZOR_PRICES[materialType] / 2) * qty), max };
+}
+
+const machinePriceRange = { min: Math.floor(MACHINE_PRICE / 2), max: MACHINE_PRICE };
+
 function vehicleImage(catalogId) {
   return vehicleCatalog.find((v) => v.id === catalogId)?.image;
 }
@@ -78,6 +105,24 @@ function SellForm({ onCreated, onClose }) {
 
   const sellableVehicles = vehicles.filter((v) => !v.mortgaged && !v.seizedByBank && !v.listed);
   const sellableWeapons = weapons.filter((w) => !w.listed);
+
+  const priceRange = (() => {
+    if (itemType === 'vehicle') {
+      const v = sellableVehicles.find((x) => x.id === selectedId);
+      return v ? vehiclePriceRange(v) : null;
+    }
+    if (itemType === 'weapon') {
+      const w = sellableWeapons.find((x) => x.id === selectedId);
+      return w ? weaponPriceRange(w) : null;
+    }
+    if (itemType === 'material') {
+      return quantity > 0 ? materialPriceRange(materialType, quantity) : null;
+    }
+    if (itemType === 'machine') {
+      return machinePriceRange;
+    }
+    return null;
+  })();
 
   const handleSubmit = async () => {
     if (!price || price <= 0) return;
@@ -251,12 +296,30 @@ function SellForm({ onCreated, onClose }) {
           <p className="market-price-label">
             <strong>{price.toLocaleString('tr-TR')} altına</strong> satılacak
           </p>
+          {priceRange && (
+            <p className="market-price-range-hint">
+              İzin verilen aralık: {priceRange.min.toLocaleString('tr-TR')} -{' '}
+              {priceRange.max.toLocaleString('tr-TR')} altın
+            </p>
+          )}
           <QuantityStepper
             value={price}
             onChange={setPrice}
+            max={priceRange?.max}
             quickAmounts={[10, 100, 1000, 10000, 100000]}
           />
-          <button className="market-btn primary" disabled={busy || !price} onClick={handleSubmit}>
+          {priceRange && price > 0 && (price < priceRange.min || price > priceRange.max) && (
+            <p className="market-price-warning">
+              Fiyat izin verilen aralığın dışında, ilan verilemez.
+            </p>
+          )}
+          <button
+            className="market-btn primary"
+            disabled={
+              busy || !price || !priceRange || price < priceRange.min || price > priceRange.max
+            }
+            onClick={handleSubmit}
+          >
             İlan Ver
           </button>
         </div>

@@ -3525,6 +3525,17 @@ export const createListing = onCall(async (request) => {
       if (v.listed) {
         throw new HttpsError('failed-precondition', 'Bu araç zaten listelenmiş.');
       }
+      const baseVehiclePrice = VEHICLE_CATALOG[v.catalogId]?.price || 0;
+      const vehicleUpgradeMult =
+        v.gearUpgraded && v.tankUpgraded ? 3 : v.gearUpgraded || v.tankUpgraded ? 2 : 1;
+      const vehicleMax = baseVehiclePrice * vehicleUpgradeMult;
+      const vehicleMin = Math.floor(vehicleMax / 2);
+      if (priceNum < vehicleMin || priceNum > vehicleMax) {
+        throw new HttpsError(
+          'invalid-argument',
+          `Fiyat ${vehicleMin.toLocaleString('tr-TR')} - ${vehicleMax.toLocaleString('tr-TR')} altın arasında olmalı.`
+        );
+      }
       tx.update(vehicleRef, { listed: true });
       tx.set(listingRef, {
         sellerId: uid,
@@ -3567,6 +3578,16 @@ export const createListing = onCall(async (request) => {
       if (w.listed) {
         throw new HttpsError('failed-precondition', 'Bu silah zaten listelenmiş.');
       }
+      const baseWeaponPrice = WEAPON_CATALOG[w.catalogId]?.price || 0;
+      const weaponMult = w.level || 1;
+      const weaponMax = baseWeaponPrice * weaponMult;
+      const weaponMin = Math.floor(weaponMax / 2);
+      if (priceNum < weaponMin || priceNum > weaponMax) {
+        throw new HttpsError(
+          'invalid-argument',
+          `Fiyat ${weaponMin.toLocaleString('tr-TR')} - ${weaponMax.toLocaleString('tr-TR')} altın arasında olmalı.`
+        );
+      }
       tx.update(weaponRef, { listed: true });
       tx.set(listingRef, {
         sellerId: uid,
@@ -3590,6 +3611,14 @@ export const createListing = onCall(async (request) => {
     if (!Number.isInteger(qty) || qty <= 0) {
       throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
     }
+    const materialMax = AMAZOR_PRICES[materialType] * qty;
+    const materialMin = Math.floor((AMAZOR_PRICES[materialType] / 2) * qty);
+    if (priceNum < materialMin || priceNum > materialMax) {
+      throw new HttpsError(
+        'invalid-argument',
+        `Fiyat ${materialMin.toLocaleString('tr-TR')} - ${materialMax.toLocaleString('tr-TR')} altın arasında olmalı.`
+      );
+    }
     const inventoryRef = db.collection('users').doc(uid).collection('inventory').doc(materialType);
     await db.runTransaction(async (tx) => {
       const invSnap = await tx.get(inventoryRef);
@@ -3612,6 +3641,14 @@ export const createListing = onCall(async (request) => {
   } else if (itemType === 'machine') {
     if (!VALID_MACHINES.includes(machineType)) {
       throw new HttpsError('invalid-argument', 'Geçersiz makine türü.');
+    }
+    const machineMax = MACHINE_PRICE;
+    const machineMin = Math.floor(MACHINE_PRICE / 2);
+    if (priceNum < machineMin || priceNum > machineMax) {
+      throw new HttpsError(
+        'invalid-argument',
+        `Fiyat ${machineMin.toLocaleString('tr-TR')} - ${machineMax.toLocaleString('tr-TR')} altın arasında olmalı.`
+      );
     }
     const machineRef = db.collection('users').doc(uid).collection('productionMachines').doc(machineType);
     await db.runTransaction(async (tx) => {
