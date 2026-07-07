@@ -345,3 +345,17 @@
   color: var(--text-dim);
   text-align: center;
 }
+
+.onn-net-change {
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: 2px;
+}
+
+.onn-net-change.positive {
+  color: #3ddc84;
+}
+
+.onn-net-change.negative {
+  color: var(--neon-pink, #ff2e8c);
+}

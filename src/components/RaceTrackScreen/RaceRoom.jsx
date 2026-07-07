@@ -10,8 +10,8 @@ import {
   raceBuyNitro,
   raceChangeGear,
   sendRaceEmoji,
+  pingRaceRoom,
 } from '../../services/gameActions';
-import { reconnectFirestore } from '../../lib/reconnectFirestore';
 import InfoIcon from '../InfoIcon/InfoIcon';
 import DiceRoll from './DiceRoll';
 import './RaceTrackScreen.css';
@@ -285,7 +285,7 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
         ))}
         <button
           className="race-emoji-btn race-refresh-btn"
-          onClick={() => reconnectFirestore()}
+          onClick={() => pingRaceRoom(room.id).catch(() => {})}
           aria-label="Yenile"
         >
           🔄

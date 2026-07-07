@@ -7,9 +7,9 @@ import {
   onNumaraAutoStand,
   leaveOnNumaraTable,
   sendOnNumaraEmoji,
+  pingOnNumaraTable,
 } from '../../services/gameActions';
 import { useOnNumaraTableById } from '../../hooks/useOnNumaraTableById';
-import { reconnectFirestore } from '../../lib/reconnectFirestore';
 import './OnNumaraTable.css';
 
 const EMOJIS = ['😂', '😢', '😡', '😮', '👍', '🔥'];
@@ -58,7 +58,7 @@ function statusInfo(status) {
   return { cls: '', text: 'Oynuyor' };
 }
 
-function Seat({ name, cards, status, hidden, isActive, isDealer, reaction, secondsLeft }) {
+function Seat({ name, cards, status, hidden, isActive, isDealer, reaction, secondsLeft, netChange }) {
   const revealed = !hidden;
   const total = revealed ? sumOf(cards) : cards.length ? '?' : '–';
   const pct = revealed ? Math.min(100, (sumOf(cards) / TARGET) * 100) : 0;
@@ -70,6 +70,12 @@ function Seat({ name, cards, status, hidden, isActive, isDealer, reaction, secon
         <span className="onn-seat-name">
           <span className="onn-chip-dot" />
           {name}
+          {typeof netChange === 'number' && (
+            <span className={`onn-net-change ${netChange >= 0 ? 'positive' : 'negative'}`}>
+              {netChange >= 0 ? '+' : ''}
+              {netChange.toLocaleString('tr-TR')}
+            </span>
+          )}
           {reaction && <span className="onn-reaction">{reaction}</span>}
         </span>
         <span className={`onn-status-pill ${cls}`}>{text}</span>
@@ -202,6 +208,7 @@ export default function OnNumaraTable({ tableId, myUid, onLeave }) {
               isActive={round?.currentTurnUid === uid}
               reaction={showReaction ? reaction.emoji : null}
               secondsLeft={round?.currentTurnUid === uid ? secondsLeft : null}
+              netChange={typeof seat?.netChange === 'number' ? seat.netChange : 0}
             />
           );
         })}
@@ -262,7 +269,7 @@ export default function OnNumaraTable({ tableId, myUid, onLeave }) {
           ))}
           <button
             className="onn-emoji-btn onn-refresh-btn"
-            onClick={() => reconnectFirestore()}
+            onClick={() => pingOnNumaraTable(tableId).catch(() => {})}
             aria-label="Yenile"
           >
             🔄

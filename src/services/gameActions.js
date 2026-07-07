@@ -217,5 +217,11 @@ export const onNumaraAutoStand = (tableId) =>
 export const sendOnNumaraEmoji = (tableId, emoji) =>
   httpsCallable(functions, 'sendOnNumaraEmoji')({ tableId, emoji });
 
+export const pingOnNumaraTable = (tableId) =>
+  httpsCallable(functions, 'pingRoom')({ collectionName: 'onNumaraTables', docId: tableId });
+
+export const pingRaceRoom = (roomId) =>
+  httpsCallable(functions, 'pingRoom')({ collectionName: 'raceRooms', docId: roomId });
+
 export const sendRaceEmoji = (roomId, emoji) =>
   httpsCallable(functions, 'sendRaceEmoji')({ roomId, emoji });

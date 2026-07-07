@@ -595,10 +595,12 @@ export const dailyReset = onSchedule(
     }
 
     // 7) Araç kredileri (Bölüm 8.4, 9.3): vadesi geçmiş & tam ödenmemiş
-    // krediler el konur (ödenen kısım iade edilir); aktif, henüz el
-    // konulmamış kredisi olanlara hatırlatma SMS'i gönderilir. Tek eşitlik
-    // filtresi (mortgaged) kullanılıyor, vade karşılaştırması JS'de
-    // yapılıyor — composite index riski yok.
+    // krediler artık aracı EL KOYMUYOR — kalan borç doğrudan devlete CEZA
+    // olarak yazılıyor (Banka'dan istediğin an ödenebilir, ya da
+    // kazancının yarısı otomatik keser — Bölüm 10 ile aynı mantık), araç
+    // sahibine iade edilir, kredi tamamen kapanır. Bu, önceki "el koy /
+    // borcu öde / aracı geri al" akışının karmaşıklığını kaldırır — tek
+    // seferlik, net bir sonuç.
     const mortgagedSnap = await db.collection('vehicles').where('mortgaged', '==', true).get();
     const loanBatch = db.batch();
     const loanSmsPromises = [];
@@ -612,21 +614,29 @@ export const dailyReset = onSchedule(
         return;
       }
       if (dueMillis <= nowMillis) {
-        // Vade doldu, borç tam ödenmedi — ödenen kısım iade, araç el konur.
+        // Vade doldu, borç tam ödenmedi — kalan miktar CEZA olarak devlete
+        // yazılır, araç sahibine kalır, kredi kapanır.
+        const remaining = totalOwed - paid;
         loanBatch.update(db.collection('users').doc(v.ownerId), {
-          gold: admin.firestore.FieldValue.increment(paid),
+          debtToState: admin.firestore.FieldValue.increment(remaining),
         });
-        loanBatch.update(docSnap.ref, { seizedByBank: true, loanPaid: 0 });
+        loanBatch.update(docSnap.ref, {
+          mortgaged: false,
+          seizedByBank: false,
+          loanPrincipal: 0,
+          loanTotalOwed: 0,
+          loanPaid: 0,
+        });
         loanSmsPromises.push(
           db
             .collection('users')
             .doc(v.ownerId)
             .collection('messages')
             .add({
-              text: `Banka: ${v.model} aracınızın kredi vadesi doldu, borç tam ödenmediği için araca el konuldu. Kalan borcunuzu (${totalOwed.toLocaleString('tr-TR')} altın) öderseniz aracınızı geri alabilirsiniz.`,
+              text: `Banka: ${v.model} aracınızın kredi vadesi doldu. Kalan borcunuz (${remaining.toLocaleString('tr-TR')} altın) devlete CEZA olarak yazıldı, aracınız elinizde kalıyor. Banka'dan istediğin an ödeyebilirsin.`,
               createdAt: admin.firestore.FieldValue.serverTimestamp(),
               read: false,
-              type: 'loan_seized',
+              type: 'loan_penalty',
             })
         );
       } else {
@@ -3851,7 +3861,7 @@ export const createOnNumaraTable = onCall(async (request) => {
     betAmount: bet,
     creatorUid: uid,
     seatOrder: [uid],
-    seats: { [uid]: { displayName: user.displayName || 'Oyuncu' } },
+    seats: { [uid]: { displayName: user.displayName || 'Oyuncu', netChange: 0 } },
     round: null,
     reactions: {},
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -3882,7 +3892,7 @@ export const joinOnNumaraTable = onCall(async (request) => {
     }
     tx.update(tableRef, {
       seatOrder: admin.firestore.FieldValue.arrayUnion(uid),
-      [`seats.${uid}`]: { displayName: user.displayName || 'Oyuncu' },
+      [`seats.${uid}`]: { displayName: user.displayName || 'Oyuncu', netChange: 0 },
     });
   });
 
@@ -3974,6 +3984,12 @@ export const dealOnNumaraCards = onCall(async (request) => {
     kicked.forEach((u) => {
       delete newSeats[u];
     });
+    eligible.forEach((u) => {
+      newSeats[u] = {
+        ...newSeats[u],
+        netChange: admin.firestore.FieldValue.increment(-table.betAmount),
+      };
+    });
 
     tx.update(tableRef, {
       seats: newSeats,
@@ -4053,10 +4069,18 @@ async function resolveOnNumaraIfDealerPhase(tableId) {
     // alır (cepten hiçbir şey eksilmez).
     if (!dealerIn && contenders.length === 0) {
       const refundRefs = participants.map((u) => db.collection('users').doc(u));
+      const newSeatsRefund = { ...table.seats };
       participants.forEach((u, i) => {
         tx.update(refundRefs[i], { gold: admin.firestore.FieldValue.increment(table.betAmount) });
+        if (newSeatsRefund[u]) {
+          newSeatsRefund[u] = {
+            ...newSeatsRefund[u],
+            netChange: admin.firestore.FieldValue.increment(table.betAmount),
+          };
+        }
       });
       tx.update(tableRef, {
+        seats: newSeatsRefund,
         round: {
           ...round,
           phase: 'resolved',
@@ -4097,16 +4121,24 @@ async function resolveOnNumaraIfDealerPhase(tableId) {
     const winnerRefs = humanWinners.map((u) => db.collection('users').doc(u));
 
     const updatedHands = { ...hands };
+    const newSeatsWin = { ...table.seats };
     const share = totalWinnerSlots > 0 ? Math.floor(round.pot / totalWinnerSlots) : 0;
     if (humanWinners.length > 0 && share > 0) {
       humanWinners.forEach((u, i) => {
         updatedHands[u] = { ...hands[u], status: 'won' };
         // 10 Numara kazancı borca gitmez — direkt altına eklenir.
         tx.update(winnerRefs[i], { gold: admin.firestore.FieldValue.increment(share) });
+        if (newSeatsWin[u]) {
+          newSeatsWin[u] = {
+            ...newSeatsWin[u],
+            netChange: admin.firestore.FieldValue.increment(share),
+          };
+        }
       });
     }
 
     tx.update(tableRef, {
+      seats: newSeatsWin,
       round: {
         ...round,
         phase: 'resolved',
@@ -4214,5 +4246,24 @@ export const sendOnNumaraEmoji = onCall(async (request) => {
     .collection('onNumaraTables')
     .doc(tableId)
     .update({ [`reactions.${uid}`]: { emoji, at: Date.now() } });
+  return { ok: true };
+});
+
+// pingRoom — "Yenile" butonu için. Emoji göndermekle AYNI mekanizmayı
+// (ilgili oda/masa dokümanına bir yazma işlemi) tetikler — kullanıcıların
+// gözlemine göre, donan bağlantıyı asıl düzelten şey network'ü
+// kapatıp-açmak değil, dokümana yeni bir YAZMA gelmesiymiş. `reactions`
+// alanına DEĞİL, ayrı bir `lastPing` alanına yazıyoruz — böylece hiçbir
+// oyuncuya emoji atılmış gibi görünmez.
+export const pingRoom = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { collectionName, docId } = request.data || {};
+  if (!['onNumaraTables', 'raceRooms'].includes(collectionName)) {
+    throw new HttpsError('invalid-argument', 'Geçersiz koleksiyon.');
+  }
+  await db
+    .collection(collectionName)
+    .doc(docId)
+    .update({ [`lastPing.${uid}`]: Date.now() });
   return { ok: true };
 });

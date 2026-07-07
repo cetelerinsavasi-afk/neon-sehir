@@ -46,12 +46,9 @@ function weaponImage(catalogId) {
 
 function listingLabel(listing) {
   if (listing.itemType === 'vehicle') {
-    const upgrades = [];
-    if (listing.vehicleGearUpgraded) upgrades.push(`Vites ${listing.vehicleGearLevel}`);
-    if (listing.vehicleTankUpgraded) upgrades.push(`Depo ${listing.vehicleTank}L`);
-    return upgrades.length > 0
-      ? `${listing.vehicleModel} (${upgrades.join(', ')} — geliştirilmiş)`
-      : listing.vehicleModel;
+    const stats = `Vites ${listing.vehicleGearLevel} · Depo ${listing.vehicleTank}L`;
+    const upgraded = listing.vehicleGearUpgraded || listing.vehicleTankUpgraded;
+    return `${listing.vehicleModel} (${stats}${upgraded ? ' — geliştirilmiş' : ''})`;
   }
   if (listing.itemType === 'weapon') {
     return listing.weaponLevel > 1
