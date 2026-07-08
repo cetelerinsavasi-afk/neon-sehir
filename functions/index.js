@@ -1542,7 +1542,7 @@ export const buyLotteryTicket = onCall(async (request) => {
 // 3 makara, 5 olası sembol, tamamen rastgele. 2 ya da 3 aynı sembol
 // gelirse ödül var; hepsi farklıysa ödül yok.
 // ---------------------------------------------------------------------------
-const SLOT_SPIN_COST = 750;
+const SLOT_SPIN_COST = 500;
 const SLOT_FREE_SPINS_PER_DAY = 3;
 const SLOT_SYMBOLS = ['yasakliMadde', 'silahUpgrade', 'depoUpgrade', 'vitesUpgrade', 'altin'];
 const SLOT_PRIZES = {
