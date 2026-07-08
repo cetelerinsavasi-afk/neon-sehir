@@ -91,30 +91,58 @@
   color: var(--neon-cyan);
 }
 
-.casino-tabs-screen {
+.casino-picker {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
-.casino-tabs {
+.casino-picker-card {
   display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 6px;
+  padding: 20px;
+  border-radius: 14px;
+  border: 1px solid var(--panel-border);
+  background: #05070c;
+  color: var(--text);
+  cursor: pointer;
+  text-align: center;
 }
 
-.casino-tab-btn {
-  flex: 1;
-  padding: 10px;
+.casino-picker-card:hover {
+  border-color: #ffd23f;
+}
+
+.casino-picker-emoji {
+  font-size: 34px;
+}
+
+.casino-picker-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.casino-picker-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.casino-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.casino-back-btn {
+  align-self: flex-start;
+  padding: 8px 12px;
   border-radius: 8px;
   border: 1px solid var(--panel-border);
   background: var(--panel);
-  color: var(--text-dim);
-  font-size: 13px;
+  color: var(--text);
+  font-size: 12px;
   cursor: pointer;
-}
-
-.casino-tab-btn.active {
-  border-color: #ffd23f;
-  color: #ffd23f;
-  background: rgba(255, 210, 63, 0.08);
 }

@@ -1537,6 +1537,72 @@ export const buyLotteryTicket = onCall(async (request) => {
   return { ok: true };
 });
 
+// ---------------------------------------------------------------------------
+// spinSlot — Casino > Slot. Günde ilk çevirme ücretsiz, sonrası 750 altın.
+// 3 makara, 5 olası sembol, tamamen rastgele. 2 ya da 3 aynı sembol
+// gelirse ödül var; hepsi farklıysa ödül yok.
+// ---------------------------------------------------------------------------
+const SLOT_SPIN_COST = 750;
+const SLOT_SYMBOLS = ['yasakliMadde', 'silahUpgrade', 'depoUpgrade', 'vitesUpgrade', 'altin'];
+const SLOT_PRIZES = {
+  yasakliMadde: { 2: 1, 3: 3 },
+  silahUpgrade: { 2: 10, 3: 100 },
+  depoUpgrade: { 2: 2, 3: 20 },
+  vitesUpgrade: { 2: 2, 3: 20 },
+  altin: { 2: 1000, 3: 10000 },
+};
+
+export const spinSlot = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const dateKey = istanbulDateKey();
+  const userRef = db.collection('users').doc(uid);
+  const dailyRef = db.collection('dailyActions').doc(`${uid}_${dateKey}`);
+
+  const reels = [0, 1, 2].map(() => SLOT_SYMBOLS[Math.floor(Math.random() * SLOT_SYMBOLS.length)]);
+  const counts = {};
+  reels.forEach((s) => {
+    counts[s] = (counts[s] || 0) + 1;
+  });
+  let prizeSymbol = null;
+  let matchCount = 0;
+  Object.entries(counts).forEach(([symbol, count]) => {
+    if (count >= 2 && count > matchCount) {
+      prizeSymbol = symbol;
+      matchCount = count;
+    }
+  });
+  const prizeAmount = prizeSymbol ? SLOT_PRIZES[prizeSymbol][matchCount] || 0 : 0;
+
+  let usedFreeSpin = false;
+  await db.runTransaction(async (tx) => {
+    const [userSnap, dailySnap] = await Promise.all([tx.get(userRef), tx.get(dailyRef)]);
+    const user = userSnap.data();
+    const freeUsed = Boolean(dailySnap.data()?.slotFreeSpinUsed);
+    const cost = freeUsed ? SLOT_SPIN_COST : 0;
+    if (!user || (user.gold || 0) < cost) {
+      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    }
+    usedFreeSpin = !freeUsed;
+
+    if (cost > 0) {
+      tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-cost) });
+    }
+    if (!freeUsed) {
+      tx.set(dailyRef, { slotFreeSpinUsed: true }, { merge: true });
+    }
+
+    if (prizeSymbol === 'altin') {
+      // Slot kazancı 10 Numara/Piyango gibi asla otomatik borca gitmez.
+      tx.update(userRef, { gold: admin.firestore.FieldValue.increment(prizeAmount) });
+    } else if (prizeSymbol) {
+      const inventoryRef = userRef.collection('inventory').doc(prizeSymbol);
+      tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(prizeAmount) }, { merge: true });
+    }
+  });
+
+  return { ok: true, reels, matchCount, prizeSymbol, prizeAmount, free: usedFreeSpin };
+});
+
 // =============================================================================
 // FAZ 5 — ŞÜPHE YÖNETİMİ VE SOYGUN SİSTEMİ (Bölüm 13, 14)
 // =============================================================================

@@ -78,6 +78,8 @@ export const repayStateDebt = (amount) =>
 export const buyLotteryTicket = (quantity) =>
   httpsCallable(functions, 'buyLotteryTicket')({ quantity });
 
+export const spinSlot = () => httpsCallable(functions, 'spinSlot')();
+
 // --- Telefon: "2." İkinci El Satış (Bölüm 9.1) ---
 
 export const createListing = (payload) => httpsCallable(functions, 'createListing')(payload);

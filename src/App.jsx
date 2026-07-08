@@ -96,6 +96,7 @@ function GameShell() {
             setPhoneInitialApp(null);
           }}
           initialApp={phoneInitialApp}
+          onEnterTable={openTable}
         />
       )}
       <TopNotificationBanner

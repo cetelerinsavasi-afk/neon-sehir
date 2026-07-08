@@ -4,6 +4,7 @@ import MarketplaceScreen from '../MarketplaceScreen/MarketplaceScreen';
 import BankScreen from '../BankScreen/BankScreen';
 import AmazorScreen from '../AmazorScreen/AmazorScreen';
 import ChatsAppScreen from '../ChatsAppScreen/ChatsAppScreen';
+import CasinoScreen from '../CasinoScreen/CasinoScreen';
 import InstallAppButton from '../InstallAppButton/InstallAppButton';
 import { useMessages } from '../../hooks/useMessages';
 import { usePlayer } from '../../hooks/usePlayer';
@@ -16,6 +17,7 @@ const APPS = [
   { id: 'sms', label: '✉️', note: 'SMS', enabled: true },
   { id: 'amazor', label: 'A', note: 'Amazor Market', enabled: true },
   { id: 'chatsapp', label: '💬', note: 'ChatsApp', enabled: true },
+  { id: 'casino', label: '🎰', note: 'Casino', enabled: true },
 ];
 
 const APP_TITLES = {
@@ -24,9 +26,10 @@ const APP_TITLES = {
   sms: 'SMS',
   amazor: 'Amazor Market',
   chatsapp: 'ChatsApp',
+  casino: 'Casino',
 };
 
-export default function PhoneScreen({ onClose, initialApp = null }) {
+export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }) {
   const [openApp, setOpenApp] = useState(initialApp);
   const { messages } = useMessages();
   const { player } = usePlayer();
@@ -59,6 +62,14 @@ export default function PhoneScreen({ onClose, initialApp = null }) {
           {openApp === 'banka' && <BankScreen />}
           {openApp === 'amazor' && <AmazorScreen />}
           {openApp === 'chatsapp' && <ChatsAppScreen />}
+          {openApp === 'casino' && (
+            <CasinoScreen
+              onEnterTable={(tableId) => {
+                onClose();
+                onEnterTable?.(tableId);
+              }}
+            />
+          )}
         </div>
       </div>
     );
