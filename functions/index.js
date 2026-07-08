@@ -1543,6 +1543,7 @@ export const buyLotteryTicket = onCall(async (request) => {
 // gelirse ödül var; hepsi farklıysa ödül yok.
 // ---------------------------------------------------------------------------
 const SLOT_SPIN_COST = 750;
+const SLOT_FREE_SPINS_PER_DAY = 3;
 const SLOT_SYMBOLS = ['yasakliMadde', 'silahUpgrade', 'depoUpgrade', 'vitesUpgrade', 'altin'];
 const SLOT_PRIZES = {
   yasakliMadde: { 2: 1, 3: 3 },
@@ -1574,21 +1575,24 @@ export const spinSlot = onCall(async (request) => {
   const prizeAmount = prizeSymbol ? SLOT_PRIZES[prizeSymbol][matchCount] || 0 : 0;
 
   let usedFreeSpin = false;
+  let freeSpinsLeft = 0;
   await db.runTransaction(async (tx) => {
     const [userSnap, dailySnap] = await Promise.all([tx.get(userRef), tx.get(dailyRef)]);
     const user = userSnap.data();
-    const freeUsed = Boolean(dailySnap.data()?.slotFreeSpinUsed);
-    const cost = freeUsed ? SLOT_SPIN_COST : 0;
+    const freeSpinsUsed = dailySnap.data()?.slotFreeSpinsUsed || 0;
+    const hasFreeSpin = freeSpinsUsed < SLOT_FREE_SPINS_PER_DAY;
+    const cost = hasFreeSpin ? 0 : SLOT_SPIN_COST;
     if (!user || (user.gold || 0) < cost) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
-    usedFreeSpin = !freeUsed;
+    usedFreeSpin = hasFreeSpin;
 
     if (cost > 0) {
       tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-cost) });
     }
-    if (!freeUsed) {
-      tx.set(dailyRef, { slotFreeSpinUsed: true }, { merge: true });
+    if (hasFreeSpin) {
+      tx.set(dailyRef, { slotFreeSpinsUsed: freeSpinsUsed + 1 }, { merge: true });
+      freeSpinsLeft = SLOT_FREE_SPINS_PER_DAY - (freeSpinsUsed + 1);
     }
 
     if (prizeSymbol === 'altin') {
@@ -1600,7 +1604,7 @@ export const spinSlot = onCall(async (request) => {
     }
   });
 
-  return { ok: true, reels, matchCount, prizeSymbol, prizeAmount, free: usedFreeSpin };
+  return { ok: true, reels, matchCount, prizeSymbol, prizeAmount, free: usedFreeSpin, freeSpinsLeft };
 });
 
 // =============================================================================
@@ -2545,6 +2549,7 @@ export const executeHeistPlan = onCall(async (request) => {
   const batch = db.batch();
   const captureSmsList = []; // { uid, penaltyAmount, newTotalDebt }
   const policeEarningSmsList = []; // { uid, amount }
+  const successSmsList = []; // { uid, amount }
 
   // ADIM 1 — ÖNCE, polis hiç yokmuş GİBİ, her katılımcının KENDİ
   // şüphesine göre bağımsız bir yakalanma riski test edilir (yakalanma
@@ -2615,7 +2620,8 @@ export const executeHeistPlan = onCall(async (request) => {
     });
   } else {
     // Ne şüpheden yakalandılar ne de ekipte polis var — soygun başarılı,
-    // ödül tüm katılımcılara eşit bölünür.
+    // ödül tüm katılımcılara eşit bölünür. Herkese (sadece ekibi kuran
+    // kişiye değil) SMS ile haber verilir.
     const perPersonAmount = Math.floor(totalReward / participants.length);
     participants.forEach((p, i) => {
       const data = userSnaps[i].data();
@@ -2628,6 +2634,7 @@ export const executeHeistPlan = onCall(async (request) => {
         gold: admin.firestore.FieldValue.increment(goldDelta),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
       });
+      successSmsList.push({ uid: p.uid, amount: perPersonAmount });
     });
   }
 
@@ -2657,6 +2664,20 @@ export const executeHeistPlan = onCall(async (request) => {
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           read: false,
           type: 'police_bust_reward',
+        })
+    )
+  );
+  await Promise.all(
+    successSmsList.map((s) =>
+      db
+        .collection('users')
+        .doc(s.uid)
+        .collection('messages')
+        .add({
+          text: `Katıldığın ekip soygunu başarılı oldu! Payına düşen ${s.amount.toLocaleString('tr-TR')} altın hesabına eklendi.`,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          read: false,
+          type: 'heist_success',
         })
     )
   );

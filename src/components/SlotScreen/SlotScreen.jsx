@@ -34,7 +34,7 @@ function SlotSymbol({ symbol }) {
 }
 
 const RULES_TEXT =
-  "3 makarada 5 farklı sembol (Yasaklı Madde, Silah/Depo/Vites Geliştirme Malzemesi, Altın) tamamen rastgele çıkar. Hepsi farklıysa ödül yok. 2 aynı sembol gelirse küçük, 3 aynı sembol gelirse büyük ödül kazanırsın. Günün ilk çevirmesi ücretsiz, sonrası 750 altın.";
+  "3 makarada 5 farklı sembol (Yasaklı Madde, Silah/Depo/Vites Geliştirme Malzemesi, Altın) tamamen rastgele çıkar. Hepsi farklıysa ödül yok. 2 aynı sembol gelirse küçük, 3 aynı sembol gelirse büyük ödül kazanırsın. Günde 3 çevirme ücretsiz, sonrası 750 altın.";
 
 export default function SlotScreen() {
   const { user } = useAuth();
@@ -58,7 +58,10 @@ export default function SlotScreen() {
     return <SignInPrompt message="Slot oynamak için giriş yapmalısın." />;
   }
 
-  const freeUsed = Boolean(actions.slotFreeSpinUsed);
+  const FREE_SPINS_PER_DAY = 3;
+  const freeSpinsUsed = actions.slotFreeSpinsUsed || 0;
+  const freeSpinsLeft = Math.max(0, FREE_SPINS_PER_DAY - freeSpinsUsed);
+  const hasFreeSpin = freeSpinsLeft > 0;
 
   const handleSpin = async () => {
     setBusy(true);
@@ -135,11 +138,13 @@ export default function SlotScreen() {
       </div>
 
       <p className="slot-cost-hint">
-        {freeUsed ? `Çevirme ücreti: ${SPIN_COST.toLocaleString('tr-TR')} altın` : 'İlk çevirme bugün ücretsiz!'}
+        {hasFreeSpin
+          ? `Bugün kalan ücretsiz çevirme hakkın: ${freeSpinsLeft}`
+          : `Çevirme ücreti: ${SPIN_COST.toLocaleString('tr-TR')} altın`}
       </p>
 
       <button className="slot-spin-btn" disabled={busy} onClick={handleSpin}>
-        {busy ? 'Çevriliyor…' : freeUsed ? `Çevir (${SPIN_COST.toLocaleString('tr-TR')} altın)` : 'Ücretsiz Çevir'}
+        {busy ? 'Çevriliyor…' : hasFreeSpin ? 'Ücretsiz Çevir' : `Çevir (${SPIN_COST.toLocaleString('tr-TR')} altın)`}
       </button>
 
       {result && (
