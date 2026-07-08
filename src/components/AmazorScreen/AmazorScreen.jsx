@@ -7,7 +7,7 @@ import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './AmazorScreen.css';
 
 const ITEMS = [
-  { id: 'yasakliMadde', label: 'Yasaklı Madde', price: 4000, emoji: '💊' },
+  { id: 'yasakliMadde', label: 'Yasaklı Madde', price: 2500, emoji: '💊' },
   { id: 'vitesUpgrade', label: 'Vites Geliştirme Malzemesi', price: 500, emoji: '⚙️' },
   { id: 'depoUpgrade', label: 'Depo Geliştirme Malzemesi', price: 500, emoji: '🛢️' },
   { id: 'silahUpgrade', label: 'Silah Geliştirme Malzemesi', price: 100, emoji: '🔧' },

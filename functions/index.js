@@ -18,7 +18,7 @@ const DAILY_OUTPUT = {
   depoUpgrade: 20,
   vitesUpgrade: 20,
   silahUpgrade: 100,
-  yasakliMadde: 2, // kaçakçılık üretimi kasıtlı olarak çok kısıtlı
+  yasakliMadde: 3, // kaçakçılık üretimi kasıtlı olarak çok kısıtlı
 };
 
 function requireAuth(request) {
@@ -964,7 +964,7 @@ export const upgradeVehicle = onCall(async (request) => {
 // tüm malzeme alımı artık Amazor'dan, tüm satımı Liman & Depo > Depo'dan.
 // ---------------------------------------------------------------------------
 const AMAZOR_PRICES = {
-  yasakliMadde: 4000,
+  yasakliMadde: 2500,
   vitesUpgrade: 500,
   depoUpgrade: 500,
   silahUpgrade: 100,
@@ -1584,6 +1584,91 @@ export const prayAtMosque = onCall(async (request) => {
 });
 
 // ---------------------------------------------------------------------------
+// Dilenciler (Camii) — günlük tarihe göre AYRI bir koleksiyonda tutulur
+// (beggars/{dateKey}/entries/{uid}), bu yüzden 00:00'da otomatik olarak
+// "sıfırlanmış" olur — yeni gün yeni, boş bir koleksiyon demektir, ekstra
+// bir temizlik işine gerek yok. Zengin oyuncular (toplam serveti 20.000
+// altını aşanlar) dilenci olamaz.
+// ---------------------------------------------------------------------------
+const BEGGAR_WEALTH_LIMIT = 20000;
+
+async function computeTotalWealth(userData, prices) {
+  const gold = userData?.gold || 0;
+  const bankBalance = userData?.bankBalance || 0;
+  const diamondValue = (userData?.diamondHoldings || 0) * (prices.diamondPrice || 0);
+  const stockValue = (userData?.stockHoldings || 0) * (prices.stockPrice || 0);
+  const cryptoValue = (userData?.cryptoHoldings || 0) * (prices.cryptoPrice || 0);
+  return gold + bankBalance + diamondValue + stockValue + cryptoValue;
+}
+
+export const becomeBeggar = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const note = String(request.data?.note || '').slice(0, 140);
+  const dateKey = istanbulDateKey();
+  const userRef = db.collection('users').doc(uid);
+  const userSnap = await userRef.get();
+  const user = userSnap.data();
+  const prices = await getCurrentPrices();
+  const totalWealth = await computeTotalWealth(user, prices);
+  if (totalWealth > BEGGAR_WEALTH_LIMIT) {
+    throw new HttpsError(
+      'failed-precondition',
+      `Toplam servetin (${Math.floor(totalWealth).toLocaleString('tr-TR')} altın) ${BEGGAR_WEALTH_LIMIT.toLocaleString('tr-TR')} altını aştığı için dilenci olamazsın.`
+    );
+  }
+  await db.collection('beggars').doc(dateKey).collection('entries').doc(uid).set({
+    uid,
+    displayName: user?.displayName || 'Oyuncu',
+    avatar: user?.avatar || null,
+    note,
+    todayEarned: 0,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  return { ok: true };
+});
+
+export const donateToBeggar = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { beggarUid } = request.data || {};
+  const amount = Number(request.data?.amount);
+  if (!Number.isInteger(amount) || amount <= 0) {
+    throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
+  }
+  if (beggarUid === uid) {
+    throw new HttpsError('invalid-argument', 'Kendine bağış yapamazsın.');
+  }
+  const dateKey = istanbulDateKey();
+  const beggarEntryRef = db.collection('beggars').doc(dateKey).collection('entries').doc(beggarUid);
+  const donorRef = db.collection('users').doc(uid);
+  const beggarUserRef = db.collection('users').doc(beggarUid);
+
+  await db.runTransaction(async (tx) => {
+    const [donorSnap, beggarEntrySnap] = await Promise.all([
+      tx.get(donorRef),
+      tx.get(beggarEntryRef),
+    ]);
+    const donor = donorSnap.data();
+    if (!beggarEntrySnap.exists) {
+      throw new HttpsError('failed-precondition', 'Bu oyuncu bugün dilenci değil.');
+    }
+    if (!donor || (donor.gold || 0) < amount) {
+      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    }
+    tx.update(donorRef, { gold: admin.firestore.FieldValue.increment(-amount) });
+    tx.update(beggarUserRef, { gold: admin.firestore.FieldValue.increment(amount) });
+    tx.update(beggarEntryRef, { todayEarned: admin.firestore.FieldValue.increment(amount) });
+    tx.set(beggarUserRef.collection('messages').doc(), {
+      text: `${donor.displayName || 'Bir oyuncu'} sana ${amount.toLocaleString('tr-TR')} altın bağışladı!`,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      read: false,
+      type: 'beggar_donation',
+    });
+  });
+
+  return { ok: true };
+});
+
+// ---------------------------------------------------------------------------
 // bribePolice — Karakol: günde 1 kez, 3000 altın, şüphe -10.
 // ---------------------------------------------------------------------------
 const BRIBE_COST = 3000;
@@ -1948,7 +2033,7 @@ export const sellContrabandAtPark = onCall(async (request) => {
 // yani teslimat bir tur daha gecikir (bkz. dailyReset).
 // Miktar limiti yok — istediğin kadar sipariş verebilirsin.
 // ---------------------------------------------------------------------------
-const LIMAN_PRICES = { depoUpgrade: 400, vitesUpgrade: 400, silahUpgrade: 80, yasakliMadde: 3200 };
+const LIMAN_PRICES = { depoUpgrade: 400, vitesUpgrade: 400, silahUpgrade: 80, yasakliMadde: 2000 };
 
 export const placeLimanOrder = onCall(async (request) => {
   const uid = requireAuth(request);

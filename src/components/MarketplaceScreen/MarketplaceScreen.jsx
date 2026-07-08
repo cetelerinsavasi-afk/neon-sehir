@@ -40,7 +40,7 @@ const TABS = [
 // Fiyat sınırları — hesaplar arası para aklamayı önlemek için backend'de
 // de AYNI kurallarla doğrulanıyor (bkz. functions/index.js createListing).
 // Burası sadece kullanıcıya yol göstermek için.
-const AMAZOR_PRICES = { yasakliMadde: 4000, vitesUpgrade: 500, depoUpgrade: 500, silahUpgrade: 100 };
+const AMAZOR_PRICES = { yasakliMadde: 2500, vitesUpgrade: 500, depoUpgrade: 500, silahUpgrade: 100 };
 const MACHINE_PRICE = 150000;
 
 function vehiclePriceRange(vehicle) {

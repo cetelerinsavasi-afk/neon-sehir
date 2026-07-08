@@ -91,6 +91,11 @@ export const buyListing = (listingId) => httpsCallable(functions, 'buyListing')(
 
 export const prayAtMosque = () => httpsCallable(functions, 'prayAtMosque')();
 
+export const becomeBeggar = (note) => httpsCallable(functions, 'becomeBeggar')({ note });
+
+export const donateToBeggar = (beggarUid, amount) =>
+  httpsCallable(functions, 'donateToBeggar')({ beggarUid, amount });
+
 export const bribePolice = () => httpsCallable(functions, 'bribePolice')();
 
 export const claimPoliceSalary = () => httpsCallable(functions, 'claimPoliceSalary')();

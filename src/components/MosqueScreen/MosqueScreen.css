@@ -11,7 +11,24 @@
   background: #05070c;
   border: 1px solid var(--panel-border);
   border-radius: 10px;
-  padding: 12px;
+  padding: 10px 12px;
+}
+
+.mosque-congregation-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.mosque-congregation-chevron {
+  font-size: 10px;
+  color: var(--text-dim);
 }
 
 .mosque-congregation-title {
@@ -28,6 +45,7 @@
   gap: 8px;
   max-height: 260px;
   overflow-y: auto;
+  margin-top: 4px;
 }
 
 .mosque-member {
@@ -35,4 +53,205 @@
   align-items: center;
   gap: 8px;
   font-size: 13px;
+}
+
+.mosque-hint {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+
+.mosque-beggars {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.mosque-beggars-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.beggar-become-btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid #ffd23f;
+  background: rgba(255, 210, 63, 0.1);
+  color: #ffd23f;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.beggar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.beggar-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+}
+
+.beggar-card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.beggar-card-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.beggar-card-name {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.beggar-card-earned {
+  font-size: 10px;
+  color: #ffd23f;
+}
+
+.beggar-donate-btn {
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--neon-cyan);
+  background: rgba(25, 232, 255, 0.08);
+  color: var(--neon-cyan);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.beggar-card-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-style: italic;
+  line-height: 1.4;
+}
+
+.beggar-donate-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.beggar-btn {
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.beggar-btn.primary {
+  border-color: var(--neon-cyan);
+  background: rgba(25, 232, 255, 0.12);
+  color: var(--neon-cyan);
+  font-weight: 700;
+}
+
+.beggar-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.beggar-success {
+  margin: 0;
+  font-size: 12px;
+  color: #3ddc84;
+  text-align: center;
+}
+
+.beggar-error {
+  margin: 0;
+  font-size: 11px;
+  color: var(--neon-pink);
+  text-align: center;
+}
+
+.beggar-form-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.beggar-form {
+  width: 100%;
+  max-width: 320px;
+  background: var(--bg);
+  border: 1px solid #ffd23f;
+  border-radius: 14px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.beggar-form-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffd23f;
+}
+
+.beggar-form-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.beggar-note-input {
+  width: 100%;
+  min-height: 70px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: #05070c;
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.beggar-form-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.beggar-form-actions .beggar-btn {
+  flex: 1;
 }
