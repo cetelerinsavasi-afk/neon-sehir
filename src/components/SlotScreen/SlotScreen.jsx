@@ -13,7 +13,6 @@ const SYMBOL_EMOJI = {
   silahUpgrade: '🔧',
   depoUpgrade: '🛢️',
   vitesUpgrade: '⚙️',
-  altin: '🪙',
 };
 const SYMBOL_LABEL = {
   yasakliMadde: 'Yasaklı Madde',
@@ -22,7 +21,17 @@ const SYMBOL_LABEL = {
   vitesUpgrade: 'Vites Geliştirme Malzemesi',
   altin: 'Altın',
 };
-const ALL_EMOJIS = Object.values(SYMBOL_EMOJI);
+const ALL_SYMBOLS = ['yasakliMadde', 'silahUpgrade', 'depoUpgrade', 'vitesUpgrade', 'altin'];
+
+// 🪙 emojisi bazı platformlarda (masaüstü tarayıcılar, bazı iPhone
+// sürümleri) hiç görünmüyor ya da gümüşi/soluk çıkıyor — bu yüzden altın
+// sembolü emoji değil, oyunun her yerinde kullandığımız CSS ile çizilmiş
+// sarı yuvarlak olarak gösteriliyor.
+function SlotSymbol({ symbol }) {
+  if (symbol === 'altin') return <span className="slot-gold-coin" />;
+  if (symbol === 'placeholder') return <span>❓</span>;
+  return <span>{SYMBOL_EMOJI[symbol] || '❓'}</span>;
+}
 
 const RULES_TEXT =
   "3 makarada 5 farklı sembol (Yasaklı Madde, Silah/Depo/Vites Geliştirme Malzemesi, Altın) tamamen rastgele çıkar. Hepsi farklıysa ödül yok. 2 aynı sembol gelirse küçük, 3 aynı sembol gelirse büyük ödül kazanırsın. Günün ilk çevirmesi ücretsiz, sonrası 750 altın.";
@@ -30,7 +39,7 @@ const RULES_TEXT =
 export default function SlotScreen() {
   const { user } = useAuth();
   const { actions } = useDailyActions();
-  const [displayed, setDisplayed] = useState(['❓', '❓', '❓']);
+  const [displayed, setDisplayed] = useState(['placeholder', 'placeholder', 'placeholder']);
   const [spinning, setSpinning] = useState([false, false, false]);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
@@ -64,7 +73,7 @@ export default function SlotScreen() {
       setInterval(() => {
         setDisplayed((prev) => {
           const next = [...prev];
-          next[i] = ALL_EMOJIS[Math.floor(Math.random() * ALL_EMOJIS.length)];
+          next[i] = ALL_SYMBOLS[Math.floor(Math.random() * ALL_SYMBOLS.length)];
           return next;
         });
       }, 80)
@@ -89,7 +98,7 @@ export default function SlotScreen() {
         clearInterval(intervals[index]);
         setDisplayed((prev) => {
           const next = [...prev];
-          next[index] = SYMBOL_EMOJI[reels[index]];
+          next[index] = reels[index];
           return next;
         });
         setSpinning((prev) => {
@@ -120,7 +129,7 @@ export default function SlotScreen() {
       <div className="slot-reels">
         {displayed.map((sym, i) => (
           <div key={i} className={`slot-reel${spinning[i] ? ' spinning' : ''}`}>
-            {sym}
+            <SlotSymbol symbol={sym} />
           </div>
         ))}
       </div>
