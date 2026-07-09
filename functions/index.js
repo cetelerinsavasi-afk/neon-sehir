@@ -3705,6 +3705,145 @@ export const rollDice = onCall(async (request) => {
   return { ok: true, ...outcome };
 });
 
+// =============================================================================
+// ANTRENMAN MODU — 10 seviyeli, botlara karşı tek kişilik pratik yarışları.
+// Oyuncu paneli gerçek çevrimiçi yarışla BİREBİR AYNI görünür (aynı
+// raceRooms koleksiyonu + aynı RaceRoom.jsx bileşeni kullanılıyor) — ama
+// rakip gerçek bir oyuncu değil, sabit vitesli, benzin/nitro/turbo/istasyon
+// KULLANMAYAN basit bir bot. Bot'un "kullanıcı hesabı" olmadığı için
+// betAmount HER ZAMAN 0 — bu sayede finalizeRace() gerçek para
+// ödemesi yapmaya çalışmaz (amount=0 → ödeme adımı atlanır), botla ilgili
+// hiçbir gerçek Firestore users/{uid} dokümanına dokunulmaz.
+// =============================================================================
+const TRAINING_LEVELS = 10;
+const TRAINING_REWARD_PER_LEVEL = 1000;
+
+function freshBotPlayerState(level) {
+  return {
+    displayName: `Seviye ${level} Bot`,
+    vehicleModel: `Bot Aracı (${level}. Vites — Sabit)`,
+    maxGear: level,
+    turboTotal: 0,
+    position: 0,
+    gear: level,
+    gearAtTurnStart: level,
+    fuel: 999999,
+    maxFuel: 999999,
+    raceGold: 0,
+    wheelBonus: 0,
+    fuelSavingBonus: 0,
+    nitroActive: false,
+    turboCount: 0,
+    hasRolledOnce: true, // vitesi hep sabit — "1. tur zorla vites 1" kuralı bota uygulanmaz
+    lastRollSteps: null,
+    lastRollSum: null,
+    lastRollMultiplier: null,
+    finished: false,
+    lostByFuel: false,
+  };
+}
+
+export const createTrainingRace = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { vehicleId, level } = request.data || {};
+  const lvl = Number(level);
+  if (!Number.isInteger(lvl) || lvl < 1 || lvl > TRAINING_LEVELS) {
+    throw new HttpsError('invalid-argument', 'Geçersiz seviye.');
+  }
+  const vehicle = await getVehicleForRace(uid, vehicleId);
+
+  const progressSnap = await db.collection('trainingProgress').doc(uid).get();
+  const unlockedLevel = progressSnap.data()?.unlockedLevel || 1;
+  if (lvl > unlockedLevel) {
+    throw new HttpsError('failed-precondition', 'Bu seviye henüz açılmadı.');
+  }
+
+  const userSnap = await db.collection('users').doc(uid).get();
+  const user = userSnap.data();
+
+  const roomRef = db.collection('raceRooms').doc();
+  await roomRef.set({
+    status: 'racing',
+    betAmount: 0,
+    creatorUid: uid,
+    participantUids: [uid, 'bot'],
+    firstStarterUid: uid,
+    currentTurnUid: uid,
+    turnDeadline: null,
+    finalTurnFor: null,
+    winnerUid: null,
+    isTraining: true,
+    trainingLevel: lvl,
+    rewardProcessed: false,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    players: {
+      [uid]: freshRacePlayerState(user?.displayName || 'Oyuncu', vehicleId, vehicle),
+      bot: freshBotPlayerState(lvl),
+    },
+  });
+
+  return { ok: true, roomId: roomRef.id };
+});
+
+async function processTrainingReward(roomId) {
+  const roomRef = db.collection('raceRooms').doc(roomId);
+
+  await db.runTransaction(async (tx) => {
+    const roomSnap = await tx.get(roomRef);
+    const room = roomSnap.data();
+    if (!room || room.rewardProcessed) return;
+    tx.update(roomRef, { rewardProcessed: true });
+
+    const uid = room.creatorUid;
+    const level = room.trainingLevel;
+    const won = room.winnerUid === uid;
+    if (!won) return;
+
+    const progressRef = db.collection('trainingProgress').doc(uid);
+    const progressSnap = await tx.get(progressRef);
+    const progress = progressSnap.data() || { unlockedLevel: 1, beatenLevels: {} };
+    const alreadyBeaten = Boolean(progress.beatenLevels?.[level]);
+    const newUnlocked = Math.max(progress.unlockedLevel || 1, Math.min(TRAINING_LEVELS, level + 1));
+
+    tx.set(
+      progressRef,
+      { unlockedLevel: newUnlocked, [`beatenLevels.${level}`]: true },
+      { merge: true }
+    );
+
+    if (!alreadyBeaten) {
+      const reward = level * TRAINING_REWARD_PER_LEVEL;
+      tx.update(db.collection('users').doc(uid), {
+        gold: admin.firestore.FieldValue.increment(reward),
+      });
+    }
+  });
+}
+
+// trainingRollDice — insan kendi turunda bu fonksiyonu çağırır. Aynı çağrı
+// içinde, sıra bota geçtiyse botun hamlesi de HEMEN (bekletmeden) çözülür
+// — botun kendi "istemcisi" olmadığı için otomatik oynatılması gerekiyor.
+export const trainingRollDice = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { roomId, useNitro, useTurbo } = request.data || {};
+
+  const humanOutcome = await resolveRoll({ roomId, uid, useNitro, useTurbo });
+
+  const roomSnap = await db.collection('raceRooms').doc(roomId).get();
+  const room = roomSnap.data();
+  if (room?.status === 'racing' && room.currentTurnUid === 'bot') {
+    await resolveRoll({ roomId, uid: 'bot', useNitro: false, useTurbo: false });
+  }
+
+  const finalSnap = await db.collection('raceRooms').doc(roomId).get();
+  const finalRoom = finalSnap.data();
+  if (finalRoom?.status === 'finished' && finalRoom.isTraining) {
+    await processTrainingReward(roomId);
+  }
+
+  return { ok: true, humanOutcome };
+});
+
 // autoRoll — 10 saniyelik süre dolduğunda, odadaki herhangi bir katılımcının
 // istemcisi tarafından tetiklenir (sırası gelen oyuncu adına otomatik atar).
 export const autoRoll = onCall(async (request) => {

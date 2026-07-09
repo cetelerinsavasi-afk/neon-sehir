@@ -198,6 +198,12 @@ export const rollDice = (roomId, useNitro, useTurbo) =>
 
 export const autoRoll = (roomId) => httpsCallable(functions, 'autoRoll')({ roomId });
 
+export const createTrainingRace = (vehicleId, level) =>
+  httpsCallable(functions, 'createTrainingRace')({ vehicleId, level });
+
+export const trainingRollDice = (roomId, useNitro, useTurbo) =>
+  httpsCallable(functions, 'trainingRollDice')({ roomId, useNitro, useTurbo });
+
 export const raceRefuel = (roomId) => httpsCallable(functions, 'raceRefuel')({ roomId });
 
 export const raceBuyNitro = (roomId) =>

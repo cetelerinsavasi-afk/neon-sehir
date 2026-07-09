@@ -127,6 +127,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // trainingProgress/{uid} — antrenman modunda açılan seviyeler/ödül
+    // alınan seviyeler. Sadece sahibi okuyabilir.
+    match /trainingProgress/{uid} {
+      allow read: if isSelf(uid);
+      allow write: if false;
+    }
+
     // lottery/{dateKey} — piyango. Herkes güncel jackpot'u ve geçmiş
     // kazananları görebilmeli; yazma sadece Cloud Functions ile.
     match /lottery/{dateKey} {

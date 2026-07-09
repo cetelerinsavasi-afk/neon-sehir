@@ -5,6 +5,7 @@ import {
   leaveRaceRoomAsJoiner,
   startRace,
   rollDice,
+  trainingRollDice,
   autoRoll,
   raceRefuel,
   raceBuyNitro,
@@ -200,10 +201,25 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
     return (
       <div className="race-screen">
         <p className={`race-result ${won ? 'win' : isDraw || noContest ? '' : 'lose'}`}>
-          {isDraw ? 'Berabere! Bahisleriniz iade edildi.' : noContest ? 'Yarış sonuçsuz bitti.' : won ? 'Yarışı kazandın!' : 'Yarışı kaybettin.'}
+          {isDraw
+            ? 'Berabere! Bahisleriniz iade edildi.'
+            : noContest
+              ? 'Yarış sonuçsuz bitti.'
+              : won
+                ? room.isTraining
+                  ? `Seviye ${room.trainingLevel} tamamlandı! 🎉`
+                  : 'Yarışı kazandın!'
+                : room.isTraining
+                  ? 'Bot kazandı, tekrar dene!'
+                  : 'Yarışı kaybettin.'}
         </p>
         {me?.lostByFuel && <p className="race-hint">Benzinin bitti ve yarışı kaybettin.</p>}
-        {!isDraw && !noContest && (
+        {room.isTraining && won && (
+          <p className="race-hint">
+            İlk kez kazandıysan ödülün hesabına eklendi, tekrar denersen ödül tekrar verilmez.
+          </p>
+        )}
+        {!room.isTraining && !isDraw && !noContest && (
           <p className={`race-result-amount ${won ? 'win' : 'lose'}`}>
             {won ? `+${(bet * 2).toLocaleString('tr-TR')}` : `-${bet.toLocaleString('tr-TR')}`} altın
           </p>
@@ -224,7 +240,8 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
   const hintInfo = getHintInfo(me, other, atStation);
 
   const handleRoll = async (useNitro, useTurbo) => {
-    await run('roll', () => rollDice(room.id, useNitro, useTurbo), { waitForConfirm: true });
+    const rollFn = room.isTraining ? trainingRollDice : rollDice;
+    await run('roll', () => rollFn(room.id, useNitro, useTurbo), { waitForConfirm: true });
   };
 
   const rollButtonLabel = () => {
