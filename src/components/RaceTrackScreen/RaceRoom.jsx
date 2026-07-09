@@ -240,10 +240,11 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
   };
 
   const rollButtonLabel = () => {
-    if (!isMyTurn) return `${other.displayName}'in sırası… (${secondsLeft ?? '—'}s)`;
+    const timeSuffix = room.isTraining ? '' : ` (${secondsLeft ?? '—'}s)`;
+    if (!isMyTurn) return `${other.displayName}'in sırası…${timeSuffix}`;
     if (busy) return 'Atılıyor…';
-    if (isFinalTurnForMe) return `Son hamlen! Zar At (${secondsLeft ?? '—'}s)`;
-    return me.nitroActive ? `Zar At — Nitro Aktif (${secondsLeft ?? '—'}s)` : `Zar At (${secondsLeft ?? '—'}s)`;
+    if (isFinalTurnForMe) return `Son hamlen! Zar At${timeSuffix}`;
+    return me.nitroActive ? `Zar At — Nitro Aktif${timeSuffix}` : `Zar At${timeSuffix}`;
   };
 
   return (
