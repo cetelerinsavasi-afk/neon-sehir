@@ -2040,11 +2040,11 @@ export const buyFromVendor = onCall(async (request) => {
 //     %50 sana) bölüştürülür.
 // ---------------------------------------------------------------------------
 const HEIST_CONFIG = {
-  banka: { suspicionCost: 50, reward: 500000, requiredPower: 100000 },
-  casino: { suspicionCost: 40, reward: 200000, requiredPower: 70000 },
-  araba_galerisi: { suspicionCost: 30, reward: 100000, requiredPower: 50000 },
-  modifiye_garaji: { suspicionCost: 20, reward: 20000, requiredPower: 20000 },
-  fabrika: { suspicionCost: 10, reward: 5000, requiredPower: 10000 },
+  banka: { suspicionCost: 50, reward: 600000, requiredPower: 100000 },
+  casino: { suspicionCost: 40, reward: 300000, requiredPower: 70000 },
+  araba_galerisi: { suspicionCost: 30, reward: 150000, requiredPower: 50000 },
+  modifiye_garaji: { suspicionCost: 20, reward: 30000, requiredPower: 20000 },
+  fabrika: { suspicionCost: 10, reward: 8000, requiredPower: 10000 },
   seyyar_satici_1: { suspicionCost: 5, reward: 2500, requiredPower: 4500 },
   seyyar_satici_2: { suspicionCost: 5, reward: 2000, requiredPower: 3000 },
   seyyar_satici_3: { suspicionCost: 5, reward: 1500, requiredPower: 1500 },

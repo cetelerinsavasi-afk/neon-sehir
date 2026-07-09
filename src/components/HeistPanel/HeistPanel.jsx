@@ -21,21 +21,21 @@ import ResultModal from '../ResultModal/ResultModal';
 import './HeistPanel.css';
 
 export const HEIST_LABELS = {
-  banka: { title: 'Banka Soygunu', requiredPower: 100000, reward: 500000, suspicionCost: 50 },
-  casino: { title: 'Casino Soygunu', requiredPower: 70000, reward: 200000, suspicionCost: 40 },
+  banka: { title: 'Banka Soygunu', requiredPower: 100000, reward: 600000, suspicionCost: 50 },
+  casino: { title: 'Casino Soygunu', requiredPower: 70000, reward: 300000, suspicionCost: 40 },
   araba_galerisi: {
     title: 'Galeri Soygunu',
     requiredPower: 50000,
-    reward: 100000,
+    reward: 150000,
     suspicionCost: 30,
   },
   modifiye_garaji: {
     title: 'Garaj Soygunu',
     requiredPower: 20000,
-    reward: 20000,
+    reward: 30000,
     suspicionCost: 20,
   },
-  fabrika: { title: 'Fabrika Soygunu', requiredPower: 10000, reward: 5000, suspicionCost: 10 },
+  fabrika: { title: 'Fabrika Soygunu', requiredPower: 10000, reward: 8000, suspicionCost: 10 },
   seyyar_satici_1: { title: 'Kokoreçciye Haraç', requiredPower: 4500, reward: 2500, suspicionCost: 5 },
   seyyar_satici_2: { title: 'Simitçiye Haraç', requiredPower: 3000, reward: 2000, suspicionCost: 5 },
   seyyar_satici_3: { title: 'Dönerciye Haraç', requiredPower: 1500, reward: 1500, suspicionCost: 5 },
