@@ -15,8 +15,11 @@ import ProfileFullScreen from './components/ProfileFullScreen/ProfileFullScreen'
 import TopNotificationBanner from './components/TopNotificationBanner/TopNotificationBanner';
 import { usePlayer } from './hooks/usePlayer';
 import { useMyActiveRaceRoom } from './hooks/useMyActiveRaceRoom';
+import { regions } from './data/regions';
 import './styles/theme.css';
 import './App.css';
+
+const RACE_TRACK_REGION = regions.find((r) => r.screen === 'yaris-pisti');
 
 // Harita, HUD ve telefon giriş yapmadan da görülebilir/gezilebilir —
 // ortadaki SignInBanner haritayı bloklamaz, sadece giriş için görünür bir
@@ -127,6 +130,9 @@ function GameShell() {
           onExit={() => {
             setActiveRaceRoomId(null);
             setRaceExpanded(false);
+            // Ana haritaya değil, doğrudan Yarış Pisti'nin kendi lobisine
+            // dön — "Lobiye Dön" tam olarak bunu vaat ediyor.
+            setActiveRegion(RACE_TRACK_REGION);
           }}
         />
       )}

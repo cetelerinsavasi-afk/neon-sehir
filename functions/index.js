@@ -3629,9 +3629,9 @@ async function resolveRoll({ roomId, uid, useNitro, useTurbo }) {
           finalTurnFor: otherUid,
           finalTurnWinnerUid: uid,
           currentTurnUid: otherUid,
-          turnDeadline: admin.firestore.Timestamp.fromMillis(
-            Date.now() + RACE_TURN_SECONDS * 1000
-          ),
+          turnDeadline: room.isTraining
+            ? null
+            : admin.firestore.Timestamp.fromMillis(Date.now() + RACE_TURN_SECONDS * 1000),
         });
         outcome = {
           steps: movedSteps,
@@ -3685,11 +3685,15 @@ async function resolveRoll({ roomId, uid, useNitro, useTurbo }) {
       return;
     }
 
-    // Sıra karşı tarafa geçer.
+    // Sıra karşı tarafa geçer. Antrenman modunda (bota karşı) süre baskısı
+    // yok — botun hamlesi zaten otomatik ve gecikmeli işlendiği için gerçek
+    // bir sayaç koymak, oyuncunun süresinin haksız yere erimesine yol açardı.
     tx.update(roomRef, {
       [`players.${uid}`]: meUpdated,
       currentTurnUid: otherUid,
-      turnDeadline: admin.firestore.Timestamp.fromMillis(Date.now() + RACE_TURN_SECONDS * 1000),
+      turnDeadline: room.isTraining
+        ? null
+        : admin.firestore.Timestamp.fromMillis(Date.now() + RACE_TURN_SECONDS * 1000),
     });
     outcome = { steps: movedSteps, rolledSum: stepSum, multiplier, goldEarned, raceOver: false };
   });
