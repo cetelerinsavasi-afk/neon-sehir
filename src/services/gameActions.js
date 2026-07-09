@@ -98,6 +98,12 @@ export const becomeBeggar = (note) => httpsCallable(functions, 'becomeBeggar')({
 export const donateToBeggar = (beggarUid, amount) =>
   httpsCallable(functions, 'donateToBeggar')({ beggarUid, amount });
 
+export const applyForImam = () => httpsCallable(functions, 'applyForImam')();
+
+export const giveNasihat = (text) => httpsCallable(functions, 'giveNasihat')({ text });
+
+export const claimImamSalary = () => httpsCallable(functions, 'claimImamSalary')();
+
 export const bribePolice = () => httpsCallable(functions, 'bribePolice')();
 
 export const claimPoliceSalary = () => httpsCallable(functions, 'claimPoliceSalary')();

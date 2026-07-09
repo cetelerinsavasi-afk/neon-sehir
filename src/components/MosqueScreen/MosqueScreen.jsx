@@ -1,11 +1,22 @@
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { usePlayer } from '../../hooks/usePlayer';
+import { useDailyActions } from '../../hooks/useDailyActions';
 import SimpleActionScreen from '../SimpleActionScreen/SimpleActionScreen';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
+import ImamBooklet from '../ImamBooklet/ImamBooklet';
 import { useMosqueAttendance } from '../../hooks/useMosqueAttendance';
 import { useBeggars } from '../../hooks/useBeggars';
-import { prayAtMosque, becomeBeggar, donateToBeggar } from '../../services/gameActions';
+import { useImamState } from '../../hooks/useImamState';
+import {
+  prayAtMosque,
+  becomeBeggar,
+  donateToBeggar,
+  applyForImam,
+  giveNasihat,
+  claimImamSalary,
+} from '../../services/gameActions';
 import './MosqueScreen.css';
 
 const WINDOW_HOURS = {
@@ -16,7 +27,143 @@ const WINDOW_HOURS = {
   5: '21:00-24:00',
 };
 
-const BEGGAR_WEALTH_LIMIT = 20000;
+const BEGGAR_WEALTH_LIMIT = 10000;
+
+function ImamPanel() {
+  const { user } = useAuth();
+  const { player } = usePlayer();
+  const { actions } = useDailyActions();
+  const { imam } = useImamState();
+  const [showBooklet, setShowBooklet] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState(null);
+  const [nasihatText, setNasihatText] = useState('');
+  const [nasihatBusy, setNasihatBusy] = useState(false);
+  const [nasihatError, setNasihatError] = useState(null);
+  const [salaryBusy, setSalaryBusy] = useState(false);
+  const [salaryError, setSalaryError] = useState(null);
+  const [salarySuccess, setSalarySuccess] = useState(false);
+
+  if (!user) return null;
+
+  const iAmImam = imam?.uid === user.uid;
+
+  const handleApply = async () => {
+    setApplying(true);
+    setApplyError(null);
+    try {
+      await applyForImam();
+    } catch (err) {
+      setApplyError(err.message || 'Başvuru başarısız.');
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const handleNasihat = async () => {
+    if (!nasihatText.trim()) return;
+    setNasihatBusy(true);
+    setNasihatError(null);
+    try {
+      await giveNasihat(nasihatText.trim());
+      setNasihatText('');
+    } catch (err) {
+      setNasihatError(err.message || 'Nasihat gönderilemedi.');
+    } finally {
+      setNasihatBusy(false);
+    }
+  };
+
+  const handleSalary = async () => {
+    setSalaryBusy(true);
+    setSalaryError(null);
+    try {
+      await claimImamSalary();
+      setSalarySuccess(true);
+    } catch (err) {
+      setSalaryError(err.message || 'Maaş alınamadı.');
+    } finally {
+      setSalaryBusy(false);
+    }
+  };
+
+  return (
+    <div className="mosque-imam-panel">
+      <div className="mosque-imam-header">
+        <p className="mosque-congregation-title">İmam</p>
+        <button className="imam-booklet-btn" onClick={() => setShowBooklet(true)}>
+          📖 Kitapçık
+        </button>
+      </div>
+
+      {!imam && (
+        <div className="imam-apply-box">
+          <p className="mosque-hint">
+            Şu an imam yok. İmam olmak için 50 saygınlık ve %0 şüphe gerekir (detaylar için 📖'ye
+            bak).
+          </p>
+          <button className="imam-apply-btn" disabled={applying} onClick={handleApply}>
+            {applying ? '…' : 'İmamlık Başvurusu'}
+          </button>
+          {applyError && <p className="beggar-error">{applyError}</p>}
+        </div>
+      )}
+
+      {imam && !iAmImam && (
+        <div className="imam-card">
+          <AvatarSvg avatar={imam.avatar} size={40} rounded />
+          <div className="imam-card-info">
+            <span className="imam-card-name">{imam.displayName}</span>
+            {imam.lastNasihat ? (
+              <p className="imam-card-nasihat">"{imam.lastNasihat}"</p>
+            ) : (
+              <p className="imam-card-nasihat muted">Henüz nasihat vermedi.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {imam && iAmImam && (
+        <div className="imam-card imam-card-self">
+          <div className="imam-card-top">
+            <AvatarSvg avatar={imam.avatar} size={40} rounded />
+            <div className="imam-card-info">
+              <span className="imam-card-name">{imam.displayName} (Sen)</span>
+              {imam.lastNasihat && <p className="imam-card-nasihat">"{imam.lastNasihat}"</p>}
+            </div>
+          </div>
+          <textarea
+            className="beggar-note-input"
+            maxLength={280}
+            placeholder="Bugünkü nasihatini yaz..."
+            value={nasihatText}
+            onChange={(e) => setNasihatText(e.target.value)}
+          />
+          <button className="beggar-btn primary" disabled={nasihatBusy || !nasihatText.trim()} onClick={handleNasihat}>
+            {nasihatBusy ? '…' : 'Nasihat Ver'}
+          </button>
+          {nasihatError && <p className="beggar-error">{nasihatError}</p>}
+
+          <button
+            className="beggar-btn"
+            disabled={salaryBusy || actions.imamSalaryClaimed}
+            onClick={handleSalary}
+          >
+            {actions.imamSalaryClaimed
+              ? 'Bugün maaşını aldın'
+              : salaryBusy
+                ? '…'
+                : 'Maaşı Al (10.000 altın)'}
+          </button>
+          {salarySuccess && <p className="beggar-success">+10.000 altın hesabına eklendi!</p>}
+          {salaryError && <p className="beggar-error">{salaryError}</p>}
+        </div>
+      )}
+
+      {showBooklet && <ImamBooklet onClose={() => setShowBooklet(false)} />}
+    </div>
+  );
+}
 
 function BecomeBeggarForm({ onClose, onDone }) {
   const [note, setNote] = useState('');
@@ -170,6 +317,8 @@ export default function MosqueScreen() {
         isDone={(actions) => Boolean(actions.prayedWindows?.[win])}
         actionFn={prayAtMosque}
       />
+
+      <ImamPanel />
 
       <div className="mosque-congregation">
         <button

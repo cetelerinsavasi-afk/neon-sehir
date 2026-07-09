@@ -89,6 +89,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // imamState/current — oyundaki tek imamın bilgisi (herkes görebilir).
+    // imamState/meta — son azledilen imam uid'si (sadece Cloud Functions okur/yazar).
+    match /imamState/{docId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
     match /shipSchedule/{date} {
       allow read: if isSignedIn();
       allow write: if false;

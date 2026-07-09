@@ -235,6 +235,9 @@ export const applyForPolice = onCall(async (request) => {
   if (user.profession === 'polis') {
     throw new HttpsError('failed-precondition', 'Zaten polissin.');
   }
+  if (user.profession === 'imam') {
+    throw new HttpsError('failed-precondition', 'İmamken polis olamazsın.');
+  }
   if (user.pendingPoliceChange) {
     throw new HttpsError('failed-precondition', 'Bekleyen bir başvurun zaten var.');
   }
@@ -295,6 +298,9 @@ export const factoryWork = onCall(async (request) => {
     }
     if (user.profession === 'polis') {
       throw new HttpsError('failed-precondition', 'Polis mesleğindeyken fabrikada çalışamazsın.');
+    }
+    if (user.profession === 'imam') {
+      throw new HttpsError('failed-precondition', 'İmam fabrikada çalışamaz.');
     }
     if (dailySnap.exists && dailySnap.data().factoryWork) {
       throw new HttpsError('failed-precondition', 'Bugün çalıştınız.');
@@ -447,6 +453,39 @@ export const dailyReset = onSchedule(
 
     // Not: Polis maaşı artık otomatik dağıtılmıyor — Karakol'da günde 1 kez
     // manuel talep ediliyor (bkz. claimPoliceSalary).
+
+    // 1b) İmam görev kontrolü: DÜN (biten gün) 5 vakit ibadetin hepsini
+    // yapmadıysa YA DA hiç nasihat vermediyse, imamlıktan atılır. Yeni gün
+    // için başvurular açılır; atılan imam yerine biri imam olup o da
+    // atılana kadar tekrar başvuramaz (bkz. applyForImam > lastFiredUid).
+    const yesterdayKey = addDaysToDateKey(dateKey, -1);
+    const imamRef = db.collection('imamState').doc('current');
+    const imamSnap = await imamRef.get();
+    if (imamSnap.exists) {
+      const imam = imamSnap.data();
+      const imamDailySnap = await db
+        .collection('dailyActions')
+        .doc(`${imam.uid}_${yesterdayKey}`)
+        .get();
+      const imamDaily = imamDailySnap.data() || {};
+      const prayedAllWindows = [1, 2, 3, 4, 5].every((w) => imamDaily.prayedWindows?.[w]);
+      const gaveNasihat = Boolean(imamDaily.nasihatGiven);
+      if (!prayedAllWindows || !gaveNasihat) {
+        await imamRef.delete();
+        await db.collection('imamState').doc('meta').set({ lastFiredUid: imam.uid }, { merge: true });
+        await db.collection('users').doc(imam.uid).update({ profession: null });
+        await db
+          .collection('users')
+          .doc(imam.uid)
+          .collection('messages')
+          .add({
+            text: 'İmamlık görevlerini (5 vakit ibadet + günlük nasihat) tam yerine getirmediğin için imamlıktan azledildin.',
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            read: false,
+            type: 'imam_fired',
+          });
+      }
+    }
 
     // 2) Banka mevduat faizi — günlük %1 (Bölüm 13)
     const bankSnap = await db.collection('users').where('bankBalance', '>', 0).get();
@@ -1657,10 +1696,13 @@ export const prayAtMosque = onCall(async (request) => {
 // Dilenciler (Camii) — günlük tarihe göre AYRI bir koleksiyonda tutulur
 // (beggars/{dateKey}/entries/{uid}), bu yüzden 00:00'da otomatik olarak
 // "sıfırlanmış" olur — yeni gün yeni, boş bir koleksiyon demektir, ekstra
-// bir temizlik işine gerek yok. Zengin oyuncular (toplam serveti 20.000
-// altını aşanlar) dilenci olamaz.
+// bir temizlik işine gerek yok. Zengin oyuncular (toplam serveti 10.000
+// altını aşanlar) dilenci olamaz. Günde en fazla 5.000 altın kazanılabilir
+// — bu sınıra ulaşınca dilenci listeden otomatik kaldırılır ve o gün
+// tekrar dilenci olamaz.
 // ---------------------------------------------------------------------------
-const BEGGAR_WEALTH_LIMIT = 20000;
+const BEGGAR_WEALTH_LIMIT = 10000;
+const BEGGAR_DAILY_EARN_CAP = 5000;
 
 async function computeTotalWealth(userData, prices) {
   const gold = userData?.gold || 0;
@@ -1671,13 +1713,130 @@ async function computeTotalWealth(userData, prices) {
   return gold + bankBalance + diamondValue + stockValue + cryptoValue;
 }
 
+// ---------------------------------------------------------------------------
+// İmam (Camii) — oyunda TEK bir imam vardır. İmamlar polis olamaz,
+// fabrikada çalışamaz, suç işleyemez (bkz. yukarıdaki profession==='imam'
+// kontrolleri). İmam olmak için: 50 saygınlık, 0 şüphe. İmam maaşı günde
+// 10.000 altın (manuel alınır, polis maaşı gibi). Görevler: günde 5 vakit
+// ibadet + günde en az 1 nasihat — bunlardan biri eksikse dailyReset
+// tarafından imamlıktan atılır (bkz. dailyReset).
+// ---------------------------------------------------------------------------
+const IMAM_SALARY = 10000;
+const IMAM_REPUTATION_REQUIRED = 50;
+
+export const applyForImam = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const userRef = db.collection('users').doc(uid);
+  const imamRef = db.collection('imamState').doc('current');
+  const imamMetaRef = db.collection('imamState').doc('meta');
+
+  await db.runTransaction(async (tx) => {
+    const [userSnap, imamSnap, metaSnap] = await Promise.all([
+      tx.get(userRef),
+      tx.get(imamRef),
+      tx.get(imamMetaRef),
+    ]);
+    const user = userSnap.data();
+    if (!user) {
+      throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
+    }
+    if (imamSnap.exists) {
+      throw new HttpsError('failed-precondition', 'Zaten bir imam var.');
+    }
+    if (metaSnap.data()?.lastFiredUid === uid) {
+      throw new HttpsError(
+        'failed-precondition',
+        'İmamlıktan atıldığın için hemen tekrar başvuramazsın — yerine başka biri imam olup görevi bırakınca tekrar deneyebilirsin.'
+      );
+    }
+    if (user.profession === 'polis' || user.pendingPoliceChange === 'apply') {
+      throw new HttpsError(
+        'failed-precondition',
+        'Polis mesleğindeyken/başvurun beklerken imam olamazsın.'
+      );
+    }
+    if ((user.reputation || 0) < IMAM_REPUTATION_REQUIRED) {
+      throw new HttpsError(
+        'failed-precondition',
+        `İmam olmak için en az ${IMAM_REPUTATION_REQUIRED} saygınlığın olmalı.`
+      );
+    }
+    if ((user.suspicion || 0) !== 0) {
+      throw new HttpsError('failed-precondition', 'İmam olmak için şüphe puanın %0 olmalı.');
+    }
+
+    tx.set(imamRef, {
+      uid,
+      displayName: user.displayName || 'Oyuncu',
+      avatar: user.avatar || null,
+      lastNasihat: null,
+      lastNasihatAt: null,
+      becameImamAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    tx.update(userRef, { profession: 'imam' });
+  });
+
+  return { ok: true };
+});
+
+export const giveNasihat = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const text = String(request.data?.text || '').trim().slice(0, 280);
+  if (!text) {
+    throw new HttpsError('invalid-argument', 'Nasihat boş olamaz.');
+  }
+  const dateKey = istanbulDateKey();
+  const imamRef = db.collection('imamState').doc('current');
+  const dailyRef = db.collection('dailyActions').doc(`${uid}_${dateKey}`);
+
+  const imamSnap = await imamRef.get();
+  if (!imamSnap.exists || imamSnap.data().uid !== uid) {
+    throw new HttpsError('permission-denied', 'İmam değilsin.');
+  }
+  await imamRef.update({
+    lastNasihat: text,
+    lastNasihatAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  await dailyRef.set({ nasihatGiven: true }, { merge: true });
+  return { ok: true };
+});
+
+export const claimImamSalary = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const dateKey = istanbulDateKey();
+  const userRef = db.collection('users').doc(uid);
+  const dailyRef = db.collection('dailyActions').doc(`${uid}_${dateKey}`);
+  const imamRef = db.collection('imamState').doc('current');
+
+  await db.runTransaction(async (tx) => {
+    const [dailySnap, imamSnap] = await Promise.all([tx.get(dailyRef), tx.get(imamRef)]);
+    if (!imamSnap.exists || imamSnap.data().uid !== uid) {
+      throw new HttpsError('permission-denied', 'İmam değilsin.');
+    }
+    if (dailySnap.data()?.imamSalaryClaimed) {
+      throw new HttpsError('failed-precondition', 'Bugün maaşını zaten aldın.');
+    }
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(IMAM_SALARY) });
+    tx.set(dailyRef, { imamSalaryClaimed: true }, { merge: true });
+  });
+
+  return { ok: true };
+});
+
 export const becomeBeggar = onCall(async (request) => {
   const uid = requireAuth(request);
   const note = String(request.data?.note || '').slice(0, 140);
   const dateKey = istanbulDateKey();
   const userRef = db.collection('users').doc(uid);
-  const userSnap = await userRef.get();
+  const dailyRef = db.collection('dailyActions').doc(`${uid}_${dateKey}`);
+  const [userSnap, dailySnap] = await Promise.all([userRef.get(), dailyRef.get()]);
   const user = userSnap.data();
+  if (dailySnap.data()?.beggarCapReached) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Bugün dilencilik kazanç sınırına zaten ulaştın, yarın tekrar deneyebilirsin.'
+    );
+  }
   const prices = await getCurrentPrices();
   const totalWealth = await computeTotalWealth(user, prices);
   if (totalWealth > BEGGAR_WEALTH_LIMIT) {
@@ -1709,6 +1868,7 @@ export const donateToBeggar = onCall(async (request) => {
   }
   const dateKey = istanbulDateKey();
   const beggarEntryRef = db.collection('beggars').doc(dateKey).collection('entries').doc(beggarUid);
+  const beggarDailyRef = db.collection('dailyActions').doc(`${beggarUid}_${dateKey}`);
   const donorRef = db.collection('users').doc(uid);
   const beggarUserRef = db.collection('users').doc(beggarUid);
 
@@ -1721,18 +1881,31 @@ export const donateToBeggar = onCall(async (request) => {
     if (!beggarEntrySnap.exists) {
       throw new HttpsError('failed-precondition', 'Bu oyuncu bugün dilenci değil.');
     }
+    const beggarEntry = beggarEntrySnap.data();
+    if ((beggarEntry.todayEarned || 0) >= BEGGAR_DAILY_EARN_CAP) {
+      throw new HttpsError('failed-precondition', 'Bu dilenci bugünkü kazanç sınırına ulaştı.');
+    }
     if (!donor || (donor.gold || 0) < amount) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
+    const newEarned = (beggarEntry.todayEarned || 0) + amount;
     tx.update(donorRef, { gold: admin.firestore.FieldValue.increment(-amount) });
     tx.update(beggarUserRef, { gold: admin.firestore.FieldValue.increment(amount) });
-    tx.update(beggarEntryRef, { todayEarned: admin.firestore.FieldValue.increment(amount) });
+    if (newEarned >= BEGGAR_DAILY_EARN_CAP) {
+      // Sınıra ulaştı — dilenci listeden kaldırılır, bugün tekrar
+      // dilenci olamaz.
+      tx.delete(beggarEntryRef);
+      tx.set(beggarDailyRef, { beggarCapReached: true }, { merge: true });
+    } else {
+      tx.update(beggarEntryRef, { todayEarned: newEarned });
+    }
     tx.set(beggarUserRef.collection('messages').doc(), {
       text: `${donor.displayName || 'Bir oyuncu'} sana ${amount.toLocaleString('tr-TR')} altın bağışladı!`,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       read: false,
       type: 'beggar_donation',
     });
+
   });
 
   return { ok: true };
@@ -1923,6 +2096,9 @@ export const attemptHeist = onCall(async (request) => {
   const [dailySnap, userSnap0] = await Promise.all([dailyRef.get(), userRef.get()]);
   if (userSnap0.data()?.profession === 'polis' || userSnap0.data()?.pendingPoliceChange === 'apply') {
     throw new HttpsError('failed-precondition', 'Polis mesleğindeyken/başvurun beklerken soygun başlatamazsın.');
+  }
+  if (userSnap0.data()?.profession === 'imam') {
+    throw new HttpsError('failed-precondition', 'İmam suç işleyemez.');
   }
   if (dailySnap.exists && dailySnap.data().heist?.[target]) {
     throw new HttpsError('failed-precondition', 'Bu hedefi bugün zaten denedin.');
@@ -2239,6 +2415,9 @@ export const createHeistPlan = onCall(async (request) => {
   if (user?.profession === 'polis' || user?.pendingPoliceChange === 'apply') {
     throw new HttpsError('failed-precondition', 'Polis mesleğindeyken/başvurun beklerken soygun planı kuramazsın.');
   }
+  if (user?.profession === 'imam') {
+    throw new HttpsError('failed-precondition', 'İmam suç işleyemez.');
+  }
   if (await isAlreadyInActiveHeistPlanForTarget(uid, target)) {
     throw new HttpsError(
       'failed-precondition',
@@ -2370,6 +2549,9 @@ export const joinHeistPlan = onCall(async (request) => {
 
   const userSnap = await db.collection('users').doc(uid).get();
   const user = userSnap.data();
+  if (user?.profession === 'imam') {
+    throw new HttpsError('failed-precondition', 'İmam suç işleyemez.');
+  }
   const myPower = await getMaxWeaponPower(uid);
   const iAmPolice = user?.profession === 'polis';
 
