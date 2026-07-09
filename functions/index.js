@@ -2931,6 +2931,22 @@ export const expireOldMarketplaceListings = onSchedule({ schedule: 'every 24 hou
           const snap = await tx.get(doc.ref);
           if (!snap.exists || snap.data().sold) return;
           const l = snap.data();
+          const isSystemListing = l.sellerId === 'system';
+
+          if (isSystemListing) {
+            // "Sistem" ilanı (anında satış sonrası oyunun açtığı ilan) —
+            // kimse almazsa ürün geri iade EDİLMEZ (asıl satıcı zaten
+            // anında ödemesini almıştı), araç/silah kalıcı olarak silinir.
+            if (l.itemType === 'vehicle') {
+              tx.delete(db.collection('vehicles').doc(l.vehicleId));
+            } else if (l.itemType === 'weapon') {
+              tx.delete(db.collection('weapons').doc(l.weaponId));
+            }
+            // material/machine için zaten geri verilecek bir sahip yok —
+            // hiçbir şey yapmadan sadece ilan kapatılır.
+            tx.update(doc.ref, { sold: true, cancelled: true, expiredAutomatically: true });
+            return;
+          }
 
           if (l.itemType === 'vehicle') {
             tx.update(db.collection('vehicles').doc(l.vehicleId), { listed: false });
@@ -4184,6 +4200,174 @@ export const createListing = onCall(async (request) => {
   return { ok: true, listingId: listingRef.id };
 });
 
+// instantSellListing — ürünü PİYASAYA (diğer oyunculara) değil, doğrudan
+// OYUNA anında satar: satıcı en düşük izin verilen fiyatı ANINDA alır,
+// ürün de "sistem" tarafından %10 zamlı şekilde otomatik ilana çıkar.
+// Sistem ilanını başka bir oyuncu alırsa, o para satıcıya DEĞİL, sisteme
+// gider (satıcı zaten anında ödemesini almıştı) — bkz. buyListing'deki
+// sellerId==='system' kontrolü. Satın alan çıkmazsa 7 gün sonra diğer
+// ilanlar gibi otomatik kaldırılır (bkz. expireOldMarketplaceListings).
+export const instantSellListing = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { itemType, itemId, materialType, quantity, machineType } = request.data || {};
+
+  const listingRef = db.collection('marketplaceListings').doc();
+  const sellerRef = db.collection('users').doc(uid);
+
+  let payout = 0;
+
+  if (itemType === 'vehicle') {
+    const vehicleRef = db.collection('vehicles').doc(itemId);
+    await db.runTransaction(async (tx) => {
+      const [snap, sellerSnap] = await Promise.all([tx.get(vehicleRef), tx.get(sellerRef)]);
+      const v = snap.data();
+      if (!snap.exists || v.ownerId !== uid) {
+        throw new HttpsError('failed-precondition', 'Bu araç size ait değil.');
+      }
+      if (v.mortgaged || v.seizedByBank || v.listed) {
+        throw new HttpsError('failed-precondition', 'Bu araç şu an satılamaz.');
+      }
+      const base = VEHICLE_CATALOG[v.catalogId]?.price || 0;
+      const mult = v.gearUpgraded && v.tankUpgraded ? 3 : v.gearUpgraded || v.tankUpgraded ? 2 : 1;
+      const minPrice = Math.floor((base * mult) / 2);
+      payout = minPrice;
+      const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, minPrice);
+      tx.update(sellerRef, {
+        gold: admin.firestore.FieldValue.increment(goldDelta),
+        debtToState: admin.firestore.FieldValue.increment(debtDelta),
+      });
+      tx.update(vehicleRef, { listed: true });
+      tx.set(listingRef, {
+        sellerId: 'system',
+        sellerName: 'Sistem',
+        itemType,
+        vehicleId: itemId,
+        vehicleModel: v.model,
+        vehicleCatalogId: v.catalogId,
+        vehicleGearLevel: v.gearLevel,
+        vehicleTank: (v.baseTank || 0) + (v.tankBonus || 0),
+        vehicleGearUpgraded: Boolean(v.gearUpgraded),
+        vehicleTankUpgraded: Boolean(v.tankUpgraded),
+        price: Math.ceil(minPrice * 1.1),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        sold: false,
+      });
+    });
+  } else if (itemType === 'weapon') {
+    const weaponRef = db.collection('weapons').doc(itemId);
+    const sellerProfSnap = await sellerRef.get();
+    if (sellerProfSnap.data()?.profession === 'polis') {
+      const myWeaponsSnap = await db.collection('weapons').where('ownerId', '==', uid).get();
+      const unlistedCount = myWeaponsSnap.docs.filter((d) => !d.data().listed).length;
+      if (unlistedCount <= 1) {
+        throw new HttpsError(
+          'failed-precondition',
+          'Polis olarak her zaman en az 1 silahın kalmalı, hepsini satışa çıkaramazsın.'
+        );
+      }
+    }
+    await db.runTransaction(async (tx) => {
+      const [snap, sellerSnap] = await Promise.all([tx.get(weaponRef), tx.get(sellerRef)]);
+      const w = snap.data();
+      if (!snap.exists || w.ownerId !== uid) {
+        throw new HttpsError('failed-precondition', 'Bu silah size ait değil.');
+      }
+      if (w.listed) {
+        throw new HttpsError('failed-precondition', 'Bu silah zaten listelenmiş.');
+      }
+      const base = WEAPON_CATALOG[w.catalogId]?.price || 0;
+      const mult = w.level || 1;
+      const minPrice = Math.floor((base * mult) / 2);
+      payout = minPrice;
+      const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, minPrice);
+      tx.update(sellerRef, {
+        gold: admin.firestore.FieldValue.increment(goldDelta),
+        debtToState: admin.firestore.FieldValue.increment(debtDelta),
+      });
+      tx.update(weaponRef, { listed: true });
+      tx.set(listingRef, {
+        sellerId: 'system',
+        sellerName: 'Sistem',
+        itemType,
+        weaponId: itemId,
+        weaponName: w.name,
+        weaponCatalogId: w.catalogId,
+        weaponLevel: w.level,
+        weaponPower: w.power,
+        price: Math.ceil(minPrice * 1.1),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        sold: false,
+      });
+    });
+  } else if (itemType === 'material') {
+    if (!MATERIAL_TYPES.includes(materialType)) {
+      throw new HttpsError('invalid-argument', 'Geçersiz malzeme türü.');
+    }
+    const qty = Number(quantity);
+    if (!Number.isInteger(qty) || qty <= 0) {
+      throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
+    }
+    const minPrice = Math.floor((AMAZOR_PRICES[materialType] / 2) * qty);
+    payout = minPrice;
+    const inventoryRef = sellerRef.collection('inventory').doc(materialType);
+    await db.runTransaction(async (tx) => {
+      const [invSnap, sellerSnap] = await Promise.all([tx.get(inventoryRef), tx.get(sellerRef)]);
+      const have = invSnap.exists ? invSnap.data().quantity || 0 : 0;
+      if (have < qty) {
+        throw new HttpsError('failed-precondition', 'Yeterli malzemeniz yok.');
+      }
+      const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, minPrice);
+      tx.update(sellerRef, {
+        gold: admin.firestore.FieldValue.increment(goldDelta),
+        debtToState: admin.firestore.FieldValue.increment(debtDelta),
+      });
+      tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-qty) }, { merge: true });
+      tx.set(listingRef, {
+        sellerId: 'system',
+        sellerName: 'Sistem',
+        itemType,
+        materialType,
+        quantity: qty,
+        price: Math.ceil(minPrice * 1.1),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        sold: false,
+      });
+    });
+  } else if (itemType === 'machine') {
+    if (!VALID_MACHINES.includes(machineType)) {
+      throw new HttpsError('invalid-argument', 'Geçersiz makine türü.');
+    }
+    const minPrice = Math.floor(MACHINE_PRICE / 2);
+    payout = minPrice;
+    const machineRef = sellerRef.collection('productionMachines').doc(machineType);
+    await db.runTransaction(async (tx) => {
+      const [snap, sellerSnap] = await Promise.all([tx.get(machineRef), tx.get(sellerRef)]);
+      if (!snap.exists || !snap.data().owned) {
+        throw new HttpsError('failed-precondition', 'Bu makineye sahip değilsiniz.');
+      }
+      const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, minPrice);
+      tx.update(sellerRef, {
+        gold: admin.firestore.FieldValue.increment(goldDelta),
+        debtToState: admin.firestore.FieldValue.increment(debtDelta),
+      });
+      tx.update(machineRef, { owned: false });
+      tx.set(listingRef, {
+        sellerId: 'system',
+        sellerName: 'Sistem',
+        itemType,
+        machineType,
+        price: Math.ceil(minPrice * 1.1),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        sold: false,
+      });
+    });
+  } else {
+    throw new HttpsError('invalid-argument', 'Geçersiz ürün türü.');
+  }
+
+  return { ok: true, listingId: listingRef.id, payout };
+});
+
 export const cancelListing = onCall(async (request) => {
   const uid = requireAuth(request);
   const { listingId } = request.data || {};
@@ -4256,21 +4440,27 @@ export const buyListing = onCall(async (request) => {
     }
 
     // Firestore transaction kuralı: TÜM okumalar yazmalardan önce olmalı.
-    const sellerRef = db.collection('users').doc(listing.sellerId);
-    const sellerSnap = await tx.get(sellerRef);
+    const isSystemListing = listing.sellerId === 'system';
+    const sellerRef = isSystemListing ? null : db.collection('users').doc(listing.sellerId);
+    const sellerSnap = isSystemListing ? null : await tx.get(sellerRef);
 
     // Alıcıdan tam fiyat düşülür.
     tx.update(buyerRef, { gold: admin.firestore.FieldValue.increment(-listing.price) });
 
     // Satıcıya gelir — borç varsa Bölüm 10 kuralına göre bölüştürülür.
-    const { goldDelta, debtDelta } = splitIncomeForDebt(
-      sellerSnap.data()?.debtToState,
-      listing.price
-    );
-    tx.update(sellerRef, {
-      gold: admin.firestore.FieldValue.increment(goldDelta),
-      debtToState: admin.firestore.FieldValue.increment(debtDelta),
-    });
+    // "Sistem" ilanlarında (anında satış sonrası oyunun otomatik açtığı
+    // ilanlar) satıcı zaten anında ödemesini almıştı — bu para kimseye
+    // gitmez, oyun ekonomisinden çıkar (kâr marjı burada "kaybolur").
+    if (!isSystemListing) {
+      const { goldDelta, debtDelta } = splitIncomeForDebt(
+        sellerSnap.data()?.debtToState,
+        listing.price
+      );
+      tx.update(sellerRef, {
+        gold: admin.firestore.FieldValue.increment(goldDelta),
+        debtToState: admin.firestore.FieldValue.increment(debtDelta),
+      });
+    }
 
     // Ürünü transfer et.
     if (listing.itemType === 'vehicle') {
@@ -4316,16 +4506,18 @@ export const buyListing = onCall(async (request) => {
         : listing2.itemType === 'material'
           ? `${listing2.quantity} adet malzeme`
           : 'ürün';
-  await db
-    .collection('users')
-    .doc(listing2.sellerId)
-    .collection('messages')
-    .add({
-      text: `2. El: "${itemLabel}" ilanın ${listing2.price.toLocaleString('tr-TR')} altına satıldı.`,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      read: false,
-      type: 'marketplace_sale',
-    });
+  if (listing2.sellerId !== 'system') {
+    await db
+      .collection('users')
+      .doc(listing2.sellerId)
+      .collection('messages')
+      .add({
+        text: `2. El: "${itemLabel}" ilanın ${listing2.price.toLocaleString('tr-TR')} altına satıldı.`,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        read: false,
+        type: 'marketplace_sale',
+      });
+  }
 
   return { ok: true };
 });

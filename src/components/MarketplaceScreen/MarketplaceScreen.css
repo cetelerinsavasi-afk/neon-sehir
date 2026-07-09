@@ -370,3 +370,20 @@
   text-align: center;
   font-weight: 600;
 }
+
+.market-instant-sell-btn {
+  width: 100%;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #ffd23f;
+  background: rgba(255, 210, 63, 0.1);
+  color: #ffd23f;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.market-instant-sell-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

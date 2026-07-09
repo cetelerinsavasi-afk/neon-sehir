@@ -84,6 +84,9 @@ export const spinSlot = () => httpsCallable(functions, 'spinSlot')();
 
 export const createListing = (payload) => httpsCallable(functions, 'createListing')(payload);
 
+export const instantSellListing = (payload) =>
+  httpsCallable(functions, 'instantSellListing')(payload);
+
 export const cancelListing = (listingId) =>
   httpsCallable(functions, 'cancelListing')({ listingId });
 

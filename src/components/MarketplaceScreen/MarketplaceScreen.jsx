@@ -5,7 +5,7 @@ import { useWeapons } from '../../hooks/useWeapons';
 import { useInventory } from '../../hooks/useInventory';
 import { useProductionMachines } from '../../hooks/useProductionMachines';
 import { useMarketplaceListings } from '../../hooks/useMarketplaceListings';
-import { createListing, cancelListing, buyListing } from '../../services/gameActions';
+import { createListing, instantSellListing, cancelListing, buyListing } from '../../services/gameActions';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
 import { weaponCatalog } from '../../data/weaponCatalog';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
@@ -148,6 +148,32 @@ function SellForm({ onCreated, onClose }) {
       onClose?.();
     } catch (err) {
       setError(err.message || 'İlan oluşturulamadı.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleInstantSell = async () => {
+    if (!priceRange) return;
+    setBusy(true);
+    setError(null);
+    try {
+      if (itemType === 'vehicle' || itemType === 'weapon') {
+        if (!selectedId) return;
+        await instantSellListing({ itemType, itemId: selectedId });
+      } else if (itemType === 'material') {
+        if (!quantity || quantity <= 0) return;
+        await instantSellListing({ itemType, materialType, quantity });
+      } else if (itemType === 'machine') {
+        await instantSellListing({ itemType, machineType });
+      }
+      setSelectedId('');
+      setQuantity(0);
+      setPrice(0);
+      onCreated?.();
+      onClose?.();
+    } catch (err) {
+      setError(err.message || 'Anında satış başarısız.');
     } finally {
       setBusy(false);
     }
@@ -322,6 +348,11 @@ function SellForm({ onCreated, onClose }) {
           >
             İlan Ver
           </button>
+          {priceRange && (
+            <button className="market-instant-sell-btn" disabled={busy} onClick={handleInstantSell}>
+              {priceRange.min.toLocaleString('tr-TR')} altına Anında Sat
+            </button>
+          )}
         </div>
         {error && <p className="market-error">{error}</p>}
       </div>
