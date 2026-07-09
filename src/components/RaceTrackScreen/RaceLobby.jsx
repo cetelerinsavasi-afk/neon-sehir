@@ -70,16 +70,12 @@ function TrainingStartModal({ level, vehicles, onClose, onCreated }) {
     <div className="race-create-backdrop" onClick={onClose}>
       <div className="race-create-modal" onClick={(e) => e.stopPropagation()}>
         <div className="race-create-header">
-          <p className="race-section-title">Antrenman — Seviye {level}</p>
+          <p className="race-section-title">{level}. Seviye</p>
           <button className="race-create-close" onClick={onClose}>
             ✕
           </button>
         </div>
-        <p className="race-hint">
-          Rakibin, {level}. vitesle sabit ilerleyen bir bot — benzin/nitro/turbo/istasyon
-          kullanmaz. Bu seviyeyi ilk kez yenersen {(level * 1000).toLocaleString('tr-TR')} altın
-          kazanırsın (sonraki denemeler pratik içindir, ödül tekrar verilmez).
-        </p>
+        <p className="race-hint">Rakibin, {level}. vitesle sabit ilerleyen bir bot.</p>
         <VehiclePicker vehicles={vehicles} value={myVehicleId} onChange={setMyVehicleId} />
         <button className="race-btn primary" disabled={busy || !myVehicleId} onClick={handleStart}>
           {busy ? 'Başlatılıyor…' : 'Antrenmana Başla'}
@@ -92,35 +88,42 @@ function TrainingStartModal({ level, vehicles, onClose, onCreated }) {
 
 function TrainingSection({ vehicles, onEnterRoom }) {
   const { progress } = useTrainingProgress();
+  const [open, setOpen] = useState(false);
   const [selectedLevel, setSelectedLevel] = useState(null);
   const unlockedLevel = progress.unlockedLevel || 1;
 
   return (
     <div className="race-section">
-      <p className="race-section-title">🎓 Antrenman Modu</p>
-      <p className="race-hint">
-        Botlara karşı ücretsiz pratik yap, her seviyeyi ilk yenişinde altın kazan.
-      </p>
-      <div className="training-level-grid">
-        {Array.from({ length: TRAINING_LEVELS }, (_, i) => i + 1).map((lvl) => {
-          const locked = lvl > unlockedLevel;
-          const beaten = Boolean(progress.beatenLevels?.[lvl]);
-          return (
-            <button
-              key={lvl}
-              className={`training-level-card${locked ? ' locked' : ''}${beaten ? ' beaten' : ''}`}
-              disabled={locked}
-              onClick={() => setSelectedLevel(lvl)}
-            >
-              <span className="training-level-num">{locked ? '🔒' : lvl}</span>
-              <span className="training-level-reward">
-                {(lvl * 1000).toLocaleString('tr-TR')} altın
-              </span>
-              {beaten && <span className="training-level-badge">✓ Kazanıldı</span>}
-            </button>
-          );
-        })}
-      </div>
+      <button className="race-btn primary race-training-toggle-btn" onClick={() => setOpen((v) => !v)}>
+        🎓 Antrenman Modu
+      </button>
+      {open && (
+        <>
+          <p className="race-hint">Botlara karşı ücretsiz pratik yap.</p>
+          <div className="training-level-list">
+            {Array.from({ length: TRAINING_LEVELS }, (_, i) => i + 1).map((lvl) => {
+              const locked = lvl > unlockedLevel;
+              const beaten = Boolean(progress.beatenLevels?.[lvl]);
+              return (
+                <button
+                  key={lvl}
+                  className={`training-level-row${locked ? ' locked' : ''}${beaten ? ' beaten' : ''}`}
+                  disabled={locked}
+                  onClick={() => setSelectedLevel(lvl)}
+                >
+                  <span className="training-level-row-title">
+                    {locked ? '🔒 ' : ''}
+                    {lvl}. Seviye
+                  </span>
+                  <span className="training-level-row-reward">
+                    {(lvl * 1000).toLocaleString('tr-TR')} altın{beaten ? ' · ✓ Kazanıldı' : ''}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       {selectedLevel && (
         <TrainingStartModal

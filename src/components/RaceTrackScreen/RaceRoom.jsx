@@ -214,11 +214,6 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
                   : 'Yarışı kaybettin.'}
         </p>
         {me?.lostByFuel && <p className="race-hint">Benzinin bitti ve yarışı kaybettin.</p>}
-        {room.isTraining && won && (
-          <p className="race-hint">
-            İlk kez kazandıysan ödülün hesabına eklendi, tekrar denersen ödül tekrar verilmez.
-          </p>
-        )}
         {!room.isTraining && !isDraw && !noContest && (
           <p className={`race-result-amount ${won ? 'win' : 'lose'}`}>
             {won ? `+${(bet * 2).toLocaleString('tr-TR')}` : `-${bet.toLocaleString('tr-TR')}`} altın
@@ -289,26 +284,6 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
           {otherReaction && <span className="race-reaction">{otherReaction}</span>}
         </span>
       </div>
-
-      <div className="race-emoji-row">
-        {RACE_EMOJIS.map((e) => (
-          <button
-            key={e}
-            className="race-emoji-btn"
-            onClick={() => sendRaceEmoji(room.id, e).catch(() => {})}
-          >
-            {e}
-          </button>
-        ))}
-        <button
-          className="race-emoji-btn race-refresh-btn"
-          onClick={() => pingRaceRoom(room.id).catch(() => {})}
-          aria-label="Yenile"
-        >
-          🔄
-        </button>
-      </div>
-      <p className="race-refresh-hint">Oyun donduysa 🔄 yenile butonuna bas.</p>
 
       <div className="race-stat-boxes">
         <div
@@ -421,6 +396,26 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
       )}
 
       {error && <p className="race-error">{error}</p>}
+
+      <div className="race-emoji-row">
+        {RACE_EMOJIS.map((e) => (
+          <button
+            key={e}
+            className="race-emoji-btn"
+            onClick={() => sendRaceEmoji(room.id, e).catch(() => {})}
+          >
+            {e}
+          </button>
+        ))}
+        <button
+          className="race-emoji-btn race-refresh-btn"
+          onClick={() => pingRaceRoom(room.id).catch(() => {})}
+          aria-label="Yenile"
+        >
+          🔄
+        </button>
+      </div>
+      <p className="race-refresh-hint">Oyun donduysa 🔄 yenile butonuna bas.</p>
     </div>
   );
 }

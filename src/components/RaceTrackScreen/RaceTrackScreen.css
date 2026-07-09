@@ -701,51 +701,49 @@
   text-align: center;
 }
 
-.training-level-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 8px;
+.race-training-toggle-btn {
+  width: 100%;
 }
 
-.training-level-card {
+.training-level-list {
   display: flex;
   flex-direction: column;
+  gap: 6px;
+}
+
+.training-level-row {
+  display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 10px 4px;
+  justify-content: space-between;
+  padding: 12px 14px;
   border-radius: 10px;
   border: 1px solid var(--panel-border);
   background: #05070c;
   color: var(--text);
   cursor: pointer;
+  text-align: left;
 }
 
-.training-level-card:hover:not(:disabled) {
+.training-level-row:hover:not(:disabled) {
   border-color: #ffd23f;
 }
 
-.training-level-card.locked {
+.training-level-row.locked {
   opacity: 0.45;
   cursor: not-allowed;
 }
 
-.training-level-card.beaten {
+.training-level-row.beaten {
   border-color: #3ddc84;
 }
 
-.training-level-num {
-  font-size: 18px;
-  font-weight: 800;
-}
-
-.training-level-reward {
-  font-size: 9px;
-  color: var(--text-dim);
-  text-align: center;
-}
-
-.training-level-badge {
-  font-size: 8px;
-  color: #3ddc84;
+.training-level-row-title {
+  font-size: 13px;
   font-weight: 700;
 }
+
+.training-level-row-reward {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+

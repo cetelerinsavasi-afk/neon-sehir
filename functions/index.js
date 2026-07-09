@@ -3789,25 +3789,35 @@ async function processTrainingReward(roomId) {
   const roomRef = db.collection('raceRooms').doc(roomId);
 
   await db.runTransaction(async (tx) => {
+    // ÖNEMLİ: Firestore transaction'larında TÜM okumalar TÜM yazmalardan
+    // önce yapılmalı — sırası karışırsa transaction sessizce/hatayla
+    // başarısız olur ve ödül/kilit açma hiç işlenmez (bu bug'ı yaşadık).
     const roomSnap = await tx.get(roomRef);
     const room = roomSnap.data();
     if (!room || room.rewardProcessed) return;
-    tx.update(roomRef, { rewardProcessed: true });
 
     const uid = room.creatorUid;
     const level = room.trainingLevel;
     const won = room.winnerUid === uid;
+
+    let progressRef = null;
+    let progress = null;
+    let alreadyBeaten = false;
+    if (won) {
+      progressRef = db.collection('trainingProgress').doc(uid);
+      const progressSnap = await tx.get(progressRef);
+      progress = progressSnap.data() || { unlockedLevel: 1, beatenLevels: {} };
+      alreadyBeaten = Boolean(progress.beatenLevels?.[level]);
+    }
+
+    // --- Buradan sonrası SADECE yazma ---
+    tx.update(roomRef, { rewardProcessed: true });
     if (!won) return;
 
-    const progressRef = db.collection('trainingProgress').doc(uid);
-    const progressSnap = await tx.get(progressRef);
-    const progress = progressSnap.data() || { unlockedLevel: 1, beatenLevels: {} };
-    const alreadyBeaten = Boolean(progress.beatenLevels?.[level]);
     const newUnlocked = Math.max(progress.unlockedLevel || 1, Math.min(TRAINING_LEVELS, level + 1));
-
     tx.set(
       progressRef,
-      { unlockedLevel: newUnlocked, [`beatenLevels.${level}`]: true },
+      { unlockedLevel: newUnlocked, beatenLevels: { ...(progress.beatenLevels || {}), [level]: true } },
       { merge: true }
     );
 
@@ -3832,6 +3842,9 @@ export const trainingRollDice = onCall(async (request) => {
   const roomSnap = await db.collection('raceRooms').doc(roomId).get();
   const room = roomSnap.data();
   if (room?.status === 'racing' && room.currentTurnUid === 'bot') {
+    // Bot, insan zar attıktan HEMEN sonra değil, 1 saniye gecikmeyle zar
+    // atar — anında/robotik hissetmesin diye.
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     await resolveRoll({ roomId, uid: 'bot', useNitro: false, useTurbo: false });
   }
 
