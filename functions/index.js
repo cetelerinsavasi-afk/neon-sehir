@@ -2444,6 +2444,7 @@ export const createHeistPlan = onCall(async (request) => {
     target,
     creatorUid: uid,
     status: 'open',
+    note: '',
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + HEIST_PLAN_DURATION_MS),
   });
@@ -2473,6 +2474,36 @@ export const createHeistPlan = onCall(async (request) => {
 // istemci bu fonksiyonu çağırır — Admin SDK ile HERKESİN güncel güç/şüphe
 // değerlerini okuyup katılımcı alt dokümanlarına yazar, böylece canlı
 // dinleyici (onSnapshot) güncel veriyi görür.
+// updateHeistPlanNote — ekip soygun planına, katılımcıların birbirine
+// kısa mesaj bırakabileceği paylaşımlı bir not. Tam bir sohbet değil,
+// "şüphen düşmeden başlatma", "şu kişi polis olabilir" gibi kısa
+// uyarılar için. Sadece plandaki katılımcılar (kurucu dahil) yazabilir.
+export const updateHeistPlanNote = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { planId } = request.data || {};
+  const note = String(request.data?.note || '').slice(0, 200);
+  const planRef = db.collection('heistPlans').doc(planId);
+
+  const [planSnap, participantSnap] = await Promise.all([
+    planRef.get(),
+    planRef.collection('participants').doc(uid).get(),
+  ]);
+  if (!planSnap.exists) {
+    throw new HttpsError('failed-precondition', 'Plan bulunamadı.');
+  }
+  if (!participantSnap.exists) {
+    throw new HttpsError('permission-denied', 'Bu planın bir katılımcısı değilsin.');
+  }
+
+  await planRef.update({
+    note,
+    noteUpdatedBy: participantSnap.data()?.displayName || 'Oyuncu',
+    noteUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return { ok: true };
+});
+
 export const refreshHeistPlanParticipants = onCall(async (request) => {
   requireAuth(request);
   const { planId } = request.data || {};

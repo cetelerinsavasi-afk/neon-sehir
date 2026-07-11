@@ -14,6 +14,7 @@ import {
   cancelHeistPlan,
   executeHeistPlan,
   refreshHeistPlanParticipants,
+  updateHeistPlanNote,
 } from '../../services/gameActions';
 import InfoIcon from '../InfoIcon/InfoIcon';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
@@ -98,6 +99,25 @@ function PlanCard({ plan, myUid, onChanged }) {
   const { participants } = useHeistPlanParticipants(plan.id);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [noteDraft, setNoteDraft] = useState(plan.note || '');
+  const [noteBusy, setNoteBusy] = useState(false);
+  const [editingNote, setEditingNote] = useState(false);
+
+  useEffect(() => {
+    if (!editingNote) setNoteDraft(plan.note || '');
+  }, [plan.note, editingNote]);
+
+  const handleSaveNote = async () => {
+    setNoteBusy(true);
+    try {
+      await updateHeistPlanNote(plan.id, noteDraft.trim());
+      setEditingNote(false);
+    } catch (err) {
+      setError(err.message || 'Not kaydedilemedi.');
+    } finally {
+      setNoteBusy(false);
+    }
+  };
 
   // Katılımcıların güç/şüphe değerleri plana KATILDIKLARI ANDA alınan
   // donmuş bir kopyaydı — güncel tutmak için, kart görünürken periyodik
@@ -156,6 +176,54 @@ function PlanCard({ plan, myUid, onChanged }) {
           </li>
         ))}
       </ul>
+
+      <div className="heist-plan-note">
+        {editingNote ? (
+          <>
+            <textarea
+              className="heist-plan-note-input"
+              maxLength={200}
+              placeholder="Örn: 'Şüphen düşmeden başlatma', 'şu kişi polis olabilir dikkat et'…"
+              value={noteDraft}
+              onChange={(e) => setNoteDraft(e.target.value)}
+            />
+            <div className="heist-plan-note-actions">
+              <button
+                className="heist-plan-btn"
+                disabled={noteBusy}
+                onClick={() => {
+                  setNoteDraft(plan.note || '');
+                  setEditingNote(false);
+                }}
+              >
+                Vazgeç
+              </button>
+              <button className="heist-plan-btn primary" disabled={noteBusy} onClick={handleSaveNote}>
+                {noteBusy ? '…' : 'Kaydet'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            {plan.note ? (
+              <p className="heist-plan-note-text">
+                📌 {plan.note}
+                {plan.noteUpdatedBy && (
+                  <span className="heist-plan-note-author"> — {plan.noteUpdatedBy}</span>
+                )}
+              </p>
+            ) : (
+              <p className="heist-plan-note-text muted">Henüz not yok.</p>
+            )}
+            {(isMember || isCreator) && (
+              <button className="heist-plan-note-edit-btn" onClick={() => setEditingNote(true)}>
+                ✏️ Not {plan.note ? 'düzenle' : 'ekle'}
+              </button>
+            )}
+          </>
+        )}
+      </div>
+
       <div className="heist-plan-actions">
         {!isMember && (
           <button

@@ -197,6 +197,9 @@ export default function HomeScreen() {
     }
   };
 
+  const myVehicles = vehicles.filter((v) => !v.listed);
+  const myWeapons = weapons.filter((w) => !w.listed);
+
   const materialsQty = {
     depo: inventory.depoUpgrade || 0,
     vites: inventory.vitesUpgrade || 0,
@@ -216,8 +219,8 @@ export default function HomeScreen() {
 
       <div className="home-section">
         <p className="home-section-title">Araçların</p>
-        {vehicles.length === 0 && <p className="home-hint">Henüz bir aracın yok.</p>}
-        {vehicles.map((v) => (
+        {myVehicles.length === 0 && <p className="home-hint">Henüz bir aracın yok.</p>}
+        {myVehicles.map((v) => (
           <VehicleCard
             key={v.id}
             vehicle={v}
@@ -230,8 +233,8 @@ export default function HomeScreen() {
 
       <div className="home-section">
         <p className="home-section-title">Silahların</p>
-        {weapons.length === 0 && <p className="home-hint">Henüz bir silahın yok.</p>}
-        {weapons.map((w) => (
+        {myWeapons.length === 0 && <p className="home-hint">Henüz bir silahın yok.</p>}
+        {myWeapons.map((w) => (
           <WeaponCard
             key={w.id}
             weapon={w}

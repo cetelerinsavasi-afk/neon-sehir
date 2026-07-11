@@ -147,6 +147,9 @@ export const joinHeistPlan = (planId) =>
 export const refreshHeistPlanParticipants = (planId) =>
   httpsCallable(functions, 'refreshHeistPlanParticipants')({ planId });
 
+export const updateHeistPlanNote = (planId, note) =>
+  httpsCallable(functions, 'updateHeistPlanNote')({ planId, note });
+
 export const leaveHeistPlan = (planId) =>
   httpsCallable(functions, 'leaveHeistPlan')({ planId });
 

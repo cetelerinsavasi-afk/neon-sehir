@@ -206,3 +206,62 @@
   opacity: 0.5;
   cursor: default;
 }
+
+.heist-plan-note {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 210, 63, 0.06);
+  border: 1px solid var(--panel-border);
+}
+
+.heist-plan-note-text {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.heist-plan-note-text.muted {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.heist-plan-note-author {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.heist-plan-note-edit-btn {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  color: var(--neon-cyan);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.heist-plan-note-input {
+  width: 100%;
+  min-height: 56px;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: #05070c;
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.heist-plan-note-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.heist-plan-note-actions .heist-plan-btn {
+  flex: 1;
+}

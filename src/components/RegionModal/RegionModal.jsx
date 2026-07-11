@@ -84,7 +84,7 @@ export default function RegionModal({ region, onClose, onOpenHeist, onEnterRace,
               className="region-modal-heist-btn"
               onClick={() => onOpenHeist?.(heistTarget)}
             >
-              Soygun
+              {region.screen === 'seyyar-satici' ? '💰 Haraç Kes' : 'Soygun'}
             </button>
           )}
         </div>
