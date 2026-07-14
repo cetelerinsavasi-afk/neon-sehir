@@ -166,11 +166,13 @@ function ImamPanel() {
 }
 
 function BecomeBeggarForm({ onClose, onDone }) {
+  const { player } = usePlayer();
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [confirming, setConfirming] = useState(false);
 
-  const handleSubmit = async () => {
+  const doSubmit = async () => {
     setBusy(true);
     setError(null);
     try {
@@ -183,6 +185,37 @@ function BecomeBeggarForm({ onClose, onDone }) {
       setBusy(false);
     }
   };
+
+  const handleSubmit = () => {
+    if ((player?.reputation || 0) > 0) {
+      setConfirming(true);
+      return;
+    }
+    doSubmit();
+  };
+
+  if (confirming) {
+    return (
+      <div className="beggar-form-backdrop" onClick={onClose}>
+        <div className="beggar-form" onClick={(e) => e.stopPropagation()}>
+          <p className="beggar-form-title">Emin misin?</p>
+          <p className="beggar-form-hint">
+            Dilenci olursan saygınlığın (şu an %{player?.reputation || 0}) <strong>0'a düşer</strong>.
+            Kabul ediyor musun?
+          </p>
+          {error && <p className="beggar-error">{error}</p>}
+          <div className="beggar-form-actions">
+            <button className="beggar-btn" disabled={busy} onClick={() => setConfirming(false)}>
+              Vazgeç
+            </button>
+            <button className="beggar-btn primary" disabled={busy} onClick={doSubmit}>
+              {busy ? '…' : 'Kabul Ediyorum'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="beggar-form-backdrop" onClick={onClose}>

@@ -608,6 +608,7 @@ export const dailyReset = onSchedule(
               'loaded.depoUpgrade': 0,
               'loaded.vitesUpgrade': 0,
               'loaded.silahUpgrade': 0,
+              'loaded.yasakliMadde': 0,
             })
           );
           const summary = delivered
@@ -1853,6 +1854,9 @@ export const becomeBeggar = onCall(async (request) => {
     todayEarned: 0,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
+  // Dilencilik saygınlığı sıfırlar — oyuncu bunu istemcide açıkça onaylamış
+  // olmalı (bkz. frontend'deki onay penceresi).
+  await userRef.update({ reputation: 0 });
   return { ok: true };
 });
 
