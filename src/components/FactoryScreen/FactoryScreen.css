@@ -265,6 +265,18 @@
   color: #ffd23f;
 }
 
+.factory-machine-self {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.factory-machine-self-actions {
+  display: flex;
+  gap: 6px;
+}
+
 /* --- Owner screen --- */
 
 .factory-owner-header {

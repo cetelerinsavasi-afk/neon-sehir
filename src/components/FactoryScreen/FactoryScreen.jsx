@@ -303,16 +303,61 @@ function ManagementModal({ factory, machines, onClose }) {
 // ---------------------------------------------------------------------------
 // Fabrika sahibi ekranı
 // ---------------------------------------------------------------------------
-function OwnerView({ factory, machines }) {
+function OwnerView({ factory, machines, player, myUid }) {
   const [showBuy, setShowBuy] = useState(false);
   const [showManage, setShowManage] = useState(false);
   const [showBrowse, setShowBrowse] = useState(false);
+  const [selfBusy, setSelfBusy] = useState(null);
+  const [selfError, setSelfError] = useState(null);
+  const [produceBusy, setProduceBusy] = useState(false);
+  const [produceResult, setProduceResult] = useState(null);
+  const [resignBusy, setResignBusy] = useState(false);
   const dateKey = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Istanbul',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
   }).format(new Date());
+
+  const hasAnyEmployment = !!player?.employment;
+
+  const handleSelfJoin = async (machineId) => {
+    setSelfBusy(machineId);
+    setSelfError(null);
+    try {
+      await joinFactoryMachine(factory.id, machineId);
+    } catch (err) {
+      setSelfError(err.message || 'Makineye yerleşilemedi.');
+    } finally {
+      setSelfBusy(null);
+    }
+  };
+
+  const handleSelfProduce = async () => {
+    setProduceBusy(true);
+    setSelfError(null);
+    try {
+      const res = await produceAtFactory();
+      setProduceResult(res.data);
+    } catch (err) {
+      setSelfError(err.message || 'Üretim yapılamadı.');
+    } finally {
+      setProduceBusy(false);
+    }
+  };
+
+  const handleSelfResign = async () => {
+    setResignBusy(true);
+    setSelfError(null);
+    try {
+      await resignFromFactory();
+      setProduceResult(null);
+    } catch (err) {
+      setSelfError(err.message || 'İstifa edilemedi.');
+    } finally {
+      setResignBusy(false);
+    }
+  };
 
   return (
     <div className="factory-owner-screen">
@@ -345,18 +390,57 @@ function OwnerView({ factory, machines }) {
               <span className="factory-machine-name">{MACHINE_LABELS[m.type]}</span>
               {m.type === 'mining' ? (
                 <span className="factory-machine-status">Otomatik üretir</span>
+              ) : m.workerId === myUid ? (
+                <div className="factory-machine-self">
+                  <span className="factory-machine-status worker">
+                    👤 Sen çalışıyorsun
+                    {producedToday && ` · bugün ${m.lastProducedQty} adet`}
+                  </span>
+                  <div className="factory-machine-self-actions">
+                    <button
+                      className="factory-btn small"
+                      disabled={producedToday || produceBusy}
+                      onClick={handleSelfProduce}
+                    >
+                      {produceBusy ? '…' : 'Üretim Yap'}
+                    </button>
+                    <button
+                      className="factory-btn small"
+                      disabled={producedToday || resignBusy}
+                      onClick={handleSelfResign}
+                      title={producedToday ? 'Bugün üretim yaptın, bugün istifa edemezsin' : 'İstifa et'}
+                    >
+                      {resignBusy ? '…' : 'İstifa Et'}
+                    </button>
+                  </div>
+                </div>
               ) : m.workerId ? (
                 <span className="factory-machine-status worker">
                   👤 {m.workerName}
                   {producedToday && ` · bugün ${m.lastProducedQty} adet`}
                 </span>
-              ) : (
+              ) : hasAnyEmployment ? (
                 <span className="factory-machine-status empty">İşçi bekliyor</span>
+              ) : (
+                <button
+                  className="factory-btn small"
+                  disabled={selfBusy === m.id}
+                  onClick={() => handleSelfJoin(m.id)}
+                >
+                  {selfBusy === m.id ? '…' : 'Kendini Yerleştir'}
+                </button>
               )}
             </div>
           );
         })}
       </div>
+      {produceResult && (
+        <p className="factory-result">
+          +{produceResult.salary.toLocaleString('tr-TR')} altın maaş kazandın
+          {produceResult.shortfall > 0 && ' (eksik kısım ceza olarak devlete yazıldı)'}
+        </p>
+      )}
+      {selfError && <p className="factory-error">{selfError}</p>}
 
       {showBuy && <BuyMachineModal onClose={() => setShowBuy(false)} />}
       {showManage && (
@@ -545,7 +629,7 @@ export default function FactoryScreen() {
   if (!player) return null;
 
   if (factory) {
-    return <OwnerView factory={factory} machines={machines} />;
+    return <OwnerView factory={factory} machines={machines} player={player} myUid={user.uid} />;
   }
   if (player.employment) {
     return <WorkerView player={player} myUid={user.uid} />;
