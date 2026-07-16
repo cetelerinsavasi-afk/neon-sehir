@@ -11,15 +11,35 @@ const db = admin.firestore();
 // (src/firebase.js) birebir aynı olmalı, yoksa çağrılar 404 döner.
 setGlobalOptions({ region: 'europe-west1' });
 
-const VALID_MACHINES = ['depoUpgrade', 'vitesUpgrade', 'silahUpgrade', 'yasakliMadde'];
-const MACHINE_PRICE = 150000; // Bölüm 8.2
-const FACTORY_WAGE = 3000; // Bölüm 6 — işçilik günlük ücreti
-const DAILY_OUTPUT = {
-  depoUpgrade: 20,
-  vitesUpgrade: 20,
-  silahUpgrade: 100,
-  yasakliMadde: 3, // kaçakçılık üretimi kasıtlı olarak çok kısıtlı
+// ---------------------------------------------------------------------------
+// FABRİKA SİSTEMİ (oyuncu kurduğu/işlettiği fabrikalar) — Bölüm 6/8.2'nin
+// yerini alır. Her oyuncu en fazla 1 fabrika kurabilir (satılamaz), içine
+// istediği kadar makine koyabilir. Makineler (mining hariç) işçi gerektirir;
+// işçi "Üretim Yap"a bastıkça hem maaşını alır hem patronun envanterine
+// rastgele (min-max arası) ürün eklenir.
+// ---------------------------------------------------------------------------
+const FACTORY_CREATE_COST = 100000;
+const FACTORY_MIN_SALARY = 1000;
+const FACTORY_MAX_SALARY = 5000;
+// Mining hariç tüm makine türleri sabit fiyatlı; mining'in fiyatı canlı
+// kripto fiyatına bağlı (2 kripto değerinde) — bkz. miningMachinePrice().
+const MACHINE_TYPES = {
+  mining: { label: 'Mining Makinesi', needsWorker: false, min: 0.01, max: 0.1, unit: 'crypto' },
+  silahUpgrade: { label: 'Silah Geliştirme Malzemesi Makinesi', needsWorker: true, price: 50000, min: 1, max: 200 },
+  depoUpgrade: { label: 'Depo Geliştirme Malzemesi Makinesi', needsWorker: true, price: 50000, min: 1, max: 40 },
+  vitesUpgrade: { label: 'Vites Geliştirme Malzemesi Makinesi', needsWorker: true, price: 50000, min: 1, max: 40 },
+  yasakliMadde: { label: 'Yasaklı Madde Üretim Makinesi', needsWorker: true, price: 100000, min: 1, max: 10 },
 };
+const VALID_MACHINES = Object.keys(MACHINE_TYPES);
+
+async function miningMachinePrice() {
+  const prices = await getCurrentPrices();
+  return Math.ceil(2 * (prices.cryptoPrice || 0));
+}
+
+function randomInRange(min, max) {
+  return Math.random() * (max - min) + min;
+}
 
 function requireAuth(request) {
   if (!request.auth) {
@@ -278,137 +298,249 @@ export const cancelPendingPoliceChange = onCall(async (request) => {
 });
 
 // ---------------------------------------------------------------------------
-// factoryWork — Bölüm 6, Bölüm 7. Günde 1 kez, 500 altın. Meslek şartı yok —
-// işçilik artık herkese açık (Bölüm 7 sadeleştirmesi).
+// createFactory — 100.000 altın, oyuncu başına en fazla 1 fabrika, satılamaz.
 // ---------------------------------------------------------------------------
-export const factoryWork = onCall(async (request) => {
+export const createFactory = onCall(async (request) => {
   const uid = requireAuth(request);
-  const dateKey = istanbulDateKey();
   const userRef = db.collection('users').doc(uid);
-  const dailyRef = db.collection('dailyActions').doc(`${uid}_${dateKey}`);
+  const factoryRef = db.collection('factories').doc(uid);
 
   await db.runTransaction(async (tx) => {
-    const [userSnap, dailySnap] = await Promise.all([
-      tx.get(userRef),
-      tx.get(dailyRef),
-    ]);
+    const [userSnap, factorySnap] = await Promise.all([tx.get(userRef), tx.get(factoryRef)]);
     const user = userSnap.data();
-    if (!user) {
-      throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
+    if (factorySnap.exists) {
+      throw new HttpsError('failed-precondition', 'Zaten bir fabrikan var.');
     }
-    if (user.profession === 'polis') {
-      throw new HttpsError('failed-precondition', 'Polis mesleğindeyken fabrikada çalışamazsın.');
-    }
-    if (user.profession === 'imam') {
-      throw new HttpsError('failed-precondition', 'İmam fabrikada çalışamaz.');
-    }
-    if (dailySnap.exists && dailySnap.data().factoryWork) {
-      throw new HttpsError('failed-precondition', 'Bugün çalıştınız.');
-    }
-    const { goldDelta, debtDelta } = splitIncomeForDebt(user.debtToState, FACTORY_WAGE);
-    tx.set(
-      userRef,
-      {
-        gold: admin.firestore.FieldValue.increment(goldDelta),
-        debtToState: admin.firestore.FieldValue.increment(debtDelta),
-      },
-      { merge: true }
-    );
-    tx.set(dailyRef, { factoryWork: true }, { merge: true });
-  });
-
-  return { ok: true, earned: FACTORY_WAGE };
-});
-
-// ---------------------------------------------------------------------------
-// buyProductionMachine — Bölüm 8.2. Her makine 100.000 altın, "üretici" gerekli.
-// ---------------------------------------------------------------------------
-export const buyProductionMachine = onCall(async (request) => {
-  const uid = requireAuth(request);
-  const { machineType } = request.data || {};
-  if (!VALID_MACHINES.includes(machineType)) {
-    throw new HttpsError('invalid-argument', 'Geçersiz makine türü.');
-  }
-
-  const userRef = db.collection('users').doc(uid);
-  const machineRef = userRef.collection('productionMachines').doc(machineType);
-
-  await db.runTransaction(async (tx) => {
-    const [userSnap, machineSnap] = await Promise.all([
-      tx.get(userRef),
-      tx.get(machineRef),
-    ]);
-    const user = userSnap.data();
-    if (!user) {
-      throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
-    }
-    if (machineSnap.exists) {
-      throw new HttpsError('failed-precondition', 'Bu makineye zaten sahipsiniz.');
-    }
-    if ((user.gold || 0) < MACHINE_PRICE) {
+    if (!user || (user.gold || 0) < FACTORY_CREATE_COST) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
-    tx.set(
-      userRef,
-      { gold: admin.firestore.FieldValue.increment(-MACHINE_PRICE) },
-      { merge: true }
-    );
-    tx.set(machineRef, {
-      owned: true,
-      lastCollectedAt: null,
-      purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-FACTORY_CREATE_COST) });
+    tx.set(factoryRef, {
+      ownerId: uid,
+      ownerName: user.displayName || 'Oyuncu',
+      salary: FACTORY_MIN_SALARY,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
   });
 
   return { ok: true };
 });
 
-// ---------------------------------------------------------------------------
-// collectProduction — Bölüm 6, Bölüm 8.2. Günlük üretimi toplama.
-// O gün toplanmazsa üretim birikmez, kaybolur (master prompt kuralı).
-// ---------------------------------------------------------------------------
-export const collectProduction = onCall(async (request) => {
+// buyFactoryMachine — sadece fabrika sahibi, istediği kadar makine alabilir.
+export const buyFactoryMachine = onCall(async (request) => {
   const uid = requireAuth(request);
   const { machineType } = request.data || {};
   if (!VALID_MACHINES.includes(machineType)) {
     throw new HttpsError('invalid-argument', 'Geçersiz makine türü.');
   }
+  const price =
+    machineType === 'mining' ? await miningMachinePrice() : MACHINE_TYPES[machineType].price;
 
-  const dateKey = istanbulDateKey();
   const userRef = db.collection('users').doc(uid);
-  const machineRef = userRef.collection('productionMachines').doc(machineType);
-  const inventoryRef = userRef.collection('inventory').doc(machineType);
-  const dailyRef = db.collection('dailyActions').doc(`${uid}_${dateKey}`);
+  const factoryRef = db.collection('factories').doc(uid);
+  const machineRef = factoryRef.collection('machines').doc();
 
   await db.runTransaction(async (tx) => {
-    const [machineSnap, dailySnap] = await Promise.all([
-      tx.get(machineRef),
-      tx.get(dailyRef),
-    ]);
-    if (!machineSnap.exists || !machineSnap.data().owned) {
-      throw new HttpsError('failed-precondition', 'Bu makineye sahip değilsiniz.');
+    const [userSnap, factorySnap] = await Promise.all([tx.get(userRef), tx.get(factoryRef)]);
+    if (!factorySnap.exists) {
+      throw new HttpsError('failed-precondition', 'Önce bir fabrika kurmalısın.');
     }
-    const alreadyCollected =
-      dailySnap.exists && dailySnap.data().machinesCollected?.[machineType];
-    if (alreadyCollected) {
-      throw new HttpsError('failed-precondition', 'Bugünün üretimi zaten toplandı.');
+    const user = userSnap.data();
+    if (!user || (user.gold || 0) < price) {
+      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
-
-    const amount = DAILY_OUTPUT[machineType];
-    tx.set(
-      inventoryRef,
-      { quantity: admin.firestore.FieldValue.increment(amount) },
-      { merge: true }
-    );
-    tx.set(
-      machineRef,
-      { lastCollectedAt: admin.firestore.FieldValue.serverTimestamp() },
-      { merge: true }
-    );
-    tx.set(dailyRef, { machinesCollected: { [machineType]: true } }, { merge: true });
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-price) });
+    tx.set(machineRef, {
+      type: machineType,
+      workerId: null,
+      workerName: null,
+      lastProducedDateKey: null,
+      lastProducedQty: 0,
+      purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
   });
 
-  return { ok: true, collected: DAILY_OUTPUT[machineType] };
+  return { ok: true, machineId: machineRef.id, price };
+});
+
+// setFactorySalary — sadece fabrika sahibi, 1000-5000 altın arası.
+export const setFactorySalary = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const salary = Number(request.data?.salary);
+  if (!Number.isInteger(salary) || salary < FACTORY_MIN_SALARY || salary > FACTORY_MAX_SALARY) {
+    throw new HttpsError(
+      'invalid-argument',
+      `Maaş ${FACTORY_MIN_SALARY.toLocaleString('tr-TR')} - ${FACTORY_MAX_SALARY.toLocaleString('tr-TR')} altın arasında olmalı.`
+    );
+  }
+  const factoryRef = db.collection('factories').doc(uid);
+  const factorySnap = await factoryRef.get();
+  if (!factorySnap.exists) {
+    throw new HttpsError('failed-precondition', 'Bir fabrikan yok.');
+  }
+  await factoryRef.update({ salary });
+  return { ok: true };
+});
+
+// joinFactoryMachine — bir işçi, boş bir makineye (mining hariç) kendini
+// atar. Fabrika sahibi de kendi fabrikasında SADECE 1 makinede çalışabilir
+// (polis/imam değilse). Zaten başka bir yerde çalışıyorsa önce istifa etmeli.
+export const joinFactoryMachine = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { factoryId, machineId } = request.data || {};
+  const userRef = db.collection('users').doc(uid);
+  const machineRef = db.collection('factories').doc(factoryId).collection('machines').doc(machineId);
+
+  await db.runTransaction(async (tx) => {
+    const [userSnap, machineSnap] = await Promise.all([tx.get(userRef), tx.get(machineRef)]);
+    const user = userSnap.data();
+    if (!user) throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
+    if (user.profession === 'polis' || user.pendingPoliceChange === 'apply') {
+      throw new HttpsError('failed-precondition', 'Polis mesleğindeyken fabrikada çalışamazsın.');
+    }
+    if (user.profession === 'imam') {
+      throw new HttpsError('failed-precondition', 'İmam fabrikada çalışamaz.');
+    }
+    if (user.employment) {
+      throw new HttpsError('failed-precondition', 'Zaten bir fabrikada çalışıyorsun — önce istifa et.');
+    }
+    if (!machineSnap.exists) {
+      throw new HttpsError('failed-precondition', 'Makine bulunamadı.');
+    }
+    const machine = machineSnap.data();
+    if (machine.type === 'mining') {
+      throw new HttpsError('failed-precondition', 'Mining makinesi işçi gerektirmez.');
+    }
+    if (machine.workerId) {
+      throw new HttpsError('failed-precondition', 'Bu makinede zaten biri çalışıyor.');
+    }
+    tx.update(machineRef, { workerId: uid, workerName: user.displayName || 'Oyuncu' });
+    tx.update(userRef, { employment: { factoryId, machineId } });
+  });
+
+  return { ok: true };
+});
+
+// produceAtFactory — işçi "Üretim Yap"a basınca: maaşını alır (patronun
+// altını yetmezse fark patrona CEZA/borç olarak yazılır, işçi yine de tam
+// maaşını alır), patronun envanterine rastgele (min-max) miktarda ürün
+// eklenir. Makine başına günde 1 kez.
+export const produceAtFactory = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const userRef = db.collection('users').doc(uid);
+  const dateKey = istanbulDateKey();
+
+  let outcome = null;
+  await db.runTransaction(async (tx) => {
+    const userSnap = await tx.get(userRef);
+    const user = userSnap.data();
+    if (!user?.employment) {
+      throw new HttpsError('failed-precondition', 'Bir fabrikada çalışmıyorsun.');
+    }
+    const { factoryId, machineId } = user.employment;
+    const factoryRef = db.collection('factories').doc(factoryId);
+    const machineRef = factoryRef.collection('machines').doc(machineId);
+    const ownerRef = db.collection('users').doc(factoryId);
+    const [machineSnap, ownerSnap] = await Promise.all([tx.get(machineRef), tx.get(ownerRef)]);
+    if (!machineSnap.exists) {
+      throw new HttpsError('failed-precondition', 'Makine bulunamadı.');
+    }
+    const machine = machineSnap.data();
+    if (machine.workerId !== uid) {
+      throw new HttpsError('failed-precondition', 'Bu makinede çalışan sen değilsin.');
+    }
+    if (machine.lastProducedDateKey === dateKey) {
+      throw new HttpsError('failed-precondition', 'Bugün bu makinede zaten üretim yaptın.');
+    }
+    const factorySnap = await tx.get(factoryRef);
+    const salary = factorySnap.data()?.salary || FACTORY_MIN_SALARY;
+    const owner = ownerSnap.data();
+    const ownerGold = owner?.gold || 0;
+    const ownerPay = Math.min(salary, ownerGold);
+    const shortfall = salary - ownerPay;
+
+    const cfg = MACHINE_TYPES[machine.type];
+    const qty =
+      machine.type === 'yasakliMadde' || machine.type === 'silahUpgrade'
+        ? Math.floor(randomInRange(cfg.min, cfg.max + 1))
+        : Math.round(randomInRange(cfg.min, cfg.max));
+
+    // İşçi: maaşını TAM alır. employmentProducedDateKey, frontend'in
+    // "bugün üretim yaptın mı" (istifa butonu görünürlüğü) sorusunu
+    // makine dokümanına ayrıca bakmadan cevaplayabilmesi için.
+    tx.update(userRef, {
+      gold: admin.firestore.FieldValue.increment(salary),
+      employmentProducedDateKey: dateKey,
+    });
+    // Patron: elinden çıkabildiği kadarı düşülür, yetmeyen kısım CEZA/borç olur.
+    tx.update(ownerRef, {
+      gold: admin.firestore.FieldValue.increment(-ownerPay),
+      debtToState: admin.firestore.FieldValue.increment(shortfall),
+    });
+    const inventoryRef = ownerRef.collection('inventory').doc(machine.type);
+    tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(qty) }, { merge: true });
+    tx.update(machineRef, { lastProducedDateKey: dateKey, lastProducedQty: qty });
+
+    outcome = { salary, qty, shortfall };
+  });
+
+  return { ok: true, ...outcome };
+});
+
+// resignFromFactory — bugün üretim yapmadıysan istifa edebilirsin.
+export const resignFromFactory = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const userRef = db.collection('users').doc(uid);
+  const dateKey = istanbulDateKey();
+
+  await db.runTransaction(async (tx) => {
+    const userSnap = await tx.get(userRef);
+    const user = userSnap.data();
+    if (!user?.employment) {
+      throw new HttpsError('failed-precondition', 'Bir fabrikada çalışmıyorsun.');
+    }
+    const { factoryId, machineId } = user.employment;
+    const machineRef = db.collection('factories').doc(factoryId).collection('machines').doc(machineId);
+    const machineSnap = await tx.get(machineRef);
+    if (machineSnap.exists && machineSnap.data().lastProducedDateKey === dateKey) {
+      throw new HttpsError('failed-precondition', 'Bugün üretim yaptın, bugün istifa edemezsin.');
+    }
+    if (machineSnap.exists) {
+      tx.update(machineRef, { workerId: null, workerName: null });
+    }
+    tx.update(userRef, { employment: admin.firestore.FieldValue.delete() });
+  });
+
+  return { ok: true };
+});
+
+// fireEmployee — sadece fabrika sahibi; işçi bugün üretim yaptıysa
+// çıkaramaz.
+export const fireEmployee = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { machineId } = request.data || {};
+  const dateKey = istanbulDateKey();
+  const machineRef = db.collection('factories').doc(uid).collection('machines').doc(machineId);
+
+  await db.runTransaction(async (tx) => {
+    const machineSnap = await tx.get(machineRef);
+    if (!machineSnap.exists) {
+      throw new HttpsError('failed-precondition', 'Makine bulunamadı.');
+    }
+    const machine = machineSnap.data();
+    if (!machine.workerId) {
+      throw new HttpsError('failed-precondition', 'Bu makinede kimse çalışmıyor.');
+    }
+    if (machine.lastProducedDateKey === dateKey) {
+      throw new HttpsError('failed-precondition', 'Bu işçi bugün üretim yaptı, bugün çıkaramazsın.');
+    }
+    tx.update(db.collection('users').doc(machine.workerId), {
+      employment: admin.firestore.FieldValue.delete(),
+    });
+    tx.update(machineRef, { workerId: null, workerName: null });
+  });
+
+  return { ok: true };
 });
 
 // ---------------------------------------------------------------------------
@@ -420,6 +552,58 @@ export const dailyReset = onSchedule(
   { schedule: '0 0 * * *', timeZone: 'Europe/Istanbul' },
   async () => {
     const dateKey = istanbulDateKey();
+
+    // -1) TEK SEFERLİK GÖÇ: eski (oyuncu-başına-1-makine) fabrika
+    // sistemindeki makine sahiplerine 150.000 altın iade edilir, eski
+    // makineleri iptal edilir. migrations/oldFactoryCleanup dokümanı
+    // varsa bu blok bir daha çalışmaz.
+    const migrationRef = db.collection('migrations').doc('oldFactoryCleanup');
+    const migrationSnap = await migrationRef.get();
+    if (!migrationSnap.exists) {
+      const OLD_MACHINE_REFUND = 150000;
+      const usersSnap = await db.collection('users').get();
+      const refundJobs = [];
+      for (const userDoc of usersSnap.docs) {
+        const machinesSnap = await userDoc.ref.collection('productionMachines').get();
+        const ownedMachines = machinesSnap.docs.filter((m) => m.data().owned);
+        if (ownedMachines.length === 0) continue;
+        const refund = OLD_MACHINE_REFUND * ownedMachines.length;
+        refundJobs.push(
+          (async () => {
+            const batch = db.batch();
+            batch.update(userDoc.ref, { gold: admin.firestore.FieldValue.increment(refund) });
+            ownedMachines.forEach((m) => batch.delete(m.ref));
+            batch.set(userDoc.ref.collection('messages').doc(), {
+              text: `Fabrika sistemi tamamen değişti! Eski üretim makinen/makinelerin için ${refund.toLocaleString('tr-TR')} altın iade edildi. Artık kendi fabrikanı kurup makine alabilir, ya da başka oyuncuların fabrikasında çalışabilirsin.`,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              read: false,
+              type: 'factory_system_migration',
+            });
+            await batch.commit();
+          })()
+        );
+      }
+      await Promise.all(refundJobs);
+      await migrationRef.set({ ranAt: admin.firestore.FieldValue.serverTimestamp() });
+    }
+
+    // -0.5) Mining makineleri işçi gerektirmez — her gün otomatik olarak
+    // sahibinin kripto bakiyesine rastgele (min-max) miktar eklenir.
+    {
+      const miningSnap = await db.collectionGroup('machines').where('type', '==', 'mining').get();
+      const miningJobs = [];
+      miningSnap.forEach((m) => {
+        const factoryId = m.ref.parent.parent.id;
+        const qty = randomInRange(MACHINE_TYPES.mining.min, MACHINE_TYPES.mining.max);
+        miningJobs.push(
+          db
+            .collection('users')
+            .doc(factoryId)
+            .update({ cryptoHoldings: admin.firestore.FieldValue.increment(qty) })
+        );
+      });
+      await Promise.all(miningJobs);
+    }
 
     // 0) Bekleyen polislik başvurularını işle (Bölüm 7): anlık meslek
     // değişimiyle istismarı önlemek için başvuru bir sonraki 00:00'da
@@ -1671,7 +1855,12 @@ export const prayAtMosque = onCall(async (request) => {
     if (dailySnap.exists && dailySnap.data().prayedWindows?.[win]) {
       throw new HttpsError('failed-precondition', 'Bu vakitte zaten ibadet ettin.');
     }
-    tx.update(userRef, { suspicion: clampSuspicion((user?.suspicion || 0) - 5) });
+    const currentSuspicion = user?.suspicion || 0;
+    const updates = { suspicion: clampSuspicion(currentSuspicion - 5) };
+    if (currentSuspicion === 0) {
+      updates.reputation = clamp(Math.round((user?.reputation || 0) + 10), 0, 100);
+    }
+    tx.update(userRef, updates);
     tx.set(dailyRef, { prayedWindows: { [win]: true } }, { merge: true });
     // "X. Vakitteki Cemaat" listesi için — Camii ekranında avatar+isimle
     // gösterilir. Vakite göre AYRI bir doküman altında tutuluyor.
@@ -2239,8 +2428,10 @@ export const sellContrabandAtPark = onCall(async (request) => {
     }
 
     const currentSuspicion = user.suspicion || 0;
+    const currentReputation = user.reputation || 0;
     const caught = Math.random() * 100 < currentSuspicion;
     const newSuspicion = clampSuspicion(currentSuspicion + PARK_SUSPICION_COST);
+    const newReputation = clampSuspicion(currentReputation - PARK_SUSPICION_COST);
 
     // Mal her durumda elden gider — satıldı ya da polis el koydu.
     tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-1) }, { merge: true });
@@ -2250,6 +2441,7 @@ export const sellContrabandAtPark = onCall(async (request) => {
       tx.update(userRef, {
         debtToState: newTotalDebt,
         suspicion: newSuspicion,
+        reputation: newReputation,
       });
       outcome = { caught: true, penalty: CONTRABAND_PARK_SELL_PRICE, newTotalDebt };
     } else {
@@ -2261,6 +2453,7 @@ export const sellContrabandAtPark = onCall(async (request) => {
         gold: admin.firestore.FieldValue.increment(goldDelta),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
         suspicion: newSuspicion,
+        reputation: newReputation,
       });
       outcome = { caught: false, earned: CONTRABAND_PARK_SELL_PRICE };
     }
@@ -2999,12 +3192,15 @@ export const expireOldMarketplaceListings = onSchedule({ schedule: 'every 24 hou
               { merge: true }
             );
           } else if (l.itemType === 'machine') {
-            const machineRef = db
-              .collection('users')
-              .doc(l.sellerId)
-              .collection('productionMachines')
-              .doc(l.machineType);
-            tx.update(machineRef, { owned: true });
+            const sellerMachinesRef = db.collection('factories').doc(l.sellerId).collection('machines');
+            tx.set(sellerMachinesRef.doc(), {
+              type: l.machineType,
+              workerId: null,
+              workerName: null,
+              lastProducedDateKey: null,
+              lastProducedQty: 0,
+              purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
           }
 
           tx.update(doc.ref, { sold: true, cancelled: true, expiredAutomatically: true });
@@ -4053,8 +4249,9 @@ export const raceChangeGear = onCall(async (request) => {
 //   - weapon: weapons/{id} üzerinde 'listed' bayrağı.
 //   - material: envanterden miktar ANINDA düşülür (rezerve edilir), iptal
 //     edilirse geri eklenir.
-//   - machine: productionMachines/{uid}/{machineType}.owned ANINDA false
-//     yapılır (rezerve edilir), iptal edilirse geri owned:true yapılır.
+//   - machine: factories/{ownerId}/machines/{machineId} dokümanı ANINDA
+//     silinir (rezerve edilir), iptal edilirse aynı türde yeni bir makine
+//     dokümanı olarak fabrikaya geri eklenir.
 // marketplaceListings/{listingId}: sellerId, itemType, price, sold, ...
 // =============================================================================
 
@@ -4200,29 +4397,40 @@ export const createListing = onCall(async (request) => {
       });
     });
   } else if (itemType === 'machine') {
-    if (!VALID_MACHINES.includes(machineType)) {
-      throw new HttpsError('invalid-argument', 'Geçersiz makine türü.');
+    const machineRef = db.collection('factories').doc(uid).collection('machines').doc(request.data?.machineId);
+    const preSnap = await machineRef.get();
+    if (!preSnap.exists) {
+      throw new HttpsError('failed-precondition', 'Bu makine size ait değil.');
     }
-    const machineMax = MACHINE_PRICE;
-    const machineMin = Math.floor(MACHINE_PRICE / 2);
+    const preMachineType = preSnap.data().type;
+    const base =
+      preMachineType === 'mining' ? await miningMachinePrice() : MACHINE_TYPES[preMachineType].price;
+    const machineMax = base;
+    const machineMin = Math.floor(base / 2);
     if (priceNum < machineMin || priceNum > machineMax) {
       throw new HttpsError(
         'invalid-argument',
         `Fiyat ${machineMin.toLocaleString('tr-TR')} - ${machineMax.toLocaleString('tr-TR')} altın arasında olmalı.`
       );
     }
-    const machineRef = db.collection('users').doc(uid).collection('productionMachines').doc(machineType);
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(machineRef);
-      if (!snap.exists || !snap.data().owned) {
-        throw new HttpsError('failed-precondition', 'Bu makineye sahip değilsiniz.');
+      if (!snap.exists) {
+        throw new HttpsError('failed-precondition', 'Bu makine size ait değil.');
       }
-      tx.update(machineRef, { owned: false });
+      const m = snap.data();
+      if (m.workerId) {
+        throw new HttpsError(
+          'failed-precondition',
+          'Bu makinede biri çalışıyor, önce işçiyi çıkarmalısın.'
+        );
+      }
+      tx.delete(machineRef);
       tx.set(listingRef, {
         sellerId: uid,
         sellerName,
         itemType,
-        machineType,
+        machineType: m.type,
         price: priceNum,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         sold: false,
@@ -4369,28 +4577,38 @@ export const instantSellListing = onCall(async (request) => {
       });
     });
   } else if (itemType === 'machine') {
-    if (!VALID_MACHINES.includes(machineType)) {
-      throw new HttpsError('invalid-argument', 'Geçersiz makine türü.');
+    const machineRef = db.collection('factories').doc(uid).collection('machines').doc(request.data?.machineId);
+    const preSnap = await machineRef.get();
+    if (!preSnap.exists) {
+      throw new HttpsError('failed-precondition', 'Bu makine size ait değil.');
     }
-    const minPrice = Math.floor(MACHINE_PRICE / 2);
+    const mType = preSnap.data().type;
+    const base = mType === 'mining' ? await miningMachinePrice() : MACHINE_TYPES[mType].price;
+    const minPrice = Math.floor(base / 2);
     payout = minPrice;
-    const machineRef = sellerRef.collection('productionMachines').doc(machineType);
     await db.runTransaction(async (tx) => {
       const [snap, sellerSnap] = await Promise.all([tx.get(machineRef), tx.get(sellerRef)]);
-      if (!snap.exists || !snap.data().owned) {
-        throw new HttpsError('failed-precondition', 'Bu makineye sahip değilsiniz.');
+      if (!snap.exists) {
+        throw new HttpsError('failed-precondition', 'Bu makine size ait değil.');
+      }
+      const m = snap.data();
+      if (m.workerId) {
+        throw new HttpsError(
+          'failed-precondition',
+          'Bu makinede biri çalışıyor, önce işçiyi çıkarmalısın.'
+        );
       }
       const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, minPrice);
       tx.update(sellerRef, {
         gold: admin.firestore.FieldValue.increment(goldDelta),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
       });
-      tx.update(machineRef, { owned: false });
+      tx.delete(machineRef);
       tx.set(listingRef, {
         sellerId: 'system',
         sellerName: 'Sistem',
         itemType,
-        machineType,
+        machineType: m.type,
         price: Math.ceil(minPrice * 1.1),
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         sold: false,
@@ -4437,12 +4655,15 @@ export const cancelListing = onCall(async (request) => {
         { merge: true }
       );
     } else if (listing.itemType === 'machine') {
-      const machineRef = db
-        .collection('users')
-        .doc(uid)
-        .collection('productionMachines')
-        .doc(listing.machineType);
-      tx.update(machineRef, { owned: true });
+      const factoryMachinesRef = db.collection('factories').doc(uid).collection('machines');
+      tx.set(factoryMachinesRef.doc(), {
+        type: listing.machineType,
+        workerId: null,
+        workerName: null,
+        lastProducedDateKey: null,
+        lastProducedQty: 0,
+        purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
     }
 
     tx.update(listingRef, { sold: true, cancelled: true });
@@ -4478,6 +4699,18 @@ export const buyListing = onCall(async (request) => {
     const isSystemListing = listing.sellerId === 'system';
     const sellerRef = isSystemListing ? null : db.collection('users').doc(listing.sellerId);
     const sellerSnap = isSystemListing ? null : await tx.get(sellerRef);
+
+    // Makine sadece bir fabrikaya yerleştirilebileceği için, alıcının
+    // kendi fabrikası olmalı — yoksa makineyi "koyacak" bir yeri yok.
+    if (listing.itemType === 'machine') {
+      const buyerFactorySnap = await tx.get(db.collection('factories').doc(uid));
+      if (!buyerFactorySnap.exists) {
+        throw new HttpsError(
+          'failed-precondition',
+          'Bu makineyi almak için önce kendi fabrikanı kurman gerekir.'
+        );
+      }
+    }
 
     // Alıcıdan tam fiyat düşülür.
     tx.update(buyerRef, { gold: admin.firestore.FieldValue.increment(-listing.price) });
@@ -4520,12 +4753,15 @@ export const buyListing = onCall(async (request) => {
         { merge: true }
       );
     } else if (listing.itemType === 'machine') {
-      const machineRef = db
-        .collection('users')
-        .doc(uid)
-        .collection('productionMachines')
-        .doc(listing.machineType);
-      tx.set(machineRef, { owned: true, lastCollectedAt: null }, { merge: true });
+      const buyerMachinesRef = db.collection('factories').doc(uid).collection('machines');
+      tx.set(buyerMachinesRef.doc(), {
+        type: listing.machineType,
+        workerId: null,
+        workerName: null,
+        lastProducedDateKey: null,
+        lastProducedQty: 0,
+        purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
     }
 
     tx.update(listingRef, { sold: true, buyerId: uid, soldAt: admin.firestore.FieldValue.serverTimestamp() });

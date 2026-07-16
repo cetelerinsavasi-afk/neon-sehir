@@ -13,13 +13,23 @@ export const resignFromPolice = () => httpsCallable(functions, 'resignFromPolice
 export const cancelPendingPoliceChange = () =>
   httpsCallable(functions, 'cancelPendingPoliceChange')();
 
-export const factoryWork = () => httpsCallable(functions, 'factoryWork')();
+export const createFactory = () => httpsCallable(functions, 'createFactory')();
 
-export const buyProductionMachine = (machineType) =>
-  httpsCallable(functions, 'buyProductionMachine')({ machineType });
+export const buyFactoryMachine = (machineType) =>
+  httpsCallable(functions, 'buyFactoryMachine')({ machineType });
 
-export const collectProduction = (machineType) =>
-  httpsCallable(functions, 'collectProduction')({ machineType });
+export const setFactorySalary = (salary) =>
+  httpsCallable(functions, 'setFactorySalary')({ salary });
+
+export const joinFactoryMachine = (factoryId, machineId) =>
+  httpsCallable(functions, 'joinFactoryMachine')({ factoryId, machineId });
+
+export const produceAtFactory = () => httpsCallable(functions, 'produceAtFactory')();
+
+export const resignFromFactory = () => httpsCallable(functions, 'resignFromFactory')();
+
+export const fireEmployee = (machineId) =>
+  httpsCallable(functions, 'fireEmployee')({ machineId });
 
 // --- Faz 3: Araba ve Silah Sistemi ---
 

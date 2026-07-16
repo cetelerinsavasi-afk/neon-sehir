@@ -96,6 +96,18 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // factories/{ownerId} — oyuncu fabrikaları. Herkes görebilir (fabrika
+    // listesi/rekabet için), yazma sadece Cloud Functions ile.
+    match /factories/{ownerId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+
+      match /machines/{machineId} {
+        allow read: if isSignedIn();
+        allow write: if false;
+      }
+    }
+
     match /shipSchedule/{date} {
       allow read: if isSignedIn();
       allow write: if false;

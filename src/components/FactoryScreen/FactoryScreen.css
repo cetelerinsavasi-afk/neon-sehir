@@ -1,75 +1,411 @@
-.factory-screen {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.factory-hint {
-  font-size: 13px;
-  color: var(--text-dim);
-  line-height: 1.5;
-  margin: 0;
-}
-
-.factory-hint strong {
-  color: var(--neon-cyan);
-}
-
-.factory-action {
-  padding: 12px;
-  border-radius: 10px;
-  border: 1px solid var(--panel-border);
-  background: var(--panel);
-  color: var(--text);
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.factory-action:hover:not(:disabled) {
-  border-color: var(--neon-cyan);
-  color: var(--neon-cyan);
-}
-
-.factory-action:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-
-.factory-action.small {
-  padding: 8px 12px;
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.factory-machine {
+.factory-top-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  background: #05070c;
-  border: 1px solid var(--panel-border);
-  border-radius: 10px;
-  padding: 10px 12px;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
-.factory-machine-info {
+.factory-nav-btn {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.factory-nav-btn.primary {
+  border-color: var(--neon-cyan);
+  background: rgba(25, 232, 255, 0.1);
+  color: var(--neon-cyan);
+}
+
+.factory-section-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.factory-hint {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.factory-error {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--neon-pink);
+}
+
+.factory-btn {
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.factory-btn.primary {
+  border-color: var(--neon-cyan);
+  background: rgba(25, 232, 255, 0.1);
+  color: var(--neon-cyan);
+}
+
+.factory-btn.small {
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
+.factory-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* --- Browse (fabrika listesi) --- */
+
+.factory-browse-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 10px;
+  max-height: 60vh;
+  overflow-y: auto;
 }
 
-.factory-machine-label {
+.factory-browse-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: #05070c;
+}
+
+.factory-browse-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.factory-browse-owner {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
-.factory-machine-desc {
+.factory-browse-salary {
+  font-size: 11px;
+  color: #ffd23f;
+}
+
+.factory-browse-meta {
+  margin: 0;
   font-size: 11px;
   color: var(--text-dim);
 }
 
-.factory-error {
+.factory-browse-open {
+  color: #3ddc84;
+}
+
+.factory-browse-machines {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.factory-browse-machine-chip {
+  font-size: 10px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+}
+
+.factory-browse-join-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+/* --- Modal --- */
+
+.factory-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.factory-modal {
+  width: 100%;
+  max-width: 480px;
+  max-height: 85vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--bg);
+  border-top: 1px solid var(--panel-border);
+  border-radius: 16px 16px 0 0;
+  padding: 16px;
+}
+
+.factory-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.factory-modal-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.factory-modal-close {
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  color: var(--text);
+  border-radius: 8px;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+}
+
+/* --- Makine listeleri --- */
+
+.factory-machine-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.factory-machine-buy-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: #05070c;
+}
+
+.factory-machine-emoji {
+  font-size: 26px;
+  flex-shrink: 0;
+}
+
+.factory-machine-buy-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.factory-machine-buy-title {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.factory-machine-buy-desc {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.factory-machine-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.factory-machine-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: #05070c;
+  text-align: center;
+}
+
+.factory-machine-card.produced {
+  border-color: #3ddc84;
+}
+
+.factory-machine-name {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.factory-machine-status {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.factory-machine-status.worker {
+  color: var(--neon-cyan);
+}
+
+.factory-machine-status.empty {
+  color: #ffd23f;
+}
+
+/* --- Owner screen --- */
+
+.factory-owner-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.factory-owner-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.factory-manage-btn {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+/* --- Management modal --- */
+
+.factory-step-label {
+  margin: 8px 0 0;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--neon-cyan);
+  border-top: 1px solid var(--panel-border);
+  padding-top: 10px;
+}
+
+.factory-price-label {
+  margin: 0;
+  text-align: center;
+  font-size: 14px;
+}
+
+.factory-employee-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.factory-employee-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+}
+
+.factory-employee-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.factory-employee-name {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.factory-employee-meta {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.factory-fire-btn {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--neon-pink);
+  background: rgba(255, 46, 140, 0.08);
+  color: var(--neon-pink);
+  font-size: 11px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.factory-fire-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-color: var(--panel-border);
+  color: var(--text-dim);
+  background: none;
+}
+
+/* --- Worker screen --- */
+
+.factory-worker-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 40px 0;
+}
+
+.factory-produce-btn {
+  width: 100%;
+  max-width: 260px;
+  padding: 18px;
+  border-radius: 12px;
+  border: 1px solid var(--neon-cyan);
+  background: rgba(25, 232, 255, 0.12);
+  color: var(--neon-cyan);
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.factory-produce-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.factory-result {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #3ddc84;
+  text-align: center;
+}
+
+.factory-resign-btn {
+  width: 100%;
+  padding: 12px;
+  margin-top: 20px;
+  border-radius: 8px;
+  border: 1px solid var(--neon-pink);
+  background: rgba(255, 46, 140, 0.08);
   color: var(--neon-pink);
   font-size: 12px;
-  margin: 0;
+  font-weight: 700;
+  cursor: pointer;
 }

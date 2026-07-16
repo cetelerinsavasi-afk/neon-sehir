@@ -3,7 +3,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useWeapons } from '../../hooks/useWeapons';
 import { useInventory } from '../../hooks/useInventory';
-import { useProductionMachines } from '../../hooks/useProductionMachines';
+import { useMyFactory } from '../../hooks/useMyFactory';
+import { useInvestmentPrices } from '../../hooks/useInvestmentPrices';
 import { useMarketplaceListings } from '../../hooks/useMarketplaceListings';
 import { createListing, instantSellListing, cancelListing, buyListing } from '../../services/gameActions';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
@@ -18,12 +19,14 @@ const MATERIAL_LABELS = {
   yasakliMadde: 'Yasaklı Madde',
 };
 const MACHINE_LABELS = {
-  depoUpgrade: 'Depo Geliştirme Makinesi',
-  vitesUpgrade: 'Vites Geliştirme Makinesi',
-  silahUpgrade: 'Silah Geliştirme Makinesi',
+  mining: 'Mining Makinesi',
+  depoUpgrade: 'Depo Geliştirme Malzemesi Makinesi',
+  vitesUpgrade: 'Vites Geliştirme Malzemesi Makinesi',
+  silahUpgrade: 'Silah Geliştirme Malzemesi Makinesi',
   yasakliMadde: 'Yasaklı Madde Üretim Makinesi',
 };
 const MATERIAL_EMOJIS = {
+  mining: '⛏️',
   depoUpgrade: '🛢️',
   vitesUpgrade: '⚙️',
   silahUpgrade: '🔧',
@@ -41,7 +44,7 @@ const TABS = [
 // de AYNI kurallarla doğrulanıyor (bkz. functions/index.js createListing).
 // Burası sadece kullanıcıya yol göstermek için.
 const AMAZOR_PRICES = { yasakliMadde: 2500, vitesUpgrade: 500, depoUpgrade: 500, silahUpgrade: 100 };
-const MACHINE_PRICE = 150000;
+const MACHINE_PRICES = { depoUpgrade: 50000, vitesUpgrade: 50000, silahUpgrade: 50000, yasakliMadde: 100000 };
 
 function vehiclePriceRange(vehicle) {
   const base = vehicleCatalog.find((v) => v.id === vehicle.catalogId)?.price || 0;
@@ -62,7 +65,10 @@ function materialPriceRange(materialType, qty) {
   return { min: Math.floor((AMAZOR_PRICES[materialType] / 2) * qty), max };
 }
 
-const machinePriceRange = { min: Math.floor(MACHINE_PRICE / 2), max: MACHINE_PRICE };
+function machinePriceRange(machineType, cryptoPrice) {
+  const max = machineType === 'mining' ? Math.ceil(2 * cryptoPrice) : MACHINE_PRICES[machineType];
+  return { min: Math.floor(max / 2), max };
+}
 
 function vehicleImage(catalogId) {
   return vehicleCatalog.find((v) => v.id === catalogId)?.image;
@@ -92,19 +98,21 @@ function SellForm({ onCreated, onClose }) {
   const { vehicles } = useVehicles();
   const { weapons } = useWeapons();
   const { inventory } = useInventory();
-  const { machines } = useProductionMachines();
+  const { machines: myMachines } = useMyFactory();
+  const { prices } = useInvestmentPrices();
 
   const [itemType, setItemType] = useState('vehicle');
   const [selectedId, setSelectedId] = useState('');
   const [materialType, setMaterialType] = useState('depoUpgrade');
   const [quantity, setQuantity] = useState(0);
-  const [machineType, setMachineType] = useState('depoUpgrade');
+  const [machineId, setMachineId] = useState('');
   const [price, setPrice] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
   const sellableVehicles = vehicles.filter((v) => !v.mortgaged && !v.seizedByBank && !v.listed);
   const sellableWeapons = weapons.filter((w) => !w.listed);
+  const sellableMachines = myMachines.filter((m) => !m.workerId);
 
   const priceRange = (() => {
     if (itemType === 'vehicle') {
@@ -119,7 +127,8 @@ function SellForm({ onCreated, onClose }) {
       return quantity > 0 ? materialPriceRange(materialType, quantity) : null;
     }
     if (itemType === 'machine') {
-      return machinePriceRange;
+      const m = sellableMachines.find((x) => x.id === machineId);
+      return m ? machinePriceRange(m.type, prices.cryptoPrice) : null;
     }
     return null;
   })();
@@ -139,10 +148,12 @@ function SellForm({ onCreated, onClose }) {
         if (!quantity || quantity <= 0) return;
         await createListing({ itemType, materialType, quantity, price });
       } else if (itemType === 'machine') {
-        await createListing({ itemType, machineType, price });
+        if (!machineId) return;
+        await createListing({ itemType, machineId, price });
       }
       setSelectedId('');
       setQuantity(0);
+      setMachineId('');
       setPrice(0);
       onCreated?.();
       onClose?.();
@@ -165,10 +176,12 @@ function SellForm({ onCreated, onClose }) {
         if (!quantity || quantity <= 0) return;
         await instantSellListing({ itemType, materialType, quantity });
       } else if (itemType === 'machine') {
-        await instantSellListing({ itemType, machineType });
+        if (!machineId) return;
+        await instantSellListing({ itemType, machineId });
       }
       setSelectedId('');
       setQuantity(0);
+      setMachineId('');
       setPrice(0);
       onCreated?.();
       onClose?.();
@@ -297,19 +310,19 @@ function SellForm({ onCreated, onClose }) {
           <>
             <p className="market-step-label">1. Makine Seç</p>
             <div className="market-item-picker">
-              {Object.entries(MACHINE_LABELS).map(([key, label]) => {
-                const owned = machines[key]?.owned;
-                const selected = machineType === key;
+              {sellableMachines.length === 0 && (
+                <p className="market-hint">Satışa uygun (boşta, işçisiz) bir makinen yok.</p>
+              )}
+              {sellableMachines.map((m) => {
+                const selected = machineId === m.id;
                 return (
                   <button
-                    key={key}
+                    key={m.id}
                     className={`market-item-card${selected ? ' selected' : ''}`}
-                    disabled={!owned}
-                    onClick={() => setMachineType(key)}
+                    onClick={() => setMachineId(m.id)}
                   >
-                    <span className="market-item-emoji-large">{MATERIAL_EMOJIS[key]}</span>
-                    <span className="market-item-name">{label}</span>
-                    <span className="market-item-stats">{owned ? 'Sahipsin' : 'Sahip değilsin'}</span>
+                    <span className="market-item-emoji-large">{MATERIAL_EMOJIS[m.type]}</span>
+                    <span className="market-item-name">{MACHINE_LABELS[m.type]}</span>
                   </button>
                 );
               })}
