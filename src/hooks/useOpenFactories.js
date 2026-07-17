@@ -4,11 +4,10 @@ import { db } from '../firebase';
 
 const MACHINE_LABELS = {
   mining: 'Mining Makinesi',
-  silahUpgrade: 'Silah Geliştirme Malzemesi Makinesi',
-  depoUpgrade: 'Depo Geliştirme Malzemesi Makinesi',
-  vitesUpgrade: 'Vites Geliştirme Malzemesi Makinesi',
-  yasakliMadde: 'Yasaklı Madde Üretim Makinesi',
   tamirMalzemesi: 'Tamir Malzemesi Makinesi',
+  silahUpgrade: 'Silah Geliştirme Malzemesi Makinesi',
+  arabaGelistirme: 'Araba Geliştirme Malzemesi Makinesi',
+  yasakliMadde: 'Yasaklı Madde Üretim Makinesi',
 };
 
 /**

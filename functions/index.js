@@ -25,11 +25,12 @@ const FACTORY_MAX_SALARY = 5000;
 // kripto fiyatına bağlı (2 kripto değerinde) — bkz. miningMachinePrice().
 const MACHINE_TYPES = {
   mining: { label: 'Mining Makinesi', needsWorker: false, min: 0.01, max: 0.1, unit: 'crypto' },
-  silahUpgrade: { label: 'Silah Geliştirme Malzemesi Makinesi', needsWorker: true, price: 50000, min: 1, max: 200 },
-  depoUpgrade: { label: 'Depo Geliştirme Malzemesi Makinesi', needsWorker: true, price: 50000, min: 1, max: 40 },
-  vitesUpgrade: { label: 'Vites Geliştirme Malzemesi Makinesi', needsWorker: true, price: 50000, min: 1, max: 40 },
-  yasakliMadde: { label: 'Yasaklı Madde Üretim Makinesi', needsWorker: true, price: 100000, min: 1, max: 10 },
   tamirMalzemesi: { label: 'Tamir Malzemesi Makinesi', needsWorker: true, price: 100000, min: 1, max: 4000 },
+  silahUpgrade: { label: 'Silah Geliştirme Malzemesi Makinesi', needsWorker: true, price: 50000, min: 1, max: 200 },
+  // Depo ve Vites Geliştirme makineleri birleştirildi — ikisi de aynı
+  // malzemeyi (arabaGelistirme) üretiyordu, artık TEK makine.
+  arabaGelistirme: { label: 'Araba Geliştirme Malzemesi Makinesi', needsWorker: true, price: 50000, min: 1, max: 40 },
+  yasakliMadde: { label: 'Yasaklı Madde Üretim Makinesi', needsWorker: true, price: 100000, min: 1, max: 10 },
 };
 const VALID_MACHINES = Object.keys(MACHINE_TYPES);
 
@@ -105,9 +106,10 @@ function clamp(value, min, max) {
 }
 
 const MATERIAL_SMS_LABELS = {
-  depoUpgrade: 'depo geliştirme malzemesi',
-  vitesUpgrade: 'vites geliştirme malzemesi',
+  tamirMalzemesi: 'tamir malzemesi',
   silahUpgrade: 'silah geliştirme malzemesi',
+  arabaGelistirme: 'araba geliştirme malzemesi',
+  yasakliMadde: 'yasaklı madde',
 };
 
 // ---------------------------------------------------------------------------
@@ -1093,7 +1095,7 @@ export const dailyReset = onSchedule(
         const hasPending = Object.values(pending).some((q) => q > 0);
         if (!hasPending) return;
         const updates = {};
-        for (const materialType of ['depoUpgrade', 'vitesUpgrade', 'silahUpgrade', 'yasakliMadde']) {
+        for (const materialType of ['tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme', 'yasakliMadde']) {
           const qty = pending[materialType] || 0;
           if (qty > 0) {
             updates[`loaded.${materialType}`] = admin.firestore.FieldValue.increment(qty);
@@ -1114,7 +1116,7 @@ export const dailyReset = onSchedule(
         const loaded = data.loaded || {};
         const targetUid = orderDoc.id;
         const delivered = [];
-        for (const materialType of ['depoUpgrade', 'vitesUpgrade', 'silahUpgrade', 'yasakliMadde']) {
+        for (const materialType of ['tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme', 'yasakliMadde']) {
           const qty = loaded[materialType] || 0;
           if (qty > 0) {
             delivered.push({ materialType, qty });
@@ -1131,9 +1133,9 @@ export const dailyReset = onSchedule(
         if (delivered.length > 0) {
           deliveries.push(
             orderDoc.ref.update({
-              'loaded.depoUpgrade': 0,
-              'loaded.vitesUpgrade': 0,
+              'loaded.tamirMalzemesi': 0,
               'loaded.silahUpgrade': 0,
+              'loaded.arabaGelistirme': 0,
               'loaded.yasakliMadde': 0,
             })
           );
@@ -1390,7 +1392,7 @@ export const hourlyInvestmentUpdate = onSchedule(
 // =============================================================================
 
 const UPGRADE_MATERIAL_REFUND = 50; // Bölüm 8.3 — geri satış fiyatı
-const MATERIAL_SELL_PRICE = { depoUpgrade: 250, vitesUpgrade: 250, tamirMalzemesi: 8 }; // Bölüm 8.2 — Modifiye Garajı'na satış
+const MATERIAL_SELL_PRICE = { arabaGelistirme: 250, tamirMalzemesi: 8 }; // Bölüm 8.2 — Modifiye Garajı'na satış
 
 // ---------------------------------------------------------------------------
 // buyVehicle — Araba Galerisi'nden araç satın alma (Bölüm 2, 13).
@@ -1477,8 +1479,9 @@ export const upgradeVehicle = onCall(async (request) => {
   }
 
   const vehicleRef = db.collection('vehicles').doc(vehicleId);
-  const materialType = upgradeType === 'gear' ? 'vitesUpgrade' : 'depoUpgrade';
-  const inventoryRef = db.collection('users').doc(uid).collection('inventory').doc(materialType);
+  // Depo ve Vites Geliştirme Malzemeleri birleştirildi — artık ikisi de
+  // TEK malzeme: "Araba Geliştirme Malzemesi" (arabaGelistirme).
+  const inventoryRef = db.collection('users').doc(uid).collection('inventory').doc('arabaGelistirme');
 
   await db.runTransaction(async (tx) => {
     const [vehicleSnap, inventorySnap] = await Promise.all([
@@ -1532,11 +1535,10 @@ export const upgradeVehicle = onCall(async (request) => {
 // tüm malzeme alımı artık Amazor'dan, tüm satımı Liman & Depo > Depo'dan.
 // ---------------------------------------------------------------------------
 const AMAZOR_PRICES = {
-  yasakliMadde: 2500,
-  vitesUpgrade: 500,
-  depoUpgrade: 500,
-  silahUpgrade: 100,
   tamirMalzemesi: 10,
+  silahUpgrade: 100,
+  arabaGelistirme: 500,
+  yasakliMadde: 2500,
 };
 
 export const buyFromAmazor = onCall(async (request) => {
@@ -2170,16 +2172,17 @@ export const buyLotteryTicket = onCall(async (request) => {
 // 3 makara, 5 olası sembol, tamamen rastgele. 2 ya da 3 aynı sembol
 // gelirse ödül var; hepsi farklıysa ödül yok.
 // ---------------------------------------------------------------------------
-const SLOT_SPIN_COST = 500;
+const SLOT_SPIN_COST = 1000;
 const SLOT_FREE_SPINS_PER_DAY = 3;
-const SLOT_SYMBOLS = ['yasakliMadde', 'silahUpgrade', 'depoUpgrade', 'vitesUpgrade', 'tamirMalzemesi', 'altin'];
+// Depo+Vites Geliştirme Malzemeleri "Araba Geliştirme Malzemesi" olarak
+// birleştiği için slot artık 6 değil 5 sembol üzerinden dönüyor.
+const SLOT_SYMBOLS = ['yasakliMadde', 'silahUpgrade', 'tamirMalzemesi', 'arabaGelistirme', 'altin'];
 const SLOT_PRIZES = {
-  yasakliMadde: { 2: 1, 3: 3 },
-  silahUpgrade: { 2: 10, 3: 100 },
-  depoUpgrade: { 2: 2, 3: 20 },
-  vitesUpgrade: { 2: 2, 3: 20 },
-  tamirMalzemesi: { 2: 100, 3: 1000 },
-  altin: { 2: 2000, 3: 20000 },
+  yasakliMadde: { 2: 1, 3: 5 },
+  silahUpgrade: { 2: 10, 3: 200 },
+  tamirMalzemesi: { 2: 100, 3: 2000 },
+  arabaGelistirme: { 2: 2, 3: 40 },
+  altin: { 2: 2000, 3: 30000 },
 };
 
 export const spinSlot = onCall(async (request) => {
@@ -2664,11 +2667,11 @@ export const buyFromVendor = onCall(async (request) => {
 //     %50 sana) bölüştürülür.
 // ---------------------------------------------------------------------------
 const HEIST_CONFIG = {
-  banka: { suspicionCost: 50, reward: 600000, requiredPower: 100000 },
-  casino: { suspicionCost: 40, reward: 300000, requiredPower: 70000 },
-  araba_galerisi: { suspicionCost: 30, reward: 150000, requiredPower: 50000 },
-  modifiye_garaji: { suspicionCost: 20, reward: 30000, requiredPower: 20000 },
-  fabrika: { suspicionCost: 10, reward: 8000, requiredPower: 10000 },
+  banka: { suspicionCost: 50, reward: 500000, requiredPower: 100000 },
+  casino: { suspicionCost: 40, reward: 250000, requiredPower: 70000 },
+  araba_galerisi: { suspicionCost: 30, reward: 125000, requiredPower: 50000 },
+  modifiye_garaji: { suspicionCost: 20, reward: 25000, requiredPower: 20000 },
+  fabrika: { suspicionCost: 10, reward: 7500, requiredPower: 10000 },
   seyyar_satici_1: { suspicionCost: 5, reward: 2500, requiredPower: 4500 },
   seyyar_satici_2: { suspicionCost: 5, reward: 2000, requiredPower: 3000 },
   seyyar_satici_3: { suspicionCost: 5, reward: 1500, requiredPower: 1500 },
@@ -2907,7 +2910,7 @@ export const sellContrabandAtPark = onCall(async (request) => {
 // yani teslimat bir tur daha gecikir (bkz. dailyReset).
 // Miktar limiti yok — istediğin kadar sipariş verebilirsin.
 // ---------------------------------------------------------------------------
-const LIMAN_PRICES = { depoUpgrade: 400, vitesUpgrade: 400, silahUpgrade: 80, yasakliMadde: 2000 };
+const LIMAN_PRICES = { tamirMalzemesi: 8, silahUpgrade: 80, arabaGelistirme: 400, yasakliMadde: 2000 };
 
 export const placeLimanOrder = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -3651,6 +3654,146 @@ async function mergeLegacyMaterialListings() {
 export const runMergeLegacyMaterialListings = onCall(async (request) => {
   requireAuth(request);
   await mergeLegacyMaterialListings();
+  return { ok: true };
+});
+
+// migrateArabaGelistirmeUnification — Depo Geliştirme Malzemesi ve Vites
+// Geliştirme Malzemesi TEK malzemede ("arabaGelistirme" — Araba
+// Geliştirme Malzemesi) birleştirildi. Bu, eski verideki her yeri
+// (envanterler, fabrika makineleri, açık 2. el ilanları, Liman
+// siparişleri) yeni birleşik malzemeye taşıyan BİR KERELİK ama güvenle
+// tekrar tekrar çalıştırılabilen (idempotent) bir geçiş fonksiyonu.
+// Herhangi bir oturum açmış oyuncu tetikleyebilir — sadece MEVCUT
+// verileri yeniden düzenler, değer üretmez/yok etmez, zararsızdır.
+export const migrateArabaGelistirmeUnification = onCall(async (request) => {
+  requireAuth(request);
+
+  // 1) Envanterler.
+  const usersSnap = await db.collection('users').get();
+  await Promise.all(
+    usersSnap.docs.map(async (userDoc) => {
+      const invRef = userDoc.ref.collection('inventory');
+      const [depoSnap, vitesSnap] = await Promise.all([
+        invRef.doc('depoUpgrade').get(),
+        invRef.doc('vitesUpgrade').get(),
+      ]);
+      const depoQty = depoSnap.exists ? depoSnap.data().quantity || 0 : 0;
+      const vitesQty = vitesSnap.exists ? vitesSnap.data().quantity || 0 : 0;
+      if (depoQty <= 0 && vitesQty <= 0) return;
+      const jobs = [
+        invRef
+          .doc('arabaGelistirme')
+          .set(
+            { quantity: admin.firestore.FieldValue.increment(depoQty + vitesQty) },
+            { merge: true }
+          ),
+      ];
+      if (depoSnap.exists) jobs.push(invRef.doc('depoUpgrade').delete());
+      if (vitesSnap.exists) jobs.push(invRef.doc('vitesUpgrade').delete());
+      await Promise.all(jobs);
+    })
+  );
+
+  // 2) Fabrika makineleri.
+  const factoriesSnap = await db.collection('factories').get();
+  await Promise.all(
+    factoriesSnap.docs.map(async (factoryDoc) => {
+      const machinesSnap = await factoryDoc.ref.collection('machines').get();
+      const jobs = [];
+      machinesSnap.forEach((m) => {
+        const type = m.data().type;
+        if (type === 'depoUpgrade' || type === 'vitesUpgrade') {
+          jobs.push(m.ref.update({ type: 'arabaGelistirme' }));
+        }
+      });
+      await Promise.all(jobs);
+    })
+  );
+
+  // 3) Açık 2. el malzeme ilanları — materialType'ı çevir, aynı satıcı +
+  // adet fiyatına sahip olanları canonical ilanla birleştir.
+  const oldListingsSnap = await db
+    .collection('marketplaceListings')
+    .where('itemType', '==', 'material')
+    .where('sold', '==', false)
+    .get();
+  const groups = new Map();
+  oldListingsSnap.forEach((doc) => {
+    const d = doc.data();
+    if (d.materialType !== 'depoUpgrade' && d.materialType !== 'vitesUpgrade') return;
+    const unitPrice = d.unitPrice || Math.round((d.price || 0) / (d.quantity || 1));
+    const canonicalId = `mat_${d.sellerId}_arabaGelistirme_${unitPrice}`;
+    if (!groups.has(canonicalId)) groups.set(canonicalId, []);
+    groups.get(canonicalId).push({ ref: doc.ref, data: d, unitPrice });
+  });
+  for (const [canonicalId, entries] of groups) {
+    const canonicalRef = db.collection('marketplaceListings').doc(canonicalId);
+    await db.runTransaction(async (tx) => {
+      const freshEntrySnaps = await Promise.all(entries.map((e) => tx.get(e.ref)));
+      const canonicalSnap = await tx.get(canonicalRef);
+      let addQty = 0;
+      let addPrice = 0;
+      freshEntrySnaps.forEach((snap, i) => {
+        if (!snap.exists || snap.data().sold) return;
+        const d = snap.data();
+        const qty = d.quantity || 0;
+        if (qty <= 0) return;
+        addQty += qty;
+        addPrice += entries[i].unitPrice * qty;
+      });
+      if (addQty <= 0) return;
+      freshEntrySnaps.forEach((snap) => {
+        if (snap.exists && !snap.data().sold) {
+          tx.update(snap.ref, { sold: true, cancelled: true, mergedInto: canonicalId });
+        }
+      });
+      if (canonicalSnap.exists && !canonicalSnap.data().sold) {
+        tx.update(canonicalRef, {
+          quantity: admin.firestore.FieldValue.increment(addQty),
+          price: admin.firestore.FieldValue.increment(addPrice),
+        });
+      } else {
+        const first = entries[0].data;
+        tx.set(canonicalRef, {
+          sellerId: first.sellerId,
+          sellerName: first.sellerName,
+          itemType: 'material',
+          materialType: 'arabaGelistirme',
+          quantity: addQty,
+          unitPrice: entries[0].unitPrice,
+          price: addPrice,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          sold: false,
+        });
+      }
+    });
+  }
+
+  // 4) Liman (gemi) siparişleri.
+  const ordersSnap = await db.collection('limanOrders').get();
+  await Promise.all(
+    ordersSnap.docs.map(async (orderDoc) => {
+      const data = orderDoc.data();
+      const pending = data.pending || {};
+      const loaded = data.loaded || {};
+      const pendingSum = (pending.depoUpgrade || 0) + (pending.vitesUpgrade || 0);
+      const loadedSum = (loaded.depoUpgrade || 0) + (loaded.vitesUpgrade || 0);
+      if (pendingSum <= 0 && loadedSum <= 0) return;
+      const updates = {};
+      if (pendingSum > 0) {
+        updates['pending.arabaGelistirme'] = admin.firestore.FieldValue.increment(pendingSum);
+      }
+      if (loadedSum > 0) {
+        updates['loaded.arabaGelistirme'] = admin.firestore.FieldValue.increment(loadedSum);
+      }
+      updates['pending.depoUpgrade'] = admin.firestore.FieldValue.delete();
+      updates['pending.vitesUpgrade'] = admin.firestore.FieldValue.delete();
+      updates['loaded.depoUpgrade'] = admin.firestore.FieldValue.delete();
+      updates['loaded.vitesUpgrade'] = admin.firestore.FieldValue.delete();
+      await orderDoc.ref.update(updates);
+    })
+  );
+
   return { ok: true };
 });
 
@@ -4773,7 +4916,7 @@ export const raceChangeGear = onCall(async (request) => {
 // marketplaceListings/{listingId}: sellerId, itemType, price, sold, ...
 // =============================================================================
 
-const MATERIAL_TYPES = ['depoUpgrade', 'vitesUpgrade', 'silahUpgrade', 'yasakliMadde', 'tamirMalzemesi'];
+const MATERIAL_TYPES = ['tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme', 'yasakliMadde'];
 
 export const createListing = onCall(async (request) => {
   const uid = requireAuth(request);

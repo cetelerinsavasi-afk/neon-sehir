@@ -9,9 +9,9 @@ import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './LimanScreen.css';
 
 const LIMAN_MATERIALS = [
-  { id: 'depoUpgrade', label: 'Depo Geliştirme Malzemesi', price: 400, emoji: '🛢️' },
-  { id: 'vitesUpgrade', label: 'Vites Geliştirme Malzemesi', price: 400, emoji: '⚙️' },
-  { id: 'silahUpgrade', label: 'Silah Geliştirme Malzemesi', price: 80, emoji: '🔧' },
+  { id: 'tamirMalzemesi', label: 'Tamir Malzemesi', price: 8, emoji: '🔧' },
+  { id: 'silahUpgrade', label: 'Silah Geliştirme Malzemesi', price: 80, emoji: '🔫' },
+  { id: 'arabaGelistirme', label: 'Araba Geliştirme Malzemesi', price: 400, emoji: '🚗' },
   { id: 'yasakliMadde', label: 'Yasaklı Madde', price: 2000, emoji: '💊' },
 ];
 

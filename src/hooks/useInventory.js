@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 /**
  * useInventory — users/{uid}/inventory alt koleksiyonunu canlı dinler.
- * Anahtarlar: depoUpgrade, vitesUpgrade, silahUpgrade (bkz. Bölüm 8.2/8.3).
+ * Anahtarlar: tamirMalzemesi, silahUpgrade, arabaGelistirme, yasakliMadde.
  */
 export function useInventory() {
   const { user } = useAuth();

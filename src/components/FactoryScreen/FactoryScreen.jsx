@@ -21,14 +21,13 @@ import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './FactoryScreen.css';
 
 const FACTORY_CREATE_COST = 100000;
-const MACHINE_PRICES = { silahUpgrade: 50000, depoUpgrade: 50000, vitesUpgrade: 50000, yasakliMadde: 100000, tamirMalzemesi: 100000 };
+const MACHINE_PRICES = { tamirMalzemesi: 100000, silahUpgrade: 50000, arabaGelistirme: 50000, yasakliMadde: 100000 };
 const MACHINE_EMOJI = {
   mining: '⛏️',
-  silahUpgrade: '🔧',
-  depoUpgrade: '🛢️',
-  vitesUpgrade: '⚙️',
+  tamirMalzemesi: '🔧',
+  silahUpgrade: '🔫',
+  arabaGelistirme: '🚗',
   yasakliMadde: '💊',
-  tamirMalzemesi: '🔩',
 };
 
 function machinePrice(type, cryptoPrice) {
@@ -50,7 +49,7 @@ function CreateFactoryModal({ onClose, isEmployed }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
-  const types = ['mining', 'silahUpgrade', 'depoUpgrade', 'vitesUpgrade', 'yasakliMadde', 'tamirMalzemesi'];
+  const types = ['mining', 'tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme', 'yasakliMadde'];
 
   const handleCreate = async () => {
     if (isEmployed) {
@@ -122,7 +121,7 @@ function BuyMachineModal({ onClose }) {
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
 
-  const types = ['mining', 'silahUpgrade', 'depoUpgrade', 'vitesUpgrade', 'yasakliMadde', 'tamirMalzemesi'];
+  const types = ['mining', 'tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme', 'yasakliMadde'];
 
   const handleBuy = async (type) => {
     setBusy(type);

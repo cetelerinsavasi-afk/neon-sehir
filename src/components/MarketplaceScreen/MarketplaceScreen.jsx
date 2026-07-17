@@ -24,27 +24,24 @@ import './MarketplaceScreen.css';
 let legacyMaterialMergeTriggered = false;
 
 const MATERIAL_LABELS = {
-  depoUpgrade: 'Depo Geliştirme Malzemesi',
-  vitesUpgrade: 'Vites Geliştirme Malzemesi',
-  silahUpgrade: 'Silah Geliştirme Malzemesi',
-  yasakliMadde: 'Yasaklı Madde',
   tamirMalzemesi: 'Tamir Malzemesi',
+  silahUpgrade: 'Silah Geliştirme Malzemesi',
+  arabaGelistirme: 'Araba Geliştirme Malzemesi',
+  yasakliMadde: 'Yasaklı Madde',
 };
 const MACHINE_LABELS = {
   mining: 'Mining Makinesi',
-  depoUpgrade: 'Depo Geliştirme Malzemesi Makinesi',
-  vitesUpgrade: 'Vites Geliştirme Malzemesi Makinesi',
-  silahUpgrade: 'Silah Geliştirme Malzemesi Makinesi',
-  yasakliMadde: 'Yasaklı Madde Üretim Makinesi',
   tamirMalzemesi: 'Tamir Malzemesi Makinesi',
+  silahUpgrade: 'Silah Geliştirme Malzemesi Makinesi',
+  arabaGelistirme: 'Araba Geliştirme Malzemesi Makinesi',
+  yasakliMadde: 'Yasaklı Madde Üretim Makinesi',
 };
 const MATERIAL_EMOJIS = {
   mining: '⛏️',
-  depoUpgrade: '🛢️',
-  vitesUpgrade: '⚙️',
-  silahUpgrade: '🔧',
+  tamirMalzemesi: '🔧',
+  silahUpgrade: '🔫',
+  arabaGelistirme: '🚗',
   yasakliMadde: '💊',
-  tamirMalzemesi: '🔩',
 };
 
 const TABS = [
@@ -57,8 +54,8 @@ const TABS = [
 // Fiyat sınırları — hesaplar arası para aklamayı önlemek için backend'de
 // de AYNI kurallarla doğrulanıyor (bkz. functions/index.js createListing).
 // Burası sadece kullanıcıya yol göstermek için.
-const AMAZOR_PRICES = { yasakliMadde: 2500, vitesUpgrade: 500, depoUpgrade: 500, silahUpgrade: 100, tamirMalzemesi: 10 };
-const MACHINE_PRICES = { depoUpgrade: 50000, vitesUpgrade: 50000, silahUpgrade: 50000, yasakliMadde: 100000, tamirMalzemesi: 100000 };
+const AMAZOR_PRICES = { tamirMalzemesi: 10, silahUpgrade: 100, arabaGelistirme: 500, yasakliMadde: 2500 };
+const MACHINE_PRICES = { tamirMalzemesi: 100000, silahUpgrade: 50000, arabaGelistirme: 50000, yasakliMadde: 100000 };
 
 const INITIAL_LIFE_DAYS = 50;
 
@@ -117,16 +114,16 @@ function listingLabel(listing) {
   return 'Ürün';
 }
 
-function SellForm({ onCreated, onClose }) {
+function SellForm({ onCreated, onClose, initialItemType }) {
   const { vehicles } = useVehicles();
   const { weapons } = useWeapons();
   const { inventory } = useInventory();
   const { machines: myMachines } = useMyFactory();
   const { prices } = useInvestmentPrices();
 
-  const [itemType, setItemType] = useState('vehicle');
+  const [itemType, setItemType] = useState(initialItemType || 'vehicle');
   const [selectedId, setSelectedId] = useState('');
-  const [materialType, setMaterialType] = useState('depoUpgrade');
+  const [materialType, setMaterialType] = useState('tamirMalzemesi');
   const [quantity, setQuantity] = useState(0);
   const [machineId, setMachineId] = useState('');
   const [price, setPrice] = useState(0);
@@ -449,12 +446,14 @@ function ListingCard({ listing, isMine, busy, onCancel, onBuy }) {
   }
 
   const isQuantifiable = listing.itemType === 'material';
-  const lifeDays =
-    listing.itemType === 'vehicle'
-      ? listing.vehicleLifeDays
-      : listing.itemType === 'weapon'
-        ? listing.weaponLifeDays
-        : null;
+  const isLifeItem = listing.itemType === 'vehicle' || listing.itemType === 'weapon';
+  // Eski (ömür sisteminden önce açılmış) ilanlarda vehicleLifeDays/
+  // weaponLifeDays alanı olmayabilir — bu durumda tam ömür (50/50)
+  // varsayıyoruz, böylece bar HER araç/silah ilanında görünür.
+  const lifeDays = isLifeItem
+    ? (listing.itemType === 'vehicle' ? listing.vehicleLifeDays : listing.weaponLifeDays) ??
+      INITIAL_LIFE_DAYS
+    : null;
 
   return (
     <div className="market-listing-card">
@@ -475,11 +474,16 @@ function ListingCard({ listing, isMine, busy, onCancel, onBuy }) {
           {!isMine && <span className="market-seller"> · {listing.sellerName}</span>}
         </span>
         {lifeDays != null && (
-          <div className="market-listing-life-bar">
-            <div
-              className="market-listing-life-fill"
-              style={{ width: `${Math.round(Math.max(0, Math.min(1, lifeDays / INITIAL_LIFE_DAYS)) * 100)}%` }}
-            />
+          <div className="market-listing-life-row">
+            <span className="market-listing-life-label">
+              Ömür: {lifeDays} / {INITIAL_LIFE_DAYS} gün
+            </span>
+            <div className="market-listing-life-bar">
+              <div
+                className="market-listing-life-fill"
+                style={{ width: `${Math.round(Math.max(0, Math.min(1, lifeDays / INITIAL_LIFE_DAYS)) * 100)}%` }}
+              />
+            </div>
           </div>
         )}
       </div>
@@ -653,7 +657,9 @@ export default function MarketplaceScreen() {
       ))}
       {error && <p className="market-error">{error}</p>}
 
-      {showSellForm && <SellForm onClose={() => setShowSellForm(false)} />}
+      {showSellForm && (
+        <SellForm onClose={() => setShowSellForm(false)} initialItemType={tab} />
+      )}
       {buyModalListing && (
         <BuyMaterialModal listing={buyModalListing} onClose={() => setBuyModalListing(null)} />
       )}

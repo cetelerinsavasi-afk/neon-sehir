@@ -120,6 +120,14 @@ export const buyListing = (listingId, quantity) =>
 export const runMergeLegacyMaterialListings = () =>
   httpsCallable(functions, 'runMergeLegacyMaterialListings')();
 
+// Depo + Vites Geliştirme Malzemeleri'ni TEK malzemede (Araba Geliştirme
+// Malzemesi) birleştiren bir kerelik geçiş — envanterler, fabrika
+// makineleri, açık 2. el ilanları, Liman siparişleri. Zararsız/
+// idempotent — uygulama açılınca otomatik bir kez çağrılıyor (bkz.
+// App.jsx GameShell).
+export const migrateArabaGelistirmeUnification = () =>
+  httpsCallable(functions, 'migrateArabaGelistirmeUnification')();
+
 // --- Faz 5: Şüphe Yönetimi ve Soygun ---
 
 export const prayAtMosque = () => httpsCallable(functions, 'prayAtMosque')();

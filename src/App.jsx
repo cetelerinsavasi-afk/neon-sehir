@@ -15,11 +15,17 @@ import ProfileFullScreen from './components/ProfileFullScreen/ProfileFullScreen'
 import TopNotificationBanner from './components/TopNotificationBanner/TopNotificationBanner';
 import { usePlayer } from './hooks/usePlayer';
 import { useMyActiveRaceRoom } from './hooks/useMyActiveRaceRoom';
+import { migrateArabaGelistirmeUnification } from './services/gameActions';
 import { regions } from './data/regions';
 import './styles/theme.css';
 import './App.css';
 
 const RACE_TRACK_REGION = regions.find((r) => r.screen === 'yaris-pisti');
+
+// Depo + Vites Geliştirme Malzemeleri birleştirme geçişi bu oturumda
+// zaten tetiklendi mi? (Gereksiz tekrar çağrıyı önlemek için — işlemin
+// kendisi zararsız/idempotent olsa da.)
+let arabaGelistirmeMigrationTriggered = false;
 
 // Harita, HUD ve telefon giriş yapmadan da görülebilir/gezilebilir —
 // ortadaki SignInBanner haritayı bloklamaz, sadece giriş için görünür bir
@@ -36,6 +42,17 @@ function GameShell() {
   const [activeTableId, setActiveTableId] = useState(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const { player } = usePlayer();
+
+  // Depo + Vites Geliştirme Malzemeleri birleştirme geçişini, kullanıcı
+  // giriş yapar yapmaz sessizce (bir kez) tetikle — hangi ekranı önce
+  // açtığından bağımsız olarak çalışsın diye en üst seviyede.
+  useEffect(() => {
+    if (!user || arabaGelistirmeMigrationTriggered) return;
+    arabaGelistirmeMigrationTriggered = true;
+    migrateArabaGelistirmeUnification().catch((err) => {
+      console.error('Araba geliştirme malzemesi geçişi başarısız:', err);
+    });
+  }, [user]);
 
   // Aktif bir yarışım varsa (kurdum/katıldım/devam ediyor), harita üzerinde
   // gezinirken bile takip etmeye devam et — ama rakip beklenirken tüm

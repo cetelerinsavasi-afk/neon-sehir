@@ -13,18 +13,16 @@ import AvatarBuilder from '../AvatarBuilder/AvatarBuilder';
 import './HomeScreen.css';
 
 const MATERIAL_LABELS = {
-  depoUpgrade: 'Depo Geliştirme Malzemesi',
-  vitesUpgrade: 'Vites Geliştirme Malzemesi',
-  silahUpgrade: 'Silah Geliştirme Malzemesi',
-  yasakliMadde: 'Yasaklı Madde',
   tamirMalzemesi: 'Tamir Malzemesi',
+  silahUpgrade: 'Silah Geliştirme Malzemesi',
+  arabaGelistirme: 'Araba Geliştirme Malzemesi',
+  yasakliMadde: 'Yasaklı Madde',
 };
 const MATERIAL_EMOJIS = {
-  depoUpgrade: '🛢️',
-  vitesUpgrade: '⚙️',
-  silahUpgrade: '🔧',
+  tamirMalzemesi: '🔧',
+  silahUpgrade: '🔫',
+  arabaGelistirme: '🚗',
   yasakliMadde: '💊',
-  tamirMalzemesi: '🔩',
 };
 
 function weaponImage(catalogId) {
@@ -174,8 +172,7 @@ export default function HomeScreen() {
   const myWeapons = weapons.filter((w) => !w.listed);
 
   const materialsQty = {
-    depo: inventory.depoUpgrade || 0,
-    vites: inventory.vitesUpgrade || 0,
+    araba: inventory.arabaGelistirme || 0,
   };
 
   return (

@@ -7,11 +7,10 @@ import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './AmazorScreen.css';
 
 const ITEMS = [
+  { id: 'tamirMalzemesi', label: 'Tamir Malzemesi', price: 10, emoji: '🔧' },
+  { id: 'silahUpgrade', label: 'Silah Geliştirme Malzemesi', price: 100, emoji: '🔫' },
+  { id: 'arabaGelistirme', label: 'Araba Geliştirme Malzemesi', price: 500, emoji: '🚗' },
   { id: 'yasakliMadde', label: 'Yasaklı Madde', price: 2500, emoji: '💊' },
-  { id: 'vitesUpgrade', label: 'Vites Geliştirme Malzemesi', price: 500, emoji: '⚙️' },
-  { id: 'depoUpgrade', label: 'Depo Geliştirme Malzemesi', price: 500, emoji: '🛢️' },
-  { id: 'silahUpgrade', label: 'Silah Geliştirme Malzemesi', price: 100, emoji: '🔧' },
-  { id: 'tamirMalzemesi', label: 'Tamir Malzemesi', price: 10, emoji: '🔩' },
 ];
 
 export default function AmazorScreen() {

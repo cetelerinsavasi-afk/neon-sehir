@@ -6,24 +6,22 @@ import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import InfoIcon from '../InfoIcon/InfoIcon';
 import './SlotScreen.css';
 
-const SPIN_COST = 500;
+const SPIN_COST = 1000;
 
 const SYMBOL_EMOJI = {
+  tamirMalzemesi: '🔧',
+  silahUpgrade: '🔫',
+  arabaGelistirme: '🚗',
   yasakliMadde: '💊',
-  silahUpgrade: '🔧',
-  depoUpgrade: '🛢️',
-  vitesUpgrade: '⚙️',
-  tamirMalzemesi: '🔩',
 };
 const SYMBOL_LABEL = {
-  yasakliMadde: 'Yasaklı Madde',
-  silahUpgrade: 'Silah Geliştirme Malzemesi',
-  depoUpgrade: 'Depo Geliştirme Malzemesi',
-  vitesUpgrade: 'Vites Geliştirme Malzemesi',
   tamirMalzemesi: 'Tamir Malzemesi',
+  silahUpgrade: 'Silah Geliştirme Malzemesi',
+  arabaGelistirme: 'Araba Geliştirme Malzemesi',
+  yasakliMadde: 'Yasaklı Madde',
   altin: 'Altın',
 };
-const ALL_SYMBOLS = ['yasakliMadde', 'silahUpgrade', 'depoUpgrade', 'vitesUpgrade', 'tamirMalzemesi', 'altin'];
+const ALL_SYMBOLS = ['yasakliMadde', 'silahUpgrade', 'tamirMalzemesi', 'arabaGelistirme', 'altin'];
 
 // 🪙 emojisi bazı platformlarda (masaüstü tarayıcılar, bazı iPhone
 // sürümleri) hiç görünmüyor ya da gümüşi/soluk çıkıyor — bu yüzden altın
@@ -36,7 +34,7 @@ function SlotSymbol({ symbol }) {
 }
 
 const RULES_TEXT =
-  "3 makarada 6 farklı sembol (Yasaklı Madde, Silah/Depo/Vites/Tamir Geliştirme Malzemesi, Altın) tamamen rastgele çıkar. Hepsi farklıysa ödül yok. 2 aynı sembol gelirse küçük, 3 aynı sembol gelirse büyük ödül kazanırsın. Günde 3 çevirme ücretsiz, sonrası 500 altın.";
+  "3 makarada 5 farklı sembol (Yasaklı Madde, Silah Geliştirme Malzemesi, Tamir Malzemesi, Araba Geliştirme Malzemesi, Altın) tamamen rastgele çıkar. Hepsi farklıysa ödül yok. 2 aynı sembol gelirse küçük, 3 aynı sembol gelirse büyük ödül kazanırsın. Günde 3 çevirme ücretsiz, sonrası 1000 altın.";
 
 export default function SlotScreen() {
   const { user } = useAuth();

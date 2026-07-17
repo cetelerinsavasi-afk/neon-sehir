@@ -36,13 +36,13 @@ export default function GarageScreen() {
     }
   };
 
-  const materialsQty = { vites: inventory.vitesUpgrade || 0, depo: inventory.depoUpgrade || 0 };
+  const materialsQty = { araba: inventory.arabaGelistirme || 0 };
   const repairQty = inventory.tamirMalzemesi || 0;
 
   return (
     <div className="garage-screen">
       <p className="garage-hint">
-        Elindeki malzeme: Vites {materialsQty.vites} · Depo {materialsQty.depo} · Tamir {repairQty}
+        Elindeki malzeme: Araba Geliştirme {materialsQty.araba} · Tamir {repairQty}
         <InfoIcon text="Malzeme almak için Telefon > Amazor'a git." />
       </p>
 

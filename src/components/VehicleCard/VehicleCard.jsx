@@ -69,14 +69,14 @@ export default function VehicleCard({ vehicle, materialsQty, repairQty, busy, on
         <div className="vcard-controls">
           <button
             className="vcard-btn"
-            disabled={vehicle.gearUpgraded || materialsQty.vites < req || busy === `${vehicle.id}-gear`}
+            disabled={vehicle.gearUpgraded || materialsQty.araba < req || busy === `${vehicle.id}-gear`}
             onClick={() => onUpgrade(vehicle.id, 'gear')}
           >
             {vehicle.gearUpgraded ? 'Vites Geliştirildi' : `Vites Geliştir (${req} malzeme) +1 vites`}
           </button>
           <button
             className="vcard-btn"
-            disabled={vehicle.tankUpgraded || materialsQty.depo < req || busy === `${vehicle.id}-tank`}
+            disabled={vehicle.tankUpgraded || materialsQty.araba < req || busy === `${vehicle.id}-tank`}
             onClick={() => onUpgrade(vehicle.id, 'tank')}
           >
             {vehicle.tankUpgraded ? 'Depo Geliştirildi' : `Depo Geliştir (${req} malzeme) +50 depo`}
