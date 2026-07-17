@@ -57,6 +57,9 @@ export const buyWeapon = (catalogId) =>
 export const upgradeWeapon = (weaponId) =>
   httpsCallable(functions, 'upgradeWeapon')({ weaponId });
 
+export const repairItem = (itemType, itemId) =>
+  httpsCallable(functions, 'repairItem')({ itemType, itemId });
+
 
 export const sellSilahMaterial = (quantity) =>
   httpsCallable(functions, 'sellSilahMaterial')({ quantity });
@@ -110,6 +113,12 @@ export const cancelListing = (listingId) =>
 // satın almak için (bkz. functions/index.js buyListing).
 export const buyListing = (listingId, quantity) =>
   httpsCallable(functions, 'buyListing')({ listingId, quantity });
+
+// Eski (adet-fiyatlı/birleştirme sisteminden önce açılmış, rastgele
+// ID'li) malzeme ilanlarını canonical ilanla birleştirir. Zararsız/
+// idempotent — MarketplaceScreen açılınca otomatik bir kez çağrılıyor.
+export const runMergeLegacyMaterialListings = () =>
+  httpsCallable(functions, 'runMergeLegacyMaterialListings')();
 
 // --- Faz 5: Şüphe Yönetimi ve Soygun ---
 

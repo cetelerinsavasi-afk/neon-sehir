@@ -4,7 +4,7 @@ import { usePlayer } from '../../hooks/usePlayer';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useWeapons } from '../../hooks/useWeapons';
 import { useInventory } from '../../hooks/useInventory';
-import { upgradeVehicle, upgradeWeapon, setDisplayName } from '../../services/gameActions';
+import { upgradeVehicle, upgradeWeapon, repairItem, setDisplayName } from '../../services/gameActions';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
 import { weaponCatalog } from '../../data/weaponCatalog';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
@@ -12,17 +12,48 @@ import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import AvatarBuilder from '../AvatarBuilder/AvatarBuilder';
 import './HomeScreen.css';
 
+const INITIAL_LIFE_DAYS = 50;
+const MAX_REPAIRS = 10;
+
+function lifeRatio(item) {
+  const life = item?.lifeDays ?? INITIAL_LIFE_DAYS;
+  return Math.max(0, Math.min(1, life / INITIAL_LIFE_DAYS));
+}
+
+function repairRequiredQty(price) {
+  return Math.max(1, Math.round((price || 0) / 100));
+}
+
+function LifeBar({ item }) {
+  const life = item?.lifeDays ?? INITIAL_LIFE_DAYS;
+  const repairsUsed = item?.repairsUsed || 0;
+  const percent = Math.round(lifeRatio(item) * 100);
+  return (
+    <div className="home-life-row">
+      <div className="home-life-label">
+        <span>Ömür: {life} / {INITIAL_LIFE_DAYS} gün</span>
+        <span>Tamir hakkı: {MAX_REPAIRS - repairsUsed}/{MAX_REPAIRS}</span>
+      </div>
+      <div className="home-life-bar">
+        <div className="home-life-bar-fill" style={{ width: `${percent}%` }} />
+      </div>
+    </div>
+  );
+}
+
 const MATERIAL_LABELS = {
   depoUpgrade: 'Depo Geliştirme Malzemesi',
   vitesUpgrade: 'Vites Geliştirme Malzemesi',
   silahUpgrade: 'Silah Geliştirme Malzemesi',
   yasakliMadde: 'Yasaklı Madde',
+  tamirMalzemesi: 'Tamir Malzemesi',
 };
 const MATERIAL_EMOJIS = {
   depoUpgrade: '🛢️',
   vitesUpgrade: '⚙️',
   silahUpgrade: '🔧',
   yasakliMadde: '💊',
+  tamirMalzemesi: '🔩',
 };
 
 function vehicleImage(catalogId) {
@@ -103,9 +134,12 @@ function vehicleRequiredQty(vehicle) {
   return Math.max(2, Math.round((vehicle.baseGalleryValue || 0) / 500));
 }
 
-function VehicleCard({ vehicle, materialsQty, busy, onUpgrade }) {
+function VehicleCard({ vehicle, materialsQty, repairQty, busy, onUpgrade, onRepair }) {
   const req = vehicleRequiredQty(vehicle);
   const img = vehicleImage(vehicle.catalogId);
+  const repairsUsed = vehicle.repairsUsed || 0;
+  const repairReq = repairRequiredQty(vehicle.baseGalleryValue);
+  const repairMaxed = repairsUsed >= MAX_REPAIRS;
   return (
     <div className="home-item-card">
       {img && <img className="home-item-photo" src={img} alt={vehicle.model} />}
@@ -116,6 +150,7 @@ function VehicleCard({ vehicle, materialsQty, busy, onUpgrade }) {
           {vehicle.mortgaged && !vehicle.seizedByBank && ' · İpotekli'}
           {vehicle.seizedByBank && ' · Bankaya el konuldu'}
         </span>
+        <LifeBar item={vehicle} />
         <div className="home-controls">
           <button
             className="home-btn small"
@@ -131,18 +166,28 @@ function VehicleCard({ vehicle, materialsQty, busy, onUpgrade }) {
           >
             {vehicle.tankUpgraded ? 'Depo Geliştirildi' : `Depo Geliştir (${req} malzeme) +50 depo`}
           </button>
+          <button
+            className="home-btn small"
+            disabled={repairMaxed || repairQty < repairReq || busy === `${vehicle.id}-repair`}
+            onClick={() => onRepair(vehicle.id)}
+          >
+            {repairMaxed ? 'Tamir Hakkı Bitti' : `Tamir Et (${repairReq} malzeme) +5 gün`}
+          </button>
         </div>
       </div>
     </div>
   );
 }
 
-function WeaponCard({ weapon, materialQty, busy, onUpgrade }) {
+function WeaponCard({ weapon, materialQty, repairQty, busy, onUpgrade, onRepair }) {
   const requiredQty = Math.round(weapon.basePrice / 100);
   const img = weaponImage(weapon.catalogId);
   const nextMultiplier = weapon.level === 1 ? 1.5 : 2;
   const nextPower = Math.round(weapon.basePower * nextMultiplier);
   const powerGain = nextPower - weapon.power;
+  const repairsUsed = weapon.repairsUsed || 0;
+  const repairReq = repairRequiredQty(weapon.basePrice);
+  const repairMaxed = repairsUsed >= MAX_REPAIRS;
   return (
     <div className="home-item-card">
       {img && <img className="home-item-photo" src={img} alt={weapon.name} />}
@@ -151,15 +196,25 @@ function WeaponCard({ weapon, materialQty, busy, onUpgrade }) {
           {weapon.name} <span className="home-item-level">Sv. {weapon.level}</span>
         </span>
         <span className="home-item-stats">Güç: {weapon.power.toLocaleString('tr-TR')}</span>
-        <button
-          className="home-btn small"
-          disabled={weapon.level >= 3 || materialQty < requiredQty || busy === `${weapon.id}-w`}
-          onClick={() => onUpgrade(weapon.id)}
-        >
-          {weapon.level >= 3
-            ? 'Maks. Seviye'
-            : `Geliştir (${requiredQty} malzeme) +${powerGain.toLocaleString('tr-TR')} güç`}
-        </button>
+        <LifeBar item={weapon} />
+        <div className="home-controls">
+          <button
+            className="home-btn small"
+            disabled={weapon.level >= 3 || materialQty < requiredQty || busy === `${weapon.id}-w`}
+            onClick={() => onUpgrade(weapon.id)}
+          >
+            {weapon.level >= 3
+              ? 'Maks. Seviye'
+              : `Geliştir (${requiredQty} malzeme) +${powerGain.toLocaleString('tr-TR')} güç`}
+          </button>
+          <button
+            className="home-btn small"
+            disabled={repairMaxed || repairQty < repairReq || busy === `${weapon.id}-repair`}
+            onClick={() => onRepair(weapon.id)}
+          >
+            {repairMaxed ? 'Tamir Hakkı Bitti' : `Tamir Et (${repairReq} malzeme) +5 gün`}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -225,8 +280,10 @@ export default function HomeScreen() {
             key={v.id}
             vehicle={v}
             materialsQty={materialsQty}
+            repairQty={inventory.tamirMalzemesi || 0}
             busy={busy}
             onUpgrade={(id, type) => run(`${id}-${type}`, () => upgradeVehicle(id, type))}
+            onRepair={(id) => run(`${id}-repair`, () => repairItem('vehicle', id))}
           />
         ))}
       </div>
@@ -239,8 +296,10 @@ export default function HomeScreen() {
             key={w.id}
             weapon={w}
             materialQty={inventory.silahUpgrade || 0}
+            repairQty={inventory.tamirMalzemesi || 0}
             busy={busy}
             onUpgrade={(id) => run(`${id}-w`, () => upgradeWeapon(id))}
+            onRepair={(id) => run(`${id}-repair`, () => repairItem('weapon', id))}
           />
         ))}
       </div>

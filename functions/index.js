@@ -3569,10 +3569,97 @@ export const expireRaceRooms = onSchedule({ schedule: 'every 5 minutes' }, async
   if (refunds.length) await Promise.all(refunds);
 });
 
+// mergeLegacyMaterialListings — adet-fiyatlı/birleştirilebilir sisteme
+// geçmeden ÖNCE açılmış (rastgele ID'li) eski malzeme ilanlarını, aynı
+// satıcı+malzeme+adet fiyatına sahip canonical (deterministik ID'li)
+// ilanla birleştirir. Yeni ilanlar zaten otomatik birleşiyor (bkz.
+// createListing/instantSellListing); bu sadece GEÇMİŞTEKİ ilanlar için
+// bir kerelik (ama her çağrıldığında güvenle tekrar çalışabilen) bir
+// temizlik adımı — expireOldMarketplaceListings içinde her gün otomatik
+// çalışır, istenirse runMergeLegacyMaterialListings ile hemen de
+// tetiklenebilir.
+async function mergeLegacyMaterialListings() {
+  const openMaterialSnap = await db
+    .collection('marketplaceListings')
+    .where('itemType', '==', 'material')
+    .where('sold', '==', false)
+    .get();
+
+  const groups = new Map();
+  openMaterialSnap.forEach((doc) => {
+    const d = doc.data();
+    const unitPrice = d.unitPrice || Math.round((d.price || 0) / (d.quantity || 1));
+    const canonicalId = `mat_${d.sellerId}_${d.materialType}_${unitPrice}`;
+    if (doc.id === canonicalId) return; // zaten canonical, dokunma
+    if (!groups.has(canonicalId)) groups.set(canonicalId, []);
+    groups.get(canonicalId).push({ ref: doc.ref, data: d, unitPrice });
+  });
+
+  for (const [canonicalId, entries] of groups) {
+    const canonicalRef = db.collection('marketplaceListings').doc(canonicalId);
+    await db.runTransaction(async (tx) => {
+      // Firestore kuralı: TÜM okumalar yazmalardan önce olmalı.
+      const freshEntrySnaps = await Promise.all(entries.map((e) => tx.get(e.ref)));
+      const canonicalSnap = await tx.get(canonicalRef);
+
+      let addQty = 0;
+      let addPrice = 0;
+      freshEntrySnaps.forEach((snap, i) => {
+        if (!snap.exists || snap.data().sold) return;
+        const d = snap.data();
+        const qty = d.quantity || 0;
+        if (qty <= 0) return;
+        addQty += qty;
+        addPrice += entries[i].unitPrice * qty;
+      });
+      if (addQty <= 0) return;
+
+      freshEntrySnaps.forEach((snap) => {
+        if (snap.exists && !snap.data().sold) {
+          tx.update(snap.ref, { sold: true, cancelled: true, mergedInto: canonicalId });
+        }
+      });
+
+      if (canonicalSnap.exists && !canonicalSnap.data().sold) {
+        tx.update(canonicalRef, {
+          quantity: admin.firestore.FieldValue.increment(addQty),
+          price: admin.firestore.FieldValue.increment(addPrice),
+        });
+      } else {
+        const first = entries[0].data;
+        tx.set(canonicalRef, {
+          sellerId: first.sellerId,
+          sellerName: first.sellerName,
+          itemType: 'material',
+          materialType: first.materialType,
+          quantity: addQty,
+          unitPrice: entries[0].unitPrice,
+          price: addPrice,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          sold: false,
+        });
+      }
+    });
+  }
+}
+
+// runMergeLegacyMaterialListings — mergeLegacyMaterialListings'i HEMEN
+// (24 saatlik zamanlayıcıyı beklemeden) tetiklemek için — herhangi bir
+// oturum açmış oyuncu bir kez çağırabilir, sonucu sadece ilan
+// birleştirme, başka hiçbir veriyi etkilemiyor, zararsızdır.
+export const runMergeLegacyMaterialListings = onCall(async (request) => {
+  requireAuth(request);
+  await mergeLegacyMaterialListings();
+  return { ok: true };
+});
+
 // expireOldMarketplaceListings — 7 gündür satılmayan 2. el ilanlarını
 // otomatik kaldırır, ürünü/malzemeyi/makineyi sahibine iade eder
 // (cancelListing ile birebir aynı iade mantığı), satıcıya SMS atar.
+// Her çalıştığında ayrıca mergeLegacyMaterialListings'i de çalıştırır.
 export const expireOldMarketplaceListings = onSchedule({ schedule: 'every 24 hours' }, async () => {
+  await mergeLegacyMaterialListings();
+
   const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
   const now = Date.now();
   const openSnap = await db.collection('marketplaceListings').where('sold', '==', false).get();

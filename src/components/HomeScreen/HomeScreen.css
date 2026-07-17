@@ -173,6 +173,35 @@
   color: var(--text-dim);
 }
 
+.home-life-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 2px 0;
+}
+
+.home-life-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.home-life-bar {
+  height: 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  border: 1px solid var(--panel-border);
+}
+
+.home-life-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #ff4444, var(--neon-yellow), #3ddc84);
+  transition: width 0.3s ease;
+}
+
 .home-material-row {
   display: flex;
   align-items: center;

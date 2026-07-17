@@ -16,6 +16,7 @@ const SELL_ITEMS = [
   { id: 'vitesUpgrade', label: 'Vites Geliştirme Malzemesi', price: 250, emoji: '⚙️', sell: (qty) => sellMaterial('vitesUpgrade', qty) },
   { id: 'depoUpgrade', label: 'Depo Geliştirme Malzemesi', price: 250, emoji: '📦', sell: (qty) => sellMaterial('depoUpgrade', qty) },
   { id: 'silahUpgrade', label: 'Silah Geliştirme Malzemesi', price: 50, emoji: '🔧', sell: (qty) => sellSilahMaterial(qty) },
+  { id: 'tamirMalzemesi', label: 'Tamir Malzemesi', price: 8, emoji: '🔩', sell: (qty) => sellMaterial('tamirMalzemesi', qty) },
 ];
 
 // Depo'da alım fiyatları Amazor ile BİREBİR AYNI (kullanıcı revizesi).
@@ -24,6 +25,7 @@ const BUY_ITEMS = [
   { id: 'vitesUpgrade', label: 'Vites Geliştirme Malzemesi', price: 500, emoji: '⚙️' },
   { id: 'depoUpgrade', label: 'Depo Geliştirme Malzemesi', price: 500, emoji: '📦' },
   { id: 'silahUpgrade', label: 'Silah Geliştirme Malzemesi', price: 100, emoji: '🔧' },
+  { id: 'tamirMalzemesi', label: 'Tamir Malzemesi', price: 10, emoji: '🔩' },
 ];
 
 export default function DepoScreen() {

@@ -36,6 +36,9 @@ export default function VehicleLoanSection() {
 
   const freeVehicles = vehicles.filter((v) => !v.mortgaged && !v.seizedByBank);
   const loanedVehicles = vehicles.filter((v) => v.mortgaged);
+  const selectedVehicle = freeVehicles.find((v) => v.id === selectedVehicleId);
+  const selectedVehicleLife = selectedVehicle?.lifeDays ?? 50;
+  const termValid = !selectedVehicle || selectedVehicleLife > term;
 
   return (
     <div className="loan-section">
@@ -51,24 +54,36 @@ export default function VehicleLoanSection() {
             <option value="">Araç seç…</option>
             {freeVehicles.map((v) => (
               <option key={v.id} value={v.id}>
-                {v.model} (limit: {v.baseGalleryValue.toLocaleString('tr-TR')} altın)
+                {v.model} (limit: {v.baseGalleryValue.toLocaleString('tr-TR')} altın · ömür:{' '}
+                {v.lifeDays ?? 50} gün)
               </option>
             ))}
           </select>
           <div className="loan-term-row">
-            {TERMS.map((t) => (
-              <button
-                key={t.days}
-                className={`loan-term-btn${term === t.days ? ' active' : ''}`}
-                onClick={() => setTerm(t.days)}
-              >
-                {t.days} gün — %{t.rate} faiz
-              </button>
-            ))}
+            {TERMS.map((t) => {
+              const disabledForVehicle = Boolean(selectedVehicle) && selectedVehicleLife <= t.days;
+              return (
+                <button
+                  key={t.days}
+                  className={`loan-term-btn${term === t.days ? ' active' : ''}`}
+                  disabled={disabledForVehicle}
+                  onClick={() => setTerm(t.days)}
+                  title={disabledForVehicle ? 'Aracın ömrü bu vadeden fazla olmalı' : undefined}
+                >
+                  {t.days} gün — %{t.rate} faiz
+                </button>
+              );
+            })}
           </div>
+          {selectedVehicle && !termValid && (
+            <p className="loan-hint">
+              Bu aracın ömrü ({selectedVehicleLife} gün) seçili vadeden ({term} gün) fazla değil —
+              önce tamir ettirmen gerekir.
+            </p>
+          )}
           <button
             className="loan-btn primary"
-            disabled={!selectedVehicleId || busy === 'take'}
+            disabled={!selectedVehicleId || !termValid || busy === 'take'}
             onClick={() =>
               run('take', () => takeVehicleLoan(selectedVehicleId, term))
             }

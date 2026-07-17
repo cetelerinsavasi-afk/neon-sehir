@@ -8,6 +8,7 @@ const MACHINE_LABELS = {
   depoUpgrade: 'Depo Geliştirme Malzemesi Makinesi',
   vitesUpgrade: 'Vites Geliştirme Malzemesi Makinesi',
   yasakliMadde: 'Yasaklı Madde Üretim Makinesi',
+  tamirMalzemesi: 'Tamir Malzemesi Makinesi',
 };
 
 /**

@@ -11,6 +11,7 @@ const ITEMS = [
   { id: 'vitesUpgrade', label: 'Vites Geliştirme Malzemesi', price: 500, emoji: '⚙️' },
   { id: 'depoUpgrade', label: 'Depo Geliştirme Malzemesi', price: 500, emoji: '🛢️' },
   { id: 'silahUpgrade', label: 'Silah Geliştirme Malzemesi', price: 100, emoji: '🔧' },
+  { id: 'tamirMalzemesi', label: 'Tamir Malzemesi', price: 10, emoji: '🔩' },
 ];
 
 export default function AmazorScreen() {

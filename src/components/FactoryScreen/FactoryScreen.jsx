@@ -21,17 +21,25 @@ import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './FactoryScreen.css';
 
 const FACTORY_CREATE_COST = 100000;
-const MACHINE_PRICES = { silahUpgrade: 50000, depoUpgrade: 50000, vitesUpgrade: 50000, yasakliMadde: 100000 };
+const MACHINE_PRICES = { silahUpgrade: 50000, depoUpgrade: 50000, vitesUpgrade: 50000, yasakliMadde: 100000, tamirMalzemesi: 100000 };
 const MACHINE_EMOJI = {
   mining: '⛏️',
   silahUpgrade: '🔧',
   depoUpgrade: '🛢️',
   vitesUpgrade: '⚙️',
   yasakliMadde: '💊',
+  tamirMalzemesi: '🔩',
 };
 
 function machinePrice(type, cryptoPrice) {
   return type === 'mining' ? Math.ceil(2 * cryptoPrice) : MACHINE_PRICES[type];
+}
+
+function machineProductionRangeLabel(type) {
+  if (type === 'yasakliMadde') return '1-10';
+  if (type === 'silahUpgrade') return '1-200';
+  if (type === 'tamirMalzemesi') return '1-4000';
+  return '1-40';
 }
 
 // ---------------------------------------------------------------------------
@@ -42,7 +50,7 @@ function CreateFactoryModal({ onClose }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
-  const types = ['mining', 'silahUpgrade', 'depoUpgrade', 'vitesUpgrade', 'yasakliMadde'];
+  const types = ['mining', 'silahUpgrade', 'depoUpgrade', 'vitesUpgrade', 'yasakliMadde', 'tamirMalzemesi'];
 
   const handleCreate = async () => {
     setBusy(true);
@@ -84,7 +92,7 @@ function CreateFactoryModal({ onClose }) {
                   <span className="factory-machine-buy-desc">
                     {type === 'mining'
                       ? 'İşçi gerekmez · günde 0.01-0.1 kripto üretir'
-                      : `İşçi gerekir · günde ${type === 'yasakliMadde' ? '1-10' : type === 'silahUpgrade' ? '1-200' : '1-40'} adet üretir`}
+                      : `İşçi gerekir · günde ${machineProductionRangeLabel(type)} adet üretir`}
                   </span>
                 </div>
                 <span className="factory-machine-buy-price">{price.toLocaleString('tr-TR')} altın</span>
@@ -110,7 +118,7 @@ function BuyMachineModal({ onClose }) {
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
 
-  const types = ['mining', 'silahUpgrade', 'depoUpgrade', 'vitesUpgrade', 'yasakliMadde'];
+  const types = ['mining', 'silahUpgrade', 'depoUpgrade', 'vitesUpgrade', 'yasakliMadde', 'tamirMalzemesi'];
 
   const handleBuy = async (type) => {
     setBusy(type);
@@ -145,7 +153,7 @@ function BuyMachineModal({ onClose }) {
                   <span className="factory-machine-buy-desc">
                     {type === 'mining'
                       ? 'İşçi gerekmez · günde 0.01-0.1 kripto üretir'
-                      : `İşçi gerekir · günde ${type === 'yasakliMadde' ? '1-10' : type === 'silahUpgrade' ? '1-200' : '1-40'} adet üretir`}
+                      : `İşçi gerekir · günde ${machineProductionRangeLabel(type)} adet üretir`}
                   </span>
                 </div>
                 <button

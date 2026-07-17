@@ -6,11 +6,22 @@ import { useInventory } from '../../hooks/useInventory';
 import { useMyFactory } from '../../hooks/useMyFactory';
 import { useInvestmentPrices } from '../../hooks/useInvestmentPrices';
 import { useMarketplaceListings } from '../../hooks/useMarketplaceListings';
-import { createListing, instantSellListing, cancelListing, buyListing } from '../../services/gameActions';
+import {
+  createListing,
+  instantSellListing,
+  cancelListing,
+  buyListing,
+  runMergeLegacyMaterialListings,
+} from '../../services/gameActions';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
 import { weaponCatalog } from '../../data/weaponCatalog';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './MarketplaceScreen.css';
+
+// Bu oturumda eski (deterministik ID sisteminden önce açılmış) malzeme
+// ilanlarını birleştirme işlemi zaten tetiklendi mi? (Gereksiz tekrar
+// çağrıyı önlemek için — işlem kendisi zararsız/idempotent olsa da.)
+let legacyMaterialMergeTriggered = false;
 
 const MATERIAL_LABELS = {
   depoUpgrade: 'Depo Geliştirme Malzemesi',
@@ -311,7 +322,7 @@ function SellForm({ onCreated, onClose }) {
         {itemType === 'material' && (
           <>
             <p className="market-step-label">1. Malzeme Seç</p>
-            <div className="market-item-picker">
+            <div className="market-item-picker compact">
               {Object.entries(MATERIAL_LABELS).map(([key, label]) => {
                 const selected = materialType === key;
                 return (
@@ -560,6 +571,17 @@ export default function MarketplaceScreen() {
       setBusy(null);
     }
   };
+
+  // Eski (adet-fiyatlı/birleştirme sisteminden önce açılmış) malzeme
+  // ilanlarını, 24 saatlik otomatik temizliği beklemeden şimdi birleştir
+  // — sessizce, sadece bir kez (oturum başına).
+  useEffect(() => {
+    if (!user || legacyMaterialMergeTriggered) return;
+    legacyMaterialMergeTriggered = true;
+    runMergeLegacyMaterialListings().catch((err) => {
+      console.error('Eski ilanlar birleştirilemedi:', err);
+    });
+  }, [user]);
 
   const tabListings = listings
     .filter((l) => l.itemType === tab)
