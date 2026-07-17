@@ -421,10 +421,123 @@ export const joinFactoryMachine = onCall(async (request) => {
   return { ok: true };
 });
 
+// autoJoinFactory — fabrikaları gezerken hangi makinenin dolu/boş olduğu
+// artık gösterilmiyor; oyuncu sadece "İşe Gir"e basar, sunucu o fabrikadaki
+// boş (mining hariç) makinelerden rastgele birine otomatik atar.
+export const autoJoinFactory = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { factoryId } = request.data || {};
+  if (!factoryId) {
+    throw new HttpsError('invalid-argument', 'Fabrika belirtilmedi.');
+  }
+  const userRef = db.collection('users').doc(uid);
+  const factoryRef = db.collection('factories').doc(factoryId);
+  const machinesRef = factoryRef.collection('machines');
+
+  let assignedMachineId = null;
+  await db.runTransaction(async (tx) => {
+    const [userSnap, factorySnap, machinesSnap] = await Promise.all([
+      tx.get(userRef),
+      tx.get(factoryRef),
+      tx.get(machinesRef),
+    ]);
+    const user = userSnap.data();
+    if (!user) throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
+    if (user.profession === 'polis' || user.pendingPoliceChange === 'apply') {
+      throw new HttpsError('failed-precondition', 'Polis mesleğindeyken fabrikada çalışamazsın.');
+    }
+    if (user.profession === 'imam') {
+      throw new HttpsError('failed-precondition', 'İmam fabrikada çalışamaz.');
+    }
+    if (user.employment) {
+      throw new HttpsError('failed-precondition', 'Zaten bir fabrikada çalışıyorsun — önce istifa et.');
+    }
+    if (!factorySnap.exists) {
+      throw new HttpsError('failed-precondition', 'Fabrika bulunamadı.');
+    }
+    const openMachines = machinesSnap.docs.filter(
+      (d) => d.data().type !== 'mining' && !d.data().workerId
+    );
+    if (openMachines.length === 0) {
+      throw new HttpsError('failed-precondition', 'Bu fabrikada boş yer kalmadı.');
+    }
+    const chosen = openMachines[Math.floor(Math.random() * openMachines.length)];
+    assignedMachineId = chosen.id;
+    tx.update(chosen.ref, { workerId: uid, workerName: user.displayName || 'Oyuncu' });
+    tx.update(userRef, { employment: { factoryId, machineId: chosen.id } });
+  });
+
+  return { ok: true, machineId: assignedMachineId };
+});
+
+// reassignEmployee — sadece fabrika sahibi; bugün henüz üretim yapmamış bir
+// işçiyi, aynı fabrikadaki başka boş bir makineye taşır.
+export const reassignEmployee = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { machineId, targetMachineId } = request.data || {};
+  if (!machineId || !targetMachineId) {
+    throw new HttpsError('invalid-argument', 'Makine belirtilmedi.');
+  }
+  if (machineId === targetMachineId) {
+    throw new HttpsError('invalid-argument', 'Aynı makineye taşınamaz.');
+  }
+  const dateKey = istanbulDateKey();
+  const factoryRef = db.collection('factories').doc(uid);
+  const fromRef = factoryRef.collection('machines').doc(machineId);
+  const toRef = factoryRef.collection('machines').doc(targetMachineId);
+
+  await db.runTransaction(async (tx) => {
+    const [fromSnap, toSnap] = await Promise.all([tx.get(fromRef), tx.get(toRef)]);
+    if (!fromSnap.exists || !toSnap.exists) {
+      throw new HttpsError('failed-precondition', 'Makine bulunamadı.');
+    }
+    const from = fromSnap.data();
+    const to = toSnap.data();
+    if (!from.workerId) {
+      throw new HttpsError('failed-precondition', 'Bu makinede kimse çalışmıyor.');
+    }
+    if (from.lastProducedDateKey === dateKey) {
+      throw new HttpsError('failed-precondition', 'Bu işçi bugün üretim yaptı, bugün taşınamaz.');
+    }
+    if (to.type === 'mining') {
+      throw new HttpsError('failed-precondition', 'Mining makinesine işçi taşınamaz.');
+    }
+    if (to.workerId) {
+      throw new HttpsError('failed-precondition', 'Hedef makine dolu.');
+    }
+    const workerId = from.workerId;
+    const workerName = from.workerName;
+    tx.update(fromRef, { workerId: null, workerName: null });
+    tx.update(toRef, { workerId, workerName });
+    tx.update(db.collection('users').doc(workerId), {
+      employment: { factoryId: uid, machineId: targetMachineId },
+    });
+  });
+
+  return { ok: true };
+});
+
+// sendSalaryPenaltySms — patronun altını yetmediği için maaş farkının
+// devlete borç yazıldığı her seferinde patrona SMS gönderir.
+async function sendSalaryPenaltySms(uid, penaltyAmount, newTotalDebt) {
+  await db
+    .collection('users')
+    .doc(uid)
+    .collection('messages')
+    .add({
+      text: `Fabrikandaki bir işçinin maaşını ödemeye altının yetmedi. Eksik ${penaltyAmount.toLocaleString('tr-TR')} altın devlete borç yazıldı. Toplam borcun: ${newTotalDebt.toLocaleString('tr-TR')} altın.`,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      read: false,
+      type: 'salary_penalty',
+    });
+}
+
 // produceAtFactory — işçi "Üretim Yap"a basınca: maaşını alır (patronun
-// altını yetmezse fark patrona CEZA/borç olarak yazılır, işçi yine de tam
-// maaşını alır), patronun envanterine rastgele (min-max) miktarda ürün
-// eklenir. Makine başına günde 1 kez.
+// altını yetmezse fark patrona CEZA/borç olarak yazılır ve patrona SMS
+// gider, işçi yine de tam maaşını alır), patronun envanterine rastgele
+// (min-max) miktarda ürün eklenir. Makine başına günde 1 kez.
+// İSTİSNA: patron kendi fabrikasında kendisi çalışıyorsa (isSelfEmployed),
+// kendine maaş ödemez/almaz — sadece üretim gerçekleşir.
 export const produceAtFactory = onCall(async (request) => {
   const uid = requireAuth(request);
   const userRef = db.collection('users').doc(uid);
@@ -438,10 +551,14 @@ export const produceAtFactory = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Bir fabrikada çalışmıyorsun.');
     }
     const { factoryId, machineId } = user.employment;
+    const isSelfEmployed = factoryId === uid;
     const factoryRef = db.collection('factories').doc(factoryId);
     const machineRef = factoryRef.collection('machines').doc(machineId);
     const ownerRef = db.collection('users').doc(factoryId);
-    const [machineSnap, ownerSnap] = await Promise.all([tx.get(machineRef), tx.get(ownerRef)]);
+    const [machineSnap, ownerSnap] = await Promise.all([
+      tx.get(machineRef),
+      isSelfEmployed ? Promise.resolve(userSnap) : tx.get(ownerRef),
+    ]);
     if (!machineSnap.exists) {
       throw new HttpsError('failed-precondition', 'Makine bulunamadı.');
     }
@@ -454,10 +571,6 @@ export const produceAtFactory = onCall(async (request) => {
     }
     const factorySnap = await tx.get(factoryRef);
     const salary = factorySnap.data()?.salary || FACTORY_MIN_SALARY;
-    const owner = ownerSnap.data();
-    const ownerGold = owner?.gold || 0;
-    const ownerPay = Math.min(salary, ownerGold);
-    const shortfall = salary - ownerPay;
 
     const cfg = MACHINE_TYPES[machine.type];
     const qty =
@@ -465,24 +578,52 @@ export const produceAtFactory = onCall(async (request) => {
         ? Math.floor(randomInRange(cfg.min, cfg.max + 1))
         : Math.round(randomInRange(cfg.min, cfg.max));
 
-    // İşçi: maaşını TAM alır. employmentProducedDateKey, frontend'in
-    // "bugün üretim yaptın mı" (istifa butonu görünürlüğü) sorusunu
-    // makine dokümanına ayrıca bakmadan cevaplayabilmesi için.
-    tx.update(userRef, {
-      gold: admin.firestore.FieldValue.increment(salary),
-      employmentProducedDateKey: dateKey,
-    });
-    // Patron: elinden çıkabildiği kadarı düşülür, yetmeyen kısım CEZA/borç olur.
-    tx.update(ownerRef, {
-      gold: admin.firestore.FieldValue.increment(-ownerPay),
-      debtToState: admin.firestore.FieldValue.increment(shortfall),
-    });
+    let shortfall = 0;
+    let newOwnerDebt = null;
+
+    if (isSelfEmployed) {
+      // Kendi fabrikanda kendin çalışıyorsan kendine maaş ödemezsin.
+      tx.update(userRef, { employmentProducedDateKey: dateKey });
+    } else {
+      const owner = ownerSnap.data();
+      const ownerGold = owner?.gold || 0;
+      const ownerPay = Math.min(salary, ownerGold);
+      shortfall = salary - ownerPay;
+
+      // İşçi: maaşını TAM alır. employmentProducedDateKey, frontend'in
+      // "bugün üretim yaptın mı" (istifa butonu görünürlüğü) sorusunu
+      // makine dokümanına ayrıca bakmadan cevaplayabilmesi için.
+      tx.update(userRef, {
+        gold: admin.firestore.FieldValue.increment(salary),
+        employmentProducedDateKey: dateKey,
+      });
+      // Patron: elinden çıkabildiği kadarı düşülür, yetmeyen kısım CEZA/borç olur.
+      tx.update(ownerRef, {
+        gold: admin.firestore.FieldValue.increment(-ownerPay),
+        debtToState: admin.firestore.FieldValue.increment(shortfall),
+      });
+      if (shortfall > 0) {
+        newOwnerDebt = (owner?.debtToState || 0) + shortfall;
+      }
+    }
+
     const inventoryRef = ownerRef.collection('inventory').doc(machine.type);
     tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(qty) }, { merge: true });
     tx.update(machineRef, { lastProducedDateKey: dateKey, lastProducedQty: qty });
 
-    outcome = { salary, qty, shortfall };
+    outcome = {
+      salary: isSelfEmployed ? 0 : salary,
+      qty,
+      shortfall,
+      isSelfEmployed,
+      ownerId: factoryId,
+      newOwnerDebt,
+    };
   });
+
+  if (outcome.shortfall > 0 && outcome.newOwnerDebt != null) {
+    await sendSalaryPenaltySms(outcome.ownerId, outcome.shortfall, outcome.newOwnerDebt);
+  }
 
   return { ok: true, ...outcome };
 });

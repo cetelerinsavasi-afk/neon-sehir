@@ -24,12 +24,18 @@ export const setFactorySalary = (salary) =>
 export const joinFactoryMachine = (factoryId, machineId) =>
   httpsCallable(functions, 'joinFactoryMachine')({ factoryId, machineId });
 
+export const autoJoinFactory = (factoryId) =>
+  httpsCallable(functions, 'autoJoinFactory')({ factoryId });
+
 export const produceAtFactory = () => httpsCallable(functions, 'produceAtFactory')();
 
 export const resignFromFactory = () => httpsCallable(functions, 'resignFromFactory')();
 
 export const fireEmployee = (machineId) =>
   httpsCallable(functions, 'fireEmployee')({ machineId });
+
+export const reassignEmployee = (machineId, targetMachineId) =>
+  httpsCallable(functions, 'reassignEmployee')({ machineId, targetMachineId });
 
 // --- Faz 3: Araba ve Silah Sistemi ---
 

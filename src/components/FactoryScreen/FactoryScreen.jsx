@@ -3,15 +3,18 @@ import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useMyFactory } from '../../hooks/useMyFactory';
 import { useOpenFactories, MACHINE_LABELS } from '../../hooks/useOpenFactories';
+import { useEmployerFactory } from '../../hooks/useEmployerFactory';
 import { useInvestmentPrices } from '../../hooks/useInvestmentPrices';
 import {
   createFactory,
   buyFactoryMachine,
   setFactorySalary,
   joinFactoryMachine,
+  autoJoinFactory,
   produceAtFactory,
   resignFromFactory,
   fireEmployee,
+  reassignEmployee,
 } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
@@ -141,7 +144,7 @@ function BuyMachineModal({ onClose }) {
 // Diğer fabrikaları gezinme (◀ Fabrikalar) — hem işçiler hem patronlar
 // işten ayrılmadan/rekabeti görmek için kullanır.
 // ---------------------------------------------------------------------------
-function BrowseFactoriesModal({ onClose, onJoin, myUid, canJoin }) {
+function BrowseFactoriesModal({ onClose, onJoin, joinBusy, myUid, canJoin }) {
   const { factories } = useOpenFactories();
 
   return (
@@ -171,26 +174,15 @@ function BrowseFactoriesModal({ onClose, onJoin, myUid, canJoin }) {
                   'boş yer yok'
                 )}
               </p>
-              <div className="factory-browse-machines">
-                {f.machines.map((m) => (
-                  <span key={m.id} className="factory-browse-machine-chip">
-                    {MACHINE_EMOJI[m.type]} {m.workerId ? '(dolu)' : m.type === 'mining' ? '' : '(boş)'}
-                  </span>
-                ))}
-              </div>
               {canJoin && f.id !== myUid && f.openSlots > 0 && (
                 <div className="factory-browse-join-row">
-                  {f.machines
-                    .filter((m) => m.type !== 'mining' && !m.workerId)
-                    .map((m) => (
-                      <button
-                        key={m.id}
-                        className="factory-btn small"
-                        onClick={() => onJoin(f.id, m.id)}
-                      >
-                        {MACHINE_EMOJI[m.type]} {MACHINE_LABELS[m.type]}'de çalış
-                      </button>
-                    ))}
+                  <button
+                    className="factory-btn primary small"
+                    disabled={joinBusy === f.id}
+                    onClick={() => onJoin(f.id)}
+                  >
+                    {joinBusy === f.id ? '…' : 'İşe Gir'}
+                  </button>
                 </div>
               )}
             </div>
@@ -218,6 +210,9 @@ function ManagementModal({ factory, machines, onClose }) {
   }).format(new Date());
 
   const employees = machines.filter((m) => m.workerId);
+  const openMachines = machines.filter((m) => m.type !== 'mining' && !m.workerId);
+  const [reassignTarget, setReassignTarget] = useState({});
+  const [reassignBusy, setReassignBusy] = useState(null);
 
   const handleSalary = async () => {
     setSalaryBusy(true);
@@ -240,6 +235,20 @@ function ManagementModal({ factory, machines, onClose }) {
       setError(err.message || 'İşten çıkarılamadı.');
     } finally {
       setFireBusy(null);
+    }
+  };
+
+  const handleReassign = async (machineId) => {
+    const targetMachineId = reassignTarget[machineId];
+    if (!targetMachineId) return;
+    setReassignBusy(machineId);
+    setError(null);
+    try {
+      await reassignEmployee(machineId, targetMachineId);
+    } catch (err) {
+      setError(err.message || 'İşçi taşınamadı.');
+    } finally {
+      setReassignBusy(null);
     }
   };
 
@@ -273,23 +282,52 @@ function ManagementModal({ factory, machines, onClose }) {
         <div className="factory-employee-list">
           {employees.map((m) => {
             const producedToday = m.lastProducedDateKey === dateKey;
+            const availableTargets = openMachines.filter((om) => om.id !== m.id);
+            const canReassign = !producedToday && availableTargets.length > 0;
             return (
-              <div key={m.id} className="factory-employee-row">
-                <div className="factory-employee-info">
-                  <span className="factory-employee-name">{m.workerName}</span>
-                  <span className="factory-employee-meta">
-                    {MACHINE_EMOJI[m.type]} {MACHINE_LABELS[m.type]} ·{' '}
-                    {producedToday ? `bugün ${m.lastProducedQty} adet üretti` : 'bugün henüz üretmedi'}
-                  </span>
+              <div key={m.id} className="factory-employee-row-wrap">
+                <div className="factory-employee-row">
+                  <div className="factory-employee-info">
+                    <span className="factory-employee-name">{m.workerName}</span>
+                    <span className="factory-employee-meta">
+                      {MACHINE_EMOJI[m.type]} {MACHINE_LABELS[m.type]} ·{' '}
+                      {producedToday ? `bugün ${m.lastProducedQty} adet üretti` : 'bugün henüz üretmedi'}
+                    </span>
+                  </div>
+                  <button
+                    className="factory-fire-btn"
+                    disabled={producedToday || fireBusy === m.id}
+                    onClick={() => handleFire(m.id)}
+                    title={producedToday ? 'Bugün üretim yaptı, işten atamazsın' : 'İşten at'}
+                  >
+                    {fireBusy === m.id ? '…' : 'İşten At'}
+                  </button>
                 </div>
-                <button
-                  className="factory-fire-btn"
-                  disabled={producedToday || fireBusy === m.id}
-                  onClick={() => handleFire(m.id)}
-                  title={producedToday ? 'Bugün üretim yaptı, çıkaramazsın' : 'İşten çıkar'}
-                >
-                  {fireBusy === m.id ? '…' : 'Çıkar'}
-                </button>
+                {canReassign && (
+                  <div className="factory-reassign-row">
+                    <select
+                      className="factory-reassign-select"
+                      value={reassignTarget[m.id] || ''}
+                      onChange={(e) =>
+                        setReassignTarget((prev) => ({ ...prev, [m.id]: e.target.value }))
+                      }
+                    >
+                      <option value="">Başka makineye taşı…</option>
+                      {availableTargets.map((om) => (
+                        <option key={om.id} value={om.id}>
+                          {MACHINE_EMOJI[om.type]} {MACHINE_LABELS[om.type]}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="factory-btn small"
+                      disabled={!reassignTarget[m.id] || reassignBusy === m.id}
+                      onClick={() => handleReassign(m.id)}
+                    >
+                      {reassignBusy === m.id ? '…' : 'Taşı'}
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -413,6 +451,11 @@ function OwnerView({ factory, machines, player, myUid }) {
                       {resignBusy ? '…' : 'İstifa Et'}
                     </button>
                   </div>
+                  {producedToday && (
+                    <p className="factory-produced-warning small">
+                      00:00'dan sonra tekrar üretim yapabilirsin.
+                    </p>
+                  )}
                 </div>
               ) : m.workerId ? (
                 <span className="factory-machine-status worker">
@@ -436,8 +479,11 @@ function OwnerView({ factory, machines, player, myUid }) {
       </div>
       {produceResult && (
         <p className="factory-result">
-          +{produceResult.salary.toLocaleString('tr-TR')} altın maaş kazandın
-          {produceResult.shortfall > 0 && ' (eksik kısım ceza olarak devlete yazıldı)'}
+          {produceResult.isSelfEmployed
+            ? `Üretim yapıldı: ${produceResult.qty.toLocaleString('tr-TR')} adet ürün stoğuna eklendi (kendi fabrikanda çalıştığın için maaş almadın).`
+            : `+${produceResult.salary.toLocaleString('tr-TR')} altın maaş kazandın${
+                produceResult.shortfall > 0 ? ' (eksik kısım ceza olarak devlete yazıldı)' : ''
+              }`}
         </p>
       )}
       {selfError && <p className="factory-error">{selfError}</p>}
@@ -464,6 +510,7 @@ function WorkerView({ player, myUid }) {
   const [resignBusy, setResignBusy] = useState(false);
 
   const employment = player.employment;
+  const { factory: employerFactory } = useEmployerFactory(employment?.factoryId);
   const dateKey = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Istanbul',
     year: 'numeric',
@@ -507,9 +554,22 @@ function WorkerView({ player, myUid }) {
 
       <div className="factory-worker-center">
         <p className="factory-hint">Bir fabrikada çalışıyorsun.</p>
-        <button className="factory-produce-btn" disabled={busy} onClick={handleProduce}>
+        <div className="factory-job-info">
+          <span className="factory-job-salary">
+            {(employerFactory?.salary || 0).toLocaleString('tr-TR')} altın
+          </span>
+          <span className="factory-job-employer">
+            {employerFactory ? `${employerFactory.ownerName}'in Fabrikası` : '…'}
+          </span>
+        </div>
+        <button className="factory-produce-btn" disabled={busy || producedToday} onClick={handleProduce}>
           {busy ? '…' : 'Üretim Yap'}
         </button>
+        {producedToday && (
+          <p className="factory-produced-warning">
+            Bugün zaten üretim yaptın. 00:00'dan sonra tekrar üretim yapabilirsin.
+          </p>
+        )}
         {result && (
           <p className="factory-result">
             +{result.salary.toLocaleString('tr-TR')} altın maaş kazandın
@@ -544,11 +604,11 @@ function BrowseView({ myUid }) {
   const [joinBusy, setJoinBusy] = useState(null);
   const [error, setError] = useState(null);
 
-  const handleJoin = async (factoryId, machineId) => {
-    setJoinBusy(machineId);
+  const handleJoin = async (factoryId) => {
+    setJoinBusy(factoryId);
     setError(null);
     try {
-      await joinFactoryMachine(factoryId, machineId);
+      await autoJoinFactory(factoryId);
     } catch (err) {
       setError(err.message || 'İşe girilemedi.');
     } finally {
@@ -583,29 +643,15 @@ function BrowseView({ myUid }) {
                 'boş yer yok'
               )}
             </p>
-            <div className="factory-browse-machines">
-              {f.machines.map((m) => (
-                <span key={m.id} className="factory-browse-machine-chip">
-                  {MACHINE_EMOJI[m.type]} {m.workerId ? '(dolu)' : m.type === 'mining' ? '' : '(boş)'}
-                </span>
-              ))}
-            </div>
             {f.id !== myUid && f.openSlots > 0 && (
               <div className="factory-browse-join-row">
-                {f.machines
-                  .filter((m) => m.type !== 'mining' && !m.workerId)
-                  .map((m) => (
-                    <button
-                      key={m.id}
-                      className="factory-btn small"
-                      disabled={joinBusy === m.id}
-                      onClick={() => handleJoin(f.id, m.id)}
-                    >
-                      {joinBusy === m.id
-                        ? '…'
-                        : `${MACHINE_EMOJI[m.type]} ${MACHINE_LABELS[m.type]}'de çalış`}
-                    </button>
-                  ))}
+                <button
+                  className="factory-btn primary small"
+                  disabled={joinBusy === f.id}
+                  onClick={() => handleJoin(f.id)}
+                >
+                  {joinBusy === f.id ? '…' : 'İşe Gir'}
+                </button>
               </div>
             )}
           </div>
