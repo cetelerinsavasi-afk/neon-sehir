@@ -14,9 +14,13 @@ export default function HeistScreen({ initialTarget, onClose }) {
   const planCounts = useOpenHeistPlanCounts();
   const myActivePlans = useMyActiveHeistPlans();
   const [selected, setSelected] = useState(initialTarget || null);
+  const [showMyPlans, setShowMyPlans] = useState(false);
 
   useEffect(() => {
-    if (initialTarget) setSelected(initialTarget);
+    if (initialTarget) {
+      setSelected(initialTarget);
+      setShowMyPlans(false);
+    }
   }, [initialTarget]);
 
   if (!user) {
@@ -41,7 +45,15 @@ export default function HeistScreen({ initialTarget, onClose }) {
           {myActivePlans.length > 0 && (
             <button
               className="heist-screen-myplan-btn"
-              onClick={() => setSelected(myActivePlans[0].target)}
+              onClick={() => {
+                if (myActivePlans.length === 1) {
+                  setSelected(myActivePlans[0].target);
+                  setShowMyPlans(false);
+                } else {
+                  setSelected(null);
+                  setShowMyPlans(true);
+                }
+              }}
             >
               Ekip Soygunlarım{myActivePlans.length > 1 ? ` (${myActivePlans.length})` : ''}
             </button>
@@ -51,7 +63,39 @@ export default function HeistScreen({ initialTarget, onClose }) {
           </button>
         </div>
 
-        {!selected && (
+        {showMyPlans && !selected && (
+          <div className="heist-screen-list">
+            <p className="heist-screen-myplans-hint">
+              Şu an {myActivePlans.length} farklı hedefte açık ekip soygun planın var:
+            </p>
+            {myActivePlans.map((p) => {
+              const meta = HEIST_LABELS[p.target];
+              return (
+                <button
+                  key={p.planId}
+                  className="heist-target-card"
+                  onClick={() => {
+                    setSelected(p.target);
+                    setShowMyPlans(false);
+                  }}
+                >
+                  <span className="heist-target-name">{meta?.title || p.target}</span>
+                  {meta && (
+                    <span className="heist-target-meta">
+                      Güvenlik: {meta.requiredPower.toLocaleString('tr-TR')} · Ödül:{' '}
+                      {meta.reward.toLocaleString('tr-TR')} altın · Şüphe: +{meta.suspicionCost}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+            <button className="heist-screen-back" onClick={() => setShowMyPlans(false)}>
+              ← Tüm hedefler
+            </button>
+          </div>
+        )}
+
+        {!selected && !showMyPlans && (
           <div className="heist-screen-list">
             {Object.entries(HEIST_LABELS).map(([target, meta]) => (
               <button
@@ -79,7 +123,13 @@ export default function HeistScreen({ initialTarget, onClose }) {
 
         {selected && (
           <div className="heist-screen-detail">
-            <button className="heist-screen-back" onClick={() => setSelected(null)}>
+            <button
+              className="heist-screen-back"
+              onClick={() => {
+                setSelected(null);
+                setShowMyPlans(false);
+              }}
+            >
               ← Tüm hedefler
             </button>
             <HeistPanel target={selected} />

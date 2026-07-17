@@ -5,41 +5,12 @@ import { useVehicles } from '../../hooks/useVehicles';
 import { useWeapons } from '../../hooks/useWeapons';
 import { useInventory } from '../../hooks/useInventory';
 import { upgradeVehicle, upgradeWeapon, repairItem, setDisplayName } from '../../services/gameActions';
-import { vehicleCatalog } from '../../data/vehicleCatalog';
 import { weaponCatalog } from '../../data/weaponCatalog';
+import VehicleCard, { LifeBar, MAX_REPAIRS, repairRequiredQty } from '../VehicleCard/VehicleCard';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import AvatarBuilder from '../AvatarBuilder/AvatarBuilder';
 import './HomeScreen.css';
-
-const INITIAL_LIFE_DAYS = 50;
-const MAX_REPAIRS = 10;
-
-function lifeRatio(item) {
-  const life = item?.lifeDays ?? INITIAL_LIFE_DAYS;
-  return Math.max(0, Math.min(1, life / INITIAL_LIFE_DAYS));
-}
-
-function repairRequiredQty(price) {
-  return Math.max(1, Math.round((price || 0) / 100));
-}
-
-function LifeBar({ item }) {
-  const life = item?.lifeDays ?? INITIAL_LIFE_DAYS;
-  const repairsUsed = item?.repairsUsed || 0;
-  const percent = Math.round(lifeRatio(item) * 100);
-  return (
-    <div className="home-life-row">
-      <div className="home-life-label">
-        <span>Ömür: {life} / {INITIAL_LIFE_DAYS} gün</span>
-        <span>Tamir hakkı: {MAX_REPAIRS - repairsUsed}/{MAX_REPAIRS}</span>
-      </div>
-      <div className="home-life-bar">
-        <div className="home-life-bar-fill" style={{ width: `${percent}%` }} />
-      </div>
-    </div>
-  );
-}
 
 const MATERIAL_LABELS = {
   depoUpgrade: 'Depo Geliştirme Malzemesi',
@@ -56,9 +27,6 @@ const MATERIAL_EMOJIS = {
   tamirMalzemesi: '🔩',
 };
 
-function vehicleImage(catalogId) {
-  return vehicleCatalog.find((v) => v.id === catalogId)?.image;
-}
 function weaponImage(catalogId) {
   return weaponCatalog.find((w) => w.id === catalogId)?.image;
 }
@@ -125,56 +93,6 @@ function ProfileHeader({ player, onEditAvatar }) {
       <button className="home-btn" onClick={onEditAvatar}>
         🎭 Avatarımı Düzenle
       </button>
-    </div>
-  );
-}
-
-function vehicleRequiredQty(vehicle) {
-  // Fiyatla doğru orantılı: 1000₺ araba için 2 malzeme, 100.000₺ için 200.
-  return Math.max(2, Math.round((vehicle.baseGalleryValue || 0) / 500));
-}
-
-function VehicleCard({ vehicle, materialsQty, repairQty, busy, onUpgrade, onRepair }) {
-  const req = vehicleRequiredQty(vehicle);
-  const img = vehicleImage(vehicle.catalogId);
-  const repairsUsed = vehicle.repairsUsed || 0;
-  const repairReq = repairRequiredQty(vehicle.baseGalleryValue);
-  const repairMaxed = repairsUsed >= MAX_REPAIRS;
-  return (
-    <div className="home-item-card">
-      {img && <img className="home-item-photo" src={img} alt={vehicle.model} />}
-      <div className="home-item-body">
-        <span className="home-item-name">{vehicle.model}</span>
-        <span className="home-item-stats">
-          Vites {vehicle.gearLevel} · Depo {vehicle.baseTank + (vehicle.tankBonus || 0)}L
-          {vehicle.mortgaged && !vehicle.seizedByBank && ' · İpotekli'}
-          {vehicle.seizedByBank && ' · Bankaya el konuldu'}
-        </span>
-        <LifeBar item={vehicle} />
-        <div className="home-controls">
-          <button
-            className="home-btn small"
-            disabled={vehicle.gearUpgraded || materialsQty.vites < req || busy === `${vehicle.id}-gear`}
-            onClick={() => onUpgrade(vehicle.id, 'gear')}
-          >
-            {vehicle.gearUpgraded ? 'Vites Geliştirildi' : `Vites Geliştir (${req} malzeme) +1 vites`}
-          </button>
-          <button
-            className="home-btn small"
-            disabled={vehicle.tankUpgraded || materialsQty.depo < req || busy === `${vehicle.id}-tank`}
-            onClick={() => onUpgrade(vehicle.id, 'tank')}
-          >
-            {vehicle.tankUpgraded ? 'Depo Geliştirildi' : `Depo Geliştir (${req} malzeme) +50 depo`}
-          </button>
-          <button
-            className="home-btn small"
-            disabled={repairMaxed || repairQty < repairReq || busy === `${vehicle.id}-repair`}
-            onClick={() => onRepair(vehicle.id)}
-          >
-            {repairMaxed ? 'Tamir Hakkı Bitti' : `Tamir Et (${repairReq} malzeme) +5 gün`}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

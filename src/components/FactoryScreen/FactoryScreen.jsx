@@ -45,7 +45,7 @@ function machineProductionRangeLabel(type) {
 // ---------------------------------------------------------------------------
 // Fabrika kurma modalı
 // ---------------------------------------------------------------------------
-function CreateFactoryModal({ onClose }) {
+function CreateFactoryModal({ onClose, isEmployed }) {
   const { prices } = useInvestmentPrices();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -53,6 +53,10 @@ function CreateFactoryModal({ onClose }) {
   const types = ['mining', 'silahUpgrade', 'depoUpgrade', 'vitesUpgrade', 'yasakliMadde', 'tamirMalzemesi'];
 
   const handleCreate = async () => {
+    if (isEmployed) {
+      setError('Fabrika kurmak için önce işinden ayrılmalısın.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -560,7 +564,7 @@ function WorkerView({ player, myUid }) {
   const [result, setResult] = useState(null);
   const [showBrowse, setShowBrowse] = useState(false);
   const [resignBusy, setResignBusy] = useState(false);
-  const [createBlockedMsg, setCreateBlockedMsg] = useState(false);
+  const [showCreateFactory, setShowCreateFactory] = useState(false);
 
   const employment = player.employment;
   const { factory: employerFactory } = useEmployerFactory(employment?.factoryId);
@@ -603,18 +607,10 @@ function WorkerView({ player, myUid }) {
         <button className="factory-nav-btn" onClick={() => setShowBrowse(true)}>
           ◀ Fabrikalar
         </button>
-        <button className="factory-nav-btn primary" onClick={() => setCreateBlockedMsg(true)}>
+        <button className="factory-nav-btn primary" onClick={() => setShowCreateFactory(true)}>
           Fabrika Kur +
         </button>
       </div>
-      {createBlockedMsg && (
-        <p className="factory-hint factory-create-blocked">
-          Fabrika kurmak için önce işinden ayrılmalısın.{' '}
-          <button className="factory-inline-link" onClick={() => setCreateBlockedMsg(false)}>
-            Tamam
-          </button>
-        </p>
-      )}
 
       <div className="factory-worker-center">
         <p className="factory-hint">Bir fabrikada çalışıyorsun.</p>
@@ -654,6 +650,9 @@ function WorkerView({ player, myUid }) {
 
       {showBrowse && (
         <BrowseFactoriesModal onClose={() => setShowBrowse(false)} canJoin={false} myUid={myUid} />
+      )}
+      {showCreateFactory && (
+        <CreateFactoryModal onClose={() => setShowCreateFactory(false)} isEmployed />
       )}
     </div>
   );
