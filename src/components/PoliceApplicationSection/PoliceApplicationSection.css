@@ -123,6 +123,15 @@
   color: #ffd23f;
 }
 
+.police-salary-share {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.police-salary-share strong {
+  color: #ffd23f;
+}
+
 .police-app-btn.primary {
   border-color: #ffd23f;
   color: #ffd23f;

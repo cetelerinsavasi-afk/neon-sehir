@@ -60,9 +60,9 @@ function weaponPriceRange(weapon) {
   return { min: Math.floor(max / 2), max };
 }
 
-function materialPriceRange(materialType, qty) {
-  const max = AMAZOR_PRICES[materialType] * qty;
-  return { min: Math.floor((AMAZOR_PRICES[materialType] / 2) * qty), max };
+function materialUnitPriceRange(materialType) {
+  const max = AMAZOR_PRICES[materialType];
+  return { min: Math.floor(max / 2), max };
 }
 
 function machinePriceRange(machineType, cryptoPrice) {
@@ -89,7 +89,7 @@ function listingLabel(listing) {
       : `${listing.weaponName} (Güç ${listing.weaponPower?.toLocaleString('tr-TR')})`;
   }
   if (listing.itemType === 'material')
-    return `${MATERIAL_LABELS[listing.materialType] || listing.materialType} × ${listing.quantity}`;
+    return `${MATERIAL_LABELS[listing.materialType] || listing.materialType} · ${listing.quantity} adet mevcut`;
   if (listing.itemType === 'machine') return MACHINE_LABELS[listing.machineType] || listing.machineType;
   return 'Ürün';
 }
@@ -124,7 +124,7 @@ function SellForm({ onCreated, onClose }) {
       return w ? weaponPriceRange(w) : null;
     }
     if (itemType === 'material') {
-      return quantity > 0 ? materialPriceRange(materialType, quantity) : null;
+      return materialUnitPriceRange(materialType);
     }
     if (itemType === 'machine') {
       const m = sellableMachines.find((x) => x.id === machineId);
@@ -132,6 +132,11 @@ function SellForm({ onCreated, onClose }) {
     }
     return null;
   })();
+
+  // Malzemede "anında sat" tutarı adet başına min fiyat × miktar (toplam);
+  // diğer türlerde priceRange.min zaten ürünün toplam min fiyatı.
+  const instantSellTotal =
+    itemType === 'material' && priceRange ? priceRange.min * quantity : priceRange?.min;
 
   const handleSubmit = async () => {
     if (!price || price <= 0) return;
@@ -146,7 +151,7 @@ function SellForm({ onCreated, onClose }) {
         await createListing({ itemType, itemId: selectedId, price });
       } else if (itemType === 'material') {
         if (!quantity || quantity <= 0) return;
-        await createListing({ itemType, materialType, quantity, price });
+        await createListing({ itemType, materialType, quantity, unitPrice: price });
       } else if (itemType === 'machine') {
         if (!machineId) return;
         await createListing({ itemType, machineId, price });
@@ -166,6 +171,7 @@ function SellForm({ onCreated, onClose }) {
 
   const handleInstantSell = async () => {
     if (!priceRange) return;
+    if (itemType === 'material' && (!quantity || quantity <= 0)) return;
     setBusy(true);
     setError(null);
     try {
@@ -173,7 +179,6 @@ function SellForm({ onCreated, onClose }) {
         if (!selectedId) return;
         await instantSellListing({ itemType, itemId: selectedId });
       } else if (itemType === 'material') {
-        if (!quantity || quantity <= 0) return;
         await instantSellListing({ itemType, materialType, quantity });
       } else if (itemType === 'machine') {
         if (!machineId) return;
@@ -330,22 +335,33 @@ function SellForm({ onCreated, onClose }) {
           </>
         )}
 
-        <p className="market-step-label">{itemType === 'material' ? '3' : '2'}. Satış Fiyatını Belirle</p>
+        <p className="market-step-label">
+          {itemType === 'material' ? '3. Adet Fiyatını Belirle' : '2. Satış Fiyatını Belirle'}
+        </p>
         <div className="market-price-form">
           <p className="market-price-label">
-            <strong>{price.toLocaleString('tr-TR')} altına</strong> satılacak
+            <strong>{price.toLocaleString('tr-TR')} altına</strong>
+            {itemType === 'material' ? ' adedi satılacak' : ' satılacak'}
           </p>
+          {itemType === 'material' && quantity > 0 && price > 0 && (
+            <p className="market-price-range-hint">
+              Toplam: {(price * quantity).toLocaleString('tr-TR')} altın ({quantity} adet)
+            </p>
+          )}
           {priceRange && (
             <p className="market-price-range-hint">
               İzin verilen aralık: {priceRange.min.toLocaleString('tr-TR')} -{' '}
               {priceRange.max.toLocaleString('tr-TR')} altın
+              {itemType === 'material' ? ' (adet başına)' : ''}
             </p>
           )}
           <QuantityStepper
             value={price}
             onChange={setPrice}
             max={priceRange?.max}
-            quickAmounts={[10, 100, 1000, 10000, 100000]}
+            quickAmounts={
+              itemType === 'material' ? [1, 10, 50, 100] : [10, 100, 1000, 10000, 100000]
+            }
           />
           {priceRange && price > 0 && (price < priceRange.min || price > priceRange.max) && (
             <p className="market-price-warning">
@@ -355,15 +371,20 @@ function SellForm({ onCreated, onClose }) {
           <button
             className="market-btn primary"
             disabled={
-              busy || !price || !priceRange || price < priceRange.min || price > priceRange.max
+              busy ||
+              !price ||
+              !priceRange ||
+              price < priceRange.min ||
+              price > priceRange.max ||
+              (itemType === 'material' && (!quantity || quantity <= 0))
             }
             onClick={handleSubmit}
           >
             İlan Ver
           </button>
-          {priceRange && (
+          {priceRange && (itemType !== 'material' || quantity > 0) && (
             <button className="market-instant-sell-btn" disabled={busy} onClick={handleInstantSell}>
-              {priceRange.min.toLocaleString('tr-TR')} altına Anında Sat
+              {(instantSellTotal ?? 0).toLocaleString('tr-TR')} altına Anında Sat
             </button>
           )}
         </div>
@@ -393,12 +414,15 @@ function ListingCard({ listing, isMine, busy, onCancel, onBuy }) {
       <div className="market-listing-info">
         <span className="market-listing-label">{listingLabel(listing)}</span>
         <span className="market-listing-price">
-          {listing.price.toLocaleString('tr-TR')} altın
-          {listing.itemType === 'material' && listing.quantity > 0 && (
-            <span className="market-unit-price">
-              {' '}
-              (adet fiyatı: {Math.round(listing.price / listing.quantity).toLocaleString('tr-TR')} altın)
-            </span>
+          {listing.itemType === 'material' ? (
+            <>
+              {(listing.unitPrice || Math.round(listing.price / (listing.quantity || 1))).toLocaleString(
+                'tr-TR'
+              )}{' '}
+              altın / adet
+            </>
+          ) : (
+            <>{listing.price.toLocaleString('tr-TR')} altın</>
           )}
           {!isMine && <span className="market-seller"> · {listing.sellerName}</span>}
         </span>
@@ -410,12 +434,73 @@ function ListingCard({ listing, isMine, busy, onCancel, onBuy }) {
   );
 }
 
+function BuyMaterialModal({ listing, onClose, onBought }) {
+  const unitPrice = listing.unitPrice || Math.round(listing.price / (listing.quantity || 1));
+  const [qty, setQty] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  const total = qty * unitPrice;
+
+  const handleBuy = async () => {
+    if (!qty || qty <= 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await buyListing(listing.id, qty);
+      onBought?.();
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Satın alınamadı.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="market-sell-backdrop" onClick={onClose}>
+      <div className="market-sell-form" onClick={(e) => e.stopPropagation()}>
+        <div className="market-sell-header">
+          <p className="market-section-title">
+            {MATERIAL_LABELS[listing.materialType] || listing.materialType} Satın Al
+          </p>
+          <button className="market-sell-close" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+        <p className="market-hint">
+          {listing.sellerName} · {unitPrice.toLocaleString('tr-TR')} altın / adet ·{' '}
+          {listing.quantity} adet mevcut
+        </p>
+        <p className="market-step-label">Kaç Adet Alacaksın?</p>
+        <p className="market-price-label">
+          <strong>{qty.toLocaleString('tr-TR')} adet</strong>
+        </p>
+        <QuantityStepper
+          value={qty}
+          onChange={setQty}
+          max={listing.quantity}
+          quickAmounts={[1, 10, 50, 100]}
+        />
+        <p className="market-price-range-hint">
+          Toplam: <strong>{total.toLocaleString('tr-TR')} altın</strong>
+        </p>
+        <button className="market-btn primary" disabled={busy || !qty || qty <= 0} onClick={handleBuy}>
+          {busy ? '…' : `${total.toLocaleString('tr-TR')} altına Satın Al`}
+        </button>
+        {error && <p className="market-error">{error}</p>}
+      </div>
+    </div>
+  );
+}
+
 export default function MarketplaceScreen() {
   const { user } = useAuth();
   const { listings } = useMarketplaceListings();
   const [tab, setTab] = useState('vehicle');
   const [materialFilter, setMaterialFilter] = useState('all');
   const [showSellForm, setShowSellForm] = useState(false);
+  const [buyModalListing, setBuyModalListing] = useState(null);
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
 
@@ -494,12 +579,17 @@ export default function MarketplaceScreen() {
           listing={l}
           isMine={false}
           busy={busy === l.id}
-          onBuy={() => run(l.id, () => buyListing(l.id))}
+          onBuy={() =>
+            l.itemType === 'material' ? setBuyModalListing(l) : run(l.id, () => buyListing(l.id))
+          }
         />
       ))}
       {error && <p className="market-error">{error}</p>}
 
       {showSellForm && <SellForm onClose={() => setShowSellForm(false)} />}
+      {buyModalListing && (
+        <BuyMaterialModal listing={buyModalListing} onClose={() => setBuyModalListing(null)} />
+      )}
     </div>
   );
 }

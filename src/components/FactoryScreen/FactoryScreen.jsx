@@ -38,8 +38,11 @@ function machinePrice(type, cryptoPrice) {
 // Fabrika kurma modalı
 // ---------------------------------------------------------------------------
 function CreateFactoryModal({ onClose }) {
+  const { prices } = useInvestmentPrices();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+
+  const types = ['mining', 'silahUpgrade', 'depoUpgrade', 'vitesUpgrade', 'yasakliMadde'];
 
   const handleCreate = async () => {
     setBusy(true);
@@ -68,6 +71,28 @@ function CreateFactoryModal({ onClose }) {
           oyuncu sadece 1 kez fabrika kurabilir, fabrika satılamaz. Kurduktan sonra istediğin
           kadar makine alabilirsin.
         </p>
+
+        <p className="factory-step-label">Fabrikanda Alabileceğin Makineler</p>
+        <div className="factory-machine-list">
+          {types.map((type) => {
+            const price = machinePrice(type, prices.cryptoPrice);
+            return (
+              <div key={type} className="factory-machine-buy-card">
+                <span className="factory-machine-emoji">{MACHINE_EMOJI[type]}</span>
+                <div className="factory-machine-buy-info">
+                  <span className="factory-machine-buy-title">{MACHINE_LABELS[type]}</span>
+                  <span className="factory-machine-buy-desc">
+                    {type === 'mining'
+                      ? 'İşçi gerekmez · günde 0.01-0.1 kripto üretir'
+                      : `İşçi gerekir · günde ${type === 'yasakliMadde' ? '1-10' : type === 'silahUpgrade' ? '1-200' : '1-40'} adet üretir`}
+                  </span>
+                </div>
+                <span className="factory-machine-buy-price">{price.toLocaleString('tr-TR')} altın</span>
+              </div>
+            );
+          })}
+        </div>
+
         {error && <p className="factory-error">{error}</p>}
         <button className="factory-btn primary" disabled={busy} onClick={handleCreate}>
           {busy ? '…' : `Fabrika Kur (${FACTORY_CREATE_COST.toLocaleString('tr-TR')} altın)`}
@@ -198,6 +223,7 @@ function BrowseFactoriesModal({ onClose, onJoin, joinBusy, myUid, canJoin }) {
 // ---------------------------------------------------------------------------
 function ManagementModal({ factory, machines, onClose }) {
   const [salary, setSalary] = useState(factory.salary || 1000);
+  const [showSalaryPanel, setShowSalaryPanel] = useState(false);
   const [salaryBusy, setSalaryBusy] = useState(false);
   const [salaryError, setSalaryError] = useState(null);
   const [fireBusy, setFireBusy] = useState(null);
@@ -219,6 +245,7 @@ function ManagementModal({ factory, machines, onClose }) {
     setSalaryError(null);
     try {
       await setFactorySalary(salary);
+      setShowSalaryPanel(false);
     } catch (err) {
       setSalaryError(err.message || 'Maaş güncellenemedi.');
     } finally {
@@ -262,20 +289,37 @@ function ManagementModal({ factory, machines, onClose }) {
           </button>
         </div>
 
-        <p className="factory-step-label">Maaş Belirle (1.000 - 5.000 altın)</p>
-        <p className="factory-price-label">
-          <strong>{salary.toLocaleString('tr-TR')} altın</strong>
-        </p>
-        <QuantityStepper
-          value={salary}
-          onChange={setSalary}
-          max={5000}
-          quickAmounts={[100, 500, 1000]}
-        />
-        <button className="factory-btn primary small" disabled={salaryBusy} onClick={handleSalary}>
-          {salaryBusy ? '…' : 'Maaşı Güncelle'}
-        </button>
-        {salaryError && <p className="factory-error">{salaryError}</p>}
+        <div className="factory-salary-section">
+          <div className="factory-salary-summary">
+            <span className="factory-salary-current">
+              Güncel maaş: <strong>{(factory.salary || 0).toLocaleString('tr-TR')} altın</strong>
+            </span>
+            <button
+              className="factory-btn small"
+              onClick={() => setShowSalaryPanel((v) => !v)}
+            >
+              {showSalaryPanel ? 'Kapat' : 'Maaş Belirle'}
+            </button>
+          </div>
+          {showSalaryPanel && (
+            <>
+              <p className="factory-step-label">Maaş Belirle (1.000 - 5.000 altın)</p>
+              <p className="factory-price-label">
+                <strong>{salary.toLocaleString('tr-TR')} altın</strong>
+              </p>
+              <QuantityStepper
+                value={salary}
+                onChange={setSalary}
+                max={5000}
+                quickAmounts={[100, 500, 1000]}
+              />
+              <button className="factory-btn primary small" disabled={salaryBusy} onClick={handleSalary}>
+                {salaryBusy ? '…' : 'Maaşı Güncelle'}
+              </button>
+              {salaryError && <p className="factory-error">{salaryError}</p>}
+            </>
+          )}
+        </div>
 
         <p className="factory-step-label">Çalışanlar ({employees.length})</p>
         {employees.length === 0 && <p className="factory-hint">Henüz çalışanın yok.</p>}
@@ -508,6 +552,7 @@ function WorkerView({ player, myUid }) {
   const [result, setResult] = useState(null);
   const [showBrowse, setShowBrowse] = useState(false);
   const [resignBusy, setResignBusy] = useState(false);
+  const [createBlockedMsg, setCreateBlockedMsg] = useState(false);
 
   const employment = player.employment;
   const { factory: employerFactory } = useEmployerFactory(employment?.factoryId);
@@ -550,7 +595,18 @@ function WorkerView({ player, myUid }) {
         <button className="factory-nav-btn" onClick={() => setShowBrowse(true)}>
           ◀ Fabrikalar
         </button>
+        <button className="factory-nav-btn primary" onClick={() => setCreateBlockedMsg(true)}>
+          Fabrika Kur +
+        </button>
       </div>
+      {createBlockedMsg && (
+        <p className="factory-hint factory-create-blocked">
+          Fabrika kurmak için önce işinden ayrılmalısın.{' '}
+          <button className="factory-inline-link" onClick={() => setCreateBlockedMsg(false)}>
+            Tamam
+          </button>
+        </p>
+      )}
 
       <div className="factory-worker-center">
         <p className="factory-hint">Bir fabrikada çalışıyorsun.</p>

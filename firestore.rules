@@ -113,6 +113,21 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // policeClaimPool/{dateKey} — polis maaş havuzu (bugünkü toplam tutar,
+    // polis başı pay). Herkes görebilmeli (Karakol ekranında gösteriliyor);
+    // yazma sadece Cloud Functions (dailyReset/claimPoliceSalary) ile.
+    match /policeClaimPool/{dateKey} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // gameStats/{docId} — genel oyun istatistikleri (ör. polis kitapçığındaki
+    // ortalama günlük kazanç). Herkes okuyabilir, sadece Cloud Functions yazar.
+    match /gameStats/{docId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
     // limanOrders/{uid} — oyuncunun mevcut turdaki bekleyen Liman siparişi.
     // Sadece kendi siparişini görebilir; yazma sadece Cloud Functions ile.
     match /limanOrders/{orderUid} {

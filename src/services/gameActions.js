@@ -106,7 +106,10 @@ export const instantSellListing = (payload) =>
 export const cancelListing = (listingId) =>
   httpsCallable(functions, 'cancelListing')({ listingId });
 
-export const buyListing = (listingId) => httpsCallable(functions, 'buyListing')({ listingId });
+// quantity sadece malzeme ilanlarında kullanılır — istenen kadar adet
+// satın almak için (bkz. functions/index.js buyListing).
+export const buyListing = (listingId, quantity) =>
+  httpsCallable(functions, 'buyListing')({ listingId, quantity });
 
 // --- Faz 5: Şüphe Yönetimi ve Soygun ---
 

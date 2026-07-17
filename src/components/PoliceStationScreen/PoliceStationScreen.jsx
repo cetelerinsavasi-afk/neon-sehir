@@ -7,7 +7,7 @@ export default function PoliceStationScreen() {
     <div>
       <SimpleActionScreen
         signInMessage="Rüşvet vermek için giriş yapmalısın."
-        description="Günde bir kez, 3000 altın karşılığında şüphe puanını azaltabilirsin."
+        description="Günde bir kez, 3000 altın karşılığında şüphe puanını azaltabilirsin. Verdiğin rüşvet, o günün polis maaş havuzuna eklenir."
         buttonLabel="Rüşvet Ver (3000 altın, Şüphe -20)"
         doneLabel="Bugün zaten rüşvet verdin"
         dailyFlagKey="bribed"

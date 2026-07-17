@@ -409,6 +409,53 @@
   text-align: center;
 }
 
+.factory-salary-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.factory-salary-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.factory-salary-current {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.factory-create-blocked {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 46, 140, 0.08);
+  border: 1px solid var(--neon-pink);
+  color: var(--neon-pink);
+}
+
+.factory-inline-link {
+  background: transparent;
+  border: none;
+  color: var(--neon-pink);
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.factory-machine-buy-price {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--neon-cyan);
+  flex-shrink: 0;
+}
+
 .factory-resign-btn {
   width: 100%;
   padding: 12px;
