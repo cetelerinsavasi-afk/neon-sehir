@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useWeapons } from '../../hooks/useWeapons';
@@ -17,6 +17,7 @@ const MATERIAL_LABELS = {
   vitesUpgrade: 'Vites Geliştirme Malzemesi',
   silahUpgrade: 'Silah Geliştirme Malzemesi',
   yasakliMadde: 'Yasaklı Madde',
+  tamirMalzemesi: 'Tamir Malzemesi',
 };
 const MACHINE_LABELS = {
   mining: 'Mining Makinesi',
@@ -24,6 +25,7 @@ const MACHINE_LABELS = {
   vitesUpgrade: 'Vites Geliştirme Malzemesi Makinesi',
   silahUpgrade: 'Silah Geliştirme Malzemesi Makinesi',
   yasakliMadde: 'Yasaklı Madde Üretim Makinesi',
+  tamirMalzemesi: 'Tamir Malzemesi Makinesi',
 };
 const MATERIAL_EMOJIS = {
   mining: '⛏️',
@@ -31,6 +33,7 @@ const MATERIAL_EMOJIS = {
   vitesUpgrade: '⚙️',
   silahUpgrade: '🔧',
   yasakliMadde: '💊',
+  tamirMalzemesi: '🔩',
 };
 
 const TABS = [
@@ -43,20 +46,29 @@ const TABS = [
 // Fiyat sınırları — hesaplar arası para aklamayı önlemek için backend'de
 // de AYNI kurallarla doğrulanıyor (bkz. functions/index.js createListing).
 // Burası sadece kullanıcıya yol göstermek için.
-const AMAZOR_PRICES = { yasakliMadde: 2500, vitesUpgrade: 500, depoUpgrade: 500, silahUpgrade: 100 };
-const MACHINE_PRICES = { depoUpgrade: 50000, vitesUpgrade: 50000, silahUpgrade: 50000, yasakliMadde: 100000 };
+const AMAZOR_PRICES = { yasakliMadde: 2500, vitesUpgrade: 500, depoUpgrade: 500, silahUpgrade: 100, tamirMalzemesi: 10 };
+const MACHINE_PRICES = { depoUpgrade: 50000, vitesUpgrade: 50000, silahUpgrade: 50000, yasakliMadde: 100000, tamirMalzemesi: 100000 };
+
+const INITIAL_LIFE_DAYS = 50;
+
+function lifeRatio(item) {
+  const life = item?.lifeDays ?? INITIAL_LIFE_DAYS;
+  return Math.max(0, Math.min(1, life / INITIAL_LIFE_DAYS));
+}
 
 function vehiclePriceRange(vehicle) {
+  if ((vehicle.lifeDays ?? INITIAL_LIFE_DAYS) <= 0) return null;
   const base = vehicleCatalog.find((v) => v.id === vehicle.catalogId)?.price || 0;
   const mult = vehicle.gearUpgraded && vehicle.tankUpgraded ? 3 : vehicle.gearUpgraded || vehicle.tankUpgraded ? 2 : 1;
-  const max = base * mult;
+  const max = Math.round(base * mult * lifeRatio(vehicle));
   return { min: Math.floor(max / 2), max };
 }
 
 function weaponPriceRange(weapon) {
+  if ((weapon.lifeDays ?? INITIAL_LIFE_DAYS) <= 0) return null;
   const base = weaponCatalog.find((w) => w.id === weapon.catalogId)?.price || 0;
   const mult = weapon.level || 1;
-  const max = base * mult;
+  const max = Math.round(base * mult * lifeRatio(weapon));
   return { min: Math.floor(max / 2), max };
 }
 
@@ -138,23 +150,40 @@ function SellForm({ onCreated, onClose }) {
   const instantSellTotal =
     itemType === 'material' && priceRange ? priceRange.min * quantity : priceRange?.min;
 
+  // Fiyat, seçim değiştiğinde (araç/silah/malzeme/makine ya da min-max
+  // aralığı) her zaman geçerli aralığın İÇİNDE kalsın — elle "0 altın"da
+  // takılıp "geçersiz fiyat" hatası almayı önler. Seçim yokken sıfırlanır.
+  useEffect(() => {
+    if (!priceRange) {
+      if (price !== 0) setPrice(0);
+      return;
+    }
+    if (price < priceRange.min || price > priceRange.max) {
+      setPrice(priceRange.min);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [priceRange?.min, priceRange?.max]);
+
   const handleSubmit = async () => {
     if (!price || price <= 0) return;
     setBusy(true);
     setError(null);
     try {
+      // Sunucu kesinlikle tam sayı bekliyor — QuantityStepper zaten integer
+      // üretiyor ama son bir güvenlik için yuvarlanıyor.
+      const safePrice = Math.round(price);
       if (itemType === 'vehicle') {
         if (!selectedId) return;
-        await createListing({ itemType, itemId: selectedId, price });
+        await createListing({ itemType, itemId: selectedId, price: safePrice });
       } else if (itemType === 'weapon') {
         if (!selectedId) return;
-        await createListing({ itemType, itemId: selectedId, price });
+        await createListing({ itemType, itemId: selectedId, price: safePrice });
       } else if (itemType === 'material') {
         if (!quantity || quantity <= 0) return;
-        await createListing({ itemType, materialType, quantity, unitPrice: price });
+        await createListing({ itemType, materialType, quantity, unitPrice: safePrice });
       } else if (itemType === 'machine') {
         if (!machineId) return;
-        await createListing({ itemType, machineId, price });
+        await createListing({ itemType, machineId, price: safePrice });
       }
       setSelectedId('');
       setQuantity(0);
@@ -408,24 +437,40 @@ function ListingCard({ listing, isMine, busy, onCancel, onBuy }) {
     media = <span className="market-card-emoji">{MATERIAL_EMOJIS[listing.machineType] || '🏭'}</span>;
   }
 
+  const isQuantifiable = listing.itemType === 'material';
+  const lifeDays =
+    listing.itemType === 'vehicle'
+      ? listing.vehicleLifeDays
+      : listing.itemType === 'weapon'
+        ? listing.weaponLifeDays
+        : null;
+
   return (
     <div className="market-listing-card">
       {media}
       <div className="market-listing-info">
         <span className="market-listing-label">{listingLabel(listing)}</span>
         <span className="market-listing-price">
-          {listing.itemType === 'material' ? (
+          {isQuantifiable ? (
             <>
               {(listing.unitPrice || Math.round(listing.price / (listing.quantity || 1))).toLocaleString(
                 'tr-TR'
               )}{' '}
-              altın / adet
+              altın / adet · {listing.quantity} adet
             </>
           ) : (
             <>{listing.price.toLocaleString('tr-TR')} altın</>
           )}
           {!isMine && <span className="market-seller"> · {listing.sellerName}</span>}
         </span>
+        {lifeDays != null && (
+          <div className="market-listing-life-bar">
+            <div
+              className="market-listing-life-fill"
+              style={{ width: `${Math.round(Math.max(0, Math.min(1, lifeDays / INITIAL_LIFE_DAYS)) * 100)}%` }}
+            />
+          </div>
+        )}
       </div>
       <button className="market-btn small" disabled={busy} onClick={isMine ? onCancel : onBuy}>
         {isMine ? 'İptal Et' : 'Satın Al'}
