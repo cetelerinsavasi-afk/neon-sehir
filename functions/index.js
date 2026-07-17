@@ -2172,13 +2172,14 @@ export const buyLotteryTicket = onCall(async (request) => {
 // ---------------------------------------------------------------------------
 const SLOT_SPIN_COST = 500;
 const SLOT_FREE_SPINS_PER_DAY = 3;
-const SLOT_SYMBOLS = ['yasakliMadde', 'silahUpgrade', 'depoUpgrade', 'vitesUpgrade', 'altin'];
+const SLOT_SYMBOLS = ['yasakliMadde', 'silahUpgrade', 'depoUpgrade', 'vitesUpgrade', 'tamirMalzemesi', 'altin'];
 const SLOT_PRIZES = {
   yasakliMadde: { 2: 1, 3: 3 },
   silahUpgrade: { 2: 10, 3: 100 },
   depoUpgrade: { 2: 2, 3: 20 },
   vitesUpgrade: { 2: 2, 3: 20 },
-  altin: { 2: 1000, 3: 10000 },
+  tamirMalzemesi: { 2: 100, 3: 1000 },
+  altin: { 2: 2000, 3: 20000 },
 };
 
 export const spinSlot = onCall(async (request) => {
