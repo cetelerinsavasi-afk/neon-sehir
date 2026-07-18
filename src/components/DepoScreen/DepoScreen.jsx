@@ -1,21 +1,19 @@
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useInventory } from '../../hooks/useInventory';
-import {
-  sellMaterial,
-  sellSilahMaterial,
-  sellContrabandToDepo,
-  buyFromAmazor,
-} from '../../services/gameActions';
+import { sellMaterial, sellSilahMaterial, buyFromAmazor } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './DepoScreen.css';
 
+// Yasaklı Madde artık Depo'ya SATILAMIYOR — sadece 2. el satış sitesi
+// üzerinden alınıp satılabiliyor (herkesin, imamlar dahil, suç işlemeden
+// serbestçe ticaret yapma hakkı var; bkz. functions/index.js
+// createListing/buyListing — hiçbir meslek kısıtlaması yok).
 const SELL_ITEMS = [
   { id: 'tamirMalzemesi', label: 'Tamir Malzemesi', price: 8, emoji: '🔧', sell: (qty) => sellMaterial('tamirMalzemesi', qty) },
   { id: 'silahUpgrade', label: 'Silah Geliştirme Malzemesi', price: 50, emoji: '🔫', sell: (qty) => sellSilahMaterial(qty) },
   { id: 'arabaGelistirme', label: 'Araba Geliştirme Malzemesi', price: 250, emoji: '🚗', sell: (qty) => sellMaterial('arabaGelistirme', qty) },
-  { id: 'yasakliMadde', label: 'Yasaklı Madde', price: 2500, emoji: '💊', sell: (qty) => sellContrabandToDepo(qty) },
 ];
 
 // Depo'da alım fiyatları Amazor ile BİREBİR AYNI (kullanıcı revizesi).

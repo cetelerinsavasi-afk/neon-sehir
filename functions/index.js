@@ -36,15 +36,15 @@ const VALID_MACHINES = Object.keys(MACHINE_TYPES);
 
 // ---------------------------------------------------------------------------
 // ARAÇ/SİLAH ÖMRÜ + TAMİR SİSTEMİ — her araç/silah satın alındığı andan
-// itibaren 50 günlük bir ömre sahiptir (her gün 1 azalır, bkz. dailyReset).
+// itibaren 30 günlük bir ömre sahiptir (her gün 1 azalır, bkz. dailyReset).
 // Ömür bittiğinde VE 10 tamir hakkının tamamı kullanıldığında ürün
-// hurdaya çıkarılır (silinir + SMS). Her tamir ömrü +5 gün (%10) uzatır
-// (orijinal 50 günü aşmaz) ve tamir hakkını 1 azaltır. 2. el satış fiyat
-// aralığı (min/max), ömür oranıyla (kalanÖmür/50) doğru orantılı düşer.
+// hurdaya çıkarılır (silinir + SMS). Her tamir ömrü +3 gün (%10) uzatır
+// (orijinal 30 günü aşmaz) ve tamir hakkını 1 azaltır. 2. el satış fiyat
+// aralığı (min/max), ömür oranıyla (kalanÖmür/30) doğru orantılı düşer.
 // ---------------------------------------------------------------------------
-const VEHICLE_WEAPON_INITIAL_LIFE_DAYS = 50;
+const VEHICLE_WEAPON_INITIAL_LIFE_DAYS = 30;
 const VEHICLE_WEAPON_MAX_REPAIRS = 10;
-const REPAIR_LIFE_BONUS_DAYS = 5;
+const REPAIR_LIFE_BONUS_DAYS = 3;
 
 function lifeRatioOf(item) {
   const life = item?.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
@@ -823,6 +823,22 @@ export const dailyReset = onSchedule(
             }
           } else {
             await docSnap.ref.update({ lifeDays: newLife });
+            // 2. el satıştaki ilanın üzerinde donmuş (ilan açıldığı
+            // andaki) ömür alanını da güncelle — yoksa listedeki araç/
+            // silahın ömrü hiç azalmıyormuş gibi görünüyordu (bilinen
+            // bir hataydı, burada düzeltiliyor).
+            if (item.listed) {
+              const listingSnap = await db
+                .collection('marketplaceListings')
+                .where(collName === 'vehicles' ? 'vehicleId' : 'weaponId', '==', docSnap.id)
+                .where('sold', '==', false)
+                .limit(1)
+                .get();
+              if (!listingSnap.empty) {
+                const lifeField = collName === 'vehicles' ? 'vehicleLifeDays' : 'weaponLifeDays';
+                await listingSnap.docs[0].ref.update({ [lifeField]: newLife });
+              }
+            }
           }
         });
         await Promise.all(jobs);
@@ -2794,41 +2810,22 @@ export const attemptHeist = onCall(async (request) => {
 // FAZ 6 — DEPO, PARK VE LİMAN (KAÇAKÇILIK) SİSTEMİ
 // =============================================================================
 
-const CONTRABAND_DEPO_SELL_PRICE = 2500; // Depo'ya satış — şüphe ARTMAZ
 const CONTRABAND_PARK_SELL_PRICE = 5000; // Park'ta satış — şüphe +5 (kaynağı fark etmez)
 const PARK_SUSPICION_COST = 5;
 
 // ---------------------------------------------------------------------------
-// sellContrabandToDepo — güvenli, şüphesiz satış kanalı. Alım artık
-// Telefon > Amazor'dan yapılıyor (4000 altın/adet, aynı fiyat).
+// sellContrabandToDepo — KAPATILDI. Yasaklı Madde artık Depo'ya
+// satılamıyor; sadece 2. el satış sitesi (createListing/buyListing/
+// instantSellListing) üzerinden alınıp satılabiliyor — orada herkesin
+// (imamlar dahil) suç işlemeden serbestçe ticaret yapma hakkı var, hiçbir
+// meslek kısıtlaması yok. Bu fonksiyon eski istemcilerden gelebilecek
+// çağrıları güvenle reddetmek için burada duruyor.
 // ---------------------------------------------------------------------------
-export const sellContrabandToDepo = onCall(async (request) => {
-  const uid = requireAuth(request);
-  const qty = Number(request.data?.quantity);
-  if (!Number.isInteger(qty) || qty <= 0) {
-    throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
-  }
-  const userRef = db.collection('users').doc(uid);
-  const inventoryRef = userRef.collection('inventory').doc('yasakliMadde');
-
-  await db.runTransaction(async (tx) => {
-    const [invSnap, userSnap] = await Promise.all([tx.get(inventoryRef), tx.get(userRef)]);
-    const have = invSnap.exists ? invSnap.data().quantity || 0 : 0;
-    if (have < qty) {
-      throw new HttpsError('failed-precondition', 'Yeterli malınız yok.');
-    }
-    tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-qty) }, { merge: true });
-    const { goldDelta, debtDelta } = splitIncomeForDebt(
-      userSnap.data()?.debtToState,
-      qty * CONTRABAND_DEPO_SELL_PRICE
-    );
-    tx.update(userRef, {
-      gold: admin.firestore.FieldValue.increment(goldDelta),
-      debtToState: admin.firestore.FieldValue.increment(debtDelta),
-    });
-  });
-
-  return { ok: true, earned: qty * CONTRABAND_DEPO_SELL_PRICE };
+export const sellContrabandToDepo = onCall(async () => {
+  throw new HttpsError(
+    'failed-precondition',
+    'Bu satış kanalı kapatıldı. Yasaklı maddeni artık 2. el satış sitesinden satabilirsin.'
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -2859,6 +2856,9 @@ export const sellContrabandAtPark = onCall(async (request) => {
         'failed-precondition',
         'Polis mesleğindeyken/başvurun beklerken şüpheni artıracak hiçbir şey yapamazsın.'
       );
+    }
+    if (user?.profession === 'imam') {
+      throw new HttpsError('failed-precondition', 'İmam suç işleyemez.');
     }
 
     const currentSuspicion = user.suspicion || 0;
@@ -3797,7 +3797,67 @@ export const migrateArabaGelistirmeUnification = onCall(async (request) => {
   return { ok: true };
 });
 
-// expireOldMarketplaceListings — 7 gündür satılmayan 2. el ilanlarını
+// migrateVehicleWeaponLifeCap — araç/silah ömür TAVANI 50 günden 30 güne
+// düşürüldü. Bu, sistemin ilk gününde (henüz 50 günlük tavana göre
+// yaşlanmış) araç/silahların ömrünü 29 güne çeken bir kerelik ama güvenle
+// tekrar çalıştırılabilen (idempotent) bir geçiş. SADECE 29'dan FAZLA
+// ömrü olanları düşürür — zaten 29 ya da altında olanlara dokunmaz. Her
+// oturum açmış oyuncu tetikleyebilir, zararsızdır (sadece aşırı yüksek
+// ömür değerlerini yeni tavana çeker).
+const LIFE_CAP_MIGRATION_TARGET = 29;
+
+export const migrateVehicleWeaponLifeCap = onCall(async (request) => {
+  requireAuth(request);
+
+  for (const collName of ['vehicles', 'weapons']) {
+    const snap = await db.collection(collName).get();
+    const jobs = [];
+    snap.forEach((docSnap) => {
+      const item = docSnap.data();
+      let life = item.lifeDays;
+      let capped = false;
+      if (typeof life === 'number' && life > LIFE_CAP_MIGRATION_TARGET) {
+        life = LIFE_CAP_MIGRATION_TARGET;
+        capped = true;
+      } else if (life === undefined) {
+        // Ömür alanı hiç yoksa (çok eski kayıt), eski tavan (50) sayılırdı
+        // — yeni tavana göre 29'a çekiyoruz.
+        life = LIFE_CAP_MIGRATION_TARGET;
+        capped = true;
+      }
+      if (capped) {
+        jobs.push(docSnap.ref.update({ lifeDays: life }));
+      }
+      // Listedeyse, ilandaki DONMUŞ ömür alanını da güncel değere
+      // eşitle — bazı ilanlarda ömür hiç azalmıyormuş gibi görünen
+      // bilinen hatayı da bu vesileyle düzeltiyoruz (bkz. dailyReset).
+      if (item.listed) {
+        jobs.push(
+          (async () => {
+            const listingSnap = await db
+              .collection('marketplaceListings')
+              .where(collName === 'vehicles' ? 'vehicleId' : 'weaponId', '==', docSnap.id)
+              .where('sold', '==', false)
+              .limit(1)
+              .get();
+            if (!listingSnap.empty) {
+              const lifeField = collName === 'vehicles' ? 'vehicleLifeDays' : 'weaponLifeDays';
+              const current = listingSnap.docs[0].data()[lifeField];
+              if (current !== life) {
+                await listingSnap.docs[0].ref.update({ [lifeField]: life });
+              }
+            }
+          })()
+        );
+      }
+    });
+    await Promise.all(jobs);
+  }
+
+  return { ok: true };
+});
+
+
 // otomatik kaldırır, ürünü/malzemeyi/makineyi sahibine iade eder
 // (cancelListing ile birebir aynı iade mantığı), satıcıya SMS atar.
 // Her çalıştığında ayrıca mergeLegacyMaterialListings'i de çalıştırır.
