@@ -747,3 +747,149 @@
   color: var(--text-dim);
 }
 
+
+/* ---------------------------------------------------------------------
+ * Yarış Pisti ana seçim ekranı (Şampiyona / Bahisli Yarış / Antrenman) —
+ * CasinoScreen'deki 3 seçenekli picker ile aynı görsel dil.
+ * --------------------------------------------------------------------- */
+.race-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.race-picker-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 20px;
+  border-radius: 14px;
+  border: 1px solid var(--panel-border);
+  background: #05070c;
+  color: var(--text);
+  cursor: pointer;
+  text-align: center;
+}
+
+.race-picker-card:hover {
+  border-color: var(--neon-cyan);
+}
+
+.race-picker-emoji {
+  font-size: 34px;
+}
+
+.race-picker-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.race-picker-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.race-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.race-back-btn {
+  align-self: flex-start;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------------
+ * Şampiyona ekranı — araç başına kart (ödül, dünün kazananı, günün lideri).
+ * --------------------------------------------------------------------- */
+.champ-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.champ-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.champ-card-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.champ-card-photo {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.champ-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.champ-card-name {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.champ-card-reward {
+  font-size: 12px;
+  color: #ffd23f;
+}
+
+.champ-card-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid var(--panel-border);
+  padding-top: 8px;
+}
+
+.champ-card-stat {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.champ-card-stat strong {
+  color: var(--text);
+}
+
+/* ---------------------------------------------------------------------
+ * Şampiyona (tek kişilik) yarış ekranı — RaceRoom.jsx'in "other" oyuncu
+ * olmadan render ettiği hal.
+ * --------------------------------------------------------------------- */
+.race-solo-turns {
+  margin: 0;
+  font-size: 12px;
+  color: var(--neon-cyan);
+  text-align: center;
+}
+
+.race-result-turns {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-dim);
+  text-align: center;
+}

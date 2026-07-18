@@ -161,6 +161,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // championshipDaily/{catalogId}_{dateKey} — araç başına günlük şampiyona
+    // lideri/kazananı. Herkes görebilmeli (Şampiyona ekranında gösteriliyor);
+    // yazma sadece Cloud Functions (championshipRollDice/dailyReset) ile.
+    match /championshipDaily/{docId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
     // lottery/{dateKey} — piyango. Herkes güncel jackpot'u ve geçmiş
     // kazananları görebilmeli; yazma sadece Cloud Functions ile.
     match /lottery/{dateKey} {

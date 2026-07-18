@@ -6,6 +6,7 @@ import {
   startRace,
   rollDice,
   trainingRollDice,
+  championshipRollDice,
   autoRoll,
   raceRefuel,
   raceBuyNitro,
@@ -22,6 +23,9 @@ const RACE_EMOJIS = ['😂', '😢', '😡', '😮', '👍', '🔥'];
 const RULES_TEXT =
   '300 karelik pisti ilk tamamlayan bahsi kazanır. Benzinin biterse direkt kaybedersin, benzin istasyonlarında benzin oldukça ucuzdur, geldiysen benzin almadan geçme.';
 
+const CHAMPIONSHIP_RULES_TEXT =
+  '300 karelik pisti tek başına tamamlıyorsun, amacın en az turda (en az zar atışında) bitirmek. Benzinin biterse o araçla bugünlük elenirsin. Pisti tamamlarsan, o gün aynı araçla en az turu yapan oyuncu gece 00:00\'da büyük ödülü kazanır.';
+
 // Yardımcı ipucu — birden fazla durum aynı anda geçerli olabileceği için
 // öncelik sırasına göre TEK bir mesaj seçilir (en acil/işe yarar olan üstte).
 function getHintInfo(me, other, atStation) {
@@ -33,6 +37,15 @@ function getHintInfo(me, other, atStation) {
   if (me.position > other.position) return { text: 'Şu an öndesin.', tone: 'good' };
   if (me.position < other.position) return { text: 'Şu an geridesin.', tone: 'neutral' };
   return { text: 'Berabersiniz.', tone: 'neutral' };
+}
+
+function getSoloHintInfo(me, atStation) {
+  if (me.position === 0) return { text: '🏁 Amacın en az turda bitiş çizgisini geçmek!', tone: 'info' };
+  if (atStation) return { text: '📍 İstasyondasın — ucuza benzin alabilirsin!', tone: 'info' };
+  if (me.fuel < 20) return { text: '⚠️ Benzinin azalıyor, doldurmalısın!', tone: 'warning' };
+  if (me.hasRolledOnce && me.gear < me.maxGear) return { text: '⬆️ Vites arttırabilirsin.', tone: 'info' };
+  if (me.raceGold > 150) return { text: '🔥 Nitro kullanabilirsin — daha az turda bitirirsin!', tone: 'info' };
+  return { text: `Şu ana kadar ${me.turnsUsed || 0} tur kullandın.`, tone: 'neutral' };
 }
 
 function useCountdown(deadline) {
@@ -194,6 +207,29 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
   }
 
   if (room.status === 'finished') {
+    if (room.isChampionship) {
+      const completed = room.championshipResult === 'completed';
+      const turns = room.championshipTurns ?? me?.turnsUsed;
+      return (
+        <div className="race-screen">
+          <p className={`race-result ${completed ? 'win' : 'lose'}`}>
+            {completed ? 'Pisti tamamladın! 🏁' : 'Benzinin bitti, bugünlük elendin.'}
+          </p>
+          {completed && (
+            <p className="race-result-turns">
+              {turns} turda bitirdin. Bugünün en az turunu yaparsan gece 00:00'da ödülü kazanırsın.
+            </p>
+          )}
+          {!completed && (
+            <p className="race-hint">Bu araçla yarın tekrar deneyebilirsin.</p>
+          )}
+          <button className="race-btn primary" onClick={onDismissFinished}>
+            Şampiyonaya Dön
+          </button>
+        </div>
+      );
+    }
+
     const won = room.winnerUid === myUid;
     const isDraw = room.winnerUid === 'draw';
     const noContest = !room.winnerUid;
@@ -226,21 +262,21 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
     );
   }
 
-  if (!me || !other) {
+  if (!me || (!room.isChampionship && !other)) {
     return <p className="race-hint">Yarış yükleniyor…</p>;
   }
 
   const atStation = me.position % 10 === 0;
   const refuelPrice = atStation ? 10 : 100;
-  const hintInfo = getHintInfo(me, other, atStation);
+  const hintInfo = room.isChampionship ? getSoloHintInfo(me, atStation) : getHintInfo(me, other, atStation);
 
   const handleRoll = async (useNitro, useTurbo) => {
-    const rollFn = room.isTraining ? trainingRollDice : rollDice;
+    const rollFn = room.isChampionship ? championshipRollDice : room.isTraining ? trainingRollDice : rollDice;
     await run('roll', () => rollFn(room.id, useNitro, useTurbo), { waitForConfirm: true });
   };
 
   const rollButtonLabel = () => {
-    const timeSuffix = room.isTraining ? '' : ` (${secondsLeft ?? '—'}s)`;
+    const timeSuffix = room.isTraining || room.isChampionship ? '' : ` (${secondsLeft ?? '—'}s)`;
     if (!isMyTurn) return `${other.displayName}'in sırası…${timeSuffix}`;
     if (busy) return 'Atılıyor…';
     if (isFinalTurnForMe) return `Son hamlen! Zar At${timeSuffix}`;
@@ -251,7 +287,7 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
     <div className="race-screen">
       <p className="race-panel-title">
         Yarış
-        <InfoIcon text={RULES_TEXT} />
+        <InfoIcon text={room.isChampionship ? CHAMPIONSHIP_RULES_TEXT : RULES_TEXT} />
       </p>
 
       <div className="race-track">
@@ -268,22 +304,28 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
         <div className="race-car me" style={{ left: `${Math.min(96, (me.position / 300) * 100)}%` }}>
           🏎️
         </div>
-        <div
-          className="race-car other"
-          style={{ left: `${Math.min(96, (other.position / 300) * 100)}%` }}
-        >
-          🚙
-        </div>
+        {other && (
+          <div
+            className="race-car other"
+            style={{ left: `${Math.min(96, (other.position / 300) * 100)}%` }}
+          >
+            🚙
+          </div>
+        )}
       </div>
       <div className="race-positions">
         <span className="race-position-label">
           Sen: {me.position}/300
           {myReaction && <span className="race-reaction">{myReaction}</span>}
         </span>
-        <span className="race-position-label">
-          {other.displayName}: {other.position}/300
-          {otherReaction && <span className="race-reaction">{otherReaction}</span>}
-        </span>
+        {other ? (
+          <span className="race-position-label">
+            {other.displayName}: {other.position}/300
+            {otherReaction && <span className="race-reaction">{otherReaction}</span>}
+          </span>
+        ) : (
+          <span className="race-position-label">Tur: {me.turnsUsed || 0}</span>
+        )}
       </div>
 
       <div className="race-stat-boxes">
@@ -324,18 +366,20 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
             </span>
           )}
         </div>
-        <div className="race-dice-col">
-          <span className="race-dice-owner">{other.displayName}</span>
-          <DiceRoll
-            rollKey={`o-${other.position}-${other.lastRollDice?.join(',')}`}
-            dice={other.lastRollDice}
-          />
-          {other.lastRollBoost && (
-            <span className="race-boost-badge">
-              {other.lastRollBoost === 'combo' ? '🔥🚀 Kombo ×3' : other.lastRollBoost === 'nitro' ? '🔥 Nitro ×2' : '🚀 Turbo ×2'}
-            </span>
-          )}
-        </div>
+        {other && (
+          <div className="race-dice-col">
+            <span className="race-dice-owner">{other.displayName}</span>
+            <DiceRoll
+              rollKey={`o-${other.position}-${other.lastRollDice?.join(',')}`}
+              dice={other.lastRollDice}
+            />
+            {other.lastRollBoost && (
+              <span className="race-boost-badge">
+                {other.lastRollBoost === 'combo' ? '🔥🚀 Kombo ×3' : other.lastRollBoost === 'nitro' ? '🔥 Nitro ×2' : '🚀 Turbo ×2'}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {!me.hasRolledOnce && (

@@ -4,10 +4,15 @@ import { useOpenRaceRooms } from '../../hooks/useOpenRaceRooms';
 import { useTrainingProgress } from '../../hooks/useTrainingProgress';
 import { createRaceRoom, joinRaceRoom, createTrainingRace } from '../../services/gameActions';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
+import { INITIAL_LIFE_DAYS } from '../VehicleCard/VehicleCard';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './RaceTrackScreen.css';
 
 const TRAINING_LEVELS = 10;
+
+function raceable(v) {
+  return !v.seizedByBank && (v.lifeDays ?? INITIAL_LIFE_DAYS) > 0;
+}
 
 function vehicleImage(catalogId) {
   return vehicleCatalog.find((v) => v.id === catalogId)?.image;
@@ -86,44 +91,43 @@ function TrainingStartModal({ level, vehicles, onClose, onCreated }) {
   );
 }
 
+export function TrainingLobby({ onEnterRoom }) {
+  const { vehicles: allVehicles } = useVehicles();
+  const vehicles = allVehicles.filter(raceable);
+  return <TrainingSection vehicles={vehicles} onEnterRoom={onEnterRoom} />;
+}
+
 function TrainingSection({ vehicles, onEnterRoom }) {
   const { progress } = useTrainingProgress();
-  const [open, setOpen] = useState(false);
   const [selectedLevel, setSelectedLevel] = useState(null);
   const unlockedLevel = progress.unlockedLevel || 1;
 
   return (
     <div className="race-section">
-      <button className="race-btn primary race-training-toggle-btn" onClick={() => setOpen((v) => !v)}>
-        🎓 Antrenman Modu
-      </button>
-      {open && (
-        <>
-          <p className="race-hint">Botlara karşı ücretsiz pratik yap.</p>
-          <div className="training-level-list">
-            {Array.from({ length: TRAINING_LEVELS }, (_, i) => i + 1).map((lvl) => {
-              const locked = lvl > unlockedLevel;
-              const beaten = Boolean(progress.beatenLevels?.[lvl]);
-              return (
-                <button
-                  key={lvl}
-                  className={`training-level-row${locked ? ' locked' : ''}${beaten ? ' beaten' : ''}`}
-                  disabled={locked}
-                  onClick={() => setSelectedLevel(lvl)}
-                >
-                  <span className="training-level-row-title">
-                    {locked ? '🔒 ' : ''}
-                    {lvl}. Seviye
-                  </span>
-                  <span className="training-level-row-reward">
-                    {(lvl * 1000).toLocaleString('tr-TR')} altın{beaten ? ' · ✓ Kazanıldı' : ''}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </>
-      )}
+      <p className="race-section-title">🎓 Antrenman Modu</p>
+      <p className="race-hint">Botlara karşı ücretsiz pratik yap.</p>
+      <div className="training-level-list">
+        {Array.from({ length: TRAINING_LEVELS }, (_, i) => i + 1).map((lvl) => {
+          const locked = lvl > unlockedLevel;
+          const beaten = Boolean(progress.beatenLevels?.[lvl]);
+          return (
+            <button
+              key={lvl}
+              className={`training-level-row${locked ? ' locked' : ''}${beaten ? ' beaten' : ''}`}
+              disabled={locked}
+              onClick={() => setSelectedLevel(lvl)}
+            >
+              <span className="training-level-row-title">
+                {locked ? '🔒 ' : ''}
+                {lvl}. Seviye
+              </span>
+              <span className="training-level-row-reward">
+                {(lvl * 1000).toLocaleString('tr-TR')} altın{beaten ? ' · ✓ Kazanıldı' : ''}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
       {selectedLevel && (
         <TrainingStartModal
@@ -186,7 +190,7 @@ function CreateRoomModal({ vehicles, onClose, onCreated }) {
 
 export default function RaceLobby({ myUid, onEnterRoom }) {
   const { vehicles: allVehicles } = useVehicles();
-  const vehicles = allVehicles.filter((v) => !v.seizedByBank);
+  const vehicles = allVehicles.filter(raceable);
   const { rooms } = useOpenRaceRooms();
   const [showCreate, setShowCreate] = useState(false);
   const [joinVehicleByRoom, setJoinVehicleByRoom] = useState({});
@@ -249,8 +253,6 @@ export default function RaceLobby({ myUid, onEnterRoom }) {
       </div>
 
       {error && <p className="race-error">{error}</p>}
-
-      <TrainingSection vehicles={vehicles} onEnterRoom={onEnterRoom} />
 
       {showCreate && (
         <CreateRoomModal

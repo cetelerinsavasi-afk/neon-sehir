@@ -1340,6 +1340,47 @@ export const dailyReset = onSchedule(
       }
     }
 
+    // 10) Şampiyona (Bölüm 8.7-ek): bir önceki günün her araç şampiyonasında
+    // en az turda bitiren oyuncu büyük ödülü (galeri fiyatının 1/10'u) kazanır.
+    {
+      const champPrevDateKey = addDaysToDateKey(dateKey, -1);
+      const catalogIds = Object.keys(VEHICLE_CATALOG);
+      for (const catalogId of catalogIds) {
+        const champRef = db.collection('championshipDaily').doc(`${catalogId}_${champPrevDateKey}`);
+        const champSnap = await champRef.get();
+        if (!champSnap.exists || champSnap.data().finalized) continue;
+        const champ = champSnap.data();
+        if (!champ.leaderUid) {
+          await champRef.update({ finalized: true });
+          continue;
+        }
+        const reward = Math.round(
+          (VEHICLE_CATALOG[catalogId]?.price || 0) * CHAMPIONSHIP_REWARD_RATIO
+        );
+        const winnerRef = db.collection('users').doc(champ.leaderUid);
+        const winnerSnap = await winnerRef.get();
+        const { goldDelta, debtDelta } = splitIncomeForDebt(winnerSnap.data()?.debtToState, reward);
+        await winnerRef.update({
+          gold: admin.firestore.FieldValue.increment(goldDelta),
+          debtToState: admin.firestore.FieldValue.increment(debtDelta),
+        });
+        await champRef.update({
+          finalized: true,
+          winnerUid: champ.leaderUid,
+          winnerName: champ.leaderName,
+          winnerVehicleModel: champ.leaderVehicleModel,
+          winnerTurns: champ.leaderTurns,
+          rewardAmount: reward,
+        });
+        await winnerRef.collection('messages').add({
+          text: `Tebrikler! ${VEHICLE_CATALOG[catalogId]?.name} şampiyonasını ${champ.leaderTurns} turda tamamlayarak kazandın. Ödül: ${reward.toLocaleString('tr-TR')} altın.`,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          read: false,
+          type: 'championship_win',
+        });
+      }
+    }
+
     console.log(`dailyReset tamamlandı: ${dateKey}`);
   }
 );
@@ -4184,6 +4225,8 @@ const RACE_TURN_SECONDS = 10;
 const RACE_STATION_PRICES = { refuel: 10 };
 const RACE_OFFSITE_FUEL_PRICE = 100;
 const RACE_NITRO_PRICE = 50;
+// Şampiyona ödülü, aracın galeri satış fiyatının 1/10'u.
+const CHAMPIONSHIP_REWARD_RATIO = 0.1;
 
 function rollDie() {
   return Math.floor(Math.random() * 6) + 1;
@@ -4194,7 +4237,15 @@ async function getVehicleForRace(uid, vehicleId) {
   if (!vSnap.exists || vSnap.data().ownerId !== uid) {
     throw new HttpsError('failed-precondition', 'Bu araç size ait değil.');
   }
-  return vSnap.data();
+  const vehicle = vSnap.data();
+  const lifeDays = vehicle.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
+  if (!(lifeDays > 0)) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Bu aracın ömrü bitmiş. Yarışa katılmadan önce tamir ettirmelisin.'
+    );
+  }
+  return vehicle;
 }
 
 function freshRacePlayerState(displayName, vehicleId, vehicle) {
@@ -4994,6 +5045,191 @@ export const raceChangeGear = onCall(async (request) => {
   });
 
   return { ok: true };
+});
+
+// =============================================================================
+// ŞAMPİYONA — her araç için ayrı, gün boyu (00:00-00:00) süren tek kişilik
+// yarış. Rakip yok; amaç 300 karelik pisti EN AZ TURDA (en az zar atışıyla)
+// bitirmek. Aynı raceRooms koleksiyonu + aynı RaceRoom.jsx bileşeni
+// kullanılıyor (participantUids sadece kendi uid'imiz) — bu sayede
+// raceRefuel/raceBuyNitro/raceChangeGear DEĞİŞİKLİKSİZ tekrar kullanılabiliyor
+// (hepsi zaten sadece "sıra sende mi" kontrolü yapıyor, tek kişilik oda için
+// sıra hep kendi uid'imizde kalıyor).
+//
+// championshipDaily/{catalogId}_{dateKey} — o araç+gün için canlı lider
+// (en az turda bitiren) ve (bir sonraki dailyReset'te) kazananı tutar.
+// dailyActions/{uid}_{dateKey}.championship_{catalogId} — o araçla o gün
+// hakkın kullanılıp kullanılmadığını işaretler (kazansın/kaybetsin/yarım
+// bıraksın fark etmez, günde 1 hak).
+// =============================================================================
+
+export const createChampionshipRace = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { vehicleId } = request.data || {};
+  const vehicle = await getVehicleForRace(uid, vehicleId);
+  if (vehicle.seizedByBank) {
+    throw new HttpsError('failed-precondition', 'Bu araç bankaya el konulmuş durumda.');
+  }
+  const catalogId = Number(vehicle.catalogId);
+  if (!catalogId || !VEHICLE_CATALOG[catalogId]) {
+    throw new HttpsError('failed-precondition', 'Geçersiz araç.');
+  }
+
+  const dateKey = istanbulDateKey();
+  const dailyRef = db.collection('dailyActions').doc(`${uid}_${dateKey}`);
+  const dailyField = `championship_${catalogId}`;
+
+  const userSnap = await db.collection('users').doc(uid).get();
+  const user = userSnap.data();
+
+  const roomRef = db.collection('raceRooms').doc();
+
+  await db.runTransaction(async (tx) => {
+    const dailySnap = await tx.get(dailyRef);
+    if (dailySnap.exists && dailySnap.data()[dailyField]) {
+      throw new HttpsError('failed-precondition', 'Bu araçla bugün şampiyonaya zaten katıldın.');
+    }
+    tx.set(dailyRef, { [dailyField]: true }, { merge: true });
+    tx.set(roomRef, {
+      status: 'racing',
+      betAmount: 0,
+      creatorUid: uid,
+      participantUids: [uid],
+      firstStarterUid: uid,
+      currentTurnUid: uid,
+      turnDeadline: null,
+      finalTurnFor: null,
+      winnerUid: null,
+      isChampionship: true,
+      championshipCatalogId: catalogId,
+      championshipDateKey: dateKey,
+      rewardProcessed: true,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      players: {
+        [uid]: {
+          ...freshRacePlayerState(user?.displayName || 'Oyuncu', vehicleId, vehicle),
+          turnsUsed: 0,
+        },
+      },
+    });
+  });
+
+  return { ok: true, roomId: roomRef.id };
+});
+
+// championshipRollDice — resolveRoll'un tek kişilik (rakipsiz) hali. Bitiş
+// çizgisini geçince yarış anında biter (kimseye "adalet turu" verilmez,
+// zaten rakip yok) ve o turda kaç zar attığı championshipDaily'de günün
+// (şu ana kadarki) lideriyle karşılaştırılır.
+export const championshipRollDice = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { roomId, useNitro, useTurbo } = request.data || {};
+  const roomRef = db.collection('raceRooms').doc(roomId);
+  let outcome = null;
+
+  await db.runTransaction(async (tx) => {
+    const roomSnap = await tx.get(roomRef);
+    if (!roomSnap.exists) throw new HttpsError('failed-precondition', 'Oda bulunamadı.');
+    const room = roomSnap.data();
+    if (!room.isChampionship) {
+      throw new HttpsError('failed-precondition', 'Bu bir şampiyona odası değil.');
+    }
+    if (room.status !== 'racing') {
+      throw new HttpsError('failed-precondition', 'Yarış aktif değil.');
+    }
+    if (room.creatorUid !== uid) {
+      throw new HttpsError('failed-precondition', 'Bu oda size ait değil.');
+    }
+    const me = requirePlayerInRoom(room, uid);
+
+    // Transaction kuralı: tüm okumalar yazmalardan önce.
+    const champDailyRef = db
+      .collection('championshipDaily')
+      .doc(`${room.championshipCatalogId}_${room.championshipDateKey}`);
+    const champDailySnap = await tx.get(champDailyRef);
+
+    if (me.fuel <= 0) {
+      tx.update(roomRef, {
+        status: 'finished',
+        winnerUid: null,
+        championshipResult: 'fuel_out',
+        finishedAt: admin.firestore.FieldValue.serverTimestamp(),
+        [`players.${uid}`]: { ...me, lostByFuel: true },
+      });
+      outcome = { outOfFuel: true, raceOver: true };
+      return;
+    }
+
+    const { updated: meUpdated, stepSum, multiplier, movedSteps, goldEarned } = performRoll(me, {
+      useNitro,
+      useTurbo,
+    });
+    const turnsUsed = (me.turnsUsed || 0) + 1;
+    meUpdated.turnsUsed = turnsUsed;
+
+    if (meUpdated.finished) {
+      tx.update(roomRef, {
+        status: 'finished',
+        winnerUid: uid,
+        championshipResult: 'completed',
+        championshipTurns: turnsUsed,
+        finishedAt: admin.firestore.FieldValue.serverTimestamp(),
+        [`players.${uid}`]: meUpdated,
+      });
+
+      const champDaily = champDailySnap.exists ? champDailySnap.data() : null;
+      if (!champDaily || !champDaily.leaderTurns || turnsUsed < champDaily.leaderTurns) {
+        tx.set(
+          champDailyRef,
+          {
+            catalogId: room.championshipCatalogId,
+            dateKey: room.championshipDateKey,
+            leaderUid: uid,
+            leaderName: me.displayName,
+            leaderVehicleModel: me.vehicleModel,
+            leaderTurns: turnsUsed,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+
+      outcome = {
+        steps: movedSteps,
+        rolledSum: stepSum,
+        multiplier,
+        goldEarned,
+        raceOver: true,
+        finished: true,
+        turnsUsed,
+      };
+      return;
+    }
+
+    if (meUpdated.fuel <= 0) {
+      tx.update(roomRef, {
+        status: 'finished',
+        winnerUid: null,
+        championshipResult: 'fuel_out',
+        finishedAt: admin.firestore.FieldValue.serverTimestamp(),
+        [`players.${uid}`]: { ...meUpdated, lostByFuel: true },
+      });
+      outcome = {
+        steps: movedSteps,
+        rolledSum: stepSum,
+        multiplier,
+        goldEarned,
+        outOfFuel: true,
+        raceOver: true,
+      };
+      return;
+    }
+
+    tx.update(roomRef, { [`players.${uid}`]: meUpdated });
+    outcome = { steps: movedSteps, rolledSum: stepSum, multiplier, goldEarned, raceOver: false };
+  });
+
+  return { ok: true, ...outcome };
 });
 
 // =============================================================================

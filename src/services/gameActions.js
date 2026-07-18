@@ -249,6 +249,12 @@ export const autoRoll = (roomId) => httpsCallable(functions, 'autoRoll')({ roomI
 export const createTrainingRace = (vehicleId, level) =>
   httpsCallable(functions, 'createTrainingRace')({ vehicleId, level });
 
+export const createChampionshipRace = (vehicleId) =>
+  httpsCallable(functions, 'createChampionshipRace')({ vehicleId });
+
+export const championshipRollDice = (roomId, useNitro, useTurbo) =>
+  httpsCallable(functions, 'championshipRollDice')({ roomId, useNitro, useTurbo });
+
 export const trainingRollDice = (roomId, useNitro, useTurbo) =>
   httpsCallable(functions, 'trainingRollDice')({ roomId, useNitro, useTurbo });
 
