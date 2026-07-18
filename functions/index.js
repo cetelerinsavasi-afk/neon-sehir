@@ -1784,8 +1784,8 @@ export const upgradeWeapon = onCall(async (request) => {
 });
 
 // ---------------------------------------------------------------------------
-// repairItem — araç/silah tamiri. Ömrü (lifeDays) +5 gün uzatır (orijinal
-// 50 günü aşmaz), tamir hakkını (repairsUsed) 1 artırır (toplamda en fazla
+// repairItem — araç/silah tamiri. Ömrü (lifeDays) +3 gün uzatır (orijinal
+// 30 günü aşmaz), tamir hakkını (repairsUsed) 1 artırır (toplamda en fazla
 // 10 kez tamir edilebilir). Gereken tamir malzemesi = fiyat/100 (araçta
 // baseGalleryValue, silahta basePrice) — silah geliştirmeyle aynı oran.
 // ---------------------------------------------------------------------------

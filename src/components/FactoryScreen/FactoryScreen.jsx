@@ -535,10 +535,8 @@ function OwnerView({ factory, machines, player, myUid }) {
       {produceResult && (
         <p className="factory-result">
           {produceResult.isSelfEmployed
-            ? `Üretim yapıldı: ${produceResult.qty.toLocaleString('tr-TR')} adet ürün stoğuna eklendi (kendi fabrikanda çalıştığın için maaş almadın).`
-            : `+${produceResult.salary.toLocaleString('tr-TR')} altın maaş kazandın${
-                produceResult.shortfall > 0 ? ' (eksik kısım ceza olarak devlete yazıldı)' : ''
-              }`}
+            ? `Üretim yapıldı: ${produceResult.qty.toLocaleString('tr-TR')} adet ürün stoğuna eklendi.`
+            : `+${produceResult.salary.toLocaleString('tr-TR')} altın maaş kazandın`}
         </p>
       )}
       {selfError && <p className="factory-error">{selfError}</p>}
@@ -632,7 +630,6 @@ function WorkerView({ player, myUid }) {
         {result && (
           <p className="factory-result">
             +{result.salary.toLocaleString('tr-TR')} altın maaş kazandın
-            {result.shortfall > 0 && ' (patronun eksik kısmı ceza olarak devlete yazıldı)'}
           </p>
         )}
         {error && <p className="factory-error">{error}</p>}

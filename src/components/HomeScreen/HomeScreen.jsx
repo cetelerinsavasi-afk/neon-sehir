@@ -128,7 +128,7 @@ function WeaponCard({ weapon, materialQty, repairQty, busy, onUpgrade, onRepair 
             disabled={repairMaxed || repairQty < repairReq || busy === `${weapon.id}-repair`}
             onClick={() => onRepair(weapon.id)}
           >
-            {repairMaxed ? 'Tamir Hakkı Bitti' : `Tamir Et (${repairReq} malzeme) +5 gün`}
+            {repairMaxed ? 'Tamir Hakkı Bitti' : `Tamir Et (${repairReq} malzeme) +3 gün`}
           </button>
         </div>
       </div>
