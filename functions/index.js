@@ -2172,17 +2172,17 @@ export const buyLotteryTicket = onCall(async (request) => {
 // 3 makara, 5 olası sembol, tamamen rastgele. 2 ya da 3 aynı sembol
 // gelirse ödül var; hepsi farklıysa ödül yok.
 // ---------------------------------------------------------------------------
-const SLOT_SPIN_COST = 1000;
+const SLOT_SPIN_COST = 500;
 const SLOT_FREE_SPINS_PER_DAY = 3;
 // Depo+Vites Geliştirme Malzemeleri "Araba Geliştirme Malzemesi" olarak
 // birleştiği için slot artık 6 değil 5 sembol üzerinden dönüyor.
 const SLOT_SYMBOLS = ['yasakliMadde', 'silahUpgrade', 'tamirMalzemesi', 'arabaGelistirme', 'altin'];
 const SLOT_PRIZES = {
-  yasakliMadde: { 2: 1, 3: 5 },
-  silahUpgrade: { 2: 10, 3: 200 },
-  tamirMalzemesi: { 2: 100, 3: 2000 },
-  arabaGelistirme: { 2: 2, 3: 40 },
-  altin: { 2: 2000, 3: 30000 },
+  tamirMalzemesi: { 2: 100, 3: 500 },
+  silahUpgrade: { 2: 10, 3: 50 },
+  arabaGelistirme: { 2: 2, 3: 10 },
+  yasakliMadde: { 2: 1, 3: 2 },
+  altin: { 2: 1000, 3: 10000 },
 };
 
 export const spinSlot = onCall(async (request) => {
