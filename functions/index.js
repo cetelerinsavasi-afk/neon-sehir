@@ -761,6 +761,30 @@ export const dailyReset = onSchedule(
       await migrationRef.set({ ranAt: admin.firestore.FieldValue.serverTimestamp() });
     }
 
+    // -0.9) TEK SEFERLİK GÖÇ: Depo + Vites Geliştirme Malzemeleri "Araba
+    // Geliştirme Malzemesi"nde birleştirildi. Bu göç daha önce sadece
+    // istemci (frontend) açılınca tetikleniyordu — frontend deploy
+    // gecikirse/atlanırsa hiç çalışmıyordu. Artık burada, HER GECE
+    // otomatik çalışan dailyReset içinde, bir bayrak dokümanıyla bir
+    // kereliğine garanti altına alınıyor.
+    const arabaMigrationRef = db.collection('migrations').doc('arabaGelistirmeUnification');
+    const arabaMigrationSnap = await arabaMigrationRef.get();
+    if (!arabaMigrationSnap.exists) {
+      await runArabaGelistirmeMigration();
+      await arabaMigrationRef.set({ ranAt: admin.firestore.FieldValue.serverTimestamp() });
+    }
+
+    // -0.8) TEK SEFERLİK GÖÇ: araç/silah ömür tavanı 50 günden 30 güne
+    // düşürüldü — eski (50 güne göre yaşlanmış) kayıtları 29'a çeker.
+    // Aynı sebeple (frontend'e bağımlı kalmasın diye) burada da bir
+    // bayrak dokümanıyla garantiye alındı.
+    const lifeCapMigrationRef = db.collection('migrations').doc('vehicleWeaponLifeCap');
+    const lifeCapMigrationSnap = await lifeCapMigrationRef.get();
+    if (!lifeCapMigrationSnap.exists) {
+      await runVehicleWeaponLifeCapMigration();
+      await lifeCapMigrationRef.set({ ranAt: admin.firestore.FieldValue.serverTimestamp() });
+    }
+
     // -0.5) Mining makineleri işçi gerektirmez — her gün otomatik olarak
     // sahibinin kripto bakiyesine rastgele (min-max) miktar eklenir.
     {
@@ -3665,9 +3689,7 @@ export const runMergeLegacyMaterialListings = onCall(async (request) => {
 // tekrar tekrar çalıştırılabilen (idempotent) bir geçiş fonksiyonu.
 // Herhangi bir oturum açmış oyuncu tetikleyebilir — sadece MEVCUT
 // verileri yeniden düzenler, değer üretmez/yok etmez, zararsızdır.
-export const migrateArabaGelistirmeUnification = onCall(async (request) => {
-  requireAuth(request);
-
+async function runArabaGelistirmeMigration() {
   // 1) Envanterler.
   const usersSnap = await db.collection('users').get();
   await Promise.all(
@@ -3793,7 +3815,15 @@ export const migrateArabaGelistirmeUnification = onCall(async (request) => {
       await orderDoc.ref.update(updates);
     })
   );
+}
 
+// Manuel (anlık) tetikleme için ince bir onCall sarmalayıcı — asıl işi
+// runArabaGelistirmeMigration yapıyor, bu fonksiyon dailyReset içinden de
+// (bkz. -1.5 bloğu) otomatik olarak çağrılıyor, frontend deploy'una
+// bağımlı değil.
+export const migrateArabaGelistirmeUnification = onCall(async (request) => {
+  requireAuth(request);
+  await runArabaGelistirmeMigration();
   return { ok: true };
 });
 
@@ -3806,9 +3836,7 @@ export const migrateArabaGelistirmeUnification = onCall(async (request) => {
 // ömür değerlerini yeni tavana çeker).
 const LIFE_CAP_MIGRATION_TARGET = 29;
 
-export const migrateVehicleWeaponLifeCap = onCall(async (request) => {
-  requireAuth(request);
-
+async function runVehicleWeaponLifeCapMigration() {
   for (const collName of ['vehicles', 'weapons']) {
     const snap = await db.collection(collName).get();
     const jobs = [];
@@ -3853,11 +3881,20 @@ export const migrateVehicleWeaponLifeCap = onCall(async (request) => {
     });
     await Promise.all(jobs);
   }
+}
 
+// Manuel (anlık) tetikleme için ince bir onCall sarmalayıcı — asıl işi
+// runVehicleWeaponLifeCapMigration yapıyor, bu fonksiyon dailyReset
+// içinden de (bkz. -1.5 bloğu) otomatik olarak çağrılıyor, frontend
+// deploy'una bağımlı değil.
+export const migrateVehicleWeaponLifeCap = onCall(async (request) => {
+  requireAuth(request);
+  await runVehicleWeaponLifeCapMigration();
   return { ok: true };
 });
 
 
+// expireOldMarketplaceListings — 7 gündür satılmayan 2. el ilanlarını
 // otomatik kaldırır, ürünü/malzemeyi/makineyi sahibine iade eder
 // (cancelListing ile birebir aynı iade mantığı), satıcıya SMS atar.
 // Her çalıştığında ayrıca mergeLegacyMaterialListings'i de çalıştırır.
