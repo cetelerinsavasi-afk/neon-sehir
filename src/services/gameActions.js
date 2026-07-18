@@ -128,6 +128,12 @@ export const runMergeLegacyMaterialListings = () =>
 export const migrateArabaGelistirmeUnification = () =>
   httpsCallable(functions, 'migrateArabaGelistirmeUnification')();
 
+// Araç/silah ömür tavanı 50'den 30 güne düştüğünde, eski (50 güne göre
+// yaşlanmış) kayıtları yeni tavana (29) çeken bir kerelik geçiş.
+// Zararsız/idempotent — uygulama açılınca otomatik bir kez çağrılıyor.
+export const migrateVehicleWeaponLifeCap = () =>
+  httpsCallable(functions, 'migrateVehicleWeaponLifeCap')();
+
 // --- Faz 5: Şüphe Yönetimi ve Soygun ---
 
 export const prayAtMosque = () => httpsCallable(functions, 'prayAtMosque')();

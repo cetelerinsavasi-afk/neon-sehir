@@ -57,7 +57,7 @@ const TABS = [
 const AMAZOR_PRICES = { tamirMalzemesi: 10, silahUpgrade: 100, arabaGelistirme: 500, yasakliMadde: 2500 };
 const MACHINE_PRICES = { tamirMalzemesi: 100000, silahUpgrade: 50000, arabaGelistirme: 50000, yasakliMadde: 100000 };
 
-const INITIAL_LIFE_DAYS = 50;
+const INITIAL_LIFE_DAYS = 30;
 
 function lifeRatio(item) {
   const life = item?.lifeDays ?? INITIAL_LIFE_DAYS;

@@ -15,7 +15,7 @@ import ProfileFullScreen from './components/ProfileFullScreen/ProfileFullScreen'
 import TopNotificationBanner from './components/TopNotificationBanner/TopNotificationBanner';
 import { usePlayer } from './hooks/usePlayer';
 import { useMyActiveRaceRoom } from './hooks/useMyActiveRaceRoom';
-import { migrateArabaGelistirmeUnification } from './services/gameActions';
+import { migrateArabaGelistirmeUnification, migrateVehicleWeaponLifeCap } from './services/gameActions';
 import { regions } from './data/regions';
 import './styles/theme.css';
 import './App.css';
@@ -26,6 +26,11 @@ const RACE_TRACK_REGION = regions.find((r) => r.screen === 'yaris-pisti');
 // zaten tetiklendi mi? (Gereksiz tekrar çağrıyı önlemek için — işlemin
 // kendisi zararsız/idempotent olsa da.)
 let arabaGelistirmeMigrationTriggered = false;
+// Araç/silah ömür tavanı 50→30 geçişi bu oturumda tetiklendi mi? (Bu göç
+// artık ASIL OLARAK sunucudaki dailyReset içinde her gece otomatik
+// çalışıyor — bu istemci tetiklemesi sadece deploy edilir edilmez, gece
+// yarısını beklemeden hemen çalışsın diye ekstra bir güvence.)
+let lifeCapMigrationTriggered = false;
 
 // Harita, HUD ve telefon giriş yapmadan da görülebilir/gezilebilir —
 // ortadaki SignInBanner haritayı bloklamaz, sadece giriş için görünür bir
@@ -51,6 +56,16 @@ function GameShell() {
     arabaGelistirmeMigrationTriggered = true;
     migrateArabaGelistirmeUnification().catch((err) => {
       console.error('Araba geliştirme malzemesi geçişi başarısız:', err);
+    });
+  }, [user]);
+
+  // Araç/silah ömür tavanı 50→30 güne düştüğü için, eski (50 güne göre
+  // yaşlanmış) kayıtları yeni tavana çeken geçişi de aynı şekilde tetikle.
+  useEffect(() => {
+    if (!user || lifeCapMigrationTriggered) return;
+    lifeCapMigrationTriggered = true;
+    migrateVehicleWeaponLifeCap().catch((err) => {
+      console.error('Araç/silah ömür tavanı geçişi başarısız:', err);
     });
   }, [user]);
 
