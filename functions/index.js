@@ -46,9 +46,18 @@ const VEHICLE_WEAPON_INITIAL_LIFE_DAYS = 30;
 const VEHICLE_WEAPON_MAX_REPAIRS = 10;
 const REPAIR_LIFE_BONUS_DAYS = 3;
 
-function lifeRatioOf(item) {
-  const life = item?.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
-  return Math.max(0, Math.min(1, life / VEHICLE_WEAPON_INITIAL_LIFE_DAYS));
+// 2. el satış değeri artık ÖMÜRDEN değil, KALAN TAMİR HAKKINDAN hesaplanır
+// (kullanıcı revizesi): ömür her gün otomatik azaldığı için tek başına
+// aracın/silahın gerçek durumunu yansıtmıyordu — ömrü 30 ama tamir hakkı
+// tükenmiş (bir daha hiç tamir edilemeyecek, yakında hurdaya çıkacak) bir
+// araç, ömrü 15 ama tamir hakkı dolu bir araçtan DAHA DEĞERSİZ olmalı,
+// eskiden tam tersiydi. Her tamir değeri %10 düşürür: 10 tamir hakkının
+// hepsi duruyorsa (hiç tamir edilmemiş) ratio 1 (tam fiyat), 5 hak
+// kullanılmışsa ratio 0.5 (yarı fiyat), 10'u da kullanılmışsa ratio 0.
+function valueRatioOf(item) {
+  const repairsUsed = item?.repairsUsed || 0;
+  const remainingRepairs = Math.max(0, VEHICLE_WEAPON_MAX_REPAIRS - repairsUsed);
+  return remainingRepairs / VEHICLE_WEAPON_MAX_REPAIRS;
 }
 
 // Tamir için gereken malzeme: fiyat/100 (100₺'lik silah için 1 adet,
@@ -1408,15 +1417,15 @@ export const hourlyInvestmentUpdate = onSchedule(
     // Sıralama (oynaklık artan): Elmas < Hisse Senedi < Kripto.
     const diamondUp = Math.random() < 0.5;
     const diamondChangePct = diamondUp
-      ? Math.random() * 0.04 + 0.01 // %1-5 artış
+      ? Math.random() * 0.05 + 0.01 // %1-6 artış
       : -(Math.random() * 0.03 + 0.01); // %1-4 düşüş
     const stockUp = Math.random() < 0.5;
     const stockChangePct = stockUp
-      ? Math.random() * 0.09 + 0.01 // %1-10 artış
+      ? Math.random() * 0.11 + 0.01 // %1-12 artış
       : -(Math.random() * 0.07 + 0.01); // %1-8 düşüş
     const cryptoUp = Math.random() < 0.5;
     const cryptoChangePct = cryptoUp
-      ? Math.random() * 0.19 + 0.01 // %1-20 artış
+      ? Math.random() * 0.23 + 0.01 // %1-24 artış
       : -(Math.random() * 0.15 + 0.01); // %1-16 düşüş
 
     const diamondPrice = Math.max(1, Math.round(prev.diamondPrice * (1 + diamondChangePct)));
@@ -5357,7 +5366,7 @@ export const createListing = onCall(async (request) => {
           'Bu aracın ömrü bitti — satışa çıkarmadan önce tamir ettirmelisin.'
         );
       }
-      const vehicleMax = Math.round(baseVehiclePrice * vehicleUpgradeMult * lifeRatioOf(v));
+      const vehicleMax = Math.round(baseVehiclePrice * vehicleUpgradeMult * valueRatioOf(v));
       const vehicleMin = Math.floor(vehicleMax / 2);
       if (priceNum < vehicleMin || priceNum > vehicleMax) {
         throw new HttpsError(
@@ -5378,6 +5387,7 @@ export const createListing = onCall(async (request) => {
         vehicleGearUpgraded: Boolean(v.gearUpgraded),
         vehicleTankUpgraded: Boolean(v.tankUpgraded),
         vehicleLifeDays,
+        vehicleRepairsUsed: v.repairsUsed || 0,
         price: priceNum,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         sold: false,
@@ -5417,7 +5427,7 @@ export const createListing = onCall(async (request) => {
           'Bu silahın ömrü bitti — satışa çıkarmadan önce tamir ettirmelisin.'
         );
       }
-      const weaponMax = Math.round(baseWeaponPrice * weaponMult * lifeRatioOf(w));
+      const weaponMax = Math.round(baseWeaponPrice * weaponMult * valueRatioOf(w));
       const weaponMin = Math.floor(weaponMax / 2);
       if (priceNum < weaponMin || priceNum > weaponMax) {
         throw new HttpsError(
@@ -5436,6 +5446,7 @@ export const createListing = onCall(async (request) => {
         weaponLevel: w.level,
         weaponPower: w.power,
         weaponLifeDays,
+        weaponRepairsUsed: w.repairsUsed || 0,
         price: priceNum,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         sold: false,
@@ -5583,7 +5594,7 @@ export const instantSellListing = onCall(async (request) => {
           'Bu aracın ömrü bitti — satmadan önce tamir ettirmelisin.'
         );
       }
-      const minPrice = Math.floor((base * mult * lifeRatioOf(v)) / 2);
+      const minPrice = Math.floor((base * mult * valueRatioOf(v)) / 2);
       payout = minPrice;
       const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, minPrice);
       tx.update(sellerRef, {
@@ -5603,6 +5614,7 @@ export const instantSellListing = onCall(async (request) => {
         vehicleGearUpgraded: Boolean(v.gearUpgraded),
         vehicleTankUpgraded: Boolean(v.tankUpgraded),
         vehicleLifeDays,
+        vehicleRepairsUsed: v.repairsUsed || 0,
         price: Math.ceil(minPrice * 1.1),
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         sold: false,
@@ -5639,7 +5651,7 @@ export const instantSellListing = onCall(async (request) => {
           'Bu silahın ömrü bitti — satmadan önce tamir ettirmelisin.'
         );
       }
-      const minPrice = Math.floor((base * mult * lifeRatioOf(w)) / 2);
+      const minPrice = Math.floor((base * mult * valueRatioOf(w)) / 2);
       payout = minPrice;
       const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, minPrice);
       tx.update(sellerRef, {
@@ -5657,6 +5669,7 @@ export const instantSellListing = onCall(async (request) => {
         weaponLevel: w.level,
         weaponPower: w.power,
         weaponLifeDays,
+        weaponRepairsUsed: w.repairsUsed || 0,
         price: Math.ceil(minPrice * 1.1),
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         sold: false,

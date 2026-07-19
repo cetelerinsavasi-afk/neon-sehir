@@ -15,6 +15,7 @@ import {
 } from '../../services/gameActions';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
 import { weaponCatalog } from '../../data/weaponCatalog';
+import { MAX_REPAIRS } from '../VehicleCard/VehicleCard';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './MarketplaceScreen.css';
 
@@ -59,16 +60,20 @@ const MACHINE_PRICES = { tamirMalzemesi: 100000, silahUpgrade: 50000, arabaGelis
 
 const INITIAL_LIFE_DAYS = 30;
 
-function lifeRatio(item) {
-  const life = item?.lifeDays ?? INITIAL_LIFE_DAYS;
-  return Math.max(0, Math.min(1, life / INITIAL_LIFE_DAYS));
+// 2. el satış değeri artık ömürden değil KALAN TAMİR HAKKINDAN hesaplanıyor
+// (bkz. functions/index.js valueRatioOf) — burası sadece kullanıcıya fiyat
+// aralığı önermek için bir ayna, gerçek doğrulama backend'de yapılıyor.
+function valueRatio(item) {
+  const repairsUsed = item?.repairsUsed || 0;
+  const remainingRepairs = Math.max(0, MAX_REPAIRS - repairsUsed);
+  return remainingRepairs / MAX_REPAIRS;
 }
 
 function vehiclePriceRange(vehicle) {
   if ((vehicle.lifeDays ?? INITIAL_LIFE_DAYS) <= 0) return null;
   const base = vehicleCatalog.find((v) => v.id === vehicle.catalogId)?.price || 0;
   const mult = vehicle.gearUpgraded && vehicle.tankUpgraded ? 3 : vehicle.gearUpgraded || vehicle.tankUpgraded ? 2 : 1;
-  const max = Math.round(base * mult * lifeRatio(vehicle));
+  const max = Math.round(base * mult * valueRatio(vehicle));
   return { min: Math.floor(max / 2), max };
 }
 
@@ -76,7 +81,7 @@ function weaponPriceRange(weapon) {
   if ((weapon.lifeDays ?? INITIAL_LIFE_DAYS) <= 0) return null;
   const base = weaponCatalog.find((w) => w.id === weapon.catalogId)?.price || 0;
   const mult = weapon.level || 1;
-  const max = Math.round(base * mult * lifeRatio(weapon));
+  const max = Math.round(base * mult * valueRatio(weapon));
   return { min: Math.floor(max / 2), max };
 }
 
@@ -448,11 +453,16 @@ function ListingCard({ listing, isMine, busy, onCancel, onBuy }) {
   const isQuantifiable = listing.itemType === 'material';
   const isLifeItem = listing.itemType === 'vehicle' || listing.itemType === 'weapon';
   // Eski (ömür sisteminden önce açılmış) ilanlarda vehicleLifeDays/
-  // weaponLifeDays alanı olmayabilir — bu durumda tam ömür (50/50)
+  // weaponLifeDays alanı olmayabilir — bu durumda tam ömür (30/30)
   // varsayıyoruz, böylece bar HER araç/silah ilanında görünür.
   const lifeDays = isLifeItem
     ? (listing.itemType === 'vehicle' ? listing.vehicleLifeDays : listing.weaponLifeDays) ??
       INITIAL_LIFE_DAYS
+    : null;
+  // Aynı şekilde eski ilanlarda tamir hakkı alanı olmayabilir — bu durumda
+  // hiç kullanılmamış (10/10) varsayıyoruz.
+  const repairsUsed = isLifeItem
+    ? (listing.itemType === 'vehicle' ? listing.vehicleRepairsUsed : listing.weaponRepairsUsed) ?? 0
     : null;
 
   return (
@@ -476,7 +486,8 @@ function ListingCard({ listing, isMine, busy, onCancel, onBuy }) {
         {lifeDays != null && (
           <div className="market-listing-life-row">
             <span className="market-listing-life-label">
-              Ömür: {lifeDays} / {INITIAL_LIFE_DAYS} gün
+              Ömür: {lifeDays} / {INITIAL_LIFE_DAYS} gün · Tamir hakkı: {MAX_REPAIRS - repairsUsed}/
+              {MAX_REPAIRS}
             </span>
             <div className="market-listing-life-bar">
               <div
