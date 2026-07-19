@@ -775,15 +775,11 @@ export const dailyReset = onSchedule(
     }
 
     // -0.8) TEK SEFERLİK GÖÇ: araç/silah ömür tavanı 50 günden 30 güne
-    // düşürüldü — eski (50 güne göre yaşlanmış) kayıtları 29'a çeker.
-    // Aynı sebeple (frontend'e bağımlı kalmasın diye) burada da bir
-    // bayrak dokümanıyla garantiye alındı.
-    const lifeCapMigrationRef = db.collection('migrations').doc('vehicleWeaponLifeCap');
-    const lifeCapMigrationSnap = await lifeCapMigrationRef.get();
-    if (!lifeCapMigrationSnap.exists) {
-      await runVehicleWeaponLifeCapMigration();
-      await lifeCapMigrationRef.set({ ranAt: admin.firestore.FieldValue.serverTimestamp() });
-    }
+    // düşürüldü — eski (50 güne göre yaşlanmış) kayıtları yeni tavana
+    // çeker. runVehicleWeaponLifeCapMigration kendi içinde bir bayrak
+    // dokümanıyla (migrations/vehicleWeaponLifeCap) korunuyor, bu yüzden
+    // sistemde toplamda sadece bir kez gerçek iş yapar.
+    await runVehicleWeaponLifeCapMigration();
 
     // -0.5) Mining makineleri işçi gerektirmez — her gün otomatik olarak
     // sahibinin kripto bakiyesine rastgele (min-max) miktar eklenir.
@@ -3875,9 +3871,19 @@ export const migrateArabaGelistirmeUnification = onCall(async (request) => {
 // ömrü olanları düşürür — zaten 29 ya da altında olanlara dokunmaz. Her
 // oturum açmış oyuncu tetikleyebilir, zararsızdır (sadece aşırı yüksek
 // ömür değerlerini yeni tavana çeker).
-const LIFE_CAP_MIGRATION_TARGET = 29;
-
 async function runVehicleWeaponLifeCapMigration() {
+  // BUG DÜZELTMESİ: bu fonksiyon önceden App.jsx tarafından HER oturum
+  // açılışında çağrılıyordu ve kendi içinde bir "zaten çalıştı mı" kontrolü
+  // yoktu. "life > 29" koşulu YENİ tavan olan 30'u da kapsadığı için, her
+  // girişte (hatta başka bir oyuncunun girişinde bile — tüm koleksiyonu
+  // tarıyor) taze alınmış/tamir edilmiş 30 ömürlü araç ve silahlar da
+  // yanlışlıkla 29'a çekiliyordu. Artık tek bir bayrak dokümanıyla bu iş
+  // sistemde SADECE BİR KEZ (ilk çağrıda) yapılıyor, sonraki çağrılar anında
+  // no-op dönüyor.
+  const migrationRef = db.collection('migrations').doc('vehicleWeaponLifeCap');
+  const migrationSnap = await migrationRef.get();
+  if (migrationSnap.exists) return;
+
   for (const collName of ['vehicles', 'weapons']) {
     const snap = await db.collection(collName).get();
     const jobs = [];
@@ -3885,13 +3891,13 @@ async function runVehicleWeaponLifeCapMigration() {
       const item = docSnap.data();
       let life = item.lifeDays;
       let capped = false;
-      if (typeof life === 'number' && life > LIFE_CAP_MIGRATION_TARGET) {
-        life = LIFE_CAP_MIGRATION_TARGET;
+      if (typeof life === 'number' && life > VEHICLE_WEAPON_INITIAL_LIFE_DAYS) {
+        life = VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
         capped = true;
       } else if (life === undefined) {
         // Ömür alanı hiç yoksa (çok eski kayıt), eski tavan (50) sayılırdı
-        // — yeni tavana göre 29'a çekiyoruz.
-        life = LIFE_CAP_MIGRATION_TARGET;
+        // — yeni tavana (30) çekiyoruz.
+        life = VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
         capped = true;
       }
       if (capped) {
@@ -3922,6 +3928,8 @@ async function runVehicleWeaponLifeCapMigration() {
     });
     await Promise.all(jobs);
   }
+
+  await migrationRef.set({ ranAt: admin.firestore.FieldValue.serverTimestamp() });
 }
 
 // Manuel (anlık) tetikleme için ince bir onCall sarmalayıcı — asıl işi
