@@ -16,7 +16,12 @@ setGlobalOptions({ region: 'europe-west1' });
 // yerini alır. Her oyuncu en fazla 1 fabrika kurabilir (satılamaz), içine
 // istediği kadar makine koyabilir. Makineler (mining hariç) işçi gerektirir;
 // işçi "Üretim Yap"a bastıkça hem maaşını alır hem patronun envanterine
-// rastgele (min-max arası) ürün eklenir.
+// rastgele (min-max arası) ürün eklenir. Mining makinesi işçi gerektirmez
+// ama işçili makinelerden farklı olarak "tek slot" kısıtı da yoktur —
+// sahibi HER GÜN, sahip olduğu TÜM mining makinelerini (kaç tane olursa
+// olsun) ayrı ayrı "Üretim Yap" ile tetikleyebilir; tetiklenen üretim o
+// gece 00:00'da tamamlanır ve kripto bakiyesine eklenir (bkz. triggerMining
+// / dailyReset).
 // ---------------------------------------------------------------------------
 const FACTORY_CREATE_COST = 100000;
 const FACTORY_MIN_SALARY = 1000;
@@ -697,6 +702,38 @@ export const resignFromFactory = onCall(async (request) => {
   return { ok: true };
 });
 
+// triggerMining — mining makineleri işçi gerektirmez ama artık OTOMATİK
+// üretmiyor (kullanıcı revizesi): sahibi her gün bu fonksiyonu çağırıp
+// (Fabrika ekranındaki "Üretim Yap" butonu) o günkü üretimi TETİKLEMELİ.
+// Tetiklenen makine, o günün 00:00'ında (bir sonraki dailyReset'te)
+// rastgele bir miktar kripto üretir ve sahibine SMS gider — bkz.
+// dailyReset içindeki mining bloğu. Diğer makine türlerinden farkı: tek
+// bir "iş" slotuna bağlı değil, sahibi o gün TÜM mining makinelerini
+// (kaç tane olursa olsun) ayrı ayrı tetikleyebilir.
+export const triggerMining = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { machineId } = request.data || {};
+  const dateKey = istanbulDateKey();
+  const machineRef = db.collection('factories').doc(uid).collection('machines').doc(machineId);
+
+  await db.runTransaction(async (tx) => {
+    const machineSnap = await tx.get(machineRef);
+    if (!machineSnap.exists) {
+      throw new HttpsError('failed-precondition', 'Makine bulunamadı.');
+    }
+    const machine = machineSnap.data();
+    if (machine.type !== 'mining') {
+      throw new HttpsError('failed-precondition', 'Bu bir mining makinesi değil.');
+    }
+    if (machine.miningTriggeredDateKey === dateKey) {
+      throw new HttpsError('failed-precondition', 'Bugün bu makineyi zaten tetikledin.');
+    }
+    tx.update(machineRef, { miningTriggeredDateKey: dateKey });
+  });
+
+  return { ok: true };
+});
+
 // fireEmployee — sadece fabrika sahibi; işçi bugün üretim yaptıysa
 // çıkaramaz.
 export const fireEmployee = onCall(async (request) => {
@@ -790,12 +827,18 @@ export const dailyReset = onSchedule(
     // sistemde toplamda sadece bir kez gerçek iş yapar.
     await runVehicleWeaponLifeCapMigration();
 
-    // -0.5) Mining makineleri işçi gerektirmez — her gün otomatik olarak
-    // sahibinin kripto bakiyesine rastgele (min-max) miktar eklenir.
+    // -0.5) Mining makineleri işçi gerektirmez ama artık otomatik de
+    // üretmiyor (kullanıcı revizesi) — sadece sahibinin dün (bugünün
+    // 00:00'ından önceki gün) triggerMining ile TETİKLEDİĞİ makineler
+    // üretim yapar. Aynı sahibin birden çok tetiklenmiş makinesi varsa
+    // hepsi ayrı ayrı üretir, toplamı TEK bir SMS ile bildirilir.
     {
+      const prevDateKey = addDaysToDateKey(dateKey, -1);
       const miningSnap = await db.collectionGroup('machines').where('type', '==', 'mining').get();
+      const triggeredDocs = miningSnap.docs.filter((m) => m.data().miningTriggeredDateKey === prevDateKey);
       const miningJobs = [];
-      miningSnap.forEach((m) => {
+      const producedByOwner = new Map();
+      triggeredDocs.forEach((m) => {
         const factoryId = m.ref.parent.parent.id;
         const qty = randomInRange(MACHINE_TYPES.mining.min, MACHINE_TYPES.mining.max);
         miningJobs.push(
@@ -804,8 +847,26 @@ export const dailyReset = onSchedule(
             .doc(factoryId)
             .update({ cryptoHoldings: admin.firestore.FieldValue.increment(qty) })
         );
+        producedByOwner.set(factoryId, (producedByOwner.get(factoryId) || 0) + qty);
       });
       await Promise.all(miningJobs);
+
+      const smsJobs = [];
+      producedByOwner.forEach((totalQty, ownerId) => {
+        smsJobs.push(
+          db
+            .collection('users')
+            .doc(ownerId)
+            .collection('messages')
+            .add({
+              text: `Mining makinen bu gece ${totalQty.toFixed(4)} kripto üretti. Kripto bakiyene eklendi.`,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              read: false,
+              type: 'mining_production',
+            })
+        );
+      });
+      await Promise.all(smsJobs);
     }
 
     // -0.3) Araç/silah ömrü — her gün 1 azalır. Ömrü biten VE tamir hakkı
