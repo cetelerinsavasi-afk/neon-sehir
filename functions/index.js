@@ -1417,7 +1417,7 @@ export const dailyReset = onSchedule(
     }
 
     // 10) Şampiyona (Bölüm 8.7-ek): bir önceki günün her araç şampiyonasında
-    // en az turda bitiren oyuncu büyük ödülü (galeri fiyatının 1/10'u) kazanır.
+    // en az turda bitiren oyuncu büyük ödülü (galeri fiyatının 1/5'i) kazanır.
     {
       const champPrevDateKey = addDaysToDateKey(dateKey, -1);
       const catalogIds = Object.keys(VEHICLE_CATALOG);
@@ -4313,8 +4313,8 @@ const RACE_TURN_SECONDS = 10;
 const RACE_STATION_PRICES = { refuel: 10 };
 const RACE_OFFSITE_FUEL_PRICE = 100;
 const RACE_NITRO_PRICE = 50;
-// Şampiyona ödülü, aracın galeri satış fiyatının 1/10'u.
-const CHAMPIONSHIP_REWARD_RATIO = 0.1;
+// Şampiyona ödülü, aracın galeri satış fiyatının 1/5'i (2 katına çıkarıldı).
+const CHAMPIONSHIP_REWARD_RATIO = 0.2;
 
 function rollDie() {
   return Math.floor(Math.random() * 6) + 1;
