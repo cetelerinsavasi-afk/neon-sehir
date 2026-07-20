@@ -9,7 +9,7 @@ import InfoIcon from '../InfoIcon/InfoIcon';
 import './RaceTrackScreen.css';
 
 const RULES_TEXT =
-  'Sahip olduğun her araçla günde 1 kez şampiyonaya katılabilirsin. Rakibin yok, tek başına 300 karelik pisti tamamlıyorsun. Benzinin biterse o araçla bugünlük elendin. Pisti tamamlarsan kaç turda (kaç zar atışında) bitirdiğine bakılır — o araçla günün en az turunu yapan, gece 00:00\'da aracın galeri fiyatının 1/10\'u kadar altın kazanır.';
+  'Sahip olduğun her araçla günde 1 kez şampiyonaya katılabilirsin. Rakibin yok, tek başına 300 karelik pisti tamamlıyorsun. Benzinin biterse o araçla bugünlük elendin. Pisti tamamlarsan kaç turda (kaç zar atışında) bitirdiğine bakılır — o araçla günün en az turunu yapan, gece 00:00\'da aracın galeri fiyatının 1/5\'i kadar altın kazanır.';
 
 export default function ChampionshipScreen({ onEnterRace }) {
   const { vehicles } = useVehicles();
@@ -51,7 +51,7 @@ export default function ChampionshipScreen({ onEnterRace }) {
           const lifeDays = myVehicle?.lifeDays ?? INITIAL_LIFE_DAYS;
           const seized = Boolean(myVehicle?.seizedByBank);
           const usedToday = Boolean(actions[`championship_${catalogVehicle.id}`]);
-          const reward = Math.round(catalogVehicle.price / 10);
+          const reward = Math.round(catalogVehicle.price / 5);
           const daily = byCatalogId[String(catalogVehicle.id)] || {};
           const yesterday = daily.yesterday;
           const today = daily.today;
