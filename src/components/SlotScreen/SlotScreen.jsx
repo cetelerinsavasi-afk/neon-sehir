@@ -3,7 +3,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useDailyActions } from '../../hooks/useDailyActions';
 import { spinSlot } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
-import InfoIcon from '../InfoIcon/InfoIcon';
 import './SlotScreen.css';
 
 const SPIN_COST = 500;
@@ -32,9 +31,6 @@ function SlotSymbol({ symbol }) {
   if (symbol === 'placeholder') return <span>❓</span>;
   return <span>{SYMBOL_EMOJI[symbol] || '❓'}</span>;
 }
-
-const RULES_TEXT =
-  "3 makarada 5 farklı sembol (Yasaklı Madde, Silah Geliştirme Malzemesi, Tamir Malzemesi, Araba Geliştirme Malzemesi, Altın) tamamen rastgele çıkar. Hepsi farklıysa ödül yok. 2 aynı sembol gelirse küçük, 3 aynı sembol gelirse büyük ödül kazanırsın. Günde 3 çevirme ücretsiz, sonrası 500 altın.";
 
 export default function SlotScreen() {
   const { user } = useAuth();
@@ -126,7 +122,6 @@ export default function SlotScreen() {
     <div className="slot-screen">
       <p className="slot-title">
         Slot
-        <InfoIcon text={RULES_TEXT} />
       </p>
 
       <div className="slot-reels">

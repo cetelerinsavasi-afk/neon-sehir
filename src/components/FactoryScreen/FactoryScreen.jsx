@@ -500,13 +500,13 @@ function OwnerView({ factory, machines, player, myUid }) {
               {MACHINE_LABELS.mining} ×{miningMachines.length}
             </span>
             <div className="factory-machine-self">
-              <span className="factory-machine-status">
-                {miningAllTriggeredToday
-                  ? "✅ Üretim başladı — 00:00'da kripto bakiyene eklenecek."
-                  : miningTriggeredCount > 0
-                    ? `${miningTriggeredCount}/${miningMachines.length} tetiklendi — kalanları da tetikle.`
-                    : 'Her gün elle tetiklemen gerekir.'}
-              </span>
+              {(miningAllTriggeredToday || miningTriggeredCount > 0) && (
+                <span className="factory-machine-status">
+                  {miningAllTriggeredToday
+                    ? "✅ Üretim başladı — 00:00'da kripto bakiyene eklenecek."
+                    : `${miningTriggeredCount}/${miningMachines.length} için üretim başladı, kalanlar için de başlat.`}
+                </span>
+              )}
               <button
                 className="factory-btn small"
                 disabled={miningAllTriggeredToday || miningBusy}
