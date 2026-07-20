@@ -13,7 +13,7 @@ import {
   autoJoinFactory,
   produceAtFactory,
   resignFromFactory,
-  triggerMining,
+  triggerAllMining,
   fireEmployee,
   reassignEmployee,
 } from '../../services/gameActions';
@@ -406,7 +406,7 @@ function OwnerView({ factory, machines, player, myUid }) {
   const [produceBusy, setProduceBusy] = useState(false);
   const [produceResult, setProduceResult] = useState(null);
   const [resignBusy, setResignBusy] = useState(false);
-  const [miningBusy, setMiningBusy] = useState(null);
+  const [miningBusy, setMiningBusy] = useState(false);
   const dateKey = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Istanbul',
     year: 'numeric',
@@ -415,6 +415,10 @@ function OwnerView({ factory, machines, player, myUid }) {
   }).format(new Date());
 
   const hasAnyEmployment = !!player?.employment;
+  const miningMachines = machines.filter((m) => m.type === 'mining');
+  const otherMachines = machines.filter((m) => m.type !== 'mining');
+  const miningTriggeredCount = miningMachines.filter((m) => m.miningTriggeredDateKey === dateKey).length;
+  const miningAllTriggeredToday = miningMachines.length > 0 && miningTriggeredCount === miningMachines.length;
 
   const handleSelfJoin = async (machineId) => {
     setSelfBusy(machineId);
@@ -454,15 +458,15 @@ function OwnerView({ factory, machines, player, myUid }) {
     }
   };
 
-  const handleTriggerMining = async (machineId) => {
-    setMiningBusy(machineId);
+  const handleTriggerAllMining = async () => {
+    setMiningBusy(true);
     setSelfError(null);
     try {
-      await triggerMining(machineId);
+      await triggerAllMining();
     } catch (err) {
       setSelfError(err.message || 'Üretim tetiklenemedi.');
     } finally {
-      setMiningBusy(null);
+      setMiningBusy(false);
     }
   };
 
@@ -489,33 +493,37 @@ function OwnerView({ factory, machines, player, myUid }) {
 
       <div className="factory-machine-grid">
         {machines.length === 0 && <p className="factory-hint">Henüz bir makinen yok.</p>}
-        {machines.map((m) => {
-          const producedToday = m.lastProducedDateKey === dateKey || m.miningTriggeredDateKey === dateKey;
+        {miningMachines.length > 0 && (
+          <div className={`factory-machine-card${miningAllTriggeredToday ? ' produced' : ''}`}>
+            <span className="factory-machine-emoji">{MACHINE_EMOJI.mining}</span>
+            <span className="factory-machine-name">
+              {MACHINE_LABELS.mining} ×{miningMachines.length}
+            </span>
+            <div className="factory-machine-self">
+              <span className="factory-machine-status">
+                {miningAllTriggeredToday
+                  ? "✅ Üretim başladı — 00:00'da kripto bakiyene eklenecek."
+                  : miningTriggeredCount > 0
+                    ? `${miningTriggeredCount}/${miningMachines.length} tetiklendi — kalanları da tetikle.`
+                    : 'Her gün elle tetiklemen gerekir.'}
+              </span>
+              <button
+                className="factory-btn small"
+                disabled={miningAllTriggeredToday || miningBusy}
+                onClick={handleTriggerAllMining}
+              >
+                {miningBusy ? '…' : miningAllTriggeredToday ? 'Üretim Başladı' : 'Üretim Yap'}
+              </button>
+            </div>
+          </div>
+        )}
+        {otherMachines.map((m) => {
+          const producedToday = m.lastProducedDateKey === dateKey;
           return (
             <div key={m.id} className={`factory-machine-card${producedToday ? ' produced' : ''}`}>
               <span className="factory-machine-emoji">{MACHINE_EMOJI[m.type]}</span>
               <span className="factory-machine-name">{MACHINE_LABELS[m.type]}</span>
-              {m.type === 'mining' ? (
-                (() => {
-                  const miningTriggeredToday = m.miningTriggeredDateKey === dateKey;
-                  return (
-                    <div className="factory-machine-self">
-                      <span className="factory-machine-status">
-                        {miningTriggeredToday
-                          ? '✅ Üretim başladı — 00:00\'da kripto bakiyene eklenecek.'
-                          : 'Her gün elle tetiklemen gerekir.'}
-                      </span>
-                      <button
-                        className="factory-btn small"
-                        disabled={miningTriggeredToday || miningBusy === m.id}
-                        onClick={() => handleTriggerMining(m.id)}
-                      >
-                        {miningBusy === m.id ? '…' : miningTriggeredToday ? 'Üretim Başladı' : 'Üretim Yap'}
-                      </button>
-                    </div>
-                  );
-                })()
-              ) : m.workerId === myUid ? (
+              {m.workerId === myUid ? (
                 <div className="factory-machine-self">
                   <span className="factory-machine-status worker">
                     👤 Sen çalışıyorsun

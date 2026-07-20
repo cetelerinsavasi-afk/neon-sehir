@@ -31,7 +31,7 @@ export const produceAtFactory = () => httpsCallable(functions, 'produceAtFactory
 
 export const resignFromFactory = () => httpsCallable(functions, 'resignFromFactory')();
 
-export const triggerMining = (machineId) => httpsCallable(functions, 'triggerMining')({ machineId });
+export const triggerAllMining = () => httpsCallable(functions, 'triggerAllMining')();
 
 export const fireEmployee = (machineId) =>
   httpsCallable(functions, 'fireEmployee')({ machineId });

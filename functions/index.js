@@ -17,11 +17,11 @@ setGlobalOptions({ region: 'europe-west1' });
 // istediği kadar makine koyabilir. Makineler (mining hariç) işçi gerektirir;
 // işçi "Üretim Yap"a bastıkça hem maaşını alır hem patronun envanterine
 // rastgele (min-max arası) ürün eklenir. Mining makinesi işçi gerektirmez
-// ama işçili makinelerden farklı olarak "tek slot" kısıtı da yoktur —
-// sahibi HER GÜN, sahip olduğu TÜM mining makinelerini (kaç tane olursa
-// olsun) ayrı ayrı "Üretim Yap" ile tetikleyebilir; tetiklenen üretim o
-// gece 00:00'da tamamlanır ve kripto bakiyesine eklenir (bkz. triggerMining
-// / dailyReset).
+// ve arayüzde tek tek değil TEK bir panelde ("Mining Makinesi ×N")
+// gösterilir — sahibi HER GÜN bu panelin TEK "Üretim Yap" butonuyla, sahip
+// olduğu TÜM mining makinelerini (kaç tane olursa olsun) AYNI ANDA
+// tetikler; tetiklenen üretim o gece 00:00'da tamamlanır ve kripto
+// bakiyesine eklenir (bkz. triggerAllMining / dailyReset).
 // ---------------------------------------------------------------------------
 const FACTORY_CREATE_COST = 100000;
 const FACTORY_MIN_SALARY = 1000;
@@ -51,18 +51,24 @@ const VEHICLE_WEAPON_INITIAL_LIFE_DAYS = 30;
 const VEHICLE_WEAPON_MAX_REPAIRS = 10;
 const REPAIR_LIFE_BONUS_DAYS = 3;
 
-// 2. el satış değeri artık ÖMÜRDEN değil, KALAN TAMİR HAKKINDAN hesaplanır
-// (kullanıcı revizesi): ömür her gün otomatik azaldığı için tek başına
-// aracın/silahın gerçek durumunu yansıtmıyordu — ömrü 30 ama tamir hakkı
-// tükenmiş (bir daha hiç tamir edilemeyecek, yakında hurdaya çıkacak) bir
-// araç, ömrü 15 ama tamir hakkı dolu bir araçtan DAHA DEĞERSİZ olmalı,
-// eskiden tam tersiydi. Her tamir değeri %10 düşürür: 10 tamir hakkının
-// hepsi duruyorsa (hiç tamir edilmemiş) ratio 1 (tam fiyat), 5 hak
-// kullanılmışsa ratio 0.5 (yarı fiyat), 10'u da kullanılmışsa ratio 0.
+// 2. el satış değeri artık hem ÖMÜR hem KALAN TAMİR HAKKI birlikte
+// hesaplanır (kullanıcı revizesi, 2. sürüm): sadece tamir hakkına bakmak da
+// eksikti — mesela ömrü 0'a düşmüş (henüz tamir edilmemiş, tamir hakkı hâlâ
+// dolu) bir araç bu şekilde "tam fiyat" görünüyordu, ki o an fiilen
+// kullanılamaz durumda. Formül: (kalanTamirHakkı × 3) + kalanÖmür.
+// Maksimum: 10 tamir hakkının hepsi duruyorsa (10×3=30) + tam ömür (30) =
+// 60 → oran 1 (tam fiyat). Örnek: tamir hakkının hepsi dolu ama ömür 0 ise
+// 30/60 = ratio 0.5 (yarı fiyat) — mantıklı, çünkü tamir edilmeden
+// kullanılamıyor. Tamir hakkı bitmiş (0) ama ömür hâlâ tam (30) ise yine
+// 30/60 = ratio 0.5 — bu da mantıklı, çünkü bir daha hiç tamir edilemeyecek
+// ve yakında hurdaya çıkacak.
 function valueRatioOf(item) {
   const repairsUsed = item?.repairsUsed || 0;
   const remainingRepairs = Math.max(0, VEHICLE_WEAPON_MAX_REPAIRS - repairsUsed);
-  return remainingRepairs / VEHICLE_WEAPON_MAX_REPAIRS;
+  const lifeDays = Math.max(0, item?.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS);
+  const combined = remainingRepairs * REPAIR_LIFE_BONUS_DAYS + lifeDays;
+  const maxCombined = VEHICLE_WEAPON_MAX_REPAIRS * REPAIR_LIFE_BONUS_DAYS + VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
+  return Math.max(0, Math.min(1, combined / maxCombined));
 }
 
 // Tamir için gereken malzeme: fiyat/100 (100₺'lik silah için 1 adet,
@@ -710,28 +716,32 @@ export const resignFromFactory = onCall(async (request) => {
 // dailyReset içindeki mining bloğu. Diğer makine türlerinden farkı: tek
 // bir "iş" slotuna bağlı değil, sahibi o gün TÜM mining makinelerini
 // (kaç tane olursa olsun) ayrı ayrı tetikleyebilir.
-export const triggerMining = onCall(async (request) => {
+// triggerAllMining — mining makineleri işçi gerektirmez ama artık OTOMATİK
+// üretmiyor (kullanıcı revizesi): sahibi her gün bu fonksiyonu çağırıp
+// (Fabrika ekranındaki TEK "Üretim Yap" butonu) o günkü üretimi
+// TETİKLEMELİ. Kullanıcı revizesi 2. sürüm: mining makineleri artık ayrı
+// ayrı kartlar hâlinde değil, TEK bir panelde ("Mining Makinesi ×N")
+// gösteriliyor ve bu buton sahip olunan TÜM mining makinelerini (kaç tane
+// olursa olsun) TEK seferde tetikliyor. Tetiklenen makineler, o günün
+// 00:00'ında (bir sonraki dailyReset'te) rastgele bir miktar kripto üretir
+// ve sahibine TEK bir SMS gider — bkz. dailyReset içindeki mining bloğu.
+export const triggerAllMining = onCall(async (request) => {
   const uid = requireAuth(request);
-  const { machineId } = request.data || {};
   const dateKey = istanbulDateKey();
-  const machineRef = db.collection('factories').doc(uid).collection('machines').doc(machineId);
+  const machinesRef = db.collection('factories').doc(uid).collection('machines');
+  const machinesSnap = await machinesRef.where('type', '==', 'mining').get();
+  if (machinesSnap.empty) {
+    throw new HttpsError('failed-precondition', 'Hiç mining makinen yok.');
+  }
+  const untriggered = machinesSnap.docs.filter((m) => m.data().miningTriggeredDateKey !== dateKey);
+  if (untriggered.length === 0) {
+    throw new HttpsError('failed-precondition', 'Bugün zaten tüm mining makinelerini tetikledin.');
+  }
+  const batch = db.batch();
+  untriggered.forEach((m) => batch.update(m.ref, { miningTriggeredDateKey: dateKey }));
+  await batch.commit();
 
-  await db.runTransaction(async (tx) => {
-    const machineSnap = await tx.get(machineRef);
-    if (!machineSnap.exists) {
-      throw new HttpsError('failed-precondition', 'Makine bulunamadı.');
-    }
-    const machine = machineSnap.data();
-    if (machine.type !== 'mining') {
-      throw new HttpsError('failed-precondition', 'Bu bir mining makinesi değil.');
-    }
-    if (machine.miningTriggeredDateKey === dateKey) {
-      throw new HttpsError('failed-precondition', 'Bugün bu makineyi zaten tetikledin.');
-    }
-    tx.update(machineRef, { miningTriggeredDateKey: dateKey });
-  });
-
-  return { ok: true };
+  return { ok: true, triggeredCount: untriggered.length, totalCount: machinesSnap.size };
 });
 
 // fireEmployee — sadece fabrika sahibi; işçi bugün üretim yaptıysa
@@ -829,7 +839,7 @@ export const dailyReset = onSchedule(
 
     // -0.5) Mining makineleri işçi gerektirmez ama artık otomatik de
     // üretmiyor (kullanıcı revizesi) — sadece sahibinin dün (bugünün
-    // 00:00'ından önceki gün) triggerMining ile TETİKLEDİĞİ makineler
+    // 00:00'ından önceki gün) triggerAllMining ile TETİKLEDİĞİ makineler
     // üretim yapar. Aynı sahibin birden çok tetiklenmiş makinesi varsa
     // hepsi ayrı ayrı üretir, toplamı TEK bir SMS ile bildirilir.
     {

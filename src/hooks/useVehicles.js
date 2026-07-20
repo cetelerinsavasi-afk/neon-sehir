@@ -19,7 +19,14 @@ export function useVehicles() {
     const unsubscribe = onSnapshot(
       q,
       (snap) => {
-        setVehicles(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        // Galerideki sırayla (catalogId artan, yani fiyat artan) hizalanıyor
+        // — kullanıcı bir modelden en fazla 1 tane sahip olabildiği için bu
+        // sıralama her yerde (garaj, profil, bahisli yarış/antrenman araç
+        // seçimi, 2. el satış "senin ilanların" vb.) tutarlı ve tekrar
+        // eden bir düzen sağlıyor.
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        list.sort((a, b) => (a.catalogId || 0) - (b.catalogId || 0));
+        setVehicles(list);
         setLoading(false);
       },
       (err) => {

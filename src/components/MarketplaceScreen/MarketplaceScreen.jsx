@@ -59,18 +59,22 @@ const AMAZOR_PRICES = { tamirMalzemesi: 10, silahUpgrade: 100, arabaGelistirme: 
 const MACHINE_PRICES = { tamirMalzemesi: 100000, silahUpgrade: 50000, arabaGelistirme: 50000, yasakliMadde: 100000 };
 
 const INITIAL_LIFE_DAYS = 30;
+const REPAIR_LIFE_BONUS_DAYS = 3;
 
-// 2. el satış değeri artık ömürden değil KALAN TAMİR HAKKINDAN hesaplanıyor
-// (bkz. functions/index.js valueRatioOf) — burası sadece kullanıcıya fiyat
-// aralığı önermek için bir ayna, gerçek doğrulama backend'de yapılıyor.
+// 2. el satış değeri artık hem ömür hem kalan tamir hakkı birlikte
+// hesaplanıyor (bkz. functions/index.js valueRatioOf, 2. sürüm) — burası
+// sadece kullanıcıya fiyat aralığı önermek için bir ayna, gerçek doğrulama
+// backend'de yapılıyor.
 function valueRatio(item) {
   const repairsUsed = item?.repairsUsed || 0;
   const remainingRepairs = Math.max(0, MAX_REPAIRS - repairsUsed);
-  return remainingRepairs / MAX_REPAIRS;
+  const lifeDays = Math.max(0, item?.lifeDays ?? INITIAL_LIFE_DAYS);
+  const combined = remainingRepairs * REPAIR_LIFE_BONUS_DAYS + lifeDays;
+  const maxCombined = MAX_REPAIRS * REPAIR_LIFE_BONUS_DAYS + INITIAL_LIFE_DAYS;
+  return Math.max(0, Math.min(1, combined / maxCombined));
 }
 
 function vehiclePriceRange(vehicle) {
-  if ((vehicle.lifeDays ?? INITIAL_LIFE_DAYS) <= 0) return null;
   const base = vehicleCatalog.find((v) => v.id === vehicle.catalogId)?.price || 0;
   const mult = vehicle.gearUpgraded && vehicle.tankUpgraded ? 3 : vehicle.gearUpgraded || vehicle.tankUpgraded ? 2 : 1;
   const max = Math.round(base * mult * valueRatio(vehicle));
@@ -78,7 +82,6 @@ function vehiclePriceRange(vehicle) {
 }
 
 function weaponPriceRange(weapon) {
-  if ((weapon.lifeDays ?? INITIAL_LIFE_DAYS) <= 0) return null;
   const base = weaponCatalog.find((w) => w.id === weapon.catalogId)?.price || 0;
   const mult = weapon.level || 1;
   const max = Math.round(base * mult * valueRatio(weapon));
