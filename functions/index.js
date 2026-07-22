@@ -1488,15 +1488,15 @@ export const hourlyInvestmentUpdate = onSchedule(
     // Sıralama (oynaklık artan): Elmas < Hisse Senedi < Kripto.
     const diamondUp = Math.random() < 0.5;
     const diamondChangePct = diamondUp
-      ? Math.random() * 0.05 + 0.01 // %1-6 artış
+      ? Math.random() * 0.04 + 0.01 // %1-5 artış
       : -(Math.random() * 0.03 + 0.01); // %1-4 düşüş
     const stockUp = Math.random() < 0.5;
     const stockChangePct = stockUp
-      ? Math.random() * 0.11 + 0.01 // %1-12 artış
+      ? Math.random() * 0.09 + 0.01 // %1-10 artış
       : -(Math.random() * 0.07 + 0.01); // %1-8 düşüş
     const cryptoUp = Math.random() < 0.5;
     const cryptoChangePct = cryptoUp
-      ? Math.random() * 0.23 + 0.01 // %1-24 artış
+      ? Math.random() * 0.19 + 0.01 // %1-20 artış
       : -(Math.random() * 0.15 + 0.01); // %1-16 düşüş
 
     const diamondPrice = Math.max(1, Math.round(prev.diamondPrice * (1 + diamondChangePct)));
