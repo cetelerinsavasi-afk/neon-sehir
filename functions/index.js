@@ -1417,7 +1417,8 @@ export const dailyReset = onSchedule(
     }
 
     // 10) Şampiyona (Bölüm 8.7-ek): bir önceki günün her araç şampiyonasında
-    // en az turda bitiren oyuncu büyük ödülü (galeri fiyatının 1/5'i) kazanır.
+    // en az turda bitiren TÜM oyuncular büyük ödülü (galeri fiyatının 1/5'i,
+    // bölünmeden, herkese tam) kazanır.
     {
       const champPrevDateKey = addDaysToDateKey(dateKey, -1);
       const catalogIds = Object.keys(VEHICLE_CATALOG);
@@ -1430,29 +1431,36 @@ export const dailyReset = onSchedule(
           await champRef.update({ finalized: true });
           continue;
         }
+        const leaders =
+          champ.leaders && champ.leaders.length
+            ? champ.leaders
+            : [{ uid: champ.leaderUid, name: champ.leaderName, vehicleModel: champ.leaderVehicleModel }];
         const reward = Math.round(
           (VEHICLE_CATALOG[catalogId]?.price || 0) * CHAMPIONSHIP_REWARD_RATIO
         );
-        const winnerRef = db.collection('users').doc(champ.leaderUid);
-        const winnerSnap = await winnerRef.get();
-        const { goldDelta, debtDelta } = splitIncomeForDebt(winnerSnap.data()?.debtToState, reward);
-        await winnerRef.update({
-          gold: admin.firestore.FieldValue.increment(goldDelta),
-          debtToState: admin.firestore.FieldValue.increment(debtDelta),
-        });
+        for (const leader of leaders) {
+          const winnerRef = db.collection('users').doc(leader.uid);
+          const winnerSnap = await winnerRef.get();
+          const { goldDelta, debtDelta } = splitIncomeForDebt(winnerSnap.data()?.debtToState, reward);
+          await winnerRef.update({
+            gold: admin.firestore.FieldValue.increment(goldDelta),
+            debtToState: admin.firestore.FieldValue.increment(debtDelta),
+          });
+          await winnerRef.collection('messages').add({
+            text: `Tebrikler! ${VEHICLE_CATALOG[catalogId]?.name} şampiyonasını ${champ.leaderTurns} turda tamamlayarak kazandın. Ödül: ${reward.toLocaleString('tr-TR')} altın.`,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            read: false,
+            type: 'championship_win',
+          });
+        }
         await champRef.update({
           finalized: true,
           winnerUid: champ.leaderUid,
           winnerName: champ.leaderName,
           winnerVehicleModel: champ.leaderVehicleModel,
           winnerTurns: champ.leaderTurns,
+          winners: leaders,
           rewardAmount: reward,
-        });
-        await winnerRef.collection('messages').add({
-          text: `Tebrikler! ${VEHICLE_CATALOG[catalogId]?.name} şampiyonasını ${champ.leaderTurns} turda tamamlayarak kazandın. Ödül: ${reward.toLocaleString('tr-TR')} altın.`,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          read: false,
-          type: 'championship_win',
         });
       }
     }
@@ -5267,6 +5275,7 @@ export const championshipRollDice = onCall(async (request) => {
 
       const champDaily = champDailySnap.exists ? champDailySnap.data() : null;
       if (!champDaily || !champDaily.leaderTurns || turnsUsed < champDaily.leaderTurns) {
+        // Yeni rekor: liste sıfırlanır, bu oyuncu tek (ilk) lider olur.
         tx.set(
           champDailyRef,
           {
@@ -5276,10 +5285,33 @@ export const championshipRollDice = onCall(async (request) => {
             leaderName: me.displayName,
             leaderVehicleModel: me.vehicleModel,
             leaderTurns: turnsUsed,
+            leaders: [{ uid, name: me.displayName, vehicleModel: me.vehicleModel }],
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
           { merge: true }
         );
+      } else if (turnsUsed === champDaily.leaderTurns) {
+        // Aynı tur sayısıyla bitirdi: mevcut lider(ler)e eklenir, ödül
+        // bölünmeden hepsine gidecek. leaderUid/leaderName İLK bitiren
+        // kişide sabit kalır (dünün kazananında tek isim göstermek için).
+        const existingLeaders =
+          champDaily.leaders && champDaily.leaders.length
+            ? champDaily.leaders
+            : champDaily.leaderUid
+              ? [
+                  {
+                    uid: champDaily.leaderUid,
+                    name: champDaily.leaderName,
+                    vehicleModel: champDaily.leaderVehicleModel,
+                  },
+                ]
+              : [];
+        if (!existingLeaders.some((l) => l.uid === uid)) {
+          tx.update(champDailyRef, {
+            leaders: [...existingLeaders, { uid, name: me.displayName, vehicleModel: me.vehicleModel }],
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        }
       }
 
       outcome = {

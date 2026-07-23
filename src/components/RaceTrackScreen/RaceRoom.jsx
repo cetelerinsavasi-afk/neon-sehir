@@ -29,6 +29,9 @@ const CHAMPIONSHIP_RULES_TEXT =
 // Yardımcı ipucu — birden fazla durum aynı anda geçerli olabileceği için
 // öncelik sırasına göre TEK bir mesaj seçilir (en acil/işe yarar olan üstte).
 function getHintInfo(me, other, atStation) {
+  if (me.position >= 300) {
+    return { text: '🏁 Pisti tamamladın, rakibinin son hamlesi bekleniyor…', tone: 'info' };
+  }
   if (me.position === 0) return { text: '🏁 Bitiş çizgisini ilk geçen kazanır!', tone: 'info' };
   if (atStation) return { text: '📍 İstasyondasın — ucuza benzin alabilirsin!', tone: 'info' };
   if (me.fuel < 20) return { text: '⚠️ Benzinin azalıyor, doldurmalısın!', tone: 'warning' };

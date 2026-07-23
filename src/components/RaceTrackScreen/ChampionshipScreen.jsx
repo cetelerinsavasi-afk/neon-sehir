@@ -17,6 +17,16 @@ export default function ChampionshipScreen({ onEnterRace }) {
   const { byCatalogId } = useChampionshipDaily();
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState(null);
+  const [expandedIds, setExpandedIds] = useState(() => new Set());
+
+  const toggleExpanded = (catalogId) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(catalogId)) next.delete(catalogId);
+      else next.add(catalogId);
+      return next;
+    });
+  };
 
   const handleJoin = async (vehicle) => {
     setBusyId(vehicle.id);
@@ -55,6 +65,14 @@ export default function ChampionshipScreen({ onEnterRace }) {
           const daily = byCatalogId[String(catalogVehicle.id)] || {};
           const yesterday = daily.yesterday;
           const today = daily.today;
+          const todayLeaders =
+            today?.leaders && today.leaders.length
+              ? today.leaders
+              : today?.leaderUid
+                ? [{ uid: today.leaderUid, name: today.leaderName, vehicleModel: today.leaderVehicleModel }]
+                : [];
+          const hasTiedLeaders = todayLeaders.length > 1;
+          const isExpanded = expandedIds.has(catalogVehicle.id);
 
           let statusLabel = 'Şampiyonaya Katıl';
           let disabledReason = null;
@@ -98,13 +116,34 @@ export default function ChampionshipScreen({ onEnterRace }) {
                 <p className="champ-card-stat">
                   Günün lideri:{' '}
                   {today?.leaderUid ? (
-                    <strong>
-                      {today.leaderName} — {today.leaderTurns} tur
-                    </strong>
+                    <>
+                      <strong>
+                        {today.leaderName} — {today.leaderTurns} tur
+                      </strong>
+                      {hasTiedLeaders && (
+                        <button
+                          type="button"
+                          className="champ-leaders-toggle"
+                          onClick={() => toggleExpanded(catalogVehicle.id)}
+                        >
+                          {isExpanded ? '▲ gizle' : `▼ +${todayLeaders.length - 1} kişi daha aynı turda`}
+                        </button>
+                      )}
+                    </>
                   ) : (
                     'Henüz kimse tamamlamadı'
                   )}
                 </p>
+                {hasTiedLeaders && isExpanded && (
+                  <div className="champ-leaders-panel">
+                    {todayLeaders.map((leader) => (
+                      <p key={leader.uid} className="champ-leaders-panel-item">
+                        {leader.name}
+                        {leader.vehicleModel ? ` — ${leader.vehicleModel}` : ''}
+                      </p>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <button

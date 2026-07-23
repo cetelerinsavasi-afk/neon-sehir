@@ -876,6 +876,34 @@
   color: var(--text);
 }
 
+.champ-leaders-toggle {
+  margin-left: 6px;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 10px;
+  color: var(--accent, #4fd1ff);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.champ-leaders-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+}
+
+.champ-leaders-panel-item {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
 /* ---------------------------------------------------------------------
  * Şampiyona (tek kişilik) yarış ekranı — RaceRoom.jsx'in "other" oyuncu
  * olmadan render ettiği hal.
