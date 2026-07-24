@@ -110,6 +110,16 @@ export function useMapPanZoom(viewportRef, wrapRef, onTap) {
   }, [clampTransform]);
 
   const endPointer = useCallback((e) => {
+    // Android'de kısa/hızlı dokunuşlarda tarayıcı bazen `pointerup` yerine
+    // `pointercancel` gönderiyor (native sürükleme/kaydırma algılayıcısı
+    // hızlı dokunuşu belirsiz bulup iptal ediyor). `pointercancel`
+    // event'inin clientX/clientY'si spesifikasyon gereği GÜVENİLİR DEĞİL —
+    // pratikte çoğu Android/Chrome sürümünde 0,0 geliyor. Bu yüzden
+    // koordinat için event'in kendisine değil, pointerdown/pointermove'da
+    // sürekli güncellenen son GERÇEK parmak konumuna güveniyoruz. Bu, kısa
+    // bir dokunuşun "hiçbir şey olmamış gibi" kaybolmasını (ve kullanıcının
+    // parmağını basılı tutmak zorunda kalmasını) önlüyor.
+    const lastKnown = pointers.current.get(e.pointerId);
     pointers.current.delete(e.pointerId);
 
     // Tek parmak/fare ile, ciddi bir hareket olmadan bırakıldıysa: bu bir
@@ -119,7 +129,9 @@ export function useMapPanZoom(viewportRef, wrapRef, onTap) {
       movedDistance.current <= TAP_THRESHOLD &&
       pointers.current.size === 0
     ) {
-      onTap?.(e.clientX, e.clientY);
+      const x = lastKnown?.x ?? e.clientX;
+      const y = lastKnown?.y ?? e.clientY;
+      onTap?.(x, y);
     }
 
     if (pointers.current.size === 1) {
