@@ -10,6 +10,20 @@ const TAP_THRESHOLD = 20; // px — bunun altındaki hareket "tıklama/dokunma" 
 // kıpırdatmadan basılı tutmak zorunda kalıyormuş gibi hissediyordu. 20px,
 // gerçek harita sürüklemesini (tipik olarak 30px+) hâlâ net ayırt ederken
 // dokunma hassasiyetindeki cihaz farklarını tolere ediyor.
+//
+// EK DÜZELTME: 20px'e çıkarmak bile bazı Android/Chrome sürümlerinde
+// yetersiz kaldı — raporlara göre kullanıcı parmağını hiç kıpırdatmadan
+// bıraktığı hâlde "basılı tutmak" gerekiyormuş gibi hissediliyordu. Kök
+// neden: Android'in dokunma sensörü, basılı tutulan parmağın temas
+// alanı/basıncı değiştikçe (ki bu her zaman olur) sahte küçük hareketler
+// üretiyor VE bu üretim ilk birkaç on milisaniyede daha yoğun. Sadece
+// mesafeye bakmak yerine artık SÜRE de dikkate alınıyor: dokunuş çok kısa
+// sürdüyse (gerçek bir sürükleme insan reflekleriyle bu kadar hızlı
+// tamamlanamaz), daha gevşek bir mesafe toleransıyla yine de "dokunma"
+// sayılıyor. Bu, gerçek hızlı sürüklemeleri (genelde daha uzun mesafeli)
+// yanlışlıkla tıklama saymaz ama Android'in sensör gürültüsünü tolere eder.
+const TAP_TIME_THRESHOLD_MS = 250; // bu sürenin altında biten dokunuşlar süre bazlı toleranstan yararlanır.
+const TAP_TIME_DISTANCE_CAP = 40; // süre bazlı toleranstaki üst mesafe sınırı (px).
 
 /**
  * useMapPanZoom — tek elle sürükleme, iki parmakla pinch-zoom (mobil),
@@ -42,6 +56,7 @@ export function useMapPanZoom(viewportRef, wrapRef, onTap) {
   const pinchStart = useRef(null);
   const movedDistance = useRef(0);
   const wasMultiTouch = useRef(false);
+  const singlePointerDownAt = useRef(0);
 
   const clampTransform = useCallback((next) => {
     const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, next.scale));
@@ -69,6 +84,7 @@ export function useMapPanZoom(viewportRef, wrapRef, onTap) {
     if (pointers.current.size === 1) {
       movedDistance.current = 0;
       wasMultiTouch.current = false;
+      singlePointerDownAt.current = Date.now();
       dragStart.current = {
         x: e.clientX,
         y: e.clientY,
@@ -124,11 +140,14 @@ export function useMapPanZoom(viewportRef, wrapRef, onTap) {
 
     // Tek parmak/fare ile, ciddi bir hareket olmadan bırakıldıysa: bu bir
     // "dokunma/tıklama"dır — dışarıya bildir, CityMap hangi bölge olduğunu bulsun.
-    if (
-      !wasMultiTouch.current &&
-      movedDistance.current <= TAP_THRESHOLD &&
-      pointers.current.size === 0
-    ) {
+    // Ayrıca dokunuş çok kısa sürdüyse (TAP_TIME_THRESHOLD_MS altında), daha
+    // gevşek bir mesafe toleransıyla da tıklama sayılır — bkz. TAP_THRESHOLD
+    // üstündeki not (Android sensör gürültüsü).
+    const elapsed = Date.now() - singlePointerDownAt.current;
+    const isTap =
+      movedDistance.current <= TAP_THRESHOLD ||
+      (elapsed <= TAP_TIME_THRESHOLD_MS && movedDistance.current <= TAP_TIME_DISTANCE_CAP);
+    if (!wasMultiTouch.current && isTap && pointers.current.size === 0) {
       const x = lastKnown?.x ?? e.clientX;
       const y = lastKnown?.y ?? e.clientY;
       onTap?.(x, y);

@@ -40,6 +40,9 @@ export default function SlotScreen() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  // "Seri" (hızlı) mod: oyuna her girişte kapalı başlar, sadece bu ekranda
+  // kalındığı sürece açık kalır — kalıcı olarak saklanmıyor.
+  const [fastMode, setFastMode] = useState(false);
   const timeoutsRef = useRef([]);
   const intervalsRef = useRef([]);
 
@@ -66,6 +69,25 @@ export default function SlotScreen() {
 
     intervalsRef.current.forEach(clearInterval);
     timeoutsRef.current.forEach(clearTimeout);
+
+    // Seri mod: makara animasyonunu tamamen atla, sonucu basar basmaz göster.
+    if (fastMode) {
+      setSpinning([false, false, false]);
+      let res;
+      try {
+        res = await spinSlot();
+      } catch (err) {
+        setError(err.message || 'Çevirme başarısız.');
+        setBusy(false);
+        return;
+      }
+      const { reels, matchCount, prizeSymbol, prizeAmount, free } = res.data;
+      setDisplayed(reels);
+      setResult({ matchCount, prizeSymbol, prizeAmount, free });
+      setBusy(false);
+      return;
+    }
+
     setSpinning([true, true, true]);
 
     const intervals = [0, 1, 2].map((i) =>
@@ -120,9 +142,20 @@ export default function SlotScreen() {
 
   return (
     <div className="slot-screen">
-      <p className="slot-title">
-        Slot
-      </p>
+      <div className="slot-header">
+        <p className="slot-title">
+          Slot
+        </p>
+        <button
+          type="button"
+          className={`slot-fast-toggle${fastMode ? ' active' : ''}`}
+          onClick={() => setFastMode((v) => !v)}
+          disabled={busy}
+          title="Aktifken çevirme animasyonu olmadan sonucu anında gösterir"
+        >
+          Seri
+        </button>
+      </div>
 
       <div className="slot-reels">
         {displayed.map((sym, i) => (

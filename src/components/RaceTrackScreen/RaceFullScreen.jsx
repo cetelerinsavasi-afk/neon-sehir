@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useRaceRoomById } from '../../hooks/useRaceRoomById';
+import { useFirestoreResume } from '../../hooks/useFirestoreResume';
 import { forfeitRace } from '../../services/gameActions';
 import RaceRoom from './RaceRoom';
 import './RaceFullScreen.css';
@@ -8,6 +9,10 @@ import './RaceFullScreen.css';
 // bir yuvarlağa küçültür — oda hâlâ aktif kalır, harita gezilebilir.
 // onExit: odadan TAMAMEN çıkar (yarış bittiğinde ya da forfeit sonrası).
 export default function RaceFullScreen({ roomId, myUid, onCollapse, onExit }) {
+  // Yarış ekranına her girişte Firestore ağını taze bir bağlantıya
+  // zorlar — "ekrana girince başta lag oluyor, sonra düzeliyor" hissinin
+  // kök nedeni altta yatan bağlantının durağanlaşmış olmasıydı.
+  useFirestoreResume({ runOnMount: true });
   const { room } = useRaceRoomById(roomId);
   const [confirmingExit, setConfirmingExit] = useState(false);
   const [busy, setBusy] = useState(false);

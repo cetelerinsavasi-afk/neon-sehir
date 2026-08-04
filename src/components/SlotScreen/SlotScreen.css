@@ -6,6 +6,15 @@
   padding: 8px 0;
 }
 
+.slot-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  position: relative;
+}
+
 .slot-title {
   margin: 0;
   font-size: 16px;
@@ -13,6 +22,31 @@
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.slot-fast-toggle {
+  position: absolute;
+  right: 0;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border);
+  background: #0c1018;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.slot-fast-toggle.active {
+  background: var(--neon-cyan);
+  color: #05070c;
+  border-color: var(--neon-cyan);
+}
+
+.slot-fast-toggle:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .slot-reels {
