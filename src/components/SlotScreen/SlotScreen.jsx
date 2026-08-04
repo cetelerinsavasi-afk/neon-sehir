@@ -69,6 +69,25 @@ export default function SlotScreen() {
 
     intervalsRef.current.forEach(clearInterval);
     timeoutsRef.current.forEach(clearTimeout);
+
+    // Seri mod: makara animasyonunu tamamen atla, sonucu basar basmaz göster.
+    if (fastMode) {
+      setSpinning([false, false, false]);
+      let res;
+      try {
+        res = await spinSlot();
+      } catch (err) {
+        setError(err.message || 'Çevirme başarısız.');
+        setBusy(false);
+        return;
+      }
+      const { reels, matchCount, prizeSymbol, prizeAmount, free } = res.data;
+      setDisplayed(reels);
+      setResult({ matchCount, prizeSymbol, prizeAmount, free });
+      setBusy(false);
+      return;
+    }
+
     setSpinning([true, true, true]);
 
     const intervals = [0, 1, 2].map((i) =>
