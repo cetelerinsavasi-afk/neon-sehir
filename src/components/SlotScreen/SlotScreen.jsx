@@ -40,6 +40,9 @@ export default function SlotScreen() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  // "Seri" (hızlı) mod: oyuna her girişte kapalı başlar, sadece bu ekranda
+  // kalındığı sürece açık kalır — kalıcı olarak saklanmıyor.
+  const [fastMode, setFastMode] = useState(false);
   const timeoutsRef = useRef([]);
   const intervalsRef = useRef([]);
 
@@ -69,13 +72,19 @@ export default function SlotScreen() {
     setSpinning([true, true, true]);
 
     const intervals = [0, 1, 2].map((i) =>
-      setInterval(() => {
-        setDisplayed((prev) => {
-          const next = [...prev];
-          next[i] = ALL_SYMBOLS[Math.floor(Math.random() * ALL_SYMBOLS.length)];
-          return next;
-        });
-      }, 80)
+      setInterval(
+        () => {
+          setDisplayed((prev) => {
+            const next = [...prev];
+            next[i] = ALL_SYMBOLS[Math.floor(Math.random() * ALL_SYMBOLS.length)];
+            return next;
+          });
+        },
+        // Seri modda makaralar daha hızlı karışsın ki kısa sürede bile
+        // gerçekten "dönüyor" gibi hissettirsin (sabit son kareye yapışıp
+        // kalmasın).
+        fastMode ? 40 : 80
+      )
     );
     intervalsRef.current = intervals;
 
@@ -113,16 +122,33 @@ export default function SlotScreen() {
       timeoutsRef.current.push(t);
     };
 
-    stopReel(0, 1200, false);
-    stopReel(1, 2200, false);
-    stopReel(2, 3200, true);
+    // Seri mod: makaralar hâlâ görünür şekilde dönüyor ama toplam ~1
+    // saniyede art arda hızlıca duruyor — tamamen animasyonsuz "anında
+    // sonuç" slot hissini bozuyordu, bu yüzden kısa ama gerçek bir dönüş
+    // bırakıldı. Normal modda ise klasik yavaş/gerilimli duruş sırası
+    // korunuyor.
+    const [d0, d1, d2] = fastMode ? [300, 650, 1000] : [1200, 2200, 3200];
+    stopReel(0, d0, false);
+    stopReel(1, d1, false);
+    stopReel(2, d2, true);
   };
 
   return (
     <div className="slot-screen">
-      <p className="slot-title">
-        Slot
-      </p>
+      <div className="slot-header">
+        <p className="slot-title">
+          Slot
+        </p>
+        <button
+          type="button"
+          className={`slot-fast-toggle${fastMode ? ' active' : ''}`}
+          onClick={() => setFastMode((v) => !v)}
+          disabled={busy}
+          title="Aktifken çevirme animasyonu olmadan sonucu anında gösterir"
+        >
+          Seri
+        </button>
+      </div>
 
       <div className="slot-reels">
         {displayed.map((sym, i) => (

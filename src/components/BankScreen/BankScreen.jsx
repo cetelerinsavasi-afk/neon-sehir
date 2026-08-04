@@ -37,7 +37,28 @@ function ChangeBadge({ pct }) {
 // etmeyip tekrar Al/Sat'a basmayı daha mantıklı bulduğu için: panel zaten
 // açıkken AYNI butona tekrar basmak artık paneli KAPATMIYOR, bir miktar
 // girilmişse doğrudan İŞLEMİ ONAYLIYOR.
-function TradeToggle({ buyLabel, sellLabel, onBuy, onSell, unitPrice, busy, maxBuy, maxSell }) {
+const DEFAULT_QUICK_AMOUNTS = [10, 100, 1000, 10000];
+// Elmas/Hisse/Kripto Al-Sat panellerinde büyük miktarları tek tıkla eklemek için.
+const INVESTMENT_QUICK_AMOUNTS = [
+  10,
+  100,
+  1000,
+  10000,
+  { value: 100000, label: '100.000' },
+  { value: 1000000, label: '1M' },
+];
+
+function TradeToggle({
+  buyLabel,
+  sellLabel,
+  onBuy,
+  onSell,
+  unitPrice,
+  busy,
+  maxBuy,
+  maxSell,
+  quickAmounts = DEFAULT_QUICK_AMOUNTS,
+}) {
   const [mode, setMode] = useState(null); // 'buy' | 'sell' | null
   const [amount, setAmount] = useState(0);
   const preview = unitPrice && amount > 0 ? amount / unitPrice : null;
@@ -82,7 +103,7 @@ function TradeToggle({ buyLabel, sellLabel, onBuy, onSell, unitPrice, busy, maxB
             value={amount}
             onChange={setAmount}
             max={mode === 'buy' ? maxBuy : maxSell}
-            quickAmounts={[10, 100, 1000, 10000]}
+            quickAmounts={quickAmounts}
           />
           {preview !== null && (
             <span className="bank-amount-preview">≈ {formatUnits(preview)} adet</span>
@@ -139,6 +160,7 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
           maxSell={bankBalance}
           onBuy={(amount) => run('deposit', () => depositToBank(amount))}
           onSell={(amount) => run('withdraw', () => withdrawFromBank(amount))}
+          quickAmounts={INVESTMENT_QUICK_AMOUNTS}
         />
       </div>
 
@@ -168,6 +190,7 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
           maxSell={diamondValue}
           onBuy={(amount) => run('buy-diamond', () => buyInvestment('diamond', amount))}
           onSell={(amount) => run('sell-diamond', () => sellInvestment('diamond', amount))}
+          quickAmounts={INVESTMENT_QUICK_AMOUNTS}
         />
         {diamondHoldings > 0 && (
           <button
@@ -206,6 +229,7 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
           maxSell={stockValue}
           onBuy={(amount) => run('buy-stock', () => buyInvestment('stock', amount))}
           onSell={(amount) => run('sell-stock', () => sellInvestment('stock', amount))}
+          quickAmounts={INVESTMENT_QUICK_AMOUNTS}
         />
         {stockHoldings > 0 && (
           <button
@@ -244,6 +268,7 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
           maxSell={cryptoValue}
           onBuy={(amount) => run('buy-crypto', () => buyInvestment('crypto', amount))}
           onSell={(amount) => run('sell-crypto', () => sellInvestment('crypto', amount))}
+          quickAmounts={INVESTMENT_QUICK_AMOUNTS}
         />
         {cryptoHoldings > 0 && (
           <button

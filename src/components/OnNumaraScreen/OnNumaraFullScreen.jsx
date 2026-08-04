@@ -1,8 +1,13 @@
 import { leaveOnNumaraTable } from '../../services/gameActions';
+import { useFirestoreResume } from '../../hooks/useFirestoreResume';
 import OnNumaraTable from './OnNumaraTable';
 import './OnNumaraFullScreen.css';
 
 export default function OnNumaraFullScreen({ tableId, myUid, onExit }) {
+  // Yarış ekranındaki ile aynı sebep: ekrana girişte başta yaşanan lag'i
+  // önlemek için Firestore ağını taze bir bağlantıya zorla.
+  useFirestoreResume({ runOnMount: true });
+
   const handleClose = async () => {
     try {
       await leaveOnNumaraTable(tableId);

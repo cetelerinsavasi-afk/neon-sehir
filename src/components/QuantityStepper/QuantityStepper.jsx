@@ -34,16 +34,22 @@ export default function QuantityStepper({ value, onChange, max, step = 1, quickA
       </div>
       {(quickAmounts.length > 0 || num > 0) && (
         <div className="qty-stepper-quick">
-          {quickAmounts.map((q) => (
-            <button
-              key={q}
-              type="button"
-              className="qty-stepper-quick-btn"
-              onClick={() => onChange(clamp(num + q))}
-            >
-              {q}
-            </button>
-          ))}
+          {quickAmounts.map((q) => {
+            // Her öğe düz bir sayı ya da { value, label } şeklinde olabilir,
+            // böylece 100.000 / 1M gibi kısaltılmış etiketler gösterebiliriz.
+            const value = typeof q === 'object' ? q.value : q;
+            const label = typeof q === 'object' ? q.label : q;
+            return (
+              <button
+                key={value}
+                type="button"
+                className="qty-stepper-quick-btn"
+                onClick={() => onChange(clamp(num + value))}
+              >
+                {label}
+              </button>
+            );
+          })}
           {max !== undefined && max > 0 && (
             <button type="button" className="qty-stepper-quick-btn" onClick={() => onChange(max)}>
               Hepsi ({max})

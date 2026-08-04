@@ -15,6 +15,7 @@ import ProfileFullScreen from './components/ProfileFullScreen/ProfileFullScreen'
 import TopNotificationBanner from './components/TopNotificationBanner/TopNotificationBanner';
 import { usePlayer } from './hooks/usePlayer';
 import { useMyActiveRaceRoom } from './hooks/useMyActiveRaceRoom';
+import { useFirestoreResume } from './hooks/useFirestoreResume';
 import { migrateArabaGelistirmeUnification, migrateVehicleWeaponLifeCap } from './services/gameActions';
 import { regions } from './data/regions';
 import './styles/theme.css';
@@ -47,6 +48,10 @@ function GameShell() {
   const [activeTableId, setActiveTableId] = useState(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const { player } = usePlayer();
+
+  // Uygulama arka plana alınıp geri geldiğinde (özellikle iOS'ta) Firestore
+  // dinleyicilerinin durağanlaşmasını önlemek için — bkz. hook içindeki not.
+  useFirestoreResume();
 
   // Depo + Vites Geliştirme Malzemeleri birleştirme geçişini, kullanıcı
   // giriş yapar yapmaz sessizce (bir kez) tetikle — hangi ekranı önce

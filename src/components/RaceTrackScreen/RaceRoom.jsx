@@ -98,6 +98,15 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
   // GERÇEKTEN 2. kez zar atabiliyordu. Aynı "onaylanana kadar kilitli
   // kal" çözümünü burada da uyguluyoruz.
   const pendingConfirmRef = useRef(null);
+  // Nitro satın alma da aynı gecikme sorununu yaşıyordu: buton basılır
+  // basılmaz sunucudaki 'nitroActive' anında true olsa da, Firestore
+  // dinleyicisinin bunu yansıtması bir miktar (bazı cihazlarda belirgin
+  // şekilde) gecikebiliyordu. Bu yüzden kullanıcı "Zar At"a hemen basarsa
+  // hâlâ eski (nitrosuz) `me` verisiyle atış yapılıyor ve nitro bir sonraki
+  // ele sarkmış gibi görünüyordu. Çözüm: satın alma isteği başarıyla
+  // dönünce nitroyu YEREL olarak da aktif say (optimistic), sunucu verisi
+  // yetişince zaten örtüşecek.
+  const [optimisticNitro, setOptimisticNitro] = useState(false);
 
   const otherUid = room.participantUids?.find((u) => u !== myUid);
   const me = room.players?.[myUid];
@@ -114,6 +123,16 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
 
   const secondsLeft = useCountdown(room.turnDeadline);
   useAutoRollWatcher(room.id, room.turnDeadline, racing);
+
+  // Sunucu verisi yetiştiği an (nitroActive gerçekten true olduğunda) ya da
+  // tur değiştiğinde (nitro tüketildi/geçersiz oldu) yerel tahmini bayrağı
+  // temizle — kalıcı olarak yanlış "aktif" göstermesin.
+  useEffect(() => {
+    if (me?.nitroActive) setOptimisticNitro(false);
+  }, [me?.nitroActive]);
+  useEffect(() => {
+    setOptimisticNitro(false);
+  }, [room.currentTurnUid, room.finalTurnFor]);
 
   useEffect(() => {
     const pending = pendingConfirmRef.current;
@@ -272,6 +291,13 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
   const atStation = me.position % 10 === 0;
   const refuelPrice = atStation ? 10 : 100;
   const hintInfo = room.isChampionship ? getSoloHintInfo(me, atStation) : getHintInfo(me, other, atStation);
+  const effectiveNitroActive = me.nitroActive || optimisticNitro;
+
+  const handleBuyNitro = async () => {
+    setOptimisticNitro(true);
+    const res = await run('nitro', () => raceBuyNitro(room.id));
+    if (!res) setOptimisticNitro(false); // istek başarısız oldu, geri al
+  };
 
   const handleRoll = async (useNitro, useTurbo) => {
     const rollFn = room.isChampionship ? championshipRollDice : room.isTraining ? trainingRollDice : rollDice;
@@ -283,7 +309,7 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
     if (!isMyTurn) return `${other.displayName}'in sırası…${timeSuffix}`;
     if (busy) return 'Atılıyor…';
     if (isFinalTurnForMe) return `Son hamlen! Zar At${timeSuffix}`;
-    return me.nitroActive ? `Zar At — Nitro Aktif${timeSuffix}` : `Zar At${timeSuffix}`;
+    return effectiveNitroActive ? `Zar At — Nitro Aktif${timeSuffix}` : `Zar At${timeSuffix}`;
   };
 
   return (
@@ -410,10 +436,10 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
         </div>
         <button
           className="race-nitro-btn"
-          disabled={busy || !isMyTurn || me.raceGold < 50 || me.nitroActive}
-          onClick={() => run('nitro', () => raceBuyNitro(room.id))}
+          disabled={busy || !isMyTurn || me.raceGold < 50 || effectiveNitroActive}
+          onClick={handleBuyNitro}
         >
-          {me.nitroActive ? '🔥 Nitro Alındı' : '🔥 Nitro (50)'}
+          {effectiveNitroActive ? '🔥 Nitro Alındı' : '🔥 Nitro (50)'}
         </button>
       </div>
 
@@ -425,7 +451,7 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
         </div>
       )}
 
-      <button className="race-roll-btn" disabled={busy || !isMyTurn} onClick={() => handleRoll(me.nitroActive, false)}>
+      <button className="race-roll-btn" disabled={busy || !isMyTurn} onClick={() => handleRoll(effectiveNitroActive, false)}>
         {rollButtonLabel()}
       </button>
 
