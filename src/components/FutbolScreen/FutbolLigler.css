@@ -1,0 +1,127 @@
+.futbol-ligler {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.futbol-ligler-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.futbol-league-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.futbol-league-tab {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.futbol-league-tab.active {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.futbol-subtabs-inner {
+  padding: 0;
+  border-bottom: none;
+  flex-wrap: wrap;
+}
+
+.futbol-subtabs-inner .futbol-subtab-btn {
+  flex: none;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.futbol-standings {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.futbol-standings th,
+.futbol-standings td {
+  padding: 6px 4px;
+  text-align: center;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.futbol-standings td:nth-child(2) {
+  text-align: left;
+}
+
+.futbol-standings tr.rank-gold td {
+  background: rgba(255, 210, 63, 0.12);
+}
+
+.futbol-standings tr.rank-silver td {
+  background: rgba(200, 210, 225, 0.1);
+}
+
+.futbol-standings tr.rank-bronze td {
+  background: rgba(205, 127, 50, 0.12);
+}
+
+.futbol-standings tr.rank-relegation td {
+  background: rgba(255, 46, 140, 0.1);
+}
+
+.futbol-match-round {
+  margin-bottom: 14px;
+}
+
+.futbol-match-round-title {
+  font-weight: 700;
+  color: var(--neon-cyan);
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.futbol-match-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--panel-border);
+  font-size: 13px;
+}
+
+.futbol-match-row span:first-child {
+  text-align: right;
+}
+
+.futbol-match-score {
+  font-weight: 700;
+  color: var(--text-dim);
+  min-width: 40px;
+  text-align: center;
+}
+
+.futbol-fixture-list .futbol-match-round.compact .futbol-match-row {
+  padding: 5px 6px;
+  font-size: 12px;
+}
+
+.futbol-admin-reset {
+  align-self: flex-start;
+  margin-top: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--neon-pink);
+  background: transparent;
+  color: var(--neon-pink);
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 12px;
+}

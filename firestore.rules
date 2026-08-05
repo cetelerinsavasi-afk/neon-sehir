@@ -211,6 +211,29 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // --- Futbol modülü (Faz 2) ---
+    // Ligler/takımlar/oyuncular/maçlar herkese açık okunur (lig tablosu,
+    // fikstür vb. herkes görebilmeli); tüm yazmalar Cloud Functions ile.
+    match /futbolLeagues/{leagueId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /futbolTeams/{teamId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /futbolPlayers/{playerId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /futbolMatches/{matchId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
     // Tanımlanmamış her şey varsayılan olarak kapalı.
     match /{document=**} {
       allow read, write: if false;

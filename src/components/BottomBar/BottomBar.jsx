@@ -1,11 +1,22 @@
 import { useUnreadNotifications } from '../../hooks/useUnreadNotifications';
 import './BottomBar.css';
 
-export default function BottomBar({ onPhoneClick, onHeistClick, onProfileClick }) {
+export default function BottomBar({ onPhoneClick, onHeistClick, onProfileClick, onFutbolClick }) {
   const { totalBadge } = useUnreadNotifications();
 
   return (
     <div className="bottom-bar">
+      <button className="bottom-bar-btn futbol" onClick={onFutbolClick} aria-label="Futbol">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.6">
+          <circle cx="12" cy="12" r="9.5" />
+          <path
+            d="M12 7.2 15.8 10 14.4 14.4H9.6L8.2 10 12 7.2Z"
+            fill="currentColor"
+            stroke="currentColor"
+          />
+          <path d="M12 2.5V7.2M4.6 7.4l3.6 2.6M19.4 7.4l-3.6 2.6M6.7 18.5l2.9-4.1M17.3 18.5l-2.9-4.1M2.6 12h4M17.4 12h4" />
+        </svg>
+      </button>
       <button className="bottom-bar-btn danger" onClick={onHeistClick} aria-label="Soygun">
         <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor">
           <rect x="2" y="11" width="15" height="3.5" rx="1" />

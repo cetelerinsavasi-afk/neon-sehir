@@ -12,6 +12,7 @@ import RaceFullScreen from './components/RaceTrackScreen/RaceFullScreen';
 import RaceBubble from './components/RaceTrackScreen/RaceBubble';
 import OnNumaraFullScreen from './components/OnNumaraScreen/OnNumaraFullScreen';
 import ProfileFullScreen from './components/ProfileFullScreen/ProfileFullScreen';
+import FutbolFullScreen from './components/FutbolScreen/FutbolFullScreen';
 import TopNotificationBanner from './components/TopNotificationBanner/TopNotificationBanner';
 import { usePlayer } from './hooks/usePlayer';
 import { useMyActiveRaceRoom } from './hooks/useMyActiveRaceRoom';
@@ -47,6 +48,7 @@ function GameShell() {
   const [raceExpanded, setRaceExpanded] = useState(false);
   const [activeTableId, setActiveTableId] = useState(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [futbolOpen, setFutbolOpen] = useState(false);
   const { player } = usePlayer();
 
   // Uygulama arka plana alınıp geri geldiğinde (özellikle iOS'ta) Firestore
@@ -127,6 +129,7 @@ function GameShell() {
         onPhoneClick={() => setPhoneOpen(true)}
         onHeistClick={() => openHeistScreen(null)}
         onProfileClick={() => setProfileOpen(true)}
+        onFutbolClick={() => setFutbolOpen(true)}
       />
 
       {phoneOpen && (
@@ -146,6 +149,7 @@ function GameShell() {
         }}
       />
       {profileOpen && <ProfileFullScreen onClose={() => setProfileOpen(false)} />}
+      {futbolOpen && <FutbolFullScreen onClose={() => setFutbolOpen(false)} />}
 
       <RegionModal
         region={activeRegion}

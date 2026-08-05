@@ -300,3 +300,12 @@ export const pingRaceRoom = (roomId) =>
 
 export const sendRaceEmoji = (roomId, emoji) =>
   httpsCallable(functions, 'sendRaceEmoji')({ roomId, emoji });
+
+// --- Faz Futbol: Faz 1 (iskelet + admin erişimi) ---
+
+export const verifyFutbolAdminAccess = (password) =>
+  httpsCallable(functions, 'verifyFutbolAdminAccess')({ password });
+
+export const seedFutbolWorld = () => httpsCallable(functions, 'seedFutbolWorld')();
+
+export const resetFutbolWorld = () => httpsCallable(functions, 'resetFutbolWorld')();
