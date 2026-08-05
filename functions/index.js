@@ -6528,3 +6528,220 @@ export const pingRoom = onCall(async (request) => {
     .update({ [`lastPing.${uid}`]: Date.now() });
   return { ok: true };
 });
+
+// --- Futbol modülü: Faz 1 (iskelet + gizli admin erişimi) ---
+// Şifre bilerek istemci koduna gömülmüyor (bundle herkese açık indirilir),
+// bunun yerine burada, sunucu tarafında saklanıyor. Geliştirme bitip modül
+// tüm oyunculara açılınca bu fonksiyon ve admin kapısı tamamen kaldırılacak.
+const FUTBOL_ADMIN_PASSWORD = 'hustle';
+
+export const verifyFutbolAdminAccess = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { password } = request.data || {};
+  if (password !== FUTBOL_ADMIN_PASSWORD) {
+    throw new HttpsError('permission-denied', 'Şifre yanlış.');
+  }
+  await db.collection('users').doc(uid).set({ futbolAdminUnlocked: true }, { merge: true });
+  return { ok: true };
+});
+
+async function requireFutbolAdmin(request) {
+  const uid = requireAuth(request);
+  const snap = await db.collection('users').doc(uid).get();
+  if (!snap.exists || !snap.data().futbolAdminUnlocked) {
+    throw new HttpsError('permission-denied', 'Futbol admin erişimin yok.');
+  }
+  return uid;
+}
+
+// --- Futbol modülü: Faz 2 (lig/takım/oyuncu/fikstür veri modeli) ---
+
+const FUTBOL_TEAM_SIZE_PER_LEAGUE = 8;
+const FUTBOL_SEASON_START = 1;
+
+// Örnek/fiktif takım isimleri — gerçek kulüplerle karışmasın diye
+// bilerek uydurma isimler kullanılıyor. 16 tanesi ilk 2 lig için,
+// gerideki havuz sonraki ligler (3. lig vb.) otomatik oluştuğunda
+// kullanılacak.
+const FUTBOL_TEAM_NAME_POOL = [
+  'Yıldız Spor', 'Kartal Gençlik', 'Demir Çelik FK', 'Anadolu Yıldızları',
+  'Ejder Spor', 'Kuzey Rüzgarı', 'Volkan FK', 'Deniz Yıldızı SK',
+  'Çelik Kanat', 'Boğa Spor', 'Şimşek FK', 'Kale Bekçileri',
+  'Aslan Yürek SK', 'Rüzgargülü FK', 'Toprak Ana SK', 'Gece Yıldızları',
+  'Meşale Spor', 'Kartepe FK', 'Gümüş Ay SK', 'Bozkır Kartalları',
+  'Alev Spor', 'Fırtına FK', 'Yeşil Vadi SK', 'Kızıl Şahin',
+];
+
+const FUTBOL_FIRST_NAMES = [
+  'Emre', 'Burak', 'Kaan', 'Deniz', 'Onur', 'Mert', 'Barış', 'Cem',
+  'Serkan', 'Volkan', 'Uğur', 'Berk', 'Tolga', 'Ozan', 'Kerem', 'Tarık',
+  'Yusuf', 'Eren', 'Arda', 'Furkan', 'Cenk', 'Hakan', 'Selim', 'Kağan',
+];
+const FUTBOL_LAST_NAMES = [
+  'Yıldırım', 'Kaya', 'Demir', 'Şahin', 'Aydın', 'Öztürk', 'Çelik',
+  'Aksoy', 'Doğan', 'Arslan', 'Koç', 'Polat', 'Yalçın', 'Ergün', 'Bulut',
+  'Kurt', 'Özdemir', 'Tekin', 'Güneş', 'Karaca',
+];
+
+// Piyasa değeri = (Güç × 1000) × (Kalan Kariyer Yılı / 20), Kalan Kariyer
+// Yılı = 20 - (Yaş - 16). Bir hedef değer bandından geriye doğru rastgele
+// bir yaş+güç kombinasyonu üretiyoruz.
+function randomFutbolPlayer(position, tier) {
+  const age = Math.floor(randomInRange(18, 32));
+  const remainingSeasons = 20 - (age - 16);
+  const bands = { ucuz: [20000, 50000], orta: [50000, 90000], pahali: [90000, 140000] };
+  const [min, max] = bands[tier];
+  const targetValue = randomInRange(min, max);
+  let power = (targetValue * 20) / (1000 * remainingSeasons);
+  power = Math.max(35, Math.min(99, Math.round(power * 10) / 10));
+  const value = Math.round((power * 1000 * remainingSeasons) / 20);
+  const name = `${FUTBOL_FIRST_NAMES[Math.floor(Math.random() * FUTBOL_FIRST_NAMES.length)]} ${
+    FUTBOL_LAST_NAMES[Math.floor(Math.random() * FUTBOL_LAST_NAMES.length)]
+  }`;
+  return { name, position, age, power, form: 100, value, forSale: false, listedAt: null };
+}
+
+// 1. Lig kadro şablonu: GK 1 pahalı+1 orta+1 ucuz, DEF/MID 2 orta+2
+// pahalı+2 ucuz, FWD 1 pahalı+1 orta+1 ucuz (Bölüm — kullanıcı promptu).
+const TIER1_SQUAD_TEMPLATE = [
+  ['GK', 'pahali'], ['GK', 'orta'], ['GK', 'ucuz'],
+  ['DEF', 'orta'], ['DEF', 'orta'], ['DEF', 'pahali'], ['DEF', 'pahali'], ['DEF', 'ucuz'], ['DEF', 'ucuz'],
+  ['MID', 'orta'], ['MID', 'orta'], ['MID', 'pahali'], ['MID', 'pahali'], ['MID', 'ucuz'], ['MID', 'ucuz'],
+  ['FWD', 'pahali'], ['FWD', 'orta'], ['FWD', 'ucuz'],
+];
+// 2. lig (ve sonraki ligler) kadro şablonu: 1 orta+2 ucuz / 2 orta+4 ucuz.
+const TIER2_SQUAD_TEMPLATE = [
+  ['GK', 'orta'], ['GK', 'ucuz'], ['GK', 'ucuz'],
+  ['DEF', 'orta'], ['DEF', 'orta'], ['DEF', 'ucuz'], ['DEF', 'ucuz'], ['DEF', 'ucuz'], ['DEF', 'ucuz'],
+  ['MID', 'orta'], ['MID', 'orta'], ['MID', 'ucuz'], ['MID', 'ucuz'], ['MID', 'ucuz'], ['MID', 'ucuz'],
+  ['FWD', 'orta'], ['FWD', 'ucuz'], ['FWD', 'ucuz'],
+];
+
+// Klasik "circle method" round-robin: 8 takım → 7 tur (herkes herkesle
+// bir kez), sonra ev sahibi/deplasman ters çevrilerek rövanş 7 turu
+// daha eklenir. Toplam 14 tur × 4 maç = 56 maç.
+function generateRoundRobinRounds(teamIds) {
+  const list = teamIds.slice();
+  const numRounds = list.length - 1;
+  const half = list.length / 2;
+  let arr = list.slice();
+  const firstLeg = [];
+  for (let r = 0; r < numRounds; r++) {
+    const roundMatches = [];
+    for (let i = 0; i < half; i++) {
+      const home = arr[i];
+      const away = arr[arr.length - 1 - i];
+      roundMatches.push(r % 2 === 0 ? [home, away] : [away, home]);
+    }
+    firstLeg.push(roundMatches);
+    const fixed = arr[0];
+    const rest = arr.slice(1);
+    rest.unshift(rest.pop());
+    arr = [fixed, ...rest];
+  }
+  const secondLeg = firstLeg.map((round) => round.map(([h, a]) => [a, h]));
+  return [...firstLeg, ...secondLeg];
+}
+
+async function deleteCollectionBatched(collectionName) {
+  const snap = await db.collection(collectionName).get();
+  let batch = db.batch();
+  let count = 0;
+  for (const doc of snap.docs) {
+    batch.delete(doc.ref);
+    count += 1;
+    if (count % 450 === 0) {
+      await batch.commit();
+      batch = db.batch();
+    }
+  }
+  if (count % 450 !== 0) await batch.commit();
+}
+
+// resetFutbolWorld — sadece geliştirme aşamasında kullanılacak, tüm
+// futbol verisini siler (admin-only). Oyuna açıldıktan sonra bu
+// fonksiyon kaldırılacak.
+export const resetFutbolWorld = onCall(async (request) => {
+  await requireFutbolAdmin(request);
+  await Promise.all(
+    ['futbolLeagues', 'futbolTeams', 'futbolPlayers', 'futbolMatches'].map(deleteCollectionBatched)
+  );
+  return { ok: true };
+});
+
+// seedFutbolWorld — 1. ve 2. Lig'i (toplam 16 bot takım, takım başı 18
+// oyuncu) ve tam sezon fikstürünü oluşturur. Zaten veri varsa hiçbir şey
+// yapmaz (idempotent) — önce resetFutbolWorld ile temizlemek gerekir.
+export const seedFutbolWorld = onCall(async (request) => {
+  await requireFutbolAdmin(request);
+
+  const existing = await db.collection('futbolLeagues').limit(1).get();
+  if (!existing.empty) {
+    return { ok: false, reason: 'already-seeded' };
+  }
+
+  const shuffledNames = FUTBOL_TEAM_NAME_POOL.slice().sort(() => Math.random() - 0.5);
+  const leagueDefs = [
+    { tier: 1, name: '1. Lig', template: TIER1_SQUAD_TEMPLATE },
+    { tier: 2, name: '2. Lig', template: TIER2_SQUAD_TEMPLATE },
+  ];
+
+  let nameIdx = 0;
+  const batch = db.batch();
+
+  for (const leagueDef of leagueDefs) {
+    const leagueRef = db.collection('futbolLeagues').doc();
+    const teamIds = [];
+
+    for (let i = 0; i < FUTBOL_TEAM_SIZE_PER_LEAGUE; i++) {
+      const teamRef = db.collection('futbolTeams').doc();
+      teamIds.push(teamRef.id);
+      batch.set(teamRef, {
+        name: shuffledNames[nameIdx++],
+        leagueId: leagueRef.id,
+        tier: leagueDef.tier,
+        ownerUid: null,
+        isBot: true,
+        fans: Math.floor(randomInRange(10000, 30000)),
+        tactic: 'dengeli',
+        formation: '2-2-1',
+        stats: { played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0, points: 0 },
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      for (const [position, tier] of leagueDef.template) {
+        const playerRef = db.collection('futbolPlayers').doc();
+        batch.set(playerRef, { teamId: teamRef.id, ...randomFutbolPlayer(position, tier) });
+      }
+    }
+
+    batch.set(leagueRef, {
+      tier: leagueDef.tier,
+      name: leagueDef.name,
+      season: FUTBOL_SEASON_START,
+      teamIds,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    const rounds = generateRoundRobinRounds(teamIds);
+    rounds.forEach((roundMatches, roundIdx) => {
+      roundMatches.forEach(([homeTeamId, awayTeamId]) => {
+        const matchRef = db.collection('futbolMatches').doc();
+        batch.set(matchRef, {
+          leagueId: leagueRef.id,
+          season: FUTBOL_SEASON_START,
+          round: roundIdx + 1,
+          homeTeamId,
+          awayTeamId,
+          homeScore: null,
+          awayScore: null,
+          status: 'scheduled',
+          playedAt: null,
+        });
+      });
+    });
+  }
+
+  await batch.commit();
+  return { ok: true };
+});
