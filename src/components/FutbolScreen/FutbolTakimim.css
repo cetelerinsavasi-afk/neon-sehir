@@ -1,0 +1,93 @@
+.futbol-buy-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.futbol-buy-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.futbol-buy-info {
+  flex: 1;
+}
+
+.futbol-buy-name {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.futbol-buy-meta {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.futbol-buy-action {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+}
+
+.futbol-buy-price {
+  font-weight: 700;
+  color: var(--neon-cyan);
+  font-size: 13px;
+}
+
+.futbol-my-team-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.futbol-my-team-name {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.futbol-my-team-stats {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.futbol-statbox {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.futbol-statbox-value {
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.futbol-statbox-label {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.futbol-my-team-finance {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--panel-border);
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}

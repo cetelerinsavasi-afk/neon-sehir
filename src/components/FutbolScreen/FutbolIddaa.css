@@ -1,0 +1,50 @@
+.futbol-iddaa-matches {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 10px 0;
+}
+
+.futbol-iddaa-match {
+  padding: 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.futbol-iddaa-match-teams {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.futbol-iddaa-stake-row {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.futbol-iddaa-history {
+  margin-top: 16px;
+  border-top: 1px solid var(--panel-border);
+  padding-top: 10px;
+}
+
+.futbol-iddaa-history-row {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  gap: 8px;
+  font-size: 12px;
+  padding: 6px 0;
+  color: var(--text-dim);
+}
+
+.futbol-iddaa-history-row.status-won {
+  color: #3ddc84;
+}
+
+.futbol-iddaa-history-row.status-lost {
+  color: var(--neon-pink);
+}

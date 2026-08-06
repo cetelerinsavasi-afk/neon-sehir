@@ -61,6 +61,12 @@
   text-align: left;
 }
 
+.futbol-standings-team {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .futbol-standings tr.rank-gold td {
   background: rgba(255, 210, 63, 0.12);
 }
@@ -98,8 +104,28 @@
   font-size: 13px;
 }
 
+.futbol-match-row-clickable {
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.futbol-match-row-clickable:hover {
+  background: var(--panel);
+}
+
 .futbol-match-row span:first-child {
   text-align: right;
+}
+
+.futbol-match-team {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.futbol-match-team-away {
+  justify-content: flex-start;
 }
 
 .futbol-match-score {

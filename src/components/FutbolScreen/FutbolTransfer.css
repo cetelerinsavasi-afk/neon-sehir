@@ -1,0 +1,54 @@
+.futbol-transfer-roster,
+.futbol-transfer-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.futbol-transfer-group-title {
+  font-size: 12px;
+  color: var(--neon-cyan);
+  font-weight: 700;
+  margin: 8px 0 4px;
+}
+
+.futbol-transfer-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+}
+
+.futbol-transfer-info {
+  flex: 1;
+}
+
+.futbol-transfer-name {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.futbol-transfer-pos {
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+.futbol-transfer-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.futbol-transfer-listing-form {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.futbol-transfer-listing-form .futbol-admin-input {
+  width: 90px;
+}

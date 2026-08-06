@@ -234,6 +234,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // futbolBets/{betId} — iddaa kuponları. Herkes başkasının kuponunu
+    // göremez, sadece kendi kuponların. Yazma sadece Cloud Functions ile.
+    match /futbolBets/{betId} {
+      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
+
     // Tanımlanmamış her şey varsayılan olarak kapalı.
     match /{document=**} {
       allow read, write: if false;

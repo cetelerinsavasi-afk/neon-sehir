@@ -1,0 +1,68 @@
+.futbol-logo-editor {
+  display: flex;
+  flex-direction: column;
+}
+
+.futbol-logo-preview {
+  display: flex;
+  justify-content: center;
+  padding: 16px 0;
+}
+
+.futbol-logo-preset-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.futbol-logo-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+
+.futbol-logo-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.futbol-logo-icon-btn.active {
+  border-color: #3ddc84;
+  color: #3ddc84;
+}
+
+.futbol-logo-preset-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  cursor: pointer;
+}
+
+.futbol-logo-color-row {
+  display: flex;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.futbol-logo-color-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.futbol-logo-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}

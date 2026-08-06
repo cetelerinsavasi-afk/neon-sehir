@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import FutbolLigler from './FutbolLigler';
+import FutbolTakimim from './FutbolTakimim';
 import './FutbolFullScreen.css';
 
 /**
@@ -39,13 +40,7 @@ export default function FutbolShell({ onClose }) {
         {tab === 'ligler' ? (
           <FutbolLigler />
         ) : (
-          <div className="futbol-placeholder">
-            <p>Takımım sekmesi burada olacak:</p>
-            <ul>
-              <li>Takımın yoksa: satın alınabilir kulüpler listesi</li>
-              <li>Takımın varsa: Maçlar — Takımın — Transfer Listesi — Altyapı Tesisi</li>
-            </ul>
-          </div>
+          <FutbolTakimim />
         )}
       </div>
     </div>

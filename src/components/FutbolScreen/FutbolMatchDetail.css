@@ -1,0 +1,239 @@
+.futbol-match-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.futbol-match-detail {
+  width: 100%;
+  max-width: 420px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: var(--bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  padding: 16px;
+  position: relative;
+}
+
+.futbol-match-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.futbol-match-scoreboard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.futbol-match-team-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.futbol-match-score-big {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--neon-cyan);
+  white-space: nowrap;
+}
+
+.futbol-match-minute {
+  text-align: center;
+  color: #3ddc84;
+  font-weight: 700;
+  font-size: 13px;
+  margin: 4px 0 12px;
+}
+
+/* --- Halısaha --- */
+.futbol-pitch {
+  position: relative;
+  width: 100%;
+  height: 130px;
+  background: repeating-linear-gradient(
+    90deg,
+    #1a6b3a 0px,
+    #1a6b3a 24px,
+    #1c7940 24px,
+    #1c7940 48px
+  );
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.futbol-pitch-halfline {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.futbol-pitch-circle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 40px;
+  height: 40px;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.futbol-pitch-goal {
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 36px;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  transform: translateY(-50%);
+}
+
+.futbol-pitch-goal-left {
+  left: -2px;
+  border-left: none;
+}
+
+.futbol-pitch-goal-right {
+  right: -2px;
+  border-right: none;
+}
+
+.futbol-pitch-ball {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--neon-yellow);
+  box-shadow: 0 0 8px rgba(255, 210, 63, 0.8);
+  transform: translate(-50%, -50%);
+}
+
+.futbol-pitch-ball.is-goal {
+  background: var(--neon-cyan);
+  box-shadow: 0 0 14px rgba(25, 232, 255, 0.9);
+}
+
+.futbol-pitch-ball.to-right {
+  animation: futbolBallRight 1.3s ease-in-out;
+}
+
+.futbol-pitch-ball.to-left {
+  animation: futbolBallLeft 1.3s ease-in-out;
+}
+
+@keyframes futbolBallRight {
+  0% { left: 50%; }
+  50% { left: 85%; }
+  100% { left: 50%; }
+}
+
+@keyframes futbolBallLeft {
+  0% { left: 50%; }
+  50% { left: 15%; }
+  100% { left: 50%; }
+}
+
+/* --- Possession --- */
+.futbol-possession-bar {
+  display: flex;
+  height: 20px;
+  border-radius: 999px;
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.futbol-possession-home {
+  background: var(--neon-cyan);
+  color: #06222b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: width 0.6s ease;
+}
+
+.futbol-possession-away {
+  background: var(--neon-pink);
+  color: #2a0616;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: width 0.6s ease;
+}
+
+.futbol-possession-label {
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-dim);
+  margin: 2px 0 12px;
+}
+
+.futbol-shot-stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+}
+
+.futbol-shot-stats-col.right {
+  text-align: right;
+}
+
+/* --- Yorum akışı --- */
+.futbol-commentary-feed {
+  border-top: 1px solid var(--panel-border);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.futbol-commentary-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.futbol-commentary-row.goal {
+  color: #3ddc84;
+  font-weight: 700;
+}
+
+.futbol-commentary-minute {
+  color: var(--text-dim);
+  min-width: 26px;
+}

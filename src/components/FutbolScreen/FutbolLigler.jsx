@@ -2,7 +2,10 @@ import { useMemo, useState } from 'react';
 import { useFutbolLeagues } from '../../hooks/useFutbolLeagues';
 import { useFutbolTeams } from '../../hooks/useFutbolTeams';
 import { useFutbolMatches } from '../../hooks/useFutbolMatches';
-import { seedFutbolWorld, resetFutbolWorld } from '../../services/gameActions';
+import { seedFutbolWorld, resetFutbolWorld, resolveFutbolMatchdayManual } from '../../services/gameActions';
+import FutbolMatchDetail from './FutbolMatchDetail';
+import FutbolCrest from './FutbolCrest';
+import FutbolIddaa from './FutbolIddaa';
 import './FutbolLigler.css';
 
 const SUB_TABS = [
@@ -17,6 +20,7 @@ export default function FutbolLigler() {
   const [selectedLeagueId, setSelectedLeagueId] = useState(null);
   const [subTab, setSubTab] = useState('puan');
   const [busy, setBusy] = useState(false);
+  const [selectedMatch, setSelectedMatch] = useState(null);
 
   const activeLeagueId = selectedLeagueId || leagues[0]?.id || null;
   const { teams } = useFutbolTeams(activeLeagueId);
@@ -25,6 +29,12 @@ export default function FutbolLigler() {
   const teamNameById = useMemo(() => {
     const map = {};
     teams.forEach((t) => (map[t.id] = t.name));
+    return map;
+  }, [teams]);
+
+  const teamById = useMemo(() => {
+    const map = {};
+    teams.forEach((t) => (map[t.id] = t));
     return map;
   }, [teams]);
 
@@ -58,6 +68,15 @@ export default function FutbolLigler() {
     setBusy(true);
     try {
       await resetFutbolWorld();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runManualMatchday = async () => {
+    setBusy(true);
+    try {
+      await resolveFutbolMatchdayManual();
     } finally {
       setBusy(false);
     }
@@ -111,6 +130,8 @@ export default function FutbolLigler() {
           title={`${currentRound}. Tur`}
           matches={roundsGrouped[currentRound] || []}
           teamNameById={teamNameById}
+          teamById={teamById}
+          onSelectMatch={setSelectedMatch}
         />
       )}
 
@@ -125,6 +146,8 @@ export default function FutbolLigler() {
                 title={`${round}. Tur`}
                 matches={roundsGrouped[round]}
                 teamNameById={teamNameById}
+                teamById={teamById}
+                onSelectMatch={setSelectedMatch}
                 compact
               />
             ))}
@@ -132,15 +155,31 @@ export default function FutbolLigler() {
       )}
 
       {subTab === 'iddaa' && (
-        <p className="futbol-placeholder">
-          İddaa Bayii sonraki fazda eklenecek — maç sonucu hesaplama motoru
-          (Faz 3) olmadan kupon/ödeme mantığı çalışamaz.
-        </p>
+        <FutbolIddaa
+          leagueId={activeLeagueId}
+          matches={roundsGrouped[currentRound] || []}
+          teamNameById={teamNameById}
+          teamById={teamById}
+        />
       )}
 
       <button className="futbol-admin-reset" disabled={busy} onClick={runReset}>
         {busy ? '...' : 'Futbol Verisini Sıfırla (admin)'}
       </button>
+      <button className="futbol-admin-submit" disabled={busy} onClick={runManualMatchday}>
+        {busy ? '...' : 'Güncel Turu Şimdi Oynat (admin, 18:00 beklemeden test)'}
+      </button>
+
+      {selectedMatch && (
+        <FutbolMatchDetail
+          match={selectedMatch}
+          homeName={teamNameById[selectedMatch.homeTeamId] || '—'}
+          awayName={teamNameById[selectedMatch.awayTeamId] || '—'}
+          homeLogo={teamById[selectedMatch.homeTeamId]?.logo}
+          awayLogo={teamById[selectedMatch.awayTeamId]?.logo}
+          onClose={() => setSelectedMatch(null)}
+        />
+      )}
     </div>
   );
 }
@@ -174,7 +213,10 @@ function StandingsTable({ teams }) {
           return (
             <tr key={t.id} className={rowClass}>
               <td>{rank}</td>
-              <td>{t.name}</td>
+              <td className="futbol-standings-team">
+                <FutbolCrest logo={t.logo} initials={t.name?.[0]} size={20} />
+                {t.name}
+              </td>
               <td>{t.stats.played}</td>
               <td>{t.stats.won}</td>
               <td>{t.stats.drawn}</td>
@@ -193,17 +235,27 @@ function StandingsTable({ teams }) {
   );
 }
 
-function MatchList({ title, matches, teamNameById, compact }) {
+function MatchList({ title, matches, teamNameById, teamById, compact, onSelectMatch }) {
   return (
     <div className={`futbol-match-round ${compact ? 'compact' : ''}`}>
       <p className="futbol-match-round-title">{title}</p>
       {matches.map((m) => (
-        <div key={m.id} className="futbol-match-row">
-          <span>{teamNameById[m.homeTeamId] || '—'}</span>
+        <div
+          key={m.id}
+          className="futbol-match-row futbol-match-row-clickable"
+          onClick={() => onSelectMatch?.(m)}
+        >
+          <span className="futbol-match-team">
+            {teamNameById[m.homeTeamId] || '—'}
+            <FutbolCrest logo={teamById[m.homeTeamId]?.logo} initials={teamNameById[m.homeTeamId]?.[0]} size={18} />
+          </span>
           <span className="futbol-match-score">
             {m.status === 'finished' ? `${m.homeScore} - ${m.awayScore}` : 'vs'}
           </span>
-          <span>{teamNameById[m.awayTeamId] || '—'}</span>
+          <span className="futbol-match-team futbol-match-team-away">
+            <FutbolCrest logo={teamById[m.awayTeamId]?.logo} initials={teamNameById[m.awayTeamId]?.[0]} size={18} />
+            {teamNameById[m.awayTeamId] || '—'}
+          </span>
         </div>
       ))}
     </div>

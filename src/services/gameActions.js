@@ -309,3 +309,56 @@ export const verifyFutbolAdminAccess = (password) =>
 export const seedFutbolWorld = () => httpsCallable(functions, 'seedFutbolWorld')();
 
 export const resetFutbolWorld = () => httpsCallable(functions, 'resetFutbolWorld')();
+
+// Faz 3: 18:00'i beklemeden maç motorunu elle tetiklemek için (admin-only).
+export const resolveFutbolMatchdayManual = () =>
+  httpsCallable(functions, 'resolveFutbolMatchdayManual')();
+
+// --- Faz Futbol: Faz 4 (takım satın alma / satma) ---
+
+export const listFutbolBuyableTeams = () => httpsCallable(functions, 'listFutbolBuyableTeams')();
+
+export const getMyFutbolTeamFinance = () => httpsCallable(functions, 'getMyFutbolTeamFinance')();
+
+export const buyFutbolTeam = (teamId) => httpsCallable(functions, 'buyFutbolTeam')({ teamId });
+
+export const sellFutbolTeam = (teamId) => httpsCallable(functions, 'sellFutbolTeam')({ teamId });
+
+// --- Faz Futbol: Faz 5 (kadro/taktik, transfer piyasası, forma) ---
+
+export const setFutbolLineup = (teamId, formation, tactic, lineup) =>
+  httpsCallable(functions, 'setFutbolLineup')({ teamId, formation, tactic, lineup });
+
+export const listFutbolTransferMarket = () => httpsCallable(functions, 'listFutbolTransferMarket')();
+
+export const instantSellFutbolPlayer = (playerId) =>
+  httpsCallable(functions, 'instantSellFutbolPlayer')({ playerId });
+
+export const listFutbolPlayerForSale = (playerId, price) =>
+  httpsCallable(functions, 'listFutbolPlayerForSale')({ playerId, price });
+
+export const cancelFutbolPlayerListing = (playerId) =>
+  httpsCallable(functions, 'cancelFutbolPlayerListing')({ playerId });
+
+export const buyFutbolPlayer = (playerId) => httpsCallable(functions, 'buyFutbolPlayer')({ playerId });
+
+export const setFutbolTeamLogo = (teamId, shape, pattern, icon, primary, secondary) =>
+  httpsCallable(functions, 'setFutbolTeamLogo')({ teamId, shape, pattern, icon, primary, secondary });
+
+// --- Faz Futbol: Faz 6 (altyapı tesisi + genç oyuncu antrenmanı) ---
+
+export const buildFutbolAcademy = (teamId) => httpsCallable(functions, 'buildFutbolAcademy')({ teamId });
+
+export const buyFutbolYouthPlayer = (teamId, position) =>
+  httpsCallable(functions, 'buyFutbolYouthPlayer')({ teamId, position });
+
+export const startFutbolTraining = (teamId, playerId) =>
+  httpsCallable(functions, 'startFutbolTraining')({ teamId, playerId });
+
+export const cancelFutbolTraining = (teamId) =>
+  httpsCallable(functions, 'cancelFutbolTraining')({ teamId });
+
+// --- Faz Futbol: Faz 7 (İddaa Bayii) ---
+
+export const placeFutbolBet = (leagueId, stake, predictions) =>
+  httpsCallable(functions, 'placeFutbolBet')({ leagueId, stake, predictions });

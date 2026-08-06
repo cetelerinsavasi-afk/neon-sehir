@@ -1,0 +1,78 @@
+.futbol-kadro {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.futbol-kadro-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+  margin: 10px 0 6px;
+}
+
+.futbol-kadro-chip-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.futbol-kadro-chip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.futbol-kadro-chip.active {
+  border-color: #3ddc84;
+  color: #3ddc84;
+}
+
+.futbol-kadro-position-block {
+  margin-top: 6px;
+}
+
+.futbol-kadro-player-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.futbol-kadro-player {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+
+.futbol-kadro-player.selected {
+  border-color: var(--neon-cyan);
+  background: rgba(25, 232, 255, 0.08);
+}
+
+.futbol-kadro-player.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.futbol-kadro-player-power {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.futbol-kadro-note {
+  margin-top: 10px;
+  font-size: 11px;
+}
