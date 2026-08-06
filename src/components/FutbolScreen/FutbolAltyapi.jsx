@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useFutbolTeamPlayers } from '../../hooks/useFutbolTeamPlayers';
+import { useFutbolGrowthLog } from '../../hooks/useFutbolGrowthLog';
 import { addFutbolTraining, removeFutbolTraining } from '../../services/gameActions';
 import FutbolPlayerAvatar from './FutbolPlayerAvatar';
 import './FutbolAltyapi.css';
@@ -15,12 +16,44 @@ export default function FutbolAltyapi({ team }) {
 
   return (
     <div className="futbol-altyapi">
+      <GrowthLogSection teamId={team.id} />
       <TrainingSection
         teamId={team.id}
         players={trainablePlayers}
         excludedCount={players.length - trainablePlayers.length}
         trainingPlayerIds={team.trainingPlayerIds || []}
       />
+    </div>
+  );
+}
+
+function GrowthLogSection({ teamId }) {
+  const [open, setOpen] = useState(false);
+  const { entries, loading } = useFutbolGrowthLog(teamId, open);
+
+  return (
+    <div className="futbol-growth-log">
+      <button className="futbol-admin-reset futbol-growth-toggle" onClick={() => setOpen((v) => !v)}>
+        {open ? 'Gelişimleri Gizle' : 'Gelişimler'}
+      </button>
+      {open && (
+        <div className="futbol-growth-panel">
+          {loading && <p className="futbol-placeholder">Yükleniyor...</p>}
+          {!loading && entries.length === 0 && (
+            <p className="futbol-placeholder">Henüz kaydedilmiş bir gelişim yok.</p>
+          )}
+          {!loading &&
+            entries.map((e) => (
+              <div key={e.id} className="futbol-growth-row">
+                <span className="futbol-growth-name">{e.playerName}</span>
+                <span className={`futbol-growth-type ${e.type}`}>
+                  {e.type === 'mac' ? 'Maç' : 'Antrenman'}
+                </span>
+                <span className="futbol-growth-amount">+{e.amount.toFixed(1)} güç</span>
+              </div>
+            ))}
+        </div>
+      )}
     </div>
   );
 }

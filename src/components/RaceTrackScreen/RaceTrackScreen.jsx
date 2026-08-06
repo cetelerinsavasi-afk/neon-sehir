@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import RaceLobby, { TrainingLobby } from './RaceLobby';
 import ChampionshipScreen from './ChampionshipScreen';
+import { warmUpRaceHub } from '../../services/gameActions';
 import './RaceTrackScreen.css';
 
 const CARDS = [
@@ -18,6 +19,14 @@ const CARDS = [
 export default function RaceTrackScreen({ onEnterRace }) {
   const { user } = useAuth();
   const [selected, setSelected] = useState(null);
+
+  // Kullanıcı yarış sekmesine girer girmez (henüz oda bile kurmadan)
+  // ortak yarış Cloud Function'ını ısıtmaya başlıyoruz — bkz.
+  // gameActions.js içindeki warmUpRaceHub notu. RaceRoom.jsx'te bir kez
+  // daha çağrılır (garanti olsun diye), maliyeti yok.
+  useEffect(() => {
+    if (user) warmUpRaceHub();
+  }, [user]);
 
   if (!user) {
     return <SignInPrompt message="Yarış pistine girmek için giriş yapmalısın." />;

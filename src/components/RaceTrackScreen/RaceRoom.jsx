@@ -13,6 +13,7 @@ import {
   raceChangeGear,
   sendRaceEmoji,
   pingRaceRoom,
+  warmUpRaceHub,
 } from '../../services/gameActions';
 import InfoIcon from '../InfoIcon/InfoIcon';
 import DiceRoll from './DiceRoll';
@@ -107,6 +108,14 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
   // dönünce nitroyu YEREL olarak da aktif say (optimistic), sunucu verisi
   // yetişince zaten örtüşecek.
   const [optimisticNitro, setOptimisticNitro] = useState(false);
+
+  // Oda açılır açılmaz (kullanıcı henüz zar atmadan) yarış aksiyonlarının
+  // ortak Cloud Function'ını sessizce ısıtıyoruz — bkz. gameActions.js
+  // içindeki warmUpRaceHub notu. Amaç: kullanıcı ilk "Zar At"a bastığında
+  // cold start gecikmesini hiç hissetmemesi.
+  useEffect(() => {
+    warmUpRaceHub();
+  }, []);
 
   const otherUid = room.participantUids?.find((u) => u !== myUid);
   const me = room.players?.[myUid];

@@ -243,10 +243,26 @@ export const cancelRaceRoom = (roomId) =>
 
 export const forfeitRace = (roomId) => httpsCallable(functions, 'forfeitRace')({ roomId });
 
-export const rollDice = (roomId, useNitro, useTurbo) =>
-  httpsCallable(functions, 'rollDice')({ roomId, useNitro, useTurbo });
+// NOT (performans/maliyet): zar atma, vites, nitro, benzin, antrenman ve
+// şampiyona aksiyonlarının HEPSİ artık tek bir Cloud Function'a
+// (raceHubAction) gidiyor — her biri ayrı fonksiyon olduğunda ilk
+// kullanımda ayrı ayrı "cold start" (birkaç saniyelik uyanma) yaşanıyor,
+// bu da yarışa ilk girişte kasma/tepkisizlik olarak hissediliyordu. Tek
+// fonksiyona indirince sadece ilk aksiyon bu gecikmeyi yaşıyor, ondan
+// sonraki tüm yarış aksiyonları aynı sıcak instance'ı paylaşıyor —
+// minInstances gibi sürekli bir maliyet gerektirmez.
+const raceHub = (action, data) => httpsCallable(functions, 'raceHubAction')({ action, ...data });
 
-export const autoRoll = (roomId) => httpsCallable(functions, 'autoRoll')({ roomId });
+// warmUpRaceHub — RaceRoom ekranı açılır açılmaz, kullanıcı henüz
+// hiçbir butona basmadan sessizce gönderilir; amaç raceHubAction'ı
+// kullanıcı ilk zarı atmadan ÖNCE ısıtmak (cold start'ı gizlemek).
+// Hata olursa (offline vs.) sessizce yutulur, kullanıcıya yansımaz.
+export const warmUpRaceHub = () => raceHub('ping').catch(() => {});
+
+export const rollDice = (roomId, useNitro, useTurbo) =>
+  raceHub('rollDice', { roomId, useNitro, useTurbo });
+
+export const autoRoll = (roomId) => raceHub('autoRoll', { roomId });
 
 export const createTrainingRace = (vehicleId, level) =>
   httpsCallable(functions, 'createTrainingRace')({ vehicleId, level });
@@ -255,18 +271,16 @@ export const createChampionshipRace = (vehicleId) =>
   httpsCallable(functions, 'createChampionshipRace')({ vehicleId });
 
 export const championshipRollDice = (roomId, useNitro, useTurbo) =>
-  httpsCallable(functions, 'championshipRollDice')({ roomId, useNitro, useTurbo });
+  raceHub('championshipRollDice', { roomId, useNitro, useTurbo });
 
 export const trainingRollDice = (roomId, useNitro, useTurbo) =>
-  httpsCallable(functions, 'trainingRollDice')({ roomId, useNitro, useTurbo });
+  raceHub('trainingRollDice', { roomId, useNitro, useTurbo });
 
-export const raceRefuel = (roomId) => httpsCallable(functions, 'raceRefuel')({ roomId });
+export const raceRefuel = (roomId) => raceHub('raceRefuel', { roomId });
 
-export const raceBuyNitro = (roomId) =>
-  httpsCallable(functions, 'raceBuyNitro')({ roomId });
+export const raceBuyNitro = (roomId) => raceHub('raceBuyNitro', { roomId });
 
-export const raceChangeGear = (roomId, delta) =>
-  httpsCallable(functions, 'raceChangeGear')({ roomId, delta });
+export const raceChangeGear = (roomId, delta) => raceHub('raceChangeGear', { roomId, delta });
 
 // --- Casino: "10 Numara" ---
 

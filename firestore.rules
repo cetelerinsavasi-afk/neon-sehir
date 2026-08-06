@@ -241,6 +241,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // futbolGrowthLogs/{logId} — "Gelişimler" günlüğü (maç/antrenmanda
+    // güç kazanan oyuncular). Takımlar herkese açık göründüğü için bu da
+    // aynı şekilde herkese açık okunur; yazma sadece Cloud Functions ile.
+    match /futbolGrowthLogs/{logId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
     // Tanımlanmamış her şey varsayılan olarak kapalı.
     match /{document=**} {
       allow read, write: if false;

@@ -4476,8 +4476,24 @@ function finalizeRace({ tx, roomRef, room, winnerUid, players, userRefs, userSna
 }
 
 // ---------------------------------------------------------------------------
-// createRaceRoom — oda kurar (status: 'waiting', rakip yok).
+// NOT (performans, maliyetsiz çözüm): "araba yarışına ilk girdiğimde çok
+// kasıyor, zar/vites tepki vermiyor, birkaç denemeden sonra düzeliyor"
+// şikayeti Cloud Functions'ın "cold start"ı yüzünden oluyordu — her buton
+// (zar at, vites, nitro, benzin...) AYRI bir fonksiyondu ve her biri ilk
+// çağrıldığında kendi başına birkaç saniyelik "ısınma" gecikmesi
+// yaşıyordu. minInstances (sürekli sıcak bekleyen kopya) çözer ama aylık
+// ücrete tabi; onun yerine MALİYETSİZ bir çözüm uyguladık: bu 7 aksiyonu
+// (rollDice, trainingRollDice, autoRoll, raceRefuel, raceBuyNitro,
+// raceChangeGear, championshipRollDice) TEK bir Cloud Function'da
+// (aşağıdaki raceHubAction) topladık. Artık sadece İLK aksiyon (hangisi
+// olursa) cold start yaşıyor, ardından TÜM yarış aksiyonları aynı sıcak
+// instance'ı paylaşıyor — normal ücretsiz/dahil çağrı sayısına dahil,
+// ekstra bir sürekli-çalışan instance maliyeti yok. Ayrıca RaceRoom
+// ekranına girer girmez (kullanıcı henüz hiçbir şeye basmadan) sessizce
+// gönderilen bir "ping" aksiyonu bu instance'ı önceden ısıtıyor.
 // ---------------------------------------------------------------------------
+
+// createRaceRoom — oda kurar (status: 'waiting', rakip yok).
 export const createRaceRoom = onCall(async (request) => {
   const uid = requireAuth(request);
   const { vehicleId, betAmount } = request.data || {};
@@ -4854,12 +4870,23 @@ async function resolveRoll({ roomId, uid, useNitro, useTurbo }) {
 }
 
 // rollDice — sırası gelen oyuncunun kendi isteğiyle zar atması.
-export const rollDice = onCall(async (request) => {
+// NOT (performans/maliyet): bu ve aşağıdaki yarış aksiyonları (antrenman/
+// otomatik zar, benzin, nitro, vites, şampiyona) artık AYRI Cloud
+// Functions DEĞİL — hepsi tek bir "raceHubAction" callable'ının içinde
+// birer dahili fonksiyon (bkz. dosyanın sonundaki raceHubAction). Sebep:
+// her biri ayrı fonksiyon olduğunda ilk kullanımda HER BİRİ kendi "cold
+// start"ını (birkaç saniyelik uyanma gecikmesi) ayrı ayrı yaşıyordu — bu
+// da "ilk girince kasıyor, birkaç denemeden sonra düzeliyor" hissini
+// yaratıyordu. Tek fonksiyona indirince sadece İLK aksiyon (hangisi olursa
+// olsun) bu gecikmeyi yaşıyor, ondan sonraki TÜM yarış aksiyonları (zar,
+// vites, nitro, benzin...) aynı sıcak instance'ı kullanıyor — hem ekstra
+// maliyet (minInstances) yok hem de tekrarlayan kasma kalkıyor.
+async function doRollDice(request) {
   const uid = requireAuth(request);
   const { roomId, useNitro, useTurbo } = request.data || {};
   const outcome = await resolveRoll({ roomId, uid, useNitro, useTurbo });
   return { ok: true, ...outcome };
-});
+}
 
 // =============================================================================
 // ANTRENMAN MODU — 10 seviyeli, botlara karşı tek kişilik pratik yarışları.
@@ -4989,7 +5016,7 @@ async function processTrainingReward(roomId) {
 // trainingRollDice — insan kendi turunda bu fonksiyonu çağırır. Aynı çağrı
 // içinde, sıra bota geçtiyse botun hamlesi de HEMEN (bekletmeden) çözülür
 // — botun kendi "istemcisi" olmadığı için otomatik oynatılması gerekiyor.
-export const trainingRollDice = onCall(async (request) => {
+async function doTrainingRollDice(request) {
   const uid = requireAuth(request);
   const { roomId, useNitro, useTurbo } = request.data || {};
 
@@ -5011,11 +5038,11 @@ export const trainingRollDice = onCall(async (request) => {
   }
 
   return { ok: true, humanOutcome };
-});
+}
 
 // autoRoll — 10 saniyelik süre dolduğunda, odadaki herhangi bir katılımcının
 // istemcisi tarafından tetiklenir (sırası gelen oyuncu adına otomatik atar).
-export const autoRoll = onCall(async (request) => {
+async function doAutoRoll(request) {
   requireAuth(request);
   const { roomId } = request.data || {};
   const roomSnap = await db.collection('raceRooms').doc(roomId).get();
@@ -5034,7 +5061,7 @@ export const autoRoll = onCall(async (request) => {
     useTurbo: false,
   });
   return { ok: true, ...outcome };
-});
+}
 
 // ---------------------------------------------------------------------------
 // Yarış içi satın almalar (istasyon, istasyon dışı benzin, nitro) ve vites —
@@ -5044,7 +5071,7 @@ export const autoRoll = onCall(async (request) => {
 // (10 karede bir) 10 altına, değilse 100 altına tam dolum yapar. Tekerlek
 // geliştirme / benzin tasarrufu seçenekleri kaldırıldı — istasyonda SADECE
 // benzin doldurma var.
-export const raceRefuel = onCall(async (request) => {
+async function doRaceRefuel(request) {
   const uid = requireAuth(request);
   const { roomId } = request.data || {};
   const roomRef = db.collection('raceRooms').doc(roomId);
@@ -5075,9 +5102,9 @@ export const raceRefuel = onCall(async (request) => {
   });
 
   return { ok: true, price: outcomePrice };
-});
+}
 
-export const raceBuyNitro = onCall(async (request) => {
+async function doRaceBuyNitro(request) {
   const uid = requireAuth(request);
   const { roomId } = request.data || {};
   const roomRef = db.collection('raceRooms').doc(roomId);
@@ -5104,11 +5131,11 @@ export const raceBuyNitro = onCall(async (request) => {
   });
 
   return { ok: true };
-});
+}
 
 // raceChangeGear — 1. turda (hiç atmadıysa) tamamen kapalı. Sonraki
 // turlarda o turun BAŞINDAKİ vitese göre en fazla ±1 değişebilir.
-export const raceChangeGear = onCall(async (request) => {
+async function doRaceChangeGear(request) {
   const uid = requireAuth(request);
   const { roomId, delta } = request.data || {};
   const d = Number(delta);
@@ -5141,7 +5168,7 @@ export const raceChangeGear = onCall(async (request) => {
   });
 
   return { ok: true };
-});
+}
 
 // =============================================================================
 // ŞAMPİYONA — her araç için ayrı, gün boyu (00:00-00:00) süren tek kişilik
@@ -5217,7 +5244,7 @@ export const createChampionshipRace = onCall(async (request) => {
 // çizgisini geçince yarış anında biter (kimseye "adalet turu" verilmez,
 // zaten rakip yok) ve o turda kaç zar attığı championshipDaily'de günün
 // (şu ana kadarki) lideriyle karşılaştırılır.
-export const championshipRollDice = onCall(async (request) => {
+async function doChampionshipRollDice(request) {
   const uid = requireAuth(request);
   const { roomId, useNitro, useTurbo } = request.data || {};
   const roomRef = db.collection('raceRooms').doc(roomId);
@@ -5350,6 +5377,37 @@ export const championshipRollDice = onCall(async (request) => {
   });
 
   return { ok: true, ...outcome };
+}
+
+// raceHubAction — yukarıdaki 7 yarış aksiyonunun (rollDice, training,
+// autoRoll, refuel, nitro, vites, şampiyona) TEK giriş noktası. Ayrıca
+// istemcinin yarış ekranına girer girmez (kullanıcı henüz hiçbir butona
+// basmadan) gönderdiği ücretsiz "ping" aksiyonunu da karşılar — bu, tek
+// sıcak instance'ı kullanıcı daha zar atmadan ısıtmaya çalışır, EK bir
+// maliyet yaratmaz (minInstances YOK, sadece normal bir çağrı sayılır).
+export const raceHubAction = onCall(async (request) => {
+  const { action } = request.data || {};
+  switch (action) {
+    case 'ping':
+      requireAuth(request);
+      return { ok: true };
+    case 'rollDice':
+      return doRollDice(request);
+    case 'trainingRollDice':
+      return doTrainingRollDice(request);
+    case 'autoRoll':
+      return doAutoRoll(request);
+    case 'raceRefuel':
+      return doRaceRefuel(request);
+    case 'raceBuyNitro':
+      return doRaceBuyNitro(request);
+    case 'raceChangeGear':
+      return doRaceChangeGear(request);
+    case 'championshipRollDice':
+      return doChampionshipRollDice(request);
+    default:
+      throw new HttpsError('invalid-argument', 'Geçersiz aksiyon.');
+  }
 });
 
 // =============================================================================
@@ -6835,6 +6893,20 @@ function futbolEffectivePower(p) {
   return p.power * (p.form / 100);
 }
 
+// logFutbolGrowth — "Takımım > Antrenman > Gelişimler" ekranının
+// okuyacağı kısa günlük kaydı. type: 'mac' | 'antrenman'.
+function logFutbolGrowth(batch, { teamId, playerId, playerName, amount, type }) {
+  const ref = db.collection('futbolGrowthLogs').doc();
+  batch.set(ref, {
+    teamId,
+    playerId,
+    playerName,
+    amount,
+    type,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+}
+
 // Puan tablosu sıralaması — istemcideki useFutbolTeams.js ile BİREBİR
 // aynı kural (puan → averaj → attığı gol → yediği gol → isim).
 function compareFutbolStandings(a, b) {
@@ -7155,21 +7227,25 @@ async function applyFutbolMatchResult(matchId) {
   // form kaybeder; yedekler formu +50 kazanır (100'ü geçmez).
   const homeLineupSet = new Set(match.homeLineupIds || []);
   const awayLineupSet = new Set(match.awayLineupIds || []);
-  const applyPlayerUpdates = (snap, lineupSet) => {
+  const applyPlayerUpdates = (snap, lineupSet, teamId) => {
     snap.docs.forEach((d) => {
       const p = d.data();
       if (lineupSet.has(d.id)) {
+        const gain = Math.round(randomInRange(0.1, 2.0) * 10) / 10;
         batch.update(d.ref, {
-          power: Math.round((p.power + randomInRange(0.1, 2.0)) * 10) / 10,
+          power: Math.round((p.power + gain) * 10) / 10,
           form: Math.max(0, p.form - p.age),
         });
+        // "Gelişimler" ekranı için: bu maçta gelişim yaşayan oyuncuyu
+        // kısa bir günlük kaydına da yazıyoruz.
+        logFutbolGrowth(batch, { teamId, playerId: d.id, playerName: p.name, amount: gain, type: 'mac' });
       } else {
         batch.update(d.ref, { form: Math.min(100, p.form + 50) });
       }
     });
   };
-  applyPlayerUpdates(homePlayersSnap, homeLineupSet);
-  applyPlayerUpdates(awayPlayersSnap, awayLineupSet);
+  applyPlayerUpdates(homePlayersSnap, homeLineupSet, match.homeTeamId);
+  applyPlayerUpdates(awayPlayersSnap, awayLineupSet, match.awayTeamId);
 
   // SMS — takım sahiplerine maç sonucu (+ ev sahibiyse bilet geliri).
   const outcomeText = (myScore, oppScore) =>
@@ -7318,7 +7394,17 @@ async function finishFutbolSeason(leagueIds) {
     const isBotTeam = !ownerByTeamId[player.teamId];
     if (isBotTeam) {
       if (player.age > 30) {
-        ageBatch.update(doc.ref, { age: 20, form: 100 });
+        // Kullanıcı revizesi: gücü AYNEN korumak sonsuza kadar
+        // sınırsız artmasına yol açıyordu (her yaşlanma turunda biraz
+        // daha güçlenip hiç tavan görmüyordu) — bu da anlamsız bir
+        // enflasyona sebep olurdu. Bunun yerine 30'u geçen bot oyuncusu
+        // 20 yaşına, 100 forma VE SABİT 99 güce "gençleştirilir" — bot
+        // takımları güçlü kalmaya devam eder ama gücü belirli bir tavanda
+        // (99) tutulur. Değeri de bu sabit güce göre yeniden hesaplanır
+        // ki piyasa/takım değeri tutarsız kalmasın.
+        const remainingSeasons = 20 - (20 - 16); // 20 yaşında kalan kariyer yılı (16)
+        const value = Math.round((99 * 1000 * remainingSeasons) / 20);
+        ageBatch.update(doc.ref, { age: 20, power: 99, form: 100, value });
         opCount += 1;
       }
       continue;
@@ -7387,14 +7473,110 @@ async function resolveFutbolTrainingForAllTeams() {
       const playerRef = db.collection('futbolPlayers').doc(playerId);
       const playerSnap = await playerRef.get();
       if (playerSnap.exists && playerSnap.data().teamId === teamDoc.id) {
-        const newPower = Math.round((playerSnap.data().power + randomInRange(0.1, 4.0)) * 10) / 10;
+        const gain = Math.round(randomInRange(0.1, 4.0) * 10) / 10;
+        const newPower = Math.round((playerSnap.data().power + gain) * 10) / 10;
         batch.update(playerRef, { power: newPower });
+        logFutbolGrowth(batch, {
+          teamId: teamDoc.id,
+          playerId,
+          playerName: playerSnap.data().name,
+          amount: gain,
+          type: 'antrenman',
+        });
       }
     }
     batch.update(teamDoc.ref, { trainingPlayerIds: admin.firestore.FieldValue.delete() });
     count += 1;
   }
   if (count > 0) await batch.commit();
+}
+
+// cleanupOldFutbolGrowthLogs — "Gelişimler" günlüğü sınırsız büyümesin
+// diye 21 günden eski kayıtları düzenli temizler (her gün sınırlı sayıda
+// — maliyeti kontrollü tutmak için).
+async function cleanupOldFutbolGrowthLogs() {
+  const cutoff = admin.firestore.Timestamp.fromMillis(Date.now() - 21 * 24 * 60 * 60 * 1000);
+  const oldSnap = await db
+    .collection('futbolGrowthLogs')
+    .where('createdAt', '<', cutoff)
+    .limit(400)
+    .get();
+  if (oldSnap.empty) return;
+  const batch = db.batch();
+  oldSnap.docs.forEach((d) => batch.delete(d.ref));
+  await batch.commit();
+}
+
+// pickFutbolBotTrainingIds — bir bot takımının o günkü antrenman
+// seçimini belirler (kullanıcı promptu): kadroya (o günkü otomatik ilk
+// 11'e) girmeyen oyuncular arasından, formu 100 olanlar öncelikli, formu
+// 100 olan yoksa en güçlüler seçilir; ELİNDEN GELDİĞİNCE farklı
+// mevkilerden (aynı gün 3 forvet yerine 1 kaleci/1 defans/1 forvet gibi)
+// seçim yapılır — FUTBOL_TRAINING_SLOTS (3) oyuncuya kadar.
+function pickFutbolBotTrainingIds(players, excludeIds) {
+  const eligible = players.filter((p) => !excludeIds.has(p.id));
+  const rank = (p) => (p.form >= 100 ? 1 : 0) * 100000 + p.power;
+  const byPos = { GK: [], DEF: [], MID: [], FWD: [] };
+  eligible.forEach((p) => {
+    if (byPos[p.position]) byPos[p.position].push(p);
+  });
+  Object.values(byPos).forEach((list) => list.sort((a, b) => rank(b) - rank(a)));
+
+  // Mevki sırasını her gün/takımda karıştırıyoruz ki hep aynı 3 mevki
+  // seçilmesin (bugün GK/DEF/MID, yarın MID/FWD/GK gibi çeşitlilik olsun).
+  const positions = Object.keys(byPos).filter((pos) => byPos[pos].length > 0);
+  for (let i = positions.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [positions[i], positions[j]] = [positions[j], positions[i]];
+  }
+
+  const picked = [];
+  const pickedIds = new Set();
+  for (const pos of positions) {
+    if (picked.length >= FUTBOL_TRAINING_SLOTS) break;
+    const candidate = byPos[pos][0];
+    picked.push(candidate);
+    pickedIds.add(candidate.id);
+  }
+  if (picked.length < FUTBOL_TRAINING_SLOTS) {
+    const rest = eligible.filter((p) => !pickedIds.has(p.id)).sort((a, b) => rank(b) - rank(a));
+    for (const p of rest) {
+      if (picked.length >= FUTBOL_TRAINING_SLOTS) break;
+      picked.push(p);
+      pickedIds.add(p.id);
+    }
+  }
+  return picked.map((p) => p.id);
+}
+
+// assignFutbolBotTraining — her gün antrenman sonuçlandıktan (ve o günkü
+// trainingPlayerIds temizlendikten) hemen sonra çağrılır: her BOT takımı
+// için ertesi güne kadar sürecek yeni bir antrenman seçimi yapar, tıpkı
+// kullanıcıların "Antrenmanı Başlat" ile kendi oyuncularını seçmesi gibi
+// — kullanıcı promptu: botlar da bizim gibi gelişsin.
+async function assignFutbolBotTraining() {
+  const botTeamsSnap = await db.collection('futbolTeams').where('ownerUid', '==', null).get();
+  let batch = db.batch();
+  let opCount = 0;
+  for (const teamDoc of botTeamsSnap.docs) {
+    const playersSnap = await db.collection('futbolPlayers').where('teamId', '==', teamDoc.id).get();
+    const players = playersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    if (players.length === 0) continue;
+    // O günkü maça çıkacak (otomatik seçilen) ilk 11 antrenmana giremez —
+    // kullanıcıların tabi olduğu kuralla birebir aynı.
+    const auto = pickFutbolLineup(groupFutbolPlayersByPositionArr(players), FUTBOL_DEFAULT_FORMATION);
+    const lineupIds = new Set(auto.selected.map((p) => p.id));
+    const trainingIds = pickFutbolBotTrainingIds(players, lineupIds);
+    if (trainingIds.length > 0) {
+      batch.update(teamDoc.ref, { trainingPlayerIds: trainingIds });
+      opCount += 1;
+      if (opCount % 450 === 0) {
+        await batch.commit();
+        batch = db.batch();
+      }
+    }
+  }
+  if (opCount % 450 !== 0) await batch.commit();
 }
 
 // resolveFutbolMatchdayStart — her gün 18:00 (İstanbul saati): o günün
@@ -7461,6 +7643,8 @@ export const resolveFutbolMatchdayReveal = onSchedule(
       await finishFutbolSeason(finishedLeagueIds);
     }
     await resolveFutbolTrainingForAllTeams();
+    await assignFutbolBotTraining();
+    await cleanupOldFutbolGrowthLogs();
   }
 );
 
@@ -7757,11 +7941,15 @@ export const sellFutbolTeam = onCall(async (request) => {
   });
   // Bota dönen takımın oyuncuları artık yaşlanmayacak; 30 yaşın
   // üzerinde olan varsa (oyuncu sahibiyken yaşlanmış olabilir) hemen
-  // 20'ye gençleştiriyoruz — sezon sonunu beklemeden.
+  // 20'ye + sabit 99 güce gençleştiriyoruz — sezon sonunu beklemeden,
+  // finishFutbolSeason'daki bot gençleştirme kuralıyla birebir aynı
+  // (bkz. oradaki not: güç sınırsız artmasın diye 99'da sabitleniyor).
   const playersSnap = await db.collection('futbolPlayers').where('teamId', '==', teamId).get();
+  const remainingSeasonsAt20 = 20 - (20 - 16);
+  const rejuvenatedValue = Math.round((99 * 1000 * remainingSeasonsAt20) / 20);
   playersSnap.docs.forEach((d) => {
     if (d.data().age > 30) {
-      batch.update(d.ref, { age: 20, form: 100 });
+      batch.update(d.ref, { age: 20, power: 99, form: 100, value: rejuvenatedValue });
     }
   });
   await batch.commit();
