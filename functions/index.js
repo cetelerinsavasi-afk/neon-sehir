@@ -8128,8 +8128,16 @@ function buildFutbolSystemStockWrite(batch, position, bandIndex, maxPowerByPosit
 
 // refillFutbolTransferSlots — bekleme süresi (1 saat) dolmuş boş
 // slotları taze bir sistem oyuncusuyla doldurur. every 15 dakikada bir
-// çalışır — "satıldıktan 1 saat sonra yenisi gelsin" kuralı.
+// çalışır — "satıldıktan 1 saat sonra yenisi gelsin" kuralı. Ayrıca,
+// tek seferlik piyasa sıfırlama geçişini (bkz. runFutbolTransferMarketReset)
+// burada da (güvenlik ağı olarak) çağırıyoruz — böylece deploy'dan sonra
+// EN GEÇ 15 DAKİKA içinde, HİÇBİR kullanıcının uygulamayı açmasına gerek
+// kalmadan kendiliğinden çalışır (kimse fark etmeden, arka planda).
+// Fonksiyon kendi migration bayrağıyla idempotent olduğu için burada her
+// 15 dakikada bir "denenmesi" tamamen zararsız.
 export const refillFutbolTransferSlots = onSchedule({ schedule: 'every 15 minutes' }, async () => {
+  await runFutbolTransferMarketReset();
+
   const now = admin.firestore.Timestamp.now();
   const dueSnap = await db
     .collection('futbolTransferSlots')
