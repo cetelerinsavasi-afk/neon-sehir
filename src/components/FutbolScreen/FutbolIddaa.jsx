@@ -4,11 +4,6 @@ import { placeFutbolBet } from '../../services/gameActions';
 import FutbolCrest from './FutbolCrest';
 import './FutbolIddaa.css';
 
-const PICKS = [
-  { id: 'home', label: '1 (Ev Sahibi)' },
-  { id: 'draw', label: 'X (Beraberlik)' },
-  { id: 'away', label: '2 (Deplasman)' },
-];
 const STATUS_LABELS = { pending: 'Beklemede', won: 'Kazandı', lost: 'Kaybetti' };
 
 export default function FutbolIddaa({ leagueId, matches, teamNameById, teamById }) {
@@ -51,13 +46,13 @@ export default function FutbolIddaa({ leagueId, matches, teamNameById, teamById 
       {!bettingOpen && (
         <p className="futbol-placeholder">
           {matches.length !== 4
-            ? 'Bu ligde güncel turda 4 maç yok.'
+            ? 'Bu ligde güncel günde 4 maç yok.'
             : "Bugünün maçları başladı — kupon yapmak için yarın 18:00'den önce tekrar gel."}
         </p>
       )}
 
       {bettingOpen && alreadyBet && (
-        <p className="futbol-placeholder">Bu tur için zaten bir kuponun var — aşağıda görebilirsin.</p>
+        <p className="futbol-placeholder">Bugün için zaten bir kuponun var — aşağıda görebilirsin.</p>
       )}
 
       {bettingOpen && !alreadyBet && (
@@ -68,31 +63,35 @@ export default function FutbolIddaa({ leagueId, matches, teamNameById, teamById 
             yatırdığın altın gider.
           </p>
           <div className="futbol-iddaa-matches">
-            {matches.map((m) => (
-              <div key={m.id} className="futbol-iddaa-match">
-                <div className="futbol-iddaa-match-teams">
-                  <span className="futbol-match-team">
-                    {teamNameById[m.homeTeamId] || '—'}
-                    <FutbolCrest logo={teamById[m.homeTeamId]?.logo} initials={teamNameById[m.homeTeamId]?.[0]} size={18} />
-                  </span>
-                  <span className="futbol-match-team futbol-match-team-away">
-                    <FutbolCrest logo={teamById[m.awayTeamId]?.logo} initials={teamNameById[m.awayTeamId]?.[0]} size={18} />
-                    {teamNameById[m.awayTeamId] || '—'}
-                  </span>
+            {matches.map((m) => {
+              const homeName = teamNameById[m.homeTeamId] || '—';
+              const awayName = teamNameById[m.awayTeamId] || '—';
+              const pick = picks[m.id];
+              return (
+                <div key={m.id} className="futbol-iddaa-triple">
+                  <button
+                    className={`futbol-iddaa-side ${pick === 'home' ? 'active' : ''}`}
+                    onClick={() => setPick(m.id, 'home')}
+                  >
+                    <FutbolCrest logo={teamById[m.homeTeamId]?.logo} initials={homeName[0]} size={26} />
+                    <span>{homeName}</span>
+                  </button>
+                  <button
+                    className={`futbol-iddaa-draw ${pick === 'draw' ? 'active' : ''}`}
+                    onClick={() => setPick(m.id, 'draw')}
+                  >
+                    X
+                  </button>
+                  <button
+                    className={`futbol-iddaa-side ${pick === 'away' ? 'active' : ''}`}
+                    onClick={() => setPick(m.id, 'away')}
+                  >
+                    <FutbolCrest logo={teamById[m.awayTeamId]?.logo} initials={awayName[0]} size={26} />
+                    <span>{awayName}</span>
+                  </button>
                 </div>
-                <div className="futbol-kadro-chip-row">
-                  {PICKS.map((p) => (
-                    <button
-                      key={p.id}
-                      className={`futbol-kadro-chip ${picks[m.id] === p.id ? 'active' : ''}`}
-                      onClick={() => setPick(m.id, p.id)}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div className="futbol-iddaa-stake-row">
@@ -121,7 +120,7 @@ export default function FutbolIddaa({ leagueId, matches, teamNameById, teamById 
           <p className="futbol-kadro-section-title">Kupon Geçmişin</p>
           {bets.map((b) => (
             <div key={b.id} className={`futbol-iddaa-history-row status-${b.status}`}>
-              <span>{b.round}. Tur</span>
+              <span>{b.round}. Gün</span>
               <span>{b.stake.toLocaleString('tr-TR')} altın</span>
               <span>{STATUS_LABELS[b.status]}</span>
               {b.status === 'won' && <span>+{b.payout.toLocaleString('tr-TR')}</span>}

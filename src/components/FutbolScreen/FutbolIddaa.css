@@ -1,23 +1,57 @@
 .futbol-iddaa-matches {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   margin: 10px 0;
 }
 
-.futbol-iddaa-match {
-  padding: 10px;
-  border: 1px solid var(--panel-border);
-  border-radius: 8px;
-  background: var(--panel);
+.futbol-iddaa-triple {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 6px;
+  align-items: stretch;
 }
 
-.futbol-iddaa-match-teams {
+.futbol-iddaa-side {
   display: flex;
-  justify-content: space-between;
-  margin-bottom: 8px;
-  font-size: 13px;
-  font-weight: 700;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.futbol-iddaa-side.active {
+  border-color: #3ddc84;
+  background: rgba(61, 220, 132, 0.1);
+  color: #3ddc84;
+}
+
+.futbol-iddaa-draw {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.futbol-iddaa-draw.active {
+  border-color: var(--neon-cyan);
+  background: rgba(25, 232, 255, 0.1);
+  color: var(--neon-cyan);
 }
 
 .futbol-iddaa-stake-row {

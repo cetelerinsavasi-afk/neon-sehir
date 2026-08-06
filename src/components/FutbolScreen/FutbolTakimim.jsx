@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useMyFutbolTeam } from '../../hooks/useMyFutbolTeam';
+import { useFutbolTeams } from '../../hooks/useFutbolTeams';
 import {
   listFutbolBuyableTeams,
   getMyFutbolTeamFinance,
   buyFutbolTeam,
   sellFutbolTeam,
+  listFutbolTeamForSale,
+  cancelFutbolTeamListing,
 } from '../../services/gameActions';
 import FutbolCrest from './FutbolCrest';
 import FutbolKadro from './FutbolKadro';
@@ -95,8 +98,9 @@ function BuyTeamPanel() {
   return (
     <div className="futbol-buy-list">
       <p className="futbol-placeholder">
-        Henüz bir takımın yok. Aşağıdaki botlara ait kulüplerden birini piyasa
-        değeri karşılığında satın alabilirsin.
+        Henüz bir takımın yok. Aşağıdaki kulüplerden birini satın alabilirsin
+        — botlara ait olanlar piyasa değerinden, oyuncuların kendi
+        ilan ettikleri ise kendi belirledikleri fiyattan.
       </p>
       {error && <p className="futbol-admin-error">{error}</p>}
       {teams.length === 0 && <p className="futbol-placeholder">Satılık takım kalmadı.</p>}
@@ -104,7 +108,9 @@ function BuyTeamPanel() {
         <div key={t.id} className="futbol-buy-row">
           <FutbolCrest logo={t.logo} initials={initialsFromName(t.name)} size={40} />
           <div className="futbol-buy-info">
-            <p className="futbol-buy-name">{t.name}</p>
+            <p className="futbol-buy-name">
+              {t.name} {t.listedByPlayer && <span className="futbol-buy-badge">Oyuncu İlanı</span>}
+            </p>
             <p className="futbol-buy-meta">
               {t.tier}. Lig · {t.fans.toLocaleString('tr-TR')} taraftar
             </p>
@@ -126,17 +132,26 @@ function BuyTeamPanel() {
 }
 
 function MyTeamOverview({ team }) {
+  const { teams: leagueTeams } = useFutbolTeams(team.leagueId);
   const [finance, setFinance] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [showSellPanel, setShowSellPanel] = useState(false);
+  const [listPrice, setListPrice] = useState('');
 
-  useEffect(() => {
+  const rank = leagueTeams.findIndex((t) => t.id === team.id) + 1;
+
+  const loadFinance = () => {
     getMyFutbolTeamFinance()
       .then((res) => setFinance(res?.data?.team || null))
       .catch(() => {});
+  };
+
+  useEffect(() => {
+    loadFinance();
   }, [team.id]);
 
-  const handleSell = async () => {
+  const handleInstantSell = async () => {
     if (!window.confirm(`${team.name} takımını anında satmak istediğine emin misin?`)) return;
     setBusy(true);
     setError('');
@@ -144,6 +159,31 @@ function MyTeamOverview({ team }) {
       await sellFutbolTeam(team.id);
     } catch (err) {
       setError(err?.message || 'Satış başarısız.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleList = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      await listFutbolTeamForSale(team.id, Number(listPrice));
+      setShowSellPanel(false);
+    } catch (err) {
+      setError(err?.message || 'İlan verilemedi.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleCancelListing = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      await cancelFutbolTeamListing(team.id);
+    } catch (err) {
+      setError(err?.message || 'İptal edilemedi.');
     } finally {
       setBusy(false);
     }
@@ -161,12 +201,8 @@ function MyTeamOverview({ team }) {
         </div>
       </div>
 
-      <div className="futbol-my-team-stats">
-        <StatBox label="O" value={team.stats?.played ?? 0} />
-        <StatBox label="G" value={team.stats?.won ?? 0} />
-        <StatBox label="B" value={team.stats?.drawn ?? 0} />
-        <StatBox label="M" value={team.stats?.lost ?? 0} />
-        <StatBox label="P" value={team.stats?.points ?? 0} />
+      <div className="futbol-my-team-rank">
+        {rank > 0 ? `Ligde ${rank}. sıradasın` : 'Sıralama hesaplanıyor...'}
       </div>
 
       <p className="futbol-placeholder">
@@ -174,25 +210,50 @@ function MyTeamOverview({ team }) {
         <strong>{team.tactic || 'dengeli'}</strong> — değiştirmek için Kadro sekmesine git.
       </p>
 
-      {finance && (
+      {error && <p className="futbol-admin-error">{error}</p>}
+
+      {team.forSale ? (
         <div className="futbol-my-team-finance">
-          <p>Güncel değer: {finance.value.toLocaleString('tr-TR')} altın</p>
-          <p>Anında satış: {finance.instantSellPrice.toLocaleString('tr-TR')} altın</p>
-          {error && <p className="futbol-admin-error">{error}</p>}
-          <button className="futbol-admin-reset" disabled={busy} onClick={handleSell}>
-            {busy ? '...' : 'Takımı Anında Sat'}
+          <p>İlan fiyatın: {(team.salePrice || 0).toLocaleString('tr-TR')} altın</p>
+          <button className="futbol-admin-reset" disabled={busy} onClick={handleCancelListing}>
+            İlanı İptal Et
+          </button>
+        </div>
+      ) : !showSellPanel ? (
+        <button className="futbol-admin-reset" onClick={() => setShowSellPanel(true)}>
+          Takımı Sat
+        </button>
+      ) : (
+        <div className="futbol-my-team-finance">
+          {finance && (
+            <p className="futbol-buy-meta">
+              Değer: {finance.value.toLocaleString('tr-TR')} · Anında satış:{' '}
+              {finance.instantSellPrice.toLocaleString('tr-TR')} · Azami ilan:{' '}
+              {finance.maxListPrice.toLocaleString('tr-TR')}
+            </p>
+          )}
+          <div className="futbol-transfer-listing-form">
+            <input
+              type="number"
+              className="futbol-admin-input"
+              placeholder="Fiyat biç"
+              value={listPrice}
+              onChange={(e) => setListPrice(e.target.value)}
+            />
+            <button className="futbol-admin-submit" disabled={busy} onClick={handleList}>
+              Listeye Koy
+            </button>
+          </div>
+          {finance && (
+            <button className="futbol-admin-reset" disabled={busy} onClick={handleInstantSell}>
+              Anında Sat ({finance.instantSellPrice.toLocaleString('tr-TR')})
+            </button>
+          )}
+          <button className="futbol-placeholder futbol-my-team-cancel-link" onClick={() => setShowSellPanel(false)}>
+            Vazgeç
           </button>
         </div>
       )}
-    </div>
-  );
-}
-
-function StatBox({ label, value }) {
-  return (
-    <div className="futbol-statbox">
-      <span className="futbol-statbox-value">{value}</span>
-      <span className="futbol-statbox-label">{label}</span>
     </div>
   );
 }

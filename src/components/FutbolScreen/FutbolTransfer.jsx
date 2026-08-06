@@ -7,6 +7,7 @@ import {
   listFutbolPlayerForSale,
   cancelFutbolPlayerListing,
 } from '../../services/gameActions';
+import FutbolPlayerAvatar from './FutbolPlayerAvatar';
 import './FutbolTransfer.css';
 
 const SOURCE_LABELS = { system: 'Sistem Stoğu', instant: 'Anında Satılanlar', manual: 'Oyuncu İlanları' };
@@ -105,12 +106,13 @@ export default function FutbolTransfer({ team }) {
           const maxPrice = Math.round((p.value * 4) / 3);
           return (
             <div key={p.id} className="futbol-transfer-row">
+              <FutbolPlayerAvatar playerId={p.id} position={p.position} size={40} />
               <div className="futbol-transfer-info">
                 <p className="futbol-transfer-name">
                   {p.name} <span className="futbol-transfer-pos">({POSITION_LABELS[p.position]})</span>
                 </p>
                 <p className="futbol-buy-meta">
-                  {p.power.toFixed(1)} güç · {p.value.toLocaleString('tr-TR')} altın değer
+                  {p.age} yaş · {p.power.toFixed(1)} güç · {p.value.toLocaleString('tr-TR')} altın değer
                 </p>
               </div>
               {p.forSale ? (
@@ -169,11 +171,14 @@ export default function FutbolTransfer({ team }) {
               <p className="futbol-transfer-group-title">{SOURCE_LABELS[source]}</p>
               {items.map((p) => (
                 <div key={p.id} className="futbol-transfer-row">
+                  <FutbolPlayerAvatar playerId={p.id} position={p.position} size={40} />
                   <div className="futbol-transfer-info">
                     <p className="futbol-transfer-name">
                       {p.name} <span className="futbol-transfer-pos">({POSITION_LABELS[p.position]})</span>
                     </p>
-                    <p className="futbol-buy-meta">{p.power.toFixed(1)} güç</p>
+                    <p className="futbol-buy-meta">
+                      {p.age} yaş · {p.power.toFixed(1)} güç
+                    </p>
                   </div>
                   <button
                     className="futbol-admin-submit"

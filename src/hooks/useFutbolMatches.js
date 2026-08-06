@@ -2,22 +2,27 @@ import { useEffect, useState } from 'react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 
-// Bir lig için tüm sezon maçlarını (56 maç civarı, ucuz bir sorgu) çeker.
-// Tur bazlı gruplama bilerek istemci tarafında yapılıyor — composite
-// index gerektirmemesi için (bkz. firestore.indexes.json'daki minimal
-// index yaklaşımı).
-export function useFutbolMatches(leagueId) {
+// Bir lig için GÜNCEL SEZONUN tüm maçlarını çeker. `season` verilmezse
+// (henüz lig verisi yüklenmediyse) boş döner — eski sezonların maçlarıyla
+// karışıp "güncel tur" hesaplamalarını (ve iddaa ekranını) bozmasın diye
+// sezon filtresi bilerek sorgunun bir parçası (backend zaten eski
+// sezonu sildiği için bu ikinci bir güvenlik katmanı).
+export function useFutbolMatches(leagueId, season) {
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!leagueId) {
+    if (!leagueId || !season) {
       setMatches([]);
       setLoading(false);
       return;
     }
     setLoading(true);
-    const q = query(collection(db, 'futbolMatches'), where('leagueId', '==', leagueId));
+    const q = query(
+      collection(db, 'futbolMatches'),
+      where('leagueId', '==', leagueId),
+      where('season', '==', season)
+    );
     const unsubscribe = onSnapshot(
       q,
       (snap) => {
@@ -32,7 +37,7 @@ export function useFutbolMatches(leagueId) {
       }
     );
     return unsubscribe;
-  }, [leagueId]);
+  }, [leagueId, season]);
 
   return { matches, loading };
 }

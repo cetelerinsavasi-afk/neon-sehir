@@ -23,6 +23,33 @@
   font-size: 14px;
 }
 
+.futbol-buy-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--neon-cyan);
+  border: 1px solid var(--neon-cyan);
+  border-radius: 999px;
+  padding: 1px 6px;
+  margin-left: 6px;
+}
+
+.futbol-my-team-rank {
+  font-size: 15px;
+  font-weight: 800;
+  color: #3ddc84;
+  margin-bottom: 10px;
+}
+
+.futbol-my-team-cancel-link {
+  background: none;
+  border: none;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+  width: fit-content;
+}
+
 .futbol-buy-meta {
   font-size: 12px;
   color: var(--text-dim);

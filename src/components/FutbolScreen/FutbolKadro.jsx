@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useFutbolTeamPlayers } from '../../hooks/useFutbolTeamPlayers';
 import { setFutbolLineup } from '../../services/gameActions';
+import FutbolPlayerAvatar from './FutbolPlayerAvatar';
 import './FutbolKadro.css';
 
 const FORMATIONS = {
@@ -17,63 +18,83 @@ const TACTICS = [
   { id: 'ofansif', label: 'Ofansif' },
 ];
 const POSITION_LABELS = { GK: 'Kaleci', DEF: 'Defans', MID: 'Orta Saha', FWD: 'Forvet' };
+// Sahada yukarıdan aşağıya gösterim sırası (forvet rakip kaleye yakın üstte).
+const ROW_ORDER = ['FWD', 'MID', 'DEF', 'GK'];
+
+function buildSlots(formation, lineup, players) {
+  const need = FORMATIONS[formation];
+  const byId = {};
+  players.forEach((p) => (byId[p.id] = p));
+  const slots = {};
+  ROW_ORDER.forEach((pos) => {
+    slots[pos] = Array.from({ length: need[pos] }, () => null);
+  });
+  // Mevcut lineup'ı, pozisyonu tutan slotlara sırayla yerleştir.
+  (lineup || []).forEach((id) => {
+    const player = byId[id];
+    if (!player || !slots[player.position]) return;
+    const idx = slots[player.position].findIndex((s) => s === null);
+    if (idx !== -1) slots[player.position][idx] = id;
+  });
+  return slots;
+}
 
 export default function FutbolKadro({ team }) {
   const { players } = useFutbolTeamPlayers(team.id);
   const [formation, setFormation] = useState(team.formation || '2-2-1');
   const [tactic, setTactic] = useState(team.tactic || 'dengeli');
-  const [lineup, setLineup] = useState(team.lineup || []);
+  const [slots, setSlots] = useState({});
+  const [pickerFor, setPickerFor] = useState(null); // { position, slotIndex }
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
 
   useEffect(() => {
     setFormation(team.formation || '2-2-1');
     setTactic(team.tactic || 'dengeli');
-    setLineup(team.lineup || []);
   }, [team.id]);
 
-  const need = FORMATIONS[formation];
-  const byPosition = { GK: [], DEF: [], MID: [], FWD: [] };
-  players.forEach((p) => byPosition[p.position]?.push(p));
-
-  const countIn = (pos) => lineup.filter((id) => byPosition[pos].some((p) => p.id === id)).length;
-
-  const togglePlayer = (player) => {
-    setMessage('');
-    const isSelected = lineup.includes(player.id);
-    if (isSelected) {
-      setLineup(lineup.filter((id) => id !== player.id));
-      return;
+  useEffect(() => {
+    if (players.length > 0) {
+      setSlots(buildSlots(formation, team.lineup, players));
     }
-    if (countIn(player.position) >= need[player.position]) return; // slot dolu
-    setLineup([...lineup, player.id]);
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [players.length, team.id]);
 
   const changeFormation = (f) => {
+    const flatCurrent = Object.values(slots).flat().filter(Boolean);
     setFormation(f);
-    // Yeni dizilimle uyuşmayan fazla seçimleri (mevki başına) temizle.
-    const newNeed = FORMATIONS[f];
-    const kept = [];
-    const used = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
-    lineup.forEach((id) => {
-      const player = players.find((p) => p.id === id);
-      if (!player) return;
-      if (used[player.position] < newNeed[player.position]) {
-        used[player.position] += 1;
-        kept.push(id);
-      }
-    });
-    setLineup(kept);
+    setSlots(buildSlots(f, flatCurrent, players));
   };
 
-  const totalNeeded = Object.values(need).reduce((a, b) => a + b, 0);
-  const isComplete = lineup.length === totalNeeded;
+  const usedPlayerIds = new Set(Object.values(slots).flat().filter(Boolean));
+
+  const assignPlayer = (position, slotIndex, playerId) => {
+    setMessage('');
+    setSlots((prev) => {
+      const next = { ...prev, [position]: [...prev[position]] };
+      next[position][slotIndex] = playerId;
+      return next;
+    });
+    setPickerFor(null);
+  };
+
+  const clearSlot = (position, slotIndex) => {
+    setSlots((prev) => {
+      const next = { ...prev, [position]: [...prev[position]] };
+      next[position][slotIndex] = null;
+      return next;
+    });
+  };
+
+  const flatLineup = Object.values(slots).flat().filter(Boolean);
+  const totalNeeded = Object.values(FORMATIONS[formation]).reduce((a, b) => a + b, 0);
+  const isComplete = flatLineup.length === totalNeeded;
 
   const handleSave = async () => {
     setBusy(true);
     setMessage('');
     try {
-      await setFutbolLineup(team.id, formation, tactic, lineup);
+      await setFutbolLineup(team.id, formation, tactic, flatLineup);
       setMessage('Kaydedildi ✓');
     } catch (err) {
       setMessage(err?.message || 'Kaydedilemedi.');
@@ -81,6 +102,9 @@ export default function FutbolKadro({ team }) {
       setBusy(false);
     }
   };
+
+  const playersById = {};
+  players.forEach((p) => (playersById[p.id] = p));
 
   return (
     <div className="futbol-kadro">
@@ -110,39 +134,38 @@ export default function FutbolKadro({ team }) {
         ))}
       </div>
 
-      {Object.keys(need).map((pos) => (
-        <div key={pos} className="futbol-kadro-position-block">
-          <p className="futbol-kadro-section-title">
-            {POSITION_LABELS[pos]} ({countIn(pos)}/{need[pos]})
-          </p>
-          <div className="futbol-kadro-player-list">
-            {byPosition[pos].map((p) => {
-              const selected = lineup.includes(p.id);
-              const full = !selected && countIn(pos) >= need[pos];
+      <div className="futbol-pitch-big">
+        {ROW_ORDER.map((pos) => (
+          <div key={pos} className="futbol-pitch-row">
+            {(slots[pos] || []).map((playerId, idx) => {
+              const player = playerId ? playersById[playerId] : null;
               return (
                 <button
-                  key={p.id}
-                  className={`futbol-kadro-player ${selected ? 'selected' : ''} ${full ? 'disabled' : ''}`}
-                  onClick={() => togglePlayer(p)}
-                  disabled={full}
+                  key={idx}
+                  className="futbol-pitch-slot"
+                  onClick={() => setPickerFor({ position: pos, slotIndex: idx })}
                 >
-                  <span>{p.name}</span>
-                  <span className="futbol-kadro-player-power">
-                    {p.power.toFixed(1)} güç · {Math.round(p.form)}% form
-                  </span>
+                  <FutbolPlayerAvatar playerId={playerId || `${pos}-${idx}-empty`} position={pos} size={46} />
+                  {player ? (
+                    <span className="futbol-pitch-slot-info">
+                      <strong>{player.name.split(' ')[0]}</strong>
+                      {player.age}y · {player.power.toFixed(0)}g · {Math.round(player.form)}f
+                    </span>
+                  ) : (
+                    <span className="futbol-pitch-slot-info futbol-pitch-slot-empty">
+                      {POSITION_LABELS[pos]} seç
+                    </span>
+                  )}
                 </button>
               );
             })}
-            {byPosition[pos].length === 0 && (
-              <p className="futbol-placeholder">Bu mevkide oyuncun yok.</p>
-            )}
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
 
       {!isComplete && (
         <p className="futbol-admin-error">
-          {lineup.length}/{totalNeeded} oyuncu seçildi — kaydetmeden önce tamamla.
+          {flatLineup.length}/{totalNeeded} oyuncu seçildi — kaydetmeden önce tüm slotları doldur.
         </p>
       )}
       {message && <p className="futbol-placeholder">{message}</p>}
@@ -154,6 +177,55 @@ export default function FutbolKadro({ team }) {
         maç için otomatik olarak 2-2-1 / dengeli / en formda kadroya geri
         dönülür.
       </p>
+
+      {pickerFor && (
+        <PlayerPicker
+          position={pickerFor.position}
+          players={players.filter(
+            (p) => p.position === pickerFor.position && (!usedPlayerIds.has(p.id) || slots[pickerFor.position][pickerFor.slotIndex] === p.id)
+          )}
+          currentId={slots[pickerFor.position]?.[pickerFor.slotIndex]}
+          onPick={(playerId) => assignPlayer(pickerFor.position, pickerFor.slotIndex, playerId)}
+          onClear={() => {
+            clearSlot(pickerFor.position, pickerFor.slotIndex);
+            setPickerFor(null);
+          }}
+          onClose={() => setPickerFor(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function PlayerPicker({ position, players, currentId, onPick, onClear, onClose }) {
+  return (
+    <div className="futbol-picker-backdrop" onClick={onClose}>
+      <div className="futbol-picker" onClick={(e) => e.stopPropagation()}>
+        <p className="futbol-kadro-section-title">{POSITION_LABELS[position]} seç</p>
+        <div className="futbol-picker-list">
+          {players.map((p) => (
+            <button
+              key={p.id}
+              className={`futbol-picker-row ${currentId === p.id ? 'selected' : ''}`}
+              onClick={() => onPick(p.id)}
+            >
+              <FutbolPlayerAvatar playerId={p.id} position={p.position} size={38} />
+              <span className="futbol-picker-info">
+                <strong>{p.name}</strong>
+                <span>
+                  {p.age} yaş · {p.power.toFixed(1)} güç · {Math.round(p.form)}% form
+                </span>
+              </span>
+            </button>
+          ))}
+          {players.length === 0 && <p className="futbol-placeholder">Bu mevkide başka oyuncun yok.</p>}
+        </div>
+        {currentId && (
+          <button className="futbol-admin-reset" onClick={onClear}>
+            Slotu Boşalt
+          </button>
+        )}
+      </div>
     </div>
   );
 }
