@@ -372,3 +372,6 @@ export const cancelFutbolTeamListing = (teamId) =>
 export const listFutbolClubs = (leagueId) => httpsCallable(functions, 'listFutbolClubs')({ leagueId });
 
 export const regenerateAllFutbolLogos = () => httpsCallable(functions, 'regenerateAllFutbolLogos')();
+
+export const seedFutbolTransferMarketStock = () =>
+  httpsCallable(functions, 'seedFutbolTransferMarketStock')();

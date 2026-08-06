@@ -13,6 +13,14 @@
   margin: 8px 0 4px;
 }
 
+.futbol-transfer-stock-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
 .futbol-transfer-row {
   display: flex;
   justify-content: space-between;

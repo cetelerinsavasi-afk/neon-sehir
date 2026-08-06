@@ -55,7 +55,7 @@ function YouthBuySection({ teamId }) {
 
   return (
     <div>
-      <p className="futbol-kadro-section-title">Genç Yetenek Satın Al (30.000 altın)</p>
+      <p className="futbol-kadro-section-title">Genç Yetenek Satın Al</p>
       <div className="futbol-youth-grid">
         {candidates.map((c) => (
           <button
@@ -71,9 +71,8 @@ function YouthBuySection({ teamId }) {
       </div>
       {error && <p className="futbol-admin-error">{error}</p>}
       {message && <p className="futbol-placeholder">{message}</p>}
-      <p className="futbol-buy-meta">Fiyat: 30.000 altın</p>
       <button className="futbol-admin-submit" disabled={busy || !selected} onClick={handleBuy}>
-        {busy ? '...' : 'Satın Al'}
+        {busy ? '...' : 'Satın Al (30.000 altın)'}
       </button>
     </div>
   );

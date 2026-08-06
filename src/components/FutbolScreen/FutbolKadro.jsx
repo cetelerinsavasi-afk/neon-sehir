@@ -181,9 +181,8 @@ export default function FutbolKadro({ team }) {
       {pickerFor && (
         <PlayerPicker
           position={pickerFor.position}
-          players={players.filter(
-            (p) => p.position === pickerFor.position && (!usedPlayerIds.has(p.id) || slots[pickerFor.position][pickerFor.slotIndex] === p.id)
-          )}
+          players={players.filter((p) => p.position === pickerFor.position)}
+          usedPlayerIds={usedPlayerIds}
           currentId={slots[pickerFor.position]?.[pickerFor.slotIndex]}
           onPick={(playerId) => assignPlayer(pickerFor.position, pickerFor.slotIndex, playerId)}
           onClear={() => {
@@ -197,28 +196,35 @@ export default function FutbolKadro({ team }) {
   );
 }
 
-function PlayerPicker({ position, players, currentId, onPick, onClear, onClose }) {
+function PlayerPicker({ position, players, usedPlayerIds, currentId, onPick, onClear, onClose }) {
   return (
     <div className="futbol-picker-backdrop" onClick={onClose}>
       <div className="futbol-picker" onClick={(e) => e.stopPropagation()}>
         <p className="futbol-kadro-section-title">{POSITION_LABELS[position]} seç</p>
         <div className="futbol-picker-list">
-          {players.map((p) => (
-            <button
-              key={p.id}
-              className={`futbol-picker-row ${currentId === p.id ? 'selected' : ''}`}
-              onClick={() => onPick(p.id)}
-            >
-              <FutbolPlayerAvatar playerId={p.id} position={p.position} size={38} />
-              <span className="futbol-picker-info">
-                <strong>{p.name}</strong>
-                <span>
-                  {p.age} yaş · {p.power.toFixed(1)} güç · {Math.round(p.form)}% form
+          {players.map((p) => {
+            const isCurrent = currentId === p.id;
+            const usedElsewhere = !isCurrent && usedPlayerIds.has(p.id);
+            return (
+              <button
+                key={p.id}
+                className={`futbol-picker-row ${isCurrent ? 'selected' : ''} ${usedElsewhere ? 'used-elsewhere' : ''}`}
+                disabled={usedElsewhere}
+                onClick={() => onPick(p.id)}
+              >
+                <FutbolPlayerAvatar playerId={p.id} position={p.position} size={38} />
+                <span className="futbol-picker-info">
+                  <strong>{p.name}</strong>
+                  <span>
+                    {p.age} yaş · {p.power.toFixed(1)} güç · {Math.round(p.form)}% form
+                  </span>
                 </span>
-              </span>
-            </button>
-          ))}
-          {players.length === 0 && <p className="futbol-placeholder">Bu mevkide başka oyuncun yok.</p>}
+                {isCurrent && <span className="futbol-picker-badge current">Bu slotta</span>}
+                {usedElsewhere && <span className="futbol-picker-badge">Kadroda</span>}
+              </button>
+            );
+          })}
+          {players.length === 0 && <p className="futbol-placeholder">Bu mevkide oyuncun yok.</p>}
         </div>
         {currentId && (
           <button className="futbol-admin-reset" onClick={onClear}>

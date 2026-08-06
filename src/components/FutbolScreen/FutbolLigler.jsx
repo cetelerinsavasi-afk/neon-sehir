@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { db } from '../../firebase';
 import { useFutbolLeagues } from '../../hooks/useFutbolLeagues';
 import { useFutbolTeams } from '../../hooks/useFutbolTeams';
 import { useFutbolMatches } from '../../hooks/useFutbolMatches';
@@ -78,14 +80,41 @@ export default function FutbolLigler() {
 
   // Turu oynattıktan sonra, canlı anlatımı test edebilmen için o günün
   // ilk maçını otomatik açıyoruz — aramana gerek kalmasın diye.
+  // Turu oynattıktan sonra, canlı anlatımı test edebilmen için o günün
+  // ilk (bitmiş) maçını otomatik açıyoruz. ÖNEMLİ: React state'ten
+  // (roundsGrouped/currentRound) okumak burada YANLIŞ olurdu — bu
+  // fonksiyon butona tıklandığı andaki (henüz maç çözülmemişken) bayat
+  // veriyi yakalar ve asla "bitmiş" bir maç bulamaz. Bunun yerine,
+  // sunucu işini bitirdikten SONRA Firestore'dan taze bir sorgu atıyoruz.
   const runManualMatchday = async () => {
     setBusy(true);
     try {
       await resolveFutbolMatchdayManual();
-      setTimeout(() => {
-        const finishedToday = (roundsGrouped[currentRound] || []).find((m) => m.status === 'finished');
-        if (finishedToday) setSelectedMatch(finishedToday);
-      }, 1500);
+      if (activeLeagueId) {
+        const freshLeagueSnap = await getDocs(
+          query(collection(db, 'futbolLeagues'), where('__name__', '==', activeLeagueId))
+        );
+        const freshLeague = freshLeagueSnap.docs[0]?.data();
+        const round = freshLeague?.currentRound || 1;
+        const season = freshLeague?.season || 1;
+        // Tur ilerlemiş olabilir (gün bittiyse) — hem güncel hem bir
+        // önceki turu dener, hangisinde bitmiş maç varsa onu açar.
+        for (const tryRound of [round, Math.max(1, round - 1)]) {
+          const matchesSnap = await getDocs(
+            query(
+              collection(db, 'futbolMatches'),
+              where('leagueId', '==', activeLeagueId),
+              where('season', '==', season),
+              where('round', '==', tryRound)
+            )
+          );
+          const finished = matchesSnap.docs.map((d) => ({ id: d.id, ...d.data() })).find((m) => m.status === 'finished');
+          if (finished) {
+            setSelectedMatch(finished);
+            break;
+          }
+        }
+      }
     } finally {
       setBusy(false);
     }

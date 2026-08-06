@@ -33,7 +33,7 @@ const MY_TEAM_TABS = [
   { id: 'takimin', label: 'Takımın' },
   { id: 'kadro', label: 'Kadro' },
   { id: 'transfer', label: 'Transfer' },
-  { id: 'altyapi', label: 'Altyapı' },
+  { id: 'altyapi', label: 'Antrenman' },
   { id: 'forma', label: 'Forma' },
 ];
 
