@@ -50,6 +50,32 @@
   width: fit-content;
 }
 
+.futbol-roster-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.futbol-roster-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+}
+
+.futbol-roster-info {
+  flex: 1;
+}
+
+.futbol-roster-stats {
+  white-space: nowrap;
+  font-size: 11px;
+}
+
 .futbol-buy-meta {
   font-size: 12px;
   color: var(--text-dim);

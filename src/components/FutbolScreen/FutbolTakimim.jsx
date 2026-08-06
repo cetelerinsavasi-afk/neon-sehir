@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMyFutbolTeam } from '../../hooks/useMyFutbolTeam';
 import { useFutbolTeams } from '../../hooks/useFutbolTeams';
+import { useFutbolTeamPlayers } from '../../hooks/useFutbolTeamPlayers';
 import {
   listFutbolBuyableTeams,
   getMyFutbolTeamFinance,
@@ -10,11 +11,16 @@ import {
   cancelFutbolTeamListing,
 } from '../../services/gameActions';
 import FutbolCrest from './FutbolCrest';
+import FutbolPlayerAvatar from './FutbolPlayerAvatar';
 import FutbolKadro from './FutbolKadro';
 import FutbolTransfer from './FutbolTransfer';
 import FutbolLogoEditor from './FutbolLogoEditor';
 import FutbolAltyapi from './FutbolAltyapi';
+import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './FutbolTakimim.css';
+
+const POSITION_LABELS = { GK: 'Kaleci', DEF: 'Defans', MID: 'Orta Saha', FWD: 'Forvet' };
+const CLUB_PRICE_QUICK_AMOUNTS = [100, 1000, 10000, 100000, { value: 1000000, label: '1M' }];
 
 function initialsFromName(name) {
   return (name || '')
@@ -133,11 +139,12 @@ function BuyTeamPanel() {
 
 function MyTeamOverview({ team }) {
   const { teams: leagueTeams } = useFutbolTeams(team.leagueId);
+  const { players } = useFutbolTeamPlayers(team.id);
   const [finance, setFinance] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [showSellPanel, setShowSellPanel] = useState(false);
-  const [listPrice, setListPrice] = useState('');
+  const [listPrice, setListPrice] = useState(0);
 
   const rank = leagueTeams.findIndex((t) => t.id === team.id) + 1;
 
@@ -168,7 +175,7 @@ function MyTeamOverview({ team }) {
     setBusy(true);
     setError('');
     try {
-      await listFutbolTeamForSale(team.id, Number(listPrice));
+      await listFutbolTeamForSale(team.id, listPrice);
       setShowSellPanel(false);
     } catch (err) {
       setError(err?.message || 'İlan verilemedi.');
@@ -205,11 +212,6 @@ function MyTeamOverview({ team }) {
         {rank > 0 ? `Ligde ${rank}. sıradasın` : 'Sıralama hesaplanıyor...'}
       </div>
 
-      <p className="futbol-placeholder">
-        Dizilim: <strong>{team.formation || '2-2-1'}</strong> · Taktik:{' '}
-        <strong>{team.tactic || 'dengeli'}</strong> — değiştirmek için Kadro sekmesine git.
-      </p>
-
       {error && <p className="futbol-admin-error">{error}</p>}
 
       {team.forSale ? (
@@ -232,18 +234,15 @@ function MyTeamOverview({ team }) {
               {finance.maxListPrice.toLocaleString('tr-TR')}
             </p>
           )}
-          <div className="futbol-transfer-listing-form">
-            <input
-              type="number"
-              className="futbol-admin-input"
-              placeholder="Fiyat biç"
-              value={listPrice}
-              onChange={(e) => setListPrice(e.target.value)}
-            />
-            <button className="futbol-admin-submit" disabled={busy} onClick={handleList}>
-              Listeye Koy
-            </button>
-          </div>
+          <QuantityStepper
+            value={listPrice}
+            onChange={setListPrice}
+            max={finance?.maxListPrice}
+            quickAmounts={CLUB_PRICE_QUICK_AMOUNTS}
+          />
+          <button className="futbol-admin-submit" disabled={busy || listPrice <= 0} onClick={handleList}>
+            Listeye Koy
+          </button>
           {finance && (
             <button className="futbol-admin-reset" disabled={busy} onClick={handleInstantSell}>
               Anında Sat ({finance.instantSellPrice.toLocaleString('tr-TR')})
@@ -254,6 +253,22 @@ function MyTeamOverview({ team }) {
           </button>
         </div>
       )}
+
+      <p className="futbol-kadro-section-title">Kadromuz ({players.length})</p>
+      <div className="futbol-roster-list">
+        {players.map((p) => (
+          <div key={p.id} className="futbol-roster-row">
+            <FutbolPlayerAvatar playerId={p.id} position={p.position} size={38} />
+            <div className="futbol-roster-info">
+              <p className="futbol-transfer-name">{p.name}</p>
+              <p className="futbol-buy-meta">{POSITION_LABELS[p.position]}</p>
+            </div>
+            <p className="futbol-buy-meta futbol-roster-stats">
+              {p.age} yaş · {p.power.toFixed(1)} güç · {Math.round(p.form)}% form
+            </p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

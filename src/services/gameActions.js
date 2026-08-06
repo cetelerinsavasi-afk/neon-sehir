@@ -350,8 +350,11 @@ export const setFutbolTeamLogo = (teamId, shape, pattern, icon, primary, seconda
 export const buyFutbolYouthPlayer = (teamId, position) =>
   httpsCallable(functions, 'buyFutbolYouthPlayer')({ teamId, position });
 
-export const setFutbolTraining = (teamId, playerIds) =>
-  httpsCallable(functions, 'setFutbolTraining')({ teamId, playerIds });
+export const addFutbolTraining = (teamId, playerId) =>
+  httpsCallable(functions, 'addFutbolTraining')({ teamId, playerId });
+
+export const removeFutbolTraining = (teamId, playerId) =>
+  httpsCallable(functions, 'removeFutbolTraining')({ teamId, playerId });
 
 // --- Faz Futbol: Faz 7 (İddaa Bayii) ---
 
@@ -367,3 +370,5 @@ export const cancelFutbolTeamListing = (teamId) =>
 // --- Faz Futbol: Faz 10 (Kulüpler dizini) ---
 
 export const listFutbolClubs = (leagueId) => httpsCallable(functions, 'listFutbolClubs')({ leagueId });
+
+export const regenerateAllFutbolLogos = () => httpsCallable(functions, 'regenerateAllFutbolLogos')();

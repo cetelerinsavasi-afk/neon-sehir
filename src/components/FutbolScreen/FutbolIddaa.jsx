@@ -2,14 +2,16 @@ import { useState } from 'react';
 import { useMyFutbolBets } from '../../hooks/useMyFutbolBets';
 import { placeFutbolBet } from '../../services/gameActions';
 import FutbolCrest from './FutbolCrest';
+import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './FutbolIddaa.css';
 
 const STATUS_LABELS = { pending: 'Beklemede', won: 'Kazandı', lost: 'Kaybetti' };
+const STAKE_QUICK_AMOUNTS = [10, 100, 1000, 10000];
 
 export default function FutbolIddaa({ leagueId, matches, teamNameById, teamById }) {
   const { bets } = useMyFutbolBets(leagueId);
   const [picks, setPicks] = useState({});
-  const [stake, setStake] = useState('');
+  const [stake, setStake] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -30,10 +32,10 @@ export default function FutbolIddaa({ leagueId, matches, teamNameById, teamById 
     setSuccess('');
     try {
       const predictions = matches.map((m) => ({ matchId: m.id, pick: picks[m.id] }));
-      await placeFutbolBet(leagueId, Number(stake), predictions);
+      await placeFutbolBet(leagueId, stake, predictions);
       setSuccess('Kuponun oynandı, iyi şanslar!');
       setPicks({});
-      setStake('');
+      setStake(0);
     } catch (err) {
       setError(err?.message || 'Kupon oynanamadı.');
     } finally {
@@ -95,16 +97,10 @@ export default function FutbolIddaa({ leagueId, matches, teamNameById, teamById 
           </div>
 
           <div className="futbol-iddaa-stake-row">
-            <input
-              type="number"
-              className="futbol-admin-input"
-              placeholder="Yatıracağın altın"
-              value={stake}
-              onChange={(e) => setStake(e.target.value)}
-            />
+            <QuantityStepper value={stake} onChange={setStake} quickAmounts={STAKE_QUICK_AMOUNTS} />
             <button
               className="futbol-admin-submit"
-              disabled={busy || !allPicked || !stake || Number(stake) <= 0}
+              disabled={busy || !allPicked || stake <= 0}
               onClick={handleSubmit}
             >
               {busy ? '...' : 'Kupon Oyna'}

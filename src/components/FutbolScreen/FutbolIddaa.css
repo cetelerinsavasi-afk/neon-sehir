@@ -56,7 +56,9 @@
 
 .futbol-iddaa-stake-row {
   display: flex;
-  gap: 8px;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
   margin: 12px 0;
 }
 

@@ -11,6 +11,20 @@
   margin-top: 8px;
 }
 
+.futbol-training-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+}
+
+.futbol-training-info {
+  flex: 1;
+}
+
 .futbol-youth-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

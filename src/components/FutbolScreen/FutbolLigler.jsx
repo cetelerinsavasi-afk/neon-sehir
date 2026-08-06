@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useFutbolLeagues } from '../../hooks/useFutbolLeagues';
 import { useFutbolTeams } from '../../hooks/useFutbolTeams';
 import { useFutbolMatches } from '../../hooks/useFutbolMatches';
-import { seedFutbolWorld, resetFutbolWorld, resolveFutbolMatchdayManual } from '../../services/gameActions';
+import { seedFutbolWorld, resetFutbolWorld, resolveFutbolMatchdayManual, regenerateAllFutbolLogos } from '../../services/gameActions';
 import FutbolMatchDetail from './FutbolMatchDetail';
 import FutbolCrest from './FutbolCrest';
 import FutbolIddaa from './FutbolIddaa';
@@ -176,6 +176,20 @@ export default function FutbolLigler() {
 
       <button className="futbol-admin-reset" disabled={busy} onClick={runReset}>
         {busy ? '...' : 'Futbol Verisini Sıfırla (admin)'}
+      </button>
+      <button
+        className="futbol-admin-reset"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            await regenerateAllFutbolLogos();
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy ? '...' : 'Tüm Logoları Yeniden Dağıt (admin)'}
       </button>
       <button className="futbol-admin-submit" disabled={busy} onClick={runManualMatchday}>
         {busy ? '...' : 'Güncel Günü Şimdi Oynat (admin, 18:00 beklemeden test)'}

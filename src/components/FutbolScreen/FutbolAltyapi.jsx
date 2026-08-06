@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useFutbolTeamPlayers } from '../../hooks/useFutbolTeamPlayers';
-import { buyFutbolYouthPlayer, setFutbolTraining } from '../../services/gameActions';
+import { buyFutbolYouthPlayer, addFutbolTraining, removeFutbolTraining } from '../../services/gameActions';
 import FutbolPlayerAvatar from './FutbolPlayerAvatar';
 import './FutbolAltyapi.css';
 
@@ -71,6 +71,7 @@ function YouthBuySection({ teamId }) {
       </div>
       {error && <p className="futbol-admin-error">{error}</p>}
       {message && <p className="futbol-placeholder">{message}</p>}
+      <p className="futbol-buy-meta">Fiyat: 30.000 altın</p>
       <button className="futbol-admin-submit" disabled={busy || !selected} onClick={handleBuy}>
         {busy ? '...' : 'Satın Al'}
       </button>
@@ -79,67 +80,73 @@ function YouthBuySection({ teamId }) {
 }
 
 function TrainingSection({ teamId, players, trainingPlayerIds }) {
-  const [selected, setSelected] = useState(trainingPlayerIds);
-  const [busy, setBusy] = useState(false);
+  const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
 
-  useEffect(() => {
-    setSelected(trainingPlayerIds);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [teamId, trainingPlayerIds.join(',')]);
-
-  const toggle = (playerId) => {
-    setMessage('');
-    setSelected((prev) => {
-      if (prev.includes(playerId)) return prev.filter((id) => id !== playerId);
-      if (prev.length >= TRAINING_SLOTS) return prev;
-      return [...prev, playerId];
-    });
-  };
-
-  const handleSave = async () => {
-    setBusy(true);
+  const handleStart = async (playerId) => {
+    setBusyId(playerId);
     setError('');
-    setMessage('');
     try {
-      await setFutbolTraining(teamId, selected);
-      setMessage('Antrenman programı kaydedildi ✓');
+      await addFutbolTraining(teamId, playerId);
     } catch (err) {
-      setError(err?.message || 'Kaydedilemedi.');
+      setError(err?.message || 'Başlatılamadı.');
     } finally {
-      setBusy(false);
+      setBusyId(null);
     }
   };
+
+  const handleCancel = async (playerId) => {
+    setBusyId(playerId);
+    setError('');
+    try {
+      await removeFutbolTraining(teamId, playerId);
+    } catch (err) {
+      setError(err?.message || 'İptal edilemedi.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const slotsFull = trainingPlayerIds.length >= TRAINING_SLOTS;
 
   return (
     <div className="futbol-training">
       <p className="futbol-kadro-section-title">
-        Bugünkü Antrenman ({selected.length}/{TRAINING_SLOTS}) — 18:00&apos;de uygulanır
+        Antrenman ({trainingPlayerIds.length}/{TRAINING_SLOTS}) — 18:00-19:00 arası, antrenmandaki
+        oyuncu o günkü maça çıkamaz
       </p>
       {error && <p className="futbol-admin-error">{error}</p>}
-      {message && <p className="futbol-placeholder">{message}</p>}
       <div className="futbol-training-list">
-        {players.map((p) => (
-          <button
-            key={p.id}
-            className={`futbol-kadro-player ${selected.includes(p.id) ? 'selected' : ''}`}
-            disabled={busy || (!selected.includes(p.id) && selected.length >= TRAINING_SLOTS)}
-            onClick={() => toggle(p.id)}
-          >
-            <FutbolPlayerAvatar playerId={p.id} position={p.position} size={30} />
-            <span>
-              {p.name} <span className="futbol-transfer-pos">({POSITION_LABELS[p.position]})</span>
-            </span>
-            <span className="futbol-kadro-player-power">
-              {p.power.toFixed(1)} güç · {p.age} yaş
-            </span>
-          </button>
-        ))}
+        {players.map((p) => {
+          const inTraining = trainingPlayerIds.includes(p.id);
+          return (
+            <div key={p.id} className="futbol-training-row">
+              <FutbolPlayerAvatar playerId={p.id} position={p.position} size={34} />
+              <div className="futbol-training-info">
+                <p className="futbol-transfer-name">
+                  {p.name} <span className="futbol-transfer-pos">({POSITION_LABELS[p.position]})</span>
+                </p>
+                <p className="futbol-buy-meta">
+                  {p.age} yaş · {p.power.toFixed(1)} güç · {Math.round(p.form)}% form
+                </p>
+              </div>
+              {inTraining ? (
+                <button className="futbol-admin-reset" disabled={busyId === p.id} onClick={() => handleCancel(p.id)}>
+                  İptal Et
+                </button>
+              ) : (
+                <button
+                  className="futbol-admin-submit"
+                  disabled={busyId === p.id || slotsFull}
+                  onClick={() => handleStart(p.id)}
+                >
+                  Antrenmanı Başlat
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
-      <button className="futbol-admin-submit" disabled={busy} onClick={handleSave}>
-        {busy ? '...' : 'Antrenman Programını Kaydet'}
-      </button>
     </div>
   );
 }

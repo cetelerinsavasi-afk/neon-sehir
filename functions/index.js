@@ -7058,8 +7058,18 @@ async function resolveFutbolMatch(match) {
   ]);
   if (!homeTeamSnap.exists || !awayTeamSnap.exists) return;
 
-  const homePlayersArr = homePlayersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  const awayPlayersArr = awayPlayersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  // Antrenmandaki oyuncular (18:00-19:00 arası) o günkü maça katılamaz —
+  // kadro seçiminden önce eleniyorlar. Manuel kadroda antrenmandaki bir
+  // oyuncu varsa, mevcut "roster'da bulunamadı" güvenlik ağı sayesinde
+  // otomatik olarak 2-2-1/dengeli/en formda kadroya düşülüyor.
+  const homeTraining = new Set(homeTeamSnap.data().trainingPlayerIds || []);
+  const awayTraining = new Set(awayTeamSnap.data().trainingPlayerIds || []);
+  const homePlayersArr = homePlayersSnap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((p) => !homeTraining.has(p.id));
+  const awayPlayersArr = awayPlayersSnap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((p) => !awayTraining.has(p.id));
   const homeResolved = resolveFutbolTeamLineup(homeTeamSnap.data(), homePlayersArr);
   const awayResolved = resolveFutbolTeamLineup(awayTeamSnap.data(), awayPlayersArr);
   const homeLines = futbolLinePowers(homeResolved.selected, true, homeResolved.tactic);
@@ -7330,6 +7340,33 @@ async function finishFutbolSeason(leagueIds) {
 // resolveFutbolMatchday — her gün 18:00 (İstanbul saati) çalışır: o
 // günün turundaki tüm maçları çözer, turu bir ileri alır; son tur
 // (14) bittiyse sezonu kapatıp yeni sezonu açar.
+// resolveFutbolTrainingForAllTeams — antrenmandaki (en fazla 3'er)
+// oyuncuların gücünü artırır, seçimi temizler. BİLEREK resolveFutbolMatchday
+// ile aynı fonksiyon içinde, maçlar çözüldükten SONRA çağrılıyor — ayrı
+// bir onSchedule olsaydı, hangisinin önce çalışacağı garanti olmazdı ve
+// maç kadrosu antrenmandaki oyuncuyu yanlışlıkla içerebilirdi ya da
+// antrenman bonusu iki kez/hiç uygulanmayabilirdi.
+async function resolveFutbolTrainingForAllTeams() {
+  const teamsSnap = await db.collection('futbolTeams').get();
+  const batch = db.batch();
+  let count = 0;
+  for (const teamDoc of teamsSnap.docs) {
+    const trainingPlayerIds = teamDoc.data().trainingPlayerIds;
+    if (!Array.isArray(trainingPlayerIds) || trainingPlayerIds.length === 0) continue;
+    for (const playerId of trainingPlayerIds) {
+      const playerRef = db.collection('futbolPlayers').doc(playerId);
+      const playerSnap = await playerRef.get();
+      if (playerSnap.exists && playerSnap.data().teamId === teamDoc.id) {
+        const newPower = Math.min(99, Math.round((playerSnap.data().power + randomInRange(0.1, 4.0)) * 10) / 10);
+        batch.update(playerRef, { power: newPower });
+      }
+    }
+    batch.update(teamDoc.ref, { trainingPlayerIds: admin.firestore.FieldValue.delete() });
+    count += 1;
+  }
+  if (count > 0) await batch.commit();
+}
+
 export const resolveFutbolMatchday = onSchedule(
   { schedule: '0 18 * * *', timeZone: 'Europe/Istanbul' },
   async () => {
@@ -7361,6 +7398,7 @@ export const resolveFutbolMatchday = onSchedule(
     if (finishedLeagueIds.length > 0) {
       await finishFutbolSeason(finishedLeagueIds);
     }
+    await resolveFutbolTrainingForAllTeams();
   }
 );
 
@@ -7396,6 +7434,7 @@ export const resolveFutbolMatchdayManual = onCall(async (request) => {
   if (finishedLeagueIds.length > 0) {
     await finishFutbolSeason(finishedLeagueIds);
   }
+  await resolveFutbolTrainingForAllTeams();
   return { ok: true };
 });
 
@@ -7702,6 +7741,22 @@ export const backfillFutbolTeamLogos = onCall(async (request) => {
   });
   if (count > 0) await batch.commit();
   return { ok: true, updated: count };
+});
+
+// regenerateAllFutbolLogos — TÜM takımların formasını yeniden dağıtır,
+// hepsi birbirinden FARKLI olacak şekilde garanti eder (pickUniqueFutbolLogo
+// ile). Daha önce (bu düzeltmeden önce) oluşturulmuş, aynı forma
+// kombinasyonuna sahip takımları tek seferde düzeltmek için — admin-only.
+export const regenerateAllFutbolLogos = onCall(async (request) => {
+  await requireFutbolAdmin(request);
+  const teamsSnap = await db.collection('futbolTeams').get();
+  const usedSignatures = new Set();
+  const batch = db.batch();
+  teamsSnap.docs.forEach((d) => {
+    batch.update(d.ref, { logo: pickUniqueFutbolLogo(usedSignatures) });
+  });
+  await batch.commit();
+  return { ok: true, updated: teamsSnap.size };
 });
 
 // --- Futbol modülü: Faz 5a (kadro/taktik yönetimi) ---
@@ -8093,61 +8148,45 @@ export const buyFutbolYouthPlayer = onCall(async (request) => {
   return { ok: true };
 });
 
-// setFutbolTraining — o gün antrenman yapacak EN FAZLA 3 oyuncuyu bir
-// kerede belirler (önceki seçimin tamamının yerine geçer); 18:00'de
-// (resolveFutbolTrainingDay ile) her birinin gücü 0.1-4.0 artar, formu
-// antrenmandan etkilenmez. Ertesi gün tekrar seçilmesi gerekir.
-export const setFutbolTraining = onCall(async (request) => {
+// addFutbolTraining — bir oyuncuyu o günkü antrenman listesine ekler
+// (günde en fazla 3 oyuncu, her biri kendi "Antrenmanı Başlat" butonuyla,
+// tek tek). 18:00'de gücü artar (bkz. resolveFutbolTrainingForAllTeams),
+// 19:00'a kadar (maçla aynı süre) o oyuncu o günkü maça çıkamaz.
+export const addFutbolTraining = onCall(async (request) => {
   const uid = requireAuth(request);
-  const { teamId, playerIds } = request.data || {};
-  if (!Array.isArray(playerIds) || playerIds.length > FUTBOL_TRAINING_SLOTS) {
-    throw new HttpsError('invalid-argument', `En fazla ${FUTBOL_TRAINING_SLOTS} oyuncu seçebilirsin.`);
-  }
-  if (new Set(playerIds).size !== playerIds.length) {
-    throw new HttpsError('invalid-argument', 'Aynı oyuncu birden fazla kez seçilemez.');
-  }
+  const { teamId, playerId } = request.data || {};
   const teamRef = db.collection('futbolTeams').doc(teamId);
   const teamSnap = await teamRef.get();
   if (!teamSnap.exists || teamSnap.data().ownerUid !== uid) {
     throw new HttpsError('permission-denied', 'Bu takım sana ait değil.');
   }
-  if (playerIds.length > 0) {
-    const playersSnap = await db.collection('futbolPlayers').where('teamId', '==', teamId).get();
-    const rosterIds = new Set(playersSnap.docs.map((d) => d.id));
-    if (playerIds.some((id) => !rosterIds.has(id))) {
-      throw new HttpsError('invalid-argument', 'Bu oyunculardan biri senin kadronda değil.');
-    }
+  const current = teamSnap.data().trainingPlayerIds || [];
+  if (current.includes(playerId)) {
+    return { ok: true }; // zaten ekli
   }
-  await teamRef.update({ trainingPlayerIds: playerIds });
+  if (current.length >= FUTBOL_TRAINING_SLOTS) {
+    throw new HttpsError('failed-precondition', `Günde en fazla ${FUTBOL_TRAINING_SLOTS} oyuncu antrenman yapabilir.`);
+  }
+  const playerSnap = await db.collection('futbolPlayers').doc(playerId).get();
+  if (!playerSnap.exists || playerSnap.data().teamId !== teamId) {
+    throw new HttpsError('invalid-argument', 'Bu oyuncu senin kadronda değil.');
+  }
+  await teamRef.update({ trainingPlayerIds: [...current, playerId] });
   return { ok: true };
 });
 
-// resolveFutbolTrainingDay — o gün antrenmana alınmış (en fazla 3'er)
-// tüm oyuncuların gücünü artırır, seçimi temizler. resolveFutbolMatchday
-// ile AYNI saatte (18:00) ama bağımsız çalışsın diye ayrı bir onSchedule.
-export const resolveFutbolTrainingDay = onSchedule(
-  { schedule: '0 18 * * *', timeZone: 'Europe/Istanbul' },
-  async () => {
-    const teamsSnap = await db.collection('futbolTeams').get();
-    const batch = db.batch();
-    let count = 0;
-    for (const teamDoc of teamsSnap.docs) {
-      const trainingPlayerIds = teamDoc.data().trainingPlayerIds;
-      if (!Array.isArray(trainingPlayerIds) || trainingPlayerIds.length === 0) continue;
-      for (const playerId of trainingPlayerIds) {
-        const playerRef = db.collection('futbolPlayers').doc(playerId);
-        const playerSnap = await playerRef.get();
-        if (playerSnap.exists && playerSnap.data().teamId === teamDoc.id) {
-          const newPower = Math.min(99, Math.round((playerSnap.data().power + randomInRange(0.1, 4.0)) * 10) / 10);
-          batch.update(playerRef, { power: newPower });
-        }
-      }
-      batch.update(teamDoc.ref, { trainingPlayerIds: admin.firestore.FieldValue.delete() });
-      count += 1;
-    }
-    if (count > 0) await batch.commit();
+export const removeFutbolTraining = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { teamId, playerId } = request.data || {};
+  const teamRef = db.collection('futbolTeams').doc(teamId);
+  const teamSnap = await teamRef.get();
+  if (!teamSnap.exists || teamSnap.data().ownerUid !== uid) {
+    throw new HttpsError('permission-denied', 'Bu takım sana ait değil.');
   }
-);
+  const current = teamSnap.data().trainingPlayerIds || [];
+  await teamRef.update({ trainingPlayerIds: current.filter((id) => id !== playerId) });
+  return { ok: true };
+});
 
 // --- Futbol modülü: Faz 7 (İddaa Bayii) ---
 
