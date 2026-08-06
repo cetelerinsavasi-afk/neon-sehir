@@ -6628,7 +6628,7 @@ function randomFutbolPlayer(position, tier) {
   const [min, max] = bands[tier];
   const targetValue = randomInRange(min, max);
   let power = (targetValue * 20) / (1000 * remainingSeasons);
-  power = Math.max(35, Math.min(99, Math.round(power * 10) / 10));
+  power = Math.max(35, Math.round(power * 10) / 10);
   const value = Math.round((power * 1000 * remainingSeasons) / 20);
   const name = `${FUTBOL_FIRST_NAMES[Math.floor(Math.random() * FUTBOL_FIRST_NAMES.length)]} ${
     FUTBOL_LAST_NAMES[Math.floor(Math.random() * FUTBOL_LAST_NAMES.length)]
@@ -7160,7 +7160,7 @@ async function applyFutbolMatchResult(matchId) {
       const p = d.data();
       if (lineupSet.has(d.id)) {
         batch.update(d.ref, {
-          power: Math.min(99, Math.round((p.power + randomInRange(0.1, 2.0)) * 10) / 10),
+          power: Math.round((p.power + randomInRange(0.1, 2.0)) * 10) / 10,
           form: Math.max(0, p.form - p.age),
         });
       } else {
@@ -7387,7 +7387,7 @@ async function resolveFutbolTrainingForAllTeams() {
       const playerRef = db.collection('futbolPlayers').doc(playerId);
       const playerSnap = await playerRef.get();
       if (playerSnap.exists && playerSnap.data().teamId === teamDoc.id) {
-        const newPower = Math.min(99, Math.round((playerSnap.data().power + randomInRange(0.1, 4.0)) * 10) / 10);
+        const newPower = Math.round((playerSnap.data().power + randomInRange(0.1, 4.0)) * 10) / 10;
         batch.update(playerRef, { power: newPower });
       }
     }
@@ -7492,25 +7492,30 @@ export const listFutbolBuyableTeams = onCall(async (request) => {
         fans: data.fans || 0,
         logo: data.logo || null,
         value,
+        price: value,
         listedByPlayer: false,
       };
     })
   );
-  const listedTeams = listedSnap.docs.map((d) => {
-    const data = d.data();
-    return {
-      id: d.id,
-      name: data.name,
-      tier: data.tier,
-      leagueId: data.leagueId,
-      fans: data.fans || 0,
-      logo: data.logo || null,
-      value: data.salePrice,
-      listedByPlayer: true,
-    };
-  });
+  const listedTeams = await Promise.all(
+    listedSnap.docs.map(async (d) => {
+      const data = d.data();
+      const value = await computeFutbolTeamValue(d.id);
+      return {
+        id: d.id,
+        name: data.name,
+        tier: data.tier,
+        leagueId: data.leagueId,
+        fans: data.fans || 0,
+        logo: data.logo || null,
+        value,
+        price: data.salePrice,
+        listedByPlayer: true,
+      };
+    })
+  );
   const teams = [...botTeams, ...listedTeams];
-  teams.sort((a, b) => a.tier - b.tier || b.value - a.value);
+  teams.sort((a, b) => a.tier - b.tier || b.price - a.price);
   return { teams };
 });
 
@@ -7784,6 +7789,11 @@ export const setFutbolLineup = onCall(async (request) => {
 
   if (new Set(lineup).size !== lineup.length) {
     throw new HttpsError('invalid-argument', 'Aynı oyuncu birden fazla kez seçilemez.');
+  }
+
+  const trainingPlayerIds = teamSnap.data().trainingPlayerIds || [];
+  if (lineup.some((id) => trainingPlayerIds.includes(id))) {
+    throw new HttpsError('failed-precondition', 'Antrenmandaki bir oyuncu ilk 11e alınamaz.');
   }
 
   const playersSnap = await db.collection('futbolPlayers').where('teamId', '==', teamId).get();
@@ -8109,6 +8119,10 @@ export const addFutbolTraining = onCall(async (request) => {
   if (current.length >= FUTBOL_TRAINING_SLOTS) {
     throw new HttpsError('failed-precondition', `Günde en fazla ${FUTBOL_TRAINING_SLOTS} oyuncu antrenman yapabilir.`);
   }
+  const lineup = teamSnap.data().lineup || [];
+  if (lineup.includes(playerId)) {
+    throw new HttpsError('failed-precondition', 'Bu oyuncu ilk 11 kadroda, önce kadrodan çıkarmalısın.');
+  }
   const playerSnap = await db.collection('futbolPlayers').doc(playerId).get();
   if (!playerSnap.exists || playerSnap.data().teamId !== teamId) {
     throw new HttpsError('invalid-argument', 'Bu oyuncu senin kadronda değil.');
@@ -8132,7 +8146,7 @@ export const removeFutbolTraining = onCall(async (request) => {
 
 // --- Futbol modülü: Faz 7 (İddaa Bayii) ---
 
-const FUTBOL_BET_PAYOUT_MULTIPLIER = 10;
+const FUTBOL_BET_PAYOUT_MULTIPLIER = 5;
 
 function futbolMatchOutcome(match) {
   if (match.homeScore > match.awayScore) return 'home';
@@ -8160,16 +8174,8 @@ export const placeFutbolBet = onCall(async (request) => {
   if (!leagueSnap.exists) throw new HttpsError('not-found', 'Lig bulunamadı.');
   const round = leagueSnap.data().currentRound || 1;
 
-  const existingBetSnap = await db
-    .collection('futbolBets')
-    .where('uid', '==', uid)
-    .where('leagueId', '==', leagueId)
-    .where('round', '==', round)
-    .limit(1)
-    .get();
-  if (!existingBetSnap.empty) {
-    throw new HttpsError('failed-precondition', 'Bu tur için zaten bir kuponun var.');
-  }
+  // Kullanıcı, aynı tur için birden fazla kupon oynayabilir (kullanıcı
+  // promptu) — bu yüzden burada tekil kupon kontrolü YOK.
 
   const matchesSnap = await db
     .collection('futbolMatches')
@@ -8217,7 +8223,7 @@ export const placeFutbolBet = onCall(async (request) => {
 });
 
 // resolveFutbolBetsForRound — o turun 4 maçı bitince (resolveFutbolMatch
-// çağrılarının hemen ardından) çağrılır: 4 tahmin de tutarsa 10 kat
+// çağrılarının hemen ardından) çağrılır: 4 tahmin de tutarsa 5 kat
 // ödeme, tutmazsa yatırılan altın (zaten düşülmüştü) kalıcı olarak gider.
 async function resolveFutbolBetsForRound(leagueId, round) {
   const [betsSnap, matchesSnap] = await Promise.all([

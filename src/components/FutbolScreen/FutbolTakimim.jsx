@@ -17,6 +17,7 @@ import FutbolTransfer from './FutbolTransfer';
 import FutbolLogoEditor from './FutbolLogoEditor';
 import FutbolAltyapi from './FutbolAltyapi';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
+import ConfirmModal from '../ConfirmModal/ConfirmModal';
 import './FutbolTakimim.css';
 
 const POSITION_LABELS = { GK: 'Kaleci', DEF: 'Defans', MID: 'Orta Saha', FWD: 'Forvet' };
@@ -122,7 +123,10 @@ function BuyTeamPanel() {
             </p>
           </div>
           <div className="futbol-buy-action">
-            <p className="futbol-buy-price">{t.value.toLocaleString('tr-TR')} altın</p>
+            <p className="futbol-buy-price">{t.price.toLocaleString('tr-TR')} altın</p>
+            {t.listedByPlayer && (
+              <p className="futbol-buy-meta">Değeri: {t.value.toLocaleString('tr-TR')} altın</p>
+            )}
             <button
               className="futbol-admin-submit"
               disabled={busyId === t.id}
@@ -145,6 +149,7 @@ function MyTeamOverview({ team }) {
   const [error, setError] = useState('');
   const [showSellPanel, setShowSellPanel] = useState(false);
   const [listPrice, setListPrice] = useState(0);
+  const [confirmInstantSell, setConfirmInstantSell] = useState(false);
 
   const rank = leagueTeams.findIndex((t) => t.id === team.id) + 1;
 
@@ -158,8 +163,12 @@ function MyTeamOverview({ team }) {
     loadFinance();
   }, [team.id]);
 
-  const handleInstantSell = async () => {
-    if (!window.confirm(`${team.name} takımını anında satmak istediğine emin misin?`)) return;
+  const handleInstantSell = () => {
+    setConfirmInstantSell(true);
+  };
+
+  const runInstantSell = async () => {
+    setConfirmInstantSell(false);
     setBusy(true);
     setError('');
     try {
@@ -269,6 +278,16 @@ function MyTeamOverview({ team }) {
           </div>
         ))}
       </div>
+
+      {confirmInstantSell && (
+        <ConfirmModal
+          title="Takımı Sat"
+          message={`${team.name} takımını anında satmak istediğine emin misin?`}
+          confirmLabel="Evet, Sat"
+          onConfirm={runInstantSell}
+          onCancel={() => setConfirmInstantSell(false)}
+        />
+      )}
     </div>
   );
 }

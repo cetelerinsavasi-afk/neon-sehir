@@ -9,15 +9,23 @@ const TRAINING_SLOTS = 3;
 
 export default function FutbolAltyapi({ team }) {
   const { players } = useFutbolTeamPlayers(team.id);
+  const lineup = team.lineup || [];
+  // İlk 11'de olan oyuncular antrenman seçeneklerinde hiç gözükmez.
+  const trainablePlayers = players.filter((p) => !lineup.includes(p.id));
 
   return (
     <div className="futbol-altyapi">
-      <TrainingSection teamId={team.id} players={players} trainingPlayerIds={team.trainingPlayerIds || []} />
+      <TrainingSection
+        teamId={team.id}
+        players={trainablePlayers}
+        excludedCount={players.length - trainablePlayers.length}
+        trainingPlayerIds={team.trainingPlayerIds || []}
+      />
     </div>
   );
 }
 
-function TrainingSection({ teamId, players, trainingPlayerIds }) {
+function TrainingSection({ teamId, players, excludedCount, trainingPlayerIds }) {
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState('');
 
@@ -52,6 +60,10 @@ function TrainingSection({ teamId, players, trainingPlayerIds }) {
       <p className="futbol-kadro-section-title">
         Antrenman ({trainingPlayerIds.length}/{TRAINING_SLOTS}) — 18:00-19:00 arası, antrenmandaki
         oyuncu o günkü maça çıkamaz
+      </p>
+      <p className="futbol-placeholder">
+        İlk 11'deki oyuncular antrenmana gönderilemez — önce kadrodan çıkar.
+        {excludedCount > 0 ? ` (${excludedCount} oyuncu ilk 11'de olduğu için listede gizlendi.)` : ''}
       </p>
       {error && <p className="futbol-admin-error">{error}</p>}
       <div className="futbol-training-list">

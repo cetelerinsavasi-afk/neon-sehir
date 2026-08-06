@@ -175,13 +175,15 @@ export default function FutbolKadro({ team }) {
       <p className="futbol-placeholder futbol-kadro-note">
         Not: seçtiğin oyunculardan biri formu %50&apos;nin altına düşerse, o
         maç için otomatik olarak 2-2-1 / dengeli / en formda kadroya geri
-        dönülür.
+        dönülür. Antrenmandaki oyuncular ilk 11&apos;e seçilemez.
       </p>
 
       {pickerFor && (
         <PlayerPicker
           position={pickerFor.position}
-          players={players.filter((p) => p.position === pickerFor.position)}
+          players={players.filter(
+            (p) => p.position === pickerFor.position && !(team.trainingPlayerIds || []).includes(p.id)
+          )}
           usedPlayerIds={usedPlayerIds}
           currentId={slots[pickerFor.position]?.[pickerFor.slotIndex]}
           onPick={(playerId) => assignPlayer(pickerFor.position, pickerFor.slotIndex, playerId)}

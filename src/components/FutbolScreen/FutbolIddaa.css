@@ -68,19 +68,54 @@
   padding-top: 10px;
 }
 
+.futbol-iddaa-history-card {
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
 .futbol-iddaa-history-row {
   display: grid;
   grid-template-columns: auto auto 1fr auto;
   gap: 8px;
   font-size: 12px;
-  padding: 6px 0;
+  padding: 2px 0 6px;
   color: var(--text-dim);
 }
 
-.futbol-iddaa-history-row.status-won {
+.futbol-iddaa-history-card.status-won .futbol-iddaa-history-row {
   color: #3ddc84;
 }
 
-.futbol-iddaa-history-row.status-lost {
+.futbol-iddaa-history-card.status-lost .futbol-iddaa-history-row {
+  color: var(--neon-pink);
+}
+
+.futbol-iddaa-history-picks {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border-top: 1px solid var(--panel-border);
+  padding-top: 6px;
+}
+
+.futbol-iddaa-history-pick {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.futbol-iddaa-history-pick-label {
+  font-weight: 700;
+}
+
+.futbol-iddaa-history-pick.correct .futbol-iddaa-history-pick-label {
+  color: #3ddc84;
+}
+
+.futbol-iddaa-history-pick.wrong .futbol-iddaa-history-pick-label {
   color: var(--neon-pink);
 }

@@ -142,6 +142,7 @@ export default function FutbolLigler() {
         <FutbolIddaa
           leagueId={activeLeagueId}
           matches={roundsGrouped[activeLeague?.currentRound || 1] || []}
+          allMatches={matches}
           teamNameById={teamNameById}
           teamById={teamById}
         />
@@ -244,6 +245,16 @@ function MatchList({ title, matches, teamNameById, teamById, compact, onSelectMa
               <FutbolCrest logo={teamById[m.awayTeamId]?.logo} initials={teamNameById[m.awayTeamId]?.[0]} size={18} />
               {teamNameById[m.awayTeamId] || '—'}
             </span>
+            <button
+              type="button"
+              className="futbol-match-watch-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelectMatch?.(m);
+              }}
+            >
+              {isLive ? '🔴 İzle' : 'İzle'}
+            </button>
           </div>
         );
       })}

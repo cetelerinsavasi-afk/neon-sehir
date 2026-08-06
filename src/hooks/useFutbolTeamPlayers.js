@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
+import { sortFutbolPlayersByPosition } from '../components/FutbolScreen/futbolPositionOrder';
 
 export function useFutbolTeamPlayers(teamId) {
   const [players, setPlayers] = useState([]);
@@ -18,8 +19,7 @@ export function useFutbolTeamPlayers(teamId) {
       q,
       (snap) => {
         const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        list.sort((a, b) => b.power - a.power);
-        setPlayers(list);
+        setPlayers(sortFutbolPlayersByPosition(list));
         setLoading(false);
       },
       (err) => {

@@ -9,6 +9,8 @@ import {
 } from '../../services/gameActions';
 import FutbolPlayerAvatar from './FutbolPlayerAvatar';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
+import ConfirmModal from '../ConfirmModal/ConfirmModal';
+import { sortFutbolPlayersByPosition } from './futbolPositionOrder';
 import './FutbolTransfer.css';
 
 const SOURCE_LABELS = { system: 'Sistem Stoğu', instant: 'Anında Satılanlar', manual: 'Oyuncu İlanları' };
@@ -23,6 +25,7 @@ export default function FutbolTransfer({ team }) {
   const [listingId, setListingId] = useState(null);
   const [listingPrice, setListingPrice] = useState(0);
   const [showSellPanel, setShowSellPanel] = useState(false);
+  const [confirmSellId, setConfirmSellId] = useState(null);
 
   const loadMarket = async () => {
     setError('');
@@ -51,8 +54,13 @@ export default function FutbolTransfer({ team }) {
     }
   };
 
-  const handleInstantSell = async (playerId) => {
-    if (!window.confirm('Bu oyuncuyu anında satmak istediğine emin misin?')) return;
+  const handleInstantSell = (playerId) => {
+    setConfirmSellId(playerId);
+  };
+
+  const confirmInstantSell = async () => {
+    const playerId = confirmSellId;
+    setConfirmSellId(null);
     setBusyId(playerId);
     setError('');
     try {
@@ -111,7 +119,7 @@ export default function FutbolTransfer({ team }) {
       {showSellPanel && (
         <div className="futbol-transfer-roster">
           <p className="futbol-kadro-section-title">Kadrondaki Oyuncular</p>
-          {myPlayers.map((p) => {
+          {sortFutbolPlayersByPosition(myPlayers).map((p) => {
             const instantPrice = Math.round((p.value * 2) / 3);
             const maxPrice = Math.round((p.value * 4) / 3);
             return (
@@ -186,7 +194,9 @@ export default function FutbolTransfer({ team }) {
       )}
       {market &&
         ['system', 'instant', 'manual'].map((source) => {
-          const items = market.filter((p) => p.saleSource === source && p.teamId !== team.id);
+          const items = sortFutbolPlayersByPosition(
+            market.filter((p) => p.saleSource === source && p.teamId !== team.id)
+          );
           if (items.length === 0) return null;
           return (
             <div key={source} className="futbol-transfer-group">
@@ -214,6 +224,16 @@ export default function FutbolTransfer({ team }) {
             </div>
           );
         })}
+
+      {confirmSellId && (
+        <ConfirmModal
+          title="Oyuncuyu Sat"
+          message="Bu oyuncuyu anında satmak istediğine emin misin?"
+          confirmLabel="Evet, Sat"
+          onConfirm={confirmInstantSell}
+          onCancel={() => setConfirmSellId(null)}
+        />
+      )}
     </div>
   );
 }
