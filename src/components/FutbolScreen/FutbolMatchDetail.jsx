@@ -1,14 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import FutbolCrest from './FutbolCrest';
+import { useNowTick, computeLiveMatchState } from './futbolLiveMatch';
 import './FutbolMatchDetail.css';
-
-// Tüm maç (90 simüle dakika) bu sürede oynatılır. Gerçek oyuncu ekranında
-// bu, matchStartAt/revealAt (18:00→19:00) arasındaki GERÇEK zamana göre
-// hesaplanacak — şimdilik sadece admin önizlemesi olduğu için, ekran her
-// açıldığında baştan hızlı oynatılıyor (test etmek için 1 saat beklemek
-// gerekmesin diye).
-const PLAYBACK_MS = 60000;
-const TICK_MS = 250;
 
 function interpolatePossession(checkpoints, minute) {
   if (!checkpoints || checkpoints.length === 0) return { home: 50, away: 50 };
@@ -24,32 +17,21 @@ function interpolatePossession(checkpoints, minute) {
 
 const EVENT_ICON = { goal: '⚽', shot_on: '🎯', shot_off: '🚫' };
 
+// Bir maç GERÇEKTEN 18:00'de başlayıp 19:00'da biter (tam 1 saat). Bu
+// ekran, o gerçek zamana göre ilerler — hızlandırma YOK. Zaten bitmiş
+// (status:'finished') bir maça girersen tüm olaylar ve nihai skor
+// anında görünür (bekleme suresi olmadan).
 export default function FutbolMatchDetail({ match, homeName, awayName, homeLogo, awayLogo, onClose }) {
-  const [elapsedMinute, setElapsedMinute] = useState(0);
+  const now = useNowTick(5000);
   const [pulse, setPulse] = useState(null);
   const lastRevealedCountRef = useRef(0);
 
-  const timeline = match?.timeline || [];
+  const state = computeLiveMatchState(match, now);
   const possessionCheckpoints = match?.possessionCheckpoints || [];
-  const notStartedYet = !match || match.status !== 'finished';
+  const revealedEvents = state.events || [];
 
   useEffect(() => {
-    if (notStartedYet) return undefined;
-    const startedAt = Date.now();
-    const interval = setInterval(() => {
-      const progress = Math.min(1, (Date.now() - startedAt) / PLAYBACK_MS);
-      setElapsedMinute(progress * 90);
-      if (progress >= 1) clearInterval(interval);
-    }, TICK_MS);
-    return () => clearInterval(interval);
-  }, [notStartedYet, match?.id]);
-
-  const revealedEvents = useMemo(
-    () => timeline.filter((e) => e.minute <= elapsedMinute),
-    [timeline, elapsedMinute]
-  );
-
-  useEffect(() => {
+    if (state.phase !== 'live') return undefined;
     if (revealedEvents.length > lastRevealedCountRef.current) {
       const newest = revealedEvents[revealedEvents.length - 1];
       lastRevealedCountRef.current = revealedEvents.length;
@@ -58,10 +40,8 @@ export default function FutbolMatchDetail({ match, homeName, awayName, homeLogo,
       return () => clearTimeout(t);
     }
     return undefined;
-  }, [revealedEvents]);
-
-  const liveHomeScore = revealedEvents.filter((e) => e.type === 'goal' && e.team === 'home').length;
-  const liveAwayScore = revealedEvents.filter((e) => e.type === 'goal' && e.team === 'away').length;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealedEvents.length, state.phase]);
 
   const stats = useMemo(() => {
     const forTeam = (team) => {
@@ -72,10 +52,7 @@ export default function FutbolMatchDetail({ match, homeName, awayName, homeLogo,
     return { home: forTeam('home'), away: forTeam('away') };
   }, [revealedEvents]);
 
-  const possession = interpolatePossession(possessionCheckpoints, elapsedMinute);
-  const matchOver = elapsedMinute >= 90;
-
-  if (notStartedYet) {
+  if (state.phase === 'scheduled') {
     return (
       <div className="futbol-match-backdrop" onClick={onClose}>
         <div className="futbol-match-detail" onClick={(e) => e.stopPropagation()}>
@@ -90,6 +67,10 @@ export default function FutbolMatchDetail({ match, homeName, awayName, homeLogo,
     );
   }
 
+  const elapsedMinute = state.elapsedMinute ?? 0;
+  const matchOver = state.phase === 'finished' || elapsedMinute >= 90;
+  const possession = interpolatePossession(possessionCheckpoints, elapsedMinute);
+
   return (
     <div className="futbol-match-backdrop" onClick={onClose}>
       <div className="futbol-match-detail" onClick={(e) => e.stopPropagation()}>
@@ -101,7 +82,7 @@ export default function FutbolMatchDetail({ match, homeName, awayName, homeLogo,
             {homeName}
           </span>
           <span className="futbol-match-score-big">
-            {liveHomeScore} - {liveAwayScore}
+            {state.homeScore} - {state.awayScore}
           </span>
           <span className="futbol-match-team-name">
             {awayName}

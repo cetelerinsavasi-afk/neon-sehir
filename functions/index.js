@@ -6529,31 +6529,20 @@ export const pingRoom = onCall(async (request) => {
   return { ok: true };
 });
 
-// --- Futbol modülü: Faz 1 (iskelet + gizli admin erişimi) ---
-// Şifre bilerek istemci koduna gömülmüyor (bundle herkese açık indirilir),
-// bunun yerine burada, sunucu tarafında saklanıyor. Geliştirme bitip modül
-// tüm oyunculara açılınca bu fonksiyon ve admin kapısı tamamen kaldırılacak.
-const FUTBOL_ADMIN_PASSWORD = 'hustle';
+// --- Futbol modülü: Faz 1 (iskelet) ---
 
-export const verifyFutbolAdminAccess = onCall(async (request) => {
-  const uid = requireAuth(request);
-  const { password } = request.data || {};
-  if (password !== FUTBOL_ADMIN_PASSWORD) {
-    throw new HttpsError('permission-denied', 'Şifre yanlış.');
-  }
-  await db.collection('users').doc(uid).set({ futbolAdminUnlocked: true }, { merge: true });
-  return { ok: true };
-});
-
-async function requireFutbolAdmin(request) {
-  const uid = requireAuth(request);
-  const snap = await db.collection('users').doc(uid).get();
-  if (!snap.exists || !snap.data().futbolAdminUnlocked) {
-    throw new HttpsError('permission-denied', 'Futbol admin erişimin yok.');
-  }
-  return uid;
+// sendFutbolSms — users/{uid}/messages alt koleksiyonuna (telefon
+// uygulamasındaki mesajlarla AYNI şema) bir futbol bildirimi ekler.
+function sendFutbolSms(batch, uid, text, type) {
+  if (!uid) return;
+  const smsRef = db.collection('users').doc(uid).collection('messages').doc();
+  batch.set(smsRef, {
+    text,
+    type,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    read: false,
+  });
 }
-
 // --- Futbol modülü: Faz 2 (lig/takım/oyuncu/fikstür veri modeli) ---
 
 const FUTBOL_TEAM_SIZE_PER_LEAGUE = 8;
@@ -6735,22 +6724,12 @@ async function deleteCollectionBatched(collectionName) {
   if (count % 450 !== 0) await batch.commit();
 }
 
-// resetFutbolWorld — sadece geliştirme aşamasında kullanılacak, tüm
-// futbol verisini siler (admin-only). Oyuna açıldıktan sonra bu
-// fonksiyon kaldırılacak.
-export const resetFutbolWorld = onCall(async (request) => {
-  await requireFutbolAdmin(request);
-  await Promise.all(
-    ['futbolLeagues', 'futbolTeams', 'futbolPlayers', 'futbolMatches'].map(deleteCollectionBatched)
-  );
-  return { ok: true };
-});
-
-// seedFutbolWorld — 1. ve 2. Lig'i (toplam 16 bot takım, takım başı 18
-// oyuncu) ve tam sezon fikstürünü oluşturur. Zaten veri varsa hiçbir şey
-// yapmaz (idempotent) — önce resetFutbolWorld ile temizlemek gerekir.
+// seedFutbolWorld — 1. ve 2. Lig'i (toplam 16 bot takım + transfer
+// piyasası stoğu) ve tam sezon fikstürünü oluşturur. Zaten veri varsa
+// hiçbir şey yapmaz (idempotent) — istemci, dünya boşsa bunu otomatik
+// (herhangi bir oyuncunun ilk girişinde) çağırır, admin gerekmez.
 export const seedFutbolWorld = onCall(async (request) => {
-  await requireFutbolAdmin(request);
+  requireAuth(request);
 
   const existing = await db.collection('futbolLeagues').limit(1).get();
   if (!existing.empty) {
@@ -7049,7 +7028,12 @@ function groupFutbolPlayersByPosition(snap) {
 // tek bir batch'te günceller. Aynı turda takımlar birbirine karışmadığı
 // için maçlar sırayla (await ... for..of) işleniyor — paralel çalıştırıp
 // yarış durumu (race condition) yaratmamak için bilerek böyle.
-async function resolveFutbolMatch(match) {
+// computeFutbolMatchLive — 18:00'de çağrılır: skoru/olay listesini/top
+// oynama serisini hesaplayıp saklar, durumu 'live' yapar. BİLEREK hiçbir
+// takım/oyuncu/altın/taraftar güncellemesi yapmaz ve SMS göndermez —
+// sonuç 19:00'a kadar (applyFutbolMatchResult çağrılana dek) sadece
+// Firestore'da "ham veri" olarak durur, hiçbir oyuncu bilmez.
+async function computeFutbolMatchLive(match) {
   const [homeTeamSnap, awayTeamSnap, homePlayersSnap, awayPlayersSnap] = await Promise.all([
     db.collection('futbolTeams').doc(match.homeTeamId).get(),
     db.collection('futbolTeams').doc(match.awayTeamId).get(),
@@ -7058,10 +7042,7 @@ async function resolveFutbolMatch(match) {
   ]);
   if (!homeTeamSnap.exists || !awayTeamSnap.exists) return;
 
-  // Antrenmandaki oyuncular (18:00-19:00 arası) o günkü maça katılamaz —
-  // kadro seçiminden önce eleniyorlar. Manuel kadroda antrenmandaki bir
-  // oyuncu varsa, mevcut "roster'da bulunamadı" güvenlik ağı sayesinde
-  // otomatik olarak 2-2-1/dengeli/en formda kadroya düşülüyor.
+  // Antrenmandaki oyuncular (18:00-19:00 arası) o günkü maça katılamaz.
   const homeTraining = new Set(homeTeamSnap.data().trainingPlayerIds || []);
   const awayTraining = new Set(awayTeamSnap.data().trainingPlayerIds || []);
   const homePlayersArr = homePlayersSnap.docs
@@ -7076,23 +7057,55 @@ async function resolveFutbolMatch(match) {
   const awayLines = futbolLinePowers(awayResolved.selected, false, awayResolved.tactic);
   const { homeScore, awayScore, timeline, possessionCheckpoints } = simulateFutbolMatch(homeLines, awayLines);
 
-  const batch = db.batch();
-
-  // Sonuç 18:00'de hesaplanıp Firestore'a yazılıyor; `matchStartAt` ve
-  // `revealAt` (18:00→19:00) istemcideki canlı anlatım ekranının maçı
-  // ne zaman "oynatacağını" belirlemesi için — bkz. FutbolMatchDetail.jsx.
+  // matchStartAt→revealAt (18:00→19:00, tam 1 saat) istemcinin canlı
+  // anlatımı GERÇEK zamana yayması için — bkz. FutbolMatchDetail.jsx.
   const matchStartAt = new Date();
   const revealAt = new Date(matchStartAt.getTime());
   revealAt.setUTCHours(revealAt.getUTCHours() + 1);
-  batch.update(db.collection('futbolMatches').doc(match.id), {
+
+  await db.collection('futbolMatches').doc(match.id).update({
     homeScore,
     awayScore,
-    status: 'finished',
-    playedAt: admin.firestore.FieldValue.serverTimestamp(),
+    status: 'live',
     matchStartAt: admin.firestore.Timestamp.fromDate(matchStartAt),
     revealAt: admin.firestore.Timestamp.fromDate(revealAt),
     timeline,
     possessionCheckpoints,
+    // 19:00'da applyFutbolMatchResult'ın kimi hariç tuttuğunu tekrar
+    // hesaplamasına gerek kalmasın diye kadroları da saklıyoruz.
+    homeLineupIds: homeResolved.selected.map((p) => p.id),
+    homeBenchIds: homeResolved.bench.map((p) => p.id),
+    awayLineupIds: awayResolved.selected.map((p) => p.id),
+    awayBenchIds: awayResolved.bench.map((p) => p.id),
+  });
+}
+
+// applyFutbolMatchResult — 19:00'de çağrılır: computeFutbolMatchLive'ın
+// önceden hesapladığı sonucu RESMİLEŞTİRİR — takım istatistikleri,
+// taraftar sayısı, ev sahibi altın kazancı, oyuncu gelişimi, ve SMS
+// bildirimleri (maç sonucu + bilet geliri) burada uygulanır.
+async function applyFutbolMatchResult(matchId) {
+  const matchSnap = await db.collection('futbolMatches').doc(matchId).get();
+  if (!matchSnap.exists) return;
+  const match = matchSnap.data();
+  if (match.status !== 'live') return; // zaten uygulanmış ya da hiç hesaplanmamış
+
+  const [homeTeamSnap, awayTeamSnap, homePlayersSnap, awayPlayersSnap] = await Promise.all([
+    db.collection('futbolTeams').doc(match.homeTeamId).get(),
+    db.collection('futbolTeams').doc(match.awayTeamId).get(),
+    db.collection('futbolPlayers').where('teamId', '==', match.homeTeamId).get(),
+    db.collection('futbolPlayers').where('teamId', '==', match.awayTeamId).get(),
+  ]);
+  if (!homeTeamSnap.exists || !awayTeamSnap.exists) return;
+
+  const homeName = homeTeamSnap.data().name;
+  const awayName = awayTeamSnap.data().name;
+  const { homeScore, awayScore } = match;
+
+  const batch = db.batch();
+  batch.update(db.collection('futbolMatches').doc(matchId), {
+    status: 'finished',
+    playedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
   const applyTeamResult = (teamId, gf, ga) => {
@@ -7113,6 +7126,7 @@ async function resolveFutbolMatch(match) {
 
   // Taraftar sayısı: kazanan +1..10.000, kaybeden -1..10.000 (0'ın altına
   // inmez), beraberlikte değişmez.
+  let fanGoldEarned = 0;
   if (homeScore !== awayScore) {
     const fanDelta = Math.floor(randomInRange(1, 10000));
     const homeWon = homeScore > awayScore;
@@ -7129,29 +7143,47 @@ async function resolveFutbolMatch(match) {
 
   // Kendi sahasında oynayan takımın sahibi (varsa) taraftar sayısı kadar altın kazanır.
   const homeOwnerUid = homeTeamSnap.data().ownerUid;
+  const homeFans = homeTeamSnap.data().fans || 0;
   if (homeOwnerUid) {
+    fanGoldEarned = homeFans;
     batch.update(db.collection('users').doc(homeOwnerUid), {
-      gold: admin.firestore.FieldValue.increment(homeTeamSnap.data().fans || 0),
+      gold: admin.firestore.FieldValue.increment(homeFans),
     });
   }
 
   // Oyuncu gelişimi: sahaya çıkanlar 0.1-2.0 güç kazanır + yaşı kadar
   // form kaybeder; yedekler formu +50 kazanır (100'ü geçmez).
-  const applyPlayerUpdates = ({ selected, bench }) => {
-    selected.forEach((p) => {
-      batch.update(db.collection('futbolPlayers').doc(p.id), {
-        power: Math.min(99, Math.round((p.power + randomInRange(0.1, 2.0)) * 10) / 10),
-        form: Math.max(0, p.form - p.age),
-      });
-    });
-    bench.forEach((p) => {
-      batch.update(db.collection('futbolPlayers').doc(p.id), {
-        form: Math.min(100, p.form + 50),
-      });
+  const homeLineupSet = new Set(match.homeLineupIds || []);
+  const awayLineupSet = new Set(match.awayLineupIds || []);
+  const applyPlayerUpdates = (snap, lineupSet) => {
+    snap.docs.forEach((d) => {
+      const p = d.data();
+      if (lineupSet.has(d.id)) {
+        batch.update(d.ref, {
+          power: Math.min(99, Math.round((p.power + randomInRange(0.1, 2.0)) * 10) / 10),
+          form: Math.max(0, p.form - p.age),
+        });
+      } else {
+        batch.update(d.ref, { form: Math.min(100, p.form + 50) });
+      }
     });
   };
-  applyPlayerUpdates(homeResolved);
-  applyPlayerUpdates(awayResolved);
+  applyPlayerUpdates(homePlayersSnap, homeLineupSet);
+  applyPlayerUpdates(awayPlayersSnap, awayLineupSet);
+
+  // SMS — takım sahiplerine maç sonucu (+ ev sahibiyse bilet geliri).
+  const outcomeText = (myScore, oppScore) =>
+    myScore > oppScore ? 'kazandı' : myScore < oppScore ? 'kaybetti' : 'berabere kaldı';
+  if (homeOwnerUid) {
+    let text = `⚽ ${homeName} ${homeScore}-${awayScore} ${awayName} — takımın ${outcomeText(homeScore, awayScore)}.`;
+    if (fanGoldEarned > 0) text += ` Sahanızdaki bilet gelirinden ${fanGoldEarned.toLocaleString('tr-TR')} altın kazandınız.`;
+    sendFutbolSms(batch, homeOwnerUid, text, 'futbol_match_result');
+  }
+  const awayOwnerUid = awayTeamSnap.data().ownerUid;
+  if (awayOwnerUid) {
+    const text = `⚽ ${homeName} ${homeScore}-${awayScore} ${awayName} — takımın (deplasmanda) ${outcomeText(awayScore, homeScore)}.`;
+    sendFutbolSms(batch, awayOwnerUid, text, 'futbol_match_result');
+  }
 
   await batch.commit();
 }
@@ -7188,6 +7220,10 @@ async function finishFutbolSeason(leagueIds) {
         promoRelegateBatch.update(db.collection('users').doc(team.ownerUid), {
           gold: admin.firestore.FieldValue.increment(reward),
         });
+        let rewardText = `Sezon sonu: ${team.name} ${rank + 1}. sırada bitirdi, ${reward.toLocaleString('tr-TR')} altın kazandın.`;
+        if (isTopTier && rank === 0) rewardText = `🏆 Şampiyon oldun! ${team.name} sezonu 1. sırada bitirdi, ${reward.toLocaleString('tr-TR')} altın kazandın.`;
+        else if (!isTopTier && rank < 2) rewardText += ' Bir üst lige terfi ettin!';
+        sendFutbolSms(promoRelegateBatch, team.ownerUid, rewardText, 'futbol_season_end');
       }
     });
   });
@@ -7337,15 +7373,9 @@ async function finishFutbolSeason(leagueIds) {
   }
 }
 
-// resolveFutbolMatchday — her gün 18:00 (İstanbul saati) çalışır: o
-// günün turundaki tüm maçları çözer, turu bir ileri alır; son tur
-// (14) bittiyse sezonu kapatıp yeni sezonu açar.
 // resolveFutbolTrainingForAllTeams — antrenmandaki (en fazla 3'er)
-// oyuncuların gücünü artırır, seçimi temizler. BİLEREK resolveFutbolMatchday
-// ile aynı fonksiyon içinde, maçlar çözüldükten SONRA çağrılıyor — ayrı
-// bir onSchedule olsaydı, hangisinin önce çalışacağı garanti olmazdı ve
-// maç kadrosu antrenmandaki oyuncuyu yanlışlıkla içerebilirdi ya da
-// antrenman bonusu iki kez/hiç uygulanmayabilirdi.
+// oyuncuların gücünü artırır, seçimi temizler. 19:00'da (maçlarla AYNI
+// anda açığa çıkacak şekilde) çağrılır.
 async function resolveFutbolTrainingForAllTeams() {
   const teamsSnap = await db.collection('futbolTeams').get();
   const batch = db.batch();
@@ -7367,8 +7397,38 @@ async function resolveFutbolTrainingForAllTeams() {
   if (count > 0) await batch.commit();
 }
 
-export const resolveFutbolMatchday = onSchedule(
+// resolveFutbolMatchdayStart — her gün 18:00 (İstanbul saati): o günün
+// turundaki tüm maçların sonucunu hesaplar ('live' durumuna alır) ama
+// HİÇBİR ŞEYİ açığa çıkarmaz — takım istatistikleri, taraftar, altın,
+// SMS hepsi 19:00'a (resolveFutbolMatchdayReveal) kadar bekler.
+export const resolveFutbolMatchdayStart = onSchedule(
   { schedule: '0 18 * * *', timeZone: 'Europe/Istanbul' },
+  async () => {
+    const leaguesSnap = await db.collection('futbolLeagues').get();
+    for (const leagueDoc of leaguesSnap.docs) {
+      const league = leagueDoc.data();
+      const round = league.currentRound || 1;
+      const matchesSnap = await db
+        .collection('futbolMatches')
+        .where('leagueId', '==', leagueDoc.id)
+        .where('round', '==', round)
+        .where('season', '==', league.season || 1)
+        .where('status', '==', 'scheduled')
+        .get();
+      for (const matchDoc of matchesSnap.docs) {
+        await computeFutbolMatchLive({ id: matchDoc.id, ...matchDoc.data() });
+      }
+    }
+  }
+);
+
+// resolveFutbolMatchdayReveal — her gün 19:00 (İstanbul saati): 18:00'de
+// hesaplanmış ('live') tüm maçları resmileştirir (istatistik/altın/SMS),
+// iddaa kuponlarını sonuçlandırır, turu ilerletir (ya da sezonu kapatır),
+// ve antrenman bonuslarını uygular — hepsi AYNI anda, "19'da her şey
+// birden açılır" hissi için.
+export const resolveFutbolMatchdayReveal = onSchedule(
+  { schedule: '0 19 * * *', timeZone: 'Europe/Istanbul' },
   async () => {
     const leaguesSnap = await db.collection('futbolLeagues').get();
     const leagues = leaguesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -7380,10 +7440,12 @@ export const resolveFutbolMatchday = onSchedule(
         .collection('futbolMatches')
         .where('leagueId', '==', league.id)
         .where('round', '==', round)
+        .where('season', '==', league.season || 1)
+        .where('status', '==', 'live')
         .get();
 
       for (const matchDoc of matchesSnap.docs) {
-        await resolveFutbolMatch({ id: matchDoc.id, ...matchDoc.data() });
+        await applyFutbolMatchResult(matchDoc.id);
       }
       await resolveFutbolBetsForRound(league.id, round);
 
@@ -7401,42 +7463,6 @@ export const resolveFutbolMatchday = onSchedule(
     await resolveFutbolTrainingForAllTeams();
   }
 );
-
-// resolveFutbolMatchdayManual — sadece admin, test amaçlı: 18:00'i
-// beklemeden yukarıdaki mantığı elle bir kere tetikler.
-export const resolveFutbolMatchdayManual = onCall(async (request) => {
-  await requireFutbolAdmin(request);
-  const leaguesSnap = await db.collection('futbolLeagues').get();
-  const leagues = leaguesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  const finishedLeagueIds = [];
-
-  for (const league of leagues) {
-    const round = league.currentRound || 1;
-    const matchesSnap = await db
-      .collection('futbolMatches')
-      .where('leagueId', '==', league.id)
-      .where('round', '==', round)
-      .get();
-
-    for (const matchDoc of matchesSnap.docs) {
-      await resolveFutbolMatch({ id: matchDoc.id, ...matchDoc.data() });
-    }
-    await resolveFutbolBetsForRound(league.id, round);
-
-    const nextRound = round + 1;
-    if (nextRound > FUTBOL_MAX_ROUNDS) {
-      finishedLeagueIds.push(league.id);
-    } else {
-      await db.collection('futbolLeagues').doc(league.id).update({ currentRound: nextRound });
-    }
-  }
-
-  if (finishedLeagueIds.length > 0) {
-    await finishFutbolSeason(finishedLeagueIds);
-  }
-  await resolveFutbolTrainingForAllTeams();
-  return { ok: true };
-});
 
 // --- Futbol modülü: Faz 4 (takım satın alma / satma) ---
 
@@ -7622,6 +7648,12 @@ export const buyFutbolTeam = onCall(async (request) => {
     batch.update(db.collection('users').doc(team.ownerUid), {
       gold: admin.firestore.FieldValue.increment(price),
     });
+    sendFutbolSms(
+      batch,
+      team.ownerUid,
+      `⚽ ${team.name} takımın ${price.toLocaleString('tr-TR')} altına satıldı.`,
+      'futbol_team_sold'
+    );
   }
   batch.update(teamRef, {
     ownerUid: uid,
@@ -7699,9 +7731,16 @@ export const sellFutbolTeam = onCall(async (request) => {
 
   const value = await computeFutbolTeamValue(teamId);
   const instantPrice = Math.round((value * 2) / 3);
+  const teamName = teamSnap.data().name;
 
   const batch = db.batch();
   batch.update(db.collection('users').doc(uid), { gold: admin.firestore.FieldValue.increment(instantPrice) });
+  sendFutbolSms(
+    batch,
+    uid,
+    `⚽ ${teamName} takımını anında ${instantPrice.toLocaleString('tr-TR')} altına sattın.`,
+    'futbol_team_sold'
+  );
   batch.update(teamRef, {
     ownerUid: null,
     isBot: true,
@@ -7723,40 +7762,6 @@ export const sellFutbolTeam = onCall(async (request) => {
   await batch.commit();
 
   return { ok: true, price: instantPrice };
-});
-
-// backfillFutbolTeamLogos — Faz 2'de oluşturulmuş (logo alanı olmayan)
-// eski takımlara geriye dönük rastgele forma atar. Admin-only, tek
-// seferlik bir geçiş aracı.
-export const backfillFutbolTeamLogos = onCall(async (request) => {
-  await requireFutbolAdmin(request);
-  const teamsSnap = await db.collection('futbolTeams').get();
-  const batch = db.batch();
-  let count = 0;
-  teamsSnap.docs.forEach((d) => {
-    if (!d.data().logo) {
-      batch.update(d.ref, { logo: randomFutbolLogo() });
-      count += 1;
-    }
-  });
-  if (count > 0) await batch.commit();
-  return { ok: true, updated: count };
-});
-
-// regenerateAllFutbolLogos — TÜM takımların formasını yeniden dağıtır,
-// hepsi birbirinden FARKLI olacak şekilde garanti eder (pickUniqueFutbolLogo
-// ile). Daha önce (bu düzeltmeden önce) oluşturulmuş, aynı forma
-// kombinasyonuna sahip takımları tek seferde düzeltmek için — admin-only.
-export const regenerateAllFutbolLogos = onCall(async (request) => {
-  await requireFutbolAdmin(request);
-  const teamsSnap = await db.collection('futbolTeams').get();
-  const usedSignatures = new Set();
-  const batch = db.batch();
-  teamsSnap.docs.forEach((d) => {
-    batch.update(d.ref, { logo: pickUniqueFutbolLogo(usedSignatures) });
-  });
-  await batch.commit();
-  return { ok: true, updated: teamsSnap.size };
 });
 
 // --- Futbol modülü: Faz 5a (kadro/taktik yönetimi) ---
@@ -7842,30 +7847,6 @@ function createSystemStockPlayer(batch, position, tierBand) {
   return playerRef;
 }
 
-// seedFutbolTransferMarketStock — 4 mevki × 3 fiyat bandı = 12 hazır
-// oyuncu. seedFutbolWorld içinden çağrılıyor; eksik/boşalmış slotları
-// tamamlamak için admin-only olarak da tetiklenebilir.
-export const seedFutbolTransferMarketStock = onCall(async (request) => {
-  await requireFutbolAdmin(request);
-  const existingSnap = await db
-    .collection('futbolPlayers')
-    .where('saleSource', '==', 'system')
-    .get();
-  const have = new Set(existingSnap.docs.map((d) => `${d.data().position}:${d.data().tierBand}`));
-  const batch = db.batch();
-  let created = 0;
-  FUTBOL_TRANSFER_POSITIONS.forEach((position) => {
-    FUTBOL_TRANSFER_TIER_BANDS.forEach((band) => {
-      if (!have.has(`${position}:${band}`)) {
-        createSystemStockPlayer(batch, position, band);
-        created += 1;
-      }
-    });
-  });
-  if (created > 0) await batch.commit();
-  return { ok: true, created };
-});
-
 // instantSellFutbolPlayer — oyuncuyu anında sisteme sat (değerin 2/3'ü),
 // oyuncu takımdan çıkar ve %10 zamla (kullanıcı promptu) tekrar transfer
 // listesine düşer. Minimum kadro (2 kaleci/3 defans/3 orta/2 forvet)
@@ -7894,6 +7875,12 @@ export const instantSellFutbolPlayer = onCall(async (request) => {
 
   const batch = db.batch();
   batch.update(db.collection('users').doc(uid), { gold: admin.firestore.FieldValue.increment(instantPrice) });
+  sendFutbolSms(
+    batch,
+    uid,
+    `⚽ ${player.name} oyuncunu anında ${instantPrice.toLocaleString('tr-TR')} altına sattın.`,
+    'futbol_player_sold'
+  );
   batch.update(playerRef, {
     teamId: null,
     forSale: true,
@@ -8009,6 +7996,12 @@ export const buyFutbolPlayer = onCall(async (request) => {
     batch.update(db.collection('users').doc(player.sellerUid), {
       gold: admin.firestore.FieldValue.increment(price),
     });
+    sendFutbolSms(
+      batch,
+      player.sellerUid,
+      `⚽ ${player.name} oyuncun ${price.toLocaleString('tr-TR')} altına satıldı.`,
+      'futbol_player_sold'
+    );
   }
   batch.update(playerRef, {
     teamId: myTeam.id,
@@ -8093,60 +8086,9 @@ export const setFutbolTeamLogo = onCall(async (request) => {
   return { ok: true };
 });
 
-// --- Futbol modülü: Faz 6 (altyapı — tüm takımlarda hazır kurulu) ---
+// --- Futbol modülü: Faz 6 (antrenman — tüm takımlarda hazır kurulu) ---
 
-const FUTBOL_YOUTH_PLAYER_COST = 30000;
-const FUTBOL_YOUTH_START_AGE = 16;
-const FUTBOL_YOUTH_START_POWER = 50.0;
 const FUTBOL_TRAINING_SLOTS = 3;
-
-function createFutbolYouthPlayer(position) {
-  const name = `${FUTBOL_FIRST_NAMES[Math.floor(Math.random() * FUTBOL_FIRST_NAMES.length)]} ${
-    FUTBOL_LAST_NAMES[Math.floor(Math.random() * FUTBOL_LAST_NAMES.length)]
-  }`;
-  // Piyasa değeri formülü: (Güç × 1000) × (Kalan Kariyer Yılı / 20).
-  // 16 yaşında (20 sezon kaldı) tam güç karşılığı — kullanıcı promptundaki
-  // örnekle birebir: 50.0 güç → 50.000 altın.
-  const remainingSeasons = 20 - (FUTBOL_YOUTH_START_AGE - 16);
-  const value = Math.round((FUTBOL_YOUTH_START_POWER * 1000 * remainingSeasons) / 20);
-  return {
-    name,
-    position,
-    age: FUTBOL_YOUTH_START_AGE,
-    power: FUTBOL_YOUTH_START_POWER,
-    form: 100,
-    value,
-    forSale: false,
-    listedAt: null,
-  };
-}
-
-// buyFutbolYouthPlayer — 30.000 altın karşılığında 16 yaşında / 50.0
-// güçte genç bir yetenek kadroya katılır. Altyapı artık her takımda
-// hazır kurulu (ayrı bir tesis kurma şartı yok).
-export const buyFutbolYouthPlayer = onCall(async (request) => {
-  const uid = requireAuth(request);
-  const { teamId, position } = request.data || {};
-  if (!['GK', 'DEF', 'MID', 'FWD'].includes(position)) {
-    throw new HttpsError('invalid-argument', 'Geçersiz mevki.');
-  }
-  const teamRef = db.collection('futbolTeams').doc(teamId);
-  const teamSnap = await teamRef.get();
-  if (!teamSnap.exists || teamSnap.data().ownerUid !== uid) {
-    throw new HttpsError('permission-denied', 'Bu takım sana ait değil.');
-  }
-  const userRef = db.collection('users').doc(uid);
-  const userSnap = await userRef.get();
-  if ((userSnap.data()?.gold || 0) < FUTBOL_YOUTH_PLAYER_COST) {
-    throw new HttpsError('failed-precondition', 'Yeterli altının yok.');
-  }
-  const batch = db.batch();
-  batch.update(userRef, { gold: admin.firestore.FieldValue.increment(-FUTBOL_YOUTH_PLAYER_COST) });
-  const playerRef = db.collection('futbolPlayers').doc();
-  batch.set(playerRef, { teamId, ...createFutbolYouthPlayer(position) });
-  await batch.commit();
-  return { ok: true };
-});
 
 // addFutbolTraining — bir oyuncuyu o günkü antrenman listesine ekler
 // (günde en fazla 3 oyuncu, her biri kendi "Antrenmanı Başlat" butonuyla,
@@ -8300,8 +8242,20 @@ async function resolveFutbolBetsForRound(leagueId, round) {
         gold: admin.firestore.FieldValue.increment(payout),
       });
       batch.update(d.ref, { status: 'won', payout });
+      sendFutbolSms(
+        batch,
+        bet.uid,
+        `🎉 İddaa kuponun tuttu! 4/4 doğru tahmin, ${payout.toLocaleString('tr-TR')} altın kazandın.`,
+        'futbol_bet_result'
+      );
     } else {
       batch.update(d.ref, { status: 'lost', payout: 0 });
+      sendFutbolSms(
+        batch,
+        bet.uid,
+        `İddaa kuponun tutmadı. Yatırdığın ${bet.stake.toLocaleString('tr-TR')} altın gitti.`,
+        'futbol_bet_result'
+      );
     }
   });
   await batch.commit();

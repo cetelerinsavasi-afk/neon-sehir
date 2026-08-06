@@ -6,7 +6,6 @@ import {
   instantSellFutbolPlayer,
   listFutbolPlayerForSale,
   cancelFutbolPlayerListing,
-  seedFutbolTransferMarketStock,
 } from '../../services/gameActions';
 import FutbolPlayerAvatar from './FutbolPlayerAvatar';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
@@ -99,19 +98,6 @@ export default function FutbolTransfer({ team }) {
     }
   };
 
-  const handleFillStock = async () => {
-    setBusyId('__stock__');
-    setError('');
-    try {
-      await seedFutbolTransferMarketStock();
-      await loadMarket();
-    } catch (err) {
-      setError(err?.message || 'Stok tamamlanamadı.');
-    } finally {
-      setBusyId(null);
-    }
-  };
-
   const systemCount = market ? market.filter((p) => p.saleSource === 'system').length : null;
 
   return (
@@ -191,15 +177,9 @@ export default function FutbolTransfer({ team }) {
       <p className="futbol-kadro-section-title">Transfer Piyasası — Katabileceğin Oyuncular</p>
       {market === null && <p className="futbol-placeholder">Yükleniyor...</p>}
       {market !== null && systemCount < 12 && (
-        <div className="futbol-transfer-stock-hint">
-          <p className="futbol-placeholder">
-            Sistem stoğunda {systemCount}/12 oyuncu var — normalde her mevkide 1 ucuz+1 orta+1 pahalı
-            (12 toplam) hazır bekler.
-          </p>
-          <button className="futbol-admin-reset" disabled={busyId === '__stock__'} onClick={handleFillStock}>
-            {busyId === '__stock__' ? '...' : 'Sistem Stoğunu Tamamla (admin)'}
-          </button>
-        </div>
+        <p className="futbol-placeholder">
+          Sistem stoğu yenileniyor, birazdan tamamlanacak ({systemCount}/12 hazır).
+        </p>
       )}
       {market && market.filter((p) => p.teamId !== team.id).length === 0 && (
         <p className="futbol-placeholder">Şu an piyasada satılık oyuncu yok.</p>

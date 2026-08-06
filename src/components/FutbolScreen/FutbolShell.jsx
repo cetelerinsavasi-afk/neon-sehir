@@ -4,10 +4,9 @@ import FutbolTakimim from './FutbolTakimim';
 import './FutbolFullScreen.css';
 
 /**
- * FutbolShell — sadece futbolAdminUnlocked=true olan hesaplarda görünür.
- * Faz 2: Ligler sekmesi gerçek veriyle çalışıyor (lig/takım/oyuncu/fikstür
- * Firestore'dan geliyor). Takımım sekmesi hâlâ iskelet — kadro/transfer
- * sistemi bir sonraki fazda eklenecek.
+ * FutbolShell — Futbol modülünün ana kabuğu. Ligler (lig/puan tablosu/
+ * fikstür/kulüpler/iddaa) ve Takımım (kadro/transfer/antrenman/forma)
+ * sekmeleri arasında geçiş sağlar.
  */
 export default function FutbolShell({ onClose }) {
   const [tab, setTab] = useState('ligler');
@@ -15,7 +14,7 @@ export default function FutbolShell({ onClose }) {
   return (
     <div className="futbol-fullscreen">
       <div className="futbol-fullscreen-header">
-        <span className="futbol-fullscreen-title">⚽ Futbol (admin önizleme)</span>
+        <span className="futbol-fullscreen-title">⚽ Futbol</span>
         <button className="futbol-fullscreen-close" onClick={onClose}>
           ✕
         </button>

@@ -301,18 +301,9 @@ export const pingRaceRoom = (roomId) =>
 export const sendRaceEmoji = (roomId, emoji) =>
   httpsCallable(functions, 'sendRaceEmoji')({ roomId, emoji });
 
-// --- Faz Futbol: Faz 1 (iskelet + admin erişimi) ---
-
-export const verifyFutbolAdminAccess = (password) =>
-  httpsCallable(functions, 'verifyFutbolAdminAccess')({ password });
+// --- Faz Futbol ---
 
 export const seedFutbolWorld = () => httpsCallable(functions, 'seedFutbolWorld')();
-
-export const resetFutbolWorld = () => httpsCallable(functions, 'resetFutbolWorld')();
-
-// Faz 3: 18:00'i beklemeden maç motorunu elle tetiklemek için (admin-only).
-export const resolveFutbolMatchdayManual = () =>
-  httpsCallable(functions, 'resolveFutbolMatchdayManual')();
 
 // --- Faz Futbol: Faz 4 (takım satın alma / satma) ---
 
@@ -345,10 +336,7 @@ export const buyFutbolPlayer = (playerId) => httpsCallable(functions, 'buyFutbol
 export const setFutbolTeamLogo = (teamId, shape, pattern, icon, primary, secondary) =>
   httpsCallable(functions, 'setFutbolTeamLogo')({ teamId, shape, pattern, icon, primary, secondary });
 
-// --- Faz Futbol: Faz 6 (altyapı — tüm takımlarda hazır, genç oyuncu antrenmanı) ---
-
-export const buyFutbolYouthPlayer = (teamId, position) =>
-  httpsCallable(functions, 'buyFutbolYouthPlayer')({ teamId, position });
+// --- Faz Futbol: Faz 6 (antrenman) ---
 
 export const addFutbolTraining = (teamId, playerId) =>
   httpsCallable(functions, 'addFutbolTraining')({ teamId, playerId });
@@ -370,8 +358,3 @@ export const cancelFutbolTeamListing = (teamId) =>
 // --- Faz Futbol: Faz 10 (Kulüpler dizini) ---
 
 export const listFutbolClubs = (leagueId) => httpsCallable(functions, 'listFutbolClubs')({ leagueId });
-
-export const regenerateAllFutbolLogos = () => httpsCallable(functions, 'regenerateAllFutbolLogos')();
-
-export const seedFutbolTransferMarketStock = () =>
-  httpsCallable(functions, 'seedFutbolTransferMarketStock')();

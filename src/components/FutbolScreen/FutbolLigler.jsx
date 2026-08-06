@@ -1,10 +1,9 @@
-import { useMemo, useState } from 'react';
-import { collection, getDocs, query, where } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { useEffect, useMemo, useState } from 'react';
 import { useFutbolLeagues } from '../../hooks/useFutbolLeagues';
 import { useFutbolTeams } from '../../hooks/useFutbolTeams';
 import { useFutbolMatches } from '../../hooks/useFutbolMatches';
-import { seedFutbolWorld, resetFutbolWorld, resolveFutbolMatchdayManual, regenerateAllFutbolLogos } from '../../services/gameActions';
+import { seedFutbolWorld } from '../../services/gameActions';
+import { useNowTick, computeLiveMatchState, pickFutbolDisplayRound } from './futbolLiveMatch';
 import FutbolMatchDetail from './FutbolMatchDetail';
 import FutbolCrest from './FutbolCrest';
 import FutbolIddaa from './FutbolIddaa';
@@ -23,8 +22,16 @@ export default function FutbolLigler() {
   const { leagues, loading: leaguesLoading } = useFutbolLeagues();
   const [selectedLeagueId, setSelectedLeagueId] = useState(null);
   const [subTab, setSubTab] = useState('puan');
-  const [busy, setBusy] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState(null);
+  const now = useNowTick(5000);
+
+  // Futbol dünyası boşsa (ilk hiç kimse açmadıysa) sessizce, otomatik
+  // olarak oluşturulur — admin/buton gerekmez, seedFutbolWorld idempotent.
+  useEffect(() => {
+    if (!leaguesLoading && leagues.length === 0) {
+      seedFutbolWorld().catch(() => {});
+    }
+  }, [leaguesLoading, leagues.length]);
 
   const activeLeague = leagues.find((l) => l.id === selectedLeagueId) || leagues[0] || null;
   const activeLeagueId = activeLeague?.id || null;
@@ -52,87 +59,16 @@ export default function FutbolLigler() {
     return map;
   }, [matches]);
 
-  // "Bugünün maçları" için gerçek gün/saat motoru henüz yok (Faz 3) —
-  // şimdilik ilk oynanmamış günü "güncel gün" olarak gösteriyoruz.
-  const currentRound = useMemo(() => {
-    const unplayed = matches.find((m) => m.status !== 'finished');
-    return unplayed ? unplayed.round : 1;
-  }, [matches]);
+  // Hangi günün gösterileceği: 18:00-19:00 arası canlı oynanan gün,
+  // 19:00-24:00 arası bugün biten günün sonucu, aksi halde henüz
+  // oynanmamış (bekleyen) güncel gün.
+  const display = useMemo(
+    () => pickFutbolDisplayRound(matches, activeLeague?.currentRound || 1, now),
+    [matches, activeLeague?.currentRound, now]
+  );
 
-  const runSeed = async () => {
-    setBusy(true);
-    try {
-      await seedFutbolWorld();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const runReset = async () => {
-    if (!window.confirm('Tüm futbol verisi silinecek, emin misin?')) return;
-    setBusy(true);
-    try {
-      await resetFutbolWorld();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // Turu oynattıktan sonra, canlı anlatımı test edebilmen için o günün
-  // ilk maçını otomatik açıyoruz — aramana gerek kalmasın diye.
-  // Turu oynattıktan sonra, canlı anlatımı test edebilmen için o günün
-  // ilk (bitmiş) maçını otomatik açıyoruz. ÖNEMLİ: React state'ten
-  // (roundsGrouped/currentRound) okumak burada YANLIŞ olurdu — bu
-  // fonksiyon butona tıklandığı andaki (henüz maç çözülmemişken) bayat
-  // veriyi yakalar ve asla "bitmiş" bir maç bulamaz. Bunun yerine,
-  // sunucu işini bitirdikten SONRA Firestore'dan taze bir sorgu atıyoruz.
-  const runManualMatchday = async () => {
-    setBusy(true);
-    try {
-      await resolveFutbolMatchdayManual();
-      if (activeLeagueId) {
-        const freshLeagueSnap = await getDocs(
-          query(collection(db, 'futbolLeagues'), where('__name__', '==', activeLeagueId))
-        );
-        const freshLeague = freshLeagueSnap.docs[0]?.data();
-        const round = freshLeague?.currentRound || 1;
-        const season = freshLeague?.season || 1;
-        // Tur ilerlemiş olabilir (gün bittiyse) — hem güncel hem bir
-        // önceki turu dener, hangisinde bitmiş maç varsa onu açar.
-        for (const tryRound of [round, Math.max(1, round - 1)]) {
-          const matchesSnap = await getDocs(
-            query(
-              collection(db, 'futbolMatches'),
-              where('leagueId', '==', activeLeagueId),
-              where('season', '==', season),
-              where('round', '==', tryRound)
-            )
-          );
-          const finished = matchesSnap.docs.map((d) => ({ id: d.id, ...d.data() })).find((m) => m.status === 'finished');
-          if (finished) {
-            setSelectedMatch(finished);
-            break;
-          }
-        }
-      }
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (leaguesLoading) {
+  if (leaguesLoading || leagues.length === 0) {
     return <p className="futbol-placeholder">Yükleniyor...</p>;
-  }
-
-  if (leagues.length === 0) {
-    return (
-      <div className="futbol-placeholder futbol-ligler-empty">
-        <p>Futbol dünyası henüz oluşturulmadı (2 lig × 8 bot takım + tam fikstür).</p>
-        <button className="futbol-admin-submit" disabled={busy} onClick={runSeed}>
-          {busy ? '...' : 'Dünyayı Oluştur'}
-        </button>
-      </div>
-    );
   }
 
   return (
@@ -165,11 +101,18 @@ export default function FutbolLigler() {
 
       {subTab === 'maclar' && (
         <MatchList
-          title={`${currentRound}. Gün`}
-          matches={roundsGrouped[currentRound] || []}
+          title={
+            display.mode === 'live'
+              ? `${display.round}. Gün — Canlı`
+              : display.mode === 'finished'
+                ? `${display.round}. Gün — Sonuçlar`
+                : `${display.round}. Gün`
+          }
+          matches={roundsGrouped[display.round] || []}
           teamNameById={teamNameById}
           teamById={teamById}
           onSelectMatch={setSelectedMatch}
+          now={now}
         />
       )}
 
@@ -186,6 +129,7 @@ export default function FutbolLigler() {
                 teamNameById={teamNameById}
                 teamById={teamById}
                 onSelectMatch={setSelectedMatch}
+                now={now}
                 compact
               />
             ))}
@@ -197,32 +141,11 @@ export default function FutbolLigler() {
       {subTab === 'iddaa' && (
         <FutbolIddaa
           leagueId={activeLeagueId}
-          matches={roundsGrouped[currentRound] || []}
+          matches={roundsGrouped[activeLeague?.currentRound || 1] || []}
           teamNameById={teamNameById}
           teamById={teamById}
         />
       )}
-
-      <button className="futbol-admin-reset" disabled={busy} onClick={runReset}>
-        {busy ? '...' : 'Futbol Verisini Sıfırla (admin)'}
-      </button>
-      <button
-        className="futbol-admin-reset"
-        disabled={busy}
-        onClick={async () => {
-          setBusy(true);
-          try {
-            await regenerateAllFutbolLogos();
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        {busy ? '...' : 'Tüm Logoları Yeniden Dağıt (admin)'}
-      </button>
-      <button className="futbol-admin-submit" disabled={busy} onClick={runManualMatchday}>
-        {busy ? '...' : 'Güncel Günü Şimdi Oynat (admin, 18:00 beklemeden test)'}
-      </button>
 
       {selectedMatch && (
         <FutbolMatchDetail
@@ -289,29 +212,41 @@ function StandingsTable({ teams }) {
   );
 }
 
-function MatchList({ title, matches, teamNameById, teamById, compact, onSelectMatch }) {
+function MatchList({ title, matches, teamNameById, teamById, compact, onSelectMatch, now }) {
   return (
     <div className={`futbol-match-round ${compact ? 'compact' : ''}`}>
       <p className="futbol-match-round-title">{title}</p>
-      {matches.map((m) => (
-        <div
-          key={m.id}
-          className="futbol-match-row futbol-match-row-clickable"
-          onClick={() => onSelectMatch?.(m)}
-        >
-          <span className="futbol-match-team">
-            {teamNameById[m.homeTeamId] || '—'}
-            <FutbolCrest logo={teamById[m.homeTeamId]?.logo} initials={teamNameById[m.homeTeamId]?.[0]} size={18} />
-          </span>
-          <span className="futbol-match-score">
-            {m.status === 'finished' ? `${m.homeScore} - ${m.awayScore}` : 'vs'}
-          </span>
-          <span className="futbol-match-team futbol-match-team-away">
-            <FutbolCrest logo={teamById[m.awayTeamId]?.logo} initials={teamNameById[m.awayTeamId]?.[0]} size={18} />
-            {teamNameById[m.awayTeamId] || '—'}
-          </span>
-        </div>
-      ))}
+      {matches.map((m) => {
+        const state = computeLiveMatchState(m, now);
+        let scoreText = 'vs';
+        let isLive = false;
+        if (state.phase === 'finished') {
+          scoreText = `${state.homeScore} - ${state.awayScore}`;
+        } else if (state.phase === 'live') {
+          scoreText = `${state.homeScore} - ${state.awayScore}`;
+          isLive = true;
+        }
+        return (
+          <div
+            key={m.id}
+            className="futbol-match-row futbol-match-row-clickable"
+            onClick={() => onSelectMatch?.(m)}
+          >
+            <span className="futbol-match-team">
+              {teamNameById[m.homeTeamId] || '—'}
+              <FutbolCrest logo={teamById[m.homeTeamId]?.logo} initials={teamNameById[m.homeTeamId]?.[0]} size={18} />
+            </span>
+            <span className={`futbol-match-score ${isLive ? 'live' : ''}`}>
+              {isLive && <span className="futbol-live-dot" />}
+              {scoreText}
+            </span>
+            <span className="futbol-match-team futbol-match-team-away">
+              <FutbolCrest logo={teamById[m.awayTeamId]?.logo} initials={teamNameById[m.awayTeamId]?.[0]} size={18} />
+              {teamNameById[m.awayTeamId] || '—'}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
