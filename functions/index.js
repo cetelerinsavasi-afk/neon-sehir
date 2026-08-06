@@ -6803,6 +6803,10 @@ export const seedFutbolWorld = onCall(async (request) => {
   let nameIdx = 0;
   const usedLogoSignatures = new Set();
   const batch = db.batch();
+  // Transfer piyasası "taban gücü" bu yeni takımların oyuncularından
+  // hesaplanacağı için, oluşturulan her oyuncunun gücünü mevkiine göre
+  // burada da (Firestore'a tekrar sorgu atmadan) topluyoruz.
+  const seededPowerByPosition = { GK: [], DEF: [], MID: [], FWD: [] };
 
   for (const leagueDef of leagueDefs) {
     const leagueRef = db.collection('futbolLeagues').doc();
@@ -6827,7 +6831,9 @@ export const seedFutbolWorld = onCall(async (request) => {
 
       for (const [position, priceTier] of randomFutbolSquadComposition(leagueDef.tier)) {
         const playerRef = db.collection('futbolPlayers').doc();
-        batch.set(playerRef, { teamId: teamRef.id, ...randomFutbolPlayer(position, priceTier) });
+        const playerData = randomFutbolPlayer(position, priceTier);
+        batch.set(playerRef, { teamId: teamRef.id, ...playerData });
+        if (seededPowerByPosition[position]) seededPowerByPosition[position].push(playerData.power);
       }
     }
 
@@ -6858,9 +6864,17 @@ export const seedFutbolWorld = onCall(async (request) => {
     });
   }
 
+  // Transfer piyasası: her mevki için az önce oluşturulan oyunculardan
+  // en güçlüsünü taban alıp 12 sistem slotunu (4 mevki × 3 bant) o taze
+  // dünyaya göre kuruyoruz — bkz. Faz 5b'deki FUTBOL_SYSTEM_POWER_BANDS.
+  const seededMaxPowerByPosition = {};
+  FUTBOL_TRANSFER_POSITIONS.forEach((pos) => {
+    const powers = seededPowerByPosition[pos];
+    seededMaxPowerByPosition[pos] = powers.length ? Math.max(...powers) : FUTBOL_SYSTEM_FALLBACK_POWER;
+  });
   FUTBOL_TRANSFER_POSITIONS.forEach((position) => {
-    FUTBOL_TRANSFER_TIER_BANDS.forEach((band) => {
-      createSystemStockPlayer(batch, position, band);
+    FUTBOL_SYSTEM_POWER_BANDS.forEach((_, bandIndex) => {
+      buildFutbolSystemStockWrite(batch, position, bandIndex, seededMaxPowerByPosition);
     });
   });
 
@@ -8006,11 +8020,33 @@ export const setFutbolLineup = onCall(async (request) => {
 });
 
 // --- Futbol modülü: Faz 5b (transfer piyasası) ---
-
-const FUTBOL_TRANSFER_TIER_BANDS = ['ucuz', 'orta', 'pahali'];
+//
+// Kullanıcı revizesi: eski sistem stoğu (ucuz/orta/pahalı fiyat bandı,
+// randomFutbolPlayer'ın değer→güç formülüyle) takımlardaki gerçek
+// oyunculardan tamamen kopuk, bazen 200-270 güç gibi anlamsız değerler
+// üretiyordu (oyundaki en güçlü oyuncu ~100 güçteyken). Yeni sistem:
+// her mevki için o mevkideki (bir takıma ait, transfer listesindeki
+// DEĞİL) en güçlü oyuncunun gücünü baz alır; her mevkide 3 "slot" var,
+// her biri o taban güce göre bir bant içinde (bkz. FUTBOL_SYSTEM_POWER_
+// BANDS) üretilir. 4 mevki × 3 slot = 12 sistem oyuncusu — sayı aynı
+// kaldı, ama artık oyunun mevcut güç seviyesiyle orantılı.
 const FUTBOL_TRANSFER_POSITIONS = ['GK', 'DEF', 'MID', 'FWD'];
-const FUTBOL_SYSTEM_LISTING_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const FUTBOL_SYSTEM_LISTING_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 saat satılmazsa kendiliğinden yenilenir
 const FUTBOL_OWNER_LISTING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const FUTBOL_SYSTEM_RESTOCK_DELAY_MS = 60 * 60 * 1000; // satıldıktan 1 saat sonra yenisi gelsin
+// Slot 0 = en güçlü (taban gücün %90-110'u), slot 1 = orta (%75-90'ı),
+// slot 2 = en zayıf (%50-75'i) — kullanıcı promptundaki örnekle birebir
+// (taban 100 ise: 90-110 / 75-90 / 50-75).
+const FUTBOL_SYSTEM_POWER_BANDS = [
+  { min: 0.9, max: 1.1 },
+  { min: 0.75, max: 0.9 },
+  { min: 0.5, max: 0.75 },
+];
+const FUTBOL_SYSTEM_MIN_AGE = 16;
+const FUTBOL_SYSTEM_MAX_AGE = 30;
+// Henüz hiç takımda o mevkide oyuncu yoksa (teorik olarak imkansız ama
+// güvenlik için) düşecek taban güç.
+const FUTBOL_SYSTEM_FALLBACK_POWER = 50;
 
 async function getFutbolTeamPositionCounts(teamId, excludePlayerId) {
   const snap = await db.collection('futbolPlayers').where('teamId', '==', teamId).get();
@@ -8027,23 +8063,149 @@ function meetsFutbolMinSquad(counts) {
   return Object.keys(FUTBOL_MIN_SQUAD).every((k) => (counts[k] || 0) >= FUTBOL_MIN_SQUAD[k]);
 }
 
-// Sistem tarafından üretilen, kimseye ait olmayan (teamId:null) hazır
-// transfer oyuncusu — fiyatı direkt değeri kadar (zamsız).
-function createSystemStockPlayer(batch, position, tierBand) {
+// computeFutbolMaxPowerByPosition — o an BİR TAKIMA AİT (transfer
+// listesindeki sistem/anında/manuel ilanlar HARİÇ — teamId==null) tüm
+// oyuncular arasında, her mevkideki en yüksek gücü döner. Transfer
+// piyasasının "taban"ı budur.
+async function computeFutbolMaxPowerByPosition() {
+  const snap = await db.collection('futbolPlayers').get();
+  const max = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
+  snap.docs.forEach((d) => {
+    const p = d.data();
+    if (!p.teamId) return; // transfer listesinde/sahipsiz — sayılmaz
+    if (max[p.position] !== undefined && p.power > max[p.position]) {
+      max[p.position] = p.power;
+    }
+  });
+  Object.keys(max).forEach((pos) => {
+    if (!(max[pos] > 0)) max[pos] = FUTBOL_SYSTEM_FALLBACK_POWER;
+  });
+  return max;
+}
+
+// randomFutbolSystemPlayer — verilen mevki+bant için, taban güce göre
+// bant aralığında bir güç, 16-30 arası rastgele yaş üretir. Değer,
+// diğer oyuncularla aynı formülle (randomFutbolPlayer'daki gibi)
+// güç×kalan kariyer yılına göre hesaplanır ki ekonomi tutarlı kalsın.
+function randomFutbolSystemPlayer(position, basePower, bandIndex) {
+  const band = FUTBOL_SYSTEM_POWER_BANDS[bandIndex];
+  const power = Math.max(20, Math.round(randomInRange(basePower * band.min, basePower * band.max) * 10) / 10);
+  const age = Math.floor(randomInRange(FUTBOL_SYSTEM_MIN_AGE, FUTBOL_SYSTEM_MAX_AGE + 1));
+  const remainingSeasons = 20 - (age - 16);
+  const value = Math.round((power * 1000 * remainingSeasons) / 20);
+  const name = `${FUTBOL_FIRST_NAMES[Math.floor(Math.random() * FUTBOL_FIRST_NAMES.length)]} ${
+    FUTBOL_LAST_NAMES[Math.floor(Math.random() * FUTBOL_LAST_NAMES.length)]
+  }`;
+  return { name, position, age, power, form: 100, value, forSale: false, listedAt: null };
+}
+
+// buildFutbolSystemStockWrite — bir slot (position_bandIndex) için yeni
+// bir sistem oyuncusu dokümanı + slot dokümanı güncellemesini VERİLEN
+// batch'e ekler (kendi commit'ini yapmaz — çağıran karar verir). newRef
+// olarak yeni oluşturulan futbolPlayers doküman referansını döner.
+function buildFutbolSystemStockWrite(batch, position, bandIndex, maxPowerByPosition) {
+  const slotKey = `${position}_${bandIndex}`;
   const playerRef = db.collection('futbolPlayers').doc();
-  const data = randomFutbolPlayer(position, tierBand);
+  const data = randomFutbolSystemPlayer(position, maxPowerByPosition[position], bandIndex);
   batch.set(playerRef, {
     teamId: null,
     ...data,
-    tierBand,
     forSale: true,
     salePrice: data.value,
     saleSource: 'system',
     sellerUid: null,
+    slotKey,
+    bandIndex,
     listedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
+  batch.set(
+    db.collection('futbolTransferSlots').doc(slotKey),
+    { position, bandIndex, playerId: playerRef.id, refillAt: admin.firestore.FieldValue.delete() },
+    { merge: true }
+  );
   return playerRef;
 }
+
+// refillFutbolTransferSlots — bekleme süresi (1 saat) dolmuş boş
+// slotları taze bir sistem oyuncusuyla doldurur. every 15 dakikada bir
+// çalışır — "satıldıktan 1 saat sonra yenisi gelsin" kuralı.
+export const refillFutbolTransferSlots = onSchedule({ schedule: 'every 15 minutes' }, async () => {
+  const now = admin.firestore.Timestamp.now();
+  const dueSnap = await db
+    .collection('futbolTransferSlots')
+    .where('playerId', '==', null)
+    .where('refillAt', '<=', now)
+    .get();
+  if (dueSnap.empty) return;
+
+  const maxPowerByPosition = await computeFutbolMaxPowerByPosition();
+  const batch = db.batch();
+  dueSnap.docs.forEach((slotDoc) => {
+    const { position, bandIndex } = slotDoc.data();
+    buildFutbolSystemStockWrite(batch, position, bandIndex, maxPowerByPosition);
+  });
+  await batch.commit();
+});
+
+// resetFutbolTransferMarket — eski (dengesiz) sistem stoğunu bir kere
+// temizleyip yeni bant kurallarına göre 12 slotu (4 mevki × 3 bant)
+// sıfırdan kurar. Bir migration bayrağıyla İDEMPOTENT: kullanıcı girişte
+// otomatik tetiklenir (App.jsx), ikinci kez hiçbir şey yapmaz.
+async function runFutbolTransferMarketReset() {
+  const migrationRef = db.collection('migrations').doc('futbolTransferMarketV2');
+  const migrationSnap = await migrationRef.get();
+  if (migrationSnap.exists) return;
+
+  // Dünya (ligler/takımlar) henüz kurulmadıysa (seedFutbolWorld daha
+  // çalışmadı) burada bir şey yapmaya çalışmayalım — taban güç için
+  // gerçek takım verisi yok demektir. Bayrağı işaretlemeden çıkıyoruz ki
+  // bir sonraki girişte (dünya kurulduktan sonra) tekrar denensin.
+  const leaguesSnap = await db.collection('futbolLeagues').limit(1).get();
+  if (leaguesSnap.empty) return;
+
+  // Eski sistem stoğunu (ne bant ne slot kavramı olan, eski
+  // ucuz/orta/pahalı mantıkla üretilmiş) tamamen sil.
+  const oldSystemSnap = await db.collection('futbolPlayers').where('saleSource', '==', 'system').get();
+  let delBatch = db.batch();
+  let delCount = 0;
+  for (const d of oldSystemSnap.docs) {
+    delBatch.delete(d.ref);
+    delCount += 1;
+    if (delCount % 450 === 0) {
+      await delBatch.commit();
+      delBatch = db.batch();
+    }
+  }
+  if (delCount % 450 !== 0) await delBatch.commit();
+
+  // Olası eski slot dokümanlarını da (varsa) temizle.
+  const oldSlotsSnap = await db.collection('futbolTransferSlots').get();
+  if (!oldSlotsSnap.empty) {
+    let slotDelBatch = db.batch();
+    oldSlotsSnap.docs.forEach((d) => slotDelBatch.delete(d.ref));
+    await slotDelBatch.commit();
+  }
+
+  const maxPowerByPosition = await computeFutbolMaxPowerByPosition();
+  const batch = db.batch();
+  FUTBOL_TRANSFER_POSITIONS.forEach((position) => {
+    FUTBOL_SYSTEM_POWER_BANDS.forEach((_, bandIndex) => {
+      buildFutbolSystemStockWrite(batch, position, bandIndex, maxPowerByPosition);
+    });
+  });
+  await batch.commit();
+
+  await migrationRef.set({ ranAt: admin.firestore.FieldValue.serverTimestamp() });
+}
+
+// Manuel (anlık) tetikleme için ince bir onCall sarmalayıcı — asıl işi
+// runFutbolTransferMarketReset yapıyor, App.jsx girişte otomatik çağırır
+// (diğer migrate* fonksiyonlarıyla aynı desen).
+export const resetFutbolTransferMarket = onCall(async (request) => {
+  requireAuth(request);
+  await runFutbolTransferMarketReset();
+  return { ok: true };
+});
 
 // instantSellFutbolPlayer — oyuncuyu anında sisteme sat (değerin 2/3'ü),
 // oyuncu takımdan çıkar ve %10 zamla (kullanıcı promptu) tekrar transfer
@@ -8209,24 +8371,36 @@ export const buyFutbolPlayer = onCall(async (request) => {
     sellerUid: admin.firestore.FieldValue.delete(),
     listedAt: admin.firestore.FieldValue.delete(),
     tierBand: admin.firestore.FieldValue.delete(),
+    slotKey: admin.firestore.FieldValue.delete(),
+    bandIndex: admin.firestore.FieldValue.delete(),
   });
-  if (player.saleSource === 'system') {
-    createSystemStockPlayer(batch, player.position, player.tierBand || 'orta');
+  if (player.saleSource === 'system' && player.slotKey) {
+    // Kullanıcı promptu: satılan sistem oyuncusunun yeri HEMEN
+    // doldurulmaz — 1 saat sonra refillFutbolTransferSlots tarafından
+    // doldurulur (bkz. yukarıdaki FUTBOL_SYSTEM_RESTOCK_DELAY_MS).
+    batch.set(
+      db.collection('futbolTransferSlots').doc(player.slotKey),
+      {
+        playerId: null,
+        refillAt: admin.firestore.Timestamp.fromMillis(Date.now() + FUTBOL_SYSTEM_RESTOCK_DELAY_MS),
+      },
+      { merge: true }
+    );
   }
   await batch.commit();
   return { ok: true, price };
 });
 
-// expireFutbolTransferListings — saatlik: sistem stoğu 24 saat, kişisel
-// ilanlar (anında satılmış ya da elle listelenmiş) 7 gün sonra süresi
-// dolar. Sistem stoğu yenisiyle değiştirilir, anında-satış ilanı
-// tamamen silinir, elle listeleme sadece geri çekilir (oyuncu takımda
-// kalır) — kullanıcı promptundaki üç kural birebir.
+// expireFutbolTransferListings — saatlik: sistem stoğu 24 saat satılmazsa
+// YERİNDE (bekleme olmadan) taze bir oyuncuyla yenilenir; kişisel ilanlar
+// (anında satılmış ya da elle listelenmiş) 7 gün sonra süresi dolar —
+// anında-satış ilanı tamamen silinir, elle listeleme sadece geri çekilir
+// (oyuncu takımda kalır).
 export const expireFutbolTransferListings = onSchedule({ schedule: 'every 60 minutes' }, async () => {
   const now = Date.now();
   const listedSnap = await db.collection('futbolPlayers').where('forSale', '==', true).get();
   const batch = db.batch();
-  const replacements = [];
+  const staleSystemSlots = [];
 
   listedSnap.docs.forEach((d) => {
     const p = d.data();
@@ -8234,7 +8408,7 @@ export const expireFutbolTransferListings = onSchedule({ schedule: 'every 60 min
     const ageMs = now - p.listedAt.toMillis();
     if (p.saleSource === 'system' && ageMs > FUTBOL_SYSTEM_LISTING_MAX_AGE_MS) {
       batch.delete(d.ref);
-      replacements.push([p.position, p.tierBand || 'orta']);
+      if (p.slotKey) staleSystemSlots.push({ slotKey: p.slotKey, position: p.position, bandIndex: p.bandIndex });
     } else if (p.saleSource === 'instant' && ageMs > FUTBOL_OWNER_LISTING_MAX_AGE_MS) {
       batch.delete(d.ref);
     } else if (p.saleSource === 'manual' && ageMs > FUTBOL_OWNER_LISTING_MAX_AGE_MS) {
@@ -8248,7 +8422,13 @@ export const expireFutbolTransferListings = onSchedule({ schedule: 'every 60 min
     }
   });
 
-  replacements.forEach(([position, band]) => createSystemStockPlayer(batch, position, band));
+  if (staleSystemSlots.length > 0) {
+    const maxPowerByPosition = await computeFutbolMaxPowerByPosition();
+    staleSystemSlots.forEach(({ position, bandIndex }) => {
+      buildFutbolSystemStockWrite(batch, position, bandIndex, maxPowerByPosition);
+    });
+  }
+
   await batch.commit();
 });
 

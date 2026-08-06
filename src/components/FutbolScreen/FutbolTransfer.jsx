@@ -186,7 +186,8 @@ export default function FutbolTransfer({ team }) {
       {market === null && <p className="futbol-placeholder">Yükleniyor...</p>}
       {market !== null && systemCount < 12 && (
         <p className="futbol-placeholder">
-          Sistem stoğu yenileniyor, birazdan tamamlanacak ({systemCount}/12 hazır).
+          Bazı sistem oyuncuları satın alındı, en geç 1 saat içinde yerlerine yenisi gelecek (
+          {systemCount}/12 hazır).
         </p>
       )}
       {market && market.filter((p) => p.teamId !== team.id).length === 0 && (

@@ -17,7 +17,7 @@ import TopNotificationBanner from './components/TopNotificationBanner/TopNotific
 import { usePlayer } from './hooks/usePlayer';
 import { useMyActiveRaceRoom } from './hooks/useMyActiveRaceRoom';
 import { useFirestoreResume } from './hooks/useFirestoreResume';
-import { migrateArabaGelistirmeUnification, migrateVehicleWeaponLifeCap } from './services/gameActions';
+import { migrateArabaGelistirmeUnification, migrateVehicleWeaponLifeCap, resetFutbolTransferMarket } from './services/gameActions';
 import { regions } from './data/regions';
 import './styles/theme.css';
 import './App.css';
@@ -33,6 +33,12 @@ let arabaGelistirmeMigrationTriggered = false;
 // çalışıyor — bu istemci tetiklemesi sadece deploy edilir edilmez, gece
 // yarısını beklemeden hemen çalışsın diye ekstra bir güvence.)
 let lifeCapMigrationTriggered = false;
+// Futbol transfer piyasası eski (dengesiz) sistem stoğunu yeni,
+// takımlardaki gerçek güce göre dengelenmiş kurallara sıfırlayan
+// geçişin bu oturumda tetiklenip tetiklenmediği. Sunucu tarafında bir
+// migration bayrağıyla İDEMPOTENT olduğu için tekrar tekrar çağırmak
+// zararsız, ama gereksiz ağ isteğini önlemek için burada da işaretliyoruz.
+let futbolTransferMarketResetTriggered = false;
 
 // Harita, HUD ve telefon giriş yapmadan da görülebilir/gezilebilir —
 // ortadaki SignInBanner haritayı bloklamaz, sadece giriş için görünür bir
@@ -73,6 +79,16 @@ function GameShell() {
     lifeCapMigrationTriggered = true;
     migrateVehicleWeaponLifeCap().catch((err) => {
       console.error('Araç/silah ömür tavanı geçişi başarısız:', err);
+    });
+  }, [user]);
+
+  // Futbol transfer piyasasını yeni (takımlardaki gerçek güce göre
+  // dengelenmiş) kurallara sıfırla — bkz. yukarıdaki not.
+  useEffect(() => {
+    if (!user || futbolTransferMarketResetTriggered) return;
+    futbolTransferMarketResetTriggered = true;
+    resetFutbolTransferMarket().catch((err) => {
+      console.error('Futbol transfer piyasası sıfırlama başarısız:', err);
     });
   }, [user]);
 

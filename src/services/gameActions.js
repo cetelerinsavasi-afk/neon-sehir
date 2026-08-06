@@ -319,6 +319,9 @@ export const sendRaceEmoji = (roomId, emoji) =>
 
 export const seedFutbolWorld = () => httpsCallable(functions, 'seedFutbolWorld')();
 
+export const resetFutbolTransferMarket = () =>
+  httpsCallable(functions, 'resetFutbolTransferMarket')();
+
 // --- Faz Futbol: Faz 4 (takım satın alma / satma) ---
 
 export const listFutbolBuyableTeams = () => httpsCallable(functions, 'listFutbolBuyableTeams')();

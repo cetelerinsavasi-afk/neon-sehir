@@ -7,6 +7,14 @@
         { "fieldPath": "teamId", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "futbolTransferSlots",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "playerId", "order": "ASCENDING" },
+        { "fieldPath": "refillAt", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
