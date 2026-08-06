@@ -6,12 +6,14 @@ import { seedFutbolWorld, resetFutbolWorld, resolveFutbolMatchdayManual } from '
 import FutbolMatchDetail from './FutbolMatchDetail';
 import FutbolCrest from './FutbolCrest';
 import FutbolIddaa from './FutbolIddaa';
+import FutbolKulupler from './FutbolKulupler';
 import './FutbolLigler.css';
 
 const SUB_TABS = [
   { id: 'maclar', label: 'Maçlar' },
   { id: 'puan', label: 'Puan Tablosu' },
   { id: 'fikstur', label: 'Maç Fikstürü' },
+  { id: 'kulupler', label: 'Kulüpler' },
   { id: 'iddaa', label: 'İddaa Bayii' },
 ];
 
@@ -22,9 +24,10 @@ export default function FutbolLigler() {
   const [busy, setBusy] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState(null);
 
-  const activeLeagueId = selectedLeagueId || leagues[0]?.id || null;
+  const activeLeague = leagues.find((l) => l.id === selectedLeagueId) || leagues[0] || null;
+  const activeLeagueId = activeLeague?.id || null;
   const { teams } = useFutbolTeams(activeLeagueId);
-  const { matches } = useFutbolMatches(activeLeagueId);
+  const { matches } = useFutbolMatches(activeLeagueId, activeLeague?.season || 1);
 
   const teamNameById = useMemo(() => {
     const map = {};
@@ -48,7 +51,7 @@ export default function FutbolLigler() {
   }, [matches]);
 
   // "Bugünün maçları" için gerçek gün/saat motoru henüz yok (Faz 3) —
-  // şimdilik ilk oynanmamış turu "güncel tur" olarak gösteriyoruz.
+  // şimdilik ilk oynanmamış günü "güncel gün" olarak gösteriyoruz.
   const currentRound = useMemo(() => {
     const unplayed = matches.find((m) => m.status !== 'finished');
     return unplayed ? unplayed.round : 1;
@@ -73,10 +76,16 @@ export default function FutbolLigler() {
     }
   };
 
+  // Turu oynattıktan sonra, canlı anlatımı test edebilmen için o günün
+  // ilk maçını otomatik açıyoruz — aramana gerek kalmasın diye.
   const runManualMatchday = async () => {
     setBusy(true);
     try {
       await resolveFutbolMatchdayManual();
+      setTimeout(() => {
+        const finishedToday = (roundsGrouped[currentRound] || []).find((m) => m.status === 'finished');
+        if (finishedToday) setSelectedMatch(finishedToday);
+      }, 1500);
     } finally {
       setBusy(false);
     }
@@ -89,7 +98,7 @@ export default function FutbolLigler() {
   if (leagues.length === 0) {
     return (
       <div className="futbol-placeholder futbol-ligler-empty">
-        <p>Futbol dünyası henüz oluşturulmadı (2 lig × 8 bot takım × 18 oyuncu + tam fikstür).</p>
+        <p>Futbol dünyası henüz oluşturulmadı (2 lig × 8 bot takım + tam fikstür).</p>
         <button className="futbol-admin-submit" disabled={busy} onClick={runSeed}>
           {busy ? '...' : 'Dünyayı Oluştur'}
         </button>
@@ -127,7 +136,7 @@ export default function FutbolLigler() {
 
       {subTab === 'maclar' && (
         <MatchList
-          title={`${currentRound}. Tur`}
+          title={`${currentRound}. Gün`}
           matches={roundsGrouped[currentRound] || []}
           teamNameById={teamNameById}
           teamById={teamById}
@@ -143,7 +152,7 @@ export default function FutbolLigler() {
             .map((round) => (
               <MatchList
                 key={round}
-                title={`${round}. Tur`}
+                title={`${round}. Gün`}
                 matches={roundsGrouped[round]}
                 teamNameById={teamNameById}
                 teamById={teamById}
@@ -153,6 +162,8 @@ export default function FutbolLigler() {
             ))}
         </div>
       )}
+
+      {subTab === 'kulupler' && <FutbolKulupler leagueId={activeLeagueId} />}
 
       {subTab === 'iddaa' && (
         <FutbolIddaa
@@ -167,7 +178,7 @@ export default function FutbolLigler() {
         {busy ? '...' : 'Futbol Verisini Sıfırla (admin)'}
       </button>
       <button className="futbol-admin-submit" disabled={busy} onClick={runManualMatchday}>
-        {busy ? '...' : 'Güncel Turu Şimdi Oynat (admin, 18:00 beklemeden test)'}
+        {busy ? '...' : 'Güncel Günü Şimdi Oynat (admin, 18:00 beklemeden test)'}
       </button>
 
       {selectedMatch && (

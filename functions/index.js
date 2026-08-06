@@ -6614,6 +6614,21 @@ function randomFutbolLogo() {
   };
 }
 
+// pickUniqueFutbolLogo — bir set içinde (aynı işlem/batch boyunca)
+// birbirinin AYNISI olmayan bir forma üretir. Şekil×desen×ikon×renk
+// kombinasyonu ~1000'in üzerinde olduğu için birkaç denemede bulunur.
+function pickUniqueFutbolLogo(usedSignatures) {
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const logo = randomFutbolLogo();
+    const signature = `${logo.shape}|${logo.pattern}|${logo.icon}|${logo.primary}|${logo.secondary}`;
+    if (!usedSignatures.has(signature)) {
+      usedSignatures.add(signature);
+      return logo;
+    }
+  }
+  return randomFutbolLogo(); // pratikte hiç buraya düşmez
+}
+
 // Piyasa değeri = (Güç × 1000) × (Kalan Kariyer Yılı / 20), Kalan Kariyer
 // Yılı = 20 - (Yaş - 16). Bir hedef değer bandından geriye doğru rastgele
 // bir yaş+güç kombinasyonu üretiyoruz.
@@ -6647,6 +6662,37 @@ const TIER2_SQUAD_TEMPLATE = [
   ['MID', 'orta'], ['MID', 'orta'], ['MID', 'ucuz'], ['MID', 'ucuz'], ['MID', 'ucuz'], ['MID', 'ucuz'],
   ['FWD', 'orta'], ['FWD', 'ucuz'], ['FWD', 'ucuz'],
 ];
+
+// randomFutbolSquadComposition — her takımın kadro büyüklüğü/dağılımı
+// artık BİREBİR AYNI değil, takıma göre rastgele (kullanıcı promptu):
+// minimum kadro şartını (2 kaleci/3 defans/3 orta/2 forvet) her zaman
+// garantiler, üstüne rastgele ekstra oyuncu ekler. 1. Lig (tier 1)
+// takımları orta/pahalı ağırlıklı, diğer ligler ucuz ağırlıklı kalmaya
+// devam ediyor (spec'teki oranın ruhu korunuyor, sayılar artık sabit
+// değil).
+function randomFutbolSquadComposition(tier) {
+  const counts = {
+    GK: 2 + Math.floor(Math.random() * 2), // 2-3
+    DEF: 3 + Math.floor(Math.random() * 4), // 3-6
+    MID: 3 + Math.floor(Math.random() * 4), // 3-6
+    FWD: 2 + Math.floor(Math.random() * 3), // 2-4
+  };
+  const bandWeights =
+    tier === 1
+      ? { ucuz: 0.25, orta: 0.4, pahali: 0.35 }
+      : { ucuz: 0.55, orta: 0.35, pahali: 0.1 };
+  const pickBand = () => {
+    const r = Math.random();
+    if (r < bandWeights.ucuz) return 'ucuz';
+    if (r < bandWeights.ucuz + bandWeights.orta) return 'orta';
+    return 'pahali';
+  };
+  const composition = [];
+  Object.entries(counts).forEach(([position, count]) => {
+    for (let i = 0; i < count; i++) composition.push([position, pickBand()]);
+  });
+  return composition;
+}
 
 // Klasik "circle method" round-robin: 8 takım → 7 tur (herkes herkesle
 // bir kez), sonra ev sahibi/deplasman ters çevrilerek rövanş 7 turu
@@ -6713,11 +6759,12 @@ export const seedFutbolWorld = onCall(async (request) => {
 
   const shuffledNames = FUTBOL_TEAM_NAME_POOL.slice().sort(() => Math.random() - 0.5);
   const leagueDefs = [
-    { tier: 1, name: '1. Lig', template: TIER1_SQUAD_TEMPLATE },
-    { tier: 2, name: '2. Lig', template: TIER2_SQUAD_TEMPLATE },
+    { tier: 1, name: '1. Lig' },
+    { tier: 2, name: '2. Lig' },
   ];
 
   let nameIdx = 0;
+  const usedLogoSignatures = new Set();
   const batch = db.batch();
 
   for (const leagueDef of leagueDefs) {
@@ -6736,14 +6783,14 @@ export const seedFutbolWorld = onCall(async (request) => {
         fans: Math.floor(randomInRange(10000, 30000)),
         tactic: 'dengeli',
         formation: '2-2-1',
-        logo: randomFutbolLogo(),
+        logo: pickUniqueFutbolLogo(usedLogoSignatures),
         stats: { played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0, points: 0 },
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      for (const [position, tier] of leagueDef.template) {
+      for (const [position, priceTier] of randomFutbolSquadComposition(leagueDef.tier)) {
         const playerRef = db.collection('futbolPlayers').doc();
-        batch.set(playerRef, { teamId: teamRef.id, ...randomFutbolPlayer(position, tier) });
+        batch.set(playerRef, { teamId: teamRef.id, ...randomFutbolPlayer(position, priceTier) });
       }
     }
 
@@ -7153,7 +7200,27 @@ async function finishFutbolSeason(leagueIds) {
   await promoRelegateBatch.commit();
 
   // 2) Yeni takım listeleriyle: istatistik sıfırlama + yeni sezon fikstürü.
+  //    Önceki sezonun maçları SİLİNİYOR — yoksa fikstür/maçlar koleksiyonu
+  //    her sezon kalabalıklaşır ve (round numaraları çakıştığı için)
+  //    "güncel tur" hesaplamaları/iddaa ekranı bozulur.
   for (const { league } of leagueData) {
+    const oldMatchesSnap = await db
+      .collection('futbolMatches')
+      .where('leagueId', '==', league.id)
+      .where('season', '==', league.season || 1)
+      .get();
+    let deleteBatch = db.batch();
+    let deleteCount = 0;
+    for (const d of oldMatchesSnap.docs) {
+      deleteBatch.delete(d.ref);
+      deleteCount += 1;
+      if (deleteCount % 450 === 0) {
+        await deleteBatch.commit();
+        deleteBatch = db.batch();
+      }
+    }
+    if (deleteCount % 450 !== 0) await deleteBatch.commit();
+
     const teamsSnap = await db.collection('futbolTeams').where('leagueId', '==', league.id).get();
     const teamIds = teamsSnap.docs.map((d) => d.id);
     const seasonBatch = db.batch();
@@ -7187,16 +7254,30 @@ async function finishFutbolSeason(leagueIds) {
     await seasonBatch.commit();
   }
 
-  // 3) Tüm futbol oyuncularının yaşı +1; 35'i geçen (yani 36 olacak
-  // olan) oyuncu emekli olur (dokümanı silinir). NOT: bu, bir takımın
-  // zamanla minimum kadronun altına düşmesine yol açabilir — bunu
-  // otomatik olarak bota devretme kuralı (kullanıcı promptundaki
-  // "minimum oyuncu sayısı" bölümü) Faz 4'te (Takımım) eklenecek.
+  // 3) Yaşlanma: SADECE oyuncuya (gerçek sahibi) ait takımların
+  //    oyuncuları yaşlanır — yaşı +1, 35'i geçen (36 olacak olan) emekli
+  //    olur (silinir). Bot takımların oyuncuları YAŞLANMAZ — bunun
+  //    yerine 30'un üzerindeki bot oyuncuları düzenli olarak 20 yaşına
+  //    "gençleştirilir" (kullanıcı promptu) ki bot kadroları sonsuza
+  //    kadar sağlıklı kalsın.
+  const teamOwnerByIdSnap = await db.collection('futbolTeams').get();
+  const ownerByTeamId = {};
+  teamOwnerByIdSnap.docs.forEach((d) => (ownerByTeamId[d.id] = d.data().ownerUid || null));
+
   const allPlayersSnap = await db.collection('futbolPlayers').get();
   let ageBatch = db.batch();
   let opCount = 0;
   for (const doc of allPlayersSnap.docs) {
-    const age = doc.data().age + 1;
+    const player = doc.data();
+    const isBotTeam = !ownerByTeamId[player.teamId];
+    if (isBotTeam) {
+      if (player.age > 30) {
+        ageBatch.update(doc.ref, { age: 20, form: 100 });
+        opCount += 1;
+      }
+      continue;
+    }
+    const age = player.age + 1;
     if (age > 35) {
       ageBatch.delete(doc.ref);
     } else {
@@ -7230,7 +7311,7 @@ async function finishFutbolSeason(leagueIds) {
       gold: admin.firestore.FieldValue.increment(payout),
     });
     oldPlayersSnap.docs.forEach((d) => revertBatch.delete(d.ref));
-    const template = team.tier === 1 ? TIER1_SQUAD_TEMPLATE : TIER2_SQUAD_TEMPLATE;
+    const template = randomFutbolSquadComposition(team.tier);
     template.forEach(([position, tierBand]) => {
       const playerRef = db.collection('futbolPlayers').doc();
       revertBatch.set(playerRef, { teamId: teamDoc.id, ...randomFutbolPlayer(position, tierBand) });
@@ -7325,13 +7406,17 @@ async function computeFutbolTeamValue(teamId) {
   return playersSnap.docs.reduce((sum, d) => sum + (d.data().value || 0), 0);
 }
 
-// listFutbolBuyableTeams — sahipsiz (bot) takımları güncel piyasa
-// değeriyle (kadrodaki oyuncuların değerleri toplamı) birlikte döner.
+// listFutbolBuyableTeams — sahipsiz (bot) takımlar (piyasa değeriyle) +
+// oyuncuların kendi ilan ettiği (forSale=true) takımlar (kendi
+// belirledikleri fiyatla) birlikte döner.
 export const listFutbolBuyableTeams = onCall(async (request) => {
   requireAuth(request);
-  const teamsSnap = await db.collection('futbolTeams').where('ownerUid', '==', null).get();
-  const teams = await Promise.all(
-    teamsSnap.docs.map(async (d) => {
+  const [botSnap, listedSnap] = await Promise.all([
+    db.collection('futbolTeams').where('ownerUid', '==', null).get(),
+    db.collection('futbolTeams').where('forSale', '==', true).get(),
+  ]);
+  const botTeams = await Promise.all(
+    botSnap.docs.map(async (d) => {
       const data = d.data();
       const value = await computeFutbolTeamValue(d.id);
       return {
@@ -7342,15 +7427,31 @@ export const listFutbolBuyableTeams = onCall(async (request) => {
         fans: data.fans || 0,
         logo: data.logo || null,
         value,
+        listedByPlayer: false,
       };
     })
   );
+  const listedTeams = listedSnap.docs.map((d) => {
+    const data = d.data();
+    return {
+      id: d.id,
+      name: data.name,
+      tier: data.tier,
+      leagueId: data.leagueId,
+      fans: data.fans || 0,
+      logo: data.logo || null,
+      value: data.salePrice,
+      listedByPlayer: true,
+    };
+  });
+  const teams = [...botTeams, ...listedTeams];
   teams.sort((a, b) => a.tier - b.tier || b.value - a.value);
   return { teams };
 });
 
-// getMyFutbolTeamFinance — sahibi olduğun takımın güncel değeri ve
-// anında satış fiyatı (2/3'ü — oyuncu piyasasındaki aynı mantık).
+// getMyFutbolTeamFinance — sahibi olduğun takımın güncel değeri, anında
+// satış fiyatı (2/3) ve azami ilan fiyatı (4/3 — oyuncu piyasasındaki
+// aynı mantık).
 export const getMyFutbolTeamFinance = onCall(async (request) => {
   const uid = requireAuth(request);
   const teamSnap = await db.collection('futbolTeams').where('ownerUid', '==', uid).limit(1).get();
@@ -7358,7 +7459,13 @@ export const getMyFutbolTeamFinance = onCall(async (request) => {
   const teamDoc = teamSnap.docs[0];
   const value = await computeFutbolTeamValue(teamDoc.id);
   return {
-    team: { id: teamDoc.id, ...teamDoc.data(), value, instantSellPrice: Math.round((value * 2) / 3) },
+    team: {
+      id: teamDoc.id,
+      ...teamDoc.data(),
+      value,
+      instantSellPrice: Math.round((value * 2) / 3),
+      maxListPrice: Math.round((value * 4) / 3),
+    },
   };
 });
 
@@ -7390,6 +7497,7 @@ async function maybeCreateNextFutbolTier() {
   const leagueRef = db.collection('futbolLeagues').doc();
   const teamIds = [];
   const batch = db.batch();
+  const usedLogoSignatures = new Set();
   names.forEach((name) => {
     const teamRef = db.collection('futbolTeams').doc();
     teamIds.push(teamRef.id);
@@ -7402,13 +7510,13 @@ async function maybeCreateNextFutbolTier() {
       fans: Math.floor(randomInRange(10000, 30000)),
       tactic: 'dengeli',
       formation: '2-2-1',
-      logo: randomFutbolLogo(),
+      logo: pickUniqueFutbolLogo(usedLogoSignatures),
       stats: { played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0, points: 0 },
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
-    for (const [position, tier] of TIER2_SQUAD_TEMPLATE) {
+    for (const [position, priceTier] of randomFutbolSquadComposition(newTier)) {
       const playerRef = db.collection('futbolPlayers').doc();
-      batch.set(playerRef, { teamId: teamRef.id, ...randomFutbolPlayer(position, tier) });
+      batch.set(playerRef, { teamId: teamRef.id, ...randomFutbolPlayer(position, priceTier) });
     }
   });
   batch.set(leagueRef, {
@@ -7437,9 +7545,10 @@ async function maybeCreateNextFutbolTier() {
   await batch.commit();
 }
 
-// buyFutbolTeam — sadece bot (sahipsiz) takımlar satın alınabilir,
-// piyasa değeri (kadro değerleri toplamı) üzerinden. Bir oyuncunun aynı
-// anda birden fazla takımı olamaz.
+// buyFutbolTeam — iki kaynaktan biri: (a) bot (sahipsiz) takım, piyasa
+// değeri üzerinden; (b) bir oyuncunun kendi ilan ettiği takım, onun
+// belirlediği fiyattan (parayı SATICI alır). Bir oyuncunun aynı anda
+// birden fazla takımı olamaz.
 export const buyFutbolTeam = onCall(async (request) => {
   const uid = requireAuth(request);
   const { teamId } = request.data || {};
@@ -7453,11 +7562,15 @@ export const buyFutbolTeam = onCall(async (request) => {
   const teamRef = db.collection('futbolTeams').doc(teamId);
   const teamSnap = await teamRef.get();
   if (!teamSnap.exists) throw new HttpsError('not-found', 'Takım bulunamadı.');
-  if (teamSnap.data().ownerUid) {
-    throw new HttpsError('failed-precondition', 'Bu takım zaten sahipli, satılık değil.');
+  const team = teamSnap.data();
+
+  const isBotTeam = !team.ownerUid;
+  const isPlayerListing = Boolean(team.ownerUid) && team.forSale;
+  if (!isBotTeam && !isPlayerListing) {
+    throw new HttpsError('failed-precondition', 'Bu takım satılık değil.');
   }
 
-  const price = await computeFutbolTeamValue(teamId);
+  const price = isBotTeam ? await computeFutbolTeamValue(teamId) : team.salePrice;
   const userRef = db.collection('users').doc(uid);
   const userSnap = await userRef.get();
   if ((userSnap.data()?.gold || 0) < price) {
@@ -7466,12 +7579,68 @@ export const buyFutbolTeam = onCall(async (request) => {
 
   const batch = db.batch();
   batch.update(userRef, { gold: admin.firestore.FieldValue.increment(-price) });
-  batch.update(teamRef, { ownerUid: uid, isBot: false });
+  if (isPlayerListing) {
+    batch.update(db.collection('users').doc(team.ownerUid), {
+      gold: admin.firestore.FieldValue.increment(price),
+    });
+  }
+  batch.update(teamRef, {
+    ownerUid: uid,
+    isBot: false,
+    forSale: false,
+    salePrice: admin.firestore.FieldValue.delete(),
+    listedAt: admin.firestore.FieldValue.delete(),
+  });
   await batch.commit();
 
   await maybeCreateNextFutbolTier();
 
   return { ok: true, price };
+});
+
+// listFutbolTeamForSale — sahip olduğun takımı kendi belirlediğin bir
+// fiyattan (anında satış fiyatı ile azami satış fiyatı arasında) diğer
+// oyunculara açık şekilde listeler.
+export const listFutbolTeamForSale = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { teamId, price } = request.data || {};
+  const teamRef = db.collection('futbolTeams').doc(teamId);
+  const teamSnap = await teamRef.get();
+  if (!teamSnap.exists || teamSnap.data().ownerUid !== uid) {
+    throw new HttpsError('permission-denied', 'Bu takım sana ait değil.');
+  }
+  const value = await computeFutbolTeamValue(teamId);
+  const minPrice = Math.round((value * 2) / 3);
+  const maxPrice = Math.round((value * 4) / 3);
+  const clean = Math.round(Number(price));
+  if (!Number.isFinite(clean) || clean < minPrice || clean > maxPrice) {
+    throw new HttpsError(
+      'invalid-argument',
+      `Fiyat ${minPrice.toLocaleString('tr-TR')} - ${maxPrice.toLocaleString('tr-TR')} altın arasında olmalı.`
+    );
+  }
+  await teamRef.update({
+    forSale: true,
+    salePrice: clean,
+    listedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  return { ok: true };
+});
+
+export const cancelFutbolTeamListing = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { teamId } = request.data || {};
+  const teamRef = db.collection('futbolTeams').doc(teamId);
+  const teamSnap = await teamRef.get();
+  if (!teamSnap.exists || teamSnap.data().ownerUid !== uid) {
+    throw new HttpsError('permission-denied', 'Bu takım sana ait değil.');
+  }
+  await teamRef.update({
+    forSale: false,
+    salePrice: admin.firestore.FieldValue.delete(),
+    listedAt: admin.firestore.FieldValue.delete(),
+  });
+  return { ok: true };
 });
 
 // sellFutbolTeam — anında satış, piyasa değerinin 2/3'ü karşılığında;
@@ -7494,7 +7663,24 @@ export const sellFutbolTeam = onCall(async (request) => {
 
   const batch = db.batch();
   batch.update(db.collection('users').doc(uid), { gold: admin.firestore.FieldValue.increment(instantPrice) });
-  batch.update(teamRef, { ownerUid: null, isBot: true, tactic: 'dengeli', formation: '2-2-1' });
+  batch.update(teamRef, {
+    ownerUid: null,
+    isBot: true,
+    tactic: 'dengeli',
+    formation: '2-2-1',
+    forSale: false,
+    salePrice: admin.firestore.FieldValue.delete(),
+    listedAt: admin.firestore.FieldValue.delete(),
+  });
+  // Bota dönen takımın oyuncuları artık yaşlanmayacak; 30 yaşın
+  // üzerinde olan varsa (oyuncu sahibiyken yaşlanmış olabilir) hemen
+  // 20'ye gençleştiriyoruz — sezon sonunu beklemeden.
+  const playersSnap = await db.collection('futbolPlayers').where('teamId', '==', teamId).get();
+  playersSnap.docs.forEach((d) => {
+    if (d.data().age > 30) {
+      batch.update(d.ref, { age: 20, form: 100 });
+    }
+  });
   await batch.commit();
 
   return { ok: true, price: instantPrice };
@@ -7852,12 +8038,12 @@ export const setFutbolTeamLogo = onCall(async (request) => {
   return { ok: true };
 });
 
-// --- Futbol modülü: Faz 6 (altyapı tesisi + genç oyuncu antrenmanı) ---
+// --- Futbol modülü: Faz 6 (altyapı — tüm takımlarda hazır kurulu) ---
 
-const FUTBOL_ACADEMY_COST = 100000;
-const FUTBOL_YOUTH_PLAYER_COST = 25000;
+const FUTBOL_YOUTH_PLAYER_COST = 30000;
 const FUTBOL_YOUTH_START_AGE = 16;
 const FUTBOL_YOUTH_START_POWER = 50.0;
+const FUTBOL_TRAINING_SLOTS = 3;
 
 function createFutbolYouthPlayer(position) {
   const name = `${FUTBOL_FIRST_NAMES[Math.floor(Math.random() * FUTBOL_FIRST_NAMES.length)]} ${
@@ -7880,32 +8066,9 @@ function createFutbolYouthPlayer(position) {
   };
 }
 
-// buildFutbolAcademy — 100.000 altın karşılığında bir kereliğine kurulur.
-export const buildFutbolAcademy = onCall(async (request) => {
-  const uid = requireAuth(request);
-  const { teamId } = request.data || {};
-  const teamRef = db.collection('futbolTeams').doc(teamId);
-  const teamSnap = await teamRef.get();
-  if (!teamSnap.exists || teamSnap.data().ownerUid !== uid) {
-    throw new HttpsError('permission-denied', 'Bu takım sana ait değil.');
-  }
-  if (teamSnap.data().hasAcademy) {
-    throw new HttpsError('failed-precondition', 'Bu takımın zaten altyapı tesisi var.');
-  }
-  const userRef = db.collection('users').doc(uid);
-  const userSnap = await userRef.get();
-  if ((userSnap.data()?.gold || 0) < FUTBOL_ACADEMY_COST) {
-    throw new HttpsError('failed-precondition', 'Yeterli altının yok.');
-  }
-  const batch = db.batch();
-  batch.update(userRef, { gold: admin.firestore.FieldValue.increment(-FUTBOL_ACADEMY_COST) });
-  batch.update(teamRef, { hasAcademy: true });
-  await batch.commit();
-  return { ok: true };
-});
-
-// buyFutbolYouthPlayer — altyapı tesisi şart, 25.000 altın karşılığında
-// 16 yaşında / 50.0 güçte genç bir yetenek kadroya katılır.
+// buyFutbolYouthPlayer — 30.000 altın karşılığında 16 yaşında / 50.0
+// güçte genç bir yetenek kadroya katılır. Altyapı artık her takımda
+// hazır kurulu (ayrı bir tesis kurma şartı yok).
 export const buyFutbolYouthPlayer = onCall(async (request) => {
   const uid = requireAuth(request);
   const { teamId, position } = request.data || {};
@@ -7916,9 +8079,6 @@ export const buyFutbolYouthPlayer = onCall(async (request) => {
   const teamSnap = await teamRef.get();
   if (!teamSnap.exists || teamSnap.data().ownerUid !== uid) {
     throw new HttpsError('permission-denied', 'Bu takım sana ait değil.');
-  }
-  if (!teamSnap.data().hasAcademy) {
-    throw new HttpsError('failed-precondition', 'Önce altyapı tesisi kurmalısın.');
   }
   const userRef = db.collection('users').doc(uid);
   const userSnap = await userRef.get();
@@ -7933,60 +8093,56 @@ export const buyFutbolYouthPlayer = onCall(async (request) => {
   return { ok: true };
 });
 
-// startFutbolTraining — o gün antrenman yapacak TEK oyuncuyu seçer;
-// 18:00'de (resolveFutbolMatchday ile birlikte) gücü 0.1-4.0 artar,
-// formu antrenmandan etkilenmez (kullanıcı promptu: "form ne artar ne
-// düşer"). Ertesi gün tekrar seçilmesi gerekir.
-export const startFutbolTraining = onCall(async (request) => {
+// setFutbolTraining — o gün antrenman yapacak EN FAZLA 3 oyuncuyu bir
+// kerede belirler (önceki seçimin tamamının yerine geçer); 18:00'de
+// (resolveFutbolTrainingDay ile) her birinin gücü 0.1-4.0 artar, formu
+// antrenmandan etkilenmez. Ertesi gün tekrar seçilmesi gerekir.
+export const setFutbolTraining = onCall(async (request) => {
   const uid = requireAuth(request);
-  const { teamId, playerId } = request.data || {};
+  const { teamId, playerIds } = request.data || {};
+  if (!Array.isArray(playerIds) || playerIds.length > FUTBOL_TRAINING_SLOTS) {
+    throw new HttpsError('invalid-argument', `En fazla ${FUTBOL_TRAINING_SLOTS} oyuncu seçebilirsin.`);
+  }
+  if (new Set(playerIds).size !== playerIds.length) {
+    throw new HttpsError('invalid-argument', 'Aynı oyuncu birden fazla kez seçilemez.');
+  }
   const teamRef = db.collection('futbolTeams').doc(teamId);
   const teamSnap = await teamRef.get();
   if (!teamSnap.exists || teamSnap.data().ownerUid !== uid) {
     throw new HttpsError('permission-denied', 'Bu takım sana ait değil.');
   }
-  if (!teamSnap.data().hasAcademy) {
-    throw new HttpsError('failed-precondition', 'Önce altyapı tesisi kurmalısın.');
+  if (playerIds.length > 0) {
+    const playersSnap = await db.collection('futbolPlayers').where('teamId', '==', teamId).get();
+    const rosterIds = new Set(playersSnap.docs.map((d) => d.id));
+    if (playerIds.some((id) => !rosterIds.has(id))) {
+      throw new HttpsError('invalid-argument', 'Bu oyunculardan biri senin kadronda değil.');
+    }
   }
-  const playerSnap = await db.collection('futbolPlayers').doc(playerId).get();
-  if (!playerSnap.exists || playerSnap.data().teamId !== teamId) {
-    throw new HttpsError('invalid-argument', 'Bu oyuncu senin kadronda değil.');
-  }
-  await teamRef.update({ trainingPlayerId: playerId });
+  await teamRef.update({ trainingPlayerIds: playerIds });
   return { ok: true };
 });
 
-export const cancelFutbolTraining = onCall(async (request) => {
-  const uid = requireAuth(request);
-  const { teamId } = request.data || {};
-  const teamRef = db.collection('futbolTeams').doc(teamId);
-  const teamSnap = await teamRef.get();
-  if (!teamSnap.exists || teamSnap.data().ownerUid !== uid) {
-    throw new HttpsError('permission-denied', 'Bu takım sana ait değil.');
-  }
-  await teamRef.update({ trainingPlayerId: admin.firestore.FieldValue.delete() });
-  return { ok: true };
-});
-
-// resolveFutbolTrainingDay — o gün antrenmana alınmış tüm oyuncuların
-// gücünü artırır, seçimi temizler. resolveFutbolMatchday ile AYNI saatte
-// (18:00) ama bağımsız çalışsın diye ayrı bir onSchedule.
+// resolveFutbolTrainingDay — o gün antrenmana alınmış (en fazla 3'er)
+// tüm oyuncuların gücünü artırır, seçimi temizler. resolveFutbolMatchday
+// ile AYNI saatte (18:00) ama bağımsız çalışsın diye ayrı bir onSchedule.
 export const resolveFutbolTrainingDay = onSchedule(
   { schedule: '0 18 * * *', timeZone: 'Europe/Istanbul' },
   async () => {
-    const teamsSnap = await db.collection('futbolTeams').where('hasAcademy', '==', true).get();
+    const teamsSnap = await db.collection('futbolTeams').get();
     const batch = db.batch();
     let count = 0;
     for (const teamDoc of teamsSnap.docs) {
-      const trainingPlayerId = teamDoc.data().trainingPlayerId;
-      if (!trainingPlayerId) continue;
-      const playerRef = db.collection('futbolPlayers').doc(trainingPlayerId);
-      const playerSnap = await playerRef.get();
-      if (playerSnap.exists && playerSnap.data().teamId === teamDoc.id) {
-        const newPower = Math.min(99, Math.round((playerSnap.data().power + randomInRange(0.1, 4.0)) * 10) / 10);
-        batch.update(playerRef, { power: newPower });
+      const trainingPlayerIds = teamDoc.data().trainingPlayerIds;
+      if (!Array.isArray(trainingPlayerIds) || trainingPlayerIds.length === 0) continue;
+      for (const playerId of trainingPlayerIds) {
+        const playerRef = db.collection('futbolPlayers').doc(playerId);
+        const playerSnap = await playerRef.get();
+        if (playerSnap.exists && playerSnap.data().teamId === teamDoc.id) {
+          const newPower = Math.min(99, Math.round((playerSnap.data().power + randomInRange(0.1, 4.0)) * 10) / 10);
+          batch.update(playerRef, { power: newPower });
+        }
       }
-      batch.update(teamDoc.ref, { trainingPlayerId: admin.firestore.FieldValue.delete() });
+      batch.update(teamDoc.ref, { trainingPlayerIds: admin.firestore.FieldValue.delete() });
       count += 1;
     }
     if (count > 0) await batch.commit();
@@ -8111,3 +8267,42 @@ async function resolveFutbolBetsForRound(leagueId, round) {
   });
   await batch.commit();
 }
+
+// --- Futbol modülü: Faz 10 (Kulüpler dizini) ---
+
+// listFutbolClubs — bir ligdeki tüm kulüpleri; isim, logo, başkan
+// (sahibi varsa displayName, yoksa "Bot Yönetimi"), güncel piyasa
+// değeri ve taraftar sayısıyla döner. Başkan adı için users/{uid}
+// okunuyor — bunu istemci YAPAMAZ (firestore.rules sadece kendi
+// dokümanını okumana izin veriyor), bu yüzden Admin SDK ile burada,
+// sunucu tarafında yapılıyor.
+export const listFutbolClubs = onCall(async (request) => {
+  requireAuth(request);
+  const { leagueId } = request.data || {};
+  if (!leagueId) throw new HttpsError('invalid-argument', 'leagueId gerekli.');
+
+  const teamsSnap = await db.collection('futbolTeams').where('leagueId', '==', leagueId).get();
+  const clubs = await Promise.all(
+    teamsSnap.docs.map(async (d) => {
+      const team = d.data();
+      const value = await computeFutbolTeamValue(d.id);
+      let chairman = 'Bot Yönetimi';
+      if (team.ownerUid) {
+        const ownerSnap = await db.collection('users').doc(team.ownerUid).get();
+        chairman = ownerSnap.exists ? ownerSnap.data().displayName || 'İsimsiz Başkan' : 'İsimsiz Başkan';
+      }
+      return {
+        id: d.id,
+        name: team.name,
+        logo: team.logo || null,
+        tier: team.tier,
+        fans: team.fans || 0,
+        value,
+        chairman,
+        isBot: !team.ownerUid,
+      };
+    })
+  );
+  clubs.sort((a, b) => b.value - a.value);
+  return { clubs };
+});
