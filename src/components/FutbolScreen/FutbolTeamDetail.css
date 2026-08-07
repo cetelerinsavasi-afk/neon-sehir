@@ -1,0 +1,51 @@
+.futbol-team-detail {
+  width: 100%;
+  max-width: 340px;
+  background: var(--bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  padding: 20px 16px 16px;
+  position: relative;
+}
+
+.futbol-team-detail-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.futbol-team-detail-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  text-align: center;
+}
+
+.futbol-team-detail-tier {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.futbol-team-detail-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.futbol-team-detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.futbol-team-detail-row strong {
+  color: var(--text);
+}

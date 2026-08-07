@@ -108,6 +108,12 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
   // dönünce nitroyu YEREL olarak da aktif say (optimistic), sunucu verisi
   // yetişince zaten örtüşecek.
   const [optimisticNitro, setOptimisticNitro] = useState(false);
+  // rollPending — kullanıcı revizesi: "butona bastığımda ekran donmuş
+  // gibi görünüyor, bir şey oldu mu anlamıyorum" şikayeti üzerine
+  // eklendi. Sunucu cevabı beklenmeden, tıklama anında true olur ve zar
+  // SÜREKLİ dönmeye başlar (bkz. DiceRoll forcePending) — cold start
+  // yüzünden birkaç saniye sürse bile ekran "donmuş" hissi vermez.
+  const [rollPending, setRollPending] = useState(false);
 
   // Oda açılır açılmaz (kullanıcı henüz zar atmadan) yarış aksiyonlarının
   // ortak Cloud Function'ını sessizce ısıtıyoruz — bkz. gameActions.js
@@ -310,7 +316,12 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
 
   const handleRoll = async (useNitro, useTurbo) => {
     const rollFn = room.isChampionship ? championshipRollDice : room.isTraining ? trainingRollDice : rollDice;
-    await run('roll', () => rollFn(room.id, useNitro, useTurbo), { waitForConfirm: true });
+    setRollPending(true);
+    try {
+      await run('roll', () => rollFn(room.id, useNitro, useTurbo), { waitForConfirm: true });
+    } finally {
+      setRollPending(false);
+    }
   };
 
   const rollButtonLabel = () => {
@@ -397,7 +408,11 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
       <div className="race-dice-row">
         <div className="race-dice-col">
           <span className="race-dice-owner">Sen</span>
-          <DiceRoll rollKey={`${me.position}-${me.lastRollDice?.join(',')}`} dice={me.lastRollDice} />
+          <DiceRoll
+            rollKey={`${me.position}-${me.lastRollDice?.join(',')}`}
+            dice={me.lastRollDice}
+            forcePending={rollPending}
+          />
           {me.lastRollBoost && (
             <span className="race-boost-badge">
               {me.lastRollBoost === 'combo' ? '🔥🚀 Kombo ×3' : me.lastRollBoost === 'nitro' ? '🔥 Nitro ×2' : '🚀 Turbo ×2'}
@@ -460,7 +475,11 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
         </div>
       )}
 
-      <button className="race-roll-btn" disabled={busy || !isMyTurn} onClick={() => handleRoll(effectiveNitroActive, false)}>
+      <button
+        className={`race-roll-btn${rollPending ? ' pending' : ''}`}
+        disabled={busy || !isMyTurn}
+        onClick={() => handleRoll(effectiveNitroActive, false)}
+      >
         {rollButtonLabel()}
       </button>
 

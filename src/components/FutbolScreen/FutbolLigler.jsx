@@ -8,6 +8,7 @@ import FutbolMatchDetail from './FutbolMatchDetail';
 import FutbolCrest from './FutbolCrest';
 import FutbolIddaa from './FutbolIddaa';
 import FutbolKulupler from './FutbolKulupler';
+import FutbolTeamDetail from './FutbolTeamDetail';
 import './FutbolLigler.css';
 
 const SUB_TABS = [
@@ -23,6 +24,7 @@ export default function FutbolLigler() {
   const [selectedLeagueId, setSelectedLeagueId] = useState(null);
   const [subTab, setSubTab] = useState('puan');
   const [selectedMatch, setSelectedMatch] = useState(null);
+  const [selectedTeamId, setSelectedTeamId] = useState(null);
   const now = useNowTick(5000);
 
   // Futbol dünyası boşsa (ilk hiç kimse açmadıysa) sessizce, otomatik
@@ -97,7 +99,7 @@ export default function FutbolLigler() {
         ))}
       </div>
 
-      {subTab === 'puan' && <StandingsTable teams={teams} />}
+      {subTab === 'puan' && <StandingsTable teams={teams} onSelectTeam={setSelectedTeamId} />}
 
       {subTab === 'maclar' && (
         <MatchList
@@ -158,11 +160,15 @@ export default function FutbolLigler() {
           onClose={() => setSelectedMatch(null)}
         />
       )}
+
+      {selectedTeamId && (
+        <FutbolTeamDetail teamId={selectedTeamId} onClose={() => setSelectedTeamId(null)} />
+      )}
     </div>
   );
 }
 
-function StandingsTable({ teams }) {
+function StandingsTable({ teams, onSelectTeam }) {
   return (
     <table className="futbol-standings">
       <thead>
@@ -189,7 +195,11 @@ function StandingsTable({ teams }) {
           else if (rank >= teams.length - 1) rowClass = 'rank-relegation';
           const gd = t.stats.gf - t.stats.ga;
           return (
-            <tr key={t.id} className={rowClass}>
+            <tr
+              key={t.id}
+              className={`${rowClass} futbol-standings-row-clickable`}
+              onClick={() => onSelectTeam?.(t.id)}
+            >
               <td>{rank}</td>
               <td className="futbol-standings-team">
                 <FutbolCrest logo={t.logo} initials={t.name?.[0]} size={20} />

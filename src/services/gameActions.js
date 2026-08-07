@@ -378,3 +378,6 @@ export const cancelFutbolTeamListing = (teamId) =>
 // --- Faz Futbol: Faz 10 (Kulüpler dizini) ---
 
 export const listFutbolClubs = (leagueId) => httpsCallable(functions, 'listFutbolClubs')({ leagueId });
+
+export const getFutbolTeamDetail = (teamId) =>
+  httpsCallable(functions, 'getFutbolTeamDetail')({ teamId });

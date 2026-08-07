@@ -435,6 +435,19 @@
   color: var(--text-dim);
 }
 
+/* Tıklama anında (sunucu cevabını beklemeden) SÜREKLİ nabız gibi atar —
+   kullanıcı revizesi: "donmuş gibi görünüyor" şikayeti için ekstra görsel
+   ipucu. .race-roll-btn:disabled ile aynı anda uygulanır (opacity vs. bu
+   ikisi çakışmaz, pending pulse disabled opacity'nin ÜSTÜNE biner). */
+.race-roll-btn.pending {
+  animation: roll-btn-pulse 1s ease infinite;
+}
+
+@keyframes roll-btn-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.75; }
+}
+
 .race-controls {
   display: flex;
   gap: 8px;
@@ -497,6 +510,24 @@
 
 .dice-roll.rolling .dice-face {
   animation: dice-spin 0.5s ease;
+}
+
+/* Sunucudan cevap gelene kadar (cold start dahil, birkaç saniye
+   sürebilir) SÜREKLİ dönen zar — kullanıcı revizesi: "butona bastığımda
+   ekran donmuş gibi görünüyor" şikayeti üzerine, tek seferlik 0.5s
+   animasyonun aksine bu SONSUZ döner, tıklamanın anında kaydedildiğini
+   net gösterir. */
+.dice-roll-pending .dice-face {
+  animation: dice-spin 0.7s ease infinite;
+}
+
+.dice-roll-pending .dice-roll-sum {
+  animation: dice-pending-pulse 1.2s ease infinite;
+}
+
+@keyframes dice-pending-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
 }
 
 @keyframes dice-spin {

@@ -4492,21 +4492,18 @@ function finalizeRace({ tx, roomRef, room, winnerUid, players, userRefs, userSna
 }
 
 // ---------------------------------------------------------------------------
-// NOT (performans, maliyetsiz çözüm): "araba yarışına ilk girdiğimde çok
-// kasıyor, zar/vites tepki vermiyor, birkaç denemeden sonra düzeliyor"
-// şikayeti Cloud Functions'ın "cold start"ı yüzünden oluyordu — her buton
-// (zar at, vites, nitro, benzin...) AYRI bir fonksiyondu ve her biri ilk
-// çağrıldığında kendi başına birkaç saniyelik "ısınma" gecikmesi
-// yaşıyordu. minInstances (sürekli sıcak bekleyen kopya) çözer ama aylık
-// ücrete tabi; onun yerine MALİYETSİZ bir çözüm uyguladık: bu 7 aksiyonu
-// (rollDice, trainingRollDice, autoRoll, raceRefuel, raceBuyNitro,
-// raceChangeGear, championshipRollDice) TEK bir Cloud Function'da
-// (aşağıdaki raceHubAction) topladık. Artık sadece İLK aksiyon (hangisi
-// olursa) cold start yaşıyor, ardından TÜM yarış aksiyonları aynı sıcak
-// instance'ı paylaşıyor — normal ücretsiz/dahil çağrı sayısına dahil,
-// ekstra bir sürekli-çalışan instance maliyeti yok. Ayrıca RaceRoom
-// ekranına girer girmez (kullanıcı henüz hiçbir şeye basmadan) sessizce
-// gönderilen bir "ping" aksiyonu bu instance'ı önceden ısıtıyor.
+// NOT (performans): "araba yarışına ilk girdiğimde çok kasıyor, zar/vites
+// tepki vermiyor" şikayeti Cloud Functions'ın "cold start"ı yüzünden
+// oluyordu. İlk adım — 7 ayrı yarış aksiyonunu (rollDice, trainingRollDice,
+// autoRoll, raceRefuel, raceBuyNitro, raceChangeGear, championshipRollDice)
+// TEK bir Cloud Function'da (aşağıdaki raceHubAction) toplamak — maliyetsiz
+// bir iyileşme sağladı ama YETERLİ OLMADI: functions/index.js dosyası çok
+// büyüdüğü için (8000+ satır), her cold start'ta dosyanın tamamının
+// yüklenmesi gerekiyor ve bu, dosya büyüdükçe daha da yavaşlıyor. Bu yüzden
+// raceHubAction'a minInstances:1 eklendi (bkz. fonksiyon tanımı) — küçük
+// bir aylık maliyet karşılığında cold start'ı tamamen ortadan kaldırıyor.
+// RaceRoom ekranına girer girmez gönderilen "ping" aksiyonu da (warmUpRaceHub)
+// ekstra bir güvenlik önlemi olarak duruyor.
 // ---------------------------------------------------------------------------
 
 // createRaceRoom — oda kurar (status: 'waiting', rakip yok).
@@ -4886,17 +4883,12 @@ async function resolveRoll({ roomId, uid, useNitro, useTurbo }) {
 }
 
 // rollDice — sırası gelen oyuncunun kendi isteğiyle zar atması.
-// NOT (performans/maliyet): bu ve aşağıdaki yarış aksiyonları (antrenman/
+// NOT (performans): bu ve aşağıdaki yarış aksiyonları (antrenman/
 // otomatik zar, benzin, nitro, vites, şampiyona) artık AYRI Cloud
 // Functions DEĞİL — hepsi tek bir "raceHubAction" callable'ının içinde
-// birer dahili fonksiyon (bkz. dosyanın sonundaki raceHubAction). Sebep:
-// her biri ayrı fonksiyon olduğunda ilk kullanımda HER BİRİ kendi "cold
-// start"ını (birkaç saniyelik uyanma gecikmesi) ayrı ayrı yaşıyordu — bu
-// da "ilk girince kasıyor, birkaç denemeden sonra düzeliyor" hissini
-// yaratıyordu. Tek fonksiyona indirince sadece İLK aksiyon (hangisi olursa
-// olsun) bu gecikmeyi yaşıyor, ondan sonraki TÜM yarış aksiyonları (zar,
-// vites, nitro, benzin...) aynı sıcak instance'ı kullanıyor — hem ekstra
-// maliyet (minInstances) yok hem de tekrarlayan kasma kalkıyor.
+// birer dahili fonksiyon (bkz. dosyanın sonundaki raceHubAction, artık
+// minInstances:1 ile sürekli sıcak bekliyor — cold start tamamen
+// ortadan kalktı).
 async function doRollDice(request) {
   const uid = requireAuth(request);
   const { roomId, useNitro, useTurbo } = request.data || {};
@@ -5399,8 +5391,18 @@ async function doChampionshipRollDice(request) {
 // autoRoll, refuel, nitro, vites, şampiyona) TEK giriş noktası. Ayrıca
 // istemcinin yarış ekranına girer girmez (kullanıcı henüz hiçbir butona
 // basmadan) gönderdiği ücretsiz "ping" aksiyonunu da karşılar — bu, tek
-// sıcak instance'ı kullanıcı daha zar atmadan ısıtmaya çalışır, EK bir
-// maliyet yaratmaz (minInstances YOK, sadece normal bir çağrı sayılır).
+// sıcak instance'ı kullanıcı daha zar atmadan ısıtmaya çalışır.
+// NOT (kullanıcı revizesi): minInstances denendi ama küçük de olsa
+// gerçek bir aylık maliyeti olduğu (deploy sırasında Firebase CLI'nin
+// gösterdiği tahmini fatura) için kullanıcı bunu İSTEMEDİ — geri alındı.
+// Cold start riski bu yüzden TAMAMEN ortadan kalkmadı (dosya büyüdükçe
+// zaman zaman geri gelebilir); bunun yerine MALİYETSİZ bir tamamlayıcı
+// önlem eklendi: istemci tarafında (RaceRoom.jsx), bir istek sayfa
+// yenilense/ekrandan çıkılıp girilse bile "hâlâ işlemde" olarak
+// işaretleniyor — böylece cold start yaşansa bile arka arkaya birikmiş
+// birden çok zar atışı (kullanıcı sabırsızlanıp tekrar tekrar basınca
+// oluşan "6 kere atılmış gibi başlama" hatası) artık oluşmuyor, sadece
+// "bekleniyor" durumu oluyor.
 export const raceHubAction = onCall(async (request) => {
   const { action } = request.data || {};
   switch (action) {
@@ -7487,6 +7489,11 @@ async function finishFutbolSeason(leagueIds) {
     });
     await revertBatch.commit();
   }
+
+  // 5) Yeni lig açılışı: mevcut toplam takımların yarısı (ya da fazlası)
+  // artık oyunculara aitse, mevcut lig büyüklüğünde yeni bir lig açılır
+  // — kullanıcı revizesi, bkz. maybeCreateNextFutbolTierByOwnershipRatio.
+  await maybeCreateNextFutbolTierByOwnershipRatio();
 }
 
 // resolveFutbolTrainingForAllTeams — antrenmandaki (en fazla 3'er)
@@ -7753,12 +7760,49 @@ export const getMyFutbolTeamFinance = onCall(async (request) => {
   };
 });
 
-// Tüm takımlar oyunculara satıldıysa (hiç bot kalmadıysa) 8 takımlık
-// yeni bir alt lig otomatik açılır — kullanıcı promptundaki kural.
-async function maybeCreateNextFutbolTier() {
+// Kullanıcı revizesi: eskiden SADECE tüm takımlar oyunculara satıldığında
+// (hiç bot kalmadığında) yeni bir alt lig açılıyordu ve bu her takım
+// satışında ANINDA kontrol ediliyordu. Artık kural: SEZON SONUNDA (bkz.
+// finishFutbolSeason), mevcut TOPLAM takımların EN AZ YARISI oyunculara
+// aitse yeni bir lig (mevcut lig büyüklüğünde) açılır — böylece oyuncu
+// sayısı arttıkça ligler kademeli olarak büyür. Yeni ligdeki takımların
+// oyuncuları, eski tier/fiyat-bandı sisteminden BAĞIMSIZ, sabit bir
+// aralıkta üretilir (bkz. FUTBOL_NEW_TIER_* sabitleri).
+const FUTBOL_NEW_TIER_AGE_MIN = 20;
+const FUTBOL_NEW_TIER_AGE_MAX = 25;
+const FUTBOL_NEW_TIER_POWER_MIN = 50;
+const FUTBOL_NEW_TIER_POWER_MAX = 100;
+// [mevki, oyuncu sayısı] — toplam 12 (2+4+4+2), kullanıcı promptu.
+const FUTBOL_NEW_TIER_SQUAD = [
+  ['GK', 2],
+  ['DEF', 4],
+  ['MID', 4],
+  ['FWD', 2],
+];
+
+function randomFutbolNewTierPlayer(position) {
+  const power = Math.round(randomInRange(FUTBOL_NEW_TIER_POWER_MIN, FUTBOL_NEW_TIER_POWER_MAX) * 10) / 10;
+  const age = Math.floor(randomInRange(FUTBOL_NEW_TIER_AGE_MIN, FUTBOL_NEW_TIER_AGE_MAX + 1));
+  const remainingSeasons = Math.max(20 - (age - 16), 1);
+  const value = Math.round((power * 1000 * remainingSeasons) / 20);
+  const name = `${FUTBOL_FIRST_NAMES[Math.floor(Math.random() * FUTBOL_FIRST_NAMES.length)]} ${
+    FUTBOL_LAST_NAMES[Math.floor(Math.random() * FUTBOL_LAST_NAMES.length)]
+  }`;
+  return { name, position, age, power, form: 100, value, forSale: false, listedAt: null };
+}
+
+// maybeCreateNextFutbolTierByOwnershipRatio — SEZON SONUNDA çağrılır
+// (bkz. finishFutbolSeason). Mevcut toplam takımların yarısı (ya da
+// fazlası) oyunculara aitse, mevcut lig büyüklüğünde (8 takım) yeni bir
+// lig açar — ör. 16 takımdan 8'i oyuncularda ise 3. lig (toplam 24
+// takım), sonraki sezon sonunda 24 takımdan 12'si oyunculardaysa 4. lig
+// (toplam 32 takım), ve bu şekilde devam eder.
+async function maybeCreateNextFutbolTierByOwnershipRatio() {
   const allTeamsSnap = await db.collection('futbolTeams').get();
-  const anyBotLeft = allTeamsSnap.docs.some((d) => !d.data().ownerUid);
-  if (anyBotLeft) return;
+  const totalCount = allTeamsSnap.size;
+  if (totalCount === 0) return;
+  const ownedCount = allTeamsSnap.docs.filter((d) => d.data().ownerUid).length;
+  if (ownedCount * 2 < totalCount) return; // yarısından azı oyunculardaysa yeni lig yok
 
   const leaguesSnap = await db.collection('futbolLeagues').get();
   const leagues = leaguesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -7798,10 +7842,12 @@ async function maybeCreateNextFutbolTier() {
       stats: { played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0, points: 0 },
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
-    for (const [position, priceTier] of randomFutbolSquadComposition(newTier)) {
-      const playerRef = db.collection('futbolPlayers').doc();
-      batch.set(playerRef, { teamId: teamRef.id, ...randomFutbolPlayer(position, priceTier) });
-    }
+    FUTBOL_NEW_TIER_SQUAD.forEach(([position, count]) => {
+      for (let i = 0; i < count; i++) {
+        const playerRef = db.collection('futbolPlayers').doc();
+        batch.set(playerRef, { teamId: teamRef.id, ...randomFutbolNewTierPlayer(position) });
+      }
+    });
   });
   batch.set(leagueRef, {
     tier: newTier,
@@ -7883,7 +7929,9 @@ export const buyFutbolTeam = onCall(async (request) => {
   });
   await batch.commit();
 
-  await maybeCreateNextFutbolTier();
+  // NOT: yeni lig açılışı artık burada (her satın almada anında) değil,
+  // SEZON SONUNDA (finishFutbolSeason içinde, %50 sahiplik kuralına
+  // göre) kontrol ediliyor — kullanıcı revizesi.
 
   return { ok: true, price };
 });
@@ -8710,12 +8758,46 @@ async function resolveFutbolBetsForRound(leagueId, round) {
 
 // --- Futbol modülü: Faz 10 (Kulüpler dizini) ---
 
-// listFutbolClubs — bir ligdeki tüm kulüpleri; isim, logo, başkan
-// (sahibi varsa displayName, yoksa "Bot Yönetimi"), güncel piyasa
-// değeri ve taraftar sayısıyla döner. Başkan adı için users/{uid}
-// okunuyor — bunu istemci YAPAMAZ (firestore.rules sadece kendi
-// dokümanını okumana izin veriyor), bu yüzden Admin SDK ile burada,
-// sunucu tarafında yapılıyor.
+// getFutbolTeamDetail — puan tablosunda bir takıma tıklandığında logo,
+// başkan (oyuncuya aitse adı, botsa "Bot Yönetimi") ve güncel değerini
+// döner. Başkan adı için users/{uid} okunuyor — bunu istemci YAPAMAZ
+// (firestore.rules sadece kendi dokümanını okumana izin verir), bu
+// yüzden Admin SDK ile burada, sunucu tarafında yapılıyor.
+export const getFutbolTeamDetail = onCall(async (request) => {
+  requireAuth(request);
+  const { teamId } = request.data || {};
+  if (!teamId) throw new HttpsError('invalid-argument', 'teamId gerekli.');
+
+  const teamSnap = await db.collection('futbolTeams').doc(teamId).get();
+  if (!teamSnap.exists) throw new HttpsError('not-found', 'Takım bulunamadı.');
+  const team = teamSnap.data();
+  const value = await computeFutbolTeamValue(teamId);
+
+  let chairman = 'Bot Yönetimi';
+  if (team.ownerUid) {
+    const ownerSnap = await db.collection('users').doc(team.ownerUid).get();
+    chairman = ownerSnap.exists ? ownerSnap.data().displayName || 'İsimsiz Başkan' : 'İsimsiz Başkan';
+  }
+
+  return {
+    team: {
+      id: teamId,
+      name: team.name,
+      logo: team.logo || null,
+      tier: team.tier,
+      fans: team.fans || 0,
+      value,
+      chairman,
+      isBot: !team.ownerUid,
+    },
+  };
+});
+
+// listFutbolClubs — bir ligdeki tüm kulüpleri, başkanları (sahibi varsa
+// displayName, yoksa "Bot Yönetimi"), güncel piyasa değeri ve taraftar
+// sayısıyla döner. Başkan adı için users/{uid} okunuyor — bunu istemci
+// YAPAMAZ (firestore.rules sadece kendi dokümanını okumana izin verir),
+// bu yüzden Admin SDK ile burada, sunucu tarafında yapılıyor.
 export const listFutbolClubs = onCall(async (request) => {
   requireAuth(request);
   const { leagueId } = request.data || {};

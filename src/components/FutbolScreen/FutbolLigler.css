@@ -67,6 +67,14 @@
   gap: 6px;
 }
 
+.futbol-standings-row-clickable {
+  cursor: pointer;
+}
+
+.futbol-standings-row-clickable:hover td {
+  background: var(--panel);
+}
+
 .futbol-standings tr.rank-gold td {
   background: rgba(255, 210, 63, 0.12);
 }
