@@ -4334,6 +4334,19 @@ export const setAvatar = onCall(async (request) => {
 
 const RACE_TRACK_LENGTH = 300;
 const RACE_TURN_SECONDS = 10;
+// Kullanıcı revizesi: "6. zar atışımda kendine geliyor, 6 tur hakkım
+// gitmiş oluyor" — sebep cold start DEĞİLDİ, gerçek bir bug'dı: istemci
+// tarafındaki "onay bekleme" mekanizması, Firestore dinleyicisi geç
+// kalınca (özellikle yavaş bağlantılarda) 4 saniye sonra butonu tekrar
+// aktif ediyordu — sunucu GERÇEKTEN zar atmış olsa bile. Kullanıcı
+// "bir şey olmadı" sanıp tekrar basınca bu GERÇEK bir 2. (3., 4....) zar
+// atışı gönderiyordu. Şampiyonada rakip/sıra kontrolü olmadığı için
+// hepsi kabul ediliyordu — arka arkaya birikip aynı anda uygulanıyordu.
+// Çözüm: istemcideki HER TÜRLÜ zamanlama sorunundan bağımsız, SUNUCU
+// tarafında art arda gelen zar atışlarını reddediyoruz — bir insanın
+// gerçekte bu kadar hızlı art arda 2 kez zar atması mümkün değil
+// (sonucu görüp vites değiştirmesi bile bundan uzun sürer).
+const RACE_MIN_ROLL_INTERVAL_MS = 1500;
 const RACE_STATION_PRICES = { refuel: 10 };
 const RACE_OFFSITE_FUEL_PRICE = 100;
 const RACE_NITRO_PRICE = 50;
@@ -4750,6 +4763,12 @@ async function resolveRoll({ roomId, uid, useNitro, useTurbo }) {
       throw new HttpsError('failed-precondition', 'Sıra sende değil.');
     }
     const me = requirePlayerInRoom(room, uid);
+    // Kullanıcı revizesi: art arda gelen (gerçek insan hızının çok
+    // ötesinde) mükerrer zar atışlarını burada, sunucu tarafında
+    // reddediyoruz — bkz. RACE_MIN_ROLL_INTERVAL_MS notu.
+    if (me.lastRollAt && Date.now() - me.lastRollAt < RACE_MIN_ROLL_INTERVAL_MS) {
+      throw new HttpsError('failed-precondition', 'Az önce zar attın, birazcık bekle.');
+    }
     const otherUid = room.participantUids.find((u) => u !== uid);
     const other = otherUid ? room.players[otherUid] : null;
 
@@ -4782,6 +4801,7 @@ async function resolveRoll({ roomId, uid, useNitro, useTurbo }) {
       useNitro,
       useTurbo,
     });
+    meUpdated.lastRollAt = Date.now();
 
     if (isFinalTurn) {
       // Adalet kuralı: 2. Oyuncu'nun son hamlesi. Bitirdiyse berabere,
@@ -5272,6 +5292,12 @@ async function doChampionshipRollDice(request) {
       throw new HttpsError('failed-precondition', 'Bu oda size ait değil.');
     }
     const me = requirePlayerInRoom(room, uid);
+    // Kullanıcı revizesi: aynı koruma şampiyona modunda da şart —
+    // burada rakip/sıra kontrolü olmadığı için (tek oyuncu), bu koruma
+    // olmadan art arda gelen mükerrer istekler hep kabul ediliyordu.
+    if (me.lastRollAt && Date.now() - me.lastRollAt < RACE_MIN_ROLL_INTERVAL_MS) {
+      throw new HttpsError('failed-precondition', 'Az önce zar attın, birazcık bekle.');
+    }
 
     // Transaction kuralı: tüm okumalar yazmalardan önce.
     const champDailyRef = db
@@ -5295,6 +5321,7 @@ async function doChampionshipRollDice(request) {
       useNitro,
       useTurbo,
     });
+    meUpdated.lastRollAt = Date.now();
     const turnsUsed = (me.turnsUsed || 0) + 1;
     meUpdated.turnsUsed = turnsUsed;
 
@@ -8098,11 +8125,16 @@ const FUTBOL_TRANSFER_POSITIONS = ['GK', 'DEF', 'MID', 'FWD'];
 const FUTBOL_SYSTEM_LISTING_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 saat satılmazsa kendiliğinden yenilenir
 const FUTBOL_OWNER_LISTING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const FUTBOL_SYSTEM_RESTOCK_DELAY_MS = 60 * 60 * 1000; // satıldıktan 1 saat sonra yenisi gelsin
-// Slot 0 = en güçlü (taban gücün %90-110'u), slot 1 = orta (%75-90'ı),
-// slot 2 = en zayıf (%50-75'i) — kullanıcı promptundaki örnekle birebir
-// (taban 100 ise: 90-110 / 75-90 / 50-75).
+// Slot 0 = en güçlü, slot 1 = orta (%75-90'ı), slot 2 = en zayıf
+// (%50-75'i). Kullanıcı revizesi: slot 0 ÖNCEDEN taban gücün %90-110'u
+// idi — ama bu, oyuncular sürekli en güçlü sistem oyuncusunu alıp yeni
+// taban yaptıkça (taban → +%10 → taban → +%10 ...) ortalama gücü
+// hızlıca ve durmadan şişiriyordu, parası çok olan orantısız hızlı
+// güçleniyordu. Artık slot 0 en fazla %2 YUKARI, en fazla %10 AŞAĞI
+// (taban 100 ise: 90-102 arası) — hâlâ takımın en iyisine yakın ama
+// artık her satın almada ortalamayı agresifçe yukarı taşımıyor.
 const FUTBOL_SYSTEM_POWER_BANDS = [
-  { min: 0.9, max: 1.1 },
+  { min: 0.9, max: 1.02 },
   { min: 0.75, max: 0.9 },
   { min: 0.5, max: 0.75 },
 ];

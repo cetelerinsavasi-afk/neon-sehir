@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useFutbolTeamPlayers } from '../../hooks/useFutbolTeamPlayers';
 import { useAuth } from '../../contexts/AuthContext';
+import { usePlayer } from '../../hooks/usePlayer';
 import { isAdminUid } from '../../config/admin';
 import {
   listFutbolTransferMarket,
@@ -16,12 +17,12 @@ import ConfirmModal from '../ConfirmModal/ConfirmModal';
 import { sortFutbolPlayersByPosition } from './futbolPositionOrder';
 import './FutbolTransfer.css';
 
-const SOURCE_LABELS = { system: 'Sistem Stoğu', instant: 'Anında Satılanlar', manual: 'Oyuncu İlanları' };
 const POSITION_LABELS = { GK: 'Kaleci', DEF: 'Defans', MID: 'Orta Saha', FWD: 'Forvet' };
 const PLAYER_PRICE_QUICK_AMOUNTS = [100, 1000, 10000, 100000];
 
 export default function FutbolTransfer({ team }) {
   const { user } = useAuth();
+  const { player } = usePlayer();
   const isAdmin = isAdminUid(user?.uid);
   const { players: myPlayers } = useFutbolTeamPlayers(team.id);
   const [market, setMarket] = useState(null);
@@ -32,6 +33,12 @@ export default function FutbolTransfer({ team }) {
   const [showSellPanel, setShowSellPanel] = useState(false);
   const [confirmSellId, setConfirmSellId] = useState(null);
   const [refreshingMarket, setRefreshingMarket] = useState(false);
+  // boughtIds — kullanıcı revizesi: satın alınca oyuncu listeden ANINDA
+  // kaybolmasın (buton "Satın Alındı" yazsın, oyuncu görünmeye devam
+  // etsin). Başka bir ekrana gidip bu sekmeye geri dönünce (component
+  // yeniden mount olup loadMarket tekrar çağrılınca) piyasa zaten sunucu
+  // tarafında güncel geleceği için kendiliğinden kaybolacak.
+  const [boughtIds, setBoughtIds] = useState(() => new Set());
 
   const loadMarket = async () => {
     setError('');
@@ -52,7 +59,7 @@ export default function FutbolTransfer({ team }) {
     setError('');
     try {
       await buyFutbolPlayer(playerId);
-      await loadMarket();
+      setBoughtIds((prev) => new Set(prev).add(playerId));
     } catch (err) {
       setError(err?.message || 'Satın alma başarısız.');
     } finally {
@@ -125,7 +132,9 @@ export default function FutbolTransfer({ team }) {
     }
   };
 
-  const systemCount = market ? market.filter((p) => p.saleSource === 'system').length : null;
+  const marketItems = market
+    ? sortFutbolPlayersByPosition(market.filter((p) => p.teamId !== team.id))
+    : [];
 
   return (
     <div className="futbol-transfer">
@@ -201,7 +210,11 @@ export default function FutbolTransfer({ team }) {
         </div>
       )}
 
-      <p className="futbol-kadro-section-title">Transfer Piyasası — Katabileceğin Oyuncular</p>
+      <div className="futbol-transfer-market-header">
+        <p className="futbol-kadro-section-title">Transfer Piyasası — Katabileceğin Oyuncular</p>
+        {/* Kullanıcı revizesi: bakiye her zaman görünür olsun. */}
+        <p className="futbol-transfer-balance">💰 {(player?.gold || 0).toLocaleString('tr-TR')} altın</p>
+      </div>
       {isAdmin && (
         <button
           className="futbol-admin-reset futbol-transfer-force-refresh"
@@ -213,47 +226,42 @@ export default function FutbolTransfer({ team }) {
         </button>
       )}
       {market === null && <p className="futbol-placeholder">Yükleniyor...</p>}
-      {market !== null && systemCount < 12 && (
-        <p className="futbol-placeholder">
-          Bazı sistem oyuncuları satın alındı, en geç 1 saat içinde yerlerine yenisi gelecek (
-          {systemCount}/12 hazır).
-        </p>
-      )}
-      {market && market.filter((p) => p.teamId !== team.id).length === 0 && (
+      {market !== null && marketItems.length === 0 && (
         <p className="futbol-placeholder">Şu an piyasada satılık oyuncu yok.</p>
       )}
-      {market &&
-        ['system', 'instant', 'manual'].map((source) => {
-          const items = sortFutbolPlayersByPosition(
-            market.filter((p) => p.saleSource === source && p.teamId !== team.id)
-          );
-          if (items.length === 0) return null;
-          return (
-            <div key={source} className="futbol-transfer-group">
-              <p className="futbol-transfer-group-title">{SOURCE_LABELS[source]}</p>
-              {items.map((p) => (
-                <div key={p.id} className="futbol-transfer-row">
-                  <FutbolPlayerAvatar playerId={p.id} position={p.position} size={40} />
-                  <div className="futbol-transfer-info">
-                    <p className="futbol-transfer-name">
-                      {p.name} <span className="futbol-transfer-pos">({POSITION_LABELS[p.position]})</span>
-                    </p>
-                    <p className="futbol-buy-meta">
-                      {p.age} yaş · {p.power.toFixed(1)} güç
-                    </p>
-                  </div>
-                  <button
-                    className="futbol-admin-submit"
-                    disabled={busyId === p.id}
-                    onClick={() => handleBuy(p.id)}
-                  >
-                    {(p.salePrice || 0).toLocaleString('tr-TR')} altın
-                  </button>
-                </div>
-              ))}
+
+      {/* Kullanıcı revizesi: sistem/anında/manuel ayrımı KALDIRILDI —
+          oyuncular için "sistem koymuş" ya da "oyuncu koymuş" farkı
+          görünmesin, hepsi TEK bir listede, mevkiye göre sıralı. */}
+      {marketItems.map((p) => {
+        const price = p.salePrice || 0;
+        const alreadyBought = boughtIds.has(p.id);
+        const canAfford = (player?.gold || 0) >= price;
+        return (
+          <div key={p.id} className="futbol-transfer-row">
+            <FutbolPlayerAvatar playerId={p.id} position={p.position} size={40} />
+            <div className="futbol-transfer-info">
+              <p className="futbol-transfer-name">
+                {p.name} <span className="futbol-transfer-pos">({POSITION_LABELS[p.position]})</span>
+              </p>
+              <p className="futbol-buy-meta">
+                {p.age} yaş · {p.power.toFixed(1)} güç
+              </p>
             </div>
-          );
-        })}
+            <button
+              className="futbol-admin-submit"
+              disabled={busyId === p.id || alreadyBought || !canAfford}
+              onClick={() => handleBuy(p.id)}
+            >
+              {alreadyBought
+                ? 'Satın Alındı ✓'
+                : !canAfford
+                  ? 'Altın Yetersiz'
+                  : `${price.toLocaleString('tr-TR')} altın`}
+            </button>
+          </div>
+        );
+      })}
 
       {confirmSellId && (
         <ConfirmModal

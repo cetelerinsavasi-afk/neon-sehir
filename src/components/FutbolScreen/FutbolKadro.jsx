@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useFutbolTeamPlayers } from '../../hooks/useFutbolTeamPlayers';
 import { setFutbolLineup } from '../../services/gameActions';
 import FutbolPlayerAvatar from './FutbolPlayerAvatar';
@@ -47,10 +47,16 @@ export default function FutbolKadro({ team }) {
   const [pickerFor, setPickerFor] = useState(null); // { position, slotIndex }
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  // Kullanıcı revizesi: "kadroyu kaydet butonuna basmasak da kadroyu en
+  // son ne durumda bıraktıysak otomatik o şekilde kaydolsun" — bir
+  // sonraki otomatik-kaydetme denemesini (sunucudan taze veri geldiğinde,
+  // kullanıcı henüz bir şey değiştirmemişken) atlamak için kullanılıyor.
+  const skipNextAutoSaveRef = useRef(true);
 
   useEffect(() => {
     setFormation(team.formation || '2-2-1');
     setTactic(team.tactic || 'dengeli');
+    skipNextAutoSaveRef.current = true;
   }, [team.id]);
 
   useEffect(() => {
@@ -102,6 +108,25 @@ export default function FutbolKadro({ team }) {
       setBusy(false);
     }
   };
+
+  // Dizilim, taktik ya da slotlar TAMAMLANMIŞ haldeyken değişince (kısa
+  // bir debounce ile — her tek tık için ayrı ayrı sunucuya gitmesin)
+  // otomatik kaydediyoruz. İlk yüklemede ya da takım değişiminde
+  // (sunucudan taze veri geldiğinde) TETİKLENMEZ — sadece kullanıcı
+  // gerçekten bir şey değiştirince devreye girer.
+  const flatLineupKey = flatLineup.join(',');
+  useEffect(() => {
+    if (skipNextAutoSaveRef.current) {
+      skipNextAutoSaveRef.current = false;
+      return;
+    }
+    if (!isComplete) return;
+    const t = setTimeout(() => {
+      handleSave();
+    }, 900);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formation, tactic, flatLineupKey, isComplete]);
 
   const playersById = {};
   players.forEach((p) => (playersById[p.id] = p));
@@ -165,13 +190,18 @@ export default function FutbolKadro({ team }) {
 
       {!isComplete && (
         <p className="futbol-admin-error">
-          {flatLineup.length}/{totalNeeded} oyuncu seçildi — kaydetmeden önce tüm slotları doldur.
+          {flatLineup.length}/{totalNeeded} oyuncu seçildi — tüm slotları doldurunca otomatik kaydedilir.
         </p>
       )}
       {message && <p className="futbol-placeholder">{message}</p>}
       <button className="futbol-admin-submit" disabled={busy || !isComplete} onClick={handleSave}>
-        {busy ? '...' : 'Kadroyu Kaydet'}
+        {busy ? 'Kaydediliyor...' : 'Şimdi Kaydet'}
       </button>
+      <p className="futbol-placeholder futbol-kadro-note">
+        Kadron otomatik kaydedilir — bir değişiklik yaptığında kısa bir
+        süre sonra kendiliğinden kaydolur, bu butona basmana gerek yok
+        (istersen anında kaydetmek için kullanabilirsin).
+      </p>
       <p className="futbol-placeholder futbol-kadro-note">
         Not: seçtiğin oyunculardan biri formu %50&apos;nin altına düşerse, o
         maç için otomatik olarak 2-2-1 / dengeli / en formda kadroya geri

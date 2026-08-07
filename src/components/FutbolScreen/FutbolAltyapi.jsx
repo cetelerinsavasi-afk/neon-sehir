@@ -123,7 +123,7 @@ function TrainingSection({ teamId, players, excludedCount, trainingPlayerIds }) 
                   disabled={busyId === p.id || slotsFull}
                   onClick={() => handleStart(p.id)}
                 >
-                  Antrenmanı Başlat
+                  {slotsFull ? 'Dolu' : 'Antrenmanı Başlat'}
                 </button>
               )}
             </div>

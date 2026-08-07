@@ -65,3 +65,18 @@
 .futbol-transfer-force-refresh {
   margin-bottom: 8px;
 }
+
+.futbol-transfer-market-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.futbol-transfer-balance {
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffd54a;
+  white-space: nowrap;
+}
