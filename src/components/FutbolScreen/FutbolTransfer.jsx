@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useFutbolTeamPlayers } from '../../hooks/useFutbolTeamPlayers';
+import { useAuth } from '../../contexts/AuthContext';
+import { isAdminUid } from '../../config/admin';
 import {
   listFutbolTransferMarket,
   buyFutbolPlayer,
   instantSellFutbolPlayer,
   listFutbolPlayerForSale,
   cancelFutbolPlayerListing,
+  forceRefreshFutbolTransferMarket,
 } from '../../services/gameActions';
 import FutbolPlayerAvatar from './FutbolPlayerAvatar';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
@@ -18,6 +21,8 @@ const POSITION_LABELS = { GK: 'Kaleci', DEF: 'Defans', MID: 'Orta Saha', FWD: 'F
 const PLAYER_PRICE_QUICK_AMOUNTS = [100, 1000, 10000, 100000];
 
 export default function FutbolTransfer({ team }) {
+  const { user } = useAuth();
+  const isAdmin = isAdminUid(user?.uid);
   const { players: myPlayers } = useFutbolTeamPlayers(team.id);
   const [market, setMarket] = useState(null);
   const [busyId, setBusyId] = useState(null);
@@ -26,6 +31,7 @@ export default function FutbolTransfer({ team }) {
   const [listingPrice, setListingPrice] = useState(0);
   const [showSellPanel, setShowSellPanel] = useState(false);
   const [confirmSellId, setConfirmSellId] = useState(null);
+  const [refreshingMarket, setRefreshingMarket] = useState(false);
 
   const loadMarket = async () => {
     setError('');
@@ -106,6 +112,19 @@ export default function FutbolTransfer({ team }) {
     }
   };
 
+  const handleForceRefreshMarket = async () => {
+    setRefreshingMarket(true);
+    setError('');
+    try {
+      await forceRefreshFutbolTransferMarket();
+      await loadMarket();
+    } catch (err) {
+      setError(err?.message || 'Piyasa yenilenemedi.');
+    } finally {
+      setRefreshingMarket(false);
+    }
+  };
+
   const systemCount = market ? market.filter((p) => p.saleSource === 'system').length : null;
 
   return (
@@ -183,6 +202,16 @@ export default function FutbolTransfer({ team }) {
       )}
 
       <p className="futbol-kadro-section-title">Transfer Piyasası — Katabileceğin Oyuncular</p>
+      {isAdmin && (
+        <button
+          className="futbol-admin-reset futbol-transfer-force-refresh"
+          disabled={refreshingMarket}
+          onClick={handleForceRefreshMarket}
+          title="Firestore'dan elle bir oyuncunun gücünü düzelttiysen, piyasayı 15 dakika beklemeden anında yeniden hesaplatır. (Sadece sen görebilirsin.)"
+        >
+          {refreshingMarket ? 'Yenileniyor…' : '🔄 Sistem Stoğunu Şimdi Yenile (admin)'}
+        </button>
+      )}
       {market === null && <p className="futbol-placeholder">Yükleniyor...</p>}
       {market !== null && systemCount < 12 && (
         <p className="futbol-placeholder">

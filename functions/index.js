@@ -11,6 +11,22 @@ const db = admin.firestore();
 // (src/firebase.js) birebir aynı olmalı, yoksa çağrılar 404 döner.
 setGlobalOptions({ region: 'europe-west1' });
 
+// ADMIN_UIDS — oyunculardan gizli, sadece geliştiriciye açık aksiyonlar
+// (örn. transfer piyasasını elle anında yeniden kurma) için basit bir
+// izin listesi. Firebase Console > Authentication > Users sekmesinden
+// kendi hesabının UID'sini kopyalayıp buraya ekle — src/config/admin.js
+// içindeki liste de BİREBİR AYNI UID(ler) ile güncellenmeli (istemci
+// tarafında butonun görünürlüğünü kontrol eden yer orası).
+const ADMIN_UIDS = ['REPLACE_WITH_YOUR_FIREBASE_AUTH_UID'];
+
+function requireAdmin(request) {
+  const uid = requireAuth(request);
+  if (!ADMIN_UIDS.includes(uid)) {
+    throw new HttpsError('permission-denied', 'Bu aksiyon sadece yöneticiye açık.');
+  }
+  return uid;
+}
+
 // ---------------------------------------------------------------------------
 // FABRİKA SİSTEMİ (oyuncu kurduğu/işlettiği fabrikalar) — Bölüm 6/8.2'nin
 // yerini alır. Her oyuncu en fazla 1 fabrika kurabilir (satılamaz), içine
@@ -8065,8 +8081,14 @@ function meetsFutbolMinSquad(counts) {
 
 // computeFutbolMaxPowerByPosition — o an BİR TAKIMA AİT (transfer
 // listesindeki sistem/anında/manuel ilanlar HARİÇ — teamId==null) tüm
-// oyuncular arasında, her mevkideki en yüksek gücü döner. Transfer
-// piyasasının "taban"ı budur.
+// oyuncular arasında, her mevkideki DÜZ (basit) en yüksek gücü döner.
+// Transfer piyasasının "taban"ı budur. Kullanıcı revizesi: otomatik
+// "outlier ayıklama" kaldırıldı — mantık artık dolambaçsız: taban güç
+// birebir takımlardaki en güçlü oyuncu. Anormal/bozuk bir kayıt varsa
+// (örn. eski sistemden kalma), doğrudan Firestore'dan o oyuncunun
+// gücünü düzeltmek yeterli — bir sonraki hesaplamada (satın alma, 15
+// dakikalık slot doldurma, 24 saatlik tazeleme ya da aşağıdaki
+// forceRefreshFutbolTransferMarket ile ANINDA) taban da otomatik düzelir.
 async function computeFutbolMaxPowerByPosition() {
   const snap = await db.collection('futbolPlayers').get();
   const max = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
@@ -8126,53 +8148,13 @@ function buildFutbolSystemStockWrite(batch, position, bandIndex, maxPowerByPosit
   return playerRef;
 }
 
-// refillFutbolTransferSlots — bekleme süresi (1 saat) dolmuş boş
-// slotları taze bir sistem oyuncusuyla doldurur. every 15 dakikada bir
-// çalışır — "satıldıktan 1 saat sonra yenisi gelsin" kuralı. Ayrıca,
-// tek seferlik piyasa sıfırlama geçişini (bkz. runFutbolTransferMarketReset)
-// burada da (güvenlik ağı olarak) çağırıyoruz — böylece deploy'dan sonra
-// EN GEÇ 15 DAKİKA içinde, HİÇBİR kullanıcının uygulamayı açmasına gerek
-// kalmadan kendiliğinden çalışır (kimse fark etmeden, arka planda).
-// Fonksiyon kendi migration bayrağıyla idempotent olduğu için burada her
-// 15 dakikada bir "denenmesi" tamamen zararsız.
-export const refillFutbolTransferSlots = onSchedule({ schedule: 'every 15 minutes' }, async () => {
-  await runFutbolTransferMarketReset();
-
-  const now = admin.firestore.Timestamp.now();
-  const dueSnap = await db
-    .collection('futbolTransferSlots')
-    .where('playerId', '==', null)
-    .where('refillAt', '<=', now)
-    .get();
-  if (dueSnap.empty) return;
-
-  const maxPowerByPosition = await computeFutbolMaxPowerByPosition();
-  const batch = db.batch();
-  dueSnap.docs.forEach((slotDoc) => {
-    const { position, bandIndex } = slotDoc.data();
-    buildFutbolSystemStockWrite(batch, position, bandIndex, maxPowerByPosition);
-  });
-  await batch.commit();
-});
-
-// resetFutbolTransferMarket — eski (dengesiz) sistem stoğunu bir kere
-// temizleyip yeni bant kurallarına göre 12 slotu (4 mevki × 3 bant)
-// sıfırdan kurar. Bir migration bayrağıyla İDEMPOTENT: kullanıcı girişte
-// otomatik tetiklenir (App.jsx), ikinci kez hiçbir şey yapmaz.
-async function runFutbolTransferMarketReset() {
-  const migrationRef = db.collection('migrations').doc('futbolTransferMarketV2');
-  const migrationSnap = await migrationRef.get();
-  if (migrationSnap.exists) return;
-
-  // Dünya (ligler/takımlar) henüz kurulmadıysa (seedFutbolWorld daha
-  // çalışmadı) burada bir şey yapmaya çalışmayalım — taban güç için
-  // gerçek takım verisi yok demektir. Bayrağı işaretlemeden çıkıyoruz ki
-  // bir sonraki girişte (dünya kurulduktan sonra) tekrar denensin.
-  const leaguesSnap = await db.collection('futbolLeagues').limit(1).get();
-  if (leaguesSnap.empty) return;
-
-  // Eski sistem stoğunu (ne bant ne slot kavramı olan, eski
-  // ucuz/orta/pahalı mantıkla üretilmiş) tamamen sil.
+// rebuildFutbolTransferMarket — sistem stoğunu (mevcut ne varsa) tamamen
+// silip, O ANKİ takım güçlerine göre 12 slotu (4 mevki × 3 bant) sıfırdan
+// kurar. Hem tek seferlik geçiş (runFutbolDataIntegrityFix) hem de
+// istendiğinde elle tetiklenen forceRefreshFutbolTransferMarket bu
+// ORTAK fonksiyonu kullanır — mantık tek bir yerde.
+async function rebuildFutbolTransferMarket() {
+  // Var olan sistem stoğunu (bant/slot fark etmeksizin) tamamen sil.
   const oldSystemSnap = await db.collection('futbolPlayers').where('saleSource', '==', 'system').get();
   let delBatch = db.batch();
   let delCount = 0;
@@ -8202,16 +8184,75 @@ async function runFutbolTransferMarketReset() {
     });
   });
   await batch.commit();
+}
+
+// runFutbolDataIntegrityFix — BİR KEZ (migration bayrağıyla) çalışıp
+// biten, ucuz bir düzeltme. Kullanıcı revizesi: kalıcı/her-yazımda-
+// tetiklenen bir trigger (önceki syncFutbolPlayerValue) YERİNE — o,
+// takımdaki HER oyuncunun HER maç/antrenman güç kazanışında sonsuza dek
+// ekstra bir yazma yapıyordu ve Firestore faturasını (özellikle
+// "writes") gereksiz yere şişiriyordu. Bunun yerine:
+//   1) TÜM oyuncuların "value" alanını GÜNCEL power+age'e göre TEK SEFER
+//      düzeltir (sadece gerçekten yanlışsa yazar),
+//   2) Ardından transfer piyasasının 12 sistem oyuncusunu bu düzeltilmiş
+//      güncel taban güce göre sıfırdan kurar.
+// Bir daha ASLA tekrar çalışmaz (migration bayrağı) — bu yüzden
+// maliyeti tamamen SINIRLI ve TEK SEFERLİK, kalıcı bir yük değil.
+async function runFutbolDataIntegrityFix() {
+  const migrationRef = db.collection('migrations').doc('futbolDataIntegrityFixV1');
+  const migrationSnap = await migrationRef.get();
+  if (migrationSnap.exists) return;
+
+  // Dünya (ligler/takımlar) henüz kurulmadıysa bir şey yapmayalım —
+  // bayrağı işaretlemeden çıkıyoruz ki bir sonraki denemede tekrar
+  // bakılsın.
+  const leaguesSnap = await db.collection('futbolLeagues').limit(1).get();
+  if (leaguesSnap.empty) return;
+
+  const allPlayersSnap = await db.collection('futbolPlayers').get();
+  let batch = db.batch();
+  let opCount = 0;
+  for (const d of allPlayersSnap.docs) {
+    const p = d.data();
+    if (typeof p.power !== 'number' || typeof p.age !== 'number') continue;
+    const remainingSeasons = Math.max(20 - (p.age - 16), 1);
+    const correctValue = Math.round((p.power * 1000 * remainingSeasons) / 20);
+    if (p.value === correctValue) continue; // zaten doğru, gereksiz yazma yok
+    batch.update(d.ref, { value: correctValue });
+    opCount += 1;
+    if (opCount % 450 === 0) {
+      await batch.commit();
+      batch = db.batch();
+    }
+  }
+  if (opCount % 450 !== 0) await batch.commit();
+
+  await rebuildFutbolTransferMarket();
 
   await migrationRef.set({ ranAt: admin.firestore.FieldValue.serverTimestamp() });
 }
 
-// Manuel (anlık) tetikleme için ince bir onCall sarmalayıcı — asıl işi
-// runFutbolTransferMarketReset yapıyor, App.jsx girişte otomatik çağırır
-// (diğer migrate* fonksiyonlarıyla aynı desen).
+// Otomatik (bir kerelik, migration bayrağıyla) tetikleme için ince bir
+// onCall sarmalayıcı — App.jsx girişte otomatik çağırır.
 export const resetFutbolTransferMarket = onCall(async (request) => {
   requireAuth(request);
-  await runFutbolTransferMarketReset();
+  await runFutbolDataIntegrityFix();
+  return { ok: true };
+});
+
+// forceRefreshFutbolTransferMarket — YUKARIDAKİNİN AKSİNE bayraksız,
+// HER ÇAĞRIDA çalışır. Kullanım senaryosu: Firestore'dan elle bozuk bir
+// oyuncunun gücünü düzelttikten sonra, transfer piyasasının bu yeni
+// (doğru) taban güce göre ANINDA yeniden kurulmasını istediğinde — saatlik
+// otomatik döngüyü beklemene gerek kalmadan. SADECE YÖNETİCİ (ADMIN_UIDS)
+// çağırabilir — oyuncular bu aksiyonu ne görür ne de tetikleyebilir
+// (bkz. requireAdmin). NOT: bu fonksiyonu deploy sonrası bir kez elle
+// tetiklemene aslında gerek YOK — runFutbolDataIntegrityFix zaten
+// deploy'dan sonra en geç 1 saat içinde kendiliğinden aynı işi yapacak.
+// Sadece "hemen şimdi görmek istiyorum" durumları için burada duruyor.
+export const forceRefreshFutbolTransferMarket = onCall(async (request) => {
+  requireAdmin(request);
+  await rebuildFutbolTransferMarket();
   return { ok: true };
 });
 
@@ -8384,7 +8425,7 @@ export const buyFutbolPlayer = onCall(async (request) => {
   });
   if (player.saleSource === 'system' && player.slotKey) {
     // Kullanıcı promptu: satılan sistem oyuncusunun yeri HEMEN
-    // doldurulmaz — 1 saat sonra refillFutbolTransferSlots tarafından
+    // doldurulmaz — 1 saat sonra futbolTransferMarketHourlyMaintenance tarafından
     // doldurulur (bkz. yukarıdaki FUTBOL_SYSTEM_RESTOCK_DELAY_MS).
     batch.set(
       db.collection('futbolTransferSlots').doc(player.slotKey),
@@ -8399,21 +8440,40 @@ export const buyFutbolPlayer = onCall(async (request) => {
   return { ok: true, price };
 });
 
-// expireFutbolTransferListings — saatlik: sistem stoğu 24 saat satılmazsa
-// YERİNDE (bekleme olmadan) taze bir oyuncuyla yenilenir; kişisel ilanlar
-// (anında satılmış ya da elle listelenmiş) 7 gün sonra süresi dolar —
-// anında-satış ilanı tamamen silinir, elle listeleme sadece geri çekilir
-// (oyuncu takımda kalır).
-export const expireFutbolTransferListings = onSchedule({ schedule: 'every 60 minutes' }, async () => {
-  const now = Date.now();
-  const listedSnap = await db.collection('futbolPlayers').where('forSale', '==', true).get();
+// futbolTransferMarketHourlyMaintenance — SAATTE BİR çalışan TEK görev
+// (kullanıcı revizesi: maliyeti azaltmak için önceki 15-dakikalık ayrı
+// görevle birleştirildi — günde 120 yerine 24 tetikleme). Üç işi birden
+// yapar:
+//   1) Tek seferlik veri/piyasa düzeltmesini dener (bkz.
+//      runFutbolDataIntegrityFix) — ilk başarılı çalıştıktan sonra
+//      sadece 1 ucuz bayrak okumasıyla anında çıkar, kalıcı bir yük
+//      DEĞİLDİR.
+//   2) Bekleme süresi (1 saat) dolmuş boş transfer slotlarını doldurur.
+//   3) 24 saattir satılmayan sistem oyuncularını yerinde tazeler; 7
+//      günlük kişisel ilanların (anında satış/elle listeleme) süresini
+//      doldurur.
+// computeFutbolMaxPowerByPosition (pahalı tam koleksiyon taraması)
+// SADECE gerçekten bir şey dolduracaksak/tazeleyeceksek çağrılır, ayrıca
+// (2) ve (3) aynı çalıştırmada ikisi de gerekiyorsa TEK seferde
+// hesaplanıp paylaşılır — gereksiz tekrar taramayı önler.
+export const futbolTransferMarketHourlyMaintenance = onSchedule({ schedule: 'every 60 minutes' }, async () => {
+  await runFutbolDataIntegrityFix();
+
+  const nowMs = Date.now();
+  const nowTs = admin.firestore.Timestamp.now();
+
+  const [dueSlotsSnap, listedSnap] = await Promise.all([
+    db.collection('futbolTransferSlots').where('playerId', '==', null).where('refillAt', '<=', nowTs).get(),
+    db.collection('futbolPlayers').where('forSale', '==', true).get(),
+  ]);
+
   const batch = db.batch();
   const staleSystemSlots = [];
 
   listedSnap.docs.forEach((d) => {
     const p = d.data();
     if (!p.listedAt) return;
-    const ageMs = now - p.listedAt.toMillis();
+    const ageMs = nowMs - p.listedAt.toMillis();
     if (p.saleSource === 'system' && ageMs > FUTBOL_SYSTEM_LISTING_MAX_AGE_MS) {
       batch.delete(d.ref);
       if (p.slotKey) staleSystemSlots.push({ slotKey: p.slotKey, position: p.position, bandIndex: p.bandIndex });
@@ -8430,8 +8490,13 @@ export const expireFutbolTransferListings = onSchedule({ schedule: 'every 60 min
     }
   });
 
-  if (staleSystemSlots.length > 0) {
+  const needsMaxPower = !dueSlotsSnap.empty || staleSystemSlots.length > 0;
+  if (needsMaxPower) {
     const maxPowerByPosition = await computeFutbolMaxPowerByPosition();
+    dueSlotsSnap.docs.forEach((slotDoc) => {
+      const { position, bandIndex } = slotDoc.data();
+      buildFutbolSystemStockWrite(batch, position, bandIndex, maxPowerByPosition);
+    });
     staleSystemSlots.forEach(({ position, bandIndex }) => {
       buildFutbolSystemStockWrite(batch, position, bandIndex, maxPowerByPosition);
     });

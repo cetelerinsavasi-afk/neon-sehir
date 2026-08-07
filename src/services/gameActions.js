@@ -322,6 +322,9 @@ export const seedFutbolWorld = () => httpsCallable(functions, 'seedFutbolWorld')
 export const resetFutbolTransferMarket = () =>
   httpsCallable(functions, 'resetFutbolTransferMarket')();
 
+export const forceRefreshFutbolTransferMarket = () =>
+  httpsCallable(functions, 'forceRefreshFutbolTransferMarket')();
+
 // --- Faz Futbol: Faz 4 (takım satın alma / satma) ---
 
 export const listFutbolBuyableTeams = () => httpsCallable(functions, 'listFutbolBuyableTeams')();
