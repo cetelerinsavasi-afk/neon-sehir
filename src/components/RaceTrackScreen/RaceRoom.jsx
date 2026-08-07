@@ -184,12 +184,22 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
         }, 4000);
         return res;
       }
+      setBusy(false);
       return res;
     } catch (err) {
+      // KRİTİK BUG DÜZELTMESİ (kullanıcı revizesi — loglar sunucunun
+      // hızlı olduğunu, sorunun istemcide olduğunu gösterdi): istek HATA
+      // ile dönünce (ör. "az önce zar attın" reddi, ya da başka bir
+      // hata) `busy` kilidi eskiden waitForConfirm=true olduğunda HİÇ
+      // açılmıyordu — çünkü kilidi açan kod sadece yukarıdaki BAŞARI
+      // yolundaydı. Bu yüzden bir istek reddedilince ekran kalıcı olarak
+      // donuyordu (kullanıcı sayfayı yenileyene kadar). Artık hata
+      // durumunda HER ZAMAN (waitForConfirm fark etmeksizin) kilidi
+      // hemen açıyoruz.
+      pendingConfirmRef.current = null;
       setError(err.message || 'İşlem başarısız.');
+      setBusy(false);
       return null;
-    } finally {
-      if (!waitForConfirm) setBusy(false);
     }
   };
 

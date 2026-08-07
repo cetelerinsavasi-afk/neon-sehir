@@ -5419,18 +5419,15 @@ async function doChampionshipRollDice(request) {
 // istemcinin yarış ekranına girer girmez (kullanıcı henüz hiçbir butona
 // basmadan) gönderdiği ücretsiz "ping" aksiyonunu da karşılar — bu, tek
 // sıcak instance'ı kullanıcı daha zar atmadan ısıtmaya çalışır.
-// NOT (kullanıcı revizesi): minInstances denendi ama küçük de olsa
-// gerçek bir aylık maliyeti olduğu (deploy sırasında Firebase CLI'nin
-// gösterdiği tahmini fatura) için kullanıcı bunu İSTEMEDİ — geri alındı.
-// Cold start riski bu yüzden TAMAMEN ortadan kalkmadı (dosya büyüdükçe
-// zaman zaman geri gelebilir); bunun yerine MALİYETSİZ bir tamamlayıcı
-// önlem eklendi: istemci tarafında (RaceRoom.jsx), bir istek sayfa
-// yenilense/ekrandan çıkılıp girilse bile "hâlâ işlemde" olarak
-// işaretleniyor — böylece cold start yaşansa bile arka arkaya birikmiş
-// birden çok zar atışı (kullanıcı sabırsızlanıp tekrar tekrar basınca
-// oluşan "6 kere atılmış gibi başlama" hatası) artık oluşmuyor, sadece
-// "bekleniyor" durumu oluyor.
-export const raceHubAction = onCall(async (request) => {
+// NOT (kullanıcı revizesi — "30sn-2dk gecikme, hâlâ donuyor"): concurrency
+// hiç belirtilmediğinde Cloud Functions v2, düşük CPU tahsisinde
+// eşzamanlılığı 1'e düşürebiliyor — yani bir istek işlenirken SONRAKİ
+// istek (senin bir sonraki tıklaman) cold start DEĞİL, sırf "kuyrukta
+// bekliyor" olabilir. cpu:1 + concurrency:10 vermek, minInstances'ın
+// AKSİNE sürekli bir maliyet YARATMAZ (idle'da hâlâ 0 instance'a
+// inebiliyor) — sadece bir instance uyanıkken birden fazla isteği aynı
+// anda işleyebilsin diye.
+export const raceHubAction = onCall({ cpu: 1, concurrency: 10 }, async (request) => {
   const { action } = request.data || {};
   switch (action) {
     case 'ping':
