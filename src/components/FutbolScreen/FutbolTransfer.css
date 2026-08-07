@@ -80,3 +80,9 @@
   color: #ffd54a;
   white-space: nowrap;
 }
+
+.futbol-buy-insufficient {
+  background: rgba(255, 70, 70, 0.18) !important;
+  border-color: rgba(255, 70, 70, 0.5) !important;
+  color: #ff6b6b !important;
+}

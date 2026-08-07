@@ -39,6 +39,12 @@ export default function FutbolTransfer({ team }) {
   // yeniden mount olup loadMarket tekrar çağrılınca) piyasa zaten sunucu
   // tarafında güncel geleceği için kendiliğinden kaybolacak.
   const [boughtIds, setBoughtIds] = useState(() => new Set());
+  // insufficientId — kullanıcı revizesi: fiyatın yerine SÜREKLİ "Altın
+  // Yetersiz" yazması saçma buldu. Artık buton normalde HER ZAMAN
+  // fiyatı gösterir; sadece TIKLANINCA (ve gerçekten yetersizse) 2
+  // saniyeliğine "Altın Yetersiz" yazar, sonra kendiliğinden fiyata
+  // geri döner.
+  const [insufficientId, setInsufficientId] = useState(null);
 
   const loadMarket = async () => {
     setError('');
@@ -54,7 +60,16 @@ export default function FutbolTransfer({ team }) {
     loadMarket();
   }, []);
 
-  const handleBuy = async (playerId) => {
+  const handleBuy = async (playerId, canAfford) => {
+    if (!canAfford) {
+      // Sunucuya hiç gitmeden, yerel olarak 2 saniyeliğine uyarı göster
+      // ve sonra otomatik olarak fiyata geri dön.
+      setInsufficientId(playerId);
+      setTimeout(() => {
+        setInsufficientId((cur) => (cur === playerId ? null : cur));
+      }, 2000);
+      return;
+    }
     setBusyId(playerId);
     setError('');
     try {
@@ -237,6 +252,7 @@ export default function FutbolTransfer({ team }) {
         const price = p.salePrice || 0;
         const alreadyBought = boughtIds.has(p.id);
         const canAfford = (player?.gold || 0) >= price;
+        const showingInsufficient = insufficientId === p.id;
         return (
           <div key={p.id} className="futbol-transfer-row">
             <FutbolPlayerAvatar playerId={p.id} position={p.position} size={40} />
@@ -249,13 +265,13 @@ export default function FutbolTransfer({ team }) {
               </p>
             </div>
             <button
-              className="futbol-admin-submit"
-              disabled={busyId === p.id || alreadyBought || !canAfford}
-              onClick={() => handleBuy(p.id)}
+              className={`futbol-admin-submit${showingInsufficient ? ' futbol-buy-insufficient' : ''}`}
+              disabled={busyId === p.id || alreadyBought}
+              onClick={() => handleBuy(p.id, canAfford)}
             >
               {alreadyBought
                 ? 'Satın Alındı ✓'
-                : !canAfford
+                : showingInsufficient
                   ? 'Altın Yetersiz'
                   : `${price.toLocaleString('tr-TR')} altın`}
             </button>

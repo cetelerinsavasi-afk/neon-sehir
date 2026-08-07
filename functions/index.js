@@ -4471,6 +4471,7 @@ function finalizeRace({ tx, roomRef, room, winnerUid, players, userRefs, userSna
   const uids = Object.keys(players);
 
   uids.forEach((u) => {
+    if (u === 'bot') return; // bot'un gerçek bir users/{uid} dokümanı yok, ödeme alamaz
     let amount = 0;
     if (winnerUid === 'draw') {
       amount = pot; // kendi bahsini geri al
@@ -4762,9 +4763,13 @@ async function resolveRoll({ roomId, uid, useNitro, useTurbo }) {
     const other = otherUid ? room.players[otherUid] : null;
 
     // Firestore transaction kuralı: tüm okumalar yazmalardan önce.
+    // NOT: antrenman odalarında ikinci katılımcı 'bot' — gerçek bir
+    // users/{uid} dokümanı YOK, bu yüzden onu OKUMAYA bile çalışmıyoruz
+    // (gereksiz bir Firestore okuması + potansiyel gecikme kaynağıydı).
     const userRefs = {};
     const userSnaps = {};
     for (const u of room.participantUids) {
+      if (u === 'bot') continue;
       userRefs[u] = db.collection('users').doc(u);
       userSnaps[u] = await tx.get(userRefs[u]);
     }
@@ -5037,8 +5042,14 @@ async function processTrainingReward(roomId) {
 }
 
 // trainingRollDice — insan kendi turunda bu fonksiyonu çağırır. Aynı çağrı
-// içinde, sıra bota geçtiyse botun hamlesi de HEMEN (bekletmeden) çözülür
-// — botun kendi "istemcisi" olmadığı için otomatik oynatılması gerekiyor.
+// içinde, sıra bota geçtiyse botun hamlesi de HEMEN çözülür.
+// NOT (kullanıcı revizesi — loglarla KANITLANDI): burada eskiden "bot
+// robotik hissetmesin diye" 1 saniyelik YAPAY bir bekleme vardı
+// (setTimeout). Log analizi, antrenman turlarının HER SEFERİNDE tam
+// olarak bu kadar (1.2-1.3sn) sürdüğünü kesin olarak gösterdi — yani
+// kullanıcının "kasma" dediği şey ağ/sunucu sorunu değil, doğrudan bu
+// bilinçli gecikmeydi. Hız, "robotik hissetmeme" polisajından daha
+// öncelikli olduğu için TAMAMEN KALDIRILDI.
 async function doTrainingRollDice(request) {
   const uid = requireAuth(request);
   const { roomId, useNitro, useTurbo } = request.data || {};
@@ -5048,9 +5059,6 @@ async function doTrainingRollDice(request) {
   const roomSnap = await db.collection('raceRooms').doc(roomId).get();
   const room = roomSnap.data();
   if (room?.status === 'racing' && room.currentTurnUid === 'bot') {
-    // Bot, insan zar attıktan HEMEN sonra değil, 1 saniye gecikmeyle zar
-    // atar — anında/robotik hissetmesin diye.
-    await new Promise((resolve) => setTimeout(resolve, 1000));
     await resolveRoll({ roomId, uid: 'bot', useNitro: false, useTurbo: false });
   }
 
