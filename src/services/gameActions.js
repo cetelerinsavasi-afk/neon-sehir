@@ -265,10 +265,10 @@ export const rollDice = (roomId, useNitro, useTurbo) =>
 export const autoRoll = (roomId) => raceHub('autoRoll', { roomId });
 
 export const createTrainingRace = (vehicleId, level) =>
-  httpsCallable(functions, 'createTrainingRace')({ vehicleId, level });
+  raceHub('createTrainingRace', { vehicleId, level });
 
 export const createChampionshipRace = (vehicleId) =>
-  httpsCallable(functions, 'createChampionshipRace')({ vehicleId });
+  raceHub('createChampionshipRace', { vehicleId });
 
 export const championshipRollDice = (roomId, useNitro, useTurbo) =>
   raceHub('championshipRollDice', { roomId, useNitro, useTurbo });

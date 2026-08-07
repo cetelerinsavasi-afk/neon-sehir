@@ -4334,19 +4334,14 @@ export const setAvatar = onCall(async (request) => {
 
 const RACE_TRACK_LENGTH = 300;
 const RACE_TURN_SECONDS = 10;
-// Kullanıcı revizesi: "6. zar atışımda kendine geliyor, 6 tur hakkım
-// gitmiş oluyor" — sebep cold start DEĞİLDİ, gerçek bir bug'dı: istemci
-// tarafındaki "onay bekleme" mekanizması, Firestore dinleyicisi geç
-// kalınca (özellikle yavaş bağlantılarda) 4 saniye sonra butonu tekrar
-// aktif ediyordu — sunucu GERÇEKTEN zar atmış olsa bile. Kullanıcı
-// "bir şey olmadı" sanıp tekrar basınca bu GERÇEK bir 2. (3., 4....) zar
-// atışı gönderiyordu. Şampiyonada rakip/sıra kontrolü olmadığı için
-// hepsi kabul ediliyordu — arka arkaya birikip aynı anda uygulanıyordu.
-// Çözüm: istemcideki HER TÜRLÜ zamanlama sorunundan bağımsız, SUNUCU
-// tarafında art arda gelen zar atışlarını reddediyoruz — bir insanın
-// gerçekte bu kadar hızlı art arda 2 kez zar atması mümkün değil
-// (sonucu görüp vites değiştirmesi bile bundan uzun sürer).
-const RACE_MIN_ROLL_INTERVAL_MS = 1500;
+// NOT: Daha önce burada, art arda gelen zar atışlarını reddeden bir
+// RACE_MIN_ROLL_INTERVAL_MS koruması vardı ("6 kere zar atılmış gibi
+// başlama" bug'ına karşı). O bug'ın GERÇEK sebebi bulundu ve düzeltildi
+// (RaceRoom.jsx'teki run() fonksiyonu, bir istek HATA alınca butonun
+// kilidini hiç açmıyordu — bu artık düzeltildi). Bu koruma, gerçek
+// sebep düzeltildikten sonra kullanıcıya çok sinir bozucu yanlış-pozitif
+// "az önce zar attın" uyarıları vermeye başladığı için (kullanıcı
+// revizesi) TAMAMEN KALDIRILDI.
 const RACE_STATION_PRICES = { refuel: 10 };
 const RACE_OFFSITE_FUEL_PRICE = 100;
 const RACE_NITRO_PRICE = 50;
@@ -4763,12 +4758,6 @@ async function resolveRoll({ roomId, uid, useNitro, useTurbo }) {
       throw new HttpsError('failed-precondition', 'Sıra sende değil.');
     }
     const me = requirePlayerInRoom(room, uid);
-    // Kullanıcı revizesi: art arda gelen (gerçek insan hızının çok
-    // ötesinde) mükerrer zar atışlarını burada, sunucu tarafında
-    // reddediyoruz — bkz. RACE_MIN_ROLL_INTERVAL_MS notu.
-    if (me.lastRollAt && Date.now() - me.lastRollAt < RACE_MIN_ROLL_INTERVAL_MS) {
-      throw new HttpsError('failed-precondition', 'Az önce zar attın, birazcık bekle.');
-    }
     const otherUid = room.participantUids.find((u) => u !== uid);
     const other = otherUid ? room.players[otherUid] : null;
 
@@ -4801,7 +4790,6 @@ async function resolveRoll({ roomId, uid, useNitro, useTurbo }) {
       useNitro,
       useTurbo,
     });
-    meUpdated.lastRollAt = Date.now();
 
     if (isFinalTurn) {
       // Adalet kuralı: 2. Oyuncu'nun son hamlesi. Bitirdiyse berabere,
@@ -4954,7 +4942,14 @@ function freshBotPlayerState(level) {
   };
 }
 
-export const createTrainingRace = onCall(async (request) => {
+// doCreateTrainingRace / doCreateChampionshipRace — kullanıcı revizesi:
+// "şampiyona/antrenman başında 30 saniyelik donma devam ediyor" —
+// sebebi bulundu: bu iki oda-kurma fonksiyonu raceHubAction'dan AYRI
+// birer Cloud Function'dı, warmUpRaceHub SADECE raceHubAction'ı
+// ısıtıyordu, bu ikisi HİÇ ısıtılmıyordu — her yeni antrenman/şampiyona
+// başlatışında GERÇEK bir cold start yaşanıyordu. Artık bunlar da
+// raceHubAction'ın içine taşındı, aynı sıcak instance'ı paylaşıyorlar.
+async function doCreateTrainingRace(request) {
   const uid = requireAuth(request);
   const { vehicleId, level } = request.data || {};
   const lvl = Number(level);
@@ -4994,7 +4989,7 @@ export const createTrainingRace = onCall(async (request) => {
   });
 
   return { ok: true, roomId: roomRef.id };
-});
+}
 
 async function processTrainingReward(roomId) {
   const roomRef = db.collection('raceRooms').doc(roomId);
@@ -5214,7 +5209,7 @@ async function doRaceChangeGear(request) {
 // bıraksın fark etmez, günde 1 hak).
 // =============================================================================
 
-export const createChampionshipRace = onCall(async (request) => {
+async function doCreateChampionshipRace(request) {
   const uid = requireAuth(request);
   const { vehicleId } = request.data || {};
   const vehicle = await getVehicleForRace(uid, vehicleId);
@@ -5266,7 +5261,7 @@ export const createChampionshipRace = onCall(async (request) => {
   });
 
   return { ok: true, roomId: roomRef.id };
-});
+}
 
 // championshipRollDice — resolveRoll'un tek kişilik (rakipsiz) hali. Bitiş
 // çizgisini geçince yarış anında biter (kimseye "adalet turu" verilmez,
@@ -5292,12 +5287,6 @@ async function doChampionshipRollDice(request) {
       throw new HttpsError('failed-precondition', 'Bu oda size ait değil.');
     }
     const me = requirePlayerInRoom(room, uid);
-    // Kullanıcı revizesi: aynı koruma şampiyona modunda da şart —
-    // burada rakip/sıra kontrolü olmadığı için (tek oyuncu), bu koruma
-    // olmadan art arda gelen mükerrer istekler hep kabul ediliyordu.
-    if (me.lastRollAt && Date.now() - me.lastRollAt < RACE_MIN_ROLL_INTERVAL_MS) {
-      throw new HttpsError('failed-precondition', 'Az önce zar attın, birazcık bekle.');
-    }
 
     // Transaction kuralı: tüm okumalar yazmalardan önce.
     const champDailyRef = db
@@ -5321,7 +5310,6 @@ async function doChampionshipRollDice(request) {
       useNitro,
       useTurbo,
     });
-    meUpdated.lastRollAt = Date.now();
     const turnsUsed = (me.turnsUsed || 0) + 1;
     meUpdated.turnsUsed = turnsUsed;
 
@@ -5447,6 +5435,10 @@ export const raceHubAction = onCall({ cpu: 1, concurrency: 10 }, async (request)
       return doRaceChangeGear(request);
     case 'championshipRollDice':
       return doChampionshipRollDice(request);
+    case 'createTrainingRace':
+      return doCreateTrainingRace(request);
+    case 'createChampionshipRace':
+      return doCreateChampionshipRace(request);
     default:
       throw new HttpsError('invalid-argument', 'Geçersiz aksiyon.');
   }
