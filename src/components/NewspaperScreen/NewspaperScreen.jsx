@@ -163,35 +163,63 @@ export default function NewspaperScreen() {
         </section>
       )}
 
-      <div className="newspaper-columns">
+      <div className="newspaper-stack">
         <section className="newspaper-section">
-          <h3 className="newspaper-section-title">🎰 Piyango</h3>
-          {lotteryYesterday?.winnerUid ? (
+          <h3 className="newspaper-section-title">🚨 Asayiş</h3>
+          {biggestHeist ? (
             <p className="newspaper-body">
-              Dünün piyango talihlisi <strong>{lotteryYesterday.winnerName}</strong>,{' '}
-              <strong>{(lotteryYesterday.winnerAmount || 0).toLocaleString('tr-TR')}</strong> altın
-              kazandı.
+              <strong>
+                {(HEIST_TARGET_LABELS[biggestHeist.target] || biggestHeist.target).toUpperCase()}{' '}
+                SOYULDU!
+              </strong>{' '}
+              Dün şehrin gördüğü en büyük soygunda{' '}
+              <strong>{(biggestHeist.amount || 0).toLocaleString('tr-TR')}</strong> altınlık kayıp
+              yaşandı. Failler hâlâ aranıyor.
             </p>
           ) : (
             <p className="newspaper-body newspaper-muted">
-              Dün piyangoyu kazanan olmadı — bilet alan çıkmadı.
+              Dün şehirde bildirilen bir soygun haberi yok.
             </p>
+          )}
+          {stoppedCount > 0 && (
+            <p className="newspaper-body">
+              👮 Polis dün {stoppedCount} soygun girişimini örgüt içine sızarak durdurdu.
+            </p>
+          )}
+          {arrestCount > 0 && (
+            <p className="newspaper-body">
+              ⚖️ Şüphe üzerine yapılan denetimlerde dün {arrestCount} kişiye toplam{' '}
+              {arrestFine.toLocaleString('tr-TR')} altın ceza yazıldı.
+            </p>
+          )}
+          {!biggestHeist && stoppedCount === 0 && arrestCount === 0 && (
+            <p className="newspaper-muted newspaper-small">Şehir dün sakindi.</p>
           )}
         </section>
 
-        <section className="newspaper-section">
-          <h3 className="newspaper-section-title">🏆 Şampiyona</h3>
-          {cabrioYesterday?.winnerUid ? (
-            <p className="newspaper-body">
-              Üstün Cabrio şampiyonasında dünün galibi <strong>{cabrioYesterday.winnerName}</strong>,
-              pisti <strong>{cabrioYesterday.winnerTurns}</strong> turda tamamlayarak zirveye
-              oturdu.
-            </p>
-          ) : (
-            <p className="newspaper-body newspaper-muted">
-              Dün Üstün Cabrio ile pisti tamamlayan olmadı.
-            </p>
+        <section className="newspaper-section newspaper-football">
+          <h3 className="newspaper-section-title">⚽ Futbol</h3>
+          {matchEvents.length === 0 && (
+            <p className="newspaper-body newspaper-muted">Dün oynanan maç yok.</p>
           )}
+          <div className="newspaper-match-list">
+            {matchEvents.map((m) => (
+              <div key={m.id} className="newspaper-match-row">
+                <div className="newspaper-match-score-line">
+                  <FutbolCrest logo={m.homeLogo} initials={m.homeName?.[0]} size={26} />
+                  <span className="newspaper-match-team">{m.homeName}</span>
+                  <span className="newspaper-match-score">
+                    {m.homeScore} - {m.awayScore}
+                  </span>
+                  <span className="newspaper-match-team">{m.awayName}</span>
+                  <FutbolCrest logo={m.awayLogo} initials={m.awayName?.[0]} size={26} />
+                </div>
+                <p className="newspaper-match-comment">
+                  {footballComment(m.homeName, m.awayName, m.homeScore, m.awayScore)}
+                </p>
+              </div>
+            ))}
+          </div>
         </section>
 
         <section className="newspaper-section">
@@ -222,69 +250,42 @@ export default function NewspaperScreen() {
             <p className="newspaper-body newspaper-muted">Piyasa verisi henüz oluşmadı.</p>
           )}
         </section>
+      </div>
 
-        <section className="newspaper-section">
-          <h3 className="newspaper-section-title">🚨 Asayiş</h3>
-          {biggestHeist ? (
+      <div className="newspaper-bottom-row">
+        <section className="newspaper-section newspaper-bottom-col">
+          <h3 className="newspaper-section-title">🏆 Şampiyona</h3>
+          {cabrioYesterday?.winnerUid ? (
             <p className="newspaper-body">
-              <strong>
-                {(HEIST_TARGET_LABELS[biggestHeist.target] || biggestHeist.target).toUpperCase()}{' '}
-                SOYULDU!
-              </strong>{' '}
-              Bugün şehrin gördüğü en büyük soygunda{' '}
-              <strong>{(biggestHeist.amount || 0).toLocaleString('tr-TR')}</strong> altınlık kayıp
-              yaşandı. Failler hâlâ aranıyor.
+              Üstün Cabrio şampiyonasında dünün galibi <strong>{cabrioYesterday.winnerName}</strong>,
+              pisti <strong>{cabrioYesterday.winnerTurns}</strong> turda tamamlayarak zirveye
+              oturdu.
             </p>
           ) : (
             <p className="newspaper-body newspaper-muted">
-              Bugün şehirde bildirilen bir soygun haberi yok.
+              Dün Üstün Cabrio ile pisti tamamlayan olmadı.
             </p>
           )}
-          {stoppedCount > 0 && (
+        </section>
+
+        <section className="newspaper-section newspaper-bottom-col">
+          <h3 className="newspaper-section-title">🎰 Piyango</h3>
+          {lotteryYesterday?.winnerUid ? (
             <p className="newspaper-body">
-              👮 Polis bugün {stoppedCount} soygun girişimini örgüt içine sızarak durdurdu.
+              Dünün piyango talihlisi <strong>{lotteryYesterday.winnerName}</strong>,{' '}
+              <strong>{(lotteryYesterday.winnerAmount || 0).toLocaleString('tr-TR')}</strong> altın
+              kazandı.
             </p>
-          )}
-          {arrestCount > 0 && (
-            <p className="newspaper-body">
-              ⚖️ Şüphe üzerine yapılan denetimlerde bugün {arrestCount} kişiye toplam{' '}
-              {arrestFine.toLocaleString('tr-TR')} altın ceza yazıldı.
+          ) : (
+            <p className="newspaper-body newspaper-muted">
+              Dün piyangoyu kazanan olmadı — bilet alan çıkmadı.
             </p>
-          )}
-          {!biggestHeist && stoppedCount === 0 && arrestCount === 0 && (
-            <p className="newspaper-muted newspaper-small">Şehir bugün sakindi.</p>
           )}
         </section>
       </div>
 
-      <section className="newspaper-section newspaper-football">
-        <h3 className="newspaper-section-title">⚽ Futbol</h3>
-        {matchEvents.length === 0 && (
-          <p className="newspaper-body newspaper-muted">Bugün oynanan maç yok.</p>
-        )}
-        <div className="newspaper-match-list">
-          {matchEvents.map((m) => (
-            <div key={m.id} className="newspaper-match-row">
-              <div className="newspaper-match-score-line">
-                <FutbolCrest logo={m.homeLogo} initials={m.homeName?.[0]} size={26} />
-                <span className="newspaper-match-team">{m.homeName}</span>
-                <span className="newspaper-match-score">
-                  {m.homeScore} - {m.awayScore}
-                </span>
-                <span className="newspaper-match-team">{m.awayName}</span>
-                <FutbolCrest logo={m.awayLogo} initials={m.awayName?.[0]} size={26} />
-              </div>
-              <p className="newspaper-match-comment">
-                {footballComment(m.homeName, m.awayName, m.homeScore, m.awayScore)}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
-
       <p className="newspaper-footer">
-        Neon Şehir Gazetesi, şehirde olanları gerçek zamanlı olarak takip eder — sayfa
-        kendiliğinden güncellenir.
+        Neon Şehir Gazetesi, her gece 00:00'da bir önceki günün özetiyle yenilenir.
       </p>
     </div>
   );

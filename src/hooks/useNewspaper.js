@@ -14,22 +14,25 @@ function istanbulDateKey(offsetDays = 0) {
 const EVENTS_LIMIT = 150;
 
 /**
- * useNewspaper — bugünün (İstanbul saatine göre) newsEvents kayıtlarını
- * canlı dinler. Sunucu (bkz. functions/index.js logNewsEvent) her olay
- * gerçekleştiği anda buraya kimlik açıklamayan bir özet yazıyor — bu
- * yüzden gazete oyunun gidişatına göre KENDİLİĞİNDEN yenileniyor, ekstra
- * bir "yenile" aksiyonuna gerek yok.
+ * useNewspaper — GERÇEK bir gazete gibi çalışır: bugünün sayısı, DÜNÜN
+ * olaylarını (maçlar 18:00'de oynanıp 19:00'da sonuçlanıyor, soygunlar
+ * gün içinde herhangi bir saatte olabiliyor) anlatır — tıpkı piyango/
+ * şampiyona kazananının da "gece 00:00'da açıklanan DÜNÜN çekilişi"
+ * olması gibi (bkz. useLottery/useChampionshipDaily, onlar zaten aynı
+ * mantıkla "yesterday" alanı döner). Yani gece 00:00'da gazete "basılır"
+ * ve o andan itibaren gün boyu DÜNÜN özetini gösterir; bugün olan yeni
+ * bir maç/soygun ancak YARININ gazetesinde çıkar.
  */
 export function useNewspaper() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const todayKey = istanbulDateKey(0);
+  const editionDateKey = istanbulDateKey(-1); // dünün tarihi — gazetenin içeriği bu güne ait
 
   useEffect(() => {
     setLoading(true);
     const q = query(
       collection(db, 'newsEvents'),
-      where('dateKey', '==', todayKey),
+      where('dateKey', '==', editionDateKey),
       orderBy('createdAt', 'desc'),
       limit(EVENTS_LIMIT)
     );
@@ -46,7 +49,7 @@ export function useNewspaper() {
     );
     return unsubscribe;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [todayKey]);
+  }, [editionDateKey]);
 
-  return { events, todayKey, loading };
+  return { events, editionDateKey, loading };
 }

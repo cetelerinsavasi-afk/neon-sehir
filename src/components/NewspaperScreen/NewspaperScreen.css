@@ -65,13 +65,28 @@
   padding: 10px 0;
 }
 
-.newspaper-columns {
+.newspaper-stack {
   display: flex;
   flex-direction: column;
 }
 
-.newspaper-columns .newspaper-section:first-child {
+.newspaper-stack .newspaper-section:first-child {
   border-top: none;
+}
+
+.newspaper-bottom-row {
+  display: flex;
+  gap: 14px;
+  border-top: 3px double var(--news-ink);
+  margin-top: 4px;
+  padding-top: 8px;
+}
+
+.newspaper-bottom-col {
+  flex: 1;
+  min-width: 0;
+  border-top: none;
+  padding: 0;
 }
 
 .newspaper-section-title {
