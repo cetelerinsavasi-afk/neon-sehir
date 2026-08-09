@@ -149,7 +149,7 @@ export function useLocalRace(room, myUid) {
       useNitro: s.me.nitroActive,
       useTurbo: false,
     });
-    s.me = result.updated;
+    s.me = { ...result.updated, turnsUsed: s.turnsUsed + 1 };
     s.turnsUsed += 1;
 
     if (room.isChampionship) {
@@ -198,7 +198,7 @@ export function useLocalRace(room, myUid) {
     };
     try {
       const result = performRoll({ ...s.me, nitroActive: prevNitro }, { useNitro: false, useTurbo: true });
-      s.me = result.updated;
+      s.me = { ...result.updated, turnsUsed: s.turnsUsed + 1 };
       s.turnsUsed += 1;
       if (room.isChampionship) {
         if (result.updated.finished) {
