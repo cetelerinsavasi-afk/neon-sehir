@@ -16,9 +16,19 @@ const CARDS = [
 // artık App.jsx seviyesinde (RaceFullScreen ile) yönetiliyor — bu bileşen
 // SADECE lobiyi gösterir. Oda kurulur/katılınır katılınmaz onEnterRace
 // çağrılıp App.jsx'e devrediliyor.
-export default function RaceTrackScreen({ onEnterRace }) {
+// initialSelected/onModeChange — kullanıcı revizesi: "şampiyonadan
+// çıkınca direkt yarış ana ekranına değil, şampiyona lobisine dönsün".
+// Hangi lobide olduğumuzu (championship/bet/training) App.jsx seviyesinde
+// hatırlıyoruz (bkz. GameShell içindeki raceLobbyMode) — yarıştan
+// çıkılıp bu ekran yeniden açıldığında kaldığımız lobide devam ediyoruz.
+export default function RaceTrackScreen({ onEnterRace, initialSelected = null, onModeChange }) {
   const { user } = useAuth();
-  const [selected, setSelected] = useState(null);
+  const [selected, setSelectedState] = useState(initialSelected);
+
+  const setSelected = (value) => {
+    setSelectedState(value);
+    onModeChange?.(value);
+  };
 
   // Kullanıcı yarış sekmesine girer girmez (henüz oda bile kurmadan)
   // ortak yarış Cloud Function'ını ısıtmaya başlıyoruz — bkz.

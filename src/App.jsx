@@ -52,6 +52,12 @@ function GameShell() {
   const [heistTarget, setHeistTarget] = useState(undefined); // undefined=kapalı, null=açık/hedefsiz
   const [activeRaceRoomId, setActiveRaceRoomId] = useState(null);
   const [raceExpanded, setRaceExpanded] = useState(false);
+  // raceLobbyMode — kullanıcı revizesi: "şampiyonadan/antrenmandan/
+  // bahisli yarıştan çıkınca, yarışın genel ana ekranına değil, hangi
+  // lobiden girdiysek ORAYA dönelim". RaceTrackScreen hangi kartı
+  // (championship/bet/training) seçtiğimizi buraya bildiriyor, oda
+  // kapanınca (bkz. RaceFullScreen onExit) aynı lobiyle tekrar açıyoruz.
+  const [raceLobbyMode, setRaceLobbyMode] = useState(null);
   const [activeTableId, setActiveTableId] = useState(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [futbolOpen, setFutbolOpen] = useState(false);
@@ -173,6 +179,8 @@ function GameShell() {
         onOpenHeist={openHeistScreen}
         onEnterRace={openRace}
         onEnterTable={openTable}
+        raceLobbyMode={raceLobbyMode}
+        onRaceModeChange={setRaceLobbyMode}
       />
 
       {heistTarget !== undefined && (
