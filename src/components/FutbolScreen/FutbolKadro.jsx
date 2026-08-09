@@ -161,29 +161,32 @@ export default function FutbolKadro({ team }) {
 
       <div className="futbol-pitch-big">
         {ROW_ORDER.map((pos) => (
-          <div key={pos} className="futbol-pitch-row">
-            {(slots[pos] || []).map((playerId, idx) => {
-              const player = playerId ? playersById[playerId] : null;
-              return (
-                <button
-                  key={idx}
-                  className="futbol-pitch-slot"
-                  onClick={() => setPickerFor({ position: pos, slotIndex: idx })}
-                >
-                  <FutbolPlayerAvatar playerId={playerId || `${pos}-${idx}-empty`} position={pos} size={46} />
-                  {player ? (
-                    <span className="futbol-pitch-slot-info">
-                      <strong>{player.name.split(' ')[0]}</strong>
-                      {player.age}y · {player.power.toFixed(0)}g · {Math.round(player.form)}f
-                    </span>
-                  ) : (
-                    <span className="futbol-pitch-slot-info futbol-pitch-slot-empty">
-                      {POSITION_LABELS[pos]} seç
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+          <div key={pos} className="futbol-pitch-row-wrap">
+            <p className="futbol-pitch-row-label">{POSITION_LABELS[pos]}</p>
+            <div className="futbol-pitch-row">
+              {(slots[pos] || []).map((playerId, idx) => {
+                const player = playerId ? playersById[playerId] : null;
+                return (
+                  <button
+                    key={idx}
+                    className="futbol-pitch-slot"
+                    onClick={() => setPickerFor({ position: pos, slotIndex: idx })}
+                  >
+                    <FutbolPlayerAvatar playerId={playerId || `${pos}-${idx}-empty`} position={pos} size={46} />
+                    {player ? (
+                      <span className="futbol-pitch-slot-info">
+                        <strong>{player.name.split(' ')[0]}</strong>
+                        {player.age}y · {player.power.toFixed(0)}g · {Math.round(player.form)}f
+                      </span>
+                    ) : (
+                      <span className="futbol-pitch-slot-info futbol-pitch-slot-empty">
+                        {POSITION_LABELS[pos]} seç
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         ))}
       </div>

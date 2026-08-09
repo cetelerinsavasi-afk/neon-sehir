@@ -16,11 +16,11 @@ import FutbolKadro from './FutbolKadro';
 import FutbolTransfer from './FutbolTransfer';
 import FutbolLogoEditor from './FutbolLogoEditor';
 import FutbolAltyapi from './FutbolAltyapi';
+import { groupFutbolPlayersByPositionOrdered } from './futbolPositionOrder';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import ConfirmModal from '../ConfirmModal/ConfirmModal';
 import './FutbolTakimim.css';
 
-const POSITION_LABELS = { GK: 'Kaleci', DEF: 'Defans', MID: 'Orta Saha', FWD: 'Forvet' };
 const CLUB_PRICE_QUICK_AMOUNTS = [100, 1000, 10000, 100000, { value: 1000000, label: '1M' }];
 
 function initialsFromName(name) {
@@ -264,17 +264,37 @@ function MyTeamOverview({ team }) {
       )}
 
       <p className="futbol-kadro-section-title">Kadromuz ({players.length})</p>
+      <p className="futbol-placeholder">
+        🟢 Kadroda = ilk 11'de, satılamaz · 🟡 Antrenmanda = o gün maça çıkamaz, satılamaz · ⚪
+        Boşta = satabilirsin
+      </p>
       <div className="futbol-roster-list">
-        {players.map((p) => (
-          <div key={p.id} className="futbol-roster-row">
-            <FutbolPlayerAvatar playerId={p.id} position={p.position} size={38} />
-            <div className="futbol-roster-info">
-              <p className="futbol-transfer-name">{p.name}</p>
-              <p className="futbol-buy-meta">{POSITION_LABELS[p.position]}</p>
-            </div>
-            <p className="futbol-buy-meta futbol-roster-stats">
-              {p.age} yaş · {p.power.toFixed(1)} güç · {Math.round(p.form)}% form
-            </p>
+        {groupFutbolPlayersByPositionOrdered(players).map((group) => (
+          <div key={group.position} className="futbol-transfer-position-group">
+            <p className="futbol-transfer-group-header">{group.label}</p>
+            {group.players.map((p) => {
+              const lineup = team.lineup || [];
+              const trainingIds = team.trainingPlayerIds || [];
+              const inLineup = lineup.includes(p.id);
+              const inTraining = trainingIds.includes(p.id);
+              const status = inLineup
+                ? { label: '🟢 Kadroda', cls: 'lineup' }
+                : inTraining
+                  ? { label: '🟡 Antrenmanda', cls: 'training' }
+                  : { label: '⚪ Boşta', cls: 'idle' };
+              return (
+                <div key={p.id} className="futbol-roster-row">
+                  <FutbolPlayerAvatar playerId={p.id} position={p.position} size={38} />
+                  <div className="futbol-roster-info">
+                    <p className="futbol-transfer-name">{p.name}</p>
+                    <p className="futbol-buy-meta">
+                      {p.age} yaş · {p.power.toFixed(1)} güç · {Math.round(p.form)}% form
+                    </p>
+                  </div>
+                  <span className={`futbol-roster-status ${status.cls}`}>{status.label}</span>
+                </div>
+              );
+            })}
           </div>
         ))}
       </div>

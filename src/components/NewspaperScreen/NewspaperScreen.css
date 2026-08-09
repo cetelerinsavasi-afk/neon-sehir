@@ -1,0 +1,226 @@
+.newspaper {
+  --news-paper: #f3ecd9;
+  --news-paper-edge: #e7ddc3;
+  --news-ink: #1c1a15;
+  --news-ink-dim: #5a5344;
+  --news-rule: #1c1a15;
+  --news-red: #8c1c1c;
+  background: var(--news-paper);
+  background-image: radial-gradient(rgba(0, 0, 0, 0.04) 1px, transparent 1px);
+  background-size: 3px 3px;
+  color: var(--news-ink);
+  font-family: 'Georgia', 'Times New Roman', serif;
+  padding: 16px 14px 28px;
+  min-height: 100%;
+  border-radius: 6px;
+}
+
+.newspaper-masthead {
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.newspaper-title {
+  font-family: 'Georgia', 'Times New Roman', serif;
+  font-weight: 900;
+  font-size: 28px;
+  letter-spacing: 0.04em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.newspaper-date {
+  margin: 2px 0 8px;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--news-ink-dim);
+  text-transform: capitalize;
+}
+
+.newspaper-rule {
+  height: 3px;
+  background: var(--news-rule);
+  background-image: linear-gradient(var(--news-rule), var(--news-rule)),
+    linear-gradient(var(--news-rule), var(--news-rule));
+  position: relative;
+}
+
+.newspaper-rule::after {
+  content: '';
+  display: block;
+  height: 1px;
+  margin-top: 3px;
+  background: var(--news-rule);
+}
+
+.newspaper-loading {
+  text-align: center;
+  font-style: italic;
+  color: var(--news-ink-dim);
+  padding: 20px 0;
+}
+
+.newspaper-section {
+  border-top: 1px solid rgba(28, 26, 21, 0.25);
+  padding: 10px 0;
+}
+
+.newspaper-columns {
+  display: flex;
+  flex-direction: column;
+}
+
+.newspaper-columns .newspaper-section:first-child {
+  border-top: none;
+}
+
+.newspaper-section-title {
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin: 0 0 6px;
+  border-bottom: 2px solid var(--news-ink);
+  padding-bottom: 4px;
+  display: inline-block;
+}
+
+.newspaper-body {
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0 0 6px;
+}
+
+.newspaper-muted {
+  color: var(--news-ink-dim);
+  font-style: italic;
+}
+
+.newspaper-small {
+  font-size: 11px;
+}
+
+.newspaper-headline {
+  border: 2px solid var(--news-ink);
+  padding: 12px;
+  margin-bottom: 4px;
+  background: rgba(140, 28, 28, 0.05);
+}
+
+.newspaper-headline-title {
+  font-size: 20px;
+  font-weight: 900;
+  text-align: center;
+  margin: 0 0 8px;
+  color: var(--news-red);
+  text-transform: uppercase;
+}
+
+.newspaper-headline-body p {
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0 0 6px;
+  text-align: center;
+}
+
+.news-price-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.news-price-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.news-price-label {
+  font-weight: 700;
+  min-width: 78px;
+}
+
+.news-price-values {
+  flex: 1;
+  color: var(--news-ink-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.news-price-change {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.news-price-change.up {
+  color: #2f6b2f;
+}
+
+.news-price-change.down {
+  color: var(--news-red);
+}
+
+.newspaper-football {
+  border-top: 1px solid rgba(28, 26, 21, 0.25);
+}
+
+.newspaper-match-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.newspaper-match-row {
+  padding-bottom: 8px;
+  border-bottom: 1px dashed rgba(28, 26, 21, 0.3);
+}
+
+.newspaper-match-row:last-child {
+  border-bottom: none;
+}
+
+.newspaper-match-score-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.newspaper-match-team {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.newspaper-match-team:last-of-type {
+  text-align: right;
+}
+
+.newspaper-match-score {
+  font-size: 15px;
+  font-weight: 900;
+  white-space: nowrap;
+  padding: 0 4px;
+}
+
+.newspaper-match-comment {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--news-ink-dim);
+}
+
+.newspaper-footer {
+  margin-top: 14px;
+  text-align: center;
+  font-size: 10px;
+  font-style: italic;
+  color: var(--news-ink-dim);
+  border-top: 1px solid rgba(28, 26, 21, 0.25);
+  padding-top: 8px;
+}

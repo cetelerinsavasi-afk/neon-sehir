@@ -249,6 +249,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // newsEvents/{eventId} — Faz Gazete: gün içinde olan (soygun/
+    // tutuklama/futbol/sezon sonu) olayların anonimleştirilmiş özeti.
+    // Herkes okuyabilir; yazma sadece Cloud Functions ile.
+    match /newsEvents/{eventId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
     // Tanımlanmamış her şey varsayılan olarak kapalı.
     match /{document=**} {
       allow read, write: if false;

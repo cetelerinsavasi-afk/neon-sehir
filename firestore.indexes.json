@@ -15,6 +15,14 @@
         { "fieldPath": "playerId", "order": "ASCENDING" },
         { "fieldPath": "refillAt", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "newsEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "dateKey", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [

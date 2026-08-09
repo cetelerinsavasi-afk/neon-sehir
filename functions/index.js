@@ -119,6 +119,28 @@ function istanbulDateKey(date = new Date()) {
   }).format(date);
 }
 
+// logNewsEvent — kullanıcı revizesi: telefonda bir "gazete" olsun, gün
+// içinde olan biten (soygun, tutuklama, futbol sonuçları, sezon sonu vb.)
+// haber olarak gözüksün. Bu fonksiyon, olay gerçekleştiği anda kısa/
+// ANONİM (kimlik açıklamayan) bir özet yazıyor — piyango ve şampiyona
+// zaten kendi koleksiyonlarında (lottery/championshipDaily) yeterince
+// veri tuttuğu için onlar için ayrıca log YOK, sadece Faz Newspaper
+// ekranı doğrudan o koleksiyonlardan okuyor. Hata olursa (log yazımı
+// başarısız olursa) oyunun asıl akışını ASLA bozmasın diye best-effort/
+// sessiz.
+async function logNewsEvent(type, payload = {}) {
+  try {
+    await db.collection('newsEvents').add({
+      type,
+      dateKey: istanbulDateKey(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      ...payload,
+    });
+  } catch (err) {
+    console.error('logNewsEvent hata:', type, err);
+  }
+}
+
 // istanbulPrayerWindow — günü 5 "vakite" böler (kullanıcı revizesi):
 // 1: 00-12, 2: 12-15, 3: 15-18, 4: 18-21, 5: 21-24. Camii'de günde 5 kez
 // ibadet edilebilir, her vakitte bir kez.
@@ -3000,6 +3022,9 @@ export const attemptHeist = onCall(async (request) => {
 
   if (result.caught) {
     await sendCaptureSms(uid, result.reward, result.newTotalDebt);
+    await logNewsEvent('arrest', { count: 1, totalFine: result.reward });
+  } else {
+    await logNewsEvent('heist_success', { target, amount: result.reward });
   }
 
   return { ok: true, ...result };
@@ -3724,6 +3749,16 @@ export const executeHeistPlan = onCall(async (request) => {
         })
     )
   );
+
+  // Gazete haberi — kimlik açıklamadan sadece SONUCU kaydediyoruz.
+  if (caughtBySuspicion) {
+    const totalFine = captureSmsList.reduce((sum, c) => sum + c.penaltyAmount, 0);
+    await logNewsEvent('arrest', { count: captureSmsList.length, totalFine });
+  } else if (busted) {
+    await logNewsEvent('heist_stopped_by_police', { target: plan.target });
+  } else {
+    await logNewsEvent('heist_success', { target: plan.target, amount: totalReward });
+  }
 
   return { ok: true, started: true, busted, caughtBySuspicion, totalReward };
 });
@@ -7404,6 +7439,18 @@ async function applyFutbolMatchResult(matchId) {
   }
 
   await batch.commit();
+
+  // Gazete haberi — maç sonucu, logolarla birlikte (kimlik gizliliği
+  // gerektirmiyor, takım isimleri zaten herkese açık).
+  await logNewsEvent('football_match', {
+    leagueId: match.leagueId,
+    homeName,
+    awayName,
+    homeLogo: homeTeamSnap.data().logo || null,
+    awayLogo: awayTeamSnap.data().logo || null,
+    homeScore,
+    awayScore,
+  });
 }
 
 // Sezon bitince: ödüller (sahibi olan takımlara), terfi/küme düşme
@@ -7427,6 +7474,9 @@ async function finishFutbolSeason(leagueIds) {
 
   // 1) Ödüller + terfi/küme düşme ataması tek batch'te.
   const promoRelegateBatch = db.batch();
+  const topThree = []; // sadece 1. Lig — şampiyon/2./3.
+  const promotions = []; // { teamName, fromTier, toTier }
+  const relegations = []; // { teamName, fromTier, toTier }
   leagueData.forEach(({ league, teams }, idx) => {
     const isTopTier = idx === 0;
     teams.forEach((team, rank) => {
@@ -7434,6 +7484,9 @@ async function finishFutbolSeason(leagueIds) {
       if (isTopTier && rank === 0) reward = FUTBOL_SEASON_REWARDS.champion;
       else if (isTopTier && (rank === 1 || rank === 2)) reward = FUTBOL_SEASON_REWARDS.secondThird;
       else if (!isTopTier && rank < 2) reward = FUTBOL_SEASON_REWARDS.promoted;
+      if (isTopTier && rank < 3) {
+        topThree.push({ rank: rank + 1, teamName: team.name, logo: team.logo || null });
+      }
       if (team.ownerUid) {
         promoRelegateBatch.update(db.collection('users').doc(team.ownerUid), {
           gold: admin.firestore.FieldValue.increment(reward),
@@ -7453,15 +7506,21 @@ async function finishFutbolSeason(leagueIds) {
         leagueId: upper.league.id,
         tier: upper.league.tier,
       });
+      promotions.push({ teamName: t.name, fromTier: lower.league.tier, toTier: upper.league.tier });
     });
     upper.teams.slice(-2).forEach((t) => {
       promoRelegateBatch.update(db.collection('futbolTeams').doc(t.id), {
         leagueId: lower.league.id,
         tier: lower.league.tier,
       });
+      relegations.push({ teamName: t.name, fromTier: upper.league.tier, toTier: lower.league.tier });
     });
   }
   await promoRelegateBatch.commit();
+
+  // Gazete haberi — sezonun bittiğini duyuran özet (şampiyon/2./3. +
+  // terfi/küme düşme listesi).
+  await logNewsEvent('football_season_end', { topThree, promotions, relegations });
 
   // 2) Yeni takım listeleriyle: istatistik sıfırlama + yeni sezon fikstürü.
   //    Önceki sezonun maçları SİLİNİYOR — yoksa fikstür/maçlar koleksiyonu
@@ -7654,6 +7713,17 @@ async function cleanupOldFutbolGrowthLogs() {
   await batch.commit();
 }
 
+// cleanupOldNewsEvents — Gazete sadece bugünü/son birkaç günü gösteriyor,
+// koleksiyon sınırsız büyümesin diye 5 günden eski haberleri temizler.
+async function cleanupOldNewsEvents() {
+  const cutoff = admin.firestore.Timestamp.fromMillis(Date.now() - 5 * 24 * 60 * 60 * 1000);
+  const oldSnap = await db.collection('newsEvents').where('createdAt', '<', cutoff).limit(400).get();
+  if (oldSnap.empty) return;
+  const batch = db.batch();
+  oldSnap.docs.forEach((d) => batch.delete(d.ref));
+  await batch.commit();
+}
+
 // pickFutbolBotTrainingIds — bir bot takımının o günkü antrenman
 // seçimini belirler (kullanıcı promptu): kadroya (o günkü otomatik ilk
 // 11'e) girmeyen oyuncular arasından, formu 100 olanlar öncelikli, formu
@@ -7792,6 +7862,7 @@ export const resolveFutbolMatchdayReveal = onSchedule(
     await resolveFutbolTrainingForAllTeams();
     await assignFutbolBotTraining();
     await cleanupOldFutbolGrowthLogs();
+    await cleanupOldNewsEvents();
   }
 );
 

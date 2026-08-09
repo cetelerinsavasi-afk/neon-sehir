@@ -5,6 +5,7 @@ import BankScreen from '../BankScreen/BankScreen';
 import AmazorScreen from '../AmazorScreen/AmazorScreen';
 import ChatsAppScreen from '../ChatsAppScreen/ChatsAppScreen';
 import CasinoScreen from '../CasinoScreen/CasinoScreen';
+import NewspaperScreen from '../NewspaperScreen/NewspaperScreen';
 import InstallAppButton from '../InstallAppButton/InstallAppButton';
 import { useMessages } from '../../hooks/useMessages';
 import { usePlayer } from '../../hooks/usePlayer';
@@ -18,6 +19,7 @@ const APPS = [
   { id: 'amazor', label: 'A', note: 'Amazor Market', enabled: true },
   { id: 'chatsapp', label: '💬', note: 'ChatsApp', enabled: true },
   { id: 'casino', label: '🎰', note: 'Casino', enabled: true },
+  { id: 'gazete', label: '📰', note: 'Gazete', enabled: true },
 ];
 
 const APP_TITLES = {
@@ -27,6 +29,7 @@ const APP_TITLES = {
   amazor: 'Amazor Market',
   chatsapp: 'ChatsApp',
   casino: 'Casino',
+  gazete: 'Neon Şehir Gazetesi',
 };
 
 export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }) {
@@ -70,6 +73,7 @@ export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }
               }}
             />
           )}
+          {openApp === 'gazete' && <NewspaperScreen />}
         </div>
       </div>
     );
