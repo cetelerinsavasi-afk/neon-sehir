@@ -31,6 +31,24 @@ function ChangeBadge({ pct }) {
   );
 }
 
+// PnlBadge — kullanıcı revizesi: "faize/yatırımlara koyduğumuz paranın
+// bize ne kadar kâr/zarar ettirdiğini anlık görelim". currentValue ve
+// costBasis'ten (anaparadan) hesaplanan kâr/zarar; costBasis 0 ise (hiç
+// yatırım yok / tamamen çekilmiş) hiçbir şey göstermez.
+function PnlBadge({ currentValue, costBasis }) {
+  if (!costBasis || costBasis <= 0) return null;
+  const diff = Math.round(currentValue - costBasis);
+  const pct = costBasis > 0 ? (diff / costBasis) * 100 : 0;
+  const positive = diff >= 0;
+  return (
+    <span className={`bank-pnl-badge ${positive ? 'up' : 'down'}`}>
+      {positive ? '▲' : '▼'} {positive ? '+' : ''}
+      {diff.toLocaleString('tr-TR')} altın ({positive ? '+' : ''}
+      {pct.toFixed(1)}%)
+    </span>
+  );
+}
+
 // Al/Sat butonlu, tıklanınca altta ilgili işlemin girdi paneli açılan
 // aksiyon bileşeni. Panel boş bir kutu yerine buton bazlı bir miktar
 // seçiciyle (QuantityStepper) açılır. Oyuncular "Onayla" butonunu fark
@@ -123,9 +141,13 @@ function TradeToggle({
 
 function InvestmentsTab({ player, prices, busy, error, run }) {
   const bankBalance = player?.bankBalance ?? 0;
+  const bankCostBasis = player?.bankCostBasis ?? 0;
   const diamondHoldings = player?.diamondHoldings ?? 0;
   const stockHoldings = player?.stockHoldings ?? 0;
   const cryptoHoldings = player?.cryptoHoldings ?? 0;
+  const diamondCostBasis = player?.diamondCostBasis ?? 0;
+  const stockCostBasis = player?.stockCostBasis ?? 0;
+  const cryptoCostBasis = player?.cryptoCostBasis ?? 0;
   const { history } = useInvestmentHistory();
   const diamondPoints = history.map((h) => h.diamondPrice).filter((v) => v !== undefined);
   const stockPoints = history.map((h) => h.stockPrice).filter((v) => v !== undefined);
@@ -152,6 +174,7 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
           <strong className="bank-highlight">{bankBalance.toLocaleString('tr-TR')}</strong>
         </div>
         <p className="bank-hint">Faizdeki altının her gün %1 faiz kazandırır.</p>
+        <PnlBadge currentValue={bankBalance} costBasis={bankCostBasis} />
         <TradeToggle
           buyLabel="Yatır"
           sellLabel="Çek"
@@ -181,6 +204,7 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
             altın değerinde)
           </strong>
         </div>
+        <PnlBadge currentValue={diamondValue} costBasis={diamondCostBasis} />
         <TradeToggle
           buyLabel="Al"
           sellLabel="Sat"
@@ -220,6 +244,7 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
             değerinde)
           </strong>
         </div>
+        <PnlBadge currentValue={stockValue} costBasis={stockCostBasis} />
         <TradeToggle
           buyLabel="Al"
           sellLabel="Sat"
@@ -259,6 +284,7 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
             değerinde)
           </strong>
         </div>
+        <PnlBadge currentValue={cryptoValue} costBasis={cryptoCostBasis} />
         <TradeToggle
           buyLabel="Al"
           sellLabel="Sat"

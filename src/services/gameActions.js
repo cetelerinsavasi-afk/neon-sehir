@@ -270,11 +270,13 @@ export const createTrainingRace = (vehicleId, level) =>
 export const createChampionshipRace = (vehicleId) =>
   raceHub('createChampionshipRace', { vehicleId });
 
-export const championshipRollDice = (roomId, useNitro, useTurbo) =>
-  raceHub('championshipRollDice', { roomId, useNitro, useTurbo });
-
-export const trainingRollDice = (roomId, useNitro, useTurbo) =>
-  raceHub('trainingRollDice', { roomId, useNitro, useTurbo });
+// NOT (mimari değişikliği — bkz. src/hooks/useLocalRace.js): antrenman ve
+// şampiyona artık zar/vites/nitro/benzin mekaniğinin TAMAMINI istemcide
+// çalıştırıyor, sunucuya tur başına hiç istek gitmiyor. finishSoloRace,
+// yarış bitince (kazanınca/benzin bitince) TEK SEFERLİK çağrılıp sonucu
+// sunucuya bildiren fonksiyon — ödül/liderlik tablosu gibi gerçek
+// ekonomik etkisi olan her şey hâlâ sunucuda karara bağlanıyor.
+export const finishSoloRace = (payload) => raceHub('finishSoloRace', payload);
 
 export const raceRefuel = (roomId) => raceHub('raceRefuel', { roomId });
 

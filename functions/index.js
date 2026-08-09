@@ -1999,6 +1999,12 @@ export const depositToBank = onCall(async (request) => {
     tx.update(userRef, {
       gold: admin.firestore.FieldValue.increment(-amt),
       bankBalance: admin.firestore.FieldValue.increment(amt),
+      // bankCostBasis — kullanıcı revizesi: "faizdeki paranın bize ne
+      // kadar kâr/zarar ettirdiğini anlık görelim" — yatırdığımız
+      // TOPLAM anaparayı ayrıca tutuyoruz (faiz bunu artırmaz, sadece
+      // yatırma artırır) ki bankBalance - bankCostBasis her an net kâr
+      // olsun.
+      bankCostBasis: admin.firestore.FieldValue.increment(amt),
     });
   });
   return { ok: true };
@@ -2017,10 +2023,18 @@ export const withdrawFromBank = onCall(async (request) => {
     if (!user || (user.bankBalance || 0) < amt) {
       throw new HttpsError('failed-precondition', 'Yetersiz banka bakiyesi.');
     }
-    tx.update(userRef, {
+    const updates = {
       gold: admin.firestore.FieldValue.increment(amt),
       bankBalance: admin.firestore.FieldValue.increment(-amt),
-    });
+    };
+    // Kullanıcı revizesi: "parayı TAMAMEN çektiğimizde (kâr/zarar
+    // sayacı) sıfırlansın, çekmediğimiz sürece aynı şekilde devam
+    // etsin". Yani kısmi çekimlerde anapara takibini DEĞİŞTİRMİYORUZ —
+    // sadece bakiye tamamen boşalınca (0'a inince) sıfırlıyoruz.
+    if ((user.bankBalance || 0) - amt <= 0) {
+      updates.bankCostBasis = 0;
+    }
+    tx.update(userRef, updates);
   });
   return { ok: true };
 });
@@ -2038,6 +2052,17 @@ const INVESTMENT_HOLDINGS_FIELD = {
   stock: 'stockHoldings',
   crypto: 'cryptoHoldings',
 };
+// INVESTMENT_COST_BASIS_FIELD — kullanıcı revizesi: yatırımların (elmas/
+// hisse/kripto) anlık kâr/zararını görebilmek için, o varlığa o ana
+// kadar yatırılmış TOPLAM altını (anaparayı) ayrıca tutuyoruz. Kâr/zarar
+// = güncel değer - bu alan. Varlık TAMAMEN satılınca (0'a inince)
+// sıfırlanır, kısmi satışta değişmez (bkz. depositToBank/withdrawFromBank
+// üzerindeki aynı mantığın notu).
+const INVESTMENT_COST_BASIS_FIELD = {
+  diamond: 'diamondCostBasis',
+  stock: 'stockCostBasis',
+  crypto: 'cryptoCostBasis',
+};
 
 export const buyInvestment = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -2054,6 +2079,7 @@ export const buyInvestment = onCall(async (request) => {
   const unitPrice = prices[INVESTMENT_PRICE_FIELD[assetType]];
   const units = goldAmount / unitPrice;
   const holdingsField = INVESTMENT_HOLDINGS_FIELD[assetType];
+  const costBasisField = INVESTMENT_COST_BASIS_FIELD[assetType];
 
   const userRef = db.collection('users').doc(uid);
   await db.runTransaction(async (tx) => {
@@ -2065,6 +2091,7 @@ export const buyInvestment = onCall(async (request) => {
     tx.update(userRef, {
       gold: admin.firestore.FieldValue.increment(-goldAmount),
       [holdingsField]: admin.firestore.FieldValue.increment(units),
+      [costBasisField]: admin.firestore.FieldValue.increment(goldAmount),
     });
   });
 
@@ -2084,6 +2111,7 @@ export const sellInvestment = onCall(async (request) => {
   const prices = await getCurrentPrices();
   const unitPrice = prices[INVESTMENT_PRICE_FIELD[assetType]];
   const holdingsField = INVESTMENT_HOLDINGS_FIELD[assetType];
+  const costBasisField = INVESTMENT_COST_BASIS_FIELD[assetType];
 
   const userRef = db.collection('users').doc(uid);
   let totalValue = 0;
@@ -2108,10 +2136,16 @@ export const sellInvestment = onCall(async (request) => {
     }
     totalValue = Math.floor(units * unitPrice);
 
-    tx.update(userRef, {
+    const updates = {
       gold: admin.firestore.FieldValue.increment(totalValue),
       [holdingsField]: admin.firestore.FieldValue.increment(-units),
-    });
+    };
+    // Tamamen (ya da neredeyse tamamen — kesirli yuvarlama payı) satıldıysa
+    // anapara takibini sıfırla; kısmi satışta dokunma.
+    if (have - units <= 1e-9) {
+      updates[costBasisField] = 0;
+    }
+    tx.update(userRef, updates);
   });
 
   return { ok: true, unitPrice, totalValue };
@@ -4986,6 +5020,13 @@ async function doCreateTrainingRace(request) {
     isTraining: true,
     trainingLevel: lvl,
     rewardProcessed: false,
+    // localMode — kullanıcı önerisi: botla antrenmanda sunucunun asıl işi
+    // sadece hakkı/aracı doğrulayıp odayı açmak; zar/vites/nitro/benzin
+    // mekaniği bundan sonra TAMAMEN istemcide çalışır (bkz.
+    // src/hooks/useLocalRace.js), sunucuya tur başına hiçbir istek gitmez.
+    // Bu bayrak istemciye "bu odada canlı dinlemeyi bırak, kendi simüle
+    // et" sinyalini verir.
+    localMode: true,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     players: {
       [uid]: freshRacePlayerState(user?.displayName || 'Oyuncu', vehicleId, vehicle),
@@ -5039,36 +5080,6 @@ async function processTrainingReward(roomId) {
       });
     }
   });
-}
-
-// trainingRollDice — insan kendi turunda bu fonksiyonu çağırır. Aynı çağrı
-// içinde, sıra bota geçtiyse botun hamlesi de HEMEN çözülür.
-// NOT (kullanıcı revizesi — loglarla KANITLANDI): burada eskiden "bot
-// robotik hissetmesin diye" 1 saniyelik YAPAY bir bekleme vardı
-// (setTimeout). Log analizi, antrenman turlarının HER SEFERİNDE tam
-// olarak bu kadar (1.2-1.3sn) sürdüğünü kesin olarak gösterdi — yani
-// kullanıcının "kasma" dediği şey ağ/sunucu sorunu değil, doğrudan bu
-// bilinçli gecikmeydi. Hız, "robotik hissetmeme" polisajından daha
-// öncelikli olduğu için TAMAMEN KALDIRILDI.
-async function doTrainingRollDice(request) {
-  const uid = requireAuth(request);
-  const { roomId, useNitro, useTurbo } = request.data || {};
-
-  const humanOutcome = await resolveRoll({ roomId, uid, useNitro, useTurbo });
-
-  const roomSnap = await db.collection('raceRooms').doc(roomId).get();
-  const room = roomSnap.data();
-  if (room?.status === 'racing' && room.currentTurnUid === 'bot') {
-    await resolveRoll({ roomId, uid: 'bot', useNitro: false, useTurbo: false });
-  }
-
-  const finalSnap = await db.collection('raceRooms').doc(roomId).get();
-  const finalRoom = finalSnap.data();
-  if (finalRoom?.status === 'finished' && finalRoom.isTraining) {
-    await processTrainingReward(roomId);
-  }
-
-  return { ok: true, humanOutcome };
 }
 
 // autoRoll — 10 saniyelik süre dolduğunda, odadaki herhangi bir katılımcının
@@ -5258,6 +5269,11 @@ async function doCreateChampionshipRace(request) {
       championshipCatalogId: catalogId,
       championshipDateKey: dateKey,
       rewardProcessed: true,
+      // localMode — bkz. doCreateTrainingRace'teki aynı isimli notun
+      // birebir aynısı: şampiyonada da rakip olmadığı için sunucunun tur
+      // başına araya girmesine gerek yok, sadece BAŞINDA (hak kontrolü)
+      // ve SONUNDA (liderlik tablosu — doFinishSoloRace) devrede.
+      localMode: true,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       players: {
         [uid]: {
@@ -5271,143 +5287,160 @@ async function doCreateChampionshipRace(request) {
   return { ok: true, roomId: roomRef.id };
 }
 
-// championshipRollDice — resolveRoll'un tek kişilik (rakipsiz) hali. Bitiş
-// çizgisini geçince yarış anında biter (kimseye "adalet turu" verilmez,
-// zaten rakip yok) ve o turda kaç zar attığı championshipDaily'de günün
-// (şu ana kadarki) lideriyle karşılaştırılır.
-async function doChampionshipRollDice(request) {
+
+// finishSoloRace — YEREL YARIŞ MİMARİSİ (kullanıcı önerisi — bkz. 4.
+// madde): antrenman ve şampiyona artık zar/vites/nitro/benzin
+// mekaniğinin TAMAMINI istemcide (src/lib/raceEngine.js +
+// src/hooks/useLocalRace.js) çalıştırıyor, sunucuya tur başına HİÇBİR
+// istek gitmiyor — bu yüzden cold-start/kuyruklama kaynaklı donmalar
+// (özellikle şampiyona başında ve botun hamlesi sırasında yaşananlar)
+// artık oluşamaz. Sunucunun görevi: (1) yarış başlarken araç/hak
+// kontrolü (doCreateTrainingRace/doCreateChampionshipRace, değişmedi)
+// ve (2) yarış bitince BURADA sonucu karara bağlamak. raceGold zaten
+// yarış dışına hiç çıkmıyor (bkz. finalizeRace yorumu) — bu yüzden
+// istemciden gelen ara pozisyon/benzin verilerine güvenmenin ekonomik
+// bir riski yok, sadece GÖSTERİM amaçlı, clamp'lenerek yazılıyor.
+// Şampiyonada turnsUsed'a (liderlik tablosunu etkilediği için) aracın
+// gerçek istatistiklerine göre teorik bir alt sınır kontrolü uygulanıyor
+// — tam bir RNG replay'i değil (bilinçli bir tercih), ama "1 turda
+// bitirdim" gibi imkânsız sonuçları eler.
+function cleanRacePlayer(incoming, fallback) {
+  const maxFuel = fallback.maxFuel || 0;
+  const maxGear = fallback.maxGear || 1;
+  return {
+    ...fallback,
+    position: clamp(Math.round(Number(incoming?.position) || 0), 0, RACE_TRACK_LENGTH),
+    fuel: clamp(Math.round(Number(incoming?.fuel) || 0), 0, maxFuel),
+    raceGold: Math.max(0, Math.round(Number(incoming?.raceGold) || 0)),
+    gear: clamp(Math.round(Number(incoming?.gear) || 1), 1, maxGear),
+    turboCount: clamp(Math.round(Number(incoming?.turboCount) || 0), 0, fallback.turboTotal || 0),
+    nitroActive: false,
+    hasRolledOnce: true,
+    finished: Boolean(incoming?.finished),
+    lostByFuel: Boolean(incoming?.lostByFuel),
+  };
+}
+
+async function doFinishSoloRace(request) {
   const uid = requireAuth(request);
-  const { roomId, useNitro, useTurbo } = request.data || {};
+  const { roomId, winnerUid, turnsUsed, outOfFuel, players } = request.data || {};
   const roomRef = db.collection('raceRooms').doc(roomId);
-  let outcome = null;
+
+  const roomSnap = await roomRef.get();
+  if (!roomSnap.exists) throw new HttpsError('failed-precondition', 'Oda bulunamadı.');
+  const room = roomSnap.data();
+  if (room.creatorUid !== uid) {
+    throw new HttpsError('failed-precondition', 'Bu oda size ait değil.');
+  }
+  if (!room.localMode || !(room.isTraining || room.isChampionship)) {
+    throw new HttpsError('failed-precondition', 'Bu oda yerel modda değil.');
+  }
+  if (room.status !== 'racing') {
+    return { ok: true, alreadyFinished: true };
+  }
+
+  const meIncoming = players?.[uid];
+  if (!meIncoming || typeof meIncoming !== 'object') {
+    throw new HttpsError('invalid-argument', 'Geçersiz sonuç verisi.');
+  }
+  const meClean = cleanRacePlayer(meIncoming, room.players[uid]);
+
+  if (room.isTraining) {
+    const botClean = players?.bot
+      ? cleanRacePlayer(players.bot, room.players.bot)
+      : room.players.bot;
+    const finalWinner = winnerUid === 'bot' ? 'bot' : winnerUid === 'draw' ? 'draw' : uid;
+    await roomRef.update({
+      status: 'finished',
+      winnerUid: finalWinner,
+      finishedAt: admin.firestore.FieldValue.serverTimestamp(),
+      [`players.${uid}`]: meClean,
+      'players.bot': botClean,
+    });
+    await processTrainingReward(roomId);
+    return { ok: true };
+  }
+
+  // --- Şampiyona ---
+  if (outOfFuel) {
+    await roomRef.update({
+      status: 'finished',
+      winnerUid: null,
+      championshipResult: 'fuel_out',
+      finishedAt: admin.firestore.FieldValue.serverTimestamp(),
+      [`players.${uid}`]: { ...meClean, lostByFuel: true },
+    });
+    return { ok: true };
+  }
+
+  const turns = Math.round(Number(turnsUsed));
+  if (!Number.isInteger(turns) || turns < 1 || turns > 300) {
+    throw new HttpsError('invalid-argument', 'Geçersiz tur sayısı.');
+  }
+
+  const me = room.players[uid];
+  const maxStepsPerTurn = (me.maxGear || 1) * 6 * 3 + (me.wheelBonus || 0); // x3 = kombo (nitro+turbo)
+  const theoreticalMinTurns = Math.max(1, Math.ceil(RACE_TRACK_LENGTH / Math.max(1, maxStepsPerTurn)));
+  if (turns < theoreticalMinTurns) {
+    throw new HttpsError('failed-precondition', 'Geçersiz sonuç.');
+  }
+
+  const champDailyRef = db
+    .collection('championshipDaily')
+    .doc(`${room.championshipCatalogId}_${room.championshipDateKey}`);
 
   await db.runTransaction(async (tx) => {
-    const roomSnap = await tx.get(roomRef);
-    if (!roomSnap.exists) throw new HttpsError('failed-precondition', 'Oda bulunamadı.');
-    const room = roomSnap.data();
-    if (!room.isChampionship) {
-      throw new HttpsError('failed-precondition', 'Bu bir şampiyona odası değil.');
-    }
-    if (room.status !== 'racing') {
-      throw new HttpsError('failed-precondition', 'Yarış aktif değil.');
-    }
-    if (room.creatorUid !== uid) {
-      throw new HttpsError('failed-precondition', 'Bu oda size ait değil.');
-    }
-    const me = requirePlayerInRoom(room, uid);
-
-    // Transaction kuralı: tüm okumalar yazmalardan önce.
-    const champDailyRef = db
-      .collection('championshipDaily')
-      .doc(`${room.championshipCatalogId}_${room.championshipDateKey}`);
     const champDailySnap = await tx.get(champDailyRef);
-
-    if (me.fuel <= 0) {
-      tx.update(roomRef, {
-        status: 'finished',
-        winnerUid: null,
-        championshipResult: 'fuel_out',
-        finishedAt: admin.firestore.FieldValue.serverTimestamp(),
-        [`players.${uid}`]: { ...me, lostByFuel: true },
-      });
-      outcome = { outOfFuel: true, raceOver: true };
-      return;
-    }
-
-    const { updated: meUpdated, stepSum, multiplier, movedSteps, goldEarned } = performRoll(me, {
-      useNitro,
-      useTurbo,
+    tx.update(roomRef, {
+      status: 'finished',
+      winnerUid: uid,
+      championshipResult: 'completed',
+      championshipTurns: turns,
+      finishedAt: admin.firestore.FieldValue.serverTimestamp(),
+      [`players.${uid}`]: { ...meClean, turnsUsed: turns, finished: true },
     });
-    const turnsUsed = (me.turnsUsed || 0) + 1;
-    meUpdated.turnsUsed = turnsUsed;
 
-    if (meUpdated.finished) {
-      tx.update(roomRef, {
-        status: 'finished',
-        winnerUid: uid,
-        championshipResult: 'completed',
-        championshipTurns: turnsUsed,
-        finishedAt: admin.firestore.FieldValue.serverTimestamp(),
-        [`players.${uid}`]: meUpdated,
-      });
-
-      const champDaily = champDailySnap.exists ? champDailySnap.data() : null;
-      if (!champDaily || !champDaily.leaderTurns || turnsUsed < champDaily.leaderTurns) {
-        // Yeni rekor: liste sıfırlanır, bu oyuncu tek (ilk) lider olur.
-        tx.set(
-          champDailyRef,
-          {
-            catalogId: room.championshipCatalogId,
-            dateKey: room.championshipDateKey,
-            leaderUid: uid,
-            leaderName: me.displayName,
-            leaderVehicleModel: me.vehicleModel,
-            leaderTurns: turnsUsed,
-            leaders: [{ uid, name: me.displayName, vehicleModel: me.vehicleModel }],
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
-      } else if (turnsUsed === champDaily.leaderTurns) {
-        // Aynı tur sayısıyla bitirdi: mevcut lider(ler)e eklenir, ödül
-        // bölünmeden hepsine gidecek. leaderUid/leaderName İLK bitiren
-        // kişide sabit kalır (dünün kazananında tek isim göstermek için).
-        const existingLeaders =
-          champDaily.leaders && champDaily.leaders.length
-            ? champDaily.leaders
-            : champDaily.leaderUid
-              ? [
-                  {
-                    uid: champDaily.leaderUid,
-                    name: champDaily.leaderName,
-                    vehicleModel: champDaily.leaderVehicleModel,
-                  },
-                ]
-              : [];
-        if (!existingLeaders.some((l) => l.uid === uid)) {
-          tx.update(champDailyRef, {
-            leaders: [...existingLeaders, { uid, name: me.displayName, vehicleModel: me.vehicleModel }],
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          });
-        }
+    const champDaily = champDailySnap.exists ? champDailySnap.data() : null;
+    const meName = me.displayName;
+    const meVehicle = me.vehicleModel;
+    if (!champDaily || !champDaily.leaderTurns || turns < champDaily.leaderTurns) {
+      tx.set(
+        champDailyRef,
+        {
+          catalogId: room.championshipCatalogId,
+          dateKey: room.championshipDateKey,
+          leaderUid: uid,
+          leaderName: meName,
+          leaderVehicleModel: meVehicle,
+          leaderTurns: turns,
+          leaders: [{ uid, name: meName, vehicleModel: meVehicle }],
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } else if (turns === champDaily.leaderTurns) {
+      const existingLeaders =
+        champDaily.leaders && champDaily.leaders.length
+          ? champDaily.leaders
+          : champDaily.leaderUid
+            ? [
+                {
+                  uid: champDaily.leaderUid,
+                  name: champDaily.leaderName,
+                  vehicleModel: champDaily.leaderVehicleModel,
+                },
+              ]
+            : [];
+      if (!existingLeaders.some((l) => l.uid === uid)) {
+        tx.update(champDailyRef, {
+          leaders: [...existingLeaders, { uid, name: meName, vehicleModel: meVehicle }],
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
       }
-
-      outcome = {
-        steps: movedSteps,
-        rolledSum: stepSum,
-        multiplier,
-        goldEarned,
-        raceOver: true,
-        finished: true,
-        turnsUsed,
-      };
-      return;
     }
-
-    if (meUpdated.fuel <= 0) {
-      tx.update(roomRef, {
-        status: 'finished',
-        winnerUid: null,
-        championshipResult: 'fuel_out',
-        finishedAt: admin.firestore.FieldValue.serverTimestamp(),
-        [`players.${uid}`]: { ...meUpdated, lostByFuel: true },
-      });
-      outcome = {
-        steps: movedSteps,
-        rolledSum: stepSum,
-        multiplier,
-        goldEarned,
-        outOfFuel: true,
-        raceOver: true,
-      };
-      return;
-    }
-
-    tx.update(roomRef, { [`players.${uid}`]: meUpdated });
-    outcome = { steps: movedSteps, rolledSum: stepSum, multiplier, goldEarned, raceOver: false };
   });
 
-  return { ok: true, ...outcome };
+  return { ok: true };
 }
 
 // raceHubAction — yukarıdaki 7 yarış aksiyonunun (rollDice, training,
@@ -5431,8 +5464,6 @@ export const raceHubAction = onCall({ cpu: 1, concurrency: 10 }, async (request)
       return { ok: true };
     case 'rollDice':
       return doRollDice(request);
-    case 'trainingRollDice':
-      return doTrainingRollDice(request);
     case 'autoRoll':
       return doAutoRoll(request);
     case 'raceRefuel':
@@ -5441,12 +5472,16 @@ export const raceHubAction = onCall({ cpu: 1, concurrency: 10 }, async (request)
       return doRaceBuyNitro(request);
     case 'raceChangeGear':
       return doRaceChangeGear(request);
-    case 'championshipRollDice':
-      return doChampionshipRollDice(request);
     case 'createTrainingRace':
       return doCreateTrainingRace(request);
     case 'createChampionshipRace':
       return doCreateChampionshipRace(request);
+    // finishSoloRace — kullanıcı önerisi (bkz. dosyanın üstündeki NOT):
+    // antrenman ve şampiyona artık TAMAMEN istemcide (src/lib/raceEngine.js
+    // + src/hooks/useLocalRace.js) simüle ediliyor, sunucuya tur başına
+    // hiç istek gitmiyor — sadece yarış bitince BURASI çağrılıyor.
+    case 'finishSoloRace':
+      return doFinishSoloRace(request);
     default:
       throw new HttpsError('invalid-argument', 'Geçersiz aksiyon.');
   }
@@ -6661,16 +6696,69 @@ const FUTBOL_TEAM_NAME_POOL = [
   'Alev Spor', 'Fırtına FK', 'Yeşil Vadi SK', 'Kızıl Şahin',
 ];
 
+// Kullanıcı revizesi: "isimler ful benzer, birçoğu aynı" — eski havuz
+// 24 ad × 20 soyad (480 kombinasyon) idi, büyük bir ligler arası
+// evrende çok hızlı tekrar ediyordu. Havuzu ciddi genişlettik VE
+// (kullanıcının istediği gibi) gerçek/ünlü futbolcu isimlerinden oluşan
+// ayrı bir havuz ekledik — randomFutbolPlayerName() ikisini karıştırıyor.
 const FUTBOL_FIRST_NAMES = [
   'Emre', 'Burak', 'Kaan', 'Deniz', 'Onur', 'Mert', 'Barış', 'Cem',
   'Serkan', 'Volkan', 'Uğur', 'Berk', 'Tolga', 'Ozan', 'Kerem', 'Tarık',
   'Yusuf', 'Eren', 'Arda', 'Furkan', 'Cenk', 'Hakan', 'Selim', 'Kağan',
+  'Mustafa', 'Ahmet', 'Mehmet', 'Ali', 'Murat', 'Serhat', 'Gökhan', 'Caner',
+  'Umut', 'İlker', 'Batuhan', 'Efe', 'Alper', 'Sinan', 'Baran', 'Kemal',
+  'Orkun', 'Yiğit', 'Doruk', 'Poyraz', 'Atakan', 'Bora', 'Çağatay', 'Ege',
+  'Fatih', 'Halil', 'İbrahim', 'Recep', 'Şükrü', 'Taner', 'Ufuk', 'Vedat',
+  'Yavuz', 'Zeki', 'Adem', 'Bilal', 'Coşkun', 'Doğukan', 'Erhan', 'Faruk',
 ];
 const FUTBOL_LAST_NAMES = [
   'Yıldırım', 'Kaya', 'Demir', 'Şahin', 'Aydın', 'Öztürk', 'Çelik',
   'Aksoy', 'Doğan', 'Arslan', 'Koç', 'Polat', 'Yalçın', 'Ergün', 'Bulut',
   'Kurt', 'Özdemir', 'Tekin', 'Güneş', 'Karaca',
+  'Aktaş', 'Avcı', 'Bozkurt', 'Ceylan', 'Çakır', 'Duman', 'Ekinci', 'Erdem',
+  'Güler', 'Kandemir', 'Karahan', 'Kılıç', 'Korkmaz', 'Kaplan', 'Şen', 'Tunç',
+  'Uysal', 'Yavaş', 'Yıldız', 'Acar', 'Baş', 'Candan', 'Dinç', 'Ekici',
+  'Erol', 'Genç', 'Işık', 'Kartal', 'Nalbant', 'Orhan', 'Öz', 'Sezer',
+  'Taş', 'Toprak', 'Turan', 'Ünal', 'Vural', 'Yaman', 'Zengin', 'Aslan',
 ];
+// FUTBOL_FAMOUS_NAMES — kullanıcı revizesi: "ekstra ünlü futbolcu
+// isimlerini de ekleyelim, çeşitlilik artsın". Gerçek (çoğu emekli/
+// efsane, bir kısmı hâlâ aktif) futbolcuların isimleri — sadece isim
+// olarak, oyundaki kurgusal oyuncularla (rastgele güç/yaş/değer) hiçbir
+// gerçek istatistik ya da iddia bağlantısı yok, salt çeşitlilik amaçlı.
+const FUTBOL_FAMOUS_NAMES = [
+  'Hakan Şükür', 'Rüştü Reçber', 'Alpay Özalan', 'Emre Belözoğlu',
+  'Tuncay Şanlı', 'Nihat Kahveci', 'Arda Turan', 'Burak Yılmaz',
+  'Hakan Çalhanoğlu', 'Cenk Tosun', 'İlkay Gündoğan', 'Uğurcan Çakır',
+  'Rıdvan Dilmen', 'Fatih Terim', 'Oğuz Çetin', 'Bülent Korkmaz',
+  'Zinedine Zidane', 'Ronaldinho', 'Kaká', 'Andrea Pirlo', 'Xavi Hernández',
+  'Andrés Iniesta', 'Thierry Henry', 'Didier Drogba', 'Samuel Eto\'o',
+  'Ronaldo Nazário', 'Roberto Carlos', 'Cafu', 'Paolo Maldini',
+  'Francesco Totti', 'Alessandro Del Piero', 'Fabio Cannavaro',
+  'Michael Ballack', 'Miroslav Klose', 'Bastian Schweinsteiger',
+  'Philipp Lahm', 'Manuel Neuer', 'Iker Casillas', 'Sergio Ramos',
+  'David Villa', 'Fernando Torres', 'Luis Suárez', 'Diego Forlán',
+  'Radamel Falcao', 'James Rodríguez', 'Diego Maradona', 'Gabriel Batistuta',
+  'Javier Zanetti', 'Steven Gerrard', 'Frank Lampard', 'John Terry',
+  'Rio Ferdinand', 'Wayne Rooney', 'David Beckham', 'Ryan Giggs',
+  'Paul Scholes', 'Patrick Vieira', 'Robert Pirès',
+  'Didier Deschamps', 'Marcel Desailly', 'Lilian Thuram', 'Edwin van der Sar',
+  'Ruud van Nistelrooy', 'Dennis Bergkamp', 'Clarence Seedorf',
+  'Luís Figo', 'Rui Costa', 'Cristiano Ronaldo', 'Pepe',
+  'Gianluigi Buffon', 'Andriy Shevchenko', 'Zlatan Ibrahimović',
+  'Henrik Larsson', 'Peter Schmeichel', 'Roy Keane', 'Eric Cantona',
+];
+
+// randomFutbolPlayerName — %20 ihtimalle ünlü havuzdan, aksi halde
+// genişletilmiş rastgele ad+soyad havuzundan bir isim üretir.
+function randomFutbolPlayerName() {
+  if (Math.random() < 0.2) {
+    return FUTBOL_FAMOUS_NAMES[Math.floor(Math.random() * FUTBOL_FAMOUS_NAMES.length)];
+  }
+  return `${FUTBOL_FIRST_NAMES[Math.floor(Math.random() * FUTBOL_FIRST_NAMES.length)]} ${
+    FUTBOL_LAST_NAMES[Math.floor(Math.random() * FUTBOL_LAST_NAMES.length)]
+  }`;
+}
 
 // Logo — gönderdiğin logo tasarımcısı bileşeninin (takim-logosu-
 // tasarlayici.jsx) tam interaktif editörü Faz "Takımım/Taktik"te
@@ -6730,9 +6818,7 @@ function randomFutbolPlayer(position, tier) {
   let power = (targetValue * 20) / (1000 * remainingSeasons);
   power = Math.max(35, Math.round(power * 10) / 10);
   const value = Math.round((power * 1000 * remainingSeasons) / 20);
-  const name = `${FUTBOL_FIRST_NAMES[Math.floor(Math.random() * FUTBOL_FIRST_NAMES.length)]} ${
-    FUTBOL_LAST_NAMES[Math.floor(Math.random() * FUTBOL_LAST_NAMES.length)]
-  }`;
+  const name = randomFutbolPlayerName();
   return { name, position, age, power, form: 100, value, forSale: false, listedAt: null };
 }
 
@@ -7573,7 +7659,7 @@ async function cleanupOldFutbolGrowthLogs() {
 // 11'e) girmeyen oyuncular arasından, formu 100 olanlar öncelikli, formu
 // 100 olan yoksa en güçlüler seçilir; ELİNDEN GELDİĞİNCE farklı
 // mevkilerden (aynı gün 3 forvet yerine 1 kaleci/1 defans/1 forvet gibi)
-// seçim yapılır — FUTBOL_TRAINING_SLOTS (3) oyuncuya kadar.
+// seçim yapılır — FUTBOL_TRAINING_SLOTS (4, mevki başına 1) oyuncuya kadar.
 function pickFutbolBotTrainingIds(players, excludeIds) {
   const eligible = players.filter((p) => !excludeIds.has(p.id));
   const rank = (p) => (p.form >= 100 ? 1 : 0) * 100000 + p.power;
@@ -7809,9 +7895,7 @@ function randomFutbolNewTierPlayer(position) {
   const age = Math.floor(randomInRange(FUTBOL_NEW_TIER_AGE_MIN, FUTBOL_NEW_TIER_AGE_MAX + 1));
   const remainingSeasons = Math.max(20 - (age - 16), 1);
   const value = Math.round((power * 1000 * remainingSeasons) / 20);
-  const name = `${FUTBOL_FIRST_NAMES[Math.floor(Math.random() * FUTBOL_FIRST_NAMES.length)]} ${
-    FUTBOL_LAST_NAMES[Math.floor(Math.random() * FUTBOL_LAST_NAMES.length)]
-  }`;
+  const name = randomFutbolPlayerName();
   return { name, position, age, power, form: 100, value, forSale: false, listedAt: null };
 }
 
@@ -8192,9 +8276,7 @@ function randomFutbolSystemPlayer(position, basePower, bandIndex) {
   const age = Math.floor(randomInRange(FUTBOL_SYSTEM_MIN_AGE, FUTBOL_SYSTEM_MAX_AGE + 1));
   const remainingSeasons = 20 - (age - 16);
   const value = Math.round((power * 1000 * remainingSeasons) / 20);
-  const name = `${FUTBOL_FIRST_NAMES[Math.floor(Math.random() * FUTBOL_FIRST_NAMES.length)]} ${
-    FUTBOL_LAST_NAMES[Math.floor(Math.random() * FUTBOL_LAST_NAMES.length)]
-  }`;
+  const name = randomFutbolPlayerName();
   return { name, position, age, power, form: 100, value, forSale: false, listedAt: null };
 }
 
@@ -8616,12 +8698,18 @@ export const setFutbolTeamLogo = onCall(async (request) => {
 
 // --- Futbol modülü: Faz 6 (antrenman — tüm takımlarda hazır kurulu) ---
 
-const FUTBOL_TRAINING_SLOTS = 3;
+// FUTBOL_TRAINING_SLOTS — kullanıcı revizesi: artık 3 "genel" boş kutu
+// değil, TAM OLARAK 4 kutu var — her mevki (Kaleci/Defans/Orta Saha/
+// Forvet) için bir tane. Bir mevkide aynı anda sadece 1 oyuncu antrenman
+// yapabilir; toplamda dolarsa (4 mevkinin hepsi doluysa) 4 oyuncu olur.
+const FUTBOL_TRAINING_SLOTS = 4;
 
-// addFutbolTraining — bir oyuncuyu o günkü antrenman listesine ekler
-// (günde en fazla 3 oyuncu, her biri kendi "Antrenmanı Başlat" butonuyla,
-// tek tek). 18:00'de gücü artar (bkz. resolveFutbolTrainingForAllTeams),
-// 19:00'a kadar (maçla aynı süre) o oyuncu o günkü maça çıkamaz.
+// addFutbolTraining — bir oyuncuyu o günkü antrenman listesine ekler.
+// Kullanıcı revizesi: artık mevki başına 1 kutu (toplam 4) — aynı
+// mevkiden ikinci bir oyuncu antrenmana giremez, önce o mevkideki
+// oyuncu çıkarılmalı (kutuyu boşalt → başka oyuncu koy). 18:00'de gücü
+// artar (bkz. resolveFutbolTrainingForAllTeams), 19:00'a kadar (maçla
+// aynı süre) o oyuncu o günkü maça çıkamaz.
 export const addFutbolTraining = onCall(async (request) => {
   const uid = requireAuth(request);
   const { teamId, playerId } = request.data || {};
@@ -8644,6 +8732,23 @@ export const addFutbolTraining = onCall(async (request) => {
   const playerSnap = await db.collection('futbolPlayers').doc(playerId).get();
   if (!playerSnap.exists || playerSnap.data().teamId !== teamId) {
     throw new HttpsError('invalid-argument', 'Bu oyuncu senin kadronda değil.');
+  }
+  const newPlayer = playerSnap.data();
+  if (current.length > 0) {
+    const currentPlayersSnap = await db
+      .collection('futbolPlayers')
+      .where(admin.firestore.FieldPath.documentId(), 'in', current.slice(0, 30))
+      .get();
+    const samePositionTaken = currentPlayersSnap.docs.some(
+      (d) => d.data().position === newPlayer.position
+    );
+    if (samePositionTaken) {
+      const posLabels = { GK: 'Kaleci', DEF: 'Defans', MID: 'Orta Saha', FWD: 'Forvet' };
+      throw new HttpsError(
+        'failed-precondition',
+        `${posLabels[newPlayer.position] || newPlayer.position} kutusu zaten dolu.`
+      );
+    }
   }
   await teamRef.update({ trainingPlayerIds: [...current, playerId] });
   return { ok: true };

@@ -160,6 +160,28 @@
   color: var(--neon-pink);
 }
 
+.bank-pnl-badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  margin: 2px 0 6px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+
+.bank-pnl-badge.up {
+  color: var(--neon-cyan);
+  border-color: rgba(25, 232, 255, 0.35);
+  background: rgba(25, 232, 255, 0.08);
+}
+
+.bank-pnl-badge.down {
+  color: var(--neon-pink);
+  border-color: rgba(255, 46, 140, 0.35);
+  background: rgba(255, 46, 140, 0.08);
+}
+
 .bank-amount-preview {
   font-size: 10px;
   color: var(--neon-cyan);

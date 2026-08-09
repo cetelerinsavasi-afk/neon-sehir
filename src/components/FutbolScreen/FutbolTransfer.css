@@ -13,6 +13,22 @@
   margin: 8px 0 4px;
 }
 
+.futbol-transfer-position-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.futbol-transfer-group-header {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--neon-cyan);
+  font-weight: 700;
+  margin: 6px 0 2px;
+}
+
 .futbol-transfer-stock-hint {
   display: flex;
   flex-direction: column;

@@ -5,8 +5,6 @@ import {
   leaveRaceRoomAsJoiner,
   startRace,
   rollDice,
-  trainingRollDice,
-  championshipRollDice,
   autoRoll,
   raceRefuel,
   raceBuyNitro,
@@ -15,6 +13,7 @@ import {
   pingRaceRoom,
   warmUpRaceHub,
 } from '../../services/gameActions';
+import { useLocalRace } from '../../hooks/useLocalRace';
 import InfoIcon from '../InfoIcon/InfoIcon';
 import DiceRoll from './DiceRoll';
 import './RaceTrackScreen.css';
@@ -90,7 +89,17 @@ function useAutoRollWatcher(roomId, deadline, active) {
   }, [roomId, deadline, active]);
 }
 
-export default function RaceRoom({ room, myUid, onDismissFinished }) {
+export default function RaceRoom({ room: initialRoom, myUid, onDismissFinished }) {
+  // useLocalRace — antrenman/şampiyona modlarında zar/vites/nitro/benzin
+  // mekaniğinin TAMAMINI istemcide çalıştırır (bkz. dosyanın üstündeki
+  // mimari notu). local.active true olduğunda `room` aşağıda BUNUN
+  // ürettiği yerel görünümle değiştiriliyor — bileşenin geri kalanı
+  // (render, hint metinleri, vb.) hiç değişmeden aynı şekilde çalışıyor.
+  // Bahisli yarışta local.active hep false'tur, eski sunucu taraflı akış
+  // aynen devam eder.
+  const local = useLocalRace(initialRoom, myUid);
+  const room = local.active ? local.viewRoom : initialRoom;
+
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   // 10 Numara'da yaşadığımız aynı sorun burada da vardı: zar atıldıktan
@@ -118,10 +127,13 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
   // Oda açılır açılmaz (kullanıcı henüz zar atmadan) yarış aksiyonlarının
   // ortak Cloud Function'ını sessizce ısıtıyoruz — bkz. gameActions.js
   // içindeki warmUpRaceHub notu. Amaç: kullanıcı ilk "Zar At"a bastığında
-  // cold start gecikmesini hiç hissetmemesi.
+  // cold start gecikmesini hiç hissetmemesi. Yerel modda (antrenman/
+  // şampiyona) buna gerek yok — o modlarda zaten sunucuya tur başına
+  // istek gitmiyor, useLocalRace kendi (çok daha seyrek) bağlantı
+  // kontrolünü ayrıca yapıyor.
   useEffect(() => {
-    warmUpRaceHub();
-  }, []);
+    if (!local.active) warmUpRaceHub();
+  }, [local.active]);
 
   const otherUid = room.participantUids?.find((u) => u !== myUid);
   const me = room.players?.[myUid];
@@ -320,23 +332,34 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
 
   const handleBuyNitro = async () => {
     setOptimisticNitro(true);
-    const res = await run('nitro', () => raceBuyNitro(room.id));
-    if (!res) setOptimisticNitro(false); // istek başarısız oldu, geri al
+    const res = local.active
+      ? await run('nitro', () => local.buyNitroLocal(), { waitForConfirm: false })
+      : await run('nitro', () => raceBuyNitro(room.id));
+    if (!res && !local.active) setOptimisticNitro(false); // istek başarısız oldu, geri al
   };
 
   const handleRoll = async (useNitro, useTurbo) => {
-    const rollFn = room.isChampionship ? championshipRollDice : room.isTraining ? trainingRollDice : rollDice;
     setRollPending(true);
     try {
-      await run('roll', () => rollFn(room.id, useNitro, useTurbo), { waitForConfirm: true });
+      if (local.active) {
+        // Yerel modda sunucu gecikmesi yok — "onaylanana kadar kilitli
+        // kal" numarasına (waitForConfirm) hiç gerek yok, state anında
+        // güncelleniyor.
+        await run('roll', () => (useTurbo ? local.rollWithTurbo() : local.rollLocal()), {
+          waitForConfirm: false,
+        });
+      } else {
+        await run('roll', () => rollDice(room.id, useNitro, useTurbo), { waitForConfirm: true });
+      }
     } finally {
       setRollPending(false);
     }
   };
 
   const rollButtonLabel = () => {
+    if (local.active && local.offline) return 'Bağlantı bekleniyor…';
     const timeSuffix = room.isTraining || room.isChampionship ? '' : ` (${secondsLeft ?? '—'}s)`;
-    if (!isMyTurn) return `${other.displayName}'in sırası…${timeSuffix}`;
+    if (!isMyTurn) return room.isTraining ? `Rakip hamle yapıyor…` : `${other.displayName}'in sırası…${timeSuffix}`;
     if (busy) return 'Atılıyor…';
     if (isFinalTurnForMe) return `Son hamlen! Zar At${timeSuffix}`;
     return effectiveNitroActive ? `Zar At — Nitro Aktif${timeSuffix}` : `Zar At${timeSuffix}`;
@@ -454,23 +477,31 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
           <span className="race-gear-label">Vites</span>
           <button
             className="race-gear-btn"
-            disabled={busy || !isMyTurn || !me.hasRolledOnce || me.gear <= 1}
-            onClick={() => run('gear-', () => raceChangeGear(room.id, -1))}
+            disabled={busy || !isMyTurn || !me.hasRolledOnce || me.gear <= 1 || (local.active && local.offline)}
+            onClick={() =>
+              local.active
+                ? run('gear-', () => local.changeGearLocal(-1), { waitForConfirm: false })
+                : run('gear-', () => raceChangeGear(room.id, -1))
+            }
           >
             −
           </button>
           <span className="race-gear-value">{me.gear}</span>
           <button
             className="race-gear-btn"
-            disabled={busy || !isMyTurn || !me.hasRolledOnce || me.gear >= me.maxGear}
-            onClick={() => run('gear+', () => raceChangeGear(room.id, 1))}
+            disabled={busy || !isMyTurn || !me.hasRolledOnce || me.gear >= me.maxGear || (local.active && local.offline)}
+            onClick={() =>
+              local.active
+                ? run('gear+', () => local.changeGearLocal(1), { waitForConfirm: false })
+                : run('gear+', () => raceChangeGear(room.id, 1))
+            }
           >
             +
           </button>
         </div>
         <button
           className="race-nitro-btn"
-          disabled={busy || !isMyTurn || me.raceGold < 50 || effectiveNitroActive}
+          disabled={busy || !isMyTurn || me.raceGold < 50 || effectiveNitroActive || (local.active && local.offline)}
           onClick={handleBuyNitro}
         >
           {effectiveNitroActive ? '🔥 Nitro Alındı' : '🔥 Nitro (50)'}
@@ -479,7 +510,7 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
 
       {me.turboCount > 0 && (
         <div className="race-controls">
-          <button className="race-btn small" disabled={busy || !isMyTurn} onClick={() => handleRoll(false, true)}>
+          <button className="race-btn small" disabled={busy || !isMyTurn || (local.active && local.offline)} onClick={() => handleRoll(false, true)}>
             Turbo ile At
           </button>
         </div>
@@ -487,17 +518,27 @@ export default function RaceRoom({ room, myUid, onDismissFinished }) {
 
       <button
         className={`race-roll-btn${rollPending ? ' pending' : ''}`}
-        disabled={busy || !isMyTurn}
+        disabled={busy || !isMyTurn || (local.active && local.offline)}
         onClick={() => handleRoll(effectiveNitroActive, false)}
       >
         {rollButtonLabel()}
       </button>
+      {local.active && local.offline && (
+        <p className="race-error">
+          İnternet bağlantın kesildi gibi görünüyor — yarış devam edebilmesi için bağlantının
+          geri gelmesi gerekiyor.
+        </p>
+      )}
 
       {isMyTurn && (
         <button
           className={`race-btn${me.fuel <= 0 ? ' primary' : ''}${atStation && me.fuel < me.maxFuel ? ' station' : ''}`}
-          disabled={busy || me.raceGold < refuelPrice || me.fuel >= me.maxFuel}
-          onClick={() => run('refuel', () => raceRefuel(room.id))}
+          disabled={busy || me.raceGold < refuelPrice || me.fuel >= me.maxFuel || (local.active && local.offline)}
+          onClick={() =>
+            local.active
+              ? run('refuel', () => local.refuelLocal(), { waitForConfirm: false })
+              : run('refuel', () => raceRefuel(room.id))
+          }
         >
           {me.fuel >= me.maxFuel
             ? '⛽ Benzin Dolu'
