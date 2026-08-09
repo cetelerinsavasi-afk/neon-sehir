@@ -275,7 +275,8 @@ service cloud.firestore {
 
     // sixtagramPosts/{postId} — mini sosyal medya postları. Herkes
     // okuyabilir (akış herkese açık); yazma sadece Cloud Functions ile
-    // (createSixtagramPost/toggleSixtagramLike/cleanupSixtagramPosts).
+    // (createSixtagramPost/toggleSixtagramLike/deleteSixtagramPost/
+    // cleanupSixtagramPosts).
     match /sixtagramPosts/{postId} {
       allow read: if isSignedIn();
       allow write: if false;
@@ -287,6 +288,23 @@ service cloud.firestore {
         allow read: if isSignedIn();
         allow write: if false;
       }
+    }
+
+    // sixtagramProfiles/{uid} — HERKESE AÇIK profil özeti (isim/avatar/
+    // toplam beğeni). users/{uid} sadece sahibi tarafından okunabildiği
+    // için, başka bir oyuncunun postuna tıklayınca açılan profil paneli
+    // buradan okur. Yazma sadece Cloud Functions ile.
+    match /sixtagramProfiles/{uid} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // sixtagramUserLikes/{uid} — "hangi postları beğendim" haritası.
+    // SADECE sahibi okuyabilir (başkasının beğeni geçmişini görmesin);
+    // yazma sadece Cloud Functions ile (toggleSixtagramLike).
+    match /sixtagramUserLikes/{uid} {
+      allow read: if isSelf(uid);
+      allow write: if false;
     }
 
     // goldStoreOrders/{orderId} — "Altın Mağazası" (Shopier) siparişleri.

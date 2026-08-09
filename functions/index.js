@@ -9407,11 +9407,21 @@ export const shopierGoldStoreWebhook = onRequest(
 // =============================================================================
 // TELEFON — "SIXTAGRAM" (mini sosyal medya uygulaması)
 // =============================================================================
-// - Postlar 24 saat sonra otomatik silinir (bkz. cleanupSixtagramPosts).
+// - Postlar 24 saat sonra otomatik silinir (bkz. cleanupSixtagramPosts);
+//   oyuncular kendi postlarını istedikleri an da silebilir (bkz.
+//   deleteSixtagramPost).
 // - Anasayfa akışı en çok beğeni alan (SÜRESİ DOLMAMIŞ) postları listeler.
-// - Profildeki "toplam beğeni" sayısı, post silinse bile KALICI olması için
-//   users/{uid}.sixtagramTotalLikes sayacında ayrıca tutulur (beğeni geri
-//   çekilirse azalır, ama bir post süresi dolup silindiğinde ETKİLENMEZ).
+// - "Toplam beğeni" HERKESE AÇIK bir dokümanda tutulur
+//   (sixtagramProfiles/{uid}.totalLikes) — çünkü users/{uid} sadece
+//   sahibi tarafından okunabiliyor (Bölüm 15), ama başka bir oyuncunun
+//   postuna tıklayıp profiline bakabilmek için bu sayının HERKESÇE
+//   okunabilmesi gerekiyor. Post silinse/süresi dolsa bile bu sayaç
+//   ETKİLENMEZ (beğeni geri çekilirse azalır, sadece o).
+// - "Hangi postları beğendim" bilgisi sixtagramUserLikes/{uid} (SADECE
+//   sahibi okuyabilir) dokümanındaki bir haritada tutulur — bunu bir
+//   collectionGroup sorgusuyla DEĞİL, tek bir doküman dinleyerek
+//   okuyoruz; böylece ekstra bir Firestore index'ine ihtiyaç kalmıyor ve
+//   sekmeler arası geçişte veri kaybolmuyor.
 // - Görsel eklerin (avatar/araba/kupon/maç/yatırım/ceza) TÜMÜ istemciden
 //   ham veri olarak alınmaz — istemci sadece "hangisini" seçtiğini söyler
 //   (örn. hangi vehicleId), gerçek veri burada, sunucuda, oyuncunun kendi
@@ -9469,7 +9479,53 @@ async function buildSixtagramAttachment(uid, attachment) {
       throw new HttpsError('permission-denied', 'Bu kupon sana ait değil.');
     }
     const bet = betSnap.data();
-    const leagueSnap = await db.collection('futbolLeagues').doc(bet.leagueId).get();
+    const predictionList = bet.predictions || [];
+
+    const [leagueSnap, matchSnaps] = await Promise.all([
+      db.collection('futbolLeagues').doc(bet.leagueId).get(),
+      Promise.all(predictionList.map((p) => db.collection('futbolMatches').doc(p.matchId).get())),
+    ]);
+
+    const matchById = {};
+    matchSnaps.forEach((s) => {
+      if (s.exists) matchById[s.id] = s.data();
+    });
+    const teamIds = new Set();
+    matchSnaps.forEach((s) => {
+      if (s.exists) {
+        teamIds.add(s.data().homeTeamId);
+        teamIds.add(s.data().awayTeamId);
+      }
+    });
+    const teamSnaps = await Promise.all(
+      [...teamIds].map((id) => db.collection('futbolTeams').doc(id).get())
+    );
+    const teamById = {};
+    teamSnaps.forEach((s) => {
+      if (s.exists) teamById[s.id] = s.data();
+    });
+
+    // predictions — bu kuponun İÇERİĞİ: her maç için ev sahibi/deplasman
+    // adı, oyuncunun tahmini VE (maç bittiyse) tuttu mu tutmadı mı.
+    const predictions = predictionList.map((p) => {
+      const m = matchById[p.matchId] || {};
+      const home = teamById[m.homeTeamId] || {};
+      const away = teamById[m.awayTeamId] || {};
+      let correct = null;
+      if (m.status === 'finished' && m.homeScore != null && m.awayScore != null) {
+        const actual = m.homeScore === m.awayScore ? 'draw' : m.homeScore > m.awayScore ? 'home' : 'away';
+        correct = actual === p.pick;
+      }
+      return {
+        homeName: home.name || '?',
+        awayName: away.name || '?',
+        pick: p.pick,
+        homeScore: m.status === 'finished' ? m.homeScore : null,
+        awayScore: m.status === 'finished' ? m.awayScore : null,
+        correct,
+      };
+    });
+
     return {
       type: 'iddaa',
       leagueName: leagueSnap.exists ? leagueSnap.data().name || null : null,
@@ -9477,11 +9533,11 @@ async function buildSixtagramAttachment(uid, attachment) {
       stake: bet.stake,
       status: bet.status,
       payout: bet.payout || 0,
-      predictionsCount: (bet.predictions || []).length,
+      predictions,
     };
   }
 
-  if (type === 'matches') {
+  if (type === 'lastMatches') {
     const dateKey = istanbulDateKey();
     const snap = await db
       .collection('newsEvents')
@@ -9503,7 +9559,51 @@ async function buildSixtagramAttachment(uid, attachment) {
         awayLogo: m.awayLogo || null,
       };
     });
-    return { type: 'matches', matches };
+    return { type: 'lastMatches', matches };
+  }
+
+  if (type === 'upcomingMatches') {
+    const leagueId = attachment.leagueId;
+    if (!leagueId) throw new HttpsError('invalid-argument', 'Lig seçilmedi.');
+    const leagueSnap = await db.collection('futbolLeagues').doc(leagueId).get();
+    if (!leagueSnap.exists) throw new HttpsError('not-found', 'Lig bulunamadı.');
+    const league = leagueSnap.data();
+    const round = league.currentRound || 1;
+
+    const matchesSnap = await db
+      .collection('futbolMatches')
+      .where('leagueId', '==', leagueId)
+      .where('round', '==', round)
+      .where('status', '==', 'scheduled')
+      .get();
+    if (matchesSnap.empty) {
+      throw new HttpsError('failed-precondition', 'Bu ligde şu an bekleyen bir maç yok.');
+    }
+    const matchDocs = matchesSnap.docs.slice(0, 4);
+    const teamIds = new Set();
+    matchDocs.forEach((d) => {
+      teamIds.add(d.data().homeTeamId);
+      teamIds.add(d.data().awayTeamId);
+    });
+    const teamSnaps = await Promise.all(
+      [...teamIds].map((id) => db.collection('futbolTeams').doc(id).get())
+    );
+    const teamById = {};
+    teamSnaps.forEach((s) => {
+      if (s.exists) teamById[s.id] = s.data();
+    });
+    const matches = matchDocs.map((d) => {
+      const m = d.data();
+      const home = teamById[m.homeTeamId] || {};
+      const away = teamById[m.awayTeamId] || {};
+      return {
+        homeName: home.name || '?',
+        awayName: away.name || '?',
+        homeLogo: home.logo || null,
+        awayLogo: away.logo || null,
+      };
+    });
+    return { type: 'upcomingMatches', leagueName: league.name || null, round, matches };
   }
 
   if (type === 'investment') {
@@ -9533,19 +9633,24 @@ async function buildSixtagramAttachment(uid, attachment) {
   }
 
   if (type === 'fine') {
+    // Bugün VEYA dün yenen ceza — gece yarısına yakın yaşanmış bir
+    // yakalanmayı da paylaşabilsin diye 2 günlük pencereye bakıyoruz.
     const dateKey = istanbulDateKey();
-    const msgsSnap = await db
-      .collection('users')
-      .doc(uid)
-      .collection('messages')
-      .where('type', '==', 'capture_penalty')
-      .where('dateKey', '==', dateKey)
-      .get();
-    if (msgsSnap.empty) {
-      throw new HttpsError('failed-precondition', 'Bugün henüz bir ceza yemedin (iyi haber!).');
+    const yesterdayKey = addDaysToDateKey(dateKey, -1);
+    const messagesRef = db.collection('users').doc(uid).collection('messages');
+    const [todaySnap, yesterdaySnap] = await Promise.all([
+      messagesRef.where('type', '==', 'capture_penalty').where('dateKey', '==', dateKey).get(),
+      messagesRef.where('type', '==', 'capture_penalty').where('dateKey', '==', yesterdayKey).get(),
+    ]);
+    const allDocs = [...todaySnap.docs, ...yesterdaySnap.docs];
+    if (!allDocs.length) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Son 2 gündür bir ceza yemedin (iyi haber!).'
+      );
     }
-    const totalAmount = msgsSnap.docs.reduce((sum, d) => sum + (d.data().penaltyAmount || 0), 0);
-    return { type: 'fine', totalAmount, count: msgsSnap.size };
+    const totalAmount = allDocs.reduce((sum, d) => sum + (d.data().penaltyAmount || 0), 0);
+    return { type: 'fine', totalAmount, count: allDocs.length };
   }
 
   throw new HttpsError('invalid-argument', 'Geçersiz ek türü.');
@@ -9571,7 +9676,9 @@ export const createSixtagramPost = onCall(async (request) => {
   const nowMs = Date.now();
 
   const postRef = db.collection('sixtagramPosts').doc();
-  await postRef.set({
+  const profileRef = db.collection('sixtagramProfiles').doc(uid);
+  const batch = db.batch();
+  batch.set(postRef, {
     uid,
     authorName: user.displayName || 'Oyuncu',
     authorAvatar: user.avatar || null,
@@ -9582,6 +9689,19 @@ export const createSixtagramPost = onCall(async (request) => {
     createdAtMs: nowMs,
     expiresAtMs: nowMs + SIXTAGRAM_POST_LIFETIME_MS,
   });
+  // sixtagramProfiles — herkese açık profil özeti (isim/avatar); bir
+  // başkasının postuna tıklayınca açılan panel buradan okur. totalLikes
+  // alanına BURADA dokunmuyoruz (merge onu olduğu gibi bırakır).
+  batch.set(
+    profileRef,
+    {
+      displayName: user.displayName || 'Oyuncu',
+      avatar: user.avatar || null,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+  await batch.commit();
 
   return { ok: true, postId: postRef.id };
 });
@@ -9595,6 +9715,7 @@ export const toggleSixtagramLike = onCall(async (request) => {
 
   const postRef = db.collection('sixtagramPosts').doc(postId);
   const likeRef = postRef.collection('likes').doc(uid);
+  const myLikesRef = db.collection('sixtagramUserLikes').doc(uid);
 
   let liked = false;
   await db.runTransaction(async (tx) => {
@@ -9603,17 +9724,23 @@ export const toggleSixtagramLike = onCall(async (request) => {
       throw new HttpsError('not-found', 'Gönderi bulunamadı (süresi dolup silinmiş olabilir).');
     }
     const post = postSnap.data();
-    const ownerRef = db.collection('users').doc(post.uid);
+    const profileRef = db.collection('sixtagramProfiles').doc(post.uid);
 
     if (likeSnap.exists) {
       tx.delete(likeRef);
       tx.update(postRef, { likeCount: admin.firestore.FieldValue.increment(-1) });
-      tx.set(ownerRef, { sixtagramTotalLikes: admin.firestore.FieldValue.increment(-1) }, { merge: true });
+      tx.set(profileRef, { totalLikes: admin.firestore.FieldValue.increment(-1) }, { merge: true });
+      tx.set(
+        myLikesRef,
+        { postIds: { [postId]: admin.firestore.FieldValue.delete() } },
+        { merge: true }
+      );
       liked = false;
     } else {
       tx.set(likeRef, { uid, createdAt: admin.firestore.FieldValue.serverTimestamp() });
       tx.update(postRef, { likeCount: admin.firestore.FieldValue.increment(1) });
-      tx.set(ownerRef, { sixtagramTotalLikes: admin.firestore.FieldValue.increment(1) }, { merge: true });
+      tx.set(profileRef, { totalLikes: admin.firestore.FieldValue.increment(1) }, { merge: true });
+      tx.set(myLikesRef, { postIds: { [postId]: true } }, { merge: true });
       liked = true;
     }
   });
@@ -9621,9 +9748,48 @@ export const toggleSixtagramLike = onCall(async (request) => {
   return { ok: true, liked };
 });
 
-// cleanupSixtagramPosts — süresi (24 saat) dolan postları ve beğeni alt
-// koleksiyonlarını siler. Saatte bir çalışır, her seferinde en fazla 100
-// post temizler (büyük birikme olursa bir sonraki saatte devam eder).
+// deleteSixtagramPostAndLikes — bir postu VE onun beğeni alt
+// koleksiyonunu (+ beğenen herkesin sixtagramUserLikes haritasındaki
+// ilgili girdisini) siler. Hem deleteSixtagramPost (oyuncu isteğiyle)
+// hem cleanupSixtagramPosts (24 saat dolunca) tarafından kullanılır.
+async function deleteSixtagramPostAndLikes(postRef) {
+  const likesSnap = await postRef.collection('likes').limit(500).get();
+  if (!likesSnap.empty) {
+    const batch = db.batch();
+    likesSnap.forEach((l) => {
+      batch.delete(l.ref);
+      batch.set(
+        db.collection('sixtagramUserLikes').doc(l.id),
+        { postIds: { [postRef.id]: admin.firestore.FieldValue.delete() } },
+        { merge: true }
+      );
+    });
+    await batch.commit();
+  }
+  await postRef.delete();
+}
+
+// deleteSixtagramPost — oyuncu kendi gönderisini istediği an silebilir.
+// totalLikes sayacı BİLEREK azaltılmıyor (24 saatlik otomatik silinmeyle
+// aynı davranış — kazanılan beğeni kalıcı bir başarı gibi kalır).
+export const deleteSixtagramPost = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { postId } = request.data || {};
+  if (!postId) throw new HttpsError('invalid-argument', 'postId gerekli.');
+
+  const postRef = db.collection('sixtagramPosts').doc(postId);
+  const postSnap = await postRef.get();
+  if (!postSnap.exists) return { ok: true };
+  if (postSnap.data().uid !== uid) {
+    throw new HttpsError('permission-denied', 'Bu gönderi sana ait değil.');
+  }
+  await deleteSixtagramPostAndLikes(postRef);
+  return { ok: true };
+});
+
+// cleanupSixtagramPosts — süresi (24 saat) dolan postları temizler.
+// Saatte bir çalışır, her seferinde en fazla 100 post (büyük birikme
+// olursa bir sonraki saatte devam eder).
 export const cleanupSixtagramPosts = onSchedule(
   { schedule: 'every 1 hours', timeZone: 'Europe/Istanbul' },
   async () => {
@@ -9635,13 +9801,8 @@ export const cleanupSixtagramPosts = onSchedule(
       .get();
 
     for (const postDoc of expiredSnap.docs) {
-      const likesSnap = await postDoc.ref.collection('likes').limit(500).get();
-      if (!likesSnap.empty) {
-        const likesBatch = db.batch();
-        likesSnap.forEach((l) => likesBatch.delete(l.ref));
-        await likesBatch.commit();
-      }
-      await postDoc.ref.delete();
+      await deleteSixtagramPostAndLikes(postDoc.ref);
     }
   }
 );
+

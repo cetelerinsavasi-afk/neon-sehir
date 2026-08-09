@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
-import { collectionGroup, onSnapshot, query, where } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 
 /**
  * useMySixtagramLikedPostIds — hangi postları beğendiğimi (kalp dolu mu
- * boş mu göstereceğimi) bilmek için, TÜM sixtagramPosts/*\/likes alt
- * koleksiyonlarında kendi uid'imle eşleşen dokümanları bir
- * collectionGroup sorgusuyla çeker, üst post ID'lerinin kümesini döner.
+ * boş mu göstereceğimi) bilmek için TEK bir dokümanı
+ * (sixtagramUserLikes/{uid}) dinler. Eskiden bir collectionGroup
+ * sorgusuyla yapılıyordu ama bu, dağıtılmamış bir Firestore index'i
+ * yüzünden sekmeler arası geçişte beğenilerin "kaybolmuş" gibi
+ * görünmesine yol açıyordu — tek doküman dinlemek hem daha basit hem de
+ * ekstra index gerektirmiyor.
  */
 export function useMySixtagramLikedPostIds() {
   const { user } = useAuth();
@@ -18,12 +21,12 @@ export function useMySixtagramLikedPostIds() {
       setLikedIds(new Set());
       return undefined;
     }
-    const q = query(collectionGroup(db, 'likes'), where('uid', '==', user.uid));
+    const ref = doc(db, 'sixtagramUserLikes', user.uid);
     const unsubscribe = onSnapshot(
-      q,
+      ref,
       (snap) => {
-        const ids = new Set(snap.docs.map((d) => d.ref.parent.parent?.id).filter(Boolean));
-        setLikedIds(ids);
+        const postIds = snap.exists() ? snap.data().postIds || {} : {};
+        setLikedIds(new Set(Object.keys(postIds).filter((id) => postIds[id])));
       },
       (err) => {
         console.error('useMySixtagramLikedPostIds dinleme hatası:', err);

@@ -124,6 +124,9 @@ export const createSixtagramPost = (text, attachment) =>
 export const toggleSixtagramLike = (postId) =>
   httpsCallable(functions, 'toggleSixtagramLike')({ postId });
 
+export const deleteSixtagramPost = (postId) =>
+  httpsCallable(functions, 'deleteSixtagramPost')({ postId });
+
 // --- Telefon: Altın Mağazası (Shopier ile gerçek para karşılığı altın) ---
 
 export const createGoldStoreOrder = (packageId) =>

@@ -13,7 +13,7 @@ const PACKAGES = [
     id: 'paket1',
     title: '20.000 Altın',
     priceLabel: '30 TL',
-    emoji: '🪙',
+    emoji: null, // 🪙 yerine .gold-coin-icon (bkz. aşağı) — bazı platformlarda emoji görünmüyor
     lines: ['20.000 Altın'],
   },
   {
@@ -147,7 +147,9 @@ export default function GoldStoreScreen() {
           return (
             <div key={pack.id} className="gold-store-card">
               <div className="gold-store-card-head">
-                <span className="gold-store-emoji">{pack.emoji}</span>
+                <span className="gold-store-emoji">
+                  {pack.emoji || <span className="gold-coin-icon" style={{ width: 28, height: 28 }} />}
+                </span>
                 <div>
                   <p className="gold-store-title">{pack.title}</p>
                   <p className="gold-store-price">{pack.priceLabel}</p>

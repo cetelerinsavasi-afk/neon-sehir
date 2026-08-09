@@ -15,7 +15,9 @@ export default function PostAttachment({ attachment }) {
     return (
       <div className="post-att post-att-avatar">
         <div className="post-att-avatar-frame">
-          <AvatarSvg avatar={attachment.avatar} />
+          <div className="post-att-avatar-inner">
+            <AvatarSvg avatar={attachment.avatar} />
+          </div>
         </div>
       </div>
     );
@@ -39,16 +41,39 @@ export default function PostAttachment({ attachment }) {
   }
 
   if (attachment.type === 'iddaa') {
+    const pickLabel = { home: 'Ev Sahibi', draw: 'Beraberlik', away: 'Deplasman' };
     return (
       <div className="post-att post-att-card">
         <p className="post-att-card-title">🎟️ İddaa Kuponu</p>
         <p className="post-att-card-line">
-          {attachment.leagueName || 'Lig'} · {attachment.round}. Hafta
+          {attachment.leagueName || 'Lig'} · {attachment.round}. Hafta ·{' '}
+          {attachment.stake.toLocaleString('tr-TR')} altın
         </p>
-        <p className="post-att-card-line">
-          {attachment.predictionsCount} maçlık kupon · {attachment.stake.toLocaleString('tr-TR')}{' '}
-          altın yatırıldı
-        </p>
+        <div className="post-att-predictions">
+          {(attachment.predictions || []).map((p, i) => (
+            <div
+              key={i}
+              className={`post-att-prediction-row ${
+                p.correct === true ? 'correct' : p.correct === false ? 'wrong' : ''
+              }`}
+            >
+              <span className="post-att-prediction-teams">
+                {p.homeName} - {p.awayName}
+                {p.homeScore != null && p.awayScore != null && (
+                  <span className="post-att-prediction-score">
+                    {' '}
+                    ({p.homeScore}-{p.awayScore})
+                  </span>
+                )}
+              </span>
+              <span className="post-att-prediction-pick">
+                {pickLabel[p.pick] || p.pick}
+                {p.correct === true && ' ✅'}
+                {p.correct === false && ' ❌'}
+              </span>
+            </div>
+          ))}
+        </div>
         <p
           className={`post-att-card-status post-att-status-${attachment.status}`}
         >
@@ -61,10 +86,10 @@ export default function PostAttachment({ attachment }) {
     );
   }
 
-  if (attachment.type === 'matches') {
+  if (attachment.type === 'lastMatches') {
     return (
       <div className="post-att post-att-card">
-        <p className="post-att-card-title">⚽ Günün Maç Sonuçları</p>
+        <p className="post-att-card-title">⚽ Son Oynanan Maçlar</p>
         <div className="post-att-matches">
           {attachment.matches.map((m, i) => (
             <div key={i} className="post-att-match-row">
@@ -73,6 +98,28 @@ export default function PostAttachment({ attachment }) {
               <span className="post-att-match-score">
                 {m.homeScore} - {m.awayScore}
               </span>
+              <span className="post-att-match-team">{m.awayName}</span>
+              <FutbolCrest logo={m.awayLogo} initials={m.awayName?.[0]} size={22} />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (attachment.type === 'upcomingMatches') {
+    return (
+      <div className="post-att post-att-card">
+        <p className="post-att-card-title">🔜 Sıradaki Maçlar</p>
+        <p className="post-att-card-line">
+          {attachment.leagueName || 'Lig'} · {attachment.round}. Hafta
+        </p>
+        <div className="post-att-matches">
+          {attachment.matches.map((m, i) => (
+            <div key={i} className="post-att-match-row">
+              <FutbolCrest logo={m.homeLogo} initials={m.homeName?.[0]} size={22} />
+              <span className="post-att-match-team">{m.homeName}</span>
+              <span className="post-att-match-vs">vs</span>
               <span className="post-att-match-team">{m.awayName}</span>
               <FutbolCrest logo={m.awayLogo} initials={m.awayName?.[0]} size={22} />
             </div>
@@ -97,7 +144,7 @@ export default function PostAttachment({ attachment }) {
   if (attachment.type === 'fine') {
     return (
       <div className="post-att post-att-card post-att-fine">
-        <p className="post-att-card-title">🚨 Bugün Yediğim Ceza</p>
+        <p className="post-att-card-title">🚨 Cezam</p>
         <p className="post-att-fine-amount">
           {attachment.totalAmount.toLocaleString('tr-TR')} altın
         </p>

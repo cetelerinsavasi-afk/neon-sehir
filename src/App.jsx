@@ -149,6 +149,10 @@ function GameShell() {
         suspicion={player?.suspicion ?? 0}
         reputation={player?.reputation ?? 0}
         gold={player?.gold ?? 0}
+        onGoldClick={() => {
+          setPhoneInitialApp('altin-magazasi');
+          setPhoneOpen(true);
+        }}
       />
 
       <main className="map-stage">

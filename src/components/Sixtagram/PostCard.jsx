@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Heart } from 'lucide-react';
+import { Heart, Trash2 } from 'lucide-react';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import PostAttachment from './PostAttachment';
-import { toggleSixtagramLike } from '../../services/gameActions';
+import AuthorPanel from './AuthorPanel';
+import { toggleSixtagramLike, deleteSixtagramPost } from '../../services/gameActions';
 import './PostCard.css';
 
 function timeAgo(createdAtMs) {
@@ -20,6 +21,10 @@ export default function PostCard({ post, liked, isOwn }) {
   const [busy, setBusy] = useState(false);
   const [optimisticLiked, setOptimisticLiked] = useState(null);
   const [optimisticCount, setOptimisticCount] = useState(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [hidden, setHidden] = useState(false);
 
   const effectiveLiked = optimisticLiked ?? liked;
   const effectiveCount = optimisticCount ?? post.likeCount ?? 0;
@@ -42,18 +47,50 @@ export default function PostCard({ post, liked, isOwn }) {
     }
   };
 
+  const handleDelete = async () => {
+    if (!confirmingDelete) {
+      setConfirmingDelete(true);
+      return;
+    }
+    setDeleting(true);
+    try {
+      await deleteSixtagramPost(post.id);
+      setHidden(true);
+    } catch (err) {
+      console.error('Gönderi silme hatası:', err);
+      setDeleting(false);
+      setConfirmingDelete(false);
+    }
+  };
+
+  if (hidden) return null;
+
   return (
     <div className="six-post">
       <div className="six-post-head">
-        <div className="six-post-avatar">
-          <AvatarSvg avatar={post.authorAvatar} size={36} rounded />
-        </div>
-        <div className="six-post-headinfo">
-          <p className="six-post-author">
-            {post.authorName} {isOwn && <span className="six-post-you">(sen)</span>}
-          </p>
-          <p className="six-post-time">{timeAgo(post.createdAtMs)}</p>
-        </div>
+        <button className="six-post-authorbtn" onClick={() => setPanelOpen(true)}>
+          <div className="six-post-avatar">
+            <AvatarSvg avatar={post.authorAvatar} size={36} rounded />
+          </div>
+          <div className="six-post-headinfo">
+            <p className="six-post-author">
+              {post.authorName} {isOwn && <span className="six-post-you">(sen)</span>}
+            </p>
+            <p className="six-post-time">{timeAgo(post.createdAtMs)}</p>
+          </div>
+        </button>
+
+        {isOwn && (
+          <button
+            className={`six-post-delete-btn ${confirmingDelete ? 'confirming' : ''}`}
+            onClick={handleDelete}
+            disabled={deleting}
+            title="Gönderiyi sil"
+          >
+            <Trash2 size={14} />
+            {confirmingDelete && <span>Emin misin?</span>}
+          </button>
+        )}
       </div>
 
       {post.text && <p className="six-post-text">{post.text}</p>}
@@ -69,6 +106,15 @@ export default function PostCard({ post, liked, isOwn }) {
           <span>{effectiveCount}</span>
         </button>
       </div>
+
+      {panelOpen && (
+        <AuthorPanel
+          uid={post.uid}
+          name={post.authorName}
+          avatar={post.authorAvatar}
+          onClose={() => setPanelOpen(false)}
+        />
+      )}
     </div>
   );
 }

@@ -5,7 +5,7 @@ import './Hud.css';
  * Hud — Bölüm 3'teki üst bar. Faz 1'de mock veriyle çalışır,
  * Faz 4'te gerçek Firestore verisine bağlanacak.
  */
-export default function Hud({ suspicion = 0, reputation = 0, gold = 0 }) {
+export default function Hud({ suspicion = 0, reputation = 0, gold = 0, onGoldClick }) {
   return (
     <div className="hud">
       <div className="hud-stat">
@@ -40,10 +40,15 @@ export default function Hud({ suspicion = 0, reputation = 0, gold = 0 }) {
         </div>
       </div>
 
-      <div className="hud-gold">
+      <button
+        type="button"
+        className="hud-gold hud-gold-btn"
+        onClick={onGoldClick}
+        title="Altın Mağazası'nı aç"
+      >
         <span className="hud-gold-icon">●</span>
         <span>{gold.toLocaleString('tr-TR')}</span>
-      </div>
+      </button>
     </div>
   );
 }

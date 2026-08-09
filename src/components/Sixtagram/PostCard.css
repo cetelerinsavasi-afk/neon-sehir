@@ -11,7 +11,51 @@
 .six-post-head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
+}
+
+.six-post-authorbtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+  flex: 1;
+}
+
+.six-post-delete-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 5px 8px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.six-post-delete-btn:hover {
+  color: var(--neon-pink);
+}
+
+.six-post-delete-btn.confirming {
+  color: var(--neon-pink);
+  border-color: rgba(255, 46, 140, 0.5);
+  background: rgba(255, 46, 140, 0.08);
+  font-weight: 700;
+}
+
+.six-post-delete-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .six-post-avatar {

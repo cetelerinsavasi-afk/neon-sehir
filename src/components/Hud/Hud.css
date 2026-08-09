@@ -63,6 +63,16 @@
   white-space: nowrap;
 }
 
+.hud-gold-btn {
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.hud-gold-btn:hover {
+  background: rgba(255, 210, 63, 0.14);
+}
+
 .hud-gold-icon {
   font-size: 9px;
 }

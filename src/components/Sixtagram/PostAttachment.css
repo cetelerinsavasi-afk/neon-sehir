@@ -7,9 +7,15 @@
 }
 
 .post-att-avatar-frame {
+  position: relative;
   width: 100%;
-  aspect-ratio: 4 / 5;
-  max-height: 260px;
+  padding-top: 125%; /* 320:400 (4:5) — AvatarSvg'nin viewBox oranıyla birebir, kırpma yok */
+  background: #05070c;
+}
+
+.post-att-avatar-inner {
+  position: absolute;
+  inset: 0;
 }
 
 .post-att-vehicle-img {
@@ -100,6 +106,55 @@
 .post-att-match-score {
   font-weight: 800;
   color: var(--neon-cyan);
+}
+
+.post-att-match-vs {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.post-att-predictions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0;
+}
+
+.post-att-prediction-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.post-att-prediction-row.correct {
+  background: rgba(53, 224, 138, 0.12);
+}
+
+.post-att-prediction-row.wrong {
+  background: rgba(255, 46, 140, 0.1);
+}
+
+.post-att-prediction-teams {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.post-att-prediction-score {
+  color: var(--text-dim);
+}
+
+.post-att-prediction-pick {
+  flex-shrink: 0;
+  font-weight: 700;
+  color: var(--neon-yellow);
 }
 
 .post-att-fine {

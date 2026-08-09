@@ -127,7 +127,7 @@ export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }
 
       <div className="phone-install-row">
         <button className="gold-store-entry-btn" onClick={() => handleOpenApp('altin-magazasi')}>
-          🪙 Altın Mağazası
+          <span className="gold-coin-icon" style={{ width: 16, height: 16 }} /> Altın Mağazası
         </button>
         <InstallAppButton />
       </div>

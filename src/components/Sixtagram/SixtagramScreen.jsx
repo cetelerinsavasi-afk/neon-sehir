@@ -4,6 +4,7 @@ import { usePlayer } from '../../hooks/usePlayer';
 import { useSixtagramFeed } from '../../hooks/useSixtagramFeed';
 import { useMySixtagramPosts } from '../../hooks/useMySixtagramPosts';
 import { useMySixtagramLikedPostIds } from '../../hooks/useMySixtagramLikedPostIds';
+import { useSixtagramProfile } from '../../hooks/useSixtagramProfile';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import PostCard from './PostCard';
 import ComposeModal from './ComposeModal';
@@ -23,6 +24,7 @@ export default function SixtagramScreen() {
   const { posts: feedPosts, loading: feedLoading } = useSixtagramFeed();
   const { posts: myPosts, loading: myPostsLoading } = useMySixtagramPosts();
   const likedIds = useMySixtagramLikedPostIds();
+  const { profile: myProfile } = useSixtagramProfile(user?.uid);
 
   return (
     <div className="sixtagram">
@@ -74,7 +76,7 @@ export default function SixtagramScreen() {
             <div>
               <p className="sixtagram-profile-name">{player?.displayName || 'Oyuncu'}</p>
               <p className="sixtagram-profile-likes">
-                ❤️ {(player?.sixtagramTotalLikes || 0).toLocaleString('tr-TR')} toplam beğeni
+                ❤️ {(myProfile?.totalLikes || 0).toLocaleString('tr-TR')} toplam beğeni
               </p>
             </div>
           </div>

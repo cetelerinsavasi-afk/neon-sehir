@@ -83,6 +83,54 @@
   display: flex;
 }
 
+.six-compose-preview {
+  border-top: 1px solid var(--panel-border);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.six-compose-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.six-compose-remove-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  color: var(--neon-pink);
+  font-size: 11px;
+  cursor: pointer;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.six-compose-note {
+  margin: 4px 0 0;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.six-compose-picker-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.six-compose-picker-none {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
 .six-compose-error {
   margin: 0;
   font-size: 12px;
