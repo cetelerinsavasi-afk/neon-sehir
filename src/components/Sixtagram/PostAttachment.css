@@ -1,0 +1,114 @@
+.post-att {
+  margin-top: 8px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--panel-border);
+  background: #05070c;
+}
+
+.post-att-avatar-frame {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  max-height: 260px;
+}
+
+.post-att-vehicle-img {
+  width: 100%;
+  display: block;
+  max-height: 220px;
+  object-fit: cover;
+}
+
+.post-att-vehicle-caption {
+  padding: 8px 10px;
+}
+
+.post-att-vehicle-name {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.post-att-vehicle-sub {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.post-att-card {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.post-att-card-title {
+  margin: 0 0 2px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.post-att-card-line {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.post-att-card-status {
+  margin: 2px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.post-att-status-pending {
+  color: var(--neon-yellow);
+}
+
+.post-att-status-won {
+  color: #35e08a;
+}
+
+.post-att-status-lost {
+  color: var(--neon-pink);
+}
+
+.post-att-matches {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.post-att-match-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.post-att-match-team {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.post-att-match-score {
+  font-weight: 800;
+  color: var(--neon-cyan);
+}
+
+.post-att-fine {
+  border-color: rgba(255, 46, 140, 0.4);
+}
+
+.post-att-fine-amount {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--neon-pink);
+}

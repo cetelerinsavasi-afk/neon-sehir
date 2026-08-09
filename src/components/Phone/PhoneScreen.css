@@ -202,6 +202,25 @@
 
 .phone-install-row {
   padding: 0 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gold-store-entry-btn {
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 210, 63, 0.6);
+  background: rgba(255, 210, 63, 0.1);
+  color: #ffd23f;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.gold-store-entry-btn:hover {
+  background: rgba(255, 210, 63, 0.2);
 }
 
 .phone-header-gold {

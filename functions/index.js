@@ -1,7 +1,9 @@
-import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { setGlobalOptions } from 'firebase-functions/v2';
+import { defineSecret } from 'firebase-functions/params';
 import admin from 'firebase-admin';
+import crypto from 'crypto';
 import { VEHICLE_CATALOG, WEAPON_CATALOG } from './catalogData.js';
 
 admin.initializeApp();
@@ -820,6 +822,32 @@ export const dailyReset = onSchedule(
   { schedule: '0 0 * * *', timeZone: 'Europe/Istanbul' },
   async () => {
     const dateKey = istanbulDateKey();
+
+    // 0) BORSA BÜLTENİ ANLIK GÖRÜNTÜSÜ (Gazete > Borsa Bülteni) — elmas/
+    // hisse/kripto fiyatları hourlyInvestmentUpdate ile SAATTE BİR
+    // değişmeye devam ediyor (alım/satım hep canlı fiyattan olur), ama
+    // gazetedeki bülten sadece burada, gece 00:00'da bir kez "dondurulan"
+    // bir anlık görüntü. Böylece gazete gün içinde sabit kalır, sadece
+    // ertesi gece yenilenir.
+    {
+      const bulletinRef = db.collection('newspaperBulletin').doc('current');
+      const [prevBulletinSnap, liveInvestmentSnap] = await Promise.all([
+        bulletinRef.get(),
+        db.collection('investments').doc('current').get(),
+      ]);
+      const prevBulletin = prevBulletinSnap.exists ? prevBulletinSnap.data() : null;
+      const live = liveInvestmentSnap.exists ? liveInvestmentSnap.data() : DEFAULT_PRICES;
+      await bulletinRef.set({
+        dateKey,
+        diamondPrice: live.diamondPrice ?? DEFAULT_PRICES.diamondPrice,
+        stockPrice: live.stockPrice ?? DEFAULT_PRICES.stockPrice,
+        cryptoPrice: live.cryptoPrice ?? DEFAULT_PRICES.cryptoPrice,
+        prevDiamondPrice: prevBulletin?.diamondPrice ?? live.diamondPrice ?? DEFAULT_PRICES.diamondPrice,
+        prevStockPrice: prevBulletin?.stockPrice ?? live.stockPrice ?? DEFAULT_PRICES.stockPrice,
+        prevCryptoPrice: prevBulletin?.cryptoPrice ?? live.cryptoPrice ?? DEFAULT_PRICES.cryptoPrice,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
 
     // -1) TEK SEFERLİK GÖÇ: eski (oyuncu-başına-1-makine) fabrika
     // sistemindeki makine sahiplerine 150.000 altın iade edilir, eski
@@ -2979,6 +3007,11 @@ async function sendCaptureSms(uid, penaltyAmount, newTotalDebt) {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       read: false,
       type: 'capture_penalty',
+      // penaltyAmount/dateKey — Sixtagram "Bugün Yediğim Ceza" post eki bu
+      // alanları okuyor (bkz. src/components/Sixtagram). Metinden regex
+      // ile parse etmek yerine ayrı alanlar tutmak daha sağlam.
+      penaltyAmount,
+      dateKey: istanbulDateKey(),
     });
 }
 
@@ -9085,3 +9118,530 @@ export const listFutbolClubs = onCall(async (request) => {
   clubs.sort((a, b) => b.value - a.value);
   return { clubs };
 });
+
+// =============================================================================
+// TELEFON — "ALTIN MAĞAZASI" (Shopier ile gerçek para karşılığı altın satışı)
+// =============================================================================
+// Akış:
+//   1) İstemci createGoldStoreOrder(packageId) çağırır. Sunucu "pending"
+//      bir sipariş dokümanı (goldStoreOrders/{orderId}) açar ve Shopier'in
+//      klasik Ödeme Formu API'si (api_pay4.php) için gereken alanları +
+//      imzayı üretip istemciye döner. Paket başına satın alma sayısında
+//      SINIR YOK — oyuncu istediği kadar alabilir.
+//   2) İstemci bu alanlarla GİZLİ bir <form> oluşturup Shopier'e POST eder
+//      (bkz. src/components/GoldStoreScreen). Oyuncu tam sayfa Shopier'in
+//      güvenli ödeme sayfasına yönlenir, kart bilgilerini ORADA girer —
+//      kart bilgisi hiçbir zaman bizim sunucumuzdan/istemcimizden geçmez.
+//   3) Ödeme tamamlanınca Shopier, Shopier panelinizde tanımlayacağınız
+//      "Otomatik Sipariş Bildirimi / Webhook" adresine (bu dosyadaki
+//      shopierGoldStoreWebhook fonksiyonunun URL'i) SUNUCUDAN SUNUCUYA bir
+//      POST atar. Biz İMZAYI doğrulamadan asla altın basmıyoruz — istemci
+//      tarafındaki yönlendirme sadece kullanıcıya "ödeme tamam" göstermek
+//      içindir, gerçek teslim/güven burada, webhook'ta gerçekleşir.
+//
+// KURULUM (siz yapmanız gereken):
+//   - Shopier hesabınızdan (shopier.com/m/login.php) API anahtarınızı alın:
+//     Ayarlarım > API Bilgileri. Bunları İSTEMCİYE DEĞİL, sadece Firebase
+//     Functions ortamına şu komutlarla tanımlayın (repo'ya asla yazmayın):
+//       firebase functions:secrets:set SHOPIER_API_KEY
+//       firebase functions:secrets:set SHOPIER_API_SECRET
+//   - Deploy sonrası shopierGoldStoreWebhook fonksiyonunun URL'ini
+//     (firebase deploy çıktısında görünür, örn.
+//     https://europe-west1-PROJENIZ.cloudfunctions.net/shopierGoldStoreWebhook)
+//     Shopier panelinde Ek Özellikler > Sipariş Bildirimi / Webhook
+//     bölümüne kaydedin. Shopier bu alanı zaman zaman güncelliyor
+//     (bkz. developer.shopier.com/reference/webhooks) — panelde gördüğünüz
+//     alan adları burada varsaydığımız `platform_order_id/status/signature/
+//     random_nr/total_order_value/currency` alanlarından farklıysa,
+//     shopierGoldStoreWebhook içindeki alan isimlerini panelinizdeki örnek
+//     koda göre güncelleyin.
+//   - ÖNEMLİ: Şirketiniz olmadığı için Shopier'de "Bireysel" hesap
+//     kullanacaksınız — bu tamamen desteklenen bir seçenek, kurumsal
+//     evrak istemiyor, sadece kimlik doğrulaması istiyor.
+// ---------------------------------------------------------------------------
+
+const shopierApiKey = defineSecret('SHOPIER_API_KEY');
+const shopierApiSecret = defineSecret('SHOPIER_API_SECRET');
+
+// Paket tanımları BİLEREK sadece burada, sunucuda tutuluyor — istemci
+// sadece packageId gönderir, fiyat/miktarları asla istemciden almıyoruz
+// (aksi halde biri tarayıcı konsolundan "0 TL'ye 1 milyon altın" isteği
+// uydurabilirdi).
+const GOLD_STORE_PACKAGES = {
+  paket1: {
+    id: 'paket1',
+    name: '20.000 Altın',
+    priceTRY: 30,
+    gold: 20000,
+    items: {},
+  },
+  paket2: {
+    id: 'paket2',
+    name: '60.000 Altın + Özel Paket',
+    priceTRY: 100,
+    gold: 60000,
+    items: {
+      yasakliMadde: 4,
+      tamirMalzemesi: 1000,
+      silahUpgrade: 100,
+      arabaGelistirme: 20,
+    },
+  },
+};
+
+// Shopier'e gönderilecek toplam tutar formatı: nokta ondalık ayraçlı,
+// ondalıksız TL'ler için de "30.00" gibi iki basamak beklenir.
+function formatShopierAmount(amountTRY) {
+  return Number(amountTRY).toFixed(2);
+}
+
+function shopierSignature(secret, randomNr, orderId, totalOrderValue, currency) {
+  const data = `${randomNr}${orderId}${totalOrderValue}${currency}`;
+  return crypto.createHmac('sha256', secret).update(data).digest('base64');
+}
+
+// createGoldStoreOrder — "Altın Mağazası"nda bir paket seçildiğinde
+// çağrılır. Ödeme yapılmadan HİÇBİR altın/eşya verilmez; bu fonksiyon
+// sadece Shopier ödeme sayfasına gitmek için gereken imzalı form
+// alanlarını üretir.
+export const createGoldStoreOrder = onCall(
+  { secrets: [shopierApiKey, shopierApiSecret] },
+  async (request) => {
+    const uid = requireAuth(request);
+    const { packageId, returnOrigin } = request.data || {};
+    const pack = GOLD_STORE_PACKAGES[packageId];
+    if (!pack) {
+      throw new HttpsError('invalid-argument', 'Geçersiz paket.');
+    }
+    // returnOrigin — istemcinin kendi origin'i (https://oyununuz.com gibi).
+    // Sadece kullanıcıyı ödeme sonrası nereye geri yönlendireceğimizi
+    // belirlemek için kullanılır; whitelisting olmadan açık yönlendirme
+    // riskine karşı basit bir https şema kontrolü yapıyoruz.
+    if (typeof returnOrigin !== 'string' || !/^https:\/\/[a-zA-Z0-9.-]+(:\d+)?$/.test(returnOrigin)) {
+      throw new HttpsError('invalid-argument', 'Geçersiz dönüş adresi.');
+    }
+
+    const dateKey = istanbulDateKey();
+    const orderRef = db.collection('goldStoreOrders').doc();
+    const randomNr = crypto.randomBytes(16).toString('hex');
+    const totalOrderValue = formatShopierAmount(pack.priceTRY);
+    const currency = 'TL';
+
+    await orderRef.set({
+      uid,
+      packageId: pack.id,
+      priceTRY: pack.priceTRY,
+      dateKey,
+      status: 'pending',
+      randomNr,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    const signature = shopierSignature(
+      shopierApiSecret.value(),
+      randomNr,
+      orderRef.id,
+      totalOrderValue,
+      currency
+    );
+
+    const callbackUrl = `${returnOrigin}/?goldOrder=${orderRef.id}`;
+
+    // Shopier'in klasik "Ödeme Formu" API'si (api_pay4.php) — bu alan
+    // listesi Shopier panelindeki "API Bilgileri" sayfasında verilen
+    // örnek entegrasyon dosyasıyla birebir aynı olmalı. Panelinizdeki
+    // örnekte ek/eksik bir alan görürseniz burayı ona göre güncelleyin.
+    const fields = {
+      API_key: shopierApiKey.value(),
+      website_index: '1',
+      platform_order_id: orderRef.id,
+      product_name: pack.name,
+      product_type: '1', // 1 = sanal/dijital ürün
+      buyer_name: request.auth.token.name?.split(' ')[0] || 'Oyuncu',
+      buyer_surname: request.auth.token.name?.split(' ').slice(1).join(' ') || 'Oyuncu',
+      buyer_email: request.auth.token.email || `${uid}@neon-sehir.oyun`,
+      buyer_account_age: '0',
+      buyer_id_nr: '11111111111',
+      buyer_phone: '5555555555',
+      billing_address: 'Dijital teslimat - fiziksel adres yok',
+      billing_city: 'İstanbul',
+      billing_country: 'Turkey',
+      billing_postcode: '34000',
+      shipping_address: 'Dijital teslimat - fiziksel adres yok',
+      shipping_city: 'İstanbul',
+      shipping_country: 'Turkey',
+      shipping_postcode: '34000',
+      total_order_value: totalOrderValue,
+      currency,
+      platform: '0',
+      is_in_frame: '0',
+      current_language: '0',
+      modul_version: '1.0.4',
+      random_nr: randomNr,
+      signature,
+      callback_url: callbackUrl,
+    };
+
+    return {
+      orderId: orderRef.id,
+      actionUrl: 'https://www.shopier.com/ShowProduct/api_pay4.php',
+      fields,
+    };
+  }
+);
+
+// shopierGoldStoreWebhook — Shopier'in ödeme sonucunu bize SUNUCUDAN
+// SUNUCUYA bildirdiği uç nokta. Bu URL'i Shopier panelinde tanımlamanız
+// gerekiyor (bkz. yukarıdaki KURULUM notu). İmza doğrulanmadan HİÇBİR
+// altın/eşya verilmez.
+export const shopierGoldStoreWebhook = onRequest(
+  { secrets: [shopierApiSecret] },
+  async (req, res) => {
+    try {
+      const body = req.body || {};
+      const {
+        status,
+        platform_order_id: orderId,
+        random_nr: randomNr,
+        total_order_value: totalOrderValue,
+        currency,
+        signature,
+      } = body;
+
+      if (!orderId || !signature || !randomNr) {
+        console.error('shopierGoldStoreWebhook: eksik alan', body);
+        res.status(400).send('missing fields');
+        return;
+      }
+
+      const expectedSignature = shopierSignature(
+        shopierApiSecret.value(),
+        randomNr,
+        orderId,
+        totalOrderValue,
+        currency
+      );
+      const providedSignature = Buffer.from(String(signature), 'base64');
+      const expectedBuffer = Buffer.from(expectedSignature, 'base64');
+      const validSignature =
+        providedSignature.length === expectedBuffer.length &&
+        crypto.timingSafeEqual(providedSignature, expectedBuffer);
+
+      if (!validSignature) {
+        console.error('shopierGoldStoreWebhook: geçersiz imza', orderId);
+        res.status(400).send('invalid signature');
+        return;
+      }
+
+      const orderRef = db.collection('goldStoreOrders').doc(orderId);
+
+      if (String(status).toLowerCase() !== 'success') {
+        await orderRef.set(
+          { status: 'failed', webhookStatus: String(status || '') },
+          { merge: true }
+        );
+        res.status(200).send('OK');
+        return;
+      }
+
+      await db.runTransaction(async (tx) => {
+        const orderSnap = await tx.get(orderRef);
+        if (!orderSnap.exists) {
+          throw new Error(`Bilinmeyen sipariş: ${orderId}`);
+        }
+        const order = orderSnap.data();
+
+        // İdempotentlik: aynı webhook Shopier tarafından tekrar
+        // gönderilirse (ağ hatası sonrası retry gibi) iki kez altın
+        // basmayalım.
+        if (order.status === 'paid') {
+          return;
+        }
+        // Rastgele değer eşleşmiyorsa (biri orderId tahmin edip sahte
+        // webhook atmaya çalışıyor olabilir) reddet.
+        if (order.randomNr !== randomNr) {
+          throw new Error(`random_nr uyuşmuyor: ${orderId}`);
+        }
+
+        const pack = GOLD_STORE_PACKAGES[order.packageId];
+        if (!pack) {
+          throw new Error(`Bilinmeyen paket: ${order.packageId}`);
+        }
+
+        const userRef = db.collection('users').doc(order.uid);
+        tx.set(userRef, { gold: admin.firestore.FieldValue.increment(pack.gold) }, { merge: true });
+        Object.entries(pack.items).forEach(([materialType, qty]) => {
+          const inventoryRef = userRef.collection('inventory').doc(materialType);
+          tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(qty) }, { merge: true });
+        });
+        tx.set(
+          orderRef,
+          {
+            status: 'paid',
+            webhookStatus: String(status),
+            paidAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        const msgRef = userRef.collection('messages').doc();
+        tx.set(msgRef, {
+          from: 'Altın Mağazası',
+          text: `${pack.name} satın alımın tamamlandı — hesabına ${pack.gold.toLocaleString('tr-TR')} altın yüklendi.`,
+          read: false,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      });
+
+      res.status(200).send('OK');
+    } catch (err) {
+      console.error('shopierGoldStoreWebhook hata:', err);
+      // 500 dönersek Shopier'in webhook'u tekrar denemesini sağlarız
+      // (geçici bir Firestore hatası olabilir); imza/veri hataları zaten
+      // yukarıda 400 ile erken kesiliyor.
+      res.status(500).send('error');
+    }
+  }
+);
+
+// =============================================================================
+// TELEFON — "SIXTAGRAM" (mini sosyal medya uygulaması)
+// =============================================================================
+// - Postlar 24 saat sonra otomatik silinir (bkz. cleanupSixtagramPosts).
+// - Anasayfa akışı en çok beğeni alan (SÜRESİ DOLMAMIŞ) postları listeler.
+// - Profildeki "toplam beğeni" sayısı, post silinse bile KALICI olması için
+//   users/{uid}.sixtagramTotalLikes sayacında ayrıca tutulur (beğeni geri
+//   çekilirse azalır, ama bir post süresi dolup silindiğinde ETKİLENMEZ).
+// - Görsel eklerin (avatar/araba/kupon/maç/yatırım/ceza) TÜMÜ istemciden
+//   ham veri olarak alınmaz — istemci sadece "hangisini" seçtiğini söyler
+//   (örn. hangi vehicleId), gerçek veri burada, sunucuda, oyuncunun kendi
+//   kayıtlarından okunup doğrulanarak gömülür. Böylece kimse sahte skor/
+//   sahte kupon/başkasının arabasını paylaşamaz.
+// ---------------------------------------------------------------------------
+
+const SIXTAGRAM_MAX_TEXT_LEN = 280;
+const SIXTAGRAM_POST_LIFETIME_MS = 24 * 60 * 60 * 1000;
+const SIXTAGRAM_ASSET_LABELS = { diamond: 'Elmas', stock: 'Hisse Senedi', crypto: 'Kripto' };
+
+// buildSixtagramAttachment — istemcinin seçtiği ek türünü, sunucudaki
+// GERÇEK veriden yeniden inşa eder. `attachment` yoksa/null ise null döner
+// (sadece yazı paylaşımı da geçerlidir).
+async function buildSixtagramAttachment(uid, attachment) {
+  if (!attachment || !attachment.type) return null;
+  const { type } = attachment;
+
+  if (type === 'avatar') {
+    const userSnap = await db.collection('users').doc(uid).get();
+    const avatar = userSnap.data()?.avatar || null;
+    if (!avatar) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Önce Profil > Avatar Oluştur ile bir avatar oluşturmalısın.'
+      );
+    }
+    return { type: 'avatar', avatar };
+  }
+
+  if (type === 'vehicle') {
+    const vehicleId = attachment.vehicleId;
+    if (!vehicleId) throw new HttpsError('invalid-argument', 'Araç seçilmedi.');
+    const vSnap = await db.collection('vehicles').doc(vehicleId).get();
+    if (!vSnap.exists || vSnap.data().ownerId !== uid) {
+      throw new HttpsError('permission-denied', 'Bu araç sana ait değil.');
+    }
+    const v = vSnap.data();
+    return {
+      type: 'vehicle',
+      catalogId: v.catalogId,
+      model: v.model,
+      gearLevel: v.gearLevel,
+      gearUpgraded: !!v.gearUpgraded,
+      tankUpgraded: !!v.tankUpgraded,
+      lifeDays: v.lifeDays ?? null,
+    };
+  }
+
+  if (type === 'iddaa') {
+    const betId = attachment.betId;
+    if (!betId) throw new HttpsError('invalid-argument', 'Kupon seçilmedi.');
+    const betSnap = await db.collection('futbolBets').doc(betId).get();
+    if (!betSnap.exists || betSnap.data().uid !== uid) {
+      throw new HttpsError('permission-denied', 'Bu kupon sana ait değil.');
+    }
+    const bet = betSnap.data();
+    const leagueSnap = await db.collection('futbolLeagues').doc(bet.leagueId).get();
+    return {
+      type: 'iddaa',
+      leagueName: leagueSnap.exists ? leagueSnap.data().name || null : null,
+      round: bet.round,
+      stake: bet.stake,
+      status: bet.status,
+      payout: bet.payout || 0,
+      predictionsCount: (bet.predictions || []).length,
+    };
+  }
+
+  if (type === 'matches') {
+    const dateKey = istanbulDateKey();
+    const snap = await db
+      .collection('newsEvents')
+      .where('dateKey', '==', dateKey)
+      .where('type', '==', 'football_match')
+      .limit(4)
+      .get();
+    if (snap.empty) {
+      throw new HttpsError('failed-precondition', 'Bugün henüz sonuçlanan bir maç yok.');
+    }
+    const matches = snap.docs.map((d) => {
+      const m = d.data();
+      return {
+        homeName: m.homeName,
+        awayName: m.awayName,
+        homeScore: m.homeScore,
+        awayScore: m.awayScore,
+        homeLogo: m.homeLogo || null,
+        awayLogo: m.awayLogo || null,
+      };
+    });
+    return { type: 'matches', matches };
+  }
+
+  if (type === 'investment') {
+    const asset = ['diamond', 'stock', 'crypto'].includes(attachment.asset)
+      ? attachment.asset
+      : 'stock';
+    const priceField = INVESTMENT_PRICE_FIELD[asset];
+    const [currentSnap, historySnap] = await Promise.all([
+      db.collection('investments').doc('current').get(),
+      db.collection('investmentHistory').orderBy('createdAt', 'desc').limit(24).get(),
+    ]);
+    const points = historySnap.docs
+      .map((d) => d.data()[priceField])
+      .filter((p) => typeof p === 'number')
+      .reverse();
+    if (!points.length) {
+      throw new HttpsError('failed-precondition', 'Henüz yeterli piyasa verisi yok.');
+    }
+    const current = currentSnap.exists ? currentSnap.data()[priceField] : points[points.length - 1];
+    return {
+      type: 'investment',
+      asset,
+      assetLabel: SIXTAGRAM_ASSET_LABELS[asset],
+      current,
+      points,
+    };
+  }
+
+  if (type === 'fine') {
+    const dateKey = istanbulDateKey();
+    const msgsSnap = await db
+      .collection('users')
+      .doc(uid)
+      .collection('messages')
+      .where('type', '==', 'capture_penalty')
+      .where('dateKey', '==', dateKey)
+      .get();
+    if (msgsSnap.empty) {
+      throw new HttpsError('failed-precondition', 'Bugün henüz bir ceza yemedin (iyi haber!).');
+    }
+    const totalAmount = msgsSnap.docs.reduce((sum, d) => sum + (d.data().penaltyAmount || 0), 0);
+    return { type: 'fine', totalAmount, count: msgsSnap.size };
+  }
+
+  throw new HttpsError('invalid-argument', 'Geçersiz ek türü.');
+}
+
+// createSixtagramPost — yeni bir gönderi paylaşır. `text` ve/veya
+// `attachment` verilebilir, ikisi de boşsa reddedilir.
+export const createSixtagramPost = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { text, attachment } = request.data || {};
+  const cleanText = typeof text === 'string' ? text.trim().slice(0, SIXTAGRAM_MAX_TEXT_LEN) : '';
+
+  const builtAttachment = await buildSixtagramAttachment(uid, attachment);
+  if (!cleanText && !builtAttachment) {
+    throw new HttpsError(
+      'invalid-argument',
+      'Boş gönderi paylaşamazsın — bir şeyler yaz ya da bir ek ekle.'
+    );
+  }
+
+  const userSnap = await db.collection('users').doc(uid).get();
+  const user = userSnap.data() || {};
+  const nowMs = Date.now();
+
+  const postRef = db.collection('sixtagramPosts').doc();
+  await postRef.set({
+    uid,
+    authorName: user.displayName || 'Oyuncu',
+    authorAvatar: user.avatar || null,
+    text: cleanText,
+    attachment: builtAttachment,
+    likeCount: 0,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAtMs: nowMs,
+    expiresAtMs: nowMs + SIXTAGRAM_POST_LIFETIME_MS,
+  });
+
+  return { ok: true, postId: postRef.id };
+});
+
+// toggleSixtagramLike — beğen/beğeniyi geri çek. Kendi postunu da
+// beğenebilir (kısıtlama yok), istemci isterse UI'da engelleyebilir.
+export const toggleSixtagramLike = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { postId } = request.data || {};
+  if (!postId) throw new HttpsError('invalid-argument', 'postId gerekli.');
+
+  const postRef = db.collection('sixtagramPosts').doc(postId);
+  const likeRef = postRef.collection('likes').doc(uid);
+
+  let liked = false;
+  await db.runTransaction(async (tx) => {
+    const [postSnap, likeSnap] = await Promise.all([tx.get(postRef), tx.get(likeRef)]);
+    if (!postSnap.exists) {
+      throw new HttpsError('not-found', 'Gönderi bulunamadı (süresi dolup silinmiş olabilir).');
+    }
+    const post = postSnap.data();
+    const ownerRef = db.collection('users').doc(post.uid);
+
+    if (likeSnap.exists) {
+      tx.delete(likeRef);
+      tx.update(postRef, { likeCount: admin.firestore.FieldValue.increment(-1) });
+      tx.set(ownerRef, { sixtagramTotalLikes: admin.firestore.FieldValue.increment(-1) }, { merge: true });
+      liked = false;
+    } else {
+      tx.set(likeRef, { uid, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+      tx.update(postRef, { likeCount: admin.firestore.FieldValue.increment(1) });
+      tx.set(ownerRef, { sixtagramTotalLikes: admin.firestore.FieldValue.increment(1) }, { merge: true });
+      liked = true;
+    }
+  });
+
+  return { ok: true, liked };
+});
+
+// cleanupSixtagramPosts — süresi (24 saat) dolan postları ve beğeni alt
+// koleksiyonlarını siler. Saatte bir çalışır, her seferinde en fazla 100
+// post temizler (büyük birikme olursa bir sonraki saatte devam eder).
+export const cleanupSixtagramPosts = onSchedule(
+  { schedule: 'every 1 hours', timeZone: 'Europe/Istanbul' },
+  async () => {
+    const cutoffMs = Date.now();
+    const expiredSnap = await db
+      .collection('sixtagramPosts')
+      .where('expiresAtMs', '<', cutoffMs)
+      .limit(100)
+      .get();
+
+    for (const postDoc of expiredSnap.docs) {
+      const likesSnap = await postDoc.ref.collection('likes').limit(500).get();
+      if (!likesSnap.empty) {
+        const likesBatch = db.batch();
+        likesSnap.forEach((l) => likesBatch.delete(l.ref));
+        await likesBatch.commit();
+      }
+      await postDoc.ref.delete();
+    }
+  }
+);

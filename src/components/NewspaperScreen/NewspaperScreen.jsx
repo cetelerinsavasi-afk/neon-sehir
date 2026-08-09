@@ -1,9 +1,7 @@
-import { useMemo } from 'react';
 import { useNewspaper } from '../../hooks/useNewspaper';
 import { useLottery } from '../../hooks/useLottery';
 import { useChampionshipDaily } from '../../hooks/useChampionshipDaily';
-import { useInvestmentHistory } from '../../hooks/useInvestmentHistory';
-import { useInvestmentPrices } from '../../hooks/useInvestmentPrices';
+import { useNewspaperBulletin } from '../../hooks/useNewspaperBulletin';
 import FutbolCrest from '../FutbolScreen/FutbolCrest';
 import './NewspaperScreen.css';
 
@@ -90,20 +88,10 @@ export default function NewspaperScreen() {
   const { events, loading } = useNewspaper();
   const { yesterday: lotteryYesterday } = useLottery();
   const { byCatalogId } = useChampionshipDaily();
-  const { history } = useInvestmentHistory();
-  const { prices } = useInvestmentPrices();
+  const { bulletin } = useNewspaperBulletin();
 
   const cabrioYesterday = byCatalogId[String(UST_CABRIO_CATALOG_ID)]?.yesterday;
 
-  // ~24 saat önceki fiyat noktası: hourlyInvestmentUpdate saatte bir
-  // çalıştığı için history dizisinde (en yeni sonda) 24 kayıt geriye
-  // gitmek ~24 saat önceye denk geliyor. Yetersiz geçmişte elimizdeki
-  // en eski noktayı kullanıyoruz.
-  const point24hAgo = useMemo(() => {
-    if (!history.length) return null;
-    const idx = Math.max(0, history.length - 25);
-    return history[idx];
-  }, [history]);
 
   const heistEvents = events.filter((e) => e.type === 'heist_success');
   const biggestHeist = heistEvents.length
@@ -224,27 +212,30 @@ export default function NewspaperScreen() {
 
         <section className="newspaper-section">
           <h3 className="newspaper-section-title">📈 Borsa Bülteni</h3>
-          {point24hAgo ? (
+          {bulletin ? (
             <div className="news-price-list">
               <PriceRow
                 label="Elmas"
                 unit="altın"
-                prev={point24hAgo.diamondPrice}
-                current={prices.diamondPrice}
+                prev={bulletin.prevDiamondPrice}
+                current={bulletin.diamondPrice}
               />
               <PriceRow
                 label="Hisse Senedi"
                 unit="altın"
-                prev={point24hAgo.stockPrice}
-                current={prices.stockPrice}
+                prev={bulletin.prevStockPrice}
+                current={bulletin.stockPrice}
               />
               <PriceRow
                 label="Kripto"
                 unit="altın"
-                prev={point24hAgo.cryptoPrice}
-                current={prices.cryptoPrice}
+                prev={bulletin.prevCryptoPrice}
+                current={bulletin.cryptoPrice}
               />
-              <p className="newspaper-muted newspaper-small">Son 24 saatlik değişim.</p>
+              <p className="newspaper-muted newspaper-small">
+                Bu bülten her gece 00:00'da güncellenir, gün içinde değişmez. Anlık alım/satım
+                fiyatları için Parara Bank'a bak.
+              </p>
             </div>
           ) : (
             <p className="newspaper-body newspaper-muted">Piyasa verisi henüz oluşmadı.</p>

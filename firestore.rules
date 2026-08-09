@@ -265,6 +265,40 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // newspaperBulletin/current — Gazete > Borsa Bülteni için gece
+    // 00:00'da dondurulan fiyat anlık görüntüsü. Herkes okuyabilir;
+    // yazma sadece Cloud Functions (dailyReset) ile.
+    match /newspaperBulletin/{docId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // sixtagramPosts/{postId} — mini sosyal medya postları. Herkes
+    // okuyabilir (akış herkese açık); yazma sadece Cloud Functions ile
+    // (createSixtagramPost/toggleSixtagramLike/cleanupSixtagramPosts).
+    match /sixtagramPosts/{postId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+
+      // likes/{uid} — kimin beğendiğini istemcinin "beğenildi mi?"
+      // durumunu göstermesi için okunabilir; yazma yine sadece Cloud
+      // Functions ile (toggleSixtagramLike).
+      match /likes/{uid} {
+        allow read: if isSignedIn();
+        allow write: if false;
+      }
+    }
+
+    // goldStoreOrders/{orderId} — "Altın Mağazası" (Shopier) siparişleri.
+    // Sahibi kendi siparişinin durumunu ("pending"/"paid"/"failed")
+    // görebilsin diye okunabilir; asla istemciden yazılmaz — statüyü
+    // sadece shopierGoldStoreWebhook (Admin SDK, bu kuralları bypass eder)
+    // değiştirir.
+    match /goldStoreOrders/{orderId} {
+      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
+
     // Tanımlanmamış her şey varsayılan olarak kapalı.
     match /{document=**} {
       allow read, write: if false;

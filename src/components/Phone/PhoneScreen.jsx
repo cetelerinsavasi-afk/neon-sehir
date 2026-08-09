@@ -7,6 +7,8 @@ import ChatsAppScreen from '../ChatsAppScreen/ChatsAppScreen';
 import CasinoScreen from '../CasinoScreen/CasinoScreen';
 import NewspaperScreen from '../NewspaperScreen/NewspaperScreen';
 import FlappyBirdScreen from '../FlappyBirdScreen/FlappyBirdScreen';
+import GoldStoreScreen from '../GoldStoreScreen/GoldStoreScreen';
+import SixtagramScreen from '../Sixtagram/SixtagramScreen';
 import InstallAppButton from '../InstallAppButton/InstallAppButton';
 import { useMessages } from '../../hooks/useMessages';
 import { usePlayer } from '../../hooks/usePlayer';
@@ -22,6 +24,7 @@ const APPS = [
   { id: 'casino', label: '🎰', note: 'Casino', enabled: true },
   { id: 'gazete', label: '📰', note: 'Gazete', enabled: true },
   { id: 'flappy', label: '🐤', note: 'Flappy Kuş', enabled: true },
+  { id: 'sixtagram', label: '📸', note: 'Sixtagram', enabled: true },
 ];
 
 const APP_TITLES = {
@@ -33,6 +36,8 @@ const APP_TITLES = {
   casino: 'Casino',
   gazete: 'Neon Şehir Gazetesi',
   flappy: 'Flappy Kuş',
+  sixtagram: 'Sixtagram',
+  'altin-magazasi': 'Altın Mağazası',
 };
 
 export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }) {
@@ -78,6 +83,8 @@ export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }
           )}
           {openApp === 'gazete' && <NewspaperScreen />}
           {openApp === 'flappy' && <FlappyBirdScreen />}
+          {openApp === 'sixtagram' && <SixtagramScreen />}
+          {openApp === 'altin-magazasi' && <GoldStoreScreen />}
         </div>
       </div>
     );
@@ -119,6 +126,9 @@ export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }
       </div>
 
       <div className="phone-install-row">
+        <button className="gold-store-entry-btn" onClick={() => handleOpenApp('altin-magazasi')}>
+          🪙 Altın Mağazası
+        </button>
         <InstallAppButton />
       </div>
     </div>

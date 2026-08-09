@@ -116,6 +116,22 @@ export const instantSellListing = (payload) =>
 export const cancelListing = (listingId) =>
   httpsCallable(functions, 'cancelListing')({ listingId });
 
+// --- Telefon: Sixtagram (mini sosyal medya) ---
+
+export const createSixtagramPost = (text, attachment) =>
+  httpsCallable(functions, 'createSixtagramPost')({ text, attachment });
+
+export const toggleSixtagramLike = (postId) =>
+  httpsCallable(functions, 'toggleSixtagramLike')({ postId });
+
+// --- Telefon: Altın Mağazası (Shopier ile gerçek para karşılığı altın) ---
+
+export const createGoldStoreOrder = (packageId) =>
+  httpsCallable(functions, 'createGoldStoreOrder')({
+    packageId,
+    returnOrigin: window.location.origin,
+  });
+
 // quantity sadece malzeme ilanlarında kullanılır — istenen kadar adet
 // satın almak için (bkz. functions/index.js buyListing).
 export const buyListing = (listingId, quantity) =>

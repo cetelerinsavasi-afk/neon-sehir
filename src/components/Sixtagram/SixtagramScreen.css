@@ -1,0 +1,106 @@
+.sixtagram {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sixtagram-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sixtagram-tabs {
+  display: flex;
+  gap: 6px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  padding: 3px;
+}
+
+.sixtagram-tab {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sixtagram-tab.active {
+  background: rgba(255, 46, 140, 0.16);
+  color: var(--neon-pink);
+}
+
+.sixtagram-compose-btn {
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--neon-pink);
+  background: rgba(255, 46, 140, 0.1);
+  color: var(--neon-pink);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sixtagram-compose-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sixtagram-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sixtagram-hint {
+  margin: 8px 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.sixtagram-profile {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sixtagram-profile-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.sixtagram-profile-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid var(--neon-pink);
+  flex-shrink: 0;
+}
+
+.sixtagram-profile-name {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.sixtagram-profile-likes {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--neon-pink);
+  font-weight: 700;
+}
