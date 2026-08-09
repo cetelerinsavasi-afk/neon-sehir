@@ -101,6 +101,11 @@ export const buyLotteryTicket = (quantity) =>
 
 export const spinSlot = () => httpsCallable(functions, 'spinSlot')();
 
+// --- Telefon: Flappy Bird mini oyunu ---
+
+export const submitFlappyScore = (score) =>
+  httpsCallable(functions, 'submitFlappyScore')({ score });
+
 // --- Telefon: "2." İkinci El Satış (Bölüm 9.1) ---
 
 export const createListing = (payload) => httpsCallable(functions, 'createListing')(payload);

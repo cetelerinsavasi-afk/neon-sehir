@@ -2477,6 +2477,52 @@ export const spinSlot = onCall(async (request) => {
 });
 
 // =============================================================================
+// TELEFON — FLAPPY BIRD MİNİ OYUNU
+// =============================================================================
+// Tamamen istemci tarafında (canvas) oynanan basit bir reflex oyunu —
+// sunucunun tek görevi, oyun bitince skoru KAYDETMEK. Her oyuncunun
+// SADECE kişisel en iyi skoru tutuluyor (flappyScores/{uid}) — bu hem
+// "genel en iyi 10" sorgusunu (tek koleksiyonu skora göre sıralamak
+// yeterli) hem de "kendi rekorumu" göstermeyi kolaylaştırıyor. Skor
+// üzerinde ucuz ama makul bir üst sınır kontrolü var (client tarafında
+// sahte yüksek skor gönderilmesine karşı hafif bir engel — bu bir
+// reflex oyunu olduğu için tam bir anti-cheat şart değil).
+const FLAPPY_MAX_PLAUSIBLE_SCORE = 100000;
+
+export const submitFlappyScore = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const score = Math.round(Number(request.data?.score));
+  if (!Number.isInteger(score) || score < 0 || score > FLAPPY_MAX_PLAUSIBLE_SCORE) {
+    throw new HttpsError('invalid-argument', 'Geçersiz skor.');
+  }
+
+  const userSnap = await db.collection('users').doc(uid).get();
+  const displayName = userSnap.data()?.displayName || 'Oyuncu';
+
+  const scoreRef = db.collection('flappyScores').doc(uid);
+  let isNewBest = false;
+  let best = score;
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(scoreRef);
+    const current = snap.exists ? snap.data().score || 0 : 0;
+    if (score > current) {
+      isNewBest = true;
+      best = score;
+      tx.set(
+        scoreRef,
+        { uid, displayName, score, updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+        { merge: true }
+      );
+    } else {
+      best = current;
+    }
+  });
+
+  return { ok: true, isNewBest, best };
+});
+
+// =============================================================================
 // FAZ 5 — ŞÜPHE YÖNETİMİ VE SOYGUN SİSTEMİ (Bölüm 13, 14)
 // =============================================================================
 
@@ -8275,7 +8321,11 @@ export const setFutbolLineup = onCall(async (request) => {
 // kaldı, ama artık oyunun mevcut güç seviyesiyle orantılı.
 const FUTBOL_TRANSFER_POSITIONS = ['GK', 'DEF', 'MID', 'FWD'];
 const FUTBOL_SYSTEM_LISTING_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 saat satılmazsa kendiliğinden yenilenir
-const FUTBOL_OWNER_LISTING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+// FUTBOL_OWNER_LISTING_MAX_AGE_MS — kullanıcı revizesi: "sistemin
+// koyduğu oyuncular 24 saatte listeden kalkıyor, bu anında satılanlar
+// ve oyuncuların kendi ilanları için de geçerli olsun" — eskiden 7
+// gündü, artık sistemle AYNI (24 saat).
+const FUTBOL_OWNER_LISTING_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const FUTBOL_SYSTEM_RESTOCK_DELAY_MS = 60 * 60 * 1000; // satıldıktan 1 saat sonra yenisi gelsin
 // Slot 0 = en güçlü, slot 1 = orta (%75-90'ı), slot 2 = en zayıf
 // (%50-75'i). Kullanıcı revizesi: slot 0 ÖNCEDEN taban gücün %90-110'u
@@ -8679,9 +8729,11 @@ export const buyFutbolPlayer = onCall(async (request) => {
 //      sadece 1 ucuz bayrak okumasıyla anında çıkar, kalıcı bir yük
 //      DEĞİLDİR.
 //   2) Bekleme süresi (1 saat) dolmuş boş transfer slotlarını doldurur.
-//   3) 24 saattir satılmayan sistem oyuncularını yerinde tazeler; 7
-//      günlük kişisel ilanların (anında satış/elle listeleme) süresini
-//      doldurur.
+//   3) 24 saattir satılmayan sistem oyuncularını yerinde tazeler; 24
+//      saattir satılmayan kişisel ilanların (anında satış/elle listeleme)
+//      süresini doldurur — anında satılanlar tamamen kalkar (yok olur),
+//      elle listelenenler ilandan çıkıp sahibinin kadrosuna geri döner
+//      (tekrar listeleyebilir).
 // computeFutbolMaxPowerByPosition (pahalı tam koleksiyon taraması)
 // SADECE gerçekten bir şey dolduracaksak/tazeleyeceksek çağrılır, ayrıca
 // (2) ve (3) aynı çalıştırmada ikisi de gerekiyorsa TEK seferde

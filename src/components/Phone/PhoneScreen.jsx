@@ -6,6 +6,7 @@ import AmazorScreen from '../AmazorScreen/AmazorScreen';
 import ChatsAppScreen from '../ChatsAppScreen/ChatsAppScreen';
 import CasinoScreen from '../CasinoScreen/CasinoScreen';
 import NewspaperScreen from '../NewspaperScreen/NewspaperScreen';
+import FlappyBirdScreen from '../FlappyBirdScreen/FlappyBirdScreen';
 import InstallAppButton from '../InstallAppButton/InstallAppButton';
 import { useMessages } from '../../hooks/useMessages';
 import { usePlayer } from '../../hooks/usePlayer';
@@ -20,6 +21,7 @@ const APPS = [
   { id: 'chatsapp', label: '💬', note: 'ChatsApp', enabled: true },
   { id: 'casino', label: '🎰', note: 'Casino', enabled: true },
   { id: 'gazete', label: '📰', note: 'Gazete', enabled: true },
+  { id: 'flappy', label: '🐤', note: 'Flappy Kuş', enabled: true },
 ];
 
 const APP_TITLES = {
@@ -30,6 +32,7 @@ const APP_TITLES = {
   chatsapp: 'ChatsApp',
   casino: 'Casino',
   gazete: 'Neon Şehir Gazetesi',
+  flappy: 'Flappy Kuş',
 };
 
 export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }) {
@@ -74,6 +77,7 @@ export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }
             />
           )}
           {openApp === 'gazete' && <NewspaperScreen />}
+          {openApp === 'flappy' && <FlappyBirdScreen />}
         </div>
       </div>
     );

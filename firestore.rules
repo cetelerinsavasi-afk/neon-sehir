@@ -257,6 +257,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // flappyScores/{uid} — telefondaki Flappy Bird mini oyununun kişisel
+    // en iyi skoru. Herkes okuyabilmeli (genel "en iyi 10" tablosu için);
+    // yazma sadece Cloud Functions (submitFlappyScore) ile.
+    match /flappyScores/{uid} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
     // Tanımlanmamış her şey varsayılan olarak kapalı.
     match /{document=**} {
       allow read, write: if false;
