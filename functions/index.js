@@ -4,6 +4,7 @@ import { setGlobalOptions } from 'firebase-functions/v2';
 import { defineSecret } from 'firebase-functions/params';
 import admin from 'firebase-admin';
 import crypto from 'crypto';
+import Busboy from 'busboy';
 import { VEHICLE_CATALOG, WEAPON_CATALOG } from './catalogData.js';
 
 admin.initializeApp();
@@ -9331,25 +9332,75 @@ async function creditGoldStorePackage(uid, packageId, meta = {}) {
 // kendi OSB dokümantasyonundaki örnekle birebir aynı: body iki elemanlı
 // bir dizi ([{value: base64Payload}, {value: hash}]), imza
 // HMAC-SHA256(base64Payload + OSB_USERNAME, OSB_PASSWORD) ile doğrulanır.
+// extractShopierOsbFields — Shopier'in OSB isteğini, hangi Content-Type
+// ile geldiğine bakılmaksızın { resVal, hashVal } olarak çıkarır.
+// Shopier bu isteği bazen `multipart/form-data` (sınır/boundary'li)
+// gövdeyle gönderiyor — Firebase Functions'ın gömülü gövde ayrıştırıcısı
+// bunu OTOMATİK OLARAK req.body'ye çevirmiyor (sadece JSON ve
+// application/x-www-form-urlencoded için otomatik ayrıştırma yapar).
+// Bu yüzden Content-Type multipart ise req.rawBody'yi busboy ile elle
+// ayrıştırıyoruz; değilse (JSON/urlencoded) Firebase'in zaten
+// doldurduğu req.body'yi kullanıyoruz.
+async function extractShopierOsbFields(req) {
+  const contentType = String(req.headers['content-type'] || '');
+
+  if (contentType.includes('multipart/form-data')) {
+    const fields = await new Promise((resolve, reject) => {
+      const collected = {};
+      try {
+        const bb = Busboy({ headers: req.headers });
+        bb.on('field', (name, val) => {
+          collected[name] = val;
+        });
+        bb.on('close', () => resolve(collected));
+        bb.on('error', reject);
+        bb.end(req.rawBody);
+      } catch (err) {
+        reject(err);
+      }
+    });
+    return { resVal: fields.res ?? null, hashVal: fields.hash ?? null };
+  }
+
+  // JSON veya application/x-www-form-urlencoded — Firebase bunu zaten
+  // otomatik olarak req.body'ye ayrıştırmış olur.
+  const body = req.body;
+  if (body && typeof body === 'object' && !Buffer.isBuffer(body)) {
+    if (body.res && body.hash) {
+      return { resVal: body.res, hashVal: body.hash };
+    }
+    // Eski/alternatif entegrasyon örneklerinde görülen dizi biçimi
+    // ([{value:...},{value:...}]) ihtimaline karşı bir yedek daha:
+    if (Array.isArray(body) && body[0]?.value && body[1]?.value) {
+      return { resVal: body[0].value, hashVal: body[1].value };
+    }
+  }
+
+  return { resVal: null, hashVal: null };
+}
+
 export const shopierOsbWebhook = onRequest(
   { secrets: [shopierOsbUsername, shopierOsbPassword] },
   async (req, res) => {
     try {
-      const body = req.body;
-      if (!Array.isArray(body) || !body[0]?.value || !body[1]?.value) {
-        console.error('shopierOsbWebhook: beklenmeyen gövde biçimi', body);
+      const { resVal, hashVal } = await extractShopierOsbFields(req);
+      if (!resVal || !hashVal) {
+        console.error(
+          'shopierOsbWebhook: res/hash bulunamadı — content-type:',
+          req.headers['content-type'],
+          'rawBody (ilk 200 karakter):',
+          req.rawBody ? req.rawBody.toString('utf8').slice(0, 200) : null
+        );
         res.status(400).send('missing fields');
         return;
       }
 
-      const payloadB64 = body[0].value;
-      const providedHash = body[1].value;
       const expectedHash = crypto
         .createHmac('sha256', shopierOsbPassword.value())
-        .update(payloadB64 + shopierOsbUsername.value())
+        .update(resVal + shopierOsbUsername.value())
         .digest('hex');
 
-      const providedBuffer = Buffer.from(String(providedHash), 'utf8');
+      const providedBuffer = Buffer.from(String(hashVal), 'utf8');
       const expectedBuffer = Buffer.from(expectedHash, 'utf8');
       const validSignature =
         providedBuffer.length === expectedBuffer.length &&
@@ -9361,7 +9412,7 @@ export const shopierOsbWebhook = onRequest(
         return;
       }
 
-      const order = JSON.parse(Buffer.from(payloadB64, 'base64').toString('utf8'));
+      const order = JSON.parse(Buffer.from(resVal, 'base64').toString('utf8'));
       const { orderid, productid, price, email, customernote, istest } = order;
 
       // Shopier panelinden atılan test bildirimlerinde gerçek altın
