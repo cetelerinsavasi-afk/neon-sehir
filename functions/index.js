@@ -9225,7 +9225,11 @@ export const createGoldStoreOrder = onCall(
     const orderRef = db.collection('goldStoreOrders').doc();
     const randomNr = crypto.randomBytes(16).toString('hex');
     const totalOrderValue = formatShopierAmount(pack.priceTRY);
-    const currency = 'TL';
+    // currency — Shopier'in api_pay4.php'sinde TL için "TL" değil SAYISAL
+    // "0" bekleniyor olabilir (1=USD, 2=EUR); birden fazla bağımsız
+    // kaynakta bu şekilde görüldü. Panelinizin örnek dosyasında farklıysa
+    // burayı ona göre değiştirin.
+    const currency = '0';
 
     await orderRef.set({
       uid,
