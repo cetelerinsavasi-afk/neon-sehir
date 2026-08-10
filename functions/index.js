@@ -2083,6 +2083,18 @@ async function getCurrentPrices() {
 // depositToBank / withdrawFromBank — altın ↔ banka bakiyesi.
 // Bakiye, dailyReset tarafından her gün %1 faiz kazanır.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// depositToBank / withdrawFromBank — altın ↔ banka bakiyesi.
+// Bakiye, dailyReset tarafından her gün %1 faiz kazanır.
+//
+// bankCostBasis — kâr/zarar rozetinin (PnlBadge) sıfır noktası. Kullanıcı
+// revizesi: "bir para yatırdığımızda/çektiğimizde (kısmi bile olsa) sayaç
+// SIFIRLANSIN, biz dokunmadığımız sürece (yani sadece günlük faiz
+// işlerken) aradaki değişimi göstersin." Bu yüzden costBasis'i
+// BİRİKTİRMİYORUZ — her yatırma/çekme işleminde İŞLEM SONRASI bakiyeye
+// EŞİTLİYORUZ. Faiz cron'u bu alana hiç dokunmaz, o yüzden iki işlem
+// arası % değişim tam olarak "kazandığın faiz" olur.
+// ---------------------------------------------------------------------------
 export const depositToBank = onCall(async (request) => {
   const uid = requireAuth(request);
   const amt = Number(request.data?.amount);
@@ -2096,15 +2108,11 @@ export const depositToBank = onCall(async (request) => {
     if (!user || (user.gold || 0) < amt) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
+    const newBalance = (user.bankBalance || 0) + amt;
     tx.update(userRef, {
       gold: admin.firestore.FieldValue.increment(-amt),
       bankBalance: admin.firestore.FieldValue.increment(amt),
-      // bankCostBasis — kullanıcı revizesi: "faizdeki paranın bize ne
-      // kadar kâr/zarar ettirdiğini anlık görelim" — yatırdığımız
-      // TOPLAM anaparayı ayrıca tutuyoruz (faiz bunu artırmaz, sadece
-      // yatırma artırır) ki bankBalance - bankCostBasis her an net kâr
-      // olsun.
-      bankCostBasis: admin.firestore.FieldValue.increment(amt),
+      bankCostBasis: newBalance,
     });
   });
   return { ok: true };
@@ -2123,18 +2131,15 @@ export const withdrawFromBank = onCall(async (request) => {
     if (!user || (user.bankBalance || 0) < amt) {
       throw new HttpsError('failed-precondition', 'Yetersiz banka bakiyesi.');
     }
-    const updates = {
+    const newBalance = (user.bankBalance || 0) - amt;
+    tx.update(userRef, {
       gold: admin.firestore.FieldValue.increment(amt),
       bankBalance: admin.firestore.FieldValue.increment(-amt),
-    };
-    // Kullanıcı revizesi: "parayı TAMAMEN çektiğimizde (kâr/zarar
-    // sayacı) sıfırlansın, çekmediğimiz sürece aynı şekilde devam
-    // etsin". Yani kısmi çekimlerde anapara takibini DEĞİŞTİRMİYORUZ —
-    // sadece bakiye tamamen boşalınca (0'a inince) sıfırlıyoruz.
-    if ((user.bankBalance || 0) - amt <= 0) {
-      updates.bankCostBasis = 0;
-    }
-    tx.update(userRef, updates);
+      // Kısmi çekimde de sıfırlanır (kullanıcı isteği) — kalan bakiye
+      // "az önce yeniden yatırılmış" gibi davranır. Bakiye tamamen
+      // boşaldıysa zaten 0 olur.
+      bankCostBasis: newBalance,
+    });
   });
   return { ok: true };
 });
@@ -2188,10 +2193,15 @@ export const buyInvestment = onCall(async (request) => {
     if (!user || (user.gold || 0) < goldAmount) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
+    const newHoldings = (user[holdingsField] || 0) + units;
     tx.update(userRef, {
       gold: admin.firestore.FieldValue.increment(-goldAmount),
       [holdingsField]: admin.firestore.FieldValue.increment(units),
-      [costBasisField]: admin.firestore.FieldValue.increment(goldAmount),
+      // costBasis'i BİRİKTİRMİYORUZ — her alımda GÜNCEL fiyattan
+      // sıfırdan set ediyoruz ki kâr/zarar rozeti "en son alım/satımdan
+      // beri piyasa ne kadar hareket etti"yi göstersin (kullanıcı
+      // isteği: her ekleme/çıkarmada sayaç sıfırlansın).
+      [costBasisField]: newHoldings * unitPrice,
     });
   });
 
@@ -2235,17 +2245,15 @@ export const sellInvestment = onCall(async (request) => {
       }
     }
     totalValue = Math.floor(units * unitPrice);
+    const remaining = have - units;
 
-    const updates = {
+    tx.update(userRef, {
       gold: admin.firestore.FieldValue.increment(totalValue),
       [holdingsField]: admin.firestore.FieldValue.increment(-units),
-    };
-    // Tamamen (ya da neredeyse tamamen — kesirli yuvarlama payı) satıldıysa
-    // anapara takibini sıfırla; kısmi satışta dokunma.
-    if (have - units <= 1e-9) {
-      updates[costBasisField] = 0;
-    }
-    tx.update(userRef, updates);
+      // Kısmi satışta da sıfırlanır (kullanıcı isteği) — kalan pozisyon
+      // "az önce güncel fiyattan yeniden alınmış" gibi davranır.
+      [costBasisField]: remaining > 1e-9 ? remaining * unitPrice : 0,
+    });
   });
 
   return { ok: true, unitPrice, totalValue };
@@ -2676,11 +2684,11 @@ async function computeTotalWealth(userData, prices) {
 // İmam (Camii) — oyunda TEK bir imam vardır. İmamlar polis olamaz,
 // fabrikada çalışamaz, suç işleyemez (bkz. yukarıdaki profession==='imam'
 // kontrolleri). İmam olmak için: 50 saygınlık, 0 şüphe. İmam maaşı günde
-// 10.000 altın (manuel alınır, polis maaşı gibi). Görevler: günde 5 vakit
+// 20.000 altın (manuel alınır, polis maaşı gibi). Görevler: günde 5 vakit
 // ibadet + günde en az 1 nasihat — bunlardan biri eksikse dailyReset
 // tarafından imamlıktan atılır (bkz. dailyReset).
 // ---------------------------------------------------------------------------
-const IMAM_SALARY = 10000;
+const IMAM_SALARY = 20000;
 const IMAM_REPUTATION_REQUIRED = 50;
 
 export const applyForImam = onCall(async (request) => {
@@ -9708,23 +9716,25 @@ async function buildSixtagramAttachment(uid, attachment) {
     // "Son Oynanan Maçlar" — bugünün maçları henüz sonuçlanmadıysa (yani
     // henüz 19:00 olmadıysa) DÜNÜN maçlarını kullan; böylece bir maç
     // sonuçlandığı andan bir sonraki günün maçları sonuçlanana kadar tam
-    // 24 saat hep bir şey gösterilir (bkz. useTodayFootballMatches'teki
-    // aynı mantığın açıklaması).
+    // 24 saat hep bir şey gösterilir. Artık İSTEĞE BAĞLI bir leagueId ile
+    // belirli bir lige de filtrelenebiliyor (kullanıcı hangi ligi
+    // görmek istediğini seçebilsin diye).
+    const leagueId = attachment.leagueId || null;
     const dateKey = istanbulDateKey();
     const yesterdayKey = addDaysToDateKey(dateKey, -1);
-    let snap = await db
-      .collection('newsEvents')
-      .where('dateKey', '==', dateKey)
-      .where('type', '==', 'football_match')
-      .limit(4)
-      .get();
-    if (snap.empty) {
-      snap = await db
+
+    const buildQuery = (dk) => {
+      let q = db
         .collection('newsEvents')
-        .where('dateKey', '==', yesterdayKey)
-        .where('type', '==', 'football_match')
-        .limit(4)
-        .get();
+        .where('dateKey', '==', dk)
+        .where('type', '==', 'football_match');
+      if (leagueId) q = q.where('leagueId', '==', leagueId);
+      return q.limit(4).get();
+    };
+
+    let snap = await buildQuery(dateKey);
+    if (snap.empty) {
+      snap = await buildQuery(yesterdayKey);
     }
     if (snap.empty) {
       throw new HttpsError('failed-precondition', 'Son 24 saatte sonuçlanan bir maç yok.');
@@ -9740,7 +9750,14 @@ async function buildSixtagramAttachment(uid, attachment) {
         awayLogo: m.awayLogo || null,
       };
     });
-    return { type: 'lastMatches', matches };
+
+    let leagueName = null;
+    if (leagueId) {
+      const leagueSnap = await db.collection('futbolLeagues').doc(leagueId).get();
+      leagueName = leagueSnap.exists ? leagueSnap.data().name || null : null;
+    }
+
+    return { type: 'lastMatches', leagueName, matches };
   }
 
   if (type === 'upcomingMatches') {

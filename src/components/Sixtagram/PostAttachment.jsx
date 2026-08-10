@@ -90,6 +90,7 @@ export default function PostAttachment({ attachment }) {
     return (
       <div className="post-att post-att-card">
         <p className="post-att-card-title">⚽ Son Oynanan Maçlar</p>
+        {attachment.leagueName && <p className="post-att-card-line">{attachment.leagueName}</p>}
         <div className="post-att-matches">
           {attachment.matches.map((m, i) => (
             <div key={i} className="post-att-match-row">

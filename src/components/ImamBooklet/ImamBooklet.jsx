@@ -8,7 +8,7 @@ const PAGES = [
   },
   {
     title: 'İmamlar Ne Kadar Kazanır',
-    body: ['Oyunda tek imam vardır.', 'İmam maaşı günde 10.000 altındır.'],
+    body: ['Oyunda tek imam vardır.', 'İmam maaşı günde 20.000 altındır.'],
   },
   {
     title: 'İmam Olmak İçin Ne Gerekir',

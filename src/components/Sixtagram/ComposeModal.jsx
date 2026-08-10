@@ -6,6 +6,7 @@ import { usePlayer } from '../../hooks/usePlayer';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useRecentFutbolBets } from '../../hooks/useRecentFutbolBets';
 import { useTodayFootballMatches } from '../../hooks/useTodayFootballMatches';
+import { useLeagueLastMatches } from '../../hooks/useLeagueLastMatches';
 import { useFutbolLeagues } from '../../hooks/useFutbolLeagues';
 import { useFutbolTeams } from '../../hooks/useFutbolTeams';
 import { useFutbolMatches } from '../../hooks/useFutbolMatches';
@@ -37,9 +38,10 @@ function istanbulDateKeyOffset(offsetDays) {
 export default function ComposeModal({ onClose, onPosted }) {
   const [text, setText] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
-  // subPicker: 'vehicle' | 'iddaa' | 'investment' | 'upcomingMatches' | null
+  // subPicker: 'vehicle' | 'iddaa' | 'investment' | 'upcomingMatches' | 'lastMatches' | null
   const [subPicker, setSubPicker] = useState(null);
   const [pendingLeagueId, setPendingLeagueId] = useState(null);
+  const [pendingLastMatchesLeagueId, setPendingLastMatchesLeagueId] = useState(null);
   // attachmentDraft — SUNUCUYA gidecek minimal seçim (örn. { type:
   // 'vehicle', vehicleId }). Sunucu gerçek veriyi kendisi okuyup
   // doğrulayarak gömer (bkz. functions/index.js buildSixtagramAttachment).
@@ -56,8 +58,7 @@ export default function ComposeModal({ onClose, onPosted }) {
   const { vehicles } = useVehicles();
   const { bets } = useRecentFutbolBets();
   const { matches: todayMatches } = useTodayFootballMatches();
-  const { leagues } = useFutbolLeagues();
-  const { history: investmentHistory } = useInvestmentHistory();
+  const { leagues } = useFutbolLeagues();  const { history: investmentHistory } = useInvestmentHistory();
   const { prices: investmentPrices } = useInvestmentPrices();
   const { messages } = useMessages();
 
@@ -67,6 +68,10 @@ export default function ComposeModal({ onClose, onPosted }) {
     pendingLeagueId,
     pendingLeague?.season
   );
+
+  const pendingLastMatchesLeague = leagues.find((l) => l.id === pendingLastMatchesLeagueId) || null;
+  const { matches: pendingLastMatches, loading: pendingLastMatchesLoading } =
+    useLeagueLastMatches(pendingLastMatchesLeagueId);
 
   const pendingUpcoming = useMemo(() => {
     if (!pendingLeague) return null;
@@ -101,6 +106,31 @@ export default function ComposeModal({ onClose, onPosted }) {
     setPendingLeagueId(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingLeagueId, pendingLeague, pendingMatchesLoading, pendingUpcoming]);
+
+  // pendingLastMatchesLeagueId seçilip veri geldiğinde otomatik olarak
+  // eki oluştur (yukarıdakiyle aynı desen, "Sıradaki Maçlar" yerine
+  // "Son Oynanan Maçlar" için).
+  useEffect(() => {
+    if (!pendingLastMatchesLeagueId || !pendingLastMatchesLeague || pendingLastMatchesLoading) return;
+    if (pendingLastMatches.length === 0) return; // boşsa kullanıcı başka lig seçsin
+    setAttachmentDraft({ type: 'lastMatches', leagueId: pendingLastMatchesLeagueId });
+    setAttachmentPreview({
+      type: 'lastMatches',
+      leagueName: pendingLastMatchesLeague.name,
+      matches: pendingLastMatches.map((m) => ({
+        homeName: m.homeName,
+        awayName: m.awayName,
+        homeScore: m.homeScore,
+        awayScore: m.awayScore,
+        homeLogo: m.homeLogo || null,
+        awayLogo: m.awayLogo || null,
+      })),
+    });
+    setSubPicker(null);
+    setPickerOpen(false);
+    setPendingLastMatchesLeagueId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingLastMatchesLeagueId, pendingLastMatchesLeague, pendingLastMatchesLoading, pendingLastMatches]);
 
   const todayDateKey = istanbulDateKeyOffset(0);
   const yesterdayDateKey = istanbulDateKeyOffset(-1);
@@ -144,25 +174,13 @@ export default function ComposeModal({ onClose, onPosted }) {
       setPendingLeagueId(null);
       return;
     }
-    if (typeId === 'avatar') {
-      setAttachment({ type: 'avatar' }, { type: 'avatar', avatar: player.avatar });
+    if (typeId === 'lastMatches') {
+      setSubPicker('lastMatches');
+      setPendingLastMatchesLeagueId(null);
       return;
     }
-    if (typeId === 'lastMatches') {
-      setAttachment(
-        { type: 'lastMatches' },
-        {
-          type: 'lastMatches',
-          matches: todayMatches.map((m) => ({
-            homeName: m.homeName,
-            awayName: m.awayName,
-            homeScore: m.homeScore,
-            awayScore: m.awayScore,
-            homeLogo: m.homeLogo || null,
-            awayLogo: m.awayLogo || null,
-          })),
-        }
-      );
+    if (typeId === 'avatar') {
+      setAttachment({ type: 'avatar' }, { type: 'avatar', avatar: player.avatar });
       return;
     }
     if (typeId === 'fine') {
@@ -425,6 +443,39 @@ export default function ComposeModal({ onClose, onPosted }) {
               </button>
             ))}
             <button className="six-compose-sublist-back" onClick={() => setSubPicker(null)}>
+              ← Geri
+            </button>
+          </div>
+        )}
+
+        {subPicker === 'lastMatches' && (
+          <div className="six-compose-sublist">
+            <p className="six-compose-sublist-title">Hangi lig?</p>
+            {pendingLastMatchesLeagueId && (
+              <p className="six-compose-sublist-empty">
+                {pendingLastMatchesLoading
+                  ? 'Yükleniyor…'
+                  : pendingLastMatches.length === 0
+                    ? 'Bu ligde son 24 saatte sonuçlanan bir maç yok, başka bir lig dene.'
+                    : ''}
+              </p>
+            )}
+            {leagues.map((l) => (
+              <button
+                key={l.id}
+                className="six-compose-sublist-item"
+                onClick={() => setPendingLastMatchesLeagueId(l.id)}
+              >
+                <span>{l.name}</span>
+              </button>
+            ))}
+            <button
+              className="six-compose-sublist-back"
+              onClick={() => {
+                setSubPicker(null);
+                setPendingLastMatchesLeagueId(null);
+              }}
+            >
               ← Geri
             </button>
           </div>

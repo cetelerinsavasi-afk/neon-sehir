@@ -153,9 +153,9 @@ function ImamPanel() {
               ? 'Bugün maaşını aldın'
               : salaryBusy
                 ? '…'
-                : 'Maaşı Al (10.000 altın)'}
+                : 'Maaşı Al (20.000 altın)'}
           </button>
-          {salarySuccess && <p className="beggar-success">+10.000 altın hesabına eklendi!</p>}
+          {salarySuccess && <p className="beggar-success">+20.000 altın hesabına eklendi!</p>}
           {salaryError && <p className="beggar-error">{salaryError}</p>}
         </div>
       )}
