@@ -9407,15 +9407,35 @@ export const shopierOsbWebhook = onRequest(
       const code = codeMatch ? codeMatch[0] : null;
 
       let uid = null;
+      let matchedBy = null;
       if (code) {
         const codeSnap = await db.collection('redemptionCodes').doc(code).get();
-        if (codeSnap.exists) uid = codeSnap.data().uid;
+        if (codeSnap.exists) {
+          uid = codeSnap.data().uid;
+          matchedBy = 'code';
+        }
+      }
+
+      // YEDEK EŞLEŞTİRME: kod yoksa/eşleşmediyse, alıcının Shopier'e
+      // girdiği e-postayla oyun hesabının e-postası AYNIYSA otomatik
+      // eşleştir. Oyuncu kodu yapıştırmayı unutsa bile (aynı e-postayı
+      // kullandıysa) altın otomatik yüklenir.
+      if (!uid && email) {
+        try {
+          const userRecord = await admin.auth().getUserByEmail(String(email).trim());
+          uid = userRecord.uid;
+          matchedBy = 'email';
+        } catch (err) {
+          // getUserByEmail bulamazsa 'auth/user-not-found' fırlatır — bu
+          // beklenen bir durum (oyuncu farklı e-posta kullanmış olabilir),
+          // hata olarak loglamaya gerek yok.
+        }
       }
 
       if (!uid) {
-        console.error('shopierOsbWebhook: teslimat kodu bulunamadı/eşleşmedi', orderid, customernote);
+        console.error('shopierOsbWebhook: ne kod ne e-posta eşleşti', orderid, customernote, email);
         await db.collection('shopierUnmatchedOrders').doc(String(orderid || Date.now())).set({
-          reason: 'no-matching-code',
+          reason: 'no-matching-code-or-email',
           orderid: orderid || null,
           productid: productid || null,
           packageId,
@@ -9433,6 +9453,7 @@ export const shopierOsbWebhook = onRequest(
         productid: productid || null,
         price: price || null,
         email: email || null,
+        matchedBy,
       });
 
       res.status(200).send('success');
@@ -9446,7 +9467,59 @@ export const shopierOsbWebhook = onRequest(
   }
 );
 
+// adminManualCreditPackage — otomatik eşleştirme (kod/e-posta) başarısız
+// olduğunda (bkz. shopierUnmatchedOrders) bir siparişi ELLE telafi etmek
+// için. Kimlik doğrulaması Firebase Auth ÜZERİNDEN DEĞİL, sadece
+// ADMIN_SECRET ile yapılıyor (bu fonksiyon site içinden değil, geliştirici
+// tarafından bir HTTP isteğiyle — örn. curl — çağrılması için tasarlandı).
+// Örnek kullanım:
+//   curl -X POST https://<BÖLGE>-<PROJE_ID>.cloudfunctions.net/adminManualCreditPackage \
+//     -H "Content-Type: application/json" \
+//     -d '{"secret":"...", "email":"aliciposta@ornek.com", "packageId":"paket1"}'
+const adminSecret = defineSecret('ADMIN_SECRET');
 
+export const adminManualCreditPackage = onRequest(
+  { secrets: [adminSecret] },
+  async (req, res) => {
+    try {
+      const { secret, uid: uidInput, email, packageId } = req.body || {};
+      if (!secret || secret !== adminSecret.value()) {
+        res.status(403).send('forbidden');
+        return;
+      }
+      if (!GOLD_STORE_PACKAGES[packageId]) {
+        res.status(400).send(`invalid packageId (geçerli: ${Object.keys(GOLD_STORE_PACKAGES).join(', ')})`);
+        return;
+      }
+
+      let uid = uidInput || null;
+      if (!uid && email) {
+        try {
+          const userRecord = await admin.auth().getUserByEmail(String(email).trim());
+          uid = userRecord.uid;
+        } catch (err) {
+          res.status(404).send(`Bu e-postayla eşleşen bir oyun hesabı bulunamadı: ${email}`);
+          return;
+        }
+      }
+      if (!uid) {
+        res.status(400).send('uid veya email gerekli');
+        return;
+      }
+
+      await creditGoldStorePackage(uid, packageId, {
+        orderId: `manual_${Date.now()}`,
+        manual: true,
+        note: 'Elle telafi (adminManualCreditPackage)',
+      });
+
+      res.status(200).send(`OK: ${uid} hesabına ${packageId} yüklendi.`);
+    } catch (err) {
+      console.error('adminManualCreditPackage hata:', err);
+      res.status(500).send(`error: ${err.message}`);
+    }
+  }
+);
 // =============================================================================
 // TELEFON — "SIXTAGRAM" (mini sosyal medya uygulaması)
 // =============================================================================

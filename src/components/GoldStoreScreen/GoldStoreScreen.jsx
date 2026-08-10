@@ -86,9 +86,9 @@ export default function GoldStoreScreen() {
           </div>
         )}
         <p className="gold-store-hint">
-          Shopier'de satın alırken <strong>"Sipariş Notu"</strong> alanına bu kodu yapıştır —
-          altının hesabına otomatik yüklenmesinin tek yolu bu. Kodu yazmazsan ödemen alınır ama
-          altın otomatik yüklenmez; bize e-postayla ulaşman gerekir.
+          Shopier'de satın alırken <strong>"Sipariş Notu"</strong> alanına bu kodu yapıştır,
+          siparişin otomatik olarak hesabına yansıyacak. Kodu yazmayı unutursan
+          cetelerinsavasi@gmail.com adresine mail atabilirsin.
         </p>
       </div>
 
