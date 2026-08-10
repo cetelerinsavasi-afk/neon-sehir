@@ -307,14 +307,25 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // goldStoreOrders/{orderId} — "Altın Mağazası" (Shopier) siparişleri.
-    // Sahibi kendi siparişinin durumunu ("pending"/"paid"/"failed")
-    // görebilsin diye okunabilir; asla istemciden yazılmaz — statüyü
-    // sadece shopierGoldStoreWebhook (Admin SDK, bu kuralları bypass eder)
-    // değiştirir.
-    match /goldStoreOrders/{orderId} {
-      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
-      allow write: if false;
+    // redemptionCodes/{code} — "Altın Mağazası" teslimat kodu → uid
+    // eşlemesi. Sadece Cloud Functions (getMyRedemptionCode/
+    // shopierOsbWebhook) okur/yazar; istemciye tamamen kapalı (kodun
+    // kendisini zaten users/{uid}.redemptionCode üzerinden okuyorsun).
+    match /redemptionCodes/{code} {
+      allow read, write: if false;
+    }
+
+    // shopierOrders/{orderId} — başarıyla altın basılmış Shopier
+    // siparişleri (idempotentlik + kayıt amaçlı). İstemciye kapalı.
+    match /shopierOrders/{orderId} {
+      allow read, write: if false;
+    }
+
+    // shopierUnmatchedOrders/{orderId} — ödeme alınmış ama teslimat kodu
+    // eşleşmediği için altın basılamamış siparişler. Sadece geliştirici
+    // (Firebase Console) görsün diye istemciye tamamen kapalı.
+    match /shopierUnmatchedOrders/{orderId} {
+      allow read, write: if false;
     }
 
     // Tanımlanmamış her şey varsayılan olarak kapalı.

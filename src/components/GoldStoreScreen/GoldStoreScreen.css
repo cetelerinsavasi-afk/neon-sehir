@@ -4,6 +4,58 @@
   gap: 12px;
 }
 
+.gold-store-code-box {
+  background: rgba(25, 232, 255, 0.08);
+  border: 1px solid rgba(25, 232, 255, 0.4);
+  border-radius: 14px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gold-store-code-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--neon-cyan);
+}
+
+.gold-store-code-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gold-store-code {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: var(--text);
+  font-family: 'Courier New', monospace;
+}
+
+.gold-store-copy-btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--neon-cyan);
+  background: rgba(25, 232, 255, 0.14);
+  color: var(--neon-cyan);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.gold-store-footnote {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  text-align: center;
+}
+
 .gold-store-hint {
   margin: 0;
   font-size: 11px;
@@ -77,6 +129,11 @@
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  box-sizing: border-box;
 }
 
 .gold-store-btn:hover:not(:disabled) {

@@ -63,17 +63,6 @@ function GameShell() {
   const [futbolOpen, setFutbolOpen] = useState(false);
   const { player } = usePlayer();
 
-  // Shopier'den "?goldOrder=<id>" ile geri dönüldüğünde, telefonu otomatik
-  // olarak Altın Mağazası'nda açıp sipariş sonucunu göster (bkz.
-  // GoldStoreScreen — asıl teslimat zaten sunucu tarafındaki webhook'ta
-  // gerçekleşti, bu sadece kullanıcıya sonucu göstermek için).
-  useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('goldOrder')) {
-      setPhoneInitialApp('altin-magazasi');
-      setPhoneOpen(true);
-    }
-  }, []);
-
   // Uygulama arka plana alınıp geri geldiğinde (özellikle iOS'ta) Firestore
   // dinleyicilerinin durağanlaşmasını önlemek için — bkz. hook içindeki not.
   useFirestoreResume();

@@ -95,9 +95,17 @@ function repairRequiredQty(price) {
   return Math.max(1, Math.round((price || 0) / 100));
 }
 
-async function miningMachinePrice() {
+// miningMachinePrice — mining makinesinin fiyatı canlı kripto fiyatına
+// bağlı VE oyuncunun elindeki mining makinesi sayısına göre kademeli
+// artıyor (kullanıcı revizesi): temel fiyat 2 kripto değerinde, her 100
+// makinede bir +2 kripto daha (100'de 4x, 200'de 6x, 300'de 8x, ...).
+// Böylece devasa mining çiftlikleri kurmak gitgide pahalanır.
+// `ownedCount` — bu satın alımdan ÖNCE sahip olunan mining makinesi
+// sayısı (bir sonraki makinenin fiyatını belirler).
+async function miningMachinePrice(ownedCount) {
   const prices = await getCurrentPrices();
-  return Math.ceil(2 * (prices.cryptoPrice || 0));
+  const multiplier = 2 + 2 * Math.floor((ownedCount || 0) / 100);
+  return Math.ceil(multiplier * (prices.cryptoPrice || 0));
 }
 
 function randomInRange(min, max) {
@@ -426,17 +434,31 @@ export const buyFactoryMachine = onCall(async (request) => {
   if (!VALID_MACHINES.includes(machineType)) {
     throw new HttpsError('invalid-argument', 'Geçersiz makine türü.');
   }
-  const price =
-    machineType === 'mining' ? await miningMachinePrice() : MACHINE_TYPES[machineType].price;
 
   const userRef = db.collection('users').doc(uid);
   const factoryRef = db.collection('factories').doc(uid);
-  const machineRef = factoryRef.collection('machines').doc();
+  const machinesRef = factoryRef.collection('machines');
+  const machineRef = machinesRef.doc();
 
+  // Mining makinesinin fiyatı sahip olunan makine sayısına bağlı olduğu
+  // için (bkz. miningMachinePrice), fiyatı transaction DIŞINDA sabit bir
+  // değişkende önceden hesaplayamıyoruz — art arda hızlı satın alımlarda
+  // yanlış (bayat) sayıya göre hesaplanmış ucuz bir fiyat kullanılmasın
+  // diye sayım da transaction İÇİNDE yapılıyor.
+  let price = null;
   await db.runTransaction(async (tx) => {
-    const [userSnap, factorySnap] = await Promise.all([tx.get(userRef), tx.get(factoryRef)]);
+    const [userSnap, factorySnap, miningCountSnap] = await Promise.all([
+      tx.get(userRef),
+      tx.get(factoryRef),
+      machineType === 'mining' ? tx.get(machinesRef.where('type', '==', 'mining')) : null,
+    ]);
     if (!factorySnap.exists) {
       throw new HttpsError('failed-precondition', 'Önce bir fabrika kurmalısın.');
+    }
+    if (machineType === 'mining') {
+      price = await miningMachinePrice(miningCountSnap.size);
+    } else {
+      price = MACHINE_TYPES[machineType].price;
     }
     const user = userSnap.data();
     if (!user || (user.gold || 0) < price) {
@@ -9147,53 +9169,54 @@ export const listFutbolClubs = onCall(async (request) => {
 });
 
 // =============================================================================
-// TELEFON — "ALTIN MAĞAZASI" (Shopier ile gerçek para karşılığı altın satışı)
+// TELEFON — "ALTIN MAĞAZASI" (Shopier Dükkan üzerinden gerçek para ile altın)
 // =============================================================================
-// Akış:
-//   1) İstemci createGoldStoreOrder(packageId) çağırır. Sunucu "pending"
-//      bir sipariş dokümanı (goldStoreOrders/{orderId}) açar ve Shopier'in
-//      klasik Ödeme Formu API'si (api_pay4.php) için gereken alanları +
-//      imzayı üretip istemciye döner. Paket başına satın alma sayısında
-//      SINIR YOK — oyuncu istediği kadar alabilir.
-//   2) İstemci bu alanlarla GİZLİ bir <form> oluşturup Shopier'e POST eder
-//      (bkz. src/components/GoldStoreScreen). Oyuncu tam sayfa Shopier'in
-//      güvenli ödeme sayfasına yönlenir, kart bilgilerini ORADA girer —
-//      kart bilgisi hiçbir zaman bizim sunucumuzdan/istemcimizden geçmez.
-//   3) Ödeme tamamlanınca Shopier, Shopier panelinizde tanımlayacağınız
-//      "Otomatik Sipariş Bildirimi / Webhook" adresine (bu dosyadaki
-//      shopierGoldStoreWebhook fonksiyonunun URL'i) SUNUCUDAN SUNUCUYA bir
-//      POST atar. Biz İMZAYI doğrulamadan asla altın basmıyoruz — istemci
-//      tarafındaki yönlendirme sadece kullanıcıya "ödeme tamam" göstermek
-//      içindir, gerçek teslim/güven burada, webhook'ta gerçekleşir.
+// ÖNEMLİ GEÇMİŞ NOT: İlk sürüm Shopier'in "kendi sitende ödeme formu"
+// API'sini (api_pay4.php, imzalı form POST) kullanıyordu. Shopier bu
+// hizmeti (Sanal POS) KALDIRDI — artık sadece kendi "Dükkan" sayfanızda
+// listelenen ürünler üzerinden satış yapılabiliyor (bkz. Shopier
+// destek yanıtı: "Sanal POS hizmetimiz sonlanmıştır"). Bu yüzden akış
+// baştan aşağı değişti:
+//
+//   1) İki paket Shopier'in kendi Dükkan sayfasında ürün olarak
+//      listelendi (satıcı panelinden elle eklendi, bu koddan bağımsız):
+//        - Başlangıç Paketi (30 TL): shopier ürün ID 49730536
+//        - 30.000 Altın + Özel Paket (100 TL): shopier ürün ID 49730517
+//   2) Telefondaki "Altın Mağazası" ekranı, oyuncuya KENDİNE ÖZEL bir
+//      6 haneli "Teslimat Kodu" gösterir (bkz. getMyRedemptionCode).
+//   3) Oyuncu "Satın Al" butonuna basınca doğrudan Shopier'in ürün
+//      sayfasına gider (yeni sekme) — ödemeyi TAMAMEN Shopier'in kendi
+//      sayfasında yapar, kart bilgisi hiçbir zaman bize uğramaz. Checkout
+//      sırasında Shopier'in "Sipariş Notu" alanına bu kodu yapıştırması
+//      gerekiyor — oyuncuyu bu koddan tanıyabilmemizin TEK yolu bu.
+//   4) Shopier, satış tamamlanınca "Otomatik Sipariş Bildirimi" (OSB)
+//      ile sunucudan sunucuya bize bir POST atar (shopierOsbWebhook).
+//      Bu bildirim; hangi ürünün (productid) satıldığını, tutarı VE
+//      sipariş notunu (customernote — oyuncunun yapıştırdığı kod) içerir.
+//      Kodu `redemptionCodes/{kod}`'dan uid'ye çeviririz, productid'yi
+//      GOLD_STORE_PACKAGES ile eşleştirir, altın+eşyaları basarız.
+//   5) Kod eksik/yanlışsa veya eşleşmezse PARAYI KAYBETMEYİZ — ödeme
+//      `shopierUnmatchedOrders`'a düşer, geliştirici Firebase Console'dan
+//      görüp orderid ve alıcı e-postasından elle eşleştirip
+//      creditGoldStorePackage ile telafi edebilir.
 //
 // KURULUM (siz yapmanız gereken):
-//   - Shopier hesabınızdan (shopier.com/m/login.php) API anahtarınızı alın:
-//     Ayarlarım > API Bilgileri. Bunları İSTEMCİYE DEĞİL, sadece Firebase
-//     Functions ortamına şu komutlarla tanımlayın (repo'ya asla yazmayın):
-//       firebase functions:secrets:set SHOPIER_API_KEY
-//       firebase functions:secrets:set SHOPIER_API_SECRET
-//   - Deploy sonrası shopierGoldStoreWebhook fonksiyonunun URL'ini
-//     (firebase deploy çıktısında görünür, örn.
-//     https://europe-west1-PROJENIZ.cloudfunctions.net/shopierGoldStoreWebhook)
-//     Shopier panelinde Ek Özellikler > Sipariş Bildirimi / Webhook
-//     bölümüne kaydedin. Shopier bu alanı zaman zaman güncelliyor
-//     (bkz. developer.shopier.com/reference/webhooks) — panelde gördüğünüz
-//     alan adları burada varsaydığımız `platform_order_id/status/signature/
-//     random_nr/total_order_value/currency` alanlarından farklıysa,
-//     shopierGoldStoreWebhook içindeki alan isimlerini panelinizdeki örnek
-//     koda göre güncelleyin.
-//   - ÖNEMLİ: Şirketiniz olmadığı için Shopier'de "Bireysel" hesap
-//     kullanacaksınız — bu tamamen desteklenen bir seçenek, kurumsal
-//     evrak istemiyor, sadece kimlik doğrulaması istiyor.
+//   - https://www.shopier.com/m/notificationaccess.php adresinden bir
+//     OSB kullanıcı adı/şifresi oluşturun, "Bildirim URL'si" alanına
+//     shopierOsbWebhook fonksiyonunun deploy sonrası URL'ini yazın.
+//   - Bu kullanıcı adı/şifreyi Firebase Functions secret olarak tanımlayın:
+//       firebase functions:secrets:set SHOPIER_OSB_USERNAME
+//       firebase functions:secrets:set SHOPIER_OSB_PASSWORD
+//   - Ürün ID'leri değişirse (yeni ürün eklerseniz vb.) aşağıdaki
+//     GOLD_STORE_PACKAGES ve SHOPIER_PRODUCT_TO_PACKAGE eşlemesini
+//     güncelleyin.
 // ---------------------------------------------------------------------------
 
-const shopierApiKey = defineSecret('SHOPIER_API_KEY');
-const shopierApiSecret = defineSecret('SHOPIER_API_SECRET');
+const shopierOsbUsername = defineSecret('SHOPIER_OSB_USERNAME');
+const shopierOsbPassword = defineSecret('SHOPIER_OSB_PASSWORD');
 
-// Paket tanımları BİLEREK sadece burada, sunucuda tutuluyor — istemci
-// sadece packageId gönderir, fiyat/miktarları asla istemciden almıyoruz
-// (aksi halde biri tarayıcı konsolundan "0 TL'ye 1 milyon altın" isteği
-// uydurabilirdi).
+// Paket tanımları — sadece burada, sunucuda. Shopier ürün ID'leriyle
+// eşleştirilir (aşağıdaki SHOPIER_PRODUCT_TO_PACKAGE).
 const GOLD_STORE_PACKAGES = {
   paket1: {
     id: 'paket1',
@@ -9216,224 +9239,213 @@ const GOLD_STORE_PACKAGES = {
   },
 };
 
-// Shopier'e gönderilecek toplam tutar formatı: nokta ondalık ayraçlı,
-// ondalıksız TL'ler için de "30.00" gibi iki basamak beklenir.
-function formatShopierAmount(amountTRY) {
-  return Number(amountTRY).toFixed(2);
+// Shopier ürün ID'si → paket eşlemesi. Ürün ID'si, Shopier ürün
+// linkinizin sonundaki sayı (örn. .../cetelerinsavasi/49730536 → 49730536).
+const SHOPIER_PRODUCT_TO_PACKAGE = {
+  '49730536': 'paket1',
+  '49730517': 'paket2',
+};
+
+const REDEMPTION_CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // 0/O, 1/I/L gibi karışabilecek karakterler çıkarıldı
+function generateRedemptionCode() {
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += REDEMPTION_CODE_CHARS[Math.floor(Math.random() * REDEMPTION_CODE_CHARS.length)];
+  }
+  return code;
 }
 
-function shopierSignature(secret, randomNr, orderId, totalOrderValue, currency) {
-  const data = `${randomNr}${orderId}${totalOrderValue}${currency}`;
-  return crypto.createHmac('sha256', secret).update(data).digest('base64');
-}
+// getMyRedemptionCode — oyuncunun kendine özel teslimat kodunu döner;
+// yoksa (ilk kez çağrılıyorsa) bir tane üretip kaydeder. Kod, harf/rakam
+// çakışmasını önlemek için `redemptionCodes/{kod}` dokümanında da uid'ye
+// işaretlenir (webhook bu koleksiyondan tersine arama yapar).
+export const getMyRedemptionCode = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const userRef = db.collection('users').doc(uid);
+  const userSnap = await userRef.get();
+  const existing = userSnap.data()?.redemptionCode;
+  if (existing) {
+    return { code: existing };
+  }
 
-// createGoldStoreOrder — "Altın Mağazası"nda bir paket seçildiğinde
-// çağrılır. Ödeme yapılmadan HİÇBİR altın/eşya verilmez; bu fonksiyon
-// sadece Shopier ödeme sayfasına gitmek için gereken imzalı form
-// alanlarını üretir.
-export const createGoldStoreOrder = onCall(
-  { secrets: [shopierApiKey, shopierApiSecret] },
-  async (request) => {
-    const uid = requireAuth(request);
-    const { packageId, returnOrigin } = request.data || {};
-    const pack = GOLD_STORE_PACKAGES[packageId];
-    if (!pack) {
-      throw new HttpsError('invalid-argument', 'Geçersiz paket.');
+  // Çakışma ihtimali çok düşük (32^6 ≈ 1 milyar), ama yine de birkaç kez
+  // deneyip garanti altına alalım.
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const code = generateRedemptionCode();
+    const codeRef = db.collection('redemptionCodes').doc(code);
+    try {
+      let assigned = false;
+      await db.runTransaction(async (tx) => {
+        const codeSnap = await tx.get(codeRef);
+        if (codeSnap.exists) return; // çakıştı, tekrar dene
+        tx.set(codeRef, { uid, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+        tx.set(userRef, { redemptionCode: code }, { merge: true });
+        assigned = true;
+      });
+      if (assigned) return { code };
+    } catch (err) {
+      console.error('getMyRedemptionCode deneme hatası:', err);
     }
-    // returnOrigin — istemcinin kendi origin'i (https://oyununuz.com gibi).
-    // Sadece kullanıcıyı ödeme sonrası nereye geri yönlendireceğimizi
-    // belirlemek için kullanılır; whitelisting olmadan açık yönlendirme
-    // riskine karşı basit bir https şema kontrolü yapıyoruz.
-    if (typeof returnOrigin !== 'string' || !/^https:\/\/[a-zA-Z0-9.-]+(:\d+)?$/.test(returnOrigin)) {
-      throw new HttpsError('invalid-argument', 'Geçersiz dönüş adresi.');
-    }
+  }
+  throw new HttpsError('internal', 'Kod üretilemedi, tekrar dene.');
+});
 
-    const dateKey = istanbulDateKey();
-    const orderRef = db.collection('goldStoreOrders').doc();
-    const randomNr = crypto.randomBytes(16).toString('hex');
-    const totalOrderValue = formatShopierAmount(pack.priceTRY);
-    // currency — Shopier'in api_pay4.php'sinde TL için "TL" değil SAYISAL
-    // "0" bekleniyor olabilir (1=USD, 2=EUR); birden fazla bağımsız
-    // kaynakta bu şekilde görüldü. Panelinizin örnek dosyasında farklıysa
-    // burayı ona göre değiştirin.
-    const currency = '0';
+// creditGoldStorePackage — bir paketin altın/eşyalarını bir kullanıcıya
+// basar. Hem shopierOsbWebhook (otomatik) hem de elle telafi durumları
+// için ortak.
+async function creditGoldStorePackage(uid, packageId, meta = {}) {
+  const pack = GOLD_STORE_PACKAGES[packageId];
+  if (!pack) throw new Error(`Bilinmeyen paket: ${packageId}`);
 
-    await orderRef.set({
-      uid,
-      packageId: pack.id,
-      priceTRY: pack.priceTRY,
-      dateKey,
-      status: 'pending',
-      randomNr,
+  const userRef = db.collection('users').doc(uid);
+  await db.runTransaction(async (tx) => {
+    tx.set(userRef, { gold: admin.firestore.FieldValue.increment(pack.gold) }, { merge: true });
+    Object.entries(pack.items).forEach(([materialType, qty]) => {
+      const inventoryRef = userRef.collection('inventory').doc(materialType);
+      tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(qty) }, { merge: true });
+    });
+    const msgRef = userRef.collection('messages').doc();
+    tx.set(msgRef, {
+      from: 'Altın Mağazası',
+      text: `${pack.name} satın alımın tamamlandı — hesabına ${pack.gold.toLocaleString('tr-TR')} altın yüklendi.`,
+      read: false,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
+  });
 
-    const signature = shopierSignature(
-      shopierApiSecret.value(),
-      randomNr,
-      orderRef.id,
-      totalOrderValue,
-      currency
+  if (meta.orderId) {
+    await db.collection('shopierOrders').doc(String(meta.orderId)).set(
+      {
+        uid,
+        packageId,
+        creditedAt: admin.firestore.FieldValue.serverTimestamp(),
+        ...meta,
+      },
+      { merge: true }
     );
-
-    const callbackUrl = `${returnOrigin}/?goldOrder=${orderRef.id}`;
-
-    // Shopier'in klasik "Ödeme Formu" API'si (api_pay4.php) — bu alan
-    // listesi Shopier panelindeki "API Bilgileri" sayfasında verilen
-    // örnek entegrasyon dosyasıyla birebir aynı olmalı. Panelinizdeki
-    // örnekte ek/eksik bir alan görürseniz burayı ona göre güncelleyin.
-    const fields = {
-      API_key: shopierApiKey.value(),
-      website_index: '1',
-      platform_order_id: orderRef.id,
-      product_name: pack.name,
-      product_type: '1', // 1 = sanal/dijital ürün
-      buyer_name: request.auth.token.name?.split(' ')[0] || 'Oyuncu',
-      buyer_surname: request.auth.token.name?.split(' ').slice(1).join(' ') || 'Oyuncu',
-      buyer_email: request.auth.token.email || `${uid}@neon-sehir.oyun`,
-      buyer_account_age: '0',
-      buyer_id_nr: '11111111111',
-      buyer_phone: '5555555555',
-      billing_address: 'Dijital teslimat - fiziksel adres yok',
-      billing_city: 'İstanbul',
-      billing_country: 'Turkey',
-      billing_postcode: '34000',
-      shipping_address: 'Dijital teslimat - fiziksel adres yok',
-      shipping_city: 'İstanbul',
-      shipping_country: 'Turkey',
-      shipping_postcode: '34000',
-      total_order_value: totalOrderValue,
-      currency,
-      platform: '0',
-      is_in_frame: '0',
-      current_language: '0',
-      modul_version: '1.0.4',
-      random_nr: randomNr,
-      signature,
-      callback_url: callbackUrl,
-    };
-
-    return {
-      orderId: orderRef.id,
-      actionUrl: 'https://www.shopier.com/ShowProduct/api_pay4.php',
-      fields,
-    };
   }
-);
+}
 
-// shopierGoldStoreWebhook — Shopier'in ödeme sonucunu bize SUNUCUDAN
-// SUNUCUYA bildirdiği uç nokta. Bu URL'i Shopier panelinde tanımlamanız
-// gerekiyor (bkz. yukarıdaki KURULUM notu). İmza doğrulanmadan HİÇBİR
-// altın/eşya verilmez.
-export const shopierGoldStoreWebhook = onRequest(
-  { secrets: [shopierApiSecret] },
+// shopierOsbWebhook — Shopier'in "Otomatik Sipariş Bildirimi" (OSB)
+// uç noktası. Shopier her satışta buraya POST atar. Format Shopier'in
+// kendi OSB dokümantasyonundaki örnekle birebir aynı: body iki elemanlı
+// bir dizi ([{value: base64Payload}, {value: hash}]), imza
+// HMAC-SHA256(base64Payload + OSB_USERNAME, OSB_PASSWORD) ile doğrulanır.
+export const shopierOsbWebhook = onRequest(
+  { secrets: [shopierOsbUsername, shopierOsbPassword] },
   async (req, res) => {
     try {
-      const body = req.body || {};
-      const {
-        status,
-        platform_order_id: orderId,
-        random_nr: randomNr,
-        total_order_value: totalOrderValue,
-        currency,
-        signature,
-      } = body;
-
-      if (!orderId || !signature || !randomNr) {
-        console.error('shopierGoldStoreWebhook: eksik alan', body);
+      const body = req.body;
+      if (!Array.isArray(body) || !body[0]?.value || !body[1]?.value) {
+        console.error('shopierOsbWebhook: beklenmeyen gövde biçimi', body);
         res.status(400).send('missing fields');
         return;
       }
 
-      const expectedSignature = shopierSignature(
-        shopierApiSecret.value(),
-        randomNr,
-        orderId,
-        totalOrderValue,
-        currency
-      );
-      const providedSignature = Buffer.from(String(signature), 'base64');
-      const expectedBuffer = Buffer.from(expectedSignature, 'base64');
+      const payloadB64 = body[0].value;
+      const providedHash = body[1].value;
+      const expectedHash = crypto
+        .createHmac('sha256', shopierOsbPassword.value())
+        .update(payloadB64 + shopierOsbUsername.value())
+        .digest('hex');
+
+      const providedBuffer = Buffer.from(String(providedHash), 'utf8');
+      const expectedBuffer = Buffer.from(expectedHash, 'utf8');
       const validSignature =
-        providedSignature.length === expectedBuffer.length &&
-        crypto.timingSafeEqual(providedSignature, expectedBuffer);
+        providedBuffer.length === expectedBuffer.length &&
+        crypto.timingSafeEqual(providedBuffer, expectedBuffer);
 
       if (!validSignature) {
-        console.error('shopierGoldStoreWebhook: geçersiz imza', orderId);
-        res.status(400).send('invalid signature');
+        console.error('shopierOsbWebhook: geçersiz imza');
+        res.status(401).send('invalid signature');
         return;
       }
 
-      const orderRef = db.collection('goldStoreOrders').doc(orderId);
+      const order = JSON.parse(Buffer.from(payloadB64, 'base64').toString('utf8'));
+      const { orderid, productid, price, email, customernote, istest } = order;
 
-      if (String(status).toLowerCase() !== 'success') {
-        await orderRef.set(
-          { status: 'failed', webhookStatus: String(status || '') },
-          { merge: true }
-        );
-        res.status(200).send('OK');
+      // Shopier panelinden atılan test bildirimlerinde gerçek altın
+      // BASILMASIN diye burada durduruyoruz — ama 200 dönüp Shopier'in
+      // "bildirim başarısız" sanıp tekrar tekrar denemesini engelliyoruz.
+      if (istest) {
+        console.log('shopierOsbWebhook: test bildirimi, altın basılmadı', orderid);
+        res.status(200).send('success');
         return;
       }
 
-      await db.runTransaction(async (tx) => {
-        const orderSnap = await tx.get(orderRef);
-        if (!orderSnap.exists) {
-          throw new Error(`Bilinmeyen sipariş: ${orderId}`);
-        }
-        const order = orderSnap.data();
+      const packageId = SHOPIER_PRODUCT_TO_PACKAGE[String(productid)];
+      const orderRef = db.collection('shopierOrders').doc(String(orderid || `unknown_${Date.now()}`));
+      const orderSnap = await orderRef.get();
+      if (orderSnap.exists && orderSnap.data().creditedAt) {
+        // Aynı bildirim tekrar geldi (ağ hatası sonrası Shopier retry
+        // atmış olabilir) — ikinci kez altın basma.
+        res.status(200).send('success');
+        return;
+      }
 
-        // İdempotentlik: aynı webhook Shopier tarafından tekrar
-        // gönderilirse (ağ hatası sonrası retry gibi) iki kez altın
-        // basmayalım.
-        if (order.status === 'paid') {
-          return;
-        }
-        // Rastgele değer eşleşmiyorsa (biri orderId tahmin edip sahte
-        // webhook atmaya çalışıyor olabilir) reddet.
-        if (order.randomNr !== randomNr) {
-          throw new Error(`random_nr uyuşmuyor: ${orderId}`);
-        }
-
-        const pack = GOLD_STORE_PACKAGES[order.packageId];
-        if (!pack) {
-          throw new Error(`Bilinmeyen paket: ${order.packageId}`);
-        }
-
-        const userRef = db.collection('users').doc(order.uid);
-        tx.set(userRef, { gold: admin.firestore.FieldValue.increment(pack.gold) }, { merge: true });
-        Object.entries(pack.items).forEach(([materialType, qty]) => {
-          const inventoryRef = userRef.collection('inventory').doc(materialType);
-          tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(qty) }, { merge: true });
-        });
-        tx.set(
-          orderRef,
-          {
-            status: 'paid',
-            webhookStatus: String(status),
-            paidAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
-
-        const msgRef = userRef.collection('messages').doc();
-        tx.set(msgRef, {
-          from: 'Altın Mağazası',
-          text: `${pack.name} satın alımın tamamlandı — hesabına ${pack.gold.toLocaleString('tr-TR')} altın yüklendi.`,
-          read: false,
+      if (!packageId) {
+        console.error('shopierOsbWebhook: bilinmeyen ürün ID', productid);
+        await db.collection('shopierUnmatchedOrders').doc(String(orderid || Date.now())).set({
+          reason: 'unknown-product',
+          orderid: orderid || null,
+          productid: productid || null,
+          price: price || null,
+          email: email || null,
+          customernote: customernote || null,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
+        res.status(200).send('success'); // Shopier'e "aldım" de, tekrar denemesin — sorunu elle çözeceğiz.
+        return;
+      }
+
+      // Sipariş notundan teslimat kodunu çıkar: sadece izin verilen
+      // karakter setini alıp büyük harfe çeviriyoruz (kullanıcı boşluk/
+      // küçük harfle yapıştırmış olabilir).
+      const codeMatch = String(customernote || '')
+        .toUpperCase()
+        .match(/[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}/);
+      const code = codeMatch ? codeMatch[0] : null;
+
+      let uid = null;
+      if (code) {
+        const codeSnap = await db.collection('redemptionCodes').doc(code).get();
+        if (codeSnap.exists) uid = codeSnap.data().uid;
+      }
+
+      if (!uid) {
+        console.error('shopierOsbWebhook: teslimat kodu bulunamadı/eşleşmedi', orderid, customernote);
+        await db.collection('shopierUnmatchedOrders').doc(String(orderid || Date.now())).set({
+          reason: 'no-matching-code',
+          orderid: orderid || null,
+          productid: productid || null,
+          packageId,
+          price: price || null,
+          email: email || null,
+          customernote: customernote || null,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        res.status(200).send('success');
+        return;
+      }
+
+      await creditGoldStorePackage(uid, packageId, {
+        orderId: orderid || null,
+        productid: productid || null,
+        price: price || null,
+        email: email || null,
       });
 
-      res.status(200).send('OK');
+      res.status(200).send('success');
     } catch (err) {
-      console.error('shopierGoldStoreWebhook hata:', err);
-      // 500 dönersek Shopier'in webhook'u tekrar denemesini sağlarız
-      // (geçici bir Firestore hatası olabilir); imza/veri hataları zaten
-      // yukarıda 400 ile erken kesiliyor.
+      console.error('shopierOsbWebhook hata:', err);
+      // 500 dönersek Shopier'in tekrar denemesini sağlarız (geçici bir
+      // Firestore hatası olabilir); imza/parse hataları zaten yukarıda
+      // erken kesiliyor.
       res.status(500).send('error');
     }
   }
 );
+
 
 // =============================================================================
 // TELEFON — "SIXTAGRAM" (mini sosyal medya uygulaması)

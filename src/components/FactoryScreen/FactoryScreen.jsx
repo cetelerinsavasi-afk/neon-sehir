@@ -31,8 +31,10 @@ const MACHINE_EMOJI = {
   yasakliMadde: '💊',
 };
 
-function machinePrice(type, cryptoPrice) {
-  return type === 'mining' ? Math.ceil(2 * cryptoPrice) : MACHINE_PRICES[type];
+function machinePrice(type, cryptoPrice, ownedMiningCount = 0) {
+  if (type !== 'mining') return MACHINE_PRICES[type];
+  const multiplier = 2 + 2 * Math.floor((ownedMiningCount || 0) / 100);
+  return Math.ceil(multiplier * cryptoPrice);
 }
 
 function machineProductionRangeLabel(type) {
@@ -117,7 +119,7 @@ function CreateFactoryModal({ onClose, isEmployed }) {
 // ---------------------------------------------------------------------------
 // Makine satın alma modalı (sadece fabrika sahibi)
 // ---------------------------------------------------------------------------
-function BuyMachineModal({ onClose }) {
+function BuyMachineModal({ onClose, ownedMiningCount }) {
   const { prices } = useInvestmentPrices();
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
@@ -148,7 +150,7 @@ function BuyMachineModal({ onClose }) {
         </div>
         <div className="factory-machine-list">
           {types.map((type) => {
-            const price = machinePrice(type, prices.cryptoPrice);
+            const price = machinePrice(type, prices.cryptoPrice, ownedMiningCount);
             return (
               <div key={type} className="factory-machine-buy-card">
                 <span className="factory-machine-emoji">{MACHINE_EMOJI[type]}</span>
@@ -581,7 +583,12 @@ function OwnerView({ factory, machines, player, myUid }) {
       )}
       {selfError && <p className="factory-error">{selfError}</p>}
 
-      {showBuy && <BuyMachineModal onClose={() => setShowBuy(false)} />}
+      {showBuy && (
+        <BuyMachineModal
+          onClose={() => setShowBuy(false)}
+          ownedMiningCount={machines.filter((m) => m.type === 'mining').length}
+        />
+      )}
       {showManage && (
         <ManagementModal factory={factory} machines={machines} onClose={() => setShowManage(false)} />
       )}

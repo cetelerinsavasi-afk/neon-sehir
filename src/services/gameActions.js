@@ -127,13 +127,9 @@ export const toggleSixtagramLike = (postId) =>
 export const deleteSixtagramPost = (postId) =>
   httpsCallable(functions, 'deleteSixtagramPost')({ postId });
 
-// --- Telefon: Altın Mağazası (Shopier ile gerçek para karşılığı altın) ---
+// --- Telefon: Altın Mağazası (Shopier Dükkan üzerinden gerçek para) ---
 
-export const createGoldStoreOrder = (packageId) =>
-  httpsCallable(functions, 'createGoldStoreOrder')({
-    packageId,
-    returnOrigin: window.location.origin,
-  });
+export const getMyRedemptionCode = () => httpsCallable(functions, 'getMyRedemptionCode')();
 
 // quantity sadece malzeme ilanlarında kullanılır — istenen kadar adet
 // satın almak için (bkz. functions/index.js buyListing).
