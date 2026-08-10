@@ -829,22 +829,49 @@ export const dailyReset = onSchedule(
     // gazetedeki bülten sadece burada, gece 00:00'da bir kez "dondurulan"
     // bir anlık görüntü. Böylece gazete gün içinde sabit kalır, sadece
     // ertesi gece yenilenir.
+    //
+    // ÖNEMLİ: investments/current'ı DOĞRUDAN okumuyoruz — o doküman
+    // hourlyInvestmentUpdate tarafından da tam gece yarısı civarında
+    // güncelleniyor olabilir (aynı saat başı), iki zamanlanmış fonksiyon
+    // arasında kim önce çalışır garantisi yok. Bunun yerine
+    // investmentHistory'deki (her saat başı kaydedilen, gerçek zaman
+    // damgalı) kayıtlardan "bugünün 00:00'ına en yakın" ve "dünün
+    // 00:00'ına en yakın" olanları buluyoruz — hangi fonksiyonun önce
+    // çalıştığından tamamen bağımsız, her zaman doğru eşleşir.
     {
-      const bulletinRef = db.collection('newspaperBulletin').doc('current');
-      const [prevBulletinSnap, liveInvestmentSnap] = await Promise.all([
-        bulletinRef.get(),
-        db.collection('investments').doc('current').get(),
+      const nowMs = Date.now();
+      const yesterdayMs = nowMs - 24 * 60 * 60 * 1000;
+
+      const findSnapshotNear = async (targetMs) => {
+        const beforeSnap = await db
+          .collection('investmentHistory')
+          .where('createdAt', '<=', admin.firestore.Timestamp.fromMillis(targetMs))
+          .orderBy('createdAt', 'desc')
+          .limit(1)
+          .get();
+        if (!beforeSnap.empty) return beforeSnap.docs[0].data();
+        // Henüz hiç geçmiş kaydı yoksa (oyunun ilk günü): en eski kaydı kullan.
+        const afterSnap = await db
+          .collection('investmentHistory')
+          .orderBy('createdAt', 'asc')
+          .limit(1)
+          .get();
+        return afterSnap.empty ? null : afterSnap.docs[0].data();
+      };
+
+      const [current, prev] = await Promise.all([
+        findSnapshotNear(nowMs),
+        findSnapshotNear(yesterdayMs),
       ]);
-      const prevBulletin = prevBulletinSnap.exists ? prevBulletinSnap.data() : null;
-      const live = liveInvestmentSnap.exists ? liveInvestmentSnap.data() : DEFAULT_PRICES;
-      await bulletinRef.set({
+
+      await db.collection('newspaperBulletin').doc('current').set({
         dateKey,
-        diamondPrice: live.diamondPrice ?? DEFAULT_PRICES.diamondPrice,
-        stockPrice: live.stockPrice ?? DEFAULT_PRICES.stockPrice,
-        cryptoPrice: live.cryptoPrice ?? DEFAULT_PRICES.cryptoPrice,
-        prevDiamondPrice: prevBulletin?.diamondPrice ?? live.diamondPrice ?? DEFAULT_PRICES.diamondPrice,
-        prevStockPrice: prevBulletin?.stockPrice ?? live.stockPrice ?? DEFAULT_PRICES.stockPrice,
-        prevCryptoPrice: prevBulletin?.cryptoPrice ?? live.cryptoPrice ?? DEFAULT_PRICES.cryptoPrice,
+        diamondPrice: current?.diamondPrice ?? DEFAULT_PRICES.diamondPrice,
+        stockPrice: current?.stockPrice ?? DEFAULT_PRICES.stockPrice,
+        cryptoPrice: current?.cryptoPrice ?? DEFAULT_PRICES.cryptoPrice,
+        prevDiamondPrice: prev?.diamondPrice ?? current?.diamondPrice ?? DEFAULT_PRICES.diamondPrice,
+        prevStockPrice: prev?.stockPrice ?? current?.stockPrice ?? DEFAULT_PRICES.stockPrice,
+        prevCryptoPrice: prev?.cryptoPrice ?? current?.cryptoPrice ?? DEFAULT_PRICES.cryptoPrice,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
     }
@@ -9170,16 +9197,16 @@ const shopierApiSecret = defineSecret('SHOPIER_API_SECRET');
 const GOLD_STORE_PACKAGES = {
   paket1: {
     id: 'paket1',
-    name: '20.000 Altın',
+    name: 'Başlangıç Paketi',
     priceTRY: 30,
-    gold: 20000,
+    gold: 10000,
     items: {},
   },
   paket2: {
     id: 'paket2',
-    name: '60.000 Altın + Özel Paket',
+    name: '30.000 Altın + Özel Paket',
     priceTRY: 100,
-    gold: 60000,
+    gold: 30000,
     items: {
       yasakliMadde: 4,
       tamirMalzemesi: 1000,
@@ -9542,15 +9569,29 @@ async function buildSixtagramAttachment(uid, attachment) {
   }
 
   if (type === 'lastMatches') {
+    // "Son Oynanan Maçlar" — bugünün maçları henüz sonuçlanmadıysa (yani
+    // henüz 19:00 olmadıysa) DÜNÜN maçlarını kullan; böylece bir maç
+    // sonuçlandığı andan bir sonraki günün maçları sonuçlanana kadar tam
+    // 24 saat hep bir şey gösterilir (bkz. useTodayFootballMatches'teki
+    // aynı mantığın açıklaması).
     const dateKey = istanbulDateKey();
-    const snap = await db
+    const yesterdayKey = addDaysToDateKey(dateKey, -1);
+    let snap = await db
       .collection('newsEvents')
       .where('dateKey', '==', dateKey)
       .where('type', '==', 'football_match')
       .limit(4)
       .get();
     if (snap.empty) {
-      throw new HttpsError('failed-precondition', 'Bugün henüz sonuçlanan bir maç yok.');
+      snap = await db
+        .collection('newsEvents')
+        .where('dateKey', '==', yesterdayKey)
+        .where('type', '==', 'football_match')
+        .limit(4)
+        .get();
+    }
+    if (snap.empty) {
+      throw new HttpsError('failed-precondition', 'Son 24 saatte sonuçlanan bir maç yok.');
     }
     const matches = snap.docs.map((d) => {
       const m = d.data();
@@ -9728,6 +9769,9 @@ export const toggleSixtagramLike = onCall(async (request) => {
       throw new HttpsError('not-found', 'Gönderi bulunamadı (süresi dolup silinmiş olabilir).');
     }
     const post = postSnap.data();
+    if (post.uid === uid) {
+      throw new HttpsError('failed-precondition', 'Kendi gönderini beğenemezsin.');
+    }
     const profileRef = db.collection('sixtagramProfiles').doc(post.uid);
 
     if (likeSnap.exists) {

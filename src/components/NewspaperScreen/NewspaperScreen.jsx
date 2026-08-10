@@ -2,6 +2,7 @@ import { useNewspaper } from '../../hooks/useNewspaper';
 import { useLottery } from '../../hooks/useLottery';
 import { useChampionshipDaily } from '../../hooks/useChampionshipDaily';
 import { useNewspaperBulletin } from '../../hooks/useNewspaperBulletin';
+import { useFutbolLeagues } from '../../hooks/useFutbolLeagues';
 import FutbolCrest from '../FutbolScreen/FutbolCrest';
 import './NewspaperScreen.css';
 
@@ -89,6 +90,7 @@ export default function NewspaperScreen() {
   const { yesterday: lotteryYesterday } = useLottery();
   const { byCatalogId } = useChampionshipDaily();
   const { bulletin } = useNewspaperBulletin();
+  const { leagues } = useFutbolLeagues();
 
   const cabrioYesterday = byCatalogId[String(UST_CABRIO_CATALOG_ID)]?.yesterday;
 
@@ -102,7 +104,10 @@ export default function NewspaperScreen() {
   const arrestCount = arrestEvents.reduce((sum, e) => sum + (e.count || 0), 0);
   const arrestFine = arrestEvents.reduce((sum, e) => sum + (e.totalFine || 0), 0);
 
-  const matchEvents = events.filter((e) => e.type === 'football_match').slice(0, 10);
+  const topTierLeague = leagues.find((l) => l.tier === 1) || null;
+  const matchEvents = events
+    .filter((e) => e.type === 'football_match' && (!topTierLeague || e.leagueId === topTierLeague.id))
+    .slice(0, 10);
   const seasonEndEvent = events.find((e) => e.type === 'football_season_end');
 
   return (
@@ -158,11 +163,13 @@ export default function NewspaperScreen() {
             <p className="newspaper-body">
               <strong>
                 {(HEIST_TARGET_LABELS[biggestHeist.target] || biggestHeist.target).toUpperCase()}{' '}
-                SOYULDU!
-              </strong>{' '}
-              Dün şehrin gördüğü en büyük soygunda{' '}
+                SOYULDU
+              </strong>
+              . Dün gerçekleşen soygunda{' '}
               <strong>{(biggestHeist.amount || 0).toLocaleString('tr-TR')}</strong> altınlık kayıp
               yaşandı. Failler hâlâ aranıyor.
+              {heistEvents.length > 1 &&
+                ` Şehirde dün toplam ${heistEvents.length} soygun bildirildi.`}
             </p>
           ) : (
             <p className="newspaper-body newspaper-muted">
@@ -186,9 +193,9 @@ export default function NewspaperScreen() {
         </section>
 
         <section className="newspaper-section newspaper-football">
-          <h3 className="newspaper-section-title">⚽ Futbol</h3>
+          <h3 className="newspaper-section-title">⚽ Futbol — 1. Lig</h3>
           {matchEvents.length === 0 && (
-            <p className="newspaper-body newspaper-muted">Dün oynanan maç yok.</p>
+            <p className="newspaper-body newspaper-muted">Dün 1. Lig'de oynanan maç yok.</p>
           )}
           <div className="newspaper-match-list">
             {matchEvents.map((m) => (

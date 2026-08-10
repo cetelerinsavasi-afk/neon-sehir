@@ -11,18 +11,18 @@ import './GoldStoreScreen.css';
 const PACKAGES = [
   {
     id: 'paket1',
-    title: '20.000 Altın',
+    title: 'Başlangıç Paketi',
     priceLabel: '30 TL',
     emoji: null, // 🪙 yerine .gold-coin-icon (bkz. aşağı) — bazı platformlarda emoji görünmüyor
-    lines: ['20.000 Altın'],
+    lines: ['10.000 Altın'],
   },
   {
     id: 'paket2',
-    title: '60.000 Altın + Özel Paket',
+    title: '30.000 Altın + Özel Paket',
     priceLabel: '100 TL',
     emoji: '💎',
     lines: [
-      '60.000 Altın',
+      '30.000 Altın',
       '4 Yasaklı Madde',
       '1.000 Tamir Malzemesi',
       '100 Silah Geliştirme Malzemesi',

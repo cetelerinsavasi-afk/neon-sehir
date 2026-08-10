@@ -20,11 +20,21 @@ export default function SixtagramScreen() {
   const { player } = usePlayer();
   const [tab, setTab] = useState('home');
   const [composeOpen, setComposeOpen] = useState(false);
+  // Anasayfa sekmesine her giriş, akışı en güncel beğeni sırasına göre
+  // baştan çeker (bkz. useSixtagramFeed'in üstündeki not — gezinirken
+  // sıralamanın kendiliğinden zıplamasını istemediğimiz için canlı
+  // dinleyici yerine bu "girişte yenile" deseni kullanılıyor).
+  const [homeRefreshKey, setHomeRefreshKey] = useState(0);
 
-  const { posts: feedPosts, loading: feedLoading } = useSixtagramFeed();
+  const { posts: feedPosts, loading: feedLoading } = useSixtagramFeed(homeRefreshKey);
   const { posts: myPosts, loading: myPostsLoading } = useMySixtagramPosts();
   const likedIds = useMySixtagramLikedPostIds();
   const { profile: myProfile } = useSixtagramProfile(user?.uid);
+
+  const handleTabClick = (id) => {
+    setTab(id);
+    if (id === 'home') setHomeRefreshKey((k) => k + 1);
+  };
 
   return (
     <div className="sixtagram">
@@ -34,7 +44,7 @@ export default function SixtagramScreen() {
             <button
               key={t.id}
               className={`sixtagram-tab ${tab === t.id ? 'active' : ''}`}
-              onClick={() => setTab(t.id)}
+              onClick={() => handleTabClick(t.id)}
             >
               {t.label}
             </button>
@@ -94,7 +104,13 @@ export default function SixtagramScreen() {
       )}
 
       {composeOpen && (
-        <ComposeModal onClose={() => setComposeOpen(false)} onPosted={() => setTab('home')} />
+        <ComposeModal
+          onClose={() => setComposeOpen(false)}
+          onPosted={() => {
+            setTab('home');
+            setHomeRefreshKey((k) => k + 1);
+          }}
+        />
       )}
     </div>
   );

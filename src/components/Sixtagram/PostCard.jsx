@@ -30,7 +30,7 @@ export default function PostCard({ post, liked, isOwn }) {
   const effectiveCount = optimisticCount ?? post.likeCount ?? 0;
 
   const handleLike = async () => {
-    if (busy) return;
+    if (busy || isOwn) return;
     setBusy(true);
     const nextLiked = !effectiveLiked;
     setOptimisticLiked(nextLiked);
@@ -100,7 +100,8 @@ export default function PostCard({ post, liked, isOwn }) {
         <button
           className={`six-like-btn ${effectiveLiked ? 'liked' : ''}`}
           onClick={handleLike}
-          disabled={busy}
+          disabled={busy || isOwn}
+          title={isOwn ? 'Kendi gönderini beğenemezsin' : undefined}
         >
           <Heart size={16} fill={effectiveLiked ? 'currentColor' : 'none'} />
           <span>{effectiveCount}</span>

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../firebase';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useRecentFutbolBets } from '../../hooks/useRecentFutbolBets';
@@ -48,6 +50,7 @@ export default function ComposeModal({ onClose, onPosted }) {
   const [attachmentPreview, setAttachmentPreview] = useState(null);
   const [error, setError] = useState('');
   const [posting, setPosting] = useState(false);
+  const [betPreviewLoading, setBetPreviewLoading] = useState(false);
 
   const { player } = usePlayer();
   const { vehicles } = useVehicles();
@@ -183,19 +186,86 @@ export default function ComposeModal({ onClose, onPosted }) {
     );
   };
 
-  const chooseBet = (bet) => {
-    setAttachment(
-      { type: 'iddaa', betId: bet.id },
-      {
+  const chooseBet = async (bet) => {
+    setError('');
+    setSubPicker(null);
+    setPickerOpen(false);
+    setAttachmentDraft({ type: 'iddaa', betId: bet.id });
+    setBetPreviewLoading(true);
+    // Kuponun GERÇEK içeriğini (maç isimleri + tahminler + varsa sonuç)
+    // burada da çekiyoruz ki "sonuç bekleyen" bir kupon bile paylaşmadan
+    // önce tam olarak nasıl görüneceğini göstersin — sunucu tarafındaki
+    // buildSixtagramAttachment ile aynı mantık, sadece istemcide.
+    try {
+      const leagueSnap = await getDoc(doc(db, 'futbolLeagues', bet.leagueId));
+      const predictionList = bet.predictions || [];
+      const matchSnaps = await Promise.all(
+        predictionList.map((p) => getDoc(doc(db, 'futbolMatches', p.matchId)))
+      );
+      const matchById = {};
+      matchSnaps.forEach((s) => {
+        if (s.exists()) matchById[s.id] = s.data();
+      });
+      const teamIds = new Set();
+      matchSnaps.forEach((s) => {
+        if (s.exists()) {
+          teamIds.add(s.data().homeTeamId);
+          teamIds.add(s.data().awayTeamId);
+        }
+      });
+      const teamSnaps = await Promise.all(
+        [...teamIds].map((id) => getDoc(doc(db, 'futbolTeams', id)))
+      );
+      const teamById = {};
+      teamSnaps.forEach((s) => {
+        if (s.exists()) teamById[s.id] = s.data();
+      });
+
+      const predictions = predictionList.map((p) => {
+        const m = matchById[p.matchId] || {};
+        const home = teamById[m.homeTeamId] || {};
+        const away = teamById[m.awayTeamId] || {};
+        let correct = null;
+        if (m.status === 'finished' && m.homeScore != null && m.awayScore != null) {
+          const actual =
+            m.homeScore === m.awayScore ? 'draw' : m.homeScore > m.awayScore ? 'home' : 'away';
+          correct = actual === p.pick;
+        }
+        return {
+          homeName: home.name || '?',
+          awayName: away.name || '?',
+          pick: p.pick,
+          homeScore: m.status === 'finished' ? m.homeScore : null,
+          awayScore: m.status === 'finished' ? m.awayScore : null,
+          correct,
+        };
+      });
+
+      setAttachmentPreview({
+        type: 'iddaa',
+        leagueName: leagueSnap.exists() ? leagueSnap.data().name || null : null,
+        round: bet.round,
+        stake: bet.stake,
+        status: bet.status,
+        payout: bet.payout || 0,
+        predictions,
+      });
+    } catch (err) {
+      console.error('Kupon önizleme hatası:', err);
+      // Önizleme yüklenemese bile paylaşım engellenmesin — sunucu
+      // paylaşırken içeriği zaten kendisi doğru şekilde üretecek.
+      setAttachmentPreview({
         type: 'iddaa',
         leagueName: null,
         round: bet.round,
         stake: bet.stake,
         status: bet.status,
         payout: bet.payout || 0,
-        predictions: [], // sunucudaki gerçek versiyon tam tahminleri gömecek; burada önizleme için sadeleştirildi
-      }
-    );
+        predictions: [],
+      });
+    } finally {
+      setBetPreviewLoading(false);
+    }
   };
 
   const chooseAsset = (asset) => {
@@ -263,11 +333,10 @@ export default function ComposeModal({ onClose, onPosted }) {
                 <X size={14} /> Kaldır
               </button>
             </div>
-            <PostAttachment attachment={attachmentPreview} />
-            {attachmentPreview.type === 'iddaa' && (
-              <p className="six-compose-note">
-                Kuponun tüm maç tahminleri, paylaşınca gönderide görünecek.
-              </p>
+            {betPreviewLoading && attachmentPreview.type === 'iddaa' ? (
+              <p className="six-compose-note">Kupon yükleniyor…</p>
+            ) : (
+              <PostAttachment attachment={attachmentPreview} />
             )}
           </div>
         )}
@@ -297,6 +366,13 @@ export default function ComposeModal({ onClose, onPosted }) {
                 {!t.available && <span className="six-compose-picker-none">yok</span>}
               </button>
             ))}
+            {!lastMatchesAvailable && (
+              <p className="six-compose-sublist-empty">
+                "Son Oynanan Maçlar" henüz hiç maç sonuçlanmadıysa (oyunun ilk gününde, 19:00'dan
+                önce) görünmez — bir maç sonuçlandıktan sonra bir sonraki gün 19:00'a kadar (24
+                saat boyunca) burada kalır.
+              </p>
+            )}
           </div>
         )}
 

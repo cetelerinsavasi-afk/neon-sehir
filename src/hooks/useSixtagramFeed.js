@@ -1,46 +1,52 @@
-import { useEffect, useState } from 'react';
-import { collection, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { useCallback, useEffect, useState } from 'react';
+import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { db } from '../firebase';
 
 const FETCH_LIMIT = 150;
 
 /**
- * useSixtagramFeed — Anasayfa akışı. Son FETCH_LIMIT postu (en yeni önce)
- * çeker, süresi dolmuş (expiresAtMs geçmiş) olanları istemcide eler, kalanı
- * en çok beğeniye göre sıralar. Sunucuda ayrı bir "expiresAtMs > now"
- * sorgusu YAPMIYORUZ çünkü Firestore'da o zaman likeCount'a göre
- * sıralayabilmek için composite index gerekirdi — bunun yerine son
- * postları çekip istemcide filtrelemek, bu oyunun ölçeğinde çok daha
- * basit ve yeterince hızlı.
+ * useSixtagramFeed — Anasayfa akışı.
+ *
+ * BİLEREK canlı dinleyici (onSnapshot) KULLANMIYORUZ — eskiden öyleydi,
+ * ama en çok beğeniye göre sıralı bir listede canlı güncelleme şu soruna
+ * yol açıyordu: birini beğendiğinde likeCount anında artıp post listede
+ * YUKARI zıplıyordu, bu da postun "kaybolduğu" hissini veriyordu (aslında
+ * sadece yer değiştiriyordu). Bunun yerine akışı SADECE şu anlarda bir
+ * kez çekiyoruz: ekran ilk açıldığında, `refreshKey` değiştiğinde
+ * (SixtagramScreen, Anasayfa sekmesine her girişte bunu artırır) ve
+ * `refresh()` elle çağrıldığında. Böylece gezinirken sıralama sabit
+ * kalır, ama sekmeden çıkıp tekrar girince en güncel (doğru) sıraya
+ * göre yeniden dizilir.
  */
-export function useSixtagramFeed() {
+export function useSixtagramFeed(refreshKey) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const q = query(
-      collection(db, 'sixtagramPosts'),
-      orderBy('createdAtMs', 'desc'),
-      limit(FETCH_LIMIT)
-    );
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => {
-        const now = Date.now();
-        const list = snap.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
-          .filter((p) => (p.expiresAtMs ?? 0) > now);
-        list.sort((a, b) => (b.likeCount || 0) - (a.likeCount || 0));
-        setPosts(list);
-        setLoading(false);
-      },
-      (err) => {
-        console.error('useSixtagramFeed dinleme hatası:', err);
-        setLoading(false);
-      }
-    );
-    return unsubscribe;
+  const fetchFeed = useCallback(async () => {
+    setLoading(true);
+    try {
+      const q = query(
+        collection(db, 'sixtagramPosts'),
+        orderBy('createdAtMs', 'desc'),
+        limit(FETCH_LIMIT)
+      );
+      const snap = await getDocs(q);
+      const now = Date.now();
+      const list = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((p) => (p.expiresAtMs ?? 0) > now);
+      list.sort((a, b) => (b.likeCount || 0) - (a.likeCount || 0));
+      setPosts(list);
+    } catch (err) {
+      console.error('useSixtagramFeed çekme hatası:', err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  return { posts, loading };
+  useEffect(() => {
+    fetchFeed();
+  }, [refreshKey, fetchFeed]);
+
+  return { posts, loading, refresh: fetchFeed };
 }
