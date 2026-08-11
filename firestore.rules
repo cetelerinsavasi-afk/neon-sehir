@@ -45,6 +45,13 @@ service cloud.firestore {
         allow read: if isSelf(uid);
         allow write: if false;
       }
+
+      // sixtagramNotifications/{notifId} — "beğenildim/yorum aldım/
+      // yanıt aldım" bildirimleri. Sadece sahibi okuyabilir.
+      match /sixtagramNotifications/{notifId} {
+        allow read: if isSelf(uid);
+        allow write: if false;
+      }
     }
 
     // ---------------------------------------------------------------------
@@ -285,6 +292,14 @@ service cloud.firestore {
       // durumunu göstermesi için okunabilir; yazma yine sadece Cloud
       // Functions ile (toggleSixtagramLike).
       match /likes/{uid} {
+        allow read: if isSignedIn();
+        allow write: if false;
+      }
+
+      // comments/{commentId} — herkes okuyabilir (yorumlar da postlar
+      // gibi herkese açık); yazma sadece Cloud Functions ile
+      // (createSixtagramComment).
+      match /comments/{commentId} {
         allow read: if isSignedIn();
         allow write: if false;
       }

@@ -127,6 +127,12 @@ export const toggleSixtagramLike = (postId) =>
 export const deleteSixtagramPost = (postId) =>
   httpsCallable(functions, 'deleteSixtagramPost')({ postId });
 
+export const createSixtagramComment = (postId, text, parentCommentId) =>
+  httpsCallable(functions, 'createSixtagramComment')({ postId, text, parentCommentId });
+
+export const markAllSixtagramNotificationsRead = () =>
+  httpsCallable(functions, 'markAllSixtagramNotificationsRead')();
+
 // --- Telefon: Altın Mağazası (Shopier Dükkan üzerinden gerçek para) ---
 
 export const getMyRedemptionCode = () => httpsCallable(functions, 'getMyRedemptionCode')();

@@ -1,13 +1,16 @@
 import { useState } from 'react';
+import { Bell } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useSixtagramFeed } from '../../hooks/useSixtagramFeed';
 import { useMySixtagramPosts } from '../../hooks/useMySixtagramPosts';
 import { useMySixtagramLikedPostIds } from '../../hooks/useMySixtagramLikedPostIds';
 import { useSixtagramProfile } from '../../hooks/useSixtagramProfile';
+import { useSixtagramNotifications } from '../../hooks/useSixtagramNotifications';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import PostCard from './PostCard';
 import ComposeModal from './ComposeModal';
+import NotificationsPanel from './NotificationsPanel';
 import './SixtagramScreen.css';
 
 const TABS = [
@@ -20,6 +23,7 @@ export default function SixtagramScreen() {
   const { player } = usePlayer();
   const [tab, setTab] = useState('home');
   const [composeOpen, setComposeOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
   // Anasayfa sekmesine her giriş, akışı en güncel beğeni sırasına göre
   // baştan çeker (bkz. useSixtagramFeed'in üstündeki not — gezinirken
   // sıralamanın kendiliğinden zıplamasını istemediğimiz için canlı
@@ -30,6 +34,7 @@ export default function SixtagramScreen() {
   const { posts: myPosts, loading: myPostsLoading } = useMySixtagramPosts();
   const likedIds = useMySixtagramLikedPostIds();
   const { profile: myProfile } = useSixtagramProfile(user?.uid);
+  const { unreadCount: notifUnreadCount } = useSixtagramNotifications();
 
   const handleTabClick = (id) => {
     setTab(id);
@@ -50,16 +55,28 @@ export default function SixtagramScreen() {
             </button>
           ))}
         </div>
-        <button
-          className="sixtagram-compose-btn"
-          onClick={() => setComposeOpen(true)}
-          disabled={!user}
-          title={user ? 'Paylaşım yap' : 'Paylaşmak için giriş yap'}
-        >
-          ✏️ Paylaş
-        </button>
+        <div className="sixtagram-topbar-actions">
+          <button
+            className="sixtagram-compose-btn"
+            onClick={() => setComposeOpen(true)}
+            disabled={!user}
+            title={user ? 'Paylaşım yap' : 'Paylaşmak için giriş yap'}
+          >
+            ✏️ Paylaş
+          </button>
+          <button
+            className="sixtagram-notif-btn"
+            onClick={() => setNotifOpen(true)}
+            disabled={!user}
+            title="Bildirimler"
+          >
+            <Bell size={18} />
+            {notifUnreadCount > 0 && (
+              <span className="sixtagram-notif-badge">{notifUnreadCount}</span>
+            )}
+          </button>
+        </div>
       </div>
-
       {tab === 'home' && (
         <div className="sixtagram-feed">
           {feedLoading && <p className="sixtagram-hint">Yükleniyor…</p>}
@@ -112,6 +129,8 @@ export default function SixtagramScreen() {
           }}
         />
       )}
+
+      {notifOpen && <NotificationsPanel onClose={() => setNotifOpen(false)} />}
     </div>
   );
 }

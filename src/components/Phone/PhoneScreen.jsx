@@ -12,7 +12,7 @@ import SixtagramScreen from '../Sixtagram/SixtagramScreen';
 import InstallAppButton from '../InstallAppButton/InstallAppButton';
 import { useMessages } from '../../hooks/useMessages';
 import { usePlayer } from '../../hooks/usePlayer';
-import { useUnreadNotifications, markChatsAppSeen } from '../../hooks/useUnreadNotifications';
+import { useUnreadNotifications, markChatsAppSeen, markSixtagramSeen } from '../../hooks/useUnreadNotifications';
 import './PhoneScreen.css';
 
 const APPS = [
@@ -45,11 +45,12 @@ export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }
   const { messages } = useMessages();
   const { player } = usePlayer();
   const unreadCount = messages.filter((m) => !m.read).length;
-  const { chatsAppHasNew } = useUnreadNotifications();
+  const { chatsAppHasNew, sixtagramHasNew } = useUnreadNotifications();
 
   const handleOpenApp = (id) => {
     setOpenApp(id);
     if (id === 'chatsapp') markChatsAppSeen();
+    if (id === 'sixtagram') markSixtagramSeen();
   };
 
   if (openApp) {
@@ -119,6 +120,7 @@ export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }
                 <span className="phone-app-badge">{unreadCount}</span>
               )}
               {app.id === 'chatsapp' && chatsAppHasNew && <span className="phone-app-dot" />}
+              {app.id === 'sixtagram' && sixtagramHasNew && <span className="phone-app-dot" />}
             </span>
             <span className="phone-app-name">{app.note}</span>
           </button>

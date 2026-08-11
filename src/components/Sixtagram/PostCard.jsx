@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Heart, Trash2 } from 'lucide-react';
+import { Heart, MessageCircle, Trash2 } from 'lucide-react';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import PostAttachment from './PostAttachment';
 import AuthorPanel from './AuthorPanel';
+import CommentsPanel from './CommentsPanel';
 import { toggleSixtagramLike, deleteSixtagramPost } from '../../services/gameActions';
 import './PostCard.css';
 
@@ -22,6 +23,7 @@ export default function PostCard({ post, liked, isOwn }) {
   const [optimisticLiked, setOptimisticLiked] = useState(null);
   const [optimisticCount, setOptimisticCount] = useState(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [hidden, setHidden] = useState(false);
@@ -112,6 +114,11 @@ export default function PostCard({ post, liked, isOwn }) {
             <span>{effectiveCount}</span>
           </button>
         )}
+
+        <button className="six-comment-btn" onClick={() => setCommentsOpen(true)}>
+          <MessageCircle size={16} />
+          <span>{post.commentCount || 0}</span>
+        </button>
       </div>
 
       {panelOpen && (
@@ -122,6 +129,8 @@ export default function PostCard({ post, liked, isOwn }) {
           onClose={() => setPanelOpen(false)}
         />
       )}
+
+      {commentsOpen && <CommentsPanel postId={post.id} onClose={() => setCommentsOpen(false)} />}
     </div>
   );
 }

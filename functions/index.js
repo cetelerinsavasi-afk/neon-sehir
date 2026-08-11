@@ -9607,6 +9607,25 @@ export const adminManualCreditPackage = onRequest(
 const SIXTAGRAM_MAX_TEXT_LEN = 280;
 const SIXTAGRAM_POST_LIFETIME_MS = 24 * 60 * 60 * 1000;
 const SIXTAGRAM_ASSET_LABELS = { diamond: 'Elmas', stock: 'Hisse Senedi', crypto: 'Kripto' };
+const SIXTAGRAM_COMMENT_MAX_LEN = 280;
+
+// createSixtagramNotification — bir oyuncuya (toUid) "beğenildim/yorum
+// aldım/yanıtlandım" bildirimi ekler (users/{toUid}/sixtagramNotifications).
+// Kendi kendine bildirim ASLA gönderilmez (örn. kendi postuna yorum
+// yazınca kendine bildirim gitmesin).
+async function createSixtagramNotification(toUid, notif) {
+  if (!toUid || toUid === notif.fromUid) return;
+  await db
+    .collection('users')
+    .doc(toUid)
+    .collection('sixtagramNotifications')
+    .add({
+      ...notif,
+      read: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAtMs: Date.now(),
+    });
+}
 
 // buildSixtagramAttachment — istemcinin seçtiği ek türünü, sunucudaki
 // GERÇEK veriden yeniden inşa eder. `attachment` yoksa/null ise null döner
@@ -9915,6 +9934,100 @@ export const createSixtagramPost = onCall(async (request) => {
 
 // toggleSixtagramLike — beğen/beğeniyi geri çek. Kendi postunu da
 // beğenebilir (kısıtlama yok), istemci isterse UI'da engelleyebilir.
+// createSixtagramComment — bir posta yorum ekler; `parentCommentId`
+// verilirse bu, o yoruma bir YANITTIR (tek seviye — yanıta yanıt yok).
+// Post sahibine 'comment' bildirimi, (yanıtsa ve farklı biriyse) yanıt
+// verilen yorumun sahibine de ayrıca 'reply' bildirimi gider.
+export const createSixtagramComment = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { postId, text, parentCommentId } = request.data || {};
+  if (!postId) throw new HttpsError('invalid-argument', 'postId gerekli.');
+  const cleanText = typeof text === 'string' ? text.trim().slice(0, SIXTAGRAM_COMMENT_MAX_LEN) : '';
+  if (!cleanText) {
+    throw new HttpsError('invalid-argument', 'Boş yorum gönderemezsin.');
+  }
+
+  const postRef = db.collection('sixtagramPosts').doc(postId);
+  const [postSnap, userSnap] = await Promise.all([
+    postRef.get(),
+    db.collection('users').doc(uid).get(),
+  ]);
+  if (!postSnap.exists) {
+    throw new HttpsError('not-found', 'Gönderi bulunamadı (süresi dolup silinmiş olabilir).');
+  }
+  const post = postSnap.data();
+  const user = userSnap.data() || {};
+  const fromName = user.displayName || 'Bir oyuncu';
+
+  let parentComment = null;
+  if (parentCommentId) {
+    const parentSnap = await postRef.collection('comments').doc(parentCommentId).get();
+    if (!parentSnap.exists) {
+      throw new HttpsError('not-found', 'Yanıt verilen yorum bulunamadı.');
+    }
+    parentComment = parentSnap.data();
+  }
+
+  const commentRef = postRef.collection('comments').doc();
+  const nowMs = Date.now();
+  await db.runTransaction(async (tx) => {
+    tx.set(commentRef, {
+      uid,
+      authorName: fromName,
+      authorAvatar: user.avatar || null,
+      text: cleanText,
+      parentCommentId: parentCommentId || null,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAtMs: nowMs,
+    });
+    tx.update(postRef, { commentCount: admin.firestore.FieldValue.increment(1) });
+  });
+
+  // Post sahibine "gönderine yorum yapıldı" bildirimi.
+  await createSixtagramNotification(post.uid, {
+    type: 'comment',
+    postId,
+    commentId: commentRef.id,
+    fromUid: uid,
+    fromName,
+    textPreview: cleanText.slice(0, 80),
+  });
+
+  // Yanıtsa VE yanıtladığı yorumun sahibi post sahibinden farklıysa
+  // (aksi halde aynı kişiye iki bildirim gitmesin), ayrıca 'reply'
+  // bildirimi de gönder.
+  if (parentComment && parentComment.uid !== post.uid) {
+    await createSixtagramNotification(parentComment.uid, {
+      type: 'reply',
+      postId,
+      commentId: commentRef.id,
+      fromUid: uid,
+      fromName,
+      textPreview: cleanText.slice(0, 80),
+    });
+  }
+
+  return { ok: true, commentId: commentRef.id };
+});
+
+// markAllSixtagramNotificationsRead — bildirim panelini açınca çağrılır,
+// tüm okunmamış bildirimleri "okundu" işaretler.
+export const markAllSixtagramNotificationsRead = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const snap = await db
+    .collection('users')
+    .doc(uid)
+    .collection('sixtagramNotifications')
+    .where('read', '==', false)
+    .limit(200)
+    .get();
+  if (snap.empty) return { ok: true, count: 0 };
+  const batch = db.batch();
+  snap.docs.forEach((d) => batch.update(d.ref, { read: true }));
+  await batch.commit();
+  return { ok: true, count: snap.size };
+});
+
 export const toggleSixtagramLike = onCall(async (request) => {
   const uid = requireAuth(request);
   const { postId } = request.data || {};
@@ -9923,10 +10036,17 @@ export const toggleSixtagramLike = onCall(async (request) => {
   const postRef = db.collection('sixtagramPosts').doc(postId);
   const likeRef = postRef.collection('likes').doc(uid);
   const myLikesRef = db.collection('sixtagramUserLikes').doc(uid);
+  const myUserRef = db.collection('users').doc(uid);
 
   let liked = false;
+  let postOwnerUid = null;
+  let fromName = 'Bir oyuncu';
   await db.runTransaction(async (tx) => {
-    const [postSnap, likeSnap] = await Promise.all([tx.get(postRef), tx.get(likeRef)]);
+    const [postSnap, likeSnap, myUserSnap] = await Promise.all([
+      tx.get(postRef),
+      tx.get(likeRef),
+      tx.get(myUserRef),
+    ]);
     if (!postSnap.exists) {
       throw new HttpsError('not-found', 'Gönderi bulunamadı (süresi dolup silinmiş olabilir).');
     }
@@ -9934,6 +10054,8 @@ export const toggleSixtagramLike = onCall(async (request) => {
     if (post.uid === uid) {
       throw new HttpsError('failed-precondition', 'Kendi gönderini beğenemezsin.');
     }
+    postOwnerUid = post.uid;
+    fromName = myUserSnap.data()?.displayName || 'Bir oyuncu';
     const profileRef = db.collection('sixtagramProfiles').doc(post.uid);
 
     if (likeSnap.exists) {
@@ -9955,6 +10077,17 @@ export const toggleSixtagramLike = onCall(async (request) => {
     }
   });
 
+  // Sadece BEĞENİRKEN bildirim gönder (beğeniyi geri çekince değil).
+  if (liked && postOwnerUid) {
+    await createSixtagramNotification(postOwnerUid, {
+      type: 'like',
+      postId,
+      fromUid: uid,
+      fromName,
+      textPreview: null,
+    });
+  }
+
   return { ok: true, liked };
 });
 
@@ -9974,6 +10107,12 @@ async function deleteSixtagramPostAndLikes(postRef) {
         { merge: true }
       );
     });
+    await batch.commit();
+  }
+  const commentsSnap = await postRef.collection('comments').limit(500).get();
+  if (!commentsSnap.empty) {
+    const batch = db.batch();
+    commentsSnap.forEach((c) => batch.delete(c.ref));
     await batch.commit();
   }
   await postRef.delete();

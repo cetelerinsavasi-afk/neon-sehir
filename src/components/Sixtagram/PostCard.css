@@ -105,6 +105,7 @@
 
 .six-post-actions {
   display: flex;
+  gap: 8px;
   margin-top: 2px;
 }
 
@@ -141,4 +142,23 @@
   color: var(--text-dim);
   font-size: 12px;
   font-weight: 700;
+}
+
+.six-comment-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.six-comment-btn:hover {
+  color: var(--neon-cyan);
+  border-color: rgba(25, 232, 255, 0.5);
 }

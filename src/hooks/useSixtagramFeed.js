@@ -32,11 +32,19 @@ export function useSixtagramFeed(refreshKey) {
       );
       const snap = await getDocs(q);
       const now = Date.now();
+      const ONE_HOUR_MS = 60 * 60 * 1000;
       const list = snap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter((p) => (p.expiresAtMs ?? 0) > now);
-      list.sort((a, b) => (b.likeCount || 0) - (a.likeCount || 0));
-      setPosts(list);
+      // Sıralama (kullanıcı isteği): önce SON 1 SAATTE atılmış postlar
+      // (en yeni en üstte), ardından geri kalanı en çok beğeniye göre.
+      const recent = list
+        .filter((p) => now - (p.createdAtMs || 0) < ONE_HOUR_MS)
+        .sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+      const older = list
+        .filter((p) => now - (p.createdAtMs || 0) >= ONE_HOUR_MS)
+        .sort((a, b) => (b.likeCount || 0) - (a.likeCount || 0));
+      setPosts([...recent, ...older]);
     } catch (err) {
       console.error('useSixtagramFeed çekme hatası:', err);
     } finally {
