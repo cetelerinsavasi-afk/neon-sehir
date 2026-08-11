@@ -132,3 +132,13 @@
   opacity: 0.7;
   cursor: default;
 }
+
+.six-like-static {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 700;
+}

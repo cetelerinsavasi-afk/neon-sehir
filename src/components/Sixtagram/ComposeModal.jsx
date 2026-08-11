@@ -145,6 +145,7 @@ export default function ComposeModal({ onClose, onPosted }) {
   const iddaaAvailable = bets.length > 0;
   const lastMatchesAvailable = todayMatches.length > 0;
   const fineAvailable = recentFines.length > 0;
+  const debtAvailable = (player?.debtToState || 0) > 0;
 
   const ATTACHMENT_TYPES = [
     { id: 'avatar', label: 'Avatarım', emoji: '🧑', available: avatarAvailable },
@@ -154,6 +155,7 @@ export default function ComposeModal({ onClose, onPosted }) {
     { id: 'upcomingMatches', label: 'Sıradaki Maçlar', emoji: '🔜', available: leagues.length > 0 },
     { id: 'investment', label: 'Yatırım Grafiği', emoji: '📈', available: true },
     { id: 'fine', label: 'Cezam', emoji: '🚨', available: fineAvailable },
+    { id: 'debt', label: 'Toplam Borcum', emoji: '💸', available: debtAvailable },
   ];
 
   const setAttachment = (draft, preview) => {
@@ -186,6 +188,13 @@ export default function ComposeModal({ onClose, onPosted }) {
     if (typeId === 'fine') {
       const totalAmount = recentFines.reduce((sum, m) => sum + (m.penaltyAmount || 0), 0);
       setAttachment({ type: 'fine' }, { type: 'fine', totalAmount, count: recentFines.length });
+      return;
+    }
+    if (typeId === 'debt') {
+      setAttachment(
+        { type: 'debt' },
+        { type: 'debt', amount: player?.debtToState || 0 }
+      );
     }
   };
 

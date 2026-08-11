@@ -156,5 +156,14 @@ export default function PostAttachment({ attachment }) {
     );
   }
 
+  if (attachment.type === 'debt') {
+    return (
+      <div className="post-att post-att-card post-att-fine">
+        <p className="post-att-card-title">💸 Devlete Borcum</p>
+        <p className="post-att-fine-amount">{attachment.amount.toLocaleString('tr-TR')} altın</p>
+      </div>
+    );
+  }
+
   return null;
 }

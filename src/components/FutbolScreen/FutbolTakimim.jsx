@@ -220,6 +220,9 @@ function MyTeamOverview({ team }) {
       <div className="futbol-my-team-rank">
         {rank > 0 ? `Ligde ${rank}. sıradasın` : 'Sıralama hesaplanıyor...'}
       </div>
+      <div className="futbol-my-team-rank">
+        Takım Değeri: {finance ? `${finance.value.toLocaleString('tr-TR')} altın` : '…'}
+      </div>
 
       {error && <p className="futbol-admin-error">{error}</p>}
 

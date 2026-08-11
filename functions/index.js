@@ -9851,6 +9851,15 @@ async function buildSixtagramAttachment(uid, attachment) {
     return { type: 'fine', totalAmount, count: allDocs.length };
   }
 
+  if (type === 'debt') {
+    const userSnap = await db.collection('users').doc(uid).get();
+    const debtToState = userSnap.data()?.debtToState || 0;
+    if (debtToState <= 0) {
+      throw new HttpsError('failed-precondition', 'Devlete hiç borcun yok, paylaşacak bir şey bulunamadı.');
+    }
+    return { type: 'debt', amount: debtToState };
+  }
+
   throw new HttpsError('invalid-argument', 'Geçersiz ek türü.');
 }
 

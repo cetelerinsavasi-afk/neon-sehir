@@ -97,15 +97,21 @@ export default function PostCard({ post, liked, isOwn }) {
       <PostAttachment attachment={post.attachment} />
 
       <div className="six-post-actions">
-        <button
-          className={`six-like-btn ${effectiveLiked ? 'liked' : ''}`}
-          onClick={handleLike}
-          disabled={busy || isOwn}
-          title={isOwn ? 'Kendi gönderini beğenemezsin' : undefined}
-        >
-          <Heart size={16} fill={effectiveLiked ? 'currentColor' : 'none'} />
-          <span>{effectiveCount}</span>
-        </button>
+        {isOwn ? (
+          <span className="six-like-static">
+            <Heart size={16} fill={effectiveCount > 0 ? 'currentColor' : 'none'} />
+            <span>{effectiveCount}</span>
+          </span>
+        ) : (
+          <button
+            className={`six-like-btn ${effectiveLiked ? 'liked' : ''}`}
+            onClick={handleLike}
+            disabled={busy}
+          >
+            <Heart size={16} fill={effectiveLiked ? 'currentColor' : 'none'} />
+            <span>{effectiveCount}</span>
+          </button>
+        )}
       </div>
 
       {panelOpen && (
