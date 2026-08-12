@@ -4,7 +4,7 @@ import { usePlayer } from '../../hooks/usePlayer';
 import { useInventory } from '../../hooks/useInventory';
 import { useParkPresence } from '../../hooks/useParkPresence';
 import { enterPark, sellContrabandAtPark, buyFromBufe } from '../../services/gameActions';
-import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes';
+import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR, AVATAR_FULL_VIEWBOX_H, AVATAR_WAIST_Y } from '../../lib/avatarShapes';
 import Hud from '../Hud/Hud';
 import ResultModal from '../ResultModal/ResultModal';
 import InfoIcon from '../InfoIcon/InfoIcon';
@@ -581,19 +581,40 @@ export default function ParkWorldScreen({ onExit }) {
     // animasyonu — sürekli, sürükleyici, düşük maliyetli.
     const bob = Math.sin(performance.now() / 480) * 2;
     const pulse = 1 + Math.max(0, Math.sin(performance.now() / 700)) * 0.18;
+    // Biraz büyütüldü (okunması/görünmesi için) — SCALE ile tüm çizim
+    // büyür.
+    const SCALE = 1.35;
     ctx.save();
     ctx.translate(x, y + bob);
-    ctx.scale(pulse, pulse);
+    ctx.scale(pulse * SCALE, pulse * SCALE);
     if (type === 'cay') {
       ctx.fillStyle = '#d6432b';
       ctx.beginPath();
       ctx.moveTo(-5, -5); ctx.lineTo(5, -5); ctx.lineTo(3, 6); ctx.lineTo(-3, 6);
       ctx.closePath(); ctx.fill();
-    } else if (type === 'kahve' || type === 'latte') {
+    } else if (type === 'kahve') {
       ctx.fillStyle = '#f4e6d0';
       ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#4a2e18';
       ctx.beginPath(); ctx.arc(0, -1, 4.2, 0, Math.PI * 2); ctx.fill();
+    } else if (type === 'latte') {
+      // Uzun bardak + katmanlı süt köpüğü + ara sıra ufak bir parıltı.
+      ctx.fillStyle = '#e8c68a';
+      roundRectC(ctx, -5, -9, 10, 16, 3); ctx.fill();
+      ctx.fillStyle = '#6b4226';
+      roundRectC(ctx, -4.4, -3, 8.8, 9, 2); ctx.fill();
+      ctx.fillStyle = '#f4e6d0';
+      ctx.beginPath(); ctx.ellipse(0, -5, 4.4, 3, 0, 0, Math.PI * 2); ctx.fill();
+      const sparkle = Math.sin(performance.now() / 900 + 1.4);
+      if (sparkle > 0.86) {
+        const a = (sparkle - 0.86) / 0.14;
+        ctx.strokeStyle = `rgba(255,255,255,${a})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(5, -9); ctx.lineTo(5, -5);
+        ctx.moveTo(3, -7); ctx.lineTo(7, -7);
+        ctx.stroke();
+      }
     } else if (type === 'oralet') {
       ctx.fillStyle = '#e07a2c';
       ctx.beginPath(); ctx.arc(0, 0, 5.5, 0, Math.PI * 2); ctx.fill();
@@ -615,8 +636,22 @@ export default function ParkWorldScreen({ onExit }) {
     const img = getAvatarImage(entity.avatar, entity.pose);
     const h = SPRITE_H;
     const w = h * SPRITE_ASPECT;
+
+    // Ayakta/yürürken karakter "ayaklarından" (viewBox'ın alt kenarı)
+    // entity.y'ye hizalanır — hareket/çarpışma mantığı zaten bunu
+    // varsayıyor. OTURURKEN ise tam tersi: bacakların BAŞLADIĞI yer
+    // (bel hizası, AVATAR_WAIST_Y) sandalyenin/bankın oturma noktasına
+    // (entity.y) denk gelmeli — aksi halde (bacaklar kısaldığı için)
+    // karakter havada asılı gibi duruyordu. Bu yüzden oturma pozunda
+    // çizimi aşağı kaydırıyoruz ki bel hizası tam entity.y'de otursun,
+    // kısalan bacaklar da doğal şekilde bank/masanın önünde sarkıyor.
+    const sitShift = entity.pose === 'sit'
+      ? (h * (AVATAR_FULL_VIEWBOX_H - AVATAR_WAIST_Y)) / AVATAR_FULL_VIEWBOX_H
+      : 0;
+    const baseY = entity.y + sitShift;
+
     ctx.save();
-    ctx.translate(entity.x, entity.y);
+    ctx.translate(entity.x, baseY);
     if (entity.facing === 'left') ctx.scale(-1, 1);
     if (img) {
       ctx.drawImage(img, -w / 2, -h, w, h);
@@ -626,31 +661,31 @@ export default function ParkWorldScreen({ onExit }) {
     }
     ctx.restore();
 
-    if (entity.holding) drawHeldIcon(ctx, entity.holding, entity.x + w * 0.32, entity.y - h * 0.42);
+    if (entity.holding) drawHeldIcon(ctx, entity.holding, entity.x + w * 0.32, baseY - h * 0.42);
 
     ctx.fillStyle = 'rgba(20,12,8,0.75)';
     ctx.font = 'bold 11px sans-serif';
     ctx.textAlign = 'center';
-    if (!entity.isSelf) ctx.fillText(entity.name, entity.x, entity.y + 14);
+    if (!entity.isSelf) ctx.fillText(entity.name, entity.x, baseY + 14);
 
-    if (entity.bubble) drawBubble(ctx, entity.x, entity.y - h - 6, entity.bubble);
+    if (entity.bubble) drawBubble(ctx, entity.x, baseY - h - 6, entity.bubble);
   }
 
   function drawBubble(ctx, x, y, text) {
-    ctx.font = '12px sans-serif';
-    const w = Math.min(200, ctx.measureText(text).width + 20);
-    const h = 28;
+    ctx.font = '14px sans-serif';
+    const w = Math.min(220, ctx.measureText(text).width + 26);
+    const h = 34;
     const bx = x - w / 2, by = y - h;
     ctx.fillStyle = 'rgba(255,255,255,0.96)';
-    roundRectC(ctx, bx, by, w, h, 9); ctx.fill();
+    roundRectC(ctx, bx, by, w, h, 10); ctx.fill();
     ctx.strokeStyle = '#7a4a24'; ctx.lineWidth = 1.4;
-    roundRectC(ctx, bx, by, w, h, 9); ctx.stroke();
+    roundRectC(ctx, bx, by, w, h, 10); ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(x - 6, by + h); ctx.lineTo(x + 6, by + h); ctx.lineTo(x, by + h + 7);
+    ctx.moveTo(x - 7, by + h); ctx.lineTo(x + 7, by + h); ctx.lineTo(x, by + h + 8);
     ctx.closePath(); ctx.fillStyle = 'rgba(255,255,255,0.96)'; ctx.fill();
     ctx.fillStyle = '#3b2412';
     ctx.textAlign = 'center';
-    ctx.fillText(text, x, by + h / 2 + 4, w - 12);
+    ctx.fillText(text, x, by + h / 2 + 5, w - 14);
   }
 
   function renderFrame() {

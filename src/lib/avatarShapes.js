@@ -33,6 +33,12 @@ export const SHOE_COLORS = ['#0d0d0d', '#3a2f1d', '#5c1a24', '#e8e6df', '#1d3d5c
 const WAIST_Y = 380;
 const LEG_H = 155;
 const GROUND_Y = 562;
+// Tam vücut viewBox yüksekliği — AvatarSvg ve buildFullAvatarSvgMarkup
+// bunu kullanır. Dışarı (ParkWorldScreen gibi canvas tüketicilerine)
+// açıyoruz çünkü oturma pozunda karakteri "ayaklardan" değil "bel
+// hizasından (WAIST_Y)" hizalamaları gerekiyor — bkz. ilgili yorum.
+export const AVATAR_FULL_VIEWBOX_H = 580;
+export const AVATAR_WAIST_Y = WAIST_Y;
 
 export const AVATAR_OPTIONS = {
   gender: ['erkek', 'kadin'],
@@ -761,5 +767,5 @@ export function buildAvatarSvgInner(rawState, opts = {}) {
 // siluetin kendisi.
 export function buildFullAvatarSvgMarkup(rawState, opts = {}) {
   const inner = buildAvatarSvgInner(rawState, opts);
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 580">${inner}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 ${AVATAR_FULL_VIEWBOX_H}">${inner}</svg>`;
 }
