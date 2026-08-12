@@ -22,6 +22,7 @@ const CHAT_BUBBLE_MS = 6000;
 const PARK_SELL_PRICE = 5000;
 const SPRITE_ASPECT = 320 / 580;
 const SPRITE_H = 118; // ekrandaki karakter boyu (piksel)
+const HOLDING_MS = 60_000; // elde tutulan büfe ürünü 1 dakika sonra kaybolur
 
 // --- Firebase maliyet ayarları (bkz. önceki not) -------------------------
 const MOVE_SYNC_INTERVAL_MS = 300;
@@ -38,25 +39,46 @@ const BUFE_MENU = [
 ];
 
 // --- Sahnedeki sabit nesneler --------------------------------------------
-const BUFE = { cx: 340, cy: 200, hw: 92, hh: 54 };
-const BENCHES = [
-  { id: 'bench1', cx: 190, cy: 560 },
-  { id: 'bench2', cx: 490, cy: 560 },
-  { id: 'bench3', cx: 340, cy: 860 },
-];
-const BENCH_HW = 58;
-const BENCH_HH = 20;
-const SEAT_DX = 30;
+const BUFE = { cx: 340, cy: 180, hw: 90, hh: 50 };
 
-function benchSeats(bench) {
+// 4 kişilik masalar: büfenin solunda, sağında ve parkın sağ alt köşesinde.
+const TABLES = [
+  { id: 'table_left', cx: 140, cy: 300, r: 44 },
+  { id: 'table_right', cx: 540, cy: 300, r: 44 },
+  { id: 'table_br', cx: 560, cy: 970, r: 44 },
+];
+const TABLE_SEAT_OFFSET = 66;
+function tableSeats(t) {
   return [
-    { id: `${bench.id}_L`, benchId: bench.id, x: bench.cx - SEAT_DX, y: bench.cy - 8 },
-    { id: `${bench.id}_R`, benchId: bench.id, x: bench.cx + SEAT_DX, y: bench.cy - 8 },
+    { id: `${t.id}_N`, x: t.cx, y: t.cy - TABLE_SEAT_OFFSET, facing: 'down' },
+    { id: `${t.id}_S`, x: t.cx, y: t.cy + TABLE_SEAT_OFFSET, facing: 'up' },
+    { id: `${t.id}_E`, x: t.cx + TABLE_SEAT_OFFSET, y: t.cy, facing: 'left' },
+    { id: `${t.id}_W`, x: t.cx - TABLE_SEAT_OFFSET, y: t.cy, facing: 'right' },
   ];
 }
-const ALL_SEATS = BENCHES.flatMap(benchSeats);
 
-const NPC_POS = { x: 118, y: 980 };
+// 2 kişilik banklar — yola PARALEL, yol kenarında (dikey döndürülmüş).
+const BENCHES = [
+  { id: 'bench1', cx: 280, cy: 560, side: 'left' },
+  { id: 'bench2', cx: 400, cy: 560, side: 'right' },
+  { id: 'bench3', cx: 280, cy: 780, side: 'left' },
+];
+const SEAT_DX = 30;
+function benchSeats(b) {
+  const sign = b.side === 'left' ? 1 : -1;
+  const wx = b.cx + sign * 15;
+  return [
+    { id: `${b.id}_A`, x: wx, y: b.cy - SEAT_DX, facing: sign > 0 ? 'right' : 'left' },
+    { id: `${b.id}_B`, x: wx, y: b.cy + SEAT_DX, facing: sign > 0 ? 'right' : 'left' },
+  ];
+}
+
+const ALL_SEATS = [...BENCHES.flatMap(benchSeats), ...TABLES.flatMap(tableSeats)];
+
+// Gölet — sadece dekoratif + hafif çarpışma (içine yürünmesin).
+const POND = { cx: 520, cy: 760, rx: 70, ry: 46 };
+
+const NPC_POS = { x: 140, y: 1030 };
 // Parktaki "şüpheli adam" — gerçek avatar sistemiyle çizilir (emoji değil),
 // sabit/kendine özgü bir görünümü var.
 const NPC_AVATAR = {
@@ -76,10 +98,17 @@ const NPC_AVATAR = {
   background: 'transparent',
 };
 
-// Yürüme sırasında çarpışılmaması gereken katı nesneler.
+// Yürüme sırasında (serbest gezinirken) çarpışılmaması gereken katı
+// nesneler. NOT: bir oturma/etkileşim hedefine YÜRÜNÜRKEN bu liste
+// bilerek devre dışı bırakılıyor (bkz. tick döngüsü) — aksi halde
+// karakter "kendi hedefinin içine giremediği" için sonsuza dek
+// yaklaşmaya çalışır (önceki sürümdeki bank/büfe kilitlenme hatası
+// tam olarak buydu).
 const OBSTACLES = [
   { cx: BUFE.cx, cy: BUFE.cy, hw: BUFE.hw, hh: BUFE.hh },
-  ...BENCHES.map((b) => ({ cx: b.cx, cy: b.cy, hw: BENCH_HW, hh: BENCH_HH })),
+  ...TABLES.map((t) => ({ cx: t.cx, cy: t.cy, r: t.r + 6 })),
+  ...BENCHES.map((b) => ({ cx: b.cx, cy: b.cy, hw: 26, hh: 66 })),
+  { cx: POND.cx, cy: POND.cy, r: Math.max(POND.rx, POND.ry) - 4 },
 ];
 
 function dist(a, b) {
@@ -101,7 +130,14 @@ function resolveObstacles(x, y) {
   for (const o of OBSTACLES) {
     const dx0 = nx - o.cx;
     const dy0 = ny - o.cy;
-    if (Math.abs(dx0) < o.hw + PLAYER_R && Math.abs(dy0) < o.hh + PLAYER_R) {
+    if (o.r != null) {
+      const d = Math.hypot(dx0, dy0);
+      const minD = o.r + PLAYER_R;
+      if (d < minD) {
+        if (d < 0.001) { nx = o.cx + minD; ny = o.cy; }
+        else { const scale = minD / d; nx = o.cx + dx0 * scale; ny = o.cy + dy0 * scale; }
+      }
+    } else if (Math.abs(dx0) < o.hw + PLAYER_R && Math.abs(dy0) < o.hh + PLAYER_R) {
       const overlapX = o.hw + PLAYER_R - Math.abs(dx0);
       const overlapY = o.hh + PLAYER_R - Math.abs(dy0);
       if (overlapX < overlapY) nx = o.cx + Math.sign(dx0 || 1) * (o.hw + PLAYER_R);
@@ -138,6 +174,7 @@ export default function ParkWorldScreen({ onExit }) {
   const facingRef = useRef('down');
   const sittingSeatRef = useRef(null);
   const holdingRef = useRef(null);
+  const holdingTimeoutRef = useRef(null);
   const walkAnimRef = useRef(0);
   const poseRef = useRef('idle');
   const lastSyncRef = useRef(0);
@@ -154,6 +191,7 @@ export default function ParkWorldScreen({ onExit }) {
   useEffect(() => { myBubbleRef.current = myBubble; }, [myBubble]);
   useEffect(() => { othersRef.current = others; }, [others]);
   useEffect(() => { playerRef.current = player; }, [player]);
+  useEffect(() => () => { if (holdingTimeoutRef.current) clearTimeout(holdingTimeoutRef.current); }, []);
 
   // --- Avatar SVG'sini canvas'a çizilebilir bir <img>'e çeviren önbellek.
   // Arka planı YOK (şeffaf) — karakterler çim üzerine doğal oturuyor,
@@ -167,9 +205,7 @@ export default function ParkWorldScreen({ onExit }) {
       const markup = buildFullAvatarSvgMarkup(av, { pose });
       const img = new Image();
       entry = { img, ready: false };
-      img.onload = () => {
-        entry.ready = true;
-      };
+      img.onload = () => { entry.ready = true; };
       img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(markup);
       cache.set(key, entry);
       if (cache.size > 50) {
@@ -209,9 +245,9 @@ export default function ParkWorldScreen({ onExit }) {
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, []);
 
-  // --- Statik sahneyi (çim, patika, çit, ağaçlar, büfe, banklar) BİR
-  // KEZ önceden çizip bir offscreen canvas'ta tutuyoruz — her karede
-  // yeniden çizmek yerine sadece drawImage ile basıyoruz (performans).
+  // --- Statik sahneyi (çim, patika, çit, ağaçlar, gölet, büfe, masalar,
+  // banklar) BİR KEZ önceden çizip bir offscreen canvas'ta tutuyoruz —
+  // her karede yeniden çizmek yerine sadece drawImage ile basıyoruz.
   useEffect(() => {
     const sc = document.createElement('canvas');
     sc.width = W; sc.height = H;
@@ -219,6 +255,18 @@ export default function ParkWorldScreen({ onExit }) {
     buildStaticScene(sctx);
     staticCanvasRef.current = sc;
   }, []);
+
+  function drawPathSegment(c, x1, y1, x2, y2, width) {
+    c.save();
+    c.lineCap = 'round';
+    c.strokeStyle = '#c9a877';
+    c.lineWidth = width;
+    c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
+    c.strokeStyle = 'rgba(122,90,50,0.3)';
+    c.lineWidth = 2;
+    c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
+    c.restore();
+  }
 
   function buildStaticScene(sctx) {
     // Çim zemin + biçme çizgileri
@@ -229,30 +277,11 @@ export default function ParkWorldScreen({ onExit }) {
       sctx.fillRect(0, y, W, 46);
     }
 
-    // Kıvrılan patika
-    sctx.save();
-    sctx.strokeStyle = '#c9a877';
-    sctx.lineWidth = 46;
-    sctx.lineCap = 'round';
-    sctx.lineJoin = 'round';
-    sctx.beginPath();
-    sctx.moveTo(BUFE.cx, BUFE.cy + 60);
-    sctx.quadraticCurveTo(340, 380, 190, 500);
-    sctx.moveTo(340, 420);
-    sctx.quadraticCurveTo(420, 480, 490, 500);
-    sctx.moveTo(190, 560);
-    sctx.quadraticCurveTo(260, 700, 340, 790);
-    sctx.quadraticCurveTo(280, 900, 200, 960);
-    sctx.quadraticCurveTo(160, 970, NPC_POS.x, NPC_POS.y - 30);
-    sctx.moveTo(490, 560);
-    sctx.quadraticCurveTo(430, 700, 340, 790);
-    sctx.stroke();
-    sctx.strokeStyle = 'rgba(120,90,50,0.35)';
-    sctx.lineWidth = 46;
-    sctx.setLineDash([2, 14]);
-    sctx.stroke();
-    sctx.setLineDash([]);
-    sctx.restore();
+    // Düzenli, düz hatlı patika ağı (eski kıvrımlı/karışık halin yerine)
+    drawPathSegment(sctx, BUFE.cx, BUFE.cy + BUFE.hh + 10, BUFE.cx, 1080, 50);
+    drawPathSegment(sctx, TABLES[0].cx, TABLES[0].cy, TABLES[1].cx, TABLES[1].cy, 44);
+    drawPathSegment(sctx, BUFE.cx, 900, TABLES[2].cx, TABLES[2].cy - 6, 44);
+    drawPathSegment(sctx, BUFE.cx, 1030, NPC_POS.x + 10, NPC_POS.y, 44);
 
     // Çit sınırı
     sctx.fillStyle = '#7a5a34';
@@ -265,12 +294,16 @@ export default function ParkWorldScreen({ onExit }) {
       sctx.fillRect(W - 18, y, 10, 26);
     }
 
-    // Dekoratif ağaç/çalılar
-    [[60, 90], [W - 60, 90], [60, H - 90], [W - 60, H - 90], [600, 640], [70, 700]].forEach(([x, y]) =>
-      drawTree(sctx, x, y)
-    );
+    // Gölet
+    drawPond(sctx, POND.cx, POND.cy, POND.rx, POND.ry);
+
+    // Dekoratif ağaçlar — büyütülmüş, 2 farklı tür (yapraklı + çam)
+    // karışık dağıtılmış.
+    [[60, 90], [W - 60, 90], [60, H - 90], [W - 60, H - 90]].forEach(([x, y]) => drawTree(sctx, x, y));
+    [[60, 470], [W - 60, 500], [60, 900], [340, 60]].forEach(([x, y]) => drawPineTree(sctx, x, y));
 
     drawBufeStatic(sctx);
+    TABLES.forEach((t) => drawTable(sctx, t));
     BENCHES.forEach((b) => drawBench(sctx, b));
 
     sctx.save();
@@ -282,23 +315,63 @@ export default function ParkWorldScreen({ onExit }) {
     sctx.restore();
   }
 
+  function drawPond(c, x, y, rx, ry) {
+    c.save();
+    c.translate(x, y);
+    c.fillStyle = '#3f5a3a';
+    c.beginPath(); c.ellipse(0, 4, rx + 12, ry + 9, 0, 0, Math.PI * 2); c.fill();
+    const grd = c.createRadialGradient(-rx * 0.3, -ry * 0.3, 4, 0, 0, Math.max(rx, ry));
+    grd.addColorStop(0, '#7fc2d6'); grd.addColorStop(1, '#2f6b82');
+    c.fillStyle = grd;
+    c.beginPath(); c.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = '#1f4a58'; c.lineWidth = 2;
+    c.beginPath(); c.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2); c.stroke();
+    c.strokeStyle = 'rgba(255,255,255,0.4)'; c.lineWidth = 2;
+    c.beginPath(); c.ellipse(-rx * 0.25, -ry * 0.3, rx * 0.4, ry * 0.22, 0.3, 0, Math.PI * 2); c.stroke();
+    c.restore();
+  }
+
   function drawTree(c, x, y) {
     c.save();
     c.translate(x, y);
-    c.fillStyle = 'rgba(0,0,0,0.22)';
-    c.beginPath(); c.ellipse(0, 34, 30, 10, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = 'rgba(0,0,0,0.24)';
+    c.beginPath(); c.ellipse(0, 46, 38, 13, 0, 0, Math.PI * 2); c.fill();
     c.fillStyle = '#5a3a22';
-    roundRectC(c, -7, -6, 14, 40, 3); c.fill();
+    roundRectC(c, -9, -8, 18, 54, 4); c.fill();
     const leafColors = ['#2f6b3f', '#357a46', '#2a5c37'];
-    for (let i = 0; i < 5; i++) {
-      const ang = (i / 5) * Math.PI * 2;
+    for (let i = 0; i < 6; i++) {
+      const ang = (i / 6) * Math.PI * 2;
       c.fillStyle = leafColors[i % leafColors.length];
       c.beginPath();
-      c.ellipse(Math.cos(ang) * 16, -28 + Math.sin(ang) * 14, 20, 17, 0, 0, Math.PI * 2);
+      c.ellipse(Math.cos(ang) * 21, -40 + Math.sin(ang) * 17, 25, 21, 0, 0, Math.PI * 2);
       c.fill();
     }
     c.fillStyle = '#357a46';
-    c.beginPath(); c.ellipse(0, -32, 24, 20, 0, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.ellipse(0, -44, 31, 25, 0, 0, Math.PI * 2); c.fill();
+    c.restore();
+  }
+
+  function drawPineTree(c, x, y) {
+    c.save();
+    c.translate(x, y);
+    c.fillStyle = 'rgba(0,0,0,0.24)';
+    c.beginPath(); c.ellipse(0, 10, 30, 10, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = '#4a2e18';
+    c.fillRect(-7, -12, 14, 24);
+    const tiers = [
+      { y: -14, w: 52, h: 34, color: '#1f4f2e' },
+      { y: -42, w: 42, h: 30, color: '#245a35' },
+      { y: -66, w: 32, h: 26, color: '#2a6a3d' },
+    ];
+    tiers.forEach((tr) => {
+      c.fillStyle = tr.color;
+      c.beginPath();
+      c.moveTo(0, tr.y - tr.h);
+      c.lineTo(tr.w / 2, tr.y);
+      c.lineTo(-tr.w / 2, tr.y);
+      c.closePath();
+      c.fill();
+    });
     c.restore();
   }
 
@@ -306,46 +379,35 @@ export default function ParkWorldScreen({ onExit }) {
     const { cx, cy, hw, hh } = BUFE;
     c.save();
     c.translate(cx, cy);
-    // gölge
     c.fillStyle = 'rgba(0,0,0,0.25)';
     c.beginPath(); c.ellipse(0, hh + 6, hw + 6, 14, 0, 0, Math.PI * 2); c.fill();
-    // tezgah gövdesi
     const grd = c.createLinearGradient(0, -hh, 0, hh);
     grd.addColorStop(0, '#8a5a34'); grd.addColorStop(1, '#6b4226');
     c.fillStyle = grd;
     roundRectC(c, -hw, -4, hw * 2, hh + 4, 6); c.fill();
     c.strokeStyle = '#3f2717'; c.lineWidth = 2;
     roundRectC(c, -hw, -4, hw * 2, hh + 4, 6); c.stroke();
-    // tezgah üstü
     c.fillStyle = '#c9a877';
     roundRectC(c, -hw - 4, -12, hw * 2 + 8, 12, 4); c.fill();
-    // çatı direkleri
     c.fillStyle = '#5a3a22';
     c.fillRect(-hw + 4, -52, 8, 42);
     c.fillRect(hw - 12, -52, 8, 42);
-    // çatı / tente
     c.fillStyle = '#c9432b';
     c.beginPath();
-    c.moveTo(-hw - 14, -46);
-    c.lineTo(hw + 14, -46);
-    c.lineTo(hw, -70);
-    c.lineTo(-hw, -70);
-    c.closePath();
-    c.fill();
+    c.moveTo(-hw - 14, -46); c.lineTo(hw + 14, -46); c.lineTo(hw, -70); c.lineTo(-hw, -70);
+    c.closePath(); c.fill();
     for (let i = -hw; i < hw; i += 24) {
       c.fillStyle = (Math.floor((i + hw) / 24) % 2 === 0) ? '#e8e6df' : '#c9432b';
       c.beginPath();
       c.moveTo(i, -46); c.lineTo(i + 24, -46); c.lineTo(i + 12, -38);
       c.closePath(); c.fill();
     }
-    // tabela
     c.fillStyle = '#2b1b12';
     roundRectC(c, -46, -30, 92, 18, 3); c.fill();
     c.fillStyle = '#f4e6d0';
     c.font = 'bold 12px sans-serif';
     c.textAlign = 'center';
     c.fillText('BÜFE', 0, -17);
-    // tezgah üstü ürünler (bardak/kutu şekilleri — emoji değil)
     const items = [
       { x: -hw + 20, color: '#d6432b' }, { x: -hw + 44, color: '#e8e6df' },
       { x: -hw + 68, color: '#c98a1a' }, { x: hw - 60, color: '#4a2e18' },
@@ -358,31 +420,57 @@ export default function ParkWorldScreen({ onExit }) {
     c.restore();
   }
 
+  function drawTable(c, t) {
+    const dirs = [{ dx: 0, dy: -1 }, { dx: 0, dy: 1 }, { dx: 1, dy: 0 }, { dx: -1, dy: 0 }];
+    dirs.forEach((d) => {
+      const cx = t.cx + d.dx * (t.r + 22);
+      const cy = t.cy + d.dy * (t.r + 22);
+      c.save();
+      c.translate(cx, cy);
+      c.rotate(Math.atan2(t.cy - cy, t.cx - cx));
+      c.fillStyle = 'rgba(0,0,0,0.2)';
+      c.beginPath(); c.ellipse(0, 4, 13, 7, 0, 0, Math.PI * 2); c.fill();
+      c.fillStyle = '#5a3a22';
+      roundRectC(c, -12, -11, 11, 22, 3); c.fill();
+      c.fillStyle = '#8a5a34';
+      roundRectC(c, -2, -10, 14, 20, 3); c.fill();
+      c.restore();
+    });
+    c.save();
+    c.translate(t.cx, t.cy);
+    c.fillStyle = 'rgba(0,0,0,0.22)';
+    c.beginPath(); c.ellipse(0, 5, t.r + 4, t.r * 0.5, 0, 0, Math.PI * 2); c.fill();
+    const grd = c.createRadialGradient(-t.r * 0.3, -t.r * 0.3, 4, 0, 0, t.r);
+    grd.addColorStop(0, '#dba05c'); grd.addColorStop(1, '#b4753f');
+    c.fillStyle = grd;
+    c.beginPath(); c.arc(0, 0, t.r, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = '#6b4226'; c.lineWidth = 3;
+    c.beginPath(); c.arc(0, 0, t.r, 0, Math.PI * 2); c.stroke();
+    c.restore();
+  }
+
   function drawBench(c, b) {
     c.save();
     c.translate(b.cx, b.cy);
+    // Yola paralel duracak şekilde döndür: 'left' -> yolu (sağ) doğru
+    // bakar, 'right' -> yolu (sol) doğru bakar.
+    c.rotate(b.side === 'left' ? -Math.PI / 2 : Math.PI / 2);
+    const HW = 58, HH = 20;
     c.fillStyle = 'rgba(0,0,0,0.22)';
-    c.beginPath(); c.ellipse(0, BENCH_HH + 8, BENCH_HW + 10, 12, 0, 0, Math.PI * 2); c.fill();
-    // ayaklar
+    c.beginPath(); c.ellipse(0, HH + 8, HW + 10, 12, 0, 0, Math.PI * 2); c.fill();
     c.fillStyle = '#4a2e18';
-    c.fillRect(-BENCH_HW + 6, -2, 8, 24);
-    c.fillRect(BENCH_HW - 14, -2, 8, 24);
-    // arkalık (dikey çıtalar)
+    c.fillRect(-HW + 6, -2, 8, 24);
+    c.fillRect(HW - 14, -2, 8, 24);
     c.fillStyle = '#8a5a34';
-    for (let i = -BENCH_HW + 4; i < BENCH_HW - 4; i += 13) {
-      roundRectC(c, i, -30, 9, 30, 2); c.fill();
-    }
+    for (let i = -HW + 4; i < HW - 4; i += 13) { roundRectC(c, i, -30, 9, 30, 2); c.fill(); }
     c.strokeStyle = '#3f2717'; c.lineWidth = 1.5;
-    for (let i = -BENCH_HW + 4; i < BENCH_HW - 4; i += 13) {
-      roundRectC(c, i, -30, 9, 30, 2); c.stroke();
-    }
-    // oturma yüzeyi (yatay çıtalar)
+    for (let i = -HW + 4; i < HW - 4; i += 13) { roundRectC(c, i, -30, 9, 30, 2); c.stroke(); }
     for (let row = 0; row < 3; row++) {
       const yy = -4 + row * 7;
       c.fillStyle = row % 2 === 0 ? '#a9772e' : '#96682a';
-      roundRectC(c, -BENCH_HW, yy, BENCH_HW * 2, 6, 2); c.fill();
+      roundRectC(c, -HW, yy, HW * 2, 6, 2); c.fill();
       c.strokeStyle = '#3f2717'; c.lineWidth = 1;
-      roundRectC(c, -BENCH_HW, yy, BENCH_HW * 2, 6, 2); c.stroke();
+      roundRectC(c, -HW, yy, HW * 2, 6, 2); c.stroke();
     }
     c.restore();
   }
@@ -424,7 +512,16 @@ export default function ParkWorldScreen({ onExit }) {
         } else {
           moving = true;
           const vx = dx / d, vy = dy / d;
-          const next = resolveObstacles(p.x + vx * PLAYER_SPEED * dt, p.y + vy * PLAYER_SPEED * dt);
+          const rawX = p.x + vx * PLAYER_SPEED * dt;
+          const rawY = p.y + vy * PLAYER_SPEED * dt;
+          // Bir etkileşim hedefine (oturma yeri / büfe / NPC) yürürken
+          // çarpışma kontrolünü BİLEREK atlıyoruz — o hedef zaten bir
+          // eşyanın üstünde/önünde, aksi halde karakter kendi varış
+          // noktasına asla ulaşamaz (önceki kilitlenme hatasının kök
+          // nedeni buydu). Serbest gezinirken normal çarpışma geçerli.
+          const next = pendingActionRef.current
+            ? { x: Math.max(30, Math.min(W - 30, rawX)), y: Math.max(30, Math.min(H - 30, rawY)) }
+            : resolveObstacles(rawX, rawY);
           posRef.current = next;
           facingRef.current = Math.abs(vx) > Math.abs(vy) ? (vx > 0 ? 'right' : 'left') : (vy > 0 ? 'down' : 'up');
           walkAnimRef.current += dt;
@@ -474,8 +571,13 @@ export default function ParkWorldScreen({ onExit }) {
 
   function drawHeldIcon(ctx, type, x, y) {
     if (!type) return;
+    // "Arada bir yiyip içiyor" hissi için hafif bir sallanma/nabız
+    // animasyonu — sürekli, sürükleyici, düşük maliyetli.
+    const bob = Math.sin(performance.now() / 480) * 2;
+    const pulse = 1 + Math.max(0, Math.sin(performance.now() / 700)) * 0.18;
     ctx.save();
-    ctx.translate(x, y);
+    ctx.translate(x, y + bob);
+    ctx.scale(pulse, pulse);
     if (type === 'cay') {
       ctx.fillStyle = '#d6432b';
       ctx.beginPath();
@@ -671,6 +773,7 @@ export default function ParkWorldScreen({ onExit }) {
     try {
       await buyFromBufe(item.id);
       setHolding(item.id);
+      holdingRef.current = item.id;
       if (user) {
         updatePresence(user.uid, {
           x: posRef.current.x, y: posRef.current.y, facing: facingRef.current,
@@ -678,6 +781,19 @@ export default function ParkWorldScreen({ onExit }) {
           holding: item.id,
         });
       }
+      // Elde tutulan ürün 1 dakika sonra kaybolur (bkz. HOLDING_MS).
+      if (holdingTimeoutRef.current) clearTimeout(holdingTimeoutRef.current);
+      holdingTimeoutRef.current = setTimeout(() => {
+        setHolding(null);
+        holdingRef.current = null;
+        if (user) {
+          updatePresence(user.uid, {
+            x: posRef.current.x, y: posRef.current.y, facing: facingRef.current,
+            pose: sittingSeatRef.current ? 'sit' : 'idle', seat: sittingSeatRef.current,
+            holding: null,
+          });
+        }
+      }, HOLDING_MS);
     } catch (err) {
       setError(err.message || 'Satın alma başarısız.');
     } finally {

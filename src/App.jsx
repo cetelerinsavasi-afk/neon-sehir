@@ -115,6 +115,12 @@ function GameShell() {
   }, [myActiveRoom?.status]);
 
   const handleRegionClick = (regionId, regionMeta) => {
+    // "Ev" bölgesi artık ara bir onay ekranı göstermiyor — doğrudan tam
+    // ekran Ev'e giriyor (Profil butonuyla birebir aynı ekran).
+    if (regionMeta?.screen === 'ev') {
+      setProfileOpen(true);
+      return;
+    }
     setActiveRegion(regionMeta);
   };
 
@@ -186,7 +192,6 @@ function GameShell() {
         onEnterRace={openRace}
         onEnterTable={openTable}
         onEnterPark={() => setParkOpen(true)}
-        onEnterHome={() => setProfileOpen(true)}
         raceLobbyMode={raceLobbyMode}
         onRaceModeChange={setRaceLobbyMode}
       />

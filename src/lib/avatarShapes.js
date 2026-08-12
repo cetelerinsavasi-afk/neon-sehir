@@ -418,12 +418,18 @@ function torsoShape(s) {
   const c = s.clothColor;
   const dark = shadeColor(c, -25);
   const light = shadeColor(c, 25);
+  // B: gövdenin temel dikdörtgeni. ÖNEMLİ — alt genişlik ÜST genişlikle
+  // AYNI tutuluyor (bl=tl, br=tr): daha önce alt kısım omuzlardan çok
+  // daha geniş bir "palto" gibi flare yapıyordu, artık düz kenarlı bir
+  // dikdörtgen. Palto gibi bilerek geniş duran parçalar (trenchcoat)
+  // kendi `inset`/`bottomInset` değerleriyle bunun üzerine ayrıca
+  // genişliyor.
   const B =
     s.build === 'zayif'
-      ? { tl: 98, tr: 222, bl: 64, br: 256, ty: 264 }
+      ? { tl: 98, tr: 222, bl: 98, br: 222, ty: 264 }
       : s.build === 'iri'
-        ? { tl: 50, tr: 270, bl: 2, br: 318, ty: 258 }
-        : { tl: 70, tr: 250, bl: 12, br: 308, ty: 262 };
+        ? { tl: 50, tr: 270, bl: 50, br: 270, ty: 258 }
+        : { tl: 70, tr: 250, bl: 70, br: 250, ty: 262 };
 
   // trapezoid(...) — B'den türetilmiş, kenarları içe/dışa kaydırılmış ve
   // alt kenarı farklı bir Y'de bitebilen genel bir gövde poligonu. Her

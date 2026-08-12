@@ -26,7 +26,7 @@ function getHeistTarget(region) {
   return map[region.screen] || null;
 }
 
-function ScreenContent({ region, onEnterRace, onEnterTable, onEnterPark, onEnterHome, raceLobbyMode, onRaceModeChange }) {
+function ScreenContent({ region, onEnterRace, onEnterTable, onEnterPark, raceLobbyMode, onRaceModeChange }) {
   const { screen } = region;
 
   switch (screen) {
@@ -67,15 +67,6 @@ function ScreenContent({ region, onEnterRace, onEnterTable, onEnterPark, onEnter
       );
     case 'casino':
       return <CasinoScreen onEnterTable={onEnterTable} />;
-    case 'ev':
-      return (
-        <div className="region-modal-body">
-          <p>Evine gidip aracını/silahını yönetebilir, envanterini görebilir ve avatarını düzenleyebilirsin.</p>
-          <button className="region-modal-heist-btn" style={{ marginTop: 12 }} onClick={onEnterHome}>
-            🏠 Eve Gir
-          </button>
-        </div>
-      );
     default:
       return (
         <p className="region-modal-body">
@@ -93,7 +84,6 @@ export default function RegionModal({
   onEnterRace,
   onEnterTable,
   onEnterPark,
-  onEnterHome,
   raceLobbyMode,
   onRaceModeChange,
 }) {
@@ -124,10 +114,6 @@ export default function RegionModal({
             onEnterPark={() => {
               onClose();
               onEnterPark?.();
-            }}
-            onEnterHome={() => {
-              onClose();
-              onEnterHome?.();
             }}
             raceLobbyMode={raceLobbyMode}
             onRaceModeChange={onRaceModeChange}
