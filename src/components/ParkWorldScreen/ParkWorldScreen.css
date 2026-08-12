@@ -162,6 +162,22 @@
   color: #e8c766;
 }
 
+.pw-phone-btn {
+  position: absolute;
+  bottom: 78px;
+  right: 16px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 1px solid #d4af37;
+  background: rgba(20, 20, 20, 0.85);
+  color: #e8c766;
+  font-size: 22px;
+  cursor: pointer;
+  z-index: 5;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
 .pw-camera-btn {
   position: absolute;
   bottom: 16px;
@@ -224,4 +240,26 @@
   width: 100%;
   margin-bottom: 4px;
   box-sizing: border-box;
+}
+
+.pw-camera-pose-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.pw-camera-pose-btn {
+  flex: 1;
+  padding: 8px 4px;
+  border-radius: 8px;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  background: rgba(255, 255, 255, 0.05);
+  color: #f2ecdd;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.pw-camera-pose-btn.active {
+  border-color: #d4af37;
+  background: rgba(212, 175, 55, 0.22);
+  color: #e8c766;
+  font-weight: 700;
 }

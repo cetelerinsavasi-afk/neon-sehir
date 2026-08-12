@@ -7,6 +7,7 @@ import { enterPark, sellContrabandAtPark, buyFromBufe, createSixtagramPost } fro
 import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR, AVATAR_FULL_VIEWBOX_H, AVATAR_WAIST_Y } from '../../lib/avatarShapes';
 import Hud from '../Hud/Hud';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
+import PhoneScreen from '../Phone/PhoneScreen';
 import ResultModal from '../ResultModal/ResultModal';
 import InfoIcon from '../InfoIcon/InfoIcon';
 import './ParkWorldScreen.css';
@@ -29,6 +30,16 @@ const HOLDING_MS = 120_000; // elde tutulan büfe ürünü 2 dakika sonra kaybol
 const MOVE_SYNC_INTERVAL_MS = 300;
 const MOVE_SYNC_MIN_DIST = 6;
 const IDLE_HEARTBEAT_MS = 12_000;
+
+// Fotoğraf önizlemesinde konuma göre arka plan (Sixtagram'daki gönderi
+// kartıyla BİREBİR aynı renkler — bkz. PostAttachment.jsx SCENE_BG).
+const CAMERA_SCENE_BG = {
+  Park: 'linear-gradient(160deg, #1d3a2e 0%, #16341c 55%, #0f2415 100%)',
+  Büfe: 'linear-gradient(160deg, #6b4226 0%, #4a2e18 55%, #2b1b12 100%)',
+  Gölet: 'linear-gradient(160deg, #1d4a58 0%, #163a44 55%, #0f2830 100%)',
+  Bank: 'linear-gradient(160deg, #2e5a34 0%, #234226 55%, #16341c 100%)',
+  Masa: 'linear-gradient(160deg, #5a3a22 0%, #3f2717 55%, #2b1b12 100%)',
+};
 
 const BUFE_MENU = [
   { id: 'sosisli', label: 'Sosisli', price: 100 },
@@ -157,6 +168,58 @@ function resolveObstacles(x, y) {
   return { x: nx, y: ny };
 }
 
+// BufeItemIcon — fiyat listesindeki küçük ürün görseli. Sahnedeki
+// (canvas) elde-tutulan ikonlarla aynı görsel dili kullanır (bkz.
+// drawHeldIcon) — emoji değil, çizilmiş küçük şekiller.
+function BufeItemIcon({ id }) {
+  switch (id) {
+    case 'cay':
+      return (
+        <svg viewBox="0 0 24 24" width="30" height="30">
+          <path d="M6 4h12l-2.2 15.5a1.5 1.5 0 0 1-1.5 1.5H9.7a1.5 1.5 0 0 1-1.5-1.5L6 4z" fill="#d6432b" />
+          <rect x="5" y="3" width="14" height="2.4" rx="1.2" fill="#a8321f" />
+        </svg>
+      );
+    case 'kahve':
+      return (
+        <svg viewBox="0 0 24 24" width="30" height="30">
+          <circle cx="12" cy="12.5" r="9" fill="#f4e6d0" />
+          <circle cx="12" cy="11.3" r="7" fill="#4a2e18" />
+        </svg>
+      );
+    case 'latte':
+      return (
+        <svg viewBox="0 0 24 24" width="30" height="30">
+          <rect x="6.5" y="2.5" width="11" height="19" rx="3.5" fill="#e8c68a" />
+          <rect x="7.7" y="10" width="8.6" height="10.5" rx="2.5" fill="#6b4226" />
+          <ellipse cx="12" cy="6.5" rx="4.6" ry="3.2" fill="#f4e6d0" />
+        </svg>
+      );
+    case 'oralet':
+      return (
+        <svg viewBox="0 0 24 24" width="30" height="30">
+          <path d="M5 5h14l-1.6 14.2A2 2 0 0 1 15.4 21H8.6a2 2 0 0 1-2-1.8L5 5z" fill="#e07a2c" />
+        </svg>
+      );
+    case 'sosisli':
+      return (
+        <svg viewBox="0 0 34 22" width="34" height="22">
+          <rect x="1" y="4" width="32" height="14" rx="7" fill="#e8c68a" />
+          <rect x="6" y="9" width="22" height="5.5" rx="2.75" fill="#a83a2a" />
+        </svg>
+      );
+    case 'tost':
+      return (
+        <svg viewBox="0 0 24 22" width="30" height="27">
+          <rect x="2" y="2" width="20" height="18" rx="3.5" fill="#e8c68a" stroke="#a86b3c" strokeWidth="1.6" />
+          <path d="M6 8 L18 8 M6 12 L18 12 M6 16 L14 16" stroke="#c99a5c" strokeWidth="1.4" strokeLinecap="round" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
+
 export default function ParkWorldScreen({ onExit }) {
   const { user } = useAuth();
   const { player } = usePlayer();
@@ -176,10 +239,12 @@ export default function ParkWorldScreen({ onExit }) {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraFriends, setCameraFriends] = useState([]);
   const [cameraScene, setCameraScene] = useState('Park');
+  const [cameraPose, setCameraPose] = useState('idle');
   const [cameraCaption, setCameraCaption] = useState('');
   const [cameraBusy, setCameraBusy] = useState(false);
   const [cameraError, setCameraError] = useState(null);
   const [cameraDone, setCameraDone] = useState(false);
+  const [phoneOpen, setPhoneOpen] = useState(false);
 
   const canvasRef = useRef(null);
   const staticCanvasRef = useRef(null);
@@ -606,7 +671,7 @@ export default function ParkWorldScreen({ onExit }) {
     const pulse = 1 + Math.max(0, Math.sin(performance.now() / 700)) * 0.18;
     // Biraz büyütüldü (okunması/görünmesi için) — SCALE ile tüm çizim
     // büyür.
-    const SCALE = 1.35;
+    const SCALE = 1.6;
     ctx.save();
     ctx.translate(x, y + bob);
     ctx.scale(pulse * SCALE, pulse * SCALE);
@@ -660,21 +725,8 @@ export default function ParkWorldScreen({ onExit }) {
     const h = SPRITE_H;
     const w = h * SPRITE_ASPECT;
 
-    // Ayakta/yürürken karakter "ayaklarından" (viewBox'ın alt kenarı)
-    // entity.y'ye hizalanır — hareket/çarpışma mantığı zaten bunu
-    // varsayıyor. OTURURKEN ise tam tersi: bacakların BAŞLADIĞI yer
-    // (bel hizası, AVATAR_WAIST_Y) sandalyenin/bankın oturma noktasına
-    // (entity.y) denk gelmeli — aksi halde (bacaklar kısaldığı için)
-    // karakter havada asılı gibi duruyordu. Bu yüzden oturma pozunda
-    // çizimi aşağı kaydırıyoruz ki bel hizası tam entity.y'de otursun,
-    // kısalan bacaklar da doğal şekilde bank/masanın önünde sarkıyor.
-    const sitShift = entity.pose === 'sit'
-      ? (h * (AVATAR_FULL_VIEWBOX_H - AVATAR_WAIST_Y)) / AVATAR_FULL_VIEWBOX_H
-      : 0;
-    const baseY = entity.y + sitShift;
-
     ctx.save();
-    ctx.translate(entity.x, baseY);
+    ctx.translate(entity.x, entity.baseY);
     if (entity.facing === 'left') ctx.scale(-1, 1);
     if (img) {
       ctx.drawImage(img, -w / 2, -h, w, h);
@@ -684,31 +736,104 @@ export default function ParkWorldScreen({ onExit }) {
     }
     ctx.restore();
 
-    if (entity.holding) drawHeldIcon(ctx, entity.holding, entity.x + w * 0.32, baseY - h * 0.42);
+    if (entity.holding) drawHeldIcon(ctx, entity.holding, entity.x + w * 0.32, entity.baseY - h * 0.42);
 
     ctx.fillStyle = 'rgba(20,12,8,0.75)';
     ctx.font = 'bold 11px sans-serif';
     ctx.textAlign = 'center';
-    if (!entity.isSelf) ctx.fillText(entity.name, entity.x, baseY + 14);
-
-    if (entity.bubble) drawBubble(ctx, entity.x, baseY - h - 6, entity.bubble);
+    if (!entity.isSelf) ctx.fillText(entity.name, entity.x, entity.baseY + 14);
   }
 
-  function drawBubble(ctx, x, y, text) {
-    ctx.font = '14px sans-serif';
-    const w = Math.min(220, ctx.measureText(text).width + 26);
-    const h = 34;
-    const bx = x - w / 2, by = y - h;
-    ctx.fillStyle = 'rgba(255,255,255,0.96)';
-    roundRectC(ctx, bx, by, w, h, 10); ctx.fill();
+  // --- Konuşma baloncukları ------------------------------------------
+  // 1) Kelime kelime SATIR SATIR sarılır (canvas'ın kendi maxWidth'i
+  //    metni tek satıra SIKIŞTIRIYORDU, okunmaz hale geliyordu).
+  // 2) Ekran kenarına yakın karakterlerde kutu ekranın dışına taşmasın
+  //    diye içeri doğru kaydırılır (kuyruk yine karaktere işaret eder).
+  // 3) Birbirine yakın iki karakterin baloncukları çakışırsa, ESKİ
+  //    olan yukarı itilir — ikisi de aynı anda okunabilir kalır.
+  const BUBBLE_FONT = '15px sans-serif';
+  const BUBBLE_LINE_H = 20;
+  const BUBBLE_MAX_TEXT_W = 176;
+  const BUBBLE_PAD_X = 13;
+  const BUBBLE_PAD_Y = 10;
+
+  function wrapBubbleText(ctx, text) {
+    ctx.font = BUBBLE_FONT;
+    const words = text.split(/\s+/).filter(Boolean);
+    const lines = [];
+    let cur = '';
+    for (const word of words) {
+      const test = cur ? `${cur} ${word}` : word;
+      if (cur && ctx.measureText(test).width > BUBBLE_MAX_TEXT_W) {
+        lines.push(cur);
+        cur = word;
+      } else {
+        cur = test;
+      }
+    }
+    if (cur) lines.push(cur);
+    return lines.slice(0, 6);
+  }
+
+  function measureBubble(ctx, lines) {
+    ctx.font = BUBBLE_FONT;
+    let maxW = 40;
+    lines.forEach((l) => { maxW = Math.max(maxW, ctx.measureText(l).width); });
+    return {
+      w: Math.min(BUBBLE_MAX_TEXT_W, maxW) + BUBBLE_PAD_X * 2,
+      h: lines.length * BUBBLE_LINE_H + BUBBLE_PAD_Y * 2,
+    };
+  }
+
+  // Çakışan baloncukları dikeyde ayırır: iki kutu üst üste geliyorsa
+  // ESKİ olanı (ts küçük olan) yeterince yukarı itilir.
+  function layoutBubbles(items) {
+    const placed = items.map((it) => ({ ...it, top: it.naturalTop }));
+    for (let pass = 0; pass < 12; pass++) {
+      let changed = false;
+      for (let i = 0; i < placed.length; i++) {
+        for (let j = 0; j < placed.length; j++) {
+          if (i === j) continue;
+          const a = placed[i], b = placed[j];
+          const overlapX = a.x - a.w / 2 < b.x + b.w / 2 && b.x - b.w / 2 < a.x + a.w / 2;
+          if (!overlapX) continue;
+          const overlapY = a.top < b.top + b.h && b.top < a.top + a.h;
+          if (!overlapY) continue;
+          const older = a.ts <= b.ts ? a : b;
+          const newer = older === a ? b : a;
+          const desiredBottom = newer.top - 6;
+          if (older.top + older.h > desiredBottom) {
+            older.top = desiredBottom - older.h;
+            changed = true;
+          }
+        }
+      }
+      if (!changed) break;
+    }
+    return placed;
+  }
+
+  function drawBubbleBox(ctx, item) {
+    let bx = item.x - item.w / 2;
+    bx = Math.max(8, Math.min(W - 8 - item.w, bx));
+    const tailX = Math.max(bx + 16, Math.min(bx + item.w - 16, item.x));
+    const by = item.top;
+
+    ctx.fillStyle = 'rgba(255,255,255,0.97)';
+    roundRectC(ctx, bx, by, item.w, item.h, 11); ctx.fill();
     ctx.strokeStyle = '#7a4a24'; ctx.lineWidth = 1.4;
-    roundRectC(ctx, bx, by, w, h, 10); ctx.stroke();
+    roundRectC(ctx, bx, by, item.w, item.h, 11); ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(x - 7, by + h); ctx.lineTo(x + 7, by + h); ctx.lineTo(x, by + h + 8);
-    ctx.closePath(); ctx.fillStyle = 'rgba(255,255,255,0.96)'; ctx.fill();
+    ctx.moveTo(tailX - 7, by + item.h); ctx.lineTo(tailX + 7, by + item.h); ctx.lineTo(tailX, by + item.h + 8);
+    ctx.closePath(); ctx.fillStyle = 'rgba(255,255,255,0.97)'; ctx.fill();
+
     ctx.fillStyle = '#3b2412';
+    ctx.font = BUBBLE_FONT;
     ctx.textAlign = 'center';
-    ctx.fillText(text, x, by + h / 2 + 5, w - 14);
+    const cx = bx + item.w / 2;
+    item.lines.forEach((line, i) => {
+      ctx.fillText(line, cx, by + BUBBLE_PAD_Y + (i + 0.78) * BUBBLE_LINE_H);
+    });
   }
 
   function renderFrame() {
@@ -730,24 +855,47 @@ export default function ParkWorldScreen({ onExit }) {
 
     const now = Date.now();
     const myAvatar = playerRef.current?.avatar;
-    const myBubbleNow = myBubbleRef.current && now - myBubbleRef.current.ts < CHAT_BUBBLE_MS ? myBubbleRef.current.text : null;
+    const myBubbleNow = myBubbleRef.current && now - myBubbleRef.current.ts < CHAT_BUBBLE_MS ? myBubbleRef.current : null;
 
-    const entities = [
-      { x: NPC_POS.x, y: NPC_POS.y, avatar: NPC_AVATAR, pose: 'idle', facing: 'right', name: 'Şüpheli Adam', bubble: null, holding: null },
+    const rawEntities = [
+      { x: NPC_POS.x, y: NPC_POS.y, avatar: NPC_AVATAR, pose: 'idle', facing: 'right', name: 'Şüpheli Adam', bubbleData: null, holding: null },
       ...othersRef.current.map((o) => ({
         x: o.x, y: o.y, avatar: o.avatar, pose: o.pose === 'sit' ? 'sit' : (o.pose || 'idle'),
         facing: o.facing || 'down', name: o.displayName || 'Oyuncu',
-        bubble: o.chatText && o.chatTs && now - o.chatTs < CHAT_BUBBLE_MS ? o.chatText : null,
+        bubbleData: o.chatText && o.chatTs && now - o.chatTs < CHAT_BUBBLE_MS ? { text: o.chatText, ts: o.chatTs } : null,
         holding: o.holding || null,
       })),
       {
         x: posRef.current.x, y: posRef.current.y, avatar: myAvatar,
         pose: sittingSeatRef.current ? 'sit' : poseRef.current, facing: facingRef.current,
-        name: playerRef.current?.displayName || 'Sen', bubble: myBubbleNow, holding: holdingRef.current, isSelf: true,
+        name: playerRef.current?.displayName || 'Sen', bubbleData: myBubbleNow, holding: holdingRef.current, isSelf: true,
       },
-    ].sort((a, b) => a.y - b.y);
+    ];
+
+    // Oturma pozunda çizim kaydırması (bkz. eski yorum) — hem avatar hem
+    // baloncuk konumu bunu kullanmalı ki baloncuk doğru yerde çıksın.
+    const entities = rawEntities
+      .map((e) => {
+        const sitShift = e.pose === 'sit'
+          ? (SPRITE_H * (AVATAR_FULL_VIEWBOX_H - AVATAR_WAIST_Y)) / AVATAR_FULL_VIEWBOX_H
+          : 0;
+        return { ...e, baseY: e.y + sitShift };
+      })
+      .sort((a, b) => a.y - b.y);
 
     entities.forEach((e) => drawSprite(ctx, e));
+
+    // Baloncuklar HER ZAMAN tüm karakterlerin üstünde çizilsin diye ayrı
+    // (ve çakışma-çözümlü) bir son geçiş.
+    const bubbleItems = [];
+    entities.forEach((e) => {
+      if (!e.bubbleData) return;
+      const lines = wrapBubbleText(ctx, e.bubbleData.text);
+      const { w, h } = measureBubble(ctx, lines);
+      const anchorY = e.baseY - SPRITE_H - 8;
+      bubbleItems.push({ x: e.x, w, h, lines, ts: e.bubbleData.ts, naturalTop: anchorY - h });
+    });
+    layoutBubbles(bubbleItems).forEach((item) => drawBubbleBox(ctx, item));
   }
 
   useEffect(() => {
@@ -891,13 +1039,28 @@ export default function ParkWorldScreen({ onExit }) {
   // edilip Sixtagram'da render ediliyor (bkz. functions/index.js
   // buildSixtagramAttachment 'parkPhoto').
   const CAMERA_RADIUS = 170;
+  const CAMERA_POSES = [
+    { id: 'idle', label: 'Doğal' },
+    { id: 'walk1', label: 'Yürüyor' },
+    { id: 'walk2', label: 'Zıplıyor' },
+    { id: 'sit', label: 'Oturuyor' },
+  ];
   function openCamera() {
     const p = posRef.current;
     const nearby = othersRef.current
       .filter((o) => dist(p, o) < CAMERA_RADIUS)
       .slice(0, 4)
-      .map((o) => ({ uid: o.uid, displayName: o.displayName || 'Oyuncu', avatar: o.avatar }));
+      .map((o) => ({
+        uid: o.uid,
+        displayName: o.displayName || 'Oyuncu',
+        avatar: o.avatar,
+        // Arkadaşların pozunu şu an fiilen ne yapıyorlarsa ondan
+        // yakalıyoruz (yürüyor/oturuyor/duruyor) — sadece kendi pozunu
+        // sen (fotoğrafı çeken) aşağıdaki seçiciyle değiştirebiliyorsun.
+        pose: o.pose === 'sit' ? 'sit' : (o.pose === 'walk1' || o.pose === 'walk2' ? o.pose : 'idle'),
+      }));
     setCameraFriends(nearby);
+    setCameraPose('idle');
 
     const spots = [
       { label: 'Büfe', d: dist(p, BUFE) },
@@ -919,7 +1082,8 @@ export default function ParkWorldScreen({ onExit }) {
     try {
       await createSixtagramPost(cameraCaption, {
         type: 'parkPhoto',
-        participantUids: cameraFriends.map((f) => f.uid),
+        selfPose: cameraPose,
+        participants: cameraFriends.map((f) => ({ uid: f.uid, pose: f.pose })),
         scene: cameraScene,
       });
       setCameraDone(true);
@@ -959,9 +1123,14 @@ export default function ParkWorldScreen({ onExit }) {
           onPointerDown={handleCanvasClick}
         />
         {ready && (
-          <button className="pw-camera-btn" onClick={openCamera} title="Fotoğraf çek">📷</button>
+          <>
+            <button className="pw-phone-btn" onClick={() => setPhoneOpen(true)} title="Telefon">📱</button>
+            <button className="pw-camera-btn" onClick={openCamera} title="Fotoğraf çek">📷</button>
+          </>
         )}
       </div>
+
+      {phoneOpen && <PhoneScreen onClose={() => setPhoneOpen(false)} onEnterTable={() => {}} />}
 
       <div className="pw-chat-row">
         <input
@@ -983,24 +1152,36 @@ export default function ParkWorldScreen({ onExit }) {
             {!cameraDone ? (
               <>
                 <p className="pw-panel-title">📷 Fotoğraf Çek</p>
-                <div className="pw-camera-preview">
+                <div className="pw-camera-preview" style={{ background: CAMERA_SCENE_BG[cameraScene] || CAMERA_SCENE_BG.Park }}>
                   <span className="pw-camera-scene-badge">{cameraScene}</span>
                   <div className="pw-camera-row">
                     <div className="pw-camera-person">
                       <div className="pw-camera-avatar">
-                        <AvatarSvg avatar={player?.avatar} variant="full" />
+                        <AvatarSvg avatar={player?.avatar} variant="full" pose={cameraPose} />
                       </div>
                       <span className="pw-camera-name">Sen</span>
                     </div>
                     {cameraFriends.map((f) => (
                       <div key={f.uid} className="pw-camera-person">
                         <div className="pw-camera-avatar">
-                          <AvatarSvg avatar={f.avatar} variant="full" />
+                          <AvatarSvg avatar={f.avatar} variant="full" pose={f.pose} />
                         </div>
                         <span className="pw-camera-name">{f.displayName}</span>
                       </div>
                     ))}
                   </div>
+                </div>
+                <p className="pw-hint" style={{ marginBottom: 4 }}>Pozunu seç:</p>
+                <div className="pw-camera-pose-row">
+                  {CAMERA_POSES.map((cp) => (
+                    <button
+                      key={cp.id}
+                      className={`pw-camera-pose-btn${cameraPose === cp.id ? ' active' : ''}`}
+                      onClick={() => setCameraPose(cp.id)}
+                    >
+                      {cp.label}
+                    </button>
+                  ))}
                 </div>
                 <p className="pw-hint">
                   {cameraFriends.length > 0
@@ -1055,6 +1236,7 @@ export default function ParkWorldScreen({ onExit }) {
             <div className="pw-bufe-grid">
               {BUFE_MENU.map((item) => (
                 <button key={item.id} className="pw-bufe-item" disabled={bufeBusy === item.id} onClick={() => handleBuy(item)}>
+                  <BufeItemIcon id={item.id} />
                   <span>{item.label}</span>
                   <span className="pw-bufe-price">{item.price.toLocaleString('tr-TR')} altın</span>
                 </button>

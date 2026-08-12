@@ -167,14 +167,24 @@ export default function PostAttachment({ attachment }) {
 
   if (attachment.type === 'parkPhoto') {
     const people = attachment.participants || [];
+    const SCENE_BG = {
+      Park: 'linear-gradient(160deg, #1d3a2e 0%, #16341c 55%, #0f2415 100%)',
+      Büfe: 'linear-gradient(160deg, #6b4226 0%, #4a2e18 55%, #2b1b12 100%)',
+      Gölet: 'linear-gradient(160deg, #1d4a58 0%, #163a44 55%, #0f2830 100%)',
+      Bank: 'linear-gradient(160deg, #2e5a34 0%, #234226 55%, #16341c 100%)',
+      Masa: 'linear-gradient(160deg, #5a3a22 0%, #3f2717 55%, #2b1b12 100%)',
+    };
     return (
       <div className="post-att post-att-parkphoto">
-        <div className="post-att-parkphoto-frame">
+        <div
+          className="post-att-parkphoto-frame"
+          style={{ background: SCENE_BG[attachment.scene] || SCENE_BG.Park }}
+        >
           <div className="post-att-parkphoto-row">
             {people.map((p, i) => (
               <div key={i} className="post-att-parkphoto-person">
                 <div className="post-att-parkphoto-avatar">
-                  <AvatarSvg avatar={p.avatar} variant="full" />
+                  <AvatarSvg avatar={p.avatar} variant="full" pose={p.pose || 'idle'} />
                 </div>
                 <span className="post-att-parkphoto-name">{p.displayName}</span>
               </div>

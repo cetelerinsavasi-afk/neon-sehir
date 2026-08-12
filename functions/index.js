@@ -9983,19 +9983,34 @@ async function buildSixtagramAttachment(uid, attachment) {
 
   // parkPhoto — Park'ta çekilen "grup fotoğrafı". Bu oyunda hiç dosya
   // yükleme YOK (bkz. bu fonksiyonun üstündeki not) — istemci sadece
-  // KİMLERİN karede olduğunu (uid listesi) ve hangi köşede çekildiğini
-  // gönderir; avatarlar burada sunucuda, GERÇEK veriden
-  // (users/{uid}.avatar) yeniden inşa edilir. Sixtagram tarafı bu
-  // katılımcı listesini AvatarSvg'lerle yan yana dizip görsel bir
-  // "fotoğraf" gibi render eder (bkz. PostAttachment.jsx) — hiçbir
-  // depolama/bant genişliği maliyeti yok.
+  // KİMLERİN karede olduğunu (uid listesi + her biri için seçilen poz)
+  // ve hangi köşede çekildiğini gönderir; avatarlar burada sunucuda,
+  // GERÇEK veriden (users/{uid}.avatar) yeniden inşa edilir. Sixtagram
+  // tarafı bu katılımcı listesini AvatarSvg'lerle (seçilen pozlarıyla)
+  // yan yana dizip görsel bir "fotoğraf" gibi render eder (bkz.
+  // PostAttachment.jsx) — hiçbir depolama/bant genişliği maliyeti yok.
   if (type === 'parkPhoto') {
-    const rawUids = Array.isArray(attachment.participantUids) ? attachment.participantUids : [];
-    const uids = [...new Set([uid, ...rawUids.filter((x) => typeof x === 'string')])].slice(0, 5);
+    const ALLOWED_POSES = ['idle', 'walk1', 'walk2', 'sit'];
+    const safePose = (p) => (ALLOWED_POSES.includes(p) ? p : 'idle');
+
+    const poseByUid = new Map();
+    poseByUid.set(uid, safePose(attachment.selfPose));
+    const rawParticipants = Array.isArray(attachment.participants) ? attachment.participants : [];
+    rawParticipants.forEach((p) => {
+      if (p && typeof p.uid === 'string' && !poseByUid.has(p.uid)) {
+        poseByUid.set(p.uid, safePose(p.pose));
+      }
+    });
+    const uids = [...poseByUid.keys()].slice(0, 5);
+
     const snaps = await Promise.all(uids.map((id) => db.collection('users').doc(id).get()));
     const participants = snaps
       .filter((s) => s.exists)
-      .map((s) => ({ displayName: s.data().displayName || 'Oyuncu', avatar: s.data().avatar || null }));
+      .map((s) => ({
+        displayName: s.data().displayName || 'Oyuncu',
+        avatar: s.data().avatar || null,
+        pose: poseByUid.get(s.id) || 'idle',
+      }));
     if (!participants.length) {
       throw new HttpsError('failed-precondition', 'Fotoğrafta kimse yok.');
     }
