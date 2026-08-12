@@ -9,7 +9,6 @@ import VendorScreen from '../VendorScreen/VendorScreen';
 import LimanScreen from '../LimanScreen/LimanScreen';
 import RaceTrackScreen from '../RaceTrackScreen/RaceTrackScreen';
 import CasinoScreen from '../CasinoScreen/CasinoScreen';
-import HomeScreen from '../HomeScreen/HomeScreen';
 import './RegionModal.css';
 
 // screen -> soygun hedefi eşlemesi. Soygunlar artık haritadaki her mekanın
@@ -27,7 +26,7 @@ function getHeistTarget(region) {
   return map[region.screen] || null;
 }
 
-function ScreenContent({ region, onEnterRace, onEnterTable, onEnterPark, raceLobbyMode, onRaceModeChange }) {
+function ScreenContent({ region, onEnterRace, onEnterTable, onEnterPark, onEnterHome, raceLobbyMode, onRaceModeChange }) {
   const { screen } = region;
 
   switch (screen) {
@@ -69,7 +68,14 @@ function ScreenContent({ region, onEnterRace, onEnterTable, onEnterPark, raceLob
     case 'casino':
       return <CasinoScreen onEnterTable={onEnterTable} />;
     case 'ev':
-      return <HomeScreen />;
+      return (
+        <div className="region-modal-body">
+          <p>Evine gidip aracını/silahını yönetebilir, envanterini görebilir ve avatarını düzenleyebilirsin.</p>
+          <button className="region-modal-heist-btn" style={{ marginTop: 12 }} onClick={onEnterHome}>
+            🏠 Eve Gir
+          </button>
+        </div>
+      );
     default:
       return (
         <p className="region-modal-body">
@@ -87,6 +93,7 @@ export default function RegionModal({
   onEnterRace,
   onEnterTable,
   onEnterPark,
+  onEnterHome,
   raceLobbyMode,
   onRaceModeChange,
 }) {
@@ -117,6 +124,10 @@ export default function RegionModal({
             onEnterPark={() => {
               onClose();
               onEnterPark?.();
+            }}
+            onEnterHome={() => {
+              onClose();
+              onEnterHome?.();
             }}
             raceLobbyMode={raceLobbyMode}
             onRaceModeChange={onRaceModeChange}

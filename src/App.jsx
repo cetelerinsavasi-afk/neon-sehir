@@ -186,6 +186,7 @@ function GameShell() {
         onEnterRace={openRace}
         onEnterTable={openTable}
         onEnterPark={() => setParkOpen(true)}
+        onEnterHome={() => setProfileOpen(true)}
         raceLobbyMode={raceLobbyMode}
         onRaceModeChange={setRaceLobbyMode}
       />

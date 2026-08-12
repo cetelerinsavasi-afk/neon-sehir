@@ -46,9 +46,9 @@
 }
 
 .avb-header-preview {
-  /* Tam vücut (viewBox 320x530) oranına göre boyutlandı. */
+  /* Tam vücut (viewBox 320x580) oranına göre boyutlandı. */
   width: 180px;
-  height: 298px;
+  height: 326px;
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid rgba(212, 175, 55, 0.3);

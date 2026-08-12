@@ -2,13 +2,18 @@ import { buildAvatarSvgInner, DEFAULT_AVATAR } from '../../lib/avatarShapes';
 
 // variant='headshot' (varsayılan): kafa+üst gövdeyi gösterir — chat,
 // profil, katılımcı listesi gibi küçük gösterimlerde kullanılır, eski
-// davranışla birebir aynı (viewBox 0 0 320 400).
+// davranışla birebir aynı (viewBox 0 0 320 400), seçilen "Arka Plan"
+// rengiyle birlikte (küçük ikon/kart görünümü için bu arka plan iyi
+// duruyor).
 // variant='full': bacak + ayakkabı dahil tüm vücudu gösterir — Avatar
-// Düzenleyici önizlemesi ve ParkWorld gibi gezilebilir sahnelerde
-// karakteri bizzat göstermek için kullanılır (viewBox 0 0 320 530).
+// Düzenleyici önizlemesi ve Park gibi gezilebilir sahnelerde karakteri
+// bizzat göstermek için kullanılır (viewBox 0 0 320 580). Bu modda
+// ARKA PLAN RENGİ BİLEREK UYGULANMAZ — karakter sahnenin (çim, zemin
+// vb.) üzerine şeffaf biçimde oturmalı, aksi halde her karakterin
+// arkasında çirkin bir renkli kutu görünür (PNG sticker etkisi).
 const VIEWBOX = {
   headshot: '0 0 320 400',
-  full: '0 0 320 530',
+  full: '0 0 320 580',
 };
 
 // pose: 'idle' | 'walk1' | 'walk2' — sadece variant='full' iken görünür
@@ -27,7 +32,12 @@ export default function AvatarSvg({ avatar, size, rounded = false, variant = 'he
       <svg
         viewBox={VIEWBOX[variant] || VIEWBOX.headshot}
         xmlns="http://www.w3.org/2000/svg"
-        style={{ width: '100%', height: '100%', display: 'block', background: a.background || '#080b13' }}
+        style={{
+          width: '100%',
+          height: '100%',
+          display: 'block',
+          background: variant === 'full' ? 'transparent' : a.background || '#080b13',
+        }}
         dangerouslySetInnerHTML={{ __html: inner }}
       />
     </div>

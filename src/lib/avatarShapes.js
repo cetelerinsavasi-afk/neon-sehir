@@ -25,10 +25,14 @@ export const PANTS_COLORS = [
 ];
 export const SHOE_COLORS = ['#0d0d0d', '#3a2f1d', '#5c1a24', '#e8e6df', '#1d3d5c', '#7a1f2b'];
 
-// Tam vücut düzeninde bel/ayak bilek/zemin çizgileri (viewBox: full=530, headshot=400)
+// Tam vücut düzeninde bel/ayak bilek/zemin çizgileri (viewBox: full=580, headshot=400).
+// LEG_H bilerek büyük tutuldu — önceki sürümde bacaklar çok kısaydı ve
+// figür "göğüsten bacak başlıyormuş" gibi orantısız duruyordu; gerçekçi
+// bir insan siluetinde bacaklar gövdeden en az bir kaç kat daha uzun
+// olmalı.
 const WAIST_Y = 380;
-const LEG_H = 96;
-const GROUND_Y = 512;
+const LEG_H = 155;
+const GROUND_Y = 562;
 
 export const AVATAR_OPTIONS = {
   gender: ['erkek', 'kadin'],
@@ -420,7 +424,15 @@ function torsoShape(s) {
       : s.build === 'iri'
         ? { tl: 50, tr: 270, bl: 2, br: 318, ty: 258 }
         : { tl: 70, tr: 250, bl: 12, br: 308, ty: 262 };
-  let base = `<path d="M${B.tl},${B.ty} L${B.tr},${B.ty} L${B.br},380 L${B.bl},380 Z" fill="${c}"/>`;
+
+  // trapezoid(...) — B'den türetilmiş, kenarları içe/dışa kaydırılmış ve
+  // alt kenarı farklı bir Y'de bitebilen genel bir gövde poligonu. Her
+  // kıyafet türü kendi siluetini bu yardımcıyla üretir — böylece sadece
+  // renk/desen değil, GERÇEK SİLUET de birbirinden ayrışır.
+  const trapezoid = (fill, { inset = 0, bottomInset = 0, bottomY = 380 } = {}) =>
+    `<path d="M${B.tl + inset},${B.ty} L${B.tr - inset},${B.ty} L${B.br - bottomInset},${bottomY} L${B.bl + bottomInset},${bottomY} Z" fill="${fill}"/>`;
+
+  let base = trapezoid(c);
   let details = '';
   switch (s.clothing) {
     case 'suit':
@@ -430,66 +442,96 @@ function torsoShape(s) {
         <path d="M142,262 L160,282 L178,262 L170,255 L160,270 L150,255 Z" fill="#f2efe4"/>`;
       break;
     case 'tuxedo':
-      base = `<path d="M${B.tl},${B.ty} L${B.tr},${B.ty} L${B.br},380 L${B.bl},380 Z" fill="#0d0d0d"/>`;
+      base = trapezoid('#0d0d0d');
       details = `
         <path d="M120,262 L156,262 L142,304 Z" fill="${c}"/>
         <path d="M200,262 L164,262 L178,304 Z" fill="${c}"/>
         <path d="M142,262 L160,282 L178,262 L170,255 L160,270 L150,255 Z" fill="#f2efe4"/>`;
       break;
     case 'leather':
+      // Dar kesim (biker) ceket — dik yaka, fermuar çizgisi.
+      base = trapezoid(c, { inset: 4, bottomInset: 6 });
       details = `
-        <line x1="160" y1="264" x2="160" y2="378" stroke="#111" stroke-width="2" stroke-dasharray="3,4"/>
-        <path d="M128,262 L146,262 L134,240 Z" fill="${light}"/>
-        <path d="M192,262 L174,262 L186,240 Z" fill="${light}"/>`;
+        <path d="M128,258 L146,258 L138,236 Q133,246 128,258 Z" fill="${light}"/>
+        <path d="M192,258 L174,258 L182,236 Q187,246 192,258 Z" fill="${light}"/>
+        <line x1="160" y1="264" x2="152" y2="378" stroke="#111" stroke-width="2.5"/>
+        <path d="M152,264 L168,264 L165,290 L155,290 Z" fill="${dark}"/>`;
       break;
     case 'hawaii':
+      // Bol kesim, kısa kollu gömlek — omuzda küçük kol kapağı.
+      base = trapezoid(c, { inset: -6, bottomInset: -10 });
       details = `
+        <path d="M${B.tl - 8},${B.ty} Q${B.tl - 22},${B.ty + 14} ${B.tl - 4},${B.ty + 26} L${B.tl + 10},${B.ty + 10} Z" fill="${c}"/>
+        <path d="M${B.tr + 8},${B.ty} Q${B.tr + 22},${B.ty + 14} ${B.tr + 4},${B.ty + 26} L${B.tr - 10},${B.ty + 10} Z" fill="${c}"/>
         <path d="M140,262 L160,290 L180,262 L165,262 L160,278 L155,262 Z" fill="${s.skin}"/>
         <circle cx="100" cy="300" r="4" fill="${light}"/><circle cx="130" cy="340" r="4" fill="${light}"/>
         <circle cx="190" cy="310" r="4" fill="${light}"/><circle cx="220" cy="350" r="4" fill="${light}"/>
         <circle cx="160" cy="360" r="4" fill="${light}"/>`;
       break;
     case 'jumpsuit':
+      // Tek parça, vücuda oturan tulum — dar kesim.
+      base = trapezoid(c, { inset: 10, bottomInset: 14 });
       details = `
         <line x1="160" y1="264" x2="160" y2="378" stroke="${dark}" stroke-width="3"/>
-        <rect x="90" y="300" width="24" height="18" rx="2" fill="${dark}"/>
-        <rect x="206" y="300" width="24" height="18" rx="2" fill="${dark}"/>
+        <rect x="94" y="298" width="22" height="16" rx="2" fill="${dark}"/>
+        <rect x="204" y="298" width="22" height="16" rx="2" fill="${dark}"/>
         <rect x="140" y="272" width="40" height="14" rx="2" fill="#f2efe4" opacity="0.85"/>`;
       break;
     case 'hoodie':
+      // Bol, hacimli siluet + boyunda kapüşon yığını.
+      base = trapezoid(c, { inset: -8, bottomInset: -6 });
       details = `
-        <path d="M120,262 Q160,282 200,262 L200,272 Q160,296 120,272 Z" fill="${dark}"/>
+        <ellipse cx="160" cy="252" rx="30" ry="16" fill="${dark}"/>
+        <path d="M120,262 Q160,286 200,262 L200,274 Q160,300 120,274 Z" fill="${dark}"/>
         <path d="M148,266 L152,320 M172,266 L168,320" stroke="${dark}" stroke-width="3"/>
         <circle cx="150" cy="322" r="3" fill="${light}"/><circle cx="170" cy="322" r="3" fill="${light}"/>`;
       break;
     case 'police':
-      base = `<path d="M${B.tl},${B.ty} L${B.tr},${B.ty} L${B.br},380 L${B.bl},380 Z" fill="#1d3557"/>`;
+      // Düzgün duruş, apolet + kemer ile resmî silüet.
+      base = trapezoid('#1d3557', { inset: 2 });
       details = `
         <path d="M120,262 L156,262 L142,300 Z" fill="#14263f"/>
         <path d="M200,262 L164,262 L178,300 Z" fill="#14263f"/>
         <path d="M142,262 L160,282 L178,262 L170,255 L160,270 L150,255 Z" fill="#e8e6df"/>
+        <rect x="${B.tl - 2}" y="${B.ty - 4}" width="20" height="8" rx="2" fill="#d4af37"/>
+        <rect x="${B.tr - 18}" y="${B.ty - 4}" width="20" height="8" rx="2" fill="#d4af37"/>
+        <rect x="118" y="352" width="84" height="12" fill="#14263f"/>
         <rect x="104" y="284" width="16" height="16" rx="2" fill="#d4af37"/>
         <circle cx="112" cy="292" r="5" fill="#1d3557"/>`;
       break;
     case 'vest':
+      // Açık yaka — orta kısımda gömlek görünür, sadece yanlarda yelek.
+      base = `
+        <path d="M${B.tl},${B.ty} L${B.tr},${B.ty} L${B.br},380 L${B.bl},380 Z" fill="#e8e6df"/>
+        <path d="M${B.tl},${B.ty} L156,${B.ty} L142,380 L${B.bl},380 Z" fill="${c}"/>
+        <path d="M${B.tr},${B.ty} L164,${B.ty} L178,380 L${B.br},380 Z" fill="${c}"/>`;
       details = `
-        <path d="M122,262 L156,262 L156,340 L122,332 Z" fill="${dark}"/>
-        <path d="M198,262 L164,262 L164,340 L198,332 Z" fill="${dark}"/>
-        <rect x="142" y="270" width="36" height="70" fill="#e8e6df" opacity="0.9"/>`;
+        <path d="M156,${B.ty} L160,290 L164,${B.ty} Z" fill="${dark}"/>
+        <line x1="160" y1="290" x2="160" y2="376" stroke="${dark}" stroke-width="1.5" stroke-dasharray="4,5"/>`;
       break;
     case 'tanktop':
+      // Kolsuz, dar kesim — omuzlar belirgin şekilde daralır.
+      base = trapezoid(c, { inset: 16, bottomInset: 4 });
       details = `
-        <path d="M126,262 L138,262 L138,380 L126,380 Z" fill="${dark}"/>
-        <path d="M194,262 L182,262 L182,380 L194,380 Z" fill="${dark}"/>`;
+        <path d="M${B.tl},${B.ty} L${B.tl + 16},${B.ty} L${B.tl + 8},${B.ty + 30} Z" fill="${s.skin}"/>
+        <path d="M${B.tr},${B.ty} L${B.tr - 16},${B.ty} L${B.tr - 8},${B.ty + 30} Z" fill="${s.skin}"/>
+        <path d="M126,${B.ty} L138,${B.ty} L138,380 L126,380 Z" fill="${dark}"/>
+        <path d="M194,${B.ty} L182,${B.ty} L182,380 L194,380 Z" fill="${dark}"/>`;
       break;
     case 'trenchcoat':
-      base = `<path d="M${B.tl - 10},${B.ty} L${B.tr + 10},${B.ty} L${B.br + 6},380 L${B.bl - 6},380 Z" fill="${c}"/>`;
+      // Uzun, geniş yakalı palto — beldeki diğer kıyafetlerin aksine
+      // bacakların üst kısmına kadar uzanır (z-sırası: bacaklar önce
+      // çizildiği için palto eteği bacakların üstünü doğal olarak örter).
+      base = trapezoid(c, { inset: -10, bottomInset: -16, bottomY: 420 });
       details = `
-        <line x1="160" y1="264" x2="160" y2="378" stroke="${dark}" stroke-width="2"/>
+        <line x1="160" y1="264" x2="160" y2="418" stroke="${dark}" stroke-width="2"/>
         <rect x="132" y="290" width="14" height="14" rx="2" fill="${dark}"/>
         <rect x="174" y="290" width="14" height="14" rx="2" fill="${dark}"/>
+        <rect x="136" y="360" width="12" height="12" rx="2" fill="${dark}"/>
+        <rect x="172" y="360" width="12" height="12" rx="2" fill="${dark}"/>
         <path d="M126,262 L156,262 L142,296 Z" fill="${dark}"/>
-        <path d="M194,262 L164,262 L178,296 Z" fill="${dark}"/>`;
+        <path d="M194,262 L164,262 L178,296 Z" fill="${dark}"/>
+        <path d="M${B.bl - 6},380 L${B.br + 6},380 L${B.br + 4},420 L${B.bl - 4},420 Z" fill="${shadeColor(c, -12)}"/>`;
       break;
     default:
       break;
@@ -684,4 +726,14 @@ export function buildAvatarSvgInner(rawState, opts = {}) {
   svg += shoesShape(s, pose);
   svg += `<g transform="translate(0,${bob})">${upperBody}</g>`;
   return svg;
+}
+
+// buildFullAvatarSvgMarkup — buildAvatarSvgInner'ın tam, kendi başına
+// geçerli bir <svg> dokümanına sarılmış hali. Park gibi canvas tabanlı
+// sahnelerde, karakteri bir <img>/Image() üzerinden canvas'a çizebilmek
+// için (drawImage) kullanılır — arka planı YOK (şeffaf), sadece
+// siluetin kendisi.
+export function buildFullAvatarSvgMarkup(rawState, opts = {}) {
+  const inner = buildAvatarSvgInner(rawState, opts);
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 580">${inner}</svg>`;
 }

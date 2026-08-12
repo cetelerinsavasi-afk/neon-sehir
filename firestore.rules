@@ -217,7 +217,7 @@ service cloud.firestore {
     function validParkPresenceFields() {
       let d = request.resource.data;
       return d.keys().hasOnly([
-        'displayName', 'avatar', 'x', 'y', 'facing', 'pose', 'holding',
+        'displayName', 'avatar', 'x', 'y', 'facing', 'pose', 'holding', 'seat',
         'chatText', 'chatTs', 'updatedAt', 'enteredAt'
       ])
         && d.x is number && d.x >= 0 && d.x <= 2000

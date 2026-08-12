@@ -3296,6 +3296,7 @@ export const enterPark = onCall(async (request) => {
     facing: 'down',
     pose: 'idle',
     holding: null,
+    seat: null,
     chatText: null,
     chatTs: null,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
