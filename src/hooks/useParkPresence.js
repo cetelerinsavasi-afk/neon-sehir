@@ -7,7 +7,15 @@ import { useAuth } from '../contexts/AuthContext';
 // edilmiş sekme/çökme) sayılıp listeden düşürülür. Sunucu tarafında da
 // expireParkPresence bunları birkaç dakika içinde tamamen siliyor — bu
 // sadece ekranda anında doğru görünmesi için istemci tarafı filtre.
-const STALE_MS = 20_000;
+//
+// NOT: Bu değer BİLEREK oldukça toleranslı (nabız aralığının çok
+// üzerinde). Mobil tarayıcılar ekran kararınca/arka plana alınca
+// requestAnimationFrame'i yavaşlatıyor ya da tamamen duraklatıyor —
+// bu da nabız yazımının birkaç saniye gecikmesine yol açabiliyor. Eşik
+// çok sıkı tutulursa (ör. nabız aralığına çok yakın), sadece ekranı
+// kararan/hafifçe geciken bir arkadaş bile anlık olarak "kayboluyor"
+// gibi görünüyordu.
+const STALE_MS = 45_000;
 
 // Aynı anda parkta çok fazla kişi olsa bile (viral bir an, bot saldırısı
 // vb.) her istemcinin dinleyeceği doküman sayısını üst sınırlıyoruz —

@@ -165,5 +165,26 @@ export default function PostAttachment({ attachment }) {
     );
   }
 
+  if (attachment.type === 'parkPhoto') {
+    const people = attachment.participants || [];
+    return (
+      <div className="post-att post-att-parkphoto">
+        <div className="post-att-parkphoto-frame">
+          <div className="post-att-parkphoto-row">
+            {people.map((p, i) => (
+              <div key={i} className="post-att-parkphoto-person">
+                <div className="post-att-parkphoto-avatar">
+                  <AvatarSvg avatar={p.avatar} variant="full" />
+                </div>
+                <span className="post-att-parkphoto-name">{p.displayName}</span>
+              </div>
+            ))}
+          </div>
+          <span className="post-att-parkphoto-badge">📷 {attachment.scene}</span>
+        </div>
+      </div>
+    );
+  }
+
   return null;
 }

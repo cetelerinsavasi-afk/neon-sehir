@@ -167,3 +167,53 @@
   font-weight: 800;
   color: var(--neon-pink);
 }
+
+.post-att-parkphoto {
+  background: linear-gradient(160deg, #1d3a2e 0%, #16341c 55%, #0f2415 100%);
+}
+.post-att-parkphoto-frame {
+  position: relative;
+  padding: 18px 12px 14px;
+  min-height: 180px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.post-att-parkphoto-row {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.post-att-parkphoto-person {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 84px;
+}
+.post-att-parkphoto-avatar {
+  width: 78px;
+  height: 141px;
+}
+.post-att-parkphoto-name {
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #f2ecdd;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+  max-width: 84px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.post-att-parkphoto-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.4);
+  color: #e8c766;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: 999px;
+}

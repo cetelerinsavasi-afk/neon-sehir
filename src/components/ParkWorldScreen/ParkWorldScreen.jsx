@@ -3,9 +3,10 @@ import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useInventory } from '../../hooks/useInventory';
 import { useParkPresence } from '../../hooks/useParkPresence';
-import { enterPark, sellContrabandAtPark, buyFromBufe } from '../../services/gameActions';
+import { enterPark, sellContrabandAtPark, buyFromBufe, createSixtagramPost } from '../../services/gameActions';
 import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR, AVATAR_FULL_VIEWBOX_H, AVATAR_WAIST_Y } from '../../lib/avatarShapes';
 import Hud from '../Hud/Hud';
+import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import ResultModal from '../ResultModal/ResultModal';
 import InfoIcon from '../InfoIcon/InfoIcon';
 import './ParkWorldScreen.css';
@@ -18,11 +19,11 @@ const H = 1180;
 const PLAYER_SPEED = 260; // piksel / saniye
 const PLAYER_R = 20;
 const INTERACT_RADIUS = 78;
-const CHAT_BUBBLE_MS = 6000;
+const CHAT_BUBBLE_MS = 9500;
 const PARK_SELL_PRICE = 5000;
 const SPRITE_ASPECT = 320 / 580;
 const SPRITE_H = 118; // ekrandaki karakter boyu (piksel)
-const HOLDING_MS = 60_000; // elde tutulan büfe ürünü 1 dakika sonra kaybolur
+const HOLDING_MS = 120_000; // elde tutulan büfe ürünü 2 dakika sonra kaybolur
 
 // --- Firebase maliyet ayarları (bkz. önceki not) -------------------------
 const MOVE_SYNC_INTERVAL_MS = 300;
@@ -172,6 +173,13 @@ export default function ParkWorldScreen({ onExit }) {
   const [sellResult, setSellResult] = useState(null);
   const [bufeBusy, setBufeBusy] = useState(null);
   const [error, setError] = useState(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraFriends, setCameraFriends] = useState([]);
+  const [cameraScene, setCameraScene] = useState('Park');
+  const [cameraCaption, setCameraCaption] = useState('');
+  const [cameraBusy, setCameraBusy] = useState(false);
+  const [cameraError, setCameraError] = useState(null);
+  const [cameraDone, setCameraDone] = useState(false);
 
   const canvasRef = useRef(null);
   const staticCanvasRef = useRef(null);
@@ -505,11 +513,26 @@ export default function ParkWorldScreen({ onExit }) {
           const action = pendingActionRef.current;
           pendingActionRef.current = null;
           if (action?.type === 'sit') {
-            setSittingSeatId(action.seat.id);
-            updatePresence(user.uid, {
-              x: action.seat.x, y: action.seat.y, facing: facingRef.current,
-              pose: 'sit', seat: action.seat.id, holding: holdingRef.current,
-            });
+            // Vardığımızda koltuk hâlâ boş mu diye SON KEZ kontrol
+            // ediyoruz (en güncel `others` verisiyle) — iki oyuncu aynı
+            // koltuğa neredeyse aynı anda tıklarsa, biri yürürken diğeri
+            // oraya oturmuş olabilir. Doluysa oturmayı iptal ediyoruz.
+            const nowOccupied = othersRef.current.some((o) => o.pose === 'sit' && o.seat === action.seat.id);
+            if (!nowOccupied) {
+              // Ref'i HEMEN (senkron) güncelliyoruz — sadece React
+              // state'ine güvenirsek (useEffect'le ref'e yansıması bir
+              // sonraki render'a kalır), birazdan aşağıdaki senkron
+              // bloğu bu tick içinde hâlâ "oturmuyor" okuyup az önce
+              // gönderdiğimiz 'sit' güncellemesinin üstüne 'idle' yazıp
+              // eziyordu — arkadaşının ekranında "bir süre sonra
+              // oturuyor" görünmesinin sebebi tam olarak buydu.
+              sittingSeatRef.current = action.seat.id;
+              setSittingSeatId(action.seat.id);
+              updatePresence(user.uid, {
+                x: action.seat.x, y: action.seat.y, facing: facingRef.current,
+                pose: 'sit', seat: action.seat.id, holding: holdingRef.current,
+              });
+            }
           } else if (action?.type === 'bufe') {
             setPanel('bufe');
           } else if (action?.type === 'npc') {
@@ -741,14 +764,17 @@ export default function ParkWorldScreen({ onExit }) {
     return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
   }
 
-  const occupiedSeatIds = useMemo(() => {
+  // Her zaman en güncel veriyle (React re-render'ını beklemeden) dolu
+  // koltukları hesaplar — hem tıklama anında hem varışta kullanılır.
+  function computeOccupiedSeatIds() {
     const set = new Set();
-    if (sittingSeatId) set.add(sittingSeatId);
-    others.forEach((o) => { if (o.pose === 'sit' && o.seat) set.add(o.seat); });
+    if (sittingSeatRef.current) set.add(sittingSeatRef.current);
+    othersRef.current.forEach((o) => { if (o.pose === 'sit' && o.seat) set.add(o.seat); });
     return set;
-  }, [others, sittingSeatId]);
+  }
 
   function standUp() {
+    sittingSeatRef.current = null;
     setSittingSeatId(null);
     if (user) {
       updatePresence(user.uid, {
@@ -764,9 +790,10 @@ export default function ParkWorldScreen({ onExit }) {
 
     // Otururken herhangi bir yere tıklamak otomatik ayağa kaldırır —
     // ayrı bir "Kalk" butonuna gerek yok.
-    if (sittingSeatId) standUp();
+    if (sittingSeatRef.current) standUp();
 
-    const seat = ALL_SEATS.find((s) => !occupiedSeatIds.has(s.id) && dist(p, s) < 42);
+    const occupied = computeOccupiedSeatIds();
+    const seat = ALL_SEATS.find((s) => !occupied.has(s.id) && dist(p, s) < 42);
     if (seat) {
       pendingActionRef.current = { type: 'sit', seat };
       targetRef.current = { x: seat.x, y: seat.y };
@@ -857,6 +884,52 @@ export default function ParkWorldScreen({ onExit }) {
     setChatText('');
   };
 
+  // --- Kamera: kendine yaklaşıp (varsa yakındaki arkadaşlarınla)
+  // fotoğraf çekip anında Sixtagram'da paylaşabilme. Gerçek bir dosya
+  // yükleme YOK — sadece karede kimin olduğu (uid listesi) sunucuya
+  // gönderiliyor, avatarlar sunucuda GERÇEK veriden yeniden inşa
+  // edilip Sixtagram'da render ediliyor (bkz. functions/index.js
+  // buildSixtagramAttachment 'parkPhoto').
+  const CAMERA_RADIUS = 170;
+  function openCamera() {
+    const p = posRef.current;
+    const nearby = othersRef.current
+      .filter((o) => dist(p, o) < CAMERA_RADIUS)
+      .slice(0, 4)
+      .map((o) => ({ uid: o.uid, displayName: o.displayName || 'Oyuncu', avatar: o.avatar }));
+    setCameraFriends(nearby);
+
+    const spots = [
+      { label: 'Büfe', d: dist(p, BUFE) },
+      { label: 'Gölet', d: dist(p, POND) },
+      ...TABLES.map((t) => ({ label: 'Masa', d: dist(p, t) })),
+      ...BENCHES.map((b) => ({ label: 'Bank', d: dist(p, b) })),
+    ].sort((a, b) => a.d - b.d);
+    setCameraScene(spots[0] && spots[0].d < 140 ? spots[0].label : 'Park');
+
+    setCameraCaption('');
+    setCameraError(null);
+    setCameraDone(false);
+    setCameraOpen(true);
+  }
+
+  async function handleShareCamera() {
+    setCameraBusy(true);
+    setCameraError(null);
+    try {
+      await createSixtagramPost(cameraCaption, {
+        type: 'parkPhoto',
+        participantUids: cameraFriends.map((f) => f.uid),
+        scene: cameraScene,
+      });
+      setCameraDone(true);
+    } catch (err) {
+      setCameraError(err.message || 'Paylaşılamadı.');
+    } finally {
+      setCameraBusy(false);
+    }
+  }
+
   if (!user) {
     return (
       <div className="pw-fullscreen">
@@ -885,6 +958,9 @@ export default function ParkWorldScreen({ onExit }) {
           className="pw-canvas"
           onPointerDown={handleCanvasClick}
         />
+        {ready && (
+          <button className="pw-camera-btn" onClick={openCamera} title="Fotoğraf çek">📷</button>
+        )}
       </div>
 
       <div className="pw-chat-row">
@@ -900,6 +976,60 @@ export default function ParkWorldScreen({ onExit }) {
       </div>
 
       {error && <p className="pw-error">{error}</p>}
+
+      {cameraOpen && (
+        <div className="pw-panel-backdrop" onClick={() => setCameraOpen(false)}>
+          <div className="pw-panel" onClick={(e) => e.stopPropagation()}>
+            {!cameraDone ? (
+              <>
+                <p className="pw-panel-title">📷 Fotoğraf Çek</p>
+                <div className="pw-camera-preview">
+                  <span className="pw-camera-scene-badge">{cameraScene}</span>
+                  <div className="pw-camera-row">
+                    <div className="pw-camera-person">
+                      <div className="pw-camera-avatar">
+                        <AvatarSvg avatar={player?.avatar} variant="full" />
+                      </div>
+                      <span className="pw-camera-name">Sen</span>
+                    </div>
+                    {cameraFriends.map((f) => (
+                      <div key={f.uid} className="pw-camera-person">
+                        <div className="pw-camera-avatar">
+                          <AvatarSvg avatar={f.avatar} variant="full" />
+                        </div>
+                        <span className="pw-camera-name">{f.displayName}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <p className="pw-hint">
+                  {cameraFriends.length > 0
+                    ? `Karede sen ve ${cameraFriends.length} arkadaşın var.`
+                    : 'Karede sadece sen varsın — yanına yaklaşan arkadaşların da otomatik kareye girer.'}
+                </p>
+                <input
+                  className="pw-chat-input pw-camera-caption"
+                  placeholder="Fotoğrafa bir açıklama yaz…"
+                  value={cameraCaption}
+                  maxLength={200}
+                  onChange={(e) => setCameraCaption(e.target.value)}
+                />
+                {cameraError && <p className="pw-error">{cameraError}</p>}
+                <button className="pw-panel-btn primary" disabled={cameraBusy} onClick={handleShareCamera}>
+                  {cameraBusy ? 'Paylaşılıyor…' : '📤 Sixtagram\'da Paylaş'}
+                </button>
+                <button className="pw-panel-btn" onClick={() => setCameraOpen(false)}>Vazgeç</button>
+              </>
+            ) : (
+              <>
+                <p className="pw-panel-title">Paylaşıldı! 🎉</p>
+                <p className="pw-hint">Fotoğrafın Sixtagram akışında.</p>
+                <button className="pw-panel-btn primary" onClick={() => setCameraOpen(false)}>Tamam</button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {panel === 'npc' && (
         <div className="pw-panel-backdrop" onClick={() => setPanel(null)}>
