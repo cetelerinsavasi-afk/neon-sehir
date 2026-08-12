@@ -9231,14 +9231,14 @@ const GOLD_STORE_PACKAGES = {
     id: 'paket1',
     name: 'Başlangıç Paketi',
     priceTRY: 30,
-    gold: 10000,
+    gold: 20000,
     items: {},
   },
   paket2: {
     id: 'paket2',
-    name: '30.000 Altın + Özel Paket',
+    name: '60.000 Altın + Özel Paket',
     priceTRY: 100,
-    gold: 30000,
+    gold: 60000,
     items: {
       yasakliMadde: 4,
       tamirMalzemesi: 1000,

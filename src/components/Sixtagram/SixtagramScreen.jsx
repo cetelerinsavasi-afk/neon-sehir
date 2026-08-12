@@ -11,6 +11,7 @@ import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import PostCard from './PostCard';
 import ComposeModal from './ComposeModal';
 import NotificationsPanel from './NotificationsPanel';
+import CommentsPanel from './CommentsPanel';
 import './SixtagramScreen.css';
 
 const TABS = [
@@ -24,6 +25,11 @@ export default function SixtagramScreen() {
   const [tab, setTab] = useState('home');
   const [composeOpen, setComposeOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  // Bir bildirimden (yorum/yanıt) tıklanınca, o postun yorum paneli
+  // BURADA (SixtagramScreen seviyesinde) açılır — çünkü o post o an
+  // Anasayfa/Profil listesinde görünür olmayabilir (feed'de aşağıda
+  // kalmış, hatta hiç yüklenmemiş olabilir).
+  const [openCommentsPostId, setOpenCommentsPostId] = useState(null);
   // Anasayfa sekmesine her giriş, akışı en güncel beğeni sırasına göre
   // baştan çeker (bkz. useSixtagramFeed'in üstündeki not — gezinirken
   // sıralamanın kendiliğinden zıplamasını istemediğimiz için canlı
@@ -130,7 +136,22 @@ export default function SixtagramScreen() {
         />
       )}
 
-      {notifOpen && <NotificationsPanel onClose={() => setNotifOpen(false)} />}
+      {notifOpen && (
+        <NotificationsPanel
+          onClose={() => setNotifOpen(false)}
+          onOpenComments={(postId) => {
+            setOpenCommentsPostId(postId);
+            setNotifOpen(false);
+          }}
+        />
+      )}
+
+      {openCommentsPostId && (
+        <CommentsPanel
+          postId={openCommentsPostId}
+          onClose={() => setOpenCommentsPostId(null)}
+        />
+      )}
     </div>
   );
 }

@@ -30,7 +30,7 @@ function notifEmoji(type) {
   return '🔔';
 }
 
-export default function NotificationsPanel({ onClose }) {
+export default function NotificationsPanel({ onClose, onOpenComments }) {
   const { notifications } = useSixtagramNotifications();
 
   useEffect(() => {
@@ -38,6 +38,15 @@ export default function NotificationsPanel({ onClose }) {
       console.error('Bildirimler okundu işaretlenemedi:', err)
     );
   }, []);
+
+  const handleClick = (n) => {
+    if ((n.type === 'comment' || n.type === 'reply') && n.postId) {
+      onOpenComments?.(n.postId);
+      return;
+    }
+    // 'like' bildiriminde açılacak bir yorum paneli yok, sadece kapat.
+    onClose();
+  };
 
   return (
     <div className="six-notif-backdrop" onClick={onClose}>
@@ -54,13 +63,17 @@ export default function NotificationsPanel({ onClose }) {
             <p className="six-notif-hint">Henüz bir bildirimin yok.</p>
           )}
           {notifications.map((n) => (
-            <div key={n.id} className={`six-notif-row ${n.read ? '' : 'unread'}`}>
+            <button
+              key={n.id}
+              className={`six-notif-row ${n.read ? '' : 'unread'}`}
+              onClick={() => handleClick(n)}
+            >
               <span className="six-notif-emoji">{notifEmoji(n.type)}</span>
               <div className="six-notif-body">
                 <p className="six-notif-text">{notifText(n)}</p>
                 <p className="six-notif-time">{timeAgo(n.createdAtMs)}</p>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       </div>

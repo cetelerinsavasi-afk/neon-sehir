@@ -62,6 +62,13 @@
   gap: 10px;
   padding: 10px;
   border-radius: 10px;
+  width: 100%;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  color: inherit;
 }
 
 .six-notif-row.unread {
