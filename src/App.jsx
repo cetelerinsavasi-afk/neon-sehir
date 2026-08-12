@@ -115,10 +115,14 @@ function GameShell() {
   }, [myActiveRoom?.status]);
 
   const handleRegionClick = (regionId, regionMeta) => {
-    // "Ev" bölgesi artık ara bir onay ekranı göstermiyor — doğrudan tam
-    // ekran Ev'e giriyor (Profil butonuyla birebir aynı ekran).
+    // "Ev" ve "Park" artık ara bir onay ekranı göstermiyor — doğrudan
+    // ilgili tam ekrana giriyor.
     if (regionMeta?.screen === 'ev') {
       setProfileOpen(true);
+      return;
+    }
+    if (regionMeta?.screen === 'park') {
+      setParkOpen(true);
       return;
     }
     setActiveRegion(regionMeta);
@@ -191,7 +195,6 @@ function GameShell() {
         onOpenHeist={openHeistScreen}
         onEnterRace={openRace}
         onEnterTable={openTable}
-        onEnterPark={() => setParkOpen(true)}
         raceLobbyMode={raceLobbyMode}
         onRaceModeChange={setRaceLobbyMode}
       />

@@ -546,10 +546,14 @@ function torsoShape(s) {
 }
 
 // legsShape / shoesShape — tam vücut modunda bel hizasından (WAIST_Y)
-// aşağıya pantolon ve ayakkabıları çizer. `pose` yürüme animasyonu için
-// bacakları zıt yönlerde döndürür: 'idle' (duruş), 'walk1'/'walk2'
-// (2 karelik basit yürüyüş çevrimi — ParkWorld'de kare değiştirilerek
-// kullanılacak).
+// aşağıya pantolon ve ayakkabıları çizer. `pose`:
+//  - 'idle': düz duruş
+//  - 'walk1'/'walk2': 2 karelik yürüyüş çevrimi (bacaklar zıt yönde açılır)
+//  - 'sit': oturma — bacaklar kısaltılıp hafifçe açılır, böylece
+//    karakter bir bank/sandalyenin üstünde AYAKTA duruyormuş gibi değil,
+//    gerçekten OTURUYORMUŞ gibi görünür.
+const SIT_LEG_H = LEG_H * 0.4;
+
 function legHipX(s) {
   const cxL = s.build === 'zayif' ? 138 : s.build === 'iri' ? 122 : 132;
   return { cxL, cxR: 320 - cxL };
@@ -560,8 +564,17 @@ function legsShape(s, pose = 'idle') {
   const halfW = s.build === 'zayif' ? 15 : s.build === 'iri' ? 24 : 19;
   const c = s.pantsColor;
   const dark = shadeColor(c, -22);
-  const swing = pose === 'walk1' ? 16 : pose === 'walk2' ? -16 : 0;
 
+  if (pose === 'sit') {
+    const spread = 11;
+    const leg = (cx, angle) => `
+      <g transform="translate(${cx},${WAIST_Y}) rotate(${angle})">
+        <rect x="${-halfW}" y="0" width="${halfW * 2}" height="${SIT_LEG_H}" rx="${halfW * 0.55}" fill="${c}"/>
+      </g>`;
+    return leg(cxL, -spread) + leg(cxR, spread);
+  }
+
+  const swing = pose === 'walk1' ? 16 : pose === 'walk2' ? -16 : 0;
   const leg = (cx, angle, shade) => `
     <g transform="translate(${cx},${WAIST_Y}) rotate(${angle})">
       <rect x="${-halfW}" y="0" width="${halfW * 2}" height="${LEG_H}" rx="${halfW * 0.55}" fill="${shade}"/>
@@ -572,7 +585,6 @@ function legsShape(s, pose = 'idle') {
 
 function shoesShape(s, pose = 'idle') {
   const { cxL, cxR } = legHipX(s);
-  const swing = pose === 'walk1' ? 16 : pose === 'walk2' ? -16 : 0;
   const c = s.shoeColor;
 
   const shoeInner = () => {
@@ -588,6 +600,14 @@ function shoesShape(s, pose = 'idle') {
         return `<path d="M-17,-2 Q-19,10 -6,13 L22,13 Q24,3 14,-2 Z" fill="${c}"/>`;
     }
   };
+
+  if (pose === 'sit') {
+    const spread = 11;
+    const shoe = (cx, angle) => `<g transform="translate(${cx},${WAIST_Y + SIT_LEG_H}) rotate(${angle})">${shoeInner()}</g>`;
+    return shoe(cxL, -spread) + shoe(cxR, spread);
+  }
+
+  const swing = pose === 'walk1' ? 16 : pose === 'walk2' ? -16 : 0;
   const shoe = (cx, angle) => `<g transform="translate(${cx},${WAIST_Y + LEG_H}) rotate(${angle})">${shoeInner()}</g>`;
   return shoe(cxL, swing) + shoe(cxR, -swing);
 }

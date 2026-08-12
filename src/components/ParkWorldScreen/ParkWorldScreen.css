@@ -53,21 +53,6 @@
   z-index: 2;
 }
 
-.pw-standup-btn {
-  position: absolute;
-  bottom: 18px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 10px 20px;
-  border-radius: 20px;
-  border: 1px solid #d4af37;
-  background: rgba(20, 20, 20, 0.85);
-  color: #e8c766;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
 .pw-chat-row {
   display: flex;
   gap: 8px;

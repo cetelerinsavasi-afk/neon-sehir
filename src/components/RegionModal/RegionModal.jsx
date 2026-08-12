@@ -26,7 +26,7 @@ function getHeistTarget(region) {
   return map[region.screen] || null;
 }
 
-function ScreenContent({ region, onEnterRace, onEnterTable, onEnterPark, raceLobbyMode, onRaceModeChange }) {
+function ScreenContent({ region, onEnterRace, onEnterTable, raceLobbyMode, onRaceModeChange }) {
   const { screen } = region;
 
   switch (screen) {
@@ -48,15 +48,6 @@ function ScreenContent({ region, onEnterRace, onEnterTable, onEnterPark, raceLob
       return <VendorScreen vendorId={region.id} vendorName={region.name} />;
     case 'liman-depo':
       return <LimanScreen />;
-    case 'park':
-      return (
-        <div className="region-modal-body">
-          <p>Parka girip avatarınla gezinebilir, büfeden bir şeyler alabilir, banklarda oturup arkadaşlarınla sohbet edebilir ve şüpheli adama mal satabilirsin.</p>
-          <button className="region-modal-heist-btn" style={{ marginTop: 12 }} onClick={onEnterPark}>
-            🌳 Parka Gir
-          </button>
-        </div>
-      );
     case 'yaris-pisti':
       return (
         <RaceTrackScreen
@@ -83,7 +74,6 @@ export default function RegionModal({
   onOpenHeist,
   onEnterRace,
   onEnterTable,
-  onEnterPark,
   raceLobbyMode,
   onRaceModeChange,
 }) {
@@ -111,10 +101,6 @@ export default function RegionModal({
             region={region}
             onEnterRace={onEnterRace}
             onEnterTable={onEnterTable}
-            onEnterPark={() => {
-              onClose();
-              onEnterPark?.();
-            }}
             raceLobbyMode={raceLobbyMode}
             onRaceModeChange={onRaceModeChange}
           />

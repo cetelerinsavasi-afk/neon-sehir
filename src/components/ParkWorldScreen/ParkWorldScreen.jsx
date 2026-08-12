@@ -57,19 +57,19 @@ function tableSeats(t) {
   ];
 }
 
-// 2 kişilik banklar — yola PARALEL, yol kenarında (dikey döndürülmüş).
+// 2 kişilik banklar — yola PARALEL, "sağdan sola" (yatay) duruyorlar.
+// Bunlar dikey ana yoldan sağa-sola ayrılan bir T-kavşağının iki
+// ucunda: solda 1, sağda 1.
+const BENCH_Y_ROAD = 560; // T-kavşağının (yatay kolun) bulunduğu yükseklik
 const BENCHES = [
-  { id: 'bench1', cx: 280, cy: 560, side: 'left' },
-  { id: 'bench2', cx: 400, cy: 560, side: 'right' },
-  { id: 'bench3', cx: 280, cy: 780, side: 'left' },
+  { id: 'bench_left', cx: 170, cy: BENCH_Y_ROAD - 55 },
+  { id: 'bench_right', cx: 510, cy: BENCH_Y_ROAD - 55 },
 ];
 const SEAT_DX = 30;
 function benchSeats(b) {
-  const sign = b.side === 'left' ? 1 : -1;
-  const wx = b.cx + sign * 15;
   return [
-    { id: `${b.id}_A`, x: wx, y: b.cy - SEAT_DX, facing: sign > 0 ? 'right' : 'left' },
-    { id: `${b.id}_B`, x: wx, y: b.cy + SEAT_DX, facing: sign > 0 ? 'right' : 'left' },
+    { id: `${b.id}_A`, x: b.cx - SEAT_DX, y: b.cy - 8, facing: 'down' },
+    { id: `${b.id}_B`, x: b.cx + SEAT_DX, y: b.cy - 8, facing: 'down' },
   ];
 }
 
@@ -107,12 +107,19 @@ const NPC_AVATAR = {
 const OBSTACLES = [
   { cx: BUFE.cx, cy: BUFE.cy, hw: BUFE.hw, hh: BUFE.hh },
   ...TABLES.map((t) => ({ cx: t.cx, cy: t.cy, r: t.r + 6 })),
-  ...BENCHES.map((b) => ({ cx: b.cx, cy: b.cy, hw: 26, hh: 66 })),
+  ...BENCHES.map((b) => ({ cx: b.cx, cy: b.cy, hw: 58, hh: 24 })),
   { cx: POND.cx, cy: POND.cy, r: Math.max(POND.rx, POND.ry) - 4 },
 ];
 
 function dist(a, b) {
-  return Math.hypot(a.x - b.x, a.y - b.y);
+  // BÜFE gibi sabit nesneler {cx,cy} ile tanımlı, koltuk/oyuncu
+  // konumları {x,y} ile — ikisini de kabul et. (Önceki sürümde bu
+  // fonksiyon sadece {x,y} bekliyordu, BÜFE'ye tıklamayı sessizce
+  // NaN'a düşürüp hep "yanlış" sonuç veriyordu — büfe etkileşiminin
+  // hiç çalışmamasının kök nedeni buydu.)
+  const ax = a.x ?? a.cx, ay = a.y ?? a.cy;
+  const bx = b.x ?? b.cx, by = b.y ?? b.cy;
+  return Math.hypot(ax - bx, ay - by);
 }
 function roundRectC(c, x, y, w, h, r) {
   c.beginPath();
@@ -277,9 +284,11 @@ export default function ParkWorldScreen({ onExit }) {
       sctx.fillRect(0, y, W, 46);
     }
 
-    // Düzenli, düz hatlı patika ağı (eski kıvrımlı/karışık halin yerine)
+    // Düzenli, düz hatlı patika ağı: dikey ana yol + bankların olduğu
+    // yerde sağa-sola ayrılan bir T-kavşağı.
     drawPathSegment(sctx, BUFE.cx, BUFE.cy + BUFE.hh + 10, BUFE.cx, 1080, 50);
     drawPathSegment(sctx, TABLES[0].cx, TABLES[0].cy, TABLES[1].cx, TABLES[1].cy, 44);
+    drawPathSegment(sctx, 150, BENCH_Y_ROAD, 530, BENCH_Y_ROAD, 44);
     drawPathSegment(sctx, BUFE.cx, 900, TABLES[2].cx, TABLES[2].cy - 6, 44);
     drawPathSegment(sctx, BUFE.cx, 1030, NPC_POS.x + 10, NPC_POS.y, 44);
 
@@ -452,9 +461,6 @@ export default function ParkWorldScreen({ onExit }) {
   function drawBench(c, b) {
     c.save();
     c.translate(b.cx, b.cy);
-    // Yola paralel duracak şekilde döndür: 'left' -> yolu (sağ) doğru
-    // bakar, 'right' -> yolu (sol) doğru bakar.
-    c.rotate(b.side === 'left' ? -Math.PI / 2 : Math.PI / 2);
     const HW = 58, HH = 20;
     c.fillStyle = 'rgba(0,0,0,0.22)';
     c.beginPath(); c.ellipse(0, HH + 8, HW + 10, 12, 0, 0, Math.PI * 2); c.fill();
@@ -671,14 +677,14 @@ export default function ParkWorldScreen({ onExit }) {
     const entities = [
       { x: NPC_POS.x, y: NPC_POS.y, avatar: NPC_AVATAR, pose: 'idle', facing: 'right', name: 'Şüpheli Adam', bubble: null, holding: null },
       ...othersRef.current.map((o) => ({
-        x: o.x, y: o.y, avatar: o.avatar, pose: o.pose === 'sit' ? 'idle' : (o.pose || 'idle'),
+        x: o.x, y: o.y, avatar: o.avatar, pose: o.pose === 'sit' ? 'sit' : (o.pose || 'idle'),
         facing: o.facing || 'down', name: o.displayName || 'Oyuncu',
         bubble: o.chatText && o.chatTs && now - o.chatTs < CHAT_BUBBLE_MS ? o.chatText : null,
         holding: o.holding || null,
       })),
       {
         x: posRef.current.x, y: posRef.current.y, avatar: myAvatar,
-        pose: sittingSeatRef.current ? 'idle' : poseRef.current, facing: facingRef.current,
+        pose: sittingSeatRef.current ? 'sit' : poseRef.current, facing: facingRef.current,
         name: playerRef.current?.displayName || 'Sen', bubble: myBubbleNow, holding: holdingRef.current, isSelf: true,
       },
     ].sort((a, b) => a.y - b.y);
@@ -721,9 +727,12 @@ export default function ParkWorldScreen({ onExit }) {
     if (!ready) return;
     const p = pointerToCanvas(e);
 
+    // Otururken herhangi bir yere tıklamak otomatik ayağa kaldırır —
+    // ayrı bir "Kalk" butonuna gerek yok.
+    if (sittingSeatId) standUp();
+
     const seat = ALL_SEATS.find((s) => !occupiedSeatIds.has(s.id) && dist(p, s) < 42);
     if (seat) {
-      if (sittingSeatId) standUp();
       pendingActionRef.current = { type: 'sit', seat };
       targetRef.current = { x: seat.x, y: seat.y };
       return;
@@ -749,7 +758,6 @@ export default function ParkWorldScreen({ onExit }) {
       return;
     }
 
-    if (sittingSeatId) standUp();
     pendingActionRef.current = null;
     targetRef.current = { x: Math.max(30, Math.min(W - 30, p.x)), y: Math.max(30, Math.min(H - 30, p.y)) };
   }
@@ -842,9 +850,6 @@ export default function ParkWorldScreen({ onExit }) {
           className="pw-canvas"
           onPointerDown={handleCanvasClick}
         />
-        {sittingSeatId && (
-          <button className="pw-standup-btn" onClick={standUp}>🧍 Kalk</button>
-        )}
       </div>
 
       <div className="pw-chat-row">
