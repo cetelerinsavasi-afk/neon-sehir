@@ -9,6 +9,8 @@ import {
   HAT_COLORS,
   LIP_COLORS,
   BACKGROUND_COLORS,
+  PANTS_COLORS,
+  SHOE_COLORS,
 } from '../../lib/avatarShapes';
 import { usePlayer } from '../../hooks/usePlayer';
 import { setAvatar, setDisplayName } from '../../services/gameActions';
@@ -111,6 +113,10 @@ const OPTION_LABELS = {
       canta: 'Çanta', telefon: 'Telefon', kadeh: 'Kadeh',
     },
   },
+  shoeStyle: {
+    title: 'Ayakkabı Modeli',
+    values: { klasik: 'Klasik', spor: 'Spor', bot: 'Bot', sandalet: 'Sandalet' },
+  },
 };
 
 const COLOR_GROUPS = {
@@ -121,6 +127,8 @@ const COLOR_GROUPS = {
   hairColor: { title: 'Saç Rengi', colors: HAIR_COLORS },
   clothColor: { title: 'Kıyafet Rengi', colors: CLOTH_COLORS },
   hatColor: { title: 'Aksesuar Rengi', colors: HAT_COLORS },
+  pantsColor: { title: 'Pantolon Rengi', colors: PANTS_COLORS },
+  shoeColor: { title: 'Ayakkabı Rengi', colors: SHOE_COLORS },
 };
 
 const ROW_ORDER = [
@@ -144,6 +152,9 @@ const ROW_ORDER = [
   { type: 'option', field: 'tattoo' },
   { type: 'option', field: 'clothing' },
   { type: 'color', field: 'clothColor' },
+  { type: 'color', field: 'pantsColor' },
+  { type: 'option', field: 'shoeStyle' },
+  { type: 'color', field: 'shoeColor' },
   { type: 'option', field: 'neckAcc' },
   { type: 'option', field: 'hat' },
   { type: 'color', field: 'hatColor' },
@@ -198,6 +209,22 @@ export default function AvatarBuilder({ onBack }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [ok, setOk] = useState(false);
+  // Tam vücut önizlemesinde yürüyüşü test edebilmek için: kullanıcı
+  // "Yürüyüşü Dene" butonuna basınca 'walk1'/'walk2' karelerini
+  // değiştirerek basit bir animasyon oynatıyoruz (ParkWorld'de
+  // kullanılacak aynı iki kare).
+  const [walking, setWalking] = useState(false);
+  const [walkFrame, setWalkFrame] = useState('idle');
+  useEffect(() => {
+    if (!walking) {
+      setWalkFrame('idle');
+      return undefined;
+    }
+    const id = setInterval(() => {
+      setWalkFrame((prev) => (prev === 'walk1' ? 'walk2' : 'walk1'));
+    }, 260);
+    return () => clearInterval(id);
+  }, [walking]);
 
   // player Firestore'dan ASENKRON geliyor — component ilk mount olduğunda
   // henüz yüklenmemiş olabilir. useState'in başlangıç değeri sadece BİR
@@ -226,6 +253,8 @@ export default function AvatarBuilder({ onBack }) {
     next.hairColor = randomFrom(HAIR_COLORS);
     next.clothColor = randomFrom(CLOTH_COLORS);
     next.hatColor = randomFrom(HAT_COLORS);
+    next.pantsColor = randomFrom(PANTS_COLORS);
+    next.shoeColor = randomFrom(SHOE_COLORS);
     setLocalAvatar(next);
   };
 
@@ -259,16 +288,21 @@ export default function AvatarBuilder({ onBack }) {
           </button>
         </div>
         <div className="avb-header-preview">
-          <AvatarSvg avatar={avatar} />
+          <AvatarSvg avatar={avatar} variant="full" pose={walkFrame} />
         </div>
       </div>
 
       {ok && <p className="avb-success">Kaydedildi!</p>}
       {error && <p className="avb-error">{error}</p>}
 
-      <button className="avb-random-btn" onClick={randomize}>
-        🎲 Rastgele
-      </button>
+      <div className="avb-header-buttons-row">
+        <button className="avb-random-btn" onClick={randomize}>
+          🎲 Rastgele
+        </button>
+        <button className="avb-header-btn" onClick={() => setWalking((w) => !w)}>
+          {walking ? '⏹ Durdur' : '🚶 Yürüyüşü Dene'}
+        </button>
+      </div>
 
       <div className="avb-row">
         <p className="avb-row-title">Kod Adı (Oyun İçi İsmin)</p>

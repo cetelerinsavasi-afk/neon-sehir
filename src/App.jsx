@@ -13,6 +13,7 @@ import RaceBubble from './components/RaceTrackScreen/RaceBubble';
 import OnNumaraFullScreen from './components/OnNumaraScreen/OnNumaraFullScreen';
 import ProfileFullScreen from './components/ProfileFullScreen/ProfileFullScreen';
 import FutbolFullScreen from './components/FutbolScreen/FutbolFullScreen';
+import ParkWorldScreen from './components/ParkWorldScreen/ParkWorldScreen';
 import TopNotificationBanner from './components/TopNotificationBanner/TopNotificationBanner';
 import { usePlayer } from './hooks/usePlayer';
 import { useMyActiveRaceRoom } from './hooks/useMyActiveRaceRoom';
@@ -61,6 +62,7 @@ function GameShell() {
   const [activeTableId, setActiveTableId] = useState(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [futbolOpen, setFutbolOpen] = useState(false);
+  const [parkOpen, setParkOpen] = useState(false);
   const { player } = usePlayer();
 
   // Uygulama arka plana alınıp geri geldiğinde (özellikle iOS'ta) Firestore
@@ -183,9 +185,12 @@ function GameShell() {
         onOpenHeist={openHeistScreen}
         onEnterRace={openRace}
         onEnterTable={openTable}
+        onEnterPark={() => setParkOpen(true)}
         raceLobbyMode={raceLobbyMode}
         onRaceModeChange={setRaceLobbyMode}
       />
+
+      {parkOpen && user && <ParkWorldScreen onExit={() => setParkOpen(false)} />}
 
       {heistTarget !== undefined && (
         <HeistScreen initialTarget={heistTarget} onClose={() => setHeistTarget(undefined)} />

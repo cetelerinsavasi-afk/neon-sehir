@@ -3262,6 +3262,103 @@ export const sellContrabandAtPark = onCall(async (request) => {
 });
 
 // ---------------------------------------------------------------------------
+// PARK DÜNYASI — gezilebilir Park sahnesi (Bölüm 6 genişletmesi).
+//
+// Tasarım notu: oyuncunun anlık (x,y) konumu, yönü ve elindeki ürün gibi
+// alanlar EKONOMİYE dokunmuyor (altın/envanter yok) — sadece görsel/konum
+// verisi. Her hareket karesinde bir Cloud Function çağırmak (100-300ms
+// gecikme + soğuk başlatma) akıcı bir hareket için pratik değil, bu
+// yüzden bu VERİ TÜRÜ İÇİN İSTİSNAİ olarak istemcinin doğrudan Firestore
+// yazması firestore.rules'ta serbest bırakıldı — ama SADECE konum/pose/
+// elde-tutulan/sohbet alanları için. displayName ve avatar ise, ekranda
+// dangerouslySetInnerHTML ile ham SVG'ye gömüldüğü için (bkz. istemci
+// avatarShapes.js) enjeksiyon riski taşır; bu yüzden BUNLAR sadece bu
+// enterPark fonksiyonu tarafından, users/{uid} içindeki ZATEN
+// doğrulanmış veriden kopyalanarak yazılabilir. firestore.rules,
+// istemcinin sonraki (doğrudan) güncellemelerinde avatar/displayName'i
+// DEĞİŞTİREMEYECEĞİNİ ayrıca garanti eder (bkz. kural dosyası).
+// ---------------------------------------------------------------------------
+
+// enterPark — Park dünyasına girişte bir kere çağrılır: mevcut (sunucuda
+// doğrulanmış) ad/avatarı canlı-konum dokümanına kopyalar ve başlangıç
+// pozisyonunu yazar. Sonraki hareket güncellemeleri istemciden doğrudan
+// (bu fonksiyon çağrılmadan) yapılır.
+export const enterPark = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const userSnap = await db.collection('users').doc(uid).get();
+  const user = userSnap.data() || {};
+
+  const presence = {
+    displayName: user.displayName || 'Oyuncu',
+    avatar: user.avatar || null,
+    x: 600,
+    y: 400,
+    facing: 'down',
+    pose: 'idle',
+    holding: null,
+    chatText: null,
+    chatTs: null,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    enteredAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+  await db.collection('parkPresence').doc(uid).set(presence);
+  return { ok: true, presence: { x: presence.x, y: presence.y } };
+});
+
+// expireParkPresence — 2 dakikadır güncellenmeyen (uygulamayı kapatıp
+// leavePark'ı tetikleyemeyen) canlı-konum kayıtlarını siler. İstemci
+// tarafında zaten ~20 saniyelik bir eskime filtresi var (bkz.
+// useParkPresence) — bu sadece veritabanını uzun vadede temiz tutmak
+// için bir arka plan süpürme işlemi.
+export const expireParkPresence = onSchedule({ schedule: 'every 5 minutes' }, async () => {
+  const TWO_MIN = 2 * 60 * 1000;
+  const cutoff = admin.firestore.Timestamp.fromMillis(Date.now() - TWO_MIN);
+  // Tüm koleksiyonu çekip istemci tarafında filtrelemek yerine, sadece
+  // bayat kayıtları getiren bir sorgu kullanıyoruz — bu, süpürme
+  // işleminin okuma maliyetini (dolayısıyla faturayı) önemli ölçüde
+  // düşürür (updatedAt üzerinde otomatik tekil alan indeksi yeterli).
+  const staleSnap = await db.collection('parkPresence').where('updatedAt', '<', cutoff).get();
+  if (!staleSnap.empty) {
+    await Promise.all(staleSnap.docs.map((d) => d.ref.delete()));
+  }
+});
+
+// ---------------------------------------------------------------------------
+// buyFromBufe — Park'taki büfeden içecek/atıştırmalık satın alma.
+// Ekonomiye dokunduğu (altın harcanıyor) için, tüm diğer satın alma
+// işlemleri gibi bu da Cloud Function üzerinden, transaction'la yapılır.
+// ---------------------------------------------------------------------------
+const BUFE_PRICES = {
+  sosisli: 100,
+  tost: 100,
+  cay: 10,
+  kahve: 30,
+  oralet: 20,
+  latte: 500,
+};
+
+export const buyFromBufe = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const itemId = request.data?.itemId;
+  const price = BUFE_PRICES[itemId];
+  if (!price) {
+    throw new HttpsError('invalid-argument', 'Geçersiz büfe ürünü.');
+  }
+
+  const userRef = db.collection('users').doc(uid);
+  await db.runTransaction(async (tx) => {
+    const userSnap = await tx.get(userRef);
+    const user = userSnap.data();
+    if (!user || (user.gold || 0) < price) {
+      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    }
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-price) });
+  });
+
+  return { ok: true, itemId, price };
+});
+
+// ---------------------------------------------------------------------------
 // placeLimanOrder — Liman'dan toplu/ucuz malzeme siparişi.
 // Gemi 'departing' ya da 'loading' durumundaysa (gün 2-3, gemi diğer
 // şehirde/yolda mal topluyor) sipariş DOĞRUDAN 'loaded' kovasına gider —
@@ -4442,8 +4539,12 @@ const AVATAR_ENUM_OPTIONS = {
     'policecap', 'beanie', 'headband',
   ],
   heldItem: ['yok', 'tabanca', 'bicak', 'sopa', 'para', 'canta', 'telefon', 'kadeh'],
+  shoeStyle: ['klasik', 'spor', 'bot', 'sandalet'],
 };
-const AVATAR_COLOR_FIELDS = ['skin', 'eyeColor', 'hairColor', 'clothColor', 'hatColor', 'lipColor', 'background'];
+const AVATAR_COLOR_FIELDS = [
+  'skin', 'eyeColor', 'hairColor', 'clothColor', 'hatColor', 'lipColor', 'background',
+  'pantsColor', 'shoeColor',
+];
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
 export const setAvatar = onCall(async (request) => {

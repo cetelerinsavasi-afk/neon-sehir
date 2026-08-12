@@ -198,6 +198,12 @@ export const sellContrabandToDepo = (quantity) =>
 
 export const sellContrabandAtPark = () => httpsCallable(functions, 'sellContrabandAtPark')();
 
+// --- Park Dünyası ---
+
+export const enterPark = () => httpsCallable(functions, 'enterPark')();
+
+export const buyFromBufe = (itemId) => httpsCallable(functions, 'buyFromBufe')({ itemId });
+
 export const placeLimanOrder = (materialType, quantity) =>
   httpsCallable(functions, 'placeLimanOrder')({ materialType, quantity });
 

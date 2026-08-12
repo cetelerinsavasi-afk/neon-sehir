@@ -20,6 +20,15 @@ export const LIP_COLORS = ['#a85a52', '#8a3a3a', '#c9636b', '#7a3048', '#b06a4a'
 export const BACKGROUND_COLORS = [
   '#080b13', '#0a1f18', '#1d3557', '#3a1d1d', '#3a1d4a', '#1d3a2e', '#4a3a1d', '#2b2b2b', '#5c1a24', '#0d3a3a',
 ];
+export const PANTS_COLORS = [
+  '#22262f', '#0d0d0d', '#1d3d5c', '#2b3550', '#3a2f1d', '#4a1d5c', '#5c1a24', '#3d3d3d', '#0d2b1f', '#4a4a4a',
+];
+export const SHOE_COLORS = ['#0d0d0d', '#3a2f1d', '#5c1a24', '#e8e6df', '#1d3d5c', '#7a1f2b'];
+
+// Tam vücut düzeninde bel/ayak bilek/zemin çizgileri (viewBox: full=530, headshot=400)
+const WAIST_Y = 380;
+const LEG_H = 96;
+const GROUND_Y = 512;
 
 export const AVATAR_OPTIONS = {
   gender: ['erkek', 'kadin'],
@@ -45,6 +54,7 @@ export const AVATAR_OPTIONS = {
     'policecap', 'beanie', 'headband',
   ],
   heldItem: ['yok', 'tabanca', 'bicak', 'sopa', 'para', 'canta', 'telefon', 'kadeh'],
+  shoeStyle: ['klasik', 'spor', 'bot', 'sandalet'],
 };
 
 export const DEFAULT_AVATAR = {
@@ -57,6 +67,7 @@ export const DEFAULT_AVATAR = {
   facialHair: 'none', faceAcc: 'none', earring: 'yok', tattoo: 'yok',
   clothing: 'suit', clothColor: '#22262f', neckAcc: 'tie',
   hat: 'none', hatColor: '#0d0d0d', heldItem: 'yok',
+  pantsColor: '#22262f', shoeColor: '#0d0d0d', shoeStyle: 'klasik',
 };
 
 function shadeColor(hex, percent) {
@@ -409,7 +420,7 @@ function torsoShape(s) {
       : s.build === 'iri'
         ? { tl: 50, tr: 270, bl: 2, br: 318, ty: 258 }
         : { tl: 70, tr: 250, bl: 12, br: 308, ty: 262 };
-  let base = `<path d="M${B.tl},${B.ty} L${B.tr},${B.ty} L${B.br},400 L${B.bl},400 Z" fill="${c}"/>`;
+  let base = `<path d="M${B.tl},${B.ty} L${B.tr},${B.ty} L${B.br},380 L${B.bl},380 Z" fill="${c}"/>`;
   let details = '';
   switch (s.clothing) {
     case 'suit':
@@ -419,7 +430,7 @@ function torsoShape(s) {
         <path d="M142,262 L160,282 L178,262 L170,255 L160,270 L150,255 Z" fill="#f2efe4"/>`;
       break;
     case 'tuxedo':
-      base = `<path d="M${B.tl},${B.ty} L${B.tr},${B.ty} L${B.br},400 L${B.bl},400 Z" fill="#0d0d0d"/>`;
+      base = `<path d="M${B.tl},${B.ty} L${B.tr},${B.ty} L${B.br},380 L${B.bl},380 Z" fill="#0d0d0d"/>`;
       details = `
         <path d="M120,262 L156,262 L142,304 Z" fill="${c}"/>
         <path d="M200,262 L164,262 L178,304 Z" fill="${c}"/>
@@ -427,7 +438,7 @@ function torsoShape(s) {
       break;
     case 'leather':
       details = `
-        <line x1="160" y1="264" x2="160" y2="398" stroke="#111" stroke-width="2" stroke-dasharray="3,4"/>
+        <line x1="160" y1="264" x2="160" y2="378" stroke="#111" stroke-width="2" stroke-dasharray="3,4"/>
         <path d="M128,262 L146,262 L134,240 Z" fill="${light}"/>
         <path d="M192,262 L174,262 L186,240 Z" fill="${light}"/>`;
       break;
@@ -440,7 +451,7 @@ function torsoShape(s) {
       break;
     case 'jumpsuit':
       details = `
-        <line x1="160" y1="264" x2="160" y2="398" stroke="${dark}" stroke-width="3"/>
+        <line x1="160" y1="264" x2="160" y2="378" stroke="${dark}" stroke-width="3"/>
         <rect x="90" y="300" width="24" height="18" rx="2" fill="${dark}"/>
         <rect x="206" y="300" width="24" height="18" rx="2" fill="${dark}"/>
         <rect x="140" y="272" width="40" height="14" rx="2" fill="#f2efe4" opacity="0.85"/>`;
@@ -452,7 +463,7 @@ function torsoShape(s) {
         <circle cx="150" cy="322" r="3" fill="${light}"/><circle cx="170" cy="322" r="3" fill="${light}"/>`;
       break;
     case 'police':
-      base = `<path d="M${B.tl},${B.ty} L${B.tr},${B.ty} L${B.br},400 L${B.bl},400 Z" fill="#1d3557"/>`;
+      base = `<path d="M${B.tl},${B.ty} L${B.tr},${B.ty} L${B.br},380 L${B.bl},380 Z" fill="#1d3557"/>`;
       details = `
         <path d="M120,262 L156,262 L142,300 Z" fill="#14263f"/>
         <path d="M200,262 L164,262 L178,300 Z" fill="#14263f"/>
@@ -468,13 +479,13 @@ function torsoShape(s) {
       break;
     case 'tanktop':
       details = `
-        <path d="M126,262 L138,262 L138,400 L126,400 Z" fill="${dark}"/>
-        <path d="M194,262 L182,262 L182,400 L194,400 Z" fill="${dark}"/>`;
+        <path d="M126,262 L138,262 L138,380 L126,380 Z" fill="${dark}"/>
+        <path d="M194,262 L182,262 L182,380 L194,380 Z" fill="${dark}"/>`;
       break;
     case 'trenchcoat':
-      base = `<path d="M${B.tl - 10},${B.ty} L${B.tr + 10},${B.ty} L${B.br + 6},400 L${B.bl - 6},400 Z" fill="${c}"/>`;
+      base = `<path d="M${B.tl - 10},${B.ty} L${B.tr + 10},${B.ty} L${B.br + 6},380 L${B.bl - 6},380 Z" fill="${c}"/>`;
       details = `
-        <line x1="160" y1="264" x2="160" y2="398" stroke="${dark}" stroke-width="2"/>
+        <line x1="160" y1="264" x2="160" y2="378" stroke="${dark}" stroke-width="2"/>
         <rect x="132" y="290" width="14" height="14" rx="2" fill="${dark}"/>
         <rect x="174" y="290" width="14" height="14" rx="2" fill="${dark}"/>
         <path d="M126,262 L156,262 L142,296 Z" fill="${dark}"/>
@@ -484,6 +495,53 @@ function torsoShape(s) {
       break;
   }
   return base + details;
+}
+
+// legsShape / shoesShape — tam vücut modunda bel hizasından (WAIST_Y)
+// aşağıya pantolon ve ayakkabıları çizer. `pose` yürüme animasyonu için
+// bacakları zıt yönlerde döndürür: 'idle' (duruş), 'walk1'/'walk2'
+// (2 karelik basit yürüyüş çevrimi — ParkWorld'de kare değiştirilerek
+// kullanılacak).
+function legHipX(s) {
+  const cxL = s.build === 'zayif' ? 138 : s.build === 'iri' ? 122 : 132;
+  return { cxL, cxR: 320 - cxL };
+}
+
+function legsShape(s, pose = 'idle') {
+  const { cxL, cxR } = legHipX(s);
+  const halfW = s.build === 'zayif' ? 15 : s.build === 'iri' ? 24 : 19;
+  const c = s.pantsColor;
+  const dark = shadeColor(c, -22);
+  const swing = pose === 'walk1' ? 16 : pose === 'walk2' ? -16 : 0;
+
+  const leg = (cx, angle, shade) => `
+    <g transform="translate(${cx},${WAIST_Y}) rotate(${angle})">
+      <rect x="${-halfW}" y="0" width="${halfW * 2}" height="${LEG_H}" rx="${halfW * 0.55}" fill="${shade}"/>
+    </g>`;
+  // Yürürken arkada kalan bacak biraz koyu gölgeli — derinlik hissi için.
+  return leg(cxL, swing, swing >= 0 ? c : dark) + leg(cxR, -swing, -swing >= 0 ? c : dark);
+}
+
+function shoesShape(s, pose = 'idle') {
+  const { cxL, cxR } = legHipX(s);
+  const swing = pose === 'walk1' ? 16 : pose === 'walk2' ? -16 : 0;
+  const c = s.shoeColor;
+
+  const shoeInner = () => {
+    switch (s.shoeStyle) {
+      case 'spor':
+        return `<rect x="-17" y="-2" width="36" height="15" rx="7" fill="${c}"/><rect x="-17" y="8" width="36" height="4" fill="#f2efe4"/>`;
+      case 'bot':
+        return `<rect x="-15" y="-16" width="30" height="30" rx="4" fill="${c}"/>`;
+      case 'sandalet':
+        return `<rect x="-15" y="-2" width="30" height="8" rx="3" fill="${c}"/><rect x="-15" y="-8" width="30" height="4" fill="${c}"/>`;
+      case 'klasik':
+      default:
+        return `<path d="M-17,-2 Q-19,10 -6,13 L22,13 Q24,3 14,-2 Z" fill="${c}"/>`;
+    }
+  };
+  const shoe = (cx, angle) => `<g transform="translate(${cx},${WAIST_Y + LEG_H}) rotate(${angle})">${shoeInner()}</g>`;
+  return shoe(cxL, swing) + shoe(cxR, -swing);
 }
 
 function neckAccShape(s) {
@@ -588,27 +646,42 @@ function heldItemShape(s) {
 
 // buildAvatarSvgInner — tüm parçaları birleştirip <svg> içine konacak
 // markup'ı üretir.
-export function buildAvatarSvgInner(rawState) {
+//
+// opts.pose: 'idle' (varsayılan) | 'walk1' | 'walk2'. Tam vücut (full)
+// modda bacaklar zıt yönde döner, üst gövde de hafifçe iner/kalkar —
+// böylece ParkWorld gibi gezilebilir sahnelerde bu iki kareyi art arda
+// göstererek basit bir yürüme animasyonu elde edilir. 'headshot'
+// görünümde (viewBox 0 0 320 400) bacak/ayakkabı zaten kırpılıp
+// görünmez, bu yüzden pose orada etkisizdir.
+export function buildAvatarSvgInner(rawState, opts = {}) {
   const s = { ...DEFAULT_AVATAR, ...rawState };
+  const pose = opts.pose || 'idle';
+  const bob = pose === 'walk1' ? -3 : pose === 'walk2' ? 3 : 0;
+
+  let upperBody = '';
+  upperBody += torsoShape(s);
+  upperBody += heldItemShape(s);
+  upperBody += neckAccShape(s);
+  upperBody += hairBackShape(s);
+  upperBody += neckShape(s);
+  upperBody += headShape(s);
+  upperBody += earsShape(s);
+  upperBody += earringShape(s);
+  upperBody += eyebrowShape(s);
+  upperBody += eyeShape(s);
+  upperBody += eyelashShape(s);
+  upperBody += noseShape(s);
+  upperBody += mouthShape(s);
+  upperBody += tattooShape(s);
+  upperBody += facialHairShape(s);
+  upperBody += hairFrontShape(s);
+  upperBody += hatShape(s);
+  upperBody += faceAccShape(s);
+
   let svg = '';
-  svg += `<ellipse cx="160" cy="392" rx="120" ry="14" fill="#000" opacity="0.35"/>`;
-  svg += torsoShape(s);
-  svg += heldItemShape(s);
-  svg += neckAccShape(s);
-  svg += hairBackShape(s);
-  svg += neckShape(s);
-  svg += headShape(s);
-  svg += earsShape(s);
-  svg += earringShape(s);
-  svg += eyebrowShape(s);
-  svg += eyeShape(s);
-  svg += eyelashShape(s);
-  svg += noseShape(s);
-  svg += mouthShape(s);
-  svg += tattooShape(s);
-  svg += facialHairShape(s);
-  svg += hairFrontShape(s);
-  svg += hatShape(s);
-  svg += faceAccShape(s);
+  svg += `<ellipse cx="160" cy="${GROUND_Y}" rx="74" ry="12" fill="#000" opacity="0.35"/>`;
+  svg += legsShape(s, pose);
+  svg += shoesShape(s, pose);
+  svg += `<g transform="translate(0,${bob})">${upperBody}</g>`;
   return svg;
 }

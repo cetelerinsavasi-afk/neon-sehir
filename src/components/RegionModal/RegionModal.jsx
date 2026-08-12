@@ -7,7 +7,6 @@ import MosqueScreen from '../MosqueScreen/MosqueScreen';
 import PoliceStationScreen from '../PoliceStationScreen/PoliceStationScreen';
 import VendorScreen from '../VendorScreen/VendorScreen';
 import LimanScreen from '../LimanScreen/LimanScreen';
-import ParkScreen from '../ParkScreen/ParkScreen';
 import RaceTrackScreen from '../RaceTrackScreen/RaceTrackScreen';
 import CasinoScreen from '../CasinoScreen/CasinoScreen';
 import HomeScreen from '../HomeScreen/HomeScreen';
@@ -28,7 +27,7 @@ function getHeistTarget(region) {
   return map[region.screen] || null;
 }
 
-function ScreenContent({ region, onEnterRace, onEnterTable, raceLobbyMode, onRaceModeChange }) {
+function ScreenContent({ region, onEnterRace, onEnterTable, onEnterPark, raceLobbyMode, onRaceModeChange }) {
   const { screen } = region;
 
   switch (screen) {
@@ -51,7 +50,14 @@ function ScreenContent({ region, onEnterRace, onEnterTable, raceLobbyMode, onRac
     case 'liman-depo':
       return <LimanScreen />;
     case 'park':
-      return <ParkScreen />;
+      return (
+        <div className="region-modal-body">
+          <p>Parka girip avatarınla gezinebilir, büfeden bir şeyler alabilir, banklarda oturup arkadaşlarınla sohbet edebilir ve şüpheli adama mal satabilirsin.</p>
+          <button className="region-modal-heist-btn" style={{ marginTop: 12 }} onClick={onEnterPark}>
+            🌳 Parka Gir
+          </button>
+        </div>
+      );
     case 'yaris-pisti':
       return (
         <RaceTrackScreen
@@ -80,6 +86,7 @@ export default function RegionModal({
   onOpenHeist,
   onEnterRace,
   onEnterTable,
+  onEnterPark,
   raceLobbyMode,
   onRaceModeChange,
 }) {
@@ -107,6 +114,10 @@ export default function RegionModal({
             region={region}
             onEnterRace={onEnterRace}
             onEnterTable={onEnterTable}
+            onEnterPark={() => {
+              onClose();
+              onEnterPark?.();
+            }}
             raceLobbyMode={raceLobbyMode}
             onRaceModeChange={onRaceModeChange}
           />
