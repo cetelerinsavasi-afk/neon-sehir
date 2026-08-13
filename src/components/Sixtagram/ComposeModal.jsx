@@ -13,6 +13,9 @@ import { useFutbolMatches } from '../../hooks/useFutbolMatches';
 import { useInvestmentHistory } from '../../hooks/useInvestmentHistory';
 import { useInvestmentPrices } from '../../hooks/useInvestmentPrices';
 import { useMessages } from '../../hooks/useMessages';
+import { useLottery } from '../../hooks/useLottery';
+import { useMyFlappyBest } from '../../hooks/useFlappyBird';
+import { useAuth } from '../../contexts/AuthContext';
 import { vehicleImage } from '../VehicleCard/VehicleCard';
 import { createSixtagramPost } from '../../services/gameActions';
 import PostAttachment from './PostAttachment';
@@ -54,6 +57,7 @@ export default function ComposeModal({ onClose, onPosted }) {
   const [posting, setPosting] = useState(false);
   const [betPreviewLoading, setBetPreviewLoading] = useState(false);
 
+  const { user } = useAuth();
   const { player } = usePlayer();
   const { vehicles } = useVehicles();
   const { bets } = useRecentFutbolBets();
@@ -61,6 +65,8 @@ export default function ComposeModal({ onClose, onPosted }) {
   const { leagues } = useFutbolLeagues();  const { history: investmentHistory } = useInvestmentHistory();
   const { prices: investmentPrices } = useInvestmentPrices();
   const { messages } = useMessages();
+  const { yesterday: lotteryYesterday } = useLottery();
+  const { best: flappyBest } = useMyFlappyBest();
 
   const pendingLeague = leagues.find((l) => l.id === pendingLeagueId) || null;
   const { teams: pendingTeams } = useFutbolTeams(pendingLeagueId);
@@ -146,6 +152,13 @@ export default function ComposeModal({ onClose, onPosted }) {
   const lastMatchesAvailable = todayMatches.length > 0;
   const fineAvailable = recentFines.length > 0;
   const debtAvailable = (player?.debtToState || 0) > 0;
+  // lotteryWinAvailable (madde 9) — dünün piyango kazananı GERÇEKTEN
+  // ben miyim (useLottery'nin yesterday'i zaten lottery/{dünün tarihi}
+  // dokümanı, sunucudaki AYNI winnerUid alanı).
+  const lotteryWinAvailable = Boolean(user && lotteryYesterday?.winnerUid === user.uid && lotteryYesterday?.winnerAmount);
+  // flappyScoreAvailable (madde 10) — hiç Flappy Kuş oynamadıysan (rekor
+  // 0) paylaşacak bir şey yok.
+  const flappyScoreAvailable = flappyBest > 0;
 
   const ATTACHMENT_TYPES = [
     { id: 'avatar', label: 'Avatarım', emoji: '🧑', available: avatarAvailable },
@@ -156,6 +169,8 @@ export default function ComposeModal({ onClose, onPosted }) {
     { id: 'investment', label: 'Yatırım Grafiği', emoji: '📈', available: true },
     { id: 'fine', label: 'Cezam', emoji: '🚨', available: fineAvailable },
     { id: 'debt', label: 'Toplam Borcum', emoji: '💸', available: debtAvailable },
+    { id: 'lotteryWin', label: 'Piyango Kazancım', emoji: '🏆', available: lotteryWinAvailable },
+    { id: 'flappyScore', label: 'Flappy Kuş Rekorum', emoji: '🐦', available: flappyScoreAvailable },
   ];
 
   const setAttachment = (draft, preview) => {
@@ -194,6 +209,20 @@ export default function ComposeModal({ onClose, onPosted }) {
       setAttachment(
         { type: 'debt' },
         { type: 'debt', amount: player?.debtToState || 0 }
+      );
+      return;
+    }
+    if (typeId === 'lotteryWin') {
+      setAttachment(
+        { type: 'lotteryWin' },
+        { type: 'lotteryWin', amount: lotteryYesterday?.winnerAmount || 0 }
+      );
+      return;
+    }
+    if (typeId === 'flappyScore') {
+      setAttachment(
+        { type: 'flappyScore' },
+        { type: 'flappyScore', score: flappyBest }
       );
     }
   };

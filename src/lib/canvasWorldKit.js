@@ -111,9 +111,9 @@ export function drawHeldIcon(ctx, type, x, y, { animate = true } = {}) {
 
 // drawAvatarSprite — bir varlığı world-space'teki x,baseY konumunda çizer.
 // `entity`: { x, baseY, avatar, pose, facing, holding, name?, isSelf? }.
-// `scale` — varsayılan 1 (tam boy); Camii'deki cemaat rozetleri gibi küçük,
-// pasif roster ikonları için (bkz. MosqueWorldScreen drawCongregation)
-// küçültülmüş çizim gerekince kullanılır.
+// `scale` — varsayılan 1 (tam boy); Camii'deki dilenci NPC'leri gibi küçük,
+// köşeye sığdırılmış çizimler (bkz. MosqueWorldScreen drawBeggarNpcs) veya
+// mekana özel büyütme (madde 13, AVATAR_SCALE) için kullanılır.
 export function drawAvatarSprite(ctx, entity, getAvatarImage, { showName = true, scale = 1 } = {}) {
   const img = getAvatarImage(entity.avatar, entity.pose);
   const h = SPRITE_H * scale;
@@ -288,14 +288,29 @@ export function cyclingLine(lines, { intervalMs = 26000, holdMs = 4200, phase = 
 // renderPhotoFrame — her mekan kendi `drawBackground(ctx)` fonksiyonunu
 // verir (world-space'te, translate edilmiş ctx ile çağrılır); geri kalan
 // (kırpma, entity dizilimi, vignette) TÜM mekanlarda ortak.
-export function renderPhotoFrame(ctx, { width, height, originX, originY, entities, getAvatarImage, drawBackground }) {
+//
+// CAMERA_VERTICAL_LIFT (madde 2 düzeltmesi) — originX/originY, karakterin
+// AYAKLARININ world-space konumu (drawAvatarSprite baseY'den yukarı doğru
+// çiziyor). Eskiden bu nokta doğrudan kare merkezine denk geliyordu, yani
+// karakterin gövdesi/başı SPRITE_H kadar yukarıda kalıp kare hep "üstte"
+// görünüyordu. Bunun yerine, kadrajı karakterin gövde ortası (ayaklardan
+// ~yarım boy yukarısı) kare merkezine gelecek şekilde kaydırıyoruz — hem
+// tekli hem çoklu (Park) kareler için aynı düzeltme geçerli.
+const CAMERA_VERTICAL_LIFT = SPRITE_H * 0.5;
+
+// focalScale (opsiyonel, varsayılan 1) — madde 13: bina içlerinde avatarlar
+// büyütülünce (bkz. her WorldScreen'deki AVATAR_SCALE), kadrajın dikey
+// kaydırması da o büyümeye göre ölçeklenmeli, yoksa büyümüş avatar yine
+// merkezden kayık görünür. Park bu parametreyi hiç vermiyor (varsayılan 1,
+// eski davranış aynen korunur).
+export function renderPhotoFrame(ctx, { width, height, originX, originY, entities, getAvatarImage, drawBackground, focalScale = 1 }) {
   ctx.save();
   ctx.clearRect(0, 0, width, height);
   ctx.beginPath();
   ctx.rect(0, 0, width, height);
   ctx.clip();
 
-  ctx.translate(width / 2 - originX, height / 2 - originY);
+  ctx.translate(width / 2 - originX, height / 2 - originY + CAMERA_VERTICAL_LIFT * focalScale);
   if (drawBackground) drawBackground(ctx);
 
   const sorted = [...entities].sort((a, b) => (a.dy ?? 0) - (b.dy ?? 0));
@@ -314,7 +329,7 @@ export function renderPhotoFrame(ctx, { width, height, originX, originY, entitie
         isSelf: e.isSelf,
       },
       getAvatarImage,
-      { showName: false }
+      { showName: false, scale: e.scale ?? 1 }
     );
   });
 

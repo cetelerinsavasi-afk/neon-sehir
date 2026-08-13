@@ -1,7 +1,11 @@
 .heist-screen-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 55;
+  /* DÜZELTME (madde 11): eskiden 55'ti — Banka/Gazino gibi girilebilir
+     mekanların kabuğu (.ws-fullscreen) z-index:75, yani Soygun paneli
+     mekan İÇİNDEYKEN açılınca DOM'da vardı ama görünmüyordu, mekandan
+     çıkınca (ws-fullscreen kalkınca) ortaya çıkıyordu. Artık üstte. */
+  z-index: 85;
   background: rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: flex-end;

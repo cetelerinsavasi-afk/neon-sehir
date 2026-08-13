@@ -72,7 +72,7 @@ function InteriorPhotoCanvas({ locationId, entities, originX, originY }) {
 // yüklendiği için birkaç kare boyunca yeniden çizip önbelleğin
 // dolmasını bekliyoruz, sonra duruyoruz (feed'de çok sayıda kart olsa
 // bile sonsuz bir animasyon döngüsü çalıştırmamak için).
-function ParkPhotoCanvas({ entities }) {
+function ParkPhotoCanvas({ entities, originX, originY }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {
@@ -82,11 +82,15 @@ function ParkPhotoCanvas({ entities }) {
     let raf;
     let frames = 0;
     const draw = () => {
+      // DÜZELTME (madde 16): originX/originY artık sunucudan (fotoğrafı
+      // çekenin GERÇEK parkPresence konumu) geliyor — eskiden sabit 0,0
+      // kullanılıyordu, bu da arka planın her zaman dünya orijinine yakın
+      // (parkın üst tarafı) yanlış bir köşeyi göstermesine yol açıyordu.
       parkRenderPhotoFrame(ctx, {
         width: canvas.width,
         height: canvas.height,
-        originX: 0,
-        originY: 0,
+        originX: originX ?? 0,
+        originY: originY ?? 0,
         entities,
         getAvatarImage: parkPhotoImageCache,
       });
@@ -95,7 +99,7 @@ function ParkPhotoCanvas({ entities }) {
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [entities]);
+  }, [entities, originX, originY]);
 
   return <canvas ref={canvasRef} width={320} height={320} className="post-att-parkphoto-canvas" />;
 }
@@ -260,6 +264,24 @@ export default function PostAttachment({ attachment }) {
     );
   }
 
+  if (attachment.type === 'lotteryWin') {
+    return (
+      <div className="post-att post-att-card post-att-lottery-win">
+        <p className="post-att-card-title">🏆 Piyango Kazandım!</p>
+        <p className="post-att-fine-amount">{attachment.amount.toLocaleString('tr-TR')} altın</p>
+      </div>
+    );
+  }
+
+  if (attachment.type === 'flappyScore') {
+    return (
+      <div className="post-att post-att-card post-att-flappy-score">
+        <p className="post-att-card-title">🐦 Flappy Kuş Rekorum</p>
+        <p className="post-att-fine-amount">{attachment.score}</p>
+      </div>
+    );
+  }
+
   if (attachment.type === 'parkPhoto') {
     // entities[0] her zaman fotoğrafı çeken kişidir (bkz.
     // functions/index.js) — dx/dy ONA göre gerçek göreli ofset, arka
@@ -271,7 +293,7 @@ export default function PostAttachment({ attachment }) {
     return (
       <div className="post-att post-att-parkphoto">
         <div className="post-att-parkphoto-frame">
-          <ParkPhotoCanvas entities={entities} />
+          <ParkPhotoCanvas entities={entities} originX={attachment.originX} originY={attachment.originY} />
         </div>
         <p className="post-att-parkphoto-names">📷 {names.join(' · ')}</p>
       </div>

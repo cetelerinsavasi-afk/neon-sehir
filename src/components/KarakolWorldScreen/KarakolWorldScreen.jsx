@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
+import { useInteriorPresence } from '../../hooks/useInteriorPresence';
 import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes';
 import {
   roundRectC, drawAvatarSprite, createAvatarImageCache, renderPhotoFrame,
@@ -10,28 +11,35 @@ import {
 import Hud from '../Hud/Hud';
 import PhoneScreen from '../Phone/PhoneScreen';
 import PoliceStationScreen from '../PoliceStationScreen/PoliceStationScreen';
-import { createSixtagramPost } from '../../services/gameActions';
+import { createSixtagramPost, enterInterior } from '../../services/gameActions';
 import '../../styles/worldScreenChrome.css';
 import './KarakolWorldScreen.css';
 
-// --- Karakol içi (madde 5) --------------------------------------------------
-// Bank'takiyle BİREBİR aynı iskelet (canvasWorldKit + worldScreenChrome) —
-// tek oyunculu (bkz. BankWorldScreen'deki aynı not: canlı çoklu oyuncu için
-// ayrı bir Firestore/presence altyapısı gerekir, bilerek bu ilk sürüme dahil
-// edilmedi). Karakol'da SADECE istenen iki istasyon var: girişte
-// rüşvet alan bir memur, içeride başvuru işleyen bir komiser — Bank'taki
-// numaratör/sıra sistemi gibi burada istenmeyen ekstra bir mekanik
-// eklenmedi (gereksiz kod/karmaşıklık katmamak için).
+// --- Karakol içi (madde 3/4 revizyonu + madde 17 canlı/çok oyunculu) -------
+// Kullanıcının başka bir Claude oturumuna hazırlattığı referans örneğe göre
+// yeniden tasarlandı: komiser artık KENDİ ÖZEL/KAPALI odasında (duvar + kapı
+// boşluğu çizimiyle, 2 korumasıyla birlikte), giriş memurunun artık kendine
+// ait bir resepsiyon masası var (boş ayakta değil), zemin Türk bayrağı
+// renklerini (kırmızı + krem ay-yıldız) çağrıştırıyor (madde 4). Duvarlar
+// SADECE görsel bölme — fiziksel çarpışma bilerek eklenmedi (kod/karmaşıklık
+// tasarrufu, referans örnekteki gibi tam oda-kilidi bu ilk sürümde şart
+// değil); sadece masalar ve korumalar gerçek engel.
 const W = 680;
 const H = 1180;
 const PLAYER_SPEED = 240;
 const PLAYER_R = 20;
 const INTERACT_RADIUS = 76;
 
-const OFFICER = { cx: 340, cy: 760, r: 30 };
+// AVATAR_SCALE (madde 13) — bina içlerinde her şey (avatar dahil) küçük
+// kalıyordu; SADECE bu mekana özel bir büyütme (bkz. BankWorldScreen'deki
+// aynı gerekçe/yorum).
+const AVATAR_SCALE = 1.22;
+
+// RESEPSİYON — giriş memurunun kendi masası (madde 4: "boş ayakta değil").
+const RESEPSIYON = { cx: 340, cy: 700, hw: 84, hh: 34 };
 const OFFICER_NPC = {
   name: 'Memur Kemal',
-  lines: ['Dur bakalım!', 'Şüphen çoksa rüşvet işini hallederiz.', 'Kimlik kontrolü rutin.', 'Güvenli günler.'],
+  lines: ['Buyurun, nasıl yardımcı olabilirim?', 'Evrak için sırayı bekleyin lütfen.', 'Şüphen çoksa rüşvet işini hallederiz.', 'İyi günler.'],
   avatar: {
     ...DEFAULT_AVATAR, gender: 'erkek', build: 'iri', skin: '#c68863',
     hairStyle: 'short', hairColor: '#0d0a08', clothing: 'police', clothColor: '#1a2a4a',
@@ -39,10 +47,13 @@ const OFFICER_NPC = {
   },
 };
 
-const COMMISSIONER_DESK = { cx: 340, cy: 300, hw: 74, hh: 30 };
+// KOMISER_ROOM — komiserin özel/kapalı ofisi (madde 4), referans örnekteki
+// "duvar + alt kenarda kapı boşluğu" deseniyle (bkz. drawRoomWalls).
+const KOMISER_ROOM = { x1: 130, y1: 190, x2: 550, y2: 440, doorX1: 300, doorX2: 380 };
+const COMMISSIONER_DESK = { cx: 340, cy: 280, hw: 74, hh: 30 };
 const COMMISSIONER_NPC = {
   name: 'Komiser Yusuf',
-  lines: ['Başvurunu değerlendiririm.', 'Kitapçığı okumadan imza atma.', 'Teşkilat disiplin ister.', 'Buyurun, dinliyorum.'],
+  lines: ['Rapor ne durumda?', 'Başvurunu değerlendiririm.', 'Kitapçığı okumadan imza atma.', 'Nöbet listesini kontrol edin.'],
   avatar: {
     ...DEFAULT_AVATAR, gender: 'erkek', build: 'standart', skin: '#8d5524',
     hairStyle: 'slick', hairColor: '#0d0a08', facialHair: 'mustache',
@@ -51,15 +62,40 @@ const COMMISSIONER_NPC = {
   },
 };
 
+// KORUMALAR — madde 4: komiserin 2 koruması, ofisin kapı eşiğinde nöbette.
+const KORUMALAR = [
+  {
+    cx: 210, cy: 400, name: 'Koruma',
+    lines: ['Her şey kontrol altında.', 'Giriş çıkışları takip ediyorum.'],
+    avatar: {
+      ...DEFAULT_AVATAR, gender: 'erkek', build: 'iri', skin: '#c68642',
+      hairStyle: 'short', hairColor: '#0d0a08', clothing: 'police', clothColor: '#12182b',
+      hat: 'policecap', hatColor: '#0d0f1a', pantsColor: '#0d0f1a', background: 'transparent',
+    },
+  },
+  {
+    cx: 470, cy: 400, name: 'Koruma',
+    lines: ['Komiserim şu an meşgul.', 'Sırayla lütfen.'],
+    avatar: {
+      ...DEFAULT_AVATAR, gender: 'erkek', build: 'iri', skin: '#f1c27d',
+      hairStyle: 'short', hairColor: '#2b2118', clothing: 'police', clothColor: '#12182b',
+      hat: 'policecap', hatColor: '#0d0f1a', pantsColor: '#0d0f1a', background: 'transparent',
+    },
+  },
+];
+
+// NEZARETHANE — dekoratif hücre bölümü, referans örnekteki gibi ayrı bir
+// "oda" (duvar + kapı boşluğu + parmaklık + bank) — fiziksel çarpışma yok
+// (yukarıdaki KOMISER_ROOM ile aynı gerekçe).
+const NEZARETHANE = { x1: 60, y1: 480, x2: 300, y2: 620, doorX1: 140, doorX2: 220 };
+
 const DOOR = { cx: 340, cy: 1080 };
 const START_POS = { x: 340, y: 990 };
-// OFİS_LINE — komiserin odasını görsel olarak ayıran alçak bölme (fiziksel
-// çarpışma yok, sadece "burası ayrı bir oda" hissi için, bkz. drawOfficeLine).
-const OFFICE_LINE_Y = 470;
 
 const OBSTACLES = [
-  { cx: OFFICER.cx, cy: OFFICER.cy, r: OFFICER.r },
+  { cx: RESEPSIYON.cx, cy: RESEPSIYON.cy, hw: RESEPSIYON.hw, hh: RESEPSIYON.hh },
   { cx: COMMISSIONER_DESK.cx, cy: COMMISSIONER_DESK.cy, hw: COMMISSIONER_DESK.hw, hh: COMMISSIONER_DESK.hh },
+  ...KORUMALAR.map((k) => ({ cx: k.cx, cy: k.cy, r: 26 })),
 ];
 
 function dist(a, b) {
@@ -68,8 +104,12 @@ function dist(a, b) {
   return Math.hypot(ax - bx, ay - by);
 }
 
+// drawFloor — madde 4: "zemin renkleri bayrak olması gibi". Ana zemin koyu
+// kırmızı tonda, kapıdan resepsiyona uzanan koridorda daha canlı kırmızı bir
+// şerit ve üstünde krem tonda ay-yıldız motifi (Türk bayrağı renk/desen
+// dili) — gerçek bir bayrak ÇİZİLMİYOR, sadece renk/motif esinleniyor.
 function drawFloor(c) {
-  c.fillStyle = '#26262c';
+  c.fillStyle = '#3a1116';
   c.fillRect(0, 0, W, H);
   c.strokeStyle = 'rgba(255,255,255,0.04)';
   c.lineWidth = 1;
@@ -79,9 +119,33 @@ function drawFloor(c) {
   for (let y = 0; y <= H; y += 58) {
     c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke();
   }
+  // Koridor şeridi — kapıdan resepsiyona.
+  const grd = c.createLinearGradient(0, 640, 0, 1080);
+  grd.addColorStop(0, 'rgba(196,30,42,0.4)');
+  grd.addColorStop(1, 'rgba(196,30,42,0.18)');
+  c.fillStyle = grd;
+  c.fillRect(260, 640, 160, 440);
+  // Ay-yıldız motifi (zeminde, çok soluk).
+  c.save();
+  c.globalAlpha = 0.16;
+  c.fillStyle = '#f4e6d0';
+  c.beginPath(); c.arc(340, 900, 38, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#3a1116';
+  c.beginPath(); c.arc(352, 900, 31, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#f4e6d0';
+  const sx = 388, sy = 900;
+  c.beginPath();
+  for (let i = 0; i < 5; i += 1) {
+    const a = -Math.PI / 2 + i * (Math.PI * 2 / 5);
+    const a2 = a + Math.PI / 5;
+    c.lineTo(sx + Math.cos(a) * 13, sy + Math.sin(a) * 13);
+    c.lineTo(sx + Math.cos(a2) * 5, sy + Math.sin(a2) * 5);
+  }
+  c.closePath(); c.fill();
+  c.restore();
 }
 
-const WALL_H = 128;
+const WALL_H = 150;
 
 function drawWalls(c) {
   const grd = c.createLinearGradient(0, 0, 0, WALL_H);
@@ -100,22 +164,97 @@ function drawWalls(c) {
   c.fillText('Huzur ve Güvenlik Şubesi', W / 2, 70);
 }
 
-// Komiser odasını lobiden ayıran alçak, kesikli bölme çizgisi — sadece
-// görsel, fiziksel engel yok (kod/karmaşıklık tasarrufu).
-function drawOfficeLine(c) {
+// drawRoomWalls — komiser odası ve nezarethane için ORTAK, referans
+// örnekteki "üst+sol+sağ tam duvar, alt duvarda kapı boşluğu" deseni.
+// SADECE görsel (bkz. dosya başındaki not) — fiziksel çarpışma yok.
+function drawRoomWalls(c, room, label, floorTint) {
   c.save();
-  c.strokeStyle = 'rgba(232,207,122,0.35)';
-  c.lineWidth = 3;
-  c.setLineDash([14, 10]);
+  c.fillStyle = floorTint;
+  c.fillRect(room.x1, room.y1, room.x2 - room.x1, room.y2 - room.y1);
+  c.strokeStyle = 'rgba(232,207,122,0.55)';
+  c.lineWidth = 5;
   c.beginPath();
-  c.moveTo(60, OFFICE_LINE_Y);
-  c.lineTo(W - 60, OFFICE_LINE_Y);
+  c.moveTo(room.x1, room.y2);
+  c.lineTo(room.x1, room.y1);
+  c.lineTo(room.x2, room.y1);
+  c.lineTo(room.x2, room.y2);
   c.stroke();
+  c.beginPath();
+  c.moveTo(room.x1, room.y2); c.lineTo(room.doorX1, room.y2); c.stroke();
+  c.beginPath();
+  c.moveTo(room.doorX2, room.y2); c.lineTo(room.x2, room.y2); c.stroke();
   c.restore();
-  c.fillStyle = 'rgba(232,207,122,0.55)';
-  c.font = 'bold 10px sans-serif';
+  c.fillStyle = 'rgba(232,207,122,0.75)';
+  c.font = 'bold 11px sans-serif';
   c.textAlign = 'center';
-  c.fillText('— KOMİSER OFİSİ —', W / 2, OFFICE_LINE_Y - 8);
+  c.fillText(label, (room.x1 + room.x2) / 2, room.y1 - 8);
+}
+
+function drawCellBars(c) {
+  c.save();
+  c.strokeStyle = 'rgba(232,207,122,0.5)';
+  c.lineWidth = 3;
+  for (let x = NEZARETHANE.doorX1 + 8; x < NEZARETHANE.doorX2; x += 12) {
+    c.beginPath(); c.moveTo(x, NEZARETHANE.y2 - 30); c.lineTo(x, NEZARETHANE.y2 + 2); c.stroke();
+  }
+  c.restore();
+}
+
+function drawBench(c, cx, cy) {
+  c.save();
+  c.translate(cx, cy);
+  c.fillStyle = '#7a7f88';
+  roundRectC(c, -42, -10, 84, 20, 4); c.fill();
+  c.strokeStyle = '#3a3f47'; c.lineWidth = 1.5;
+  roundRectC(c, -42, -10, 84, 20, 4); c.stroke();
+  c.restore();
+}
+
+function drawFlag(c, cx, cy) {
+  c.save();
+  c.translate(cx, cy);
+  c.fillStyle = '#7a5233';
+  c.fillRect(-2, -6, 4, 66);
+  c.fillStyle = '#c41e2a';
+  roundRectC(c, 0, -6, 46, 30, 2); c.fill();
+  c.fillStyle = '#fff';
+  c.beginPath(); c.arc(16, 9, 9, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#c41e2a';
+  c.beginPath(); c.arc(19.4, 9, 7.2, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#fff';
+  const sx = 32, sy = 9;
+  c.beginPath();
+  for (let i = 0; i < 5; i += 1) {
+    const a = -Math.PI / 2 + i * (Math.PI * 2 / 5);
+    const a2 = a + Math.PI / 5;
+    c.lineTo(sx + Math.cos(a) * 5.2, sy + Math.sin(a) * 5.2);
+    c.lineTo(sx + Math.cos(a2) * 2, sy + Math.sin(a2) * 2);
+  }
+  c.closePath(); c.fill();
+  c.restore();
+}
+
+function drawCabinet(c, cx, cy) {
+  c.save();
+  c.translate(cx, cy);
+  c.fillStyle = '#3a3f47';
+  roundRectC(c, -26, -22, 52, 78, 4); c.fill();
+  c.strokeStyle = '#20232a'; c.lineWidth = 1.5;
+  for (let i = 0; i < 3; i += 1) { c.strokeRect(-26, -22 + i * 26, 52, 26); }
+  c.restore();
+}
+
+function drawNoticeBoard(c, cx, cy) {
+  c.save();
+  c.translate(cx, cy);
+  c.fillStyle = '#8a5a34';
+  roundRectC(c, -34, -26, 68, 50, 3); c.fill();
+  c.fillStyle = '#f4e6d0';
+  roundRectC(c, -29, -21, 58, 40, 2); c.fill();
+  c.strokeStyle = 'rgba(0,0,0,0.18)'; c.lineWidth = 1;
+  c.strokeRect(-22, -13, 44, 11);
+  c.strokeRect(-22, 1, 44, 11);
+  c.restore();
 }
 
 function drawDesk(c, d, label) {
@@ -130,48 +269,35 @@ function drawDesk(c, d, label) {
   c.strokeStyle = '#e8cf7a'; c.lineWidth = 1.5;
   roundRectC(c, -d.hw, -d.hh, d.hw * 2, d.hh * 2, 6); c.stroke();
   c.fillStyle = '#12241c';
-  roundRectC(c, -40, -d.hh - 14, 80, 16, 3); c.fill();
+  roundRectC(c, -42, -d.hh - 16, 84, 18, 3); c.fill();
   c.fillStyle = '#e8cf7a';
-  c.font = 'bold 9px sans-serif';
+  c.font = 'bold 10px sans-serif';
   c.textAlign = 'center';
   c.fillText(label, 0, -d.hh - 3);
   c.restore();
 }
 
-function drawJailCell(c) {
-  // Sağ alt köşede sade bir hücre siluetti — sadece atmosfer için, birkaç
-  // çizgiden ibaret (etkileşimsiz, kolisyonsuz).
-  c.save();
-  c.translate(W - 96, H - 210);
-  c.fillStyle = 'rgba(0,0,0,0.35)';
-  c.fillRect(-64, -70, 128, 140);
-  c.strokeStyle = 'rgba(232,207,122,0.4)';
-  c.lineWidth = 2;
-  for (let i = -56; i <= 56; i += 16) {
-    c.beginPath(); c.moveTo(i, -66); c.lineTo(i, 66); c.stroke();
-  }
-  c.fillStyle = 'rgba(232,207,122,0.55)';
-  c.font = 'bold 9px sans-serif';
+function drawGuard(c, guard, getAvatarImage) {
+  drawAvatarSprite(c, {
+    x: guard.cx, baseY: guard.cy, avatar: guard.avatar, pose: 'idle', facing: 'down',
+  }, getAvatarImage, { showName: false, scale: AVATAR_SCALE });
+  c.fillStyle = 'rgba(232,207,122,0.85)';
+  c.font = 'bold 10px sans-serif';
   c.textAlign = 'center';
-  c.fillText('NEZARETHANE', 0, 84);
-  c.restore();
+  c.fillText(guard.name, guard.cx, guard.cy + 16);
 }
 
 function drawDoor(c) {
   c.save();
   c.translate(DOOR.cx, DOOR.cy);
   c.fillStyle = '#1c1c22';
-  c.fillRect(-46, -6, 92, 40);
+  c.fillRect(-52, -6, 104, 46);
   c.fillStyle = '#3a4468';
-  c.fillRect(-40, -2, 38, 32);
-  c.fillRect(2, -2, 38, 32);
+  c.fillRect(-45, -2, 43, 37);
+  c.fillRect(2, -2, 43, 37);
   c.fillStyle = '#e8cf7a';
-  c.beginPath(); c.arc(-8, 14, 2.4, 0, Math.PI * 2); c.fill();
-  c.beginPath(); c.arc(8, 14, 2.4, 0, Math.PI * 2); c.fill();
-  c.fillStyle = 'rgba(255,255,255,0.75)';
-  c.font = 'bold 10px sans-serif';
-  c.textAlign = 'center';
-  c.fillText('ÇIKIŞ', 0, 46);
+  c.beginPath(); c.arc(-9, 16, 2.6, 0, Math.PI * 2); c.fill();
+  c.beginPath(); c.arc(9, 16, 2.6, 0, Math.PI * 2); c.fill();
   c.restore();
 }
 
@@ -180,33 +306,46 @@ function drawDoor(c) {
 // aynı gerekçe) — kamera fotoğrafı VE Sixtagram akışı bunu kullanır.
 export function drawKarakolSceneBackground(ctx, getAvatarImage) {
   drawFloor(ctx);
-  drawJailCell(ctx);
-  drawOfficeLine(ctx);
+  drawRoomWalls(ctx, KOMISER_ROOM, 'KOMİSER OFİSİ', 'rgba(58,26,26,0.4)');
+  drawRoomWalls(ctx, NEZARETHANE, 'NEZARETHANE', 'rgba(20,20,26,0.45)');
+  drawCellBars(ctx);
+  drawBench(ctx, (NEZARETHANE.x1 + NEZARETHANE.x2) / 2, NEZARETHANE.y2 - 44);
+  drawFlag(ctx, KOMISER_ROOM.x2 - 36, KOMISER_ROOM.y1 + 46);
+  drawCabinet(ctx, KOMISER_ROOM.x1 + 34, KOMISER_ROOM.y1 + 50);
+  drawNoticeBoard(ctx, 600, 560);
   drawWalls(ctx);
   drawDoor(ctx);
   drawDesk(ctx, COMMISSIONER_DESK, 'KOMİSER');
+  drawDesk(ctx, RESEPSIYON, 'RESEPSİYON');
 
   drawAvatarSprite(ctx, {
-    x: OFFICER.cx, baseY: OFFICER.cy, avatar: OFFICER_NPC.avatar, pose: 'idle', facing: 'down', name: OFFICER_NPC.name,
-  }, getAvatarImage, { showName: false });
-  ctx.fillStyle = 'rgba(20,12,8,0.8)';
-  ctx.font = 'bold 10px sans-serif';
+    x: RESEPSIYON.cx, baseY: RESEPSIYON.cy - RESEPSIYON.hh - 30,
+    avatar: OFFICER_NPC.avatar, pose: 'idle', facing: 'down', name: OFFICER_NPC.name,
+  }, getAvatarImage, { showName: false, scale: AVATAR_SCALE });
+  ctx.fillStyle = 'rgba(232,207,122,0.85)';
+  ctx.font = 'bold 11px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(OFFICER_NPC.name, OFFICER.cx, OFFICER.cy - SPRITE_H - 14);
+  ctx.fillText(OFFICER_NPC.name, RESEPSIYON.cx, RESEPSIYON.cy - RESEPSIYON.hh - 30 - SPRITE_H * AVATAR_SCALE - 8);
 
   drawAvatarSprite(ctx, {
     x: COMMISSIONER_DESK.cx, baseY: COMMISSIONER_DESK.cy - COMMISSIONER_DESK.hh - 30,
     avatar: COMMISSIONER_NPC.avatar, pose: 'idle', facing: 'down', name: COMMISSIONER_NPC.name,
-  }, getAvatarImage, { showName: false });
-  ctx.fillText(COMMISSIONER_NPC.name, COMMISSIONER_DESK.cx, COMMISSIONER_DESK.cy - COMMISSIONER_DESK.hh - 60);
+  }, getAvatarImage, { showName: false, scale: AVATAR_SCALE });
+  ctx.fillText(COMMISSIONER_NPC.name, COMMISSIONER_DESK.cx, COMMISSIONER_DESK.cy - COMMISSIONER_DESK.hh - 30 - SPRITE_H * AVATAR_SCALE - 8);
+
+  KORUMALAR.forEach((k) => drawGuard(ctx, k, getAvatarImage));
 }
 
 export default function KarakolWorldScreen({ onExit }) {
   const { user } = useAuth();
   const { player } = usePlayer();
+  const { others, updatePresence, clearPresence } = useInteriorPresence('karakol');
 
+  const [ready, setReady] = useState(false);
   const [panel, setPanel] = useState(null); // 'bribe' | 'application' | null
   const [phoneOpen, setPhoneOpen] = useState(false);
+  const [chatText, setChatText] = useState('');
+  const [myBubble, setMyBubble] = useState(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraCaption, setCameraCaption] = useState('');
   const [cameraBusy, setCameraBusy] = useState(false);
@@ -226,15 +365,67 @@ export default function KarakolWorldScreen({ onExit }) {
   const cameraOpenRef = useRef(false);
   const cameraDoneRef = useRef(false);
   const getAvatarImageRef = useRef(createAvatarImageCache(buildFullAvatarSvgMarkup, DEFAULT_AVATAR));
+  // --- Canlı/çok oyunculu (madde 17) — Bank/ParkWorldScreen ile BİREBİR
+  // aynı desen, bkz. hooks/useInteriorPresence.js.
+  const myBubbleRef = useRef(null);
+  const othersRef = useRef([]);
+  const lastSyncRef = useRef(0);
+  const lastSyncedPosRef = useRef({ ...START_POS });
+  const wasMovingRef = useRef(false);
+  const pausedRef = useRef(false);
+  const MOVE_SYNC_INTERVAL_MS = 300;
+  const MOVE_SYNC_MIN_DIST = 6;
+  const IDLE_HEARTBEAT_MS = 12_000;
+  const CHAT_BUBBLE_MS = 9500;
 
   useEffect(() => { playerRef.current = player; }, [player]);
+  useEffect(() => { myBubbleRef.current = myBubble; }, [myBubble]);
+  useEffect(() => { othersRef.current = others; }, [others]);
+
+  useEffect(() => {
+    if (!myBubble) return undefined;
+    const id = setTimeout(() => setMyBubble(null), CHAT_BUBBLE_MS);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myBubble]);
 
   function getAvatarImage(avatar, pose) {
     return getAvatarImageRef.current(avatar, pose);
   }
 
-  // --- Ana döngü: hareket + çizim (Firestore yok — tek oyunculu) --------
+  // Karakola giriş/çıkış — BankWorldScreen ile BİREBİR aynı desen (bkz.
+  // functions/index.js enterInterior).
   useEffect(() => {
+    if (!user) return undefined;
+    let cancelled = false;
+    enterInterior('karakol')
+      .then((res) => {
+        if (cancelled) return;
+        const start = res.data?.presence || START_POS;
+        posRef.current = start;
+        lastSyncedPosRef.current = start;
+        setReady(true);
+      })
+      .catch((err) => {
+        console.error('Karakola giriş hatası:', err);
+        setReady(true);
+      });
+    return () => {
+      cancelled = true;
+      if (user) clearPresence(user.uid);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid]);
+
+  useEffect(() => {
+    const onVisibility = () => { pausedRef.current = document.hidden; };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
+
+  // --- Ana döngü: hareket + çizim + Firestore senkronu (madde 17) -------
+  useEffect(() => {
+    if (!ready) return undefined;
     let raf;
     let lastT = performance.now();
 
@@ -275,6 +466,32 @@ export default function KarakolWorldScreen({ onExit }) {
       }
       if (!moving) poseRef.current = 'idle';
 
+      // --- Firestore senkronu (madde 17) — Bank/Park'takiyle BİREBİR aynı.
+      if (!pausedRef.current && user) {
+        const p = posRef.current;
+        const movedDist = dist(p, lastSyncedPosRef.current);
+        const sinceLast = t - lastSyncRef.current;
+        if (moving) {
+          if (sinceLast > MOVE_SYNC_INTERVAL_MS && movedDist > MOVE_SYNC_MIN_DIST) {
+            lastSyncRef.current = t; lastSyncedPosRef.current = { ...p };
+            updatePresence(user.uid, {
+              x: p.x, y: p.y, facing: facingRef.current, pose: poseRef.current, seat: null,
+            });
+          }
+        } else if (wasMovingRef.current) {
+          lastSyncRef.current = t; lastSyncedPosRef.current = { ...p };
+          updatePresence(user.uid, {
+            x: p.x, y: p.y, facing: facingRef.current, pose: 'idle', seat: null,
+          });
+        } else if (sinceLast > IDLE_HEARTBEAT_MS) {
+          lastSyncRef.current = t;
+          updatePresence(user.uid, {
+            x: p.x, y: p.y, facing: facingRef.current, pose: 'idle', seat: null,
+          });
+        }
+      }
+      wasMovingRef.current = moving;
+
       renderFrame();
       if (cameraOpenRef.current && !cameraDoneRef.current) renderCameraPreview();
       raf = requestAnimationFrame(tick);
@@ -282,9 +499,21 @@ export default function KarakolWorldScreen({ onExit }) {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [ready, user?.uid]);
 
-  // --- Kamera (madde 11/12) — bkz. BankWorldScreen'deki aynı desen.
+  const sendChat = () => {
+    const text = chatText.trim();
+    if (!text || !user) return;
+    const ts = Date.now();
+    setMyBubble({ text, ts });
+    updatePresence(user.uid, {
+      x: posRef.current.x, y: posRef.current.y, facing: facingRef.current, pose: 'idle', seat: null,
+      chatText: text, chatTs: ts,
+    });
+    setChatText('');
+  };
+
+  // --- Kamera (madde 2/13) — BankWorldScreen'deki aynı desen.
   function buildCameraEntities() {
     const p = posRef.current;
     const self = {
@@ -293,6 +522,7 @@ export default function KarakolWorldScreen({ onExit }) {
       pose: poseRef.current || 'idle',
       facing: facingRef.current,
       isSelf: true,
+      scale: AVATAR_SCALE,
     };
     return { originX: p.x, originY: p.y, entities: [self] };
   }
@@ -326,6 +556,7 @@ export default function KarakolWorldScreen({ onExit }) {
       entities: frame.entities,
       getAvatarImage,
       drawBackground: (bgCtx) => drawKarakolSceneBackground(bgCtx, getAvatarImage),
+      focalScale: AVATAR_SCALE,
     });
   }
 
@@ -364,29 +595,58 @@ export default function KarakolWorldScreen({ onExit }) {
       ctx.stroke();
     }
 
-    const myEntity = {
-      x: posRef.current.x, baseY: posRef.current.y,
-      avatar: playerRef.current?.avatar, pose: poseRef.current,
-      facing: facingRef.current, isSelf: true,
-    };
-    drawAvatarSprite(ctx, myEntity, getAvatarImage, { showName: false });
+    const now = Date.now();
+    const myBubbleNow = myBubbleRef.current && now - myBubbleRef.current.ts < CHAT_BUBBLE_MS ? myBubbleRef.current : null;
 
-    // NPC konuşma baloncukları
+    const rawEntities = [
+      ...othersRef.current.map((o) => ({
+        x: o.x, y: o.y, avatar: o.avatar, pose: o.pose || 'idle',
+        facing: o.facing || 'down', name: o.displayName || 'Oyuncu',
+        bubbleData: o.chatText && o.chatTs && now - o.chatTs < CHAT_BUBBLE_MS ? { text: o.chatText, ts: o.chatTs } : null,
+        isSelf: false,
+      })),
+      {
+        x: posRef.current.x, y: posRef.current.y, avatar: playerRef.current?.avatar,
+        pose: poseRef.current, facing: facingRef.current,
+        name: playerRef.current?.displayName || 'Sen', bubbleData: myBubbleNow, isSelf: true,
+      },
+    ];
+    const entities = rawEntities
+      .map((e) => ({ ...e, baseY: e.y }))
+      .sort((a, b) => a.y - b.y);
+    entities.forEach((e) => drawAvatarSprite(ctx, e, getAvatarImage, { showName: !e.isSelf, scale: AVATAR_SCALE }));
+
+    // NPC konuşma baloncukları — memur, komiser, 2 koruma.
     const bubbleItems = [];
     const officerLine = cyclingLine(OFFICER_NPC.lines, { phase: 0 });
     if (officerLine) {
       const lines = wrapBubbleText(ctx, officerLine);
       const { w, h } = measureBubble(ctx, lines);
-      const anchorY = OFFICER.cy - SPRITE_H - 20;
-      bubbleItems.push({ x: OFFICER.cx, w, h, lines, ts: 0, naturalTop: anchorY - h });
+      const anchorY = RESEPSIYON.cy - RESEPSIYON.hh - 30 - SPRITE_H * AVATAR_SCALE - 10;
+      bubbleItems.push({ x: RESEPSIYON.cx, w, h, lines, ts: 0, naturalTop: anchorY - h });
     }
     const commissionerLine = cyclingLine(COMMISSIONER_NPC.lines, { phase: 11 });
     if (commissionerLine) {
       const lines = wrapBubbleText(ctx, commissionerLine);
       const { w, h } = measureBubble(ctx, lines);
-      const anchorY = COMMISSIONER_DESK.cy - COMMISSIONER_DESK.hh - 30 - SPRITE_H - 10;
+      const anchorY = COMMISSIONER_DESK.cy - COMMISSIONER_DESK.hh - 30 - SPRITE_H * AVATAR_SCALE - 10;
       bubbleItems.push({ x: COMMISSIONER_DESK.cx, w, h, lines, ts: 1, naturalTop: anchorY - h });
     }
+    KORUMALAR.forEach((k, i) => {
+      const line = cyclingLine(k.lines, { phase: 20 + i * 6 });
+      if (!line) return;
+      const lines = wrapBubbleText(ctx, line);
+      const { w, h } = measureBubble(ctx, lines);
+      const anchorY = k.cy - SPRITE_H * AVATAR_SCALE - 18;
+      bubbleItems.push({ x: k.cx, w, h, lines, ts: 2 + i, naturalTop: anchorY - h });
+    });
+    entities.forEach((e, i) => {
+      if (!e.bubbleData) return;
+      const lines = wrapBubbleText(ctx, e.bubbleData.text);
+      const { w, h } = measureBubble(ctx, lines);
+      const anchorY = e.baseY - SPRITE_H * AVATAR_SCALE - 8;
+      bubbleItems.push({ x: e.x, w, h, lines, ts: 100 + i, naturalTop: anchorY - h });
+    });
     layoutBubbles(bubbleItems).forEach((item) => drawBubbleBox(ctx, item, W));
   }
 
@@ -401,12 +661,12 @@ export default function KarakolWorldScreen({ onExit }) {
   function handleCanvasClick(e) {
     const p = pointerToCanvas(e);
 
-    if (dist(p, OFFICER) < OFFICER.r + 24) {
-      if (dist(posRef.current, OFFICER) < INTERACT_RADIUS) {
+    if (dist(p, RESEPSIYON) < RESEPSIYON.hw + 30) {
+      if (dist(posRef.current, RESEPSIYON) < INTERACT_RADIUS + RESEPSIYON.hh) {
         setPanel('bribe');
       } else {
         pendingActionRef.current = { type: 'officer' };
-        targetRef.current = { x: OFFICER.cx, y: OFFICER.cy + 56 };
+        targetRef.current = { x: RESEPSIYON.cx, y: RESEPSIYON.cy + RESEPSIYON.hh + 46 };
       }
       return;
     }
@@ -435,11 +695,12 @@ export default function KarakolWorldScreen({ onExit }) {
   }
 
   return (
-    <div className="ws-fullscreen" style={{ '--ws-bg': '#26262c', '--ws-panel-bg': '#1c1c24' }}>
+    <div className="ws-fullscreen" style={{ '--ws-bg': '#3a1116', '--ws-panel-bg': '#1c1c24' }}>
       <Hud suspicion={player?.suspicion ?? 0} reputation={player?.reputation ?? 0} gold={player?.gold ?? 0} />
       <button className="ws-exit-btn" onClick={onExit}>✕</button>
 
       <div className="ws-canvas-wrap">
+        {!ready && <div className="ws-loading">Karakola giriliyor…</div>}
         <canvas
           ref={canvasRef}
           width={W}
@@ -447,8 +708,24 @@ export default function KarakolWorldScreen({ onExit }) {
           className="ws-canvas"
           onPointerDown={handleCanvasClick}
         />
-        <button className="ws-phone-btn" onClick={() => setPhoneOpen(true)} title="Telefon">📱</button>
-        <button className="ws-camera-btn" onClick={openCamera} title="Fotoğraf çek">📷</button>
+        {ready && (
+          <>
+            <button className="ws-phone-btn" onClick={() => setPhoneOpen(true)} title="Telefon">📱</button>
+            <button className="ws-camera-btn" onClick={openCamera} title="Fotoğraf çek">📷</button>
+          </>
+        )}
+      </div>
+
+      <div className="ws-chat-row">
+        <input
+          className="ws-chat-input"
+          placeholder="Bir şey yaz…"
+          value={chatText}
+          maxLength={140}
+          onChange={(e) => setChatText(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && sendChat()}
+        />
+        <button className="ws-chat-send" onClick={sendChat}>Gönder</button>
       </div>
 
       {phoneOpen && <PhoneScreen onClose={() => setPhoneOpen(false)} onEnterTable={() => {}} />}

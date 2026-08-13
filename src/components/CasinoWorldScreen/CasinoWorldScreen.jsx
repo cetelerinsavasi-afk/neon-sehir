@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
+import { useInteriorPresence } from '../../hooks/useInteriorPresence';
 import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes';
 import {
   roundRectC, drawAvatarSprite, createAvatarImageCache, drawHeldIcon, renderPhotoFrame,
@@ -12,19 +13,21 @@ import PhoneScreen from '../Phone/PhoneScreen';
 import LotteryScreen from '../LotteryScreen/LotteryScreen';
 import SlotScreen from '../SlotScreen/SlotScreen';
 import OnNumaraScreen from '../OnNumaraScreen/OnNumaraScreen';
-import { buyFromGazinoBar, createSixtagramPost } from '../../services/gameActions';
+import { buyFromGazinoBar, createSixtagramPost, enterInterior } from '../../services/gameActions';
 import '../../styles/worldScreenChrome.css';
 import './CasinoWorldScreen.css';
 
-// --- Gazino içi (madde 7-9) ---------------------------------------------
-// Bank/Karakol/Camii'yle BİREBİR aynı iskelet — tek oyunculu. Piyango,
-// slot ve 10 Numara'nın TÜMÜ mevcut ekranlar (LotteryScreen/SlotScreen/
-// OnNumaraScreen) — sadece hangi istasyona tıklandığında hangisinin
-// açılacağını yönlendiriyoruz. SADECE bar YENİ bir mekanik (madde 9) —
-// Park büfesindeki `buyFromBufe`yle birebir aynı yapıda ama kendi fiyat
-// listesiyle `buyFromGazinoBar` Cloud Function'ı eklendi (bkz.
-// functions/index.js). Casino'nun telefon uygulaması (madde 8) hiç
-// dokunulmadan CasinoScreen üzerinden aynen çalışmaya devam ediyor.
+// --- Gazino içi (madde 15 revizyonu + madde 17 canlı/çok oyunculu) --------
+// Kullanıcının başka bir Claude oturumuna hazırlattığı referans örneğe göre
+// yeniden düzenlendi: üstte şişe duvarlı bar + taburelerdeki dizilim, sol
+// üstte piyango standı, ortada dikey dizili keçeli (kadife yeşil) 10 Numara
+// masaları, altta slot makineleri sırası — referanstaki 600×960 portre
+// yerleşimin 680×1180'e uyarlanmış hali. Zemin de referanstaki bordo
+// dama+baklava desenine yakınlaştırıldı. Piyango/slot/10 Numara'nın TÜM iş
+// mantığı zaten mevcut ekranlarda (LotteryScreen/SlotScreen/OnNumaraScreen)
+// — burada sadece istasyon çizimi/yönlendirme değişti. Sıradan (kumarsız)
+// oturma sandalyeleri referansta yer almadığı için kaldırıldı (madde 15:
+// "bölümlerin konumu ... attığım örnektekine yakın olsun").
 const W = 680;
 const H = 1180;
 const PLAYER_SPEED = 240;
@@ -32,37 +35,13 @@ const PLAYER_R = 20;
 const INTERACT_RADIUS = 76;
 const HOLDING_MS = 120_000; // Park büfesiyle aynı süre (bkz. ParkWorldScreen)
 
-// NOT: sıra aralıkları bilerek geniş tutuldu — bir istasyonun ARKASINDAKİ
-// NPC sprite'ı (SPRITE_H=118) tezgahın üstünde epey yükseğe çıkıyor, bir
-// önceki satırdaki nesnenin altına çakışmaması için (bkz. Bank/Camii'de
-// düzeltilen benzer taşma sorunları) satırlar arası boşluk buna göre
-// hesaplandı.
-const SLOTS = [
-  { id: 'slot1', cx: 170, cy: 230 },
-  { id: 'slot2', cx: 340, cy: 230 },
-  { id: 'slot3', cx: 510, cy: 230 },
-];
-const SLOT_HW = 34;
-const SLOT_HH = 46;
+// AVATAR_SCALE (madde 13) — bkz. BankWorldScreen'deki aynı gerekçe.
+const AVATAR_SCALE = 1.22;
 
-const PIYANGO = { cx: 340, cy: 500, hw: 62, hh: 26 };
-const PIYANGO_NPC = {
-  name: 'Biletçi Fatma',
-  lines: ['Bugün şansın açık olabilir!', 'Bilet al, kura seni seçsin.', 'Büyük ikramiye bekliyor.'],
-  avatar: {
-    ...DEFAULT_AVATAR, gender: 'kadin', build: 'standart', skin: '#e0ac69',
-    hairStyle: 'ponytail', hairColor: '#7a1f2b', clothing: 'vest', clothColor: '#7a1f2b',
-    neckAcc: 'none', pantsColor: '#22262f', background: 'transparent',
-  },
-};
-
-const TABLES_10NUMARA = [
-  { id: 'onnumara1', cx: 190, cy: 630 },
-  { id: 'onnumara2', cx: 490, cy: 630 },
-];
-const TABLE_R = 52;
-
-const BAR = { cx: 340, cy: 880, hw: 140, hh: 26 };
+// BAR — üstte, referanstaki gibi giriş banner'ının hemen altında, arkasında
+// şişe duvarı ve önünde taburelerle.
+const BAR = { x1: 120, y1: 190, x2: 560, y2: 230, cx: 340, cy: 210, hw: 220, hh: 20 };
+const BAR_STOOLS = [190, 290, 390, 490].map((x) => ({ x, y: BAR.y2 + 20 }));
 const BARTENDER_NPC = {
   name: 'Barmen Coşkun',
   lines: ['Ne alırdın?', 'Kokteylimiz meşhurdur.', 'Kazandın mı bari?'],
@@ -78,23 +57,57 @@ const BAR_MENU = [
   { id: 'kokteyl', label: 'Kokteyl', price: 500, emoji: '🍸' },
 ];
 
-// Sıradan (kumarsız) oturma masaları — sadece dekoratif, Bank'taki
-// sandalye/oturma mekaniğiyle BİREBİR aynı (tıkla, otur, panel yok).
-const CHAIRS = [
-  { id: 'chair_1', cx: 130, cy: 970 }, { id: 'chair_2', cx: 230, cy: 970 },
-  { id: 'chair_3', cx: 450, cy: 970 }, { id: 'chair_4', cx: 550, cy: 970 },
+// PIYANGO — sol üstte, referanstaki gibi bar/masaların yanında ayrı bir
+// köşe stant.
+const PIYANGO = { x1: 40, y1: 300, x2: 190, y2: 372, cx: 115, cy: 336, hw: 75, hh: 36 };
+const PIYANGO_NPC = {
+  name: 'Biletçi Fatma',
+  lines: ['Bugün şansın açık olabilir!', 'Bilet al, kura seni seçsin.', 'Büyük ikramiye bekliyor.'],
+  avatar: {
+    ...DEFAULT_AVATAR, gender: 'kadin', build: 'standart', skin: '#e0ac69',
+    hairStyle: 'ponytail', hairColor: '#7a1f2b', clothing: 'vest', clothColor: '#7a1f2b',
+    neckAcc: 'none', pantsColor: '#22262f', background: 'transparent',
+  },
+};
+
+// TABLES_10NUMARA — referanstaki dikey dizili keçeli masalar deseninde,
+// ortada alt alta 2 masa (gerçek "10 Numara" oyun mekaniği).
+const TABLES_10NUMARA = [
+  { id: 'onnumara1', cx: 340, cy: 450, hw: 130, hh: 40 },
+  { id: 'onnumara2', cx: 340, cy: 630, hw: 130, hh: 40 },
 ];
-const CHAIR_R = 24;
+
+// SLOTS — altta, girişe yakın sıra (referanstaki gibi).
+const SLOTS = [
+  { id: 'slot1', cx: 170, cy: 850 },
+  { id: 'slot2', cx: 340, cy: 850 },
+  { id: 'slot3', cx: 510, cy: 850 },
+];
+const SLOT_HW = 30;
+const SLOT_HH = 46;
+
+// GUVENLIK — madde 12: gazinoda tam 1 güvenlik NPC'si, slot sırasının
+// yanında sabit duruyor.
+const GUVENLIK = { cx: 620, cy: 850 };
+const GUVENLIK_NPC = {
+  name: 'Güvenlik',
+  lines: ['Her şey kontrol altında.', 'Lütfen düzeni koruyalım.', 'İyi akşamlar.'],
+  avatar: {
+    ...DEFAULT_AVATAR, gender: 'erkek', build: 'iri', skin: '#f1c27d',
+    hairStyle: 'short', hairColor: '#0d0a08', clothing: 'suit', clothColor: '#141821',
+    neckAcc: 'tie', pantsColor: '#0d0d0d', background: 'transparent',
+  },
+};
 
 const DOOR = { cx: 340, cy: 1080 };
 const START_POS = { x: 340, y: 990 };
 
 const OBSTACLES = [
-  ...SLOTS.map((s) => ({ cx: s.cx, cy: s.cy, hw: SLOT_HW, hh: SLOT_HH })),
-  { cx: PIYANGO.cx, cy: PIYANGO.cy, hw: PIYANGO.hw, hh: PIYANGO.hh },
-  ...TABLES_10NUMARA.map((t) => ({ cx: t.cx, cy: t.cy, r: TABLE_R })),
   { cx: BAR.cx, cy: BAR.cy, hw: BAR.hw, hh: BAR.hh },
-  ...CHAIRS.map((c) => ({ cx: c.cx, cy: c.cy, r: CHAIR_R })),
+  { cx: PIYANGO.cx, cy: PIYANGO.cy, hw: PIYANGO.hw, hh: PIYANGO.hh },
+  ...TABLES_10NUMARA.map((t) => ({ cx: t.cx, cy: t.cy, hw: t.hw, hh: t.hh })),
+  ...SLOTS.map((s) => ({ cx: s.cx, cy: s.cy, hw: SLOT_HW, hh: SLOT_HH })),
+  { cx: GUVENLIK.cx, cy: GUVENLIK.cy, r: 26 },
 ];
 
 function dist(a, b) {
@@ -103,20 +116,29 @@ function dist(a, b) {
   return Math.hypot(ax - bx, ay - by);
 }
 
+// drawFloor — madde 15: referanstaki bordo dama + soluk altın baklava
+// (diamond cross-hatch) zemin deseni.
 function drawFloor(c) {
-  c.fillStyle = '#1a0f1c';
+  c.fillStyle = '#3a1420';
   c.fillRect(0, 0, W, H);
-  c.strokeStyle = 'rgba(255,46,140,0.05)';
-  c.lineWidth = 1;
-  for (let x = 0; x <= W; x += 58) {
-    c.beginPath(); c.moveTo(x, 0); c.lineTo(x, H); c.stroke();
+  for (let y = 24; y < H - 24; y += 48) {
+    for (let x = 24; x < W - 24; x += 48) {
+      c.fillStyle = ((Math.floor(x / 48) + Math.floor(y / 48)) % 2 === 0) ? '#421828' : '#3a1420';
+      c.fillRect(x, y, 48, 48);
+    }
   }
-  for (let y = 0; y <= H; y += 58) {
-    c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke();
+  c.strokeStyle = 'rgba(201,162,39,0.10)';
+  c.lineWidth = 1;
+  for (let y = 24; y < H - 24; y += 48) {
+    for (let x = 24; x < W - 24; x += 48) {
+      c.beginPath();
+      c.moveTo(x + 24, y); c.lineTo(x + 48, y + 24); c.lineTo(x + 24, y + 48); c.lineTo(x, y + 24);
+      c.closePath(); c.stroke();
+    }
   }
 }
 
-const WALL_H = 128;
+const WALL_H = 150;
 
 function drawWalls(c) {
   const grd = c.createLinearGradient(0, 0, 0, WALL_H);
@@ -134,157 +156,190 @@ function drawWalls(c) {
   c.fillText('Şans Bu Gece Senin Tarafında', W / 2, 70);
 }
 
-function drawSlot(c, s) {
-  c.save();
-  c.translate(s.cx, s.cy);
-  c.fillStyle = 'rgba(0,0,0,0.2)';
-  c.beginPath(); c.ellipse(0, SLOT_HH + 8, SLOT_HW + 8, 10, 0, 0, Math.PI * 2); c.fill();
-  const grd = c.createLinearGradient(0, -SLOT_HH, 0, SLOT_HH);
-  grd.addColorStop(0, '#3a1030'); grd.addColorStop(1, '#1a0518');
-  c.fillStyle = grd;
-  roundRectC(c, -SLOT_HW, -SLOT_HH, SLOT_HW * 2, SLOT_HH * 2, 8); c.fill();
-  c.strokeStyle = '#ffd23f'; c.lineWidth = 1.5;
-  roundRectC(c, -SLOT_HW, -SLOT_HH, SLOT_HW * 2, SLOT_HH * 2, 8); c.stroke();
-  c.fillStyle = '#0d0510';
-  roundRectC(c, -SLOT_HW + 6, -SLOT_HH + 8, SLOT_HW * 2 - 12, 26, 4); c.fill();
-  c.fillStyle = '#ff5fa8';
-  c.font = 'bold 16px sans-serif';
-  c.textAlign = 'center';
-  c.fillText('🎰', 0, -SLOT_HH + 27);
-  c.restore();
+// drawBottleWall — barın arkasındaki renkli şişe duvarı (referanstaki
+// drawBarAndStools'un üst kısmıyla aynı çizim dili).
+function drawBottleWall(c) {
+  c.fillStyle = '#241014';
+  c.fillRect(BAR.x1, WALL_H, BAR.x2 - BAR.x1, BAR.y1 - WALL_H);
+  const colors = ['#7a1f1f', '#1f5c34', '#c9a227', '#2b2b6b', '#7a1f1f', '#c9a227', '#1f5c34', '#2b2b6b'];
+  const n = 10;
+  const stepW = (BAR.x2 - BAR.x1 - 20) / n;
+  for (let i = 0; i < n; i += 1) {
+    c.fillStyle = colors[i % colors.length];
+    c.fillRect(BAR.x1 + 10 + i * stepW, WALL_H + 6, stepW * 0.6, BAR.y1 - WALL_H - 12);
+  }
 }
 
-function drawPiyango(c) {
-  c.save();
-  c.translate(PIYANGO.cx, PIYANGO.cy);
-  c.fillStyle = 'rgba(0,0,0,0.18)';
-  c.beginPath(); c.ellipse(0, PIYANGO.hh + 8, PIYANGO.hw + 6, 12, 0, 0, Math.PI * 2); c.fill();
-  const grd = c.createLinearGradient(0, -PIYANGO.hh, 0, PIYANGO.hh);
-  grd.addColorStop(0, '#5c1a4a'); grd.addColorStop(1, '#3a0f30');
-  c.fillStyle = grd;
-  roundRectC(c, -PIYANGO.hw, -PIYANGO.hh, PIYANGO.hw * 2, PIYANGO.hh * 2, 6); c.fill();
-  c.strokeStyle = '#ffd23f'; c.lineWidth = 1.5;
-  roundRectC(c, -PIYANGO.hw, -PIYANGO.hh, PIYANGO.hw * 2, PIYANGO.hh * 2, 6); c.stroke();
-  c.fillStyle = '#1c0a18';
-  roundRectC(c, -36, -PIYANGO.hh - 14, 72, 16, 3); c.fill();
-  c.fillStyle = '#ffd23f';
-  c.font = 'bold 9px sans-serif';
+function drawBarAndStools(c) {
+  BAR_STOOLS.forEach((s) => {
+    c.fillStyle = 'rgba(0,0,0,0.2)';
+    c.beginPath(); c.ellipse(s.x, s.y + 10, 13, 5, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = '#7a1f1f';
+    c.beginPath(); c.arc(s.x, s.y, 11, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = '#c9a227'; c.lineWidth = 1.5;
+    c.beginPath(); c.arc(s.x, s.y, 11, 0, Math.PI * 2); c.stroke();
+    c.strokeStyle = '#3a1e14'; c.lineWidth = 2.5;
+    c.beginPath(); c.moveTo(s.x, s.y + 9); c.lineTo(s.x, s.y + 24); c.stroke();
+  });
+
+  c.fillStyle = 'rgba(0,0,0,0.2)';
+  c.fillRect(BAR.x1 - 6, BAR.y1 + 6, BAR.x2 - BAR.x1 + 12, BAR.y2 - BAR.y1 + 4);
+  c.fillStyle = '#3a1e14';
+  roundRectC(c, BAR.x1, BAR.y1, BAR.x2 - BAR.x1, BAR.y2 - BAR.y1, 8); c.fill();
+  c.strokeStyle = '#c9a227'; c.lineWidth = 2.5;
+  roundRectC(c, BAR.x1, BAR.y1, BAR.x2 - BAR.x1, BAR.y2 - BAR.y1, 8); c.stroke();
+  c.fillStyle = '#5a3222';
+  c.fillRect(BAR.x1 + 8, BAR.y1 + 4, BAR.x2 - BAR.x1 - 16, 8);
+  c.font = 'bold 12px sans-serif';
+  c.fillStyle = '#f3d99b';
   c.textAlign = 'center';
-  c.fillText('PİYANGO', 0, -PIYANGO.hh - 3);
-  c.restore();
+  c.fillText('BAR', (BAR.x1 + BAR.x2) / 2, BAR.y2 + 34);
 }
 
-function drawGamblingTable(c, t) {
-  c.save();
-  c.translate(t.cx, t.cy);
+function drawPiyangoStand(c) {
+  const p = PIYANGO;
   c.fillStyle = 'rgba(0,0,0,0.2)';
-  c.beginPath(); c.ellipse(0, TABLE_R * 0.5 + 8, TABLE_R + 8, 14, 0, 0, Math.PI * 2); c.fill();
-  c.fillStyle = '#0d5c3a';
-  c.beginPath(); c.ellipse(0, 0, TABLE_R, TABLE_R * 0.62, 0, 0, Math.PI * 2); c.fill();
-  c.strokeStyle = '#ffd23f'; c.lineWidth = 2.5;
-  c.stroke();
-  c.fillStyle = 'rgba(255,210,63,0.85)';
+  c.fillRect(p.x1 - 4, p.y1 + 6, p.x2 - p.x1 + 8, p.y2 - p.y1 + 4);
+  c.fillStyle = '#3a1e14';
+  roundRectC(c, p.x1, p.y1, p.x2 - p.x1, p.y2 - p.y1, 6); c.fill();
+  c.strokeStyle = '#c9a227'; c.lineWidth = 2;
+  roundRectC(c, p.x1, p.y1, p.x2 - p.x1, p.y2 - p.y1, 6); c.stroke();
+  for (let i = 0; i < 5; i += 1) {
+    c.beginPath();
+    c.moveTo(p.x1 + i * (p.x2 - p.x1) / 5, p.y1 - 16);
+    c.lineTo(p.x1 + (i + 1) * (p.x2 - p.x1) / 5, p.y1 - 16);
+    c.lineTo(p.x1 + (i + 1) * (p.x2 - p.x1) / 5 - 4, p.y1);
+    c.lineTo(p.x1 + i * (p.x2 - p.x1) / 5 + 4, p.y1);
+    c.closePath();
+    c.fillStyle = i % 2 === 0 ? '#c9a227' : '#7a1f1f';
+    c.fill();
+  }
+  c.fillStyle = '#f3ecd8';
+  for (let i = 0; i < 3; i += 1) {
+    c.fillRect(p.x1 + 12 + i * 16, p.y1 + 10, 11, 18);
+  }
   c.font = 'bold 11px sans-serif';
+  c.fillStyle = '#f3d99b';
   c.textAlign = 'center';
-  c.fillText('10', 0, 5);
-  c.fillStyle = 'rgba(255,210,63,0.7)';
-  c.font = 'bold 9px sans-serif';
-  c.fillText('NUMARA', 0, TABLE_R * 0.62 + 16);
+  c.fillText('PİYANGO', p.cx, p.y1 - 22);
+}
+
+// drawFeltTable — referanstaki keçeli (kadife yeşil) oval masa çizimi.
+function drawFeltTable(c, t, label) {
+  c.save();
+  c.fillStyle = 'rgba(0,0,0,0.22)';
+  roundRectC(c, t.cx - t.hw - 4, t.cy - t.hh + 6, t.hw * 2 + 8, t.hh * 2 + 8, t.hh); c.fill();
+  c.fillStyle = '#1f5c34';
+  roundRectC(c, t.cx - t.hw, t.cy - t.hh, t.hw * 2, t.hh * 2, t.hh); c.fill();
+  c.strokeStyle = '#c9a227'; c.lineWidth = 3;
+  roundRectC(c, t.cx - t.hw, t.cy - t.hh, t.hw * 2, t.hh * 2, t.hh); c.stroke();
+  c.strokeStyle = 'rgba(243,217,155,0.4)'; c.lineWidth = 1.5;
+  roundRectC(c, t.cx - t.hw + 10, t.cy - t.hh + 10, t.hw * 2 - 20, t.hh * 2 - 20, Math.max(0, t.hh - 10)); c.stroke();
+  c.fillStyle = '#f3ecd8';
+  for (let i = -1; i <= 1; i += 1) {
+    c.save();
+    c.translate(t.cx + i * 28, t.cy + 3);
+    c.rotate(i * 0.15);
+    roundRectC(c, -9, -12, 18, 24, 3); c.fill();
+    c.strokeStyle = '#2b2b2f'; c.lineWidth = 1;
+    roundRectC(c, -9, -12, 18, 24, 3); c.stroke();
+    c.restore();
+  }
+  c.font = 'bold 12px sans-serif';
+  c.fillStyle = '#f3d99b';
+  c.textAlign = 'center';
+  c.fillText(label, t.cx, t.cy - t.hh - 12);
   c.restore();
 }
 
-function drawBar(c, getAvatarImage) {
+// drawSlotMachine — referanstaki kollu makine çizimi.
+function drawSlotMachine(c, cx, cy) {
   c.save();
-  c.translate(BAR.cx, BAR.cy);
-  c.fillStyle = 'rgba(0,0,0,0.2)';
-  c.beginPath(); c.ellipse(0, BAR.hh + 10, BAR.hw + 10, 14, 0, 0, Math.PI * 2); c.fill();
-  const grd = c.createLinearGradient(0, -BAR.hh, 0, BAR.hh);
-  grd.addColorStop(0, '#4a2e18'); grd.addColorStop(1, '#2a1a0e');
-  c.fillStyle = grd;
-  roundRectC(c, -BAR.hw, -BAR.hh, BAR.hw * 2, BAR.hh * 2, 8); c.fill();
-  c.strokeStyle = '#ffd23f'; c.lineWidth = 1.5;
-  roundRectC(c, -BAR.hw, -BAR.hh, BAR.hw * 2, BAR.hh * 2, 8); c.stroke();
-  c.fillStyle = '#1c0a18';
-  roundRectC(c, -30, -BAR.hh - 14, 60, 16, 3); c.fill();
-  c.fillStyle = '#ffd23f';
-  c.font = 'bold 9px sans-serif';
-  c.textAlign = 'center';
-  c.fillText('BAR', 0, -BAR.hh - 3);
+  c.fillStyle = 'rgba(0,0,0,0.22)';
+  c.beginPath(); c.ellipse(cx, cy + 34, 27, 9, 0, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#7a1f1f';
+  roundRectC(c, cx - SLOT_HW, cy - SLOT_HH, SLOT_HW * 2, SLOT_HH * 2 - 12, 7); c.fill();
+  c.strokeStyle = '#c9a227'; c.lineWidth = 2;
+  roundRectC(c, cx - SLOT_HW, cy - SLOT_HH, SLOT_HW * 2, SLOT_HH * 2 - 12, 7); c.stroke();
+  c.fillStyle = '#141416';
+  roundRectC(c, cx - 20, cy - SLOT_HH + 10, 40, 30, 3); c.fill();
+  const syms = ['#c9a227', '#f3ecd8', '#1f5c34'];
+  for (let i = 0; i < 3; i += 1) {
+    c.fillStyle = syms[i];
+    c.fillRect(cx - 18 + i * 13, cy - SLOT_HH + 13, 10, 24);
+  }
+  c.fillStyle = '#c9a227';
+  roundRectC(c, cx - 7, cy + 10, 14, 12, 2); c.fill();
+  c.fillStyle = '#3a1e14';
+  c.beginPath(); c.arc(cx + 29, cy - 10, 4.5, 0, Math.PI * 2); c.fill();
+  c.strokeStyle = '#3a1e14'; c.lineWidth = 3;
+  c.beginPath(); c.moveTo(cx + 29, cy - 10); c.lineTo(cx + 29, cy + 18); c.stroke();
   c.restore();
+}
 
+function drawGuard(c, getAvatarImage) {
   drawAvatarSprite(c, {
-    x: BAR.cx, baseY: BAR.cy - BAR.hh - 30, avatar: BARTENDER_NPC.avatar, pose: 'idle', facing: 'down',
-  }, getAvatarImage, { showName: false });
-  c.fillStyle = 'rgba(20,12,8,0.85)';
+    x: GUVENLIK.cx, baseY: GUVENLIK.cy, avatar: GUVENLIK_NPC.avatar, pose: 'idle', facing: 'left',
+  }, getAvatarImage, { showName: false, scale: AVATAR_SCALE });
+  c.fillStyle = 'rgba(243,217,155,0.85)';
   c.font = 'bold 10px sans-serif';
   c.textAlign = 'center';
-  c.fillText(BARTENDER_NPC.name, BAR.cx, BAR.cy - BAR.hh - 60);
-}
-
-function drawChair(c, seat) {
-  c.save();
-  c.translate(seat.cx, seat.cy);
-  c.fillStyle = 'rgba(0,0,0,0.18)';
-  c.beginPath(); c.ellipse(0, 16, 20, 8, 0, 0, Math.PI * 2); c.fill();
-  c.fillStyle = '#3a1a30';
-  roundRectC(c, -14, -2, 28, 16, 3); c.fill();
-  c.fillStyle = '#5c2a4a';
-  roundRectC(c, -14, -28, 28, 26, 4); c.fill();
-  c.strokeStyle = '#ffd23f'; c.lineWidth = 1;
-  roundRectC(c, -14, -28, 28, 26, 4); c.stroke();
-  c.restore();
+  c.fillText(GUVENLIK_NPC.name, GUVENLIK.cx, GUVENLIK.cy + 16);
 }
 
 function drawDoor(c) {
   c.save();
   c.translate(DOOR.cx, DOOR.cy);
   c.fillStyle = '#1c1c22';
-  c.fillRect(-46, -6, 92, 40);
+  c.fillRect(-52, -6, 104, 46);
   c.fillStyle = '#5c2a4a';
-  c.fillRect(-40, -2, 38, 32);
-  c.fillRect(2, -2, 38, 32);
+  c.fillRect(-45, -2, 43, 37);
+  c.fillRect(2, -2, 43, 37);
   c.fillStyle = '#ffd23f';
-  c.beginPath(); c.arc(-8, 14, 2.4, 0, Math.PI * 2); c.fill();
-  c.beginPath(); c.arc(8, 14, 2.4, 0, Math.PI * 2); c.fill();
-  c.fillStyle = 'rgba(255,255,255,0.75)';
-  c.font = 'bold 10px sans-serif';
-  c.textAlign = 'center';
-  c.fillText('ÇIKIŞ', 0, 46);
+  c.beginPath(); c.arc(-9, 16, 2.6, 0, Math.PI * 2); c.fill();
+  c.beginPath(); c.arc(9, 16, 2.6, 0, Math.PI * 2); c.fill();
   c.restore();
 }
 
 // drawCasinoSceneBackground — canlı ekranın (renderFrame) statik kısmıyla
-// AYNI çizim dizisi (piyango NPC dahil), dışa açık — hem burada hem de
-// kamera fotoğrafında (bkz. openCamera/renderCameraPreview) VE Sixtagram
-// akışında (PostAttachment.jsx) kullanılıyor (bkz. madde 11/12). Bar'daki
-// barmen NPC'si zaten drawBar içinde çiziliyor, ayrıca eklemeye gerek yok.
+// AYNI çizim dizisi (NPC'ler dahil), dışa açık — hem burada hem de kamera
+// fotoğrafında (bkz. openCamera/renderCameraPreview) VE Sixtagram akışında
+// (PostAttachment.jsx) kullanılıyor.
 export function drawCasinoSceneBackground(ctx, getAvatarImage) {
   drawFloor(ctx);
-  CHAIRS.forEach((s) => drawChair(ctx, s));
   drawDoor(ctx);
-  TABLES_10NUMARA.forEach((t) => drawGamblingTable(ctx, t));
-  drawBar(ctx, getAvatarImage);
+  TABLES_10NUMARA.forEach((t, i) => drawFeltTable(ctx, t, `10 NUMARA ${i + 1}`));
+  drawPiyangoStand(ctx);
+  SLOTS.forEach((s) => drawSlotMachine(ctx, s.cx, s.cy));
+  drawGuard(ctx, getAvatarImage);
+  drawBottleWall(ctx);
+  drawBarAndStools(ctx);
   drawWalls(ctx);
-  drawPiyango(ctx);
-  SLOTS.forEach((s) => drawSlot(ctx, s));
 
-  // Piyango NPC — büfenin/standın önünde sabit duruyor.
   drawAvatarSprite(ctx, {
-    x: PIYANGO.cx, baseY: PIYANGO.cy - PIYANGO.hh - 30, avatar: PIYANGO_NPC.avatar, pose: 'idle', facing: 'down',
-  }, getAvatarImage, { showName: false });
-  ctx.fillStyle = 'rgba(20,12,8,0.85)';
+    x: BAR.cx, baseY: BAR.y1 - 20, avatar: BARTENDER_NPC.avatar, pose: 'idle', facing: 'down',
+  }, getAvatarImage, { showName: false, scale: AVATAR_SCALE });
+  ctx.fillStyle = 'rgba(243,217,155,0.9)';
   ctx.font = 'bold 10px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(PIYANGO_NPC.name, PIYANGO.cx, PIYANGO.cy - PIYANGO.hh - 60);
+  ctx.fillText(BARTENDER_NPC.name, BAR.cx, BAR.y1 - 20 - SPRITE_H * AVATAR_SCALE - 8);
+
+  drawAvatarSprite(ctx, {
+    x: PIYANGO.cx, baseY: PIYANGO.y1 - 22, avatar: PIYANGO_NPC.avatar, pose: 'idle', facing: 'down',
+  }, getAvatarImage, { showName: false, scale: AVATAR_SCALE });
+  ctx.fillText(PIYANGO_NPC.name, PIYANGO.cx, PIYANGO.y1 - 22 - SPRITE_H * AVATAR_SCALE - 8);
 }
 
 export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable }) {
   const { user } = useAuth();
   const { player } = usePlayer();
+  const { others, updatePresence, clearPresence } = useInteriorPresence('gazino');
 
+  const [ready, setReady] = useState(false);
   const [panel, setPanel] = useState(null); // 'slot' | 'piyango' | 'onnumara' | 'bar' | null
-  const [sittingSeatId, setSittingSeatId] = useState(null);
   const [phoneOpen, setPhoneOpen] = useState(false);
+  const [chatText, setChatText] = useState('');
+  const [myBubble, setMyBubble] = useState(null);
   const [bufeBusy, setBufeBusy] = useState(null);
   const [barError, setBarError] = useState(null);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -298,7 +353,6 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
   const targetRef = useRef(null);
   const pendingActionRef = useRef(null);
   const facingRef = useRef('up');
-  const sittingSeatRef = useRef(null);
   const walkAnimRef = useRef(0);
   const poseRef = useRef('idle');
   const playerRef = useRef(null);
@@ -309,20 +363,71 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
   const cameraOpenRef = useRef(false);
   const cameraDoneRef = useRef(false);
   const getAvatarImageRef = useRef(createAvatarImageCache(buildFullAvatarSvgMarkup, DEFAULT_AVATAR));
+  // --- Canlı/çok oyunculu (madde 17) — Bank/Karakol/Camii ile BİREBİR aynı
+  // desen, bkz. hooks/useInteriorPresence.js.
+  const myBubbleRef = useRef(null);
+  const othersRef = useRef([]);
+  const lastSyncRef = useRef(0);
+  const lastSyncedPosRef = useRef({ ...START_POS });
+  const wasMovingRef = useRef(false);
+  const pausedRef = useRef(false);
+  const MOVE_SYNC_INTERVAL_MS = 300;
+  const MOVE_SYNC_MIN_DIST = 6;
+  const IDLE_HEARTBEAT_MS = 12_000;
+  const CHAT_BUBBLE_MS = 9500;
 
-  useEffect(() => { sittingSeatRef.current = sittingSeatId; }, [sittingSeatId]);
   useEffect(() => { playerRef.current = player; }, [player]);
+  useEffect(() => { myBubbleRef.current = myBubble; }, [myBubble]);
+  useEffect(() => { othersRef.current = others; }, [others]);
 
   useEffect(() => () => {
     if (holdingTimeoutRef.current) clearTimeout(holdingTimeoutRef.current);
   }, []);
 
+  useEffect(() => {
+    if (!myBubble) return undefined;
+    const id = setTimeout(() => setMyBubble(null), CHAT_BUBBLE_MS);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myBubble]);
+
   function getAvatarImage(avatar, pose) {
     return getAvatarImageRef.current(avatar, pose);
   }
 
-  // --- Ana döngü: hareket + çizim (Firestore yazma yok — tek oyunculu) --
+  // Gazinoya giriş/çıkış — BankWorldScreen ile BİREBİR aynı desen (bkz.
+  // functions/index.js enterInterior).
   useEffect(() => {
+    if (!user) return undefined;
+    let cancelled = false;
+    enterInterior('gazino')
+      .then((res) => {
+        if (cancelled) return;
+        const start = res.data?.presence || START_POS;
+        posRef.current = start;
+        lastSyncedPosRef.current = start;
+        setReady(true);
+      })
+      .catch((err) => {
+        console.error('Gazinoya giriş hatası:', err);
+        setReady(true);
+      });
+    return () => {
+      cancelled = true;
+      if (user) clearPresence(user.uid);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid]);
+
+  useEffect(() => {
+    const onVisibility = () => { pausedRef.current = document.hidden; };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
+
+  // --- Ana döngü: hareket + çizim + Firestore senkronu (madde 17) -------
+  useEffect(() => {
+    if (!ready) return undefined;
     let raf;
     let lastT = performance.now();
 
@@ -331,7 +436,7 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
       lastT = t;
       let moving = false;
 
-      if (!sittingSeatRef.current && targetRef.current) {
+      if (targetRef.current) {
         const p = posRef.current;
         const tgt = targetRef.current;
         const dx = tgt.x - p.x;
@@ -342,12 +447,7 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
           targetRef.current = null;
           const action = pendingActionRef.current;
           pendingActionRef.current = null;
-          if (action?.type === 'sit') {
-            sittingSeatRef.current = action.seat.id;
-            setSittingSeatId(action.seat.id);
-          } else if (action?.type) {
-            setPanel(action.type);
-          }
+          if (action?.type) setPanel(action.type);
         } else {
           moving = true;
           const vx = dx / d, vy = dy / d;
@@ -364,6 +464,32 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
       }
       if (!moving) poseRef.current = 'idle';
 
+      // --- Firestore senkronu (madde 17) — Bank/Park'takiyle BİREBİR aynı.
+      if (!pausedRef.current && user) {
+        const p = posRef.current;
+        const movedDist = dist(p, lastSyncedPosRef.current);
+        const sinceLast = t - lastSyncRef.current;
+        if (moving) {
+          if (sinceLast > MOVE_SYNC_INTERVAL_MS && movedDist > MOVE_SYNC_MIN_DIST) {
+            lastSyncRef.current = t; lastSyncedPosRef.current = { ...p };
+            updatePresence(user.uid, {
+              x: p.x, y: p.y, facing: facingRef.current, pose: poseRef.current, seat: null,
+            });
+          }
+        } else if (wasMovingRef.current) {
+          lastSyncRef.current = t; lastSyncedPosRef.current = { ...p };
+          updatePresence(user.uid, {
+            x: p.x, y: p.y, facing: facingRef.current, pose: 'idle', seat: null,
+          });
+        } else if (sinceLast > IDLE_HEARTBEAT_MS) {
+          lastSyncRef.current = t;
+          updatePresence(user.uid, {
+            x: p.x, y: p.y, facing: facingRef.current, pose: 'idle', seat: null,
+          });
+        }
+      }
+      wasMovingRef.current = moving;
+
       renderFrame();
       if (cameraOpenRef.current && !cameraDoneRef.current) renderCameraPreview();
       raf = requestAnimationFrame(tick);
@@ -371,19 +497,30 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [ready, user?.uid]);
 
-  // --- Kamera (madde 11/12) — diğer üç mekanla BİREBİR aynı desen; Casino
-  // oturma mekaniğine sahip olduğu için poz seçimi Bank'takiyle aynı
-  // (oturuyorsa 'sit', değilse canlı poseRef).
+  const sendChat = () => {
+    const text = chatText.trim();
+    if (!text || !user) return;
+    const ts = Date.now();
+    setMyBubble({ text, ts });
+    updatePresence(user.uid, {
+      x: posRef.current.x, y: posRef.current.y, facing: facingRef.current, pose: 'idle', seat: null,
+      chatText: text, chatTs: ts,
+    });
+    setChatText('');
+  };
+
+  // --- Kamera (madde 2/13) — BankWorldScreen'deki aynı desen.
   function buildCameraEntities() {
     const p = posRef.current;
     const self = {
       dx: 0, dy: 0,
       avatar: playerRef.current?.avatar,
-      pose: sittingSeatRef.current ? 'sit' : (poseRef.current || 'idle'),
+      pose: poseRef.current || 'idle',
       facing: facingRef.current,
       isSelf: true,
+      scale: AVATAR_SCALE,
     };
     return { originX: p.x, originY: p.y, entities: [self] };
   }
@@ -417,6 +554,7 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
       entities: frame.entities,
       getAvatarImage,
       drawBackground: (bgCtx) => drawCasinoSceneBackground(bgCtx, getAvatarImage),
+      focalScale: AVATAR_SCALE,
     });
   }
 
@@ -444,8 +582,6 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
     setBarError(null);
     try {
       await buyFromGazinoBar(item.id);
-      // Tek oyunculu (Firestore presence yok) — sadece ref'e yazmak yeterli,
-      // canvas döngüsü zaten her karede holdingRef.current'i okuyor.
       holdingRef.current = item.id;
       if (holdingTimeoutRef.current) clearTimeout(holdingTimeoutRef.current);
       holdingTimeoutRef.current = setTimeout(() => {
@@ -474,33 +610,61 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
       ctx.stroke();
     }
 
-    const sitShift = sittingSeatRef.current ? SPRITE_H * 0.32 : 0;
-    const myEntity = {
-      x: posRef.current.x, baseY: posRef.current.y + sitShift,
-      avatar: playerRef.current?.avatar, pose: sittingSeatRef.current ? 'sit' : poseRef.current,
-      facing: facingRef.current, isSelf: true, holding: holdingRef.current,
-    };
-    drawAvatarSprite(ctx, myEntity, getAvatarImage, { showName: false });
+    const now = Date.now();
+    const myBubbleNow = myBubbleRef.current && now - myBubbleRef.current.ts < CHAT_BUBBLE_MS ? myBubbleRef.current : null;
+
+    const rawEntities = [
+      ...othersRef.current.map((o) => ({
+        x: o.x, y: o.y, avatar: o.avatar, pose: o.pose || 'idle',
+        facing: o.facing || 'down', name: o.displayName || 'Oyuncu',
+        bubbleData: o.chatText && o.chatTs && now - o.chatTs < CHAT_BUBBLE_MS ? { text: o.chatText, ts: o.chatTs } : null,
+        isSelf: false,
+      })),
+      {
+        x: posRef.current.x, y: posRef.current.y, avatar: playerRef.current?.avatar,
+        pose: poseRef.current, facing: facingRef.current, holding: holdingRef.current,
+        name: playerRef.current?.displayName || 'Sen', bubbleData: myBubbleNow, isSelf: true,
+      },
+    ];
+    const entities = rawEntities
+      .map((e) => ({ ...e, baseY: e.y }))
+      .sort((a, b) => a.y - b.y);
+    entities.forEach((e) => drawAvatarSprite(ctx, e, getAvatarImage, { showName: !e.isSelf, scale: AVATAR_SCALE }));
+
     if (holdingRef.current) {
-      drawHeldIcon(ctx, holdingRef.current, posRef.current.x + 26, posRef.current.y - SPRITE_H * 0.42 + sitShift, { animate: true });
+      drawHeldIcon(ctx, holdingRef.current, posRef.current.x + 30, posRef.current.y - SPRITE_H * AVATAR_SCALE * 0.42, { animate: true });
     }
 
-    // NPC konuşma baloncukları
+    // NPC konuşma baloncukları + gerçek oyuncuların chat baloncukları.
     const bubbleItems = [];
     const piyangoLine = cyclingLine(PIYANGO_NPC.lines, { phase: 0 });
     if (piyangoLine) {
       const lines = wrapBubbleText(ctx, piyangoLine);
       const { w, h } = measureBubble(ctx, lines);
-      const anchorY = PIYANGO.cy - PIYANGO.hh - 30 - SPRITE_H - 10;
+      const anchorY = PIYANGO.y1 - 22 - SPRITE_H * AVATAR_SCALE - 10;
       bubbleItems.push({ x: PIYANGO.cx, w, h, lines, ts: 0, naturalTop: anchorY - h });
     }
     const bartenderLine = cyclingLine(BARTENDER_NPC.lines, { phase: 11 });
     if (bartenderLine) {
       const lines = wrapBubbleText(ctx, bartenderLine);
       const { w, h } = measureBubble(ctx, lines);
-      const anchorY = BAR.cy - BAR.hh - 30 - SPRITE_H - 10;
+      const anchorY = BAR.y1 - 20 - SPRITE_H * AVATAR_SCALE - 10;
       bubbleItems.push({ x: BAR.cx, w, h, lines, ts: 1, naturalTop: anchorY - h });
     }
+    const guardLine = cyclingLine(GUVENLIK_NPC.lines, { phase: 20 });
+    if (guardLine) {
+      const lines = wrapBubbleText(ctx, guardLine);
+      const { w, h } = measureBubble(ctx, lines);
+      const anchorY = GUVENLIK.cy - SPRITE_H * AVATAR_SCALE - 18;
+      bubbleItems.push({ x: GUVENLIK.cx, w, h, lines, ts: 2, naturalTop: anchorY - h });
+    }
+    entities.forEach((e, i) => {
+      if (!e.bubbleData) return;
+      const lines = wrapBubbleText(ctx, e.bubbleData.text);
+      const { w, h } = measureBubble(ctx, lines);
+      const anchorY = e.baseY - SPRITE_H * AVATAR_SCALE - 8;
+      bubbleItems.push({ x: e.x, w, h, lines, ts: 100 + i, naturalTop: anchorY - h });
+    });
     layoutBubbles(bubbleItems).forEach((item) => drawBubbleBox(ctx, item, W));
   }
 
@@ -510,11 +674,6 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
     const scaleX = W / rect.width;
     const scaleY = H / rect.height;
     return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
-  }
-
-  function standUp() {
-    sittingSeatRef.current = null;
-    setSittingSeatId(null);
   }
 
   function tryStation(p, station, radiusForClick, panelType, interactExtra = 0, standoff = 60) {
@@ -532,22 +691,14 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
 
   function handleCanvasClick(e) {
     const p = pointerToCanvas(e);
-    if (sittingSeatRef.current) standUp();
-
-    const chair = !sittingSeatRef.current && CHAIRS.find((s) => dist(p, s) < CHAIR_R + 16);
-    if (chair) {
-      pendingActionRef.current = { type: 'sit', seat: { id: chair.id, x: chair.cx, y: chair.cy + 6 } };
-      targetRef.current = { x: chair.cx, y: chair.cy + 6 };
-      return;
-    }
 
     const slot = SLOTS.find((s) => dist(p, s) < SLOT_HW + 30);
     if (slot && tryStation(p, slot, SLOT_HW + 30, 'slot', SLOT_HH, SLOT_HH + 46)) return;
 
     if (tryStation(p, PIYANGO, PIYANGO.hw + 30, 'piyango', PIYANGO.hh, PIYANGO.hh + 46)) return;
 
-    const table = TABLES_10NUMARA.find((t) => dist(p, t) < TABLE_R + 20);
-    if (table && tryStation(p, table, TABLE_R + 20, 'onnumara', TABLE_R * 0.5, TABLE_R + 40)) return;
+    const table = TABLES_10NUMARA.find((t) => dist(p, t) < t.hw + 20);
+    if (table && tryStation(p, table, table.hw + 20, 'onnumara', table.hh, table.hh + 46)) return;
 
     if (tryStation(p, BAR, BAR.hw + 30, 'bar', BAR.hh, BAR.hh + 46)) return;
 
@@ -580,6 +731,7 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
       <button className="ws-exit-btn" onClick={onExit}>✕</button>
 
       <div className="ws-canvas-wrap">
+        {!ready && <div className="ws-loading">Gazinoya giriliyor…</div>}
         <canvas
           ref={canvasRef}
           width={W}
@@ -587,8 +739,24 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
           className="ws-canvas"
           onPointerDown={handleCanvasClick}
         />
-        <button className="ws-phone-btn" onClick={() => setPhoneOpen(true)} title="Telefon">📱</button>
-        <button className="ws-camera-btn" onClick={openCamera} title="Fotoğraf çek">📷</button>
+        {ready && (
+          <>
+            <button className="ws-phone-btn" onClick={() => setPhoneOpen(true)} title="Telefon">📱</button>
+            <button className="ws-camera-btn" onClick={openCamera} title="Fotoğraf çek">📷</button>
+          </>
+        )}
+      </div>
+
+      <div className="ws-chat-row">
+        <input
+          className="ws-chat-input"
+          placeholder="Bir şey yaz…"
+          value={chatText}
+          maxLength={140}
+          onChange={(e) => setChatText(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && sendChat()}
+        />
+        <button className="ws-chat-send" onClick={sendChat}>Gönder</button>
       </div>
 
       {phoneOpen && <PhoneScreen onClose={() => setPhoneOpen(false)} onEnterTable={() => {}} />}

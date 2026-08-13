@@ -3,57 +3,63 @@ import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useImamState } from '../../hooks/useImamState';
 import { useMosqueAttendance } from '../../hooks/useMosqueAttendance';
+import { useBeggars } from '../../hooks/useBeggars';
+import { useInteriorPresence } from '../../hooks/useInteriorPresence';
 import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes';
 import {
-  drawAvatarSprite, createAvatarImageCache, renderPhotoFrame,
+  roundRectC, drawAvatarSprite, createAvatarImageCache, renderPhotoFrame,
   wrapBubbleText, measureBubble, layoutBubbles, drawBubbleBox,
   resolveObstaclePosition, cyclingLine, SPRITE_H,
 } from '../../lib/canvasWorldKit';
 import SimpleActionScreen from '../SimpleActionScreen/SimpleActionScreen';
+import AvatarSvg from '../AvatarSvg/AvatarSvg';
+import ImamBooklet from '../ImamBooklet/ImamBooklet';
 import { ImamPanel, BeggarsSection, WINDOW_HOURS } from '../MosqueScreen/MosqueScreen';
-import { prayAtMosque, createSixtagramPost } from '../../services/gameActions';
+import { prayAtMosque, createSixtagramPost, enterInterior } from '../../services/gameActions';
 import Hud from '../Hud/Hud';
 import PhoneScreen from '../Phone/PhoneScreen';
 import '../../styles/worldScreenChrome.css';
 import './MosqueWorldScreen.css';
 
-// --- Camii içi (madde 6) -----------------------------------------------
-// Bank/Karakol'la BİREBİR aynı iskelet — tek oyunculu. Camii'nin TÜM iş
-// mantığı (ibadet, imamlık başvurusu/nasihat/maaş, dilencilik/bağış) zaten
-// MosqueScreen.jsx'te tam olarak var — burada SADECE iki NPC'ye (imam,
-// dilenci) tıklayınca hangi bölümün açılacağını yönlendiriyoruz, hiçbir
-// yeni Firestore/Cloud Function mantığı eklenmedi.
+// --- Camii içi (madde 5 revizyonu + madde 17 canlı/çok oyunculu) ----------
+// Kullanıcının başka bir Claude oturumuna hazırlattığı referans örneğe göre
+// yeniden tasarlandı: kemerli/çinili mihrap, basamaklı minber, avize,
+// bordo-yeşil çizgili seccade/halı — hepsi referanstaki renk/desen diliyle.
+// Dilenciler artık AYRI, kendine özel bir köşede (DİLENCİ), gerçek
+// dilenci oyuncular (useBeggars) orada NPC olarak duruyor. Devamlı konuşan
+// 2 ambient NPC VE fiziksel "vakitteki cemaat" NPC'leri TAMAMEN kaldırıldı
+// (madde 5) — cemaat artık X butonunun yanındaki "Vakitteki Cemaat"
+// menüsünden (panel) görülüyor. Camide artık SADECE imam (varsa) ve
+// dilenci(ler) NPC olarak duruyor, başka hiçbir sahte NPC yok.
 const W = 680;
 const H = 1180;
 const PLAYER_SPEED = 240;
 const PLAYER_R = 20;
 const INTERACT_RADIUS = 76;
 
-const MIHRAB = { cx: 340, cy: 290, hw: 70, hh: 34 };
-const BEGGAR = { cx: 340, cy: 830, r: 26 };
-// Ambient (etkileşimsiz) cemaat NPC'leri — sadece madde 6'daki "genel
-// NPC'ler arada bir bir şeyler söylüyormuş gibi ~30sn'de bir konuşsun"
-// isteği için, cyclingLine zaten bunu destekliyor (yeni kod yok).
-const AMBIENT_NPCS = [
-  {
-    cx: 220, cy: 650,
-    lines: ['Selamünaleyküm.', 'Bugün cemaat kalabalık.', 'Allah kabul etsin.'],
-    avatar: { ...DEFAULT_AVATAR, gender: 'erkek', build: 'zayif', skin: '#c68863', hairStyle: 'kel', clothing: 'vest', clothColor: '#4a4a52', pantsColor: '#22262f', background: 'transparent' },
-  },
-  {
-    cx: 460, cy: 650,
-    lines: ['Hayırlı cumalar.', 'Vaktinde gelmeye çalışıyorum.', 'Huzur veriyor burası.'],
-    avatar: { ...DEFAULT_AVATAR, gender: 'kadin', build: 'standart', skin: '#e0ac69', hairStyle: 'bun', hairColor: '#3a2a1c', clothing: 'trenchcoat', clothColor: '#5c3a21', neckAcc: 'scarf', pantsColor: '#22262f', background: 'transparent' },
-  },
-];
+// AVATAR_SCALE (madde 13) — bkz. BankWorldScreen'deki aynı gerekçe.
+const AVATAR_SCALE = 1.22;
+
+// MIHRAB — imamın "nasihat vermediği" zamanlarda bulunduğu makam, kemerli
+// çinili niş (referanstaki gibi). x1/y1/x2/y2 + türetilmiş cx/cy/hw/hh.
+const MIHRAB = { x1: 230, y1: 160, x2: 450, y2: 330, cx: 340, cy: 245, hw: 110, hh: 85 };
+// MINBER — imamın nasihat verdiği (bugün nasihat verdiyse) durduğu basamaklı
+// kürsü, mihrabın sağında (referanstaki yerleşime yakın).
+const MINBER = { cx: 560, cy: 250, r: 48 };
+// CARPET — orta koridor/seccade şeridi (bordo+yeşil çizgili, referanstaki
+// desen). Sadece görsel, yürünebilir.
+const CARPET = { x1: 250, y1: 350, x2: 500, y2: 950 };
+// DILENCI — dilencilerin AYRI, kendine özel köşesi (madde 5: "dilencilerin
+// bölümü ayrı bi yer olsun. dilenciler orada dilensin."). Gerçek
+// dilenciler (useBeggars) burada NPC olarak duruyor.
+const DILENCI = { x1: 40, y1: 640, x2: 220, y2: 860 };
 
 const DOOR = { cx: 340, cy: 1080 };
 const START_POS = { x: 340, y: 990 };
 
 const OBSTACLES = [
   { cx: MIHRAB.cx, cy: MIHRAB.cy, hw: MIHRAB.hw, hh: MIHRAB.hh },
-  { cx: BEGGAR.cx, cy: BEGGAR.cy, r: BEGGAR.r },
-  ...AMBIENT_NPCS.map((n) => ({ cx: n.cx, cy: n.cy, r: 26 })),
+  { cx: MINBER.cx, cy: MINBER.cy, r: MINBER.r },
 ];
 
 function dist(a, b) {
@@ -62,172 +68,296 @@ function dist(a, b) {
   return Math.hypot(ax - bx, ay - by);
 }
 
+function inRect(p, r) {
+  return p.x >= r.x1 - 20 && p.x <= r.x2 + 20 && p.y >= r.y1 - 20 && p.y <= r.y2 + 20;
+}
+
 function istanbulDateKey(d) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
 }
 
-// İmamın "şu an ne yaptığı" — sunucuda ayrı bir alan yok, bu yüzden madde
-// 6'nın istediği "cyclic nasihat mi veriyor, namaz mı kıldırıyor" ayrımını
-// Bank'taki numaratör gibi saat bazlı deterministik bir kozmetik döngüyle
-// veriyoruz (60sn'de bir değişir) — gerçek bir durum senkronizasyonu
-// gerektirmiyor, tamamen görsel.
-function imamActivity(now) {
-  return Math.floor(now / 60000) % 3 === 0 ? 'namaz' : 'nasihat';
+// gaveSermonToday — madde 5: "nasihat verdiyse minberde nasihatını okusun
+// npc olarak, nasihat vermediyse imam makamında bulunsun." Rastgele/kozmetik
+// döngü DEĞİL, imamState'teki GERÇEK lastNasihatAt tarihine bakıyor.
+function gaveSermonToday(imam) {
+  if (!imam?.lastNasihatAt) return false;
+  const at = imam.lastNasihatAt.toDate?.() ?? null;
+  if (!at) return false;
+  return istanbulDateKey(at) === istanbulDateKey(new Date());
 }
 
 function drawFloor(c) {
-  c.fillStyle = '#241a10';
+  c.fillStyle = '#ded0ab';
   c.fillRect(0, 0, W, H);
-  c.strokeStyle = 'rgba(232,207,122,0.06)';
-  c.lineWidth = 1;
-  for (let x = 0; x <= W; x += 58) {
-    c.beginPath(); c.moveTo(x, 0); c.lineTo(x, H); c.stroke();
-  }
-  for (let y = 0; y <= H; y += 58) {
-    c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke();
+  for (let y = 24, row = 0; y < H - 24; y += 44, row += 1) {
+    for (let x = 24; x < W; x += 44) {
+      c.fillStyle = ((Math.floor(x / 44) + row) % 2 === 0) ? '#e6dab8' : '#dccca4';
+      c.fillRect(x, y, 44, 44);
+    }
   }
 }
 
-const WALL_H = 128;
+// drawCarpet — bordo+yeşil çizgili, kemer desenli seccade şeridi (referans
+// örnekteki drawCarpet ile aynı çizim mantığı).
+function drawCarpet(c) {
+  const { x1, y1, x2, y2 } = CARPET;
+  const maroonH = 34, greenH = 7, unit = maroonH + greenH;
+  c.save();
+  c.beginPath(); c.rect(x1, y1, x2 - x1, y2 - y1); c.clip();
+  for (let y = y1; y < y2; y += unit) {
+    c.fillStyle = '#6b1420';
+    c.fillRect(x1, y, x2 - x1, maroonH);
+    c.fillStyle = '#1f5c34';
+    c.fillRect(x1, y + maroonH, x2 - x1, greenH);
+    c.strokeStyle = 'rgba(201,162,39,0.55)';
+    c.lineWidth = 1.3;
+    for (let x = x1 + 20; x < x2 - 10; x += 42) {
+      const midY = y + maroonH / 2 + 6;
+      c.beginPath();
+      c.moveTo(x - 14, y + maroonH - 3);
+      c.lineTo(x - 14, midY);
+      c.quadraticCurveTo(x, y + 6, x + 14, midY);
+      c.lineTo(x + 14, y + maroonH - 3);
+      c.stroke();
+    }
+  }
+  c.restore();
+}
+
+// drawDilenciCorner — madde 5: dilencilerin AYRI köşesi (krem çini + bank +
+// "SADAKA" kutusu, referanstaki drawDilenciCorner ile aynı çizim dili).
+function drawDilenciCorner(c) {
+  const { x1, y1, x2, y2 } = DILENCI;
+  c.fillStyle = '#e6dab8';
+  c.fillRect(x1, y1, x2 - x1, y2 - y1);
+  for (let y = y1; y < y2; y += 36) {
+    for (let x = x1; x < x2; x += 36) {
+      c.fillStyle = ((Math.floor(x / 36) + Math.floor(y / 36)) % 2 === 0) ? '#ecdfc0' : '#e0d2ac';
+      c.fillRect(x, y, 36, 36);
+    }
+  }
+  c.strokeStyle = '#c9a227'; c.lineWidth = 2;
+  c.strokeRect(x1 + 4, y1 + 4, x2 - x1 - 8, y2 - y1 - 8);
+  c.fillStyle = '#6b4226';
+  roundRectC(c, x1 + 16, y1 + 18, x2 - x1 - 32, 20, 5); c.fill();
+  c.fillStyle = '#8a5a34';
+  roundRectC(c, x1 + 16, y1 + 14, x2 - x1 - 32, 8, 4); c.fill();
+  const bx = (x1 + x2) / 2 - 17, by = y2 - 58;
+  c.fillStyle = '#3a2a18';
+  roundRectC(c, bx, by, 34, 26, 4); c.fill();
+  c.strokeStyle = '#c9a227'; c.lineWidth = 1.5;
+  roundRectC(c, bx, by, 34, 26, 4); c.stroke();
+  c.fillStyle = '#c9a227';
+  c.fillRect(bx + 13, by + 4, 8, 2.5);
+  c.font = 'bold 9px sans-serif'; c.fillStyle = '#4a3a22'; c.textAlign = 'center';
+  c.fillText('SADAKA', bx + 17, by - 8);
+  c.fillStyle = 'rgba(74,58,34,0.75)';
+  c.font = 'bold 10px sans-serif';
+  c.fillText('DİLENCİLER', (x1 + x2) / 2, y1 - 8);
+}
+
+// drawBeggarNpcs — madde 5: "dilenci olanların npcsi olsun" — gerçek
+// dilenci oyuncular (useBeggars) köşede NPC olarak duruyor, sahte/scripted
+// NPC DEĞİL.
+function drawBeggarNpcs(c, beggars, getAvatarImage) {
+  const { x1, x2, y1 } = DILENCI;
+  const maxShown = 4;
+  const shown = (beggars || []).slice(0, maxShown);
+  const cols = 2;
+  shown.forEach((b, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = x1 + 60 + col * 75;
+    const y = y1 + 100 + row * 52;
+    drawAvatarSprite(c, {
+      x, baseY: y, avatar: b.avatar, pose: 'idle', facing: 'down',
+    }, getAvatarImage, { showName: false, scale: AVATAR_SCALE * 0.68 });
+  });
+  if (!shown.length) {
+    c.fillStyle = 'rgba(74,58,34,0.6)';
+    c.font = '10px sans-serif';
+    c.textAlign = 'center';
+    c.fillText('Bugün dilenci yok', (x1 + x2) / 2, y1 + 100);
+  }
+}
+
+const WALL_H = 150;
 
 function drawWalls(c) {
   const grd = c.createLinearGradient(0, 0, 0, WALL_H);
-  grd.addColorStop(0, '#1f3a2e'); grd.addColorStop(1, '#2c4f3d');
+  grd.addColorStop(0, '#3a2c18'); grd.addColorStop(1, '#4a3a22');
   c.fillStyle = grd;
   c.fillRect(0, 0, W, WALL_H);
-  c.fillStyle = '#14251c';
+  c.fillStyle = '#2a1f10';
   c.fillRect(0, WALL_H - 8, W, 8);
-  c.fillStyle = '#e8cf7a';
+  c.fillStyle = '#c9a227';
   c.font = 'bold 22px sans-serif';
   c.textAlign = 'center';
   c.fillText('CAMİİ', W / 2, 46);
   c.font = '11px sans-serif';
-  c.fillStyle = 'rgba(232,207,122,0.7)';
+  c.fillStyle = 'rgba(201,162,39,0.75)';
   c.fillText('Huzur ve İbadet Mekanı', W / 2, 70);
 }
 
+// drawMihrab — kemerli, çinili niş (referanstaki drawMihrab ile aynı çizim
+// mantığı: mavi/turkuaz çini zemin + krem baklava deseni + bordo noktalar).
 function drawMihrab(c, hasImam) {
+  const { x1, y1, x2, y2, cx } = MIHRAB;
   c.save();
-  c.translate(MIHRAB.cx, MIHRAB.cy);
-  c.fillStyle = 'rgba(0,0,0,0.2)';
-  c.beginPath(); c.ellipse(0, MIHRAB.hh + 10, MIHRAB.hw + 20, 14, 0, 0, Math.PI * 2); c.fill();
-  // Kemerli mihrap nişi
-  c.fillStyle = '#3a2f1d';
   c.beginPath();
-  c.moveTo(-MIHRAB.hw, MIHRAB.hh);
-  c.lineTo(-MIHRAB.hw, -MIHRAB.hh);
-  c.arc(0, -MIHRAB.hh, MIHRAB.hw, Math.PI, 0);
-  c.lineTo(MIHRAB.hw, MIHRAB.hh);
+  c.moveTo(x1, y2);
+  c.lineTo(x1, y1 + 40);
+  c.quadraticCurveTo(x1, y1 - 10, cx, y1 - 10);
+  c.quadraticCurveTo(x2, y1 - 10, x2, y1 + 40);
+  c.lineTo(x2, y2);
   c.closePath();
-  c.fill();
-  c.strokeStyle = '#e8cf7a'; c.lineWidth = 2;
-  c.stroke();
-  c.fillStyle = '#241a10';
-  c.beginPath();
-  c.moveTo(-MIHRAB.hw + 12, MIHRAB.hh);
-  c.lineTo(-MIHRAB.hw + 12, -MIHRAB.hh + 6);
-  c.arc(0, -MIHRAB.hh + 6, MIHRAB.hw - 12, Math.PI, 0);
-  c.lineTo(MIHRAB.hw - 12, MIHRAB.hh);
-  c.closePath();
-  c.fill();
-  if (!hasImam) {
-    c.fillStyle = 'rgba(232,207,122,0.6)';
-    c.font = 'bold 10px sans-serif';
-    c.textAlign = 'center';
-    c.fillText('İMAM YOK', 0, 0);
+  c.clip();
+  const tile = 16;
+  const cA = '#1c4f8c', cB = '#2e8b8b', cC = '#f5f0e0', cD = '#8c2e3a';
+  for (let y = y1 - 20; y < y2 + 10; y += tile) {
+    for (let x = x1 - 10; x < x2 + 10; x += tile) {
+      const gx = Math.round(x / tile), gy = Math.round(y / tile);
+      c.fillStyle = (gx + gy) % 2 === 0 ? cA : cB;
+      c.fillRect(x, y, tile, tile);
+      c.save();
+      c.translate(x + tile / 2, y + tile / 2);
+      c.rotate(Math.PI / 4);
+      c.fillStyle = cC;
+      c.fillRect(-tile * 0.22, -tile * 0.22, tile * 0.44, tile * 0.44);
+      c.restore();
+      if ((gx * 3 + gy) % 7 === 0) {
+        c.fillStyle = cD;
+        c.beginPath(); c.arc(x + tile / 2, y + tile / 2, 2.2, 0, Math.PI * 2); c.fill();
+      }
+    }
   }
   c.restore();
-}
 
-// Cemaat alanı — "o vakitte ibadet edip şu an orada olmayanlar" (bkz.
-// madde 6), useMosqueAttendance'tan gelen gerçek listeyi küçük ikonlarla
-// pasif olarak gösteriyoruz (tıklanamaz, sadece görsel roster).
-function drawCongregation(c, members, win, getAvatarImage) {
-  const areaY = 420;
-  c.fillStyle = 'rgba(232,207,122,0.55)';
-  c.font = 'bold 10px sans-serif';
+  c.strokeStyle = '#c9a227'; c.lineWidth = 4;
+  c.beginPath();
+  c.moveTo(x1, y2);
+  c.lineTo(x1, y1 + 40);
+  c.quadraticCurveTo(x1, y1 - 10, cx, y1 - 10);
+  c.quadraticCurveTo(x2, y1 - 10, x2, y1 + 40);
+  c.lineTo(x2, y2);
+  c.stroke();
+
+  c.fillStyle = 'rgba(0,0,0,0.18)';
+  c.beginPath(); c.ellipse(cx, y2 + 6, (x2 - x1) / 2, 10, 0, 0, Math.PI * 2); c.fill();
+
+  c.font = 'bold 12px sans-serif';
+  c.fillStyle = '#c9a227';
   c.textAlign = 'center';
-  c.fillText(`— ${win}. VAKİT CEMAATİ (${members.length}) —`, W / 2, areaY - 10);
-  const maxShown = 8;
-  const shown = members.slice(0, maxShown);
-  const cols = 4;
-  shown.forEach((m, i) => {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    const x = W / 2 - ((cols - 1) * 70) / 2 + col * 70;
-    const y = areaY + 26 + row * 58;
-    drawAvatarSprite(c, {
-      x, baseY: y, avatar: m.avatar, pose: 'idle', facing: 'down',
-    }, getAvatarImage, { showName: false, scale: 0.55 });
-  });
-  if (members.length > maxShown) {
-    c.fillStyle = 'rgba(232,207,122,0.5)';
-    c.font = '10px sans-serif';
-    c.fillText(`+${members.length - maxShown} daha`, W / 2, areaY + 26 + Math.ceil(shown.length / cols) * 58 + 6);
+  c.fillText('M İ H R A P', cx, y1 - 16);
+
+  if (!hasImam) {
+    c.fillStyle = 'rgba(245,240,224,0.85)';
+    c.font = 'bold 10px sans-serif';
+    c.fillText('İMAM YOK', cx, y2 - 16);
   }
 }
 
-function drawBeggar(c) {
+// drawMinber — basamaklı kürsü + hilal tepelik (referanstaki drawMinber ile
+// aynı çizim mantığı).
+function drawMinber(c) {
+  const { cx, cy, r } = MINBER;
   c.save();
-  c.translate(BEGGAR.cx, BEGGAR.cy);
+  c.translate(cx, cy);
   c.fillStyle = 'rgba(0,0,0,0.2)';
-  c.beginPath(); c.ellipse(0, 22, 26, 8, 0, 0, Math.PI * 2); c.fill();
-  // Basit bir kase (dilencinin önündeki bağış kabı)
-  c.fillStyle = '#5c4a2f';
-  c.beginPath(); c.ellipse(0, 18, 12, 5, 0, 0, Math.PI * 2); c.fill();
-  c.strokeStyle = '#e8cf7a'; c.lineWidth = 1;
-  c.stroke();
+  c.beginPath(); c.ellipse(0, 8, r - 4, (r - 4) * 0.5, 0, 0, Math.PI * 2); c.fill();
+  const steps = 5;
+  for (let i = 0; i < steps; i += 1) {
+    const w = r * 1.5 - i * 9;
+    const yy = 24 - i * 10;
+    c.fillStyle = i % 2 === 0 ? '#6b4226' : '#7a5233';
+    roundRectC(c, -w / 2, yy - 8, w, 10, 2); c.fill();
+  }
+  c.fillStyle = '#5a3a22';
+  roundRectC(c, -20, -32, 40, 22, 4); c.fill();
+  c.strokeStyle = '#c9a227'; c.lineWidth = 2;
+  roundRectC(c, -20, -32, 40, 22, 4); c.stroke();
+  c.fillStyle = '#c9a227';
+  c.beginPath();
+  c.moveTo(-22, -32); c.lineTo(0, -54); c.lineTo(22, -32);
+  c.closePath(); c.fill();
+  c.beginPath(); c.arc(0, -54, 3, 0, Math.PI * 2); c.fill();
+  c.strokeStyle = '#3a2a18'; c.lineWidth = 2;
+  c.beginPath(); c.moveTo(-r * 0.7, 16); c.lineTo(-13, -8); c.stroke();
+  c.beginPath(); c.moveTo(r * 0.7, 16); c.lineTo(13, -8); c.stroke();
+  c.font = 'bold 10px sans-serif';
+  c.fillStyle = '#4a3a22'; c.textAlign = 'center';
+  c.fillText('MİNBER', 0, 32);
   c.restore();
+}
+
+// drawChandelier — madde 5: avize. Referanstaki gibi yanan/dönen ışıklarla
+// animasyonlu (performance.now() ile), her karede yeniden çiziliyor.
+function drawChandelier(c) {
+  const cx = 340, cy = 470;
+  const now = performance.now();
+  const glow = c.createRadialGradient(cx, cy, 10, cx, cy, 130);
+  glow.addColorStop(0, 'rgba(255,224,150,0.32)');
+  glow.addColorStop(1, 'rgba(255,224,150,0)');
+  c.fillStyle = glow;
+  c.beginPath(); c.arc(cx, cy, 130, 0, Math.PI * 2); c.fill();
+  c.strokeStyle = '#c9a227'; c.lineWidth = 2;
+  c.beginPath(); c.arc(cx, cy, 54, 0, Math.PI * 2); c.stroke();
+  c.beginPath(); c.arc(cx, cy, 36, 0, Math.PI * 2); c.stroke();
+  for (let i = 0; i < 16; i += 1) {
+    const a = (i / 16) * Math.PI * 2 + now / 6000;
+    const lx = cx + Math.cos(a) * 54, ly = cy + Math.sin(a) * 54;
+    c.fillStyle = '#ffe08a';
+    c.beginPath(); c.arc(lx, ly, 3, 0, Math.PI * 2); c.fill();
+  }
+  c.fillStyle = '#c9a227';
+  c.beginPath(); c.arc(cx, cy, 8, 0, Math.PI * 2); c.fill();
 }
 
 function drawDoor(c) {
   c.save();
   c.translate(DOOR.cx, DOOR.cy);
   c.fillStyle = '#1c1c22';
-  c.fillRect(-46, -6, 92, 40);
-  c.fillStyle = '#2c4f3d';
-  c.fillRect(-40, -2, 38, 32);
-  c.fillRect(2, -2, 38, 32);
-  c.fillStyle = '#e8cf7a';
-  c.beginPath(); c.arc(-8, 14, 2.4, 0, Math.PI * 2); c.fill();
-  c.beginPath(); c.arc(8, 14, 2.4, 0, Math.PI * 2); c.fill();
-  c.fillStyle = 'rgba(255,255,255,0.75)';
-  c.font = 'bold 10px sans-serif';
-  c.textAlign = 'center';
-  c.fillText('ÇIKIŞ', 0, 46);
+  c.fillRect(-52, -6, 104, 46);
+  c.fillStyle = '#4a3a22';
+  c.fillRect(-45, -2, 43, 37);
+  c.fillRect(2, -2, 43, 37);
+  c.fillStyle = '#c9a227';
+  c.beginPath(); c.arc(-9, 16, 2.6, 0, Math.PI * 2); c.fill();
+  c.beginPath(); c.arc(9, 16, 2.6, 0, Math.PI * 2); c.fill();
   c.restore();
 }
 
-// drawMosqueSceneBackground — renderFrame'in statik+canlı-ama-deterministik
-// kısmıyla AYNI çizim dizisi, dışa açık (bkz. BankWorldScreen'deki
-// drawBankSceneBackground'la aynı gerekçe). imam/members/win burada da
-// PARAMETRE olarak veriliyor — kamera fotoğrafı da canlı state'in AYNI
-// anlık halini gösterir (rastgele/eski veri yok).
-export function drawMosqueSceneBackground(ctx, getAvatarImage, { imam, members, win } = {}) {
-  const now = Date.now();
+// drawMosqueSceneBackground — renderFrame'in statik+canlı kısmıyla AYNI
+// çizim dizisi, dışa açık (bkz. BankWorldScreen'deki aynı gerekçe). imam/
+// members/win/beggars PARAMETRE olarak veriliyor — kamera fotoğrafı da
+// canlı state'in AYNI anlık halini gösterir (rastgele/eski veri yok).
+// Camide artık SADECE imam (varsa, konumu nasihat durumuna göre değişir)
+// ve dilenci(ler) NPC olarak var — başka hiçbir scripted NPC YOK (madde 5).
+export function drawMosqueSceneBackground(ctx, getAvatarImage, { imam, beggars } = {}) {
   drawFloor(ctx);
-  drawBeggar(ctx);
-  drawCongregation(ctx, members || [], win || 1, getAvatarImage);
+  drawCarpet(ctx);
+  drawDilenciCorner(ctx);
+  drawBeggarNpcs(ctx, beggars, getAvatarImage);
   drawWalls(ctx);
   drawDoor(ctx);
   drawMihrab(ctx, Boolean(imam));
-
-  AMBIENT_NPCS.forEach((npc) => {
-    drawAvatarSprite(ctx, { x: npc.cx, baseY: npc.cy, avatar: npc.avatar, pose: 'idle', facing: 'down' }, getAvatarImage, { showName: false });
-  });
+  drawMinber(ctx);
+  drawChandelier(ctx);
 
   if (imam) {
+    const onMinber = gaveSermonToday(imam);
+    const standX = onMinber ? MINBER.cx : MIHRAB.cx;
+    const standY = onMinber ? MINBER.cy - 26 : MIHRAB.cy + 12;
     drawAvatarSprite(ctx, {
-      x: MIHRAB.cx, baseY: MIHRAB.cy - 6, avatar: imam.avatar, pose: 'idle', facing: 'down',
-    }, getAvatarImage, { showName: false });
+      x: standX, baseY: standY, avatar: imam.avatar, pose: 'idle', facing: 'down',
+    }, getAvatarImage, { showName: false, scale: AVATAR_SCALE });
     ctx.fillStyle = 'rgba(20,12,8,0.85)';
     ctx.font = 'bold 10px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(imam.displayName || 'İmam', MIHRAB.cx, MIHRAB.cy - SPRITE_H - 44);
-    const activity = imamActivity(now);
-    ctx.fillStyle = 'rgba(232,207,122,0.85)';
+    ctx.fillText(imam.displayName || 'İmam', standX, standY - SPRITE_H * AVATAR_SCALE - 14);
+    ctx.fillStyle = 'rgba(201,162,39,0.9)';
     ctx.font = 'bold 9px sans-serif';
-    ctx.fillText(activity === 'namaz' ? '🕌 Namaz Kıldırıyor' : '📖 Nasihat Veriyor', MIHRAB.cx, MIHRAB.cy - SPRITE_H - 30);
+    ctx.fillText(onMinber ? '📖 Nasihat Veriyor' : '🕌 Makamda', standX, standY - SPRITE_H * AVATAR_SCALE);
   }
 }
 
@@ -236,9 +366,15 @@ export default function MosqueWorldScreen({ onExit }) {
   const { player } = usePlayer();
   const { imam } = useImamState();
   const { members, window: win } = useMosqueAttendance();
+  const { beggars } = useBeggars();
+  const { others, updatePresence, clearPresence } = useInteriorPresence('camii');
 
-  const [panel, setPanel] = useState(null); // 'imam' | 'beggars' | null
+  const [ready, setReady] = useState(false);
+  const [panel, setPanel] = useState(null); // 'imam' | 'beggars' | 'congregation' | null
+  const [bookletOpen, setBookletOpen] = useState(false);
   const [phoneOpen, setPhoneOpen] = useState(false);
+  const [chatText, setChatText] = useState('');
+  const [myBubble, setMyBubble] = useState(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraCaption, setCameraCaption] = useState('');
   const [cameraBusy, setCameraBusy] = useState(false);
@@ -254,25 +390,74 @@ export default function MosqueWorldScreen({ onExit }) {
   const poseRef = useRef('idle');
   const playerRef = useRef(null);
   const imamRef = useRef(null);
-  const membersRef = useRef([]);
-  const winRef = useRef(win);
+  const beggarsRef = useRef([]);
   const cameraCanvasRef = useRef(null);
   const cameraFrameRef = useRef(null);
   const cameraOpenRef = useRef(false);
   const cameraDoneRef = useRef(false);
   const getAvatarImageRef = useRef(createAvatarImageCache(buildFullAvatarSvgMarkup, DEFAULT_AVATAR));
+  // --- Canlı/çok oyunculu (madde 17) — Bank/Karakol ile BİREBİR aynı desen.
+  const myBubbleRef = useRef(null);
+  const othersRef = useRef([]);
+  const lastSyncRef = useRef(0);
+  const lastSyncedPosRef = useRef({ ...START_POS });
+  const wasMovingRef = useRef(false);
+  const pausedRef = useRef(false);
+  const MOVE_SYNC_INTERVAL_MS = 300;
+  const MOVE_SYNC_MIN_DIST = 6;
+  const IDLE_HEARTBEAT_MS = 12_000;
+  const CHAT_BUBBLE_MS = 9500;
 
   useEffect(() => { playerRef.current = player; }, [player]);
   useEffect(() => { imamRef.current = imam; }, [imam]);
-  useEffect(() => { membersRef.current = members; }, [members]);
-  useEffect(() => { winRef.current = win; }, [win]);
+  useEffect(() => { beggarsRef.current = beggars; }, [beggars]);
+  useEffect(() => { myBubbleRef.current = myBubble; }, [myBubble]);
+  useEffect(() => { othersRef.current = others; }, [others]);
+
+  useEffect(() => {
+    if (!myBubble) return undefined;
+    const id = setTimeout(() => setMyBubble(null), CHAT_BUBBLE_MS);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myBubble]);
 
   function getAvatarImage(avatar, pose) {
     return getAvatarImageRef.current(avatar, pose);
   }
 
-  // --- Ana döngü: hareket + çizim (Firestore yazma yok — tek oyunculu) --
+  // Camiye giriş/çıkış — BankWorldScreen ile BİREBİR aynı desen (bkz.
+  // functions/index.js enterInterior).
   useEffect(() => {
+    if (!user) return undefined;
+    let cancelled = false;
+    enterInterior('camii')
+      .then((res) => {
+        if (cancelled) return;
+        const start = res.data?.presence || START_POS;
+        posRef.current = start;
+        lastSyncedPosRef.current = start;
+        setReady(true);
+      })
+      .catch((err) => {
+        console.error('Camiye giriş hatası:', err);
+        setReady(true);
+      });
+    return () => {
+      cancelled = true;
+      if (user) clearPresence(user.uid);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid]);
+
+  useEffect(() => {
+    const onVisibility = () => { pausedRef.current = document.hidden; };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
+
+  // --- Ana döngü: hareket + çizim + Firestore senkronu (madde 17) -------
+  useEffect(() => {
+    if (!ready) return undefined;
     let raf;
     let lastT = performance.now();
 
@@ -313,6 +498,32 @@ export default function MosqueWorldScreen({ onExit }) {
       }
       if (!moving) poseRef.current = 'idle';
 
+      // --- Firestore senkronu (madde 17) — Bank/Park'takiyle BİREBİR aynı.
+      if (!pausedRef.current && user) {
+        const p = posRef.current;
+        const movedDist = dist(p, lastSyncedPosRef.current);
+        const sinceLast = t - lastSyncRef.current;
+        if (moving) {
+          if (sinceLast > MOVE_SYNC_INTERVAL_MS && movedDist > MOVE_SYNC_MIN_DIST) {
+            lastSyncRef.current = t; lastSyncedPosRef.current = { ...p };
+            updatePresence(user.uid, {
+              x: p.x, y: p.y, facing: facingRef.current, pose: poseRef.current, seat: null,
+            });
+          }
+        } else if (wasMovingRef.current) {
+          lastSyncRef.current = t; lastSyncedPosRef.current = { ...p };
+          updatePresence(user.uid, {
+            x: p.x, y: p.y, facing: facingRef.current, pose: 'idle', seat: null,
+          });
+        } else if (sinceLast > IDLE_HEARTBEAT_MS) {
+          lastSyncRef.current = t;
+          updatePresence(user.uid, {
+            x: p.x, y: p.y, facing: facingRef.current, pose: 'idle', seat: null,
+          });
+        }
+      }
+      wasMovingRef.current = moving;
+
       renderFrame();
       if (cameraOpenRef.current && !cameraDoneRef.current) renderCameraPreview();
       raf = requestAnimationFrame(tick);
@@ -320,9 +531,21 @@ export default function MosqueWorldScreen({ onExit }) {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [ready, user?.uid]);
 
-  // --- Kamera (madde 11/12) — bkz. BankWorldScreen'deki aynı desen.
+  const sendChat = () => {
+    const text = chatText.trim();
+    if (!text || !user) return;
+    const ts = Date.now();
+    setMyBubble({ text, ts });
+    updatePresence(user.uid, {
+      x: posRef.current.x, y: posRef.current.y, facing: facingRef.current, pose: 'idle', seat: null,
+      chatText: text, chatTs: ts,
+    });
+    setChatText('');
+  };
+
+  // --- Kamera (madde 2/13) — BankWorldScreen'deki aynı desen.
   function buildCameraEntities() {
     const p = posRef.current;
     const self = {
@@ -331,6 +554,7 @@ export default function MosqueWorldScreen({ onExit }) {
       pose: poseRef.current || 'idle',
       facing: facingRef.current,
       isSelf: true,
+      scale: AVATAR_SCALE,
     };
     return { originX: p.x, originY: p.y, entities: [self] };
   }
@@ -364,8 +588,9 @@ export default function MosqueWorldScreen({ onExit }) {
       entities: frame.entities,
       getAvatarImage,
       drawBackground: (bgCtx) => drawMosqueSceneBackground(bgCtx, getAvatarImage, {
-        imam: imamRef.current, members: membersRef.current, win: winRef.current,
+        imam: imamRef.current, beggars: beggarsRef.current,
       }),
+      focalScale: AVATAR_SCALE,
     });
   }
 
@@ -394,7 +619,7 @@ export default function MosqueWorldScreen({ onExit }) {
     const ctx = canvas.getContext('2d');
 
     drawMosqueSceneBackground(ctx, getAvatarImage, {
-      imam: imamRef.current, members: membersRef.current, win: winRef.current,
+      imam: imamRef.current, beggars: beggarsRef.current,
     });
 
     if (targetRef.current) {
@@ -406,38 +631,53 @@ export default function MosqueWorldScreen({ onExit }) {
       ctx.stroke();
     }
 
-    const myEntity = {
-      x: posRef.current.x, baseY: posRef.current.y,
-      avatar: playerRef.current?.avatar, pose: poseRef.current,
-      facing: facingRef.current, isSelf: true,
-    };
-    drawAvatarSprite(ctx, myEntity, getAvatarImage, { showName: false });
+    const now = Date.now();
+    const myBubbleNow = myBubbleRef.current && now - myBubbleRef.current.ts < CHAT_BUBBLE_MS ? myBubbleRef.current : null;
 
-    // Konuşma baloncukları — imam (nasihat metni varsa onu döngüyle
-    // gösterir, yoksa genel bir davet cümlesi) + ambient NPC'ler (~30sn).
+    const rawEntities = [
+      ...othersRef.current.map((o) => ({
+        x: o.x, y: o.y, avatar: o.avatar, pose: o.pose || 'idle',
+        facing: o.facing || 'down', name: o.displayName || 'Oyuncu',
+        bubbleData: o.chatText && o.chatTs && now - o.chatTs < CHAT_BUBBLE_MS ? { text: o.chatText, ts: o.chatTs } : null,
+        isSelf: false,
+      })),
+      {
+        x: posRef.current.x, y: posRef.current.y, avatar: playerRef.current?.avatar,
+        pose: poseRef.current, facing: facingRef.current,
+        name: playerRef.current?.displayName || 'Sen', bubbleData: myBubbleNow, isSelf: true,
+      },
+    ];
+    const entities = rawEntities
+      .map((e) => ({ ...e, baseY: e.y }))
+      .sort((a, b) => a.y - b.y);
+    entities.forEach((e) => drawAvatarSprite(ctx, e, getAvatarImage, { showName: !e.isSelf, scale: AVATAR_SCALE }));
+
+    // Konuşma baloncukları — SADECE imam (nasihat metni varsa onu, yoksa
+    // genel bir davet cümlesi) + gerçek oyuncuların chat baloncukları.
+    // Ambient/cemaat NPC baloncukları TAMAMEN kaldırıldı (madde 5).
     const bubbleItems = [];
     const curImam = imamRef.current;
     if (curImam) {
-      const gaveSermonToday = curImam.lastNasihatAt
-        && istanbulDateKey(curImam.lastNasihatAt.toDate?.() ?? new Date(0)) === istanbulDateKey(new Date());
-      const imamLines = gaveSermonToday && curImam.lastNasihat
+      const onMinber = gaveSermonToday(curImam);
+      const imamLines = onMinber && curImam.lastNasihat
         ? [curImam.lastNasihat]
         : ['Namaza gelin.', 'Cemaatle kılınan namaz daha faziletlidir.'];
       const line = cyclingLine(imamLines, { intervalMs: 30000, phase: 3 });
       if (line) {
         const lines = wrapBubbleText(ctx, line);
         const { w, h } = measureBubble(ctx, lines);
-        const anchorY = MIHRAB.cy - SPRITE_H - 50;
-        bubbleItems.push({ x: MIHRAB.cx, w, h, lines, ts: 0, naturalTop: anchorY - h });
+        const standX = onMinber ? MINBER.cx : MIHRAB.cx;
+        const standY = onMinber ? MINBER.cy - 26 : MIHRAB.cy + 12;
+        const anchorY = standY - SPRITE_H * AVATAR_SCALE - 16;
+        bubbleItems.push({ x: standX, w, h, lines, ts: 0, naturalTop: anchorY - h });
       }
     }
-    AMBIENT_NPCS.forEach((npc, i) => {
-      const line = cyclingLine(npc.lines, { intervalMs: 30000, phase: 9 + i * 13 });
-      if (!line) return;
-      const lines = wrapBubbleText(ctx, line);
+    entities.forEach((e, i) => {
+      if (!e.bubbleData) return;
+      const lines = wrapBubbleText(ctx, e.bubbleData.text);
       const { w, h } = measureBubble(ctx, lines);
-      const anchorY = npc.cy - SPRITE_H - 14;
-      bubbleItems.push({ x: npc.cx, w, h, lines, ts: i + 1, naturalTop: anchorY - h });
+      const anchorY = e.baseY - SPRITE_H * AVATAR_SCALE - 8;
+      bubbleItems.push({ x: e.x, w, h, lines, ts: 100 + i, naturalTop: anchorY - h });
     });
     layoutBubbles(bubbleItems).forEach((item) => drawBubbleBox(ctx, item, W));
   }
@@ -453,25 +693,24 @@ export default function MosqueWorldScreen({ onExit }) {
   function handleCanvasClick(e) {
     const p = pointerToCanvas(e);
 
-    if (dist(p, MIHRAB) < MIHRAB.hw + 30) {
-      if (dist(posRef.current, MIHRAB) < INTERACT_RADIUS + MIHRAB.hh) {
+    if (inRect(p, MIHRAB) || dist(p, MINBER) < MINBER.r + 30) {
+      const approach = { x: MIHRAB.cx, y: MIHRAB.cy + MIHRAB.hh + 90 };
+      if (dist(posRef.current, approach) < INTERACT_RADIUS + 20) {
         setPanel('imam');
       } else {
         pendingActionRef.current = { type: 'imam' };
-        // +85 (Bank/Karakol'daki +46'dan fazla) — mihrap kemeri daha yüksek
-        // olduğu için oyuncu yeterince geride dursun, "İMAM YOK"/imam adı
-        // yazısıyla kafası çakışmasın (bkz. Bank'ta düzeltilen benzer sorun).
-        targetRef.current = { x: MIHRAB.cx, y: MIHRAB.cy + MIHRAB.hh + 85 };
+        targetRef.current = approach;
       }
       return;
     }
 
-    if (dist(p, BEGGAR) < BEGGAR.r + 24) {
-      if (dist(posRef.current, BEGGAR) < INTERACT_RADIUS) {
+    if (inRect(p, DILENCI)) {
+      const approach = { x: (DILENCI.x1 + DILENCI.x2) / 2, y: DILENCI.y2 + 50 };
+      if (dist(posRef.current, approach) < INTERACT_RADIUS + 30) {
         setPanel('beggars');
       } else {
         pendingActionRef.current = { type: 'beggar' };
-        targetRef.current = { x: BEGGAR.cx, y: BEGGAR.cy + 56 };
+        targetRef.current = approach;
       }
       return;
     }
@@ -494,7 +733,17 @@ export default function MosqueWorldScreen({ onExit }) {
       <Hud suspicion={player?.suspicion ?? 0} reputation={player?.reputation ?? 0} gold={player?.gold ?? 0} />
       <button className="ws-exit-btn" onClick={onExit}>✕</button>
 
+      {/* mww-menu — madde 5: X butonunun yanına imam/kitapçık/cemaat menüsü. */}
+      <div className="mww-menu">
+        <button className="mww-menu-btn" onClick={() => setPanel('imam')}>
+          {imam ? `İmam: ${imam.displayName}` : 'İmamlık Başvurusu'}
+        </button>
+        <button className="mww-menu-btn" onClick={() => setBookletOpen(true)}>İmam Kitapçığı</button>
+        <button className="mww-menu-btn" onClick={() => setPanel('congregation')}>Vakitteki Cemaat</button>
+      </div>
+
       <div className="ws-canvas-wrap">
+        {!ready && <div className="ws-loading">Camiye giriliyor…</div>}
         <canvas
           ref={canvasRef}
           width={W}
@@ -502,19 +751,36 @@ export default function MosqueWorldScreen({ onExit }) {
           className="ws-canvas"
           onPointerDown={handleCanvasClick}
         />
-        <button className="ws-phone-btn" onClick={() => setPhoneOpen(true)} title="Telefon">📱</button>
-        <button className="ws-camera-btn" onClick={openCamera} title="Fotoğraf çek">📷</button>
+        {ready && (
+          <>
+            <button className="ws-phone-btn" onClick={() => setPhoneOpen(true)} title="Telefon">📱</button>
+            <button className="ws-camera-btn" onClick={openCamera} title="Fotoğraf çek">📷</button>
+          </>
+        )}
+      </div>
+
+      <div className="ws-chat-row">
+        <input
+          className="ws-chat-input"
+          placeholder="Bir şey yaz…"
+          value={chatText}
+          maxLength={140}
+          onChange={(e) => setChatText(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && sendChat()}
+        />
+        <button className="ws-chat-send" onClick={sendChat}>Gönder</button>
       </div>
 
       {phoneOpen && <PhoneScreen onClose={() => setPhoneOpen(false)} onEnterTable={() => {}} />}
+      {bookletOpen && <ImamBooklet onClose={() => setBookletOpen(false)} />}
 
       {panel != null && (
         <div className="ws-panel-backdrop" onClick={() => setPanel(null)}>
           <div className="ws-panel" onClick={(e) => e.stopPropagation()}>
             <p className="ws-panel-title">
-              {panel === 'imam' ? '🕌 Mihrap — İbadet ve İmam' : '🤲 Cami Girişi — Dilenciler'}
+              {panel === 'imam' ? '🕌 Mihrap — İbadet ve İmam' : panel === 'beggars' ? '🤲 Dilenciler' : `📿 ${win}. Vakitteki Cemaat`}
             </p>
-            {panel === 'imam' ? (
+            {panel === 'imam' && (
               <>
                 <SimpleActionScreen
                   signInMessage="İbadet etmek için giriş yapmalısın."
@@ -526,12 +792,20 @@ export default function MosqueWorldScreen({ onExit }) {
                 />
                 <ImamPanel />
               </>
-            ) : (
-              <BeggarsSection />
             )}
-            <button className="ws-panel-btn" onClick={() => setPanel(null)}>
-              {panel === 'imam' ? 'Mihraptan Uzaklaş' : 'Girişten Uzaklaş'}
-            </button>
+            {panel === 'beggars' && <BeggarsSection />}
+            {panel === 'congregation' && (
+              <div className="mosque-congregation-list">
+                {members.length === 0 && <p className="mosque-hint">Bu vakitte henüz ibadet eden yok.</p>}
+                {members.map((m) => (
+                  <div key={m.id} className="mosque-member">
+                    <AvatarSvg avatar={m.avatar} size={30} rounded />
+                    <span>{m.displayName}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button className="ws-panel-btn" onClick={() => setPanel(null)}>Uzaklaş</button>
           </div>
         </div>
       )}

@@ -208,6 +208,11 @@ export const buyFromBufe = (itemId) => httpsCallable(functions, 'buyFromBufe')({
 
 export const buyFromGazinoBar = (itemId) => httpsCallable(functions, 'buyFromGazinoBar')({ itemId });
 
+// --- Girilebilir mekanlar: canlı/çok oyunculu (madde 17) ---
+
+export const enterInterior = (locationId) =>
+  httpsCallable(functions, 'enterInterior')({ locationId });
+
 export const placeLimanOrder = (materialType, quantity) =>
   httpsCallable(functions, 'placeLimanOrder')({ materialType, quantity });
 

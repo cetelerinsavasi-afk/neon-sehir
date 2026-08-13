@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
+import { useInteriorPresence } from '../../hooks/useInteriorPresence';
 import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes';
 import {
   roundRectC, drawAvatarSprite, createAvatarImageCache, renderPhotoFrame,
@@ -10,7 +11,7 @@ import {
 import Hud from '../Hud/Hud';
 import PhoneScreen from '../Phone/PhoneScreen';
 import BankScreen from '../BankScreen/BankScreen';
-import { createSixtagramPost } from '../../services/gameActions';
+import { createSixtagramPost, enterInterior } from '../../services/gameActions';
 import '../../styles/worldScreenChrome.css';
 import './BankWorldScreen.css';
 
@@ -26,17 +27,36 @@ const PLAYER_SPEED = 240;
 const PLAYER_R = 20;
 const INTERACT_RADIUS = 76;
 
+// AVATAR_SCALE (madde 13) — bina içlerinde her şey (avatar dahil) küçük
+// kalıyordu; bu SADECE bu mekana özel bir büyütme, paylaşılan SPRITE_H
+// varsayılanına (Park dahil tüm mekanların ortak temeli) DOKUNULMUYOR —
+// bkz. lib/canvasWorldKit.js drawAvatarSprite'ın `scale` parametresi.
+const AVATAR_SCALE = 1.22;
+
 // NOT: NPC'lerin başı sprite boyu (SPRITE_H=118) kadar counter'ın
 // ÜSTÜNE çıkıyor (bkz. drawTeller) — cy bu yüzden duvar panosunun
-// (0-148) rahatça altında kalacak kadar aşağıda seçildi, aksi halde
+// (0-160) rahatça altında kalacak kadar aşağıda seçildi, aksi halde
 // NPC başı duvardaki yazı/panoyla çakışıyordu.
 const TELLERS = [
-  { id: 'vezne1', cx: 170, cy: 340, label: 'VEZNE 1' },
-  { id: 'vezne2', cx: 340, cy: 340, label: 'VEZNE 2' },
-  { id: 'vezne3', cx: 510, cy: 340, label: 'VEZNE 3' },
+  { id: 'vezne1', cx: 170, cy: 350, label: 'VEZNE 1' },
+  { id: 'vezne2', cx: 340, cy: 350, label: 'VEZNE 2' },
+  { id: 'vezne3', cx: 510, cy: 350, label: 'VEZNE 3' },
 ];
-const TELLER_HW = 68;
-const TELLER_HH = 30;
+const TELLER_HW = 78;
+const TELLER_HH = 36;
+
+// GUVENLIK — madde 12: bankada tam 1 güvenlik NPC'si, veznelerin uzağında
+// (duvar kenarı) sabit duruyor, sadece dekoratif/atmosferik.
+const GUVENLIK = { cx: 610, cy: 560 };
+const GUVENLIK_NPC = {
+  name: 'Güvenlik',
+  lines: ['Sıraya girer misiniz.', 'Güvenli bankacılık.', 'İyi günler.'],
+  avatar: {
+    ...DEFAULT_AVATAR, gender: 'erkek', build: 'iri', skin: '#8d5524',
+    hairStyle: 'short', hairColor: '#0d0a08', clothing: 'suit', clothColor: '#14171c',
+    neckAcc: 'tie', pantsColor: '#0d0d0d', background: 'transparent',
+  },
+};
 
 const TELLER_NPCS = {
   vezne1: {
@@ -69,14 +89,14 @@ const TELLER_NPCS = {
   },
 };
 
-const NUMARATOR = { cx: 340, cy: 540, r: 30 };
+const NUMARATOR = { cx: 340, cy: 550, r: 36 };
 
 // Oturma/bekleme bölümü — tek tek sandalyeler (masa yok, sadece bekleme).
 const CHAIRS = [
-  { id: 'chair_1', cx: 220, cy: 700 }, { id: 'chair_2', cx: 340, cy: 700 }, { id: 'chair_3', cx: 460, cy: 700 },
-  { id: 'chair_4', cx: 220, cy: 790 }, { id: 'chair_5', cx: 340, cy: 790 }, { id: 'chair_6', cx: 460, cy: 790 },
+  { id: 'chair_1', cx: 200, cy: 710 }, { id: 'chair_2', cx: 340, cy: 710 }, { id: 'chair_3', cx: 480, cy: 710 },
+  { id: 'chair_4', cx: 200, cy: 810 }, { id: 'chair_5', cx: 340, cy: 810 }, { id: 'chair_6', cx: 480, cy: 810 },
 ];
-const CHAIR_R = 24;
+const CHAIR_R = 28;
 
 const DOOR = { cx: 340, cy: 1080 };
 const START_POS = { x: 340, y: 990 };
@@ -119,7 +139,7 @@ function drawFloor(c) {
 // NPC başları bunun rahatça altında kalacak şekilde seçildi (bkz.
 // TELLERS tanımındaki not) — numara panosu da tamamen bu bandın İÇİNDE,
 // böylece hiçbir zaman NPC'lerle çakışmıyor.
-const WALL_H = 148;
+const WALL_H = 160;
 
 function drawWalls(c) {
   const grd = c.createLinearGradient(0, 0, 0, WALL_H);
@@ -135,25 +155,25 @@ function drawWalls(c) {
   c.fillText('PARARA BANK', W / 2, 42);
   c.font = '11px sans-serif';
   c.fillStyle = 'rgba(232,207,122,0.7)';
-  c.fillText('Güvenilir. Hızlı. Sizin Bankanız.', W / 2, 128);
+  c.fillText('Güvenilir. Hızlı. Sizin Bankanız.', W / 2, 140);
 }
 
 // Vezne üstü numara panosu — duvar panosunun İÇİNDE, 3 veznenin
 // çağırdığı numaraları gösterir.
 function drawNumberBoard(c, calledInfo, now) {
-  const bx = 190, by = 66, bw = 300, bh = 26;
+  const bx = 170, by = 66, bw = 340, bh = 30;
   c.fillStyle = '#0d0d14';
   roundRectC(c, bx, by, bw, bh, 5); c.fill();
   c.strokeStyle = '#e8cf7a'; c.lineWidth = 1.4;
   roundRectC(c, bx, by, bw, bh, 5); c.stroke();
-  c.font = 'bold 13px monospace';
+  c.font = 'bold 14px monospace';
   c.textAlign = 'center';
   TELLERS.forEach((t, i) => {
     const isCalled = calledInfo && calledInfo.tellerId === t.id && calledInfo.until > now;
     const num = isCalled ? calledInfo.number : ambientTellerNumber(i, now);
     c.fillStyle = isCalled ? '#ff5fa8' : '#4ee88a';
     const x = bx + bw * ((i + 0.5) / 3);
-    c.fillText(`V${i + 1}: ${String(num).padStart(2, '0')}`, x, by + 18);
+    c.fillText(`V${i + 1}: ${String(num).padStart(2, '0')}`, x, by + 20);
   });
 }
 
@@ -177,44 +197,54 @@ function drawTeller(c, t, npc, getAvatarImage) {
   roundRectC(c, -TELLER_HW + 8, -TELLER_HH - 46, TELLER_HW * 2 - 16, 46, 4); c.stroke();
   // Tabela
   c.fillStyle = '#12241c';
-  roundRectC(c, -34, -TELLER_HH - 14, 68, 16, 3); c.fill();
+  roundRectC(c, -40, -TELLER_HH - 16, 80, 18, 3); c.fill();
   c.fillStyle = '#e8cf7a';
-  c.font = 'bold 10px sans-serif';
+  c.font = 'bold 11px sans-serif';
   c.textAlign = 'center';
   c.fillText(t.label, 0, -TELLER_HH - 3);
   c.restore();
 
   // NPC (tezgahın arkasında sabit duruyor)
   drawAvatarSprite(c, {
-    x: t.cx, baseY: t.cy - TELLER_HH - 30, avatar: npc.avatar, pose: 'idle', facing: 'down', name: npc.name,
-  }, getAvatarImage, { showName: false });
+    x: t.cx, baseY: t.cy - TELLER_HH - 32, avatar: npc.avatar, pose: 'idle', facing: 'down', name: npc.name,
+  }, getAvatarImage, { showName: false, scale: AVATAR_SCALE });
 
   c.fillStyle = 'rgba(20,12,8,0.8)';
-  c.font = 'bold 10px sans-serif';
+  c.font = 'bold 11px sans-serif';
   c.textAlign = 'center';
-  c.fillText(npc.name, t.cx, t.cy - TELLER_HH - 60);
+  c.fillText(npc.name, t.cx, t.cy - TELLER_HH - 66);
+}
+
+function drawGuard(c, getAvatarImage) {
+  drawAvatarSprite(c, {
+    x: GUVENLIK.cx, baseY: GUVENLIK.cy, avatar: GUVENLIK_NPC.avatar, pose: 'idle', facing: 'left',
+  }, getAvatarImage, { showName: false, scale: AVATAR_SCALE });
+  c.fillStyle = 'rgba(20,12,8,0.8)';
+  c.font = 'bold 11px sans-serif';
+  c.textAlign = 'center';
+  c.fillText(GUVENLIK_NPC.name, GUVENLIK.cx, GUVENLIK.cy + 16);
 }
 
 function drawNumaratorKiosk(c) {
   c.save();
   c.translate(NUMARATOR.cx, NUMARATOR.cy);
   c.fillStyle = 'rgba(0,0,0,0.2)';
-  c.beginPath(); c.ellipse(0, NUMARATOR.r + 4, NUMARATOR.r + 4, 10, 0, 0, Math.PI * 2); c.fill();
+  c.beginPath(); c.ellipse(0, NUMARATOR.r + 4, NUMARATOR.r + 4, 12, 0, 0, Math.PI * 2); c.fill();
   c.fillStyle = '#22262f';
-  roundRectC(c, -20, -60, 40, 100, 6); c.fill();
-  c.strokeStyle = '#e8cf7a'; c.lineWidth = 1.4;
-  roundRectC(c, -20, -60, 40, 100, 6); c.stroke();
+  roundRectC(c, -24, -72, 48, 120, 7); c.fill();
+  c.strokeStyle = '#e8cf7a'; c.lineWidth = 1.6;
+  roundRectC(c, -24, -72, 48, 120, 7); c.stroke();
   c.fillStyle = '#0d1a12';
-  roundRectC(c, -15, -52, 30, 22, 3); c.fill();
+  roundRectC(c, -18, -62, 36, 26, 4); c.fill();
   c.fillStyle = '#4ee88a';
-  c.font = 'bold 9px monospace';
+  c.font = 'bold 11px monospace';
   c.textAlign = 'center';
-  c.fillText('SIRA', 0, -38);
+  c.fillText('SIRA', 0, -45);
   c.fillStyle = '#c9432b';
-  roundRectC(c, -12, -20, 24, 10, 2); c.fill();
+  roundRectC(c, -15, -24, 30, 13, 3); c.fill();
   c.fillStyle = '#f4e6d0';
-  c.font = 'bold 7px sans-serif';
-  c.fillText('NUMARA AL', 0, -13);
+  c.font = 'bold 8px sans-serif';
+  c.fillText('NUMARA AL', 0, -15);
   c.restore();
 }
 
@@ -222,13 +252,13 @@ function drawChair(c, seat) {
   c.save();
   c.translate(seat.cx, seat.cy);
   c.fillStyle = 'rgba(0,0,0,0.18)';
-  c.beginPath(); c.ellipse(0, 16, 20, 8, 0, 0, Math.PI * 2); c.fill();
+  c.beginPath(); c.ellipse(0, 19, 24, 9, 0, 0, Math.PI * 2); c.fill();
   c.fillStyle = '#4a2e18';
-  roundRectC(c, -14, -2, 28, 16, 3); c.fill();
+  roundRectC(c, -17, -2, 34, 19, 4); c.fill();
   c.fillStyle = '#6b4226';
-  roundRectC(c, -14, -28, 28, 26, 4); c.fill();
-  c.strokeStyle = '#2b1b12'; c.lineWidth = 1;
-  roundRectC(c, -14, -28, 28, 26, 4); c.stroke();
+  roundRectC(c, -17, -33, 34, 31, 5); c.fill();
+  c.strokeStyle = '#2b1b12'; c.lineWidth = 1.2;
+  roundRectC(c, -17, -33, 34, 31, 5); c.stroke();
   c.restore();
 }
 
@@ -236,17 +266,13 @@ function drawDoor(c) {
   c.save();
   c.translate(DOOR.cx, DOOR.cy);
   c.fillStyle = '#2b1b12';
-  c.fillRect(-46, -6, 92, 40);
+  c.fillRect(-52, -6, 104, 46);
   c.fillStyle = '#8a5a34';
-  c.fillRect(-40, -2, 38, 32);
-  c.fillRect(2, -2, 38, 32);
+  c.fillRect(-45, -2, 43, 37);
+  c.fillRect(2, -2, 43, 37);
   c.fillStyle = '#e8cf7a';
-  c.beginPath(); c.arc(-8, 14, 2.4, 0, Math.PI * 2); c.fill();
-  c.beginPath(); c.arc(8, 14, 2.4, 0, Math.PI * 2); c.fill();
-  c.fillStyle = 'rgba(255,255,255,0.75)';
-  c.font = 'bold 10px sans-serif';
-  c.textAlign = 'center';
-  c.fillText('ÇIKIŞ', 0, 46);
+  c.beginPath(); c.arc(-9, 16, 2.6, 0, Math.PI * 2); c.fill();
+  c.beginPath(); c.arc(9, 16, 2.6, 0, Math.PI * 2); c.fill();
   c.restore();
 }
 
@@ -264,15 +290,20 @@ export function drawBankSceneBackground(ctx, getAvatarImage, calledInfo = null) 
   CHAIRS.forEach((s) => drawChair(ctx, s));
   drawNumaratorKiosk(ctx);
   TELLERS.forEach((t) => drawTeller(ctx, t, TELLER_NPCS[t.id], getAvatarImage));
+  drawGuard(ctx, getAvatarImage);
 }
 
 export default function BankWorldScreen({ onExit, onOpenHeist }) {
   const { user } = useAuth();
   const { player } = usePlayer();
+  const { others, updatePresence, clearPresence } = useInteriorPresence('banka');
 
+  const [ready, setReady] = useState(false);
   const [panel, setPanel] = useState(null); // 'bank' | null
   const [sittingSeatId, setSittingSeatId] = useState(null);
   const [phoneOpen, setPhoneOpen] = useState(false);
+  const [chatText, setChatText] = useState('');
+  const [myBubble, setMyBubble] = useState(null);
   const [myNumber, setMyNumber] = useState(null);
   const [calledInfo, setCalledInfo] = useState(null);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -304,6 +335,18 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
   const cameraOpenRef = useRef(false);
   const cameraDoneRef = useRef(false);
   const getAvatarImageRef = useRef(createAvatarImageCache(buildFullAvatarSvgMarkup, DEFAULT_AVATAR));
+  // --- Canlı/çok oyunculu (madde 17) — Park'takiyle BİREBİR aynı desen,
+  // bkz. hooks/useInteriorPresence.js ve ParkWorldScreen.jsx'teki yorumlar.
+  const myBubbleRef = useRef(null);
+  const othersRef = useRef([]);
+  const lastSyncRef = useRef(0);
+  const lastSyncedPosRef = useRef({ ...START_POS });
+  const wasMovingRef = useRef(false);
+  const pausedRef = useRef(false);
+  const MOVE_SYNC_INTERVAL_MS = 300;
+  const MOVE_SYNC_MIN_DIST = 6;
+  const IDLE_HEARTBEAT_MS = 12_000;
+  const CHAT_BUBBLE_MS = 9500;
 
   useEffect(() => { sittingSeatRef.current = sittingSeatId; }, [sittingSeatId]);
   // calledInfoRef — renderFrame, mount'ta BİR KEZ kurulan requestAnimationFrame
@@ -314,18 +357,58 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
   useEffect(() => { calledInfoRef.current = calledInfo; }, [calledInfo]);
   useEffect(() => { playerRef.current = player; }, [player]);
   useEffect(() => { myNumberRef.current = myNumber; }, [myNumber]);
+  useEffect(() => { myBubbleRef.current = myBubble; }, [myBubble]);
+  useEffect(() => { othersRef.current = others; }, [others]);
 
   useEffect(() => () => {
     if (numberTimeoutRef.current) clearTimeout(numberTimeoutRef.current);
     if (calledClearRef.current) clearTimeout(calledClearRef.current);
   }, []);
 
+  useEffect(() => {
+    if (!myBubble) return undefined;
+    const id = setTimeout(() => setMyBubble(null), CHAT_BUBBLE_MS);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myBubble]);
+
   function getAvatarImage(avatar, pose) {
     return getAvatarImageRef.current(avatar, pose);
   }
 
-  // --- Ana döngü: hareket + çizim (Firestore yok — tek oyunculu) --------
+  // Bankaya giriş/çıkış — enterPark/ParkWorldScreen ile BİREBİR aynı desen
+  // (bkz. functions/index.js enterInterior).
   useEffect(() => {
+    if (!user) return undefined;
+    let cancelled = false;
+    enterInterior('banka')
+      .then((res) => {
+        if (cancelled) return;
+        const start = res.data?.presence || START_POS;
+        posRef.current = start;
+        lastSyncedPosRef.current = start;
+        setReady(true);
+      })
+      .catch((err) => {
+        console.error('Bankaya giriş hatası:', err);
+        setReady(true);
+      });
+    return () => {
+      cancelled = true;
+      if (user) clearPresence(user.uid);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid]);
+
+  useEffect(() => {
+    const onVisibility = () => { pausedRef.current = document.hidden; };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
+
+  // --- Ana döngü: hareket + çizim + Firestore senkronu (madde 17) -------
+  useEffect(() => {
+    if (!ready) return undefined;
     let raf;
     let lastT = performance.now();
 
@@ -369,6 +452,35 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
       }
       if (!moving) poseRef.current = 'idle';
 
+      // --- Firestore senkronu (madde 17) — Park'takiyle BİREBİR aynı: sadece
+      // anlamlı değişimde / seyrek nabız, ekonomiye dokunmayan alanlar.
+      if (!pausedRef.current && user) {
+        const p = posRef.current;
+        const movedDist = dist(p, lastSyncedPosRef.current);
+        const sinceLast = t - lastSyncRef.current;
+        if (moving) {
+          if (sinceLast > MOVE_SYNC_INTERVAL_MS && movedDist > MOVE_SYNC_MIN_DIST) {
+            lastSyncRef.current = t; lastSyncedPosRef.current = { ...p };
+            updatePresence(user.uid, {
+              x: p.x, y: p.y, facing: facingRef.current, pose: poseRef.current, seat: null,
+            });
+          }
+        } else if (wasMovingRef.current) {
+          lastSyncRef.current = t; lastSyncedPosRef.current = { ...p };
+          updatePresence(user.uid, {
+            x: p.x, y: p.y, facing: facingRef.current,
+            pose: sittingSeatRef.current ? 'sit' : 'idle', seat: sittingSeatRef.current,
+          });
+        } else if (sinceLast > IDLE_HEARTBEAT_MS) {
+          lastSyncRef.current = t;
+          updatePresence(user.uid, {
+            x: p.x, y: p.y, facing: facingRef.current,
+            pose: sittingSeatRef.current ? 'sit' : 'idle', seat: sittingSeatRef.current,
+          });
+        }
+      }
+      wasMovingRef.current = moving;
+
       renderFrame();
       if (cameraOpenRef.current && !cameraDoneRef.current) renderCameraPreview();
       raf = requestAnimationFrame(tick);
@@ -376,7 +488,20 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [ready, user?.uid]);
+
+  const sendChat = () => {
+    const text = chatText.trim();
+    if (!text || !user) return;
+    const ts = Date.now();
+    setMyBubble({ text, ts });
+    updatePresence(user.uid, {
+      x: posRef.current.x, y: posRef.current.y, facing: facingRef.current,
+      pose: sittingSeatRef.current ? 'sit' : 'idle', seat: sittingSeatRef.current,
+      chatText: text, chatTs: ts,
+    });
+    setChatText('');
+  };
 
   // --- Kamera (madde 11/12) — Park'takiyle BİREBİR aynı desen, ama tek
   // oyunculu olduğu için karede sadece kendin varsın (başka gerçek oyuncu
@@ -392,6 +517,7 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
       pose: sittingSeatRef.current ? 'sit' : (poseRef.current || 'idle'),
       facing: facingRef.current,
       isSelf: true,
+      scale: AVATAR_SCALE,
     };
     return { originX: p.x, originY: p.y, entities: [self] };
   }
@@ -425,7 +551,28 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
       entities: frame.entities,
       getAvatarImage,
       drawBackground: (bgCtx) => drawBankSceneBackground(bgCtx, getAvatarImage, calledInfoRef.current),
+      focalScale: AVATAR_SCALE,
     });
+  }
+
+  // drawTicketIcon (madde 7) — numaratörden alınan sıra numarasını elde
+  // tutulan küçük bir kağıt olarak gösterir. drawHeldIcon (canvasWorldKit)
+  // sabit ürün türleri için — burada sayı DİNAMİK olduğundan ayrı, basit
+  // bir çizim yeterli (aynı görsel dil: küçük, elin yanında, hafif salınım).
+  function drawTicketIcon(c, number, x, y) {
+    const now = performance.now();
+    const bob = Math.sin(now / 480) * 2;
+    c.save();
+    c.translate(x, y + bob);
+    c.fillStyle = '#f4e6d0';
+    roundRectC(c, -9, -12, 18, 24, 2); c.fill();
+    c.strokeStyle = '#a86b3c'; c.lineWidth = 1.2;
+    roundRectC(c, -9, -12, 18, 24, 2); c.stroke();
+    c.fillStyle = '#22262f';
+    c.font = 'bold 9px monospace';
+    c.textAlign = 'center';
+    c.fillText(String(number).padStart(2, '0'), 0, 3);
+    c.restore();
   }
 
   async function handleShareCamera() {
@@ -482,24 +629,52 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
       ctx.stroke();
     }
 
-    const sitShift = sittingSeatRef.current ? SPRITE_H * 0.32 : 0;
-    const myEntity = {
-      x: posRef.current.x, baseY: posRef.current.y + sitShift,
-      avatar: playerRef.current?.avatar, pose: sittingSeatRef.current ? 'sit' : poseRef.current,
-      facing: facingRef.current, isSelf: true,
-    };
-    drawAvatarSprite(ctx, myEntity, getAvatarImage, { showName: false });
+    const now = Date.now();
+    const sitShift = sittingSeatRef.current ? SPRITE_H * AVATAR_SCALE * 0.32 : 0;
+    const myBubbleNow = myBubbleRef.current && now - myBubbleRef.current.ts < CHAT_BUBBLE_MS ? myBubbleRef.current : null;
 
-    // NPC konuşma baloncukları
+    const rawEntities = [
+      ...othersRef.current.map((o) => ({
+        x: o.x, y: o.y, avatar: o.avatar, pose: o.pose === 'sit' ? 'sit' : (o.pose || 'idle'),
+        facing: o.facing || 'down', name: o.displayName || 'Oyuncu',
+        bubbleData: o.chatText && o.chatTs && now - o.chatTs < CHAT_BUBBLE_MS ? { text: o.chatText, ts: o.chatTs } : null,
+        isSelf: false,
+      })),
+      {
+        x: posRef.current.x, y: posRef.current.y, avatar: playerRef.current?.avatar,
+        pose: sittingSeatRef.current ? 'sit' : poseRef.current, facing: facingRef.current,
+        name: playerRef.current?.displayName || 'Sen', bubbleData: myBubbleNow, isSelf: true,
+      },
+    ];
+    const entities = rawEntities
+      .map((e) => ({ ...e, baseY: e.y + (e.pose === 'sit' ? SPRITE_H * AVATAR_SCALE * 0.32 : 0) }))
+      .sort((a, b) => a.y - b.y);
+    entities.forEach((e) => drawAvatarSprite(ctx, e, getAvatarImage, { showName: !e.isSelf, scale: AVATAR_SCALE }));
+
+    if (myNumberRef.current != null) {
+      drawTicketIcon(ctx, myNumberRef.current, posRef.current.x + 30, posRef.current.y - SPRITE_H * AVATAR_SCALE * 0.5 + sitShift);
+    }
+
+    // NPC konuşma baloncukları — çağrılan vezne varsa (madde 8) o an
+    // NORMAL sohbetin yerine "Sıra XX!" seslenişini gösterir.
     const bubbleItems = [];
     TELLERS.forEach((t, i) => {
       const npc = TELLER_NPCS[t.id];
-      const line = cyclingLine(npc.lines, { phase: i * 7 });
+      const called = calledInfoRef.current;
+      const isCalling = called && called.tellerId === t.id && called.until > now;
+      const line = isCalling ? `Sıra ${String(called.number).padStart(2, '0')}!` : cyclingLine(npc.lines, { phase: i * 7 });
       if (!line) return;
       const lines = wrapBubbleText(ctx, line);
       const { w, h } = measureBubble(ctx, lines);
-      const anchorY = t.cy - TELLER_HH - 30 - SPRITE_H - 10;
-      bubbleItems.push({ x: t.cx, w, h, lines, ts: i, naturalTop: anchorY - h });
+      const anchorY = t.cy - TELLER_HH - 32 - SPRITE_H * AVATAR_SCALE - 10;
+      bubbleItems.push({ x: t.cx, w, h, lines, ts: isCalling ? 999 + i : i, naturalTop: anchorY - h });
+    });
+    entities.forEach((e, i) => {
+      if (!e.bubbleData) return;
+      const lines = wrapBubbleText(ctx, e.bubbleData.text);
+      const { w, h } = measureBubble(ctx, lines);
+      const anchorY = e.baseY - SPRITE_H * AVATAR_SCALE - 8;
+      bubbleItems.push({ x: e.x, w, h, lines, ts: 100 + i, naturalTop: anchorY - h });
     });
     layoutBubbles(bubbleItems).forEach((item) => drawBubbleBox(ctx, item, W));
   }
@@ -571,6 +746,7 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
       <button className="ws-exit-btn" onClick={onExit}>✕</button>
 
       <div className="ws-canvas-wrap">
+        {!ready && <div className="ws-loading">Bankaya giriliyor…</div>}
         <canvas
           ref={canvasRef}
           width={W}
@@ -578,13 +754,29 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
           className="ws-canvas"
           onPointerDown={handleCanvasClick}
         />
-        <button className="ws-phone-btn" onClick={() => setPhoneOpen(true)} title="Telefon">📱</button>
-        <button className="ws-camera-btn" onClick={openCamera} title="Fotoğraf çek">📷</button>
+        {ready && (
+          <>
+            <button className="ws-phone-btn" onClick={() => setPhoneOpen(true)} title="Telefon">📱</button>
+            <button className="ws-camera-btn" onClick={openCamera} title="Fotoğraf çek">📷</button>
+          </>
+        )}
         {myNumber != null && (
           <div className="bw-number-badge">
             Numaranız: <strong>{String(myNumber).padStart(2, '0')}</strong>
           </div>
         )}
+      </div>
+
+      <div className="ws-chat-row">
+        <input
+          className="ws-chat-input"
+          placeholder="Bir şey yaz…"
+          value={chatText}
+          maxLength={140}
+          onChange={(e) => setChatText(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && sendChat()}
+        />
+        <button className="ws-chat-send" onClick={sendChat}>Gönder</button>
       </div>
 
       {phoneOpen && <PhoneScreen onClose={() => setPhoneOpen(false)} onEnterTable={() => {}} />}

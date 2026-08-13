@@ -3325,6 +3325,65 @@ export const expireParkPresence = onSchedule({ schedule: 'every 5 minutes' }, as
 });
 
 // ---------------------------------------------------------------------------
+// GİRİLEBİLİR MEKANLAR (Banka/Karakol/Camii/Gazino) — CANLI/ÇOK OYUNCULU
+// (madde 17). Park'takiyle BİREBİR aynı desen — tek fark, hepsi TEK bir
+// `interiorPresence` koleksiyonunu `locationId` alanıyla paylaşıyor (her
+// mekan için ayrı koleksiyon açmak sadece kod tekrarı olurdu). Kural
+// dosyasındaki güven modeli parkPresence ile aynı: konum/poz/sohbet gibi
+// ekonomiyle ilgisiz alanlar istemciden doğrudan yazılabilir, avatar/
+// displayName SADECE bu fonksiyon tarafından users/{uid}'den kopyalanır.
+// ---------------------------------------------------------------------------
+const INTERIOR_START_POS = {
+  banka: { x: 340, y: 990 },
+  karakol: { x: 340, y: 990 },
+  camii: { x: 340, y: 990 },
+  gazino: { x: 340, y: 990 },
+};
+
+// enterInterior — bir girilebilir mekana girişte bir kere çağrılır (bkz.
+// enterPark üstündeki not, aynı gerekçe). locationId sunucu tarafında
+// allowlist'e karşı doğrulanır.
+export const enterInterior = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { locationId } = request.data || {};
+  const start = INTERIOR_START_POS[locationId];
+  if (!start) {
+    throw new HttpsError('invalid-argument', 'Geçersiz mekan.');
+  }
+  const userSnap = await db.collection('users').doc(uid).get();
+  const user = userSnap.data() || {};
+
+  const presence = {
+    locationId,
+    displayName: user.displayName || 'Oyuncu',
+    avatar: user.avatar || null,
+    x: start.x,
+    y: start.y,
+    facing: 'down',
+    pose: 'idle',
+    holding: null,
+    seat: null,
+    chatText: null,
+    chatTs: null,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    enteredAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+  await db.collection('interiorPresence').doc(uid).set(presence);
+  return { ok: true, presence: { x: presence.x, y: presence.y } };
+});
+
+// expireInteriorPresence — expireParkPresence ile aynı gerekçe/mantık,
+// sadece interiorPresence koleksiyonu için.
+export const expireInteriorPresence = onSchedule({ schedule: 'every 5 minutes' }, async () => {
+  const TWO_MIN = 2 * 60 * 1000;
+  const cutoff = admin.firestore.Timestamp.fromMillis(Date.now() - TWO_MIN);
+  const staleSnap = await db.collection('interiorPresence').where('updatedAt', '<', cutoff).get();
+  if (!staleSnap.empty) {
+    await Promise.all(staleSnap.docs.map((d) => d.ref.delete()));
+  }
+});
+
+// ---------------------------------------------------------------------------
 // buyFromBufe — Park'taki büfeden içecek/atıştırmalık satın alma.
 // Ekonomiye dokunduğu (altın harcanıyor) için, tüm diğer satın alma
 // işlemleri gibi bu da Cloud Function üzerinden, transaction'la yapılır.
@@ -10014,6 +10073,33 @@ async function buildSixtagramAttachment(uid, attachment) {
     return { type: 'debt', amount: debtToState };
   }
 
+  // lotteryWin (madde 9) — piyango kazananı Sixtagram'da paylaşabilsin.
+  // İstemciden hiçbir tutar/tarih ALINMIYOR — dünün piyango çekilişi
+  // (lottery/{dünün tarihi}) sunucuda okunur, winnerUid GERÇEKTEN bu
+  // kullanıcı değilse reddedilir (bkz. yukarıdaki günlük çekiliş cron'u).
+  if (type === 'lotteryWin') {
+    const dateKey = istanbulDateKey();
+    const yesterdayKey = addDaysToDateKey(dateKey, -1);
+    const lotterySnap = await db.collection('lottery').doc(yesterdayKey).get();
+    const lottery = lotterySnap.exists ? lotterySnap.data() : null;
+    if (!lottery || lottery.winnerUid !== uid || !lottery.winnerAmount) {
+      throw new HttpsError('failed-precondition', 'Dünün piyango kazananı sen değilsin.');
+    }
+    return { type: 'lotteryWin', amount: lottery.winnerAmount, dateKey: yesterdayKey };
+  }
+
+  // flappyScore (madde 10) — Flappy Kuş kişisel rekoru. İstemciden skor
+  // ALINMIYOR — flappyScores/{uid} (submitFlappyScore Cloud Function'ının
+  // yazdığı, tek doğruluk kaynağı) doğrudan okunur.
+  if (type === 'flappyScore') {
+    const scoreSnap = await db.collection('flappyScores').doc(uid).get();
+    const score = scoreSnap.exists ? scoreSnap.data().score || 0 : 0;
+    if (score <= 0) {
+      throw new HttpsError('failed-precondition', 'Henüz bir Flappy Kuş rekorun yok.');
+    }
+    return { type: 'flappyScore', score };
+  }
+
   // parkPhoto — Park'ta çekilen "grup fotoğrafı". Bu oyunda hiç dosya
   // yükleme YOK — istemciden GÜVENİLMEYEN hiçbir konum/poz/katılımcı
   // verisi alınmıyor (attachment içeriği tamamen yok sayılıyor). Bunun
@@ -10091,7 +10177,13 @@ async function buildSixtagramAttachment(uid, attachment) {
         })),
     ];
 
-    return { type: 'parkPhoto', entities };
+    // originX/originY — DÜZELTME: daha önce buradan hiç dönülmüyordu, bu
+    // yüzden akıştaki (PostAttachment.jsx) fotoğraf her zaman dünya
+    // orijinine (0,0) yakın sabit bir köşeyi arka plan sanıyordu — çekilen
+    // yerin GERÇEK konumu değil (bkz. madde 16). entities'teki dx/dy zaten
+    // buna göre GÖRELİ, arka planı doğru konumdan çizebilmek için mutlak
+    // konum da lazım.
+    return { type: 'parkPhoto', originX, originY, entities };
   }
 
   // interiorPhoto — Banka/Karakol/Camii/Gazino gibi girilebilir mekanlarda
