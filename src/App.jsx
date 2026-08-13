@@ -6,7 +6,6 @@ import BottomBar from './components/BottomBar/BottomBar';
 import PhoneScreen from './components/Phone/PhoneScreen';
 import RegionModal from './components/RegionModal/RegionModal';
 import HeistScreen from './components/HeistScreen/HeistScreen';
-import SignInBanner from './components/SignInBanner/SignInBanner';
 import ReferralPrompt from './components/ReferralPrompt/ReferralPrompt';
 import RaceFullScreen from './components/RaceTrackScreen/RaceFullScreen';
 import RaceBubble from './components/RaceTrackScreen/RaceBubble';
@@ -18,6 +17,9 @@ import BankWorldScreen from './components/BankWorldScreen/BankWorldScreen';
 import KarakolWorldScreen from './components/KarakolWorldScreen/KarakolWorldScreen';
 import MosqueWorldScreen from './components/MosqueWorldScreen/MosqueWorldScreen';
 import CasinoWorldScreen from './components/CasinoWorldScreen/CasinoWorldScreen';
+import CarDealershipWorldScreen from './components/CarDealershipWorldScreen/CarDealershipWorldScreen';
+import WeaponShopWorldScreen from './components/WeaponShopWorldScreen/WeaponShopWorldScreen';
+import TuningGarageWorldScreen from './components/TuningGarageWorldScreen/TuningGarageWorldScreen';
 import TopNotificationBanner from './components/TopNotificationBanner/TopNotificationBanner';
 import { usePlayer } from './hooks/usePlayer';
 import { useMyActiveRaceRoom } from './hooks/useMyActiveRaceRoom';
@@ -45,10 +47,11 @@ let lifeCapMigrationTriggered = false;
 // zararsız, ama gereksiz ağ isteğini önlemek için burada da işaretliyoruz.
 let futbolTransferMarketResetTriggered = false;
 
-// Harita, HUD ve telefon giriş yapmadan da görülebilir/gezilebilir —
-// ortadaki SignInBanner haritayı bloklamaz, sadece giriş için görünür bir
-// yol sağlar. Bir aksiyon (fabrikada çalışma vb.) denendiğinde ayrıca
-// RegionModal içinde de SignInPrompt gösterilir.
+// Harita, HUD ve telefon giriş yapmadan da görülebilir/gezilebilir — giriş
+// çağrısı artık haritayı bloklayan ayrı bir katman yerine, her ekranda görünen
+// HUD'un içinde (sağ üstteki "Giriş Yap" butonu) yaşıyor. Bir aksiyon
+// (fabrikada çalışma vb.) denendiğinde ayrıca RegionModal içinde de
+// SignInPrompt gösterilir.
 function GameShell() {
   const { user } = useAuth();
   const [activeRegion, setActiveRegion] = useState(null);
@@ -71,6 +74,9 @@ function GameShell() {
   const [karakolOpen, setKarakolOpen] = useState(false);
   const [mosqueOpen, setMosqueOpen] = useState(false);
   const [casinoOpen, setCasinoOpen] = useState(false);
+  const [dealershipOpen, setDealershipOpen] = useState(false);
+  const [weaponShopOpen, setWeaponShopOpen] = useState(false);
+  const [tuningGarageOpen, setTuningGarageOpen] = useState(false);
   const { player } = usePlayer();
 
   // Uygulama arka plana alınıp geri geldiğinde (özellikle iOS'ta) Firestore
@@ -162,6 +168,21 @@ function GameShell() {
       setCasinoOpen(true);
       return;
     }
+    // Araba Galerisi, Silah Mağazası ve Modifiye Garajı da artık Banka/Gazino
+    // gibi girilebilir mekanlar (bkz. yeni 3 mekan talebi) — RegionModal'daki
+    // eski düz panel yerine tam ekran iç mekana giriliyor.
+    if (regionMeta?.screen === 'araba-galerisi') {
+      setDealershipOpen(true);
+      return;
+    }
+    if (regionMeta?.screen === 'silah-magazasi') {
+      setWeaponShopOpen(true);
+      return;
+    }
+    if (regionMeta?.screen === 'modifiye-garaji') {
+      setTuningGarageOpen(true);
+      return;
+    }
     setActiveRegion(regionMeta);
   };
 
@@ -197,7 +218,6 @@ function GameShell() {
         <CityMap onRegionClick={handleRegionClick} />
       </main>
 
-      <SignInBanner />
       <ReferralPrompt />
 
       <BottomBar
@@ -236,26 +256,38 @@ function GameShell() {
         onRaceModeChange={setRaceLobbyMode}
       />
 
-      {parkOpen && user && <ParkWorldScreen onExit={() => setParkOpen(false)} />}
+      {parkOpen && <ParkWorldScreen onExit={() => setParkOpen(false)} />}
 
-      {bankOpen && user && (
+      {bankOpen && (
         <BankWorldScreen onExit={() => setBankOpen(false)} onOpenHeist={openHeistScreen} />
       )}
 
-      {karakolOpen && user && (
+      {karakolOpen && (
         <KarakolWorldScreen onExit={() => setKarakolOpen(false)} />
       )}
 
-      {mosqueOpen && user && (
+      {mosqueOpen && (
         <MosqueWorldScreen onExit={() => setMosqueOpen(false)} />
       )}
 
-      {casinoOpen && user && (
+      {casinoOpen && (
         <CasinoWorldScreen
           onExit={() => setCasinoOpen(false)}
           onOpenHeist={openHeistScreen}
           onEnterTable={openTable}
         />
+      )}
+
+      {dealershipOpen && (
+        <CarDealershipWorldScreen onExit={() => setDealershipOpen(false)} onOpenHeist={openHeistScreen} />
+      )}
+
+      {weaponShopOpen && (
+        <WeaponShopWorldScreen onExit={() => setWeaponShopOpen(false)} />
+      )}
+
+      {tuningGarageOpen && (
+        <TuningGarageWorldScreen onExit={() => setTuningGarageOpen(false)} onOpenHeist={openHeistScreen} />
       )}
 
       {heistTarget !== undefined && (

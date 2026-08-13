@@ -36,6 +36,17 @@
   padding: 16px;
 }
 
+/* Misafir modunda GuestOverlay'in şeffaf kalkanı FutbolShell'in kendi
+   kapatma butonunun üzerine biner; bu buton daha yüksek bir z-index ile
+   kalkanın üstünde, aynı görsel konumda ayrıca render edilir ki misafir
+   oyuncu ekrana sıkışıp kalmasın. */
+.futbol-guest-escape-close {
+  position: fixed;
+  top: calc(14px + env(safe-area-inset-top));
+  right: 16px;
+  z-index: 1000;
+}
+
 .futbol-teaser {
   display: flex;
   align-items: center;

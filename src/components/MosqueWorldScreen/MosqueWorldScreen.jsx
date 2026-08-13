@@ -19,6 +19,7 @@ import { ImamPanel, BeggarsSection, WINDOW_HOURS } from '../MosqueScreen/MosqueS
 import { prayAtMosque, createSixtagramPost, enterInterior } from '../../services/gameActions';
 import Hud from '../Hud/Hud';
 import PhoneScreen from '../Phone/PhoneScreen';
+import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import '../../styles/worldScreenChrome.css';
 import './MosqueWorldScreen.css';
 
@@ -58,6 +59,15 @@ const CARPET = { x1: 30, y1: 345, x2: 650, y2: 1010 };
 // dilenciler (useBeggars) burada NPC olarak duruyor. Zemini artık ayrı bir
 // çini değil, CARPET'in bir parçası (bkz. drawDilenciCorner).
 const DILENCI = { x1: 40, y1: 640, x2: 220, y2: 860 };
+// BEGGAR_SCALE/BEGGAR_SIT_SHIFT — yeni istek ("oturan npclerin sandalyesi
+// olsun ... çok saçma gözüküyor"): dilenciler pose:'sit' ile çiziliyor ama
+// altlarında hiçbir oturma eşyası yoktu ve pose:'sit' bacakları kısalttığı
+// için baseY telafisi olmadan görünür gövde tam bir avuç yukarıda havada
+// duruyormuş gibi görünüyordu — bar taburelerinde oturan OYUNCU için
+// zaten kullanılan aynı telafi (bkz. CasinoWorldScreen/BankWorldScreen
+// `SPRITE_H * scale * 0.32`) burada da uygulanıyor (bkz. drawBeggarNpcs).
+const BEGGAR_SCALE = AVATAR_SCALE * 0.68;
+const BEGGAR_SIT_SHIFT = SPRITE_H * BEGGAR_SCALE * 0.32;
 
 const DOOR = { cx: 340, cy: 1080 };
 const START_POS = { x: 340, y: 990 };
@@ -155,6 +165,21 @@ function drawDilenciCorner(c) {
   c.fillText('DİLENCİLER', (x1 + x2) / 2, y1 - 8);
 }
 
+// drawBeggarStool — yeni istek: "oturan npclerin sandalyesi olsun" —
+// dilencilerin köşedeki bench'iyle aynı ahşap/altın palette küçük bir
+// tabure/minder, her dilencinin tam altına çiziliyor.
+function drawBeggarStool(c, x, y) {
+  c.save();
+  c.translate(x, y);
+  c.fillStyle = 'rgba(0,0,0,0.18)';
+  c.beginPath(); c.ellipse(0, 12, 15, 5, 0, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#6b4226';
+  roundRectC(c, -14, -3, 28, 14, 4); c.fill();
+  c.strokeStyle = '#3a2a18'; c.lineWidth = 1.2;
+  roundRectC(c, -14, -3, 28, 14, 4); c.stroke();
+  c.restore();
+}
+
 // drawBeggarNpcs — madde 5: "dilenci olanların npcsi olsun" — gerçek
 // dilenci oyuncular (useBeggars) köşede NPC olarak duruyor, sahte/scripted
 // NPC DEĞİL.
@@ -168,9 +193,10 @@ function drawBeggarNpcs(c, beggars, getAvatarImage) {
     const row = Math.floor(i / cols);
     const x = x1 + 60 + col * 75;
     const y = y1 + 100 + row * 52;
+    drawBeggarStool(c, x, y);
     drawAvatarSprite(c, {
-      x, baseY: y, avatar: b.avatar, pose: 'sit', facing: 'down',
-    }, getAvatarImage, { showName: false, scale: AVATAR_SCALE * 0.68 });
+      x, baseY: y + BEGGAR_SIT_SHIFT, avatar: b.avatar, pose: 'sit', facing: 'down',
+    }, getAvatarImage, { showName: false, scale: BEGGAR_SCALE });
   });
   if (!shown.length) {
     c.fillStyle = 'rgba(74,58,34,0.6)';
@@ -387,6 +413,7 @@ export default function MosqueWorldScreen({ onExit }) {
   const [cameraBusy, setCameraBusy] = useState(false);
   const [cameraError, setCameraError] = useState(null);
   const [cameraDone, setCameraDone] = useState(false);
+  const [showGuestPrompt, setShowGuestPrompt] = useState(false);
 
   const canvasRef = useRef(null);
   const posRef = useRef({ ...START_POS });
@@ -435,7 +462,16 @@ export default function MosqueWorldScreen({ onExit }) {
   // Camiye giriş/çıkış — BankWorldScreen ile BİREBİR aynı desen (bkz.
   // functions/index.js enterInterior).
   useEffect(() => {
-    if (!user) return undefined;
+    if (!user) {
+      // Misafir: sunucuya giriş bildirimi yok (enterInterior auth ister),
+      // ama sahnede serbestçe yürüyebilmesi için yerel olarak hazır
+      // sayıyoruz — sunucu senkronu (updatePresence, zaten `user`
+      // kontrollü) devre dışı kalıyor.
+      posRef.current = { ...START_POS };
+      lastSyncedPosRef.current = { ...START_POS };
+      setReady(true);
+      return undefined;
+    }
     let cancelled = false;
     enterInterior('camii')
       .then((res) => {
@@ -585,6 +621,10 @@ export default function MosqueWorldScreen({ onExit }) {
   }, [ready]);
 
   async function handlePrayClick() {
+    if (!user) {
+      setShowGuestPrompt(true);
+      return;
+    }
     setPrayBusy(true);
     setPrayError(null);
     try {
@@ -770,15 +810,6 @@ export default function MosqueWorldScreen({ onExit }) {
     targetRef.current = { x: Math.max(30, Math.min(W - 30, p.x)), y: Math.max(30, Math.min(H - 30, p.y)) };
   }
 
-  if (!user) {
-    return (
-      <div className="ws-fullscreen" style={{ '--ws-bg': '#241a10' }}>
-        <button className="ws-exit-btn" onClick={onExit}>✕</button>
-        <p className="ws-hint" style={{ padding: 16, color: '#f2ecdd' }}>Camiye girmek için giriş yapmalısın.</p>
-      </div>
-    );
-  }
-
   return (
     <div className="ws-fullscreen" style={{ '--ws-bg': '#241a10', '--ws-panel-bg': '#1c1c24' }}>
       <Hud suspicion={player?.suspicion ?? 0} reputation={player?.reputation ?? 0} gold={player?.gold ?? 0} />
@@ -806,7 +837,7 @@ export default function MosqueWorldScreen({ onExit }) {
         {ready && (
           <>
             <button className="ws-phone-btn" onClick={() => setPhoneOpen(true)} title="Telefon">📱</button>
-            <button className="ws-camera-btn" onClick={openCamera} title="Fotoğraf çek">📷</button>
+            <button className="ws-camera-btn" onClick={() => (user ? openCamera() : setShowGuestPrompt(true))} title="Fotoğraf çek">📷</button>
           </>
         )}
         {/* mww-pray-btn — yeni istek: imam makamının üstünde yüzen "İbadet
@@ -827,17 +858,27 @@ export default function MosqueWorldScreen({ onExit }) {
       <div className="ws-chat-row">
         <input
           className="ws-chat-input"
-          placeholder="Bir şey yaz…"
+          placeholder={user ? 'Bir şey yaz…' : 'Sohbet için giriş yapmalısın'}
           value={chatText}
           maxLength={140}
+          disabled={!user}
           onChange={(e) => setChatText(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && sendChat()}
+          onKeyDown={(e) => e.key === 'Enter' && (user ? sendChat() : setShowGuestPrompt(true))}
         />
-        <button className="ws-chat-send" onClick={sendChat}>Gönder</button>
+        <button className="ws-chat-send" onClick={() => (user ? sendChat() : setShowGuestPrompt(true))}>Gönder</button>
       </div>
 
       {phoneOpen && <PhoneScreen onClose={() => setPhoneOpen(false)} onEnterTable={() => {}} />}
       {bookletOpen && <ImamBooklet onClose={() => setBookletOpen(false)} />}
+
+      {showGuestPrompt && (
+        <div className="ws-panel-backdrop" onClick={() => setShowGuestPrompt(false)}>
+          <div className="ws-panel" onClick={(e) => e.stopPropagation()}>
+            <SignInPrompt message="Bunun için giriş yapmalısın." />
+            <button className="ws-panel-btn" onClick={() => setShowGuestPrompt(false)}>Kapat</button>
+          </div>
+        </div>
+      )}
 
       {panel != null && (
         <div className="ws-panel-backdrop" onClick={() => setPanel(null)}>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useDailyActions } from '../../hooks/useDailyActions';
 import { usePoliceClaimPool } from '../../hooks/usePoliceClaimPool';
@@ -10,12 +11,14 @@ import {
 } from '../../services/gameActions';
 import InfoIcon from '../InfoIcon/InfoIcon';
 import PoliceBooklet from '../PoliceBooklet/PoliceBooklet';
+import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import './PoliceApplicationSection.css';
 
 // Karakol'da polislik başvurusu/istifası — hem BAŞVURU hem İSTİFA bir
 // sonraki 00:00'da işleme alınır (havuz/kadro sayımlarının gün içinde
 // tutarlı kalması için, bkz. functions/index.js dailyReset).
 export default function PoliceApplicationSection() {
+  const { user } = useAuth();
   const { player } = usePlayer();
   const { actions } = useDailyActions();
   const { pool } = usePoliceClaimPool();
@@ -54,6 +57,10 @@ export default function PoliceApplicationSection() {
   const pending = player?.pendingPoliceChange;
   const salaryClaimed = Boolean(actions.policeSalaryClaimed);
   const canClaimSalary = isPolice && (player?.suspicion || 0) === 0 && Boolean(pool);
+
+  if (!user) {
+    return <SignInPrompt message="Polislik başvurusu yapmak için giriş yapmalısın." />;
+  }
 
   return (
     <div className="police-app-section">

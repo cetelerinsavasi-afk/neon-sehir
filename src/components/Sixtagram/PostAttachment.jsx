@@ -11,6 +11,9 @@ import { drawBankSceneBackground } from '../BankWorldScreen/BankWorldScreen';
 import { drawKarakolSceneBackground } from '../KarakolWorldScreen/KarakolWorldScreen';
 import { drawMosqueSceneBackground } from '../MosqueWorldScreen/MosqueWorldScreen';
 import { drawCasinoSceneBackground } from '../CasinoWorldScreen/CasinoWorldScreen';
+import { drawDealershipSceneBackground } from '../CarDealershipWorldScreen/CarDealershipWorldScreen';
+import { drawWeaponShopSceneBackground } from '../WeaponShopWorldScreen/WeaponShopWorldScreen';
+import { drawGarageSceneBackground } from '../TuningGarageWorldScreen/TuningGarageWorldScreen';
 import './PostAttachment.css';
 
 // Tüm parkPhoto kartları arasında paylaşılan avatar görsel önbelleği —
@@ -30,6 +33,9 @@ const INTERIOR_BACKGROUNDS = {
   karakol: (ctx, getAvatarImage) => drawKarakolSceneBackground(ctx, getAvatarImage),
   camii: (ctx, getAvatarImage) => drawMosqueSceneBackground(ctx, getAvatarImage),
   gazino: (ctx, getAvatarImage) => drawCasinoSceneBackground(ctx, getAvatarImage),
+  araba_galerisi: (ctx, getAvatarImage) => drawDealershipSceneBackground(ctx, getAvatarImage),
+  silah_magazasi: (ctx, getAvatarImage) => drawWeaponShopSceneBackground(ctx, getAvatarImage),
+  modifiye_garaji: (ctx, getAvatarImage) => drawGarageSceneBackground(ctx, getAvatarImage),
 };
 
 // InteriorPhotoCanvas — Banka/Karakol/Camii/Gazino'da çekilen fotoğrafı,
@@ -307,7 +313,10 @@ export default function PostAttachment({ attachment }) {
     // (arka planın bir parçası, bkz. drawXxxSceneBackground).
     const entities = attachment.entities || [];
     if (!entities.length) return null;
-    const LOCATION_LABELS = { banka: 'Banka', karakol: 'Karakol', camii: 'Cami', gazino: 'Gazino' };
+    const LOCATION_LABELS = {
+      banka: 'Banka', karakol: 'Karakol', camii: 'Cami', gazino: 'Gazino',
+      araba_galerisi: 'Araba Galerisi', silah_magazasi: 'Silah Mağazası', modifiye_garaji: 'Modifiye Garajı',
+    };
     const label = LOCATION_LABELS[attachment.locationId] || 'Mekan';
     return (
       <div className="post-att post-att-parkphoto">

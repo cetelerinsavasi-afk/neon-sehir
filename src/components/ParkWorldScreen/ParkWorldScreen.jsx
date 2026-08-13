@@ -14,6 +14,7 @@ import Hud from '../Hud/Hud';
 import PhoneScreen from '../Phone/PhoneScreen';
 import ResultModal from '../ResultModal/ResultModal';
 import InfoIcon from '../InfoIcon/InfoIcon';
+import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import './ParkWorldScreen.css';
 
 // --- Sahne düzeni -------------------------------------------------------
@@ -185,6 +186,7 @@ export default function ParkWorldScreen({ onExit }) {
   const [cameraError, setCameraError] = useState(null);
   const [cameraDone, setCameraDone] = useState(false);
   const [phoneOpen, setPhoneOpen] = useState(false);
+  const [showGuestPrompt, setShowGuestPrompt] = useState(false);
 
   const canvasRef = useRef(null);
   const staticCanvasRef = useRef(null);
@@ -228,7 +230,16 @@ export default function ParkWorldScreen({ onExit }) {
 
   // Park'a giriş / çıkış (bkz. functions/index.js enterPark üstündeki not).
   useEffect(() => {
-    if (!user) return undefined;
+    if (!user) {
+      // Misafir: Firestore'a giriş bildirimi yok (enterPark auth ister),
+      // ama sahnede serbestçe yürüyebilmesi için yerel olarak hazır
+      // sayıyoruz — sadece sunucu senkronu (updatePresence, zaten `user`
+      // kontrollü) devre dışı kalıyor.
+      posRef.current = { x: 340, y: 700 };
+      lastSyncedPosRef.current = { x: 340, y: 700 };
+      setReady(true);
+      return undefined;
+    }
     let cancelled = false;
     enterPark()
       .then((res) => {
@@ -634,6 +645,10 @@ export default function ParkWorldScreen({ onExit }) {
   }
 
   const handleSell = async () => {
+    if (!user) {
+      setShowGuestPrompt(true);
+      return;
+    }
     setSellBusy(true);
     setError(null);
     try {
@@ -647,6 +662,10 @@ export default function ParkWorldScreen({ onExit }) {
   };
 
   const handleBuy = async (item) => {
+    if (!user) {
+      setShowGuestPrompt(true);
+      return;
+    }
     setBufeBusy(item.id);
     setError(null);
     try {
@@ -780,15 +799,6 @@ export default function ParkWorldScreen({ onExit }) {
     }
   }
 
-  if (!user) {
-    return (
-      <div className="pw-fullscreen">
-        <button className="pw-exit-btn" onClick={onExit}>✕</button>
-        <p className="pw-hint" style={{ padding: 16 }}>Parkta gezmek için giriş yapmalısın.</p>
-      </div>
-    );
-  }
-
   const contrabandQty = inventory.yasakliMadde || 0;
 
   return (
@@ -811,7 +821,7 @@ export default function ParkWorldScreen({ onExit }) {
         {ready && (
           <>
             <button className="pw-phone-btn" onClick={() => setPhoneOpen(true)} title="Telefon">📱</button>
-            <button className="pw-camera-btn" onClick={openCamera} title="Fotoğraf çek">📷</button>
+            <button className="pw-camera-btn" onClick={() => (user ? openCamera() : setShowGuestPrompt(true))} title="Fotoğraf çek">📷</button>
           </>
         )}
       </div>
@@ -821,16 +831,26 @@ export default function ParkWorldScreen({ onExit }) {
       <div className="pw-chat-row">
         <input
           className="pw-chat-input"
-          placeholder="Bir şey yaz…"
+          placeholder={user ? 'Bir şey yaz…' : 'Sohbet için giriş yapmalısın'}
           value={chatText}
           maxLength={140}
+          disabled={!user}
           onChange={(e) => setChatText(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && sendChat()}
+          onKeyDown={(e) => e.key === 'Enter' && (user ? sendChat() : setShowGuestPrompt(true))}
         />
-        <button className="pw-chat-send" onClick={sendChat}>Gönder</button>
+        <button className="pw-chat-send" onClick={() => (user ? sendChat() : setShowGuestPrompt(true))}>Gönder</button>
       </div>
 
       {error && <p className="pw-error">{error}</p>}
+
+      {showGuestPrompt && (
+        <div className="pw-panel-backdrop" onClick={() => setShowGuestPrompt(false)}>
+          <div className="pw-panel" onClick={(e) => e.stopPropagation()}>
+            <SignInPrompt message="Bunun için giriş yapmalısın." />
+            <button className="pw-panel-btn" onClick={() => setShowGuestPrompt(false)}>Kapat</button>
+          </div>
+        </div>
+      )}
 
       {cameraOpen && (
         <div className="pw-panel-backdrop" onClick={closeCamera}>

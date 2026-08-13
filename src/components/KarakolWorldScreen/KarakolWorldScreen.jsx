@@ -11,6 +11,7 @@ import {
 import Hud from '../Hud/Hud';
 import PhoneScreen from '../Phone/PhoneScreen';
 import PoliceStationScreen from '../PoliceStationScreen/PoliceStationScreen';
+import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import { createSixtagramPost, enterInterior } from '../../services/gameActions';
 import '../../styles/worldScreenChrome.css';
 import './KarakolWorldScreen.css';
@@ -61,6 +62,17 @@ const OFFICER_NPC = {
 // etiketi WALL_H (150) bandının rahatça altında/dışında kalsın.
 const KOMISER_ROOM = { x1: 130, y1: 200, x2: 550, y2: 460, doorX1: 300, doorX2: 380 };
 const COMMISSIONER_DESK = { cx: 340, cy: 405, hw: 78, hh: 33 };
+// COMMISSIONER_SEAT/COMMISSIONER_SIT_SHIFT — yeni istek ("oturan
+// npclerin sandalyesi olsun ve masaya daha yakın olsunlar"): komiser
+// pose:'sit' ile çiziliyordu ama altında sandalye yoktu ve baseY telafisi
+// olmadığı için masanın epey gerisinde havada duruyormuş gibi
+// görünüyordu. Artık masanın hemen arkasında gerçek bir sandalye var
+// (bkz. drawOfficeChair) ve görünür gövde, bar taburelerinde oturan
+// OYUNCU için kullanılan aynı `SPRITE_H * scale * 0.32` telafisiyle
+// sandalyenin üstüne hizalanıyor.
+const COMMISSIONER_SIT_SHIFT = SPRITE_H * AVATAR_SCALE * 0.32;
+const COMMISSIONER_SEAT = { cx: COMMISSIONER_DESK.cx, cy: COMMISSIONER_DESK.cy - COMMISSIONER_DESK.hh - 24 };
+const COMMISSIONER_BASE_Y = COMMISSIONER_SEAT.cy + COMMISSIONER_SIT_SHIFT;
 const COMMISSIONER_NPC = {
   name: 'Komiser Yusuf',
   lines: ['Rapor ne durumda?', 'Başvurunu değerlendiririm.', 'Kitapçığı okumadan imza atma.', 'Nöbet listesini kontrol edin.'],
@@ -301,6 +313,22 @@ function drawDesk(c, d, label) {
   c.restore();
 }
 
+// drawOfficeChair — yeni istek: "oturan npclerin sandalyesi olsun" —
+// komiserin masasının hemen arkasına çizilen basit bir ofis sandalyesi.
+function drawOfficeChair(c, x, y) {
+  c.save();
+  c.translate(x, y);
+  c.fillStyle = 'rgba(0,0,0,0.2)';
+  c.beginPath(); c.ellipse(0, 19, 24, 8, 0, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#1c1c22';
+  roundRectC(c, -16, -2, 32, 20, 4); c.fill();
+  c.fillStyle = '#2b2b33';
+  roundRectC(c, -16, -32, 32, 32, 5); c.fill();
+  c.strokeStyle = '#e8cf7a'; c.lineWidth = 1.2;
+  roundRectC(c, -16, -32, 32, 32, 5); c.stroke();
+  c.restore();
+}
+
 function drawGuard(c, guard, getAvatarImage) {
   drawAvatarSprite(c, {
     x: guard.cx, baseY: guard.cy, avatar: guard.avatar, pose: 'idle', facing: 'down',
@@ -351,12 +379,14 @@ export function drawKarakolSceneBackground(ctx, getAvatarImage) {
   ctx.textAlign = 'center';
   ctx.fillText(OFFICER_NPC.name, RESEPSIYON.cx, RESEPSIYON.cy - RESEPSIYON.hh - 30 - SPRITE_H * AVATAR_SCALE - 8);
 
-  // pose:'sit' — yeni istek (madde 5): "komiser ... otursun".
+  // pose:'sit' — yeni istek (madde 5): "komiser ... otursun", artık gerçek
+  // bir sandalyede (bkz. COMMISSIONER_SEAT/drawOfficeChair yukarısı).
+  drawOfficeChair(ctx, COMMISSIONER_SEAT.cx, COMMISSIONER_SEAT.cy);
   drawAvatarSprite(ctx, {
-    x: COMMISSIONER_DESK.cx, baseY: COMMISSIONER_DESK.cy - COMMISSIONER_DESK.hh - 30,
+    x: COMMISSIONER_SEAT.cx, baseY: COMMISSIONER_BASE_Y,
     avatar: COMMISSIONER_NPC.avatar, pose: 'sit', facing: 'down', name: COMMISSIONER_NPC.name,
   }, getAvatarImage, { showName: false, scale: AVATAR_SCALE });
-  ctx.fillText(COMMISSIONER_NPC.name, COMMISSIONER_DESK.cx, COMMISSIONER_DESK.cy - COMMISSIONER_DESK.hh - 30 - SPRITE_H * AVATAR_SCALE - 8);
+  ctx.fillText(COMMISSIONER_NPC.name, COMMISSIONER_SEAT.cx, COMMISSIONER_BASE_Y - SPRITE_H * AVATAR_SCALE - 8);
 
   KORUMALAR.forEach((k) => drawGuard(ctx, k, getAvatarImage));
 }
@@ -376,6 +406,7 @@ export default function KarakolWorldScreen({ onExit }) {
   const [cameraBusy, setCameraBusy] = useState(false);
   const [cameraError, setCameraError] = useState(null);
   const [cameraDone, setCameraDone] = useState(false);
+  const [showGuestPrompt, setShowGuestPrompt] = useState(false);
 
   const canvasRef = useRef(null);
   const posRef = useRef({ ...START_POS });
@@ -421,7 +452,16 @@ export default function KarakolWorldScreen({ onExit }) {
   // Karakola giriş/çıkış — BankWorldScreen ile BİREBİR aynı desen (bkz.
   // functions/index.js enterInterior).
   useEffect(() => {
-    if (!user) return undefined;
+    if (!user) {
+      // Misafir: sunucuya giriş bildirimi yok (enterInterior auth ister),
+      // ama sahnede serbestçe yürüyebilmesi için yerel olarak hazır
+      // sayıyoruz — sunucu senkronu (updatePresence, zaten `user`
+      // kontrollü) devre dışı kalıyor.
+      posRef.current = { ...START_POS };
+      lastSyncedPosRef.current = { ...START_POS };
+      setReady(true);
+      return undefined;
+    }
     let cancelled = false;
     enterInterior('karakol')
       .then((res) => {
@@ -654,8 +694,8 @@ export default function KarakolWorldScreen({ onExit }) {
     if (commissionerLine) {
       const lines = wrapBubbleText(ctx, commissionerLine);
       const { w, h } = measureBubble(ctx, lines);
-      const anchorY = COMMISSIONER_DESK.cy - COMMISSIONER_DESK.hh - 30 - SPRITE_H * AVATAR_SCALE - 10;
-      bubbleItems.push({ x: COMMISSIONER_DESK.cx, w, h, lines, ts: 1, naturalTop: anchorY - h });
+      const anchorY = COMMISSIONER_BASE_Y - SPRITE_H * AVATAR_SCALE - 10;
+      bubbleItems.push({ x: COMMISSIONER_SEAT.cx, w, h, lines, ts: 1, naturalTop: anchorY - h });
     }
     KORUMALAR.forEach((k, i) => {
       const line = cyclingLine(k.lines, { phase: 20 + i * 6 });
@@ -710,15 +750,6 @@ export default function KarakolWorldScreen({ onExit }) {
     targetRef.current = { x: Math.max(30, Math.min(W - 30, p.x)), y: Math.max(30, Math.min(H - 30, p.y)) };
   }
 
-  if (!user) {
-    return (
-      <div className="ws-fullscreen" style={{ '--ws-bg': '#26262c' }}>
-        <button className="ws-exit-btn" onClick={onExit}>✕</button>
-        <p className="ws-hint" style={{ padding: 16, color: '#f2ecdd' }}>Karakola girmek için giriş yapmalısın.</p>
-      </div>
-    );
-  }
-
   return (
     <div className="ws-fullscreen" style={{ '--ws-bg': '#2b2d31', '--ws-panel-bg': '#1c1c24' }}>
       <Hud suspicion={player?.suspicion ?? 0} reputation={player?.reputation ?? 0} gold={player?.gold ?? 0} />
@@ -736,7 +767,7 @@ export default function KarakolWorldScreen({ onExit }) {
         {ready && (
           <>
             <button className="ws-phone-btn" onClick={() => setPhoneOpen(true)} title="Telefon">📱</button>
-            <button className="ws-camera-btn" onClick={openCamera} title="Fotoğraf çek">📷</button>
+            <button className="ws-camera-btn" onClick={() => (user ? openCamera() : setShowGuestPrompt(true))} title="Fotoğraf çek">📷</button>
           </>
         )}
       </div>
@@ -744,16 +775,26 @@ export default function KarakolWorldScreen({ onExit }) {
       <div className="ws-chat-row">
         <input
           className="ws-chat-input"
-          placeholder="Bir şey yaz…"
+          placeholder={user ? 'Bir şey yaz…' : 'Sohbet için giriş yapmalısın'}
           value={chatText}
           maxLength={140}
+          disabled={!user}
           onChange={(e) => setChatText(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && sendChat()}
+          onKeyDown={(e) => e.key === 'Enter' && (user ? sendChat() : setShowGuestPrompt(true))}
         />
-        <button className="ws-chat-send" onClick={sendChat}>Gönder</button>
+        <button className="ws-chat-send" onClick={() => (user ? sendChat() : setShowGuestPrompt(true))}>Gönder</button>
       </div>
 
       {phoneOpen && <PhoneScreen onClose={() => setPhoneOpen(false)} onEnterTable={() => {}} />}
+
+      {showGuestPrompt && (
+        <div className="ws-panel-backdrop" onClick={() => setShowGuestPrompt(false)}>
+          <div className="ws-panel" onClick={(e) => e.stopPropagation()}>
+            <SignInPrompt message="Bunun için giriş yapmalısın." />
+            <button className="ws-panel-btn" onClick={() => setShowGuestPrompt(false)}>Kapat</button>
+          </div>
+        </div>
+      )}
 
       {panel != null && (
         <div className="ws-panel-backdrop" onClick={() => setPanel(null)}>

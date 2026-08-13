@@ -2663,13 +2663,15 @@ export const prayAtMosque = onCall(async (request) => {
 // Dilenciler (Camii) — günlük tarihe göre AYRI bir koleksiyonda tutulur
 // (beggars/{dateKey}/entries/{uid}), bu yüzden 00:00'da otomatik olarak
 // "sıfırlanmış" olur — yeni gün yeni, boş bir koleksiyon demektir, ekstra
-// bir temizlik işine gerek yok. Zengin oyuncular (toplam serveti 10.000
-// altını aşanlar) dilenci olamaz. Günde en fazla 5.000 altın kazanılabilir
+// bir temizlik işine gerek yok. Zengin oyuncular (toplam serveti 20.000
+// altını aşanlar) dilenci olamaz. Günde en fazla 10.000 altın kazanılabilir
 // — bu sınıra ulaşınca dilenci listeden otomatik kaldırılır ve o gün
-// tekrar dilenci olamaz.
+// tekrar dilenci olamaz. Tek bir bağışçı, tek seferde en fazla 10.000
+// altın gönderebilir (BEGGAR_MAX_SINGLE_DONATION).
 // ---------------------------------------------------------------------------
-const BEGGAR_WEALTH_LIMIT = 10000;
-const BEGGAR_DAILY_EARN_CAP = 5000;
+const BEGGAR_WEALTH_LIMIT = 20000;
+const BEGGAR_DAILY_EARN_CAP = 10000;
+const BEGGAR_MAX_SINGLE_DONATION = 10000;
 
 async function computeTotalWealth(userData, prices) {
   const gold = userData?.gold || 0;
@@ -2832,6 +2834,12 @@ export const donateToBeggar = onCall(async (request) => {
   const amount = Number(request.data?.amount);
   if (!Number.isInteger(amount) || amount <= 0) {
     throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
+  }
+  if (amount > BEGGAR_MAX_SINGLE_DONATION) {
+    throw new HttpsError(
+      'invalid-argument',
+      `Tek seferde en fazla ${BEGGAR_MAX_SINGLE_DONATION.toLocaleString('tr-TR')} altın gönderebilirsin.`
+    );
   }
   if (beggarUid === uid) {
     throw new HttpsError('invalid-argument', 'Kendine bağış yapamazsın.');
@@ -3338,6 +3346,13 @@ const INTERIOR_START_POS = {
   karakol: { x: 340, y: 990 },
   camii: { x: 340, y: 990 },
   gazino: { x: 340, y: 990 },
+  // Araba Galerisi / Silah Mağazası / Modifiye Garajı — 3 yeni girilebilir
+  // mekan (bkz. yeni 3 mekan talebi). Diğerleriyle BİREBİR aynı kapı/spawn
+  // noktası; her üç WorldScreen bileşeni de aynı START_POS sabitini
+  // kullanıyor (bkz. ilgili .jsx dosyaları).
+  araba_galerisi: { x: 340, y: 990 },
+  silah_magazasi: { x: 340, y: 990 },
+  modifiye_garaji: { x: 340, y: 990 },
 };
 
 // enterInterior — bir girilebilir mekana girişte bir kere çağrılır (bkz.
@@ -10197,7 +10212,7 @@ async function buildSixtagramAttachment(uid, attachment) {
   // (trusted) okunuyor. Başka hiçbir oyuncunun kimliği/konumu asla iddia
   // edilmiyor — tek risk kendi görünümün, o da zaten hesabın.
   if (type === 'interiorPhoto') {
-    const ALLOWED_LOCATIONS = ['banka', 'karakol', 'camii', 'gazino'];
+    const ALLOWED_LOCATIONS = ['banka', 'karakol', 'camii', 'gazino', 'araba_galerisi', 'silah_magazasi', 'modifiye_garaji'];
     const ALLOWED_POSES = ['idle', 'walk1', 'walk2', 'sit'];
     const ALLOWED_FACINGS = ['up', 'down', 'left', 'right'];
     // Mekan tuvali sabit 680x1180 (bkz. her WorldScreen'deki W/H) — konum

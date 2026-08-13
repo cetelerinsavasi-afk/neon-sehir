@@ -249,7 +249,7 @@ service cloud.firestore {
         'locationId', 'displayName', 'avatar', 'x', 'y', 'facing', 'pose', 'holding', 'seat',
         'chatText', 'chatTs', 'updatedAt', 'enteredAt'
       ])
-        && d.locationId in ['banka', 'karakol', 'camii', 'gazino']
+        && d.locationId in ['banka', 'karakol', 'camii', 'gazino', 'araba_galerisi', 'silah_magazasi', 'modifiye_garaji']
         && d.x is number && d.x >= 0 && d.x <= 2000
         && d.y is number && d.y >= 0 && d.y <= 2000
         && (d.chatText == null || (d.chatText is string && d.chatText.size() <= 140));

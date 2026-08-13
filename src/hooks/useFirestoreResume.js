@@ -6,7 +6,15 @@ import { reconnectFirestore } from '../lib/reconnectFirestore';
 // yere art arda disable/enable network çağrısı yapılmasın diye küçük bir
 // "son ne zaman tetiklendi" korumasını modül seviyesinde paylaşıyoruz.
 let lastTriggeredAt = 0;
-const MIN_INTERVAL_MS = 2000;
+// MIN_INTERVAL_MS — Firestore maliyet optimizasyonu: her tetiklenme TÜM aktif
+// onSnapshot dinleyicilerini sıfırdan yeniden kurup (disable/enableNetwork)
+// güncel sonuç kümelerini yeniden okutuyor — yani her reconnect gerçek bir
+// okuma maliyeti. 2sn'lik eski pencere, sekme geçişi/pencere odak
+// değişikliği gibi sık olaylarda gereksiz yere art arda tetiklenmeye çok
+// açıktı. 15sn'e çıkarıldı: gerçek "arka plana alıp geri getirme" senaryosu
+// (bu hook'un asıl çözmeye çalıştığı "donmuş ekran" sorunu) hâlâ ilk
+// tetiklemede düzeliyor, sadece kısa aralıklı tekrar tetiklenmeler engelleniyor.
+const MIN_INTERVAL_MS = 15000;
 
 function triggerReconnect() {
   const now = Date.now();

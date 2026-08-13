@@ -1,0 +1,7 @@
+/* WeaponShopWorldScreen.css — bu mekana özel ekstra bir stil yok; tüm
+   görünüm module-level draw* fonksiyonlarıyla canvas'a çiziliyor ve genel
+   "girilebilir mekan" kabuğu (tam ekran, çıkış butonu, panel vb.)
+   styles/worldScreenChrome.css'te (.ws-*) tanımlı — bkz.
+   WeaponShopWorldScreen.jsx importu. Bu dosya, BankWorldScreen.css ile aynı
+   dosya-yapısı kuralına uymak için (her WorldScreen kendi CSS dosyasını
+   import eder) boş bırakıldı. */

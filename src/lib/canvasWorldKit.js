@@ -223,7 +223,12 @@ export function drawBubbleBox(ctx, item, boundsW) {
   let bx = item.x - item.w / 2;
   bx = Math.max(8, Math.min(boundsW - 8 - item.w, bx));
   const tailX = Math.max(bx + 16, Math.min(bx + item.w - 16, item.x));
-  const by = item.top;
+  // by — yeni istek (madde 8: "gazinoda barmenin yazı balonu üstte kaldığı
+  // için gözükmüyor") — bir NPC tavana çok yakınsa (dar bir niş) hesaplanan
+  // naturalTop ekranın DIŞINA (negatif y) çıkabiliyordu, balon tamamen
+  // görünmez oluyordu. Son güvenlik olarak burada 8px'in altına inmesin diye
+  // kelepçeleniyor — X eksenindeki kelepçeyle (yukarıdaki `bx`) aynı mantık.
+  const by = Math.max(8, item.top);
 
   ctx.fillStyle = 'rgba(255,255,255,0.97)';
   roundRectC(ctx, bx, by, item.w, item.h, 11); ctx.fill();

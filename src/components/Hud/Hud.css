@@ -76,3 +76,52 @@
 .hud-gold-icon {
   font-size: 9px;
 }
+
+.hud-signin {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--neon-cyan);
+  background: var(--panel);
+  border: 1px solid var(--neon-cyan);
+  border-radius: 999px;
+  padding: 6px 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.hud-signin-btn {
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.hud-signin-btn:hover {
+  background: rgba(25, 232, 255, 0.14);
+}
+
+.hud-signin-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  color: #4285f4;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.hud-signin-label {
+  display: none;
+}
+
+@media (min-width: 420px) {
+  .hud-signin-label {
+    display: inline;
+  }
+}

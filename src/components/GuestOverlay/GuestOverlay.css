@@ -1,0 +1,49 @@
+/* GuestOverlay — misafirler için tüm ekranı kaplayan, görünmez tıklama
+   kalkanı. position: fixed kullanılır (position: relative bir sarmalayıcıya
+   bağlı değildir) ki sarılan içerik position: fixed köklü bir bileşen olsa
+   bile (örn. FutbolShell/.futbol-fullscreen) kalkan normal akış boyutundan
+   bağımsız olarak her zaman tüm görünür alanı kaplasın. */
+.guest-overlay-shield {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  cursor: pointer;
+  background: transparent;
+}
+
+.guest-overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.guest-overlay-card {
+  position: relative;
+  width: 100%;
+  max-width: 320px;
+  cursor: default;
+}
+
+.guest-overlay-card-close {
+  position: absolute;
+  top: -12px;
+  right: -12px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.guest-overlay-card-close:hover {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}

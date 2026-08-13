@@ -1,11 +1,20 @@
 import InfoIcon from '../InfoIcon/InfoIcon';
+import { useAuth } from '../../contexts/AuthContext';
 import './Hud.css';
 
 /**
  * Hud — Bölüm 3'teki üst bar. Faz 1'de mock veriyle çalışır,
  * Faz 4'te gerçek Firestore verisine bağlanacak.
+ *
+ * Giriş yapmamış (misafir) oyuncular için, saygınlık/şüphe/altın
+ * bilgilerinin yanına kalıcı bir "Google ile Giriş Yap" çağrısı eklenir —
+ * bu bar her ekranda (harita + tüm mekanlar) göründüğü için üyeliği teşvik
+ * etmenin en görünür yeri. Giriş yapmış oyuncular için HUD önceki haliyle
+ * birebir aynıdır (ek buton render edilmez).
  */
 export default function Hud({ suspicion = 0, reputation = 0, gold = 0, onGoldClick }) {
+  const { user, loading, signIn } = useAuth();
+
   return (
     <div className="hud">
       <div className="hud-stat">
@@ -49,6 +58,18 @@ export default function Hud({ suspicion = 0, reputation = 0, gold = 0, onGoldCli
         <span className="hud-gold-icon">●</span>
         <span>{gold.toLocaleString('tr-TR')}</span>
       </button>
+
+      {!loading && !user && (
+        <button
+          type="button"
+          className="hud-signin hud-signin-btn"
+          onClick={signIn}
+          title="Google ile Giriş Yap"
+        >
+          <span className="hud-signin-icon">G</span>
+          <span className="hud-signin-label">Giriş Yap</span>
+        </button>
+      )}
     </div>
   );
 }

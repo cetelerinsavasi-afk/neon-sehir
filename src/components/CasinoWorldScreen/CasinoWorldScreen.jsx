@@ -13,6 +13,7 @@ import PhoneScreen from '../Phone/PhoneScreen';
 import LotteryScreen from '../LotteryScreen/LotteryScreen';
 import SlotScreen from '../SlotScreen/SlotScreen';
 import OnNumaraScreen from '../OnNumaraScreen/OnNumaraScreen';
+import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import { buyFromGazinoBar, createSixtagramPost, enterInterior } from '../../services/gameActions';
 import '../../styles/worldScreenChrome.css';
 import './CasinoWorldScreen.css';
@@ -20,14 +21,22 @@ import './CasinoWorldScreen.css';
 // --- Gazino içi (madde 15 revizyonu + madde 17 canlı/çok oyunculu) --------
 // Kullanıcının başka bir Claude oturumuna hazırlattığı referans örneğe göre
 // yeniden düzenlendi: üstte şişe duvarlı bar + taburelerdeki dizilim, sol
-// üstte piyango standı, ortada dikey dizili keçeli (kadife yeşil) 10 Numara
-// masaları, altta slot makineleri sırası — referanstaki 600×960 portre
-// yerleşimin 680×1180'e uyarlanmış hali. Zemin de referanstaki bordo
-// dama+baklava desenine yakınlaştırıldı. Piyango/slot/10 Numara'nın TÜM iş
-// mantığı zaten mevcut ekranlarda (LotteryScreen/SlotScreen/OnNumaraScreen)
-// — burada sadece istasyon çizimi/yönlendirme değişti. Sıradan (kumarsız)
+// üstte piyango standı, ortada TEK keçeli (kadife yeşil) 10 Numara masası,
+// altta slot makineleri sırası — referanstaki 600×960 portre yerleşimin
+// 680×1180'e uyarlanmış hali. Zemin de referanstaki bordo dama+baklava
+// desenine yakınlaştırıldı. Piyango/slot/10 Numara'nın TÜM iş mantığı
+// zaten mevcut ekranlarda (LotteryScreen/SlotScreen/OnNumaraScreen) —
+// burada sadece istasyon çizimi/yönlendirme değişti. Sıradan (kumarsız)
 // oturma sandalyeleri referansta yer almadığı için kaldırıldı (madde 15:
 // "bölümlerin konumu ... attığım örnektekine yakın olsun").
+// Yeni istek ("on numara masası 1 adet olsun, piyango ve bar bölümü de az
+// aşağı kayabilsin, barmen düzelsin, piyango satıcısı sandalyede otursun"):
+// eskiden 2 adet 10 Numara masası vardı; artık TEK masa var, boşalan dikey
+// alan BAR ve PİYANGO bölümlerini aşağı kaydırmak için kullanıldı — bu da
+// barı tavana yakın dar nişten kurtarıp barmenin tam boyda ve tezgahın
+// ARKASINDA (üstünde değil) durmasını sağladı (bkz. BARTENDER_BASE_Y/
+// BARTENDER_SCALE). Piyango biletçisi artık gerçek bir taburede
+// (drawTicketStool) standın hemen arkasında oturuyor (bkz. PIYANGO_SEAT).
 const W = 680;
 const H = 1180;
 const PLAYER_SPEED = 240;
@@ -40,19 +49,27 @@ const HOLDING_MS = 120_000; // Park büfesiyle aynı süre (bkz. ParkWorldScreen
 const AVATAR_SCALE = 1.42;
 
 // BAR — üstte, referanstaki gibi giriş banner'ının hemen altında, arkasında
-// şişe duvarı ve önünde taburelerle.
-const BAR = { x1: 120, y1: 190, x2: 560, y2: 230, cx: 340, cy: 210, hw: 220, hh: 20 };
+// şişe duvarı ve önünde taburelerle. y1/y2 — yeni istek üzerine ("barmenin
+// boyunu küçültmüşsün ... masanın üstünde gibi duruyor") AŞAĞI kaydırıldı:
+// tek 10 Numara masasına inilince boşalan dikey alan burada ve PİYANGO
+// bölümünde kullanılıyor, böylece barmen artık tam boyda (BARTENDER_SCALE
+// kaldırıldı, aşağıda) çizilebiliyor.
+const BAR = { x1: 120, y1: 290, x2: 560, y2: 330, cx: 340, cy: 310, hw: 220, hh: 20 };
 // BAR_STOOLS — yeni istek (madde 3): "gazinodaki bar sandalyelerine
 // oturulabilsin" — artık id'li, tıklanabilir/oturulabilir taburelerdir
 // (bkz. STOOL_R, handleCanvasClick, sittingSeatId).
 const BAR_STOOLS = [190, 290, 390, 490].map((x, i) => ({ id: `stool_${i}`, x, y: BAR.y2 + 22 }));
 const STOOL_R = 18;
-// BARTENDER_SCALE — bar, referanstaki gibi bilerek tavana YAKIN (dar bir
-// niş) — genel AVATAR_SCALE (1.42) burada barmenin baş üstü isim
-// etiketini/gövdesini duvardaki "GAZİNO" başlığının/alt yazısının üstüne
-// taşırıyordu (hatta etiket ekranın dışına çıkıyordu). Sadece bu NPC için
-// daha küçük, bu dar nişe sığan bir ölçek kullanılıyor.
-const BARTENDER_SCALE = 0.85;
+// BARTENDER_SCALE — eskiden bar tavana çok yakındı (dar bir niş) ve barmen
+// bu yüzden küçültülmüştü; bu da onu tezgahın İÇİNDE/ÜSTÜNDE duruyormuş
+// gibi gösteriyordu (bkz. madde: "barmen ... masanın üstünde gibi
+// duruyor"). BAR aşağı kaydırılınca niş yeterince uzadı — artık diğer tüm
+// NPC'lerle aynı AVATAR_SCALE kullanılıyor, küçültme YOK.
+const BARTENDER_SCALE = AVATAR_SCALE;
+// BARTENDER_BASE_Y — barmenin ayak noktası artık tezgahın ARKA kenarının
+// (BAR.y1) hemen gerisinde — tezgahın İÇİNDE/üstünde değil, tezgahın
+// gerisinde duruyormuş gibi.
+const BARTENDER_BASE_Y = BAR.y1 - 10;
 const BARTENDER_NPC = {
   name: 'Barmen Coşkun',
   lines: ['Ne alırdın?', 'Kokteylimiz meşhurdur.', 'Kazandın mı bari?'],
@@ -69,8 +86,20 @@ const BAR_MENU = [
 ];
 
 // PIYANGO — sol üstte, referanstaki gibi bar/masaların yanında ayrı bir
-// köşe stant.
-const PIYANGO = { x1: 40, y1: 300, x2: 190, y2: 372, cx: 115, cy: 336, hw: 75, hh: 36 };
+// köşe stant. y1/y2 — BAR ile aynı gerekçeyle (madde: "piyango ... az
+// aşağı kayabilsin") tek 10 Numara masasının boşalttığı alanı kullanarak
+// aşağı kaydırıldı.
+const PIYANGO = { x1: 40, y1: 520, x2: 190, y2: 592, cx: 115, cy: 556, hw: 75, hh: 36 };
+// PIYANGO_SEAT/PIYANGO_SIT_SHIFT — yeni istek: "piyango bilet satıcısı
+// sandalyede otursun". pose:'sit' sadece bacakları kısaltır (bkz.
+// avatarShapes.js SIT_LEG_H); baseY düzeltmesi yapılmazsa karakter
+// sandalyenin epey üstünde havada duruyormuş gibi görünür — bar
+// taburelerinde oturan OYUNCU için zaten kullanılan aynı telafi (bkz.
+// renderFrame'deki `SPRITE_H * AVATAR_SCALE * 0.32` payı) burada da
+// uygulanıyor, böylece görünür gövde tam sandalyenin üstüne oturuyor.
+const PIYANGO_SIT_SHIFT = SPRITE_H * AVATAR_SCALE * 0.32;
+const PIYANGO_SEAT = { cx: PIYANGO.cx, cy: PIYANGO.y1 - 60 };
+const PIYANGO_BASE_Y = PIYANGO_SEAT.cy + PIYANGO_SIT_SHIFT;
 const PIYANGO_NPC = {
   name: 'Biletçi Fatma',
   lines: ['Bugün şansın açık olabilir!', 'Bilet al, kura seni seçsin.', 'Büyük ikramiye bekliyor.'],
@@ -81,11 +110,11 @@ const PIYANGO_NPC = {
   },
 };
 
-// TABLES_10NUMARA — referanstaki dikey dizili keçeli masalar deseninde,
-// ortada alt alta 2 masa (gerçek "10 Numara" oyun mekaniği).
+// TABLES_10NUMARA — yeni istek: "on numara masası 1 adet olsun" — eskiden
+// alt alta 2 masaydı, artık ortada tek masa (boşalan dikey alan BAR ve
+// PİYANGO bölümlerini aşağı kaydırmak için kullanıldı, bkz. yukarısı).
 const TABLES_10NUMARA = [
-  { id: 'onnumara1', cx: 340, cy: 450, hw: 130, hh: 40 },
-  { id: 'onnumara2', cx: 340, cy: 630, hw: 130, hh: 40 },
+  { id: 'onnumara1', cx: 340, cy: 698, hw: 130, hh: 40 },
 ];
 
 // SLOTS — altta, girişe yakın sıra (referanstaki gibi).
@@ -289,6 +318,23 @@ function drawSlotMachine(c, cx, cy) {
   c.restore();
 }
 
+// drawTicketStool — yeni istek: "piyango bilet satıcısı sandalyede
+// otursun" — BAR_STOOLS ile aynı görsel dil (yuvarlak oturma yüzeyi + tek
+// bacak), NPC'nin hemen altına/arkasına çizilen küçük bir tabure.
+function drawTicketStool(c, x, y) {
+  c.save();
+  c.translate(x, y);
+  c.fillStyle = 'rgba(0,0,0,0.2)';
+  c.beginPath(); c.ellipse(0, 14, 16, 6, 0, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#3a1e14';
+  c.beginPath(); c.arc(0, 0, 14, 0, Math.PI * 2); c.fill();
+  c.strokeStyle = '#c9a227'; c.lineWidth = 1.8;
+  c.beginPath(); c.arc(0, 0, 14, 0, Math.PI * 2); c.stroke();
+  c.strokeStyle = '#241014'; c.lineWidth = 3;
+  c.beginPath(); c.moveTo(0, 12); c.lineTo(0, 30); c.stroke();
+  c.restore();
+}
+
 function drawGuard(c, getAvatarImage) {
   drawAvatarSprite(c, {
     x: GUVENLIK.cx, baseY: GUVENLIK.cy, avatar: GUVENLIK_NPC.avatar, pose: 'idle', facing: 'left',
@@ -320,7 +366,7 @@ function drawDoor(c) {
 export function drawCasinoSceneBackground(ctx, getAvatarImage) {
   drawFloor(ctx);
   drawDoor(ctx);
-  TABLES_10NUMARA.forEach((t, i) => drawFeltTable(ctx, t, `10 NUMARA ${i + 1}`));
+  TABLES_10NUMARA.forEach((t) => drawFeltTable(ctx, t, '10 NUMARA'));
   drawPiyangoStand(ctx);
   SLOTS.forEach((s) => drawSlotMachine(ctx, s.cx, s.cy));
   drawGuard(ctx, getAvatarImage);
@@ -328,19 +374,25 @@ export function drawCasinoSceneBackground(ctx, getAvatarImage) {
   drawBarAndStools(ctx);
   drawWalls(ctx);
 
+  // Barmen — artık tezgahın ARKASINDA, tam boyda (BARTENDER_BASE_Y/SCALE,
+  // bkz. yukarısı) — eskiden BAR.y1'in 6px İÇİNDE duruyordu, bu da tezgahın
+  // üstünde duruyormuş gibi görünmesine sebep oluyordu.
   drawAvatarSprite(ctx, {
-    x: BAR.cx, baseY: BAR.y1 + 6, avatar: BARTENDER_NPC.avatar, pose: 'idle', facing: 'down',
+    x: BAR.cx, baseY: BARTENDER_BASE_Y, avatar: BARTENDER_NPC.avatar, pose: 'idle', facing: 'down',
   }, getAvatarImage, { showName: false, scale: BARTENDER_SCALE });
   ctx.fillStyle = 'rgba(243,217,155,0.9)';
   ctx.font = 'bold 10px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(BARTENDER_NPC.name, BAR.cx, BAR.y1 + 6 - SPRITE_H * BARTENDER_SCALE - 10);
+  ctx.fillText(BARTENDER_NPC.name, BAR.cx, BARTENDER_BASE_Y - SPRITE_H * BARTENDER_SCALE - 10);
 
-  // pose:'sit' — yeni istek (madde 5): "piyango satıcısı ... otursun".
+  // pose:'sit' — yeni istek: "piyango bilet satıcısı sandalyede otursun" —
+  // artık PIYANGO_SEAT'te gerçek bir tabure (drawTicketStool) üstünde,
+  // standın hemen arkasında/yakınında oturuyor (bkz. PIYANGO_BASE_Y).
+  drawTicketStool(ctx, PIYANGO_SEAT.cx, PIYANGO_SEAT.cy);
   drawAvatarSprite(ctx, {
-    x: PIYANGO.cx, baseY: PIYANGO.y1 - 22, avatar: PIYANGO_NPC.avatar, pose: 'sit', facing: 'down',
+    x: PIYANGO_SEAT.cx, baseY: PIYANGO_BASE_Y, avatar: PIYANGO_NPC.avatar, pose: 'sit', facing: 'down',
   }, getAvatarImage, { showName: false, scale: AVATAR_SCALE });
-  ctx.fillText(PIYANGO_NPC.name, PIYANGO.cx, PIYANGO.y1 - 22 - SPRITE_H * AVATAR_SCALE - 8);
+  ctx.fillText(PIYANGO_NPC.name, PIYANGO_SEAT.cx, PIYANGO_BASE_Y - SPRITE_H * AVATAR_SCALE - 8);
 }
 
 export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable }) {
@@ -364,6 +416,7 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
   const [cameraBusy, setCameraBusy] = useState(false);
   const [cameraError, setCameraError] = useState(null);
   const [cameraDone, setCameraDone] = useState(false);
+  const [showGuestPrompt, setShowGuestPrompt] = useState(false);
 
   const canvasRef = useRef(null);
   const posRef = useRef({ ...START_POS });
@@ -417,7 +470,16 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
   // Gazinoya giriş/çıkış — BankWorldScreen ile BİREBİR aynı desen (bkz.
   // functions/index.js enterInterior).
   useEffect(() => {
-    if (!user) return undefined;
+    if (!user) {
+      // Misafir: sunucuya giriş bildirimi yok (enterInterior auth ister),
+      // ama sahnede serbestçe yürüyebilmesi için yerel olarak hazır
+      // sayıyoruz — sunucu senkronu (updatePresence, zaten `user`
+      // kontrollü) devre dışı kalıyor.
+      posRef.current = { ...START_POS };
+      lastSyncedPosRef.current = { ...START_POS };
+      setReady(true);
+      return undefined;
+    }
     let cancelled = false;
     enterInterior('gazino')
       .then((res) => {
@@ -610,6 +672,10 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
   }
 
   const handleBuyDrink = async (item) => {
+    if (!user) {
+      setShowGuestPrompt(true);
+      return;
+    }
     setBufeBusy(item.id);
     setBarError(null);
     try {
@@ -674,14 +740,14 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
     if (piyangoLine) {
       const lines = wrapBubbleText(ctx, piyangoLine);
       const { w, h } = measureBubble(ctx, lines);
-      const anchorY = PIYANGO.y1 - 22 - SPRITE_H * AVATAR_SCALE - 10;
-      bubbleItems.push({ x: PIYANGO.cx, w, h, lines, ts: 0, naturalTop: anchorY - h });
+      const anchorY = PIYANGO_BASE_Y - SPRITE_H * AVATAR_SCALE - 10;
+      bubbleItems.push({ x: PIYANGO_SEAT.cx, w, h, lines, ts: 0, naturalTop: anchorY - h });
     }
     const bartenderLine = cyclingLine(BARTENDER_NPC.lines, { phase: 11 });
     if (bartenderLine) {
       const lines = wrapBubbleText(ctx, bartenderLine);
       const { w, h } = measureBubble(ctx, lines);
-      const anchorY = BAR.y1 + 6 - SPRITE_H * BARTENDER_SCALE - 12;
+      const anchorY = BARTENDER_BASE_Y - SPRITE_H * BARTENDER_SCALE - 12;
       bubbleItems.push({ x: BAR.cx, w, h, lines, ts: 1, naturalTop: anchorY - h });
     }
     const guardLine = cyclingLine(GUVENLIK_NPC.lines, { phase: 20 });
@@ -750,15 +816,6 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
     targetRef.current = { x: Math.max(30, Math.min(W - 30, p.x)), y: Math.max(30, Math.min(H - 30, p.y)) };
   }
 
-  if (!user) {
-    return (
-      <div className="ws-fullscreen" style={{ '--ws-bg': '#1a0f1c' }}>
-        <button className="ws-exit-btn" onClick={onExit}>✕</button>
-        <p className="ws-hint" style={{ padding: 16, color: '#f2ecdd' }}>Gazinoya girmek için giriş yapmalısın.</p>
-      </div>
-    );
-  }
-
   const panelTitles = {
     slot: '🎰 Slot Makinesi',
     piyango: '🎟️ Piyango Bileti',
@@ -786,7 +843,7 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
         {ready && (
           <>
             <button className="ws-phone-btn" onClick={() => setPhoneOpen(true)} title="Telefon">📱</button>
-            <button className="ws-camera-btn" onClick={openCamera} title="Fotoğraf çek">📷</button>
+            <button className="ws-camera-btn" onClick={() => (user ? openCamera() : setShowGuestPrompt(true))} title="Fotoğraf çek">📷</button>
           </>
         )}
       </div>
@@ -794,16 +851,26 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
       <div className="ws-chat-row">
         <input
           className="ws-chat-input"
-          placeholder="Bir şey yaz…"
+          placeholder={user ? 'Bir şey yaz…' : 'Sohbet için giriş yapmalısın'}
           value={chatText}
           maxLength={140}
+          disabled={!user}
           onChange={(e) => setChatText(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && sendChat()}
+          onKeyDown={(e) => e.key === 'Enter' && (user ? sendChat() : setShowGuestPrompt(true))}
         />
-        <button className="ws-chat-send" onClick={sendChat}>Gönder</button>
+        <button className="ws-chat-send" onClick={() => (user ? sendChat() : setShowGuestPrompt(true))}>Gönder</button>
       </div>
 
       {phoneOpen && <PhoneScreen onClose={() => setPhoneOpen(false)} onEnterTable={() => {}} />}
+
+      {showGuestPrompt && (
+        <div className="ws-panel-backdrop" onClick={() => setShowGuestPrompt(false)}>
+          <div className="ws-panel" onClick={(e) => e.stopPropagation()}>
+            <SignInPrompt message="Bunun için giriş yapmalısın." />
+            <button className="ws-panel-btn" onClick={() => setShowGuestPrompt(false)}>Kapat</button>
+          </div>
+        </div>
+      )}
 
       {panel != null && (
         <div className="ws-panel-backdrop" onClick={() => setPanel(null)}>

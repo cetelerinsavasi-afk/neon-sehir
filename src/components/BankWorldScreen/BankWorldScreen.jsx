@@ -11,6 +11,7 @@ import {
 import Hud from '../Hud/Hud';
 import PhoneScreen from '../Phone/PhoneScreen';
 import BankScreen from '../BankScreen/BankScreen';
+import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import { createSixtagramPost, enterInterior } from '../../services/gameActions';
 import '../../styles/worldScreenChrome.css';
 import './BankWorldScreen.css';
@@ -48,6 +49,15 @@ const TELLERS = [
 ];
 const TELLER_HW = 82;
 const TELLER_HH = 40;
+// TELLER_SIT_SHIFT — yeni istek ("oturan npclerin sandalyesi olsun ve
+// masaya daha yakın olsunlar"): veznedarlar pose:'sit' ile çiziliyor ama
+// altlarında sandalye yoktu, ve baseY telafisi olmadığı için görünür
+// gövde tezgahın epey gerisinde havada duruyormuş gibi görünüyordu —
+// bar taburelerinde oturan OYUNCU için zaten kullanılan aynı telafi
+// (`SPRITE_H * scale * 0.32`) burada da uygulanıyor (bkz. drawTeller).
+const TELLER_SIT_SHIFT = SPRITE_H * AVATAR_SCALE * 0.32;
+function tellerSeatY(t) { return t.cy - TELLER_HH - 24; }
+function tellerBaseY(t) { return tellerSeatY(t) + TELLER_SIT_SHIFT; }
 
 // GUVENLIK — madde 12: bankada tam 1 güvenlik NPC'si, veznelerin uzağında
 // (duvar kenarı) sabit duruyor, sadece dekoratif/atmosferik.
@@ -209,16 +219,37 @@ function drawTeller(c, t, npc, getAvatarImage) {
   c.restore();
 
   // NPC (tezgahın arkasında OTURUYOR — yeni istek: "veznede çalışanlar ...
-  // otursun". pose:'sit' sadece bacak boyunu kısaltır, baseY/konum AYNI
-  // kalır — bkz. avatarShapes.js SIT_LEG_H.)
+  // otursun", ve sonra: "oturan npclerin sandalyesi olsun ve masaya daha
+  // yakın olsunlar" — artık gerçek bir sandalyede (bkz. drawTellerChair) ve
+  // baseY, bar taburelerinde oturan OYUNCU için kullanılan aynı
+  // `SPRITE_H * scale * 0.32` telafisiyle sandalyeye hizalanıyor (bkz.
+  // TELLER_SIT_SHIFT/tellerSeatY/tellerBaseY).
+  const seatY = tellerSeatY(t);
+  const baseY = tellerBaseY(t);
+  drawTellerChair(c, t.cx, seatY);
   drawAvatarSprite(c, {
-    x: t.cx, baseY: t.cy - TELLER_HH - 32, avatar: npc.avatar, pose: 'sit', facing: 'down', name: npc.name,
+    x: t.cx, baseY, avatar: npc.avatar, pose: 'sit', facing: 'down', name: npc.name,
   }, getAvatarImage, { showName: false, scale: AVATAR_SCALE });
 
   c.fillStyle = 'rgba(20,12,8,0.8)';
   c.font = 'bold 11px sans-serif';
   c.textAlign = 'center';
-  c.fillText(npc.name, t.cx, t.cy - TELLER_HH - 66);
+  c.fillText(npc.name, t.cx, baseY - SPRITE_H * AVATAR_SCALE - 8);
+}
+
+// drawTellerChair — yeni istek: "oturan npclerin sandalyesi olsun" —
+// veznedarın tezgahının hemen arkasına çizilen basit bir ofis sandalyesi
+// (sırtlığı tezgahın üstünden görünüyor).
+function drawTellerChair(c, x, y) {
+  c.save();
+  c.translate(x, y);
+  c.fillStyle = 'rgba(0,0,0,0.18)';
+  c.beginPath(); c.ellipse(0, 17, 20, 7, 0, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#2b2318';
+  roundRectC(c, -14, -26, 28, 28, 4); c.fill();
+  c.strokeStyle = '#e8cf7a'; c.lineWidth = 1.2;
+  roundRectC(c, -14, -26, 28, 28, 4); c.stroke();
+  c.restore();
 }
 
 function drawGuard(c, getAvatarImage) {
@@ -317,6 +348,7 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
   const [cameraBusy, setCameraBusy] = useState(false);
   const [cameraError, setCameraError] = useState(null);
   const [cameraDone, setCameraDone] = useState(false);
+  const [showGuestPrompt, setShowGuestPrompt] = useState(false);
 
   const canvasRef = useRef(null);
   const posRef = useRef({ ...START_POS });
@@ -385,7 +417,16 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
   // Bankaya giriş/çıkış — enterPark/ParkWorldScreen ile BİREBİR aynı desen
   // (bkz. functions/index.js enterInterior).
   useEffect(() => {
-    if (!user) return undefined;
+    if (!user) {
+      // Misafir: sunucuya giriş bildirimi yok (enterInterior auth ister),
+      // ama sahnede serbestçe yürüyebilmesi için yerel olarak hazır
+      // sayıyoruz — sunucu senkronu (updatePresence, zaten `user`
+      // kontrollü) devre dışı kalıyor.
+      posRef.current = { ...START_POS };
+      lastSyncedPosRef.current = { ...START_POS };
+      setReady(true);
+      return undefined;
+    }
     let cancelled = false;
     enterInterior('banka')
       .then((res) => {
@@ -672,7 +713,7 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
       if (!line) return;
       const lines = wrapBubbleText(ctx, line);
       const { w, h } = measureBubble(ctx, lines);
-      const anchorY = t.cy - TELLER_HH - 32 - SPRITE_H * AVATAR_SCALE - 10;
+      const anchorY = tellerBaseY(t) - SPRITE_H * AVATAR_SCALE - 10;
       bubbleItems.push({ x: t.cx, w, h, lines, ts: isCalling ? 999 + i : i, naturalTop: anchorY - h });
     });
     entities.forEach((e, i) => {
@@ -734,15 +775,6 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
     targetRef.current = { x: Math.max(30, Math.min(W - 30, p.x)), y: Math.max(30, Math.min(H - 30, p.y)) };
   }
 
-  if (!user) {
-    return (
-      <div className="ws-fullscreen" style={{ '--ws-bg': '#dcd6c8' }}>
-        <button className="ws-exit-btn" onClick={onExit}>✕</button>
-        <p className="ws-hint" style={{ padding: 16, color: '#222' }}>Bankaya girmek için giriş yapmalısın.</p>
-      </div>
-    );
-  }
-
   return (
     <div className="ws-fullscreen" style={{ '--ws-bg': '#dcd6c8', '--ws-panel-bg': '#1c1c24' }}>
       <Hud suspicion={player?.suspicion ?? 0} reputation={player?.reputation ?? 0} gold={player?.gold ?? 0} />
@@ -763,7 +795,7 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
         {ready && (
           <>
             <button className="ws-phone-btn" onClick={() => setPhoneOpen(true)} title="Telefon">📱</button>
-            <button className="ws-camera-btn" onClick={openCamera} title="Fotoğraf çek">📷</button>
+            <button className="ws-camera-btn" onClick={() => (user ? openCamera() : setShowGuestPrompt(true))} title="Fotoğraf çek">📷</button>
           </>
         )}
         {myNumber != null && (
@@ -776,16 +808,26 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
       <div className="ws-chat-row">
         <input
           className="ws-chat-input"
-          placeholder="Bir şey yaz…"
+          placeholder={user ? 'Bir şey yaz…' : 'Sohbet için giriş yapmalısın'}
           value={chatText}
           maxLength={140}
+          disabled={!user}
           onChange={(e) => setChatText(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && sendChat()}
+          onKeyDown={(e) => e.key === 'Enter' && (user ? sendChat() : setShowGuestPrompt(true))}
         />
-        <button className="ws-chat-send" onClick={sendChat}>Gönder</button>
+        <button className="ws-chat-send" onClick={() => (user ? sendChat() : setShowGuestPrompt(true))}>Gönder</button>
       </div>
 
       {phoneOpen && <PhoneScreen onClose={() => setPhoneOpen(false)} onEnterTable={() => {}} />}
+
+      {showGuestPrompt && (
+        <div className="ws-panel-backdrop" onClick={() => setShowGuestPrompt(false)}>
+          <div className="ws-panel" onClick={(e) => e.stopPropagation()}>
+            <SignInPrompt message="Bunun için giriş yapmalısın." />
+            <button className="ws-panel-btn" onClick={() => setShowGuestPrompt(false)}>Kapat</button>
+          </div>
+        </div>
+      )}
 
       {panel === 'bank' && (
         <div className="ws-panel-backdrop" onClick={() => setPanel(null)}>

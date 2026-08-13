@@ -6,6 +6,7 @@ import SimpleActionScreen from '../SimpleActionScreen/SimpleActionScreen';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import ImamBooklet from '../ImamBooklet/ImamBooklet';
+import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import { useMosqueAttendance } from '../../hooks/useMosqueAttendance';
 import { useBeggars } from '../../hooks/useBeggars';
 import { useImamState } from '../../hooks/useImamState';
@@ -31,7 +32,11 @@ export const WINDOW_HOURS = {
   5: '21:00-24:00',
 };
 
-const BEGGAR_WEALTH_LIMIT = 10000;
+// Bu iki sabit sadece EKRANDA GÖSTERİLEN metin/kelepçe için — gerçek kural
+// sunucu tarafında (functions/index.js: BEGGAR_WEALTH_LIMIT,
+// BEGGAR_MAX_SINGLE_DONATION) uygulanıyor; ikisi senkron tutulmalı.
+const BEGGAR_WEALTH_LIMIT = 20000;
+const BEGGAR_MAX_SINGLE_DONATION = 10000;
 
 export function ImamPanel() {
   const { user } = useAuth();
@@ -48,7 +53,7 @@ export function ImamPanel() {
   const [salaryError, setSalaryError] = useState(null);
   const [salarySuccess, setSalarySuccess] = useState(false);
 
-  if (!user) return null;
+  if (!user) return <SignInPrompt message="İmamlık işlemleri için giriş yapmalısın." />;
 
   const iAmImam = imam?.uid === user.uid;
 
@@ -296,7 +301,12 @@ function BeggarCard({ beggar, myUid }) {
 
       {donateOpen && (
         <div className="beggar-donate-panel">
-          <QuantityStepper value={amount} onChange={setAmount} quickAmounts={[10, 100, 1000]} />
+          <QuantityStepper
+            value={amount}
+            onChange={setAmount}
+            max={BEGGAR_MAX_SINGLE_DONATION}
+            quickAmounts={[10, 100, 1000]}
+          />
           <button className="beggar-btn primary" disabled={busy || !amount} onClick={handleDonate}>
             {busy ? '…' : `Bağışla — ${amount.toLocaleString('tr-TR')} altın`}
           </button>
@@ -312,6 +322,8 @@ export function BeggarsSection() {
   const { user } = useAuth();
   const { beggars } = useBeggars();
   const [showForm, setShowForm] = useState(false);
+
+  if (!user) return <SignInPrompt message="Dilencilik/bağış işlemleri için giriş yapmalısın." />;
 
   const amIBeggar = beggars.some((b) => b.id === user?.uid);
 
