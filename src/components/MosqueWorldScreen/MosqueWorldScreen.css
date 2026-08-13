@@ -1,17 +1,24 @@
 /* MosqueWorldScreen.css — genel "girilebilir mekan" kabuğu (tam ekran,
    çıkış butonu, panel vb.) styles/worldScreenChrome.css'te (.ws-*) — bkz.
-   MosqueWorldScreen.jsx importu. Burada SADECE camiye özel, X butonunun
-   yanındaki imam/kitapçık/cemaat menüsü (madde 5) var. */
+   MosqueWorldScreen.jsx importu. Burada SADECE camiye özel stiller var:
+   üstteki tek satır menü (madde 1: imamlık başvurusu - imam kitapçığı -
+   vakitteki cemaat - x) ve imam makamının üstünde yüzen "İbadet Et" butonu. */
 
-.mww-menu {
+/* mww-menu-row — yeni istek: hepsi TEK SATIRDA yan yana, X en sonda.
+   Standart .ws-exit-btn artık burada KULLANILMIYOR (bkz. mww-exit-btn),
+   çünkü satırın bir flex-child'ı olması gerekiyor, position:fixed değil. */
+.mww-menu-row {
   position: fixed;
-  top: calc(76px + 30px + 8px + env(safe-area-inset-top));
+  top: calc(76px + env(safe-area-inset-top));
   right: 12px;
+  left: 12px;
   z-index: 25;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 .mww-menu-btn {
@@ -24,4 +31,51 @@
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
+}
+
+.mww-exit-btn {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border-radius: 8px;
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  background: rgba(0, 0, 0, 0.45);
+  color: #f2ecdd;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* mww-pray-btn — yeni istek: imam makamının (MIHRAB) üstünde, ekranda
+   gerçekten göründüğü yerde yüzen "İbadet Et" butonu. Konumu JS'te
+   (prayBtnPos, getBoundingClientRect ile) hesaplanıp left/top olarak
+   verildiği için burada sadece görünüm var; position:fixed + transform ile
+   verilen noktaya ortalanıyor. */
+.mww-pray-btn {
+  position: fixed;
+  z-index: 24;
+  transform: translate(-50%, -50%);
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid #c9a227;
+  background: linear-gradient(180deg, #f3d99b, #c9a227);
+  color: #241a10;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+}
+
+.mww-pray-btn:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.mww-pray-error {
+  position: fixed;
+  bottom: 90px;
+  left: 12px;
+  right: 12px;
+  z-index: 26;
+  text-align: center;
 }

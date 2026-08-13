@@ -31,7 +31,11 @@ const INTERACT_RADIUS = 76;
 // kalıyordu; bu SADECE bu mekana özel bir büyütme, paylaşılan SPRITE_H
 // varsayılanına (Park dahil tüm mekanların ortak temeli) DOKUNULMUYOR —
 // bkz. lib/canvasWorldKit.js drawAvatarSprite'ın `scale` parametresi.
-const AVATAR_SCALE = 1.22;
+const AVATAR_SCALE = 1.42;
+// Yeni istek: "mekanlardaki eşyaları büyütelim" — vezne tezgahı/sandalye/
+// numaratör boyutları ~%10 büyütüldü (pozisyonlar AYNI kaldı, sadece
+// boyutlar — komşu veznelerin çakışmaması için sınırlı tutuldu, bkz.
+// TELLER_HW).
 
 // NOT: NPC'lerin başı sprite boyu (SPRITE_H=118) kadar counter'ın
 // ÜSTÜNE çıkıyor (bkz. drawTeller) — cy bu yüzden duvar panosunun
@@ -42,8 +46,8 @@ const TELLERS = [
   { id: 'vezne2', cx: 340, cy: 350, label: 'VEZNE 2' },
   { id: 'vezne3', cx: 510, cy: 350, label: 'VEZNE 3' },
 ];
-const TELLER_HW = 78;
-const TELLER_HH = 36;
+const TELLER_HW = 82;
+const TELLER_HH = 40;
 
 // GUVENLIK — madde 12: bankada tam 1 güvenlik NPC'si, veznelerin uzağında
 // (duvar kenarı) sabit duruyor, sadece dekoratif/atmosferik.
@@ -89,14 +93,14 @@ const TELLER_NPCS = {
   },
 };
 
-const NUMARATOR = { cx: 340, cy: 550, r: 36 };
+const NUMARATOR = { cx: 340, cy: 550, r: 40 };
 
 // Oturma/bekleme bölümü — tek tek sandalyeler (masa yok, sadece bekleme).
 const CHAIRS = [
   { id: 'chair_1', cx: 200, cy: 710 }, { id: 'chair_2', cx: 340, cy: 710 }, { id: 'chair_3', cx: 480, cy: 710 },
   { id: 'chair_4', cx: 200, cy: 810 }, { id: 'chair_5', cx: 340, cy: 810 }, { id: 'chair_6', cx: 480, cy: 810 },
 ];
-const CHAIR_R = 28;
+const CHAIR_R = 31;
 
 const DOOR = { cx: 340, cy: 1080 };
 const START_POS = { x: 340, y: 990 };
@@ -204,9 +208,11 @@ function drawTeller(c, t, npc, getAvatarImage) {
   c.fillText(t.label, 0, -TELLER_HH - 3);
   c.restore();
 
-  // NPC (tezgahın arkasında sabit duruyor)
+  // NPC (tezgahın arkasında OTURUYOR — yeni istek: "veznede çalışanlar ...
+  // otursun". pose:'sit' sadece bacak boyunu kısaltır, baseY/konum AYNI
+  // kalır — bkz. avatarShapes.js SIT_LEG_H.)
   drawAvatarSprite(c, {
-    x: t.cx, baseY: t.cy - TELLER_HH - 32, avatar: npc.avatar, pose: 'idle', facing: 'down', name: npc.name,
+    x: t.cx, baseY: t.cy - TELLER_HH - 32, avatar: npc.avatar, pose: 'sit', facing: 'down', name: npc.name,
   }, getAvatarImage, { showName: false, scale: AVATAR_SCALE });
 
   c.fillStyle = 'rgba(20,12,8,0.8)';
@@ -231,20 +237,20 @@ function drawNumaratorKiosk(c) {
   c.fillStyle = 'rgba(0,0,0,0.2)';
   c.beginPath(); c.ellipse(0, NUMARATOR.r + 4, NUMARATOR.r + 4, 12, 0, 0, Math.PI * 2); c.fill();
   c.fillStyle = '#22262f';
-  roundRectC(c, -24, -72, 48, 120, 7); c.fill();
+  roundRectC(c, -27, -79, 53, 132, 8); c.fill();
   c.strokeStyle = '#e8cf7a'; c.lineWidth = 1.6;
-  roundRectC(c, -24, -72, 48, 120, 7); c.stroke();
+  roundRectC(c, -27, -79, 53, 132, 8); c.stroke();
   c.fillStyle = '#0d1a12';
-  roundRectC(c, -18, -62, 36, 26, 4); c.fill();
+  roundRectC(c, -20, -68, 40, 29, 4); c.fill();
   c.fillStyle = '#4ee88a';
-  c.font = 'bold 11px monospace';
+  c.font = 'bold 12px monospace';
   c.textAlign = 'center';
-  c.fillText('SIRA', 0, -45);
+  c.fillText('SIRA', 0, -49);
   c.fillStyle = '#c9432b';
-  roundRectC(c, -15, -24, 30, 13, 3); c.fill();
+  roundRectC(c, -16, -26, 33, 14, 3); c.fill();
   c.fillStyle = '#f4e6d0';
-  c.font = 'bold 8px sans-serif';
-  c.fillText('NUMARA AL', 0, -15);
+  c.font = 'bold 9px sans-serif';
+  c.fillText('NUMARA AL', 0, -16);
   c.restore();
 }
 
@@ -252,13 +258,13 @@ function drawChair(c, seat) {
   c.save();
   c.translate(seat.cx, seat.cy);
   c.fillStyle = 'rgba(0,0,0,0.18)';
-  c.beginPath(); c.ellipse(0, 19, 24, 9, 0, 0, Math.PI * 2); c.fill();
+  c.beginPath(); c.ellipse(0, 21, 27, 10, 0, 0, Math.PI * 2); c.fill();
   c.fillStyle = '#4a2e18';
-  roundRectC(c, -17, -2, 34, 19, 4); c.fill();
+  roundRectC(c, -19, -2, 37, 21, 4); c.fill();
   c.fillStyle = '#6b4226';
-  roundRectC(c, -17, -33, 34, 31, 5); c.fill();
+  roundRectC(c, -19, -36, 37, 34, 5); c.fill();
   c.strokeStyle = '#2b1b12'; c.lineWidth = 1.2;
-  roundRectC(c, -17, -33, 34, 31, 5); c.stroke();
+  roundRectC(c, -19, -36, 37, 34, 5); c.stroke();
   c.restore();
 }
 

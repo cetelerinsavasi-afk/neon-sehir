@@ -33,10 +33,14 @@ const INTERACT_RADIUS = 76;
 // AVATAR_SCALE (madde 13) — bina içlerinde her şey (avatar dahil) küçük
 // kalıyordu; SADECE bu mekana özel bir büyütme (bkz. BankWorldScreen'deki
 // aynı gerekçe/yorum).
-const AVATAR_SCALE = 1.22;
+const AVATAR_SCALE = 1.42;
 
 // RESEPSİYON — giriş memurunun kendi masası (madde 4: "boş ayakta değil").
-const RESEPSIYON = { cx: 340, cy: 700, hw: 84, hh: 34 };
+// Boyutlar yeni istek üzerine büyütüldü ("mekanlardaki eşyaları büyütelim").
+// cy — büyüyen AVATAR_SCALE ile memurun baş üstü isim etiketi eskiden
+// KOMİSER odasının alt sınırına çok yaklaşıyordu (bkz. KOMISER_ROOM'daki
+// aynı gerekçe); masa biraz daha aşağı alındı ki etiket rahat sığsın.
+const RESEPSIYON = { cx: 340, cy: 730, hw: 90, hh: 37 };
 const OFFICER_NPC = {
   name: 'Memur Kemal',
   lines: ['Buyurun, nasıl yardımcı olabilirim?', 'Evrak için sırayı bekleyin lütfen.', 'Şüphen çoksa rüşvet işini hallederiz.', 'İyi günler.'],
@@ -49,8 +53,14 @@ const OFFICER_NPC = {
 
 // KOMISER_ROOM — komiserin özel/kapalı ofisi (madde 4), referans örnekteki
 // "duvar + alt kenarda kapı boşluğu" deseniyle (bkz. drawRoomWalls).
-const KOMISER_ROOM = { x1: 130, y1: 190, x2: 550, y2: 440, doorX1: 300, doorX2: 380 };
-const COMMISSIONER_DESK = { cx: 340, cy: 280, hw: 74, hh: 30 };
+// y1/y2 ve COMMISSIONER_DESK.cy — yeni istek üzerine (madde 4: "komiserin
+// adı ile karakolun adı aynı noktaya denk gelmiş") AŞAĞI kaydırıldı: büyük
+// AVATAR_SCALE ile komiserin baş üstü isim etiketi eskiden duvardaki
+// "KARAKOL" başlığının/alt yazısının (y≈46/70, bkz. drawWalls) hemen
+// üstüne denk geliyordu — masa artık duvardan yeterince uzakta ki isim
+// etiketi WALL_H (150) bandının rahatça altında/dışında kalsın.
+const KOMISER_ROOM = { x1: 130, y1: 200, x2: 550, y2: 460, doorX1: 300, doorX2: 380 };
+const COMMISSIONER_DESK = { cx: 340, cy: 405, hw: 78, hh: 33 };
 const COMMISSIONER_NPC = {
   name: 'Komiser Yusuf',
   lines: ['Rapor ne durumda?', 'Başvurunu değerlendiririm.', 'Kitapçığı okumadan imza atma.', 'Nöbet listesini kontrol edin.'],
@@ -62,10 +72,11 @@ const COMMISSIONER_NPC = {
   },
 };
 
-// KORUMALAR — madde 4: komiserin 2 koruması, ofisin kapı eşiğinde nöbette.
+// KORUMALAR — madde 4: komiserin 2 koruması, ofisin kapı eşiğinde nöbette
+// (cy, KOMISER_ROOM'un yeni aşağı kaydırılmış kapı hizasına göre güncellendi).
 const KORUMALAR = [
   {
-    cx: 210, cy: 400, name: 'Koruma',
+    cx: 210, cy: 440, name: 'Koruma',
     lines: ['Her şey kontrol altında.', 'Giriş çıkışları takip ediyorum.'],
     avatar: {
       ...DEFAULT_AVATAR, gender: 'erkek', build: 'iri', skin: '#c68642',
@@ -74,7 +85,7 @@ const KORUMALAR = [
     },
   },
   {
-    cx: 470, cy: 400, name: 'Koruma',
+    cx: 470, cy: 440, name: 'Koruma',
     lines: ['Komiserim şu an meşgul.', 'Sırayla lütfen.'],
     avatar: {
       ...DEFAULT_AVATAR, gender: 'erkek', build: 'iri', skin: '#f1c27d',
@@ -84,10 +95,11 @@ const KORUMALAR = [
   },
 ];
 
-// NEZARETHANE — dekoratif hücre bölümü, referans örnekteki gibi ayrı bir
-// "oda" (duvar + kapı boşluğu + parmaklık + bank) — fiziksel çarpışma yok
-// (yukarıdaki KOMISER_ROOM ile aynı gerekçe).
-const NEZARETHANE = { x1: 60, y1: 480, x2: 300, y2: 620, doorX1: 140, doorX2: 220 };
+// NEZARETHANE — dekoratif hücre bölümü — fiziksel çarpışma yok (yukarıdaki
+// KOMISER_ROOM ile aynı gerekçe). Yeni istek (madde 4: "ful parmaklık
+// olsun"): artık kapı boşluğu YOK — ön cephenin TAMAMI parmaklık (bkz.
+// drawNezarethane/drawCellBars), bu yüzden doorX1/doorX2 kaldırıldı.
+const NEZARETHANE = { x1: 60, y1: 480, x2: 300, y2: 620 };
 
 const DOOR = { cx: 340, cy: 1080 };
 const START_POS = { x: 340, y: 990 };
@@ -95,7 +107,7 @@ const START_POS = { x: 340, y: 990 };
 const OBSTACLES = [
   { cx: RESEPSIYON.cx, cy: RESEPSIYON.cy, hw: RESEPSIYON.hw, hh: RESEPSIYON.hh },
   { cx: COMMISSIONER_DESK.cx, cy: COMMISSIONER_DESK.cy, hw: COMMISSIONER_DESK.hw, hh: COMMISSIONER_DESK.hh },
-  ...KORUMALAR.map((k) => ({ cx: k.cx, cy: k.cy, r: 26 })),
+  ...KORUMALAR.map((k) => ({ cx: k.cx, cy: k.cy, r: 29 })),
 ];
 
 function dist(a, b) {
@@ -104,14 +116,14 @@ function dist(a, b) {
   return Math.hypot(ax - bx, ay - by);
 }
 
-// drawFloor — madde 4: "zemin renkleri bayrak olması gibi". Ana zemin koyu
-// kırmızı tonda, kapıdan resepsiyona uzanan koridorda daha canlı kırmızı bir
-// şerit ve üstünde krem tonda ay-yıldız motifi (Türk bayrağı renk/desen
-// dili) — gerçek bir bayrak ÇİZİLMİYOR, sadece renk/motif esinleniyor.
+// drawFloor — yeni istek (madde 4): "zemindeki türk bayrağını kaldıralım
+// ... zemin açık gri olsun". Eski kırmızı zemin + ay-yıldız motifi
+// tamamen kaldırıldı, açık gri bir zemine (referans paletiyle aynı:
+// #d7dbe0/#dde1e6/#cfd4da) geçildi.
 function drawFloor(c) {
-  c.fillStyle = '#3a1116';
+  c.fillStyle = '#d7dbe0';
   c.fillRect(0, 0, W, H);
-  c.strokeStyle = 'rgba(255,255,255,0.04)';
+  c.strokeStyle = 'rgba(0,0,0,0.05)';
   c.lineWidth = 1;
   for (let x = 0; x <= W; x += 58) {
     c.beginPath(); c.moveTo(x, 0); c.lineTo(x, H); c.stroke();
@@ -119,30 +131,12 @@ function drawFloor(c) {
   for (let y = 0; y <= H; y += 58) {
     c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke();
   }
-  // Koridor şeridi — kapıdan resepsiyona.
+  // Koridor şeridi — kapıdan resepsiyona, artık nötr gri tonlarda.
   const grd = c.createLinearGradient(0, 640, 0, 1080);
-  grd.addColorStop(0, 'rgba(196,30,42,0.4)');
-  grd.addColorStop(1, 'rgba(196,30,42,0.18)');
+  grd.addColorStop(0, 'rgba(207,212,218,0.9)');
+  grd.addColorStop(1, 'rgba(221,225,230,0.5)');
   c.fillStyle = grd;
   c.fillRect(260, 640, 160, 440);
-  // Ay-yıldız motifi (zeminde, çok soluk).
-  c.save();
-  c.globalAlpha = 0.16;
-  c.fillStyle = '#f4e6d0';
-  c.beginPath(); c.arc(340, 900, 38, 0, Math.PI * 2); c.fill();
-  c.fillStyle = '#3a1116';
-  c.beginPath(); c.arc(352, 900, 31, 0, Math.PI * 2); c.fill();
-  c.fillStyle = '#f4e6d0';
-  const sx = 388, sy = 900;
-  c.beginPath();
-  for (let i = 0; i < 5; i += 1) {
-    const a = -Math.PI / 2 + i * (Math.PI * 2 / 5);
-    const a2 = a + Math.PI / 5;
-    c.lineTo(sx + Math.cos(a) * 13, sy + Math.sin(a) * 13);
-    c.lineTo(sx + Math.cos(a2) * 5, sy + Math.sin(a2) * 5);
-  }
-  c.closePath(); c.fill();
-  c.restore();
 }
 
 const WALL_H = 150;
@@ -190,13 +184,43 @@ function drawRoomWalls(c, room, label, floorTint) {
   c.fillText(label, (room.x1 + room.x2) / 2, room.y1 - 8);
 }
 
-function drawCellBars(c) {
+// drawNezarethane — NEZARETHANE artık kapı boşluklu genel drawRoomWalls
+// yerine kendi çizim fonksiyonuna sahip: üst/sol/sağ duvar TAM kapalı,
+// alt (ön) cephe TAMAMEN parmaklık (bkz. drawCellBars) — kapı boşluğu yok.
+function drawNezarethane(c) {
+  const { x1, y1, x2, y2 } = NEZARETHANE;
   c.save();
-  c.strokeStyle = 'rgba(232,207,122,0.5)';
+  c.fillStyle = 'rgba(20,20,26,0.45)';
+  c.fillRect(x1, y1, x2 - x1, y2 - y1);
+  c.strokeStyle = 'rgba(232,207,122,0.55)';
+  c.lineWidth = 5;
+  c.beginPath();
+  c.moveTo(x1, y2);
+  c.lineTo(x1, y1);
+  c.lineTo(x2, y1);
+  c.lineTo(x2, y2);
+  c.stroke();
+  c.restore();
+  c.fillStyle = 'rgba(232,207,122,0.75)';
+  c.font = 'bold 11px sans-serif';
+  c.textAlign = 'center';
+  c.fillText('NEZARETHANE', (x1 + x2) / 2, y1 - 8);
+}
+
+// drawCellBars — yeni istek (madde 4): "nezarethane ful parmaklık olsun,
+// senin önceden yaptığın gibi" — artık sadece kapı boşluğu genişliğinde
+// DEĞİL, hücrenin TÜM ön cephesi (x1'den x2'ye) boyunca sık parmaklık.
+function drawCellBars(c) {
+  const { x1, x2, y2 } = NEZARETHANE;
+  c.save();
+  c.strokeStyle = 'rgba(232,207,122,0.6)';
   c.lineWidth = 3;
-  for (let x = NEZARETHANE.doorX1 + 8; x < NEZARETHANE.doorX2; x += 12) {
-    c.beginPath(); c.moveTo(x, NEZARETHANE.y2 - 30); c.lineTo(x, NEZARETHANE.y2 + 2); c.stroke();
+  for (let x = x1 + 10; x < x2; x += 14) {
+    c.beginPath(); c.moveTo(x, y2 - 46); c.lineTo(x, y2 + 4); c.stroke();
   }
+  c.strokeStyle = 'rgba(232,207,122,0.8)';
+  c.lineWidth = 4;
+  c.beginPath(); c.moveTo(x1, y2 - 46); c.lineTo(x2, y2 - 46); c.stroke();
   c.restore();
 }
 
@@ -204,9 +228,9 @@ function drawBench(c, cx, cy) {
   c.save();
   c.translate(cx, cy);
   c.fillStyle = '#7a7f88';
-  roundRectC(c, -42, -10, 84, 20, 4); c.fill();
+  roundRectC(c, -46, -11, 92, 22, 4); c.fill();
   c.strokeStyle = '#3a3f47'; c.lineWidth = 1.5;
-  roundRectC(c, -42, -10, 84, 20, 4); c.stroke();
+  roundRectC(c, -46, -11, 92, 22, 4); c.stroke();
   c.restore();
 }
 
@@ -238,9 +262,9 @@ function drawCabinet(c, cx, cy) {
   c.save();
   c.translate(cx, cy);
   c.fillStyle = '#3a3f47';
-  roundRectC(c, -26, -22, 52, 78, 4); c.fill();
+  roundRectC(c, -29, -24, 58, 86, 4); c.fill();
   c.strokeStyle = '#20232a'; c.lineWidth = 1.5;
-  for (let i = 0; i < 3; i += 1) { c.strokeRect(-26, -22 + i * 26, 52, 26); }
+  for (let i = 0; i < 3; i += 1) { c.strokeRect(-29, -24 + i * 29, 58, 29); }
   c.restore();
 }
 
@@ -248,12 +272,12 @@ function drawNoticeBoard(c, cx, cy) {
   c.save();
   c.translate(cx, cy);
   c.fillStyle = '#8a5a34';
-  roundRectC(c, -34, -26, 68, 50, 3); c.fill();
+  roundRectC(c, -37, -29, 75, 55, 3); c.fill();
   c.fillStyle = '#f4e6d0';
-  roundRectC(c, -29, -21, 58, 40, 2); c.fill();
+  roundRectC(c, -32, -23, 64, 44, 2); c.fill();
   c.strokeStyle = 'rgba(0,0,0,0.18)'; c.lineWidth = 1;
-  c.strokeRect(-22, -13, 44, 11);
-  c.strokeRect(-22, 1, 44, 11);
+  c.strokeRect(-24, -14, 48, 12);
+  c.strokeRect(-24, 2, 48, 12);
   c.restore();
 }
 
@@ -307,7 +331,7 @@ function drawDoor(c) {
 export function drawKarakolSceneBackground(ctx, getAvatarImage) {
   drawFloor(ctx);
   drawRoomWalls(ctx, KOMISER_ROOM, 'KOMİSER OFİSİ', 'rgba(58,26,26,0.4)');
-  drawRoomWalls(ctx, NEZARETHANE, 'NEZARETHANE', 'rgba(20,20,26,0.45)');
+  drawNezarethane(ctx);
   drawCellBars(ctx);
   drawBench(ctx, (NEZARETHANE.x1 + NEZARETHANE.x2) / 2, NEZARETHANE.y2 - 44);
   drawFlag(ctx, KOMISER_ROOM.x2 - 36, KOMISER_ROOM.y1 + 46);
@@ -327,9 +351,10 @@ export function drawKarakolSceneBackground(ctx, getAvatarImage) {
   ctx.textAlign = 'center';
   ctx.fillText(OFFICER_NPC.name, RESEPSIYON.cx, RESEPSIYON.cy - RESEPSIYON.hh - 30 - SPRITE_H * AVATAR_SCALE - 8);
 
+  // pose:'sit' — yeni istek (madde 5): "komiser ... otursun".
   drawAvatarSprite(ctx, {
     x: COMMISSIONER_DESK.cx, baseY: COMMISSIONER_DESK.cy - COMMISSIONER_DESK.hh - 30,
-    avatar: COMMISSIONER_NPC.avatar, pose: 'idle', facing: 'down', name: COMMISSIONER_NPC.name,
+    avatar: COMMISSIONER_NPC.avatar, pose: 'sit', facing: 'down', name: COMMISSIONER_NPC.name,
   }, getAvatarImage, { showName: false, scale: AVATAR_SCALE });
   ctx.fillText(COMMISSIONER_NPC.name, COMMISSIONER_DESK.cx, COMMISSIONER_DESK.cy - COMMISSIONER_DESK.hh - 30 - SPRITE_H * AVATAR_SCALE - 8);
 
@@ -695,7 +720,7 @@ export default function KarakolWorldScreen({ onExit }) {
   }
 
   return (
-    <div className="ws-fullscreen" style={{ '--ws-bg': '#3a1116', '--ws-panel-bg': '#1c1c24' }}>
+    <div className="ws-fullscreen" style={{ '--ws-bg': '#2b2d31', '--ws-panel-bg': '#1c1c24' }}>
       <Hud suspicion={player?.suspicion ?? 0} reputation={player?.reputation ?? 0} gold={player?.gold ?? 0} />
       <button className="ws-exit-btn" onClick={onExit}>✕</button>
 

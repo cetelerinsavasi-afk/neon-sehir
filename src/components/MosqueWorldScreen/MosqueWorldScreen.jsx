@@ -4,6 +4,7 @@ import { usePlayer } from '../../hooks/usePlayer';
 import { useImamState } from '../../hooks/useImamState';
 import { useMosqueAttendance } from '../../hooks/useMosqueAttendance';
 import { useBeggars } from '../../hooks/useBeggars';
+import { useDailyActions } from '../../hooks/useDailyActions';
 import { useInteriorPresence } from '../../hooks/useInteriorPresence';
 import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes';
 import {
@@ -37,21 +38,25 @@ const PLAYER_SPEED = 240;
 const PLAYER_R = 20;
 const INTERACT_RADIUS = 76;
 
-// AVATAR_SCALE (madde 13) — bkz. BankWorldScreen'deki aynı gerekçe.
-const AVATAR_SCALE = 1.22;
+// AVATAR_SCALE (madde 13, ve yeni istek: "genel olarak avatarları ...
+// büyütelim") — bkz. BankWorldScreen'deki aynı gerekçe.
+const AVATAR_SCALE = 1.42;
 
 // MIHRAB — imamın "nasihat vermediği" zamanlarda bulunduğu makam, kemerli
 // çinili niş (referanstaki gibi). x1/y1/x2/y2 + türetilmiş cx/cy/hw/hh.
 const MIHRAB = { x1: 230, y1: 160, x2: 450, y2: 330, cx: 340, cy: 245, hw: 110, hh: 85 };
 // MINBER — imamın nasihat verdiği (bugün nasihat verdiyse) durduğu basamaklı
-// kürsü, mihrabın sağında (referanstaki yerleşime yakın).
-const MINBER = { cx: 560, cy: 250, r: 48 };
-// CARPET — orta koridor/seccade şeridi (bordo+yeşil çizgili, referanstaki
-// desen). Sadece görsel, yürünebilir.
-const CARPET = { x1: 250, y1: 350, x2: 500, y2: 950 };
+// kürsü, mihrabın sağında. Yeni istek üzerine büyütüldü (r: 48 → 60).
+const MINBER = { cx: 560, cy: 250, r: 60 };
+// CARPET — yeni istek: "imam makamına kadar olan bölümdeki tüm zemini
+// kaplasın" — artık dar bir şerit değil, mihrap/minberin hemen altından
+// kapı girişine kadar TÜM zemin genişliğini kaplıyor (dilenci köşesi de
+// bunun içinde kalıyor, bkz. DILENCI ve drawDilenciCorner).
+const CARPET = { x1: 30, y1: 345, x2: 650, y2: 1010 };
 // DILENCI — dilencilerin AYRI, kendine özel köşesi (madde 5: "dilencilerin
 // bölümü ayrı bi yer olsun. dilenciler orada dilensin."). Gerçek
-// dilenciler (useBeggars) burada NPC olarak duruyor.
+// dilenciler (useBeggars) burada NPC olarak duruyor. Zemini artık ayrı bir
+// çini değil, CARPET'in bir parçası (bkz. drawDilenciCorner).
 const DILENCI = { x1: 40, y1: 640, x2: 220, y2: 860 };
 
 const DOOR = { cx: 340, cy: 1080 };
@@ -124,20 +129,12 @@ function drawCarpet(c) {
   c.restore();
 }
 
-// drawDilenciCorner — madde 5: dilencilerin AYRI köşesi (krem çini + bank +
-// "SADAKA" kutusu, referanstaki drawDilenciCorner ile aynı çizim dili).
+// drawDilenciCorner — madde 5: dilencilerin AYRI köşesi (bank + "SADAKA"
+// kutusu). Zemin artık kendi çinisi DEĞİL — CARPET zaten bu köşenin
+// altını da kaplıyor (yeni istek: "dilenci bölümünün zemini de halı
+// olsun"), burada SADECE mobilya çiziliyor.
 function drawDilenciCorner(c) {
   const { x1, y1, x2, y2 } = DILENCI;
-  c.fillStyle = '#e6dab8';
-  c.fillRect(x1, y1, x2 - x1, y2 - y1);
-  for (let y = y1; y < y2; y += 36) {
-    for (let x = x1; x < x2; x += 36) {
-      c.fillStyle = ((Math.floor(x / 36) + Math.floor(y / 36)) % 2 === 0) ? '#ecdfc0' : '#e0d2ac';
-      c.fillRect(x, y, 36, 36);
-    }
-  }
-  c.strokeStyle = '#c9a227'; c.lineWidth = 2;
-  c.strokeRect(x1 + 4, y1 + 4, x2 - x1 - 8, y2 - y1 - 8);
   c.fillStyle = '#6b4226';
   roundRectC(c, x1 + 16, y1 + 18, x2 - x1 - 32, 20, 5); c.fill();
   c.fillStyle = '#8a5a34';
@@ -149,9 +146,11 @@ function drawDilenciCorner(c) {
   roundRectC(c, bx, by, 34, 26, 4); c.stroke();
   c.fillStyle = '#c9a227';
   c.fillRect(bx + 13, by + 4, 8, 2.5);
-  c.font = 'bold 9px sans-serif'; c.fillStyle = '#4a3a22'; c.textAlign = 'center';
+  // NOT: etiket renkleri artık koyu halının üstünde okunsun diye açık/altın
+  // tonlara çevrildi (eskiden krem çini zemine göre koyu kahverengiydi).
+  c.font = 'bold 9px sans-serif'; c.fillStyle = '#f3d99b'; c.textAlign = 'center';
   c.fillText('SADAKA', bx + 17, by - 8);
-  c.fillStyle = 'rgba(74,58,34,0.75)';
+  c.fillStyle = 'rgba(243,217,155,0.85)';
   c.font = 'bold 10px sans-serif';
   c.fillText('DİLENCİLER', (x1 + x2) / 2, y1 - 8);
 }
@@ -170,7 +169,7 @@ function drawBeggarNpcs(c, beggars, getAvatarImage) {
     const x = x1 + 60 + col * 75;
     const y = y1 + 100 + row * 52;
     drawAvatarSprite(c, {
-      x, baseY: y, avatar: b.avatar, pose: 'idle', facing: 'down',
+      x, baseY: y, avatar: b.avatar, pose: 'sit', facing: 'down',
     }, getAvatarImage, { showName: false, scale: AVATAR_SCALE * 0.68 });
   });
   if (!shown.length) {
@@ -367,7 +366,12 @@ export default function MosqueWorldScreen({ onExit }) {
   const { imam } = useImamState();
   const { members, window: win } = useMosqueAttendance();
   const { beggars } = useBeggars();
+  const { actions } = useDailyActions();
   const { others, updatePresence, clearPresence } = useInteriorPresence('camii');
+
+  // hasPrayedThisWindow — yeni istek: imam makamının üstünde yüzen "İbadet
+  // Et" butonu, bu vakitte zaten ibadet ettiysek kaybolsun.
+  const hasPrayedThisWindow = Boolean(actions.prayedWindows?.[win]);
 
   const [ready, setReady] = useState(false);
   const [panel, setPanel] = useState(null); // 'imam' | 'beggars' | 'congregation' | null
@@ -375,6 +379,9 @@ export default function MosqueWorldScreen({ onExit }) {
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [chatText, setChatText] = useState('');
   const [myBubble, setMyBubble] = useState(null);
+  const [prayBusy, setPrayBusy] = useState(false);
+  const [prayError, setPrayError] = useState(null);
+  const [prayBtnPos, setPrayBtnPos] = useState(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraCaption, setCameraCaption] = useState('');
   const [cameraBusy, setCameraBusy] = useState(false);
@@ -544,6 +551,50 @@ export default function MosqueWorldScreen({ onExit }) {
     });
     setChatText('');
   };
+
+  // prayBtnPos — yeni istek: imam makamının (MIHRAB) TAM ÜSTÜNDE, ekranda
+  // gerçekten göründüğü yerde yüzen bir "İbadet Et" butonu. Canvas CSS ile
+  // (max-width/max-height:100%) oranı koruyarak küçültülüp ortalandığı için
+  // sabit bir yüzde/piksel HESAPLANAMAZ — canvas'ın o anki gerçek ekran
+  // dikdörtgeni (getBoundingClientRect) okunup MIHRAB'ın dünya koordinatı
+  // aynı ölçekle ekran koordinatına çevriliyor (bkz. pointerToCanvas'ın
+  // TERSİ). Pencere/ekran boyutu değiştiğinde yeniden hesaplanır.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return undefined;
+    const update = () => {
+      const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const scaleX = rect.width / W;
+      const scaleY = rect.height / H;
+      setPrayBtnPos({
+        x: rect.left + MIHRAB.cx * scaleX,
+        y: rect.top + (MIHRAB.cy + MIHRAB.hh + 46) * scaleY,
+      });
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(canvas);
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [ready]);
+
+  async function handlePrayClick() {
+    setPrayBusy(true);
+    setPrayError(null);
+    try {
+      await prayAtMosque();
+    } catch (err) {
+      setPrayError(err.message || 'İbadet edilemedi.');
+    } finally {
+      setPrayBusy(false);
+    }
+  }
 
   // --- Kamera (madde 2/13) — BankWorldScreen'deki aynı desen.
   function buildCameraEntities() {
@@ -731,15 +782,16 @@ export default function MosqueWorldScreen({ onExit }) {
   return (
     <div className="ws-fullscreen" style={{ '--ws-bg': '#241a10', '--ws-panel-bg': '#1c1c24' }}>
       <Hud suspicion={player?.suspicion ?? 0} reputation={player?.reputation ?? 0} gold={player?.gold ?? 0} />
-      <button className="ws-exit-btn" onClick={onExit}>✕</button>
 
-      {/* mww-menu — madde 5: X butonunun yanına imam/kitapçık/cemaat menüsü. */}
-      <div className="mww-menu">
+      {/* mww-menu-row — yeni istek: imamlık başvurusu - imam kitapçığı -
+          vakitteki cemaat - x, tek satırda yan yana. */}
+      <div className="mww-menu-row">
         <button className="mww-menu-btn" onClick={() => setPanel('imam')}>
           {imam ? `İmam: ${imam.displayName}` : 'İmamlık Başvurusu'}
         </button>
         <button className="mww-menu-btn" onClick={() => setBookletOpen(true)}>İmam Kitapçığı</button>
         <button className="mww-menu-btn" onClick={() => setPanel('congregation')}>Vakitteki Cemaat</button>
+        <button className="mww-exit-btn" onClick={onExit}>✕</button>
       </div>
 
       <div className="ws-canvas-wrap">
@@ -757,7 +809,20 @@ export default function MosqueWorldScreen({ onExit }) {
             <button className="ws-camera-btn" onClick={openCamera} title="Fotoğraf çek">📷</button>
           </>
         )}
+        {/* mww-pray-btn — yeni istek: imam makamının üstünde yüzen "İbadet
+            Et" butonu, sadece henüz bu vakitte ibadet etmediysek görünür. */}
+        {ready && prayBtnPos && !hasPrayedThisWindow && (
+          <button
+            className="mww-pray-btn"
+            style={{ left: prayBtnPos.x, top: prayBtnPos.y }}
+            disabled={prayBusy}
+            onClick={handlePrayClick}
+          >
+            {prayBusy ? 'İbadet ediliyor…' : '🤲 İbadet Et'}
+          </button>
+        )}
       </div>
+      {prayError && <p className="ws-error mww-pray-error">{prayError}</p>}
 
       <div className="ws-chat-row">
         <input

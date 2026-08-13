@@ -35,13 +35,24 @@ const PLAYER_R = 20;
 const INTERACT_RADIUS = 76;
 const HOLDING_MS = 120_000; // Park büfesiyle aynı süre (bkz. ParkWorldScreen)
 
-// AVATAR_SCALE (madde 13) — bkz. BankWorldScreen'deki aynı gerekçe.
-const AVATAR_SCALE = 1.22;
+// AVATAR_SCALE (madde 13, ve yeni istek: "genel olarak avatarları ...
+// büyütelim") — bkz. BankWorldScreen'deki aynı gerekçe.
+const AVATAR_SCALE = 1.42;
 
 // BAR — üstte, referanstaki gibi giriş banner'ının hemen altında, arkasında
 // şişe duvarı ve önünde taburelerle.
 const BAR = { x1: 120, y1: 190, x2: 560, y2: 230, cx: 340, cy: 210, hw: 220, hh: 20 };
-const BAR_STOOLS = [190, 290, 390, 490].map((x) => ({ x, y: BAR.y2 + 20 }));
+// BAR_STOOLS — yeni istek (madde 3): "gazinodaki bar sandalyelerine
+// oturulabilsin" — artık id'li, tıklanabilir/oturulabilir taburelerdir
+// (bkz. STOOL_R, handleCanvasClick, sittingSeatId).
+const BAR_STOOLS = [190, 290, 390, 490].map((x, i) => ({ id: `stool_${i}`, x, y: BAR.y2 + 22 }));
+const STOOL_R = 18;
+// BARTENDER_SCALE — bar, referanstaki gibi bilerek tavana YAKIN (dar bir
+// niş) — genel AVATAR_SCALE (1.42) burada barmenin baş üstü isim
+// etiketini/gövdesini duvardaki "GAZİNO" başlığının/alt yazısının üstüne
+// taşırıyordu (hatta etiket ekranın dışına çıkıyordu). Sadece bu NPC için
+// daha küçük, bu dar nişe sığan bir ölçek kullanılıyor.
+const BARTENDER_SCALE = 0.85;
 const BARTENDER_NPC = {
   name: 'Barmen Coşkun',
   lines: ['Ne alırdın?', 'Kokteylimiz meşhurdur.', 'Kazandın mı bari?'],
@@ -107,6 +118,7 @@ const OBSTACLES = [
   { cx: PIYANGO.cx, cy: PIYANGO.cy, hw: PIYANGO.hw, hh: PIYANGO.hh },
   ...TABLES_10NUMARA.map((t) => ({ cx: t.cx, cy: t.cy, hw: t.hw, hh: t.hh })),
   ...SLOTS.map((s) => ({ cx: s.cx, cy: s.cy, hw: SLOT_HW, hh: SLOT_HH })),
+  ...BAR_STOOLS.map((s) => ({ cx: s.x, cy: s.y, r: STOOL_R })),
   { cx: GUVENLIK.cx, cy: GUVENLIK.cy, r: 26 },
 ];
 
@@ -173,13 +185,13 @@ function drawBottleWall(c) {
 function drawBarAndStools(c) {
   BAR_STOOLS.forEach((s) => {
     c.fillStyle = 'rgba(0,0,0,0.2)';
-    c.beginPath(); c.ellipse(s.x, s.y + 10, 13, 5, 0, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.ellipse(s.x, s.y + 12, 15, 6, 0, 0, Math.PI * 2); c.fill();
     c.fillStyle = '#7a1f1f';
-    c.beginPath(); c.arc(s.x, s.y, 11, 0, Math.PI * 2); c.fill();
-    c.strokeStyle = '#c9a227'; c.lineWidth = 1.5;
-    c.beginPath(); c.arc(s.x, s.y, 11, 0, Math.PI * 2); c.stroke();
-    c.strokeStyle = '#3a1e14'; c.lineWidth = 2.5;
-    c.beginPath(); c.moveTo(s.x, s.y + 9); c.lineTo(s.x, s.y + 24); c.stroke();
+    c.beginPath(); c.arc(s.x, s.y, 13, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = '#c9a227'; c.lineWidth = 1.8;
+    c.beginPath(); c.arc(s.x, s.y, 13, 0, Math.PI * 2); c.stroke();
+    c.strokeStyle = '#3a1e14'; c.lineWidth = 3;
+    c.beginPath(); c.moveTo(s.x, s.y + 11); c.lineTo(s.x, s.y + 28); c.stroke();
   });
 
   c.fillStyle = 'rgba(0,0,0,0.2)';
@@ -317,15 +329,16 @@ export function drawCasinoSceneBackground(ctx, getAvatarImage) {
   drawWalls(ctx);
 
   drawAvatarSprite(ctx, {
-    x: BAR.cx, baseY: BAR.y1 - 20, avatar: BARTENDER_NPC.avatar, pose: 'idle', facing: 'down',
-  }, getAvatarImage, { showName: false, scale: AVATAR_SCALE });
+    x: BAR.cx, baseY: BAR.y1 + 6, avatar: BARTENDER_NPC.avatar, pose: 'idle', facing: 'down',
+  }, getAvatarImage, { showName: false, scale: BARTENDER_SCALE });
   ctx.fillStyle = 'rgba(243,217,155,0.9)';
   ctx.font = 'bold 10px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(BARTENDER_NPC.name, BAR.cx, BAR.y1 - 20 - SPRITE_H * AVATAR_SCALE - 8);
+  ctx.fillText(BARTENDER_NPC.name, BAR.cx, BAR.y1 + 6 - SPRITE_H * BARTENDER_SCALE - 10);
 
+  // pose:'sit' — yeni istek (madde 5): "piyango satıcısı ... otursun".
   drawAvatarSprite(ctx, {
-    x: PIYANGO.cx, baseY: PIYANGO.y1 - 22, avatar: PIYANGO_NPC.avatar, pose: 'idle', facing: 'down',
+    x: PIYANGO.cx, baseY: PIYANGO.y1 - 22, avatar: PIYANGO_NPC.avatar, pose: 'sit', facing: 'down',
   }, getAvatarImage, { showName: false, scale: AVATAR_SCALE });
   ctx.fillText(PIYANGO_NPC.name, PIYANGO.cx, PIYANGO.y1 - 22 - SPRITE_H * AVATAR_SCALE - 8);
 }
@@ -337,6 +350,10 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
 
   const [ready, setReady] = useState(false);
   const [panel, setPanel] = useState(null); // 'slot' | 'piyango' | 'onnumara' | 'bar' | null
+  // sittingSeatId — yeni istek (madde 3): "gazinodaki bar sandalyelerine
+  // oturulabilsin", BankWorldScreen'deki CHAIRS mekanizmasıyla BİREBİR aynı
+  // desen, sadece BAR_STOOLS'a uygulanıyor.
+  const [sittingSeatId, setSittingSeatId] = useState(null);
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [chatText, setChatText] = useState('');
   const [myBubble, setMyBubble] = useState(null);
@@ -355,6 +372,7 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
   const facingRef = useRef('up');
   const walkAnimRef = useRef(0);
   const poseRef = useRef('idle');
+  const sittingSeatRef = useRef(null);
   const playerRef = useRef(null);
   const holdingRef = useRef(null);
   const holdingTimeoutRef = useRef(null);
@@ -379,6 +397,7 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
   useEffect(() => { playerRef.current = player; }, [player]);
   useEffect(() => { myBubbleRef.current = myBubble; }, [myBubble]);
   useEffect(() => { othersRef.current = others; }, [others]);
+  useEffect(() => { sittingSeatRef.current = sittingSeatId; }, [sittingSeatId]);
 
   useEffect(() => () => {
     if (holdingTimeoutRef.current) clearTimeout(holdingTimeoutRef.current);
@@ -436,7 +455,7 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
       lastT = t;
       let moving = false;
 
-      if (targetRef.current) {
+      if (!sittingSeatRef.current && targetRef.current) {
         const p = posRef.current;
         const tgt = targetRef.current;
         const dx = tgt.x - p.x;
@@ -447,7 +466,12 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
           targetRef.current = null;
           const action = pendingActionRef.current;
           pendingActionRef.current = null;
-          if (action?.type) setPanel(action.type);
+          if (action?.type === 'sit') {
+            sittingSeatRef.current = action.seat.id;
+            setSittingSeatId(action.seat.id);
+          } else if (action?.type) {
+            setPanel(action.type);
+          }
         } else {
           moving = true;
           const vx = dx / d, vy = dy / d;
@@ -479,12 +503,14 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
         } else if (wasMovingRef.current) {
           lastSyncRef.current = t; lastSyncedPosRef.current = { ...p };
           updatePresence(user.uid, {
-            x: p.x, y: p.y, facing: facingRef.current, pose: 'idle', seat: null,
+            x: p.x, y: p.y, facing: facingRef.current,
+            pose: sittingSeatRef.current ? 'sit' : 'idle', seat: sittingSeatRef.current,
           });
         } else if (sinceLast > IDLE_HEARTBEAT_MS) {
           lastSyncRef.current = t;
           updatePresence(user.uid, {
-            x: p.x, y: p.y, facing: facingRef.current, pose: 'idle', seat: null,
+            x: p.x, y: p.y, facing: facingRef.current,
+            pose: sittingSeatRef.current ? 'sit' : 'idle', seat: sittingSeatRef.current,
           });
         }
       }
@@ -505,11 +531,17 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
     const ts = Date.now();
     setMyBubble({ text, ts });
     updatePresence(user.uid, {
-      x: posRef.current.x, y: posRef.current.y, facing: facingRef.current, pose: 'idle', seat: null,
+      x: posRef.current.x, y: posRef.current.y, facing: facingRef.current,
+      pose: sittingSeatRef.current ? 'sit' : 'idle', seat: sittingSeatRef.current,
       chatText: text, chatTs: ts,
     });
     setChatText('');
   };
+
+  function standUp() {
+    sittingSeatRef.current = null;
+    setSittingSeatId(null);
+  }
 
   // --- Kamera (madde 2/13) — BankWorldScreen'deki aynı desen.
   function buildCameraEntities() {
@@ -517,7 +549,7 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
     const self = {
       dx: 0, dy: 0,
       avatar: playerRef.current?.avatar,
-      pose: poseRef.current || 'idle',
+      pose: sittingSeatRef.current ? 'sit' : (poseRef.current || 'idle'),
       facing: facingRef.current,
       isSelf: true,
       scale: AVATAR_SCALE,
@@ -611,28 +643,29 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
     }
 
     const now = Date.now();
+    const sitShift = sittingSeatRef.current ? SPRITE_H * AVATAR_SCALE * 0.32 : 0;
     const myBubbleNow = myBubbleRef.current && now - myBubbleRef.current.ts < CHAT_BUBBLE_MS ? myBubbleRef.current : null;
 
     const rawEntities = [
       ...othersRef.current.map((o) => ({
-        x: o.x, y: o.y, avatar: o.avatar, pose: o.pose || 'idle',
+        x: o.x, y: o.y, avatar: o.avatar, pose: o.pose === 'sit' ? 'sit' : (o.pose || 'idle'),
         facing: o.facing || 'down', name: o.displayName || 'Oyuncu',
         bubbleData: o.chatText && o.chatTs && now - o.chatTs < CHAT_BUBBLE_MS ? { text: o.chatText, ts: o.chatTs } : null,
         isSelf: false,
       })),
       {
         x: posRef.current.x, y: posRef.current.y, avatar: playerRef.current?.avatar,
-        pose: poseRef.current, facing: facingRef.current, holding: holdingRef.current,
+        pose: sittingSeatRef.current ? 'sit' : poseRef.current, facing: facingRef.current, holding: holdingRef.current,
         name: playerRef.current?.displayName || 'Sen', bubbleData: myBubbleNow, isSelf: true,
       },
     ];
     const entities = rawEntities
-      .map((e) => ({ ...e, baseY: e.y }))
+      .map((e) => ({ ...e, baseY: e.y + (e.pose === 'sit' ? SPRITE_H * AVATAR_SCALE * 0.32 : 0) }))
       .sort((a, b) => a.y - b.y);
     entities.forEach((e) => drawAvatarSprite(ctx, e, getAvatarImage, { showName: !e.isSelf, scale: AVATAR_SCALE }));
 
     if (holdingRef.current) {
-      drawHeldIcon(ctx, holdingRef.current, posRef.current.x + 30, posRef.current.y - SPRITE_H * AVATAR_SCALE * 0.42, { animate: true });
+      drawHeldIcon(ctx, holdingRef.current, posRef.current.x + 30, posRef.current.y - SPRITE_H * AVATAR_SCALE * 0.42 + sitShift, { animate: true });
     }
 
     // NPC konuşma baloncukları + gerçek oyuncuların chat baloncukları.
@@ -648,7 +681,7 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
     if (bartenderLine) {
       const lines = wrapBubbleText(ctx, bartenderLine);
       const { w, h } = measureBubble(ctx, lines);
-      const anchorY = BAR.y1 - 20 - SPRITE_H * AVATAR_SCALE - 10;
+      const anchorY = BAR.y1 + 6 - SPRITE_H * BARTENDER_SCALE - 12;
       bubbleItems.push({ x: BAR.cx, w, h, lines, ts: 1, naturalTop: anchorY - h });
     }
     const guardLine = cyclingLine(GUVENLIK_NPC.lines, { phase: 20 });
@@ -691,6 +724,17 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
 
   function handleCanvasClick(e) {
     const p = pointerToCanvas(e);
+    if (sittingSeatRef.current) standUp();
+
+    // Bar taburesi (madde 3) — BankWorldScreen'deki CHAIRS ile BİREBİR aynı
+    // desen: tıklanan taburenin yanına yürü, varınca otur; tekrar tıklamak
+    // (yukarıdaki standUp() zaten çağrıldı) ayağa kaldırır.
+    const stool = BAR_STOOLS.find((s) => dist(p, s) < STOOL_R + 16);
+    if (stool) {
+      pendingActionRef.current = { type: 'sit', seat: { id: stool.id, x: stool.x, y: stool.y + 4 } };
+      targetRef.current = { x: stool.x, y: stool.y + 4 };
+      return;
+    }
 
     const slot = SLOTS.find((s) => dist(p, s) < SLOT_HW + 30);
     if (slot && tryStation(p, slot, SLOT_HW + 30, 'slot', SLOT_HH, SLOT_HH + 46)) return;
