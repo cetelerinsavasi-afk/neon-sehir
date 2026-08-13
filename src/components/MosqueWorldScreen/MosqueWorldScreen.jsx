@@ -58,7 +58,17 @@ const CARPET = { x1: 30, y1: 345, x2: 650, y2: 1010 };
 // bölümü ayrı bi yer olsun. dilenciler orada dilensin."). Gerçek
 // dilenciler (useBeggars) burada NPC olarak duruyor. Zemini artık ayrı bir
 // çini değil, CARPET'in bir parçası (bkz. drawDilenciCorner).
-const DILENCI = { x1: 40, y1: 640, x2: 220, y2: 860 };
+// Yeni istek ("dilenci bölümünün etrafı kapalı olsun, biraz daha aşağıda
+// olsun"): köşe ~120px aşağı kaydırıldı (eskiden y1:640/y2:860) VE dört
+// taraftan ahşap çit/parmaklıkla çevrildi (bkz. drawDilenciEnclosure) —
+// artık açık bir köşe değil, sınırları belli, kapalı bir alan. Yeni konum
+// hâlâ CARPET (y2:1010) içinde kalıyor ve mihrap/minber/kapı/START_POS ile
+// çakışmıyor (bkz. OBSTACLES ve handleCanvasClick approach noktası).
+const DILENCI = { x1: 40, y1: 760, x2: 220, y2: 980 };
+// DILENCI_RAIL — çitin kalınlığı, hem çizimde hem OBSTACLES çarpışma
+// kutusunda kullanılıyor (çit görsel olarak nereye kadar uzanıyorsa
+// çarpışma da oraya kadar).
+const DILENCI_RAIL = 10;
 // BEGGAR_SCALE/BEGGAR_SIT_SHIFT — yeni istek ("oturan npclerin sandalyesi
 // olsun ... çok saçma gözüküyor"): dilenciler pose:'sit' ile çiziliyor ama
 // altlarında hiçbir oturma eşyası yoktu ve pose:'sit' bacakları kısalttığı
@@ -75,6 +85,16 @@ const START_POS = { x: 340, y: 990 };
 const OBSTACLES = [
   { cx: MIHRAB.cx, cy: MIHRAB.cy, hw: MIHRAB.hw, hh: MIHRAB.hh },
   { cx: MINBER.cx, cy: MINBER.cy, r: MINBER.r },
+  // DILENCI çiti — köşe artık dört taraftan kapalı olduğu için oyuncu
+  // serbest yürüyüşte çitin içinden geçemesin (etkileşim hâlâ mümkün,
+  // çünkü handleCanvasClick'teki approach noktası çitin DIŞINDA kalıyor
+  // ve pendingActionRef'li hareket zaten OBSTACLES'ı atlıyor).
+  {
+    cx: (DILENCI.x1 + DILENCI.x2) / 2,
+    cy: (DILENCI.y1 + DILENCI.y2) / 2,
+    hw: (DILENCI.x2 - DILENCI.x1) / 2 + DILENCI_RAIL,
+    hh: (DILENCI.y2 - DILENCI.y1) / 2 + DILENCI_RAIL,
+  },
 ];
 
 function dist(a, b) {
@@ -137,6 +157,46 @@ function drawCarpet(c) {
     }
   }
   c.restore();
+}
+
+// drawDilenciEnclosure — yeni istek: "dilenci bölümünün etrafı kapalı
+// olsun" — köşe artık dört taraftan alçak bir ahşap çit/parmaklıkla
+// çevrili, camideki diğer ahşap öğelerle (bench, SADAKA kutusu, minber)
+// AYNI palet (koyu kahve gövde #6b4226, koyu kahve dış çizgi #3a2a18,
+// altın direk başlıkları #c9a227 — mihrap/minberdeki gold trim ile aynı).
+// Zemin çizimini (drawDilenciCorner) ve NPC'leri ETKİLEMİYOR, sadece
+// köşenin dört kenarını çerçeveliyor.
+function drawDilenciEnclosure(c) {
+  const { x1, y1, x2, y2 } = DILENCI;
+  const rail = DILENCI_RAIL;
+
+  c.fillStyle = 'rgba(0,0,0,0.16)';
+  c.fillRect(x1 - rail, y1 - rail + 4, (x2 - x1) + rail * 2, (y2 - y1) + rail * 2);
+
+  const drawRail = (rx1, ry1, rx2, ry2) => {
+    c.fillStyle = '#6b4226';
+    c.fillRect(rx1, ry1, rx2 - rx1, ry2 - ry1);
+    c.strokeStyle = '#3a2a18';
+    c.lineWidth = 1.4;
+    c.strokeRect(rx1, ry1, rx2 - rx1, ry2 - ry1);
+  };
+  // Üst (arka), alt (ön), sol, sağ — dört taraf da kapalı.
+  drawRail(x1 - rail, y1 - rail, x2 + rail, y1);
+  drawRail(x1 - rail, y2, x2 + rail, y2 + rail);
+  drawRail(x1 - rail, y1 - rail, x1, y2 + rail);
+  drawRail(x2, y1 - rail, x2 + rail, y2 + rail);
+
+  // Köşe direkleri — altın başlıklı, camideki gold trim diliyle uyumlu.
+  const postR = 5;
+  [
+    [x1 - rail / 2, y1 - rail / 2], [x2 + rail / 2, y1 - rail / 2],
+    [x1 - rail / 2, y2 + rail / 2], [x2 + rail / 2, y2 + rail / 2],
+  ].forEach(([px, py]) => {
+    c.fillStyle = '#3a2a18';
+    c.beginPath(); c.arc(px, py, postR, 0, Math.PI * 2); c.fill();
+    c.fillStyle = '#c9a227';
+    c.beginPath(); c.arc(px, py, postR * 0.45, 0, Math.PI * 2); c.fill();
+  });
 }
 
 // drawDilenciCorner — madde 5: dilencilerin AYRI köşesi (bank + "SADAKA"
@@ -361,6 +421,7 @@ function drawDoor(c) {
 export function drawMosqueSceneBackground(ctx, getAvatarImage, { imam, beggars } = {}) {
   drawFloor(ctx);
   drawCarpet(ctx);
+  drawDilenciEnclosure(ctx);
   drawDilenciCorner(ctx);
   drawBeggarNpcs(ctx, beggars, getAvatarImage);
   drawWalls(ctx);

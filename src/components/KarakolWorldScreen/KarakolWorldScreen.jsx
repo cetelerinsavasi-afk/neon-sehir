@@ -70,8 +70,13 @@ const COMMISSIONER_DESK = { cx: 340, cy: 405, hw: 78, hh: 33 };
 // (bkz. drawOfficeChair) ve görünür gövde, bar taburelerinde oturan
 // OYUNCU için kullanılan aynı `SPRITE_H * scale * 0.32` telafisiyle
 // sandalyenin üstüne hizalanıyor.
+// Sandalye + oturan gövde masadan "-24" kadar geriye (yukarı) alınıyordu;
+// yeni istek (madde 18: "npclerin ayakları masanın üstündeki yazıya denk
+// geliyor") — bu değer "-36"ya çıkarılarak sandalye/NPC bir tık daha
+// yukarı, KOMİSER tabelasından uzağa alındı (chair sandalyeyle birlikte
+// hareket ettiği için ikisi arasındaki hiza bozulmuyor).
 const COMMISSIONER_SIT_SHIFT = SPRITE_H * AVATAR_SCALE * 0.32;
-const COMMISSIONER_SEAT = { cx: COMMISSIONER_DESK.cx, cy: COMMISSIONER_DESK.cy - COMMISSIONER_DESK.hh - 24 };
+const COMMISSIONER_SEAT = { cx: COMMISSIONER_DESK.cx, cy: COMMISSIONER_DESK.cy - COMMISSIONER_DESK.hh - 36 };
 const COMMISSIONER_BASE_Y = COMMISSIONER_SEAT.cy + COMMISSIONER_SIT_SHIFT;
 const COMMISSIONER_NPC = {
   name: 'Komiser Yusuf',
@@ -222,12 +227,22 @@ function drawNezarethane(c) {
 // drawCellBars — yeni istek (madde 4): "nezarethane ful parmaklık olsun,
 // senin önceden yaptığın gibi" — artık sadece kapı boşluğu genişliğinde
 // DEĞİL, hücrenin TÜM ön cephesi (x1'den x2'ye) boyunca sık parmaklık.
+// Yeni istek (madde 18: "nezarethanenin içi boydan boya parmaklık olsun")
+// — eski sabit `x1+10` başlangıç / `x<x2` bitişi köşelerde küçük boşluklar
+// bırakıyordu (ilk çubuk x1'den 10px, son çubuk x2'den 6px içeride kalıp
+// duvarlara tam değmiyordu). Artık çubuk sayısı hücre genişliğine göre
+// hesaplanıp EŞİT aralıklarla, İLK çubuk tam x1'de ve SON çubuk tam x2'de
+// olacak şekilde diziliyor — ön cephe gerçekten uçtan uca (köşeden köşeye)
+// parmaklıklı.
 function drawCellBars(c) {
   const { x1, x2, y2 } = NEZARETHANE;
   c.save();
   c.strokeStyle = 'rgba(232,207,122,0.6)';
   c.lineWidth = 3;
-  for (let x = x1 + 10; x < x2; x += 14) {
+  const spacing = 14;
+  const barCount = Math.max(1, Math.round((x2 - x1) / spacing));
+  for (let i = 0; i <= barCount; i += 1) {
+    const x = x1 + ((x2 - x1) * i) / barCount;
     c.beginPath(); c.moveTo(x, y2 - 46); c.lineTo(x, y2 + 4); c.stroke();
   }
   c.strokeStyle = 'rgba(232,207,122,0.8)';

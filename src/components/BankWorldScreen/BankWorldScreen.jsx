@@ -55,8 +55,13 @@ const TELLER_HH = 40;
 // gövde tezgahın epey gerisinde havada duruyormuş gibi görünüyordu —
 // bar taburelerinde oturan OYUNCU için zaten kullanılan aynı telafi
 // (`SPRITE_H * scale * 0.32`) burada da uygulanıyor (bkz. drawTeller).
+// tellerSeatY'deki "-24" sandalyeyi/veznedarı tezgahtan geriye (yukarı)
+// alıyordu; yeni istek (madde 18: "veznedeki npclerin ayakları masanın
+// üstündeki VEZNE yazısına denk geliyor") — "-36"ya çıkarılarak sandalye +
+// oturan gövde bir tık daha yukarı, tabeladan uzağa alındı (chair
+// sandalyeyle birlikte hareket ettiği için ikisi arasındaki hiza bozulmuyor).
 const TELLER_SIT_SHIFT = SPRITE_H * AVATAR_SCALE * 0.32;
-function tellerSeatY(t) { return t.cy - TELLER_HH - 24; }
+function tellerSeatY(t) { return t.cy - TELLER_HH - 36; }
 function tellerBaseY(t) { return tellerSeatY(t) + TELLER_SIT_SHIFT; }
 
 // GUVENLIK — madde 12: bankada tam 1 güvenlik NPC'si, veznelerin uzağında

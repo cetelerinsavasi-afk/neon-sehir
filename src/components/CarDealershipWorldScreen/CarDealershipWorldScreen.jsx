@@ -34,7 +34,9 @@ const INTERACT_RADIUS = 76;
 // AVATAR_SCALE — diğer mekanlarla (Banka/Silah Mağazası/Garaj) aynı büyütme.
 const AVATAR_SCALE = 1.42;
 
-const WALL_H = 190;
+// WALL_H — sahibin gönderdiği örnek düzene göre resepsiyon masası artık
+// odanın EN ÜSTÜNDE, bu yüzden üst duvar bandı daha dar (bkz. drawWalls).
+const WALL_H = 160;
 
 // Lüks galeri paleti — sıcak şampanya altını + soğuk vitrin beyazı, koyu
 // zemin üzerinde "Neon Şehir"in karakteristik parlaklığıyla.
@@ -43,17 +45,21 @@ const GOLD_DIM = 'rgba(232,197,116,0.35)';
 const SPOT = 'rgba(255,244,214,0.16)';
 
 // --- Sabit düzen -----------------------------------------------------------
-// İki yan sıra sergi arabası + ortada spot ışıklı kürsü üzerinde "vitrin
-// arabası" + en altta galericinin resepsiyon kürsüsü.
-const CAR_A = { cx: 150, cy: 300 }; // sol üst — spor coupe
-const CAR_B = { cx: 530, cy: 300 }; // sağ üst — SUV
-const CAR_C = { cx: 150, cy: 500 }; // sol alt — sedan
-const CAR_D = { cx: 530, cy: 500 }; // sağ alt — roadster/cabrio
-const PEDESTAL = { cx: 340, cy: 690, r: 118 }; // orta kürsü — vitrin arabası (hero)
+// Sahibin gönderdiği örnek mockup ile BİREBİR aynı iskelet: en üstte
+// resepsiyon masası (galerici orada duruyor), altında 2 sütun x 2 sıra
+// standart sergi arabası + en altta (ortada, büyük) "ayın vitrin arabası"
+// kürsüsü, hepsi aynı yuvarlak/altın-kordonlu kürsü stilinde (bkz.
+// drawPedestalBase). Her kürsünün yarıçapı, üzerindeki arabanın kendi
+// gövde/gölge genişliğiyle orantılı seçildi (araba kürsüden taşmasın diye).
+const CAR_A = { cx: 150, cy: 410, r: 94 }; // sol üst — spor coupe
+const CAR_B = { cx: 530, cy: 410, r: 98 }; // sağ üst — SUV
+const CAR_C = { cx: 150, cy: 635, r: 102 }; // sol alt — sedan
+const CAR_D = { cx: 530, cy: 635, r: 80 }; // sağ alt — roadster/cabrio
+const PEDESTAL = { cx: 340, cy: 880, r: 110 }; // alt-orta, büyük kürsü — vitrin arabası (hero)
 
-const DEALER = { cx: 340, cy: 900 };
-const DEALER_HW = 168;
-const DEALER_HH = 46;
+const DEALER = { cx: 340, cy: 250 };
+const DEALER_HW = 150;
+const DEALER_HH = 40;
 const DEALER_NPC = {
   name: 'Galerici Yusuf',
   lines: [
@@ -71,20 +77,22 @@ const DEALER_NPC = {
   },
 };
 
-const DOOR = { cx: 340, cy: 1080 };
-const START_POS = { x: 340, y: 990 };
+const DOOR = { cx: 340, cy: 1090 };
+const START_POS = { x: 340, y: 1030 };
 
 function rectObstacle(cx, cy, hw, hh) {
   return { cx, cy, hw, hh };
 }
 
+// Tüm kürsüler artık yuvarlak (bkz. drawPedestalBase), o yüzden çarpışma da
+// dairesel — her kürsünün kendi `r`si kullanılıyor.
 const OBSTACLES = [
-  rectObstacle(CAR_A.cx, CAR_A.cy, 96, 46),
-  rectObstacle(CAR_B.cx, CAR_B.cy, 96, 50),
-  rectObstacle(CAR_C.cx, CAR_C.cy, 96, 44),
-  rectObstacle(CAR_D.cx, CAR_D.cy, 92, 38),
+  { cx: CAR_A.cx, cy: CAR_A.cy, r: CAR_A.r },
+  { cx: CAR_B.cx, cy: CAR_B.cy, r: CAR_B.r },
+  { cx: CAR_C.cx, cy: CAR_C.cy, r: CAR_C.r },
+  { cx: CAR_D.cx, cy: CAR_D.cy, r: CAR_D.r },
   { cx: PEDESTAL.cx, cy: PEDESTAL.cy, r: PEDESTAL.r },
-  { cx: DEALER.cx, cy: DEALER.cy, hw: DEALER_HW, hh: DEALER_HH },
+  rectObstacle(DEALER.cx, DEALER.cy, DEALER_HW, DEALER_HH),
 ];
 
 function dist(a, b) {
@@ -93,36 +101,65 @@ function dist(a, b) {
   return Math.hypot(ax - bx, ay - by);
 }
 
-// drawFloor — parlak/yansımalı vitrin zemini: koyu, cilalı karo + hafif
-// dikey "parlaklık" degrade şeridi (yansıma hissi).
+// seededRand — deterministik "rastgele" (her karo için aynı desen, karo
+// başına ayrı bir dokuz gibi görünsün diye) — sahibin gönderdiği örnek
+// mockup'taki `buildStaticScene` deseniyle aynı yöntem.
+function seededRand(seed) {
+  const x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+}
+
+// drawFloor — sahibin gönderdiği örnekteki parlak/cilalı vitrin-karo zemini
+// (açık gri-bej dama deseni + ara sıra ince yansıma kavisi + yumuşak
+// diyagonal parlaklık degrade + koyu/altın çerçeve kenarlık). Bu, galericinin
+// açıkça "zemin ... attığım örnekteki gibi olsun" dediği kısım — o yüzden
+// projenin genel koyu/neon paletinden BİLİNÇLİ olarak ayrılıp örneğin kendi
+// paletine (açık karo + altın çerçeve) sadık kalındı.
 function drawFloor(c) {
-  c.fillStyle = '#0e0e13';
+  const border = 24;
+  c.fillStyle = '#d9dadd';
   c.fillRect(0, 0, W, H);
+
   const tile = 60;
-  for (let y = WALL_H; y < H; y += tile) {
-    for (let x = 0; x < W; x += tile) {
-      const alt = (Math.floor(x / tile) + Math.floor(y / tile)) % 2 === 0;
-      c.fillStyle = alt ? '#15151c' : '#111116';
+  let seed = 1;
+  for (let y = border; y < H - border; y += tile) {
+    for (let x = border; x < W - border; x += tile) {
+      const s = seededRand(seed++);
+      c.fillStyle = s > 0.5 ? '#e7e8ea' : '#dcdde1';
       c.fillRect(x, y, tile, tile);
+      c.strokeStyle = 'rgba(150,150,160,0.4)';
+      c.lineWidth = 1;
+      c.strokeRect(x, y, tile, tile);
+      if (s > 0.85) {
+        c.strokeStyle = 'rgba(180,180,190,0.5)';
+        c.beginPath();
+        c.moveTo(x + 6, y + tile - 6);
+        c.quadraticCurveTo(x + tile / 2, y + 8, x + tile - 6, y + tile - 14);
+        c.stroke();
+      }
     }
   }
-  // Cila/yansıma — hafif dikey parlaklık bantları.
-  c.save();
-  c.globalAlpha = 0.05;
-  for (let x = 20; x < W; x += 140) {
-    const grd = c.createLinearGradient(x, WALL_H, x, H);
-    grd.addColorStop(0, '#ffffff');
-    grd.addColorStop(1, 'rgba(255,255,255,0)');
-    c.fillStyle = grd;
-    c.fillRect(x, WALL_H, 46, H - WALL_H);
-  }
-  c.restore();
-  // İnce altın çizgi kılavuzu (galeri koridoru).
-  c.strokeStyle = GOLD_DIM;
-  c.lineWidth = 1;
-  c.beginPath();
-  c.moveTo(W / 2, WALL_H); c.lineTo(W / 2, H);
-  c.stroke();
+
+  // Yumuşak diyagonal ışık/yansıma degrade — tüm zemin üzerinde.
+  const refl = c.createLinearGradient(0, 0, 0, H);
+  refl.addColorStop(0, 'rgba(255,255,255,0.12)');
+  refl.addColorStop(0.5, 'rgba(255,255,255,0)');
+  refl.addColorStop(1, 'rgba(255,255,255,0.10)');
+  c.fillStyle = refl;
+  c.fillRect(border, border, W - border * 2, H - border * 2);
+
+  // Koyu çerçeve + altın kenarlık — odanın dış hattı (üst kısım zaten
+  // drawWalls tarafından tekrar boyanıyor, bkz. çağrı sırası).
+  c.fillStyle = '#141216';
+  c.fillRect(0, 0, W, border);
+  c.fillRect(0, H - border, W, border);
+  c.fillRect(0, 0, border, H);
+  c.fillRect(W - border, 0, border, H);
+  c.fillStyle = GOLD;
+  c.fillRect(0, border - 3, W, 3);
+  c.fillRect(0, H - border, W, 3);
+  c.fillRect(border - 3, 0, 3, H);
+  c.fillRect(W - border, 0, 3, H);
 }
 
 function drawSpotlight(c, cx, cy, r) {
@@ -160,12 +197,13 @@ function drawWalls(c) {
   c.fillText('Hayalinizdeki araba bir adım ötede.', W / 2, 70);
   c.restore();
 
-  // Dev cam vitrin çerçevesi — büyük pencereler hissi.
+  // Dev cam vitrin çerçevesi — büyük pencereler hissi (WALL_H'nin daralmasıyla
+  // orantılı olarak küçültüldü, bkz. WALL_H notu).
   c.strokeStyle = GOLD_DIM;
   c.lineWidth = 2;
   for (let i = 0; i < 3; i++) {
     const x = 30 + i * ((W - 60) / 3);
-    roundRectC(c, x, 90, (W - 60) / 3 - 14, 76, 6);
+    roundRectC(c, x, 84, (W - 60) / 3 - 14, 56, 6);
     c.stroke();
   }
 }
@@ -346,30 +384,42 @@ function drawHeroCar(c, cx, cy, color) {
   c.restore();
 }
 
-function drawPedestal(c) {
-  const p = PEDESTAL;
-  drawSpotlight(c, p.cx, p.cy - 40, p.r + 40);
+// drawPedestalBase — sahibin gönderdiği örnekteki "yuvarlak, altın kordonlu
+// vitrin kürsüsü" (bkz. mockup'taki drawPedestalBase): alt parlaklık/glow +
+// koyu degradeli dairesel kaide + altın çerçeve + 45/135/225/315 derecede 4
+// altın direk + aralarında bordo kadife kordon kavisleri. Artık HER araba
+// (hero dahil) aynı bu kürsü stilinde duruyor — sahibin asıl istediği "iç
+// tasarım" burası, arabaların kendisi (drawCoupe/SUV/Sedan/Roadster/Hero)
+// DOKUNULMADI.
+function drawPedestalBase(c, cx, cy, r) {
   c.save();
-  c.fillStyle = '#1a1620';
-  c.beginPath(); c.ellipse(p.cx, p.cy + 46, p.r - 6, 26, 0, 0, Math.PI * 2); c.fill();
-  c.strokeStyle = GOLD; c.lineWidth = 2.4;
-  c.beginPath(); c.ellipse(p.cx, p.cy + 46, p.r - 6, 26, 0, 0, Math.PI * 2); c.stroke();
-  c.restore();
+  const glow = c.createRadialGradient(cx, cy, 6, cx, cy, r + 36);
+  glow.addColorStop(0, SPOT);
+  glow.addColorStop(1, 'rgba(255,244,214,0)');
+  c.fillStyle = glow;
+  c.beginPath(); c.arc(cx, cy, r + 36, 0, Math.PI * 2); c.fill();
 
-  // Kadife kordon — kürsünün etrafında, sadece dekoratif.
-  const poleR = p.r + 20;
-  const poleCount = 8;
-  const poles = [];
-  for (let i = 0; i < poleCount; i++) {
-    const a = (i / poleCount) * Math.PI * 2;
-    poles.push({ x: p.cx + Math.cos(a) * poleR, y: p.cy + Math.sin(a) * poleR * 0.5 + 30 });
-  }
-  c.save();
+  c.fillStyle = 'rgba(0,0,0,0.22)';
+  c.beginPath(); c.ellipse(cx, cy + 6, r + 2, (r + 2) * 0.5, 0, 0, Math.PI * 2); c.fill();
+
+  const grd = c.createRadialGradient(cx - r * 0.2, cy - r * 0.2, 4, cx, cy, r);
+  grd.addColorStop(0, '#312c34');
+  grd.addColorStop(1, '#1a171d');
+  c.fillStyle = grd;
+  c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.fill();
+  c.strokeStyle = GOLD; c.lineWidth = 2.5;
+  c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.stroke();
+
+  const postR = r + 20;
+  const posts = [45, 135, 225, 315].map((a) => {
+    const rad = (a * Math.PI) / 180;
+    return { x: cx + Math.cos(rad) * postR, y: cy + Math.sin(rad) * postR * 0.6 };
+  });
   c.strokeStyle = 'rgba(180,20,50,0.85)';
-  c.lineWidth = 3;
-  for (let i = 0; i < poles.length; i++) {
-    const a = poles[i];
-    const b = poles[(i + 1) % poles.length];
+  c.lineWidth = 2.6;
+  for (let i = 0; i < 4; i++) {
+    const a = posts[i];
+    const b = posts[(i + 1) % 4];
     const midY = Math.max(a.y, b.y) + 6;
     c.beginPath();
     c.moveTo(a.x, a.y);
@@ -377,51 +427,92 @@ function drawPedestal(c) {
     c.stroke();
   }
   c.fillStyle = GOLD;
-  poles.forEach((pt) => {
-    c.beginPath(); c.arc(pt.x, pt.y - 4, 3.4, 0, Math.PI * 2); c.fill();
-  });
+  posts.forEach((pt) => { c.beginPath(); c.arc(pt.x, pt.y, 3.6, 0, Math.PI * 2); c.fill(); });
   c.restore();
+}
 
+// drawCarOnPedestal — standart sergi arabalarından biri: kürsü tabanı +
+// üzerinde (dokunulmamış) araba silueti.
+function drawCarOnPedestal(c, cx, cy, r, drawCarFn, color) {
+  drawPedestalBase(c, cx, cy, r);
+  drawCarFn(c, cx, cy - 4, color);
+}
+
+// drawHeroPedestal — "ayın vitrin arabası": aynı kürsü stili, sadece daha
+// büyük yarıçap + altında etiket.
+function drawHeroPedestal(c) {
+  const p = PEDESTAL;
+  drawPedestalBase(c, p.cx, p.cy, p.r);
   drawHeroCar(c, p.cx, p.cy - 4, '#141417');
-
   c.fillStyle = GOLD;
   c.font = 'bold 12px sans-serif';
   c.textAlign = 'center';
-  c.fillText('AYIN VİTRİN ARABASI', p.cx, p.cy + 88);
+  c.fillText('AYIN VİTRİN ARABASI', p.cx, p.cy + p.r + 34);
 }
 
+// drawDealerDesk — sahibin gönderdiği örnekteki resepsiyon masası: odanın en
+// üstünde, tek dikdörtgen, altın çerçeveli koyu gövde + üstünde küçük
+// monitör + üzerinde altın "G A L E R İ" tabelası. Galerici NPC'si tam
+// arkasında/masanın üzerinde duruyor (bkz. drawAvatarSprite çağrısı).
 function drawDealerDesk(c, npc, getAvatarImage) {
   c.save();
   c.translate(DEALER.cx, DEALER.cy);
+
+  // Masa altı sıcak parlaklık.
+  c.fillStyle = 'rgba(232,197,116,0.12)';
+  c.beginPath(); c.ellipse(0, DEALER_HH + 28, DEALER_HW + 20, 74, 0, 0, Math.PI * 2); c.fill();
+
   c.fillStyle = 'rgba(0,0,0,0.28)';
   c.beginPath(); c.ellipse(0, DEALER_HH + 8, DEALER_HW + 6, 12, 0, 0, Math.PI * 2); c.fill();
 
   const grd = c.createLinearGradient(0, -DEALER_HH, 0, DEALER_HH);
   grd.addColorStop(0, '#241f1a'); grd.addColorStop(1, '#171310');
   c.fillStyle = grd;
-  roundRectC(c, -DEALER_HW, -DEALER_HH, DEALER_HW * 2, DEALER_HH * 2, 8); c.fill();
+  roundRectC(c, -DEALER_HW, -DEALER_HH, DEALER_HW * 2, DEALER_HH * 2, 10); c.fill();
   c.strokeStyle = GOLD; c.lineWidth = 2.4;
-  roundRectC(c, -DEALER_HW, -DEALER_HH, DEALER_HW * 2, DEALER_HH * 2, 8); c.stroke();
+  roundRectC(c, -DEALER_HW, -DEALER_HH, DEALER_HW * 2, DEALER_HH * 2, 10); c.stroke();
 
   // Kürsü üstü cam/parlak vurgu.
   c.fillStyle = 'rgba(232,197,116,0.1)';
   roundRectC(c, -DEALER_HW + 10, -DEALER_HH + 8, DEALER_HW * 2 - 20, 12, 3); c.fill();
 
-  // Tabela.
-  c.fillStyle = '#0f0d0a';
-  roundRectC(c, -78, -DEALER_HH - 52, 156, 20, 3); c.fill();
+  // Küçük monitör/ekran aksesuarı — masanın üstünde.
+  c.fillStyle = '#0c0c0e';
+  roundRectC(c, -16, -6, 32, 20, 3); c.fill();
+  c.fillStyle = '#3a7fb0';
+  roundRectC(c, -13, -3, 26, 13, 2); c.fill();
+
+  // "G A L E R İ" tabelası — masanın hemen üstünde, altın harflerle.
+  c.save();
+  c.shadowColor = GOLD;
+  c.shadowBlur = 12;
   c.fillStyle = GOLD;
-  c.font = 'bold 12px sans-serif';
+  c.font = 'bold 20px sans-serif';
   c.textAlign = 'center';
-  c.fillText('GÜNCEL FİYAT LİSTESİ', 0, -DEALER_HH - 38);
+  c.fillText('G A L E R İ', 0, -DEALER_HH - 20);
+  c.restore();
+
   c.restore();
 
   drawAvatarSprite(c, {
-    x: DEALER.cx, baseY: DEALER.cy - DEALER_HH - 30, avatar: npc.avatar, pose: 'idle', facing: 'down', name: npc.name,
+    x: DEALER.cx, baseY: DEALER.cy - DEALER_HH - 34, avatar: npc.avatar, pose: 'idle', facing: 'down', name: npc.name,
   }, getAvatarImage, { showName: false, scale: AVATAR_SCALE });
 }
 
 function drawDoor(c) {
+  // Zemin çerçevesinin altını kıran "GİRİŞ" parlaklığı — sahibin gönderdiği
+  // örnekteki GIRIS ışıklı eşik detayına benzer.
+  const doorGlowW = 120;
+  c.save();
+  c.fillStyle = 'rgba(135,197,224,0.4)';
+  c.fillRect(DOOR.cx - doorGlowW / 2, H - 24, doorGlowW, 24);
+  c.strokeStyle = GOLD; c.lineWidth = 3;
+  c.strokeRect(DOOR.cx - doorGlowW / 2, H - 26, doorGlowW, 26);
+  c.beginPath();
+  c.moveTo(DOOR.cx, H - 26); c.lineTo(DOOR.cx, H);
+  c.stroke();
+  c.restore();
+
   c.save();
   c.translate(DOOR.cx, DOOR.cy);
   c.fillStyle = '#141218';
@@ -441,18 +532,21 @@ function drawDoor(c) {
 // drawXSceneBackground ile aynı desen).
 export function drawDealershipSceneBackground(ctx, getAvatarImage) {
   drawFloor(ctx);
-  drawDoor(ctx);
-  drawSpotlight(ctx, CAR_A.cx, CAR_A.cy - 10, 100);
-  drawSpotlight(ctx, CAR_B.cx, CAR_B.cy - 10, 104);
-  drawSpotlight(ctx, CAR_C.cx, CAR_C.cy - 10, 100);
-  drawSpotlight(ctx, CAR_D.cx, CAR_D.cy - 10, 92);
-  drawCoupe(ctx, CAR_A.cx, CAR_A.cy, '#7a1030');
-  drawSUV(ctx, CAR_B.cx, CAR_B.cy, '#eef1f4');
-  drawSedan(ctx, CAR_C.cx, CAR_C.cy, '#16294f');
-  drawRoadster(ctx, CAR_D.cx, CAR_D.cy, '#caa227');
-  drawPedestal(ctx);
-  drawDealerDesk(ctx, DEALER_NPC, getAvatarImage);
+  // Duvar/başlık bandı diğer WorldScreen'lerdeki (Banka vb.) desenle aynı
+  // şekilde ERKEN çiziliyor ki masadaki galerici NPC'si (bandın biraz
+  // içine taşan başı/gövdesiyle) onun ÖNÜNDE görünsün.
   drawWalls(ctx);
+  drawDoor(ctx);
+  drawSpotlight(ctx, CAR_A.cx, CAR_A.cy - 10, CAR_A.r + 8);
+  drawSpotlight(ctx, CAR_B.cx, CAR_B.cy - 10, CAR_B.r + 8);
+  drawSpotlight(ctx, CAR_C.cx, CAR_C.cy - 10, CAR_C.r + 8);
+  drawSpotlight(ctx, CAR_D.cx, CAR_D.cy - 10, CAR_D.r + 8);
+  drawCarOnPedestal(ctx, CAR_A.cx, CAR_A.cy, CAR_A.r, drawCoupe, '#7a1030');
+  drawCarOnPedestal(ctx, CAR_B.cx, CAR_B.cy, CAR_B.r, drawSUV, '#eef1f4');
+  drawCarOnPedestal(ctx, CAR_C.cx, CAR_C.cy, CAR_C.r, drawSedan, '#16294f');
+  drawCarOnPedestal(ctx, CAR_D.cx, CAR_D.cy, CAR_D.r, drawRoadster, '#caa227');
+  drawHeroPedestal(ctx);
+  drawDealerDesk(ctx, DEALER_NPC, getAvatarImage);
 }
 
 export default function CarDealershipWorldScreen({ onExit, onOpenHeist }) {
@@ -755,7 +849,7 @@ export default function CarDealershipWorldScreen({ onExit, onOpenHeist }) {
     if (line) {
       const lines = wrapBubbleText(ctx, line);
       const { w, h } = measureBubble(ctx, lines);
-      const anchorY = DEALER.cy - DEALER_HH - 30 - SPRITE_H * AVATAR_SCALE - 10;
+      const anchorY = DEALER.cy - DEALER_HH - 34 - SPRITE_H * AVATAR_SCALE - 10;
       bubbleItems.push({ x: DEALER.cx, w, h, lines, ts: 0, naturalTop: anchorY - h });
     }
     entities.forEach((e, i) => {

@@ -43,6 +43,14 @@ const RACK = { x1: 50, y1: 56, x2: 630, y2: 176 };
 const SELLER = { cx: 340, cy: 430 };
 const SELLER_HW = 168;
 const SELLER_HH = 46;
+// SELLER_BASE_Y — satıcının ayak/anchor Y'si; eskiden "SELLER.cy -
+// SELLER_HH - 30" idi ama bu, ayakların tam tezgah üstündeki "SİLAH
+// TEZGAHI" tabelasının hemen dibine denk gelmesine sebep oluyordu (yeni
+// istek, madde 18: "npclerin ayakları masanın üstündeki yazıya denk
+// geliyor"). "-30" yerine "-42" kullanılarak satıcı bir tık yukarı, tabeladan
+// uzağa alındı — bkz. drawSellerCounter ve renderFrame'deki konuşma
+// baloncuğu, ikisi de bu sabiti kullanıyor ki senkron kalsın.
+const SELLER_BASE_Y = SELLER.cy - SELLER_HH - 42;
 const SELLER_NPC = {
   name: 'Silahçı Kemal',
   lines: [
@@ -290,7 +298,7 @@ function drawSellerCounter(c, npc, getAvatarImage) {
 
   // Satıcı NPC — tezgahın arkasında ayakta.
   drawAvatarSprite(c, {
-    x: SELLER.cx, baseY: SELLER.cy - SELLER_HH - 30, avatar: npc.avatar, pose: 'idle', facing: 'down', name: npc.name,
+    x: SELLER.cx, baseY: SELLER_BASE_Y, avatar: npc.avatar, pose: 'idle', facing: 'down', name: npc.name,
   }, getAvatarImage, { showName: false, scale: AVATAR_SCALE });
 
   c.fillStyle = 'rgba(240,220,200,0.85)';
@@ -684,7 +692,7 @@ export default function WeaponShopWorldScreen({ onExit }) {
     if (line) {
       const lines = wrapBubbleText(ctx, line);
       const { w, h } = measureBubble(ctx, lines);
-      const anchorY = SELLER.cy - SELLER_HH - 30 - SPRITE_H * AVATAR_SCALE - 10;
+      const anchorY = SELLER_BASE_Y - SPRITE_H * AVATAR_SCALE - 10;
       bubbleItems.push({ x: SELLER.cx, w, h, lines, ts: 0, naturalTop: anchorY - h });
     }
     entities.forEach((e, i) => {
