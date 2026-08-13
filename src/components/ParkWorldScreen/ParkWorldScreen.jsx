@@ -5,8 +5,12 @@ import { useInventory } from '../../hooks/useInventory';
 import { useParkPresence } from '../../hooks/useParkPresence';
 import { enterPark, sellContrabandAtPark, buyFromBufe, createSixtagramPost } from '../../services/gameActions';
 import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR, AVATAR_FULL_VIEWBOX_H, AVATAR_WAIST_Y } from '../../lib/avatarShapes';
+import {
+  W, H, SPRITE_H, BUFE, NPC_POS, ALL_SEATS, OBSTACLES,
+  roundRectC, buildStaticScene, drawAvatarSprite,
+  createAvatarImageCache, renderPhotoFrame,
+} from '../../lib/parkScene';
 import Hud from '../Hud/Hud';
-import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import PhoneScreen from '../Phone/PhoneScreen';
 import ResultModal from '../ResultModal/ResultModal';
 import InfoIcon from '../InfoIcon/InfoIcon';
@@ -15,31 +19,21 @@ import './ParkWorldScreen.css';
 // --- Sahne düzeni -------------------------------------------------------
 // "Park sabit, karakter yürüyor": kamera kaydırması YOK — canvas'ın
 // kendisi tüm sahne. Koordinatlar doğrudan canvas piksel uzayında.
-const W = 680;
-const H = 1180;
+// Sabit sahne verisi (W,H,BUFE,TABLES,BENCHES,POND,NPC_POS,ALL_SEATS,
+// OBSTACLES) artık lib/parkScene.js'te — hem burada hem kamera
+// fotoğrafı render'ında (bkz. madde 12) aynı kaynaktan kullanılıyor.
 const PLAYER_SPEED = 260; // piksel / saniye
 const PLAYER_R = 20;
 const INTERACT_RADIUS = 78;
 const CHAT_BUBBLE_MS = 9500;
 const PARK_SELL_PRICE = 5000;
-const SPRITE_ASPECT = 320 / 580;
-const SPRITE_H = 118; // ekrandaki karakter boyu (piksel)
 const HOLDING_MS = 120_000; // elde tutulan büfe ürünü 2 dakika sonra kaybolur
+const CAMERA_RADIUS = 170;
 
 // --- Firebase maliyet ayarları (bkz. önceki not) -------------------------
 const MOVE_SYNC_INTERVAL_MS = 300;
 const MOVE_SYNC_MIN_DIST = 6;
 const IDLE_HEARTBEAT_MS = 12_000;
-
-// Fotoğraf önizlemesinde konuma göre arka plan (Sixtagram'daki gönderi
-// kartıyla BİREBİR aynı renkler — bkz. PostAttachment.jsx SCENE_BG).
-const CAMERA_SCENE_BG = {
-  Park: 'linear-gradient(160deg, #1d3a2e 0%, #16341c 55%, #0f2415 100%)',
-  Büfe: 'linear-gradient(160deg, #6b4226 0%, #4a2e18 55%, #2b1b12 100%)',
-  Gölet: 'linear-gradient(160deg, #1d4a58 0%, #163a44 55%, #0f2830 100%)',
-  Bank: 'linear-gradient(160deg, #2e5a34 0%, #234226 55%, #16341c 100%)',
-  Masa: 'linear-gradient(160deg, #5a3a22 0%, #3f2717 55%, #2b1b12 100%)',
-};
 
 const BUFE_MENU = [
   { id: 'sosisli', label: 'Sosisli', price: 100 },
@@ -51,46 +45,9 @@ const BUFE_MENU = [
 ];
 
 // --- Sahnedeki sabit nesneler --------------------------------------------
-const BUFE = { cx: 340, cy: 180, hw: 90, hh: 50 };
+// (BUFE, TABLES, BENCHES, POND, NPC_POS, ALL_SEATS, OBSTACLES artık
+// lib/parkScene.js'ten import ediliyor — bkz. dosya başı.)
 
-// 4 kişilik masalar: büfenin solunda, sağında ve parkın sağ alt köşesinde.
-const TABLES = [
-  { id: 'table_left', cx: 140, cy: 300, r: 44 },
-  { id: 'table_right', cx: 540, cy: 300, r: 44 },
-  { id: 'table_br', cx: 560, cy: 970, r: 44 },
-];
-const TABLE_SEAT_OFFSET = 66;
-function tableSeats(t) {
-  return [
-    { id: `${t.id}_N`, x: t.cx, y: t.cy - TABLE_SEAT_OFFSET, facing: 'down' },
-    { id: `${t.id}_S`, x: t.cx, y: t.cy + TABLE_SEAT_OFFSET, facing: 'up' },
-    { id: `${t.id}_E`, x: t.cx + TABLE_SEAT_OFFSET, y: t.cy, facing: 'left' },
-    { id: `${t.id}_W`, x: t.cx - TABLE_SEAT_OFFSET, y: t.cy, facing: 'right' },
-  ];
-}
-
-// 2 kişilik banklar — yola PARALEL, "sağdan sola" (yatay) duruyorlar.
-// Bunlar dikey ana yoldan sağa-sola ayrılan bir T-kavşağının iki
-// ucunda: solda 1, sağda 1.
-const BENCH_Y_ROAD = 560; // T-kavşağının (yatay kolun) bulunduğu yükseklik
-const BENCHES = [
-  { id: 'bench_left', cx: 170, cy: BENCH_Y_ROAD - 55 },
-  { id: 'bench_right', cx: 510, cy: BENCH_Y_ROAD - 55 },
-];
-const SEAT_DX = 30;
-function benchSeats(b) {
-  return [
-    { id: `${b.id}_A`, x: b.cx - SEAT_DX, y: b.cy - 8, facing: 'down' },
-    { id: `${b.id}_B`, x: b.cx + SEAT_DX, y: b.cy - 8, facing: 'down' },
-  ];
-}
-
-const ALL_SEATS = [...BENCHES.flatMap(benchSeats), ...TABLES.flatMap(tableSeats)];
-
-// Gölet — sadece dekoratif + hafif çarpışma (içine yürünmesin).
-const POND = { cx: 520, cy: 760, rx: 70, ry: 46 };
-
-const NPC_POS = { x: 140, y: 1030 };
 // Parktaki "şüpheli adam" — gerçek avatar sistemiyle çizilir (emoji değil),
 // sabit/kendine özgü bir görünümü var.
 const NPC_AVATAR = {
@@ -111,17 +68,11 @@ const NPC_AVATAR = {
 };
 
 // Yürüme sırasında (serbest gezinirken) çarpışılmaması gereken katı
-// nesneler. NOT: bir oturma/etkileşim hedefine YÜRÜNÜRKEN bu liste
-// bilerek devre dışı bırakılıyor (bkz. tick döngüsü) — aksi halde
-// karakter "kendi hedefinin içine giremediği" için sonsuza dek
-// yaklaşmaya çalışır (önceki sürümdeki bank/büfe kilitlenme hatası
-// tam olarak buydu).
-const OBSTACLES = [
-  { cx: BUFE.cx, cy: BUFE.cy, hw: BUFE.hw, hh: BUFE.hh },
-  ...TABLES.map((t) => ({ cx: t.cx, cy: t.cy, r: t.r + 6 })),
-  ...BENCHES.map((b) => ({ cx: b.cx, cy: b.cy, hw: 58, hh: 24 })),
-  { cx: POND.cx, cy: POND.cy, r: Math.max(POND.rx, POND.ry) - 4 },
-];
+// nesneler (OBSTACLES) — bkz. lib/parkScene.js. NOT: bir oturma/
+// etkileşim hedefine YÜRÜNÜRKEN bu liste bilerek devre dışı bırakılıyor
+// (bkz. tick döngüsü) — aksi halde karakter "kendi hedefinin içine
+// giremediği" için sonsuza dek yaklaşmaya çalışır (önceki sürümdeki
+// bank/büfe kilitlenme hatası tam olarak buydu).
 
 function dist(a, b) {
   // BÜFE gibi sabit nesneler {cx,cy} ile tanımlı, koltuk/oyuncu
@@ -132,15 +83,6 @@ function dist(a, b) {
   const ax = a.x ?? a.cx, ay = a.y ?? a.cy;
   const bx = b.x ?? b.cx, by = b.y ?? b.cy;
   return Math.hypot(ax - bx, ay - by);
-}
-function roundRectC(c, x, y, w, h, r) {
-  c.beginPath();
-  c.moveTo(x + r, y);
-  c.arcTo(x + w, y, x + w, y + h, r);
-  c.arcTo(x + w, y + h, x, y + h, r);
-  c.arcTo(x, y + h, x, y, r);
-  c.arcTo(x, y, x + w, y, r);
-  c.closePath();
 }
 
 function resolveObstacles(x, y) {
@@ -237,9 +179,7 @@ export default function ParkWorldScreen({ onExit }) {
   const [bufeBusy, setBufeBusy] = useState(null);
   const [error, setError] = useState(null);
   const [cameraOpen, setCameraOpen] = useState(false);
-  const [cameraFriends, setCameraFriends] = useState([]);
-  const [cameraScene, setCameraScene] = useState('Park');
-  const [cameraSelfPose, setCameraSelfPose] = useState('idle');
+  const [cameraFrame, setCameraFrame] = useState(null); // { originX, originY, entities }
   const [cameraCaption, setCameraCaption] = useState('');
   const [cameraBusy, setCameraBusy] = useState(false);
   const [cameraError, setCameraError] = useState(null);
@@ -261,7 +201,11 @@ export default function ParkWorldScreen({ onExit }) {
   const lastSyncedPosRef = useRef({ x: 340, y: 700 });
   const wasMovingRef = useRef(false);
   const pausedRef = useRef(false);
-  const imgCacheRef = useRef(new Map());
+  const getAvatarImageRef = useRef(createAvatarImageCache(buildFullAvatarSvgMarkup, DEFAULT_AVATAR));
+  const cameraCanvasRef = useRef(null);
+  const cameraFrameRef = useRef(null);
+  const cameraOpenRef = useRef(false);
+  const cameraDoneRef = useRef(false);
   const myBubbleRef = useRef(null);
   const othersRef = useRef([]);
   const playerRef = useRef(null);
@@ -275,25 +219,11 @@ export default function ParkWorldScreen({ onExit }) {
 
   // --- Avatar SVG'sini canvas'a çizilebilir bir <img>'e çeviren önbellek.
   // Arka planı YOK (şeffaf) — karakterler çim üzerine doğal oturuyor,
-  // kare/renkli bir kutu içinde "yapıştırma" gibi görünmüyor.
+  // kare/renkli bir kutu içinde "yapıştırma" gibi görünmüyor. Ortak
+  // fabrika (lib/parkScene.js) kullanılıyor — kamera fotoğrafı önizlemesi
+  // de AYNI önbelleği paylaşıyor (bkz. getAvatarImageRef).
   function getAvatarImage(avatar, pose) {
-    const av = avatar || DEFAULT_AVATAR;
-    const key = JSON.stringify(av) + '|' + pose;
-    const cache = imgCacheRef.current;
-    let entry = cache.get(key);
-    if (!entry) {
-      const markup = buildFullAvatarSvgMarkup(av, { pose });
-      const img = new Image();
-      entry = { img, ready: false };
-      img.onload = () => { entry.ready = true; };
-      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(markup);
-      cache.set(key, entry);
-      if (cache.size > 50) {
-        const firstKey = cache.keys().next().value;
-        cache.delete(firstKey);
-      }
-    }
-    return entry.ready ? entry.img : null;
+    return getAvatarImageRef.current(avatar, pose);
   }
 
   // Park'a giriş / çıkış (bkz. functions/index.js enterPark üstündeki not).
@@ -336,223 +266,9 @@ export default function ParkWorldScreen({ onExit }) {
     staticCanvasRef.current = sc;
   }, []);
 
-  function drawPathSegment(c, x1, y1, x2, y2, width) {
-    c.save();
-    c.lineCap = 'round';
-    c.strokeStyle = '#c9a877';
-    c.lineWidth = width;
-    c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
-    c.strokeStyle = 'rgba(122,90,50,0.3)';
-    c.lineWidth = 2;
-    c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
-    c.restore();
-  }
-
-  function buildStaticScene(sctx) {
-    // Çim zemin + biçme çizgileri
-    sctx.fillStyle = '#2e5a34';
-    sctx.fillRect(0, 0, W, H);
-    for (let y = 0; y < H; y += 46) {
-      sctx.fillStyle = (Math.floor(y / 46) % 2 === 0) ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.03)';
-      sctx.fillRect(0, y, W, 46);
-    }
-
-    // Düzenli, düz hatlı patika ağı: dikey ana yol + bankların olduğu
-    // yerde sağa-sola ayrılan bir T-kavşağı.
-    drawPathSegment(sctx, BUFE.cx, BUFE.cy + BUFE.hh + 10, BUFE.cx, 1080, 50);
-    drawPathSegment(sctx, TABLES[0].cx, TABLES[0].cy, TABLES[1].cx, TABLES[1].cy, 44);
-    drawPathSegment(sctx, 150, BENCH_Y_ROAD, 530, BENCH_Y_ROAD, 44);
-    drawPathSegment(sctx, BUFE.cx, 900, TABLES[2].cx, TABLES[2].cy - 6, 44);
-    drawPathSegment(sctx, BUFE.cx, 1030, NPC_POS.x + 10, NPC_POS.y, 44);
-
-    // Çit sınırı
-    sctx.fillStyle = '#7a5a34';
-    for (let x = 14; x < W; x += 26) {
-      sctx.fillRect(x, 8, 10, 26);
-      sctx.fillRect(x, H - 34, 10, 26);
-    }
-    for (let y = 14; y < H; y += 26) {
-      sctx.fillRect(8, y, 10, 26);
-      sctx.fillRect(W - 18, y, 10, 26);
-    }
-
-    // Gölet
-    drawPond(sctx, POND.cx, POND.cy, POND.rx, POND.ry);
-
-    // Dekoratif ağaçlar — büyütülmüş, 2 farklı tür (yapraklı + çam)
-    // karışık dağıtılmış.
-    [[60, 90], [W - 60, 90], [60, H - 90], [W - 60, H - 90]].forEach(([x, y]) => drawTree(sctx, x, y));
-    [[60, 470], [W - 60, 500], [60, 900], [340, 60]].forEach(([x, y]) => drawPineTree(sctx, x, y));
-
-    drawBufeStatic(sctx);
-    TABLES.forEach((t) => drawTable(sctx, t));
-    BENCHES.forEach((b) => drawBench(sctx, b));
-
-    sctx.save();
-    const vg = sctx.createRadialGradient(W / 2, H / 2, H * 0.28, W / 2, H / 2, H * 0.8);
-    vg.addColorStop(0, 'rgba(0,0,0,0)');
-    vg.addColorStop(1, 'rgba(0,0,0,0.32)');
-    sctx.fillStyle = vg;
-    sctx.fillRect(0, 0, W, H);
-    sctx.restore();
-  }
-
-  function drawPond(c, x, y, rx, ry) {
-    c.save();
-    c.translate(x, y);
-    c.fillStyle = '#3f5a3a';
-    c.beginPath(); c.ellipse(0, 4, rx + 12, ry + 9, 0, 0, Math.PI * 2); c.fill();
-    const grd = c.createRadialGradient(-rx * 0.3, -ry * 0.3, 4, 0, 0, Math.max(rx, ry));
-    grd.addColorStop(0, '#7fc2d6'); grd.addColorStop(1, '#2f6b82');
-    c.fillStyle = grd;
-    c.beginPath(); c.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2); c.fill();
-    c.strokeStyle = '#1f4a58'; c.lineWidth = 2;
-    c.beginPath(); c.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2); c.stroke();
-    c.strokeStyle = 'rgba(255,255,255,0.4)'; c.lineWidth = 2;
-    c.beginPath(); c.ellipse(-rx * 0.25, -ry * 0.3, rx * 0.4, ry * 0.22, 0.3, 0, Math.PI * 2); c.stroke();
-    c.restore();
-  }
-
-  function drawTree(c, x, y) {
-    c.save();
-    c.translate(x, y);
-    c.fillStyle = 'rgba(0,0,0,0.24)';
-    c.beginPath(); c.ellipse(0, 46, 38, 13, 0, 0, Math.PI * 2); c.fill();
-    c.fillStyle = '#5a3a22';
-    roundRectC(c, -9, -8, 18, 54, 4); c.fill();
-    const leafColors = ['#2f6b3f', '#357a46', '#2a5c37'];
-    for (let i = 0; i < 6; i++) {
-      const ang = (i / 6) * Math.PI * 2;
-      c.fillStyle = leafColors[i % leafColors.length];
-      c.beginPath();
-      c.ellipse(Math.cos(ang) * 21, -40 + Math.sin(ang) * 17, 25, 21, 0, 0, Math.PI * 2);
-      c.fill();
-    }
-    c.fillStyle = '#357a46';
-    c.beginPath(); c.ellipse(0, -44, 31, 25, 0, 0, Math.PI * 2); c.fill();
-    c.restore();
-  }
-
-  function drawPineTree(c, x, y) {
-    c.save();
-    c.translate(x, y);
-    c.fillStyle = 'rgba(0,0,0,0.24)';
-    c.beginPath(); c.ellipse(0, 10, 30, 10, 0, 0, Math.PI * 2); c.fill();
-    c.fillStyle = '#4a2e18';
-    c.fillRect(-7, -12, 14, 24);
-    const tiers = [
-      { y: -14, w: 52, h: 34, color: '#1f4f2e' },
-      { y: -42, w: 42, h: 30, color: '#245a35' },
-      { y: -66, w: 32, h: 26, color: '#2a6a3d' },
-    ];
-    tiers.forEach((tr) => {
-      c.fillStyle = tr.color;
-      c.beginPath();
-      c.moveTo(0, tr.y - tr.h);
-      c.lineTo(tr.w / 2, tr.y);
-      c.lineTo(-tr.w / 2, tr.y);
-      c.closePath();
-      c.fill();
-    });
-    c.restore();
-  }
-
-  function drawBufeStatic(c) {
-    const { cx, cy, hw, hh } = BUFE;
-    c.save();
-    c.translate(cx, cy);
-    c.fillStyle = 'rgba(0,0,0,0.25)';
-    c.beginPath(); c.ellipse(0, hh + 6, hw + 6, 14, 0, 0, Math.PI * 2); c.fill();
-    const grd = c.createLinearGradient(0, -hh, 0, hh);
-    grd.addColorStop(0, '#8a5a34'); grd.addColorStop(1, '#6b4226');
-    c.fillStyle = grd;
-    roundRectC(c, -hw, -4, hw * 2, hh + 4, 6); c.fill();
-    c.strokeStyle = '#3f2717'; c.lineWidth = 2;
-    roundRectC(c, -hw, -4, hw * 2, hh + 4, 6); c.stroke();
-    c.fillStyle = '#c9a877';
-    roundRectC(c, -hw - 4, -12, hw * 2 + 8, 12, 4); c.fill();
-    c.fillStyle = '#5a3a22';
-    c.fillRect(-hw + 4, -52, 8, 42);
-    c.fillRect(hw - 12, -52, 8, 42);
-    c.fillStyle = '#c9432b';
-    c.beginPath();
-    c.moveTo(-hw - 14, -46); c.lineTo(hw + 14, -46); c.lineTo(hw, -70); c.lineTo(-hw, -70);
-    c.closePath(); c.fill();
-    for (let i = -hw; i < hw; i += 24) {
-      c.fillStyle = (Math.floor((i + hw) / 24) % 2 === 0) ? '#e8e6df' : '#c9432b';
-      c.beginPath();
-      c.moveTo(i, -46); c.lineTo(i + 24, -46); c.lineTo(i + 12, -38);
-      c.closePath(); c.fill();
-    }
-    c.fillStyle = '#2b1b12';
-    roundRectC(c, -46, -30, 92, 18, 3); c.fill();
-    c.fillStyle = '#f4e6d0';
-    c.font = 'bold 12px sans-serif';
-    c.textAlign = 'center';
-    c.fillText('BÜFE', 0, -17);
-    const items = [
-      { x: -hw + 20, color: '#d6432b' }, { x: -hw + 44, color: '#e8e6df' },
-      { x: -hw + 68, color: '#c98a1a' }, { x: hw - 60, color: '#4a2e18' },
-      { x: hw - 36, color: '#f4e6d0' }, { x: hw - 14, color: '#8a1d1d' },
-    ];
-    items.forEach((it) => {
-      c.fillStyle = it.color;
-      roundRectC(c, it.x - 5, -22, 10, 12, 2); c.fill();
-    });
-    c.restore();
-  }
-
-  function drawTable(c, t) {
-    const dirs = [{ dx: 0, dy: -1 }, { dx: 0, dy: 1 }, { dx: 1, dy: 0 }, { dx: -1, dy: 0 }];
-    dirs.forEach((d) => {
-      const cx = t.cx + d.dx * (t.r + 22);
-      const cy = t.cy + d.dy * (t.r + 22);
-      c.save();
-      c.translate(cx, cy);
-      c.rotate(Math.atan2(t.cy - cy, t.cx - cx));
-      c.fillStyle = 'rgba(0,0,0,0.2)';
-      c.beginPath(); c.ellipse(0, 4, 13, 7, 0, 0, Math.PI * 2); c.fill();
-      c.fillStyle = '#5a3a22';
-      roundRectC(c, -12, -11, 11, 22, 3); c.fill();
-      c.fillStyle = '#8a5a34';
-      roundRectC(c, -2, -10, 14, 20, 3); c.fill();
-      c.restore();
-    });
-    c.save();
-    c.translate(t.cx, t.cy);
-    c.fillStyle = 'rgba(0,0,0,0.22)';
-    c.beginPath(); c.ellipse(0, 5, t.r + 4, t.r * 0.5, 0, 0, Math.PI * 2); c.fill();
-    const grd = c.createRadialGradient(-t.r * 0.3, -t.r * 0.3, 4, 0, 0, t.r);
-    grd.addColorStop(0, '#dba05c'); grd.addColorStop(1, '#b4753f');
-    c.fillStyle = grd;
-    c.beginPath(); c.arc(0, 0, t.r, 0, Math.PI * 2); c.fill();
-    c.strokeStyle = '#6b4226'; c.lineWidth = 3;
-    c.beginPath(); c.arc(0, 0, t.r, 0, Math.PI * 2); c.stroke();
-    c.restore();
-  }
-
-  function drawBench(c, b) {
-    c.save();
-    c.translate(b.cx, b.cy);
-    const HW = 58, HH = 20;
-    c.fillStyle = 'rgba(0,0,0,0.22)';
-    c.beginPath(); c.ellipse(0, HH + 8, HW + 10, 12, 0, 0, Math.PI * 2); c.fill();
-    c.fillStyle = '#4a2e18';
-    c.fillRect(-HW + 6, -2, 8, 24);
-    c.fillRect(HW - 14, -2, 8, 24);
-    c.fillStyle = '#8a5a34';
-    for (let i = -HW + 4; i < HW - 4; i += 13) { roundRectC(c, i, -30, 9, 30, 2); c.fill(); }
-    c.strokeStyle = '#3f2717'; c.lineWidth = 1.5;
-    for (let i = -HW + 4; i < HW - 4; i += 13) { roundRectC(c, i, -30, 9, 30, 2); c.stroke(); }
-    for (let row = 0; row < 3; row++) {
-      const yy = -4 + row * 7;
-      c.fillStyle = row % 2 === 0 ? '#a9772e' : '#96682a';
-      roundRectC(c, -HW, yy, HW * 2, 6, 2); c.fill();
-      c.strokeStyle = '#3f2717'; c.lineWidth = 1;
-      roundRectC(c, -HW, yy, HW * 2, 6, 2); c.stroke();
-    }
-    c.restore();
-  }
+  // (Statik sahne çizim fonksiyonları lib/parkScene.js'e taşındı: drawPathSegment,
+  // buildStaticScene, drawPond, drawTree, drawPineTree, drawBufeStatic, drawTable,
+  // drawBench — hepsi yukarıdan import ediliyor.)
 
   // --- Ana döngü: hareket + Firestore senkronu (maliyet-bilinçli, bkz.
   // sabitler) ----------------------------------------------------------
@@ -656,6 +372,7 @@ export default function ParkWorldScreen({ onExit }) {
       wasMovingRef.current = moving;
 
       renderFrame();
+      if (cameraOpenRef.current && !cameraDoneRef.current) renderCameraPreview();
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -663,86 +380,7 @@ export default function ParkWorldScreen({ onExit }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, user?.uid]);
 
-  function drawHeldIcon(ctx, type, x, y) {
-    if (!type) return;
-    // "Arada bir yiyip içiyor" hissi için hafif bir sallanma/nabız
-    // animasyonu — sürekli, sürükleyici, düşük maliyetli.
-    const bob = Math.sin(performance.now() / 480) * 2;
-    const pulse = 1 + Math.max(0, Math.sin(performance.now() / 700)) * 0.18;
-    // Biraz büyütüldü (okunması/görünmesi için) — SCALE ile tüm çizim
-    // büyür.
-    const SCALE = 1.6;
-    ctx.save();
-    ctx.translate(x, y + bob);
-    ctx.scale(pulse * SCALE, pulse * SCALE);
-    if (type === 'cay') {
-      ctx.fillStyle = '#d6432b';
-      ctx.beginPath();
-      ctx.moveTo(-5, -5); ctx.lineTo(5, -5); ctx.lineTo(3, 6); ctx.lineTo(-3, 6);
-      ctx.closePath(); ctx.fill();
-    } else if (type === 'kahve') {
-      ctx.fillStyle = '#f4e6d0';
-      ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#4a2e18';
-      ctx.beginPath(); ctx.arc(0, -1, 4.2, 0, Math.PI * 2); ctx.fill();
-    } else if (type === 'latte') {
-      // Uzun bardak + katmanlı süt köpüğü + ara sıra ufak bir parıltı.
-      ctx.fillStyle = '#e8c68a';
-      roundRectC(ctx, -5, -9, 10, 16, 3); ctx.fill();
-      ctx.fillStyle = '#6b4226';
-      roundRectC(ctx, -4.4, -3, 8.8, 9, 2); ctx.fill();
-      ctx.fillStyle = '#f4e6d0';
-      ctx.beginPath(); ctx.ellipse(0, -5, 4.4, 3, 0, 0, Math.PI * 2); ctx.fill();
-      const sparkle = Math.sin(performance.now() / 900 + 1.4);
-      if (sparkle > 0.86) {
-        const a = (sparkle - 0.86) / 0.14;
-        ctx.strokeStyle = `rgba(255,255,255,${a})`;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(5, -9); ctx.lineTo(5, -5);
-        ctx.moveTo(3, -7); ctx.lineTo(7, -7);
-        ctx.stroke();
-      }
-    } else if (type === 'oralet') {
-      ctx.fillStyle = '#e07a2c';
-      ctx.beginPath(); ctx.arc(0, 0, 5.5, 0, Math.PI * 2); ctx.fill();
-    } else if (type === 'sosisli') {
-      ctx.fillStyle = '#e8c68a';
-      roundRectC(ctx, -8, -3, 16, 6, 3); ctx.fill();
-      ctx.fillStyle = '#a83a2a';
-      roundRectC(ctx, -6, -1.5, 12, 3, 1.5); ctx.fill();
-    } else if (type === 'tost') {
-      ctx.fillStyle = '#e8c68a';
-      roundRectC(ctx, -7, -6, 14, 12, 2); ctx.fill();
-      ctx.strokeStyle = '#a86b3c'; ctx.lineWidth = 1.2;
-      roundRectC(ctx, -7, -6, 14, 12, 2); ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  function drawSprite(ctx, entity) {
-    const img = getAvatarImage(entity.avatar, entity.pose);
-    const h = SPRITE_H;
-    const w = h * SPRITE_ASPECT;
-
-    ctx.save();
-    ctx.translate(entity.x, entity.baseY);
-    if (entity.facing === 'left') ctx.scale(-1, 1);
-    if (img) {
-      ctx.drawImage(img, -w / 2, -h, w, h);
-    } else {
-      ctx.fillStyle = 'rgba(0,0,0,0.28)';
-      roundRectC(ctx, -w * 0.28, -h, w * 0.56, h, 12); ctx.fill();
-    }
-    ctx.restore();
-
-    if (entity.holding) drawHeldIcon(ctx, entity.holding, entity.x + w * 0.32, entity.baseY - h * 0.42);
-
-    ctx.fillStyle = 'rgba(20,12,8,0.75)';
-    ctx.font = 'bold 11px sans-serif';
-    ctx.textAlign = 'center';
-    if (!entity.isSelf) ctx.fillText(entity.name, entity.x, entity.baseY + 14);
-  }
+  // (drawHeldIcon, drawSprite -> lib/parkScene.js'ten import ediliyor: drawHeldIcon, drawAvatarSprite.)
 
   // --- Konuşma baloncukları ------------------------------------------
   // 1) Kelime kelime SATIR SATIR sarılır (canvas'ın kendi maxWidth'i
@@ -906,7 +544,7 @@ export default function ParkWorldScreen({ onExit }) {
       })
       .sort((a, b) => a.y - b.y);
 
-    entities.forEach((e) => drawSprite(ctx, e));
+    entities.forEach((e) => drawAvatarSprite(ctx, e, getAvatarImage));
 
     // Baloncuklar HER ZAMAN tüm karakterlerin üstünde çizilsin diye ayrı
     // (ve çakışma-çözümlü) bir son geçiş.
@@ -1055,56 +693,86 @@ export default function ParkWorldScreen({ onExit }) {
     setChatText('');
   };
 
-  // --- Kamera: "gerçekten o an neredeysen, ne yapıyorsan" onu
-  // yakalayan bir enstantane. Poz SEÇİLMEZ — bankta oturuyorsan
-  // fotoğrafta da oturuyorsun, yürüyorsan yürürken yakalanırsın; tıpkı
-  // birinin seni o an görüp fotoğrafını çekmesi gibi. Gerçek bir dosya
-  // yükleme YOK — sadece karede kimin olduğu ve o anki pozu sunucuya
-  // gönderiliyor, avatarlar sunucuda GERÇEK veriden yeniden inşa edilip
-  // Sixtagram'da render ediliyor (bkz. functions/index.js
-  // buildSixtagramAttachment 'parkPhoto').
-  const CAMERA_RADIUS = 170;
-  function openCamera() {
+  // --- Kamera: "gerçekten o an neredeysen, ne yapıyorsan, arkanda ne
+  // varsa" onu yakalayan bir enstantane. Poz SEÇİLMEZ — bankta
+  // oturuyorsan fotoğrafta da oturuyorsun, yürüyorsan yürürken
+  // yakalanırsın; tıpkı birinin seni o an görüp fotoğrafını çekmesi
+  // gibi. Gerçek bir dosya yükleme YOK — kare, oyunun kendi vektörel
+  // sahne çizimiyle (lib/parkScene.js — renderPhotoFrame) yeniden
+  // üretiliyor: gerçek arka plan (büfenin yanındaysan büfe çıkar),
+  // gerçek göreli konum (arkadaşların ekranda GERÇEKTEN durdukları
+  // yönde/uzaklıkta görünür) — rastgele bir dizilim YOK. Sunucuya sadece
+  // "fotoğraf çekildi" bildirilir; kimin karede olduğu, nerede durduğu
+  // ve pozu sunucuda GERÇEK veriden (parkPresence + users) yeniden inşa
+  // edilir (bkz. functions/index.js buildSixtagramAttachment
+  // 'parkPhoto') — istemciden hiçbir konum/poz verisi TRUST edilmez.
+  function buildCameraEntities() {
     const p = posRef.current;
     const nearby = othersRef.current
       .filter((o) => dist(p, o) < CAMERA_RADIUS)
       .slice(0, 4)
       .map((o) => ({
-        uid: o.uid,
-        displayName: o.displayName || 'Oyuncu',
+        dx: o.x - p.x,
+        dy: o.y - p.y,
         avatar: o.avatar,
         pose: o.pose === 'sit' ? 'sit' : (o.pose === 'walk1' || o.pose === 'walk2' ? o.pose : 'idle'),
+        facing: o.facing || 'down',
+        holding: o.holding || null,
+        isSelf: false,
       }));
-    setCameraFriends(nearby);
-    // Kendi o anki gerçek pozun (oturuyor/yürüyor/duruyor) — enstantane
-    // mantığının kalbi burası.
-    setCameraSelfPose(sittingSeatRef.current ? 'sit' : (poseRef.current || 'idle'));
+    const self = {
+      dx: 0, dy: 0,
+      avatar: playerRef.current?.avatar,
+      pose: sittingSeatRef.current ? 'sit' : (poseRef.current || 'idle'),
+      facing: facingRef.current,
+      holding: holdingRef.current,
+      isSelf: true,
+    };
+    return { originX: p.x, originY: p.y, entities: [self, ...nearby] };
+  }
 
-    const spots = [
-      { label: 'Büfe', d: dist(p, BUFE) },
-      { label: 'Gölet', d: dist(p, POND) },
-      ...TABLES.map((t) => ({ label: 'Masa', d: dist(p, t) })),
-      ...BENCHES.map((b) => ({ label: 'Bank', d: dist(p, b) })),
-    ].sort((a, b) => a.d - b.d);
-    setCameraScene(spots[0] && spots[0].d < 140 ? spots[0].label : 'Park');
-
+  function openCamera() {
+    const frame = buildCameraEntities();
+    cameraFrameRef.current = frame;
+    setCameraFrame(frame);
     setCameraCaption('');
     setCameraError(null);
     setCameraDone(false);
+    cameraDoneRef.current = false;
     setCameraOpen(true);
+    cameraOpenRef.current = true;
+  }
+
+  function closeCamera() {
+    setCameraOpen(false);
+    cameraOpenRef.current = false;
+  }
+
+  // renderCameraPreview — ana döngüden (tick) her karede çağrılır (bkz.
+  // yukarısı), böylece avatar SVG'leri henüz yüklenmemişse bir sonraki
+  // karede otomatik tamamlanır — ayrı bir polling/interval gerekmez.
+  function renderCameraPreview() {
+    const canvas = cameraCanvasRef.current;
+    const frame = cameraFrameRef.current;
+    if (!canvas || !frame) return;
+    const ctx = canvas.getContext('2d');
+    renderPhotoFrame(ctx, {
+      width: canvas.width,
+      height: canvas.height,
+      originX: frame.originX,
+      originY: frame.originY,
+      entities: frame.entities,
+      getAvatarImage,
+    });
   }
 
   async function handleShareCamera() {
     setCameraBusy(true);
     setCameraError(null);
     try {
-      await createSixtagramPost(cameraCaption, {
-        type: 'parkPhoto',
-        selfPose: cameraSelfPose,
-        participants: cameraFriends.map((f) => ({ uid: f.uid, pose: f.pose })),
-        scene: cameraScene,
-      });
+      await createSixtagramPost(cameraCaption, { type: 'parkPhoto' });
       setCameraDone(true);
+      cameraDoneRef.current = true;
     } catch (err) {
       setCameraError(err.message || 'Paylaşılamadı.');
     } finally {
@@ -1165,41 +833,17 @@ export default function ParkWorldScreen({ onExit }) {
       {error && <p className="pw-error">{error}</p>}
 
       {cameraOpen && (
-        <div className="pw-panel-backdrop" onClick={() => setCameraOpen(false)}>
+        <div className="pw-panel-backdrop" onClick={closeCamera}>
           <div className="pw-panel" onClick={(e) => e.stopPropagation()}>
             {!cameraDone ? (
               <>
                 <p className="pw-panel-title">📷 Fotoğraf Çek</p>
-                <div className="pw-camera-preview" style={{ background: CAMERA_SCENE_BG[cameraScene] || CAMERA_SCENE_BG.Park }}>
-                  <span className="pw-camera-scene-badge">{cameraScene}</span>
-                  <div className="pw-camera-row">
-                    {cameraFriends.slice(0, 2).map((f) => (
-                      <div key={f.uid} className="pw-camera-person">
-                        <div className="pw-camera-avatar">
-                          <AvatarSvg avatar={f.avatar} variant="full" pose={f.pose} />
-                        </div>
-                        <span className="pw-camera-name">{f.displayName}</span>
-                      </div>
-                    ))}
-                    <div className="pw-camera-person main">
-                      <div className="pw-camera-avatar">
-                        <AvatarSvg avatar={player?.avatar} variant="full" pose={cameraSelfPose} />
-                      </div>
-                      <span className="pw-camera-name">Sen</span>
-                    </div>
-                    {cameraFriends.slice(2, 4).map((f) => (
-                      <div key={f.uid} className="pw-camera-person">
-                        <div className="pw-camera-avatar">
-                          <AvatarSvg avatar={f.avatar} variant="full" pose={f.pose} />
-                        </div>
-                        <span className="pw-camera-name">{f.displayName}</span>
-                      </div>
-                    ))}
-                  </div>
+                <div className="pw-camera-preview">
+                  <canvas ref={cameraCanvasRef} width={320} height={320} className="pw-camera-canvas" />
                 </div>
                 <p className="pw-hint">
-                  {cameraFriends.length > 0
-                    ? `Karede sen ve ${cameraFriends.length} arkadaşın var — o an ne yapıyorsanız öyle.`
+                  {cameraFrame && cameraFrame.entities.length > 1
+                    ? `Karede sen ve ${cameraFrame.entities.length - 1} arkadaşın var — o an gerçekten nerede duruyorsanız, ne yapıyorsanız öyle.`
                     : 'Karede sadece sen varsın — yanına yaklaşan arkadaşların da otomatik kareye girer.'}
                 </p>
                 <input
@@ -1213,13 +857,13 @@ export default function ParkWorldScreen({ onExit }) {
                 <button className="pw-panel-btn primary" disabled={cameraBusy} onClick={handleShareCamera}>
                   {cameraBusy ? 'Paylaşılıyor…' : '📤 Sixtagram\'da Paylaş'}
                 </button>
-                <button className="pw-panel-btn" onClick={() => setCameraOpen(false)}>Vazgeç</button>
+                <button className="pw-panel-btn" onClick={closeCamera}>Vazgeç</button>
               </>
             ) : (
               <>
                 <p className="pw-panel-title">Paylaşıldı! 🎉</p>
                 <p className="pw-hint">Fotoğrafın Sixtagram akışında.</p>
-                <button className="pw-panel-btn primary" onClick={() => setCameraOpen(false)}>Tamam</button>
+                <button className="pw-panel-btn primary" onClick={closeCamera}>Tamam</button>
               </>
             )}
           </div>

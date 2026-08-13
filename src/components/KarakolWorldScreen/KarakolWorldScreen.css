@@ -1,0 +1,5 @@
+/* KarakolWorldScreen.css — bu mekana özel ekstra stil yok, genel "girilebilir
+   mekan" kabuğu (tam ekran, çıkış butonu, panel vb.) styles/
+   worldScreenChrome.css'te (.ws-*) — bkz. KarakolWorldScreen.jsx importu.
+   (Bank'taki numara rozeti gibi bu mekana özgü bir UI parçası olmadığı için
+   dosya bilerek neredeyse boş — gereksiz kod eklememek için.) */

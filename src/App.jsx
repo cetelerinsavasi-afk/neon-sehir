@@ -14,6 +14,10 @@ import OnNumaraFullScreen from './components/OnNumaraScreen/OnNumaraFullScreen';
 import ProfileFullScreen from './components/ProfileFullScreen/ProfileFullScreen';
 import FutbolFullScreen from './components/FutbolScreen/FutbolFullScreen';
 import ParkWorldScreen from './components/ParkWorldScreen/ParkWorldScreen';
+import BankWorldScreen from './components/BankWorldScreen/BankWorldScreen';
+import KarakolWorldScreen from './components/KarakolWorldScreen/KarakolWorldScreen';
+import MosqueWorldScreen from './components/MosqueWorldScreen/MosqueWorldScreen';
+import CasinoWorldScreen from './components/CasinoWorldScreen/CasinoWorldScreen';
 import TopNotificationBanner from './components/TopNotificationBanner/TopNotificationBanner';
 import { usePlayer } from './hooks/usePlayer';
 import { useMyActiveRaceRoom } from './hooks/useMyActiveRaceRoom';
@@ -63,6 +67,10 @@ function GameShell() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [futbolOpen, setFutbolOpen] = useState(false);
   const [parkOpen, setParkOpen] = useState(false);
+  const [bankOpen, setBankOpen] = useState(false);
+  const [karakolOpen, setKarakolOpen] = useState(false);
+  const [mosqueOpen, setMosqueOpen] = useState(false);
+  const [casinoOpen, setCasinoOpen] = useState(false);
   const { player } = usePlayer();
 
   // Uygulama arka plana alınıp geri geldiğinde (özellikle iOS'ta) Firestore
@@ -123,6 +131,35 @@ function GameShell() {
     }
     if (regionMeta?.screen === 'park') {
       setParkOpen(true);
+      return;
+    }
+    // Banka artık Park gibi girilebilir bir mekan (bkz. madde 2-4) —
+    // RegionModal'daki eski "hızlı panel" yerine tam ekran iç mekana
+    // giriliyor.
+    if (regionMeta?.screen === 'banka') {
+      setBankOpen(true);
+      return;
+    }
+    // Karakol da artık Banka gibi girilebilir bir mekan (bkz. madde 5) —
+    // eski "hızlı panel" (PoliceStationScreen tek ekran) yerine tam ekran
+    // iç mekana giriliyor; girişteki memur (rüşvet) ve içerideki komiser
+    // (başvuru) artık ayrı NPC etkileşimleri.
+    if (regionMeta?.screen === 'rüşvet') {
+      setKarakolOpen(true);
+      return;
+    }
+    // Camii de artık girilebilir bir mekan (bkz. madde 6) — eski "hızlı
+    // panel" (MosqueScreen tek ekran) yerine tam ekran iç mekana giriliyor;
+    // imam ve dilenci artık ayrı NPC etkileşimleri.
+    if (regionMeta?.screen === 'ibadet') {
+      setMosqueOpen(true);
+      return;
+    }
+    // Gazino da artık girilebilir bir mekan (bkz. madde 7-9) — eski "hızlı
+    // panel" (CasinoScreen) yerine tam ekran iç mekana giriliyor. Telefon
+    // uygulaması (madde 8) hâlâ CasinoScreen'i olduğu gibi kullanıyor.
+    if (regionMeta?.screen === 'casino') {
+      setCasinoOpen(true);
       return;
     }
     setActiveRegion(regionMeta);
@@ -200,6 +237,26 @@ function GameShell() {
       />
 
       {parkOpen && user && <ParkWorldScreen onExit={() => setParkOpen(false)} />}
+
+      {bankOpen && user && (
+        <BankWorldScreen onExit={() => setBankOpen(false)} onOpenHeist={openHeistScreen} />
+      )}
+
+      {karakolOpen && user && (
+        <KarakolWorldScreen onExit={() => setKarakolOpen(false)} />
+      )}
+
+      {mosqueOpen && user && (
+        <MosqueWorldScreen onExit={() => setMosqueOpen(false)} />
+      )}
+
+      {casinoOpen && user && (
+        <CasinoWorldScreen
+          onExit={() => setCasinoOpen(false)}
+          onOpenHeist={openHeistScreen}
+          onEnterTable={openTable}
+        />
+      )}
 
       {heistTarget !== undefined && (
         <HeistScreen initialTarget={heistTarget} onClose={() => setHeistTarget(undefined)} />

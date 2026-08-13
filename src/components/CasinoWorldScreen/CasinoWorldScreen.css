@@ -1,0 +1,48 @@
+/* CasinoWorldScreen.css — genel "girilebilir mekan" kabuğu styles/
+   worldScreenChrome.css'te (.ws-*). Burada sadece bar menüsü (madde 9)
+   için küçük bir ek var — Park büfesindeki .pw-bufe-grid ile aynı fikir,
+   ayrı bir sınıf adıyla (kod paylaşımı için CSS'i ortak dosyaya taşımak bu
+   kadar küçük bir blok için gerekli değildi). */
+
+.cw-bar-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.cw-bar-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 6px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 210, 63, 0.35);
+  background: rgba(255, 255, 255, 0.05);
+  color: #f2ecdd;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.cw-bar-item:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.cw-bar-emoji {
+  font-size: 24px;
+}
+
+.cw-bar-price {
+  color: #ffd23f;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.cw-bar-error {
+  grid-column: 1 / -1;
+  color: #ff8080;
+  font-size: 12px;
+  margin: 0;
+}

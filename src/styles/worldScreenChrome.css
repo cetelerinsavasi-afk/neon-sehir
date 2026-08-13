@@ -1,13 +1,21 @@
-.pw-fullscreen {
+/* worldScreenChrome.css — Park'ın (ParkWorldScreen.css'teki .pw-*) tam
+   ekran "girilebilir mekan" kabuğuyla BİREBİR aynı jenerik stiller,
+   .ws- önekiyle. Banka/Karakol/Camii/Gazino gibi diğer girilebilir
+   mekanlar bunu kullanır — Park'ın kendi .pw-* sınıfları BİLEREK
+   dokunulmadan bırakıldı (riski azaltmak için), yeni mekanlar burada
+   ortaklanıyor. Her mekan `--ws-bg` / `--ws-accent` değişkenleriyle
+   kendi renk temasını .ws-fullscreen köküne inline style olarak verir. */
+
+.ws-fullscreen {
   position: fixed;
   inset: 0;
   z-index: 75;
-  background: #16341c;
+  background: var(--ws-bg, #1b1b22);
   display: flex;
   flex-direction: column;
 }
 
-.pw-exit-btn {
+.ws-exit-btn {
   position: fixed;
   top: calc(76px + env(safe-area-inset-top));
   right: 12px;
@@ -22,19 +30,37 @@
   cursor: pointer;
 }
 
-.pw-canvas-wrap {
+/* ws-heist-btn — madde 10: soygun butonu, X (ws-exit-btn) butonunun
+   HEMEN SOLUNDA, aynı satırda. */
+.ws-heist-btn {
+  position: fixed;
+  top: calc(76px + env(safe-area-inset-top));
+  right: 50px;
+  z-index: 25;
+  padding: 0 10px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--ws-accent, #d4af37);
+  background: rgba(255, 46, 140, 0.16);
+  color: #ff9fcf;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ws-canvas-wrap {
   position: relative;
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  /* Hud sabit (fixed) konumlandığı için altına yer açıyoruz. */
   padding-top: calc(64px + env(safe-area-inset-top));
   padding-bottom: 8px;
   overflow: hidden;
 }
 
-.pw-canvas {
+.ws-canvas {
   max-width: 100%;
   max-height: 100%;
   touch-action: none;
@@ -42,7 +68,7 @@
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 
-.pw-loading {
+.ws-loading {
   position: absolute;
   inset: 0;
   display: flex;
@@ -53,45 +79,19 @@
   z-index: 2;
 }
 
-.pw-chat-row {
-  display: flex;
-  gap: 8px;
-  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
-  background: rgba(0, 0, 0, 0.35);
-  border-top: 1px solid rgba(212, 175, 55, 0.2);
-}
-.pw-chat-input {
-  flex: 1;
-  padding: 9px 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(212, 175, 55, 0.3);
-  background: rgba(255, 255, 255, 0.06);
-  color: #f2ecdd;
-  font-size: 13px;
-}
-.pw-chat-send {
-  padding: 9px 14px;
-  border-radius: 8px;
-  border: 1px solid #d4af37;
-  background: rgba(212, 175, 55, 0.15);
-  color: #e8c766;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.pw-error {
+.ws-error {
   padding: 6px 16px;
   color: #ff8080;
   font-size: 12px;
 }
 
-.pw-hint {
+.ws-hint {
   font-size: 13px;
   color: #cfd3d8;
   margin: 0 0 12px;
 }
 
-.pw-panel-backdrop {
+.ws-panel-backdrop {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.55);
@@ -99,20 +99,23 @@
   align-items: flex-end;
   z-index: 30;
 }
-.pw-panel {
+.ws-panel {
   width: 100%;
-  background: #12241c;
+  background: var(--ws-panel-bg, #1c1c24);
   border-top: 1px solid rgba(212, 175, 55, 0.3);
   border-radius: 16px 16px 0 0;
   padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+  max-height: 82vh;
+  overflow-y: auto;
+  box-sizing: border-box;
 }
-.pw-panel-title {
+.ws-panel-title {
   font-size: 15px;
   font-weight: 700;
   color: #e8cf7a;
   margin: 0 0 10px;
 }
-.pw-panel-btn {
+.ws-panel-btn {
   width: 100%;
   padding: 11px;
   border-radius: 10px;
@@ -123,46 +126,18 @@
   margin-top: 8px;
   cursor: pointer;
 }
-.pw-panel-btn.primary {
+.ws-panel-btn.primary {
   border-color: #d4af37;
   background: rgba(212, 175, 55, 0.18);
   color: #e8c766;
   font-weight: 700;
 }
-.pw-panel-btn:disabled {
+.ws-panel-btn:disabled {
   opacity: 0.5;
   cursor: default;
 }
 
-.pw-bufe-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-}
-.pw-bufe-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  padding: 12px 4px;
-  border-radius: 10px;
-  border: 1px solid rgba(212, 175, 55, 0.3);
-  background: rgba(255, 255, 255, 0.05);
-  color: #f2ecdd;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.pw-bufe-item:disabled {
-  opacity: 0.5;
-}
-.pw-bufe-price {
-  font-size: 10px;
-  font-weight: 400;
-  color: #e8c766;
-}
-
-.pw-phone-btn {
+.ws-phone-btn {
   position: absolute;
   bottom: 78px;
   right: 16px;
@@ -178,7 +153,10 @@
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
 }
 
-.pw-camera-btn {
+/* ws-camera-btn/preview — Park'taki .pw-camera-* ile BİREBİR aynı (bkz.
+   madde 11/12) — bina içlerinde de kamera artık aynı ortak kabuktan
+   çalışıyor, her mekan kendi gerçek arka planını verir. */
+.ws-camera-btn {
   position: absolute;
   bottom: 16px;
   right: 16px;
@@ -194,7 +172,7 @@
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
 }
 
-.pw-camera-preview {
+.ws-camera-preview {
   position: relative;
   border-radius: 12px;
   overflow: hidden;
@@ -204,16 +182,31 @@
   margin-bottom: 10px;
   background: #16341c;
 }
-/* pw-camera-canvas — kamera karesi gerçek park sahnesinden (lib/
-   parkScene.js) render edilir: gerçek arka plan + gerçek göreli konum.
-   Ayrı bir "sahne rozeti/renk paleti" YOK — kare kendisi gerçek görsel. */
-.pw-camera-canvas {
+
+.ws-camera-canvas {
   display: block;
   width: 100%;
   height: 100%;
 }
-.pw-camera-caption {
+
+.ws-camera-caption {
   width: 100%;
   margin-bottom: 4px;
   box-sizing: border-box;
+  border-radius: 8px;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  background: rgba(255, 255, 255, 0.05);
+  color: #f2ecdd;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.ws-speech-hint {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  font-size: 11px;
+  color: rgba(242, 236, 221, 0.65);
+  z-index: 4;
+  max-width: 60%;
 }

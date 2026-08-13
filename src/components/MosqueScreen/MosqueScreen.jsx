@@ -19,7 +19,11 @@ import {
 } from '../../services/gameActions';
 import './MosqueScreen.css';
 
-const WINDOW_HOURS = {
+// WINDOW_HOURS/ImamPanel/BeggarsSection export edildi — MosqueWorldScreen
+// (girilebilir camii, bkz. madde 6) içeride imam ve dilenci NPC'leri için
+// bu İKİ bölümü AYRI AYRI panel olarak açıyor, tüm başvuru/nasihat/bağış
+// mantığını burada olduğu gibi tekrar kullanıyor (kod tekrarı yok).
+export const WINDOW_HOURS = {
   1: '00:00-12:00',
   2: '12:00-15:00',
   3: '15:00-18:00',
@@ -29,7 +33,7 @@ const WINDOW_HOURS = {
 
 const BEGGAR_WEALTH_LIMIT = 10000;
 
-function ImamPanel() {
+export function ImamPanel() {
   const { user } = useAuth();
   const { player } = usePlayer();
   const { actions } = useDailyActions();
@@ -304,7 +308,7 @@ function BeggarCard({ beggar, myUid }) {
   );
 }
 
-function BeggarsSection() {
+export function BeggarsSection() {
   const { user } = useAuth();
   const { beggars } = useBeggars();
   const [showForm, setShowForm] = useState(false);

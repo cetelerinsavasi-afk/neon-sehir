@@ -1,9 +1,104 @@
+import { useEffect, useRef } from 'react';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import FutbolCrest from '../FutbolScreen/FutbolCrest';
 import PriceChart from '../PriceChart/PriceChart';
 import '../PriceChart/PriceChart.css';
 import { vehicleImage } from '../VehicleCard/VehicleCard';
+import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes';
+import { createAvatarImageCache, renderPhotoFrame as parkRenderPhotoFrame } from '../../lib/parkScene';
+import { createAvatarImageCache as createAvatarImageCache2, renderPhotoFrame } from '../../lib/canvasWorldKit';
+import { drawBankSceneBackground } from '../BankWorldScreen/BankWorldScreen';
+import { drawKarakolSceneBackground } from '../KarakolWorldScreen/KarakolWorldScreen';
+import { drawMosqueSceneBackground } from '../MosqueWorldScreen/MosqueWorldScreen';
+import { drawCasinoSceneBackground } from '../CasinoWorldScreen/CasinoWorldScreen';
 import './PostAttachment.css';
+
+// Tüm parkPhoto kartları arasında paylaşılan avatar görsel önbelleği —
+// aynı avatarı tekrar tekrar SVG'den <img>'e çevirmemek için (bkz.
+// lib/parkScene.js createAvatarImageCache).
+const parkPhotoImageCache = createAvatarImageCache(buildFullAvatarSvgMarkup, DEFAULT_AVATAR);
+
+// interiorPhoto kartları için ayrı önbellek (parkPhoto'yla karıştırmamak
+// için) — aynı jenerik createAvatarImageCache, sadece ayrı bir örnek.
+const interiorPhotoImageCache = createAvatarImageCache2(buildFullAvatarSvgMarkup, DEFAULT_AVATAR);
+
+// locationId -> mekanın kendi drawXxxSceneBackground'ı (bkz. madde 11/12) —
+// her mekan zaten kendi WorldScreen dosyasında dışa açık, burada sadece
+// eşleniyor; tekrar kod YOK.
+const INTERIOR_BACKGROUNDS = {
+  banka: (ctx, getAvatarImage) => drawBankSceneBackground(ctx, getAvatarImage),
+  karakol: (ctx, getAvatarImage) => drawKarakolSceneBackground(ctx, getAvatarImage),
+  camii: (ctx, getAvatarImage) => drawMosqueSceneBackground(ctx, getAvatarImage),
+  gazino: (ctx, getAvatarImage) => drawCasinoSceneBackground(ctx, getAvatarImage),
+};
+
+// InteriorPhotoCanvas — Banka/Karakol/Camii/Gazino'da çekilen fotoğrafı,
+// ParkPhotoCanvas'la AYNI mantıkla ama girilebilir mekanın kendi gerçek
+// arka planıyla (canlı NPC/imam durumu olmadan — sunucu zaten tek kişilik
+// bir kare üretiyor, bkz. functions/index.js) render eder.
+function InteriorPhotoCanvas({ locationId, entities, originX, originY }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const drawBackground = INTERIOR_BACKGROUNDS[locationId];
+    if (!canvas || !entities?.length || !drawBackground) return undefined;
+    const ctx = canvas.getContext('2d');
+    let raf;
+    let frames = 0;
+    const draw = () => {
+      renderPhotoFrame(ctx, {
+        width: canvas.width,
+        height: canvas.height,
+        originX: originX ?? 0,
+        originY: originY ?? 0,
+        entities,
+        getAvatarImage: interiorPhotoImageCache,
+        drawBackground: (bgCtx) => drawBackground(bgCtx, interiorPhotoImageCache),
+      });
+      frames += 1;
+      if (frames < 90) raf = requestAnimationFrame(draw);
+    };
+    raf = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf);
+  }, [locationId, entities, originX, originY]);
+
+  return <canvas ref={canvasRef} width={320} height={320} className="post-att-parkphoto-canvas" />;
+}
+
+// ParkPhotoCanvas — kamera karesini GERÇEK park sahnesinden (aynı
+// lib/parkScene.js çizim kodu, ParkWorldScreen'deki canlı önizlemeyle
+// BİREBİR aynı) render eder. Avatar SVG'leri ilk açılışta asenkron
+// yüklendiği için birkaç kare boyunca yeniden çizip önbelleğin
+// dolmasını bekliyoruz, sonra duruyoruz (feed'de çok sayıda kart olsa
+// bile sonsuz bir animasyon döngüsü çalıştırmamak için).
+function ParkPhotoCanvas({ entities }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !entities?.length) return undefined;
+    const ctx = canvas.getContext('2d');
+    let raf;
+    let frames = 0;
+    const draw = () => {
+      parkRenderPhotoFrame(ctx, {
+        width: canvas.width,
+        height: canvas.height,
+        originX: 0,
+        originY: 0,
+        entities,
+        getAvatarImage: parkPhotoImageCache,
+      });
+      frames += 1;
+      if (frames < 90) raf = requestAnimationFrame(draw);
+    };
+    raf = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf);
+  }, [entities]);
+
+  return <canvas ref={canvasRef} width={320} height={320} className="post-att-parkphoto-canvas" />;
+}
 
 // PostAttachment — Sixtagram gönderisine eklenen "görsel"i render eder.
 // Hepsi oyunun kendi verisinden (sunucuda doğrulanmış) üretiliyor — dosya
@@ -166,35 +261,43 @@ export default function PostAttachment({ attachment }) {
   }
 
   if (attachment.type === 'parkPhoto') {
-    const people = attachment.participants || [];
-    const SCENE_BG = {
-      Park: 'linear-gradient(160deg, #1d3a2e 0%, #16341c 55%, #0f2415 100%)',
-      Büfe: 'linear-gradient(160deg, #6b4226 0%, #4a2e18 55%, #2b1b12 100%)',
-      Gölet: 'linear-gradient(160deg, #1d4a58 0%, #163a44 55%, #0f2830 100%)',
-      Bank: 'linear-gradient(160deg, #2e5a34 0%, #234226 55%, #16341c 100%)',
-      Masa: 'linear-gradient(160deg, #5a3a22 0%, #3f2717 55%, #2b1b12 100%)',
-    };
-    // participants[0] her zaman fotoğrafı çeken kişidir (bkz.
-    // functions/index.js) — kamera onu ortalayıp yakın çektiği için
-    // burada da diğerlerinden biraz daha büyük gösteriliyor.
+    // entities[0] her zaman fotoğrafı çeken kişidir (bkz.
+    // functions/index.js) — dx/dy ONA göre gerçek göreli ofset, arka
+    // plan da onun o anki gerçek konumundan çizilir (bkz. lib/parkScene.js
+    // renderPhotoFrame) — rastgele dizilim ya da "sahneye göre renk" YOK.
+    const entities = attachment.entities || [];
+    if (!entities.length) return null;
+    const names = entities.map((p) => p.displayName || 'Oyuncu');
     return (
       <div className="post-att post-att-parkphoto">
-        <div
-          className="post-att-parkphoto-frame"
-          style={{ background: SCENE_BG[attachment.scene] || SCENE_BG.Park }}
-        >
-          <div className="post-att-parkphoto-row">
-            {people.map((p, i) => (
-              <div key={i} className={`post-att-parkphoto-person${i === 0 ? ' main' : ''}`}>
-                <div className="post-att-parkphoto-avatar">
-                  <AvatarSvg avatar={p.avatar} variant="full" pose={p.pose || 'idle'} />
-                </div>
-                <span className="post-att-parkphoto-name">{p.displayName}</span>
-              </div>
-            ))}
-          </div>
-          <span className="post-att-parkphoto-badge">📷 {attachment.scene}</span>
+        <div className="post-att-parkphoto-frame">
+          <ParkPhotoCanvas entities={entities} />
         </div>
+        <p className="post-att-parkphoto-names">📷 {names.join(' · ')}</p>
+      </div>
+    );
+  }
+
+  if (attachment.type === 'interiorPhoto') {
+    // entities[0] her zaman fotoğrafı çeken kişidir (bkz. functions/index.js
+    // 'interiorPhoto' dalı) — bu mekanlar tek kişilik olduğu için ASLA
+    // başka gerçek oyuncu yer almaz, sadece kendisi + mekanın kendi NPC'leri
+    // (arka planın bir parçası, bkz. drawXxxSceneBackground).
+    const entities = attachment.entities || [];
+    if (!entities.length) return null;
+    const LOCATION_LABELS = { banka: 'Banka', karakol: 'Karakol', camii: 'Cami', gazino: 'Gazino' };
+    const label = LOCATION_LABELS[attachment.locationId] || 'Mekan';
+    return (
+      <div className="post-att post-att-parkphoto">
+        <div className="post-att-parkphoto-frame">
+          <InteriorPhotoCanvas
+            locationId={attachment.locationId}
+            entities={entities}
+            originX={attachment.originX}
+            originY={attachment.originY}
+          />
+        </div>
+        <p className="post-att-parkphoto-names">📷 {entities[0].displayName || 'Oyuncu'} · {label}</p>
       </div>
     );
   }

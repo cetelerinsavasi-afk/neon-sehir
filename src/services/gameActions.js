@@ -204,6 +204,10 @@ export const enterPark = () => httpsCallable(functions, 'enterPark')();
 
 export const buyFromBufe = (itemId) => httpsCallable(functions, 'buyFromBufe')({ itemId });
 
+// --- Gazino Dünyası (madde 7-9) ---
+
+export const buyFromGazinoBar = (itemId) => httpsCallable(functions, 'buyFromGazinoBar')({ itemId });
+
 export const placeLimanOrder = (materialType, quantity) =>
   httpsCallable(functions, 'placeLimanOrder')({ materialType, quantity });
 

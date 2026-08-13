@@ -3360,6 +3360,39 @@ export const buyFromBufe = onCall(async (request) => {
 });
 
 // ---------------------------------------------------------------------------
+// buyFromGazinoBar — Gazino'daki bardan içecek satın alma. buyFromBufe ile
+// AYNI yapı (transaction'la altın düşme) — tek fark kendi fiyat listesi
+// (Gazino barı Park büfesinden farklı fiyatlandırılıyor, bkz. kullanıcı
+// isteği: çay 20, kahve 50, kokteyl 500).
+// ---------------------------------------------------------------------------
+const GAZINO_BAR_PRICES = {
+  cay: 20,
+  kahve: 50,
+  kokteyl: 500,
+};
+
+export const buyFromGazinoBar = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const itemId = request.data?.itemId;
+  const price = GAZINO_BAR_PRICES[itemId];
+  if (!price) {
+    throw new HttpsError('invalid-argument', 'Geçersiz bar ürünü.');
+  }
+
+  const userRef = db.collection('users').doc(uid);
+  await db.runTransaction(async (tx) => {
+    const userSnap = await tx.get(userRef);
+    const user = userSnap.data();
+    if (!user || (user.gold || 0) < price) {
+      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    }
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-price) });
+  });
+
+  return { ok: true, itemId, price };
+});
+
+// ---------------------------------------------------------------------------
 // placeLimanOrder — Liman'dan toplu/ucuz malzeme siparişi.
 // Gemi 'departing' ya da 'loading' durumundaysa (gün 2-3, gemi diğer
 // şehirde/yolda mal topluyor) sipariş DOĞRUDAN 'loaded' kovasına gider —
@@ -9982,41 +10015,131 @@ async function buildSixtagramAttachment(uid, attachment) {
   }
 
   // parkPhoto — Park'ta çekilen "grup fotoğrafı". Bu oyunda hiç dosya
-  // yükleme YOK (bkz. bu fonksiyonun üstündeki not) — istemci sadece
-  // KİMLERİN karede olduğunu (uid listesi + her biri için seçilen poz)
-  // ve hangi köşede çekildiğini gönderir; avatarlar burada sunucuda,
-  // GERÇEK veriden (users/{uid}.avatar) yeniden inşa edilir. Sixtagram
-  // tarafı bu katılımcı listesini AvatarSvg'lerle (seçilen pozlarıyla)
-  // yan yana dizip görsel bir "fotoğraf" gibi render eder (bkz.
-  // PostAttachment.jsx) — hiçbir depolama/bant genişliği maliyeti yok.
+  // yükleme YOK — istemciden GÜVENİLMEYEN hiçbir konum/poz/katılımcı
+  // verisi alınmıyor (attachment içeriği tamamen yok sayılıyor). Bunun
+  // yerine: fotoğrafı çekenin KENDİ canlı parkPresence kaydı (x,y,pose,
+  // facing,holding — zaten diğer oyuncuların da canlı olarak gördüğü,
+  // parkPresence'ın var olan güven seviyesiyle aynı) merkez alınır,
+  // etrafındaki (CAMERA_RADIUS içinde, güncel) oyuncular yine
+  // parkPresence'tan bulunur, avatar/isim users/{uid}'den (tam
+  // doğrulanmış) okunur. Sonuç: her katılımcı için GERÇEK göreli ofset
+  // (dx,dy) — istemci (ParkWorldScreen) ve Sixtagram akışı
+  // (PostAttachment) bunu lib/parkScene.js'teki AYNI vektörel sahne
+  // çizimiyle (renderPhotoFrame) render eder: gerçek arka plan (o an
+  // büfenin yanındaysan büfe çıkar) + gerçek göreli konum — rastgele
+  // yerleştirme veya "sahne adına göre renk" YOK (bkz. madde 12).
   if (type === 'parkPhoto') {
+    const CAMERA_RADIUS = 170;
+    const PRESENCE_STALE_MS = 60_000;
     const ALLOWED_POSES = ['idle', 'walk1', 'walk2', 'sit'];
     const safePose = (p) => (ALLOWED_POSES.includes(p) ? p : 'idle');
+    const isFresh = (data) => {
+      const ms = data?.updatedAt?.toMillis?.() ?? 0;
+      return ms > 0 && Date.now() - ms < PRESENCE_STALE_MS;
+    };
 
-    const poseByUid = new Map();
-    poseByUid.set(uid, safePose(attachment.selfPose));
-    const rawParticipants = Array.isArray(attachment.participants) ? attachment.participants : [];
-    rawParticipants.forEach((p) => {
-      if (p && typeof p.uid === 'string' && !poseByUid.has(p.uid)) {
-        poseByUid.set(p.uid, safePose(p.pose));
-      }
-    });
-    const uids = [...poseByUid.keys()].slice(0, 5);
-
-    const snaps = await Promise.all(uids.map((id) => db.collection('users').doc(id).get()));
-    const participants = snaps
-      .filter((s) => s.exists)
-      .map((s) => ({
-        displayName: s.data().displayName || 'Oyuncu',
-        avatar: s.data().avatar || null,
-        pose: poseByUid.get(s.id) || 'idle',
-      }));
-    if (!participants.length) {
-      throw new HttpsError('failed-precondition', 'Fotoğrafta kimse yok.');
+    const mySnap = await db.collection('parkPresence').doc(uid).get();
+    const myPresence = mySnap.exists ? mySnap.data() : null;
+    if (!myPresence || !isFresh(myPresence)) {
+      throw new HttpsError('failed-precondition', 'Fotoğraf çekmek için parkta olmalısın.');
     }
-    const ALLOWED_SCENES = ['Park', 'Büfe', 'Gölet', 'Bank', 'Masa'];
-    const scene = ALLOWED_SCENES.includes(attachment.scene) ? attachment.scene : 'Park';
-    return { type: 'parkPhoto', scene, participants };
+    const originX = myPresence.x ?? 0;
+    const originY = myPresence.y ?? 0;
+
+    // Yakındaki diğer canlı oyuncular — parkPresence'ın kendisi zaten
+    // "diğer herkesin senin için görebildiği" veri (bkz. useParkPresence),
+    // burada aynı güvenle sunucuda okunuyor.
+    const presenceSnap = await db.collection('parkPresence').limit(40).get();
+    const nearby = presenceSnap.docs
+      .filter((d) => d.id !== uid)
+      .map((d) => ({ id: d.id, data: d.data() }))
+      .filter(({ data }) => isFresh(data))
+      .map(({ id, data }) => ({
+        id,
+        dx: (data.x ?? 0) - originX,
+        dy: (data.y ?? 0) - originY,
+        pose: safePose(data.pose),
+        facing: data.facing || 'down',
+        holding: data.holding || null,
+      }))
+      .filter((p) => Math.hypot(p.dx, p.dy) < CAMERA_RADIUS)
+      .sort((a, b) => Math.hypot(a.dx, a.dy) - Math.hypot(b.dx, b.dy))
+      .slice(0, 4);
+
+    const uids = [uid, ...nearby.map((p) => p.id)];
+    const snaps = await Promise.all(uids.map((id) => db.collection('users').doc(id).get()));
+    const avatarByUid = new Map();
+    snaps.forEach((s) => {
+      if (s.exists) avatarByUid.set(s.id, { displayName: s.data().displayName || 'Oyuncu', avatar: s.data().avatar || null });
+    });
+    if (!avatarByUid.has(uid)) {
+      throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
+    }
+
+    const entities = [
+      {
+        dx: 0, dy: 0, isSelf: true,
+        pose: safePose(myPresence.pose), facing: myPresence.facing || 'down', holding: myPresence.holding || null,
+        displayName: avatarByUid.get(uid).displayName, avatar: avatarByUid.get(uid).avatar,
+      },
+      ...nearby
+        .filter((p) => avatarByUid.has(p.id))
+        .map((p) => ({
+          dx: p.dx, dy: p.dy, isSelf: false,
+          pose: p.pose, facing: p.facing, holding: p.holding,
+          displayName: avatarByUid.get(p.id).displayName, avatar: avatarByUid.get(p.id).avatar,
+        })),
+    ];
+
+    return { type: 'parkPhoto', entities };
+  }
+
+  // interiorPhoto — Banka/Karakol/Camii/Gazino gibi girilebilir mekanlarda
+  // çekilen fotoğraf (bkz. madde 11/12). Bu odalar TEK OYUNCULU (parkPresence
+  // benzeri canlı bir koleksiyon yok) — yani karede fotoğrafı çekenden başka
+  // GERÇEK bir oyuncu asla yer almaz, NPC'ler zaten istemcideki paylaşılan
+  // drawXxxSceneBackground fonksiyonlarına gömülü (bkz. CasinoWorldScreen.jsx
+  // vb.). Bu yüzden parkPhoto'nun aksine burada Firestore'da presence arama
+  // YOK — sadece hangi mekanda olduğu (allowlist) ve kendi pozu/yönü
+  // (allowlist ile doğrulanmış) alınıyor; avatar/isim yine users/{uid}'den
+  // (trusted) okunuyor. Başka hiçbir oyuncunun kimliği/konumu asla iddia
+  // edilmiyor — tek risk kendi görünümün, o da zaten hesabın.
+  if (type === 'interiorPhoto') {
+    const ALLOWED_LOCATIONS = ['banka', 'karakol', 'camii', 'gazino'];
+    const ALLOWED_POSES = ['idle', 'walk1', 'walk2', 'sit'];
+    const ALLOWED_FACINGS = ['up', 'down', 'left', 'right'];
+    // Mekan tuvali sabit 680x1180 (bkz. her WorldScreen'deki W/H) — konum
+    // sadece kadrajı (fotoğrafın hangi köşeyi gösterdiğini) belirliyor,
+    // hiçbir gerçek oyuncunun kimliği/varlığı bu değere bağlı değil, bu
+    // yüzden basit bir aralık sınırlaması yeterli (bkz. üstteki not).
+    const CANVAS_W = 680;
+    const CANVAS_H = 1180;
+    const safePose = (p) => (ALLOWED_POSES.includes(p) ? p : 'idle');
+    const safeFacing = (f) => (ALLOWED_FACINGS.includes(f) ? f : 'down');
+    const safeCoord = (v, max) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(max, v)) : max / 2);
+
+    const locationId = ALLOWED_LOCATIONS.includes(attachment.locationId) ? attachment.locationId : null;
+    if (!locationId) {
+      throw new HttpsError('invalid-argument', 'Geçersiz mekan.');
+    }
+
+    const userSnap = await db.collection('users').doc(uid).get();
+    if (!userSnap.exists) {
+      throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
+    }
+    const userData = userSnap.data();
+
+    return {
+      type: 'interiorPhoto',
+      locationId,
+      originX: safeCoord(attachment.x, CANVAS_W),
+      originY: safeCoord(attachment.y, CANVAS_H),
+      entities: [{
+        dx: 0, dy: 0, isSelf: true,
+        pose: safePose(attachment.pose), facing: safeFacing(attachment.facing), holding: null,
+        displayName: userData.displayName || 'Oyuncu', avatar: userData.avatar || null,
+      }],
+    };
   }
 
   throw new HttpsError('invalid-argument', 'Geçersiz ek türü.');
