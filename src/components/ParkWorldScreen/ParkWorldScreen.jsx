@@ -239,7 +239,7 @@ export default function ParkWorldScreen({ onExit }) {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraFriends, setCameraFriends] = useState([]);
   const [cameraScene, setCameraScene] = useState('Park');
-  const [cameraPose, setCameraPose] = useState('idle');
+  const [cameraSelfPose, setCameraSelfPose] = useState('idle');
   const [cameraCaption, setCameraCaption] = useState('');
   const [cameraBusy, setCameraBusy] = useState(false);
   const [cameraError, setCameraError] = useState(null);
@@ -762,15 +762,38 @@ export default function ParkWorldScreen({ onExit }) {
     const words = text.split(/\s+/).filter(Boolean);
     const lines = [];
     let cur = '';
-    for (const word of words) {
-      const test = cur ? `${cur} ${word}` : word;
-      if (cur && ctx.measureText(test).width > BUBBLE_MAX_TEXT_W) {
-        lines.push(cur);
-        cur = word;
-      } else {
-        cur = test;
+
+    const addWord = (word) => {
+      // Normal durum: kelime tek başına sığıyor, satıra normal ekle.
+      if (ctx.measureText(word).width <= BUBBLE_MAX_TEXT_W) {
+        const test = cur ? `${cur} ${word}` : word;
+        if (cur && ctx.measureText(test).width > BUBBLE_MAX_TEXT_W) {
+          lines.push(cur);
+          cur = word;
+        } else {
+          cur = test;
+        }
+        return;
       }
-    }
+      // Boşluksuz ÇOK UZUN bir "kelime" (ör. bitişik yazılmış uzun bir
+      // yazı) — kelime sınırında kırmak yetmez, karakter karakter
+      // uygun bir yerden kesip alt satıra taşıyoruz. Bu olmadan metin
+      // balonun dışına taşıyordu.
+      if (cur) { lines.push(cur); cur = ''; }
+      let chunk = '';
+      for (const ch of word) {
+        const test = chunk + ch;
+        if (chunk && ctx.measureText(test).width > BUBBLE_MAX_TEXT_W) {
+          lines.push(chunk);
+          chunk = ch;
+        } else {
+          chunk = test;
+        }
+      }
+      cur = chunk;
+    };
+
+    words.forEach(addWord);
     if (cur) lines.push(cur);
     return lines.slice(0, 6);
   }
@@ -1032,19 +1055,15 @@ export default function ParkWorldScreen({ onExit }) {
     setChatText('');
   };
 
-  // --- Kamera: kendine yaklaşıp (varsa yakındaki arkadaşlarınla)
-  // fotoğraf çekip anında Sixtagram'da paylaşabilme. Gerçek bir dosya
-  // yükleme YOK — sadece karede kimin olduğu (uid listesi) sunucuya
-  // gönderiliyor, avatarlar sunucuda GERÇEK veriden yeniden inşa
-  // edilip Sixtagram'da render ediliyor (bkz. functions/index.js
+  // --- Kamera: "gerçekten o an neredeysen, ne yapıyorsan" onu
+  // yakalayan bir enstantane. Poz SEÇİLMEZ — bankta oturuyorsan
+  // fotoğrafta da oturuyorsun, yürüyorsan yürürken yakalanırsın; tıpkı
+  // birinin seni o an görüp fotoğrafını çekmesi gibi. Gerçek bir dosya
+  // yükleme YOK — sadece karede kimin olduğu ve o anki pozu sunucuya
+  // gönderiliyor, avatarlar sunucuda GERÇEK veriden yeniden inşa edilip
+  // Sixtagram'da render ediliyor (bkz. functions/index.js
   // buildSixtagramAttachment 'parkPhoto').
   const CAMERA_RADIUS = 170;
-  const CAMERA_POSES = [
-    { id: 'idle', label: 'Doğal' },
-    { id: 'walk1', label: 'Yürüyor' },
-    { id: 'walk2', label: 'Zıplıyor' },
-    { id: 'sit', label: 'Oturuyor' },
-  ];
   function openCamera() {
     const p = posRef.current;
     const nearby = othersRef.current
@@ -1054,13 +1073,12 @@ export default function ParkWorldScreen({ onExit }) {
         uid: o.uid,
         displayName: o.displayName || 'Oyuncu',
         avatar: o.avatar,
-        // Arkadaşların pozunu şu an fiilen ne yapıyorlarsa ondan
-        // yakalıyoruz (yürüyor/oturuyor/duruyor) — sadece kendi pozunu
-        // sen (fotoğrafı çeken) aşağıdaki seçiciyle değiştirebiliyorsun.
         pose: o.pose === 'sit' ? 'sit' : (o.pose === 'walk1' || o.pose === 'walk2' ? o.pose : 'idle'),
       }));
     setCameraFriends(nearby);
-    setCameraPose('idle');
+    // Kendi o anki gerçek pozun (oturuyor/yürüyor/duruyor) — enstantane
+    // mantığının kalbi burası.
+    setCameraSelfPose(sittingSeatRef.current ? 'sit' : (poseRef.current || 'idle'));
 
     const spots = [
       { label: 'Büfe', d: dist(p, BUFE) },
@@ -1082,7 +1100,7 @@ export default function ParkWorldScreen({ onExit }) {
     try {
       await createSixtagramPost(cameraCaption, {
         type: 'parkPhoto',
-        selfPose: cameraPose,
+        selfPose: cameraSelfPose,
         participants: cameraFriends.map((f) => ({ uid: f.uid, pose: f.pose })),
         scene: cameraScene,
       });
@@ -1155,13 +1173,21 @@ export default function ParkWorldScreen({ onExit }) {
                 <div className="pw-camera-preview" style={{ background: CAMERA_SCENE_BG[cameraScene] || CAMERA_SCENE_BG.Park }}>
                   <span className="pw-camera-scene-badge">{cameraScene}</span>
                   <div className="pw-camera-row">
-                    <div className="pw-camera-person">
+                    {cameraFriends.slice(0, 2).map((f) => (
+                      <div key={f.uid} className="pw-camera-person">
+                        <div className="pw-camera-avatar">
+                          <AvatarSvg avatar={f.avatar} variant="full" pose={f.pose} />
+                        </div>
+                        <span className="pw-camera-name">{f.displayName}</span>
+                      </div>
+                    ))}
+                    <div className="pw-camera-person main">
                       <div className="pw-camera-avatar">
-                        <AvatarSvg avatar={player?.avatar} variant="full" pose={cameraPose} />
+                        <AvatarSvg avatar={player?.avatar} variant="full" pose={cameraSelfPose} />
                       </div>
                       <span className="pw-camera-name">Sen</span>
                     </div>
-                    {cameraFriends.map((f) => (
+                    {cameraFriends.slice(2, 4).map((f) => (
                       <div key={f.uid} className="pw-camera-person">
                         <div className="pw-camera-avatar">
                           <AvatarSvg avatar={f.avatar} variant="full" pose={f.pose} />
@@ -1171,21 +1197,9 @@ export default function ParkWorldScreen({ onExit }) {
                     ))}
                   </div>
                 </div>
-                <p className="pw-hint" style={{ marginBottom: 4 }}>Pozunu seç:</p>
-                <div className="pw-camera-pose-row">
-                  {CAMERA_POSES.map((cp) => (
-                    <button
-                      key={cp.id}
-                      className={`pw-camera-pose-btn${cameraPose === cp.id ? ' active' : ''}`}
-                      onClick={() => setCameraPose(cp.id)}
-                    >
-                      {cp.label}
-                    </button>
-                  ))}
-                </div>
                 <p className="pw-hint">
                   {cameraFriends.length > 0
-                    ? `Karede sen ve ${cameraFriends.length} arkadaşın var.`
+                    ? `Karede sen ve ${cameraFriends.length} arkadaşın var — o an ne yapıyorsanız öyle.`
                     : 'Karede sadece sen varsın — yanına yaklaşan arkadaşların da otomatik kareye girer.'}
                 </p>
                 <input

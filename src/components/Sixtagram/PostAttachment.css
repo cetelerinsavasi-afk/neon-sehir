@@ -173,27 +173,41 @@
 }
 .post-att-parkphoto-frame {
   position: relative;
-  padding: 18px 12px 14px;
-  min-height: 180px;
+  aspect-ratio: 1 / 1;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 16px 10px 8px;
   display: flex;
   align-items: flex-end;
   justify-content: center;
 }
 .post-att-parkphoto-row {
   display: flex;
+  align-items: flex-end;
   justify-content: center;
-  gap: 4px;
-  flex-wrap: wrap;
+  gap: 2px;
+  width: 100%;
+  height: 100%;
 }
 .post-att-parkphoto-person {
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 84px;
+  flex: 0 0 auto;
 }
 .post-att-parkphoto-avatar {
-  width: 78px;
-  height: 141px;
+  width: 72px;
+  aspect-ratio: 320 / 580;
+  height: 80%;
+}
+/* İlk katılımcı = fotoğrafı çeken kişi; kamera onu yakın çektiği için
+   burada da öne çıkıyor (bkz. PostAttachment.jsx). */
+.post-att-parkphoto-person.main .post-att-parkphoto-avatar {
+  width: 100px;
+  height: 98%;
+}
+.post-att-parkphoto-person.main {
+  z-index: 1;
 }
 .post-att-parkphoto-name {
   margin-top: 2px;
@@ -216,4 +230,5 @@
   font-weight: 700;
   padding: 4px 9px;
   border-radius: 999px;
+  z-index: 2;
 }

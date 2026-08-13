@@ -174,6 +174,9 @@ export default function PostAttachment({ attachment }) {
       Bank: 'linear-gradient(160deg, #2e5a34 0%, #234226 55%, #16341c 100%)',
       Masa: 'linear-gradient(160deg, #5a3a22 0%, #3f2717 55%, #2b1b12 100%)',
     };
+    // participants[0] her zaman fotoğrafı çeken kişidir (bkz.
+    // functions/index.js) — kamera onu ortalayıp yakın çektiği için
+    // burada da diğerlerinden biraz daha büyük gösteriliyor.
     return (
       <div className="post-att post-att-parkphoto">
         <div
@@ -182,7 +185,7 @@ export default function PostAttachment({ attachment }) {
         >
           <div className="post-att-parkphoto-row">
             {people.map((p, i) => (
-              <div key={i} className="post-att-parkphoto-person">
+              <div key={i} className={`post-att-parkphoto-person${i === 0 ? ' main' : ''}`}>
                 <div className="post-att-parkphoto-avatar">
                   <AvatarSvg avatar={p.avatar} variant="full" pose={p.pose || 'idle'} />
                 </div>
