@@ -1,0 +1,180 @@
+import { useEffect, useMemo, useState } from 'react';
+import { upgradeFutbolStadium, setFutbolTicketPrice } from '../../services/gameActions';
+import ConfirmModal from '../ConfirmModal/ConfirmModal';
+import './FutbolStadyum.css';
+
+const DEFAULT_CAPACITY = 2500;
+const DEFAULT_TICKET_PRICE = 10;
+const MIN_TICKET_PRICE = 1;
+const MAX_TICKET_PRICE = 20;
+
+// Kapasite yükseltme merdiveni — SADECE bir sonraki seviyeyi göstermek
+// için burada tutuluyor (istemci tüm merdiveni oyuncuya GÖSTERMEZ, bkz.
+// bu ekranın JSX'i: her zaman sadece "mevcut" ve "bir sonraki" seviye
+// render edilir). Gerçek yükseltme sunucuda (upgradeFutbolStadium)
+// KENDİ merdiveniyle doğrulanır — buradaki liste sadece bir önizleme.
+const STADIUM_LADDER = [
+  { capacity: 2500, cost: 0 },
+  { capacity: 5000, cost: 1000000 },
+  { capacity: 10000, cost: 2000000 },
+  { capacity: 20000, cost: 4000000 },
+  { capacity: 40000, cost: 8000000 },
+  { capacity: 75000, cost: 16000000 },
+  { capacity: 150000, cost: 32000000 },
+  { capacity: 250000, cost: 75000000 },
+  { capacity: 500000, cost: 150000000 },
+];
+
+// Bilet fiyatına göre tahmini seyirci sayısı: taraftar/bilet fiyatı,
+// stadyum kapasitesiyle sınırlı — sunucudaki futbolStadiumAttendance ile
+// AYNI formül (bkz. functions/index.js).
+function estimateAttendance(fans, ticketPrice, capacity) {
+  return Math.min(capacity, Math.floor((fans || 0) / (ticketPrice || DEFAULT_TICKET_PRICE)));
+}
+
+// Bilet fiyatının taraftar memnuniyeti üzerindeki azami etkisi (kayıp
+// tarafı fiyat > 10, kazanç tarafı fiyat < 10) — sunucudaki
+// futbolTicketPriceFanDelta ile AYNI formül.
+function maxFanEffect(ticketPrice) {
+  if (ticketPrice === DEFAULT_TICKET_PRICE) return { type: 'none', amount: 0 };
+  if (ticketPrice > DEFAULT_TICKET_PRICE) {
+    return { type: 'loss', amount: (ticketPrice - DEFAULT_TICKET_PRICE) * 100 };
+  }
+  return { type: 'gain', amount: Math.round(100 + (9 - ticketPrice) * ((1000 - 100) / (9 - 1))) };
+}
+
+export default function FutbolStadyum({ team }) {
+  const capacity = team.stadiumCapacity || DEFAULT_CAPACITY;
+  const fans = team.fans || 0;
+
+  const currentIdx = STADIUM_LADDER.findIndex((step) => step.capacity === capacity);
+  const nextStep = currentIdx >= 0 ? STADIUM_LADDER[currentIdx + 1] : null;
+
+  const [ticketPrice, setTicketPrice] = useState(team.ticketPrice || DEFAULT_TICKET_PRICE);
+  const [savedTicketPrice, setSavedTicketPrice] = useState(team.ticketPrice || DEFAULT_TICKET_PRICE);
+  const [busySave, setBusySave] = useState(false);
+  const [busyUpgrade, setBusyUpgrade] = useState(false);
+  const [error, setError] = useState('');
+  const [confirmUpgrade, setConfirmUpgrade] = useState(false);
+
+  useEffect(() => {
+    setTicketPrice(team.ticketPrice || DEFAULT_TICKET_PRICE);
+    setSavedTicketPrice(team.ticketPrice || DEFAULT_TICKET_PRICE);
+  }, [team.ticketPrice]);
+
+  const attendance = useMemo(() => estimateAttendance(fans, ticketPrice, capacity), [fans, ticketPrice, capacity]);
+  const revenue = attendance * ticketPrice;
+  const fanEffect = useMemo(() => maxFanEffect(ticketPrice), [ticketPrice]);
+
+  const handleUpgrade = () => setConfirmUpgrade(true);
+
+  const runUpgrade = async () => {
+    setConfirmUpgrade(false);
+    setBusyUpgrade(true);
+    setError('');
+    try {
+      await upgradeFutbolStadium(team.id);
+    } catch (err) {
+      setError(err?.message || 'Yükseltme başarısız.');
+    } finally {
+      setBusyUpgrade(false);
+    }
+  };
+
+  const handleSaveTicketPrice = async () => {
+    setBusySave(true);
+    setError('');
+    try {
+      await setFutbolTicketPrice(team.id, ticketPrice);
+      setSavedTicketPrice(ticketPrice);
+    } catch (err) {
+      setError(err?.message || 'Bilet fiyatı kaydedilemedi.');
+    } finally {
+      setBusySave(false);
+    }
+  };
+
+  return (
+    <div className="futbol-stadyum">
+      {error && <p className="futbol-admin-error">{error}</p>}
+
+      <div className="futbol-stadyum-card">
+        <p className="futbol-kadro-section-title">Stadyum Kapasitesi</p>
+        <p className="futbol-stadyum-capacity">{capacity.toLocaleString('tr-TR')} kişi</p>
+
+        {nextStep ? (
+          <>
+            <p className="futbol-buy-meta">
+              Bir sonraki seviye: {nextStep.capacity.toLocaleString('tr-TR')} kişi —{' '}
+              {nextStep.cost.toLocaleString('tr-TR')} altın
+            </p>
+            <button className="futbol-admin-submit" disabled={busyUpgrade} onClick={handleUpgrade}>
+              {busyUpgrade ? '...' : 'Stadyumu Büyüt'}
+            </button>
+          </>
+        ) : (
+          <p className="futbol-placeholder">Maksimum seviyedesiniz.</p>
+        )}
+      </div>
+
+      <div className="futbol-stadyum-card">
+        <p className="futbol-kadro-section-title">Bilet Fiyatı</p>
+        <div className="futbol-stadyum-price-stepper">
+          <button
+            type="button"
+            className="qty-stepper-btn"
+            disabled={ticketPrice <= MIN_TICKET_PRICE}
+            onClick={() => setTicketPrice((p) => Math.max(MIN_TICKET_PRICE, p - 1))}
+          >
+            −
+          </button>
+          <span className="futbol-stadyum-price-value">{ticketPrice}</span>
+          <button
+            type="button"
+            className="qty-stepper-btn"
+            disabled={ticketPrice >= MAX_TICKET_PRICE}
+            onClick={() => setTicketPrice((p) => Math.min(MAX_TICKET_PRICE, p + 1))}
+          >
+            +
+          </button>
+        </div>
+
+        <div className="futbol-stadyum-estimate">
+          <p className="futbol-buy-meta">
+            Tahmini seyirci: {attendance.toLocaleString('tr-TR')} · Tahmini bilet geliri:{' '}
+            {revenue.toLocaleString('tr-TR')} altın
+          </p>
+          {fanEffect.type === 'loss' && (
+            <p className="futbol-stadyum-warning">
+              ⚠️ Bilet fiyatların yüksek: 1-{fanEffect.amount.toLocaleString('tr-TR')} taraftar
+              kaybedebilirsin.
+            </p>
+          )}
+          {fanEffect.type === 'gain' && (
+            <p className="futbol-stadyum-positive">
+              1-{fanEffect.amount.toLocaleString('tr-TR')} taraftar kazanabilirsin.
+            </p>
+          )}
+        </div>
+
+        <button
+          className="futbol-admin-submit"
+          disabled={busySave || ticketPrice === savedTicketPrice}
+          onClick={handleSaveTicketPrice}
+        >
+          {busySave ? '...' : 'Bilet Fiyatını Kaydet'}
+        </button>
+      </div>
+
+      {confirmUpgrade && nextStep && (
+        <ConfirmModal
+          title="Stadyumu Büyüt"
+          message={`${nextStep.capacity.toLocaleString('tr-TR')} kişilik stadyuma yükseltmek için ${nextStep.cost.toLocaleString('tr-TR')} altın harcayacaksın. Onaylıyor musun?`}
+          confirmLabel="Evet, Büyüt"
+          onConfirm={runUpgrade}
+          onCancel={() => setConfirmUpgrade(false)}
+        />
+      )}
+    </div>
+  );
+}

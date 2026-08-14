@@ -21,6 +21,12 @@ export const buyFactoryMachine = (machineType) =>
 export const setFactorySalary = (salary) =>
   httpsCallable(functions, 'setFactorySalary')({ salary });
 
+export const setFactoryName = (name) =>
+  httpsCallable(functions, 'setFactoryName')({ name });
+
+export const setFactoryLogo = (logo) =>
+  httpsCallable(functions, 'setFactoryLogo')({ logo });
+
 export const joinFactoryMachine = (factoryId, machineId) =>
   httpsCallable(functions, 'joinFactoryMachine')({ factoryId, machineId });
 
@@ -33,11 +39,24 @@ export const resignFromFactory = () => httpsCallable(functions, 'resignFromFacto
 
 export const triggerAllMining = () => httpsCallable(functions, 'triggerAllMining')();
 
+export const runFactoryMachines = () => httpsCallable(functions, 'runFactoryMachines')();
+
 export const fireEmployee = (machineId) =>
   httpsCallable(functions, 'fireEmployee')({ machineId });
 
 export const reassignEmployee = (machineId, targetMachineId) =>
   httpsCallable(functions, 'reassignEmployee')({ machineId, targetMachineId });
+
+// --- Fabrika Hisse (Stok) Piyasası ---
+
+export const listFactoryShare = (percent, days, price) =>
+  httpsCallable(functions, 'listFactoryShare')({ percent, days, price });
+
+export const cancelFactoryShareListing = (shareId) =>
+  httpsCallable(functions, 'cancelFactoryShareListing')({ shareId });
+
+export const buyFactoryShare = (factoryId, shareId) =>
+  httpsCallable(functions, 'buyFactoryShare')({ factoryId, shareId });
 
 // --- Faz 3: Araba ve Silah Sistemi ---
 
@@ -424,3 +443,11 @@ export const listFutbolClubs = (leagueId) => httpsCallable(functions, 'listFutbo
 
 export const getFutbolTeamDetail = (teamId) =>
   httpsCallable(functions, 'getFutbolTeamDetail')({ teamId });
+
+// --- Faz Futbol: Stadyum (kapasite yükseltme + bilet fiyatı) ---
+
+export const upgradeFutbolStadium = (teamId) =>
+  httpsCallable(functions, 'upgradeFutbolStadium')({ teamId });
+
+export const setFutbolTicketPrice = (teamId, ticketPrice) =>
+  httpsCallable(functions, 'setFutbolTicketPrice')({ teamId, ticketPrice });

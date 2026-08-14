@@ -58,6 +58,10 @@ export default function FutbolTeamDetail({ teamId, onClose }) {
                 <span>Taraftar</span>
                 <strong>{detail.fans.toLocaleString('tr-TR')}</strong>
               </div>
+              <div className="futbol-team-detail-row">
+                <span>Stadyum Kapasitesi</span>
+                <strong>{(detail.stadiumCapacity || 2500).toLocaleString('tr-TR')}</strong>
+              </div>
             </div>
           </>
         )}

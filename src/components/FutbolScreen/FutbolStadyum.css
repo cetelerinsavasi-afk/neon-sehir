@@ -1,0 +1,55 @@
+.futbol-stadyum {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.futbol-stadyum-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+}
+
+.futbol-stadyum-capacity {
+  font-size: 22px;
+  font-weight: 800;
+  color: #3ddc84;
+  margin: 0;
+}
+
+.futbol-stadyum-price-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 6px 0;
+}
+
+.futbol-stadyum-price-value {
+  font-size: 22px;
+  font-weight: 800;
+  min-width: 36px;
+  text-align: center;
+}
+
+.futbol-stadyum-estimate {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.futbol-stadyum-warning {
+  font-size: 12px;
+  color: #ff5c5c;
+  margin: 0;
+}
+
+.futbol-stadyum-positive {
+  font-size: 12px;
+  color: #3ddc84;
+  margin: 0;
+}

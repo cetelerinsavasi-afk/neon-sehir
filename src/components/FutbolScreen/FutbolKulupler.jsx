@@ -29,7 +29,9 @@ export default function FutbolKulupler({ leagueId }) {
             <p className="futbol-buy-meta">
               Başkan: {c.chairman} {c.isBot && <span className="futbol-kulup-bot-tag">Bot</span>}
             </p>
-            <p className="futbol-buy-meta">{c.fans.toLocaleString('tr-TR')} taraftar</p>
+            <p className="futbol-buy-meta">
+              {c.fans.toLocaleString('tr-TR')} taraftar · {(c.stadiumCapacity || 2500).toLocaleString('tr-TR')} kapasiteli stadyum
+            </p>
           </div>
           <p className="futbol-kulup-value">{c.value.toLocaleString('tr-TR')} altın</p>
         </div>

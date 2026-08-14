@@ -21,6 +21,23 @@ export function roundRectC(c, x, y, w, h, r) {
 export const SPRITE_ASPECT = 320 / 580;
 export const SPRITE_H = 118; // ekrandaki karakter boyu (piksel) — tüm mekanlarda ortak
 
+// INTERIOR_AVATAR_SCALE — girilebilir mekanların (Banka/Karakol/Camii/
+// Gazino/Araba Galerisi/Silah Mağazası/Modifiye Garajı) HER BİRİNDE kendi
+// WorldScreen dosyasında tanımlı `AVATAR_SCALE` sabiti (madde 13) — hepsi
+// AYNI değeri (1.42) kullanıyor ve kendi canlı kamera önizlemelerinde bunu
+// `renderPhotoFrame`'e `focalScale` olarak veriyorlar (bkz. her
+// WorldScreen'deki renderCameraPreview). PostAttachment.jsx (paylaşılan
+// Sixtagram fotoğrafı) her mekanı TEK bir jenerik bileşenden (
+// InteriorPhotoCanvas) çağırdığı için hangi mekanın hangi AVATAR_SCALE'i
+// kullandığını bilmiyordu ve `focalScale` hiç vermiyordu (varsayılan 1'de
+// kalıyordu) — DÜZELTME ("mekanlarda fotoğraf çektiğimizde npcler
+// gözükmüyor" hata raporu): bu, paylaşılan fotoğrafın dikey kadrajının
+// (CAMERA_VERTICAL_LIFT * focalScale) canlı önizlemeden ~25px farklı
+// hesaplanmasına, dolayısıyla kadrajın kenarındaki dekoratif NPC'lerin
+// paylaşılan karede görünmemesine sebep oluyordu. Artık PostAttachment.jsx
+// bu sabiti buradan alıp TÜM mekanlar için tutarlı şekilde kullanıyor.
+export const INTERIOR_AVATAR_SCALE = 1.42;
+
 // --- Avatar görsel önbelleği (SVG -> <img>) -------------------------------
 export function createAvatarImageCache(buildFullAvatarSvgMarkup, DEFAULT_AVATAR) {
   const cache = new Map();

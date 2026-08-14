@@ -910,7 +910,7 @@ export default function MosqueWorldScreen({ onExit }) {
             disabled={prayBusy}
             onClick={handlePrayClick}
           >
-            {prayBusy ? 'İbadet ediliyor…' : '🤲 İbadet Et'}
+            {prayBusy ? 'İbadet ediliyor…' : '🤲 İbadet Et (Şüphe -5)'}
           </button>
         )}
       </div>

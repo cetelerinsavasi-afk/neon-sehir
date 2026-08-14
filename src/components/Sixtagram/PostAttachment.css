@@ -168,6 +168,13 @@
   color: var(--neon-pink);
 }
 
+.post-att-flappy-rank {
+  margin: 2px 0 0;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--neon-yellow);
+}
+
 .post-att-parkphoto {
   background: #16341c;
 }

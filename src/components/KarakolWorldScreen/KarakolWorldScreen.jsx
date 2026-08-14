@@ -234,8 +234,18 @@ function drawNezarethane(c) {
 // hesaplanıp EŞİT aralıklarla, İLK çubuk tam x1'de ve SON çubuk tam x2'de
 // olacak şekilde diziliyor — ön cephe gerçekten uçtan uca (köşeden köşeye)
 // parmaklıklı.
+// Yeni istek (madde 19: "parmaklıklar nezarethanenin içinde boydan boya
+// uzasın, şu an sadece alt bölümde parmaklıklar var") — çubuklar eskiden
+// SADECE `y2 - 46`'dan `y2 + 4`'e (yani hücrenin sadece ~50px'lik alt
+// şeridinde, y1=480/y2=620 olan 140px'lik hücrenin en altında) çiziliyordu;
+// hücrenin üst/arka duvara yakın kısmı (y1'den y2-46'ya kadar) tamamen
+// parmaklıksız kalıyordu. Artık dikey çubuklar hücrenin TÜM derinliği
+// boyunca, `y1`'den (üst/arka duvar hizası) `y2 + 4`'e (alt/ön kenarın
+// hemen dışı — eski taşma payı korunuyor) kadar uzanıyor. Üst pekiştirme
+// rayı da alt bandın ortasında değil, artık hücrenin en üstünde (`y1`
+// hizasında) çiziliyor.
 function drawCellBars(c) {
-  const { x1, x2, y2 } = NEZARETHANE;
+  const { x1, x2, y1, y2 } = NEZARETHANE;
   c.save();
   c.strokeStyle = 'rgba(232,207,122,0.6)';
   c.lineWidth = 3;
@@ -243,11 +253,11 @@ function drawCellBars(c) {
   const barCount = Math.max(1, Math.round((x2 - x1) / spacing));
   for (let i = 0; i <= barCount; i += 1) {
     const x = x1 + ((x2 - x1) * i) / barCount;
-    c.beginPath(); c.moveTo(x, y2 - 46); c.lineTo(x, y2 + 4); c.stroke();
+    c.beginPath(); c.moveTo(x, y1); c.lineTo(x, y2 + 4); c.stroke();
   }
   c.strokeStyle = 'rgba(232,207,122,0.8)';
   c.lineWidth = 4;
-  c.beginPath(); c.moveTo(x1, y2 - 46); c.lineTo(x2, y2 - 46); c.stroke();
+  c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y1); c.stroke();
   c.restore();
 }
 

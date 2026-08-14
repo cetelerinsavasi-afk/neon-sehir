@@ -36,6 +36,11 @@
   line-height: 1.4;
 }
 
+.factory-hint.small {
+  margin: 0;
+  font-size: 10px;
+}
+
 .factory-error {
   margin: 8px 0 0;
   font-size: 12px;
@@ -95,6 +100,13 @@
   justify-content: space-between;
 }
 
+.factory-browse-owner-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .factory-browse-owner {
   font-size: 13px;
   font-weight: 700;
@@ -102,6 +114,16 @@
 
 .factory-browse-salary {
   font-size: 11px;
+  color: #ffd23f;
+}
+
+.factory-browse-value {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.factory-browse-value strong {
   color: #ffd23f;
 }
 
@@ -279,10 +301,24 @@
 
 /* --- Owner screen --- */
 
+.factory-run-machines-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0 12px;
+}
+
 .factory-owner-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.factory-owner-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
 .factory-owner-title {
@@ -485,6 +521,12 @@
   color: #ffd23f;
 }
 
+.factory-job-employer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .factory-job-employer {
   font-size: 12px;
   color: var(--text-dim);
@@ -500,6 +542,45 @@
 
 .factory-produced-warning.small {
   font-size: 10px;
+}
+
+/* --- Yönetim: fabrika adı + logo --- */
+
+.factory-name-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.factory-name-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.factory-name-row {
+  display: flex;
+  gap: 8px;
+}
+
+.factory-name-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.factory-result.small {
+  font-size: 11px;
+  text-align: left;
+}
+
+.factory-logo-open-btn {
+  align-self: flex-start;
 }
 
 /* --- Yönetim: işçi taşıma --- */
@@ -525,4 +606,108 @@
   background: var(--panel);
   color: var(--text);
   font-size: 11px;
+}
+
+/* --- Hisse (stok) piyasası --- */
+
+.factory-top-row-right {
+  display: flex;
+  gap: 8px;
+}
+
+.factory-share-pie-wrap {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 4px 0;
+}
+
+.factory-share-pie {
+  width: 100px;
+  height: 100px;
+  flex-shrink: 0;
+}
+
+.factory-share-pie-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.factory-share-pie-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.factory-share-pie-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.factory-share-days-toggle {
+  display: flex;
+  gap: 8px;
+}
+
+.factory-share-price-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.factory-share-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.factory-share-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+}
+
+.factory-share-row-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.factory-share-row-title {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.factory-share-row-meta {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.factory-share-buy-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: #05070c;
+}
+
+.factory-share-buy-price-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
 }

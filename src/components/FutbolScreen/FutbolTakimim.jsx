@@ -16,6 +16,7 @@ import FutbolKadro from './FutbolKadro';
 import FutbolTransfer from './FutbolTransfer';
 import FutbolLogoEditor from './FutbolLogoEditor';
 import FutbolAltyapi from './FutbolAltyapi';
+import FutbolStadyum from './FutbolStadyum';
 import { groupFutbolPlayersByPositionOrdered } from './futbolPositionOrder';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import ConfirmModal from '../ConfirmModal/ConfirmModal';
@@ -36,6 +37,7 @@ const MY_TEAM_TABS = [
   { id: 'transfer', label: 'Transfer' },
   { id: 'altyapi', label: 'Antrenman' },
   { id: 'forma', label: 'Forma' },
+  { id: 'stadyum', label: 'Stadyum' },
 ];
 
 export default function FutbolTakimim() {
@@ -64,6 +66,7 @@ export default function FutbolTakimim() {
       {tab === 'transfer' && <FutbolTransfer team={team} />}
       {tab === 'altyapi' && <FutbolAltyapi team={team} />}
       {tab === 'forma' && <FutbolLogoEditor team={team} />}
+      {tab === 'stadyum' && <FutbolStadyum team={team} />}
     </div>
   );
 }
@@ -212,7 +215,8 @@ function MyTeamOverview({ team }) {
         <div>
           <p className="futbol-my-team-name">{team.name}</p>
           <p className="futbol-buy-meta">
-            {team.tier}. Lig · {(team.fans || 0).toLocaleString('tr-TR')} taraftar
+            {team.tier}. Lig · {(team.fans || 0).toLocaleString('tr-TR')} taraftar ·{' '}
+            {(team.stadiumCapacity || 2500).toLocaleString('tr-TR')} kapasiteli stadyum
           </p>
         </div>
       </div>

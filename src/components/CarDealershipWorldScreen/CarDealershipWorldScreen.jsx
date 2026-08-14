@@ -47,15 +47,17 @@ const SPOT = 'rgba(255,244,214,0.16)';
 // --- Sabit düzen -----------------------------------------------------------
 // Sahibin gönderdiği örnek mockup ile BİREBİR aynı iskelet: en üstte
 // resepsiyon masası (galerici orada duruyor), altında 2 sütun x 2 sıra
-// standart sergi arabası + en altta (ortada, büyük) "ayın vitrin arabası"
-// kürsüsü, hepsi aynı yuvarlak/altın-kordonlu kürsü stilinde (bkz.
-// drawPedestalBase). Her kürsünün yarıçapı, üzerindeki arabanın kendi
+// standart sergi arabası, hepsi aynı yuvarlak/altın-kordonlu kürsü stilinde
+// (bkz. drawPedestalBase). Her kürsünün yarıçapı, üzerindeki arabanın kendi
 // gövde/gölge genişliğiyle orantılı seçildi (araba kürsüden taşmasın diye).
-const CAR_A = { cx: 150, cy: 410, r: 94 }; // sol üst — spor coupe
-const CAR_B = { cx: 530, cy: 410, r: 98 }; // sağ üst — SUV
-const CAR_C = { cx: 150, cy: 635, r: 102 }; // sol alt — sedan
-const CAR_D = { cx: 530, cy: 635, r: 80 }; // sağ alt — roadster/cabrio
-const PEDESTAL = { cx: 340, cy: 880, r: 110 }; // alt-orta, büyük kürsü — vitrin arabası (hero)
+// NOT — sahibin isteğiyle girişe en yakın (alt-orta, büyük) "ayın vitrin
+// arabası" kürsüsü tamamen KALDIRILDI (artık orada araba/kürsü/obstacle/
+// tıklama alanı yok); geri kalan 4 araba, boşalan alt boşluğu daha dengeli
+// doldursun diye biraz aşağı kaydırıldı (eski cy: 410/635 → yeni cy: 470/765).
+const CAR_A = { cx: 150, cy: 470, r: 94 }; // sol üst — spor coupe
+const CAR_B = { cx: 530, cy: 470, r: 98 }; // sağ üst — SUV
+const CAR_C = { cx: 150, cy: 765, r: 102 }; // sol alt — sedan
+const CAR_D = { cx: 530, cy: 765, r: 80 }; // sağ alt — roadster/cabrio
 
 const DEALER = { cx: 340, cy: 250 };
 const DEALER_HW = 150;
@@ -91,7 +93,6 @@ const OBSTACLES = [
   { cx: CAR_B.cx, cy: CAR_B.cy, r: CAR_B.r },
   { cx: CAR_C.cx, cy: CAR_C.cy, r: CAR_C.r },
   { cx: CAR_D.cx, cy: CAR_D.cy, r: CAR_D.r },
-  { cx: PEDESTAL.cx, cy: PEDESTAL.cy, r: PEDESTAL.r },
   rectObstacle(DEALER.cx, DEALER.cy, DEALER_HW, DEALER_HH),
 ];
 
@@ -209,10 +210,10 @@ function drawWalls(c) {
 }
 
 // --- Araba siluetleri --------------------------------------------------
-// Farklı gövde tipleri (coupe/SUV/sedan/roadster/hero) görsel olarak
-// birbirinden ayırt edilsin diye ayrı fonksiyonlarda — sadece
-// dekoratif/sergi amaçlı, mekanik/fiyat verisiyle bağlantısız (gerçek
-// katalog VehicleGalleryScreen panelinde).
+// Farklı gövde tipleri (coupe/SUV/sedan/roadster) görsel olarak birbirinden
+// ayırt edilsin diye ayrı fonksiyonlarda — sadece dekoratif/sergi amaçlı,
+// mekanik/fiyat verisiyle bağlantısız (gerçek katalog VehicleGalleryScreen
+// panelinde).
 function drawWheel(c, x, y, r) {
   c.fillStyle = '#0a0a0c';
   c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
@@ -340,57 +341,19 @@ function drawRoadster(c, cx, cy, color) {
   c.restore();
 }
 
-// Hero/vitrin arabası — kürsü üzerinde, geniş, spoiler + alt neon aydınlatma.
-function drawHeroCar(c, cx, cy, color) {
-  c.save();
-  c.translate(cx, cy);
-  drawGroundShadow(c, 0, 40, 118, 16);
-  // Alt neon parlaklık.
-  c.save();
-  c.shadowColor = color;
-  c.shadowBlur = 22;
-  c.fillStyle = color;
-  c.fillRect(-100, 34, 200, 4);
-  c.restore();
-
-  c.fillStyle = color;
-  c.beginPath();
-  c.moveTo(-112, 22);
-  c.lineTo(-92, 2);
-  c.lineTo(-34, -26);
-  c.lineTo(30, -26);
-  c.lineTo(78, -4);
-  c.lineTo(112, 22);
-  c.lineTo(112, 34);
-  c.lineTo(-112, 34);
-  c.closePath();
-  c.fill();
-  c.strokeStyle = 'rgba(255,255,255,0.18)'; c.lineWidth = 1.5; c.stroke();
-
-  c.fillStyle = 'rgba(180,225,245,0.55)';
-  c.beginPath();
-  c.moveTo(-28, -23); c.lineTo(24, -23); c.lineTo(42, -3); c.lineTo(-42, -3);
-  c.closePath(); c.fill();
-
-  // Spoiler.
-  c.fillStyle = '#141417';
-  c.fillRect(70, -30, 30, 6);
-  c.fillRect(88, -30, 6, 20);
-
-  drawWheel(c, -66, 34, 18);
-  drawWheel(c, 66, 34, 18);
-  c.fillStyle = '#fff6d8';
-  c.beginPath(); c.ellipse(108, 12, 6, 10, 0, 0, Math.PI * 2); c.fill();
-  c.restore();
-}
-
 // drawPedestalBase — sahibin gönderdiği örnekteki "yuvarlak, altın kordonlu
 // vitrin kürsüsü" (bkz. mockup'taki drawPedestalBase): alt parlaklık/glow +
-// koyu degradeli dairesel kaide + altın çerçeve + 45/135/225/315 derecede 4
-// altın direk + aralarında bordo kadife kordon kavisleri. Artık HER araba
-// (hero dahil) aynı bu kürsü stilinde duruyor — sahibin asıl istediği "iç
-// tasarım" burası, arabaların kendisi (drawCoupe/SUV/Sedan/Roadster/Hero)
-// DOKUNULMADI.
+// altın çerçeveli daire + 45/135/225/315 derecede 4 altın direk + aralarında
+// bordo kadife kordon kavisleri. Sahip bu altın-kordonlu kürsü stilini
+// önceki oturumda açıkça beğendiği için KORUNDU — arabaların kendisi
+// (drawCoupe/SUV/Sedan/Roadster) de DOKUNULMADI.
+// NOT — daha önce burada, altın çerçevenin İÇİNİ dolduran koyu/siyah
+// degradeli bir daire ("siyah sergileme yükseltisi": araba altında yükseltilmiş
+// gibi duran katı koyu taban + onun altındaki geniş siyah gölge elipsi) vardı;
+// sahip bunun kaldırılmasını istedi. Artık altın çerçeve doğrudan zeminin
+// üzerinde ince bir ışıklı halka gibi duruyor, araba kürsüden değil doğrudan
+// zeminden yükseliyormuş hissi veriyor (arabaların kendi drawGroundShadow'u
+// zaten doğal bir temas gölgesi sağlıyor, bkz. drawCoupe/SUV/Sedan/Roadster).
 function drawPedestalBase(c, cx, cy, r) {
   c.save();
   const glow = c.createRadialGradient(cx, cy, 6, cx, cy, r + 36);
@@ -399,14 +362,6 @@ function drawPedestalBase(c, cx, cy, r) {
   c.fillStyle = glow;
   c.beginPath(); c.arc(cx, cy, r + 36, 0, Math.PI * 2); c.fill();
 
-  c.fillStyle = 'rgba(0,0,0,0.22)';
-  c.beginPath(); c.ellipse(cx, cy + 6, r + 2, (r + 2) * 0.5, 0, 0, Math.PI * 2); c.fill();
-
-  const grd = c.createRadialGradient(cx - r * 0.2, cy - r * 0.2, 4, cx, cy, r);
-  grd.addColorStop(0, '#312c34');
-  grd.addColorStop(1, '#1a171d');
-  c.fillStyle = grd;
-  c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.fill();
   c.strokeStyle = GOLD; c.lineWidth = 2.5;
   c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.stroke();
 
@@ -436,18 +391,6 @@ function drawPedestalBase(c, cx, cy, r) {
 function drawCarOnPedestal(c, cx, cy, r, drawCarFn, color) {
   drawPedestalBase(c, cx, cy, r);
   drawCarFn(c, cx, cy - 4, color);
-}
-
-// drawHeroPedestal — "ayın vitrin arabası": aynı kürsü stili, sadece daha
-// büyük yarıçap + altında etiket.
-function drawHeroPedestal(c) {
-  const p = PEDESTAL;
-  drawPedestalBase(c, p.cx, p.cy, p.r);
-  drawHeroCar(c, p.cx, p.cy - 4, '#141417');
-  c.fillStyle = GOLD;
-  c.font = 'bold 12px sans-serif';
-  c.textAlign = 'center';
-  c.fillText('AYIN VİTRİN ARABASI', p.cx, p.cy + p.r + 34);
 }
 
 // drawDealerDesk — sahibin gönderdiği örnekteki resepsiyon masası: odanın en
@@ -545,7 +488,6 @@ export function drawDealershipSceneBackground(ctx, getAvatarImage) {
   drawCarOnPedestal(ctx, CAR_B.cx, CAR_B.cy, CAR_B.r, drawSUV, '#eef1f4');
   drawCarOnPedestal(ctx, CAR_C.cx, CAR_C.cy, CAR_C.r, drawSedan, '#16294f');
   drawCarOnPedestal(ctx, CAR_D.cx, CAR_D.cy, CAR_D.r, drawRoadster, '#caa227');
-  drawHeroPedestal(ctx);
   drawDealerDesk(ctx, DEALER_NPC, getAvatarImage);
 }
 

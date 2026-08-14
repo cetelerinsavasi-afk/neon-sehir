@@ -14,7 +14,7 @@ import { useInvestmentHistory } from '../../hooks/useInvestmentHistory';
 import { useInvestmentPrices } from '../../hooks/useInvestmentPrices';
 import { useMessages } from '../../hooks/useMessages';
 import { useLottery } from '../../hooks/useLottery';
-import { useMyFlappyBest } from '../../hooks/useFlappyBird';
+import { useFlappyLeaderboard, useMyFlappyBest } from '../../hooks/useFlappyBird';
 import { useAuth } from '../../contexts/AuthContext';
 import { vehicleImage } from '../VehicleCard/VehicleCard';
 import { createSixtagramPost } from '../../services/gameActions';
@@ -67,6 +67,13 @@ export default function ComposeModal({ onClose, onPosted }) {
   const { messages } = useMessages();
   const { yesterday: lotteryYesterday } = useLottery();
   const { best: flappyBest } = useMyFlappyBest();
+  // flappyTop10 — SADECE önizleme için: ilk 10'un TAMAMI dolu geldiyse
+  // (yani ortada en az 10 farklı oyuncu var demektir) ve kendi uid'im bu
+  // listedeyse, sırayı orada bulunduğum index+1 olarak tahmin ediyoruz.
+  // GERÇEK/nihai sıra yine sunucuda (buildSixtagramAttachment,
+  // flappyScores üzerinde sayım sorgusuyla) hesaplanır — bu sadece
+  // paylaşmadan önceki önizlemenin sunucuyla aynı görünmesi için.
+  const { top10: flappyTop10 } = useFlappyLeaderboard();
 
   const pendingLeague = leagues.find((l) => l.id === pendingLeagueId) || null;
   const { teams: pendingTeams } = useFutbolTeams(pendingLeagueId);
@@ -220,9 +227,11 @@ export default function ComposeModal({ onClose, onPosted }) {
       return;
     }
     if (typeId === 'flappyScore') {
+      const idx = user ? flappyTop10.findIndex((s) => s.id === user.uid) : -1;
+      const rankPreview = idx !== -1 && flappyTop10.length >= 10 ? idx + 1 : null;
       setAttachment(
         { type: 'flappyScore' },
-        { type: 'flappyScore', score: flappyBest }
+        { type: 'flappyScore', score: flappyBest, rank: rankPreview }
       );
     }
   };

@@ -35,12 +35,23 @@ function requireAdmin(request) {
 // yerini alır. Her oyuncu en fazla 1 fabrika kurabilir (satılamaz), içine
 // istediği kadar makine koyabilir. Makineler (mining hariç) işçi gerektirir;
 // işçi "Üretim Yap"a bastıkça hem maaşını alır hem patronun envanterine
-// rastgele (min-max arası) ürün eklenir. Mining makinesi işçi gerektirmez
-// ve arayüzde tek tek değil TEK bir panelde ("Mining Makinesi ×N")
-// gösterilir — sahibi HER GÜN bu panelin TEK "Üretim Yap" butonuyla, sahip
-// olduğu TÜM mining makinelerini (kaç tane olursa olsun) AYNI ANDA
-// tetikler; tetiklenen üretim o gece 00:00'da tamamlanır ve kripto
-// bakiyesine eklenir (bkz. triggerAllMining / dailyReset).
+// rastgele (min-max arası) ürün eklenir.
+//
+// Fabrika sahibi tarafında TEK bir "Makineleri Çalıştır" butonu var
+// (runFactoryMachines): buna bastığında HEM sahip olduğu tüm mining
+// makineleri (kaç tane olursa olsun) AYNI ANDA tetiklenir (miningTriggeredDateKey,
+// tetiklenen üretim o gece 00:00'da tamamlanır ve kripto bakiyesine eklenir
+// — davranış triggerAllMining ile birebir aynı, bkz. stampUntriggeredMining),
+// HEM DE bugün henüz bir işçi tarafından ÜRETİLMEMİŞ (lastProducedDateKey
+// bugün değil) diğer 4 makine türü "sahip devreye girdi" olarak damgalanır
+// (ownerTriggeredDateKey = bugün). Bu damga ANINDA üretim yapmaz — o gece
+// 00:00'da (dailyReset) eğer o gün İÇİNDE atanmış işçi normal "Üretim
+// Yap" (produceAtFactory) akışıyla GERÇEKTEN üretim yapmadıysa, sahibi o
+// makineyi KENDİSİ üretmiş sayılır ve normal miktarın SADECE 1/10'u kadar
+// ürün kendi envanterine eklenir (maaş ödemesi yok). İşçi o gün fiilen
+// üretim yaparsa (lastProducedDateKey bugüne eşitlenir) işçinin GERÇEK
+// üretimi ÖNCELİKLİDİR ve sahip-yerine-üretim atlanır — bkz. dailyReset
+// içindeki ilgili blok.
 // ---------------------------------------------------------------------------
 const FACTORY_CREATE_COST = 100000;
 const FACTORY_MIN_SALARY = 1000;
@@ -49,7 +60,7 @@ const FACTORY_MAX_SALARY = 5000;
 // kripto fiyatına bağlı (2 kripto değerinde) — bkz. miningMachinePrice().
 const MACHINE_TYPES = {
   mining: { label: 'Mining Makinesi', needsWorker: false, min: 0.01, max: 0.1, unit: 'crypto' },
-  tamirMalzemesi: { label: 'Tamir Malzemesi Makinesi', needsWorker: true, price: 100000, min: 1, max: 4000 },
+  tamirMalzemesi: { label: 'Tamir Malzemesi Makinesi', needsWorker: true, price: 100000, min: 1, max: 3000 },
   silahUpgrade: { label: 'Silah Geliştirme Malzemesi Makinesi', needsWorker: true, price: 50000, min: 1, max: 200 },
   // Depo ve Vites Geliştirme makineleri birleştirildi — ikisi de aynı
   // malzemeyi (arabaGelistirme) üretiyordu, artık TEK makine.
@@ -107,6 +118,55 @@ async function miningMachinePrice(ownedCount) {
   const prices = await getCurrentPrices();
   const multiplier = 2 + 2 * Math.floor((ownedCount || 0) / 100);
   return Math.ceil(multiplier * (prices.cryptoPrice || 0));
+}
+
+// miningFleetValue — bir fabrikadaki TÜM mining makinelerinin GÜNCEL
+// (canlı kripto fiyatına göre) toplam değeri. Kademeli fiyatlandırma
+// yüzünden (bkz. miningMachinePrice) N. makinenin fiyatı, o an sahip
+// olunan makine sayısına göre değişir — bu yüzden basitçe N × (şu anki
+// tekil fiyat) YANLIŞ olur (birden fazla 100'lük dilime yayılan filoları
+// yanlış değerlendirir). Doğrusu: 0..N-1 arasındaki her makinenin KENDİ
+// diliminin fiyatını toplamak. Aynı dilimdeki tüm makinelerin fiyatı
+// birbirine eşit olduğundan, tam dilimler kapalı-formülle (100 × dilim
+// fiyatı), yarım kalan son dilim de tek çarpımla hesaplanır — büyük N
+// için bile döngü sadece dilim sayısı (N/100) kadar çalışır.
+function miningFleetValue(count, cryptoPrice) {
+  const n = count || 0;
+  const price = cryptoPrice || 0;
+  if (n <= 0) return 0;
+  const fullTiers = Math.floor(n / 100);
+  const remainder = n % 100;
+  let total = 0;
+  for (let tier = 0; tier < fullTiers; tier++) {
+    const unitPrice = Math.ceil((2 + 2 * tier) * price);
+    total += 100 * unitPrice;
+  }
+  if (remainder > 0) {
+    const unitPrice = Math.ceil((2 + 2 * fullTiers) * price);
+    total += remainder * unitPrice;
+  }
+  return total;
+}
+
+// computeFactoryValue — bir fabrikanın GÜNCEL (canlı kripto fiyatına göre
+// yeniden hesaplanan) parasal değeri: 100.000 altınlık kuruluş ücreti +
+// sabit fiyatlı makinelerin (tamirMalzemesi/silahUpgrade/arabaGelistirme/
+// yasakliMadde) toplam fiyatı + mining makinelerinin kademeli filo değeri
+// (bkz. miningFleetValue). `machinesByType` — { [makineTürü]: adet }.
+// NOT: Bu değer sadece bilgi amaçlıdır (Fabrikalar sekmesinde gösterilir);
+// hiçbir para transferi/işlem bu sayıya dayanmaz, bu yüzden istemci
+// tarafında da (aynı formülle) hesaplanır — bkz. src/components/FactoryScreen.
+function computeFactoryValue(machinesByType, cryptoPrice) {
+  let value = FACTORY_CREATE_COST;
+  for (const type of VALID_MACHINES) {
+    const count = machinesByType[type] || 0;
+    if (type === 'mining') {
+      value += miningFleetValue(count, cryptoPrice);
+    } else {
+      value += count * (MACHINE_TYPES[type].price || 0);
+    }
+  }
+  return value;
 }
 
 function randomInRange(min, max) {
@@ -428,6 +488,38 @@ export const createFactory = onCall(async (request) => {
   return { ok: true };
 });
 
+// getFactoryValue — bir fabrikanın GÜNCEL parasal değerini sunucu
+// tarafında (Admin SDK ile, canlı kripto fiyatı üzerinden) hesaplar ve
+// döner — bkz. computeFactoryValue. Şu an istemci (Fabrikalar sekmesi)
+// bu değeri ZATEN elindeki verilerle (useOpenFactories + useInvestmentPrices,
+// her ikisi de gerçek zamanlı) aynı formülle client-side hesaplıyor —
+// büyük fabrika listesini gösterirken her kart için ayrı bir Cloud
+// Function çağrısı yapmak hem gecikmeli hem de gereksiz olurdu ve canlı
+// (onSnapshot) güncellemeleri kaybettirirdi. Bu callable, aynı formülün
+// sunucu tarafındaki GÜVENİLİR kaynağı olarak duruyor — ileride para
+// hareketine bağlanacak bir özellik (ör. fabrika hisseleri) bu değere
+// GÜVENMESİ gerektiğinde doğrudan burası kullanılabilir.
+export const getFactoryValue = onCall(async (request) => {
+  requireAuth(request);
+  const { factoryId } = request.data || {};
+  if (!factoryId) throw new HttpsError('invalid-argument', 'factoryId gerekli.');
+
+  const factorySnap = await db.collection('factories').doc(factoryId).get();
+  if (!factorySnap.exists) throw new HttpsError('not-found', 'Fabrika bulunamadı.');
+
+  const [machinesSnap, prices] = await Promise.all([
+    db.collection('factories').doc(factoryId).collection('machines').get(),
+    getCurrentPrices(),
+  ]);
+  const machinesByType = {};
+  machinesSnap.forEach((d) => {
+    const type = d.data().type;
+    machinesByType[type] = (machinesByType[type] || 0) + 1;
+  });
+
+  return { value: computeFactoryValue(machinesByType, prices.cryptoPrice || 0) };
+});
+
 // buyFactoryMachine — sadece fabrika sahibi, istediği kadar makine alabilir.
 export const buyFactoryMachine = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -495,6 +587,81 @@ export const setFactorySalary = onCall(async (request) => {
     throw new HttpsError('failed-precondition', 'Bir fabrikan yok.');
   }
   await factoryRef.update({ salary });
+  return { ok: true };
+});
+
+// setFactoryName — sadece fabrika sahibi, fabrikasına özel bir isim
+// verebilir. Boş bırakılırsa (client tarafında) UI "{ownerName}'in
+// Fabrikası" varsayılanına düşer — sunucu tarafında yine de 1-24 karakter
+// arası, boş olmayan bir metin zorunlu tutulur (alan hiç ayarlanmamışsa
+// Firestore dokümanında `name` alanı yok demektir, bu da fallback'i tetikler).
+const FACTORY_NAME_MAX_LEN = 22;
+export const setFactoryName = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const name = String(request.data?.name || '').trim();
+  if (name.length < 1 || name.length > FACTORY_NAME_MAX_LEN) {
+    throw new HttpsError(
+      'invalid-argument',
+      `Fabrika adı 1-${FACTORY_NAME_MAX_LEN} karakter arasında olmalı.`
+    );
+  }
+  const factoryRef = db.collection('factories').doc(uid);
+  const factorySnap = await factoryRef.get();
+  if (!factorySnap.exists) {
+    throw new HttpsError('failed-precondition', 'Bir fabrikan yok.');
+  }
+  await factoryRef.update({ name });
+  return { ok: true };
+});
+
+// --- Fabrika logosu (kullanıcının gönderdiği tasarımcı örneğinden
+// uyarlanmış, sadeleştirilmiş sürüm — bkz. FutbolCrest/FutbolLogoEditor
+// için kullanılan aynı desen: şekil + ikon (lucide-react, zaten
+// package.json'da mevcut) + renk paleti. `src/components/FactoryScreen/
+// FactoryBadge.jsx` bu config'i SVG'ye çeviriyor, `FactoryLogoDesigner.jsx`
+// ise interaktif editör. Sunucu tarafında şekil/ikon SABİT bir allowlist'e,
+// renkler ise hex formatına karşı doğrulanıyor — istemciden gelen serbest
+// metin/renk asla doğrudan güvenilmiyor. ---
+const FACTORY_LOGO_SHAPES = ['hexagon', 'circle', 'shield', 'square', 'diamond'];
+const FACTORY_LOGO_ICONS = [
+  'factory', 'cog', 'settings', 'hammer', 'wrench', 'flame', 'zap', 'package',
+  'truck', 'warehouse', 'cpu', 'boxes', 'container', 'gauge', 'layers',
+  'recycle', 'shield', 'anchor', 'beaker', 'leaf',
+];
+
+// setFactoryLogo — sadece fabrika sahibi. `logo` alanı tek bir nested
+// obje olarak factories/{uid}.logo altında saklanır.
+export const setFactoryLogo = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { shape, icon, bg, metal, trim, hazard, rivets } = request.data?.logo || {};
+
+  if (!FACTORY_LOGO_SHAPES.includes(shape)) {
+    throw new HttpsError('invalid-argument', 'Geçersiz şekil seçimi.');
+  }
+  if (!FACTORY_LOGO_ICONS.includes(icon)) {
+    throw new HttpsError('invalid-argument', 'Geçersiz ikon seçimi.');
+  }
+  const hexRe = /^#[0-9a-fA-F]{6}$/;
+  if (!hexRe.test(bg) || !hexRe.test(metal) || !hexRe.test(trim)) {
+    throw new HttpsError('invalid-argument', 'Geçersiz renk.');
+  }
+
+  const factoryRef = db.collection('factories').doc(uid);
+  const factorySnap = await factoryRef.get();
+  if (!factorySnap.exists) {
+    throw new HttpsError('failed-precondition', 'Bir fabrikan yok.');
+  }
+  await factoryRef.update({
+    logo: {
+      shape,
+      icon,
+      bg,
+      metal,
+      trim,
+      hazard: !!hazard,
+      rivets: !!rivets,
+    },
+  });
   return { ok: true };
 });
 
@@ -633,6 +800,210 @@ export const reassignEmployee = onCall(async (request) => {
   return { ok: true };
 });
 
+// ---------------------------------------------------------------------------
+// FABRİKA HİSSE (STOK) PİYASASI — bir fabrika sahibi, fabrikasının %1-100'ü
+// arasında bir dilimini, SABİT bir süre için (10 veya 20 gün) başka bir
+// oyuncuya satabilir. Alıcı hisseyi satın aldığı anda TEK SEFERLİK bir
+// bedel (price) öder (bkz. buyFactoryShare); bundan sonra her gece
+// (dailyReset, Part B) fabrikanın o geceki dailyIncome'undan (Part A —
+// bkz. dailyReset içindeki "FABRİKA GÜNLÜK GELİR HESABI" bloğu) payına
+// düşeni (percent%) TEMETTÜ olarak alır. Fiyat sınırları, "adil değerin"
+// (fairValue) yarısı ile tamamı arasındadır:
+//   fairValue = (percent / 100) * dailyIncomeAtListing * days
+//   maxPrice = round(fairValue), minPrice = floor(fairValue / 2)
+// factories/{ownerId}/shares/{shareId} — bkz. dosya başındaki şema notu.
+// ---------------------------------------------------------------------------
+const SHARE_VALID_DAYS = [10, 20];
+
+function shareFairValue(percent, days, dailyIncome) {
+  return (percent / 100) * (dailyIncome || 0) * days;
+}
+function shareMaxPrice(percent, days, dailyIncome) {
+  return Math.round(shareFairValue(percent, days, dailyIncome));
+}
+function shareMinPrice(percent, days, dailyIncome) {
+  return Math.floor(shareFairValue(percent, days, dailyIncome) / 2);
+}
+
+// listFactoryShare — sadece fabrika sahibi. percent (1-100 tam sayı) +
+// days (10 veya 20) + price (min/maxPrice aralığında) belirtir, yeni bir
+// 'listed' hisse ilanı oluşturur. Fabrikanın zaten listed/active toplam
+// yüzdesi + yeni percent 100'ü aşamaz (bir fabrikanın en fazla %100'ü
+// satılabilir).
+export const listFactoryShare = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const percent = Number(request.data?.percent);
+  const days = Number(request.data?.days);
+  const price = Number(request.data?.price);
+
+  if (!Number.isInteger(percent) || percent < 1 || percent > 100) {
+    throw new HttpsError('invalid-argument', 'Yüzde 1-100 arasında tam sayı olmalı.');
+  }
+  if (!SHARE_VALID_DAYS.includes(days)) {
+    throw new HttpsError('invalid-argument', 'Süre sadece 10 veya 20 gün olabilir.');
+  }
+  if (!Number.isFinite(price) || price < 0) {
+    throw new HttpsError('invalid-argument', 'Geçersiz fiyat.');
+  }
+
+  const factoryRef = db.collection('factories').doc(uid);
+  const factorySnap = await factoryRef.get();
+  if (!factorySnap.exists) {
+    throw new HttpsError('failed-precondition', 'Bir fabrikan yok.');
+  }
+  const factory = factorySnap.data();
+  const dailyIncome = factory.dailyIncome || 0;
+
+  const minPrice = shareMinPrice(percent, days, dailyIncome);
+  const maxPrice = shareMaxPrice(percent, days, dailyIncome);
+  if (price < minPrice || price > maxPrice) {
+    throw new HttpsError(
+      'invalid-argument',
+      `Fiyat ${minPrice.toLocaleString('tr-TR')} - ${maxPrice.toLocaleString('tr-TR')} altın arasında olmalı.`
+    );
+  }
+
+  const sharesRef = factoryRef.collection('shares');
+  const existingSnap = await sharesRef.where('status', 'in', ['listed', 'active']).get();
+  const existingTotal = existingSnap.docs.reduce((sum, d) => sum + (d.data().percent || 0), 0);
+  if (existingTotal + percent > 100) {
+    throw new HttpsError(
+      'failed-precondition',
+      `Fabrikanın en fazla %100'ü satılabilir. Şu an %${existingTotal} zaten listede/satılmış — en fazla %${100 - existingTotal} daha ekleyebilirsin.`
+    );
+  }
+
+  const shareRef = sharesRef.doc();
+  await shareRef.set({
+    percent,
+    days,
+    price,
+    status: 'listed',
+    dailyIncomeAtListing: dailyIncome,
+    sellerId: uid,
+    sellerName: factory.ownerName || 'Oyuncu',
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    buyerId: null,
+    buyerName: null,
+    boughtAt: null,
+    totalDays: null,
+    remainingDays: null,
+    lastPayoutDateKey: null,
+  });
+
+  return { ok: true, shareId: shareRef.id, minPrice, maxPrice };
+});
+
+// cancelFactoryShareListing — sadece fabrika sahibi, sadece henüz
+// SATILMAMIŞ ('listed') bir ilanı kaldırabilir — satılmış (active) bir
+// hisse tek taraflı iptal edilemez.
+export const cancelFactoryShareListing = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { shareId } = request.data || {};
+  if (!shareId) throw new HttpsError('invalid-argument', 'shareId gerekli.');
+
+  const shareRef = db.collection('factories').doc(uid).collection('shares').doc(shareId);
+  const shareSnap = await shareRef.get();
+  if (!shareSnap.exists) {
+    throw new HttpsError('failed-precondition', 'Hisse ilanı bulunamadı.');
+  }
+  if (shareSnap.data().status !== 'listed') {
+    throw new HttpsError('failed-precondition', 'Bu ilan zaten satılmış, kaldırılamaz.');
+  }
+  // Doküman silinir — böylece yüzdesi ANINDA listFactoryShare'in %100
+  // tavan kontrolünden düşer, ekstra bir "iptal edildi" durumu tutmaya
+  // gerek kalmaz.
+  await shareRef.delete();
+  return { ok: true };
+});
+
+// buyFactoryShare — fabrika sahibi HARİÇ herkes satın alabilir. Tek
+// seferlik `price` altın satıcıya (fabrika sahibine) ödenir — bu, her
+// gece (dailyReset) ödenecek temettülerden AYRI, geri ödenmez bir peşin
+// bedeldir (temettü fabrika sahibinin GÜNLÜK bakiyesinden gelir, bu
+// peşin bedelden DEĞİL).
+export const buyFactoryShare = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { factoryId, shareId } = request.data || {};
+  if (!factoryId || !shareId) {
+    throw new HttpsError('invalid-argument', 'factoryId ve shareId gerekli.');
+  }
+  if (factoryId === uid) {
+    throw new HttpsError('failed-precondition', 'Kendi fabrikanın hissesini alamazsın.');
+  }
+
+  const shareRef = db.collection('factories').doc(factoryId).collection('shares').doc(shareId);
+  const buyerRef = db.collection('users').doc(uid);
+  const sellerRef = db.collection('users').doc(factoryId);
+
+  let result = {};
+  await db.runTransaction(async (tx) => {
+    const [shareSnap, buyerSnap, sellerSnap] = await Promise.all([
+      tx.get(shareRef),
+      tx.get(buyerRef),
+      tx.get(sellerRef),
+    ]);
+    if (!shareSnap.exists) {
+      throw new HttpsError('failed-precondition', 'Hisse ilanı bulunamadı.');
+    }
+    const share = shareSnap.data();
+    if (share.status !== 'listed') {
+      throw new HttpsError('failed-precondition', 'Bu hisse artık satışta değil.');
+    }
+    const buyer = buyerSnap.data();
+    if (!buyer || (buyer.gold || 0) < share.price) {
+      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    }
+    if (!sellerSnap.exists) {
+      throw new HttpsError('failed-precondition', 'Satıcı bulunamadı.');
+    }
+
+    // Alıcıdan peşin bedel düşülür.
+    tx.update(buyerRef, { gold: admin.firestore.FieldValue.increment(-share.price) });
+    // Satıcıya (fabrika sahibi) gelir — 2. el eşya satışıyla (buyListing)
+    // BİREBİR AYNI şekilde, borç varsa Bölüm 10 kuralına göre bölüştürülür.
+    const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, share.price);
+    tx.update(sellerRef, {
+      gold: admin.firestore.FieldValue.increment(goldDelta),
+      debtToState: admin.firestore.FieldValue.increment(debtDelta),
+    });
+
+    tx.update(shareRef, {
+      status: 'active',
+      buyerId: uid,
+      buyerName: buyer.displayName || 'Oyuncu',
+      boughtAt: admin.firestore.FieldValue.serverTimestamp(),
+      totalDays: share.days,
+      remainingDays: share.days,
+      lastPayoutDateKey: null,
+    });
+
+    result = {
+      price: share.price,
+      percent: share.percent,
+      days: share.days,
+      sellerName: share.sellerName,
+    };
+  });
+
+  await Promise.all([
+    buyerRef.collection('messages').add({
+      text: `${result.sellerName || 'Bir fabrika sahibi'}nin fabrikasından %${result.percent} hisse satın aldın (${result.price.toLocaleString('tr-TR')} altın ödedin). Önümüzdeki ${result.days} gün boyunca fabrikanın günlük gelirinden payına düşen temettüyü alacaksın.`,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      read: false,
+      type: 'share_bought',
+    }),
+    sellerRef.collection('messages').add({
+      text: `Fabrikandaki %${result.percent}'lik hisse ilanın satıldı — ${result.price.toLocaleString('tr-TR')} altın hesabına yatırıldı. Alıcı, önümüzdeki ${result.days} gün boyunca fabrikanın günlük gelirinden pay alacak.`,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      read: false,
+      type: 'share_sold',
+    }),
+  ]);
+
+  return { ok: true, ...result };
+});
+
 // sendSalaryPenaltySms — patronun altını yetmediği için maaş farkının
 // devlete borç yazıldığı her seferinde patrona SMS gönderir.
 async function sendSalaryPenaltySms(uid, penaltyAmount, newTotalDebt) {
@@ -690,7 +1061,7 @@ export const produceAtFactory = onCall(async (request) => {
 
     const cfg = MACHINE_TYPES[machine.type];
     const qty =
-      machine.type === 'yasakliMadde' || machine.type === 'silahUpgrade'
+      machine.type === 'yasakliMadde' || machine.type === 'silahUpgrade' || machine.type === 'tamirMalzemesi'
         ? Math.floor(randomInRange(cfg.min, cfg.max + 1))
         : Math.round(randomInRange(cfg.min, cfg.max));
 
@@ -771,40 +1142,96 @@ export const resignFromFactory = onCall(async (request) => {
   return { ok: true };
 });
 
-// triggerMining — mining makineleri işçi gerektirmez ama artık OTOMATİK
-// üretmiyor (kullanıcı revizesi): sahibi her gün bu fonksiyonu çağırıp
-// (Fabrika ekranındaki "Üretim Yap" butonu) o günkü üretimi TETİKLEMELİ.
-// Tetiklenen makine, o günün 00:00'ında (bir sonraki dailyReset'te)
-// rastgele bir miktar kripto üretir ve sahibine SMS gider — bkz.
-// dailyReset içindeki mining bloğu. Diğer makine türlerinden farkı: tek
-// bir "iş" slotuna bağlı değil, sahibi o gün TÜM mining makinelerini
-// (kaç tane olursa olsun) ayrı ayrı tetikleyebilir.
+// stampUntriggeredMining — bir fabrika sahibinin sahip olduğu, bugün henüz
+// tetiklenmemiş TÜM mining makinelerine miningTriggeredDateKey damgası
+// vurur (üretim yine o gece 00:00'da dailyReset içinde gerçekleşir).
+// triggerAllMining VE runFactoryMachines tarafından ORTAK kullanılır ki
+// damgalama mantığı iki yerde tekrar edilmesin.
+async function stampUntriggeredMining(ownerUid, dateKey) {
+  const machinesRef = db.collection('factories').doc(ownerUid).collection('machines');
+  const machinesSnap = await machinesRef.where('type', '==', 'mining').get();
+  const untriggered = machinesSnap.docs.filter((m) => m.data().miningTriggeredDateKey !== dateKey);
+  if (untriggered.length > 0) {
+    const batch = db.batch();
+    untriggered.forEach((m) => batch.update(m.ref, { miningTriggeredDateKey: dateKey }));
+    await batch.commit();
+  }
+  return { triggeredCount: untriggered.length, totalCount: machinesSnap.size };
+}
+
 // triggerAllMining — mining makineleri işçi gerektirmez ama artık OTOMATİK
 // üretmiyor (kullanıcı revizesi): sahibi her gün bu fonksiyonu çağırıp
-// (Fabrika ekranındaki TEK "Üretim Yap" butonu) o günkü üretimi
-// TETİKLEMELİ. Kullanıcı revizesi 2. sürüm: mining makineleri artık ayrı
-// ayrı kartlar hâlinde değil, TEK bir panelde ("Mining Makinesi ×N")
-// gösteriliyor ve bu buton sahip olunan TÜM mining makinelerini (kaç tane
-// olursa olsun) TEK seferde tetikliyor. Tetiklenen makineler, o günün
-// 00:00'ında (bir sonraki dailyReset'te) rastgele bir miktar kripto üretir
-// ve sahibine TEK bir SMS gider — bkz. dailyReset içindeki mining bloğu.
+// o günkü üretimi TETİKLEMELİ. Tetiklenen makineler, o günün 00:00'ında
+// (bir sonraki dailyReset'te) rastgele bir miktar kripto üretir ve
+// sahibine TEK bir SMS gider — bkz. dailyReset içindeki mining bloğu.
+// NOT: Arayüzde artık kendi başına bir buton yok — bu fonksiyon, birleşik
+// "Makineleri Çalıştır" butonunun çağırdığı runFactoryMachines içinden de
+// (stampUntriggeredMining üzerinden) AYNI mantıkla tetiklenir; bu
+// callable fonksiyon geriye dönük uyumluluk/ayrı kullanım için duruyor.
 export const triggerAllMining = onCall(async (request) => {
   const uid = requireAuth(request);
   const dateKey = istanbulDateKey();
-  const machinesRef = db.collection('factories').doc(uid).collection('machines');
-  const machinesSnap = await machinesRef.where('type', '==', 'mining').get();
-  if (machinesSnap.empty) {
+  const result = await stampUntriggeredMining(uid, dateKey);
+  if (result.totalCount === 0) {
     throw new HttpsError('failed-precondition', 'Hiç mining makinen yok.');
   }
-  const untriggered = machinesSnap.docs.filter((m) => m.data().miningTriggeredDateKey !== dateKey);
-  if (untriggered.length === 0) {
+  if (result.triggeredCount === 0) {
     throw new HttpsError('failed-precondition', 'Bugün zaten tüm mining makinelerini tetikledin.');
   }
-  const batch = db.batch();
-  untriggered.forEach((m) => batch.update(m.ref, { miningTriggeredDateKey: dateKey }));
-  await batch.commit();
 
-  return { ok: true, triggeredCount: untriggered.length, totalCount: machinesSnap.size };
+  return { ok: true, ...result };
+});
+
+// runFactoryMachines — "Makineleri Çalıştır" butonu (sadece fabrika
+// sahibi, günde 1 kez). Fabrikanın TÜM makinelerini tek seferde çalıştırır:
+//  - mining makineleri: stampUntriggeredMining ile triggerAllMining ile
+//    BİREBİR AYNI şekilde damgalanır (davranışta hiçbir değişiklik yok).
+//  - diğer 4 (işçi gerektiren) tür: bugün henüz bir işçi tarafından
+//    ÜRETİLMEMİŞ (lastProducedDateKey !== bugün) her makineye
+//    ownerTriggeredDateKey = bugün damgası vurulur. Bu ANINDA üretim/ödeme
+//    yapmaz — sadece "sahip devreye girdi" işaretidir. Gerçek üretim
+//    (işçi o gün gelip gelmediğine göre) o gece 00:00'da dailyReset
+//    içinde belirlenir (bkz. dailyReset'teki sahip-yerine-üretim bloğu).
+export const runFactoryMachines = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const dateKey = istanbulDateKey();
+  const factoryRef = db.collection('factories').doc(uid);
+  const factorySnap = await factoryRef.get();
+  if (!factorySnap.exists) {
+    throw new HttpsError('failed-precondition', 'Fabrikan yok.');
+  }
+
+  const machinesSnap = await factoryRef.collection('machines').get();
+  if (machinesSnap.empty) {
+    throw new HttpsError('failed-precondition', 'Hiç makinen yok.');
+  }
+
+  const workerMachines = machinesSnap.docs.filter((m) => m.data().type !== 'mining');
+  const untriggeredWorkerMachines = workerMachines.filter(
+    (m) => m.data().lastProducedDateKey !== dateKey && m.data().ownerTriggeredDateKey !== dateKey
+  );
+
+  const mining = await stampUntriggeredMining(uid, dateKey);
+
+  let workerTriggeredCount = 0;
+  if (untriggeredWorkerMachines.length > 0) {
+    const batch = db.batch();
+    untriggeredWorkerMachines.forEach((m) => batch.update(m.ref, { ownerTriggeredDateKey: dateKey }));
+    await batch.commit();
+    workerTriggeredCount = untriggeredWorkerMachines.length;
+  }
+
+  if (mining.triggeredCount === 0 && workerTriggeredCount === 0) {
+    throw new HttpsError('failed-precondition', 'Bugün zaten tüm makineleri çalıştırdın.');
+  }
+
+  return {
+    ok: true,
+    miningTriggeredCount: mining.triggeredCount,
+    miningTotalCount: mining.totalCount,
+    workerTriggeredCount,
+    workerTotalCount: workerMachines.length,
+  };
 });
 
 // fireEmployee — sadece fabrika sahibi; işçi bugün üretim yaptıysa
@@ -845,6 +1272,14 @@ export const dailyReset = onSchedule(
   { schedule: '0 0 * * *', timeZone: 'Europe/Istanbul' },
   async () => {
     const dateKey = istanbulDateKey();
+
+    // FABRİKA HİSSE SİSTEMİ İÇİN GECE BOYU PAYLAŞILAN DEĞİŞKENLER — mining
+    // üretim bloğu bunları doldurur, "FABRİKA GÜNLÜK GELİR HESABI" bloğu
+    // (Part A) ve onu takip eden hisse temettü ödemesi bloğu (Part B) bunları
+    // okur. Aynı `dailyReset` çağrısı içinde, sırayla dolduruluyor.
+    let nightCryptoPrice = 0;
+    const miningCryptoQtyByOwner = new Map(); // ownerId -> bu gece üretilen toplam kripto miktarı
+    const factoryDailyIncomeMap = new Map(); // ownerId -> bu geceki dailyIncome (altın) — hisse temettüsünün TEK kaynağı
 
     // 0) BORSA BÜLTENİ ANLIK GÖRÜNTÜSÜ (Gazete > Borsa Bülteni) — elmas/
     // hisse/kripto fiyatları hourlyInvestmentUpdate ile SAATTE BİR
@@ -960,10 +1395,17 @@ export const dailyReset = onSchedule(
     // hepsi ayrı ayrı üretir, toplamı TEK bir SMS ile bildirilir.
     {
       const prevDateKey = addDaysToDateKey(dateKey, -1);
-      const miningSnap = await db.collectionGroup('machines').where('type', '==', 'mining').get();
+      const [miningSnap, nightPrices] = await Promise.all([
+        db.collectionGroup('machines').where('type', '==', 'mining').get(),
+        getCurrentPrices(),
+      ]);
+      // Bu geceki canlı kripto fiyatı — hem "FABRİKA GÜNLÜK GELİR HESABI"
+      // (Part A, aşağıda) mining üretiminin altın karşılığını hesaplarken
+      // hem de mining üretim ödemesinin kendisi (kripto miktarı, altında)
+      // AYNI anlık görüntüyü kullanır, bkz. yukarıdaki dosya-üstü not.
+      nightCryptoPrice = nightPrices.cryptoPrice || 0;
       const triggeredDocs = miningSnap.docs.filter((m) => m.data().miningTriggeredDateKey === prevDateKey);
       const miningJobs = [];
-      const producedByOwner = new Map();
       triggeredDocs.forEach((m) => {
         const factoryId = m.ref.parent.parent.id;
         const qty = randomInRange(MACHINE_TYPES.mining.min, MACHINE_TYPES.mining.max);
@@ -973,12 +1415,12 @@ export const dailyReset = onSchedule(
             .doc(factoryId)
             .update({ cryptoHoldings: admin.firestore.FieldValue.increment(qty) })
         );
-        producedByOwner.set(factoryId, (producedByOwner.get(factoryId) || 0) + qty);
+        miningCryptoQtyByOwner.set(factoryId, (miningCryptoQtyByOwner.get(factoryId) || 0) + qty);
       });
       await Promise.all(miningJobs);
 
       const smsJobs = [];
-      producedByOwner.forEach((totalQty, ownerId) => {
+      miningCryptoQtyByOwner.forEach((totalQty, ownerId) => {
         smsJobs.push(
           db
             .collection('users')
@@ -993,6 +1435,258 @@ export const dailyReset = onSchedule(
         );
       });
       await Promise.all(smsJobs);
+    }
+
+    // -0.4) SAHİP-YERİNE-ÜRETİM (işçi gerektiren 4 makine türü): sahibi dün
+    // "Makineleri Çalıştır" butonuyla (runFactoryMachines) ownerTriggeredDateKey
+    // damgaladığı makinelerden, o gün İÇİNDE atanmış işçi tarafından
+    // GERÇEKTEN üretilmemiş (lastProducedDateKey dünün tarihiyle eşleşmeyen —
+    // yani işçi hiç gelip normal "Üretim Yap" akışını çalıştırmamış) her
+    // makine, sahibi tarafından üretilmiş sayılır: normal min-max miktar
+    // hesaplanır (produceAtFactory ile BİREBİR AYNI formül), sonra 1/10'una
+    // düşürülür (0'a yuvarlanmaması için en az 1 birim garanti edilir) ve
+    // SAHİBİN envanterine eklenir. Maaş ödemesi YOK — işçi fiilen çalışmadı.
+    // İşçi o gün ZATEN gerçek üretim yaptıysa (lastProducedDateKey === dün),
+    // işçinin üretimi ÖNCELİKLİDİR ve bu blok o makineyi atlar (çifte
+    // üretim yok).
+    {
+      const prevDateKey = addDaysToDateKey(dateKey, -1);
+      const workerMachineTypes = VALID_MACHINES.filter((t) => t !== 'mining');
+      const ownerTriggeredSnap = await db
+        .collectionGroup('machines')
+        .where('ownerTriggeredDateKey', '==', prevDateKey)
+        .get();
+      const fallbackDocs = ownerTriggeredSnap.docs.filter(
+        (m) => workerMachineTypes.includes(m.data().type) && m.data().lastProducedDateKey !== prevDateKey
+      );
+
+      const producedByOwner = new Map(); // ownerId -> [{type, qty}]
+      const settleJobs = fallbackDocs.map((m) => {
+        const machine = m.data();
+        const factoryId = m.ref.parent.parent.id;
+        const cfg = MACHINE_TYPES[machine.type];
+        const normalQty =
+          machine.type === 'yasakliMadde' || machine.type === 'silahUpgrade' || machine.type === 'tamirMalzemesi'
+            ? Math.floor(randomInRange(cfg.min, cfg.max + 1))
+            : Math.round(randomInRange(cfg.min, cfg.max));
+        const qty = normalQty > 0 ? Math.max(1, Math.round(normalQty * 0.1)) : 0;
+
+        const jobs = [m.ref.update({ lastProducedDateKey: prevDateKey, lastProducedQty: qty })];
+        if (qty > 0) {
+          if (!producedByOwner.has(factoryId)) producedByOwner.set(factoryId, []);
+          producedByOwner.get(factoryId).push({ type: machine.type, qty });
+          jobs.push(
+            db
+              .collection('users')
+              .doc(factoryId)
+              .collection('inventory')
+              .doc(machine.type)
+              .set({ quantity: admin.firestore.FieldValue.increment(qty) }, { merge: true })
+          );
+        }
+        return Promise.all(jobs);
+      });
+      await Promise.all(settleJobs);
+
+      const ownerSmsJobs = [];
+      producedByOwner.forEach((items, ownerId) => {
+        const lines = items
+          .map((it) => `${MACHINE_TYPES[it.type].label}: ${it.qty.toLocaleString('tr-TR')} adet`)
+          .join(', ');
+        ownerSmsJobs.push(
+          db
+            .collection('users')
+            .doc(ownerId)
+            .collection('messages')
+            .add({
+              text: `İşçin gelmediği için bazı makinelerini kendin çalıştırmış oldun (normalin 1/10'u verimle): ${lines}. Envanterine eklendi.`,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              read: false,
+              type: 'factory_owner_production',
+            })
+        );
+      });
+      await Promise.all(ownerSmsJobs);
+    }
+
+    // -0.35) FABRİKA GÜNLÜK GELİR HESABI (Faz Fabrika Hisseleri — Part A):
+    // üstteki iki blok bitince, dün (prevDateKey) üretim yapmış HER makine
+    // (işçinin gerçek "Üretim Yap" akışı VEYA sahip-yerine-üretim — ikisi de
+    // artık lastProducedDateKey = prevDateKey damgasını taşıyor) belli.
+    // Her makinenin ürettiği malzeme/kripto, "anlık nakde çevirme" karşılığı
+    // altın değerine çevrilip fabrika başına toplanır ve
+    // factories/{ownerId}.dailyIncome alanına yazılır. Bu alan, aşağıdaki
+    // hisse temettü ödemesinin (Part B) VE listFactoryShare'deki fiyat
+    // sınırlarının TEK kaynağıdır.
+    {
+      const prevDateKey = addDaysToDateKey(dateKey, -1);
+
+      // Malzemelerin "anlık nakde çevirme" altın karşılığı — gerçek satış
+      // mekanizması olan 3 malzeme için oyundaki GERÇEK fiyatlar kullanılır.
+      const materialGoldValue = {
+        tamirMalzemesi: MATERIAL_SELL_PRICE.tamirMalzemesi, // 8 altın/adet — Modifiye Garajı
+        arabaGelistirme: MATERIAL_SELL_PRICE.arabaGelistirme, // 250 altın/adet — Modifiye Garajı
+        yasakliMadde: CONTRABAND_PARK_SELL_PRICE, // 5.000 altın/adet — Park'ta satış
+        // silahUpgrade — bu malzeme için oyunda GERÇEK bir satış mekanizması
+        // YOK (sadece silah geliştirmede tüketiliyor). TAHMİNİ değer:
+        // Amazor alış fiyatının (100) yarısı — arabaGelistirme'de görülen
+        // alış/satış oranıyla (500 alış / 250 satış, yani ~%50) tutarlı.
+        silahUpgrade: 50,
+      };
+
+      const producedSnap = await db
+        .collectionGroup('machines')
+        .where('lastProducedDateKey', '==', prevDateKey)
+        .get();
+
+      const incomeByFactory = new Map(); // ownerId -> altın (yuvarlanmamış toplam)
+      producedSnap.forEach((m) => {
+        const machine = m.data();
+        const unitValue = materialGoldValue[machine.type];
+        if (!unitValue) return; // mining burada yok — aşağıda ayrıca ekleniyor
+        const factoryId = m.ref.parent.parent.id;
+        const value = (machine.lastProducedQty || 0) * unitValue;
+        incomeByFactory.set(factoryId, (incomeByFactory.get(factoryId) || 0) + value);
+      });
+
+      // Mining: üstteki mining üretim bloğunda doldurulan
+      // miningCryptoQtyByOwner (o gece üretilen toplam kripto miktarı),
+      // AYNI gecenin canlı kripto fiyatıyla (nightCryptoPrice) çarpılır —
+      // mining üretiminin kendisiyle (kripto bakiyesine ekleme) birebir
+      // aynı anlık fiyat görüntüsü.
+      miningCryptoQtyByOwner.forEach((qty, factoryId) => {
+        const value = qty * nightCryptoPrice;
+        incomeByFactory.set(factoryId, (incomeByFactory.get(factoryId) || 0) + value);
+      });
+
+      // TÜM fabrikalara yaz — bugün hiç üretim yapmamış fabrikalar da
+      // dailyIncome: 0 alır, yoksa eski (bayat) bir değer asılı kalır ve
+      // hisse fiyat sınırlarını/temettülerini yanlış hesaplatır.
+      const allFactoriesSnap = await db.collection('factories').get();
+      let batch = db.batch();
+      let opCount = 0;
+      const batchJobs = [];
+      allFactoriesSnap.forEach((f) => {
+        const dailyIncome = Math.round(incomeByFactory.get(f.id) || 0);
+        factoryDailyIncomeMap.set(f.id, dailyIncome);
+
+        // Son 10 günlük gelir geçmişi: Firestore'da atomik "ekle ve N ile
+        // sınırla" bir array operasyonu olmadığı için, mevcut
+        // dailyIncomeHistory'yi (zaten elimizdeki f.data()'dan, ekstra bir
+        // okuma yapmadan) alıp bugünün değerini sona ekliyoruz ve son 10
+        // elemanla sınırlıyoruz. dailyIncomeAvg10, dizideki GERÇEK eleman
+        // sayısına bölünür (10 günden az geçmişi olan yeni bir fabrika için
+        // her zaman 10'a değil, mevcut gün sayısına bölünür).
+        const existingHistory = Array.isArray(f.data().dailyIncomeHistory)
+          ? f.data().dailyIncomeHistory
+          : [];
+        const dailyIncomeHistory = [...existingHistory, dailyIncome].slice(-10);
+        const dailyIncomeAvg10 = Math.round(
+          dailyIncomeHistory.reduce((sum, v) => sum + (v || 0), 0) / dailyIncomeHistory.length
+        );
+
+        batch.update(f.ref, {
+          dailyIncome,
+          dailyIncomeDateKey: prevDateKey,
+          dailyIncomeHistory,
+          dailyIncomeAvg10,
+        });
+        opCount += 1;
+        if (opCount >= 400) {
+          batchJobs.push(batch.commit());
+          batch = db.batch();
+          opCount = 0;
+        }
+      });
+      if (opCount > 0) batchJobs.push(batch.commit());
+      await Promise.all(batchJobs);
+    }
+
+    // -0.32) FABRİKA HİSSE (STOK) TEMETTÜ ÖDEMESİ (Faz Fabrika Hisseleri —
+    // Part B): üstteki bloktan (Part A) taze factoryDailyIncomeMap hazır —
+    // her AKTİF (satılmış, hâlâ ödeme süresi devam eden) hisse için, o
+    // hissenin sahip olduğu fabrikanın BU GECEKİ dailyIncome'undan
+    // (percent%) payına düşen kısım hisseyi ALAN oyuncuya ödenir.
+    // Fabrika sahibinin altını yetmezse fark, produceAtFactory'deki maaş
+    // mantığıyla BİREBİR AYNI şekilde (bkz. sendSalaryPenaltySms) sahibin
+    // borcuna (debtToState) yazılır — alıcı HER ZAMAN temettüsünü TAM alır.
+    {
+      const todayDateKey = dateKey;
+      const activeSharesSnap = await db.collectionGroup('shares').where('status', '==', 'active').get();
+
+      await Promise.all(
+        activeSharesSnap.docs.map(async (shareDoc) => {
+          const share = shareDoc.data();
+          const ownerId = shareDoc.ref.parent.parent.id;
+          const factoryDailyIncome = factoryDailyIncomeMap.get(ownerId) || 0;
+          const dividend = Math.round(((share.percent || 0) / 100) * factoryDailyIncome);
+          const newRemainingDays = Math.max(0, (share.remainingDays || 0) - 1);
+
+          const shareUpdate = {
+            remainingDays: newRemainingDays,
+            lastPayoutDateKey: todayDateKey,
+          };
+          if (newRemainingDays <= 0) shareUpdate.status = 'expired';
+
+          if (dividend <= 0) {
+            await shareDoc.ref.update(shareUpdate);
+            return;
+          }
+
+          const buyerRef = db.collection('users').doc(share.buyerId);
+          const ownerRef = db.collection('users').doc(ownerId);
+
+          let shortfall = 0;
+          let newOwnerDebt = null;
+          await db.runTransaction(async (tx) => {
+            const [buyerSnap, ownerSnap] = await Promise.all([tx.get(buyerRef), tx.get(ownerRef)]);
+            if (!buyerSnap.exists || !ownerSnap.exists) {
+              tx.update(shareDoc.ref, shareUpdate);
+              return;
+            }
+            const owner = ownerSnap.data();
+            const ownerGold = owner?.gold || 0;
+            const ownerPay = Math.min(dividend, ownerGold);
+            shortfall = dividend - ownerPay;
+
+            // Hisse sahibi (alıcı): temettüsünü TAM alır — produceAtFactory'
+            // deki işçi maaşı mantığıyla birebir aynı.
+            tx.update(buyerRef, { gold: admin.firestore.FieldValue.increment(dividend) });
+            // Fabrika sahibi: elinden çıkabildiği kadarı düşülür, yetmeyen
+            // kısım CEZA/borç olur (splitIncomeForDebt DEĞİL — bu bir
+            // ödeme YÜKÜMLÜLÜĞÜ, gelir değil, tıpkı maaş ödemesinde olduğu
+            // gibi).
+            tx.update(ownerRef, {
+              gold: admin.firestore.FieldValue.increment(-ownerPay),
+              debtToState: admin.firestore.FieldValue.increment(shortfall),
+            });
+            if (shortfall > 0) {
+              newOwnerDebt = (owner?.debtToState || 0) + shortfall;
+            }
+            tx.update(shareDoc.ref, shareUpdate);
+          });
+
+          const smsJobs = [
+            buyerRef.collection('messages').add({
+              text: `Sahip olduğun %${share.percent} fabrika hissesinden bugünkü temettün: ${dividend.toLocaleString('tr-TR')} altın. Hesabına yatırıldı.`,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              read: false,
+              type: 'share_dividend',
+            }),
+          ];
+          if (shortfall > 0 && newOwnerDebt != null) {
+            smsJobs.push(
+              ownerRef.collection('messages').add({
+                text: `Fabrikandaki bir hisse sahibinin temettüsünü ödemeye altının yetmedi. Eksik ${shortfall.toLocaleString('tr-TR')} altın devlete borç yazıldı. Toplam borcun: ${newOwnerDebt.toLocaleString('tr-TR')} altın.`,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                read: false,
+                type: 'share_dividend_penalty',
+              })
+            );
+          }
+          await Promise.all(smsJobs);
+        })
+      );
     }
 
     // -0.3) Araç/silah ömrü — her gün 1 azalır. Ömrü biten VE tamir hakkı
@@ -7064,6 +7758,45 @@ function sendFutbolSms(batch, uid, text, type) {
 const FUTBOL_TEAM_SIZE_PER_LEAGUE = 8;
 const FUTBOL_SEASON_START = 1;
 
+// --- Futbol modülü: Stadyum (kapasite merdiveni + bilet fiyatı) ---
+// Kapasite yükseltme merdiveni SUNUCU TARAFINDA tutulur — istemci bir
+// sonraki seviyeyi (ve maliyetini) görebilir ama TÜM merdiveni göremez
+// (ürün kararı: oyuncu ileriki seviyeleri önceden görmemeli).
+const FUTBOL_STADIUM_LADDER = [
+  { capacity: 2500, cost: 0 },
+  { capacity: 5000, cost: 1000000 },
+  { capacity: 10000, cost: 2000000 },
+  { capacity: 20000, cost: 4000000 },
+  { capacity: 40000, cost: 8000000 },
+  { capacity: 75000, cost: 16000000 },
+  { capacity: 150000, cost: 32000000 },
+  { capacity: 250000, cost: 75000000 },
+  { capacity: 500000, cost: 150000000 },
+];
+const FUTBOL_DEFAULT_TICKET_PRICE = 10;
+const FUTBOL_MIN_TICKET_PRICE = 1;
+const FUTBOL_MAX_TICKET_PRICE = 20;
+
+// futbolStadiumAttendance — bilet fiyatına göre maça gelecek taraftar
+// sayısı: fans/ticketPrice, stadyum kapasitesiyle sınırlı.
+function futbolStadiumAttendance(fans, ticketPrice, stadiumCapacity) {
+  return Math.min(stadiumCapacity, Math.floor((fans || 0) / (ticketPrice || FUTBOL_DEFAULT_TICKET_PRICE)));
+}
+
+// futbolTicketPriceFanEffect — bilet fiyatının taraftar memnuniyeti
+// üzerindeki etkisi (kazanç/kayıp mekaniğinden BAĞIMSIZ, her ev sahibi
+// maçında uygulanır). 10 = nötr. 10'un üstünde taraftar kaybı,
+// altında taraftar kazancı — bkz. kullanıcı promptu için tam formül.
+function futbolTicketPriceFanDelta(ticketPrice) {
+  if (ticketPrice === FUTBOL_DEFAULT_TICKET_PRICE) return 0;
+  if (ticketPrice > FUTBOL_DEFAULT_TICKET_PRICE) {
+    const maxLoss = (ticketPrice - FUTBOL_DEFAULT_TICKET_PRICE) * 100;
+    return -Math.floor(randomInRange(1, maxLoss));
+  }
+  const maxGain = Math.round(100 + (9 - ticketPrice) * ((1000 - 100) / (9 - 1)));
+  return Math.floor(randomInRange(1, maxGain));
+}
+
 // Örnek/fiktif takım isimleri — gerçek kulüplerle karışmasın diye
 // bilerek uydurma isimler kullanılıyor. 16 tanesi ilk 2 lig için,
 // gerideki havuz sonraki ligler (3. lig vb.) otomatik oluştuğunda
@@ -7335,6 +8068,8 @@ export const seedFutbolWorld = onCall(async (request) => {
         formation: '2-2-1',
         logo: pickUniqueFutbolLogo(usedLogoSignatures),
         stats: { played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0, points: 0 },
+        stadiumCapacity: FUTBOL_STADIUM_LADDER[0].capacity,
+        ticketPrice: FUTBOL_DEFAULT_TICKET_PRICE,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
@@ -7720,31 +8455,60 @@ async function applyFutbolMatchResult(matchId) {
   applyTeamResult(match.awayTeamId, awayScore, homeScore);
 
   // Taraftar sayısı: kazanan +1..10.000, kaybeden -1..10.000 (0'ın altına
-  // inmez), beraberlikte değişmez.
-  let fanGoldEarned = 0;
+  // inmez), beraberlikte değişmez. Ev sahibinin taraftar sayısı ayrıca
+  // aşağıda bilet fiyatı memnuniyet etkisiyle birleştirilip TEK bir
+  // yazımla uygulanacağı için, burada deplasman takımının yazımı
+  // doğrudan yapılıyor, ev sahibinin bu maçtaki galibiyet/mağlubiyet
+  // katkısı ise bir değişkende tutulup aşağıda toplanıyor.
+  let homeFanResultDelta = 0;
   if (homeScore !== awayScore) {
     const fanDelta = Math.floor(randomInRange(1, 10000));
     const homeWon = homeScore > awayScore;
-    const winnerId = homeWon ? match.homeTeamId : match.awayTeamId;
-    const loserSnap = homeWon ? awayTeamSnap : homeTeamSnap;
-    const loserId = homeWon ? match.awayTeamId : match.homeTeamId;
-    batch.update(db.collection('futbolTeams').doc(winnerId), {
-      fans: admin.firestore.FieldValue.increment(fanDelta),
-    });
-    batch.update(db.collection('futbolTeams').doc(loserId), {
-      fans: Math.max(0, (loserSnap.data().fans || 0) - fanDelta),
+    if (homeWon) {
+      homeFanResultDelta = fanDelta;
+      const awayFansBefore = awayTeamSnap.data().fans || 0;
+      batch.update(db.collection('futbolTeams').doc(match.awayTeamId), {
+        fans: Math.max(0, awayFansBefore - fanDelta),
+      });
+    } else {
+      homeFanResultDelta = -fanDelta;
+      batch.update(db.collection('futbolTeams').doc(match.awayTeamId), {
+        fans: admin.firestore.FieldValue.increment(fanDelta),
+      });
+    }
+  }
+
+  // Stadyum — ev sahibinin bilet geliri: seyirci sayısı (taraftar/bilet
+  // fiyatı, kapasiteyle sınırlı) çarpı bilet fiyatı. Bilet fiyatı 10
+  // (nötr) iken ve kapasite yeterliyken bu, ESKİ düz "taraftar = altın"
+  // formülüyle AYNI sonucu verir (10 taraftardan 1'i x 10 altın bilet =
+  // yine taraftar sayısı kadar altın) — kapasite dolduğunda ya da
+  // yuvarlamadan dolayı ayrışır, bu beklenen davranış. Gelir, maçın
+  // başındaki (bu maçın etkilerinden ÖNCEKİ) taraftar sayısı ve o anki
+  // bilet fiyatı/kapasite üzerinden hesaplanır.
+  const homeOwnerUid = homeTeamSnap.data().ownerUid;
+  const homeFansBefore = homeTeamSnap.data().fans || 0;
+  const homeTicketPrice = homeTeamSnap.data().ticketPrice || FUTBOL_DEFAULT_TICKET_PRICE;
+  const homeStadiumCapacity = homeTeamSnap.data().stadiumCapacity || FUTBOL_STADIUM_LADDER[0].capacity;
+  const homeAttendance = futbolStadiumAttendance(homeFansBefore, homeTicketPrice, homeStadiumCapacity);
+  const ticketRevenue = homeAttendance * homeTicketPrice;
+  let fanGoldEarned = 0;
+  if (homeOwnerUid) {
+    fanGoldEarned = ticketRevenue;
+    batch.update(db.collection('users').doc(homeOwnerUid), {
+      gold: admin.firestore.FieldValue.increment(ticketRevenue),
     });
   }
 
-  // Kendi sahasında oynayan takımın sahibi (varsa) taraftar sayısı kadar altın kazanır.
-  const homeOwnerUid = homeTeamSnap.data().ownerUid;
-  const homeFans = homeTeamSnap.data().fans || 0;
-  if (homeOwnerUid) {
-    fanGoldEarned = homeFans;
-    batch.update(db.collection('users').doc(homeOwnerUid), {
-      gold: admin.firestore.FieldValue.increment(homeFans),
-    });
-  }
+  // Bilet fiyatı taraftar memnuniyeti — kazanç/kayıp mekaniğinden BAĞIMSIZ,
+  // her ev sahibi maçında (galibiyet/beraberlik/mağlubiyet fark etmez)
+  // uygulanır. 10 altın nötr; üstünde taraftar kızar (kaybeder), altında
+  // memnun olur (kazanır). Bu maçın galibiyet/mağlubiyet katkısıyla
+  // birlikte TEK bir yazımla (0'ın altına inmeyecek şekilde) uygulanır.
+  const homeFanSatisfactionDelta = futbolTicketPriceFanDelta(homeTicketPrice);
+  batch.update(db.collection('futbolTeams').doc(match.homeTeamId), {
+    fans: Math.max(0, homeFansBefore + homeFanResultDelta + homeFanSatisfactionDelta),
+  });
 
   // Oyuncu gelişimi: sahaya çıkanlar 0.1-2.0 güç kazanır + yaşı kadar
   // form kaybeder; yedekler formu +50 kazanır (100'ü geçmez).
@@ -7775,7 +8539,9 @@ async function applyFutbolMatchResult(matchId) {
     myScore > oppScore ? 'kazandı' : myScore < oppScore ? 'kaybetti' : 'berabere kaldı';
   if (homeOwnerUid) {
     let text = `⚽ ${homeName} ${homeScore}-${awayScore} ${awayName} — takımın ${outcomeText(homeScore, awayScore)}.`;
-    if (fanGoldEarned > 0) text += ` Sahanızdaki bilet gelirinden ${fanGoldEarned.toLocaleString('tr-TR')} altın kazandınız.`;
+    if (fanGoldEarned > 0) {
+      text += ` Stadyumunuza gelen ${homeAttendance.toLocaleString('tr-TR')} taraftardan bilet gelirlerinden ${fanGoldEarned.toLocaleString('tr-TR')} altın kazandınız.`;
+    }
     sendFutbolSms(batch, homeOwnerUid, text, 'futbol_match_result');
   }
   const awayOwnerUid = awayTeamSnap.data().ownerUid;
@@ -8365,6 +9131,8 @@ async function maybeCreateNextFutbolTierByOwnershipRatio() {
       formation: '2-2-1',
       logo: pickUniqueFutbolLogo(usedLogoSignatures),
       stats: { played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0, points: 0 },
+      stadiumCapacity: FUTBOL_STADIUM_LADDER[0].capacity,
+      ticketPrice: FUTBOL_DEFAULT_TICKET_PRICE,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     FUTBOL_NEW_TIER_SQUAD.forEach(([position, count]) => {
@@ -9343,6 +10111,7 @@ export const getFutbolTeamDetail = onCall(async (request) => {
       logo: team.logo || null,
       tier: team.tier,
       fans: team.fans || 0,
+      stadiumCapacity: team.stadiumCapacity || FUTBOL_STADIUM_LADDER[0].capacity,
       value,
       chairman,
       isBot: !team.ownerUid,
@@ -9376,6 +10145,7 @@ export const listFutbolClubs = onCall(async (request) => {
         logo: team.logo || null,
         tier: team.tier,
         fans: team.fans || 0,
+        stadiumCapacity: team.stadiumCapacity || FUTBOL_STADIUM_LADDER[0].capacity,
         value,
         chairman,
         isBot: !team.ownerUid,
@@ -9384,6 +10154,78 @@ export const listFutbolClubs = onCall(async (request) => {
   );
   clubs.sort((a, b) => b.value - a.value);
   return { clubs };
+});
+
+// --- Futbol modülü: Stadyum (kapasite yükseltme + bilet fiyatı) ---
+
+// upgradeFutbolStadium — takımın stadyum kapasitesini merdivende TAM
+// OLARAK bir seviye yükseltir. Maliyet altından düşülür. Merdiven
+// sadece sunucuda tutuluyor (bkz. FUTBOL_STADIUM_LADDER) — istemciye
+// sadece mevcut + bir sonraki seviye döndürülüyor, tüm merdiven asla
+// dönmüyor.
+export const upgradeFutbolStadium = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { teamId } = request.data || {};
+  if (!teamId) throw new HttpsError('invalid-argument', 'teamId gerekli.');
+
+  const teamRef = db.collection('futbolTeams').doc(teamId);
+  const teamSnap = await teamRef.get();
+  if (!teamSnap.exists || teamSnap.data().ownerUid !== uid) {
+    throw new HttpsError('permission-denied', 'Bu takım sana ait değil.');
+  }
+  const team = teamSnap.data();
+  const currentCapacity = team.stadiumCapacity || FUTBOL_STADIUM_LADDER[0].capacity;
+  const currentIdx = FUTBOL_STADIUM_LADDER.findIndex((step) => step.capacity === currentCapacity);
+  if (currentIdx === -1 || currentIdx === FUTBOL_STADIUM_LADDER.length - 1) {
+    throw new HttpsError('failed-precondition', 'Zaten maksimum stadyum seviyesindesin.');
+  }
+  const nextStep = FUTBOL_STADIUM_LADDER[currentIdx + 1];
+
+  const userRef = db.collection('users').doc(uid);
+  const userSnap = await userRef.get();
+  if ((userSnap.data()?.gold || 0) < nextStep.cost) {
+    throw new HttpsError('failed-precondition', 'Yeterli altının yok.');
+  }
+
+  const batch = db.batch();
+  batch.update(userRef, { gold: admin.firestore.FieldValue.increment(-nextStep.cost) });
+  batch.update(teamRef, { stadiumCapacity: nextStep.capacity });
+  await batch.commit();
+
+  const afterIdx = currentIdx + 1;
+  const afterNextStep = FUTBOL_STADIUM_LADDER[afterIdx + 1] || null;
+  return {
+    ok: true,
+    currentCapacity: nextStep.capacity,
+    nextCapacity: afterNextStep ? afterNextStep.capacity : null,
+    nextCost: afterNextStep ? afterNextStep.cost : null,
+  };
+});
+
+// setFutbolTicketPrice — bilet fiyatını [1, 20] aralığında bir tam
+// sayıya günceller. Fiyat, ev sahibi bilet gelirini VE maç sonrası
+// taraftar memnuniyeti etkisini belirler (bkz. applyFutbolMatchResult).
+export const setFutbolTicketPrice = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { teamId, ticketPrice } = request.data || {};
+  if (!teamId) throw new HttpsError('invalid-argument', 'teamId gerekli.');
+  if (
+    typeof ticketPrice !== 'number' ||
+    !Number.isInteger(ticketPrice) ||
+    ticketPrice < FUTBOL_MIN_TICKET_PRICE ||
+    ticketPrice > FUTBOL_MAX_TICKET_PRICE
+  ) {
+    throw new HttpsError('invalid-argument', `Bilet fiyatı ${FUTBOL_MIN_TICKET_PRICE}-${FUTBOL_MAX_TICKET_PRICE} altın arasında tam sayı olmalı.`);
+  }
+
+  const teamRef = db.collection('futbolTeams').doc(teamId);
+  const teamSnap = await teamRef.get();
+  if (!teamSnap.exists || teamSnap.data().ownerUid !== uid) {
+    throw new HttpsError('permission-denied', 'Bu takım sana ait değil.');
+  }
+
+  await teamRef.update({ ticketPrice });
+  return { ok: true, ticketPrice };
 });
 
 // =============================================================================
@@ -10105,14 +10947,33 @@ async function buildSixtagramAttachment(uid, attachment) {
 
   // flappyScore (madde 10) — Flappy Kuş kişisel rekoru. İstemciden skor
   // ALINMIYOR — flappyScores/{uid} (submitFlappyScore Cloud Function'ının
-  // yazdığı, tek doğruluk kaynağı) doğrudan okunur.
+  // yazdığı, tek doğruluk kaynağı) doğrudan okunur. "Kaçıncı sıradayım"
+  // bilgisi de İSTEMCİDEN ALINMIYOR — flappyScores koleksiyonu (her
+  // oyuncunun SADECE kişisel en iyi skorunu tutar) üzerinde sunucuda
+  // sayım sorgusu yapılır: benden KESİNLİKLE daha yüksek skoru olan
+  // oyuncu sayısı + 1 = sıram (eşit skorlar aynı sırayı paylaşır). Sadece
+  // ilk 10'daysam VE koleksiyonda "ilk 10"un bir anlam ifade etmesi için
+  // yeterli sayıda (en az FLAPPY_MIN_PLAYERS_FOR_RANK) farklı oyuncu
+  // varsa rank alanını eke ekliyoruz; aksi halde eskisi gibi sırasız
+  // paylaşılıyor (regresyon yok).
   if (type === 'flappyScore') {
     const scoreSnap = await db.collection('flappyScores').doc(uid).get();
     const score = scoreSnap.exists ? scoreSnap.data().score || 0 : 0;
     if (score <= 0) {
       throw new HttpsError('failed-precondition', 'Henüz bir Flappy Kuş rekorun yok.');
     }
-    return { type: 'flappyScore', score };
+
+    const FLAPPY_MIN_PLAYERS_FOR_RANK = 10;
+    const [higherCountSnap, totalCountSnap] = await Promise.all([
+      db.collection('flappyScores').where('score', '>', score).count().get(),
+      db.collection('flappyScores').count().get(),
+    ]);
+    const higherCount = higherCountSnap.data().count;
+    const totalPlayers = totalCountSnap.data().count;
+    const rank = higherCount + 1;
+    const rankIncluded = totalPlayers >= FLAPPY_MIN_PLAYERS_FOR_RANK && rank <= 10;
+
+    return { type: 'flappyScore', score, rank: rankIncluded ? rank : null };
   }
 
   // parkPhoto — Park'ta çekilen "grup fotoğrafı". Bu oyunda hiç dosya

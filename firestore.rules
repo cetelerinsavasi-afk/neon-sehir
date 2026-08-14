@@ -113,6 +113,17 @@ service cloud.firestore {
         allow read: if isSignedIn();
         allow write: if false;
       }
+
+      // shares/{shareId} — fabrika hisse (stok) ilanları/satışları (bkz.
+      // functions/index.js listFactoryShare/cancelFactoryShareListing/
+      // buyFactoryShare, dailyReset temettü bloğu). Herkes görebilmeli
+      // (Fabrikalar listesindeki "Hisse Al" + hisse satın alma paneli
+      // collectionGroup('shares') ile de sorgular); yazma sadece Cloud
+      // Functions ile.
+      match /shares/{shareId} {
+        allow read: if isSignedIn();
+        allow write: if false;
+      }
     }
 
     match /shipSchedule/{date} {

@@ -1,0 +1,108 @@
+.factory-logo-preview {
+  display: flex;
+  justify-content: center;
+  padding: 16px 0;
+}
+
+.factory-logo-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.factory-logo-chip {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.factory-logo-chip.active {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.factory-logo-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+
+.factory-logo-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.factory-logo-icon-btn.active {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.factory-logo-preset-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.factory-logo-preset-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  cursor: pointer;
+}
+
+.factory-logo-color-row {
+  display: flex;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.factory-logo-color-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.factory-logo-toggle-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.factory-logo-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.factory-logo-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.factory-logo-buttons .factory-btn {
+  flex: 1;
+}
+
+.factory-result.small {
+  font-size: 11px;
+}

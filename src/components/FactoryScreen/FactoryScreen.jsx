@@ -5,20 +5,27 @@ import { useMyFactory } from '../../hooks/useMyFactory';
 import { useOpenFactories, MACHINE_LABELS } from '../../hooks/useOpenFactories';
 import { useEmployerFactory } from '../../hooks/useEmployerFactory';
 import { useInvestmentPrices } from '../../hooks/useInvestmentPrices';
+import { useListedFactoryShares } from '../../hooks/useFactoryShares';
 import {
   createFactory,
   buyFactoryMachine,
   setFactorySalary,
+  setFactoryName,
   joinFactoryMachine,
   autoJoinFactory,
   produceAtFactory,
   resignFromFactory,
-  triggerAllMining,
+  runFactoryMachines,
   fireEmployee,
   reassignEmployee,
 } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
+import FactoryBadge from './FactoryBadge';
+import FactoryLogoDesigner from './FactoryLogoDesigner';
+import FactoryShareSellModal from './FactoryShareSellModal';
+import FactoryShareBuyModal from './FactoryShareBuyModal';
+import { factoryDisplayName, computeFactoryValue } from './factoryHelpers';
 import './FactoryScreen.css';
 
 const FACTORY_CREATE_COST = 100000;
@@ -185,8 +192,12 @@ function BuyMachineModal({ onClose, ownedMiningCount }) {
 // ---------------------------------------------------------------------------
 function BrowseFactoriesModal({ onClose, onJoin, joinBusy, myUid, canJoin }) {
   const { factories } = useOpenFactories();
+  const { prices } = useInvestmentPrices();
+  const { byFactoryId } = useListedFactoryShares();
+  const [shareBuyFactory, setShareBuyFactory] = useState(null);
 
   return (
+    <>
     <div className="factory-modal-backdrop" onClick={onClose}>
       <div className="factory-modal" onClick={(e) => e.stopPropagation()}>
         <div className="factory-modal-header">
@@ -200,11 +211,18 @@ function BrowseFactoriesModal({ onClose, onJoin, joinBusy, myUid, canJoin }) {
           {factories.map((f) => (
             <div key={f.id} className="factory-browse-card">
               <div className="factory-browse-top">
-                <span className="factory-browse-owner">{f.ownerName}'in Fabrikası</span>
+                <div className="factory-browse-owner-row">
+                  <FactoryBadge logo={f.logo} name={factoryDisplayName(f)} size={32} />
+                  <span className="factory-browse-owner">{factoryDisplayName(f)}</span>
+                </div>
                 <span className="factory-browse-salary">
                   Maaş: {(f.salary || 0).toLocaleString('tr-TR')} altın
                 </span>
               </div>
+              <p className="factory-browse-value">
+                Fabrika değeri:{' '}
+                <strong>{computeFactoryValue(f.machines, prices.cryptoPrice).toLocaleString('tr-TR')} altın</strong>
+              </p>
               <p className="factory-browse-meta">
                 {f.machineCount} makine ·{' '}
                 {f.openSlots > 0 ? (
@@ -213,8 +231,8 @@ function BrowseFactoriesModal({ onClose, onJoin, joinBusy, myUid, canJoin }) {
                   'boş yer yok'
                 )}
               </p>
-              {canJoin && f.id !== myUid && f.openSlots > 0 && (
-                <div className="factory-browse-join-row">
+              <div className="factory-browse-join-row">
+                {canJoin && f.id !== myUid && f.openSlots > 0 && (
                   <button
                     className="factory-btn primary small"
                     disabled={joinBusy === f.id}
@@ -222,13 +240,26 @@ function BrowseFactoriesModal({ onClose, onJoin, joinBusy, myUid, canJoin }) {
                   >
                     {joinBusy === f.id ? '…' : 'İşe Gir'}
                   </button>
-                </div>
-              )}
+                )}
+                {f.id !== myUid && byFactoryId[f.id]?.length > 0 && (
+                  <button className="factory-btn small" onClick={() => setShareBuyFactory(f)}>
+                    Hisse Al
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
       </div>
     </div>
+    {shareBuyFactory && (
+      <FactoryShareBuyModal
+        factory={shareBuyFactory}
+        shares={byFactoryId[shareBuyFactory.id]}
+        onClose={() => setShareBuyFactory(null)}
+      />
+    )}
+    </>
   );
 }
 
@@ -242,6 +273,11 @@ function ManagementModal({ factory, machines, onClose }) {
   const [salaryError, setSalaryError] = useState(null);
   const [fireBusy, setFireBusy] = useState(null);
   const [error, setError] = useState(null);
+  const [name, setName] = useState(factory.name || '');
+  const [nameBusy, setNameBusy] = useState(false);
+  const [nameError, setNameError] = useState(null);
+  const [nameMessage, setNameMessage] = useState('');
+  const [showLogoDesigner, setShowLogoDesigner] = useState(false);
   const dateKey = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Istanbul',
     year: 'numeric',
@@ -293,13 +329,66 @@ function ManagementModal({ factory, machines, onClose }) {
     }
   };
 
+  const handleNameSave = async () => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setNameError('Fabrika adı boş olamaz.');
+      return;
+    }
+    setNameBusy(true);
+    setNameError(null);
+    setNameMessage('');
+    try {
+      await setFactoryName(trimmed);
+      setNameMessage('Kaydedildi ✓');
+    } catch (err) {
+      setNameError(err.message || 'Fabrika adı güncellenemedi.');
+    } finally {
+      setNameBusy(false);
+    }
+  };
+
   return (
+    <>
     <div className="factory-modal-backdrop" onClick={onClose}>
       <div className="factory-modal" onClick={(e) => e.stopPropagation()}>
         <div className="factory-modal-header">
           <p className="factory-modal-title">Yönetim</p>
           <button className="factory-modal-close" onClick={onClose}>
             ✕
+          </button>
+        </div>
+
+        <div className="factory-name-section">
+          <div className="factory-name-badge-row">
+            <FactoryBadge logo={factory.logo} name={factoryDisplayName(factory)} size={56} />
+            <p className="factory-step-label" style={{ borderTop: 'none', paddingTop: 0, margin: 0 }}>
+              Fabrika Adını Değiştir
+            </p>
+          </div>
+          <div className="factory-name-row">
+            <input
+              className="factory-name-input"
+              type="text"
+              maxLength={22}
+              value={name}
+              placeholder={`${factory.ownerName}'in Fabrikası`}
+              onChange={(e) => {
+                setName(e.target.value);
+                setNameMessage('');
+              }}
+            />
+            <button className="factory-btn small" disabled={nameBusy} onClick={handleNameSave}>
+              {nameBusy ? '…' : 'Kaydet'}
+            </button>
+          </div>
+          {nameMessage && <p className="factory-result small">{nameMessage}</p>}
+          {nameError && <p className="factory-error">{nameError}</p>}
+          <button
+            className="factory-btn small factory-logo-open-btn"
+            onClick={() => setShowLogoDesigner(true)}
+          >
+            🎨 Logo Tasarla
           </button>
         </div>
 
@@ -393,6 +482,10 @@ function ManagementModal({ factory, machines, onClose }) {
         {error && <p className="factory-error">{error}</p>}
       </div>
     </div>
+    {showLogoDesigner && (
+      <FactoryLogoDesigner factory={factory} onClose={() => setShowLogoDesigner(false)} />
+    )}
+    </>
   );
 }
 
@@ -400,15 +493,17 @@ function ManagementModal({ factory, machines, onClose }) {
 // Fabrika sahibi ekranı
 // ---------------------------------------------------------------------------
 function OwnerView({ factory, machines, player, myUid }) {
+  const { prices } = useInvestmentPrices();
   const [showBuy, setShowBuy] = useState(false);
   const [showManage, setShowManage] = useState(false);
   const [showBrowse, setShowBrowse] = useState(false);
+  const [showShareSell, setShowShareSell] = useState(false);
   const [selfBusy, setSelfBusy] = useState(null);
   const [selfError, setSelfError] = useState(null);
   const [produceBusy, setProduceBusy] = useState(false);
   const [produceResult, setProduceResult] = useState(null);
   const [resignBusy, setResignBusy] = useState(false);
-  const [miningBusy, setMiningBusy] = useState(false);
+  const [runBusy, setRunBusy] = useState(false);
   const dateKey = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Istanbul',
     year: 'numeric',
@@ -421,6 +516,11 @@ function OwnerView({ factory, machines, player, myUid }) {
   const otherMachines = machines.filter((m) => m.type !== 'mining');
   const miningTriggeredCount = miningMachines.filter((m) => m.miningTriggeredDateKey === dateKey).length;
   const miningAllTriggeredToday = miningMachines.length > 0 && miningTriggeredCount === miningMachines.length;
+  const allMiningHandledToday = miningMachines.length === 0 || miningAllTriggeredToday;
+  const allWorkerMachinesHandledToday =
+    otherMachines.length === 0 ||
+    otherMachines.every((m) => m.lastProducedDateKey === dateKey || m.ownerTriggeredDateKey === dateKey);
+  const machinesAlreadyRunToday = machines.length > 0 && allMiningHandledToday && allWorkerMachinesHandledToday;
 
   const handleSelfJoin = async (machineId) => {
     setSelfBusy(machineId);
@@ -460,15 +560,15 @@ function OwnerView({ factory, machines, player, myUid }) {
     }
   };
 
-  const handleTriggerAllMining = async () => {
-    setMiningBusy(true);
+  const handleRunFactoryMachines = async () => {
+    setRunBusy(true);
     setSelfError(null);
     try {
-      await triggerAllMining();
+      await runFactoryMachines();
     } catch (err) {
-      setSelfError(err.message || 'Üretim tetiklenemedi.');
+      setSelfError(err.message || 'Makineler çalıştırılamadı.');
     } finally {
-      setMiningBusy(false);
+      setRunBusy(false);
     }
   };
 
@@ -478,13 +578,21 @@ function OwnerView({ factory, machines, player, myUid }) {
         <button className="factory-nav-btn" onClick={() => setShowBrowse(true)}>
           ◀ Fabrikalar
         </button>
-        <button className="factory-nav-btn primary" onClick={() => setShowBuy(true)}>
-          Makine Al +
-        </button>
+        <div className="factory-top-row-right">
+          <button className="factory-nav-btn" onClick={() => setShowShareSell(true)}>
+            Hisse Sat
+          </button>
+          <button className="factory-nav-btn primary" onClick={() => setShowBuy(true)}>
+            Makine Al +
+          </button>
+        </div>
       </div>
 
       <div className="factory-owner-header">
-        <p className="factory-owner-title">{factory.ownerName}'in Fabrikası</p>
+        <div className="factory-owner-heading">
+          <FactoryBadge logo={factory.logo} name={factoryDisplayName(factory)} size={40} />
+          <p className="factory-owner-title">{factoryDisplayName(factory)}</p>
+        </div>
         <button className="factory-manage-btn" onClick={() => setShowManage(true)}>
           ⚙️ Yönetim
         </button>
@@ -492,6 +600,24 @@ function OwnerView({ factory, machines, player, myUid }) {
       <p className="factory-hint">
         Maaş: <strong>{(factory.salary || 0).toLocaleString('tr-TR')} altın</strong>
       </p>
+      <p className="factory-hint">
+        Fabrika değeri:{' '}
+        <strong>{computeFactoryValue(machines, prices.cryptoPrice).toLocaleString('tr-TR')} altın</strong>
+      </p>
+
+      <div className="factory-run-machines-row">
+        <button
+          className="factory-btn primary"
+          disabled={runBusy || machines.length === 0 || machinesAlreadyRunToday}
+          onClick={handleRunFactoryMachines}
+        >
+          {runBusy ? '…' : machinesAlreadyRunToday ? 'Bugün Çalıştırıldı' : 'Makineleri Çalıştır'}
+        </button>
+        <p className="factory-hint small">
+          Bugün henüz çalışan bir işçisi olmayan makineleri sen çalıştırmış olursun (1/10 verimle);
+          işçi gün içinde gelip üretirse işçinin üretimi geçerli olur.
+        </p>
+      </div>
 
       <div className="factory-machine-grid">
         {machines.length === 0 && <p className="factory-hint">Henüz bir makinen yok.</p>}
@@ -502,29 +628,28 @@ function OwnerView({ factory, machines, player, myUid }) {
               {MACHINE_LABELS.mining} ×{miningMachines.length}
             </span>
             <div className="factory-machine-self">
-              {(miningAllTriggeredToday || miningTriggeredCount > 0) && (
-                <span className="factory-machine-status">
-                  {miningAllTriggeredToday
-                    ? "✅ Üretim başladı — 00:00'da kripto bakiyene eklenecek."
-                    : `${miningTriggeredCount}/${miningMachines.length} için üretim başladı, kalanlar için de başlat.`}
-                </span>
-              )}
-              <button
-                className="factory-btn small"
-                disabled={miningAllTriggeredToday || miningBusy}
-                onClick={handleTriggerAllMining}
-              >
-                {miningBusy ? '…' : miningAllTriggeredToday ? 'Üretim Başladı' : 'Üretim Yap'}
-              </button>
+              <span className="factory-machine-status">
+                {miningAllTriggeredToday
+                  ? "✅ Üretim başladı — 00:00'da kripto bakiyene eklenecek."
+                  : miningTriggeredCount > 0
+                    ? `${miningTriggeredCount}/${miningMachines.length} için üretim başladı — "Makineleri Çalıştır" ile kalanları da başlat.`
+                    : '"Makineleri Çalıştır" butonuyla üretimi başlatabilirsin.'}
+              </span>
             </div>
           </div>
         )}
         {otherMachines.map((m) => {
           const producedToday = m.lastProducedDateKey === dateKey;
+          const ownerTriggeredToday = !producedToday && m.ownerTriggeredDateKey === dateKey;
           return (
             <div key={m.id} className={`factory-machine-card${producedToday ? ' produced' : ''}`}>
               <span className="factory-machine-emoji">{MACHINE_EMOJI[m.type]}</span>
               <span className="factory-machine-name">{MACHINE_LABELS[m.type]}</span>
+              {ownerTriggeredToday && (
+                <span className="factory-machine-status">
+                  ⏳ İşçi bugün gelmezse 00:00'da senin adına (1/10 verimle) üretilecek.
+                </span>
+              )}
               {m.workerId === myUid ? (
                 <div className="factory-machine-self">
                   <span className="factory-machine-status worker">
@@ -595,6 +720,9 @@ function OwnerView({ factory, machines, player, myUid }) {
       {showBrowse && (
         <BrowseFactoriesModal onClose={() => setShowBrowse(false)} canJoin={false} myUid={factory.id} />
       )}
+      {showShareSell && (
+        <FactoryShareSellModal factory={factory} onClose={() => setShowShareSell(false)} />
+      )}
     </div>
   );
 }
@@ -662,9 +790,14 @@ function WorkerView({ player, myUid }) {
           <span className="factory-job-salary">
             {(employerFactory?.salary || 0).toLocaleString('tr-TR')} altın
           </span>
-          <span className="factory-job-employer">
-            {employerFactory ? `${employerFactory.ownerName}'in Fabrikası` : '…'}
-          </span>
+          <div className="factory-job-employer-row">
+            {employerFactory && (
+              <FactoryBadge logo={employerFactory.logo} name={factoryDisplayName(employerFactory)} size={28} />
+            )}
+            <span className="factory-job-employer">
+              {employerFactory ? factoryDisplayName(employerFactory) : '…'}
+            </span>
+          </div>
         </div>
         <button className="factory-produce-btn" disabled={busy || producedToday} onClick={handleProduce}>
           {busy ? '…' : 'Üretim Yap'}
@@ -706,9 +839,12 @@ function WorkerView({ player, myUid }) {
 // ---------------------------------------------------------------------------
 function BrowseView({ myUid }) {
   const { factories } = useOpenFactories();
+  const { prices } = useInvestmentPrices();
+  const { byFactoryId } = useListedFactoryShares();
   const [showCreate, setShowCreate] = useState(false);
   const [joinBusy, setJoinBusy] = useState(null);
   const [error, setError] = useState(null);
+  const [shareBuyFactory, setShareBuyFactory] = useState(null);
 
   const handleJoin = async (factoryId) => {
     setJoinBusy(factoryId);
@@ -736,11 +872,18 @@ function BrowseView({ myUid }) {
         {factories.map((f) => (
           <div key={f.id} className="factory-browse-card">
             <div className="factory-browse-top">
-              <span className="factory-browse-owner">{f.ownerName}'in Fabrikası</span>
+              <div className="factory-browse-owner-row">
+                <FactoryBadge logo={f.logo} name={factoryDisplayName(f)} size={32} />
+                <span className="factory-browse-owner">{factoryDisplayName(f)}</span>
+              </div>
               <span className="factory-browse-salary">
                 Maaş: {(f.salary || 0).toLocaleString('tr-TR')} altın
               </span>
             </div>
+            <p className="factory-browse-value">
+              Fabrika değeri:{' '}
+              <strong>{computeFactoryValue(f.machines, prices.cryptoPrice).toLocaleString('tr-TR')} altın</strong>
+            </p>
             <p className="factory-browse-meta">
               {f.machineCount} makine ·{' '}
               {f.openSlots > 0 ? (
@@ -749,23 +892,37 @@ function BrowseView({ myUid }) {
                 'boş yer yok'
               )}
             </p>
-            {f.id !== myUid && f.openSlots > 0 && (
+            {(f.id !== myUid && f.openSlots > 0) || (f.id !== myUid && byFactoryId[f.id]?.length > 0) ? (
               <div className="factory-browse-join-row">
-                <button
-                  className="factory-btn primary small"
-                  disabled={joinBusy === f.id}
-                  onClick={() => handleJoin(f.id)}
-                >
-                  {joinBusy === f.id ? '…' : 'İşe Gir'}
-                </button>
+                {f.id !== myUid && f.openSlots > 0 && (
+                  <button
+                    className="factory-btn primary small"
+                    disabled={joinBusy === f.id}
+                    onClick={() => handleJoin(f.id)}
+                  >
+                    {joinBusy === f.id ? '…' : 'İşe Gir'}
+                  </button>
+                )}
+                {f.id !== myUid && byFactoryId[f.id]?.length > 0 && (
+                  <button className="factory-btn small" onClick={() => setShareBuyFactory(f)}>
+                    Hisse Al
+                  </button>
+                )}
               </div>
-            )}
+            ) : null}
           </div>
         ))}
       </div>
       {error && <p className="factory-error">{error}</p>}
 
       {showCreate && <CreateFactoryModal onClose={() => setShowCreate(false)} />}
+      {shareBuyFactory && (
+        <FactoryShareBuyModal
+          factory={shareBuyFactory}
+          shares={byFactoryId[shareBuyFactory.id]}
+          onClose={() => setShareBuyFactory(null)}
+        />
+      )}
     </div>
   );
 }

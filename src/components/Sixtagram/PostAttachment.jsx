@@ -6,7 +6,11 @@ import '../PriceChart/PriceChart.css';
 import { vehicleImage } from '../VehicleCard/VehicleCard';
 import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes';
 import { createAvatarImageCache, renderPhotoFrame as parkRenderPhotoFrame } from '../../lib/parkScene';
-import { createAvatarImageCache as createAvatarImageCache2, renderPhotoFrame } from '../../lib/canvasWorldKit';
+import {
+  createAvatarImageCache as createAvatarImageCache2, renderPhotoFrame, INTERIOR_AVATAR_SCALE,
+} from '../../lib/canvasWorldKit';
+import { useImamState } from '../../hooks/useImamState';
+import { useBeggars } from '../../hooks/useBeggars';
 import { drawBankSceneBackground } from '../BankWorldScreen/BankWorldScreen';
 import { drawKarakolSceneBackground } from '../KarakolWorldScreen/KarakolWorldScreen';
 import { drawMosqueSceneBackground } from '../MosqueWorldScreen/MosqueWorldScreen';
@@ -28,10 +32,18 @@ const interiorPhotoImageCache = createAvatarImageCache2(buildFullAvatarSvgMarkup
 // locationId -> mekanın kendi drawXxxSceneBackground'ı (bkz. madde 11/12) —
 // her mekan zaten kendi WorldScreen dosyasında dışa açık, burada sadece
 // eşleniyor; tekrar kod YOK.
+// DÜZELTME ("npcler gözükmüyor" hata raporu, Camii): drawMosqueSceneBackground
+// diğer mekanlardan farklı olarak imam/dilenci NPC'lerini SABİT/gömülü
+// tutmuyor — bunlar canlı Firestore durumu (useImamState/useBeggars, bkz.
+// MosqueWorldScreen.jsx) olduğu için üçüncü bir `{ imam, beggars }`
+// parametresi bekliyor. Eskiden burada bu parametre hiç verilmiyordu
+// (varsayılan `{}` kalıyordu), yani imam/dilenciler paylaşılan fotoğrafta
+// HİÇBİR ZAMAN çizilmiyordu — aşağıdaki `extra` artık MosqueInteriorPhotoCanvas
+// tarafından canlı state'ten dolduruluyor ve buraya kadar taşınıyor.
 const INTERIOR_BACKGROUNDS = {
   banka: (ctx, getAvatarImage) => drawBankSceneBackground(ctx, getAvatarImage),
   karakol: (ctx, getAvatarImage) => drawKarakolSceneBackground(ctx, getAvatarImage),
-  camii: (ctx, getAvatarImage) => drawMosqueSceneBackground(ctx, getAvatarImage),
+  camii: (ctx, getAvatarImage, extra) => drawMosqueSceneBackground(ctx, getAvatarImage, extra),
   gazino: (ctx, getAvatarImage) => drawCasinoSceneBackground(ctx, getAvatarImage),
   araba_galerisi: (ctx, getAvatarImage) => drawDealershipSceneBackground(ctx, getAvatarImage),
   silah_magazasi: (ctx, getAvatarImage) => drawWeaponShopSceneBackground(ctx, getAvatarImage),
@@ -40,9 +52,18 @@ const INTERIOR_BACKGROUNDS = {
 
 // InteriorPhotoCanvas — Banka/Karakol/Camii/Gazino'da çekilen fotoğrafı,
 // ParkPhotoCanvas'la AYNI mantıkla ama girilebilir mekanın kendi gerçek
-// arka planıyla (canlı NPC/imam durumu olmadan — sunucu zaten tek kişilik
-// bir kare üretiyor, bkz. functions/index.js) render eder.
-function InteriorPhotoCanvas({ locationId, entities, originX, originY }) {
+// arka planıyla render eder. `extra` — SADECE Camii'nin ihtiyaç duyduğu
+// canlı `{ imam, beggars }` verisi (bkz. MosqueInteriorPhotoCanvas), diğer
+// mekanlar için `undefined` (kendi NPC'leri zaten gömülü/sabit).
+//
+// DÜZELTME (genel, TÜM mekanlar): `focalScale` eskiden hiç verilmiyordu,
+// yani `renderPhotoFrame`'in varsayılanı (1) kullanılıyordu — oysa her
+// mekanın kendi canlı kamera önizlemesi (renderCameraPreview) her zaman
+// `AVATAR_SCALE` (INTERIOR_AVATAR_SCALE, 1.42) veriyordu. Bu fark, dikey
+// kadraj kaymasına (CAMERA_VERTICAL_LIFT * focalScale) ve kadraj kenarındaki
+// NPC'lerin paylaşılan fotoğrafta canlı önizlemedekinden farklı/dışarıda
+// kalmasına sebep oluyordu — artık burada da aynı sabit kullanılıyor.
+function InteriorPhotoCanvas({ locationId, entities, originX, originY, extra }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {
@@ -60,16 +81,28 @@ function InteriorPhotoCanvas({ locationId, entities, originX, originY }) {
         originY: originY ?? 0,
         entities,
         getAvatarImage: interiorPhotoImageCache,
-        drawBackground: (bgCtx) => drawBackground(bgCtx, interiorPhotoImageCache),
+        drawBackground: (bgCtx) => drawBackground(bgCtx, interiorPhotoImageCache, extra),
+        focalScale: INTERIOR_AVATAR_SCALE,
       });
       frames += 1;
       if (frames < 90) raf = requestAnimationFrame(draw);
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [locationId, entities, originX, originY]);
+  }, [locationId, entities, originX, originY, extra]);
 
   return <canvas ref={canvasRef} width={320} height={320} className="post-att-parkphoto-canvas" />;
+}
+
+// MosqueInteriorPhotoCanvas — Camii için InteriorPhotoCanvas'ı canlı imam/
+// dilenci verisiyle sarmalar (bkz. yukarıdaki DÜZELTME notu). Firestore
+// dinleyicileri (useImamState/useBeggars) SADECE bir Camii fotoğrafı
+// gösterilirken mount edilsin diye ayrı bir bileşende tutuluyor — akıştaki
+// diğer (Camii olmayan) gönderiler için gereksiz dinleyici açılmıyor.
+function MosqueInteriorPhotoCanvas(props) {
+  const { imam } = useImamState();
+  const { beggars } = useBeggars();
+  return <InteriorPhotoCanvas {...props} extra={{ imam, beggars }} />;
 }
 
 // ParkPhotoCanvas — kamera karesini GERÇEK park sahnesinden (aynı
@@ -280,10 +313,18 @@ export default function PostAttachment({ attachment }) {
   }
 
   if (attachment.type === 'flappyScore') {
+    // attachment.rank — SADECE sunucuda (buildSixtagramAttachment,
+    // flappyScores koleksiyonu üzerinde sayım sorgusuyla) hesaplanır ve
+    // sadece ilk 10'daysam (ve "ilk 10" anlamlıysa) dolu gelir; aksi
+    // halde null'dır ve rozet hiç gösterilmez (eski davranışta regresyon
+    // yok).
     return (
       <div className="post-att post-att-card post-att-flappy-score">
         <p className="post-att-card-title">🐦 Flappy Kuş Rekorum</p>
         <p className="post-att-fine-amount">{attachment.score}</p>
+        {attachment.rank && (
+          <p className="post-att-flappy-rank">🏆 {attachment.rank}. sırada!</p>
+        )}
       </div>
     );
   }
@@ -318,10 +359,13 @@ export default function PostAttachment({ attachment }) {
       araba_galerisi: 'Araba Galerisi', silah_magazasi: 'Silah Mağazası', modifiye_garaji: 'Modifiye Garajı',
     };
     const label = LOCATION_LABELS[attachment.locationId] || 'Mekan';
+    // Camii'nin imam/dilenci NPC'leri canlı Firestore verisi (bkz. yukarıdaki
+    // DÜZELTME notu) — diğer tüm mekanlar için sade InteriorPhotoCanvas yeterli.
+    const Canvas = attachment.locationId === 'camii' ? MosqueInteriorPhotoCanvas : InteriorPhotoCanvas;
     return (
       <div className="post-att post-att-parkphoto">
         <div className="post-att-parkphoto-frame">
-          <InteriorPhotoCanvas
+          <Canvas
             locationId={attachment.locationId}
             entities={entities}
             originX={attachment.originX}
