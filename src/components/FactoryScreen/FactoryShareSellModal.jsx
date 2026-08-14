@@ -148,11 +148,12 @@ export default function FactoryShareSellModal({ factory, onClose }) {
         </div>
 
         <p className="factory-hint">
-          Tahmini Günlük Gelir: <strong>{dailyIncome.toLocaleString('tr-TR')} altın</strong> (dünkü üretime
-          göre — sadece TAHMİNİ, her gece değişir).
+          Tahmini Günlük Kâr: <strong>{dailyIncome.toLocaleString('tr-TR')} altın</strong> (dünkü üretimden
+          işçi maaşları düşülmüş net kâr — sadece TAHMİNİ, her gece değişir, işçi maaşı üretimi aşarsa eksi
+          bile olabilir).
         </p>
         <p className="factory-hint">
-          Son 10 Günlük Ortalama Gelir:{' '}
+          Son 10 Günlük Ortalama Kâr:{' '}
           {hasIncomeHistory ? (
             <strong>{dailyIncomeAvg10.toLocaleString('tr-TR')} altın</strong>
           ) : (

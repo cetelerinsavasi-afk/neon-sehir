@@ -1089,6 +1089,17 @@ export const produceAtFactory = onCall(async (request) => {
         gold: admin.firestore.FieldValue.increment(-ownerPay),
         debtToState: admin.firestore.FieldValue.increment(shortfall),
       });
+      // factories/{ownerId}.salaryPaidToday — yeni istek: "hisse satışı
+      // için günlük kazanç hesaplamasında işçiye verilen maaş düşülecek,
+      // kâr eksi bile olabilir". Bu alan (ownerRef'ten AYRI, fabrika
+      // belgesinde) gün içinde BİRİKTİRİLİR (tam maaş tutarı — ownerPay
+      // değil, çünkü altın yetmese bile borca yazılan kısım da patrona
+      // gerçek bir maliyettir) ve gece dailyReset Part A'da o günün brüt
+      // üretim değerinden düşülüp sıfırlanır (bkz. dailyReset).
+      // set+merge (update DEĞİL) — factorySnap.exists garanti değil (üstteki
+      // salary okuması da aynı şekilde defansif), doküman yoksa update()
+      // hata fırlatırdı.
+      tx.set(factoryRef, { salaryPaidToday: admin.firestore.FieldValue.increment(salary) }, { merge: true });
       if (shortfall > 0) {
         newOwnerDebt = (owner?.debtToState || 0) + shortfall;
       }
@@ -1567,7 +1578,17 @@ export const dailyReset = onSchedule(
       let opCount = 0;
       const batchJobs = [];
       allFactoriesSnap.forEach((f) => {
-        const dailyIncome = Math.round(incomeByFactory.get(f.id) || 0);
+        // Yeni istek: "hisse satışı için günlük kazanç hesabında işçiye
+        // verilen maaş düşülecek, kâr eksi bile olabilir" — dailyIncome
+        // artık BRÜT üretim değeri değil, o günkü (gerçek işçilerle
+        // üretilen makinelerin — sahip-yerine-üretimde maaş ödenmez, kendi
+        // fabrikanda kendin çalışıyorsan da ödenmez) TOPLAM maaş
+        // ödemelerinin düşüldüğü NET KÂR. Kasıtlı olarak 0'da
+        // KIRPILMIYOR — bir makinenin ürettiği malın anlık satış değeri
+        // maaştan düşük kalırsa o gün gerçekten zarar edilmiş demektir.
+        const grossIncome = incomeByFactory.get(f.id) || 0;
+        const salaryPaid = f.data().salaryPaidToday || 0;
+        const dailyIncome = Math.round(grossIncome - salaryPaid);
         factoryDailyIncomeMap.set(f.id, dailyIncome);
 
         // Son 10 günlük gelir geçmişi: Firestore'da atomik "ekle ve N ile
@@ -1590,6 +1611,10 @@ export const dailyReset = onSchedule(
           dailyIncomeDateKey: prevDateKey,
           dailyIncomeHistory,
           dailyIncomeAvg10,
+          // Yarın için sayaç sıfırlanır — bugün zaten yukarıda okunup
+          // düşüldü (produceAtFactory bundan sonra tekrar biriktirmeye
+          // başlar).
+          salaryPaidToday: 0,
         });
         opCount += 1;
         if (opCount >= 400) {
