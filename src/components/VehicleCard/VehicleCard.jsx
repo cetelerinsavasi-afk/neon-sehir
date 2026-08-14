@@ -23,9 +23,16 @@ export function vehicleImage(catalogId) {
   return vehicleCatalog.find((v) => v.id === catalogId)?.image;
 }
 
+// Aracın GÜNCEL katalog fiyatı — eski araçlar da fiyat güncellemesinden
+// sonra yeni fiyata göre hesaplanır (sadece zaten çekilmiş kredi borçları
+// donmuş kalır, bkz. functions/index.js takeVehicleLoan).
+export function vehicleLivePrice(vehicle) {
+  return vehicleCatalog.find((v) => v.id === vehicle.catalogId)?.price ?? vehicle.baseGalleryValue ?? 0;
+}
+
 export function vehicleRequiredQty(vehicle) {
   // Fiyatla doğru orantılı: 1000₺ araba için 2 malzeme, 100.000₺ için 200.
-  return Math.max(2, Math.round((vehicle.baseGalleryValue || 0) / 500));
+  return Math.max(2, Math.round(vehicleLivePrice(vehicle) / 500));
 }
 
 export function LifeBar({ item }) {
@@ -53,7 +60,7 @@ export default function VehicleCard({ vehicle, materialsQty, repairQty, busy, on
   const req = vehicleRequiredQty(vehicle);
   const img = vehicleImage(vehicle.catalogId);
   const repairsUsed = vehicle.repairsUsed || 0;
-  const repairReq = repairRequiredQty(vehicle.baseGalleryValue);
+  const repairReq = repairRequiredQty(vehicleLivePrice(vehicle));
   const repairMaxed = repairsUsed >= MAX_REPAIRS;
   return (
     <div className="vcard-card">

@@ -2471,9 +2471,13 @@ export const upgradeVehicle = onCall(async (request) => {
     if (vehicle[flagField]) {
       throw new HttpsError('failed-precondition', 'Bu geliştirme zaten uygulanmış.');
     }
-    // Malzeme gereksinimi aracın fiyatıyla doğru orantılı: 1000₺ araba
-    // için 2 malzeme, 100.000₺ araba için 200 malzeme (oran: fiyat/500).
-    const requiredQty = Math.max(2, Math.round((vehicle.baseGalleryValue || 0) / 500));
+    // Malzeme gereksinimi aracın GÜNCEL katalog fiyatıyla doğru orantılı
+    // (eski araçlar da fiyat güncellemesinden sonra yeni orana göre
+    // hesaplanır — sadece zaten çekilmiş kredi borçları donmuş kalır):
+    // 1000₺ araba için 2 malzeme, 100.000₺ araba için 200 malzeme (oran:
+    // fiyat/500).
+    const livePrice = VEHICLE_CATALOG[vehicle.catalogId]?.price ?? vehicle.baseGalleryValue ?? 0;
+    const requiredQty = Math.max(2, Math.round(livePrice / 500));
     const qty = inventorySnap.exists ? inventorySnap.data().quantity || 0 : 0;
     if (qty < requiredQty) {
       throw new HttpsError(
@@ -2681,7 +2685,8 @@ export const upgradeWeapon = onCall(async (request) => {
 // repairItem — araç/silah tamiri. Ömrü (lifeDays) +3 gün uzatır (orijinal
 // 30 günü aşmaz), tamir hakkını (repairsUsed) 1 artırır (toplamda en fazla
 // 10 kez tamir edilebilir). Gereken tamir malzemesi = fiyat/100 (araçta
-// baseGalleryValue, silahta basePrice) — silah geliştirmeyle aynı oran.
+// GÜNCEL katalog fiyatı — eski araçlar da yeni fiyata göre hesaplanır,
+// silahta basePrice) — silah geliştirmeyle aynı oran.
 // ---------------------------------------------------------------------------
 export const repairItem = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -2705,7 +2710,10 @@ export const repairItem = onCall(async (request) => {
     if (repairsUsed >= VEHICLE_WEAPON_MAX_REPAIRS) {
       throw new HttpsError('failed-precondition', 'Tamir hakkı tükendi.');
     }
-    const price = itemType === 'vehicle' ? item.baseGalleryValue || 0 : item.basePrice || 0;
+    const price =
+      itemType === 'vehicle'
+        ? VEHICLE_CATALOG[item.catalogId]?.price ?? item.baseGalleryValue ?? 0
+        : item.basePrice || 0;
     const requiredQty = repairRequiredQty(price);
     const have = invSnap.exists ? invSnap.data().quantity || 0 : 0;
     if (have < requiredQty) {
@@ -2957,7 +2965,10 @@ export const sellInvestment = onCall(async (request) => {
 // BANKA KREDİSİ — ARAÇ İPOTEĞİ (Bölüm 8.4)
 // =============================================================================
 //
-// - Kredi limiti = aracın galerideki GÜNCEL DEĞERİ (baseGalleryValue) —
+// - Kredi limiti = aracın GÜNCEL katalog fiyatı (VEHICLE_CATALOG'dan canlı
+//   okunur — fiyat güncellemesi eski araçlara da anında yansır, ama zaten
+//   çekilmiş bir kredinin borcu asla değişmez çünkü loanPrincipal/
+//   loanTotalOwed kredi ANINDA dondurularak araç belgesine yazılır) —
 //   geliştirmeler (vites/depo) limiti ARTIRMAZ.
 // - Vade: 10 gün → %20 faiz, 20 gün → %40 faiz (tek seferlik, anaparaya
 //   eklenir). Ödeme dilim dilim veya tek seferde yapılabilir.
@@ -3010,7 +3021,7 @@ export const takeVehicleLoan = onCall(async (request) => {
       );
     }
 
-    const principal = vehicle.baseGalleryValue;
+    const principal = VEHICLE_CATALOG[vehicle.catalogId]?.price ?? vehicle.baseGalleryValue;
     const totalOwed = Math.round(principal * (1 + interestRate));
     totalOwedForSms = totalOwed;
     const now = Date.now();

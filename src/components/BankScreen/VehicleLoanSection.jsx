@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useVehicles } from '../../hooks/useVehicles';
 import { takeVehicleLoan, repayVehicleLoan } from '../../services/gameActions';
+import { vehicleLivePrice } from '../VehicleCard/VehicleCard';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './VehicleLoanSection.css';
 
@@ -54,7 +55,7 @@ export default function VehicleLoanSection() {
             <option value="">Araç seç…</option>
             {freeVehicles.map((v) => (
               <option key={v.id} value={v.id}>
-                {v.model} (limit: {v.baseGalleryValue.toLocaleString('tr-TR')} altın · ömür:{' '}
+                {v.model} (limit: {vehicleLivePrice(v).toLocaleString('tr-TR')} altın · ömür:{' '}
                 {v.lifeDays ?? 50} gün)
               </option>
             ))}

@@ -49,6 +49,7 @@ export default function FutbolStadyum({ team }) {
 
   const currentIdx = STADIUM_LADDER.findIndex((step) => step.capacity === capacity);
   const nextStep = currentIdx >= 0 ? STADIUM_LADDER[currentIdx + 1] : null;
+  const tierProgress = currentIdx >= 0 ? ((currentIdx + 1) / STADIUM_LADDER.length) * 100 : 0;
 
   const [ticketPrice, setTicketPrice] = useState(team.ticketPrice || DEFAULT_TICKET_PRICE);
   const [savedTicketPrice, setSavedTicketPrice] = useState(team.ticketPrice || DEFAULT_TICKET_PRICE);
@@ -99,26 +100,36 @@ export default function FutbolStadyum({ team }) {
       {error && <p className="futbol-admin-error">{error}</p>}
 
       <div className="futbol-stadyum-card">
-        <p className="futbol-kadro-section-title">Stadyum Kapasitesi</p>
-        <p className="futbol-stadyum-capacity">{capacity.toLocaleString('tr-TR')} kişi</p>
+        <p className="futbol-kadro-section-title">🏟️ Stadyum Kapasitesi</p>
+        <div className="futbol-stadyum-capacity-row">
+          <span className="futbol-stadyum-capacity-icon">🏟️</span>
+          <p className="futbol-stadyum-capacity">{capacity.toLocaleString('tr-TR')} kişi</p>
+        </div>
+
+        <div className="futbol-stadyum-tier-track">
+          <div className="futbol-stadyum-tier-fill" style={{ width: `${tierProgress}%` }} />
+        </div>
+        <p className="futbol-stadyum-tier-label">
+          Seviye {currentIdx + 1} / {STADIUM_LADDER.length}
+        </p>
 
         {nextStep ? (
           <>
             <p className="futbol-buy-meta">
-              Bir sonraki seviye: {nextStep.capacity.toLocaleString('tr-TR')} kişi —{' '}
+              📈 Bir sonraki seviye: {nextStep.capacity.toLocaleString('tr-TR')} kişi — 💰{' '}
               {nextStep.cost.toLocaleString('tr-TR')} altın
             </p>
             <button className="futbol-admin-submit" disabled={busyUpgrade} onClick={handleUpgrade}>
-              {busyUpgrade ? '...' : 'Stadyumu Büyüt'}
+              {busyUpgrade ? '...' : '🏗️ Stadyumu Büyüt'}
             </button>
           </>
         ) : (
-          <p className="futbol-placeholder">Maksimum seviyedesiniz.</p>
+          <p className="futbol-placeholder">🏆 Maksimum seviyedesiniz.</p>
         )}
       </div>
 
       <div className="futbol-stadyum-card">
-        <p className="futbol-kadro-section-title">Bilet Fiyatı</p>
+        <p className="futbol-kadro-section-title">🎟️ Bilet Fiyatı</p>
         <div className="futbol-stadyum-price-stepper">
           <button
             type="button"
@@ -128,7 +139,7 @@ export default function FutbolStadyum({ team }) {
           >
             −
           </button>
-          <span className="futbol-stadyum-price-value">{ticketPrice}</span>
+          <span className="futbol-stadyum-price-value">🎫 {ticketPrice}</span>
           <button
             type="button"
             className="qty-stepper-btn"
@@ -140,19 +151,19 @@ export default function FutbolStadyum({ team }) {
         </div>
 
         <div className="futbol-stadyum-estimate">
-          <p className="futbol-buy-meta">
-            Tahmini seyirci: {attendance.toLocaleString('tr-TR')} · Tahmini bilet geliri:{' '}
-            {revenue.toLocaleString('tr-TR')} altın
+          <p className="futbol-buy-meta futbol-stadyum-estimate-row">
+            <span>👥 Tahmini seyirci: {attendance.toLocaleString('tr-TR')}</span>
+            <span>💰 Tahmini bilet geliri: {revenue.toLocaleString('tr-TR')} altın</span>
           </p>
           {fanEffect.type === 'loss' && (
             <p className="futbol-stadyum-warning">
-              ⚠️ Bilet fiyatların yüksek: 1-{fanEffect.amount.toLocaleString('tr-TR')} taraftar
+              📉 Bilet fiyatın yüksek: 1-{fanEffect.amount.toLocaleString('tr-TR')} taraftar
               kaybedebilirsin.
             </p>
           )}
           {fanEffect.type === 'gain' && (
             <p className="futbol-stadyum-positive">
-              1-{fanEffect.amount.toLocaleString('tr-TR')} taraftar kazanabilirsin.
+              📈 1-{fanEffect.amount.toLocaleString('tr-TR')} taraftar kazanabilirsin.
             </p>
           )}
         </div>
@@ -162,7 +173,7 @@ export default function FutbolStadyum({ team }) {
           disabled={busySave || ticketPrice === savedTicketPrice}
           onClick={handleSaveTicketPrice}
         >
-          {busySave ? '...' : 'Bilet Fiyatını Kaydet'}
+          {busySave ? '...' : '💾 Bilet Fiyatını Kaydet'}
         </button>
       </div>
 
