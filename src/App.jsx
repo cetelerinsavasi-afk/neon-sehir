@@ -274,7 +274,6 @@ function GameShell() {
         <CasinoWorldScreen
           onExit={() => setCasinoOpen(false)}
           onOpenHeist={openHeistScreen}
-          onEnterTable={openTable}
         />
       )}
 

@@ -13,6 +13,7 @@ import PhoneScreen from '../Phone/PhoneScreen';
 import LotteryScreen from '../LotteryScreen/LotteryScreen';
 import SlotScreen from '../SlotScreen/SlotScreen';
 import OnNumaraScreen from '../OnNumaraScreen/OnNumaraScreen';
+import OnNumaraTable from '../OnNumaraScreen/OnNumaraTable';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import { buyFromGazinoBar, createSixtagramPost, enterInterior } from '../../services/gameActions';
 import '../../styles/worldScreenChrome.css';
@@ -395,13 +396,27 @@ export function drawCasinoSceneBackground(ctx, getAvatarImage) {
   ctx.fillText(PIYANGO_NPC.name, PIYANGO_SEAT.cx, PIYANGO_BASE_Y - SPRITE_H * AVATAR_SCALE - 8);
 }
 
-export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable }) {
+// onEnterTable artık PROP olarak alınmıyor — 10 Numara masası artık
+// App.jsx seviyesindeki ayrı tam ekrana (OnNumaraFullScreen) değil,
+// doğrudan bu bileşenin kendi 'onnumara' panelinin içinde açılıyor (bkz.
+// activeTableId/handleEnterTableLocal yukarısı).
+export default function CasinoWorldScreen({ onExit, onOpenHeist }) {
   const { user } = useAuth();
   const { player } = usePlayer();
   const { others, updatePresence, clearPresence } = useInteriorPresence('gazino');
 
   const [ready, setReady] = useState(false);
   const [panel, setPanel] = useState(null); // 'slot' | 'piyango' | 'onnumara' | 'bar' | null
+  // activeTableId — yeni istek: "10 numara oyunu gazinodayken açılsın,
+  // casinodan çıkmayı gerektirmesin". Eskiden 10 Numara masasına
+  // girildiğinde App.jsx seviyesinde AYRI bir tam ekran (OnNumaraFullScreen)
+  // açılıyordu — bu, gazino sahnesinin tamamen kaybolup "gazinodan
+  // çıkılmış" gibi görünmesine sebep oluyordu. Artık masaya girince/
+  // katılınca bu YEREL state dolduruluyor ve aynı 'onnumara' panelinin
+  // İÇİNDE (OnNumaraScreen lobisi yerine) doğrudan OnNumaraTable
+  // (gerçek oyun) render ediliyor — gazino canvas'ı arkada görünmeye
+  // devam ediyor (bkz. aşağıdaki panel JSX'i).
+  const [activeTableId, setActiveTableId] = useState(null);
   // sittingSeatId — yeni istek (madde 3): "gazinodaki bar sandalyelerine
   // oturulabilsin", BankWorldScreen'deki CHAIRS mekanizmasıyla BİREBİR aynı
   // desen, sadece BAR_STOOLS'a uygulanıyor.
@@ -605,6 +620,33 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
     setSittingSeatId(null);
   }
 
+  // Yeni istek: "o anda casinodayken 10 numara oynayan kişide, 10 numara
+  // oynuyor yazsın" — masaya oturunca/katılınca kendi mekan-içi (interior
+  // presence) belgeme `activity:'onnumara'` yazıyoruz; gazinodaki DİĞER
+  // oyuncular bunu `others` listesinden okuyup ismimin altında bir etiket
+  // olarak görüyor (bkz. renderFrame). Hareket/bekleme senkronu (yukarıdaki
+  // ana döngü) `merge:true` ile yazdığı için bu alanı SİLMEZ — sadece masayı
+  // terk edince (activity:null) veya gazinodan tamamen çıkınca
+  // (clearPresence, mevcut giriş/çıkış efektinde) temizlenir.
+  useEffect(() => {
+    if (!user) return;
+    updatePresence(user.uid, { activity: activeTableId ? 'onnumara' : null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTableId, user?.uid]);
+
+  function handleEnterTableLocal(tableId) {
+    setActiveTableId(tableId);
+  }
+
+  function handleLeaveTable() {
+    // OnNumaraTable'ın "Masadan Ayrıl" butonu leaveOnNumaraTable'ı zaten
+    // çağırdıktan SONRA bu callback'i (onLeave) tetikliyor — burada sadece
+    // yerel state'i temizleyip panel'i 10 Numara lobisine (OnNumaraScreen)
+    // döndürüyoruz, eskiden OnNumaraFullScreen kapanınca da tam olarak bu
+    // olurdu (gazino sahnesi + hâlâ açık 'onnumara' paneli).
+    setActiveTableId(null);
+  }
+
   // --- Kamera (madde 2/13) — BankWorldScreen'deki aynı desen.
   function buildCameraEntities() {
     const p = posRef.current;
@@ -717,6 +759,7 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
         x: o.x, y: o.y, avatar: o.avatar, pose: o.pose === 'sit' ? 'sit' : (o.pose || 'idle'),
         facing: o.facing || 'down', name: o.displayName || 'Oyuncu',
         bubbleData: o.chatText && o.chatTs && now - o.chatTs < CHAT_BUBBLE_MS ? { text: o.chatText, ts: o.chatTs } : null,
+        activity: o.activity || null,
         isSelf: false,
       })),
       {
@@ -729,6 +772,17 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
       .map((e) => ({ ...e, baseY: e.y + (e.pose === 'sit' ? SPRITE_H * AVATAR_SCALE * 0.32 : 0) }))
       .sort((a, b) => a.y - b.y);
     entities.forEach((e) => drawAvatarSprite(ctx, e, getAvatarImage, { showName: !e.isSelf, scale: AVATAR_SCALE }));
+
+    // Yeni istek: "casinodayken 10 numara oynayan kişide, 10 numara
+    // oynuyor yazsın" — ismin (baseY+14, bkz. drawAvatarSprite) hemen
+    // altına küçük bir etiket daha çiziyoruz, SADECE diğer oyuncular için.
+    entities.forEach((e) => {
+      if (e.isSelf || e.activity !== 'onnumara') return;
+      ctx.fillStyle = 'rgba(255,210,63,0.95)';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('🃏 10 Numara oynuyor', e.x, e.baseY + 27);
+    });
 
     if (holdingRef.current) {
       drawHeldIcon(ctx, holdingRef.current, posRef.current.x + 30, posRef.current.y - SPRITE_H * AVATAR_SCALE * 0.42 + sitShift, { animate: true });
@@ -878,7 +932,11 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist, onEnterTable })
             <p className="ws-panel-title">{panelTitles[panel]}</p>
             {panel === 'slot' && <SlotScreen />}
             {panel === 'piyango' && <LotteryScreen />}
-            {panel === 'onnumara' && <OnNumaraScreen onEnterTable={onEnterTable} />}
+            {panel === 'onnumara' && (
+              activeTableId
+                ? <OnNumaraTable tableId={activeTableId} myUid={user?.uid} onLeave={handleLeaveTable} />
+                : <OnNumaraScreen onEnterTable={handleEnterTableLocal} />
+            )}
             {panel === 'bar' && (
               <div className="cw-bar-grid">
                 {BAR_MENU.map((item) => (
