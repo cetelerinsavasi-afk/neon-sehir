@@ -7344,6 +7344,10 @@ export const createOnNumaraTable = onCall(async (request) => {
     round: null,
     reactions: {},
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    // updatedAt — yeni istek: "içinde oyuncu olmayan masalar kapansın" —
+    // her masa yazısında bu alan tazelenir, expireOnNumaraTables (aşağıda)
+    // uzun süre hiç yazı almamış (terk edilmiş) masaları kapatır.
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
   return { ok: true, tableId: tableRef.id };
@@ -7372,6 +7376,7 @@ export const joinOnNumaraTable = onCall(async (request) => {
     tx.update(tableRef, {
       seatOrder: admin.firestore.FieldValue.arrayUnion(uid),
       [`seats.${uid}`]: { displayName: user.displayName || 'Oyuncu', netChange: 0 },
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
   });
 
@@ -7392,10 +7397,13 @@ export const leaveOnNumaraTable = onCall(async (request) => {
     const updates = {
       seatOrder: newSeatOrder,
       [`seats.${uid}`]: admin.firestore.FieldValue.delete(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
     if (newSeatOrder.length === 0) {
-      // Masada kimse kalmadı — "Açık Masalar"dan kaybolsun.
+      // Masada kimse kalmadı — "Açık Masalar"dan kaybolsun (yeni istek:
+      // "biz masadaki son kişiysek masa direkt kapansın" — bu ANINDA olur,
+      // beklemeye gerek yok).
       updates.status = 'closed';
     } else if (table.creatorUid === uid) {
       // Masayı kuran ayrıldı — kart dağıtma yetkisi sıradaki oyuncuya geçer.
@@ -7474,6 +7482,7 @@ export const dealOnNumaraCards = onCall(async (request) => {
     tx.update(tableRef, {
       seats: newSeats,
       seatOrder: newSeatOrder,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       round: {
         phase: firstTurnUid ? 'playing' : 'dealer',
         participants: eligible,
@@ -7562,6 +7571,7 @@ async function resolveOnNumaraIfDealerPhase(tableId) {
       });
       tx.update(tableRef, {
         seats: newSeatsRefund,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         round: {
           ...round,
           phase: 'resolved',
@@ -7621,6 +7631,7 @@ async function resolveOnNumaraIfDealerPhase(tableId) {
 
     tx.update(tableRef, {
       seats: newSeatsWin,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       round: {
         ...round,
         phase: 'resolved',
@@ -7670,6 +7681,7 @@ async function resolveOnNumaraAction({ tableId, uid, action }) {
     const nextTurnUid = stillMyTurn ? uid : findNextTurnUid(round.participants, newHands, uid);
 
     tx.update(tableRef, {
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       round: {
         ...round,
         hands: newHands,
@@ -7727,7 +7739,10 @@ export const sendOnNumaraEmoji = onCall(async (request) => {
   await db
     .collection('onNumaraTables')
     .doc(tableId)
-    .update({ [`reactions.${uid}`]: { emoji, at: Date.now() } });
+    .update({
+      [`reactions.${uid}`]: { emoji, at: Date.now() },
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
   return { ok: true };
 });
 
@@ -7743,11 +7758,41 @@ export const pingRoom = onCall(async (request) => {
   if (!['onNumaraTables', 'raceRooms'].includes(collectionName)) {
     throw new HttpsError('invalid-argument', 'Geçersiz koleksiyon.');
   }
-  await db
-    .collection(collectionName)
-    .doc(docId)
-    .update({ [`lastPing.${uid}`]: Date.now() });
+  const patch = { [`lastPing.${uid}`]: Date.now() };
+  // onNumaraTables için updatedAt'i de tazeliyoruz — expireOnNumaraTables
+  // (aşağıda) hâlâ oynanan ama başka hiçbir alanı değişmeyen masaları
+  // yanlışlıkla "terk edilmiş" sanıp kapatmasın diye.
+  if (collectionName === 'onNumaraTables') {
+    patch.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+  }
+  await db.collection(collectionName).doc(docId).update(patch);
   return { ok: true };
+});
+
+// expireOnNumaraTables — yeni istek: "içinde oyuncu olmayan / terk edilmiş
+// masalar kapansın". Normal akışta masa zaten leaveOnNumaraTable içinde
+// ANINDA kapanıyor (son oyuncu ayrılınca) — bu sadece tarayıcı sekmesi
+// kapatılıp leaveOnNumaraTable'ın hiç çağrılamadığı durumlar için bir arka
+// plan güvenlik ağı (bkz. expireRaceRooms/expireHeistPlans ile AYNI desen).
+// Tek eşitlik filtresiyle (status) tüm açık masaları çekip zaman
+// karşılaştırmasını JS tarafında yapıyoruz — composite index gerekmez.
+export const expireOnNumaraTables = onSchedule({ schedule: 'every 5 minutes' }, async () => {
+  const now = Date.now();
+  const STALE_MS = 10 * 60 * 1000; // 10 dakikadır hiç hareket olmayan masa = terk edilmiş.
+  const openSnap = await db.collection('onNumaraTables').where('status', '==', 'open').get();
+  const batch = db.batch();
+  let any = false;
+  openSnap.forEach((doc) => {
+    const d = doc.data();
+    // updatedAt her yazıda tazelenir; eski (bu değişiklikten önce açılmış)
+    // kayıtlarda hiç yoksa createdAt'e düşüyoruz.
+    const lastActivityMs = d.updatedAt?.toMillis?.() ?? d.createdAt?.toMillis?.() ?? 0;
+    if (!(d.seatOrder?.length > 0) || (lastActivityMs && now - lastActivityMs >= STALE_MS)) {
+      batch.update(doc.ref, { status: 'closed' });
+      any = true;
+    }
+  });
+  if (any) await batch.commit();
 });
 
 // --- Futbol modülü: Faz 1 (iskelet) ---

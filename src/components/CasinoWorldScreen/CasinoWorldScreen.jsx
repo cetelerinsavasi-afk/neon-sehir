@@ -15,7 +15,7 @@ import SlotScreen from '../SlotScreen/SlotScreen';
 import OnNumaraScreen from '../OnNumaraScreen/OnNumaraScreen';
 import OnNumaraTable from '../OnNumaraScreen/OnNumaraTable';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
-import { buyFromGazinoBar, createSixtagramPost, enterInterior } from '../../services/gameActions';
+import { buyFromGazinoBar, createSixtagramPost, enterInterior, leaveOnNumaraTable } from '../../services/gameActions';
 import '../../styles/worldScreenChrome.css';
 import './CasinoWorldScreen.css';
 
@@ -441,6 +441,7 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist }) {
   const walkAnimRef = useRef(0);
   const poseRef = useRef('idle');
   const sittingSeatRef = useRef(null);
+  const activeTableIdRef = useRef(null);
   const playerRef = useRef(null);
   const holdingRef = useRef(null);
   const holdingTimeoutRef = useRef(null);
@@ -466,6 +467,23 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist }) {
   useEffect(() => { myBubbleRef.current = myBubble; }, [myBubble]);
   useEffect(() => { othersRef.current = others; }, [others]);
   useEffect(() => { sittingSeatRef.current = sittingSeatId; }, [sittingSeatId]);
+  useEffect(() => { activeTableIdRef.current = activeTableId; }, [activeTableId]);
+
+  // Yeni istek: "masadan ayrıl yapmadan üstteki boşluğa tıklayınca oyun
+  // hâlâ devam ediyor" — panel 'onnumara' DIŞINDA bir şeye değiştiği her an
+  // (backdrop'a tıklama, "Uzaklaş", ya da başka bir istasyona yürüme) hâlâ
+  // aktif bir masam varsa gerçekten masadan ayrılıyorum. leaveOnNumaraTable
+  // idempotent (zaten ayrılmışsam sessizce no-op) — OnNumaraTable'ın kendi
+  // "Masadan Ayrıl" butonuyla çakışma riski yok.
+  useEffect(() => {
+    if (panel !== 'onnumara' && activeTableIdRef.current) {
+      const tid = activeTableIdRef.current;
+      activeTableIdRef.current = null;
+      setActiveTableId(null);
+      leaveOnNumaraTable(tid).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panel]);
 
   useEffect(() => () => {
     if (holdingTimeoutRef.current) clearTimeout(holdingTimeoutRef.current);
@@ -510,6 +528,14 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist }) {
       });
     return () => {
       cancelled = true;
+      // Yeni istek: gazinodan tamamen çıkarken (✕ butonu/unmount) hâlâ
+      // aktif bir 10 Numara masam varsa, orada da gerçekten ayrılmış
+      // olayım — aksi halde masa sunucuda benimle "dolu" görünmeye devam
+      // ederdi (bkz. yukarıdaki panel-izleme effect'iyle AYNI gerekçe).
+      if (activeTableIdRef.current) {
+        leaveOnNumaraTable(activeTableIdRef.current).catch(() => {});
+        activeTableIdRef.current = null;
+      }
       if (user) clearPresence(user.uid);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
