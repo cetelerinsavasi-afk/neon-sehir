@@ -267,7 +267,18 @@ service cloud.firestore {
         // activity — yeni istek: "casinodayken 10 numara oynayan kişide, 10
         // numara oynuyor yazsın" (bkz. CasinoWorldScreen.jsx). Şimdilik tek
         // geçerli değer 'onnumara', boş bırakmak (masayı terk etmek) için null.
-        && (d.activity == null || d.activity == 'onnumara');
+        // ACİL DÜZELTME: bu alan enterInterior tarafından yazılan İLK
+        // dokümanda hiç yoktu (sadece sonradan bir oyuncu 10 Numara
+        // oynayınca eklenir) — Firestore Rules'ta var OLMAYAN bir map
+        // anahtarına `d.activity == null` ile erişmek, eşit değil "yok"
+        // sonucu değil, DEĞERLENDİRME HATASI verir ve bu da kuralın
+        // TAMAMEN reddedilmesine yol açar. Bu yüzden konum/sohbet gibi
+        // "activity" ile alakasız TÜM güncellemeler (mesajlar, hareket)
+        // sessizce permission-denied ile reddediliyordu — diğer oyuncular
+        // hep giriş noktasında donmuş görünüyordu, mesajlar gitmiyordu.
+        // `'activity' in d` ÖNCE anahtarın var olup olmadığını (hata
+        // fırlatmadan) kontrol eder.
+        && (!('activity' in d) || d.activity == null || d.activity == 'onnumara');
     }
     match /interiorPresence/{uid} {
       allow read: if isSignedIn();

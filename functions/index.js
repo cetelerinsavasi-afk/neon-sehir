@@ -4085,6 +4085,10 @@ export const enterInterior = onCall(async (request) => {
     seat: null,
     chatText: null,
     chatTs: null,
+    // activity — baştan null olarak yazılıyor ki firestore.rules'taki
+    // validInteriorPresenceFields alan hiç yokken değil, HER ZAMAN mevcut
+    // (ama null) bir alan olarak kontrol edebilsin (bkz. rules'taki not).
+    activity: null,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     enteredAt: admin.firestore.FieldValue.serverTimestamp(),
   };
