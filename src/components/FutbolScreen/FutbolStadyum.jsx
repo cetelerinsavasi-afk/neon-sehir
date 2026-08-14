@@ -13,16 +13,19 @@ const MAX_TICKET_PRICE = 20;
 // bu ekranın JSX'i: her zaman sadece "mevcut" ve "bir sonraki" seviye
 // render edilir). Gerçek yükseltme sunucuda (upgradeFutbolStadium)
 // KENDİ merdiveniyle doğrulanır — buradaki liste sadece bir önizleme.
+// Yeni istek: "stadyum kapasite yükseltme fiyatlarını yarı yarıya
+// düşürelim" — tüm maliyetler (0 hariç) eskisinin YARISI, sunucudaki
+// FUTBOL_STADIUM_LADDER ile AYNI (bkz. functions/index.js).
 const STADIUM_LADDER = [
   { capacity: 2500, cost: 0 },
-  { capacity: 5000, cost: 1000000 },
-  { capacity: 10000, cost: 2000000 },
-  { capacity: 20000, cost: 4000000 },
-  { capacity: 40000, cost: 8000000 },
-  { capacity: 75000, cost: 16000000 },
-  { capacity: 150000, cost: 32000000 },
-  { capacity: 250000, cost: 75000000 },
-  { capacity: 500000, cost: 150000000 },
+  { capacity: 5000, cost: 500000 },
+  { capacity: 10000, cost: 1000000 },
+  { capacity: 20000, cost: 2000000 },
+  { capacity: 40000, cost: 4000000 },
+  { capacity: 75000, cost: 8000000 },
+  { capacity: 150000, cost: 16000000 },
+  { capacity: 250000, cost: 37500000 },
+  { capacity: 500000, cost: 75000000 },
 ];
 
 // Bilet fiyatına göre tahmini seyirci sayısı: taraftar/bilet fiyatı,
@@ -32,15 +35,16 @@ function estimateAttendance(fans, ticketPrice, capacity) {
   return Math.min(capacity, Math.floor((fans || 0) / (ticketPrice || DEFAULT_TICKET_PRICE)));
 }
 
-// Bilet fiyatının taraftar memnuniyeti üzerindeki azami etkisi (kayıp
-// tarafı fiyat > 10, kazanç tarafı fiyat < 10) — sunucudaki
-// futbolTicketPriceFanDelta ile AYNI formül.
+// Bilet fiyatının taraftar memnuniyeti üzerindeki azami etkisi — yeni
+// istek: nötr band artık 9-10-11 (tek nokta değil), sınırın dışında her
+// yönde doğrusal +1000/birim — sunucudaki futbolTicketPriceFanDelta ile
+// AYNI formül (bkz. functions/index.js'teki tam açıklama/doğrulama).
 function maxFanEffect(ticketPrice) {
-  if (ticketPrice === DEFAULT_TICKET_PRICE) return { type: 'none', amount: 0 };
-  if (ticketPrice > DEFAULT_TICKET_PRICE) {
-    return { type: 'loss', amount: (ticketPrice - DEFAULT_TICKET_PRICE) * 100 };
+  if (ticketPrice >= 9 && ticketPrice <= 11) return { type: 'none', amount: 0 };
+  if (ticketPrice > 11) {
+    return { type: 'loss', amount: (ticketPrice - 11) * 1000 };
   }
-  return { type: 'gain', amount: Math.round(100 + (9 - ticketPrice) * ((1000 - 100) / (9 - 1))) };
+  return { type: 'gain', amount: (9 - ticketPrice) * 1000 };
 }
 
 export default function FutbolStadyum({ team }) {

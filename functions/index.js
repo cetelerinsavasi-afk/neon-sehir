@@ -7847,16 +7847,18 @@ const FUTBOL_SEASON_START = 1;
 // Kapasite yükseltme merdiveni SUNUCU TARAFINDA tutulur — istemci bir
 // sonraki seviyeyi (ve maliyetini) görebilir ama TÜM merdiveni göremez
 // (ürün kararı: oyuncu ileriki seviyeleri önceden görmemeli).
+// Yeni istek: "stadyum kapasite yükseltme fiyatlarını yarı yarıya
+// düşürelim" — tüm maliyetler (0 hariç) eskisinin YARISI.
 const FUTBOL_STADIUM_LADDER = [
   { capacity: 2500, cost: 0 },
-  { capacity: 5000, cost: 1000000 },
-  { capacity: 10000, cost: 2000000 },
-  { capacity: 20000, cost: 4000000 },
-  { capacity: 40000, cost: 8000000 },
-  { capacity: 75000, cost: 16000000 },
-  { capacity: 150000, cost: 32000000 },
-  { capacity: 250000, cost: 75000000 },
-  { capacity: 500000, cost: 150000000 },
+  { capacity: 5000, cost: 500000 },
+  { capacity: 10000, cost: 1000000 },
+  { capacity: 20000, cost: 2000000 },
+  { capacity: 40000, cost: 4000000 },
+  { capacity: 75000, cost: 8000000 },
+  { capacity: 150000, cost: 16000000 },
+  { capacity: 250000, cost: 37500000 },
+  { capacity: 500000, cost: 75000000 },
 ];
 const FUTBOL_DEFAULT_TICKET_PRICE = 10;
 const FUTBOL_MIN_TICKET_PRICE = 1;
@@ -7870,15 +7872,22 @@ function futbolStadiumAttendance(fans, ticketPrice, stadiumCapacity) {
 
 // futbolTicketPriceFanEffect — bilet fiyatının taraftar memnuniyeti
 // üzerindeki etkisi (kazanç/kayıp mekaniğinden BAĞIMSIZ, her ev sahibi
-// maçında uygulanır). 10 = nötr. 10'un üstünde taraftar kaybı,
-// altında taraftar kazancı — bkz. kullanıcı promptu için tam formül.
+// maçında uygulanır). Yeni istek ile NÖTR BAND artık 9-10-11 (tek bir
+// nokta değil): bu üç fiyattan hiçbiri taraftar artırmaz/azaltmaz.
+// Bandın dışında, kullanıcının verdiği çapa noktalarından (12→1-1000,
+// 15→1-4000, 20→1-9000 kayıp; 8→1-1000, 1→1-8000 kazanç) TAMAMEN
+// DOĞRUSAL (linear) bir oran çıkıyor — her iki yönde de nötr sınırdan
+// (11 ya da 9) 1 birim uzaklaşınca azami etki 1000 artıyor:
+//   maxLoss(fiyat) = (fiyat - 11) * 1000   [fiyat > 11]
+//   maxGain(fiyat) = (9 - fiyat) * 1000    [fiyat < 9]
+// Doğrulama: 12→1000, 15→4000, 20→9000 ✓ · 8→1000, 1→8000 ✓
 function futbolTicketPriceFanDelta(ticketPrice) {
-  if (ticketPrice === FUTBOL_DEFAULT_TICKET_PRICE) return 0;
-  if (ticketPrice > FUTBOL_DEFAULT_TICKET_PRICE) {
-    const maxLoss = (ticketPrice - FUTBOL_DEFAULT_TICKET_PRICE) * 100;
+  if (ticketPrice >= 9 && ticketPrice <= 11) return 0;
+  if (ticketPrice > 11) {
+    const maxLoss = (ticketPrice - 11) * 1000;
     return -Math.floor(randomInRange(1, maxLoss));
   }
-  const maxGain = Math.round(100 + (9 - ticketPrice) * ((1000 - 100) / (9 - 1)));
+  const maxGain = (9 - ticketPrice) * 1000;
   return Math.floor(randomInRange(1, maxGain));
 }
 
