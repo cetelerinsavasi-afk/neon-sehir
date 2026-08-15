@@ -74,7 +74,10 @@ export default function FactoryShiftGame({ onComplete, onClose }) {
 
   const spawnBox = useCallback(() => {
     const g = gameRef.current;
-    const speed = Math.min(2.6 + g.scoreNow * 0.35, 6.5);
+    // Yeni istek: "kutular çok yavaş düşüyor hızlandıralım" — başlangıç
+    // hızı ve artış oranı ~1.7x büyütüldü (eskisi: 2.6 başlangıç, +0.35/
+    // yakalama, 6.5 tavan).
+    const speed = Math.min(4.5 + g.scoreNow * 0.6, 11);
     g.box = { x: rand(MARGIN_X + 20, W - MARGIN_X - 20), y: CHUTE_Y, r: 22, speed };
   }, []);
 
