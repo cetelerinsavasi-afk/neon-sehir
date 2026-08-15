@@ -1274,6 +1274,175 @@ export const fireEmployee = onCall(async (request) => {
   return { ok: true };
 });
 
+// resolveStuckLotteryAndChampionship — dailyReset'in piyango (Bölüm 9) ve
+// şampiyona (Bölüm 10) çözümleme mantığı, TEK BAŞINA çağrılabilsin diye
+// ayrı bir fonksiyona çıkarıldı. dailyReset her gece bunu zaten normal
+// akışının bir parçası olarak çağırıyor; AYRICA aşağıdaki
+// resolveStuckRewardsNow (manuel/acil durum) endpoint'i de gece
+// yarısını beklemeden AYNI mantığı elle bir kez tetiklemek için bunu
+// çağırıyor — iki yerde de BİREBİR aynı kod çalışır, davranış farkı yok.
+// Hem lottery (normal koleksiyon sorgusu, `drawnAt` alanı) hem
+// championshipDaily (doküman ID'siyle doğrudan .get(), sorgu değil) hiçbir
+// özel Firestore index'ine ihtiyaç duymaz — machines.ownerTriggeredDateKey
+// index eksikliğinden TAMAMEN bağımsızdır, o yüzden index deploy'unu
+// beklemeden hemen çalıştırılabilir.
+async function resolveStuckLotteryAndChampionship(dateKey) {
+  const summary = {
+    lotteryDaysResolved: 0,
+    lotteryGoldPaid: 0,
+    championshipEntriesResolved: 0,
+    championshipGoldPaid: 0,
+  };
+
+  // Piyango: GEÇMİŞTEKİ (bugün hariç) hâlâ çekilmemiş HER piyango gününü çeker.
+  {
+    const undrawnSnap = await db.collection('lottery').where('drawnAt', '==', null).get();
+    for (const prevLotterySnap of undrawnSnap.docs) {
+      if (prevLotterySnap.id >= dateKey) continue; // bugünün (henüz bitmemiş) piyangosu — dokunma
+      const prevLotteryRef = prevLotterySnap.ref;
+      const lottery = prevLotterySnap.data();
+      if (lottery.totalTickets > 0) {
+        const ticketsSnap = await prevLotteryRef.collection('tickets').get();
+        const roll = Math.random() * lottery.totalTickets;
+        let cumulative = 0;
+        let winnerUid = null;
+        let winnerName = null;
+        for (const ticketDoc of ticketsSnap.docs) {
+          const t = ticketDoc.data();
+          cumulative += t.count || 0;
+          if (roll < cumulative) {
+            winnerUid = t.uid;
+            winnerName = t.displayName;
+            break;
+          }
+        }
+        if (winnerUid) {
+          const winnerRef = db.collection('users').doc(winnerUid);
+          const winnerSnap = await winnerRef.get();
+          const { goldDelta, debtDelta } = splitIncomeForDebt(
+            winnerSnap.data()?.debtToState,
+            lottery.jackpot
+          );
+          await winnerRef.update({
+            gold: admin.firestore.FieldValue.increment(goldDelta),
+            debtToState: admin.firestore.FieldValue.increment(debtDelta),
+          });
+          await prevLotteryRef.update({
+            winnerUid,
+            winnerName,
+            winnerAmount: lottery.jackpot,
+            drawnAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          await winnerRef.collection('messages').add({
+            text: `Tebrikler! Piyangodan ${lottery.jackpot.toLocaleString('tr-TR')} altın kazandın.`,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            read: false,
+            type: 'lottery_win',
+          });
+          summary.lotteryGoldPaid += lottery.jackpot;
+        }
+      } else {
+        // Kimse bilet almadıysa kazanan yok, sadece çekiliş yapıldı olarak işaretlenir.
+        await prevLotteryRef.update({ drawnAt: admin.firestore.FieldValue.serverTimestamp() });
+      }
+      summary.lotteryDaysResolved += 1;
+    }
+  }
+
+  // Şampiyona: geriye doğru son 7 GÜNÜN hepsi kontrol edilir (championshipDaily
+  // dokümanında lottery'deki gibi baştan `finalized:false` yazılmıyor, bu
+  // yüzden geniş bir `where` sorgusu yerine sınırlı bir gün penceresinde
+  // doğrudan doküman ID'siyle kontrol ediyoruz).
+  {
+    const catalogIds = Object.keys(VEHICLE_CATALOG);
+    const CHAMPIONSHIP_CATCHUP_DAYS = 7;
+    for (let daysAgo = 1; daysAgo <= CHAMPIONSHIP_CATCHUP_DAYS; daysAgo += 1) {
+      const champPrevDateKey = addDaysToDateKey(dateKey, -daysAgo);
+      for (const catalogId of catalogIds) {
+        const champRef = db.collection('championshipDaily').doc(`${catalogId}_${champPrevDateKey}`);
+        const champSnap = await champRef.get();
+        if (!champSnap.exists || champSnap.data().finalized) continue;
+        const champ = champSnap.data();
+        if (!champ.leaderUid) {
+          await champRef.update({ finalized: true });
+          continue;
+        }
+        const leaders =
+          champ.leaders && champ.leaders.length
+            ? champ.leaders
+            : [{ uid: champ.leaderUid, name: champ.leaderName, vehicleModel: champ.leaderVehicleModel }];
+        const reward = Math.round(
+          (VEHICLE_CATALOG[catalogId]?.price || 0) * CHAMPIONSHIP_REWARD_RATIO
+        );
+        for (const leader of leaders) {
+          const winnerRef = db.collection('users').doc(leader.uid);
+          const winnerSnap = await winnerRef.get();
+          const { goldDelta, debtDelta } = splitIncomeForDebt(winnerSnap.data()?.debtToState, reward);
+          await winnerRef.update({
+            gold: admin.firestore.FieldValue.increment(goldDelta),
+            debtToState: admin.firestore.FieldValue.increment(debtDelta),
+          });
+          await winnerRef.collection('messages').add({
+            text: `Tebrikler! ${VEHICLE_CATALOG[catalogId]?.name} şampiyonasını ${champ.leaderTurns} turda tamamlayarak kazandın. Ödül: ${reward.toLocaleString('tr-TR')} altın.`,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            read: false,
+            type: 'championship_win',
+          });
+          summary.championshipGoldPaid += reward;
+        }
+        await champRef.update({
+          finalized: true,
+          winnerUid: champ.leaderUid,
+          winnerName: champ.leaderName,
+          winnerVehicleModel: champ.leaderVehicleModel,
+          winnerTurns: champ.leaderTurns,
+          winners: leaders,
+          rewardAmount: reward,
+        });
+        summary.championshipEntriesResolved += 1;
+      }
+    }
+  }
+
+  return summary;
+}
+
+// resolveStuckRewardsNow — GEÇİCİ/tek seferlik acil durum aracı: 13 Ağustos
+// 2026 gecesi (bkz. machines.ownerTriggeredDateKey index eksikliği)
+// dailyReset'in yarıda kesilmesiyle askıda kalan piyango/şampiyona
+// ödüllerini, gece yarısını (bir sonraki dailyReset'i) beklemeden HEMEN
+// dağıtmak için eklendi. dailyReset'in GERİ KALANINA (gün ilerletme,
+// soygun/gazete/slot sıfırlama, fabrika kâr hesabı, banka faizi vb.)
+// KESİNLİKLE DOKUNMAZ — SADECE piyango+şampiyona çözümlemesini çalıştırır,
+// bu yüzden günün ortasında çağrılması oyunun geri kalanını bozmaz/başka
+// bir günlük sıfırlamayı tekrarlatmaz. `drawnAt`/`finalized` kontrolleri
+// sayesinde idempotenttir — birden fazla kez çağrılsa bile zaten ödenmiş
+// bir günü TEKRAR ödemez, güvenle tekrar tekrar denenebilir.
+// GÜVENLİK: basit bir paylaşılan sır (MAINTENANCE_SECRET) query param'ı ile
+// korunuyor — oyunculardan/rastgele isteklerden gizli. Kullanım: deploy
+// sonrası, fonksiyonun Cloud Functions URL'sini (deploy çıktısında görünür)
+// tarayıcıda `?secret=...` ekleyerek BİR KEZ açmak yeterli. İşini bitirdikten
+// sonra bu fonksiyonu (ve aşağıdaki sabiti) koddan tamamen silebilirsin —
+// dailyReset kendi içindeki aynı mantıkla zaten her gece bunu otomatik
+// yapmaya devam edecek.
+const MAINTENANCE_SECRET = '854f8bf3de15bf540bd36a26a3cce7e5';
+
+export const resolveStuckRewardsNow = onRequest(async (req, res) => {
+  if (!req.query.secret || req.query.secret !== MAINTENANCE_SECRET) {
+    res.status(403).json({ error: 'Yetkisiz.' });
+    return;
+  }
+  try {
+    const dateKey = istanbulDateKey();
+    const summary = await resolveStuckLotteryAndChampionship(dateKey);
+    console.log('resolveStuckRewardsNow tamamlandı:', summary);
+    res.status(200).json({ ok: true, ...summary });
+  } catch (err) {
+    console.error('resolveStuckRewardsNow hata:', err);
+    res.status(500).json({ ok: false, error: err.message || String(err) });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // dailyReset — Bölüm 6. Her gün 00:00 (Europe/Istanbul) çalışır.
 // Faz 2 kapsamı: polis maaşı, banka faizi, yatırım fiyatları, gemi takvimi.
@@ -2220,127 +2389,16 @@ export const dailyReset = onSchedule(
     });
     await Promise.all(debtSmsPromises);
 
-    // 9) Piyango çekilişi (Bölüm 11): GEÇMİŞTEKİ (bugün hariç) hâlâ
-    // çekilmemiş HER piyango gününü çeker — eskiden SADECE "dün"e
-    // bakılıyordu; bu, dailyReset bir gece herhangi bir sebeple (ör.
-    // eksik bir Firestore index'i — bkz. firestore.indexes.json'daki
-    // machines.ownerTriggeredDateKey düzeltmesi) bu noktaya hiç
-    // ulaşamazsa o günün jackpot'unun SONSUZA DEK kimseye ödenmeden
-    // askıda kalmasına yol açıyordu (bir sonraki gece SADECE "yeni dün"e
-    // bakıp o eski günü bir daha asla kontrol etmiyordu). `drawnAt`
-    // lottery oluşturulurken zaten `null` olarak yazılıyor (bkz.
-    // buyLotteryTicket), bu yüzden `where('drawnAt','==',null)` GÜVENLE
-    // tüm çekilmemiş günleri (bugünkü, henüz süresi dolmamış olan hariç —
-    // doc.id karşılaştırmasıyla eleniyor) bulur.
-    {
-      const undrawnSnap = await db.collection('lottery').where('drawnAt', '==', null).get();
-      for (const prevLotterySnap of undrawnSnap.docs) {
-        if (prevLotterySnap.id >= dateKey) continue; // bugünün (henüz bitmemiş) piyangosu — dokunma
-        const prevLotteryRef = prevLotterySnap.ref;
-        const lottery = prevLotterySnap.data();
-        if (lottery.totalTickets > 0) {
-          const ticketsSnap = await prevLotteryRef.collection('tickets').get();
-          const roll = Math.random() * lottery.totalTickets;
-          let cumulative = 0;
-          let winnerUid = null;
-          let winnerName = null;
-          for (const ticketDoc of ticketsSnap.docs) {
-            const t = ticketDoc.data();
-            cumulative += t.count || 0;
-            if (roll < cumulative) {
-              winnerUid = t.uid;
-              winnerName = t.displayName;
-              break;
-            }
-          }
-          if (winnerUid) {
-            const winnerRef = db.collection('users').doc(winnerUid);
-            const winnerSnap = await winnerRef.get();
-            const { goldDelta, debtDelta } = splitIncomeForDebt(
-              winnerSnap.data()?.debtToState,
-              lottery.jackpot
-            );
-            await winnerRef.update({
-              gold: admin.firestore.FieldValue.increment(goldDelta),
-              debtToState: admin.firestore.FieldValue.increment(debtDelta),
-            });
-            await prevLotteryRef.update({
-              winnerUid,
-              winnerName,
-              winnerAmount: lottery.jackpot,
-              drawnAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-            await winnerRef.collection('messages').add({
-              text: `Tebrikler! Piyangodan ${lottery.jackpot.toLocaleString('tr-TR')} altın kazandın.`,
-              createdAt: admin.firestore.FieldValue.serverTimestamp(),
-              read: false,
-              type: 'lottery_win',
-            });
-          }
-        } else {
-          // Kimse bilet almadıysa kazanan yok, sadece çekiliş yapıldı olarak işaretlenir.
-          await prevLotteryRef.update({ drawnAt: admin.firestore.FieldValue.serverTimestamp() });
-        }
-      }
-    }
-
-    // 10) Şampiyona (Bölüm 8.7-ek): bir önceki günün her araç şampiyonasında
-    // en az turda bitiren TÜM oyuncular büyük ödülü (galeri fiyatının 1/5'i,
-    // bölünmeden, herkese tam) kazanır. Yeni: piyangoyla AYNI gerekçeyle
-    // (bkz. yukarısı) artık SADECE "dün" değil, geriye doğru son 7 GÜNÜN
-    // hepsi kontrol edilir — dailyReset bir gece tamamlanamazsa o günün
-    // şampiyona ödülü kalıcı olarak kaybolmasın diye (championshipDaily
-    // dokümanında lottery'deki gibi baştan `finalized:false` yazılmıyor,
-    // bu yüzden burada geniş bir `where` sorgusu yerine sınırlı bir gün
-    // penceresinde doğrudan doküman ID'siyle kontrol ediyoruz).
-    {
-      const catalogIds = Object.keys(VEHICLE_CATALOG);
-      const CHAMPIONSHIP_CATCHUP_DAYS = 7;
-      for (let daysAgo = 1; daysAgo <= CHAMPIONSHIP_CATCHUP_DAYS; daysAgo += 1) {
-        const champPrevDateKey = addDaysToDateKey(dateKey, -daysAgo);
-        for (const catalogId of catalogIds) {
-          const champRef = db.collection('championshipDaily').doc(`${catalogId}_${champPrevDateKey}`);
-          const champSnap = await champRef.get();
-          if (!champSnap.exists || champSnap.data().finalized) continue;
-          const champ = champSnap.data();
-          if (!champ.leaderUid) {
-            await champRef.update({ finalized: true });
-            continue;
-          }
-          const leaders =
-            champ.leaders && champ.leaders.length
-              ? champ.leaders
-              : [{ uid: champ.leaderUid, name: champ.leaderName, vehicleModel: champ.leaderVehicleModel }];
-          const reward = Math.round(
-            (VEHICLE_CATALOG[catalogId]?.price || 0) * CHAMPIONSHIP_REWARD_RATIO
-          );
-          for (const leader of leaders) {
-            const winnerRef = db.collection('users').doc(leader.uid);
-            const winnerSnap = await winnerRef.get();
-            const { goldDelta, debtDelta } = splitIncomeForDebt(winnerSnap.data()?.debtToState, reward);
-            await winnerRef.update({
-              gold: admin.firestore.FieldValue.increment(goldDelta),
-              debtToState: admin.firestore.FieldValue.increment(debtDelta),
-            });
-            await winnerRef.collection('messages').add({
-              text: `Tebrikler! ${VEHICLE_CATALOG[catalogId]?.name} şampiyonasını ${champ.leaderTurns} turda tamamlayarak kazandın. Ödül: ${reward.toLocaleString('tr-TR')} altın.`,
-              createdAt: admin.firestore.FieldValue.serverTimestamp(),
-              read: false,
-              type: 'championship_win',
-            });
-          }
-          await champRef.update({
-            finalized: true,
-            winnerUid: champ.leaderUid,
-            winnerName: champ.leaderName,
-            winnerVehicleModel: champ.leaderVehicleModel,
-            winnerTurns: champ.leaderTurns,
-            winners: leaders,
-            rewardAmount: reward,
-          });
-        }
-      }
-    }
+    // 9-10) Piyango çekilişi + Şampiyona: ortak mantık artık
+    // resolveStuckLotteryAndChampionship() içinde (bkz. yukarısı, dailyReset
+    // tanımından hemen önce) — hem burada hem de acil durumda elle
+    // tetiklenebilen resolveStuckRewardsNow endpoint'inde BİREBİR aynı kod
+    // çalışır. GEÇMİŞTEKİ (bugün hariç) hâlâ çözülmemiş HER günü tarar —
+    // eskiden SADECE "dün"e bakılıyordu; bu, dailyReset bir gece herhangi bir
+    // sebeple (ör. eksik bir Firestore index'i) bu noktaya hiç ulaşamazsa o
+    // günün ödüllerinin SONSUZA DEK kimseye ödenmeden askıda kalmasına yol
+    // açıyordu.
+    await resolveStuckLotteryAndChampionship(dateKey);
 
     console.log(`dailyReset tamamlandı: ${dateKey}`);
   }
