@@ -109,6 +109,9 @@ export default function FutbolStadyum({ team }) {
           <span className="futbol-stadyum-capacity-icon">🏟️</span>
           <p className="futbol-stadyum-capacity">{capacity.toLocaleString('tr-TR')} kişi</p>
         </div>
+        <p className="futbol-buy-meta">
+          👥 Toplam taraftar sayımız: <strong>{fans.toLocaleString('tr-TR')}</strong>
+        </p>
 
         <div className="futbol-stadyum-tier-track">
           <div className="futbol-stadyum-tier-fill" style={{ width: `${tierProgress}%` }} />

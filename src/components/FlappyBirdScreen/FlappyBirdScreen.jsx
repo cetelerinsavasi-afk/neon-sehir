@@ -13,10 +13,23 @@ const FLAP_VELOCITY = -7.4;
 const MAX_FALL_SPEED = 9;
 const PIPE_WIDTH = 50;
 const PIPE_GAP = 128;
-const PIPE_SPEED = 2.3;
-const PIPE_SPACING_FRAMES = 100;
+const BASE_PIPE_SPEED = 2.3;
+const BASE_PIPE_SPACING_FRAMES = 100;
 
-function createGameState() {
+// SPEED_MODES — yeni istek: "flappy kuşta hızlı normal yavaş 3 mod olsun
+// oyuncu istediği modda oyuna girebilsin". Sadece boruların akış hızı ve
+// spawn sıklığı ölçeklenir (spacing, hız arttıkça borular arası GERÇEK
+// mesafe aynı kalsın diye ters orantılı azaltılır) — kuşun yerçekimi/zıplama
+// fiziği tüm modlarda aynı kalır, böylece "hızlı" mod sadece tempo/refleks
+// zorluğunu artırır, kontrolleri değiştirmez.
+const SPEED_MODES = {
+  slow: { key: 'slow', label: 'Yavaş', icon: '🐢', speedMult: 0.65 },
+  normal: { key: 'normal', label: 'Normal', icon: '🚶', speedMult: 1 },
+  fast: { key: 'fast', label: 'Hızlı', icon: '⚡', speedMult: 1.45 },
+};
+
+function createGameState(speedKey) {
+  const mode = SPEED_MODES[speedKey] || SPEED_MODES.normal;
   return {
     birdY: HEIGHT / 2,
     velocity: 0,
@@ -25,6 +38,9 @@ function createGameState() {
     frame: 0,
     score: 0,
     alive: true,
+    speedKey: mode.key,
+    pipeSpeed: BASE_PIPE_SPEED * mode.speedMult,
+    spacingFrames: Math.max(24, Math.round(BASE_PIPE_SPACING_FRAMES / mode.speedMult)),
   };
 }
 
@@ -75,7 +91,7 @@ function draw(ctx, g) {
   ctx.fillStyle = '#ded18f';
   ctx.fillRect(0, HEIGHT - GROUND_HEIGHT, WIDTH, GROUND_HEIGHT);
   ctx.fillStyle = '#c7b96f';
-  for (let x = -((g.frame * PIPE_SPEED) % 20); x < WIDTH; x += 20) {
+  for (let x = -((g.frame * g.pipeSpeed) % 20); x < WIDTH; x += 20) {
     ctx.fillRect(x, HEIGHT - GROUND_HEIGHT, 10, 6);
   }
 
@@ -114,6 +130,7 @@ export default function FlappyBirdScreen() {
   const [score, setScore] = useState(0);
   const [finalScore, setFinalScore] = useState(0);
   const [submitState, setSubmitState] = useState('idle'); // idle | saving | new-best | saved
+  const [speedKey, setSpeedKey] = useState('normal'); // slow | normal | fast
   const { top10 } = useFlappyLeaderboard();
   const { best } = useMyFlappyBest();
 
@@ -147,9 +164,9 @@ export default function FlappyBirdScreen() {
     g.birdY += g.velocity;
     g.rotation = Math.max(-0.5, Math.min(1.3, g.velocity / 10));
 
-    if (g.frame % PIPE_SPACING_FRAMES === 0) spawnPipe(g.pipes);
+    if (g.frame % g.spacingFrames === 0) spawnPipe(g.pipes);
     g.pipes.forEach((p) => {
-      p.x -= PIPE_SPEED;
+      p.x -= g.pipeSpeed;
     });
     g.pipes = g.pipes.filter((p) => p.x > -PIPE_WIDTH - 10);
 
@@ -189,11 +206,11 @@ export default function FlappyBirdScreen() {
   }, [endGame]);
 
   const startGame = useCallback(() => {
-    gameRef.current = createGameState();
+    gameRef.current = createGameState(speedKey);
     setScore(0);
     setSubmitState('idle');
     setPhase('playing');
-  }, []);
+  }, [speedKey]);
 
   const flap = useCallback(() => {
     if (phase === 'start' || phase === 'gameover') {
@@ -250,6 +267,7 @@ export default function FlappyBirdScreen() {
             </div>
             <div className="flappy-overlay-center">
               <p className="flappy-title">FLAPPY KUŞ</p>
+              <SpeedModeSelector speedKey={speedKey} onSelect={setSpeedKey} />
               <button className="flappy-start-btn" onClick={startGame}>
                 ▶ Başlat
               </button>
@@ -269,6 +287,7 @@ export default function FlappyBirdScreen() {
                 <p className="flappy-muted">En iyi skorun: {Math.max(best, finalScore)}</p>
               )}
               <Top10Panel top10={top10} compact />
+              <SpeedModeSelector speedKey={speedKey} onSelect={setSpeedKey} compact />
               <button className="flappy-start-btn" onClick={startGame}>
                 ↻ Tekrar Oyna
               </button>
@@ -276,6 +295,30 @@ export default function FlappyBirdScreen() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// SpeedModeSelector — oyuncunun oyuna başlamadan/tekrar başlamadan önce
+// hız modunu (yavaş/normal/hızlı) seçmesini sağlar. onPointerDown burada
+// durdurulmalı, yoksa sahnenin genel "onPointerDown={flap}" davranışı
+// mod seçimini de bir "zıplama/başlat" tıklaması gibi algılar.
+function SpeedModeSelector({ speedKey, onSelect, compact }) {
+  return (
+    <div
+      className={`flappy-speed-selector ${compact ? 'compact' : ''}`}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      {Object.values(SPEED_MODES).map((mode) => (
+        <button
+          key={mode.key}
+          type="button"
+          className={`flappy-speed-btn ${speedKey === mode.key ? 'active' : ''}`}
+          onClick={() => onSelect(mode.key)}
+        >
+          {mode.icon} {mode.label}
+        </button>
+      ))}
     </div>
   );
 }

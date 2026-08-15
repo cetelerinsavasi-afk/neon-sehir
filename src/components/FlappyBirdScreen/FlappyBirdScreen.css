@@ -223,3 +223,29 @@
   color: var(--neon-yellow);
   margin: 0;
 }
+
+.flappy-speed-selector {
+  display: flex;
+  gap: 6px;
+}
+
+.flappy-speed-selector.compact {
+  margin: 2px 0;
+}
+
+.flappy-speed-btn {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border);
+  background: rgba(14, 19, 32, 0.85);
+  color: #fff;
+  font-weight: 700;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.flappy-speed-btn.active {
+  background: linear-gradient(135deg, var(--neon-cyan), #0fb9d8);
+  color: #04202a;
+  border-color: transparent;
+}

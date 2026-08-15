@@ -498,6 +498,7 @@ function OwnerView({ factory, machines, player, myUid }) {
   const [showManage, setShowManage] = useState(false);
   const [showBrowse, setShowBrowse] = useState(false);
   const [showShareSell, setShowShareSell] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   const [selfBusy, setSelfBusy] = useState(null);
   const [selfError, setSelfError] = useState(null);
   const [produceBusy, setProduceBusy] = useState(false);
@@ -593,9 +594,14 @@ function OwnerView({ factory, machines, player, myUid }) {
           <FactoryBadge logo={factory.logo} name={factoryDisplayName(factory)} size={40} />
           <p className="factory-owner-title">{factoryDisplayName(factory)}</p>
         </div>
-        <button className="factory-manage-btn" onClick={() => setShowManage(true)}>
-          ⚙️ Yönetim
-        </button>
+        <div className="factory-owner-header-actions">
+          <button className="factory-manage-btn" onClick={() => setShowReport(true)}>
+            📊 Günlük Rapor
+          </button>
+          <button className="factory-manage-btn" onClick={() => setShowManage(true)}>
+            ⚙️ Yönetim
+          </button>
+        </div>
       </div>
       <p className="factory-hint">
         Maaş: <strong>{(factory.salary || 0).toLocaleString('tr-TR')} altın</strong>
@@ -723,6 +729,95 @@ function OwnerView({ factory, machines, player, myUid }) {
       {showShareSell && (
         <FactoryShareSellModal factory={factory} onClose={() => setShowShareSell(false)} />
       )}
+      {showReport && <DailyReportModal factory={factory} onClose={() => setShowReport(false)} />}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Günlük Rapor — yeni istek: "fabrika sahipleri için yönetim panelinin
+// yanında günlük rapor olsun, bu raporda günlük makinelerden ne kadar
+// kazandık, kâr ne kadar, masraf ne kadar hepsi raporlansın". Rakamlar
+// dailyReset'in -0.35 bloğunda her gece hesaplanıp factories/{ownerId}
+// dokümanına yazılıyor (bkz. functions/index.js): dailyGrossIncome (dün
+// makinelerin ürettiği malın toplam anlık nakit değeri), dailySalaryExpense
+// (dün çalışan işçilere ödenen toplam maaş) ve dailyIncome (net kâr =
+// brüt − maaş masrafı, kasıtlı olarak eksi de olabilir). Son 10 günün
+// geçmişi (*History dizileri) de aynı yerde persist ediliyor, burada basit
+// bir tablo olarak gösteriliyor.
+// ---------------------------------------------------------------------------
+function DailyReportModal({ factory, onClose }) {
+  const grossToday = factory.dailyGrossIncome || 0;
+  const expenseToday = factory.dailySalaryExpense || 0;
+  const netToday = factory.dailyIncome || 0;
+  const grossHistory = Array.isArray(factory.dailyGrossIncomeHistory) ? factory.dailyGrossIncomeHistory : [];
+  const expenseHistory = Array.isArray(factory.dailySalaryExpenseHistory) ? factory.dailySalaryExpenseHistory : [];
+  const netHistory = Array.isArray(factory.dailyIncomeHistory) ? factory.dailyIncomeHistory : [];
+  const rowCount = Math.max(grossHistory.length, expenseHistory.length, netHistory.length);
+  // Tabloyu en yeni gün en üstte olacak şekilde göster.
+  const rows = Array.from({ length: rowCount }, (_, i) => {
+    const idx = rowCount - 1 - i;
+    return {
+      key: idx,
+      gross: grossHistory[idx] ?? null,
+      expense: expenseHistory[idx] ?? null,
+      net: netHistory[idx] ?? null,
+    };
+  });
+
+  return (
+    <div className="factory-modal-backdrop" onClick={onClose}>
+      <div className="factory-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="factory-modal-header">
+          <p className="factory-modal-title">📊 Günlük Rapor</p>
+          <button className="factory-modal-close" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+
+        <p className="factory-step-label">
+          Dün {factory.dailyIncomeDateKey ? `(${factory.dailyIncomeDateKey})` : ''}
+        </p>
+        <div className="factory-report-summary">
+          <div className="factory-report-stat">
+            <span className="factory-report-stat-label">💰 Kazanç (brüt)</span>
+            <span className="factory-report-stat-value">{grossToday.toLocaleString('tr-TR')} altın</span>
+          </div>
+          <div className="factory-report-stat">
+            <span className="factory-report-stat-label">👷 Maaş masrafı</span>
+            <span className="factory-report-stat-value expense">
+              −{expenseToday.toLocaleString('tr-TR')} altın
+            </span>
+          </div>
+          <div className="factory-report-stat">
+            <span className="factory-report-stat-label">📈 Net kâr</span>
+            <span className={`factory-report-stat-value ${netToday < 0 ? 'negative' : 'positive'}`}>
+              {netToday.toLocaleString('tr-TR')} altın
+            </span>
+          </div>
+        </div>
+
+        <p className="factory-step-label">Son {rows.length} Gün</p>
+        {rows.length === 0 && <p className="factory-hint">Henüz rapor geçmişi yok.</p>}
+        {rows.length > 0 && (
+          <div className="factory-report-table">
+            <div className="factory-report-row factory-report-row-head">
+              <span>Kazanç</span>
+              <span>Masraf</span>
+              <span>Net</span>
+            </div>
+            {rows.map((r) => (
+              <div key={r.key} className="factory-report-row">
+                <span>{(r.gross ?? 0).toLocaleString('tr-TR')}</span>
+                <span>−{(r.expense ?? 0).toLocaleString('tr-TR')}</span>
+                <span className={(r.net ?? 0) < 0 ? 'negative' : 'positive'}>
+                  {(r.net ?? 0).toLocaleString('tr-TR')}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
