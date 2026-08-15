@@ -1622,10 +1622,13 @@ export const dailyReset = onSchedule(
     // damgaladığı makinelerden, o gün İÇİNDE atanmış işçi tarafından
     // GERÇEKTEN üretilmemiş (lastProducedDateKey dünün tarihiyle eşleşmeyen —
     // yani işçi hiç gelip normal "Üretim Yap" akışını çalıştırmamış) her
-    // makine, sahibi tarafından üretilmiş sayılır: normal min-max miktar
-    // hesaplanır (produceAtFactory ile BİREBİR AYNI formül), sonra 1/10'una
-    // düşürülür (0'a yuvarlanmaması için en az 1 birim garanti edilir) ve
-    // SAHİBİN envanterine eklenir. Maaş ödemesi YOK — işçi fiilen çalışmadı.
+    // makine, sahibi tarafından üretilmiş sayılır ve SAHİBİN envanterine
+    // eklenir. Maaş ödemesi YOK — işçi fiilen çalışmadı. Miktar formülü
+    // makine türüne göre değişir: tamirMalzemesi ve yasakliMadde için KENDİ
+    // özel formülleri var (bkz. aşağısı), diğer türler (silahUpgrade,
+    // arabaGelistirme) hâlâ eski davranışı kullanıyor — normal min-max
+    // miktar hesaplanıp (produceAtFactory ile AYNI formül) 1/10'una
+    // düşürülüyor (0'a yuvarlanmaması için en az 1 birim garanti edilir).
     // İşçi o gün ZATEN gerçek üretim yaptıysa (lastProducedDateKey === dün),
     // işçinin üretimi ÖNCELİKLİDİR ve bu blok o makineyi atlar (çifte
     // üretim yok).
@@ -1645,11 +1648,25 @@ export const dailyReset = onSchedule(
         const machine = m.data();
         const factoryId = m.ref.parent.parent.id;
         const cfg = MACHINE_TYPES[machine.type];
-        const normalQty =
-          machine.type === 'yasakliMadde' || machine.type === 'silahUpgrade' || machine.type === 'tamirMalzemesi'
-            ? Math.floor(randomInRange(cfg.min, cfg.max + 1))
-            : Math.round(randomInRange(cfg.min, cfg.max));
-        const qty = normalQty > 0 ? Math.max(1, Math.round(normalQty * 0.1)) : 0;
+        // Yeni istek: tamirMalzemesi ve yasakliMadde için genel "normal
+        // miktarın 1/10'u" formülü yerine, işçisiz çalışırken KENDİ
+        // (min-max'tan bağımsız) formülleri kullanılıyor.
+        let qty;
+        if (machine.type === 'tamirMalzemesi') {
+          // "işçisiz çalışan tamir makinesi günlük 1-400 malzeme üretsin"
+          qty = Math.floor(randomInRange(1, 401));
+        } else if (machine.type === 'yasakliMadde') {
+          // "işçisiz çalışan yasaklı madde üretme makinesi %5 ihtimalle 2
+          // adet, %50 ihtimalle 1 adet, kalan ihtimallerde 0 üretim yapsın"
+          const roll = Math.random();
+          qty = roll < 0.05 ? 2 : roll < 0.55 ? 1 : 0;
+        } else {
+          const normalQty =
+            machine.type === 'silahUpgrade'
+              ? Math.floor(randomInRange(cfg.min, cfg.max + 1))
+              : Math.round(randomInRange(cfg.min, cfg.max));
+          qty = normalQty > 0 ? Math.max(1, Math.round(normalQty * 0.1)) : 0;
+        }
 
         const jobs = [m.ref.update({ lastProducedDateKey: prevDateKey, lastProducedQty: qty })];
         if (qty > 0) {
@@ -1720,13 +1737,22 @@ export const dailyReset = onSchedule(
         .get();
 
       const incomeByFactory = new Map(); // ownerId -> altın (yuvarlanmamış toplam)
+      // Yeni istek: "günlük raporda kaç adet hangi malzemeden üretildiği de
+      // yazsın" — gelir hesabının YANINDA, malzeme türü başına üretilen
+      // miktar da fabrika başına ayrıca tutuluyor.
+      const producedByTypeByFactory = new Map(); // ownerId -> { [type]: qty }
       producedSnap.forEach((m) => {
         const machine = m.data();
         const unitValue = materialGoldValue[machine.type];
         if (!unitValue) return; // mining burada yok — aşağıda ayrıca ekleniyor
         const factoryId = m.ref.parent.parent.id;
-        const value = (machine.lastProducedQty || 0) * unitValue;
+        const qty = machine.lastProducedQty || 0;
+        const value = qty * unitValue;
         incomeByFactory.set(factoryId, (incomeByFactory.get(factoryId) || 0) + value);
+
+        if (!producedByTypeByFactory.has(factoryId)) producedByTypeByFactory.set(factoryId, {});
+        const typeMap = producedByTypeByFactory.get(factoryId);
+        typeMap[machine.type] = (typeMap[machine.type] || 0) + qty;
       });
 
       // Mining: üstteki mining üretim bloğunda doldurulan
@@ -1737,6 +1763,9 @@ export const dailyReset = onSchedule(
       miningCryptoQtyByOwner.forEach((qty, factoryId) => {
         const value = qty * nightCryptoPrice;
         incomeByFactory.set(factoryId, (incomeByFactory.get(factoryId) || 0) + value);
+        if (!producedByTypeByFactory.has(factoryId)) producedByTypeByFactory.set(factoryId, {});
+        const typeMap = producedByTypeByFactory.get(factoryId);
+        typeMap.mining = (typeMap.mining || 0) + qty;
       });
 
       // TÜM fabrikalara yaz — bugün hiç üretim yapmamış fabrikalar da
@@ -1792,6 +1821,10 @@ export const dailyReset = onSchedule(
           : [];
         const dailySalaryExpenseHistory = [...existingExpenseHistory, salaryPaid].slice(-10);
 
+        // Malzeme türü başına dünkü üretim — bugün hiç üretim olmadıysa
+        // boş obje ({}) yazılır (eski bayat değer asılı kalmasın diye).
+        const dailyProducedByType = producedByTypeByFactory.get(f.id) || {};
+
         batch.update(f.ref, {
           dailyIncome,
           dailyIncomeDateKey: prevDateKey,
@@ -1801,6 +1834,7 @@ export const dailyReset = onSchedule(
           dailyGrossIncomeHistory,
           dailySalaryExpense: salaryPaid,
           dailySalaryExpenseHistory,
+          dailyProducedByType,
           // Yarın için sayaç sıfırlanır — bugün zaten yukarıda okunup
           // düşüldü (produceAtFactory bundan sonra tekrar biriktirmeye
           // başlar).
@@ -11187,11 +11221,23 @@ async function buildSixtagramAttachment(uid, attachment) {
   if (type === 'parkPhoto') {
     const CAMERA_RADIUS = 170;
     const PRESENCE_STALE_MS = 60_000;
+    // BUBBLE_STALE_MS — yeni istek: "mesajlar da fotoğrafta gözükse çok iyi
+    // olur". İstemcideki canlı balon süresi (CHAT_BUBBLE_MS) 13sn, ama
+    // burada fotoğraf ÇEKİLDİĞİ anla PAYLAŞILDIĞI an (kullanıcı açıklama
+    // yazıp "Paylaş"a basana kadar) arasında birkaç saniye fark olabilir —
+    // biraz daha toleranslı bir pencere kullanılıyor ki tam o sırada
+    // konuşan biri kadraj dışı kalmasın.
+    const BUBBLE_STALE_MS = 25_000;
     const ALLOWED_POSES = ['idle', 'walk1', 'walk2', 'sit'];
     const safePose = (p) => (ALLOWED_POSES.includes(p) ? p : 'idle');
     const isFresh = (data) => {
       const ms = data?.updatedAt?.toMillis?.() ?? 0;
       return ms > 0 && Date.now() - ms < PRESENCE_STALE_MS;
+    };
+    const bubbleTextOf = (data) => {
+      const ms = data?.chatTs;
+      if (!data?.chatText || typeof ms !== 'number' || Date.now() - ms > BUBBLE_STALE_MS) return null;
+      return String(data.chatText).slice(0, 140);
     };
 
     const mySnap = await db.collection('parkPresence').doc(uid).get();
@@ -11217,6 +11263,7 @@ async function buildSixtagramAttachment(uid, attachment) {
         pose: safePose(data.pose),
         facing: data.facing || 'down',
         holding: data.holding || null,
+        bubbleText: bubbleTextOf(data),
       }))
       .filter((p) => Math.hypot(p.dx, p.dy) < CAMERA_RADIUS)
       .sort((a, b) => Math.hypot(a.dx, a.dy) - Math.hypot(b.dx, b.dy))
@@ -11237,6 +11284,7 @@ async function buildSixtagramAttachment(uid, attachment) {
         dx: 0, dy: 0, isSelf: true,
         pose: safePose(myPresence.pose), facing: myPresence.facing || 'down', holding: myPresence.holding || null,
         displayName: avatarByUid.get(uid).displayName, avatar: avatarByUid.get(uid).avatar,
+        bubbleText: bubbleTextOf(myPresence),
       },
       ...nearby
         .filter((p) => avatarByUid.has(p.id))
@@ -11244,8 +11292,40 @@ async function buildSixtagramAttachment(uid, attachment) {
           dx: p.dx, dy: p.dy, isSelf: false,
           pose: p.pose, facing: p.facing, holding: p.holding,
           displayName: avatarByUid.get(p.id).displayName, avatar: avatarByUid.get(p.id).avatar,
+          bubbleText: p.bubbleText,
         })),
     ];
+
+    // Şüpheli Adam (Park NPC'si) — yeni istek: "parktaki şüpheli adam
+    // fotoğraflarda gözükmüyor". Bu NPC gerçek bir oyuncu değil, Firestore'da
+    // hiçbir presence kaydı YOK — konumu (x:140, y:1030) VE görünümü
+    // (avatar objesi), src/components/ParkWorldScreen/ParkWorldScreen.jsx
+    // içindeki NPC_POS/NPC_AVATAR ile BİREBİR AYNI (o dosya istemci
+    // bundle'ının bir parçası, Cloud Functions'a import edilemediği için
+    // burada sabit olarak tekrarlanıyor — ikisinden biri değişirse diğeri
+    // de güncellenmeli). Kimlik/konum sahteciliği riski YOK (statik,
+    // herkese açık bir NPC, hiçbir oyuncu verisiyle ilişkili değil).
+    const NPC_POS = { x: 140, y: 1030 };
+    const NPC_AVATAR = {
+      gender: 'erkek', build: 'iri', skin: '#a86b3c', eyeColor: '#3b2a1a',
+      faceShape: 'oval', background: 'transparent',
+      hairStyle: 'short', hairColor: '#0d0a08',
+      eyebrowShape: 'straight', eyeShape: 'almond', eyelash: 'none',
+      noseShape: 'small', mouthShape: 'neutral', lipColor: '#a85a52',
+      facialHair: 'none', faceAcc: 'sunglasses', earring: 'yok', tattoo: 'yok',
+      clothing: 'trenchcoat', clothColor: '#22262f', neckAcc: 'tie',
+      hat: 'fedora', hatColor: '#0d0d0d', heldItem: 'yok',
+      pantsColor: '#0d0d0d', shoeColor: '#0d0d0d', shoeStyle: 'klasik',
+    };
+    const npcDx = NPC_POS.x - originX;
+    const npcDy = NPC_POS.y - originY;
+    if (Math.hypot(npcDx, npcDy) < CAMERA_RADIUS) {
+      entities.push({
+        dx: npcDx, dy: npcDy, isSelf: false,
+        pose: 'idle', facing: 'right', holding: null,
+        displayName: 'Şüpheli Adam', avatar: NPC_AVATAR, isNpc: true, bubbleText: null,
+      });
+    }
 
     // originX/originY — DÜZELTME: daha önce buradan hiç dönülmüyordu, bu
     // yüzden akıştaki (PostAttachment.jsx) fotoğraf her zaman dünya
@@ -11279,6 +11359,12 @@ async function buildSixtagramAttachment(uid, attachment) {
     const safePose = (p) => (ALLOWED_POSES.includes(p) ? p : 'idle');
     const safeFacing = (f) => (ALLOWED_FACINGS.includes(f) ? f : 'down');
     const safeCoord = (v, max) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(max, v)) : max / 2);
+    // safeBubbleText — yeni istek: "mesajlar da fotoğrafta gözükse çok iyi
+    // olur". Bu odalarda başka GERÇEK oyuncu iddia edilmediği için (yukarıdaki
+    // güven modeli notu) istemciden gelen bu metin sadece KENDİ balonun —
+    // aynı pose/facing gibi zararsız, sadece kendi hesabını etkileyen bir
+    // kozmetik veri; uzunluk sınırlanarak kabul ediliyor.
+    const safeBubbleText = (v) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 140) : null);
 
     const locationId = ALLOWED_LOCATIONS.includes(attachment.locationId) ? attachment.locationId : null;
     if (!locationId) {
@@ -11300,6 +11386,7 @@ async function buildSixtagramAttachment(uid, attachment) {
         dx: 0, dy: 0, isSelf: true,
         pose: safePose(attachment.pose), facing: safeFacing(attachment.facing), holding: null,
         displayName: userData.displayName || 'Oyuncu', avatar: userData.avatar || null,
+        bubbleText: safeBubbleText(attachment.bubbleText),
       }],
     };
   }

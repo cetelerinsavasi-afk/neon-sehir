@@ -323,16 +323,29 @@ const CAMERA_VERTICAL_LIFT = SPRITE_H * 0.5;
 // focalScale (opsiyonel, varsayılan 1) — madde 13: bina içlerinde avatarlar
 // büyütülünce (bkz. her WorldScreen'deki AVATAR_SCALE), kadrajın dikey
 // kaydırması da o büyümeye göre ölçeklenmeli, yoksa büyümüş avatar yine
-// merkezden kayık görünür. Park bu parametreyi hiç vermiyor (varsayılan 1,
-// eski davranış aynen korunur).
-export function renderPhotoFrame(ctx, { width, height, originX, originY, entities, getAvatarImage, drawBackground, focalScale = 1 }) {
+// merkezden kayık görünür. AYRICA (yeni düzeltme): bir entity kendi
+// `scale`'ini vermezse artık sabit 1 yerine BU `focalScale` kullanılır
+// (aşağıdaki `e.scale ?? focalScale`) — böylece bir mekan sadece TEK bir
+// `focalScale` verip hem kadraj kaymasını HEM DE o mekandaki avatarların
+// (self/NPC fark etmez) fotoğraftaki gerçek çizim boyutunu birlikte kontrol
+// edebiliyor; ayrı ayrı her entity'ye `scale` eklemeyi unutma riski kalmıyor.
+//
+// NOT — PHOTO_ZOOM kaldırıldı: "fotoğraflar daha fazla zoomlanmasın, kamera
+// mesafesi iyi" isteği üzerine, eskiden TÜM sahneyi (arka plan dahil) 1.35x
+// büyüten ek bir "selfie" yakınlaştırması buradaydı; bu artık YOK, kare
+// canlı görünümdeki doğal mesafeyle eşleşiyor (zoom=1). "Avatar fotoğrafta
+// küçülüyor" şikayetinin asıl kaynağı zoom değildi — bkz. Park'taki
+// AVATAR_SCALE tutarsızlığı (ParkWorldScreen.jsx, madde 3/13).
+export function renderPhotoFrame(ctx, { width, height, originX, originY, entities, getAvatarImage, drawBackground, focalScale = 1, zoom = 1 }) {
   ctx.save();
   ctx.clearRect(0, 0, width, height);
   ctx.beginPath();
   ctx.rect(0, 0, width, height);
   ctx.clip();
 
-  ctx.translate(width / 2 - originX, height / 2 - originY + CAMERA_VERTICAL_LIFT * focalScale);
+  ctx.translate(width / 2, height / 2);
+  ctx.scale(zoom, zoom);
+  ctx.translate(-originX, -originY + CAMERA_VERTICAL_LIFT * focalScale);
   if (drawBackground) drawBackground(ctx);
 
   const sorted = [...entities].sort((a, b) => (a.dy ?? 0) - (b.dy ?? 0));
@@ -351,10 +364,35 @@ export function renderPhotoFrame(ctx, { width, height, originX, originY, entitie
         isSelf: e.isSelf,
       },
       getAvatarImage,
-      { showName: false, scale: e.scale ?? 1 }
+      { showName: false, scale: e.scale ?? focalScale }
     );
   });
 
+  ctx.restore();
+
+  // Konuşma baloncukları — yeni istek: "mesajlar da fotoğrafta gözükse çok
+  // iyi olur". Her entity'nin (varsa) EN GÜNCEL aktif mesajı balon olarak
+  // çizilir — bir fotoğraf karesi için birden fazla mesaj yığmak (canlı
+  // sahnedeki gibi) kalabalık olurdu, o yüzden burada sadece TEK (en yeni)
+  // balon gösteriliyor. Yukarıdaki world-space (zoom+translate) blok
+  // kapatıldıktan SONRA, EKRAN (screen-space) koordinatlarına elle
+  // çevirip çiziyoruz — drawBubbleBox'ın kenar-kelepçesi (boundsW) ancak
+  // gerçek ekran genişliğiyle (width) anlamlı, world-space'te değil.
+  ctx.save();
+  const bubbleItems = [];
+  sorted.forEach((e) => {
+    if (!e.bubbleText) return;
+    const lines = wrapBubbleText(ctx, e.bubbleText);
+    const { w, h } = measureBubble(ctx, lines);
+    const worldX = originX + (e.dx ?? 0);
+    const worldBaseY = originY + (e.dy ?? 0) + (e.sitShift ?? 0);
+    const screenX = width / 2 + (worldX - originX) * zoom;
+    const screenAnchorY =
+      height / 2 + (worldBaseY - originY + CAMERA_VERTICAL_LIFT * focalScale) * zoom
+      - SPRITE_H * (e.scale ?? focalScale) * zoom - 8;
+    bubbleItems.push({ x: screenX, w, h, lines, ts: e.bubbleTs || 0, naturalTop: screenAnchorY - h });
+  });
+  layoutBubbles(bubbleItems).forEach((item) => drawBubbleBox(ctx, item, width));
   ctx.restore();
 
   ctx.save();

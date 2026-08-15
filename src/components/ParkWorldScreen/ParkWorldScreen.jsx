@@ -10,6 +10,7 @@ import {
   roundRectC, buildStaticScene, drawAvatarSprite,
   createAvatarImageCache, renderPhotoFrame,
 } from '../../lib/parkScene';
+import { INTERIOR_AVATAR_SCALE } from '../../lib/canvasWorldKit';
 import Hud from '../Hud/Hud';
 import PhoneScreen from '../Phone/PhoneScreen';
 import ResultModal from '../ResultModal/ResultModal';
@@ -26,7 +27,15 @@ import './ParkWorldScreen.css';
 const PLAYER_SPEED = 260; // piksel / saniye
 const PLAYER_R = 20;
 const INTERACT_RADIUS = 78;
-const CHAT_BUBBLE_MS = 9500;
+const CHAT_BUBBLE_MS = 13000; // yeni istek: "bi tık daha uzun dursun" (eskisi 9500)
+// AVATAR_SCALE — yeni istek: "parkta avatarımız diğer mekanlara göre daha
+// küçük... her mekanda boyumuz aynı olsun". Park eskiden HİÇ scale
+// vermiyordu (varsayılan 1), oysa Banka/Karakol/Camii/Gazino/Araba
+// Galerisi/Silah Mağazası/Modifiye Garajı hepsi kendi AVATAR_SCALE'i
+// (1.42, bkz. canvasWorldKit INTERIOR_AVATAR_SCALE) ile çiziyordu — Park
+// bu yüzden gözle görülür şekilde daha küçük kalıyordu. Artık Park da AYNI
+// değeri kullanıyor (hem canlı sahnede hem kamera karesinde, bkz. aşağı).
+const AVATAR_SCALE = INTERIOR_AVATAR_SCALE;
 const PARK_SELL_PRICE = 5000;
 const HOLDING_MS = 120_000; // elde tutulan büfe ürünü 2 dakika sonra kaybolur
 const CAMERA_RADIUS = 170;
@@ -174,7 +183,10 @@ export default function ParkWorldScreen({ onExit }) {
   const [sittingSeatId, setSittingSeatId] = useState(null);
   const [holding, setHolding] = useState(null);
   const [chatText, setChatText] = useState('');
-  const [myBubble, setMyBubble] = useState(null);
+  // Yeni istek: "yeni mesaj yazdığımızda eskisi direkt yok olmasın, süresi
+  // bitene kadar var olmaya devam etsin" — tek bir mesaj yerine, HENÜZ
+  // süresi dolmamış mesajların dizisi tutuluyor (bkz. sendChat/renderFrame).
+  const [myBubbles, setMyBubbles] = useState([]);
   const [sellBusy, setSellBusy] = useState(false);
   const [sellResult, setSellResult] = useState(null);
   const [bufeBusy, setBufeBusy] = useState(null);
@@ -208,14 +220,35 @@ export default function ParkWorldScreen({ onExit }) {
   const cameraFrameRef = useRef(null);
   const cameraOpenRef = useRef(false);
   const cameraDoneRef = useRef(false);
-  const myBubbleRef = useRef(null);
+  const myBubblesRef = useRef([]);
   const othersRef = useRef([]);
   const playerRef = useRef(null);
+  // Diğer oyuncuların mesaj geçmişi — Firestore presence dokümanı SADECE
+  // tek bir "o anki" chatText/chatTs alanı taşıyor (senkron maliyeti
+  // yüzünden dizi olarak yazılmıyor), bu yüzden istemci tarafında YEREL
+  // olarak biriktiriliyor: chatTs her değiştiğinde (yeni mesaj) bu
+  // oyuncunun geçmiş dizisine eklenir, eskiler kendi süresi bitince
+  // (renderFrame'de zaten filtrelendiği için) görünmez olur.
+  const othersBubbleHistoryRef = useRef(new Map()); // uid -> [{text, ts}]
+  const lastSeenChatTsRef = useRef(new Map()); // uid -> son kaydedilen chatTs
 
   useEffect(() => { holdingRef.current = holding; }, [holding]);
   useEffect(() => { sittingSeatRef.current = sittingSeatId; }, [sittingSeatId]);
-  useEffect(() => { myBubbleRef.current = myBubble; }, [myBubble]);
-  useEffect(() => { othersRef.current = others; }, [others]);
+  useEffect(() => { myBubblesRef.current = myBubbles; }, [myBubbles]);
+  useEffect(() => {
+    othersRef.current = others;
+    const now = Date.now();
+    others.forEach((o) => {
+      if (!o.chatText || !o.chatTs) return;
+      if (lastSeenChatTsRef.current.get(o.uid) === o.chatTs) return; // zaten kaydedildi
+      lastSeenChatTsRef.current.set(o.uid, o.chatTs);
+      const history = (othersBubbleHistoryRef.current.get(o.uid) || []).filter(
+        (b) => now - b.ts < CHAT_BUBBLE_MS
+      );
+      history.push({ text: o.chatText, ts: o.chatTs });
+      othersBubbleHistoryRef.current.set(o.uid, history);
+    });
+  }, [others]);
   useEffect(() => { playerRef.current = player; }, [player]);
   useEffect(() => () => { if (holdingTimeoutRef.current) clearTimeout(holdingTimeoutRef.current); }, []);
 
@@ -527,20 +560,20 @@ export default function ParkWorldScreen({ onExit }) {
 
     const now = Date.now();
     const myAvatar = playerRef.current?.avatar;
-    const myBubbleNow = myBubbleRef.current && now - myBubbleRef.current.ts < CHAT_BUBBLE_MS ? myBubbleRef.current : null;
+    const myBubblesNow = myBubblesRef.current.filter((b) => now - b.ts < CHAT_BUBBLE_MS);
 
     const rawEntities = [
-      { x: NPC_POS.x, y: NPC_POS.y, avatar: NPC_AVATAR, pose: 'idle', facing: 'right', name: 'Şüpheli Adam', bubbleData: null, holding: null },
+      { x: NPC_POS.x, y: NPC_POS.y, avatar: NPC_AVATAR, pose: 'idle', facing: 'right', name: 'Şüpheli Adam', bubbleList: [], holding: null },
       ...othersRef.current.map((o) => ({
         x: o.x, y: o.y, avatar: o.avatar, pose: o.pose === 'sit' ? 'sit' : (o.pose || 'idle'),
         facing: o.facing || 'down', name: o.displayName || 'Oyuncu',
-        bubbleData: o.chatText && o.chatTs && now - o.chatTs < CHAT_BUBBLE_MS ? { text: o.chatText, ts: o.chatTs } : null,
+        bubbleList: (othersBubbleHistoryRef.current.get(o.uid) || []).filter((b) => now - b.ts < CHAT_BUBBLE_MS),
         holding: o.holding || null,
       })),
       {
         x: posRef.current.x, y: posRef.current.y, avatar: myAvatar,
         pose: sittingSeatRef.current ? 'sit' : poseRef.current, facing: facingRef.current,
-        name: playerRef.current?.displayName || 'Sen', bubbleData: myBubbleNow, holding: holdingRef.current, isSelf: true,
+        name: playerRef.current?.displayName || 'Sen', bubbleList: myBubblesNow, holding: holdingRef.current, isSelf: true,
       },
     ];
 
@@ -549,32 +582,51 @@ export default function ParkWorldScreen({ onExit }) {
     const entities = rawEntities
       .map((e) => {
         const sitShift = e.pose === 'sit'
-          ? (SPRITE_H * (AVATAR_FULL_VIEWBOX_H - AVATAR_WAIST_Y)) / AVATAR_FULL_VIEWBOX_H
+          ? ((SPRITE_H * (AVATAR_FULL_VIEWBOX_H - AVATAR_WAIST_Y)) / AVATAR_FULL_VIEWBOX_H) * AVATAR_SCALE
           : 0;
         return { ...e, baseY: e.y + sitShift };
       })
       .sort((a, b) => a.y - b.y);
 
-    entities.forEach((e) => drawAvatarSprite(ctx, e, getAvatarImage));
+    entities.forEach((e) => drawAvatarSprite(ctx, e, getAvatarImage, { scale: AVATAR_SCALE }));
 
     // Baloncuklar HER ZAMAN tüm karakterlerin üstünde çizilsin diye ayrı
-    // (ve çakışma-çözümlü) bir son geçiş.
+    // (ve çakışma-çözümlü) bir son geçiş. Yeni istek: aynı karakterin
+    // birden fazla (henüz süresi dolmamış) mesajı varsa ÜST ÜSTE
+    // yığılır — en yeni mesaj kafaya en yakın, eski mesaj(lar) onun
+    // biraz üstünde. Eskiden yeniye doğru yığıyoruz ki en yeni en alta
+    // (kafaya en yakın konuma) düşsün.
     const bubbleItems = [];
     entities.forEach((e) => {
-      if (!e.bubbleData) return;
-      const lines = wrapBubbleText(ctx, e.bubbleData.text);
-      const { w, h } = measureBubble(ctx, lines);
-      const anchorY = e.baseY - SPRITE_H - 8;
-      bubbleItems.push({ x: e.x, w, h, lines, ts: e.bubbleData.ts, naturalTop: anchorY - h });
+      const list = e.bubbleList || [];
+      if (list.length === 0) return;
+      let cursorBottom = e.baseY - SPRITE_H * AVATAR_SCALE - 8;
+      for (let i = list.length - 1; i >= 0; i -= 1) {
+        const b = list[i];
+        const lines = wrapBubbleText(ctx, b.text);
+        const { w, h } = measureBubble(ctx, lines);
+        const naturalTop = cursorBottom - h;
+        bubbleItems.push({ x: e.x, w, h, lines, ts: b.ts, naturalTop });
+        cursorBottom = naturalTop - 6;
+      }
     });
     layoutBubbles(bubbleItems).forEach((item) => drawBubbleBox(ctx, item));
   }
 
+  // Dizideki her mesaj KENDİ süresi bitince tek tek düşer (hepsi birden
+  // değil) — bir sonraki süresi dolacak mesaja göre zamanlanır, o
+  // tetiklendiğinde süresi geçmiş olanlar filtrelenir ve (varsa kalanlar
+  // için) tekrar zamanlanır.
   useEffect(() => {
-    if (!myBubble) return undefined;
-    const id = setTimeout(() => setMyBubble(null), CHAT_BUBBLE_MS);
+    if (myBubbles.length === 0) return undefined;
+    const now = Date.now();
+    const earliestTs = Math.min(...myBubbles.map((b) => b.ts));
+    const msUntilExpiry = Math.max(0, earliestTs + CHAT_BUBBLE_MS - now);
+    const id = setTimeout(() => {
+      setMyBubbles((prev) => prev.filter((b) => Date.now() - b.ts < CHAT_BUBBLE_MS));
+    }, msUntilExpiry);
     return () => clearTimeout(id);
-  }, [myBubble]);
+  }, [myBubbles]);
 
   function pointerToCanvas(e) {
     const canvas = canvasRef.current;
@@ -703,7 +755,9 @@ export default function ParkWorldScreen({ onExit }) {
     const text = chatText.trim();
     if (!text || !user) return;
     const ts = Date.now();
-    setMyBubble({ text, ts });
+    // Yeni mesaj ESKİSİNİ silmiyor, diziye ekleniyor — her biri kendi
+    // süresi (CHAT_BUBBLE_MS) bitene kadar ekranda kalmaya devam eder.
+    setMyBubbles((prev) => [...prev.filter((b) => ts - b.ts < CHAT_BUBBLE_MS), { text, ts }]);
     updatePresence(user.uid, {
       x: posRef.current.x, y: posRef.current.y, facing: facingRef.current,
       pose: sittingSeatRef.current ? 'sit' : 'idle', seat: sittingSeatRef.current,
@@ -725,20 +779,37 @@ export default function ParkWorldScreen({ onExit }) {
   // ve pozu sunucuda GERÇEK veriden (parkPresence + users) yeniden inşa
   // edilir (bkz. functions/index.js buildSixtagramAttachment
   // 'parkPhoto') — istemciden hiçbir konum/poz verisi TRUST edilmez.
+  // latestActiveBubble — bir mesaj geçmişi dizisinden, HENÜZ süresi
+  // dolmamış EN YENİ mesajı döner (yoksa null). Fotoğrafta (canlı
+  // sahnenin aksine) tek bir balon gösterildiği için sadece en yenisi
+  // yeterli — bkz. renderPhotoFrame'deki bubbleText/bubbleTs kullanımı.
+  function latestActiveBubble(list) {
+    const now = Date.now();
+    const active = (list || []).filter((b) => now - b.ts < CHAT_BUBBLE_MS);
+    if (active.length === 0) return null;
+    return active[active.length - 1];
+  }
+
   function buildCameraEntities() {
     const p = posRef.current;
     const nearby = othersRef.current
       .filter((o) => dist(p, o) < CAMERA_RADIUS)
       .slice(0, 4)
-      .map((o) => ({
-        dx: o.x - p.x,
-        dy: o.y - p.y,
-        avatar: o.avatar,
-        pose: o.pose === 'sit' ? 'sit' : (o.pose === 'walk1' || o.pose === 'walk2' ? o.pose : 'idle'),
-        facing: o.facing || 'down',
-        holding: o.holding || null,
-        isSelf: false,
-      }));
+      .map((o) => {
+        const bubble = latestActiveBubble(othersBubbleHistoryRef.current.get(o.uid));
+        return {
+          dx: o.x - p.x,
+          dy: o.y - p.y,
+          avatar: o.avatar,
+          pose: o.pose === 'sit' ? 'sit' : (o.pose === 'walk1' || o.pose === 'walk2' ? o.pose : 'idle'),
+          facing: o.facing || 'down',
+          holding: o.holding || null,
+          isSelf: false,
+          bubbleText: bubble?.text || null,
+          bubbleTs: bubble?.ts || 0,
+        };
+      });
+    const selfBubble = latestActiveBubble(myBubblesRef.current);
     const self = {
       dx: 0, dy: 0,
       avatar: playerRef.current?.avatar,
@@ -746,8 +817,25 @@ export default function ParkWorldScreen({ onExit }) {
       facing: facingRef.current,
       holding: holdingRef.current,
       isSelf: true,
+      bubbleText: selfBubble?.text || null,
+      bubbleTs: selfBubble?.ts || 0,
     };
-    return { originX: p.x, originY: p.y, entities: [self, ...nearby] };
+    // Yeni istek (madde 5): "parktaki şüpheli adam fotoğraflarda
+    // gözükmüyor" — NPC diğer oyuncular gibi gerçek konumundan (NPC_POS)
+    // göreli ofsetle (dx/dy) karede yakınsa dahil edilir. Sunucu tarafında
+    // da AYNI eklenmeli (bkz. functions/index.js buildSixtagramAttachment
+    // 'parkPhoto') — istemci önizlemesi kadar paylaşılan fotoğraf da NPC'yi
+    // göstersin diye.
+    const npcDx = NPC_POS.x - p.x;
+    const npcDy = NPC_POS.y - p.y;
+    const npc =
+      Math.hypot(npcDx, npcDy) < CAMERA_RADIUS
+        ? [{
+            dx: npcDx, dy: npcDy, avatar: NPC_AVATAR, pose: 'idle', facing: 'right',
+            holding: null, isSelf: false, bubbleText: null, bubbleTs: 0,
+          }]
+        : [];
+    return { originX: p.x, originY: p.y, entities: [self, ...nearby, ...npc] };
   }
 
   function openCamera() {
@@ -782,6 +870,7 @@ export default function ParkWorldScreen({ onExit }) {
       originY: frame.originY,
       entities: frame.entities,
       getAvatarImage,
+      focalScale: AVATAR_SCALE,
     });
   }
 

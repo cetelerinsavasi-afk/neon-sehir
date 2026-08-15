@@ -299,15 +299,16 @@ export function buildStaticScene(sctx) {
 // lib/canvasWorldKit.js'teki jenerik renderPhotoFrame'den gelir. Oturma
 // pozu kaydırması burada hesaplanıp `sitShift` olarak geçiriliyor —
 // ParkWorldScreen'in canlı render'ıyla BİREBİR aynı oran.
-export function renderPhotoFrame(ctx, { width, height, originX, originY, entities, getAvatarImage }) {
+export function renderPhotoFrame(ctx, { width, height, originX, originY, entities, getAvatarImage, focalScale = 1 }) {
   const withSitShift = entities.map((e) => ({
     ...e,
     sitShift: e.pose === 'sit'
-      ? (SPRITE_H * (AVATAR_FULL_VIEWBOX_H - AVATAR_WAIST_Y)) / AVATAR_FULL_VIEWBOX_H
+      ? ((SPRITE_H * (AVATAR_FULL_VIEWBOX_H - AVATAR_WAIST_Y)) / AVATAR_FULL_VIEWBOX_H) * (e.scale ?? focalScale)
       : 0,
   }));
   kitRenderPhotoFrame(ctx, {
     width, height, originX, originY, entities: withSitShift, getAvatarImage,
     drawBackground: drawWorldLandmarks,
+    focalScale,
   });
 }

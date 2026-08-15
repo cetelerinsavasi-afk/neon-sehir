@@ -384,6 +384,33 @@
   color: var(--neon-pink);
 }
 
+.factory-report-materials {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 4px;
+}
+
+.factory-report-material-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  font-size: 12px;
+}
+
+.factory-report-material-name {
+  color: var(--text);
+}
+
+.factory-report-material-qty {
+  font-weight: 700;
+  color: var(--neon-cyan);
+}
+
 .factory-report-table {
   display: flex;
   flex-direction: column;

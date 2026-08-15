@@ -132,6 +132,7 @@ function ParkPhotoCanvas({ entities, originX, originY }) {
         originY: originY ?? 0,
         entities,
         getAvatarImage: parkPhotoImageCache,
+        focalScale: INTERIOR_AVATAR_SCALE,
       });
       frames += 1;
       if (frames < 90) raf = requestAnimationFrame(draw);

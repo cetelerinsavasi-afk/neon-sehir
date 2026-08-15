@@ -1,0 +1,168 @@
+.fsg-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(6, 9, 11, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.fsg-wrap {
+  --bg-deep: #0e1418;
+  --bg-mid: #1c2830;
+  --gold: #f2b632;
+  --gold-light: #ffe08a;
+  --cream: #f3e6c9;
+  position: relative;
+  width: min(94vw, 640px);
+  background: radial-gradient(ellipse at 50% 0%, var(--bg-mid), var(--bg-deep) 70%);
+  border-radius: 14px;
+  padding: 12px;
+  color: var(--cream);
+  font-family: ui-rounded, "Segoe UI Rounded", "Trebuchet MS", sans-serif;
+}
+
+.fsg-hud {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 6px 10px 6px;
+  gap: 8px;
+}
+
+.fsg-title {
+  font-size: 14px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #9fb3bd;
+  font-weight: 700;
+}
+
+.fsg-score {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  justify-content: center;
+}
+
+.fsg-crate-icon {
+  width: 15px;
+  height: 14px;
+  background: linear-gradient(155deg, #c98a3f, #8a5a24 70%);
+  border-radius: 2px;
+  opacity: 0.25;
+  transition: opacity 0.3s;
+  position: relative;
+}
+
+.fsg-crate-icon::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border: 1px dashed rgba(0, 0, 0, 0.35);
+}
+
+.fsg-crate-icon.filled {
+  opacity: 1;
+  filter: drop-shadow(0 0 4px var(--gold));
+}
+
+.fsg-close {
+  background: none;
+  border: none;
+  color: #9fb3bd;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.fsg-canvas {
+  display: block;
+  width: 100%;
+  aspect-ratio: 640 / 480;
+  background: linear-gradient(180deg, #141c22 0%, #1a2530 55%, #0f151a 100%);
+  border-radius: 10px;
+  box-shadow:
+    0 0 0 3px #0a0d0f,
+    0 0 0 6px #2c3a42,
+    inset 0 0 60px rgba(0, 0, 0, 0.55);
+  touch-action: none;
+  cursor: pointer;
+}
+
+.fsg-hint {
+  text-align: center;
+  margin: 10px 0 2px;
+  font-size: 12px;
+  color: #8fa2ac;
+  letter-spacing: 0.3px;
+}
+
+.fsg-hint b {
+  color: var(--gold-light);
+}
+
+.fsg-overlay {
+  position: absolute;
+  inset: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 9, 11, 0.72);
+  border-radius: 10px;
+  backdrop-filter: blur(2px);
+}
+
+.fsg-card {
+  text-align: center;
+  padding: 26px 30px;
+  background: linear-gradient(160deg, #20292f, #12181c);
+  border: 2px solid var(--gold);
+  border-radius: 14px;
+  box-shadow: 0 0 40px rgba(242, 182, 50, 0.25), 0 10px 30px rgba(0, 0, 0, 0.5);
+  max-width: 90%;
+}
+
+.fsg-card .fsg-emoji {
+  font-size: 40px;
+}
+
+.fsg-card h2 {
+  margin: 8px 0 4px;
+  color: var(--gold-light);
+  font-size: 19px;
+  letter-spacing: 0.5px;
+}
+
+.fsg-card p {
+  margin: 0 0 16px;
+  color: #b9c7ce;
+  font-size: 13px;
+}
+
+.fsg-card button {
+  background: linear-gradient(160deg, var(--gold-light), var(--gold));
+  border: none;
+  color: #3a2504;
+  font-weight: 800;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 13px;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  box-shadow: 0 4px 0 #a97a12, 0 6px 10px rgba(0, 0, 0, 0.4);
+  margin: 0 4px;
+}
+
+.fsg-card button:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 #a97a12;
+}
+
+.fsg-card button.fsg-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--cream);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.4);
+}

@@ -465,7 +465,10 @@ export default function MosqueWorldScreen({ onExit }) {
   const [bookletOpen, setBookletOpen] = useState(false);
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [chatText, setChatText] = useState('');
-  const [myBubble, setMyBubble] = useState(null);
+  // Yeni istek: "yeni mesaj yazdığımızda eskisi direkt yok olmasın, süresi
+  // bitene kadar var olmaya devam etsin" — tek bir mesaj yerine, HENÜZ
+  // süresi dolmamış mesajların dizisi tutuluyor (bkz. sendChat/renderFrame).
+  const [myBubbles, setMyBubbles] = useState([]);
   const [prayBusy, setPrayBusy] = useState(false);
   const [prayError, setPrayError] = useState(null);
   const [prayBtnPos, setPrayBtnPos] = useState(null);
@@ -492,8 +495,14 @@ export default function MosqueWorldScreen({ onExit }) {
   const cameraDoneRef = useRef(false);
   const getAvatarImageRef = useRef(createAvatarImageCache(buildFullAvatarSvgMarkup, DEFAULT_AVATAR));
   // --- Canlı/çok oyunculu (madde 17) — Bank/Karakol ile BİREBİR aynı desen.
-  const myBubbleRef = useRef(null);
+  const myBubblesRef = useRef([]);
   const othersRef = useRef([]);
+  // Diğer oyuncuların mesaj geçmişi — Firestore presence dokümanı SADECE
+  // tek bir "o anki" chatText/chatTs alanı taşıyor, bu yüzden istemci
+  // tarafında YEREL olarak biriktiriliyor (bkz. Bank/ParkWorldScreen'deki
+  // birebir aynı desen).
+  const othersBubbleHistoryRef = useRef(new Map()); // uid -> [{text, ts}]
+  const lastSeenChatTsRef = useRef(new Map()); // uid -> son kaydedilen chatTs
   const lastSyncRef = useRef(0);
   const lastSyncedPosRef = useRef({ ...START_POS });
   const wasMovingRef = useRef(false);
@@ -501,20 +510,38 @@ export default function MosqueWorldScreen({ onExit }) {
   const MOVE_SYNC_INTERVAL_MS = 300;
   const MOVE_SYNC_MIN_DIST = 6;
   const IDLE_HEARTBEAT_MS = 12_000;
-  const CHAT_BUBBLE_MS = 9500;
+  const CHAT_BUBBLE_MS = 13000; // yeni istek: "bi tık daha uzun dursun" (eskisi 9500)
 
   useEffect(() => { playerRef.current = player; }, [player]);
   useEffect(() => { imamRef.current = imam; }, [imam]);
   useEffect(() => { beggarsRef.current = beggars; }, [beggars]);
-  useEffect(() => { myBubbleRef.current = myBubble; }, [myBubble]);
-  useEffect(() => { othersRef.current = others; }, [others]);
+  useEffect(() => { myBubblesRef.current = myBubbles; }, [myBubbles]);
+  useEffect(() => {
+    othersRef.current = others;
+    const now = Date.now();
+    others.forEach((o) => {
+      if (!o.chatText || !o.chatTs) return;
+      if (lastSeenChatTsRef.current.get(o.uid) === o.chatTs) return; // zaten kaydedildi
+      lastSeenChatTsRef.current.set(o.uid, o.chatTs);
+      const history = (othersBubbleHistoryRef.current.get(o.uid) || []).filter(
+        (b) => now - b.ts < CHAT_BUBBLE_MS
+      );
+      history.push({ text: o.chatText, ts: o.chatTs });
+      othersBubbleHistoryRef.current.set(o.uid, history);
+    });
+  }, [others]);
 
   useEffect(() => {
-    if (!myBubble) return undefined;
-    const id = setTimeout(() => setMyBubble(null), CHAT_BUBBLE_MS);
+    if (myBubbles.length === 0) return undefined;
+    const now = Date.now();
+    const earliestTs = Math.min(...myBubbles.map((b) => b.ts));
+    const msUntilExpiry = Math.max(0, earliestTs + CHAT_BUBBLE_MS - now);
+    const id = setTimeout(() => {
+      setMyBubbles((prev) => prev.filter((b) => Date.now() - b.ts < CHAT_BUBBLE_MS));
+    }, msUntilExpiry);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myBubble]);
+  }, [myBubbles]);
 
   function getAvatarImage(avatar, pose) {
     return getAvatarImageRef.current(avatar, pose);
@@ -641,7 +668,7 @@ export default function MosqueWorldScreen({ onExit }) {
     const text = chatText.trim();
     if (!text || !user) return;
     const ts = Date.now();
-    setMyBubble({ text, ts });
+    setMyBubbles((prev) => [...prev.filter((b) => ts - b.ts < CHAT_BUBBLE_MS), { text, ts }]);
     updatePresence(user.uid, {
       x: posRef.current.x, y: posRef.current.y, facing: facingRef.current, pose: 'idle', seat: null,
       chatText: text, chatTs: ts,
@@ -698,8 +725,18 @@ export default function MosqueWorldScreen({ onExit }) {
   }
 
   // --- Kamera (madde 2/13) — BankWorldScreen'deki aynı desen.
+  // latestActiveBubble — yeni istek: "mesajlar da fotoğrafta gözükse çok
+  // iyi olur" — henüz süresi dolmamış EN YENİ mesajı döner (yoksa null).
+  function latestActiveBubble(list) {
+    const now = Date.now();
+    const active = (list || []).filter((b) => now - b.ts < CHAT_BUBBLE_MS);
+    if (active.length === 0) return null;
+    return active[active.length - 1];
+  }
+
   function buildCameraEntities() {
     const p = posRef.current;
+    const selfBubble = latestActiveBubble(myBubblesRef.current);
     const self = {
       dx: 0, dy: 0,
       avatar: playerRef.current?.avatar,
@@ -707,6 +744,8 @@ export default function MosqueWorldScreen({ onExit }) {
       facing: facingRef.current,
       isSelf: true,
       scale: AVATAR_SCALE,
+      bubbleText: selfBubble?.text || null,
+      bubbleTs: selfBubble?.ts || 0,
     };
     return { originX: p.x, originY: p.y, entities: [self] };
   }
@@ -755,6 +794,7 @@ export default function MosqueWorldScreen({ onExit }) {
       await createSixtagramPost(cameraCaption, {
         type: 'interiorPhoto', locationId: 'camii',
         pose: self?.pose, facing: self?.facing, x: frame?.originX, y: frame?.originY,
+        bubbleText: self?.bubbleText || null,
       });
       setCameraDone(true);
       cameraDoneRef.current = true;
@@ -784,19 +824,19 @@ export default function MosqueWorldScreen({ onExit }) {
     }
 
     const now = Date.now();
-    const myBubbleNow = myBubbleRef.current && now - myBubbleRef.current.ts < CHAT_BUBBLE_MS ? myBubbleRef.current : null;
+    const myBubblesNow = myBubblesRef.current.filter((b) => now - b.ts < CHAT_BUBBLE_MS);
 
     const rawEntities = [
       ...othersRef.current.map((o) => ({
         x: o.x, y: o.y, avatar: o.avatar, pose: o.pose || 'idle',
         facing: o.facing || 'down', name: o.displayName || 'Oyuncu',
-        bubbleData: o.chatText && o.chatTs && now - o.chatTs < CHAT_BUBBLE_MS ? { text: o.chatText, ts: o.chatTs } : null,
+        bubbleList: (othersBubbleHistoryRef.current.get(o.uid) || []).filter((b) => now - b.ts < CHAT_BUBBLE_MS),
         isSelf: false,
       })),
       {
         x: posRef.current.x, y: posRef.current.y, avatar: playerRef.current?.avatar,
         pose: poseRef.current, facing: facingRef.current,
-        name: playerRef.current?.displayName || 'Sen', bubbleData: myBubbleNow, isSelf: true,
+        name: playerRef.current?.displayName || 'Sen', bubbleList: myBubblesNow, isSelf: true,
       },
     ];
     const entities = rawEntities
@@ -824,12 +864,20 @@ export default function MosqueWorldScreen({ onExit }) {
         bubbleItems.push({ x: standX, w, h, lines, ts: 0, naturalTop: anchorY - h });
       }
     }
-    entities.forEach((e, i) => {
-      if (!e.bubbleData) return;
-      const lines = wrapBubbleText(ctx, e.bubbleData.text);
-      const { w, h } = measureBubble(ctx, lines);
-      const anchorY = e.baseY - SPRITE_H * AVATAR_SCALE - 8;
-      bubbleItems.push({ x: e.x, w, h, lines, ts: 100 + i, naturalTop: anchorY - h });
+    entities.forEach((e) => {
+      const list = e.bubbleList || [];
+      if (list.length === 0) return;
+      // Yeni istek: aynı karakterin birden fazla (henüz süresi dolmamış)
+      // mesajı üst üste yığılır — en yeni mesaj kafaya en yakın.
+      let cursorBottom = e.baseY - SPRITE_H * AVATAR_SCALE - 8;
+      for (let i = list.length - 1; i >= 0; i -= 1) {
+        const b = list[i];
+        const lines = wrapBubbleText(ctx, b.text);
+        const { w, h } = measureBubble(ctx, lines);
+        const naturalTop = cursorBottom - h;
+        bubbleItems.push({ x: e.x, w, h, lines, ts: b.ts, naturalTop });
+        cursorBottom = naturalTop - 6;
+      }
     });
     layoutBubbles(bubbleItems).forEach((item) => drawBubbleBox(ctx, item, W));
   }

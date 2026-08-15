@@ -6,6 +6,7 @@ import { useOpenFactories, MACHINE_LABELS } from '../../hooks/useOpenFactories';
 import { useEmployerFactory } from '../../hooks/useEmployerFactory';
 import { useInvestmentPrices } from '../../hooks/useInvestmentPrices';
 import { useListedFactoryShares } from '../../hooks/useFactoryShares';
+import FactoryShiftGame from './FactoryShiftGame';
 import {
   createFactory,
   buyFactoryMachine,
@@ -47,7 +48,7 @@ function machinePrice(type, cryptoPrice, ownedMiningCount = 0) {
 function machineProductionRangeLabel(type) {
   if (type === 'yasakliMadde') return '1-10';
   if (type === 'silahUpgrade') return '1-200';
-  if (type === 'tamirMalzemesi') return '1-4000';
+  if (type === 'tamirMalzemesi') return '1-3000';
   return '1-40';
 }
 
@@ -501,7 +502,11 @@ function OwnerView({ factory, machines, player, myUid }) {
   const [showReport, setShowReport] = useState(false);
   const [selfBusy, setSelfBusy] = useState(null);
   const [selfError, setSelfError] = useState(null);
-  const [produceBusy, setProduceBusy] = useState(false);
+  // showShiftGame — yeni istek: "fabrika sahipleri de kendisi bi makinede
+  // görevliyse bu kutu oyununu oynasın üretim yapmak için" — sahibin kendi
+  // çalıştığı makine için de artık "Üretim Yap" direkt üretmiyor, önce
+  // FactoryShiftGame açılıyor (WorkerView'daki AYNI akış, bkz. handleShiftGameComplete).
+  const [showShiftGame, setShowShiftGame] = useState(false);
   const [produceResult, setProduceResult] = useState(null);
   const [resignBusy, setResignBusy] = useState(false);
   const [runBusy, setRunBusy] = useState(false);
@@ -535,17 +540,11 @@ function OwnerView({ factory, machines, player, myUid }) {
     }
   };
 
-  const handleSelfProduce = async () => {
-    setProduceBusy(true);
+  const handleShiftGameComplete = async () => {
     setSelfError(null);
-    try {
-      const res = await produceAtFactory();
-      setProduceResult(res.data);
-    } catch (err) {
-      setSelfError(err.message || 'Üretim yapılamadı.');
-    } finally {
-      setProduceBusy(false);
-    }
+    const res = await produceAtFactory();
+    setProduceResult(res.data);
+    return res.data;
   };
 
   const handleSelfResign = async () => {
@@ -665,10 +664,10 @@ function OwnerView({ factory, machines, player, myUid }) {
                   <div className="factory-machine-self-actions">
                     <button
                       className="factory-btn small"
-                      disabled={producedToday || produceBusy}
-                      onClick={handleSelfProduce}
+                      disabled={producedToday}
+                      onClick={() => setShowShiftGame(true)}
                     >
-                      {produceBusy ? '…' : 'Üretim Yap'}
+                      Üretim Yap
                     </button>
                     <button
                       className="factory-btn small"
@@ -730,6 +729,12 @@ function OwnerView({ factory, machines, player, myUid }) {
         <FactoryShareSellModal factory={factory} onClose={() => setShowShareSell(false)} />
       )}
       {showReport && <DailyReportModal factory={factory} onClose={() => setShowReport(false)} />}
+      {showShiftGame && (
+        <FactoryShiftGame
+          onComplete={handleShiftGameComplete}
+          onClose={() => setShowShiftGame(false)}
+        />
+      )}
     </div>
   );
 }
@@ -765,6 +770,11 @@ function DailyReportModal({ factory, onClose }) {
     };
   });
 
+  // Yeni istek: "günlük raporda kaç adet hangi malzemeden üretildiği de
+  // yazsın" — dailyProducedByType, { [makineTürü]: adet } şeklinde.
+  const producedByType = factory.dailyProducedByType || {};
+  const producedEntries = Object.entries(producedByType).filter(([, qty]) => qty > 0);
+
   return (
     <div className="factory-modal-backdrop" onClick={onClose}>
       <div className="factory-modal" onClick={(e) => e.stopPropagation()}>
@@ -797,6 +807,21 @@ function DailyReportModal({ factory, onClose }) {
           </div>
         </div>
 
+        <p className="factory-step-label">Dün Üretilen Malzemeler</p>
+        {producedEntries.length === 0 && <p className="factory-hint">Dün hiç üretim yapılmadı.</p>}
+        {producedEntries.length > 0 && (
+          <div className="factory-report-materials">
+            {producedEntries.map(([type, qty]) => (
+              <div key={type} className="factory-report-material-row">
+                <span className="factory-report-material-name">
+                  {MACHINE_EMOJI[type] || '📦'} {MACHINE_LABELS[type] || type}
+                </span>
+                <span className="factory-report-material-qty">{qty.toLocaleString('tr-TR')} adet</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         <p className="factory-step-label">Son {rows.length} Gün</p>
         {rows.length === 0 && <p className="factory-hint">Henüz rapor geçmişi yok.</p>}
         {rows.length > 0 && (
@@ -826,12 +851,18 @@ function DailyReportModal({ factory, onClose }) {
 // İşçi ekranı
 // ---------------------------------------------------------------------------
 function WorkerView({ player, myUid }) {
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
   const [showBrowse, setShowBrowse] = useState(false);
   const [resignBusy, setResignBusy] = useState(false);
   const [showCreateFactory, setShowCreateFactory] = useState(false);
+  // Yeni istek: "fabrika işçileri için yeni özellik, basit bi oyun görevi
+  // ekleyeceğiz, oyuncu fabrikaya girdiğinde 'üretim yap' butonu yerine bu
+  // oyunla karşılaşacak ve bu mini oyunu tamamladığında üretimi yapmış
+  // sayılıp maaşını alabilecek." — "Üretim Yap" artık DOĞRUDAN sunucuyu
+  // çağırmıyor, önce FactoryShiftGame'i açıyor; sunucu çağrısı (produceAtFactory)
+  // SADECE oyun 10/10 tamamlanınca yapılır (bkz. handleShiftGameComplete).
+  const [showShiftGame, setShowShiftGame] = useState(false);
 
   const employment = player.employment;
   const { factory: employerFactory } = useEmployerFactory(employment?.factoryId);
@@ -843,17 +874,15 @@ function WorkerView({ player, myUid }) {
   }).format(new Date());
   const producedToday = player.employmentProducedDateKey === dateKey;
 
-  const handleProduce = async () => {
-    setBusy(true);
+  // handleShiftGameComplete — FactoryShiftGame'e `onComplete` olarak
+  // geçiriliyor: oyun 10/10 kasa yakalanınca çağrılır, gerçek sunucu
+  // işlemini (produceAtFactory) yapar ve sonucu (maaş) modale döner —
+  // hata olursa modal kendi hata ekranını gösterir (throw edilir).
+  const handleShiftGameComplete = async () => {
     setError(null);
-    try {
-      const res = await produceAtFactory();
-      setResult(res.data);
-    } catch (err) {
-      setError(err.message || 'Üretim yapılamadı.');
-    } finally {
-      setBusy(false);
-    }
+    const res = await produceAtFactory();
+    setResult(res.data);
+    return res.data;
   };
 
   const handleResign = async () => {
@@ -894,8 +923,8 @@ function WorkerView({ player, myUid }) {
             </span>
           </div>
         </div>
-        <button className="factory-produce-btn" disabled={busy || producedToday} onClick={handleProduce}>
-          {busy ? '…' : 'Üretim Yap'}
+        <button className="factory-produce-btn" disabled={producedToday} onClick={() => setShowShiftGame(true)}>
+          Üretim Yap
         </button>
         {producedToday && (
           <p className="factory-produced-warning">
@@ -924,6 +953,12 @@ function WorkerView({ player, myUid }) {
       )}
       {showCreateFactory && (
         <CreateFactoryModal onClose={() => setShowCreateFactory(false)} isEmployed />
+      )}
+      {showShiftGame && (
+        <FactoryShiftGame
+          onComplete={handleShiftGameComplete}
+          onClose={() => setShowShiftGame(false)}
+        />
       )}
     </div>
   );
