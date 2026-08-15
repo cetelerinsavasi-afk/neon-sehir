@@ -5,7 +5,7 @@ import CityMap from './components/CityMap/CityMap';
 import BottomBar from './components/BottomBar/BottomBar';
 import PhoneScreen from './components/Phone/PhoneScreen';
 import RegionModal from './components/RegionModal/RegionModal';
-import HeistScreen from './components/HeistScreen/HeistScreen';
+import MekanlarScreen from './components/MekanlarScreen/MekanlarScreen';
 import ReferralPrompt from './components/ReferralPrompt/ReferralPrompt';
 import RaceFullScreen from './components/RaceTrackScreen/RaceFullScreen';
 import RaceBubble from './components/RaceTrackScreen/RaceBubble';
@@ -57,7 +57,16 @@ function GameShell() {
   const [activeRegion, setActiveRegion] = useState(null);
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [phoneInitialApp, setPhoneInitialApp] = useState(null);
-  const [heistTarget, setHeistTarget] = useState(undefined); // undefined=kapalı, null=açık/hedefsiz
+  const [heistTarget, setHeistTarget] = useState(undefined); // undefined=kapalı, null=açık/hedefsiz (Mekanlar ekranı)
+  // mekanlarTab — Mekanlar ekranı açıkken hangi sekme aktif (yeni istek:
+  // "Soygun sekmesinin adını Mekanlar yapacağız, 3 ana sekmeye ayrılacak:
+  // Soygun - Şüphe - Ziyaret").
+  const [mekanlarTab, setMekanlarTab] = useState('soygun');
+  // visitReturnPending — Ziyaret sekmesinden bir mekana girildiyse true;
+  // o mekandan çıkınca ana haritaya değil, Mekanlar ekranına (Ziyaret
+  // sekmesinde) geri dönülür (yeni istek: "oradan girdiysek mekandan
+  // çıktığımızda yine o ekran açık şekilde bizi bekleyecek").
+  const [visitReturnPending, setVisitReturnPending] = useState(false);
   const [activeRaceRoomId, setActiveRaceRoomId] = useState(null);
   const [raceExpanded, setRaceExpanded] = useState(false);
   // raceLobbyMode — kullanıcı revizesi: "şampiyonadan/antrenmandan/
@@ -188,7 +197,46 @@ function GameShell() {
 
   const openHeistScreen = (target) => {
     setActiveRegion(null);
+    // Soygun köşe butonlarından (Banka/Gazino/Galeri/Garaj içi) veya alt
+    // bardan açılınca her zaman Soygun sekmesinde açılır.
+    setMekanlarTab('soygun');
     setHeistTarget(target ?? null);
+  };
+
+  // openVenueForVisit / closeVenueMaybeReturnToVisit — Ziyaret sekmesinden
+  // bir mekana giriş/çıkış akışı. Girerken Mekanlar ekranı kapanır (mekan
+  // üstte açılır), çıkarken (visitReturnPending true ise) Mekanlar ekranı
+  // Ziyaret sekmesinde tekrar açılır — RaceFullScreen'in "kendi lobisine
+  // dön" deseniyle AYNI mantık (bkz. aşağıdaki RACE_TRACK_REGION notu).
+  const openVenueForVisit = (openFn) => {
+    setHeistTarget(undefined);
+    setVisitReturnPending(true);
+    openFn(true);
+  };
+
+  const closeVenueMaybeReturnToVisit = (closeFn) => {
+    closeFn(false);
+    if (visitReturnPending) {
+      setVisitReturnPending(false);
+      setMekanlarTab('ziyaret');
+      setHeistTarget(null);
+    }
+  };
+
+  const VISIT_OPEN_FNS = {
+    park: setParkOpen,
+    banka: setBankOpen,
+    karakol: setKarakolOpen,
+    mosque: setMosqueOpen,
+    casino: setCasinoOpen,
+    dealership: setDealershipOpen,
+    weaponShop: setWeaponShopOpen,
+    tuningGarage: setTuningGarageOpen,
+  };
+
+  const handleVisitVenue = (openKey) => {
+    const fn = VISIT_OPEN_FNS[openKey];
+    if (fn) openVenueForVisit(fn);
   };
 
   const openRace = (roomId) => {
@@ -256,41 +304,58 @@ function GameShell() {
         onRaceModeChange={setRaceLobbyMode}
       />
 
-      {parkOpen && <ParkWorldScreen onExit={() => setParkOpen(false)} />}
+      {parkOpen && (
+        <ParkWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setParkOpen)} />
+      )}
 
       {bankOpen && (
-        <BankWorldScreen onExit={() => setBankOpen(false)} onOpenHeist={openHeistScreen} />
+        <BankWorldScreen
+          onExit={() => closeVenueMaybeReturnToVisit(setBankOpen)}
+          onOpenHeist={openHeistScreen}
+        />
       )}
 
       {karakolOpen && (
-        <KarakolWorldScreen onExit={() => setKarakolOpen(false)} />
+        <KarakolWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setKarakolOpen)} />
       )}
 
       {mosqueOpen && (
-        <MosqueWorldScreen onExit={() => setMosqueOpen(false)} />
+        <MosqueWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setMosqueOpen)} />
       )}
 
       {casinoOpen && (
         <CasinoWorldScreen
-          onExit={() => setCasinoOpen(false)}
+          onExit={() => closeVenueMaybeReturnToVisit(setCasinoOpen)}
           onOpenHeist={openHeistScreen}
         />
       )}
 
       {dealershipOpen && (
-        <CarDealershipWorldScreen onExit={() => setDealershipOpen(false)} onOpenHeist={openHeistScreen} />
+        <CarDealershipWorldScreen
+          onExit={() => closeVenueMaybeReturnToVisit(setDealershipOpen)}
+          onOpenHeist={openHeistScreen}
+        />
       )}
 
       {weaponShopOpen && (
-        <WeaponShopWorldScreen onExit={() => setWeaponShopOpen(false)} />
+        <WeaponShopWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setWeaponShopOpen)} />
       )}
 
       {tuningGarageOpen && (
-        <TuningGarageWorldScreen onExit={() => setTuningGarageOpen(false)} onOpenHeist={openHeistScreen} />
+        <TuningGarageWorldScreen
+          onExit={() => closeVenueMaybeReturnToVisit(setTuningGarageOpen)}
+          onOpenHeist={openHeistScreen}
+        />
       )}
 
       {heistTarget !== undefined && (
-        <HeistScreen initialTarget={heistTarget} onClose={() => setHeistTarget(undefined)} />
+        <MekanlarScreen
+          tab={mekanlarTab}
+          onTabChange={setMekanlarTab}
+          initialHeistTarget={heistTarget}
+          onClose={() => setHeistTarget(undefined)}
+          onVisitVenue={handleVisitVenue}
+        />
       )}
 
       {effectiveRaceRoomId && user && raceExpanded && (

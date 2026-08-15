@@ -1,0 +1,57 @@
+.visit-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.visit-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.visit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.visit-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.visit-card:hover {
+  border-color: var(--neon-cyan);
+}
+
+.visit-card-emoji {
+  font-size: 24px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.visit-card-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.visit-card-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.visit-card-count.active {
+  color: var(--neon-cyan);
+}

@@ -17,7 +17,7 @@ export default function BottomBar({ onPhoneClick, onHeistClick, onProfileClick, 
           <path d="M12 2.5V7.2M4.6 7.4l3.6 2.6M19.4 7.4l-3.6 2.6M6.7 18.5l2.9-4.1M17.3 18.5l-2.9-4.1M2.6 12h4M17.4 12h4" />
         </svg>
       </button>
-      <button className="bottom-bar-btn danger" onClick={onHeistClick} aria-label="Soygun">
+      <button className="bottom-bar-btn danger" onClick={onHeistClick} aria-label="Mekanlar">
         <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor">
           <rect x="2" y="11" width="15" height="3.5" rx="1" />
           <rect x="14" y="8" width="3.5" height="4" rx="1" />

@@ -19,28 +19,34 @@ import {
 import InfoIcon from '../InfoIcon/InfoIcon';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import ResultModal from '../ResultModal/ResultModal';
+import { regionEmojis } from '../../data/regions';
 import './HeistPanel.css';
 
+// emoji: regions.js'teki TEK kaynaktan (regionEmojis) geliyor — yeni istek:
+// "Soygun'daki tüm mekanları emojilerle görsel olarak daha iyi hale
+// getireceğiz, her mekanın bi emojisi olsun".
 export const HEIST_LABELS = {
-  banka: { title: 'Banka Soygunu', requiredPower: 100000, reward: 500000, suspicionCost: 50 },
-  casino: { title: 'Casino Soygunu', requiredPower: 70000, reward: 250000, suspicionCost: 40 },
+  banka: { title: 'Banka Soygunu', emoji: regionEmojis.banka, requiredPower: 100000, reward: 500000, suspicionCost: 50 },
+  casino: { title: 'Casino Soygunu', emoji: regionEmojis.casino, requiredPower: 70000, reward: 250000, suspicionCost: 40 },
   araba_galerisi: {
     title: 'Galeri Soygunu',
+    emoji: regionEmojis.araba_galerisi,
     requiredPower: 50000,
     reward: 125000,
     suspicionCost: 30,
   },
   modifiye_garaji: {
     title: 'Garaj Soygunu',
+    emoji: regionEmojis.modifiye_garaji,
     requiredPower: 20000,
     reward: 25000,
     suspicionCost: 20,
   },
-  fabrika: { title: 'Fabrika Soygunu', requiredPower: 10000, reward: 7500, suspicionCost: 10 },
-  seyyar_satici_1: { title: 'Kokoreçciye Haraç', requiredPower: 4500, reward: 2500, suspicionCost: 5 },
-  seyyar_satici_2: { title: 'Simitçiye Haraç', requiredPower: 3000, reward: 2000, suspicionCost: 5 },
-  seyyar_satici_3: { title: 'Dönerciye Haraç', requiredPower: 1500, reward: 1500, suspicionCost: 5 },
-  seyyar_satici_4: { title: 'Köfteciye Haraç', requiredPower: 1000, reward: 1000, suspicionCost: 5 },
+  fabrika: { title: 'Fabrika Soygunu', emoji: regionEmojis.fabrika, requiredPower: 10000, reward: 7500, suspicionCost: 10 },
+  seyyar_satici_1: { title: 'Kokoreçciye Haraç', emoji: regionEmojis.seyyar_satici_1, requiredPower: 4500, reward: 2500, suspicionCost: 5 },
+  seyyar_satici_2: { title: 'Simitçiye Haraç', emoji: regionEmojis.seyyar_satici_2, requiredPower: 3000, reward: 2000, suspicionCost: 5 },
+  seyyar_satici_3: { title: 'Dönerciye Haraç', emoji: regionEmojis.seyyar_satici_3, requiredPower: 1500, reward: 1500, suspicionCost: 5 },
+  seyyar_satici_4: { title: 'Köfteciye Haraç', emoji: regionEmojis.seyyar_satici_4, requiredPower: 1000, reward: 1000, suspicionCost: 5 },
 };
 
 const RULES_TEXT =
@@ -316,6 +322,7 @@ export default function HeistPanel({ target }) {
   return (
     <div className="heist-panel">
       <p className="heist-panel-title">
+        {meta.emoji ? `${meta.emoji} ` : ''}
         {meta.title}
         <InfoIcon text={RULES_TEXT} />
       </p>
