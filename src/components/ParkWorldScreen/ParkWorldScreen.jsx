@@ -3,7 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useInventory } from '../../hooks/useInventory';
 import { useParkPresence } from '../../hooks/useParkPresence';
-import { enterPark, sellContrabandAtPark, buyFromBufe, createSixtagramPost } from '../../services/gameActions';
+import { enterPark, sellContrabandAtPark, buyFromBufe, createSixtagramPost, captureCameraSnapshot } from '../../services/gameActions';
 import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR, AVATAR_FULL_VIEWBOX_H, AVATAR_WAIST_Y } from '../../lib/avatarShapes';
 import {
   W, H, SPRITE_H, BUFE, NPC_POS, ALL_SEATS, OBSTACLES,
@@ -848,6 +848,12 @@ export default function ParkWorldScreen({ onExit }) {
     cameraDoneRef.current = false;
     setCameraOpen(true);
     cameraOpenRef.current = true;
+    // Yeni istek (madde 1): "fotoğraf çektiğimiz an neyse onu paylaşsın" —
+    // makine AÇILDIĞI anda o anki kareyi sunucuda dondur (bkz.
+    // functions/index.js captureCameraSnapshot/tryUseFrozenSnapshot).
+    // Başarısız olursa sessizce yutulur — sunucu tarafında CANLI veri
+    // yedek katmanı zaten var, fotoğraf özelliği bu yüzden engellenmez.
+    captureCameraSnapshot({ type: 'parkPhoto' }).catch(() => {});
   }
 
   function closeCamera() {

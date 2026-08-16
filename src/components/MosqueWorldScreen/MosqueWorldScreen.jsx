@@ -16,7 +16,7 @@ import SimpleActionScreen from '../SimpleActionScreen/SimpleActionScreen';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import ImamBooklet from '../ImamBooklet/ImamBooklet';
 import { ImamPanel, BeggarsSection, WINDOW_HOURS } from '../MosqueScreen/MosqueScreen';
-import { prayAtMosque, createSixtagramPost, enterInterior } from '../../services/gameActions';
+import { prayAtMosque, createSixtagramPost, enterInterior, captureCameraSnapshot } from '../../services/gameActions';
 import Hud from '../Hud/Hud';
 import PhoneScreen from '../Phone/PhoneScreen';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
@@ -38,6 +38,10 @@ const H = 1180;
 const PLAYER_SPEED = 240;
 const PLAYER_R = 20;
 const INTERACT_RADIUS = 76;
+// CAMERA_RADIUS — yeni istek (madde 2): "camiide arkadaşımla fotoğraf
+// çekecektim arkadaşım fotoğrafta çıkmıyor" — yakındaki gerçek oyuncuları
+// da fotoğraf karesine dahil etmek için, Park'takiyle AYNI değer.
+const CAMERA_RADIUS = 170;
 
 // AVATAR_SCALE (madde 13, ve yeni istek: "genel olarak avatarları ...
 // büyütelim") — bkz. BankWorldScreen'deki aynı gerekçe.
@@ -736,6 +740,25 @@ export default function MosqueWorldScreen({ onExit }) {
 
   function buildCameraEntities() {
     const p = posRef.current;
+    // DÜZELTME (madde 2): yakındaki gerçek oyuncular da (othersRef.current,
+    // CAMERA_RADIUS içinde) kareye dahil ediliyor; sunucu tarafı da AYNI
+    // mantıkla doğrulanıyor (bkz. functions/index.js buildPresenceEntities).
+    const nearby = othersRef.current
+      .filter((o) => dist(p, o) < CAMERA_RADIUS)
+      .slice(0, 4)
+      .map((o) => {
+        const bubble = latestActiveBubble(othersBubbleHistoryRef.current.get(o.uid));
+        return {
+          dx: o.x - p.x,
+          dy: o.y - p.y,
+          avatar: o.avatar,
+          pose: o.pose || 'idle',
+          facing: o.facing || 'down',
+          isSelf: false,
+          bubbleText: bubble?.text || null,
+          bubbleTs: bubble?.ts || 0,
+        };
+      });
     const selfBubble = latestActiveBubble(myBubblesRef.current);
     const self = {
       dx: 0, dy: 0,
@@ -747,7 +770,7 @@ export default function MosqueWorldScreen({ onExit }) {
       bubbleText: selfBubble?.text || null,
       bubbleTs: selfBubble?.ts || 0,
     };
-    return { originX: p.x, originY: p.y, entities: [self] };
+    return { originX: p.x, originY: p.y, entities: [self, ...nearby] };
   }
 
   function openCamera() {
@@ -759,6 +782,9 @@ export default function MosqueWorldScreen({ onExit }) {
     cameraDoneRef.current = false;
     setCameraOpen(true);
     cameraOpenRef.current = true;
+    // Yeni istek (madde 1): makine AÇILDIĞI anda o anki kareyi sunucuda
+    // dondur (bkz. functions/index.js captureCameraSnapshot).
+    captureCameraSnapshot({ type: 'interiorPhoto', locationId: 'camii' }).catch(() => {});
   }
 
   function closeCamera() {

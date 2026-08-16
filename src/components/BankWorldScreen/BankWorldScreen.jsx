@@ -12,7 +12,7 @@ import Hud from '../Hud/Hud';
 import PhoneScreen from '../Phone/PhoneScreen';
 import BankScreen from '../BankScreen/BankScreen';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
-import { createSixtagramPost, enterInterior } from '../../services/gameActions';
+import { createSixtagramPost, enterInterior, captureCameraSnapshot } from '../../services/gameActions';
 import '../../styles/worldScreenChrome.css';
 import './BankWorldScreen.css';
 
@@ -27,6 +27,10 @@ const H = 1180;
 const PLAYER_SPEED = 240;
 const PLAYER_R = 20;
 const INTERACT_RADIUS = 76;
+// CAMERA_RADIUS — yeni istek (madde 2): "camiide arkadaşımla fotoğraf
+// çekecektim arkadaşım fotoğrafta çıkmıyor" — Park'takiyle AYNI değer,
+// yakındaki gerçek oyuncuları da kareye dahil etmek için.
+const CAMERA_RADIUS = 170;
 
 // AVATAR_SCALE (madde 13) — bina içlerinde her şey (avatar dahil) küçük
 // kalıyordu; bu SADECE bu mekana özel bir büyütme, paylaşılan SPRITE_H
@@ -599,6 +603,27 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
 
   function buildCameraEntities() {
     const p = posRef.current;
+    // DÜZELTME (madde 2): "camiide arkadaşımla fotoğraf çekecektim arkadaşım
+    // fotoğrafta çıkmıyor" — Park'takiyle aynı şekilde, yakındaki gerçek
+    // oyuncular da (othersRef.current, CAMERA_RADIUS içinde) kareye dahil
+    // ediliyor; sunucu tarafı da AYNI mantıkla doğrulanıyor (bkz.
+    // functions/index.js buildPresenceEntities).
+    const nearby = othersRef.current
+      .filter((o) => dist(p, o) < CAMERA_RADIUS)
+      .slice(0, 4)
+      .map((o) => {
+        const bubble = latestActiveBubble(othersBubbleHistoryRef.current.get(o.uid));
+        return {
+          dx: o.x - p.x,
+          dy: o.y - p.y,
+          avatar: o.avatar,
+          pose: o.pose === 'sit' ? 'sit' : (o.pose || 'idle'),
+          facing: o.facing || 'down',
+          isSelf: false,
+          bubbleText: bubble?.text || null,
+          bubbleTs: bubble?.ts || 0,
+        };
+      });
     const selfBubble = latestActiveBubble(myBubblesRef.current);
     const self = {
       dx: 0, dy: 0,
@@ -610,7 +635,7 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
       bubbleText: selfBubble?.text || null,
       bubbleTs: selfBubble?.ts || 0,
     };
-    return { originX: p.x, originY: p.y, entities: [self] };
+    return { originX: p.x, originY: p.y, entities: [self, ...nearby] };
   }
 
   function openCamera() {
@@ -622,6 +647,9 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
     cameraDoneRef.current = false;
     setCameraOpen(true);
     cameraOpenRef.current = true;
+    // Yeni istek (madde 1): makine AÇILDIĞI anda o anki kareyi sunucuda
+    // dondur (bkz. functions/index.js captureCameraSnapshot).
+    captureCameraSnapshot({ type: 'interiorPhoto', locationId: 'banka' }).catch(() => {});
   }
 
   function closeCamera() {

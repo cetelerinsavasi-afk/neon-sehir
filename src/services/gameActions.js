@@ -140,6 +140,13 @@ export const cancelListing = (listingId) =>
 export const createSixtagramPost = (text, attachment) =>
   httpsCallable(functions, 'createSixtagramPost')({ text, attachment });
 
+// captureCameraSnapshot — fotoğraf makinesi AÇILDIĞI anda çağrılır, o ANKİ
+// kareyi (kendim + yakındaki oyuncular) sunucuda dondurur; "Paylaş"a
+// basıldığında createSixtagramPost bu dondurulmuş kareyi kullanır, böylece
+// paylaşılan fotoğraf makine açıldığında görülenden farklı olmaz.
+export const captureCameraSnapshot = (payload) =>
+  httpsCallable(functions, 'captureCameraSnapshot')(payload);
+
 export const toggleSixtagramLike = (postId) =>
   httpsCallable(functions, 'toggleSixtagramLike')({ postId });
 

@@ -350,9 +350,12 @@ export default function PostAttachment({ attachment }) {
 
   if (attachment.type === 'interiorPhoto') {
     // entities[0] her zaman fotoğrafı çeken kişidir (bkz. functions/index.js
-    // 'interiorPhoto' dalı) — bu mekanlar tek kişilik olduğu için ASLA
-    // başka gerçek oyuncu yer almaz, sadece kendisi + mekanın kendi NPC'leri
-    // (arka planın bir parçası, bkz. drawXxxSceneBackground).
+    // 'interiorPhoto' dalı). DÜZELTME ("camiide arkadaşımla fotoğraf
+    // çekecektim arkadaşım fotoğrafta çıkmıyor"): artık mekandaki YAKINDAKİ
+    // gerçek oyuncular da (buildPresenceEntities, sunucu tarafı) entities
+    // dizisine ekleniyor — eskiden bu mekanlar tek kişilik sayılıyordu, o
+    // varsayım kaldırıldı; NPC'ler ayrıca arka planın bir parçası olarak
+    // çiziliyor (bkz. drawXxxSceneBackground).
     const entities = attachment.entities || [];
     if (!entities.length) return null;
     const LOCATION_LABELS = {
@@ -363,6 +366,7 @@ export default function PostAttachment({ attachment }) {
     // Camii'nin imam/dilenci NPC'leri canlı Firestore verisi (bkz. yukarıdaki
     // DÜZELTME notu) — diğer tüm mekanlar için sade InteriorPhotoCanvas yeterli.
     const Canvas = attachment.locationId === 'camii' ? MosqueInteriorPhotoCanvas : InteriorPhotoCanvas;
+    const names = entities.map((p) => p.displayName || 'Oyuncu');
     return (
       <div className="post-att post-att-parkphoto">
         <div className="post-att-parkphoto-frame">
@@ -373,7 +377,7 @@ export default function PostAttachment({ attachment }) {
             originY={attachment.originY}
           />
         </div>
-        <p className="post-att-parkphoto-names">📷 {entities[0].displayName || 'Oyuncu'} · {label}</p>
+        <p className="post-att-parkphoto-names">📷 {names.join(' · ')} · {label}</p>
       </div>
     );
   }

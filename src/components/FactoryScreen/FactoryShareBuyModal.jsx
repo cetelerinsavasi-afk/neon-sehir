@@ -15,9 +15,11 @@ function daysAgoLabel(createdAt) {
   return `${days} gün önce listelendi`;
 }
 
-// FactoryShareBuyModal — "Fabrikalar" listesinde "Hisse Al" butonuna
-// basınca açılır. `shares` — bu fabrikaya ait, henüz satılmamış ('listed')
-// hisse ilanlarının dizisi (bkz. useListedFactoryShares).
+// FactoryShareBuyModal — "Fabrikalar" listesinde "📈 Hisseler" butonuna
+// basınca açılır (yeni istek: hisse alınabilecek bi alan olsun, hisse ve
+// fabrika detayları — günlük gelir, son 10 gün ortalaması, toplam gelir
+// tahmini — burada gösteriliyor). `shares` — bu fabrikaya ait, henüz
+// satılmamış ('listed') hisse ilanlarının dizisi (bkz. useListedFactoryShares).
 export default function FactoryShareBuyModal({ factory, shares, onClose }) {
   const { prices } = useInvestmentPrices();
   const [busy, setBusy] = useState(null);
@@ -46,7 +48,7 @@ export default function FactoryShareBuyModal({ factory, shares, onClose }) {
     <div className="factory-modal-backdrop" onClick={onClose}>
       <div className="factory-modal" onClick={(e) => e.stopPropagation()}>
         <div className="factory-modal-header">
-          <p className="factory-modal-title">Hisse Al</p>
+          <p className="factory-modal-title">Hisseler</p>
           <button className="factory-modal-close" onClick={onClose}>
             ✕
           </button>

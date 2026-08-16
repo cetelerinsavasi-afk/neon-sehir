@@ -10909,6 +10909,213 @@ async function createSixtagramNotification(toUid, notif) {
 // buildSixtagramAttachment — istemcinin seçtiği ek türünü, sunucudaki
 // GERÇEK veriden yeniden inşa eder. `attachment` yoksa/null ise null döner
 // (sadece yazı paylaşımı da geçerlidir).
+// PHOTO_SNAPSHOT_MAX_AGE_MS — bir "dondurulmuş kare" (bkz. aşağı,
+// captureCameraSnapshot) en fazla bu kadar süre geçerli sayılır (açıklama
+// yazıp "Paylaş"a basmaya yetecek kadar cömert bir pencere). Bu sürenin
+// ötesinde ya da hiç yoksa, buildSixtagramAttachment CANLI veriye
+// (parkPresence/interiorPresence) geri döner (bkz. aşağıdaki 2. katman).
+const PHOTO_SNAPSHOT_MAX_AGE_MS = 10 * 60 * 1000;
+
+// tryUseFrozenSnapshot — yeni istek: "fotoğraf çektiğimizde karşımıza o
+// anki gördüğümüz an çıkıyor ama paylaştığımızda paylaşırkenki an
+// paylaşılıyor. direkt fotoğraf çektiğimiz an karşımıza gelen görüntü
+// neyse onu paylaşsın, bozmasın." Eskiden fotoğraf makinesi AÇILDIĞINDA
+// hiçbir sunucu çağrısı yapılmıyordu — "Paylaş"a basıldığı anda (birkaç
+// saniye/açıklama yazma süresi sonra) parkPresence/interiorPresence CANLI
+// olarak yeniden okunuyordu, bu da kendisinin veya yakındaki oyuncuların
+// bu süre içinde hareket etmesi durumunda paylaşılan karenin, makine
+// AÇILDIĞI anda görülenden FARKLI olmasına yol açıyordu. Artık istemci
+// (bkz. her WorldScreen'in openCamera'sı) makine AÇILIR AÇILMAZ
+// captureCameraSnapshot'ı çağırıp o ANKİ kareyi (self + yakındaki
+// oyuncular) `photoSnapshots/{uid}` altında DONDURUYOR; "Paylaş"a
+// basıldığında bu fonksiyon önce o dondurulmuş kareyi arar — varsa VE
+// tazeyse (bkz. PHOTO_SNAPSHOT_MAX_AGE_MS) DOĞRUDAN onu kullanır, canlı
+// veriye hiç bakmaz. Doküman (eşleşse de eşleşmese de) HER ZAMAN silinir
+// — tek kullanımlık, eski/yanlış türden bir kare bir SONRAKİ fotoğrafa
+// asla sızmasın diye.
+async function tryUseFrozenSnapshot(uid, type, locationId) {
+  const ref = db.collection('photoSnapshots').doc(uid);
+  const snap = await ref.get();
+  if (!snap.exists) return null;
+  const data = snap.data();
+  await ref.delete().catch(() => {});
+  const ms = data.capturedAt?.toMillis?.() ?? 0;
+  const fresh = ms > 0 && Date.now() - ms < PHOTO_SNAPSHOT_MAX_AGE_MS;
+  const matches = data.type === type && (type !== 'interiorPhoto' || data.locationId === locationId);
+  if (!fresh || !matches) return null;
+  return {
+    originX: data.originX ?? 0,
+    originY: data.originY ?? 0,
+    entities: Array.isArray(data.entities) ? data.entities : [],
+  };
+}
+
+// buildPresenceEntities — Park VE girilebilir mekanların (Banka/Karakol/
+// Camii/Gazino/Galeri/Silah Mağazası/Garaj) "kendim + yakındaki diğer
+// CANLI oyuncular" mantığı — eskiden sadece parkPhoto'nun içinde vardı,
+// artık ORTAK: hem captureCameraSnapshot (makine açılır açılmaz), hem de
+// buildSixtagramAttachment'ın dondurulmuş kare yoksa başvurduğu CANLI
+// yedek katman tarafından kullanılıyor. Yeni istek (madde 2): "camiide
+// arkadaşımla fotoğraf çekecektim arkadaşım fotoğrafta çıkmıyor" — bu
+// fonksiyon artık interiorPresence için de (locationFilter ile) çağrılıp
+// mekanlardaki diğer GERÇEK oyuncuları da kareye ekliyor; öncesinde
+// interiorPhoto'da bu mantık hiç yoktu (yalnızca fotoğrafı çeken vardı).
+async function buildPresenceEntities({ uid, presenceCollection, locationFilter, radius, includeNpc }) {
+  const PRESENCE_STALE_MS = 60_000;
+  const BUBBLE_STALE_MS = 25_000;
+  const ALLOWED_POSES = ['idle', 'walk1', 'walk2', 'sit'];
+  const safePose = (p) => (ALLOWED_POSES.includes(p) ? p : 'idle');
+  const isFresh = (data) => {
+    const ms = data?.updatedAt?.toMillis?.() ?? 0;
+    return ms > 0 && Date.now() - ms < PRESENCE_STALE_MS;
+  };
+  const bubbleTextOf = (data) => {
+    const ms = data?.chatTs;
+    if (!data?.chatText || typeof ms !== 'number' || Date.now() - ms > BUBBLE_STALE_MS) return null;
+    return String(data.chatText).slice(0, 140);
+  };
+
+  const mySnap = await db.collection(presenceCollection).doc(uid).get();
+  const myPresence = mySnap.exists ? mySnap.data() : null;
+  if (
+    !myPresence ||
+    !isFresh(myPresence) ||
+    (locationFilter && myPresence.locationId !== locationFilter)
+  ) {
+    return null;
+  }
+  const originX = myPresence.x ?? 0;
+  const originY = myPresence.y ?? 0;
+
+  let presenceQuery = db.collection(presenceCollection).limit(40);
+  if (locationFilter) {
+    presenceQuery = db
+      .collection(presenceCollection)
+      .where('locationId', '==', locationFilter)
+      .limit(40);
+  }
+  const presenceSnap = await presenceQuery.get();
+  const nearby = presenceSnap.docs
+    .filter((d) => d.id !== uid)
+    .map((d) => ({ id: d.id, data: d.data() }))
+    .filter(({ data }) => isFresh(data))
+    .map(({ id, data }) => ({
+      id,
+      dx: (data.x ?? 0) - originX,
+      dy: (data.y ?? 0) - originY,
+      pose: safePose(data.pose),
+      facing: data.facing || 'down',
+      holding: data.holding || null,
+      bubbleText: bubbleTextOf(data),
+    }))
+    .filter((p) => Math.hypot(p.dx, p.dy) < radius)
+    .sort((a, b) => Math.hypot(a.dx, a.dy) - Math.hypot(b.dx, b.dy))
+    .slice(0, 4);
+
+  const uids = [uid, ...nearby.map((p) => p.id)];
+  const snaps = await Promise.all(uids.map((id) => db.collection('users').doc(id).get()));
+  const avatarByUid = new Map();
+  snaps.forEach((s) => {
+    if (s.exists) {
+      avatarByUid.set(s.id, { displayName: s.data().displayName || 'Oyuncu', avatar: s.data().avatar || null });
+    }
+  });
+  if (!avatarByUid.has(uid)) return null;
+
+  const entities = [
+    {
+      dx: 0, dy: 0, isSelf: true,
+      pose: safePose(myPresence.pose), facing: myPresence.facing || 'down', holding: myPresence.holding || null,
+      displayName: avatarByUid.get(uid).displayName, avatar: avatarByUid.get(uid).avatar,
+      bubbleText: bubbleTextOf(myPresence),
+    },
+    ...nearby
+      .filter((p) => avatarByUid.has(p.id))
+      .map((p) => ({
+        dx: p.dx, dy: p.dy, isSelf: false,
+        pose: p.pose, facing: p.facing, holding: p.holding,
+        displayName: avatarByUid.get(p.id).displayName, avatar: avatarByUid.get(p.id).avatar,
+        bubbleText: p.bubbleText,
+      })),
+  ];
+
+  if (includeNpc) {
+    // Şüpheli Adam (Park NPC'si) — gerçek bir oyuncu değil, konumu (x:140,
+    // y:1030) ve görünümü src/components/ParkWorldScreen/ParkWorldScreen.jsx
+    // içindeki NPC_POS/NPC_AVATAR ile BİREBİR AYNI (o dosya Cloud
+    // Functions'a import edilemediği için burada sabit tekrarlanıyor).
+    const NPC_POS = { x: 140, y: 1030 };
+    const NPC_AVATAR = {
+      gender: 'erkek', build: 'iri', skin: '#a86b3c', eyeColor: '#3b2a1a',
+      faceShape: 'oval', background: 'transparent',
+      hairStyle: 'short', hairColor: '#0d0a08',
+      eyebrowShape: 'straight', eyeShape: 'almond', eyelash: 'none',
+      noseShape: 'small', mouthShape: 'neutral', lipColor: '#a85a52',
+      facialHair: 'none', faceAcc: 'sunglasses', earring: 'yok', tattoo: 'yok',
+      clothing: 'trenchcoat', clothColor: '#22262f', neckAcc: 'tie',
+      hat: 'fedora', hatColor: '#0d0d0d', heldItem: 'yok',
+      pantsColor: '#0d0d0d', shoeColor: '#0d0d0d', shoeStyle: 'klasik',
+    };
+    const npcDx = NPC_POS.x - originX;
+    const npcDy = NPC_POS.y - originY;
+    if (Math.hypot(npcDx, npcDy) < radius) {
+      entities.push({
+        dx: npcDx, dy: npcDy, isSelf: false,
+        pose: 'idle', facing: 'right', holding: null,
+        displayName: 'Şüpheli Adam', avatar: NPC_AVATAR, isNpc: true, bubbleText: null,
+      });
+    }
+  }
+
+  return { originX, originY, entities };
+}
+
+// captureCameraSnapshot — fotoğraf makinesi AÇILDIĞI anda (istemci
+// tarafında, bkz. her WorldScreen'in openCamera'sı) çağrılır; o ANKİ
+// kareyi (kendim + yakındaki oyuncular, canlı presence'tan) hesaplayıp
+// `photoSnapshots/{uid}` altında dondurur. "Paylaş"a basıldığında
+// buildSixtagramAttachment bu dondurulmuş kareyi kullanır — bkz.
+// tryUseFrozenSnapshot yorumu (madde 1: "fotoğraf çektiğimiz an neyse
+// onu paylaşsın").
+export const captureCameraSnapshot = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { type, locationId } = request.data || {};
+  const ALLOWED_LOCATIONS = ['banka', 'karakol', 'camii', 'gazino', 'araba_galerisi', 'silah_magazasi', 'modifiye_garaji'];
+
+  if (type !== 'parkPhoto' && type !== 'interiorPhoto') {
+    throw new HttpsError('invalid-argument', 'Geçersiz fotoğraf türü.');
+  }
+  if (type === 'interiorPhoto' && !ALLOWED_LOCATIONS.includes(locationId)) {
+    throw new HttpsError('invalid-argument', 'Geçersiz mekan.');
+  }
+
+  const CAMERA_RADIUS = 170;
+  const result = await buildPresenceEntities({
+    uid,
+    presenceCollection: type === 'parkPhoto' ? 'parkPresence' : 'interiorPresence',
+    locationFilter: type === 'parkPhoto' ? null : locationId,
+    radius: CAMERA_RADIUS,
+    includeNpc: type === 'parkPhoto',
+  });
+  if (!result) {
+    throw new HttpsError(
+      'failed-precondition',
+      type === 'parkPhoto' ? 'Fotoğraf çekmek için parkta olmalısın.' : 'Bu mekanda değilsin.'
+    );
+  }
+
+  await db.collection('photoSnapshots').doc(uid).set({
+    type,
+    locationId: type === 'interiorPhoto' ? locationId : null,
+    originX: result.originX,
+    originY: result.originY,
+    entities: result.entities,
+    capturedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return { ok: true };
+});
+
 async function buildSixtagramAttachment(uid, attachment) {
   if (!attachment || !attachment.type) return null;
   const { type } = attachment;
@@ -11206,164 +11413,53 @@ async function buildSixtagramAttachment(uid, attachment) {
 
   // parkPhoto — Park'ta çekilen "grup fotoğrafı". Bu oyunda hiç dosya
   // yükleme YOK — istemciden GÜVENİLMEYEN hiçbir konum/poz/katılımcı
-  // verisi alınmıyor (attachment içeriği tamamen yok sayılıyor). Bunun
-  // yerine: fotoğrafı çekenin KENDİ canlı parkPresence kaydı (x,y,pose,
-  // facing,holding — zaten diğer oyuncuların da canlı olarak gördüğü,
-  // parkPresence'ın var olan güven seviyesiyle aynı) merkez alınır,
-  // etrafındaki (CAMERA_RADIUS içinde, güncel) oyuncular yine
-  // parkPresence'tan bulunur, avatar/isim users/{uid}'den (tam
-  // doğrulanmış) okunur. Sonuç: her katılımcı için GERÇEK göreli ofset
-  // (dx,dy) — istemci (ParkWorldScreen) ve Sixtagram akışı
-  // (PostAttachment) bunu lib/parkScene.js'teki AYNI vektörel sahne
-  // çizimiyle (renderPhotoFrame) render eder: gerçek arka plan (o an
-  // büfenin yanındaysan büfe çıkar) + gerçek göreli konum — rastgele
-  // yerleştirme veya "sahne adına göre renk" YOK (bkz. madde 12).
+  // verisi alınmıyor. 1. katman: fotoğraf makinesi AÇILDIĞI anda dondurulan
+  // kare varsa (bkz. captureCameraSnapshot/tryUseFrozenSnapshot) DOĞRUDAN
+  // o kullanılır — "Paylaş"a basılana kadar geçen sürede kendisinin veya
+  // yakındaki oyuncuların hareket etmesi paylaşılan kareyi ARTIK
+  // etkilemez (madde 1 düzeltmesi). 2. katman (yedek — dondurulmuş kare
+  // yoksa/süresi geçmişse): CANLI parkPresence'tan aynı mantıkla
+  // (buildPresenceEntities) yeniden inşa edilir — eskiden burada olan
+  // mantığın AYNISI, ortak fonksiyona taşındı.
   if (type === 'parkPhoto') {
-    const CAMERA_RADIUS = 170;
-    const PRESENCE_STALE_MS = 60_000;
-    // BUBBLE_STALE_MS — yeni istek: "mesajlar da fotoğrafta gözükse çok iyi
-    // olur". İstemcideki canlı balon süresi (CHAT_BUBBLE_MS) 13sn, ama
-    // burada fotoğraf ÇEKİLDİĞİ anla PAYLAŞILDIĞI an (kullanıcı açıklama
-    // yazıp "Paylaş"a basana kadar) arasında birkaç saniye fark olabilir —
-    // biraz daha toleranslı bir pencere kullanılıyor ki tam o sırada
-    // konuşan biri kadraj dışı kalmasın.
-    const BUBBLE_STALE_MS = 25_000;
-    const ALLOWED_POSES = ['idle', 'walk1', 'walk2', 'sit'];
-    const safePose = (p) => (ALLOWED_POSES.includes(p) ? p : 'idle');
-    const isFresh = (data) => {
-      const ms = data?.updatedAt?.toMillis?.() ?? 0;
-      return ms > 0 && Date.now() - ms < PRESENCE_STALE_MS;
-    };
-    const bubbleTextOf = (data) => {
-      const ms = data?.chatTs;
-      if (!data?.chatText || typeof ms !== 'number' || Date.now() - ms > BUBBLE_STALE_MS) return null;
-      return String(data.chatText).slice(0, 140);
-    };
+    const frozen = await tryUseFrozenSnapshot(uid, 'parkPhoto', null);
+    if (frozen) {
+      return { type: 'parkPhoto', originX: frozen.originX, originY: frozen.originY, entities: frozen.entities };
+    }
 
-    const mySnap = await db.collection('parkPresence').doc(uid).get();
-    const myPresence = mySnap.exists ? mySnap.data() : null;
-    if (!myPresence || !isFresh(myPresence)) {
+    const live = await buildPresenceEntities({
+      uid,
+      presenceCollection: 'parkPresence',
+      locationFilter: null,
+      radius: 170,
+      includeNpc: true,
+    });
+    if (!live) {
       throw new HttpsError('failed-precondition', 'Fotoğraf çekmek için parkta olmalısın.');
     }
-    const originX = myPresence.x ?? 0;
-    const originY = myPresence.y ?? 0;
-
-    // Yakındaki diğer canlı oyuncular — parkPresence'ın kendisi zaten
-    // "diğer herkesin senin için görebildiği" veri (bkz. useParkPresence),
-    // burada aynı güvenle sunucuda okunuyor.
-    const presenceSnap = await db.collection('parkPresence').limit(40).get();
-    const nearby = presenceSnap.docs
-      .filter((d) => d.id !== uid)
-      .map((d) => ({ id: d.id, data: d.data() }))
-      .filter(({ data }) => isFresh(data))
-      .map(({ id, data }) => ({
-        id,
-        dx: (data.x ?? 0) - originX,
-        dy: (data.y ?? 0) - originY,
-        pose: safePose(data.pose),
-        facing: data.facing || 'down',
-        holding: data.holding || null,
-        bubbleText: bubbleTextOf(data),
-      }))
-      .filter((p) => Math.hypot(p.dx, p.dy) < CAMERA_RADIUS)
-      .sort((a, b) => Math.hypot(a.dx, a.dy) - Math.hypot(b.dx, b.dy))
-      .slice(0, 4);
-
-    const uids = [uid, ...nearby.map((p) => p.id)];
-    const snaps = await Promise.all(uids.map((id) => db.collection('users').doc(id).get()));
-    const avatarByUid = new Map();
-    snaps.forEach((s) => {
-      if (s.exists) avatarByUid.set(s.id, { displayName: s.data().displayName || 'Oyuncu', avatar: s.data().avatar || null });
-    });
-    if (!avatarByUid.has(uid)) {
-      throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
-    }
-
-    const entities = [
-      {
-        dx: 0, dy: 0, isSelf: true,
-        pose: safePose(myPresence.pose), facing: myPresence.facing || 'down', holding: myPresence.holding || null,
-        displayName: avatarByUid.get(uid).displayName, avatar: avatarByUid.get(uid).avatar,
-        bubbleText: bubbleTextOf(myPresence),
-      },
-      ...nearby
-        .filter((p) => avatarByUid.has(p.id))
-        .map((p) => ({
-          dx: p.dx, dy: p.dy, isSelf: false,
-          pose: p.pose, facing: p.facing, holding: p.holding,
-          displayName: avatarByUid.get(p.id).displayName, avatar: avatarByUid.get(p.id).avatar,
-          bubbleText: p.bubbleText,
-        })),
-    ];
-
-    // Şüpheli Adam (Park NPC'si) — yeni istek: "parktaki şüpheli adam
-    // fotoğraflarda gözükmüyor". Bu NPC gerçek bir oyuncu değil, Firestore'da
-    // hiçbir presence kaydı YOK — konumu (x:140, y:1030) VE görünümü
-    // (avatar objesi), src/components/ParkWorldScreen/ParkWorldScreen.jsx
-    // içindeki NPC_POS/NPC_AVATAR ile BİREBİR AYNI (o dosya istemci
-    // bundle'ının bir parçası, Cloud Functions'a import edilemediği için
-    // burada sabit olarak tekrarlanıyor — ikisinden biri değişirse diğeri
-    // de güncellenmeli). Kimlik/konum sahteciliği riski YOK (statik,
-    // herkese açık bir NPC, hiçbir oyuncu verisiyle ilişkili değil).
-    const NPC_POS = { x: 140, y: 1030 };
-    const NPC_AVATAR = {
-      gender: 'erkek', build: 'iri', skin: '#a86b3c', eyeColor: '#3b2a1a',
-      faceShape: 'oval', background: 'transparent',
-      hairStyle: 'short', hairColor: '#0d0a08',
-      eyebrowShape: 'straight', eyeShape: 'almond', eyelash: 'none',
-      noseShape: 'small', mouthShape: 'neutral', lipColor: '#a85a52',
-      facialHair: 'none', faceAcc: 'sunglasses', earring: 'yok', tattoo: 'yok',
-      clothing: 'trenchcoat', clothColor: '#22262f', neckAcc: 'tie',
-      hat: 'fedora', hatColor: '#0d0d0d', heldItem: 'yok',
-      pantsColor: '#0d0d0d', shoeColor: '#0d0d0d', shoeStyle: 'klasik',
-    };
-    const npcDx = NPC_POS.x - originX;
-    const npcDy = NPC_POS.y - originY;
-    if (Math.hypot(npcDx, npcDy) < CAMERA_RADIUS) {
-      entities.push({
-        dx: npcDx, dy: npcDy, isSelf: false,
-        pose: 'idle', facing: 'right', holding: null,
-        displayName: 'Şüpheli Adam', avatar: NPC_AVATAR, isNpc: true, bubbleText: null,
-      });
-    }
-
-    // originX/originY — DÜZELTME: daha önce buradan hiç dönülmüyordu, bu
-    // yüzden akıştaki (PostAttachment.jsx) fotoğraf her zaman dünya
-    // orijinine (0,0) yakın sabit bir köşeyi arka plan sanıyordu — çekilen
-    // yerin GERÇEK konumu değil (bkz. madde 16). entities'teki dx/dy zaten
-    // buna göre GÖRELİ, arka planı doğru konumdan çizebilmek için mutlak
-    // konum da lazım.
-    return { type: 'parkPhoto', originX, originY, entities };
+    return { type: 'parkPhoto', originX: live.originX, originY: live.originY, entities: live.entities };
   }
 
   // interiorPhoto — Banka/Karakol/Camii/Gazino gibi girilebilir mekanlarda
-  // çekilen fotoğraf (bkz. madde 11/12). Bu odalar TEK OYUNCULU (parkPresence
-  // benzeri canlı bir koleksiyon yok) — yani karede fotoğrafı çekenden başka
-  // GERÇEK bir oyuncu asla yer almaz, NPC'ler zaten istemcideki paylaşılan
-  // drawXxxSceneBackground fonksiyonlarına gömülü (bkz. CasinoWorldScreen.jsx
-  // vb.). Bu yüzden parkPhoto'nun aksine burada Firestore'da presence arama
-  // YOK — sadece hangi mekanda olduğu (allowlist) ve kendi pozu/yönü
-  // (allowlist ile doğrulanmış) alınıyor; avatar/isim yine users/{uid}'den
-  // (trusted) okunuyor. Başka hiçbir oyuncunun kimliği/konumu asla iddia
-  // edilmiyor — tek risk kendi görünümün, o da zaten hesabın.
+  // çekilen fotoğraf. 1. katman: parkPhoto ile AYNI dondurulmuş-kare
+  // mekanizması (madde 1). 2. katman (yedek): artık burada da CANLI
+  // interiorPresence'tan (aynı locationId, buildPresenceEntities) yakındaki
+  // GERÇEK oyuncular aranıyor — DÜZELTME (madde 2: "camiide arkadaşımla
+  // fotoğraf çekecektim arkadaşım fotoğrafta çıkmıyor"): eskiden bu
+  // mekanlarda presence araması HİÇ yoktu, kare her zaman TEK KİŞİLİK
+  // kalıyordu. 3. katman (presence kaydı da yoksa, son çare): sadece
+  // kendi (allowlist ile doğrulanmış) pozu/konumuyla tek kişilik kare —
+  // eski davranış korunuyor.
   if (type === 'interiorPhoto') {
     const ALLOWED_LOCATIONS = ['banka', 'karakol', 'camii', 'gazino', 'araba_galerisi', 'silah_magazasi', 'modifiye_garaji'];
     const ALLOWED_POSES = ['idle', 'walk1', 'walk2', 'sit'];
     const ALLOWED_FACINGS = ['up', 'down', 'left', 'right'];
-    // Mekan tuvali sabit 680x1180 (bkz. her WorldScreen'deki W/H) — konum
-    // sadece kadrajı (fotoğrafın hangi köşeyi gösterdiğini) belirliyor,
-    // hiçbir gerçek oyuncunun kimliği/varlığı bu değere bağlı değil, bu
-    // yüzden basit bir aralık sınırlaması yeterli (bkz. üstteki not).
+    // Mekan tuvali sabit 680x1180 (bkz. her WorldScreen'deki W/H).
     const CANVAS_W = 680;
     const CANVAS_H = 1180;
     const safePose = (p) => (ALLOWED_POSES.includes(p) ? p : 'idle');
     const safeFacing = (f) => (ALLOWED_FACINGS.includes(f) ? f : 'down');
     const safeCoord = (v, max) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(max, v)) : max / 2);
-    // safeBubbleText — yeni istek: "mesajlar da fotoğrafta gözükse çok iyi
-    // olur". Bu odalarda başka GERÇEK oyuncu iddia edilmediği için (yukarıdaki
-    // güven modeli notu) istemciden gelen bu metin sadece KENDİ balonun —
-    // aynı pose/facing gibi zararsız, sadece kendi hesabını etkileyen bir
-    // kozmetik veri; uzunluk sınırlanarak kabul ediliyor.
     const safeBubbleText = (v) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 140) : null);
 
     const locationId = ALLOWED_LOCATIONS.includes(attachment.locationId) ? attachment.locationId : null;
@@ -11371,6 +11467,25 @@ async function buildSixtagramAttachment(uid, attachment) {
       throw new HttpsError('invalid-argument', 'Geçersiz mekan.');
     }
 
+    const frozen = await tryUseFrozenSnapshot(uid, 'interiorPhoto', locationId);
+    if (frozen) {
+      return { type: 'interiorPhoto', locationId, originX: frozen.originX, originY: frozen.originY, entities: frozen.entities };
+    }
+
+    const live = await buildPresenceEntities({
+      uid,
+      presenceCollection: 'interiorPresence',
+      locationFilter: locationId,
+      radius: 170,
+      includeNpc: false,
+    });
+    if (live) {
+      return { type: 'interiorPhoto', locationId, originX: live.originX, originY: live.originY, entities: live.entities };
+    }
+
+    // Presence kaydı hiç yoksa (ör. sekme geç açıldı) son çare: sadece
+    // kendi (allowlist ile doğrulanmış) pozu/konumu — eskiden beri var
+    // olan davranış, tek risk kendi görünümün (zaten kendi hesabın).
     const userSnap = await db.collection('users').doc(uid).get();
     if (!userSnap.exists) {
       throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');

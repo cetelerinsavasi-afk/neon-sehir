@@ -194,7 +194,11 @@ function BuyMachineModal({ onClose, ownedMiningCount }) {
 function BrowseFactoriesModal({ onClose, onJoin, joinBusy, myUid, canJoin }) {
   const { factories } = useOpenFactories();
   const { prices } = useInvestmentPrices();
-  const { byFactoryId } = useListedFactoryShares();
+  // DÜZELTME (madde 3): "hisse alma butonunu göremiyorum" — bu sorgu
+  // collectionGroup('shares') üzerinde çalışıyor ve Firestore indeksi
+  // deploy edilmemişse SESSİZCE boş dönüyordu (sadece console.error), bu
+  // yüzden `error` de dışa alınıp aşağıda kullanıcıya gösteriliyor.
+  const { byFactoryId, error: shareError } = useListedFactoryShares();
   const [shareBuyFactory, setShareBuyFactory] = useState(null);
 
   return (
@@ -244,13 +248,19 @@ function BrowseFactoriesModal({ onClose, onJoin, joinBusy, myUid, canJoin }) {
                 )}
                 {f.id !== myUid && byFactoryId[f.id]?.length > 0 && (
                   <button className="factory-btn small" onClick={() => setShareBuyFactory(f)}>
-                    Hisse Al
+                    📈 Hisseler
                   </button>
                 )}
               </div>
             </div>
           ))}
         </div>
+        {shareError && (
+          <p className="factory-hint small factory-share-error-hint">
+            ⚠️ Hisse verileri şu an yüklenemedi. Firestore indekslerinin deploy edildiğinden emin ol
+            (firebase deploy --only firestore:indexes) ve tekrar dene.
+          </p>
+        )}
       </div>
     </div>
     {shareBuyFactory && (
@@ -970,7 +980,7 @@ function WorkerView({ player, myUid }) {
 function BrowseView({ myUid }) {
   const { factories } = useOpenFactories();
   const { prices } = useInvestmentPrices();
-  const { byFactoryId } = useListedFactoryShares();
+  const { byFactoryId, error: shareError } = useListedFactoryShares();
   const [showCreate, setShowCreate] = useState(false);
   const [joinBusy, setJoinBusy] = useState(null);
   const [error, setError] = useState(null);
@@ -1035,7 +1045,7 @@ function BrowseView({ myUid }) {
                 )}
                 {f.id !== myUid && byFactoryId[f.id]?.length > 0 && (
                   <button className="factory-btn small" onClick={() => setShareBuyFactory(f)}>
-                    Hisse Al
+                    📈 Hisseler
                   </button>
                 )}
               </div>
@@ -1043,6 +1053,12 @@ function BrowseView({ myUid }) {
           </div>
         ))}
       </div>
+      {shareError && (
+        <p className="factory-hint small factory-share-error-hint">
+          ⚠️ Hisse verileri şu an yüklenemedi. Firestore indekslerinin deploy edildiğinden emin ol
+          (firebase deploy --only firestore:indexes) ve tekrar dene.
+        </p>
+      )}
       {error && <p className="factory-error">{error}</p>}
 
       {showCreate && <CreateFactoryModal onClose={() => setShowCreate(false)} />}

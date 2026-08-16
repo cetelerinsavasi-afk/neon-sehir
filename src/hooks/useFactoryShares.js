@@ -51,6 +51,13 @@ export function useFactoryShares(factoryId) {
 export function useListedFactoryShares() {
   const [shares, setShares] = useState([]);
   const [loading, setLoading] = useState(true);
+  // error — DÜZELTME ("hisse alma butonunu göremiyorum"): bu sorgu
+  // başarısız olursa (ör. firestore.indexes.json'daki 'shares'.status
+  // collectionGroup indeksi henüz deploy edilmemişse) eskiden sadece
+  // console.error'a yazılıp `byFactoryId` sessizce {} kalıyordu — hiçbir
+  // "Hisseler" butonu görünmüyordu ve sebebi anlaşılmıyordu. Artık bu
+  // hata dışa da veriliyor (bkz. FactoryScreen.jsx'teki kullanım).
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const q = query(collectionGroup(db, 'shares'), where('status', '==', 'listed'));
@@ -60,10 +67,12 @@ export function useListedFactoryShares() {
         setShares(
           snap.docs.map((d) => ({ id: d.id, factoryId: d.ref.parent.parent.id, ...d.data() }))
         );
+        setError(null);
         setLoading(false);
       },
       (err) => {
         console.error('useListedFactoryShares dinleme hatası:', err);
+        setError(err);
         setLoading(false);
       }
     );
@@ -76,5 +85,5 @@ export function useListedFactoryShares() {
     return acc;
   }, {});
 
-  return { shares, byFactoryId, loading };
+  return { shares, byFactoryId, loading, error };
 }

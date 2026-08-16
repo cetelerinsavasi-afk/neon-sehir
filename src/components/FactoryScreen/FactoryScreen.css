@@ -47,6 +47,18 @@
   color: var(--neon-pink);
 }
 
+/* factory-share-error-hint — DÜZELTME: collectionGroup('shares') sorgusu
+   (bkz. useListedFactoryShares) başarısız olursa (ör. Firestore indeksi
+   deploy edilmemişse) artık sessizce boş kalmak yerine burada görünür. */
+.factory-share-error-hint {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 122, 122, 0.08);
+  border: 1px solid rgba(255, 122, 122, 0.25);
+  color: var(--neon-pink);
+}
+
 .factory-btn {
   padding: 10px;
   border-radius: 8px;
