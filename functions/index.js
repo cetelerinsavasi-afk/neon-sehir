@@ -2485,35 +2485,50 @@ function cryptoTradeWeight(ageMs) {
   return 0;
 }
 
-// computeWeightedCryptoBuyRatio — YENİ SİSTEM (kullanıcı tasarımı, 80/20
-// KURALI revizyonu): "KR fiyatının yönünü algoritma doğrudan belirlemesin;
-// oyuncuların gerçek alış/satış davranışları fiyatın yönünü etkilesin.
-// Ancak organize toplu manipülasyon (ör. 'hepimiz alalım, fiyat kesin
-// yükselsin') piyasayı garanti şekilde yönlendiremesin." Adımlar:
+// computeWeightedCryptoBuyRatio — YENİ SİSTEM (kullanıcı tasarımı): "KR
+// fiyatının yönünü algoritma doğrudan belirlemesin; oyuncuların gerçek
+// alış/satış davranışları fiyatın yönünü etkilesin. Ancak tek bir
+// oyuncunun (ya da anlaşmalı küçük bir grubun) piyasayı tek başına
+// yönlendirmesi mümkün olmasın." Adımlar:
 //   1. Son 24 saatteki TÜM cryptoTrades kayıtları okunur (mining üretimi
 //      buraya HİÇ girmez — sadece gerçekleşmiş alım/satım işlemleri,
 //      bkz. buyInvestment/sellInvestment).
 //   2. Her işleme yaşına göre zaman ağırlığı uygulanır (yukarısı).
-//   3. Ağırlıklı alış ve satış toplamları doğrudan toplanır (ALTIN değil
-//      KR MİKTARI/krAmount üzerinden — kullanıcı isteği).
-// NOT (revizyon): Önceki sistemdeki "en büyük ağırlıklı alıcı/satıcıyı
-// hesaplamadan çıkarma" mekanizması TAMAMEN KALDIRILDI — artık buna gerek
-// yok, çünkü %80/%20 sınırını aşan her oran (kaynağı ne olursa olsun,
-// tek bir whale veya toplu manipülasyon fark etmez) hourlyInvestmentUpdate
-// tarafında otomatik olarak nötr %50/%50'ye çekiliyor (bkz. aşağıdaki
-// fonksiyon). Bu yüzden oyuncu bazında ayrı toplama (Map) da gereksizdi,
-// kaldırıldı — doğrudan tek toplam alış/satış yeterli.
-// Dönüş: ağırlıklı alış / (alış+satış) oranı — anlamlı hacim yoksa (hiç
-// işlem yoksa) null döner, çağıran taraf bu durumda mevcut sistemdeki gibi
-// tamamen rastgele yöne döner (bkz. hourlyInvestmentUpdate).
+//   3. Oyuncu bazında (uid) toplam ağırlıklı alış ve toplam ağırlıklı
+//      satış hesaplanır — İŞLEM SAYISINA göre değil, TOPLAM ağırlıklı
+//      hacme göre. Bir oyuncu 10M KR'yi 100×100K'lık parçaya bölerek
+//      satsa bile, o oyuncunun toplam ağırlıklı satış hacmi yine 10M
+//      olarak Map'te birikir — işlemi parçalara bölmek bu yüzden hiçbir
+//      şey kazandırmaz. Ağırlık ALTIN değil KR MİKTARI (krAmount)
+//      üzerinden hesaplanır (kullanıcı isteği).
+//   4-7. En büyük ağırlıklı ALICININ toplam alış hacmi alış toplamından,
+//      en büyük ağırlıklı SATICININ toplam satış hacmi satış toplamından
+//      AYRI AYRI (birbirinden bağımsız) çıkarılır. Aynı oyuncu hem en
+//      büyük alıcı hem en büyük satıcıysa, iki taraftan da (kendi payı
+//      kadar) düşülür — "en büyük İŞLEM" değil "en büyük OYUNCUNUN toplam
+//      hacmi" çıkarılıyor, bu yüzden 100 küçük işlem 1 büyük işlemden daha
+//      fazla ağırlık taşıyorsa yine o oyuncu "en büyük" sayılıp çıkarılır.
+//   8. Kalan (dışlanan oyuncular hariç) toplam alış/satış üzerinden oran
+//      hesaplanır — bu oran hourlyInvestmentUpdate'teki %80/%20 kuralına
+//      girdi olarak kullanılır (o kural DEĞİŞMEDİ, aynen korunuyor).
+// NEDEN: Tek bir oyuncu "1M sat → satış baskısı oluştur → sonra 2M al →
+// alış baskısı oluştur" döngüsünü tekrarlayarak fiyatı küçük hareketlerle
+// kendi lehine yönlendirmeye çalışabilir. En büyük alıcı/satıcının payını
+// hesaplamadan çıkarmak, tam olarak bu döngüyü (ve piyasadan görece kopuk
+// tek bir whale'in etkisini) devre dışı bırakır — bkz. bu fonksiyonun
+// altındaki test senaryoları için sohbet geçmişindeki analiz.
+// Dönüş: kalan ağırlıklı alış / (alış+satış) oranı — dışlama sonrası
+// anlamlı hacim kalmazsa (ör. tek oyuncu, ya da hiç işlem yoksa) null
+// döner, çağıran taraf bu durumda mevcut sistemdeki gibi tamamen rastgele
+// yöne döner (bkz. hourlyInvestmentUpdate).
 async function computeWeightedCryptoBuyRatio() {
   const cutoff = admin.firestore.Timestamp.fromMillis(Date.now() - 24 * 60 * 60 * 1000);
   const tradesSnap = await db.collection('cryptoTrades').where('createdAt', '>=', cutoff).get();
   if (tradesSnap.empty) return null;
 
   const nowMs = Date.now();
-  let totalBuy = 0;
-  let totalSell = 0;
+  const buyByUid = new Map();
+  const sellByUid = new Map();
   tradesSnap.forEach((doc) => {
     const t = doc.data();
     const tsMs = t.createdAt?.toMillis?.();
@@ -2522,13 +2537,35 @@ async function computeWeightedCryptoBuyRatio() {
     if (weight <= 0) return;
     const weighted = (t.krAmount || 0) * weight;
     if (weighted <= 0) return;
-    if (t.type === 'buy') totalBuy += weighted;
-    else if (t.type === 'sell') totalSell += weighted;
+    const map = t.type === 'buy' ? buyByUid : t.type === 'sell' ? sellByUid : null;
+    if (!map) return;
+    map.set(t.uid, (map.get(t.uid) || 0) + weighted);
   });
 
-  const total = totalBuy + totalSell;
+  // En büyük ağırlıklı alıcı/satıcının TOPLAM hacmini bul (tek işlem değil,
+  // o oyuncunun 24 saatteki tüm işlemlerinin toplamı — yukarıdaki Map zaten
+  // bunu tutuyor).
+  let totalBuy = 0;
+  let maxBuyVal = 0;
+  buyByUid.forEach((v) => {
+    totalBuy += v;
+    if (v > maxBuyVal) maxBuyVal = v;
+  });
+  let totalSell = 0;
+  let maxSellVal = 0;
+  sellByUid.forEach((v) => {
+    totalSell += v;
+    if (v > maxSellVal) maxSellVal = v;
+  });
+
+  // Aynı oyuncu hem en büyük alıcı hem en büyük satıcı olsa bile sorun
+  // yok: maxBuyVal ve maxSellVal birbirinden bağımsız hesaplanıp ayrı ayrı
+  // düşülüyor, yani o oyuncunun etkisi HER İKİ taraftan da kalkıyor.
+  const remainingBuy = Math.max(0, totalBuy - maxBuyVal);
+  const remainingSell = Math.max(0, totalSell - maxSellVal);
+  const total = remainingBuy + remainingSell;
   if (total <= 0) return null;
-  return totalBuy / total;
+  return remainingBuy / total;
 }
 
 // =============================================================================
@@ -2571,10 +2608,13 @@ export const hourlyInvestmentUpdate = onSchedule(
 
     // YENİ SİSTEM: kripto fiyatının YÖNÜ artık coin-flip değil, gerçek
     // oyuncu alış/satış davranışından hesaplanan olasılıkla belirleniyor
-    // (bkz. computeWeightedCryptoBuyRatio).
+    // (bkz. computeWeightedCryptoBuyRatio — o fonksiyon ARTIK hem "en
+    // büyük alıcı/satıcının payını çıkarma" mekanizmasını HEM DE zaman
+    // ağırlığını uyguluyor; ikisi birlikte, iki KATMANLI bir koruma
+    // oluşturuyor).
     //
-    // 80/20 KURALI (revizyon — önceki "en büyük alıcı/satıcıyı çıkarma"
-    // mekanizmasının yerini aldı): oran %20-%80 arasında (sınırlar DAHİL)
+    // 80/20 KURALI (en büyük alıcı/satıcı ÇIKARILDIKTAN SONRA, kalan
+    // oyuncuların oranına uygulanır): oran %20-%80 arasında (sınırlar DAHİL)
     // ise doğrudan gerçek oran kullanılır (ör. %70 alış → %70 yükseliş
     // ihtimali). Ancak oran bu sınırın dışına (ör. %81 alış ya da %19
     // alış) çıkarsa sistem TAMAMEN NÖTR olur (%50/%50) — bu sayede toplu/
