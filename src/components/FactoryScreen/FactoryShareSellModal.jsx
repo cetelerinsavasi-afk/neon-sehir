@@ -5,6 +5,18 @@ import QuantityStepper from '../QuantityStepper/QuantityStepper';
 
 const SHARE_DAY_OPTIONS = [10, 20];
 
+// istanbulDateKey — bu kod tabanındaki diğer hook'larla (bkz.
+// useBeggars.js, usePoliceClaimPool.js) BİREBİR AYNI yerel yardımcı —
+// "bugün" ödeme yapıldı mı (lastPayoutDateKey) kontrolü için gerekiyor.
+function istanbulDateKey() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Istanbul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
 // shareFairValue/shareMinPrice/shareMaxPrice — functions/index.js'deki
 // sunucu tarafı ikizleriyle (listFactoryShare) BİREBİR AYNI formül. Sunucu
 // nihai doğrulamayı zaten yapıyor; burası sadece oyuncuya canlı bir önizleme
@@ -93,6 +105,7 @@ export default function FactoryShareSellModal({ factory, onClose }) {
   const [error, setError] = useState(null);
   const [cancelBusy, setCancelBusy] = useState(null);
 
+  const todayKey = istanbulDateKey();
   const listedTotal = listed.reduce((sum, s) => sum + (s.percent || 0), 0);
   const activeTotal = active.reduce((sum, s) => sum + (s.percent || 0), 0);
   const ownedPercent = Math.max(0, 100 - listedTotal - activeTotal);
@@ -147,13 +160,14 @@ export default function FactoryShareSellModal({ factory, onClose }) {
           </button>
         </div>
 
+        {/* DÜZELTME (madde 4): "cümleleri sadeleştirelim, işçi maaşları
+            düşülmüş diye belirtmeye gerek yok" — uzun parantezli açıklamalar
+            kaldırıldı, kısa ve net etiketler kullanılıyor. */}
         <p className="factory-hint">
-          Tahmini Günlük Kâr: <strong>{dailyIncome.toLocaleString('tr-TR')} altın</strong> (dünkü üretimden
-          işçi maaşları düşülmüş net kâr — sadece TAHMİNİ, her gece değişir, işçi maaşı üretimi aşarsa eksi
-          bile olabilir).
+          Fabrikanın Bugünkü Kârı: <strong>{dailyIncome.toLocaleString('tr-TR')} altın</strong>
         </p>
         <p className="factory-hint">
-          Son 10 Günlük Ortalama Kâr:{' '}
+          Son 10 Günlük Kâr Ortalaması:{' '}
           {hasIncomeHistory ? (
             <strong>{dailyIncomeAvg10.toLocaleString('tr-TR')} altın</strong>
           ) : (
@@ -239,18 +253,33 @@ export default function FactoryShareSellModal({ factory, onClose }) {
         <p className="factory-step-label">Satılmış (Aktif Ödeyen) Hisseler ({active.length})</p>
         {!loading && active.length === 0 && <p className="factory-hint">Henüz satılmış bir hissen yok.</p>}
         <div className="factory-share-list">
-          {active.map((s) => (
-            <div key={s.id} className="factory-share-row">
-              <div className="factory-share-row-info">
-                <span className="factory-share-row-title">
-                  %{s.percent} · {s.buyerName || 'Alıcı'}
-                </span>
-                <span className="factory-share-row-meta">
-                  {s.remainingDays ?? 0}/{s.totalDays ?? s.days} gün kaldı
-                </span>
+          {active.map((s) => {
+            // DÜZELTME (madde 4): "yatırımcılar hisseyi kaç altına aldı, şu
+            // ana kadar kaç altın kazandı, bugün kaç altın kazandı gibi
+            // detayları da ekleyelim" — bu alanlar artık dailyReset'in
+            // temettü bloğunda yazılıyor (bkz. functions/index.js
+            // totalPaidOut/lastPayoutAmount/lastPayoutDateKey).
+            const earnedToday = s.lastPayoutDateKey === todayKey ? s.lastPayoutAmount || 0 : 0;
+            return (
+              <div key={s.id} className="factory-share-buy-card">
+                <div className="factory-share-row-info">
+                  <span className="factory-share-row-title">
+                    %{s.percent} · {s.buyerName || 'Alıcı'}
+                  </span>
+                  <span className="factory-share-row-meta">
+                    {s.remainingDays ?? 0}/{s.totalDays ?? s.days} gün kaldı
+                  </span>
+                </div>
+                <p className="factory-hint small">
+                  Hisseyi {(s.price || 0).toLocaleString('tr-TR')} altına aldı.
+                </p>
+                <p className="factory-hint small">
+                  Bugün kazandığı: <strong>{earnedToday.toLocaleString('tr-TR')} altın</strong> · Şimdiye kadar
+                  kazandığı: <strong>{(s.totalPaidOut || 0).toLocaleString('tr-TR')} altın</strong>
+                </p>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

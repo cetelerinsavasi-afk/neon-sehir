@@ -67,12 +67,13 @@ export default function FactoryShareBuyModal({ factory, shares, onClose }) {
           </div>
         </div>
 
+        {/* DÜZELTME (madde 4): cümleler sadeleştirildi — "işçi maaşları
+            düşülmüş" gibi teknik ayrıntılar kaldırıldı. */}
         <p className="factory-hint small">
-          Bugünkü güncel kâr (işçi maaşları düşülmüş):{' '}
-          <strong>{currentDailyIncome.toLocaleString('tr-TR')} altın</strong>
+          Fabrikanın Bugünkü Kârı: <strong>{currentDailyIncome.toLocaleString('tr-TR')} altın</strong>
         </p>
         <p className="factory-hint small">
-          Son 10 günlük ortalama kâr:{' '}
+          Son 10 Günlük Kâr Ortalaması:{' '}
           {hasIncomeHistory ? (
             <strong>{dailyIncomeAvg10.toLocaleString('tr-TR')} altın</strong>
           ) : (
@@ -96,12 +97,10 @@ export default function FactoryShareBuyModal({ factory, shares, onClose }) {
                   <span className="factory-share-row-meta">{daysAgoLabel(s.createdAt)}</span>
                 </div>
                 <p className="factory-hint small">
-                  Bu hissenin fiyatı hesaplanırken kullanılan kâr (ilan anındaki):{' '}
-                  <strong>{(s.dailyIncomeAtListing || 0).toLocaleString('tr-TR')} altın</strong>
+                  İlan Anındaki Günlük Kâr: <strong>{(s.dailyIncomeAtListing || 0).toLocaleString('tr-TR')} altın</strong>
                 </p>
                 <p className="factory-hint small">
-                  Tahmini toplam getiri ({s.days} gün, TAHMİNİ — gerçek günlük kâra göre değişir):{' '}
-                  <strong>{estimatedTotal.toLocaleString('tr-TR')} altın</strong>
+                  Tahmini Toplam Getiri ({s.days} gün): <strong>{estimatedTotal.toLocaleString('tr-TR')} altın</strong>
                 </p>
                 <div className="factory-share-buy-price-row">
                   <span className="factory-machine-buy-price">{(s.price || 0).toLocaleString('tr-TR')} altın</span>

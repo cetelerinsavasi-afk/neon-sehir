@@ -208,6 +208,36 @@
   cursor: default;
 }
 
+/* bank-sell-all-confirm — YENİ İSTEK (madde 4): "Tüm Kriptoları Sat"
+   artık tek tıkla anında satmıyor, önce %1 komisyon dahil net tutarı
+   gösteren bu onay kutusuna geçiyor. */
+.bank-sell-all-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: #0a0308;
+  border: 1px solid rgba(255, 46, 140, 0.35);
+  border-radius: 8px;
+}
+
+.bank-hint.small {
+  font-size: 10px;
+}
+
+.bank-commission-preview {
+  color: var(--neon-pink);
+}
+
+.bank-sell-all-confirm-row {
+  display: flex;
+  gap: 8px;
+}
+
+.bank-sell-all-confirm-row .bank-btn {
+  flex: 1;
+}
+
 .bank-input {
   width: 100%;
   padding: 8px 10px;

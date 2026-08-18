@@ -41,6 +41,19 @@ function createGameState(speedKey) {
     speedKey: mode.key,
     pipeSpeed: BASE_PIPE_SPEED * mode.speedMult,
     spacingFrames: Math.max(24, Math.round(BASE_PIPE_SPACING_FRAMES / mode.speedMult)),
+    // DÜZELTME (madde 5): "flappy kuş oyunu bazen laglı oluyor, bazen çok
+    // akıcı bazen çok kötü" — eskiden fizik requestAnimationFrame'in KAÇ
+    // KEZ çağrıldığına göre ilerliyordu (her çağrıda sabit miktar), bu da
+    // ekranın gerçek yenileme hızına (60/90/120Hz) ve tarayıcının o anki
+    // performansına göre oyunun FARKLI hızlarda akmasına sebep oluyordu.
+    // Artık gerçek geçen süre (dt, performance.now() ile) ölçülüp 60fps'e
+    // göre normalize ediliyor (bkz. tick() içindeki `steps`) — bu üç alan
+    // o normalizasyon için gerekli: lastTs bir önceki karenin zaman
+    // damgası, groundOffset/spawnTimer eskiden `frame` sayacına dayanan
+    // zemin kayması ve boru üretimi artık GERÇEK ZAMANA göre ilerliyor.
+    lastTs: null,
+    groundOffset: 0,
+    spawnTimer: 0,
   };
 }
 
@@ -91,7 +104,7 @@ function draw(ctx, g) {
   ctx.fillStyle = '#ded18f';
   ctx.fillRect(0, HEIGHT - GROUND_HEIGHT, WIDTH, GROUND_HEIGHT);
   ctx.fillStyle = '#c7b96f';
-  for (let x = -((g.frame * g.pipeSpeed) % 20); x < WIDTH; x += 20) {
+  for (let x = -(g.groundOffset % 20); x < WIDTH; x += 20) {
     ctx.fillRect(x, HEIGHT - GROUND_HEIGHT, 10, 6);
   }
 
@@ -153,20 +166,40 @@ export default function FlappyBirdScreen() {
     }
   }, [stopLoop]);
 
-  const tick = useCallback(() => {
+  const tick = useCallback((now) => {
     const canvas = canvasRef.current;
     const g = gameRef.current;
     if (!canvas || !g || !g.alive) return;
     const ctx = canvas.getContext('2d');
 
+    // dt-normalizasyon (DÜZELTME madde 5) — bkz. createGameState'teki
+    // yorum. `steps` = bu karede gerçekte geçen sürenin, 60fps'teki BİR
+    // karenin (16.67ms) kaçına denk geldiği. Sabit +1 yerine bununla
+    // çarpılan her hareket, ekranın gerçek yenileme hızından/performans
+    // dalgalanmalarından bağımsız, HER ZAMAN aynı gerçek-saniye hızında
+    // ilerler.
+    if (g.lastTs == null) g.lastTs = now;
+    const rawDtMs = now - g.lastTs;
+    g.lastTs = now;
+    // Sekme arka plana alınıp geri geldiğinde rAF saniyelerce durup tek
+    // seferde devasa bir dt ile geri dönebilir — bu durumda kuşun anında
+    // duvara/borulara çarpmasını (haksız ölüm) önlemek için üst sınır.
+    const dtMs = Math.min(Math.max(rawDtMs, 0), 50);
+    const steps = dtMs / (1000 / 60);
+
     g.frame += 1;
-    g.velocity = Math.min(MAX_FALL_SPEED, g.velocity + GRAVITY);
-    g.birdY += g.velocity;
+    g.velocity = Math.min(MAX_FALL_SPEED, g.velocity + GRAVITY * steps);
+    g.birdY += g.velocity * steps;
     g.rotation = Math.max(-0.5, Math.min(1.3, g.velocity / 10));
 
-    if (g.frame % g.spacingFrames === 0) spawnPipe(g.pipes);
+    g.groundOffset += g.pipeSpeed * steps;
+    g.spawnTimer += steps;
+    if (g.spawnTimer >= g.spacingFrames) {
+      g.spawnTimer -= g.spacingFrames;
+      spawnPipe(g.pipes);
+    }
     g.pipes.forEach((p) => {
-      p.x -= g.pipeSpeed;
+      p.x -= g.pipeSpeed * steps;
     });
     g.pipes = g.pipes.filter((p) => p.x > -PIPE_WIDTH - 10);
 
@@ -195,7 +228,12 @@ export default function FlappyBirdScreen() {
     });
 
     draw(ctx, g);
-    setScore(g.score);
+    // DÜZELTME (küçük katkı, madde 5): eskiden her karede (rAF çağrısında,
+    // saniyede onlarca kez) skor DEĞİŞMESE bile setScore çağrılıyordu —
+    // her seferinde gereksiz bir React re-render'a yol açıp yavaş
+    // cihazlarda takılmaya (jank) katkı yapıyordu. Artık sadece skor
+    // gerçekten değiştiğinde çağrılıyor.
+    setScore((prev) => (prev === g.score ? prev : g.score));
 
     if (collided) {
       g.alive = false;

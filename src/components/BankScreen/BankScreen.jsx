@@ -76,10 +76,21 @@ function TradeToggle({
   maxBuy,
   maxSell,
   quickAmounts = DEFAULT_QUICK_AMOUNTS,
+  // sellCommissionRate — YENİ İSTEK (kripto satış komisyonu): sadece
+  // kripto satışında %1 (0.01) — oyuncu satmayı onaylamadan ÖNCE
+  // komisyon miktarını ve eline net geçecek tutarı görmeli (bkz. madde:
+  // "Oyuncu satış işlemini onaylamadan önce ... ekranda açıkça
+  // gösterilecek"). Diğer tüm Al/Sat panelleri (banka faizi, elmas, hisse
+  // senedi) bu prop'u hiç geçmez, davranışları DEĞİŞMEDİ.
+  sellCommissionRate = 0,
 }) {
   const [mode, setMode] = useState(null); // 'buy' | 'sell' | null
   const [amount, setAmount] = useState(0);
   const preview = unitPrice && amount > 0 ? amount / unitPrice : null;
+  const commissionPreview =
+    mode === 'sell' && sellCommissionRate > 0 && amount > 0
+      ? { commission: Math.round(amount * sellCommissionRate), net: amount - Math.round(amount * sellCommissionRate) }
+      : null;
 
   const handleSubmit = async (m) => {
     if (!amount || amount <= 0) return;
@@ -126,6 +137,12 @@ function TradeToggle({
           {preview !== null && (
             <span className="bank-amount-preview">≈ {formatUnits(preview)} adet</span>
           )}
+          {commissionPreview && (
+            <span className="bank-amount-preview bank-commission-preview">
+              %{Math.round(sellCommissionRate * 100)} komisyon: {commissionPreview.commission.toLocaleString('tr-TR')} altın ·
+              Eline geçecek: <strong>{commissionPreview.net.toLocaleString('tr-TR')} altın</strong>
+            </span>
+          )}
           <button
             className="bank-btn primary"
             disabled={busy || !amount}
@@ -135,6 +152,52 @@ function TradeToggle({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// SellAllCryptoButton — YENİ İSTEK (madde 4): "tüm kriptoları sat
+// butonunda da yüzde 1lik kesinti ücreti miktarı yazsın, çünkü o butona
+// bastığımız an satılıyor, oyuncu kesintiyi farketmeyebilir." Bu buton
+// (diğer varlıkların "Tümünü Sat" butonlarının aksine, bkz. yukarısı)
+// artık TEK tıkla anında satmıyor — önce komisyon dahil net tutarı
+// gösteren bir onay adımına geçiyor, satış sadece İKİNCİ tıkla olur.
+const SELL_COMMISSION_RATE = 0.01;
+function SellAllCryptoButton({ cryptoValue, busy, onConfirm }) {
+  const [confirming, setConfirming] = useState(false);
+  const commission = Math.round(cryptoValue * SELL_COMMISSION_RATE);
+  const net = cryptoValue - commission;
+
+  if (!confirming) {
+    return (
+      <button className="bank-sell-all" disabled={busy} onClick={() => setConfirming(true)}>
+        Tüm Kriptoları Sat
+      </button>
+    );
+  }
+
+  return (
+    <div className="bank-sell-all-confirm">
+      <p className="bank-hint small">
+        Satılacak: {cryptoValue.toLocaleString('tr-TR')} altın · %1 komisyon:{' '}
+        {commission.toLocaleString('tr-TR')} altın · Eline geçecek:{' '}
+        <strong>{net.toLocaleString('tr-TR')} altın</strong>
+      </p>
+      <div className="bank-sell-all-confirm-row">
+        <button className="bank-btn" disabled={busy} onClick={() => setConfirming(false)}>
+          Vazgeç
+        </button>
+        <button
+          className="bank-btn primary"
+          disabled={busy}
+          onClick={() => {
+            setConfirming(false);
+            onConfirm();
+          }}
+        >
+          {busy ? '…' : 'Onayla — Sat'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -295,15 +358,14 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
           onBuy={(amount) => run('buy-crypto', () => buyInvestment('crypto', amount))}
           onSell={(amount) => run('sell-crypto', () => sellInvestment('crypto', amount))}
           quickAmounts={INVESTMENT_QUICK_AMOUNTS}
+          sellCommissionRate={0.01}
         />
         {cryptoHoldings > 0 && (
-          <button
-            className="bank-sell-all"
-            disabled={busy === 'sell-all-crypto'}
-            onClick={() => run('sell-all-crypto', () => sellAllInvestment('crypto'))}
-          >
-            Tüm Kriptoları Sat
-          </button>
+          <SellAllCryptoButton
+            cryptoValue={cryptoValue}
+            busy={busy === 'sell-all-crypto'}
+            onConfirm={() => run('sell-all-crypto', () => sellAllInvestment('crypto'))}
+          />
         )}
       </div>
       {error && <p className="bank-error">{error}</p>}

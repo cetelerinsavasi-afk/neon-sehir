@@ -126,6 +126,21 @@ service cloud.firestore {
       }
     }
 
+    // shares (collectionGroup) — DÜZELTME: yukarıdaki iç içe
+    // (factories/{ownerId}/shares/{shareId}) kural SADECE o path'e
+    // doğrudan erişimi/o TEK fabrikanın shares koleksiyonunu kapsar.
+    // useListedFactoryShares (Fabrikalar listesindeki "📈 Hisseler"
+    // butonu) ise TÜM fabrikalardaki satılık hisseleri TEK SEFERDE
+    // görmek için collectionGroup('shares') ile sorguluyor — Firestore
+    // kuralları, collection group sorguları için AYRICA en üst seviyede
+    // bir wildcard kural ister, yoksa "Missing or insufficient
+    // permissions" hatası verir (index sorunuyla KARIŞTIRILMASIN — bu
+    // ayrı bir kural eksikliğiydi). Yazma yine sadece Cloud Functions ile.
+    match /{path=**}/shares/{shareId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
     match /shipSchedule/{date} {
       allow read: if isSignedIn();
       allow write: if false;

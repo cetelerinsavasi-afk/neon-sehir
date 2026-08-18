@@ -109,14 +109,17 @@ function repairRequiredQty(price) {
 
 // miningMachinePrice — mining makinesinin fiyatı canlı kripto fiyatına
 // bağlı VE oyuncunun elindeki mining makinesi sayısına göre kademeli
-// artıyor (kullanıcı revizesi): temel fiyat 2 kripto değerinde, her 100
-// makinede bir +2 kripto daha (100'de 4x, 200'de 6x, 300'de 8x, ...).
-// Böylece devasa mining çiftlikleri kurmak gitgide pahalanır.
-// `ownedCount` — bu satın alımdan ÖNCE sahip olunan mining makinesi
-// sayısı (bir sonraki makinenin fiyatını belirler).
+// artıyor. DÜZELTME (kullanıcı revizesi, madde 2): eskiden her 100
+// makinede +2x artıyordu (0-99:2x, 100-199:4x, ...) — artık çok daha
+// kademeli/yumuşak: her 10 makinede +0.2x (0-9:2.0x, 10-19:2.2x,
+// 20-29:2.4x, ...). 100'ün katlarında (100, 200, ...) İKİ FORMÜL DE AYNI
+// sonucu verir (100'de 4x, 200'de 6x, ...), aradaki basamaklar artık çok
+// daha kademeli. Böylece devasa mining çiftlikleri kurmak gitgide
+// pahalanır. `ownedCount` — bu satın alımdan ÖNCE sahip olunan mining
+// makinesi sayısı (bir sonraki makinenin fiyatını belirler).
 async function miningMachinePrice(ownedCount) {
   const prices = await getCurrentPrices();
-  const multiplier = 2 + 2 * Math.floor((ownedCount || 0) / 100);
+  const multiplier = 2 + 0.2 * Math.floor((ownedCount || 0) / 10);
   return Math.ceil(multiplier * (prices.cryptoPrice || 0));
 }
 
@@ -130,19 +133,24 @@ async function miningMachinePrice(ownedCount) {
 // birbirine eşit olduğundan, tam dilimler kapalı-formülle (100 × dilim
 // fiyatı), yarım kalan son dilim de tek çarpımla hesaplanır — büyük N
 // için bile döngü sadece dilim sayısı (N/100) kadar çalışır.
+// DÜZELTME (madde 2): dilim boyutu 100 → 10, dilim başı artış 2x → 0.2x
+// (bkz. miningMachinePrice'taki AYNI değişiklik) — formül birebir aynı
+// mantıkla, sadece yeni kademelerle.
 function miningFleetValue(count, cryptoPrice) {
   const n = count || 0;
   const price = cryptoPrice || 0;
   if (n <= 0) return 0;
-  const fullTiers = Math.floor(n / 100);
-  const remainder = n % 100;
+  const TIER_SIZE = 10;
+  const TIER_STEP = 0.2;
+  const fullTiers = Math.floor(n / TIER_SIZE);
+  const remainder = n % TIER_SIZE;
   let total = 0;
   for (let tier = 0; tier < fullTiers; tier++) {
-    const unitPrice = Math.ceil((2 + 2 * tier) * price);
-    total += 100 * unitPrice;
+    const unitPrice = Math.ceil((2 + TIER_STEP * tier) * price);
+    total += TIER_SIZE * unitPrice;
   }
   if (remainder > 0) {
-    const unitPrice = Math.ceil((2 + 2 * fullTiers) * price);
+    const unitPrice = Math.ceil((2 + TIER_STEP * fullTiers) * price);
     total += remainder * unitPrice;
   }
   return total;
@@ -1871,9 +1879,16 @@ export const dailyReset = onSchedule(
           const dividend = Math.round(((share.percent || 0) / 100) * factoryDailyIncome);
           const newRemainingDays = Math.max(0, (share.remainingDays || 0) - 1);
 
+          // totalPaidOut/lastPayoutAmount — yeni istek (madde 4): "hisse
+          // senedinden şu kadar para kazandın mesajında ... şu ana kadar şu
+          // kadar toplamda kazandın" — yatırımcı ekranında ve SMS'te
+          // gösterilecek kümülatif/bugünkü kazanç burada tutuluyor
+          // (eskiden hiç kayıt yoktu, bkz. araştırma notu).
           const shareUpdate = {
             remainingDays: newRemainingDays,
             lastPayoutDateKey: todayDateKey,
+            lastPayoutAmount: dividend,
+            totalPaidOut: admin.firestore.FieldValue.increment(dividend),
           };
           if (newRemainingDays <= 0) shareUpdate.status = 'expired';
 
@@ -1915,9 +1930,20 @@ export const dailyReset = onSchedule(
             tx.update(shareDoc.ref, shareUpdate);
           });
 
+          // Yeni istek (madde 4): "şu fiyata aldığın hisseden bugün şu kadar
+          // kazandın ve şu ana kadar şu kadar toplamda bu kadar kazandın ve
+          // vadenin bitmesine şu kadar gün kaldı" — mesaj artık tek bir
+          // rakam yerine tüm bu bağlamı içeriyor. `newTotalPaidOut` burada
+          // JS tarafında elle hesaplanıyor (FieldValue.increment sunucuda
+          // atomik uygulanır ama anlık yeni değeri bize geri vermez).
+          const newTotalPaidOut = (share.totalPaidOut || 0) + dividend;
+          const expiryNote =
+            newRemainingDays > 0
+              ? `Vadenin bitmesine ${newRemainingDays} gün kaldı.`
+              : 'Bu hissenin vadesi bugün doldu.';
           const smsJobs = [
             buyerRef.collection('messages').add({
-              text: `Sahip olduğun %${share.percent} fabrika hissesinden bugünkü temettün: ${dividend.toLocaleString('tr-TR')} altın. Hesabına yatırıldı.`,
+              text: `📈 Hisse temettün ödendi! %${share.percent}'ini ${(share.price || 0).toLocaleString('tr-TR')} altına aldığın fabrika hissesinden bugün ${dividend.toLocaleString('tr-TR')} altın kazandın. Bu hisseden şu ana kadar toplam ${newTotalPaidOut.toLocaleString('tr-TR')} altın kazandın. ${expiryNote}`,
               createdAt: admin.firestore.FieldValue.serverTimestamp(),
               read: false,
               type: 'share_dividend',
@@ -2438,11 +2464,96 @@ export const dailyReset = onSchedule(
   }
 );
 
+// CRYPTO_TIME_WEIGHT_BUCKETS — kripto fiyat YÖNÜNÜ artık oyuncuların
+// gerçek alış/satış işlemleri belirliyor (kullanıcı isteğiyle yeniden
+// tasarlanan sistem). Her işlem, ne kadar YENİ olduğuna göre ağırlıklı
+// sayılıyor — yeni işlemler daha güçlü, eski işlemler daha zayıf etkili.
+// Sınır saat değeri dahil (<=) o kovaya girer; 24 saatten eski işlemler
+// (ağırlık 0) zaten sorguya hiç dahil edilmiyor.
+const CRYPTO_TIME_WEIGHT_BUCKETS = [
+  { maxHours: 1, weight: 4 },
+  { maxHours: 3, weight: 3 },
+  { maxHours: 6, weight: 2 },
+  { maxHours: 12, weight: 1.5 },
+  { maxHours: 24, weight: 1 },
+];
+function cryptoTradeWeight(ageMs) {
+  const ageHours = ageMs / (60 * 60 * 1000);
+  for (const bucket of CRYPTO_TIME_WEIGHT_BUCKETS) {
+    if (ageHours <= bucket.maxHours) return bucket.weight;
+  }
+  return 0;
+}
+
+// computeWeightedCryptoBuyRatio — YENİ SİSTEM (kullanıcı tasarımı): "KR
+// fiyatının yönünü algoritma doğrudan belirlemesin; oyuncuların gerçek
+// alış/satış davranışları fiyatın yönünü etkilesin. Ancak tek bir
+// oyuncunun veya küçük bir grubun piyasayı tamamen kontrol etmesi mümkün
+// olmasın." Adımlar (bkz. kullanıcının paylaştığı tasarım dokümanı):
+//   1. Son 24 saatteki TÜM cryptoTrades kayıtları okunur (mining üretimi
+//      buraya HİÇ girmez — sadece gerçekleşmiş alım/satım işlemleri,
+//      bkz. buyInvestment/sellInvestment).
+//   2. Her işleme yaşına göre zaman ağırlığı uygulanır (yukarısı).
+//   3-4. Oyuncu bazında toplanır; en büyük ağırlıklı ALICI alış
+//      toplamından, en büyük ağırlıklı SATICI satış toplamından AYRI AYRI
+//      çıkarılır (aynı oyuncu olsa bile iki taraftan da ayrı düşülür) —
+//      whale'lerin/tek oyuncunun piyasayı tek başına yönlendirmesini
+//      engeller. Ağırlık ALTIN değil KR MİKTARI (krAmount) üzerinden
+//      hesaplanır (kullanıcı isteği).
+// Dönüş: kalan ağırlıklı alış / (alış+satış) oranı — YOK sayılacak kadar
+// az/hiç anlamlı hacim varsa (ör. tek oyuncu, ya da hiç işlem yoksa) null
+// döner, çağıran taraf bu durumda mevcut sistemdeki gibi tamamen rastgele
+// yöne döner (bkz. hourlyInvestmentUpdate).
+async function computeWeightedCryptoBuyRatio() {
+  const cutoff = admin.firestore.Timestamp.fromMillis(Date.now() - 24 * 60 * 60 * 1000);
+  const tradesSnap = await db.collection('cryptoTrades').where('createdAt', '>=', cutoff).get();
+  if (tradesSnap.empty) return null;
+
+  const nowMs = Date.now();
+  const buyByUid = new Map();
+  const sellByUid = new Map();
+  tradesSnap.forEach((doc) => {
+    const t = doc.data();
+    const tsMs = t.createdAt?.toMillis?.();
+    if (!tsMs || !t.uid) return;
+    const weight = cryptoTradeWeight(nowMs - tsMs);
+    if (weight <= 0) return;
+    const weighted = (t.krAmount || 0) * weight;
+    if (weighted <= 0) return;
+    const map = t.type === 'buy' ? buyByUid : t.type === 'sell' ? sellByUid : null;
+    if (!map) return;
+    map.set(t.uid, (map.get(t.uid) || 0) + weighted);
+  });
+
+  let totalBuy = 0;
+  let maxBuyVal = 0;
+  buyByUid.forEach((v) => {
+    totalBuy += v;
+    if (v > maxBuyVal) maxBuyVal = v;
+  });
+  let totalSell = 0;
+  let maxSellVal = 0;
+  sellByUid.forEach((v) => {
+    totalSell += v;
+    if (v > maxSellVal) maxSellVal = v;
+  });
+
+  const remainingBuy = Math.max(0, totalBuy - maxBuyVal);
+  const remainingSell = Math.max(0, totalSell - maxSellVal);
+  const total = remainingBuy + remainingSell;
+  if (total <= 0) return null;
+  return remainingBuy / total;
+}
+
 // =============================================================================
-// hourlyInvestmentUpdate — elmas/kripto fiyatları artık günde 1 kez değil,
-// SAATTE 1 kez (günde 24 kez) rastgele hareket ediyor.
-//   - Elmas: %1-%4 arası
-//   - Kripto: %1-%20 arası
+// hourlyInvestmentUpdate — elmas/kripto/hisse senedi fiyatları SAATTE 1
+// kez (günde 24 kez) hareket ediyor.
+//   - Elmas: %1-%4 arası, hisse senedi: %1-%9 arası — İKİSİ DE hâlâ
+//     tamamen rastgele (kullanıcı isteği: "şimdilik hisse senedi ve
+//     elmasa dokunmayalım").
+//   - Kripto: YÖN artık gerçek oyuncu alış/satış davranışına bağlı (bkz.
+//     computeWeightedCryptoBuyRatio), miktar hâlâ %1-%20 artış / %1-%16
+//     düşüş aralığından rastgele seçiliyor.
 // Güncel fiyat investments/current dokümanında tutulur (alım/satım
 // fonksiyonları buradan okur); her saatlik hareket ayrıca
 // investmentHistory koleksiyonuna çizgi grafik için kaydedilir. 30
@@ -2471,7 +2582,18 @@ export const hourlyInvestmentUpdate = onSchedule(
     const stockChangePct = stockUp
       ? Math.random() * 0.09 + 0.01 // %1-10 artış
       : -(Math.random() * 0.07 + 0.01); // %1-8 düşüş
-    const cryptoUp = Math.random() < 0.5;
+
+    // YENİ SİSTEM: kripto fiyatının YÖNÜ artık coin-flip değil, gerçek
+    // oyuncu alış/satış davranışından hesaplanan olasılıkla belirleniyor
+    // (bkz. computeWeightedCryptoBuyRatio) — %20-%80 arasında sınırlı
+    // (madde 3: "alış/satış oranı ne kadar uç olursa olsun fiyat yönü
+    // hiçbir zaman %100 kesin olmayacak"). Anlamlı işlem yoksa (null),
+    // ESKİ sistemdeki gibi %50/%50 tamamen rastgele — bu, yeni sisteme
+    // geçişte de (henüz cryptoTrades hiç birikmemişken) otomatik olarak
+    // devreye girer, fiyat mevcut değerinden SORUNSUZCA devam eder.
+    const cryptoBuyRatio = await computeWeightedCryptoBuyRatio();
+    const cryptoUpProbability = cryptoBuyRatio == null ? 0.5 : Math.min(0.8, Math.max(0.2, cryptoBuyRatio));
+    const cryptoUp = Math.random() < cryptoUpProbability;
     const cryptoChangePct = cryptoUp
       ? Math.random() * 0.19 + 0.01 // %1-20 artış
       : -(Math.random() * 0.15 + 0.01); // %1-16 düşüş
@@ -2492,6 +2614,10 @@ export const hourlyInvestmentUpdate = onSchedule(
       diamondChangePct: roundedDiamondPct,
       stockChangePct: roundedStockPct,
       cryptoChangePct: roundedCryptoPct,
+      // cryptoUpProbability — sadece teşhis/şeffaflık amaçlı (bkz. madde
+      // 3'teki örnek tablo) — hiçbir hesaplamada kullanılmıyor, istenirse
+      // ileride oyuncuya "piyasa duyarlılığı" göstergesi olarak sunulabilir.
+      cryptoUpProbability: Math.round(cryptoUpProbability * 1000) / 10,
       updatedAt: now,
     });
 
@@ -2517,6 +2643,22 @@ export const hourlyInvestmentUpdate = onSchedule(
       const cleanupBatch = db.batch();
       oldSnap.forEach((doc) => cleanupBatch.delete(doc.ref));
       await cleanupBatch.commit();
+    }
+
+    // cryptoTrades temizliği — algoritma sadece son 24 saate bakıyor, 2
+    // günden eski kayıtların hiçbir işlevi kalmıyor (küçük bir tampon
+    // payıyla saklanıp siliniyor, ileride istenirse ham veri incelemesi
+    // için biraz daha uzun tutulabilir).
+    const tradesCutoff = admin.firestore.Timestamp.fromMillis(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    const oldTradesSnap = await db
+      .collection('cryptoTrades')
+      .where('createdAt', '<', tradesCutoff)
+      .limit(300)
+      .get();
+    if (!oldTradesSnap.empty) {
+      const tradesCleanupBatch = db.batch();
+      oldTradesSnap.forEach((doc) => tradesCleanupBatch.delete(doc.ref));
+      await tradesCleanupBatch.commit();
     }
   }
 );
@@ -3048,6 +3190,16 @@ export const buyInvestment = onCall(async (request) => {
   const costBasisField = INVESTMENT_COST_BASIS_FIELD[assetType];
 
   const userRef = db.collection('users').doc(uid);
+  // cryptoTrades — YENİ İSTEK (kripto fiyat sistemi yeniden tasarımı):
+  // KR fiyatının yönünü artık algoritma rastgele değil, oyuncuların
+  // GERÇEK alış/satış işlemleri belirliyor (bkz. hourlyInvestmentUpdate
+  // içindeki computeWeightedCryptoBuyRatio). Bunun için her KR alım/
+  // satımı burada kalıcı olarak kaydediliyor — SADECE kripto için (elmas/
+  // hisse senedi şimdilik eskisi gibi tamamen rastgele kalıyor). Ağırlık
+  // hesaplamasında ALTIN tutarı değil, alınan/satılan KR MİKTARI (units)
+  // kullanılıyor (kullanıcı isteği: "harcanan ya da kazanılan altın
+  // miktarı değil alınan ve satılan kripto miktarı hesaplanacak").
+  const tradeRef = assetType === 'crypto' ? db.collection('cryptoTrades').doc() : null;
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(userRef);
     const user = snap.data();
@@ -3064,6 +3216,15 @@ export const buyInvestment = onCall(async (request) => {
       // isteği: her ekleme/çıkarmada sayaç sıfırlansın).
       [costBasisField]: newHoldings * unitPrice,
     });
+    if (tradeRef) {
+      tx.set(tradeRef, {
+        uid,
+        type: 'buy',
+        krAmount: units,
+        goldAmount,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
   });
 
   return { ok: true, unitPrice, units };
@@ -3083,9 +3244,22 @@ export const sellInvestment = onCall(async (request) => {
   const unitPrice = prices[INVESTMENT_PRICE_FIELD[assetType]];
   const holdingsField = INVESTMENT_HOLDINGS_FIELD[assetType];
   const costBasisField = INVESTMENT_COST_BASIS_FIELD[assetType];
+  // SATIŞ KOMİSYONU — YENİ İSTEK (kripto fiyat sistemi yeniden tasarımı):
+  // KR satışında %1 komisyon (alışta YOK) — ekonomiye geri dönmeyen
+  // gerçek bir para sink'i, oyuncuya NET tutar (komisyon düşülmüş)
+  // ödenir. Elmas/hisse senedinde şimdilik komisyon YOK — kullanıcı:
+  // "şimdilik hisse senedi ve elmasa dokunmayalım, sadece kripto için bu
+  // yeniliği yapacağız."
+  const SELL_COMMISSION_RATE = assetType === 'crypto' ? 0.01 : 0;
 
   const userRef = db.collection('users').doc(uid);
+  // cryptoTrades — bkz. buyInvestment'taki AYNI yorum. Ağırlıklandırma
+  // ALTIN değil KR MİKTARI (units) üzerinden yapılacağı için `krAmount`
+  // burada da satılan gerçek KR adedi.
+  const tradeRef = assetType === 'crypto' ? db.collection('cryptoTrades').doc() : null;
   let totalValue = 0;
+  let grossValue = 0;
+  let commission = 0;
 
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(userRef);
@@ -3105,7 +3279,9 @@ export const sellInvestment = onCall(async (request) => {
         throw new HttpsError('failed-precondition', 'Yeterli varlığınız yok.');
       }
     }
-    totalValue = Math.floor(units * unitPrice);
+    grossValue = Math.floor(units * unitPrice);
+    commission = Math.round(grossValue * SELL_COMMISSION_RATE);
+    totalValue = grossValue - commission;
     const remaining = have - units;
 
     tx.update(userRef, {
@@ -3115,9 +3291,18 @@ export const sellInvestment = onCall(async (request) => {
       // "az önce güncel fiyattan yeniden alınmış" gibi davranır.
       [costBasisField]: remaining > 1e-9 ? remaining * unitPrice : 0,
     });
+    if (tradeRef && units > 0) {
+      tx.set(tradeRef, {
+        uid,
+        type: 'sell',
+        krAmount: units,
+        goldAmount: totalValue,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
   });
 
-  return { ok: true, unitPrice, totalValue };
+  return { ok: true, unitPrice, totalValue, grossValue, commission };
 });
 
 // =============================================================================
@@ -6946,8 +7131,21 @@ export const createListing = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Bu makine size ait değil.');
     }
     const preMachineType = preSnap.data().type;
-    const base =
-      preMachineType === 'mining' ? await miningMachinePrice() : MACHINE_TYPES[preMachineType].price;
+    // DÜZELTME (yeni istek): kripto (mining) makineleri artık oyuncular
+    // arası 2. el listeye ÇIKARILAMAZ — sadece "anında sat" (bkz.
+    // instantSellListing) mümkün. Sebep: az makineli bir hesaptan çok
+    // makineli bir hesaba ucuza kripto makinesi transferi, madde 2'deki
+    // (miningMachinePrice) makine-sayısına-göre-artan fiyat kademesini
+    // bypass ederdi — büyük hesaplar küçük hesaplardan ucuza makine
+    // toplayıp kendi kademe fiyatını asla ödemezdi.
+    if (preMachineType === 'mining') {
+      throw new HttpsError(
+        'failed-precondition',
+        'Kripto (mining) makineleri 2. el satışa çıkarılamaz — sadece "Anında Sat" ile satabilirsin.'
+      );
+    }
+    // preMachineType artık burada asla 'mining' olamaz (yukarıda reddedildi).
+    const base = MACHINE_TYPES[preMachineType].price;
     const machineMax = base;
     const machineMin = Math.floor(base / 2);
     if (priceNum < machineMin || priceNum > machineMax) {
@@ -7169,7 +7367,13 @@ export const instantSellListing = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Bu makine size ait değil.');
     }
     const mType = preSnap.data().type;
-    const base = mType === 'mining' ? await miningMachinePrice() : MACHINE_TYPES[mType].price;
+    const isMiningMachine = mType === 'mining';
+    // Kripto (mining) makinesi için taban BİLEREK SABİT tutuluyor:
+    // miningMachinePrice() argümansız çağrılınca her zaman taban kademeyi
+    // (2×KR fiyatı) döner, /2 = 1×KR fiyatı — YENİ İSTEK: "sadece 1 kripto
+    // fiyatına anında satabileceksin", makine sayısı/kademeden bağımsız,
+    // her zaman sabit 1×KR fiyatı.
+    const base = isMiningMachine ? await miningMachinePrice() : MACHINE_TYPES[mType].price;
     const minPrice = Math.floor(base / 2);
     payout = minPrice;
     await db.runTransaction(async (tx) => {
@@ -7190,15 +7394,22 @@ export const instantSellListing = onCall(async (request) => {
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
       });
       tx.delete(machineRef);
-      tx.set(listingRef, {
-        sellerId: 'system',
-        sellerName: 'Sistem',
-        itemType,
-        machineType: m.type,
-        price: Math.ceil(minPrice * 1.1),
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        sold: false,
-      });
+      // YENİ İSTEK: kripto makineleri anında satıldığında (diğer araç/
+      // silah/makine türlerinin aksine) sistem tarafından TEKRAR satışa
+      // ÇIKARILMAZ — "anında satılanlar da oyundan silinecek". Başka bir
+      // oyuncunun bu makineyi (kademe fiyatını ödemeden) devralması
+      // mümkün olmasın diye bilerek burada listing OLUŞTURULMUYOR.
+      if (!isMiningMachine) {
+        tx.set(listingRef, {
+          sellerId: 'system',
+          sellerName: 'Sistem',
+          itemType,
+          machineType: m.type,
+          price: Math.ceil(minPrice * 1.1),
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          sold: false,
+        });
+      }
     });
   } else {
     throw new HttpsError('invalid-argument', 'Geçersiz ürün türü.');
@@ -7312,6 +7523,16 @@ export const buyListing = onCall(async (request) => {
     // Makine sadece bir fabrikaya yerleştirilebileceği için, alıcının
     // kendi fabrikası olmalı — yoksa makineyi "koyacak" bir yeri yok.
     if (listing.itemType === 'machine') {
+      // Güvenlik ağı: kripto (mining) makineleri artık HİÇBİR şekilde 2.
+      // el olarak satın alınamaz (bkz. createListing/instantSellListing'
+      // deki değişiklikler — artık böyle bir ilan hiç oluşturulmuyor).
+      // Yine de eski/olası bir ilan varsa burada da reddediliyor.
+      if (listing.machineType === 'mining') {
+        throw new HttpsError(
+          'failed-precondition',
+          'Kripto (mining) makineleri artık 2. el satın alınamaz.'
+        );
+      }
       const buyerFactorySnap = await tx.get(db.collection('factories').doc(uid));
       if (!buyerFactorySnap.exists) {
         throw new HttpsError(

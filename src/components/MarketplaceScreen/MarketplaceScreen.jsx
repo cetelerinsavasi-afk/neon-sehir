@@ -142,6 +142,14 @@ function SellForm({ onCreated, onClose, initialItemType }) {
   const sellableWeapons = weapons.filter((w) => !w.listed);
   const sellableMachines = myMachines.filter((m) => !m.workerId);
 
+  // DÜZELTME (yeni istek): kripto (mining) makineleri artık 2. el listeye
+  // ÇIKARILAMAZ — sadece sabit fiyata "Anında Sat" mümkün (bkz.
+  // functions/index.js createListing'deki aynı kısıtlama). Az makineli
+  // hesaplardan çok makineli hesaplara ucuza makine transferini önlemek
+  // için — bkz. miningMachinePrice'taki kademeli fiyat.
+  const selectedMachineType = itemType === 'machine' ? sellableMachines.find((x) => x.id === machineId)?.type : null;
+  const isMiningSelected = selectedMachineType === 'mining';
+
   const priceRange = (() => {
     if (itemType === 'vehicle') {
       const v = sellableVehicles.find((x) => x.id === selectedId);
@@ -188,6 +196,7 @@ function SellForm({ onCreated, onClose, initialItemType }) {
       // Sunucu kesinlikle tam sayı bekliyor — QuantityStepper zaten integer
       // üretiyor ama son bir güvenlik için yuvarlanıyor.
       const safePrice = Math.round(price);
+      if (itemType === 'machine' && isMiningSelected) return; // güvenlik ağı — bkz. yukarısı
       if (itemType === 'vehicle') {
         if (!selectedId) return;
         await createListing({ itemType, itemId: selectedId, price: safePrice });
@@ -380,59 +389,84 @@ function SellForm({ onCreated, onClose, initialItemType }) {
           </>
         )}
 
-        <p className="market-step-label">
-          {itemType === 'material' ? '3. Adet Fiyatını Belirle' : '2. Satış Fiyatını Belirle'}
-        </p>
-        <div className="market-price-form">
-          <p className="market-price-label">
-            <strong>{price.toLocaleString('tr-TR')} altına</strong>
-            {itemType === 'material' ? ' adedi satılacak' : ' satılacak'}
-          </p>
-          {itemType === 'material' && quantity > 0 && price > 0 && (
-            <p className="market-price-range-hint">
-              Toplam: {(price * quantity).toLocaleString('tr-TR')} altın ({quantity} adet)
+        {itemType === 'machine' && isMiningSelected ? (
+          // DÜZELTME (yeni istek): kripto (mining) makinesi seçiliyken 2.
+          // el ilan verme adımı TAMAMEN gizleniyor — sadece sabit fiyata
+          // "Anında Sat" var. Fiyat kullanıcı tarafından belirlenmiyor
+          // (miningMachinePrice() argümansız her zaman taban kademeyi
+          // döner, /2 = sabit 1×KR fiyatı — bkz. functions/index.js).
+          <div className="market-price-form">
+            <p className="market-hint">
+              Kripto (mining) makineleri artık 2. el satışa çıkarılamaz — sadece sabit fiyata anında
+              satılabilir. Anında satılan makine oyundan tamamen silinir, kimse satın alamaz.
             </p>
-          )}
-          {priceRange && (
-            <p className="market-price-range-hint">
-              İzin verilen aralık: {priceRange.min.toLocaleString('tr-TR')} -{' '}
-              {priceRange.max.toLocaleString('tr-TR')} altın
-              {itemType === 'material' ? ' (adet başına)' : ''}
-            </p>
-          )}
-          <QuantityStepper
-            value={price}
-            onChange={setPrice}
-            max={priceRange?.max}
-            quickAmounts={
-              itemType === 'material' ? [1, 10, 50, 100] : [10, 100, 1000, 10000, 100000]
-            }
-          />
-          {priceRange && price > 0 && (price < priceRange.min || price > priceRange.max) && (
-            <p className="market-price-warning">
-              Fiyat izin verilen aralığın dışında, ilan verilemez.
-            </p>
-          )}
-          <button
-            className="market-btn primary"
-            disabled={
-              busy ||
-              !price ||
-              !priceRange ||
-              price < priceRange.min ||
-              price > priceRange.max ||
-              (itemType === 'material' && (!quantity || quantity <= 0))
-            }
-            onClick={handleSubmit}
-          >
-            İlan Ver
-          </button>
-          {priceRange && (itemType !== 'material' || quantity > 0) && (
-            <button className="market-instant-sell-btn" disabled={busy} onClick={handleInstantSell}>
+            {priceRange && (
+              <p className="market-price-range-hint">
+                Anında satış fiyatı: <strong>{priceRange.min.toLocaleString('tr-TR')} altın</strong> (1×
+                güncel KR fiyatı)
+              </p>
+            )}
+            <button className="market-instant-sell-btn" disabled={busy || !priceRange} onClick={handleInstantSell}>
               {(instantSellTotal ?? 0).toLocaleString('tr-TR')} altına Anında Sat
             </button>
-          )}
-        </div>
+          </div>
+        ) : (
+          <>
+            <p className="market-step-label">
+              {itemType === 'material' ? '3. Adet Fiyatını Belirle' : '2. Satış Fiyatını Belirle'}
+            </p>
+            <div className="market-price-form">
+              <p className="market-price-label">
+                <strong>{price.toLocaleString('tr-TR')} altına</strong>
+                {itemType === 'material' ? ' adedi satılacak' : ' satılacak'}
+              </p>
+              {itemType === 'material' && quantity > 0 && price > 0 && (
+                <p className="market-price-range-hint">
+                  Toplam: {(price * quantity).toLocaleString('tr-TR')} altın ({quantity} adet)
+                </p>
+              )}
+              {priceRange && (
+                <p className="market-price-range-hint">
+                  İzin verilen aralık: {priceRange.min.toLocaleString('tr-TR')} -{' '}
+                  {priceRange.max.toLocaleString('tr-TR')} altın
+                  {itemType === 'material' ? ' (adet başına)' : ''}
+                </p>
+              )}
+              <QuantityStepper
+                value={price}
+                onChange={setPrice}
+                max={priceRange?.max}
+                quickAmounts={
+                  itemType === 'material' ? [1, 10, 50, 100] : [10, 100, 1000, 10000, 100000]
+                }
+              />
+              {priceRange && price > 0 && (price < priceRange.min || price > priceRange.max) && (
+                <p className="market-price-warning">
+                  Fiyat izin verilen aralığın dışında, ilan verilemez.
+                </p>
+              )}
+              <button
+                className="market-btn primary"
+                disabled={
+                  busy ||
+                  !price ||
+                  !priceRange ||
+                  price < priceRange.min ||
+                  price > priceRange.max ||
+                  (itemType === 'material' && (!quantity || quantity <= 0))
+                }
+                onClick={handleSubmit}
+              >
+                İlan Ver
+              </button>
+              {priceRange && (itemType !== 'material' || quantity > 0) && (
+                <button className="market-instant-sell-btn" disabled={busy} onClick={handleInstantSell}>
+                  {(instantSellTotal ?? 0).toLocaleString('tr-TR')} altına Anında Sat
+                </button>
+              )}
+            </div>
+          </>
+        )}
         {error && <p className="market-error">{error}</p>}
       </div>
     </div>

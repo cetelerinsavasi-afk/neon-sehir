@@ -24,19 +24,23 @@ const MACHINE_PRICES = { tamirMalzemesi: 100000, silahUpgrade: 50000, arabaGelis
 // formülle, yarım kalan son dilim de tek çarpımla hesaplanır (bkz.
 // functions/index.js içindeki sunucu tarafı ikizi miningFleetValue —
 // mantık birebir aynı).
+// DÜZELTME (madde 2, kullanıcı revizesi): dilim boyutu 100 → 10, dilim
+// başı artış 2x → 0.2x (bkz. functions/index.js'teki AYNI değişiklik).
 function miningFleetValue(count, cryptoPrice) {
   const n = count || 0;
   const price = cryptoPrice || 0;
   if (n <= 0) return 0;
-  const fullTiers = Math.floor(n / 100);
-  const remainder = n % 100;
+  const TIER_SIZE = 10;
+  const TIER_STEP = 0.2;
+  const fullTiers = Math.floor(n / TIER_SIZE);
+  const remainder = n % TIER_SIZE;
   let total = 0;
   for (let tier = 0; tier < fullTiers; tier++) {
-    const unitPrice = Math.ceil((2 + 2 * tier) * price);
-    total += 100 * unitPrice;
+    const unitPrice = Math.ceil((2 + TIER_STEP * tier) * price);
+    total += TIER_SIZE * unitPrice;
   }
   if (remainder > 0) {
-    const unitPrice = Math.ceil((2 + 2 * fullTiers) * price);
+    const unitPrice = Math.ceil((2 + TIER_STEP * fullTiers) * price);
     total += remainder * unitPrice;
   }
   return total;
