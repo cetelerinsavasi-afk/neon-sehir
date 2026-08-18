@@ -68,6 +68,14 @@
   margin: 4px 0 12px;
 }
 
+.futbol-match-penalty-result {
+  text-align: center;
+  color: var(--neon-yellow);
+  font-weight: 700;
+  font-size: 12px;
+  margin: -6px 0 12px;
+}
+
 /* --- Halısaha --- */
 .futbol-pitch {
   position: relative;

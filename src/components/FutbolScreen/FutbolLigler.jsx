@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFutbolLeagues } from '../../hooks/useFutbolLeagues';
 import { useFutbolTeams } from '../../hooks/useFutbolTeams';
 import { useFutbolMatches } from '../../hooks/useFutbolMatches';
+import { useFutbolSeasonState } from '../../hooks/useFutbolSeasonState';
 import { seedFutbolWorld } from '../../services/gameActions';
 import { useNowTick, computeLiveMatchState, pickFutbolDisplayRound } from './futbolLiveMatch';
 import FutbolMatchDetail from './FutbolMatchDetail';
@@ -9,6 +10,8 @@ import FutbolCrest from './FutbolCrest';
 import FutbolIddaa from './FutbolIddaa';
 import FutbolKulupler from './FutbolKulupler';
 import FutbolTeamDetail from './FutbolTeamDetail';
+import FutbolKupa from './FutbolKupa';
+import FutbolSeasonCelebration from './FutbolSeasonCelebration';
 import './FutbolLigler.css';
 
 const SUB_TABS = [
@@ -17,15 +20,18 @@ const SUB_TABS = [
   { id: 'fikstur', label: 'Maç Fikstürü' },
   { id: 'kulupler', label: 'Kulüpler' },
   { id: 'iddaa', label: 'İddaa Bayii' },
+  { id: 'kupa', label: 'Kupa' },
 ];
 
 export default function FutbolLigler() {
   const { leagues, loading: leaguesLoading } = useFutbolLeagues();
+  const { state: seasonState } = useFutbolSeasonState();
   const [selectedLeagueId, setSelectedLeagueId] = useState(null);
   const [subTab, setSubTab] = useState('puan');
   const [selectedMatch, setSelectedMatch] = useState(null);
   const [selectedTeamId, setSelectedTeamId] = useState(null);
   const now = useNowTick(5000);
+  const cupSeason = leagues.find((l) => l.tier === 1)?.season || null;
 
   // Futbol dünyası boşsa (ilk hiç kimse açmadıysa) sessizce, otomatik
   // olarak oluşturulur — admin/buton gerekmez, seedFutbolWorld idempotent.
@@ -69,6 +75,24 @@ export default function FutbolLigler() {
     [matches, activeLeague?.currentRound, now]
   );
 
+  // Kullanıcı isteği: "Maç Fikstürü" sekmesine girildiğinde ilk turdan
+  // değil, bugünün gününden başlanmalı — yukarı çekince eski maçlar,
+  // aşağı çekince yeni maçlar görülebilmeli. Liste zaten 1'den 14'e sıralı
+  // basılıyor (değiştirmiyoruz), sadece açılışta bugünün turuna kaydırıyoruz.
+  const fixtureRoundRefs = useRef({});
+  useEffect(() => {
+    if (subTab !== 'fikstur') return;
+    const target = fixtureRoundRefs.current[display.round];
+    if (target) {
+      // rAF: liste DOM'a yeni basıldıysa (sekme az önce açıldıysa) bir
+      // çerçeve bekleyip öyle kaydırmak, ölçümün doğru alınmasını sağlıyor.
+      requestAnimationFrame(() => {
+        target.scrollIntoView({ block: 'center' });
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subTab, display.round, activeLeagueId]);
+
   if (leaguesLoading || leagues.length === 0) {
     return <p className="futbol-placeholder">Yükleniyor...</p>;
   }
@@ -101,21 +125,31 @@ export default function FutbolLigler() {
 
       {subTab === 'puan' && <StandingsTable teams={teams} onSelectTeam={setSelectedTeamId} />}
 
-      {subTab === 'maclar' && (
-        <MatchList
-          title={
-            display.mode === 'live'
-              ? `${display.round}. Gün — Canlı`
-              : display.mode === 'finished'
-                ? `${display.round}. Gün — Sonuçlar`
-                : `${display.round}. Gün`
-          }
-          matches={roundsGrouped[display.round] || []}
-          teamNameById={teamNameById}
-          teamById={teamById}
-          onSelectMatch={setSelectedMatch}
-          now={now}
-        />
+      {subTab === 'maclar' && seasonState.status === 'CELEBRATION_DAY' && <FutbolSeasonCelebration />}
+
+      {subTab === 'maclar' && seasonState.status !== 'CELEBRATION_DAY' && (
+        <>
+          {seasonState.status === 'CUP_DAY' && (
+            <p className="futbol-placeholder futbol-cup-day-banner">
+              🏆 Bugün Neon Kupası günü — lig maçları yarın devam edecek. Kupa maçları için "Kupa"
+              sekmesine bak.
+            </p>
+          )}
+          <MatchList
+            title={
+              display.mode === 'live'
+                ? `${display.round}. Gün — Canlı`
+                : display.mode === 'finished'
+                  ? `${display.round}. Gün — Sonuçlar`
+                  : `${display.round}. Gün`
+            }
+            matches={roundsGrouped[display.round] || []}
+            teamNameById={teamNameById}
+            teamById={teamById}
+            onSelectMatch={setSelectedMatch}
+            now={now}
+          />
+        </>
       )}
 
       {subTab === 'fikstur' && (
@@ -124,16 +158,17 @@ export default function FutbolLigler() {
             .map(Number)
             .sort((a, b) => a - b)
             .map((round) => (
-              <MatchList
-                key={round}
-                title={`${round}. Gün`}
-                matches={roundsGrouped[round]}
-                teamNameById={teamNameById}
-                teamById={teamById}
-                onSelectMatch={setSelectedMatch}
-                now={now}
-                compact
-              />
+              <div key={round} ref={(el) => { fixtureRoundRefs.current[round] = el; }}>
+                <MatchList
+                  title={`${round}. Gün`}
+                  matches={roundsGrouped[round]}
+                  teamNameById={teamNameById}
+                  teamById={teamById}
+                  onSelectMatch={setSelectedMatch}
+                  now={now}
+                  compact
+                />
+              </div>
             ))}
         </div>
       )}
@@ -149,6 +184,8 @@ export default function FutbolLigler() {
           teamById={teamById}
         />
       )}
+
+      {subTab === 'kupa' && <FutbolKupa season={cupSeason} />}
 
       {selectedMatch && (
         <FutbolMatchDetail

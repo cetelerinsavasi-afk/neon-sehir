@@ -40,6 +40,11 @@
   margin-bottom: 10px;
 }
 
+.futbol-my-team-trophies {
+  color: var(--neon-yellow);
+  font-size: 13px;
+}
+
 .futbol-my-team-cancel-link {
   background: none;
   border: none;

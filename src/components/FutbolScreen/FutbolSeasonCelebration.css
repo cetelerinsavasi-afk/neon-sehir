@@ -1,0 +1,124 @@
+.futbol-celebration {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: center;
+  text-align: center;
+}
+
+.futbol-celebration-kicker {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--neon-yellow);
+  letter-spacing: 0.4px;
+}
+
+.futbol-celebration-champion {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 16px;
+  width: 100%;
+  border-radius: 16px;
+  border: 1px solid var(--neon-yellow);
+  background: linear-gradient(180deg, rgba(255, 210, 63, 0.16), transparent);
+}
+
+.futbol-celebration-champion-label {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--neon-yellow);
+}
+
+.futbol-celebration-champion-name {
+  font-size: 26px;
+  font-weight: 900;
+  color: var(--text);
+}
+
+.futbol-celebration-podium {
+  display: flex;
+  gap: 24px;
+}
+
+.futbol-celebration-podium-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.futbol-celebration-section {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+}
+
+.futbol-celebration-section-title {
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.futbol-celebration-row {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.futbol-celebration-cup-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+}
+
+.futbol-muted {
+  color: var(--text-dim);
+}
+
+.futbol-celebration-stats {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.futbol-celebration-stat {
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  text-align: left;
+}
+
+.futbol-celebration-stat-label {
+  margin: 0 0 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.futbol-celebration-stat-value {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.futbol-celebration-footer {
+  margin-top: 8px;
+}
+
+@media (max-width: 480px) {
+  .futbol-celebration-stats {
+    grid-template-columns: 1fr;
+  }
+}

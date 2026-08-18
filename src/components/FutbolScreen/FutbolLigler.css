@@ -197,3 +197,83 @@
   cursor: pointer;
   font-size: 12px;
 }
+
+/* --- Kupa modülü --- */
+
+.futbol-kupa {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.futbol-cup-champion-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--neon-yellow);
+  background: linear-gradient(180deg, rgba(255, 210, 63, 0.12), transparent);
+  text-align: center;
+}
+
+.futbol-cup-champion-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--neon-yellow);
+  letter-spacing: 0.5px;
+}
+
+.futbol-cup-champion-team {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.futbol-cup-final-score {
+  margin: 0;
+}
+
+.futbol-cup-bet-box {
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.futbol-cup-iddaa-pair {
+  grid-template-columns: 1fr 1fr;
+}
+
+.futbol-cup-bracket {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.futbol-cup-match-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.futbol-cup-winner {
+  color: var(--neon-yellow);
+  font-weight: 700;
+}
+
+.futbol-cup-penalty-note {
+  margin: 2px 0 0;
+  padding-left: 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.futbol-cup-day-banner {
+  border: 1px solid var(--neon-yellow);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--neon-yellow);
+}

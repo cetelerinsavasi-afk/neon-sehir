@@ -93,6 +93,17 @@ export default function FutbolMatchDetail({ match, homeName, awayName, homeLogo,
           {matchOver ? 'MAÇ SONU' : `${Math.floor(elapsedMinute)}'`}
         </p>
 
+        {matchOver && match?.penalty && (
+          <p className="futbol-match-penalty-result">
+            Penaltılar: {match.penalty.homeScore} - {match.penalty.awayScore}
+            {match.winnerTeamId && (
+              <>
+                {' '}— Kazanan: {match.winnerTeamId === match.homeTeamId ? homeName : awayName}
+              </>
+            )}
+          </p>
+        )}
+
         <div className="futbol-pitch">
           <div className="futbol-pitch-halfline" />
           <div className="futbol-pitch-circle" />

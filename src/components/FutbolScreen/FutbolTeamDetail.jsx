@@ -42,6 +42,16 @@ export default function FutbolTeamDetail({ teamId, onClose }) {
               <FutbolCrest logo={detail.logo} initials={detail.name?.[0]} size={64} />
               <p className="futbol-team-detail-name">{detail.name}</p>
               <p className="futbol-team-detail-tier">{detail.tier}. Lig</p>
+              {(detail.championshipsCount > 0 || detail.cupsCount > 0) && (
+                <p className="futbol-team-detail-trophies">
+                  {detail.championshipsCount > 0 && (
+                    <span>
+                      🏆 {detail.championshipsCount} şampiyonluk
+                    </span>
+                  )}
+                  {detail.cupsCount > 0 && <span>🏆 {detail.cupsCount} kupa</span>}
+                </p>
+              )}
             </div>
             <div className="futbol-team-detail-rows">
               <div className="futbol-team-detail-row">

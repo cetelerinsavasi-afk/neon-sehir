@@ -62,7 +62,7 @@ export default function FutbolIddaa({ leagueId, matches, allMatches, teamNameByI
         <>
           <p className="futbol-placeholder">
             Günün 4 maçının tamamını doğru tahmin edersen yatırdığın miktarın{' '}
-            <strong>5 katını</strong> kazanırsın. Tek bir tahmin bile yanlışsa
+            <strong>10 katını</strong> kazanırsın. Tek bir tahmin bile yanlışsa
             yatırdığın altın gider. Aynı gün için istediğin kadar kupon oynayabilirsin.
           </p>
           <div className="futbol-iddaa-matches">

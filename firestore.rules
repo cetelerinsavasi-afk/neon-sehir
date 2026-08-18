@@ -372,6 +372,36 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // --- Kupa modülü ---
+    // futbolSeasonState/current — bugün lig mi/kupa mı/kutlama mı
+    // oynanıyor bilgisi. Herkes okuyabilmeli (arayüz buna göre değişiyor);
+    // yazma sadece Cloud Functions ile.
+    match /futbolSeasonState/{stateId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // futbolCups/{season} — kupa ağacının kök dokümanı (katılımcılar,
+    // aşama, şampiyon). Herkese açık okunur; yazma sadece Cloud Functions.
+    match /futbolCups/{cupId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // futbolCupMatches/{matchId} — kupa maçları (eşleşme, skor, penaltı).
+    // Herkese açık okunur; yazma sadece Cloud Functions ile.
+    match /futbolCupMatches/{matchId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // futbolCupBets/{betId} — kupa iddaa kuponları. futbolBets ile aynı
+    // kural: herkes başkasının kuponunu göremez, sadece kendi kuponları.
+    match /futbolCupBets/{betId} {
+      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
+
     // flappyScores/{uid} — telefondaki Flappy Bird mini oyununun kişisel
     // en iyi skoru. Herkes okuyabilmeli (genel "en iyi 10" tablosu için);
     // yazma sadece Cloud Functions (submitFlappyScore) ile.

@@ -267,6 +267,9 @@ export default function FutbolTransfer({ team }) {
                   <p className="futbol-transfer-name">{p.name}</p>
                   <p className="futbol-buy-meta">
                     {p.age} yaş · {p.power.toFixed(1)} güç
+                    {typeof p.value === 'number' && (
+                      <> · Piyasa değeri: {p.value.toLocaleString('tr-TR')} altın</>
+                    )}
                   </p>
                 </div>
                 <button

@@ -458,3 +458,8 @@ export const upgradeFutbolStadium = (teamId) =>
 
 export const setFutbolTicketPrice = (teamId, ticketPrice) =>
   httpsCallable(functions, 'setFutbolTicketPrice')({ teamId, ticketPrice });
+
+// --- Kupa modülü ---
+
+export const placeFutbolCupBet = (season, round, stake, predictions) =>
+  httpsCallable(functions, 'placeFutbolCupBet')({ season, round, stake, predictions });

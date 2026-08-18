@@ -28,6 +28,14 @@
   color: var(--text-dim);
 }
 
+.futbol-team-detail-trophies {
+  display: flex;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--neon-yellow);
+}
+
 .futbol-team-detail-rows {
   display: flex;
   flex-direction: column;

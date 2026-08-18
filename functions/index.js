@@ -9071,12 +9071,675 @@ async function applyFutbolMatchResult(matchId) {
   });
 }
 
-// Sezon bitince: ödüller (sahibi olan takımlara), terfi/küme düşme
-// (sadece ardışık tier çiftleri arasında — 3. lig yoksa 2. liganın
-// sonuncusu düşemez, bu doğal olarak sağlanıyor çünkü döngü sadece var
-// olan lig çiftleri arasında çalışıyor), istatistik sıfırlama, yeni
-// fikstür, ve oyuncu yaşlandırma/emeklilik.
-async function finishFutbolSeason(leagueIds) {
+// =============================================================================
+// Kupa Modülü (Neon Kupası) — mevcut lig maç motorunu, sezon sistemini,
+// iddaa sistemini DEĞİŞTİRMEDEN üstüne eklenmiştir. Tasarım özeti:
+//
+//   - futbolSeasonState/current: tüm liglerin ortak "bugün ne oynanıyor"
+//     durumu — 'LEAGUE_DAY' | 'CUP_DAY' | 'CELEBRATION_DAY'. Lig turları
+//     hâlâ her ligin kendi currentRound'unda ilerliyor (DEĞİŞMEDİ); bu
+//     doküman sadece "bugün lig mi, kupa mı, kutlama mı oynanacak" kararını
+//     TÜM ligler için merkezi ve tutarlı tutuyor.
+//   - Kupa günleri, 1. Lig'in round'u FUTBOL_CUP_TRIGGER_AFTER_ROUND'daki
+//     bir eşiğe (3/6/9/12) ulaştığında tetiklenir; o gün TÜM ligler için
+//     lig maçı oluşturulmaz (kullanıcı promptu madde 2). Ertesi gün lig
+//     kaldığı yerden (currentRound hiç dokunulmamıştı) devam eder.
+//   - Sezon bitince (round 14 tamamlanınca) ÖNCE sadece ödül+istatistik
+//     dağıtılır ve 1 GÜNLÜK 'CELEBRATION_DAY' başlar (finishFutbolSeasonPart1);
+//     puan tablosu/fikstür/sonuçlar bilerek bir gün daha ELLENMİYOR. Ertesi
+//     gün (kutlama gününün 19:00 reveal'i) gerçek sıfırlama+yeni fikstür+
+//     terfi/düşme+yeni kupa kurası çalışır (finishFutbolSeasonPart2).
+//   - Her iki geçiş de (kupa turu ilerletme, sezon Part1/Part2) SADECE
+//     claimFutbolRevealForToday()'in İSTANBUL takvim gününe göre "bugünü
+//     kazandığı" tek çağrıda çalışır — resolveFutbolMatchdayReveal aynı gün
+//     içinde iki kez tetiklense bile (Cloud Scheduler'ın nadir ama olası
+//     çift-tetikleme riski, kullanıcı edge-case listesi madde 1/24) hiçbir
+//     ödül/geçiş iki kez uygulanmaz.
+// =============================================================================
+
+const FUTBOL_CUP_TIERS = [1, 2]; // Kupa'ya SADECE 1. ve 2. Lig katılır (kullanıcı promptu madde 1).
+const FUTBOL_CUP_ROUND_ORDER = ['ROUND_OF_16', 'QUARTER_FINAL', 'SEMI_FINAL', 'FINAL'];
+const FUTBOL_CUP_ROUND_LABELS = {
+  ROUND_OF_16: 'Son 16',
+  QUARTER_FINAL: 'Çeyrek Final',
+  SEMI_FINAL: 'Yarı Final',
+  FINAL: 'Final',
+};
+// 1. Lig'in round'u şu değerlere ULAŞTIĞI gün bir kupa günü başlar —
+// kullanıcının örnek takvimiyle birebir (3 lig günü → Son16 → 3 gün →
+// Çeyrek → 3 gün → Yarı → 3 gün → Final → kalan 2 lig günüyle sezon biter).
+// FUTBOL_MAX_ROUNDS (14) hiçbir eşiğe denk gelmediği için sezon sonuyla
+// asla çakışmaz.
+const FUTBOL_CUP_TRIGGER_AFTER_ROUND = {
+  3: 'ROUND_OF_16',
+  6: 'QUARTER_FINAL',
+  9: 'SEMI_FINAL',
+  12: 'FINAL',
+};
+const FUTBOL_CUP_ROUND_MATCH_COUNT = { ROUND_OF_16: 8, QUARTER_FINAL: 4, SEMI_FINAL: 2, FINAL: 1 };
+const FUTBOL_CUP_BET_MULTIPLIERS = { ROUND_OF_16: 50, QUARTER_FINAL: 10, SEMI_FINAL: 3, FINAL: 1.5 };
+const FUTBOL_CUP_CHAMPION_REWARD = 250000;
+const FUTBOL_CUP_FINALIST_REWARD = 100000;
+
+// ensureFutbolSeasonState — futbolSeasonState/current dokümanı yoksa
+// (bu kod ilk kez deploy edildiğinde, HÂLİHAZIRDA devam eden canlı sezon
+// için) güvenli bir başlangıç durumuyla oluşturur: 'LEAGUE_DAY'. Bu,
+// canlı sezonun round'una BAKMAKSIZIN lige normal devam ettirir — o anki
+// sezon için kupa hiç çekilmemiş olacağından (createFutbolCupForSeason
+// hiç çağrılmadığı için) resolveFutbolMatchdayStart'taki "kupa maçı yok"
+// güvenlik ağı sayesinde bu sezon kupasız, sorunsuz tamamlanır; kupa bir
+// SONRAKİ sezondan itibaren devreye girer.
+async function ensureFutbolSeasonState() {
+  const ref = db.collection('futbolSeasonState').doc('current');
+  const snap = await ref.get();
+  if (snap.exists) return { ref, state: snap.data() };
+  const tier1Snap = await db.collection('futbolLeagues').where('tier', '==', 1).limit(1).get();
+  const season = tier1Snap.empty ? FUTBOL_SEASON_START : tier1Snap.docs[0].data().season || FUTBOL_SEASON_START;
+  const initial = {
+    status: 'LEAGUE_DAY',
+    season,
+    pendingCupRound: null,
+    finishedLeagueIds: [],
+    promotionPlan: [],
+    relegationPlan: [],
+    championTeamName: null,
+    cupChampionTeamName: null,
+    lastRevealDateKey: null,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+  await ref.set(initial, { merge: true });
+  return { ref, state: initial };
+}
+
+// claimFutbolRevealForToday — resolveFutbolMatchdayReveal'ın İSTANBUL
+// takvim günü başına SADECE BİR KEZ çalışmasını garanti eder (transaction
+// içinde oku+kontrol et+yaz). lastRevealDateKey bugünle aynıysa
+// { claimed:false } döner ve çağıran hiçbir şey yapmadan çıkar — bu,
+// kullanıcı edge-case listesindeki "scheduled function iki kez çalışırsa"
+// riskine karşı TÜM reveal akışını (kupa ödülü, sezon geçişi DAHİL) korur.
+async function claimFutbolRevealForToday() {
+  const ref = db.collection('futbolSeasonState').doc('current');
+  const todayKey = istanbulDateKey();
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const data = snap.exists ? snap.data() : null;
+    if (data && data.lastRevealDateKey === todayKey) {
+      return { claimed: false, state: data };
+    }
+    const base = data || {
+      status: 'LEAGUE_DAY',
+      season: FUTBOL_SEASON_START,
+      pendingCupRound: null,
+      finishedLeagueIds: [],
+      promotionPlan: [],
+      relegationPlan: [],
+    };
+    const nextState = { ...base, lastRevealDateKey: todayKey };
+    tx.set(ref, { ...nextState, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    return { claimed: true, state: base };
+  });
+}
+
+// --- Kupa Modülü: penaltı sistemi (kullanıcı promptu madde 5-7) ---
+// Normal maç taktikleri (ev sahibi avantajı, ofansif/defansif çarpanları)
+// BİLEREK kullanılmıyor — sadece Güç×Form. Bu yüzden simulateFutbolMatch/
+// futbolLinePowers'tan TAMAMEN bağımsız, ayrı bir hesaplama.
+function futbolPenaltyStrength(p) {
+  return (p.power || 0) * ((p.form ?? 100) / 100);
+}
+
+// pickFutbolPenaltyOrder — kaleci hariç, Güç×Form'a göre (eşitlikte
+// oyuncu ID'sine göre) deterministik azalan sıralama. İlk 5 atışçı bu
+// sıradan, sonrası da (ani ölüm) yine bu sıradan devam eder.
+function pickFutbolPenaltyOrder(players) {
+  return players
+    .filter((p) => p.position !== 'GK')
+    .slice()
+    .sort((a, b) => {
+      const diff = futbolPenaltyStrength(b) - futbolPenaltyStrength(a);
+      if (diff !== 0) return diff;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
+}
+
+// simulateFutbolPenaltyShootout — döner: { homeGoals, awayGoals, attempts, winner }.
+// attempts, arayüzün penaltı sırasını gösterebilmesi için sırayla kaydedilir.
+function simulateFutbolPenaltyShootout(homePlayers, awayPlayers) {
+  const homeGK = homePlayers.find((p) => p.position === 'GK') || null;
+  const awayGK = awayPlayers.find((p) => p.position === 'GK') || null;
+  const homeOrder = pickFutbolPenaltyOrder(homePlayers);
+  const awayOrder = pickFutbolPenaltyOrder(awayPlayers);
+
+  const attempts = [];
+  let homeGoals = 0;
+  let awayGoals = 0;
+  let homeIdx = 0;
+  let awayIdx = 0;
+
+  const nextShooter = (order, idx) => (order.length ? order[idx % order.length] : null);
+
+  const takeAttempt = (team, shooter, keeper) => {
+    if (!shooter) return;
+    const shooterStrength = futbolPenaltyStrength(shooter);
+    const keeperStrength = keeper ? futbolPenaltyStrength(keeper) : 0;
+    // Kullanıcı promptu: oyuncu > kaleci VEYA EŞİT ise %75 gol (eşitlikte
+    // oyuncu lehine korunur); oyuncu < kaleci ise %25 gol.
+    const scoreChance = shooterStrength < keeperStrength ? 0.25 : 0.75;
+    const scored = Math.random() < scoreChance;
+    attempts.push({ team, shooterId: shooter.id, shooterName: shooter.name, scored });
+    if (scored) {
+      if (team === 'home') homeGoals += 1;
+      else awayGoals += 1;
+    }
+  };
+
+  // İlk 5 tur — iki takım da 5'er atış kullanır (kullanıcı promptu madde 5).
+  for (let round = 0; round < 5; round++) {
+    takeAttempt('home', nextShooter(homeOrder, homeIdx), awayGK);
+    homeIdx += 1;
+    takeAttempt('away', nextShooter(awayOrder, awayIdx), homeGK);
+    awayIdx += 1;
+  }
+
+  // İlk 5'ten sonra eşitse ani ölüm; her iki takım aynı sayıda atış
+  // yaptıktan sonra biri öndeyse HEMEN biter (madde 7). Sonsuz döngüye
+  // karşı sabit bir güvenlik sınırı var (istatistiksel olarak pratikte
+  // asla dolmaz — %75/%25 ihtimalle iki tarafın da sürekli eşit gitmesi
+  // aşırı düşük olasılık).
+  let suddenDeathRounds = 0;
+  const MAX_SUDDEN_DEATH_ROUNDS = 20;
+  while (homeGoals === awayGoals && suddenDeathRounds < MAX_SUDDEN_DEATH_ROUNDS) {
+    takeAttempt('home', nextShooter(homeOrder, homeIdx), awayGK);
+    homeIdx += 1;
+    takeAttempt('away', nextShooter(awayOrder, awayIdx), homeGK);
+    awayIdx += 1;
+    suddenDeathRounds += 1;
+  }
+
+  let winner;
+  if (homeGoals !== awayGoals) {
+    winner = homeGoals > awayGoals ? 'home' : 'away';
+  } else {
+    // Güvenlik sınırına rağmen hâlâ eşitse (pratikte imkansıza yakın):
+    // deterministik son çare, asla belirsiz kalmaz.
+    const homeTotal = homeOrder.reduce((s, p) => s + futbolPenaltyStrength(p), 0);
+    const awayTotal = awayOrder.reduce((s, p) => s + futbolPenaltyStrength(p), 0);
+    winner = homeTotal >= awayTotal ? 'home' : 'away';
+  }
+
+  return { homeGoals, awayGoals, attempts, winner };
+}
+
+// --- Kupa Modülü: kura / tur ilerletme ---
+function shuffleFutbolArray(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// createFutbolCupForSeason — yeni sezon başında (finishFutbolSeasonPart2)
+// çağrılır: 1. ve 2. Lig'in TÜM takımlarını (8+8=16, seçim yok — kullanıcı
+// promptu madde 1) tamamen rastgele eşleştirir. Seri başı / lig koruması
+// YOK — 1. Lig şampiyonu ile 1. Lig'in başka bir takımı bile eşleşebilir.
+async function createFutbolCupForSeason(season) {
+  const leaguesSnap = await db.collection('futbolLeagues').where('tier', 'in', FUTBOL_CUP_TIERS).get();
+  const eligibleLeagueIds = leaguesSnap.docs.map((d) => d.id);
+  if (eligibleLeagueIds.length === 0) return;
+
+  const teamsSnap = await db.collection('futbolTeams').where('leagueId', 'in', eligibleLeagueIds).get();
+  const teams = teamsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  if (teams.length < 2) return;
+
+  const shuffled = shuffleFutbolArray(teams);
+  const cupRef = db.collection('futbolCups').doc(String(season));
+  const batch = db.batch();
+  batch.set(cupRef, {
+    season,
+    status: 'ROUND_OF_16',
+    teamIds: shuffled.map((t) => t.id),
+    championTeamId: null,
+    finalistTeamId: null,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  for (let i = 0; i + 1 < shuffled.length; i += 2) {
+    const home = shuffled[i];
+    const away = shuffled[i + 1];
+    const matchRef = db.collection('futbolCupMatches').doc();
+    batch.set(matchRef, {
+      cupSeason: season,
+      round: 'ROUND_OF_16',
+      slot: i / 2,
+      homeTeamId: home.id,
+      awayTeamId: away.id,
+      homeTeamName: home.name,
+      awayTeamName: away.name,
+      homeLogo: home.logo || null,
+      awayLogo: away.logo || null,
+      homeTier: home.tier,
+      awayTier: away.tier,
+      homeScore: null,
+      awayScore: null,
+      penalty: null,
+      winnerTeamId: null,
+      status: 'scheduled',
+      playedAt: null,
+    });
+  }
+  await batch.commit();
+}
+
+// advanceFutbolCupToNextRound — bir kupa turu (o turun TÜM maçları
+// 'finished' + winnerTeamId dolu) bitince kazananları slot sırasına göre
+// eşleştirip bir sonraki turu oluşturur. FINAL'den sonrası yok — final
+// tamamlandığında burası hiç çağrılmaz, onun yerine awardFutbolCupTrophy
+// çalışır.
+async function advanceFutbolCupToNextRound(season, finishedRound) {
+  const idx = FUTBOL_CUP_ROUND_ORDER.indexOf(finishedRound);
+  const nextRound = FUTBOL_CUP_ROUND_ORDER[idx + 1];
+  if (!nextRound) return;
+
+  const matchesSnap = await db
+    .collection('futbolCupMatches')
+    .where('cupSeason', '==', season)
+    .where('round', '==', finishedRound)
+    .get();
+  const matches = matchesSnap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => a.slot - b.slot);
+  if (matches.length === 0 || matches.some((m) => m.status !== 'finished' || !m.winnerTeamId)) return;
+
+  const winners = matches.map((m) => ({
+    id: m.winnerTeamId,
+    name: m.winnerTeamId === m.homeTeamId ? m.homeTeamName : m.awayTeamName,
+    logo: m.winnerTeamId === m.homeTeamId ? m.homeLogo : m.awayLogo,
+    tier: m.winnerTeamId === m.homeTeamId ? m.homeTier : m.awayTier,
+  }));
+
+  const batch = db.batch();
+  for (let i = 0; i + 1 < winners.length; i += 2) {
+    const home = winners[i];
+    const away = winners[i + 1];
+    const matchRef = db.collection('futbolCupMatches').doc();
+    batch.set(matchRef, {
+      cupSeason: season,
+      round: nextRound,
+      slot: i / 2,
+      homeTeamId: home.id,
+      awayTeamId: away.id,
+      homeTeamName: home.name,
+      awayTeamName: away.name,
+      homeLogo: home.logo || null,
+      awayLogo: away.logo || null,
+      homeTier: home.tier,
+      awayTier: away.tier,
+      homeScore: null,
+      awayScore: null,
+      penalty: null,
+      winnerTeamId: null,
+      status: 'scheduled',
+      playedAt: null,
+    });
+  }
+  batch.update(db.collection('futbolCups').doc(String(season)), {
+    status: nextRound,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  await batch.commit();
+}
+
+// --- Kupa Modülü: kupa maçı hesaplama (18:00) / resmileştirme (19:00) ---
+
+// computeFutbolCupMatchLive — lig maçından (computeFutbolMatchLive) TEK
+// farkı: ev sahibi avantajı YOK (futbolLinePowers'a iki taraf için de
+// isHome=false verilir — madde 3) ve normal süre sonunda skor eşitse
+// HEMEN penaltılara geçilir (kupa maçı beraberlikle bitemez — madde 4).
+async function computeFutbolCupMatchLive(match) {
+  const [homeTeamSnap, awayTeamSnap, homePlayersSnap, awayPlayersSnap] = await Promise.all([
+    db.collection('futbolTeams').doc(match.homeTeamId).get(),
+    db.collection('futbolTeams').doc(match.awayTeamId).get(),
+    db.collection('futbolPlayers').where('teamId', '==', match.homeTeamId).get(),
+    db.collection('futbolPlayers').where('teamId', '==', match.awayTeamId).get(),
+  ]);
+  if (!homeTeamSnap.exists || !awayTeamSnap.exists) return;
+
+  const homeTraining = new Set(homeTeamSnap.data().trainingPlayerIds || []);
+  const awayTraining = new Set(awayTeamSnap.data().trainingPlayerIds || []);
+  const homePlayersArr = homePlayersSnap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((p) => !homeTraining.has(p.id));
+  const awayPlayersArr = awayPlayersSnap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((p) => !awayTraining.has(p.id));
+  const homeResolved = resolveFutbolTeamLineup(homeTeamSnap.data(), homePlayersArr);
+  const awayResolved = resolveFutbolTeamLineup(awayTeamSnap.data(), awayPlayersArr);
+  const homeLines = futbolLinePowers(homeResolved.selected, false, homeResolved.tactic);
+  const awayLines = futbolLinePowers(awayResolved.selected, false, awayResolved.tactic);
+  const { homeScore, awayScore, timeline, possessionCheckpoints } = simulateFutbolMatch(homeLines, awayLines);
+
+  let penalty = null;
+  let winnerTeamId;
+  if (homeScore === awayScore) {
+    const shootout = simulateFutbolPenaltyShootout(homeResolved.selected, awayResolved.selected);
+    penalty = { homeScore: shootout.homeGoals, awayScore: shootout.awayGoals, attempts: shootout.attempts };
+    winnerTeamId = shootout.winner === 'home' ? match.homeTeamId : match.awayTeamId;
+  } else {
+    winnerTeamId = homeScore > awayScore ? match.homeTeamId : match.awayTeamId;
+  }
+
+  const matchStartAt = new Date();
+  const revealAt = new Date(matchStartAt.getTime());
+  revealAt.setUTCHours(revealAt.getUTCHours() + 1);
+
+  const updateData = {
+    homeScore,
+    awayScore,
+    status: 'live',
+    matchStartAt: admin.firestore.Timestamp.fromDate(matchStartAt),
+    revealAt: admin.firestore.Timestamp.fromDate(revealAt),
+    timeline,
+    possessionCheckpoints,
+    homeLineupIds: homeResolved.selected.map((p) => p.id),
+    awayLineupIds: awayResolved.selected.map((p) => p.id),
+    // 19:00'da (applyFutbolCupMatchResult) TEKRAR HESAPLANMAZ, aynen
+    // kullanılır — penaltı sonucunun normal sonuç tarafından üzerine
+    // yazılmasını engeller (kullanıcı edge-case listesi madde 26).
+    winnerTeamId,
+  };
+  if (penalty) updateData.penalty = penalty;
+  await db.collection('futbolCupMatches').doc(match.id).update(updateData);
+}
+
+// applyFutbolCupMatchResult — kupa maçını resmileştirir. Lig maçından
+// farklı olarak takım istatistiklerine/taraftara/bilete HİÇ dokunmaz —
+// kupa lig performansını etkilemez (madde 3). Oyuncu gelişimi lig
+// maçlarındaki gibi uygulanır (kupa da gerçek bir maç).
+async function applyFutbolCupMatchResult(matchId) {
+  const matchSnap = await db.collection('futbolCupMatches').doc(matchId).get();
+  if (!matchSnap.exists) return;
+  const match = matchSnap.data();
+  if (match.status !== 'live') return;
+
+  const [homeTeamSnap, awayTeamSnap, homePlayersSnap, awayPlayersSnap] = await Promise.all([
+    db.collection('futbolTeams').doc(match.homeTeamId).get(),
+    db.collection('futbolTeams').doc(match.awayTeamId).get(),
+    db.collection('futbolPlayers').where('teamId', '==', match.homeTeamId).get(),
+    db.collection('futbolPlayers').where('teamId', '==', match.awayTeamId).get(),
+  ]);
+
+  const batch = db.batch();
+  batch.update(db.collection('futbolCupMatches').doc(matchId), {
+    status: 'finished',
+    playedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  const homeLineupSet = new Set(match.homeLineupIds || []);
+  const awayLineupSet = new Set(match.awayLineupIds || []);
+  const applyPlayerUpdates = (snap, lineupSet, teamId) => {
+    snap.docs.forEach((d) => {
+      const p = d.data();
+      if (lineupSet.has(d.id)) {
+        const gain = Math.round(randomInRange(0.1, 2.0) * 10) / 10;
+        batch.update(d.ref, {
+          power: Math.round((p.power + gain) * 10) / 10,
+          form: Math.max(0, p.form - p.age),
+        });
+        logFutbolGrowth(batch, { teamId, playerId: d.id, playerName: p.name, amount: gain, type: 'kupa' });
+      } else {
+        batch.update(d.ref, { form: Math.min(100, p.form + 50) });
+      }
+    });
+  };
+  if (homeTeamSnap.exists) applyPlayerUpdates(homePlayersSnap, homeLineupSet, match.homeTeamId);
+  if (awayTeamSnap.exists) applyPlayerUpdates(awayPlayersSnap, awayLineupSet, match.awayTeamId);
+
+  const homeName = homeTeamSnap.exists ? homeTeamSnap.data().name : match.homeTeamName;
+  const awayName = awayTeamSnap.exists ? awayTeamSnap.data().name : match.awayTeamName;
+  const roundLabel = FUTBOL_CUP_ROUND_LABELS[match.round] || match.round;
+  const winnerIsHome = match.winnerTeamId === match.homeTeamId;
+  const scoreLine = match.penalty
+    ? `${match.homeScore}-${match.awayScore} (Penaltılar: ${match.penalty.homeScore}-${match.penalty.awayScore})`
+    : `${match.homeScore}-${match.awayScore}`;
+
+  const homeOwnerUid = homeTeamSnap.exists ? homeTeamSnap.data().ownerUid : null;
+  if (homeOwnerUid) {
+    sendFutbolSms(
+      batch,
+      homeOwnerUid,
+      `🏆 Neon Kupası ${roundLabel}: ${homeName} ${scoreLine} ${awayName} — takımın ${winnerIsHome ? 'bir üst tura yükseldi' : 'kupadan elendi'}.`,
+      'futbol_cup_match_result'
+    );
+  }
+  const awayOwnerUid = awayTeamSnap.exists ? awayTeamSnap.data().ownerUid : null;
+  if (awayOwnerUid) {
+    sendFutbolSms(
+      batch,
+      awayOwnerUid,
+      `🏆 Neon Kupası ${roundLabel}: ${homeName} ${scoreLine} ${awayName} — takımın ${!winnerIsHome ? 'bir üst tura yükseldi' : 'kupadan elendi'}.`,
+      'futbol_cup_match_result'
+    );
+  }
+
+  await batch.commit();
+
+  await logNewsEvent('football_cup_match', {
+    round: match.round,
+    homeName,
+    awayName,
+    homeLogo: match.homeLogo || null,
+    awayLogo: match.awayLogo || null,
+    homeTier: match.homeTier || null,
+    awayTier: match.awayTier || null,
+    homeScore: match.homeScore,
+    awayScore: match.awayScore,
+    penalty: match.penalty || null,
+    winnerIsHome,
+  });
+}
+
+// resolveFutbolCupBetsForRound — o kupa turunun TÜM maçları bitince
+// çağrılır. Her tur AYRI bir kupon (madde 10): turun tüm maçlarını doğru
+// bilen FUTBOL_CUP_BET_MULTIPLIERS[round] katı kazanır, bir maç bile
+// yanlışsa kupon kaybedilir. Bir turun kuponu diğer turları etkilemez.
+async function resolveFutbolCupBetsForRound(season, round) {
+  const [betsSnap, matchesSnap] = await Promise.all([
+    db
+      .collection('futbolCupBets')
+      .where('season', '==', season)
+      .where('round', '==', round)
+      .where('status', '==', 'pending')
+      .get(),
+    db.collection('futbolCupMatches').where('cupSeason', '==', season).where('round', '==', round).get(),
+  ]);
+  if (betsSnap.empty) return;
+
+  const winnerByMatchId = {};
+  matchesSnap.docs.forEach((d) => {
+    const m = d.data();
+    if (m.status === 'finished' && m.winnerTeamId) winnerByMatchId[d.id] = m.winnerTeamId;
+  });
+
+  const multiplier = FUTBOL_CUP_BET_MULTIPLIERS[round] || 1;
+  const batch = db.batch();
+  betsSnap.docs.forEach((d) => {
+    const bet = d.data();
+    const allCorrect = bet.predictions.every((p) => winnerByMatchId[p.matchId] === p.teamId);
+    if (allCorrect) {
+      const payout = Math.round(bet.stake * multiplier);
+      batch.update(db.collection('users').doc(bet.uid), { gold: admin.firestore.FieldValue.increment(payout) });
+      batch.update(d.ref, { status: 'won', payout });
+      sendFutbolSms(
+        batch,
+        bet.uid,
+        `🎉 Kupa kuponun tuttu! ${FUTBOL_CUP_ROUND_LABELS[round] || round}, ${payout.toLocaleString('tr-TR')} altın kazandın.`,
+        'futbol_cup_bet_result'
+      );
+    } else {
+      batch.update(d.ref, { status: 'lost', payout: 0 });
+      sendFutbolSms(
+        batch,
+        bet.uid,
+        `Kupa kuponun tutmadı (${FUTBOL_CUP_ROUND_LABELS[round] || round}). Yatırdığın ${bet.stake.toLocaleString('tr-TR')} altın gitti.`,
+        'futbol_cup_bet_result'
+      );
+    }
+  });
+  await batch.commit();
+}
+
+// awardFutbolCupTrophy — kupa finali bitince çağrılır. İDEMPOTENCY:
+// futbolCups dokümanının status'u transaction İÇİNDE kontrol edilip
+// hemen 'DONE' yapılır ve AYNI transaction içinde ödeme+SMS uygulanır —
+// aynı final iki kez tetiklense bile ikinci çağrı status'un zaten 'DONE'
+// olduğunu görüp HİÇBİR ŞEY yapmaz (madde 12/20/34 koruması). Ödül
+// transaction'ı BAŞARILI olduktan SONRA (aynı atomik transaction'ın
+// içinde, yani parayla birlikte) SMS yazılır — asla önce SMS değil.
+async function awardFutbolCupTrophy(season, finalMatch) {
+  const cupRef = db.collection('futbolCups').doc(String(season));
+  const champTeamId = finalMatch.winnerTeamId;
+  const finalistTeamId = champTeamId === finalMatch.homeTeamId ? finalMatch.awayTeamId : finalMatch.homeTeamId;
+  if (!champTeamId || !finalistTeamId) return false;
+
+  const didAward = await db.runTransaction(async (tx) => {
+    const cupSnap = await tx.get(cupRef);
+    if (!cupSnap.exists || cupSnap.data().status === 'DONE') return false;
+
+    const [champTeamSnap, finalistTeamSnap] = await Promise.all([
+      tx.get(db.collection('futbolTeams').doc(champTeamId)),
+      tx.get(db.collection('futbolTeams').doc(finalistTeamId)),
+    ]);
+
+    tx.update(cupRef, {
+      status: 'DONE',
+      championTeamId: champTeamId,
+      finalistTeamId,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    if (champTeamSnap.exists) {
+      tx.update(champTeamSnap.ref, { cupsCount: admin.firestore.FieldValue.increment(1) });
+      const champOwnerUid = champTeamSnap.data().ownerUid;
+      if (champOwnerUid) {
+        tx.update(db.collection('users').doc(champOwnerUid), {
+          gold: admin.firestore.FieldValue.increment(FUTBOL_CUP_CHAMPION_REWARD),
+        });
+        tx.set(db.collection('users').doc(champOwnerUid).collection('messages').doc(), {
+          text: `🏆 Tebrikler!\n${champTeamSnap.data().name} ile Neon Kupası'nı kazandınız.\n${FUTBOL_CUP_CHAMPION_REWARD.toLocaleString('tr-TR')} altın ödül hesabınıza yatırıldı.`,
+          type: 'futbol_cup_champion',
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          read: false,
+        });
+      }
+    }
+    if (finalistTeamSnap.exists) {
+      const finalistOwnerUid = finalistTeamSnap.data().ownerUid;
+      if (finalistOwnerUid) {
+        tx.update(db.collection('users').doc(finalistOwnerUid), {
+          gold: admin.firestore.FieldValue.increment(FUTBOL_CUP_FINALIST_REWARD),
+        });
+        tx.set(db.collection('users').doc(finalistOwnerUid).collection('messages').doc(), {
+          text: `🥈 Tebrikler!\n${finalistTeamSnap.data().name} ile Neon Kupası'nı ikinci olarak tamamladınız.\n${FUTBOL_CUP_FINALIST_REWARD.toLocaleString('tr-TR')} altın ödül hesabınıza yatırıldı.`,
+          type: 'futbol_cup_finalist',
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          read: false,
+        });
+      }
+    }
+    return true;
+  });
+
+  if (didAward) {
+    const champName = champTeamId === finalMatch.homeTeamId ? finalMatch.homeTeamName : finalMatch.awayTeamName;
+    const champLogo = champTeamId === finalMatch.homeTeamId ? finalMatch.homeLogo : finalMatch.awayLogo;
+    const finalistName = champTeamId === finalMatch.homeTeamId ? finalMatch.awayTeamName : finalMatch.homeTeamName;
+    const finalistLogo = champTeamId === finalMatch.homeTeamId ? finalMatch.awayLogo : finalMatch.homeLogo;
+    await logNewsEvent('football_cup_final', {
+      season,
+      championTeamName: champName,
+      championLogo: champLogo || null,
+      finalistTeamName: finalistName,
+      finalistLogo: finalistLogo || null,
+      homeScore: finalMatch.homeScore,
+      awayScore: finalMatch.awayScore,
+      penalty: finalMatch.penalty || null,
+    });
+  }
+  return didAward;
+}
+
+// computeFutbolSeasonEndStats — sezon biterken (HENÜZ hiçbir istatistik
+// sıfırlanmadan/kimse taşınmadan/silinmeden ÖNCE, finishFutbolSeasonPart1
+// içinde) çağrılır. Hiçbir veri UYDURULMUYOR — sadece mevcut alanlardan
+// (stats.gf/ga, player.power, computeFutbolTeamValue) okunuyor. Kupa
+// maçları futbolTeams.stats'e HİÇ işlenmediği için (applyFutbolCupMatchResult
+// bilerek dokunmuyor) bu istatistikler zaten SADECE lig performansını
+// yansıtıyor (madde 16.1/16.2'nin "kupa maçları dahil edilmemeli" şartı).
+async function computeFutbolSeasonEndStats() {
+  const teamsSnap = await db.collection('futbolTeams').get();
+  const teams = teamsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+  let topScorer = null;
+  let bestDefense = null;
+  for (const t of teams) {
+    const played = t.stats?.played || 0;
+    if (played === 0) continue;
+    const gf = t.stats?.gf || 0;
+    const ga = t.stats?.ga || 0;
+    if (!topScorer || gf > topScorer.gf || (gf === topScorer.gf && t.id < topScorer.id)) {
+      topScorer = { id: t.id, name: t.name, logo: t.logo || null, gf };
+    }
+    if (!bestDefense || ga < bestDefense.ga || (ga === bestDefense.ga && t.id < bestDefense.id)) {
+      bestDefense = { id: t.id, name: t.name, logo: t.logo || null, ga };
+    }
+  }
+
+  const teamById = {};
+  teams.forEach((t) => (teamById[t.id] = t));
+  const playersSnap = await db.collection('futbolPlayers').get();
+  let bestPlayer = null;
+  playersSnap.docs.forEach((d) => {
+    const p = d.data();
+    if (!p.teamId || !teamById[p.teamId]) return;
+    if (!bestPlayer || p.power > bestPlayer.power || (p.power === bestPlayer.power && d.id < bestPlayer.id)) {
+      bestPlayer = { id: d.id, name: p.name, power: p.power, teamName: teamById[p.teamId].name };
+    }
+  });
+
+  let mostValuable = null;
+  let leastValuable = null;
+  for (const t of teams) {
+    const value = await computeFutbolTeamValue(t.id);
+    if (!mostValuable || value > mostValuable.value || (value === mostValuable.value && t.id < mostValuable.id)) {
+      mostValuable = { id: t.id, name: t.name, logo: t.logo || null, value };
+    }
+    if (!leastValuable || value < leastValuable.value || (value === leastValuable.value && t.id < leastValuable.id)) {
+      leastValuable = { id: t.id, name: t.name, logo: t.logo || null, value };
+    }
+  }
+
+  return {
+    topScorerTeam: topScorer ? { teamName: topScorer.name, logo: topScorer.logo, goals: topScorer.gf } : null,
+    bestDefenseTeam: bestDefense ? { teamName: bestDefense.name, logo: bestDefense.logo, conceded: bestDefense.ga } : null,
+    bestPlayer: bestPlayer ? { playerName: bestPlayer.name, teamName: bestPlayer.teamName, power: bestPlayer.power } : null,
+    mostValuableTeam: mostValuable ? { teamName: mostValuable.name, logo: mostValuable.logo, value: mostValuable.value } : null,
+    leastValuableTeam: leastValuable ? { teamName: leastValuable.name, logo: leastValuable.logo, value: leastValuable.value } : null,
+  };
+}
+
+// finishFutbolSeasonPart1 — sezon bitince İLK adım: ödülleri dağıtır,
+// şampiyonluk sayacını (championshipsCount) artırır, sezon sonu
+// istatistiklerini hesaplar, zenginleştirilmiş bir "football_season_end"
+// gazete haberi yazar ve 1 GÜNLÜK kutlamayı ('CELEBRATION_DAY') başlatır.
+// BİLEREK YAPMADIKLARI: fikstür silme/oluşturma, stats sıfırlama, terfi/
+// düşme UYGULAMASI (sadece PLANI hesaplayıp futbolSeasonState'e yazar),
+// oyuncu yaşlandırma, yeni kupa kurası — hepsi finishFutbolSeasonPart2'de,
+// kutlama gününün ERTESİ günü (yani kutlama gününün 19:00 reveal'inde)
+// çalışır. Böylece kutlama günü boyunca puan tablosu/fikstür/sonuçlar
+// biten sezonun son hali olarak görünmeye devam eder (madde 17/20).
+async function finishFutbolSeasonPart1(leagueIds) {
   const allLeaguesSnap = await db.collection('futbolLeagues').get();
   const leagues = allLeaguesSnap.docs
     .map((d) => ({ id: d.id, ...d.data() }))
@@ -9090,11 +9753,10 @@ async function finishFutbolSeason(leagueIds) {
     leagueData.push({ league, teams });
   }
 
-  // 1) Ödüller + terfi/küme düşme ataması tek batch'te.
-  const promoRelegateBatch = db.batch();
-  const topThree = []; // sadece 1. Lig — şampiyon/2./3.
-  const promotions = []; // { teamName, fromTier, toTier }
-  const relegations = []; // { teamName, fromTier, toTier }
+  const rewardBatch = db.batch();
+  const topThree = [];
+  const promotionPlan = [];
+  const relegationPlan = [];
   leagueData.forEach(({ league, teams }, idx) => {
     const isTopTier = idx === 0;
     teams.forEach((team, rank) => {
@@ -9106,45 +9768,127 @@ async function finishFutbolSeason(leagueIds) {
         topThree.push({ rank: rank + 1, teamName: team.name, logo: team.logo || null });
       }
       if (team.ownerUid) {
-        promoRelegateBatch.update(db.collection('users').doc(team.ownerUid), {
+        rewardBatch.update(db.collection('users').doc(team.ownerUid), {
           gold: admin.firestore.FieldValue.increment(reward),
         });
         let rewardText = `Sezon sonu: ${team.name} ${rank + 1}. sırada bitirdi, ${reward.toLocaleString('tr-TR')} altın kazandın.`;
-        if (isTopTier && rank === 0) rewardText = `🏆 Şampiyon oldun! ${team.name} sezonu 1. sırada bitirdi, ${reward.toLocaleString('tr-TR')} altın kazandın.`;
-        else if (!isTopTier && rank < 2) rewardText += ' Bir üst lige terfi ettin!';
-        sendFutbolSms(promoRelegateBatch, team.ownerUid, rewardText, 'futbol_season_end');
+        if (isTopTier && rank === 0) {
+          rewardText = `🏆 Şampiyon oldun! ${team.name} sezonu 1. sırada bitirdi, ${reward.toLocaleString('tr-TR')} altın kazandın.`;
+        } else if (!isTopTier && rank < 2) {
+          rewardText += ' Bir üst lige terfi ettin! (Kutlama gününden sonra yeni ligindesin.)';
+        }
+        sendFutbolSms(rewardBatch, team.ownerUid, rewardText, 'futbol_season_end');
       }
     });
   });
+  // Kullanıcı isteği: takımın kaç kez şampiyon olduğu hafızada tutulsun.
+  const championTeam = leagueData[0]?.teams[0] || null;
+  if (championTeam) {
+    rewardBatch.update(db.collection('futbolTeams').doc(championTeam.id), {
+      championshipsCount: admin.firestore.FieldValue.increment(1),
+    });
+  }
   for (let i = 0; i < leagueData.length - 1; i++) {
     const upper = leagueData[i];
     const lower = leagueData[i + 1];
     lower.teams.slice(0, 2).forEach((t) => {
-      promoRelegateBatch.update(db.collection('futbolTeams').doc(t.id), {
-        leagueId: upper.league.id,
-        tier: upper.league.tier,
+      promotionPlan.push({
+        teamId: t.id,
+        teamName: t.name,
+        fromTier: lower.league.tier,
+        toTier: upper.league.tier,
+        toLeagueId: upper.league.id,
       });
-      promotions.push({ teamName: t.name, fromTier: lower.league.tier, toTier: upper.league.tier });
     });
     upper.teams.slice(-2).forEach((t) => {
-      promoRelegateBatch.update(db.collection('futbolTeams').doc(t.id), {
-        leagueId: lower.league.id,
-        tier: lower.league.tier,
+      relegationPlan.push({
+        teamId: t.id,
+        teamName: t.name,
+        fromTier: upper.league.tier,
+        toTier: lower.league.tier,
+        toLeagueId: lower.league.id,
       });
-      relegations.push({ teamName: t.name, fromTier: upper.league.tier, toTier: lower.league.tier });
     });
   }
-  await promoRelegateBatch.commit();
+  await rewardBatch.commit();
 
-  // Gazete haberi — sezonun bittiğini duyuran özet (şampiyon/2./3. +
-  // terfi/küme düşme listesi).
-  await logNewsEvent('football_season_end', { topThree, promotions, relegations });
+  const seasonStats = await computeFutbolSeasonEndStats();
 
-  // 2) Yeni takım listeleriyle: istatistik sıfırlama + yeni sezon fikstürü.
-  //    Önceki sezonun maçları SİLİNİYOR — yoksa fikstür/maçlar koleksiyonu
-  //    her sezon kalabalıklaşır ve (round numaraları çakıştığı için)
-  //    "güncel tur" hesaplamaları/iddaa ekranı bozulur.
-  for (const { league } of leagueData) {
+  const oldSeason = leagueData[0]?.league.season || null;
+  let cupSummary = null;
+  if (oldSeason != null) {
+    const cupSnap = await db.collection('futbolCups').doc(String(oldSeason)).get();
+    if (cupSnap.exists && cupSnap.data().status === 'DONE') {
+      const cup = cupSnap.data();
+      const flatTeams = {};
+      leagueData.forEach(({ teams }) => teams.forEach((t) => (flatTeams[t.id] = t)));
+      const champ = flatTeams[cup.championTeamId];
+      const finalist = flatTeams[cup.finalistTeamId];
+      cupSummary = {
+        championTeamName: champ?.name || null,
+        championLogo: champ?.logo || null,
+        finalistTeamName: finalist?.name || null,
+        finalistLogo: finalist?.logo || null,
+      };
+    }
+  }
+
+  await logNewsEvent('football_season_end', {
+    season: oldSeason,
+    topThree,
+    promotions: promotionPlan.map((p) => ({ teamName: p.teamName, fromTier: p.fromTier, toTier: p.toTier })),
+    relegations: relegationPlan.map((p) => ({ teamName: p.teamName, fromTier: p.fromTier, toTier: p.toTier })),
+    cup: cupSummary,
+    ...seasonStats,
+  });
+
+  await db.collection('futbolSeasonState').doc('current').set(
+    {
+      status: 'CELEBRATION_DAY',
+      season: oldSeason,
+      pendingCupRound: null,
+      finishedLeagueIds: leagueIds,
+      promotionPlan,
+      relegationPlan,
+      championTeamName: championTeam?.name || null,
+      cupChampionTeamName: cupSummary?.championTeamName || null,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
+// finishFutbolSeasonPart2 — kutlama gününün (CELEBRATION_DAY) ERTESİ
+// reveal'inde çalışır: terfi/düşmeyi UYGULAR, eski fikstürü siler, yeni
+// sezon fikstürünü oluşturur, oyuncuları yaşlandırır, kadrosu eriyen
+// takımları bota devreder, gerekiyorsa yeni lig açar ve YENİ kupa
+// kurasını çeker. Adım 2-5, ORİJİNAL finishFutbolSeason'ın mantığıyla
+// BİREBİR aynı — sadece bir gün ERTELENDİ ve terfi/düşme buraya taşındı.
+async function finishFutbolSeasonPart2(state) {
+  const leagueIds = state.finishedLeagueIds || [];
+  const promotionPlan = state.promotionPlan || [];
+  const relegationPlan = state.relegationPlan || [];
+
+  // 0) Terfi/küme düşmeyi ŞİMDİ uygula (Part1'de sadece PLANLANMIŞTI).
+  if (promotionPlan.length > 0 || relegationPlan.length > 0) {
+    const moveBatch = db.batch();
+    [...promotionPlan, ...relegationPlan].forEach((p) => {
+      moveBatch.update(db.collection('futbolTeams').doc(p.teamId), {
+        leagueId: p.toLeagueId,
+        tier: p.toTier,
+      });
+    });
+    await moveBatch.commit();
+  }
+
+  const allLeaguesSnap = await db.collection('futbolLeagues').get();
+  const leagues = allLeaguesSnap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((l) => leagueIds.includes(l.id))
+    .sort((a, b) => a.tier - b.tier);
+
+  // 1) Eski sezon maçlarını sil + istatistikleri sıfırla + yeni fikstür.
+  for (const league of leagues) {
     const oldMatchesSnap = await db
       .collection('futbolMatches')
       .where('leagueId', '==', league.id)
@@ -9195,12 +9939,7 @@ async function finishFutbolSeason(leagueIds) {
     await seasonBatch.commit();
   }
 
-  // 3) Yaşlanma: SADECE oyuncuya (gerçek sahibi) ait takımların
-  //    oyuncuları yaşlanır — yaşı +1, 35'i geçen (36 olacak olan) emekli
-  //    olur (silinir). Bot takımların oyuncuları YAŞLANMAZ — bunun
-  //    yerine 30'un üzerindeki bot oyuncuları düzenli olarak 20 yaşına
-  //    "gençleştirilir" (kullanıcı promptu) ki bot kadroları sonsuza
-  //    kadar sağlıklı kalsın.
+  // 2) Yaşlanma — orijinal mantıkla birebir aynı.
   const teamOwnerByIdSnap = await db.collection('futbolTeams').get();
   const ownerByTeamId = {};
   teamOwnerByIdSnap.docs.forEach((d) => (ownerByTeamId[d.id] = d.data().ownerUid || null));
@@ -9213,15 +9952,7 @@ async function finishFutbolSeason(leagueIds) {
     const isBotTeam = !ownerByTeamId[player.teamId];
     if (isBotTeam) {
       if (player.age > 30) {
-        // Kullanıcı revizesi: gücü AYNEN korumak sonsuza kadar
-        // sınırsız artmasına yol açıyordu (her yaşlanma turunda biraz
-        // daha güçlenip hiç tavan görmüyordu) — bu da anlamsız bir
-        // enflasyona sebep olurdu. Bunun yerine 30'u geçen bot oyuncusu
-        // 20 yaşına, 100 forma VE SABİT 99 güce "gençleştirilir" — bot
-        // takımları güçlü kalmaya devam eder ama gücü belirli bir tavanda
-        // (99) tutulur. Değeri de bu sabit güce göre yeniden hesaplanır
-        // ki piyasa/takım değeri tutarsız kalmasın.
-        const remainingSeasons = 20 - (20 - 16); // 20 yaşında kalan kariyer yılı (16)
+        const remainingSeasons = 20 - (20 - 16);
         const value = Math.round((99 * 1000 * remainingSeasons) / 20);
         ageBatch.update(doc.ref, { age: 20, power: 99, form: 100, value });
         opCount += 1;
@@ -9242,11 +9973,8 @@ async function finishFutbolSeason(leagueIds) {
   }
   if (opCount % 450 !== 0) await ageBatch.commit();
 
-  // 4) Yaşlanma sonrası minimum kadronun (2 kaleci/3 defans/3 orta/2
-  // forvet) altına düşen, oyuncuya ait takımlar otomatik olarak bota
-  // devredilir: sahibine takımın anında satış değeri ödenir, kadro
-  // sıfırdan (tier'ına uygun şablonla) yeniden kurulur — kullanıcı
-  // promptundaki "minimum oyuncu sayısı" kuralı.
+  // 3) Minimum kadronun altına düşen oyuncu takımlarını bota devret —
+  // orijinal mantıkla birebir aynı.
   const allTeamsSnap = await db.collection('futbolTeams').get();
   for (const teamDoc of allTeamsSnap.docs) {
     const team = teamDoc.data();
@@ -9277,10 +10005,35 @@ async function finishFutbolSeason(leagueIds) {
     await revertBatch.commit();
   }
 
-  // 5) Yeni lig açılışı: mevcut toplam takımların yarısı (ya da fazlası)
-  // artık oyunculara aitse, mevcut lig büyüklüğünde yeni bir lig açılır
-  // — kullanıcı revizesi, bkz. maybeCreateNextFutbolTierByOwnershipRatio.
+  // 4) Yeni lig açılışı — orijinal mantıkla birebir aynı.
   await maybeCreateNextFutbolTierByOwnershipRatio();
+
+  // 5) YENİ: yeni sezon kupa kurası (SADECE 1./2. Lig — madde 1). Terfi/
+  // düşme az önce uygulandığı için kadrolar güncel.
+  const tier1Snap = await db.collection('futbolLeagues').where('tier', '==', 1).limit(1).get();
+  const newSeason = tier1Snap.empty ? FUTBOL_SEASON_START : tier1Snap.docs[0].data().season || FUTBOL_SEASON_START;
+  await createFutbolCupForSeason(newSeason);
+
+  await logNewsEvent('football_new_season', {
+    season: newSeason,
+    previousChampionTeamName: state.championTeamName || null,
+    previousCupChampionTeamName: state.cupChampionTeamName || null,
+  });
+
+  await db.collection('futbolSeasonState').doc('current').set(
+    {
+      status: 'LEAGUE_DAY',
+      season: newSeason,
+      pendingCupRound: null,
+      finishedLeagueIds: [],
+      promotionPlan: [],
+      relegationPlan: [],
+      championTeamName: null,
+      cupChampionTeamName: null,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
 }
 
 // resolveFutbolTrainingForAllTeams — antrenmandaki (en fazla 3'er)
@@ -9414,13 +10167,49 @@ async function assignFutbolBotTraining() {
   if (opCount % 450 !== 0) await batch.commit();
 }
 
-// resolveFutbolMatchdayStart — her gün 18:00 (İstanbul saati): o günün
-// turundaki tüm maçların sonucunu hesaplar ('live' durumuna alır) ama
-// HİÇBİR ŞEYİ açığa çıkarmaz — takım istatistikleri, taraftar, altın,
+// resolveFutbolMatchdayStart — her gün 18:00 (İstanbul saati). Önce
+// futbolSeasonState/current'a bakar: 'CUP_DAY' ise o günkü kupa turunun
+// maçlarını hesaplar ve o gün için LİG MAÇI HİÇ OLUŞTURULMAZ (kullanıcı
+// promptu madde 2); 'CELEBRATION_DAY' ise (kutlama günü) hiç maç yok,
+// hiçbir şey yapılmaz; aksi halde (normal 'LEAGUE_DAY') eskisi gibi o
+// günün turundaki tüm maçların sonucunu hesaplar ('live' durumuna alır)
+// ama HİÇBİR ŞEYİ açığa çıkarmaz — takım istatistikleri, taraftar, altın,
 // SMS hepsi 19:00'a (resolveFutbolMatchdayReveal) kadar bekler.
 export const resolveFutbolMatchdayStart = onSchedule(
   { schedule: '0 18 * * *', timeZone: 'Europe/Istanbul' },
   async () => {
+    const { state } = await ensureFutbolSeasonState();
+
+    if (state.status === 'CUP_DAY' && state.pendingCupRound) {
+      const cupMatchesSnap = await db
+        .collection('futbolCupMatches')
+        .where('cupSeason', '==', state.season)
+        .where('round', '==', state.pendingCupRound)
+        .where('status', '==', 'scheduled')
+        .get();
+      if (cupMatchesSnap.empty) {
+        // Bu sezon için hiç kupa kurası çekilmemiş (ör. özellik canlıya bu
+        // sezonun ortasında geldi) — güvenli şekilde lig gününe DÖN, hiçbir
+        // şeyi bozma. Aşağıdaki normal lig akışına düşer (return YOK).
+        await db
+          .collection('futbolSeasonState')
+          .doc('current')
+          .set(
+            { status: 'LEAGUE_DAY', pendingCupRound: null, updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+            { merge: true }
+          );
+      } else {
+        for (const matchDoc of cupMatchesSnap.docs) {
+          await computeFutbolCupMatchLive({ id: matchDoc.id, ...matchDoc.data() });
+        }
+        return; // kupa günü — lig maçı OLUŞTURULMAZ
+      }
+    }
+
+    if (state.status === 'CELEBRATION_DAY') {
+      return; // kutlama günü — hiç maç yok
+    }
+
     const leaguesSnap = await db.collection('futbolLeagues').get();
     for (const leagueDoc of leaguesSnap.docs) {
       const league = leagueDoc.data();
@@ -9439,20 +10228,75 @@ export const resolveFutbolMatchdayStart = onSchedule(
   }
 );
 
-// resolveFutbolMatchdayReveal — her gün 19:00 (İstanbul saati): 18:00'de
-// hesaplanmış ('live') tüm maçları resmileştirir (istatistik/altın/SMS),
-// iddaa kuponlarını sonuçlandırır, turu ilerletir (ya da sezonu kapatır),
-// ve antrenman bonuslarını uygular — hepsi AYNI anda, "19'da her şey
-// birden açılır" hissi için.
+// resolveFutbolMatchdayReveal — her gün 19:00 (İstanbul saati). En başta
+// claimFutbolRevealForToday() ile bugünü "kazanır" — aynı gün ikinci kez
+// tetiklenirse (Cloud Scheduler'ın nadir çift-tetikleme riski) hiçbir şey
+// yapmadan çıkar, böylece kupa ödülü/sezon geçişi gibi tek seferlik
+// işlemler asla iki kez uygulanmaz. Sonra duruma göre dallanır: 'CUP_DAY'
+// ise o turun kupa maçlarını resmileştirir, kupa kuponlarını sonuçlandırır
+// ve turu ilerletir (ya da finaldeyse kupayı verir); 'CELEBRATION_DAY' ise
+// yeni sezonu hazırlar (finishFutbolSeasonPart2); aksi halde eskisi gibi
+// lig maçlarını resmileştirir, iddaa kuponlarını sonuçlandırır, turu
+// ilerletir (ya da sezonu kapatıp kutlama gününü başlatır) ve gerekiyorsa
+// bir sonraki kupa turunu tetikler.
 export const resolveFutbolMatchdayReveal = onSchedule(
   { schedule: '0 19 * * *', timeZone: 'Europe/Istanbul' },
   async () => {
+    const { claimed, state } = await claimFutbolRevealForToday();
+    if (!claimed) return; // bugün zaten işlendi — çift tetikleme koruması
+
+    if (state.status === 'CUP_DAY' && state.pendingCupRound) {
+      const cupMatchesSnap = await db
+        .collection('futbolCupMatches')
+        .where('cupSeason', '==', state.season)
+        .where('round', '==', state.pendingCupRound)
+        .where('status', '==', 'live')
+        .get();
+      for (const matchDoc of cupMatchesSnap.docs) {
+        await applyFutbolCupMatchResult(matchDoc.id);
+      }
+      await resolveFutbolCupBetsForRound(state.season, state.pendingCupRound);
+
+      if (state.pendingCupRound === 'FINAL') {
+        const finalSnap = await db
+          .collection('futbolCupMatches')
+          .where('cupSeason', '==', state.season)
+          .where('round', '==', 'FINAL')
+          .get();
+        const finalMatch = finalSnap.docs[0]?.data();
+        if (finalMatch && finalMatch.status === 'finished' && finalMatch.winnerTeamId) {
+          await awardFutbolCupTrophy(state.season, finalMatch);
+        }
+      } else if (state.pendingCupRound) {
+        await advanceFutbolCupToNextRound(state.season, state.pendingCupRound);
+      }
+
+      await db
+        .collection('futbolSeasonState')
+        .doc('current')
+        .set(
+          { status: 'LEAGUE_DAY', pendingCupRound: null, updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+          { merge: true }
+        );
+      await cleanupOldNewsEvents();
+      return; // kupa günü lig turunu ETKİLEMEZ — lig yarın kaldığı yerden devam eder
+    }
+
+    if (state.status === 'CELEBRATION_DAY') {
+      await finishFutbolSeasonPart2(state);
+      await cleanupOldNewsEvents();
+      return; // kutlama günü — maç yok, sadece yeni sezon hazırlığı
+    }
+
+    // --- Normal lig günü (mevcut davranış) ---
     const leaguesSnap = await db.collection('futbolLeagues').get();
     const leagues = leaguesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
     const finishedLeagueIds = [];
+    let canonicalRoundJustPlayed = null;
 
     for (const league of leagues) {
       const round = league.currentRound || 1;
+      if (league.tier === 1) canonicalRoundJustPlayed = round;
       const matchesSnap = await db
         .collection('futbolMatches')
         .where('leagueId', '==', league.id)
@@ -9475,7 +10319,22 @@ export const resolveFutbolMatchdayReveal = onSchedule(
     }
 
     if (finishedLeagueIds.length > 0) {
-      await finishFutbolSeason(finishedLeagueIds);
+      await finishFutbolSeasonPart1(finishedLeagueIds);
+    } else {
+      const cupRoundToStart = FUTBOL_CUP_TRIGGER_AFTER_ROUND[canonicalRoundJustPlayed];
+      if (cupRoundToStart) {
+        await db
+          .collection('futbolSeasonState')
+          .doc('current')
+          .set(
+            {
+              status: 'CUP_DAY',
+              pendingCupRound: cupRoundToStart,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+      }
     }
     await resolveFutbolTrainingForAllTeams();
     await assignFutbolBotTraining();
@@ -10466,7 +11325,8 @@ export const removeFutbolTraining = onCall(async (request) => {
 
 // --- Futbol modülü: Faz 7 (İddaa Bayii) ---
 
-const FUTBOL_BET_PAYOUT_MULTIPLIER = 5;
+// Kullanıcı revizesi: 4/4 doğru tahminin ödülü 5x'ten 10x'e çıkarıldı.
+const FUTBOL_BET_PAYOUT_MULTIPLIER = 10;
 
 function futbolMatchOutcome(match) {
   if (match.homeScore > match.awayScore) return 'home';
@@ -10587,6 +11447,75 @@ async function resolveFutbolBetsForRound(leagueId, round) {
   await batch.commit();
 }
 
+// placeFutbolCupBet — bir kupa turunun TÜM maçları için tahmin gerektirir
+// (kullanıcı promptu madde 10). predictions: [{matchId, teamId}] — kupa
+// maçında beraberlik OLMADIĞI için 'home'/'away' yerine doğrudan
+// kazanacağını düşündüğü takımın ID'si tahmin edilir. Her tur AYRI kupon.
+export const placeFutbolCupBet = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { season, round, stake, predictions } = request.data || {};
+  const cleanStake = Math.round(Number(stake));
+  if (!Number.isFinite(cleanStake) || cleanStake <= 0) {
+    throw new HttpsError('invalid-argument', 'Geçersiz bahis miktarı.');
+  }
+  if (!FUTBOL_CUP_ROUND_ORDER.includes(round)) {
+    throw new HttpsError('invalid-argument', 'Geçersiz kupa turu.');
+  }
+  const expectedCount = FUTBOL_CUP_ROUND_MATCH_COUNT[round];
+  if (!Array.isArray(predictions) || predictions.length !== expectedCount) {
+    throw new HttpsError('invalid-argument', `Bu tur için tam olarak ${expectedCount} maç tahmini gerekli.`);
+  }
+
+  const matchesSnap = await db
+    .collection('futbolCupMatches')
+    .where('cupSeason', '==', season)
+    .where('round', '==', round)
+    .get();
+  const matches = matchesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  if (matches.length !== expectedCount) {
+    throw new HttpsError('failed-precondition', 'Bu turun maçları henüz oluşmadı.');
+  }
+  if (matches.some((m) => m.status !== 'scheduled')) {
+    throw new HttpsError('failed-precondition', 'Bu turun maçları başladı, kupon için bir sonraki tura kadar bekle.');
+  }
+
+  const matchById = {};
+  matches.forEach((m) => (matchById[m.id] = m));
+  const predictedIds = new Set(predictions.map((p) => p.matchId));
+  if (predictedIds.size !== expectedCount || [...predictedIds].some((id) => !matchById[id])) {
+    throw new HttpsError('invalid-argument', 'Tahminler bu turun maçlarıyla uyuşmuyor.');
+  }
+  if (
+    predictions.some(
+      (p) => p.teamId !== matchById[p.matchId].homeTeamId && p.teamId !== matchById[p.matchId].awayTeamId
+    )
+  ) {
+    throw new HttpsError('invalid-argument', 'Geçersiz tahmin.');
+  }
+
+  const userRef = db.collection('users').doc(uid);
+  const userSnap = await userRef.get();
+  if ((userSnap.data()?.gold || 0) < cleanStake) {
+    throw new HttpsError('failed-precondition', 'Yeterli altının yok.');
+  }
+
+  const betRef = db.collection('futbolCupBets').doc();
+  const batch = db.batch();
+  batch.update(userRef, { gold: admin.firestore.FieldValue.increment(-cleanStake) });
+  batch.set(betRef, {
+    uid,
+    season,
+    round,
+    stake: cleanStake,
+    predictions,
+    status: 'pending',
+    payout: 0,
+    placedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  await batch.commit();
+  return { ok: true };
+});
+
 // --- Futbol modülü: Faz 10 (Kulüpler dizini) ---
 
 // getFutbolTeamDetail — puan tablosunda bir takıma tıklandığında logo,
@@ -10621,6 +11550,10 @@ export const getFutbolTeamDetail = onCall(async (request) => {
       value,
       chairman,
       isBot: !team.ownerUid,
+      // Kullanıcı isteği: puan tablosunda tıklanan takımın şampiyonluk/
+      // kupa geçmişi de gösterilsin.
+      championshipsCount: team.championshipsCount || 0,
+      cupsCount: team.cupsCount || 0,
     },
   };
 });

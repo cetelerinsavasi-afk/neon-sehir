@@ -223,6 +223,12 @@ function MyTeamOverview({ team }) {
 
       <div className="futbol-my-team-rank">
         {rank > 0 ? `Ligde ${rank}. sıradasın` : 'Sıralama hesaplanıyor...'}
+        {(team.championshipsCount > 0 || team.cupsCount > 0) && (
+          <span className="futbol-my-team-trophies">
+            {team.championshipsCount > 0 && ` · 🏆 ${team.championshipsCount} şampiyonluk`}
+            {team.cupsCount > 0 && ` · 🏆 ${team.cupsCount} kupa`}
+          </span>
+        )}
       </div>
       <div className="futbol-my-team-rank">
         Takım Değeri: {finance ? `${finance.value.toLocaleString('tr-TR')} altın` : '…'}
