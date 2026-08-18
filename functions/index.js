@@ -2485,33 +2485,35 @@ function cryptoTradeWeight(ageMs) {
   return 0;
 }
 
-// computeWeightedCryptoBuyRatio — YENİ SİSTEM (kullanıcı tasarımı): "KR
-// fiyatının yönünü algoritma doğrudan belirlemesin; oyuncuların gerçek
-// alış/satış davranışları fiyatın yönünü etkilesin. Ancak tek bir
-// oyuncunun veya küçük bir grubun piyasayı tamamen kontrol etmesi mümkün
-// olmasın." Adımlar (bkz. kullanıcının paylaştığı tasarım dokümanı):
+// computeWeightedCryptoBuyRatio — YENİ SİSTEM (kullanıcı tasarımı, 80/20
+// KURALI revizyonu): "KR fiyatının yönünü algoritma doğrudan belirlemesin;
+// oyuncuların gerçek alış/satış davranışları fiyatın yönünü etkilesin.
+// Ancak organize toplu manipülasyon (ör. 'hepimiz alalım, fiyat kesin
+// yükselsin') piyasayı garanti şekilde yönlendiremesin." Adımlar:
 //   1. Son 24 saatteki TÜM cryptoTrades kayıtları okunur (mining üretimi
 //      buraya HİÇ girmez — sadece gerçekleşmiş alım/satım işlemleri,
 //      bkz. buyInvestment/sellInvestment).
 //   2. Her işleme yaşına göre zaman ağırlığı uygulanır (yukarısı).
-//   3-4. Oyuncu bazında toplanır; en büyük ağırlıklı ALICI alış
-//      toplamından, en büyük ağırlıklı SATICI satış toplamından AYRI AYRI
-//      çıkarılır (aynı oyuncu olsa bile iki taraftan da ayrı düşülür) —
-//      whale'lerin/tek oyuncunun piyasayı tek başına yönlendirmesini
-//      engeller. Ağırlık ALTIN değil KR MİKTARI (krAmount) üzerinden
-//      hesaplanır (kullanıcı isteği).
-// Dönüş: kalan ağırlıklı alış / (alış+satış) oranı — YOK sayılacak kadar
-// az/hiç anlamlı hacim varsa (ör. tek oyuncu, ya da hiç işlem yoksa) null
-// döner, çağıran taraf bu durumda mevcut sistemdeki gibi tamamen rastgele
-// yöne döner (bkz. hourlyInvestmentUpdate).
+//   3. Ağırlıklı alış ve satış toplamları doğrudan toplanır (ALTIN değil
+//      KR MİKTARI/krAmount üzerinden — kullanıcı isteği).
+// NOT (revizyon): Önceki sistemdeki "en büyük ağırlıklı alıcı/satıcıyı
+// hesaplamadan çıkarma" mekanizması TAMAMEN KALDIRILDI — artık buna gerek
+// yok, çünkü %80/%20 sınırını aşan her oran (kaynağı ne olursa olsun,
+// tek bir whale veya toplu manipülasyon fark etmez) hourlyInvestmentUpdate
+// tarafında otomatik olarak nötr %50/%50'ye çekiliyor (bkz. aşağıdaki
+// fonksiyon). Bu yüzden oyuncu bazında ayrı toplama (Map) da gereksizdi,
+// kaldırıldı — doğrudan tek toplam alış/satış yeterli.
+// Dönüş: ağırlıklı alış / (alış+satış) oranı — anlamlı hacim yoksa (hiç
+// işlem yoksa) null döner, çağıran taraf bu durumda mevcut sistemdeki gibi
+// tamamen rastgele yöne döner (bkz. hourlyInvestmentUpdate).
 async function computeWeightedCryptoBuyRatio() {
   const cutoff = admin.firestore.Timestamp.fromMillis(Date.now() - 24 * 60 * 60 * 1000);
   const tradesSnap = await db.collection('cryptoTrades').where('createdAt', '>=', cutoff).get();
   if (tradesSnap.empty) return null;
 
   const nowMs = Date.now();
-  const buyByUid = new Map();
-  const sellByUid = new Map();
+  let totalBuy = 0;
+  let totalSell = 0;
   tradesSnap.forEach((doc) => {
     const t = doc.data();
     const tsMs = t.createdAt?.toMillis?.();
@@ -2520,29 +2522,13 @@ async function computeWeightedCryptoBuyRatio() {
     if (weight <= 0) return;
     const weighted = (t.krAmount || 0) * weight;
     if (weighted <= 0) return;
-    const map = t.type === 'buy' ? buyByUid : t.type === 'sell' ? sellByUid : null;
-    if (!map) return;
-    map.set(t.uid, (map.get(t.uid) || 0) + weighted);
+    if (t.type === 'buy') totalBuy += weighted;
+    else if (t.type === 'sell') totalSell += weighted;
   });
 
-  let totalBuy = 0;
-  let maxBuyVal = 0;
-  buyByUid.forEach((v) => {
-    totalBuy += v;
-    if (v > maxBuyVal) maxBuyVal = v;
-  });
-  let totalSell = 0;
-  let maxSellVal = 0;
-  sellByUid.forEach((v) => {
-    totalSell += v;
-    if (v > maxSellVal) maxSellVal = v;
-  });
-
-  const remainingBuy = Math.max(0, totalBuy - maxBuyVal);
-  const remainingSell = Math.max(0, totalSell - maxSellVal);
-  const total = remainingBuy + remainingSell;
+  const total = totalBuy + totalSell;
   if (total <= 0) return null;
-  return remainingBuy / total;
+  return totalBuy / total;
 }
 
 // =============================================================================
@@ -2585,14 +2571,29 @@ export const hourlyInvestmentUpdate = onSchedule(
 
     // YENİ SİSTEM: kripto fiyatının YÖNÜ artık coin-flip değil, gerçek
     // oyuncu alış/satış davranışından hesaplanan olasılıkla belirleniyor
-    // (bkz. computeWeightedCryptoBuyRatio) — %20-%80 arasında sınırlı
-    // (madde 3: "alış/satış oranı ne kadar uç olursa olsun fiyat yönü
-    // hiçbir zaman %100 kesin olmayacak"). Anlamlı işlem yoksa (null),
-    // ESKİ sistemdeki gibi %50/%50 tamamen rastgele — bu, yeni sisteme
-    // geçişte de (henüz cryptoTrades hiç birikmemişken) otomatik olarak
-    // devreye girer, fiyat mevcut değerinden SORUNSUZCA devam eder.
+    // (bkz. computeWeightedCryptoBuyRatio).
+    //
+    // 80/20 KURALI (revizyon — önceki "en büyük alıcı/satıcıyı çıkarma"
+    // mekanizmasının yerini aldı): oran %20-%80 arasında (sınırlar DAHİL)
+    // ise doğrudan gerçek oran kullanılır (ör. %70 alış → %70 yükseliş
+    // ihtimali). Ancak oran bu sınırın dışına (ör. %81 alış ya da %19
+    // alış) çıkarsa sistem TAMAMEN NÖTR olur (%50/%50) — bu sayede toplu/
+    // organize bir manipülasyon ("hepimiz alalım, fiyat kesin yükselsin")
+    // ne kadar uç bir orana ulaşırsa ulaşsın, sınırı aştığı an kendi
+    // amacını boşa çıkarır. EPSILON, %80/%20 sınırındaki kayan noktalı
+    // (floating point) yuvarlama hatalarının örnek tablodaki "80/20 →
+    // hâlâ yönlü, 81/19 → nötr" davranışını bozmaması için var.
+    // Anlamlı işlem yoksa (null), ESKİ sistemdeki gibi %50/%50 tamamen
+    // rastgele — bu, yeni sisteme geçişte de (henüz cryptoTrades hiç
+    // birikmemişken) otomatik olarak devreye girer, fiyat mevcut
+    // değerinden SORUNSUZCA devam eder.
     const cryptoBuyRatio = await computeWeightedCryptoBuyRatio();
-    const cryptoUpProbability = cryptoBuyRatio == null ? 0.5 : Math.min(0.8, Math.max(0.2, cryptoBuyRatio));
+    const RATIO_EPSILON = 1e-9;
+    const withinEightyTwenty =
+      cryptoBuyRatio != null &&
+      cryptoBuyRatio >= 0.2 - RATIO_EPSILON &&
+      cryptoBuyRatio <= 0.8 + RATIO_EPSILON;
+    const cryptoUpProbability = withinEightyTwenty ? cryptoBuyRatio : 0.5;
     const cryptoUp = Math.random() < cryptoUpProbability;
     const cryptoChangePct = cryptoUp
       ? Math.random() * 0.19 + 0.01 // %1-20 artış
