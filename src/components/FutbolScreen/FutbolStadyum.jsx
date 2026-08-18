@@ -15,17 +15,18 @@ const MAX_TICKET_PRICE = 20;
 // KENDİ merdiveniyle doğrulanır — buradaki liste sadece bir önizleme.
 // Yeni istek: "stadyum kapasite yükseltme fiyatlarını yarı yarıya
 // düşürelim" — tüm maliyetler (0 hariç) eskisinin YARISI, sunucudaki
-// FUTBOL_STADIUM_LADDER ile AYNI (bkz. functions/index.js).
+// FUTBOL_STADIUM_LADDER ile AYNI (bkz. functions/index.js) — fiyatlar 2
+// katına çıkarıldı (kullanıcı isteği).
 const STADIUM_LADDER = [
   { capacity: 2500, cost: 0 },
-  { capacity: 5000, cost: 500000 },
-  { capacity: 10000, cost: 1000000 },
-  { capacity: 20000, cost: 2000000 },
-  { capacity: 40000, cost: 4000000 },
-  { capacity: 75000, cost: 8000000 },
-  { capacity: 150000, cost: 16000000 },
-  { capacity: 250000, cost: 37500000 },
-  { capacity: 500000, cost: 75000000 },
+  { capacity: 5000, cost: 1000000 },
+  { capacity: 10000, cost: 2000000 },
+  { capacity: 20000, cost: 4000000 },
+  { capacity: 40000, cost: 8000000 },
+  { capacity: 75000, cost: 16000000 },
+  { capacity: 150000, cost: 32000000 },
+  { capacity: 250000, cost: 75000000 },
+  { capacity: 500000, cost: 150000000 },
 ];
 
 // Bilet fiyatına göre tahmini seyirci sayısı: taraftar/bilet fiyatı,

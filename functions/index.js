@@ -4085,8 +4085,9 @@ export const buyFromVendor = onCall(async (request) => {
 //     kurarak) — onların rolü sızmak, soymak değil.
 //   - Güç yetersizse soygun hiç BAŞLAMAZ, şüphe artmaz. (Ekip kurulmalı.)
 //   - Tek başınayken sızma riski yok (kimse yanında yok), AMA yakalanma
-//     riski mevcut şüpheye bağlı: yakalanma ihtimali = şüphe yüzdesi.
-//     Şüphen 0 ise yakalanma riskin de yoktur.
+//     riski mevcut şüpheye bağlı: yakalanma ihtimali = şüphe yüzdesi
+//     (taban %1 — bkz. captureRiskPercent). Şüphen 0 olsa bile en az
+//     %1 yakalanma riskin vardır.
 //   - Yakalanırsan: çalmaya çalıştığın TAM tutar (Bölüm 5/13) ceza olarak
 //     kasaya gider — önce mevcut altınından kesilir, yetmezse kalanı
 //     devlete borç yazılır (Bölüm 10).
@@ -4104,6 +4105,17 @@ const HEIST_CONFIG = {
   seyyar_satici_3: { suspicionCost: 5, reward: 1500, requiredPower: 1500 },
   seyyar_satici_4: { suspicionCost: 5, reward: 1000, requiredPower: 1000 },
 };
+
+// captureRiskPercent — yakalanma ihtimalini şüphe yüzdesi olarak hesaplar.
+// YENİ KURAL (kullanıcı isteği): şüphesi %0 olan bir oyuncunun bile en az
+// %1 yakalanma riski olacak — diğer hiçbir şey değişmiyor, sadece 0'da
+// (ve normalde 1'in altında kalacak her değerde) taban %1'e çekiliyor.
+// Aynı "yakalanma ihtimali = şüphe %'si" formülü şüphenin geçerli olduğu
+// HER yerde kullanılıyor (tek başına soygun, ekip soygunu, Park'ta
+// yasaklı madde satışı) — tutarlılık için hepsi bu helper'dan geçiyor.
+function captureRiskPercent(suspicion) {
+  return Math.max(1, suspicion || 0);
+}
 
 // Yakalanma cezası: TAM tutar devlete BORÇ yazılır — cepten HİÇ kesilmez.
 // Oyuncu Banka'dan istediği zaman, istediği miktarda öder; hiç ödemezse bile
@@ -4190,7 +4202,7 @@ export const attemptHeist = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
     }
     const suspicion = user.suspicion || 0;
-    const caught = Math.random() < suspicion / 100;
+    const caught = Math.random() < captureRiskPercent(suspicion) / 100;
     const reward = config.reward;
 
     const updates = {
@@ -4253,7 +4265,9 @@ export const sellContrabandToDepo = onCall(async () => {
 // ---------------------------------------------------------------------------
 // sellContrabandAtPark — Park'ta yasaklı madde satışı, TEK SEFERDE 1 adet.
 // Her satışta, o anki şüphe yüzdesi kadar ihtimalle polis tarafından
-// yakalanma riski var (şüphe %40 ise %40 ihtimalle yakalanırsın).
+// yakalanma riski var (şüphe %40 ise %40 ihtimalle yakalanırsın), taban
+// %1 — şüphen %0 olsa bile en az %1 yakalanma riskin var (bkz.
+// captureRiskPercent).
 // Yakalanırsan: mal yine elden gider ama kazanacağın altın YERİNE aynı
 // miktar (5000) devlete borç yazılır — hiç cepten kesilmez, tamamı borca
 // gider (Bölüm 10 kuralı). Yakalanmazsan normal şekilde kazanırsın.
@@ -4282,7 +4296,7 @@ export const sellContrabandAtPark = onCall(async (request) => {
 
     const currentSuspicion = user.suspicion || 0;
     const currentReputation = user.reputation || 0;
-    const caught = Math.random() * 100 < currentSuspicion;
+    const caught = Math.random() * 100 < captureRiskPercent(currentSuspicion);
     const newSuspicion = clampSuspicion(currentSuspicion + PARK_SUSPICION_COST);
     const newReputation = clampSuspicion(currentReputation - PARK_SUSPICION_COST);
 
@@ -5017,12 +5031,14 @@ export const executeHeistPlan = onCall(async (request) => {
 
   // ADIM 1 — ÖNCE, polis hiç yokmuş GİBİ, her katılımcının KENDİ
   // şüphesine göre bağımsız bir yakalanma riski test edilir (yakalanma
-  // ihtimali = o kişinin şüphe %'si). Katılımcılardan BİRİ bile böyle
-  // yakalanırsa TÜM soygun şüpheden dolayı başarısız sayılır — bu
-  // durumda ekipte sızmış bir polis olsa BİLE o ödül ALAMAZ (yakalanma
-  // sebebi polis işi değil, şüphe olduğu için).
+  // ihtimali = o kişinin şüphe %'si, taban %1 — şüphesi %0 olan bir
+  // katılımcının bile en az %1 yakalanma riski var, bkz.
+  // captureRiskPercent). Katılımcılardan BİRİ bile böyle yakalanırsa TÜM
+  // soygun şüpheden dolayı başarısız sayılır — bu durumda ekipte sızmış
+  // bir polis olsa BİLE o ödül ALAMAZ (yakalanma sebebi polis işi değil,
+  // şüphe olduğu için).
   const suspicions = userSnaps.map((s) => s.data()?.suspicion || 0);
-  const caughtBySuspicion = suspicions.some((s) => Math.random() * 100 < s);
+  const caughtBySuspicion = suspicions.some((s) => Math.random() * 100 < captureRiskPercent(s));
   const busted = !caughtBySuspicion && policeIdx.length > 0;
 
   if (caughtBySuspicion) {
@@ -8203,18 +8219,18 @@ const FUTBOL_SEASON_START = 1;
 // Kapasite yükseltme merdiveni SUNUCU TARAFINDA tutulur — istemci bir
 // sonraki seviyeyi (ve maliyetini) görebilir ama TÜM merdiveni göremez
 // (ürün kararı: oyuncu ileriki seviyeleri önceden görmemeli).
-// Yeni istek: "stadyum kapasite yükseltme fiyatlarını yarı yarıya
-// düşürelim" — tüm maliyetler (0 hariç) eskisinin YARISI.
+// Yeni istek: "stadyum kapasite yükseltme fiyatlarını 2 katına çıkartalım"
+// — tüm maliyetler (0 hariç) bir önceki (yarıya düşürülmüş) sürümün 2 katı.
 const FUTBOL_STADIUM_LADDER = [
   { capacity: 2500, cost: 0 },
-  { capacity: 5000, cost: 500000 },
-  { capacity: 10000, cost: 1000000 },
-  { capacity: 20000, cost: 2000000 },
-  { capacity: 40000, cost: 4000000 },
-  { capacity: 75000, cost: 8000000 },
-  { capacity: 150000, cost: 16000000 },
-  { capacity: 250000, cost: 37500000 },
-  { capacity: 500000, cost: 75000000 },
+  { capacity: 5000, cost: 1000000 },
+  { capacity: 10000, cost: 2000000 },
+  { capacity: 20000, cost: 4000000 },
+  { capacity: 40000, cost: 8000000 },
+  { capacity: 75000, cost: 16000000 },
+  { capacity: 150000, cost: 32000000 },
+  { capacity: 250000, cost: 75000000 },
+  { capacity: 500000, cost: 150000000 },
 ];
 const FUTBOL_DEFAULT_TICKET_PRICE = 10;
 const FUTBOL_MIN_TICKET_PRICE = 1;
