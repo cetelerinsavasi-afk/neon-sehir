@@ -47,13 +47,7 @@ export default function FutbolDoktor({ team }) {
   return (
     <div className="futbol-altyapi">
       <p className="futbol-kadro-section-title">Doktor</p>
-      <p className="futbol-placeholder">
-        Sakat oyuncular her gece 00:00&apos;da kendiliğinden 1 gün iyileşir.
-        Doktora {FUTBOL_DOCTOR_COST.toLocaleString('tr-TR')} altın ödeyerek
-        AYNI ANDA SADECE 1 oyuncunun o gece 1 GÜN DAHA (toplam 2 gün)
-        iyileşmesini sağlayabilirsin. Doktor kutusu her gece boşalır —
-        tedavi bitsin bitmesin, ertesi gün yeniden ödeme yapman gerekir.
-      </p>
+      <p className="futbol-placeholder">Doktor, sakat futbolcuların daha hızlı iyileşmesini sağlar.</p>
       <p className="futbol-transfer-balance">💰 {gold.toLocaleString('tr-TR')} altın</p>
 
       {error && <p className="futbol-admin-error">{error}</p>}
@@ -78,7 +72,7 @@ export default function FutbolDoktor({ team }) {
                     </p>
                   </div>
                   {isBeingTreated ? (
-                    <span className="futbol-roster-status training">Tedavi ediliyor</span>
+                    <span className="futbol-roster-status training">Tedavi ediliyor (bu gece -1 gün daha)</span>
                   ) : (
                     <button
                       className="futbol-admin-submit"
@@ -92,7 +86,9 @@ export default function FutbolDoktor({ team }) {
                             : ''
                       }
                     >
-                      {busyId === p.id ? '...' : `Tedavi Et (${FUTBOL_DOCTOR_COST.toLocaleString('tr-TR')})`}
+                      {busyId === p.id
+                        ? '...'
+                        : `Tedavi Et (${FUTBOL_DOCTOR_COST.toLocaleString('tr-TR')} altın · -1 gün)`}
                     </button>
                   )}
                 </div>

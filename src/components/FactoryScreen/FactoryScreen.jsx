@@ -41,7 +41,11 @@ const MACHINE_EMOJI = {
 
 function machinePrice(type, cryptoPrice, ownedMiningCount = 0) {
   if (type !== 'mining') return MACHINE_PRICES[type];
-  const multiplier = 2 + 2 * Math.floor((ownedMiningCount || 0) / 100);
+  // Sunucudaki miningMachinePrice ile AYNI kademeli formül: her 10
+  // makinede +0.2x (0-9: 2.0x, 10-19: 2.2x, 20-29: 2.4x, ...). Eskiden
+  // burada her 100 makinede +2x olan eski formül vardı — sunucu
+  // güncellenirken burası unutulmuş, buton yanlış fiyat gösteriyordu.
+  const multiplier = 2 + 0.2 * Math.floor((ownedMiningCount || 0) / 10);
   return Math.ceil(multiplier * cryptoPrice);
 }
 
@@ -765,11 +769,10 @@ function DailyReportModal({ factory, onClose }) {
   const grossToday = factory.dailyGrossIncome || 0;
   const expenseToday = factory.dailySalaryExpense || 0;
   const netToday = factory.dailyIncome || 0;
-  // electricityToday — yeni istek: "elektrik faturası günlük raporda da
-  // giderlerin arasında belirtilsin". Bu tutar sahibin GERÇEK altınından
-  // ayrıca (bkz. functions/index.js dailyReset Part A.5) düşülür — yukarıdaki
-  // "Net kâr" (hisse payı hesabının TEK kaynağı) formülüne kasıtlı olarak
-  // DAHİL DEĞİL, o yüzden ayrı bir kalem olarak gösteriliyor.
+  // electricityToday — elektrik faturası artık "Net kâr" formülüne DAHİL
+  // (bkz. functions/index.js dailyReset Part A.5: dailyIncome = gross -
+  // salaryPaid - electricityBill). Yine de ayrı bir kalem olarak da
+  // gösteriliyor ki sahip kârın neye gittiğini görebilsin.
   const electricityToday = factory.dailyElectricityExpense || 0;
   const grossHistory = Array.isArray(factory.dailyGrossIncomeHistory) ? factory.dailyGrossIncomeHistory : [];
   const expenseHistory = Array.isArray(factory.dailySalaryExpenseHistory) ? factory.dailySalaryExpenseHistory : [];
@@ -832,10 +835,6 @@ function DailyReportModal({ factory, onClose }) {
             </span>
           </div>
         </div>
-        <p className="factory-hint">
-          Elektrik faturası, çalışan makine başına 100 altın olarak doğrudan altınından kesilir (yetmezse
-          borca yazılır) — yukarıdaki net kâra dahil değildir.
-        </p>
 
         <p className="factory-step-label">Dün Üretilen Malzemeler</p>
         {producedEntries.length === 0 && <p className="factory-hint">Dün hiç üretim yapılmadı.</p>}

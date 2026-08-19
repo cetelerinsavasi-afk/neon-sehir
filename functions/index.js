@@ -1027,12 +1027,13 @@ async function sendSalaryPenaltySms(uid, penaltyAmount, newTotalDebt) {
     });
 }
 
-// sendElectricityBillSms — yeni istek: "fabrikalarda bugün çalışan makine
-// sayısı x 100 altın elektrik faturası olsun ... 00.00da sms ile birlikte
-// oyuncunun elinde altın varsa otomatik ödensin yoksa cezalara düşsün."
-// Ödenebilen kısım anında düşülür, yetmeyen kısım (varsa) sendSalaryPenaltySms
-// ile AYNI desende debtToState'e yazılır — bkz. dailyReset'teki elektrik
-// faturası bloğu.
+// sendElectricityBillSms — fabrikadaki bugün çalışan makinelerin türüne
+// göre değişen (bkz. ELECTRICITY_BILL_PER_MACHINE_TYPE) toplam elektrik
+// faturası, her gece 00:00'da SMS ile bildirilir; oyuncunun elinde altın
+// varsa otomatik ödenir, yetmezse fark borca yazılır. Ödenebilen kısım
+// anında düşülür, yetmeyen kısım (varsa) sendSalaryPenaltySms ile AYNI
+// desende debtToState'e yazılır — bkz. dailyReset'teki elektrik faturası
+// bloğu.
 async function sendElectricityBillSms(uid, bill, shortfall, newTotalDebt) {
   const text =
     shortfall > 0
@@ -1838,34 +1839,40 @@ export const dailyReset = onSchedule(
         typeMap.mining = (typeMap.mining || 0) + qty;
       });
 
-      // -0.34) FABRİKA ELEKTRİK FATURASI — yeni istek: "fabrikalarda bugün
-      // çalışan makine sayısı x 100 altın elektrik faturası olsun ...
-      // makineler işçisiz de işçiyle de çalışabiliyor, nasıl çalıştığının
-      // önemi yok, çalışıyorsa 100 altın elektrik her türlü gelecek." Sahibi
-      // o gün oyuna hiç girmemiş olsa bile fatura gelir — kullanıcının kendi
-      // kararı: "biz almamız gereken ürünü oyunda değilken de alıyoruz,
-      // elektrik masrafı önemli değil, cezalandırmak olarak sayılmaz."
+      // -0.34) FABRİKA ELEKTRİK FATURASI — makineler işçisiz de işçiyle de
+      // çalışabiliyor, nasıl çalıştığının önemi yok, çalışıyorsa elektrik
+      // her türlü gelecek. Sahibi o gün oyuna hiç girmemiş olsa bile fatura
+      // gelir — kullanıcının kendi kararı: "biz almamız gereken ürünü
+      // oyunda değilken de alıyoruz, elektrik masrafı önemli değil,
+      // cezalandırmak olarak sayılmaz."
+      // GÜNCELLEME (kullanıcı revizesi): tutar artık makine türüne göre
+      // sabit 100 değil — araba/silah geliştirme 100, tamir/yasaklı madde
+      // 200, kripto (mining) 300 altın/gün.
       // "Çalıştı" = dün ÜRETTİ: işçi gerektiren 4 tür için producedSnap'te
       // zaten elimizde (lastProducedDateKey === prevDateKey — ister gerçek
       // işçi ister sahip-yerine-üretim, ikisi de AYNI damgayı taşıyor,
-      // bkz. yukarısı), mining için üstteki (-0.5) bloktaki
-      // miningTriggeredCountByOwner (tetiklenen HER mining makinesi,
-      // ürettiği kripto miktarından bağımsız).
-      const ELECTRICITY_BILL_PER_MACHINE = 100;
-      const machinesOperatedCountByFactory = new Map();
+      // bkz. yukarısı; machine.type buradan okunur), mining için üstteki
+      // (-0.5) bloktaki miningTriggeredCountByOwner (tetiklenen HER mining
+      // makinesi, ürettiği kripto miktarından bağımsız — hepsi 300 altın).
+      const ELECTRICITY_BILL_PER_MACHINE_TYPE = {
+        silahUpgrade: 100,
+        arabaGelistirme: 100,
+        tamirMalzemesi: 200,
+        yasakliMadde: 200,
+        mining: 300,
+      };
+      const electricityBillByFactory = new Map(); // ownerId -> tutar (altın)
+      const addElectricity = (factoryId, amount) => {
+        if (amount <= 0) return;
+        electricityBillByFactory.set(factoryId, (electricityBillByFactory.get(factoryId) || 0) + amount);
+      };
       producedSnap.forEach((m) => {
         const factoryId = m.ref.parent.parent.id;
-        machinesOperatedCountByFactory.set(factoryId, (machinesOperatedCountByFactory.get(factoryId) || 0) + 1);
+        const unit = ELECTRICITY_BILL_PER_MACHINE_TYPE[m.data().type] || 0;
+        addElectricity(factoryId, unit);
       });
       miningTriggeredCountByOwner.forEach((count, factoryId) => {
-        machinesOperatedCountByFactory.set(
-          factoryId,
-          (machinesOperatedCountByFactory.get(factoryId) || 0) + count
-        );
-      });
-      const electricityBillByFactory = new Map(); // ownerId -> tutar (altın)
-      machinesOperatedCountByFactory.forEach((count, factoryId) => {
-        if (count > 0) electricityBillByFactory.set(factoryId, count * ELECTRICITY_BILL_PER_MACHINE);
+        addElectricity(factoryId, count * ELECTRICITY_BILL_PER_MACHINE_TYPE.mining);
       });
       // Faturası olan sahiplerin GÜNCEL altın/borç bilgisini topluca çekiyoruz
       // — aşağıdaki batch yazımı senkron kurulduğu için, nakit/borç ayrımı bu
@@ -1901,7 +1908,18 @@ export const dailyReset = onSchedule(
         // maaştan düşük kalırsa o gün gerçekten zarar edilmiş demektir.
         const grossIncome = Math.round(incomeByFactory.get(f.id) || 0);
         const salaryPaid = Math.round(f.data().salaryPaidToday || 0);
-        const dailyIncome = Math.round(grossIncome - salaryPaid);
+        // Yeni istek (kullanıcı revizesi): "kar hesaplanırken elektrik
+        // faturası masrafı da cirodan düşülsün" — dailyIncome artık
+        // grossIncome - salaryPaid - electricityBill. electricityBill bu
+        // fabrika için AŞAĞIDAKİ DEĞİL, YUKARIDAKİ elektrik faturası
+        // bloğunda (Part A.5, electricityBillByFactory) zaten hesaplanmış
+        // durumda, burada sadece okunuyor. Bu, hisse alım/satım fiyat
+        // aralığının (shareMinPrice/shareMaxPrice) ve temettü ödemelerinin
+        // TEK kaynağı olan dailyIncome'u da etkiler — artık elektrik
+        // masrafı yüksek bir fabrikanın hisseleri daha düşük değerlenir/
+        // temettü öder, kasıtlı ve istenen davranış.
+        const electricityBill = electricityBillByFactory.get(f.id) || 0;
+        const dailyIncome = Math.round(grossIncome - salaryPaid - electricityBill);
         factoryDailyIncomeMap.set(f.id, dailyIncome);
 
         // Son 10 günlük gelir geçmişi: Firestore'da atomik "ekle ve N ile
@@ -1941,9 +1959,9 @@ export const dailyReset = onSchedule(
         const dailyProducedByType = producedByTypeByFactory.get(f.id) || {};
 
         // Elektrik faturası (Part A.5) — bu fabrika için bugünkü tutar
-        // (çalışan makine yoksa 0), günlük raporun giderler kısmında
-        // dailySalaryExpense ile AYNI desende (skaler + son 10 gün geçmişi).
-        const electricityBill = electricityBillByFactory.get(f.id) || 0;
+        // (çalışan makine yoksa 0, yukarıda dailyIncome hesabında da
+        // kullanıldı), günlük raporun giderler kısmında dailySalaryExpense
+        // ile AYNI desende (skaler + son 10 gün geçmişi).
         const existingElectricityHistory = Array.isArray(f.data().dailyElectricityExpenseHistory)
           ? f.data().dailyElectricityExpenseHistory
           : [];
@@ -2622,11 +2640,12 @@ export const dailyReset = onSchedule(
 // sayılıyor — yeni işlemler daha güçlü, eski işlemler daha zayıf etkili.
 // Sınır saat değeri dahil (<=) o kovaya girer; 24 saatten eski işlemler
 // (ağırlık 0) zaten sorguya hiç dahil edilmiyor.
+// GÜNCELLEME (kullanıcı revizesi): kovalar sadeleştirildi — son 6 saat 3x,
+// 7-12 saat 2x, 13-24 saat 1x (önceki 5 kademeli — 1/3/6/12/24 saat,
+// 4/3/2/1.5/1x — yapı yerine).
 const CRYPTO_TIME_WEIGHT_BUCKETS = [
-  { maxHours: 1, weight: 4 },
-  { maxHours: 3, weight: 3 },
-  { maxHours: 6, weight: 2 },
-  { maxHours: 12, weight: 1.5 },
+  { maxHours: 6, weight: 3 },
+  { maxHours: 12, weight: 2 },
   { maxHours: 24, weight: 1 },
 ];
 function cryptoTradeWeight(ageMs) {
