@@ -438,6 +438,12 @@
   padding: 4px 6px;
 }
 
+/* factory-report-row-4col — yeni istek: "elektrik faturası günlük raporda
+   da giderlerin arasında belirtilsin" — tabloya Elektrik sütunu eklendi. */
+.factory-report-row-4col {
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+}
+
 .factory-report-row-head {
   font-weight: 700;
   color: var(--neon-cyan);

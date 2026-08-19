@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { getMyRedemptionCode } from '../../services/gameActions';
+import paket1Image from '../../assets/goldStore/paket1.jpg';
+import paket2Image from '../../assets/goldStore/paket2.jpg';
 import './GoldStoreScreen.css';
 
 // Bu paket listesi SADECE görsel amaçlı — gerçek fiyat/miktarlar
@@ -10,22 +12,27 @@ import './GoldStoreScreen.css';
 // oluşturulan gerçek ürün linki. Yeni paket eklersen/link değişirse
 // SHOPIER_PRODUCT_TO_PACKAGE'ı (functions/index.js) da güncellemeyi
 // unutma — ürün ID'si (linkin sonundaki sayı) oradan eşleniyor.
+// Yeni istek: "altın mağazasındaki paketin olduğu yere direkt mağazaymış
+// gibi attığım görselleri yerleştirelim" — kartın üst kısmı artık ikon+
+// başlık yerine doğrudan bu tanıtım görseli (image), asıl satın alma
+// butonu (gold-store-btn) görselin ALTINDA gerçek/tıklanabilir buton
+// olarak aynen kalıyor.
 const PACKAGES = [
   {
     id: 'paket1',
     title: 'Başlangıç Paketi',
     priceLabel: '30 TL',
-    emoji: null,
-    lines: ['20.000 Altın'],
+    image: paket1Image,
+    lines: ['30.000 Altın'],
     shopierUrl: 'https://www.shopier.com/cetelerinsavasi/49730536',
   },
   {
     id: 'paket2',
-    title: '60.000 Altın + Özel Paket',
+    title: '100.000 Altın + Özel Paket',
     priceLabel: '100 TL',
-    emoji: '💎',
+    image: paket2Image,
     lines: [
-      '60.000 Altın',
+      '100.000 Altın',
       '4 Yasaklı Madde',
       '1.000 Tamir Malzemesi',
       '100 Silah Geliştirme Malzemesi',
@@ -97,15 +104,8 @@ export default function GoldStoreScreen() {
       <div className="gold-store-list">
         {PACKAGES.map((pack) => (
           <div key={pack.id} className="gold-store-card">
-            <div className="gold-store-card-head">
-              <span className="gold-store-emoji">
-                {pack.emoji || <span className="gold-coin-icon" style={{ width: 28, height: 28 }} />}
-              </span>
-              <div>
-                <p className="gold-store-title">{pack.title}</p>
-                <p className="gold-store-price">{pack.priceLabel}</p>
-              </div>
-            </div>
+            <img className="gold-store-card-image" src={pack.image} alt={pack.title} />
+            <p className="gold-store-price">{pack.priceLabel}</p>
             <ul className="gold-store-lines">
               {pack.lines.map((line) => (
                 <li key={line}>{line}</li>

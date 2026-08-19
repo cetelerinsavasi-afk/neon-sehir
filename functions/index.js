@@ -1027,6 +1027,25 @@ async function sendSalaryPenaltySms(uid, penaltyAmount, newTotalDebt) {
     });
 }
 
+// sendElectricityBillSms — yeni istek: "fabrikalarda bugün çalışan makine
+// sayısı x 100 altın elektrik faturası olsun ... 00.00da sms ile birlikte
+// oyuncunun elinde altın varsa otomatik ödensin yoksa cezalara düşsün."
+// Ödenebilen kısım anında düşülür, yetmeyen kısım (varsa) sendSalaryPenaltySms
+// ile AYNI desende debtToState'e yazılır — bkz. dailyReset'teki elektrik
+// faturası bloğu.
+async function sendElectricityBillSms(uid, bill, shortfall, newTotalDebt) {
+  const text =
+    shortfall > 0
+      ? `Fabrikandaki makineler için ${bill.toLocaleString('tr-TR')} altın elektrik faturası kesildi. Altının yetmediği için ${shortfall.toLocaleString('tr-TR')} altın devlete borç yazıldı. Toplam borcun: ${newTotalDebt.toLocaleString('tr-TR')} altın.`
+      : `Fabrikandaki makineler için ${bill.toLocaleString('tr-TR')} altın elektrik faturası kesildi ve otomatik ödendi.`;
+  await db.collection('users').doc(uid).collection('messages').add({
+    text,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    read: false,
+    type: 'factory_electricity_bill',
+  });
+}
+
 // produceAtFactory — işçi "Üretim Yap"a basınca: maaşını alır (patronun
 // altını yetmezse fark patrona CEZA/borç olarak yazılır ve patrona SMS
 // gider, işçi yine de tam maaşını alır), patronun envanterine rastgele
@@ -1467,6 +1486,7 @@ export const dailyReset = onSchedule(
     // okur. Aynı `dailyReset` çağrısı içinde, sırayla dolduruluyor.
     let nightCryptoPrice = 0;
     const miningCryptoQtyByOwner = new Map(); // ownerId -> bu gece üretilen toplam kripto miktarı
+    const miningTriggeredCountByOwner = new Map(); // ownerId -> bu gece tetiklenen mining makine SAYISI (elektrik faturası için, bkz. Part A.5)
     const factoryDailyIncomeMap = new Map(); // ownerId -> bu geceki dailyIncome (altın) — hisse temettüsünün TEK kaynağı
 
     // 0) BORSA BÜLTENİ ANLIK GÖRÜNTÜSÜ (Gazete > Borsa Bülteni) — elmas/
@@ -1576,6 +1596,47 @@ export const dailyReset = onSchedule(
     // sistemde toplamda sadece bir kez gerçek iş yapar.
     await runVehicleWeaponLifeCapMigration();
 
+    // -0.7) FUTBOL SAKATLIK İYİLEŞMESİ — yeni istek: "sakat oyuncu gün
+    // bazında iyileşsin maç olsa da olmasa da kupa maçı da olsa her
+    // 00.00da doktorsuz 1 gün doktorla beraber +1 gün daha iyileşecek" ve
+    // "doktora ödemesini yaptığınızda tedaviye başlar ve 00.00da işi biter
+    // kutu boşalır". Maç takviminden (18:00/19:00) TAMAMEN BAĞIMSIZ, her
+    // gece — lig günü, kupa günü, kutlama günü fark etmeksizin — çalışır.
+    {
+      const [injuredSnap, doctorTeamsSnap] = await Promise.all([
+        db.collection('futbolPlayers').where('injuryDaysLeft', '>', 0).get(),
+        db.collection('futbolTeams').where('doctorPlayerId', '!=', null).get(),
+      ]);
+      const doctorPlayerIds = new Set(doctorTeamsSnap.docs.map((d) => d.data().doctorPlayerId));
+      let injuryBatch = db.batch();
+      let injuryOpCount = 0;
+      const injuryBatchJobs = [];
+      const commitIfFull = () => {
+        if (injuryOpCount >= 400) {
+          injuryBatchJobs.push(injuryBatch.commit());
+          injuryBatch = db.batch();
+          injuryOpCount = 0;
+        }
+      };
+      injuredSnap.forEach((d) => {
+        const days = d.data().injuryDaysLeft || 0;
+        const healAmount = doctorPlayerIds.has(d.id) ? 2 : 1; // doktor varsa +1 ekstra
+        injuryBatch.update(d.ref, { injuryDaysLeft: Math.max(0, days - healAmount) });
+        injuryOpCount += 1;
+        commitIfFull();
+      });
+      // Doktor kutusu HER gece boşalır — tedavi görüp görmediğine
+      // bakılmaksızın (oyuncu bu gece iyileştiyse de, iyileşmediyse de
+      // kutu boşalır; tekrar tedavi için yeniden ödeme gerekir).
+      doctorTeamsSnap.forEach((d) => {
+        injuryBatch.update(d.ref, { doctorPlayerId: null });
+        injuryOpCount += 1;
+        commitIfFull();
+      });
+      if (injuryOpCount > 0) injuryBatchJobs.push(injuryBatch.commit());
+      await Promise.all(injuryBatchJobs);
+    }
+
     // -0.5) Mining makineleri işçi gerektirmez ama artık otomatik de
     // üretmiyor (kullanıcı revizesi) — sadece sahibinin dün (bugünün
     // 00:00'ından önceki gün) triggerAllMining ile TETİKLEDİĞİ makineler
@@ -1604,6 +1665,7 @@ export const dailyReset = onSchedule(
             .update({ cryptoHoldings: admin.firestore.FieldValue.increment(qty) })
         );
         miningCryptoQtyByOwner.set(factoryId, (miningCryptoQtyByOwner.get(factoryId) || 0) + qty);
+        miningTriggeredCountByOwner.set(factoryId, (miningTriggeredCountByOwner.get(factoryId) || 0) + 1);
       });
       await Promise.all(miningJobs);
 
@@ -1776,6 +1838,51 @@ export const dailyReset = onSchedule(
         typeMap.mining = (typeMap.mining || 0) + qty;
       });
 
+      // -0.34) FABRİKA ELEKTRİK FATURASI — yeni istek: "fabrikalarda bugün
+      // çalışan makine sayısı x 100 altın elektrik faturası olsun ...
+      // makineler işçisiz de işçiyle de çalışabiliyor, nasıl çalıştığının
+      // önemi yok, çalışıyorsa 100 altın elektrik her türlü gelecek." Sahibi
+      // o gün oyuna hiç girmemiş olsa bile fatura gelir — kullanıcının kendi
+      // kararı: "biz almamız gereken ürünü oyunda değilken de alıyoruz,
+      // elektrik masrafı önemli değil, cezalandırmak olarak sayılmaz."
+      // "Çalıştı" = dün ÜRETTİ: işçi gerektiren 4 tür için producedSnap'te
+      // zaten elimizde (lastProducedDateKey === prevDateKey — ister gerçek
+      // işçi ister sahip-yerine-üretim, ikisi de AYNI damgayı taşıyor,
+      // bkz. yukarısı), mining için üstteki (-0.5) bloktaki
+      // miningTriggeredCountByOwner (tetiklenen HER mining makinesi,
+      // ürettiği kripto miktarından bağımsız).
+      const ELECTRICITY_BILL_PER_MACHINE = 100;
+      const machinesOperatedCountByFactory = new Map();
+      producedSnap.forEach((m) => {
+        const factoryId = m.ref.parent.parent.id;
+        machinesOperatedCountByFactory.set(factoryId, (machinesOperatedCountByFactory.get(factoryId) || 0) + 1);
+      });
+      miningTriggeredCountByOwner.forEach((count, factoryId) => {
+        machinesOperatedCountByFactory.set(
+          factoryId,
+          (machinesOperatedCountByFactory.get(factoryId) || 0) + count
+        );
+      });
+      const electricityBillByFactory = new Map(); // ownerId -> tutar (altın)
+      machinesOperatedCountByFactory.forEach((count, factoryId) => {
+        if (count > 0) electricityBillByFactory.set(factoryId, count * ELECTRICITY_BILL_PER_MACHINE);
+      });
+      // Faturası olan sahiplerin GÜNCEL altın/borç bilgisini topluca çekiyoruz
+      // — aşağıdaki batch yazımı senkron kurulduğu için, nakit/borç ayrımı bu
+      // okumadan sonra hesaplanmalı (produceAtFactory'deki maaş açığı
+      // mantığıyla AYNI desen, sadece transaction yerine toplu okuma).
+      const electricityOwnerIds = Array.from(electricityBillByFactory.keys());
+      const electricityOwnerSnaps = await Promise.all(
+        electricityOwnerIds.map((id) => db.collection('users').doc(id).get())
+      );
+      const electricityOwnerGold = new Map();
+      const electricityOwnerDebt = new Map();
+      electricityOwnerSnaps.forEach((snap) => {
+        electricityOwnerGold.set(snap.id, snap.data()?.gold || 0);
+        electricityOwnerDebt.set(snap.id, snap.data()?.debtToState || 0);
+      });
+      const electricitySmsJobs = []; // { ownerId, bill, shortfall, newTotalDebt }
+
       // TÜM fabrikalara yaz — bugün hiç üretim yapmamış fabrikalar da
       // dailyIncome: 0 alır, yoksa eski (bayat) bir değer asılı kalır ve
       // hisse fiyat sınırlarını/temettülerini yanlış hesaplatır.
@@ -1833,6 +1940,15 @@ export const dailyReset = onSchedule(
         // boş obje ({}) yazılır (eski bayat değer asılı kalmasın diye).
         const dailyProducedByType = producedByTypeByFactory.get(f.id) || {};
 
+        // Elektrik faturası (Part A.5) — bu fabrika için bugünkü tutar
+        // (çalışan makine yoksa 0), günlük raporun giderler kısmında
+        // dailySalaryExpense ile AYNI desende (skaler + son 10 gün geçmişi).
+        const electricityBill = electricityBillByFactory.get(f.id) || 0;
+        const existingElectricityHistory = Array.isArray(f.data().dailyElectricityExpenseHistory)
+          ? f.data().dailyElectricityExpenseHistory
+          : [];
+        const dailyElectricityExpenseHistory = [...existingElectricityHistory, electricityBill].slice(-10);
+
         batch.update(f.ref, {
           dailyIncome,
           dailyIncomeDateKey: prevDateKey,
@@ -1842,6 +1958,8 @@ export const dailyReset = onSchedule(
           dailyGrossIncomeHistory,
           dailySalaryExpense: salaryPaid,
           dailySalaryExpenseHistory,
+          dailyElectricityExpense: electricityBill,
+          dailyElectricityExpenseHistory,
           dailyProducedByType,
           // Yarın için sayaç sıfırlanır — bugün zaten yukarıda okunup
           // düşüldü (produceAtFactory bundan sonra tekrar biriktirmeye
@@ -1854,9 +1972,43 @@ export const dailyReset = onSchedule(
           batch = db.batch();
           opCount = 0;
         }
+
+        // Elektrik faturasını sahibin altınından düş — yetmiyorsa kalanı
+        // (produceAtFactory'deki maaş açığı mantığıyla AYNI şekilde)
+        // devlete borç yazılır. Fatura 0 ise (bugün çalışan makine yoksa)
+        // hiçbir para hareketi/SMS olmaz.
+        if (electricityBill > 0) {
+          const ownerGold = electricityOwnerGold.get(f.id) || 0;
+          const paidFromGold = Math.min(electricityBill, ownerGold);
+          const shortfall = electricityBill - paidFromGold;
+          batch.update(db.collection('users').doc(f.id), {
+            gold: admin.firestore.FieldValue.increment(-paidFromGold),
+            debtToState: admin.firestore.FieldValue.increment(shortfall),
+          });
+          opCount += 1;
+          if (opCount >= 400) {
+            batchJobs.push(batch.commit());
+            batch = db.batch();
+            opCount = 0;
+          }
+          electricitySmsJobs.push({
+            ownerId: f.id,
+            bill: electricityBill,
+            shortfall,
+            newTotalDebt: (electricityOwnerDebt.get(f.id) || 0) + shortfall,
+          });
+        }
       });
       if (opCount > 0) batchJobs.push(batch.commit());
       await Promise.all(batchJobs);
+      // Elektrik faturası SMS'leri — batch commit'ler bittikten SONRA
+      // gönderilir (sendSalaryPenaltySms'in produceAtFactory'de yapıldığı
+      // gibi, para hareketi kesinleşmeden bildirim gitmesin diye).
+      await Promise.all(
+        electricitySmsJobs.map((job) =>
+          sendElectricityBillSms(job.ownerId, job.bill, job.shortfall, job.newTotalDebt)
+        )
+      );
     }
 
     // -0.32) FABRİKA HİSSE (STOK) TEMETTÜ ÖDEMESİ (Faz Fabrika Hisseleri —
@@ -8649,6 +8801,41 @@ const FUTBOL_FORMATIONS = {
   '1-1-3': { GK: 1, DEF: 1, MID: 1, FWD: 3 },
 };
 const FUTBOL_TACTICS = ['defansif', 'dengeli', 'ofansif'];
+
+// FUTBOL_MUCADELE_LEVELS — yeni istek: "kadro > taktiğin altına mücadele
+// kısmı koyalım (Dikkatli/Normal/Agresif/Çok Agresif)". Sadece OYUNCU
+// SAHİPLİ takımlarda geçerli (botlar hep 'normal', hiç sakatlanmaz —
+// bkz. applyFutbolMatchResult'taki isBot kontrolü). injuryMult sakatlanma
+// olasılığına, formLossMult maçtan sonraki form kaybına, powerMult o
+// maçtaki oyuncu gücüne uygulanır.
+const FUTBOL_MUCADELE_LEVELS = {
+  dikkatli: { injuryMult: 0.5, formLossMult: 0.5, powerMult: 0.95 },
+  normal: { injuryMult: 1, formLossMult: 1, powerMult: 1 },
+  agresif: { injuryMult: 1.5, formLossMult: 1.5, powerMult: 1.05 },
+  cok_agresif: { injuryMult: 2, formLossMult: 2, powerMult: 1.1 },
+};
+const FUTBOL_MUCADELE_DEFAULT = 'normal';
+function futbolMucadeleConfig(team) {
+  const key = FUTBOL_MUCADELE_LEVELS[team?.mucadele] ? team.mucadele : FUTBOL_MUCADELE_DEFAULT;
+  return FUTBOL_MUCADELE_LEVELS[key];
+}
+
+// FUTBOL_INJURY — yeni istek: "her maçta 16-19 yaş arasında olan
+// oyuncular %2, 20-29 arası %4, 30-35 arası %6 sakatlanma riski,
+// sakatlanan oyuncu 1-5 maçlığına sakatlansın" (madde 3'te "30-35"
+// olarak netleştirildi). SADECE oyuncu sahipli takımların o maçta
+// SAHAYA ÇIKAN 6 kişisi bu riski taşır (bkz. applyFutbolMatchResult).
+const FUTBOL_DOCTOR_COST = 5000;
+function futbolInjuryChance(age) {
+  if (age <= 19) return 0.02;
+  if (age <= 29) return 0.04;
+  return 0.06; // 30-35
+}
+function rollFutbolInjuryDays(age, mucadeleMult) {
+  const chance = futbolInjuryChance(age) * mucadeleMult;
+  if (Math.random() >= chance) return 0;
+  return Math.floor(randomInRange(1, 6)); // 1-5 gün (randomInRange üst sınırı hariç tutuyor, bkz. tanımı)
+}
 const FUTBOL_MIN_SQUAD = { GK: 2, DEF: 3, MID: 3, FWD: 2 };
 const FUTBOL_MAX_ROUNDS = 14;
 const FUTBOL_SEASON_REWARDS = { champion: 500000, secondThird: 250000, promoted: 250000, other: 100000 };
@@ -8697,7 +8884,7 @@ function pickFutbolLineup(playersByPosition, formation) {
   return { selected, bench };
 }
 
-function futbolLinePowers(selectedPlayers, isHome, tactic) {
+function futbolLinePowers(selectedPlayers, isHome, tactic, mucadelePowerMult = 1) {
   const lines = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
   for (const p of selectedPlayers) {
     if (lines[p.position] !== undefined) lines[p.position] += futbolEffectivePower(p);
@@ -8718,6 +8905,13 @@ function futbolLinePowers(selectedPlayers, isHome, tactic) {
     lines.DEF *= 1.1;
     lines.FWD *= 0.9;
     lines.MID *= 0.9;
+  }
+  // Mücadele — yeni istek: "Agresif ... tüm oyuncuların gücü o maçta %5
+  // daha yüksek olacak", "Çok agresif ... %10 daha yüksek", "Dikkatli ...
+  // güçler %5 daha düşük olacak". Tüm mevkilere eşit uygulanır (taktikten
+  // farklı olarak mevkiye özel değil). Botlar hep 1 (normal) kullanır.
+  if (mucadelePowerMult !== 1) {
+    for (const key of Object.keys(lines)) lines[key] *= mucadelePowerMult;
   }
   return lines;
 }
@@ -8820,11 +9014,20 @@ function groupFutbolPlayersByPositionArr(players) {
 // aksi halde (kadro seçilmemişse, seçim artık geçersizse, ya da düşük
 // formlu oyuncu içeriyorsa) otomatiğe döner: 2-2-1 / dengeli / en yüksek
 // etkin güçlü 6 oyuncu — kullanıcı promptundaki kural birebir.
+// formationFullyFieldable — bir dizilimin (need) SAĞLIKLI (sakat olmayan)
+// oyuncu havuzuyla TAM doldurulup doldurulamayacağını kontrol eder — yeni
+// istek: "kadro 2-2-1 olmazsa 1-2-2 denensin ... tüm dizilimler denensin,
+// herhangi biriyle maça çıkabiliyorsa çıkılsın".
+function formationFullyFieldable(playersByPosition, need) {
+  return Object.keys(need).every((pos) => (playersByPosition[pos]?.length || 0) >= need[pos]);
+}
+
 function resolveFutbolTeamLineup(team, players) {
   const byId = {};
   players.forEach((p) => (byId[p.id] = p));
   const formationKey = FUTBOL_FORMATIONS[team.formation] ? team.formation : null;
   const manualIds = Array.isArray(team.lineup) ? team.lineup : null;
+  const mucadeleConfig = futbolMucadeleConfig(team);
 
   if (formationKey && manualIds) {
     const need = FUTBOL_FORMATIONS[formationKey];
@@ -8836,19 +9039,55 @@ function resolveFutbolTeamLineup(team, players) {
     });
     const shapeOk = Object.keys(need).every((k) => need[k] === (got[k] || 0));
     const anyLowForm = manualPlayers.some((p) => p.form < 50);
+    // Yeni istek: sakat oyuncu KESİNLİKLE sahaya çıkamaz — manuel kadroda
+    // sakat biri varsa (form<50 ile AYNI şekilde) otomatiğe düşülür.
+    const anyInjured = manualPlayers.some((p) => (p.injuryDaysLeft || 0) > 0);
 
-    if (allStillOnRoster && shapeOk && !anyLowForm) {
+    if (allStillOnRoster && shapeOk && !anyLowForm && !anyInjured) {
       const selectedSet = new Set(manualIds);
       return {
         selected: manualPlayers,
         bench: players.filter((p) => !selectedSet.has(p.id)),
         tactic: FUTBOL_TACTICS.includes(team.tactic) ? team.tactic : 'dengeli',
+        mucadeleConfig,
       };
     }
   }
 
-  const auto = pickFutbolLineup(groupFutbolPlayersByPositionArr(players), FUTBOL_DEFAULT_FORMATION);
-  return { selected: auto.selected, bench: auto.bench, tactic: 'dengeli' };
+  // Otomatik dizilim — yeni istek: sakat oyuncular havuzdan TAMAMEN
+  // çıkarılır (form<50 gibi sadece düşük öncelikli değil, kesin dışlanır),
+  // sonra dizilimler sırayla (önce takımın kendi seçtiği, sonra varsayılan
+  // 2-2-1, sonra kalan tüm dizilimler) denenir; SAĞLIKLI oyuncularla TAM
+  // doldurulabilen İLK dizilim seçilir. Hiçbiri tam dolmuyorsa (normalde bu
+  // noktaya gelinmeden ÖNCE takım günlük taramada bota devredilmiş olur —
+  // bkz. dailySweepUnfieldableFutbolTeams) en iyi çabayla varsayılan
+  // dizilimle devam edilir (eksik kalabilir, sahaya 6'dan az çıkabilir).
+  const healthyPlayers = players.filter((p) => !((p.injuryDaysLeft || 0) > 0));
+  const healthyByPos = groupFutbolPlayersByPositionArr(healthyPlayers);
+  const formationOrder = [];
+  if (formationKey) formationOrder.push(formationKey);
+  Object.keys(FUTBOL_FORMATIONS).forEach((k) => {
+    if (!formationOrder.includes(k)) formationOrder.push(k);
+  });
+  let chosenNeed = FUTBOL_DEFAULT_FORMATION;
+  for (const key of formationOrder) {
+    if (formationFullyFieldable(healthyByPos, FUTBOL_FORMATIONS[key])) {
+      chosenNeed = FUTBOL_FORMATIONS[key];
+      break;
+    }
+  }
+  const auto = pickFutbolLineup(healthyByPos, chosenNeed);
+  // Bench, TÜM kadroyu (sakatlar dahil) yansıtsın diye healthyPlayers değil
+  // orijinal `players`den, seçilenler çıkarılarak hesaplanıyor — sakat
+  // oyuncular sahaya çıkamaz ama hâlâ takımın bir parçası, "yedek" listesinde
+  // görünmeye devam etmeli (maç kaydında/istemcide gösterim için).
+  const selectedIds = new Set(auto.selected.map((p) => p.id));
+  return {
+    selected: auto.selected,
+    bench: players.filter((p) => !selectedIds.has(p.id)),
+    tactic: 'dengeli',
+    mucadeleConfig,
+  };
 }
 
 function groupFutbolPlayersByPosition(snap) {
@@ -8889,8 +9128,8 @@ async function computeFutbolMatchLive(match) {
     .filter((p) => !awayTraining.has(p.id));
   const homeResolved = resolveFutbolTeamLineup(homeTeamSnap.data(), homePlayersArr);
   const awayResolved = resolveFutbolTeamLineup(awayTeamSnap.data(), awayPlayersArr);
-  const homeLines = futbolLinePowers(homeResolved.selected, true, homeResolved.tactic);
-  const awayLines = futbolLinePowers(awayResolved.selected, false, awayResolved.tactic);
+  const homeLines = futbolLinePowers(homeResolved.selected, true, homeResolved.tactic, homeResolved.mucadeleConfig.powerMult);
+  const awayLines = futbolLinePowers(awayResolved.selected, false, awayResolved.tactic, awayResolved.mucadeleConfig.powerMult);
   const { homeScore, awayScore, timeline, possessionCheckpoints } = simulateFutbolMatch(homeLines, awayLines);
 
   // matchStartAt→revealAt (18:00→19:00, tam 1 saat) istemcinin canlı
@@ -9016,19 +9255,37 @@ async function applyFutbolMatchResult(matchId) {
     fans: Math.max(0, homeFansBefore + homeFanResultDelta + homeFanSatisfactionDelta),
   });
 
-  // Oyuncu gelişimi: sahaya çıkanlar 0.1-2.0 güç kazanır + yaşı kadar
-  // form kaybeder; yedekler formu +50 kazanır (100'ü geçmez).
+  // Oyuncu gelişimi: sahaya çıkanlar 0.1-2.0 güç kazanır + (mücadele
+  // seviyesine göre ölçeklenen) yaşı kadar form kaybeder; yedekler formu
+  // +50 kazanır (100'ü geçmez). Ayrıca — yeni istek: SADECE oyuncu sahipli
+  // takımların (botlar hariç) sahaya çıkan 6 kişisi, yaşa ve mücadele
+  // seviyesine göre sakatlanma riski taşır (16-19: %2, 20-29: %4, 30-35:
+  // %6, mücadeleye göre 0.5x/1x/1.5x/2x çarpılır). Sakatlanan oyuncu
+  // 1-5 gün (00:00'da her gece kendiliğinden azalan) sahaya çıkamaz/
+  // antrenmana giremez — bkz. resolveFutbolTeamLineup ve addFutbolTraining.
   const homeLineupSet = new Set(match.homeLineupIds || []);
   const awayLineupSet = new Set(match.awayLineupIds || []);
-  const applyPlayerUpdates = (snap, lineupSet, teamId) => {
+  const homeMucadele = futbolMucadeleConfig(homeTeamSnap.data());
+  const awayMucadele = futbolMucadeleConfig(awayTeamSnap.data());
+  const injuredThisMatchByTeam = new Map(); // teamId -> [playerName, ...]
+  const applyPlayerUpdates = (snap, lineupSet, teamId, mucadele, isBot) => {
     snap.docs.forEach((d) => {
       const p = d.data();
       if (lineupSet.has(d.id)) {
         const gain = Math.round(randomInRange(0.1, 2.0) * 10) / 10;
-        batch.update(d.ref, {
+        const updates = {
           power: Math.round((p.power + gain) * 10) / 10,
-          form: Math.max(0, p.form - p.age),
-        });
+          form: Math.max(0, Math.round(p.form - p.age * mucadele.formLossMult)),
+        };
+        if (!isBot) {
+          const days = rollFutbolInjuryDays(p.age, mucadele.injuryMult);
+          if (days > 0) {
+            updates.injuryDaysLeft = days;
+            if (!injuredThisMatchByTeam.has(teamId)) injuredThisMatchByTeam.set(teamId, []);
+            injuredThisMatchByTeam.get(teamId).push(p.name);
+          }
+        }
+        batch.update(d.ref, updates);
         // "Gelişimler" ekranı için: bu maçta gelişim yaşayan oyuncuyu
         // kısa bir günlük kaydına da yazıyoruz.
         logFutbolGrowth(batch, { teamId, playerId: d.id, playerName: p.name, amount: gain, type: 'mac' });
@@ -9037,22 +9294,30 @@ async function applyFutbolMatchResult(matchId) {
       }
     });
   };
-  applyPlayerUpdates(homePlayersSnap, homeLineupSet, match.homeTeamId);
-  applyPlayerUpdates(awayPlayersSnap, awayLineupSet, match.awayTeamId);
+  applyPlayerUpdates(homePlayersSnap, homeLineupSet, match.homeTeamId, homeMucadele, homeTeamSnap.data().isBot);
+  applyPlayerUpdates(awayPlayersSnap, awayLineupSet, match.awayTeamId, awayMucadele, awayTeamSnap.data().isBot);
 
-  // SMS — takım sahiplerine maç sonucu (+ ev sahibiyse bilet geliri).
+  // SMS — takım sahiplerine maç sonucu (+ ev sahibiyse bilet geliri, +
+  // varsa bu maçta sakatlanan oyuncuların isimleri).
   const outcomeText = (myScore, oppScore) =>
     myScore > oppScore ? 'kazandı' : myScore < oppScore ? 'kaybetti' : 'berabere kaldı';
+  const injuryNote = (teamId) => {
+    const names = injuredThisMatchByTeam.get(teamId);
+    if (!names || names.length === 0) return '';
+    return ` 🚑 Sakatlanan oyuncu(lar): ${names.join(', ')}.`;
+  };
   if (homeOwnerUid) {
     let text = `⚽ ${homeName} ${homeScore}-${awayScore} ${awayName} — takımın ${outcomeText(homeScore, awayScore)}.`;
     if (fanGoldEarned > 0) {
       text += ` Stadyumunuza gelen ${homeAttendance.toLocaleString('tr-TR')} taraftardan bilet gelirlerinden ${fanGoldEarned.toLocaleString('tr-TR')} altın kazandınız.`;
     }
+    text += injuryNote(match.homeTeamId);
     sendFutbolSms(batch, homeOwnerUid, text, 'futbol_match_result');
   }
   const awayOwnerUid = awayTeamSnap.data().ownerUid;
   if (awayOwnerUid) {
-    const text = `⚽ ${homeName} ${homeScore}-${awayScore} ${awayName} — takımın (deplasmanda) ${outcomeText(awayScore, homeScore)}.`;
+    let text = `⚽ ${homeName} ${homeScore}-${awayScore} ${awayName} — takımın (deplasmanda) ${outcomeText(awayScore, homeScore)}.`;
+    text += injuryNote(match.awayTeamId);
     sendFutbolSms(batch, awayOwnerUid, text, 'futbol_match_result');
   }
 
@@ -9416,8 +9681,8 @@ async function computeFutbolCupMatchLive(match) {
     .filter((p) => !awayTraining.has(p.id));
   const homeResolved = resolveFutbolTeamLineup(homeTeamSnap.data(), homePlayersArr);
   const awayResolved = resolveFutbolTeamLineup(awayTeamSnap.data(), awayPlayersArr);
-  const homeLines = futbolLinePowers(homeResolved.selected, false, homeResolved.tactic);
-  const awayLines = futbolLinePowers(awayResolved.selected, false, awayResolved.tactic);
+  const homeLines = futbolLinePowers(homeResolved.selected, false, homeResolved.tactic, homeResolved.mucadeleConfig.powerMult);
+  const awayLines = futbolLinePowers(awayResolved.selected, false, awayResolved.tactic, awayResolved.mucadeleConfig.powerMult);
   const { homeScore, awayScore, timeline, possessionCheckpoints } = simulateFutbolMatch(homeLines, awayLines);
 
   let penalty = null;
@@ -9476,25 +9741,58 @@ async function applyFutbolCupMatchResult(matchId) {
     playedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
+  // Kupa maçları da normal lig maçlarıyla AYNI mücadele/sakatlık kuralına
+  // tabi (kullanıcı isteği "her maçta" — kupa maçı istisna değil).
   const homeLineupSet = new Set(match.homeLineupIds || []);
   const awayLineupSet = new Set(match.awayLineupIds || []);
-  const applyPlayerUpdates = (snap, lineupSet, teamId) => {
+  const injuredThisMatchByTeam = new Map();
+  const applyPlayerUpdates = (snap, lineupSet, teamId, mucadele, isBot) => {
     snap.docs.forEach((d) => {
       const p = d.data();
       if (lineupSet.has(d.id)) {
         const gain = Math.round(randomInRange(0.1, 2.0) * 10) / 10;
-        batch.update(d.ref, {
+        const updates = {
           power: Math.round((p.power + gain) * 10) / 10,
-          form: Math.max(0, p.form - p.age),
-        });
+          form: Math.max(0, Math.round(p.form - p.age * mucadele.formLossMult)),
+        };
+        if (!isBot) {
+          const days = rollFutbolInjuryDays(p.age, mucadele.injuryMult);
+          if (days > 0) {
+            updates.injuryDaysLeft = days;
+            if (!injuredThisMatchByTeam.has(teamId)) injuredThisMatchByTeam.set(teamId, []);
+            injuredThisMatchByTeam.get(teamId).push(p.name);
+          }
+        }
+        batch.update(d.ref, updates);
         logFutbolGrowth(batch, { teamId, playerId: d.id, playerName: p.name, amount: gain, type: 'kupa' });
       } else {
         batch.update(d.ref, { form: Math.min(100, p.form + 50) });
       }
     });
   };
-  if (homeTeamSnap.exists) applyPlayerUpdates(homePlayersSnap, homeLineupSet, match.homeTeamId);
-  if (awayTeamSnap.exists) applyPlayerUpdates(awayPlayersSnap, awayLineupSet, match.awayTeamId);
+  if (homeTeamSnap.exists) {
+    applyPlayerUpdates(
+      homePlayersSnap,
+      homeLineupSet,
+      match.homeTeamId,
+      futbolMucadeleConfig(homeTeamSnap.data()),
+      homeTeamSnap.data().isBot
+    );
+  }
+  if (awayTeamSnap.exists) {
+    applyPlayerUpdates(
+      awayPlayersSnap,
+      awayLineupSet,
+      match.awayTeamId,
+      futbolMucadeleConfig(awayTeamSnap.data()),
+      awayTeamSnap.data().isBot
+    );
+  }
+  const injuryNote = (teamId) => {
+    const names = injuredThisMatchByTeam.get(teamId);
+    if (!names || names.length === 0) return '';
+    return ` 🚑 Sakatlanan oyuncu(lar): ${names.join(', ')}.`;
+  };
 
   const homeName = homeTeamSnap.exists ? homeTeamSnap.data().name : match.homeTeamName;
   const awayName = awayTeamSnap.exists ? awayTeamSnap.data().name : match.awayTeamName;
@@ -9509,7 +9807,7 @@ async function applyFutbolCupMatchResult(matchId) {
     sendFutbolSms(
       batch,
       homeOwnerUid,
-      `🏆 Neon Kupası ${roundLabel}: ${homeName} ${scoreLine} ${awayName} — takımın ${winnerIsHome ? 'bir üst tura yükseldi' : 'kupadan elendi'}.`,
+      `🏆 Neon Kupası ${roundLabel}: ${homeName} ${scoreLine} ${awayName} — takımın ${winnerIsHome ? 'bir üst tura yükseldi' : 'kupadan elendi'}.${injuryNote(match.homeTeamId)}`,
       'futbol_cup_match_result'
     );
   }
@@ -9518,7 +9816,7 @@ async function applyFutbolCupMatchResult(matchId) {
     sendFutbolSms(
       batch,
       awayOwnerUid,
-      `🏆 Neon Kupası ${roundLabel}: ${homeName} ${scoreLine} ${awayName} — takımın ${!winnerIsHome ? 'bir üst tura yükseldi' : 'kupadan elendi'}.`,
+      `🏆 Neon Kupası ${roundLabel}: ${homeName} ${scoreLine} ${awayName} — takımın ${!winnerIsHome ? 'bir üst tura yükseldi' : 'kupadan elendi'}.${injuryNote(match.awayTeamId)}`,
       'futbol_cup_match_result'
     );
   }
@@ -10167,6 +10465,105 @@ async function assignFutbolBotTraining() {
   if (opCount % 450 !== 0) await batch.commit();
 }
 
+// dailySweepFutbolTeamsBeforeMatchday — her gün 18:00'de, o günün
+// maçları hesaplanmadan HEMEN ÖNCE, TÜM oyuncu sahipli (bot olmayan)
+// takımlar için çalışır. Kullanıcı promptu: "kadro 2-2-1 olmazsa 1-2-2
+// denensin ... tüm dizilimler denensin, herhangi biriyle maça
+// çıkabiliyorsa çıkılsın, hiçbir dizilimle maça çıkamıyorsa takım o
+// zaman oyuncunun elinden alınacak" + "antrenmandaki kutuları da
+// otomatik dolduralım" (oyuncu giriş yapmasa bile takım gelişmeye devam
+// etsin). NOT: takımın "bugün giriş yaptı mı" bilgisini tutan bir alan
+// yok (kasıtlı basit tutuldu) — bunun yerine PRATİK bir vekil kural
+// kullanılıyor: antrenman kutusu BOŞSA ve uygun (sağlıklı, kadro/
+// antrenman dışı) bir aday VARSA otomatik dolduruluyor; oyuncu zaten
+// kendi eliyle doldurmuşsa (kutu doluysa) dokunulmuyor.
+//
+// 1) SAHAYA ÇIKAMAYAN TAKIMLARI BOTA DEVRET — resolveFutbolTeamLineup'
+//    taki AYNI 6 dizilim, AYNI formationFullyFieldable kontrolüyle
+//    sırayla denenir; SAĞLIKLI (sakat olmayan) oyuncularla hiçbiri tam
+//    dolmuyorsa takım elden alınır — finishFutbolSeasonPart2 adım
+//    3'teki (minimum kadro altına düşen takımlar için) BİREBİR AYNI
+//    devretme/ödeme mantığı: (takım değeri*2)/3 altın öder, eski
+//    kadroyu siler, yeni rastgele kadro üretir, takımı bota çevirir.
+// 2) KALAN (hâlâ oyuncuya ait) takımlarda BOŞ antrenman kutularını
+//    (mevki başına 1, toplam 4) sağlıklı + kadro/antrenman dışı en iyi
+//    adaylarla doldurur — botların kendi antrenman seçimiyle aynı
+//    önceliklendirme (form 100 öncelik, sonra güç), ama addFutbolTraining
+//    kuralına uyarak mevki başına SADECE 1 aday eklenir.
+async function dailySweepFutbolTeamsBeforeMatchday() {
+  const allTeamsSnap = await db.collection('futbolTeams').get();
+  for (const teamDoc of allTeamsSnap.docs) {
+    const team = teamDoc.data();
+    if (!team.ownerUid) continue; // botlara dokunma
+
+    const playersSnap = await db.collection('futbolPlayers').where('teamId', '==', teamDoc.id).get();
+    const players = playersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const healthyPlayers = players.filter((p) => !((p.injuryDaysLeft || 0) > 0));
+    const healthyByPos = groupFutbolPlayersByPositionArr(healthyPlayers);
+    const canField = Object.values(FUTBOL_FORMATIONS).some((need) => formationFullyFieldable(healthyByPos, need));
+
+    if (!canField) {
+      // --- 1) Sahaya hiçbir dizilimle çıkamıyor — takımı elden al ---
+      const value = await computeFutbolTeamValue(teamDoc.id);
+      const payout = Math.round((value * 2) / 3);
+      const revertBatch = db.batch();
+      revertBatch.update(db.collection('users').doc(team.ownerUid), {
+        gold: admin.firestore.FieldValue.increment(payout),
+      });
+      players.forEach((p) => revertBatch.delete(db.collection('futbolPlayers').doc(p.id)));
+      const template = randomFutbolSquadComposition(team.tier);
+      template.forEach(([position, tierBand]) => {
+        const playerRef = db.collection('futbolPlayers').doc();
+        revertBatch.set(playerRef, { teamId: teamDoc.id, ...randomFutbolPlayer(position, tierBand) });
+      });
+      revertBatch.update(teamDoc.ref, {
+        ownerUid: null,
+        isBot: true,
+        tactic: 'dengeli',
+        formation: '2-2-1',
+        lineup: admin.firestore.FieldValue.delete(),
+        mucadele: admin.firestore.FieldValue.delete(),
+        doctorPlayerId: admin.firestore.FieldValue.delete(),
+        trainingPlayerIds: admin.firestore.FieldValue.delete(),
+      });
+      sendFutbolSms(
+        revertBatch,
+        team.ownerUid,
+        `⚽ ${team.name || 'Futbol takımın'} — kadronda sakatlık/form nedeniyle hiçbir dizilimle sahaya çıkacak sağlıklı oyuncu kalmadığı için takım elinden alındı. Takım değerinin karşılığı olarak ${payout.toLocaleString('tr-TR')} altın hesabına yatırıldı.`,
+        'futbol_team_seized'
+      );
+      await revertBatch.commit();
+      continue; // takım artık bot — antrenman doldurmaya gerek yok
+    }
+
+    // --- 2) Boş antrenman kutularını (mevki başına 1) otomatik doldur ---
+    const currentTrainingIds = Array.isArray(team.trainingPlayerIds) ? team.trainingPlayerIds : [];
+    const lineupIds = new Set(Array.isArray(team.lineup) ? team.lineup : []);
+    const byId = {};
+    players.forEach((p) => (byId[p.id] = p));
+    const filledPositions = new Set(
+      currentTrainingIds.map((id) => byId[id]?.position).filter(Boolean)
+    );
+    const openPositions = ['GK', 'DEF', 'MID', 'FWD'].filter((pos) => !filledPositions.has(pos));
+    if (openPositions.length === 0) continue; // kutular zaten dolu
+
+    const excludeIds = new Set([...lineupIds, ...currentTrainingIds]);
+    const eligible = healthyPlayers.filter((p) => !excludeIds.has(p.id));
+    if (eligible.length === 0) continue;
+    const rank = (p) => (p.form >= 100 ? 1 : 0) * 100000 + p.power;
+    const additions = [];
+    for (const pos of openPositions) {
+      const candidate = eligible
+        .filter((p) => p.position === pos && !additions.includes(p.id))
+        .sort((a, b) => rank(b) - rank(a))[0];
+      if (candidate) additions.push(candidate.id);
+    }
+    if (additions.length > 0) {
+      await teamDoc.ref.update({ trainingPlayerIds: [...currentTrainingIds, ...additions] });
+    }
+  }
+}
+
 // resolveFutbolMatchdayStart — her gün 18:00 (İstanbul saati). Önce
 // futbolSeasonState/current'a bakar: 'CUP_DAY' ise o günkü kupa turunun
 // maçlarını hesaplar ve o gün için LİG MAÇI HİÇ OLUŞTURULMAZ (kullanıcı
@@ -10179,6 +10576,14 @@ export const resolveFutbolMatchdayStart = onSchedule(
   { schedule: '0 18 * * *', timeZone: 'Europe/Istanbul' },
   async () => {
     const { state } = await ensureFutbolSeasonState();
+
+    // Maçlar hesaplanmadan ÖNCE — kadrosu sakatlık/form yüzünden sahaya
+    // çıkamayan takımları bota devret + boş antrenman kutularını
+    // otomatik doldur (bkz. dailySweepFutbolTeamsBeforeMatchday). Kupa/
+    // kutlama/lig günü fark etmeksizin her gün çalışır — hangi gün türü
+    // olursa olsun takımların kadrosu güncel/sahaya çıkabilir halde
+    // tutulmalı.
+    await dailySweepFutbolTeamsBeforeMatchday();
 
     if (state.status === 'CUP_DAY' && state.pendingCupRound) {
       const cupMatchesSnap = await db
@@ -10700,10 +11105,17 @@ export const sellFutbolTeam = onCall(async (request) => {
 // (pozisyon sayıları) ve aynı oyuncunun 2 kere seçilmediğini doğrular.
 export const setFutbolLineup = onCall(async (request) => {
   const uid = requireAuth(request);
-  const { teamId, formation, tactic, lineup } = request.data || {};
+  const { teamId, formation, tactic, lineup, mucadele } = request.data || {};
   if (!FUTBOL_FORMATIONS[formation]) throw new HttpsError('invalid-argument', 'Geçersiz dizilim.');
   if (!FUTBOL_TACTICS.includes(tactic)) throw new HttpsError('invalid-argument', 'Geçersiz taktik.');
   if (!Array.isArray(lineup)) throw new HttpsError('invalid-argument', 'Geçersiz kadro.');
+  // Mücadele — yeni istek: "kadro > taktiğin altına mücadele kısmı
+  // koyalım (Dikkatli/Normal/Agresif/Çok Agresif)". Geriye dönük uyumluluk
+  // için gönderilmezse 'normal' varsayılır.
+  const resolvedMucadele = mucadele == null ? FUTBOL_MUCADELE_DEFAULT : mucadele;
+  if (!FUTBOL_MUCADELE_LEVELS[resolvedMucadele]) {
+    throw new HttpsError('invalid-argument', 'Geçersiz mücadele seviyesi.');
+  }
 
   const teamRef = db.collection('futbolTeams').doc(teamId);
   const teamSnap = await teamRef.get();
@@ -10730,6 +11142,11 @@ export const setFutbolLineup = onCall(async (request) => {
     const p = byId[id];
     if (!p) throw new HttpsError('invalid-argument', 'Kadroda olmayan bir oyuncu seçildi.');
     if (got[p.position] === undefined) throw new HttpsError('invalid-argument', 'Geçersiz mevki.');
+    // Sakat oyuncu KESİNLİKLE ilk 11'e alınamaz — istemci zaten bunu
+    // engelliyor ama sunucu tarafında da (tek doğru kaynak) reddedilir.
+    if ((p.injuryDaysLeft || 0) > 0) {
+      throw new HttpsError('invalid-argument', `${p.name} sakat, ilk 11'e alınamaz.`);
+    }
     got[p.position] += 1;
   }
   const shapeOk = Object.keys(need).every((k) => need[k] === (got[k] || 0));
@@ -10737,7 +11154,7 @@ export const setFutbolLineup = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'Seçilen oyuncular dizilimle uyuşmuyor.');
   }
 
-  await teamRef.update({ formation, tactic, lineup });
+  await teamRef.update({ formation, tactic, lineup, mucadele: resolvedMucadele });
   return { ok: true };
 });
 
@@ -11290,6 +11707,10 @@ export const addFutbolTraining = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'Bu oyuncu senin kadronda değil.');
   }
   const newPlayer = playerSnap.data();
+  // Sakat oyuncu antrenmana sokulamaz (yeni istek).
+  if ((newPlayer.injuryDaysLeft || 0) > 0) {
+    throw new HttpsError('failed-precondition', 'Sakat oyuncu antrenmana sokulamaz.');
+  }
   if (current.length > 0) {
     const currentPlayersSnap = await db
       .collection('futbolPlayers')
@@ -11320,6 +11741,51 @@ export const removeFutbolTraining = onCall(async (request) => {
   }
   const current = teamSnap.data().trainingPlayerIds || [];
   await teamRef.update({ trainingPlayerIds: current.filter((id) => id !== playerId) });
+  return { ok: true };
+});
+
+// --- Futbol modülü: Doktor (sakatlık tedavisi) ---
+//
+// assignFutbolDoctor — yeni istek: "doktor sekmesinde boş 1 adet kutu
+// olsun oraya 1 oyuncu seçebilelim ... doktora oyuncumuzu verme fiyatı
+// 5000 altın olacak. önce oyuncumuzu seçeceğiz sonra 5000 altını
+// ödeyeceğiz ve saat 00.00da doktor sayesinde ekstradan futbolcumuz 1
+// gün daha iyileşmiş olacak." Doktor "tek seferde 1 oyuncuyla
+// ilgilenebilir" — team.doctorPlayerId zaten doluysa (bugünkü tedavi hâlâ
+// sürüyor) yeni atama reddedilir; kutu her gece 00:00'da (dailyReset)
+// otomatik boşalır (bkz. dailyReset'teki sakatlık iyileşme bloğu).
+export const assignFutbolDoctor = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { teamId, playerId } = request.data || {};
+  const teamRef = db.collection('futbolTeams').doc(teamId);
+  const userRef = db.collection('users').doc(uid);
+
+  await db.runTransaction(async (tx) => {
+    const [teamSnap, playerSnap, userSnap] = await Promise.all([
+      tx.get(teamRef),
+      tx.get(db.collection('futbolPlayers').doc(playerId)),
+      tx.get(userRef),
+    ]);
+    if (!teamSnap.exists || teamSnap.data().ownerUid !== uid) {
+      throw new HttpsError('permission-denied', 'Bu takım sana ait değil.');
+    }
+    if (teamSnap.data().doctorPlayerId) {
+      throw new HttpsError('failed-precondition', 'Doktor şu an başka bir oyuncuyla ilgileniyor, yarın tekrar dene.');
+    }
+    if (!playerSnap.exists || playerSnap.data().teamId !== teamId) {
+      throw new HttpsError('invalid-argument', 'Bu oyuncu senin kadronda değil.');
+    }
+    if (!((playerSnap.data().injuryDaysLeft || 0) > 0)) {
+      throw new HttpsError('failed-precondition', 'Bu oyuncu sakat değil.');
+    }
+    const user = userSnap.data();
+    if (!user || (user.gold || 0) < FUTBOL_DOCTOR_COST) {
+      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    }
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-FUTBOL_DOCTOR_COST) });
+    tx.update(teamRef, { doctorPlayerId: playerId });
+  });
+
   return { ok: true };
 });
 
@@ -11721,14 +12187,14 @@ const GOLD_STORE_PACKAGES = {
     id: 'paket1',
     name: 'Başlangıç Paketi',
     priceTRY: 30,
-    gold: 20000,
+    gold: 30000,
     items: {},
   },
   paket2: {
     id: 'paket2',
-    name: '60.000 Altın + Özel Paket',
+    name: '100.000 Altın + Özel Paket',
     priceTRY: 100,
-    gold: 60000,
+    gold: 100000,
     items: {
       yasakliMadde: 4,
       tamirMalzemesi: 1000,

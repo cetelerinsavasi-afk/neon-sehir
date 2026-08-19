@@ -13,8 +13,10 @@ const TRAINING_POSITIONS = ['GK', 'DEF', 'MID', 'FWD'];
 export default function FutbolAltyapi({ team }) {
   const { players } = useFutbolTeamPlayers(team.id);
   const lineup = team.lineup || [];
-  // İlk 11'de olan oyuncular antrenman seçeneklerinde hiç gözükmez.
-  const trainablePlayers = players.filter((p) => !lineup.includes(p.id));
+  // İlk 11'de olan VE sakat oyuncular antrenman seçeneklerinde hiç
+  // gözükmez — sakat oyuncu antrenmana sokulamaz (yeni istek, sunucu
+  // tarafında da addFutbolTraining reddediyor, burada da UX için filtreli).
+  const trainablePlayers = players.filter((p) => !lineup.includes(p.id) && !((p.injuryDaysLeft || 0) > 0));
 
   return (
     <div className="futbol-altyapi">
@@ -140,8 +142,8 @@ function TrainingSection({ teamId, players, allPlayers, excludedCount, trainingP
         18:00-19:00 arası, antrenmandaki oyuncu o günkü maça çıkamaz
       </p>
       <p className="futbol-placeholder">
-        İlk 11'deki oyuncular antrenmana gönderilemez — önce kadrodan çıkar.
-        {excludedCount > 0 ? ` (${excludedCount} oyuncu ilk 11'de olduğu için listede gizlendi.)` : ''}
+        İlk 11'deki ve sakat oyuncular antrenmana gönderilemez — önce kadrodan çıkar / iyileşmesini bekle.
+        {excludedCount > 0 ? ` (${excludedCount} oyuncu ilk 11'de veya sakat olduğu için listede gizlendi.)` : ''}
       </p>
       {error && <p className="futbol-admin-error">{error}</p>}
 

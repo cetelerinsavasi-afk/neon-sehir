@@ -765,10 +765,19 @@ function DailyReportModal({ factory, onClose }) {
   const grossToday = factory.dailyGrossIncome || 0;
   const expenseToday = factory.dailySalaryExpense || 0;
   const netToday = factory.dailyIncome || 0;
+  // electricityToday — yeni istek: "elektrik faturası günlük raporda da
+  // giderlerin arasında belirtilsin". Bu tutar sahibin GERÇEK altınından
+  // ayrıca (bkz. functions/index.js dailyReset Part A.5) düşülür — yukarıdaki
+  // "Net kâr" (hisse payı hesabının TEK kaynağı) formülüne kasıtlı olarak
+  // DAHİL DEĞİL, o yüzden ayrı bir kalem olarak gösteriliyor.
+  const electricityToday = factory.dailyElectricityExpense || 0;
   const grossHistory = Array.isArray(factory.dailyGrossIncomeHistory) ? factory.dailyGrossIncomeHistory : [];
   const expenseHistory = Array.isArray(factory.dailySalaryExpenseHistory) ? factory.dailySalaryExpenseHistory : [];
+  const electricityHistory = Array.isArray(factory.dailyElectricityExpenseHistory)
+    ? factory.dailyElectricityExpenseHistory
+    : [];
   const netHistory = Array.isArray(factory.dailyIncomeHistory) ? factory.dailyIncomeHistory : [];
-  const rowCount = Math.max(grossHistory.length, expenseHistory.length, netHistory.length);
+  const rowCount = Math.max(grossHistory.length, expenseHistory.length, electricityHistory.length, netHistory.length);
   // Tabloyu en yeni gün en üstte olacak şekilde göster.
   const rows = Array.from({ length: rowCount }, (_, i) => {
     const idx = rowCount - 1 - i;
@@ -776,6 +785,7 @@ function DailyReportModal({ factory, onClose }) {
       key: idx,
       gross: grossHistory[idx] ?? null,
       expense: expenseHistory[idx] ?? null,
+      electricity: electricityHistory[idx] ?? null,
       net: netHistory[idx] ?? null,
     };
   });
@@ -810,12 +820,22 @@ function DailyReportModal({ factory, onClose }) {
             </span>
           </div>
           <div className="factory-report-stat">
+            <span className="factory-report-stat-label">⚡ Elektrik faturası</span>
+            <span className="factory-report-stat-value expense">
+              −{electricityToday.toLocaleString('tr-TR')} altın
+            </span>
+          </div>
+          <div className="factory-report-stat">
             <span className="factory-report-stat-label">📈 Net kâr</span>
             <span className={`factory-report-stat-value ${netToday < 0 ? 'negative' : 'positive'}`}>
               {netToday.toLocaleString('tr-TR')} altın
             </span>
           </div>
         </div>
+        <p className="factory-hint">
+          Elektrik faturası, çalışan makine başına 100 altın olarak doğrudan altınından kesilir (yetmezse
+          borca yazılır) — yukarıdaki net kâra dahil değildir.
+        </p>
 
         <p className="factory-step-label">Dün Üretilen Malzemeler</p>
         {producedEntries.length === 0 && <p className="factory-hint">Dün hiç üretim yapılmadı.</p>}
@@ -836,15 +856,17 @@ function DailyReportModal({ factory, onClose }) {
         {rows.length === 0 && <p className="factory-hint">Henüz rapor geçmişi yok.</p>}
         {rows.length > 0 && (
           <div className="factory-report-table">
-            <div className="factory-report-row factory-report-row-head">
+            <div className="factory-report-row factory-report-row-head factory-report-row-4col">
               <span>Kazanç</span>
-              <span>Masraf</span>
+              <span>Maaş</span>
+              <span>Elektrik</span>
               <span>Net</span>
             </div>
             {rows.map((r) => (
-              <div key={r.key} className="factory-report-row">
+              <div key={r.key} className="factory-report-row factory-report-row-4col">
                 <span>{(r.gross ?? 0).toLocaleString('tr-TR')}</span>
                 <span>−{(r.expense ?? 0).toLocaleString('tr-TR')}</span>
+                <span>−{(r.electricity ?? 0).toLocaleString('tr-TR')}</span>
                 <span className={(r.net ?? 0) < 0 ? 'negative' : 'positive'}>
                   {(r.net ?? 0).toLocaleString('tr-TR')}
                 </span>

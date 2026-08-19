@@ -348,6 +348,7 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
   const [panel, setPanel] = useState(null); // 'bank' | null
   const [sittingSeatId, setSittingSeatId] = useState(null);
   const [phoneOpen, setPhoneOpen] = useState(false);
+  const [phoneInitialApp, setPhoneInitialApp] = useState(null);
   const [chatText, setChatText] = useState('');
   // Yeni istek: "yeni mesaj yazdığımızda eskisi direkt yok olmasın, süresi
   // bitene kadar var olmaya devam etsin" — tek bir mesaj yerine, HENÜZ
@@ -875,7 +876,8 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
         />
         {ready && (
           <>
-            <button className="ws-phone-btn" onClick={() => setPhoneOpen(true)} title="Telefon">📱</button>
+            <button className="ws-chatsapp-btn" onClick={() => { setPhoneInitialApp('chatsapp'); setPhoneOpen(true); }} title="ChatsApp">💬</button>
+            <button className="ws-phone-btn" onClick={() => { setPhoneInitialApp(null); setPhoneOpen(true); }} title="Telefon">📱</button>
             <button className="ws-camera-btn" onClick={() => (user ? openCamera() : setShowGuestPrompt(true))} title="Fotoğraf çek">📷</button>
           </>
         )}
@@ -899,7 +901,13 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
         <button className="ws-chat-send" onClick={() => (user ? sendChat() : setShowGuestPrompt(true))}>Gönder</button>
       </div>
 
-      {phoneOpen && <PhoneScreen onClose={() => setPhoneOpen(false)} onEnterTable={() => {}} />}
+      {phoneOpen && (
+        <PhoneScreen
+          onClose={() => { setPhoneOpen(false); setPhoneInitialApp(null); }}
+          initialApp={phoneInitialApp}
+          onEnterTable={() => {}}
+        />
+      )}
 
       {showGuestPrompt && (
         <div className="ws-panel-backdrop" onClick={() => setShowGuestPrompt(false)}>

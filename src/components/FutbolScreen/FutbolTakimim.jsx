@@ -16,6 +16,7 @@ import FutbolKadro from './FutbolKadro';
 import FutbolTransfer from './FutbolTransfer';
 import FutbolLogoEditor from './FutbolLogoEditor';
 import FutbolAltyapi from './FutbolAltyapi';
+import FutbolDoktor from './FutbolDoktor';
 import FutbolStadyum from './FutbolStadyum';
 import { groupFutbolPlayersByPositionOrdered } from './futbolPositionOrder';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
@@ -36,6 +37,7 @@ const MY_TEAM_TABS = [
   { id: 'kadro', label: 'Kadro' },
   { id: 'transfer', label: 'Transfer' },
   { id: 'altyapi', label: 'Antrenman' },
+  { id: 'doktor', label: 'Doktor' },
   { id: 'forma', label: 'Forma' },
   { id: 'stadyum', label: 'Stadyum' },
 ];
@@ -65,6 +67,7 @@ export default function FutbolTakimim() {
       {tab === 'kadro' && <FutbolKadro team={team} />}
       {tab === 'transfer' && <FutbolTransfer team={team} />}
       {tab === 'altyapi' && <FutbolAltyapi team={team} />}
+      {tab === 'doktor' && <FutbolDoktor team={team} />}
       {tab === 'forma' && <FutbolLogoEditor team={team} />}
       {tab === 'stadyum' && <FutbolStadyum team={team} />}
     </div>
@@ -279,7 +282,7 @@ function MyTeamOverview({ team }) {
       <p className="futbol-kadro-section-title">Kadromuz ({players.length})</p>
       <p className="futbol-placeholder">
         🟢 Kadroda = ilk 11'de, satılamaz · 🟡 Antrenmanda = o gün maça çıkamaz, satılamaz · ⚪
-        Boşta = satabilirsin
+        Boşta = satabilirsin · 🚑 Sakat = iyileşene kadar sahaya/antrenmana çıkamaz
       </p>
       <div className="futbol-roster-list">
         {groupFutbolPlayersByPositionOrdered(players).map((group) => (
@@ -290,11 +293,14 @@ function MyTeamOverview({ team }) {
               const trainingIds = team.trainingPlayerIds || [];
               const inLineup = lineup.includes(p.id);
               const inTraining = trainingIds.includes(p.id);
-              const status = inLineup
-                ? { label: '🟢 Kadroda', cls: 'lineup' }
-                : inTraining
-                  ? { label: '🟡 Antrenmanda', cls: 'training' }
-                  : { label: '⚪ Boşta', cls: 'idle' };
+              const isInjured = (p.injuryDaysLeft || 0) > 0;
+              const status = isInjured
+                ? { label: `🚑 Sakat (${p.injuryDaysLeft}g)`, cls: 'injured' }
+                : inLineup
+                  ? { label: '🟢 Kadroda', cls: 'lineup' }
+                  : inTraining
+                    ? { label: '🟡 Antrenmanda', cls: 'training' }
+                    : { label: '⚪ Boşta', cls: 'idle' };
               return (
                 <div key={p.id} className="futbol-roster-row">
                   <FutbolPlayerAvatar playerId={p.id} position={p.position} size={38} />

@@ -406,8 +406,14 @@ export const sellFutbolTeam = (teamId) => httpsCallable(functions, 'sellFutbolTe
 
 // --- Faz Futbol: Faz 5 (kadro/taktik, transfer piyasası, forma) ---
 
-export const setFutbolLineup = (teamId, formation, tactic, lineup) =>
-  httpsCallable(functions, 'setFutbolLineup')({ teamId, formation, tactic, lineup });
+export const setFutbolLineup = (teamId, formation, tactic, lineup, mucadele) =>
+  httpsCallable(functions, 'setFutbolLineup')({ teamId, formation, tactic, lineup, mucadele });
+
+// assignFutbolDoctor — sakat bir oyuncuyu 5000 altın karşılığında o gece
+// bir gün daha hızlı iyileştir (doktor kutusu 00:00'da her halükarda
+// boşalır, bkz. dailyReset).
+export const assignFutbolDoctor = (teamId, playerId) =>
+  httpsCallable(functions, 'assignFutbolDoctor')({ teamId, playerId });
 
 export const listFutbolTransferMarket = () => httpsCallable(functions, 'listFutbolTransferMarket')();
 

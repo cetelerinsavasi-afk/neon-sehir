@@ -150,6 +150,13 @@
   font-style: italic;
 }
 
+/* futbol-injury-badge — sahadaki (ya da listedeki) sakat oyuncu rozeti. */
+.futbol-injury-badge {
+  display: block;
+  color: #ff5f6d;
+  font-weight: 700;
+}
+
 /* --- Oyuncu seçim popover --- */
 .futbol-picker-backdrop {
   position: fixed;

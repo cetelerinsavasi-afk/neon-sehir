@@ -85,21 +85,14 @@
   padding: 16px;
 }
 
-.gold-store-card-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.gold-store-emoji {
-  font-size: 28px;
-}
-
-.gold-store-title {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 800;
-  color: var(--text);
+/* gold-store-card-image — yeni istek: "paketin olduğu yere direkt
+   mağazaymış gibi attığım görselleri yerleştirelim" — kartın üst kısmı
+   artık ikon+başlık yerine doğrudan tanıtım görseli; asıl satın alma
+   butonu (gold-store-btn) görselin ALTINDA gerçek buton olarak kalıyor. */
+.gold-store-card-image {
+  width: 100%;
+  border-radius: 10px;
+  display: block;
 }
 
 .gold-store-price {

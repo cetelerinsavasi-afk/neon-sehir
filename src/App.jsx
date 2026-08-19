@@ -275,6 +275,22 @@ function GameShell() {
         onFutbolClick={() => setFutbolOpen(true)}
       />
 
+      {/* Yeni istek: "chatsapp ... anasayfada sağ alta yakın bi noktada
+          kısa yolu bulunsun" — alttaki 4 sekmeden biri DEĞİL, çubuğun
+          hafif üstünde/sağında, mekanlardaki kamera/telefon butonlarıyla
+          aynı boyutta (52px) bağımsız bir kısayol. */}
+      <button
+        className="map-chatsapp-btn"
+        onClick={() => {
+          setPhoneInitialApp('chatsapp');
+          setPhoneOpen(true);
+        }}
+        aria-label="ChatsApp"
+        title="ChatsApp"
+      >
+        💬
+      </button>
+
       {phoneOpen && (
         <PhoneScreen
           onClose={() => {

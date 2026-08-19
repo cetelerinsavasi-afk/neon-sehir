@@ -198,6 +198,7 @@ export default function ParkWorldScreen({ onExit }) {
   const [cameraError, setCameraError] = useState(null);
   const [cameraDone, setCameraDone] = useState(false);
   const [phoneOpen, setPhoneOpen] = useState(false);
+  const [phoneInitialApp, setPhoneInitialApp] = useState(null);
   const [showGuestPrompt, setShowGuestPrompt] = useState(false);
 
   const canvasRef = useRef(null);
@@ -915,13 +916,20 @@ export default function ParkWorldScreen({ onExit }) {
         />
         {ready && (
           <>
-            <button className="pw-phone-btn" onClick={() => setPhoneOpen(true)} title="Telefon">📱</button>
+            <button className="pw-chatsapp-btn" onClick={() => { setPhoneInitialApp('chatsapp'); setPhoneOpen(true); }} title="ChatsApp">💬</button>
+            <button className="pw-phone-btn" onClick={() => { setPhoneInitialApp(null); setPhoneOpen(true); }} title="Telefon">📱</button>
             <button className="pw-camera-btn" onClick={() => (user ? openCamera() : setShowGuestPrompt(true))} title="Fotoğraf çek">📷</button>
           </>
         )}
       </div>
 
-      {phoneOpen && <PhoneScreen onClose={() => setPhoneOpen(false)} onEnterTable={() => {}} />}
+      {phoneOpen && (
+        <PhoneScreen
+          onClose={() => { setPhoneOpen(false); setPhoneInitialApp(null); }}
+          initialApp={phoneInitialApp}
+          onEnterTable={() => {}}
+        />
+      )}
 
       <div className="pw-chat-row">
         <input

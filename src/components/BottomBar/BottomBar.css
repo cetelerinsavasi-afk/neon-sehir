@@ -67,6 +67,40 @@
   position: relative;
 }
 
+/* map-chatsapp-btn — App.jsx'te BottomBar'ın hemen yanında render edilir,
+   alttaki 4 sekmeden biri DEĞİL; ekranın sağ altına yakın, çubuğun hafif
+   üstünde, mekanlardaki .ws-chatsapp-btn ile aynı boyutta (52px) bağımsız
+   bir kısayol. */
+.map-chatsapp-btn {
+  position: fixed;
+  right: 16px;
+  bottom: calc(104px + env(safe-area-inset-bottom));
+  z-index: 20;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  color: var(--neon-cyan);
+  font-size: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 0 18px rgba(25, 232, 255, 0.25);
+  transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+
+.map-chatsapp-btn:hover {
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 24px rgba(25, 232, 255, 0.45);
+  transform: scale(1.05);
+}
+
+.map-chatsapp-btn:active {
+  transform: scale(0.96);
+}
+
 .bottom-bar-badge {
   position: absolute;
   top: -4px;

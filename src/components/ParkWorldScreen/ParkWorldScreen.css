@@ -162,6 +162,25 @@
   color: #e8c766;
 }
 
+/* pw-chatsapp-btn — worldScreenChrome.css'teki .ws-chatsapp-btn ile
+   BİREBİR aynı (Park kendi .pw-* önekini kullandığı için ayrıca burada
+   tanımlı) — telefon butonunun hemen üstünde 3. buton. */
+.pw-chatsapp-btn {
+  position: absolute;
+  bottom: 140px;
+  right: 16px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 1px solid #d4af37;
+  background: rgba(20, 20, 20, 0.85);
+  color: #e8c766;
+  font-size: 22px;
+  cursor: pointer;
+  z-index: 5;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
 .pw-phone-btn {
   position: absolute;
   bottom: 78px;

@@ -153,6 +153,28 @@
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
 }
 
+/* ws-chatsapp-btn — yeni istek: "mekanlarda avatarımızla gezerken de
+   sağdaki kamera ve telefon butonlarının bi üstünde chatsapp olsun,
+   direkt tıklayıp toplu chate girebilelim". Aynı boyut/stil, telefon
+   butonunun (bottom:78px) hemen üstünde 3. buton (bottom:140px) —
+   tıklanınca PhoneScreen'i initialApp='chatsapp' ile doğrudan sohbet
+   ekranı açık şekilde başlatır (bkz. component içindeki phoneInitialApp). */
+.ws-chatsapp-btn {
+  position: absolute;
+  bottom: 140px;
+  right: 16px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 1px solid #d4af37;
+  background: rgba(20, 20, 20, 0.85);
+  color: #e8c766;
+  font-size: 22px;
+  cursor: pointer;
+  z-index: 5;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
 /* ws-camera-btn/preview — Park'taki .pw-camera-* ile BİREBİR aynı (bkz.
    madde 11/12) — bina içlerinde de kamera artık aynı ortak kabuktan
    çalışıyor, her mekan kendi gerçek arka planını verir. */

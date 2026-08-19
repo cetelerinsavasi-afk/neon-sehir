@@ -17,6 +17,17 @@ const TACTICS = [
   { id: 'dengeli', label: 'Dengeli' },
   { id: 'ofansif', label: 'Ofansif' },
 ];
+// Mücadele — yeni istek: "kadro > taktiğin altına mücadele kısmı
+// koyalım (Dikkatli/Normal/Agresif/Çok Agresif)". Ne kadar agresif
+// oynarsan o maçta oyuncuların o kadar güçlü ama sakatlanma riski ve
+// maç sonrası form kaybı da o kadar yüksek olur (bkz. functions/index.js
+// FUTBOL_MUCADELE_LEVELS) — dikkatli oynarsan tam tersi.
+const MUCADELE_LEVELS = [
+  { id: 'dikkatli', label: 'Dikkatli' },
+  { id: 'normal', label: 'Normal' },
+  { id: 'agresif', label: 'Agresif' },
+  { id: 'cok_agresif', label: 'Çok Agresif' },
+];
 const POSITION_LABELS = { GK: 'Kaleci', DEF: 'Defans', MID: 'Orta Saha', FWD: 'Forvet' };
 // Sahada yukarıdan aşağıya gösterim sırası (forvet rakip kaleye yakın üstte).
 const ROW_ORDER = ['FWD', 'MID', 'DEF', 'GK'];
@@ -43,6 +54,7 @@ export default function FutbolKadro({ team }) {
   const { players } = useFutbolTeamPlayers(team.id);
   const [formation, setFormation] = useState(team.formation || '2-2-1');
   const [tactic, setTactic] = useState(team.tactic || 'dengeli');
+  const [mucadele, setMucadele] = useState(team.mucadele || 'normal');
   const [slots, setSlots] = useState({});
   const [pickerFor, setPickerFor] = useState(null); // { position, slotIndex }
   const [busy, setBusy] = useState(false);
@@ -56,6 +68,7 @@ export default function FutbolKadro({ team }) {
   useEffect(() => {
     setFormation(team.formation || '2-2-1');
     setTactic(team.tactic || 'dengeli');
+    setMucadele(team.mucadele || 'normal');
     skipNextAutoSaveRef.current = true;
   }, [team.id]);
 
@@ -100,7 +113,7 @@ export default function FutbolKadro({ team }) {
     setBusy(true);
     setMessage('');
     try {
-      await setFutbolLineup(team.id, formation, tactic, flatLineup);
+      await setFutbolLineup(team.id, formation, tactic, flatLineup, mucadele);
       setMessage('Kaydedildi ✓');
     } catch (err) {
       setMessage(err?.message || 'Kaydedilemedi.');
@@ -126,7 +139,7 @@ export default function FutbolKadro({ team }) {
     }, 900);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formation, tactic, flatLineupKey, isComplete]);
+  }, [formation, tactic, mucadele, flatLineupKey, isComplete]);
 
   const playersById = {};
   players.forEach((p) => (playersById[p.id] = p));
@@ -159,6 +172,24 @@ export default function FutbolKadro({ team }) {
         ))}
       </div>
 
+      <p className="futbol-kadro-section-title">Mücadele</p>
+      <div className="futbol-kadro-chip-row">
+        {MUCADELE_LEVELS.map((m) => (
+          <button
+            key={m.id}
+            className={`futbol-kadro-chip ${mucadele === m.id ? 'active' : ''}`}
+            onClick={() => setMucadele(m.id)}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+      <p className="futbol-placeholder futbol-kadro-note">
+        Ne kadar mücadeleci oynarsan oyuncuların o maçta o kadar güçlü
+        olur, ama sakatlanma riski ve maç sonrası form kaybı da o kadar
+        artar. Dikkatli oynarsan tam tersi — daha güvenli ama daha zayıf.
+      </p>
+
       <div className="futbol-pitch-big">
         {ROW_ORDER.map((pos) => (
           <div key={pos} className="futbol-pitch-row-wrap">
@@ -176,7 +207,11 @@ export default function FutbolKadro({ team }) {
                     {player ? (
                       <span className="futbol-pitch-slot-info">
                         <strong>{player.name.split(' ')[0]}</strong>
-                        {player.age}y · {player.power.toFixed(0)}g · {Math.round(player.form)}f
+                        {(player.injuryDaysLeft || 0) > 0 ? (
+                          <span className="futbol-injury-badge">🚑 Sakat ({player.injuryDaysLeft}g)</span>
+                        ) : (
+                          `${player.age}y · ${player.power.toFixed(0)}g · ${Math.round(player.form)}f`
+                        )}
                       </span>
                     ) : (
                       <span className="futbol-pitch-slot-info futbol-pitch-slot-empty">
@@ -206,16 +241,21 @@ export default function FutbolKadro({ team }) {
         (istersen anında kaydetmek için kullanabilirsin).
       </p>
       <p className="futbol-placeholder futbol-kadro-note">
-        Not: seçtiğin oyunculardan biri formu %50&apos;nin altına düşerse, o
-        maç için otomatik olarak 2-2-1 / dengeli / en formda kadroya geri
-        dönülür. Antrenmandaki oyuncular ilk 11&apos;e seçilemez.
+        Not: seçtiğin oyunculardan biri formu %50&apos;nin altına düşerse ya
+        da SAKATLANIRSA, o maç için otomatik olarak (denenebilecek ilk
+        uygun dizilimle) en formda/sağlıklı kadroya geri dönülür. Hiçbir
+        dizilimle sağlıklı 6 kişi çıkaramazsan takım elinden alınır.
+        Antrenmandaki ve sakat oyuncular ilk 11&apos;e seçilemez.
       </p>
 
       {pickerFor && (
         <PlayerPicker
           position={pickerFor.position}
           players={players.filter(
-            (p) => p.position === pickerFor.position && !(team.trainingPlayerIds || []).includes(p.id)
+            (p) =>
+              p.position === pickerFor.position &&
+              !(team.trainingPlayerIds || []).includes(p.id) &&
+              !((p.injuryDaysLeft || 0) > 0)
           )}
           usedPlayerIds={usedPlayerIds}
           currentId={slots[pickerFor.position]?.[pickerFor.slotIndex]}

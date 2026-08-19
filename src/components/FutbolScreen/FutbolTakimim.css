@@ -106,6 +106,12 @@
   color: var(--text-dim);
 }
 
+.futbol-roster-status.injured {
+  color: #ff5f6d;
+  border-color: rgba(255, 95, 109, 0.4);
+  background: rgba(255, 95, 109, 0.08);
+}
+
 .futbol-buy-meta {
   font-size: 12px;
   color: var(--text-dim);
