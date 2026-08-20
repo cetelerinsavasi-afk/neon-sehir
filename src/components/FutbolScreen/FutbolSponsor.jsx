@@ -96,7 +96,18 @@ export default function FutbolSponsor({ team }) {
 
   const { team: teamInfo, factories } = data;
   const mySponsor = factories.find((f) => f.isMySponsor);
-  const otherFactories = factories.filter((f) => !f.isMySponsor);
+  // otherFactories — kullanıcı isteği: max teklif tutarı 0 (ya da daha az)
+  // olan fabrikalar listelenmesin (henüz gelir geçmişi olmayan/gelirsiz
+  // fabrikalara zaten anlamlı bir teklif yapılamıyor). Kendi fabrikamızı
+  // (isSelfSponsor — ücret her zaman 0 olduğu için cap'ten bağımsız) ve
+  // aramızda bekleyen bir teklif varsa (theirPendingOffers) YİNE DE
+  // gösteriyoruz — aksi halde gelen bir teklife cevap veremezdik.
+  const otherFactories = factories.filter((f) => {
+    if (f.isMySponsor) return false;
+    if (f.isSelfSponsor) return true;
+    if (f.theirPendingOffers.length > 0) return true;
+    return f.offerCap > 0;
+  });
 
   return (
     <div className="futbol-sponsor">
@@ -134,6 +145,11 @@ export default function FutbolSponsor({ team }) {
           const myOffer = f.theirPendingOffers.find((o) => o.fromRole === 'club');
           const factoryOffer = f.theirPendingOffers.find((o) => o.fromRole === 'factory');
           const offerOpen = expandedOfferId === f.ownerId;
+          // pendingIsThis — bu fabrikanın teklifini kabul ettik (ya da bu
+          // fabrika bizim teklifimizi kabul etti) ama henüz aktif değil,
+          // bir sonraki 00:00'da devreye girecek — bkz. FactorySponsorModal.jsx
+          // içindeki AYNI düzeltme.
+          const pendingIsThis = teamInfo.pendingSponsorFactoryOwnerUid === f.ownerId;
           return (
             <div key={f.ownerId} className="futbol-buy-row futbol-sponsor-card">
               <FactoryBadge logo={f.logo} name={f.name} size={36} />
@@ -175,7 +191,11 @@ export default function FutbolSponsor({ team }) {
                   </div>
                 )}
 
-                {myOffer ? (
+                {pendingIsThis ? (
+                  <p className="futbol-buy-meta futbol-sponsor-info">
+                    ✅ Anlaşma sağlandı — yarın 00:00'da sponsorumuz olacak.
+                  </p>
+                ) : myOffer ? (
                   <div className="futbol-sponsor-incoming-offer">
                     <p className="futbol-buy-meta">
                       📤 Senin teklifin: <strong>{myOffer.dailyAmount.toLocaleString('tr-TR')} altın/gün</strong>{' '}

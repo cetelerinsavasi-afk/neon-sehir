@@ -875,6 +875,10 @@
   color: var(--neon-pink);
 }
 
+.factory-sponsor-info {
+  color: #3ddc84;
+}
+
 .factory-sponsor-note-box {
   display: flex;
   flex-direction: column;

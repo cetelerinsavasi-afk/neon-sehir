@@ -39,6 +39,11 @@ export default function FactorySponsorModal({ onClose }) {
   const [expandedRaiseId, setExpandedRaiseId] = useState(null);
   const [noteEditingId, setNoteEditingId] = useState(null);
   const [noteDraft, setNoteDraft] = useState('');
+  // infoMessage — bot kulüplere gönderilen tekliflerin sonucu ANINDA belli
+  // olduğu için (kabul/red, bkz. functions/index.js sendFactorySponsorshipOffer)
+  // kullanıcıya kısa bir geri bildirim gösteriyoruz — aksi halde buton
+  // sadece tekrar "Teklif Gönder" haline dönüyor ve ne olduğu belirsiz kalıyor.
+  const [infoMessage, setInfoMessage] = useState('');
 
   const load = async () => {
     setError('');
@@ -69,10 +74,23 @@ export default function FactorySponsorModal({ onClose }) {
 
   // handleSponsorOl — kendi takımımıza (isSelfSponsor) teklif her zaman 0
   // altınla ANINDA gönderilir, tutar seçici hiç açılmaz (kullanıcı isteği
-  // madde 3). Diğer takımlarda seçilen tutar gönderilir.
-  const handleSponsorOl = (teamId, isSelfSponsor) => {
+  // madde 3). Diğer takımlarda seçilen tutar gönderilir. Bot kulüpler
+  // teklifi ANINDA kabul/red eder (bkz. sendFactorySponsorshipOffer) — bu
+  // sonucu kullanıcıya göstermek için dönen `accepted`/`autoBot` alanlarını
+  // okuyoruz.
+  const handleSponsorOl = (teamId, teamName, isSelfSponsor, isBot) => {
     const amount = isSelfSponsor ? 0 : Math.max(0, Math.round(Number(offerDrafts[teamId] ?? 0)));
-    runAction(`offer-${teamId}`, () => sendFactorySponsorshipOffer(teamId, amount)).then(() => {
+    setInfoMessage('');
+    runAction(`offer-${teamId}`, async () => {
+      const res = await sendFactorySponsorshipOffer(teamId, amount);
+      if (isBot) {
+        setInfoMessage(
+          res?.data?.accepted
+            ? `✅ ${teamName} teklifini kabul etti — yarın 00:00'da sponsor olacaksın.`
+            : `❌ ${teamName} teklifini reddetti — botun mevcut sponsoru/teklifi bu tutara eşit ya da daha yüksek.`
+        );
+      }
+    }).then(() => {
       setExpandedOfferId(null);
       setOfferDrafts((d) => ({ ...d, [teamId]: 0 }));
     });
@@ -148,6 +166,7 @@ export default function FactorySponsorModal({ onClose }) {
         </p>
 
         {error && <p className="factory-error">{error}</p>}
+        {infoMessage && <p className="factory-hint small factory-sponsor-info">{infoMessage}</p>}
 
         {mySponsorships.length > 0 && (
           <>
@@ -279,6 +298,13 @@ export default function FactorySponsorModal({ onClose }) {
             const myOffer = t.myPendingOffers.find((o) => o.fromRole === 'factory');
             const clubOffer = t.myPendingOffers.find((o) => o.fromRole === 'club');
             const offerOpen = expandedOfferId === t.id;
+            // pendingIsMe — teklifim (bot ise anında, oyuncuysa kabul
+            // ettikten sonra) kabul edildi ama henüz aktif değil (bir
+            // sonraki 00:00'da devreye girecek) — bu durumda "Teklif
+            // Gönder" butonunu tekrar göstermek yerine bekleme durumunu
+            // gösteriyoruz (bkz. kullanıcı bildirdiği hata: bot kulüplerde
+            // teklif kabul edilse bile buton hep "Teklif Gönder" kalıyordu).
+            const pendingIsMe = t.pendingSponsorFactoryOwnerUid === user.uid;
             return (
               <div key={t.id} className="factory-share-buy-card factory-sponsor-card">
                 <div className="factory-sponsor-card-head">
@@ -335,7 +361,11 @@ export default function FactorySponsorModal({ onClose }) {
                   </div>
                 )}
 
-                {myOffer ? (
+                {pendingIsMe ? (
+                  <p className="factory-hint small factory-sponsor-info">
+                    ✅ Teklifin kabul edildi — yarın 00:00'da sponsor olacaksın.
+                  </p>
+                ) : myOffer ? (
                   <div className="factory-sponsor-incoming-offer">
                     <p className="factory-hint small">
                       📤 Senin teklifin: <strong>{myOffer.dailyAmount.toLocaleString('tr-TR')} altın/gün</strong>{' '}
@@ -353,7 +383,7 @@ export default function FactorySponsorModal({ onClose }) {
                   <button
                     className="factory-btn small primary"
                     disabled={busyKey === `offer-${t.id}`}
-                    onClick={() => handleSponsorOl(t.id, true)}
+                    onClick={() => handleSponsorOl(t.id, t.name, true, t.isBot)}
                   >
                     {busyKey === `offer-${t.id}` ? '…' : '🤝 Teklif Gönder (0 altın)'}
                   </button>
@@ -374,7 +404,7 @@ export default function FactorySponsorModal({ onClose }) {
                       <button
                         className="factory-btn small primary"
                         disabled={busyKey === `offer-${t.id}`}
-                        onClick={() => handleSponsorOl(t.id, false)}
+                        onClick={() => handleSponsorOl(t.id, t.name, false, t.isBot)}
                       >
                         {busyKey === `offer-${t.id}` ? '…' : 'Gönder'}
                       </button>
