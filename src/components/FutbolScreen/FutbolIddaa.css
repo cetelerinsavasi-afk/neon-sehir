@@ -54,6 +54,29 @@
   color: var(--neon-cyan);
 }
 
+.futbol-iddaa-draw {
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 4px;
+}
+
+.futbol-iddaa-odds {
+  font-size: 12px;
+  font-weight: 800;
+  opacity: 0.85;
+}
+
+.futbol-iddaa-potential {
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: center;
+  margin: 0;
+}
+
+.futbol-iddaa-potential strong {
+  color: #3ddc84;
+}
+
 .futbol-iddaa-stake-row {
   display: flex;
   flex-direction: column;

@@ -26,6 +26,7 @@ import FactoryBadge from './FactoryBadge';
 import FactoryLogoDesigner from './FactoryLogoDesigner';
 import FactoryShareSellModal from './FactoryShareSellModal';
 import FactoryShareBuyModal from './FactoryShareBuyModal';
+import FactorySponsorModal from './FactorySponsorModal';
 import { factoryDisplayName, computeFactoryValue } from './factoryHelpers';
 import './FactoryScreen.css';
 
@@ -514,6 +515,7 @@ function OwnerView({ factory, machines, player, myUid }) {
   const [showBrowse, setShowBrowse] = useState(false);
   const [showShareSell, setShowShareSell] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const [showSponsor, setShowSponsor] = useState(false);
   const [selfBusy, setSelfBusy] = useState(null);
   const [selfError, setSelfError] = useState(null);
   // showShiftGame — yeni istek: "fabrika sahipleri de kendisi bi makinede
@@ -595,6 +597,9 @@ function OwnerView({ factory, machines, player, myUid }) {
         <div className="factory-top-row-right">
           <button className="factory-nav-btn" onClick={() => setShowShareSell(true)}>
             Hisse Sat
+          </button>
+          <button className="factory-nav-btn" onClick={() => setShowSponsor(true)}>
+            🤝 Sponsor
           </button>
           <button className="factory-nav-btn primary" onClick={() => setShowBuy(true)}>
             Makine Al +
@@ -743,6 +748,7 @@ function OwnerView({ factory, machines, player, myUid }) {
         <FactoryShareSellModal factory={factory} onClose={() => setShowShareSell(false)} />
       )}
       {showReport && <DailyReportModal factory={factory} onClose={() => setShowReport(false)} />}
+      {showSponsor && <FactorySponsorModal onClose={() => setShowSponsor(false)} />}
       {showShiftGame && (
         <FactoryShiftGame
           onComplete={handleShiftGameComplete}
@@ -774,6 +780,12 @@ function DailyReportModal({ factory, onClose }) {
   // salaryPaid - electricityBill). Yine de ayrı bir kalem olarak da
   // gösteriliyor ki sahip kârın neye gittiğini görebilsin.
   const electricityToday = factory.dailyElectricityExpense || 0;
+  // Yeni kalemler — sadece "varsa" (0'dan büyükse) gösterilir: hisse satışı
+  // geliri, hisse kâr payı gideri, sponsorluk gideri (bkz. functions/index.js
+  // dailyReset — Part A + processFutbolSponsorshipsNightly).
+  const shareSaleIncomeToday = factory.dailyShareSaleIncome || 0;
+  const shareDividendExpenseToday = factory.dailyShareDividendExpense || 0;
+  const sponsorshipExpenseToday = factory.dailySponsorshipExpense || 0;
   const grossHistory = Array.isArray(factory.dailyGrossIncomeHistory) ? factory.dailyGrossIncomeHistory : [];
   const expenseHistory = Array.isArray(factory.dailySalaryExpenseHistory) ? factory.dailySalaryExpenseHistory : [];
   const electricityHistory = Array.isArray(factory.dailyElectricityExpenseHistory)
@@ -834,6 +846,30 @@ function DailyReportModal({ factory, onClose }) {
               {netToday.toLocaleString('tr-TR')} altın
             </span>
           </div>
+          {shareSaleIncomeToday > 0 && (
+            <div className="factory-report-stat">
+              <span className="factory-report-stat-label">🧾 Hisse satışı geliri</span>
+              <span className="factory-report-stat-value positive">
+                +{shareSaleIncomeToday.toLocaleString('tr-TR')} altın
+              </span>
+            </div>
+          )}
+          {shareDividendExpenseToday > 0 && (
+            <div className="factory-report-stat">
+              <span className="factory-report-stat-label">🪙 Hisse pay giderleri</span>
+              <span className="factory-report-stat-value expense">
+                −{shareDividendExpenseToday.toLocaleString('tr-TR')} altın
+              </span>
+            </div>
+          )}
+          {sponsorshipExpenseToday > 0 && (
+            <div className="factory-report-stat">
+              <span className="factory-report-stat-label">🤝 Sponsorluk giderleri</span>
+              <span className="factory-report-stat-value expense">
+                −{sponsorshipExpenseToday.toLocaleString('tr-TR')} altın
+              </span>
+            </div>
+          )}
         </div>
 
         <p className="factory-step-label">Dün Üretilen Malzemeler</p>

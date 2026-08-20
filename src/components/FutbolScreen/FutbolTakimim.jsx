@@ -18,6 +18,7 @@ import FutbolLogoEditor from './FutbolLogoEditor';
 import FutbolAltyapi from './FutbolAltyapi';
 import FutbolDoktor from './FutbolDoktor';
 import FutbolStadyum from './FutbolStadyum';
+import FutbolSponsor from './FutbolSponsor';
 import { groupFutbolPlayersByPositionOrdered } from './futbolPositionOrder';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import ConfirmModal from '../ConfirmModal/ConfirmModal';
@@ -40,6 +41,7 @@ const MY_TEAM_TABS = [
   { id: 'doktor', label: 'Doktor' },
   { id: 'forma', label: 'Forma' },
   { id: 'stadyum', label: 'Stadyum' },
+  { id: 'sponsor', label: 'Sponsor' },
 ];
 
 export default function FutbolTakimim() {
@@ -70,6 +72,7 @@ export default function FutbolTakimim() {
       {tab === 'doktor' && <FutbolDoktor team={team} />}
       {tab === 'forma' && <FutbolLogoEditor team={team} />}
       {tab === 'stadyum' && <FutbolStadyum team={team} />}
+      {tab === 'sponsor' && <FutbolSponsor team={team} />}
     </div>
   );
 }

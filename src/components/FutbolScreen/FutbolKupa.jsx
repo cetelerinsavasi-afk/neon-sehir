@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../firebase';
 import { useFutbolCup } from '../../hooks/useFutbolCup';
 import { useMyFutbolCupBets } from '../../hooks/useMyFutbolCupBets';
 import { useAuth } from '../../contexts/AuthContext';
@@ -16,7 +18,6 @@ const ROUND_LABELS = {
   SEMI_FINAL: 'Yarı Final',
   FINAL: 'Final',
 };
-const ROUND_MULTIPLIERS = { ROUND_OF_16: 50, QUARTER_FINAL: 10, SEMI_FINAL: 3, FINAL: 1.5 };
 const STAKE_QUICK_AMOUNTS = [10, 100, 1000, 10000];
 
 function CupMatchRow({ match, onSelect }) {
@@ -54,7 +55,8 @@ export default function FutbolKupa({ season }) {
   const { cup, matches, loading } = useFutbolCup(season);
   const { bets: myBets } = useMyFutbolCupBets(season);
   const [selectedMatch, setSelectedMatch] = useState(null);
-  const [picks, setPicks] = useState({});
+  const [selectedMatchHomeSponsor, setSelectedMatchHomeSponsor] = useState(null);
+  const [selection, setSelection] = useState(null); // { matchId, pick, odds }
   const [stake, setStake] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -82,6 +84,28 @@ export default function FutbolKupa({ season }) {
     };
   }, [cup, matchesByRound]);
 
+  // Kupa maçı dokümanları sponsor bilgisini kendi üstünde taşımıyor (bu
+  // bilgi futbolTeams/{id} dokümanında yaşıyor, bkz. useFutbolCup.js) —
+  // maç detayı açıldığında ev sahibi takımın güncel sponsorunu tek
+  // seferlik (getDoc) çekiyoruz, canlı dinlemeye gerek yok.
+  useEffect(() => {
+    if (!selectedMatch?.homeTeamId) {
+      setSelectedMatchHomeSponsor(null);
+      return;
+    }
+    let cancelled = false;
+    getDoc(doc(db, 'futbolTeams', selectedMatch.homeTeamId))
+      .then((snap) => {
+        if (!cancelled) setSelectedMatchHomeSponsor(snap.exists() ? snap.data().sponsorFactoryName || null : null);
+      })
+      .catch(() => {
+        if (!cancelled) setSelectedMatchHomeSponsor(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedMatch?.homeTeamId]);
+
   if (loading) return <p className="futbol-placeholder">Yükleniyor...</p>;
 
   if (!cup) {
@@ -94,26 +118,31 @@ export default function FutbolKupa({ season }) {
   }
 
   const currentRoundMatches = cup.status !== 'DONE' ? matchesByRound[cup.status] || [] : [];
-  const bettingRound = currentRoundMatches.length > 0 && currentRoundMatches.every((m) => m.status === 'scheduled')
-    ? cup.status
-    : null;
-  const expectedCount = bettingRound ? currentRoundMatches.length : 0;
-  const allPicked = Boolean(bettingRound) && currentRoundMatches.every((m) => picks[m.id]);
+  const bettableMatches = currentRoundMatches.filter(
+    (m) => m.status === 'scheduled' && m.oddsHome && m.oddsAway
+  );
 
-  const handlePick = (matchId, teamId) => {
-    setPicks((prev) => ({ ...prev, [matchId]: teamId }));
+  const selectPick = (match, pick) => {
+    const odds = pick === 'home' ? match.oddsHome : match.oddsAway;
+    if (!odds) return;
+    setSelection({ matchId: match.id, pick, odds });
+    setSuccess('');
+    setError('');
   };
 
+  const potentialPayout = selection && stake > 0 ? Math.round(stake * selection.odds) : 0;
+
   const handleSubmit = async () => {
-    if (!bettingRound) return;
+    if (!selection || stake <= 0) return;
     setBusy(true);
     setError('');
     setSuccess('');
     try {
-      const predictions = currentRoundMatches.map((m) => ({ matchId: m.id, teamId: picks[m.id] }));
-      await placeFutbolCupBet(season, bettingRound, stake, predictions);
-      setSuccess('Kupa kuponun oynandı, iyi şanslar!');
-      setPicks({});
+      const res = await placeFutbolCupBet(selection.matchId, selection.pick, stake);
+      setSuccess(
+        `Kupa kuponun oynandı! Oran ${res?.data?.odds ?? selection.odds} — tutarsa ${(res?.data?.potentialPayout ?? potentialPayout).toLocaleString('tr-TR')} altın kazanırsın. İyi şanslar!`
+      );
+      setSelection(null);
       setStake(0);
     } catch (err) {
       setError(err?.message || 'Kupon oynanamadı.');
@@ -149,49 +178,54 @@ export default function FutbolKupa({ season }) {
         </p>
       )}
 
-      {bettingRound && (
+      {bettableMatches.length > 0 && (
         <div className="futbol-iddaa futbol-cup-bet-box">
           <p className="futbol-placeholder">
-            {ROUND_LABELS[bettingRound]} turunun {expectedCount} maçının TAMAMINI doğru tahmin edersen
-            yatırdığın miktarın <strong>{ROUND_MULTIPLIERS[bettingRound]} katını</strong> kazanırsın. Tek
-            bir tahmin bile yanlışsa yatırdığın altın gider.
+            🎟️ {ROUND_LABELS[cup.status]} turunda TEK bir maça, TEK bir sonuca (kupada beraberlik yok,
+            sadece 1 / 2) bahis yap. Tuttuysa <strong>yatırdığın altın × oran</strong> kadar kazanırsın.
           </p>
           {!user && <p className="futbol-placeholder">Kupon oynamak için giriş yapmalısın.</p>}
           {user && (
             <>
               <div className="futbol-iddaa-matches">
-                {currentRoundMatches.map((m) => {
-                  const pick = picks[m.id];
+                {bettableMatches.map((m) => {
+                  const isSelectedMatch = selection?.matchId === m.id;
                   return (
                     <div key={m.id} className="futbol-iddaa-triple futbol-cup-iddaa-pair">
                       <button
-                        className={`futbol-iddaa-side ${pick === m.homeTeamId ? 'active' : ''}`}
-                        onClick={() => handlePick(m.id, m.homeTeamId)}
+                        className={`futbol-iddaa-side ${isSelectedMatch && selection.pick === 'home' ? 'active' : ''}`}
+                        onClick={() => selectPick(m, 'home')}
                       >
                         <FutbolCrest logo={m.homeLogo} initials={m.homeTeamName?.[0]} size={26} />
                         <span>{m.homeTeamName}</span>
+                        <span className="futbol-iddaa-odds">{m.oddsHome.toFixed(1)}</span>
                       </button>
                       <button
-                        className={`futbol-iddaa-side ${pick === m.awayTeamId ? 'active' : ''}`}
-                        onClick={() => handlePick(m.id, m.awayTeamId)}
+                        className={`futbol-iddaa-side ${isSelectedMatch && selection.pick === 'away' ? 'active' : ''}`}
+                        onClick={() => selectPick(m, 'away')}
                       >
                         <span>{m.awayTeamName}</span>
                         <FutbolCrest logo={m.awayLogo} initials={m.awayTeamName?.[0]} size={26} />
+                        <span className="futbol-iddaa-odds">{m.oddsAway.toFixed(1)}</span>
                       </button>
                     </div>
                   );
                 })}
               </div>
-              <div className="futbol-iddaa-stake-row">
-                <QuantityStepper value={stake} onChange={setStake} quickAmounts={STAKE_QUICK_AMOUNTS} />
-                <button
-                  className="futbol-admin-submit"
-                  disabled={busy || !allPicked || stake <= 0}
-                  onClick={handleSubmit}
-                >
-                  {busy ? '...' : 'Kupon Oyna'}
-                </button>
-              </div>
+              {selection && (
+                <div className="futbol-iddaa-stake-row">
+                  <QuantityStepper value={stake} onChange={setStake} quickAmounts={STAKE_QUICK_AMOUNTS} />
+                  {stake > 0 && (
+                    <p className="futbol-iddaa-potential">
+                      Oran <strong>{selection.odds.toFixed(1)}</strong> · Tutarsa kazanacağın:{' '}
+                      <strong>{potentialPayout.toLocaleString('tr-TR')} altın</strong>
+                    </p>
+                  )}
+                  <button className="futbol-admin-submit" disabled={busy || stake <= 0} onClick={handleSubmit}>
+                    {busy ? '...' : 'Kupon Oyna'}
+                  </button>
+                </div>
+              )}
               {error && <p className="futbol-admin-error">{error}</p>}
               {success && <p className="futbol-placeholder">{success}</p>}
             </>
@@ -202,16 +236,35 @@ export default function FutbolKupa({ season }) {
       {myBets.length > 0 && (
         <div className="futbol-iddaa-history">
           <p className="futbol-kadro-section-title">Kupa Kupon Geçmişin</p>
-          {myBets.map((b) => (
-            <div key={b.id} className={`futbol-iddaa-history-card status-${b.status}`}>
-              <div className="futbol-iddaa-history-row">
-                <span>{ROUND_LABELS[b.round] || b.round}</span>
-                <span>{b.stake.toLocaleString('tr-TR')} altın</span>
-                <span>{b.status === 'pending' ? 'Beklemede' : b.status === 'won' ? 'Kazandı' : 'Kaybetti'}</span>
-                {b.status === 'won' && <span>+{b.payout.toLocaleString('tr-TR')}</span>}
+          {myBets.map((b) => {
+            const match = matches.find((m) => m.id === b.matchId);
+            return (
+              <div key={b.id} className={`futbol-iddaa-history-card status-${b.status}`}>
+                <div className="futbol-iddaa-history-row">
+                  <span>{ROUND_LABELS[b.round] || b.round}</span>
+                  <span>{(b.stake || 0).toLocaleString('tr-TR')} altın</span>
+                  <span>{b.status === 'pending' ? 'Beklemede' : b.status === 'won' ? 'Kazandı' : 'Kaybetti'}</span>
+                  {b.status === 'won' && <span>+{(b.payout || 0).toLocaleString('tr-TR')}</span>}
+                  {b.status === 'pending' && b.potentialPayout != null && (
+                    <span>→ {b.potentialPayout.toLocaleString('tr-TR')}</span>
+                  )}
+                </div>
+                {match && (
+                  <div className="futbol-iddaa-history-picks">
+                    <div className="futbol-iddaa-history-pick">
+                      <span className="futbol-iddaa-history-teams">
+                        {match.homeTeamName} - {match.awayTeamName}
+                      </span>
+                      <span className="futbol-iddaa-history-pick-label">
+                        {b.pick === 'home' ? 'Ev Sahibi' : 'Deplasman'} @{' '}
+                        {b.odds != null ? Number(b.odds).toFixed(1) : '—'}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -237,6 +290,7 @@ export default function FutbolKupa({ season }) {
           awayName={selectedMatch.awayTeamName}
           homeLogo={selectedMatch.homeLogo}
           awayLogo={selectedMatch.awayLogo}
+          homeSponsorName={selectedMatchHomeSponsor}
           onClose={() => setSelectedMatch(null)}
         />
       )}

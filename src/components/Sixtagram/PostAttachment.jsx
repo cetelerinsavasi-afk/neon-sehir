@@ -216,7 +216,10 @@ export default function PostAttachment({ attachment }) {
         <p
           className={`post-att-card-status post-att-status-${attachment.status}`}
         >
-          {attachment.status === 'pending' && '⏳ Sonuç bekleniyor'}
+          {attachment.status === 'pending' &&
+            (attachment.potentialPayout != null
+              ? `⏳ Sonuç bekleniyor · Oran ${Number(attachment.odds ?? 0).toFixed(1)} · Tutarsa: ${attachment.potentialPayout.toLocaleString('tr-TR')} altın`
+              : '⏳ Sonuç bekleniyor')}
           {attachment.status === 'won' &&
             `✅ Kazandı! ${attachment.payout.toLocaleString('tr-TR')} altın`}
           {attachment.status === 'lost' && '❌ Tutmadı'}

@@ -180,3 +180,57 @@
   gap: 6px;
   align-items: flex-start;
 }
+
+/* --- Sponsorluk (Futbol > Takımım > Sponsor sekmesi) --- */
+
+.futbol-sponsor-card {
+  align-items: flex-start;
+}
+
+.futbol-sponsor-card .futbol-buy-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.futbol-sponsor-offer-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.futbol-sponsor-input {
+  flex: 1;
+  min-width: 0;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.futbol-sponsor-note-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.futbol-sponsor-note-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.futbol-sponsor-note-btn {
+  align-self: flex-start;
+}
+
+.futbol-sponsor-incoming-offer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255, 210, 63, 0.08);
+  border: 1px solid rgba(255, 210, 63, 0.25);
+}

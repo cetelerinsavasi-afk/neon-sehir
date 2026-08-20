@@ -7,8 +7,9 @@ import './VehicleCard.css';
 // çıkarıldı — iki yerde ayrı ayrı tutulursa zamanla birbirinden
 // sapabilirdi.
 
-export const INITIAL_LIFE_DAYS = 30;
+export const INITIAL_LIFE_DAYS = 20;
 export const MAX_REPAIRS = 10;
+export const REPAIR_LIFE_BONUS_DAYS = 2;
 
 export function lifeRatio(item) {
   const life = item?.lifeDays ?? INITIAL_LIFE_DAYS;
@@ -93,7 +94,7 @@ export default function VehicleCard({ vehicle, materialsQty, repairQty, busy, on
             disabled={repairMaxed || repairQty < repairReq || busy === `${vehicle.id}-repair`}
             onClick={() => onRepair(vehicle.id)}
           >
-            {repairMaxed ? 'Tamir Hakkı Bitti' : `Tamir Et (${repairReq} malzeme) +3 gün`}
+            {repairMaxed ? 'Tamir Hakkı Bitti' : `Tamir Et (${repairReq} malzeme) +${REPAIR_LIFE_BONUS_DAYS} gün`}
           </button>
         </div>
       </div>

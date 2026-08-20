@@ -24,7 +24,7 @@ import TopNotificationBanner from './components/TopNotificationBanner/TopNotific
 import { usePlayer } from './hooks/usePlayer';
 import { useMyActiveRaceRoom } from './hooks/useMyActiveRaceRoom';
 import { useFirestoreResume } from './hooks/useFirestoreResume';
-import { migrateArabaGelistirmeUnification, migrateVehicleWeaponLifeCap, resetFutbolTransferMarket } from './services/gameActions';
+import { migrateArabaGelistirmeUnification, migrateVehicleWeaponLifeCap, migrateVehicleWeaponLifeCap20, resetFutbolTransferMarket } from './services/gameActions';
 import { regions } from './data/regions';
 import './styles/theme.css';
 import './App.css';
@@ -40,6 +40,7 @@ let arabaGelistirmeMigrationTriggered = false;
 // çalışıyor — bu istemci tetiklemesi sadece deploy edilir edilmez, gece
 // yarısını beklemeden hemen çalışsın diye ekstra bir güvence.)
 let lifeCapMigrationTriggered = false;
+let lifeCap20MigrationTriggered = false;
 // Futbol transfer piyasası eski (dengesiz) sistem stoğunu yeni,
 // takımlardaki gerçek güce göre dengelenmiş kurallara sıfırlayan
 // geçişin bu oturumda tetiklenip tetiklenmediği. Sunucu tarafında bir
@@ -110,6 +111,17 @@ function GameShell() {
     lifeCapMigrationTriggered = true;
     migrateVehicleWeaponLifeCap().catch((err) => {
       console.error('Araç/silah ömür tavanı geçişi başarısız:', err);
+    });
+  }, [user]);
+
+  // Araç/silah ömür tavanı 30→20 güne düştüğü için (kullanıcı revizesi),
+  // eski (30 güne göre yaşlanmış) kayıtları yeni tavana çeken geçişi de
+  // aynı şekilde tetikle.
+  useEffect(() => {
+    if (!user || lifeCap20MigrationTriggered) return;
+    lifeCap20MigrationTriggered = true;
+    migrateVehicleWeaponLifeCap20().catch((err) => {
+      console.error('Araç/silah ömür tavanı (20) geçişi başarısız:', err);
     });
   }, [user]);
 

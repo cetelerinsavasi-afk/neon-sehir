@@ -263,7 +263,11 @@ export default function ComposeModal({ onClose, onPosted }) {
     // buildSixtagramAttachment ile aynı mantık, sadece istemcide.
     try {
       const leagueSnap = await getDoc(doc(db, 'futbolLeagues', bet.leagueId));
-      const predictionList = bet.predictions || [];
+      // KULLANICI REVİZESİ (İddaa Oran Sistemi): kupon artık TEK bir maça
+      // yapılan bahis (bet.matchId/bet.pick), eski çoklu-maç predictions
+      // dizisi yok — aşağıdaki döngü/render kodu değişmesin diye tek
+      // elemanlı bir "predictionList" olarak sarmalıyoruz.
+      const predictionList = bet.matchId ? [{ matchId: bet.matchId, pick: bet.pick }] : [];
       const matchSnaps = await Promise.all(
         predictionList.map((p) => getDoc(doc(db, 'futbolMatches', p.matchId)))
       );
@@ -313,6 +317,8 @@ export default function ComposeModal({ onClose, onPosted }) {
         stake: bet.stake,
         status: bet.status,
         payout: bet.payout || 0,
+        odds: bet.odds ?? null,
+        potentialPayout: bet.potentialPayout ?? null,
         predictions,
       });
     } catch (err) {
@@ -326,6 +332,8 @@ export default function ComposeModal({ onClose, onPosted }) {
         stake: bet.stake,
         status: bet.status,
         payout: bet.payout || 0,
+        odds: bet.odds ?? null,
+        potentialPayout: bet.potentialPayout ?? null,
         predictions: [],
       });
     } finally {

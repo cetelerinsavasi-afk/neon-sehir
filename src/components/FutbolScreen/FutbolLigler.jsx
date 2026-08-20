@@ -194,6 +194,7 @@ export default function FutbolLigler() {
           awayName={teamNameById[selectedMatch.awayTeamId] || '—'}
           homeLogo={teamById[selectedMatch.homeTeamId]?.logo}
           awayLogo={teamById[selectedMatch.awayTeamId]?.logo}
+          homeSponsorName={teamById[selectedMatch.homeTeamId]?.sponsorFactoryName}
           onClose={() => setSelectedMatch(null)}
         />
       )}

@@ -21,7 +21,15 @@ const EVENT_ICON = { goal: '⚽', shot_on: '🎯', shot_off: '🚫' };
 // ekran, o gerçek zamana göre ilerler — hızlandırma YOK. Zaten bitmiş
 // (status:'finished') bir maça girersen tüm olaylar ve nihai skor
 // anında görünür (bekleme suresi olmadan).
-export default function FutbolMatchDetail({ match, homeName, awayName, homeLogo, awayLogo, onClose }) {
+export default function FutbolMatchDetail({
+  match,
+  homeName,
+  awayName,
+  homeLogo,
+  awayLogo,
+  homeSponsorName,
+  onClose,
+}) {
   const now = useNowTick(5000);
   const [pulse, setPulse] = useState(null);
   const lastRevealedCountRef = useRef(0);
@@ -105,6 +113,9 @@ export default function FutbolMatchDetail({ match, homeName, awayName, homeLogo,
         )}
 
         <div className="futbol-pitch">
+          {homeSponsorName && (
+            <div className="futbol-pitch-ad-banner">🤝 Sponsor: {homeSponsorName}</div>
+          )}
           <div className="futbol-pitch-halfline" />
           <div className="futbol-pitch-circle" />
           <div className="futbol-pitch-goal futbol-pitch-goal-left" />

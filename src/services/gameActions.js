@@ -188,6 +188,9 @@ export const migrateArabaGelistirmeUnification = () =>
 export const migrateVehicleWeaponLifeCap = () =>
   httpsCallable(functions, 'migrateVehicleWeaponLifeCap')();
 
+export const migrateVehicleWeaponLifeCap20 = () =>
+  httpsCallable(functions, 'migrateVehicleWeaponLifeCap20')();
+
 // --- Faz 5: Şüphe Yönetimi ve Soygun ---
 
 export const prayAtMosque = () => httpsCallable(functions, 'prayAtMosque')();
@@ -441,8 +444,8 @@ export const removeFutbolTraining = (teamId, playerId) =>
 
 // --- Faz Futbol: Faz 7 (İddaa Bayii) ---
 
-export const placeFutbolBet = (leagueId, stake, predictions) =>
-  httpsCallable(functions, 'placeFutbolBet')({ leagueId, stake, predictions });
+export const placeFutbolBet = (matchId, pick, stake) =>
+  httpsCallable(functions, 'placeFutbolBet')({ matchId, pick, stake });
 
 export const listFutbolTeamForSale = (teamId, price) =>
   httpsCallable(functions, 'listFutbolTeamForSale')({ teamId, price });
@@ -467,5 +470,34 @@ export const setFutbolTicketPrice = (teamId, ticketPrice) =>
 
 // --- Kupa modülü ---
 
-export const placeFutbolCupBet = (season, round, stake, predictions) =>
-  httpsCallable(functions, 'placeFutbolCupBet')({ season, round, stake, predictions });
+export const placeFutbolCupBet = (matchId, pick, stake) =>
+  httpsCallable(functions, 'placeFutbolCupBet')({ matchId, pick, stake });
+
+// --- Fabrika ↔ Futbol Kulübü Sponsorluk Sistemi ---
+
+export const sendFactorySponsorshipOffer = (teamId, dailyAmount) =>
+  httpsCallable(functions, 'sendFactorySponsorshipOffer')({ teamId, dailyAmount });
+
+export const sendClubSponsorshipOffer = (factoryOwnerUid, dailyAmount) =>
+  httpsCallable(functions, 'sendClubSponsorshipOffer')({ factoryOwnerUid, dailyAmount });
+
+export const respondSponsorshipOffer = (offerId, accept) =>
+  httpsCallable(functions, 'respondSponsorshipOffer')({ offerId, accept });
+
+export const withdrawSponsorshipOffer = (offerId) =>
+  httpsCallable(functions, 'withdrawSponsorshipOffer')({ offerId });
+
+export const cancelSponsorship = (teamId) =>
+  httpsCallable(functions, 'cancelSponsorship')({ teamId });
+
+export const raiseSponsorshipFee = (teamId, newDailyAmount) =>
+  httpsCallable(functions, 'raiseSponsorshipFee')({ teamId, newDailyAmount });
+
+export const updateSponsorshipNote = (factoryOwnerUid, teamId, note) =>
+  httpsCallable(functions, 'updateSponsorshipNote')({ factoryOwnerUid, teamId, note });
+
+export const listSponsorshipTeamsForFactory = () =>
+  httpsCallable(functions, 'listSponsorshipTeamsForFactory')();
+
+export const listSponsorshipFactoriesForTeam = () =>
+  httpsCallable(functions, 'listSponsorshipFactoriesForTeam')();

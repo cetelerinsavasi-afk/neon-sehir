@@ -58,8 +58,8 @@ const TABS = [
 const AMAZOR_PRICES = { tamirMalzemesi: 10, silahUpgrade: 100, arabaGelistirme: 500, yasakliMadde: 2500 };
 const MACHINE_PRICES = { tamirMalzemesi: 100000, silahUpgrade: 50000, arabaGelistirme: 50000, yasakliMadde: 100000 };
 
-const INITIAL_LIFE_DAYS = 30;
-const REPAIR_LIFE_BONUS_DAYS = 3;
+const INITIAL_LIFE_DAYS = 20;
+const REPAIR_LIFE_BONUS_DAYS = 2;
 
 // 2. el satış değeri artık hem ömür hem kalan tamir hakkı birlikte
 // hesaplanıyor (bkz. functions/index.js valueRatioOf, 2. sürüm) — burası
@@ -490,8 +490,8 @@ function ListingCard({ listing, isMine, busy, onCancel, onBuy }) {
   const isQuantifiable = listing.itemType === 'material';
   const isLifeItem = listing.itemType === 'vehicle' || listing.itemType === 'weapon';
   // Eski (ömür sisteminden önce açılmış) ilanlarda vehicleLifeDays/
-  // weaponLifeDays alanı olmayabilir — bu durumda tam ömür (30/30)
-  // varsayıyoruz, böylece bar HER araç/silah ilanında görünür.
+  // weaponLifeDays alanı olmayabilir — bu durumda tam ömür (INITIAL_LIFE_DAYS/
+  // INITIAL_LIFE_DAYS) varsayıyoruz, böylece bar HER araç/silah ilanında görünür.
   const lifeDays = isLifeItem
     ? (listing.itemType === 'vehicle' ? listing.vehicleLifeDays : listing.weaponLifeDays) ??
       INITIAL_LIFE_DAYS

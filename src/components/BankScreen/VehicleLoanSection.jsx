@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { useVehicles } from '../../hooks/useVehicles';
 import { takeVehicleLoan, repayVehicleLoan } from '../../services/gameActions';
-import { vehicleLivePrice } from '../VehicleCard/VehicleCard';
+import { vehicleLivePrice, INITIAL_LIFE_DAYS } from '../VehicleCard/VehicleCard';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './VehicleLoanSection.css';
 
-const TERMS = [
-  { days: 10, rate: 20 },
-  { days: 20, rate: 40 },
-];
+// Kullanıcı revizesi: araç/silah azami ömrü 30 → 20 güne düşürüldüğü için
+// 20 günlük vade seçeneği kaldırıldı (hiçbir araç bu vadeyi karşılayamazdı,
+// çünkü ömür artık hiçbir zaman 20'yi aşamıyor). Sadece 10 günlük vade kaldı.
+const TERMS = [{ days: 10, rate: 20 }];
 
 function formatDate(ts) {
   if (!ts?.toDate) return '';
@@ -38,7 +38,7 @@ export default function VehicleLoanSection() {
   const freeVehicles = vehicles.filter((v) => !v.mortgaged && !v.seizedByBank);
   const loanedVehicles = vehicles.filter((v) => v.mortgaged);
   const selectedVehicle = freeVehicles.find((v) => v.id === selectedVehicleId);
-  const selectedVehicleLife = selectedVehicle?.lifeDays ?? 50;
+  const selectedVehicleLife = selectedVehicle?.lifeDays ?? INITIAL_LIFE_DAYS;
   const termValid = !selectedVehicle || selectedVehicleLife > term;
 
   return (
@@ -56,7 +56,7 @@ export default function VehicleLoanSection() {
             {freeVehicles.map((v) => (
               <option key={v.id} value={v.id}>
                 {v.model} (limit: {vehicleLivePrice(v).toLocaleString('tr-TR')} altın · ömür:{' '}
-                {v.lifeDays ?? 50} gün)
+                {v.lifeDays ?? INITIAL_LIFE_DAYS} gün)
               </option>
             ))}
           </select>

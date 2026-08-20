@@ -72,6 +72,12 @@ export default function FutbolTeamDetail({ teamId, onClose }) {
                 <span>Stadyum Kapasitesi</span>
                 <strong>{(detail.stadiumCapacity || 2500).toLocaleString('tr-TR')}</strong>
               </div>
+              {detail.sponsorFactoryName && (
+                <div className="futbol-team-detail-row">
+                  <span>🤝 Sponsor</span>
+                  <strong>{detail.sponsorFactoryName}</strong>
+                </div>
+              )}
             </div>
           </>
         )}

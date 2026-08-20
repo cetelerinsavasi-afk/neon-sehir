@@ -73,13 +73,15 @@ const VALID_MACHINES = Object.keys(MACHINE_TYPES);
 // ARAÇ/SİLAH ÖMRÜ + TAMİR SİSTEMİ — her araç/silah satın alındığı andan
 // itibaren 30 günlük bir ömre sahiptir (her gün 1 azalır, bkz. dailyReset).
 // Ömür bittiğinde VE 10 tamir hakkının tamamı kullanıldığında ürün
-// hurdaya çıkarılır (silinir + SMS). Her tamir ömrü +3 gün (%10) uzatır
-// (orijinal 30 günü aşmaz) ve tamir hakkını 1 azaltır. 2. el satış fiyat
-// aralığı (min/max), ömür oranıyla (kalanÖmür/30) doğru orantılı düşer.
+// hurdaya çıkarılır (silinir + SMS). Her tamir ömrü +2 gün uzatır
+// (orijinal 20 günü aşmaz) ve tamir hakkını 1 azaltır. 2. el satış fiyat
+// aralığı (min/max), ömür oranıyla (kalanÖmür/20) doğru orantılı düşer.
+// (Kullanıcı revizesi: max ömür 30 → 20 güne düşürüldü, tamir bonusu 3 → 2
+// güne düşürüldü; bkz. migrations/vehicleWeaponLifeCap20.)
 // ---------------------------------------------------------------------------
-const VEHICLE_WEAPON_INITIAL_LIFE_DAYS = 30;
+const VEHICLE_WEAPON_INITIAL_LIFE_DAYS = 20;
 const VEHICLE_WEAPON_MAX_REPAIRS = 10;
-const REPAIR_LIFE_BONUS_DAYS = 3;
+const REPAIR_LIFE_BONUS_DAYS = 2;
 
 // 2. el satış değeri artık hem ÖMÜR hem KALAN TAMİR HAKKI birlikte
 // hesaplanır (kullanıcı revizesi, 2. sürüm): sadece tamir hakkına bakmak da
@@ -179,6 +181,13 @@ function computeFactoryValue(machinesByType, cryptoPrice) {
 
 function randomInRange(min, max) {
   return Math.random() * (max - min) + min;
+}
+
+// factoryDisplayName — src/components/FactoryScreen/factoryHelpers.js'teki
+// AYNI fonksiyonun sunucu tarafı ikizi (fabrika-futbol sponsorluk
+// sistemi, offer/team dokümanlarına isim gömerken kullanır).
+function factoryDisplayName(f) {
+  return f?.name || `${f?.ownerName || 'Oyuncu'}'in Fabrikası`;
 }
 
 function requireAuth(request) {
@@ -986,6 +995,16 @@ export const buyFactoryShare = onCall(async (request) => {
       lastPayoutDateKey: null,
     });
 
+    // factories/{factoryId}.shareSaleIncomeToday — kullanıcı revizesi:
+    // günlük fabrika raporuna "hisse satışı" GELİRİ eklensin diye,
+    // salaryPaidToday ile AYNI desende, gün içinde biriktirilip
+    // dailyReset (Part A) tarafından okunup sıfırlanan bir sayaç.
+    tx.set(
+      db.collection('factories').doc(factoryId),
+      { shareSaleIncomeToday: admin.firestore.FieldValue.increment(share.price) },
+      { merge: true }
+    );
+
     result = {
       price: share.price,
       percent: share.percent,
@@ -1597,6 +1616,26 @@ export const dailyReset = onSchedule(
     // sistemde toplamda sadece bir kez gerçek iş yapar.
     await runVehicleWeaponLifeCapMigration();
 
+    // -0.75) TEK SEFERLİK GÖÇ: araç/silah ömür tavanı 30 günden 20 güne
+    // düşürüldü (kullanıcı revizesi) — sadece 20'den fazla ömrü olan
+    // kayıtları tek seferliğine 20'ye çeker, 20 ve altındakilere dokunmaz.
+    // runVehicleWeaponLifeCap20Migration kendi bayrak dokümanıyla
+    // (migrations/vehicleWeaponLifeCap20) korunuyor.
+    await runVehicleWeaponLifeCap20Migration();
+
+    // -0.73) FUTBOL İDDAA — GÜNÜN ORANLARI: kullanıcı revizesiyle gelen
+    // yeni İddaa oran sistemi, o günün maçları için (lig ya da kupa günü,
+    // hangisiyse) 1/X/2 oranlarını burada, 00:00'da, günün maçları
+    // açığa çıkmadan/oynanmadan ÖNCE hesaplayıp dondurur (bkz.
+    // computeAndStoreFutbolOddsForToday). Kendi içinde tamamen bağımsız
+    // ve maç sonucu üretmiyor — hata verse bile günün maç akışını
+    // etkilemez.
+    try {
+      await computeAndStoreFutbolOddsForToday();
+    } catch (err) {
+      console.error('Futbol iddaa oran hesaplama hatası:', err);
+    }
+
     // -0.7) FUTBOL SAKATLIK İYİLEŞMESİ — yeni istek: "sakat oyuncu gün
     // bazında iyileşsin maç olsa da olmasa da kupa maçı da olsa her
     // 00.00da doktorsuz 1 gün doktorla beraber +1 gün daha iyileşecek" ve
@@ -1967,6 +2006,19 @@ export const dailyReset = onSchedule(
           : [];
         const dailyElectricityExpenseHistory = [...existingElectricityHistory, electricityBill].slice(-10);
 
+        // Kullanıcı revizesi: günlük rapora GELİR olarak "hisse satışı" da
+        // eklensin. shareSaleIncomeToday, buyFactoryShare tarafından gün
+        // içinde biriktirilen bir sayaç (salaryPaidToday ile AYNI desen) —
+        // burada okunup son 10 günlük geçmişe eklenir ve sıfırlanır. Bu,
+        // dailyIncome (net kâr) formülüne DAHİL EDİLMEZ — hisse satışı
+        // peşin/tek seferlik bir bedel olduğu için mevcut üretim kâr/zarar
+        // hesabını bozmasın diye SADECE bilgi amaçlı ayrı bir kalem.
+        const shareSaleIncome = Math.round(f.data().shareSaleIncomeToday || 0);
+        const existingShareSaleHistory = Array.isArray(f.data().dailyShareSaleIncomeHistory)
+          ? f.data().dailyShareSaleIncomeHistory
+          : [];
+        const dailyShareSaleIncomeHistory = [...existingShareSaleHistory, shareSaleIncome].slice(-10);
+
         batch.update(f.ref, {
           dailyIncome,
           dailyIncomeDateKey: prevDateKey,
@@ -1978,11 +2030,14 @@ export const dailyReset = onSchedule(
           dailySalaryExpenseHistory,
           dailyElectricityExpense: electricityBill,
           dailyElectricityExpenseHistory,
+          dailyShareSaleIncome: shareSaleIncome,
+          dailyShareSaleIncomeHistory,
           dailyProducedByType,
-          // Yarın için sayaç sıfırlanır — bugün zaten yukarıda okunup
-          // düşüldü (produceAtFactory bundan sonra tekrar biriktirmeye
-          // başlar).
+          // Yarın için sayaçlar sıfırlanır — bugün zaten yukarıda okunup
+          // düşüldü (produceAtFactory/buyFactoryShare bundan sonra tekrar
+          // biriktirmeye başlar).
           salaryPaidToday: 0,
+          shareSaleIncomeToday: 0,
         });
         opCount += 1;
         if (opCount >= 400) {
@@ -2037,6 +2092,12 @@ export const dailyReset = onSchedule(
     // Fabrika sahibinin altını yetmezse fark, produceAtFactory'deki maaş
     // mantığıyla BİREBİR AYNI şekilde (bkz. sendSalaryPenaltySms) sahibin
     // borcuna (debtToState) yazılır — alıcı HER ZAMAN temettüsünü TAM alır.
+    // Kullanıcı revizesi: günlük rapora GİDER olarak "hisse pay (temettü)
+    // giderleri" de eklensin diye, bu fabrika sahibinin bu gece ödediği
+    // (ya da ödemesi gerekip borç yazılan — salaryPaid/electricityBill ile
+    // AYNI konvansiyon: TAM yükümlülük raporlanır, sadece fiilen ödenen
+    // kısım değil) toplam temettü tutarı burada biriktirilir.
+    const dividendExpenseByOwner = new Map(); // ownerId -> altın
     {
       const todayDateKey = dateKey;
       const activeSharesSnap = await db.collectionGroup('shares').where('status', '==', 'active').get();
@@ -2048,6 +2109,14 @@ export const dailyReset = onSchedule(
           const factoryDailyIncome = factoryDailyIncomeMap.get(ownerId) || 0;
           const dividend = Math.round(((share.percent || 0) / 100) * factoryDailyIncome);
           const newRemainingDays = Math.max(0, (share.remainingDays || 0) - 1);
+          // NOT: bu satır bilerek İLK await'ten (aşağıdaki db.runTransaction)
+          // ÖNCE, senkron olarak çalışıyor — Promise.all içindeki tüm
+          // callback'ler ilk await'e kadar senkron sırayla çalıştığı için,
+          // aynı sahibin birden fazla hissesi olsa bile bu toplama işlemi
+          // yarış durumuna (race condition) girmez.
+          if (dividend > 0) {
+            dividendExpenseByOwner.set(ownerId, (dividendExpenseByOwner.get(ownerId) || 0) + dividend);
+          }
 
           // totalPaidOut/lastPayoutAmount — yeni istek (madde 4): "hisse
           // senedinden şu kadar para kazandın mesajında ... şu ana kadar şu
@@ -2132,6 +2201,54 @@ export const dailyReset = onSchedule(
           await Promise.all(smsJobs);
         })
       );
+
+      // dividendExpenseByOwner elde edildikten sonra, günlük rapora
+      // (Part A'nın yazdığı prevDateKey ile AYNI gün) "hisse pay gideri"
+      // satırını ekliyoruz — salaryPaidToday/dailySalaryExpense ile aynı
+      // desende (skaler + son 10 gün geçmişi). TÜM fabrikalara yazılır
+      // (Part A'daki allFactoriesSnap döngüsüyle AYNI konvansiyon) — bu
+      // gece temettü ödemesi olmayan fabrikalar da 0 alır, yoksa eski
+      // (bayat) bir değer asılı kalır ve geçmiş dizisi diğer kalemlerle
+      // (dailySalaryExpenseHistory vb.) senkron ilerlemez.
+      {
+        const prevDateKeyForDividend = addDaysToDateKey(dateKey, -1);
+        const factorySnaps = (await db.collection('factories').get()).docs;
+        let dividendBatch = db.batch();
+        let dividendOpCount = 0;
+        const dividendBatchJobs = [];
+        factorySnaps.forEach((fSnap) => {
+          if (!fSnap.exists) return;
+          const dividendExpense = dividendExpenseByOwner.get(fSnap.id) || 0;
+          const existingHistory = Array.isArray(fSnap.data().dailyShareDividendExpenseHistory)
+            ? fSnap.data().dailyShareDividendExpenseHistory
+            : [];
+          const dailyShareDividendExpenseHistory = [...existingHistory, dividendExpense].slice(-10);
+          dividendBatch.update(fSnap.ref, {
+            dailyShareDividendExpense: dividendExpense,
+            dailyShareDividendExpenseHistory,
+            dailyShareDividendExpenseDateKey: prevDateKeyForDividend,
+          });
+          dividendOpCount += 1;
+          if (dividendOpCount >= 400) {
+            dividendBatchJobs.push(dividendBatch.commit());
+            dividendBatch = db.batch();
+            dividendOpCount = 0;
+          }
+        });
+        if (dividendOpCount > 0) dividendBatchJobs.push(dividendBatch.commit());
+        await Promise.all(dividendBatchJobs);
+      }
+    }
+
+    // -0.31) FABRİKA ↔ FUTBOL KULÜBÜ SPONSORLUK SİSTEMİ — kullanıcı
+    // revizesi. dailyIncomeAvg10 (yukarıdaki Part A'da TAZELENDİ) burada
+    // güvenlik supabı kontrolünde kullanıldığı için bu blok Part A/Part
+    // B'den SONRA çalışmalı. Kendi içinde tamamen bağımsız ve hata verse
+    // bile diğer gece işlemlerini etkilemez.
+    try {
+      await processFutbolSponsorshipsNightly();
+    } catch (err) {
+      console.error('Fabrika-futbol sponsorluk gece işlemi hatası:', err);
     }
 
     // -0.3) Araç/silah ömrü — her gün 1 azalır. Ömrü biten VE tamir hakkı
@@ -3526,8 +3643,11 @@ export const sellInvestment = onCall(async (request) => {
 //   çekilmiş bir kredinin borcu asla değişmez çünkü loanPrincipal/
 //   loanTotalOwed kredi ANINDA dondurularak araç belgesine yazılır) —
 //   geliştirmeler (vites/depo) limiti ARTIRMAZ.
-// - Vade: 10 gün → %20 faiz, 20 gün → %40 faiz (tek seferlik, anaparaya
-//   eklenir). Ödeme dilim dilim veya tek seferde yapılabilir.
+// - Vade: SADECE 10 gün → %20 faiz (tek seferlik, anaparaya eklenir).
+//   (Kullanıcı revizesi: araç/silah azami ömrü 30 → 20 güne düşürüldüğü
+//   için artık 20 günlük vade seçeneği kaldırıldı — araç ömrü hiçbir zaman
+//   20'yi aşamayacağından bu vadeyi hiçbir araç karşılayamazdı.) Ödeme
+//   dilim dilim veya tek seferde yapılabilir.
 // - Vade dolup borç tam ödenmemişse: o ana kadar ödenen kısım oyuncuya
 //   İADE edilir, araç bankaya el konur (seizedByBank). Kalan borç (tam
 //   loanTotalOwed) sonradan ödenirse araç geri alınır; ödenmezse araç
@@ -3536,7 +3656,6 @@ export const sellInvestment = onCall(async (request) => {
 
 const LOAN_TERMS = {
   10: 0.2,
-  20: 0.4,
 };
 
 export const takeVehicleLoan = onCall(async (request) => {
@@ -3544,7 +3663,7 @@ export const takeVehicleLoan = onCall(async (request) => {
   const { vehicleId, termDays } = request.data || {};
   const interestRate = LOAN_TERMS[termDays];
   if (!interestRate) {
-    throw new HttpsError('invalid-argument', 'Vade 10 ya da 20 gün olmalı.');
+    throw new HttpsError('invalid-argument', 'Vade 10 gün olmalı.');
   }
 
   const vehicleRef = db.collection('vehicles').doc(vehicleId);
@@ -5735,6 +5854,72 @@ async function runVehicleWeaponLifeCapMigration() {
 export const migrateVehicleWeaponLifeCap = onCall(async (request) => {
   requireAuth(request);
   await runVehicleWeaponLifeCapMigration();
+  return { ok: true };
+});
+
+// migrateVehicleWeaponLifeCap20 — araç/silah ömür TAVANI 30 günden 20 güne
+// düşürüldü (kullanıcı revizesi). Bu, sistemin bu güncellemeyi aldığı ilk
+// günde (henüz eski 30 günlük tavana göre değerlere sahip) araç/silahların
+// ömrünü TEK SEFERLİK olarak 20'ye çeken, idempotent bir geçiş. SADECE
+// 20'den FAZLA ömrü olanları düşürür — 20 ve altında olanlara dokunmaz
+// (kullanıcı talebiyle birebir aynı: "ömrü 20den fazla olan araç ve
+// silahların ömrünü tek seferlik 20ye düşürelim, 20 ve daha az olanlar
+// aynı şekilde kalsın"). runVehicleWeaponLifeCapMigration'daki (50→30)
+// aynı desenin bire bir tekrarı, sadece yeni bir bayrak dokümanı
+// (migrations/vehicleWeaponLifeCap20) kullanıyor ki eski migration'ın
+// bayrağıyla çakışmasın ve bu yeni geçiş de sadece bir kez çalışsın.
+async function runVehicleWeaponLifeCap20Migration() {
+  const migrationRef = db.collection('migrations').doc('vehicleWeaponLifeCap20');
+  const migrationSnap = await migrationRef.get();
+  if (migrationSnap.exists) return;
+
+  for (const collName of ['vehicles', 'weapons']) {
+    const snap = await db.collection(collName).get();
+    const jobs = [];
+    snap.forEach((docSnap) => {
+      const item = docSnap.data();
+      const life = item.lifeDays;
+      // Not: burada `life === undefined` durumu KASITLI OLARAK yeni tavana
+      // çekilmiyor (eski 50→30 geçişinden farklı) — çünkü artık her
+      // araç/silahın lifeDays alanı garantili olarak dolu (createVehicle/
+      // createWeapon her zaman set ediyor, ve 50→30 migration'ı da eksik
+      // olanları doldurmuştu). Sadece gerçekten 20'den büyük bir değeri
+      // olanlar bu tek seferlik düşüşten etkilenir.
+      if (typeof life !== 'number' || life <= VEHICLE_WEAPON_INITIAL_LIFE_DAYS) return;
+      const newLife = VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
+      jobs.push(docSnap.ref.update({ lifeDays: newLife }));
+      if (item.listed) {
+        jobs.push(
+          (async () => {
+            const listingSnap = await db
+              .collection('marketplaceListings')
+              .where(collName === 'vehicles' ? 'vehicleId' : 'weaponId', '==', docSnap.id)
+              .where('sold', '==', false)
+              .limit(1)
+              .get();
+            if (!listingSnap.empty) {
+              const lifeField = collName === 'vehicles' ? 'vehicleLifeDays' : 'weaponLifeDays';
+              const current = listingSnap.docs[0].data()[lifeField];
+              if (current !== newLife) {
+                await listingSnap.docs[0].ref.update({ [lifeField]: newLife });
+              }
+            }
+          })()
+        );
+      }
+    });
+    await Promise.all(jobs);
+  }
+
+  await migrationRef.set({ ranAt: admin.firestore.FieldValue.serverTimestamp() });
+}
+
+// Manuel (anlık) tetikleme için ince bir onCall sarmalayıcı — asıl işi
+// runVehicleWeaponLifeCap20Migration yapıyor, bu fonksiyon dailyReset
+// içinden de otomatik olarak çağrılıyor, frontend deploy'una bağımlı değil.
+export const migrateVehicleWeaponLifeCap20 = onCall(async (request) => {
+  requireAuth(request);
+  await runVehicleWeaponLifeCap20Migration();
   return { ok: true };
 });
 
@@ -9400,8 +9585,6 @@ const FUTBOL_CUP_TRIGGER_AFTER_ROUND = {
   9: 'SEMI_FINAL',
   12: 'FINAL',
 };
-const FUTBOL_CUP_ROUND_MATCH_COUNT = { ROUND_OF_16: 8, QUARTER_FINAL: 4, SEMI_FINAL: 2, FINAL: 1 };
-const FUTBOL_CUP_BET_MULTIPLIERS = { ROUND_OF_16: 50, QUARTER_FINAL: 10, SEMI_FINAL: 3, FINAL: 1.5 };
 const FUTBOL_CUP_CHAMPION_REWARD = 250000;
 const FUTBOL_CUP_FINALIST_REWARD = 100000;
 
@@ -9857,10 +10040,22 @@ async function applyFutbolCupMatchResult(matchId) {
   });
 }
 
+// futbolCupMatchOutcome — kupa maçında beraberlik OLMADIĞI için (bkz.
+// computeFutbolCupMatchLive — eşitlik varsa hemen penaltılara geçiliyor,
+// winnerTeamId her zaman set ediliyor) sonuç home/away'in hangisinin
+// kazandığına bakılarak sadeleştirilebiliyor — İddaa oran sistemindeki
+// 'home'/'away' pick'iyle birebir karşılaştırılabilsin diye.
+function futbolCupMatchOutcome(match) {
+  return match.winnerTeamId === match.homeTeamId ? 'home' : 'away';
+}
+
 // resolveFutbolCupBetsForRound — o kupa turunun TÜM maçları bitince
-// çağrılır. Her tur AYRI bir kupon (madde 10): turun tüm maçlarını doğru
-// bilen FUTBOL_CUP_BET_MULTIPLIERS[round] katı kazanır, bir maç bile
-// yanlışsa kupon kaybedilir. Bir turun kuponu diğer turları etkilemez.
+// çağrılır. KULLANICI REVİZESİ (İddaa Oran Sistemi): artık her kupon TEK
+// bir kupa maçına yapılan bahis (bkz. placeFutbolCupBet); ödeme sabit bir
+// tur çarpanı değil, bahis anında o maç için hesaplanmış GERÇEK ORAN
+// (bet.odds, oddsHome/oddsAway) ile stake × odds olarak belirlenir (bkz.
+// bet.potentialPayout, placeFutbolCupBet içinde önceden hesaplanıp
+// dondurulmuştur).
 async function resolveFutbolCupBetsForRound(season, round) {
   const [betsSnap, matchesSnap] = await Promise.all([
     db
@@ -9873,25 +10068,24 @@ async function resolveFutbolCupBetsForRound(season, round) {
   ]);
   if (betsSnap.empty) return;
 
-  const winnerByMatchId = {};
+  const outcomeByMatchId = {};
   matchesSnap.docs.forEach((d) => {
     const m = d.data();
-    if (m.status === 'finished' && m.winnerTeamId) winnerByMatchId[d.id] = m.winnerTeamId;
+    if (m.status === 'finished' && m.winnerTeamId) outcomeByMatchId[d.id] = futbolCupMatchOutcome(m);
   });
 
-  const multiplier = FUTBOL_CUP_BET_MULTIPLIERS[round] || 1;
   const batch = db.batch();
   betsSnap.docs.forEach((d) => {
     const bet = d.data();
-    const allCorrect = bet.predictions.every((p) => winnerByMatchId[p.matchId] === p.teamId);
-    if (allCorrect) {
-      const payout = Math.round(bet.stake * multiplier);
+    const won = outcomeByMatchId[bet.matchId] === bet.pick;
+    if (won) {
+      const payout = bet.potentialPayout != null ? bet.potentialPayout : Math.round(bet.stake * (bet.odds || 1));
       batch.update(db.collection('users').doc(bet.uid), { gold: admin.firestore.FieldValue.increment(payout) });
       batch.update(d.ref, { status: 'won', payout });
       sendFutbolSms(
         batch,
         bet.uid,
-        `🎉 Kupa kuponun tuttu! ${FUTBOL_CUP_ROUND_LABELS[round] || round}, ${payout.toLocaleString('tr-TR')} altın kazandın.`,
+        `🎉 Kupa kuponun tuttu! ${FUTBOL_CUP_ROUND_LABELS[round] || round}, oran ${bet.odds}, ${payout.toLocaleString('tr-TR')} altın kazandın.`,
         'futbol_cup_bet_result'
       );
     } else {
@@ -11808,10 +12002,198 @@ export const assignFutbolDoctor = onCall(async (request) => {
   return { ok: true };
 });
 
-// --- Futbol modülü: Faz 7 (İddaa Bayii) ---
+// --- Futbol modülü: Faz 7 (İddaa Bayii — Oran Sistemi, kullanıcı revizesi) ---
+//
+// Eski sistem (sabit 10x/tur-çarpanı, turun TÜM maçlarına zorunlu bahis)
+// tamamen kaldırıldı. Artık oyuncu GÜNÜN TEK bir maçına bahis yapabilir;
+// her maçın 1/X/2 (kupa maçında sadece 1/2 — beraberlik yok) için ayrı,
+// gerçek bir oranı var. Oranlar HER GECE 00:00'da (dailyReset içinden,
+// bkz. computeAndStoreFutbolOddsForToday) o günün maçları için önceden
+// hesaplanıp maç belgesine yazılır ve gün boyunca DEĞİŞMEZ; bahis anında
+// yeniden hesaplanmaz, sadece o dondurulmuş değer okunur.
+//
+// Kriterler (her biri BAĞIMSIZ, ±%10, eşitlikte hiçbir değişiklik yok):
+// 1) lig konumu (küçük sıra = daha üst), 2) takım değeri (kadrodaki
+// oyuncu değerleri toplamı), 3) taraftar sayısı. Ardından ev sahibi
+// avantajı (±%5) uygulanır — SADECE lig maçlarında; kupa maçlarında ev
+// sahibi avantajı YOK (kullanıcı netleştirmesi: kupada gerçek maç
+// simülasyonunda da ev sahibi avantajı yok, bkz. computeFutbolCupMatchLive).
+// Beraberlik oranı hesaplamadan hiç etkilenmez, HER ZAMAN 2 (sadece lig
+// maçında var). Minimum oran 1.1 (altına asla inmez). Ara adımlarda
+// yuvarlama YAPILMAZ, sadece en sonda tek ondalığa yuvarlanır.
+const FUTBOL_ODDS_BASE = 1.5;
+const FUTBOL_ODDS_DRAW = 2;
+const FUTBOL_ODDS_CRITERION_PCT = 0.1;
+const FUTBOL_ODDS_HOME_ADV_PCT = 0.05;
+const FUTBOL_ODDS_MIN = 1.1;
 
-// Kullanıcı revizesi: 4/4 doğru tahminin ödülü 5x'ten 10x'e çıkarıldı.
-const FUTBOL_BET_PAYOUT_MULTIPLIER = 10;
+function futbolOddsRound(value) {
+  // Küçük bir epsilon eklenerek 1.25 → 1.3 gibi kayan nokta (floating
+  // point) temsil hatalarından kaynaklanan yanlış aşağı yuvarlamalar
+  // önleniyor (bkz. kullanıcı promptundaki yuvarlama örnekleri).
+  return Math.round((value + 1e-9) * 10) / 10;
+}
+
+// computeFutbolMatchOdds — saf (side-effect'siz) fonksiyon, bu yüzden
+// kolayca izole test edilebilir. rank: küçük sayı = ligde daha üst sıra
+// (1 = lider). isCup=true ise adım 4 (ev sahibi avantajı) atlanır ve
+// oddsDraw null döner (kupa maçında beraberlik seçeneği yok).
+function computeFutbolMatchOdds({ homeRank, awayRank, homeValue, awayValue, homeFans, awayFans, isCup }) {
+  let home = FUTBOL_ODDS_BASE;
+  let away = FUTBOL_ODDS_BASE;
+
+  const applyCriterion = (homeBetter) => {
+    if (homeBetter) {
+      home *= 1 - FUTBOL_ODDS_CRITERION_PCT;
+      away *= 1 + FUTBOL_ODDS_CRITERION_PCT;
+    } else {
+      home *= 1 + FUTBOL_ODDS_CRITERION_PCT;
+      away *= 1 - FUTBOL_ODDS_CRITERION_PCT;
+    }
+  };
+
+  // 1) Lig konumu — küçük rank = daha üst sıra.
+  if (homeRank != null && awayRank != null && homeRank !== awayRank) {
+    applyCriterion(homeRank < awayRank);
+  }
+  // 2) Takım değeri.
+  if (homeValue !== awayValue) {
+    applyCriterion(homeValue > awayValue);
+  }
+  // 3) Taraftar sayısı.
+  if (homeFans !== awayFans) {
+    applyCriterion(homeFans > awayFans);
+  }
+  // 4) Ev sahibi avantajı — sadece lig maçlarında.
+  if (!isCup) {
+    home *= 1 - FUTBOL_ODDS_HOME_ADV_PCT;
+    away *= 1 + FUTBOL_ODDS_HOME_ADV_PCT;
+  }
+
+  // 5) Minimum oran kontrolü, 6) yuvarlama — SADECE en sonda.
+  home = futbolOddsRound(Math.max(FUTBOL_ODDS_MIN, home));
+  away = futbolOddsRound(Math.max(FUTBOL_ODDS_MIN, away));
+
+  return { oddsHome: home, oddsAway: away, oddsDraw: isCup ? null : FUTBOL_ODDS_DRAW };
+}
+
+// buildFutbolStandingsRankMaps — bir ya da birden fazla ligin sıralamasını
+// hesaplar (kupa günlerinde farklı liglerden takımlar eşleşebildiği için
+// tek seferde birden fazla lig gerekebilir). Sıralama istemcideki
+// compareStandings (bkz. src/hooks/useFutbolTeams.js) ile BİREBİR aynı:
+// puan → averaj → attığı gol → yediği gol (az önde) → isim (alfabetik).
+async function buildFutbolStandingsRankMaps(leagueIds) {
+  const uniqueIds = [...new Set(leagueIds.filter(Boolean))];
+  const rankMaps = new Map();
+  await Promise.all(
+    uniqueIds.map(async (leagueId) => {
+      const snap = await db.collection('futbolTeams').where('leagueId', '==', leagueId).get();
+      const teams = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      teams.sort((a, b) => {
+        const sa = a.stats || {};
+        const sb = b.stats || {};
+        if ((sb.points || 0) !== (sa.points || 0)) return (sb.points || 0) - (sa.points || 0);
+        const gdA = (sa.gf || 0) - (sa.ga || 0);
+        const gdB = (sb.gf || 0) - (sb.ga || 0);
+        if (gdB !== gdA) return gdB - gdA;
+        if ((sb.gf || 0) !== (sa.gf || 0)) return (sb.gf || 0) - (sa.gf || 0);
+        if ((sa.ga || 0) !== (sb.ga || 0)) return (sa.ga || 0) - (sb.ga || 0);
+        return (a.name || '').localeCompare(b.name || '', 'tr');
+      });
+      const map = new Map();
+      teams.forEach((t, i) => map.set(t.id, i + 1));
+      rankMaps.set(leagueId, map);
+    })
+  );
+  return rankMaps;
+}
+
+// computeAndStoreFutbolOddsForToday — her gece 00:00'da (dailyReset)
+// çağrılır. GÜNÜN maçlarını (lig günüyse o ligin güncel turu, kupa
+// günüyse bekleyen kupa turu, kutlama günüyse hiçbiri) bulur ve hâlâ
+// 'scheduled' olan her biri için oranları hesaplayıp maç belgesine yazar.
+// resolveFutbolMatchdayStart (18:00) ile AYNI "bugünün maçı" seçim
+// mantığını kullanır ama ondan TAMAMEN bağımsızdır — sadece oran yazar,
+// maç sonucu HESAPLAMAZ, o yüzden hatalı çalışsa bile maç akışını bozmaz.
+async function computeAndStoreFutbolOddsForToday() {
+  const { state } = await ensureFutbolSeasonState();
+
+  const targetMatches = []; // { ref, data, isCup }
+
+  if (state.status === 'CUP_DAY' && state.pendingCupRound) {
+    const snap = await db
+      .collection('futbolCupMatches')
+      .where('cupSeason', '==', state.season)
+      .where('round', '==', state.pendingCupRound)
+      .where('status', '==', 'scheduled')
+      .get();
+    snap.docs.forEach((d) => targetMatches.push({ ref: d.ref, data: d.data(), isCup: true }));
+  } else if (state.status === 'CELEBRATION_DAY') {
+    return;
+  } else {
+    const leaguesSnap = await db.collection('futbolLeagues').get();
+    for (const leagueDoc of leaguesSnap.docs) {
+      const league = leagueDoc.data();
+      const round = league.currentRound || 1;
+      const matchesSnap = await db
+        .collection('futbolMatches')
+        .where('leagueId', '==', leagueDoc.id)
+        .where('round', '==', round)
+        .where('season', '==', league.season || 1)
+        .where('status', '==', 'scheduled')
+        .get();
+      matchesSnap.docs.forEach((d) => targetMatches.push({ ref: d.ref, data: d.data(), isCup: false }));
+    }
+  }
+
+  if (targetMatches.length === 0) return;
+
+  const teamIds = new Set();
+  targetMatches.forEach(({ data }) => {
+    teamIds.add(data.homeTeamId);
+    teamIds.add(data.awayTeamId);
+  });
+  const teamSnaps = await Promise.all([...teamIds].map((id) => db.collection('futbolTeams').doc(id).get()));
+  const teamById = new Map();
+  teamSnaps.forEach((s) => {
+    if (s.exists) teamById.set(s.id, s.data());
+  });
+
+  const leagueIdsInvolved = [...teamById.values()].map((t) => t.leagueId).filter(Boolean);
+  const rankMaps = await buildFutbolStandingsRankMaps(leagueIdsInvolved);
+
+  const valueByTeamId = new Map();
+  await Promise.all(
+    [...teamIds].map(async (id) => {
+      valueByTeamId.set(id, await computeFutbolTeamValue(id));
+    })
+  );
+
+  const batch = db.batch();
+  targetMatches.forEach(({ ref, data, isCup }) => {
+    const home = teamById.get(data.homeTeamId);
+    const away = teamById.get(data.awayTeamId);
+    if (!home || !away) return; // güvenlik: takım bulunamıyorsa bu maçı atla, akışı bozma
+    const homeRankMap = rankMaps.get(home.leagueId);
+    const awayRankMap = rankMaps.get(away.leagueId);
+    const odds = computeFutbolMatchOdds({
+      homeRank: homeRankMap ? homeRankMap.get(data.homeTeamId) ?? null : null,
+      awayRank: awayRankMap ? awayRankMap.get(data.awayTeamId) ?? null : null,
+      homeValue: valueByTeamId.get(data.homeTeamId) || 0,
+      awayValue: valueByTeamId.get(data.awayTeamId) || 0,
+      homeFans: home.fans || 0,
+      awayFans: away.fans || 0,
+      isCup,
+    });
+    batch.update(ref, {
+      oddsHome: odds.oddsHome,
+      oddsDraw: odds.oddsDraw,
+      oddsAway: odds.oddsAway,
+      oddsComputedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  });
+  await batch.commit();
+}
 
 function futbolMatchOutcome(match) {
   if (match.homeScore > match.awayScore) return 'home';
@@ -11819,49 +12201,33 @@ function futbolMatchOutcome(match) {
   return 'draw';
 }
 
-// placeFutbolBet — o ligin GÜNCEL turundaki (4 maç) hepsi için tahmin
-// gerektirir. Maçlardan biri bile artık 'scheduled' değilse (yani gün
-// 18:00'i geçtiyse) kupon reddedilir — kullanıcı promptundaki "saat
-// 18'e kadar" kuralı, sunucu saatine güvenmek yerine maçların gerçek
-// durumuna bakarak uygulanıyor.
+// placeFutbolBet — KULLANICI REVİZESİ: artık oyuncu günün turundaki TEK
+// bir maça bahis yapabilir (tüm turu oynamak zorunda değil). Oran, o maç
+// için 00:00'da önceden hesaplanıp dondurulmuş oddsHome/oddsDraw/oddsAway
+// alanından okunur — bahis anında yeniden hesaplanmaz. Maç artık
+// 'scheduled' değilse (gün 18:00'i geçtiyse) kupon reddedilir.
 export const placeFutbolBet = onCall(async (request) => {
   const uid = requireAuth(request);
-  const { leagueId, stake, predictions } = request.data || {};
+  const { matchId, pick, stake } = request.data || {};
   const cleanStake = Math.round(Number(stake));
   if (!Number.isFinite(cleanStake) || cleanStake <= 0) {
     throw new HttpsError('invalid-argument', 'Geçersiz bahis miktarı.');
   }
-  if (!Array.isArray(predictions) || predictions.length !== 4) {
-    throw new HttpsError('invalid-argument', "Tam olarak 4 maç için tahmin gerekli.");
-  }
-
-  const leagueSnap = await db.collection('futbolLeagues').doc(leagueId).get();
-  if (!leagueSnap.exists) throw new HttpsError('not-found', 'Lig bulunamadı.');
-  const round = leagueSnap.data().currentRound || 1;
-
-  // Kullanıcı, aynı tur için birden fazla kupon oynayabilir (kullanıcı
-  // promptu) — bu yüzden burada tekil kupon kontrolü YOK.
-
-  const matchesSnap = await db
-    .collection('futbolMatches')
-    .where('leagueId', '==', leagueId)
-    .where('round', '==', round)
-    .get();
-  const matches = matchesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  if (matches.length !== 4) {
-    throw new HttpsError('failed-precondition', 'Bu ligde güncel turda 4 maç yok.');
-  }
-  if (matches.some((m) => m.status !== 'scheduled')) {
-    throw new HttpsError('failed-precondition', "Bugünün maçları başladı, kupon için 18:00'i bekle.");
-  }
-
-  const matchIds = new Set(matches.map((m) => m.id));
-  const predictedIds = new Set(predictions.map((p) => p.matchId));
-  if (predictedIds.size !== 4 || [...predictedIds].some((id) => !matchIds.has(id))) {
-    throw new HttpsError('invalid-argument', 'Tahminler bu turun maçlarıyla uyuşmuyor.');
-  }
-  if (predictions.some((p) => !['home', 'draw', 'away'].includes(p.pick))) {
+  if (!['home', 'draw', 'away'].includes(pick)) {
     throw new HttpsError('invalid-argument', 'Geçersiz tahmin.');
+  }
+  if (!matchId) throw new HttpsError('invalid-argument', 'Maç seçilmedi.');
+
+  const matchRef = db.collection('futbolMatches').doc(matchId);
+  const matchSnap = await matchRef.get();
+  if (!matchSnap.exists) throw new HttpsError('not-found', 'Maç bulunamadı.');
+  const match = matchSnap.data();
+  if (match.status !== 'scheduled') {
+    throw new HttpsError('failed-precondition', "Bu maç başladı, kupon için 18:00'i bekle.");
+  }
+  const odds = pick === 'home' ? match.oddsHome : pick === 'away' ? match.oddsAway : match.oddsDraw;
+  if (!odds) {
+    throw new HttpsError('failed-precondition', 'Bu maç için oranlar henüz hesaplanmadı, biraz sonra tekrar dene.');
   }
 
   const userRef = db.collection('users').doc(uid);
@@ -11870,26 +12236,31 @@ export const placeFutbolBet = onCall(async (request) => {
     throw new HttpsError('failed-precondition', 'Yeterli altının yok.');
   }
 
+  const potentialPayout = Math.round(cleanStake * odds);
   const betRef = db.collection('futbolBets').doc();
   const batch = db.batch();
   batch.update(userRef, { gold: admin.firestore.FieldValue.increment(-cleanStake) });
   batch.set(betRef, {
     uid,
-    leagueId,
-    round,
+    leagueId: match.leagueId,
+    round: match.round,
+    matchId,
+    pick,
+    odds,
     stake: cleanStake,
-    predictions,
+    potentialPayout,
     status: 'pending',
     payout: 0,
     placedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
   await batch.commit();
-  return { ok: true };
+  return { ok: true, odds, potentialPayout };
 });
 
-// resolveFutbolBetsForRound — o turun 4 maçı bitince (resolveFutbolMatch
-// çağrılarının hemen ardından) çağrılır: 4 tahmin de tutarsa 5 kat
-// ödeme, tutmazsa yatırılan altın (zaten düşülmüştü) kalıcı olarak gider.
+// resolveFutbolBetsForRound — o turun maçları bitince çağrılır. Artık her
+// kupon TEK bir maça yapılan bahis; ödeme sabit bir çarpan değil, bahis
+// anında dondurulmuş GERÇEK ORAN (bet.odds → bet.potentialPayout) ile
+// belirlenir. Tutmazsa yatırılan altın (zaten düşülmüştü) kalıcı gider.
 async function resolveFutbolBetsForRound(leagueId, round) {
   const [betsSnap, matchesSnap] = await Promise.all([
     db.collection('futbolBets').where('leagueId', '==', leagueId).where('round', '==', round).where('status', '==', 'pending').get(),
@@ -11906,9 +12277,9 @@ async function resolveFutbolBetsForRound(leagueId, round) {
   const batch = db.batch();
   betsSnap.docs.forEach((d) => {
     const bet = d.data();
-    const allCorrect = bet.predictions.every((p) => outcomeByMatchId[p.matchId] === p.pick);
-    if (allCorrect) {
-      const payout = bet.stake * FUTBOL_BET_PAYOUT_MULTIPLIER;
+    const won = outcomeByMatchId[bet.matchId] === bet.pick;
+    if (won) {
+      const payout = bet.potentialPayout != null ? bet.potentialPayout : Math.round(bet.stake * (bet.odds || 1));
       batch.update(db.collection('users').doc(bet.uid), {
         gold: admin.firestore.FieldValue.increment(payout),
       });
@@ -11916,7 +12287,7 @@ async function resolveFutbolBetsForRound(leagueId, round) {
       sendFutbolSms(
         batch,
         bet.uid,
-        `🎉 İddaa kuponun tuttu! 4/4 doğru tahmin, ${payout.toLocaleString('tr-TR')} altın kazandın.`,
+        `🎉 İddaa kuponun tuttu! Oran ${bet.odds}, ${payout.toLocaleString('tr-TR')} altın kazandın.`,
         'futbol_bet_result'
       );
     } else {
@@ -11932,50 +12303,35 @@ async function resolveFutbolBetsForRound(leagueId, round) {
   await batch.commit();
 }
 
-// placeFutbolCupBet — bir kupa turunun TÜM maçları için tahmin gerektirir
-// (kullanıcı promptu madde 10). predictions: [{matchId, teamId}] — kupa
-// maçında beraberlik OLMADIĞI için 'home'/'away' yerine doğrudan
-// kazanacağını düşündüğü takımın ID'si tahmin edilir. Her tur AYRI kupon.
+// placeFutbolCupBet — KULLANICI REVİZESİ: artık TEK bir kupa maçına bahis
+// yapılır. Kupa maçında beraberlik (X) YOK — pick sadece 'home'/'away'
+// olabilir. Oran, 00:00'da o maç için hesaplanıp dondurulmuş
+// oddsHome/oddsAway alanından okunur.
 export const placeFutbolCupBet = onCall(async (request) => {
   const uid = requireAuth(request);
-  const { season, round, stake, predictions } = request.data || {};
+  const { matchId, pick, stake } = request.data || {};
   const cleanStake = Math.round(Number(stake));
   if (!Number.isFinite(cleanStake) || cleanStake <= 0) {
     throw new HttpsError('invalid-argument', 'Geçersiz bahis miktarı.');
   }
-  if (!FUTBOL_CUP_ROUND_ORDER.includes(round)) {
-    throw new HttpsError('invalid-argument', 'Geçersiz kupa turu.');
+  if (!['home', 'away'].includes(pick)) {
+    throw new HttpsError(
+      'invalid-argument',
+      'Kupa maçında beraberlik seçilemez — sadece ev sahibi ya da deplasman seçilebilir.'
+    );
   }
-  const expectedCount = FUTBOL_CUP_ROUND_MATCH_COUNT[round];
-  if (!Array.isArray(predictions) || predictions.length !== expectedCount) {
-    throw new HttpsError('invalid-argument', `Bu tur için tam olarak ${expectedCount} maç tahmini gerekli.`);
-  }
+  if (!matchId) throw new HttpsError('invalid-argument', 'Maç seçilmedi.');
 
-  const matchesSnap = await db
-    .collection('futbolCupMatches')
-    .where('cupSeason', '==', season)
-    .where('round', '==', round)
-    .get();
-  const matches = matchesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  if (matches.length !== expectedCount) {
-    throw new HttpsError('failed-precondition', 'Bu turun maçları henüz oluşmadı.');
+  const matchRef = db.collection('futbolCupMatches').doc(matchId);
+  const matchSnap = await matchRef.get();
+  if (!matchSnap.exists) throw new HttpsError('not-found', 'Maç bulunamadı.');
+  const match = matchSnap.data();
+  if (match.status !== 'scheduled') {
+    throw new HttpsError('failed-precondition', 'Bu maç başladı, kupon için bir sonraki tura kadar bekle.');
   }
-  if (matches.some((m) => m.status !== 'scheduled')) {
-    throw new HttpsError('failed-precondition', 'Bu turun maçları başladı, kupon için bir sonraki tura kadar bekle.');
-  }
-
-  const matchById = {};
-  matches.forEach((m) => (matchById[m.id] = m));
-  const predictedIds = new Set(predictions.map((p) => p.matchId));
-  if (predictedIds.size !== expectedCount || [...predictedIds].some((id) => !matchById[id])) {
-    throw new HttpsError('invalid-argument', 'Tahminler bu turun maçlarıyla uyuşmuyor.');
-  }
-  if (
-    predictions.some(
-      (p) => p.teamId !== matchById[p.matchId].homeTeamId && p.teamId !== matchById[p.matchId].awayTeamId
-    )
-  ) {
-    throw new HttpsError('invalid-argument', 'Geçersiz tahmin.');
+  const odds = pick === 'home' ? match.oddsHome : match.oddsAway;
+  if (!odds) {
+    throw new HttpsError('failed-precondition', 'Bu maç için oranlar henüz hesaplanmadı, biraz sonra tekrar dene.');
   }
 
   const userRef = db.collection('users').doc(uid);
@@ -11984,21 +12340,25 @@ export const placeFutbolCupBet = onCall(async (request) => {
     throw new HttpsError('failed-precondition', 'Yeterli altının yok.');
   }
 
+  const potentialPayout = Math.round(cleanStake * odds);
   const betRef = db.collection('futbolCupBets').doc();
   const batch = db.batch();
   batch.update(userRef, { gold: admin.firestore.FieldValue.increment(-cleanStake) });
   batch.set(betRef, {
     uid,
-    season,
-    round,
+    season: match.cupSeason,
+    round: match.round,
+    matchId,
+    pick,
+    odds,
     stake: cleanStake,
-    predictions,
+    potentialPayout,
     status: 'pending',
     payout: 0,
     placedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
   await batch.commit();
-  return { ok: true };
+  return { ok: true, odds, potentialPayout };
 });
 
 // --- Futbol modülü: Faz 10 (Kulüpler dizini) ---
@@ -12039,6 +12399,9 @@ export const getFutbolTeamDetail = onCall(async (request) => {
       // kupa geçmişi de gösterilsin.
       championshipsCount: team.championshipsCount || 0,
       cupsCount: team.cupsCount || 0,
+      // Fabrika sponsorluğu (kullanıcı revizesi) — varsa stadyum
+      // kapasitesinin altında "Sponsor: XXXX" gösterilsin diye.
+      sponsorFactoryName: team.sponsorFactoryOwnerUid ? team.sponsorFactoryName || null : null,
     },
   };
 });
@@ -12073,12 +12436,873 @@ export const listFutbolClubs = onCall(async (request) => {
         value,
         chairman,
         isBot: !team.ownerUid,
+        sponsorFactoryName: team.sponsorFactoryOwnerUid ? team.sponsorFactoryName || null : null,
       };
     })
   );
   clubs.sort((a, b) => b.value - a.value);
   return { clubs };
 });
+
+// =============================================================================
+// FABRİKA ↔ FUTBOL KULÜBÜ SPONSORLUK SİSTEMİ (kullanıcı revizesi)
+// =============================================================================
+// Fabrika sahipleri futbol kulüplerine (bot ya da oyuncu sahipli fark
+// etmez) SPONSOR olabilir: anlaştıkları günlük ücreti her gece 00:00'da
+// kulüp sahibinin hesabına öderler. Karşılığında kulübün adı/logosu
+// futbol ekranlarında "Sponsor: XXXX" olarak fabrikayı reklam eder.
+// Teklif HER İKİ yönden de gönderilebilir (fabrika→kulüp ya da
+// kulüp→fabrika); bot kulüpler kendi başlarına EN YÜKSEK teklifi
+// otomatik kabul eder, oyuncu sahipli kulüpler manuel kabul/red eder.
+// Kabul edilen bir sponsorluk HER ZAMAN bir SONRAKİ 00:00'da başlar/
+// değişir/biter — bkz. processFutbolSponsorshipsNightly (dailyReset'in
+// bir parçası).
+//
+// futbolTeams/{teamId} üzerindeki alanlar:
+//   sponsorFactoryOwnerUid, sponsorFactoryName, sponsorDailyAmount,
+//   sponsorSince — AKTİF sponsorluk (yoksa hepsi null/0).
+//   pendingSponsor: { factoryOwnerUid, factoryName, dailyAmount, offerId }
+//     — kabul edilmiş ama HENÜZ aktif olmayan, bir sonraki 00:00'da
+//     devreye girecek yeni sponsorluk (varsa).
+//   sponsorCancelPending: true — aktif sponsorluk feshedildi, bir sonraki
+//     00:00'da (yeni ödeme yapılmadan) sona erecek.
+//
+// sponsorshipOffers/{offerId}: { factoryOwnerUid, factoryName, teamId,
+//   teamName, dailyAmount, fromRole: 'factory'|'club', senderUid,
+//   receiverUid, status: 'pending'|'accepted'|'rejected'|'expired'|
+//   'withdrawn', createdAt, expiresAt }.
+//
+// sponsorshipNotes/{factoryOwnerUid}_{teamId}: { factoryOwnerUid, teamId,
+//   note, noteUpdatedByRole: 'factory'|'club', noteUpdatedByName,
+//   noteUpdatedAt } — İKİ TARAFIN da düzenleyebildiği TEK bir not (bkz.
+//   heistPlans.note deseni), 24 saat güncellenmezse "kaybolmuş" sayılır
+//   (fiziksel silinmez, sadece okuma anında süresi geçmişse boş
+//   döndürülür — bkz. isSponsorshipNoteFresh).
+// =============================================================================
+
+const FUTBOL_SPONSORSHIP_OFFER_TTL_MS = 24 * 60 * 60 * 1000;
+const FUTBOL_SPONSORSHIP_NOTE_TTL_MS = 24 * 60 * 60 * 1000;
+
+// sponsorshipOfferCap — bir teklifin (hangi yönden gelirse gelsin) üst
+// sınırı: SPONSOR OLAN fabrikanın son 10 günlük gelir ortalamasının
+// (dailyIncomeAvg10 — bkz. dailyReset Part A) %25'i. Alt limit yok (0
+// dahil her tutar teklif edilebilir).
+function sponsorshipOfferCap(factoryData) {
+  return Math.max(0, Math.round((factoryData?.dailyIncomeAvg10 || 0) * 0.25));
+}
+
+// sponsorshipSafetyLimit — bir fabrika sahibinin TÜM sponsorluklarının
+// toplam günlük gideri bunu aşarsa (son 10 günlük kârının %50'si) TÜM
+// sponsorlukları anında iptal edilir (kullanıcı güvenlik supabı kuralı).
+function sponsorshipSafetyLimit(factoryData) {
+  return Math.max(0, Math.round((factoryData?.dailyIncomeAvg10 || 0) * 0.5));
+}
+
+function isSponsorshipNoteFresh(noteData) {
+  const ms = noteData?.noteUpdatedAt?.toMillis?.() ?? 0;
+  return ms > 0 && Date.now() - ms < FUTBOL_SPONSORSHIP_NOTE_TTL_MS;
+}
+
+function isSponsorshipOfferFresh(offerData) {
+  const ms = offerData?.expiresAt?.toMillis?.() ?? 0;
+  return ms > Date.now();
+}
+
+// sendFactorySponsorshipOffer — bir fabrika sahibinin bir kulübe teklif
+// göndermesi. Kulüp BOT ise (ownerUid yok) otomatik değerlendirilir:
+// mevcut en iyi teklif/aktif sponsorluktan daha yüksekse ANINDA
+// "pendingSponsor" olur (bir sonraki 00:00'da devreye girer), değilse
+// reddedilir. Kulüp OYUNCU sahipliyse teklif 'pending' olarak beklemeye
+// alınır, kulüp sahibi respondSponsorshipOffer ile kabul/red eder.
+export const sendFactorySponsorshipOffer = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { teamId, dailyAmount } = request.data || {};
+  const cleanAmount = Math.round(Number(dailyAmount));
+  if (!teamId) throw new HttpsError('invalid-argument', 'Takım seçilmedi.');
+  if (!Number.isFinite(cleanAmount) || cleanAmount < 0) {
+    throw new HttpsError('invalid-argument', 'Geçersiz teklif tutarı.');
+  }
+
+  const [factorySnap, teamSnap] = await Promise.all([
+    db.collection('factories').doc(uid).get(),
+    db.collection('futbolTeams').doc(teamId).get(),
+  ]);
+  if (!factorySnap.exists) {
+    throw new HttpsError('failed-precondition', 'Önce bir fabrika kurman gerekiyor.');
+  }
+  if (!teamSnap.exists) throw new HttpsError('not-found', 'Takım bulunamadı.');
+  const factory = factorySnap.data();
+  const team = teamSnap.data();
+  const isSelfSponsor = team.ownerUid === uid;
+
+  if (isSelfSponsor) {
+    if (cleanAmount !== 0) {
+      throw new HttpsError('invalid-argument', 'Kendi takımına sponsor olurken ücret 0 olmalı.');
+    }
+  } else {
+    const cap = sponsorshipOfferCap(factory);
+    if (cleanAmount > cap) {
+      throw new HttpsError(
+        'failed-precondition',
+        `En fazla ${cap.toLocaleString('tr-TR')} altın teklif edebilirsin (son 10 günlük gelir ortalamanın %25'i).`
+      );
+    }
+  }
+
+  const factoryName = factoryDisplayName(factory);
+  const now = Date.now();
+  const offerRef = db.collection('sponsorshipOffers').doc();
+  const baseOffer = {
+    factoryOwnerUid: uid,
+    factoryName,
+    teamId,
+    teamName: team.name || 'Takım',
+    dailyAmount: cleanAmount,
+    fromRole: 'factory',
+    senderUid: uid,
+    receiverUid: team.ownerUid || null,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    expiresAt: admin.firestore.Timestamp.fromMillis(now + FUTBOL_SPONSORSHIP_OFFER_TTL_MS),
+  };
+
+  if (!team.ownerUid) {
+    // BOT kulüp — otomatik değerlendirme: mevcut en iyi teklif (henüz
+    // aktive olmamış pendingSponsor varsa onun tutarı, yoksa aktif
+    // sponsorun tutarı) ile karşılaştırılır.
+    const currentBest = Math.max(
+      team.pendingSponsor?.dailyAmount ?? -1,
+      team.sponsorFactoryOwnerUid ? team.sponsorDailyAmount ?? 0 : -1
+    );
+    if (cleanAmount > currentBest) {
+      await offerRef.set({ ...baseOffer, status: 'accepted' });
+      await teamSnap.ref.update({
+        pendingSponsor: { factoryOwnerUid: uid, factoryName, dailyAmount: cleanAmount, offerId: offerRef.id },
+        sponsorCancelPending: false,
+      });
+      return { ok: true, accepted: true, autoBot: true };
+    }
+    await offerRef.set({ ...baseOffer, status: 'rejected' });
+    return { ok: true, accepted: false, autoBot: true };
+  }
+
+  await offerRef.set({ ...baseOffer, status: 'pending' });
+  await db
+    .collection('users')
+    .doc(team.ownerUid)
+    .collection('messages')
+    .add({
+      text: `🤝 ${factoryName} takımına sponsor olmak istiyor — günlük ${cleanAmount.toLocaleString('tr-TR')} altın teklif etti. Futbol > Takımım > Sponsor sekmesinden değerlendirebilirsin.`,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      read: false,
+      type: 'sponsorship_offer',
+    });
+  return { ok: true, accepted: false, autoBot: false };
+});
+
+// sendClubSponsorshipOffer — bir kulüp sahibinin bir fabrikaya "beni
+// sponsor ol" teklifi göndermesi (ters yön). Fabrikalar hep oyuncu
+// sahipli olduğu için burada otomatik kabul YOK — fabrika sahibi
+// respondSponsorshipOffer ile kabul/red eder.
+export const sendClubSponsorshipOffer = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { factoryOwnerUid, dailyAmount } = request.data || {};
+  const cleanAmount = Math.round(Number(dailyAmount));
+  if (!factoryOwnerUid) throw new HttpsError('invalid-argument', 'Fabrika seçilmedi.');
+  if (!Number.isFinite(cleanAmount) || cleanAmount < 0) {
+    throw new HttpsError('invalid-argument', 'Geçersiz teklif tutarı.');
+  }
+
+  const teamSnap = await db.collection('futbolTeams').where('ownerUid', '==', uid).limit(1).get();
+  if (teamSnap.empty) throw new HttpsError('failed-precondition', 'Bir futbol takımın yok.');
+  const teamDoc = teamSnap.docs[0];
+  const team = teamDoc.data();
+
+  const factorySnap = await db.collection('factories').doc(factoryOwnerUid).get();
+  if (!factorySnap.exists) throw new HttpsError('not-found', 'Fabrika bulunamadı.');
+  const factory = factorySnap.data();
+  const isSelfSponsor = factoryOwnerUid === uid;
+
+  if (isSelfSponsor) {
+    if (cleanAmount !== 0) {
+      throw new HttpsError('invalid-argument', 'Kendi fabrikandan sponsorluk isterken ücret 0 olmalı.');
+    }
+  } else {
+    const cap = sponsorshipOfferCap(factory);
+    if (cleanAmount > cap) {
+      throw new HttpsError(
+        'failed-precondition',
+        `En fazla ${cap.toLocaleString('tr-TR')} altın teklif edebilirsin (o fabrikanın son 10 günlük gelir ortalamasının %25'i).`
+      );
+    }
+  }
+
+  const factoryName = factoryDisplayName(factory);
+  const now = Date.now();
+  const offerRef = db.collection('sponsorshipOffers').doc();
+  await offerRef.set({
+    factoryOwnerUid,
+    factoryName,
+    teamId: teamDoc.id,
+    teamName: team.name || 'Takım',
+    dailyAmount: cleanAmount,
+    fromRole: 'club',
+    senderUid: uid,
+    receiverUid: factoryOwnerUid,
+    status: 'pending',
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    expiresAt: admin.firestore.Timestamp.fromMillis(now + FUTBOL_SPONSORSHIP_OFFER_TTL_MS),
+  });
+
+  await db
+    .collection('users')
+    .doc(factoryOwnerUid)
+    .collection('messages')
+    .add({
+      text: `🤝 ${team.name || 'Bir takım'} senin fabrikandan sponsor olmanı istiyor — günlük ${cleanAmount.toLocaleString('tr-TR')} altın teklif etti. Fabrikalar > Sponsor'dan değerlendirebilirsin.`,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      read: false,
+      type: 'sponsorship_offer',
+    });
+  return { ok: true };
+});
+
+// respondSponsorshipOffer — teklifi ALAN taraf (receiverUid) kabul/red
+// eder. Kabul edilirse hedef takımın pendingSponsor'ı güncellenir — bir
+// SONRAKİ 00:00'da devreye girer (mevcut aktif sponsorluk varsa o gün
+// sonuna kadar aynen devam eder, kullanıcı netleştirmesi).
+export const respondSponsorshipOffer = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { offerId, accept } = request.data || {};
+  if (!offerId) throw new HttpsError('invalid-argument', 'Teklif bulunamadı.');
+
+  const offerRef = db.collection('sponsorshipOffers').doc(offerId);
+  const offerSnap = await offerRef.get();
+  if (!offerSnap.exists) throw new HttpsError('not-found', 'Teklif bulunamadı.');
+  const offer = offerSnap.data();
+  if (offer.status !== 'pending') {
+    throw new HttpsError('failed-precondition', 'Bu teklif artık geçerli değil.');
+  }
+  if (!isSponsorshipOfferFresh(offer)) {
+    await offerRef.update({ status: 'expired' });
+    throw new HttpsError('failed-precondition', 'Bu teklifin süresi doldu.');
+  }
+  if (offer.receiverUid !== uid) {
+    throw new HttpsError('permission-denied', 'Bu teklifi sadece alıcı taraf yanıtlayabilir.');
+  }
+
+  if (!accept) {
+    await offerRef.update({ status: 'rejected' });
+    return { ok: true, accepted: false };
+  }
+
+  const teamRef = db.collection('futbolTeams').doc(offer.teamId);
+  await offerRef.update({ status: 'accepted' });
+  await teamRef.update({
+    pendingSponsor: {
+      factoryOwnerUid: offer.factoryOwnerUid,
+      factoryName: offer.factoryName,
+      dailyAmount: offer.dailyAmount,
+      offerId,
+    },
+    sponsorCancelPending: false,
+  });
+
+  await db
+    .collection('users')
+    .doc(offer.factoryOwnerUid)
+    .collection('messages')
+    .add({
+      text: `🎉 ${offer.teamName} sponsorluk teklifini kabul etti! Yarın 00:00'da sponsorluk başlayacak (günlük ${offer.dailyAmount.toLocaleString('tr-TR')} altın).`,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      read: false,
+      type: 'sponsorship_accepted',
+    });
+  return { ok: true, accepted: true };
+});
+
+// withdrawSponsorshipOffer — teklifi GÖNDEREN taraf, henüz yanıtlanmamış
+// bir teklifini geri çekebilir.
+export const withdrawSponsorshipOffer = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { offerId } = request.data || {};
+  if (!offerId) throw new HttpsError('invalid-argument', 'Teklif bulunamadı.');
+  const offerRef = db.collection('sponsorshipOffers').doc(offerId);
+  const offerSnap = await offerRef.get();
+  if (!offerSnap.exists) throw new HttpsError('not-found', 'Teklif bulunamadı.');
+  const offer = offerSnap.data();
+  if (offer.senderUid !== uid) {
+    throw new HttpsError('permission-denied', 'Bu teklif sana ait değil.');
+  }
+  if (offer.status !== 'pending') {
+    throw new HttpsError('failed-precondition', 'Bu teklif artık geri çekilemez.');
+  }
+  await offerRef.update({ status: 'withdrawn' });
+  return { ok: true };
+});
+
+// cancelSponsorship — mevcut AKTİF sponsorluğu iki taraftan biri (fabrika
+// sahibi ya da kulüp sahibi) feshedebilir. Fesih ANINDA etkili olmaz —
+// 00:00'a kadar sponsorluk aynen devam eder, o gece YENİ ödeme
+// yapılmadan otomatik sona erer (kullanıcı netleştirmesi).
+export const cancelSponsorship = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { teamId } = request.data || {};
+  if (!teamId) throw new HttpsError('invalid-argument', 'Takım seçilmedi.');
+  const teamRef = db.collection('futbolTeams').doc(teamId);
+  const teamSnap = await teamRef.get();
+  if (!teamSnap.exists) throw new HttpsError('not-found', 'Takım bulunamadı.');
+  const team = teamSnap.data();
+  if (!team.sponsorFactoryOwnerUid) {
+    throw new HttpsError('failed-precondition', 'Bu takımın aktif bir sponsoru yok.');
+  }
+  if (team.sponsorFactoryOwnerUid !== uid && team.ownerUid !== uid) {
+    throw new HttpsError('permission-denied', 'Bu sponsorluğu sadece fabrika ya da kulüp sahibi feshedebilir.');
+  }
+  await teamRef.update({ sponsorCancelPending: true });
+  const otherUid = team.sponsorFactoryOwnerUid === uid ? team.ownerUid : team.sponsorFactoryOwnerUid;
+  if (otherUid) {
+    await db
+      .collection('users')
+      .doc(otherUid)
+      .collection('messages')
+      .add({
+        text: `⚠️ ${team.name || 'Takımın'} sponsorluk anlaşması feshedildi — bugün 00:00'a kadar devam edecek, yarın yeni ödeme yapılmadan sona erecek.`,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        read: false,
+        type: 'sponsorship_cancelled',
+      });
+  }
+  return { ok: true };
+});
+
+// raiseSponsorshipFee — SADECE mevcut sponsor fabrika sahibi, ödediği
+// günlük ücreti ARTIRABİLİR (kullanıcı isteği: sadece artırma yönü var).
+// Yeni ücret bir sonraki gece 00:00'daki ödemeden itibaren geçerlidir.
+export const raiseSponsorshipFee = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { teamId, newDailyAmount } = request.data || {};
+  const cleanAmount = Math.round(Number(newDailyAmount));
+  if (!teamId) throw new HttpsError('invalid-argument', 'Takım seçilmedi.');
+  if (!Number.isFinite(cleanAmount) || cleanAmount < 0) {
+    throw new HttpsError('invalid-argument', 'Geçersiz tutar.');
+  }
+  const teamRef = db.collection('futbolTeams').doc(teamId);
+  const teamSnap = await teamRef.get();
+  if (!teamSnap.exists) throw new HttpsError('not-found', 'Takım bulunamadı.');
+  const team = teamSnap.data();
+  if (team.sponsorFactoryOwnerUid !== uid) {
+    throw new HttpsError('permission-denied', 'Bu takımın sponsoru sen değilsin.');
+  }
+  if (cleanAmount < (team.sponsorDailyAmount || 0)) {
+    throw new HttpsError('invalid-argument', 'Sponsorluk ücreti sadece artırılabilir.');
+  }
+  const isSelfSponsor = team.ownerUid === uid;
+  const factorySnap = await db.collection('factories').doc(uid).get();
+  const factory = factorySnap.exists ? factorySnap.data() : null;
+  if (isSelfSponsor) {
+    if (cleanAmount !== 0) {
+      throw new HttpsError('invalid-argument', 'Kendi takımına sponsorlukta ücret 0 olmalı.');
+    }
+  } else {
+    const cap = sponsorshipOfferCap(factory);
+    if (cleanAmount > cap) {
+      throw new HttpsError(
+        'failed-precondition',
+        `En fazla ${cap.toLocaleString('tr-TR')} altına çıkarabilirsin (son 10 günlük gelir ortalamanın %25'i).`
+      );
+    }
+  }
+  await teamRef.update({ sponsorDailyAmount: cleanAmount });
+  if (team.ownerUid) {
+    await db
+      .collection('users')
+      .doc(team.ownerUid)
+      .collection('messages')
+      .add({
+        text: `📈 ${factoryDisplayName(factory)} sponsorluk ücretini günlük ${cleanAmount.toLocaleString('tr-TR')} altına yükseltti (yarından itibaren geçerli).`,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        read: false,
+        type: 'sponsorship_raised',
+      });
+  }
+  return { ok: true };
+});
+
+// updateSponsorshipNote — soygun notu (heistPlans.note) ile AYNI desen:
+// tek bir düzenlenebilir kısa not, fabrika VE kulüp sahibi de
+// düzenleyebilir, 24 saat güncellenmezse "kaybolmuş" sayılır (okuma
+// anında, bkz. listSponsorshipTeamsForFactory/listSponsorshipFactoriesForTeam).
+export const updateSponsorshipNote = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { factoryOwnerUid, teamId, note } = request.data || {};
+  if (!factoryOwnerUid || !teamId) {
+    throw new HttpsError('invalid-argument', 'factoryOwnerUid ve teamId gerekli.');
+  }
+  const cleanNote = String(note || '').slice(0, 140);
+
+  const teamSnap = await db.collection('futbolTeams').doc(teamId).get();
+  if (!teamSnap.exists) throw new HttpsError('not-found', 'Takım bulunamadı.');
+  const team = teamSnap.data();
+
+  let role;
+  if (uid === factoryOwnerUid) role = 'factory';
+  else if (uid === team.ownerUid) role = 'club';
+  else throw new HttpsError('permission-denied', 'Bu notu sadece fabrika ya da kulüp sahibi düzenleyebilir.');
+
+  const userSnap = await db.collection('users').doc(uid).get();
+  const noteRef = db.collection('sponsorshipNotes').doc(`${factoryOwnerUid}_${teamId}`);
+  await noteRef.set(
+    {
+      factoryOwnerUid,
+      teamId,
+      note: cleanNote,
+      noteUpdatedByRole: role,
+      noteUpdatedByName: userSnap.exists ? userSnap.data().displayName || 'Oyuncu' : 'Oyuncu',
+      noteUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+  return { ok: true };
+});
+
+// listSponsorshipTeamsForFactory — fabrika sahibinin Sponsor ekranında
+// göreceği TÜM kulüpler: en üstte KENDİ sponsoru olduğu takımlar, sonra
+// diğerleri (değere göre). Her takım için: Kulüpler sekmesindeki temel
+// bilgiler, varsa mevcut sponsoru ve günlük ücreti, aramızdaki not,
+// aramızdaki bekleyen teklif(ler).
+export const listSponsorshipTeamsForFactory = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const factorySnap = await db.collection('factories').doc(uid).get();
+  if (!factorySnap.exists) {
+    throw new HttpsError('failed-precondition', 'Önce bir fabrika kurman gerekiyor.');
+  }
+  const factory = factorySnap.data();
+
+  const [teamsSnap, offersSnap, notesSnap] = await Promise.all([
+    db.collection('futbolTeams').get(),
+    db.collection('sponsorshipOffers').where('factoryOwnerUid', '==', uid).where('status', '==', 'pending').get(),
+    db.collection('sponsorshipNotes').where('factoryOwnerUid', '==', uid).get(),
+  ]);
+
+  const offersByTeam = new Map();
+  offersSnap.docs.forEach((d) => {
+    const o = d.data();
+    if (!isSponsorshipOfferFresh(o)) return;
+    if (!offersByTeam.has(o.teamId)) offersByTeam.set(o.teamId, []);
+    offersByTeam.get(o.teamId).push({ id: d.id, dailyAmount: o.dailyAmount, fromRole: o.fromRole });
+  });
+  const noteByTeam = new Map();
+  notesSnap.docs.forEach((d) => {
+    const n = d.data();
+    if (isSponsorshipNoteFresh(n)) noteByTeam.set(n.teamId, n);
+  });
+
+  const teams = await Promise.all(
+    teamsSnap.docs.map(async (d) => {
+      const team = d.data();
+      const value = await computeFutbolTeamValue(d.id);
+      let chairman = 'Bot Yönetimi';
+      if (team.ownerUid) {
+        const ownerSnap = await db.collection('users').doc(team.ownerUid).get();
+        chairman = ownerSnap.exists ? ownerSnap.data().displayName || 'İsimsiz Başkan' : 'İsimsiz Başkan';
+      }
+      const note = noteByTeam.get(d.id);
+      return {
+        id: d.id,
+        name: team.name,
+        logo: team.logo || null,
+        tier: team.tier,
+        fans: team.fans || 0,
+        stadiumCapacity: team.stadiumCapacity || FUTBOL_STADIUM_LADDER[0].capacity,
+        value,
+        chairman,
+        isBot: !team.ownerUid,
+        sponsorFactoryOwnerUid: team.sponsorFactoryOwnerUid || null,
+        sponsorFactoryName: team.sponsorFactoryOwnerUid ? team.sponsorFactoryName || null : null,
+        sponsorDailyAmount: team.sponsorFactoryOwnerUid ? team.sponsorDailyAmount || 0 : null,
+        isMySponsorship: team.sponsorFactoryOwnerUid === uid,
+        pendingSponsorFactoryOwnerUid: team.pendingSponsor?.factoryOwnerUid || null,
+        myPendingOffers: offersByTeam.get(d.id) || [],
+        note: note?.note || '',
+        noteUpdatedByName: note?.noteUpdatedByName || null,
+        noteUpdatedByRole: note?.noteUpdatedByRole || null,
+      };
+    })
+  );
+
+  teams.sort((a, b) => {
+    if (a.isMySponsorship !== b.isMySponsorship) return a.isMySponsorship ? -1 : 1;
+    return b.value - a.value;
+  });
+
+  return { teams, offerCap: sponsorshipOfferCap(factory), dailyIncomeAvg10: factory.dailyIncomeAvg10 || 0 };
+});
+
+// listSponsorshipFactoriesForTeam — kulüp sahibinin Futbol > Takımım >
+// Sponsor ekranında göreceği TÜM fabrikalar: en üstte KENDİ sponsorumuz
+// olan fabrika, sonra diğerleri. Her fabrika için: adı/logosu, son 10
+// günlük gelir ortalaması (teklif üst limitinin referansı), aramızdaki
+// not, bize gönderdikleri bekleyen teklif(ler).
+export const listSponsorshipFactoriesForTeam = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const teamSnap = await db.collection('futbolTeams').where('ownerUid', '==', uid).limit(1).get();
+  if (teamSnap.empty) throw new HttpsError('failed-precondition', 'Bir futbol takımın yok.');
+  const teamDoc = teamSnap.docs[0];
+  const team = teamDoc.data();
+
+  const [factoriesSnap, offersSnap, notesSnap] = await Promise.all([
+    db.collection('factories').get(),
+    db.collection('sponsorshipOffers').where('teamId', '==', teamDoc.id).where('status', '==', 'pending').get(),
+    db.collection('sponsorshipNotes').where('teamId', '==', teamDoc.id).get(),
+  ]);
+
+  const offersByFactory = new Map();
+  offersSnap.docs.forEach((d) => {
+    const o = d.data();
+    if (!isSponsorshipOfferFresh(o)) return;
+    if (!offersByFactory.has(o.factoryOwnerUid)) offersByFactory.set(o.factoryOwnerUid, []);
+    offersByFactory.get(o.factoryOwnerUid).push({ id: d.id, dailyAmount: o.dailyAmount, fromRole: o.fromRole });
+  });
+  const noteByFactory = new Map();
+  notesSnap.docs.forEach((d) => {
+    const n = d.data();
+    if (isSponsorshipNoteFresh(n)) noteByFactory.set(n.factoryOwnerUid, n);
+  });
+
+  const factories = factoriesSnap.docs.map((d) => {
+    const f = d.data();
+    const note = noteByFactory.get(d.id);
+    return {
+      ownerId: d.id,
+      name: factoryDisplayName(f),
+      logo: f.logo || null,
+      dailyIncomeAvg10: f.dailyIncomeAvg10 || 0,
+      isMySponsor: team.sponsorFactoryOwnerUid === d.id,
+      note: note?.note || '',
+      noteUpdatedByName: note?.noteUpdatedByName || null,
+      noteUpdatedByRole: note?.noteUpdatedByRole || null,
+      theirPendingOffers: offersByFactory.get(d.id) || [],
+    };
+  });
+
+  factories.sort((a, b) => {
+    if (a.isMySponsor !== b.isMySponsor) return a.isMySponsor ? -1 : 1;
+    return b.dailyIncomeAvg10 - a.dailyIncomeAvg10;
+  });
+
+  return {
+    team: {
+      id: teamDoc.id,
+      name: team.name,
+      sponsorFactoryOwnerUid: team.sponsorFactoryOwnerUid || null,
+      sponsorFactoryName: team.sponsorFactoryOwnerUid ? team.sponsorFactoryName || null : null,
+      sponsorDailyAmount: team.sponsorFactoryOwnerUid ? team.sponsorDailyAmount || 0 : null,
+      pendingSponsorFactoryOwnerUid: team.pendingSponsor?.factoryOwnerUid || null,
+    },
+    factories,
+  };
+});
+
+// processFutbolSponsorshipsNightly — her gece 00:00'da (dailyReset)
+// çağrılır. Sırasıyla: 1) yeni/değişen sponsorlukları (pendingSponsor)
+// aktive edip fesih bekleyenleri (sponsorCancelPending, YENİ sponsoru
+// yoksa) ÖDEMESİZ sonlandırır, 2) aktif olan/olacak TÜM sponsorluklardan
+// günlük ödemeyi tahsil eder (fabrika sahibi ödeyemezse fark
+// salary/electricity ile AYNI desende devlete borç yazılır, kulüp sahibi
+// HER ZAMAN tam alır), 3) fabrika günlük raporuna dailySponsorshipExpense
+// yazar, 4) her fabrika sahibinin TOPLAM sponsorluk giderini son 10
+// günlük kârının %50'siyle karşılaştırır — aşarsa TÜM sponsorluklarını
+// anında iptal eder, 5) süresi geçmiş bekleyen teklifleri temizler.
+async function processFutbolSponsorshipsNightly() {
+  const teamsSnap = await db.collection('futbolTeams').get();
+
+  const chargeJobs = []; // { teamId, teamName, factoryOwnerUid, clubOwnerUid, amount }
+  let teamBatch = db.batch();
+  let teamBatchCount = 0;
+  const teamBatchJobs = [];
+
+  teamsSnap.docs.forEach((d) => {
+    const team = d.data();
+    const hasPending = !!team.pendingSponsor;
+    const hasCancel = team.sponsorCancelPending === true;
+    const hasActive = !!team.sponsorFactoryOwnerUid;
+
+    if (hasPending) {
+      const p = team.pendingSponsor;
+      teamBatch.update(d.ref, {
+        sponsorFactoryOwnerUid: p.factoryOwnerUid,
+        sponsorFactoryName: p.factoryName,
+        sponsorDailyAmount: p.dailyAmount,
+        sponsorSince: admin.firestore.FieldValue.serverTimestamp(),
+        pendingSponsor: null,
+        sponsorCancelPending: false,
+      });
+      teamBatchCount += 1;
+      chargeJobs.push({
+        teamId: d.id,
+        teamName: team.name || 'Takım',
+        factoryOwnerUid: p.factoryOwnerUid,
+        clubOwnerUid: team.ownerUid || null,
+        amount: p.dailyAmount,
+      });
+    } else if (hasCancel) {
+      teamBatch.update(d.ref, {
+        sponsorFactoryOwnerUid: null,
+        sponsorFactoryName: null,
+        sponsorDailyAmount: 0,
+        sponsorSince: null,
+        sponsorCancelPending: false,
+      });
+      teamBatchCount += 1;
+    } else if (hasActive) {
+      chargeJobs.push({
+        teamId: d.id,
+        teamName: team.name || 'Takım',
+        factoryOwnerUid: team.sponsorFactoryOwnerUid,
+        clubOwnerUid: team.ownerUid || null,
+        amount: team.sponsorDailyAmount || 0,
+      });
+    }
+    if (teamBatchCount >= 400) {
+      // Firestore batch limiti — güvenlik için (gerçekte binlerce takım
+      // olması beklenmiyor ama yine de sınırı aşmayalım).
+      teamBatchJobs.push(teamBatch.commit());
+      teamBatch = db.batch();
+      teamBatchCount = 0;
+    }
+  });
+  if (teamBatchCount > 0) teamBatchJobs.push(teamBatch.commit());
+  await Promise.all(teamBatchJobs);
+
+  // Ödemeler — salaryPaidToday/dailyElectricityExpense ile AYNI ceza
+  // deseni: fabrika sahibi elinden geldiğince öder, yetmeyen kısım
+  // devlete borç yazılır; kulüp sahibi (varsa) HER ZAMAN tam alır. Bot
+  // kulüpler (clubOwnerUid null) için ödeme sadece fabrika sahibinden
+  // düşer, kimseye gitmez (ticketRevenue'daki `if (homeOwnerUid)` deseniyle
+  // AYNI — sponsorluk botlar için saf bir "reklam" harcaması).
+  const sponsorshipExpenseByFactoryOwner = new Map();
+  const payerIds = [...new Set(chargeJobs.map((j) => j.factoryOwnerUid))];
+  const payerSnaps = await Promise.all(payerIds.map((id) => db.collection('users').doc(id).get()));
+  const payerGold = new Map();
+  const payerDebt = new Map();
+  payerSnaps.forEach((s) => {
+    payerGold.set(s.id, s.data()?.gold || 0);
+    payerDebt.set(s.id, s.data()?.debtToState || 0);
+  });
+
+  let payBatch = db.batch();
+  let payOpCount = 0;
+  const payBatchJobs = [];
+  const smsJobs = [];
+
+  chargeJobs.forEach((job) => {
+    sponsorshipExpenseByFactoryOwner.set(
+      job.factoryOwnerUid,
+      (sponsorshipExpenseByFactoryOwner.get(job.factoryOwnerUid) || 0) + job.amount
+    );
+    if (job.amount <= 0) return; // kendi takımına 0 altınla sponsorluk — para hareketi yok
+
+    const availableGold = payerGold.get(job.factoryOwnerUid) ?? 0;
+    const paidFromGold = Math.min(job.amount, availableGold);
+    const shortfall = job.amount - paidFromGold;
+    payerGold.set(job.factoryOwnerUid, availableGold - paidFromGold);
+    payerDebt.set(job.factoryOwnerUid, (payerDebt.get(job.factoryOwnerUid) || 0) + shortfall);
+
+    payBatch.update(db.collection('users').doc(job.factoryOwnerUid), {
+      gold: admin.firestore.FieldValue.increment(-paidFromGold),
+      debtToState: admin.firestore.FieldValue.increment(shortfall),
+    });
+    payOpCount += 1;
+    if (job.clubOwnerUid) {
+      payBatch.update(db.collection('users').doc(job.clubOwnerUid), {
+        gold: admin.firestore.FieldValue.increment(job.amount),
+      });
+      payOpCount += 1;
+    }
+    if (payOpCount >= 380) {
+      payBatchJobs.push(payBatch.commit());
+      payBatch = db.batch();
+      payOpCount = 0;
+    }
+
+    smsJobs.push({
+      factoryOwnerUid: job.factoryOwnerUid,
+      clubOwnerUid: job.clubOwnerUid,
+      teamName: job.teamName,
+      amount: job.amount,
+      shortfall,
+      newTotalDebt: payerDebt.get(job.factoryOwnerUid),
+    });
+  });
+  if (payOpCount > 0) payBatchJobs.push(payBatch.commit());
+  await Promise.all(payBatchJobs);
+
+  await Promise.all(
+    smsJobs.flatMap((job) => {
+      const jobs = [
+        db
+          .collection('users')
+          .doc(job.factoryOwnerUid)
+          .collection('messages')
+          .add({
+            text: `💸 ${job.teamName} sponsorluğun için bugün ${job.amount.toLocaleString('tr-TR')} altın ödendi.${job.shortfall > 0 ? ` Altının yetmedi, ${job.shortfall.toLocaleString('tr-TR')} altın devlete borç yazıldı.` : ''}`,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            read: false,
+            type: 'sponsorship_payment',
+          }),
+      ];
+      if (job.clubOwnerUid) {
+        jobs.push(
+          db
+            .collection('users')
+            .doc(job.clubOwnerUid)
+            .collection('messages')
+            .add({
+              text: `💰 Sponsorundan bugünkü ödeme olan ${job.amount.toLocaleString('tr-TR')} altın hesabına yattı.`,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              read: false,
+              type: 'sponsorship_income',
+            })
+        );
+      }
+      return jobs;
+    })
+  );
+
+  // Fabrika günlük rapor için: dailySponsorshipExpense/History (TÜM
+  // fabrikalara yazılır — gideri olmayan da 0 alır, dailySalaryExpense
+  // ile AYNI konvansiyon).
+  {
+    const prevDateKeyForSponsorship = addDaysToDateKey(istanbulDateKey(), -1);
+    const allFactoriesSnap = await db.collection('factories').get();
+    let reportBatch = db.batch();
+    let reportOpCount = 0;
+    const reportBatchJobs = [];
+    allFactoriesSnap.docs.forEach((fSnap) => {
+      const expense = sponsorshipExpenseByFactoryOwner.get(fSnap.id) || 0;
+      const existingHistory = Array.isArray(fSnap.data().dailySponsorshipExpenseHistory)
+        ? fSnap.data().dailySponsorshipExpenseHistory
+        : [];
+      const dailySponsorshipExpenseHistory = [...existingHistory, expense].slice(-10);
+      reportBatch.update(fSnap.ref, {
+        dailySponsorshipExpense: expense,
+        dailySponsorshipExpenseHistory,
+        dailySponsorshipExpenseDateKey: prevDateKeyForSponsorship,
+      });
+      reportOpCount += 1;
+      if (reportOpCount >= 400) {
+        reportBatchJobs.push(reportBatch.commit());
+        reportBatch = db.batch();
+        reportOpCount = 0;
+      }
+    });
+    if (reportOpCount > 0) reportBatchJobs.push(reportBatch.commit());
+    await Promise.all(reportBatchJobs);
+  }
+
+  // Güvenlik supabı: toplam sponsorluk gideri, fabrikanın son 10 günlük
+  // kârının %50'sini aşan sahiplerin TÜM sponsorlukları anında iptal
+  // edilir. chargeJobs zaten bu gecenin GÜNCEL (aktivasyon sonrası) tüm
+  // sponsorluk ödemelerini içeriyor.
+  {
+    const totalActiveByOwner = new Map();
+    chargeJobs.forEach((job) => {
+      totalActiveByOwner.set(job.factoryOwnerUid, (totalActiveByOwner.get(job.factoryOwnerUid) || 0) + job.amount);
+    });
+
+    const violatingOwners = new Set();
+    await Promise.all(
+      [...totalActiveByOwner.entries()].map(async ([ownerId, total]) => {
+        if (total <= 0) return;
+        const fSnap = await db.collection('factories').doc(ownerId).get();
+        const limit = sponsorshipSafetyLimit(fSnap.exists ? fSnap.data() : null);
+        if (total > limit) violatingOwners.add(ownerId);
+      })
+    );
+
+    if (violatingOwners.size > 0) {
+      const teamsToCancel = chargeJobs.filter((job) => violatingOwners.has(job.factoryOwnerUid));
+      let cancelBatch = db.batch();
+      let cancelOpCount = 0;
+      const cancelBatchJobs = [];
+      teamsToCancel.forEach((job) => {
+        cancelBatch.update(db.collection('futbolTeams').doc(job.teamId), {
+          sponsorFactoryOwnerUid: null,
+          sponsorFactoryName: null,
+          sponsorDailyAmount: 0,
+          sponsorSince: null,
+          sponsorCancelPending: false,
+        });
+        cancelOpCount += 1;
+        if (cancelOpCount >= 400) {
+          cancelBatchJobs.push(cancelBatch.commit());
+          cancelBatch = db.batch();
+          cancelOpCount = 0;
+        }
+      });
+      if (cancelOpCount > 0) cancelBatchJobs.push(cancelBatch.commit());
+      await Promise.all(cancelBatchJobs);
+
+      await Promise.all(
+        teamsToCancel.flatMap((job) => {
+          const jobs = [
+            db
+              .collection('users')
+              .doc(job.factoryOwnerUid)
+              .collection('messages')
+              .add({
+                text: `🚨 Toplam sponsorluk giderin son 10 günlük kârının yarısını aştığı için TÜM sponsorlukların (${job.teamName} dahil) iptal edildi.`,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                read: false,
+                type: 'sponsorship_safety_cancel',
+              }),
+          ];
+          if (job.clubOwnerUid) {
+            jobs.push(
+              db
+                .collection('users')
+                .doc(job.clubOwnerUid)
+                .collection('messages')
+                .add({
+                  text: `⚠️ ${job.teamName} takımının sponsorluğu, sponsor fabrikanın gider limiti aşıldığı için iptal edildi.`,
+                  createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                  read: false,
+                  type: 'sponsorship_safety_cancel',
+                })
+            );
+          }
+          return jobs;
+        })
+      );
+    }
+  }
+
+  // Süresi geçmiş bekleyen teklifleri temizle (hijyen — respondSponsorshipOffer
+  // zaten expiresAt'i ayrıca kontrol ediyor, bu sadece liste ekranlarının
+  // temiz kalması için).
+  {
+    const staleOffersSnap = await db.collection('sponsorshipOffers').where('status', '==', 'pending').get();
+    const now = Date.now();
+    let expireBatch = db.batch();
+    let expireOpCount = 0;
+    const expireBatchJobs = [];
+    staleOffersSnap.docs.forEach((d) => {
+      const o = d.data();
+      const ms = o.expiresAt?.toMillis?.() ?? 0;
+      if (ms > 0 && ms <= now) {
+        expireBatch.update(d.ref, { status: 'expired' });
+        expireOpCount += 1;
+        if (expireOpCount >= 400) {
+          expireBatchJobs.push(expireBatch.commit());
+          expireBatch = db.batch();
+          expireOpCount = 0;
+        }
+      }
+    });
+    if (expireOpCount > 0) expireBatchJobs.push(expireBatch.commit());
+    await Promise.all(expireBatchJobs);
+  }
+}
 
 // --- Futbol modülü: Stadyum (kapasite yükseltme + bilet fiyatı) ---
 
@@ -12855,7 +14079,11 @@ async function buildSixtagramAttachment(uid, attachment) {
       throw new HttpsError('permission-denied', 'Bu kupon sana ait değil.');
     }
     const bet = betSnap.data();
-    const predictionList = bet.predictions || [];
+    // KULLANICI REVİZESİ (İddaa Oran Sistemi): kupon artık TEK bir maça
+    // yapılan bahis (bet.matchId/bet.pick), eski çoklu-maç predictions
+    // dizisi yok — aşağıdaki kod değişmesin diye tek elemanlı bir
+    // "predictionList" olarak sarmalıyoruz.
+    const predictionList = bet.matchId ? [{ matchId: bet.matchId, pick: bet.pick }] : [];
 
     const [leagueSnap, matchSnaps] = await Promise.all([
       db.collection('futbolLeagues').doc(bet.leagueId).get(),
@@ -12909,6 +14137,8 @@ async function buildSixtagramAttachment(uid, attachment) {
       stake: bet.stake,
       status: bet.status,
       payout: bet.payout || 0,
+      odds: bet.odds ?? null,
+      potentialPayout: bet.potentialPayout ?? null,
       predictions,
     };
   }

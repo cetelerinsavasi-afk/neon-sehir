@@ -32,6 +32,9 @@ export default function FutbolKulupler({ leagueId }) {
             <p className="futbol-buy-meta">
               {c.fans.toLocaleString('tr-TR')} taraftar · {(c.stadiumCapacity || 2500).toLocaleString('tr-TR')} kapasiteli stadyum
             </p>
+            {c.sponsorFactoryName && (
+              <p className="futbol-buy-meta futbol-kulup-sponsor">🤝 Sponsor: {c.sponsorFactoryName}</p>
+            )}
           </div>
           <p className="futbol-kulup-value">{c.value.toLocaleString('tr-TR')} altın</p>
         </div>
