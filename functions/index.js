@@ -12917,6 +12917,11 @@ export const listSponsorshipTeamsForFactory = onCall(async (request) => {
         value,
         chairman,
         isBot: !team.ownerUid,
+        // isSelfSponsor — istemcinin "kendi takımına sponsorluk" akışında
+        // (ücret her zaman 0, teklif tutarı seçilemez) doğru arayüzü
+        // gösterebilmesi için (bkz. sendFactorySponsorshipOffer'daki AYNI
+        // kontrol — isSelfSponsor = team.ownerUid === uid).
+        isSelfSponsor: team.ownerUid === uid,
         sponsorFactoryOwnerUid: team.sponsorFactoryOwnerUid || null,
         sponsorFactoryName: team.sponsorFactoryOwnerUid ? team.sponsorFactoryName || null : null,
         sponsorDailyAmount: team.sponsorFactoryOwnerUid ? team.sponsorDailyAmount || 0 : null,
@@ -12977,6 +12982,13 @@ export const listSponsorshipFactoriesForTeam = onCall(async (request) => {
       name: factoryDisplayName(f),
       logo: f.logo || null,
       dailyIncomeAvg10: f.dailyIncomeAvg10 || 0,
+      // offerCap — BU fabrikaya en fazla teklif edilebilecek tutar (bkz.
+      // sendClubSponsorshipOffer'daki AYNI hesap — hedef fabrikanın son 10
+      // günlük gelir ortalamasının %25'i). isSelfSponsor — kendi
+      // fabrikamıza teklif gönderiyorsak ücret her zaman 0 (bkz. AYNI
+      // fonksiyondaki kontrol).
+      offerCap: sponsorshipOfferCap(f),
+      isSelfSponsor: d.id === uid,
       isMySponsor: team.sponsorFactoryOwnerUid === d.id,
       note: note?.note || '',
       noteUpdatedByName: note?.noteUpdatedByName || null,

@@ -8,7 +8,12 @@ import {
   updateSponsorshipNote,
 } from '../../services/gameActions';
 import FactoryBadge from '../FactoryScreen/FactoryBadge';
+import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './FutbolTakimim.css';
+
+// SPONSOR_QUICK_AMOUNTS — bkz. FactorySponsorModal.jsx'teki AYNI liste:
+// boş "sayı yaz" kutusu yerine buton tabanlı miktar seçici.
+const SPONSOR_QUICK_AMOUNTS = [10, 100, 1000, 10000, 100000, { value: 1000000, label: '1M' }];
 
 // FutbolSponsor — kulüp sahibinin Futbol > Takımım > Sponsor sekmesi.
 // Önce KENDİ sponsorumuz olan fabrika, sonra tüm diğer fabrikalar
@@ -19,6 +24,9 @@ export default function FutbolSponsor({ team }) {
   const [error, setError] = useState('');
   const [busyKey, setBusyKey] = useState(null);
   const [offerDrafts, setOfferDrafts] = useState({});
+  // expandedOfferId — kullanıcı isteği: boş kutuya sayı yazmak yerine,
+  // "Teklif Gönder" butonuna basınca o kartta tutar seçici açılsın.
+  const [expandedOfferId, setExpandedOfferId] = useState(null);
   const [noteEditingId, setNoteEditingId] = useState(null);
   const [noteDraft, setNoteDraft] = useState('');
 
@@ -49,9 +57,14 @@ export default function FutbolSponsor({ team }) {
     }
   };
 
-  const handleOffer = (factoryOwnerUid) => {
-    const amount = Math.max(0, Math.round(Number(offerDrafts[factoryOwnerUid] ?? 0)));
-    runAction(`offer-${factoryOwnerUid}`, () => sendClubSponsorshipOffer(factoryOwnerUid, amount));
+  // handleOffer — kendi fabrikamıza (isSelfSponsor) teklif her zaman 0
+  // altınla ANINDA gönderilir, tutar seçici hiç açılmaz.
+  const handleOffer = (factoryOwnerUid, isSelfSponsor) => {
+    const amount = isSelfSponsor ? 0 : Math.max(0, Math.round(Number(offerDrafts[factoryOwnerUid] ?? 0)));
+    runAction(`offer-${factoryOwnerUid}`, () => sendClubSponsorshipOffer(factoryOwnerUid, amount)).then(() => {
+      setExpandedOfferId(null);
+      setOfferDrafts((d) => ({ ...d, [factoryOwnerUid]: 0 }));
+    });
   };
 
   const handleWithdraw = (offerId, factoryOwnerUid) => {
@@ -87,10 +100,6 @@ export default function FutbolSponsor({ team }) {
 
   return (
     <div className="futbol-sponsor">
-      <p className="futbol-placeholder">
-        🤝 Fabrikalar sana günlük ücret karşılığında sponsor olabilir; sen de bir fabrikadan sponsorluk
-        isteyebilirsin. Anlaşmalar her zaman bir sonraki gece 00:00'da devreye girer.
-      </p>
       {error && <p className="futbol-admin-error">{error}</p>}
 
       <p className="futbol-kadro-section-title">⭐ Sponsorumuz</p>
@@ -124,13 +133,16 @@ export default function FutbolSponsor({ team }) {
         {otherFactories.map((f) => {
           const myOffer = f.theirPendingOffers.find((o) => o.fromRole === 'club');
           const factoryOffer = f.theirPendingOffers.find((o) => o.fromRole === 'factory');
+          const offerOpen = expandedOfferId === f.ownerId;
           return (
             <div key={f.ownerId} className="futbol-buy-row futbol-sponsor-card">
               <FactoryBadge logo={f.logo} name={f.name} size={36} />
               <div className="futbol-buy-info">
-                <p className="futbol-buy-name">{f.name}</p>
+                <p className="futbol-buy-name">
+                  {f.name} {f.isSelfSponsor && <span className="futbol-buy-badge">⭐ Senin Fabrikan</span>}
+                </p>
                 <p className="futbol-buy-meta">
-                  📊 Son 10 günlük gelir ortalaması: {f.dailyIncomeAvg10.toLocaleString('tr-TR')} altın
+                  💰 Max teklif: <strong>{f.offerCap.toLocaleString('tr-TR')} altın/gün</strong>
                 </p>
                 {f.note && (
                   <p className="futbol-buy-meta">
@@ -177,24 +189,46 @@ export default function FutbolSponsor({ team }) {
                       Teklifi Geri Çek
                     </button>
                   </div>
-                ) : (
-                  <div className="futbol-sponsor-offer-row">
-                    <input
-                      className="futbol-sponsor-input"
-                      type="number"
-                      min={0}
-                      placeholder="İstenen ücret"
-                      value={offerDrafts[f.ownerId] ?? ''}
-                      onChange={(e) => setOfferDrafts((d) => ({ ...d, [f.ownerId]: e.target.value }))}
+                ) : f.isSelfSponsor ? (
+                  <button
+                    className="futbol-admin-submit"
+                    disabled={busyKey === `offer-${f.ownerId}`}
+                    onClick={() => handleOffer(f.ownerId, true)}
+                  >
+                    {busyKey === `offer-${f.ownerId}` ? '…' : '🤝 Teklif Gönder (0 altın)'}
+                  </button>
+                ) : offerOpen ? (
+                  <div className="futbol-sponsor-offer-box">
+                    <QuantityStepper
+                      value={offerDrafts[f.ownerId] ?? 0}
+                      onChange={(v) => setOfferDrafts((d) => ({ ...d, [f.ownerId]: v }))}
+                      max={f.offerCap}
+                      step={10}
+                      quickAmounts={SPONSOR_QUICK_AMOUNTS}
                     />
-                    <button
-                      className="futbol-admin-submit"
-                      disabled={busyKey === `offer-${f.ownerId}`}
-                      onClick={() => handleOffer(f.ownerId)}
-                    >
-                      {busyKey === `offer-${f.ownerId}` ? '…' : '🤝 Teklif Gönder'}
-                    </button>
+                    <div className="futbol-sponsor-note-actions">
+                      <button className="futbol-admin-reset" onClick={() => setExpandedOfferId(null)}>
+                        Vazgeç
+                      </button>
+                      <button
+                        className="futbol-admin-submit"
+                        disabled={busyKey === `offer-${f.ownerId}`}
+                        onClick={() => handleOffer(f.ownerId, false)}
+                      >
+                        {busyKey === `offer-${f.ownerId}` ? '…' : 'Gönder'}
+                      </button>
+                    </div>
                   </div>
+                ) : (
+                  <button
+                    className="futbol-admin-submit"
+                    onClick={() => {
+                      setExpandedOfferId(f.ownerId);
+                      setOfferDrafts((d) => ({ ...d, [f.ownerId]: d[f.ownerId] ?? 0 }));
+                    }}
+                  >
+                    🤝 Teklif Gönder
+                  </button>
                 )}
 
                 {noteEditingId === f.ownerId ? (

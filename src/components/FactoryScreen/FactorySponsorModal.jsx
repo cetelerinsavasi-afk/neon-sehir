@@ -10,6 +10,13 @@ import {
   updateSponsorshipNote,
 } from '../../services/gameActions';
 import FutbolCrest from '../FutbolScreen/FutbolCrest';
+import QuantityStepper from '../QuantityStepper/QuantityStepper';
+
+// SPONSOR_QUICK_AMOUNTS — kullanıcı isteği: "boş kutuya klavyeden sayı
+// yazmak" yerine oyunun bir çok yerinde (bkz. FutbolTakimim.jsx
+// CLUB_PRICE_QUICK_AMOUNTS) kullanılan buton tabanlı miktar seçici AYNI
+// altın tutarlarıyla burada da kullanılıyor.
+const SPONSOR_QUICK_AMOUNTS = [10, 100, 1000, 10000, 100000, { value: 1000000, label: '1M' }];
 
 // FactorySponsorModal — fabrika sahibinin "Sponsor" ekranı. Önce KENDİ
 // sponsor olduğu takım(lar), sonra tüm diğer takımlar listelenir (bkz.
@@ -24,6 +31,12 @@ export default function FactorySponsorModal({ onClose }) {
   const [busyKey, setBusyKey] = useState(null);
   const [offerDrafts, setOfferDrafts] = useState({});
   const [raiseDrafts, setRaiseDrafts] = useState({});
+  // expandedOfferId/expandedRaiseId — kullanıcı isteği: "sayı yazabileceğimiz
+  // boş kutu olmasın, teklif ver butonuna bastığımızda aktif olsun" — teklif
+  // tutar seçici (QuantityStepper) sadece ilgili "Teklif Gönder"/"Yükselt"
+  // butonuna basılınca o kartta açılır.
+  const [expandedOfferId, setExpandedOfferId] = useState(null);
+  const [expandedRaiseId, setExpandedRaiseId] = useState(null);
   const [noteEditingId, setNoteEditingId] = useState(null);
   const [noteDraft, setNoteDraft] = useState('');
 
@@ -54,9 +67,15 @@ export default function FactorySponsorModal({ onClose }) {
     }
   };
 
-  const handleSponsorOl = (teamId) => {
-    const amount = Math.max(0, Math.round(Number(offerDrafts[teamId] ?? 0)));
-    runAction(`offer-${teamId}`, () => sendFactorySponsorshipOffer(teamId, amount));
+  // handleSponsorOl — kendi takımımıza (isSelfSponsor) teklif her zaman 0
+  // altınla ANINDA gönderilir, tutar seçici hiç açılmaz (kullanıcı isteği
+  // madde 3). Diğer takımlarda seçilen tutar gönderilir.
+  const handleSponsorOl = (teamId, isSelfSponsor) => {
+    const amount = isSelfSponsor ? 0 : Math.max(0, Math.round(Number(offerDrafts[teamId] ?? 0)));
+    runAction(`offer-${teamId}`, () => sendFactorySponsorshipOffer(teamId, amount)).then(() => {
+      setExpandedOfferId(null);
+      setOfferDrafts((d) => ({ ...d, [teamId]: 0 }));
+    });
   };
 
   const handleWithdraw = (offerId, teamId) => {
@@ -73,7 +92,9 @@ export default function FactorySponsorModal({ onClose }) {
 
   const handleRaise = (teamId) => {
     const amount = Math.max(0, Math.round(Number(raiseDrafts[teamId] ?? 0)));
-    runAction(`raise-${teamId}`, () => raiseSponsorshipFee(teamId, amount));
+    runAction(`raise-${teamId}`, () => raiseSponsorshipFee(teamId, amount)).then(() => {
+      setExpandedRaiseId(null);
+    });
   };
 
   const openNoteEditor = (team) => {
@@ -134,6 +155,7 @@ export default function FactorySponsorModal({ onClose }) {
             <div className="factory-share-list">
               {mySponsorships.map((t) => {
                 const beingReplaced = t.pendingSponsorFactoryOwnerUid && t.pendingSponsorFactoryOwnerUid !== user.uid;
+                const raiseOpen = expandedRaiseId === t.id;
                 return (
                   <div key={t.id} className="factory-share-buy-card factory-sponsor-card">
                     <div className="factory-sponsor-card-head">
@@ -195,24 +217,47 @@ export default function FactorySponsorModal({ onClose }) {
                       )}
                     </div>
 
-                    <div className="factory-sponsor-offer-row">
-                      <input
-                        className="factory-name-input"
-                        type="number"
-                        min={t.sponsorDailyAmount || 0}
-                        max={offerCap}
-                        placeholder="Yeni ücret (yükselt)"
-                        value={raiseDrafts[t.id] ?? ''}
-                        onChange={(e) => setRaiseDrafts((d) => ({ ...d, [t.id]: e.target.value }))}
-                      />
-                      <button
-                        className="factory-btn small"
-                        disabled={busyKey === `raise-${t.id}`}
-                        onClick={() => handleRaise(t.id)}
-                      >
-                        📈 Yükselt
-                      </button>
-                    </div>
+                    {!t.isSelfSponsor &&
+                      (raiseOpen ? (
+                        <div className="factory-sponsor-offer-box">
+                          <QuantityStepper
+                            value={raiseDrafts[t.id] ?? t.sponsorDailyAmount ?? 0}
+                            onChange={(v) => setRaiseDrafts((d) => ({ ...d, [t.id]: v }))}
+                            max={offerCap}
+                            step={10}
+                            quickAmounts={SPONSOR_QUICK_AMOUNTS}
+                          />
+                          <p className="factory-hint small">
+                            En az {(t.sponsorDailyAmount || 0).toLocaleString('tr-TR')}, en fazla{' '}
+                            {offerCap.toLocaleString('tr-TR')} altın/gün olabilir.
+                          </p>
+                          <div className="factory-sponsor-note-actions">
+                            <button className="factory-btn small" onClick={() => setExpandedRaiseId(null)}>
+                              Vazgeç
+                            </button>
+                            <button
+                              className="factory-btn small primary"
+                              disabled={
+                                busyKey === `raise-${t.id}` ||
+                                (raiseDrafts[t.id] ?? t.sponsorDailyAmount ?? 0) < (t.sponsorDailyAmount || 0)
+                              }
+                              onClick={() => handleRaise(t.id)}
+                            >
+                              {busyKey === `raise-${t.id}` ? '…' : 'Gönder'}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          className="factory-btn small"
+                          onClick={() => {
+                            setExpandedRaiseId(t.id);
+                            setRaiseDrafts((d) => ({ ...d, [t.id]: t.sponsorDailyAmount || 0 }));
+                          }}
+                        >
+                          📈 Ücreti Yükselt
+                        </button>
+                      ))}
 
                     <button
                       className="factory-fire-btn"
@@ -233,6 +278,7 @@ export default function FactorySponsorModal({ onClose }) {
           {otherTeams.map((t) => {
             const myOffer = t.myPendingOffers.find((o) => o.fromRole === 'factory');
             const clubOffer = t.myPendingOffers.find((o) => o.fromRole === 'club');
+            const offerOpen = expandedOfferId === t.id;
             return (
               <div key={t.id} className="factory-share-buy-card factory-sponsor-card">
                 <div className="factory-sponsor-card-head">
@@ -240,6 +286,7 @@ export default function FactorySponsorModal({ onClose }) {
                   <div className="factory-share-row-info">
                     <span className="factory-share-row-title">
                       {t.name} {t.isBot && <span className="factory-sponsor-badge">🤖 Bot</span>}
+                      {t.isSelfSponsor && <span className="factory-sponsor-badge">⭐ Kendi Takımın</span>}
                     </span>
                     <span className="factory-share-row-meta">
                       {t.tier}. Lig · 👥 {t.fans.toLocaleString('tr-TR')} · 💎{' '}
@@ -302,25 +349,47 @@ export default function FactorySponsorModal({ onClose }) {
                       Teklifi Geri Çek
                     </button>
                   </div>
-                ) : (
-                  <div className="factory-sponsor-offer-row">
-                    <input
-                      className="factory-name-input"
-                      type="number"
-                      min={0}
+                ) : t.isSelfSponsor ? (
+                  <button
+                    className="factory-btn small primary"
+                    disabled={busyKey === `offer-${t.id}`}
+                    onClick={() => handleSponsorOl(t.id, true)}
+                  >
+                    {busyKey === `offer-${t.id}` ? '…' : '🤝 Teklif Gönder (0 altın)'}
+                  </button>
+                ) : offerOpen ? (
+                  <div className="factory-sponsor-offer-box">
+                    <QuantityStepper
+                      value={offerDrafts[t.id] ?? 0}
+                      onChange={(v) => setOfferDrafts((d) => ({ ...d, [t.id]: v }))}
                       max={offerCap}
-                      placeholder={`Teklif (max ${offerCap.toLocaleString('tr-TR')})`}
-                      value={offerDrafts[t.id] ?? ''}
-                      onChange={(e) => setOfferDrafts((d) => ({ ...d, [t.id]: e.target.value }))}
+                      step={10}
+                      quickAmounts={SPONSOR_QUICK_AMOUNTS}
                     />
-                    <button
-                      className="factory-btn small primary"
-                      disabled={busyKey === `offer-${t.id}`}
-                      onClick={() => handleSponsorOl(t.id)}
-                    >
-                      {busyKey === `offer-${t.id}` ? '…' : '🤝 Sponsor Ol'}
-                    </button>
+                    <p className="factory-hint small">En fazla {offerCap.toLocaleString('tr-TR')} altın/gün teklif edebilirsin.</p>
+                    <div className="factory-sponsor-note-actions">
+                      <button className="factory-btn small" onClick={() => setExpandedOfferId(null)}>
+                        Vazgeç
+                      </button>
+                      <button
+                        className="factory-btn small primary"
+                        disabled={busyKey === `offer-${t.id}`}
+                        onClick={() => handleSponsorOl(t.id, false)}
+                      >
+                        {busyKey === `offer-${t.id}` ? '…' : 'Gönder'}
+                      </button>
+                    </div>
                   </div>
+                ) : (
+                  <button
+                    className="factory-btn small primary"
+                    onClick={() => {
+                      setExpandedOfferId(t.id);
+                      setOfferDrafts((d) => ({ ...d, [t.id]: d[t.id] ?? 0 }));
+                    }}
+                  >
+                    🤝 Teklif Gönder
+                  </button>
                 )}
 
                 {noteEditingId === t.id ? (

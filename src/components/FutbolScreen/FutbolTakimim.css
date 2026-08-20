@@ -199,6 +199,16 @@
   gap: 6px;
 }
 
+.futbol-sponsor-offer-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 8px;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+}
+
 .futbol-sponsor-input {
   flex: 1;
   min-width: 0;

@@ -598,9 +598,6 @@ function OwnerView({ factory, machines, player, myUid }) {
           <button className="factory-nav-btn" onClick={() => setShowShareSell(true)}>
             Hisse Sat
           </button>
-          <button className="factory-nav-btn" onClick={() => setShowSponsor(true)}>
-            🤝 Sponsor
-          </button>
           <button className="factory-nav-btn primary" onClick={() => setShowBuy(true)}>
             Makine Al +
           </button>
@@ -618,6 +615,9 @@ function OwnerView({ factory, machines, player, myUid }) {
           </button>
           <button className="factory-manage-btn" onClick={() => setShowManage(true)}>
             ⚙️ Yönetim
+          </button>
+          <button className="factory-manage-btn" onClick={() => setShowSponsor(true)}>
+            🤝 Sponsor
           </button>
         </div>
       </div>

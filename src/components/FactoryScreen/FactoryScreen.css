@@ -895,6 +895,16 @@
   min-width: 0;
 }
 
+.factory-sponsor-offer-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 8px;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+}
+
 .factory-sponsor-incoming-offer {
   display: flex;
   flex-direction: column;

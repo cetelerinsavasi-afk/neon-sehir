@@ -4,6 +4,10 @@ import { listFactoryShare, cancelFactoryShareListing } from '../../services/game
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 
 const SHARE_DAY_OPTIONS = [10, 20];
+// SHARE_PRICE_QUICK_AMOUNTS — kullanıcı isteği: boş "fiyat yaz" kutusu
+// yerine buton tabanlı miktar seçici (bkz. FactorySponsorModal.jsx'teki
+// AYNI liste).
+const SHARE_PRICE_QUICK_AMOUNTS = [10, 100, 1000, 10000, 100000, { value: 1000000, label: '1M' }];
 
 // istanbulDateKey — bu kod tabanındaki diğer hook'larla (bkz.
 // useBeggars.js, usePoliceClaimPool.js) BİREBİR AYNI yerel yardımcı —
@@ -100,7 +104,7 @@ export default function FactoryShareSellModal({ factory, onClose }) {
 
   const [percent, setPercent] = useState(1);
   const [days, setDays] = useState(10);
-  const [price, setPrice] = useState('');
+  const [price, setPrice] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [cancelBusy, setCancelBusy] = useState(null);
@@ -119,8 +123,7 @@ export default function FactoryShareSellModal({ factory, onClose }) {
 
   const minPrice = shareMinPrice(percent, days, dailyIncome);
   const maxPrice = shareMaxPrice(percent, days, dailyIncome);
-  const numericPrice = Number(price);
-  const priceValid = price !== '' && Number.isFinite(numericPrice) && numericPrice >= minPrice && numericPrice <= maxPrice;
+  const priceValid = price >= minPrice && price <= maxPrice;
   const percentValid = percent >= 1 && percent <= ownedPercent;
 
   const handleCreate = async () => {
@@ -128,9 +131,9 @@ export default function FactoryShareSellModal({ factory, onClose }) {
     setBusy(true);
     setError(null);
     try {
-      await listFactoryShare(percent, days, numericPrice);
+      await listFactoryShare(percent, days, price);
       setPercent(1);
-      setPrice('');
+      setPrice(0);
     } catch (err) {
       setError(err.message || 'Hisse ilanı oluşturulamadı.');
     } finally {
@@ -200,18 +203,15 @@ export default function FactoryShareSellModal({ factory, onClose }) {
           ))}
         </div>
 
+        <p className="factory-price-label">
+          Fiyat: <strong>{price.toLocaleString('tr-TR')} altın</strong>
+        </p>
+        <QuantityStepper value={price} onChange={setPrice} max={maxPrice} step={10} quickAmounts={SHARE_PRICE_QUICK_AMOUNTS} />
         <div className="factory-share-price-row">
-          <input
-            className="factory-name-input"
-            type="number"
-            placeholder="Fiyat (altın)"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-          />
-          <button type="button" className="factory-btn small" onClick={() => setPrice(String(minPrice))}>
+          <button type="button" className="factory-btn small" onClick={() => setPrice(minPrice)}>
             Min
           </button>
-          <button type="button" className="factory-btn small" onClick={() => setPrice(String(maxPrice))}>
+          <button type="button" className="factory-btn small" onClick={() => setPrice(maxPrice)}>
             Max
           </button>
         </div>
