@@ -2863,8 +2863,13 @@ async function computeWeightedCryptoBuyRatio() {
 //     tamamen rastgele (kullanıcı isteği: "şimdilik hisse senedi ve
 //     elmasa dokunmayalım").
 //   - Kripto: YÖN artık gerçek oyuncu alış/satış davranışına bağlı (bkz.
-//     computeWeightedCryptoBuyRatio), miktar hâlâ %1-%20 artış / %1-%16
-//     düşüş aralığından rastgele seçiliyor.
+//     computeWeightedCryptoBuyRatio). Miktar, fiyata göre iki rejimden
+//     biri kullanılarak seçiliyor: 1 kripto 200.000 altının ALTINDAYSA
+//     artış %1-%20 / düşüş %1-%16 (normal, mevcut davranış); 200.000
+//     altın ve ÜZERİNDEYSE rejim TERSİNE döner, artış %1-%16 / düşüş
+//     %1-%20 olur (fiyatın sonsuza dek yukarı sürüklenmesini engellemek
+//     için — kullanıcı revizesi). Fiyat tekrar 200.000 altının altına
+//     inince otomatik olarak normal rejime döner.
 // Güncel fiyat investments/current dokümanında tutulur (alım/satım
 // fonksiyonları buradan okur); her saatlik hareket ayrıca
 // investmentHistory koleksiyonuna çizgi grafik için kaydedilir. 30
@@ -2923,9 +2928,29 @@ export const hourlyInvestmentUpdate = onSchedule(
       cryptoBuyRatio <= 0.8 + RATIO_EPSILON;
     const cryptoUpProbability = withinEightyTwenty ? cryptoBuyRatio : 0.5;
     const cryptoUp = Math.random() < cryptoUpProbability;
-    const cryptoChangePct = cryptoUp
-      ? Math.random() * 0.19 + 0.01 // %1-20 artış
-      : -(Math.random() * 0.15 + 0.01); // %1-16 düşüş
+
+    // REJİM DEĞİŞİMİ (kullanıcı revizesi): kripto fiyatı sürekli yukarı
+    // sürüklenmeye meyilliydi (artış aralığı %1-20, düşüş aralığı sadece
+    // %1-16 olduğu için). Bunu fiyat düşükken KORUYORUZ (oyunun doğal
+    // hissini bozmamak için), ama fiyat belli bir eşiği geçtikten sonra
+    // aralıkları TERSİNE çeviriyoruz — böylece kripto çok yükseldiğinde
+    // artık düşüşe daha meyilli oluyor ve sonsuza dek tırmanamıyor.
+    // Eşiğin altına tekrar indiğinde sistem otomatik olarak normale
+    // dönüyor (her saat prev.cryptoPrice'a bakılarak karar veriliyor,
+    // ayrı bir "rejim" alanı saklanmıyor).
+    //   - 1 kripto < 200.000 altın: NORMAL rejim → artış %1-20, düşüş %1-16
+    //     (mevcut/eski davranış, aynen korunuyor).
+    //   - 1 kripto >= 200.000 altın: TERS rejim → artış %1-16, düşüş %1-20
+    //     (yukarı ivmeyi frenler, aşağı ivmeyi güçlendirir).
+    const CRYPTO_REGIME_THRESHOLD = 200000;
+    const cryptoReversedRegime = prev.cryptoPrice >= CRYPTO_REGIME_THRESHOLD;
+    const cryptoChangePct = cryptoReversedRegime
+      ? cryptoUp
+        ? Math.random() * 0.15 + 0.01 // TERS rejim: %1-16 artış
+        : -(Math.random() * 0.19 + 0.01) // TERS rejim: %1-20 düşüş
+      : cryptoUp
+        ? Math.random() * 0.19 + 0.01 // NORMAL rejim: %1-20 artış
+        : -(Math.random() * 0.15 + 0.01); // NORMAL rejim: %1-16 düşüş
 
     const diamondPrice = Math.max(1, Math.round(prev.diamondPrice * (1 + diamondChangePct)));
     const stockPrice = Math.max(1, Math.round((prev.stockPrice ?? 10000) * (1 + stockChangePct)));
@@ -14719,4 +14744,3 @@ export const cleanupSixtagramPosts = onSchedule(
     }
   }
 );
-
