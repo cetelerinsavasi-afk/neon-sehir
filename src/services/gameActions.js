@@ -444,8 +444,13 @@ export const removeFutbolTraining = (teamId, playerId) =>
 
 // --- Faz Futbol: Faz 7 (İddaa Bayii) ---
 
-export const placeFutbolBet = (matchId, pick, stake) =>
-  httpsCallable(functions, 'placeFutbolBet')({ matchId, pick, stake });
+// placeFutbolBet — KULLANICI REVİZESİ (Çoklu Maç Kuponu): kupon artık TEK
+// bir maça değil, `selections` dizisiyle (1 ya da daha fazla) istenildiği
+// kadar maça birden yapılabiliyor. Her eleman { matchId, pick } şeklinde —
+// gerçek oran istemciden GÖNDERİLMEZ, sunucu her maç için o gece dondurulmuş
+// oranı kendisi okur ve çarpar (bkz. functions/index.js placeFutbolBet).
+export const placeFutbolBet = (selections, stake) =>
+  httpsCallable(functions, 'placeFutbolBet')({ selections, stake });
 
 export const listFutbolTeamForSale = (teamId, price) =>
   httpsCallable(functions, 'listFutbolTeamForSale')({ teamId, price });

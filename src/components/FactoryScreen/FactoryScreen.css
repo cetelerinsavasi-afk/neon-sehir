@@ -403,6 +403,21 @@
   color: var(--neon-pink);
 }
 
+/* Net kâr — kullanıcı revizesi: rapor sırasında en altta, diğer
+   kalemlerden görsel olarak ayrılmış (üst çizgi + kalın kenarlık) şekilde
+   gösteriliyor ki "sonuç" olduğu belli olsun. */
+.factory-report-stat-profit {
+  margin-top: 4px;
+  border-top: 2px solid var(--panel-border);
+  border-width: 2px;
+  padding-top: 10px;
+}
+
+.factory-report-stat-profit .factory-report-stat-label {
+  font-weight: 700;
+  color: var(--text);
+}
+
 .factory-report-materials {
   display: flex;
   flex-direction: column;

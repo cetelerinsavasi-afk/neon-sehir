@@ -2210,6 +2210,20 @@ export const dailyReset = onSchedule(
       // gece temettü ödemesi olmayan fabrikalar da 0 alır, yoksa eski
       // (bayat) bir değer asılı kalır ve geçmiş dizisi diğer kalemlerle
       // (dailySalaryExpenseHistory vb.) senkron ilerlemez.
+      //
+      // Kullanıcı revizesi: "hisse pay giderleri de cirodan düşülecek ve
+      // kâr hesaplanırken etken olacak" — dailyShareDividendExpense'i SADECE
+      // ayrı bir bilgi kalemi olarak yazmak yetmiyor, Part A'nın az önce
+      // yazdığı dailyIncome (net kâr) ve dailyIncomeHistory'nin BUGÜNKÜ
+      // (son) elemanı da bu temettü gideri kadar AŞAĞI çekiliyor — dailyIncome
+      // artık grossIncome - salaryPaid - electricityBill - dividendExpense.
+      // NOT: temettü TUTARININ KENDİSİ hâlâ Part A'nın ORİJİNAL (temettü/
+      // sponsorluk düşülmeden ÖNCEKİ) dailyIncome'una göre hesaplanıyor
+      // (bkz. yukarısı, factoryDailyIncomeMap) — yoksa "kâr temettüyü
+      // düşürür, düşen kâr temettüyü küçültür" şeklinde dairesel/kararsız
+      // bir hesap olurdu. Burada SADECE raporlanan/persist edilen kâr
+      // rakamı düzeltiliyor, temettü ödemesinin kendisi zaten yukarıda
+      // tamamlandı.
       {
         const prevDateKeyForDividend = addDaysToDateKey(dateKey, -1);
         const factorySnaps = (await db.collection('factories').get()).docs;
@@ -2218,15 +2232,26 @@ export const dailyReset = onSchedule(
         const dividendBatchJobs = [];
         factorySnaps.forEach((fSnap) => {
           if (!fSnap.exists) return;
+          const data = fSnap.data();
           const dividendExpense = dividendExpenseByOwner.get(fSnap.id) || 0;
-          const existingHistory = Array.isArray(fSnap.data().dailyShareDividendExpenseHistory)
-            ? fSnap.data().dailyShareDividendExpenseHistory
+          const existingHistory = Array.isArray(data.dailyShareDividendExpenseHistory)
+            ? data.dailyShareDividendExpenseHistory
             : [];
           const dailyShareDividendExpenseHistory = [...existingHistory, dividendExpense].slice(-10);
+
+          const updatedDailyIncome = Math.round((data.dailyIncome || 0) - dividendExpense);
+          const currentIncomeHistory = Array.isArray(data.dailyIncomeHistory) ? data.dailyIncomeHistory : [];
+          const updatedIncomeHistory =
+            currentIncomeHistory.length > 0
+              ? [...currentIncomeHistory.slice(0, -1), updatedDailyIncome]
+              : currentIncomeHistory;
+
           dividendBatch.update(fSnap.ref, {
             dailyShareDividendExpense: dividendExpense,
             dailyShareDividendExpenseHistory,
             dailyShareDividendExpenseDateKey: prevDateKeyForDividend,
+            dailyIncome: updatedDailyIncome,
+            dailyIncomeHistory: updatedIncomeHistory,
           });
           dividendOpCount += 1;
           if (dividendOpCount >= 400) {
@@ -12226,33 +12251,74 @@ function futbolMatchOutcome(match) {
   return 'draw';
 }
 
-// placeFutbolBet — KULLANICI REVİZESİ: artık oyuncu günün turundaki TEK
-// bir maça bahis yapabilir (tüm turu oynamak zorunda değil). Oran, o maç
-// için 00:00'da önceden hesaplanıp dondurulmuş oddsHome/oddsDraw/oddsAway
-// alanından okunur — bahis anında yeniden hesaplanmaz. Maç artık
-// 'scheduled' değilse (gün 18:00'i geçtiyse) kupon reddedilir.
+// MAX_FUTBOL_BET_SELECTIONS — bir kuponda aynı anda en fazla kaç maç
+// olabileceğinin güvenlik sınırı. Bir ligde bir turda gerçekte bundan çok
+// daha az maç oluyor, bu sadece kötü niyetli/bozuk bir istekle devasa bir
+// dizi gönderilip gereksiz yere çok sayıda Firestore okuması yapılmasını
+// engelleyen bir üst sınır.
+const MAX_FUTBOL_BET_SELECTIONS = 40;
+
+// placeFutbolBet — KULLANICI REVİZESİ (Çoklu Maç Kuponu): oyuncu artık
+// günün turundaki TEK bir maça bahis yapmak ZORUNDA değil — isterse tek
+// maça, isterse günün TÜM maçlarına birden aynı kuponla bahis yapabilir.
+// `selections`, [{ matchId, pick }, ...] şeklinde 1 ya da daha fazla eleman
+// içerir. Her maçın oranı o maç için 00:00'da önceden hesaplanıp
+// dondurulmuş oddsHome/oddsDraw/oddsAway alanından okunur (bahis anında
+// yeniden hesaplanmaz, istemciden gelen oran GÜVENİLMEZ). Kupondaki TÜM
+// maçların oranları birbiriyle ÇARPILARAK kuponun toplam oranı bulunur —
+// klasik "kombine kupon" mantığı: ne kadar çok maç eklenirse oran o kadar
+// yükselir, ama tutması için TÜM maçların tahmini doğru çıkmalı (bkz.
+// resolveFutbolBetsForRound). Maç artık 'scheduled' değilse (gün 18:00'i
+// geçtiyse) kupon tamamen reddedilir. Tüm seçimler AYNI ligin AYNI
+// turundan olmalı — resolveFutbolBetsForRound tek bir lig+tur için tetiklenir,
+// farklı turlardan/liglerden maç karıştırılırsa kupon asla doğru şekilde
+// sonuçlanamaz.
 export const placeFutbolBet = onCall(async (request) => {
   const uid = requireAuth(request);
-  const { matchId, pick, stake } = request.data || {};
+  const { selections, stake } = request.data || {};
   const cleanStake = Math.round(Number(stake));
   if (!Number.isFinite(cleanStake) || cleanStake <= 0) {
     throw new HttpsError('invalid-argument', 'Geçersiz bahis miktarı.');
   }
-  if (!['home', 'draw', 'away'].includes(pick)) {
+  if (!Array.isArray(selections) || selections.length === 0) {
+    throw new HttpsError('invalid-argument', 'Kupona en az 1 maç eklemelisin.');
+  }
+  if (selections.length > MAX_FUTBOL_BET_SELECTIONS) {
+    throw new HttpsError('invalid-argument', 'Kupona çok fazla maç eklendi.');
+  }
+  const matchIds = selections.map((s) => s?.matchId);
+  if (matchIds.some((id) => !id) || new Set(matchIds).size !== matchIds.length) {
+    throw new HttpsError('invalid-argument', 'Kuponda geçersiz ya da tekrarlanan maç var.');
+  }
+  if (selections.some((s) => !['home', 'draw', 'away'].includes(s?.pick))) {
     throw new HttpsError('invalid-argument', 'Geçersiz tahmin.');
   }
-  if (!matchId) throw new HttpsError('invalid-argument', 'Maç seçilmedi.');
 
-  const matchRef = db.collection('futbolMatches').doc(matchId);
-  const matchSnap = await matchRef.get();
-  if (!matchSnap.exists) throw new HttpsError('not-found', 'Maç bulunamadı.');
-  const match = matchSnap.data();
-  if (match.status !== 'scheduled') {
-    throw new HttpsError('failed-precondition', "Bu maç başladı, kupon için 18:00'i bekle.");
-  }
-  const odds = pick === 'home' ? match.oddsHome : pick === 'away' ? match.oddsAway : match.oddsDraw;
-  if (!odds) {
-    throw new HttpsError('failed-precondition', 'Bu maç için oranlar henüz hesaplanmadı, biraz sonra tekrar dene.');
+  const matchSnaps = await Promise.all(matchIds.map((id) => db.collection('futbolMatches').doc(id).get()));
+  const resolvedSelections = [];
+  let leagueId = null;
+  let round = null;
+  let combinedOdds = 1;
+  for (let i = 0; i < selections.length; i += 1) {
+    const snap = matchSnaps[i];
+    if (!snap.exists) throw new HttpsError('not-found', 'Maç bulunamadı.');
+    const match = snap.data();
+    if (match.status !== 'scheduled') {
+      throw new HttpsError('failed-precondition', "Bu maç başladı, kupon için 18:00'i bekle.");
+    }
+    if (leagueId === null) {
+      leagueId = match.leagueId;
+      round = match.round;
+    } else if (match.leagueId !== leagueId || match.round !== round) {
+      throw new HttpsError('invalid-argument', 'Kupondaki tüm maçlar aynı ligin aynı turundan olmalı.');
+    }
+    const pick = selections[i].pick;
+    const odds = pick === 'home' ? match.oddsHome : pick === 'away' ? match.oddsAway : match.oddsDraw;
+    if (!odds) {
+      throw new HttpsError('failed-precondition', 'Bu maç için oranlar henüz hesaplanmadı, biraz sonra tekrar dene.');
+    }
+    combinedOdds *= odds;
+    resolvedSelections.push({ matchId: matchIds[i], pick, odds });
   }
 
   const userRef = db.collection('users').doc(uid);
@@ -12261,17 +12327,16 @@ export const placeFutbolBet = onCall(async (request) => {
     throw new HttpsError('failed-precondition', 'Yeterli altının yok.');
   }
 
-  const potentialPayout = Math.round(cleanStake * odds);
+  const potentialPayout = Math.round(cleanStake * combinedOdds);
   const betRef = db.collection('futbolBets').doc();
   const batch = db.batch();
   batch.update(userRef, { gold: admin.firestore.FieldValue.increment(-cleanStake) });
   batch.set(betRef, {
     uid,
-    leagueId: match.leagueId,
-    round: match.round,
-    matchId,
-    pick,
-    odds,
+    leagueId,
+    round,
+    selections: resolvedSelections,
+    odds: combinedOdds,
     stake: cleanStake,
     potentialPayout,
     status: 'pending',
@@ -12279,13 +12344,27 @@ export const placeFutbolBet = onCall(async (request) => {
     placedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
   await batch.commit();
-  return { ok: true, odds, potentialPayout };
+  return { ok: true, odds: combinedOdds, potentialPayout };
 });
 
-// resolveFutbolBetsForRound — o turun maçları bitince çağrılır. Artık her
-// kupon TEK bir maça yapılan bahis; ödeme sabit bir çarpan değil, bahis
-// anında dondurulmuş GERÇEK ORAN (bet.odds → bet.potentialPayout) ile
-// belirlenir. Tutmazsa yatırılan altın (zaten düşülmüştü) kalıcı gider.
+// futbolBetSelections — bir futbolBets dokümanının seçim listesini normalize
+// eder. KULLANICI REVİZESİ (Çoklu Maç Kuponu) öncesi yapılmış eski
+// kuponlarda hâlâ tekil bet.matchId/bet.pick/bet.odds alanları var — bu
+// helper onları da tek elemanlı bir seçim dizisine çevirir ki aşağıdaki
+// sonuçlandırma/paylaşım kodu tek bir yoldan geçsin.
+function futbolBetSelections(bet) {
+  if (Array.isArray(bet.selections) && bet.selections.length > 0) return bet.selections;
+  if (bet.matchId) return [{ matchId: bet.matchId, pick: bet.pick, odds: bet.odds }];
+  return [];
+}
+
+// resolveFutbolBetsForRound — o turun maçları bitince çağrılır. Her kupon
+// artık 1 ya da daha fazla maça yapılmış bir bahis olabilir (bkz.
+// placeFutbolBet) — kuponun tutması için EKLENEN TÜM maçların tahmini
+// doğru çıkmalı (klasik kombine kupon mantığı, tek bir yanlış tüm kuponu
+// batırır). Ödeme sabit bir çarpan değil, bahis anında dondurulmuş
+// GERÇEK TOPLAM ORAN (bet.odds → bet.potentialPayout) ile belirlenir.
+// Tutmazsa yatırılan altın (zaten düşülmüştü) kalıcı gider.
 async function resolveFutbolBetsForRound(leagueId, round) {
   const [betsSnap, matchesSnap] = await Promise.all([
     db.collection('futbolBets').where('leagueId', '==', leagueId).where('round', '==', round).where('status', '==', 'pending').get(),
@@ -12302,7 +12381,9 @@ async function resolveFutbolBetsForRound(leagueId, round) {
   const batch = db.batch();
   betsSnap.docs.forEach((d) => {
     const bet = d.data();
-    const won = outcomeByMatchId[bet.matchId] === bet.pick;
+    const picks = futbolBetSelections(bet);
+    const won = picks.length > 0 && picks.every((p) => outcomeByMatchId[p.matchId] === p.pick);
+    const matchCountNote = picks.length > 1 ? `${picks.length} maçlık kombine kupon — ` : '';
     if (won) {
       const payout = bet.potentialPayout != null ? bet.potentialPayout : Math.round(bet.stake * (bet.odds || 1));
       batch.update(db.collection('users').doc(bet.uid), {
@@ -12312,7 +12393,7 @@ async function resolveFutbolBetsForRound(leagueId, round) {
       sendFutbolSms(
         batch,
         bet.uid,
-        `🎉 İddaa kuponun tuttu! Oran ${bet.odds}, ${payout.toLocaleString('tr-TR')} altın kazandın.`,
+        `🎉 İddaa kuponun tuttu! ${matchCountNote}Oran ${Number(bet.odds || 1).toFixed(2)}, ${payout.toLocaleString('tr-TR')} altın kazandın.`,
         'futbol_bet_result'
       );
     } else {
@@ -12320,7 +12401,7 @@ async function resolveFutbolBetsForRound(leagueId, round) {
       sendFutbolSms(
         batch,
         bet.uid,
-        `İddaa kuponun tutmadı. Yatırdığın ${bet.stake.toLocaleString('tr-TR')} altın gitti.`,
+        `İddaa kuponun tutmadı. ${matchCountNote}Yatırdığın ${bet.stake.toLocaleString('tr-TR')} altın gitti.`,
         'futbol_bet_result'
       );
     }
@@ -13209,6 +13290,16 @@ async function processFutbolSponsorshipsNightly() {
   // Fabrika günlük rapor için: dailySponsorshipExpense/History (TÜM
   // fabrikalara yazılır — gideri olmayan da 0 alır, dailySalaryExpense
   // ile AYNI konvansiyon).
+  //
+  // Kullanıcı revizesi: "sponsorluk giderleri de cirodan düşülecek ve kâr
+  // hesaplanırken etken olacak" — dividendExpense'de yapılanla BİREBİR AYNI
+  // desen: bu fonksiyon dailyReset'te dividend bloğundan SONRA çağrıldığı
+  // için burada okunan dailyIncome zaten (grossIncome - salaryPaid -
+  // electricityBill - dividendExpense) durumda — sponsorluk gideri bunun
+  // ÜZERİNE bir kez daha düşülüyor, böylece gecenin sonunda dailyIncome tüm
+  // giderleri (maaş + elektrik + temettü + sponsorluk) içeren NET kâr olmuş
+  // oluyor. Sponsorluk ödemesinin kendisi zaten yukarıda tamamlandı, burada
+  // sadece raporlanan/persist edilen kâr rakamı düzeltiliyor.
   {
     const prevDateKeyForSponsorship = addDaysToDateKey(istanbulDateKey(), -1);
     const allFactoriesSnap = await db.collection('factories').get();
@@ -13216,15 +13307,26 @@ async function processFutbolSponsorshipsNightly() {
     let reportOpCount = 0;
     const reportBatchJobs = [];
     allFactoriesSnap.docs.forEach((fSnap) => {
+      const data = fSnap.data();
       const expense = sponsorshipExpenseByFactoryOwner.get(fSnap.id) || 0;
-      const existingHistory = Array.isArray(fSnap.data().dailySponsorshipExpenseHistory)
-        ? fSnap.data().dailySponsorshipExpenseHistory
+      const existingHistory = Array.isArray(data.dailySponsorshipExpenseHistory)
+        ? data.dailySponsorshipExpenseHistory
         : [];
       const dailySponsorshipExpenseHistory = [...existingHistory, expense].slice(-10);
+
+      const updatedDailyIncome = Math.round((data.dailyIncome || 0) - expense);
+      const currentIncomeHistory = Array.isArray(data.dailyIncomeHistory) ? data.dailyIncomeHistory : [];
+      const updatedIncomeHistory =
+        currentIncomeHistory.length > 0
+          ? [...currentIncomeHistory.slice(0, -1), updatedDailyIncome]
+          : currentIncomeHistory;
+
       reportBatch.update(fSnap.ref, {
         dailySponsorshipExpense: expense,
         dailySponsorshipExpenseHistory,
         dailySponsorshipExpenseDateKey: prevDateKeyForSponsorship,
+        dailyIncome: updatedDailyIncome,
+        dailyIncomeHistory: updatedIncomeHistory,
       });
       reportOpCount += 1;
       if (reportOpCount >= 400) {
@@ -14116,11 +14218,11 @@ async function buildSixtagramAttachment(uid, attachment) {
       throw new HttpsError('permission-denied', 'Bu kupon sana ait değil.');
     }
     const bet = betSnap.data();
-    // KULLANICI REVİZESİ (İddaa Oran Sistemi): kupon artık TEK bir maça
-    // yapılan bahis (bet.matchId/bet.pick), eski çoklu-maç predictions
-    // dizisi yok — aşağıdaki kod değişmesin diye tek elemanlı bir
-    // "predictionList" olarak sarmalıyoruz.
-    const predictionList = bet.matchId ? [{ matchId: bet.matchId, pick: bet.pick }] : [];
+    // KULLANICI REVİZESİ (Çoklu Maç Kuponu): kupon artık 1 ya da daha fazla
+    // maça yapılmış bir bahis olabilir (bet.selections) — futbolBetSelections
+    // bunu, bu revizeden ÖNCEKİ tekil (bet.matchId/bet.pick) eski kuponlarla
+    // da uyumlu şekilde normalize eder.
+    const predictionList = futbolBetSelections(bet);
 
     const [leagueSnap, matchSnaps] = await Promise.all([
       db.collection('futbolLeagues').doc(bet.leagueId).get(),
@@ -14744,3 +14846,4 @@ export const cleanupSixtagramPosts = onSchedule(
     }
   }
 );
+

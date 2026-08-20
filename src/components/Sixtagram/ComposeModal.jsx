@@ -263,11 +263,18 @@ export default function ComposeModal({ onClose, onPosted }) {
     // buildSixtagramAttachment ile aynı mantık, sadece istemcide.
     try {
       const leagueSnap = await getDoc(doc(db, 'futbolLeagues', bet.leagueId));
-      // KULLANICI REVİZESİ (İddaa Oran Sistemi): kupon artık TEK bir maça
-      // yapılan bahis (bet.matchId/bet.pick), eski çoklu-maç predictions
-      // dizisi yok — aşağıdaki döngü/render kodu değişmesin diye tek
-      // elemanlı bir "predictionList" olarak sarmalıyoruz.
-      const predictionList = bet.matchId ? [{ matchId: bet.matchId, pick: bet.pick }] : [];
+      // KULLANICI REVİZESİ (Çoklu Maç Kuponu): kupon artık 1 ya da daha
+      // fazla maça yapılmış bir bahis olabilir (bet.selections) — bu
+      // revizeden ÖNCEKİ tekil (bet.matchId/bet.pick) eski kuponlarla da
+      // uyumlu olsun diye ikisini de tek bir "predictionList" haline
+      // normalize ediyoruz (functions/index.js'teki futbolBetSelections ile
+      // AYNI mantık, istemci tarafı ikizi).
+      const predictionList =
+        Array.isArray(bet.selections) && bet.selections.length > 0
+          ? bet.selections
+          : bet.matchId
+            ? [{ matchId: bet.matchId, pick: bet.pick }]
+            : [];
       const matchSnaps = await Promise.all(
         predictionList.map((p) => getDoc(doc(db, 'futbolMatches', p.matchId)))
       );

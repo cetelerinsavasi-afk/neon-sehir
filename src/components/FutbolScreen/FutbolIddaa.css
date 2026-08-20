@@ -85,6 +85,76 @@
   margin: 12px 0;
 }
 
+.futbol-iddaa-coupon {
+  width: 100%;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--panel);
+}
+
+.futbol-iddaa-coupon-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.futbol-iddaa-coupon-clear {
+  background: none;
+  border: none;
+  color: var(--neon-pink);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+}
+
+.futbol-iddaa-coupon-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 4px 0;
+}
+
+.futbol-iddaa-coupon-row + .futbol-iddaa-coupon-row {
+  border-top: 1px solid var(--panel-border);
+}
+
+.futbol-iddaa-coupon-teams {
+  color: var(--text);
+}
+
+.futbol-iddaa-coupon-pick {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.futbol-iddaa-coupon-remove {
+  background: none;
+  border: none;
+  color: var(--neon-pink);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+}
+
+.futbol-iddaa-history-combined {
+  margin: 6px 0 0;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: right;
+  color: var(--text-dim);
+}
+
 .futbol-iddaa-history {
   margin-top: 16px;
   border-top: 1px solid var(--panel-border);

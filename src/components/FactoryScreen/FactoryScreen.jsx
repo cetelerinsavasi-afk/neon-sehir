@@ -772,6 +772,16 @@ function OwnerView({ factory, machines, player, myUid }) {
 // brüt − maaş masrafı, kasıtlı olarak eksi de olabilir). Son 10 günün
 // geçmişi (*History dizileri) de aynı yerde persist ediliyor, burada basit
 // bir tablo olarak gösteriliyor.
+//
+// Kullanıcı revizesi: "hisse pay giderleri ve sponsorluk giderleri de
+// cirodan düşülecek ve kâr hesaplanırken etken olacak, kâr en altta
+// yazacak, masraflar ve kazançlar kâr'ın üstünde". dailyIncome artık
+// backend'de (bkz. functions/index.js dailyReset Part A + dividend bloğu +
+// processFutbolSponsorshipsNightly) grossIncome - salaryPaid -
+// electricityBill - shareDividendExpense - sponsorshipExpense olarak
+// hesaplanıyor — burada AYRICA bir hesap YAPILMIYOR, sadece factory.dailyIncome
+// doğrudan okunuyor. Panelin sırası da buna göre: TÜM gelir/gider kalemleri
+// üstte, "Net kâr" en altta gösteriliyor.
 // ---------------------------------------------------------------------------
 function DailyReportModal({ factory, onClose }) {
   const grossToday = factory.dailyGrossIncome || 0;
@@ -784,7 +794,11 @@ function DailyReportModal({ factory, onClose }) {
   const electricityToday = factory.dailyElectricityExpense || 0;
   // Yeni kalemler — sadece "varsa" (0'dan büyükse) gösterilir: hisse satışı
   // geliri, hisse kâr payı gideri, sponsorluk gideri (bkz. functions/index.js
-  // dailyReset — Part A + processFutbolSponsorshipsNightly).
+  // dailyReset — Part A + dividend bloğu + processFutbolSponsorshipsNightly).
+  // Kullanıcı revizesi: hisse pay (temettü) gideri VE sponsorluk gideri de
+  // artık netToday'e (factory.dailyIncome) DAHİL — hisse satışı geliri
+  // hâlâ HARİÇ (peşin/tek seferlik bir bedel olduğu için üretim kâr/zarar
+  // hesabını bozmasın diye, bkz. functions/index.js'teki ilgili not).
   const shareSaleIncomeToday = factory.dailyShareSaleIncome || 0;
   const shareDividendExpenseToday = factory.dailyShareDividendExpense || 0;
   const sponsorshipExpenseToday = factory.dailySponsorshipExpense || 0;
@@ -830,6 +844,14 @@ function DailyReportModal({ factory, onClose }) {
             <span className="factory-report-stat-label">💰 Kazanç (brüt)</span>
             <span className="factory-report-stat-value">{grossToday.toLocaleString('tr-TR')} altın</span>
           </div>
+          {shareSaleIncomeToday > 0 && (
+            <div className="factory-report-stat">
+              <span className="factory-report-stat-label">🧾 Hisse satışı geliri</span>
+              <span className="factory-report-stat-value positive">
+                +{shareSaleIncomeToday.toLocaleString('tr-TR')} altın
+              </span>
+            </div>
+          )}
           <div className="factory-report-stat">
             <span className="factory-report-stat-label">👷 Maaş masrafı</span>
             <span className="factory-report-stat-value expense">
@@ -842,20 +864,6 @@ function DailyReportModal({ factory, onClose }) {
               −{electricityToday.toLocaleString('tr-TR')} altın
             </span>
           </div>
-          <div className="factory-report-stat">
-            <span className="factory-report-stat-label">📈 Net kâr</span>
-            <span className={`factory-report-stat-value ${netToday < 0 ? 'negative' : 'positive'}`}>
-              {netToday.toLocaleString('tr-TR')} altın
-            </span>
-          </div>
-          {shareSaleIncomeToday > 0 && (
-            <div className="factory-report-stat">
-              <span className="factory-report-stat-label">🧾 Hisse satışı geliri</span>
-              <span className="factory-report-stat-value positive">
-                +{shareSaleIncomeToday.toLocaleString('tr-TR')} altın
-              </span>
-            </div>
-          )}
           {shareDividendExpenseToday > 0 && (
             <div className="factory-report-stat">
               <span className="factory-report-stat-label">🪙 Hisse pay giderleri</span>
@@ -872,6 +880,12 @@ function DailyReportModal({ factory, onClose }) {
               </span>
             </div>
           )}
+          <div className="factory-report-stat factory-report-stat-profit">
+            <span className="factory-report-stat-label">📈 Net kâr</span>
+            <span className={`factory-report-stat-value ${netToday < 0 ? 'negative' : 'positive'}`}>
+              {netToday.toLocaleString('tr-TR')} altın
+            </span>
+          </div>
         </div>
 
         <p className="factory-step-label">Dün Üretilen Malzemeler</p>
