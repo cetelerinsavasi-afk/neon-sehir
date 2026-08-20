@@ -610,12 +610,14 @@ function OwnerView({ factory, machines, player, myUid }) {
           <p className="factory-owner-title">{factoryDisplayName(factory)}</p>
         </div>
         <div className="factory-owner-header-actions">
-          <button className="factory-manage-btn" onClick={() => setShowReport(true)}>
-            📊 Günlük Rapor
-          </button>
-          <button className="factory-manage-btn" onClick={() => setShowManage(true)}>
-            ⚙️ Yönetim
-          </button>
+          <div className="factory-owner-header-actions-row">
+            <button className="factory-manage-btn" onClick={() => setShowReport(true)}>
+              📊 Günlük Rapor
+            </button>
+            <button className="factory-manage-btn" onClick={() => setShowManage(true)}>
+              ⚙️ Yönetim
+            </button>
+          </div>
           <button className="factory-manage-btn" onClick={() => setShowSponsor(true)}>
             🤝 Sponsor
           </button>
