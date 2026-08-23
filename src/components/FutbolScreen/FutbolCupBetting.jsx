@@ -62,8 +62,15 @@ export function cupBetSelections(bet) {
 
 // CupMatchRow — kupa maçı satırı (bracket'te ve "Maçlar"/"Fikstür"
 // sekmelerindeki bugünkü/geçmiş kupa maçı listelerinde kullanılıyor).
+// KULLANICI İSTEĞİ: "lig maçlarının yanında 'izle' butonu var kupa
+// maçlarında yok" — MatchList'teki (FutbolLigler.jsx) lig maçı satırı İLE
+// AYNI "İzle" butonu artık burada da var; satırın tamamı zaten tıklanabilir
+// olsa da (onClick), görsel olarak lig maçlarıyla tutarlı olması için
+// eklendi. e.stopPropagation() gereksiz çift tetiklemeyi önlüyor (satırın
+// kendi onClick'i zaten aynı işi yapıyor).
 export function CupMatchRow({ match, onSelect }) {
   const played = match.status === 'finished';
+  const isLive = match.status === 'live';
   const winnerIsHome = match.winnerTeamId === match.homeTeamId;
   return (
     <div className="futbol-cup-match-wrap">
@@ -72,13 +79,24 @@ export function CupMatchRow({ match, onSelect }) {
           {match.homeTeamName}
           <FutbolCrest logo={match.homeLogo} initials={match.homeTeamName?.[0]} size={18} />
         </span>
-        <span className="futbol-match-score">
-          {played ? `${match.homeScore} - ${match.awayScore}` : match.status === 'live' ? '⏱' : 'vs'}
+        <span className={`futbol-match-score ${isLive ? 'live' : ''}`}>
+          {isLive && <span className="futbol-live-dot" />}
+          {played ? `${match.homeScore} - ${match.awayScore}` : isLive ? '⏱' : 'vs'}
         </span>
         <span className={`futbol-match-team futbol-match-team-away ${played && !winnerIsHome ? 'futbol-cup-winner' : ''}`}>
           <FutbolCrest logo={match.awayLogo} initials={match.awayTeamName?.[0]} size={18} />
           {match.awayTeamName}
         </span>
+        <button
+          type="button"
+          className="futbol-match-watch-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect?.(match);
+          }}
+        >
+          {isLive ? '🔴 İzle' : 'İzle'}
+        </button>
       </div>
       {match.penalty && (
         <p className="futbol-cup-penalty-note">
@@ -122,7 +140,24 @@ export default function FutbolCupBetting({ cup, matches, myBets }) {
 
   const currentRoundMatches = matches.filter((m) => m.round === cup.status);
   const bettableMatches = currentRoundMatches.filter((m) => m.status === 'scheduled' && m.oddsHome && m.oddsAway);
-  if (bettableMatches.length === 0) return null;
+  // KULLANICI İSTEĞİ: "iddaa bayiine kupa maçları gelmemiş" — eskiden bu
+  // durumda bileşen SESSİZCE hiçbir şey göstermiyordu (return null), bu da
+  // "kupa iddaası hiç çalışmıyor" izlenimi verebiliyordu; oysa kupa iddaası
+  // SADECE o turun oynanacağı günün 00:00-18:00 aralığında (oranlar
+  // hesaplanmışken) bahis kabul ediyor — FutbolIddaa'daki (lig iddaası) AYNI
+  // "maç var ama şu an bahis alınmıyor" durumuyla tutarlı, açık bir mesaj
+  // gösteriliyor artık.
+  if (currentRoundMatches.length === 0) return null; // bu turun maçları henüz oluşmadı — gösterecek bir şey yok
+  if (bettableMatches.length === 0) {
+    return (
+      <div className="futbol-iddaa futbol-cup-bet-box">
+        <p className="futbol-placeholder">
+          🏆 {ROUND_LABELS[cup.status]} turunun maçları başladı ya da oranlar henüz hesaplanmadı — kupa
+          iddaası SADECE turun oynanacağı günün 00:00-18:00 arasında açık.
+        </p>
+      </div>
+    );
+  }
 
   const pickForMatch = (matchId) => selections.find((s) => s.matchId === matchId)?.pick || null;
 

@@ -115,6 +115,27 @@ export default function FutbolLigler() {
     [matches, activeLeague?.currentRound, now]
   );
 
+  // KULLANICI İSTEĞİ: "maç fikstürüne tıkladığımızda ... kupa maçlarına
+  // göre bu ayarlanmadığı için şu an kupa maçından sonraki gün karşımıza
+  // çıkıyor" — BUG: display.round SADECE lig turlarını bilir
+  // (pickFutbolDisplayRound). Bir kupa gününde league.currentRound zaten
+  // BİR GÜN ÖNCEDEN (dünkü 19:00 reveal'inde) bir sonraki lig turuna
+  // artırılmış oluyor (çünkü lig turu artırma İLE kupa tetikleme AYNI
+  // reveal'de, ama BAĞIMSIZ çalışıyor — bkz. functions/index.js
+  // resolveFutbolMatchdayReveal) — yani kupa gününün KENDİSİNDE
+  // display.round zaten "yarının" (kupadan SONRAKİ) lig turunu gösteriyor.
+  // Düzeltme: bugün kupa günüyse, hedefi o kupa turunu tetikleyen lig
+  // gününe (FUTBOL_CUP_TRIGGER_AFTER_ROUND'da pendingCupRound'a karşılık
+  // gelen anahtar) çekiyoruz — o günün ref'i zaten hemen altında kupa
+  // turunu da içeriyor (bkz. aşağıdaki fikstür render'ı).
+  const cupDayFixtureAnchorRound = useMemo(() => {
+    if (seasonState.status !== 'CUP_DAY' || !seasonState.pendingCupRound) return null;
+    const entry = Object.entries(FUTBOL_CUP_TRIGGER_AFTER_ROUND).find(
+      ([, cupRound]) => cupRound === seasonState.pendingCupRound
+    );
+    return entry ? Number(entry[0]) : null;
+  }, [seasonState.status, seasonState.pendingCupRound]);
+
   // Kullanıcı isteği: "Maç Fikstürü" sekmesine girildiğinde ilk turdan
   // değil, bugünün gününden başlanmalı — yukarı çekince eski maçlar,
   // aşağı çekince yeni maçlar görülebilmeli. Liste zaten 1'den 14'e sıralı
@@ -122,7 +143,8 @@ export default function FutbolLigler() {
   const fixtureRoundRefs = useRef({});
   useEffect(() => {
     if (subTab !== 'fikstur') return;
-    const target = fixtureRoundRefs.current[display.round];
+    const targetRound = cupDayFixtureAnchorRound ?? display.round;
+    const target = fixtureRoundRefs.current[targetRound];
     if (target) {
       // rAF: liste DOM'a yeni basıldıysa (sekme az önce açıldıysa) bir
       // çerçeve bekleyip öyle kaydırmak, ölçümün doğru alınmasını sağlıyor.
@@ -131,7 +153,7 @@ export default function FutbolLigler() {
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subTab, display.round, activeLeagueId]);
+  }, [subTab, display.round, cupDayFixtureAnchorRound, activeLeagueId]);
 
   if (leaguesLoading || leagues.length === 0) {
     return <p className="futbol-placeholder">Yükleniyor...</p>;
