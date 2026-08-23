@@ -6,7 +6,9 @@ import {
   respondSponsorshipOffer,
   withdrawSponsorshipOffer,
   cancelSponsorship,
+  withdrawSponsorshipCancellation,
   raiseSponsorshipFee,
+  respondSponsorshipFeeRaiseRequest,
   updateSponsorshipNote,
 } from '../../services/gameActions';
 import FutbolCrest from '../FutbolScreen/FutbolCrest';
@@ -108,11 +110,24 @@ export default function FactorySponsorModal({ onClose }) {
     runAction(`cancel-${teamId}`, () => cancelSponsorship(teamId));
   };
 
+  // handleWithdrawCancel — KULLANICI İSTEĞİ: "sponsorluğu feshettiğimde
+  // iptal etme özelliği olsun, yanlışlıkla tıklayanlar ya da vazgeçenler
+  // için" (bkz. functions/index.js withdrawSponsorshipCancellation).
+  const handleWithdrawCancel = (teamId) => {
+    runAction(`withdraw-cancel-${teamId}`, () => withdrawSponsorshipCancellation(teamId));
+  };
+
   const handleRaise = (teamId) => {
     const amount = Math.max(0, Math.round(Number(raiseDrafts[teamId] ?? 0)));
     runAction(`raise-${teamId}`, () => raiseSponsorshipFee(teamId, amount)).then(() => {
       setExpandedRaiseId(null);
     });
+  };
+
+  // handleFeeRaiseRequestRespond — KULLANICI İSTEĞİ: "takımlar da ücreti
+  // yükseltme talebi gönderebilsin" — kulübün gönderdiği talebi kabul/red.
+  const handleFeeRaiseRequestRespond = (teamId, accept) => {
+    runAction(`fee-request-${teamId}`, () => respondSponsorshipFeeRaiseRequest(teamId, accept));
   };
 
   const openNoteEditor = (team) => {
@@ -174,6 +189,12 @@ export default function FactorySponsorModal({ onClose }) {
             <div className="factory-share-list">
               {mySponsorships.map((t) => {
                 const beingReplaced = t.pendingSponsorFactoryOwnerUid && t.pendingSponsorFactoryOwnerUid !== user.uid;
+                // minRaiseAmount — DÜZELTME (kullanıcı bildirdiği hata): rakip
+                // bir pendingSponsor varsa, tutulacak sponsorluk için ondan
+                // DAHA YÜKSEK bir tutar girmek şart (bkz. applySponsorshipFeeRaise).
+                const minRaiseAmount = beingReplaced
+                  ? (t.pendingSponsorDailyAmount || 0) + 1
+                  : t.sponsorDailyAmount || 0;
                 const raiseOpen = expandedRaiseId === t.id;
                 return (
                   <div key={t.id} className="factory-share-buy-card factory-sponsor-card">
@@ -194,8 +215,52 @@ export default function FactorySponsorModal({ onClose }) {
                     </p>
                     {beingReplaced && (
                       <p className="factory-hint small factory-sponsor-warning">
-                        ⚠️ Bir sonraki 00:00'da başka bir sponsor devreye girecek, sponsorluğun sona erecek.
+                        ⚠️ {t.pendingSponsorFactoryName || 'Başka bir fabrika'} sana{' '}
+                        <strong>{(t.pendingSponsorDailyAmount || 0).toLocaleString('tr-TR')} altın/gün</strong> teklif
+                        etti — bugün 00:00'a kadar bundan daha yüksek bir ücret girip sponsorluğu elinde tutabilirsin,
+                        yoksa 00:00'da sponsorluk el değiştirecek.
                       </p>
+                    )}
+
+                    {t.sponsorCancelPending && (
+                      <div className="factory-sponsor-incoming-offer">
+                        <p className="factory-hint small factory-sponsor-warning">
+                          ⚠️ Bu sponsorluğun feshi bekliyor — bugün 00:00'da (yeni ödeme yapılmadan) sona erecek.
+                        </p>
+                        <button
+                          className="factory-btn small primary"
+                          disabled={busyKey === `withdraw-cancel-${t.id}`}
+                          onClick={() => handleWithdrawCancel(t.id)}
+                        >
+                          {busyKey === `withdraw-cancel-${t.id}` ? '…' : '↩️ Feshi Geri Al'}
+                        </button>
+                      </div>
+                    )}
+
+                    {t.feeRaiseRequest && (
+                      <div className="factory-sponsor-incoming-offer">
+                        <p className="factory-hint small">
+                          🙋 {t.feeRaiseRequest.requestedByName || 'Kulüp'} ücretini{' '}
+                          <strong>{(t.feeRaiseRequest.requestedAmount || 0).toLocaleString('tr-TR')} altın/gün</strong>
+                          'e yükseltmeni istiyor.
+                        </p>
+                        <div className="factory-sponsor-note-actions">
+                          <button
+                            className="factory-btn small"
+                            disabled={busyKey === `fee-request-${t.id}`}
+                            onClick={() => handleFeeRaiseRequestRespond(t.id, false)}
+                          >
+                            Reddet
+                          </button>
+                          <button
+                            className="factory-btn small primary"
+                            disabled={busyKey === `fee-request-${t.id}`}
+                            onClick={() => handleFeeRaiseRequestRespond(t.id, true)}
+                          >
+                            Kabul Et
+                          </button>
+                        </div>
+                      </div>
                     )}
 
                     <div className="factory-sponsor-note-box">
@@ -240,15 +305,16 @@ export default function FactorySponsorModal({ onClose }) {
                       (raiseOpen ? (
                         <div className="factory-sponsor-offer-box">
                           <QuantityStepper
-                            value={raiseDrafts[t.id] ?? t.sponsorDailyAmount ?? 0}
+                            value={raiseDrafts[t.id] ?? minRaiseAmount}
                             onChange={(v) => setRaiseDrafts((d) => ({ ...d, [t.id]: v }))}
                             max={offerCap}
                             step={10}
                             quickAmounts={SPONSOR_QUICK_AMOUNTS}
                           />
                           <p className="factory-hint small">
-                            En az {(t.sponsorDailyAmount || 0).toLocaleString('tr-TR')}, en fazla{' '}
+                            En az {minRaiseAmount.toLocaleString('tr-TR')}, en fazla{' '}
                             {offerCap.toLocaleString('tr-TR')} altın/gün olabilir.
+                            {beingReplaced && ' (Sponsorluğu elinde tutmak için rakip teklifi geçmen gerekiyor.)'}
                           </p>
                           <div className="factory-sponsor-note-actions">
                             <button className="factory-btn small" onClick={() => setExpandedRaiseId(null)}>
@@ -258,7 +324,7 @@ export default function FactorySponsorModal({ onClose }) {
                               className="factory-btn small primary"
                               disabled={
                                 busyKey === `raise-${t.id}` ||
-                                (raiseDrafts[t.id] ?? t.sponsorDailyAmount ?? 0) < (t.sponsorDailyAmount || 0)
+                                (raiseDrafts[t.id] ?? minRaiseAmount) < minRaiseAmount
                               }
                               onClick={() => handleRaise(t.id)}
                             >
@@ -271,13 +337,14 @@ export default function FactorySponsorModal({ onClose }) {
                           className="factory-btn small"
                           onClick={() => {
                             setExpandedRaiseId(t.id);
-                            setRaiseDrafts((d) => ({ ...d, [t.id]: t.sponsorDailyAmount || 0 }));
+                            setRaiseDrafts((d) => ({ ...d, [t.id]: minRaiseAmount }));
                           }}
                         >
-                          📈 Ücreti Yükselt
+                          {beingReplaced ? '🔁 Sponsorluğu Geri Kap' : '📈 Ücreti Yükselt'}
                         </button>
                       ))}
 
+                    {!t.sponsorCancelPending && (
                     <button
                       className="factory-fire-btn"
                       disabled={busyKey === `cancel-${t.id}`}
@@ -285,6 +352,7 @@ export default function FactorySponsorModal({ onClose }) {
                     >
                       {busyKey === `cancel-${t.id}` ? '…' : '❌ Sponsorluğu Feshet'}
                     </button>
+                    )}
                   </div>
                 );
               })}

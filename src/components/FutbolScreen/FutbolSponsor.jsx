@@ -5,6 +5,8 @@ import {
   respondSponsorshipOffer,
   withdrawSponsorshipOffer,
   cancelSponsorship,
+  withdrawSponsorshipCancellation,
+  requestSponsorshipFeeRaise,
   updateSponsorshipNote,
 } from '../../services/gameActions';
 import FactoryBadge from '../FactoryScreen/FactoryBadge';
@@ -29,6 +31,11 @@ export default function FutbolSponsor({ team }) {
   const [expandedOfferId, setExpandedOfferId] = useState(null);
   const [noteEditingId, setNoteEditingId] = useState(null);
   const [noteDraft, setNoteDraft] = useState('');
+  // raiseRequestOpen/raiseRequestDraft — KULLANICI İSTEĞİ: "takımlar da
+  // ücreti yükseltme talebi gönderebilsin" (bkz. FactorySponsorModal.jsx
+  // içindeki AYNI buton-tabanlı tutar seçici deseni).
+  const [raiseRequestOpen, setRaiseRequestOpen] = useState(false);
+  const [raiseRequestDraft, setRaiseRequestDraft] = useState(0);
 
   const load = async () => {
     setError('');
@@ -77,6 +84,19 @@ export default function FutbolSponsor({ team }) {
 
   const handleCancel = () => {
     runAction('cancel', () => cancelSponsorship(team.id));
+  };
+
+  // handleWithdrawCancel — bkz. FactorySponsorModal.jsx içindeki AYNI
+  // düzeltme: yanlışlıkla/vazgeçilen bir feshi 00:00 olmadan geri alma.
+  const handleWithdrawCancel = () => {
+    runAction('withdraw-cancel', () => withdrawSponsorshipCancellation(team.id));
+  };
+
+  const handleRequestRaise = () => {
+    const amount = Math.max(0, Math.round(Number(raiseRequestDraft || 0)));
+    runAction('request-raise', () => requestSponsorshipFeeRaise(team.id, amount)).then(() => {
+      setRaiseRequestOpen(false);
+    });
   };
 
   const openNoteEditor = (factory) => {
@@ -128,11 +148,83 @@ export default function FutbolSponsor({ team }) {
                 {mySponsor.noteUpdatedByName && <span> — {mySponsor.noteUpdatedByName}</span>}
               </p>
             )}
+
+            {teamInfo.pendingSponsorFactoryOwnerUid && teamInfo.pendingSponsorFactoryOwnerUid !== mySponsor.ownerId && (
+              <p className="futbol-buy-meta futbol-sponsor-warning">
+                ⚠️ {teamInfo.pendingSponsorFactoryName || 'Başka bir fabrika'} daha yüksek teklif verdi (
+                {(teamInfo.pendingSponsorDailyAmount || 0).toLocaleString('tr-TR')} altın/gün) — 00:00'da sponsor
+                değişecek.
+              </p>
+            )}
+
+            {teamInfo.sponsorCancelPending && (
+              <p className="futbol-buy-meta futbol-sponsor-warning">
+                ⚠️ Bu sponsorluğun feshi bekliyor — bugün 00:00'da sona erecek.
+              </p>
+            )}
+
+            {teamInfo.feeRaiseRequest ? (
+              <p className="futbol-buy-meta futbol-sponsor-info">
+                📤 Ücret artışı istedin: {(teamInfo.feeRaiseRequest.requestedAmount || 0).toLocaleString('tr-TR')}{' '}
+                altın/gün — sponsorun cevabı bekleniyor.
+              </p>
+            ) : !mySponsor.isSelfSponsor && !teamInfo.sponsorCancelPending ? (
+              raiseRequestOpen ? (
+                <div className="futbol-sponsor-offer-box">
+                  <QuantityStepper
+                    value={raiseRequestDraft || (teamInfo.sponsorDailyAmount || 0) + 10}
+                    onChange={setRaiseRequestDraft}
+                    max={mySponsor.offerCap}
+                    step={10}
+                    quickAmounts={SPONSOR_QUICK_AMOUNTS}
+                  />
+                  <p className="futbol-buy-meta">
+                    Mevcut ücretten ({(teamInfo.sponsorDailyAmount || 0).toLocaleString('tr-TR')} altın) yüksek
+                    olmalı, en fazla {mySponsor.offerCap.toLocaleString('tr-TR')} altın/gün istenebilir.
+                  </p>
+                  <div className="futbol-sponsor-note-actions">
+                    <button className="futbol-admin-reset" onClick={() => setRaiseRequestOpen(false)}>
+                      Vazgeç
+                    </button>
+                    <button
+                      className="futbol-admin-submit"
+                      disabled={
+                        busyKey === 'request-raise' ||
+                        (raiseRequestDraft || 0) <= (teamInfo.sponsorDailyAmount || 0)
+                      }
+                      onClick={handleRequestRaise}
+                    >
+                      {busyKey === 'request-raise' ? '…' : 'Gönder'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  className="futbol-admin-reset futbol-sponsor-note-btn"
+                  onClick={() => {
+                    setRaiseRequestOpen(true);
+                    setRaiseRequestDraft((teamInfo.sponsorDailyAmount || 0) + 10);
+                  }}
+                >
+                  📈 Ücret Artışı İste
+                </button>
+              )
+            ) : null}
           </div>
           <div className="futbol-buy-action">
-            <button className="futbol-admin-reset" disabled={busyKey === 'cancel'} onClick={handleCancel}>
-              {busyKey === 'cancel' ? '…' : '❌ Feshet'}
-            </button>
+            {teamInfo.sponsorCancelPending ? (
+              <button
+                className="futbol-admin-submit"
+                disabled={busyKey === 'withdraw-cancel'}
+                onClick={handleWithdrawCancel}
+              >
+                {busyKey === 'withdraw-cancel' ? '…' : '↩️ Feshi Geri Al'}
+              </button>
+            ) : (
+              <button className="futbol-admin-reset" disabled={busyKey === 'cancel'} onClick={handleCancel}>
+                {busyKey === 'cancel' ? '…' : '❌ Feshet'}
+              </button>
+            )}
           </div>
         </div>
       ) : (

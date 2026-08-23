@@ -35,6 +35,18 @@ function shareMaxPrice(percent, days, dailyIncome) {
   return Math.round(shareFairValue(percent, days, dailyIncome));
 }
 
+// hoursUntilShareExpiry — KULLANICI İSTEĞİ: "48 saat satılmayan hisseler
+// satıştan kaldırılsın" (bkz. functions/index.js expireOldFactoryShareListings).
+// Bu, sadece sunucudaki 48 saatlik eşiğin canlı bir önizlemesi — nihai kararı
+// hâlâ sunucu veriyor.
+const SHARE_LISTING_EXPIRY_HOURS = 48;
+function hoursUntilShareExpiry(createdAt) {
+  const createdAtMs = createdAt?.toMillis?.() ?? (createdAt?.seconds ? createdAt.seconds * 1000 : null);
+  if (!createdAtMs) return null;
+  const remainingMs = SHARE_LISTING_EXPIRY_HOURS * 60 * 60 * 1000 - (Date.now() - createdAtMs);
+  return Math.max(0, Math.ceil(remainingMs / (60 * 60 * 1000)));
+}
+
 // SharePieChart — kütüphane kullanmadan (bu kod tabanında zaten hiç
 // charting kütüphanesi yok, bkz. src/components/PriceChart — düz SVG)
 // basit bir SVG "donut" grafiği: sahip olunan / listede / satılmış %.
@@ -230,14 +242,24 @@ export default function FactoryShareSellModal({ factory, onClose }) {
 
         <p className="factory-step-label">Listede Bekleyen Hisselerin ({listed.length})</p>
         {!loading && listed.length === 0 && <p className="factory-hint">Listede hisse ilanın yok.</p>}
+        <p className="factory-hint small">
+          48 saat içinde satılmayan ilanlar otomatik olarak satıştan kaldırılır.
+        </p>
         <div className="factory-share-list">
-          {listed.map((s) => (
+          {listed.map((s) => {
+            const hoursLeft = hoursUntilShareExpiry(s.createdAt);
+            return (
             <div key={s.id} className="factory-share-row">
               <div className="factory-share-row-info">
                 <span className="factory-share-row-title">
                   %{s.percent} · {s.days} gün
                 </span>
                 <span className="factory-share-row-meta">{(s.price || 0).toLocaleString('tr-TR')} altın</span>
+                {hoursLeft !== null && (
+                  <span className="factory-share-row-meta factory-share-expiry-hint">
+                    {hoursLeft > 0 ? `⏳ ${hoursLeft} saat sonra otomatik kalkar` : '⏳ otomatik kaldırılıyor…'}
+                  </span>
+                )}
               </div>
               <button
                 className="factory-fire-btn"
@@ -247,7 +269,8 @@ export default function FactoryShareSellModal({ factory, onClose }) {
                 {cancelBusy === s.id ? '…' : 'Satıştan Kaldır'}
               </button>
             </div>
-          ))}
+            );
+          })}
         </div>
 
         <p className="factory-step-label">Satılmış (Aktif Ödeyen) Hisseler ({active.length})</p>

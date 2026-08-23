@@ -77,7 +77,12 @@
 
 .lottery-buy-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
+}
+
+.lottery-buy-row .lottery-buy-btn {
+  min-width: 90px;
 }
 
 .lottery-buy-btn {

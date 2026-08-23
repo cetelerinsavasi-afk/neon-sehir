@@ -74,6 +74,14 @@ export default function LotteryScreen() {
           🎟️×10 Bilet Al
           <span className="lottery-buy-price">{(TICKET_PRICE * 10).toLocaleString('tr-TR')} altın</span>
         </button>
+        <button
+          className="lottery-buy-btn primary"
+          disabled={busy || gold < TICKET_PRICE * 100}
+          onClick={() => handleBuy(100)}
+        >
+          🎟️×100 Bilet Al
+          <span className="lottery-buy-price">{(TICKET_PRICE * 100).toLocaleString('tr-TR')} altın</span>
+        </button>
       </div>
       {error && <p className="lottery-error">{error}</p>}
 

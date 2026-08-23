@@ -475,8 +475,11 @@ export const setFutbolTicketPrice = (teamId, ticketPrice) =>
 
 // --- Kupa modülü ---
 
-export const placeFutbolCupBet = (matchId, pick, stake) =>
-  httpsCallable(functions, 'placeFutbolCupBet')({ matchId, pick, stake });
+// placeFutbolCupBet — KULLANICI İSTEĞİ: kupa iddaasında da istenildiği
+// kadar maça kupon yapılabilsin — placeFutbolBet İLE AYNI çoklu seçim
+// deseni (selections: [{matchId, pick}]).
+export const placeFutbolCupBet = (selections, stake) =>
+  httpsCallable(functions, 'placeFutbolCupBet')({ selections, stake });
 
 // --- Fabrika ↔ Futbol Kulübü Sponsorluk Sistemi ---
 
@@ -495,8 +498,21 @@ export const withdrawSponsorshipOffer = (offerId) =>
 export const cancelSponsorship = (teamId) =>
   httpsCallable(functions, 'cancelSponsorship')({ teamId });
 
+// withdrawSponsorshipCancellation — KULLANICI İSTEĞİ: yanlışlıkla ya da
+// vazgeçerek feshedilen bir sponsorluğu 00:00 olmadan geri al.
+export const withdrawSponsorshipCancellation = (teamId) =>
+  httpsCallable(functions, 'withdrawSponsorshipCancellation')({ teamId });
+
 export const raiseSponsorshipFee = (teamId, newDailyAmount) =>
   httpsCallable(functions, 'raiseSponsorshipFee')({ teamId, newDailyAmount });
+
+// requestSponsorshipFeeRaise/respondSponsorshipFeeRaiseRequest —
+// KULLANICI İSTEĞİ: "takımlar da ücreti yükseltme talebi gönderebilsin".
+export const requestSponsorshipFeeRaise = (teamId, requestedAmount) =>
+  httpsCallable(functions, 'requestSponsorshipFeeRaise')({ teamId, requestedAmount });
+
+export const respondSponsorshipFeeRaiseRequest = (teamId, accept) =>
+  httpsCallable(functions, 'respondSponsorshipFeeRaiseRequest')({ teamId, accept });
 
 export const updateSponsorshipNote = (factoryOwnerUid, teamId, note) =>
   httpsCallable(functions, 'updateSponsorshipNote')({ factoryOwnerUid, teamId, note });

@@ -3,6 +3,8 @@ import { useFutbolLeagues } from '../../hooks/useFutbolLeagues';
 import { useFutbolTeams } from '../../hooks/useFutbolTeams';
 import { useFutbolMatches } from '../../hooks/useFutbolMatches';
 import { useFutbolSeasonState } from '../../hooks/useFutbolSeasonState';
+import { useFutbolCup } from '../../hooks/useFutbolCup';
+import { useMyFutbolCupBets } from '../../hooks/useMyFutbolCupBets';
 import { seedFutbolWorld } from '../../services/gameActions';
 import { useNowTick, computeLiveMatchState, pickFutbolDisplayRound } from './futbolLiveMatch';
 import FutbolMatchDetail from './FutbolMatchDetail';
@@ -11,6 +13,7 @@ import FutbolIddaa from './FutbolIddaa';
 import FutbolKulupler from './FutbolKulupler';
 import FutbolTeamDetail from './FutbolTeamDetail';
 import FutbolKupa from './FutbolKupa';
+import FutbolCupBetting, { ROUND_ORDER, ROUND_LABELS, CupMatchRow } from './FutbolCupBetting';
 import FutbolSeasonCelebration from './FutbolSeasonCelebration';
 import './FutbolLigler.css';
 
@@ -29,9 +32,21 @@ export default function FutbolLigler() {
   const [selectedLeagueId, setSelectedLeagueId] = useState(null);
   const [subTab, setSubTab] = useState('puan');
   const [selectedMatch, setSelectedMatch] = useState(null);
+  // selectedCupMatch — CupMatchRow'dan (Maçlar/Fikstür sekmelerindeki
+  // bugünkü/geçmiş kupa maçları) tıklanan kupa maçının detayını FutbolKupa.jsx
+  // İLE AYNI FutbolMatchDetail bileşeninde açmak için AYRI bir state — lig
+  // maçlarındaki selectedMatch'ten farklı, çünkü kupa maçı dokümanı takım
+  // adını/logosunu zaten kendi üzerinde taşıyor (teamNameById lookup gerekmiyor).
+  const [selectedCupMatch, setSelectedCupMatch] = useState(null);
   const [selectedTeamId, setSelectedTeamId] = useState(null);
   const now = useNowTick(5000);
   const cupSeason = leagues.find((l) => l.tier === 1)?.season || null;
+  // cup/cupMatches/myCupBets — KULLANICI İSTEĞİ: "kupa maçları sadece kupa
+  // sekmesine has bi şey olmasın" — "Maçlar"/"Maç Fikstürü"/"İddaa Bayii"
+  // sekmelerinde de kupa maçlarını gösterebilmek için kupa verisi artık
+  // burada (Kupa sekmesine girmeden) da dinleniyor.
+  const { cup, matches: cupMatches } = useFutbolCup(cupSeason);
+  const { bets: myCupBets } = useMyFutbolCupBets(cupSeason);
 
   // Futbol dünyası boşsa (ilk hiç kimse açmadıysa) sessizce, otomatik
   // olarak oluşturulur — admin/buton gerekmez, seedFutbolWorld idempotent.
@@ -66,6 +81,25 @@ export default function FutbolLigler() {
     });
     return map;
   }, [matches]);
+
+  // cupRoundsGrouped/todaysCupMatches — KULLANICI İSTEĞİ: kupa maçları
+  // "Maçlar"/"Maç Fikstürü" sekmelerinde de görünsün. cupMatches TÜM kupa
+  // sezonunu içeriyor (bkz. useFutbolCup) — tura göre gruplanır, "bugünkü"
+  // kupa maçları ise sezon durumunun (futbolSeasonState) bekleyen turu
+  // (pendingCupRound) ile belirlenir.
+  const cupRoundsGrouped = useMemo(() => {
+    const map = {};
+    cupMatches.forEach((m) => {
+      if (!map[m.round]) map[m.round] = [];
+      map[m.round].push(m);
+    });
+    Object.values(map).forEach((list) => list.sort((a, b) => (a.slot || 0) - (b.slot || 0)));
+    return map;
+  }, [cupMatches]);
+  const todaysCupMatches =
+    seasonState.status === 'CUP_DAY' && seasonState.pendingCupRound
+      ? cupRoundsGrouped[seasonState.pendingCupRound] || []
+      : [];
 
   // Hangi günün gösterileceği: 18:00-19:00 arası canlı oynanan gün,
   // 19:00-24:00 arası bugün biten günün sonucu, aksi halde henüz
@@ -127,29 +161,41 @@ export default function FutbolLigler() {
 
       {subTab === 'maclar' && seasonState.status === 'CELEBRATION_DAY' && <FutbolSeasonCelebration />}
 
-      {subTab === 'maclar' && seasonState.status !== 'CELEBRATION_DAY' && (
-        <>
-          {seasonState.status === 'CUP_DAY' && (
-            <p className="futbol-placeholder futbol-cup-day-banner">
-              🏆 Bugün Neon Kupası günü — lig maçları yarın devam edecek. Kupa maçları için "Kupa"
-              sekmesine bak.
-            </p>
-          )}
-          <MatchList
-            title={
-              display.mode === 'live'
-                ? `${display.round}. Gün — Canlı`
-                : display.mode === 'finished'
-                  ? `${display.round}. Gün — Sonuçlar`
-                  : `${display.round}. Gün`
-            }
-            matches={roundsGrouped[display.round] || []}
-            teamNameById={teamNameById}
-            teamById={teamById}
-            onSelectMatch={setSelectedMatch}
-            now={now}
-          />
-        </>
+      {/* KULLANICI İSTEĞİ: "bugün kupa maçı varsa maçlar sekmesinde kupa
+          maçları gözüksün" — eskiden burada sadece "Kupa sekmesine bak"
+          diyen bir banner vardı, lig maçları da (henüz oynanmamış halde)
+          altında gösteriliyordu; artık CUP_DAY'de lig yerine DOĞRUDAN
+          bugünün kupa maçları listeleniyor. */}
+      {subTab === 'maclar' && seasonState.status === 'CUP_DAY' && (
+        <div className="futbol-match-round">
+          <p className="futbol-match-round-title">
+            🏆 Bugün Neon Kupası Günü — {ROUND_LABELS[seasonState.pendingCupRound] || seasonState.pendingCupRound}
+          </p>
+          {todaysCupMatches.length === 0 && <p className="futbol-placeholder">Bugüne ait kupa maçı yok.</p>}
+          {todaysCupMatches.map((m) => (
+            <CupMatchRow key={m.id} match={m} onSelect={setSelectedCupMatch} />
+          ))}
+          <p className="futbol-placeholder futbol-cup-day-banner">
+            Lig maçları yarın kaldığı yerden devam edecek. Kupa eşleşme ağacı için "Kupa" sekmesine bak.
+          </p>
+        </div>
+      )}
+
+      {subTab === 'maclar' && seasonState.status !== 'CELEBRATION_DAY' && seasonState.status !== 'CUP_DAY' && (
+        <MatchList
+          title={
+            display.mode === 'live'
+              ? `${display.round}. Gün — Canlı`
+              : display.mode === 'finished'
+                ? `${display.round}. Gün — Sonuçlar`
+                : `${display.round}. Gün`
+          }
+          matches={roundsGrouped[display.round] || []}
+          teamNameById={teamNameById}
+          teamById={teamById}
+          onSelectMatch={setSelectedMatch}
+          now={now}
+        />
       )}
 
       {subTab === 'fikstur' && (
@@ -170,19 +216,50 @@ export default function FutbolLigler() {
                 />
               </div>
             ))}
+
+          {/* KULLANICI İSTEĞİ: "kupa maçları maç fikstüründe de bulunsun" —
+              kupa turları (Son 16'dan Final'e) lig günlerinden AYRI bir
+              sistemde ilerlediği için (bkz. futbolSeasonState.CUP_DAY) tarih
+              bazlı iç içe geçirme yerine, lig turlarının ALTINA ayrı bir
+              "🏆 Neon Kupası" bölümü olarak ekleniyor — eşleşmiş (en az 1
+              maçı olan) turlar sırayla listelenir. */}
+          {ROUND_ORDER.some((r) => (cupRoundsGrouped[r] || []).length > 0) && (
+            <>
+              <p className="futbol-match-round-title futbol-cup-fixture-title">🏆 Neon Kupası</p>
+              {ROUND_ORDER.map((round) => {
+                const roundMatches = cupRoundsGrouped[round] || [];
+                if (roundMatches.length === 0) return null;
+                return (
+                  <div key={round} className="futbol-match-round compact">
+                    <p className="futbol-match-round-title">{ROUND_LABELS[round]}</p>
+                    {roundMatches.map((m) => (
+                      <CupMatchRow key={m.id} match={m} onSelect={setSelectedCupMatch} />
+                    ))}
+                  </div>
+                );
+              })}
+            </>
+          )}
         </div>
       )}
 
       {subTab === 'kulupler' && <FutbolKulupler leagueId={activeLeagueId} />}
 
       {subTab === 'iddaa' && (
-        <FutbolIddaa
-          leagueId={activeLeagueId}
-          matches={roundsGrouped[activeLeague?.currentRound || 1] || []}
-          allMatches={matches}
-          teamNameById={teamNameById}
-          teamById={teamById}
-        />
+        <>
+          <FutbolIddaa
+            leagueId={activeLeagueId}
+            matches={roundsGrouped[activeLeague?.currentRound || 1] || []}
+            allMatches={matches}
+            teamNameById={teamNameById}
+            teamById={teamById}
+          />
+          {/* KULLANICI İSTEĞİ: "bugün kupa maçı varsa idaa bayi kısmında
+              kupa maçları bulunsun" — FutbolKupa.jsx'teki AYNI bileşen,
+              sadece bettableMatches varsa (bugün oynanabilir kupa turu)
+              herhangi bir şey render ediyor. */}
+          <FutbolCupBetting cup={cup} matches={cupMatches} myBets={myCupBets} />
+        </>
       )}
 
       {subTab === 'kupa' && <FutbolKupa season={cupSeason} />}
@@ -196,6 +273,17 @@ export default function FutbolLigler() {
           awayLogo={teamById[selectedMatch.awayTeamId]?.logo}
           homeSponsorName={teamById[selectedMatch.homeTeamId]?.sponsorFactoryName}
           onClose={() => setSelectedMatch(null)}
+        />
+      )}
+
+      {selectedCupMatch && (
+        <FutbolMatchDetail
+          match={selectedCupMatch}
+          homeName={selectedCupMatch.homeTeamName}
+          awayName={selectedCupMatch.awayTeamName}
+          homeLogo={selectedCupMatch.homeLogo}
+          awayLogo={selectedCupMatch.awayLogo}
+          onClose={() => setSelectedCupMatch(null)}
         />
       )}
 

@@ -844,6 +844,10 @@
   color: var(--text-dim);
 }
 
+.factory-share-expiry-hint {
+  color: #ffd23f;
+}
+
 .factory-share-buy-card {
   display: flex;
   flex-direction: column;
