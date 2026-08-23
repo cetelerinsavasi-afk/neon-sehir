@@ -13,7 +13,13 @@ import FutbolIddaa from './FutbolIddaa';
 import FutbolKulupler from './FutbolKulupler';
 import FutbolTeamDetail from './FutbolTeamDetail';
 import FutbolKupa from './FutbolKupa';
-import FutbolCupBetting, { ROUND_ORDER, ROUND_LABELS, CupMatchRow } from './FutbolCupBetting';
+import FutbolCupBetting, {
+  ROUND_LABELS,
+  CupMatchRow,
+  CupPlaceholderMatchRow,
+  FUTBOL_CUP_ROUND_MATCH_COUNTS,
+  FUTBOL_CUP_TRIGGER_AFTER_ROUND,
+} from './FutbolCupBetting';
 import FutbolSeasonCelebration from './FutbolSeasonCelebration';
 import './FutbolLigler.css';
 
@@ -203,43 +209,52 @@ export default function FutbolLigler() {
           {Object.keys(roundsGrouped)
             .map(Number)
             .sort((a, b) => a - b)
-            .map((round) => (
-              <div key={round} ref={(el) => { fixtureRoundRefs.current[round] = el; }}>
-                <MatchList
-                  title={`${round}. Gün`}
-                  matches={roundsGrouped[round]}
-                  teamNameById={teamNameById}
-                  teamById={teamById}
-                  onSelectMatch={setSelectedMatch}
-                  now={now}
-                  compact
-                />
-              </div>
-            ))}
-
-          {/* KULLANICI İSTEĞİ: "kupa maçları maç fikstüründe de bulunsun" —
-              kupa turları (Son 16'dan Final'e) lig günlerinden AYRI bir
-              sistemde ilerlediği için (bkz. futbolSeasonState.CUP_DAY) tarih
-              bazlı iç içe geçirme yerine, lig turlarının ALTINA ayrı bir
-              "🏆 Neon Kupası" bölümü olarak ekleniyor — eşleşmiş (en az 1
-              maçı olan) turlar sırayla listelenir. */}
-          {ROUND_ORDER.some((r) => (cupRoundsGrouped[r] || []).length > 0) && (
-            <>
-              <p className="futbol-match-round-title futbol-cup-fixture-title">🏆 Neon Kupası</p>
-              {ROUND_ORDER.map((round) => {
-                const roundMatches = cupRoundsGrouped[round] || [];
-                if (roundMatches.length === 0) return null;
-                return (
-                  <div key={round} className="futbol-match-round compact">
-                    <p className="futbol-match-round-title">{ROUND_LABELS[round]}</p>
-                    {roundMatches.map((m) => (
-                      <CupMatchRow key={m.id} match={m} onSelect={setSelectedCupMatch} />
-                    ))}
-                  </div>
-                );
-              })}
-            </>
-          )}
+            .map((round) => {
+              // KULLANICI İSTEĞİ: "kupa maçları fikstürün doğru yerinde
+              // olsun en altta değil ... mesela ilk 16 takım 3. ve 4. günün
+              // arasında bulunsun". Kupa turu, onu tetikleyen lig gününün
+              // (bkz. functions/index.js FUTBOL_CUP_TRIGGER_AFTER_ROUND)
+              // HEMEN ALTINA, bir sonraki lig gününden ÖNCE yerleştiriliyor.
+              const cupRoundAfterThis = FUTBOL_CUP_TRIGGER_AFTER_ROUND[round];
+              const cupRoundMatches = cupRoundAfterThis ? cupRoundsGrouped[cupRoundAfterThis] || [] : [];
+              return (
+                <div key={round} ref={(el) => { fixtureRoundRefs.current[round] = el; }}>
+                  <MatchList
+                    title={`${round}. Gün`}
+                    matches={roundsGrouped[round]}
+                    teamNameById={teamNameById}
+                    teamById={teamById}
+                    onSelectMatch={setSelectedMatch}
+                    now={now}
+                    compact
+                  />
+                  {/* `cup` yoksa (bu sezon için kupa hiç kurulmadıysa) hiçbir
+                      şey gösterilmez. Kupa varsa ama bu turun maçları henüz
+                      OLUŞTURULMADIYSA (bir önceki tur bitmedi) — KULLANICI
+                      İSTEĞİ: "bi sonraki turda '?' şeklinde karşılıklı ...
+                      takım bulunsun, üst tura çıkanlar belli olduğunda '?'
+                      bunlar hangi takımsa ona dönüşsün" — doğru sayıda (bkz.
+                      FUTBOL_CUP_ROUND_MATCH_COUNTS) yer tutucu "?" satırı
+                      basılır; gerçek maçlar oluşunca (advanceFutbolCupToNextRound)
+                      cupRoundsGrouped dolar ve yer tutucuların yerini otomatik
+                      olarak gerçek CupMatchRow'lar alır. */}
+                  {cup && cupRoundAfterThis && (
+                    <div className="futbol-match-round compact futbol-cup-fixture-round">
+                      <p className="futbol-match-round-title futbol-cup-fixture-title">
+                        🏆 {ROUND_LABELS[cupRoundAfterThis]}
+                      </p>
+                      {cupRoundMatches.length > 0
+                        ? cupRoundMatches.map((m) => (
+                            <CupMatchRow key={m.id} match={m} onSelect={setSelectedCupMatch} />
+                          ))
+                        : Array.from({ length: FUTBOL_CUP_ROUND_MATCH_COUNTS[cupRoundAfterThis] || 0 }).map(
+                            (_, i) => <CupPlaceholderMatchRow key={i} />
+                          )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
         </div>
       )}
 

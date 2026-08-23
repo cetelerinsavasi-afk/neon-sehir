@@ -12299,6 +12299,38 @@ async function computeAndStoreFutbolOddsForToday() {
   await batch.commit();
 }
 
+// recomputeTodaysFutbolOddsNow — KULLANICI İSTEĞİ: oran formülü değişti
+// (beraberlik artık 2.5, kriterler asimetrik %5 düşüş/%20 artış, ev sahibi
+// avantajı tek yönlü — bkz. computeFutbolMatchOdds yukarıdaki yorumu) ama
+// BUGÜNÜN maçlarının oranları hâlâ 00:00'da ESKİ formülle hesaplanmış halde
+// duruyor. Bu, computeAndStoreFutbolOddsForToday'i elle bir kez daha
+// tetikleyen ince bir HTTP uç noktası — resolveStuckRewardsNow (yukarıda,
+// dosyanın başında) İLE BİREBİR AYNI desen: deploy sonrası fonksiyonun
+// Cloud Functions URL'sine `?secret=...` ekleyip tarayıcıda BİR KEZ açmak
+// yeterli, işin bitince bu fonksiyonu koddan silebilirsin.
+//
+// GÜVENLİ (oyunun işleyişini bozmaz): computeAndStoreFutbolOddsForToday
+// SADECE hâlâ 'scheduled' (henüz oynanmamış) maçların oranlarını günceller
+// — bitmiş ya da o an canlı oynanan maçlara hiç dokunmaz. Zaten yapılmış
+// bahisler (futbolBets/futbolCupBets) bahis anında dondurulmuş KENDİ
+// oranlarını (bkz. selections[].odds/bet.odds — placeFutbolBet/
+// placeFutbolCupBet) taşıyor; maç belgesindeki oddsHome/oddsAway/oddsDraw
+// değişse bile geçmiş bahisler bundan ETKİLENMEZ — sadece BUNDAN SONRA
+// yapılacak yeni bahisler yeni oranı görür.
+export const recomputeTodaysFutbolOddsNow = onRequest(async (req, res) => {
+  if (!req.query.secret || req.query.secret !== MAINTENANCE_SECRET) {
+    res.status(403).json({ error: 'Yetkisiz.' });
+    return;
+  }
+  try {
+    await computeAndStoreFutbolOddsForToday();
+    res.status(200).json({ ok: true });
+  } catch (err) {
+    console.error('recomputeTodaysFutbolOddsNow hata:', err);
+    res.status(500).json({ ok: false, error: err.message || String(err) });
+  }
+});
+
 function futbolMatchOutcome(match) {
   if (match.homeScore > match.awayScore) return 'home';
   if (match.homeScore < match.awayScore) return 'away';

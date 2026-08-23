@@ -278,9 +278,29 @@
   color: var(--neon-yellow);
 }
 
+.futbol-cup-fixture-round {
+  margin-top: 4px;
+  margin-bottom: 14px;
+}
+
 .futbol-cup-fixture-title {
   margin-top: 16px;
   padding-top: 12px;
   border-top: 1px dashed var(--border-dim, rgba(255, 255, 255, 0.15));
   color: var(--neon-yellow);
+}
+
+/* futbol-cup-match-placeholder — bir sonraki kupa turunun henüz
+   oluşturulmamış (bir önceki tur bitmedi) maçları için "?" yer tutucu satır
+   (bkz. CupPlaceholderMatchRow, FutbolCupBetting.jsx). Gerçek maçlardan
+   ayırt edilsin diye soluk ve tıklanamaz görünüyor. */
+.futbol-cup-match-placeholder {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.futbol-cup-placeholder-team {
+  justify-content: center;
+  font-weight: 700;
+  color: var(--text-dim);
 }

@@ -19,6 +19,34 @@ export const ROUND_LABELS = {
   SEMI_FINAL: 'Yarı Final',
   FINAL: 'Final',
 };
+
+// FUTBOL_CUP_ROUND_MATCH_COUNTS — her turun kaç maçtan oluştuğu (16 takımlık
+// SABİT tek eleme braketi: 8 → 4 → 2 → 1, bkz. functions/index.js
+// createFutbolCupForSeason — "1. ve 2. Lig'in TÜM takımlarını (8+8=16)").
+// Bir sonraki tur henüz oluşturulmamışken bile (bir önceki tur bitmedi)
+// "Maç Fikstürü" sekmesinde doğru sayıda "?" yer tutucu maç gösterebilmek
+// için kullanılıyor — bkz. FutbolLigler.jsx.
+export const FUTBOL_CUP_ROUND_MATCH_COUNTS = {
+  ROUND_OF_16: 8,
+  QUARTER_FINAL: 4,
+  SEMI_FINAL: 2,
+  FINAL: 1,
+};
+
+// FUTBOL_CUP_TRIGGER_AFTER_ROUND — functions/index.js'teki AYNI isimli
+// sabitin istemci tarafı ikizi: 1. Lig'in round'u hangi değere ULAŞTIĞINDA
+// (o günün ERTESİ günü) bir kupa turu oynanıyor. KULLANICI İSTEĞİ: "kupa
+// maçları fikstürün doğru yerinde olsun en altta değil" — "Maç Fikstürü"
+// sekmesinde kupa turlarını, onu tetikleyen lig gününün HEMEN ALTINA
+// (bir sonraki lig gününden önce) yerleştirmek için kullanılıyor. Sunucudaki
+// sabit değişirse burası da elle güncellenmeli.
+export const FUTBOL_CUP_TRIGGER_AFTER_ROUND = {
+  3: 'ROUND_OF_16',
+  6: 'QUARTER_FINAL',
+  9: 'SEMI_FINAL',
+  12: 'FINAL',
+};
+
 const STAKE_QUICK_AMOUNTS = [10, 100, 1000, 10000];
 const PICK_LABELS = { home: 'Ev Sahibi', away: 'Deplasman' };
 
@@ -57,6 +85,25 @@ export function CupMatchRow({ match, onSelect }) {
           Penaltılar: {match.penalty.homeScore}-{match.penalty.awayScore}
         </p>
       )}
+    </div>
+  );
+}
+
+// CupPlaceholderMatchRow — bir sonraki kupa turunun maçları henüz
+// oluşturulmadıysa (bir önceki tur henüz bitmediyse) "Maç Fikstürü"
+// sekmesinde kullanılan yer tutucu satır — KULLANICI İSTEĞİ: "bi sonraki
+// turda '?' şeklinde karşılıklı ... takım bulunsun ... üst tura çıkanlar
+// belli olduğunda '?' bunlar hangi takımsa ona dönüşsün". Gerçek maç
+// oluşur oluşmaz (advanceFutbolCupToNextRound) bu satırın yerini otomatik
+// olarak gerçek CupMatchRow alır — bkz. FutbolLigler.jsx'teki kullanım.
+export function CupPlaceholderMatchRow() {
+  return (
+    <div className="futbol-cup-match-wrap">
+      <div className="futbol-match-row futbol-cup-match-placeholder">
+        <span className="futbol-match-team futbol-cup-placeholder-team">?</span>
+        <span className="futbol-match-score">vs</span>
+        <span className="futbol-match-team futbol-match-team-away futbol-cup-placeholder-team">?</span>
+      </div>
     </div>
   );
 }

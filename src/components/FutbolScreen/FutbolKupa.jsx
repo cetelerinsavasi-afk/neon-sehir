@@ -2,22 +2,20 @@ import { useEffect, useMemo, useState } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useFutbolCup } from '../../hooks/useFutbolCup';
-import { useMyFutbolCupBets } from '../../hooks/useMyFutbolCupBets';
 import FutbolCrest from './FutbolCrest';
 import FutbolMatchDetail from './FutbolMatchDetail';
-import FutbolCupBetting, { ROUND_ORDER, ROUND_LABELS, CupMatchRow } from './FutbolCupBetting';
+import { ROUND_ORDER, ROUND_LABELS, CupMatchRow } from './FutbolCupBetting';
 import './FutbolLigler.css';
 import './FutbolIddaa.css';
 
-// FutbolKupa — Futbol > Ligler > Kupa sekmesi. KULLANICI İSTEĞİ: kupa
-// sekmesi artık ASIL OLARAK kupa eşleşme ağacını (hangi tur, kim kiminle
-// eşleşti, kim bir üst tura çıktı) ve şampiyonu gösteriyor — kupa iddaası
-// (çoklu maç kuponu) ortak FutbolCupBetting bileşeninde, aynısı İddaa Bayii
-// sekmesinde de (bkz. FutbolLigler.jsx) gösteriliyor, artık bu sekmeye özel
-// değil.
+// FutbolKupa — Futbol > Ligler > Kupa sekmesi. KULLANICI İSTEĞİ: "kupa
+// maçının iddaaları hala kupa sekmesinde duruyor, iddaa bayine taşıyalım"
+// — bu sekme artık SADECE kupa eşleşme ağacını (hangi tur, kim kiminle
+// eşleşti, kim bir üst tura çıktı) ve şampiyonu gösteriyor; kupa iddaası
+// (çoklu maç kuponu, FutbolCupBetting bileşeni) buradan kaldırıldı ve
+// SADECE İddaa Bayii sekmesinde gösteriliyor (bkz. FutbolLigler.jsx).
 export default function FutbolKupa({ season }) {
   const { cup, matches, loading } = useFutbolCup(season);
-  const { bets: myBets } = useMyFutbolCupBets(season);
   const [selectedMatch, setSelectedMatch] = useState(null);
   const [selectedMatchHomeSponsor, setSelectedMatchHomeSponsor] = useState(null);
 
@@ -102,8 +100,6 @@ export default function FutbolKupa({ season }) {
           🏆 Neon Kupası — güncel aşama: <strong>{ROUND_LABELS[cup.status] || cup.status}</strong>
         </p>
       )}
-
-      <FutbolCupBetting cup={cup} matches={matches} myBets={myBets} />
 
       <p className="futbol-kadro-section-title">🌳 Kupa Eşleşmeleri</p>
       <div className="futbol-cup-bracket">
