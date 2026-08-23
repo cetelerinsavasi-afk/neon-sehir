@@ -284,18 +284,33 @@ export default function FutbolLigler() {
 
       {subTab === 'iddaa' && (
         <>
+          {/* KULLANICI İSTEĞİ: "kupon yapma paneli en üstte olmalı, geçmiş
+              kuponlar altta" — lig VE kupa panelleri artık kupon yapma
+              ('betting') ve geçmiş ('history') kısımlarını AYRI çağırıyor:
+              önce İKİSİNİN de kupon yapma kısmı basılıyor, sonra İKİSİNİN
+              de geçmişi. O an bahis açık olmayan taraf (ör. bugün kupa
+              günüyse lig paneli, tam tersiyse kupa paneli) hiçbir şey
+              render etmiyor (bkz. FutbolIddaa/FutbolCupBetting'teki
+              showBetting/renderBetting) — "şu an bahis yok" gibi ölü bir
+              metin, çalışan panelin ÜSTÜNDE takılı kalmıyor. */}
           <FutbolIddaa
             leagueId={activeLeagueId}
             matches={roundsGrouped[activeLeague?.currentRound || 1] || []}
             allMatches={matches}
             teamNameById={teamNameById}
             teamById={teamById}
+            section="betting"
           />
-          {/* KULLANICI İSTEĞİ: "bugün kupa maçı varsa idaa bayi kısmında
-              kupa maçları bulunsun" — FutbolKupa.jsx'teki AYNI bileşen,
-              sadece bettableMatches varsa (bugün oynanabilir kupa turu)
-              herhangi bir şey render ediyor. */}
-          <FutbolCupBetting cup={cup} matches={cupMatches} myBets={myCupBets} />
+          <FutbolCupBetting cup={cup} matches={cupMatches} myBets={myCupBets} section="betting" />
+          <FutbolIddaa
+            leagueId={activeLeagueId}
+            matches={roundsGrouped[activeLeague?.currentRound || 1] || []}
+            allMatches={matches}
+            teamNameById={teamNameById}
+            teamById={teamById}
+            section="history"
+          />
+          <FutbolCupBetting cup={cup} matches={cupMatches} myBets={myCupBets} section="history" />
         </>
       )}
 

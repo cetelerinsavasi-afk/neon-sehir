@@ -128,7 +128,11 @@ export function CupPlaceholderMatchRow() {
 
 // FutbolCupBetting — kupa iddaası (çoklu maç kuponu) + kupon geçmişi.
 // `cup`/`matches` bkz. useFutbolCup, `myBets` bkz. useMyFutbolCupBets.
-export default function FutbolCupBetting({ cup, matches, myBets }) {
+// `section` — FutbolIddaa.jsx'teki AYNI mekanizma (bkz. oradaki yorum):
+// KULLANICI İSTEĞİ ("kupon yapma paneli üstte, geçmiş kuponlar altta
+// olmalı") için ebeveyn (FutbolLigler.jsx) kupon yapma ('betting') ve
+// geçmiş ('history') kısımlarını AYRI çağırıp doğru sırayla diziyor.
+export default function FutbolCupBetting({ cup, matches, myBets, section = 'both' }) {
   const { user } = useAuth();
   const [selections, setSelections] = useState([]); // [{ matchId, pick, odds }]
   const [stake, setStake] = useState(0);
@@ -140,24 +144,17 @@ export default function FutbolCupBetting({ cup, matches, myBets }) {
 
   const currentRoundMatches = matches.filter((m) => m.round === cup.status);
   const bettableMatches = currentRoundMatches.filter((m) => m.status === 'scheduled' && m.oddsHome && m.oddsAway);
-  // KULLANICI İSTEĞİ: "iddaa bayiine kupa maçları gelmemiş" — eskiden bu
-  // durumda bileşen SESSİZCE hiçbir şey göstermiyordu (return null), bu da
-  // "kupa iddaası hiç çalışmıyor" izlenimi verebiliyordu; oysa kupa iddaası
-  // SADECE o turun oynanacağı günün 00:00-18:00 aralığında (oranlar
-  // hesaplanmışken) bahis kabul ediyor — FutbolIddaa'daki (lig iddaası) AYNI
-  // "maç var ama şu an bahis alınmıyor" durumuyla tutarlı, açık bir mesaj
-  // gösteriliyor artık.
-  if (currentRoundMatches.length === 0) return null; // bu turun maçları henüz oluşmadı — gösterecek bir şey yok
-  if (bettableMatches.length === 0) {
-    return (
-      <div className="futbol-iddaa futbol-cup-bet-box">
-        <p className="futbol-placeholder">
-          🏆 {ROUND_LABELS[cup.status]} turunun maçları başladı ya da oranlar henüz hesaplanmadı — kupa
-          iddaası SADECE turun oynanacağı günün 00:00-18:00 arasında açık.
-        </p>
-      </div>
-    );
-  }
+
+  // KULLANICI İSTEĞİ: "iddaa kuponu yapma panelini en üstte alıp ... 'son 16
+  // turunda istediğin...' yazısını ... kaldırmamız gerekiyor. yani lig
+  // maçlarında nasıl kupon yapma paneli en üsteyse bunda da aynı olmalı" —
+  // FutbolIddaa'daki (lig iddaası) İLE AYNI davranış: bahis açık değilken
+  // (kupa turu henüz oynanacak günde değilken) hiçbir "yarın gel" tarzı ölü
+  // metin göstermiyoruz, bileşen sadece bahis gerçekten açıkken (bettable
+  // maç varsa) bir şey basıyor.
+  const renderBetting = section !== 'history' && bettableMatches.length > 0;
+  const renderHistory = section !== 'betting' && myBets.length > 0;
+  if (!renderBetting && !renderHistory) return null; // gösterecek hiçbir şey yok
 
   const pickForMatch = (matchId) => selections.find((s) => s.matchId === matchId)?.pick || null;
 
@@ -209,16 +206,12 @@ export default function FutbolCupBetting({ cup, matches, myBets }) {
 
   return (
     <div className="futbol-iddaa futbol-cup-bet-box">
-      <p className="futbol-placeholder">
-        🎟️ {ROUND_LABELS[cup.status]} turunda istediğin maça (1 tanesine ya da hepsine) bahis yap — kupada
-        beraberlik (X) yok, sadece 1 / 2. Kupona kaç maç eklersen oran o kadar yükselir, çünkü seçtiğin
-        maçların oranları birbiriyle çarpılır. Kuponun tutması için EKLEDİĞİN TÜM maçların tahmini doğru
-        çıkmalı; tutarsa <strong>yatırdığın altın × toplam oran</strong> kadar kazanırsın.
-      </p>
-      {!user && <p className="futbol-placeholder">Kupon oynamak için giriş yapmalısın.</p>}
-      {user && (
+      {renderBetting && (
         <>
-          <div className="futbol-iddaa-matches">
+          {!user && <p className="futbol-placeholder">Kupon oynamak için giriş yapmalısın.</p>}
+          {user && (
+            <>
+              <div className="futbol-iddaa-matches">
             {bettableMatches.map((m) => {
               const activePick = pickForMatch(m.id);
               return (
@@ -289,8 +282,10 @@ export default function FutbolCupBetting({ cup, matches, myBets }) {
           {success && <p className="futbol-placeholder">{success}</p>}
         </>
       )}
+        </>
+      )}
 
-      {myBets.length > 0 && (
+      {renderHistory && (
         <div className="futbol-iddaa-history">
           <p className="futbol-kadro-section-title">Kupa Kupon Geçmişin</p>
           {myBets.map((b) => {

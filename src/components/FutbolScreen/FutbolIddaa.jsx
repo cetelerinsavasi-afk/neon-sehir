@@ -30,7 +30,17 @@ function betSelections(bet) {
 // ÇARPILIR: ne kadar çok maç eklenirse kupon oranı o kadar yükselir. Kupon
 // tutması için SEÇİLEN TÜM maçların tahmini doğru çıkmalı — tek bir maç
 // bile yanlış çıkarsa kupon tamamen yanar (klasik "kombine kupon" mantığı).
-export default function FutbolIddaa({ leagueId, matches, allMatches, teamNameById, teamById }) {
+// `section` — KULLANICI İSTEĞİ: "üstte geçmiş kuponlar paneli altta kupon
+// yapma paneli var, yukarıda kupon yapma paneli olmalı". Bu bileşen HEM lig
+// hem kupa iddaası için (bkz. FutbolLigler.jsx) art arda basıldığından,
+// biri (ör. lig) sadece geçmişini gösterirken diğeri (ör. kupa) aktif kupon
+// paneli gösterebiliyordu — bu da genel sayfada "önce geçmiş, sonra kupon"
+// gibi karışık bir sıra oluşturabiliyordu. Artık ebeveyn, kupon yapma
+// kısmını ('betting') VE geçmiş kısmını ('history') AYRI AYRI iki kez
+// çağırıp önce TÜM kupon yapma panellerini, sonra TÜM geçmiş panellerini
+// basıyor — sıra her koşulda garanti ediliyor. Varsayılan 'both' geriye
+// dönük uyumluluk için.
+export default function FutbolIddaa({ leagueId, matches, allMatches, teamNameById, teamById, section = 'both' }) {
   const { bets } = useMyFutbolBets(leagueId);
   const [selections, setSelections] = useState([]); // [{ matchId, pick, odds }]
   const [stake, setStake] = useState(0);
@@ -97,18 +107,20 @@ export default function FutbolIddaa({ leagueId, matches, allMatches, teamNameByI
     }
   };
 
+  const showBetting = section !== 'history';
+  const showHistory = section !== 'betting';
+
   return (
     <div className="futbol-iddaa">
-      {matches.length === 0 && <p className="futbol-placeholder">Bu ligde güncel günde maç yok.</p>}
-
-      {matches.length > 0 && bettableMatches.length === 0 && (
-        <p className="futbol-placeholder">
-          Bugünün maçları başladı ya da oranlar henüz hesaplanmadı — kupon için yarın 00:00'dan sonra
-          tekrar gel.
-        </p>
-      )}
-
-      {bettableMatches.length > 0 && (
+      {/* KULLANICI İSTEĞİ: "kupon yapma panelini en üstte alıp ... yazısını
+          kaldırmamız gerekiyor" — bahis açık olmadığında (maç yok / oranlar
+          henüz hesaplanmadı) eskiden burada "yarın tekrar gel" gibi ölü bir
+          metin duruyordu; bu metin, aynı sekmede (İddaa Bayii, bkz.
+          FutbolLigler.jsx) altta gerçekten çalışan bir panel (ör. o gün
+          bahis açık olan kupa paneli) varsa onun ÜSTÜNDE anlamsızca
+          takılıyordu. Artık bahis açık değilse bu bileşen hiçbir şey
+          basmıyor. */}
+      {showBetting && bettableMatches.length > 0 && (
         <>
           <p className="futbol-placeholder">
             🎟️ İstediğin maça (1 tanesine ya da hepsine) bahis yap — kupona kaç maç eklersen oran o
@@ -201,7 +213,7 @@ export default function FutbolIddaa({ leagueId, matches, allMatches, teamNameByI
         </>
       )}
 
-      {bets.length > 0 && (
+      {showHistory && bets.length > 0 && (
         <div className="futbol-iddaa-history">
           <p className="futbol-kadro-section-title">Kupon Geçmişin</p>
           {bets.map((b) => {

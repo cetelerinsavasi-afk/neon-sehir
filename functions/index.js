@@ -10702,6 +10702,26 @@ async function cleanupOldNewsEvents() {
   await batch.commit();
 }
 
+// cleanupOldFutbolBets — KULLANICI İSTEĞİ: "geçmiş kuponların üstünden 2
+// gün geçenler otomatik silinsin". cleanupOldNewsEvents/cleanupOldFutbolGrowthLogs
+// İLE BİREBİR AYNI desen — hem lig iddaası (futbolBets) hem kupa iddaası
+// (futbolCupBets) için, bahis anındaki placedAt'i 2 günden eski olan
+// kuponlar (kazandı/kaybetti/beklemede fark etmeksizin) silinir.
+// resolveFutbolMatchdayReveal İÇİNDEN (her gün 19:00) çağrılır —
+// cleanupOldNewsEvents ile AYNI üç noktadan (kupa günü/kutlama günü/normal
+// lig günü dallarının hepsinden) tetikleniyor ki gün türü fark etmeksizin
+// her gün çalışsın.
+async function cleanupOldFutbolBets() {
+  const cutoff = admin.firestore.Timestamp.fromMillis(Date.now() - 2 * 24 * 60 * 60 * 1000);
+  for (const collectionName of ['futbolBets', 'futbolCupBets']) {
+    const oldSnap = await db.collection(collectionName).where('placedAt', '<', cutoff).limit(400).get();
+    if (oldSnap.empty) continue;
+    const batch = db.batch();
+    oldSnap.docs.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+  }
+}
+
 // pickFutbolBotTrainingIds — bir bot takımının o günkü antrenman
 // seçimini belirler (kullanıcı promptu): kadroya (o günkü otomatik ilk
 // 11'e) girmeyen oyuncular arasından, formu 100 olanlar öncelikli, formu
@@ -10993,12 +11013,14 @@ export const resolveFutbolMatchdayReveal = onSchedule(
           { merge: true }
         );
       await cleanupOldNewsEvents();
+      await cleanupOldFutbolBets();
       return; // kupa günü lig turunu ETKİLEMEZ — lig yarın kaldığı yerden devam eder
     }
 
     if (state.status === 'CELEBRATION_DAY') {
       await finishFutbolSeasonPart2(state);
       await cleanupOldNewsEvents();
+      await cleanupOldFutbolBets();
       return; // kutlama günü — maç yok, sadece yeni sezon hazırlığı
     }
 
@@ -11054,6 +11076,7 @@ export const resolveFutbolMatchdayReveal = onSchedule(
     await assignFutbolBotTraining();
     await cleanupOldFutbolGrowthLogs();
     await cleanupOldNewsEvents();
+    await cleanupOldFutbolBets();
   }
 );
 
