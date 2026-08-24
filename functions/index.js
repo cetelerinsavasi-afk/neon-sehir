@@ -10979,6 +10979,23 @@ export const resolveFutbolMatchdayReveal = onSchedule(
     const { claimed, state } = await claimFutbolRevealForToday();
     if (!claimed) return; // bugün zaten işlendi — çift tetikleme koruması
 
+    // KULLANICI İSTEĞİ: "kupa günlerinde antrenmana soktuğumuz oyuncular
+    // antrenman yapmıyor (aynı şekilde şampiyonluk kutlaması gününde) ...
+    // kupa maçını öcü gibi algılama, o da oyunun önemli bi parçası" — BUG:
+    // resolveFutbolTrainingForAllTeams/assignFutbolBotTraining (+ eski
+    // Gelişimler kayıtlarını temizleyen cleanupOldFutbolGrowthLogs) eskiden
+    // SADECE aşağıdaki normal lig günü dalının EN SONUNDA çağrılıyordu;
+    // CUP_DAY ve CELEBRATION_DAY dalları kendi erken `return`larıyla oraya
+    // hiç ulaşmadan çıkıyordu — yani o günlerde antrenmana sokulan oyuncu
+    // (bot takımları dahil) HİÇ gelişmiyordu. Bu üçü de maç/gün türünden
+    // TAMAMEN bağımsız (sadece o anki trainingPlayerIds'e bakar) —
+    // cleanupOldFutbolBets/cleanupOldNewsEvents İLE AYNI ilkeyle artık
+    // her günün (kupa/kutlama/lig fark etmeksizin) dallanmadan ÖNCE, en
+    // başında çalışıyor.
+    await resolveFutbolTrainingForAllTeams();
+    await assignFutbolBotTraining();
+    await cleanupOldFutbolGrowthLogs();
+
     if (state.status === 'CUP_DAY' && state.pendingCupRound) {
       const cupMatchesSnap = await db
         .collection('futbolCupMatches')
@@ -11072,9 +11089,6 @@ export const resolveFutbolMatchdayReveal = onSchedule(
           );
       }
     }
-    await resolveFutbolTrainingForAllTeams();
-    await assignFutbolBotTraining();
-    await cleanupOldFutbolGrowthLogs();
     await cleanupOldNewsEvents();
     await cleanupOldFutbolBets();
   }
@@ -14605,7 +14619,20 @@ async function buildSixtagramAttachment(uid, attachment) {
   if (type === 'iddaa') {
     const betId = attachment.betId;
     if (!betId) throw new HttpsError('invalid-argument', 'Kupon seçilmedi.');
-    const betSnap = await db.collection('futbolBets').doc(betId).get();
+
+    // KULLANICI İSTEĞİ: "kupa için yaptığımız iddaa kuponunu sixtagramda
+    // paylaşamıyoruz ... kupa maçıyla alakalı her şeyi neden lig
+    // maçlarından farklı yapmak zorunda hissediyorsun anlamadım" — kupa
+    // kuponları oyuncunun gözünde SIRADAN bir iddaa kuponu, sadece ayrı bir
+    // koleksiyonda (futbolCupBets, bkz. placeFutbolCupBet) yaşıyor çünkü
+    // eşleşmesi maç yerine kupa sezonu+turu üzerinden. Önce lig kuponlarına
+    // (futbolBets) bakılıyor, bulunamazsa kupa kuponlarına (futbolCupBets).
+    let betSnap = await db.collection('futbolBets').doc(betId).get();
+    let isCup = false;
+    if (!betSnap.exists) {
+      betSnap = await db.collection('futbolCupBets').doc(betId).get();
+      isCup = true;
+    }
     if (!betSnap.exists || betSnap.data().uid !== uid) {
       throw new HttpsError('permission-denied', 'Bu kupon sana ait değil.');
     }
@@ -14613,58 +14640,99 @@ async function buildSixtagramAttachment(uid, attachment) {
     // KULLANICI REVİZESİ (Çoklu Maç Kuponu): kupon artık 1 ya da daha fazla
     // maça yapılmış bir bahis olabilir (bet.selections) — futbolBetSelections
     // bunu, bu revizeden ÖNCEKİ tekil (bet.matchId/bet.pick) eski kuponlarla
-    // da uyumlu şekilde normalize eder.
+    // da uyumlu şekilde normalize eder; hem lig hem kupa kuponu için AYNI
+    // şekilde çalışıyor.
     const predictionList = futbolBetSelections(bet);
 
-    const [leagueSnap, matchSnaps] = await Promise.all([
-      db.collection('futbolLeagues').doc(bet.leagueId).get(),
-      Promise.all(predictionList.map((p) => db.collection('futbolMatches').doc(p.matchId).get())),
-    ]);
+    let leagueName;
+    let roundLabel;
+    let predictions;
 
-    const matchById = {};
-    matchSnaps.forEach((s) => {
-      if (s.exists) matchById[s.id] = s.data();
-    });
-    const teamIds = new Set();
-    matchSnaps.forEach((s) => {
-      if (s.exists) {
-        teamIds.add(s.data().homeTeamId);
-        teamIds.add(s.data().awayTeamId);
-      }
-    });
-    const teamSnaps = await Promise.all(
-      [...teamIds].map((id) => db.collection('futbolTeams').doc(id).get())
-    );
-    const teamById = {};
-    teamSnaps.forEach((s) => {
-      if (s.exists) teamById[s.id] = s.data();
-    });
+    if (isCup) {
+      // Kupa maçı dokümanı (futbolCupMatches) takım adını/skorunu zaten
+      // kendi üstünde taşıyor (bkz. CupMatchRow, FutbolCupBetting.jsx) —
+      // lig maçının aksine ayrı bir futbolTeams join'i GEREKMİYOR.
+      const matchSnaps = await Promise.all(
+        predictionList.map((p) => db.collection('futbolCupMatches').doc(p.matchId).get())
+      );
+      const matchById = {};
+      matchSnaps.forEach((s) => {
+        if (s.exists) matchById[s.id] = s.data();
+      });
+      leagueName = 'Neon Kupası';
+      roundLabel = FUTBOL_CUP_ROUND_LABELS[bet.round] || bet.round;
+      predictions = predictionList.map((p) => {
+        const m = matchById[p.matchId] || {};
+        // Kupa maçında beraberlik yok — eşitlik penaltılara gidip
+        // winnerTeamId'yi belirliyor (bkz. futbolCupMatchOutcome), bu
+        // yüzden skor karşılaştırması değil AYNI helper kullanılıyor.
+        let correct = null;
+        if (m.status === 'finished' && m.winnerTeamId) {
+          correct = futbolCupMatchOutcome(m) === p.pick;
+        }
+        return {
+          homeName: m.homeTeamName || '?',
+          awayName: m.awayTeamName || '?',
+          pick: p.pick,
+          homeScore: m.status === 'finished' ? m.homeScore : null,
+          awayScore: m.status === 'finished' ? m.awayScore : null,
+          correct,
+        };
+      });
+    } else {
+      const [leagueSnap, matchSnaps] = await Promise.all([
+        db.collection('futbolLeagues').doc(bet.leagueId).get(),
+        Promise.all(predictionList.map((p) => db.collection('futbolMatches').doc(p.matchId).get())),
+      ]);
 
-    // predictions — bu kuponun İÇERİĞİ: her maç için ev sahibi/deplasman
-    // adı, oyuncunun tahmini VE (maç bittiyse) tuttu mu tutmadı mı.
-    const predictions = predictionList.map((p) => {
-      const m = matchById[p.matchId] || {};
-      const home = teamById[m.homeTeamId] || {};
-      const away = teamById[m.awayTeamId] || {};
-      let correct = null;
-      if (m.status === 'finished' && m.homeScore != null && m.awayScore != null) {
-        const actual = m.homeScore === m.awayScore ? 'draw' : m.homeScore > m.awayScore ? 'home' : 'away';
-        correct = actual === p.pick;
-      }
-      return {
-        homeName: home.name || '?',
-        awayName: away.name || '?',
-        pick: p.pick,
-        homeScore: m.status === 'finished' ? m.homeScore : null,
-        awayScore: m.status === 'finished' ? m.awayScore : null,
-        correct,
-      };
-    });
+      const matchById = {};
+      matchSnaps.forEach((s) => {
+        if (s.exists) matchById[s.id] = s.data();
+      });
+      const teamIds = new Set();
+      matchSnaps.forEach((s) => {
+        if (s.exists) {
+          teamIds.add(s.data().homeTeamId);
+          teamIds.add(s.data().awayTeamId);
+        }
+      });
+      const teamSnaps = await Promise.all(
+        [...teamIds].map((id) => db.collection('futbolTeams').doc(id).get())
+      );
+      const teamById = {};
+      teamSnaps.forEach((s) => {
+        if (s.exists) teamById[s.id] = s.data();
+      });
+
+      leagueName = leagueSnap.exists ? leagueSnap.data().name || null : null;
+      roundLabel = bet.round;
+      // predictions — bu kuponun İÇERİĞİ: her maç için ev sahibi/deplasman
+      // adı, oyuncunun tahmini VE (maç bittiyse) tuttu mu tutmadı mı.
+      predictions = predictionList.map((p) => {
+        const m = matchById[p.matchId] || {};
+        const home = teamById[m.homeTeamId] || {};
+        const away = teamById[m.awayTeamId] || {};
+        let correct = null;
+        if (m.status === 'finished' && m.homeScore != null && m.awayScore != null) {
+          const actual = m.homeScore === m.awayScore ? 'draw' : m.homeScore > m.awayScore ? 'home' : 'away';
+          correct = actual === p.pick;
+        }
+        return {
+          homeName: home.name || '?',
+          awayName: away.name || '?',
+          pick: p.pick,
+          homeScore: m.status === 'finished' ? m.homeScore : null,
+          awayScore: m.status === 'finished' ? m.awayScore : null,
+          correct,
+        };
+      });
+    }
 
     return {
       type: 'iddaa',
-      leagueName: leagueSnap.exists ? leagueSnap.data().name || null : null,
-      round: bet.round,
+      isCup,
+      leagueName,
+      round: roundLabel,
       stake: bet.stake,
       status: bet.status,
       payout: bet.payout || 0,

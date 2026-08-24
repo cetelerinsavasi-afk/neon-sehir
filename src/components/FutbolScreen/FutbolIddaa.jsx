@@ -1,12 +1,18 @@
 import { useMemo, useState } from 'react';
-import { useMyFutbolBets } from '../../hooks/useMyFutbolBets';
 import { placeFutbolBet } from '../../services/gameActions';
 import FutbolCrest from './FutbolCrest';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './FutbolIddaa.css';
 
-const STATUS_LABELS = { pending: 'Beklemede', won: 'Kazandı', lost: 'Kaybetti' };
-const PICK_LABELS = { home: 'Ev Sahibi', draw: 'Beraberlik', away: 'Deplasman' };
+// STATUS_LABELS/PICK_LABELS/betSelections — dışa açık: KULLANICI İSTEĞİ
+// ("kupa maçlarının kuponları da lig maçlarının kuponlarından bağımsız bi
+// panelde duruyor bu da çok saçma") üzerine kupon GEÇMİŞİ artık burada
+// DEĞİL, FutbolLigler.jsx'te lig + kupa kuponlarını TEK bir listede
+// birleştiren ortak bir bölümde gösteriliyor — o birleştirme kodu bu
+// sabit/fonksiyonları (kupa tarafının cupBetSelections'ıyla AYNI mantık)
+// tekrar yazmasın diye buradan import ediyor.
+export const STATUS_LABELS = { pending: 'Beklemede', won: 'Kazandı', lost: 'Kaybetti' };
+export const PICK_LABELS = { home: 'Ev Sahibi', draw: 'Beraberlik', away: 'Deplasman' };
 const STAKE_QUICK_AMOUNTS = [10, 100, 1000, 10000];
 
 // betSelections — bir kupon dokümanının seçim listesini normalize eder.
@@ -16,7 +22,7 @@ const STAKE_QUICK_AMOUNTS = [10, 100, 1000, 10000];
 // dokümanları hâlâ tekil bet.matchId/bet.pick/bet.odds alanlarına sahip —
 // geçmiş listesi bozulmasın diye bunları da tek elemanlı bir seçim
 // dizisine çeviriyoruz.
-function betSelections(bet) {
+export function betSelections(bet) {
   if (Array.isArray(bet.selections) && bet.selections.length > 0) return bet.selections;
   if (bet.matchId) return [{ matchId: bet.matchId, pick: bet.pick, odds: bet.odds }];
   return [];
@@ -30,18 +36,12 @@ function betSelections(bet) {
 // ÇARPILIR: ne kadar çok maç eklenirse kupon oranı o kadar yükselir. Kupon
 // tutması için SEÇİLEN TÜM maçların tahmini doğru çıkmalı — tek bir maç
 // bile yanlış çıkarsa kupon tamamen yanar (klasik "kombine kupon" mantığı).
-// `section` — KULLANICI İSTEĞİ: "üstte geçmiş kuponlar paneli altta kupon
-// yapma paneli var, yukarıda kupon yapma paneli olmalı". Bu bileşen HEM lig
-// hem kupa iddaası için (bkz. FutbolLigler.jsx) art arda basıldığından,
-// biri (ör. lig) sadece geçmişini gösterirken diğeri (ör. kupa) aktif kupon
-// paneli gösterebiliyordu — bu da genel sayfada "önce geçmiş, sonra kupon"
-// gibi karışık bir sıra oluşturabiliyordu. Artık ebeveyn, kupon yapma
-// kısmını ('betting') VE geçmiş kısmını ('history') AYRI AYRI iki kez
-// çağırıp önce TÜM kupon yapma panellerini, sonra TÜM geçmiş panellerini
-// basıyor — sıra her koşulda garanti ediliyor. Varsayılan 'both' geriye
-// dönük uyumluluk için.
-export default function FutbolIddaa({ leagueId, matches, allMatches, teamNameById, teamById, section = 'both' }) {
-  const { bets } = useMyFutbolBets(leagueId);
+// KULLANICI İSTEĞİ: "kupa maçlarının kuponları da lig maçlarının
+// kuponlarından bağımsız bi panelde duruyor bu da çok saçma" — bu bileşen
+// artık SADECE kupon YAPMA panelini basıyor (geçmiş burada YOK); lig VE
+// kupa kuponlarının geçmişi FutbolLigler.jsx'te TEK bir birleşik listede
+// gösteriliyor, iki ayrı "Kupon Geçmişin" kutusu göstermek yerine.
+export default function FutbolIddaa({ matches, allMatches, teamNameById, teamById }) {
   const [selections, setSelections] = useState([]); // [{ matchId, pick, odds }]
   const [stake, setStake] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -107,22 +107,16 @@ export default function FutbolIddaa({ leagueId, matches, allMatches, teamNameByI
     }
   };
 
-  const showBetting = section !== 'history';
-  const showHistory = section !== 'betting';
+  // KULLANICI İSTEĞİ: "kupon yapma panelini en üstte alıp ... yazısını
+  // kaldırmamız gerekiyor" — bahis açık olmadığında (maç yok / oranlar
+  // henüz hesaplanmadı) eskiden burada "yarın tekrar gel" gibi ölü bir
+  // metin duruyordu; artık bahis açık değilse bu bileşen hiçbir şey
+  // basmıyor (FutbolCupBetting'teki AYNI kural).
+  if (bettableMatches.length === 0) return null;
 
   return (
     <div className="futbol-iddaa">
-      {/* KULLANICI İSTEĞİ: "kupon yapma panelini en üstte alıp ... yazısını
-          kaldırmamız gerekiyor" — bahis açık olmadığında (maç yok / oranlar
-          henüz hesaplanmadı) eskiden burada "yarın tekrar gel" gibi ölü bir
-          metin duruyordu; bu metin, aynı sekmede (İddaa Bayii, bkz.
-          FutbolLigler.jsx) altta gerçekten çalışan bir panel (ör. o gün
-          bahis açık olan kupa paneli) varsa onun ÜSTÜNDE anlamsızca
-          takılıyordu. Artık bahis açık değilse bu bileşen hiçbir şey
-          basmıyor. */}
-      {showBetting && bettableMatches.length > 0 && (
-        <>
-          <p className="futbol-placeholder">
+      <p className="futbol-placeholder">
             🎟️ İstediğin maça (1 tanesine ya da hepsine) bahis yap — kupona kaç maç eklersen oran o
             kadar yükselir, çünkü seçtiğin maçların oranları birbiriyle çarpılır. Oranlar her gece
             00:00'da belirlenir ve gün boyunca değişmez. Kuponun tutması için EKLEDİĞİN TÜM maçların
@@ -208,68 +202,8 @@ export default function FutbolIddaa({ leagueId, matches, allMatches, teamNameByI
               </button>
             </div>
           )}
-          {error && <p className="futbol-admin-error">{error}</p>}
-          {success && <p className="futbol-placeholder">{success}</p>}
-        </>
-      )}
-
-      {showHistory && bets.length > 0 && (
-        <div className="futbol-iddaa-history">
-          <p className="futbol-kadro-section-title">Kupon Geçmişin</p>
-          {bets.map((b) => {
-            const picks = betSelections(b);
-            return (
-              <div key={b.id} className={`futbol-iddaa-history-card status-${b.status}`}>
-                <div className="futbol-iddaa-history-row">
-                  <span>{b.round}. Gün</span>
-                  <span>{(b.stake || 0).toLocaleString('tr-TR')} altın</span>
-                  <span>{STATUS_LABELS[b.status]}</span>
-                  {b.status === 'won' && <span>+{(b.payout || 0).toLocaleString('tr-TR')}</span>}
-                  {b.status === 'pending' && b.potentialPayout != null && (
-                    <span>→ {b.potentialPayout.toLocaleString('tr-TR')}</span>
-                  )}
-                </div>
-                <div className="futbol-iddaa-history-picks">
-                  {picks.map((p) => {
-                    const match = matchById[p.matchId];
-                    const homeName = match ? teamNameById[match.homeTeamId] || '—' : '—';
-                    const awayName = match ? teamNameById[match.awayTeamId] || '—' : '—';
-                    let correctness = '';
-                    if (
-                      match?.status === 'finished' &&
-                      match.homeScore != null &&
-                      match.awayScore != null
-                    ) {
-                      const actual =
-                        match.homeScore === match.awayScore
-                          ? 'draw'
-                          : match.homeScore > match.awayScore
-                            ? 'home'
-                            : 'away';
-                      correctness = actual === p.pick ? 'correct' : 'wrong';
-                    }
-                    return (
-                      <div key={p.matchId} className={`futbol-iddaa-history-pick ${correctness}`}>
-                        <span className="futbol-iddaa-history-teams">
-                          {homeName} - {awayName}
-                        </span>
-                        <span className="futbol-iddaa-history-pick-label">
-                          {PICK_LABELS[p.pick]} @ {p.odds != null ? Number(p.odds).toFixed(1) : '—'}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-                {picks.length > 1 && (
-                  <p className="futbol-iddaa-history-combined">
-                    Toplam oran: {b.odds != null ? Number(b.odds).toFixed(2) : '—'}
-                  </p>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+      {error && <p className="futbol-admin-error">{error}</p>}
+      {success && <p className="futbol-placeholder">{success}</p>}
     </div>
   );
 }

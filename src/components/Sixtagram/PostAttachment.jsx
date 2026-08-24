@@ -181,11 +181,17 @@ export default function PostAttachment({ attachment }) {
 
   if (attachment.type === 'iddaa') {
     const pickLabel = { home: 'Ev Sahibi', draw: 'Beraberlik', away: 'Deplasman' };
+    // KULLANICI İSTEĞİ: "kupa maçıyla alakalı her şeyi neden lig
+    // maçlarından farklı yapmak zorunda hissediyorsun" — kupon kartı hem
+    // lig hem kupa kuponu için AYNI bileşen; tek fark, kupada `round`
+    // sunucudan zaten Türkçe tur adı (ör. "Son 16") olarak geliyor, lig
+    // maçında ise haftanın numarası — "N. Hafta" eki SADECE lig için ekleniyor.
+    const roundLine = attachment.isCup ? attachment.round : `${attachment.round}. Hafta`;
     return (
       <div className="post-att post-att-card">
         <p className="post-att-card-title">🎟️ İddaa Kuponu</p>
         <p className="post-att-card-line">
-          {attachment.leagueName || 'Lig'} · {attachment.round}. Hafta ·{' '}
+          {attachment.leagueName || 'Lig'} · {roundLine} ·{' '}
           {attachment.stake.toLocaleString('tr-TR')} altın
         </p>
         <div className="post-att-predictions">

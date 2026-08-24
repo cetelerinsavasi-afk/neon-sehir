@@ -4,6 +4,7 @@ import { db } from '../../firebase';
 import { useFutbolCup } from '../../hooks/useFutbolCup';
 import FutbolCrest from './FutbolCrest';
 import FutbolMatchDetail from './FutbolMatchDetail';
+import { useNowTick } from './futbolLiveMatch';
 import { ROUND_ORDER, ROUND_LABELS, CupMatchRow } from './FutbolCupBetting';
 import './FutbolLigler.css';
 import './FutbolIddaa.css';
@@ -18,6 +19,11 @@ export default function FutbolKupa({ season }) {
   const { cup, matches, loading } = useFutbolCup(season);
   const [selectedMatch, setSelectedMatch] = useState(null);
   const [selectedMatchHomeSponsor, setSelectedMatchHomeSponsor] = useState(null);
+  // KULLANICI İSTEĞİ: "kupa maçlarında saat emojisi var, izlemeden sonucu
+  // göremiyoruz" — MatchList (lig maçları, FutbolLigler.jsx) İLE AYNI
+  // şekilde CupMatchRow'un canlı skoru hesaplayabilmesi için "şu an" burada
+  // da (5 saniyede bir) tazeleniyor.
+  const now = useNowTick(5000);
 
   const matchesByRound = useMemo(() => {
     const map = {};
@@ -110,7 +116,7 @@ export default function FutbolKupa({ season }) {
             <div key={round} className="futbol-match-round">
               <p className="futbol-match-round-title">{ROUND_LABELS[round]}</p>
               {roundMatches.map((m) => (
-                <CupMatchRow key={m.id} match={m} onSelect={setSelectedMatch} />
+                <CupMatchRow key={m.id} match={m} onSelect={setSelectedMatch} now={now} />
               ))}
             </div>
           );

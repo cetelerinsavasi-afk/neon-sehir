@@ -10,6 +10,7 @@ import { useLeagueLastMatches } from '../../hooks/useLeagueLastMatches';
 import { useFutbolLeagues } from '../../hooks/useFutbolLeagues';
 import { useFutbolTeams } from '../../hooks/useFutbolTeams';
 import { useFutbolMatches } from '../../hooks/useFutbolMatches';
+import { ROUND_LABELS as CUP_ROUND_LABELS } from '../FutbolScreen/FutbolCupBetting';
 import { useInvestmentHistory } from '../../hooks/useInvestmentHistory';
 import { useInvestmentPrices } from '../../hooks/useInvestmentPrices';
 import { useMessages } from '../../hooks/useMessages';
@@ -251,6 +252,11 @@ export default function ComposeModal({ onClose, onPosted }) {
     );
   };
 
+  // chooseBet — hem lig hem kupa kuponu için AYNI akış (KULLANICI İSTEĞİ:
+  // "kupa maçıyla alakalı her şeyi neden lig maçlarından farklı yapmak
+  // zorunda hissediyorsun"). `bet.isCup` (bkz. useRecentFutbolBets) hangi
+  // koleksiyondan geldiğini söylüyor — önizleme için maç/takım verisi FARKLI
+  // koleksiyonlardan okunuyor ama sonuçta AYNI şekle (predictions[]) dönüşüyor.
   const chooseBet = async (bet) => {
     setError('');
     setSubPicker(null);
@@ -262,7 +268,6 @@ export default function ComposeModal({ onClose, onPosted }) {
     // önce tam olarak nasıl görüneceğini göstersin — sunucu tarafındaki
     // buildSixtagramAttachment ile aynı mantık, sadece istemcide.
     try {
-      const leagueSnap = await getDoc(doc(db, 'futbolLeagues', bet.leagueId));
       // KULLANICI REVİZESİ (Çoklu Maç Kuponu): kupon artık 1 ya da daha
       // fazla maça yapılmış bir bahis olabilir (bet.selections) — bu
       // revizeden ÖNCEKİ tekil (bet.matchId/bet.pick) eski kuponlarla da
@@ -275,52 +280,94 @@ export default function ComposeModal({ onClose, onPosted }) {
           : bet.matchId
             ? [{ matchId: bet.matchId, pick: bet.pick }]
             : [];
-      const matchSnaps = await Promise.all(
-        predictionList.map((p) => getDoc(doc(db, 'futbolMatches', p.matchId)))
-      );
-      const matchById = {};
-      matchSnaps.forEach((s) => {
-        if (s.exists()) matchById[s.id] = s.data();
-      });
-      const teamIds = new Set();
-      matchSnaps.forEach((s) => {
-        if (s.exists()) {
-          teamIds.add(s.data().homeTeamId);
-          teamIds.add(s.data().awayTeamId);
-        }
-      });
-      const teamSnaps = await Promise.all(
-        [...teamIds].map((id) => getDoc(doc(db, 'futbolTeams', id)))
-      );
-      const teamById = {};
-      teamSnaps.forEach((s) => {
-        if (s.exists()) teamById[s.id] = s.data();
-      });
 
-      const predictions = predictionList.map((p) => {
-        const m = matchById[p.matchId] || {};
-        const home = teamById[m.homeTeamId] || {};
-        const away = teamById[m.awayTeamId] || {};
-        let correct = null;
-        if (m.status === 'finished' && m.homeScore != null && m.awayScore != null) {
-          const actual =
-            m.homeScore === m.awayScore ? 'draw' : m.homeScore > m.awayScore ? 'home' : 'away';
-          correct = actual === p.pick;
-        }
-        return {
-          homeName: home.name || '?',
-          awayName: away.name || '?',
-          pick: p.pick,
-          homeScore: m.status === 'finished' ? m.homeScore : null,
-          awayScore: m.status === 'finished' ? m.awayScore : null,
-          correct,
-        };
-      });
+      let predictions;
+      let leagueName;
+      let roundLabel;
+
+      if (bet.isCup) {
+        // Kupa maçı dokümanı (futbolCupMatches) takım adını/skorunu zaten
+        // kendi üstünde taşıyor — ayrı bir futbolTeams join'i gerekmiyor.
+        const matchSnaps = await Promise.all(
+          predictionList.map((p) => getDoc(doc(db, 'futbolCupMatches', p.matchId)))
+        );
+        const matchById = {};
+        matchSnaps.forEach((s) => {
+          if (s.exists()) matchById[s.id] = s.data();
+        });
+        leagueName = 'Neon Kupası';
+        roundLabel = CUP_ROUND_LABELS[bet.round] || bet.round;
+        predictions = predictionList.map((p) => {
+          const m = matchById[p.matchId] || {};
+          // Kupa maçında beraberlik yok — eşitlik penaltılara gidip
+          // winnerTeamId'yi belirliyor (bkz. functions/index.js
+          // futbolCupMatchOutcome), skor karşılaştırması değil bu kullanılıyor.
+          let correct = null;
+          if (m.status === 'finished' && m.winnerTeamId) {
+            const outcome = m.winnerTeamId === m.homeTeamId ? 'home' : 'away';
+            correct = outcome === p.pick;
+          }
+          return {
+            homeName: m.homeTeamName || '?',
+            awayName: m.awayTeamName || '?',
+            pick: p.pick,
+            homeScore: m.status === 'finished' ? m.homeScore : null,
+            awayScore: m.status === 'finished' ? m.awayScore : null,
+            correct,
+          };
+        });
+      } else {
+        const leagueSnap = await getDoc(doc(db, 'futbolLeagues', bet.leagueId));
+        const matchSnaps = await Promise.all(
+          predictionList.map((p) => getDoc(doc(db, 'futbolMatches', p.matchId)))
+        );
+        const matchById = {};
+        matchSnaps.forEach((s) => {
+          if (s.exists()) matchById[s.id] = s.data();
+        });
+        const teamIds = new Set();
+        matchSnaps.forEach((s) => {
+          if (s.exists()) {
+            teamIds.add(s.data().homeTeamId);
+            teamIds.add(s.data().awayTeamId);
+          }
+        });
+        const teamSnaps = await Promise.all(
+          [...teamIds].map((id) => getDoc(doc(db, 'futbolTeams', id)))
+        );
+        const teamById = {};
+        teamSnaps.forEach((s) => {
+          if (s.exists()) teamById[s.id] = s.data();
+        });
+
+        leagueName = leagueSnap.exists() ? leagueSnap.data().name || null : null;
+        roundLabel = bet.round;
+        predictions = predictionList.map((p) => {
+          const m = matchById[p.matchId] || {};
+          const home = teamById[m.homeTeamId] || {};
+          const away = teamById[m.awayTeamId] || {};
+          let correct = null;
+          if (m.status === 'finished' && m.homeScore != null && m.awayScore != null) {
+            const actual =
+              m.homeScore === m.awayScore ? 'draw' : m.homeScore > m.awayScore ? 'home' : 'away';
+            correct = actual === p.pick;
+          }
+          return {
+            homeName: home.name || '?',
+            awayName: away.name || '?',
+            pick: p.pick,
+            homeScore: m.status === 'finished' ? m.homeScore : null,
+            awayScore: m.status === 'finished' ? m.awayScore : null,
+            correct,
+          };
+        });
+      }
 
       setAttachmentPreview({
         type: 'iddaa',
-        leagueName: leagueSnap.exists() ? leagueSnap.data().name || null : null,
-        round: bet.round,
+        isCup: !!bet.isCup,
+        leagueName,
+        round: roundLabel,
         stake: bet.stake,
         status: bet.status,
         payout: bet.payout || 0,
@@ -334,8 +381,9 @@ export default function ComposeModal({ onClose, onPosted }) {
       // paylaşırken içeriği zaten kendisi doğru şekilde üretecek.
       setAttachmentPreview({
         type: 'iddaa',
+        isCup: !!bet.isCup,
         leagueName: null,
-        round: bet.round,
+        round: bet.isCup ? CUP_ROUND_LABELS[bet.round] || bet.round : bet.round,
         stake: bet.stake,
         status: bet.status,
         payout: bet.payout || 0,
@@ -485,7 +533,8 @@ export default function ComposeModal({ onClose, onPosted }) {
             {bets.map((b) => (
               <button key={b.id} className="six-compose-sublist-item" onClick={() => chooseBet(b)}>
                 <span>
-                  {b.round}. Hafta · {b.stake.toLocaleString('tr-TR')} altın ·{' '}
+                  {b.isCup ? `🏆 ${CUP_ROUND_LABELS[b.round] || b.round}` : `${b.round}. Hafta`} ·{' '}
+                  {b.stake.toLocaleString('tr-TR')} altın ·{' '}
                   {b.status === 'pending' ? 'Bekliyor' : b.status === 'won' ? 'Kazandı' : 'Kaybetti'}
                 </span>
               </button>

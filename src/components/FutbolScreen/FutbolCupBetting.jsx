@@ -3,6 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { placeFutbolCupBet } from '../../services/gameActions';
 import FutbolCrest from './FutbolCrest';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
+import { computeLiveMatchState } from './futbolLiveMatch';
 import './FutbolIddaa.css';
 
 // FutbolCupBetting.jsx — KULLANICI İSTEĞİ: "kupa maçları sadece kupa
@@ -48,7 +49,7 @@ export const FUTBOL_CUP_TRIGGER_AFTER_ROUND = {
 };
 
 const STAKE_QUICK_AMOUNTS = [10, 100, 1000, 10000];
-const PICK_LABELS = { home: 'Ev Sahibi', away: 'Deplasman' };
+export const PICK_LABELS = { home: 'Ev Sahibi', away: 'Deplasman' };
 
 // cupBetSelections — functions/index.js'teki futbolBetSelections İLE AYNI
 // geriye dönük uyumluluk deseni: çoklu maçlı kupon (kullanıcı isteği)
@@ -68,10 +69,28 @@ export function cupBetSelections(bet) {
 // olsa da (onClick), görsel olarak lig maçlarıyla tutarlı olması için
 // eklendi. e.stopPropagation() gereksiz çift tetiklemeyi önlüyor (satırın
 // kendi onClick'i zaten aynı işi yapıyor).
-export function CupMatchRow({ match, onSelect }) {
-  const played = match.status === 'finished';
-  const isLive = match.status === 'live';
+//
+// KULLANICI İSTEĞİ ("kupa maçlarında saat emojisi var, maçı izlemeden
+// sonucu göremiyoruz ... kupa maçıyla alakalı her şeyi neden lig
+// maçlarından farklı yapmak zorunda hissediyorsun"): kupa maçı dokümanı
+// (futbolCupMatches) lig maçıyla (futbolMatches) BİREBİR AYNI canlı
+// simülasyon alanlarını taşıyor (status/matchStartAt/revealAt/timeline —
+// bkz. functions/index.js computeFutbolCupMatchLive), yani computeLiveMatchState
+// (futbolLiveMatch.js) kupa maçında da AYNI şekilde çalışır. Eskiden burada
+// bu hesap YAPILMIYORDU, canlıyken sadece sabit bir '⏱' basılıyordu —
+// MatchList (lig maçı satırı) İLE AYNI mantığa geçildi: `now` prop'u
+// (bkz. useNowTick) parent'tan geliyor, skor canlı ilerliyor.
+export function CupMatchRow({ match, onSelect, now }) {
+  const state = computeLiveMatchState(match, now);
+  const played = state.phase === 'finished';
+  const isLive = state.phase === 'live';
   const winnerIsHome = match.winnerTeamId === match.homeTeamId;
+  let scoreText = 'vs';
+  if (played) {
+    scoreText = `${match.homeScore} - ${match.awayScore}`;
+  } else if (isLive) {
+    scoreText = `${state.homeScore} - ${state.awayScore}`;
+  }
   return (
     <div className="futbol-cup-match-wrap">
       <div className="futbol-match-row futbol-match-row-clickable" onClick={() => onSelect?.(match)}>
@@ -81,7 +100,7 @@ export function CupMatchRow({ match, onSelect }) {
         </span>
         <span className={`futbol-match-score ${isLive ? 'live' : ''}`}>
           {isLive && <span className="futbol-live-dot" />}
-          {played ? `${match.homeScore} - ${match.awayScore}` : isLive ? '⏱' : 'vs'}
+          {scoreText}
         </span>
         <span className={`futbol-match-team futbol-match-team-away ${played && !winnerIsHome ? 'futbol-cup-winner' : ''}`}>
           <FutbolCrest logo={match.awayLogo} initials={match.awayTeamName?.[0]} size={18} />
@@ -126,13 +145,13 @@ export function CupPlaceholderMatchRow() {
   );
 }
 
-// FutbolCupBetting — kupa iddaası (çoklu maç kuponu) + kupon geçmişi.
-// `cup`/`matches` bkz. useFutbolCup, `myBets` bkz. useMyFutbolCupBets.
-// `section` — FutbolIddaa.jsx'teki AYNI mekanizma (bkz. oradaki yorum):
-// KULLANICI İSTEĞİ ("kupon yapma paneli üstte, geçmiş kuponlar altta
-// olmalı") için ebeveyn (FutbolLigler.jsx) kupon yapma ('betting') ve
-// geçmiş ('history') kısımlarını AYRI çağırıp doğru sırayla diziyor.
-export default function FutbolCupBetting({ cup, matches, myBets, section = 'both' }) {
+// FutbolCupBetting — kupa iddaası (çoklu maç kuponu). KULLANICI İSTEĞİ:
+// "kupa maçlarının kuponları da lig maçlarının kuponlarından bağımsız bi
+// panelde duruyor bu da çok saçma" — bu bileşen artık SADECE kupon YAPMA
+// panelini basıyor (geçmiş burada YOK, bkz. FutbolIddaa.jsx'teki AYNI
+// gerekçe); lig VE kupa kuponlarının geçmişi FutbolLigler.jsx'te TEK bir
+// birleşik listede gösteriliyor. `cup`/`matches` bkz. useFutbolCup.
+export default function FutbolCupBetting({ cup, matches }) {
   const { user } = useAuth();
   const [selections, setSelections] = useState([]); // [{ matchId, pick, odds }]
   const [stake, setStake] = useState(0);
@@ -152,9 +171,7 @@ export default function FutbolCupBetting({ cup, matches, myBets, section = 'both
   // (kupa turu henüz oynanacak günde değilken) hiçbir "yarın gel" tarzı ölü
   // metin göstermiyoruz, bileşen sadece bahis gerçekten açıkken (bettable
   // maç varsa) bir şey basıyor.
-  const renderBetting = section !== 'history' && bettableMatches.length > 0;
-  const renderHistory = section !== 'betting' && myBets.length > 0;
-  if (!renderBetting && !renderHistory) return null; // gösterecek hiçbir şey yok
+  if (bettableMatches.length === 0) return null;
 
   const pickForMatch = (matchId) => selections.find((s) => s.matchId === matchId)?.pick || null;
 
@@ -206,12 +223,10 @@ export default function FutbolCupBetting({ cup, matches, myBets, section = 'both
 
   return (
     <div className="futbol-iddaa futbol-cup-bet-box">
-      {renderBetting && (
+      {!user && <p className="futbol-placeholder">Kupon oynamak için giriş yapmalısın.</p>}
+      {user && (
         <>
-          {!user && <p className="futbol-placeholder">Kupon oynamak için giriş yapmalısın.</p>}
-          {user && (
-            <>
-              <div className="futbol-iddaa-matches">
+          <div className="futbol-iddaa-matches">
             {bettableMatches.map((m) => {
               const activePick = pickForMatch(m.id);
               return (
@@ -281,50 +296,6 @@ export default function FutbolCupBetting({ cup, matches, myBets, section = 'both
           {error && <p className="futbol-admin-error">{error}</p>}
           {success && <p className="futbol-placeholder">{success}</p>}
         </>
-      )}
-        </>
-      )}
-
-      {renderHistory && (
-        <div className="futbol-iddaa-history">
-          <p className="futbol-kadro-section-title">Kupa Kupon Geçmişin</p>
-          {myBets.map((b) => {
-            const picks = cupBetSelections(b);
-            return (
-              <div key={b.id} className={`futbol-iddaa-history-card status-${b.status}`}>
-                <div className="futbol-iddaa-history-row">
-                  <span>{ROUND_LABELS[b.round] || b.round}</span>
-                  <span>{(b.stake || 0).toLocaleString('tr-TR')} altın</span>
-                  <span>{b.status === 'pending' ? 'Beklemede' : b.status === 'won' ? 'Kazandı' : 'Kaybetti'}</span>
-                  {b.status === 'won' && <span>+{(b.payout || 0).toLocaleString('tr-TR')}</span>}
-                  {b.status === 'pending' && b.potentialPayout != null && (
-                    <span>→ {b.potentialPayout.toLocaleString('tr-TR')}</span>
-                  )}
-                </div>
-                <div className="futbol-iddaa-history-picks">
-                  {picks.map((p) => {
-                    const match = matches.find((m) => m.id === p.matchId);
-                    return (
-                      <div key={p.matchId} className="futbol-iddaa-history-pick">
-                        <span className="futbol-iddaa-history-teams">
-                          {match ? `${match.homeTeamName} - ${match.awayTeamName}` : '—'}
-                        </span>
-                        <span className="futbol-iddaa-history-pick-label">
-                          {PICK_LABELS[p.pick]} @ {p.odds != null ? Number(p.odds).toFixed(1) : '—'}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-                {picks.length > 1 && (
-                  <p className="futbol-iddaa-history-combined">
-                    Toplam oran: {b.odds != null ? Number(b.odds).toFixed(2) : '—'}
-                  </p>
-                )}
-              </div>
-            );
-          })}
-        </div>
       )}
     </div>
   );
