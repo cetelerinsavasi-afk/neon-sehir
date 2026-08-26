@@ -6,7 +6,7 @@ import { useOpenFactories, MACHINE_LABELS } from '../../hooks/useOpenFactories';
 import { useEmployerFactory } from '../../hooks/useEmployerFactory';
 import { useInvestmentPrices } from '../../hooks/useInvestmentPrices';
 import { useListedFactoryShares } from '../../hooks/useFactoryShares';
-import FactoryShiftGame from './FactoryShiftGame';
+import FactoryMiniGame from './FactoryMiniGame';
 import {
   createFactory,
   buyFactoryMachine,
@@ -521,7 +521,9 @@ function OwnerView({ factory, machines, player, myUid }) {
   // showShiftGame — yeni istek: "fabrika sahipleri de kendisi bi makinede
   // görevliyse bu kutu oyununu oynasın üretim yapmak için" — sahibin kendi
   // çalıştığı makine için de artık "Üretim Yap" direkt üretmiyor, önce
-  // FactoryShiftGame açılıyor (WorkerView'daki AYNI akış, bkz. handleShiftGameComplete).
+  // FactoryMiniGame açılıyor (WorkerView'daki AYNI akış, bkz.
+  // handleShiftGameComplete) — 3 mini oyundan (koli yakalama/altın avı/bant
+  // senkronu) biri rastgele seçilir, bkz. FactoryMiniGame.jsx.
   const [showShiftGame, setShowShiftGame] = useState(false);
   const [produceResult, setProduceResult] = useState(null);
   const [resignBusy, setResignBusy] = useState(false);
@@ -752,7 +754,7 @@ function OwnerView({ factory, machines, player, myUid }) {
       {showReport && <DailyReportModal factory={factory} onClose={() => setShowReport(false)} />}
       {showSponsor && <FactorySponsorModal onClose={() => setShowSponsor(false)} />}
       {showShiftGame && (
-        <FactoryShiftGame
+        <FactoryMiniGame
           onComplete={handleShiftGameComplete}
           onClose={() => setShowShiftGame(false)}
         />
@@ -943,8 +945,9 @@ function WorkerView({ player, myUid }) {
   // ekleyeceğiz, oyuncu fabrikaya girdiğinde 'üretim yap' butonu yerine bu
   // oyunla karşılaşacak ve bu mini oyunu tamamladığında üretimi yapmış
   // sayılıp maaşını alabilecek." — "Üretim Yap" artık DOĞRUDAN sunucuyu
-  // çağırmıyor, önce FactoryShiftGame'i açıyor; sunucu çağrısı (produceAtFactory)
-  // SADECE oyun 10/10 tamamlanınca yapılır (bkz. handleShiftGameComplete).
+  // çağırmıyor, önce FactoryMiniGame'i açıyor (3 mini oyundan biri rastgele
+  // seçilir); sunucu çağrısı (produceAtFactory) SADECE seçilen oyun
+  // tamamlanınca yapılır (bkz. handleShiftGameComplete).
   const [showShiftGame, setShowShiftGame] = useState(false);
 
   const employment = player.employment;
@@ -1038,7 +1041,7 @@ function WorkerView({ player, myUid }) {
         <CreateFactoryModal onClose={() => setShowCreateFactory(false)} isEmployed />
       )}
       {showShiftGame && (
-        <FactoryShiftGame
+        <FactoryMiniGame
           onComplete={handleShiftGameComplete}
           onClose={() => setShowShiftGame(false)}
         />

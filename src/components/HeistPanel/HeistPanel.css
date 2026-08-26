@@ -118,6 +118,11 @@
   color: var(--text-dim);
 }
 
+.heist-plan-meta.police-trap-hint {
+  margin-top: 4px;
+  color: #ffb454;
+}
+
 .heist-plan-members {
   list-style: none;
   margin: 0;

@@ -1,0 +1,49 @@
+/* FactoryMiniGames.css — HookGoldGame ve TempoSyncGame'in KENDİNE ÖZGÜ
+   stilleri. Ortak "kasa" (backdrop/wrap/hud/overlay/kart) görünümü zaten
+   FactoryShiftGame.css'teki .fsg-* sınıflarından geliyor (her iki dosya da
+   bunu import ediyor) — burada sadece bu iki oyuna özel öğeler var. */
+
+.fmg-timer {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gold-light, #ffe08a);
+  min-width: 30px;
+  text-align: right;
+}
+
+.fmg-gold-icon {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #f7d477, #c98a3f 70%);
+  opacity: 0.25;
+  transition: opacity 0.3s, filter 0.3s;
+}
+
+.fmg-gold-icon.filled {
+  opacity: 1;
+  filter: drop-shadow(0 0 4px var(--gold, #f2b632));
+}
+
+.fmg-round-msg {
+  text-align: center;
+  margin: 6px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #ff8a5c;
+  letter-spacing: 0.3px;
+}
+
+.fmg-canvas-wrap {
+  position: relative;
+  border-radius: 10px;
+  transition: box-shadow 0.15s;
+}
+
+.fmg-canvas-wrap.fmg-flash-hit {
+  box-shadow: 0 0 0 3px rgba(120, 230, 140, 0.75);
+}
+
+.fmg-canvas-wrap.fmg-flash-miss {
+  box-shadow: 0 0 0 3px rgba(255, 90, 90, 0.75);
+}

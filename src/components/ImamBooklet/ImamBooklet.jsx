@@ -3,19 +3,31 @@ import '../PoliceBooklet/PoliceBooklet.css';
 
 const PAGES = [
   {
+    title: 'İmamlık Bir Statüdür',
+    body: [
+      'İmamlık artık bir meslek değil, bir statüdür — kendi mesleğinde/işinde kalırsın.',
+      'İmam olduktan sonra da fabrikada çalışabilir ve suç işleyebilirsin.',
+      'Tek istisna: polis imam olamaz, imam da polis olamaz.',
+    ],
+  },
+  {
     title: 'İmamın Görevleri Neler',
-    body: ['Günde 5 vakit ibadete katılmalı.', 'Her gün en az 1 nasihat vermeli.'],
+    body: [
+      'İmamlığa başladığın andan itibaren günde 5 vakit ibadete katılmalısın (başlamadan önceki vakitlerden sorumlu değilsin).',
+      'Her takvim günü (00:00-00:00) en az 1 nasihat vermelisin.',
+      'Bu görevlerden birini aksatırsan dailyReset seni imamlıktan azleder.',
+    ],
   },
   {
     title: 'İmamlar Ne Kadar Kazanır',
-    body: ['Oyunda tek imam vardır.', 'İmam maaşı günde 20.000 altındır.'],
+    body: ['Oyunda tek imam vardır.', 'İmam maaşı günde 10.000 altındır.'],
   },
   {
     title: 'İmam Olmak İçin Ne Gerekir',
     body: [
       '50 saygınlık gerekir.',
       'Şüphe puanın %0 olmalı.',
-      'İmamlar suç işleyemez, polis olamaz, fabrikada çalışamaz.',
+      'Bu iki şart SADECE başvuru anında kontrol edilir — imam olduktan sonra şüphen artsa ya da saygınlığın düşse bile bu, görevden atılma sebebi olmaz.',
     ],
   },
 ];

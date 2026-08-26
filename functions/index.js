@@ -158,6 +158,25 @@ function miningFleetValue(count, cryptoPrice) {
   return total;
 }
 
+// miningEfficiencyMultiplier — kullanıcı revizesi: gece 00:00'daki (nightly
+// dailyReset anındaki) CANLI kripto fiyatına göre mining üretim verimliliği
+// kademeli olarak düşürülür — kripto fiyatı çok yükseldiğinde (piyasa aşırı
+// ısınmışken) mining üretimi kasıtlı olarak kısıtlanır:
+//   > 1.000.000  → %25 verim
+//   > 200.000 (ve <= 1.000.000) → %50 verim
+//   <= 200.000 → %100 (normal) verim
+// Bu çarpan, HEM kripto bakiyesine eklenen miktara HEM DE (aşağıdaki
+// elektrik faturası formülü artık üretime bağlı bir oran olduğu için)
+// elektrik faturasına aynı anda yansır — bkz. dailyReset'teki mining
+// bloğu (-0.5) ve elektrik faturası bloğu (-0.34).
+const MINING_EFFICIENCY_HIGH_PRICE = 1000000;
+const MINING_EFFICIENCY_MID_PRICE = 200000;
+function miningEfficiencyMultiplier(cryptoPrice) {
+  if ((cryptoPrice || 0) > MINING_EFFICIENCY_HIGH_PRICE) return 0.25;
+  if ((cryptoPrice || 0) > MINING_EFFICIENCY_MID_PRICE) return 0.5;
+  return 1;
+}
+
 // computeFactoryValue — bir fabrikanın GÜNCEL (canlı kripto fiyatına göre
 // yeniden hesaplanan) parasal değeri: 100.000 altınlık kuruluş ücreti +
 // sabit fiyatlı makinelerin (tamirMalzemesi/silahUpgrade/arabaGelistirme/
@@ -427,7 +446,7 @@ export const applyForPolice = onCall(async (request) => {
   if (user.profession === 'polis') {
     throw new HttpsError('failed-precondition', 'Zaten polissin.');
   }
-  if (user.profession === 'imam') {
+  if (user.isImam) {
     throw new HttpsError('failed-precondition', 'İmamken polis olamazsın.');
   }
   if (user.pendingPoliceChange) {
@@ -684,7 +703,9 @@ export const setFactoryLogo = onCall(async (request) => {
 
 // joinFactoryMachine — bir işçi, boş bir makineye (mining hariç) kendini
 // atar. Fabrika sahibi de kendi fabrikasında SADECE 1 makinede çalışabilir
-// (polis/imam değilse). Zaten başka bir yerde çalışıyorsa önce istifa etmeli.
+// (polis değilse). İmamlık artık bir MESLEK değil bir STATÜ olduğu için
+// (bkz. applyForImam üstündeki not) imamlar da normal oyuncular gibi
+// fabrikada çalışabilir. Zaten başka bir yerde çalışıyorsa önce istifa etmeli.
 export const joinFactoryMachine = onCall(async (request) => {
   const uid = requireAuth(request);
   const { factoryId, machineId } = request.data || {};
@@ -697,9 +718,6 @@ export const joinFactoryMachine = onCall(async (request) => {
     if (!user) throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
     if (user.profession === 'polis' || user.pendingPoliceChange === 'apply') {
       throw new HttpsError('failed-precondition', 'Polis mesleğindeyken fabrikada çalışamazsın.');
-    }
-    if (user.profession === 'imam') {
-      throw new HttpsError('failed-precondition', 'İmam fabrikada çalışamaz.');
     }
     if (user.employment) {
       throw new HttpsError('failed-precondition', 'Zaten bir fabrikada çalışıyorsun — önce istifa et.');
@@ -745,9 +763,6 @@ export const autoJoinFactory = onCall(async (request) => {
     if (!user) throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
     if (user.profession === 'polis' || user.pendingPoliceChange === 'apply') {
       throw new HttpsError('failed-precondition', 'Polis mesleğindeyken fabrikada çalışamazsın.');
-    }
-    if (user.profession === 'imam') {
-      throw new HttpsError('failed-precondition', 'İmam fabrikada çalışamaz.');
     }
     if (user.employment) {
       throw new HttpsError('failed-precondition', 'Zaten bir fabrikada çalışıyorsun — önce istifa et.');
@@ -1506,7 +1521,11 @@ export const dailyReset = onSchedule(
     // okur. Aynı `dailyReset` çağrısı içinde, sırayla dolduruluyor.
     let nightCryptoPrice = 0;
     const miningCryptoQtyByOwner = new Map(); // ownerId -> bu gece üretilen toplam kripto miktarı
-    const miningTriggeredCountByOwner = new Map(); // ownerId -> bu gece tetiklenen mining makine SAYISI (elektrik faturası için, bkz. Part A.5)
+    // ownerId -> bu gece tetiklenen mining makine SAYISI. GÜNCELLEME: elektrik
+    // faturası artık üretime bağlı bir oran kullandığı için (bkz. Part A.5,
+    // MINING_ELECTRICITY_RATE) bu sayaç faturada KULLANILMIYOR — sadece
+    // bilgi/rapor amaçlı tutulmaya devam ediyor.
+    const miningTriggeredCountByOwner = new Map();
     const factoryDailyIncomeMap = new Map(); // ownerId -> bu geceki dailyIncome (altın) — hisse temettüsünün TEK kaynağı
 
     // 0) BORSA BÜLTENİ ANLIK GÖRÜNTÜSÜ (Gazete > Borsa Bülteni) — elmas/
@@ -1693,11 +1712,17 @@ export const dailyReset = onSchedule(
       // hem de mining üretim ödemesinin kendisi (kripto miktarı, altında)
       // AYNI anlık görüntüyü kullanır, bkz. yukarıdaki dosya-üstü not.
       nightCryptoPrice = nightPrices.cryptoPrice || 0;
+      // Kullanıcı revizesi: kripto fiyatı çok yükseldiğinde mining üretim
+      // verimliliği kademeli düşürülür (bkz. miningEfficiencyMultiplier) —
+      // bu geceki TEK fiyata göre hesaplanan çarpan, o gece tetiklenen HER
+      // makineye aynı şekilde uygulanır.
+      const efficiency = miningEfficiencyMultiplier(nightCryptoPrice);
       const triggeredDocs = miningSnap.docs.filter((m) => m.data().miningTriggeredDateKey === prevDateKey);
       const miningJobs = [];
       triggeredDocs.forEach((m) => {
         const factoryId = m.ref.parent.parent.id;
-        const qty = randomInRange(MACHINE_TYPES.mining.min, MACHINE_TYPES.mining.max);
+        const rawQty = randomInRange(MACHINE_TYPES.mining.min, MACHINE_TYPES.mining.max);
+        const qty = rawQty * efficiency;
         miningJobs.push(
           db
             .collection('users')
@@ -1709,6 +1734,10 @@ export const dailyReset = onSchedule(
       });
       await Promise.all(miningJobs);
 
+      const efficiencyNote =
+        efficiency < 1
+          ? ` (kripto fiyatı yüksek olduğu için verimlilik %${Math.round(efficiency * 100)}'e düştü)`
+          : '';
       const smsJobs = [];
       miningCryptoQtyByOwner.forEach((totalQty, ownerId) => {
         smsJobs.push(
@@ -1717,7 +1746,7 @@ export const dailyReset = onSchedule(
             .doc(ownerId)
             .collection('messages')
             .add({
-              text: `Mining makinen bu gece ${totalQty.toFixed(4)} kripto üretti. Kripto bakiyene eklendi.`,
+              text: `Mining makinen bu gece ${totalQty.toFixed(4)} kripto üretti${efficiencyNote}. Kripto bakiyene eklendi.`,
               createdAt: admin.firestore.FieldValue.serverTimestamp(),
               read: false,
               type: 'mining_production',
@@ -1884,22 +1913,25 @@ export const dailyReset = onSchedule(
       // gelir — kullanıcının kendi kararı: "biz almamız gereken ürünü
       // oyunda değilken de alıyoruz, elektrik masrafı önemli değil,
       // cezalandırmak olarak sayılmaz."
-      // GÜNCELLEME (kullanıcı revizesi): tutar artık makine türüne göre
-      // sabit 100 değil — araba/silah geliştirme 100, tamir/yasaklı madde
-      // 200, kripto (mining) 300 altın/gün.
-      // "Çalıştı" = dün ÜRETTİ: işçi gerektiren 4 tür için producedSnap'te
-      // zaten elimizde (lastProducedDateKey === prevDateKey — ister gerçek
-      // işçi ister sahip-yerine-üretim, ikisi de AYNI damgayı taşıyor,
-      // bkz. yukarısı; machine.type buradan okunur), mining için üstteki
-      // (-0.5) bloktaki miningTriggeredCountByOwner (tetiklenen HER mining
-      // makinesi, ürettiği kripto miktarından bağımsız — hepsi 300 altın).
+      // İşçi gerektiren 4 tür (silahUpgrade/arabaGelistirme/tamirMalzemesi/
+      // yasakliMadde) hâlâ makine türüne göre SABİT bir tutar kullanıyor —
+      // araba/silah geliştirme 100, tamir/yasaklı madde 200 altın/gün.
+      // "Çalıştı" = dün ÜRETTİ: bu 4 tür için producedSnap'te zaten elimizde
+      // (lastProducedDateKey === prevDateKey — ister gerçek işçi ister
+      // sahip-yerine-üretim, ikisi de AYNI damgayı taşıyor, bkz. yukarısı;
+      // machine.type buradan okunur).
+      // GÜNCELLEME (kullanıcı revizesi, madde 3): mining için ise artık
+      // SABİT bir tutar YOK — ÜRETİME BAĞLI bir oran kullanılıyor: o gece
+      // üretilen (düşürülmüş verimlilikten SONRAKİ, bkz. -0.5 bloğundaki
+      // miningCryptoQtyByOwner) kripto miktarının, o geceki kripto
+      // fiyatındaki altın karşılığının %10'u (bkz. MINING_ELECTRICITY_RATE).
       const ELECTRICITY_BILL_PER_MACHINE_TYPE = {
         silahUpgrade: 100,
         arabaGelistirme: 100,
         tamirMalzemesi: 200,
         yasakliMadde: 200,
-        mining: 300,
       };
+      const MINING_ELECTRICITY_RATE = 0.1; // üretim değerinin %10'u
       const electricityBillByFactory = new Map(); // ownerId -> tutar (altın)
       const addElectricity = (factoryId, amount) => {
         if (amount <= 0) return;
@@ -1910,8 +1942,9 @@ export const dailyReset = onSchedule(
         const unit = ELECTRICITY_BILL_PER_MACHINE_TYPE[m.data().type] || 0;
         addElectricity(factoryId, unit);
       });
-      miningTriggeredCountByOwner.forEach((count, factoryId) => {
-        addElectricity(factoryId, count * ELECTRICITY_BILL_PER_MACHINE_TYPE.mining);
+      miningCryptoQtyByOwner.forEach((qty, factoryId) => {
+        const producedValue = qty * nightCryptoPrice;
+        addElectricity(factoryId, Math.round(producedValue * MINING_ELECTRICITY_RATE));
       });
       // Faturası olan sahiplerin GÜNCEL altın/borç bilgisini topluca çekiyoruz
       // — aşağıdaki batch yazımı senkron kurulduğu için, nakit/borç ayrımı bu
@@ -2495,37 +2528,67 @@ export const dailyReset = onSchedule(
         });
     }
 
-    // 1b) İmam görev kontrolü: DÜN (biten gün) 5 vakit ibadetin hepsini
-    // yapmadıysa YA DA hiç nasihat vermediyse, imamlıktan atılır. Yeni gün
-    // için başvurular açılır; atılan imam yerine biri imam olup o da
-    // atılana kadar tekrar başvuramaz (bkz. applyForImam > lastFiredUid).
+    // 1b) İmam görev kontrolü: DÜN (biten gün) sorumlu olduğu TÜM vakit
+    // ibadetlerini yapmadıysa YA DA hiç nasihat vermediyse, imamlıktan
+    // atılır. Yeni gün için başvurular açılır; atılan imam yerine biri
+    // imam olup o da atılana kadar tekrar başvuramaz (bkz. applyForImam >
+    // lastFiredUid).
+    // İmamlık artık bir MESLEK değil bir STATÜ (bkz. applyForImam) — bu
+    // yüzden şüphe/saygınlık burada ASLA kontrol edilmez (sadece başvuru
+    // anında kontrol edilir) ve atıldığında users/{uid}.profession'a değil
+    // isImam alanına dokunulur.
+    // Kullanıcı revizesi: "5 vakit ibadet imamlığa başladığı andan itibaren
+    // geçerli olacak, önceki vakitler için sorumlu tutulmayacak" — imam
+    // DÜN içinde (gün ortasında) göreve başladıysa, göreve başlamadan
+    // ÖNCEKİ vakitler zorunluluk listesinden çıkarılır. İmam dünden ÖNCE
+    // (tam bir gün önce ya da daha eski) göreve başladıysa değişen bir şey
+    // yok, 5 vaktin hepsi aranır.
     const yesterdayKey = addDaysToDateKey(dateKey, -1);
     const imamRef = db.collection('imamState').doc('current');
     const imamSnap = await imamRef.get();
     if (imamSnap.exists) {
       const imam = imamSnap.data();
-      const imamDailySnap = await db
-        .collection('dailyActions')
-        .doc(`${imam.uid}_${yesterdayKey}`)
-        .get();
-      const imamDaily = imamDailySnap.data() || {};
-      const prayedAllWindows = [1, 2, 3, 4, 5].every((w) => imamDaily.prayedWindows?.[w]);
-      const gaveNasihat = Boolean(imamDaily.nasihatGiven);
-      if (!prayedAllWindows || !gaveNasihat) {
-        await imamRef.delete();
-        await db.collection('imamState').doc('meta').set({ lastFiredUid: imam.uid }, { merge: true });
-        await db.collection('users').doc(imam.uid).update({ profession: null });
-        await db
-          .collection('users')
-          .doc(imam.uid)
-          .collection('messages')
-          .add({
-            text: 'İmamlık görevlerini (5 vakit ibadet + günlük nasihat) tam yerine getirmediğin için imamlıktan azledildin.',
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            read: false,
-            type: 'imam_fired',
-          });
+      const becameAt = imam.becameImamAt?.toDate ? imam.becameImamAt.toDate() : null;
+      // Firestore Timestamp henüz sunucuda "commit" olmadan okunduysa
+      // (aynı transaction içinde serverTimestamp() yazılıp hemen okunan
+      // nadir bir yarış durumu) toDate() null dönebilir — bu durumda
+      // güvenli taraftan, "dünden önce başladı" varsayılır (5 vakit + nasihat
+      // aynen aranır), imam haksız yere muaf tutulmaz.
+      const becameDateKey = becameAt ? istanbulDateKey(becameAt) : yesterdayKey;
+      const becameWindow = becameAt ? istanbulPrayerWindow(becameAt) : 1;
+
+      if (becameDateKey <= yesterdayKey) {
+        const requiredWindows =
+          becameDateKey === yesterdayKey
+            ? [1, 2, 3, 4, 5].filter((w) => w >= becameWindow)
+            : [1, 2, 3, 4, 5];
+
+        const imamDailySnap = await db
+          .collection('dailyActions')
+          .doc(`${imam.uid}_${yesterdayKey}`)
+          .get();
+        const imamDaily = imamDailySnap.data() || {};
+        const prayedAllRequired = requiredWindows.every((w) => imamDaily.prayedWindows?.[w]);
+        const gaveNasihat = Boolean(imamDaily.nasihatGiven);
+        if (!prayedAllRequired || !gaveNasihat) {
+          await imamRef.delete();
+          await db.collection('imamState').doc('meta').set({ lastFiredUid: imam.uid }, { merge: true });
+          await db.collection('users').doc(imam.uid).update({ isImam: false });
+          await db
+            .collection('users')
+            .doc(imam.uid)
+            .collection('messages')
+            .add({
+              text: 'İmamlık görevlerini (vakit ibadetleri + günlük nasihat) tam yerine getirmediğin için imamlıktan azledildin.',
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              read: false,
+              type: 'imam_fired',
+            });
+        }
       }
+      // else: becameDateKey > yesterdayKey — imam DÜN'e ait hiçbir vakitten
+      // sorumlu değil (göreve ancak bugün başlamış olabilir), bu döngüde
+      // hiç kontrol edilmez.
     }
 
     // 2) Banka mevduat faizi — günlük %1 (Bölüm 13)
@@ -4113,14 +4176,24 @@ async function computeTotalWealth(userData, prices) {
 }
 
 // ---------------------------------------------------------------------------
-// İmam (Camii) — oyunda TEK bir imam vardır. İmamlar polis olamaz,
-// fabrikada çalışamaz, suç işleyemez (bkz. yukarıdaki profession==='imam'
-// kontrolleri). İmam olmak için: 50 saygınlık, 0 şüphe. İmam maaşı günde
-// 20.000 altın (manuel alınır, polis maaşı gibi). Görevler: günde 5 vakit
-// ibadet + günde en az 1 nasihat — bunlardan biri eksikse dailyReset
-// tarafından imamlıktan atılır (bkz. dailyReset).
+// İmam (Camii) — oyunda TEK bir imam vardır. Kullanıcı revizesi: imamlık
+// artık bir MESLEK değil bir STATÜdür — başvuru ANINDA (0 şüphe + 50
+// saygınlık) kontrol edilir, ama imam olduktan SONRA şüphe artsa ya da
+// saygınlık düşse bile bu görevden atılma sebebi OLMAZ (sadece dailyReset'teki
+// vakit ibadeti/nasihat kontrolü atılma sebebidir, bkz. aşağısı). Bir statü
+// olduğu için users/{uid}.profession alanına ASLA yazılmaz — bunun yerine
+// ayrı bir isImam:true/false bayrağı tutulur; oyuncu kendi asıl mesleğinde
+// (işçi/üretici/fabrika sahibi vb.) kalmaya devam eder, fabrikada
+// çalışabilir ve suç işleyebilir (bkz. joinFactoryMachine/autoJoinFactory/
+// attemptHeist/createHeistPlan/joinHeistPlan/sellContrabandAtPark —
+// hiçbirinde artık imam kontrolü yok). TEK istisna: polis imam olamaz,
+// imam da polis olamaz (bkz. applyForPolice > isImam kontrolü).
+// İmam maaşı günde 10.000 altın (manuel alınır, polis maaşı gibi).
+// Görevler: imamlığa başladığı andan itibaren günde 5 vakit ibadet +
+// takvim günü (00:00-00:00) başına en az 1 nasihat — bunlardan biri
+// eksikse dailyReset tarafından imamlıktan atılır (bkz. dailyReset).
 // ---------------------------------------------------------------------------
-const IMAM_SALARY = 20000;
+const IMAM_SALARY = 10000;
 const IMAM_REPUTATION_REQUIRED = 50;
 
 export const applyForImam = onCall(async (request) => {
@@ -4172,7 +4245,9 @@ export const applyForImam = onCall(async (request) => {
       lastNasihatAt: null,
       becameImamAt: admin.firestore.FieldValue.serverTimestamp(),
     });
-    tx.update(userRef, { profession: 'imam' });
+    // İmamlık bir STATÜ — profession alanına DOKUNULMAZ, oyuncu kendi
+    // mevcut mesleğinde/işinde kalır.
+    tx.update(userRef, { isImam: true });
   });
 
   return { ok: true };
@@ -4545,11 +4620,13 @@ export const attemptHeist = onCall(async (request) => {
   const userRef = db.collection('users').doc(uid);
 
   const [dailySnap, userSnap0] = await Promise.all([dailyRef.get(), userRef.get()]);
+  // Polisler HÂLÂ tek başına (solo) soygun başlatamaz — bu kısıtlama aynen
+  // korunuyor. Artık izin verilen şey SADECE ekip soygunu kurup, ekibe
+  // katılan suçluyu/suçluları "tuzağa düşürerek" yakalamak (bkz.
+  // createHeistPlan/executeHeistPlan). İmam artık suç işleyebildiği için
+  // (statü, meslek değil — bkz. applyForImam) burada imam kontrolü yok.
   if (userSnap0.data()?.profession === 'polis' || userSnap0.data()?.pendingPoliceChange === 'apply') {
     throw new HttpsError('failed-precondition', 'Polis mesleğindeyken/başvurun beklerken soygun başlatamazsın.');
-  }
-  if (userSnap0.data()?.profession === 'imam') {
-    throw new HttpsError('failed-precondition', 'İmam suç işleyemez.');
   }
   if (dailySnap.exists && dailySnap.data().heist?.[target]) {
     throw new HttpsError('failed-precondition', 'Bu hedefi bugün zaten denedin.');
@@ -4669,9 +4746,6 @@ export const sellContrabandAtPark = onCall(async (request) => {
         'failed-precondition',
         'Polis mesleğindeyken/başvurun beklerken şüpheni artıracak hiçbir şey yapamazsın.'
       );
-    }
-    if (user?.profession === 'imam') {
-      throw new HttpsError('failed-precondition', 'İmam suç işleyemez.');
     }
 
     const currentSuspicion = user.suspicion || 0;
@@ -5008,21 +5082,44 @@ export const cancelLimanOrder = onCall(async (request) => {
 // FAZ 7 — EKİP SOYGUN SİSTEMİ (Bölüm 13, 14)
 // =============================================================================
 //
-// ÖNEMLİ — polislerin rolü "nöbet tutup engellemek" DEĞİL, "sızmak"tır:
-//   - Polis mesleğindeki oyuncular kendi soygunlarını başlatamaz (attemptHeist
-//     ve createHeistPlan bunu reddeder).
-//   - Ama polis, BAŞKASININ kurduğu bir ekip soygun planına sivil gibi
-//     katılabilir (joinHeistPlan'da hiçbir kısıtlama yok — bilerek).
-//   - Plan yürütüldüğünde (executeHeistPlan), ekipteki HERKESİN gerçek
-//     mesleği gizlice (sadece sunucuda, Admin SDK ile) kontrol edilir.
-//     Aralarında polis varsa soygun "yakalanmış" sayılır:
-//       * Soyguncular (polis olmayanlar) kazanacakları parayı DEVLETE BORÇ
-//         olarak öderler (debtToState alanına eklenir, altın düşmez).
-//       * Sızan polis(ler) engelledikleri parayı kendi aralarında bölüşür.
-//     Ekipte hiç polis yoksa soygun normal şekilde başarılı olur, ödül
-//     tüm katılımcılara eşit bölünür.
-//   - Hiçbir zaman kimin polis olduğu diğer katılımcılara (ya da istemciye)
-//     gösterilmez; users/{uid} zaten sadece sahibi tarafından okunabiliyor.
+// Polislerin rolü İKİ ŞEKİLDE ortaya çıkabilir:
+//
+//   A) SIZMA (mevcut/eski davranış — DEĞİŞMEDİ): Polis mesleğindeki
+//      oyuncular kendi TEK BAŞINA soygunlarını hâlâ başlatamaz (attemptHeist
+//      bunu reddeder). Ama polis, BAŞKA BİR OYUNCUNUN (sivil) kurduğu bir
+//      ekip soygun planına sivil gibi katılabilir (joinHeistPlan'da bu
+//      yönde bir kısıtlama yok — bilerek). Plan, kurucusu (sivil) tarafından
+//      yürütüldüğünde (executeHeistPlan), ekipteki HERKESİN gerçek mesleği
+//      gizlice (sadece sunucuda, Admin SDK ile) kontrol edilir. Aralarında
+//      sızmış polis varsa soygun "yakalanmış/çökertilmiş" sayılır.
+//
+//   B) TUZAK (yeni istek — kullanıcı revizesi): Polis mesleğindeki bir
+//      oyuncu artık KENDİ ekip soygun planını da kurabilir (createHeistPlan
+//      artık polis mesleğini reddetmiyor). Ama bu planı SADECE şu şart
+//      sağlandığında başlatabilir (executeHeistPlan içinde kontrol edilir):
+//        - Ekipte kendisi dışında EN AZ 1 suçlu (polis olmayan katılımcı)
+//          olmalı.
+//      Ekipte KAÇ POLİS olduğunun (kendisi dahil) hiçbir önemi yok — 3
+//      polis + 1 suçlu da geçerli bir tuzaktır, tek şart en az 1 suçlu
+//      bulunmasıdır (kullanıcı revizesi: "polis olup olmaması önemli değil,
+//      1 suçlu şart").
+//      SONUÇ ALGORİTMASI (A) ile BİREBİR AYNI — kullanıcı isteği: "eski
+//      sistemi bozmayalım". Yani TUZAK'ta da önce (A)'daki ADIM 1 aynen
+//      çalışır: her katılımcının KENDİ şüphesine göre bağımsız bir
+//      yakalanma riski test edilir (bkz. caughtBySuspicion); katılımcılardan
+//      BİRİ bile böyle yakalanırsa TÜM soygun şüpheden dolayı başarısız
+//      sayılır ve polis(ler) o turda HİÇBİR ödül ALAMAZ (yakalanma sebebi
+//      polis işi değil, suçlunun kendi şüphesi olduğu için) — sadece
+//      şüpheden yakalanan suçlu(lar) kendi cezasını öder. Şüpheden
+//      kaçılırsa VE ekipte (kurucu polis dahil) en az 1 polis varsa, polis
+//      artık YÜZDE YÜZ yakalar (bkz. `busted` dalı): suçlular kazanılacak
+//      parayı DEVLETE BORÇ olarak öder, polis(ler) parayı ödül olarak
+//      (aralarında eşit) alır.
+//
+//   Her iki durumda da: hiçbir zaman kimin polis olduğu diğer katılımcılara
+//   (ya da istemciye) gösterilmez; users/{uid} zaten sadece sahibi
+//   tarafından okunabiliyor, katılımcı alt dokümanlarında (participants/*)
+//   sadece isim/avatar/güç/şüphe tutuluyor, meslek hiç yok.
 // =============================================================================
 
 const HEIST_TARGETS = Object.keys(HEIST_CONFIG);
@@ -5057,11 +5154,17 @@ export const createHeistPlan = onCall(async (request) => {
 
   const userSnap = await db.collection('users').doc(uid).get();
   const user = userSnap.data();
-  if (user?.profession === 'polis' || user?.pendingPoliceChange === 'apply') {
-    throw new HttpsError('failed-precondition', 'Polis mesleğindeyken/başvurun beklerken soygun planı kuramazsın.');
-  }
-  if (user?.profession === 'imam') {
-    throw new HttpsError('failed-precondition', 'İmam suç işleyemez.');
+  // Kullanıcı revizesi: polisler artık KENDİ ekip soygun planlarını
+  // kurabilir (bkz. dosya başındaki "TUZAK" notu) — bu yüzden burada polis
+  // mesleği ARTIK reddedilmiyor, sadece bekleyen bir polislik BAŞVURUSU
+  // varken (henüz polis değilken) plan kurmak hâlâ engelleniyor (mevcut
+  // "anlık meslek değişimi" kısıtlaması). İmam artık suç işleyebildiği için
+  // (statü, meslek değil — bkz. applyForImam) burada imam kontrolü yok.
+  if (user?.pendingPoliceChange === 'apply') {
+    throw new HttpsError(
+      'failed-precondition',
+      'Polislik başvurun beklerken soygun planı kuramazsın.'
+    );
   }
   if (await isAlreadyInActiveHeistPlanForTarget(uid, target)) {
     throw new HttpsError(
@@ -5225,9 +5328,6 @@ export const joinHeistPlan = onCall(async (request) => {
 
   const userSnap = await db.collection('users').doc(uid).get();
   const user = userSnap.data();
-  if (user?.profession === 'imam') {
-    throw new HttpsError('failed-precondition', 'İmam suç işleyemez.');
-  }
   const myPower = await getMaxWeaponPower(uid);
   const iAmPolice = user?.profession === 'polis';
 
@@ -5354,7 +5454,9 @@ export const cancelHeistPlan = onCall(async (request) => {
 });
 
 // executeHeistPlan — ekip gücü yeterliyse soygunu yürütür. Sonucu belirleyen
-// TEK şey, ekipte sızmış polis olup olmadığıdır (bkz. dosya başındaki not).
+// şey, ekipte sızmış polis olup olmadığı (SIZMA) YA DA planı polis kendisi
+// kurup kuralına uygun bir ekiple başlatıp başlatmadığıdır (TUZAK) — bkz.
+// dosya başındaki not.
 export const executeHeistPlan = onCall(async (request) => {
   const uid = requireAuth(request);
   const { planId } = request.data || {};
@@ -5378,18 +5480,6 @@ export const executeHeistPlan = onCall(async (request) => {
     throw new HttpsError('failed-precondition', 'Ekipte kimse yok.');
   }
 
-  const totalPower = participants.reduce((sum, p) => sum + (p.weaponPower || 0), 0);
-  if (totalPower < config.requiredPower) {
-    // Soygun hiç başlamadı — kimsenin şüphesi/borcu değişmez.
-    return {
-      ok: true,
-      started: false,
-      reason: 'insufficient_power',
-      requiredPower: config.requiredPower,
-      totalPower,
-    };
-  }
-
   // Her katılımcının GERÇEK mesleğini gizlice kontrol et (sadece burada,
   // Admin SDK ile — hiçbir katılımcıya asla gösterilmez).
   const userSnaps = await Promise.all(
@@ -5401,6 +5491,32 @@ export const executeHeistPlan = onCall(async (request) => {
     if (snap.data()?.profession === 'polis') policeIdx.push(i);
     else civilianIdx.push(i);
   });
+  const creatorIdx = participants.findIndex((p) => p.uid === plan.creatorUid);
+  const creatorIsPolice = creatorIdx !== -1 && policeIdx.includes(creatorIdx);
+
+  // TUZAK (kullanıcı revizesi, bkz. dosya başındaki "B) TUZAK" notu) —
+  // planı kuran kişi POLİS ise, ekipte kendisi dışında EN AZ 1 suçlu (polis
+  // olmayan katılımcı) olmalı — yoksa yakalanacak kimse yok demektir.
+  // Ekipte kaç polis olduğunun (kendisi dahil) ÖNEMİ YOK — 3 polis + 1
+  // suçlu da geçerli bir tuzaktır, tek şart en az 1 suçlu bulunması.
+  if (creatorIsPolice && civilianIdx.length < 1) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Ekibe kendi dışında en az 1 suçlu katılmadan bu tuzağı başlatamazsın.'
+    );
+  }
+
+  const totalPower = participants.reduce((sum, p) => sum + (p.weaponPower || 0), 0);
+  if (totalPower < config.requiredPower) {
+    // Soygun hiç başlamadı — kimsenin şüphesi/borcu değişmez.
+    return {
+      ok: true,
+      started: false,
+      reason: 'insufficient_power',
+      requiredPower: config.requiredPower,
+      totalPower,
+    };
+  }
 
   const totalReward = config.reward;
   const dateKey = istanbulDateKey();
@@ -5414,9 +5530,13 @@ export const executeHeistPlan = onCall(async (request) => {
   // ihtimali = o kişinin şüphe %'si, taban %1 — şüphesi %0 olan bir
   // katılımcının bile en az %1 yakalanma riski var, bkz.
   // captureRiskPercent). Katılımcılardan BİRİ bile böyle yakalanırsa TÜM
-  // soygun şüpheden dolayı başarısız sayılır — bu durumda ekipte sızmış
-  // bir polis olsa BİLE o ödül ALAMAZ (yakalanma sebebi polis işi değil,
-  // şüphe olduğu için).
+  // soygun şüpheden dolayı başarısız sayılır — bu durumda ekipte polis
+  // (ister sızmış ister planı kurup tuzağı başlatmış olsun) olsa BİLE o
+  // ödül ALAMAZ (yakalanma sebebi polis işi değil, şüphe olduğu için) —
+  // sadece şüpheden yakalanan suçlu(lar) kendi cezasını öder. Kullanıcı
+  // isteği net: bu öncelik sırası SIZMA ile TUZAK arasında FARK ETMEZ,
+  // ikisinde de AYNI — önce şüphe, sonra (şüpheden kaçılırsa VE ekipte
+  // polis varsa) polis %100 yakalar ve ödülü alır.
   const suspicions = userSnaps.map((s) => s.data()?.suspicion || 0);
   const caughtBySuspicion = suspicions.some((s) => Math.random() * 100 < captureRiskPercent(s));
   const busted = !caughtBySuspicion && policeIdx.length > 0;
@@ -5460,7 +5580,7 @@ export const executeHeistPlan = onCall(async (request) => {
         gold: admin.firestore.FieldValue.increment(goldDelta),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
       });
-      policeEarningSmsList.push({ uid: participants[i].uid, amount: perPoliceEarning });
+      policeEarningSmsList.push({ uid: participants[i].uid, amount: perPoliceEarning, viaTrap: creatorIsPolice });
     });
     civilianIdx.forEach((i) => {
       const data = userSnaps[i].data();
@@ -5520,7 +5640,9 @@ export const executeHeistPlan = onCall(async (request) => {
         .doc(p.uid)
         .collection('messages')
         .add({
-          text: `Sızdığın soygunu çökerttin! ${p.amount.toLocaleString('tr-TR')} altın ödül kazandın.`,
+          text: p.viaTrap
+            ? `Kurduğun tuzak işe yaradı! Ekibe katılan suçlu(lar)ı yakaladın, ${p.amount.toLocaleString('tr-TR')} altın ödül kazandın.`
+            : `Sızdığın soygunu çökerttin! ${p.amount.toLocaleString('tr-TR')} altın ödül kazandın.`,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           read: false,
           type: 'police_bust_reward',
@@ -5552,7 +5674,7 @@ export const executeHeistPlan = onCall(async (request) => {
     await logNewsEvent('heist_success', { target: plan.target, amount: totalReward });
   }
 
-  return { ok: true, started: true, busted, caughtBySuspicion, totalReward };
+  return { ok: true, started: true, busted, caughtBySuspicion, totalReward, viaPoliceTrap: creatorIsPolice };
 });
 
 // ---------------------------------------------------------------------------

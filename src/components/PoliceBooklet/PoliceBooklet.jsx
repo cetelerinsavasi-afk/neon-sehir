@@ -6,14 +6,20 @@ const STATIC_PAGES = [
   {
     title: 'Polisler Ne Yapar',
     body: [
-      'Ekipçe yapılan soygunlara sivil polis olarak dahil olmaya çalışır. Eğer soyguna dahil olabilirse, suçluları yakalamış olur.',
-      'Polis katıldığı soygundan kazanılacak paranın tamamını ödül olarak alır.',
-      'Soyguncular ödül miktarı kadar ceza yer.',
+      'Ekipçe yapılan soygunlara sivil gibi katılmaya çalışır. Dahil olabilirse, suçluları yakalamış olur.',
+      'Artık kendi ekip soygun planını da (tuzak) kurabilir — tek şart ekibe kendisi dışında en az 1 suçlu katılması; ekipte kaç polis olduğunun (kendisi dahil) hiçbir önemi yoktur.',
+      'Ama önce şüphe konuşur: ekipteki bir suçlu kendi şüphesi yüzünden yakalanırsa polis o turda ödül alamaz, sadece o suçlu kendi cezasını öder. Kimse şüpheden yakalanmazsa polis(ler) %100 yakalar ve ödülün tamamını alır.',
+      'Polis(ler) böyle yakaladığı soygundan kazanılacak paranın tamamını ödül olarak alır (birden fazla polis varsa aralarında eşit bölüşülür).',
+      'Yakalanan suçlular ödül miktarı kadar ceza yer, bu ceza ekipteki suçlu sayısına bölünür.',
     ],
   },
   {
     title: 'Polis Olmak İçin Ne Gerekir',
-    body: ['Şüphe puanın 0 olmalı.', 'Bir silaha sahip olmalısın.', 'Polisler suç işleyemez.'],
+    body: [
+      'Şüphe puanın 0 olmalı.',
+      'Bir silaha sahip olmalısın.',
+      'Polisler tek başına (solo) soygun/haraç gibi şüphe artıran hiçbir suç işleyemez.',
+    ],
   },
 ];
 

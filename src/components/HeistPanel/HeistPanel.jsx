@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { usePlayer } from '../../hooks/usePlayer';
 import { useDailyActions } from '../../hooks/useDailyActions';
 import { useOpenHeistPlans } from '../../hooks/useOpenHeistPlans';
 import { useHeistPlanParticipants } from '../../hooks/useHeistPlanParticipants';
@@ -52,6 +53,9 @@ export const HEIST_LABELS = {
 const RULES_TEXT =
   'Tek başına: yakalanma ihtimalin = mevcut şüphen. Ekip: en fazla 4 kişi, plan 24 saat açık kalır. Ekipte biri yakalanırsa ya da sızan bir polis varsa TÜM ekip yakalanır. Ceza cepten kesilmez, devlete borç yazılır — Banka\'dan istediğin zaman öde, ya da kazandığın paranın yarısı otomatik borcu kapatsın.';
 
+const POLICE_RULES_TEXT =
+  'Polis olarak tek başına soygun başlatamazsın, ama kendi ekip soygun planını (tuzak) kurabilirsin. Tek şart: ekibe kendi dışında en az 1 suçlu katılması — ekipte kaç polis olduğunun (senin dahil) önemi yok. Ama önce şüphe konuşur: ekipteki bir suçlu kendi şüphesi yüzünden yakalanırsa o turda ödül alamazsın, sadece o suçlu kendi cezasını öder. Kimse şüpheden yakalanmazsa sen (ve varsa diğer polisler) %100 yakalar, ödülün tamamını aranızda paylaşırsınız, suçlulara ödül kadar ceza (devlete borç) yazılır.';
+
 function resultMessage(res) {
   if (!res.started) {
     if (res.reason === 'insufficient_power') {
@@ -65,11 +69,20 @@ function resultMessage(res) {
     }
     return `Başarılı! ${res.reward.toLocaleString('tr-TR')} altın kazandın.`;
   }
+  // viaPoliceTrap — bu sonucu SADECE tuzağı kuran polis kendisi görür
+  // (executeHeistPlan'ı sadece plan kurucusu çağırabilir). Onun için
+  // "sızma" diliyle değil, kurduğu tuzağın işe yaradığı diliyle anlatılır.
+  if (res.busted && res.viaPoliceTrap) {
+    return `Tuzağın işe yaradı! Ekibe katılan suçlu(lar)ı yakaladın, ${res.totalReward.toLocaleString('tr-TR')} altın ödül kazandın.`;
+  }
   if (res.busted) {
     return 'Ekibe polis sızmıştı! Payınız borç olarak yazıldı.';
   }
+  if (res.caughtBySuspicion && res.viaPoliceTrap) {
+    return 'Ekipteki suçlu(lar) senin tuzağın yüzünden değil, kendi şüphesi yüzünden yakalandı — bu turda ödül alamadın, sadece suçlular kendi cezasını ödedi.';
+  }
   if (res.caughtBySuspicion) {
-    return 'Ekipten biri yakalandı, herkesin payı borç olarak yazıldı.';
+    return 'Ekipteki suçlulardan biri kendi şüphesinden yakalandı, suçluların payına düşen ceza borç olarak yazıldı.';
   }
   return `Ekip başarılı! ${res.totalReward.toLocaleString('tr-TR')} altın katılımcılara bölündü.`;
 }
@@ -77,12 +90,15 @@ function resultMessage(res) {
 function isResultSuccess(res) {
   if (!res.started) return null; // nötr — modal açılmaz
   if (res.reward !== undefined) return !res.caught;
-  if (res.busted || res.caughtBySuspicion) return false;
+  if (res.busted) return res.viaPoliceTrap ? true : false;
+  if (res.caughtBySuspicion) return false;
   return true;
 }
 
 function resultTitle(res) {
   const success = isResultSuccess(res);
+  if (res.busted && res.viaPoliceTrap) return 'Tuzak Başarılı! 🚔';
+  if (res.caughtBySuspicion && res.viaPoliceTrap) return 'Tuzak Boşa Çıktı';
   if (success === true) return 'Soygun Başarılı! 🎉';
   if (success === false) return 'Yakalandın!';
   return 'Soygun Başlamadı';
@@ -101,7 +117,7 @@ function suspicionLabel(s) {
   return `%${s}`;
 }
 
-function PlanCard({ plan, myUid, onChanged }) {
+function PlanCard({ plan, myUid, isPolice, onChanged }) {
   const { participants } = useHeistPlanParticipants(plan.id);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -160,6 +176,13 @@ function PlanCard({ plan, myUid, onChanged }) {
         {participants.length}/4 kişi · Toplam güç {totalPower.toLocaleString('tr-TR')} /{' '}
         {required.toLocaleString('tr-TR')}
       </p>
+      {isCreator && isPolice && (
+        <p className="heist-plan-meta police-trap-hint">
+          🚔 Bu bir tuzak — ekibe kendi dışında en az 1 suçlu katılmadan başlatamazsın (ekipte kaç
+          polis olduğunun önemi yok). Ama önce şüphe konuşur: biri kendi şüphesinden yakalanırsa bu
+          turda ödül alamazsın.
+        </p>
+      )}
       <ul className="heist-plan-members">
         {participants.map((p) => (
           <li key={p.uid}>
@@ -271,6 +294,7 @@ function PlanCard({ plan, myUid, onChanged }) {
 
 export default function HeistPanel({ target }) {
   const { user } = useAuth();
+  const { player } = usePlayer();
   const { actions } = useDailyActions();
   const { plans } = useOpenHeistPlans(target);
   const { weapons } = useWeapons();
@@ -285,7 +309,10 @@ export default function HeistPanel({ target }) {
   const meta = HEIST_LABELS[target];
   const done = Boolean(actions.heist?.[target]) || Boolean(actions.vendorPurchases?.[target]);
   const myPower = weapons.reduce((max, w) => Math.max(max, w.power || 0), 0);
-  const needsTeam = myPower < meta.requiredPower;
+  // Polisler tek başına (attemptHeist) soygun başlatamaz — bunlar için
+  // güce bakmaksızın HER ZAMAN sadece ekip kurma (tuzak) seçeneği gösterilir.
+  const isPolice = player?.profession === 'polis';
+  const needsTeam = isPolice || myPower < meta.requiredPower;
   // Kısıtlama HEDEFE ÖZEL: bu hedefte zaten bir ekibim varsa yeni bir
   // tane kuramam, ama başka hedeflerdeki ekiplerim bunu etkilemez.
   const alreadyInThisTarget = myActivePlans.some((p) => p.target === target);
@@ -324,7 +351,7 @@ export default function HeistPanel({ target }) {
       <p className="heist-panel-title">
         {meta.emoji ? `${meta.emoji} ` : ''}
         {meta.title}
-        <InfoIcon text={RULES_TEXT} />
+        <InfoIcon text={isPolice ? POLICE_RULES_TEXT : RULES_TEXT} />
       </p>
       <p className="heist-panel-risk">
         Ödül: {meta.reward.toLocaleString('tr-TR')} altın · Şüphe +{meta.suspicionCost} · Gerekli
@@ -334,7 +361,7 @@ export default function HeistPanel({ target }) {
       {needsTeam ? (
         !alreadyInThisTarget && (
           <button className="heist-panel-btn secondary" disabled={done || busy} onClick={handleCreatePlan}>
-            Ekip Kur
+            {isPolice ? 'Tuzak Kur (Ekip Soygunu)' : 'Ekip Kur'}
           </button>
         )
       ) : (
@@ -352,7 +379,10 @@ export default function HeistPanel({ target }) {
       {result && (
         <p
           className={`heist-panel-result ${
-            result.started && !result.caught && !result.busted && !result.caughtBySuspicion
+            result.started &&
+            !result.caught &&
+            !result.caughtBySuspicion &&
+            (!result.busted || result.viaPoliceTrap)
               ? 'success'
               : ''
           }`}
@@ -379,6 +409,7 @@ export default function HeistPanel({ target }) {
               key={plan.id}
               plan={plan}
               myUid={user.uid}
+              isPolice={isPolice}
               onChanged={(data) => data && setResult(data)}
             />
           ))}
