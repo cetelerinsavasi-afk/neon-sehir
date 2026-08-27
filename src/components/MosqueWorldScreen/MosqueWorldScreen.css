@@ -1,24 +1,25 @@
 /* MosqueWorldScreen.css — genel "girilebilir mekan" kabuğu (tam ekran,
    çıkış butonu, panel vb.) styles/worldScreenChrome.css'te (.ws-*) — bkz.
    MosqueWorldScreen.jsx importu. Burada SADECE camiye özel stiller var:
-   üstteki tek satır menü (madde 1: imamlık başvurusu - imam kitapçığı -
-   vakitteki cemaat - x) ve imam makamının üstünde yüzen "İbadet Et" butonu. */
+   sol üstteki dikey menü (madde 1: imamlık başvurusu - imam kitapçığı -
+   vakitteki cemaat) ve imam makamının üstünde yüzen "İbadet Et" butonu. */
 
-/* mww-menu-row — yeni istek: hepsi TEK SATIRDA yan yana, X en sonda.
-   Standart .ws-exit-btn artık burada KULLANILMIYOR (bkz. mww-exit-btn),
-   çünkü satırın bir flex-child'ı olması gerekiyor, position:fixed değil. */
-.mww-menu-row {
+/* mww-menu-col — kullanıcı revizesi: bu 3 buton eskiden X butonuyla birlikte
+   sağ üstte TEK SATIRDA yan yana duruyordu ve imamın NPC olarak söylediği
+   sözler/nasihatlerin çizildiği üst-orta bölgeyi (mihrap/minberin üstü)
+   kapatıyordu. Artık SOL ÜSTTE, dikey (alt alta) duruyorlar — X butonu
+   standart .ws-exit-btn ile ayrı, sağ üstte kalıyor (bkz.
+   worldScreenChrome.css) — üst-orta bölge artık boş, imamın konuşma
+   baloncuğu rahatça görünüyor.*/
+.mww-menu-col {
   position: fixed;
   top: calc(76px + env(safe-area-inset-top));
-  right: 12px;
   left: 12px;
   z-index: 25;
   display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 6px;
-  flex-wrap: wrap;
 }
 
 .mww-menu-btn {
@@ -31,18 +32,6 @@
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-}
-
-.mww-exit-btn {
-  width: 30px;
-  height: 30px;
-  flex: 0 0 auto;
-  border-radius: 8px;
-  border: 1px solid rgba(212, 175, 55, 0.4);
-  background: rgba(0, 0, 0, 0.45);
-  color: #f2ecdd;
-  font-size: 13px;
-  cursor: pointer;
 }
 
 /* mww-pray-btn — yeni istek: imam makamının (MIHRAB) üstünde, ekranda

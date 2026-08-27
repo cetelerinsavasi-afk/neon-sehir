@@ -180,11 +180,30 @@ export default function FutbolLigler() {
     );
   }, [myBets, myCupBets, matchById, teamNameById, cupMatches]);
 
+  // isActualCupDayToday — KULLANICI İSTEĞİ (BUG DÜZELTMESİ): "yarın kupa
+  // maçı var ve maçlar sekmesinde saat 19 olduktan sonra bugünün maç
+  // sonuçları yerine yarının maçlarını göstermeye başladı." — sebebi:
+  // backend seasonState.status, kupa maçlarının OYNANACAĞI günden BİR GÜN
+  // ÖNCE, bugünün lig turu 19:00'da açığa çıktığı ANDA 'CUP_DAY'e geçiyor
+  // (bkz. functions/index.js resolveFutbolMatchdayReveal — bunu ertesi
+  // günü haber vermek için yapıyor). Kupa maçları GERÇEKTEN sadece ERTESİ
+  // GÜN 18:00'da 'live' oluyor (bkz. resolveFutbolMatchdayStart). Yani
+  // status 'CUP_DAY' olsa bile, bu bayrak BUGÜN (aynı İstanbul takvim
+  // günü) az önce set edildiyse kupa günü henüz GELMEDİ — o gece yarısına
+  // kadar hâlâ BUGÜNÜN (normal lig) sonuçları gösterilmeye devam etmeli.
+  // Bayrak ÖNCEKİ bir günde set edildiyse (updatedAt'in İstanbul tarihi
+  // bugünden farklıysa) kupa günü GERÇEKTEN bugündür.
+  const isActualCupDayToday =
+    seasonState.status === 'CUP_DAY' &&
+    seasonState.updatedAt != null &&
+    istanbulDateKey(seasonState.updatedAt, now) !== istanbulDateKey(null, now);
+
   // cupRoundsGrouped/todaysCupMatches — KULLANICI İSTEĞİ: kupa maçları
   // "Maçlar"/"Maç Fikstürü" sekmelerinde de görünsün. cupMatches TÜM kupa
   // sezonunu içeriyor (bkz. useFutbolCup) — tura göre gruplanır, "bugünkü"
   // kupa maçları ise sezon durumunun (futbolSeasonState) bekleyen turu
-  // (pendingCupRound) ile belirlenir.
+  // (pendingCupRound) İLE, sadece kupa günü GERÇEKTEN bugünse belirlenir
+  // (bkz. isActualCupDayToday).
   const cupRoundsGrouped = useMemo(() => {
     const map = {};
     cupMatches.forEach((m) => {
@@ -195,7 +214,7 @@ export default function FutbolLigler() {
     return map;
   }, [cupMatches]);
   const todaysCupMatches =
-    seasonState.status === 'CUP_DAY' && seasonState.pendingCupRound
+    isActualCupDayToday && seasonState.pendingCupRound
       ? cupRoundsGrouped[seasonState.pendingCupRound] || []
       : [];
 
@@ -226,8 +245,8 @@ export default function FutbolLigler() {
   // takviminde) sonuçlanmış bir kupa turu varsa (todaysFinishedCupMatches —
   // yukarıdaki BUG notu). Aşağıdaki lig MatchList'i bunun TERSİ koşulda
   // basılıyor.
-  const showCupDayPanel = seasonState.status === 'CUP_DAY' || todaysFinishedCupMatches.length > 0;
-  const cupDayPanelIsLive = seasonState.status === 'CUP_DAY';
+  const showCupDayPanel = isActualCupDayToday || todaysFinishedCupMatches.length > 0;
+  const cupDayPanelIsLive = isActualCupDayToday;
   const cupDayPanelMatches = cupDayPanelIsLive ? todaysCupMatches : todaysFinishedCupMatches;
   const cupDayPanelRound = cupDayPanelIsLive ? seasonState.pendingCupRound : todaysFinishedCupMatches[0]?.round;
 
@@ -253,12 +272,12 @@ export default function FutbolLigler() {
   // gelen anahtar) çekiyoruz — o günün ref'i zaten hemen altında kupa
   // turunu da içeriyor (bkz. aşağıdaki fikstür render'ı).
   const cupDayFixtureAnchorRound = useMemo(() => {
-    if (seasonState.status !== 'CUP_DAY' || !seasonState.pendingCupRound) return null;
+    if (!isActualCupDayToday || !seasonState.pendingCupRound) return null;
     const entry = Object.entries(FUTBOL_CUP_TRIGGER_AFTER_ROUND).find(
       ([, cupRound]) => cupRound === seasonState.pendingCupRound
     );
     return entry ? Number(entry[0]) : null;
-  }, [seasonState.status, seasonState.pendingCupRound]);
+  }, [isActualCupDayToday, seasonState.pendingCupRound]);
 
   // Kullanıcı isteği: "Maç Fikstürü" sekmesine girildiğinde ilk turdan
   // değil, bugünün gününden başlanmalı — yukarı çekince eski maçlar,

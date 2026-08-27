@@ -4,6 +4,7 @@ import { useOpenHeistPlanCounts } from '../../hooks/useOpenHeistPlanCounts';
 import { useMyActiveHeistPlans } from '../../hooks/useMyActiveHeistPlan';
 import HeistPanel, { HEIST_LABELS } from '../HeistPanel/HeistPanel';
 import GuestOverlay from '../GuestOverlay/GuestOverlay';
+import { INITIAL_LIFE_DAYS } from '../VehicleCard/VehicleCard';
 import './HeistScreen.css';
 
 // Sadece soygun hedefleri — silah geliştirme artık burada değil, Profil'de.
@@ -27,7 +28,16 @@ export default function HeistScreen({ initialTarget, onClose }) {
     }
   }, [initialTarget]);
 
-  const myPower = weapons.reduce((max, w) => Math.max(max, w.power || 0), 0);
+  // KULLANICI REVİZESİ (BUG DÜZELTMESİ): ömrü (lifeDays) 0 olan bir silah —
+  // tamir hakkı kalmış olsa bile — güç hesabına dahil edilmemeli, yoksa
+  // oyuncu silahı hiç tamir etmeden o silahın gücünü kullanmaya devam
+  // edebiliyormuş gibi görünür (gerçek sunucu tarafı zaten aynı şekilde
+  // filtreliyor, bkz. functions/index.js getMaxWeaponPower — burası sadece
+  // ekrandaki gösterimin sunucuyla TUTARLI olmasını sağlıyor).
+  const myPower = weapons.reduce(
+    (max, w) => ((w.lifeDays ?? INITIAL_LIFE_DAYS) > 0 ? Math.max(max, w.power || 0) : max),
+    0
+  );
 
   return (
     <div className="heist-screen-backdrop" onClick={onClose}>

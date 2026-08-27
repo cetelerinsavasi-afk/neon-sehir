@@ -950,16 +950,23 @@ export default function MosqueWorldScreen({ onExit }) {
     <div className="ws-fullscreen" style={{ '--ws-bg': '#241a10', '--ws-panel-bg': '#1c1c24' }}>
       <Hud suspicion={player?.suspicion ?? 0} reputation={player?.reputation ?? 0} gold={player?.gold ?? 0} />
 
-      {/* mww-menu-row — yeni istek: imamlık başvurusu - imam kitapçığı -
-          vakitteki cemaat - x, tek satırda yan yana. */}
-      <div className="mww-menu-row">
+      {/* mww-menu-col — kullanıcı revizesi: bu 3 buton (imam:XXX/imamlık
+          başvurusu - imam kitapçığı - vakitteki cemaat) üst satırda X
+          butonuyla aynı hizada sağa yaslı dururken, imamın NPC olarak
+          söylediği sözler/nasihatler tam bu bölgede (mihrap/minberin
+          üstünde) baloncuk olarak çizildiği için üst üste binip
+          okunamıyordu. Artık SOLDA, ALT ALTA (dikey) duruyorlar; X butonu
+          ise standart .ws-exit-btn ile SAĞ ÜSTTE kendi başına kalıyor —
+          böylece imamın konuşma baloncuğunun çizildiği üst-orta alan boş
+          kalıyor. */}
+      <div className="mww-menu-col">
         <button className="mww-menu-btn" onClick={() => setPanel('imam')}>
           {imam ? `İmam: ${imam.displayName}` : 'İmamlık Başvurusu'}
         </button>
         <button className="mww-menu-btn" onClick={() => setBookletOpen(true)}>İmam Kitapçığı</button>
         <button className="mww-menu-btn" onClick={() => setPanel('congregation')}>Vakitteki Cemaat</button>
-        <button className="mww-exit-btn" onClick={onExit}>✕</button>
       </div>
+      <button className="ws-exit-btn" onClick={onExit}>✕</button>
 
       <div className="ws-canvas-wrap">
         {!ready && <div className="ws-loading">Camiye giriliyor…</div>}

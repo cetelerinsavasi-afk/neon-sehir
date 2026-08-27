@@ -4,6 +4,7 @@ import { useOpenHeistPlanCounts } from '../../hooks/useOpenHeistPlanCounts';
 import { useMyActiveHeistPlans } from '../../hooks/useMyActiveHeistPlan';
 import HeistPanel, { HEIST_LABELS } from '../HeistPanel/HeistPanel';
 import GuestOverlay from '../GuestOverlay/GuestOverlay';
+import { INITIAL_LIFE_DAYS } from '../VehicleCard/VehicleCard';
 import './MekanlarScreen.css';
 
 // SoygunTab — eskiden HeistScreen.jsx'in TAMAMIYDI (kendi backdrop/başlık/
@@ -27,7 +28,14 @@ export default function SoygunTab({ initialTarget }) {
     }
   }, [initialTarget]);
 
-  const myPower = weapons.reduce((max, w) => Math.max(max, w.power || 0), 0);
+  // KULLANICI REVİZESİ (BUG DÜZELTMESİ): ömrü (lifeDays) 0 olan bir silah —
+  // tamir hakkı kalmış olsa bile — güç hesabına dahil edilmemeli (bkz.
+  // functions/index.js getMaxWeaponPower'daki aynı düzeltme — burası
+  // ekranın sunucuyla TUTARLI göstermesi için).
+  const myPower = weapons.reduce(
+    (max, w) => ((w.lifeDays ?? INITIAL_LIFE_DAYS) > 0 ? Math.max(max, w.power || 0) : max),
+    0
+  );
 
   return (
     <div className="mekanlar-soygun-tab">

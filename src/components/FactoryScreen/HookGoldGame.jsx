@@ -8,9 +8,15 @@ import './FactoryMiniGames.css';
 // prop'ları, submitting/success/error faz akışı) paylaşan İKİNCİ mini oyun.
 // Ekranın üstünde sağa-sola otomatik gidip gelen bir kanca vagonu var;
 // oyuncu ekrana her bastığında kanca o anki konumundan aşağı iner, bir
-// altına denk gelirse onu yakalayıp yukarı çeker. 3 altın yakalanınca görev
-// tamamlanır (bkz. TARGET_CATCHES). Basit bir tur süresi (ROUND_TIME_LIMIT)
-// var — süre dolarsa tur sıfırlanır (KALICI bir başarısızlık YOK, tıpkı
+// altına denk gelirse onu yakalayıp yukarı çeker. KULLANICI REVİZESİ:
+// "bi sürü altın var ve biz 3 tane kaptığımız zaman oyun bitiyor ve aynı
+// zamanda biz her altın kaptığımızda yenisi var oluyor. 5 adet altın
+// olsun ve 5ini de topladığımızda oyun bitsin" — artık sahada SABİT
+// GOLD_COUNT (5) adet altın var, biri yakalandığında YERİNE YENİSİ
+// DOĞMUYOR (bkz. update()'teki 'retracting' dalı — artık spawnGolds ile
+// top-up YOK, sadece filter), oyun TÜM altınlar (TARGET_CATCHES = 5)
+// toplanınca bitiyor. Basit bir tur süresi (ROUND_TIME_LIMIT) var — süre
+// dolarsa tur sıfırlanır (KALICI bir başarısızlık YOK, tıpkı
 // FactoryShiftGame'de olduğu gibi — işçi/patron gerçek üretimden asla
 // kalıcı olarak mahrum bırakılmaz, sadece tekrar denemesi istenir).
 const W = 640;
@@ -18,19 +24,22 @@ const H = 480;
 const RAIL_Y = 54;
 const HOOK_MAX_LEN = H - RAIL_Y - 56;
 const HOOK_SPEED = 8.5;
-const TARGET_CATCHES = 3;
+const GOLD_COUNT = 5;
+const TARGET_CATCHES = GOLD_COUNT;
 const ROUND_TIME_LIMIT = 18; // saniye
-const GOLD_COUNT = 6;
 const GOLD_R = 15;
 
 function rand(min, max) {
   return min + Math.random() * (max - min);
 }
 
-function spawnGolds(existing = []) {
-  // Zaten yakalanmamış altınları koru, eksik kalanı yeni rastgele
-  // pozisyonlarla tamamla — böylece oyun alanı hiç boşalmaz.
-  const golds = existing.filter((g) => !g.caught).map((g) => ({ ...g }));
+// spawnGolds — SADECE bir turun BAŞINDA (ilk kurulum/resetRound/
+// retryAfterError) çağrılır, tam GOLD_COUNT adet altın üretir. Artık
+// oyun SIRASINDA (bir altın yakalandığında) ÇAĞRILMIYOR — kullanıcı
+// revizesi: sahadaki altın sayısı sabit kalmalı, biri toplandığında
+// yenisi doğmamalı.
+function spawnGolds() {
+  const golds = [];
   while (golds.length < GOLD_COUNT) {
     golds.push({
       id: Math.random().toString(36).slice(2),
@@ -180,8 +189,9 @@ export default function HookGoldGame({ onComplete, onClose }) {
           if (g.hook.carrying) {
             g.catchesNow += 1;
             setCatches(g.catchesNow);
+            // Kullanıcı revizesi: yakalanan altın sahadan SADECE kaldırılır,
+            // yerine yenisi doğmaz — sahadaki altın sayısı sabit azalır.
             g.golds = g.golds.filter((gd) => gd.id !== g.hook.carrying.id);
-            g.golds = spawnGolds(g.golds);
             g.hook.carrying = null;
             if (g.catchesNow >= TARGET_CATCHES) {
               blip(1040);

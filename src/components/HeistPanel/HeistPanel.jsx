@@ -21,6 +21,7 @@ import InfoIcon from '../InfoIcon/InfoIcon';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import ResultModal from '../ResultModal/ResultModal';
 import { regionEmojis } from '../../data/regions';
+import { INITIAL_LIFE_DAYS } from '../VehicleCard/VehicleCard';
 import './HeistPanel.css';
 
 // emoji: regions.js'teki TEK kaynaktan (regionEmojis) geliyor — yeni istek:
@@ -79,7 +80,7 @@ function resultMessage(res) {
     return 'Ekibe polis sızmıştı! Payınız borç olarak yazıldı.';
   }
   if (res.caughtBySuspicion && res.viaPoliceTrap) {
-    return 'Ekipteki suçlu(lar) senin tuzağın yüzünden değil, kendi şüphesi yüzünden yakalandı — bu turda ödül alamadın, sadece suçlular kendi cezasını ödedi.';
+    return 'Suçlular şüphesi yüksek olduğu için sen yakalayamadan yakalandılar. Bu turda ödül alamadın, sadece suçlular kendi cezasını ödedi.';
   }
   if (res.caughtBySuspicion) {
     return 'Ekipteki suçlulardan biri kendi şüphesinden yakalandı, suçluların payına düşen ceza borç olarak yazıldı.';
@@ -308,7 +309,14 @@ export default function HeistPanel({ target }) {
 
   const meta = HEIST_LABELS[target];
   const done = Boolean(actions.heist?.[target]) || Boolean(actions.vendorPurchases?.[target]);
-  const myPower = weapons.reduce((max, w) => Math.max(max, w.power || 0), 0);
+  // KULLANICI REVİZESİ (BUG DÜZELTMESİ): ömrü (lifeDays) 0 olan bir silah —
+  // tamir hakkı kalmış olsa bile — güç hesabına dahil edilmemeli (bkz.
+  // functions/index.js getMaxWeaponPower'daki aynı düzeltme — burası
+  // ekranın sunucuyla TUTARLI göstermesi için).
+  const myPower = weapons.reduce(
+    (max, w) => ((w.lifeDays ?? INITIAL_LIFE_DAYS) > 0 ? Math.max(max, w.power || 0) : max),
+    0
+  );
   // Polisler tek başına (attemptHeist) soygun başlatamaz — bunlar için
   // güce bakmaksızın HER ZAMAN sadece ekip kurma (tuzak) seçeneği gösterilir.
   const isPolice = player?.profession === 'polis';

@@ -4598,11 +4598,27 @@ async function sendCaptureSms(uid, penaltyAmount, newTotalDebt) {
     });
 }
 
+// getMaxWeaponPower — BUG DÜZELTMESİ (kullanıcı revizesi): "en güçlü olan
+// silahımızın ömrü 0 kaldığında tamir hakkımız olsa bile silahın gücünü
+// kullanamayız ... elimde tamir hakkı olan ama ömrü 0 olan bi silah var ve
+// silahın gücü benim gücüm olarak gözüküyor, bu da büyük bi bug çünkü
+// silahı tamir etmeden sonsuza kadar o silahın gücünü kullanarak soygun
+// yapabilirim." Eskiden burada TÜM silahların power'ı arasından maksimum
+// alınıyordu, ömür (lifeDays) hiç kontrol edilmiyordu. Artık ömrü
+// (lifeDays) 0 veya altında olan bir silah — tamir hakkı (repairsUsed)
+// ne olursa olsun — güç hesabına HİÇ dahil edilmiyor; sadece tamir
+// edildikten (lifeDays > 0'a çıktıktan) sonra tekrar sayılır. Bu fonksiyon
+// TEK merkezi kaynak (attemptHeist, createHeistPlan, joinHeistPlan,
+// refreshHeistPlanParticipants hepsi buradan geçiyor) — tek yerde
+// düzeltmek hepsini kapsıyor.
 async function getMaxWeaponPower(uid) {
   const snap = await db.collection('weapons').where('ownerId', '==', uid).get();
   let maxPower = 0;
   snap.forEach((d) => {
-    maxPower = Math.max(maxPower, d.data().power || 0);
+    const w = d.data();
+    const lifeDays = w.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
+    if (lifeDays <= 0) return; // ömrü bitmiş silah — tamir edilene kadar gücü sayılmaz
+    maxPower = Math.max(maxPower, w.power || 0);
   });
   return maxPower;
 }
@@ -9244,11 +9260,16 @@ function futbolMucadeleConfig(team) {
 // sakatlanan oyuncu 1-5 maçlığına sakatlansın" (madde 3'te "30-35"
 // olarak netleştirildi). SADECE oyuncu sahipli takımların o maçta
 // SAHAYA ÇIKAN 6 kişisi bu riski taşır (bkz. applyFutbolMatchResult).
+// KULLANICI REVİZESİ: "sakatlanma riskini 2 katına çıkartalım" — yaş
+// bazlı taban oranların HEPSİ 2x'e çıkarıldı (2/4/6 → 4/8/12), mücadele
+// biçimi çarpanları (FUTBOL_MUCADELE_LEVELS'teki injuryMult: dikkatli
+// x0.5, normal x1, agresif x1.5, çok agresif x2) AYNEN korunuyor —
+// ikisi çarpılarak uygulanıyor (bkz. rollFutbolInjuryDays).
 const FUTBOL_DOCTOR_COST = 5000;
 function futbolInjuryChance(age) {
-  if (age <= 19) return 0.02;
-  if (age <= 29) return 0.04;
-  return 0.06; // 30-35
+  if (age <= 19) return 0.04;
+  if (age <= 29) return 0.08;
+  return 0.12; // 30-35
 }
 function rollFutbolInjuryDays(age, mucadeleMult) {
   const chance = futbolInjuryChance(age) * mucadeleMult;
