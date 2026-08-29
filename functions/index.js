@@ -1924,14 +1924,15 @@ export const dailyReset = onSchedule(
       // SABİT bir tutar YOK — ÜRETİME BAĞLI bir oran kullanılıyor: o gece
       // üretilen (düşürülmüş verimlilikten SONRAKİ, bkz. -0.5 bloğundaki
       // miningCryptoQtyByOwner) kripto miktarının, o geceki kripto
-      // fiyatındaki altın karşılığının %10'u (bkz. MINING_ELECTRICITY_RATE).
+      // fiyatındaki altın karşılığının %30'u (bkz. MINING_ELECTRICITY_RATE
+      // — kullanıcı revizesi: %10'dan %30'a çıkarıldı).
       const ELECTRICITY_BILL_PER_MACHINE_TYPE = {
         silahUpgrade: 100,
         arabaGelistirme: 100,
         tamirMalzemesi: 200,
         yasakliMadde: 200,
       };
-      const MINING_ELECTRICITY_RATE = 0.1; // üretim değerinin %10'u
+      const MINING_ELECTRICITY_RATE = 0.3; // üretim değerinin %30'u (kullanıcı revizesi: eskiden %10)
       const electricityBillByFactory = new Map(); // ownerId -> tutar (altın)
       const addElectricity = (factoryId, amount) => {
         if (amount <= 0) return;

@@ -178,11 +178,7 @@ function PlanCard({ plan, myUid, isPolice, onChanged }) {
         {required.toLocaleString('tr-TR')}
       </p>
       {isCreator && isPolice && (
-        <p className="heist-plan-meta police-trap-hint">
-          🚔 Bu bir tuzak — ekibe kendi dışında en az 1 suçlu katılmadan başlatamazsın (ekipte kaç
-          polis olduğunun önemi yok). Ama önce şüphe konuşur: biri kendi şüphesinden yakalanırsa bu
-          turda ödül alamazsın.
-        </p>
+        <p className="heist-plan-meta police-trap-hint">Soygunu başlatmak için en az 1 suçlu gerekir</p>
       )}
       <ul className="heist-plan-members">
         {participants.map((p) => (
