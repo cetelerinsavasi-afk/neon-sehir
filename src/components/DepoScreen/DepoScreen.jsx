@@ -24,6 +24,19 @@ const BUY_ITEMS = [
   { id: 'yasakliMadde', label: 'Yasaklı Madde', price: 2500, emoji: '💊' },
 ];
 
+// QUICK_AMOUNTS — Amazor/Liman/2. el sitesiyle AYNI kullanıcı revizesi:
+// "1 ve 5 butonunu kaldıralım, 1000 butonu ekleyelim, sadece tamir
+// malzemesi için 10.000 butonu da ekleyelim." Depo, Amazor ile fiyat/davranış
+// olarak zaten "birebir aynı" tutulduğu için (yukarıdaki not) burası da
+// aynı şekilde güncellendi.
+const QUICK_AMOUNTS_BASE = [10, 100, 1000];
+const QUICK_AMOUNTS_BY_ITEM = {
+  tamirMalzemesi: [...QUICK_AMOUNTS_BASE, 10000],
+};
+function quickAmountsFor(itemId) {
+  return QUICK_AMOUNTS_BY_ITEM[itemId] || QUICK_AMOUNTS_BASE;
+}
+
 export default function DepoScreen() {
   const { user } = useAuth();
   const { inventory } = useInventory();
@@ -90,7 +103,7 @@ export default function DepoScreen() {
               value={qty}
               onChange={(v) => setAmounts((prev) => ({ ...prev, [item.id]: v }))}
               max={mode === 'sell' ? owned : undefined}
-              quickAmounts={[1, 5, 10, 100]}
+              quickAmounts={quickAmountsFor(item.id)}
             />
             <button
               className="depo-btn"

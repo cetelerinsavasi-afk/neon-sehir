@@ -13,6 +13,18 @@ const ITEMS = [
   { id: 'yasakliMadde', label: 'Yasaklı Madde', price: 2500, emoji: '💊' },
 ];
 
+// QUICK_AMOUNTS — KULLANICI REVİZESİ: "1 ve 5 butonunu kaldıralım, 1000
+// butonu ekleyelim, sadece tamir malzemesi için 10.000 butonu da
+// ekleyelim." Eskiden hepsi [1,5,10,100] kullanıyordu; artık ortak taban
+// [10,100,1000], tamirMalzemesi'ne ayrıca 10.000 ekleniyor.
+const QUICK_AMOUNTS_BASE = [10, 100, 1000];
+const QUICK_AMOUNTS_BY_ITEM = {
+  tamirMalzemesi: [...QUICK_AMOUNTS_BASE, 10000],
+};
+function quickAmountsFor(itemId) {
+  return QUICK_AMOUNTS_BY_ITEM[itemId] || QUICK_AMOUNTS_BASE;
+}
+
 export default function AmazorScreen() {
   const { user } = useAuth();
   const { inventory } = useInventory();
@@ -56,7 +68,7 @@ export default function AmazorScreen() {
             <QuantityStepper
               value={qty}
               onChange={(v) => setAmounts((prev) => ({ ...prev, [item.id]: v }))}
-              quickAmounts={[1, 5, 10, 100]}
+              quickAmounts={quickAmountsFor(item.id)}
             />
             <button
               className="amazor-btn"

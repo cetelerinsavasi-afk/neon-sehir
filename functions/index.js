@@ -12927,6 +12927,21 @@ function isSponsorshipOfferFresh(offerData) {
   return ms > Date.now();
 }
 
+// isFeeRaiseRequestFresh — KULLANICI İSTEĞİ: "verilen teklif yükseltme
+// teklifleri ... onaylanmadı ya da reddedilmediyse 24 saati geçtikten
+// sonra yok olsun" — sponsorshipOffers'taki (isSponsorshipOfferFresh) AYNI
+// 24 saatlik TTL, kulübün sponsorundan istediği "ücretini X'e çıkar" talebi
+// (requestSponsorshipFeeRaise → team.sponsorFeeRaiseRequest) için de
+// uygulanıyor. Fiziksel silme YOK (sponsorshipNotes/Offers'taki AYNI
+// "okuma anında süresi geçmişse yok say" deseni) — bkz. kullanım yerleri:
+// listSponsorshipTeamsForFactory/listSponsorshipFactoriesForTeam (stale
+// talep hiç GÖSTERİLMEZ) ve respondSponsorshipFeeRaiseRequest (stale
+// talebe kabul/red denenirse temizlenip hata döner).
+function isFeeRaiseRequestFresh(reqData) {
+  const ms = reqData?.requestedAt?.toMillis?.() ?? 0;
+  return ms > 0 && Date.now() - ms < FUTBOL_SPONSORSHIP_OFFER_TTL_MS;
+}
+
 // notifyOutbidFactoryOwner — KULLANICI İSTEĞİ: "sponsor değişecekse
 // değiştiğinde ne kadar ödeme yapılacağını bilelim". Bir takımın "bir
 // sonraki 00:00'da sponsor olacak kişi" (pendingSponsor varsa onun sahibi,
@@ -13435,6 +13450,12 @@ export const respondSponsorshipFeeRaiseRequest = onCall(async (request) => {
   }
   const req = team.sponsorFeeRaiseRequest;
   if (!req) throw new HttpsError('failed-precondition', 'Bekleyen bir ücret artırma talebi yok.');
+  if (!isFeeRaiseRequestFresh(req)) {
+    // Kullanıcı revizesi: 24 saat içinde yanıtlanmayan talep kendiliğinden
+    // geçersiz sayılır — burada fark edildiği an temizlenir.
+    await teamRef.update({ sponsorFeeRaiseRequest: null });
+    throw new HttpsError('failed-precondition', 'Bu talebin süresi doldu.');
+  }
 
   if (!accept) {
     await teamRef.update({ sponsorFeeRaiseRequest: null });
@@ -13565,8 +13586,12 @@ export const listSponsorshipTeamsForFactory = onCall(async (request) => {
         sponsorCancelPending: team.sponsorFactoryOwnerUid ? team.sponsorCancelPending === true : false,
         // feeRaiseRequest — sadece BU fabrika mevcut sponsorsa anlamlı
         // (kulübün "ücretimi artır" talebi, bkz. requestSponsorshipFeeRaise).
+        // 24 saati geçmiş bir talep artık HİÇ gösterilmiyor (kullanıcı
+        // revizesi, bkz. isFeeRaiseRequestFresh).
         feeRaiseRequest:
-          team.sponsorFactoryOwnerUid === uid && team.sponsorFeeRaiseRequest
+          team.sponsorFactoryOwnerUid === uid &&
+          team.sponsorFeeRaiseRequest &&
+          isFeeRaiseRequestFresh(team.sponsorFeeRaiseRequest)
             ? {
                 requestedAmount: team.sponsorFeeRaiseRequest.requestedAmount,
                 requestedByName: team.sponsorFeeRaiseRequest.requestedByName || null,
@@ -13659,8 +13684,10 @@ export const listSponsorshipFactoriesForTeam = onCall(async (request) => {
       pendingSponsorDailyAmount: team.pendingSponsor?.dailyAmount ?? null,
       sponsorCancelPending: team.sponsorFactoryOwnerUid ? team.sponsorCancelPending === true : false,
       // feeRaiseRequest — kulübün KENDİ gönderdiği, henüz cevaplanmamış
-      // ücret artırma talebi (bkz. requestSponsorshipFeeRaise).
-      feeRaiseRequest: team.sponsorFeeRaiseRequest
+      // ücret artırma talebi (bkz. requestSponsorshipFeeRaise). 24 saati
+      // geçmiş bir talep artık HİÇ gösterilmiyor (kullanıcı revizesi, bkz.
+      // isFeeRaiseRequestFresh).
+      feeRaiseRequest: team.sponsorFeeRaiseRequest && isFeeRaiseRequestFresh(team.sponsorFeeRaiseRequest)
         ? {
             requestedAmount: team.sponsorFeeRaiseRequest.requestedAmount,
             requestedByName: team.sponsorFeeRaiseRequest.requestedByName || null,
@@ -13694,10 +13721,18 @@ async function processFutbolSponsorshipsNightly() {
     const hasPending = !!team.pendingSponsor;
     const hasCancel = team.sponsorCancelPending === true;
     const hasActive = !!team.sponsorFactoryOwnerUid;
+    // updates — BU dokümana yazılacak TÜM alanlar TEK bir update() içinde
+    // toplanıyor (Firestore WriteBatch'te aynı dokümana birden fazla
+    // write eklemek hataya yol açar — "ücret artırma talebini temizleme"
+    // ile "sponsorluk pending/cancel" güncellemesi AYNI takım dokümanında
+    // aynı anda gerekebildiği için, kullanıcı revizesiyle eklenen temizlik
+    // burada AYRI bir teamBatch.update() ÇAĞRISI olarak değil, bu objeye
+    // eklenerek yapılıyor).
+    const updates = {};
 
     if (hasPending) {
       const p = team.pendingSponsor;
-      teamBatch.update(d.ref, {
+      Object.assign(updates, {
         sponsorFactoryOwnerUid: p.factoryOwnerUid,
         sponsorFactoryName: p.factoryName,
         sponsorDailyAmount: p.dailyAmount,
@@ -13705,7 +13740,6 @@ async function processFutbolSponsorshipsNightly() {
         pendingSponsor: null,
         sponsorCancelPending: false,
       });
-      teamBatchCount += 1;
       chargeJobs.push({
         teamId: d.id,
         teamName: team.name || 'Takım',
@@ -13714,14 +13748,13 @@ async function processFutbolSponsorshipsNightly() {
         amount: p.dailyAmount,
       });
     } else if (hasCancel) {
-      teamBatch.update(d.ref, {
+      Object.assign(updates, {
         sponsorFactoryOwnerUid: null,
         sponsorFactoryName: null,
         sponsorDailyAmount: 0,
         sponsorSince: null,
         sponsorCancelPending: false,
       });
-      teamBatchCount += 1;
     } else if (hasActive) {
       chargeJobs.push({
         teamId: d.id,
@@ -13730,6 +13763,22 @@ async function processFutbolSponsorshipsNightly() {
         clubOwnerUid: team.ownerUid || null,
         amount: team.sponsorDailyAmount || 0,
       });
+    }
+
+    // Süresi geçmiş bekleyen ücret artırma talebini temizle (kullanıcı
+    // revizesi — hijyen, respondSponsorshipFeeRaiseRequest/liste
+    // fonksiyonları zaten AYRICA isFeeRaiseRequestFresh ile kontrol
+    // ediyor, bu sadece dokümanın kendisinin de temiz kalması için,
+    // sponsorshipOffers'ın nightly temizliğiyle AYNI desen). Yukarıdaki
+    // if/else if zincirinden BAĞIMSIZ — bir talep, sponsorluk durumu ne
+    // olursa olsun (aktif/pending/cancel) sona ermiş olabilir.
+    if (team.sponsorFeeRaiseRequest && !isFeeRaiseRequestFresh(team.sponsorFeeRaiseRequest)) {
+      updates.sponsorFeeRaiseRequest = null;
+    }
+
+    if (Object.keys(updates).length > 0) {
+      teamBatch.update(d.ref, updates);
+      teamBatchCount += 1;
     }
     if (teamBatchCount >= 400) {
       // Firestore batch limiti — güvenlik için (gerçekte binlerce takım

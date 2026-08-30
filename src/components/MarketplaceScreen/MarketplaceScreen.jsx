@@ -61,6 +61,19 @@ const MACHINE_PRICES = { tamirMalzemesi: 100000, silahUpgrade: 50000, arabaGelis
 const INITIAL_LIFE_DAYS = 20;
 const REPAIR_LIFE_BONUS_DAYS = 2;
 
+// MATERIAL_QUICK_AMOUNTS — KULLANICI REVİZESİ (Amazor/Liman/2. el sitesi
+// hepsinde aynı): "1 ve 5 butonunu kaldıralım, 1000 butonu ekleyelim,
+// sadece tamir malzemesi için 10.000 butonu da ekleyelim." Burada hem
+// "Kaç Adet Alacaksın?" (BuyMaterialModal) hem "Satılacak Miktarı Belirle"
+// (malzeme ilanı) adımlarında kullanılıyor.
+const MATERIAL_QUICK_AMOUNTS_BASE = [10, 100, 1000];
+const MATERIAL_QUICK_AMOUNTS_BY_TYPE = {
+  tamirMalzemesi: [...MATERIAL_QUICK_AMOUNTS_BASE, 10000],
+};
+function materialQuickAmountsFor(materialType) {
+  return MATERIAL_QUICK_AMOUNTS_BY_TYPE[materialType] || MATERIAL_QUICK_AMOUNTS_BASE;
+}
+
 // 2. el satış değeri artık hem ömür hem kalan tamir hakkı birlikte
 // hesaplanıyor (bkz. functions/index.js valueRatioOf, 2. sürüm) — burası
 // sadece kullanıcıya fiyat aralığı önermek için bir ayna, gerçek doğrulama
@@ -360,7 +373,7 @@ function SellForm({ onCreated, onClose, initialItemType }) {
               value={quantity}
               onChange={setQuantity}
               max={inventory[materialType] || 0}
-              quickAmounts={[10, 100, 1000]}
+              quickAmounts={materialQuickAmountsFor(materialType)}
             />
           </>
         )}
@@ -588,7 +601,7 @@ function BuyMaterialModal({ listing, onClose, onBought }) {
           value={qty}
           onChange={setQty}
           max={listing.quantity}
-          quickAmounts={[1, 10, 50, 100]}
+          quickAmounts={materialQuickAmountsFor(listing.materialType)}
         />
         <p className="market-price-range-hint">
           Toplam: <strong>{total.toLocaleString('tr-TR')} altın</strong>
