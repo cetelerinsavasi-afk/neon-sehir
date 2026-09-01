@@ -175,7 +175,7 @@ export default function FutbolSponsor({ team }) {
                     value={raiseRequestDraft || (teamInfo.sponsorDailyAmount || 0) + 10}
                     onChange={setRaiseRequestDraft}
                     max={mySponsor.offerCap}
-                    step={10}
+                    step={1}
                     quickAmounts={SPONSOR_QUICK_AMOUNTS}
                   />
                   <p className="futbol-buy-meta">
@@ -213,13 +213,21 @@ export default function FutbolSponsor({ team }) {
           </div>
           <div className="futbol-buy-action">
             {teamInfo.sponsorCancelPending ? (
-              <button
-                className="futbol-admin-submit"
-                disabled={busyKey === 'withdraw-cancel'}
-                onClick={handleWithdrawCancel}
-              >
-                {busyKey === 'withdraw-cancel' ? '…' : '↩️ Feshi Geri Al'}
-              </button>
+              // KULLANICI REVİZESİ: "biz kendimiz feshettiysek geri
+              // alabiliriz ama biz başka oyuncunun feshini geri alamayız" —
+              // buton sadece feshi BAŞLATAN tarafa gösteriliyor (bkz.
+              // FactorySponsorModal.jsx'teki AYNI kural).
+              teamInfo.sponsorCancelInitiatedByMe ? (
+                <button
+                  className="futbol-admin-submit"
+                  disabled={busyKey === 'withdraw-cancel'}
+                  onClick={handleWithdrawCancel}
+                >
+                  {busyKey === 'withdraw-cancel' ? '…' : '↩️ Feshi Geri Al'}
+                </button>
+              ) : (
+                <p className="futbol-buy-meta">Feshi sadece başlatan taraf geri alabilir.</p>
+              )
             ) : (
               <button className="futbol-admin-reset" disabled={busyKey === 'cancel'} onClick={handleCancel}>
                 {busyKey === 'cancel' ? '…' : '❌ Feshet'}
@@ -315,7 +323,7 @@ export default function FutbolSponsor({ team }) {
                       value={offerDrafts[f.ownerId] ?? 0}
                       onChange={(v) => setOfferDrafts((d) => ({ ...d, [f.ownerId]: v }))}
                       max={f.offerCap}
-                      step={10}
+                      step={1}
                       quickAmounts={SPONSOR_QUICK_AMOUNTS}
                     />
                     <div className="futbol-sponsor-note-actions">

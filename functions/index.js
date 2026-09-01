@@ -9600,7 +9600,13 @@ async function computeFutbolMatchLive(match) {
 // önceden hesapladığı sonucu RESMİLEŞTİRİR — takım istatistikleri,
 // taraftar sayısı, ev sahibi altın kazancı, oyuncu gelişimi, ve SMS
 // bildirimleri (maç sonucu + bilet geliri) burada uygulanır.
-async function applyFutbolMatchResult(matchId) {
+// trainingIdsByTeam (Map<teamId, Set<playerId>>) — KULLANICI REVİZESİ:
+// "oyuncu antrenmandaysa formu ne dolar ne düşer, maç varken de yokken de
+// böyle olsun" — resolveFutbolMatchdayReveal, trainingPlayerIds alanı
+// resolveFutbolTrainingForAllTeams tarafından SİLİNMEDEN ÖNCE bu haritayı
+// çıkarıp buraya (ve applyFutbolCupMatchResult/applyFutbolRestDayFormGain'e)
+// aktarıyor.
+async function applyFutbolMatchResult(matchId, trainingIdsByTeam) {
   const matchSnap = await db.collection('futbolMatches').doc(matchId).get();
   if (!matchSnap.exists) return;
   const match = matchSnap.data();
@@ -9710,6 +9716,7 @@ async function applyFutbolMatchResult(matchId) {
   const awayMucadele = futbolMucadeleConfig(awayTeamSnap.data());
   const injuredThisMatchByTeam = new Map(); // teamId -> [playerName, ...]
   const applyPlayerUpdates = (snap, lineupSet, teamId, mucadele, isBot) => {
+    const trainingIds = trainingIdsByTeam?.get(teamId) || null;
     snap.docs.forEach((d) => {
       const p = d.data();
       if (lineupSet.has(d.id)) {
@@ -9730,6 +9737,10 @@ async function applyFutbolMatchResult(matchId) {
         // "Gelişimler" ekranı için: bu maçta gelişim yaşayan oyuncuyu
         // kısa bir günlük kaydına da yazıyoruz.
         logFutbolGrowth(batch, { teamId, playerId: d.id, playerName: p.name, amount: gain, type: 'mac' });
+      } else if (trainingIds && trainingIds.has(d.id)) {
+        // KULLANICI REVİZESİ: antrenmandaki oyuncunun formuna HİÇ
+        // dokunulmuyor (ne dinlenme bonusu +50, ne başka bir değişiklik) —
+        // antrenman ile dinlenme birbirini dışlıyor.
       } else {
         batch.update(d.ref, { form: Math.min(100, p.form + 50) });
       }
@@ -10161,7 +10172,8 @@ async function computeFutbolCupMatchLive(match) {
 // farklı olarak takım istatistiklerine/taraftara/bilete HİÇ dokunmaz —
 // kupa lig performansını etkilemez (madde 3). Oyuncu gelişimi lig
 // maçlarındaki gibi uygulanır (kupa da gerçek bir maç).
-async function applyFutbolCupMatchResult(matchId) {
+// trainingIdsByTeam — bkz. applyFutbolMatchResult'taki AYNI parametre notu.
+async function applyFutbolCupMatchResult(matchId, trainingIdsByTeam) {
   const matchSnap = await db.collection('futbolCupMatches').doc(matchId).get();
   if (!matchSnap.exists) return;
   const match = matchSnap.data();
@@ -10186,6 +10198,7 @@ async function applyFutbolCupMatchResult(matchId) {
   const awayLineupSet = new Set(match.awayLineupIds || []);
   const injuredThisMatchByTeam = new Map();
   const applyPlayerUpdates = (snap, lineupSet, teamId, mucadele, isBot) => {
+    const trainingIds = trainingIdsByTeam?.get(teamId) || null;
     snap.docs.forEach((d) => {
       const p = d.data();
       if (lineupSet.has(d.id)) {
@@ -10204,6 +10217,9 @@ async function applyFutbolCupMatchResult(matchId) {
         }
         batch.update(d.ref, updates);
         logFutbolGrowth(batch, { teamId, playerId: d.id, playerName: p.name, amount: gain, type: 'kupa' });
+      } else if (trainingIds && trainingIds.has(d.id)) {
+        // KULLANICI REVİZESİ: antrenmandaki oyuncunun formuna dokunulmuyor
+        // (bkz. applyFutbolMatchResult'taki AYNI kural).
       } else {
         batch.update(d.ref, { form: Math.min(100, p.form + 50) });
       }
@@ -10275,6 +10291,40 @@ async function applyFutbolCupMatchResult(matchId) {
     penalty: match.penalty || null,
     winnerIsHome,
   });
+}
+
+// applyFutbolRestDayFormGain — KULLANICI REVİZESİ: "her maç günü boşta
+// olan oyuncularımız dinlenmiş oluyor... kupa günü kupadan elenen
+// takımların oyuncularının formu dolmamış, bu saçma bi şey çünkü
+// oyuncularım bugün maç yapmadığı için dinlenmesi gerekiyor". Kupa
+// gününde o turda maçı OLMAYAN takımlar (kupadan daha önce elenmiş ya da
+// kupaya hiç katılmayan alt lig takımları) ve kutlama gününde (hiç maç
+// yok) TÜM takımlar, tıpkı bir maç günündeki "kadroya girmeyen oyuncu"
+// gibi dinlenip formu +50 dolar (100'ü geçmez). Antrenmandaki oyuncular
+// İSTİSNA — bkz. applyFutbolMatchResult/applyFutbolCupMatchResult'taki
+// AYNI kural, formlarına hiç dokunulmaz.
+async function applyFutbolRestDayFormGain(restingTeamIds, trainingIdsByTeam) {
+  if (!restingTeamIds || restingTeamIds.size === 0) return;
+  let batch = db.batch();
+  let opCount = 0;
+  const jobs = [];
+  for (const teamId of restingTeamIds) {
+    const trainingIds = trainingIdsByTeam?.get(teamId) || null;
+    const playersSnap = await db.collection('futbolPlayers').where('teamId', '==', teamId).get();
+    playersSnap.docs.forEach((d) => {
+      if (trainingIds && trainingIds.has(d.id)) return; // antrenmandaki oyuncuya dokunma
+      const p = d.data();
+      batch.update(d.ref, { form: Math.min(100, (p.form ?? 100) + 50) });
+      opCount += 1;
+      if (opCount >= 400) {
+        jobs.push(batch.commit());
+        batch = db.batch();
+        opCount = 0;
+      }
+    });
+  }
+  if (opCount > 0) jobs.push(batch.commit());
+  await Promise.all(jobs);
 }
 
 // futbolCupMatchOutcome — kupa maçında beraberlik OLMADIĞI için (bkz.
@@ -11136,6 +11186,22 @@ export const resolveFutbolMatchdayReveal = onSchedule(
     // cleanupOldFutbolBets/cleanupOldNewsEvents İLE AYNI ilkeyle artık
     // her günün (kupa/kutlama/lig fark etmeksizin) dallanmadan ÖNCE, en
     // başında çalışıyor.
+    //
+    // KULLANICI REVİZESİ: "oyuncu antrenmandaysa formu ne dolar ne düşer"
+    // kuralını applyFutbolMatchResult/applyFutbolCupMatchResult/
+    // applyFutbolRestDayFormGain'in uygulayabilmesi için, trainingPlayerIds
+    // resolveFutbolTrainingForAllTeams tarafından SİLİNMEDEN (aşağıda)
+    // ÖNCE burada bir haritaya (teamId -> Set<playerId>) çıkarılıyor. Aynı
+    // okuma sırasında TÜM takım id'leri de (kutlama/kupa günü "dinlenen
+    // takımlar" hesaplanırken lazım) toplanıyor.
+    const allTeamsSnapForRest = await db.collection('futbolTeams').get();
+    const allTeamIds = new Set(allTeamsSnapForRest.docs.map((d) => d.id));
+    const trainingIdsByTeam = new Map();
+    allTeamsSnapForRest.docs.forEach((d) => {
+      const ids = d.data().trainingPlayerIds;
+      if (Array.isArray(ids) && ids.length > 0) trainingIdsByTeam.set(d.id, new Set(ids));
+    });
+
     await resolveFutbolTrainingForAllTeams();
     await assignFutbolBotTraining();
     await cleanupOldFutbolGrowthLogs();
@@ -11148,8 +11214,22 @@ export const resolveFutbolMatchdayReveal = onSchedule(
         .where('status', '==', 'live')
         .get();
       for (const matchDoc of cupMatchesSnap.docs) {
-        await applyFutbolCupMatchResult(matchDoc.id);
+        await applyFutbolCupMatchResult(matchDoc.id, trainingIdsByTeam);
       }
+
+      // KULLANICI REVİZESİ: "kupa günü kupadan elenen takımların
+      // oyuncularının formu dolmamış, bu saçma... oyuncularım bugün maç
+      // yapmadığı için dinlenmesi gerekiyor" — bu turda hiç maçı olmayan
+      // (daha önce kupadan elenmiş ya da kupaya hiç katılmayan alt lig)
+      // takımlar da dinlenip formu dolsun.
+      const playingTeamIdsToday = new Set();
+      cupMatchesSnap.docs.forEach((d) => {
+        playingTeamIdsToday.add(d.data().homeTeamId);
+        playingTeamIdsToday.add(d.data().awayTeamId);
+      });
+      const restingTeamIds = new Set([...allTeamIds].filter((id) => !playingTeamIdsToday.has(id)));
+      await applyFutbolRestDayFormGain(restingTeamIds, trainingIdsByTeam);
+
       await resolveFutbolCupBetsForRound(state.season, state.pendingCupRound);
 
       if (state.pendingCupRound === 'FINAL') {
@@ -11179,6 +11259,10 @@ export const resolveFutbolMatchdayReveal = onSchedule(
     }
 
     if (state.status === 'CELEBRATION_DAY') {
+      // KULLANICI REVİZESİ: kutlama gününde HİÇ maç yoktur — TÜM
+      // takımların oyuncuları (antrenmandakiler hariç) dinlenip formu
+      // dolsun, tıpkı diğer "o gün maçı olmayan" takımlar gibi.
+      await applyFutbolRestDayFormGain(allTeamIds, trainingIdsByTeam);
       await finishFutbolSeasonPart2(state);
       await cleanupOldNewsEvents();
       await cleanupOldFutbolBets();
@@ -11203,7 +11287,7 @@ export const resolveFutbolMatchdayReveal = onSchedule(
         .get();
 
       for (const matchDoc of matchesSnap.docs) {
-        await applyFutbolMatchResult(matchDoc.id);
+        await applyFutbolMatchResult(matchDoc.id, trainingIdsByTeam);
       }
       await resolveFutbolBetsForRound(league.id, round);
 
@@ -13034,6 +13118,7 @@ export const sendFactorySponsorshipOffer = onCall(async (request) => {
       await teamSnap.ref.update({
         pendingSponsor: { factoryOwnerUid: uid, factoryName, dailyAmount: cleanAmount, offerId: offerRef.id },
         sponsorCancelPending: false,
+        sponsorCancelInitiatedBy: null,
       });
       return { ok: true, accepted: true, autoBot: true };
     }
@@ -13164,6 +13249,7 @@ export const respondSponsorshipOffer = onCall(async (request) => {
       offerId,
     },
     sponsorCancelPending: false,
+    sponsorCancelInitiatedBy: null,
   });
 
   await db
@@ -13217,7 +13303,11 @@ export const cancelSponsorship = onCall(async (request) => {
   if (team.sponsorFactoryOwnerUid !== uid && team.ownerUid !== uid) {
     throw new HttpsError('permission-denied', 'Bu sponsorluğu sadece fabrika ya da kulüp sahibi feshedebilir.');
   }
-  await teamRef.update({ sponsorCancelPending: true });
+  // sponsorCancelInitiatedBy — KULLANICI REVİZESİ: "biz kendimiz
+  // feshettiysek geri alabiliriz ama biz başka oyuncunun feshini geri
+  // alamayız" — feshi BAŞLATAN tarafın uid'si kaydediliyor ki
+  // withdrawSponsorshipCancellation sadece bu kişiye izin versin.
+  await teamRef.update({ sponsorCancelPending: true, sponsorCancelInitiatedBy: uid });
   const otherUid = team.sponsorFactoryOwnerUid === uid ? team.ownerUid : team.sponsorFactoryOwnerUid;
   if (otherUid) {
     await db
@@ -13256,7 +13346,16 @@ export const withdrawSponsorshipCancellation = onCall(async (request) => {
   if (team.sponsorCancelPending !== true) {
     throw new HttpsError('failed-precondition', 'Bekleyen bir fesih yok.');
   }
-  await teamRef.update({ sponsorCancelPending: false });
+  // KULLANICI REVİZESİ: "biz kendimiz feshettiysek geri alabiliriz ama biz
+  // başka oyuncunun feshini geri alamayız" — sadece feshi BAŞLATAN taraf
+  // (sponsorCancelInitiatedBy) geri alabilir, karşı taraf alamaz. Eski
+  // (bu alan henüz yokken feshedilmiş) kayıtlarda sponsorCancelInitiatedBy
+  // olmayabilir — bu durumda geriye dönük uyumluluk için eskisi gibi her
+  // iki tarafa da izin veriliyor.
+  if (team.sponsorCancelInitiatedBy && team.sponsorCancelInitiatedBy !== uid) {
+    throw new HttpsError('permission-denied', 'Bu feshi sadece başlatan taraf geri alabilir.');
+  }
+  await teamRef.update({ sponsorCancelPending: false, sponsorCancelInitiatedBy: null });
   const otherUid = team.sponsorFactoryOwnerUid === uid ? team.ownerUid : team.sponsorFactoryOwnerUid;
   if (otherUid) {
     await db
@@ -13584,6 +13683,16 @@ export const listSponsorshipTeamsForFactory = onCall(async (request) => {
         pendingSponsorFactoryName: team.pendingSponsor?.factoryName || null,
         pendingSponsorDailyAmount: team.pendingSponsor?.dailyAmount ?? null,
         sponsorCancelPending: team.sponsorFactoryOwnerUid ? team.sponsorCancelPending === true : false,
+        // sponsorCancelInitiatedByMe — KULLANICI REVİZESİ: "biz kendimiz
+        // feshettiysek geri alabiliriz ama biz başka oyuncunun feshini geri
+        // alamayız" — istemci "Feshi Geri Al" butonunu sadece feshi
+        // BAŞLATAN tarafa gösterebilsin diye. Eski (sponsorCancelInitiatedBy
+        // henüz yokken feshedilmiş) kayıtlarda alan yok — withdrawSponsorshipCancellation
+        // İLE AYNI geriye dönük uyumluluk kuralı: bu durumda true kabul edilir.
+        sponsorCancelInitiatedByMe:
+          team.sponsorFactoryOwnerUid && team.sponsorCancelPending === true
+            ? !team.sponsorCancelInitiatedBy || team.sponsorCancelInitiatedBy === uid
+            : false,
         // feeRaiseRequest — sadece BU fabrika mevcut sponsorsa anlamlı
         // (kulübün "ücretimi artır" talebi, bkz. requestSponsorshipFeeRaise).
         // 24 saati geçmiş bir talep artık HİÇ gösterilmiyor (kullanıcı
@@ -13683,6 +13792,13 @@ export const listSponsorshipFactoriesForTeam = onCall(async (request) => {
       pendingSponsorFactoryName: team.pendingSponsor?.factoryName || null,
       pendingSponsorDailyAmount: team.pendingSponsor?.dailyAmount ?? null,
       sponsorCancelPending: team.sponsorFactoryOwnerUid ? team.sponsorCancelPending === true : false,
+      // sponsorCancelInitiatedByMe — bkz. listSponsorshipTeamsForFactory'deki
+      // AYNI alan/gerekçe (kullanıcı revizesi: "biz kendimiz feshettiysek
+      // geri alabiliriz ama başka oyuncunun feshini geri alamayız").
+      sponsorCancelInitiatedByMe:
+        team.sponsorFactoryOwnerUid && team.sponsorCancelPending === true
+          ? !team.sponsorCancelInitiatedBy || team.sponsorCancelInitiatedBy === uid
+          : false,
       // feeRaiseRequest — kulübün KENDİ gönderdiği, henüz cevaplanmamış
       // ücret artırma talebi (bkz. requestSponsorshipFeeRaise). 24 saati
       // geçmiş bir talep artık HİÇ gösterilmiyor (kullanıcı revizesi, bkz.
@@ -13739,6 +13855,7 @@ async function processFutbolSponsorshipsNightly() {
         sponsorSince: admin.firestore.FieldValue.serverTimestamp(),
         pendingSponsor: null,
         sponsorCancelPending: false,
+        sponsorCancelInitiatedBy: null,
       });
       chargeJobs.push({
         teamId: d.id,
@@ -13754,6 +13871,7 @@ async function processFutbolSponsorshipsNightly() {
         sponsorDailyAmount: 0,
         sponsorSince: null,
         sponsorCancelPending: false,
+        sponsorCancelInitiatedBy: null,
       });
     } else if (hasActive) {
       chargeJobs.push({

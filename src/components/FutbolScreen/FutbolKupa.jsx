@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useFutbolCup } from '../../hooks/useFutbolCup';
@@ -68,6 +68,23 @@ export default function FutbolKupa({ season }) {
       cancelled = true;
     };
   }, [selectedMatch?.homeTeamId]);
+
+  // KULLANICI İSTEĞİ: "maç fikstürüne tıkladığımızda bugünün olduğu maçın
+  // olduğu kısma otomatik bizi atıyor, kupa sekmesinde de bu özellik olsun,
+  // kupanın hangi aşamasındaysak ekran o kısımda açılsın" — FutbolLigler.jsx'teki
+  // "Maç Fikstürü" sekmesiyle AYNI desen (round -> ref haritası + rAF'lı
+  // scrollIntoView). Kupa bittiyse (cup.status === 'DONE') zaten en üstteki
+  // şampiyon banner'ı gösterilecek şekilde sayfa açılıyor, kaydırmaya gerek yok.
+  const roundRefs = useRef({});
+  useEffect(() => {
+    if (!cup || cup.status === 'DONE') return;
+    const target = roundRefs.current[cup.status];
+    if (target) {
+      requestAnimationFrame(() => {
+        target.scrollIntoView({ block: 'center' });
+      });
+    }
+  }, [cup, cup?.status]);
 
   if (loading) return <p className="futbol-placeholder">Yükleniyor...</p>;
 

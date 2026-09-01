@@ -227,13 +227,21 @@ export default function FactorySponsorModal({ onClose }) {
                         <p className="factory-hint small factory-sponsor-warning">
                           ⚠️ Bu sponsorluğun feshi bekliyor — bugün 00:00'da (yeni ödeme yapılmadan) sona erecek.
                         </p>
-                        <button
-                          className="factory-btn small primary"
-                          disabled={busyKey === `withdraw-cancel-${t.id}`}
-                          onClick={() => handleWithdrawCancel(t.id)}
-                        >
-                          {busyKey === `withdraw-cancel-${t.id}` ? '…' : '↩️ Feshi Geri Al'}
-                        </button>
+                        {/* KULLANICI REVİZESİ: "biz kendimiz feshettiysek geri
+                            alabiliriz ama biz başka oyuncunun feshini geri
+                            alamayız" — buton sadece feshi BAŞLATAN tarafa
+                            gösteriliyor, karşı tarafa sadece bilgi metni. */}
+                        {t.sponsorCancelInitiatedByMe ? (
+                          <button
+                            className="factory-btn small primary"
+                            disabled={busyKey === `withdraw-cancel-${t.id}`}
+                            onClick={() => handleWithdrawCancel(t.id)}
+                          >
+                            {busyKey === `withdraw-cancel-${t.id}` ? '…' : '↩️ Feshi Geri Al'}
+                          </button>
+                        ) : (
+                          <p className="factory-hint small">Feshi sadece başlatan taraf geri alabilir.</p>
+                        )}
                       </div>
                     )}
 
@@ -304,11 +312,15 @@ export default function FactorySponsorModal({ onClose }) {
                     {!t.isSelfSponsor &&
                       (raiseOpen ? (
                         <div className="factory-sponsor-offer-box">
+                          {/* KULLANICI REVİZESİ: "sponsorluk tekliflerinde -
+                              ve + basınca 10 10 artıyor, 1 1 artsın" — step
+                              10'dan 1'e düşürüldü (quickAmounts hâlâ hızlı
+                              artış sağlıyor). */}
                           <QuantityStepper
                             value={raiseDrafts[t.id] ?? minRaiseAmount}
                             onChange={(v) => setRaiseDrafts((d) => ({ ...d, [t.id]: v }))}
                             max={offerCap}
-                            step={10}
+                            step={1}
                             quickAmounts={SPONSOR_QUICK_AMOUNTS}
                           />
                           <p className="factory-hint small">
@@ -461,7 +473,7 @@ export default function FactorySponsorModal({ onClose }) {
                       value={offerDrafts[t.id] ?? 0}
                       onChange={(v) => setOfferDrafts((d) => ({ ...d, [t.id]: v }))}
                       max={offerCap}
-                      step={10}
+                      step={1}
                       quickAmounts={SPONSOR_QUICK_AMOUNTS}
                     />
                     <p className="factory-hint small">En fazla {offerCap.toLocaleString('tr-TR')} altın/gün teklif edebilirsin.</p>
