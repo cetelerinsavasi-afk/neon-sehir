@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useFutbolTeamPlayers } from '../../hooks/useFutbolTeamPlayers';
-import { assignFutbolDoctor } from '../../services/gameActions';
+import { assignFutbolDoctor, cancelFutbolDoctor } from '../../services/gameActions';
 import FutbolPlayerAvatar from './FutbolPlayerAvatar';
 import './FutbolAltyapi.css';
 
 const FUTBOL_DOCTOR_COST = 5000;
+const POSITION_LABELS = { GK: 'Kaleci', DEF: 'Defans', MID: 'Orta Saha', FWD: 'Forvet' };
 
 // FutbolDoktor — yeni istek: "kadrosunda sakat oyuncu olan takımlar
 // doktor tabından 5000 altın ödeyerek TEK bir oyuncunun iyileşmesini
@@ -44,6 +45,20 @@ export default function FutbolDoktor({ team }) {
     }
   };
 
+  const handleCancel = async (playerId) => {
+    setBusyId(playerId);
+    setError('');
+    setMessage('');
+    try {
+      await cancelFutbolDoctor(team.id);
+      setMessage(`Tedavi iptal edildi, ${FUTBOL_DOCTOR_COST.toLocaleString('tr-TR')} altın iade edildi ✓`);
+    } catch (err) {
+      setError(err?.message || 'Tedavi iptal edilemedi.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
     <div className="futbol-altyapi">
       <p className="futbol-kadro-section-title">Doktor</p>
@@ -60,6 +75,13 @@ export default function FutbolDoktor({ team }) {
           {injuredPlayers.map((p) => {
             const isBeingTreated = doctorPlayerId === p.id;
             const doctorBusyWithOther = doctorPlayerId && !isBeingTreated;
+            // Kullanıcı revizesi: sakatlık zaten HER gece (doktorsuz da)
+            // kendiliğinden 1 gün azalıyor — kalan sakatlık süresi 1 gün
+            // olan bir oyuncu bu gece 00:00'da doktorsuz da tamamen
+            // iyileşmiş olacak. Böyle bir oyuncuya doktor tutmak parayı
+            // boşa harcamak demek, o yüzden buton yerine bilgi notu
+            // gösteriliyor.
+            const willHealTonightNaturally = !isBeingTreated && (p.injuryDaysLeft || 0) === 1;
             return (
               <div key={p.id} className={`futbol-training-slot${isBeingTreated ? ' filled' : ''}`}>
                 <div className="futbol-training-row">
@@ -67,24 +89,35 @@ export default function FutbolDoktor({ team }) {
                   <div className="futbol-training-info">
                     <p className="futbol-transfer-name">{p.name}</p>
                     <p className="futbol-buy-meta">
-                      {p.age} yaş · {p.power.toFixed(1)} güç ·{' '}
+                      {POSITION_LABELS[p.position] || p.position} · {p.age} yaş · {p.power.toFixed(1)} güç ·{' '}
                       <span className="futbol-injury-badge">🚑 {p.injuryDaysLeft} gün sakat</span>
                     </p>
                   </div>
                   {isBeingTreated ? (
-                    <span className="futbol-roster-status training">Tedavi ediliyor (bu gece -1 gün daha)</span>
+                    <div className="futbol-doktor-treating">
+                      <span className="futbol-roster-status training">Tedavi ediliyor (bu gece -1 gün daha)</span>
+                      <button
+                        className="futbol-admin-reset"
+                        disabled={busyId === p.id}
+                        onClick={() => handleCancel(p.id)}
+                      >
+                        {busyId === p.id ? '...' : 'Tedaviyi İptal Et (altın iade)'}
+                      </button>
+                    </div>
+                  ) : willHealTonightNaturally ? (
+                    <span className="futbol-buy-meta futbol-doktor-busy-note">
+                      Bu gece iyileşecek — doktora gerek yok.
+                    </span>
+                  ) : doctorBusyWithOther ? (
+                    <span className="futbol-buy-meta futbol-doktor-busy-note">
+                      Doktor şu an başka bir oyuncuyla ilgileniyor.
+                    </span>
                   ) : (
                     <button
                       className="futbol-admin-submit"
-                      disabled={busyId === p.id || doctorBusyWithOther || !canAfford}
+                      disabled={busyId === p.id || !canAfford}
                       onClick={() => handleAssign(p.id)}
-                      title={
-                        doctorBusyWithOther
-                          ? 'Doktor şu an başka bir oyuncuyla ilgileniyor, yarın tekrar dene.'
-                          : !canAfford
-                            ? 'Yetersiz altın.'
-                            : ''
-                      }
+                      title={!canAfford ? 'Yetersiz altın.' : ''}
                     >
                       {busyId === p.id
                         ? '...'

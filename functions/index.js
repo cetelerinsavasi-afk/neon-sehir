@@ -2531,9 +2531,12 @@ export const dailyReset = onSchedule(
 
     // 1b) İmam görev kontrolü: DÜN (biten gün) sorumlu olduğu TÜM vakit
     // ibadetlerini yapmadıysa YA DA hiç nasihat vermediyse, imamlıktan
-    // atılır. Yeni gün için başvurular açılır; atılan imam yerine biri
-    // imam olup o da atılana kadar tekrar başvuramaz (bkz. applyForImam >
-    // lastFiredUid).
+    // atılır. Yeni gün için başvurular açılır. KULLANICI REVİZESİ: eskiden
+    // atılan imam "yerine başka biri imam olup o da atılana kadar" tekrar
+    // başvuramıyordu (süresi belirsiz/çok uzun olabiliyordu) — artık bunun
+    // yerine SABİT 24 saatlik bir yasak var: "00.00'da atıldıysam bugün
+    // olamam ama bi sonraki 00.00'dan itibaren (yani tam 24 saat sonra)
+    // tekrar imam olabilirim" (bkz. applyForImam > lastFiredAt).
     // İmamlık artık bir MESLEK değil bir STATÜ (bkz. applyForImam) — bu
     // yüzden şüphe/saygınlık burada ASLA kontrol edilmez (sadece başvuru
     // anında kontrol edilir) ve atıldığında users/{uid}.profession'a değil
@@ -2573,7 +2576,13 @@ export const dailyReset = onSchedule(
         const gaveNasihat = Boolean(imamDaily.nasihatGiven);
         if (!prayedAllRequired || !gaveNasihat) {
           await imamRef.delete();
-          await db.collection('imamState').doc('meta').set({ lastFiredUid: imam.uid }, { merge: true });
+          await db
+            .collection('imamState')
+            .doc('meta')
+            .set(
+              { lastFiredUid: imam.uid, lastFiredAt: admin.firestore.FieldValue.serverTimestamp() },
+              { merge: true }
+            );
           await db.collection('users').doc(imam.uid).update({ isImam: false });
           await db
             .collection('users')
@@ -4196,6 +4205,10 @@ async function computeTotalWealth(userData, prices) {
 // ---------------------------------------------------------------------------
 const IMAM_SALARY = 10000;
 const IMAM_REPUTATION_REQUIRED = 50;
+// KULLANICI REVİZESİ: imamlıktan atılan biri artık "yerine başkası imam
+// olup o da atılana kadar" değil, atıldığı andan (dailyReset'teki 00:00
+// azli) itibaren TAM 24 saat boyunca tekrar imam olamaz — bkz. applyForImam.
+const IMAM_REAPPLY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 export const applyForImam = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -4216,11 +4229,15 @@ export const applyForImam = onCall(async (request) => {
     if (imamSnap.exists) {
       throw new HttpsError('failed-precondition', 'Zaten bir imam var.');
     }
-    if (metaSnap.data()?.lastFiredUid === uid) {
-      throw new HttpsError(
-        'failed-precondition',
-        'İmamlıktan atıldığın için hemen tekrar başvuramazsın — yerine başka biri imam olup görevi bırakınca tekrar deneyebilirsin.'
-      );
+    const meta = metaSnap.data();
+    if (meta?.lastFiredUid === uid) {
+      const lastFiredAtMs = meta.lastFiredAt?.toMillis?.() ?? null;
+      // Eski (migrasyon öncesi) kayıtlarda lastFiredAt olmayabilir — bu
+      // durumda güvenli taraftan hâlâ yasaklı say (aşağıdaki dailyReset
+      // bir sonraki atmada zaten lastFiredAt'i dolduracak).
+      if (lastFiredAtMs === null || Date.now() - lastFiredAtMs < IMAM_REAPPLY_COOLDOWN_MS) {
+        throw new HttpsError('failed-precondition', 'İmamlıktan yeni atıldığın için imam olamazsın.');
+      }
     }
     if (user.profession === 'polis' || user.pendingPoliceChange === 'apply') {
       throw new HttpsError(
@@ -4608,15 +4625,25 @@ async function sendCaptureSms(uid, penaltyAmount, newTotalDebt) {
 // alınıyordu, ömür (lifeDays) hiç kontrol edilmiyordu. Artık ömrü
 // (lifeDays) 0 veya altında olan bir silah — tamir hakkı (repairsUsed)
 // ne olursa olsun — güç hesabına HİÇ dahil edilmiyor; sadece tamir
-// edildikten (lifeDays > 0'a çıktıktan) sonra tekrar sayılır. Bu fonksiyon
-// TEK merkezi kaynak (attemptHeist, createHeistPlan, joinHeistPlan,
-// refreshHeistPlanParticipants hepsi buradan geçiyor) — tek yerde
-// düzeltmek hepsini kapsıyor.
+// edildikten (lifeDays > 0'a çıktıktan) sonra tekrar sayılır.
+//
+// İKİNCİ BUG DÜZELTMESİ (kullanıcı revizesi): "silahımı 2. el sitesinde
+// sattım fakat hala gücüm sattığım silahın gücü olarak gözüküyor ...
+// silahımızı sattığımız an onun gücünden faydalanamayız." createListing/
+// instantSellListing bir silahı sattığında/satışa çıkardığında silah
+// dokümanını SİLMİYOR, sadece `listed: true` işaretliyor (asıl transfer/
+// silme ancak biri satın alınca ya da 7 gün sonra ilan süresi dolunca
+// olur — bkz. buyListing/expireOldMarketplaceListings) — bu yüzden
+// `listed: true` olan bir silah artık fiilen elimizde değildir ve güç
+// hesabına DAHİL EDİLMEMELİ. Bu fonksiyon TEK merkezi kaynak (attemptHeist,
+// createHeistPlan, joinHeistPlan, refreshHeistPlanParticipants hepsi
+// buradan geçiyor) — tek yerde düzeltmek hepsini kapsıyor.
 async function getMaxWeaponPower(uid) {
   const snap = await db.collection('weapons').where('ownerId', '==', uid).get();
   let maxPower = 0;
   snap.forEach((d) => {
     const w = d.data();
+    if (w.listed) return; // satılmış/satışa çıkarılmış silah artık elimizde sayılmaz
     const lifeDays = w.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
     if (lifeDays <= 0) return; // ömrü bitmiş silah — tamir edilene kadar gücü sayılmaz
     maxPower = Math.max(maxPower, w.power || 0);
@@ -12349,8 +12376,19 @@ export const assignFutbolDoctor = onCall(async (request) => {
     if (!playerSnap.exists || playerSnap.data().teamId !== teamId) {
       throw new HttpsError('invalid-argument', 'Bu oyuncu senin kadronda değil.');
     }
-    if (!((playerSnap.data().injuryDaysLeft || 0) > 0)) {
+    const injuryDaysLeft = playerSnap.data().injuryDaysLeft || 0;
+    if (!(injuryDaysLeft > 0)) {
       throw new HttpsError('failed-precondition', 'Bu oyuncu sakat değil.');
+    }
+    // Kullanıcı revizesi: sakatlık zaten HER gece (doktorsuz da) kendiliğinden
+    // 1 gün azalıyor — kalan süresi 1 gün olan bir oyuncu bu gece 00:00'da
+    // doktorsuz da tamamen iyileşmiş olacak, doktor tutmak parayı boşa
+    // harcamak demek (bkz. dailyReset'teki sakatlık iyileşme bloğu).
+    if (injuryDaysLeft === 1) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Bu oyuncu zaten bu gece kendiliğinden iyileşecek, doktora gerek yok.'
+      );
     }
     const user = userSnap.data();
     if (!user || (user.gold || 0) < FUTBOL_DOCTOR_COST) {
@@ -12358,6 +12396,34 @@ export const assignFutbolDoctor = onCall(async (request) => {
     }
     tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-FUTBOL_DOCTOR_COST) });
     tx.update(teamRef, { doctorPlayerId: playerId });
+  });
+
+  return { ok: true };
+});
+
+// cancelFutbolDoctor — yeni istek: "bi oyuncuyu tedaviye soktuğumuzda
+// başlamadan iptal edip başka oyuncuyu tedaviye sokalım, iptal ettiğimizde
+// paramız bize iade edilsin". Tedavi zaten sadece gece 00:00'daki
+// dailyReset'te uygulandığı (bkz. yukarıdaki doktorPlayerId yorumu) için
+// gün içinde HER ZAMAN "başlamamış" durumdadır — dolayısıyla doktor kutusu
+// dolu olduğu sürece iptal edilebilir: ödenen FUTBOL_DOCTOR_COST tam iade
+// edilir ve kutu boşalır, böylece hemen başka bir oyuncu atanabilir.
+export const cancelFutbolDoctor = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { teamId } = request.data || {};
+  const teamRef = db.collection('futbolTeams').doc(teamId);
+  const userRef = db.collection('users').doc(uid);
+
+  await db.runTransaction(async (tx) => {
+    const teamSnap = await tx.get(teamRef);
+    if (!teamSnap.exists || teamSnap.data().ownerUid !== uid) {
+      throw new HttpsError('permission-denied', 'Bu takım sana ait değil.');
+    }
+    if (!teamSnap.data().doctorPlayerId) {
+      throw new HttpsError('failed-precondition', 'Şu an tedavi altında bir oyuncun yok.');
+    }
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(FUTBOL_DOCTOR_COST) });
+    tx.update(teamRef, { doctorPlayerId: admin.firestore.FieldValue.delete() });
   });
 
   return { ok: true };

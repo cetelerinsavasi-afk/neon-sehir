@@ -29,11 +29,13 @@ export default function SoygunTab({ initialTarget }) {
   }, [initialTarget]);
 
   // KULLANICI REVİZESİ (BUG DÜZELTMESİ): ömrü (lifeDays) 0 olan bir silah —
-  // tamir hakkı kalmış olsa bile — güç hesabına dahil edilmemeli (bkz.
+  // tamir hakkı kalmış olsa bile — güç hesabına dahil edilmemeli. Ayrıca
+  // 2. el sitesinde satılmış/satışa çıkarılmış (listed: true) bir silah da
+  // artık fiilen elimizde değildir, onun da gücü sayılmamalı (bkz.
   // functions/index.js getMaxWeaponPower'daki aynı düzeltme — burası
   // ekranın sunucuyla TUTARLI göstermesi için).
   const myPower = weapons.reduce(
-    (max, w) => ((w.lifeDays ?? INITIAL_LIFE_DAYS) > 0 ? Math.max(max, w.power || 0) : max),
+    (max, w) => (!w.listed && (w.lifeDays ?? INITIAL_LIFE_DAYS) > 0 ? Math.max(max, w.power || 0) : max),
     0
   );
 

@@ -48,6 +48,17 @@ function maxFanEffect(ticketPrice) {
   return { type: 'gain', amount: (9 - ticketPrice) * 1000 };
 }
 
+// Maç SONUCUNUN (galibiyet/mağlubiyet) taraftar sayısı üzerindeki etkisi —
+// bilet fiyatından TAMAMEN BAĞIMSIZ, sunucudaki applyFutbolMatchResult'taki
+// "fanDelta = randomInRange(1, 10000)" ile AYNI aralık: kazanınca 1-10.000
+// taraftar kazanılır, kaybedince 1-10.000 taraftar kaybedilir (beraberlikte
+// değişmez). Yeni istek: "oyuncular bilet fiyatına göre gelen/giden
+// taraftarı görebiliyor ama maç kazanınca/kaybedince de değiştiğini
+// bilmiyorlar, o yüzden yüksek fiyat yapmak istemiyorlar" — bu paneli
+// SADECE bilgilendirmek için gösteriyoruz (sabit bir aralık, bilet
+// fiyatından etkilenmez).
+const FUTBOL_MATCH_RESULT_MAX_FAN_SWING = 10000;
+
 export default function FutbolStadyum({ team }) {
   const capacity = team.stadiumCapacity || DEFAULT_CAPACITY;
   const fans = team.fans || 0;
@@ -183,6 +194,27 @@ export default function FutbolStadyum({ team }) {
         >
           {busySave ? '...' : '💾 Bilet Fiyatını Kaydet'}
         </button>
+      </div>
+
+      <div className="futbol-stadyum-card">
+        <p className="futbol-kadro-section-title">📊 Maç Sonucu Taraftar Etkisi</p>
+        <p className="futbol-buy-meta">
+          Taraftar sayın sadece bilet fiyatından değil, maçın SONUCUNDAN da etkilenir — bilet
+          fiyatını düşük tutsan bile bir maç kaybedersen taraftar kaybedebilirsin, yüksek tutsan
+          bile kazanırsan taraftar kazanabilirsin:
+        </p>
+        <p className="futbol-stadyum-positive">
+          🏆 Maçı kazanırsan: 1-{FUTBOL_MATCH_RESULT_MAX_FAN_SWING.toLocaleString('tr-TR')} taraftar
+          kazanabilirsin.
+        </p>
+        <p className="futbol-stadyum-warning">
+          💔 Maçı kaybedersen: 1-{FUTBOL_MATCH_RESULT_MAX_FAN_SWING.toLocaleString('tr-TR')} taraftar
+          kaybedebilirsin.
+        </p>
+        <p className="futbol-placeholder futbol-kadro-note">
+          Beraberlikte taraftar sayın bu yüzden değişmez. Bu etki, yukarıdaki bilet fiyatı
+          memnuniyet etkisinden bağımsız olarak AYRICA uygulanır.
+        </p>
       </div>
 
       {confirmUpgrade && nextStep && (

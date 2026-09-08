@@ -418,6 +418,10 @@ export const setFutbolLineup = (teamId, formation, tactic, lineup, mucadele) =>
 export const assignFutbolDoctor = (teamId, playerId) =>
   httpsCallable(functions, 'assignFutbolDoctor')({ teamId, playerId });
 
+// cancelFutbolDoctor — tedavi henüz gece 00:00'da uygulanmadan iptal eder,
+// ödenen altını tam iade eder ve doktor kutusunu boşaltır.
+export const cancelFutbolDoctor = (teamId) => httpsCallable(functions, 'cancelFutbolDoctor')({ teamId });
+
 export const listFutbolTransferMarket = () => httpsCallable(functions, 'listFutbolTransferMarket')();
 
 export const instantSellFutbolPlayer = (playerId) =>

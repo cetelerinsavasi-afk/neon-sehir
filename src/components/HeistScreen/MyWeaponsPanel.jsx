@@ -6,10 +6,14 @@ import { upgradeWeapon } from '../../services/gameActions';
 // Silah geliştirme işlemleri artık Silah Mağazası'nda değil, burada
 // (Soygun ekranı > Silahlarım) yapılıyor.
 export default function MyWeaponsPanel() {
-  const { weapons } = useWeapons();
+  const { weapons: allWeapons } = useWeapons();
   const { inventory } = useInventory();
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
+
+  // 2. el sitesinde satılmış/satışa çıkarılmış (listed: true) bir silah
+  // artık fiilen elimizde değil — burada gösterilmemeli/geliştirilmemeli.
+  const weapons = allWeapons.filter((w) => !w.listed);
 
   const materialQty = inventory.silahUpgrade || 0;
 

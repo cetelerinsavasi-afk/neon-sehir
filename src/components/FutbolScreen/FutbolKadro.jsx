@@ -50,6 +50,48 @@ function buildSlots(formation, lineup, players) {
   return slots;
 }
 
+const FORMATION_KEYS = Object.keys(FORMATIONS);
+
+// "Otomatik Doldur" — backend'deki resolveFutbolTeamLineup/pickFutbolLineup
+// ile aynı kural: form x güç (bkz. futbolEffectivePower) en yüksek, sakat
+// olmayan ve antrenmanda olmayan oyuncular kadroya eklenir.
+function futbolEffectivePower(p) {
+  return p.power * (p.form / 100);
+}
+
+function eligibleAutoFillPlayersByPosition(players, team) {
+  const trainingSet = new Set(team.trainingPlayerIds || []);
+  const map = { GK: [], DEF: [], MID: [], FWD: [] };
+  players.forEach((p) => {
+    if ((p.injuryDaysLeft || 0) > 0) return; // sakat oyuncu ilk 11'e giremez
+    if (trainingSet.has(p.id)) return; // antrenmandaki oyuncu ilk 11'e giremez
+    if (!map[p.position]) return;
+    map[p.position].push(p);
+  });
+  Object.keys(map).forEach((pos) => {
+    map[pos].sort((a, b) => futbolEffectivePower(b) - futbolEffectivePower(a));
+  });
+  return map;
+}
+
+function formationFillable(byPos, need) {
+  return Object.keys(need).every((pos) => (byPos[pos]?.length || 0) >= need[pos]);
+}
+
+function formationMissingCount(byPos, need) {
+  return Object.keys(need).reduce((sum, pos) => sum + Math.max(0, need[pos] - (byPos[pos]?.length || 0)), 0);
+}
+
+function fillSlotsForFormation(byPos, need) {
+  const slots = {};
+  ROW_ORDER.forEach((pos) => {
+    const list = byPos[pos] || [];
+    const count = need[pos] || 0;
+    slots[pos] = Array.from({ length: count }, (_, idx) => (list[idx] ? list[idx].id : null));
+  });
+  return slots;
+}
+
 export default function FutbolKadro({ team }) {
   const { players } = useFutbolTeamPlayers(team.id);
   const [formation, setFormation] = useState(team.formation || '2-2-1');
@@ -64,12 +106,21 @@ export default function FutbolKadro({ team }) {
   // sonraki otomatik-kaydetme denemesini (sunucudan taze veri geldiğinde,
   // kullanıcı henüz bir şey değiştirmemişken) atlamak için kullanılıyor.
   const skipNextAutoSaveRef = useRef(true);
+  // Otomatik Doldur — hangi dizilimden başlayarak deneneceğini tutar.
+  // Takım değişince ya da kullanıcı elle bir dizilim seçince, bir sonraki
+  // "Otomatik Doldur" önce O dizilimi dener (yeterli oyuncu varsa dizilim
+  // değişmez). Aynı butona ÜST ÜSTE basılırsa, bir sonraki dener dizilim
+  // sıradaki farklı dizilime kayar — "tekrar basarsa farklı bi dizilim
+  // yapılsın" isteği.
+  const autoFillCursorRef = useRef(0);
 
   useEffect(() => {
-    setFormation(team.formation || '2-2-1');
+    const f = team.formation || '2-2-1';
+    setFormation(f);
     setTactic(team.tactic || 'dengeli');
     setMucadele(team.mucadele || 'normal');
     skipNextAutoSaveRef.current = true;
+    autoFillCursorRef.current = Math.max(0, FORMATION_KEYS.indexOf(f));
   }, [team.id]);
 
   useEffect(() => {
@@ -83,9 +134,61 @@ export default function FutbolKadro({ team }) {
     const flatCurrent = Object.values(slots).flat().filter(Boolean);
     setFormation(f);
     setSlots(buildSlots(f, flatCurrent, players));
+    // Kullanıcı dizilimi elle seçtiyse, otomatik doldur bir dahaki sefere
+    // önce bunu denesin.
+    autoFillCursorRef.current = Math.max(0, FORMATION_KEYS.indexOf(f));
   };
 
   const usedPlayerIds = new Set(Object.values(slots).flat().filter(Boolean));
+
+  // Otomatik Doldur — taktik/mücadele hep sabit kalır; dizilim SADECE
+  // mevcut/denenen dizilimde ihtiyacı karşılayacak sağlıklı+antrenmanda
+  // olmayan oyuncu yoksa değişir. Kadrodaki oyuncular her zaman form x güç
+  // sırasına göre en iyileriyle doldurulur.
+  const handleAutoFill = () => {
+    if (!players.length) {
+      setMessage('Kadroda oyuncu yok.');
+      return;
+    }
+    setMessage('');
+    const byPos = eligibleAutoFillPlayersByPosition(players, team);
+    const n = FORMATION_KEYS.length;
+    const startIdx = ((autoFillCursorRef.current % n) + n) % n;
+    const order = Array.from({ length: n }, (_, i) => FORMATION_KEYS[(startIdx + i) % n]);
+
+    let chosenKey = order.find((key) => formationFillable(byPos, FORMATIONS[key]));
+    if (!chosenKey) {
+      // Hiçbir dizilim tam doldurulamıyor — en az eksikli olanla, elden
+      // geldiğince (bkz. backend'deki aynı "best effort" mantığı).
+      let bestMissing = Infinity;
+      order.forEach((key) => {
+        const missing = formationMissingCount(byPos, FORMATIONS[key]);
+        if (missing < bestMissing) {
+          bestMissing = missing;
+          chosenKey = key;
+        }
+      });
+    }
+
+    const need = FORMATIONS[chosenKey];
+    const newSlots = fillSlotsForFormation(byPos, need);
+    const previousFormation = formation;
+    setFormation(chosenKey);
+    setSlots(newSlots);
+    autoFillCursorRef.current = (FORMATION_KEYS.indexOf(chosenKey) + 1) % n;
+
+    const totalNeeded2 = Object.values(need).reduce((a, b) => a + b, 0);
+    const filled = Object.values(newSlots).flat().filter(Boolean).length;
+    if (filled < totalNeeded2) {
+      setMessage(
+        `Uygun (sakat olmayan, antrenmanda olmayan) yeterli oyuncu bulunamadı — kadro ${filled}/${totalNeeded2} dolduruldu.`
+      );
+    } else if (chosenKey !== previousFormation) {
+      setMessage(`Mevcut dizilim için yeterli oyuncu yoktu, ${chosenKey} dizilimine geçildi ve kadro dolduruldu.`);
+    } else {
+      setMessage('Kadro otomatik dolduruldu.');
+    }
+  };
 
   const assignPlayer = (position, slotIndex, playerId) => {
     setMessage('');
@@ -189,6 +292,10 @@ export default function FutbolKadro({ team }) {
         olur, ama sakatlanma riski ve maç sonrası form kaybı da o kadar
         artar. Dikkatli oynarsan tam tersi — daha güvenli ama daha zayıf.
       </p>
+
+      <button type="button" className="futbol-admin-reset futbol-kadro-autofill" onClick={handleAutoFill}>
+        ⚡ Otomatik Doldur
+      </button>
 
       <div className="futbol-pitch-big">
         {ROW_ORDER.map((pos) => (

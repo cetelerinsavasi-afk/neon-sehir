@@ -77,6 +77,12 @@
   font-size: 11px;
 }
 
+.futbol-kadro-autofill {
+  width: 100%;
+  margin-top: 10px;
+  font-weight: 700;
+}
+
 /* --- Sahada dizilim editörü --- */
 .futbol-pitch-big {
   display: flex;

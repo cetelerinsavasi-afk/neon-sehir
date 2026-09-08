@@ -90,6 +90,18 @@
   flex: 1;
 }
 
+.futbol-doktor-treating {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.futbol-doktor-busy-note {
+  white-space: nowrap;
+  font-style: italic;
+}
+
 .futbol-training-slots {
   display: flex;
   flex-direction: column;

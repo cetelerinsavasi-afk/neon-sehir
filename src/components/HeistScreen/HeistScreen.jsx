@@ -31,11 +31,13 @@ export default function HeistScreen({ initialTarget, onClose }) {
   // KULLANICI REVİZESİ (BUG DÜZELTMESİ): ömrü (lifeDays) 0 olan bir silah —
   // tamir hakkı kalmış olsa bile — güç hesabına dahil edilmemeli, yoksa
   // oyuncu silahı hiç tamir etmeden o silahın gücünü kullanmaya devam
-  // edebiliyormuş gibi görünür (gerçek sunucu tarafı zaten aynı şekilde
+  // edebiliyormuş gibi görünür. Ayrıca 2. el sitesinde satılmış/satışa
+  // çıkarılmış (listed: true) bir silah da artık fiilen elimizde değildir,
+  // onun da gücü sayılmamalı (gerçek sunucu tarafı zaten aynı şekilde
   // filtreliyor, bkz. functions/index.js getMaxWeaponPower — burası sadece
   // ekrandaki gösterimin sunucuyla TUTARLI olmasını sağlıyor).
   const myPower = weapons.reduce(
-    (max, w) => ((w.lifeDays ?? INITIAL_LIFE_DAYS) > 0 ? Math.max(max, w.power || 0) : max),
+    (max, w) => (!w.listed && (w.lifeDays ?? INITIAL_LIFE_DAYS) > 0 ? Math.max(max, w.power || 0) : max),
     0
   );
 
