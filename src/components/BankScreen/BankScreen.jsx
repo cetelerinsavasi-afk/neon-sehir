@@ -76,28 +76,52 @@ function TradeToggle({
   maxBuy,
   maxSell,
   quickAmounts = DEFAULT_QUICK_AMOUNTS,
-  // sellCommissionRate — YENİ İSTEK (kripto satış komisyonu): sadece
-  // kripto satışında %1 (0.01) — oyuncu satmayı onaylamadan ÖNCE
-  // komisyon miktarını ve eline net geçecek tutarı görmeli (bkz. madde:
-  // "Oyuncu satış işlemini onaylamadan önce ... ekranda açıkça
-  // gösterilecek"). Diğer tüm Al/Sat panelleri (banka faizi, elmas, hisse
-  // senedi) bu prop'u hiç geçmez, davranışları DEĞİŞMEDİ.
+  // sellCommissionRate — kullanıcı revizesi: "kriptoda olduğu gibi
+  // hisse senedi ve elmas satarken de %1lik bir işlem ücreti olsun,
+  // sistem kripto ile birebir aynı olsun istiyorum" — elmas/hisse
+  // senedi/kripto satışında %1 (0.01), faiz/banka gibi komisyonsuz
+  // panellerde bu prop hiç geçilmiyor (0 kalır).
   sellCommissionRate = 0,
 }) {
   const [mode, setMode] = useState(null); // 'buy' | 'sell' | null
   const [amount, setAmount] = useState(0);
+  // confirmingSell — YENİ İSTEK: "satarken bu kadar komisyon oranı var
+  // emin misin diye sorsun, şu an param azalıyor sattıkça ama farkında
+  // değilim." Komisyonlu satışlarda (sellCommissionRate > 0) "Onayla"
+  // artık DOĞRUDAN satmıyor, önce komisyon tutarını ve eline net
+  // geçecek miktarı açıkça gösteren bir "emin misin?" adımına geçiyor —
+  // "Tümünü Sat" butonundaki (SellAllCryptoButton) desenle birebir aynı.
+  // Komisyonsuz panellerde (banka faizi) davranış DEĞİŞMEDİ.
+  const [confirmingSell, setConfirmingSell] = useState(false);
   const preview = unitPrice && amount > 0 ? amount / unitPrice : null;
   const commissionPreview =
     mode === 'sell' && sellCommissionRate > 0 && amount > 0
       ? { commission: Math.round(amount * sellCommissionRate), net: amount - Math.round(amount * sellCommissionRate) }
       : null;
 
-  const handleSubmit = async (m) => {
+  const executeSell = async () => {
     if (!amount || amount <= 0) return;
-    if (m === 'buy') await onBuy(amount);
-    else await onSell(amount);
+    await onSell(amount);
     setAmount(0);
     setMode(null);
+    setConfirmingSell(false);
+  };
+
+  const handleSubmit = async (m) => {
+    if (!amount || amount <= 0) return;
+    if (m === 'buy') {
+      await onBuy(amount);
+      setAmount(0);
+      setMode(null);
+      return;
+    }
+    // Satış: komisyon varsa önce onay adımına geç, komisyon yoksa
+    // (ör. banka faizi) eskisi gibi doğrudan gerçekleştir.
+    if (sellCommissionRate > 0) {
+      setConfirmingSell(true);
+      return;
+    }
+    await executeSell();
   };
 
   const handleClick = (m) => {
@@ -108,6 +132,7 @@ function TradeToggle({
     }
     setMode(m);
     setAmount(0);
+    setConfirmingSell(false);
   };
 
   return (
@@ -126,7 +151,7 @@ function TradeToggle({
           {sellLabel}
         </button>
       </div>
-      {mode && (
+      {mode && !confirmingSell && (
         <div className="bank-trade-panel">
           <QuantityStepper
             value={amount}
@@ -148,8 +173,30 @@ function TradeToggle({
             disabled={busy || !amount}
             onClick={() => handleSubmit(mode)}
           >
-            {busy ? '…' : `Onayla — ${amount.toLocaleString('tr-TR')} altın`}
+            {busy
+              ? '…'
+              : mode === 'sell' && sellCommissionRate > 0
+                ? `Sat — ${amount.toLocaleString('tr-TR')} altın`
+                : `Onayla — ${amount.toLocaleString('tr-TR')} altın`}
           </button>
+        </div>
+      )}
+      {mode === 'sell' && confirmingSell && commissionPreview && (
+        <div className="bank-trade-panel bank-sell-confirm">
+          <p className="bank-hint small">
+            {amount.toLocaleString('tr-TR')} altınlık satış · %{Math.round(sellCommissionRate * 100)} komisyon:{' '}
+            <strong>{commissionPreview.commission.toLocaleString('tr-TR')} altın</strong> · Eline geçecek:{' '}
+            <strong>{commissionPreview.net.toLocaleString('tr-TR')} altın</strong>
+          </p>
+          <p className="bank-hint small">Bu kadar komisyon kesilecek, emin misin?</p>
+          <div className="bank-sell-all-confirm-row">
+            <button className="bank-btn" disabled={busy} onClick={() => setConfirmingSell(false)}>
+              Vazgeç
+            </button>
+            <button className="bank-btn primary" disabled={busy} onClick={executeSell}>
+              {busy ? '…' : 'Evet, Sat'}
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -202,6 +249,18 @@ function SellAllCryptoButton({ cryptoValue, busy, onConfirm }) {
   );
 }
 
+// Rejim eşikleri — functions/index.js hourlyInvestmentUpdate'teki
+// DIAMOND_REGIME_THRESHOLD / STOCK_REGIME_THRESHOLD / CRYPTO_REGIME_
+// THRESHOLD ile BİREBİR AYNI. "düşme eğiliminde ↓" uyarısı burada,
+// GÜNCEL fiyattan doğrudan hesaplanıyor — sunucudaki diamondReversedRegime
+// vb. alanlara bağlı kalınmıyor, çünkü o alanlar sadece saatlik
+// hourlyInvestmentUpdate çalıştığında yazılıyor (deploy sonrası ilk
+// saate kadar eksik/eski kalabilir). Fiyatı zaten anlık okuduğumuz için
+// eşiği burada da uygulamak uyarının HER ZAMAN güncel olmasını sağlıyor.
+const DIAMOND_REGIME_THRESHOLD = 20000;
+const STOCK_REGIME_THRESHOLD = 200000000;
+const CRYPTO_REGIME_THRESHOLD = 200000;
+
 function InvestmentsTab({ player, prices, busy, error, run }) {
   const bankBalance = player?.bankBalance ?? 0;
   const bankCostBasis = player?.bankCostBasis ?? 0;
@@ -211,6 +270,9 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
   const diamondCostBasis = player?.diamondCostBasis ?? 0;
   const stockCostBasis = player?.stockCostBasis ?? 0;
   const cryptoCostBasis = player?.cryptoCostBasis ?? 0;
+  const diamondReversedRegime = (prices.diamondPrice ?? 0) >= DIAMOND_REGIME_THRESHOLD;
+  const stockReversedRegime = (prices.stockPrice ?? 0) >= STOCK_REGIME_THRESHOLD;
+  const cryptoReversedRegime = (prices.cryptoPrice ?? 0) >= CRYPTO_REGIME_THRESHOLD;
   const { history } = useInvestmentHistory();
   const diamondPoints = history.map((h) => h.diamondPrice).filter((v) => v !== undefined);
   const stockPoints = history.map((h) => h.stockPrice).filter((v) => v !== undefined);
@@ -253,7 +315,7 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
       <div className="bank-section">
         <p className="bank-section-title">
           Elmas <ChangeBadge pct={prices.diamondChangePct} />
-          {prices.diamondReversedRegime && (
+          {diamondReversedRegime && (
             <span className="bank-regime-warning">düşme eğiliminde ↓</span>
           )}
         </p>
@@ -297,7 +359,7 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
       <div className="bank-section">
         <p className="bank-section-title">
           Hisse Senedi <ChangeBadge pct={prices.stockChangePct} />
-          {prices.stockReversedRegime && (
+          {stockReversedRegime && (
             <span className="bank-regime-warning">düşme eğiliminde ↓</span>
           )}
         </p>
@@ -341,7 +403,7 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
       <div className="bank-section">
         <p className="bank-section-title">
           Kripto <ChangeBadge pct={prices.cryptoChangePct} />
-          {prices.cryptoReversedRegime && (
+          {cryptoReversedRegime && (
             <span className="bank-regime-warning">düşme eğiliminde ↓</span>
           )}
         </p>

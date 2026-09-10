@@ -163,6 +163,15 @@
   background: rgba(255, 46, 140, 0.12);
 }
 
+/* bank-sell-confirm — kullanıcı revizesi: "satarken bu kadar komisyon
+   oranı var emin misin diye sorsun" — komisyonlu her satışta (elmas/
+   hisse senedi/kripto) TradeToggle'ın normal miktar panelinin yerini
+   alan onay kutusu, "Tüm Kriptoları Sat"taki (.bank-sell-all-confirm)
+   ile aynı görsel dilde. */
+.bank-sell-confirm {
+  border-color: rgba(255, 46, 140, 0.35);
+}
+
 .bank-change-badge {
   font-size: 11px;
   font-weight: 700;
