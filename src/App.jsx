@@ -21,10 +21,11 @@ import CarDealershipWorldScreen from './components/CarDealershipWorldScreen/CarD
 import WeaponShopWorldScreen from './components/WeaponShopWorldScreen/WeaponShopWorldScreen';
 import TuningGarageWorldScreen from './components/TuningGarageWorldScreen/TuningGarageWorldScreen';
 import TopNotificationBanner from './components/TopNotificationBanner/TopNotificationBanner';
+import OnboardingPanel from './components/OnboardingPanel/OnboardingPanel';
 import { usePlayer } from './hooks/usePlayer';
 import { useMyActiveRaceRoom } from './hooks/useMyActiveRaceRoom';
 import { useFirestoreResume } from './hooks/useFirestoreResume';
-import { migrateArabaGelistirmeUnification, migrateVehicleWeaponLifeCap, migrateVehicleWeaponLifeCap20, resetFutbolTransferMarket } from './services/gameActions';
+import { migrateArabaGelistirmeUnification, migrateVehicleWeaponLifeCap, migrateVehicleWeaponLifeCap20, resetFutbolTransferMarket, migrateOnboardingPoliceRule } from './services/gameActions';
 import { regions } from './data/regions';
 import './styles/theme.css';
 import './App.css';
@@ -47,6 +48,14 @@ let lifeCap20MigrationTriggered = false;
 // migration bayrağıyla İDEMPOTENT olduğu için tekrar tekrar çağırmak
 // zararsız, ama gereksiz ağ isteğini önlemek için burada da işaretliyoruz.
 let futbolTransferMarketResetTriggered = false;
+// Onboarding polis kuralı göçü (tüm mevcut polisleri görevden alma +
+// bekleyen başvuruları iptal etme + gazete duyurusu) bu oturumda
+// tetiklendi mi? Asıl olarak sunucudaki dailyReset içinde her gece
+// otomatik çalışıyor (bkz. functions/index.js runOnboardingPoliceRuleMigration)
+// — bu istemci tetiklemesi, deploy'dan sonra kullanıcı uygulamayı ilk
+// açtığı an, gece yarısını beklemeden hemen çalışsın diye ekstra bir
+// güvence. TAMAMEN OTOMATİK — hiçbir elle tıklama gerektirmez.
+let onboardingPoliceRuleMigrationTriggered = false;
 
 // Harita, HUD ve telefon giriş yapmadan da görülebilir/gezilebilir — giriş
 // çağrısı artık haritayı bloklayan ayrı bir katman yerine, her ekranda görünen
@@ -132,6 +141,19 @@ function GameShell() {
     futbolTransferMarketResetTriggered = true;
     resetFutbolTransferMarket().catch((err) => {
       console.error('Futbol transfer piyasası sıfırlama başarısız:', err);
+    });
+  }, [user]);
+
+  // Onboarding polis kuralı göçünü tetikle — kullanıcı revizesi: "tek
+  // seferlik çalışan bi kod yaz, push ettiğimde otomatik çalışsın, elle
+  // bir buton olmasın". İdempotent (bkz. functions/index.js
+  // runOnboardingPoliceRuleMigration), bu yüzden her kullanıcı için
+  // tetiklemek zararsız — sadece ilk çağıran gerçek işi yapar.
+  useEffect(() => {
+    if (!user || onboardingPoliceRuleMigrationTriggered) return;
+    onboardingPoliceRuleMigrationTriggered = true;
+    migrateOnboardingPoliceRule().catch((err) => {
+      console.error('Onboarding polis kuralı göçü başarısız:', err);
     });
   }, [user]);
 
@@ -302,6 +324,10 @@ function GameShell() {
       >
         💬
       </button>
+
+      {/* Yeni görev/hatırlatıcı paneli — ChatsApp butonunun tam simetriği,
+          sol altta aynı boyut/konumda (bkz. OnboardingPanel.css). */}
+      <OnboardingPanel />
 
       {phoneOpen && (
         <PhoneScreen

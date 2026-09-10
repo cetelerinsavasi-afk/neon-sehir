@@ -198,11 +198,6 @@ export default function FutbolStadyum({ team }) {
 
       <div className="futbol-stadyum-card">
         <p className="futbol-kadro-section-title">📊 Maç Sonucu Taraftar Etkisi</p>
-        <p className="futbol-buy-meta">
-          Taraftar sayın sadece bilet fiyatından değil, maçın SONUCUNDAN da etkilenir — bilet
-          fiyatını düşük tutsan bile bir maç kaybedersen taraftar kaybedebilirsin, yüksek tutsan
-          bile kazanırsan taraftar kazanabilirsin:
-        </p>
         <p className="futbol-stadyum-positive">
           🏆 Maçı kazanırsan: 1-{FUTBOL_MATCH_RESULT_MAX_FAN_SWING.toLocaleString('tr-TR')} taraftar
           kazanabilirsin.
@@ -210,10 +205,6 @@ export default function FutbolStadyum({ team }) {
         <p className="futbol-stadyum-warning">
           💔 Maçı kaybedersen: 1-{FUTBOL_MATCH_RESULT_MAX_FAN_SWING.toLocaleString('tr-TR')} taraftar
           kaybedebilirsin.
-        </p>
-        <p className="futbol-placeholder futbol-kadro-note">
-          Beraberlikte taraftar sayın bu yüzden değişmez. Bu etki, yukarıdaki bilet fiyatı
-          memnuniyet etkisinden bağımsız olarak AYRICA uygulanır.
         </p>
       </div>
 

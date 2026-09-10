@@ -117,11 +117,12 @@ export default function FutbolDoktor({ team }) {
                       className="futbol-admin-submit"
                       disabled={busyId === p.id || !canAfford}
                       onClick={() => handleAssign(p.id)}
-                      title={!canAfford ? 'Yetersiz altın.' : ''}
                     >
                       {busyId === p.id
                         ? '...'
-                        : `Tedavi Et (${FUTBOL_DOCTOR_COST.toLocaleString('tr-TR')} altın · -1 gün)`}
+                        : !canAfford
+                          ? 'Yetersiz Bakiye'
+                          : `Tedavi Et (${FUTBOL_DOCTOR_COST.toLocaleString('tr-TR')} altın · -1 gün)`}
                     </button>
                   )}
                 </div>

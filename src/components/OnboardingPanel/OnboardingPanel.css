@@ -1,0 +1,370 @@
+/* onboarding-btn — App.jsx'te .map-chatsapp-btn ile BİREBİR aynı
+   boyut/konumda, ama sol altta (aynadaki gibi). */
+.onboarding-btn {
+  position: fixed;
+  left: 16px;
+  bottom: calc(104px + env(safe-area-inset-bottom));
+  z-index: 20;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  color: var(--neon-yellow);
+  font-size: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 0 18px rgba(255, 210, 63, 0.2);
+  transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+
+.onboarding-btn:hover {
+  border-color: var(--neon-yellow);
+  transform: scale(1.05);
+}
+
+.onboarding-btn:active {
+  transform: scale(0.96);
+}
+
+/* Görevler bitene kadar dikkat çekici, sürekli nabız gibi atan bir buton
+   olsun istendi — ödül alındıktan sonra normale döner. */
+.onboarding-btn-attention {
+  animation: onboarding-btn-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes onboarding-btn-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 12px rgba(255, 210, 63, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 26px rgba(255, 210, 63, 0.85);
+  }
+}
+
+/* Ödül alınmaya hazır (10/10 tamamlandı) — sarıdan altına, daha da
+   belirgin bir vurgu. */
+.onboarding-btn-reward-ready {
+  border-color: var(--neon-yellow);
+  animation: onboarding-btn-pulse-gold 1s ease-in-out infinite;
+}
+
+@keyframes onboarding-btn-pulse-gold {
+  0%,
+  100% {
+    box-shadow: 0 0 14px rgba(255, 210, 63, 0.5);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(255, 210, 63, 1);
+    transform: scale(1.08);
+  }
+}
+
+.onboarding-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--neon-pink);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--bg, #070a12);
+}
+
+.onboarding-panel-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+}
+
+.onboarding-panel {
+  width: 100%;
+  max-width: 420px;
+  max-height: 82vh;
+  background: var(--bg);
+  border: 1px solid var(--panel-border);
+  border-bottom: none;
+  border-radius: 20px 20px 0 0;
+  padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: onboarding-panel-slide-up 0.25s ease;
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5);
+}
+
+@keyframes onboarding-panel-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.onboarding-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.onboarding-panel-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--neon-yellow);
+}
+
+.onboarding-panel-close {
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  color: var(--text);
+  border-radius: 8px;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.onboarding-panel-body {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* --- Sıralı görev listesi: kilitli/aktif/tamamlandı görsel durumları,
+   birbirine bağlı dikey bir "timeline" olarak. Amaç: açıklayıcı yazıya
+   gerek kalmadan, tasarımın kendisi ilerlemeyi ve sırayı anlatsın. --- */
+.onboarding-tasklist {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.onboarding-task {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 4px;
+}
+
+.onboarding-task:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: 19px;
+  top: 40px;
+  bottom: -6px;
+  width: 2px;
+  background: var(--panel-border);
+}
+
+.onboarding-task-done:not(:last-child)::before {
+  background: #2ecc71;
+}
+
+.onboarding-task-marker {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 800;
+  z-index: 1;
+}
+
+.onboarding-task-locked .onboarding-task-marker {
+  background: var(--panel);
+  border: 2px solid var(--panel-border);
+  color: var(--text-dim);
+}
+
+.onboarding-task-current .onboarding-task-marker {
+  background: rgba(25, 232, 255, 0.12);
+  border: 2px solid var(--neon-cyan);
+  color: var(--neon-cyan);
+  box-shadow: 0 0 14px rgba(25, 232, 255, 0.55);
+  animation: onboarding-task-current-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes onboarding-task-current-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 10px rgba(25, 232, 255, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(25, 232, 255, 0.85);
+  }
+}
+
+.onboarding-task-done .onboarding-task-marker {
+  background: rgba(46, 204, 113, 0.15);
+  border: 2px solid #2ecc71;
+  color: #2ecc71;
+}
+
+.onboarding-task-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 8px;
+  font-size: 13px;
+}
+
+.onboarding-task-locked .onboarding-task-content {
+  opacity: 0.45;
+}
+
+.onboarding-task-emoji {
+  font-size: 17px;
+}
+
+.onboarding-task-title {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.onboarding-task-current .onboarding-task-title {
+  color: var(--neon-cyan);
+  font-weight: 800;
+}
+
+.onboarding-task-done .onboarding-task-title {
+  color: var(--text-dim);
+  text-decoration: line-through;
+}
+
+.onboarding-task-flash {
+  position: absolute;
+  right: 4px;
+  top: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #2ecc71;
+  background: rgba(46, 204, 113, 0.12);
+  border: 1px solid #2ecc71;
+  border-radius: 999px;
+  padding: 3px 8px;
+  animation: onboarding-flash-pop 1.8s ease forwards;
+}
+
+@keyframes onboarding-flash-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  15% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+  30% {
+    transform: scale(1);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.onboarding-reward-box {
+  margin-top: 8px;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid var(--neon-yellow);
+  background: rgba(255, 210, 63, 0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.onboarding-reward-text {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--neon-yellow);
+}
+
+.onboarding-claim-btn {
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--neon-yellow);
+  background: rgba(255, 210, 63, 0.18);
+  color: var(--neon-yellow);
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  animation: onboarding-btn-pulse-gold 1s ease-in-out infinite;
+}
+
+.onboarding-claim-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+  animation: none;
+}
+
+.onboarding-claim-error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--neon-pink);
+}
+
+/* --- Hatırlatıcı modu --- */
+.onboarding-reminder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.onboarding-reminder-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.onboarding-reminder-emoji {
+  font-size: 18px;
+}
+
+.onboarding-reminder-empty {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 13px;
+  padding: 20px 0;
+}

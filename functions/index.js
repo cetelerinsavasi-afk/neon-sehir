@@ -30,6 +30,203 @@ function requireAdmin(request) {
   return uid;
 }
 
+// =============================================================================
+// ONBOARDING — Yeni oyuncu görev listesi + günlük hatırlatıcı (kullanıcı
+// isteği): reklamla gelen yeni oyuncular oyunu tanısın diye, HER hesap
+// (yeni ve eski, istisnasız) 10 temel görevi SIRAYLA tamamlamalı. Görevler
+// user dokümanındaki tek bir sayaçla (`onboardingStep`, 1-10, hiç yoksa 1
+// varsayılır) takip edilir — sadece o an aktif adımın eylemi GERÇEKLEŞTİĞİNDE
+// ilerler (geçmişte yapılmış olması saymaz — istisnalar adım 5 ve 9, bkz.
+// checkOnboardingProgress). 10 adım da bitince (onboardingStep > 10)
+// "Ödülü Al" butonu (claimOnboardingReward) 5000 altın verir ve
+// onboardingRewardClaimed=true olur — bu hem panelin hatırlatıcı moduna
+// geçmesinin hem de artık polis olabilmenin (bkz. applyForPolice) şartı.
+// ---------------------------------------------------------------------------
+const ONBOARDING_TASK_COUNT = 10;
+const ONBOARDING_REWARD_GOLD = 5000;
+
+// advanceOnboardingStep — SADECE gönderilen `taskNumber`, oyuncunun O AN
+// aktif adımıyla (onboardingStep) birebir eşleşiyorsa 1 ilerletir. Adım
+// aktif değilse (daha önce geçilmiş ya da sırası henüz gelmemişse) hiçbir
+// şey yapmaz — yani bir eylemi sırası gelmeden önce yapmış olmak asla
+// "ileride sayılmaz", her adım gerçekten O SIRADAYKEN yapılmalı (istisnalar
+// adım 5/9 — bkz. checkOnboardingProgress). Best-effort: hata olursa asıl
+// oyun akışını bozmasın diye yutuluyor.
+async function advanceOnboardingStep(uid, taskNumber) {
+  try {
+    const userRef = db.collection('users').doc(uid);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(userRef);
+      const user = snap.data();
+      if (!user) return;
+      const currentStep = user.onboardingStep || 1;
+      if (currentStep !== taskNumber) return;
+      tx.update(userRef, { onboardingStep: currentStep + 1 });
+    });
+  } catch (err) {
+    console.error('advanceOnboardingStep hata:', taskNumber, err);
+  }
+}
+
+// checkOnboardingProgress — adım 5 ("herhangi bir silah al") ve adım 9
+// ("şüpheni 20'ye çıkart") diğerlerinden farklı: bunlar "eylem" değil
+// "durum" görevi — oyuncu bu adıma geldiği anda şart zaten sağlanıyorsa
+// (elinde silah varsa / şüphesi zaten ≥20 ise) otomatik tamamlanmış
+// sayılır, yoksa ilgili eylemle (buyWeapon / şüpheyi yükselten herhangi
+// bir eylem) normal şekilde ilerler. İstemci, paneli her açtığında ve adım
+// 5 ya da 9 aktifken bunu çağırır.
+export const checkOnboardingProgress = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const userRef = db.collection('users').doc(uid);
+  await db.runTransaction(async (tx) => {
+    const userSnap = await tx.get(userRef);
+    const user = userSnap.data();
+    if (!user) return;
+    const currentStep = user.onboardingStep || 1;
+    if (currentStep === 5) {
+      const weaponsSnap = await tx.get(db.collection('weapons').where('ownerId', '==', uid).limit(1));
+      if (!weaponsSnap.empty) {
+        tx.update(userRef, { onboardingStep: 6 });
+      }
+    } else if (currentStep === 9) {
+      if ((user.suspicion || 0) >= 20) {
+        tx.update(userRef, { onboardingStep: 10 });
+      }
+    }
+  });
+  return { ok: true };
+});
+
+// claimOnboardingReward — 10 görev de bitince (onboardingStep > 10)
+// tek seferlik 5000 altın ödülü. onboardingRewardClaimed bayrağı hem
+// tekrar alınmasını engeller hem de artık polis başvurusunun (bkz.
+// applyForPolice) ve panelin hatırlatıcı moduna geçmesinin şartıdır.
+export const claimOnboardingReward = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const userRef = db.collection('users').doc(uid);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(userRef);
+    const user = snap.data();
+    if (!user) {
+      throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
+    }
+    if ((user.onboardingStep || 1) <= ONBOARDING_TASK_COUNT) {
+      throw new HttpsError('failed-precondition', 'Henüz tüm görevleri tamamlamadın.');
+    }
+    if (user.onboardingRewardClaimed) {
+      throw new HttpsError('failed-precondition', 'Ödülü zaten aldın.');
+    }
+    tx.update(userRef, {
+      gold: admin.firestore.FieldValue.increment(ONBOARDING_REWARD_GOLD),
+      onboardingRewardClaimed: true,
+    });
+  });
+  return { ok: true, reward: ONBOARDING_REWARD_GOLD };
+});
+
+// runOnboardingPoliceRuleMigration — TEK SEFERLİK göç (kullanıcı isteği):
+// "artık polis olmak için 0 şüphe + 1 silahın yanında onboarding
+// görevlerini de bitirmiş (ödülü almış) olman gerekiyor" kuralı
+// getirildiği an, o ana kadar polis olmuş biri bu yeni şartı henüz
+// sağlamıyor olabilir (görevler yeni). Oyunu bozmadan (mevcut "3 gün
+// maaş kaçırma" otomatik-atma koduyla BİREBİR aynı alanlara dokunarak,
+// bkz. dailyReset 0.7) TÜM mevcut polisleri görevden alır, bekleyen
+// başvuruları iptal eder, herkese açıklayıcı bir mesaj gönderir ve
+// gazeteye tek seferlik bir duyuru düşer.
+// KULLANICI REVİZESİ: bu artık admin'in elle tetiklediği bir buton DEĞİL —
+// runVehicleWeaponLifeCap20Migration ile BİREBİR AYNI desende, kendi
+// bayrak dokümanıyla (migrations/onboardingPoliceRule) korunan, idempotent
+// bir göç. Hem dailyReset içinde HER GECE otomatik denenir (deploy'dan
+// sonraki ilk gece yarısında garanti çalışır) HEM DE deploy'dan hemen
+// sonra, kullanıcı uygulamayı açar açmaz istemci tarafından tetiklenir
+// (bkz. src/App.jsx) — böylece "push ettiğimde otomatik çalışsın, elle
+// bir şey yapmama gerek kalmasın" isteği tam karşılanmış olur.
+// KULLANICI SORUSU — "hata olma şansı yok değil mi": basit "oku, doluysa
+// çık, işi yap, en sonda bayrağı yaz" deseni (diğer migration'larda
+// olduğu gibi) TEK bir sunucu çağrısı için güvenli, ama deploy'dan hemen
+// sonra AYNI ANDA birden fazla oyuncu uygulamayı açarsa (her biri kendi
+// isteğini yolluyor) teorik olarak ikisi de bayrağın henüz yazılmadığını
+// görüp işi İKİ KEZ yapabilir (SMS'lerin iki kez gitmesi, gazetede aynı
+// duyurunun iki kez görünmesi gibi — kimse iki kez polislikten atılmaz,
+// alan zaten null'a yazılır, ama bildirimler tekrarlanabilirdi). Bunu
+// KÖKTEN engellemek için bayrağı, asıl işe başlamadan ÖNCE, bir
+// transaction içinde "ele geçiriyoruz": Firestore transaction'ları aynı
+// dokümanı aynı anda okuyan iki çağrıdan sadece birini commit eder,
+// diğeri otomatik yeniden dener ve dokümanın artık var olduğunu görüp
+// hemen çıkar. Böylece asıl iş SADECE bir kez, tam olarak bir çağıran
+// tarafından çalıştırılır.
+async function runOnboardingPoliceRuleMigration() {
+  const migrationRef = db.collection('migrations').doc('onboardingPoliceRule');
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(migrationRef);
+      if (snap.exists) {
+        throw new Error('ONBOARDING_POLICE_RULE_ALREADY_CLAIMED');
+      }
+      tx.set(migrationRef, { claimedAt: admin.firestore.FieldValue.serverTimestamp() });
+    });
+  } catch (err) {
+    if (err.message === 'ONBOARDING_POLICE_RULE_ALREADY_CLAIMED') {
+      return { removedCount: 0, cancelledApplyCount: 0 };
+    }
+    throw err;
+  }
+
+  const policeSnap = await db.collection('users').where('profession', '==', 'polis').get();
+  await Promise.all(
+    policeSnap.docs.map(async (docSnap) => {
+      await docSnap.ref.update({
+        profession: null,
+        pendingPoliceChange: null,
+        policeSalaryMissedStreak: 0,
+      });
+      await docSnap.ref.collection('private').doc('meta').set({ isPolice: false }, { merge: true });
+      await docSnap.ref.collection('messages').add({
+        text:
+          'Kurallar güncellendi: artık polis olabilmek için önce temel görevleri (📋 butonu) tamamlayıp ödülünü almış olman gerekiyor. Bu yüzden polislik görevinden geçici olarak alındın — görevleri tamamlayıp tekrar başvurabilirsin.',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        read: false,
+        type: 'onboarding_police_removed',
+      });
+    })
+  );
+
+  const pendingApplySnap = await db.collection('users').where('pendingPoliceChange', '==', 'apply').get();
+  await Promise.all(
+    pendingApplySnap.docs.map(async (docSnap) => {
+      await docSnap.ref.update({ pendingPoliceChange: null });
+      await docSnap.ref.collection('messages').add({
+        text:
+          'Polislik başvurun iptal edildi: artık polis olabilmek için önce temel görevleri (📋 butonu) tamamlayıp ödülünü almış olman gerekiyor.',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        read: false,
+        type: 'onboarding_police_application_cancelled',
+      });
+    })
+  );
+
+  await logNewsEvent('onboarding_police_rule', {
+    message:
+      'Artık polis olabilmek için 0 şüphe ve en az 1 silahın yanında, temel görevler listesini de tamamlamış olman gerekiyor. Detaylar için ana ekrandaki 📋 butonuna bak.',
+  });
+
+  await migrationRef.set({ ranAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+
+  return { removedCount: policeSnap.size, cancelledApplyCount: pendingApplySnap.size };
+}
+
+// Manuel/anlık tetikleme için ince bir onCall sarmalayıcı — asıl işi
+// runOnboardingPoliceRuleMigration yapıyor; bu fonksiyon dailyReset
+// içinden de otomatik çağrılıyor, frontend deploy'una bağımlı değil
+// (bkz. migrateVehicleWeaponLifeCap20 ile AYNI desen). Admin'e özel
+// DEĞİL — herhangi bir giriş yapmış kullanıcı tetikleyebilir, çünkü işlem
+// idempotent ve sonucu kim çağırırsa çağırsın birebir aynı.
+export const migrateOnboardingPoliceRule = onCall(async (request) => {
+  requireAuth(request);
+  const result = await runOnboardingPoliceRuleMigration();
+  return { ok: true, ...result };
+});
+
 // ---------------------------------------------------------------------------
 // FABRİKA SİSTEMİ (oyuncu kurduğu/işlettiği fabrikalar) — Bölüm 6/8.2'nin
 // yerini alır. Her oyuncu en fazla 1 fabrika kurabilir (satılamaz), içine
@@ -458,6 +655,16 @@ export const applyForPolice = onCall(async (request) => {
   const weaponsSnap = await db.collection('weapons').where('ownerId', '==', uid).limit(1).get();
   if (weaponsSnap.empty) {
     throw new HttpsError('failed-precondition', 'Polis olmak için bir silaha sahip olmalısın.');
+  }
+  // Kullanıcı revizesi: artık polis olabilmek için onboarding görev
+  // listesini (📋 butonu) bitirip ödülünü almış olmak da gerekiyor — bkz.
+  // claimOnboardingReward. Mevcut polisler bu kural getirildiğinde tek
+  // seferlik olarak görevden alındı (bkz. migrateOnboardingPoliceRule).
+  if (!user.onboardingRewardClaimed) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Polis olmak için önce temel görevleri (📋 butonu) tamamlayıp ödülünü almalısın.'
+    );
   }
 
   await userRef.update({ pendingPoliceChange: 'apply' });
@@ -1185,6 +1392,11 @@ export const produceAtFactory = onCall(async (request) => {
     await sendSalaryPenaltySms(outcome.ownerId, outcome.shortfall, outcome.newOwnerDebt);
   }
 
+  // Onboarding görev 1 — "fabrikada çalış": işçi ya da kendi fabrikasında
+  // çalışan sahip fark etmeksizin, mini oyunu tamamlayıp (bu fonksiyon
+  // buraya kadar geldiyse) maaşı/üretimi almış oldu.
+  await advanceOnboardingStep(uid, 1);
+
   return { ok: true, ...outcome };
 });
 
@@ -1641,6 +1853,16 @@ export const dailyReset = onSchedule(
     // runVehicleWeaponLifeCap20Migration kendi bayrak dokümanıyla
     // (migrations/vehicleWeaponLifeCap20) korunuyor.
     await runVehicleWeaponLifeCap20Migration();
+
+    // -0.74) TEK SEFERLİK GÖÇ: "polis olmak için onboarding görev listesini
+    // bitirmiş olmak da gerekiyor" kuralı — mevcut tüm polisleri görevden
+    // alır, bekleyen başvuruları iptal eder, gazetede duyuru yayınlar.
+    // runOnboardingPoliceRuleMigration kendi bayrak dokümanıyla
+    // (migrations/onboardingPoliceRule) korunuyor, bu yüzden sadece bir
+    // kez gerçek iş yapar — hem burada (her gece, deploy sonrası ilk gece
+    // yarısında garanti çalışır) hem de App.jsx açılışında (bkz.
+    // migrateOnboardingPoliceRule) tetikleniyor, elle bir aksiyon gerekmez.
+    await runOnboardingPoliceRuleMigration();
 
     // -0.73) FUTBOL İDDAA — GÜNÜN ORANLARI: kullanıcı revizesiyle gelen
     // yeni İddaa oran sistemi, o günün maçları için (lig ya da kupa günü,
@@ -3297,6 +3519,11 @@ export const buyFromAmazor = onCall(async (request) => {
     tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(qty) }, { merge: true });
   });
 
+  // Onboarding görev 2 — "Amazor'dan 1 adet yasaklı madde satın al".
+  if (materialType === 'yasakliMadde') {
+    await advanceOnboardingStep(uid, 2);
+  }
+
   return { ok: true };
 });
 
@@ -3381,6 +3608,10 @@ export const buyWeapon = onCall(async (request) => {
       purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
   });
+
+  // Onboarding görev 5 — "herhangi bir silah al" (event tabanlı yol; adım
+  // 5'e zaten silahla gelenler için ayrıca bkz. checkOnboardingProgress).
+  await advanceOnboardingStep(uid, 5);
 
   return { ok: true };
 });
@@ -4062,6 +4293,9 @@ export const spinSlot = onCall(async (request) => {
     }
   });
 
+  // Onboarding görev 8 — "Casino'da slot oyna".
+  await advanceOnboardingStep(uid, 8);
+
   return { ok: true, reels, matchCount, prizeSymbol, prizeAmount, free: usedFreeSpin, freeSpinsLeft };
 });
 
@@ -4159,6 +4393,9 @@ export const prayAtMosque = onCall(async (request) => {
     );
   });
 
+  // Onboarding görev 4 — "Camii'ye gidip ibadet et".
+  await advanceOnboardingStep(uid, 4);
+
   return { ok: true, window: win };
 });
 
@@ -4232,10 +4469,15 @@ export const applyForImam = onCall(async (request) => {
     const meta = metaSnap.data();
     if (meta?.lastFiredUid === uid) {
       const lastFiredAtMs = meta.lastFiredAt?.toMillis?.() ?? null;
-      // Eski (migrasyon öncesi) kayıtlarda lastFiredAt olmayabilir — bu
-      // durumda güvenli taraftan hâlâ yasaklı say (aşağıdaki dailyReset
-      // bir sonraki atmada zaten lastFiredAt'i dolduracak).
-      if (lastFiredAtMs === null || Date.now() - lastFiredAtMs < IMAM_REAPPLY_COOLDOWN_MS) {
+      // BUG DÜZELTMESİ (kullanıcı revizesi): eski (bu 24 saatlik kural
+      // devreye girmeden ÖNCE atılmış) kayıtlarda lastFiredAt hiç yok —
+      // önceki sürüm bunu "güvenli tarafta kal, hâlâ yasaklı say" olarak
+      // yorumluyordu, ama bu, o tarihten önce atılmış biri için SÜRESİZ
+      // (sonsuza kadar) engele dönüşüyordu çünkü bir daha asla
+      // güncellenmeyen bu eski kayıt üzerinden hep "az önce atıldın"
+      // sanılıyordu. Artık zaman damgası YOKSA kural hiç uygulanamıyor
+      // demektir — bu durumda engel YOK sayılır (yasak yok).
+      if (lastFiredAtMs !== null && Date.now() - lastFiredAtMs < IMAM_REAPPLY_COOLDOWN_MS) {
         throw new HttpsError('failed-precondition', 'İmamlıktan yeni atıldığın için imam olamazsın.');
       }
     }
@@ -4444,6 +4686,9 @@ export const bribePolice = onCall(async (request) => {
     tx.set(bribePoolRef, { dateKey, bribeCount: admin.firestore.FieldValue.increment(1) }, { merge: true });
   });
 
+  // Onboarding görev 10 — "polise rüşvet ver".
+  await advanceOnboardingStep(uid, 10);
+
   return { ok: true };
 });
 
@@ -4548,6 +4793,9 @@ export const buyFromVendor = onCall(async (request) => {
     tx.set(dailyRef, { vendorPurchases: { [vendorId]: true } }, { merge: true });
   });
 
+  // Onboarding görev 7 — "bi seyyar satıcıyla alışveriş yap".
+  await advanceOnboardingStep(uid, 7);
+
   return { ok: true };
 });
 
@@ -4573,10 +4821,12 @@ const HEIST_CONFIG = {
   araba_galerisi: { suspicionCost: 30, reward: 125000, requiredPower: 50000 },
   modifiye_garaji: { suspicionCost: 20, reward: 25000, requiredPower: 20000 },
   fabrika: { suspicionCost: 10, reward: 7500, requiredPower: 10000 },
-  seyyar_satici_1: { suspicionCost: 5, reward: 2500, requiredPower: 4500 },
-  seyyar_satici_2: { suspicionCost: 5, reward: 2000, requiredPower: 3000 },
-  seyyar_satici_3: { suspicionCost: 5, reward: 1500, requiredPower: 1500 },
-  seyyar_satici_4: { suspicionCost: 5, reward: 1000, requiredPower: 1000 },
+  // Ödüller (kullanıcı revizesi) — Kokoreçci/Simitçi/Dönerci/Köfteci
+  // ödülleri güncellendi, gereken güç eşiklerine dokunulmadı.
+  seyyar_satici_1: { suspicionCost: 5, reward: 4000, requiredPower: 4500 }, // Kokoreçci
+  seyyar_satici_2: { suspicionCost: 5, reward: 3000, requiredPower: 3000 }, // Simitçi
+  seyyar_satici_3: { suspicionCost: 5, reward: 2000, requiredPower: 1500 }, // Dönerci
+  seyyar_satici_4: { suspicionCost: 5, reward: 1000, requiredPower: 1000 }, // Köfteci
 };
 
 // captureRiskPercent — yakalanma ihtimalini şüphe yüzdesi olarak hesaplar.
@@ -4735,6 +4985,12 @@ export const attemptHeist = onCall(async (request) => {
     await logNewsEvent('heist_success', { target, amount: result.reward });
   }
 
+  // Onboarding görev 6 — "bi seyyar satıcıdan haraç kes" (yakalansa da olur,
+  // önemli olan haracın fiilen başlamış olması).
+  if (target.startsWith('seyyar_satici') && result.started === true) {
+    await advanceOnboardingStep(uid, 6);
+  }
+
   return { ok: true, ...result };
 });
 
@@ -4827,6 +5083,10 @@ export const sellContrabandAtPark = onCall(async (request) => {
   if (outcome.caught) {
     await sendCaptureSms(uid, outcome.penalty, outcome.newTotalDebt);
   }
+
+  // Onboarding görev 3 — "parktaki gizemli adama 1 adet yasaklı madde sat"
+  // (yakalansa da olur, önemli olan satışın fiilen denenmiş olması).
+  await advanceOnboardingStep(uid, 3);
 
   return { ok: true, ...outcome };
 });
@@ -9668,6 +9928,11 @@ async function applyFutbolMatchResult(matchId, trainingIdsByTeam) {
       'stats.gf': admin.firestore.FieldValue.increment(gf),
       'stats.ga': admin.firestore.FieldValue.increment(ga),
       'stats.points': admin.firestore.FieldValue.increment(won ? 3 : drawn ? 1 : 0),
+      // Hatırlatıcı sistemi ("kadronu düzenle") SADECE takım bugün gerçekten
+      // maç oynadıysa uyarsın diye — bkz. checkOnboardingProgress/frontend
+      // useOnboarding. Kullanıcı revizesi: "maça girmediysek kadroyu
+      // düzenlemeye gerek yok çünkü oyuncuların formu düşmemiş olacak".
+      lastMatchPlayedDateKey: istanbulDateKey(),
     });
   };
   applyTeamResult(match.homeTeamId, homeScore, awayScore);
@@ -10218,6 +10483,20 @@ async function applyFutbolCupMatchResult(matchId, trainingIdsByTeam) {
     status: 'finished',
     playedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
+
+  // Hatırlatıcı sistemi ("kadronu düzenle") kupa maçlarını da lig maçları
+  // gibi "bugün oynandı" sayar — bkz. applyFutbolMatchResult'taki AYNI not.
+  const todayDateKeyForReminder = istanbulDateKey();
+  if (homeTeamSnap.exists) {
+    batch.update(db.collection('futbolTeams').doc(match.homeTeamId), {
+      lastMatchPlayedDateKey: todayDateKeyForReminder,
+    });
+  }
+  if (awayTeamSnap.exists) {
+    batch.update(db.collection('futbolTeams').doc(match.awayTeamId), {
+      lastMatchPlayedDateKey: todayDateKeyForReminder,
+    });
+  }
 
   // Kupa maçları da normal lig maçlarıyla AYNI mücadele/sakatlık kuralına
   // tabi (kullanıcı isteği "her maçta" — kupa maçı istisna değil).
@@ -11755,7 +12034,16 @@ export const setFutbolLineup = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'Seçilen oyuncular dizilimle uyuşmuyor.');
   }
 
-  await teamRef.update({ formation, tactic, lineup, mucadele: resolvedMucadele });
+  await teamRef.update({
+    formation,
+    tactic,
+    lineup,
+    mucadele: resolvedMucadele,
+    // Hatırlatıcı sistemi ("kadronu düzenle") bugün kadro düzenlenip
+    // düzenlenmediğini bu alandan anlıyor — bkz. checkOnboardingProgress/
+    // frontend useOnboarding.
+    lineupUpdatedDateKey: istanbulDateKey(),
+  });
   return { ok: true };
 });
 

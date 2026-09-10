@@ -18,6 +18,7 @@ const STATIC_PAGES = [
     body: [
       'Şüphe puanın 0 olmalı.',
       'Bir silaha sahip olmalısın.',
+      'Ana ekrandaki 📋 butonundaki temel görevleri tamamlayıp 5000 altınlık ödülünü almış olmalısın.',
       'Polisler tek başına (solo) soygun/haraç gibi şüphe artıran hiçbir suç işleyemez.',
     ],
   },

@@ -194,6 +194,10 @@ export default function NewspaperScreen() {
   const seasonEndEvent = events.find((e) => e.type === 'football_season_end');
   const cupFinalEvent = events.find((e) => e.type === 'football_cup_final');
   const newSeasonEvent = events.find((e) => e.type === 'football_new_season');
+  // onboarding_police_rule — TEK SEFERLİK duyuru (bkz. functions/index.js
+  // migrateOnboardingPoliceRule): "artık polis olmak için görev listesini
+  // bitirmiş olmak da gerekiyor" kuralı yürürlüğe girdiğinde yayınlanır.
+  const onboardingPoliceRuleEvent = events.find((e) => e.type === 'onboarding_police_rule');
 
   // Köşe yazısı — sadece gerçek puan tablosu farkından üretilir, sezon
   // sonu/kupa finali gibi zaten manşet olan bir gün varsa gösterilmez
@@ -238,6 +242,15 @@ export default function NewspaperScreen() {
       </div>
 
       {loading && <p className="newspaper-loading">Baskıya hazırlanıyor...</p>}
+
+      {onboardingPoliceRuleEvent && (
+        <section className="newspaper-section newspaper-headline">
+          <h2 className="newspaper-headline-title">📢 RESMİ DUYURU: POLİSLİK KURALLARI DEĞİŞTİ</h2>
+          <div className="newspaper-headline-body">
+            <p>{onboardingPoliceRuleEvent.message}</p>
+          </div>
+        </section>
+      )}
 
       {seasonEndEvent && (
         <section className="newspaper-section newspaper-headline">

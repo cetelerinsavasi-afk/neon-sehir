@@ -17,10 +17,10 @@ import w05 from '../assets/weapons/weapon-05.jpg';
 import w06 from '../assets/weapons/weapon-06.jpg';
 
 export const weaponCatalog = [
-  { id: 1, name: 'Tabanca', power: 1000, price: 100, image: w01 },
-  { id: 2, name: 'Yarı Otomatik Tabanca', power: 3000, price: 5000, image: w02 },
-  { id: 3, name: 'Revolver', power: 5000, price: 10000, image: w03 },
-  { id: 4, name: 'Hafif Otomatik (SMG)', power: 8000, price: 30000, image: w04 },
-  { id: 5, name: 'Av/Tüfek (Bolt-Action)', power: 10000, price: 50000, image: w05 },
-  { id: 6, name: 'Taarruz Tüfeği', power: 20000, price: 100000, image: w06 },
+  { id: 1, name: 'Tabanca', power: 1000, price: 1000, image: w01 },
+  { id: 2, name: 'Yarı Otomatik Tabanca', power: 3000, price: 10000, image: w02 },
+  { id: 3, name: 'Revolver', power: 5000, price: 20000, image: w03 },
+  { id: 4, name: 'Hafif Otomatik (SMG)', power: 8000, price: 40000, image: w04 },
+  { id: 5, name: 'Av/Tüfek (Bolt-Action)', power: 10000, price: 100000, image: w05 },
+  { id: 6, name: 'Taarruz Tüfeği', power: 20000, price: 200000, image: w06 },
 ];

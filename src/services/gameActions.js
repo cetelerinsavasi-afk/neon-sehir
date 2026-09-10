@@ -526,3 +526,17 @@ export const listSponsorshipTeamsForFactory = () =>
 
 export const listSponsorshipFactoriesForTeam = () =>
   httpsCallable(functions, 'listSponsorshipFactoriesForTeam')();
+
+// --- Onboarding (görev listesi / hatırlatıcı paneli) ---
+
+export const checkOnboardingProgress = () =>
+  httpsCallable(functions, 'checkOnboardingProgress')();
+
+export const claimOnboardingReward = () =>
+  httpsCallable(functions, 'claimOnboardingReward')();
+
+// migrateOnboardingPoliceRule — TEK SEFERLİK, sadece admin çağırabilir
+// (bkz. functions/index.js ADMIN_UIDS). Mevcut polisleri görevden alır,
+// bekleyen başvuruları iptal eder, gazetede duyuru yayınlar.
+export const migrateOnboardingPoliceRule = () =>
+  httpsCallable(functions, 'migrateOnboardingPoliceRule')();
