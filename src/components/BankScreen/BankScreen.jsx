@@ -253,6 +253,9 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
       <div className="bank-section">
         <p className="bank-section-title">
           Elmas <ChangeBadge pct={prices.diamondChangePct} />
+          {prices.diamondReversedRegime && (
+            <span className="bank-regime-warning">düşme eğiliminde ↓</span>
+          )}
         </p>
         <PriceChart points={diamondPoints} color="#19e8ff" />
         <div className="bank-section-row">
@@ -278,6 +281,7 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
           onBuy={(amount) => run('buy-diamond', () => buyInvestment('diamond', amount))}
           onSell={(amount) => run('sell-diamond', () => sellInvestment('diamond', amount))}
           quickAmounts={INVESTMENT_QUICK_AMOUNTS}
+          sellCommissionRate={0.01}
         />
         {diamondHoldings > 0 && (
           <button
@@ -293,6 +297,9 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
       <div className="bank-section">
         <p className="bank-section-title">
           Hisse Senedi <ChangeBadge pct={prices.stockChangePct} />
+          {prices.stockReversedRegime && (
+            <span className="bank-regime-warning">düşme eğiliminde ↓</span>
+          )}
         </p>
         <PriceChart points={stockPoints} color="#ffd23f" />
         <div className="bank-section-row">
@@ -318,6 +325,7 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
           onBuy={(amount) => run('buy-stock', () => buyInvestment('stock', amount))}
           onSell={(amount) => run('sell-stock', () => sellInvestment('stock', amount))}
           quickAmounts={INVESTMENT_QUICK_AMOUNTS}
+          sellCommissionRate={0.01}
         />
         {stockHoldings > 0 && (
           <button
@@ -333,6 +341,9 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
       <div className="bank-section">
         <p className="bank-section-title">
           Kripto <ChangeBadge pct={prices.cryptoChangePct} />
+          {prices.cryptoReversedRegime && (
+            <span className="bank-regime-warning">düşme eğiliminde ↓</span>
+          )}
         </p>
         <PriceChart points={cryptoPoints} color="#ff2e8c" />
         <div className="bank-section-row">

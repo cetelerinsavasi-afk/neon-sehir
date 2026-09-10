@@ -532,11 +532,19 @@ export const listSponsorshipFactoriesForTeam = () =>
 export const checkOnboardingProgress = () =>
   httpsCallable(functions, 'checkOnboardingProgress')();
 
-export const claimOnboardingReward = () =>
-  httpsCallable(functions, 'claimOnboardingReward')();
+// completeOnboardingChecklist — 15 görev tamamlandığında checklist'i
+// kapatır (onboardingRewardClaimed = true). ARTIK ALTIN ÖDÜLÜ YOK —
+// kullanıcı revizesi: sadece "tamamlandı" onayı, checklist hatırlatıcıya
+// dönüşür (bkz. functions/index.js).
+export const completeOnboardingChecklist = () =>
+  httpsCallable(functions, 'completeOnboardingChecklist')();
 
-// migrateOnboardingPoliceRule — TEK SEFERLİK, sadece admin çağırabilir
-// (bkz. functions/index.js ADMIN_UIDS). Mevcut polisleri görevden alır,
-// bekleyen başvuruları iptal eder, gazetede duyuru yayınlar.
+// migrateOnboardingPoliceRule — TEK SEFERLİK migrasyon, kendi kendini
+// koruyan (idempotent) bir Firestore transaction ile atomik olarak
+// "claim" edilir — bkz. functions/index.js
+// runOnboardingPoliceRuleMigration. Herhangi bir giriş yapmış kullanıcı
+// tetikleyebilir (App.jsx'te sessizce, oturum başına bir kere çağrılır);
+// admin'e özel DEĞİL — kullanıcı revizesi: "tek seferlik çalışan bi kod
+// yaz, push ettiğimde otomatik çalışsın."
 export const migrateOnboardingPoliceRule = () =>
   httpsCallable(functions, 'migrateOnboardingPoliceRule')();

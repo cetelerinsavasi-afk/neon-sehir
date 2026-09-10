@@ -10,10 +10,12 @@ import { useMyFutbolTeam } from './useMyFutbolTeam';
 import { currentPrayerWindow } from './useMosqueAttendance';
 
 // Görev listesi/hatırlatıcı paneli — bkz. functions/index.js ONBOARDING
-// bölümü. Sayaç (onboardingStep, 1-10) ve ödül bayrağı
-// (onboardingRewardClaimed) users/{uid} dokümanında tutuluyor; bu hook
-// sadece OKUR — ilerleme SUNUCUDA (advanceOnboardingStep) yapılıyor.
-export const ONBOARDING_TASK_COUNT = 10;
+// bölümü. Sayaç (onboardingStep, 1-15) ve tamamlanma bayrağı
+// (onboardingRewardClaimed — alan adı geriye dönük uyumluluk için
+// değiştirilmedi, ama artık altın ödülü YOK, sadece "tamamlandı"
+// bayrağı) users/{uid} dokümanında tutuluyor; bu hook sadece OKUR —
+// ilerleme SUNUCUDA (advanceOnboardingStep) yapılıyor.
+export const ONBOARDING_TASK_COUNT = 15;
 const SLOT_FREE_SPINS_PER_DAY = 3;
 
 function istanbulDateKey() {
@@ -30,7 +32,7 @@ function istanbulDateKey() {
 export const ONBOARDING_TASKS = [
   { step: 1, emoji: '🏭', title: 'Fabrikada çalış', info: 'Maaşı yüksek olan bi fabrikada çalışarak her gün para kazanabilirsin.' },
   { step: 2, emoji: '📱', title: "Telefon'dan Amazor'dan 1 adet yasaklı madde satın al", info: '2. el satış uygulamasında daha ucuza yasaklı madde bulabilirsin.' },
-  { step: 3, emoji: '🌳', title: 'Parktaki gizemli adama 1 adet yasaklı madde sat', info: 'Yasaklı madde alıp parkta satarsan, çok hızlı para kazanabilirsin.' },
+  { step: 3, emoji: '🌳', title: 'Parktaki şüpheli adama 1 adet yasaklı madde sat', info: 'Yasaklı madde alıp parkta satarsan, çok hızlı para kazanabilirsin.' },
   { step: 4, emoji: '🕌', title: "Camii'ye gidip ibadet et", info: 'Günde 5 vakit ibadet ederek şüphe miktarını düşük tut, şüphen yüksekken polise yakalanırsın.' },
   { step: 5, emoji: '🔫', title: 'Herhangi bir silah al', info: 'Silah alıp güçlenebilir ve seyyar satıcılardan haraç kesebilirsin.' },
   { step: 6, emoji: '💸', title: 'Bir seyyar satıcıdan haraç kes', info: 'Seyyar satıcılardan haraç kesip para kazanabilirsin.' },
@@ -38,13 +40,18 @@ export const ONBOARDING_TASKS = [
   { step: 8, emoji: '🎰', title: "Casino'da slot oyna", info: "Casino'da günlük 3 kere ücretsiz slot hakkın var." },
   { step: 9, emoji: '🚨', title: "Şüpheni 20'ye çıkart", info: 'Şüphen yükseldikçe yakalanma riskin artar, yakalanırsan para cezası yersin.' },
   { step: 10, emoji: '🤝', title: 'Polise rüşvet ver', info: 'Rüşvet vermek şüpheyi 20 düşürür.' },
+  { step: 11, emoji: '🚗', title: 'Herhangi bir araba al', info: 'Arabanla yarışlara katılabilirsin.' },
+  { step: 12, emoji: '🏎️', title: 'Yarış pistinden antrenmana gir ve 1. seviyeyi tamamla', info: 'Hem kendini geliştir hem para kazan.' },
+  { step: 13, emoji: '🏆', title: 'Yarış pistinden Şampiyonaya gir', info: 'Günün şampiyonu para ödülünü alır.' },
+  { step: 14, emoji: '🏦', title: 'Bankadan kredi çek', info: 'Arabanı ipotek ettirerek kredi çekebilirsin.' },
+  { step: 15, emoji: '📱', title: "Telefondaki 2. el satış uygulamasından alışveriş yap", info: 'Elindeki ürünleri sat, uygun fiyatlı ürünleri satın al (ilana ürün yüklemek, anında satmak, herhangi bir ürün almak bu görevi tamamlamak için yeterli).' },
 ];
 
 /**
  * useOnboarding — anasayfadaki 📋 butonunun tüm verisini tek yerde toplar:
- * - Ödül alınana kadar: 10 görevlik sıralı checklist (onboardingStep).
- * - Ödül alındıktan sonra: koşulları o an sağlananları gösteren 8 maddelik
- *   hatırlatıcı listesi.
+ * - Tamamlanana kadar: 15 görevlik sıralı checklist (onboardingStep).
+ * - Tamamlandıktan sonra: koşulları o an sağlananları gösteren hatırlatıcı
+ *   listesi.
  */
 export function useOnboarding() {
   const { user } = useAuth();

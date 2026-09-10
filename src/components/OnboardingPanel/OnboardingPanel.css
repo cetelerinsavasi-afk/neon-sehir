@@ -45,21 +45,22 @@
   }
 }
 
-/* Ödül alınmaya hazır (10/10 tamamlandı) — sarıdan altına, daha da
-   belirgin bir vurgu. */
+/* Tüm görevler tamamlanmış, onay bekliyor (15/15) — yeşile dönen, daha
+   da belirgin bir vurgu. Kullanıcı revizesi: artık altın ödülü YOK, bu
+   yüzden sarı/altın temadan yeşil "tamamlandı" temasına geçildi. */
 .onboarding-btn-reward-ready {
-  border-color: var(--neon-yellow);
-  animation: onboarding-btn-pulse-gold 1s ease-in-out infinite;
+  border-color: #2ecc71;
+  animation: onboarding-btn-pulse-done 1s ease-in-out infinite;
 }
 
-@keyframes onboarding-btn-pulse-gold {
+@keyframes onboarding-btn-pulse-done {
   0%,
   100% {
-    box-shadow: 0 0 14px rgba(255, 210, 63, 0.5);
+    box-shadow: 0 0 14px rgba(46, 204, 113, 0.5);
     transform: scale(1);
   }
   50% {
-    box-shadow: 0 0 30px rgba(255, 210, 63, 1);
+    box-shadow: 0 0 30px rgba(46, 204, 113, 1);
     transform: scale(1.08);
   }
 }
@@ -293,43 +294,56 @@
   }
 }
 
-.onboarding-reward-box {
+/* Tüm görevler bitince gelen "güzel ekran" — kullanıcı revizesi: ödül
+   yok, sadece tebrik + "Tamam" butonu, basınca hatırlatıcı moduna
+   geçiliyor. */
+.onboarding-complete-screen {
   margin-top: 8px;
-  padding: 16px;
+  padding: 28px 16px;
   border-radius: 14px;
-  border: 1px solid var(--neon-yellow);
-  background: rgba(255, 210, 63, 0.08);
+  border: 1px solid #2ecc71;
+  background: rgba(46, 204, 113, 0.08);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   text-align: center;
 }
 
-.onboarding-reward-text {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--neon-yellow);
+.onboarding-complete-emoji {
+  font-size: 44px;
+  line-height: 1;
 }
 
-.onboarding-claim-btn {
+.onboarding-complete-title {
+  margin: 4px 0 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: #2ecc71;
+}
+
+.onboarding-complete-text {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.onboarding-complete-btn {
   width: 100%;
+  margin-top: 10px;
   padding: 12px;
   border-radius: 10px;
-  border: 1px solid var(--neon-yellow);
-  background: rgba(255, 210, 63, 0.18);
-  color: var(--neon-yellow);
+  border: 1px solid #2ecc71;
+  background: rgba(46, 204, 113, 0.18);
+  color: #2ecc71;
   font-size: 14px;
   font-weight: 800;
   cursor: pointer;
-  animation: onboarding-btn-pulse-gold 1s ease-in-out infinite;
 }
 
-.onboarding-claim-btn:disabled {
+.onboarding-complete-btn:disabled {
   opacity: 0.6;
   cursor: default;
-  animation: none;
 }
 
 .onboarding-claim-error {

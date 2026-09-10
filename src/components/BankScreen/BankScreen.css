@@ -70,6 +70,23 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* bank-regime-warning — kullanıcı revizesi: elmas/hisse senedi/kripto
+   fiyatı kendi "ters rejim" eşiğini (bkz. functions/index.js
+   hourlyInvestmentUpdate) geçtiğinde panelin sağ üstünde kırmızı bir
+   uyarı gösterilir, böylece oyuncular o seviyenin üzerinin riskli
+   olduğunu anlar. */
+.bank-regime-warning {
+  margin-left: auto;
+  color: var(--neon-pink);
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 11px;
 }
 
 .bank-section-row {

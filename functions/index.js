@@ -33,17 +33,28 @@ function requireAdmin(request) {
 // =============================================================================
 // ONBOARDING — Yeni oyuncu görev listesi + günlük hatırlatıcı (kullanıcı
 // isteği): reklamla gelen yeni oyuncular oyunu tanısın diye, HER hesap
-// (yeni ve eski, istisnasız) 10 temel görevi SIRAYLA tamamlamalı. Görevler
-// user dokümanındaki tek bir sayaçla (`onboardingStep`, 1-10, hiç yoksa 1
+// (yeni ve eski, istisnasız) 15 temel görevi SIRAYLA tamamlamalı. Görevler
+// user dokümanındaki tek bir sayaçla (`onboardingStep`, 1-15, hiç yoksa 1
 // varsayılır) takip edilir — sadece o an aktif adımın eylemi GERÇEKLEŞTİĞİNDE
-// ilerler (geçmişte yapılmış olması saymaz — istisnalar adım 5 ve 9, bkz.
-// checkOnboardingProgress). 10 adım da bitince (onboardingStep > 10)
-// "Ödülü Al" butonu (claimOnboardingReward) 5000 altın verir ve
-// onboardingRewardClaimed=true olur — bu hem panelin hatırlatıcı moduna
-// geçmesinin hem de artık polis olabilmenin (bkz. applyForPolice) şartı.
+// ilerler (geçmişte yapılmış olması saymaz — istisnalar adım 5/9/11/12, bkz.
+// checkOnboardingProgress). 15 adım da bitince (onboardingStep > 15)
+// "Tamam" butonu (completeOnboardingChecklist) onboardingRewardClaimed=true
+// yapar — bu hem panelin hatırlatıcı moduna geçmesinin hem de artık polis
+// olabilmenin (bkz. applyForPolice) şartı.
+// KULLANICI REVİZESİ: görev listesi 10'dan 15'e çıkarıldı (11-15 yeni), AMA
+// bunu daha önce (eski 10 görevlik listede) bitirip onboardingRewardClaimed
+// olan oyuncular BUNDAN HİÇ ETKİLENMEZ — geriye dönük hiçbir görev eklenmez,
+// direkt hatırlatıcı modunda kalırlar (bu davranış, aşağıdaki mantığın doğal
+// bir sonucu: sadece onboardingRewardClaimed=false olanlar checklist'i
+// görmeye devam eder, ekstra bir göç/migration KODU YAZILMADI, gerek yok).
+// Ayrıca kullanıcı revizesi: checklist tamamlanınca artık ALTIN ÖDÜLÜ YOK
+// (eskiden 5000 altındı) — sadece bir "Görevler Tamamlandı" ekranı ve
+// polis-şartı olarak kalan onboardingRewardClaimed bayrağı var. Bu alanın
+// ismi tarihsel nedenlerle "Reward" kalmaya devam ediyor (zaten claim etmiş
+// oyuncuların verisini taşımaya gerek kalmasın diye) ama artık literal bir
+// ödül anlamı taşımıyor — sadece "checklist tamamlandı" bayrağı.
 // ---------------------------------------------------------------------------
-const ONBOARDING_TASK_COUNT = 10;
-const ONBOARDING_REWARD_GOLD = 5000;
+const ONBOARDING_TASK_COUNT = 15;
 
 // advanceOnboardingStep — SADECE gönderilen `taskNumber`, oyuncunun O AN
 // aktif adımıyla (onboardingStep) birebir eşleşiyorsa 1 ilerletir. Adım
@@ -68,13 +79,14 @@ async function advanceOnboardingStep(uid, taskNumber) {
   }
 }
 
-// checkOnboardingProgress — adım 5 ("herhangi bir silah al") ve adım 9
-// ("şüpheni 20'ye çıkart") diğerlerinden farklı: bunlar "eylem" değil
-// "durum" görevi — oyuncu bu adıma geldiği anda şart zaten sağlanıyorsa
-// (elinde silah varsa / şüphesi zaten ≥20 ise) otomatik tamamlanmış
-// sayılır, yoksa ilgili eylemle (buyWeapon / şüpheyi yükselten herhangi
-// bir eylem) normal şekilde ilerler. İstemci, paneli her açtığında ve adım
-// 5 ya da 9 aktifken bunu çağırır.
+// checkOnboardingProgress — adım 5 ("herhangi bir silah al"), 9 ("şüpheni
+// 20'ye çıkart"), 11 ("herhangi bir araba al") ve 12 ("antrenmanın 1.
+// seviyesini tamamla") diğerlerinden farklı: bunlar "eylem" değil "durum"
+// görevi — oyuncu bu adıma geldiği anda şart zaten sağlanıyorsa (elinde
+// silah/araba varsa, şüphesi zaten ≥20 ise, antrenman 1. seviyeyi daha
+// önce bitirmişse) otomatik tamamlanmış sayılır, yoksa ilgili eylemle
+// normal şekilde ilerler. İstemci, paneli her açtığında ve bu adımlardan
+// biri aktifken bunu çağırır.
 export const checkOnboardingProgress = onCall(async (request) => {
   const uid = requireAuth(request);
   const userRef = db.collection('users').doc(uid);
@@ -92,16 +104,28 @@ export const checkOnboardingProgress = onCall(async (request) => {
       if ((user.suspicion || 0) >= 20) {
         tx.update(userRef, { onboardingStep: 10 });
       }
+    } else if (currentStep === 11) {
+      const vehiclesSnap = await tx.get(db.collection('vehicles').where('ownerId', '==', uid).limit(1));
+      if (!vehiclesSnap.empty) {
+        tx.update(userRef, { onboardingStep: 12 });
+      }
+    } else if (currentStep === 12) {
+      const progressSnap = await tx.get(db.collection('trainingProgress').doc(uid));
+      if (progressSnap.exists && progressSnap.data()?.beatenLevels?.[1]) {
+        tx.update(userRef, { onboardingStep: 13 });
+      }
     }
   });
   return { ok: true };
 });
 
-// claimOnboardingReward — 10 görev de bitince (onboardingStep > 10)
-// tek seferlik 5000 altın ödülü. onboardingRewardClaimed bayrağı hem
-// tekrar alınmasını engeller hem de artık polis başvurusunun (bkz.
-// applyForPolice) ve panelin hatırlatıcı moduna geçmesinin şartıdır.
-export const claimOnboardingReward = onCall(async (request) => {
+// completeOnboardingChecklist — 15 görev de bitince (onboardingStep > 15)
+// "Tamam" butonuyla çağrılır. KULLANICI REVİZESİ: artık altın ödülü YOK —
+// bu fonksiyon (eski adıyla claimOnboardingReward) sadece
+// onboardingRewardClaimed=true yapar. Bu bayrak hâlâ hem panelin kalıcı
+// olarak hatırlatıcı moduna geçmesinin hem de polis başvurusunun (bkz.
+// applyForPolice) şartıdır — sadece parasal kısmı kaldırıldı.
+export const completeOnboardingChecklist = onCall(async (request) => {
   const uid = requireAuth(request);
   const userRef = db.collection('users').doc(uid);
   await db.runTransaction(async (tx) => {
@@ -114,14 +138,11 @@ export const claimOnboardingReward = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Henüz tüm görevleri tamamlamadın.');
     }
     if (user.onboardingRewardClaimed) {
-      throw new HttpsError('failed-precondition', 'Ödülü zaten aldın.');
+      throw new HttpsError('failed-precondition', 'Zaten tamamlanmış.');
     }
-    tx.update(userRef, {
-      gold: admin.firestore.FieldValue.increment(ONBOARDING_REWARD_GOLD),
-      onboardingRewardClaimed: true,
-    });
+    tx.update(userRef, { onboardingRewardClaimed: true });
   });
-  return { ok: true, reward: ONBOARDING_REWARD_GOLD };
+  return { ok: true };
 });
 
 // runOnboardingPoliceRuleMigration — TEK SEFERLİK göç (kullanıcı isteği):
@@ -657,13 +678,14 @@ export const applyForPolice = onCall(async (request) => {
     throw new HttpsError('failed-precondition', 'Polis olmak için bir silaha sahip olmalısın.');
   }
   // Kullanıcı revizesi: artık polis olabilmek için onboarding görev
-  // listesini (📋 butonu) bitirip ödülünü almış olmak da gerekiyor — bkz.
-  // claimOnboardingReward. Mevcut polisler bu kural getirildiğinde tek
-  // seferlik olarak görevden alındı (bkz. migrateOnboardingPoliceRule).
+  // listesini (📋 butonu) bitirip "Tamam" ile tamamlamış olmak da
+  // gerekiyor — bkz. completeOnboardingChecklist. Mevcut polisler bu kural
+  // getirildiğinde tek seferlik olarak görevden alındı (bkz.
+  // migrateOnboardingPoliceRule).
   if (!user.onboardingRewardClaimed) {
     throw new HttpsError(
       'failed-precondition',
-      'Polis olmak için önce temel görevleri (📋 butonu) tamamlayıp ödülünü almalısın.'
+      'Polis olmak için önce temel görevleri (📋 butonu) tamamlamış olmalısın.'
     );
   }
 
@@ -3179,9 +3201,24 @@ async function computeWeightedCryptoBuyRatio() {
 // =============================================================================
 // hourlyInvestmentUpdate — elmas/kripto/hisse senedi fiyatları SAATTE 1
 // kez (günde 24 kez) hareket ediyor.
-//   - Elmas: %1-%4 arası, hisse senedi: %1-%9 arası — İKİSİ DE hâlâ
-//     tamamen rastgele (kullanıcı isteği: "şimdilik hisse senedi ve
-//     elmasa dokunmayalım").
+//   - Elmas: %1-%4 arası, hisse senedi: %1-%9 arası (temel oynaklık
+//     değişmedi).
+//   - KULLANICI REVİZESİ (10 milyonluk bir hisse yatırımının 2-3 haftada
+//     %2000 artıp oyuncuyu "felaket zengin" etmesi sorunu): elmas ve
+//     hisse senedinde de, kripto'daki İLE BİREBİR AYNI "rejim tersine
+//     dönüşü" freni var artık. Sebep tam olarak kripto'daki gibiydi:
+//     artış aralığı düşüş aralığından biraz daha geniş olduğu için (bkz.
+//     aşağıdaki asimetrik oynaklık notu), sınırsız/dengelemesiz bir
+//     rastgele yürüyüş saatte 1 kez, haftalarca tekrarlanınca kalıcı
+//     yukarı yönlü bir sürüklenmeye ve satranç tahtası efektine (katlanarak
+//     büyüme) yol açabiliyordu — bu bir bug değil, frensiz geometrik
+//     rastgele yürüyüşün beklenen bir sonucuydu. Çözüm: fiyat kullanıcının
+//     belirlediği eşiği geçince (elmas: 20.000 altın, hisse senedi:
+//     200.000.000 altın) artış/düşüş aralıkları YER DEĞİŞTİRİR — üst sınır
+//     YOK, piyasa hâlâ canlı, sadece çok ısındığında kendini frenliyor.
+//     Fiyat tekrar eşiğin altına inince otomatik olarak normal rejime
+//     döner (ayrı bir "rejim" alanı saklanmıyor, her saat o anki fiyata
+//     bakılarak karar veriliyor — kripto ile birebir aynı desen).
 //   - Kripto: YÖN artık gerçek oyuncu alış/satış davranışına bağlı (bkz.
 //     computeWeightedCryptoBuyRatio). Miktar, fiyata göre iki rejimden
 //     biri kullanılarak seçiliyor: 1 kripto 200.000 altının ALTINDAYSA
@@ -3190,6 +3227,10 @@ async function computeWeightedCryptoBuyRatio() {
 //     %1-%20 olur (fiyatın sonsuza dek yukarı sürüklenmesini engellemek
 //     için — kullanıcı revizesi). Fiyat tekrar 200.000 altının altına
 //     inince otomatik olarak normal rejime döner.
+// Rejim bilgisi (diamondReversedRegime/stockReversedRegime/
+// cryptoReversedRegime) artık investments/current dokümanına da yazılıyor
+// — Banka ekranındaki panellerde "düşme eğiliminde ↓" uyarısını göstermek
+// için (bkz. src/components/BankScreen/BankScreen.jsx).
 // Güncel fiyat investments/current dokümanında tutulur (alım/satım
 // fonksiyonları buradan okur); her saatlik hareket ayrıca
 // investmentHistory koleksiyonuna çizgi grafik için kaydedilir. 30
@@ -3210,14 +3251,28 @@ export const hourlyInvestmentUpdate = onSchedule(
     // gelmek için %100 artış gerekir). Üst/alt sınır YOK — fiyat doğal
     // akışına bırakılıyor, sadece 1 altına inmesin diye güvenlik tabanı var.
     // Sıralama (oynaklık artan): Elmas < Hisse Senedi < Kripto.
+    // DIAMOND_REGIME_THRESHOLD / STOCK_REGIME_THRESHOLD — kullanıcının
+    // belirlediği eşikler (bkz. yukarıdaki blok başlığı notu).
+    const DIAMOND_REGIME_THRESHOLD = 20000;
+    const STOCK_REGIME_THRESHOLD = 200000000;
+    const diamondReversedRegime = prev.diamondPrice >= DIAMOND_REGIME_THRESHOLD;
     const diamondUp = Math.random() < 0.5;
-    const diamondChangePct = diamondUp
-      ? Math.random() * 0.04 + 0.01 // %1-5 artış
-      : -(Math.random() * 0.03 + 0.01); // %1-4 düşüş
+    const diamondChangePct = diamondReversedRegime
+      ? diamondUp
+        ? Math.random() * 0.03 + 0.01 // TERS rejim: %1-4 artış
+        : -(Math.random() * 0.04 + 0.01) // TERS rejim: %1-5 düşüş
+      : diamondUp
+        ? Math.random() * 0.04 + 0.01 // NORMAL rejim: %1-5 artış
+        : -(Math.random() * 0.03 + 0.01); // NORMAL rejim: %1-4 düşüş
+    const stockReversedRegime = prev.stockPrice >= STOCK_REGIME_THRESHOLD;
     const stockUp = Math.random() < 0.5;
-    const stockChangePct = stockUp
-      ? Math.random() * 0.09 + 0.01 // %1-10 artış
-      : -(Math.random() * 0.07 + 0.01); // %1-8 düşüş
+    const stockChangePct = stockReversedRegime
+      ? stockUp
+        ? Math.random() * 0.07 + 0.01 // TERS rejim: %1-8 artış
+        : -(Math.random() * 0.09 + 0.01) // TERS rejim: %1-10 düşüş
+      : stockUp
+        ? Math.random() * 0.09 + 0.01 // NORMAL rejim: %1-10 artış
+        : -(Math.random() * 0.07 + 0.01); // NORMAL rejim: %1-8 düşüş
 
     // YENİ SİSTEM: kripto fiyatının YÖNÜ artık coin-flip değil, gerçek
     // oyuncu alış/satış davranışından hesaplanan olasılıkla belirleniyor
@@ -3292,6 +3347,12 @@ export const hourlyInvestmentUpdate = onSchedule(
       // 3'teki örnek tablo) — hiçbir hesaplamada kullanılmıyor, istenirse
       // ileride oyuncuya "piyasa duyarlılığı" göstergesi olarak sunulabilir.
       cryptoUpProbability: Math.round(cryptoUpProbability * 1000) / 10,
+      // Rejim bayrakları — Banka ekranındaki panellerde "düşme eğiliminde ↓"
+      // kırmızı uyarısını göstermek için (bkz. BankScreen.jsx). Her saat
+      // yeniden hesaplanıp burada üzerine yazılıyor, ayrı migration gerekmez.
+      diamondReversedRegime,
+      stockReversedRegime,
+      cryptoReversedRegime,
       updatedAt: now,
     });
 
@@ -3413,6 +3474,11 @@ export const buyVehicle = onCall(async (request) => {
       read: false,
       type: 'loan_offer',
     });
+
+  // Onboarding görev 11 — "herhangi bir araba al" (durum görevi olarak da
+  // çalışır, bkz. checkOnboardingProgress — bu sadece eylem yoluyla
+  // ilerleyen tarafı).
+  await advanceOnboardingStep(uid, 11);
 
   return { ok: true };
 });
@@ -3927,13 +3993,13 @@ export const sellInvestment = onCall(async (request) => {
   const unitPrice = prices[INVESTMENT_PRICE_FIELD[assetType]];
   const holdingsField = INVESTMENT_HOLDINGS_FIELD[assetType];
   const costBasisField = INVESTMENT_COST_BASIS_FIELD[assetType];
-  // SATIŞ KOMİSYONU — YENİ İSTEK (kripto fiyat sistemi yeniden tasarımı):
-  // KR satışında %1 komisyon (alışta YOK) — ekonomiye geri dönmeyen
-  // gerçek bir para sink'i, oyuncuya NET tutar (komisyon düşülmüş)
-  // ödenir. Elmas/hisse senedinde şimdilik komisyon YOK — kullanıcı:
-  // "şimdilik hisse senedi ve elmasa dokunmayalım, sadece kripto için bu
-  // yeniliği yapacağız."
-  const SELL_COMMISSION_RATE = assetType === 'crypto' ? 0.01 : 0;
+  // SATIŞ KOMİSYONU — kullanıcı revizesi: kripto ile başlayan %1 satış
+  // komisyonu artık hisse senedi ve elmasa da uygulanıyor ("sistem kripto
+  // ile birebir aynı olsun istiyorum" — faizde/bankada KOMİSYON YOK, bu
+  // sadece diamond/stock/crypto satışlarına özel). Alışta hâlâ komisyon
+  // yok — sadece satışta, ekonomiye geri dönmeyen gerçek bir para sink'i;
+  // oyuncuya NET tutar (komisyon düşülmüş) ödenir.
+  const SELL_COMMISSION_RATE = 0.01;
 
   const userRef = db.collection('users').doc(uid);
   // cryptoTrades — bkz. buyInvestment'taki AYNI yorum. Ağırlıklandırma
@@ -4080,6 +4146,9 @@ export const takeVehicleLoan = onCall(async (request) => {
       read: false,
       type: 'loan_started',
     });
+
+  // Onboarding görev 14 — "bankadan kredi çek".
+  await advanceOnboardingStep(uid, 14);
 
   return { ok: true };
 });
@@ -7406,6 +7475,10 @@ async function doCreateTrainingRace(request) {
 async function processTrainingReward(roomId) {
   const roomRef = db.collection('raceRooms').doc(roomId);
 
+  // onboardingHook — transaction kapandıktan SONRA kullanılmak üzere,
+  // "1. seviyeyi kazandı mı" bilgisini dışarı taşıyor (bkz. altta).
+  let onboardingHook = null;
+
   await db.runTransaction(async (tx) => {
     // ÖNEMLİ: Firestore transaction'larında TÜM okumalar TÜM yazmalardan
     // önce yapılmalı — sırası karışırsa transaction sessizce/hatayla
@@ -7445,7 +7518,16 @@ async function processTrainingReward(roomId) {
         gold: admin.firestore.FieldValue.increment(reward),
       });
     }
+
+    if (level === 1) {
+      onboardingHook = uid;
+    }
   });
+
+  // Onboarding görev 12 — "antrenmana gir ve 1. seviyeyi tamamla".
+  if (onboardingHook) {
+    await advanceOnboardingStep(onboardingHook, 12);
+  }
 }
 
 // autoRoll — 10 saniyelik süre dolduğunda, odadaki herhangi bir katılımcının
@@ -7649,6 +7731,10 @@ async function doCreateChampionshipRace(request) {
       },
     });
   });
+
+  // Onboarding görev 13 — "yarış pistinden şampiyonaya gir" (girmesi
+  // yeterli, kazanması gerekmiyor).
+  await advanceOnboardingStep(uid, 13);
 
   return { ok: true, roomId: roomRef.id };
 }
@@ -7936,6 +8022,9 @@ export const createListing = onCall(async (request) => {
         });
       }
     });
+    // Onboarding görev 15 — "2. el satış uygulamasından alışveriş yap"
+    // (ilana ürün yüklemek de sayılıyor).
+    await advanceOnboardingStep(uid, 15);
     return { ok: true, listingId: mergedListingRef.id };
   }
 
@@ -8113,6 +8202,10 @@ export const createListing = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'Geçersiz ürün türü.');
   }
 
+  // Onboarding görev 15 — "2. el satış uygulamasından alışveriş yap"
+  // (ilana ürün yüklemek de sayılıyor).
+  await advanceOnboardingStep(uid, 15);
+
   return { ok: true, listingId: listingRef.id };
 });
 
@@ -8184,6 +8277,9 @@ export const instantSellListing = onCall(async (request) => {
         });
       }
     });
+    // Onboarding görev 15 — "2. el satış uygulamasından alışveriş yap"
+    // (anında satmak da sayılıyor).
+    await advanceOnboardingStep(uid, 15);
     return { ok: true, listingId: mergedListingRef.id, payout };
   }
 
@@ -8346,6 +8442,10 @@ export const instantSellListing = onCall(async (request) => {
   } else {
     throw new HttpsError('invalid-argument', 'Geçersiz ürün türü.');
   }
+
+  // Onboarding görev 15 — "2. el satış uygulamasından alışveriş yap"
+  // (anında satmak da sayılıyor).
+  await advanceOnboardingStep(uid, 15);
 
   return { ok: true, listingId: listingRef.id, payout };
 });
@@ -8573,6 +8673,24 @@ export const buyListing = onCall(async (request) => {
         read: false,
         type: 'marketplace_sale',
       });
+  }
+
+  // Onboarding görev 15 — "2. el satış uygulamasından alışveriş yap"
+  // (herhangi bir ürün almak da sayılıyor).
+  await advanceOnboardingStep(uid, 15);
+
+  // Kullanıcı revizesi/sorusu: 2. elden araba/silah almak da görev
+  // 11/5'i tamamlar mı? EVET — daha önce sadece checkOnboardingProgress
+  // (panel her açıldığında vehicles/weapons koleksiyonunu ownerId'ye göre
+  // kontrol eden "durum" yolu) bunu yakalıyordu, yani tamamlanıyordu ama
+  // ancak oyuncu paneli bir dahaki açışında. Burada da DOĞRUDAN
+  // tetikleyerek satın alma anında (gibi galeri satın alımında olduğu
+  // gibi) anında ilerlemesini sağlıyoruz — iki yol da aynı sonuca varır,
+  // bu sadece anlık geri bildirim için.
+  if (result.itemType === 'vehicle') {
+    await advanceOnboardingStep(uid, 11);
+  } else if (result.itemType === 'weapon') {
+    await advanceOnboardingStep(uid, 5);
   }
 
   return { ok: true, cost: result.cost, quantity: result.quantity };
