@@ -18,6 +18,150 @@
   gap: 6px;
 }
 
+/* market-screen-title / market-back-btn — pazar tasarımı yenilenirken
+   eklendi (kullanıcı revizesi): eski üstteki sekme çubuğunun yerini ana
+   sayfada başlık, kategori içindeyken "‹ Geri" butonu + kategori adı
+   aldı. */
+.market-screen-title {
+  flex: 1;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.market-back-btn {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.market-back-btn:hover {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+/* market-home-panel — "Avantajlı Ürünler" ve "Reklam Verilen Ürünler"
+   panelleri, sadece içinde ürün varsa gösteriliyor (kullanıcı revizesi:
+   "eğer reklam ilanı yoksa bu panel gözükmeyecek, aynı şekilde avantajlı
+   ürün yoksa o panel de gözükmesin"). */
+.market-home-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* market-category-grid — kullanıcı revizesi: "4 tane kare buton olacak,
+   2 2 alt alta olacak şekilde". */
+.market-category-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.market-category-btn {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 14px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.market-category-btn:hover {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.market-category-emoji {
+  font-size: 34px;
+  line-height: 1;
+}
+
+.market-category-label {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* market-my-listing-wrap / market-ad-* — "Reklam Ver" kontrolü, sadece
+   İlanlarım altında (kullanıcı revizesi). */
+.market-my-listing-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.market-ad-btn {
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.market-ad-btn:hover:not(:disabled) {
+  border-color: #ffd23f;
+  color: #ffd23f;
+}
+
+.market-ad-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.market-ad-badge {
+  margin: 0;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffd23f;
+  background: rgba(255, 210, 63, 0.08);
+  border: 1px solid rgba(255, 210, 63, 0.35);
+  border-radius: 8px;
+  padding: 6px;
+}
+
+.market-ad-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: #0a0308;
+  border: 1px solid rgba(255, 210, 63, 0.35);
+  border-radius: 8px;
+}
+
+.market-ad-confirm-row {
+  display: flex;
+  gap: 8px;
+}
+
+.market-ad-confirm-row .market-btn {
+  flex: 1;
+}
+
+.market-hint.small {
+  font-size: 10px;
+}
+
 .market-tab-btn {
   flex: 1;
   padding: 8px 4px;

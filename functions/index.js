@@ -80,13 +80,27 @@ async function advanceOnboardingStep(uid, taskNumber) {
 }
 
 // checkOnboardingProgress — adım 5 ("herhangi bir silah al"), 9 ("şüpheni
-// 20'ye çıkart"), 11 ("herhangi bir araba al") ve 12 ("antrenmanın 1.
-// seviyesini tamamla") diğerlerinden farklı: bunlar "eylem" değil "durum"
-// görevi — oyuncu bu adıma geldiği anda şart zaten sağlanıyorsa (elinde
-// silah/araba varsa, şüphesi zaten ≥20 ise, antrenman 1. seviyeyi daha
-// önce bitirmişse) otomatik tamamlanmış sayılır, yoksa ilgili eylemle
-// normal şekilde ilerler. İstemci, paneli her açtığında ve bu adımlardan
-// biri aktifken bunu çağırır.
+// 20'ye çıkart"), 11 ("herhangi bir araba al"), 12 ("antrenmanın 1.
+// seviyesini tamamla") ve 13 ("şampiyonaya gir") diğerlerinden farklı:
+// bunlar "eylem" değil "durum" görevi — oyuncu bu adıma geldiği anda şart
+// zaten sağlanıyorsa (elinde silah/araba varsa, şüphesi zaten ≥20 ise,
+// antrenman 1. seviyeyi/şampiyonayı daha önce bitirmiş/denemişse)
+// otomatik tamamlanmış sayılır, yoksa ilgili eylemle normal şekilde
+// ilerler. İstemci, paneli her açtığında ve bu adımlardan biri aktifken
+// bunu çağırır.
+// NOT (bug fix — kullanıcı revizesi): adım 13 ÖNCEDEN doCreateChampionshipRace
+// içinde DOĞRUDAN advanceOnboardingStep çağrısıyla ilerletiliyordu, ama bu
+// fonksiyon raceHubAction'ın (bkz. o fonksiyonun üstündeki NOT — bilinen
+// cold-start/kuyruklama geçmişi olan, gecikmeye duyarlı paylaşılan giriş
+// noktası) parçası. Ekstra bir Firestore transaction'ı buraya eklemek
+// bazen callable'ın istemciye dönüşünü geciktirip zaman aşımına
+// uğratıyordu — oyuncu "yarışa katıl" dediğinde hiçbir şey olmuyormuş gibi
+// görünüyordu, ama oda sunucuda ZATEN oluşmuş oluyordu; oyuncu oyunu
+// kapatıp tekrar açtığında useMyActiveRaceRoom dinleyicisi bu odayı
+// yakalayıp doğrudan yarış ekranına düşürüyordu. Çözüm: doCreateChampionshipRace
+// artık advanceOnboardingStep'i HİÇ çağırmıyor (kritik yolu geciktirmiyor),
+// ilerleme burada "durum kontrolü" ile (raceRooms'ta şampiyona odası
+// oluşturmuş mu diye bakarak) yapılıyor — aynı adım 11/12 deseni.
 export const checkOnboardingProgress = onCall(async (request) => {
   const uid = requireAuth(request);
   const userRef = db.collection('users').doc(uid);
@@ -113,6 +127,17 @@ export const checkOnboardingProgress = onCall(async (request) => {
       const progressSnap = await tx.get(db.collection('trainingProgress').doc(uid));
       if (progressSnap.exists && progressSnap.data()?.beatenLevels?.[1]) {
         tx.update(userRef, { onboardingStep: 13 });
+      }
+    } else if (currentStep === 13) {
+      const champRoomSnap = await tx.get(
+        db
+          .collection('raceRooms')
+          .where('creatorUid', '==', uid)
+          .where('isChampionship', '==', true)
+          .limit(1)
+      );
+      if (!champRoomSnap.empty) {
+        tx.update(userRef, { onboardingStep: 14 });
       }
     }
   });
@@ -7475,10 +7500,6 @@ async function doCreateTrainingRace(request) {
 async function processTrainingReward(roomId) {
   const roomRef = db.collection('raceRooms').doc(roomId);
 
-  // onboardingHook — transaction kapandıktan SONRA kullanılmak üzere,
-  // "1. seviyeyi kazandı mı" bilgisini dışarı taşıyor (bkz. altta).
-  let onboardingHook = null;
-
   await db.runTransaction(async (tx) => {
     // ÖNEMLİ: Firestore transaction'larında TÜM okumalar TÜM yazmalardan
     // önce yapılmalı — sırası karışırsa transaction sessizce/hatayla
@@ -7518,16 +7539,15 @@ async function processTrainingReward(roomId) {
         gold: admin.firestore.FieldValue.increment(reward),
       });
     }
-
-    if (level === 1) {
-      onboardingHook = uid;
-    }
   });
 
-  // Onboarding görev 12 — "antrenmana gir ve 1. seviyeyi tamamla".
-  if (onboardingHook) {
-    await advanceOnboardingStep(onboardingHook, 12);
-  }
+  // Onboarding görev 12 — "antrenmana gir ve 1. seviyeyi tamamla" — bug
+  // fix (bkz. checkOnboardingProgress'teki NOT, adım 13 ile aynı sorun):
+  // burada advanceOnboardingStep DOĞRUDAN çağrılmıyor artık, çünkü bu
+  // fonksiyon da raceHubAction'ın (doFinishSoloRace) kritik yolunda —
+  // ekstra bir transaction gecikmeye/zaman aşımına yol açabiliyordu.
+  // İlerleme zaten checkOnboardingProgress'in adım 12 durum kontrolüyle
+  // (trainingProgress.beatenLevels[1]) yapılıyor, bu çağrı fazlalıktı.
 }
 
 // autoRoll — 10 saniyelik süre dolduğunda, odadaki herhangi bir katılımcının
@@ -7732,10 +7752,13 @@ async function doCreateChampionshipRace(request) {
     });
   });
 
-  // Onboarding görev 13 — "yarış pistinden şampiyonaya gir" (girmesi
-  // yeterli, kazanması gerekmiyor).
-  await advanceOnboardingStep(uid, 13);
-
+  // Onboarding görev 13 — "yarış pistinden şampiyonaya gir" — BİLEREK
+  // burada advanceOnboardingStep ÇAĞRILMIYOR (bug fix, bkz.
+  // checkOnboardingProgress'teki NOT): bu fonksiyon raceHubAction'ın
+  // gecikmeye duyarlı kritik yolunda, ekstra bir Firestore transaction'ı
+  // callable'ın zaman aşımına uğramasına ve oyuncunun "yarış başlamadı"
+  // sanmasına yol açabiliyordu (oda aslında oluşmuş oluyordu). İlerleme
+  // artık checkOnboardingProgress'teki durum kontrolüyle yapılıyor.
   return { ok: true, roomId: roomRef.id };
 }
 
@@ -8496,6 +8519,58 @@ export const cancelListing = onCall(async (request) => {
     }
 
     tx.update(listingRef, { sold: true, cancelled: true });
+  });
+
+  return { ok: true };
+});
+
+// =============================================================================
+// 2. EL PAZARI — REKLAM SİSTEMİ (kullanıcı revizesi — pazar tasarımı
+// yenilenirken eklendi): "Reklam Ver" butonuna bastığımızda 24 saatlik
+// reklam 1000 altın olduğunu belirteceğiz. Oyuncu kabul ederse, ilan
+// verdiği ürün 24 saat boyunca reklam panelinde sergilenecek, ürünü
+// kaldırırsa reklam parası çöp olur." — yani:
+//   - Ödeme TEK SEFERLİK ve GERİ ÖDENMEZ (ekonomiden çıkan gerçek bir
+//     sink, komisyonlar gibi — kimseye gitmiyor).
+//   - İlan süre dolmadan iptal edilir/satılırsa (cancelListing/buyListing
+//     onu "sold: true" yapar) reklam parası bilerek İADE EDİLMİYOR —
+//     ayrıca bir kod gerekmiyor, sadece "sold" olan ilanlar zaten
+//     useMarketplaceListings'te (sold==false filtresi) hiç görünmüyor.
+//   - adExpiresAt alanı geçtiğinde reklam paneli istemci tarafında
+//     otomatik filtrelenir (bkz. MarketplaceScreen.jsx) — ayrı bir
+//     temizlik job'ı gerekmiyor, sadece görünürlük süresi doluyor.
+const AD_PRICE = 1000;
+const AD_DURATION_MS = 24 * 60 * 60 * 1000;
+
+export const advertiseListing = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { listingId } = request.data || {};
+  const listingRef = db.collection('marketplaceListings').doc(listingId);
+  const userRef = db.collection('users').doc(uid);
+
+  const adExpiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + AD_DURATION_MS);
+
+  await db.runTransaction(async (tx) => {
+    const [listingSnap, userSnap] = await Promise.all([tx.get(listingRef), tx.get(userRef)]);
+    if (!listingSnap.exists) {
+      throw new HttpsError('failed-precondition', 'İlan bulunamadı.');
+    }
+    const listing = listingSnap.data();
+    if (listing.sellerId !== uid) {
+      throw new HttpsError('permission-denied', 'Bu ilan size ait değil.');
+    }
+    if (listing.sold) {
+      throw new HttpsError('failed-precondition', 'Bu ilan zaten satılmış/iptal edilmiş.');
+    }
+    if (listing.adExpiresAt && listing.adExpiresAt.toMillis() > Date.now()) {
+      throw new HttpsError('failed-precondition', 'Bu ilan zaten reklamda, süresi dolmadan tekrar reklam veremezsin.');
+    }
+    const user = userSnap.data();
+    if (!user || (user.gold || 0) < AD_PRICE) {
+      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    }
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-AD_PRICE) });
+    tx.update(listingRef, { adExpiresAt, adPurchasedAt: admin.firestore.FieldValue.serverTimestamp() });
   });
 
   return { ok: true };

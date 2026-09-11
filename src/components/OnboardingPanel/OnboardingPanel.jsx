@@ -28,16 +28,23 @@ export default function OnboardingPanel() {
   const [justCompletedStep, setJustCompletedStep] = useState(null);
   const prevStepRef = useRef(onboardingStep);
 
-  // Panel açıkken adım 5/9/11/12 gibi "durum" görevlerinin (silahın zaten
-  // varsa / şüphen zaten ≥20 ise / arabanız zaten varsa / antrenmanın 1.
-  // seviyesini zaten geçtiysen) anında tamamlanmış sayılmasını tetikle.
+  // Panel açıkken adım 5/9/11/12/13 gibi "durum" görevlerinin (silahın
+  // zaten varsa / şüphen zaten ≥20 ise / arabanız zaten varsa /
+  // antrenmanın 1. seviyesini zaten geçtiysen / şampiyonaya zaten
+  // girdiysen) anında tamamlanmış sayılmasını tetikle. Adım 13 — bug fix
+  // (bkz. functions/index.js checkOnboardingProgress'teki NOT): önceden
+  // doCreateChampionshipRace içinde DOĞRUDAN ilerletiliyordu, ama bu
+  // yarış başlatma isteğini yavaşlatıp bazen zaman aşımına uğratıyordu
+  // ("yarışa katıl dedim, başlamadı" bug'ı) — artık diğer durum görevleri
+  // gibi burada kontrol ediliyor.
   useEffect(() => {
     if (!open || onboardingRewardClaimed) return;
     if (
       onboardingStep === 5 ||
       onboardingStep === 9 ||
       onboardingStep === 11 ||
-      onboardingStep === 12
+      onboardingStep === 12 ||
+      onboardingStep === 13
     ) {
       checkOnboardingProgress().catch((err) => {
         console.error('checkOnboardingProgress hatası:', err);

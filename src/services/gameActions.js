@@ -135,6 +135,13 @@ export const instantSellListing = (payload) =>
 export const cancelListing = (listingId) =>
   httpsCallable(functions, 'cancelListing')({ listingId });
 
+// advertiseListing — kullanıcı revizesi: "Reklam Ver" butonu, 24 saatlik
+// reklam 1000 altın, kabul edilirse ilan 24 saat "Reklam Verilen
+// Ürünler" panelinde sergilenir; ürün kaldırılırsa (satılır/iptal
+// edilirse) reklam parası geri ödenmez.
+export const advertiseListing = (listingId) =>
+  httpsCallable(functions, 'advertiseListing')({ listingId });
+
 // --- Telefon: Sixtagram (mini sosyal medya) ---
 
 export const createSixtagramPost = (text, attachment) =>

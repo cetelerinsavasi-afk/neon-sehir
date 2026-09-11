@@ -11,6 +11,7 @@ import {
   instantSellListing,
   cancelListing,
   buyListing,
+  advertiseListing,
   runMergeLegacyMaterialListings,
 } from '../../services/gameActions';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
@@ -52,6 +53,23 @@ const TABS = [
   { id: 'machine', label: 'Makine' },
 ];
 
+// CATEGORIES — pazar tasarımı yenilenirken eklendi (kullanıcı revizesi):
+// eski üstteki sekme çubuğu kaldırıldı, yerine ana sayfada 2x2 dizilen 4
+// kare kategori butonu geldi. TABS ile aynı id'leri paylaşıyor (SellForm
+// zaten itemType olarak bunları kullanıyor), sadece görsel/etiket farklı.
+const CATEGORIES = [
+  { id: 'vehicle', label: 'Araçlar', emoji: '🚗' },
+  { id: 'weapon', label: 'Silahlar', emoji: '🔫' },
+  { id: 'material', label: 'Malzemeler', emoji: '📦' },
+  { id: 'machine', label: 'Makineler', emoji: '⚙️' },
+];
+
+// AD_PRICE/AD_DURATION_MS — functions/index.js advertiseListing'teki
+// SABİTLERLE BİREBİR AYNI (sadece bilgilendirme/önizleme amaçlı, gerçek
+// doğrulama sunucuda yapılıyor).
+const AD_PRICE = 1000;
+const AD_DURATION_MS = 24 * 60 * 60 * 1000;
+
 // Fiyat sınırları — hesaplar arası para aklamayı önlemek için backend'de
 // de AYNI kurallarla doğrulanıyor (bkz. functions/index.js createListing).
 // Burası sadece kullanıcıya yol göstermek için.
@@ -78,13 +96,21 @@ function materialQuickAmountsFor(materialType) {
 // hesaplanıyor (bkz. functions/index.js valueRatioOf, 2. sürüm) — burası
 // sadece kullanıcıya fiyat aralığı önermek için bir ayna, gerçek doğrulama
 // backend'de yapılıyor.
-function valueRatio(item) {
-  const repairsUsed = item?.repairsUsed || 0;
-  const remainingRepairs = Math.max(0, MAX_REPAIRS - repairsUsed);
-  const lifeDays = Math.max(0, item?.lifeDays ?? INITIAL_LIFE_DAYS);
-  const combined = remainingRepairs * REPAIR_LIFE_BONUS_DAYS + lifeDays;
+// valueRatioFromLife — valueRatio(item)'ın gövdesi, ham lifeDays/repairsUsed
+// değerlerini alacak şekilde ayrıştırıldı (kullanıcı revizesi — "Avantajlı
+// Ürünler" paneli için: canlı araç/silah objesi değil, market ilanının
+// KENDİ dondurulmuş alanlarından (vehicleLifeDays/vehicleRepairsUsed vb.)
+// aynı oranı yeniden hesaplamamız gerekiyor, bkz. listingCeilingPrice).
+function valueRatioFromLife(lifeDays, repairsUsed) {
+  const remainingRepairs = Math.max(0, MAX_REPAIRS - (repairsUsed || 0));
+  const life = Math.max(0, lifeDays ?? INITIAL_LIFE_DAYS);
+  const combined = remainingRepairs * REPAIR_LIFE_BONUS_DAYS + life;
   const maxCombined = MAX_REPAIRS * REPAIR_LIFE_BONUS_DAYS + INITIAL_LIFE_DAYS;
   return Math.max(0, Math.min(1, combined / maxCombined));
+}
+
+function valueRatio(item) {
+  return valueRatioFromLife(item?.lifeDays, item?.repairsUsed);
 }
 
 function vehiclePriceRange(vehicle) {
@@ -109,6 +135,67 @@ function materialUnitPriceRange(materialType) {
 function machinePriceRange(machineType, cryptoPrice) {
   const max = machineType === 'mining' ? Math.ceil(2 * cryptoPrice) : MACHINE_PRICES[machineType];
   return { min: Math.floor(max / 2), max };
+}
+
+// --- "Avantajlı Ürünler" paneli — kullanıcı revizesi ---
+// "burada fiyatı tavan fiyatının %75'inin altında olan ürünler
+// listelenecek" — tavan fiyat, o SPESİFİK ilanın (aracın/silahın ömrü,
+// tamir hakkı, yükseltmesi dahil) kendi max fiyatı; malzeme/makinede ise
+// sabit katalog tavanı. Sistem ilanları (Anında Sat ile oluşan) her
+// zaman kendi tavanının ~%50-55'ine satıldığı için otomatik olarak bu
+// listeye giriyor — ekstra bir kod gerekmedi, aynı formülü kullanmak
+// yetiyor.
+const ADVANTAGEOUS_THRESHOLD_RATIO = 0.75;
+
+function listingCeilingPrice(listing) {
+  if (listing.itemType === 'vehicle') {
+    const base = vehicleCatalog.find((v) => v.id === listing.vehicleCatalogId)?.price || 0;
+    const mult =
+      listing.vehicleGearUpgraded && listing.vehicleTankUpgraded
+        ? 3
+        : listing.vehicleGearUpgraded || listing.vehicleTankUpgraded
+          ? 2
+          : 1;
+    return Math.round(base * mult * valueRatioFromLife(listing.vehicleLifeDays, listing.vehicleRepairsUsed));
+  }
+  if (listing.itemType === 'weapon') {
+    const base = weaponCatalog.find((w) => w.id === listing.weaponCatalogId)?.price || 0;
+    const mult = listing.weaponLevel || 1;
+    return Math.round(base * mult * valueRatioFromLife(listing.weaponLifeDays, listing.weaponRepairsUsed));
+  }
+  if (listing.itemType === 'material') {
+    return AMAZOR_PRICES[listing.materialType] || 0;
+  }
+  if (listing.itemType === 'machine') {
+    return MACHINE_PRICES[listing.machineType] || 0;
+  }
+  return 0;
+}
+
+// Malzemede karşılaştırma ADET fiyatı üzerinden, diğerlerinde toplam
+// ilan fiyatı üzerinden yapılıyor (bkz. ListingCard'daki aynı ayrım).
+function listingComparablePrice(listing) {
+  if (listing.itemType === 'material') {
+    return listing.unitPrice || Math.round(listing.price / (listing.quantity || 1));
+  }
+  return listing.price || 0;
+}
+
+function isAdvantageousListing(listing) {
+  const ceiling = listingCeilingPrice(listing);
+  if (!ceiling) return false;
+  return listingComparablePrice(listing) < ceiling * ADVANTAGEOUS_THRESHOLD_RATIO;
+}
+
+// --- "Reklam Verilen Ürünler" paneli ---
+function isAdvertisedListing(listing) {
+  return Boolean(listing.adExpiresAt) && listing.adExpiresAt.toMillis() > Date.now();
+}
+
+function adRemainingLabel(listing) {
+  const remainingMs = (listing.adExpiresAt?.toMillis() || 0) - Date.now();
+  const hours = Math.max(0, Math.ceil(remainingMs / (60 * 60 * 1000)));
+  return hours <= 1 ? '1 saatten az kaldı' : `${hours} saat kaldı`;
 }
 
 function vehicleImage(catalogId) {
@@ -615,13 +702,53 @@ function BuyMaterialModal({ listing, onClose, onBought }) {
   );
 }
 
+// MyListingWithAd — "İlanlarım" satırındaki her kartın altına, kullanıcı
+// revizesiyle eklenen "Reklam Ver" kontrolünü ekliyor: normal ListingCard
+// DEĞİŞMEDEN kalıyor (Avantajlı/Reklam panellerinde başkalarının ilanları
+// için de kullanılıyor, orada reklam kontrolü anlamsız), reklam sadece
+// KENDİ ilanlarımızın altında, ayrı bir satır olarak gösteriliyor.
+function MyListingWithAd({ listing, busy, onCancel, advertising, onStartAdvertise, onCancelAdvertise, onConfirmAdvertise }) {
+  const advertised = isAdvertisedListing(listing);
+  return (
+    <div className="market-my-listing-wrap">
+      <ListingCard listing={listing} isMine busy={busy} onCancel={onCancel} />
+      {advertised ? (
+        <p className="market-ad-badge">📢 Reklamda — {adRemainingLabel(listing)}</p>
+      ) : advertising ? (
+        <div className="market-ad-confirm">
+          <p className="market-hint small">
+            {AD_DURATION_MS / (60 * 60 * 1000)} saatlik reklam:{' '}
+            <strong>{AD_PRICE.toLocaleString('tr-TR')} altın</strong>. Kabul ediyor musun?
+          </p>
+          <div className="market-ad-confirm-row">
+            <button className="market-btn" disabled={busy} onClick={onCancelAdvertise}>
+              Vazgeç
+            </button>
+            <button className="market-btn primary" disabled={busy} onClick={onConfirmAdvertise}>
+              {busy ? '…' : 'Evet, Reklam Ver'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button className="market-ad-btn" disabled={busy} onClick={onStartAdvertise}>
+          📢 Reklam Ver
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function MarketplaceScreen() {
   const { user } = useAuth();
   const { listings } = useMarketplaceListings();
-  const [tab, setTab] = useState('vehicle');
+  // view — 'home' (yeni ana sayfa: avantajlı/reklam panelleri + 4 kategori
+  // butonu) ya da CATEGORIES id'lerinden biri (kategori içine girildiğinde).
+  // Eski üstteki sekme çubuğu kaldırıldı (kullanıcı revizesi).
+  const [view, setView] = useState('home');
   const [materialFilter, setMaterialFilter] = useState('all');
   const [showSellForm, setShowSellForm] = useState(false);
   const [buyModalListing, setBuyModalListing] = useState(null);
+  const [advertisingId, setAdvertisingId] = useState(null);
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
 
@@ -632,6 +759,19 @@ export default function MarketplaceScreen() {
       await fn();
     } catch (err) {
       setError(err.message || 'İşlem başarısız.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const runAdvertise = async (listingId) => {
+    setBusy(listingId);
+    setError(null);
+    try {
+      await advertiseListing(listingId);
+      setAdvertisingId(null);
+    } catch (err) {
+      setError(err.message || 'Reklam verilemedi.');
     } finally {
       setBusy(null);
     }
@@ -648,78 +788,146 @@ export default function MarketplaceScreen() {
     });
   }, [user]);
 
-  const tabListings = listings
-    .filter((l) => l.itemType === tab)
-    .filter((l) => tab !== 'material' || materialFilter === 'all' || l.materialType === materialFilter);
-  const myListings = tabListings.filter((l) => l.sellerId === user?.uid);
-  const otherListings = tabListings.filter((l) => l.sellerId !== user?.uid);
+  // Avantajlı/Reklam panelleri TÜM kategorilerden besleniyor (ana sayfa),
+  // en büyük indirim / en yeni reklam önde olacak şekilde sıralanıyor.
+  const advantageousListings = listings
+    .filter(isAdvantageousListing)
+    .sort((a, b) => listingComparablePrice(a) / listingCeilingPrice(a) - listingComparablePrice(b) / listingCeilingPrice(b));
+  const advertisedListings = listings
+    .filter(isAdvertisedListing)
+    .sort((a, b) => (b.adExpiresAt?.toMillis() || 0) - (a.adExpiresAt?.toMillis() || 0));
+
+  const categoryListings =
+    view === 'home'
+      ? []
+      : listings
+          .filter((l) => l.itemType === view)
+          .filter((l) => view !== 'material' || materialFilter === 'all' || l.materialType === materialFilter);
+  const myListings = categoryListings.filter((l) => l.sellerId === user?.uid);
+  const otherListings = categoryListings.filter((l) => l.sellerId !== user?.uid);
+
+  const buyOrOpenModal = (l) =>
+    l.itemType === 'material' ? setBuyModalListing(l) : run(l.id, () => buyListing(l.id));
 
   return (
     <div className="market-screen">
-      <div className="market-header-row">
-        <div className="market-tabs">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              className={`market-tab-btn${tab === t.id ? ' active' : ''}`}
-              onClick={() => setTab(t.id)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-        <button className="market-btn primary" onClick={() => setShowSellForm(true)}>
-          + İlan Ver
-        </button>
-      </div>
-
-      {tab === 'material' && (
-        <select
-          className="market-material-filter"
-          value={materialFilter}
-          onChange={(e) => setMaterialFilter(e.target.value)}
-        >
-          <option value="all">Tüm malzemeler</option>
-          {Object.entries(MATERIAL_LABELS).map(([key, label]) => (
-            <option key={key} value={key}>
-              {label}
-            </option>
-          ))}
-        </select>
-      )}
-
-      {myListings.length > 0 && (
+      {view === 'home' ? (
         <>
-          <p className="market-section-title">İlanlarım</p>
-          {myListings.map((l) => (
+          <div className="market-header-row">
+            <p className="market-screen-title">🏪 2. El Pazarı</p>
+            <button className="market-btn primary" onClick={() => setShowSellForm(true)}>
+              + İlan Ver
+            </button>
+          </div>
+
+          {advantageousListings.length > 0 && (
+            <div className="market-home-panel">
+              <p className="market-section-title">🔥 Avantajlı Ürünler</p>
+              <p className="market-hint">Tavan fiyatının %75'inin altındaki ürünler.</p>
+              {advantageousListings.map((l) => (
+                <ListingCard
+                  key={l.id}
+                  listing={l}
+                  isMine={l.sellerId === user?.uid}
+                  busy={busy === l.id}
+                  onCancel={() => run(l.id, () => cancelListing(l.id))}
+                  onBuy={() => buyOrOpenModal(l)}
+                />
+              ))}
+            </div>
+          )}
+
+          {advertisedListings.length > 0 && (
+            <div className="market-home-panel">
+              <p className="market-section-title">📢 Reklam Verilen Ürünler</p>
+              {advertisedListings.map((l) => (
+                <ListingCard
+                  key={l.id}
+                  listing={l}
+                  isMine={l.sellerId === user?.uid}
+                  busy={busy === l.id}
+                  onCancel={() => run(l.id, () => cancelListing(l.id))}
+                  onBuy={() => buyOrOpenModal(l)}
+                />
+              ))}
+            </div>
+          )}
+
+          <div className="market-category-grid">
+            {CATEGORIES.map((c) => (
+              <button key={c.id} className="market-category-btn" onClick={() => setView(c.id)}>
+                <span className="market-category-emoji">{c.emoji}</span>
+                <span className="market-category-label">{c.label}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="market-header-row">
+            <button className="market-back-btn" onClick={() => setView('home')}>
+              ‹ Geri
+            </button>
+            <p className="market-screen-title">{CATEGORIES.find((c) => c.id === view)?.label}</p>
+            <button className="market-btn primary" onClick={() => setShowSellForm(true)}>
+              + İlan Ver
+            </button>
+          </div>
+
+          {view === 'material' && (
+            <select
+              className="market-material-filter"
+              value={materialFilter}
+              onChange={(e) => setMaterialFilter(e.target.value)}
+            >
+              <option value="all">Tüm malzemeler</option>
+              {Object.entries(MATERIAL_LABELS).map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {myListings.length > 0 && (
+            <>
+              <p className="market-section-title">İlanlarım</p>
+              {myListings.map((l) => (
+                <MyListingWithAd
+                  key={l.id}
+                  listing={l}
+                  busy={busy === l.id}
+                  onCancel={() => run(l.id, () => cancelListing(l.id))}
+                  advertising={advertisingId === l.id}
+                  onStartAdvertise={() => setAdvertisingId(l.id)}
+                  onCancelAdvertise={() => setAdvertisingId(null)}
+                  onConfirmAdvertise={() => runAdvertise(l.id)}
+                />
+              ))}
+            </>
+          )}
+
+          <p className="market-section-title">Diğer İlanlar</p>
+          {otherListings.length === 0 && <p className="market-hint">Bu kategoride başka ilan yok.</p>}
+          {otherListings.map((l) => (
             <ListingCard
               key={l.id}
               listing={l}
-              isMine
+              isMine={false}
               busy={busy === l.id}
-              onCancel={() => run(l.id, () => cancelListing(l.id))}
+              onBuy={() => buyOrOpenModal(l)}
             />
           ))}
         </>
       )}
 
-      <p className="market-section-title">Diğer İlanlar</p>
-      {otherListings.length === 0 && <p className="market-hint">Bu kategoride başka ilan yok.</p>}
-      {otherListings.map((l) => (
-        <ListingCard
-          key={l.id}
-          listing={l}
-          isMine={false}
-          busy={busy === l.id}
-          onBuy={() =>
-            l.itemType === 'material' ? setBuyModalListing(l) : run(l.id, () => buyListing(l.id))
-          }
-        />
-      ))}
       {error && <p className="market-error">{error}</p>}
 
       {showSellForm && (
-        <SellForm onClose={() => setShowSellForm(false)} initialItemType={tab} />
+        <SellForm
+          onClose={() => setShowSellForm(false)}
+          initialItemType={view === 'home' ? 'vehicle' : view}
+        />
       )}
       {buyModalListing && (
         <BuyMaterialModal listing={buyModalListing} onClose={() => setBuyModalListing(null)} />
