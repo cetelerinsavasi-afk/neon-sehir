@@ -4149,6 +4149,7 @@ export const takeVehicleLoan = onCall(async (request) => {
   const vehicleRef = db.collection('vehicles').doc(vehicleId);
   const userRef = db.collection('users').doc(uid);
   let totalOwedForSms = 0;
+  let principalForClient = 0;
 
   await db.runTransaction(async (tx) => {
     const vehicleSnap = await tx.get(vehicleRef);
@@ -4179,6 +4180,7 @@ export const takeVehicleLoan = onCall(async (request) => {
     const principal = VEHICLE_CATALOG[vehicle.catalogId]?.price ?? vehicle.baseGalleryValue;
     const totalOwed = Math.round(principal * (1 + interestRate));
     totalOwedForSms = totalOwed;
+    principalForClient = principal;
     const now = Date.now();
 
     tx.update(vehicleRef, {
@@ -4210,7 +4212,11 @@ export const takeVehicleLoan = onCall(async (request) => {
   // Onboarding görev 14 — "bankadan kredi çek".
   await advanceOnboardingStep(uid, 14);
 
-  return { ok: true };
+  // Kullanıcı revizesi: "kredi çektiğimizde de butonda, xx.xxx altın
+  // hesabınıza aktarıldı yazsın, kredi çekildiği paranın geldiği belli
+  // olmuyor" — istemcinin bunu gösterebilmesi için hesaba yatan ana
+  // parayı (principal) döndürüyoruz.
+  return { ok: true, principal: principalForClient };
 });
 
 export const repayVehicleLoan = onCall(async (request) => {
@@ -6898,6 +6904,18 @@ async function getVehicleForRace(uid, vehicleId) {
     throw new HttpsError('failed-precondition', 'Bu araç size ait değil.');
   }
   const vehicle = vSnap.data();
+  // Kullanıcı revizesi: "sattığım arabalarla şampiyonaya katılabiliyorum"
+  // — 2. elde listelenmiş (satışa çıkarılmış/satılmış) bir araç artık
+  // fiilen elimizde sayılmamalı, yarışa/şampiyonaya bu araçla girilemez.
+  // Bu fonksiyon TÜM yarış giriş noktalarının (tekli yarış, eğitim yarışı,
+  // oda kurma/katılma, şampiyona) ortak kontrol noktası olduğu için tek
+  // yerden düzeltmek yeterli.
+  if (vehicle.listed) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Bu araç şu an 2. el sitesinde satışta, yarışa bu araçla giremezsin.'
+    );
+  }
   const lifeDays = vehicle.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
   if (!(lifeDays > 0)) {
     throw new HttpsError(

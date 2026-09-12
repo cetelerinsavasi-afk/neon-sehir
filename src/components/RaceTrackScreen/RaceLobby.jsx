@@ -11,7 +11,11 @@ import './RaceTrackScreen.css';
 const TRAINING_LEVELS = 10;
 
 function raceable(v) {
-  return !v.seizedByBank && (v.lifeDays ?? INITIAL_LIFE_DAYS) > 0;
+  // Kullanıcı revizesi: "sattığım arabalarla şampiyonaya katılabiliyorum"
+  // — 2. elde listelenmiş (satışa çıkarılmış) araçlar seçim listesinde
+  // hiç görünmemeli (sunucu tarafında da aynı kontrol var, bkz.
+  // functions/index.js getVehicleForRace).
+  return !v.listed && !v.seizedByBank && (v.lifeDays ?? INITIAL_LIFE_DAYS) > 0;
 }
 
 function vehicleImage(catalogId) {

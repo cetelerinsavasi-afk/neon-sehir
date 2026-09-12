@@ -1,9 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useVehicles } from '../../hooks/useVehicles';
 import { takeVehicleLoan, repayVehicleLoan } from '../../services/gameActions';
 import { vehicleLivePrice, vehicleDisplayName, INITIAL_LIFE_DAYS } from '../VehicleCard/VehicleCard';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './VehicleLoanSection.css';
+
+// Kullanıcı revizesi: "kredi çektiğimizde de butonda, xx.xxx altın
+// hesabınıza aktarıldı yazsın, kredi çekildiği paranın geldiği belli
+// olmuyor" — kredi alınan araç anında ipotekli listesine taşınıp
+// "Kredi Çek" bölümünden kaybolabildiği için (tek uygun aracımız varsa)
+// onay mesajını butona bağlı tutmak yerine bölümün en üstünde, birkaç
+// saniye kalıcı bir şekilde gösteriyoruz.
+const LOAN_SUCCESS_MS = 4000;
 
 // Kullanıcı revizesi: araç/silah azami ömrü 30 → 20 güne düşürüldüğü için
 // 20 günlük vade seçeneği kaldırıldı (hiçbir araç bu vadeyi karşılayamazdı,
@@ -22,12 +30,37 @@ export default function VehicleLoanSection() {
   const [repayAmounts, setRepayAmounts] = useState({});
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
+  const [loanSuccessAmount, setLoanSuccessAmount] = useState(null);
+  const loanSuccessTimeout = useRef(null);
+
+  useEffect(
+    () => () => {
+      if (loanSuccessTimeout.current) clearTimeout(loanSuccessTimeout.current);
+    },
+    []
+  );
 
   const run = async (key, fn) => {
     setBusy(key);
     setError(null);
     try {
       await fn();
+    } catch (err) {
+      setError(err.message || 'İşlem başarısız.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleTakeLoan = async () => {
+    setBusy('take');
+    setError(null);
+    try {
+      const res = await takeVehicleLoan(selectedVehicleId, term);
+      setLoanSuccessAmount(res?.data?.principal || 0);
+      setSelectedVehicleId('');
+      if (loanSuccessTimeout.current) clearTimeout(loanSuccessTimeout.current);
+      loanSuccessTimeout.current = setTimeout(() => setLoanSuccessAmount(null), LOAN_SUCCESS_MS);
     } catch (err) {
       setError(err.message || 'İşlem başarısız.');
     } finally {
@@ -44,6 +77,12 @@ export default function VehicleLoanSection() {
   return (
     <div className="loan-section">
       <p className="loan-section-title">Banka Kredisi — Araç İpoteği</p>
+
+      {loanSuccessAmount !== null && (
+        <p className="loan-success">
+          ✅ {loanSuccessAmount.toLocaleString('tr-TR')} altın hesabınıza aktarıldı.
+        </p>
+      )}
 
       {freeVehicles.length > 0 && (
         <div className="loan-take">
@@ -85,11 +124,9 @@ export default function VehicleLoanSection() {
           <button
             className="loan-btn primary"
             disabled={!selectedVehicleId || !termValid || busy === 'take'}
-            onClick={() =>
-              run('take', () => takeVehicleLoan(selectedVehicleId, term))
-            }
+            onClick={handleTakeLoan}
           >
-            Kredi Çek
+            {busy === 'take' ? '…' : 'Kredi Çek'}
           </button>
         </div>
       )}

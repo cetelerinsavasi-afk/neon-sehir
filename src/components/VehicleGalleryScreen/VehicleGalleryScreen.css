@@ -69,6 +69,16 @@
   cursor: default;
 }
 
+/* Kullanıcı revizesi: satın alma sonrası birkaç saniye "Satın Alındı ✓"
+   göstersin — bu durumda buton normal disabled griliğine değil, belirgin
+   bir yeşile bürünsün ki alım gerçekten anlaşılsın. */
+.vehicle-card-buy.bought:disabled {
+  opacity: 1;
+  border-color: #3ddc84;
+  color: #3ddc84;
+  background: rgba(61, 220, 132, 0.1);
+}
+
 .vehicle-gallery-error {
   color: var(--neon-pink);
   font-size: 12px;

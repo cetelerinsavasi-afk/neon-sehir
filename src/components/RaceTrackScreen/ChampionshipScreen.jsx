@@ -56,7 +56,13 @@ export default function ChampionshipScreen({ onEnterRace }) {
 
       <div className="champ-list">
         {vehicleCatalog.map((catalogVehicle) => {
-          const myVehicle = vehicles.find((v) => v.catalogId === catalogVehicle.id);
+          // Kullanıcı revizesi (kritik hata): "sattığım arabalarla
+          // şampiyonaya katılabiliyorum" — 2. elde listelenmiş (satışa
+          // çıkarılmış) bir araç artık fiilen elimizde sayılmamalı. Aynı
+          // modelden birden fazla araca sahip olunabildiği için (bkz.
+          // buyVehicle) burada listelenmemiş İLK aracı seçiyoruz — hepsi
+          // listelenmişse bu model artık "sahipsin" sayılmaz.
+          const myVehicle = vehicles.find((v) => v.catalogId === catalogVehicle.id && !v.listed);
           const owned = Boolean(myVehicle);
           const lifeDays = myVehicle?.lifeDays ?? INITIAL_LIFE_DAYS;
           const seized = Boolean(myVehicle?.seizedByBank);

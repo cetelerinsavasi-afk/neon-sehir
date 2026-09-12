@@ -130,3 +130,16 @@
   font-size: 11px;
   margin: 0;
 }
+
+/* Kullanıcı revizesi: kredi çekince paranın hesaba geçtiğini net gösteren
+   kalıcı (birkaç saniyelik) onay mesajı. */
+.loan-success {
+  color: #3ddc84;
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border: 1px solid #3ddc84;
+  border-radius: 8px;
+  background: rgba(61, 220, 132, 0.1);
+}
