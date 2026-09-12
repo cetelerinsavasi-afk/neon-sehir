@@ -26,6 +26,58 @@
 .vcard-name {
   font-size: 13px;
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vcard-name-edit-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+  opacity: 0.7;
+  line-height: 1;
+}
+
+.vcard-name-edit-btn:active {
+  opacity: 1;
+}
+
+.vcard-name-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.vcard-name-input {
+  flex: 1;
+  min-width: 100px;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.vcard-name-btn {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.vcard-name-error {
+  font-size: 10px;
+  color: #ff5c7a;
+  margin: 0;
 }
 
 .vcard-stats {

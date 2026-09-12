@@ -66,6 +66,12 @@ export const buyVehicle = (catalogId) =>
 export const upgradeVehicle = (vehicleId, upgradeType) =>
   httpsCallable(functions, 'upgradeVehicle')({ vehicleId, upgradeType });
 
+// Kullanıcı revizesi: araçlara özel isim verme (aynı modelden birden
+// fazla araca sahip olununca hangisinin hangisi olduğunu ayırt etmek
+// için) — boş string gönderilirse isim silinir, katalog adına döner.
+export const renameVehicle = (vehicleId, name) =>
+  httpsCallable(functions, 'renameVehicle')({ vehicleId, name });
+
 export const sellMaterial = (materialType, quantity) =>
   httpsCallable(functions, 'sellMaterial')({ materialType, quantity });
 

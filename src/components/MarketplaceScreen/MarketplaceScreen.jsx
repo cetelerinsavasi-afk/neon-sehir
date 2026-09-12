@@ -16,7 +16,7 @@ import {
 } from '../../services/gameActions';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
 import { weaponCatalog } from '../../data/weaponCatalog';
-import { MAX_REPAIRS } from '../VehicleCard/VehicleCard';
+import { MAX_REPAIRS, vehicleDisplayName } from '../VehicleCard/VehicleCard';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './MarketplaceScreen.css';
 
@@ -392,8 +392,8 @@ function SellForm({ onCreated, onClose, initialItemType }) {
                     className={`market-item-card${selected ? ' selected' : ''}`}
                     onClick={() => setSelectedId(v.id)}
                   >
-                    {img && <img className="market-item-photo" src={img} alt={v.model} />}
-                    <span className="market-item-name">{v.model}</span>
+                    {img && <img className="market-item-photo" src={img} alt={vehicleDisplayName(v)} />}
+                    <span className="market-item-name">{vehicleDisplayName(v)}</span>
                     <span className="market-item-stats">
                       Vites {v.gearLevel} · Depo {v.baseTank + (v.tankBonus || 0)}L
                       {v.turboCount > 0 ? ` · Turbo ×${v.turboCount}` : ''}

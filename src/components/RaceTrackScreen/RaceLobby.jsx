@@ -4,7 +4,7 @@ import { useOpenRaceRooms } from '../../hooks/useOpenRaceRooms';
 import { useTrainingProgress } from '../../hooks/useTrainingProgress';
 import { createRaceRoom, joinRaceRoom, createTrainingRace } from '../../services/gameActions';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
-import { INITIAL_LIFE_DAYS } from '../VehicleCard/VehicleCard';
+import { INITIAL_LIFE_DAYS, vehicleDisplayName } from '../VehicleCard/VehicleCard';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './RaceTrackScreen.css';
 
@@ -39,8 +39,8 @@ function VehiclePicker({ vehicles, value, onChange }) {
             className={`race-vehicle-card${selected ? ' selected' : ''}`}
             onClick={() => onChange(v.id)}
           >
-            {img && <img className="race-vehicle-photo" src={img} alt={v.model} />}
-            <span className="race-vehicle-name">{v.model}</span>
+            {img && <img className="race-vehicle-photo" src={img} alt={vehicleDisplayName(v)} />}
+            <span className="race-vehicle-name">{vehicleDisplayName(v)}</span>
             <span className="race-vehicle-stats">
               Vites {v.gearLevel} · Depo {v.baseTank + (v.tankBonus || 0)}L
               {v.turboCount > 0 ? ` · Turbo ×${v.turboCount}` : ''}

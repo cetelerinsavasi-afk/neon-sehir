@@ -17,7 +17,7 @@ import { useMessages } from '../../hooks/useMessages';
 import { useLottery } from '../../hooks/useLottery';
 import { useFlappyLeaderboard, useMyFlappyBest } from '../../hooks/useFlappyBird';
 import { useAuth } from '../../contexts/AuthContext';
-import { vehicleImage } from '../VehicleCard/VehicleCard';
+import { vehicleImage, vehicleDisplayName } from '../VehicleCard/VehicleCard';
 import { createSixtagramPost } from '../../services/gameActions';
 import PostAttachment from './PostAttachment';
 import './ComposeModal.css';
@@ -60,7 +60,12 @@ export default function ComposeModal({ onClose, onPosted }) {
 
   const { user } = useAuth();
   const { player } = usePlayer();
-  const { vehicles } = useVehicles();
+  const { vehicles: allVehicles } = useVehicles();
+  // Kullanıcı revizesi: "sixtagramda arabamı paylaşmak istediğimde de
+  // sattığım arabalar listeleniyor" — 2. elde listelenmiş (satılmış veya
+  // satışa çıkarılmış) araçlar artık elimizde fiilen yok, seçim listesinde
+  // gösterilmemeli (bkz. HomeScreen.jsx'teki aynı `!v.listed` filtresi).
+  const vehicles = allVehicles.filter((v) => !v.listed);
   const { bets } = useRecentFutbolBets();
   const { matches: todayMatches } = useTodayFootballMatches();
   const { leagues } = useFutbolLeagues();  const { history: investmentHistory } = useInvestmentHistory();
@@ -243,7 +248,7 @@ export default function ComposeModal({ onClose, onPosted }) {
       {
         type: 'vehicle',
         catalogId: vehicle.catalogId,
-        model: vehicle.model,
+        model: vehicleDisplayName(vehicle),
         gearLevel: vehicle.gearLevel,
         gearUpgraded: !!vehicle.gearUpgraded,
         tankUpgraded: !!vehicle.tankUpgraded,
@@ -513,9 +518,9 @@ export default function ComposeModal({ onClose, onPosted }) {
             {vehicles.map((v) => (
               <button key={v.id} className="six-compose-sublist-item" onClick={() => chooseVehicle(v)}>
                 {vehicleImage(v.catalogId) && (
-                  <img src={vehicleImage(v.catalogId)} alt={v.model} />
+                  <img src={vehicleImage(v.catalogId)} alt={vehicleDisplayName(v)} />
                 )}
-                <span>{v.model}</span>
+                <span>{vehicleDisplayName(v)}</span>
               </button>
             ))}
             <button className="six-compose-sublist-back" onClick={() => setSubPicker(null)}>

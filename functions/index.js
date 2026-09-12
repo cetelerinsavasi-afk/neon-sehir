@@ -3432,8 +3432,13 @@ const MATERIAL_SELL_PRICE = { arabaGelistirme: 250, tamirMalzemesi: 8 }; // Böl
 
 // ---------------------------------------------------------------------------
 // buyVehicle — Araba Galerisi'nden araç satın alma (Bölüm 2, 13).
-// Basitleştirme: oyuncu aynı katalog modelinden yalnızca bir adet
-// sahip olabilir (envanter/UI karmaşıklığını sınırlamak için).
+// Kullanıcı revizesi: "galeriden sahip olduğumuz arabadan alamıyoruz ama
+// 2. elden alabiliyoruz, bu açığı kapatmayalım, artık aynı arabadan 2 ya
+// da daha fazla alabilelim" — eskiden burada aynı katalog modelinden
+// sadece 1 adet sahip olunabildiği kontrol ediliyordu (ownerId+catalogId
+// sorgusu), bu kısıtlama TAMAMEN kaldırıldı. Bu kontrol ayrıca bir hataya
+// da yol açıyordu: 2. elde satılmış (listed:true, ownerId hâlâ satıcıda)
+// bir araç bile "sahipsin" sayılıp galeriden yeniden alım engelleniyordu.
 // ---------------------------------------------------------------------------
 export const buyVehicle = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -3447,18 +3452,8 @@ export const buyVehicle = onCall(async (request) => {
   const vehiclesRef = db.collection('vehicles');
 
   await db.runTransaction(async (tx) => {
-    const [userSnap, existingSnap] = await Promise.all([
-      tx.get(userRef),
-      tx.get(
-        vehiclesRef
-          .where('ownerId', '==', uid)
-          .where('catalogId', '==', Number(catalogId))
-      ),
-    ]);
+    const userSnap = await tx.get(userRef);
     const user = userSnap.data();
-    if (!existingSnap.empty) {
-      throw new HttpsError('failed-precondition', 'Bu modele zaten sahipsiniz.');
-    }
     if (!user || (user.gold || 0) < catalogEntry.price) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
@@ -3504,6 +3499,43 @@ export const buyVehicle = onCall(async (request) => {
   // çalışır, bkz. checkOnboardingProgress — bu sadece eylem yoluyla
   // ilerleyen tarafı).
   await advanceOnboardingStep(uid, 11);
+
+  return { ok: true };
+});
+
+// ---------------------------------------------------------------------------
+// renameVehicle — Kullanıcı revizesi: "arabalarımızın ismini
+// değiştirebilelim" — aynı katalog modelinden birden fazla araca sahip
+// olunabildiği için (bkz. buyVehicle) oyuncular hangi aracın hangisi
+// olduğunu ayırt edemiyordu (2. elde ilan verirken, Sixtagram'da
+// paylaşırken vs. hepsi aynı isimle görünüyordu). `model` alanı katalog
+// adı olarak SABİT kalır (upgrade/repair hesaplamaları buna bakıyor
+// olabilir); yeni `customName` alanı doluysa görüntülemede onun yerine
+// kullanılır (bkz. frontend `vehicleDisplayName` yardımcı fonksiyonu).
+// Boş string gönderilirse customName silinir (katalog adına döner).
+// ---------------------------------------------------------------------------
+const VEHICLE_CUSTOM_NAME_MAX_LEN = 22;
+export const renameVehicle = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { vehicleId, name } = request.data || {};
+  if (!vehicleId) {
+    throw new HttpsError('invalid-argument', 'Geçersiz araç.');
+  }
+  const trimmed = String(name || '').trim();
+  if (trimmed.length > VEHICLE_CUSTOM_NAME_MAX_LEN) {
+    throw new HttpsError('invalid-argument', `Araç adı en fazla ${VEHICLE_CUSTOM_NAME_MAX_LEN} karakter olabilir.`);
+  }
+
+  const vehicleRef = db.collection('vehicles').doc(vehicleId);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(vehicleRef);
+    if (!snap.exists || snap.data().ownerId !== uid) {
+      throw new HttpsError('failed-precondition', 'Bu araç sana ait değil.');
+    }
+    tx.update(vehicleRef, {
+      customName: trimmed.length > 0 ? trimmed : admin.firestore.FieldValue.delete(),
+    });
+  });
 
   return { ok: true };
 });
@@ -6881,7 +6913,10 @@ function freshRacePlayerState(displayName, vehicleId, vehicle) {
   return {
     displayName,
     vehicleId,
-    vehicleModel: vehicle.model,
+    // Kullanıcı revizesi: araçlara özel isim verilebiliyor artık —
+    // yarışta da (yarış listesi, katılan bilgisi, şampiyona lideri vs.)
+    // varsa özel isim gösterilsin.
+    vehicleModel: vehicle.customName || vehicle.model,
     maxGear: vehicle.gearLevel || 1,
     turboTotal: vehicle.turboCount || 0,
     position: 0,
@@ -8110,7 +8145,7 @@ export const createListing = onCall(async (request) => {
         sellerName,
         itemType,
         vehicleId: itemId,
-        vehicleModel: v.model,
+        vehicleModel: v.customName || v.model,
         vehicleCatalogId: v.catalogId,
         vehicleGearLevel: v.gearLevel,
         vehicleTank: (v.baseTank || 0) + (v.tankBonus || 0),
@@ -8357,7 +8392,7 @@ export const instantSellListing = onCall(async (request) => {
         sellerName: 'Sistem',
         itemType,
         vehicleId: itemId,
-        vehicleModel: v.model,
+        vehicleModel: v.customName || v.model,
         vehicleCatalogId: v.catalogId,
         vehicleGearLevel: v.gearLevel,
         vehicleTank: (v.baseTank || 0) + (v.tankBonus || 0),
@@ -15477,10 +15512,18 @@ async function buildSixtagramAttachment(uid, attachment) {
       throw new HttpsError('permission-denied', 'Bu araç sana ait değil.');
     }
     const v = vSnap.data();
+    // Kullanıcı revizesi: "sixtagramda arabamı paylaşmak istediğimde de
+    // sattığım arabalar listeleniyor" — 2. elde listelenmiş (listed:true)
+    // bir araç artık fiilen paylaşılabilir/elde değil, sunucu tarafında da
+    // reddet (istemci zaten bunları listeden çıkarıyor, bu ek bir güvenlik
+    // katmanı — bkz. ComposeModal.jsx).
+    if (v.listed) {
+      throw new HttpsError('failed-precondition', 'Bu araç şu an satışta, paylaşamazsın.');
+    }
     return {
       type: 'vehicle',
       catalogId: v.catalogId,
-      model: v.model,
+      model: v.customName || v.model,
       gearLevel: v.gearLevel,
       gearUpgraded: !!v.gearUpgraded,
       tankUpgraded: !!v.tankUpgraded,

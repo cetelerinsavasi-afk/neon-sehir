@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useVehicles } from '../../hooks/useVehicles';
 import { takeVehicleLoan, repayVehicleLoan } from '../../services/gameActions';
-import { vehicleLivePrice, INITIAL_LIFE_DAYS } from '../VehicleCard/VehicleCard';
+import { vehicleLivePrice, vehicleDisplayName, INITIAL_LIFE_DAYS } from '../VehicleCard/VehicleCard';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './VehicleLoanSection.css';
 
@@ -55,7 +55,7 @@ export default function VehicleLoanSection() {
             <option value="">Araç seç…</option>
             {freeVehicles.map((v) => (
               <option key={v.id} value={v.id}>
-                {v.model} (limit: {vehicleLivePrice(v).toLocaleString('tr-TR')} altın · ömür:{' '}
+                {vehicleDisplayName(v)} (limit: {vehicleLivePrice(v).toLocaleString('tr-TR')} altın · ömür:{' '}
                 {v.lifeDays ?? INITIAL_LIFE_DAYS} gün)
               </option>
             ))}
@@ -103,7 +103,7 @@ export default function VehicleLoanSection() {
         return (
           <div key={v.id} className="loan-active-card">
             <p className="loan-active-title">
-              {v.model} {v.seizedByBank && <span className="loan-seized-tag">EL KONULDU</span>}
+              {vehicleDisplayName(v)} {v.seizedByBank && <span className="loan-seized-tag">EL KONULDU</span>}
             </p>
             <p className="loan-hint">
               Kalan borç: {remaining.toLocaleString('tr-TR')} altın · Vade: {formatDate(v.loanDueAt)}
