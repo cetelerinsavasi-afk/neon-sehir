@@ -44,7 +44,7 @@ export const HEIST_LABELS = {
     reward: 25000,
     suspicionCost: 20,
   },
-  fabrika: { title: 'Fabrika Soygunu', emoji: regionEmojis.fabrika, requiredPower: 10000, reward: 7500, suspicionCost: 10 },
+  fabrika: { title: 'Fabrika Soygunu', emoji: regionEmojis.fabrika, requiredPower: 10000, reward: 10000, suspicionCost: 10 },
   seyyar_satici_1: { title: 'Kokoreçciye Haraç', emoji: regionEmojis.seyyar_satici_1, requiredPower: 4500, reward: 4000, suspicionCost: 5 },
   seyyar_satici_2: { title: 'Simitçiye Haraç', emoji: regionEmojis.seyyar_satici_2, requiredPower: 3000, reward: 3000, suspicionCost: 5 },
   seyyar_satici_3: { title: 'Dönerciye Haraç', emoji: regionEmojis.seyyar_satici_3, requiredPower: 1500, reward: 2000, suspicionCost: 5 },

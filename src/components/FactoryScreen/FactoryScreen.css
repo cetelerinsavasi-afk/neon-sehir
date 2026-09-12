@@ -311,6 +311,49 @@
   gap: 6px;
 }
 
+/* Kullanıcı revizesi: mining dışındaki makine türleri için 2x2 kategori
+   butonları — her biri kare, üstünde sahip olunan makine sayısı yazıyor. */
+.factory-machine-category-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.factory-machine-category-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  aspect-ratio: 1;
+  border-radius: 14px;
+  border: 1px solid var(--panel-border);
+  background: #05070c;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.factory-machine-category-btn:active {
+  border-color: var(--neon-cyan);
+}
+
+.factory-machine-category-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--neon-cyan);
+}
+
+.factory-machine-category-emoji {
+  font-size: 30px;
+}
+
+.factory-machine-category-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
 /* --- Owner screen --- */
 
 .factory-run-machines-row {

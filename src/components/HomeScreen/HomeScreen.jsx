@@ -5,7 +5,7 @@ import { useVehicles } from '../../hooks/useVehicles';
 import { useWeapons } from '../../hooks/useWeapons';
 import { useInventory } from '../../hooks/useInventory';
 import { upgradeVehicle, upgradeWeapon, repairItem, setDisplayName } from '../../services/gameActions';
-import { weaponCatalog } from '../../data/weaponCatalog';
+import { weaponCatalog, weaponLivePrice } from '../../data/weaponCatalog';
 import VehicleCard, { LifeBar, MAX_REPAIRS, REPAIR_LIFE_BONUS_DAYS, repairRequiredQty } from '../VehicleCard/VehicleCard';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
@@ -96,13 +96,13 @@ function ProfileHeader({ player, onEditAvatar }) {
 }
 
 function WeaponCard({ weapon, materialQty, repairQty, busy, onUpgrade, onRepair }) {
-  const requiredQty = Math.round(weapon.basePrice / 100);
+  const requiredQty = Math.round(weaponLivePrice(weapon) / 100);
   const img = weaponImage(weapon.catalogId);
   const nextMultiplier = weapon.level === 1 ? 1.5 : 2;
   const nextPower = Math.round(weapon.basePower * nextMultiplier);
   const powerGain = nextPower - weapon.power;
   const repairsUsed = weapon.repairsUsed || 0;
-  const repairReq = repairRequiredQty(weapon.basePrice);
+  const repairReq = repairRequiredQty(weaponLivePrice(weapon));
   const repairMaxed = repairsUsed >= MAX_REPAIRS;
   return (
     <div className="home-item-card">

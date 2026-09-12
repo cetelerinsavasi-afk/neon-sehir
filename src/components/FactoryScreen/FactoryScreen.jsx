@@ -40,6 +40,12 @@ const MACHINE_EMOJI = {
   yasakliMadde: '💊',
 };
 
+// Kullanıcı revizesi: "fabrikama girdiğimde tüm makineler alt alta
+// sıralanıyor, makine sayısı arttıkça karışık oluyor" — mining hariç diğer
+// 4 makine türü artık ana ekranda tek tek listelenmiyor, bunun yerine 2x2
+// kategori butonu olarak gösteriliyor (bkz. OwnerView).
+const MACHINE_CATEGORY_TYPES = ['tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme', 'yasakliMadde'];
+
 function machinePrice(type, cryptoPrice, ownedMiningCount = 0) {
   if (type !== 'mining') return MACHINE_PRICES[type];
   // Sunucudaki miningMachinePrice ile AYNI kademeli formül: her 10
@@ -528,6 +534,10 @@ function OwnerView({ factory, machines, player, myUid }) {
   const [produceResult, setProduceResult] = useState(null);
   const [resignBusy, setResignBusy] = useState(false);
   const [runBusy, setRunBusy] = useState(false);
+  // Kullanıcı revizesi: makineler artık kategoriye göre gruplanıyor —
+  // null iken ana görünüm (mining + kendi çalıştığın makine + 4 kategori
+  // butonu), bir tür seçiliyken o türün makine listesi gösteriliyor.
+  const [activeCategory, setActiveCategory] = useState(null);
   const dateKey = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Istanbul',
     year: 'numeric',
@@ -545,6 +555,9 @@ function OwnerView({ factory, machines, player, myUid }) {
     otherMachines.length === 0 ||
     otherMachines.every((m) => m.lastProducedDateKey === dateKey || m.ownerTriggeredDateKey === dateKey);
   const machinesAlreadyRunToday = machines.length > 0 && allMiningHandledToday && allWorkerMachinesHandledToday;
+  // Kullanıcı revizesi: sahibin kendi çalıştığı makine (varsa) ana ekranda
+  // mining'in hemen altında, kategori listesine girmeden gösterilsin.
+  const myMachine = otherMachines.find((m) => m.workerId === myUid);
 
   const handleSelfJoin = async (machineId) => {
     setSelfBusy(machineId);
@@ -589,6 +602,72 @@ function OwnerView({ factory, machines, player, myUid }) {
       setRunBusy(false);
     }
   };
+
+  // Kullanıcı revizesi: makine kartı render mantığı hem "kendi çalıştığın
+  // makine" (ana ekranda pinlenmiş) hem de kategori görünümündeki liste için
+  // ORTAK — kod tekrarını önlemek adına tek fonksiyona çıkarıldı.
+  const renderMachineCard = (m) => {
+    const producedToday = m.lastProducedDateKey === dateKey;
+    const ownerTriggeredToday = !producedToday && m.ownerTriggeredDateKey === dateKey;
+    return (
+      <div key={m.id} className={`factory-machine-card${producedToday ? ' produced' : ''}`}>
+        <span className="factory-machine-emoji">{MACHINE_EMOJI[m.type]}</span>
+        <span className="factory-machine-name">{MACHINE_LABELS[m.type]}</span>
+        {ownerTriggeredToday && (
+          <span className="factory-machine-status">
+            ⏳ İşçi bugün gelmezse 00:00'da senin adına (1/10 verimle) üretilecek.
+          </span>
+        )}
+        {m.workerId === myUid ? (
+          <div className="factory-machine-self">
+            <span className="factory-machine-status worker">
+              👤 Sen çalışıyorsun
+              {producedToday && ` · bugün ${m.lastProducedQty} adet`}
+            </span>
+            <div className="factory-machine-self-actions">
+              <button
+                className="factory-btn small"
+                disabled={producedToday}
+                onClick={() => setShowShiftGame(true)}
+              >
+                Üretim Yap
+              </button>
+              <button
+                className="factory-btn small"
+                disabled={producedToday || resignBusy}
+                onClick={handleSelfResign}
+                title={producedToday ? 'Bugün üretim yaptın, bugün istifa edemezsin' : 'İstifa et'}
+              >
+                {resignBusy ? '…' : 'İstifa Et'}
+              </button>
+            </div>
+            {producedToday && (
+              <p className="factory-produced-warning small">
+                00:00'dan sonra tekrar üretim yapabilirsin.
+              </p>
+            )}
+          </div>
+        ) : m.workerId ? (
+          <span className="factory-machine-status worker">
+            👤 {m.workerName}
+            {producedToday && ` · bugün ${m.lastProducedQty} adet`}
+          </span>
+        ) : hasAnyEmployment ? (
+          <span className="factory-machine-status empty">İşçi bekliyor</span>
+        ) : (
+          <button
+            className="factory-btn small"
+            disabled={selfBusy === m.id}
+            onClick={() => handleSelfJoin(m.id)}
+          >
+            {selfBusy === m.id ? '…' : 'Kendini Yerleştir'}
+          </button>
+        )}
+      </div>
+    );
+  };
+
+  const categoryMachines = activeCategory ? otherMachines.filter((m) => m.type === activeCategory) : [];
 
   return (
     <div className="factory-owner-screen">
@@ -647,86 +726,69 @@ function OwnerView({ factory, machines, player, myUid }) {
         </p>
       </div>
 
-      <div className="factory-machine-grid">
-        {machines.length === 0 && <p className="factory-hint">Henüz bir makinen yok.</p>}
-        {miningMachines.length > 0 && (
-          <div className={`factory-machine-card${miningAllTriggeredToday ? ' produced' : ''}`}>
-            <span className="factory-machine-emoji">{MACHINE_EMOJI.mining}</span>
-            <span className="factory-machine-name">
-              {MACHINE_LABELS.mining} ×{miningMachines.length}
-            </span>
-            <div className="factory-machine-self">
-              <span className="factory-machine-status">
-                {miningAllTriggeredToday
-                  ? "✅ Üretim başladı — 00:00'da kripto bakiyene eklenecek."
-                  : miningTriggeredCount > 0
-                    ? `${miningTriggeredCount}/${miningMachines.length} için üretim başladı — "Makineleri Çalıştır" ile kalanları da başlat.`
-                    : '"Makineleri Çalıştır" butonuyla üretimi başlatabilirsin.'}
-              </span>
-            </div>
-          </div>
-        )}
-        {otherMachines.map((m) => {
-          const producedToday = m.lastProducedDateKey === dateKey;
-          const ownerTriggeredToday = !producedToday && m.ownerTriggeredDateKey === dateKey;
-          return (
-            <div key={m.id} className={`factory-machine-card${producedToday ? ' produced' : ''}`}>
-              <span className="factory-machine-emoji">{MACHINE_EMOJI[m.type]}</span>
-              <span className="factory-machine-name">{MACHINE_LABELS[m.type]}</span>
-              {ownerTriggeredToday && (
-                <span className="factory-machine-status">
-                  ⏳ İşçi bugün gelmezse 00:00'da senin adına (1/10 verimle) üretilecek.
+      {activeCategory === null ? (
+        <>
+          <div className="factory-machine-grid">
+            {machines.length === 0 && <p className="factory-hint">Henüz bir makinen yok.</p>}
+            {miningMachines.length > 0 && (
+              <div className={`factory-machine-card${miningAllTriggeredToday ? ' produced' : ''}`}>
+                <span className="factory-machine-emoji">{MACHINE_EMOJI.mining}</span>
+                <span className="factory-machine-name">
+                  {MACHINE_LABELS.mining} ×{miningMachines.length}
                 </span>
-              )}
-              {m.workerId === myUid ? (
                 <div className="factory-machine-self">
-                  <span className="factory-machine-status worker">
-                    👤 Sen çalışıyorsun
-                    {producedToday && ` · bugün ${m.lastProducedQty} adet`}
+                  <span className="factory-machine-status">
+                    {miningAllTriggeredToday
+                      ? "✅ Üretim başladı — 00:00'da kripto bakiyene eklenecek."
+                      : miningTriggeredCount > 0
+                        ? `${miningTriggeredCount}/${miningMachines.length} için üretim başladı — "Makineleri Çalıştır" ile kalanları da başlat.`
+                        : '"Makineleri Çalıştır" butonuyla üretimi başlatabilirsin.'}
                   </span>
-                  <div className="factory-machine-self-actions">
-                    <button
-                      className="factory-btn small"
-                      disabled={producedToday}
-                      onClick={() => setShowShiftGame(true)}
-                    >
-                      Üretim Yap
-                    </button>
-                    <button
-                      className="factory-btn small"
-                      disabled={producedToday || resignBusy}
-                      onClick={handleSelfResign}
-                      title={producedToday ? 'Bugün üretim yaptın, bugün istifa edemezsin' : 'İstifa et'}
-                    >
-                      {resignBusy ? '…' : 'İstifa Et'}
-                    </button>
-                  </div>
-                  {producedToday && (
-                    <p className="factory-produced-warning small">
-                      00:00'dan sonra tekrar üretim yapabilirsin.
-                    </p>
-                  )}
                 </div>
-              ) : m.workerId ? (
-                <span className="factory-machine-status worker">
-                  👤 {m.workerName}
-                  {producedToday && ` · bugün ${m.lastProducedQty} adet`}
-                </span>
-              ) : hasAnyEmployment ? (
-                <span className="factory-machine-status empty">İşçi bekliyor</span>
-              ) : (
+              </div>
+            )}
+            {myMachine && renderMachineCard(myMachine)}
+          </div>
+
+          {/* Kullanıcı revizesi: mining dışındaki 4 makine türü artık burada
+              tek tek listelenmiyor, 2x2 kategori butonu olarak gösteriliyor —
+              butona basınca o türün makineleri ve çalışanları görülüyor. */}
+          <div className="factory-machine-category-grid">
+            {MACHINE_CATEGORY_TYPES.map((type) => {
+              const count = otherMachines.filter((m) => m.type === type).length;
+              return (
                 <button
-                  className="factory-btn small"
-                  disabled={selfBusy === m.id}
-                  onClick={() => handleSelfJoin(m.id)}
+                  key={type}
+                  type="button"
+                  className="factory-machine-category-btn"
+                  onClick={() => setActiveCategory(type)}
                 >
-                  {selfBusy === m.id ? '…' : 'Kendini Yerleştir'}
+                  <span className="factory-machine-category-count">{count} adet</span>
+                  <span className="factory-machine-category-emoji">{MACHINE_EMOJI[type]}</span>
+                  <span className="factory-machine-category-label">{MACHINE_LABELS[type]}</span>
                 </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="factory-top-row">
+            <button className="factory-nav-btn" onClick={() => setActiveCategory(null)}>
+              ◀ Makineler
+            </button>
+            <p className="factory-section-title">
+              {MACHINE_EMOJI[activeCategory]} {MACHINE_LABELS[activeCategory]}
+            </p>
+          </div>
+          <div className="factory-machine-grid">
+            {categoryMachines.length === 0 && (
+              <p className="factory-hint">Bu kategoride hiç makinen yok.</p>
+            )}
+            {categoryMachines.map(renderMachineCard)}
+          </div>
+        </>
+      )}
       {produceResult && (
         <p className="factory-result">
           {produceResult.isSelfEmployed

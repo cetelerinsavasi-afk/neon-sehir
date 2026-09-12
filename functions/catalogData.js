@@ -26,7 +26,7 @@ export const WEAPON_CATALOG = {
   1: { name: 'Tabanca', power: 1000, price: 1000 },
   2: { name: 'Yarı Otomatik Tabanca', power: 3000, price: 10000 },
   3: { name: 'Revolver', power: 5000, price: 20000 },
-  4: { name: 'Hafif Otomatik (SMG)', power: 8000, price: 40000 },
-  5: { name: 'Av/Tüfek (Bolt-Action)', power: 10000, price: 100000 },
-  6: { name: 'Taarruz Tüfeği', power: 20000, price: 200000 },
+  4: { name: 'Hafif Otomatik (SMG)', power: 8000, price: 30000 },
+  5: { name: 'Av/Tüfek (Bolt-Action)', power: 10000, price: 50000 },
+  6: { name: 'Taarruz Tüfeği', power: 20000, price: 100000 },
 };

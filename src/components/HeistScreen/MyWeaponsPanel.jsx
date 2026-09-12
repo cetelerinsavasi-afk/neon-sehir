@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useWeapons } from '../../hooks/useWeapons';
 import { useInventory } from '../../hooks/useInventory';
 import { upgradeWeapon } from '../../services/gameActions';
+import { weaponLivePrice } from '../../data/weaponCatalog';
 
 // Silah geliştirme işlemleri artık Silah Mağazası'nda değil, burada
 // (Soygun ekranı > Silahlarım) yapılıyor.
@@ -37,7 +38,7 @@ export default function MyWeaponsPanel() {
     <div className="heist-weapons-list">
       <p className="heist-hint">Gelişim malzemesi: {materialQty} adet</p>
       {weapons.map((w) => {
-        const requiredQty = Math.round(w.basePrice / 100);
+        const requiredQty = Math.round(weaponLivePrice(w) / 100);
         return (
           <div key={w.id} className="heist-weapon-card">
             <div className="heist-weapon-info">

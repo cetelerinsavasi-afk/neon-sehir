@@ -3733,7 +3733,10 @@ export const upgradeWeapon = onCall(async (request) => {
     }
     const qty = inventorySnap.exists ? inventorySnap.data().quantity || 0 : 0;
     // Bölüm 8.3: "Gereken malzeme miktarı (seviye başı) = silah fiyatı / 100."
-    const requiredQty = Math.round(weapon.basePrice / 100);
+    // Kullanıcı revizesi (silah fiyat güncellemesi): GÜNCEL katalog fiyatı
+    // kullanılıyor (araçlarla aynı desen, bkz. repairItem) — eski silahlar
+    // da fiyat değiştikten sonra yeni fiyata göre hesaplanır.
+    const requiredQty = Math.round((WEAPON_CATALOG[weapon.catalogId]?.price ?? weapon.basePrice ?? 0) / 100);
     if (qty < requiredQty) {
       throw new HttpsError(
         'failed-precondition',
@@ -3788,7 +3791,7 @@ export const repairItem = onCall(async (request) => {
     const price =
       itemType === 'vehicle'
         ? VEHICLE_CATALOG[item.catalogId]?.price ?? item.baseGalleryValue ?? 0
-        : item.basePrice || 0;
+        : WEAPON_CATALOG[item.catalogId]?.price ?? item.basePrice ?? 0;
     const requiredQty = repairRequiredQty(price);
     const have = invSnap.exists ? invSnap.data().quantity || 0 : 0;
     if (have < requiredQty) {
@@ -4465,8 +4468,9 @@ export const prayAtMosque = onCall(async (request) => {
     }
     const currentSuspicion = user?.suspicion || 0;
     const updates = { suspicion: clampSuspicion(currentSuspicion - 5) };
+    // Kullanıcı revizesi: şüphe 0ken ibadet edince saygınlık +5 (önceden +10'du).
     if (currentSuspicion === 0) {
-      updates.reputation = clamp(Math.round((user?.reputation || 0) + 10), 0, 100);
+      updates.reputation = clamp(Math.round((user?.reputation || 0) + 5), 0, 100);
     }
     tx.update(userRef, updates);
     tx.set(dailyRef, { prayedWindows: { [win]: true } }, { merge: true });
@@ -4841,8 +4845,8 @@ export const claimPoliceSalary = onCall(async (request) => {
 
 // ---------------------------------------------------------------------------
 // buyFromVendor — Seyyar Satıcı: her satıcının KENDİ günlük hakkı var
-// (Kokoreçci, Simitçi, Dönerci, Köfteci birbirinden bağımsız), 1000 altın,
-// şüphe -5, saygınlık +10.
+// (Kokoreçci, Simitçi, Dönerci, Köfteci birbirinden bağımsız), 500 altın,
+// şüphe -5, saygınlık +5 (kullanıcı revizesi — önceden +10'du).
 // ---------------------------------------------------------------------------
 const VENDOR_COST = 500;
 // Not: Tüm seyyar satıcılarda alışveriş artık aynı fiyat (500 altın),
@@ -4882,7 +4886,7 @@ export const buyFromVendor = onCall(async (request) => {
     tx.update(userRef, {
       gold: admin.firestore.FieldValue.increment(-vendorCostFor(vendorId)),
       suspicion: clampSuspicion((user.suspicion || 0) - 5),
-      reputation: clamp(Math.round((user.reputation || 0) + 10), 0, 100),
+      reputation: clamp(Math.round((user.reputation || 0) + 5), 0, 100),
     });
     tx.set(dailyRef, { vendorPurchases: { [vendorId]: true } }, { merge: true });
   });
@@ -4914,7 +4918,7 @@ const HEIST_CONFIG = {
   casino: { suspicionCost: 40, reward: 250000, requiredPower: 70000 },
   araba_galerisi: { suspicionCost: 30, reward: 125000, requiredPower: 50000 },
   modifiye_garaji: { suspicionCost: 20, reward: 25000, requiredPower: 20000 },
-  fabrika: { suspicionCost: 10, reward: 7500, requiredPower: 10000 },
+  fabrika: { suspicionCost: 10, reward: 10000, requiredPower: 10000 },
   // Ödüller (kullanıcı revizesi) — Kokoreçci/Simitçi/Dönerci/Köfteci
   // ödülleri güncellendi, gereken güç eşiklerine dokunulmadı.
   seyyar_satici_1: { suspicionCost: 5, reward: 4000, requiredPower: 4500 }, // Kokoreçci
@@ -5050,13 +5054,17 @@ export const attemptHeist = onCall(async (request) => {
     const caught = Math.random() < captureRiskPercent(suspicion) / 100;
     const reward = config.reward;
 
+    // Saygınlık güncellemesi (kullanıcı revizesi): şüphe artışı ARTIK
+    // saygınlığı düşürmüyor — sadece GERÇEKTEN YAKALANIRSAK, yakalandığımız
+    // suçun şüphe miktarı (config.suspicionCost) kadar saygınlık düşüyor.
+    // Yakalanmazsak şüphe yine artar ama saygınlığa dokunulmaz.
     const updates = {
       suspicion: clampSuspicion(suspicion + config.suspicionCost),
-      reputation: clampSuspicion((user.reputation || 0) - config.suspicionCost),
     };
 
     let newTotalDebt = user.debtToState || 0;
     if (caught) {
+      updates.reputation = clampSuspicion((user.reputation || 0) - config.suspicionCost);
       const { debtAdded } = applyCapturePenalty(reward);
       updates.debtToState = admin.firestore.FieldValue.increment(debtAdded);
       newTotalDebt += debtAdded;
@@ -5146,17 +5154,19 @@ export const sellContrabandAtPark = onCall(async (request) => {
     const currentReputation = user.reputation || 0;
     const caught = Math.random() * 100 < captureRiskPercent(currentSuspicion);
     const newSuspicion = clampSuspicion(currentSuspicion + PARK_SUSPICION_COST);
-    const newReputation = clampSuspicion(currentReputation - PARK_SUSPICION_COST);
 
     // Mal her durumda elden gider — satıldı ya da polis el koydu.
     tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-1) }, { merge: true });
 
+    // Saygınlık güncellemesi (kullanıcı revizesi): sadece YAKALANIRSAK
+    // saygınlık düşer (suçun şüphe maliyeti kadar) — yakalanmazsak şüphe
+    // yine artar ama saygınlığa dokunulmaz.
     if (caught) {
       const newTotalDebt = (user.debtToState || 0) + CONTRABAND_PARK_SELL_PRICE;
       tx.update(userRef, {
         debtToState: newTotalDebt,
         suspicion: newSuspicion,
-        reputation: newReputation,
+        reputation: clampSuspicion(currentReputation - PARK_SUSPICION_COST),
       });
       outcome = { caught: true, penalty: CONTRABAND_PARK_SELL_PRICE, newTotalDebt };
     } else {
@@ -5168,7 +5178,6 @@ export const sellContrabandAtPark = onCall(async (request) => {
         gold: admin.firestore.FieldValue.increment(goldDelta),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
         suspicion: newSuspicion,
-        reputation: newReputation,
       });
       outcome = { caught: false, earned: CONTRABAND_PARK_SELL_PRICE };
     }
@@ -5939,6 +5948,10 @@ export const executeHeistPlan = onCall(async (request) => {
   const caughtBySuspicion = suspicions.some((s) => Math.random() * 100 < captureRiskPercent(s));
   const busted = !caughtBySuspicion && policeIdx.length > 0;
 
+  // Saygınlık güncellemesi (kullanıcı revizesi): saygınlık SADECE
+  // gerçekten yakalanan sivillerde düşer (aşağıdaki iki dal — şüpheden
+  // yakalanma VE polis tuzağı, ikisi de "yakalandı" sayılır), yakalanma
+  // olmayan başarı dalında (en alttaki else) saygınlığa dokunulmuyor.
   if (caughtBySuspicion) {
     // Şüpheden yakalandılar. Ceza sadece SİVİLLERE uygulanır (varsa
     // sızmış polis bu turda ne ödül alır ne cezalandırılır — kimliği
@@ -6000,15 +6013,16 @@ export const executeHeistPlan = onCall(async (request) => {
     // Ne şüpheden yakalandılar ne de ekipte polis var — soygun başarılı,
     // ödül tüm katılımcılara eşit bölünür. Herkese (sadece ekibi kuran
     // kişiye değil) SMS ile haber verilir.
+    // Saygınlık güncellemesi (kullanıcı revizesi): yakalanmadılar, bu
+    // yüzden saygınlıkları DÜŞMÜYOR — şüphe yine de artar (soygun fiilen
+    // gerçekleşti).
     const perPersonAmount = Math.floor(totalReward / participants.length);
     participants.forEach((p, i) => {
       const data = userSnaps[i].data();
       const currentSuspicion = suspicions[i];
-      const currentReputation = data?.reputation || 0;
       const { goldDelta, debtDelta } = splitIncomeForDebt(data?.debtToState, perPersonAmount);
       batch.update(db.collection('users').doc(p.uid), {
         suspicion: clampSuspicion(currentSuspicion + config.suspicionCost),
-        reputation: clampSuspicion(currentReputation - config.suspicionCost),
         gold: admin.firestore.FieldValue.increment(goldDelta),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
       });

@@ -823,7 +823,6 @@ export default function MarketplaceScreen() {
           {advantageousListings.length > 0 && (
             <div className="market-home-panel">
               <p className="market-section-title">🔥 Avantajlı Ürünler</p>
-              <p className="market-hint">Tavan fiyatının %75'inin altındaki ürünler.</p>
               {advantageousListings.map((l) => (
                 <ListingCard
                   key={l.id}
