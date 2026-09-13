@@ -90,6 +90,18 @@
     inset 0 0 60px rgba(0, 0, 0, 0.55);
   touch-action: none;
   cursor: pointer;
+  /* BUG DÜZELTMESİ (Android): her dokunuşta kısa bir mavi ışık/overlay
+     yanıp sönüyordu — Android Chrome/WebView, touch-action:none ile bile
+     dokunulan elemanın üzerine varsayılan mavi "tap highlight" katmanını
+     çiziyor (iOS Safari'de bu görünmüyordu, bu yüzden fark edilmemişti).
+     -webkit-tap-highlight-color + user-select/outline bu varsayılan
+     dokunma vurgusunu tamamen kapatır — tüm fsg-canvas kullanan mini
+     oyunları (Kanca, Koli Yakalama, Tempo) kapsar. */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  outline: none;
 }
 
 .fsg-hint {

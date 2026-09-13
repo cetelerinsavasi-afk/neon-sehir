@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import FactoryScreen from '../FactoryScreen/FactoryScreen';
 import VehicleGalleryScreen from '../VehicleGalleryScreen/VehicleGalleryScreen';
 import GarageScreen from '../GarageScreen/GarageScreen';
@@ -68,6 +69,25 @@ function ScreenContent({ region, onEnterRace, onEnterTable, raceLobbyMode, onRac
   }
 }
 
+// GHOST_CLICK_GUARD_MS — BUG DÜZELTMESİ ("fabrika ve yarış pistine girmek
+// için Android'de basılı tutmak gerekiyor, diğer mekanlara dokunur
+// dokunmaz giriliyor"): haritadaki dokunma tespiti (bkz. useMapPanZoom.js)
+// native `click` event'ine DEĞİL, kendi `pointerdown/up` mantığına dayanır
+// — ama Android'de bu ÖZEL dokunuş bittikten SONRA tarayıcı YİNE DE
+// gecikmeli bir "hayalet" (ghost) native `click` event'i üretebiliyor. Tam
+// ekrana giren mekanlarda (Banka/Camii/Gazino vb.) bu hayalet tıklama
+// zararsız bir yere düşüyor (o ekranlarda "her yere tıkla kapat" YOK,
+// sadece bir ✕ butonu var) — ama RegionModal'ın (fabrika/yarış pisti hâlâ
+// bunu kullanıyor) `region-modal-backdrop`'u TAM EKRANI kaplıyor ve HER
+// tıklamada kapanıyor: parmağın kalktığı konumdaki bu hayalet tıklama,
+// panel AÇILIR AÇILMAZ onu tekrar KAPATIYORDU — kullanıcıya "girmiyor"
+// gibi hissettiriyordu. Kısa bir basılı tutuş bu hayalet click'i (farklı
+// bir zamanlamayla) atlattığı için "basılı tutunca çalışıyor" sanılıyordu.
+// Artık panel açıldıktan sonraki kısa bir pencerede backdrop tıklamaları
+// yok sayılıyor — gerçek "dışarı tıkla kapat" davranışı bu pencereden
+// SONRA aynen çalışmaya devam ediyor.
+const GHOST_CLICK_GUARD_MS = 400;
+
 export default function RegionModal({
   region,
   onClose,
@@ -77,12 +97,22 @@ export default function RegionModal({
   raceLobbyMode,
   onRaceModeChange,
 }) {
+  const openedAtRef = useRef(0);
+  useEffect(() => {
+    if (region) openedAtRef.current = Date.now();
+  }, [region]);
+
   if (!region) return null;
 
   const heistTarget = getHeistTarget(region);
 
+  const handleBackdropClick = () => {
+    if (Date.now() - openedAtRef.current < GHOST_CLICK_GUARD_MS) return;
+    onClose?.();
+  };
+
   return (
-    <div className="region-modal-backdrop" onClick={onClose}>
+    <div className="region-modal-backdrop" onClick={handleBackdropClick}>
       <div className="region-modal" onClick={(e) => e.stopPropagation()}>
         <div className="region-modal-handle" />
         <div className="region-modal-header">

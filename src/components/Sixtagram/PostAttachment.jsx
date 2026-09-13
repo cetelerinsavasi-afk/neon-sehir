@@ -9,8 +9,6 @@ import { createAvatarImageCache, renderPhotoFrame as parkRenderPhotoFrame } from
 import {
   createAvatarImageCache as createAvatarImageCache2, renderPhotoFrame, INTERIOR_AVATAR_SCALE,
 } from '../../lib/canvasWorldKit';
-import { useImamState } from '../../hooks/useImamState';
-import { useBeggars } from '../../hooks/useBeggars';
 import { drawBankSceneBackground } from '../BankWorldScreen/BankWorldScreen';
 import { drawKarakolSceneBackground } from '../KarakolWorldScreen/KarakolWorldScreen';
 import { drawMosqueSceneBackground } from '../MosqueWorldScreen/MosqueWorldScreen';
@@ -34,12 +32,16 @@ const interiorPhotoImageCache = createAvatarImageCache2(buildFullAvatarSvgMarkup
 // eşleniyor; tekrar kod YOK.
 // DÜZELTME ("npcler gözükmüyor" hata raporu, Camii): drawMosqueSceneBackground
 // diğer mekanlardan farklı olarak imam/dilenci NPC'lerini SABİT/gömülü
-// tutmuyor — bunlar canlı Firestore durumu (useImamState/useBeggars, bkz.
-// MosqueWorldScreen.jsx) olduğu için üçüncü bir `{ imam, beggars }`
-// parametresi bekliyor. Eskiden burada bu parametre hiç verilmiyordu
-// (varsayılan `{}` kalıyordu), yani imam/dilenciler paylaşılan fotoğrafta
-// HİÇBİR ZAMAN çizilmiyordu — aşağıdaki `extra` artık MosqueInteriorPhotoCanvas
-// tarafından canlı state'ten dolduruluyor ve buraya kadar taşınıyor.
+// tutmuyor — üçüncü bir `{ imam, beggars }` parametresi bekliyor.
+//
+// 2. DÜZELTME ("dilencinin/imamın süresi bitince fotoğraftan da kayboluyor"):
+// bu `extra` bir ara sürümde useImamState/useBeggars ile CANLI dolduruluyordu
+// — bu da paylaşılan (geçmiş) bir fotoğrafın, imam azledilince/dilencinin
+// günü bitince ANINDA değişmesine yol açıyordu (fotoğraf hiçbir zaman bir
+// "an"ı dondurmuyordu). Artık imam/dilenci verisi fotoğraf ÇEKİLDİĞİ anda
+// sunucuda dondurulup doğrudan post'un attachment'ına gömülüyor (bkz.
+// functions/index.js buildMosqueNpcSnapshot) — burada SADECE o gömülü veri
+// (attachment.imam/attachment.beggars) okunuyor, canlı dinleyici YOK.
 const INTERIOR_BACKGROUNDS = {
   banka: (ctx, getAvatarImage) => drawBankSceneBackground(ctx, getAvatarImage),
   karakol: (ctx, getAvatarImage) => drawKarakolSceneBackground(ctx, getAvatarImage),
@@ -52,9 +54,10 @@ const INTERIOR_BACKGROUNDS = {
 
 // InteriorPhotoCanvas — Banka/Karakol/Camii/Gazino'da çekilen fotoğrafı,
 // ParkPhotoCanvas'la AYNI mantıkla ama girilebilir mekanın kendi gerçek
-// arka planıyla render eder. `extra` — SADECE Camii'nin ihtiyaç duyduğu
-// canlı `{ imam, beggars }` verisi (bkz. MosqueInteriorPhotoCanvas), diğer
-// mekanlar için `undefined` (kendi NPC'leri zaten gömülü/sabit).
+// arka planıyla render eder. `extra` — SADECE Camii'nin ihtiyaç duyduğu,
+// fotoğraf çekildiği anda DONDURULMUŞ `{ imam, beggars }` verisi (bkz.
+// yukarıdaki DÜZELTME notu ve attachment.type === 'interiorPhoto' render'ı),
+// diğer mekanlar için `undefined` (kendi NPC'leri zaten gömülü/sabit).
 //
 // DÜZELTME (genel, TÜM mekanlar): `focalScale` eskiden hiç verilmiyordu,
 // yani `renderPhotoFrame`'in varsayılanı (1) kullanılıyordu — oysa her
@@ -94,16 +97,6 @@ function InteriorPhotoCanvas({ locationId, entities, originX, originY, extra }) 
   return <canvas ref={canvasRef} width={320} height={320} className="post-att-parkphoto-canvas" />;
 }
 
-// MosqueInteriorPhotoCanvas — Camii için InteriorPhotoCanvas'ı canlı imam/
-// dilenci verisiyle sarmalar (bkz. yukarıdaki DÜZELTME notu). Firestore
-// dinleyicileri (useImamState/useBeggars) SADECE bir Camii fotoğrafı
-// gösterilirken mount edilsin diye ayrı bir bileşende tutuluyor — akıştaki
-// diğer (Camii olmayan) gönderiler için gereksiz dinleyici açılmıyor.
-function MosqueInteriorPhotoCanvas(props) {
-  const { imam } = useImamState();
-  const { beggars } = useBeggars();
-  return <InteriorPhotoCanvas {...props} extra={{ imam, beggars }} />;
-}
 
 // ParkPhotoCanvas — kamera karesini GERÇEK park sahnesinden (aynı
 // lib/parkScene.js çizim kodu, ParkWorldScreen'deki canlı önizlemeyle
@@ -372,18 +365,24 @@ export default function PostAttachment({ attachment }) {
       araba_galerisi: 'Araba Galerisi', silah_magazasi: 'Silah Mağazası', modifiye_garaji: 'Modifiye Garajı',
     };
     const label = LOCATION_LABELS[attachment.locationId] || 'Mekan';
-    // Camii'nin imam/dilenci NPC'leri canlı Firestore verisi (bkz. yukarıdaki
-    // DÜZELTME notu) — diğer tüm mekanlar için sade InteriorPhotoCanvas yeterli.
-    const Canvas = attachment.locationId === 'camii' ? MosqueInteriorPhotoCanvas : InteriorPhotoCanvas;
+    // Camii'nin imam/dilenci NPC'leri — fotoğraf ÇEKİLDİĞİ anda sunucuda
+    // dondurulup post'un attachment'ına gömülen veri (bkz. yukarıdaki
+    // DÜZELTME notu) — CANLI dinleyici YOK, bu yüzden post bir kez
+    // paylaşıldıktan sonra imam azledilse/dilencinin günü bitse bile
+    // fotoğraftaki görüntü değişmez. Diğer tüm mekanlar için `extra` gereksiz.
+    const extra = attachment.locationId === 'camii'
+      ? { imam: attachment.imam || null, beggars: attachment.beggars || [] }
+      : undefined;
     const names = entities.map((p) => p.displayName || 'Oyuncu');
     return (
       <div className="post-att post-att-parkphoto">
         <div className="post-att-parkphoto-frame">
-          <Canvas
+          <InteriorPhotoCanvas
             locationId={attachment.locationId}
             entities={entities}
             originX={attachment.originX}
             originY={attachment.originY}
+            extra={extra}
           />
         </div>
         <p className="post-att-parkphoto-names">📷 {names.join(' · ')} · {label}</p>

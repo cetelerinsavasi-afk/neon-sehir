@@ -26,8 +26,32 @@ const HOOK_MAX_LEN = H - RAIL_Y - 56;
 const HOOK_SPEED = 8.5;
 const GOLD_COUNT = 5;
 const TARGET_CATCHES = GOLD_COUNT;
-const ROUND_TIME_LIMIT = 18; // saniye
+// ROUND_TIME_LIMIT — yeni istek: "görevin süresini 20 sn'den 30 saniyeye
+// çıkartalım" (Android'de kancanın daha yavaş/zahmetli hissettirmesini
+// telafi etmek için de ayrıca faydalı).
+const ROUND_TIME_LIMIT = 30; // saniye
 const GOLD_R = 15;
+// FRAME_MS — sabit zaman adımlı (fixed-timestep) oyun döngüsü için "1
+// mantıksal kare" süresi (60 FPS varsayımıyla, update()'teki TÜM hız
+// sabitleri — HOOK_SPEED, trolleySpeed — zaten bu varsayıma göre
+// ayarlanmış). BUG DÜZELTMESİ ("kanca iPhone'a göre Android'de daha yavaş
+// hareket ediyor"): update() eskiden requestAnimationFrame callback'i
+// başına TAM BİR KEZ çağrılıyordu — yani "hız" aslında saniyede değil,
+// EKRANIN GERÇEKTE KAÇ KARE ÇİZEBİLDİĞİNE göre değişiyordu. iPhone'da
+// Safari düzenli 60 FPS'e yakın çizerken, birçok Android cihazda WebView/
+// Chrome (özellikle güç tasarrufu modunda ya da düşük/değişken donanım
+// hızlanmasında) rAF GERÇEKTEN daha seyrek tetikleniyor — sonuç: AYNI kod,
+// Android'de daha AZ kare/saniye ürettiği için kanca/vagon GÖZLE GÖRÜLÜR
+// yavaş hareket ediyordu. Artık loop() geçen GERÇEK süreyi (ts farkı)
+// ölçüp update()'i gerekirse birden fazla (ya da hiç) kez çağırıyor — bu
+// sayede TÜM cihazlarda saniyede kat edilen mesafe/oyun hızı AYNI kalıyor,
+// sadece görsel akıcılık (kaç kare çizildiği) cihazın gerçek FPS'ine göre
+// değişiyor (bu zaten normal/beklenen).
+const FRAME_MS = 1000 / 60;
+// Bir rAF çağrısında en fazla kaç mantıksal adım çalıştırılabilir — sekme
+// arka plana alınıp geri dönüldüğünde (dt çok büyük) oyunun aniden
+// "hızlanarak telafi etmeye" çalışmasını (spiral of death) önler.
+const MAX_STEPS_PER_FRAME = 5;
 
 function rand(min, max) {
   return min + Math.random() * (max - min);
@@ -78,6 +102,8 @@ export default function HookGoldGame({ onComplete, onClose }) {
     golds: spawnGolds(),
     catchesNow: 0,
     t: 0,
+    lastTs: null,
+    acc: 0,
   });
 
   const blip = useCallback((freq) => {
@@ -300,12 +326,33 @@ export default function HookGoldGame({ onComplete, onClose }) {
       }
     }
 
-    function loop() {
-      update();
+    // loop — sabit zaman adımlı (fixed-timestep) döngü (bkz. FRAME_MS
+    // yorumu): update()'in kendisi DEĞİŞMEDİ (hâlâ "1 mantıksal kare"
+    // kadar ilerliyor), sadece bir rAF çağrısında gerçekte geçen süreye
+    // göre 0, 1 ya da birden fazla kez çağrılıyor — böylece oyun hızı
+    // cihazın gerçek kare hızından bağımsız, HER ZAMAN saniyede aynı
+    // mesafeyi kat ediyor.
+    function loop(ts) {
+      if (g.lastTs == null) g.lastTs = ts;
+      let dt = ts - g.lastTs;
+      g.lastTs = ts;
+      if (dt > 250) dt = 250; // sekme arka plandaydı vb. — aşırı büyük sıçramayı kırp
+      g.acc += dt;
+      let steps = 0;
+      while (g.acc >= FRAME_MS && steps < MAX_STEPS_PER_FRAME) {
+        update();
+        g.acc -= FRAME_MS;
+        steps += 1;
+      }
+      if (steps >= MAX_STEPS_PER_FRAME) g.acc = 0; // birikmiş geriliği at, "spiral of death" yaşama
       draw();
       rafRef.current = requestAnimationFrame(loop);
     }
-    loop();
+    // İlk çağrı requestAnimationFrame ÜZERİNDEN yapılıyor (doğrudan loop()
+    // DEĞİL) — loop() bir `ts` (DOMHighResTimeStamp) argümanı bekliyor;
+    // argümansız çağrılırsa g.acc NaN'a düşüp update()'in bir daha HİÇ
+    // çalışmamasına (oyunun donmasına) yol açardı.
+    rafRef.current = requestAnimationFrame(loop);
 
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);

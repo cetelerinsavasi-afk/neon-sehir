@@ -1930,6 +1930,20 @@ export const dailyReset = onSchedule(
     // "doktora ödemesini yaptığınızda tedaviye başlar ve 00.00da işi biter
     // kutu boşalır". Maç takviminden (18:00/19:00) TAMAMEN BAĞIMSIZ, her
     // gece — lig günü, kupa günü, kutlama günü fark etmeksizin — çalışır.
+    //
+    // BUG DÜZELTMESİ ("sakatlandı, iyileşince formu düşüktü"): sakat
+    // oyuncular normalde 19:00'daki applyFutbolMatchResult/applyFutbolCup-
+    // MatchResult/applyFutbolRestDayFormGain'in "kadroda/antrenmanda değil"
+    // dalından da +50 form alıyordu — AMA bu iyileşme (injuryDaysLeft
+    // azaltma) HER GECE 00:00'da, o günün 19:00 maç turundan ÖNCE
+    // çalıştığı için, TAM iyileştiği gece (ör. 1 günlük bir sakatlık —
+    // olası sakatlıkların ~%20'si) injuryDaysLeft 0'a düşüyor ve oyuncu O
+    // GÜN sahaya çıkmaya uygun sayılıp hiç dinlenme günü YAŞAMADAN doğrudan
+    // kadroya geri dönebiliyordu — sakat kaldığı TEK/son gece için form
+    // telafisi HİÇ verilmemiş oluyordu. Artık her iyileşme gecesi burada da
+    // (19:00 akışından BAĞIMSIZ, garanti olarak) normal boştaki oyuncularla
+    // AYNI +50 form kazandırılıyor — 100'ü asla geçmediği için 19:00'daki
+    // mekanizmayla üst üste binmesi zararsız, sadece iyileşmeyi hızlandırır.
     {
       const [injuredSnap, doctorTeamsSnap] = await Promise.all([
         db.collection('futbolPlayers').where('injuryDaysLeft', '>', 0).get(),
@@ -1947,9 +1961,13 @@ export const dailyReset = onSchedule(
         }
       };
       injuredSnap.forEach((d) => {
-        const days = d.data().injuryDaysLeft || 0;
+        const p = d.data();
+        const days = p.injuryDaysLeft || 0;
         const healAmount = doctorPlayerIds.has(d.id) ? 2 : 1; // doktor varsa +1 ekstra
-        injuryBatch.update(d.ref, { injuryDaysLeft: Math.max(0, days - healAmount) });
+        injuryBatch.update(d.ref, {
+          injuryDaysLeft: Math.max(0, days - healAmount),
+          form: Math.min(100, (p.form ?? 100) + 50),
+        });
         injuryOpCount += 1;
         commitIfFull();
       });
@@ -2597,6 +2615,20 @@ export const dailyReset = onSchedule(
           if (newLife <= 0 && repairsUsed >= VEHICLE_WEAPON_MAX_REPAIRS) {
             const ownerId = item.ownerId;
             const displayLabel = item[labelField] || (collName === 'vehicles' ? 'aracınız' : 'silahınız');
+            // BUG DÜZELTMESİ ("2. elde anında sattım ama 'hurdalığa kaldırıldı'
+            // SMS'i geldi, artık benim değil ki"): instantSellListing ile
+            // "anında sat" yapıldığında satıcıya parası HEMEN ödenir ve ürün
+            // %10 zamlı bir SİSTEM ilanı (sellerId:'system') olarak yeniden
+            // listelenir — ama weapons/vehicles dokümanındaki ownerId alanı,
+            // gerçek bir alıcı çıkıp buyListing çalışana kadar HÂLÂ eski
+            // (parasını çoktan almış) satıcıyı gösterir (bkz. buyListing'in
+            // ownerId'yi ancak SATIŞ ANINDA güncellemesi). Ürünün ömrü bu
+            // "sistemde bekleme" penceresinde biterse, eskiden bu SMS parasını
+            // zaten almış eski sahibe gidiyordu — artık ilan sellerId==='system'
+            // ise (yani satıcı zaten ödemesini aldıysa) SMS hiç gönderilmiyor,
+            // sadece normal oyuncu ilanlarında (henüz satılmamış, hâlâ fiilen
+            // sahibinin malı) eskisi gibi bildiriliyor.
+            let isSystemListing = false;
             if (item.listed) {
               const listingSnap = await db
                 .collection('marketplaceListings')
@@ -2605,11 +2637,12 @@ export const dailyReset = onSchedule(
                 .limit(1)
                 .get();
               if (!listingSnap.empty) {
+                isSystemListing = listingSnap.docs[0].data().sellerId === 'system';
                 await listingSnap.docs[0].ref.update({ sold: true, cancelled: true });
               }
             }
             await docSnap.ref.delete();
-            if (ownerId) {
+            if (ownerId && !isSystemListing) {
               await db
                 .collection('users')
                 .doc(ownerId)
@@ -15306,6 +15339,42 @@ async function createSixtagramNotification(toUid, notif) {
 // (parkPresence/interiorPresence) geri döner (bkz. aşağıdaki 2. katman).
 const PHOTO_SNAPSHOT_MAX_AGE_MS = 10 * 60 * 1000;
 
+// buildMosqueNpcSnapshot — Camii'nin CANLI imam/dilenci NPC'lerinin o
+// ANKİ halini okur (bkz. drawBeggarNpcs'teki maxShown=4 ile AYNI limit).
+// BUG DÜZELTMESİ ("dilencinin/imamın süresi bitince fotoğraftan da
+// kayboluyor"): PostAttachment.jsx eskiden bu NPC'leri paylaşılan
+// fotoğrafta HER ZAMAN CANLI (useImamState/useBeggars) çiziyordu — yani
+// fotoğraf çekildikten SONRA imam azledilirse/dilencinin günü biterse,
+// ESKİ fotoğraflardaki görüntü de anında değişiyordu (bir fotoğraf asla
+// "an"ı dondurmuyordu). Diğer tüm entity'ler (oyuncular) zaten
+// captureCameraSnapshot/tryUseFrozenSnapshot ile dondurulüyordu — imam/
+// dilenci bu dondurmanın DIŞINDA bırakılmıştı. Artık bu fonksiyon hem
+// captureCameraSnapshot (kare dondurulurken) hem de buildSixtagramAttachment
+// (dondurulmuş kare yoksa/süresi geçmişse CANLI yedek katman) tarafından
+// çağrılıyor ve sonuç DOĞRUDAN post'un attachment'ına gömülüyor — bir kez
+// paylaşıldıktan sonra o fotoğraftaki imam/dilenci bir daha ASLA değişmez.
+async function buildMosqueNpcSnapshot() {
+  const dateKey = istanbulDateKey();
+  const [imamSnap, beggarsSnap] = await Promise.all([
+    db.collection('imamState').doc('current').get(),
+    db
+      .collection('beggars')
+      .doc(dateKey)
+      .collection('entries')
+      .orderBy('createdAt', 'desc')
+      .limit(4)
+      .get(),
+  ]);
+  const imam = imamSnap.exists
+    ? { displayName: imamSnap.data().displayName || 'İmam', avatar: imamSnap.data().avatar || null }
+    : null;
+  const beggars = beggarsSnap.docs.map((d) => ({
+    displayName: d.data().displayName || 'Oyuncu',
+    avatar: d.data().avatar || null,
+  }));
+  return { imam, beggars };
+}
+
 // tryUseFrozenSnapshot — yeni istek: "fotoğraf çektiğimizde karşımıza o
 // anki gördüğümüz an çıkıyor ama paylaştığımızda paylaşırkenki an
 // paylaşılıyor. direkt fotoğraf çektiğimiz an karşımıza gelen görüntü
@@ -15337,6 +15406,13 @@ async function tryUseFrozenSnapshot(uid, type, locationId) {
     originX: data.originX ?? 0,
     originY: data.originY ?? 0,
     entities: Array.isArray(data.entities) ? data.entities : [],
+    // Camii dondurulmuş karesi çekildiği anda kaydedilen imam/dilenci NPC'leri
+    // (bkz. captureCameraSnapshot + buildMosqueNpcSnapshot). `hasMosqueNpcData`
+    // — bu alan eklenmeden ÖNCE dondurulmuş (çok eski/nadir) bir kare için
+    // false döner, çağıran taraf o durumda canlı veriye düşer.
+    hasMosqueNpcData: Object.prototype.hasOwnProperty.call(data, 'imam'),
+    imam: data.imam ?? null,
+    beggars: Array.isArray(data.beggars) ? data.beggars : [],
   };
 }
 
@@ -15494,12 +15570,18 @@ export const captureCameraSnapshot = onCall(async (request) => {
     );
   }
 
+  // Camii'nin imam/dilenci NPC'leri de TAM BU ANDA (kare dondurulurken)
+  // gömülüyor — bkz. buildMosqueNpcSnapshot yorumu. Diğer mekanlarda bu
+  // alanlar hiç yazılmıyor (undefined — Firestore'a yazılmaz).
+  const mosqueNpc = type === 'interiorPhoto' && locationId === 'camii' ? await buildMosqueNpcSnapshot() : null;
+
   await db.collection('photoSnapshots').doc(uid).set({
     type,
     locationId: type === 'interiorPhoto' ? locationId : null,
     originX: result.originX,
     originY: result.originY,
     entities: result.entities,
+    ...(mosqueNpc ? { imam: mosqueNpc.imam, beggars: mosqueNpc.beggars } : {}),
     capturedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
@@ -15925,9 +16007,27 @@ async function buildSixtagramAttachment(uid, attachment) {
       throw new HttpsError('invalid-argument', 'Geçersiz mekan.');
     }
 
+    // Camii'nin imam/dilenci NPC'leri — BUG DÜZELTMESİ: bu üç dönüş yolunun
+    // (dondurulmuş/canlı/son çare) HER BİRİNDE, paylaşım ANINDAKİ imam/
+    // dilenci verisini attachment'a GÖMÜYORUZ (bkz. buildMosqueNpcSnapshot).
+    // Post bir kez paylaşıldıktan sonra bu veri Firestore'daki post
+    // dokümanının bir parçası olduğu için bir daha DEĞİŞMEZ — imam azledilse
+    // ya da dilencinin günü bitse bile eski gönderideki fotoğraf aynı kalır.
+    const mosqueExtra = async (frozenData) => {
+      if (locationId !== 'camii') return {};
+      if (frozenData && frozenData.hasMosqueNpcData) {
+        return { imam: frozenData.imam, beggars: frozenData.beggars };
+      }
+      const live = await buildMosqueNpcSnapshot();
+      return { imam: live.imam, beggars: live.beggars };
+    };
+
     const frozen = await tryUseFrozenSnapshot(uid, 'interiorPhoto', locationId);
     if (frozen) {
-      return { type: 'interiorPhoto', locationId, originX: frozen.originX, originY: frozen.originY, entities: frozen.entities };
+      return {
+        type: 'interiorPhoto', locationId, originX: frozen.originX, originY: frozen.originY, entities: frozen.entities,
+        ...(await mosqueExtra(frozen)),
+      };
     }
 
     const live = await buildPresenceEntities({
@@ -15938,7 +16038,10 @@ async function buildSixtagramAttachment(uid, attachment) {
       includeNpc: false,
     });
     if (live) {
-      return { type: 'interiorPhoto', locationId, originX: live.originX, originY: live.originY, entities: live.entities };
+      return {
+        type: 'interiorPhoto', locationId, originX: live.originX, originY: live.originY, entities: live.entities,
+        ...(await mosqueExtra(null)),
+      };
     }
 
     // Presence kaydı hiç yoksa (ör. sekme geç açıldı) son çare: sadece
@@ -15961,6 +16064,7 @@ async function buildSixtagramAttachment(uid, attachment) {
         displayName: userData.displayName || 'Oyuncu', avatar: userData.avatar || null,
         bubbleText: safeBubbleText(attachment.bubbleText),
       }],
+      ...(await mosqueExtra(null)),
     };
   }
 
