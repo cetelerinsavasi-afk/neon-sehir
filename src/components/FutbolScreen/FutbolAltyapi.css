@@ -10,6 +10,14 @@
   gap: 8px;
 }
 
+.futbol-training-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .futbol-growth-toggle {
   align-self: flex-start;
 }

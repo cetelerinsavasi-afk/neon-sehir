@@ -29,6 +29,11 @@ export default function FutbolKulupler({ leagueId }) {
             <p className="futbol-buy-meta">
               Başkan: {c.chairman} {c.isBot && <span className="futbol-kulup-bot-tag">Bot</span>}
             </p>
+            {c.managerName && (
+              <p className="futbol-buy-meta futbol-kulup-manager">
+                💼 Menajer: {c.managerName} (seviye {c.managerLevel ?? 0})
+              </p>
+            )}
             <p className="futbol-buy-meta">
               {c.fans.toLocaleString('tr-TR')} taraftar · {(c.stadiumCapacity || 2500).toLocaleString('tr-TR')} kapasiteli stadyum
             </p>

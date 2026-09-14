@@ -73,7 +73,7 @@ export default function FutbolTransfer({ team }) {
     setBusyId(playerId);
     setError('');
     try {
-      await buyFutbolPlayer(playerId);
+      await buyFutbolPlayer(playerId, team.id);
       setBoughtIds((prev) => new Set(prev).add(playerId));
     } catch (err) {
       setError(err?.message || 'Satın alma başarısız.');
@@ -151,6 +151,12 @@ export default function FutbolTransfer({ team }) {
     ? groupFutbolPlayersByPositionOrdered(market.filter((p) => p.teamId !== team.id))
     : [];
   const marketItemsCount = marketGroups.reduce((sum, g) => sum + g.players.length, 0);
+
+  // KULLANICI REVİZESİ (Bölüm 2/6): MANAGED bir takımda harcama önce
+  // transfer desteğinden, kalanı takım kasasından düşer — kişisel altın
+  // hiç kullanılmaz. Bakiye gösterimi ve "yeterli mi" kontrolü buna göre.
+  const isManaged = Boolean(team.managerUid);
+  const availableBudget = isManaged ? (team.transferSupport || 0) + (team.treasury || 0) : player?.gold || 0;
 
   return (
     <div className="futbol-transfer">
@@ -231,8 +237,13 @@ export default function FutbolTransfer({ team }) {
 
       <div className="futbol-transfer-market-header">
         <p className="futbol-kadro-section-title">Transfer Piyasası — Katabileceğin Oyuncular</p>
-        {/* Kullanıcı revizesi: bakiye her zaman görünür olsun. */}
-        <p className="futbol-transfer-balance">💰 {(player?.gold || 0).toLocaleString('tr-TR')} altın</p>
+        {/* Kullanıcı revizesi: bakiye her zaman görünür olsun. MANAGED'da
+            kişisel altın değil, transfer desteği + kasa toplamı gösterilir. */}
+        <p className="futbol-transfer-balance">
+          {isManaged
+            ? `💰 Destek + Kasa: ${availableBudget.toLocaleString('tr-TR')} altın`
+            : `💰 ${availableBudget.toLocaleString('tr-TR')} altın`}
+        </p>
       </div>
       {isAdmin && (
         <button
@@ -258,7 +269,7 @@ export default function FutbolTransfer({ team }) {
           {group.players.map((p) => {
             const price = p.salePrice || 0;
             const alreadyBought = boughtIds.has(p.id);
-            const canAfford = (player?.gold || 0) >= price;
+            const canAfford = availableBudget >= price;
             const showingInsufficient = insufficientId === p.id;
             return (
               <div key={p.id} className="futbol-transfer-row">

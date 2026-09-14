@@ -339,6 +339,16 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // futbolTeams/{teamId}/notifications/{notifId} — Bölüm 16: takım-bazlı
+    // bildirim paneli (oyuncu satışı/bilet geliri/sezon sonu geliri/kasa
+    // olayları). Takım dokümanı zaten herkese açık okunuyor, bu yüzden
+    // bildirimler de aynı şekilde herkese açık okunur; yazma sadece Cloud
+    // Functions ile (sendFutbolTeamNotification / markFutbolTeamNotificationsRead).
+    match /futbolTeams/{teamId}/notifications/{notifId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
     match /futbolPlayers/{playerId} {
       allow read: if isSignedIn();
       allow write: if false;

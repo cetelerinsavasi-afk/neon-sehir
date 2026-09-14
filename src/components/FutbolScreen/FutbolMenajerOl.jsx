@@ -1,0 +1,104 @@
+import { useEffect, useState } from 'react';
+import { listFutbolManagerOpportunities, applyFutbolManager } from '../../services/gameActions';
+import { usePlayer } from '../../hooks/usePlayer';
+import FutbolCrest from './FutbolCrest';
+import ManagerBooklet from '../ManagerBooklet/ManagerBooklet';
+import './FutbolTakimim.css';
+
+const FUTBOL_MANAGER_REPUTATION_REQUIRED = 50;
+
+// FutbolMenajerOl — Bölüm 3/8/15: "Menajer Ol" sekmesi. Menajeri OLMAYAN
+// takımlar (bot/oto-bot → anında kabul; aktif başkanlı+gönüllü ilanlı →
+// başvuru kuyruğu) burada listelenir.
+export default function FutbolMenajerOl() {
+  const { player } = usePlayer();
+  const [opportunities, setOpportunities] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [showBooklet, setShowBooklet] = useState(false);
+  const [appliedIds, setAppliedIds] = useState(() => new Set());
+
+  const reputation = player?.reputation || 0;
+  const eligible = reputation >= FUTBOL_MANAGER_REPUTATION_REQUIRED;
+
+  const load = async () => {
+    setError('');
+    try {
+      const res = await listFutbolManagerOpportunities();
+      setOpportunities(res?.data?.opportunities || []);
+    } catch (err) {
+      setError('Liste yüklenemedi.');
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const handleApply = async (teamId) => {
+    setBusyId(teamId);
+    setError('');
+    setMessage('');
+    try {
+      const res = await applyFutbolManager(teamId);
+      setMessage(
+        res?.data?.instant
+          ? "Başvurun kabul edildi — yarın 19:00'da göreve başlayacaksın ✓"
+          : 'Başvurun başkana iletildi, onayını bekliyor.'
+      );
+      setAppliedIds((prev) => new Set(prev).add(teamId));
+    } catch (err) {
+      setError(err?.message || 'Başvuru başarısız.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <div className="futbol-buy-list">
+      <div className="futbol-training-header-row">
+        <p className="futbol-placeholder">
+          Menajeri olmayan takımlara (bot ya da 5+ gündür pasif başkanlı) hemen başvurabilirsin — anında kabul
+          edilirsin. Aktif başkanlı, gönüllü ilana açık takımlarda ise başkan başvuruları değerlendirir.
+        </p>
+        <button className="futbol-admin-reset" onClick={() => setShowBooklet(true)}>
+          📖 Menajerlik Kitapçığı
+        </button>
+      </div>
+
+      {!eligible && (
+        <p className="futbol-admin-error">
+          Menajer olmak için en az {FUTBOL_MANAGER_REPUTATION_REQUIRED} saygınlığın olmalı (şu an{' '}
+          {reputation.toLocaleString('tr-TR')}).
+        </p>
+      )}
+      {error && <p className="futbol-admin-error">{error}</p>}
+      {message && <p className="futbol-placeholder">{message}</p>}
+      {opportunities === null && <p className="futbol-placeholder">Yükleniyor...</p>}
+      {opportunities !== null && opportunities.length === 0 && (
+        <p className="futbol-placeholder">Şu an menajer arayan bir takım yok.</p>
+      )}
+      {opportunities?.map((o) => (
+        <div key={o.id} className="futbol-buy-row">
+          <FutbolCrest logo={o.logo} initials={o.name?.[0]} size={40} />
+          <div className="futbol-buy-info">
+            <p className="futbol-buy-name">{o.name}</p>
+            <p className="futbol-buy-meta">
+              {o.tier}. Lig · {o.isVoluntaryListing ? 'Başkan onayı gerekir' : 'Anında kabul'}
+            </p>
+          </div>
+          <button
+            className="futbol-admin-submit"
+            disabled={!eligible || busyId === o.id || appliedIds.has(o.id)}
+            onClick={() => handleApply(o.id)}
+          >
+            {appliedIds.has(o.id) ? 'Başvuruldu ✓' : busyId === o.id ? '...' : 'Başvur'}
+          </button>
+        </div>
+      ))}
+
+      {showBooklet && <ManagerBooklet onClose={() => setShowBooklet(false)} />}
+    </div>
+  );
+}

@@ -19,6 +19,9 @@ import FutbolAltyapi from './FutbolAltyapi';
 import FutbolDoktor from './FutbolDoktor';
 import FutbolStadyum from './FutbolStadyum';
 import FutbolSponsor from './FutbolSponsor';
+import FutbolMenajer from './FutbolMenajer';
+import FutbolMenajerOl from './FutbolMenajerOl';
+import NotificationBell from './NotificationBell';
 import { groupFutbolPlayersByPositionOrdered } from './futbolPositionOrder';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import ConfirmModal from '../ConfirmModal/ConfirmModal';
@@ -35,6 +38,7 @@ function initialsFromName(name) {
 
 const MY_TEAM_TABS = [
   { id: 'takimin', label: 'Takımın' },
+  { id: 'menajer', label: 'Menajer' },
   { id: 'kadro', label: 'Kadro' },
   { id: 'transfer', label: 'Transfer' },
   { id: 'altyapi', label: 'Antrenman' },
@@ -44,28 +48,75 @@ const MY_TEAM_TABS = [
   { id: 'sponsor', label: 'Sponsor' },
 ];
 
+// FutbolTakimim — KULLANICI REVİZESİ (Menajerlik Sistemi): takım sahipliği
+// ve menajerlik BİRBİRİNİ DIŞLAR — bir oyuncu aynı anda hem takım sahibi hem
+// başka bir takımın menajeri OLAMAZ (takım sahipleri başka takımlara
+// menajerlik yapamaz; bir menajer takım satın almak isterse önce istifa
+// etmesi gerekir — bkz. applyFutbolManager/requestFutbolManagerHandover ve
+// buyFutbolTeam'deki sunucu tarafı kontroller). Bu yüzden ekran da buna göre
+// TEK bir "Takımım" görünümü: hiç takımın yoksa "Takım Satın Al" / "Menajer
+// Ol" seçim paneli, bir takımın (sahip OLARAK ya da menajer OLARAK) varsa
+// doğrudan o takımın sekmeleri — sahip olunan takımda aynen eskisi gibi,
+// SADECE ek bir "Menajer" alt-sekmesiyle (devir/kasa araçları için).
 export default function FutbolTakimim() {
-  const { team, loading: teamLoading } = useMyFutbolTeam();
+  const { ownedTeam, managedTeam, loading } = useMyFutbolTeam();
   const [tab, setTab] = useState('takimin');
+  const [joinTab, setJoinTab] = useState('buy');
 
-  if (teamLoading) return <p className="futbol-placeholder">Yükleniyor...</p>;
-  if (!team) return <BuyTeamPanel />;
+  if (loading) return <p className="futbol-placeholder">Yükleniyor...</p>;
+
+  const team = ownedTeam || managedTeam;
+  const role = ownedTeam ? 'owner' : managedTeam ? 'manager' : null;
+
+  if (!team) {
+    return (
+      <div className="futbol-my-team-wrap">
+        <div className="futbol-subtabs futbol-subtabs-inner">
+          <button
+            className={`futbol-subtab-btn ${joinTab === 'buy' ? 'active' : ''}`}
+            onClick={() => setJoinTab('buy')}
+          >
+            Takım Satın Al
+          </button>
+          <button
+            className={`futbol-subtab-btn ${joinTab === 'menajerOl' ? 'active' : ''}`}
+            onClick={() => setJoinTab('menajerOl')}
+          >
+            Menajer Ol
+          </button>
+        </div>
+        {joinTab === 'buy' ? <BuyTeamPanel /> : <FutbolMenajerOl />}
+      </div>
+    );
+  }
 
   return (
     <div className="futbol-my-team-wrap">
-      <div className="futbol-subtabs futbol-subtabs-inner">
-        {MY_TEAM_TABS.map((t) => (
-          <button
-            key={t.id}
-            className={`futbol-subtab-btn ${tab === t.id ? 'active' : ''}`}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
+      <TeamTabsPanel team={team} role={role} tab={tab} setTab={setTab} />
+    </div>
+  );
+}
+
+function TeamTabsPanel({ team, role, tab, setTab }) {
+  return (
+    <div>
+      <div className="futbol-my-team-subtabs-row">
+        <div className="futbol-subtabs futbol-subtabs-inner futbol-my-team-subtabs-scroll">
+          {MY_TEAM_TABS.map((t) => (
+            <button
+              key={t.id}
+              className={`futbol-subtab-btn ${tab === t.id ? 'active' : ''}`}
+              onClick={() => setTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <NotificationBell teamId={team.id} unread={Boolean(team.notifUnread)} />
       </div>
 
-      {tab === 'takimin' && <MyTeamOverview team={team} />}
+      {tab === 'takimin' && <MyTeamOverview team={team} role={role} />}
+      {tab === 'menajer' && <FutbolMenajer team={team} role={role} />}
       {tab === 'kadro' && <FutbolKadro team={team} />}
       {tab === 'transfer' && <FutbolTransfer team={team} />}
       {tab === 'altyapi' && <FutbolAltyapi team={team} />}
@@ -150,7 +201,7 @@ function BuyTeamPanel() {
   );
 }
 
-function MyTeamOverview({ team }) {
+function MyTeamOverview({ team, role }) {
   const { teams: leagueTeams } = useFutbolTeams(team.leagueId);
   const { players } = useFutbolTeamPlayers(team.id);
   const [finance, setFinance] = useState(null);
@@ -159,10 +210,12 @@ function MyTeamOverview({ team }) {
   const [showSellPanel, setShowSellPanel] = useState(false);
   const [listPrice, setListPrice] = useState(0);
   const [confirmInstantSell, setConfirmInstantSell] = useState(false);
+  const isOwner = role === 'owner';
 
   const rank = leagueTeams.findIndex((t) => t.id === team.id) + 1;
 
   const loadFinance = () => {
+    if (!isOwner) return;
     getMyFutbolTeamFinance()
       .then((res) => setFinance(res?.data?.team || null))
       .catch(() => {});
@@ -170,7 +223,8 @@ function MyTeamOverview({ team }) {
 
   useEffect(() => {
     loadFinance();
-  }, [team.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [team.id, isOwner]);
 
   const handleInstantSell = () => {
     setConfirmInstantSell(true);
@@ -227,6 +281,13 @@ function MyTeamOverview({ team }) {
         </div>
       </div>
 
+      {!isOwner && (
+        <p className="futbol-buy-meta">
+          Bu takımın menajerliğini yapıyorsun — satış/ilan işlemleri sadece başkana açıktır. Kasa/maaş işlemleri
+          için "Menajer" sekmesine bak.
+        </p>
+      )}
+
       <div className="futbol-my-team-rank">
         {rank > 0 ? `Ligde ${rank}. sıradasın` : 'Sıralama hesaplanıyor...'}
         {(team.championshipsCount > 0 || team.cupsCount > 0) && (
@@ -236,51 +297,54 @@ function MyTeamOverview({ team }) {
           </span>
         )}
       </div>
-      <div className="futbol-my-team-rank">
-        Takım Değeri: {finance ? `${finance.value.toLocaleString('tr-TR')} altın` : '…'}
-      </div>
+      {isOwner && (
+        <div className="futbol-my-team-rank">
+          Takım Değeri: {finance ? `${finance.value.toLocaleString('tr-TR')} altın` : '…'}
+        </div>
+      )}
 
       {error && <p className="futbol-admin-error">{error}</p>}
 
-      {team.forSale ? (
-        <div className="futbol-my-team-finance">
-          <p>İlan fiyatın: {(team.salePrice || 0).toLocaleString('tr-TR')} altın</p>
-          <button className="futbol-admin-reset" disabled={busy} onClick={handleCancelListing}>
-            İlanı İptal Et
-          </button>
-        </div>
-      ) : !showSellPanel ? (
-        <button className="futbol-admin-reset" onClick={() => setShowSellPanel(true)}>
-          Takımı Sat
-        </button>
-      ) : (
-        <div className="futbol-my-team-finance">
-          {finance && (
-            <p className="futbol-buy-meta">
-              Değer: {finance.value.toLocaleString('tr-TR')} · Anında satış:{' '}
-              {finance.instantSellPrice.toLocaleString('tr-TR')} · Azami ilan:{' '}
-              {finance.maxListPrice.toLocaleString('tr-TR')}
-            </p>
-          )}
-          <QuantityStepper
-            value={listPrice}
-            onChange={setListPrice}
-            max={finance?.maxListPrice}
-            quickAmounts={CLUB_PRICE_QUICK_AMOUNTS}
-          />
-          <button className="futbol-admin-submit" disabled={busy || listPrice <= 0} onClick={handleList}>
-            Listeye Koy
-          </button>
-          {finance && (
-            <button className="futbol-admin-reset" disabled={busy} onClick={handleInstantSell}>
-              Anında Sat ({finance.instantSellPrice.toLocaleString('tr-TR')})
+      {isOwner &&
+        (team.forSale ? (
+          <div className="futbol-my-team-finance">
+            <p>İlan fiyatın: {(team.salePrice || 0).toLocaleString('tr-TR')} altın</p>
+            <button className="futbol-admin-reset" disabled={busy} onClick={handleCancelListing}>
+              İlanı İptal Et
             </button>
-          )}
-          <button className="futbol-placeholder futbol-my-team-cancel-link" onClick={() => setShowSellPanel(false)}>
-            Vazgeç
+          </div>
+        ) : !showSellPanel ? (
+          <button className="futbol-admin-reset" onClick={() => setShowSellPanel(true)}>
+            Takımı Sat
           </button>
-        </div>
-      )}
+        ) : (
+          <div className="futbol-my-team-finance">
+            {finance && (
+              <p className="futbol-buy-meta">
+                Değer: {finance.value.toLocaleString('tr-TR')} · Anında satış:{' '}
+                {finance.instantSellPrice.toLocaleString('tr-TR')} · Azami ilan:{' '}
+                {finance.maxListPrice.toLocaleString('tr-TR')}
+              </p>
+            )}
+            <QuantityStepper
+              value={listPrice}
+              onChange={setListPrice}
+              max={finance?.maxListPrice}
+              quickAmounts={CLUB_PRICE_QUICK_AMOUNTS}
+            />
+            <button className="futbol-admin-submit" disabled={busy || listPrice <= 0} onClick={handleList}>
+              Listeye Koy
+            </button>
+            {finance && (
+              <button className="futbol-admin-reset" disabled={busy} onClick={handleInstantSell}>
+                Anında Sat ({finance.instantSellPrice.toLocaleString('tr-TR')})
+              </button>
+            )}
+            <button className="futbol-placeholder futbol-my-team-cancel-link" onClick={() => setShowSellPanel(false)}>
+              Vazgeç
+            </button>
+          </div>
+        ))}
 
       <p className="futbol-kadro-section-title">Kadromuz ({players.length})</p>
       <p className="futbol-placeholder">

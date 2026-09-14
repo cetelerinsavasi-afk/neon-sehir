@@ -1,3 +1,19 @@
+.futbol-my-team-subtabs-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.futbol-my-team-subtabs-scroll {
+  padding: 0;
+  border-bottom: none;
+  flex: 1;
+  min-width: 0;
+}
+
 .futbol-buy-list {
   display: flex;
   flex-direction: column;

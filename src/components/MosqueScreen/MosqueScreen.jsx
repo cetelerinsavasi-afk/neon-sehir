@@ -35,7 +35,7 @@ export const WINDOW_HOURS = {
 // Bu iki sabit sadece EKRANDA GÖSTERİLEN metin/kelepçe için — gerçek kural
 // sunucu tarafında (functions/index.js: BEGGAR_WEALTH_LIMIT,
 // BEGGAR_MAX_SINGLE_DONATION) uygulanıyor; ikisi senkron tutulmalı.
-const BEGGAR_WEALTH_LIMIT = 20000;
+const BEGGAR_WEALTH_LIMIT = 100000;
 const BEGGAR_MAX_SINGLE_DONATION = 10000;
 
 export function ImamPanel() {
@@ -232,8 +232,8 @@ function BecomeBeggarForm({ onClose, onDone }) {
         <p className="beggar-form-title">Dilenci Ol</p>
         <p className="beggar-form-hint">
           Bağışçıların görmesi için kısa bir not yazabilirsin. Toplam servetin (elindeki altın +
-          bankadaki/yatırımlardaki para) {BEGGAR_WEALTH_LIMIT.toLocaleString('tr-TR')} altını
-          aşıyorsa dilenci olamazsın.
+          bankadaki/yatırımlardaki para + araç ve silahlarının anında satış değeri){' '}
+          {BEGGAR_WEALTH_LIMIT.toLocaleString('tr-TR')} altını aşıyorsa dilenci olamazsın.
         </p>
         <textarea
           className="beggar-note-input"

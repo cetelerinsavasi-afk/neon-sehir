@@ -5,17 +5,18 @@ import { assignFutbolDoctor, cancelFutbolDoctor } from '../../services/gameActio
 import FutbolPlayerAvatar from './FutbolPlayerAvatar';
 import './FutbolAltyapi.css';
 
-const FUTBOL_DOCTOR_COST = 5000;
+// KULLANICI REVİZESİ (Bölüm 13): doktor maliyeti 5.000 → 10.000 altın.
+const FUTBOL_DOCTOR_COST = 10000;
 const POSITION_LABELS = { GK: 'Kaleci', DEF: 'Defans', MID: 'Orta Saha', FWD: 'Forvet' };
 
 // FutbolDoktor — yeni istek: "kadrosunda sakat oyuncu olan takımlar
-// doktor tabından 5000 altın ödeyerek TEK bir oyuncunun iyileşmesini
+// doktor tabından 10.000 altın ödeyerek TEK bir oyuncunun iyileşmesini
 // hızlandırabilir". Doktor kutusu aynı anda sadece 1 oyuncuyla
 // ilgilenebilir (bkz. functions/index.js assignFutbolDoctor) ve HER
-// gece 00:00'da kutu boşalır — tedavi görsün görmesin, ertesi gün
-// istersen (başka ya da aynı) bir oyuncu için yeniden ödeme yapabilirsin.
-// Doktorsuz sakatlık zaten her gece kendiliğinden 1 gün azalır; doktorla
-// birlikte o gece 1 gün daha (toplam 2 gün) azalır.
+// gece 19:00'da (eskiden 00:00'da) kutu boşalır — tedavi görsün görmesin,
+// ertesi gün istersen (başka ya da aynı) bir oyuncu için yeniden ödeme
+// yapabilirsin. Doktorsuz sakatlık zaten her gece kendiliğinden 1 gün
+// azalır; doktorla birlikte o gece 1 gün daha (toplam 2 gün) azalır.
 export default function FutbolDoktor({ team }) {
   const { player } = usePlayer();
   const { players } = useFutbolTeamPlayers(team.id);
@@ -28,7 +29,10 @@ export default function FutbolDoktor({ team }) {
     .sort((a, b) => (b.injuryDaysLeft || 0) - (a.injuryDaysLeft || 0));
 
   const doctorPlayerId = team.doctorPlayerId || null;
-  const gold = player?.gold || 0;
+  // Bölüm 2/6/13: MANAGED bir takımda harcama önce transfer desteğinden,
+  // kalanı kasadan düşer — kişisel altın hiç kullanılmaz.
+  const isManaged = Boolean(team.managerUid);
+  const gold = isManaged ? (team.transferSupport || 0) + (team.treasury || 0) : player?.gold || 0;
   const canAfford = gold >= FUTBOL_DOCTOR_COST;
 
   const handleAssign = async (playerId) => {
@@ -63,7 +67,9 @@ export default function FutbolDoktor({ team }) {
     <div className="futbol-altyapi">
       <p className="futbol-kadro-section-title">Doktor</p>
       <p className="futbol-placeholder">Doktor, sakat futbolcuların daha hızlı iyileşmesini sağlar.</p>
-      <p className="futbol-transfer-balance">💰 {gold.toLocaleString('tr-TR')} altın</p>
+      <p className="futbol-transfer-balance">
+        {isManaged ? `💰 Destek + Kasa: ${gold.toLocaleString('tr-TR')} altın` : `💰 ${gold.toLocaleString('tr-TR')} altın`}
+      </p>
 
       {error && <p className="futbol-admin-error">{error}</p>}
       {message && <p className="futbol-placeholder">{message}</p>}

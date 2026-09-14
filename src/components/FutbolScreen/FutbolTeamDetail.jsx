@@ -60,6 +60,14 @@ export default function FutbolTeamDetail({ teamId, onClose }) {
                   {detail.chairman} {detail.isBot && <span className="futbol-kulup-bot-tag">Bot</span>}
                 </strong>
               </div>
+              {detail.managerName && (
+                <div className="futbol-team-detail-row">
+                  <span>💼 Menajer</span>
+                  <strong>
+                    {detail.managerName} (seviye {detail.managerLevel ?? 0})
+                  </strong>
+                </div>
+              )}
               <div className="futbol-team-detail-row">
                 <span>Takım Değeri</span>
                 <strong>{detail.value.toLocaleString('tr-TR')} altın</strong>

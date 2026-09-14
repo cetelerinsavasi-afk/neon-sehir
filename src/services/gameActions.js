@@ -446,7 +446,12 @@ export const listFutbolPlayerForSale = (playerId, price) =>
 export const cancelFutbolPlayerListing = (playerId) =>
   httpsCallable(functions, 'cancelFutbolPlayerListing')({ playerId });
 
-export const buyFutbolPlayer = (playerId) => httpsCallable(functions, 'buyFutbolPlayer')({ playerId });
+// buyFutbolPlayer — KULLANICI REVİZESİ (Menajerlik Sistemi): artık bir
+// oyuncu hem SAHİBİ olduğu hem de MENAJERLİĞİNİ yaptığı takıma sahip
+// olabildiği için "benim takımım" artık tek anlamlı değil — hangi takım
+// için alındığı sunucuya AÇIKÇA teamId ile bildirilir.
+export const buyFutbolPlayer = (playerId, teamId) =>
+  httpsCallable(functions, 'buyFutbolPlayer')({ playerId, teamId });
 
 export const setFutbolTeamLogo = (teamId, shape, pattern, icon, primary, secondary) =>
   httpsCallable(functions, 'setFutbolTeamLogo')({ teamId, shape, pattern, icon, primary, secondary });
@@ -561,3 +566,53 @@ export const completeOnboardingChecklist = () =>
 // yaz, push ettiğimde otomatik çalışsın."
 export const migrateOnboardingPoliceRule = () =>
   httpsCallable(functions, 'migrateOnboardingPoliceRule')();
+
+// =============================================================================
+// Futbol Menajerlik Sistemi — İşe alım/devralma/ayrılış + sahipli devir
+// araçları + keşif (bkz. functions/index.js aynı adlı fonksiyonlar).
+// =============================================================================
+
+export const applyFutbolManager = (teamId) => httpsCallable(functions, 'applyFutbolManager')({ teamId });
+
+export const respondFutbolManagerApplication = (teamId, applicantUid, accept) =>
+  httpsCallable(functions, 'respondFutbolManagerApplication')({ teamId, applicantUid, accept });
+
+export const requestFutbolManagerHandover = (teamId) =>
+  httpsCallable(functions, 'requestFutbolManagerHandover')({ teamId });
+
+export const respondFutbolManagerHandover = (teamId, accept) =>
+  httpsCallable(functions, 'respondFutbolManagerHandover')({ teamId, accept });
+
+export const resignFutbolManager = (teamId) => httpsCallable(functions, 'resignFutbolManager')({ teamId });
+
+export const fireFutbolManager = (teamId) => httpsCallable(functions, 'fireFutbolManager')({ teamId });
+
+export const withdrawFutbolTreasury20Percent = (teamId, amount) =>
+  httpsCallable(functions, 'withdrawFutbolTreasury20Percent')({ teamId, amount });
+
+export const openFutbolTreasuryWithdrawRequest = (teamId, amount, note) =>
+  httpsCallable(functions, 'openFutbolTreasuryWithdrawRequest')({ teamId, amount, note });
+
+export const respondFutbolTreasuryWithdrawRequest = (teamId, accept) =>
+  httpsCallable(functions, 'respondFutbolTreasuryWithdrawRequest')({ teamId, accept });
+
+export const donateFutbolTreasury = (teamId, amount) =>
+  httpsCallable(functions, 'donateFutbolTreasury')({ teamId, amount });
+
+export const listFutbolTeamForManagers = (teamId) =>
+  httpsCallable(functions, 'listFutbolTeamForManagers')({ teamId });
+
+export const cancelFutbolManagerListing = (teamId) =>
+  httpsCallable(functions, 'cancelFutbolManagerListing')({ teamId });
+
+export const emptyFutbolTreasuryAndReclaim = (teamId) =>
+  httpsCallable(functions, 'emptyFutbolTreasuryAndReclaim')({ teamId });
+
+export const listFutbolManagerOpportunities = () =>
+  httpsCallable(functions, 'listFutbolManagerOpportunities')();
+
+export const listFutbolManagerApplications = (teamId) =>
+  httpsCallable(functions, 'listFutbolManagerApplications')({ teamId });
+
+export const markFutbolTeamNotificationsRead = (teamId) =>
+  httpsCallable(functions, 'markFutbolTeamNotificationsRead')({ teamId });

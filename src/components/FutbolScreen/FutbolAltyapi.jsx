@@ -91,6 +91,7 @@ function GrowthLogSection({ teamId }) {
 // kutudan "Kaldır"la çıkarıp yerine başka bir oyuncu koyabilirsin.
 function TrainingSection({ teamId, players, allPlayers, excludedCount, trainingPlayerIds }) {
   const [busyId, setBusyId] = useState(null);
+  const [autoFilling, setAutoFilling] = useState(false);
   const [error, setError] = useState('');
   const [openPosition, setOpenPosition] = useState(null);
 
@@ -135,12 +136,45 @@ function TrainingSection({ teamId, players, allPlayers, excludedCount, trainingP
     }
   };
 
+  // handleAutoFill — Bölüm 15 "Otomatik Doldur" butonu: boş kalan mevki
+  // kutularını, o mevkideki adaylar arasından form (yüksek öncelik),
+  // eşitlikte güç (yüksek), yine eşitlikte en genç oyuncu sırasıyla
+  // otomatik seçip doldurur.
+  const emptyPositions = TRAINING_POSITIONS.filter((pos) => !occupantByPosition[pos]);
+  const handleAutoFill = async () => {
+    setAutoFilling(true);
+    setError('');
+    try {
+      for (const pos of emptyPositions) {
+        const best = [...(candidatesByPosition[pos] || [])].sort((a, b) => {
+          if (b.form !== a.form) return b.form - a.form;
+          if (b.power !== a.power) return b.power - a.power;
+          return a.age - b.age;
+        })[0];
+        if (best) {
+          await addFutbolTraining(teamId, best.id);
+        }
+      }
+    } catch (err) {
+      setError(err?.message || 'Otomatik doldurma başarısız.');
+    } finally {
+      setAutoFilling(false);
+    }
+  };
+
   return (
     <div className="futbol-training">
-      <p className="futbol-kadro-section-title">
-        Antrenman ({trainingPlayerIds.length}/{TRAINING_POSITIONS.length}) — her mevki için 1 oyuncu,
-        18:00-19:00 arası, antrenmandaki oyuncu o günkü maça çıkamaz
-      </p>
+      <div className="futbol-training-header-row">
+        <p className="futbol-kadro-section-title">
+          Antrenman ({trainingPlayerIds.length}/{TRAINING_POSITIONS.length}) — her mevki için 1 oyuncu,
+          18:00-19:00 arası, antrenmandaki oyuncu o günkü maça çıkamaz
+        </p>
+        {emptyPositions.length > 0 && (
+          <button className="futbol-admin-submit" disabled={autoFilling} onClick={handleAutoFill}>
+            {autoFilling ? 'Dolduruluyor...' : 'Otomatik Doldur'}
+          </button>
+        )}
+      </div>
       <p className="futbol-placeholder">
         İlk 11'deki ve sakat oyuncular antrenmana gönderilemez — önce kadrodan çıkar / iyileşmesini bekle.
         {excludedCount > 0 ? ` (${excludedCount} oyuncu ilk 11'de veya sakat olduğu için listede gizlendi.)` : ''}
