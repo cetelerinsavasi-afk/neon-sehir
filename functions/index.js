@@ -9980,6 +9980,13 @@ function futbolTreasuryCap(tier, leagueCount) {
   return futbolTransferSupportDaily(tier, leagueCount) * FUTBOL_TREASURY_CAP_MULT;
 }
 
+// KULLANICI REVİZESİ: bot kökenli (ownerUid'siz) takımların kasa başlangıç/
+// düzeltme değeri artık lige göre değişen tavan (200.000/100.000) değil,
+// TÜM ligler için SABİT 100.000. Tavan (futbolTreasuryCap, yukarıda) hâlâ
+// lige göre değişir ve kasa günlük gelirlerle bu tavana kadar serbestçe
+// büyümeye devam eder — sadece "sıfırdan/başlangıç" değeri artık sabit.
+const FUTBOL_BOT_TREASURY_FIX_AMOUNT = 100000;
+
 // --- Bölüm 6: Menajer Maaşı ---
 // Maaş(lig, seviye 0) = 4.000 × (lig sayısı - lig sırası + 1), her seviyede
 // %50 artar (negatif seviyede aynı oranda azalır — 1.5^seviye simetrik).
@@ -10502,8 +10509,41 @@ async function runFutbolManagerSystemMigration() {
     batch.update(doc.ref, {
       transferSupport: team.transferSupport ?? 0,
       transferSupportCap: supportCap,
-      treasury: team.ownerUid ? (team.treasury ?? 0) : treasuryCap,
+      treasury: team.ownerUid ? (team.treasury ?? 0) : Math.min(FUTBOL_BOT_TREASURY_FIX_AMOUNT, treasuryCap),
     });
+    opCount += 1;
+    if (opCount % 400 === 0) {
+      await batch.commit();
+      batch = db.batch();
+    }
+  }
+  if (opCount % 400 !== 0) await batch.commit();
+
+  await migrationRef.set({ ranAt: admin.firestore.FieldValue.serverTimestamp() });
+}
+
+// runFutbolBotTreasury100kFix — TEK SEFERLİK KULLANICI REVİZESİ düzeltmesi:
+// yukarıdaki runFutbolManagerSystemMigration "transferSupport/treasury zaten
+// var mı" bayrağıyla atlıyordu — bu yüzden bir takım BOT olarak migrate
+// edildikten SONRA bir menajer o takıma atandıysa (kullanıcının kendi
+// takımı gibi), kasası hiç 100.000'e sabitlenmemiş olabilir. Bu fonksiyon
+// bot KÖKENLİ (ownerUid'i olmayan) TÜM takımların — hem hâlâ saf BOT hem de
+// artık MANAGED olanların — kasasını KOŞULSUZ 100.000'e sabitler. Sahipli
+// (ownerUid dolu) HİÇBİR takıma dokunmaz (OWNER_ACTIVE/OWNER_AUTO/sahipli-
+// menajerli takımlar — "oyuncuların elindeki takımlara dokunmadan").
+// Transfer desteğine dokunmaz (zaten her gün normal formülüyle doluyor).
+async function runFutbolBotTreasury100kFix() {
+  const migrationRef = db.collection('migrations').doc('futbolBotTreasury100kFixV1');
+  const migrationSnap = await migrationRef.get();
+  if (migrationSnap.exists) return;
+
+  const teamsSnap = await db.collection('futbolTeams').get();
+  let batch = db.batch();
+  let opCount = 0;
+  for (const doc of teamsSnap.docs) {
+    const team = doc.data();
+    if (team.ownerUid) continue; // sahipli takıma (aktif/oto-bot/menajerli) dokunma
+    batch.update(doc.ref, { treasury: FUTBOL_BOT_TREASURY_FIX_AMOUNT });
     opCount += 1;
     if (opCount % 400 === 0) {
       await batch.commit();
@@ -10568,6 +10608,7 @@ async function healFutbolInjuriesDaily() {
 // buradan taşındı).
 async function runFutbolDailyClock() {
   await runFutbolManagerSystemMigration();
+  await runFutbolBotTreasury100kFix();
   await healFutbolInjuriesDaily();
 
   const leagueCount = await futbolActiveLeagueCount();
@@ -14559,11 +14600,13 @@ export const setFutbolLineup = onCall(async (request) => {
 // kaldı, ama artık oyunun mevcut güç seviyesiyle orantılı.
 const FUTBOL_TRANSFER_POSITIONS = ['GK', 'DEF', 'MID', 'FWD'];
 const FUTBOL_SYSTEM_LISTING_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 saat satılmazsa kendiliğinden yenilenir
-// FUTBOL_OWNER_LISTING_MAX_AGE_MS — kullanıcı revizesi: "sistemin
-// koyduğu oyuncular 24 saatte listeden kalkıyor, bu anında satılanlar
-// ve oyuncuların kendi ilanları için de geçerli olsun" — eskiden 7
-// gündü, artık sistemle AYNI (24 saat).
-const FUTBOL_OWNER_LISTING_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+// FUTBOL_OWNER_LISTING_MAX_AGE_MS — KULLANICI REVİZESİ: hem elle listelenen
+// ("manual" — satılmazsa ilandan çıkıp kadroya geri döner) hem de anında
+// satışla oyuna açılan ("instant" — satılmazsa tamamen yok olur, silinir)
+// oyuncu ilanları artık 1 gün değil 2 gün listede kalıyor. Sistemin (12
+// otomatik oyuncu) kendi tazeleme süresi (FUTBOL_SYSTEM_LISTING_MAX_AGE_MS,
+// yukarıda) bundan ETKİLENMEZ — o hâlâ 24 saat.
+const FUTBOL_OWNER_LISTING_MAX_AGE_MS = 2 * 24 * 60 * 60 * 1000;
 const FUTBOL_SYSTEM_RESTOCK_DELAY_MS = 60 * 60 * 1000; // satıldıktan 1 saat sonra yenisi gelsin
 // Slot 0 = en güçlü, slot 1 = orta (%75-90'ı), slot 2 = en zayıf
 // (%50-75'i). Kullanıcı revizesi: slot 0 ÖNCEDEN taban gücün %90-110'u
@@ -15091,11 +15134,11 @@ export const buyFutbolPlayer = onCall(async (request) => {
 //      sadece 1 ucuz bayrak okumasıyla anında çıkar, kalıcı bir yük
 //      DEĞİLDİR.
 //   2) Bekleme süresi (1 saat) dolmuş boş transfer slotlarını doldurur.
-//   3) 24 saattir satılmayan sistem oyuncularını yerinde tazeler; 24
-//      saattir satılmayan kişisel ilanların (anında satış/elle listeleme)
-//      süresini doldurur — anında satılanlar tamamen kalkar (yok olur),
-//      elle listelenenler ilandan çıkıp sahibinin kadrosuna geri döner
-//      (tekrar listeleyebilir).
+//   3) 24 saattir satılmayan sistem oyuncularını yerinde tazeler; 2 gündür
+//      (KULLANICI REVİZESİ — eskiden 24 saatti) satılmayan kişisel ilanların
+//      (anında satış/elle listeleme) süresini doldurur — anında satılanlar
+//      tamamen kalkar (yok olur), elle listelenenler ilandan çıkıp
+//      sahibinin kadrosuna geri döner (tekrar listeleyebilir).
 // computeFutbolMaxPowerByPosition (pahalı tam koleksiyon taraması)
 // SADECE gerçekten bir şey dolduracaksak/tazeleyeceksek çağrılır, ayrıca
 // (2) ve (3) aynı çalıştırmada ikisi de gerekiyorsa TEK seferde
@@ -15893,10 +15936,16 @@ export const getFutbolTeamDetail = onCall(async (request) => {
   // tablosu ekranlarında gösterilecek).
   let managerName = null;
   let managerLevel = null;
+  let managerSalary = null;
   if (team.managerUid) {
     const managerSnap = await db.collection('users').doc(team.managerUid).get();
     managerName = managerSnap.exists ? managerSnap.data().displayName || 'İsimsiz Menajer' : 'İsimsiz Menajer';
     managerLevel = managerSnap.data()?.futbolManagerLevel || 0;
+    // KULLANICI REVİZESİ: Menajer sekmesinde maaş miktarı da gösterilmeliydi
+    // (Bölüm 6 formülüyle — lig + menajer seviyesine göre), notlarda vardı
+    // ama arayüze hiç yansıtılmamıştı.
+    const leagueCount = await futbolActiveLeagueCount();
+    managerSalary = futbolManagerSalary(team.tier || 1, leagueCount, managerLevel || 0);
   }
 
   return {
@@ -15912,6 +15961,7 @@ export const getFutbolTeamDetail = onCall(async (request) => {
       isBot: !team.ownerUid,
       managerName,
       managerLevel,
+      managerSalary,
       controlMode: getFutbolTeamControlMode(team),
       // Kullanıcı isteği: puan tablosunda tıklanan takımın şampiyonluk/
       // kupa geçmişi de gösterilsin.

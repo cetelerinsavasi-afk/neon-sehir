@@ -70,7 +70,9 @@ export default function FutbolDoktor({ team, role }) {
     <fieldset className="futbol-altyapi" disabled={readOnly}>
       <p className="futbol-kadro-section-title">Doktor</p>
       <p className="futbol-transfer-balance">
-        {isManaged ? `💰 Destek + Kasa: ${gold.toLocaleString('tr-TR')} altın` : `💰 ${gold.toLocaleString('tr-TR')} altın`}
+        {isManaged
+          ? `💰 Transfer Desteği + Takım Kasası: ${gold.toLocaleString('tr-TR')} altın`
+          : `💰 ${gold.toLocaleString('tr-TR')} altın`}
       </p>
 
       {error && <p className="futbol-admin-error">{error}</p>}

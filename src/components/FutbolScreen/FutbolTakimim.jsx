@@ -285,13 +285,6 @@ function MyTeamOverview({ team, role }) {
         </div>
       </div>
 
-      {!isOwner && (
-        <p className="futbol-buy-meta">
-          Bu takımın menajerliğini yapıyorsun — satış/ilan işlemleri sadece başkana açıktır. Kasa/maaş işlemleri
-          için "Menajer" sekmesine bak.
-        </p>
-      )}
-
       <div className="futbol-my-team-rank">
         {rank > 0 ? `Ligde ${rank}. sıradasın` : 'Sıralama hesaplanıyor...'}
         {(team.championshipsCount > 0 || team.cupsCount > 0) && (
@@ -305,6 +298,10 @@ function MyTeamOverview({ team, role }) {
         <span>Takım Değeri: {detailValue != null ? `${detailValue.toLocaleString('tr-TR')} altın` : '…'}</span>
         <NotificationBell kind="team" id={team.id} unread={Boolean(team.notifUnread)} />
       </div>
+      <p className="futbol-buy-meta">
+        Takım Kasası: {(team.treasury || 0).toLocaleString('tr-TR')} altın · Transfer Desteği:{' '}
+        {(team.transferSupport || 0).toLocaleString('tr-TR')} altın
+      </p>
 
       {error && <p className="futbol-admin-error">{error}</p>}
 
@@ -350,10 +347,6 @@ function MyTeamOverview({ team, role }) {
         ))}
 
       <p className="futbol-kadro-section-title">Kadromuz ({players.length})</p>
-      <p className="futbol-placeholder">
-        🟢 Kadroda = ilk 11'de, satılamaz · 🟡 Antrenmanda = o gün maça çıkamaz, satılamaz · ⚪
-        Boşta = satabilirsin · 🚑 Sakat = iyileşene kadar sahaya/antrenmana çıkamaz
-      </p>
       <div className="futbol-roster-list">
         {groupFutbolPlayersByPositionOrdered(players).map((group) => (
           <div key={group.position} className="futbol-transfer-position-group">

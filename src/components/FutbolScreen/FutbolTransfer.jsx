@@ -244,7 +244,7 @@ export default function FutbolTransfer({ team, role }) {
             kişisel altın değil, transfer desteği + kasa toplamı gösterilir. */}
         <p className="futbol-transfer-balance">
           {isManaged
-            ? `💰 Destek + Kasa: ${availableBudget.toLocaleString('tr-TR')} altın`
+            ? `💰 Transfer Desteği + Takım Kasası: ${availableBudget.toLocaleString('tr-TR')} altın`
             : `💰 ${availableBudget.toLocaleString('tr-TR')} altın`}
         </p>
       </div>

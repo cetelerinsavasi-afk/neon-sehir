@@ -172,8 +172,11 @@ export default function FutbolMenajer({ team, role }) {
         </p>
         {(isManaged || isAutoManaged) && (
           <p className="futbol-transfer-balance">
-            💰 Kasa: {(team.treasury || 0).toLocaleString('tr-TR')} altın · Destek:{' '}
+            💰 Takım Kasası: {(team.treasury || 0).toLocaleString('tr-TR')} altın · Transfer Desteği:{' '}
             {(team.transferSupport || 0).toLocaleString('tr-TR')} altın
+            {isManaged && detail?.managerSalary != null && (
+              <> · Maaş: {detail.managerSalary.toLocaleString('tr-TR')} altın/gün</>
+            )}
             {team.salaryDebt > 0 && (
               <> · Maaş Borcu: {team.salaryDebt.toLocaleString('tr-TR')} altın</>
             )}
