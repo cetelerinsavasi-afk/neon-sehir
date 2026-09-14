@@ -3,6 +3,7 @@ import { useFutbolTeamPlayers } from '../../hooks/useFutbolTeamPlayers';
 import { useFutbolGrowthLog } from '../../hooks/useFutbolGrowthLog';
 import { addFutbolTraining, removeFutbolTraining } from '../../services/gameActions';
 import FutbolPlayerAvatar from './FutbolPlayerAvatar';
+import InfoTooltip from '../InfoTooltip/InfoTooltip';
 import './FutbolAltyapi.css';
 
 const POSITION_LABELS = { GK: 'Kaleci', DEF: 'Defans', MID: 'Orta Saha', FWD: 'Forvet' };
@@ -29,7 +30,6 @@ export default function FutbolAltyapi({ team, role }) {
         teamId={team.id}
         players={trainablePlayers}
         allPlayers={players}
-        excludedCount={players.length - trainablePlayers.length}
         trainingPlayerIds={team.trainingPlayerIds || []}
         readOnly={readOnly}
       />
@@ -94,7 +94,7 @@ function GrowthLogSection({ teamId }) {
 // bir kutuya tıklayınca o mevkideki antrenmana sokulabilecek oyuncular
 // listelenir; birini seçince kutuya yerleşip antrenmana başlar. Dolu bir
 // kutudan "Kaldır"la çıkarıp yerine başka bir oyuncu koyabilirsin.
-function TrainingSection({ teamId, players, allPlayers, excludedCount, trainingPlayerIds, readOnly }) {
+function TrainingSection({ teamId, players, allPlayers, trainingPlayerIds, readOnly }) {
   const [busyId, setBusyId] = useState(null);
   const [autoFilling, setAutoFilling] = useState(false);
   const [error, setError] = useState('');
@@ -171,8 +171,8 @@ function TrainingSection({ teamId, players, allPlayers, excludedCount, trainingP
     <fieldset className="futbol-training" disabled={readOnly}>
       <div className="futbol-training-header-row">
         <p className="futbol-kadro-section-title">
-          Antrenman ({trainingPlayerIds.length}/{TRAINING_POSITIONS.length}) — her mevki için 1 oyuncu,
-          18:00-19:00 arası, antrenmandaki oyuncu o günkü maça çıkamaz
+          Antrenman ({trainingPlayerIds.length}/{TRAINING_POSITIONS.length})
+          <InfoTooltip text="Her mevki için 1 oyuncu antrenmana girebilir (18:00-19:00 arası). Antrenmandaki oyuncu o günkü maça çıkamaz. İlk 11'deki ve sakat oyuncular antrenmana gönderilemez." />
         </p>
         {emptyPositions.length > 0 && (
           <button className="futbol-admin-submit" disabled={autoFilling} onClick={handleAutoFill}>
@@ -180,10 +180,6 @@ function TrainingSection({ teamId, players, allPlayers, excludedCount, trainingP
           </button>
         )}
       </div>
-      <p className="futbol-placeholder">
-        İlk 11'deki ve sakat oyuncular antrenmana gönderilemez — önce kadrodan çıkar / iyileşmesini bekle.
-        {excludedCount > 0 ? ` (${excludedCount} oyuncu ilk 11'de veya sakat olduğu için listede gizlendi.)` : ''}
-      </p>
       {error && <p className="futbol-admin-error">{error}</p>}
 
       <div className="futbol-training-slots">

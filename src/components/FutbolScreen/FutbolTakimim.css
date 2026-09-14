@@ -287,3 +287,17 @@
 .futbol-sponsor-warning {
   color: #ffd23f;
 }
+
+/* futbol-admin-donate — KULLANICI İSTEĞİ: "Kasaya Bağış Yap" butonu diğer
+   pembe (futbol-admin-reset) butonlardan ayrılsın, yeşil olsun. */
+.futbol-admin-donate {
+  align-self: flex-start;
+  margin-top: 10px;
+  border-radius: 8px;
+  border: 1px solid #3ddc84;
+  background: transparent;
+  color: #3ddc84;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 12px;
+}

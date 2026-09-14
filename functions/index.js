@@ -1329,12 +1329,12 @@ export const buyFactoryShare = onCall(async (request) => {
       read: false,
       type: 'share_bought',
     }),
-    sellerRef.collection('messages').add({
-      text: `Fabrikandaki %${result.percent}'lik hisse ilanın satıldı — ${result.price.toLocaleString('tr-TR')} altın hesabına yatırıldı. Alıcı, önümüzdeki ${result.days} gün boyunca fabrikanın günlük gelirinden pay alacak.`,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      read: false,
-      type: 'share_sold',
-    }),
+    sendFactoryNotification(
+      null,
+      factoryId,
+      `Fabrikandaki %${result.percent}'lik hisse ilanın satıldı — ${result.price.toLocaleString('tr-TR')} altın hesabına yatırıldı. Alıcı, önümüzdeki ${result.days} gün boyunca fabrikanın günlük gelirinden pay alacak.`,
+      'share_sold'
+    ),
   ]);
 
   return { ok: true, ...result };
@@ -2035,16 +2035,12 @@ export const dailyReset = onSchedule(
       const smsJobs = [];
       miningCryptoQtyByOwner.forEach((totalQty, ownerId) => {
         smsJobs.push(
-          db
-            .collection('users')
-            .doc(ownerId)
-            .collection('messages')
-            .add({
-              text: `Mining makinen bu gece ${totalQty.toFixed(4)} kripto üretti${efficiencyNote}. Kripto bakiyene eklendi.`,
-              createdAt: admin.firestore.FieldValue.serverTimestamp(),
-              read: false,
-              type: 'mining_production',
-            })
+          sendFactoryNotification(
+            null,
+            ownerId,
+            `Mining makinen bu gece ${totalQty.toFixed(4)} kripto üretti${efficiencyNote}. Kripto bakiyene eklendi.`,
+            'mining_production'
+          )
         );
       });
       await Promise.all(smsJobs);
@@ -2124,16 +2120,12 @@ export const dailyReset = onSchedule(
           .map((it) => `${MACHINE_TYPES[it.type].label}: ${it.qty.toLocaleString('tr-TR')} adet`)
           .join(', ');
         ownerSmsJobs.push(
-          db
-            .collection('users')
-            .doc(ownerId)
-            .collection('messages')
-            .add({
-              text: `İşçin gelmediği için bazı makinelerini kendin çalıştırmış oldun (normalin 1/10'u verimle): ${lines}. Envanterine eklendi.`,
-              createdAt: admin.firestore.FieldValue.serverTimestamp(),
-              read: false,
-              type: 'factory_owner_production',
-            })
+          sendFactoryNotification(
+            null,
+            ownerId,
+            `İşçin gelmediği için bazı makinelerini kendin çalıştırmış oldun (normalin 1/10'u verimle): ${lines}. Envanterine eklendi.`,
+            'factory_owner_production'
+          )
         );
       });
       await Promise.all(ownerSmsJobs);
@@ -2518,12 +2510,12 @@ export const dailyReset = onSchedule(
           ];
           if (shortfall > 0 && newOwnerDebt != null) {
             smsJobs.push(
-              ownerRef.collection('messages').add({
-                text: `Fabrikandaki bir hisse sahibinin temettüsünü ödemeye altının yetmedi. Eksik ${shortfall.toLocaleString('tr-TR')} altın devlete borç yazıldı. Toplam borcun: ${newOwnerDebt.toLocaleString('tr-TR')} altın.`,
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                read: false,
-                type: 'share_dividend_penalty',
-              })
+              sendFactoryNotification(
+                null,
+                ownerId,
+                `Fabrikandaki bir hisse sahibinin temettüsünü ödemeye altının yetmedi. Eksik ${shortfall.toLocaleString('tr-TR')} altın devlete borç yazıldı. Toplam borcun: ${newOwnerDebt.toLocaleString('tr-TR')} altın.`,
+                'share_dividend_penalty'
+              )
             );
           }
           await Promise.all(smsJobs);
@@ -6733,12 +6725,14 @@ export const expireOldFactoryShareListings = onSchedule({ schedule: 'every 60 mi
           if (!snap.exists || snap.data().status !== 'listed') return;
           const s = snap.data();
           tx.delete(doc.ref);
-          tx.set(db.collection('users').doc(factoryId).collection('messages').doc(), {
+          const factoryRef = db.collection('factories').doc(factoryId);
+          tx.set(factoryRef.collection('notifications').doc(), {
             text: `Fabrikandaki %${s.percent} hisse ilanın 48 saattir satılmadığı için otomatik olarak satıştan kaldırıldı. Hissen sende kaldı, istersen tekrar ilana çıkarabilirsin.`,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             read: false,
             type: 'factory_share_listing_expired',
           });
+          tx.update(factoryRef, { notifUnread: true });
         });
       })()
     );
@@ -16084,16 +16078,12 @@ function isFeeRaiseRequestFresh(reqData) {
 async function notifyOutbidFactoryOwner(team, newFrontRunnerUid, newAmount, teamName) {
   const previousFrontRunnerUid = team.pendingSponsor?.factoryOwnerUid || team.sponsorFactoryOwnerUid || null;
   if (!previousFrontRunnerUid || previousFrontRunnerUid === newFrontRunnerUid) return;
-  await db
-    .collection('users')
-    .doc(previousFrontRunnerUid)
-    .collection('messages')
-    .add({
-      text: `⚠️ ${teamName} sponsorluğuna senden daha yüksek bir teklif geldi (günlük ${newAmount.toLocaleString('tr-TR')} altın). Bu gece 00:00'da sponsorluk el değiştirecek — geri kapmak istersen bugün içinde Fabrikalar > Sponsor'dan daha yüksek bir teklif/ücret artışı yapabilirsin.`,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      read: false,
-      type: 'sponsorship_outbid',
-    });
+  await sendFactoryNotification(
+    null,
+    previousFrontRunnerUid,
+    `⚠️ ${teamName} sponsorluğuna senden daha yüksek bir teklif geldi (günlük ${newAmount.toLocaleString('tr-TR')} altın). Bu gece 00:00'da sponsorluk el değiştirecek — geri kapmak istersen bugün içinde Fabrikalar > Sponsor'dan daha yüksek bir teklif/ücret artışı yapabilirsin.`,
+    'sponsorship_outbid'
+  );
 }
 
 // sendFactorySponsorshipOffer — bir fabrika sahibinin bir kulübe teklif
@@ -16269,16 +16259,12 @@ export const sendClubSponsorshipOffer = onCall(async (request) => {
     expiresAt: admin.firestore.Timestamp.fromMillis(now + FUTBOL_SPONSORSHIP_OFFER_TTL_MS),
   });
 
-  await db
-    .collection('users')
-    .doc(factoryOwnerUid)
-    .collection('messages')
-    .add({
-      text: `🤝 ${team.name || 'Bir takım'} senin fabrikandan sponsor olmanı istiyor — günlük ${cleanAmount.toLocaleString('tr-TR')} altın teklif etti. Fabrikalar > Sponsor'dan değerlendirebilirsin.`,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      read: false,
-      type: 'sponsorship_offer',
-    });
+  await sendFactoryNotification(
+    null,
+    factoryOwnerUid,
+    `🤝 ${team.name || 'Bir takım'} senin fabrikandan sponsor olmanı istiyor — günlük ${cleanAmount.toLocaleString('tr-TR')} altın teklif etti. Fabrikalar > Sponsor'dan değerlendirebilirsin.`,
+    'sponsorship_offer'
+  );
   return { ok: true };
 });
 
@@ -16387,16 +16373,20 @@ export const cancelSponsorship = onCall(async (request) => {
   await teamRef.update({ sponsorCancelPending: true, sponsorCancelInitiatedBy: uid });
   const otherUid = team.sponsorFactoryOwnerUid === uid ? team.ownerUid : team.sponsorFactoryOwnerUid;
   if (otherUid) {
-    await db
-      .collection('users')
-      .doc(otherUid)
-      .collection('messages')
-      .add({
-        text: `⚠️ ${team.name || 'Takımın'} sponsorluk anlaşması feshedildi — bugün 00:00'a kadar devam edecek, yarın yeni ödeme yapılmadan sona erecek.`,
+    const cancelText = `⚠️ ${team.name || 'Takımın'} sponsorluk anlaşması feshedildi — bugün 00:00'a kadar devam edecek, yarın yeni ödeme yapılmadan sona erecek.`;
+    // BUG DÜZELTMESİ (Bölüm 16): otherUid, feshi başlatan taraf fabrika ise
+    // KULÜP tarafı (kişisel SMS), fesheden kulüpse FABRİKA tarafı (fabrika
+    // bildirim paneli) olur — hangisi olduğuna göre doğru kanala gider.
+    if (team.sponsorFactoryOwnerUid === uid) {
+      await db.collection('users').doc(otherUid).collection('messages').add({
+        text: cancelText,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         read: false,
         type: 'sponsorship_cancelled',
       });
+    } else {
+      await sendFactoryNotification(null, otherUid, cancelText, 'sponsorship_cancelled');
+    }
   }
   return { ok: true };
 });
@@ -16437,16 +16427,17 @@ export const withdrawSponsorshipCancellation = onCall(async (request) => {
   await teamRef.update({ sponsorCancelPending: false, sponsorCancelInitiatedBy: null });
   const otherUid = team.sponsorFactoryOwnerUid === uid ? team.ownerUid : team.sponsorFactoryOwnerUid;
   if (otherUid) {
-    await db
-      .collection('users')
-      .doc(otherUid)
-      .collection('messages')
-      .add({
-        text: `✅ ${team.name || 'Takımın'} sponsorluk feshi geri çekildi — sponsorluk normal şekilde devam edecek.`,
+    const withdrawText = `✅ ${team.name || 'Takımın'} sponsorluk feshi geri çekildi — sponsorluk normal şekilde devam edecek.`;
+    if (team.sponsorFactoryOwnerUid === uid) {
+      await db.collection('users').doc(otherUid).collection('messages').add({
+        text: withdrawText,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         read: false,
         type: 'sponsorship_cancel_withdrawn',
       });
+    } else {
+      await sendFactoryNotification(null, otherUid, withdrawText, 'sponsorship_cancel_withdrawn');
+    }
   }
   return { ok: true };
 });
@@ -16599,16 +16590,12 @@ export const requestSponsorshipFeeRaise = onCall(async (request) => {
     },
   });
 
-  await db
-    .collection('users')
-    .doc(team.sponsorFactoryOwnerUid)
-    .collection('messages')
-    .add({
-      text: `🙋 ${team.name || 'Sponsoru olduğun takım'} sponsorluk ücretini günlük ${cleanAmount.toLocaleString('tr-TR')} altına yükseltmeni istiyor. Fabrikalar > Sponsor'dan kabul/red edebilirsin.`,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      read: false,
-      type: 'sponsorship_raise_requested',
-    });
+  await sendFactoryNotification(
+    null,
+    team.sponsorFactoryOwnerUid,
+    `🙋 ${team.name || 'Sponsoru olduğun takım'} sponsorluk ücretini günlük ${cleanAmount.toLocaleString('tr-TR')} altına yükseltmeni istiyor. Fabrikalar > Sponsor'dan kabul/red edebilirsin.`,
+    'sponsorship_raise_requested'
+  );
   return { ok: true };
 });
 
@@ -16675,7 +16662,9 @@ export const updateSponsorshipNote = onCall(async (request) => {
 
   let role;
   if (uid === factoryOwnerUid) role = 'factory';
-  else if (uid === team.ownerUid) role = 'club';
+  // BUG DÜZELTMESİ (Menajerlik Sistemi): MANAGED bir takımda notu menajer
+  // de düzenleyebilmeli (bkz. cancelSponsorship'teki AYNI mantık).
+  else if (uid === team.ownerUid || uid === team.managerUid) role = 'club';
   else throw new HttpsError('permission-denied', 'Bu notu sadece fabrika ya da kulüp sahibi düzenleyebilir.');
 
   const userSnap = await db.collection('users').doc(uid).get();
@@ -16809,7 +16798,12 @@ export const listSponsorshipTeamsForFactory = onCall(async (request) => {
 // not, bize gönderdikleri bekleyen teklif(ler).
 export const listSponsorshipFactoriesForTeam = onCall(async (request) => {
   const uid = requireAuth(request);
-  const teamSnap = await db.collection('futbolTeams').where('ownerUid', '==', uid).limit(1).get();
+  // BUG DÜZELTMESİ (Menajerlik Sistemi): bkz. sendClubSponsorshipOffer —
+  // menajer olunan takım da "benim kulübüm" sayılır, önce ona bakılır.
+  const managedTeamSnap = await db.collection('futbolTeams').where('managerUid', '==', uid).limit(1).get();
+  const teamSnap = managedTeamSnap.empty
+    ? await db.collection('futbolTeams').where('ownerUid', '==', uid).limit(1).get()
+    : managedTeamSnap;
   if (teamSnap.empty) throw new HttpsError('failed-precondition', 'Bir futbol takımın yok.');
   const teamDoc = teamSnap.docs[0];
   const team = teamDoc.data();
@@ -17094,16 +17088,12 @@ async function processFutbolSponsorshipsNightly() {
   await Promise.all(
     smsJobs.flatMap((job) => {
       const jobs = [
-        db
-          .collection('users')
-          .doc(job.factoryOwnerUid)
-          .collection('messages')
-          .add({
-            text: `💸 ${job.teamName} sponsorluğun için bugün ${job.amount.toLocaleString('tr-TR')} altın ödendi.${job.shortfall > 0 ? ` Altının yetmedi, ${job.shortfall.toLocaleString('tr-TR')} altın devlete borç yazıldı.` : ''}`,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            read: false,
-            type: 'sponsorship_payment',
-          }),
+        sendFactoryNotification(
+          null,
+          job.factoryOwnerUid,
+          `💸 ${job.teamName} sponsorluğun için bugün ${job.amount.toLocaleString('tr-TR')} altın ödendi.${job.shortfall > 0 ? ` Altının yetmedi, ${job.shortfall.toLocaleString('tr-TR')} altın devlete borç yazıldı.` : ''}`,
+          'sponsorship_payment'
+        ),
       ];
       if (job.ownerUidForPersonalSms) {
         jobs.push(
@@ -17221,16 +17211,12 @@ async function processFutbolSponsorshipsNightly() {
       await Promise.all(
         teamsToCancel.flatMap((job) => {
           const jobs = [
-            db
-              .collection('users')
-              .doc(job.factoryOwnerUid)
-              .collection('messages')
-              .add({
-                text: `🚨 Toplam sponsorluk giderin son 10 günlük kârının yarısını aştığı için TÜM sponsorlukların (${job.teamName} dahil) iptal edildi.`,
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                read: false,
-                type: 'sponsorship_safety_cancel',
-              }),
+            sendFactoryNotification(
+              null,
+              job.factoryOwnerUid,
+              `🚨 Toplam sponsorluk giderin son 10 günlük kârının yarısını aştığı için TÜM sponsorlukların (${job.teamName} dahil) iptal edildi.`,
+              'sponsorship_safety_cancel'
+            ),
           ];
           if (job.clubOwnerUid) {
             jobs.push(

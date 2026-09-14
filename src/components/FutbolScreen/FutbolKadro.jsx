@@ -3,6 +3,7 @@ import { useFutbolTeamPlayers } from '../../hooks/useFutbolTeamPlayers';
 import { setFutbolLineup } from '../../services/gameActions';
 import { formatCountdown, isFutbolLineupLockedIstanbul, msUntilFutbolLineupUnlock } from '../../lib/istanbulTime';
 import FutbolPlayerAvatar from './FutbolPlayerAvatar';
+import InfoTooltip from '../InfoTooltip/InfoTooltip';
 import './FutbolKadro.css';
 
 const FORMATIONS = {
@@ -291,7 +292,10 @@ export default function FutbolKadro({ team, role }) {
         ))}
       </div>
 
-      <p className="futbol-kadro-section-title">Taktik</p>
+      <p className="futbol-kadro-section-title">
+        Taktik
+        <InfoTooltip text="Taktik, takımının maçta nasıl oynayacağını belirler — hücum, denge ya da savunma ağırlıklı." />
+      </p>
       <div className="futbol-kadro-chip-row">
         {TACTICS.map((t) => (
           <button
@@ -304,7 +308,10 @@ export default function FutbolKadro({ team, role }) {
         ))}
       </div>
 
-      <p className="futbol-kadro-section-title">Mücadele</p>
+      <p className="futbol-kadro-section-title">
+        Mücadele
+        <InfoTooltip text="Ne kadar mücadeleci oynarsan takımın o maçta o kadar güçlü olur, ama sakatlanma riski ve maç sonrası form kaybı artar. Dikkatli oynarsan tam tersi olur: daha güvenli ama daha zayıf." />
+      </p>
       <div className="futbol-kadro-chip-row">
         {MUCADELE_LEVELS.map((m) => (
           <button
@@ -316,11 +323,6 @@ export default function FutbolKadro({ team, role }) {
           </button>
         ))}
       </div>
-      <p className="futbol-placeholder futbol-kadro-note">
-        Ne kadar mücadeleci oynarsan oyuncuların o maçta o kadar güçlü
-        olur, ama sakatlanma riski ve maç sonrası form kaybı da o kadar
-        artar. Dikkatli oynarsan tam tersi — daha güvenli ama daha zayıf.
-      </p>
 
       <button type="button" className="futbol-admin-reset futbol-kadro-autofill" onClick={handleAutoFill}>
         ⚡ Otomatik Doldur

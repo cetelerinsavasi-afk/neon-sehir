@@ -116,13 +116,6 @@ export default function FutbolIddaa({ matches, allMatches, teamNameById, teamByI
 
   return (
     <div className="futbol-iddaa">
-      <p className="futbol-placeholder">
-            🎟️ İstediğin maça (1 tanesine ya da hepsine) bahis yap — kupona kaç maç eklersen oran o
-            kadar yükselir, çünkü seçtiğin maçların oranları birbiriyle çarpılır. Oranlar her gece
-            00:00'da belirlenir ve gün boyunca değişmez. Kuponun tutması için EKLEDİĞİN TÜM maçların
-            tahmini doğru çıkmalı; tutarsa <strong>yatırdığın altın × toplam oran</strong> kadar
-            kazanırsın, tutmazsa yatırdığın altın gider.
-          </p>
           <div className="futbol-iddaa-matches">
             {bettableMatches.map((m) => {
               const homeName = teamNameById[m.homeTeamId] || '—';

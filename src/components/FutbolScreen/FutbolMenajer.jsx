@@ -18,6 +18,7 @@ import {
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import ConfirmModal from '../ConfirmModal/ConfirmModal';
 import FutbolLevelBar from './FutbolLevelBar';
+import ManagerBooklet from '../ManagerBooklet/ManagerBooklet';
 import './FutbolTakimim.css';
 
 const DONATE_QUICK_AMOUNTS = [1000, 10000, 100000];
@@ -43,6 +44,7 @@ export default function FutbolMenajer({ team, role }) {
   const [showExtraRequest, setShowExtraRequest] = useState(false);
   const [extraAmount, setExtraAmount] = useState(0);
   const [extraNote, setExtraNote] = useState('');
+  const [showBooklet, setShowBooklet] = useState(false);
 
   const isManaged = Boolean(team.managerUid);
   const isAutoManaged = !isManaged && Boolean(team.autoManaged);
@@ -114,6 +116,11 @@ export default function FutbolMenajer({ team, role }) {
 
   return (
     <div className="futbol-buy-list">
+      <div className="futbol-training-header-row">
+        <button className="futbol-admin-reset" onClick={() => setShowBooklet(true)}>
+          📖 Menajerlik Kitapçığı
+        </button>
+      </div>
       {error && <p className="futbol-admin-error">{error}</p>}
       {message && <p className="futbol-placeholder">{message}</p>}
 
@@ -207,7 +214,7 @@ export default function FutbolMenajer({ team, role }) {
             >
               %20 Payını Çek
             </button>
-            <button className="futbol-admin-reset" onClick={() => setShowDonate((v) => !v)}>
+            <button className="futbol-admin-donate" onClick={() => setShowDonate((v) => !v)}>
               Kasaya Bağış Yap
             </button>
           </div>
@@ -279,7 +286,7 @@ export default function FutbolMenajer({ team, role }) {
       {isManaged && role === 'manager' && (
         <div className="futbol-my-team-finance">
           <p className="futbol-kadro-section-title">Kasaya Bağış Yap</p>
-          <button className="futbol-admin-reset" onClick={() => setShowDonate((v) => !v)}>
+          <button className="futbol-admin-donate" onClick={() => setShowDonate((v) => !v)}>
             Kasaya Bağış Yap
           </button>
           {showDonate && (
@@ -422,6 +429,7 @@ export default function FutbolMenajer({ team, role }) {
           onCancel={() => setConfirmAction(null)}
         />
       )}
+      {showBooklet && <ManagerBooklet onClose={() => setShowBooklet(false)} />}
     </div>
   );
 }
