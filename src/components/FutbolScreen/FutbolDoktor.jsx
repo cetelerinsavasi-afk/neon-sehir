@@ -69,7 +69,6 @@ export default function FutbolDoktor({ team, role }) {
   return (
     <fieldset className="futbol-altyapi" disabled={readOnly}>
       <p className="futbol-kadro-section-title">Doktor</p>
-      <p className="futbol-placeholder">Doktor, sakat futbolcuların daha hızlı iyileşmesini sağlar.</p>
       <p className="futbol-transfer-balance">
         {isManaged ? `💰 Destek + Kasa: ${gold.toLocaleString('tr-TR')} altın` : `💰 ${gold.toLocaleString('tr-TR')} altın`}
       </p>

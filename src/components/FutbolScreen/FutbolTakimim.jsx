@@ -162,11 +162,6 @@ function BuyTeamPanel() {
 
   return (
     <div className="futbol-buy-list">
-      <p className="futbol-placeholder">
-        Henüz bir takımın yok. Aşağıdaki kulüplerden birini satın alabilirsin
-        — botlara ait olanlar piyasa değerinden, oyuncuların kendi
-        ilan ettikleri ise kendi belirledikleri fiyattan.
-      </p>
       {error && <p className="futbol-admin-error">{error}</p>}
       {teams.length === 0 && <p className="futbol-placeholder">Satılık takım kalmadı.</p>}
       {teams.map((t) => (
