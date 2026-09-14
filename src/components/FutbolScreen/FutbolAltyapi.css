@@ -2,6 +2,14 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.futbol-altyapi:disabled {
+  opacity: 0.55;
 }
 
 .futbol-growth-log {
@@ -16,6 +24,18 @@
   justify-content: space-between;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.futbol-training {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: block;
+}
+
+.futbol-training:disabled {
+  opacity: 0.55;
 }
 
 .futbol-growth-toggle {

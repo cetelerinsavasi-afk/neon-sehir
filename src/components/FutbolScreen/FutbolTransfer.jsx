@@ -20,7 +20,10 @@ import './FutbolTransfer.css';
 const POSITION_LABELS = { GK: 'Kaleci', DEF: 'Defans', MID: 'Orta Saha', FWD: 'Forvet' };
 const PLAYER_PRICE_QUICK_AMOUNTS = [100, 1000, 10000, 100000];
 
-export default function FutbolTransfer({ team }) {
+export default function FutbolTransfer({ team, role }) {
+  // KULLANICI İSTEĞİ: menajer varken başkan bu sekmeye girip inceleyebilir
+  // ama işlem yapamaz.
+  const readOnly = role === 'owner' && Boolean(team.managerUid);
   const { user } = useAuth();
   const { player } = usePlayer();
   const isAdmin = isAdminUid(user?.uid);
@@ -159,7 +162,7 @@ export default function FutbolTransfer({ team }) {
   const availableBudget = isManaged ? (team.transferSupport || 0) + (team.treasury || 0) : player?.gold || 0;
 
   return (
-    <div className="futbol-transfer">
+    <fieldset className="futbol-transfer" disabled={readOnly}>
       {error && <p className="futbol-admin-error">{error}</p>}
 
       <button className="futbol-admin-reset" onClick={() => setShowSellPanel((v) => !v)}>
@@ -309,6 +312,6 @@ export default function FutbolTransfer({ team }) {
           onCancel={() => setConfirmSellId(null)}
         />
       )}
-    </div>
+    </fieldset>
   );
 }

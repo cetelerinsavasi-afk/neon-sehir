@@ -1,11 +1,20 @@
 import { useEffect, useState } from 'react';
-import { listFutbolManagerOpportunities, applyFutbolManager } from '../../services/gameActions';
+import {
+  listFutbolManagerOpportunities,
+  applyFutbolManager,
+  requestFutbolManagerHandover,
+} from '../../services/gameActions';
 import { usePlayer } from '../../hooks/usePlayer';
 import FutbolCrest from './FutbolCrest';
+import FutbolLevelBar from './FutbolLevelBar';
 import ManagerBooklet from '../ManagerBooklet/ManagerBooklet';
 import './FutbolTakimim.css';
 
 const FUTBOL_MANAGER_REPUTATION_REQUIRED = 50;
+
+function levelThreshold(level) {
+  return 10 * Math.pow(2, Math.abs(level || 0));
+}
 
 // FutbolMenajerOl — Bölüm 3/8/15: "Menajer Ol" sekmesi. Menajeri OLMAYAN
 // takımlar (bot/oto-bot → anında kabul; aktif başkanlı+gönüllü ilanlı →
@@ -36,32 +45,41 @@ export default function FutbolMenajerOl() {
     load();
   }, []);
 
-  const handleApply = async (teamId) => {
-    setBusyId(teamId);
+  const handleApply = async (o) => {
+    setBusyId(o.id);
     setError('');
     setMessage('');
     try {
-      const res = await applyFutbolManager(teamId);
-      setMessage(
-        res?.data?.instant
-          ? "Başvurun kabul edildi — yarın 19:00'da göreve başlayacaksın ✓"
-          : 'Başvurun başkana iletildi, onayını bekliyor.'
-      );
-      setAppliedIds((prev) => new Set(prev).add(teamId));
+      if (o.isHandoverTarget) {
+        const res = await requestFutbolManagerHandover(o.id);
+        setMessage(
+          res?.data?.autoApproved
+            ? "Devralman onaylandı — yarın 19:00'da göreve başlayacaksın ✓"
+            : 'Devralma talebin başkana iletildi, onayını bekliyor.'
+        );
+      } else {
+        const res = await applyFutbolManager(o.id);
+        setMessage(
+          res?.data?.instant
+            ? "Başvurun kabul edildi — yarın 19:00'da göreve başlayacaksın ✓"
+            : 'Başvurun başkana iletildi, onayını bekliyor.'
+        );
+      }
+      setAppliedIds((prev) => new Set(prev).add(o.id));
     } catch (err) {
-      setError(err?.message || 'Başvuru başarısız.');
+      setError(err?.message || 'İşlem başarısız.');
     } finally {
       setBusyId(null);
     }
   };
 
+  const myLevel = player?.futbolManagerLevel || 0;
+  const myStreak = player?.futbolManagerLevelStreak || 0;
+
   return (
     <div className="futbol-buy-list">
       <div className="futbol-training-header-row">
-        <p className="futbol-placeholder">
-          Menajeri olmayan takımlara (bot ya da 5+ gündür pasif başkanlı) hemen başvurabilirsin — anında kabul
-          edilirsin. Aktif başkanlı, gönüllü ilana açık takımlarda ise başkan başvuruları değerlendirir.
-        </p>
+        <FutbolLevelBar level={myLevel} streak={myStreak} threshold={levelThreshold(myLevel)} />
         <button className="futbol-admin-reset" onClick={() => setShowBooklet(true)}>
           📖 Menajerlik Kitapçığı
         </button>
@@ -85,15 +103,26 @@ export default function FutbolMenajerOl() {
           <div className="futbol-buy-info">
             <p className="futbol-buy-name">{o.name}</p>
             <p className="futbol-buy-meta">
-              {o.tier}. Lig · {o.isVoluntaryListing ? 'Başkan onayı gerekir' : 'Anında kabul'}
+              {o.tier}. Lig ·{' '}
+              {o.isHandoverTarget
+                ? `Menajer seviye ${o.managerLevel}`
+                : o.isVoluntaryListing
+                  ? 'Başkan onayı gerekir'
+                  : 'Anında kabul'}
             </p>
           </div>
           <button
             className="futbol-admin-submit"
             disabled={!eligible || busyId === o.id || appliedIds.has(o.id)}
-            onClick={() => handleApply(o.id)}
+            onClick={() => handleApply(o)}
           >
-            {appliedIds.has(o.id) ? 'Başvuruldu ✓' : busyId === o.id ? '...' : 'Başvur'}
+            {appliedIds.has(o.id)
+              ? 'Gönderildi ✓'
+              : busyId === o.id
+                ? '...'
+                : o.isHandoverTarget
+                  ? 'Devral'
+                  : 'Başvur'}
           </button>
         </div>
       ))}

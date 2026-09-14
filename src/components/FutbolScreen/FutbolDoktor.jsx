@@ -17,12 +17,15 @@ const POSITION_LABELS = { GK: 'Kaleci', DEF: 'Defans', MID: 'Orta Saha', FWD: 'F
 // ertesi gün istersen (başka ya da aynı) bir oyuncu için yeniden ödeme
 // yapabilirsin. Doktorsuz sakatlık zaten her gece kendiliğinden 1 gün
 // azalır; doktorla birlikte o gece 1 gün daha (toplam 2 gün) azalır.
-export default function FutbolDoktor({ team }) {
+export default function FutbolDoktor({ team, role }) {
   const { player } = usePlayer();
   const { players } = useFutbolTeamPlayers(team.id);
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  // KULLANICI İSTEĞİ: menajer varken başkan inceleyebilir ama işlem
+  // yapamaz (Forma ve Menajer sekmeleri hariç).
+  const readOnly = role === 'owner' && Boolean(team.managerUid);
 
   const injuredPlayers = players
     .filter((p) => (p.injuryDaysLeft || 0) > 0)
@@ -64,7 +67,7 @@ export default function FutbolDoktor({ team }) {
   };
 
   return (
-    <div className="futbol-altyapi">
+    <fieldset className="futbol-altyapi" disabled={readOnly}>
       <p className="futbol-kadro-section-title">Doktor</p>
       <p className="futbol-placeholder">Doktor, sakat futbolcuların daha hızlı iyileşmesini sağlar.</p>
       <p className="futbol-transfer-balance">
@@ -137,6 +140,6 @@ export default function FutbolDoktor({ team }) {
           })}
         </div>
       )}
-    </div>
+    </fieldset>
   );
 }

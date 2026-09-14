@@ -21,7 +21,10 @@ const SPONSOR_QUICK_AMOUNTS = [10, 100, 1000, 10000, 100000, { value: 1000000, l
 // Önce KENDİ sponsorumuz olan fabrika, sonra tüm diğer fabrikalar
 // listelenir (bkz. functions/index.js listSponsorshipFactoriesForTeam —
 // sıralama zaten sunucuda yapılıyor). Emoji-zengin, kısa/net kartlar.
-export default function FutbolSponsor({ team }) {
+export default function FutbolSponsor({ team, role }) {
+  // KULLANICI İSTEĞİ: menajer varken başkan inceleyebilir ama işlem
+  // yapamaz (Forma ve Menajer sekmeleri hariç).
+  const readOnly = role === 'owner' && Boolean(team.managerUid);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [busyKey, setBusyKey] = useState(null);
@@ -130,7 +133,7 @@ export default function FutbolSponsor({ team }) {
   });
 
   return (
-    <div className="futbol-sponsor">
+    <fieldset className="futbol-sponsor" disabled={readOnly}>
       {error && <p className="futbol-admin-error">{error}</p>}
 
       <p className="futbol-kadro-section-title">⭐ Sponsorumuz</p>
@@ -383,6 +386,6 @@ export default function FutbolSponsor({ team }) {
           );
         })}
       </div>
-    </div>
+    </fieldset>
   );
 }

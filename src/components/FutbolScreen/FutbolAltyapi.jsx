@@ -10,13 +10,17 @@ const POSITION_LABELS = { GK: 'Kaleci', DEF: 'Defans', MID: 'Orta Saha', FWD: 'F
 // 1 kutu — toplam 4. Sıra her zaman aynı: Kaleci, Defans, Orta Saha, Forvet.
 const TRAINING_POSITIONS = ['GK', 'DEF', 'MID', 'FWD'];
 
-export default function FutbolAltyapi({ team }) {
+export default function FutbolAltyapi({ team, role }) {
   const { players } = useFutbolTeamPlayers(team.id);
   const lineup = team.lineup || [];
   // İlk 11'de olan VE sakat oyuncular antrenman seçeneklerinde hiç
   // gözükmez — sakat oyuncu antrenmana sokulamaz (yeni istek, sunucu
   // tarafında da addFutbolTraining reddediyor, burada da UX için filtreli).
   const trainablePlayers = players.filter((p) => !lineup.includes(p.id) && !((p.injuryDaysLeft || 0) > 0));
+  // KULLANICI İSTEĞİ: menajer varken başkan inceleyebilir ama işlem
+  // yapamaz — gelişim günlüğü (salt görüntüleme) bundan MUAF, sadece
+  // antrenman ATAMA/KALDIRMA kilitleniyor.
+  const readOnly = role === 'owner' && Boolean(team.managerUid);
 
   return (
     <div className="futbol-altyapi">
@@ -27,6 +31,7 @@ export default function FutbolAltyapi({ team }) {
         allPlayers={players}
         excludedCount={players.length - trainablePlayers.length}
         trainingPlayerIds={team.trainingPlayerIds || []}
+        readOnly={readOnly}
       />
     </div>
   );
@@ -89,7 +94,7 @@ function GrowthLogSection({ teamId }) {
 // bir kutuya tıklayınca o mevkideki antrenmana sokulabilecek oyuncular
 // listelenir; birini seçince kutuya yerleşip antrenmana başlar. Dolu bir
 // kutudan "Kaldır"la çıkarıp yerine başka bir oyuncu koyabilirsin.
-function TrainingSection({ teamId, players, allPlayers, excludedCount, trainingPlayerIds }) {
+function TrainingSection({ teamId, players, allPlayers, excludedCount, trainingPlayerIds, readOnly }) {
   const [busyId, setBusyId] = useState(null);
   const [autoFilling, setAutoFilling] = useState(false);
   const [error, setError] = useState('');
@@ -163,7 +168,7 @@ function TrainingSection({ teamId, players, allPlayers, excludedCount, trainingP
   };
 
   return (
-    <div className="futbol-training">
+    <fieldset className="futbol-training" disabled={readOnly}>
       <div className="futbol-training-header-row">
         <p className="futbol-kadro-section-title">
           Antrenman ({trainingPlayerIds.length}/{TRAINING_POSITIONS.length}) — her mevki için 1 oyuncu,
@@ -244,6 +249,6 @@ function TrainingSection({ teamId, players, allPlayers, excludedCount, trainingP
           );
         })}
       </div>
-    </div>
+    </fieldset>
   );
 }

@@ -1,0 +1,50 @@
+.futbol-level-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0;
+  flex: 1;
+  min-width: 160px;
+}
+
+.futbol-level-badge {
+  font-size: 13px;
+  font-weight: 800;
+  color: #3ddc84;
+  white-space: nowrap;
+}
+
+.futbol-level-track {
+  position: relative;
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  overflow: hidden;
+}
+
+.futbol-level-center {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 2px;
+  height: 100%;
+  background: var(--panel-border);
+  transform: translateX(-1px);
+}
+
+.futbol-level-fill {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-radius: 999px;
+}
+
+.futbol-level-fill.pos {
+  background: #3ddc84;
+}
+
+.futbol-level-fill.neg {
+  background: #ff5566;
+}

@@ -59,9 +59,12 @@ function maxFanEffect(ticketPrice) {
 // fiyatından etkilenmez).
 const FUTBOL_MATCH_RESULT_MAX_FAN_SWING = 10000;
 
-export default function FutbolStadyum({ team }) {
+export default function FutbolStadyum({ team, role }) {
   const capacity = team.stadiumCapacity || DEFAULT_CAPACITY;
   const fans = team.fans || 0;
+  // KULLANICI İSTEĞİ: menajer varken başkan inceleyebilir ama işlem
+  // yapamaz (Forma ve Menajer sekmeleri hariç).
+  const readOnly = role === 'owner' && Boolean(team.managerUid);
 
   const currentIdx = STADIUM_LADDER.findIndex((step) => step.capacity === capacity);
   const nextStep = currentIdx >= 0 ? STADIUM_LADDER[currentIdx + 1] : null;
@@ -112,7 +115,7 @@ export default function FutbolStadyum({ team }) {
   };
 
   return (
-    <div className="futbol-stadyum">
+    <fieldset className="futbol-stadyum" disabled={readOnly}>
       {error && <p className="futbol-admin-error">{error}</p>}
 
       <div className="futbol-stadyum-card">
@@ -217,6 +220,6 @@ export default function FutbolStadyum({ team }) {
           onCancel={() => setConfirmUpgrade(false)}
         />
       )}
-    </div>
+    </fieldset>
   );
 }

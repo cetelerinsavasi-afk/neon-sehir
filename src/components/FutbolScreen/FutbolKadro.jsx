@@ -92,7 +92,11 @@ function fillSlotsForFormation(byPos, need) {
   return slots;
 }
 
-export default function FutbolKadro({ team }) {
+export default function FutbolKadro({ team, role }) {
+  // KULLANICI İSTEĞİ: menajer varken başkan bu sekmeye girip inceleyebilir
+  // ama işlem yapamaz — sadece asıl kontrolcü (MANAGED'da menajer,
+  // OWNER_ACTIVE/OWNER_AUTO'da başkan) düzenleyebilir.
+  const readOnly = role === 'owner' && Boolean(team.managerUid);
   const { players } = useFutbolTeamPlayers(team.id);
   const [formation, setFormation] = useState(team.formation || '2-2-1');
   const [tactic, setTactic] = useState(team.tactic || 'dengeli');
@@ -248,7 +252,7 @@ export default function FutbolKadro({ team }) {
   players.forEach((p) => (playersById[p.id] = p));
 
   return (
-    <div className="futbol-kadro">
+    <fieldset className="futbol-kadro" disabled={readOnly}>
       <p className="futbol-kadro-section-title">Dizilim</p>
       <div className="futbol-kadro-chip-row">
         {Object.keys(FORMATIONS).map((f) => (
@@ -374,7 +378,7 @@ export default function FutbolKadro({ team }) {
           onClose={() => setPickerFor(null)}
         />
       )}
-    </div>
+    </fieldset>
   );
 }
 

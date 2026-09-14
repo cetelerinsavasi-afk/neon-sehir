@@ -1300,39 +1300,60 @@ export const buyFactoryShare = onCall(async (request) => {
   return { ok: true, ...result };
 });
 
+// sendFactoryNotification — Bölüm 16 (Bildirimler): fabrikayla ilgili
+// (sponsorluk ücreti/günlük üretim vb.) mesajlar artık KİŞİSEL SMS yerine
+// fabrikaya özel bir bildirim paneline (factories/{id}/notifications)
+// düşer — futbol takımı bildirim paneliyle (sendFutbolTeamNotification)
+// AYNI desen: panelin "çan" butonuna basınca TÜMÜ tek seferde okunmuş
+// sayılır (bkz. markFactoryNotificationsRead). Fabrika doküman ID'si HER
+// ZAMAN sahibinin uid'si (bkz. useMyFactory.js) — bu yüzden `factoryId`
+// parametresi doğrudan sahibin uid'siyle aynı. `batchOrNull` verilirse o
+// batch'e yazılır (commit çağıran tarafa ait), verilmezse burada doğrudan
+// (await ile) yazılıp uygulanır.
+function sendFactoryNotification(batchOrNull, factoryId, text, type) {
+  if (!factoryId) return null;
+  const factoryRef = db.collection('factories').doc(factoryId);
+  const notifRef = factoryRef.collection('notifications').doc();
+  const payload = {
+    text,
+    type,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    read: false,
+  };
+  if (batchOrNull) {
+    batchOrNull.set(notifRef, payload);
+    batchOrNull.update(factoryRef, { notifUnread: true });
+    return null;
+  }
+  return Promise.all([notifRef.set(payload), factoryRef.update({ notifUnread: true })]);
+}
+
 // sendSalaryPenaltySms — patronun altını yetmediği için maaş farkının
-// devlete borç yazıldığı her seferinde patrona SMS gönderir.
+// devlete borç yazıldığı her seferinde patrona bildirim gönderir (Bölüm
+// 16: artık kişisel SMS DEĞİL, fabrika bildirim paneli — bkz.
+// sendFactoryNotification).
 async function sendSalaryPenaltySms(uid, penaltyAmount, newTotalDebt) {
-  await db
-    .collection('users')
-    .doc(uid)
-    .collection('messages')
-    .add({
-      text: `Fabrikandaki bir işçinin maaşını ödemeye altının yetmedi. Eksik ${penaltyAmount.toLocaleString('tr-TR')} altın devlete borç yazıldı. Toplam borcun: ${newTotalDebt.toLocaleString('tr-TR')} altın.`,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      read: false,
-      type: 'salary_penalty',
-    });
+  await sendFactoryNotification(
+    null,
+    uid,
+    `Fabrikandaki bir işçinin maaşını ödemeye altının yetmedi. Eksik ${penaltyAmount.toLocaleString('tr-TR')} altın devlete borç yazıldı. Toplam borcun: ${newTotalDebt.toLocaleString('tr-TR')} altın.`,
+    'salary_penalty'
+  );
 }
 
 // sendElectricityBillSms — fabrikadaki bugün çalışan makinelerin türüne
 // göre değişen (bkz. ELECTRICITY_BILL_PER_MACHINE_TYPE) toplam elektrik
-// faturası, her gece 00:00'da SMS ile bildirilir; oyuncunun elinde altın
-// varsa otomatik ödenir, yetmezse fark borca yazılır. Ödenebilen kısım
-// anında düşülür, yetmeyen kısım (varsa) sendSalaryPenaltySms ile AYNI
-// desende debtToState'e yazılır — bkz. dailyReset'teki elektrik faturası
-// bloğu.
+// faturası, her gece 00:00'da bildirilir; oyuncunun elinde altın varsa
+// otomatik ödenir, yetmezse fark borca yazılır. Ödenebilen kısım anında
+// düşülür, yetmeyen kısım (varsa) sendSalaryPenaltySms ile AYNI desende
+// debtToState'e yazılır — bkz. dailyReset'teki elektrik faturası bloğu.
+// Bölüm 16: artık kişisel SMS DEĞİL, fabrika bildirim paneli.
 async function sendElectricityBillSms(uid, bill, shortfall, newTotalDebt) {
   const text =
     shortfall > 0
       ? `Fabrikandaki makineler için ${bill.toLocaleString('tr-TR')} altın elektrik faturası kesildi. Altının yetmediği için ${shortfall.toLocaleString('tr-TR')} altın devlete borç yazıldı. Toplam borcun: ${newTotalDebt.toLocaleString('tr-TR')} altın.`
       : `Fabrikandaki makineler için ${bill.toLocaleString('tr-TR')} altın elektrik faturası kesildi ve otomatik ödendi.`;
-  await db.collection('users').doc(uid).collection('messages').add({
-    text,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    read: false,
-    type: 'factory_electricity_bill',
-  });
+  await sendFactoryNotification(null, uid, text, 'factory_electricity_bill');
 }
 
 // produceAtFactory — işçi "Üretim Yap"a basınca: maaşını alır (patronun
@@ -10266,10 +10287,12 @@ async function departFutbolManager(teamRef, team, reason, batch) {
 
   if (!team.ownerUid) {
     // BOT kökenli — kasa (tavanlı, bot mantığıyla) canlı kalır, sadece
-    // kontrolcü değişir.
+    // kontrolcü değişir. Bölüm 12: takım bot yönetimine döndüğü an sakat
+    // oyuncular iyileşir + 30 yaş üstü gençleşir.
     teamUpdate.treasury = treasury;
     teamUpdate.isBot = true;
     batch.update(teamRef, teamUpdate);
+    await rejuvenateFutbolBotPlayers(teamRef.id, batch);
     return;
   }
 
@@ -10307,6 +10330,9 @@ async function departFutbolManager(teamRef, team, reason, batch) {
       'futbol_team_bot_conversion'
     );
     batch.update(teamRef, teamUpdate);
+    // Bölüm 12: bot yönetimine geçiş anında sakat oyuncular iyileşir + 30
+    // yaş üstü gençleşir (mevcut kadro SİLİNMEZ — sadece bu iki alan).
+    await rejuvenateFutbolBotPlayers(teamRef.id, batch);
     return;
   }
 
@@ -10346,6 +10372,13 @@ async function departFutbolManager(teamRef, team, reason, batch) {
   }
 
   batch.update(teamRef, teamUpdate);
+  if (!presidentActive) {
+    // Bölüm 11/12: takım oto-bot (OWNER_AUTO) moduna geçti — bot mantığıyla
+    // yönetilmeye başladığı için sakat oyuncular iyileşir + 30 yaş üstü
+    // gençleşir (OWNER_ACTIVE'e dönen `presidentActive` dalında bu
+    // UYGULANMAZ — kadro yönetimi normal şekilde başkana kalır).
+    await rejuvenateFutbolBotPlayers(teamRef.id, batch);
+  }
 }
 
 // sweepFutbolListings — Bölüm 17: gönüllü menajer ilanları ve takım satış
@@ -13428,19 +13461,12 @@ export const sellFutbolTeam = onCall(async (request) => {
     salePrice: admin.firestore.FieldValue.delete(),
     listedAt: admin.firestore.FieldValue.delete(),
   });
-  // Bota dönen takımın oyuncuları artık yaşlanmayacak; 30 yaşın
-  // üzerinde olan varsa (oyuncu sahibiyken yaşlanmış olabilir) hemen
-  // 20'ye + sabit 99 güce gençleştiriyoruz — sezon sonunu beklemeden,
-  // finishFutbolSeason'daki bot gençleştirme kuralıyla birebir aynı
-  // (bkz. oradaki not: güç sınırsız artmasın diye 99'da sabitleniyor).
-  const playersSnap = await db.collection('futbolPlayers').where('teamId', '==', teamId).get();
-  const remainingSeasonsAt20 = 20 - (20 - 16);
-  const rejuvenatedValue = Math.round((99 * 1000 * remainingSeasonsAt20) / 20);
-  playersSnap.docs.forEach((d) => {
-    if (d.data().age > 30) {
-      batch.update(d.ref, { age: 20, power: 99, form: 100, value: rejuvenatedValue });
-    }
-  });
+  // Bölüm 12: bota dönen takımın kadrosu — sakat oyuncular anında
+  // iyileşir, 30 yaş üstü oyuncular hemen 20'ye + sabit 99 güce
+  // gençleştirilir (sezon sonunu beklemeden) — paylaşımlı
+  // rejuvenateFutbolBotPlayers ile diğer tüm bot-geçiş noktalarıyla
+  // (departFutbolManager, 50 gün/5 gün pasiflik) BİREBİR AYNI mantık.
+  await rejuvenateFutbolBotPlayers(teamId, batch);
   await batch.commit();
 
   return { ok: true, price: instantPrice };
@@ -13918,7 +13944,11 @@ export const fireFutbolManager = onCall(async (request) => {
   if (team.pendingHandoverUid) {
     throw new HttpsError('failed-precondition', 'Bu takım için zaten bekleyen bir devralma süreci var.');
   }
-  await teamRef.update({ managerFirePending: true });
+  const batch = db.batch();
+  batch.update(teamRef, { managerFirePending: true });
+  // Bölüm 11-A: "menajeri işten atma" başkan için bir aktivite sinyalidir.
+  futbolHandlePresidentActivity(teamRef, team, batch);
+  await batch.commit();
   return { ok: true };
 });
 
@@ -13970,6 +14000,8 @@ export const withdrawFutbolTreasury20Percent = onCall(async (request) => {
       treasuryWithdrawnToday: alreadyWithdrawn + requested,
     });
     tx.update(db.collection('users').doc(uid), { gold: admin.firestore.FieldValue.increment(requested) });
+    // Bölüm 11-A: "kasadan para çekme" başkan için bir aktivite sinyalidir.
+    futbolHandlePresidentActivity(teamRef, team, tx);
     return requested;
   });
 
@@ -14214,7 +14246,10 @@ export const emptyFutbolTreasuryAndReclaim = onCall(async (request) => {
 // dolu (henüz 19:00'da yürütülmemiş bekleyen bir devralma/atama olan)
 // takımlar listeden HARİÇ TUTULUR — o takım "kilitli".
 export const listFutbolManagerOpportunities = onCall(async (request) => {
-  requireAuth(request);
+  const uid = requireAuth(request);
+  const mySnap = await db.collection('users').doc(uid).get();
+  const myLevel = mySnap.data()?.futbolManagerLevel || 0;
+
   // NOT: managerUid alanı menajersiz takımlarda `null` OLARAK YAZILMAZ,
   // FieldValue.delete() ile TAMAMEN SİLİNİR (bkz. departFutbolManager) —
   // Firestore'da `where('managerUid','==',null)` alanı HİÇ OLMAYAN
@@ -14223,24 +14258,59 @@ export const listFutbolManagerOpportunities = onCall(async (request) => {
   // zaten runFutbolDailyClock/finishFutbolSeasonPart2 gibi yerlerde de
   // tam taranıyor, oyunun ölçeğinde ucuz).
   const allTeamsSnap = await db.collection('futbolTeams').get();
+  // KULLANICI İSTEĞİ (Bölüm 3): bu liste SADECE menajersiz takımları değil,
+  // menajeri OLAN ama seviyesi BİZDEN KESİNLİKLE DÜŞÜK takımları da
+  // (devralma hedefi olarak) içerir — eşit/yüksek seviyeli menajerli
+  // takımlar listeden tamamen çıkarılır.
+  const managedCandidates = allTeamsSnap.docs.filter((d) => {
+    const team = d.data();
+    return !team.pendingHandoverUid && getFutbolTeamControlMode(team) === 'MANAGED' && team.managerUid !== uid;
+  });
+  const managerLevelByUid = {};
+  if (managedCandidates.length > 0) {
+    const uniqueManagerUids = [...new Set(managedCandidates.map((d) => d.data().managerUid))];
+    const managerSnaps = await Promise.all(uniqueManagerUids.map((mUid) => db.collection('users').doc(mUid).get()));
+    managerSnaps.forEach((s, i) => {
+      managerLevelByUid[uniqueManagerUids[i]] = s.data()?.futbolManagerLevel || 0;
+    });
+  }
+
   const opportunities = [];
   allTeamsSnap.docs.forEach((d) => {
     const team = d.data();
     if (team.pendingHandoverUid) return; // kilitli — 19:00'ı bekliyor
     const mode = getFutbolTeamControlMode(team);
     const isOpen = mode === 'BOT' || mode === 'OWNER_AUTO' || (mode === 'OWNER_ACTIVE' && team.managerListingOpen);
-    if (!isOpen) return;
-    opportunities.push({
-      id: d.id,
-      name: team.name,
-      logo: team.logo || null,
-      tier: team.tier,
-      controlMode: mode,
-      isVoluntaryListing: mode === 'OWNER_ACTIVE',
-    });
+    if (isOpen) {
+      opportunities.push({
+        id: d.id,
+        name: team.name,
+        logo: team.logo || null,
+        tier: team.tier,
+        controlMode: mode,
+        isVoluntaryListing: mode === 'OWNER_ACTIVE',
+        isHandoverTarget: false,
+        managerLevel: null,
+      });
+      return;
+    }
+    if (mode === 'MANAGED' && team.managerUid !== uid) {
+      const currentManagerLevel = managerLevelByUid[team.managerUid] ?? 0;
+      if (currentManagerLevel >= myLevel) return; // "kesinlikle düşükse" — eşit/yüksek görünmez
+      opportunities.push({
+        id: d.id,
+        name: team.name,
+        logo: team.logo || null,
+        tier: team.tier,
+        controlMode: mode,
+        isVoluntaryListing: false,
+        isHandoverTarget: true,
+        managerLevel: currentManagerLevel,
+      });
+    }
   });
   opportunities.sort((a, b) => a.tier - b.tier);
-  return { opportunities };
+  return { opportunities, myLevel };
 });
 
 // listFutbolManagerApplications — başkanın, kendi gönüllü ilanına gelen
@@ -14280,6 +14350,25 @@ export const markFutbolTeamNotificationsRead = onCall(async (request) => {
   const batch = db.batch();
   unreadSnap.docs.forEach((d) => batch.update(d.ref, { read: true }));
   batch.update(teamRef, { notifUnread: false });
+  await batch.commit();
+  return { ok: true, count: unreadSnap.size };
+});
+
+// markFactoryNotificationsRead — Bölüm 16 (Bildirimler): fabrikanın çan
+// panelindeki TÜM bildirimleri tek seferde okunmuş işaretler (normal
+// kişisel SMS'in tek tek okunma davranışından FARKLI, bkz.
+// markFutbolTeamNotificationsRead ile AYNI desen). Fabrika doküman ID'si
+// sahibinin uid'si olduğu için sadece sahip çağırabilir.
+export const markFactoryNotificationsRead = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const factoryRef = db.collection('factories').doc(uid);
+  const factorySnap = await factoryRef.get();
+  if (!factorySnap.exists) throw new HttpsError('not-found', 'Fabrikan bulunamadı.');
+
+  const unreadSnap = await factoryRef.collection('notifications').where('read', '==', false).get();
+  const batch = db.batch();
+  unreadSnap.docs.forEach((d) => batch.update(d.ref, { read: true }));
+  batch.update(factoryRef, { notifUnread: false });
   await batch.commit();
   return { ok: true, count: unreadSnap.size };
 });
@@ -16047,16 +16136,14 @@ export const respondSponsorshipOffer = onCall(async (request) => {
     sponsorCancelInitiatedBy: null,
   });
 
-  await db
-    .collection('users')
-    .doc(offer.factoryOwnerUid)
-    .collection('messages')
-    .add({
-      text: `🎉 ${offer.teamName} sponsorluk teklifini kabul etti! Yarın 00:00'da sponsorluk başlayacak (günlük ${offer.dailyAmount.toLocaleString('tr-TR')} altın).`,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      read: false,
-      type: 'sponsorship_accepted',
-    });
+  // Bölüm 16: bu onay mesajı fabrikayla ilgili, işlem gerektirmeyen bir
+  // bilgilendirme — kişisel SMS yerine fabrika bildirim paneline düşer.
+  await sendFactoryNotification(
+    null,
+    offer.factoryOwnerUid,
+    `🎉 ${offer.teamName} sponsorluk teklifini kabul etti! Yarın 00:00'da sponsorluk başlayacak (günlük ${offer.dailyAmount.toLocaleString('tr-TR')} altın).`,
+    'sponsorship_accepted'
+  );
   return { ok: true, accepted: true };
 });
 
@@ -16239,17 +16326,16 @@ async function applySponsorshipFeeRaise(uid, teamRef, team, cleanAmount) {
     );
   }
   if (rivalPending) {
+    // Bölüm 16: kaybedilen bir teklif için artık yapılabilecek bir işlem
+    // yok (sponsorluk zaten kesinleşti) — bilgilendirme fabrika bildirim
+    // paneline düşer, kişisel SMS'e değil.
     jobs.push(
-      db
-        .collection('users')
-        .doc(rivalPending.factoryOwnerUid)
-        .collection('messages')
-        .add({
-          text: `🔁 ${team.name || 'Takım'} için verdiğin sponsorluk teklifi (günlük ${(rivalPending.dailyAmount || 0).toLocaleString('tr-TR')} altın), mevcut sponsorun daha yüksek bir teklifiyle geçildi — sponsorluk eski sponsorunda kaldı.`,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          read: false,
-          type: 'sponsorship_outbid_lost',
-        })
+      sendFactoryNotification(
+        null,
+        rivalPending.factoryOwnerUid,
+        `🔁 ${team.name || 'Takım'} için verdiğin sponsorluk teklifi (günlük ${(rivalPending.dailyAmount || 0).toLocaleString('tr-TR')} altın), mevcut sponsorun daha yüksek bir teklifiyle geçildi — sponsorluk eski sponsorunda kaldı.`,
+        'sponsorship_outbid_lost'
+      )
     );
   }
   await Promise.all(jobs);

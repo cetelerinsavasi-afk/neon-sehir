@@ -5,6 +5,7 @@ import { useFutbolTeamPlayers } from '../../hooks/useFutbolTeamPlayers';
 import {
   listFutbolBuyableTeams,
   getMyFutbolTeamFinance,
+  getFutbolTeamDetail,
   buyFutbolTeam,
   sellFutbolTeam,
   listFutbolTeamForSale,
@@ -21,7 +22,7 @@ import FutbolStadyum from './FutbolStadyum';
 import FutbolSponsor from './FutbolSponsor';
 import FutbolMenajer from './FutbolMenajer';
 import FutbolMenajerOl from './FutbolMenajerOl';
-import NotificationBell from './NotificationBell';
+import NotificationBell from '../NotificationBell/NotificationBell';
 import { groupFutbolPlayersByPositionOrdered } from './futbolPositionOrder';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import ConfirmModal from '../ConfirmModal/ConfirmModal';
@@ -38,7 +39,6 @@ function initialsFromName(name) {
 
 const MY_TEAM_TABS = [
   { id: 'takimin', label: 'Takımın' },
-  { id: 'menajer', label: 'Menajer' },
   { id: 'kadro', label: 'Kadro' },
   { id: 'transfer', label: 'Transfer' },
   { id: 'altyapi', label: 'Antrenman' },
@@ -46,6 +46,7 @@ const MY_TEAM_TABS = [
   { id: 'forma', label: 'Forma' },
   { id: 'stadyum', label: 'Stadyum' },
   { id: 'sponsor', label: 'Sponsor' },
+  { id: 'menajer', label: 'Menajer' },
 ];
 
 // FutbolTakimim — KULLANICI REVİZESİ (Menajerlik Sistemi): takım sahipliği
@@ -100,30 +101,27 @@ export default function FutbolTakimim() {
 function TeamTabsPanel({ team, role, tab, setTab }) {
   return (
     <div>
-      <div className="futbol-my-team-subtabs-row">
-        <div className="futbol-subtabs futbol-subtabs-inner futbol-my-team-subtabs-scroll">
-          {MY_TEAM_TABS.map((t) => (
-            <button
-              key={t.id}
-              className={`futbol-subtab-btn ${tab === t.id ? 'active' : ''}`}
-              onClick={() => setTab(t.id)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-        <NotificationBell teamId={team.id} unread={Boolean(team.notifUnread)} />
+      <div className="futbol-subtabs futbol-subtabs-inner futbol-my-team-subtabs-scroll">
+        {MY_TEAM_TABS.map((t) => (
+          <button
+            key={t.id}
+            className={`futbol-subtab-btn ${tab === t.id ? 'active' : ''}`}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {tab === 'takimin' && <MyTeamOverview team={team} role={role} />}
+      {tab === 'kadro' && <FutbolKadro team={team} role={role} />}
+      {tab === 'transfer' && <FutbolTransfer team={team} role={role} />}
+      {tab === 'altyapi' && <FutbolAltyapi team={team} role={role} />}
+      {tab === 'doktor' && <FutbolDoktor team={team} role={role} />}
+      {tab === 'forma' && <FutbolLogoEditor team={team} role={role} />}
+      {tab === 'stadyum' && <FutbolStadyum team={team} role={role} />}
+      {tab === 'sponsor' && <FutbolSponsor team={team} role={role} />}
       {tab === 'menajer' && <FutbolMenajer team={team} role={role} />}
-      {tab === 'kadro' && <FutbolKadro team={team} />}
-      {tab === 'transfer' && <FutbolTransfer team={team} />}
-      {tab === 'altyapi' && <FutbolAltyapi team={team} />}
-      {tab === 'doktor' && <FutbolDoktor team={team} />}
-      {tab === 'forma' && <FutbolLogoEditor team={team} />}
-      {tab === 'stadyum' && <FutbolStadyum team={team} />}
-      {tab === 'sponsor' && <FutbolSponsor team={team} />}
     </div>
   );
 }
@@ -205,6 +203,7 @@ function MyTeamOverview({ team, role }) {
   const { teams: leagueTeams } = useFutbolTeams(team.leagueId);
   const { players } = useFutbolTeamPlayers(team.id);
   const [finance, setFinance] = useState(null);
+  const [detailValue, setDetailValue] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [showSellPanel, setShowSellPanel] = useState(false);
@@ -225,6 +224,16 @@ function MyTeamOverview({ team, role }) {
     loadFinance();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [team.id, isOwner]);
+
+  // Takım değeri satırı (+ bildirim çanı) hem başkan hem menajer için
+  // görünür — getMyFutbolTeamFinance sadece başkana açık (satış fiyatları
+  // içeriyor), bu yüzden değer için herkese açık getFutbolTeamDetail
+  // kullanılıyor.
+  useEffect(() => {
+    getFutbolTeamDetail(team.id)
+      .then((res) => setDetailValue(res?.data?.team?.value ?? null))
+      .catch(() => {});
+  }, [team.id]);
 
   const handleInstantSell = () => {
     setConfirmInstantSell(true);
@@ -297,11 +306,10 @@ function MyTeamOverview({ team, role }) {
           </span>
         )}
       </div>
-      {isOwner && (
-        <div className="futbol-my-team-rank">
-          Takım Değeri: {finance ? `${finance.value.toLocaleString('tr-TR')} altın` : '…'}
-        </div>
-      )}
+      <div className="futbol-my-team-rank futbol-my-team-value-row">
+        <span>Takım Değeri: {detailValue != null ? `${detailValue.toLocaleString('tr-TR')} altın` : '…'}</span>
+        <NotificationBell kind="team" id={team.id} unread={Boolean(team.notifUnread)} />
+      </div>
 
       {error && <p className="futbol-admin-error">{error}</p>}
 

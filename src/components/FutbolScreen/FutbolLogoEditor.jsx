@@ -45,7 +45,7 @@ function initialsFromName(name) {
   return (name || '').split(' ').map((w) => w[0]).join('').slice(0, 2);
 }
 
-export default function FutbolLogoEditor({ team }) {
+export default function FutbolLogoEditor({ team, role }) {
   const [shape, setShape] = useState(team.logo?.shape || 'shield');
   const [pattern, setPattern] = useState(team.logo?.pattern || 'halves');
   const [icon, setIcon] = useState(team.logo?.icon || null);
@@ -53,6 +53,9 @@ export default function FutbolLogoEditor({ team }) {
   const [secondary, setSecondary] = useState(team.logo?.secondary || '#FFD100');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  // KULLANICI İSTEĞİ: menajer forma panelini görebilir ama DEĞİŞTİREMEZ —
+  // düzenleme SADECE başkana açık (kimlik/marka kararı).
+  const readOnly = role !== 'owner';
 
   const randomize = () => {
     const preset = PRESETS[Math.floor(Math.random() * PRESETS.length)];
@@ -86,6 +89,7 @@ export default function FutbolLogoEditor({ team }) {
         />
       </div>
 
+      <fieldset className="futbol-logo-fieldset" disabled={readOnly}>
       <p className="futbol-kadro-section-title">Şekil</p>
       <div className="futbol-kadro-chip-row">
         {SHAPES.map((s) => (
@@ -169,6 +173,7 @@ export default function FutbolLogoEditor({ team }) {
         </button>
       </div>
       {message && <p className="futbol-placeholder">{message}</p>}
+      </fieldset>
     </div>
   );
 }

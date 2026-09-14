@@ -17,6 +17,7 @@ import {
 } from '../../services/gameActions';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import ConfirmModal from '../ConfirmModal/ConfirmModal';
+import FutbolLevelBar from './FutbolLevelBar';
 import './FutbolTakimim.css';
 
 const DONATE_QUICK_AMOUNTS = [1000, 10000, 100000];
@@ -171,21 +172,13 @@ export default function FutbolMenajer({ team, role }) {
             )}
           </p>
         )}
-        {role === 'manager' && (
-          <p className="futbol-buy-meta">
-            Menajerlik seviyen: {level} ({streak >= 0 ? streak : streak}/{threshold} puan · sonraki seviyeye{' '}
-            {Math.max(0, threshold - Math.abs(streak))} puan kaldı)
-          </p>
-        )}
+        {(role === 'manager' || !isManaged) && <FutbolLevelBar level={level} streak={streak} threshold={threshold} />}
       </div>
 
       {/* --- OTO-BOT (başkan 5+ gün pasif) --- */}
       {isAutoManaged && role === 'owner' && (
         <div className="futbol-my-team-finance">
-          <p className="futbol-placeholder">
-            5+ gündür bu takımı yönetmediğin için geçici olarak oto-bot moduna geçti. Herhangi bir işlem yaparak
-            ya da aşağıdaki butonla kasadaki tüm parayı hesabına aktarıp takımı geri alabilirsin.
-          </p>
+          <p className="futbol-placeholder">🤖 5+ gündür pasif olduğun için takım geçici olarak oto-bot modunda.</p>
           <button
             className="futbol-admin-submit"
             disabled={busy}
@@ -286,9 +279,6 @@ export default function FutbolMenajer({ team, role }) {
       {isManaged && role === 'manager' && (
         <div className="futbol-my-team-finance">
           <p className="futbol-kadro-section-title">Kasaya Bağış Yap</p>
-          <p className="futbol-buy-meta">
-            Kasadan kendine para çekemezsin, ama kişisel altınından takımın kasasına bağış yapabilirsin.
-          </p>
           <button className="futbol-admin-reset" onClick={() => setShowDonate((v) => !v)}>
             Kasaya Bağış Yap
           </button>
@@ -349,9 +339,7 @@ export default function FutbolMenajer({ team, role }) {
           <p className="futbol-kadro-section-title">Menajerlik İlanı</p>
           {team.managerListingOpen ? (
             <>
-              <p className="futbol-placeholder">
-                Takımın menajerliğe açık — 1 hafta içinde başvuru gelmezse ilan otomatik kapanır.
-              </p>
+              <p className="futbol-placeholder">🟢 Takımın menajerliğe açık.</p>
               <button
                 className="futbol-admin-reset"
                 disabled={busy}
@@ -400,20 +388,15 @@ export default function FutbolMenajer({ team, role }) {
               ))}
             </>
           ) : (
-            <>
-              <p className="futbol-placeholder">
-                Takımını menajerliğe açarsan, başvuran oyuncular arasından birini seçip devredebilirsin.
-              </p>
-              <button
-                className="futbol-admin-submit"
-                disabled={busy}
-                onClick={() =>
-                  runAction(() => listFutbolTeamForManagers(team.id), 'Takım menajerliğe açıldı.').then(loadApplications)
-                }
-              >
-                Menajerliğe Aç
-              </button>
-            </>
+            <button
+              className="futbol-admin-submit"
+              disabled={busy}
+              onClick={() =>
+                runAction(() => listFutbolTeamForManagers(team.id), 'Takım menajerliğe açıldı.').then(loadApplications)
+              }
+            >
+              Menajerliğe Aç
+            </button>
           )}
         </div>
       )}

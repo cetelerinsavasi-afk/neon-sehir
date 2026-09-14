@@ -27,6 +27,7 @@ import FactoryLogoDesigner from './FactoryLogoDesigner';
 import FactoryShareSellModal from './FactoryShareSellModal';
 import FactoryShareBuyModal from './FactoryShareBuyModal';
 import FactorySponsorModal from './FactorySponsorModal';
+import NotificationBell from '../NotificationBell/NotificationBell';
 import { factoryDisplayName, computeFactoryValue } from './factoryHelpers';
 import './FactoryScreen.css';
 
@@ -707,10 +708,13 @@ function OwnerView({ factory, machines, player, myUid }) {
       <p className="factory-hint">
         Maaş: <strong>{(factory.salary || 0).toLocaleString('tr-TR')} altın</strong>
       </p>
-      <p className="factory-hint">
-        Fabrika değeri:{' '}
-        <strong>{computeFactoryValue(machines, prices.cryptoPrice).toLocaleString('tr-TR')} altın</strong>
-      </p>
+      <div className="factory-hint factory-value-row">
+        <span>
+          Fabrika değeri:{' '}
+          <strong>{computeFactoryValue(machines, prices.cryptoPrice).toLocaleString('tr-TR')} altın</strong>
+        </span>
+        <NotificationBell kind="factory" id={factory.id} unread={Boolean(factory.notifUnread)} />
+      </div>
 
       <div className="factory-run-machines-row">
         <button

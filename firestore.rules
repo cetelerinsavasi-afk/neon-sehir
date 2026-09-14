@@ -114,6 +114,15 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      // notifications/{notifId} — Bölüm 16 (Bildirimler): fabrikanın çan
+      // panelindeki bildirimler (sponsorluk/günlük üretim vb., bkz.
+      // functions/index.js sendFactoryNotification) — futbolTeams'in AYNI
+      // desenindeki notifications alt koleksiyonuyla BİREBİR aynı kural.
+      match /notifications/{notifId} {
+        allow read: if isSignedIn();
+        allow write: if false;
+      }
+
       // shares/{shareId} — fabrika hisse (stok) ilanları/satışları (bkz.
       // functions/index.js listFactoryShare/cancelFactoryShareListing/
       // buyFactoryShare, dailyReset temettü bloğu). Herkes görebilmeli

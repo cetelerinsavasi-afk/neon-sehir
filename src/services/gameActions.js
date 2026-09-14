@@ -616,3 +616,6 @@ export const listFutbolManagerApplications = (teamId) =>
 
 export const markFutbolTeamNotificationsRead = (teamId) =>
   httpsCallable(functions, 'markFutbolTeamNotificationsRead')({ teamId });
+
+export const markFactoryNotificationsRead = () =>
+  httpsCallable(functions, 'markFactoryNotificationsRead')();

@@ -3,6 +3,19 @@
   flex-direction: column;
 }
 
+.futbol-logo-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.futbol-logo-fieldset:disabled {
+  opacity: 0.55;
+}
+
 .futbol-logo-preview {
   display: flex;
   justify-content: center;

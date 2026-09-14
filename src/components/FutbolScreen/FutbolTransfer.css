@@ -1,3 +1,15 @@
+.futbol-transfer {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: block;
+}
+
+.futbol-transfer:disabled {
+  opacity: 0.55;
+}
+
 .futbol-transfer-roster,
 .futbol-transfer-group {
   display: flex;
