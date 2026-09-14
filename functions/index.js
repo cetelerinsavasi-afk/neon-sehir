@@ -469,6 +469,35 @@ function istanbulDateKey(date = new Date()) {
   }).format(date);
 }
 
+function istanbulHour(date = new Date()) {
+  return Number(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Istanbul',
+      hour: '2-digit',
+      hour12: false,
+    }).format(date)
+  );
+}
+
+// futbolManagerStartsImmediately — Menajer YOKKEN yeni bir başvuru anında
+// kabul edilirse/onaylanırsa göreve HEMEN başlanıp başlanamayacağını
+// belirler (KULLANICI REVİZESİ — bkz. applyFutbolManager,
+// respondFutbolManagerApplication, runFutbolDailyClock). runFutbolDailyClock
+// her gün TEK SEFER, saat 19:00'da çalışıyor — bu yüzden "ertelenmiş"
+// (pendingHandoverUid'e yazılan) bir başvuru bir SONRAKİ 19:00 çalışmasını
+// bekler. Sadece saat TAM 18:00-18:59 arasında (yani bir sonraki 19:00
+// çalışması bugün, birazdan gerçekleşecekse) bu bekleyişe değer — maç о
+// saatlerde başlamış/başlamak üzere olacağı için düzenlemeyi o akşamki
+// 19:00 çalışmasına bırakıyoruz. Saat 19:00 ve sonrasında (bir sonraki
+// çalışma zaten YARINA kalacağı ve gereksiz yere ertesi günü beklemenin
+// hiçbir anlamı olmayacağı için) 18:00'dan önceki gibi yine ANINDA
+// başlanır — yani "18'den sonrası" derken kastedilen tek pencere
+// 18:00-18:59, 19:00 ve sonrası eski (18'den önceki) davranışa döner.
+function futbolManagerStartsImmediately(date = new Date()) {
+  const hour = istanbulHour(date);
+  return hour !== 18;
+}
+
 // logNewsEvent — kullanıcı revizesi: telefonda bir "gazete" olsun, gün
 // içinde olan biten (soygun, tutuklama, futbol sonuçları, sezon sonu vb.)
 // haber olarak gözüksün. Bu fonksiyon, olay gerçekleştiği anda kısa/
@@ -10261,6 +10290,10 @@ async function departFutbolManager(teamRef, team, reason, batch) {
     managerConsecutiveLosses: 0,
     managerInactiveStreak: 0,
     managerLastActiveDateKey: admin.firestore.FieldValue.delete(),
+    // KULLANICI REVİZESİ: anında-başlama ilk-maaş bayrağı da (kullanılmış
+    // olsun olmasın) ayrılışla birlikte temizlenir — bir sonraki menajere
+    // miras kalmaz.
+    managerFirstSalaryImmediate: admin.firestore.FieldValue.delete(),
     // KULLANICI İSTEĞİ: menajer ayrılınca (sebep fark etmeksizin) bilet
     // fiyatı varsayılana (10) çekilir — menajerin bıraktığı fiyat bir
     // sonraki döneme (başkan ya da yeni menajer) miras kalmaz.
@@ -10654,9 +10687,17 @@ async function runFutbolDailyClock() {
     let mode = getFutbolTeamControlMode(team);
 
     if (mode === 'MANAGED') {
-      // --- Bölüm 6: maaş + borç (ilk maaş, göreve başladıktan TAM 24 saat sonraki 19:00'da). ---
+      // --- Bölüm 6: maaş + borç (ilk maaş, göreve başladıktan TAM 24 saat
+      // sonraki 19:00'da). KULLANICI REVİZESİ: managerFirstSalaryImmediate
+      // bayrağı (saat 18'den önce anında başlayan menajerler için
+      // applyFutbolManager/respondFutbolManagerApplication'da set edilir) bu
+      // 24 saatlik bekleyişi O TAKIMIN İLK maaşı için bir kereliğine atlatır
+      // — göreve bugün başladıysa ilk maaşını yine bugün 19:00'da alır.
       const managerSinceMs = team.managerSince?.toMillis?.() || 0;
-      const firstSalaryDue = managerSinceMs > 0 && Date.now() - managerSinceMs >= 24 * 60 * 60 * 1000;
+      const firstSalaryImmediate = Boolean(team.managerFirstSalaryImmediate);
+      const firstSalaryDue =
+        managerSinceMs > 0 &&
+        (firstSalaryImmediate || Date.now() - managerSinceMs >= 24 * 60 * 60 * 1000);
       if (firstSalaryDue) {
         const managerSnap = await db.collection('users').doc(team.managerUid).get();
         const level = managerSnap.data()?.futbolManagerLevel || 0;
@@ -10668,8 +10709,9 @@ async function runFutbolDailyClock() {
         batch.update(teamRef, {
           treasury: admin.firestore.FieldValue.increment(-paid),
           salaryDebt: newDebt,
+          ...(firstSalaryImmediate ? { managerFirstSalaryImmediate: admin.firestore.FieldValue.delete() } : {}),
         });
-        team = { ...team, treasury: treasury - paid, salaryDebt: newDebt };
+        team = { ...team, treasury: treasury - paid, salaryDebt: newDebt, managerFirstSalaryImmediate: false };
         if (paid > 0) {
           batch.update(db.collection('users').doc(team.managerUid), { gold: admin.firestore.FieldValue.increment(paid) });
         }
@@ -13516,13 +13558,17 @@ async function cancelFutbolOtherPendingManagerRequests(uid, exceptTeamId) {
 
 // applyFutbolManager — SADECE menajeri OLMAYAN bir takım için (BOT/OWNER_AUTO/
 // gönüllü-ilanlı OWNER_ACTIVE). Menajeri OLAN bir takım için requestFutbol-
-// ManagerHandover kullanılır. BOT/OWNER_AUTO'da ANINDA (transaction ile
-// "ilk gelen kazanır") pendingHandoverUid yazılıp onaylanmış sayılır — ertesi
-// gün 19:00'da runFutbolDailyClock devralmayı yürütür (KULLANICI EK
-// NETLEŞTİRMESİ: takım pendingHandoverUid doluyken YENİ başvuru/teklif kabul
-// etmez). Sahipli+gönüllü-ilanlı (managerListingOpen) takımda ise başvuru
-// managerApplications alt koleksiyonuna düşer, başkan respondFutbolManager
-// Application ile karara bağlar.
+// ManagerHandover kullanılır. BOT/OWNER_AUTO'da ANINDA kabul edilir —
+// KULLANICI REVİZESİ: kabul anı saat 18:00-18:59 DIŞINDAYSA (yani 18:00'dan
+// önce YA DA 19:00'dan sonraysa) göreve HEMEN başlanır (managerUid/
+// managerSince doğrudan yazılır); TAM 18:00-18:59 arasındaysa eski
+// sistemdeki gibi transaction ile ("ilk gelen kazanır") pendingHandoverUid
+// yazılıp onaylanmış sayılır, o akşam 19:00'da runFutbolDailyClock
+// devralmayı yürütür (KULLANICI EK NETLEŞTİRMESİ: takım pendingHandoverUid
+// doluyken YENİ başvuru/teklif kabul etmez). Sahipli+gönüllü-ilanlı
+// (managerListingOpen) takımda ise başvuru managerApplications alt
+// koleksiyonuna düşer, başkan respondFutbolManagerApplication ile karara
+// bağlar (orada da aynı 18:00 kuralı uygulanır).
 export const applyFutbolManager = onCall(async (request) => {
   const uid = requireAuth(request);
   const { teamId } = request.data || {};
@@ -13592,9 +13638,13 @@ export const applyFutbolManager = onCall(async (request) => {
   const mode = getFutbolTeamControlMode(team);
 
   if (mode === 'BOT' || mode === 'OWNER_AUTO') {
-    // Anında kabul — transaction ile "ilk gelen kazanır" (aynı anda birden
-    // fazla başvuru gelirse ikincisi pendingHandoverUid'in dolu olduğunu
-    // görüp elenir).
+    // KULLANICI REVİZESİ: menajeri OLMAYAN bir takıma (bot/oto-bot) saat
+    // 18:00-18:59 DIŞINDA başvurulup anında kabul edilirse, oyunu yavaşlatan
+    // "sonraki 19:00" bekleyişine gerek yok — göreve HEMEN başlanır (o günkü
+    // maça daha güçlü girilebilsin diye). TAM 18:00-18:59 arasında ise eski
+    // sistemdeki gibi o akşam 19:00'a ertelenir (maç zaten başlamış/başlamak
+    // üzere olacağı için hiçbir düzenleme yapmadan maaş almasın diye).
+    const startImmediately = futbolManagerStartsImmediately();
     await db.runTransaction(async (tx) => {
       const freshSnap = await tx.get(teamRef);
       if (!freshSnap.exists) throw new HttpsError('not-found', 'Takım bulunamadı.');
@@ -13602,18 +13652,36 @@ export const applyFutbolManager = onCall(async (request) => {
       if (freshTeam.managerUid || freshTeam.pendingHandoverUid) {
         throw new HttpsError('failed-precondition', 'Bu takım artık uygun değil, başka biri seni geçti.');
       }
-      tx.update(teamRef, {
-        pendingHandoverUid: uid,
-        pendingHandoverLevel: user.futbolManagerLevel || 0,
-        pendingHandoverApproved: true,
-        pendingHandoverAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+      if (startImmediately) {
+        // Göreve anında başlıyor — pendingHandoverUid'e hiç girmeden
+        // doğrudan managerUid/managerSince yazılır. managerFirstSalaryImmediate
+        // bayrağı, bu akşamki 19:00 çalışmasında runFutbolDailyClock'a normal
+        // 24 saatlik ilk-maaş bekletmesini bu takım için atlamasını söyler.
+        tx.update(teamRef, {
+          managerUid: uid,
+          managerSince: admin.firestore.FieldValue.serverTimestamp(),
+          managerConsecutiveLosses: 0,
+          managerInactiveStreak: 0,
+          managerLastActiveDateKey: istanbulDateKey(),
+          managerFirstSalaryImmediate: true,
+          autoManaged: false,
+        });
+      } else {
+        tx.update(teamRef, {
+          pendingHandoverUid: uid,
+          pendingHandoverLevel: user.futbolManagerLevel || 0,
+          pendingHandoverApproved: true,
+          pendingHandoverAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
     });
     const batch = db.batch();
     sendFutbolSms(
       batch,
       uid,
-      `⚽ ${team.name} takımının menajerlik başvurun kabul edildi — yarın 19:00'da göreve başlayacaksın.`,
+      startImmediately
+        ? `⚽ ${team.name} takımının menajerlik başvurun kabul edildi — göreve hemen başladın! İlk maaşını bu akşam 19:00'da alacaksın.`
+        : `⚽ ${team.name} takımının menajerlik başvurun kabul edildi — bu akşam 19:00'da göreve başlayacaksın.`,
       'futbol_manager_application_accepted'
     );
     await batch.commit();
@@ -13621,7 +13689,7 @@ export const applyFutbolManager = onCall(async (request) => {
     // takımlara gönderdiğin TÜM bekleyen menajerlik istekleri (kuyruktaki
     // başvurular + başka bir yerdeki devralma talepleri) otomatik silinir.
     await cancelFutbolOtherPendingManagerRequests(uid, teamId);
-    return { ok: true, instant: true };
+    return { ok: true, instant: true, startedNow: startImmediately };
   }
 
   // OWNER_ACTIVE + gönüllü ilan — başvuru kuyruğa düşer.
@@ -13649,11 +13717,13 @@ export const applyFutbolManager = onCall(async (request) => {
 
 // respondFutbolManagerApplication — SADECE sahipli+gönüllü-ilanlı bir takımın
 // başkanı, managerApplications kuyruğundaki bir başvuruyu kabul/red eder.
-// Kabul edilirse pendingHandoverUid yazılır (ANINDA DEĞİL — ertesi gün
-// 19:00'da runFutbolDailyClock yürütür, ilk maaş kuralı managerSince'in O AN
-// set edilmesiyle başlasın diye), kalan TÜM başvurular temizlenir ve ilan
-// kapanır (KULLANICI EK NETLEŞTİRMESİ: pendingHandoverUid doluyken takım
-// yeni başvuru kabul etmez).
+// KULLANICI REVİZESİ: kabul anı saat 18:00-18:59 DIŞINDAYSA göreve HEMEN
+// başlanır (managerUid/managerSince doğrudan yazılır, pendingHandoverUid'e
+// hiç girilmez); TAM 18:00-18:59 arasındaysa eski sistemdeki gibi
+// pendingHandoverUid yazılır ve o akşam 19:00'da runFutbolDailyClock yürütür (ilk maaş kuralı
+// managerSince'in O AN set edilmesiyle başlasın diye). Her iki durumda da
+// kalan TÜM başvurular temizlenir ve ilan kapanır (KULLANICI EK
+// NETLEŞTİRMESİ: pendingHandoverUid doluyken takım yeni başvuru kabul etmez).
 export const respondFutbolManagerApplication = onCall(async (request) => {
   const uid = requireAuth(request);
   const { teamId, applicantUid, accept } = request.data || {};
@@ -13699,29 +13769,49 @@ export const respondFutbolManagerApplication = onCall(async (request) => {
   }
   const applicant = appSnap.data();
 
+  // KULLANICI REVİZESİ: başkan başvuruyu 18:00-18:59 DIŞINDA onaylarsa yeni
+  // menajer göreve HEMEN başlar (sonraki 19:00'ı beklemeye gerek yok); TAM
+  // 18:00-18:59 arasında onaylarsa eski sistemdeki gibi o akşam 19:00'a ertelenir.
+  const startImmediately = futbolManagerStartsImmediately();
   const allAppsSnap = await teamRef.collection('managerApplications').get();
   const batch = db.batch();
   allAppsSnap.docs.forEach((d) => batch.delete(d.ref));
-  batch.update(teamRef, {
-    pendingHandoverUid: applicantUid,
-    pendingHandoverLevel: applicant.applicantLevel || 0,
-    pendingHandoverApproved: true,
-    pendingHandoverAt: admin.firestore.FieldValue.serverTimestamp(),
-    managerListingOpen: false,
-    managerListingAt: admin.firestore.FieldValue.delete(),
-  });
+  if (startImmediately) {
+    batch.update(teamRef, {
+      managerUid: applicantUid,
+      managerSince: admin.firestore.FieldValue.serverTimestamp(),
+      managerConsecutiveLosses: 0,
+      managerInactiveStreak: 0,
+      managerLastActiveDateKey: istanbulDateKey(),
+      managerFirstSalaryImmediate: true,
+      autoManaged: false,
+      managerListingOpen: false,
+      managerListingAt: admin.firestore.FieldValue.delete(),
+    });
+  } else {
+    batch.update(teamRef, {
+      pendingHandoverUid: applicantUid,
+      pendingHandoverLevel: applicant.applicantLevel || 0,
+      pendingHandoverApproved: true,
+      pendingHandoverAt: admin.firestore.FieldValue.serverTimestamp(),
+      managerListingOpen: false,
+      managerListingAt: admin.firestore.FieldValue.delete(),
+    });
+  }
   futbolHandlePresidentActivity(teamRef, team, batch);
   sendFutbolSms(
     batch,
     applicantUid,
-    `⚽ ${team.name} takımının menajerlik başvurun kabul edildi — yarın 19:00'da göreve başlayacaksın.`,
+    startImmediately
+      ? `⚽ ${team.name} takımının menajerlik başvurun kabul edildi — göreve hemen başladın! İlk maaşını bu akşam 19:00'da alacaksın.`
+      : `⚽ ${team.name} takımının menajerlik başvurun kabul edildi — bu akşam 19:00'da göreve başlayacaksın.`,
     'futbol_manager_application_accepted'
   );
   await batch.commit();
   // KULLANICI İSTEĞİ: bkz. applyFutbolManager — başvuranın başka takımlara
   // gönderdiği TÜM bekleyen menajerlik istekleri otomatik silinir.
   await cancelFutbolOtherPendingManagerRequests(applicantUid, teamId);
-  return { ok: true, accepted: true };
+  return { ok: true, accepted: true, startedNow: startImmediately };
 });
 
 // requestFutbolManagerHandover — MENAJERİ OLAN bir takım için, seviyesi

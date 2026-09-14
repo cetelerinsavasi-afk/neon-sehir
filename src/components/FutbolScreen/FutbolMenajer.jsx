@@ -81,8 +81,8 @@ export default function FutbolMenajer({ team, role }) {
     setError('');
     setMessage('');
     try {
-      await fn();
-      if (successMsg) setMessage(successMsg);
+      const res = await fn();
+      if (successMsg) setMessage(typeof successMsg === 'function' ? successMsg(res) : successMsg);
     } catch (err) {
       setError(err?.message || 'İşlem başarısız.');
     } finally {
@@ -365,7 +365,10 @@ export default function FutbolMenajer({ team, role }) {
                       onClick={() =>
                         runAction(
                           () => respondFutbolManagerApplication(team.id, a.applicantUid, true),
-                          'Başvuru kabul edildi.'
+                          (res) =>
+                            res?.data?.startedNow
+                              ? 'Başvuru kabul edildi — menajer göreve hemen başladı.'
+                              : "Başvuru kabul edildi — menajer yarın 19:00'da göreve başlayacak."
                         ).then(loadApplications)
                       }
                     >

@@ -60,9 +60,11 @@ export default function FutbolMenajerOl() {
       } else {
         const res = await applyFutbolManager(o.id);
         setMessage(
-          res?.data?.instant
-            ? "Başvurun kabul edildi — yarın 19:00'da göreve başlayacaksın ✓"
-            : 'Başvurun başkana iletildi, onayını bekliyor.'
+          res?.data?.startedNow
+            ? 'Başvurun kabul edildi — göreve hemen başladın, ilk maaşını bu akşam 19:00da alacaksın ✓'
+            : res?.data?.instant
+              ? "Başvurun kabul edildi — yarın 19:00'da göreve başlayacaksın ✓"
+              : 'Başvurun başkana iletildi, onayını bekliyor.'
         );
       }
       setAppliedIds((prev) => new Set(prev).add(o.id));
