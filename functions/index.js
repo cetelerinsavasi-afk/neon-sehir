@@ -498,6 +498,17 @@ function futbolManagerStartsImmediately(date = new Date()) {
   return hour !== 18;
 }
 
+// futbolIsLineupLockedIstanbul — KULLANICI REVİZESİİ: saat 18:00-19:00 arası
+// maç zaten hesaplanıp "canlı" olarak sunulduğu için (bkz. computeFutbolMatchLive)
+// bu pencerede kadro/dizilim/taktik/mücadele değişikliği o günkü maça ZATEN
+// yansımaz — kullanıcı yine de değiştirip bunun işe yaradığını sanabilir.
+// Bu yüzden setFutbolLineup bu pencerede tamamen kilitli (MANAGED bir
+// takımda başkanın menajer varken dokunamaması ile AYNI mantık — sunucu
+// tarafında sert bir HttpsError).
+function futbolIsLineupLockedIstanbul(date = new Date()) {
+  return istanbulHour(date) === 18;
+}
+
 // logNewsEvent — kullanıcı revizesi: telefonda bir "gazete" olsun, gün
 // içinde olan biten (soygun, tutuklama, futbol sonuçları, sezon sonu vb.)
 // haber olarak gözüksün. Bu fonksiyon, olay gerçekleştiği anda kısa/
@@ -14468,8 +14479,16 @@ export const markFactoryNotificationsRead = onCall(async (request) => {
 // setFutbolLineup — takım sahibi dizilim, taktik ve 6 kişilik ilk 11'i
 // (halısaha formatı) seçer. Sunucu, seçimin dizilimle birebir uyduğunu
 // (pozisyon sayıları) ve aynı oyuncunun 2 kere seçilmediğini doğrular.
+// KULLANICI REVİZESİ: saat 18:00-19:00 arası (bkz. futbolIsLineupLockedIstanbul)
+// kadro tamamen kilitli — o günkü maç zaten 18:00'de hesaplanıp donduruldu.
 export const setFutbolLineup = onCall(async (request) => {
   const uid = requireAuth(request);
+  if (futbolIsLineupLockedIstanbul()) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Saat 18:00-19:00 arası kadro kilitli — bugünkü maç zaten hesaplandı, değişiklik ancak 19:00\'dan sonra yapılabilir.'
+    );
+  }
   const { teamId, formation, tactic, lineup, mucadele } = request.data || {};
   if (!FUTBOL_FORMATIONS[formation]) throw new HttpsError('invalid-argument', 'Geçersiz dizilim.');
   if (!FUTBOL_TACTICS.includes(tactic)) throw new HttpsError('invalid-argument', 'Geçersiz taktik.');
@@ -14737,11 +14756,93 @@ async function runFutbolDataIntegrityFix() {
   await migrationRef.set({ ranAt: admin.firestore.FieldValue.serverTimestamp() });
 }
 
+// runFutbolPendingManagerPromotionFix — BİR KEZ (migration bayrağıyla)
+// çalışıp biten geçiş aracı. KULLANICI İSTEĞİ: "anında menajer olma"
+// özelliği devreye girmeden ÖNCE başvurup pendingHandoverUid kuyruğuna
+// düşmüş, sonraki 19:00'ı (bazen neredeyse 24 saat) bekleyen oyuncuları
+// ELLE tıklamaya gerek kalmadan göreve başlatır. SADECE menajeri OLMAYAN
+// bir takıma yapılmış BAŞVURULARI (applyFutbolManager/
+// respondFutbolManagerApplication kökenli — team.managerUid boş) hedefler;
+// MENAJERİ OLAN bir takımın devralınma talepleri (requestFutbolManagerHandover/
+// respondFutbolManagerHandover) BİLEREK dokunulmadan bırakılır — o akış hep
+// eski sistemdeki gibi sonraki 19:00'ı bekler (KULLANICI NETLEŞTİRMESİ:
+// mağdur bir menajer olmasın diye kasıtlı).
+// runFutbolDataIntegrityFix ile AYNI desen: bir migration bayrağı okur, zaten
+// çalışmışsa ANINDA çıkar (tek bir ucuz doc okuması — kalıcı bir yük değil),
+// hiç çalışmamışsa işi yapıp bayrağı bir daha asla açılmayacak şekilde
+// işaretler. Aşağıdaki resetFutbolTransferMarket (App.jsx girişte otomatik
+// çağrılıyor) üzerinden tetiklenir — kimsenin bir şeye tıklamasına gerek
+// yok, bir sonraki uygulama açılışında kendiliğinden çalışıp biter.
+async function runFutbolPendingManagerPromotionFix() {
+  const migrationRef = db.collection('migrations').doc('promotePendingApplicationManagersV1');
+  const migrationSnap = await migrationRef.get();
+  if (migrationSnap.exists) return;
+
+  const pendingSnap = await db.collection('futbolTeams').where('pendingHandoverApproved', '==', true).get();
+  const targets = pendingSnap.docs.filter((d) => !d.data().managerUid && d.data().pendingHandoverUid);
+
+  const results = [];
+  for (const teamDoc of targets) {
+    const teamRef = teamDoc.ref;
+    const promoted = await db.runTransaction(async (tx) => {
+      const freshSnap = await tx.get(teamRef);
+      if (!freshSnap.exists) return null;
+      const freshTeam = freshSnap.data();
+      // Yarış durumuna karşı: bu arada zaten menajer atanmış ya da bekleyen
+      // talep başka bir şekilde temizlenmiş olabilir — o zaman atla.
+      if (freshTeam.managerUid || !freshTeam.pendingHandoverUid || !freshTeam.pendingHandoverApproved) return null;
+      const incomingUid = freshTeam.pendingHandoverUid;
+      tx.update(teamRef, {
+        managerUid: incomingUid,
+        managerSince: admin.firestore.FieldValue.serverTimestamp(),
+        managerConsecutiveLosses: 0,
+        managerInactiveStreak: 0,
+        managerLastActiveDateKey: istanbulDateKey(),
+        managerFirstSalaryImmediate: true,
+        autoManaged: false,
+        pendingHandoverUid: admin.firestore.FieldValue.delete(),
+        pendingHandoverLevel: admin.firestore.FieldValue.delete(),
+        pendingHandoverAt: admin.firestore.FieldValue.delete(),
+        pendingHandoverApproved: admin.firestore.FieldValue.delete(),
+      });
+      return { teamId: teamRef.id, teamName: freshTeam.name, uid: incomingUid };
+    });
+    if (promoted) results.push(promoted);
+  }
+
+  if (results.length > 0) {
+    const batch = db.batch();
+    results.forEach(({ teamName, uid }) => {
+      sendFutbolSms(
+        batch,
+        uid,
+        `⚽ ${teamName} takımının menajerliği, oyunu hızlandırma güncellemesi kapsamında öne çekildi — göreve hemen başladın! İlk maaşını bu akşam 19:00'da alacaksın.`,
+        'futbol_manager_application_accepted'
+      );
+    });
+    await batch.commit();
+    // KULLANICI İSTEĞİ: bkz. applyFutbolManager — göreve başlayan oyuncunun
+    // başka takımlara gönderdiği TÜM bekleyen menajerlik istekleri otomatik silinir.
+    for (const { uid, teamId } of results) {
+      await cancelFutbolOtherPendingManagerRequests(uid, teamId);
+    }
+  }
+
+  await migrationRef.set({ ranAt: admin.firestore.FieldValue.serverTimestamp(), promotedCount: results.length });
+}
+
 // Otomatik (bir kerelik, migration bayrağıyla) tetikleme için ince bir
 // onCall sarmalayıcı — App.jsx girişte otomatik çağırır.
 export const resetFutbolTransferMarket = onCall(async (request) => {
   requireAuth(request);
   await runFutbolDataIntegrityFix();
+  // GEÇİCİ (TEK SEFERLİK) — bkz. runFutbolPendingManagerPromotionFix. Kendi
+  // migration bayrağıyla korunuyor, bir daha asla çalışmayacak; bayrak
+  // yazıldıktan sonra bu satır tek bir ucuz doc okumasından ibaret kalır,
+  // dilersen ileride (bayrak yazıldığını gördükten sonra) bu satırı ve
+  // yukarıdaki fonksiyonu kod tabanından temizleyebilirsin — ama gerek yok,
+  // kalıcı bir maliyeti/yan etkisi yok.
+  await runFutbolPendingManagerPromotionFix();
   return { ok: true };
 });
 

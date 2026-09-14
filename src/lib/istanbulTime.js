@@ -40,6 +40,23 @@ export function msUntilNextPrayerWindow(win, now = Date.now()) {
   return Math.max(0, (endHour * 3600 - secondsSinceMidnight) * 1000);
 }
 
+// Futbol kadro kilidi — bkz. functions/index.js futbolIsLineupLockedIstanbul.
+// Saat 18:00-19:00 arası (İstanbul) o günkü maç zaten 18:00'de hesaplanıp
+// dondurulduğu için kadro/dizilim/taktik/mücadele değişikliği kilitli —
+// sunucu zaten reddediyor, bu arayüz tarafındaki AYNI kural (kullanıcı
+// boşuna değiştirmeye çalışmasın diye).
+export function isFutbolLineupLockedIstanbul(now = Date.now()) {
+  return istanbulHMS(new Date(now)).hour === 18;
+}
+
+// Kilit açılana (saat 19:00'a) kadar kalan milisaniye — sadece kilitliyken
+// anlamlı, geri sayım göstermek için.
+export function msUntilFutbolLineupUnlock(now = Date.now()) {
+  const { hour, minute, second } = istanbulHMS(new Date(now));
+  const secondsSinceMidnight = hour * 3600 + minute * 60 + second;
+  return Math.max(0, (19 * 3600 - secondsSinceMidnight) * 1000);
+}
+
 // mm:ss (saat >0 ise hh:mm:ss) biçiminde okunabilir geri sayım metni.
 export function formatCountdown(ms) {
   const total = Math.max(0, Math.round(ms / 1000));

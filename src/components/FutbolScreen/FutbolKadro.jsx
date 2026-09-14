@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useFutbolTeamPlayers } from '../../hooks/useFutbolTeamPlayers';
 import { setFutbolLineup } from '../../services/gameActions';
+import { formatCountdown, isFutbolLineupLockedIstanbul, msUntilFutbolLineupUnlock } from '../../lib/istanbulTime';
 import FutbolPlayerAvatar from './FutbolPlayerAvatar';
 import './FutbolKadro.css';
 
@@ -97,6 +98,24 @@ export default function FutbolKadro({ team, role }) {
   // ama işlem yapamaz — sadece asıl kontrolcü (MANAGED'da menajer,
   // OWNER_ACTIVE/OWNER_AUTO'da başkan) düzenleyebilir.
   const readOnly = role === 'owner' && Boolean(team.managerUid);
+  // KULLANICI REVİZESİ: saat 18:00-19:00 arası (İstanbul) kadro kilitli —
+  // o günkü maç zaten 18:00'de hesaplanıp donduruldu (bkz. functions/index.js
+  // computeFutbolMatchLive/futbolIsLineupLockedIstanbul), bu pencerede
+  // yapılan bir değişiklik bugünkü maça ZATEN yansımaz. Sunucu zaten
+  // reddediyor — burada da aynı pencerede fieldset'i kilitleyip sebebini
+  // gösteriyoruz. Her 15 saniyede bir yeniden değerlendiriliyor ki kilit
+  // 19:00'da otomatik açılsın.
+  const [lineupLocked, setLineupLocked] = useState(() => isFutbolLineupLockedIstanbul());
+  const [lockCountdown, setLockCountdown] = useState(() => msUntilFutbolLineupUnlock());
+  useEffect(() => {
+    const tick = () => {
+      setLineupLocked(isFutbolLineupLockedIstanbul());
+      setLockCountdown(msUntilFutbolLineupUnlock());
+    };
+    tick();
+    const id = setInterval(tick, 15000);
+    return () => clearInterval(id);
+  }, []);
   const { players } = useFutbolTeamPlayers(team.id);
   const [formation, setFormation] = useState(team.formation || '2-2-1');
   const [tactic, setTactic] = useState(team.tactic || 'dengeli');
@@ -240,19 +259,25 @@ export default function FutbolKadro({ team, role }) {
       skipNextAutoSaveRef.current = false;
       return;
     }
-    if (!isComplete) return;
+    if (!isComplete || lineupLocked) return;
     const t = setTimeout(() => {
       handleSave();
     }, 900);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formation, tactic, mucadele, flatLineupKey, isComplete]);
+  }, [formation, tactic, mucadele, flatLineupKey, isComplete, lineupLocked]);
 
   const playersById = {};
   players.forEach((p) => (playersById[p.id] = p));
 
   return (
-    <fieldset className="futbol-kadro" disabled={readOnly}>
+    <fieldset className="futbol-kadro" disabled={readOnly || lineupLocked}>
+      {lineupLocked && (
+        <p className="futbol-kadro-lock-notice">
+          🔒 Saat 18:00-19:00 arası kadro kilitli — bugünkü maç zaten hesaplandı, değişiklikler ancak bugün 19:00&apos;dan
+          sonra bir sonraki maça yansır. Kilit açılmasına kalan süre: {formatCountdown(lockCountdown)}
+        </p>
+      )}
       <p className="futbol-kadro-section-title">Dizilim</p>
       <div className="futbol-kadro-chip-row">
         {Object.keys(FORMATIONS).map((f) => (
