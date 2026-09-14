@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { usePlayer } from '../../hooks/usePlayer';
+import { isAdminUid } from '../../config/admin';
 import {
   getFutbolTeamDetail,
   fireFutbolManager,
@@ -14,6 +15,7 @@ import {
   openFutbolTreasuryWithdrawRequest,
   respondFutbolTreasuryWithdrawRequest,
   donateFutbolTreasury,
+  runFutbolBotTreasuryFixNow,
 } from '../../services/gameActions';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import ConfirmModal from '../ConfirmModal/ConfirmModal';
@@ -51,6 +53,7 @@ export default function FutbolMenajer({ team, role }) {
   const isOwnerActiveNoManager = role === 'owner' && !isManaged && !isAutoManaged;
   const hasPendingHandover = Boolean(team.pendingHandoverUid);
   const handoverAwaitingApproval = hasPendingHandover && !team.pendingHandoverApproved;
+  const isAdmin = isAdminUid(player?.id);
 
   const loadDetail = () => {
     getFutbolTeamDetail(team.id)
@@ -121,6 +124,21 @@ export default function FutbolMenajer({ team, role }) {
           📖 Menajerlik Kitapçığı
         </button>
       </div>
+      {isAdmin && (
+        <button
+          className="futbol-admin-reset futbol-admin-treasury-fix"
+          disabled={busy}
+          onClick={() =>
+            runAction(
+              () => runFutbolBotTreasuryFixNow(),
+              'Bot kökenli takımların kasası 100.000\'e sabitlendi (zaten çalıştıysa hiçbir şey değişmedi).'
+            )
+          }
+          title="Deploy sonrası 19:00'ı beklemeden bot kökenli takımların kasasını hemen 100.000'e sabitler (tek seferlik başlangıç düzeltmesi — bundan sonra normal gelir/giderlerle kendi kendine büyür/küçülür). İkinci çağrıda hiçbir şey yapmaz. (Sadece sen görebilirsin.)"
+        >
+          🔧 Bot Takım Kasalarını Şimdi Düzelt (admin)
+        </button>
+      )}
       {error && <p className="futbol-admin-error">{error}</p>}
       {message && <p className="futbol-placeholder">{message}</p>}
 
@@ -171,16 +189,24 @@ export default function FutbolMenajer({ team, role }) {
           )}
         </p>
         {(isManaged || isAutoManaged) && (
-          <p className="futbol-transfer-balance">
-            💰 Takım Kasası: {(team.treasury || 0).toLocaleString('tr-TR')} altın · Transfer Desteği:{' '}
-            {(team.transferSupport || 0).toLocaleString('tr-TR')} altın
+          <div className="futbol-finance-stack">
+            <p className="futbol-finance-line treasury">
+              💰 Takım Kasası: {(team.treasury || 0).toLocaleString('tr-TR')} altın
+            </p>
+            <p className="futbol-finance-line support">
+              🎯 Transfer Desteği: {(team.transferSupport || 0).toLocaleString('tr-TR')} altın
+            </p>
             {isManaged && detail?.managerSalary != null && (
-              <> · Maaş: {detail.managerSalary.toLocaleString('tr-TR')} altın/gün</>
+              <p className="futbol-finance-line salary">
+                💵 Maaş: {detail.managerSalary.toLocaleString('tr-TR')} altın/gün
+              </p>
             )}
             {team.salaryDebt > 0 && (
-              <> · Maaş Borcu: {team.salaryDebt.toLocaleString('tr-TR')} altın</>
+              <p className="futbol-finance-line debt">
+                ⚠️ Maaş Borcu: {team.salaryDebt.toLocaleString('tr-TR')} altın
+              </p>
             )}
-          </p>
+          </div>
         )}
         {(role === 'manager' || !isManaged) && <FutbolLevelBar level={level} streak={streak} threshold={threshold} />}
       </div>

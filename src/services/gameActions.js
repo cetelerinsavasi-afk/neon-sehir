@@ -410,6 +410,12 @@ export const resetFutbolTransferMarket = () =>
 export const forceRefreshFutbolTransferMarket = () =>
   httpsCallable(functions, 'forceRefreshFutbolTransferMarket')();
 
+export const runFutbolBotTreasuryFixNow = () =>
+  httpsCallable(functions, 'runFutbolBotTreasuryFixNow')();
+
+export const ensureFutbolBotTreasuryFix = () =>
+  httpsCallable(functions, 'ensureFutbolBotTreasuryFix')();
+
 // --- Faz Futbol: Faz 4 (takım satın alma / satma) ---
 
 export const listFutbolBuyableTeams = () => httpsCallable(functions, 'listFutbolBuyableTeams')();

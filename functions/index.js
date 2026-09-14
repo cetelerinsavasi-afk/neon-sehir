@@ -10523,17 +10523,21 @@ async function runFutbolManagerSystemMigration() {
 }
 
 // runFutbolBotTreasury100kFix — TEK SEFERLİK KULLANICI REVİZESİ düzeltmesi:
-// yukarıdaki runFutbolManagerSystemMigration "transferSupport/treasury zaten
-// var mı" bayrağıyla atlıyordu — bu yüzden bir takım BOT olarak migrate
-// edildikten SONRA bir menajer o takıma atandıysa (kullanıcının kendi
-// takımı gibi), kasası hiç 100.000'e sabitlenmemiş olabilir. Bu fonksiyon
-// bot KÖKENLİ (ownerUid'i olmayan) TÜM takımların — hem hâlâ saf BOT hem de
-// artık MANAGED olanların — kasasını KOŞULSUZ 100.000'e sabitler. Sahipli
-// (ownerUid dolu) HİÇBİR takıma dokunmaz (OWNER_ACTIVE/OWNER_AUTO/sahipli-
-// menajerli takımlar — "oyuncuların elindeki takımlara dokunmadan").
-// Transfer desteğine dokunmaz (zaten her gün normal formülüyle doluyor).
+// bot kökenli (ownerUid'i olmayan) TÜM takımların — hem hâlâ saf BOT hem de
+// artık bir menajerle yönetilenlerin (kullanıcının kendi takımı gibi) —
+// kasasını KOŞULSUZ 100.000'e SABİTLER (mevcut bakiye ne olursa olsun,
+// üstüne eklemek yerine doğrudan 100.000 yapar — KULLANICI NETLEŞTİRMESİ).
+// Bu, SADECE bu tek seferlik başlangıç düzeltmesi için geçerli — bundan
+// SONRA kasa tekrar hiç elle dokunulmadan, normal günlük gelir (bilet/
+// sponsor/sezon sonu) ve giderlerle (transfer, maaş vb.) kendi kendine
+// büyür/küçülür; bu davranış zaten yukarıdaki applyFutbolMatchResult/
+// finishFutbolSeasonPart2/sponsorluk kodlarında BAĞIMSIZ olarak var, burada
+// hiçbir şey değişmiyor. Sahipli (ownerUid dolu) HİÇBİR takıma dokunmaz
+// (OWNER_ACTIVE/OWNER_AUTO/sahipli-menajerli — "oyuncuların elindeki
+// takımlara dokunmadan"). Transfer desteğine dokunmaz (zaten her gün normal
+// formülüyle doluyor).
 async function runFutbolBotTreasury100kFix() {
-  const migrationRef = db.collection('migrations').doc('futbolBotTreasury100kFixV1');
+  const migrationRef = db.collection('migrations').doc('futbolBotTreasurySet100kV1');
   const migrationSnap = await migrationRef.get();
   if (migrationSnap.exists) return;
 
@@ -10554,6 +10558,36 @@ async function runFutbolBotTreasury100kFix() {
 
   await migrationRef.set({ ranAt: admin.firestore.FieldValue.serverTimestamp() });
 }
+
+// runFutbolBotTreasuryFixNow — KULLANICI İSTEĞİ: yukarıdaki düzeltme normalde
+// sadece runFutbolDailyClock üzerinden, her gün 19:00'da (resolveFutbolMatchdayReveal
+// tetiklendiğinde) çalışır — yani bu kod deploy edildikten sonra bile bir
+// sonraki 19:00'a kadar hiçbir şey değişmez. Bu admin-only callable, deploy
+// SONRASI beklemeden aynı düzeltmeyi elle/anında tetiklemek için var (aynı
+// idempotent bayrak kontrolüyle — forceRefreshFutbolTransferMarket'teki AYNI
+// desen). Sadece ADMIN_UIDS'teki hesap çağırabilir.
+export const runFutbolBotTreasuryFixNow = onCall(async (request) => {
+  requireAdmin(request);
+  await runFutbolBotTreasury100kFix();
+  return { ok: true };
+});
+
+// ensureFutbolBotTreasuryFix — KULLANICI REVİZESİ: admin butonuna basmayı
+// beklemek yerine, düzeltme HERHANGİ bir oyuncu Futbol ekranını açtığı an
+// (istemci tarafında seedFutbolWorld İLE BİREBİR AYNI "sessiz, otomatik,
+// idempotent" desenle — bkz. FutbolLigler.jsx) kendiliğinden tetiklensin
+// diye. Admin gerekmez (requireAuth yeterli) — güvenli, çünkü fonksiyon
+// hiçbir kullanıcı girdisi almıyor ve tek seferlik bayrak kontrolüyle zaten
+// korunuyor (runFutbolBotTreasury100kFix): ilk çağıran (hangi oyuncu olursa
+// olsun) düzeltmeyi bir kez uygular, sonraki TÜM çağrılar (binlerce oyuncu
+// aynı anda girse bile) anında hiçbir şey yapmadan döner. Yukarıdaki admin
+// butonu/callable (runFutbolBotTreasuryFixNow) elle/acil durum için
+// KALDI, ama artık gerekli değil.
+export const ensureFutbolBotTreasuryFix = onCall(async (request) => {
+  requireAuth(request);
+  await runFutbolBotTreasury100kFix();
+  return { ok: true };
+});
 
 // healFutbolInjuriesDaily — Bölüm 13/7: eskiden dailyReset'te (00:00)
 // çalışan sakatlık iyileştirme bloğunun BİREBİR AYNISI, sadece artık

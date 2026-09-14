@@ -109,6 +109,14 @@
   white-space: nowrap;
 }
 
+/* KULLANICI REVİZESİ: başkanlı (menajersiz) takımda kişisel altın + transfer
+   desteği, başlık satırının sağında alt alta gösterilir — .futbol-finance-
+   stack'in (FutbolTakimim.css) varsayılan sol hizasını burada sağa çeker. */
+.futbol-transfer-balance-stack {
+  margin: 0;
+  align-items: flex-end;
+}
+
 .futbol-buy-insufficient {
   background: rgba(255, 70, 70, 0.18) !important;
   border-color: rgba(255, 70, 70, 0.5) !important;

@@ -205,6 +205,13 @@ function MyTeamOverview({ team, role }) {
   const [listPrice, setListPrice] = useState(0);
   const [confirmInstantSell, setConfirmInstantSell] = useState(false);
   const isOwner = role === 'owner';
+  // KULLANICI REVİZESİ: takım kasası/transfer desteği SADECE gerçekten
+  // canlı olduğu durumlarda gösterilsin — menajerli (role: 'manager') ya da
+  // başkan pasif olduğu için oto-bot moduna geçmiş (autoManaged) takımlarda.
+  // Normal aktif başkanlı (menajersiz) bir takımda kasa kavramı YOK (Bölüm
+  // 5/10 — para doğrudan başkanın kişisel altınına gider), o yüzden orada
+  // hiç gösterilmemeli.
+  const hasTreasury = role === 'manager' || (isOwner && Boolean(team.autoManaged));
 
   const rank = leagueTeams.findIndex((t) => t.id === team.id) + 1;
 
@@ -298,10 +305,16 @@ function MyTeamOverview({ team, role }) {
         <span>Takım Değeri: {detailValue != null ? `${detailValue.toLocaleString('tr-TR')} altın` : '…'}</span>
         <NotificationBell kind="team" id={team.id} unread={Boolean(team.notifUnread)} />
       </div>
-      <p className="futbol-buy-meta">
-        Takım Kasası: {(team.treasury || 0).toLocaleString('tr-TR')} altın · Transfer Desteği:{' '}
-        {(team.transferSupport || 0).toLocaleString('tr-TR')} altın
-      </p>
+      {hasTreasury && (
+        <div className="futbol-finance-stack">
+          <p className="futbol-finance-line treasury">
+            💰 Takım Kasası: {(team.treasury || 0).toLocaleString('tr-TR')} altın
+          </p>
+          <p className="futbol-finance-line support">
+            🎯 Transfer Desteği: {(team.transferSupport || 0).toLocaleString('tr-TR')} altın
+          </p>
+        </div>
+      )}
 
       {error && <p className="futbol-admin-error">{error}</p>}
 

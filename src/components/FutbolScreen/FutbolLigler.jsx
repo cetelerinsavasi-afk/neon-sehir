@@ -8,7 +8,7 @@ import { useFutbolSeasonState } from '../../hooks/useFutbolSeasonState';
 import { useFutbolCup } from '../../hooks/useFutbolCup';
 import { useMyFutbolCupBets } from '../../hooks/useMyFutbolCupBets';
 import { useMyFutbolBets } from '../../hooks/useMyFutbolBets';
-import { seedFutbolWorld } from '../../services/gameActions';
+import { seedFutbolWorld, ensureFutbolBotTreasuryFix } from '../../services/gameActions';
 import { useNowTick, computeLiveMatchState, pickFutbolDisplayRound, istanbulDateKey } from './futbolLiveMatch';
 import FutbolMatchDetail from './FutbolMatchDetail';
 import FutbolCrest from './FutbolCrest';
@@ -85,6 +85,17 @@ export default function FutbolLigler() {
       seedFutbolWorld().catch(() => {});
     }
   }, [leaguesLoading, leagues.length]);
+
+  // KULLANICI REVİZESİ: bot kökenli takımların kasasını 100.000'e sabitleyen
+  // tek seferlik düzeltme (bkz. functions/index.js: runFutbolBotTreasury100kFix)
+  // artık admin butonu beklemeden, herhangi bir oyuncu Futbol ekranını
+  // (Ligler sekmesini) her açtığında sessizce tetiklenir — seedFutbolWorld İLE
+  // BİREBİR AYNI desen: idempotent (bir kez uygulanır, sonraki tüm çağrılar
+  // anında no-op döner), admin/buton gerekmez, hatası kullanıcıyı hiç
+  // etkilemesin diye sessizce yutulur.
+  useEffect(() => {
+    ensureFutbolBotTreasuryFix().catch(() => {});
+  }, []);
 
   const teamNameById = useMemo(() => {
     const map = {};

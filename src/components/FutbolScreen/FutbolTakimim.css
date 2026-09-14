@@ -193,6 +193,41 @@
   color: var(--text-dim);
 }
 
+/* --- Kasa/Destek/Maaş satırları (Takımın + Menajer sekmeleri) — KULLANICI
+   REVİZESİ: alt alta, emojili, renkli. --- */
+.futbol-finance-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.futbol-finance-line {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.futbol-finance-line.treasury {
+  color: #3ddc84;
+}
+
+.futbol-finance-line.support {
+  color: var(--neon-cyan);
+}
+
+.futbol-finance-line.salary {
+  color: var(--neon-yellow);
+}
+
+.futbol-finance-line.debt {
+  color: #ff5f6d;
+}
+
+.futbol-admin-treasury-fix {
+  margin-bottom: 8px;
+}
+
 .futbol-my-team-finance {
   margin-top: 14px;
   padding-top: 12px;

@@ -16,6 +16,7 @@ import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import ConfirmModal from '../ConfirmModal/ConfirmModal';
 import { groupFutbolPlayersByPositionOrdered } from './futbolPositionOrder';
 import './FutbolTransfer.css';
+import './FutbolTakimim.css';
 
 const POSITION_LABELS = { GK: 'Kaleci', DEF: 'Defans', MID: 'Orta Saha', FWD: 'Forvet' };
 const PLAYER_PRICE_QUICK_AMOUNTS = [100, 1000, 10000, 100000];
@@ -158,8 +159,15 @@ export default function FutbolTransfer({ team, role }) {
   // KULLANICI REVİZESİ (Bölüm 2/6): MANAGED bir takımda harcama önce
   // transfer desteğinden, kalanı takım kasasından düşer — kişisel altın
   // hiç kullanılmaz. Bakiye gösterimi ve "yeterli mi" kontrolü buna göre.
+  // Başkanlı (menajersiz) takımda ise sunucu (computeFutbolSpendPlan) zaten
+  // ÖNCE transfer desteğinden, kalanını kişisel altından düşüyordu — burada
+  // sadece bunu YANSITIYORUZ: hem gösterim hem "yeterli mi" kontrolü artık
+  // kişisel altın + transfer desteği TOPLAMINA göre (KULLANICI REVİZESİ:
+  // transfer desteği kişisel altının altında ayrı satırda gösterilsin).
   const isManaged = Boolean(team.managerUid);
-  const availableBudget = isManaged ? (team.transferSupport || 0) + (team.treasury || 0) : player?.gold || 0;
+  const personalGold = player?.gold || 0;
+  const teamSupport = team.transferSupport || 0;
+  const availableBudget = isManaged ? teamSupport + (team.treasury || 0) : personalGold + teamSupport;
 
   return (
     <fieldset className="futbol-transfer" disabled={readOnly}>
@@ -241,12 +249,21 @@ export default function FutbolTransfer({ team, role }) {
       <div className="futbol-transfer-market-header">
         <p className="futbol-kadro-section-title">Transfer Piyasası — Katabileceğin Oyuncular</p>
         {/* Kullanıcı revizesi: bakiye her zaman görünür olsun. MANAGED'da
-            kişisel altın değil, transfer desteği + kasa toplamı gösterilir. */}
-        <p className="futbol-transfer-balance">
-          {isManaged
-            ? `💰 Transfer Desteği + Takım Kasası: ${availableBudget.toLocaleString('tr-TR')} altın`
-            : `💰 ${availableBudget.toLocaleString('tr-TR')} altın`}
-        </p>
+            kişisel altın değil, transfer desteği + kasa toplamı TEK satırda
+            gösterilir (değişmedi). Başkanlı (menajersiz) takımda ise kişisel
+            altının altında AYRI bir satırda transfer desteği gösterilir. */}
+        {isManaged ? (
+          <p className="futbol-transfer-balance">
+            💰 Transfer Desteği + Takım Kasası: {availableBudget.toLocaleString('tr-TR')} altın
+          </p>
+        ) : (
+          <div className="futbol-finance-stack futbol-transfer-balance-stack">
+            <p className="futbol-finance-line treasury">💰 {personalGold.toLocaleString('tr-TR')} altın</p>
+            <p className="futbol-finance-line support">
+              🎯 Transfer Desteği: {teamSupport.toLocaleString('tr-TR')} altın
+            </p>
+          </div>
+        )}
       </div>
       {isAdmin && (
         <button
