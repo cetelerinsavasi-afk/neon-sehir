@@ -9667,6 +9667,20 @@ function randomFutbolPlayer(position, tier) {
   return { name, position, age, power, form: 100, value, forSale: false, listedAt: null };
 }
 
+// randomFutbolBoostPlayer — KULLANICI İSTEĞİ (tek seferlik bot takım
+// takviyesi): yaş 20-25, güç 50-100 arası (randomFutbolPlayer'daki gibi
+// bant/tier değil, doğrudan bu aralıklar). Değer aynı formülle
+// (Güç × 1000 × Kalan Kariyer Yılı / 20) hesaplanıyor ki piyasada/kadro
+// değerinde tutarsız görünmesin.
+function randomFutbolBoostPlayer(position) {
+  const age = Math.floor(randomInRange(20, 26)); // 20-25 dahil
+  const remainingSeasons = 20 - (age - 16);
+  const power = Math.round(randomInRange(50, 100) * 10) / 10; // 50-100 dahil
+  const value = Math.round((power * 1000 * remainingSeasons) / 20);
+  const name = randomFutbolPlayerName();
+  return { name, position, age, power, form: 100, value, forSale: false, listedAt: null };
+}
+
 // 1. Lig kadro şablonu: GK 1 pahalı+1 orta+1 ucuz, DEF/MID 2 orta+2
 // pahalı+2 ucuz, FWD 1 pahalı+1 orta+1 ucuz (Bölüm — kullanıcı promptu).
 const TIER1_SQUAD_TEMPLATE = [
@@ -10235,7 +10249,7 @@ async function topUpAllFutbolBotSquads() {
 // pasifse (>=5) kasa AÇIK KALIR + takım otomatik (seviye şartsız) Menajer
 // Ol listesine düşer (OWNER_AUTO). Takım kökeni BOT ise (ownerUid hiç
 // yoksa) bu dallanma hiç uygulanmaz, direkt BOT'a döner.
-async function departFutbolManager(teamRef, team, reason, batch) {
+async function departFutbolManager(teamRef, team, reason, batch, options = {}) {
   const managerUid = team.managerUid;
   if (!managerUid) return;
 
@@ -10264,6 +10278,19 @@ async function departFutbolManager(teamRef, team, reason, batch) {
   const paidReasons = new Set(['fired_by_owner', 'higher_level_takeover']);
   const banReasons = new Set(['3_losses', '3_inactive', 'resign']);
 
+  // KULLANICI İSTEĞİ: "neden atıldığına dair her konuda farklı smsler
+  // gitsin oyuncu anlasın" — her ayrılış sebebi için ayrı, net bir açıklama
+  // cümlesi. Ödeme durumu (varsa) bu cümlenin SONUNA eklenir.
+  const FUTBOL_MANAGER_DEPARTURE_REASON_TEXT = {
+    resign: 'İstifa ettin',
+    '3_losses': `${FUTBOL_MANAGER_LOSS_STREAK_LIMIT} maç üst üste kaybettiğin için görevden alındın`,
+    '3_inactive': `${FUTBOL_MANAGER_INACTIVE_DAYS} gün üst üste hareketsiz kaldığın için görevden alındın`,
+    squad_minimum: 'Takımın kadrosu minimum sınırın altına düştüğü için menajerlikten düştün',
+    fired_by_owner: 'Başkan seni menajerlikten kovdu',
+    higher_level_takeover: 'Takımı daha üst seviyeli bir menajer devraldığı için menajerlikten düştün',
+  };
+  const reasonText = FUTBOL_MANAGER_DEPARTURE_REASON_TEXT[reason] || 'Menajerlikten ayrıldın';
+
   let treasury = team.treasury || 0;
   const salaryDebt = team.salaryDebt || 0;
 
@@ -10283,15 +10310,15 @@ async function departFutbolManager(teamRef, team, reason, batch) {
       batch,
       managerUid,
       unpaid > 0
-        ? `⚽ ${team.name} takımının menajerliğinden ayrıldın. ${paid.toLocaleString('tr-TR')} altın ödendi, kasa yetmediği için ${unpaid.toLocaleString('tr-TR')} altın ödenemedi.`
-        : `⚽ ${team.name} takımının menajerliğinden ayrıldın, ${paid.toLocaleString('tr-TR')} altın hesabına yatırıldı.`,
+        ? `⚽ ${team.name} — ${reasonText}. ${paid.toLocaleString('tr-TR')} altın ödendi, kasa yetmediği için ${unpaid.toLocaleString('tr-TR')} altın ödenemedi.`
+        : `⚽ ${team.name} — ${reasonText}. ${paid.toLocaleString('tr-TR')} altın hesabına yatırıldı.`,
       'futbol_manager_departed'
     );
   } else {
     sendFutbolSms(
       batch,
       managerUid,
-      `⚽ ${team.name} takımının menajerliğinden ${reason === 'resign' ? 'istifa ettin' : 'görevden alındın'}. Bu ayrılış için maaş alamadın.`,
+      `⚽ ${team.name} — ${reasonText}. Bu ayrılış için maaş alamadın.`,
       'futbol_manager_departed'
     );
   }
@@ -10385,18 +10412,26 @@ async function departFutbolManager(teamRef, team, reason, batch) {
   const presidentActive = forcedActive || (team.presidentInactiveStreak || 0) < FUTBOL_PRESIDENT_AUTO_MANAGE_DAYS;
 
   if (presidentActive) {
-    if (treasury > 0) {
-      batch.update(db.collection('users').doc(team.ownerUid), {
-        gold: admin.firestore.FieldValue.increment(treasury),
-      });
-      sendFutbolSms(
-        batch,
-        team.ownerUid,
-        `⚽ ${team.name} takımının menajeri ayrıldı. Kasadaki ${treasury.toLocaleString('tr-TR')} altın hesabına aktarıldı.`,
-        'futbol_manager_departed'
-      );
-    } else {
-      sendFutbolSms(batch, team.ownerUid, `⚽ ${team.name} takımının menajeri ayrıldı.`, 'futbol_manager_departed');
+    // KULLANICI İSTEĞİ: kasadaki para artık takımın "değerine" de dahil
+    // edilebiliyor (bkz. computeFutbolTeamTotalWorth) — bu durumda (satış
+    // gibi) çağıran taraf options.skipTreasuryPayout:true geçerek burada
+    // kasanın başkana AYRICA nakit olarak ödenmesini bastırır (aksi halde
+    // aynı para hem satış fiyatına dahil edilip hem de burada ikinci kez
+    // ödenmiş olurdu) — o durumda SMS'i de çağıran taraf kendi gönderir.
+    if (!options.skipTreasuryPayout) {
+      if (treasury > 0) {
+        batch.update(db.collection('users').doc(team.ownerUid), {
+          gold: admin.firestore.FieldValue.increment(treasury),
+        });
+        sendFutbolSms(
+          batch,
+          team.ownerUid,
+          `⚽ ${team.name} takımının menajeri ayrıldı. Kasadaki ${treasury.toLocaleString('tr-TR')} altın hesabına aktarıldı.`,
+          'futbol_manager_departed'
+        );
+      } else {
+        sendFutbolSms(batch, team.ownerUid, `⚽ ${team.name} takımının menajeri ayrıldı.`, 'futbol_manager_departed');
+      }
     }
     teamUpdate.treasury = 0;
     teamUpdate.autoManaged = false;
@@ -10586,6 +10621,52 @@ export const runFutbolBotTreasuryFixNow = onCall(async (request) => {
 export const ensureFutbolBotTreasuryFix = onCall(async (request) => {
   requireAuth(request);
   await runFutbolBotTreasury100kFix();
+  await runFutbolBotPlayerBoost();
+  return { ok: true };
+});
+
+// runFutbolBotPlayerBoost — TEK SEFERLİK KULLANICI İSTEĞİ: "aynı şekilde bot
+// takımlarına tek seferlik oyuncu desteği yapacağız, her bot takıma 20 25 yaş
+// arası 50 100 güç arasında her mevkiiden 1 oyuncu verelim." Bot kökenli
+// (ownerUid'i olmayan — hem hâlâ saf BOT hem de artık bir menajerle
+// yönetilenler, tıpkı runFutbolBotTreasury100kFix'teki kapsamla AYNI) TÜM
+// takımlara, her mevkiden (GK/DEF/MID/FWD) 1'er YENİ oyuncu ekler — mevcut
+// kadroya EKtir, hiçbir mevcut oyuncuya dokunmaz/silmez. Amaç: bu takımların
+// minimum kadro sayısının (FUTBOL_MIN_SQUAD) altına düşme riskini azaltmak.
+// Sahipli (ownerUid dolu) hiçbir takıma dokunmaz. runFutbolBotTreasury100kFix
+// ile BİREBİR AYNI idempotent tek seferlik desen (migrations/ bayrağı).
+async function runFutbolBotPlayerBoost() {
+  const migrationRef = db.collection('migrations').doc('futbolBotPlayerBoostV1');
+  const migrationSnap = await migrationRef.get();
+  if (migrationSnap.exists) return;
+
+  const teamsSnap = await db.collection('futbolTeams').get();
+  let batch = db.batch();
+  let opCount = 0;
+  for (const doc of teamsSnap.docs) {
+    const team = doc.data();
+    if (team.ownerUid) continue; // sahipli takıma (aktif/oto-bot/menajerli) dokunma
+    for (const position of ['GK', 'DEF', 'MID', 'FWD']) {
+      const playerRef = db.collection('futbolPlayers').doc();
+      batch.set(playerRef, { teamId: doc.id, ...randomFutbolBoostPlayer(position) });
+      opCount += 1;
+      if (opCount % 400 === 0) {
+        await batch.commit();
+        batch = db.batch();
+      }
+    }
+  }
+  if (opCount % 400 !== 0) await batch.commit();
+
+  await migrationRef.set({ ranAt: admin.firestore.FieldValue.serverTimestamp() });
+}
+
+// runFutbolBotPlayerBoostNow — runFutbolBotTreasuryFixNow İLE AYNI amaç:
+// deploy sonrası 19:00'ı/oyuncu girişini beklemeden admin'in elle/anında
+// tetikleyebilmesi için. Sadece ADMIN_UIDS'teki hesap çağırabilir.
+export const runFutbolBotPlayerBoostNow = onCall(async (request) => {
+  requireAdmin(request);
+  await runFutbolBotPlayerBoost();
   return { ok: true };
 });
 
@@ -10643,6 +10724,7 @@ async function healFutbolInjuriesDaily() {
 async function runFutbolDailyClock() {
   await runFutbolManagerSystemMigration();
   await runFutbolBotTreasury100kFix();
+  await runFutbolBotPlayerBoost();
   await healFutbolInjuriesDaily();
 
   const leagueCount = await futbolActiveLeagueCount();
@@ -10681,22 +10763,12 @@ async function runFutbolDailyClock() {
     batch.update(teamRef, { transferSupport: newSupport, transferSupportCap: supportCap });
     await bump();
 
-    // --- KULLANICI İSTEĞİ: başkanın kuyruğa aldığı "menajeri işten at"
-    // kararını burada (19:00'da) yürüt — menajer bu ana kadar habersizdi,
-    // şimdi normal 'fired_by_owner' akışıyla ayrılır ve İLK KEZ şimdi SMS
-    // ile haberdar olur. ---
-    if (team.managerFirePending) {
-      if (team.managerUid) {
-        await departFutbolManager(teamRef, { ...team, id: teamDoc.id }, 'fired_by_owner', batch);
-        await bump(2);
-      } else {
-        // Menajer bu arada başka bir sebeple (istifa vb.) zaten ayrılmış —
-        // bekleyen bayrak anlamsız kaldı, temizle.
-        batch.update(teamRef, { managerFirePending: admin.firestore.FieldValue.delete() });
-        await bump();
-      }
-      continue;
-    }
+    // NOT: "menajeri işten at" kararı artık burada (19:00'da) DEĞİL,
+    // fireFutbolManager çağrıldığı ANDA yürütülüyor (kullanıcı revizesi —
+    // eskiden kuyruğa alınıp burada yürütülürdü). departFutbolManager'ın
+    // teamUpdate'inde hâlâ eski managerFirePending alanını (varsa, eski
+    // kayıtlardan kalmış olabilir) temizlemesi yeterli, burada ayrıca bir
+    // şey yapmaya gerek yok.
 
     // --- Bölüm 8: onaylanmış menajer devralmasını yürüt. ---
     if (team.pendingHandoverUid && team.pendingHandoverApproved) {
@@ -10860,18 +10932,24 @@ async function runFutbolDailyClock() {
         // 50 gün — takım tamamen elden gider. Menajeri varsa önce adil
         // şekilde (maaş+borcu kasadan yeter kadar ödenerek) ayrılır —
         // kulübün elden alınması menajerin kusuru değil.
+        // KULLANICI İSTEĞİ: kasadaki para (varsa) burada da "anında satış
+        // bedeli"ne dahil — sellFutbolTeam ile AYNI mantık: değer (dolayısıyla
+        // payout) departFutbolManager'dan ÖNCE, kasa hâlâ tam haldeyken
+        // hesaplanır; departFutbolManager'a skipTreasuryPayout:true geçilerek
+        // kendi "kalan kasayı başkana öde" adımı bastırılır (aksi halde aynı
+        // para iki kere ödenmiş olurdu).
+        const totalWorth = await computeFutbolTeamTotalWorth(teamDoc.id);
+        const payout = Math.round((totalWorth * 2) / 3);
         if (team.managerUid) {
-          await departFutbolManager(teamRef, { ...team, id: teamDoc.id }, 'fired_by_owner', batch);
-          const refreshedSnap = await teamRef.get();
-          team = { ...refreshedSnap.data(), id: teamDoc.id };
+          await departFutbolManager(teamRef, { ...team, id: teamDoc.id }, 'fired_by_owner', batch, {
+            skipTreasuryPayout: true,
+          });
         }
-        const value = await computeFutbolTeamValue(teamDoc.id);
-        const payout = Math.round((value * 2) / 3);
         batch.update(db.collection('users').doc(team.ownerUid), { gold: admin.firestore.FieldValue.increment(payout) });
         sendFutbolSms(
           batch,
           team.ownerUid,
-          `⚽ ${team.name} takımıyla 50 gündür hiç ilgilenmediğin için elinden alındı, anında satış bedeli olan ${payout.toLocaleString('tr-TR')} altın hesabına yatırıldı.`,
+          `⚽ ${team.name} takımıyla 50 gündür hiç ilgilenmediğin için elinden alındı, anında satış bedeli olan ${payout.toLocaleString('tr-TR')} altın (kasasındaki parayla birlikte) hesabına yatırıldı.`,
           'futbol_team_repossessed'
         );
         batch.update(teamRef, {
@@ -10883,6 +10961,7 @@ async function runFutbolDailyClock() {
           managerListingAutoOpened: false,
           tactic: 'dengeli',
           formation: '2-2-1',
+          treasury: 0,
         });
         await rejuvenateFutbolBotPlayers(teamDoc.id, batch);
         await bump(3);
@@ -13216,6 +13295,27 @@ async function computeFutbolTeamValue(teamId) {
   return playersSnap.docs.reduce((sum, d) => sum + (d.data().value || 0), 0);
 }
 
+// computeFutbolTeamTotalWorth — KULLANICI İSTEĞİ: bir takımın kasadaki
+// parası da (varsa) "değerine" dahil olsun — SADECE transfer desteği hariç.
+// Menajersiz sahipli (OWNER_ACTIVE) takımlarda kasa hiç birikmediği için
+// (team.treasury orada her zaman 0/yok) bu otomatik olarak hiçbir şeyi
+// değiştirmiyor — sadece gerçekten kasası olan takımlarda (BOT/OWNER_AUTO/
+// MANAGED) fark yaratıyor. SADECE "bu takımı satın almaya değer mi"
+// gösterimlerinde/fiyatlandırmalarında kullanılır (bot takım satın alma,
+// oyuncudan-oyuncuya takım ilanı sınırları/gösterimi, başkanın kendi
+// takımının değerini görmesi). sellFutbolTeam ve 50 günlük elden-alma gibi
+// departFutbolManager'ın kasayıZATEN ayrıca (tam tutarıyla) başkana
+// ödediği yerlerde KASITLI OLARAK kullanılmaz/kullanılırken o ödeme
+// bastırılır — aksi halde aynı para iki kere ödenmiş olurdu.
+async function computeFutbolTeamTotalWorth(teamId) {
+  const [playerValue, teamSnap] = await Promise.all([
+    computeFutbolTeamValue(teamId),
+    db.collection('futbolTeams').doc(teamId).get(),
+  ]);
+  const treasury = teamSnap.exists ? teamSnap.data().treasury || 0 : 0;
+  return playerValue + treasury;
+}
+
 // listFutbolBuyableTeams — sahipsiz (bot) takımlar (piyasa değeriyle) +
 // oyuncuların kendi ilan ettiği (forSale=true) takımlar (kendi
 // belirledikleri fiyatla) birlikte döner.
@@ -13228,7 +13328,12 @@ export const listFutbolBuyableTeams = onCall(async (request) => {
   const botTeams = await Promise.all(
     botSnap.docs.map(async (d) => {
       const data = d.data();
-      const value = await computeFutbolTeamValue(d.id);
+      // KULLANICI İSTEĞİ: bot takımın kasasındaki para da (varsa) takımın
+      // değerine/fiyatına eklensin — satın alan oyuncu takımı kasasıyla
+      // BİRLİKTE satın almış olur (kasa takımda kalır, buyFutbolTeam'de
+      // ARTIK ayrı bir "hoş geldin bonusu" olarak kişisel altına
+      // aktarılmıyor — bkz. orada).
+      const value = await computeFutbolTeamTotalWorth(d.id);
       return {
         id: d.id,
         name: data.name,
@@ -13245,7 +13350,10 @@ export const listFutbolBuyableTeams = onCall(async (request) => {
   const listedTeams = await Promise.all(
     listedSnap.docs.map(async (d) => {
       const data = d.data();
-      const value = await computeFutbolTeamValue(d.id);
+      // KULLANICI İSTEĞİ: menajerli sahipli bir takımın kasası da (varsa)
+      // değere dahil — menajersiz sahipli takımlarda zaten hiç kasa
+      // birikmediği için (treasury=0) bu otomatik olarak fark yaratmıyor.
+      const value = await computeFutbolTeamTotalWorth(d.id);
       return {
         id: d.id,
         name: data.name,
@@ -13272,7 +13380,10 @@ export const getMyFutbolTeamFinance = onCall(async (request) => {
   const teamSnap = await db.collection('futbolTeams').where('ownerUid', '==', uid).limit(1).get();
   if (teamSnap.empty) return { team: null };
   const teamDoc = teamSnap.docs[0];
-  const value = await computeFutbolTeamValue(teamDoc.id);
+  // KULLANICI İSTEĞİ: kasadaki para (menajerli takımlarda) değere dahil —
+  // instantSellPrice/maxListPrice artık sellFutbolTeam/listFutbolTeamForSale
+  // ile TUTARLI (ikisi de aynı computeFutbolTeamTotalWorth'u kullanıyor).
+  const value = await computeFutbolTeamTotalWorth(teamDoc.id);
   return {
     team: {
       id: teamDoc.id,
@@ -13440,7 +13551,9 @@ export const buyFutbolTeam = onCall(async (request) => {
     throw new HttpsError('failed-precondition', 'Bu takım satılık değil.');
   }
 
-  const price = isBotTeam ? await computeFutbolTeamValue(teamId) : team.salePrice;
+  // KULLANICI İSTEĞİ: bot takımın kasasındaki para da fiyata dahil —
+  // listFutbolBuyableTeams'teki AYNI hesapla tutarlı (bkz. orada).
+  const price = isBotTeam ? await computeFutbolTeamTotalWorth(teamId) : team.salePrice;
   const userRef = db.collection('users').doc(uid);
   const userSnap = await userRef.get();
   if ((userSnap.data()?.gold || 0) < price) {
@@ -13471,13 +13584,13 @@ export const buyFutbolTeam = onCall(async (request) => {
     salePrice: admin.firestore.FieldValue.delete(),
     listedAt: admin.firestore.FieldValue.delete(),
   };
-  if (isBotTeam && (team.treasury || 0) > 0) {
-    // Bölüm 18: BOT kökenli bir takım satın alınırken, o takımın (artık
-    // anlamsız kalacak — OWNER_ACTIVE'de kasa kavramı yok) birikmiş bot
-    // kasası alıcıya "hoş geldin bonusu" olarak kişisel altına aktarılır.
-    batch.update(userRef, { gold: admin.firestore.FieldValue.increment(team.treasury) });
-    teamUpdate.treasury = 0;
-  }
+  // KULLANICI REVİZESİ: eskiden burada BOT takımın kasası alıcıya ayrı bir
+  // "hoş geldin bonusu" olarak kişisel altına aktarılıp kasa sıfırlanıyordu.
+  // Artık kasa fiyata DAHİL edildiği için (bkz. yukarıdaki price hesabı)
+  // alıcı zaten kasayı da satın almış oluyor — kasa takımda AYNEN kalır,
+  // ileride bir menajer gelirse onun kullanımına hazır bekler (kullanıcı
+  // isteği: "menajer gelince kasaya eklenip menajerin kullanımına
+  // sunulacaksa onu şimdiden ekleyelim").
   batch.update(teamRef, teamUpdate);
   await batch.commit();
 
@@ -13505,7 +13618,9 @@ export const listFutbolTeamForSale = onCall(async (request) => {
   if (!teamSnap.exists || teamSnap.data().ownerUid !== uid) {
     throw new HttpsError('permission-denied', 'Bu takım sana ait değil.');
   }
-  const value = await computeFutbolTeamValue(teamId);
+  // KULLANICI İSTEĞİ: kasadaki para (menajerli takımlarda) fiyat sınırına
+  // dahil — getMyFutbolTeamFinance/sellFutbolTeam ile TUTARLI.
+  const value = await computeFutbolTeamTotalWorth(teamId);
   const minPrice = Math.round((value * 2) / 3);
   const maxPrice = Math.round((value * 4) / 3);
   const clean = Math.round(Number(price));
@@ -13555,23 +13670,29 @@ export const sellFutbolTeam = onCall(async (request) => {
     throw new HttpsError('permission-denied', 'Bu takım sana ait değil.');
   }
 
-  const value = await computeFutbolTeamValue(teamId);
-  const instantPrice = Math.round((value * 2) / 3);
+  // KULLANICI İSTEĞİ: kasadaki para (varsa) artık anında satış fiyatına da
+  // dahil — takım kasasıyla BİRLİKTE satılmış olur.
+  const totalWorth = await computeFutbolTeamTotalWorth(teamId);
+  const instantPrice = Math.round((totalWorth * 2) / 3);
   const teamName = team.name;
 
   const batch = db.batch();
   // Menajeri varsa önce adil şekilde (kasadan yeter kadar maaş+borç
   // ödenerek, 'fired_by_owner' — sezon yasağı yok, başkan aktif sayılır)
-  // ayrılır; kalan kasa zaten başkana (=bu satıcıya) aktarılır — takım
-  // satın alma bedeliyle BİRLİKTE tam bir tasfiye olur.
+  // ayrılır. skipTreasuryPayout:true — kalan kasa ARTIK yukarıdaki
+  // instantPrice'a zaten dahil edildiği için departFutbolManager'ın kendi
+  // "kalan kasayı başkana öde" adımı burada BASTIRILIYOR (aksi halde aynı
+  // para iki kere ödenmiş olurdu).
   if (team.managerUid) {
-    await departFutbolManager(teamRef, { ...team, id: teamId }, 'fired_by_owner', batch);
+    await departFutbolManager(teamRef, { ...team, id: teamId }, 'fired_by_owner', batch, {
+      skipTreasuryPayout: true,
+    });
   }
   batch.update(db.collection('users').doc(uid), { gold: admin.firestore.FieldValue.increment(instantPrice) });
   sendFutbolSms(
     batch,
     uid,
-    `⚽ ${teamName} takımını anında ${instantPrice.toLocaleString('tr-TR')} altına sattın.`,
+    `⚽ ${teamName} takımını (kasasındaki parayla birlikte) anında ${instantPrice.toLocaleString('tr-TR')} altına sattın.`,
     'futbol_team_sold'
   );
   batch.update(teamRef, {
@@ -13582,6 +13703,10 @@ export const sellFutbolTeam = onCall(async (request) => {
     forSale: false,
     salePrice: admin.firestore.FieldValue.delete(),
     listedAt: admin.firestore.FieldValue.delete(),
+    // Kasa artık "nakde çevrildiği" (fiyata dahil edildiği) için sıfırlanır
+    // — menajerli daldan gelindiyse departFutbolManager zaten 0 yazmıştı,
+    // burada aynı alana ikinci kez (yine 0) yazmak zararsız/idempotent.
+    treasury: 0,
   });
   // Bölüm 12: bota dönen takımın kadrosu — sakat oyuncular anında
   // iyileşir, 30 yaş üstü oyuncular hemen 20'ye + sabit 99 güce
@@ -14086,14 +14211,15 @@ export const resignFutbolManager = onCall(async (request) => {
 });
 
 // fireFutbolManager — SADECE sahipli bir takımın başkanının, kendi
-// menajerini işten çıkarması. KULLANICI İSTEĞİ: başkan menajeri ANINDA
-// işten atamaz — karar sadece KUYRUĞA alınır (managerFirePending:true) ve
-// bugün 19:00'da (runFutbolDailyClock) 'fired_by_owner' akışıyla (o günkü
-// maaş+borç kasadan yeter kadar ödenir, sezon yasağı YOK) fiilen yürütülür.
-// Menajer bu karardan HİÇBİR ŞEKİLDE haberdar edilmez (SMS/bildirim YOK,
-// panelde de görünmez) — 19:00'da ayrılış gerçekleşince normal
-// 'departFutbolManager' SMS'iyle İLK KEZ o an haberdar olur (istifanın TAM
-// TERSİNE — istifa hâlâ anında etkilidir, bkz. resignFutbolManager).
+// menajerini işten çıkarması. KULLANICI REVİZESİ: eskiden başkan menajeri
+// ANINDA işten atamıyordu — karar kuyruğa alınıp (managerFirePending) o
+// günkü 19:00'da yürütülüyordu. Artık İSTİFAYLA TAM SİMETRİK: çağrıldığı
+// AN 'fired_by_owner' akışıyla (departFutbolManager) fiilen yürütülür —
+// menajerin o günkü maaşı + varsa borcu kasadan yeter kadar (kasa
+// yetmiyorsa yettiği kadar) ANINDA ödenir, sezon yasağı YOK, ve menajer
+// aynı anda SMS ile (hangi sebeple ayrıldığını AÇIKÇA belirten metinle —
+// bkz. departFutbolManager'daki FUTBOL_MANAGER_DEPARTURE_REASON_TEXT)
+// haberdar olur.
 export const fireFutbolManager = onCall(async (request) => {
   const uid = requireAuth(request);
   const { teamId } = request.data || {};
@@ -14108,16 +14234,16 @@ export const fireFutbolManager = onCall(async (request) => {
   if (!team.managerUid) {
     throw new HttpsError('failed-precondition', 'Bu takımın menajeri yok.');
   }
-  if (team.managerFirePending) {
-    throw new HttpsError('failed-precondition', 'Menajeri işten atma kararın zaten bugün 19:00\'da yürütülecek.');
-  }
   if (team.pendingHandoverUid) {
     throw new HttpsError('failed-precondition', 'Bu takım için zaten bekleyen bir devralma süreci var.');
   }
   const batch = db.batch();
-  batch.update(teamRef, { managerFirePending: true });
-  // Bölüm 11-A: "menajeri işten atma" başkan için bir aktivite sinyalidir.
-  futbolHandlePresidentActivity(teamRef, team, batch);
+  // NOT: "menajeri işten atma" başkan için bir aktivite sinyalidir — ayrıca
+  // futbolHandlePresidentActivity çağırmaya gerek yok, çünkü
+  // departFutbolManager'ın 'fired_by_owner' (forcedActive) dalı zaten
+  // presidentInactiveStreak/presidentLastActiveDateKey'i aynı şekilde
+  // sıfırlıyor (bkz. futbolMarkPresidentActiveUpdate).
+  await departFutbolManager(teamRef, { ...team, id: teamId }, 'fired_by_owner', batch);
   await batch.commit();
   return { ok: true };
 });
@@ -14672,8 +14798,71 @@ async function getFutbolTeamPositionCounts(teamId, excludePlayerId) {
   return counts;
 }
 
+// getFutbolTeamManualListingCounts — KULLANICI BULGUSU: bir takımda aynı
+// mevkiden birden fazla oyuncu AYRI AYRI manuel ilana konulabiliyordu
+// (her ilan anında sadece KENDİSİ hariç tutulup kontrol edildiği için tek
+// başına geçerli görünüyordu), ama HEPSİ satılırsa takım minimum kadronun
+// altına düşebiliyordu — bu durumda hatayı ALICI görüyordu ("artık satılık
+// değil"), ki bu satıcının hatası, alıcının değil. Bu yardımcı, bir takımda
+// HÂLÂ takımda duran (teamId dolu) ama zaten manuel satışta olan oyuncuları
+// mevkiye göre sayar — listFutbolPlayerForSale bunu kullanarak "bu ilan +
+// zaten satıştaki diğer ilanlar hepsi birden satılırsa ne olur" senaryosunu
+// LİSTELEME ANINDA engeller (composite index gerekmesin diye tek eşitlik
+// filtresiyle (teamId) çekilip saleSource JS tarafında filtreleniyor —
+// getFutbolTeamPositionCounts'taki AYNI desen).
+async function getFutbolTeamManualListingCounts(teamId, excludePlayerId) {
+  const snap = await db.collection('futbolPlayers').where('teamId', '==', teamId).get();
+  const counts = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
+  snap.docs.forEach((d) => {
+    if (d.id === excludePlayerId) return;
+    const p = d.data();
+    if (p.saleSource !== 'manual') return;
+    if (counts[p.position] !== undefined) counts[p.position] += 1;
+  });
+  return counts;
+}
+
+// meetsFutbolMinSquad — takımın TÜMÜNÜN sağlıklı olup olmadığını (her
+// mevki ayrı ayrı minimumu karşılıyor mu) kontrol eder. SADECE sistemik
+// "bu takımın kadrosu eksiksiz mi" kontrollerinde kullanılır (bot kadro
+// tamamlama, takımın maça çıkabilirliği) — TEK BİR OYUNCUNUN satışını
+// engellemek için KULLANILMAZ (bkz. meetsFutbolMinSquadForPosition).
 function meetsFutbolMinSquad(counts) {
   return Object.keys(FUTBOL_MIN_SQUAD).every((k) => (counts[k] || 0) >= FUTBOL_MIN_SQUAD[k]);
+}
+
+// meetsFutbolMinSquadForPosition — KULLANICI BULGUSU: eskiden bir oyuncu
+// satılırken/ilana konulurken TÜM mevkiler minimum şartı sağlıyor mu diye
+// bakılıyordu — bu yüzden mesela forvet sayısı zaten (satıştan bağımsız
+// olarak) minimumun altındaysa, hiç alakası olmayan bir orta saha bile
+// satılamıyordu ("saçma" — kullanıcı). Artık SADECE satılan/ilana konulan
+// oyuncunun KENDİ mevkisi bu satıştan sonra minimumun altına düşüyor mu
+// diye bakılıyor — takımın BAŞKA bir mevkisi zaten eksikse (kendi
+// sorunudur, bu satışla ilgisi yok) o yüzden engellenmez.
+function meetsFutbolMinSquadForPosition(counts, position) {
+  const min = FUTBOL_MIN_SQUAD[position];
+  if (min === undefined) return true;
+  return (counts[position] || 0) >= min;
+}
+
+const FUTBOL_POSITION_LABELS = { GK: 'kaleci', DEF: 'defans', MID: 'orta saha', FWD: 'forvet' };
+
+// futbolMinSquadPositionViolationMessage — SADECE satılan/ilana konulan
+// oyuncunun kendi mevkisi için net mesaj (kaç/kaç).
+function futbolMinSquadPositionViolationMessage(counts, position) {
+  const min = FUTBOL_MIN_SQUAD[position];
+  const have = counts[position] || 0;
+  return `Bu satışla ${FUTBOL_POSITION_LABELS[position] || position} sayın minimum kadro sınırının (${have}/${min}) altına düşer — bu mevkiden takviye almadan (satın alarak) oyuncu satamazsın.`;
+}
+
+// futbolMinSquadFutureListingViolationMessage — KULLANICI İSTEĞİ: bu oyuncu
+// + şu an AYNI mevkiden zaten satıştaki diğer ilan(lar) hepsi birden
+// satılırsa mevki minimumun altına düşecekse, hata ALICIYA değil SATICIYA
+// (ilanı açmaya çalışana) gitmeli.
+function futbolMinSquadFutureListingViolationMessage(worstCaseRemaining, position, alreadyListedCount) {
+  const min = FUTBOL_MIN_SQUAD[position];
+  const label = FUTBOL_POSITION_LABELS[position] || position;
+  return `Bu oyuncuyu da satışa çıkarırsan, şu an satıştaki ${alreadyListedCount} ${label} ilanıyla BİRLİKTE hepsi satılırsa ${label} sayın minimumun (${Math.max(0, worstCaseRemaining)}/${min}) altına düşer — önce diğer ilanlardan birini iptal etmen ya da bu oyuncuyu satışa çıkarmaman gerekiyor.`;
 }
 
 // computeFutbolMaxPowerByPosition — o an BİR TAKIMA AİT (transfer
@@ -14955,8 +15144,8 @@ export const instantSellFutbolPlayer = onCall(async (request) => {
   const { team, mode } = requireFutbolTeamController(teamSnap, uid);
 
   const counts = await getFutbolTeamPositionCounts(player.teamId, playerId);
-  if (!meetsFutbolMinSquad(counts)) {
-    throw new HttpsError('failed-precondition', 'Bu satışla minimum kadro sayısının altına düşersin — minimum kadroyken oyuncu satamazsın, sadece satın alabilirsin.');
+  if (!meetsFutbolMinSquadForPosition(counts, player.position)) {
+    throw new HttpsError('failed-precondition', futbolMinSquadPositionViolationMessage(counts, player.position));
   }
 
   const instantPrice = Math.round((player.value * 2) / 3);
@@ -15013,8 +15202,24 @@ export const listFutbolPlayerForSale = onCall(async (request) => {
   // 'artık satılık değil' hatası alıyordu ama satıcı gereksiz yere ilan
   // açabiliyordu).
   const counts = await getFutbolTeamPositionCounts(player.teamId, playerId);
-  if (!meetsFutbolMinSquad(counts)) {
-    throw new HttpsError('failed-precondition', 'Bu oyuncuyu satışa çıkarırsan minimum kadro sayısının altına düşersin — minimum kadroyken oyuncu satamazsın, sadece satın alabilirsin.');
+  if (!meetsFutbolMinSquadForPosition(counts, player.position)) {
+    throw new HttpsError('failed-precondition', futbolMinSquadPositionViolationMessage(counts, player.position));
+  }
+
+  // KULLANICI BULGUSU: tek tek geçerli görünen birden fazla ilan (aynı
+  // mevkiden), HEPSİ birden satılırsa takımı minimumun altına
+  // düşürebiliyordu — hata o zaman ALICIYA gidiyordu, ki bu saçma (satıcının
+  // hatası). Artık: bu oyuncu + şu an AYNI mevkiden zaten satıştaki diğer
+  // ilan(lar) hepsi birden satılsaydı ne kalırdı diye ÖNCEDEN (listeleme
+  // anında) bakılıyor.
+  const alreadyListedCounts = await getFutbolTeamManualListingCounts(player.teamId, playerId);
+  const alreadyListedInPosition = alreadyListedCounts[player.position] || 0;
+  const worstCaseRemaining = (counts[player.position] || 0) - alreadyListedInPosition;
+  if (worstCaseRemaining < (FUTBOL_MIN_SQUAD[player.position] || 0)) {
+    throw new HttpsError(
+      'failed-precondition',
+      futbolMinSquadFutureListingViolationMessage(worstCaseRemaining, player.position, alreadyListedInPosition)
+    );
   }
 
   const minPrice = Math.round((player.value * 2) / 3);
@@ -15050,13 +15255,25 @@ export const cancelFutbolPlayerListing = onCall(async (request) => {
   if (player.saleSource !== 'manual' || player.sellerUid !== uid) {
     throw new HttpsError('permission-denied', 'Bu ilan sana ait değil.');
   }
-  await playerRef.update({
+  const batch = db.batch();
+  batch.update(playerRef, {
     forSale: false,
     salePrice: admin.firestore.FieldValue.delete(),
     saleSource: admin.firestore.FieldValue.delete(),
     sellerUid: admin.firestore.FieldValue.delete(),
     listedAt: admin.firestore.FieldValue.delete(),
   });
+  // KULLANICI ONAYLI DÜZELTME: diğer tüm "elle yönetim" eylemleri gibi
+  // (listeleme, anında satış, doktor vb.) ilan iptali de aktiflik sinyali
+  // vermeliydi — önceden vermiyordu.
+  if (player.teamId) {
+    const teamRef = db.collection('futbolTeams').doc(player.teamId);
+    const teamSnap = await teamRef.get();
+    if (teamSnap.exists) {
+      futbolMarkControllerActive(teamRef, teamSnap.data(), batch);
+    }
+  }
+  await batch.commit();
   return { ok: true };
 });
 
@@ -15097,7 +15314,7 @@ export const buyFutbolPlayer = onCall(async (request) => {
 
   if (player.saleSource === 'manual' && player.teamId) {
     const counts = await getFutbolTeamPositionCounts(player.teamId, playerId);
-    if (!meetsFutbolMinSquad(counts)) {
+    if (!meetsFutbolMinSquadForPosition(counts, player.position)) {
       await playerRef.update({
         forSale: false,
         salePrice: admin.firestore.FieldValue.delete(),
@@ -15454,6 +15671,9 @@ export const cancelFutbolDoctor = onCall(async (request) => {
       doctorPlayerId: admin.firestore.FieldValue.delete(),
       doctorSpendPlan: admin.firestore.FieldValue.delete(),
     });
+    // KULLANICI ONAYLI DÜZELTME: assignFutbolDoctor aktiflik sinyali
+    // veriyordu ama iptali vermiyordu — tutarlılık için eklendi.
+    futbolMarkControllerActive(teamRef, team, tx);
   });
 
   return { ok: true };
@@ -16374,6 +16594,21 @@ export const respondSponsorshipOffer = onCall(async (request) => {
   }
   if (offer.receiverUid !== uid) {
     throw new HttpsError('permission-denied', 'Bu teklifi sadece alıcı taraf yanıtlayabilir.');
+  }
+
+  // KULLANICI ONAYLI DÜZELTME: teklifi yanıtlayan taraf takım cephesiyse
+  // (fromRole === 'factory' — teklifi fabrika göndermiş, takım yanıtlıyor)
+  // aktiflik sinyali de işlensin — diğer "elle yönetim" eylemleriyle tutarlı.
+  // Ters yönde (fromRole === 'club', yanıtlayan fabrika sahibi) takımın
+  // aktifliğiyle ilgisi olmadığı için dokunulmuyor.
+  if (offer.fromRole === 'factory' && offer.teamId) {
+    const activityTeamRef = db.collection('futbolTeams').doc(offer.teamId);
+    const activityTeamSnap = await activityTeamRef.get();
+    if (activityTeamSnap.exists) {
+      const activityBatch = db.batch();
+      futbolMarkControllerActive(activityTeamRef, activityTeamSnap.data(), activityBatch);
+      await activityBatch.commit();
+    }
   }
 
   if (!accept) {

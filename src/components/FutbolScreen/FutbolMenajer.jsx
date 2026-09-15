@@ -16,6 +16,7 @@ import {
   respondFutbolTreasuryWithdrawRequest,
   donateFutbolTreasury,
   runFutbolBotTreasuryFixNow,
+  runFutbolBotPlayerBoostNow,
 } from '../../services/gameActions';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import ConfirmModal from '../ConfirmModal/ConfirmModal';
@@ -101,7 +102,7 @@ export default function FutbolMenajer({ team, role }) {
     if (action === 'fire') {
       await runAction(
         () => fireFutbolManager(team.id),
-        'Karar kuyruğa alındı — menajer bugün 19:00\'da işten çıkarılacak.'
+        'Menajer anında işten çıkarıldı.'
       );
     } else if (action === 'resign') {
       await runAction(() => resignFutbolManager(team.id), 'İstifa ettin.');
@@ -137,6 +138,21 @@ export default function FutbolMenajer({ team, role }) {
           title="Deploy sonrası 19:00'ı beklemeden bot kökenli takımların kasasını hemen 100.000'e sabitler (tek seferlik başlangıç düzeltmesi — bundan sonra normal gelir/giderlerle kendi kendine büyür/küçülür). İkinci çağrıda hiçbir şey yapmaz. (Sadece sen görebilirsin.)"
         >
           🔧 Bot Takım Kasalarını Şimdi Düzelt (admin)
+        </button>
+      )}
+      {isAdmin && (
+        <button
+          className="futbol-admin-reset futbol-admin-treasury-fix"
+          disabled={busy}
+          onClick={() =>
+            runAction(
+              () => runFutbolBotPlayerBoostNow(),
+              'Bot kökenli takımlara her mevkiden 1\'er oyuncu (yaş 20-25, güç 50-100) eklendi (zaten çalıştıysa hiçbir şey değişmedi).'
+            )
+          }
+          title="Deploy sonrası 19:00'ı/oyuncu girişini beklemeden bot kökenli takımlara hemen her mevkiden (kaleci/defans/orta saha/forvet) 1'er yeni oyuncu (yaş 20-25, güç 50-100) ekler — tek seferlik takviye, mevcut oyunculara dokunmaz. İkinci çağrıda hiçbir şey yapmaz. (Sadece sen görebilirsin.)"
+        >
+          ⚽ Bot Takımlara Oyuncu Takviyesi Yap (admin)
         </button>
       )}
       {error && <p className="futbol-admin-error">{error}</p>}
@@ -298,16 +314,9 @@ export default function FutbolMenajer({ team, role }) {
               )}
             </>
           )}
-          {team.managerFirePending ? (
-            <p className="futbol-placeholder">
-              Menajeri işten atma kararın kuyruğa alındı — bugün 19:00'da yürütülecek. Menajer bu karardan henüz
-              haberdar değil.
-            </p>
-          ) : (
-            <button className="futbol-admin-reset" disabled={busy} onClick={() => setConfirmAction('fire')}>
-              Menajeri İşten At
-            </button>
-          )}
+          <button className="futbol-admin-reset" disabled={busy} onClick={() => setConfirmAction('fire')}>
+            Menajeri İşten At
+          </button>
         </div>
       )}
 
@@ -443,8 +452,8 @@ export default function FutbolMenajer({ team, role }) {
       {confirmAction === 'fire' && (
         <ConfirmModal
           title="Menajeri İşten At"
-          message="Menajer anında değil, bugün 19:00'da işten çıkarılacak — o ana kadar bu karardan haberi olmayacak. Devam etmek istediğine emin misin?"
-          confirmLabel="Evet, Kuyruğa Al"
+          message="Menajer ANINDA işten çıkarılacak ve SMS ile haberdar olacak. Kasada yeterli para varsa o günkü maaşı (ve varsa borcu) hemen ödenir, yetmezse yettiği kadarı ödenir. Devam etmek istediğine emin misin?"
+          confirmLabel="Evet, İşten At"
           onConfirm={handleConfirm}
           onCancel={() => setConfirmAction(null)}
         />

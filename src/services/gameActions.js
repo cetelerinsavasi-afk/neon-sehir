@@ -416,6 +416,9 @@ export const runFutbolBotTreasuryFixNow = () =>
 export const ensureFutbolBotTreasuryFix = () =>
   httpsCallable(functions, 'ensureFutbolBotTreasuryFix')();
 
+export const runFutbolBotPlayerBoostNow = () =>
+  httpsCallable(functions, 'runFutbolBotPlayerBoostNow')();
+
 // --- Faz Futbol: Faz 4 (takım satın alma / satma) ---
 
 export const listFutbolBuyableTeams = () => httpsCallable(functions, 'listFutbolBuyableTeams')();
