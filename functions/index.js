@@ -11697,8 +11697,64 @@ const FUTBOL_CUP_TRIGGER_AFTER_ROUND = {
   9: 'SEMI_FINAL',
   12: 'FINAL',
 };
-const FUTBOL_CUP_CHAMPION_REWARD = 250000;
-const FUTBOL_CUP_FINALIST_REWARD = 100000;
+// KULLANICI REVİZESİ: eskiden SADECE final bitince şampiyona 250.000 +
+// finaliste 100.000 (tek seferlik) veriliyordu. Artık HER turu atlatan
+// (kazanan) takıma o turun ödülü o an hemen verilir — elenenlere o tur
+// için hiçbir ödül yok. Son 16'yı atlatana 25.000, Çeyrek Final'i
+// atlatana 50.000, Yarı Final'i atlatana 75.000, kupayı (Final'i)
+// kazanana (ayrıca) 100.000. Toplamda: şampiyon 25+50+75+100=250.000,
+// finalist (final'i kaybeden) 25+50+75=150.000, yarı finalde elenen
+// 25+50=75.000, çeyrek finalde elenen sadece 25.000 — kullanıcı isteği
+// birebir.
+const FUTBOL_CUP_ROUND_CLEAR_REWARD = {
+  ROUND_OF_16: 25000,
+  QUARTER_FINAL: 50000,
+  SEMI_FINAL: 75000,
+};
+const FUTBOL_CUP_CHAMPION_REWARD = 100000; // Final'i kazanana (SEMI_FINAL ödülü zaten ayrıca verilmişti)
+
+// futbolCreditTeamIncome — KULLANICI İSTEĞİ: "futboldan herhangi bi
+// şekilde kazanılan her para menajer varsa takım kasasına botsa yine
+// takım kasasına başkan varsa ve takım kasası yoksa takım başkanının
+// cebine yatsın" — ticket/sponsor/sezon sonu gelirlerinde zaten kullanılan
+// AYNI controlMode yönlendirme kuralı (OWNER_ACTIVE → başkanın kişisel
+// altını, tavansız; MANAGED → takım kasası, tavansız; BOT/OWNER_AUTO →
+// takım kasası, tavanlı — bkz. futbolTreasuryCap), kupa ödülleri de dahil
+// TEK yerden kullanılabilsin diye ortak fonksiyona çıkarıldı. `writer`
+// hem bir WriteBatch hem bir Firestore Transaction olabilir (ikisi de aynı
+// .update()/.set() imzasına sahip) — commit/tx.commit ETMEZ, çağıran yapar.
+// `team` en az {id, ownerUid, managerUid, treasury, tier} içermeli.
+// personalText/panelText verilirse uygun kanala (kişisel SMS ya da takım
+// paneli) otomatik bildirim de gönderir.
+async function futbolCreditTeamIncome(writer, team, amount, leagueCount, opts = {}) {
+  if (!(amount > 0)) return { destination: 'none', credited: 0 };
+  const mode = getFutbolTeamControlMode(team);
+  const { personalText, panelText, notifType } = opts;
+  if (mode === 'OWNER_ACTIVE') {
+    writer.update(db.collection('users').doc(team.ownerUid), {
+      gold: admin.firestore.FieldValue.increment(amount),
+    });
+    if (personalText) sendFutbolSms(writer, team.ownerUid, personalText, notifType);
+    return { destination: 'personal', credited: amount };
+  }
+  if (mode === 'MANAGED') {
+    writer.update(db.collection('futbolTeams').doc(team.id), {
+      treasury: admin.firestore.FieldValue.increment(amount),
+    });
+    if (panelText) sendFutbolTeamNotification(writer, team.id, panelText, notifType);
+    return { destination: 'treasury', credited: amount };
+  }
+  // BOT / OWNER_AUTO — tavanlı kasa.
+  const cap = futbolTreasuryCap(team.tier, leagueCount);
+  const currentTreasury = team.treasury || 0;
+  const newTreasury = Math.min(cap, currentTreasury + amount);
+  const credited = newTreasury - currentTreasury;
+  if (credited > 0) {
+    writer.update(db.collection('futbolTeams').doc(team.id), { treasury: newTreasury });
+  }
+  if (panelText && team.ownerUid) sendFutbolTeamNotification(writer, team.id, panelText, notifType);
+  return { destination: 'treasury', credited };
+}
 
 // ensureFutbolSeasonState — futbolSeasonState/current dokümanı yoksa
 // (bu kod ilk kez deploy edildiğinde, HÂLİHAZIRDA devam eden canlı sezon
@@ -11939,6 +11995,28 @@ async function advanceFutbolCupToNextRound(season, finishedRound) {
   }));
 
   const batch = db.batch();
+
+  // KULLANICI İSTEĞİ: turu atlatan (kazanan) HER takıma o turun ödülü
+  // hemen (bir sonraki tur oluşturulurken) verilir — elenenlere yok.
+  const roundReward = FUTBOL_CUP_ROUND_CLEAR_REWARD[finishedRound];
+  if (roundReward) {
+    const roundLabel = FUTBOL_CUP_ROUND_LABELS[finishedRound] || finishedRound;
+    const leagueCount = await futbolActiveLeagueCount();
+    const winnerTeamSnaps = await Promise.all(
+      winners.map((w) => db.collection('futbolTeams').doc(w.id).get())
+    );
+    for (const teamSnap of winnerTeamSnaps) {
+      if (!teamSnap.exists) continue;
+      const team = { ...teamSnap.data(), id: teamSnap.id };
+      const text = `⚽ ${team.name || 'Takımın'} Neon Kupası'nda ${roundLabel} turunu atlattı! ${roundReward.toLocaleString('tr-TR')} altın ödül hesabınıza yatırıldı.`;
+      await futbolCreditTeamIncome(batch, team, roundReward, leagueCount, {
+        personalText: text,
+        panelText: text,
+        notifType: 'futbol_cup_round_reward',
+      });
+    }
+  }
+
   for (let i = 0; i + 1 < winners.length; i += 2) {
     const home = winners[i];
     const away = winners[i + 1];
@@ -12311,6 +12389,11 @@ async function awardFutbolCupTrophy(season, finalMatch) {
   const finalistTeamId = champTeamId === finalMatch.homeTeamId ? finalMatch.awayTeamId : finalMatch.homeTeamId;
   if (!champTeamId || !finalistTeamId) return false;
 
+  // KULLANICI İSTEĞİ: ödül artık controlMode'a göre yönlendiriliyor (bkz.
+  // futbolCreditTeamIncome) — bunun için leagueCount gerekiyor (BOT/
+  // OWNER_AUTO'nun tavanlı kasası).
+  const leagueCount = await futbolActiveLeagueCount();
+
   const didAward = await db.runTransaction(async (tx) => {
     const cupSnap = await tx.get(cupRef);
     if (!cupSnap.exists || cupSnap.data().status === 'DONE') return false;
@@ -12329,32 +12412,25 @@ async function awardFutbolCupTrophy(season, finalMatch) {
 
     if (champTeamSnap.exists) {
       tx.update(champTeamSnap.ref, { cupsCount: admin.firestore.FieldValue.increment(1) });
-      const champOwnerUid = champTeamSnap.data().ownerUid;
-      if (champOwnerUid) {
-        tx.update(db.collection('users').doc(champOwnerUid), {
-          gold: admin.firestore.FieldValue.increment(FUTBOL_CUP_CHAMPION_REWARD),
-        });
-        tx.set(db.collection('users').doc(champOwnerUid).collection('messages').doc(), {
-          text: `🏆 Tebrikler!\n${champTeamSnap.data().name} ile Neon Kupası'nı kazandınız.\n${FUTBOL_CUP_CHAMPION_REWARD.toLocaleString('tr-TR')} altın ödül hesabınıza yatırıldı.`,
-          type: 'futbol_cup_champion',
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          read: false,
-        });
-      }
+      const champTeam = { ...champTeamSnap.data(), id: champTeamSnap.id };
+      const champText = `🏆 Tebrikler!\n${champTeam.name} ile Neon Kupası'nı kazandınız.\n${FUTBOL_CUP_CHAMPION_REWARD.toLocaleString('tr-TR')} altın ödül hesabınıza yatırıldı.`;
+      await futbolCreditTeamIncome(tx, champTeam, FUTBOL_CUP_CHAMPION_REWARD, leagueCount, {
+        personalText: champText,
+        panelText: champText,
+        notifType: 'futbol_cup_champion',
+      });
     }
+    // KULLANICI REVİZESİ: finalist artık final'i kaybettiği (=elendiği)
+    // için ek ödül YOK — Son 16/Çeyrek/Yarı Final'i atlatarak zaten
+    // 25.000+50.000+75.000=150.000 kazanmıştı (bkz. advanceFutbolCupToNextRound).
+    // Sadece bilgilendirme mesajı gönderilir, para hareketi yok.
     if (finalistTeamSnap.exists) {
-      const finalistOwnerUid = finalistTeamSnap.data().ownerUid;
-      if (finalistOwnerUid) {
-        tx.update(db.collection('users').doc(finalistOwnerUid), {
-          gold: admin.firestore.FieldValue.increment(FUTBOL_CUP_FINALIST_REWARD),
-        });
-        tx.set(db.collection('users').doc(finalistOwnerUid).collection('messages').doc(), {
-          text: `🥈 Tebrikler!\n${finalistTeamSnap.data().name} ile Neon Kupası'nı ikinci olarak tamamladınız.\n${FUTBOL_CUP_FINALIST_REWARD.toLocaleString('tr-TR')} altın ödül hesabınıza yatırıldı.`,
-          type: 'futbol_cup_finalist',
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          read: false,
-        });
+      const finalistTeam = { ...finalistTeamSnap.data(), id: finalistTeamSnap.id };
+      const finalistText = `🥈 ${finalistTeam.name} ile Neon Kupası'nı ikinci olarak tamamladın. Final için ek ödül yok — önceki turlardan kazandığın ödülleri zaten aldın.`;
+      if (finalistTeam.ownerUid) {
+        sendFutbolSms(tx, finalistTeam.ownerUid, finalistText, 'futbol_cup_finalist');
       }
+      sendFutbolTeamNotification(tx, finalistTeam.id, finalistText, 'futbol_cup_finalist');
     }
     return true;
   });
