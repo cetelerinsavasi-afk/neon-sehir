@@ -258,7 +258,9 @@ export default function FutbolTransfer({ team, role }) {
           </p>
         ) : (
           <div className="futbol-finance-stack futbol-transfer-balance-stack">
-            <p className="futbol-finance-line treasury">💰 {personalGold.toLocaleString('tr-TR')} altın</p>
+            <p className="futbol-finance-line treasury">
+              💰 Cebimizdeki Altın: {personalGold.toLocaleString('tr-TR')} altın
+            </p>
             <p className="futbol-finance-line support">
               🎯 Transfer Desteği: {teamSupport.toLocaleString('tr-TR')} altın
             </p>

@@ -9975,7 +9975,13 @@ async function futbolActiveLeagueCount() {
 }
 
 // --- Bölüm 2: Transfer Desteği ---
-const FUTBOL_TRANSFER_SUPPORT_UNIT = 10000; // 10.000 × (lig sayısı - lig sırası + 1)
+// KULLANICI REVİZESİ: birim 10.000 → 20.000 (1. ligde, 2 lig varken günlük
+// destek 40.000, 2. ligde 20.000 olacak şekilde). Formülün kendisi
+// (lig sayısı - lig sırası + 1) DEĞİŞMEDİ — bu yüzden yeni bir alt lig
+// açıldığında ÜST ligler otomatik +20.000 artar, yeni (en alt) lig
+// otomatik 20.000'den başlar (kullanıcının istediği "kademeli artış" zaten
+// bu formülün doğal sonucu).
+const FUTBOL_TRANSFER_SUPPORT_UNIT = 20000; // 20.000 × (lig sayısı - lig sırası + 1)
 const FUTBOL_TRANSFER_SUPPORT_CAP_MULT = 5; // tavan = günlük miktarın 5 katı
 
 function futbolTransferSupportDaily(tier, leagueCount) {
@@ -9986,12 +9992,13 @@ function futbolTransferSupportCap(tier, leagueCount) {
 }
 
 // --- Bölüm 5: Bot/Oto-bot Kasa Tavanı ---
-// Kasa tavanı = günlük transfer desteğinin 10 katı (SADECE BOT/OWNER_AUTO
-// için anlamlı — MANAGED takımda tavan yoktur, çağıran kod bu durumda bu
-// fonksiyonu hiç kullanmaz).
-const FUTBOL_TREASURY_CAP_MULT = 10;
+// KULLANICI REVİZESİ: kasa tavanı artık AYRI bir çarpan (eskiden günlük
+// desteğin 10 katıydı) değil, transfer desteğinin tavanıyla (5 katı)
+// BİREBİR AYNI — "yine bu günlük transfer desteğinin 5 katı olarak
+// sabitlensin". SADECE BOT/OWNER_AUTO için anlamlı — MANAGED takımda
+// tavan yoktur, çağıran kod bu durumda bu fonksiyonu hiç kullanmaz.
 function futbolTreasuryCap(tier, leagueCount) {
-  return futbolTransferSupportDaily(tier, leagueCount) * FUTBOL_TREASURY_CAP_MULT;
+  return futbolTransferSupportCap(tier, leagueCount);
 }
 
 // KULLANICI REVİZESİ: bot kökenli (ownerUid'siz) takımların kasa başlangıç/
@@ -13407,12 +13414,13 @@ const FUTBOL_NEW_TIER_AGE_MIN = 20;
 const FUTBOL_NEW_TIER_AGE_MAX = 25;
 const FUTBOL_NEW_TIER_POWER_MIN = 50;
 const FUTBOL_NEW_TIER_POWER_MAX = 100;
-// [mevki, oyuncu sayısı] — toplam 12 (2+4+4+2), kullanıcı promptu.
+// [mevki, oyuncu sayısı] — toplam 22 (4+6+6+6), KULLANICI REVİZESİ (eskiden
+// 12: 2+4+4+2 idi).
 const FUTBOL_NEW_TIER_SQUAD = [
-  ['GK', 2],
-  ['DEF', 4],
-  ['MID', 4],
-  ['FWD', 2],
+  ['GK', 4],
+  ['DEF', 6],
+  ['MID', 6],
+  ['FWD', 6],
 ];
 
 function randomFutbolNewTierPlayer(position) {
