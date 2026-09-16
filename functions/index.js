@@ -10629,6 +10629,10 @@ export const ensureFutbolBotTreasuryFix = onCall(async (request) => {
   requireAuth(request);
   await runFutbolBotTreasury100kFix();
   await runFutbolBotPlayerBoost();
+  // KULLANICI İSTEĞİ (acil): 200 güç üstü tüm oyuncuları 150'ye indiren
+  // tek seferlik düzeltme de AYNI otomatik/sessiz tetikleyiciye eklendi —
+  // admin butonuna basılmasını beklemeden ilk ekranı açan oyuncuda çalışır.
+  await runFutbolPowerCapFix();
   return { ok: true };
 });
 
@@ -10674,6 +10678,68 @@ async function runFutbolBotPlayerBoost() {
 export const runFutbolBotPlayerBoostNow = onCall(async (request) => {
   requireAdmin(request);
   await runFutbolBotPlayerBoost();
+  return { ok: true };
+});
+
+// runFutbolPowerCapFix — TEK SEFERLİK ACİL DÜZELTME (KULLANICI İSTEĞİ):
+// oyuncu gücü her maçta (applyFutbolMatchResult) +0.1/+2.0 kazanılıyor ve
+// bu artışın HİÇBİR ÜST SINIRI yok — bu yüzden aylar boyunca sürekli
+// forma giyen bir oyuncu sınırsız büyüyebiliyor. Kullanıcının bildirdiğine
+// göre normalde en güçlü defans ~160, oyundaki en güçlü oyuncu (bir orta
+// saha) ~190 güç civarındayken, ANORMAL şekilde 300+ güce (görünüşe göre
+// ~343-350) çıkan bir oyuncu(lar) oldu ve bu, transfer piyasasının taban
+// gücünü (computeFutbolMaxPowerByPosition) de yukarı çekip sistem
+// oyuncularının da 350 güçlerinde üretilmesine sebep oldu. Kalıcı çözüm
+// (asıl tavan mekanizması) AYRI ele alınacak — bu fonksiyon SADECE şu anki
+// bozuk veriyi acilen düzeltiyor: 200'ün üstü güce sahip TÜM oyuncuları
+// (tek seferlik) 150 güce indirir, "value" alanını da (Güç × 1000 ×
+// Kalan Kariyer Yılı / 20) formülüyle güce göre yeniden hesaplar, sonra
+// transfer piyasasını (rebuildFutbolTransferMarket) düzeltilmiş taban
+// güce göre sıfırdan kurar. runFutbolBotPlayerBoost/runFutbolBotTreasury
+// 100kFix İLE BİREBİR AYNI idempotent tek seferlik desen (migrations/
+// bayrağı) — bir daha asla tekrar çalışmaz.
+const FUTBOL_POWER_CAP_FIX_THRESHOLD = 200;
+const FUTBOL_POWER_CAP_FIX_TARGET = 150;
+async function runFutbolPowerCapFix() {
+  const migrationRef = db.collection('migrations').doc('futbolPowerCapFixV1');
+  const migrationSnap = await migrationRef.get();
+  if (migrationSnap.exists) return;
+
+  const overCapSnap = await db
+    .collection('futbolPlayers')
+    .where('power', '>', FUTBOL_POWER_CAP_FIX_THRESHOLD)
+    .get();
+  let batch = db.batch();
+  let opCount = 0;
+  for (const d of overCapSnap.docs) {
+    const p = d.data();
+    const age = typeof p.age === 'number' ? p.age : 20;
+    const remainingSeasons = Math.max(20 - (age - 16), 1);
+    const value = Math.round((FUTBOL_POWER_CAP_FIX_TARGET * 1000 * remainingSeasons) / 20);
+    batch.update(d.ref, { power: FUTBOL_POWER_CAP_FIX_TARGET, value });
+    opCount += 1;
+    if (opCount % 400 === 0) {
+      await batch.commit();
+      batch = db.batch();
+    }
+  }
+  if (opCount % 400 !== 0) await batch.commit();
+
+  // Düzeltilmiş taban güce göre transfer piyasasını hemen tazele — yoksa
+  // eski (350'lik) sistem oyuncuları bir sonraki 24 saatlik yenilemeye
+  // kadar piyasada kalmaya devam ederdi.
+  await rebuildFutbolTransferMarket();
+
+  await migrationRef.set({ ranAt: admin.firestore.FieldValue.serverTimestamp() });
+}
+
+// runFutbolPowerCapFixNow — yukarıdaki acil düzeltmeyi admin'in elle/anında
+// tetikleyebilmesi için (aynı idempotent bayrakla korunuyor — deploy
+// sonrası kimsenin ekranı açmasını beklemeden hemen çalıştırılabilir).
+// Sadece ADMIN_UIDS'teki hesap çağırabilir.
+export const runFutbolPowerCapFixNow = onCall(async (request) => {
+  requireAdmin(request);
+  await runFutbolPowerCapFix();
   return { ok: true };
 });
 
@@ -14852,18 +14918,30 @@ const FUTBOL_SYSTEM_LISTING_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 saat satılm
 // yukarıda) bundan ETKİLENMEZ — o hâlâ 24 saat.
 const FUTBOL_OWNER_LISTING_MAX_AGE_MS = 2 * 24 * 60 * 60 * 1000;
 const FUTBOL_SYSTEM_RESTOCK_DELAY_MS = 60 * 60 * 1000; // satıldıktan 1 saat sonra yenisi gelsin
-// Slot 0 = en güçlü, slot 1 = orta (%75-90'ı), slot 2 = en zayıf
-// (%50-75'i). Kullanıcı revizesi: slot 0 ÖNCEDEN taban gücün %90-110'u
-// idi — ama bu, oyuncular sürekli en güçlü sistem oyuncusunu alıp yeni
-// taban yaptıkça (taban → +%10 → taban → +%10 ...) ortalama gücü
-// hızlıca ve durmadan şişiriyordu, parası çok olan orantısız hızlı
-// güçleniyordu. Artık slot 0 en fazla %2 YUKARI, en fazla %10 AŞAĞI
-// (taban 100 ise: 90-102 arası) — hâlâ takımın en iyisine yakın ama
-// artık her satın almada ortalamayı agresifçe yukarı taşımıyor.
+// Slot 0 = en güçlü, slot 1 = orta, slot 2 = en zayıf. KULLANICI REVİZESİ
+// (acil düzeltme): slot 0 ÖNCEDEN taban gücün %90-102'siydi — bu hâlâ
+// (küçük de olsa) taban gücün ÜSTÜNE çıkabiliyordu ve tabanın "o
+// mevkideki TEK EN GÜÇLÜ takım oyuncusu" olmasıyla birleşince şu döngüyü
+// yaratıyordu: sistem oyuncusu taban×1.02'ye kadar üretilir → biri satın
+// alır (artık "takım oyuncusu" sayılır ve KENDİSİ yeni taban olur) → BİR
+// SONRAKİ hesaplamada taban %2 YUKARI kayar → yeni slot 0 bu YENİ (zaten
+// şişmiş) tabana göre üretilir → ... Bu, HER satın alma/yenilemede tabanı
+// katlanarak (1.02^n) şişiriyordu — normalde ~160-190 olan en güçlü
+// oyuncuların birkaç hafta içinde 300-400'e fırlamasının ASIL sebebi
+// budur (oyuncu gelişimindeki yavaş +0.1/+2.0 maç kazancı DEĞİL). Artık
+// iki KATMANLI düzeltme var: (1) aşağıdaki bantlar taban gücün ASLA
+// %1'den fazla ÜSTÜNE çıkmıyor — slot 0: taban×(0.90-1.01), slot 1:
+// taban×(0.75-0.89), slot 2: taban×(0.50-0.74); (2) KULLANICI REVİZESİ —
+// tabanın kendisi artık TEK bir oyuncuya değil, o mevkideki EN GÜÇLÜ 3
+// takım oyuncusunun ORTALAMASINA göre hesaplanıyor (bkz.
+// computeFutbolMaxPowerByPosition). Böylece tek bir satın alma tabanı
+// doğrudan o oyuncuya kilitlemiyor — yeni satın alınan oyuncu ancak
+// "top 3"e girerse etkili oluyor ve etkisi 3'e bölünerek yansıyor, bu da
+// yükselişi çok daha dengeli/yavaş hâle getiriyor.
 const FUTBOL_SYSTEM_POWER_BANDS = [
-  { min: 0.9, max: 1.02 },
-  { min: 0.75, max: 0.9 },
-  { min: 0.5, max: 0.75 },
+  { min: 0.9, max: 1.01 },
+  { min: 0.75, max: 0.89 },
+  { min: 0.5, max: 0.74 },
 ];
 const FUTBOL_SYSTEM_MIN_AGE = 16;
 const FUTBOL_SYSTEM_MAX_AGE = 30;
@@ -14951,28 +15029,46 @@ function futbolMinSquadFutureListingViolationMessage(worstCaseRemaining, positio
 
 // computeFutbolMaxPowerByPosition — o an BİR TAKIMA AİT (transfer
 // listesindeki sistem/anında/manuel ilanlar HARİÇ — teamId==null) tüm
-// oyuncular arasında, her mevkideki DÜZ (basit) en yüksek gücü döner.
-// Transfer piyasasının "taban"ı budur. Kullanıcı revizesi: otomatik
-// "outlier ayıklama" kaldırıldı — mantık artık dolambaçsız: taban güç
-// birebir takımlardaki en güçlü oyuncu. Anormal/bozuk bir kayıt varsa
-// (örn. eski sistemden kalma), doğrudan Firestore'dan o oyuncunun
-// gücünü düzeltmek yeterli — bir sonraki hesaplamada (satın alma, 15
-// dakikalık slot doldurma, 24 saatlik tazeleme ya da aşağıdaki
-// forceRefreshFutbolTransferMarket ile ANINDA) taban da otomatik düzelir.
+// oyuncular arasında, her mevkideki güce göre EN GÜÇLÜ 3 oyuncunun
+// ORTALAMASINI döner (isim geriye dönük uyumluluk için "Max" kalsa da,
+// artık tek bir oyuncunun gücü değil). Transfer piyasasının "taban"ı
+// budur.
+//
+// KÖK NEDEN DÜZELTMESİ (KULLANICI İSTEĞİ — acil, transfer listesinde 350
+// güçlü oyuncular bulgusu sonrası): eskiden taban SADECE o mevkideki TEK
+// EN GÜÇLÜ oyuncuya bakıyordu. Bu şu sonsuz döngüyü yaratıyordu: sistem
+// oyuncusu taban×~1'e kadar üretilir → biri satın alır → "takım oyuncusu"
+// sayılıp KENDİSİ yeni taban olur → bir sonraki hesaplamada taban bu
+// oyuncuya göre yukarı kayar → yeni sistem oyuncusu bu şişmiş tabana göre
+// üretilir → ... Artık taban tek bir oyuncuya kilitlenmiyor — en güçlü 3
+// oyuncunun ortalaması alınıyor, böylece yeni satın alınan bir oyuncu
+// ancak "top 3"e girerse etkili oluyor ve etkisi 3'e bölünerek yansıyor;
+// bu da yükselişi çok daha dengeli ve yavaş hâle getiriyor (kullanıcı
+// notu: kalıcı bir "sistem kökenli" etiketi İSTENMEDİ — bu, salt oyun
+// içi güç dengesiyle çözülüyor). Anormal/bozuk bir kayıt varsa (örn. eski
+// sistemden kalma aşırı yüksek bir güç), doğrudan Firestore'dan o
+// oyuncunun gücünü düzeltmek yeterli — bir sonraki hesaplamada (satın
+// alma, saatlik bakım ya da aşağıdaki forceRefreshFutbolTransferMarket
+// ile ANINDA) taban da otomatik düzelir.
+const FUTBOL_BASELINE_TOP_N = 3;
 async function computeFutbolMaxPowerByPosition() {
   const snap = await db.collection('futbolPlayers').get();
-  const max = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
+  const powersByPosition = { GK: [], DEF: [], MID: [], FWD: [] };
   snap.docs.forEach((d) => {
     const p = d.data();
     if (!p.teamId) return; // transfer listesinde/sahipsiz — sayılmaz
-    if (max[p.position] !== undefined && p.power > max[p.position]) {
-      max[p.position] = p.power;
-    }
+    if (powersByPosition[p.position]) powersByPosition[p.position].push(p.power);
   });
-  Object.keys(max).forEach((pos) => {
-    if (!(max[pos] > 0)) max[pos] = FUTBOL_SYSTEM_FALLBACK_POWER;
+  const baseline = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
+  Object.keys(powersByPosition).forEach((pos) => {
+    const topN = powersByPosition[pos]
+      .sort((a, b) => b - a)
+      .slice(0, FUTBOL_BASELINE_TOP_N);
+    baseline[pos] = topN.length > 0
+      ? topN.reduce((sum, v) => sum + v, 0) / topN.length
+      : FUTBOL_SYSTEM_FALLBACK_POWER;
   });
-  return max;
+  return baseline;
 }
 
 // randomFutbolSystemPlayer — verilen mevki+bant için, taban güce göre
