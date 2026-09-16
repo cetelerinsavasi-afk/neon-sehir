@@ -17,7 +17,6 @@ import {
   donateFutbolTreasury,
   runFutbolBotTreasuryFixNow,
   runFutbolBotPlayerBoostNow,
-  runFutbolPowerCapFixNow,
 } from '../../services/gameActions';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import ConfirmModal from '../ConfirmModal/ConfirmModal';
@@ -154,21 +153,6 @@ export default function FutbolMenajer({ team, role }) {
           title="Deploy sonrası 19:00'ı/oyuncu girişini beklemeden bot kökenli takımlara hemen her mevkiden (kaleci/defans/orta saha/forvet) 1'er yeni oyuncu (yaş 20-25, güç 50-100) ekler — tek seferlik takviye, mevcut oyunculara dokunmaz. İkinci çağrıda hiçbir şey yapmaz. (Sadece sen görebilirsin.)"
         >
           ⚽ Bot Takımlara Oyuncu Takviyesi Yap (admin)
-        </button>
-      )}
-      {isAdmin && (
-        <button
-          className="futbol-admin-reset futbol-admin-treasury-fix"
-          disabled={busy}
-          onClick={() =>
-            runAction(
-              () => runFutbolPowerCapFixNow(),
-              '200 güç üstü tüm oyuncular 150 güce indirildi ve transfer piyasası yenilendi (zaten çalıştıysa hiçbir şey değişmedi).'
-            )
-          }
-          title="Acil düzeltme: 200'ün üstünde güce sahip TÜM oyuncuları (tek seferlik) 150 güce indirir ve transfer piyasasını düzeltilmiş taban güce göre yeniden kurar. İkinci çağrıda hiçbir şey yapmaz. (Sadece sen görebilirsin.)"
-        >
-          🛠️ Aşırı Güçlü Oyuncuları Düzelt (admin)
         </button>
       )}
       {error && <p className="futbol-admin-error">{error}</p>}

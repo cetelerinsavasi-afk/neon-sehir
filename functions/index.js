@@ -5178,6 +5178,11 @@ export const attemptHeist = onCall(async (request) => {
       const { goldDelta, debtDelta } = splitIncomeForDebt(user.debtToState, reward);
       updates.gold = admin.firestore.FieldValue.increment(goldDelta);
       updates.debtToState = admin.firestore.FieldValue.increment(debtDelta);
+      // KULLANICI İSTEĞİ: Sixtagram'da "yaptığımız soygunlar" paylaşılabilsin
+      // diye başarılı (yakalanmamış) her soygunda kalıcı bir sayaç/toplam
+      // tutuluyor (bkz. buildSixtagramAttachment'taki 'heist' türü).
+      updates.heistSuccessCount = admin.firestore.FieldValue.increment(1);
+      updates.heistTotalEarnings = admin.firestore.FieldValue.increment(reward);
     }
 
     tx.update(userRef, updates);
@@ -6131,6 +6136,11 @@ export const executeHeistPlan = onCall(async (request) => {
         suspicion: clampSuspicion(currentSuspicion + config.suspicionCost),
         gold: admin.firestore.FieldValue.increment(goldDelta),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
+        // KULLANICI İSTEĞİ: attemptHeist'teki (solo soygun) AYNI kalıcı
+        // sayaç — ekip soygunu başarıyla tamamlanan her katılımcı için de
+        // tutuluyor (bkz. buildSixtagramAttachment'taki 'heist' türü).
+        heistSuccessCount: admin.firestore.FieldValue.increment(1),
+        heistTotalEarnings: admin.firestore.FieldValue.increment(perPersonAmount),
       });
       successSmsList.push({ uid: p.uid, amount: perPersonAmount });
     });
@@ -9654,6 +9664,23 @@ function pickUniqueFutbolLogo(usedSignatures) {
 // Piyasa değeri = (Güç × 1000) × (Kalan Kariyer Yılı / 20), Kalan Kariyer
 // Yılı = 20 - (Yaş - 16). Bir hedef değer bandından geriye doğru rastgele
 // bir yaş+güç kombinasyonu üretiyoruz.
+//
+// KÖK NEDEN BULGUSU (KULLANICI): remainingSeasons yaşa göre 5 (yaş 31) ile
+// 18 (yaş 18) arası değişiyor ve güç bu değere BÖLÜNEREK hesaplanıyor —
+// özellikle "pahalı" bantta (targetValue 90.000-140.000) yaşlı bir oyuncu
+// geldiğinde güç 500'ün üzerine bile çıkabiliyordu (örnek: 140.000 değer,
+// 5 kalan sezon → güç = 140000×20/(1000×5) = 560!). Bu fonksiyon
+// topUpFutbolBotSquad/finishFutbolSeasonPart2/resolveFutbolTeamLineup gibi
+// HER GÜN çalışan bot kadro tamamlama akışlarında kullanıldığı için, tek
+// bir "yaşlı + pahalı" rastgele kombinasyon bile 1-2 gün içinde organik en
+// güçlü oyuncuların (~160-190) çok üzerinde bir oyuncu üretip transfer
+// piyasasının tabanını şişirebiliyordu.
+// KULLANICI KARARI: burada sabit bir ÜST sınır YOK artık — bunun yerine
+// transfer piyasasının tabanı zaten en güçlü 3 oyuncunun ORTALAMASINA göre
+// hesaplanıyor (bkz. computeFutbolMaxPowerByPosition) ve tek bir aşırı
+// değerin etkisi hem "top 3"e girmesi gerektiği için hem de 3'e bölünerek
+// yansıdığı için doğal olarak sönümleniyor — ayrıca bir üst sınıra gerek
+// yok. Alt sınır (taban altına düşmesin diye) 35'ten 90'a yükseltildi.
 function randomFutbolPlayer(position, tier) {
   const age = Math.floor(randomInRange(18, 32));
   const remainingSeasons = 20 - (age - 16);
@@ -9661,7 +9688,7 @@ function randomFutbolPlayer(position, tier) {
   const [min, max] = bands[tier];
   const targetValue = randomInRange(min, max);
   let power = (targetValue * 20) / (1000 * remainingSeasons);
-  power = Math.max(35, Math.round(power * 10) / 10);
+  power = Math.max(90, Math.round(power * 10) / 10);
   const value = Math.round((power * 1000 * remainingSeasons) / 20);
   const name = randomFutbolPlayerName();
   return { name, position, age, power, form: 100, value, forSale: false, listedAt: null };
@@ -10629,10 +10656,6 @@ export const ensureFutbolBotTreasuryFix = onCall(async (request) => {
   requireAuth(request);
   await runFutbolBotTreasury100kFix();
   await runFutbolBotPlayerBoost();
-  // KULLANICI İSTEĞİ (acil): 200 güç üstü tüm oyuncuları 150'ye indiren
-  // tek seferlik düzeltme de AYNI otomatik/sessiz tetikleyiciye eklendi —
-  // admin butonuna basılmasını beklemeden ilk ekranı açan oyuncuda çalışır.
-  await runFutbolPowerCapFix();
   return { ok: true };
 });
 
@@ -10678,68 +10701,6 @@ async function runFutbolBotPlayerBoost() {
 export const runFutbolBotPlayerBoostNow = onCall(async (request) => {
   requireAdmin(request);
   await runFutbolBotPlayerBoost();
-  return { ok: true };
-});
-
-// runFutbolPowerCapFix — TEK SEFERLİK ACİL DÜZELTME (KULLANICI İSTEĞİ):
-// oyuncu gücü her maçta (applyFutbolMatchResult) +0.1/+2.0 kazanılıyor ve
-// bu artışın HİÇBİR ÜST SINIRI yok — bu yüzden aylar boyunca sürekli
-// forma giyen bir oyuncu sınırsız büyüyebiliyor. Kullanıcının bildirdiğine
-// göre normalde en güçlü defans ~160, oyundaki en güçlü oyuncu (bir orta
-// saha) ~190 güç civarındayken, ANORMAL şekilde 300+ güce (görünüşe göre
-// ~343-350) çıkan bir oyuncu(lar) oldu ve bu, transfer piyasasının taban
-// gücünü (computeFutbolMaxPowerByPosition) de yukarı çekip sistem
-// oyuncularının da 350 güçlerinde üretilmesine sebep oldu. Kalıcı çözüm
-// (asıl tavan mekanizması) AYRI ele alınacak — bu fonksiyon SADECE şu anki
-// bozuk veriyi acilen düzeltiyor: 200'ün üstü güce sahip TÜM oyuncuları
-// (tek seferlik) 150 güce indirir, "value" alanını da (Güç × 1000 ×
-// Kalan Kariyer Yılı / 20) formülüyle güce göre yeniden hesaplar, sonra
-// transfer piyasasını (rebuildFutbolTransferMarket) düzeltilmiş taban
-// güce göre sıfırdan kurar. runFutbolBotPlayerBoost/runFutbolBotTreasury
-// 100kFix İLE BİREBİR AYNI idempotent tek seferlik desen (migrations/
-// bayrağı) — bir daha asla tekrar çalışmaz.
-const FUTBOL_POWER_CAP_FIX_THRESHOLD = 200;
-const FUTBOL_POWER_CAP_FIX_TARGET = 150;
-async function runFutbolPowerCapFix() {
-  const migrationRef = db.collection('migrations').doc('futbolPowerCapFixV1');
-  const migrationSnap = await migrationRef.get();
-  if (migrationSnap.exists) return;
-
-  const overCapSnap = await db
-    .collection('futbolPlayers')
-    .where('power', '>', FUTBOL_POWER_CAP_FIX_THRESHOLD)
-    .get();
-  let batch = db.batch();
-  let opCount = 0;
-  for (const d of overCapSnap.docs) {
-    const p = d.data();
-    const age = typeof p.age === 'number' ? p.age : 20;
-    const remainingSeasons = Math.max(20 - (age - 16), 1);
-    const value = Math.round((FUTBOL_POWER_CAP_FIX_TARGET * 1000 * remainingSeasons) / 20);
-    batch.update(d.ref, { power: FUTBOL_POWER_CAP_FIX_TARGET, value });
-    opCount += 1;
-    if (opCount % 400 === 0) {
-      await batch.commit();
-      batch = db.batch();
-    }
-  }
-  if (opCount % 400 !== 0) await batch.commit();
-
-  // Düzeltilmiş taban güce göre transfer piyasasını hemen tazele — yoksa
-  // eski (350'lik) sistem oyuncuları bir sonraki 24 saatlik yenilemeye
-  // kadar piyasada kalmaya devam ederdi.
-  await rebuildFutbolTransferMarket();
-
-  await migrationRef.set({ ranAt: admin.firestore.FieldValue.serverTimestamp() });
-}
-
-// runFutbolPowerCapFixNow — yukarıdaki acil düzeltmeyi admin'in elle/anında
-// tetikleyebilmesi için (aynı idempotent bayrakla korunuyor — deploy
-// sonrası kimsenin ekranı açmasını beklemeden hemen çalıştırılabilir).
-// Sadece ADMIN_UIDS'teki hesap çağırabilir.
-export const runFutbolPowerCapFixNow = onCall(async (request) => {
-  requireAdmin(request);
-  await runFutbolPowerCapFix();
   return { ok: true };
 });
 
@@ -13050,12 +13011,21 @@ function pickFutbolBotTrainingIds(players, excludeIds) {
 }
 
 // assignFutbolBotTraining — her gün antrenman sonuçlandıktan (ve o günkü
-// trainingPlayerIds temizlendikten) hemen sonra çağrılır: her BOT takımı
-// için ertesi güne kadar sürecek yeni bir antrenman seçimi yapar, tıpkı
-// kullanıcıların "Antrenmanı Başlat" ile kendi oyuncularını seçmesi gibi
-// — kullanıcı promptu: botlar da bizim gibi gelişsin.
+// trainingPlayerIds temizlendikten) hemen sonra çağrılır: her bot-koşumlu
+// takım için ertesi güne kadar sürecek yeni bir antrenman seçimi yapar,
+// tıpkı kullanıcıların "Antrenmanı Başlat" ile kendi oyuncularını seçmesi
+// gibi — kullanıcı promptu: botlar da bizim gibi gelişsin, bu sayede bot
+// takımları da devamlı ilerlesin.
+// KULLANICI REVİZESİ: eskiden sadece ownerUid boş olan SAF bot takımlar
+// kapsanıyordu — sahipli ama menajersiz/pasif (OWNER_AUTO) takımlar hiç
+// antrenman yapmıyordu (sahibi aktif değilse kimse "Antrenmanı Başlat"a
+// basmıyor, bu yüzden bu takımlar hiç gelişemiyordu). Artık futbolTeamIsBotRun
+// (BOT || OWNER_AUTO) ile AYNI kapsam kullanılıyor — applyFutbolMatchResult'taki
+// maç içi güç kazancı zaten ikisini de eşit tutuyordu, antrenman da tutarlı
+// olsun diye.
 async function assignFutbolBotTraining() {
-  const botTeamsSnap = await db.collection('futbolTeams').where('ownerUid', '==', null).get();
+  const allTeamsSnap = await db.collection('futbolTeams').get();
+  const botTeamsSnap = { docs: allTeamsSnap.docs.filter((d) => futbolTeamIsBotRun(d.data())) };
   let batch = db.batch();
   let opCount = 0;
   for (const teamDoc of botTeamsSnap.docs) {
@@ -13555,7 +13525,7 @@ export const getMyFutbolTeamFinance = onCall(async (request) => {
 const FUTBOL_NEW_TIER_AGE_MIN = 20;
 const FUTBOL_NEW_TIER_AGE_MAX = 25;
 const FUTBOL_NEW_TIER_POWER_MIN = 50;
-const FUTBOL_NEW_TIER_POWER_MAX = 100;
+const FUTBOL_NEW_TIER_POWER_MAX = 150;
 // [mevki, oyuncu sayısı] — toplam 22 (4+6+6+6), KULLANICI REVİZESİ (eskiden
 // 12: 2+4+4+2 idi).
 const FUTBOL_NEW_TIER_SQUAD = [
@@ -14930,16 +14900,20 @@ const FUTBOL_SYSTEM_RESTOCK_DELAY_MS = 60 * 60 * 1000; // satıldıktan 1 saat s
 // oyuncuların birkaç hafta içinde 300-400'e fırlamasının ASIL sebebi
 // budur (oyuncu gelişimindeki yavaş +0.1/+2.0 maç kazancı DEĞİL). Artık
 // iki KATMANLI düzeltme var: (1) aşağıdaki bantlar taban gücün ASLA
-// %1'den fazla ÜSTÜNE çıkmıyor — slot 0: taban×(0.90-1.01), slot 1:
-// taban×(0.75-0.89), slot 2: taban×(0.50-0.74); (2) KULLANICI REVİZESİ —
-// tabanın kendisi artık TEK bir oyuncuya değil, o mevkideki EN GÜÇLÜ 3
-// takım oyuncusunun ORTALAMASINA göre hesaplanıyor (bkz.
-// computeFutbolMaxPowerByPosition). Böylece tek bir satın alma tabanı
-// doğrudan o oyuncuya kilitlemiyor — yeni satın alınan oyuncu ancak
-// "top 3"e girerse etkili oluyor ve etkisi 3'e bölünerek yansıyor, bu da
-// yükselişi çok daha dengeli/yavaş hâle getiriyor.
+// %2'den fazla ÜSTÜNE çıkmıyor — slot 0: taban×(0.90-1.02) (KULLANICI
+// REVİZESİ: %1 değil %2 üst sınır), slot 1: taban×(0.75-0.89), slot 2:
+// taban×(0.50-0.74); (2) tabanın kendisi artık TEK bir oyuncuya değil, o
+// mevkideki EN GÜÇLÜ 3 takım oyuncusunun ORTALAMASINA göre hesaplanıyor
+// (bkz. computeFutbolMaxPowerByPosition). Böylece tek bir satın alma
+// tabanı doğrudan o oyuncuya kilitlemiyor — yeni satın alınan oyuncu
+// ancak "top 3"e girerse etkili oluyor ve etkisi 3'e bölünerek yansıyor,
+// bu da yükselişi çok daha dengeli/yavaş hâle getiriyor. Bu ikinci katman
+// sayesinde randomFutbolPlayer'daki (bkz. oradaki not) rastgele üretilen
+// aşırı bir değerin de artık ayrı bir üst sınıra ihtiyacı yok — en fazla
+// "top 3"e girip ortalamayı 1/3 oranında etkiler, tek başına tabanı asla
+// kilitleyemez.
 const FUTBOL_SYSTEM_POWER_BANDS = [
-  { min: 0.9, max: 1.01 },
+  { min: 0.9, max: 1.02 },
   { min: 0.75, max: 0.89 },
   { min: 0.5, max: 0.74 },
 ];
@@ -18286,6 +18260,16 @@ export const adminManualCreditPackage = onRequest(
 const SIXTAGRAM_MAX_TEXT_LEN = 280;
 const SIXTAGRAM_POST_LIFETIME_MS = 24 * 60 * 60 * 1000;
 const SIXTAGRAM_ASSET_LABELS = { diamond: 'Elmas', stock: 'Hisse Senedi', crypto: 'Kripto' };
+// SIXTAGRAM_MATERIAL_LABELS — KULLANICI İSTEĞİ: "elimizdeki malzemeleri
+// paylaşabilelim" (madde — yeni paylaşılabilir türler). users/{uid}/
+// inventory alt koleksiyonundaki dokümanlarla AYNI anahtarlar (bkz.
+// useInventory.js/DepoScreen.jsx'teki istemci tarafı ikizleri).
+const SIXTAGRAM_MATERIAL_LABELS = {
+  tamirMalzemesi: { label: 'Tamir Malzemesi', emoji: '🔧' },
+  silahUpgrade: { label: 'Silah Geliştirme Malzemesi', emoji: '🔫' },
+  arabaGelistirme: { label: 'Araba Geliştirme Malzemesi', emoji: '🚗' },
+  yasakliMadde: { label: 'Yasaklı Madde', emoji: '💊' },
+};
 const SIXTAGRAM_COMMENT_MAX_LEN = 280;
 
 // createSixtagramNotification — bir oyuncuya (toUid) "beğenildim/yorum
@@ -18926,6 +18910,100 @@ async function buildSixtagramAttachment(uid, attachment) {
     const rankIncluded = totalPlayers >= FLAPPY_MIN_PLAYERS_FOR_RANK && rank <= 10;
 
     return { type: 'flappyScore', score, rank: rankIncluded ? rank : null };
+  }
+
+  // reputation / suspicion — KULLANICI İSTEĞİ: "saygınlık seviyemiz, şüphe
+  // seviyemiz ... paylaşabilelim". İstemciden hiçbir değer ALINMIYOR,
+  // doğrudan users/{uid} üzerinden okunuyor (diğer tüm istatistik
+  // paylaşımlarıyla AYNI desen — bkz. 'debt').
+  if (type === 'reputation') {
+    const userSnap = await db.collection('users').doc(uid).get();
+    return { type: 'reputation', value: userSnap.data()?.reputation || 0 };
+  }
+  if (type === 'suspicion') {
+    const userSnap = await db.collection('users').doc(uid).get();
+    return { type: 'suspicion', value: userSnap.data()?.suspicion || 0 };
+  }
+
+  // gold — KULLANICI İSTEĞİ: "elimizdeki para ... paylaşabilelim" (cepteki
+  // altın — takım/kasa değil, kişisel).
+  if (type === 'gold') {
+    const userSnap = await db.collection('users').doc(uid).get();
+    return { type: 'gold', amount: userSnap.data()?.gold || 0 };
+  }
+
+  // investmentPortfolio — KULLANICI İSTEĞİ: "yatırımlardaki paramız ...
+  // paylaşabilelim". Mevcut 'investment' türünden FARKLI — o TEK bir
+  // varlığın fiyat grafiğini paylaşıyordu, bu ise elmas+hisse+kripto
+  // TOPLAM güncel değerini (+ toplam kâr/zarar) paylaşır. Güncel fiyatlar
+  // investments/current'tan, elde tutulan miktar/anapara ise kullanıcının
+  // kendi alanlarından (bkz. INVESTMENT_HOLDINGS_FIELD/INVESTMENT_COST_
+  // BASIS_FIELD) okunur — istemciden hiçbir tutar alınmaz.
+  if (type === 'investmentPortfolio') {
+    const [userSnap, pricesSnap] = await Promise.all([
+      db.collection('users').doc(uid).get(),
+      db.collection('investments').doc('current').get(),
+    ]);
+    const user = userSnap.data() || {};
+    const prices = pricesSnap.exists ? pricesSnap.data() : {};
+    const assets = ['diamond', 'stock', 'crypto'];
+    let totalValue = 0;
+    let totalCostBasis = 0;
+    const breakdown = assets.map((asset) => {
+      const holdings = user[INVESTMENT_HOLDINGS_FIELD[asset]] || 0;
+      const costBasis = user[INVESTMENT_COST_BASIS_FIELD[asset]] || 0;
+      const price = prices[INVESTMENT_PRICE_FIELD[asset]] || 0;
+      const value = holdings * price;
+      totalValue += value;
+      totalCostBasis += costBasis;
+      return { asset, assetLabel: SIXTAGRAM_ASSET_LABELS[asset], holdings, value };
+    });
+    if (totalValue <= 0) {
+      throw new HttpsError('failed-precondition', 'Henüz hiç yatırımın yok.');
+    }
+    return {
+      type: 'investmentPortfolio',
+      totalValue: Math.round(totalValue),
+      totalCostBasis: Math.round(totalCostBasis),
+      gain: Math.round(totalValue - totalCostBasis),
+      breakdown,
+    };
+  }
+
+  // heist — KULLANICI İSTEĞİ: "yaptığımız soygunları ... paylaşabilelim".
+  // Kalıcı sayaç (heistSuccessCount/heistTotalEarnings) attemptHeist (solo)
+  // ve executeHeistPlan (ekip) içindeki başarı dallarında tutuluyor — bkz.
+  // oralardaki notlar. İstemciden hiçbir sayı alınmaz.
+  if (type === 'heist') {
+    const userSnap = await db.collection('users').doc(uid).get();
+    const count = userSnap.data()?.heistSuccessCount || 0;
+    if (count <= 0) {
+      throw new HttpsError('failed-precondition', 'Henüz başarıyla tamamladığın bir soygun yok.');
+    }
+    return {
+      type: 'heist',
+      count,
+      totalEarnings: userSnap.data()?.heistTotalEarnings || 0,
+    };
+  }
+
+  // materials — KULLANICI İSTEĞİ: "elimizdeki malzemeleri ... paylaşabilelim".
+  // users/{uid}/inventory alt koleksiyonundaki TÜM malzemeler (miktarı 0'dan
+  // büyük olanlar) — bkz. SIXTAGRAM_MATERIAL_LABELS.
+  if (type === 'materials') {
+    const invSnap = await db.collection('users').doc(uid).collection('inventory').get();
+    const items = invSnap.docs
+      .map((d) => ({
+        materialType: d.id,
+        quantity: d.data().quantity || 0,
+        ...(SIXTAGRAM_MATERIAL_LABELS[d.id] || { label: d.id, emoji: '📦' }),
+      }))
+      .filter((item) => item.quantity > 0)
+      .sort((a, b) => b.quantity - a.quantity);
+    if (items.length === 0) {
+      throw new HttpsError('failed-precondition', 'Elinde paylaşacak hiç malzeme yok.');
+    }
+    return { type: 'materials', items };
   }
 
   // parkPhoto — Park'ta çekilen "grup fotoğrafı". Bu oyunda hiç dosya

@@ -332,6 +332,87 @@ export default function PostAttachment({ attachment }) {
     );
   }
 
+  if (attachment.type === 'reputation') {
+    return (
+      <div className="post-att post-att-card post-att-fine">
+        <p className="post-att-card-title">🌟 Saygınlığım</p>
+        <p className="post-att-fine-amount">{attachment.value}</p>
+      </div>
+    );
+  }
+
+  if (attachment.type === 'suspicion') {
+    return (
+      <div className="post-att post-att-card post-att-fine">
+        <p className="post-att-card-title">🚔 Şüphe Seviyem</p>
+        <p className="post-att-fine-amount">%{attachment.value}</p>
+      </div>
+    );
+  }
+
+  if (attachment.type === 'gold') {
+    return (
+      <div className="post-att post-att-card post-att-lottery-win">
+        <p className="post-att-card-title">💰 Param</p>
+        <p className="post-att-fine-amount">{attachment.amount.toLocaleString('tr-TR')} altın</p>
+      </div>
+    );
+  }
+
+  if (attachment.type === 'investmentPortfolio') {
+    const gainPositive = attachment.gain >= 0;
+    return (
+      <div className="post-att post-att-card">
+        <p className="post-att-card-title">💹 Yatırım Portföyüm</p>
+        <p className="post-att-fine-amount">{attachment.totalValue.toLocaleString('tr-TR')} altın</p>
+        <p className={`post-att-card-line ${gainPositive ? 'post-att-status-won' : 'post-att-status-lost'}`}>
+          {gainPositive ? '📈 +' : '📉 '}
+          {attachment.gain.toLocaleString('tr-TR')} altın {gainPositive ? 'kâr' : 'zarar'}
+        </p>
+        <div className="post-att-predictions">
+          {(attachment.breakdown || [])
+            .filter((b) => b.holdings > 0)
+            .map((b, i) => (
+              <div key={i} className="post-att-prediction-row">
+                <span className="post-att-prediction-teams">{b.assetLabel}</span>
+                <span className="post-att-prediction-pick">{Math.round(b.value).toLocaleString('tr-TR')} altın</span>
+              </div>
+            ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (attachment.type === 'heist') {
+    return (
+      <div className="post-att post-att-card post-att-lottery-win">
+        <p className="post-att-card-title">🥷 Soygunlarım</p>
+        <p className="post-att-fine-amount">{attachment.count} başarılı soygun</p>
+        <p className="post-att-card-line">
+          Toplam {attachment.totalEarnings.toLocaleString('tr-TR')} altın kazandım
+        </p>
+      </div>
+    );
+  }
+
+  if (attachment.type === 'materials') {
+    return (
+      <div className="post-att post-att-card">
+        <p className="post-att-card-title">📦 Malzemelerim</p>
+        <div className="post-att-predictions">
+          {(attachment.items || []).map((item, i) => (
+            <div key={i} className="post-att-prediction-row">
+              <span className="post-att-prediction-teams">
+                {item.emoji} {item.label}
+              </span>
+              <span className="post-att-prediction-pick">{item.quantity.toLocaleString('tr-TR')} adet</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   if (attachment.type === 'parkPhoto') {
     // entities[0] her zaman fotoğrafı çeken kişidir (bkz.
     // functions/index.js) — dx/dy ONA göre gerçek göreli ofset, arka

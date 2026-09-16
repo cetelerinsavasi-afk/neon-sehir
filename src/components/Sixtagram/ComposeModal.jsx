@@ -16,6 +16,7 @@ import { useInvestmentPrices } from '../../hooks/useInvestmentPrices';
 import { useMessages } from '../../hooks/useMessages';
 import { useLottery } from '../../hooks/useLottery';
 import { useFlappyLeaderboard, useMyFlappyBest } from '../../hooks/useFlappyBird';
+import { useInventory } from '../../hooks/useInventory';
 import { useAuth } from '../../contexts/AuthContext';
 import { vehicleImage, vehicleDisplayName } from '../VehicleCard/VehicleCard';
 import { createSixtagramPost } from '../../services/gameActions';
@@ -29,6 +30,16 @@ const ASSET_OPTIONS = [
   { id: 'stock', label: 'Hisse Senedi', field: 'stockPrice' },
   { id: 'crypto', label: 'Kripto', field: 'cryptoPrice' },
 ];
+
+// SIXTAGRAM_MATERIAL_LABELS — functions/index.js'teki AYNI sabitin
+// istemci tarafı ikizi (SADECE önizleme için — gerçek veri/etiketler
+// yine sunucudan gelir, bkz. buildSixtagramAttachment).
+const SIXTAGRAM_MATERIAL_LABELS = {
+  tamirMalzemesi: { label: 'Tamir Malzemesi', emoji: '🔧' },
+  silahUpgrade: { label: 'Silah Geliştirme Malzemesi', emoji: '🔫' },
+  arabaGelistirme: { label: 'Araba Geliştirme Malzemesi', emoji: '🚗' },
+  yasakliMadde: { label: 'Yasaklı Madde', emoji: '💊' },
+};
 
 function istanbulDateKeyOffset(offsetDays) {
   return new Intl.DateTimeFormat('en-CA', {
@@ -73,6 +84,7 @@ export default function ComposeModal({ onClose, onPosted }) {
   const { messages } = useMessages();
   const { yesterday: lotteryYesterday } = useLottery();
   const { best: flappyBest } = useMyFlappyBest();
+  const { inventory } = useInventory();
   // flappyTop10 — SADECE önizleme için: ilk 10'un TAMAMI dolu geldiyse
   // (yani ortada en az 10 farklı oyuncu var demektir) ve kendi uid'im bu
   // listedeyse, sırayı orada bulunduğum index+1 olarak tahmin ediyoruz.
@@ -172,6 +184,15 @@ export default function ComposeModal({ onClose, onPosted }) {
   // flappyScoreAvailable (madde 10) — hiç Flappy Kuş oynamadıysan (rekor
   // 0) paylaşacak bir şey yok.
   const flappyScoreAvailable = flappyBest > 0;
+  // KULLANICI İSTEĞİ: "saygınlık seviyemiz, şüphe seviyemiz, elimizdeki
+  // para, yatırımlardaki paramız, yaptığımız soygunlar, elimizdeki
+  // malzemeler ... paylaşabilelim" — yeni paylaşılabilir istatistik
+  // türleri. Saygınlık/şüphe/para her zaman (0 olsa bile) paylaşılabilir;
+  // diğerleri (yatırım/soygun/malzeme) paylaşacak bir şey yoksa gizlenir.
+  const investmentPortfolioAvailable =
+    (player?.diamondHoldings || 0) > 0 || (player?.stockHoldings || 0) > 0 || (player?.cryptoHoldings || 0) > 0;
+  const heistAvailable = (player?.heistSuccessCount || 0) > 0;
+  const materialsAvailable = Object.values(inventory || {}).some((qty) => qty > 0);
 
   const ATTACHMENT_TYPES = [
     { id: 'avatar', label: 'Avatarım', emoji: '🧑', available: avatarAvailable },
@@ -179,6 +200,12 @@ export default function ComposeModal({ onClose, onPosted }) {
     { id: 'iddaa', label: 'İddaa Kuponum', emoji: '🎟️', available: iddaaAvailable },
     { id: 'lastMatches', label: 'Son Oynanan Maçlar', emoji: '⚽', available: lastMatchesAvailable },
     { id: 'upcomingMatches', label: 'Sıradaki Maçlar', emoji: '🔜', available: leagues.length > 0 },
+    { id: 'reputation', label: 'Saygınlığım', emoji: '🌟', available: true },
+    { id: 'suspicion', label: 'Şüphe Seviyem', emoji: '🚔', available: true },
+    { id: 'gold', label: 'Param', emoji: '💰', available: true },
+    { id: 'investmentPortfolio', label: 'Yatırım Portföyüm', emoji: '💹', available: investmentPortfolioAvailable },
+    { id: 'heist', label: 'Soygunlarım', emoji: '🥷', available: heistAvailable },
+    { id: 'materials', label: 'Malzemelerim', emoji: '📦', available: materialsAvailable },
     { id: 'investment', label: 'Yatırım Grafiği', emoji: '📈', available: true },
     { id: 'fine', label: 'Cezam', emoji: '🚨', available: fineAvailable },
     { id: 'debt', label: 'Toplam Borcum', emoji: '💸', available: debtAvailable },
@@ -239,6 +266,64 @@ export default function ComposeModal({ onClose, onPosted }) {
         { type: 'flappyScore' },
         { type: 'flappyScore', score: flappyBest, rank: rankPreview }
       );
+      return;
+    }
+    if (typeId === 'reputation') {
+      setAttachment({ type: 'reputation' }, { type: 'reputation', value: player?.reputation || 0 });
+      return;
+    }
+    if (typeId === 'suspicion') {
+      setAttachment({ type: 'suspicion' }, { type: 'suspicion', value: player?.suspicion || 0 });
+      return;
+    }
+    if (typeId === 'gold') {
+      setAttachment({ type: 'gold' }, { type: 'gold', amount: player?.gold || 0 });
+      return;
+    }
+    if (typeId === 'investmentPortfolio') {
+      // Önizleme sunucudaki (buildSixtagramAttachment) AYNI hesabın
+      // istemci tarafı ikizi — gerçek/nihai değer yine sunucuda okunur.
+      let totalValue = 0;
+      let totalCostBasis = 0;
+      const breakdown = ASSET_OPTIONS.map(({ id: asset, label: assetLabel }) => {
+        const holdingsField = { diamond: 'diamondHoldings', stock: 'stockHoldings', crypto: 'cryptoHoldings' }[asset];
+        const costBasisField = { diamond: 'diamondCostBasis', stock: 'stockCostBasis', crypto: 'cryptoCostBasis' }[asset];
+        const priceField = { diamond: 'diamondPrice', stock: 'stockPrice', crypto: 'cryptoPrice' }[asset];
+        const holdings = player?.[holdingsField] || 0;
+        const value = holdings * (investmentPrices?.[priceField] || 0);
+        totalValue += value;
+        totalCostBasis += player?.[costBasisField] || 0;
+        return { asset, assetLabel, holdings, value };
+      });
+      setAttachment(
+        { type: 'investmentPortfolio' },
+        {
+          type: 'investmentPortfolio',
+          totalValue: Math.round(totalValue),
+          totalCostBasis: Math.round(totalCostBasis),
+          gain: Math.round(totalValue - totalCostBasis),
+          breakdown,
+        }
+      );
+      return;
+    }
+    if (typeId === 'heist') {
+      setAttachment(
+        { type: 'heist' },
+        { type: 'heist', count: player?.heistSuccessCount || 0, totalEarnings: player?.heistTotalEarnings || 0 }
+      );
+      return;
+    }
+    if (typeId === 'materials') {
+      const items = Object.entries(inventory || {})
+        .filter(([, qty]) => qty > 0)
+        .map(([materialType, quantity]) => ({
+          materialType,
+          quantity,
+          ...(SIXTAGRAM_MATERIAL_LABELS[materialType] || { label: materialType, emoji: '📦' }),
+        }))
+        .sort((a, b) => b.quantity - a.quantity);
+      setAttachment({ type: 'materials' }, { type: 'materials', items });
     }
   };
 
