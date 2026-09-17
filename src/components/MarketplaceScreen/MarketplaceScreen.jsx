@@ -820,10 +820,13 @@ export default function MarketplaceScreen() {
             </button>
           </div>
 
-          {advantageousListings.length > 0 && (
+          {/* KULLANICI İSTEĞİ: reklamı verilen ürünler üstte, avantajlı
+              ürünler altta gösterilsin — eski (avantajlı üstte) sıralamanın
+              TAM TERSİ. */}
+          {advertisedListings.length > 0 && (
             <div className="market-home-panel">
-              <p className="market-section-title">🔥 Avantajlı Ürünler</p>
-              {advantageousListings.map((l) => (
+              <p className="market-section-title">📢 Reklam Verilen Ürünler</p>
+              {advertisedListings.map((l) => (
                 <ListingCard
                   key={l.id}
                   listing={l}
@@ -836,10 +839,10 @@ export default function MarketplaceScreen() {
             </div>
           )}
 
-          {advertisedListings.length > 0 && (
+          {advantageousListings.length > 0 && (
             <div className="market-home-panel">
-              <p className="market-section-title">📢 Reklam Verilen Ürünler</p>
-              {advertisedListings.map((l) => (
+              <p className="market-section-title">🔥 Avantajlı Ürünler</p>
+              {advantageousListings.map((l) => (
                 <ListingCard
                   key={l.id}
                   listing={l}

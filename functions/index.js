@@ -2072,7 +2072,12 @@ export const dailyReset = onSchedule(
         (m) => workerMachineTypes.includes(m.data().type) && m.data().lastProducedDateKey !== prevDateKey
       );
 
-      const producedByOwner = new Map(); // ownerId -> [{type, qty}]
+      // producedByOwner — KULLANICI İSTEĞİ: eskiden her makine ayrı ayrı
+      // listeleniyordu (aynı türden birden fazla makine varsa aynı satır
+      // birkaç kez tekrar ediyor, bildirim çok uzuyordu). Artık ownerId ->
+      // (makine türü -> TOPLAM miktar) şeklinde tutuluyor, yani aynı türden
+      // kaç makine olursa olsun o tür tek satırda ve TEK SEFER geçiyor.
+      const producedByOwner = new Map(); // ownerId -> Map(type -> totalQty)
       const settleJobs = fallbackDocs.map((m) => {
         const machine = m.data();
         const factoryId = m.ref.parent.parent.id;
@@ -2099,8 +2104,9 @@ export const dailyReset = onSchedule(
 
         const jobs = [m.ref.update({ lastProducedDateKey: prevDateKey, lastProducedQty: qty })];
         if (qty > 0) {
-          if (!producedByOwner.has(factoryId)) producedByOwner.set(factoryId, []);
-          producedByOwner.get(factoryId).push({ type: machine.type, qty });
+          if (!producedByOwner.has(factoryId)) producedByOwner.set(factoryId, new Map());
+          const byType = producedByOwner.get(factoryId);
+          byType.set(machine.type, (byType.get(machine.type) || 0) + qty);
           jobs.push(
             db
               .collection('users')
@@ -2114,16 +2120,19 @@ export const dailyReset = onSchedule(
       });
       await Promise.all(settleJobs);
 
+      // KULLANICI İSTEĞİ: bildirim artık makine başına değil, TÜR başına
+      // (toplam miktarla) tek satır — "verimsiz (1/10)" gibi uzun açıklama
+      // metni kaldırıldı, sadece kısa ve anlaşılır bir özet kalsın.
       const ownerSmsJobs = [];
-      producedByOwner.forEach((items, ownerId) => {
-        const lines = items
-          .map((it) => `${MACHINE_TYPES[it.type].label}: ${it.qty.toLocaleString('tr-TR')} adet`)
+      producedByOwner.forEach((byType, ownerId) => {
+        const lines = Array.from(byType.entries())
+          .map(([type, qty]) => `${MACHINE_TYPES[type].label}: ${qty.toLocaleString('tr-TR')} adet`)
           .join(', ');
         ownerSmsJobs.push(
           sendFactoryNotification(
             null,
             ownerId,
-            `İşçin gelmediği için bazı makinelerini kendin çalıştırmış oldun (normalin 1/10'u verimle): ${lines}. Envanterine eklendi.`,
+            `İşçisiz çalışan makinelerin: ${lines}. Envanterine eklendi.`,
             'factory_owner_production'
           )
         );
@@ -15306,6 +15315,17 @@ export const instantSellFutbolPlayer = onCall(async (request) => {
   const relistPrice = Math.round(instantPrice * 1.1);
 
   const batch = db.batch();
+  // BUG DÜZELTMESİ (KULLANICI BULGUSU): satılan oyuncu antrenman kutusunda
+  // duruyorsa, "trainingPlayerIds" dizisinden çıkarılmıyordu — bu yüzden
+  // oyuncu artık takımda olmadığı halde (panel boş görünüyordu) o mevki
+  // kutusu sunucu tarafında hâlâ "dolu" sayılıyor, yeni bir oyuncu aynı
+  // mevkiye antrenmana sokulamıyordu (bkz. addFutbolTraining'teki
+  // samePositionTaken kontrolü — id'ye göre sorguluyor, teamId'ye bakmıyor).
+  // Anında satışta da aynı temizlik gerekiyor.
+  const currentTrainingIds = team.trainingPlayerIds || [];
+  if (currentTrainingIds.includes(playerId)) {
+    batch.update(teamRef, { trainingPlayerIds: currentTrainingIds.filter((id) => id !== playerId) });
+  }
   // BUG DÜZELTMESİ: gelir artık kontrol moduna göre yönlendiriliyor —
   // OWNER_ACTIVE'de eskisi gibi kişisel altına, MANAGED'da takım kasasına
   // (tavansız — bkz. Bölüm 5/10, diğer tüm gelir noktalarıyla aynı kural).
@@ -15466,6 +15486,8 @@ export const buyFutbolPlayer = onCall(async (request) => {
     );
   }
 
+  let oldTeamRef = null;
+  let oldTeamTrainingIds = [];
   if (player.saleSource === 'manual' && player.teamId) {
     const counts = await getFutbolTeamPositionCounts(player.teamId, playerId);
     if (!meetsFutbolMinSquadForPosition(counts, player.position)) {
@@ -15478,9 +15500,23 @@ export const buyFutbolPlayer = onCall(async (request) => {
       });
       throw new HttpsError('failed-precondition', 'Bu oyuncu artık satılık değil.');
     }
+    // BUG DÜZELTMESİ (KULLANICI BULGUSU): manuel ilana konulan oyuncu
+    // satılana kadar teamId'si eski takımında kalıyor — antrenmandaysa da
+    // öyle. Satış gerçekleşince eski takımın trainingPlayerIds'inden de
+    // çıkarılmazsa, o mevki kutusu (oyuncu artık takımda olmadığı halde)
+    // sunucu tarafında dolu sayılmaya devam ediyordu (instantSellFutbolPlayer
+    // ile AYNI hata, AYNI düzeltme).
+    oldTeamRef = db.collection('futbolTeams').doc(player.teamId);
+    const oldTeamSnap = await oldTeamRef.get();
+    if (oldTeamSnap.exists) {
+      oldTeamTrainingIds = oldTeamSnap.data().trainingPlayerIds || [];
+    }
   }
 
   const batch = db.batch();
+  if (oldTeamRef && oldTeamTrainingIds.includes(playerId)) {
+    batch.update(oldTeamRef, { trainingPlayerIds: oldTeamTrainingIds.filter((id) => id !== playerId) });
+  }
   if (spendPlan.fromSupport > 0) {
     batch.update(teamRef, { transferSupport: admin.firestore.FieldValue.increment(-spendPlan.fromSupport) });
   }
