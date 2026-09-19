@@ -4527,7 +4527,29 @@ function clampSuspicion(v) {
 }
 
 // ---------------------------------------------------------------------------
-// prayAtMosque — Camii: günde 1 kez, ücretsiz, şüphe -5.
+// Kademeli saygınlık kazanımı — ibadet ve seyyar satıcı alışverişi ortak
+// kullanır. Saygınlık yükseldikçe kazanmak zorlaşır:
+//   0–49  → +5
+//   50–79 → +3
+//   80+   → +1
+// Kazanım, eylem ANINDAKİ saygınlığa göre belirlenir; sonuç 0–100 aralığında
+// tutulur.
+// ---------------------------------------------------------------------------
+function reputationGainFor(currentReputation) {
+  const rep = currentReputation || 0;
+  if (rep >= 80) return 1;
+  if (rep >= 50) return 3;
+  return 5;
+}
+
+function nextReputationAfterGain(currentReputation) {
+  const rep = currentReputation || 0;
+  return clamp(Math.round(rep + reputationGainFor(rep)), 0, 100);
+}
+
+// ---------------------------------------------------------------------------
+// prayAtMosque — Camii: vakit başına 1 kez, ücretsiz, şüphe -5 VE saygınlık
+// artışı (kademeli: 0-49 → +5, 50-79 → +3, 80+ → +1 — bkz. reputationGainFor).
 // ---------------------------------------------------------------------------
 export const prayAtMosque = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -4543,11 +4565,12 @@ export const prayAtMosque = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Bu vakitte zaten ibadet ettin.');
     }
     const currentSuspicion = user?.suspicion || 0;
-    const updates = { suspicion: clampSuspicion(currentSuspicion - 5) };
-    // Kullanıcı revizesi: şüphe 0ken ibadet edince saygınlık +5 (önceden +10'du).
-    if (currentSuspicion === 0) {
-      updates.reputation = clamp(Math.round((user?.reputation || 0) + 5), 0, 100);
-    }
+    // Kullanıcı revizesi: ibadet artık şüphe kaç olursa olsun HEM şüpheyi -5
+    // düşürür HEM saygınlığı kademeli artırır (önceden sadece şüphe 0ken +5).
+    const updates = {
+      suspicion: clampSuspicion(currentSuspicion - 5),
+      reputation: nextReputationAfterGain(user?.reputation),
+    };
     tx.update(userRef, updates);
     tx.set(dailyRef, { prayedWindows: { [win]: true } }, { merge: true });
     // "X. Vakitteki Cemaat" listesi için — Camii ekranında avatar+isimle
@@ -4961,7 +4984,8 @@ export const claimPoliceSalary = onCall(async (request) => {
 // ---------------------------------------------------------------------------
 // buyFromVendor — Seyyar Satıcı: her satıcının KENDİ günlük hakkı var
 // (Kokoreçci, Simitçi, Dönerci, Köfteci birbirinden bağımsız), 500 altın,
-// şüphe -5, saygınlık +5 (kullanıcı revizesi — önceden +10'du).
+// şüphe -5, saygınlık artışı kademeli (0-49 → +5, 50-79 → +3, 80+ → +1 —
+// bkz. reputationGainFor).
 // ---------------------------------------------------------------------------
 const VENDOR_COST = 500;
 // Not: Tüm seyyar satıcılarda alışveriş artık aynı fiyat (500 altın),
@@ -5001,7 +5025,7 @@ export const buyFromVendor = onCall(async (request) => {
     tx.update(userRef, {
       gold: admin.firestore.FieldValue.increment(-vendorCostFor(vendorId)),
       suspicion: clampSuspicion((user.suspicion || 0) - 5),
-      reputation: clamp(Math.round((user.reputation || 0) + 5), 0, 100),
+      reputation: nextReputationAfterGain(user.reputation),
     });
     tx.set(dailyRef, { vendorPurchases: { [vendorId]: true } }, { merge: true });
   });

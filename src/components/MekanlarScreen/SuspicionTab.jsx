@@ -11,6 +11,14 @@ import './SuspicionTab.css';
 
 const BRIBE_COST = 3000;
 const VENDOR_COST = 500;
+// Kademeli saygınlık kazanımı — functions/index.js reputationGainFor ile
+// AYNI eşikler olmalı (0-49 → +5, 50-79 → +3, 80+ → +1). Sadece görüntü içindir;
+// asıl hesap sunucuda yapılır.
+function reputationGainFor(rep) {
+  if (rep >= 80) return 1;
+  if (rep >= 50) return 3;
+  return 5;
+}
 const VENDOR_IDS = ['seyyar_satici_1', 'seyyar_satici_2', 'seyyar_satici_3', 'seyyar_satici_4'];
 
 // SuspicionTab (Şüphe) — yeni istek: "şüphe düşürebileceğimiz mekanlar
@@ -61,6 +69,7 @@ export default function SuspicionTab() {
       actionLabel: 'İbadet Et',
       costLabel: 'Ücretsiz',
       suspicionDelta: 5,
+      reputationDelta: reputationGainFor(player?.reputation || 0),
       available: !actions.prayedWindows?.[win],
       unavailableNote: `Sıradaki vakit ${nextWindowHour ? `(${nextWindowHour})` : ''}`,
       msRemaining: msUntilNextPrayerWindow(win),
@@ -88,6 +97,7 @@ export default function SuspicionTab() {
         actionLabel: `Alışveriş Yap (${VENDOR_COST.toLocaleString('tr-TR')} altın)`,
         costLabel: `${VENDOR_COST.toLocaleString('tr-TR')} altın`,
         suspicionDelta: 5,
+        reputationDelta: reputationGainFor(player?.reputation || 0),
         available: !alreadyBought && !blockedByHeist,
         unavailableNote: blockedByHeist ? 'Bugün buradan haraç kestin' : 'Bugün zaten alışveriş yaptın',
         msRemaining: msUntilIstanbulMidnight(),
@@ -122,7 +132,7 @@ export default function SuspicionTab() {
                 <div className="suspicion-card-info">
                   <span className="suspicion-card-name">{item.name}</span>
                   <span className="suspicion-card-meta">
-                    Şüphe -{item.suspicionDelta} · {item.costLabel}
+                    Şüphe -{item.suspicionDelta}{item.reputationDelta ? ` · Saygınlık +${item.reputationDelta}` : ''} · {item.costLabel}
                   </span>
                 </div>
               </div>
