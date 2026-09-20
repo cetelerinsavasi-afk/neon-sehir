@@ -59,7 +59,7 @@ export function useOnboarding() {
   const { actions, loading: actionsLoading } = useDailyActions();
   const { vehicles } = useVehicles();
   const { factory, machines } = useMyFactory();
-  const { team } = useMyFutbolTeam();
+  const { team, role: futbolRole } = useMyFutbolTeam();
 
   // Kullanıcının işveren fabrikasındaki (kendi fabrikası olsun olmasın)
   // ATANDIĞI makinenin lastProducedDateKey'ini dinlemek için ayrı bir
@@ -116,7 +116,23 @@ export function useOnboarding() {
     // hatırlatıcı gösterilmiyor. lastMatchPlayedDateKey, sunucuda
     // applyFutbolMatchResult/applyFutbolCupMatchResult tarafından her
     // maç sonrası yazılıyor (bkz. functions/index.js).
-    if (team && team.lastMatchPlayedDateKey === todayKey && team.lineupUpdatedDateKey !== todayKey) {
+    //
+    // KULLANICI KONTROLÜ ("takım sahiplerine geliyor, menajerlere gelmiyor
+    // olabilir"): useMyFutbolTeam menajerin yönettiği takımı da (managedTeam)
+    // döndürdüğü ve maç/kadro tarihleri takım dokümanında tutulduğu için
+    // hatırlatıcı menajerlere de geliyordu. Ters yönde ise bir eksik vardı:
+    // takımın MENAJERİ varsa kadroyu sadece menajer düzenleyebiliyor (bkz.
+    // functions/index.js futbolTeamControllerUid) — başkana "Kadronu düzenle"
+    // demek işlem yapamayacağı bir uyarı olurdu. Artık hatırlatıcı yalnızca
+    // kadroyu gerçekten düzenleyebilen kişiye (menajer ya da menajersiz
+    // takımın başkanı) gösteriliyor.
+    const canEditLineup = futbolRole === 'manager' || (futbolRole === 'owner' && !team?.managerUid);
+    if (
+      team &&
+      canEditLineup &&
+      team.lastMatchPlayedDateKey === todayKey &&
+      team.lineupUpdatedDateKey !== todayKey
+    ) {
       list.push({ id: 'lineup', emoji: '⚽', text: 'Kadronu düzenle' });
     }
 
@@ -148,7 +164,7 @@ export function useOnboarding() {
     }
 
     return list;
-  }, [player, actions, vehicles, team, employment, employmentMachine, factory, machines, todayKey, win]);
+  }, [player, actions, vehicles, team, futbolRole, employment, employmentMachine, factory, machines, todayKey, win]);
 
   return {
     loading: playerLoading || actionsLoading,

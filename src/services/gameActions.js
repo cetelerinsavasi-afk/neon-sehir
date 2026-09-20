@@ -530,7 +530,7 @@ export const cancelSponsorship = (teamId) =>
   httpsCallable(functions, 'cancelSponsorship')({ teamId });
 
 // withdrawSponsorshipCancellation — KULLANICI İSTEĞİ: yanlışlıkla ya da
-// vazgeçerek feshedilen bir sponsorluğu 00:00 olmadan geri al.
+// vazgeçerek feshedilen bir sponsorluğu 19:00 (sponsorluk saati) gelmeden geri al.
 export const withdrawSponsorshipCancellation = (teamId) =>
   httpsCallable(functions, 'withdrawSponsorshipCancellation')({ teamId });
 

@@ -11,6 +11,7 @@ import {
 } from '../../services/gameActions';
 import FactoryBadge from '../FactoryScreen/FactoryBadge';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
+import { nextSponsorshipSettleLabel } from '../../lib/istanbulTime';
 import './FutbolTakimim.css';
 
 // SPONSOR_QUICK_AMOUNTS — bkz. FactorySponsorModal.jsx'teki AYNI liste:
@@ -39,6 +40,11 @@ export default function FutbolSponsor({ team, role }) {
   // içindeki AYNI buton-tabanlı tutar seçici deseni).
   const [raiseRequestOpen, setRaiseRequestOpen] = useState(false);
   const [raiseRequestDraft, setRaiseRequestDraft] = useState(0);
+
+  // settle — "bugün 19:00" / "yarın 19:00": sponsorluk işlemleri (yeni anlaşma,
+  // fesih, ödeme) 00:00'da değil her gün 19:00'da işleniyor (bkz.
+  // istanbulTime.js nextSponsorshipSettleLabel).
+  const settle = nextSponsorshipSettleLabel();
 
   const load = async () => {
     setError('');
@@ -90,7 +96,7 @@ export default function FutbolSponsor({ team, role }) {
   };
 
   // handleWithdrawCancel — bkz. FactorySponsorModal.jsx içindeki AYNI
-  // düzeltme: yanlışlıkla/vazgeçilen bir feshi 00:00 olmadan geri alma.
+  // düzeltme: yanlışlıkla/vazgeçilen bir feshi sponsorluk saati (19:00) gelmeden geri alma.
   const handleWithdrawCancel = () => {
     runAction('withdraw-cancel', () => withdrawSponsorshipCancellation(team.id));
   };
@@ -155,14 +161,14 @@ export default function FutbolSponsor({ team, role }) {
             {teamInfo.pendingSponsorFactoryOwnerUid && teamInfo.pendingSponsorFactoryOwnerUid !== mySponsor.ownerId && (
               <p className="futbol-buy-meta futbol-sponsor-warning">
                 ⚠️ {teamInfo.pendingSponsorFactoryName || 'Başka bir fabrika'} daha yüksek teklif verdi (
-                {(teamInfo.pendingSponsorDailyAmount || 0).toLocaleString('tr-TR')} altın/gün) — 00:00'da sponsor
+                {(teamInfo.pendingSponsorDailyAmount || 0).toLocaleString('tr-TR')} altın/gün) — {settle}'da sponsor
                 değişecek.
               </p>
             )}
 
             {teamInfo.sponsorCancelPending && (
               <p className="futbol-buy-meta futbol-sponsor-warning">
-                ⚠️ Bu sponsorluğun feshi bekliyor — bugün 00:00'da sona erecek.
+                ⚠️ Bu sponsorluğun feshi bekliyor — {settle}'da sona erecek.
               </p>
             )}
 
@@ -175,7 +181,7 @@ export default function FutbolSponsor({ team, role }) {
               raiseRequestOpen ? (
                 <div className="futbol-sponsor-offer-box">
                   <QuantityStepper
-                    value={raiseRequestDraft || (teamInfo.sponsorDailyAmount || 0) + 10}
+                    value={raiseRequestDraft || (teamInfo.sponsorDailyAmount || 0) + 1}
                     onChange={setRaiseRequestDraft}
                     max={mySponsor.offerCap}
                     step={1}
@@ -206,7 +212,7 @@ export default function FutbolSponsor({ team, role }) {
                   className="futbol-admin-reset futbol-sponsor-note-btn"
                   onClick={() => {
                     setRaiseRequestOpen(true);
-                    setRaiseRequestDraft((teamInfo.sponsorDailyAmount || 0) + 10);
+                    setRaiseRequestDraft((teamInfo.sponsorDailyAmount || 0) + 1);
                   }}
                 >
                   📈 Ücret Artışı İste
@@ -296,7 +302,7 @@ export default function FutbolSponsor({ team, role }) {
 
                 {pendingIsThis ? (
                   <p className="futbol-buy-meta futbol-sponsor-info">
-                    ✅ Anlaşma sağlandı — yarın 00:00'da sponsorumuz olacak.
+                    ✅ Anlaşma sağlandı — {settle}'da sponsorumuz olacak.
                   </p>
                 ) : myOffer ? (
                   <div className="futbol-sponsor-incoming-offer">

@@ -16547,6 +16547,20 @@ export const listFutbolClubs = onCall(async (request) => {
 const FUTBOL_SPONSORSHIP_OFFER_TTL_MS = 24 * 60 * 60 * 1000;
 const FUTBOL_SPONSORSHIP_NOTE_TTL_MS = 24 * 60 * 60 * 1000;
 
+// sponsorshipNextSettleLabel — KULLANICI DÜZELTMESİ: sponsorluk işlemleri
+// (yeni anlaşmanın devreye girmesi, fesih, günlük ödeme) artık 00:00'da
+// DEĞİL, her gün 19:00'da (İstanbul) resolveFutbolMatchdayReveal →
+// runFutbolDailyClock → processFutbolSponsorshipsNightly içinde
+// gerçekleşiyor. Kullanıcıya giden metinlerde "yarın 00:00" gibi sabit
+// (ve yanlış) bir zaman yazmak yerine, EYLEM ANINA GÖRE doğru olanı
+// söylüyoruz: saat 19:00'dan önceyse "bugün 19:00", sonrasıysa "yarın 19:00"
+// (istemcideki src/lib/istanbulTime.js nextSponsorshipSettleLabel ile AYNI
+// mantık). `% 24`: bazı Intl uygulamaları gece yarısını "24" döndürebiliyor.
+const FUTBOL_SPONSORSHIP_SETTLE_HOUR = 19;
+function sponsorshipNextSettleLabel() {
+  return istanbulHour() % 24 < FUTBOL_SPONSORSHIP_SETTLE_HOUR ? 'bugün 19:00' : 'yarın 19:00';
+}
+
 // sponsorshipOfferCap — bir teklifin (hangi yönden gelirse gelsin) üst
 // sınırı: SPONSOR OLAN fabrikanın son 10 günlük gelir ortalamasının
 // (dailyIncomeAvg10 — bkz. dailyReset Part A) %25'i. Alt limit yok (0
@@ -16587,6 +16601,50 @@ function isFeeRaiseRequestFresh(reqData) {
   return ms > 0 && Date.now() - ms < FUTBOL_SPONSORSHIP_OFFER_TTL_MS;
 }
 
+// isFeeRaiseRequestUseful — KULLANICI DÜZELTMESİ: "takım bana ücret
+// yükseltme teklifi gönderdi ama bu sırada farklı bi yerle anlaştığında
+// teklif hala duruyor ama onaylayamıyorum ... teklifler direkt iptal olsun,
+// işe yarayan varsa kalabilir". Bir ücret artırma talebi, sponsor onu
+// KABUL EDEBİLECEĞİ sürece "işe yarar" sayılır (applySponsorshipFeeRaise
+// aynı koşullarla çalışır):
+//   • takımın 24 saatlik süresi dolmamış bir talebi olmalı (isFeeRaiseRequestFresh),
+//   • aktif sponsorluk feshe girmemiş olmalı (fesih bekleyen sponsora ücret
+//     artırma anlamsız),
+//   • takım BAŞKA bir fabrikayla anlaştıysa (rakip pendingSponsor) talep
+//     edilen tutar o rakibin teklifini GEÇMELİ — geçiyorsa kabul sponsorluğu
+//     geri kapar, "işe yarar", kalır; geçmiyorsa kabul zaten hata verirdi,
+//     talep geçersiz sayılır,
+//   • (fabrika tarafı için) talep edilen tutar fabrikanın güncel teklif
+//     limitini (`cap`, verilirse) aşmamalı.
+// Rakip = team.pendingSponsor'ın fabrikası, AKTİF sponsordan (talebin
+// muhatabı) farklıysa.
+function isFeeRaiseRequestUseful(team, cap) {
+  const req = team?.sponsorFeeRaiseRequest;
+  if (!req || !isFeeRaiseRequestFresh(req)) return false;
+  if (!team.sponsorFactoryOwnerUid) return false;
+  if (team.sponsorCancelPending === true) return false;
+  const requested = Number(req.requestedAmount) || 0;
+  if (requested <= (team.sponsorDailyAmount || 0)) return false;
+  const rival =
+    team.pendingSponsor && team.pendingSponsor.factoryOwnerUid !== team.sponsorFactoryOwnerUid
+      ? team.pendingSponsor
+      : null;
+  if (rival && requested <= (rival.dailyAmount || 0)) return false;
+  if (cap !== undefined && requested > cap) return false;
+  return true;
+}
+
+// sponsorshipRaiseRequestClearPatch — yeni bir pendingSponsor
+// (rakip/değişen anlaşma) yazılırken, bekleyen ücret artırma talebi artık
+// işe yaramıyorsa aynı update'e eklenecek alan(lar). Talep hâlâ işe
+// yarıyorsa boş obje döner (talep kalır).
+function sponsorshipRaiseRequestClearPatch(team, newPending) {
+  if (!team?.sponsorFeeRaiseRequest) return {};
+  // sponsorCancelPending: false — pendingSponsor yazılırken fesih de sıfırlanıyor.
+  const probe = { ...team, pendingSponsor: newPending, sponsorCancelPending: false };
+  return isFeeRaiseRequestUseful(probe) ? {} : { sponsorFeeRaiseRequest: null };
+}
+
 // notifyOutbidFactoryOwner — KULLANICI İSTEĞİ: "sponsor değişecekse
 // değiştiğinde ne kadar ödeme yapılacağını bilelim". Bir takımın "bir
 // sonraki 00:00'da sponsor olacak kişi" (pendingSponsor varsa onun sahibi,
@@ -16599,7 +16657,7 @@ async function notifyOutbidFactoryOwner(team, newFrontRunnerUid, newAmount, team
   await sendFactoryNotification(
     null,
     previousFrontRunnerUid,
-    `⚠️ ${teamName} sponsorluğuna senden daha yüksek bir teklif geldi (günlük ${newAmount.toLocaleString('tr-TR')} altın). Bu gece 00:00'da sponsorluk el değiştirecek — geri kapmak istersen bugün içinde Fabrikalar > Sponsor'dan daha yüksek bir teklif/ücret artışı yapabilirsin.`,
+    `⚠️ ${teamName} sponsorluğuna senden daha yüksek bir teklif geldi (günlük ${newAmount.toLocaleString('tr-TR')} altın). Sponsorluk ${sponsorshipNextSettleLabel()}'da el değiştirecek — geri kapmak istersen o zamana kadar Fabrikalar > Sponsor'dan daha yüksek bir teklif/ücret artışı yapabilirsin.`,
     'sponsorship_outbid'
   );
 }
@@ -16686,10 +16744,14 @@ export const sendFactorySponsorshipOffer = onCall(async (request) => {
     if (cleanAmount > currentBest) {
       await notifyOutbidFactoryOwner(team, uid, cleanAmount, team.name || 'Takım');
       await offerRef.set({ ...baseOffer, status: 'accepted' });
+      const newPendingSponsor = { factoryOwnerUid: uid, factoryName, dailyAmount: cleanAmount, offerId: offerRef.id };
       await teamSnap.ref.update({
-        pendingSponsor: { factoryOwnerUid: uid, factoryName, dailyAmount: cleanAmount, offerId: offerRef.id },
+        pendingSponsor: newPendingSponsor,
         sponsorCancelPending: false,
         sponsorCancelInitiatedBy: null,
+        // Takım başka bir fabrikayla anlaştı — eski sponsora gönderilmiş,
+        // artık işe yaramayan ücret artırma talebi otomatik iptal edilir.
+        ...sponsorshipRaiseRequestClearPatch(team, newPendingSponsor),
       });
       return { ok: true, accepted: true, autoBot: true };
     }
@@ -16835,15 +16897,19 @@ export const respondSponsorshipOffer = onCall(async (request) => {
   const teamForNotify = teamForNotifySnap.exists ? teamForNotifySnap.data() : {};
   await notifyOutbidFactoryOwner(teamForNotify, offer.factoryOwnerUid, offer.dailyAmount, offer.teamName || 'Takım');
   await offerRef.update({ status: 'accepted' });
+  const acceptedPendingSponsor = {
+    factoryOwnerUid: offer.factoryOwnerUid,
+    factoryName: offer.factoryName,
+    dailyAmount: offer.dailyAmount,
+    offerId,
+  };
   await teamRef.update({
-    pendingSponsor: {
-      factoryOwnerUid: offer.factoryOwnerUid,
-      factoryName: offer.factoryName,
-      dailyAmount: offer.dailyAmount,
-      offerId,
-    },
+    pendingSponsor: acceptedPendingSponsor,
     sponsorCancelPending: false,
     sponsorCancelInitiatedBy: null,
+    // Takım başka bir fabrikayla anlaştıysa, mevcut sponsora gönderilmiş
+    // ücret artırma talebi (artık kabul edilemeyecekse) otomatik iptal edilir.
+    ...sponsorshipRaiseRequestClearPatch(teamForNotify, acceptedPendingSponsor),
   });
 
   // Bölüm 16: bu onay mesajı fabrikayla ilgili, işlem gerektirmeyen bir
@@ -16851,7 +16917,7 @@ export const respondSponsorshipOffer = onCall(async (request) => {
   await sendFactoryNotification(
     null,
     offer.factoryOwnerUid,
-    `🎉 ${offer.teamName} sponsorluk teklifini kabul etti! Yarın 00:00'da sponsorluk başlayacak (günlük ${offer.dailyAmount.toLocaleString('tr-TR')} altın).`,
+    `🎉 ${offer.teamName} sponsorluk teklifini kabul etti! Sponsorluk ${sponsorshipNextSettleLabel()}'da başlayacak (günlük ${offer.dailyAmount.toLocaleString('tr-TR')} altın).`,
     'sponsorship_accepted'
   );
   return { ok: true, accepted: true };
@@ -16903,10 +16969,15 @@ export const cancelSponsorship = onCall(async (request) => {
   // feshettiysek geri alabiliriz ama biz başka oyuncunun feshini geri
   // alamayız" — feshi BAŞLATAN tarafın uid'si kaydediliyor ki
   // withdrawSponsorshipCancellation sadece bu kişiye izin versin.
-  await teamRef.update({ sponsorCancelPending: true, sponsorCancelInitiatedBy: uid });
+  // Fesih beklerken sponsora ücret artırma talebi anlamsız — varsa iptal edilir.
+  await teamRef.update({
+    sponsorCancelPending: true,
+    sponsorCancelInitiatedBy: uid,
+    sponsorFeeRaiseRequest: null,
+  });
   const otherUid = team.sponsorFactoryOwnerUid === uid ? team.ownerUid : team.sponsorFactoryOwnerUid;
   if (otherUid) {
-    const cancelText = `⚠️ ${team.name || 'Takımın'} sponsorluk anlaşması feshedildi — bugün 00:00'a kadar devam edecek, yarın yeni ödeme yapılmadan sona erecek.`;
+    const cancelText = `⚠️ ${team.name || 'Takımın'} sponsorluk anlaşması feshedildi — ${sponsorshipNextSettleLabel()}'a kadar devam edecek, o saatte yeni ödeme yapılmadan sona erecek.`;
     // BUG DÜZELTMESİ (Bölüm 16): otherUid, feshi başlatan taraf fabrika ise
     // KULÜP tarafı (kişisel SMS), fesheden kulüpse FABRİKA tarafı (fabrika
     // bildirim paneli) olur — hangisi olduğuna göre doğru kanala gider.
@@ -17033,7 +17104,7 @@ async function applySponsorshipFeeRaise(uid, teamRef, team, cleanAmount) {
         .doc(team.ownerUid)
         .collection('messages')
         .add({
-          text: `📈 ${factoryDisplayName(factory)} sponsorluk ücretini günlük ${cleanAmount.toLocaleString('tr-TR')} altına yükseltti (yarından itibaren geçerli).`,
+          text: `📈 ${factoryDisplayName(factory)} sponsorluk ücretini günlük ${cleanAmount.toLocaleString('tr-TR')} altına yükseltti (${sponsorshipNextSettleLabel()}'daki ödemeden itibaren geçerli).`,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           read: false,
           type: 'sponsorship_raised',
@@ -17155,6 +17226,16 @@ export const respondSponsorshipFeeRaiseRequest = onCall(async (request) => {
     await teamRef.update({ sponsorFeeRaiseRequest: null });
     throw new HttpsError('failed-precondition', 'Bu talebin süresi doldu.');
   }
+  // KULLANICI DÜZELTMESİ: takım bu arada başka bir fabrikayla anlaştıysa (ya da
+  // sponsorluk feshe girdiyse) talep artık kabul edilemez — hata verip
+  // ortada bırakmak yerine talebi temizleyip açıkça söylüyoruz.
+  if (!isFeeRaiseRequestUseful(team)) {
+    await teamRef.update({ sponsorFeeRaiseRequest: null });
+    throw new HttpsError(
+      'failed-precondition',
+      'Bu talep artık geçerli değil (takım başka bir sponsorla anlaştı ya da sponsorluk feshedildi) — otomatik iptal edildi.'
+    );
+  }
 
   if (!accept) {
     await teamRef.update({ sponsorFeeRaiseRequest: null });
@@ -17257,6 +17338,16 @@ export const listSponsorshipTeamsForFactory = onCall(async (request) => {
         const ownerSnap = await db.collection('users').doc(team.ownerUid).get();
         chairman = ownerSnap.exists ? ownerSnap.data().displayName || 'İsimsiz Başkan' : 'İsimsiz Başkan';
       }
+      // KULLANICI DÜZELTMESİ: botlara ait (ownerUid'i olmayan) ama MENAJERİ
+      // olan takımlar fabrika sahiplerinin sponsor ekranında "Bot" diye
+      // görünüyordu — menajer varsa adı da dönülüyor, arayüz "Bot" yerine
+      // "Menajer: xxx" yazıyor. isBotRun: gerçekten bot mantığıyla yönetilen
+      // (BOT/OWNER_AUTO) takım mı — menajeri olan (MANAGED) takım bot DEĞİL.
+      let managerName = null;
+      if (team.managerUid) {
+        const managerSnap = await db.collection('users').doc(team.managerUid).get();
+        managerName = managerSnap.exists ? managerSnap.data().displayName || 'İsimsiz Menajer' : 'İsimsiz Menajer';
+      }
       const note = noteByTeam.get(d.id);
       return {
         id: d.id,
@@ -17267,6 +17358,9 @@ export const listSponsorshipTeamsForFactory = onCall(async (request) => {
         stadiumCapacity: team.stadiumCapacity || FUTBOL_STADIUM_LADDER[0].capacity,
         value,
         chairman,
+        managerName,
+        isBotRun: futbolTeamIsBotRun(team),
+        hasOwner: Boolean(team.ownerUid),
         isBot: !team.ownerUid,
         // isSelfSponsor — istemcinin "kendi takımına sponsorluk" akışında
         // (ücret her zaman 0, teklif tutarı seçilemez) doğru arayüzü
@@ -17300,9 +17394,7 @@ export const listSponsorshipTeamsForFactory = onCall(async (request) => {
         // 24 saati geçmiş bir talep artık HİÇ gösterilmiyor (kullanıcı
         // revizesi, bkz. isFeeRaiseRequestFresh).
         feeRaiseRequest:
-          team.sponsorFactoryOwnerUid === uid &&
-          team.sponsorFeeRaiseRequest &&
-          isFeeRaiseRequestFresh(team.sponsorFeeRaiseRequest)
+          team.sponsorFactoryOwnerUid === uid && isFeeRaiseRequestUseful(team, sponsorshipOfferCap(factory))
             ? {
                 requestedAmount: team.sponsorFeeRaiseRequest.requestedAmount,
                 requestedByName: team.sponsorFeeRaiseRequest.requestedByName || null,
@@ -17360,6 +17452,14 @@ export const listSponsorshipFactoriesForTeam = onCall(async (request) => {
     if (isSponsorshipNoteFresh(n)) noteByFactory.set(n.factoryOwnerUid, n);
   });
 
+  // sponsorCapOfActiveSponsor — kulübün bekleyen ücret artırma talebinin
+  // (isFeeRaiseRequestUseful) hâlâ işe yarayıp yaramadığını (talep edilen tutar
+  // aktif sponsor fabrikanın teklif limitini aşıyor mu) kontrol etmek için.
+  const activeSponsorFactoryDoc = factoriesSnap.docs.find((d) => d.id === team.sponsorFactoryOwnerUid);
+  const sponsorCapOfActiveSponsor = activeSponsorFactoryDoc
+    ? sponsorshipOfferCap(activeSponsorFactoryDoc.data())
+    : undefined;
+
   const factories = factoriesSnap.docs.map((d) => {
     const f = d.data();
     const note = noteByFactory.get(d.id);
@@ -17410,7 +17510,7 @@ export const listSponsorshipFactoriesForTeam = onCall(async (request) => {
       // ücret artırma talebi (bkz. requestSponsorshipFeeRaise). 24 saati
       // geçmiş bir talep artık HİÇ gösterilmiyor (kullanıcı revizesi, bkz.
       // isFeeRaiseRequestFresh).
-      feeRaiseRequest: team.sponsorFeeRaiseRequest && isFeeRaiseRequestFresh(team.sponsorFeeRaiseRequest)
+      feeRaiseRequest: isFeeRaiseRequestUseful(team, sponsorCapOfActiveSponsor)
         ? {
             requestedAmount: team.sponsorFeeRaiseRequest.requestedAmount,
             requestedByName: team.sponsorFeeRaiseRequest.requestedByName || null,
@@ -17464,6 +17564,18 @@ async function processFutbolSponsorshipsNightly() {
         sponsorCancelPending: false,
         sponsorCancelInitiatedBy: null,
       });
+      // KULLANICI DÜZELTMESİ: yeni sponsor devreye girdi — eski sponsora
+      // gönderilmiş ücret artırma talebi (aynı fabrika devam ediyor ve talep
+      // yeni tutarı hâlâ aşıyorsa hariç) artık geçersiz, temizlenir.
+      if (
+        team.sponsorFeeRaiseRequest &&
+        !(
+          p.factoryOwnerUid === team.sponsorFactoryOwnerUid &&
+          Number(team.sponsorFeeRaiseRequest.requestedAmount) > (p.dailyAmount || 0)
+        )
+      ) {
+        updates.sponsorFeeRaiseRequest = null;
+      }
       chargeJobs.push({
         teamId: d.id,
         teamName: team.name || 'Takım',
@@ -17482,6 +17594,7 @@ async function processFutbolSponsorshipsNightly() {
         sponsorSince: null,
         sponsorCancelPending: false,
         sponsorCancelInitiatedBy: null,
+        sponsorFeeRaiseRequest: null,
       });
     } else if (hasActive) {
       chargeJobs.push({
@@ -17504,6 +17617,19 @@ async function processFutbolSponsorshipsNightly() {
     // if/else if zincirinden BAĞIMSIZ — bir talep, sponsorluk durumu ne
     // olursa olsun (aktif/pending/cancel) sona ermiş olabilir.
     if (team.sponsorFeeRaiseRequest && !isFeeRaiseRequestFresh(team.sponsorFeeRaiseRequest)) {
+      updates.sponsorFeeRaiseRequest = null;
+    }
+    // Süresi dolmamış olsa bile artık işe yaramayan (rakip teklifi geçmeyen /
+    // sponsorluğu olmayan takımın) talepler de burada süpürülür — mevcut
+    // (bu düzeltmeden ÖNCE oluşmuş) bayat talepler de böylece temizlenmiş olur.
+    // Aktivasyon/fesih dalları zaten kendi kararını yukarıda verdi.
+    if (
+      team.sponsorFeeRaiseRequest &&
+      updates.sponsorFeeRaiseRequest === undefined &&
+      !hasPending &&
+      !hasCancel &&
+      !isFeeRaiseRequestUseful(team)
+    ) {
       updates.sponsorFeeRaiseRequest = null;
     }
 

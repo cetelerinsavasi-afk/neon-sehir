@@ -1040,7 +1040,7 @@ export default function MosqueWorldScreen({ onExit }) {
               <>
                 <SimpleActionScreen
                   signInMessage="İbadet etmek için giriş yapmalısın."
-                  description={`Günde 5 vakit (${WINDOW_HOURS[win]} şu an ${win}. vakit) ibadet ederek her seferinde şüpheni 5 azaltıp saygınlık kazanabilirsin (saygınlık 50'ye kadar +5, 50–80 arası +3, 80 ve üzeri +1). Ücretsiz.`}
+                  description={`Günde 5 vakit (${WINDOW_HOURS[win]} şu an ${win}. vakit) ibadet ederek her seferinde şüpheni 5 azaltıp saygınlık kazanabilirsin. Ücretsiz.`}
                   buttonLabel="İbadet Et (Şüphe -5, Saygınlık +)"
                   doneLabel="Bu vakitte zaten ibadet ettin"
                   isDone={(actions) => Boolean(actions.prayedWindows?.[win])}

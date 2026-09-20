@@ -67,3 +67,18 @@ export function formatCountdown(ms) {
   const ss = String(s).padStart(2, '0');
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
+
+// Sponsorluk saati — KULLANICI DÜZELTMESİ: fabrika↔kulüp sponsorluk
+// işlemleri (yeni anlaşmanın başlaması, fesih, günlük ödeme) artık gece
+// 00:00'da değil her gün 19:00'da (İstanbul) gerçekleşiyor (bkz.
+// functions/index.js processFutbolSponsorshipsNightly — runFutbolDailyClock
+// içinden çağrılıyor). Arayüz metinleri "yarın 00:00" gibi sabit bir zaman
+// yazmak yerine, ŞU ANA göre doğru olanı söylesin: 19:00'dan önceyse
+// "bugün 19:00", sonrasıysa "yarın 19:00". Sunucudaki
+// sponsorshipNextSettleLabel ile AYNI mantık. `% 24`: bazı Intl
+// uygulamaları gece yarısını "24" döndürebiliyor.
+export const SPONSORSHIP_SETTLE_HOUR = 19;
+export function nextSponsorshipSettleLabel(now = Date.now()) {
+  const { hour } = istanbulHMS(new Date(now));
+  return hour % 24 < SPONSORSHIP_SETTLE_HOUR ? 'bugün 19:00' : 'yarın 19:00';
+}

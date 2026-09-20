@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   listSponsorshipTeamsForFactory,
@@ -11,6 +11,7 @@ import {
   respondSponsorshipFeeRaiseRequest,
   updateSponsorshipNote,
 } from '../../services/gameActions';
+import { nextSponsorshipSettleLabel } from '../../lib/istanbulTime';
 import FutbolCrest from '../FutbolScreen/FutbolCrest';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 
@@ -20,12 +21,65 @@ import QuantityStepper from '../QuantityStepper/QuantityStepper';
 // altın tutarlarıyla burada da kullanılıyor.
 const SPONSOR_QUICK_AMOUNTS = [10, 100, 1000, 10000, 100000, { value: 1000000, label: '1M' }];
 
+const fmt = (n) => (Number(n) || 0).toLocaleString('tr-TR');
+
+// teamPeopleLabel — KULLANICI DÜZELTMESİ: botlara ait olup MENAJERİ olan
+// takımlar bu ekranda "🤖 Bot" diye görünüyordu. Artık menajer varsa
+// "Menajer: xxx" yazılıyor; gerçekten kimsenin yönetmediği takım "Bot
+// yönetimi", başkanı olan takım "Başkan: xxx" olarak gösteriliyor.
+function teamPeopleLabel(t) {
+  const hasOwner = t.hasOwner ?? !t.isBot;
+  const parts = [];
+  if (t.managerName) parts.push(`🧑‍💼 Menajer: ${t.managerName}`);
+  if (hasOwner) parts.push(`👔 Başkan: ${t.chairman}`);
+  if (parts.length === 0) parts.push('🤖 Bot yönetimi');
+  return parts.join(' · ');
+}
+
+// TeamHead — iki listede (sponsor olduklarım / tüm kulüpler) AYNI kart
+// başlığı: arma + isim + tek satır özet, sağda durum bilgisi (`aside`).
+function TeamHead({ team, badge, aside }) {
+  return (
+    <div className="factory-sp-head">
+      <FutbolCrest logo={team.logo} initials={team.name?.[0]} size={34} />
+      <div className="factory-sp-head-info">
+        <span className="factory-sp-name">
+          {team.name}
+          {badge && <span className="factory-sponsor-badge">{badge}</span>}
+        </span>
+        <span className="factory-sp-meta">
+          {team.tier}. Lig · 👥 {fmt(team.fans)} · 💎 {fmt(team.value)}
+        </span>
+        <span className="factory-sp-meta">{teamPeopleLabel(team)}</span>
+      </div>
+      {aside && <div className="factory-sp-aside">{aside}</div>}
+    </div>
+  );
+}
+
+// NoteLine/NoteEditor — kısa not: varsa tek satır, düzenleme sadece butona
+// basınca açılır (kart kalabalık görünmesin diye).
+function NoteLine({ team }) {
+  if (!team.note) return null;
+  return (
+    <p className="factory-sp-note">
+      💬 {team.note}
+      {team.noteUpdatedByName && <span className="factory-sponsor-note-author"> — {team.noteUpdatedByName}</span>}
+    </p>
+  );
+}
+
 // FactorySponsorModal — fabrika sahibinin "Sponsor" ekranı. Önce KENDİ
 // sponsor olduğu takım(lar), sonra tüm diğer takımlar listelenir (bkz.
 // functions/index.js listSponsorshipTeamsForFactory — sıralama zaten
-// sunucuda yapılıyor, burada olduğu gibi render ediliyor). Emoji-zengin,
-// kısa/net kartlar — kullanıcı isteği: "olabildiğince emoji dolu, kısa,
-// net, anlaşılır, görsel olarak güçlü ve kafa karıştırmayan".
+// sunucuda yapılıyor, burada olduğu gibi render ediliyor).
+//
+// KULLANICI İSTEĞİ: "sponsorluk ekranı biraz karışık geliyor, biraz daha
+// sadeleştirip daha kaliteli hale getirebiliriz" — tek bir özet kartı
+// (teklif limiti + sponsorluk saati), kartlarda tek satırlık bilgi,
+// durum uyarıları en fazla birkaç kısa satır, eylemler tek sırada küçük
+// butonlar, ikincil işler (not, tutar seçici) sadece butona basılınca açılır
+// ve kulüp listesinde arama kutusu var.
 export default function FactorySponsorModal({ onClose }) {
   const { user } = useAuth();
   const [data, setData] = useState(null);
@@ -41,6 +95,7 @@ export default function FactorySponsorModal({ onClose }) {
   const [expandedRaiseId, setExpandedRaiseId] = useState(null);
   const [noteEditingId, setNoteEditingId] = useState(null);
   const [noteDraft, setNoteDraft] = useState('');
+  const [search, setSearch] = useState('');
   // infoMessage — bot kulüplere gönderilen tekliflerin sonucu ANINDA belli
   // olduğu için (kabul/red, bkz. functions/index.js sendFactorySponsorshipOffer)
   // kullanıcıya kısa bir geri bildirim gösteriyoruz — aksi halde buton
@@ -74,23 +129,30 @@ export default function FactorySponsorModal({ onClose }) {
     }
   };
 
+  // settle — "bugün 19:00" / "yarın 19:00": sponsorluk işlemlerinin devreye
+  // gireceği bir sonraki an (bkz. istanbulTime.js nextSponsorshipSettleLabel).
+  const settle = nextSponsorshipSettleLabel();
+
   // handleSponsorOl — kendi takımımıza (isSelfSponsor) teklif her zaman 0
-  // altınla ANINDA gönderilir, tutar seçici hiç açılmaz (kullanıcı isteği
-  // madde 3). Diğer takımlarda seçilen tutar gönderilir. Bot kulüpler
-  // teklifi ANINDA kabul/red eder (bkz. sendFactorySponsorshipOffer) — bu
-  // sonucu kullanıcıya göstermek için dönen `accepted`/`autoBot` alanlarını
-  // okuyoruz.
-  const handleSponsorOl = (teamId, teamName, isSelfSponsor, isBot) => {
+  // altınla ANINDA gönderilir, tutar seçici hiç açılmaz. Diğer takımlarda
+  // seçilen tutar gönderilir. Bot kulüpler teklifi ANINDA kabul/red eder
+  // (bkz. sendFactorySponsorshipOffer) — sonucu sunucunun döndüğü
+  // `autoBot`/`accepted` alanlarından okuyoruz (menajerli takım "bot" DEĞİL,
+  // teklif menajerin onayına düşer, o yüzden takım tipini istemcide tahmin
+  // etmiyoruz).
+  const handleSponsorOl = (teamId, teamName, isSelfSponsor) => {
     const amount = isSelfSponsor ? 0 : Math.max(0, Math.round(Number(offerDrafts[teamId] ?? 0)));
     setInfoMessage('');
     runAction(`offer-${teamId}`, async () => {
       const res = await sendFactorySponsorshipOffer(teamId, amount);
-      if (isBot) {
+      if (res?.data?.autoBot) {
         setInfoMessage(
-          res?.data?.accepted
-            ? `✅ ${teamName} teklifini kabul etti — yarın 00:00'da sponsor olacaksın.`
-            : `❌ ${teamName} teklifini reddetti — botun mevcut sponsoru/teklifi bu tutara eşit ya da daha yüksek.`
+          res.data.accepted
+            ? `✅ ${teamName} teklifini kabul etti — ${nextSponsorshipSettleLabel()}'da sponsor olacaksın.`
+            : `❌ ${teamName} teklifini reddetti — mevcut sponsoru/teklifi bu tutara eşit ya da daha yüksek.`
         );
+      } else {
+        setInfoMessage(`📤 Teklifin ${teamName} yönetimine iletildi — cevap bekleniyor.`);
       }
     }).then(() => {
       setExpandedOfferId(null);
@@ -141,6 +203,19 @@ export default function FactorySponsorModal({ onClose }) {
     });
   };
 
+  const teams = data?.teams;
+  const mySponsorships = useMemo(() => (teams || []).filter((t) => t.isMySponsorship), [teams]);
+  const otherTeams = useMemo(() => (teams || []).filter((t) => !t.isMySponsorship), [teams]);
+  const visibleTeams = useMemo(() => {
+    const q = search.trim().toLocaleLowerCase('tr-TR');
+    if (!q) return otherTeams;
+    return otherTeams.filter((t) =>
+      [t.name, t.chairman, t.managerName, t.sponsorFactoryName]
+        .filter(Boolean)
+        .some((v) => String(v).toLocaleLowerCase('tr-TR').includes(q))
+    );
+  }, [otherTeams, search]);
+
   if (!data) {
     return (
       <div className="factory-modal-backdrop" onClick={onClose}>
@@ -157,9 +232,32 @@ export default function FactorySponsorModal({ onClose }) {
     );
   }
 
-  const { teams, offerCap, dailyIncomeAvg10 } = data;
-  const mySponsorships = teams.filter((t) => t.isMySponsorship);
-  const otherTeams = teams.filter((t) => !t.isMySponsorship);
+  const { offerCap, dailyIncomeAvg10 } = data;
+
+  // renderNoteEditor — not düzenleme/ekleme kutusu (iki listede de aynı).
+  const renderNoteEditor = (t) => (
+    <div className="factory-sponsor-note-box">
+      <input
+        className="factory-name-input"
+        maxLength={140}
+        placeholder="Kısa bir not bırak..."
+        value={noteDraft}
+        onChange={(e) => setNoteDraft(e.target.value)}
+      />
+      <div className="factory-sponsor-note-actions">
+        <button className="factory-btn small" onClick={() => setNoteEditingId(null)}>
+          Vazgeç
+        </button>
+        <button
+          className="factory-btn small primary"
+          disabled={busyKey === `note-${t.id}`}
+          onClick={() => handleSaveNote(t.id)}
+        >
+          Kaydet
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="factory-modal-backdrop" onClick={onClose}>
@@ -171,62 +269,67 @@ export default function FactorySponsorModal({ onClose }) {
           </button>
         </div>
 
-        <p className="factory-hint small">
-          💰 Son 10 günlük gelir ortalaman: <strong>{dailyIncomeAvg10.toLocaleString('tr-TR')} altın</strong> —
-          en fazla teklif edebileceğin: <strong>{offerCap.toLocaleString('tr-TR')} altın/gün</strong> (%25)
-        </p>
-        <p className="factory-hint small">
-          ⏰ Sponsorluk değişiklikleri (yeni anlaşma, fesih, yükseltme) her zaman bir sonraki gece 00:00'da
-          devreye girer.
-        </p>
+        {/* Özet kartı — tek bakışta: teklif limitin + anlaşmaların ne zaman
+            devreye gireceği. (Eskiden iki ayrı, küçük yazılı ipucu paragrafıydı;
+            sponsorluk işlemleri 00:00'da değil her gün 19:00'da işleniyor.) */}
+        <div className="factory-sp-summary">
+          <div className="factory-sp-summary-main">
+            <span className="factory-sp-summary-label">Teklif limitin</span>
+            <span className="factory-sp-summary-value">{fmt(offerCap)} altın/gün</span>
+            <span className="factory-sp-summary-sub">
+              Son 10 gün ort. gelirin {fmt(dailyIncomeAvg10)} altın · limit bunun %25'i
+            </span>
+          </div>
+          <p className="factory-sp-summary-time">
+            ⏰ Yeni anlaşma, fesih ve ücret değişiklikleri her gün <strong>19:00</strong>'da devreye girer — sıradaki:{' '}
+            <strong>{settle}</strong>
+          </p>
+        </div>
 
         {error && <p className="factory-error">{error}</p>}
-        {infoMessage && <p className="factory-hint small factory-sponsor-info">{infoMessage}</p>}
+        {infoMessage && <p className="factory-sp-flash">{infoMessage}</p>}
 
         {mySponsorships.length > 0 && (
           <>
-            <p className="factory-step-label">⭐ Sponsoru Olduğun Takımlar ({mySponsorships.length})</p>
+            <p className="factory-step-label">⭐ Sponsoru olduğum takımlar ({mySponsorships.length})</p>
             <div className="factory-share-list">
               {mySponsorships.map((t) => {
                 const beingReplaced = t.pendingSponsorFactoryOwnerUid && t.pendingSponsorFactoryOwnerUid !== user.uid;
-                // minRaiseAmount — DÜZELTME (kullanıcı bildirdiği hata): rakip
-                // bir pendingSponsor varsa, tutulacak sponsorluk için ondan
-                // DAHA YÜKSEK bir tutar girmek şart (bkz. applySponsorshipFeeRaise).
-                const minRaiseAmount = beingReplaced
-                  ? (t.pendingSponsorDailyAmount || 0) + 1
-                  : t.sponsorDailyAmount || 0;
+                // minRaiseAmount — rakip bir pendingSponsor varsa sponsorluğu
+                // tutmak için ondan (ve mevcut ücretten) DAHA YÜKSEK bir tutar
+                // girmek şart (bkz. applySponsorshipFeeRaise). KULLANICI
+                // REVİZESİ: "ücreti yükselt'e bastığımızda 1 artsın" —
+                // seçici artık mevcut ücretin (ya da rakip teklifin) 1 üstünden başlıyor.
+                const minRaiseAmount =
+                  Math.max(t.sponsorDailyAmount || 0, beingReplaced ? t.pendingSponsorDailyAmount || 0 : 0) + 1;
+                const raiseBlocked = minRaiseAmount > offerCap;
                 const raiseOpen = expandedRaiseId === t.id;
+                const raiseValue = Math.max(raiseDrafts[t.id] ?? minRaiseAmount, minRaiseAmount);
                 return (
-                  <div key={t.id} className="factory-share-buy-card factory-sponsor-card">
-                    <div className="factory-sponsor-card-head">
-                      <FutbolCrest logo={t.logo} initials={t.name?.[0]} size={32} />
-                      <div className="factory-share-row-info">
-                        <span className="factory-share-row-title">
-                          {t.name} {t.isBot && <span className="factory-sponsor-badge">🤖 Bot</span>}
-                        </span>
-                        <span className="factory-share-row-meta">
-                          {t.tier}. Lig · 👥 {t.fans.toLocaleString('tr-TR')} · 💎{' '}
-                          {t.value.toLocaleString('tr-TR')} altın
-                        </span>
-                      </div>
-                    </div>
-                    <p className="factory-hint small">
-                      💸 Günlük ödediğin: <strong>{(t.sponsorDailyAmount || 0).toLocaleString('tr-TR')} altın</strong>
-                    </p>
+                  <div key={t.id} className="factory-share-buy-card factory-sp-card">
+                    <TeamHead
+                      team={t}
+                      aside={
+                        <>
+                          <span className="factory-sp-amount">{fmt(t.sponsorDailyAmount)}</span>
+                          <span className="factory-sp-amount-unit">altın/gün</span>
+                        </>
+                      }
+                    />
+
                     {beingReplaced && (
-                      <p className="factory-hint small factory-sponsor-warning">
-                        ⚠️ {t.pendingSponsorFactoryName || 'Başka bir fabrika'} sana{' '}
-                        <strong>{(t.pendingSponsorDailyAmount || 0).toLocaleString('tr-TR')} altın/gün</strong> teklif
-                        etti — bugün 00:00'a kadar bundan daha yüksek bir ücret girip sponsorluğu elinde tutabilirsin,
-                        yoksa 00:00'da sponsorluk el değiştirecek.
+                      <p className="factory-sp-alert warn">
+                        <span>
+                          ⚠️ {t.pendingSponsorFactoryName || 'Başka bir fabrika'}{' '}
+                          <strong>{fmt(t.pendingSponsorDailyAmount)} altın/gün</strong> teklif etti. {settle}'a kadar
+                          daha yüksek bir ücret girmezsen sponsorluk el değiştirecek.
+                        </span>
                       </p>
                     )}
 
                     {t.sponsorCancelPending && (
-                      <div className="factory-sponsor-incoming-offer">
-                        <p className="factory-hint small factory-sponsor-warning">
-                          ⚠️ Bu sponsorluğun feshi bekliyor — bugün 00:00'da (yeni ödeme yapılmadan) sona erecek.
-                        </p>
+                      <div className="factory-sp-alert warn">
+                        <span>⚠️ Fesih bekliyor — {settle}'da (yeni ödeme yapılmadan) sona erecek.</span>
                         {/* KULLANICI REVİZESİ: "biz kendimiz feshettiysek geri
                             alabiliriz ama biz başka oyuncunun feshini geri
                             alamayız" — buton sadece feshi BAŞLATAN tarafa
@@ -240,18 +343,17 @@ export default function FactorySponsorModal({ onClose }) {
                             {busyKey === `withdraw-cancel-${t.id}` ? '…' : '↩️ Feshi Geri Al'}
                           </button>
                         ) : (
-                          <p className="factory-hint small">Feshi sadece başlatan taraf geri alabilir.</p>
+                          <span className="factory-sp-muted">Feshi sadece başlatan taraf geri alabilir.</span>
                         )}
                       </div>
                     )}
 
                     {t.feeRaiseRequest && (
-                      <div className="factory-sponsor-incoming-offer">
-                        <p className="factory-hint small">
-                          🙋 {t.feeRaiseRequest.requestedByName || 'Kulüp'} ücretini{' '}
-                          <strong>{(t.feeRaiseRequest.requestedAmount || 0).toLocaleString('tr-TR')} altın/gün</strong>
-                          'e yükseltmeni istiyor.
-                        </p>
+                      <div className="factory-sp-alert ask">
+                        <span>
+                          🙋 {t.feeRaiseRequest.requestedByName || 'Kulüp'} ücreti{' '}
+                          <strong>{fmt(t.feeRaiseRequest.requestedAmount)} altın/gün</strong> yapmanı istiyor.
+                        </span>
                         <div className="factory-sponsor-note-actions">
                           <button
                             className="factory-btn small"
@@ -271,99 +373,73 @@ export default function FactorySponsorModal({ onClose }) {
                       </div>
                     )}
 
-                    <div className="factory-sponsor-note-box">
-                      {noteEditingId === t.id ? (
-                        <>
-                          <input
-                            className="factory-name-input"
-                            maxLength={140}
-                            placeholder="Kısa bir not bırak..."
-                            value={noteDraft}
-                            onChange={(e) => setNoteDraft(e.target.value)}
-                          />
-                          <div className="factory-sponsor-note-actions">
-                            <button className="factory-btn small" onClick={() => setNoteEditingId(null)}>
-                              Vazgeç
-                            </button>
-                            <button
-                              className="factory-btn small primary"
-                              disabled={busyKey === `note-${t.id}`}
-                              onClick={() => handleSaveNote(t.id)}
-                            >
-                              Kaydet
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <p className="factory-hint small">
-                            💬 {t.note ? t.note : 'Henüz not yok.'}
-                            {t.note && t.noteUpdatedByName && (
-                              <span className="factory-sponsor-note-author"> — {t.noteUpdatedByName}</span>
-                            )}
-                          </p>
-                          <button className="factory-btn small" onClick={() => openNoteEditor(t)}>
-                            ✏️ Not {t.note ? 'düzenle' : 'ekle'}
+                    <NoteLine team={t} />
+
+                    {raiseOpen && (
+                      <div className="factory-sponsor-offer-box">
+                        {/* KULLANICI REVİZESİ: "sponsorluk tekliflerinde -
+                            ve + basınca 10 10 artıyor, 1 1 artsın" — step
+                            1 (quickAmounts hâlâ hızlı artış sağlıyor). */}
+                        <QuantityStepper
+                          value={raiseValue}
+                          onChange={(v) => setRaiseDrafts((d) => ({ ...d, [t.id]: Math.max(v, minRaiseAmount) }))}
+                          max={offerCap}
+                          step={1}
+                          quickAmounts={SPONSOR_QUICK_AMOUNTS}
+                        />
+                        <p className="factory-sp-muted">
+                          En az {fmt(minRaiseAmount)}, en fazla {fmt(offerCap)} altın/gün.
+                          {beingReplaced && ' Rakip teklifi geçmen gerekiyor.'}
+                        </p>
+                        <div className="factory-sponsor-note-actions">
+                          <button className="factory-btn small" onClick={() => setExpandedRaiseId(null)}>
+                            Vazgeç
                           </button>
-                        </>
-                      )}
-                    </div>
-
-                    {!t.isSelfSponsor &&
-                      (raiseOpen ? (
-                        <div className="factory-sponsor-offer-box">
-                          {/* KULLANICI REVİZESİ: "sponsorluk tekliflerinde -
-                              ve + basınca 10 10 artıyor, 1 1 artsın" — step
-                              10'dan 1'e düşürüldü (quickAmounts hâlâ hızlı
-                              artış sağlıyor). */}
-                          <QuantityStepper
-                            value={raiseDrafts[t.id] ?? minRaiseAmount}
-                            onChange={(v) => setRaiseDrafts((d) => ({ ...d, [t.id]: v }))}
-                            max={offerCap}
-                            step={1}
-                            quickAmounts={SPONSOR_QUICK_AMOUNTS}
-                          />
-                          <p className="factory-hint small">
-                            En az {minRaiseAmount.toLocaleString('tr-TR')}, en fazla{' '}
-                            {offerCap.toLocaleString('tr-TR')} altın/gün olabilir.
-                            {beingReplaced && ' (Sponsorluğu elinde tutmak için rakip teklifi geçmen gerekiyor.)'}
-                          </p>
-                          <div className="factory-sponsor-note-actions">
-                            <button className="factory-btn small" onClick={() => setExpandedRaiseId(null)}>
-                              Vazgeç
-                            </button>
-                            <button
-                              className="factory-btn small primary"
-                              disabled={
-                                busyKey === `raise-${t.id}` ||
-                                (raiseDrafts[t.id] ?? minRaiseAmount) < minRaiseAmount
-                              }
-                              onClick={() => handleRaise(t.id)}
-                            >
-                              {busyKey === `raise-${t.id}` ? '…' : 'Gönder'}
-                            </button>
-                          </div>
+                          <button
+                            className="factory-btn small primary"
+                            disabled={busyKey === `raise-${t.id}` || raiseValue < minRaiseAmount}
+                            onClick={() => handleRaise(t.id)}
+                          >
+                            {busyKey === `raise-${t.id}` ? '…' : 'Gönder'}
+                          </button>
                         </div>
-                      ) : (
-                        <button
-                          className="factory-btn small"
-                          onClick={() => {
-                            setExpandedRaiseId(t.id);
-                            setRaiseDrafts((d) => ({ ...d, [t.id]: minRaiseAmount }));
-                          }}
-                        >
-                          {beingReplaced ? '🔁 Sponsorluğu Geri Kap' : '📈 Ücreti Yükselt'}
-                        </button>
-                      ))}
+                      </div>
+                    )}
 
-                    {!t.sponsorCancelPending && (
-                    <button
-                      className="factory-fire-btn"
-                      disabled={busyKey === `cancel-${t.id}`}
-                      onClick={() => handleCancel(t.id)}
-                    >
-                      {busyKey === `cancel-${t.id}` ? '…' : '❌ Sponsorluğu Feshet'}
-                    </button>
+                    {noteEditingId === t.id && renderNoteEditor(t)}
+
+                    {/* Eylem satırı — hepsi tek sırada, küçük butonlar. */}
+                    {!raiseOpen && noteEditingId !== t.id && (
+                      <div className="factory-sp-actions">
+                        {!t.isSelfSponsor && !t.sponsorCancelPending && (
+                          <button
+                            className="factory-btn small primary"
+                            disabled={raiseBlocked}
+                            title={raiseBlocked ? 'Teklif limitine ulaştın.' : undefined}
+                            onClick={() => {
+                              setExpandedRaiseId(t.id);
+                              setRaiseDrafts((d) => ({ ...d, [t.id]: minRaiseAmount }));
+                            }}
+                          >
+                            {beingReplaced ? '🔁 Geri Kap' : '📈 Ücreti Yükselt'}
+                          </button>
+                        )}
+                        <button className="factory-btn small" onClick={() => openNoteEditor(t)}>
+                          ✏️ Not
+                        </button>
+                        {!t.sponsorCancelPending && (
+                          <button
+                            className="factory-fire-btn"
+                            disabled={busyKey === `cancel-${t.id}`}
+                            onClick={() => handleCancel(t.id)}
+                          >
+                            {busyKey === `cancel-${t.id}` ? '…' : '❌ Feshet'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {raiseBlocked && !t.isSelfSponsor && !t.sponsorCancelPending && !raiseOpen && (
+                      <p className="factory-sp-muted">Teklif limitine ulaştığın için ücreti daha fazla yükseltemezsin.</p>
                     )}
                   </div>
                 );
@@ -373,55 +449,51 @@ export default function FactorySponsorModal({ onClose }) {
         )}
 
         <p className="factory-step-label">🏟️ Tüm Kulüpler ({otherTeams.length})</p>
+        <input
+          className="factory-name-input factory-sp-search"
+          type="search"
+          placeholder="🔎 Kulüp, başkan ya da menajer ara..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
         <div className="factory-share-list">
-          {otherTeams.map((t) => {
+          {visibleTeams.length === 0 && <p className="factory-hint">Eşleşen kulüp bulunamadı.</p>}
+          {visibleTeams.map((t) => {
             const myOffer = t.myPendingOffers.find((o) => o.fromRole === 'factory');
             const clubOffer = t.myPendingOffers.find((o) => o.fromRole === 'club');
             const offerOpen = expandedOfferId === t.id;
             // pendingIsMe — teklifim (bot ise anında, oyuncuysa kabul
             // ettikten sonra) kabul edildi ama henüz aktif değil (bir
-            // sonraki 00:00'da devreye girecek) — bu durumda "Teklif
-            // Gönder" butonunu tekrar göstermek yerine bekleme durumunu
-            // gösteriyoruz (bkz. kullanıcı bildirdiği hata: bot kulüplerde
-            // teklif kabul edilse bile buton hep "Teklif Gönder" kalıyordu).
+            // sonraki sponsorluk saatinde devreye girecek) — bu durumda
+            // "Teklif Gönder" butonunu tekrar göstermek yerine bekleme
+            // durumunu gösteriyoruz (bkz. kullanıcı bildirdiği hata: bot
+            // kulüplerde teklif kabul edilse bile buton hep "Teklif Gönder"
+            // kalıyordu).
             const pendingIsMe = t.pendingSponsorFactoryOwnerUid === user.uid;
             return (
-              <div key={t.id} className="factory-share-buy-card factory-sponsor-card">
-                <div className="factory-sponsor-card-head">
-                  <FutbolCrest logo={t.logo} initials={t.name?.[0]} size={32} />
-                  <div className="factory-share-row-info">
-                    <span className="factory-share-row-title">
-                      {t.name} {t.isBot && <span className="factory-sponsor-badge">🤖 Bot</span>}
-                      {t.isSelfSponsor && <span className="factory-sponsor-badge">⭐ Kendi Takımın</span>}
-                    </span>
-                    <span className="factory-share-row-meta">
-                      {t.tier}. Lig · 👥 {t.fans.toLocaleString('tr-TR')} · 💎{' '}
-                      {t.value.toLocaleString('tr-TR')} altın · 👔 {t.chairman}
-                    </span>
-                  </div>
-                </div>
+              <div key={t.id} className="factory-share-buy-card factory-sp-card">
+                <TeamHead
+                  team={t}
+                  badge={t.isSelfSponsor ? '⭐ Kendi Takımın' : null}
+                  aside={
+                    t.sponsorFactoryOwnerUid ? (
+                      <>
+                        <span className="factory-sp-chip">🤝 {t.sponsorFactoryName}</span>
+                        <span className="factory-sp-amount-unit">{fmt(t.sponsorDailyAmount)} altın/gün</span>
+                      </>
+                    ) : (
+                      <span className="factory-sp-chip free">Sponsor yok</span>
+                    )
+                  }
+                />
 
-                {t.sponsorFactoryOwnerUid ? (
-                  <p className="factory-hint small">
-                    🤝 Şu anki sponsoru: <strong>{t.sponsorFactoryName}</strong> — 💸{' '}
-                    {(t.sponsorDailyAmount || 0).toLocaleString('tr-TR')} altın/gün
-                  </p>
-                ) : (
-                  <p className="factory-hint small">✨ Şu an sponsoru yok.</p>
-                )}
-
-                {t.note && (
-                  <p className="factory-hint small">
-                    💬 {t.note}
-                    {t.noteUpdatedByName && <span className="factory-sponsor-note-author"> — {t.noteUpdatedByName}</span>}
-                  </p>
-                )}
+                <NoteLine team={t} />
 
                 {clubOffer && (
-                  <div className="factory-sponsor-incoming-offer">
-                    <p className="factory-hint small">
-                      📨 Kulübün teklifi: <strong>{clubOffer.dailyAmount.toLocaleString('tr-TR')} altın/gün</strong>
-                    </p>
+                  <div className="factory-sp-alert ask">
+                    <span>
+                      📨 Kulüp senden sponsorluk istiyor: <strong>{fmt(clubOffer.dailyAmount)} altın/gün</strong>
+                    </span>
                     <div className="factory-sponsor-note-actions">
                       <button
                         className="factory-btn small"
@@ -442,31 +514,22 @@ export default function FactorySponsorModal({ onClose }) {
                 )}
 
                 {pendingIsMe ? (
-                  <p className="factory-hint small factory-sponsor-info">
-                    ✅ Teklifin kabul edildi — yarın 00:00'da sponsor olacaksın.
+                  <p className="factory-sp-alert ok">
+                    <span>✅ Teklifin kabul edildi — {settle}'da sponsor olacaksın.</span>
                   </p>
                 ) : myOffer ? (
-                  <div className="factory-sponsor-incoming-offer">
-                    <p className="factory-hint small">
-                      📤 Senin teklifin: <strong>{myOffer.dailyAmount.toLocaleString('tr-TR')} altın/gün</strong>{' '}
-                      (bekliyor)
-                    </p>
+                  <div className="factory-sp-alert ask">
+                    <span>
+                      📤 Teklifin: <strong>{fmt(myOffer.dailyAmount)} altın/gün</strong> (bekliyor)
+                    </span>
                     <button
                       className="factory-btn small"
                       disabled={busyKey === `withdraw-${t.id}`}
                       onClick={() => handleWithdraw(myOffer.id, t.id)}
                     >
-                      Teklifi Geri Çek
+                      Geri Çek
                     </button>
                   </div>
-                ) : t.isSelfSponsor ? (
-                  <button
-                    className="factory-btn small primary"
-                    disabled={busyKey === `offer-${t.id}`}
-                    onClick={() => handleSponsorOl(t.id, t.name, true, t.isBot)}
-                  >
-                    {busyKey === `offer-${t.id}` ? '…' : '🤝 Teklif Gönder (0 altın)'}
-                  </button>
                 ) : offerOpen ? (
                   <div className="factory-sponsor-offer-box">
                     <QuantityStepper
@@ -476,7 +539,7 @@ export default function FactorySponsorModal({ onClose }) {
                       step={1}
                       quickAmounts={SPONSOR_QUICK_AMOUNTS}
                     />
-                    <p className="factory-hint small">En fazla {offerCap.toLocaleString('tr-TR')} altın/gün teklif edebilirsin.</p>
+                    <p className="factory-sp-muted">En fazla {fmt(offerCap)} altın/gün teklif edebilirsin.</p>
                     <div className="factory-sponsor-note-actions">
                       <button className="factory-btn small" onClick={() => setExpandedOfferId(null)}>
                         Vazgeç
@@ -484,50 +547,41 @@ export default function FactorySponsorModal({ onClose }) {
                       <button
                         className="factory-btn small primary"
                         disabled={busyKey === `offer-${t.id}`}
-                        onClick={() => handleSponsorOl(t.id, t.name, false, t.isBot)}
+                        onClick={() => handleSponsorOl(t.id, t.name, false)}
                       >
                         {busyKey === `offer-${t.id}` ? '…' : 'Gönder'}
                       </button>
                     </div>
                   </div>
-                ) : (
-                  <button
-                    className="factory-btn small primary"
-                    onClick={() => {
-                      setExpandedOfferId(t.id);
-                      setOfferDrafts((d) => ({ ...d, [t.id]: d[t.id] ?? 0 }));
-                    }}
-                  >
-                    🤝 Teklif Gönder
-                  </button>
-                )}
+                ) : null}
 
-                {noteEditingId === t.id ? (
-                  <div className="factory-sponsor-note-box">
-                    <input
-                      className="factory-name-input"
-                      maxLength={140}
-                      placeholder="Kısa bir not bırak..."
-                      value={noteDraft}
-                      onChange={(e) => setNoteDraft(e.target.value)}
-                    />
-                    <div className="factory-sponsor-note-actions">
-                      <button className="factory-btn small" onClick={() => setNoteEditingId(null)}>
-                        Vazgeç
-                      </button>
+                {noteEditingId === t.id && renderNoteEditor(t)}
+
+                {!pendingIsMe && !myOffer && !offerOpen && noteEditingId !== t.id && (
+                  <div className="factory-sp-actions">
+                    {t.isSelfSponsor ? (
                       <button
                         className="factory-btn small primary"
-                        disabled={busyKey === `note-${t.id}`}
-                        onClick={() => handleSaveNote(t.id)}
+                        disabled={busyKey === `offer-${t.id}`}
+                        onClick={() => handleSponsorOl(t.id, t.name, true)}
                       >
-                        Kaydet
+                        {busyKey === `offer-${t.id}` ? '…' : '🤝 Sponsor Ol (0 altın)'}
                       </button>
-                    </div>
+                    ) : (
+                      <button
+                        className="factory-btn small primary"
+                        onClick={() => {
+                          setExpandedOfferId(t.id);
+                          setOfferDrafts((d) => ({ ...d, [t.id]: d[t.id] ?? 0 }));
+                        }}
+                      >
+                        🤝 Teklif Gönder
+                      </button>
+                    )}
+                    <button className="factory-btn small" onClick={() => openNoteEditor(t)}>
+                      ✏️ Not
+                    </button>
                   </div>
-                ) : (
-                  <button className="factory-btn small" onClick={() => openNoteEditor(t)}>
-                    ✏️ Not {t.note ? 'düzenle' : 'bırak'}
-                  </button>
                 )}
               </div>
             );

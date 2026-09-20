@@ -11,12 +11,37 @@
   align-items: flex-start;
 }
 
+/* futbol-league-tabs — KULLANICI İSTEĞİ: "maç fikstürüne tıkladığımızda ekran
+   aşağı geliyor ve 1. lig 2. lig butonları üstte kalıyor ... lig seçimi
+   oyunu bilmeyen oyuncular için anlaşılmaz oluyor" — lig seçici artık
+   kaydırılan alanın (.futbol-fullscreen-body) tepesine YAPIŞIK (sticky)
+   duruyor: fikstürde en aşağı inilse de diğer liglere tek dokunuşla
+   geçilebilir. Yeni ligler eklendikçe sığmazsa yatay kaydırılır (satır
+   yüksekliği sabit kalır, sayfayı aşağı itmez). Gövdenin 16px iç boşluğunu
+   negatif margin + padding ile yutup tam genişlikte, opak bir zemin
+   çiziyoruz ki altından geçen içerik görünmesin. */
 .futbol-league-tabs {
+  position: sticky;
+  top: -16px;
+  z-index: 5;
   display: flex;
   gap: 8px;
+  margin: -16px -16px 0;
+  padding: 10px 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--panel-border);
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.futbol-league-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .futbol-league-tab {
+  flex: none;
+  white-space: nowrap;
   padding: 8px 14px;
   border-radius: 999px;
   border: 1px solid var(--panel-border);
