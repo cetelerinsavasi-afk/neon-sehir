@@ -56,7 +56,9 @@ export default function PoliceApplicationSection() {
   const isPolice = player?.profession === 'polis';
   const pending = player?.pendingPoliceChange;
   const salaryClaimed = Boolean(actions.policeSalaryClaimed);
-  const canClaimSalary = isPolice && (player?.suspicion || 0) === 0 && Boolean(pool);
+  // KULLANICI REVİZESİ (polis suç sistemi): şüphe sadece başvuru anında aranır,
+  // maaş için artık şüphe şartı yok.
+  const canClaimSalary = isPolice && Boolean(pool);
 
   if (!user) {
     return <SignInPrompt message="Polislik başvurusu yapmak için giriş yapmalısın." />;
@@ -67,7 +69,7 @@ export default function PoliceApplicationSection() {
       <div className="police-app-header">
         <p className="police-app-title">
           Polislik Başvurusu
-          <InfoIcon text="Başvuru ve istifa anlık değil — bir sonraki gece yarısı (00:00) işleme alınır. Başvurmak için şüphen %0 olmalı ve bir silahın olmalı." />
+          <InfoIcon text="Başvuru ve istifa anlık değil — bir sonraki gece yarısı (00:00) işleme alınır. Başvurmak için şüphen %0 olmalı ve bir silahın olmalı (şüphe sadece başvuru anında aranır)." />
         </p>
         <button className="police-app-booklet-btn" onClick={() => setShowBooklet(true)}>
           📖 Kitapçık
@@ -105,11 +107,9 @@ export default function PoliceApplicationSection() {
           >
             {salaryClaimed
               ? 'Bugün Alındı'
-              : (player?.suspicion || 0) !== 0
-                ? 'Şüphen 0 Olmalı'
-                : !pool
-                  ? 'Havuz Bekleniyor'
-                  : 'Maaşı Al'}
+              : !pool
+                ? 'Havuz Bekleniyor'
+                : 'Maaşı Al'}
           </button>
         </div>
       )}

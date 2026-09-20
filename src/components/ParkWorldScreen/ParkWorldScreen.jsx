@@ -1000,7 +1000,7 @@ export default function ParkWorldScreen({ onExit }) {
             <p className="pw-hint">
               Sahip olduğun kaçak mal: <strong>{contrabandQty} adet</strong> · Satış fiyatı{' '}
               {PARK_SELL_PRICE.toLocaleString('tr-TR')} altın/adet
-              <InfoIcon text="Her satışta o anki şüphe yüzden kadar ihtimalle polis seni yakalayabilir. Yakalanırsan kazanacağın altın yerine aynı miktar devlete borç yazılır. Her satış şüpheni +5 artırır." />
+              <InfoIcon text="Her satışta o anki şüphe yüzden kadar ihtimalle polis seni yakalayabilir. Yakalanırsan kazanacağın altın yerine aynı miktar devlete borç yazılır. Her satış şüpheni +5 artırır. Polisen, yakalanırsan ceza 2 katı olur." />
             </p>
             <button className="pw-panel-btn primary" disabled={sellBusy || contrabandQty < 1} onClick={handleSell}>
               {sellBusy ? 'Satılıyor…' : contrabandQty < 1 ? 'Malın yok' : 'Sat (1 adet)'}

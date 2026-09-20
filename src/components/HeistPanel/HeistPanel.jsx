@@ -54,8 +54,10 @@ export const HEIST_LABELS = {
 const RULES_TEXT =
   'Tek başına: yakalanma ihtimalin = mevcut şüphen. Ekip: en fazla 4 kişi, plan 24 saat açık kalır. Ekipte biri yakalanırsa ya da sızan bir polis varsa TÜM ekip yakalanır. Ceza cepten kesilmez, devlete borç yazılır — Banka\'dan istediğin zaman öde, ya da kazandığın paranın yarısı otomatik borcu kapatsın.';
 
+// POLICE_RULES_TEXT — KULLANICI İSTEĞİ (polis suç sistemi): polisler de artık
+// soygun yapabilir. Kurallar sivillerle aynı, tek fark yakalanırsa ceza 2 katı.
 const POLICE_RULES_TEXT =
-  'Polis olarak tek başına soygun başlatamazsın, ama kendi ekip soygun planını (tuzak) kurabilirsin. Tek şart: ekibe kendi dışında en az 1 suçlu katılması — ekipte kaç polis olduğunun (senin dahil) önemi yok. Ama önce şüphe konuşur: ekipteki bir suçlu kendi şüphesi yüzünden yakalanırsa o turda ödül alamazsın, sadece o suçlu kendi cezasını öder. Kimse şüpheden yakalanmazsa sen (ve varsa diğer polisler) %100 yakalar, ödülün tamamını aranızda paylaşırsınız, suçlulara ödül kadar ceza (devlete borç) yazılır.';
+  'Polis olarak da soygun yapabilirsin: gücün yetiyorsa tek başına, yetmiyorsa ekiple. Şüphe artar, yakalanırsan saygınlık düşer. Tek fark: yakalanırsan ceza 2 KATI (devlete borç). Ekibin tamamı polisse ödül eşit bölüşülür, yakalanırsanız herkes 2 kat ceza yer. Ekipte polis olmayan biri de varsa polis olarak onları yakalamış olursun: sen yakalanmazsın, ödülün tamamını alırsın, suçlulara ceza yazılır. (Ama önce şüphe konuşur: suçlulardan biri kendi şüphesinden yakalanırsa ödül alamazsın.)';
 
 function resultMessage(res) {
   if (!res.started) {
@@ -66,13 +68,20 @@ function resultMessage(res) {
   }
   if (res.reward !== undefined) {
     if (res.caught) {
-      return `Yakalandın! ${res.reward.toLocaleString('tr-TR')} altın devlete borç yazıldı.`;
+      const fine = (res.penalty ?? res.reward).toLocaleString('tr-TR');
+      return res.policeDoubled
+        ? `Yakalandın! Polis olduğun için ceza 2 katı: ${fine} altın devlete borç yazıldı.`
+        : `Yakalandın! ${fine} altın devlete borç yazıldı.`;
     }
     return `Başarılı! ${res.reward.toLocaleString('tr-TR')} altın kazandın.`;
   }
   // viaPoliceTrap — bu sonucu SADECE tuzağı kuran polis kendisi görür
   // (executeHeistPlan'ı sadece plan kurucusu çağırabilir). Onun için
   // "sızma" diliyle değil, kurduğu tuzağın işe yaradığı diliyle anlatılır.
+  // policeOnly — ekibin tamamı polisti: tuzak değil, gerçek soygun.
+  if (res.policeOnly && res.caughtBySuspicion) {
+    return `Yakalandınız! Polis olduğunuz için ceza 2 katı: kişi başı ${(res.policePenalty || 0).toLocaleString('tr-TR')} altın devlete borç yazıldı.`;
+  }
   if (res.busted && res.viaPoliceTrap) {
     return `Tuzağın işe yaradı! Ekibe katılan suçlu(lar)ı yakaladın, ${res.totalReward.toLocaleString('tr-TR')} altın ödül kazandın.`;
   }
@@ -111,14 +120,13 @@ function suspicionClass(s) {
   return 'heist-suspicion-low';
 }
 
-// 0-20 arası şüpheyi TAM sayı olarak göstermiyoruz — yoksa şüphesi tam 0
-// olan (polis olma şartı) bir katılımcı hemen ifşa olurdu.
+// 0-20 arası şüpheyi TAM sayı olarak göstermiyoruz.
 function suspicionLabel(s) {
   if (s <= 20) return '%0-20';
   return `%${s}`;
 }
 
-function PlanCard({ plan, myUid, isPolice, onChanged }) {
+function PlanCard({ plan, myUid, onChanged }) {
   const { participants } = useHeistPlanParticipants(plan.id);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -177,9 +185,6 @@ function PlanCard({ plan, myUid, isPolice, onChanged }) {
         {participants.length}/4 kişi · Toplam güç {totalPower.toLocaleString('tr-TR')} /{' '}
         {required.toLocaleString('tr-TR')}
       </p>
-      {isCreator && isPolice && (
-        <p className="heist-plan-meta police-trap-hint">Soygunu başlatmak için en az 1 suçlu gerekir</p>
-      )}
       <ul className="heist-plan-members">
         {participants.map((p) => (
           <li key={p.uid}>
@@ -315,10 +320,10 @@ export default function HeistPanel({ target }) {
     (max, w) => (!w.listed && (w.lifeDays ?? INITIAL_LIFE_DAYS) > 0 ? Math.max(max, w.power || 0) : max),
     0
   );
-  // Polisler tek başına (attemptHeist) soygun başlatamaz — bunlar için
-  // güce bakmaksızın HER ZAMAN sadece ekip kurma (tuzak) seçeneği gösterilir.
+  // KULLANICI İSTEĞİ (polis suç sistemi): polisler de artık gücü yeten yeri
+  // tek başına soyabilir — herkes için aynı kural: güç yetmiyorsa ekip.
   const isPolice = player?.profession === 'polis';
-  const needsTeam = isPolice || myPower < meta.requiredPower;
+  const needsTeam = myPower < meta.requiredPower;
   // Kısıtlama HEDEFE ÖZEL: bu hedefte zaten bir ekibim varsa yeni bir
   // tane kuramam, ama başka hedeflerdeki ekiplerim bunu etkilemez.
   const alreadyInThisTarget = myActivePlans.some((p) => p.target === target);
@@ -367,7 +372,7 @@ export default function HeistPanel({ target }) {
       {needsTeam ? (
         !alreadyInThisTarget && (
           <button className="heist-panel-btn secondary" disabled={done || busy} onClick={handleCreatePlan}>
-            {isPolice ? 'Tuzak Kur (Ekip Soygunu)' : 'Ekip Kur'}
+            Ekip Kur
           </button>
         )
       ) : (
@@ -415,7 +420,6 @@ export default function HeistPanel({ target }) {
               key={plan.id}
               plan={plan}
               myUid={user.uid}
-              isPolice={isPolice}
               onChanged={(data) => data && setResult(data)}
             />
           ))}

@@ -1,33 +1,33 @@
 import { useState } from 'react';
 import '../PoliceBooklet/PoliceBooklet.css';
 
+// İmam kitapçığı — KULLANICI İSTEĞİ: "baştan yazalım, gereksiz bilgileri
+// kaldıralım, olabildiğince net basit anlaşılır olsun". Her sayfa tek bir
+// konuyu, kısa cümlelerle anlatır.
 const PAGES = [
   {
-    title: 'İmamlık Bir Statüdür',
+    title: 'İmam Kimdir',
     body: [
-      'İmamlık artık bir meslek değil, bir statüdür — kendi mesleğinde/işinde kalırsın.',
-      'İmam olduktan sonra da fabrikada çalışabilir ve suç işleyebilirsin.',
-      'Tek istisna: polis imam olamaz, imam da polis olamaz.',
+      'Oyunda tek bir imam vardır.',
+      'İmamlık bir meslek değil, bir statüdür: fabrikada çalışmaya ve suç işlemeye devam edebilirsin.',
+      'Polis imam olamaz, imam da polis olamaz.',
+      'İmam maaşı günde 10.000 altındır. Camiden günde 1 kez alırsın.',
     ],
   },
   {
-    title: 'İmamın Görevleri Neler',
+    title: 'İmam Olmak İçin',
     body: [
-      'İmamlığa başladığın andan itibaren günde 5 vakit ibadete katılmalısın (başlamadan önceki vakitlerden sorumlu değilsin).',
-      'Her takvim günü (00:00-00:00) en az 1 nasihat vermelisin.',
-      'Bu görevlerden birini aksatırsan dailyReset seni imamlıktan azleder.',
+      'Saygınlığın en az 50 olmalı.',
+      'Şüphen %0 olmalı.',
+      'Bu iki şart sadece başvururken aranır. İmam olduktan sonra şüphen artsa ya da saygınlığın düşse de imamlığın gitmez.',
     ],
   },
   {
-    title: 'İmamlar Ne Kadar Kazanır',
-    body: ['Oyunda tek imam vardır.', 'İmam maaşı günde 10.000 altındır.'],
-  },
-  {
-    title: 'İmam Olmak İçin Ne Gerekir',
+    title: 'İmamın Görevleri',
     body: [
-      '50 saygınlık gerekir.',
-      'Şüphe puanın %0 olmalı.',
-      'Bu iki şart SADECE başvuru anında kontrol edilir — imam olduktan sonra şüphen artsa ya da saygınlığın düşse bile bu, görevden atılma sebebi olmaz.',
+      'Her gün 5 vakit ibadet et. (Göreve başladığın andan önceki vakitler sayılmaz.)',
+      'Her gün en az 1 nasihat ver.',
+      'Bu görevlerden birini aksatırsan imamlıktan alınırsın. Alındıktan 24 saat sonra tekrar başvurabilirsin.',
     ],
   },
 ];

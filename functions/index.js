@@ -2705,7 +2705,7 @@ export const dailyReset = onSchedule(
           .doc(uidTarget)
           .collection('messages')
           .add({
-            text: 'Polislik başvurun onaylandı! Artık polissin. Günlük maaşın, polislerin aralarında bölüştüğü rüşvet havuzundan Karakol üzerinden alınıyor.',
+            text: 'Polislik başvurun onaylandı! Artık polissin. Günlük maaşın, polislerin aralarında bölüştüğü rüşvet havuzundan Karakol üzerinden alınıyor. Polis olarak suç da işleyebilirsin ama yakalanırsan ceza 2 katı olur.',
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             read: false,
             type: 'police_approved',
@@ -4951,9 +4951,9 @@ export const claimPoliceSalary = onCall(async (request) => {
     if (!user || user.profession !== 'polis') {
       throw new HttpsError('failed-precondition', 'Polis değilsin.');
     }
-    if ((user.suspicion || 0) !== 0) {
-      throw new HttpsError('failed-precondition', 'Maaş almak için şüphe puanın %0 olmalı.');
-    }
+    // KULLANICI REVİZESİ (polis suç sistemi): şüphe SADECE başvuru anında
+    // aranır (bkz. applyForPolice) — polis olduktan sonra maaş için şüphe
+    // şartı YOK (polisler artık suç işleyebildiği için şüpheleri artabilir).
     if (dailySnap.exists && dailySnap.data().policeSalaryClaimed) {
       throw new HttpsError('failed-precondition', 'Bugün zaten maaşını aldın.');
     }
@@ -5039,8 +5039,10 @@ export const buyFromVendor = onCall(async (request) => {
 // ---------------------------------------------------------------------------
 // attemptHeist — Bölüm 13/14 soygun sistemi (TEK BAŞINA).
 // Kurallar:
-//   - Polis mesleğindeki oyuncular soygun BAŞLATAMAZ (ne solo ne ekip
-//     kurarak) — onların rolü sızmak, soymak değil.
+//   - KULLANICI REVİZESİ (polis suç sistemi): polisler de artık suç
+//     işleyebilir — gücü yettiği yeri tek başına soyabilir. Kurallar
+//     sivillerle AYNI (şüphe artar, saygınlık yakalanınca düşer), TEK FARK:
+//     yakalanınca ceza 2 KATI (bkz. crimePenaltyMultiplier).
 //   - Güç yetersizse soygun hiç BAŞLAMAZ, şüphe artmaz. (Ekip kurulmalı.)
 //   - Tek başınayken sızma riski yok (kimse yanında yok), AMA yakalanma
 //     riski mevcut şüpheye bağlı: yakalanma ihtimali = şüphe yüzdesi
@@ -5085,13 +5087,24 @@ function applyCapturePenalty(amount) {
   return { debtAdded: amount };
 }
 
-async function sendCaptureSms(uid, penaltyAmount, newTotalDebt) {
+// crimePenaltyMultiplier — KULLANICI İSTEĞİ (polis suç sistemi): polisler de
+// artık suç işleyebilir (yasaklı madde satışı, tek başına soygun, sadece
+// polislerden oluşan ekip soygunu) ama bir suçtan YAKALANIRLARSA ceza 2 KATI
+// olur (örn. Park'ta yasaklı madde satarken yakalanan polise 5.000 değil
+// 10.000 ceza). Sivillerde çarpan 1. (Karışık ekiplerde polisin sızma/tuzak
+// mekaniği ayrı çalışır — orada polis yakalanmaz, bkz. executeHeistPlan.)
+const POLICE_PENALTY_MULTIPLIER = 2;
+function crimePenaltyMultiplier(user) {
+  return user?.profession === 'polis' ? POLICE_PENALTY_MULTIPLIER : 1;
+}
+
+async function sendCaptureSms(uid, penaltyAmount, newTotalDebt, { policeDoubled = false } = {}) {
   await db
     .collection('users')
     .doc(uid)
     .collection('messages')
     .add({
-      text: `Yakalandın! ${penaltyAmount.toLocaleString('tr-TR')} altın devlete borç yazıldı. Toplam borcun: ${newTotalDebt.toLocaleString('tr-TR')} altın. Banka'dan istediğin an ödeyebilirsin; ödemesen bile borç bitene kadar kazandığın her paranın yarısına otomatik el konulacak.`,
+      text: `Yakalandın! ${policeDoubled ? 'Polis olduğun için ceza 2 katı uygulandı: ' : ''}${penaltyAmount.toLocaleString('tr-TR')} altın devlete borç yazıldı. Toplam borcun: ${newTotalDebt.toLocaleString('tr-TR')} altın. Banka'dan istediğin an ödeyebilirsin; ödemesen bile borç bitene kadar kazandığın her paranın yarısına otomatik el konulacak.`,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       read: false,
       type: 'capture_penalty',
@@ -5150,15 +5163,11 @@ export const attemptHeist = onCall(async (request) => {
   const dailyRef = db.collection('dailyActions').doc(`${uid}_${dateKey}`);
   const userRef = db.collection('users').doc(uid);
 
-  const [dailySnap, userSnap0] = await Promise.all([dailyRef.get(), userRef.get()]);
-  // Polisler HÂLÂ tek başına (solo) soygun başlatamaz — bu kısıtlama aynen
-  // korunuyor. Artık izin verilen şey SADECE ekip soygunu kurup, ekibe
-  // katılan suçluyu/suçluları "tuzağa düşürerek" yakalamak (bkz.
-  // createHeistPlan/executeHeistPlan). İmam artık suç işleyebildiği için
-  // (statü, meslek değil — bkz. applyForImam) burada imam kontrolü yok.
-  if (userSnap0.data()?.profession === 'polis' || userSnap0.data()?.pendingPoliceChange === 'apply') {
-    throw new HttpsError('failed-precondition', 'Polis mesleğindeyken/başvurun beklerken soygun başlatamazsın.');
-  }
+  const dailySnap = await dailyRef.get();
+  // KULLANICI REVİZESİ (polis suç sistemi): polisler artık tek başına da
+  // soygun yapabilir (eskiden engelliydi) — yakalanırlarsa ceza 2 katı (bkz.
+  // crimePenaltyMultiplier). İmam da suç işleyebilir (statü, meslek değil —
+  // bkz. applyForImam), burada imam kontrolü yok.
   if (dailySnap.exists && dailySnap.data().heist?.[target]) {
     throw new HttpsError('failed-precondition', 'Bu hedefi bugün zaten denedin.');
   }
@@ -5192,6 +5201,9 @@ export const attemptHeist = onCall(async (request) => {
     const suspicion = user.suspicion || 0;
     const caught = Math.random() < captureRiskPercent(suspicion) / 100;
     const reward = config.reward;
+    // Yakalanırsa ödenecek ceza — polisse 2 KATI (bkz. crimePenaltyMultiplier).
+    const penaltyMultiplier = crimePenaltyMultiplier(user);
+    const penalty = reward * penaltyMultiplier;
 
     // Saygınlık güncellemesi (kullanıcı revizesi): şüphe artışı ARTIK
     // saygınlığı düşürmüyor — sadece GERÇEKTEN YAKALANIRSAK, yakalandığımız
@@ -5204,7 +5216,7 @@ export const attemptHeist = onCall(async (request) => {
     let newTotalDebt = user.debtToState || 0;
     if (caught) {
       updates.reputation = clampSuspicion((user.reputation || 0) - config.suspicionCost);
-      const { debtAdded } = applyCapturePenalty(reward);
+      const { debtAdded } = applyCapturePenalty(penalty);
       updates.debtToState = admin.firestore.FieldValue.increment(debtAdded);
       newTotalDebt += debtAdded;
     } else {
@@ -5221,12 +5233,12 @@ export const attemptHeist = onCall(async (request) => {
     tx.update(userRef, updates);
     tx.set(dailyRef, { heist: { [target]: true } }, { merge: true });
 
-    result = { started: true, success: !caught, caught, reward, newTotalDebt };
+    result = { started: true, success: !caught, caught, reward, penalty, policeDoubled: penaltyMultiplier > 1, newTotalDebt };
   });
 
   if (result.caught) {
-    await sendCaptureSms(uid, result.reward, result.newTotalDebt);
-    await logNewsEvent('arrest', { count: 1, totalFine: result.reward });
+    await sendCaptureSms(uid, result.penalty, result.newTotalDebt, { policeDoubled: result.policeDoubled });
+    await logNewsEvent('arrest', { count: 1, totalFine: result.penalty });
   } else {
     await logNewsEvent('heist_success', { target, amount: result.reward });
   }
@@ -5274,6 +5286,7 @@ export const sellContrabandToDepo = onCall(async () => {
 // Yakalanırsan: mal yine elden gider ama kazanacağın altın YERİNE aynı
 // miktar (5000) devlete borç yazılır — hiç cepten kesilmez, tamamı borca
 // gider (Bölüm 10 kuralı). Yakalanmazsan normal şekilde kazanırsın.
+// Polisler de satabilir; yakalanırlarsa ceza 2 katı (10.000).
 export const sellContrabandAtPark = onCall(async (request) => {
   const uid = requireAuth(request);
   const userRef = db.collection('users').doc(uid);
@@ -5287,12 +5300,10 @@ export const sellContrabandAtPark = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Yeterli malınız yok.');
     }
     const user = userSnap.data();
-    if (user?.profession === 'polis' || user?.pendingPoliceChange === 'apply') {
-      throw new HttpsError(
-        'failed-precondition',
-        'Polis mesleğindeyken/başvurun beklerken şüpheni artıracak hiçbir şey yapamazsın.'
-      );
-    }
+    // KULLANICI REVİZESİ (polis suç sistemi): polisler de yasaklı madde
+    // satabilir — yakalanırlarsa ceza 2 KATI (5.000 yerine 10.000).
+    const penaltyMultiplier = crimePenaltyMultiplier(user);
+    const penaltyAmount = CONTRABAND_PARK_SELL_PRICE * penaltyMultiplier;
 
     const currentSuspicion = user.suspicion || 0;
     const currentReputation = user.reputation || 0;
@@ -5306,13 +5317,13 @@ export const sellContrabandAtPark = onCall(async (request) => {
     // saygınlık düşer (suçun şüphe maliyeti kadar) — yakalanmazsak şüphe
     // yine artar ama saygınlığa dokunulmaz.
     if (caught) {
-      const newTotalDebt = (user.debtToState || 0) + CONTRABAND_PARK_SELL_PRICE;
+      const newTotalDebt = (user.debtToState || 0) + penaltyAmount;
       tx.update(userRef, {
         debtToState: newTotalDebt,
         suspicion: newSuspicion,
         reputation: clampSuspicion(currentReputation - PARK_SUSPICION_COST),
       });
-      outcome = { caught: true, penalty: CONTRABAND_PARK_SELL_PRICE, newTotalDebt };
+      outcome = { caught: true, penalty: penaltyAmount, policeDoubled: penaltyMultiplier > 1, newTotalDebt };
     } else {
       const { goldDelta, debtDelta } = splitIncomeForDebt(
         user.debtToState,
@@ -5328,7 +5339,7 @@ export const sellContrabandAtPark = onCall(async (request) => {
   });
 
   if (outcome.caught) {
-    await sendCaptureSms(uid, outcome.penalty, outcome.newTotalDebt);
+    await sendCaptureSms(uid, outcome.penalty, outcome.newTotalDebt, { policeDoubled: outcome.policeDoubled });
   }
 
   // Onboarding görev 3 — "parktaki gizemli adama 1 adet yasaklı madde sat"
@@ -5635,25 +5646,28 @@ export const cancelLimanOrder = onCall(async (request) => {
 //
 // Polislerin rolü İKİ ŞEKİLDE ortaya çıkabilir:
 //
-//   A) SIZMA (mevcut/eski davranış — DEĞİŞMEDİ): Polis mesleğindeki
-//      oyuncular kendi TEK BAŞINA soygunlarını hâlâ başlatamaz (attemptHeist
-//      bunu reddeder). Ama polis, BAŞKA BİR OYUNCUNUN (sivil) kurduğu bir
-//      ekip soygun planına sivil gibi katılabilir (joinHeistPlan'da bu
-//      yönde bir kısıtlama yok — bilerek). Plan, kurucusu (sivil) tarafından
+//   A) SIZMA (mevcut/eski davranış — DEĞİŞMEDİ): polis, BAŞKA BİR
+//      OYUNCUNUN (sivil) kurduğu bir ekip soygun planına sivil gibi
+//      katılabilir (joinHeistPlan'da bu yönde bir kısıtlama yok — bilerek).
+//      (Polisler artık kendi başlarına da soygun yapabiliyor — attemptHeist,
+//      ceza 2 kat — bu, sızma mekaniğini etkilemez.) Plan, kurucusu (sivil) tarafından
 //      yürütüldüğünde (executeHeistPlan), ekipteki HERKESİN gerçek mesleği
 //      gizlice (sadece sunucuda, Admin SDK ile) kontrol edilir. Aralarında
 //      sızmış polis varsa soygun "yakalanmış/çökertilmiş" sayılır.
 //
 //   B) TUZAK (yeni istek — kullanıcı revizesi): Polis mesleğindeki bir
-//      oyuncu artık KENDİ ekip soygun planını da kurabilir (createHeistPlan
-//      artık polis mesleğini reddetmiyor). Ama bu planı SADECE şu şart
-//      sağlandığında başlatabilir (executeHeistPlan içinde kontrol edilir):
-//        - Ekipte kendisi dışında EN AZ 1 suçlu (polis olmayan katılımcı)
-//          olmalı.
-//      Ekipte KAÇ POLİS olduğunun (kendisi dahil) hiçbir önemi yok — 3
-//      polis + 1 suçlu da geçerli bir tuzaktır, tek şart en az 1 suçlu
-//      bulunmasıdır (kullanıcı revizesi: "polis olup olmaması önemli değil,
-//      1 suçlu şart").
+//      oyuncu KENDİ ekip soygun planını da kurabilir (createHeistPlan polis
+//      mesleğini reddetmiyor). Ekipte kendisi dışında EN AZ 1 suçlu (polis
+//      olmayan katılımcı) varsa plan bir TUZAK'tır ve aşağıdaki algoritma
+//      çalışır. Ekipte KAÇ POLİS olduğunun hiçbir önemi yok.
+//
+//   C) SADECE POLİSLERDEN OLUŞAN EKİP (kullanıcı revizesi — polis suç
+//      sistemi): ekipte hiç suçlu yoksa yakalanacak kimse de yoktur; bu artık
+//      tuzak DEĞİL, polislerin gerçek bir soygunudur — normal soygun gibi
+//      ödül eşit bölüşülür, şüphe artar. Şüpheden yakalanırlarsa her polis
+//      kendi payının 2 KATI ceza yer (POLICE_PENALTY_MULTIPLIER). Ekipte
+//      suçlu da varsa A/B'deki sistem birebir aynen geçerlidir (polis
+//      yakalanmaz).
 //      SONUÇ ALGORİTMASI (A) ile BİREBİR AYNI — kullanıcı isteği: "eski
 //      sistemi bozmayalım". Yani TUZAK'ta da önce (A)'daki ADIM 1 aynen
 //      çalışır: her katılımcının KENDİ şüphesine göre bağımsız bir
@@ -5705,18 +5719,11 @@ export const createHeistPlan = onCall(async (request) => {
 
   const userSnap = await db.collection('users').doc(uid).get();
   const user = userSnap.data();
-  // Kullanıcı revizesi: polisler artık KENDİ ekip soygun planlarını
-  // kurabilir (bkz. dosya başındaki "TUZAK" notu) — bu yüzden burada polis
-  // mesleği ARTIK reddedilmiyor, sadece bekleyen bir polislik BAŞVURUSU
-  // varken (henüz polis değilken) plan kurmak hâlâ engelleniyor (mevcut
-  // "anlık meslek değişimi" kısıtlaması). İmam artık suç işleyebildiği için
-  // (statü, meslek değil — bkz. applyForImam) burada imam kontrolü yok.
-  if (user?.pendingPoliceChange === 'apply') {
-    throw new HttpsError(
-      'failed-precondition',
-      'Polislik başvurun beklerken soygun planı kuramazsın.'
-    );
-  }
+  // KULLANICI REVİZESİ (polis suç sistemi): polisler de plan kurabilir
+  // (ekibin tamamı polisse normal soygun, içinde suçlu varsa tuzak — bkz.
+  // dosya başındaki not ve executeHeistPlan). Polislik başvurusu bekleyenler
+  // de (şüphe başvuru anında bir kez kontrol edilir, sonrasında önemsiz)
+  // artık engellenmiyor. İmam da suç işleyebilir (statü, meslek değil).
   if (await isAlreadyInActiveHeistPlanForTarget(uid, target)) {
     throw new HttpsError(
       'failed-precondition',
@@ -6045,17 +6052,16 @@ export const executeHeistPlan = onCall(async (request) => {
   const creatorIdx = participants.findIndex((p) => p.uid === plan.creatorUid);
   const creatorIsPolice = creatorIdx !== -1 && policeIdx.includes(creatorIdx);
 
-  // TUZAK (kullanıcı revizesi, bkz. dosya başındaki "B) TUZAK" notu) —
-  // planı kuran kişi POLİS ise, ekipte kendisi dışında EN AZ 1 suçlu (polis
-  // olmayan katılımcı) olmalı — yoksa yakalanacak kimse yok demektir.
-  // Ekipte kaç polis olduğunun (kendisi dahil) ÖNEMİ YOK — 3 polis + 1
-  // suçlu da geçerli bir tuzaktır, tek şart en az 1 suçlu bulunması.
-  if (creatorIsPolice && civilianIdx.length < 1) {
-    throw new HttpsError(
-      'failed-precondition',
-      'Ekibe kendi dışında en az 1 suçlu katılmadan bu tuzağı başlatamazsın.'
-    );
-  }
+  // SADECE POLİSLERDEN OLUŞAN EKİP — KULLANICI İSTEĞİ (polis suç sistemi):
+  // ekipte hiç suçlu (polis olmayan) yoksa, yakalanacak kimse de yok demektir;
+  // bu ekip artık "tuzak" DEĞİL, polislerin kendi başlarına yaptığı GERÇEK
+  // bir soygundur: ödül normal soygundaki gibi eşit bölüşülür, şüphe artar,
+  // şüpheden yakalanırlarsa (aşağıdaki ADIM 1) her polis kendi payının 2 KATI
+  // ceza yer (bkz. POLICE_PENALTY_MULTIPLIER). Eskiden bu durumda plan
+  // başlatılamıyordu ("en az 1 suçlu şart") — o şart KALDIRILDI.
+  // Ekipte EN AZ 1 suçlu da varsa hiçbir şey değişmez: SIZMA/TUZAK sistemi
+  // birebir eskisi gibi çalışır (polis yakalanmaz, ödül alır).
+  const policeOnly = policeIdx.length > 0 && civilianIdx.length === 0;
 
   const totalPower = participants.reduce((sum, p) => sum + (p.weaponPower || 0), 0);
   if (totalPower < config.requiredPower) {
@@ -6090,13 +6096,35 @@ export const executeHeistPlan = onCall(async (request) => {
   // polis varsa) polis %100 yakalar ve ödülü alır.
   const suspicions = userSnaps.map((s) => s.data()?.suspicion || 0);
   const caughtBySuspicion = suspicions.some((s) => Math.random() * 100 < captureRiskPercent(s));
-  const busted = !caughtBySuspicion && policeIdx.length > 0;
+  const busted = !caughtBySuspicion && policeIdx.length > 0 && !policeOnly;
 
   // Saygınlık güncellemesi (kullanıcı revizesi): saygınlık SADECE
   // gerçekten yakalanan sivillerde düşer (aşağıdaki iki dal — şüpheden
   // yakalanma VE polis tuzağı, ikisi de "yakalandı" sayılır), yakalanma
   // olmayan başarı dalında (en alttaki else) saygınlığa dokunulmuyor.
-  if (caughtBySuspicion) {
+  if (caughtBySuspicion && policeOnly) {
+    // Sadece polislerden oluşan ekip şüpheden yakalandı — normal bir
+    // soygunda olduğu gibi TÜM ekip (yani her polis) ceza yer, ama polis
+    // oldukları için ceza 2 KATI: kişi başı (ödül / ekip sayısı) x 2.
+    const perPolicePenalty = Math.floor(totalReward / participants.length) * POLICE_PENALTY_MULTIPLIER;
+    participants.forEach((p, i) => {
+      const data = userSnaps[i].data();
+      const currentSuspicion = data?.suspicion || 0;
+      const currentReputation = data?.reputation || 0;
+      const { debtAdded } = applyCapturePenalty(perPolicePenalty);
+      batch.update(db.collection('users').doc(p.uid), {
+        suspicion: clampSuspicion(currentSuspicion + config.suspicionCost),
+        reputation: clampSuspicion(currentReputation - config.suspicionCost),
+        debtToState: admin.firestore.FieldValue.increment(debtAdded),
+      });
+      captureSmsList.push({
+        uid: p.uid,
+        penaltyAmount: perPolicePenalty,
+        newTotalDebt: (data?.debtToState || 0) + debtAdded,
+        policeDoubled: true,
+      });
+    });
+  } else if (caughtBySuspicion) {
     // Şüpheden yakalandılar. Ceza sadece SİVİLLERE uygulanır (varsa
     // sızmış polis bu turda ne ödül alır ne cezalandırılır — kimliği
     // hâlâ gizli kalır).
@@ -6187,12 +6215,14 @@ export const executeHeistPlan = onCall(async (request) => {
 
   batch.update(planRef, {
     status: 'executed',
-    result: { busted, caughtBySuspicion, totalReward },
+    result: { busted, caughtBySuspicion, totalReward, policeOnly },
   });
   await batch.commit();
 
   await Promise.all(
-    captureSmsList.map((c) => sendCaptureSms(c.uid, c.penaltyAmount, c.newTotalDebt))
+    captureSmsList.map((c) =>
+      sendCaptureSms(c.uid, c.penaltyAmount, c.newTotalDebt, { policeDoubled: Boolean(c.policeDoubled) })
+    )
   );
   await Promise.all(
     policeEarningSmsList.map((p) =>
@@ -6235,7 +6265,23 @@ export const executeHeistPlan = onCall(async (request) => {
     await logNewsEvent('heist_success', { target: plan.target, amount: totalReward });
   }
 
-  return { ok: true, started: true, busted, caughtBySuspicion, totalReward, viaPoliceTrap: creatorIsPolice };
+  return {
+    ok: true,
+    started: true,
+    busted,
+    caughtBySuspicion,
+    totalReward,
+    // viaPoliceTrap — tuzak SADECE ekipte suçlu varsa anlamlı; sadece
+    // polislerden oluşan ekip (policeOnly) gerçek bir soygundur.
+    viaPoliceTrap: creatorIsPolice && !policeOnly,
+    policeOnly,
+    // policePenalty — sadece polislerden oluşan ekip yakalandıysa, çağıranın
+    // (plan kurucusu) kendi payına yazılan (2 katı) ceza.
+    policePenalty:
+      caughtBySuspicion && policeOnly
+        ? Math.floor(totalReward / participants.length) * POLICE_PENALTY_MULTIPLIER
+        : null,
+  };
 });
 
 // ---------------------------------------------------------------------------

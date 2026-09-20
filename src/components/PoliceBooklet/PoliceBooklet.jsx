@@ -2,24 +2,50 @@ import { useState } from 'react';
 import { usePoliceSalaryStats } from '../../hooks/usePoliceSalaryStats';
 import './PoliceBooklet.css';
 
-const STATIC_PAGES = [
+// Polis kitapçığı — KULLANICI İSTEĞİ: "baştan yazalım, gereksiz bilgileri
+// kaldıralım, olabildiğince net basit anlaşılır olsun". Polisler artık suç da
+// işleyebiliyor (yasaklı madde satışı, soygun) — tek fark yakalanınca ceza 2
+// katı. Her sayfa tek bir konuyu, kısa cümlelerle anlatır.
+const PAGES_BEFORE_SALARY = [
   {
-    title: 'Polisler Ne Yapar',
+    title: 'Polis Olmak İçin',
     body: [
-      'Ekipçe yapılan soygunlara sivil gibi katılmaya çalışır. Dahil olabilirse, suçluları yakalamış olur.',
-      'Artık kendi ekip soygun planını da (tuzak) kurabilir — tek şart ekibe kendisi dışında en az 1 suçlu katılması; ekipte kaç polis olduğunun (kendisi dahil) hiçbir önemi yoktur.',
-      'Ama önce şüphe konuşur: ekipteki bir suçlu kendi şüphesi yüzünden yakalanırsa polis o turda ödül alamaz, sadece o suçlu kendi cezasını öder. Kimse şüpheden yakalanmazsa polis(ler) %100 yakalar ve ödülün tamamını alır.',
-      'Polis(ler) böyle yakaladığı soygundan kazanılacak paranın tamamını ödül olarak alır (birden fazla polis varsa aralarında eşit bölüşülür).',
-      'Yakalanan suçlular ödül miktarı kadar ceza yer, bu ceza ekipteki suçlu sayısına bölünür.',
+      'Başvuru anında şüphen %0 olmalı.',
+      'Bir silahın olmalı. Polisken de en az 1 silahın kalmalı.',
+      'Ana ekrandaki 📋 butonundaki temel görevleri bitirmiş olmalısın.',
+      'Başvuru gece 00:00\'da onaylanır.',
+      'Şüphe sadece başvuruda aranır. Polis olduktan sonra şüphenin önemi yoktur.',
+      'Polis fabrikada çalışamaz.',
+    ],
+  },
+];
+
+const PAGES_AFTER_SALARY = [
+  {
+    title: 'Polis Suç İşleyebilir',
+    body: [
+      'Polisler de yasaklı madde satabilir ve soygun yapabilir.',
+      'Kurallar sivillerle aynıdır: şüphen artar, yakalanırsan saygınlığın düşer.',
+      'Tek fark: yakalanırsan ceza 2 katıdır.',
+      'Örnek: Parkta yasaklı madde satarken yakalanırsan 5.000 değil 10.000 altın borç yazılır.',
     ],
   },
   {
-    title: 'Polis Olmak İçin Ne Gerekir',
+    title: 'Soygun Yapmak',
     body: [
-      'Şüphe puanın 0 olmalı.',
-      'Bir silaha sahip olmalısın.',
-      'Ana ekrandaki 📋 butonundaki temel görevlerin tamamını bitirmiş olmalısın.',
-      'Polisler tek başına (solo) soygun/haraç gibi şüphe artıran hiçbir suç işleyemez.',
+      'Gücün yetiyorsa yeri tek başına soyabilirsin.',
+      'Gücün yetmiyorsa ekip kur (en fazla 4 kişi).',
+      'Ekipte sadece polisler varsa soygun normal soygundur: ödül eşit bölüşülür, yakalanırsanız herkes 2 kat ceza yer.',
+    ],
+  },
+  {
+    title: 'Suçluyu Yakalamak',
+    body: [
+      'Ekipte polis olmayan biri varsa, sen suçluyu yakalamış olursun. Ceza yemezsin.',
+      'Ödülün tamamını alırsın. Ekipte birden fazla polis varsa aranızda eşit bölüşülür.',
+      'Suçlulara ödül kadar ceza yazılır. Ceza, suçlu sayısına bölünür.',
+      'İstisna: ekipteki biri (sen dahil) kendi şüphesi yüzünden yakalanırsa bu turda ödül yok, ceza sadece suçlulara yazılır. Bu yüzden şüphesi yüksek bir polis tuzağı bozabilir.',
+      'Ekipte kimin polis olduğu gizlidir.',
     ],
   },
 ];
@@ -31,20 +57,18 @@ export default function PoliceBooklet({ onClose }) {
   const salaryBody =
     avgDailyPayout != null
       ? [
-          'Polisler verilen rüşvetleri aralarında bölüşürler.',
-          `Polisler son 10 günde, günlük ortalama ${avgDailyPayout.toLocaleString('tr-TR')} altın kazandı.`,
-          'Çökerttikleri soygunlardaki ödüllerin tamamını kazanırlar.',
+          'Verilen rüşvetler bir havuzda toplanır, polisler aralarında bölüşür.',
+          'Maaşını Karakol\'dan günde 1 kez alırsın.',
+          `Son 10 günde günlük ortalama ${avgDailyPayout.toLocaleString('tr-TR')} altın kazandılar.`,
+          'Maaşını 3 gün üst üste almazsan polislikten atılırsın.',
         ]
       : [
-          'Polisler verilen rüşvetleri aralarında bölüşürler.',
-          'Çökerttikleri soygunlardaki ödüllerin tamamını kazanırlar.',
+          'Verilen rüşvetler bir havuzda toplanır, polisler aralarında bölüşür.',
+          'Maaşını Karakol\'dan günde 1 kez alırsın.',
+          'Maaşını 3 gün üst üste almazsan polislikten atılırsın.',
         ];
 
-  const pages = [
-    STATIC_PAGES[0],
-    { title: 'Polisler Ne Kadar Kazanır', body: salaryBody },
-    STATIC_PAGES[1],
-  ];
+  const pages = [...PAGES_BEFORE_SALARY, { title: 'Maaş', body: salaryBody }, ...PAGES_AFTER_SALARY];
   const current = pages[page];
 
   return (

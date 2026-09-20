@@ -44,7 +44,7 @@ export default function ParkScreen() {
       <p className="park-hint">
         Sahip olduğun kaçak mal: <strong>{contrabandQty} adet</strong> · Satış fiyatı{' '}
         {PARK_SELL_PRICE.toLocaleString('tr-TR')} altın/adet
-        <InfoIcon text="Her satışta o anki şüphe yüzden kadar ihtimalle polis seni yakalayabilir (örn. şüphen %40 ise %40 ihtimalle). Yakalanırsan kazanacağın altın yerine aynı miktar devlete borç yazılır. Her satış (yakalansan da yakalanmasan da) şüpheni +5 artırır." />
+        <InfoIcon text="Her satışta o anki şüphe yüzden kadar ihtimalle polis seni yakalayabilir (örn. şüphen %40 ise %40 ihtimalle). Yakalanırsan kazanacağın altın yerine aynı miktar devlete borç yazılır. Her satış (yakalansan da yakalanmasan da) şüpheni +5 artırır. Polisen, yakalanırsan ceza 2 katı olur." />
       </p>
       <p className="park-suspicion-hint">Şu anki yakalanma riskin: %{suspicion}</p>
 
