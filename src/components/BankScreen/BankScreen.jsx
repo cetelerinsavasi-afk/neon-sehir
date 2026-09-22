@@ -203,22 +203,24 @@ function TradeToggle({
   );
 }
 
-// SellAllCryptoButton — YENİ İSTEK (madde 4): "tüm kriptoları sat
-// butonunda da yüzde 1lik kesinti ücreti miktarı yazsın, çünkü o butona
-// bastığımız an satılıyor, oyuncu kesintiyi farketmeyebilir." Bu buton
-// (diğer varlıkların "Tümünü Sat" butonlarının aksine, bkz. yukarısı)
-// artık TEK tıkla anında satmıyor — önce komisyon dahil net tutarı
-// gösteren bir onay adımına geçiyor, satış sadece İKİNCİ tıkla olur.
+// SellAllButton — YENİ İSTEK (madde 4, sonra TÜM "hepsini sat" aksiyonlarına
+// genelleştirildi): "tüm kriptoları/elmasları/hisseleri sat butonunda da
+// yüzde 1lik kesinti ücreti miktarı yazsın, çünkü o butona bastığımız an
+// satılıyor, oyuncu kesintiyi farketmeyebilir." Bu buton TEK tıkla anında
+// satmıyor — önce komisyon dahil net tutarı gösteren bir onay adımına
+// geçiyor, satış sadece İKİNCİ tıkla (Onayla) olur. Eskiden sadece kripto
+// için vardı (SellAllCryptoButton); artık elmas ve hisse senedinin "Tümünü
+// Sat" butonları da BİREBİR AYNI deseni kullanıyor.
 const SELL_COMMISSION_RATE = 0.01;
-function SellAllCryptoButton({ cryptoValue, busy, onConfirm }) {
+function SellAllButton({ label, assetValue, commissionRate = SELL_COMMISSION_RATE, busy, onConfirm }) {
   const [confirming, setConfirming] = useState(false);
-  const commission = Math.round(cryptoValue * SELL_COMMISSION_RATE);
-  const net = cryptoValue - commission;
+  const commission = Math.round(assetValue * commissionRate);
+  const net = assetValue - commission;
 
   if (!confirming) {
     return (
       <button className="bank-sell-all" disabled={busy} onClick={() => setConfirming(true)}>
-        Tüm Kriptoları Sat
+        {label}
       </button>
     );
   }
@@ -226,7 +228,7 @@ function SellAllCryptoButton({ cryptoValue, busy, onConfirm }) {
   return (
     <div className="bank-sell-all-confirm">
       <p className="bank-hint small">
-        Satılacak: {cryptoValue.toLocaleString('tr-TR')} altın · %1 komisyon:{' '}
+        Satılacak: {assetValue.toLocaleString('tr-TR')} altın · %{Math.round(commissionRate * 100)} komisyon:{' '}
         {commission.toLocaleString('tr-TR')} altın · Eline geçecek:{' '}
         <strong>{net.toLocaleString('tr-TR')} altın</strong>
       </p>
@@ -346,13 +348,12 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
           sellCommissionRate={0.01}
         />
         {diamondHoldings > 0 && (
-          <button
-            className="bank-sell-all"
-            disabled={busy === 'sell-all-diamond'}
-            onClick={() => run('sell-all-diamond', () => sellAllInvestment('diamond'))}
-          >
-            Tüm Elmasları Sat
-          </button>
+          <SellAllButton
+            label="Tüm Elmasları Sat"
+            assetValue={diamondValue}
+            busy={busy === 'sell-all-diamond'}
+            onConfirm={() => run('sell-all-diamond', () => sellAllInvestment('diamond'))}
+          />
         )}
       </div>
 
@@ -390,13 +391,12 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
           sellCommissionRate={0.01}
         />
         {stockHoldings > 0 && (
-          <button
-            className="bank-sell-all"
-            disabled={busy === 'sell-all-stock'}
-            onClick={() => run('sell-all-stock', () => sellAllInvestment('stock'))}
-          >
-            Tüm Hisseleri Sat
-          </button>
+          <SellAllButton
+            label="Tüm Hisseleri Sat"
+            assetValue={stockValue}
+            busy={busy === 'sell-all-stock'}
+            onConfirm={() => run('sell-all-stock', () => sellAllInvestment('stock'))}
+          />
         )}
       </div>
 
@@ -434,8 +434,9 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
           sellCommissionRate={0.01}
         />
         {cryptoHoldings > 0 && (
-          <SellAllCryptoButton
-            cryptoValue={cryptoValue}
+          <SellAllButton
+            label="Tüm Kriptoları Sat"
+            assetValue={cryptoValue}
             busy={busy === 'sell-all-crypto'}
             onConfirm={() => run('sell-all-crypto', () => sellAllInvestment('crypto'))}
           />

@@ -1,12 +1,26 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNewspaper } from '../../hooks/useNewspaper';
 import { useLottery } from '../../hooks/useLottery';
 import { useChampionshipDaily } from '../../hooks/useChampionshipDaily';
 import { useNewspaperBulletin } from '../../hooks/useNewspaperBulletin';
 import { useFutbolLeagues } from '../../hooks/useFutbolLeagues';
 import { useFutbolTeams } from '../../hooks/useFutbolTeams';
-import FutbolCrest from '../FutbolScreen/FutbolCrest';
+import { useTalkingBroadcast } from '../../hooks/useTalkingBroadcast';
+import { useBroadcastAudio } from '../../hooks/useBroadcastAudio';
+import BroadcastFrame from '../Broadcast/BroadcastFrame';
+import TalkingAvatarScene from '../Broadcast/TalkingAvatarScene';
+import { TV_ANCHORS } from '../../lib/tvAnchors';
 import './NewspaperScreen.css';
+
+// NewspaperScreen.jsx — GAZETE → TV UYGULAMASI (madde 3). Dosya adı/ikonu
+// aynı kaldı (PhoneScreen.jsx'te sadece etiket/ikon değişti — bkz. madde 3
+// yorumu orada), ama içerik artık bir "Neon TV" uygulaması: bir televizyon
+// çerçevesi + kumanda ile 3 kanal arasında geçiş yapılıyor. Kanalların
+// VERİ KAYNAKLARI (useNewspaper/useNewspaperBulletin/useFutbolLeagues/
+// useFutbolTeams vb.) AYNEN korunuyor — sadece SUNUM, gazete/kağıt
+// düzeninden "spiker okuyor" (cümle cümle altyazı + konuşma animasyonu,
+// bkz. components/Broadcast/) formatına çevrildi. Röportaj özelliğiyle
+// (madde 1) AYNI motor kullanılıyor, ikinci kez YAZILMADI.
 
 const UST_CABRIO_CATALOG_ID = 10;
 
@@ -23,10 +37,10 @@ const HEIST_TARGET_LABELS = {
 };
 
 const CUP_ROUND_LABELS = {
-  ROUND_OF_16: 'Kupa — Son 16',
-  QUARTER_FINAL: 'Kupa — Çeyrek Final',
-  SEMI_FINAL: 'Kupa — Yarı Final',
-  FINAL: 'Kupa — Final',
+  ROUND_OF_16: 'Kupa Son 16',
+  QUARTER_FINAL: 'Kupa Çeyrek Final',
+  SEMI_FINAL: 'Kupa Yarı Final',
+  FINAL: 'Kupa Finali',
 };
 
 function todayLongDate() {
@@ -39,40 +53,47 @@ function todayLongDate() {
   }).format(new Date());
 }
 
-// Basit, deterministik bir "sözde-rastgele" seçici — aynı maç için sayfa
-// her yeniden çizildiğinde AYNI yorum çıksın diye Math.random yerine
-// maçın kendi verisinden (isim+skor) türetilen bir sayı kullanılıyor.
+// stableIndex — basit, deterministik bir "sözde-rastgele" seçici (AYNI
+// veri için sayfa her yeniden çizildiğinde AYNI yorum çıksın diye
+// Math.random KULLANILMIYOR — madde 3 sonu, "Math.random KULLANMA").
 function stableIndex(seed, length) {
   let h = 0;
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
   return h % length;
 }
 
-// footballComment — maç sonucuna göre temel yorum. `context` (opsiyonel):
-// { winnerRank, loserRank, teamCount } — VERİLDİYSE (yani gerçek puan
-// tablosu sırası biliniyorsa) zirve yarışı / düşme hattı / büyük sürpriz
-// gibi ek cümleler de eklenir. Hiçbir veri UYDURULMUYOR — sadece mevcut
-// skor ve (varsa) gerçek lig sıralaması kullanılıyor.
+// footballComment — KULLANICI İSTEĞİ (madde 3): "gazetede maç yorumları
+// tekdüze gidiyor, cümleleri de arttırıp çeşitlendirebiliriz" — her dal
+// artık 3-4 varyant içeriyor (öncekinden fazla), hepsi deterministik
+// (stableIndex) seçiliyor.
 function footballComment(homeName, awayName, homeScore, awayScore, context) {
-  const diff = Math.abs(homeScore - awayScore);
   const seed = `${homeName}${awayName}${homeScore}${awayScore}`;
   if (homeScore === awayScore) {
     const opts =
       homeScore === 0
-        ? ['Golsüz geçen mücadelede iki takım da bir puanla yetindi.', 'Kaleler bu maçta gol görmedi, taraflar sahadan berabere ayrıldı.']
-        : ['Golcü bir mücadelede taraflar puanları paylaştı.', 'Karşılıklı gollerle geçen maç berabere sonuçlandı.'];
+        ? [
+            'Golsüz geçen mücadelede iki takım da bir puanla yetindi.',
+            'Kaleler bu maçta gol görmedi, taraflar sahadan berabere ayrıldı.',
+            'Nefes kesen anlar yaşansa da top ağlarla buluşmadı, maç 0-0 bitti.',
+          ]
+        : [
+            'Golcü bir mücadelede taraflar puanları paylaştı.',
+            'Karşılıklı gollerle geçen maç berabere sonuçlandı.',
+            'İki takım da kazanmaya yakın durdu ama sonunda bir puana razı oldu.',
+          ];
     return opts[stableIndex(seed, opts.length)];
   }
   const winner = homeScore > awayScore ? homeName : awayName;
   const loser = homeScore > awayScore ? awayName : homeName;
+  const diff = Math.abs(homeScore - awayScore);
 
   // Gerçek sıralama bilgisi varsa: alt sıradaki takım üst sıradaki
-  // favoriyi yendiyse bu her zaman "beklenmedik sonuç" olarak işlenir —
-  // kullanıcı promptu madde 27/36 (büyük sürprizler ayrı ele alınmalı).
+  // favoriyi yendiyse bu her zaman "beklenmedik sonuç" olarak işlenir.
   if (context?.winnerRank && context?.loserRank && context.winnerRank - context.loserRank >= 4) {
     const opts = [
       `Ligin favorilerinden ${loser}, alt sıralardaki ${winner} karşısında aldığı mağlubiyetle sürpriz bir sonuca imza attı.`,
       `${winner}, sıralamada kendisinden çok daha üstteki ${loser}'yı deviren gecenin sürpriz sonucuna imza attı.`,
+      `Kimse beklemiyordu ama ${winner}, favori ${loser}'yı sahasında/deplasmanında alt etmeyi başardı.`,
     ];
     return opts[stableIndex(seed, opts.length)];
   }
@@ -81,6 +102,7 @@ function footballComment(homeName, awayName, homeScore, awayScore, context) {
     const opts = [
       `${winner}, ${loser} karşısında farklı skorla güldü.`,
       `${winner} rakibine göz açtırmadı, sahadan net bir galibiyetle ayrıldı.`,
+      `${loser} savunmasız kaldı, ${winner} farklı skorla sahadan 3 puanla ayrıldı.`,
     ];
     return opts[stableIndex(seed, opts.length)];
   }
@@ -89,6 +111,7 @@ function footballComment(homeName, awayName, homeScore, awayScore, context) {
     const opts = [
       `${winner}, çekişmeli geçen maçtan aldığı 3 puanla zirve yarışındaki iddiasını sürdürdü.`,
       `${winner}'nın galibiyeti zirve yarışında önemli bir adım oldu.`,
+      `Zirve takımlarından ${winner}, bu galibiyetle şampiyonluk hesaplarını canlı tuttu.`,
     ];
     return opts[stableIndex(seed, opts.length)];
   }
@@ -96,6 +119,7 @@ function footballComment(homeName, awayName, homeScore, awayScore, context) {
     const opts = [
       `${loser} aldığı bu mağlubiyetle düşme hattında daha zor bir konuma düştü.`,
       `${winner}, düşme hattındaki ${loser} deplasmanından/sahasından 3 puanla ayrıldı.`,
+      `${loser} için alarm zilleri çalıyor — bu mağlubiyet küme düşme hattını iyice yaklaştırdı.`,
     ];
     return opts[stableIndex(seed, opts.length)];
   }
@@ -104,12 +128,11 @@ function footballComment(homeName, awayName, homeScore, awayScore, context) {
     `${winner}, çekişmeli geçen maçtan 3 puanla ayrıldı.`,
     `${winner}, ${loser} deplasmanında/sahasında mücadeleyi kazanmayı bildi.`,
     `Denk bir mücadelede ${winner} son sözü söyledi.`,
+    `${winner}, mücadeleci bir performansla 3 puanın sahibi oldu.`,
   ];
   return opts[stableIndex(seed, opts.length)];
 }
 
-// cupMatchComment — kupa maçları için ayrı, kupaya özgü yorum (round +
-// penaltı + alt lig sürprizi bilgisi kullanılıyor, hepsi gerçek veri).
 function cupMatchComment(event) {
   const { homeName, awayName, homeScore, awayScore, homeTier, awayTier, winnerIsHome, penalty, round } = event;
   const winner = winnerIsHome ? homeName : awayName;
@@ -127,7 +150,7 @@ function cupMatchComment(event) {
   }
   if (winnerTier && loserTier && winnerTier > loserTier) {
     const opts = [
-      `${loserTier}. Lig temsilcisi ${loser}, ${winnerTier}. Lig'in güçlü ekiplerinden olmasına rağmen ${winnerTier}. Lig'in alt sıralarındaki değil, tam tersine ${winnerTier}. Lig'den ${winner} karşısında elenerek kupaya erken veda etti.`,
+      `Kupada büyük sürpriz: ${loserTier}. Lig temsilcisi ${loser}, ${winnerTier}. Lig'den ${winner} karşısında elenerek kupaya erken veda etti.`,
       `Kupada büyük sürpriz: ${winnerTier}. Lig temsilcisi ${winner}, ${loserTier}. Lig'in güçlü ekiplerinden ${loser}'yı ${homeScore}-${awayScore} mağlup ederek bir üst tura yükseldi.`,
     ];
     return opts[stableIndex(seed, opts.length)];
@@ -139,34 +162,70 @@ function cupMatchComment(event) {
   return opts[stableIndex(seed, opts.length)];
 }
 
-function PriceRow({ label, unit, prev, current }) {
-  if (!prev || !current) return null;
+// investmentComment — YENİ (madde 3, Kanal 3 — Yatırım): footballComment
+// ile AYNI desen — seed'e dayalı stableIndex, Math.random YOK. Aynı fiyat
+// verisi için sayfa her yeniden çizildiğinde AYNI yorum çıkar.
+function investmentComment(label, prev, current) {
+  if (!prev || !current) return `${label} için henüz yeterli fiyat geçmişi yok.`;
   const diff = current - prev;
   const pct = prev > 0 ? (diff / prev) * 100 : 0;
-  const positive = diff >= 0;
-  return (
-    <div className="news-price-row">
-      <span className="news-price-label">{label}</span>
-      <span className="news-price-values">
-        {prev.toLocaleString('tr-TR')} → {current.toLocaleString('tr-TR')} {unit}
-      </span>
-      <span className={`news-price-change ${positive ? 'up' : 'down'}`}>
-        {positive ? '▲' : '▼'} {positive ? '+' : ''}
-        {pct.toFixed(1)}%
-      </span>
-    </div>
-  );
+  const absPct = Math.abs(pct);
+  const seed = `${label}${prev}${current}`;
+  const pctTxt = absPct.toFixed(1);
+
+  if (absPct < 0.5) {
+    const opts = [
+      `${label} fiyatında dün belirgin bir hareket görülmedi, yatay bir seyir izlendi.`,
+      `${label} piyasası dün sakindi, fiyat neredeyse aynı seviyede kaldı.`,
+    ];
+    return opts[stableIndex(seed, opts.length)];
+  }
+  if (diff > 0) {
+    if (absPct >= 8) {
+      const opts = [
+        `${label} dün sert bir yükselişle günü %${pctTxt} artışla kapattı, yatırımcılar keyifli.`,
+        `${label} fiyatı adeta uçtu — dünkü kazanç %${pctTxt}'e ulaştı.`,
+      ];
+      return opts[stableIndex(seed, opts.length)];
+    }
+    const opts = [
+      `${label} dün %${pctTxt} değer kazandı.`,
+      `${label} fiyatında dün %${pctTxt}'lik bir yükseliş yaşandı.`,
+      `${label} yatırımcılarını dün %${pctTxt}'lik artışla güldürdü.`,
+    ];
+    return opts[stableIndex(seed, opts.length)];
+  }
+  if (absPct >= 8) {
+    const opts = [
+      `${label} dün sert bir düşüşle %${pctTxt} değer kaybetti.`,
+      `${label} piyasasında dün panik havası hakimdi, fiyat %${pctTxt} geriledi.`,
+    ];
+    return opts[stableIndex(seed, opts.length)];
+  }
+  const opts = [
+    `${label} dün %${pctTxt} değer kaybetti.`,
+    `${label} fiyatında dün %${pctTxt}'lik bir düşüş görüldü.`,
+    `${label} yatırımcıları dün %${pctTxt}'lik gerilemeyle karşılaştı.`,
+  ];
+  return opts[stableIndex(seed, opts.length)];
 }
 
+const CHANNELS = [
+  { id: 1, key: 'haber', label: 'Haber', emoji: '📰' },
+  { id: 2, key: 'spor', label: 'Spor', emoji: '⚽' },
+  { id: 3, key: 'yatirim', label: 'Yatırım', emoji: '📈' },
+];
+
 export default function NewspaperScreen() {
-  const { events, loading, editionDateKey } = useNewspaper();
+  const { events, editionDateKey } = useNewspaper();
   const { yesterday: lotteryYesterday } = useLottery();
   const { byCatalogId } = useChampionshipDaily();
   const { bulletin } = useNewspaperBulletin();
   const { leagues } = useFutbolLeagues();
+  const [channel, setChannel] = useState('haber');
+  const [muted, setMuted] = useState(true);
 
   const cabrioYesterday = byCatalogId[String(UST_CABRIO_CATALOG_ID)]?.yesterday;
-
   const topTierLeague = leagues.find((l) => l.tier === 1) || null;
   const { teams: topTierTeams } = useFutbolTeams(topTierLeague?.id);
 
@@ -189,19 +248,14 @@ export default function NewspaperScreen() {
 
   const matchEvents = events
     .filter((e) => e.type === 'football_match' && (!topTierLeague || e.leagueId === topTierLeague.id))
-    .slice(0, 10);
+    .slice(0, 8);
   const cupMatchEvents = events.filter((e) => e.type === 'football_cup_match');
   const seasonEndEvent = events.find((e) => e.type === 'football_season_end');
   const cupFinalEvent = events.find((e) => e.type === 'football_cup_final');
   const newSeasonEvent = events.find((e) => e.type === 'football_new_season');
-  // onboarding_police_rule — TEK SEFERLİK duyuru (bkz. functions/index.js
-  // migrateOnboardingPoliceRule): "artık polis olmak için görev listesini
-  // bitirmiş olmak da gerekiyor" kuralı yürürlüğe girdiğinde yayınlanır.
   const onboardingPoliceRuleEvent = events.find((e) => e.type === 'onboarding_police_rule');
 
-  // Köşe yazısı — sadece gerçek puan tablosu farkından üretilir, sezon
-  // sonu/kupa finali gibi zaten manşet olan bir gün varsa gösterilmez
-  // (aynı gün iki büyük başlık çakışmasın).
+  // columnPiece — köşe yazısı metni, sadece gerçek puan tablosu farkından.
   const columnPiece = useMemo(() => {
     if (seasonEndEvent || cupFinalEvent) return null;
     if (topTierTeams.length < 4) return null;
@@ -213,309 +267,169 @@ export default function NewspaperScreen() {
     const relegationGap = (secondBottom?.stats?.points || 0) - (bottom?.stats?.points || 0);
     const seed = `${editionDateKey}${leader?.name}${bottom?.name}`;
     if (titleRaceGap <= 3) {
-      return {
-        title: 'Zirvede Dengeler Değişiyor',
-        body: [
-          `${leader?.name} zirveyi ${second?.name}'a karşı sadece ${titleRaceGap} puan farkla koruyor. Önümüzdeki haftalar şampiyonluk yarışını yeniden şekillendirebilir.`,
-          `Zirvede fark kapandı: ${leader?.name} ile ${second?.name} arasında yalnızca ${titleRaceGap} puan var. Sezonun geri kalanı gerilime devam edecek gibi görünüyor.`,
-        ][stableIndex(seed, 2)],
-      };
+      return [
+        `${leader?.name} zirveyi ${second?.name}'a karşı sadece ${titleRaceGap} puan farkla koruyor.`,
+        `Zirvede fark kapandı: ${leader?.name} ile ${second?.name} arasında yalnızca ${titleRaceGap} puan var.`,
+      ][stableIndex(seed, 2)];
     }
     if (relegationGap <= 2) {
-      return {
-        title: 'Alt Sıralarda Alarm Zilleri',
-        body: [
-          `Düşme hattında ${secondBottom?.name} ile ${bottom?.name} arasında yalnızca ${relegationGap} puan var. Önümüzdeki maçlar bu iki ekip için kritik olacak.`,
-          `Küme düşme hattındaki puan farkı daralıyor — ${bottom?.name}, güvenli bölgeye ${relegationGap} puan uzaklıkta.`,
-        ][stableIndex(seed, 2)],
-      };
+      return [
+        `Düşme hattında ${secondBottom?.name} ile ${bottom?.name} arasında yalnızca ${relegationGap} puan var.`,
+        `Küme düşme hattındaki puan farkı daralıyor — ${bottom?.name}, güvenli bölgeye ${relegationGap} puan uzaklıkta.`,
+      ][stableIndex(seed, 2)];
     }
     return null;
   }, [topTierTeams, seasonEndEvent, cupFinalEvent, editionDateKey]);
 
+  // --- Kanal metinleri — cümle cümle altyazı motoruna (useTalkingBroadcast)
+  // verilen tek bir "spiker script"i. Veri kaynakları YUKARIDAKİ hook'larla
+  // AYNEN korunuyor, sadece JSX paragraf yerine düz metin cümlelere çevrildi.
+
+  const newsScript = useMemo(() => {
+    const lines = [`İyi günler, karşınızda Neon TV Haber — ${todayLongDate()}.`];
+    if (onboardingPoliceRuleEvent) {
+      lines.push(`Resmi bir duyuru geldi. ${onboardingPoliceRuleEvent.message}`);
+    }
+    if (seasonEndEvent) {
+      const champ = seasonEndEvent.topThree?.find((t) => t.rank === 1)?.teamName;
+      lines.push(champ ? `Lig sezonu sona erdi, şampiyon ${champ} oldu.` : 'Lig sezonu sona erdi.');
+      if (seasonEndEvent.cup?.championTeamName) {
+        lines.push(`Neon Kupası'nın sahibi ${seasonEndEvent.cup.championTeamName} oldu.`);
+      }
+    } else if (cupFinalEvent) {
+      lines.push(
+        `${cupFinalEvent.championTeamName}, finalde ${cupFinalEvent.finalistTeamName}'yı ${cupFinalEvent.homeScore}-${cupFinalEvent.awayScore} mağlup ederek Neon Kupası'nın sahibi oldu.`
+      );
+    } else if (newSeasonEvent) {
+      lines.push('Şehrin takımları yeni sezona merhaba dedi.');
+    }
+
+    if (biggestHeist) {
+      lines.push(
+        `${(HEIST_TARGET_LABELS[biggestHeist.target] || biggestHeist.target).toUpperCase()} SOYULDU. Dün gerçekleşen soygunda ${(biggestHeist.amount || 0).toLocaleString('tr-TR')} altınlık kayıp yaşandı, failler hâlâ aranıyor.`
+      );
+      if (heistEvents.length > 1) lines.push(`Şehirde dün toplam ${heistEvents.length} soygun bildirildi.`);
+    } else {
+      lines.push('Dün şehirde bildirilen bir soygun haberi yok.');
+    }
+    if (stoppedCount > 0) lines.push(`Polis dün ${stoppedCount} soygun girişimini örgüt içine sızarak durdurdu.`);
+    if (arrestCount > 0) {
+      lines.push(
+        `Şüphe üzerine yapılan denetimlerde dün ${arrestCount} kişiye toplam ${arrestFine.toLocaleString('tr-TR')} altın ceza yazıldı.`
+      );
+    }
+
+    if (columnPiece) lines.push(columnPiece);
+
+    if (matchEvents.length > 0 || cupMatchEvents.length > 0) {
+      lines.push('Spor kanalımızda futbol sonuçlarının detaylarını bulabilirsiniz.');
+    }
+    if (bulletin) {
+      lines.push('Piyasalarda son durumu Yatırım kanalımızdan takip edebilirsiniz.');
+    }
+    if (cabrioYesterday?.winnerUid) {
+      lines.push(
+        `Üstün Cabrio şampiyonasında dünün galibi ${cabrioYesterday.winnerName}, pisti ${cabrioYesterday.winnerTurns} turda tamamlayarak zirveye oturdu.`
+      );
+    }
+    if (lotteryYesterday?.winnerUid) {
+      lines.push(
+        `Dünün piyango talihlisi ${lotteryYesterday.winnerName}, ${(lotteryYesterday.winnerAmount || 0).toLocaleString('tr-TR')} altın kazandı.`
+      );
+    }
+    lines.push('Neon TV Haber\'de bugünlük bu kadar, bizi izlediğiniz için teşekkürler.');
+    return lines.join(' ');
+  }, [
+    onboardingPoliceRuleEvent, seasonEndEvent, cupFinalEvent, newSeasonEvent, biggestHeist, heistEvents.length,
+    stoppedCount, arrestCount, arrestFine, columnPiece, matchEvents.length, cupMatchEvents.length, bulletin,
+    cabrioYesterday, lotteryYesterday,
+  ]);
+
+  const sportsScript = useMemo(() => {
+    const lines = ['Merhaba, Neon TV Spor\'da 1. Lig\'den son gelişmeler.'];
+    if (matchEvents.length === 0 && cupMatchEvents.length === 0) {
+      lines.push('Dün 1. Lig\'de oynanan bir maç yoktu.');
+    }
+    matchEvents.forEach((m) => {
+      const winnerRank = m.homeScore === m.awayScore ? null : rankByTeamName[m.homeScore > m.awayScore ? m.homeName : m.awayName];
+      const loserRank = m.homeScore === m.awayScore ? null : rankByTeamName[m.homeScore > m.awayScore ? m.awayName : m.homeName];
+      lines.push(
+        `${m.homeName} ${m.homeScore} - ${m.awayScore} ${m.awayName}. ${footballComment(m.homeName, m.awayName, m.homeScore, m.awayScore, { winnerRank, loserRank, teamCount: topTierTeams.length })}`
+      );
+    });
+    cupMatchEvents.forEach((m) => {
+      lines.push(
+        `${CUP_ROUND_LABELS[m.round] || m.round}: ${m.homeName} ${m.homeScore} - ${m.awayScore} ${m.awayName}. ${cupMatchComment(m)}`
+      );
+    });
+    lines.push('Spor haberlerimiz burada sona eriyor, bizi izlediğiniz için teşekkürler.');
+    return lines.join(' ');
+  }, [matchEvents, cupMatchEvents, rankByTeamName, topTierTeams.length]);
+
+  const investmentScript = useMemo(() => {
+    const lines = ['İyi günler, Neon TV Yatırım\'da günün piyasa özeti.'];
+    if (!bulletin) {
+      lines.push('Piyasa verisi henüz oluşmadı.');
+    } else {
+      lines.push(investmentComment('Elmas', bulletin.prevDiamondPrice, bulletin.diamondPrice));
+      lines.push(investmentComment('Hisse senedi', bulletin.prevStockPrice, bulletin.stockPrice));
+      lines.push(investmentComment('Kripto para', bulletin.prevCryptoPrice, bulletin.cryptoPrice));
+      lines.push('Bu bülten her gece yenilenir, anlık alım satım fiyatları için Parara Bank\'a bakabilirsiniz.');
+    }
+    lines.push('Yatırım haberlerimiz burada sona eriyor, bir sonraki bültende görüşmek üzere.');
+    return lines.join(' ');
+  }, [bulletin]);
+
+  const SCRIPTS = { haber: newsScript, spor: sportsScript, yatirim: investmentScript };
+  const anchor = TV_ANCHORS[channel];
+  const { triggerMumble } = useBroadcastAudio(null, { muted });
+  const { currentSentence, mouthOpen, progress, elapsedSec } = useTalkingBroadcast(SCRIPTS[channel], {
+    onMouthToggle: triggerMumble,
+  });
+  const activeChannel = CHANNELS.find((c) => c.key === channel);
+
   return (
-    <div className="newspaper">
-      <div className="newspaper-masthead">
-        <p className="newspaper-title">NEON ŞEHİR GAZETESİ</p>
-        <p className="newspaper-date">{todayLongDate()}</p>
-        <div className="newspaper-rule" />
+    <div className="tv-app">
+      <div className="tv-set">
+        <div className="tv-set-brand">NEON TV</div>
+        <div className="tv-screen">
+          <BroadcastFrame
+            subtitle={currentSentence}
+            kicker={`${activeChannel?.emoji} ${activeChannel?.label} — ${anchor.name}`}
+            progress={progress}
+            elapsedSec={elapsedSec}
+            muted={muted}
+            onToggleMute={() => setMuted((m) => !m)}
+          >
+            <TalkingAvatarScene studio avatar={anchor.avatar} mouthOpen={mouthOpen} />
+          </BroadcastFrame>
+        </div>
+        <div className="tv-set-vents">
+          <span />
+          <span />
+          <span />
+        </div>
       </div>
 
-      {loading && <p className="newspaper-loading">Baskıya hazırlanıyor...</p>}
-
-      {onboardingPoliceRuleEvent && (
-        <section className="newspaper-section newspaper-headline">
-          <h2 className="newspaper-headline-title">📢 RESMİ DUYURU: POLİSLİK KURALLARI DEĞİŞTİ</h2>
-          <div className="newspaper-headline-body">
-            <p>{onboardingPoliceRuleEvent.message}</p>
-          </div>
-        </section>
-      )}
-
-      {seasonEndEvent && (
-        <section className="newspaper-section newspaper-headline">
-          <h2 className="newspaper-headline-title">🏆 ŞAMPİYON BELLİ OLDU!</h2>
-          <div className="newspaper-headline-body">
-            {seasonEndEvent.topThree?.length > 0 && (
-              <p>
-                1. Lig'de şampiyon{' '}
-                <strong>{seasonEndEvent.topThree.find((t) => t.rank === 1)?.teamName}</strong> oldu.{' '}
-                {seasonEndEvent.topThree.find((t) => t.rank === 2) && (
-                  <>
-                    2.'liği <strong>{seasonEndEvent.topThree.find((t) => t.rank === 2)?.teamName}</strong>,
-                  </>
-                )}{' '}
-                {seasonEndEvent.topThree.find((t) => t.rank === 3) && (
-                  <>
-                    3.'lüğü <strong>{seasonEndEvent.topThree.find((t) => t.rank === 3)?.teamName}</strong> aldı.
-                  </>
-                )}
-              </p>
-            )}
-            {seasonEndEvent.promotions?.length > 0 && (
-              <p>
-                🔼 Üst lige yükselenler:{' '}
-                {seasonEndEvent.promotions.map((p) => p.teamName).join(', ')}.
-              </p>
-            )}
-            {seasonEndEvent.relegations?.length > 0 && (
-              <p>
-                🔽 Alt lige düşenler:{' '}
-                {seasonEndEvent.relegations.map((p) => p.teamName).join(', ')}.
-              </p>
-            )}
-            {seasonEndEvent.cup?.championTeamName && (
-              <p>
-                🏆 Neon Kupası'nın sahibi <strong>{seasonEndEvent.cup.championTeamName}</strong> oldu.
-              </p>
-            )}
-            {seasonEndEvent.topScorerTeam && (
-              <p>
-                ⚽ Sezonun en golcü takımı: <strong>{seasonEndEvent.topScorerTeam.teamName}</strong> (
-                {seasonEndEvent.topScorerTeam.goals} gol)
-              </p>
-            )}
-            {seasonEndEvent.bestDefenseTeam && (
-              <p>
-                🛡️ En az gol yiyen takım: <strong>{seasonEndEvent.bestDefenseTeam.teamName}</strong> (
-                {seasonEndEvent.bestDefenseTeam.conceded} gol yedi)
-              </p>
-            )}
-            {seasonEndEvent.bestPlayer && (
-              <p>
-                ⭐ Sezonun en iyi oyuncusu: <strong>{seasonEndEvent.bestPlayer.playerName}</strong> (
-                {seasonEndEvent.bestPlayer.teamName}, Güç: {seasonEndEvent.bestPlayer.power})
-              </p>
-            )}
-          </div>
-        </section>
-      )}
-
-      {!seasonEndEvent && cupFinalEvent && (
-        <section className="newspaper-section newspaper-headline">
-          <h2 className="newspaper-headline-title">🏆 KUPA SAHİBİNİ BULDU!</h2>
-          <div className="newspaper-headline-body">
-            <p>
-              <strong>{cupFinalEvent.championTeamName}</strong>, finalde{' '}
-              <strong>{cupFinalEvent.finalistTeamName}</strong>'yı{' '}
-              {cupFinalEvent.homeScore} - {cupFinalEvent.awayScore}
-              {cupFinalEvent.penalty && (
-                <> (Penaltılar: {cupFinalEvent.penalty.homeScore}-{cupFinalEvent.penalty.awayScore})</>
-              )}{' '}
-              mağlup ederek Neon Kupası'nın sahibi oldu.
-            </p>
-          </div>
-        </section>
-      )}
-
-      {!seasonEndEvent && !cupFinalEvent && newSeasonEvent && (
-        <section className="newspaper-section newspaper-headline">
-          <h2 className="newspaper-headline-title">🆕 YENİ SEZON BAŞLADI!</h2>
-          <div className="newspaper-headline-body">
-            <p>
-              Şehrin takımları yeniden sahada.
-              {newSeasonEvent.previousChampionTeamName && (
-                <> Geçen sezonun şampiyonu <strong>{newSeasonEvent.previousChampionTeamName}</strong> oldu.</>
-              )}
-              {newSeasonEvent.previousCupChampionTeamName && (
-                <> Neon Kupası'nın sahibi <strong>{newSeasonEvent.previousCupChampionTeamName}</strong> olmuştu.</>
-              )}
-            </p>
-          </div>
-        </section>
-      )}
-
-      <div className="newspaper-stack">
-        <section className="newspaper-section">
-          <h3 className="newspaper-section-title">🚨 Asayiş</h3>
-          {biggestHeist ? (
-            <p className="newspaper-body">
-              <strong>
-                {(HEIST_TARGET_LABELS[biggestHeist.target] || biggestHeist.target).toUpperCase()}{' '}
-                SOYULDU
-              </strong>
-              . Dün gerçekleşen soygunda{' '}
-              <strong>{(biggestHeist.amount || 0).toLocaleString('tr-TR')}</strong> altınlık kayıp
-              yaşandı. Failler hâlâ aranıyor.
-              {heistEvents.length > 1 &&
-                ` Şehirde dün toplam ${heistEvents.length} soygun bildirildi.`}
-            </p>
-          ) : (
-            <p className="newspaper-body newspaper-muted">
-              Dün şehirde bildirilen bir soygun haberi yok.
-            </p>
-          )}
-          {stoppedCount > 0 && (
-            <p className="newspaper-body">
-              👮 Polis dün {stoppedCount} soygun girişimini örgüt içine sızarak durdurdu.
-            </p>
-          )}
-          {arrestCount > 0 && (
-            <p className="newspaper-body">
-              ⚖️ Şüphe üzerine yapılan denetimlerde dün {arrestCount} kişiye toplam{' '}
-              {arrestFine.toLocaleString('tr-TR')} altın ceza yazıldı.
-            </p>
-          )}
-          {!biggestHeist && stoppedCount === 0 && arrestCount === 0 && (
-            <p className="newspaper-muted newspaper-small">Şehir dün sakindi.</p>
-          )}
-        </section>
-
-        <section className="newspaper-section newspaper-football">
-          <h3 className="newspaper-section-title">⚽ Futbol — 1. Lig</h3>
-          {matchEvents.length === 0 && cupMatchEvents.length === 0 && (
-            <p className="newspaper-body newspaper-muted">Dün 1. Lig'de oynanan maç yok.</p>
-          )}
-          <div className="newspaper-match-list">
-            {matchEvents.map((m) => {
-              const winnerRank = m.homeScore === m.awayScore ? null : rankByTeamName[m.homeScore > m.awayScore ? m.homeName : m.awayName];
-              const loserRank = m.homeScore === m.awayScore ? null : rankByTeamName[m.homeScore > m.awayScore ? m.awayName : m.homeName];
-              return (
-                <div key={m.id} className="newspaper-match-row">
-                  <div className="newspaper-match-score-line">
-                    <FutbolCrest logo={m.homeLogo} initials={m.homeName?.[0]} size={26} />
-                    <span className="newspaper-match-team">{m.homeName}</span>
-                    <span className="newspaper-match-score">
-                      {m.homeScore} - {m.awayScore}
-                    </span>
-                    <span className="newspaper-match-team">{m.awayName}</span>
-                    <FutbolCrest logo={m.awayLogo} initials={m.awayName?.[0]} size={26} />
-                  </div>
-                  <p className="newspaper-match-comment">
-                    {footballComment(m.homeName, m.awayName, m.homeScore, m.awayScore, {
-                      winnerRank,
-                      loserRank,
-                      teamCount: topTierTeams.length,
-                    })}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-
-          {cupMatchEvents.length > 0 && (
-            <>
-              <p className="newspaper-section-title" style={{ marginTop: 12 }}>
-                🏆 Neon Kupası
-              </p>
-              <div className="newspaper-match-list">
-                {cupMatchEvents.map((m) => (
-                  <div key={m.id} className="newspaper-match-row">
-                    <p className="newspaper-body newspaper-muted" style={{ margin: '0 0 2px', fontSize: 11 }}>
-                      {CUP_ROUND_LABELS[m.round] || m.round}
-                    </p>
-                    <div className="newspaper-match-score-line">
-                      <FutbolCrest logo={m.homeLogo} initials={m.homeName?.[0]} size={26} />
-                      <span className="newspaper-match-team">{m.homeName}</span>
-                      <span className="newspaper-match-score">
-                        {m.homeScore} - {m.awayScore}
-                      </span>
-                      <span className="newspaper-match-team">{m.awayName}</span>
-                      <FutbolCrest logo={m.awayLogo} initials={m.awayName?.[0]} size={26} />
-                    </div>
-                    <p className="newspaper-match-comment">{cupMatchComment(m)}</p>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </section>
-
-        {columnPiece && (
-          <section className="newspaper-section">
-            <h3 className="newspaper-section-title">📝 {columnPiece.title}</h3>
-            <p className="newspaper-body">{columnPiece.body}</p>
-          </section>
-        )}
-
-        <section className="newspaper-section">
-          <h3 className="newspaper-section-title">📈 Borsa Bülteni</h3>
-          {bulletin ? (
-            <div className="news-price-list">
-              <PriceRow
-                label="Elmas"
-                unit="altın"
-                prev={bulletin.prevDiamondPrice}
-                current={bulletin.diamondPrice}
-              />
-              <PriceRow
-                label="Hisse Senedi"
-                unit="altın"
-                prev={bulletin.prevStockPrice}
-                current={bulletin.stockPrice}
-              />
-              <PriceRow
-                label="Kripto"
-                unit="altın"
-                prev={bulletin.prevCryptoPrice}
-                current={bulletin.cryptoPrice}
-              />
-              <p className="newspaper-muted newspaper-small">
-                Bu bülten her gece 00:00'da güncellenir, gün içinde değişmez. Anlık alım/satım
-                fiyatları için Parara Bank'a bak.
-              </p>
-            </div>
-          ) : (
-            <p className="newspaper-body newspaper-muted">Piyasa verisi henüz oluşmadı.</p>
-          )}
-        </section>
+      <div className="tv-remote">
+        <div className="tv-remote-top">
+          <span className="tv-remote-led" />
+          <span className="tv-remote-label">KUMANDA</span>
+        </div>
+        <div className="tv-remote-channels">
+          {CHANNELS.map((c) => (
+            <button
+              key={c.id}
+              className={`tv-remote-btn${channel === c.key ? ' active' : ''}`}
+              onClick={() => setChannel(c.key)}
+            >
+              <span className="tv-remote-btn-num">{c.id}</span>
+              <span className="tv-remote-btn-emoji">{c.emoji}</span>
+              <span className="tv-remote-btn-label">{c.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
-
-      <div className="newspaper-bottom-row">
-        <section className="newspaper-section newspaper-bottom-col">
-          <h3 className="newspaper-section-title">🏆 Şampiyona</h3>
-          {cabrioYesterday?.winnerUid ? (
-            <p className="newspaper-body">
-              Üstün Cabrio şampiyonasında dünün galibi <strong>{cabrioYesterday.winnerName}</strong>,
-              pisti <strong>{cabrioYesterday.winnerTurns}</strong> turda tamamlayarak zirveye
-              oturdu.
-            </p>
-          ) : (
-            <p className="newspaper-body newspaper-muted">
-              Dün Üstün Cabrio ile pisti tamamlayan olmadı.
-            </p>
-          )}
-        </section>
-
-        <section className="newspaper-section newspaper-bottom-col">
-          <h3 className="newspaper-section-title">🎰 Piyango</h3>
-          {lotteryYesterday?.winnerUid ? (
-            <p className="newspaper-body">
-              Dünün piyango talihlisi <strong>{lotteryYesterday.winnerName}</strong>,{' '}
-              <strong>{(lotteryYesterday.winnerAmount || 0).toLocaleString('tr-TR')}</strong> altın
-              kazandı.
-            </p>
-          ) : (
-            <p className="newspaper-body newspaper-muted">
-              Dün piyangoyu kazanan olmadı — bilet alan çıkmadı.
-            </p>
-          )}
-        </section>
-      </div>
-
-      <p className="newspaper-footer">
-        Neon Şehir Gazetesi, her gece 00:00'da bir önceki günün özetiyle yenilenir.
-      </p>
     </div>
   );
 }

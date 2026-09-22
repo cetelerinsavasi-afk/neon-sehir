@@ -1,241 +1,142 @@
-.newspaper {
-  --news-paper: #f3ecd9;
-  --news-paper-edge: #e7ddc3;
-  --news-ink: #1c1a15;
-  --news-ink-dim: #5a5344;
-  --news-rule: #1c1a15;
-  --news-red: #8c1c1c;
-  background: var(--news-paper);
-  background-image: radial-gradient(rgba(0, 0, 0, 0.04) 1px, transparent 1px);
-  background-size: 3px 3px;
-  color: var(--news-ink);
-  font-family: 'Georgia', 'Times New Roman', serif;
-  padding: 16px 14px 28px;
-  min-height: 100%;
-  border-radius: 6px;
-}
+/* NewspaperScreen.css — GAZETE → TV UYGULAMASI (madde 3). Eski kağıt/gazete
+   temalı stiller tamamen kaldırıldı, oyunun genel neon/gece paletine (bkz.
+   src/styles/theme.css) uygun bir "televizyon + kumanda" görünümü var. */
 
-.newspaper-masthead {
-  text-align: center;
-  margin-bottom: 10px;
-}
-
-.newspaper-title {
-  font-family: 'Georgia', 'Times New Roman', serif;
-  font-weight: 900;
-  font-size: 28px;
-  letter-spacing: 0.04em;
-  margin: 0;
-  text-transform: uppercase;
-}
-
-.newspaper-date {
-  margin: 2px 0 8px;
-  font-size: 12px;
-  font-style: italic;
-  color: var(--news-ink-dim);
-  text-transform: capitalize;
-}
-
-.newspaper-rule {
-  height: 3px;
-  background: var(--news-rule);
-  background-image: linear-gradient(var(--news-rule), var(--news-rule)),
-    linear-gradient(var(--news-rule), var(--news-rule));
-  position: relative;
-}
-
-.newspaper-rule::after {
-  content: '';
-  display: block;
-  height: 1px;
-  margin-top: 3px;
-  background: var(--news-rule);
-}
-
-.newspaper-loading {
-  text-align: center;
-  font-style: italic;
-  color: var(--news-ink-dim);
-  padding: 20px 0;
-}
-
-.newspaper-section {
-  border-top: 1px solid rgba(28, 26, 21, 0.25);
-  padding: 10px 0;
-}
-
-.newspaper-stack {
+.tv-app {
   display: flex;
   flex-direction: column;
-}
-
-.newspaper-stack .newspaper-section:first-child {
-  border-top: none;
-}
-
-.newspaper-bottom-row {
-  display: flex;
-  gap: 14px;
-  border-top: 3px double var(--news-ink);
-  margin-top: 4px;
-  padding-top: 8px;
-}
-
-.newspaper-bottom-col {
-  flex: 1;
-  min-width: 0;
-  border-top: none;
-  padding: 0;
-}
-
-.newspaper-section-title {
-  font-size: 15px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  margin: 0 0 6px;
-  border-bottom: 2px solid var(--news-ink);
-  padding-bottom: 4px;
-  display: inline-block;
-}
-
-.newspaper-body {
-  font-size: 14px;
-  line-height: 1.5;
-  margin: 0 0 6px;
-}
-
-.newspaper-muted {
-  color: var(--news-ink-dim);
-  font-style: italic;
-}
-
-.newspaper-small {
-  font-size: 11px;
-}
-
-.newspaper-headline {
-  border: 2px solid var(--news-ink);
-  padding: 12px;
-  margin-bottom: 4px;
-  background: rgba(140, 28, 28, 0.05);
-}
-
-.newspaper-headline-title {
-  font-size: 20px;
-  font-weight: 900;
-  text-align: center;
-  margin: 0 0 8px;
-  color: var(--news-red);
-  text-transform: uppercase;
-}
-
-.newspaper-headline-body p {
-  font-size: 14px;
-  line-height: 1.5;
-  margin: 0 0 6px;
-  text-align: center;
-}
-
-.news-price-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.news-price-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 6px;
-  font-size: 13px;
-}
-
-.news-price-label {
-  font-weight: 700;
-  min-width: 78px;
-}
-
-.news-price-values {
-  flex: 1;
-  color: var(--news-ink-dim);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.news-price-change {
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.news-price-change.up {
-  color: #2f6b2f;
-}
-
-.news-price-change.down {
-  color: var(--news-red);
-}
-
-.newspaper-football {
-  border-top: 1px solid rgba(28, 26, 21, 0.25);
-}
-
-.newspaper-match-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.newspaper-match-row {
-  padding-bottom: 8px;
-  border-bottom: 1px dashed rgba(28, 26, 21, 0.3);
-}
-
-.newspaper-match-row:last-child {
-  border-bottom: none;
-}
-
-.newspaper-match-score-line {
-  display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 700;
+  gap: 18px;
+  padding: 18px 14px 28px;
+  min-height: 100%;
+  background: radial-gradient(circle at 50% 0%, #10182c 0%, #05070c 70%);
 }
 
-.newspaper-match-team {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.tv-set {
+  position: relative;
+  width: 100%;
+  max-width: 320px;
+  padding: 14px 14px 22px;
+  border-radius: 22px;
+  background: linear-gradient(160deg, #23283a 0%, #14151f 60%, #0c0d14 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.5), inset 0 0 0 4px rgba(0, 0, 0, 0.35);
 }
 
-.newspaper-match-team:last-of-type {
-  text-align: right;
-}
-
-.newspaper-match-score {
-  font-size: 15px;
-  font-weight: 900;
-  white-space: nowrap;
-  padding: 0 4px;
-}
-
-.newspaper-match-comment {
-  margin: 4px 0 0;
-  font-size: 12px;
-  font-style: italic;
-  color: var(--news-ink-dim);
-}
-
-.newspaper-footer {
-  margin-top: 14px;
+.tv-set-brand {
   text-align: center;
   font-size: 10px;
-  font-style: italic;
-  color: var(--news-ink-dim);
-  border-top: 1px solid rgba(28, 26, 21, 0.25);
-  padding-top: 8px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  color: var(--neon-cyan);
+  margin-bottom: 8px;
+  text-shadow: 0 0 8px rgba(25, 232, 255, 0.6);
+}
+
+.tv-screen {
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 3px #05070c, inset 0 0 22px rgba(0, 0, 0, 0.6);
+}
+
+.tv-set-vents {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.tv-set-vents span {
+  width: 24px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.tv-remote {
+  width: 100%;
+  max-width: 220px;
+  padding: 14px 12px 16px;
+  border-radius: 18px;
+  background: linear-gradient(160deg, #1c2033 0%, #0e1017 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tv-remote-top {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.tv-remote-led {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3ddc84;
+  box-shadow: 0 0 8px rgba(61, 220, 132, 0.85);
+}
+
+.tv-remote-label {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--text-dim);
+}
+
+.tv-remote-channels {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tv-remote-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.tv-remote-btn.active {
+  border-color: var(--neon-cyan);
+  background: rgba(25, 232, 255, 0.14);
+  color: var(--neon-cyan);
+  box-shadow: 0 0 10px rgba(25, 232, 255, 0.25);
+}
+
+.tv-remote-btn-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.tv-remote-btn.active .tv-remote-btn-num {
+  background: var(--neon-cyan);
+  color: #05070c;
+}
+
+.tv-remote-btn-emoji {
+  font-size: 14px;
+}
+
+.tv-remote-btn-label {
+  font-size: 12px;
+  font-weight: 700;
 }

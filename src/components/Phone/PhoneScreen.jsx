@@ -22,7 +22,10 @@ const APPS = [
   { id: 'amazor', label: 'A', note: 'Amazor Market', enabled: true },
   { id: 'chatsapp', label: '💬', note: 'ChatsApp', enabled: true },
   { id: 'casino', label: '🎰', note: 'Casino', enabled: true },
-  { id: 'gazete', label: '📰', note: 'Gazete', enabled: true },
+  // gazete -> TV (madde 3): id/dahili anahtar geriye dönük uyumluluk için
+  // korunuyor (bkz. useNewspaper.js — "gazete" verisi hâlâ TV'nin Haber
+  // kanalının veri kaynağı), sadece ikon/isim değişti.
+  { id: 'gazete', label: '📺', note: 'TV', enabled: true },
   { id: 'flappy', label: '🐤', note: 'Flappy Kuş', enabled: true },
   { id: 'sixtagram', label: '📸', note: 'Sixtagram', enabled: true },
 ];
@@ -34,7 +37,7 @@ const APP_TITLES = {
   amazor: 'Amazor Market',
   chatsapp: 'ChatsApp',
   casino: 'Casino',
-  gazete: 'Neon Şehir Gazetesi',
+  gazete: 'Neon TV',
   flappy: 'Flappy Kuş',
   sixtagram: 'Sixtagram',
   'altin-magazasi': 'Altın Mağazası',

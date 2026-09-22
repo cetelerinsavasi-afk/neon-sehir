@@ -1,0 +1,145 @@
+.bcast-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #05070c;
+  border: 1px solid var(--panel-border);
+  isolation: isolate;
+}
+
+.bcast-visual {
+  position: absolute;
+  inset: 0;
+}
+
+.bcast-top-row {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.bcast-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: var(--neon-pink);
+  border-radius: 4px;
+  padding: 3px 7px;
+  box-shadow: 0 0 10px rgba(255, 46, 140, 0.55);
+}
+
+.bcast-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fff;
+  animation: bcast-blink 1.1s infinite;
+}
+
+.bcast-rec-counter {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 4px;
+  padding: 3px 7px;
+}
+
+.bcast-rec-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ff4444;
+  animation: bcast-blink 1s infinite;
+}
+
+@keyframes bcast-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+.bcast-mute-btn {
+  position: absolute;
+  top: 34px;
+  right: 8px;
+  z-index: 3;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.bcast-lower-third {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 14px;
+  z-index: 3;
+  background: linear-gradient(180deg, rgba(5, 7, 12, 0), rgba(5, 7, 12, 0.86) 35%, rgba(5, 7, 12, 0.92));
+  border-left: 3px solid var(--neon-cyan);
+  border-radius: 0 6px 6px 0;
+  padding: 20px 10px 8px;
+  min-height: 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bcast-kicker {
+  margin: 0;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--neon-cyan);
+}
+
+.bcast-subtitle {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.35;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.bcast-progress-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  z-index: 3;
+}
+
+.bcast-progress-fill {
+  height: 100%;
+  background: var(--neon-cyan);
+  box-shadow: 0 0 6px rgba(25, 232, 255, 0.7);
+  transition: width 0.15s linear;
+}

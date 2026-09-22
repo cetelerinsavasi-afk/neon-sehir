@@ -20,10 +20,15 @@ import { useInventory } from '../../hooks/useInventory';
 import { useAuth } from '../../contexts/AuthContext';
 import { vehicleImage, vehicleDisplayName } from '../VehicleCard/VehicleCard';
 import { createSixtagramPost } from '../../services/gameActions';
+import { INTERVIEW_LOCATIONS } from '../../lib/interviewLocations';
 import PostAttachment from './PostAttachment';
 import './ComposeModal.css';
 
 const MAX_LEN = 280;
+// INTERVIEW_MAX_LEN — functions/index.js'teki INTERVIEW_MAX_TEXT_LEN ile
+// AYNI (madde 1: RÖPORTAJ). Sunucu zaten kendi tarafında kırpıyor, bu
+// sadece karaktör sayacı için istemci tarafı ikizi.
+const INTERVIEW_MAX_LEN = 500;
 
 const ASSET_OPTIONS = [
   { id: 'diamond', label: 'Elmas', field: 'diamondPrice' },
@@ -53,8 +58,12 @@ function istanbulDateKeyOffset(offsetDays) {
 export default function ComposeModal({ onClose, onPosted }) {
   const [text, setText] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
-  // subPicker: 'vehicle' | 'iddaa' | 'investment' | 'upcomingMatches' | 'lastMatches' | null
+  // subPicker: 'vehicle' | 'iddaa' | 'investment' | 'upcomingMatches' | 'lastMatches' | 'interview' | null
   const [subPicker, setSubPicker] = useState(null);
+  // interviewLocationId/interviewText — RÖPORTAJ (madde 1) taslağı: mekan +
+  // söylenecek metin seçimi, "Devam" ile attachmentDraft'a dönüşür.
+  const [interviewLocationId, setInterviewLocationId] = useState(null);
+  const [interviewText, setInterviewText] = useState('');
   const [pendingLeagueId, setPendingLeagueId] = useState(null);
   const [pendingLastMatchesLeagueId, setPendingLastMatchesLeagueId] = useState(null);
   // attachmentDraft — SUNUCUYA gidecek minimal seçim (örn. { type:
@@ -195,6 +204,9 @@ export default function ComposeModal({ onClose, onPosted }) {
   const materialsAvailable = Object.values(inventory || {}).some((qty) => qty > 0);
 
   const ATTACHMENT_TYPES = [
+    // "Röportaj Yap" — KULLANICI İSTEĞİ: görsel ekle seçeneklerinin en
+    // üstünde olacak, bu yüzden listenin ilk elemanı (madde 1).
+    { id: 'interview', label: 'Röportaj Yap', emoji: '🎤', available: avatarAvailable },
     { id: 'avatar', label: 'Avatarım', emoji: '🧑', available: avatarAvailable },
     { id: 'vehicle', label: 'Arabam', emoji: '🚗', available: vehicleAvailable },
     { id: 'iddaa', label: 'İddaa Kuponum', emoji: '🎟️', available: iddaaAvailable },
@@ -224,6 +236,12 @@ export default function ComposeModal({ onClose, onPosted }) {
     setError('');
     if (typeId === 'vehicle' || typeId === 'iddaa' || typeId === 'investment') {
       setSubPicker(typeId);
+      return;
+    }
+    if (typeId === 'interview') {
+      setSubPicker('interview');
+      setInterviewLocationId(null);
+      setInterviewText('');
       return;
     }
     if (typeId === 'upcomingMatches') {
@@ -497,6 +515,26 @@ export default function ComposeModal({ onClose, onPosted }) {
     );
   };
 
+  // confirmInterview — RÖPORTAJ (madde 1) taslağını (mekan + metin)
+  // attachmentDraft'a dönüştürür. Önizleme, "Avatarım" ekiyle AYNI mantıkla
+  // (bkz. chooseType('avatar')) elimizdeki player.avatar/displayName'den
+  // kuruluyor — GERÇEK/nihai veri yine sunucuda okunup gömülüyor (bkz.
+  // functions/index.js buildSixtagramAttachment, type === 'interview').
+  const confirmInterview = () => {
+    const cleanText = interviewText.trim().slice(0, INTERVIEW_MAX_LEN);
+    if (!interviewLocationId || !cleanText) return;
+    setAttachment(
+      { type: 'interview', locationId: interviewLocationId, text: cleanText },
+      {
+        type: 'interview',
+        locationId: interviewLocationId,
+        text: cleanText,
+        avatar: player?.avatar || null,
+        displayName: player?.displayName || 'Oyuncu',
+      }
+    );
+  };
+
   const removeAttachment = () => {
     setAttachmentDraft(null);
     setAttachmentPreview(null);
@@ -591,6 +629,48 @@ export default function ComposeModal({ onClose, onPosted }) {
                 saat boyunca) burada kalır.
               </p>
             )}
+          </div>
+        )}
+
+        {subPicker === 'interview' && (
+          <div className="six-compose-sublist">
+            <p className="six-compose-sublist-title">Röportajı hangi mekanda yapıyorsun?</p>
+            <div className="six-compose-location-grid">
+              {INTERVIEW_LOCATIONS.map((loc) => (
+                <button
+                  key={loc.id}
+                  className={`six-compose-location-btn${interviewLocationId === loc.id ? ' active' : ''}`}
+                  onClick={() => setInterviewLocationId(loc.id)}
+                >
+                  <span className="six-compose-location-emoji">{loc.emoji}</span>
+                  <span>{loc.label}</span>
+                </button>
+              ))}
+            </div>
+            <p className="six-compose-sublist-title">Röportajda ne söylemek istiyorsun?</p>
+            <textarea
+              className="six-compose-textarea six-compose-interview-textarea"
+              placeholder="Röportajda söylemek istediğin şeyi yaz..."
+              value={interviewText}
+              maxLength={INTERVIEW_MAX_LEN}
+              onChange={(e) => setInterviewText(e.target.value)}
+              rows={4}
+            />
+            <p className="six-compose-counter">
+              {interviewText.length}/{INTERVIEW_MAX_LEN}
+            </p>
+            <div className="six-compose-sublist-actions">
+              <button className="six-compose-sublist-back" onClick={() => setSubPicker(null)}>
+                ← Geri
+              </button>
+              <button
+                className="six-compose-submit"
+                disabled={!interviewLocationId || !interviewText.trim()}
+                onClick={confirmInterview}
+              >
+                Röportajı Hazırla
+              </button>
+            </div>
           </div>
         )}
 

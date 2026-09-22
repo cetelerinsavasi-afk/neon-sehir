@@ -183,7 +183,7 @@ export default function HomeScreen() {
         <span className="home-referral-emoji">🎁</span>
         <p className="home-hint">
           Referans Kodun: <strong>{player?.displayName || '—'}</strong> — bu kodu kullanarak
-          katılan her yeni oyuncu için <strong>2000 altın</strong> kazanırsın!
+          katılan her yeni oyuncu için <strong>10.000 altın</strong> kazanırsın!
         </p>
       </div>
 

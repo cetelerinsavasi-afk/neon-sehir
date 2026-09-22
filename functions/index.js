@@ -640,8 +640,8 @@ export const initializePlayer = onCall(async (request) => {
 // applyReferralCode — YENİ hesaplar girişten hemen sonra (ilk 15 dakika
 // içinde, sadece bir kez) bir referans kodu (başka bir oyuncunun oyun içi
 // ismi) girebilir:
-//   - Kendisi +1000 altın bonus kazanır (2000 + 1000 = 3000 toplam).
-//   - Referans sahibi +2000 altın bonus kazanır + SMS ile haberdar edilir.
+//   - Kendisi +2000 altın bonus kazanır.
+//   - Referans sahibi +10000 altın bonus kazanır + SMS ile haberdar edilir.
 // ---------------------------------------------------------------------------
 export const applyReferralCode = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -678,8 +678,8 @@ export const applyReferralCode = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Geçersiz referans kodu.');
     }
 
-    const REFERRAL_NEW_PLAYER_BONUS = 1000;
-    const REFERRAL_REFERRER_BONUS = 2000;
+    const REFERRAL_NEW_PLAYER_BONUS = 2000;
+    const REFERRAL_REFERRER_BONUS = 10000;
 
     tx.update(userRef, {
       gold: admin.firestore.FieldValue.increment(REFERRAL_NEW_PLAYER_BONUS),
@@ -697,7 +697,7 @@ export const applyReferralCode = onCall(async (request) => {
     });
     const smsRef = referrerRef.collection('messages').doc();
     tx.set(smsRef, {
-      text: `${user.displayName || 'Yeni bir oyuncu'} senin referans kodunla katıldı! 2000 altın bonus kazandın.`,
+      text: `${user.displayName || 'Yeni bir oyuncu'} senin referans kodunla katıldı! 10.000 altın bonus kazandın.`,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       read: false,
       type: 'referral_bonus',
@@ -18491,6 +18491,12 @@ export const adminManualCreditPackage = onRequest(
 
 const SIXTAGRAM_MAX_TEXT_LEN = 280;
 const SIXTAGRAM_POST_LIFETIME_MS = 24 * 60 * 60 * 1000;
+// INTERVIEW_* — RÖPORTAJ özelliği (madde 1): Sixtagram > paylaş > "Röportaj
+// Yap". Metin normal gönderi metninden AYRI ve biraz daha uzun (video gibi
+// cümle cümle okunacağı için), mekan listesi istemcideki
+// lib/interviewLocations.js ile BİREBİR AYNI olmak zorunda.
+const INTERVIEW_MAX_TEXT_LEN = 500;
+const INTERVIEW_LOCATIONS = ['park', 'karakol', 'camii', 'banka', 'sehir', 'gazino'];
 const SIXTAGRAM_ASSET_LABELS = { diamond: 'Elmas', stock: 'Hisse Senedi', crypto: 'Kripto' };
 // SIXTAGRAM_MATERIAL_LABELS — KULLANICI İSTEĞİ: "elimizdeki malzemeleri
 // paylaşabilelim" (madde — yeni paylaşılabilir türler). users/{uid}/
@@ -18795,6 +18801,43 @@ async function buildSixtagramAttachment(uid, attachment) {
       );
     }
     return { type: 'avatar', avatar };
+  }
+
+  // interview — RÖPORTAJ (madde 1): "avatar" türüyle AYNI güvenlik mantığı —
+  // istemci sadece mekanı ve söylenecek metni seçer, avatar (ve isim)
+  // istemciden ALINMAZ, oyuncunun kendi kayıtlarından burada okunur (kimse
+  // başkasının avatarıyla röportaj "yapamaz"). Camii'de, fotoğraf
+  // özelliğiyle BİREBİR AYNI şekilde (bkz. buildMosqueNpcSnapshot), o anki
+  // imam/dilenci verisi dondurulup gömülüyor — röportaj videosu daha sonra
+  // imam azledilse/dilencinin günü bitse bile o anı göstermeye devam eder.
+  if (type === 'interview') {
+    const locationId = attachment.locationId;
+    if (!INTERVIEW_LOCATIONS.includes(locationId)) {
+      throw new HttpsError('invalid-argument', 'Geçersiz röportaj mekanı.');
+    }
+    const cleanInterviewText = typeof attachment.text === 'string'
+      ? attachment.text.trim().slice(0, INTERVIEW_MAX_TEXT_LEN)
+      : '';
+    if (!cleanInterviewText) {
+      throw new HttpsError('invalid-argument', 'Röportaj için bir metin yazmalısın.');
+    }
+    const userSnap = await db.collection('users').doc(uid).get();
+    const user = userSnap.data() || {};
+    if (!user.avatar) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Önce Profil > Avatar Oluştur ile bir avatar oluşturmalısın.'
+      );
+    }
+    const mosqueNpc = locationId === 'camii' ? await buildMosqueNpcSnapshot() : null;
+    return {
+      type: 'interview',
+      locationId,
+      text: cleanInterviewText,
+      avatar: user.avatar,
+      displayName: user.displayName || 'Oyuncu',
+      ...(mosqueNpc ? { imam: mosqueNpc.imam, beggars: mosqueNpc.beggars } : {}),
+    };
   }
 
   if (type === 'vehicle') {

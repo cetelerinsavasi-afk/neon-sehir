@@ -139,6 +139,29 @@ export default function FlappyBirdScreen() {
   const canvasRef = useRef(null);
   const gameRef = useRef(null);
   const rafRef = useRef(null);
+  // audioCtxRef/blip — KULLANICI İSTEĞİ: "fabrika mini oyununda ses olması
+  // oyuna renk katıyor, bu tarz ses efektleri uygun yerlere eklenebilir".
+  // FactoryScreen'deki HookGoldGame.jsx/TempoSyncGame.jsx/FactoryShiftGame.jsx
+  // ile BİREBİR AYNI desen: DOSYASIZ, Web Audio API, try/catch'li opsiyonel ses.
+  const audioCtxRef = useRef(null);
+  const blip = useCallback((freq, { duration = 0.12, type = 'triangle', gain = 0.08 } = {}) => {
+    try {
+      audioCtxRef.current = audioCtxRef.current || new (window.AudioContext || window.webkitAudioContext)();
+      const ctx = audioCtxRef.current;
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = type;
+      o.frequency.value = freq;
+      g.gain.value = gain;
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start();
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
+      o.stop(ctx.currentTime + duration);
+    } catch {
+      // Ses opsiyonel — bazı tarayıcılarda AudioContext kısıtlı olabilir.
+    }
+  }, []);
   const [phase, setPhase] = useState('start'); // start | playing | gameover
   const [score, setScore] = useState(0);
   const [finalScore, setFinalScore] = useState(0);
@@ -207,6 +230,7 @@ export default function FlappyBirdScreen() {
       if (!p.passed && p.x + PIPE_WIDTH < BIRD_X - BIRD_SIZE / 2) {
         p.passed = true;
         g.score += 1;
+        blip(920, { duration: 0.1, type: 'triangle', gain: 0.07 });
       }
     });
 
@@ -237,11 +261,12 @@ export default function FlappyBirdScreen() {
 
     if (collided) {
       g.alive = false;
+      blip(140, { duration: 0.28, type: 'sawtooth', gain: 0.09 });
       endGame(g);
       return;
     }
     rafRef.current = requestAnimationFrame(tick);
-  }, [endGame]);
+  }, [endGame, blip]);
 
   const startGame = useCallback(() => {
     gameRef.current = createGameState(speedKey);
@@ -257,8 +282,9 @@ export default function FlappyBirdScreen() {
     }
     if (phase === 'playing' && gameRef.current?.alive) {
       gameRef.current.velocity = FLAP_VELOCITY;
+      blip(480, { duration: 0.07, type: 'square', gain: 0.05 });
     }
-  }, [phase, startGame]);
+  }, [phase, startGame, blip]);
 
   useEffect(() => {
     if (phase !== 'playing') return undefined;

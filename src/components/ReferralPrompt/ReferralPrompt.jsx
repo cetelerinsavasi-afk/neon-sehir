@@ -37,14 +37,14 @@ export default function ReferralPrompt() {
       <div className="referral-prompt">
         {success ? (
           <p className="referral-prompt-success">
-            Referans kodu uygulandı! 1000 altın bonus hesabına eklendi. 🎉
+            Referans kodu uygulandı! 2000 altın bonus hesabına eklendi. 🎉
           </p>
         ) : (
           <>
             <p className="referral-prompt-title">Neon Şehir'e Hoş Geldin!</p>
             <p className="referral-prompt-hint">
               Seni davet eden bir arkadaşın var mı? Oyun içi ismini yazarsan, ikiniz de bonus altın
-              kazanırsınız (sen +1000, o +2000).
+              kazanırsınız (sen +2000, o +10.000).
             </p>
             <input
               type="text"

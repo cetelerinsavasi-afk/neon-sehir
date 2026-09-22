@@ -230,3 +230,54 @@
   cursor: pointer;
   padding: 4px 0;
 }
+
+/* --- Röportaj mekan/metin seçici (madde 1) --- */
+
+.six-compose-location-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.six-compose-location-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 4px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.six-compose-location-btn.active {
+  border-color: var(--neon-cyan);
+  background: rgba(25, 232, 255, 0.14);
+  color: var(--neon-cyan);
+}
+
+.six-compose-location-emoji {
+  font-size: 20px;
+}
+
+.six-compose-interview-textarea {
+  min-height: 70px;
+}
+
+.six-compose-sublist-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.six-compose-sublist-actions .six-compose-sublist-back {
+  flex: none;
+}
+
+.six-compose-sublist-actions .six-compose-submit {
+  flex: 1;
+}

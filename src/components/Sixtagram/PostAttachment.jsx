@@ -16,6 +16,7 @@ import { drawCasinoSceneBackground } from '../CasinoWorldScreen/CasinoWorldScree
 import { drawDealershipSceneBackground } from '../CarDealershipWorldScreen/CarDealershipWorldScreen';
 import { drawWeaponShopSceneBackground } from '../WeaponShopWorldScreen/WeaponShopWorldScreen';
 import { drawGarageSceneBackground } from '../TuningGarageWorldScreen/TuningGarageWorldScreen';
+import InterviewPlayer from '../Broadcast/InterviewPlayer';
 import './PostAttachment.css';
 
 // Tüm parkPhoto kartları arasında paylaşılan avatar görsel önbelleği —
@@ -467,6 +468,26 @@ export default function PostAttachment({ attachment }) {
           />
         </div>
         <p className="post-att-parkphoto-names">📷 {names.join(' · ')} · {label}</p>
+      </div>
+    );
+  }
+
+  if (attachment.type === 'interview') {
+    // RÖPORTAJ (madde 1) — video benzeri oynatma: gerçek mekan arka planı +
+    // konuşan avatar + cümle cümle altyazı (bkz. components/Broadcast/).
+    return (
+      <div className="post-att post-att-interview">
+        <InterviewPlayer
+          locationId={attachment.locationId}
+          text={attachment.text}
+          avatar={attachment.avatar}
+          displayName={attachment.displayName}
+          extra={
+            attachment.locationId === 'camii'
+              ? { imam: attachment.imam || null, beggars: attachment.beggars || [] }
+              : undefined
+          }
+        />
       </div>
     );
   }

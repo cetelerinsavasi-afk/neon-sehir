@@ -18,6 +18,12 @@
   inset: 0;
 }
 
+.post-att-interview {
+  padding: 10px;
+  border: none;
+  background: transparent;
+}
+
 .post-att-vehicle-img {
   width: 100%;
   display: block;
