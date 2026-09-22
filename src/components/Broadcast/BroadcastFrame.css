@@ -1,7 +1,12 @@
+/* KULLANICI REVİZESİ: "format biraz fazla dikey" — eskiden 4/5 (0.8) olan
+   en-boy oranı, göze daha az uzun/dikey gelen 480/552 (~0.87) oranına
+   çekildi. lib/broadcastBackdrops.js'teki BROADCAST_BACKDROP_W/H de
+   (canvas'ın kendi piksel boyutu) AYNI orana çekildi, aksi halde canvas
+   gerinip (stretch) arka plan hafifçe distorte görünürdü. */
 .bcast-frame {
   position: relative;
   width: 100%;
-  aspect-ratio: 4 / 5;
+  aspect-ratio: 480 / 552;
   border-radius: 12px;
   overflow: hidden;
   background: #05070c;

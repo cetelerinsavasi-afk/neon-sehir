@@ -17,24 +17,29 @@
   display: block;
 }
 
-/* KULLANICI REVİZESİ: variant="bust" artık kafa + üst gövde (viewBox
-   320x400, .bcast-frame ile AYNI 4/5 en-boy oranı) — gerçek bir haber/
-   röportaj çekimindeki gibi kadrajın büyük kısmını dolduruyor, tam vücut
-   DEĞİL. `bottom` hafif negatif: göğüs hizası kadraj dışına taşsın (doğal
-   bir "göğüsten kesme" hissi), üstte de arka planın görünmesi için biraz
-   boşluk kalsın diye width %100 DEĞİL. */
+/* KULLANICI REVİZESİ (2. tur): "üstteki boşluk çok fazla, kafa biraz daha
+   yukarıda olsun". variant="bust" artık DAHA SIKI bir viewBox kullanıyor
+   (bkz. AvatarSvg.jsx — 0 35 320 345, bacak/ayakkabı tamamen dışarıda) ve
+   bu viewBox'ın kendi en-boy oranı (~0.93) .bcast-frame'in oranından
+   (~0.87) farklı — bu yüzden width'i olabildiğince büyük tutup (avatarın
+   KENDİ içindeki gövde zaten viewBox'ın ortasında, yanlarda şeffaf boşluk
+   bırakıyor — bkz. torsoShape'in x=70..250 aralığı, W=320'nin sadece
+   %56'sı) `bottom: 0` ile taban hizasını kadrajın alt kenarına
+   yapıştırıyoruz: böylece üstte kalan boşluk (kafanın üstünden kadrajın
+   tepesine kadar) EN AZA iniyor, ayrıca omuzların İKİ YANINDA da arka
+   plan (mekanı belli eden ögeler) görünmeye devam ediyor. */
 .talking-scene-avatar {
   position: absolute;
   left: 50%;
-  bottom: -3%;
+  bottom: 0;
   transform: translateX(-50%);
-  width: 80%;
-  max-width: 300px;
+  width: 96%;
+  max-width: 360px;
   filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.55));
 }
 
 .talking-scene-studio .talking-scene-avatar {
-  bottom: -2%;
-  width: 84%;
-  max-width: 310px;
+  bottom: 0;
+  width: 96%;
+  max-width: 360px;
 }

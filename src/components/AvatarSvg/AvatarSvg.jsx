@@ -13,15 +13,22 @@ import { buildAvatarSvgInner, DEFAULT_AVATAR } from '../../lib/avatarShapes';
 // arkasında çirkin bir renkli kutu görünür (PNG sticker etkisi).
 // variant='bust': KULLANICI REVİZESİ — röportaj/TV spikeri için "gerçek
 // bir kamerayla çekiliyormuş gibi" sadece kafa + üst gövde görünsün
-// isteği. Aynı viewBox'ı 'headshot' ile paylaşır (320x400 zaten
-// bacak/ayakkabıyı kırpıyor, bkz. avatarShapes.js buildAvatarSvgInner
-// yorumu) ama 'full' gibi ARKA PLANI ŞEFFAF bırakır — çünkü burada
-// arkada avatarın kendi rengi değil, gerçek röportaj/TV arka planı
-// (bkz. Broadcast/TalkingAvatarScene.jsx) görünmeli.
+// isteği. 'full' gibi ARKA PLANI ŞEFFAF bırakır — çünkü burada arkada
+// avatarın kendi rengi değil, gerçek röportaj/TV arka planı (bkz.
+// Broadcast/TalkingAvatarScene.jsx) görünmeli. 'headshot'tan (0 0 320 400)
+// FARKLI, DAHA SIKI bir viewBox kullanır: KULLANICI REVİZESİ — üstte
+// "çok fazla boşluk" vardı (saç/kafa viewBox'ın üst ~90px'i boşta
+// duruyordu) ve alt kenarda bacak/ayakkabının küçük bir dilimi ("ayakkabı
+// tarzı bi şey") sızıyordu. avatarShapes.js'teki WAIST_Y=380 sabiti
+// gövdenin (torsoShape) TAM bittiği, bacakların (legsShape) TAM
+// başladığı Y — viewBox'ı y=35'ten (en yüksek saç stili olan mohawk'ın
+// tepe noktası y=44'ün hemen üstü, bkz. hairFrontShape) y=380'e (WAIST_Y,
+// bacaklar başlamadan HEMEN önce) kadar kırpmak hem üst boşluğu önemli
+// ölçüde azaltıyor hem de bacak/ayakkabıyı TAMAMEN kadraj dışına alıyor.
 const VIEWBOX = {
   headshot: '0 0 320 400',
   full: '0 0 320 580',
-  bust: '0 0 320 400',
+  bust: '0 35 320 345',
 };
 
 // pose: 'idle' | 'walk1' | 'walk2' — sadece variant='full' iken görünür
