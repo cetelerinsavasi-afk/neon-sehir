@@ -58,7 +58,9 @@ export default function ParkScreen() {
           message={
             result.caught
               ? `${result.penalty.toLocaleString('tr-TR')} altın devlete borç yazıldı.`
-              : `+${result.earned.toLocaleString('tr-TR')} altın kazandın.`
+              : (result.debtRepaid > 0
+                ? `${result.earned.toLocaleString('tr-TR')} altına sattın. Devlete borcun olduğu için ${result.debtRepaid.toLocaleString('tr-TR')} altın borcuna gitti, cebine +${result.toWallet.toLocaleString('tr-TR')} altın girdi.`
+                : `+${result.earned.toLocaleString('tr-TR')} altın kazandın.`)
           }
           tone={result.caught ? 'fail' : 'success'}
           onClose={() => setResult(null)}

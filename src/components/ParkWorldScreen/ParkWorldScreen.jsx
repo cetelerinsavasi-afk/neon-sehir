@@ -1034,7 +1034,9 @@ export default function ParkWorldScreen({ onExit }) {
           message={
             sellResult.caught
               ? `${sellResult.penalty.toLocaleString('tr-TR')} altın devlete borç yazıldı.`
-              : `+${sellResult.earned.toLocaleString('tr-TR')} altın kazandın.`
+              : (sellResult.debtRepaid > 0
+                ? `${sellResult.earned.toLocaleString('tr-TR')} altına sattın. Devlete borcun olduğu için ${sellResult.debtRepaid.toLocaleString('tr-TR')} altın borcuna gitti, cebine +${sellResult.toWallet.toLocaleString('tr-TR')} altın girdi.`
+                : `+${sellResult.earned.toLocaleString('tr-TR')} altın kazandın.`)
           }
           tone={sellResult.caught ? 'fail' : 'success'}
           onClose={() => setSellResult(null)}

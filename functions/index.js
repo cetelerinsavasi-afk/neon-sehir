@@ -5334,7 +5334,15 @@ export const sellContrabandAtPark = onCall(async (request) => {
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
         suspicion: newSuspicion,
       });
-      outcome = { caught: false, earned: CONTRABAND_PARK_SELL_PRICE };
+      // Devlete borcu olan oyuncuda kazancın yarısı otomatik borca gider
+      // (splitIncomeForDebt). İstemci "+5.000 kazandın" deyip cüzdana 2.500
+      // yansıyınca bu bir hata gibi görünüyordu — artık dağılımı da dönüyoruz.
+      outcome = {
+        caught: false,
+        earned: CONTRABAND_PARK_SELL_PRICE,
+        toWallet: goldDelta,
+        debtRepaid: -debtDelta,
+      };
     }
   });
 
