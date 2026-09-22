@@ -11,9 +11,17 @@ import { buildAvatarSvgInner, DEFAULT_AVATAR } from '../../lib/avatarShapes';
 // ARKA PLAN RENGİ BİLEREK UYGULANMAZ — karakter sahnenin (çim, zemin
 // vb.) üzerine şeffaf biçimde oturmalı, aksi halde her karakterin
 // arkasında çirkin bir renkli kutu görünür (PNG sticker etkisi).
+// variant='bust': KULLANICI REVİZESİ — röportaj/TV spikeri için "gerçek
+// bir kamerayla çekiliyormuş gibi" sadece kafa + üst gövde görünsün
+// isteği. Aynı viewBox'ı 'headshot' ile paylaşır (320x400 zaten
+// bacak/ayakkabıyı kırpıyor, bkz. avatarShapes.js buildAvatarSvgInner
+// yorumu) ama 'full' gibi ARKA PLANI ŞEFFAF bırakır — çünkü burada
+// arkada avatarın kendi rengi değil, gerçek röportaj/TV arka planı
+// (bkz. Broadcast/TalkingAvatarScene.jsx) görünmeli.
 const VIEWBOX = {
   headshot: '0 0 320 400',
   full: '0 0 320 580',
+  bust: '0 0 320 400',
 };
 
 // pose: 'idle' | 'walk1' | 'walk2' — sadece variant='full' iken görünür
@@ -36,7 +44,7 @@ export default function AvatarSvg({ avatar, size, rounded = false, variant = 'he
           width: '100%',
           height: '100%',
           display: 'block',
-          background: variant === 'full' ? 'transparent' : a.background || '#080b13',
+          background: variant === 'full' || variant === 'bust' ? 'transparent' : a.background || '#080b13',
         }}
         dangerouslySetInnerHTML={{ __html: inner }}
       />

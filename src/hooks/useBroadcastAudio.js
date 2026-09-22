@@ -94,15 +94,22 @@ const AMBIENCE_PRESETS = {
     },
   },
   gazino: {
-    filter: { type: 'bandpass', frequency: 1100, Q: 0.5 },
-    noiseGain: 0.07,
+    // KULLANICI REVİZESİ: eskiden bandpass (1100Hz) filtrelenmiş gürültü
+    // tiz/kulak yorucu bir ıslık gibi duyuluyordu. "Kumarhane salonu
+    // uğultusu" hissi için diğer mekanlarla (park/şehir/banka) AYNI
+    // mantıkla lowpass'a çevrildi — daha sıcak, alçak bir kalabalık
+    // mırıltısı; kazanç da hafifçe düşürüldü.
+    filter: { type: 'lowpass', frequency: 600, Q: 0.4 },
+    noiseGain: 0.045,
     event: {
-      minMs: 6000,
-      maxMs: 15000,
+      minMs: 7000,
+      maxMs: 16000,
       play: (ctx, dest) => {
-        // Slot makinesi "ding"i — sine + üst harmonik.
-        scheduleBlip(ctx, dest, { delayMs: 0, freq: 1500, type: 'sine', durMs: 260, gain: 0.05 });
-        scheduleBlip(ctx, dest, { delayMs: 0, freq: 2250, type: 'sine', durMs: 200, gain: 0.025 });
+        // Slot makinesi "ding"i — YUMUŞATILDI: daha düşük perde, daha
+        // uzun/yumuşak sönüş, ikinci harmoniğin payı azaltıldı (eskisi
+        // tiz ve rahatsız edici duyuluyordu).
+        scheduleBlip(ctx, dest, { delayMs: 0, freq: 980, type: 'sine', durMs: 260, gain: 0.035 });
+        scheduleBlip(ctx, dest, { delayMs: 0, freq: 1470, type: 'sine', durMs: 200, gain: 0.014 });
       },
     },
   },

@@ -216,3 +216,152 @@
   font-size: 10px;
   color: var(--text-dim);
 }
+
+/* ---------------------------------------------------------------------
+   Doktor ekranı — GÖRSEL CİLA (KULLANICI REVİZESİ: "doktor ekranının
+   tasarımı çok basit gözüküyor"). FutbolSponsor.jsx'teki futbol-sp-*
+   kart/uyarı deseniyle AYNI görsel dil (rozet+bilgi başlığı, özet kartı,
+   renkli durum kutuları) — sadece futbol-doktor- ön ekiyle, doktor
+   sekmesine özel. */
+.futbol-doktor-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  margin-bottom: 4px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 46, 140, 0.3);
+  background: linear-gradient(180deg, rgba(255, 46, 140, 0.09), rgba(255, 46, 140, 0.02));
+}
+
+.futbol-doktor-summary-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.futbol-doktor-summary-label {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.futbol-doktor-summary-value {
+  font-size: 12px;
+  font-weight: 800;
+  padding: 3px 9px;
+  border-radius: 999px;
+  color: #3ddc84;
+  background: rgba(61, 220, 132, 0.12);
+  border: 1px solid rgba(61, 220, 132, 0.35);
+}
+
+.futbol-doktor-summary-value.busy {
+  color: var(--neon-pink);
+  background: rgba(255, 46, 140, 0.12);
+  border-color: rgba(255, 46, 140, 0.35);
+}
+
+.futbol-doktor-summary-gold {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.futbol-doktor-summary-gold strong {
+  color: var(--text);
+}
+
+.futbol-doktor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.futbol-doktor-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+}
+
+.futbol-doktor-card.active {
+  border-color: rgba(61, 220, 132, 0.4);
+  background: linear-gradient(180deg, rgba(61, 220, 132, 0.07), var(--panel));
+}
+
+.futbol-doktor-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.futbol-doktor-card-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.futbol-doktor-card-name {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.futbol-doktor-card-meta {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.futbol-doktor-injury-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: var(--neon-pink);
+  background: rgba(255, 46, 140, 0.12);
+  border: 1px solid rgba(255, 46, 140, 0.3);
+  white-space: nowrap;
+}
+
+.futbol-doktor-alert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.futbol-doktor-alert.ok {
+  color: #3ddc84;
+  background: rgba(61, 220, 132, 0.08);
+  border: 1px solid rgba(61, 220, 132, 0.3);
+}
+
+.futbol-doktor-alert.warn {
+  background: rgba(255, 210, 63, 0.08);
+  border: 1px solid rgba(255, 210, 63, 0.25);
+  color: var(--neon-yellow);
+}
+
+.futbol-doktor-alert.muted {
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed var(--panel-border);
+  font-style: italic;
+}
+
+.futbol-doktor-treat-btn {
+  width: 100%;
+}

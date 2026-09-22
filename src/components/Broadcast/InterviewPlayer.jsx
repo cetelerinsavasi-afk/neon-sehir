@@ -12,7 +12,12 @@ import './InterviewPlayer.css';
 // useBroadcastAudio (mırıltı + mekan ambiyansı) bir araya getiriliyor.
 // Hem ComposeModal'daki CANLI önizlemede HEM DE akıştaki paylaşılmış
 // post'ta BİREBİR AYNI bileşen kullanılıyor.
-export default function InterviewPlayer({ locationId, text, avatar, displayName, extra }) {
+// `extra` (camii için imam/dilenci anlık verisi, bkz. PostAttachment.jsx)
+// artık burada KULLANILMIYOR — KULLANICI REVİZESİ ile arka plan artık
+// oyunun içindeki NPC'leri değil, sabit bir "stüdyo arka planı" gösteriyor
+// (bkz. TalkingAvatarScene.jsx). Prop yine de kabul ediliyor (sunucudan
+// gelen veriyi kırmamak için), sadece görselde kullanılmıyor.
+export default function InterviewPlayer({ locationId, text, avatar, displayName, extra: _extra }) {
   const [muted, setMuted] = useState(true);
   const { triggerMumble } = useBroadcastAudio(locationId, { muted });
   const { currentSentence, mouthOpen, progress, elapsedSec } = useTalkingBroadcast(text, {
@@ -29,7 +34,7 @@ export default function InterviewPlayer({ locationId, text, avatar, displayName,
         muted={muted}
         onToggleMute={() => setMuted((m) => !m)}
       >
-        <TalkingAvatarScene locationId={locationId} avatar={avatar} mouthOpen={mouthOpen} extra={extra} />
+        <TalkingAvatarScene locationId={locationId} avatar={avatar} mouthOpen={mouthOpen} />
       </BroadcastFrame>
       {displayName && <p className="interview-player-name">🎤 {displayName} ile röportaj</p>}
     </div>

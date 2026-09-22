@@ -22,6 +22,30 @@
   height: auto;
 }
 
+/* flappy-mute-btn — KULLANICI REVİZESİ: "flappy bird oyununa ses kapat
+   butonu ekleyelim". BroadcastFrame.css'teki .bcast-mute-btn ile AYNI
+   görsel dil (küçük yuvarlak, yarı saydam siyah zemin). Sağ ALT köşede —
+   sağ ÜST köşe 'start' fazında Top10Panel tarafından kullanılıyor, alt
+   köşe ise tüm fazlarda boş kalıyor. */
+.flappy-mute-btn {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  z-index: 5;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
 .flappy-live-score {
   position: absolute;
   top: 10px;

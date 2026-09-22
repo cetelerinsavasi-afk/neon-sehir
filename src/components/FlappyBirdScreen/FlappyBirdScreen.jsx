@@ -144,7 +144,15 @@ export default function FlappyBirdScreen() {
   // FactoryScreen'deki HookGoldGame.jsx/TempoSyncGame.jsx/FactoryShiftGame.jsx
   // ile BİREBİR AYNI desen: DOSYASIZ, Web Audio API, try/catch'li opsiyonel ses.
   const audioCtxRef = useRef(null);
+  // muted — KULLANICI REVİZESİ: "flappy bird oyununa ses kapat butonu
+  // ekleyelim". mutedRef, blip() içindeki her çağrıda GÜNCEL değeri
+  // görmek için (blip useCallback ile bir kere kuruluyor, closure'a
+  // takılı `muted` state'i eski kalabilirdi).
+  const [muted, setMuted] = useState(false);
+  const mutedRef = useRef(muted);
+  mutedRef.current = muted;
   const blip = useCallback((freq, { duration = 0.12, type = 'triangle', gain = 0.08 } = {}) => {
+    if (mutedRef.current) return;
     try {
       audioCtxRef.current = audioCtxRef.current || new (window.AudioContext || window.webkitAudioContext)();
       const ctx = audioCtxRef.current;
@@ -317,6 +325,19 @@ export default function FlappyBirdScreen() {
     <div className="flappy-screen">
       <div className="flappy-stage" onPointerDown={flap}>
         <canvas ref={canvasRef} width={WIDTH} height={HEIGHT} className="flappy-canvas" />
+
+        <button
+          type="button"
+          className="flappy-mute-btn"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            setMuted((m) => !m);
+          }}
+          title={muted ? 'Sesi aç' : 'Sesi kapat'}
+        >
+          {muted ? '🔇' : '🔊'}
+        </button>
 
         {phase === 'playing' && <div className="flappy-live-score">{score}</div>}
 

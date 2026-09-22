@@ -25,6 +25,8 @@ const fmt = (n) => (Number(n) || 0).toLocaleString('tr-TR');
 // satırlık özet meta, sağda öne çıkan bir rakam (aside). Eskiden bu
 // ekranda başlık düz metin satırlarıydı, artık fabrika tarafındaki
 // kalitede tek bir başlık bileşeni kullanılıyor.
+// KULLANICI REVİZESİ: "son 10 günlük ortalama gelir" bilgisi kaldırıldı —
+// sadece max teklif oranı gösteriliyor.
 function FactoryHead({ factory, badge, aside }) {
   return (
     <div className="futbol-sp-head">
@@ -34,10 +36,7 @@ function FactoryHead({ factory, badge, aside }) {
           {factory.name}
           {badge && <span className="futbol-sp-badge">{badge}</span>}
         </span>
-        <span className="futbol-sp-meta">
-          📊 Son 10 gün ort. gelir: {fmt(factory.dailyIncomeAvg10)} altın · 💰 Max teklif: {fmt(factory.offerCap)}{' '}
-          altın/gün
-        </span>
+        <span className="futbol-sp-meta">💰 Max teklif: {fmt(factory.offerCap)} altın/gün</span>
       </div>
       {aside && <div className="futbol-sp-aside">{aside}</div>}
     </div>

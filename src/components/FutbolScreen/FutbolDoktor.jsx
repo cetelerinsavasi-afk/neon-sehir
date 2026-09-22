@@ -9,6 +9,8 @@ import './FutbolAltyapi.css';
 const FUTBOL_DOCTOR_COST = 10000;
 const POSITION_LABELS = { GK: 'Kaleci', DEF: 'Defans', MID: 'Orta Saha', FWD: 'Forvet' };
 
+const fmt = (n) => (Number(n) || 0).toLocaleString('tr-TR');
+
 // FutbolDoktor — yeni istek: "kadrosunda sakat oyuncu olan takımlar
 // doktor tabından 10.000 altın ödeyerek TEK bir oyuncunun iyileşmesini
 // hızlandırabilir". Doktor kutusu aynı anda sadece 1 oyuncuyla
@@ -17,6 +19,13 @@ const POSITION_LABELS = { GK: 'Kaleci', DEF: 'Defans', MID: 'Orta Saha', FWD: 'F
 // ertesi gün istersen (başka ya da aynı) bir oyuncu için yeniden ödeme
 // yapabilirsin. Doktorsuz sakatlık zaten her gece kendiliğinden 1 gün
 // azalır; doktorla birlikte o gece 1 gün daha (toplam 2 gün) azalır.
+//
+// GÖRSEL CİLA (KULLANICI REVİZESİ: "doktor ekranı çok basit gözüküyor") —
+// FutbolSponsor.jsx'teki kart/özet/renkli-uyarı-kutusu deseniyle AYNI
+// kalitede: üstte doktor kutusunun durumunu gösteren bir özet kartı,
+// her sakat oyuncu için rozetli bir kart (avatar + isim + meta + sakatlık
+// rozeti) ve tutarlı renkli durum kutuları (bkz. FutbolAltyapi.css'teki
+// futbol-doktor-* blok).
 export default function FutbolDoktor({ team, role }) {
   const { player } = usePlayer();
   const { players } = useFutbolTeamPlayers(team.id);
@@ -32,6 +41,7 @@ export default function FutbolDoktor({ team, role }) {
     .sort((a, b) => (b.injuryDaysLeft || 0) - (a.injuryDaysLeft || 0));
 
   const doctorPlayerId = team.doctorPlayerId || null;
+  const doctorPatient = doctorPlayerId ? players.find((p) => p.id === doctorPlayerId) : null;
   // Bölüm 2/6/13: MANAGED bir takımda harcama önce transfer desteğinden,
   // kalanı kasadan düşer — kişisel altın hiç kullanılmaz.
   const isManaged = Boolean(team.managerUid);
@@ -58,7 +68,7 @@ export default function FutbolDoktor({ team, role }) {
     setMessage('');
     try {
       await cancelFutbolDoctor(team.id);
-      setMessage(`Tedavi iptal edildi, ${FUTBOL_DOCTOR_COST.toLocaleString('tr-TR')} altın iade edildi ✓`);
+      setMessage(`Tedavi iptal edildi, ${fmt(FUTBOL_DOCTOR_COST)} altın iade edildi ✓`);
     } catch (err) {
       setError(err?.message || 'Tedavi iptal edilemedi.');
     } finally {
@@ -67,21 +77,27 @@ export default function FutbolDoktor({ team, role }) {
   };
 
   return (
-    <fieldset className="futbol-altyapi" disabled={readOnly}>
-      <p className="futbol-kadro-section-title">Doktor</p>
-      <p className="futbol-transfer-balance">
-        {isManaged
-          ? `💰 Transfer Desteği + Takım Kasası: ${gold.toLocaleString('tr-TR')} altın`
-          : `💰 ${gold.toLocaleString('tr-TR')} altın`}
-      </p>
+    <fieldset className="futbol-altyapi futbol-doktor" disabled={readOnly}>
+      <div className="futbol-doktor-summary">
+        <div className="futbol-doktor-summary-main">
+          <span className="futbol-doktor-summary-label">🩺 Doktor Kutusu</span>
+          <span className={`futbol-doktor-summary-value${doctorPlayerId ? ' busy' : ''}`}>
+            {doctorPlayerId ? `Meşgul — ${doctorPatient?.name || 'bir oyuncu'}` : 'Boş'}
+          </span>
+        </div>
+        <p className="futbol-doktor-summary-gold">
+          {isManaged ? 'Transfer Desteği + Takım Kasası' : 'Bakiye'}:{' '}
+          <strong>💰 {fmt(gold)} altın</strong>
+        </p>
+      </div>
 
       {error && <p className="futbol-admin-error">{error}</p>}
-      {message && <p className="futbol-placeholder">{message}</p>}
+      {message && <p className="futbol-doktor-alert ok">✅ {message}</p>}
 
       {injuredPlayers.length === 0 ? (
         <p className="futbol-placeholder">Kadronda şu an sakat oyuncu yok.</p>
       ) : (
-        <div className="futbol-training-slots">
+        <div className="futbol-doktor-list">
           {injuredPlayers.map((p) => {
             const isBeingTreated = doctorPlayerId === p.id;
             const doctorBusyWithOther = doctorPlayerId && !isBeingTreated;
@@ -93,49 +109,46 @@ export default function FutbolDoktor({ team, role }) {
             // gösteriliyor.
             const willHealTonightNaturally = !isBeingTreated && (p.injuryDaysLeft || 0) === 1;
             return (
-              <div key={p.id} className={`futbol-training-slot${isBeingTreated ? ' filled' : ''}`}>
-                <div className="futbol-training-row">
-                  <FutbolPlayerAvatar playerId={p.id} position={p.position} size={38} />
-                  <div className="futbol-training-info">
-                    <p className="futbol-transfer-name">{p.name}</p>
-                    <p className="futbol-buy-meta">
-                      {POSITION_LABELS[p.position] || p.position} · {p.age} yaş · {p.power.toFixed(1)} güç ·{' '}
-                      <span className="futbol-injury-badge">🚑 {p.injuryDaysLeft} gün sakat</span>
-                    </p>
+              <div key={p.id} className={`futbol-doktor-card${isBeingTreated ? ' active' : ''}`}>
+                <div className="futbol-doktor-card-head">
+                  <FutbolPlayerAvatar playerId={p.id} position={p.position} size={40} />
+                  <div className="futbol-doktor-card-info">
+                    <span className="futbol-doktor-card-name">{p.name}</span>
+                    <span className="futbol-doktor-card-meta">
+                      {POSITION_LABELS[p.position] || p.position} · {p.age} yaş · {p.power.toFixed(1)} güç
+                    </span>
                   </div>
-                  {isBeingTreated ? (
-                    <div className="futbol-doktor-treating">
-                      <span className="futbol-roster-status training">Tedavi ediliyor (bu gece -1 gün daha)</span>
-                      <button
-                        className="futbol-admin-reset"
-                        disabled={busyId === p.id}
-                        onClick={() => handleCancel(p.id)}
-                      >
-                        {busyId === p.id ? '...' : 'Tedaviyi İptal Et (altın iade)'}
-                      </button>
-                    </div>
-                  ) : willHealTonightNaturally ? (
-                    <span className="futbol-buy-meta futbol-doktor-busy-note">
-                      Bu gece iyileşecek — doktora gerek yok.
-                    </span>
-                  ) : doctorBusyWithOther ? (
-                    <span className="futbol-buy-meta futbol-doktor-busy-note">
-                      Doktor şu an başka bir oyuncuyla ilgileniyor.
-                    </span>
-                  ) : (
-                    <button
-                      className="futbol-admin-submit"
-                      disabled={busyId === p.id || !canAfford}
-                      onClick={() => handleAssign(p.id)}
-                    >
-                      {busyId === p.id
-                        ? '...'
-                        : !canAfford
-                          ? 'Yetersiz Bakiye'
-                          : `Tedavi Et (${FUTBOL_DOCTOR_COST.toLocaleString('tr-TR')} altın · -1 gün)`}
-                    </button>
-                  )}
+                  <span className="futbol-doktor-injury-badge">🚑 {p.injuryDaysLeft} gün</span>
                 </div>
+
+                {isBeingTreated ? (
+                  <div className="futbol-doktor-alert ok">
+                    <span>💉 Tedavi ediliyor — bu gece normalden 1 gün daha hızlı iyileşecek.</span>
+                    <button
+                      className="futbol-admin-reset"
+                      disabled={busyId === p.id}
+                      onClick={() => handleCancel(p.id)}
+                    >
+                      {busyId === p.id ? '...' : 'İptal Et (altın iade)'}
+                    </button>
+                  </div>
+                ) : willHealTonightNaturally ? (
+                  <p className="futbol-doktor-alert muted">😌 Bu gece kendiliğinden iyileşecek — doktora gerek yok.</p>
+                ) : doctorBusyWithOther ? (
+                  <p className="futbol-doktor-alert warn">⏳ Doktor şu an başka bir oyuncuyla ilgileniyor.</p>
+                ) : (
+                  <button
+                    className="futbol-admin-submit futbol-doktor-treat-btn"
+                    disabled={busyId === p.id || !canAfford}
+                    onClick={() => handleAssign(p.id)}
+                  >
+                    {busyId === p.id
+                      ? '...'
+                      : !canAfford
+                        ? 'Yetersiz Bakiye'
+                        : `💉 Tedavi Et (${fmt(FUTBOL_DOCTOR_COST)} altın · -1 gün)`}
+                  </button>
+                )}
               </div>
             );
           })}

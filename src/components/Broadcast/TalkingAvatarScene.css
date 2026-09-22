@@ -17,18 +17,24 @@
   display: block;
 }
 
+/* KULLANICI REVİZESİ: variant="bust" artık kafa + üst gövde (viewBox
+   320x400, .bcast-frame ile AYNI 4/5 en-boy oranı) — gerçek bir haber/
+   röportaj çekimindeki gibi kadrajın büyük kısmını dolduruyor, tam vücut
+   DEĞİL. `bottom` hafif negatif: göğüs hizası kadraj dışına taşsın (doğal
+   bir "göğüsten kesme" hissi), üstte de arka planın görünmesi için biraz
+   boşluk kalsın diye width %100 DEĞİL. */
 .talking-scene-avatar {
   position: absolute;
   left: 50%;
-  bottom: -6%;
+  bottom: -3%;
   transform: translateX(-50%);
-  width: 64%;
-  max-width: 230px;
+  width: 80%;
+  max-width: 300px;
   filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.55));
 }
 
 .talking-scene-studio .talking-scene-avatar {
-  bottom: -4%;
-  width: 68%;
-  max-width: 240px;
+  bottom: -2%;
+  width: 84%;
+  max-width: 310px;
 }
