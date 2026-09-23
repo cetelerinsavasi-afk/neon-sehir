@@ -169,10 +169,16 @@ export function createWarActions(core) {
     return Math.floor(Math.min(a, b) * GANG.BET_MAX_RATIO_OF_SMALLER_MIDNIGHT_KASA);
   }
 
+  // Geri çekilen / reddedilen teklif, aynı günün teklif hakkını iade eder.
+  function offerSlotBack(st, war) {
+    if (!st || st.betOfferDateKey !== war.offeredDateKey || Number(st.betOffersToday || 0) <= 0) return {};
+    return { betOffersToday: FV.increment(-1) };
+  }
+
   async function offerBet(ctx, data) {
     const targetGangId = String(data.targetGangId || '');
     const stake = posInt(data.stake, 'Bahis');
-    if (!GANG.BET_OFFER_WEEKDAYS.includes(ctx.weekday)) fail('failed-precondition', 'Bahis teklifi Cumartesi ve Pazar gönderilemez.');
+    if (!GANG.BET_OFFER_WEEKDAYS.includes(ctx.weekday)) fail('failed-precondition', 'Bugün bahis yapamazsın.');
     return core.db.runTransaction(async (tx) => {
       const guard = await requestGuard(tx, ctx, data.requestId);
       if (guard.done) return guard.result;
@@ -247,10 +253,15 @@ export function createWarActions(core) {
       if (!war || war.type !== 'bet' || war.targetGangId !== gangId) fail('not-found', 'Teklif bulunamadı.');
       if (war.status !== 'offered') fail('failed-precondition', 'Bu teklif artık geçerli değil.');
       if (war.offeredDateKey !== ctx.dateKey) fail('deadline-exceeded', 'Teklifin süresi doldu.');
-      const [myState, rel] = await Promise.all([tx.get(ctx.ref.gangState(gangId)), accept ? blockingRelations(tx, ctx, gangId, war.proposerGangId) : null]);
+      const [myState, rel, propState] = await Promise.all([
+        tx.get(ctx.ref.gangState(gangId)),
+        accept ? blockingRelations(tx, ctx, gangId, war.proposerGangId) : null,
+        accept ? null : tx.get(ctx.ref.gangState(war.proposerGangId)),
+      ]);
       const myName = war.sides?.[gangId]?.name || '';
       if (!accept) {
-        tx.update(ctx.ref.gangState(war.proposerGangId), { kasa: FV.increment(war.stake) });
+        // Reddedilen teklif günlük hakkı geri verir: teklif eden aynı gün yeni teklif gönderebilir.
+        tx.update(ctx.ref.gangState(war.proposerGangId), { kasa: FV.increment(war.stake), ...offerSlotBack(propState.data(), war) });
         tx.update(ctx.ref.war(warId), { status: 'declined', activeGangIds: [], resolvedAtMs: ctx.now });
         ledger(tx, ctx, { type: 'bet_refund', amount: war.stake, from: { kind: 'escrow', id: warId }, to: { kind: 'gang', id: war.proposerGangId }, refId: warId });
         announce(tx, ctx, war.proposerGangId, '🙅', `${myName} bahisli savaş teklifini reddetti, ${fmt(war.stake)} altın kasaya döndü.`);
@@ -272,10 +283,11 @@ export function createWarActions(core) {
     const warId = String(data.warId || '');
     return core.db.runTransaction(async (tx) => {
       const { gangId } = await myGangRole(tx, ctx, LEADERS, 'Sadece Mafya Babası ve Sağ Kol geri çekebilir.');
-      const war = (await tx.get(ctx.ref.war(warId))).data();
+      const [warSnap, stSnap] = await Promise.all([tx.get(ctx.ref.war(warId)), tx.get(ctx.ref.gangState(gangId))]);
+      const war = warSnap.data();
       if (!war || war.type !== 'bet' || war.proposerGangId !== gangId) fail('not-found', 'Teklif bulunamadı.');
       if (war.status !== 'offered') fail('failed-precondition', 'Bu teklif artık geri çekilemez.');
-      tx.update(ctx.ref.gangState(gangId), { kasa: FV.increment(war.stake) });
+      tx.update(ctx.ref.gangState(gangId), { kasa: FV.increment(war.stake), ...offerSlotBack(stSnap.data(), war) });
       tx.update(ctx.ref.war(warId), { status: 'withdrawn', activeGangIds: [], resolvedAtMs: ctx.now });
       ledger(tx, ctx, { type: 'bet_refund', amount: war.stake, from: { kind: 'escrow', id: warId }, to: { kind: 'gang', id: gangId }, refId: warId });
       gangLog(tx, ctx, war.targetGangId, '↩️', `${war.sides?.[gangId]?.name || ''} bahis teklifini geri çekti.`);

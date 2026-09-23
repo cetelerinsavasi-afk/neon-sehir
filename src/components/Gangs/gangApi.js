@@ -2,7 +2,6 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../firebase';
 
 const actionFn = httpsCallable(functions, 'gangAction');
-const adminFn = httpsCallable(functions, 'gangAdmin');
 
 // Her sonuç doğuran işlem için istemci tarafı istek kimliği: aynı butona
 // hızlı basılsa / ağ tekrarı olsa bile sunucu işlemi tek kez uygular.
@@ -13,11 +12,6 @@ export function newRequestId() {
 
 export async function callGang(mode, action, payload = {}) {
   const res = await actionFn({ world: mode.world, actAs: mode.world === 'test' ? mode.actorId : undefined, action, payload });
-  return res.data;
-}
-
-export async function callGangAdmin(action, data = {}) {
-  const res = await adminFn({ action, ...data });
   return res.data;
 }
 

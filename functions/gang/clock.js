@@ -390,6 +390,11 @@ export function createClock(core, actions) {
         return { cancelled: true };
       }
       const pct = `%${Math.round(ratio * 100)}`;
+      if (vote.type === 'kick' && (target.rank === 'baba' || gang.babaId === vote.targetId)) {
+        // Oylama sürerken hedef Mafya Babası olduysa (ör. ayaklanma) çıkarma oylaması düşer.
+        tx.update(voteRef, { status: 'cancelled', cancelReason: 'target_is_baba', resolvedAtMs: ctx.now, result });
+        return { cancelled: true };
+      }
       if (vote.type === 'kick') {
         if (passed) {
           const plan = await core.planRemoval(tx, ctx, gangId, vote.targetId, { gangSnapData: gang });
@@ -462,6 +467,7 @@ export function createClock(core, actions) {
       const voterIds = voters.map(([id]) => id);
       const voterStint = Object.fromEntries(voters.map(([id, m]) => [id, m.stint || null]));
       let leadershipTaken = activeSnap.docs.some((d) => d.data().type !== 'kick');
+      const kickTargets = new Set(activeSnap.docs.filter((d) => d.data().type === 'kick').map((d) => d.data().targetId));
       const pend = pendSnap.docs.map((d) => ({ ref: d.ref, id: d.id, ...d.data() })).filter((p) => p.requestedAtMs < ctx.now);
       pend.sort((a, b) => a.requestedAtMs - b.requestedAtMs);
       let started = 0;
@@ -470,7 +476,7 @@ export function createClock(core, actions) {
         let valid = Boolean(ini);
         if (valid && p.type === 'kick') {
           const t = members.get(p.targetId);
-          valid = Boolean(t) && voteActions.kickAllowed(ini.rank, t.rank);
+          valid = Boolean(t) && voteActions.kickAllowed(ini.rank, t.rank) && !kickTargets.has(p.targetId);
         } else if (valid) {
           valid = ini.rank === 'sagkol' && !leadershipTaken && Boolean(baba) && p.targetId === gang.babaId;
           if (valid && p.type === 'devirme') valid = (ini.prestige || 0) > (baba.prestige || 0);
@@ -481,6 +487,7 @@ export function createClock(core, actions) {
           continue;
         }
         if (p.type !== 'kick') leadershipTaken = true;
+        else kickTargets.add(p.targetId);
         const voteRef = ctx.ref.votes(gangId).doc();
         tx.set(voteRef, {
           type: p.type,
@@ -810,7 +817,9 @@ export function createClock(core, actions) {
     for (const g of gangs.docs) {
       const gangId = g.id;
       const votes = await ctx.ref.votes(gangId).where('status', '==', 'active').get();
-      for (const v of votes.docs) {
+      // Belirlilik: önce çıkarma oylamaları, sonra liderlik (devirme/ayaklanma); aynı türde başlangıç sırası.
+      const ordered = [...votes.docs].sort((a, b) => Number(a.data().type !== 'kick') - Number(b.data().type !== 'kick') || (a.data().startsAtMs || 0) - (b.data().startsAtMs || 0) || (a.id < b.id ? -1 : 1));
+      for (const v of ordered) {
         if (v.data().endsAtMs > ctx.now) continue;
         await safe(ctx, `vote:${gangId}:${v.id}`, () => resolveVote(ctx, gangId, v.id));
       }

@@ -141,6 +141,36 @@ export function createGangSystem(deps) {
     return snap.data() || { liveOpen: false, liveWorldId: null };
   }
 
+  // Çeteler oyunculara AÇIK: canlı dünya ilk ihtiyaçta (ilk oyuncu işlemi ya
+  // da ilk saat turu) tek seferlik, transaction içinde kurulur ve açılır.
+  // Mevcut bir canlı dünya varsa ona dokunulmaz (veri korunur), sadece açılır.
+  // Sonrasında `liveOpen` Firestore konsolundan false yapılırsa bakım modu
+  // yine çalışır (autoOpened bir kez yazıldığı için tekrar açılmaz).
+  async function ensureLiveWorld() {
+    const cfg = await getConfig();
+    if (cfg.autoOpened) return cfg;
+    const cfgRef = db.doc('gangSystem/config');
+    return db.runTransaction(async (tx) => {
+      const cur = (await tx.get(cfgRef)).data() || {};
+      if (cur.autoOpened) return cur;
+      const nowMs = realNow();
+      let liveWorldId = cur.liveWorldId || null;
+      if (!liveWorldId) {
+        liveWorldId = `live_${dateKeyOfMs(nowMs).replace(/-/g, '')}_${crypto.randomBytes(3).toString('hex')}`;
+        const today = dateKeyOfMs(nowMs);
+        const worldData = { createdAtMs: nowMs, launchDateKey: today, lastTickDateKey: today, clockOffsetMs: 0 };
+        tx.set(db.doc(`gangWorlds/${liveWorldId}`), worldData);
+        const wctx = core.makeCtx(liveWorldId, worldData);
+        tx.set(wctx.ref.intel(), intel.intelDefaults(), { merge: true });
+        tx.set(wctx.ref.intelState(), intel.intelStateDefaults(wctx), { merge: true });
+      }
+      const next = { liveOpen: true, liveWorldId, autoOpened: true, openedAtMs: nowMs };
+      tx.set(cfgRef, next, { merge: true });
+      logJson({ gang: 'live_auto_open', liveWorldId });
+      return { ...cur, ...next };
+    });
+  }
+
   async function hasAdminSession(uid) {
     if (!adminUids.includes(uid)) return false;
     const s = (await db.doc(`gangAdmins/${uid}`).get()).data();
@@ -174,6 +204,10 @@ export function createGangSystem(deps) {
   async function handleAction(request) {
     const uid = requireAuth(request);
     const data = request.data || {};
+    if (data.action === 'hello' && data.world !== 'test') {
+      const cfg = await ensureLiveWorld();
+      return { ok: true, liveOpen: Boolean(cfg.liveOpen), liveWorldId: cfg.liveOpen ? cfg.liveWorldId : null };
+    }
     const handler = HANDLERS[data.action];
     if (!handler) fail('invalid-argument', 'Geçersiz işlem.');
     let worldId;
@@ -186,7 +220,7 @@ export function createGangSystem(deps) {
       const p = await db.doc(`gangWorlds/${TEST_WORLD}/players/${actorId}`).get();
       if (!p.exists) fail('failed-precondition', 'Test personası bulunamadı.');
     } else {
-      const cfg = await getConfig();
+      const cfg = await ensureLiveWorld();
       if (!cfg.liveOpen || !cfg.liveWorldId) fail('failed-precondition', '🚧 Çeteler şu an tadilatta.');
       worldId = cfg.liveWorldId;
       actorId = uid;
@@ -197,6 +231,15 @@ export function createGangSystem(deps) {
     try {
       const res = await handler(ctx, data.payload || {});
       await runAfterCommit(ctx);
+      // Onboarding kancaları (sadece canlı dünya; best-effort — hata işlemi bozmaz)
+      if (!ctx.isTest) {
+        try {
+          if ((data.action === 'createGang' || data.action === 'joinGang') && deps.onGangJoined) await deps.onGangJoined(uid);
+          if (data.action === 'buyMarketListing' && deps.onGangMarketBought) await deps.onGangMarketBought(uid, res || {});
+        } catch (err) {
+          console.error('gang onboarding kancası hata', err);
+        }
+      }
       ctx.logs.push({ gang: 'action', world: worldId, action: data.action, actorId: ctx.isTest ? actorId : 'player' });
       core.flushLogs(ctx);
       return { ok: true, ...(res || {}) };
@@ -386,7 +429,13 @@ export function createGangSystem(deps) {
   }
 
   async function runAllClocks() {
-    const cfg = await getConfig();
+    let cfg;
+    try {
+      cfg = await ensureLiveWorld();
+    } catch (err) {
+      console.error('ensureLiveWorld hata', err);
+      cfg = await getConfig();
+    }
     const out = {};
     const worlds = [TEST_WORLD];
     if (cfg.liveWorldId) worlds.push(cfg.liveWorldId);
@@ -430,8 +479,16 @@ export function createGangSystem(deps) {
     return res;
   }
 
+  // Oyuncu şu an (canlı dünyada) bir çetede mi? — onboarding otomatik geçişi için
+  async function isInLiveGang(uid) {
+    const cfg = await getConfig();
+    if (!cfg.liveOpen || !cfg.liveWorldId) return false;
+    const m = (await db.doc(`gangWorlds/${cfg.liveWorldId}/memberships/${uid}`).get()).data();
+    return Boolean(m?.gangId);
+  }
+
   // Testler için iç erişim (production'da kullanılmaz)
   const _internal = { core, membership, treasury, trade, market, wars, votes, intel, clock, HANDLERS };
 
-  return { handleAction, handleAdmin, runAllClocks, onPoliceBustReward, onSuspicionFine, _internal };
+  return { handleAction, handleAdmin, runAllClocks, onPoliceBustReward, onSuspicionFine, isInLiveGang, ensureLiveWorld, _internal };
 }

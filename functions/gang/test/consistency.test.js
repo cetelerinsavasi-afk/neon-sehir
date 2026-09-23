@@ -23,7 +23,10 @@ test('index.js: dailyReset içine çete kodu eklenmedi; çete fonksiyonları exp
   const end = indexSrc.indexOf('export const hourlyInvestmentUpdate');
   const body = indexSrc.slice(start, end);
   assert.ok(!/gang/i.test(body), 'dailyReset gövdesinde çete kodu olmamalı');
-  for (const f of ['gangAction', 'gangAdmin', 'gangClock']) assert.ok(indexSrc.includes(`export const ${f}`));
+  for (const f of ['gangAction', 'gangClock']) assert.ok(indexSrc.includes(`export const ${f}`));
+  // v32: admin paneli / test şifresi canlıda yok
+  assert.ok(!indexSrc.includes('export const gangAdmin'), 'gangAdmin export edilmemeli');
+  assert.ok(!/GANG_TEST_PASSWORD/.test(fs.readFileSync(new URL('../firebase.js', import.meta.url), 'utf8')), 'test şifresi secret kaldırıldı');
 });
 
 test('İstanbul zaman yardımcıları mevcut istanbulDateKey ile uyumlu', () => {

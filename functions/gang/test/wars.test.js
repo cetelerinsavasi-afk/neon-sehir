@@ -112,6 +112,13 @@ test('bahis: Baba+Sağ Kol; günde 1 teklif; küçük kasa sınırı; ret ve cev
   assert.ok(h.chat(B.gangId).some((m) => /öneriyor: Alfa bahis teklifini REDDET/.test(m)));
   await h.act(B.ids[0], 'respondBet', { warId, accept: false }); // Sağ Kol cevap verir
   assert.equal(h.state(A.gangId).kasa, 1_000_000);
+  // reddedilince aynı gün yeniden teklif hakkı açılır; geri çekince de
+  const again = await h.act(A.baba, 'offerBet', { targetGangId: C.gangId, stake: 10_000 });
+  await h.fails(A.baba, 'offerBet', { targetGangId: B.gangId, stake: 10_000 });
+  await h.act(A.baba, 'withdrawBet', { warId: again.warId });
+  const again2 = await h.act(A.baba, 'offerBet', { targetGangId: B.gangId, stake: 10_000 });
+  await h.act(A.baba, 'withdrawBet', { warId: again2.warId });
+  assert.equal(h.state(A.gangId).kasa, 1_000_000);
   // ertesi gün 23:59'da teklif → 00:00'da cevapsız → iptal + iade
   await h.tickTo('2026-09-22', '23:59');
   const w2 = await h.act(A.baba, 'offerBet', { targetGangId: B.gangId, stake: 100_000 });
@@ -124,7 +131,7 @@ test('bahis: Baba+Sağ Kol; günde 1 teklif; küçük kasa sınırı; ret ve cev
   for (const day of ['2026-09-26', '2026-09-27']) {
     await h.tickTo(day, '10:00');
     const err = await h.fails(A.baba, 'offerBet', { targetGangId: B.gangId, stake: 10_000 });
-    assert.match(err.message, /Cumartesi ve Pazar/);
+    assert.match(err.message, /Bugün bahis yapamazsın/);
   }
   await h.tickTo('2026-10-02', '10:00'); // Cuma
   const fri = await h.act(A.baba, 'offerBet', { targetGangId: B.gangId, stake: 10_000 });
@@ -217,4 +224,20 @@ test('ittifak: Baba+Sağ Kol; öneri; 00:00 başlar; not; aktifken bahis ve sabo
   assert.equal(h.get(`alliances/${allianceId}`).status, 'ended');
   await h.fundKasa(A.gangId, 0);
   await h.act(A.baba, 'offerBet', { targetGangId: B.gangId, stake: 10_000 });
+});
+
+test('hem çetede hem İstihbaratta olan üye: bir pencerede ya çetesi ya İstihbarat için 1 kez; sonraki pencerede diğeri', async () => {
+  const h = await createHarness();
+  const A = await setupGang(h, { members: 1, name: 'Alfa' });
+  const x = A.ids[0];
+  await h.setPersona(x, { reputation: 90, power: 30_000 });
+  await h.act(x, 'joinIntel', { codeName: 'Çiftci' });
+  await h.tickTo('2026-09-27', '00:10'); // Pazar ticaret yolu savaşı
+  const warId = 'trade_2026-09-27';
+  await h.act(x, 'rollDice', { warId });
+  const other = await h.fails(x, 'rollDice', { warId, side: 'intel' });
+  assert.match(other.message, /pencerede/);
+  h.at('2026-09-27', '06:00');
+  await h.act(x, 'rollDice', { warId, side: 'intel' });
+  await h.fails(x, 'rollDice', { warId });
 });

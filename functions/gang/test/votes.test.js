@@ -111,7 +111,7 @@ test('çıkarma oylaması: Baba → Kıdemli; hedef ayrılırsa oylama iptal; oy
   const target = G.ids[5];
   await h.fails(G.ids[2], 'requestVote', { type: 'kick', targetId: G.ids[3] }); // Kıdemli başlatamaz
   await h.act(G.baba, 'requestVote', { type: 'kick', targetId: target });
-  await h.fails(G.ids[0], 'requestVote', { type: 'kick', targetId: target }); // aynı hedef
+  await h.act(G.ids[0], 'requestVote', { type: 'kick', targetId: target }); // başkasının gizli talebi ifşa edilmez; 00:00'da tek oylama
   await h.nextDay();
   const v = activeVote(h, G.gangId);
   assert.equal(v.type, 'kick');
@@ -164,4 +164,59 @@ test('çıkarma oylaması yetkileri: Sağ Kol → Kıdemli/Tetikçi, Kıdemli �
   await h.nextDay();
   assert.ok(h.member(G.gangId, tetikci), '1-1 geçmedi');
   assert.equal(h.member(G.gangId, comez), undefined);
+});
+
+test('çıkarma talebi gizli: aynı hedefe iki talep → ikisi de alınır (ifşa yok), 00:00da tek oylama başlar', async () => {
+  const h = await createHarness();
+  const G = await fullGang(h);
+  const [s1, s2] = G.ids;
+  const kid = G.ids[2];
+  await h.act(s1, 'requestVote', { type: 'kick', targetId: kid });
+  await h.act(s2, 'requestVote', { type: 'kick', targetId: kid }); // başkasının talebi ifşa edilmez
+  await h.fails(s2, 'requestVote', { type: 'kick', targetId: kid }); // kendi tekrarı olmaz
+  await h.nextDay();
+  const votes = Object.entries(h.db._dump(`gangWorlds/test/gangs/${G.gangId}/votes/`)).filter(([p, v]) => !p.includes('/ballots/') && v.status === 'active');
+  assert.equal(votes.length, 1, 'tek oylama');
+  const pend = Object.values(h.db._dump(`gangWorlds/test/gangs/${G.gangId}/pending/`));
+  assert.deepEqual(pend.map((p) => p.status).sort(), ['cancelled', 'started']);
+  // aktif oylama varken yeni talep reddedilir (oylama zaten herkese görünür)
+  await h.fails(G.baba, 'requestVote', { type: 'kick', targetId: kid });
+});
+
+test('ayaklanmayla Baba olan üyeye karşı bekleyen çıkarma talebi 00:00da düşer', async () => {
+  const h = await createHarness();
+  const G = await fullGang(h);
+  const [s1, s2] = G.ids;
+  // 1. gün: s1 ayaklanma talebi → 2. gün oylama
+  await h.act(s1, 'requestVote', { type: 'ayaklanma' });
+  await h.nextDay();
+  const ay = activeVote(h, G.gangId);
+  assert.equal(ay.type, 'ayaklanma');
+  // aynı gün Baba, s1 için çıkarma talebi verir → 3. gün başlar
+  await h.act(G.baba, 'requestVote', { type: 'kick', targetId: s1 });
+  await voteAll(h, G, ay.id, [[s1, 'yes'], [s2, 'yes'], [G.ids[2], 'yes'], [G.ids[3], 'yes'], [G.ids[4], 'yes'], [G.ids[5], 'yes'], [G.baba, 'no']]);
+  await h.nextDay(); // ayaklanma başarılı: s1 Baba; çıkarma talebi Baba'ya karşı geçersiz → düşer
+  assert.equal(h.get(`gangs/${G.gangId}`).babaId, s1);
+  assert.equal(activeVote(h, G.gangId), null, 'yeni Babaya karşı çıkarma oylaması başlamaz');
+  assert.ok(h.member(G.gangId, s1));
+});
+
+test('aynı gece: çıkarma oylaması ayaklanmadan önce çözülür (belirli sıra)', async () => {
+  const h = await createHarness();
+  const G = await fullGang(h);
+  const [s1, s2] = G.ids;
+  await h.act(s1, 'requestVote', { type: 'ayaklanma' });
+  await h.act(G.baba, 'requestVote', { type: 'kick', targetId: s1 });
+  await h.nextDay();
+  const all = Object.entries(h.db._dump(`gangWorlds/test/gangs/${G.gangId}/votes/`)).filter(([p, v]) => !p.includes('/ballots/') && v.status === 'active');
+  assert.equal(all.length, 2);
+  const id = (t) => all.find(([, v]) => v.type === t)[0].split('/').pop();
+  const voters = [G.baba, s2, G.ids[2], G.ids[3], G.ids[4], G.ids[5]];
+  for (const v of voters) await h.act(v, 'castVote', { voteId: id('kick'), choice: 'yes' });
+  for (const v of voters.slice(1)) await h.act(v, 'castVote', { voteId: id('ayaklanma'), choice: 'yes' });
+  await h.act(s1, 'castVote', { voteId: id('ayaklanma'), choice: 'yes' });
+  await h.nextDay();
+  assert.equal(h.member(G.gangId, s1), undefined, 's1 çıkarıldı');
+  assert.equal(h.get(`gangs/${G.gangId}`).babaId, G.baba, 'Baba yerinde');
+  assert.equal(h.get(`gangs/${G.gangId}/votes/${id('ayaklanma')}`).status, 'cancelled');
 });

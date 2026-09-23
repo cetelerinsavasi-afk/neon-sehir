@@ -89,7 +89,9 @@ export default function ChatTab({ org, d }) {
           </Btn>
         </div>
       ) : (
-        <p className="dim gx-center-text">🌐 Bu sohbete sadece çetelerin rütbelileri yazabilir — sen okuyabilirsin.</p>
+        <div className="gx-chat-input locked">
+          <input className="gx-input" disabled placeholder="🔒 Sadece rütbeliler" />
+        </div>
       )}
     </div>
   );

@@ -4,7 +4,7 @@
 import { useMemo, useState } from 'react';
 import { limit, where } from 'firebase/firestore';
 import { useDocData, useGang, useGangAction, useQueryData } from '../GangContext';
-import { Btn, Card, Confirm, Empty, Gold, Info, Logo, Sheet } from '../ui';
+import { Btn, Card, Confirm, Empty, Gold, Logo, Sheet } from '../ui';
 import { LogoPicker, useMyWallet } from '../shared';
 import { GANG_RULES, INTEL_LOGO, fmt, productOf } from '../gangConstants';
 
@@ -37,11 +37,11 @@ function CreateGangSheet({ onClose, membership }) {
       </div>
       <LogoPicker value={logo} onChange={setLogo} />
       <label className="gx-field">
-        Çete adı <span className="dim">(benzersiz)</span>
+        Çete adı
         <input className="gx-input" maxLength={GANG_RULES.NAME_MAX} value={name} onChange={(e) => setName(e.target.value)} placeholder="ör. Gece Kartalları" />
       </label>
       <label className="gx-field">
-        Kısa not <span className="dim">(herkes görür)</span>
+        Kısa not
         <input className="gx-input" maxLength={GANG_RULES.NOTE_MAX} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Slogan, tehdit, davet…" />
       </label>
       <Btn block disabled={!valid} onClick={() => setConfirm(true)}>
@@ -52,10 +52,9 @@ function CreateGangSheet({ onClose, membership }) {
           icon="🏴"
           title={`"${name}" kurulsun mu?`}
           lines={[
-            `🪙 ${fmt(GANG_RULES.CREATE_FEE)} altın hesabından düşer.`,
-            `👑 Mafya Babası olursun, ${fmt(GANG_RULES.FOUNDER_PRESTIGE)} çete prestijiyle başlarsın.`,
-            ...(membership?.gangId ? ['🚪 Şu anki çetenden ÇIKARSIN, oradaki prestijin silinir.'] : []),
-            ...(membership?.intelRosterId ? ['🕵️ İstihbarattan ÇIKARSIN, İstihbarat prestijin silinir.'] : []),
+            `🪙 −${fmt(GANG_RULES.CREATE_FEE)}`,
+            ...(membership?.gangId ? ['🚪 Şu anki çetenden çıkarsın, prestijin silinir.'] : []),
+            ...(membership?.intelRosterId ? ['🕵️ İstihbarattan çıkarsın, prestijin silinir.'] : []),
           ]}
           confirmLabel="Kur"
           busy={busy === 'createGang'}
@@ -74,14 +73,15 @@ function JoinIntelSheet({ onClose }) {
   const ok = wallet.reputation == null || wallet.reputation >= GANG_RULES.INTEL_MIN_REPUTATION;
   return (
     <Sheet title="İstihbarata katıl" icon="🕵️" onClose={onClose}>
-      <p className="dim">
-        Şart: en az {GANG_RULES.INTEL_MIN_REPUTATION} saygınlık (katıldıktan sonra saygınlık önemli değil). Polis olman gerekmez. Bir çetede de olabilirsin.
-      </p>
+      <div className="gx-req">
+        <span className={`gx-req-item ${wallet.reputation == null ? '' : ok ? 'yes' : 'no'}`}>
+          {wallet.reputation == null ? '•' : ok ? '✓' : '✗'} ⭐ {GANG_RULES.INTEL_MIN_REPUTATION} saygınlık gerekir
+        </span>
+      </div>
       <label className="gx-field">
         Kod adın
         <input className="gx-input" maxLength={GANG_RULES.CODENAME_MAX} value={code} onChange={(e) => setCode(e.target.value)} placeholder="ör. Baykuş" />
       </label>
-      <p className="gx-hint-box">🤫 Kendini iyi gizle: gerçek adını ya da tanınan bir lakabını kullanma. Kod adını sonra ✏️ ile değiştirebilirsin.</p>
       <Btn
         block
         disabled={!ok || code.trim().length < GANG_RULES.CODENAME_MIN}
@@ -91,7 +91,7 @@ function JoinIntelSheet({ onClose }) {
           if (r) onClose();
         }}
       >
-        {ok ? 'Katıl' : `🔒 ${GANG_RULES.INTEL_MIN_REPUTATION} saygınlık gerekli`}
+        {ok ? 'Katıl' : '🔒'}
       </Btn>
     </Sheet>
   );
@@ -156,8 +156,7 @@ export default function ListTab({ membership, onOpen }) {
     <div className="gx-page">
       <div className="gx-list-head">
         <span className="gx-list-title">
-          🏴 Çeteler <Info text="Sıralama son Pazar ticaret yolu savaşında kullanılan güce göre yapılır. İstihbarat da listededir." />
-        </span>
+          🏴 Çeteler        </span>
         <Btn small onClick={() => setCreate(true)}>
           Çete kur +
         </Btn>
@@ -226,10 +225,7 @@ export default function ListTab({ membership, onOpen }) {
           icon={join.logo?.emoji || '🏴'}
           title={`${join.name} çetesine gir`}
           lines={[
-            '🐣 Çömez olarak başlarsın (prestij 0).',
-            "⬆️ Rütben her gece 00:00'da prestijine göre güncellenir.",
-            '⚔️ 30 gün hiçbir savaşa katılmazsan çeteden çıkarılırsın.',
-            ...(ms.gangId ? ['🚪 Şu anki çetenden ÇIKARSIN, oradaki prestijin kalıcı olarak silinir.'] : []),
+            ...(ms.gangId ? ['🚪 Şu anki çetenden çıkarsın, prestijin kalıcı silinir.'] : []),
           ]}
           danger={Boolean(ms.gangId)}
           confirmLabel="Gir"

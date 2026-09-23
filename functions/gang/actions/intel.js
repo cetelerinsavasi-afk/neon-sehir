@@ -348,7 +348,10 @@ export function createIntelActions(core) {
       ]);
       if (!target.exists) fail('failed-precondition', 'Bu ajan artık İstihbaratta değil.');
       if (!intelKickVoteAllowed(me.data()?.rank, target.data().rank)) fail('permission-denied', 'Bu üye için çıkarma oylaması başlatamazsın.');
-      if ([...pend.docs, ...act.docs].some((d) => d.data().targetRosterId === targetRosterId)) fail('already-exists', 'Bu üye için zaten bir oylama var.');
+      // Başkalarının gizli talepleri ifşa edilmez: sadece kendi talebin ve süren oylamalar kontrol edilir.
+      // Aynı hedefe birden çok gizli talep varsa 00:00'da ilki başlar, diğerleri sessizce düşer.
+      if (act.docs.some((d) => d.data().targetRosterId === targetRosterId)) fail('already-exists', 'Bu üye için zaten bir oylama var.');
+      if (pend.docs.some((d) => d.data().targetRosterId === targetRosterId && d.data().initiatorRosterId === rid)) fail('already-exists', 'Bu üye için zaten talebin var.');
       const ref = ctx.ref.intelPending().doc();
       tx.set(ref, {
         type: 'kick',
@@ -426,12 +429,16 @@ export function createIntelActions(core) {
 
   async function startIntelPendingVotes(ctx) {
     return core.db.runTransaction(async (tx) => {
-        const [pendSnap, rosterSnap] = await Promise.all([tx.get(ctx.ref.intelPending().where('status', '==', 'pending')), tx.get(ctx.ref.rosterCol())]);
+        const [pendSnap, rosterSnap, actSnap] = await Promise.all([
+          tx.get(ctx.ref.intelPending().where('status', '==', 'pending')),
+          tx.get(ctx.ref.rosterCol()),
+          tx.get(ctx.ref.intelVotes().where('status', '==', 'active')),
+        ]);
         const roster = new Map(rosterSnap.docs.map((d) => [d.id, d.data()]));
         const voters = [...roster.entries()].filter(([, r]) => ['baskan', 'sef', 'uzman'].includes(r.rank)).map(([id]) => id);
         const pend = pendSnap.docs.map((d) => ({ ref: d.ref, ...d.data() })).filter((p) => p.requestedAtMs < ctx.now);
         pend.sort((a, b) => a.requestedAtMs - b.requestedAtMs);
-        const started = new Set();
+        const started = new Set(actSnap.docs.map((d) => d.data().targetRosterId));
         for (const p of pend) {
           const ini = roster.get(p.initiatorRosterId);
           const tgt = roster.get(p.targetRosterId);

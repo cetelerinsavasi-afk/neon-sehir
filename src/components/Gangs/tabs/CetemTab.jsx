@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import { limit, orderBy } from 'firebase/firestore';
 import { fmtDateTime, useGang, useGangAction, useQueryData } from '../GangContext';
-import { AmountInput, Btn, Card, Chips, Confirm, Info, Logo, RankBadge, Sheet } from '../ui';
+import { AmountInput, Btn, Card, Chips, Confirm, Logo, RankBadge, Sheet } from '../ui';
 import { EditProfileSheet, KasaLine, MemberCard, RankTree } from '../shared';
 import { DIST_GROUPS, GANG_RULES, LEADERS, RANK_ICONS, fmt } from '../gangConstants';
 
@@ -18,9 +18,9 @@ function MemberSheet({ member, myRank, onClose }) {
   const canKick = (myRank === 'baba' && (t === 'tetikci' || t === 'comez')) || (myRank === 'sagkol' && t === 'comez');
   const canKickVote = (KICK_VOTE_TARGETS[myRank] || []).includes(t);
   const C = {
-    respect: { icon: '🎩', title: `${member.name} için saygı göster`, lines: [`✦ +${fmt(GANG_RULES.RESPECT_PRESTIGE)} prestij kazanır.`, 'Her üyeye bir kez verilir (Baba değişse de); üye ayrılıp dönerse tekrar verilebilir.'], label: 'Saygı göster', act: () => run('giveRespect', { targetId: member.id }, { success: '🎩 Saygı gösterildi' }) },
-    kick: { icon: '🚫', title: `${member.name} çeteden atılsın mı?`, lines: ['Çete prestiji kalıcı olarak silinir.', "Tekrar katılırsa Çömez olarak 0'dan başlar."], label: 'At', danger: true, act: () => run('kickMember', { targetId: member.id }, { success: '🚫 Üye atıldı' }) },
-    kickVote: { icon: '🗳️', title: `${member.name} için çıkarma oylaması`, lines: ["Talep 00:00'a kadar gizli kalır, istersen iptal edersin.", "00:00'da oylama başlar, 24 saat sürer; 7 rütbeli oy verir.", "%51'den fazla evet → üye çıkarılır."], label: 'Talep et', act: () => run('requestVote', { type: 'kick', targetId: member.id }, { success: "🗳️ Talep alındı — 00:00'da başlar" }) },
+    respect: { icon: '🎩', title: `${member.name} için saygı göster`, lines: [`✦ +${fmt(GANG_RULES.RESPECT_PRESTIGE)}`], label: 'Saygı göster', act: () => run('giveRespect', { targetId: member.id }, { success: '🎩 Saygı gösterildi' }) },
+    kick: { icon: '🚫', title: `${member.name} çeteden atılsın mı?`, lines: ['Prestiji kalıcı silinir.'], label: 'At', danger: true, act: () => run('kickMember', { targetId: member.id }, { success: '🚫 Üye atıldı' }) },
+    kickVote: { icon: '🗳️', title: `${member.name} için çıkarma oylaması`, lines: [], label: 'Talep et', act: () => run('requestVote', { type: 'kick', targetId: member.id }, { success: "🗳️ Talep alındı — 00:00'da başlar" }) },
   };
   const c = ask ? C[ask] : null;
   return (
@@ -43,7 +43,6 @@ function MemberSheet({ member, myRank, onClose }) {
             🚫 Çeteden at
           </Btn>
         )}
-        {!canRespect && !canKick && !canKickVote && <p className="dim">Bu üye için yapabileceğin bir işlem yok.</p>}
       </div>
       {c && (
         <Confirm
@@ -87,25 +86,25 @@ function MoneySheet({ kind, d, onClose }) {
   };
   return (
     <Sheet title={title} icon={icon} onClose={onClose}>
-      {kind === 'donate' && <p className="dim gx-mini">Bağışın çete kasasına girer. 1 altın = {GANG_RULES.DONATION_PRESTIGE_PER_GOLD} prestij.</p>}
+      {kind === 'donate' && amount > 0 && <div className="gx-free-line good">✦ +{fmt(amount * GANG_RULES.DONATION_PRESTIGE_PER_GOLD)}</div>}
       {kind !== 'donate' && (
-        <p className="dim gx-mini">
-          🔓 Bugün serbest para: <b>{fmt(free)}</b> (00:00 kasasının %20'si). Dağıtım, Baba'nın kendine aktarımı ve başka çeteye gönderim bu tek hakkı paylaşır.
-        </p>
+        <div className="gx-free-line">
+          🔓 <b>{fmt(free)}</b>
+        </div>
       )}
-      {kind === 'withdraw' && <p className="gx-hint-box">⚠️ Her 1 altın için {GANG_RULES.WITHDRAW_PRESTIGE_PER_GOLD} prestij kaybedersin (−{fmt(amount * GANG_RULES.WITHDRAW_PRESTIGE_PER_GOLD)}).</p>}
+      {kind === 'withdraw' && amount > 0 && <div className="gx-free-line bad">✦ −{fmt(amount * GANG_RULES.WITHDRAW_PRESTIGE_PER_GOLD)}</div>}
       {kind === 'dist' && (
         <>
           <Chips options={DIST_GROUPS.map((g) => ({ id: g.id, label: g.label, icon: g.icon }))} value={group} onChange={setGroup} />
           {group === 'rutbeli' ? (
-            <p className="dim gx-mini">Rütbeliler: sabit {GANG_RULES.DIST_RANKED_SLOTS} kişi (Mafya Babası dahil).</p>
+            <div className="gx-free-line">👥 {GANG_RULES.DIST_RANKED_SLOTS}</div>
           ) : (
             <label className="gx-field">
-              En fazla kaç kişi alabilir? <span className="dim">(en az {GANG_RULES.DIST_MIN_SLOTS})</span>
+              👥 Kişi sayısı
               <AmountInput value={slots} onChange={(v) => setSlots(Math.max(0, v))} />
             </label>
           )}
-          <span className="dim gx-mini">Kişi başı tutar</span>
+          <span className="dim gx-mini">💰 Kişi başı</span>
         </>
       )}
       {kind === 'transfer' && (
@@ -121,9 +120,9 @@ function MoneySheet({ kind, d, onClose }) {
       )}
       <AmountInput value={amount} onChange={setAmount} max={kind === 'dist' ? Math.floor(free / Math.max(1, n)) : kind === 'donate' ? undefined : free} />
       {kind === 'dist' && (
-        <p className="dim gx-mini">
-          Havuz: {fmt(amount)} × {n} = <b>{fmt(amount * n)}</b> · 24 saat içinde alınmayan kasaya döner.
-        </p>
+        <div className="gx-free-line">
+          = <b>{fmt(amount * n)}</b>
+        </div>
       )}
       <Btn block busy={Boolean(busy)} disabled={!amount || (kind === 'transfer' && !target) || (kind === 'dist' && n < GANG_RULES.DIST_MIN_SLOTS)} onClick={submit}>
         Onayla
@@ -142,7 +141,6 @@ function Alliances({ d, lead }) {
     <>
       <div className="gx-section-head">
         <span>🤝 İttifaklar</span>
-        <Info text="İttifak 00:00'da başlar ve bitirilince 00:00'da biter. Aktifken aranızda bahis ve sabotaj olmaz; birbirinizin tırını savunabilirsiniz. Yeni teklif Savaş panelinden gönderilir." />
       </div>
       {list.length === 0 && <p className="dim gx-mini">İttifak yok.</p>}
       {list.map((a) => {
@@ -223,7 +221,6 @@ export default function CetemTab({ d }) {
   const isLead = LEADERS.includes(rank);
   const byRank = (r) => d.members.filter((m) => m.rank === r).sort((a, b) => (b.prestige || 0) - (a.prestige || 0));
   const baba = byRank('baba')[0];
-  const grid = [...byRank('tetikci'), ...byRank('comez')];
   const canDevirme = rank === 'sagkol' && (d.me?.prestige || 0) > (baba?.prestige || 0);
   const myLeaderPending = d.pending.filter((p) => p.type !== 'kick');
   const card = (m) => (
@@ -284,7 +281,7 @@ export default function CetemTab({ d }) {
           {myLeaderPending.length > 0 ? (
             myLeaderPending.map((p) => (
               <div key={p.id} className="gx-pending">
-                <span>🤫 {p.type === 'devirme' ? 'Devirme' : 'Ayaklanma'} talebin gizli — 00:00'da oylama başlar</span>
+                <span>🤫 {p.type === 'devirme' ? '🗡️ Devirme' : '🔥 Ayaklanma'} · ⏱ 00:00</span>
                 <Btn small kind="ghost" busy={busy === `c_${p.id}`} onClick={() => run('cancelVoteRequest', { pendingId: p.id }, { key: `c_${p.id}`, success: 'İptal edildi' })}>
                   İptal
                 </Btn>
@@ -306,10 +303,9 @@ export default function CetemTab({ d }) {
       )}
 
       <div className="gx-section-head">
-        <span>👥 Rütbe ağacı ({d.members.length})</span>
-        <Info text="Rütbeler her gece 00:00'da prestije göre hesaplanır: Mafya Babası sabit, en yüksek 2 üye Sağ Kol, sonraki 4 Kıdemli, kalan 1.000.000+ prestijliler Tetikçi, altındakiler Çömez. Prestij: 1 savaş gücü = 1, 1 altın bağış = 5, Baba saygısı = 1.000.000." />
+        <span>👥 Üyeler · {d.members.length}</span>
       </div>
-      <RankTree rows={[baba ? [baba] : [], byRank('sagkol'), byRank('kidemli')]} grid={grid} gridTitle="Tetikçiler · Çömezler" renderCard={card} />
+      <RankTree rows={[baba ? [baba] : [], byRank('sagkol'), byRank('kidemli')]} rows2={[{ title: 'Tetikçiler', items: byRank('tetikci') }, { title: 'Çömezler', items: byRank('comez') }]} renderCard={card} />
 
       <Alliances d={d} lead={isLead} />
 
@@ -340,8 +336,8 @@ export default function CetemTab({ d }) {
           title={lead === 'devirme' ? 'Mafya Babasını devir' : 'Ayaklanma başlat'}
           lines={
             lead === 'devirme'
-              ? ["🤫 00:00'a kadar gizli, istersen iptal edebilirsin.", "🗳️ 00:00'da 7 rütbeli oylar (24 saat).", '✅ %51 veya fazlası → Mafya Babası SEN olursun, eski Baba çeteden atılır.', '❌ Yeterli destek yoksa sen çeteden atılırsın.']
-              : ["🤫 00:00'a kadar gizli, istersen iptal edebilirsin.", "🗳️ 00:00'da 7 rütbeli oylar (24 saat).", "✅ %66'dan FAZLA destek → Baba görevden alınır, Mafya Babası SEN olursun.", '❌ Yeterli destek yoksa çeteden atılırsın.']
+              ? ['✅ %51 → 👑 sen', '❌ çeteden atılırsın']
+              : ['✅ %66+ → 👑 sen', '❌ çeteden atılırsın']
           }
           confirmLabel={lead === 'devirme' ? 'Devir' : 'Ayaklan'}
           busy={busy === 'requestVote'}
@@ -357,7 +353,7 @@ export default function CetemTab({ d }) {
           icon="🚪"
           danger
           title="Çeteden ayrılmak istediğine emin misin?"
-          lines={['✦ Bu çetedeki prestijin KALICI olarak silinir.', "Geri dönersen 0 prestijle Çömez olarak başlarsın.", ...(rank === 'baba' ? ['👑 Babalık en yüksek prestijli üyeye geçer. Kimse kalmazsa çete kapanır.'] : [])]}
+          lines={['Prestijin kalıcı silinir.']}
           confirmLabel="Ayrıl"
           busy={busy === 'leaveGang'}
           onCancel={() => setLeave(false)}

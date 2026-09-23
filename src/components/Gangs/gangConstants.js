@@ -59,6 +59,7 @@ export const GANG_RULES = {
   DEPOT_STEP: 100,
   UNIT_SIZE: { araba: 10, silah: 10, yasakliMadde: 1 },
   BET_MIN: 10_000,
+  BET_OFFER_WEEKDAYS: [1, 2, 3, 4, 5],
   NAME_MIN: 3,
   NAME_MAX: 24,
   NOTE_MAX: 160,

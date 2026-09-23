@@ -139,10 +139,10 @@ export function Confirm({ icon = '⚠️', title, lines = [], confirmLabel = 'On
   );
 }
 
-export function Bar({ value, max, color = 'var(--neon-cyan)', label, height = 8 }) {
+export function Bar({ value, max, color = 'var(--neon-cyan)', label, height = 8, blocked = false }) {
   const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
   return (
-    <div className="gx-bar-wrap">
+    <div className={`gx-bar-wrap${blocked ? ' blocked' : ''}`}>
       {label && <div className="gx-bar-label">{label}</div>}
       <div className="gx-bar" style={{ height }}>
         <div className="gx-bar-fill" style={{ width: `${pct}%`, background: color }} />

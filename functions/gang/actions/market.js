@@ -105,7 +105,7 @@ export function createMarketActions(core, trade) {
       ledger(tx, ctx, { type: 'gang_market_sale', amount: cost, from: { kind: 'player', id: ctx.actorId }, to: { kind: 'gang', id: l.gangId }, before, refId: listingId });
       announce(tx, ctx, l.gangId, '💵', `2. elden ${qty} × ${l.label} satıldı: kasaya +${fmt(cost)}.`);
       notify(tx, ctx, ctx.actorId, `🛒 ${l.gangName} çetesinden ${qty} × ${l.label} aldın (${fmt(cost)} altın). Ürün${it.kind === 'material' ? '' : 'ler yeni (20/20 ömür) olarak'} envanterinde.`, 'market');
-      const res = { bought: qty, cost };
+      const res = { bought: qty, cost, kind: it.kind, material: it.material || null };
       guard.save(res);
       return res;
     });

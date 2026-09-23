@@ -10,12 +10,12 @@ import { useMyFutbolTeam } from './useMyFutbolTeam';
 import { currentPrayerWindow } from './useMosqueAttendance';
 
 // Görev listesi/hatırlatıcı paneli — bkz. functions/index.js ONBOARDING
-// bölümü. Sayaç (onboardingStep, 1-15) ve tamamlanma bayrağı
+// bölümü. Sayaç (onboardingStep, 1-20) ve tamamlanma bayrağı
 // (onboardingRewardClaimed — alan adı geriye dönük uyumluluk için
 // değiştirilmedi, ama artık altın ödülü YOK, sadece "tamamlandı"
 // bayrağı) users/{uid} dokümanında tutuluyor; bu hook sadece OKUR —
 // ilerleme SUNUCUDA (advanceOnboardingStep) yapılıyor.
-export const ONBOARDING_TASK_COUNT = 15;
+export const ONBOARDING_TASK_COUNT = 20;
 const SLOT_FREE_SPINS_PER_DAY = 3;
 
 function istanbulDateKey() {
@@ -31,7 +31,7 @@ function istanbulDateKey() {
 // başlık ve (i) açıklama metinleri BİREBİR kullanılıyor.
 export const ONBOARDING_TASKS = [
   { step: 1, emoji: '🏭', title: 'Fabrikada çalış', info: 'Maaşı yüksek olan bi fabrikada çalışarak her gün para kazanabilirsin.' },
-  { step: 2, emoji: '📱', title: "Telefon'dan Amazor'dan 1 adet yasaklı madde satın al", info: '2. el satış uygulamasında daha ucuza yasaklı madde bulabilirsin.' },
+  { step: 2, emoji: '📱', title: 'Telefon > Amazor ya da 2. el satış uygulamasından 1 adet yasaklı madde satın al', info: '2. el satış uygulamasında daha ucuza yasaklı madde bulabilirsin.' },
   { step: 3, emoji: '🌳', title: 'Parktaki şüpheli adama 1 adet yasaklı madde sat', info: 'Yasaklı madde alıp parkta satarsan, çok hızlı para kazanabilirsin.' },
   { step: 4, emoji: '🕌', title: "Camii'ye gidip ibadet et", info: 'Günde 5 vakit ibadet ederek şüphe miktarını düşük tut ve saygınlık kazan, şüphen yüksekken polise yakalanırsın.' },
   { step: 5, emoji: '🔫', title: 'Herhangi bir silah al', info: 'Silah alıp güçlenebilir ve seyyar satıcılardan haraç kesebilirsin.' },
@@ -45,11 +45,17 @@ export const ONBOARDING_TASKS = [
   { step: 13, emoji: '🏆', title: 'Yarış pistinden Şampiyonaya gir', info: 'Günün şampiyonu para ödülünü alır.' },
   { step: 14, emoji: '🏦', title: 'Bankadan kredi çek', info: 'Arabanı ipotek ettirerek kredi çekebilirsin.' },
   { step: 15, emoji: '📱', title: "Telefondaki 2. el satış uygulamasından alışveriş yap", info: 'Elindeki ürünleri sat, uygun fiyatlı ürünleri satın al (ilana ürün yüklemek, anında satmak, herhangi bir ürün almak bu görevi tamamlamak için yeterli).' },
+  // v32 — listenin sonuna eklenen görevler (kaldığın yerden devam edersin)
+  { step: 16, emoji: '🏠', title: 'Eve git ve avatarını düzenle', info: "Ev'de avatarını düzenleyebilir, adını değiştirebilirsin." },
+  { step: 17, emoji: '💬', title: 'Telefon > ChatsApp uygulamasına gir ve bi mesaj gönder', info: 'Diğer oyuncularla konuş.' },
+  { step: 18, emoji: '🧰', title: 'Telefon > Amazor ya da 2. el satış uygulamasından silah geliştirme malzemesi satın al', info: 'Silahını geliştirmek için ihtiyacın olacak.' },
+  { step: 19, emoji: '🔧', title: 'Eve gir ve silahını geliştir', info: 'Silahını geliştirerek daha büyük soygunlar yapabilirsin.' },
+  { step: 20, emoji: '🏴', title: 'Bi çeteye gir', info: 'Tüm mafya babaları bu yollardan geçti.' },
 ];
 
 /**
  * useOnboarding — anasayfadaki 📋 butonunun tüm verisini tek yerde toplar:
- * - Tamamlanana kadar: 15 görevlik sıralı checklist (onboardingStep).
+ * - Tamamlanana kadar: 20 görevlik sıralı checklist (onboardingStep).
  * - Tamamlandıktan sonra: koşulları o an sağlananları gösteren hatırlatıcı
  *   listesi.
  */

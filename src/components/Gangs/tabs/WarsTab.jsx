@@ -11,7 +11,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { limit, orderBy } from 'firebase/firestore';
 import { fmtClock, fmtCountdown, istDateKey, istHour, nextWindowStart, useDocData, useGang, useGangAction, useNow, useQueryData, windowSlot } from '../GangContext';
-import { AmountInput, Bar, Btn, Card, Confirm, Empty, Info, Logo, Sheet } from '../ui';
+import { AmountInput, Bar, Btn, Card, Confirm, Empty, Logo, Sheet } from '../ui';
 import DiceRoller from '../DiceRoller';
 import { IntelDecisionPanel, VoteCard } from '../shared';
 import { GANG_RULES, INTEL_LEADERS, INTEL_LOGO, LEADERS, fmt, productOf } from '../gangConstants';
@@ -167,11 +167,10 @@ function WindowBanner({ slot }) {
   const { used, next, now } = slot;
   return (
     <div className={`gx-window${used ? ' used' : ''}`}>
-      <span>{used ? '✓ Bu 6 saatlik pencerede savaştın' : '⚔️ Bu pencerede 1 savaş hakkın var'}</span>
+      <span>{used ? '✓ Savaştın' : '⚔️ 1 savaş hakkın var'}</span>
       <span className="dim">
-        {used ? 'Sonraki' : 'Pencere biter'}: {fmtClock(next)} · {fmtCountdown(next - now)}
+        ⏱ {fmtCountdown(next - now)}
       </span>
-      <Info text="Gün 4 pencereye ayrılır: 00–06, 06–12, 12–18, 18–24. Her pencerede sadece bir saldırı yapabilirsin (günde en fazla 4). Katkın = (zar1 + zar2) × o anki gücün. 1 güç = 1 prestij. Aktiflik sadece savaşla sayılır: 30 gün hiçbir savaşa katılmayan çeteden çıkarılır." />
     </div>
   );
 }
@@ -185,7 +184,6 @@ function AttackersSheet({ def, attackers, lead, onClose }) {
   const defTotal = sum(def.display);
   return (
     <Sheet title={`TIR #${def.truckCode} saldırganları`} icon="⚠️" onClose={onClose}>
-      <p className="dim gx-mini">En güçlü saldırı savunmayla karşılaştırılır. En güçlünün haracını/rüşvetini ödersen sıradaki en güçlü esas alınır; saldırgan kalmazsa tır güvenle ulaşır. Ödeme 18:00'e kadar.</p>
       <div className="gx-vs">
         <span>🛡️ Savunma {fmt(defTotal)}</span>
       </div>
@@ -200,7 +198,7 @@ function AttackersSheet({ def, attackers, lead, onClose }) {
               {isOp ? '🕵️ İstihbarat' : `🏴 ${a.sides?.attacker?.name}`}
             </span>
             <span className={p > defTotal ? 'bad' : 'good'}>⚔️ {fmt(p)}</span>
-            <span className="dim">{price > 0 ? `${isOp ? '💼 rüşvet' : '🤑 haraç'} ${fmt(price)}` : isOp ? 'rüşvet yok' : 'haraç yok'}</span>
+            <span className="dim">{price > 0 ? `${isOp ? '💼' : '🤑'} ${fmt(price)}` : '—'}</span>
             {lead && price > 0 && open && (
               <Btn small kind="ghost" onClick={() => setAsk(a)}>
                 Öde
@@ -213,7 +211,6 @@ function AttackersSheet({ def, attackers, lead, onClose }) {
         <Confirm
           icon={ask.type === 'intelop' ? '💼' : '🤑'}
           title={ask.type === 'intelop' ? `İstihbarata ${fmt(ask.bribe)} rüşvet ödensin mi?` : `${ask.sides?.attacker?.name} çetesine ${fmt(ask.harac)} haraç ödensin mi?`}
-          lines={['Para çete kasasından ödenir.', 'Bu saldırı hemen durur; diğer saldırılar (varsa) devam eder.']}
           confirmLabel="Öde"
           busy={Boolean(busy)}
           onCancel={() => setAsk(null)}
@@ -241,10 +238,10 @@ function OfferCard({ kind, item, rank }) {
         <Logo logo={other?.logo} size={32} />
         <div>
           <b>{other?.name}</b>
-          <div className="dim gx-mini">{kind === 'bet' ? `🎲 ${fmt(item.stake)} altınlık bahisli savaş teklif etti` : '🤝 İttifak teklif etti'}</div>
+          <div className="dim gx-mini">{kind === 'bet' ? `🎲 ${fmt(item.stake)}` : '🤝 İttifak'}</div>
         </div>
       </div>
-      {kind === 'bet' && <div className="gx-offer-big">Ödül {fmt(item.stake * 2)} · savaş {item.dateKey} 00:00–24:00</div>}
+      {kind === 'bet' && <div className="gx-offer-big">🏆 {fmt(item.stake * 2)}</div>}
       {lead ? (
         <div className="gx-row-2">
           <Btn kind="ghost" onClick={() => setAsk('reject')}>
@@ -261,22 +258,11 @@ function OfferCard({ kind, item, rank }) {
             💬 Kabul edelim
           </Btn>
         </div>
-      ) : (
-        <p className="dim gx-mini">👁️ Kararı Mafya Babası ve Sağ Kol verir.</p>
-      )}
+      ) : null}
       {ask && (
         <Confirm
           icon={ask === 'accept' ? '✅' : '❌'}
           title={kind === 'bet' ? (ask === 'accept' ? `${fmt(item.stake)} altınlık bahis kabul edilsin mi?` : 'Bahis reddedilsin mi?') : ask === 'accept' ? 'İttifak kabul edilsin mi?' : 'İttifak reddedilsin mi?'}
-          lines={
-            kind === 'bet'
-              ? ask === 'accept'
-                ? [`Kasadan ${fmt(item.stake)} altın havuza alınır.`, 'Savaş 00:00\'da başlar, 24 saat sürer; kazanan hepsini alır.']
-                : ['Teklif edenin parası kendisine döner.']
-              : ask === 'accept'
-                ? ["İttifak 00:00'da başlar.", 'Aranızda bahis/sabotaj olmaz; birbirinizin tırını savunabilirsiniz.']
-                : ['Teklif kapanır.']
-          }
           confirmLabel={ask === 'accept' ? 'Kabul' : 'Reddet'}
           busy={Boolean(busy)}
           onCancel={() => setAsk(null)}
@@ -291,25 +277,103 @@ function OfferCard({ kind, item, rank }) {
   );
 }
 
-// Bahis / ittifak teklif et (Baba / Sağ Kol)
-function ProposeSheet({ kind, gangId, onClose }) {
+// Bahis / ittifak teklif et (Baba / Sağ Kol). Bahiste: teklif gönderilince
+// liste kapanır, sadece hedef çete "cevap bekleniyor" olarak görünür; geri
+// çekilir ya da reddedilirse liste yeniden açılır. Hafta sonu kapalı.
+function ProposeSheet({ kind, gangId, out = [], blockedIds = [], onClose }) {
   const { path, call } = useGang();
   const { run, busy } = useGangAction();
+  const now = useNow(30_000);
   const { docs: gangs } = useQueryData(path('gangs'), () => [limit(100)], 'all_gangs');
   const [target, setTarget] = useState(null);
   const [quote, setQuote] = useState(null);
   const [stake, setStake] = useState(0);
-  const others = gangs.filter((g) => g.id !== gangId && g.status === 'active');
+  const today = istDateKey(now);
+  const weekday = new Date(`${today}T00:00:00Z`).getUTCDay();
+  const others = gangs.filter((g) => g.id !== gangId && g.status === 'active' && !blockedIds.includes(g.id));
+  const pending = out.find((w) => w.status === 'offered');
+  const acceptedToday = out.find((w) => w.status === 'accepted' && w.offeredDateKey === today);
   const pick = async (g) => {
+    if (target?.id === g.id) return setTarget(null);
     setTarget(g);
     setStake(0);
     setQuote(null);
     if (kind === 'bet') setQuote(await call('quoteBet', { targetGangId: g.id }).catch(() => ({ maxBet: 0 })));
   };
+
+  if (kind === 'bet') {
+    const shown = pending || acceptedToday;
+    return (
+      <Sheet title="Bahisli savaş" icon="🎲" onClose={onClose}>
+        {!GANG_RULES.BET_OFFER_WEEKDAYS.includes(weekday) && !shown ? (
+          <div className="gx-bet-closed">
+            <span className="big">🚫</span>
+            <b>Bugün bahis yapamazsın</b>
+          </div>
+        ) : shown ? (
+          <div className={`gx-bet-target${pending ? ' waiting' : ' accepted'}`}>
+            <Logo logo={shown.sides?.[shown.targetGangId]?.logo} size={44} />
+            <div className="gx-bet-target-main">
+              <b>{shown.sides?.[shown.targetGangId]?.name}</b>
+              <span className="gx-bet-stake">🎲 {fmt(shown.stake)}</span>
+              <span className="gx-bet-status">{pending ? '⏳ Cevap bekleniyor' : '✅ Kabul edildi'}</span>
+            </div>
+            {pending && (
+              <Btn small kind="danger" busy={busy === `wd_${pending.id}`} onClick={() => run('withdrawBet', { warId: pending.id }, { key: `wd_${pending.id}`, success: '↩️ Teklif geri çekildi' })}>
+                İptal
+              </Btn>
+            )}
+          </div>
+        ) : (
+          <div className="gx-bet-list">
+            {others.length === 0 && <Empty icon="🏴" text="Teklif edilebilecek çete yok." />}
+            {others.map((g) => {
+              const open = target?.id === g.id;
+              const max = quote?.maxBet ?? null;
+              const tooLow = open && max != null && max < GANG_RULES.BET_MIN;
+              return (
+                <div key={g.id} className={`gx-bet-row${open ? ' open' : ''}`}>
+                  <button className="gx-bet-row-head" onClick={() => pick(g)}>
+                    <Logo logo={g.logo} size={30} />
+                    <span className="gx-bet-row-name">{g.name}</span>
+                    <span className="gx-bet-row-go">{open ? '▾' : '🎲'}</span>
+                  </button>
+                  {open && (
+                    <div className="gx-bet-row-body">
+                      <div className="gx-bet-max">
+                        MAX <b>{max == null ? '…' : fmt(max)}</b>
+                      </div>
+                      {tooLow ? (
+                        <div className="gx-bet-max bad">🔒</div>
+                      ) : (
+                        <>
+                          <AmountInput value={stake} onChange={setStake} max={max ?? 0} />
+                          <Btn
+                            block
+                            busy={busy === 'offerBet'}
+                            disabled={!(stake >= GANG_RULES.BET_MIN)}
+                            onClick={async () => {
+                              const r = await run('offerBet', { targetGangId: g.id, stake }, { success: '🎲 Teklif gönderildi', withRequestId: true });
+                              if (r) setTarget(null);
+                            }}
+                          >
+                            🎲 {fmt(stake)} teklif et
+                          </Btn>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Sheet>
+    );
+  }
+
   return (
-    <Sheet title={kind === 'bet' ? 'Bahisli savaş teklif et' : 'İttifak teklif et'} icon={kind === 'bet' ? '🎲' : '🤝'} onClose={onClose}>
-      {kind === 'bet' && <p className="dim gx-mini">Günde 1 teklif · Cumartesi/Pazar yok · en fazla iki çetenin 00:00 kasasından küçüğünün ¼'ü. Teklif ettiğin altın havuza alınır; kabul edilmezse 00:00'da geri döner.</p>}
-      {kind === 'alliance' && <p className="dim gx-mini">İttifak kabul edilirse 00:00'da başlar, bitirilirse 00:00'da biter. Aranızda süren bahis/sabotaj varken kurulamaz.</p>}
+    <Sheet title="İttifak teklif et" icon="🤝" onClose={onClose}>
       <div className="gx-pick-list">
         {others.map((g) => (
           <button key={g.id} className={`gx-pick${target?.id === g.id ? ' active' : ''}`} onClick={() => pick(g)}>
@@ -317,23 +381,16 @@ function ProposeSheet({ kind, gangId, onClose }) {
           </button>
         ))}
       </div>
-      {target && kind === 'bet' && (
-        <>
-          <p className="dim gx-mini">En fazla: {quote ? fmt(quote.maxBet) : '…'} altın</p>
-          <AmountInput value={stake} onChange={setStake} max={quote?.maxBet} />
-        </>
-      )}
       {target && (
         <Btn
           block
           busy={Boolean(busy)}
-          disabled={kind === 'bet' && !(stake >= GANG_RULES.BET_MIN)}
           onClick={async () => {
-            const r = kind === 'bet' ? await run('offerBet', { targetGangId: target.id, stake }, { success: '🎲 Teklif gönderildi', withRequestId: true }) : await run('requestAlliance', { targetGangId: target.id }, { success: '🤝 Teklif gönderildi' });
+            const r = await run('requestAlliance', { targetGangId: target.id }, { success: '🤝 Teklif gönderildi' });
             if (r) onClose();
           }}
         >
-          {kind === 'bet' ? `${fmt(stake)} altın teklif et` : `${target.name} ile ittifak teklif et`}
+          🤝 {target.name}
         </Btn>
       )}
     </Sheet>
@@ -416,6 +473,16 @@ export default function WarsTab({ org, d }) {
     return { pos: i >= 0 ? i + 1 : null, power: i >= 0 ? s[i].power : 0, n: s.length };
   };
 
+  // Teklif listesinde görünmeyecek çeteler: müttefikler ve zaten bahis olanlar
+  const allyBlocked = isIntel ? [] : d.alliances.filter((a) => ['requested', 'accepted', 'active', 'ending'].includes(a.status)).flatMap((a) => a.gangIds);
+  const betBlocked = isIntel
+    ? []
+    : [
+        ...d.alliances.filter((a) => ['accepted', 'active', 'ending'].includes(a.status)).flatMap((a) => a.gangIds),
+        ...wars.all.filter((w) => w.type === 'bet' && ['offered', 'accepted', 'active'].includes(w.status)).flatMap((w) => w.gangIds || []),
+      ];
+  const pendingOut = (L.betOffersOut || []).find((w) => w.status === 'offered');
+
   const hasWar = L.trade.length + (L.bets?.length || 0) + (L.myAttacks?.length || 0) + (L.myDefs?.length || 0) + (L.allyDefs?.length || 0) + (L.ops?.length || 0) > 0;
 
   return (
@@ -425,7 +492,7 @@ export default function WarsTab({ org, d }) {
       {!isIntel && lead && (
         <div className="gx-row-2">
           <Btn small kind="ghost" onClick={() => setPropose('bet')}>
-            🎲 Bahis teklif et
+            🎲 {pendingOut ? `⏳ ${pendingOut.sides?.[pendingOut.targetGangId]?.name || ''}` : 'Bahis teklif et'}
           </Btn>
           <Btn small kind="ghost" onClick={() => setPropose('alliance')}>
             🤝 İttifak teklif et
@@ -433,7 +500,7 @@ export default function WarsTab({ org, d }) {
         </div>
       )}
 
-      {!hasWar && <Empty icon="🕊️" text="Şu an aktif savaş yok. Ticaret yolu savaşı her Pazar 00:00'da başlar." />}
+      {!hasWar && <Empty icon="🕊️" text="Şu an savaş yok." />}
 
       {L.trade.map((w) => {
         const t = tradePos(w);
@@ -464,7 +531,6 @@ export default function WarsTab({ org, d }) {
       {(L.myDefs || []).length > 0 && (
         <div className="gx-section-head">
           <span>⚠️ Tırlarımıza saldırı</span>
-          <Info text="Saldırılar 12:00'de duyurulur. Savunma 12–18 ve 18–24 pencerelerinde. En güçlü saldırı savunmayla karşılaştırılır; haraç/rüşvet 18:00'e kadar ödenebilir." />
         </div>
       )}
       {(L.myDefs || []).map((w) => {
@@ -487,7 +553,7 @@ export default function WarsTab({ org, d }) {
               <span className="dim">vs</span>
               <span className={defTotal < topPower ? 'bad' : 'good'}>⚔️ {fmt(topPower)}</span>
             </div>
-            <div className="dim gx-mini">👆 Tüm saldırganlar · haraç / rüşvet</div>
+            <div className="dim gx-mini">👆 Saldırganlar</div>
           </WarRow>
         );
       })}
@@ -507,7 +573,7 @@ export default function WarsTab({ org, d }) {
               <span className="dim">vs</span>
               <span>🛡️ {fmt(sum(def?.display))}</span>
             </div>
-            {w.harac > 0 && <div className="gx-war-purpose">🤑 Haraç talebi: {fmt(w.harac)}</div>}
+            {w.harac > 0 && <div className="gx-war-purpose">🤑 {fmt(w.harac)}</div>}
           </WarRow>
         );
       })}
@@ -515,7 +581,6 @@ export default function WarsTab({ org, d }) {
       {(L.allyDefs || []).length > 0 && (
         <div className="gx-section-head">
           <span>🤝 İttifak çetenin tırı</span>
-          <Info text="Müttefiklerinizin saldırı altındaki tırlarını savunabilirsiniz. Savunma güçleri birleşir (saldırıda birleşmez)." />
         </div>
       )}
       {(L.allyDefs || []).map((w) => {
@@ -543,7 +608,7 @@ export default function WarsTab({ org, d }) {
               <span>🛡️ {fmt(sum(def?.display))}</span>
             </div>
             <div className="dim gx-mini">
-              {w.estReward != null ? `💰 Ödül değeri: ${fmt(w.estReward)}` : '💰 Ödül: içerik sızdırılmadı'} · {w.bribe > 0 ? `💼 rüşvet ${fmt(w.bribe)}` : 'rüşvet yok'}
+              💰 {w.estReward != null ? fmt(w.estReward) : '?'}{w.bribe > 0 ? ` · 💼 ${fmt(w.bribe)}` : ''}
             </div>
           </WarRow>
         );
@@ -561,7 +626,7 @@ export default function WarsTab({ org, d }) {
         L.betOffersOut.map((w) => (
           <Card key={w.id} className="gx-pending">
             <span>
-              🎲 {w.sides?.[w.targetGangId]?.name}: {fmt(w.stake)} · {w.status === 'offered' ? "cevap bekleniyor (00:00'a kadar)" : `kabul edildi · ${w.dateKey} 00:00'da başlar`}
+              🎲 {w.sides?.[w.targetGangId]?.name}: {fmt(w.stake)} · {w.status === 'offered' ? '⏳ cevap bekleniyor' : '✅ yarın 00:00'}
             </span>
             {lead && w.status === 'offered' && (
               <Btn small kind="ghost" busy={busy === `wd_${w.id}`} onClick={() => run('withdrawBet', { warId: w.id }, { key: `wd_${w.id}`, success: 'Teklif geri çekildi' })}>
@@ -574,7 +639,7 @@ export default function WarsTab({ org, d }) {
         L.betsAccepted.map((w) => (
           <Card key={w.id} className="gx-pending">
             <span>
-              🎲 {w.sides?.[w.proposerGangId]?.name} ile {fmt(w.stake)} altınlık bahis · {w.dateKey} 00:00'da başlar
+              🎲 {w.sides?.[w.proposerGangId]?.name} · {fmt(w.stake)} · ✅ yarın 00:00
             </span>
           </Card>
         ))}
@@ -583,12 +648,11 @@ export default function WarsTab({ org, d }) {
       {(d.votes.length > 0 || d.pending.length > 0) && (
         <div className="gx-section-head">
           <span>🗳️ Oylamalar</span>
-          <Info text={isIntel ? "Oylamalar 00:00'da başlar, 24 saat sürer. Oy hakkı Başkan, Şef ve Uzmanlarındır. Başkan için %66'dan fazla, diğerleri için %51 evet gerekir. Başarısız oylamada hiçbir şey değişmez." : "Oylamalar 00:00'da başlar, 24 saat sürer. Oy hakkı başladığı andaki 7 rütbelinindir. Tetikçiler görür ama oy veremez; Çömezler görmez."} />
         </div>
       )}
       {d.pending.map((p) => (
         <Card key={p.id} className="gx-pending">
-          <span>🤫 {isIntel ? `${p.targetCode} için çıkarma` : p.type === 'kick' ? `${p.targetName} için çıkarma` : p.type === 'devirme' ? 'Devirme' : 'Ayaklanma'} talebin gizli · 00:00'da başlar</span>
+          <span>🤫 {isIntel ? `${p.targetCode} için çıkarma` : p.type === 'kick' ? `${p.targetName} için çıkarma` : p.type === 'devirme' ? 'Devirme' : 'Ayaklanma'} · ⏱ 00:00</span>
           <Btn small kind="ghost" busy={busy === `c_${p.id}`} onClick={() => run(isIntel ? 'cancelIntelVoteRequest' : 'cancelVoteRequest', { pendingId: p.id }, { key: `c_${p.id}`, success: 'İptal edildi' })}>
             İptal
           </Btn>
@@ -607,7 +671,15 @@ export default function WarsTab({ org, d }) {
       {detail && <WarDetail war={wars.all.find((w) => w.id === detail.war.id) || detail.war} mySideKey={detail.side} onClose={() => setDetail(null)} />}
       {attackersOf && <AttackersSheet def={wars.all.find((w) => w.id === attackersOf.id) || attackersOf} attackers={L.attacksOnDef(attackersOf)} lead={lead} onClose={() => setAttackersOf(null)} />}
       {rolling && <DiceRoller title={`${warIcon(rolling.war)} ${warTitle(rolling.war)}`} subtitle={rolling.side} sideLabel={rolling.side} onRoll={doRoll} onClose={() => setRolling(null)} />}
-      {propose && <ProposeSheet kind={propose} gangId={gangId} onClose={() => setPropose(null)} />}
+      {propose && (
+        <ProposeSheet
+          kind={propose}
+          gangId={gangId}
+          out={L.betOffersOut || []}
+          blockedIds={propose === 'bet' ? betBlocked : allyBlocked}
+          onClose={() => setPropose(null)}
+        />
+      )}
     </div>
   );
 }

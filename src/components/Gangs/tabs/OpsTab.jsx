@@ -8,7 +8,7 @@
 import { useState } from 'react';
 import { limit, where } from 'firebase/firestore';
 import { istDateKey, istHour, useDocData, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
-import { AmountInput, Btn, Card, Confirm, Empty, Info, Logo } from '../ui';
+import { AmountInput, Btn, Card, Confirm, Empty, Logo } from '../ui';
 import { INTEL_LEADERS, atLeast, fmt } from '../gangConstants';
 
 export default function OpsTab({ d }) {
@@ -35,14 +35,13 @@ export default function OpsTab({ d }) {
     <div className="gx-stack">
       <div className="gx-section-head">
         <span>🎯 İhbarlı tırlar ({reports.length})</span>
-        <Info text="Operasyon 00:00–12:00 arası Başkan ve Şefler tarafından başlatılır; ücret oyun genelindeki sabotaj ücretidir. Rüşvet tutarını operasyonu başlatan belirler; tır sahibi 18:00'e kadar öderse operasyon durur ve para İstihbarat kasasına girer. Başarılı operasyonda yük imha edilir, kasaya anlık satış değeri kadar ödül girer." />
       </div>
       {lead && open && freeReports.length > 1 && (
         <Btn block kind="danger" onClick={() => { setOp({ all: true }); setBribe(0); }}>
-          🎯 Tüm ihbarlı tırlara operasyon ({freeReports.length}) · tır başı {fmt(price)}+
+          🎯 Hepsine operasyon ({freeReports.length})
         </Btn>
       )}
-      {reports.length === 0 && <Empty icon="📡" text="Bugün ihbar edilen tır yok." />}
+      {reports.length === 0 && <Empty icon="📡" text="İhbar yok." />}
       {reports.map((r) => {
         const inThatGang = ms.gangId === r.gangId && atLeast(ms.gangRank, 'kidemli');
         return (
@@ -54,7 +53,7 @@ export default function OpsTab({ d }) {
                 <div className="dim gx-mini">📡 {r.reportedByCode}</div>
               </div>
             </div>
-            {r.leaked ? <div className="gx-reward">💰 Ödül değeri: {fmt(r.estReward)}</div> : <div className="dim gx-mini">İçerik sızdırılmadı</div>}
+            {r.leaked ? <div className="gx-reward">💰 {fmt(r.estReward)}</div> : <div className="dim gx-mini">💰 ?</div>}
             <div className="gx-row-2">
               {!r.leaked && inThatGang && (
                 <Btn small kind="ghost" onClick={() => setAsk({ type: 'leak', r })}>
@@ -77,9 +76,8 @@ export default function OpsTab({ d }) {
         <>
           <div className="gx-section-head">
             <span>📡 Çetemin yoldaki tırları</span>
-            <Info text="Çetende en az Tetikçi isen, çetenin yoldaki tırını İstihbarata ihbar edebilirsin (+1.000.000 prestij). Bir tır bir kez ihbar edilir. Çetede Kıdemli+ isen ihbar edilen tırın içeriğini sızdırabilirsin (+1.000.000)." />
           </div>
-          {road.length === 0 && <p className="dim gx-mini">Çetenin bugün yolda tırı yok.</p>}
+          {road.length === 0 && <p className="dim gx-mini">🛣️ Yol boş</p>}
           {road.map((t) => (
             <div key={t.id} className="gx-truck-line">
               <span className="gx-truck-code">🚛 #{t.code}</span>
@@ -100,7 +98,7 @@ export default function OpsTab({ d }) {
           icon="🎯"
           danger
           title={op.all ? `${freeReports.length} tıra operasyon` : `TIR #${op.r.truckCode} (${op.r.gangName}) operasyonu`}
-          lines={[`💸 Ücret: ${fmt(price)} altın${op.all ? ' (her operasyonda +10.000)' : ''} — İstihbarat kasasından.`, "⚔️ Saldırı 12:00'de başlar; tır sahibi 12:00'de öğrenir.", '💼 Rüşvet (0 = kabul yok): tır sahibi öderse operasyon durur, para kasaya.']}
+          lines={[`💸 ${fmt(price)}${op.all ? '+' : ''}`]}
           confirmLabel="Başlat"
           busy={busy === 'startOperation'}
           onCancel={() => setOp(null)}
@@ -109,14 +107,15 @@ export default function OpsTab({ d }) {
             if (r) setOp(null);
           }}
         >
-          <AmountInput value={bribe} onChange={setBribe} placeholder="Rüşvet tutarı (0 = yok)" />
+          <span className="dim gx-mini">💼 Rüşvet</span>
+          <AmountInput value={bribe} onChange={setBribe} placeholder="0" />
         </Confirm>
       )}
       {ask && (
         <Confirm
           icon={ask.type === 'report' ? '📡' : '📦'}
           title={ask.type === 'report' ? `TIR #${ask.t.code} ihbar edilsin mi?` : `TIR #${ask.r.truckCode} içeriği sızdırılsın mı?`}
-          lines={ask.type === 'report' ? ['Tır İstihbaratın operasyon listesine düşer.', '+1.000.000 İstihbarat prestiji.'] : ['İstihbarat yükün ödül değerini görür.', '+1.000.000 İstihbarat prestiji.']}
+          lines={['✦ +1.000.000']}
           confirmLabel={ask.type === 'report' ? 'İhbar et' : 'Sızdır'}
           busy={Boolean(busy)}
           onCancel={() => setAsk(null)}

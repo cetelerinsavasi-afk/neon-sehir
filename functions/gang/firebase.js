@@ -1,11 +1,12 @@
 // Firebase bağlantısı: çete sisteminin Cloud Functions tanımları.
-// functions/index.js bu dosyayı çağırıp 3 fonksiyonu export eder:
-//   gangAction (callable) · gangAdmin (callable) · gangClock (5 dk schedule)
+// functions/index.js bu dosyayı çağırıp 2 fonksiyonu export eder:
+//   gangAction (callable) · gangClock (5 dk schedule)
+// v32: admin paneli / test şifresi kaldırıldı — çeteler oyunculara açık.
+// Canlı dünya ilk oyuncu işleminde ya da ilk saat turunda otomatik kurulur
+// (bkz. system.js ensureLiveWorld). Secret gerekmez.
 import { createGangSystem } from './system.js';
 
-export function createGangFunctions({ onCall, onSchedule, defineSecret, HttpsError, db, FieldValue, getMaxWeaponPower, splitIncomeForDebt, catalogs, lifeDays, adminUids }) {
-  // Test modu şifresi Secret Manager'da: firebase functions:secrets:set GANG_TEST_PASSWORD
-  const GANG_TEST_PASSWORD = defineSecret('GANG_TEST_PASSWORD');
+export function createGangFunctions({ onCall, onSchedule, HttpsError, db, FieldValue, getMaxWeaponPower, splitIncomeForDebt, catalogs, lifeDays, onGangJoined, onGangMarketBought }) {
   const system = createGangSystem({
     db,
     FieldValue,
@@ -14,18 +15,13 @@ export function createGangFunctions({ onCall, onSchedule, defineSecret, HttpsErr
     splitIncomeForDebt,
     catalogs,
     lifeDays,
-    adminUids,
-    getTestPassword: () => {
-      try {
-        return GANG_TEST_PASSWORD.value() || null;
-      } catch {
-        return null;
-      }
-    },
+    adminUids: [], // admin/test modu canlıda kapalı
+    getTestPassword: () => null,
+    onGangJoined,
+    onGangMarketBought,
   });
 
   const gangAction = onCall({ timeoutSeconds: 60 }, (request) => system.handleAction(request));
-  const gangAdmin = onCall({ secrets: [GANG_TEST_PASSWORD], timeoutSeconds: 300 }, (request) => system.handleAdmin(request));
   const gangClock = onSchedule(
     { schedule: 'every 5 minutes', timeZone: 'Europe/Istanbul', timeoutSeconds: 540, memory: '512MiB' },
     async () => {
@@ -34,5 +30,5 @@ export function createGangFunctions({ onCall, onSchedule, defineSecret, HttpsErr
     }
   );
 
-  return { gangAction, gangAdmin, gangClock, system };
+  return { gangAction, gangClock, system };
 }

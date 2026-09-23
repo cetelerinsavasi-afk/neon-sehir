@@ -2,14 +2,43 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHarness, setupGang, ADMIN_UID, PASSWORD } from './harness.js';
 
-test('güvenlik: canlı kapalıyken oyuncu hiçbir işlem yapamaz; test dünyası admin oturumu ister', async () => {
+test('çeteler oyunculara açık: canlı dünya ilk işlemde bir kez kurulur; bakım (liveOpen:false) korunur; test dünyası kapalı', async () => {
   const h = await createHarness();
   const player = 'normalUid';
   await h.db.doc(`users/${player}`).set({ displayName: 'Normal', gold: 5_000_000, reputation: 100 });
-  await assert.rejects(h.system.handleAction({ auth: { uid: player }, data: { action: 'joinIntel', payload: { codeName: 'X1' } } }), /tadilatta/);
+  // ilk işlem: dünya + config tek seferde oluşur
+  const hello = await h.system.handleAction({ auth: { uid: player }, data: { action: 'hello' } });
+  assert.equal(hello.liveOpen, true);
+  const cfg = h.raw('gangSystem/config');
+  assert.equal(cfg.liveWorldId, hello.liveWorldId);
+  assert.ok(h.raw(`gangWorlds/${cfg.liveWorldId}`));
+  // tekrar çağrı yeni dünya kurmaz
+  const again = await h.system.handleAction({ auth: { uid: player }, data: { action: 'hello' } });
+  assert.equal(again.liveWorldId, cfg.liveWorldId);
+  await h.system.handleAction({ auth: { uid: player }, data: { action: 'joinIntel', payload: { codeName: 'Baykuş' } } });
+  // konsoldan bakım: liveOpen:false → işlem yapılamaz, otomatik tekrar açılmaz
+  await h.db.doc('gangSystem/config').set({ liveOpen: false }, { merge: true });
+  await assert.rejects(h.system.handleAction({ auth: { uid: player }, data: { action: 'leaveIntel' } }), /tadilatta/);
+  await h.system.runAllClocks();
+  assert.equal(h.raw('gangSystem/config').liveOpen, false);
+  // mevcut veri korunur
+  assert.ok(h.raw(`gangWorlds/${cfg.liveWorldId}/intel/main`));
   await assert.rejects(h.system.handleAction({ auth: { uid: player }, data: { world: 'test', actAs: 'tpabcdef12', action: 'leaveGang' } }), /Test modu kapalı/);
   await assert.rejects(h.system.handleAdmin({ auth: { uid: player }, data: { action: 'unlock', password: PASSWORD } }), /Yetkin yok/);
   await assert.rejects(h.system.handleAction({ auth: null, data: { action: 'leaveGang' } }), /giriş/);
+});
+
+test('önceden (admin) açılmış/kapatılmış canlı dünya varsa verisi korunarak açılır', async () => {
+  const h = await createHarness();
+  await h.admin('openLive', { mode: 'fresh', confirm: 'CANLIYA AÇ' });
+  await h.admin('closeLive');
+  const { liveWorldId } = h.raw('gangSystem/config');
+  await h.db.doc(`gangWorlds/${liveWorldId}/gangs/eski`).set({ name: 'Eski', status: 'active' });
+  await h.system.runAllClocks();
+  const cfg = h.raw('gangSystem/config');
+  assert.equal(cfg.liveOpen, true);
+  assert.equal(cfg.liveWorldId, liveWorldId, 'aynı dünya');
+  assert.ok(h.raw(`gangWorlds/${liveWorldId}/gangs/eski`), 'veri korunur');
 });
 
 test('admin şifresi: yanlış şifre reddedilir, 5 hatada kilit; oturum süresi dolunca test kapanır', async () => {
@@ -140,4 +169,15 @@ test('canlı dünyada dağıtım talebi mevcut borç kuralına uyar (%50 borca)'
   const u = h.raw('users/debtor');
   assert.equal(u.gold, 10_000);
   assert.equal(u.debtToState, 990_000);
+});
+
+test('onboarding kancaları: canlıda çete kur/katıl çağrılır; test dünyasında çağrılmaz; hata işlemi bozmaz', async () => {
+  const h = await createHarness();
+  await setupGang(h, { members: 1 }); // test dünyası
+  assert.equal(h.hooks.filter((x) => x[0] === 'joined').length, 0);
+  const uid = 'realJ';
+  await h.db.doc(`users/${uid}`).set({ displayName: 'Gerçek', gold: 2_000_000, reputation: 100 });
+  h.weaponsByOwner.set(uid, 45_000);
+  await h.system.handleAction({ auth: { uid }, data: { action: 'createGang', payload: { name: 'Kanca Çete', logo: { emoji: '🐺', color: '#ffd23f', bg: '#231c05' } } } });
+  assert.deepEqual(h.hooks.filter((x) => x[0] === 'joined'), [['joined', uid]]);
 });

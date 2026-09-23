@@ -4,7 +4,7 @@
 // maaş yoktur; Başkan kasadan kendine para alamaz.
 import { useState } from 'react';
 import { useGangAction } from '../GangContext';
-import { AmountInput, Btn, Card, Chips, Confirm, Info, RankBadge, Sheet } from '../ui';
+import { AmountInput, Btn, Card, Chips, Confirm, RankBadge, Sheet } from '../ui';
 import { KasaLine, MemberCard, RankTree } from '../shared';
 import { DIST_GROUPS, GANG_RULES, INTEL_LEADERS, RANK_ICONS, fmt } from '../gangConstants';
 
@@ -37,7 +37,6 @@ function MemberSheet({ member, myRank, onClose }) {
             🗳️ Çıkarma oylaması başlat
           </Btn>
         )}
-        {!canKick && !canVote && <p className="dim">Bu üye için yapabileceğin bir işlem yok.</p>}
       </div>
       {ask && (
         <Confirm
@@ -46,8 +45,8 @@ function MemberSheet({ member, myRank, onClose }) {
           title={ask === 'kick' ? `${member.codeName} atılsın mı?` : `${member.codeName} için çıkarma oylaması`}
           lines={
             ask === 'kick'
-              ? ['İstihbarat prestiji silinir. Yeri 00:00\'da dolar.']
-              : ["Talep 00:00'a kadar gizli, iptal edilebilir.", "00:00'da Başkan, Şef ve Uzmanlar 24 saat oylar.", member.rank === 'baskan' ? "Başkan için %66'dan fazla evet gerekir." : '%51 evet gerekir.', 'Başarısız oylamada hiçbir şey değişmez.']
+              ? []
+              : [member.rank === 'baskan' ? '%66+ evet' : '%51 evet']
           }
           confirmLabel={ask === 'kick' ? 'At' : 'Talep et'}
           busy={Boolean(busy)}
@@ -106,9 +105,8 @@ export default function IntelTab({ d }) {
 
       <div className="gx-section-head">
         <span>🕵️ Teşkilat ({d.roster.length})</span>
-        <Info text="Rütbeler her gece 00:00'da prestije göre: en yüksek Başkan, sonraki 2 Şef, sonraki 4 Uzman, kalan 1.000.000+ Ajan, altı Muhbir. Prestij: ihbar 1M, içerik sızdırma 1M, çete teslimi 10M, savaş gücü 1:1, suçlu yakalama ödülü 1:1. Başkan Ajan/Muhbiri, Şef Muhbiri anında atar; diğerleri için oylama." />
       </div>
-      <RankTree rows={[byRank('baskan'), byRank('sef'), byRank('uzman')]} grid={[...byRank('ajan'), ...byRank('muhbir')]} gridTitle="Ajanlar · Muhbirler" renderCard={card} />
+      <RankTree rows={[byRank('baskan'), byRank('sef'), byRank('uzman')]} rows2={[{ title: 'Ajanlar', items: byRank('ajan') }, { title: 'Muhbirler', items: byRank('muhbir') }]} renderCard={card} />
 
       <Btn block kind="danger" onClick={() => setLeave(true)}>
         🚪 İstihbarattan ayrıl
@@ -118,7 +116,6 @@ export default function IntelTab({ d }) {
       {code != null && (
         <Sheet title="Kod adını değiştir" icon="✏️" onClose={() => setCode(null)}>
           <input className="gx-input" maxLength={GANG_RULES.CODENAME_MAX} value={code} onChange={(e) => setCode(e.target.value)} />
-          <p className="gx-hint-box">🤫 Kendini iyi gizle. Kod adı benzersiz olmalı; eski mesajlarda eski ad kalır.</p>
           <Btn
             block
             busy={busy === 'changeCodeName'}
@@ -149,23 +146,19 @@ export default function IntelTab({ d }) {
       )}
       {dist && (
         <Sheet title="Altın dağıt" icon="💰" onClose={() => setDist(false)}>
-          <p className="dim gx-mini">
-            🔓 Bugün serbest para: <b>{fmt(free)}</b> (00:00 kasasının %20'si). Başkan dağıtımlardan pay alamaz; dağıtımı yapan kendi dağıtımından alamaz.
-          </p>
+          <div className="gx-free-line">🔓 <b>{fmt(free)}</b></div>
           <Chips options={DIST_GROUPS.map((g) => ({ id: g.id, label: g.intelLabel, icon: g.icon }))} value={group} onChange={setGroup} />
           {group === 'rutbeli' ? (
-            <p className="dim gx-mini">Rütbeliler: sabit {GANG_RULES.DIST_RANKED_SLOTS} kişi.</p>
+            <div className="gx-free-line">👥 {GANG_RULES.DIST_RANKED_SLOTS}</div>
           ) : (
             <label className="gx-field">
-              En fazla kaç kişi alabilir? <span className="dim">(en az {GANG_RULES.DIST_MIN_SLOTS})</span>
+              👥 Kişi sayısı
               <AmountInput value={slots} onChange={(v) => setSlots(Math.max(0, v))} />
             </label>
           )}
-          <span className="dim gx-mini">Kişi başı tutar</span>
+          <span className="dim gx-mini">💰 Kişi başı</span>
           <AmountInput value={amount} onChange={setAmount} max={Math.floor(free / Math.max(1, n))} />
-          <p className="dim gx-mini">
-            Havuz: {fmt(amount)} × {n} = <b>{fmt(amount * n)}</b>
-          </p>
+          <div className="gx-free-line">= <b>{fmt(amount * n)}</b></div>
           <Btn
             block
             busy={busy === 'createDistribution'}
@@ -184,7 +177,7 @@ export default function IntelTab({ d }) {
           icon="🚪"
           danger
           title="İstihbarattan ayrılmak istediğine emin misin?"
-          lines={['İstihbarat prestijin kalıcı olarak silinir.', 'Kod adın serbest kalır. Kimseye bildirim gitmez.']}
+          lines={['Prestijin kalıcı silinir.']}
           confirmLabel="Ayrıl"
           busy={busy === 'leaveIntel'}
           onCancel={() => setLeave(false)}

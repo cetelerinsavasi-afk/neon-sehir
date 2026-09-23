@@ -37,7 +37,10 @@ export async function createHarness({ start = ist('2026-09-21', '09:00'), dice =
   const diceQueue = dice ? [...dice] : null;
   const weaponsByOwner = new Map();
   const logs = [];
+  const hooks = [];
   const system = createGangSystem({
+    onGangJoined: async (uid) => hooks.push(['joined', uid]),
+    onGangMarketBought: async (uid, res) => hooks.push(['market', uid, res.kind, res.material]),
     db,
     FieldValue,
     HttpsError: TestHttpsError,
@@ -60,6 +63,7 @@ export async function createHarness({ start = ist('2026-09-21', '09:00'), dice =
     system,
     clock,
     logs,
+    hooks,
     weaponsByOwner,
     Timestamp,
     get internal() {

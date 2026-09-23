@@ -21,7 +21,7 @@ setGlobalOptions({ region: 'europe-west1' });
 // kendi hesabının UID'sini kopyalayıp buraya ekle — src/config/admin.js
 // içindeki liste de BİREBİR AYNI UID(ler) ile güncellenmeli (istemci
 // tarafında butonun görünürlüğünü kontrol eden yer orası).
-const ADMIN_UIDS = ['KXHsPCNsslSALG27vIZAkbB7pU43'];
+const ADMIN_UIDS = ['REPLACE_WITH_YOUR_FIREBASE_AUTH_UID'];
 
 function requireAdmin(request) {
   const uid = requireAuth(request);
@@ -55,7 +55,16 @@ function requireAdmin(request) {
 // oyuncuların verisini taşımaya gerek kalmasın diye) ama artık literal bir
 // ödül anlamı taşımıyor — sadece "checklist tamamlandı" bayrağı.
 // ---------------------------------------------------------------------------
-const ONBOARDING_TASK_COUNT = 15;
+// v32 KULLANICI REVİZESİ: listenin SONUNA 5 görev eklendi (16-20). Sayaç
+// yapısı değişmedi: görevleri henüz bitirmemiş oyuncular kaldıkları adımdan
+// devam eder (15'i bitirip "Tamam"a basmamış olan 16'dan devam eder).
+// onboardingRewardClaimed=true olanlar (listeyi bitirmiş) ETKİLENMEZ.
+//   16 · Eve git ve avatarını düzenle (avatarı zaten varsa otomatik geçer)
+//   17 · ChatsApp'ten mesaj gönder
+//   18 · Amazor ya da 2. elden silah geliştirme malzemesi al (1 adet yeter)
+//   19 · Silahını geliştir (2./3. seviye silahı varsa otomatik geçer)
+//   20 · Bi çeteye gir (zaten bir çetedeyse otomatik geçer)
+const ONBOARDING_TASK_COUNT = 20;
 
 // advanceOnboardingStep — SADECE gönderilen `taskNumber`, oyuncunun O AN
 // aktif adımıyla (onboardingStep) birebir eşleşiyorsa 1 ilerletir. Adım
@@ -140,8 +149,30 @@ export const checkOnboardingProgress = onCall(async (request) => {
       if (!champRoomSnap.empty) {
         tx.update(userRef, { onboardingStep: 14 });
       }
+    } else if (currentStep === 16) {
+      // Avatarını daha önce düzenlemiş (varsayılan değil) → otomatik geç
+      if (user.avatar) {
+        tx.update(userRef, { onboardingStep: 17 });
+      }
+    } else if (currentStep === 19) {
+      // Elinde 2. ya da 3. seviye silah varsa → otomatik geç
+      // (tek alanlı sorgu — ek composite index gerektirmez)
+      const ownedSnap = await tx.get(db.collection('weapons').where('ownerId', '==', uid));
+      if (ownedSnap.docs.some((d) => (d.data().level || 1) >= 2)) {
+        tx.update(userRef, { onboardingStep: 20 });
+      }
     }
   });
+  // Görev 20 — zaten bir çetedeyse otomatik geç (çete sistemi ayrı dünyada;
+  // okuma transaction dışında, ilerleme advanceOnboardingStep ile güvenli).
+  try {
+    const fresh = (await userRef.get()).data();
+    if ((fresh?.onboardingStep || 1) === 20 && (await gangFunctions.system.isInLiveGang(uid))) {
+      await advanceOnboardingStep(uid, 20);
+    }
+  } catch (err) {
+    console.error('checkOnboardingProgress (çete) hata:', err);
+  }
   return { ok: true };
 });
 
@@ -3685,6 +3716,10 @@ export const buyFromAmazor = onCall(async (request) => {
   if (materialType === 'yasakliMadde') {
     await advanceOnboardingStep(uid, 2);
   }
+  // Onboarding görev 18 — "silah geliştirme malzemesi satın al".
+  if (materialType === 'silahUpgrade') {
+    await advanceOnboardingStep(uid, 18);
+  }
 
   return { ok: true };
 });
@@ -3826,6 +3861,9 @@ export const upgradeWeapon = onCall(async (request) => {
     );
     tx.update(weaponRef, { level: newLevel, power: newPower });
   });
+
+  // Onboarding görev 19 — "silahını geliştir".
+  await advanceOnboardingStep(uid, 19);
 
   return { ok: true };
 });
@@ -4984,12 +5022,12 @@ export const claimPoliceSalary = onCall(async (request) => {
 
 // ---------------------------------------------------------------------------
 // buyFromVendor — Seyyar Satıcı: her satıcının KENDİ günlük hakkı var
-// (Kokoreçci, Simitçi, Dönerci, Köfteci birbirinden bağımsız), 500 altın,
+// (Kokoreçci, Simitçi, Dönerci, Köfteci birbirinden bağımsız), 1000 altın,
 // şüphe -5, saygınlık artışı kademeli (0-49 → +5, 50-79 → +3, 80+ → +1 —
 // bkz. reputationGainFor).
 // ---------------------------------------------------------------------------
-const VENDOR_COST = 500;
-// Not: Tüm seyyar satıcılarda alışveriş artık aynı fiyat (500 altın),
+const VENDOR_COST = 1000;
+// Not: Tüm seyyar satıcılarda alışveriş artık aynı fiyat (1000 altın),
 // bu yüzden özel bir eşleme gerekmiyor — VENDOR_COSTS boş bırakıldı,
 // vendorCostFor() her zaman VENDOR_COST'a döner.
 const VENDOR_COSTS = {};
@@ -6910,6 +6948,9 @@ export const sendChatMessage = onCall(async (request) => {
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
+  // Onboarding görev 17 — "ChatsApp'ten bi mesaj gönder".
+  await advanceOnboardingStep(uid, 17);
+
   return { ok: true };
 });
 
@@ -7007,6 +7048,8 @@ export const setAvatar = onCall(async (request) => {
   }
 
   await db.collection('users').doc(uid).update({ avatar });
+  // Onboarding görev 16 — "eve git ve avatarını düzenle".
+  await advanceOnboardingStep(uid, 16);
   return { ok: true };
 });
 
@@ -8991,7 +9034,7 @@ export const buyListing = onCall(async (request) => {
       });
     }
 
-    result = { cost, quantity: qty, sellerId: listing.sellerId, itemType: listing.itemType };
+    result = { cost, quantity: qty, sellerId: listing.sellerId, itemType: listing.itemType, materialType: listing.materialType || null };
   });
 
   if (result.sellerId && result.sellerId !== 'system') {
@@ -9033,6 +9076,12 @@ export const buyListing = onCall(async (request) => {
     await advanceOnboardingStep(uid, 11);
   } else if (result.itemType === 'weapon') {
     await advanceOnboardingStep(uid, 5);
+  } else if (result.itemType === 'material' && result.materialType === 'yasakliMadde') {
+    // v32: 2. elden yasaklı madde almak da görev 2'yi tamamlar.
+    await advanceOnboardingStep(uid, 2);
+  } else if (result.itemType === 'material' && result.materialType === 'silahUpgrade') {
+    // v32: görev 18 — 2. elden silah geliştirme malzemesi.
+    await advanceOnboardingStep(uid, 18);
   }
 
   return { ok: true, cost: result.cost, quantity: result.quantity };
@@ -19721,10 +19770,11 @@ export const cleanupSixtagramPosts = onSchedule(
 // kendi merkezi/idempotent saatine (gangClock) sahiptir; dailyReset'e
 // hiçbir şey eklenmedi. Bkz. docs/cete-sistemi/.
 // =============================================================================
+// v32: admin paneli / test şifresi kaldırıldı; çeteler oyunculara açık.
+// Onboarding görev 20 ("bi çeteye gir") çete kurma/katılma anında ilerler.
 const gangFunctions = createGangFunctions({
   onCall,
   onSchedule,
-  defineSecret,
   HttpsError,
   db,
   FieldValue: admin.firestore.FieldValue,
@@ -19732,8 +19782,15 @@ const gangFunctions = createGangFunctions({
   splitIncomeForDebt,
   catalogs: { VEHICLE_CATALOG, WEAPON_CATALOG, AMAZOR_PRICES },
   lifeDays: VEHICLE_WEAPON_INITIAL_LIFE_DAYS,
-  adminUids: ADMIN_UIDS,
+  onGangJoined: (uid) => advanceOnboardingStep(uid, 20),
+  // Çete depolarından (2. el) alım da ilgili satın alma görevlerini tamamlar
+  onGangMarketBought: async (uid, res) => {
+    await advanceOnboardingStep(uid, 15);
+    if (res.kind === 'vehicle') await advanceOnboardingStep(uid, 11);
+    else if (res.kind === 'weapon') await advanceOnboardingStep(uid, 5);
+    else if (res.material === 'yasakliMadde') await advanceOnboardingStep(uid, 2);
+    else if (res.material === 'silahUpgrade') await advanceOnboardingStep(uid, 18);
+  },
 });
 export const gangAction = gangFunctions.gangAction;
-export const gangAdmin = gangFunctions.gangAdmin;
 export const gangClock = gangFunctions.gangClock;

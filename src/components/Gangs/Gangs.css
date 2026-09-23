@@ -2310,3 +2310,239 @@ textarea.gx-input {
 .gx-offer .gx-offer-big {
   font-size: 14px;
 }
+
+/* ==== v32: sade arayüz ==== */
+.gx-tree-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed #243050;
+}
+.gx-tree-count {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #1b2440;
+  color: var(--text);
+  font-size: 10px;
+}
+.gx-free-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.gx-free-line.good {
+  color: #7cff6b;
+}
+.gx-free-line.bad {
+  color: var(--neon-pink);
+}
+
+/* Sipariş: sınır çubukları — takılan kısıt kırmızı yanıp söner */
+.gx-limits {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  padding: 10px;
+  border-radius: 12px;
+  background: #0c1220;
+  border: 1px solid #1f2a44;
+}
+.gx-bar-wrap.blocked .gx-bar-label {
+  color: var(--neon-pink);
+  font-weight: 700;
+}
+.gx-bar-wrap.blocked .gx-bar {
+  outline: 2px solid var(--neon-pink);
+  outline-offset: 1px;
+  animation: gx-blocked 0.35s ease-in-out 3;
+}
+.gx-bar-wrap.blocked .gx-bar-label::after {
+  content: ' ⛔';
+}
+@keyframes gx-blocked {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-3px);
+  }
+  75% {
+    transform: translateX(3px);
+  }
+}
+.gx-qty {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.gx-qty input {
+  width: 64px;
+  height: 32px;
+  text-align: center;
+  border-radius: 8px;
+  border: 1px solid #2a3552;
+  background: #0a0f1a;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+}
+.gx-qty button {
+  min-width: 30px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid #2a3552;
+  background: #151d33;
+  color: var(--text);
+  font-size: 16px;
+  cursor: pointer;
+}
+.gx-qty button:disabled {
+  opacity: 0.35;
+}
+.gx-qty .gx-qty-max {
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: #0a0f1a;
+  background: var(--neon-yellow);
+  border-color: var(--neon-yellow);
+}
+
+/* Bahis teklifi */
+.gx-bet-closed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 0;
+  color: var(--neon-pink);
+  font-size: 16px;
+}
+.gx-bet-closed .big {
+  font-size: 44px;
+}
+.gx-bet-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.gx-bet-row {
+  border-radius: 12px;
+  border: 1px solid #243050;
+  background: #111829;
+  overflow: hidden;
+}
+.gx-bet-row.open {
+  border-color: var(--neon-yellow);
+}
+.gx-bet-row-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: none;
+  border: 0;
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+  text-align: left;
+}
+.gx-bet-row-name {
+  flex: 1;
+  font-weight: 700;
+}
+.gx-bet-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 12px 12px;
+}
+.gx-bet-max {
+  align-self: flex-start;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 230, 0, 0.12);
+  color: var(--neon-yellow);
+  font-size: 12px;
+  letter-spacing: 0.5px;
+}
+.gx-bet-max.bad {
+  background: rgba(255, 46, 140, 0.12);
+  color: var(--neon-pink);
+}
+.gx-bet-target {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid var(--neon-yellow);
+  background: linear-gradient(135deg, rgba(255, 230, 0, 0.08), transparent);
+}
+.gx-bet-target.accepted {
+  border-color: #7cff6b;
+  background: linear-gradient(135deg, rgba(124, 255, 107, 0.08), transparent);
+}
+.gx-bet-target-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.gx-bet-stake {
+  font-size: 18px;
+  font-weight: 800;
+}
+.gx-bet-status {
+  font-size: 12px;
+  color: var(--neon-yellow);
+}
+.gx-bet-target.waiting .gx-bet-status {
+  animation: gx-pulse-text 1.6s ease-in-out infinite;
+}
+.gx-bet-target.accepted .gx-bet-status {
+  color: #7cff6b;
+}
+@keyframes gx-pulse-text {
+  50% {
+    opacity: 0.45;
+  }
+}
+.gx-chat-input.locked input {
+  opacity: 0.6;
+  text-align: center;
+}
+.gx-sheet-body {
+  overflow-x: hidden;
+}
+.gx-limits > * {
+  min-width: 0;
+}
+.gx-limits .gx-bar-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gx-shop-row .gx-qty {
+  margin-left: auto;
+}
+.gx-limits {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.gx-shop-row .gx-qty {
+  flex-basis: 100%;
+  justify-content: flex-end;
+}
+.gx-shop-row .gx-qty input {
+  flex: 1;
+  min-width: 0;
+}

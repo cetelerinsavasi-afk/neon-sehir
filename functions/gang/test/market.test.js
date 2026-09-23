@@ -75,6 +75,8 @@ test('canlı dünya: alıcıya 20/20 yeni araç belgesi; yasaklı madde envanter
   assert.equal(h.raw('users/buyer/inventory/yasakliMadde').quantity, 4);
   assert.equal(h.raw(`gangWorlds/${liveWorldId}/gangs/${gangId}/private/state`).kasa, 18_000);
   assert.equal(Object.keys(h.db._dump('marketplaceListings/')).length, 0);
+  // onboarding: çete deposundan alım da satın alma görevlerini tetikler
+  assert.deepEqual(h.hooks.filter((x) => x[0] === 'market'), [['market', 'buyer', 'vehicle', null], ['market', 'buyer', 'material', 'yasakliMadde']]);
 });
 
 test('çete dağılınca açık ilanları kapanır', async () => {

@@ -4,12 +4,29 @@ import { fakeDb } from './backend.js';
 export function getFirestore() {
   return {};
 }
-export function doc(db, path) {
-  return { type: 'doc', path };
+export function doc(db, ...segs) {
+  const base = db && db.type === 'coll' ? [db.path, ...segs] : segs;
+  return { type: 'doc', path: base.join('/'), id: segs[segs.length - 1] };
 }
-export function collection(db, path) {
-  return { type: 'coll', path, constraints: [] };
+export function collection(db, ...segs) {
+  const base = db && db.type === 'doc' ? [db.path, ...segs] : segs;
+  return { type: 'coll', path: base.join('/'), constraints: [] };
 }
+// Önizlemede kullanılmayan uygulama ekranları için basit taklitler
+export function collectionGroup(db, id) {
+  return { type: 'coll', path: `__cg__/${id}`, constraints: [] };
+}
+export async function setDoc(ref, data, opts) {
+  await fakeDb.doc(ref.path).set(data, opts);
+}
+export async function deleteDoc(ref) {
+  await fakeDb.doc(ref.path).delete();
+}
+export function serverTimestamp() {
+  return Date.now();
+}
+export async function enableNetwork() {}
+export async function disableNetwork() {}
 export function where(field, op, value) {
   return { kind: 'where', field, op, value };
 }
@@ -42,7 +59,8 @@ export function onSnapshot(target, next, onError) {
         if (alive) next({ id: s.id, exists: () => s.exists, data: () => s.data() });
       } else {
         const s = await build(target).get();
-        if (alive) next({ size: s.size, empty: s.empty, docs: s.docs.map((d) => ({ id: d.id, data: () => d.data() })) });
+        const docs = s.docs.map((d) => ({ id: d.id, data: () => d.data() }));
+        if (alive) next({ size: s.size, empty: s.empty, docs, forEach: (fn) => docs.forEach(fn) });
       }
     } catch (err) {
       if (alive && onError) onError(err);
@@ -66,5 +84,6 @@ export async function getDoc(ref) {
 }
 export async function getDocs(target) {
   const s = await build(target).get();
-  return { docs: s.docs.map((d) => ({ id: d.id, data: () => d.data() })) };
+  const docs = s.docs.map((d) => ({ id: d.id, data: () => d.data() }));
+  return { docs, size: docs.length, empty: docs.length === 0, forEach: (fn) => docs.forEach(fn) };
 }

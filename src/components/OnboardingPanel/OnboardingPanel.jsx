@@ -44,7 +44,10 @@ export default function OnboardingPanel() {
       onboardingStep === 9 ||
       onboardingStep === 11 ||
       onboardingStep === 12 ||
-      onboardingStep === 13
+      onboardingStep === 13 ||
+      onboardingStep === 16 ||
+      onboardingStep === 19 ||
+      onboardingStep === 20
     ) {
       checkOnboardingProgress().catch((err) => {
         console.error('checkOnboardingProgress hatası:', err);

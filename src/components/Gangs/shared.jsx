@@ -69,7 +69,7 @@ export function fmtShort(n) {
 }
 
 // 1 · 2 · 4 · ızgara rütbe ağacı
-export function RankTree({ rows, renderCard, grid, gridTitle }) {
+export function RankTree({ rows, renderCard, rows2 = [] }) {
   return (
     <div className="gx-tree">
       {rows
@@ -79,12 +79,16 @@ export function RankTree({ rows, renderCard, grid, gridTitle }) {
             {row.map(renderCard)}
           </div>
         ))}
-      {grid.length > 0 && (
-        <>
-          {gridTitle && <div className="gx-tree-title">{gridTitle}</div>}
-          <div className="gx-tree-grid">{grid.map(renderCard)}</div>
-        </>
-      )}
+      {rows2
+        .filter((g) => g.items.length > 0)
+        .map((g) => (
+          <div key={g.title} className="gx-tree-group">
+            <div className="gx-tree-title">
+              {g.title} <span className="gx-tree-count">{g.items.length}</span>
+            </div>
+            <div className="gx-tree-grid">{g.items.map(renderCard)}</div>
+          </div>
+        ))}
     </div>
   );
 }
@@ -97,18 +101,16 @@ export function IntelDecisionPanel() {
   return (
     <div className="gx-decision">
       <div className="gx-decision-title">🕵️ İstihbarat mı, Mafya Babalığı mı?</div>
-      <p className="dim">Çetenin başına geçtin. Karar vermezsen 00:00'da İstihbarattan çıkarsın (Baba kalırsın).</p>
       <div className="gx-decision-timer">⏱ {fmtCountdown(nextMidnight(now) - now)}</div>
       <div className="gx-decision-actions">
         <button className="gx-decision-btn intel" onClick={() => setAsk('disband')}>
           <span className="big">💥</span>
           <b>Çeteyi İstihbarata teslim et</b>
-          <span className="dim">Çete kapanır · tüm kasa İstihbarata · +10M prestij</span>
+          <span className="dim">💥 · +10M ✦</span>
         </button>
         <button className="gx-decision-btn baba" onClick={() => setAsk('stay')}>
           <span className="big">👑</span>
           <b>İstihbarattan ayrıl</b>
-          <span className="dim">İhanet et, Mafya Babası olarak kal</span>
         </button>
       </div>
       {ask && (
@@ -118,8 +120,8 @@ export function IntelDecisionPanel() {
           title={ask === 'disband' ? 'Çete İstihbarata teslim edilsin mi?' : 'İstihbarattan ayrıl?'}
           lines={
             ask === 'disband'
-              ? ['Çete kapanır, tüm üyeler çeteden atılır.', 'Üyeler "İstihbarat tarafından ele geçirildi" mesajı alır.', 'Çetenin kasasındaki TÜM para İstihbarat kasasına geçer.', 'Sen İstihbaratta kalırsın (+10.000.000 prestij).']
-              : ['İstihbarattan çıkarsın, İstihbarat prestijin silinir.', 'Kimseye bildirim gitmez.', 'Mafya Babası olarak devam edersin.']
+              ? ['Çete kapanır, kasa İstihbarata geçer.']
+              : ['İstihbarat prestijin kalıcı silinir.']
           }
           confirmLabel={ask === 'disband' ? 'Teslim et' : 'Ayrıl, Baba kal'}
           busy={busy === 'intelDecision'}
@@ -211,7 +213,7 @@ export function VoteCard({ vote, ballotPath, voterKey, action }) {
         <Bar value={vote.no || 0} max={Math.max(1, total)} label={`❌ Hayır ${vote.no || 0}`} color="var(--neon-pink)" />
       </div>
       <div className="dim gx-mini">
-        🗳️ {vote.votedCount || 0}/{(vote.voterIds || []).length} oy · Gerekli: {r.need}
+        🗳️ {vote.votedCount || 0}/{(vote.voterIds || []).length} · {r.need}
       </div>
       {canVote ? (
         ballot ? (
@@ -225,13 +227,13 @@ export function VoteCard({ vote, ballotPath, voterKey, action }) {
           </div>
         )
       ) : (
-        <div className="dim gx-mini">👁️ İzliyorsun — bu oylamada oy hakkın yok.</div>
+        <div className="dim gx-mini">👁️ İzliyorsun</div>
       )}
       {ask && (
         <Confirm
           icon={ask === 'yes' ? '✅' : '❌'}
           title={`"${ask === 'yes' ? 'Evet' : 'Hayır'}" oyu verilsin mi?`}
-          lines={[`Evet kazanırsa: ${r.yes}.`, `Kazanmazsa: ${r.no}.`, 'Oy değiştirilemez; kimin ne verdiği görünmez.']}
+          lines={['Oy değiştirilemez.']}
           confirmLabel="Oy ver"
           busy={busy === action}
           onCancel={() => setAsk(null)}
@@ -254,7 +256,7 @@ export function KasaLine({ state, isToday }) {
         💰 Kasa <b>{fmt(state?.kasa)}</b>
       </span>
       <span className="dim">
-        🔓 Bugün serbest: <b>{fmt(free)}</b>
+        🔓 <b>{fmt(free)}</b>
       </span>
     </div>
   );

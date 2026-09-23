@@ -44,7 +44,10 @@ export function createVoteActions(core) {
         target = (await tx.get(ctx.ref.member(gangId, targetId))).data();
         if (!target) fail('failed-precondition', 'Bu oyuncu artık çetede değil.');
         if (!kickAllowed(me.rank, target.rank)) fail('permission-denied', 'Bu üye için çıkarma oylaması başlatamazsın.');
-        if ([...pending, ...active].some((v) => v.type === 'kick' && v.targetId === targetId)) fail('already-exists', 'Bu üye için zaten bir oylama var.');
+        // Başkalarının gizli talepleri ifşa edilmez: sadece süren oylamalar ve kendi talebin kontrol edilir.
+        // Aynı hedefe birden çok gizli talep varsa 00:00'da ilki başlar, diğerleri sessizce düşer.
+        if (active.some((v) => v.type === 'kick' && v.targetId === targetId)) fail('already-exists', 'Bu üye için zaten bir oylama var.');
+        if (pending.some((v) => v.type === 'kick' && v.targetId === targetId && v.initiatorId === ctx.actorId)) fail('already-exists', 'Bu üye için zaten talebin var.');
       } else {
         if (me.rank !== 'sagkol') fail('permission-denied', 'Bunu sadece Sağ Kol başlatabilir.');
         const babaMember = (await tx.get(ctx.ref.member(gangId, gang.babaId))).data();

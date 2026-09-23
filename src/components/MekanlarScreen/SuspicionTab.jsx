@@ -10,7 +10,7 @@ import GuestOverlay from '../GuestOverlay/GuestOverlay';
 import './SuspicionTab.css';
 
 const BRIBE_COST = 3000;
-const VENDOR_COST = 500;
+const VENDOR_COST = 1000;
 // Kademeli saygınlık kazanımı — functions/index.js reputationGainFor ile
 // AYNI eşikler olmalı (0-49 → +5, 50-79 → +3, 80+ → +1). Sadece görüntü içindir;
 // asıl hesap sunucuda yapılır.

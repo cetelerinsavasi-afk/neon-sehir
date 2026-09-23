@@ -1,7 +1,7 @@
 import SimpleActionScreen from '../SimpleActionScreen/SimpleActionScreen';
 import { buyFromVendor } from '../../services/gameActions';
 
-const VENDOR_COST = 500;
+const VENDOR_COST = 1000;
 
 // Şehirdeki 4 seyyar satıcı (Kokoreçci, Simitçi, Dönerci, Köfteci) birbirinden
 // BAĞIMSIZ günlük haklara sahip — birinden alışveriş yapmak diğerlerini

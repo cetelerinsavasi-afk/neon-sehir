@@ -344,3 +344,25 @@ test('müttefik savunmaya güç ekler (12:00 duyurusuyla görür); müttefike sa
   assert.equal(h.get(`wars/def_${t1}_2026-09-22`).result.defensePower, 720_000 + 600_000);
   assert.equal(h.get(`trucks/${t1}`).lastTrip.outcome, 'delivered');
 });
+
+test('sabotajda günde 2 pencere (12–18, 18–24): 12:00 öncesi zar yok; pencere başına 1 saldırı, farklı savaşlar dahil', async () => {
+  const h = await createHarness();
+  const A = await setupTradeGang(h, 'Alfa');
+  const B = await setupTradeGang(h, 'Beta');
+  const [t1, t2] = await trucksOnRoad(h, A, 2);
+  await h.tickTo('2026-09-22', '09:00');
+  const s1 = (await h.act(B.baba, 'startSabotage', { truckId: t1 })).warId;
+  const s2 = (await h.act(B.baba, 'startSabotage', { truckId: t2 })).warId;
+  const early = await h.fails(B.baba, 'rollDice', { warId: s1 });
+  assert.match(early.message, /başlamadı/);
+  await h.tickTo('2026-09-22', '12:00');
+  await h.act(B.baba, 'rollDice', { warId: s1 });
+  const same = await h.fails(B.baba, 'rollDice', { warId: s2 }); // aynı pencerede başka sabotaj da yok
+  assert.match(same.message, /pencerede/);
+  await h.fails(B.baba, 'rollDice', { warId: s1 });
+  await h.tickTo('2026-09-22', '18:00');
+  await h.act(B.baba, 'rollDice', { warId: s2 }); // yeni pencerede farklı savaş olur
+  await h.fails(B.baba, 'rollDice', { warId: s1 });
+  const slots = Object.keys(h.db._dump('gangWorlds/test/slots/')).filter((k) => k.includes(B.baba));
+  assert.equal(slots.length, 2, 'sabotaj gününde en fazla 2 saldırı');
+});

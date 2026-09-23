@@ -80,3 +80,11 @@ Kontrol listesi: `03-KURULUM-TEST-YAYIN.md`.
 | Ek | Depodan 2. ele satış (`market/`), 2. El Pazarı'nda "Çete depoları" bölümü | market (4 test) |
 
 **Bulunan/çözülen:** iptal edilen siparişten sonra aynı gün yeni sipariş engelleniyordu (iptal durumu kontrolü eklendi); persona değişince iç sekme varsayılana dönmüyordu (üyelik gelince varsayılan seçim); savaş kartında KATIL butonu alta düşüyordu (CSS).
+
+
+## v32 — sade arayüz, son kontrol, oyuna açılış
+**Çete arayüzü:** açıklama paragrafları ve tüm (i) ikonları kaldırıldı; İstihbarat katılımında "⭐ 50 saygınlık gerekir" çipi; ayrılma onayında sadece "Prestijin kalıcı silinir."; rütbe ağacında Tetikçiler / Çömezler ve Ajanlar / Muhbirler ayrı başlıklı satırlarda; bahis teklifi: çete listesi → çeteye dokun → MAX görünür → teklif → liste kapanır, sadece hedef çete "⏳ Cevap bekleniyor" + İptal; iptal/ret sonrası liste geri gelir (sunucu da günlük hakkı iade eder); hafta sonu "Bugün bahis yapamazsın". Sipariş MAX = min(tır, limit, depo, kasa); tekrar MAX ya da sınırda + → sınırlayan çubuk kırmızı ⛔ ile titrer.
+**Derin inceleme (ayaklanma/devirme/oylama/rütbe/sabotaj):** gizli çıkarma taleplerinin ifşası kapatıldı (çete + İstihbarat); aynı gece çözülen oylamalara belirli sıra (önce çıkarma); Baba olmuş hedefe karşı çıkarma oylaması düşer; sabotaj depo rezervasyonu, haraç iadesi, çoklu saldırgan, dağılan çete yolları gözden geçirildi (değişiklik gerekmedi). +5 test.
+**Oyun geneli:** seyyar satıcı 1000 altın (sunucu + Şüphe paneli + buton); borçluyken park satışı mesajı "X altına sattın. Y altın borçlarına gitti."; yeni görevler 16–20 (avatar, ChatsApp, silah geliştirme malzemesi, silah geliştirme, çeteye gir; otomatik geçişler: avatar var / 2.-3. seviye silah var / zaten çetede); 2. elden (ve çete depolarından) yasaklı madde / silah / araba / malzeme alımı ilgili görevleri tamamlar; görev 2 adı güncellendi; telefon ekranı gerçek telefon görünümüne geçti (durum çubuğu, saat widget'ı, ikon ızgarası, dock, home çubuğu).
+**Açılış:** `gangAdmin` + test şifresi kaldırıldı; canlı dünya ilk istekte transaction ile kurulur/açılır; bakım `liveOpen:false`. Test personaları sadece önizlemede.
+**Testler:** 90/90.
