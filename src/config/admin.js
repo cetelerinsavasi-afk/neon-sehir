@@ -5,7 +5,7 @@
 // eder, gerçek yetki kontrolü sunucu tarafında (requireAdmin) yapılıyor.
 // Firebase Console > Authentication > Users sekmesinden kendi hesabının
 // UID'sini kopyalayıp buraya ekle.
-export const ADMIN_UIDS = ['REPLACE_WITH_YOUR_FIREBASE_AUTH_UID'];
+export const ADMIN_UIDS = ['KXHsPCNsslSALG27vIZAkbB7pU43'];
 
 export function isAdminUid(uid) {
   return Boolean(uid) && ADMIN_UIDS.includes(uid);

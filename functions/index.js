@@ -21,7 +21,7 @@ setGlobalOptions({ region: 'europe-west1' });
 // kendi hesabının UID'sini kopyalayıp buraya ekle — src/config/admin.js
 // içindeki liste de BİREBİR AYNI UID(ler) ile güncellenmeli (istemci
 // tarafında butonun görünürlüğünü kontrol eden yer orası).
-const ADMIN_UIDS = ['REPLACE_WITH_YOUR_FIREBASE_AUTH_UID'];
+const ADMIN_UIDS = ['KXHsPCNsslSALG27vIZAkbB7pU43'];
 
 function requireAdmin(request) {
   const uid = requireAuth(request);
