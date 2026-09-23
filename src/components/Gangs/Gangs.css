@@ -2546,3 +2546,78 @@ textarea.gx-input {
   flex: 1;
   min-width: 0;
 }
+
+/* ==== v32: buton tabanlı sayı girişi (klavye yok) ==== */
+.gx-amount {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+}
+.gx-amount-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+.gx-amount-step {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--neon-cyan);
+  background: rgba(25, 232, 255, 0.1);
+  color: var(--neon-cyan);
+  font-size: 22px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.gx-amount-step:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.gx-amount-value {
+  min-width: 110px;
+  text-align: center;
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--neon-yellow);
+  font-variant-numeric: tabular-nums;
+}
+.gx-amount-quick {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+}
+.gx-amount-quick button {
+  flex: 0 0 auto;
+  min-width: 48px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--gx-line, #25314d);
+  background: var(--gx-card, #121a2c);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.gx-amount-quick button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.gx-amount-quick button.max {
+  border-color: var(--neon-yellow);
+  color: var(--neon-yellow);
+}
+.gx-amount-quick button.reset {
+  border-color: var(--neon-pink);
+  color: var(--neon-pink);
+}
+.gx-shop-row .gx-amount {
+  flex-basis: 100%;
+}

@@ -8,6 +8,7 @@ import { collection, doc, limit, onSnapshot, query, where } from 'firebase/fires
 import { db } from '../../firebase';
 import { callGang, friendlyError, newRequestId } from './gangApi';
 import { itemInfo } from './itemInfo';
+import QuantityStepper from '../QuantityStepper/QuantityStepper';
 
 const KIND = { vehicle: 'vehicle', weapon: 'weapon', material: 'material' };
 
@@ -66,13 +67,7 @@ export default function GangMarketSection({ view }) {
               </span>
               {l.itemType !== 'material' && <span className="market-listing-life-label">Ömür: 20 / 20 gün · Tamir hakkı: 10/10</span>}
               {l.quantity > 1 && (
-                <input
-                  className="market-material-filter"
-                  inputMode="numeric"
-                  value={qty[l.id] || 1}
-                  onChange={(e) => setQty({ ...qty, [l.id]: Number(String(e.target.value).replace(/\D/g, '')) || 1 })}
-                  aria-label="Adet"
-                />
+                <QuantityStepper value={qty[l.id] || 1} onChange={(v) => setQty({ ...qty, [l.id]: Math.max(1, v) })} max={l.quantity} quickAmounts={[5, 10, 50].filter((q) => q < l.quantity)} />
               )}
             </div>
             <button className="market-btn small" disabled={busy === l.id} onClick={() => buy(l)}>

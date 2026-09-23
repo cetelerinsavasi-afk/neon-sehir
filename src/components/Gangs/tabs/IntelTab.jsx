@@ -153,7 +153,7 @@ export default function IntelTab({ d }) {
           ) : (
             <label className="gx-field">
               👥 Kişi sayısı
-              <AmountInput value={slots} onChange={(v) => setSlots(Math.max(0, v))} />
+              <AmountInput value={slots} onChange={setSlots} quick={[1, 5, 10, 50]} min={GANG_RULES.DIST_MIN_SLOTS} />
             </label>
           )}
           <span className="dim gx-mini">💰 Kişi başı</span>

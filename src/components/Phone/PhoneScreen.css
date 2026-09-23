@@ -55,27 +55,34 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: calc(10px + env(safe-area-inset-top)) 22px 6px;
+  padding: calc(10px + env(safe-area-inset-top)) 16px 6px;
   font-size: 13px;
   flex-shrink: 0;
 }
-.phone-status-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.phone-status-time {
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
-}
 .phone-status-back {
-  background: none;
-  border: 0;
-  padding: 2px 0;
-  color: rgba(255, 255, 255, 0.75);
-  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(25, 232, 255, 0.55);
+  background: rgba(25, 232, 255, 0.14);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
   cursor: pointer;
+  box-shadow: 0 0 12px rgba(25, 232, 255, 0.25);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.phone-status-back span {
+  font-size: 20px;
+  line-height: 1;
+  margin-top: -2px;
+  color: var(--neon-cyan, #19e8ff);
+}
+.phone-status-back:active {
+  transform: scale(0.95);
 }
 .phone-status-right {
   display: flex;
@@ -343,7 +350,7 @@
   z-index: 1;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  margin: 0 12px;
+  margin: 0 12px calc(12px + env(safe-area-inset-bottom));
   padding: 12px 8px;
   border-radius: 30px;
   background: rgba(255, 255, 255, 0.1);
@@ -367,29 +374,6 @@
   color: #fff;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-}
-.phone-home-bar {
-  position: relative;
-  z-index: 2;
-  flex-shrink: 0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: calc(28px + env(safe-area-inset-bottom));
-  padding-bottom: env(safe-area-inset-bottom);
-  background: none;
-  border: 0;
-  cursor: pointer;
-}
-.phone-home-bar span {
-  display: block;
-  width: 134px;
-  height: 5px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.85);
-}
-.in-app .phone-home-bar {
-  background: #0a0e18;
 }
 
 /* ---- Uygulama içi gezinme çubuğu ---- */

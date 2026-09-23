@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { limit, orderBy } from 'firebase/firestore';
 import { fmtDateTime, useGang, useGangAction, useQueryData } from '../GangContext';
 import { AmountInput, Btn, Card, Chips, Confirm, Logo, RankBadge, Sheet } from '../ui';
-import { EditProfileSheet, KasaLine, MemberCard, RankTree } from '../shared';
+import { EditProfileSheet, KasaLine, MemberCard, RankTree, useMyWallet } from '../shared';
 import { DIST_GROUPS, GANG_RULES, LEADERS, RANK_ICONS, fmt } from '../gangConstants';
 
 // Üyeye dokununca: saygı / at / çıkarma oylaması (yetkiye göre)
@@ -67,6 +67,7 @@ function MemberSheet({ member, myRank, onClose }) {
 function MoneySheet({ kind, d, onClose }) {
   const { path } = useGang();
   const { run, busy } = useGangAction();
+  const wallet = useMyWallet();
   const [amount, setAmount] = useState(0);
   const [group, setGroup] = useState('rutbeli');
   const [slots, setSlots] = useState(GANG_RULES.DIST_MIN_SLOTS);
@@ -101,7 +102,7 @@ function MoneySheet({ kind, d, onClose }) {
           ) : (
             <label className="gx-field">
               👥 Kişi sayısı
-              <AmountInput value={slots} onChange={(v) => setSlots(Math.max(0, v))} />
+              <AmountInput value={slots} onChange={setSlots} quick={[1, 5, 10, 50]} min={GANG_RULES.DIST_MIN_SLOTS} />
             </label>
           )}
           <span className="dim gx-mini">💰 Kişi başı</span>
@@ -118,7 +119,7 @@ function MoneySheet({ kind, d, onClose }) {
             ))}
         </div>
       )}
-      <AmountInput value={amount} onChange={setAmount} max={kind === 'dist' ? Math.floor(free / Math.max(1, n)) : kind === 'donate' ? undefined : free} />
+      <AmountInput value={amount} onChange={setAmount} max={kind === 'dist' ? Math.floor(free / Math.max(1, n)) : kind === 'donate' ? (wallet.gold ?? undefined) : free} />
       {kind === 'dist' && (
         <div className="gx-free-line">
           = <b>{fmt(amount * n)}</b>

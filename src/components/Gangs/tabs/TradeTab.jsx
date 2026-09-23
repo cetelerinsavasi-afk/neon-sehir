@@ -157,18 +157,32 @@ function OrderSheet({ trucks, routes, state, depot, gangId, orders, onClose }) {
             Yasaklı Madde
             <span className="dim"> · {fmt(half('yasakliMadde'))}</span>
           </span>
-          <span className="gx-qty">
-            <button type="button" onClick={() => setTo('yasakliMadde', (qty.yasakliMadde || 0) - 1)} disabled={!qty.yasakliMadde}>
-              −
-            </button>
-            <input inputMode="numeric" value={qty.yasakliMadde || ''} placeholder="0" onChange={(e) => setTo('yasakliMadde', Number(String(e.target.value).replace(/\D/g, '')) || 0)} />
-            <button type="button" onClick={() => setTo('yasakliMadde', (qty.yasakliMadde || 0) + 1)}>
-              +
-            </button>
-            <button type="button" className="gx-qty-max" onClick={() => pressMax('yasakliMadde')}>
-              MAX
-            </button>
-          </span>
+          <div className="gx-amount">
+            <div className="gx-amount-row">
+              <button type="button" className="gx-amount-step" onClick={() => setTo('yasakliMadde', (qty.yasakliMadde || 0) - 1)} disabled={!qty.yasakliMadde} aria-label="Azalt">
+                −
+              </button>
+              <span className="gx-amount-value">{qty.yasakliMadde || 0}</span>
+              <button type="button" className="gx-amount-step" onClick={() => setTo('yasakliMadde', (qty.yasakliMadde || 0) + 1)} aria-label="Artır">
+                +
+              </button>
+            </div>
+            <div className="gx-amount-quick">
+              {[5, 10, 50].map((q) => (
+                <button key={q} type="button" onClick={() => setTo('yasakliMadde', (qty.yasakliMadde || 0) + q)}>
+                  +{q}
+                </button>
+              ))}
+              <button type="button" className="max" onClick={() => pressMax('yasakliMadde')}>
+                MAX
+              </button>
+              {qty.yasakliMadde > 0 && (
+                <button type="button" className="reset" onClick={() => setTo('yasakliMadde', 0)}>
+                  Sıfırla
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       ) : (
         <div className="gx-shop">
@@ -319,12 +333,12 @@ function DepotItems({ depot, lead, listings }) {
           }}
         >
           <span className="dim gx-mini">Adet</span>
-          <AmountInput value={qty} onChange={setQty} max={act.max} />
+          <AmountInput value={qty} onChange={setQty} max={act.max} min={1} quick={[5, 10, 50]} />
           {act.type === 'dist' && <Chips options={DIST_GROUPS.map((g) => ({ id: g.id, label: g.label, icon: g.icon }))} value={group} onChange={setGroup} />}
           {act.type === 'list' && (
             <>
               <span className="dim gx-mini">💰 Adet fiyatı</span>
-              <AmountInput value={price} onChange={setPrice} max={act.it.storePrice} />
+              <AmountInput value={price} onChange={setPrice} max={act.it.storePrice} min={Math.floor(act.it.storePrice / 2)} quick={[100, 1000, 10_000, 100_000]} />
             </>
           )}
         </Confirm>

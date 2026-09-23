@@ -1,7 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 // Çete arayüzünün küçük yapı taşları: logo, rütbe rozeti, kart, sekme,
 // alt sayfa (sheet), onay penceresi, ilerleme çubuğu, boş durum.
-import { useState } from 'react';
 import InfoIcon from '../InfoIcon/InfoIcon';
 import { RANK_ICONS, RANK_LABELS, fmt } from './gangConstants';
 
@@ -178,35 +177,47 @@ export function Stat({ icon, label, children }) {
   );
 }
 
-export function AmountInput({ value, onChange, max, placeholder = 'Miktar', quick = [] }) {
-  const [focused, setFocused] = useState(false);
+// Sayı girişi — klavye YOK, oyunun geri kalanındaki gibi buton sistemi:
+//   [ − ]  değer  [ + ]
+//   hızlı ekleme: 10 · 100 · 1K · 10K · 100K · 1M · MAX · Sıfırla
+// Hızlı butonlar değere EKLER (oyundaki QuantityStepper ile aynı davranış).
+export const GOLD_QUICK = [10, 100, 1000, 10_000, 100_000, 1_000_000];
+const shortNum = (q) => (q >= 1_000_000 ? `${q / 1_000_000}M` : q >= 1000 ? `${q / 1000}K` : String(q));
+
+export function AmountInput({ value, onChange, max, min = 0, step = 1, quick = GOLD_QUICK }) {
+  const num = Number(value) || 0;
+  const hi = max != null ? Math.max(min, Math.floor(max)) : Infinity;
+  const clamp = (v) => Math.min(hi, Math.max(min, Math.floor(v)));
   return (
-    <div className={`gx-amount${focused ? ' focus' : ''}`}>
-      <input
-        inputMode="numeric"
-        value={value ? fmt(value) : ''}
-        placeholder={placeholder}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        onChange={(e) => {
-          const n = Number(String(e.target.value).replace(/\D/g, '')) || 0;
-          onChange(max != null ? Math.min(n, Math.max(0, max)) : n);
-        }}
-      />
-      {max != null && (
-        <button className="gx-amount-max" onClick={() => onChange(Math.max(0, max))} type="button">
-          MAKS
+    <div className="gx-amount">
+      <div className="gx-amount-row">
+        <button type="button" className="gx-amount-step" disabled={num <= min} onClick={() => onChange(clamp(num - step))} aria-label="Azalt">
+          −
         </button>
-      )}
-      {quick.length > 0 && (
-        <div className="gx-amount-quick">
-          {quick.map((q) => (
-            <button key={q} type="button" onClick={() => onChange(max != null ? Math.min(q, max) : q)}>
-              {q >= 1_000_000 ? `${q / 1_000_000}M` : q >= 1000 ? `${q / 1000}K` : q}
+        <span className="gx-amount-value">{fmt(num)}</span>
+        <button type="button" className="gx-amount-step" disabled={num >= hi} onClick={() => onChange(clamp(num + step))} aria-label="Artır">
+          +
+        </button>
+      </div>
+      <div className="gx-amount-quick">
+        {quick
+          .filter((q) => q <= hi)
+          .map((q) => (
+            <button key={q} type="button" disabled={num >= hi} onClick={() => onChange(clamp(num + q))}>
+              +{shortNum(q)}
             </button>
           ))}
-        </div>
-      )}
+        {max != null && hi > 0 && (
+          <button type="button" className="max" disabled={num >= hi} onClick={() => onChange(hi)}>
+            MAX
+          </button>
+        )}
+        {num > min && (
+          <button type="button" className="reset" onClick={() => onChange(min)}>
+            Sıfırla
+          </button>
+        )}
+      </div>
     </div>
   );
 }

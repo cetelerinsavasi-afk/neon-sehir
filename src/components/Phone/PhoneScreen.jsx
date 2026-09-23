@@ -57,18 +57,13 @@ function useClock() {
   return { time, date };
 }
 
-// Gerçek telefon durum çubuğu: saat · (geri bağlantısı) · sinyal / wifi / pil
-function StatusBar({ time, backLabel, onBack }) {
+// Durum çubuğu: solda belirgin "‹ Harita" (telefonu kapatır), sağda sinyal / wifi / pil
+function StatusBar({ onBack }) {
   return (
     <div className="phone-status">
-      <span className="phone-status-left">
-        <b className="phone-status-time">{time}</b>
-        {backLabel && (
-          <button className="phone-status-back" onClick={onBack}>
-            ◀ {backLabel}
-          </button>
-        )}
-      </span>
+      <button className="phone-status-back" onClick={onBack} aria-label="Haritaya dön">
+        <span aria-hidden="true">‹</span> Harita
+      </button>
       <span className="phone-status-right" aria-hidden="true">
         <span className="phone-signal">
           <i />
@@ -118,7 +113,7 @@ export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }
   if (openApp) {
     return (
       <div className="phone-screen in-app">
-        <StatusBar time={time} backLabel="Harita" onBack={onClose} />
+        <StatusBar onBack={onClose} />
         <div className="phone-navbar">
           <button className="phone-nav-back" onClick={() => setOpenApp(null)} aria-label="Ana ekran">
             ‹
@@ -152,16 +147,13 @@ export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }
           {openApp === 'sixtagram' && <SixtagramScreen />}
           {openApp === 'altin-magazasi' && <GoldStoreScreen />}
         </div>
-        <button className="phone-home-bar" onClick={() => setOpenApp(null)} aria-label="Ana ekran">
-          <span />
-        </button>
       </div>
     );
   }
 
   return (
     <div className="phone-screen home">
-      <StatusBar time={time} backLabel="Harita" onBack={onClose} />
+      <StatusBar onBack={onClose} />
       <div className="phone-widget">
         <div className="phone-widget-time">{time}</div>
         <div className="phone-widget-date">{date}</div>
@@ -185,9 +177,6 @@ export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }
           <AppIcon key={app.id} app={app} badge={badgeOf(app.id)} dot={dotOf(app.id)} onOpen={handleOpenApp} />
         ))}
       </div>
-      <button className="phone-home-bar" onClick={onClose} aria-label="Haritaya dön">
-        <span />
-      </button>
     </div>
   );
 }
