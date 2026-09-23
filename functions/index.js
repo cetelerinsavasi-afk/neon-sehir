@@ -6,6 +6,7 @@ import admin from 'firebase-admin';
 import crypto from 'crypto';
 import Busboy from 'busboy';
 import { VEHICLE_CATALOG, WEAPON_CATALOG } from './catalogData.js';
+import { createGangFunctions } from './gang/firebase.js';
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -5238,6 +5239,12 @@ export const attemptHeist = onCall(async (request) => {
 
   if (result.caught) {
     await sendCaptureSms(uid, result.penalty, result.newTotalDebt, { policeDoubled: result.policeDoubled });
+    // ÇETE & İSTİHBARAT: şüpheyle yakalanma cezası borç yazıldığı anda
+    // İstihbarat kasasına da eklenir. Best-effort — soygun sonucunu ASLA
+    // etkilemez; hedef+gün ile idempotent (günde bir deneme hakkı var).
+    await gangFunctions.system
+      .onSuspicionFine(uid, result.penalty, `heist_${uid}_${target}_${dateKey}`)
+      .catch((err) => console.error('gang suspicion fine hook hata:', err));
     await logNewsEvent('arrest', { count: 1, totalFine: result.penalty });
   } else {
     await logNewsEvent('heist_success', { target, amount: result.reward });
@@ -5348,6 +5355,10 @@ export const sellContrabandAtPark = onCall(async (request) => {
 
   if (outcome.caught) {
     await sendCaptureSms(uid, outcome.penalty, outcome.newTotalDebt, { policeDoubled: outcome.policeDoubled });
+    // ÇETE & İSTİHBARAT: şüpheyle yakalanma cezası → İstihbarat kasası (best-effort).
+    await gangFunctions.system
+      .onSuspicionFine(uid, outcome.penalty, `park_${uid}_${Date.now()}_${Math.floor(Math.random() * 1e9)}`)
+      .catch((err) => console.error('gang suspicion fine hook hata:', err));
   }
 
   // Onboarding görev 3 — "parktaki gizemli adama 1 adet yasaklı madde sat"
@@ -6232,6 +6243,18 @@ export const executeHeistPlan = onCall(async (request) => {
       sendCaptureSms(c.uid, c.penaltyAmount, c.newTotalDebt, { policeDoubled: Boolean(c.policeDoubled) })
     )
   );
+  // ÇETE & İSTİHBARAT: SADECE şüpheyle yakalanmada cezalar İstihbarat
+  // kasasına (polisin yakaladığı durumda ödül polise gider — dahil değil).
+  // Best-effort; planId+uid ile idempotent.
+  if (caughtBySuspicion) {
+    await Promise.all(
+      captureSmsList.map((c) =>
+        gangFunctions.system
+          .onSuspicionFine(c.uid, c.penaltyAmount, `heistplan_${planId}_${c.uid}`)
+          .catch((err) => console.error('gang suspicion fine hook hata:', err))
+      )
+    );
+  }
   await Promise.all(
     policeEarningSmsList.map((p) =>
       db
@@ -6246,6 +6269,16 @@ export const executeHeistPlan = onCall(async (request) => {
           read: false,
           type: 'police_bust_reward',
         })
+    )
+  );
+  // ÇETE & İSTİHBARAT (bkz. functions/gang): İstihbarat üyesi polisin
+  // yakalama ödülü kadar İstihbarat prestiji kazanması. Best-effort — hata
+  // olursa soygun sonucunu ASLA etkilemez; planId+uid ile idempotent.
+  await Promise.all(
+    policeEarningSmsList.map((p) =>
+      gangFunctions.system
+        .onPoliceBustReward(p.uid, p.amount, `heist_${planId}`)
+        .catch((err) => console.error('gang police prestige hook hata:', err))
     )
   );
   await Promise.all(
@@ -19682,3 +19715,25 @@ export const cleanupSixtagramPosts = onSchedule(
   }
 );
 
+// =============================================================================
+// ÇETE & İSTİHBARAT SİSTEMİ — tamamı functions/gang/ klasöründe, mevcut
+// sistemlere dokunmaz. Kendi dünyası (gangWorlds/{worldId}) altında çalışır,
+// kendi merkezi/idempotent saatine (gangClock) sahiptir; dailyReset'e
+// hiçbir şey eklenmedi. Bkz. docs/cete-sistemi/.
+// =============================================================================
+const gangFunctions = createGangFunctions({
+  onCall,
+  onSchedule,
+  defineSecret,
+  HttpsError,
+  db,
+  FieldValue: admin.firestore.FieldValue,
+  getMaxWeaponPower,
+  splitIncomeForDebt,
+  catalogs: { VEHICLE_CATALOG, WEAPON_CATALOG, AMAZOR_PRICES },
+  lifeDays: VEHICLE_WEAPON_INITIAL_LIFE_DAYS,
+  adminUids: ADMIN_UIDS,
+});
+export const gangAction = gangFunctions.gangAction;
+export const gangAdmin = gangFunctions.gangAdmin;
+export const gangClock = gangFunctions.gangClock;

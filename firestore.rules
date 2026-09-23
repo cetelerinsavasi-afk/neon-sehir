@@ -500,6 +500,199 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // =====================================================================
+    // ÇETE & İSTİHBARAT SİSTEMİ (functions/gang) — TÜM yazmalar sadece
+    // Cloud Functions (Admin SDK) ile; istemci hiçbir belgeye yazamaz.
+    //  - gangWorlds/test: admin test dünyası → SADECE aktif admin oturumu
+    //    (gangAdmins/{uid}.expiresAtMs) okuyabilir.
+    //  - gangWorlds/{canlı}: üyelik/rütbe memberships/{uid} belgesinden
+    //    get() ile doğrulanır (frontend gizlemesine güvenilmez).
+    // =====================================================================
+    function gangAdminSession() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/gangAdmins/$(request.auth.uid))
+        && get(/databases/$(database)/documents/gangAdmins/$(request.auth.uid)).data.expiresAtMs > request.time.toMillis();
+    }
+    function hasGmem(w) {
+      return exists(/databases/$(database)/documents/gangWorlds/$(w)/memberships/$(request.auth.uid));
+    }
+    function gmem(w) {
+      return get(/databases/$(database)/documents/gangWorlds/$(w)/memberships/$(request.auth.uid)).data;
+    }
+    function liveGangWorld(w) {
+      return w != 'test' && isSignedIn();
+    }
+    function inGang(w, g) {
+      return liveGangWorld(w) && hasGmem(w) && gmem(w).gangId == g;
+    }
+    function gangRankIn(w, g, ranks) {
+      return inGang(w, g) && gmem(w).gangRank in ranks;
+    }
+    function myGangIn(w, list) {
+      return liveGangWorld(w) && hasGmem(w) && gmem(w).gangId != null && gmem(w).gangId in list;
+    }
+    function inIntel(w) {
+      return liveGangWorld(w) && hasGmem(w) && gmem(w).intelRosterId != null;
+    }
+    function intelRankIn(w, ranks) {
+      return inIntel(w) && gmem(w).intelRank in ranks;
+    }
+    function warReadable(w, war) {
+      return liveGangWorld(w) && (
+        war.visibility == 'public'
+        || myGangIn(w, war.gangIds)
+        || myGangIn(w, war.activeGangIds)
+        || (war.intelInvolved == true && inIntel(w))
+      );
+    }
+
+    match /gangSystem/{docId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    match /gangAdmins/{uid} {
+      allow read: if isSelf(uid);
+      allow write: if false;
+    }
+
+    match /gangWorlds/{w} {
+      allow read: if isSignedIn() && (w != 'test' || gangAdminSession());
+      allow write: if false;
+
+      // Test dünyası: admin oturumu her şeyi okur (kimse yazamaz).
+      match /{document=**} {
+        allow read: if w == 'test' && gangAdminSession();
+        allow write: if false;
+      }
+
+      match /memberships/{uid} {
+        allow read: if isSelf(uid) && w != 'test';
+      }
+
+      match /gangs/{g} {
+        allow read: if liveGangWorld(w);
+        match /members/{m} {
+          allow read: if inGang(w, g);
+        }
+        // state: kasa bilgisi Çeteler listesinde herkese açık; depo: çetenin üyeleri
+        match /private/{docId} {
+          allow read: if (docId == 'state' && liveGangWorld(w))
+            || (docId == 'depot' && inGang(w, g));
+        }
+        match /log/{id} {
+          allow read: if inGang(w, g);
+        }
+        // Yeni katılan, katılmadan önceki mesajları göremez.
+        match /chat_genel/{id} {
+          allow read: if inGang(w, g) && resource.data.createdAtMs >= gmem(w).gangJoinedAtMs;
+        }
+        match /chat_yonetim/{id} {
+          allow read: if gangRankIn(w, g, ['baba', 'sagkol', 'kidemli'])
+            && resource.data.createdAtMs >= gmem(w).gangJoinedAtMs;
+        }
+        // Devirme/ayaklanma talepleri 00:00'a kadar GİZLİ: sadece başlatan görür.
+        match /pending/{id} {
+          allow read: if inGang(w, g) && resource.data.initiatorId == request.auth.uid;
+        }
+        // Oylamalar: Tetikçi+ görür (Çömez görmez). Oylar gizli: ballot sadece sahibine.
+        match /votes/{v} {
+          allow read: if gangRankIn(w, g, ['baba', 'sagkol', 'kidemli', 'tetikci']);
+          match /ballots/{b} {
+            allow read: if isSelf(b) && inGang(w, g);
+          }
+        }
+      }
+
+      match /intel/{docId} {
+        allow read: if liveGangWorld(w);
+        // kasa bilgisi Çeteler listesindeki İstihbarat kartında herkese açık
+        match /private/{p} {
+          allow read: if liveGangWorld(w);
+        }
+        match /log/{id} {
+          allow read: if inIntel(w);
+        }
+        // Atma oylaması talebi 00:00'a kadar GİZLİ: sadece başlatan (kod adı kimliğiyle)
+        match /pending/{id} {
+          allow read: if inIntel(w) && resource.data.initiatorRosterId == gmem(w).intelRosterId;
+        }
+        // Oylamalar: Başkan/Şef/Uzman/Ajan görür, Muhbir görmez. Oy gizli.
+        match /votes/{v} {
+          allow read: if intelRankIn(w, ['baskan', 'sef', 'uzman', 'ajan']);
+          match /ballots/{b} {
+            allow read: if inIntel(w) && b == gmem(w).intelRosterId;
+          }
+        }
+      }
+      // Roster gerçek UID içermez (kod adı + rütbe + prestij).
+      match /intelRoster/{r} {
+        allow read: if inIntel(w);
+      }
+      match /intelReports/{r} {
+        allow read: if inIntel(w);
+      }
+      match /intelChat_genel/{id} {
+        allow read: if inIntel(w) && resource.data.createdAtMs >= gmem(w).intelJoinedAtMs;
+      }
+      match /intelChat_yonetim/{id} {
+        allow read: if intelRankIn(w, ['baskan', 'sef', 'uzman'])
+          && resource.data.createdAtMs >= gmem(w).intelJoinedAtMs;
+      }
+
+      match /distributions/{d} {
+        allow read: if (resource.data.orgType == 'gang' && inGang(w, resource.data.orgId))
+          || (resource.data.orgType == 'intel' && inIntel(w));
+      }
+
+      match /wars/{id} {
+        allow read: if warReadable(w, resource.data);
+        match /rolls/{r} {
+          allow read: if warReadable(w, get(/databases/$(database)/documents/gangWorlds/$(w)/wars/$(id)).data);
+        }
+      }
+
+      // 6 saatlik pencere kilidi — sadece kendi kaydı ({uid}_{gün}_{pencere})
+      match /slots/{id} {
+        allow read: if liveGangWorld(w) && id.split('_')[0] == request.auth.uid;
+      }
+
+      match /routes/{p} {
+        allow read: if liveGangWorld(w);
+      }
+
+      // Tırlar: yoldaki tırları TÜM çetelerin üyeleri görür (sahibi çete
+      // görünür, içerik görünmez). İstihbarat sadece ihbar edilen tırları
+      // intelReports üzerinden görür. İçerik (cargo): tır sahibi çetenin Kıdemli+.
+      match /trucks/{t} {
+        allow read: if liveGangWorld(w) && hasGmem(w) && gmem(w).gangId != null;
+        match /cargo/{c} {
+          allow read: if gangRankIn(w, get(/databases/$(database)/documents/gangWorlds/$(w)/trucks/$(t)).data.gangId, ['baba', 'sagkol', 'kidemli']);
+        }
+      }
+      // Siparişler (içerik): sipariş veren çetenin Kıdemli+ üyeleri
+      match /orders/{o} {
+        allow read: if gangRankIn(w, resource.data.gangId, ['baba', 'sagkol', 'kidemli']);
+      }
+      // Çete depolarından 2. el ilanları — tüm oyuncular görür (satın alma sunucuda)
+      match /market/{id} {
+        allow read: if liveGangWorld(w);
+      }
+      // Günlük (oyun geneli) sabotaj sayacı — fiyat gösterimi için
+      match /sabotageDays/{d} {
+        allow read: if liveGangWorld(w);
+      }
+      // Tüm çetelerin rütbelilerinin sohbeti: çete üyeleri okur (katılmadan
+      // önceki mesajlar hariç); yazma sadece sunucu (rütbe kontrolü).
+      match /globalChat/{id} {
+        allow read: if liveGangWorld(w) && hasGmem(w) && gmem(w).gangId != null
+          && resource.data.createdAtMs >= gmem(w).gangJoinedAtMs;
+      }
+
+      match /alliances/{a} {
+        allow read: if liveGangWorld(w);
+      }
+    }
+
     // Tanımlanmamış her şey varsayılan olarak kapalı.
     match /{document=**} {
       allow read, write: if false;

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import GangMarketSection from '../Gangs/GangMarketSection';
 import { useAuth } from '../../contexts/AuthContext';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useWeapons } from '../../hooks/useWeapons';
@@ -908,6 +909,8 @@ export default function MarketplaceScreen() {
               ))}
             </>
           )}
+
+          <GangMarketSection view={view} />
 
           <p className="market-section-title">Diğer İlanlar</p>
           {otherListings.length === 0 && <p className="market-hint">Bu kategoride başka ilan yok.</p>}

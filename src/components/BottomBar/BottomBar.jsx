@@ -1,20 +1,17 @@
 import { useUnreadNotifications } from '../../hooks/useUnreadNotifications';
 import './BottomBar.css';
 
-export default function BottomBar({ onPhoneClick, onHeistClick, onProfileClick, onFutbolClick }) {
+// Alt çubuk: Çeteler – Soygun – Telefon – Futbol (Profil sekmesi kaldırıldı;
+// profil haritadaki "Ev"den açılır).
+export default function BottomBar({ onPhoneClick, onHeistClick, onGangsClick, onFutbolClick }) {
   const { totalBadge } = useUnreadNotifications();
 
   return (
     <div className="bottom-bar">
-      <button className="bottom-bar-btn futbol" onClick={onFutbolClick} aria-label="Futbol">
-        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.6">
-          <circle cx="12" cy="12" r="9.5" />
-          <path
-            d="M12 7.2 15.8 10 14.4 14.4H9.6L8.2 10 12 7.2Z"
-            fill="currentColor"
-            stroke="currentColor"
-          />
-          <path d="M12 2.5V7.2M4.6 7.4l3.6 2.6M19.4 7.4l-3.6 2.6M6.7 18.5l2.9-4.1M17.3 18.5l-2.9-4.1M2.6 12h4M17.4 12h4" />
+      <button className="bottom-bar-btn gangs" onClick={onGangsClick} aria-label="Çeteler">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <path d="M5 21V3" strokeLinecap="round" />
+          <path d="M5 4h12l-2.5 4L17 12H5" fill="currentColor" fillOpacity="0.25" strokeLinejoin="round" />
         </svg>
       </button>
       <button className="bottom-bar-btn danger" onClick={onHeistClick} aria-label="Mekanlar">
@@ -32,10 +29,15 @@ export default function BottomBar({ onPhoneClick, onHeistClick, onProfileClick, 
         </svg>
         {totalBadge > 0 && <span className="bottom-bar-badge">{totalBadge > 9 ? '9+' : totalBadge}</span>}
       </button>
-      <button className="bottom-bar-btn profile" onClick={onProfileClick} aria-label="Profil">
-        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="12" cy="8" r="4" />
-          <path d="M4 21c0-4 4-6 8-6s8 2 8 6" />
+      <button className="bottom-bar-btn futbol" onClick={onFutbolClick} aria-label="Futbol">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.6">
+          <circle cx="12" cy="12" r="9.5" />
+          <path
+            d="M12 7.2 15.8 10 14.4 14.4H9.6L8.2 10 12 7.2Z"
+            fill="currentColor"
+            stroke="currentColor"
+          />
+          <path d="M12 2.5V7.2M4.6 7.4l3.6 2.6M19.4 7.4l-3.6 2.6M6.7 18.5l2.9-4.1M17.3 18.5l-2.9-4.1M2.6 12h4M17.4 12h4" />
         </svg>
       </button>
     </div>

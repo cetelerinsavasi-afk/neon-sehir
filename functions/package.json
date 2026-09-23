@@ -10,7 +10,8 @@
     "lint": "echo \"Lint atlandi (henuz eslint kurulmadi)\"",
     "build": "echo \"Build adimi gerekmiyor (JavaScript)\"",
     "serve": "firebase emulators:start --only functions,firestore,auth",
-    "deploy": "firebase deploy --only functions"
+    "deploy": "firebase deploy --only functions",
+    "test": "node --test gang/test/*.test.js"
   },
   "dependencies": {
     "busboy": "^1.6.0",

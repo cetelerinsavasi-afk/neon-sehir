@@ -118,3 +118,13 @@
   justify-content: center;
   border: 2px solid var(--bg, #070a12);
 }
+
+.bottom-bar-btn.gangs {
+  color: #b16bff;
+  box-shadow: 0 0 18px rgba(177, 107, 255, 0.28);
+}
+
+.bottom-bar-btn.gangs:hover {
+  border-color: #b16bff;
+  box-shadow: 0 0 24px rgba(177, 107, 255, 0.5);
+}

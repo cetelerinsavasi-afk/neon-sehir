@@ -12,6 +12,7 @@ import RaceBubble from './components/RaceTrackScreen/RaceBubble';
 import OnNumaraFullScreen from './components/OnNumaraScreen/OnNumaraFullScreen';
 import ProfileFullScreen from './components/ProfileFullScreen/ProfileFullScreen';
 import FutbolFullScreen from './components/FutbolScreen/FutbolFullScreen';
+import GangsFullScreen from './components/Gangs/GangsFullScreen';
 import ParkWorldScreen from './components/ParkWorldScreen/ParkWorldScreen';
 import BankWorldScreen from './components/BankWorldScreen/BankWorldScreen';
 import KarakolWorldScreen from './components/KarakolWorldScreen/KarakolWorldScreen';
@@ -87,6 +88,7 @@ function GameShell() {
   const [raceLobbyMode, setRaceLobbyMode] = useState(null);
   const [activeTableId, setActiveTableId] = useState(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [gangsOpen, setGangsOpen] = useState(false);
   const [futbolOpen, setFutbolOpen] = useState(false);
   const [parkOpen, setParkOpen] = useState(false);
   const [bankOpen, setBankOpen] = useState(false);
@@ -305,7 +307,7 @@ function GameShell() {
       <BottomBar
         onPhoneClick={() => setPhoneOpen(true)}
         onHeistClick={() => openHeistScreen(null)}
-        onProfileClick={() => setProfileOpen(true)}
+        onGangsClick={() => setGangsOpen(true)}
         onFutbolClick={() => setFutbolOpen(true)}
       />
 
@@ -347,6 +349,7 @@ function GameShell() {
       />
       {profileOpen && <ProfileFullScreen onClose={() => setProfileOpen(false)} />}
       {futbolOpen && <FutbolFullScreen onClose={() => setFutbolOpen(false)} />}
+      {gangsOpen && <GangsFullScreen onClose={() => setGangsOpen(false)} />}
 
       <RegionModal
         region={activeRegion}
