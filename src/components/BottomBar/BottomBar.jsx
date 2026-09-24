@@ -1,10 +1,10 @@
-import { useUnreadNotifications } from '../../hooks/useUnreadNotifications';
 import './BottomBar.css';
 
 // Alt çubuk: Çeteler – Soygun – Telefon – Futbol (Profil sekmesi kaldırıldı;
 // profil haritadaki "Ev"den açılır).
-export default function BottomBar({ onPhoneClick, onHeistClick, onGangsClick, onFutbolClick, gangsBadge = false }) {
-  const { totalBadge } = useUnreadNotifications();
+// Telefon rozeti App'te tek dinleyiciyle hesaplanıp buraya verilir (phoneBadge).
+export default function BottomBar({ onPhoneClick, onHeistClick, onGangsClick, onFutbolClick, gangsBadge = false, phoneBadge = 0 }) {
+  const totalBadge = phoneBadge;
 
   return (
     <div className="bottom-bar">

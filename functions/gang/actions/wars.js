@@ -7,7 +7,7 @@
 // buradan hesaplanır); savaş kartındaki gösterge best-effort artırılır ve
 // saat (clock) tarafından periyodik uzlaştırılır.
 import { GANG, INTEL, WAR_SHARDS, RANK_LABELS, productById, atLeast } from '../config.js';
-import { addDays, midnightMsOf } from '../time.js';
+import { addDays, dateKeyOf, hhmmOf, midnightMsOf, nextWindowStartMs } from '../time.js';
 
 export const ALLIANCE_BLOCKING = ['accepted', 'active', 'ending'];
 export const ALLIANCE_DEFENSIVE = ['active', 'ending'];
@@ -28,9 +28,14 @@ export function createWarActions(core) {
     const warSnap = await ctx.ref.war(warId).get();
     if (!warSnap.exists) fail('not-found', 'Savaş bulunamadı.');
     const war = warSnap.data();
-    if (war.status !== 'active') fail('failed-precondition', 'Bu savaş artık aktif değil.');
+    // v35: kabul edilmiş bahis başlangıç diliminde saat turunu beklemeden oynanabilir
+    const dueBet = war.type === 'bet' && war.status === 'accepted' && ctx.now >= war.startsAtMs;
+    if (war.status !== 'active' && !dueBet) fail('failed-precondition', 'Bu savaş artık aktif değil.');
     if (ctx.now < war.startsAtMs) fail('failed-precondition', 'Bu savaş henüz başlamadı.');
     if (ctx.now >= war.endsAtMs) fail('deadline-exceeded', 'Bu savaşın süresi doldu.');
+    // İstihbarat bahse operasyonla girdiyse (savaş başladıktan sonra da olabilir)
+    let betIntel = Boolean(war.sides?.intel);
+    if (war.type === 'bet' && wantIntel && !betIntel) betIntel = Boolean((await ctx.ref.betReport(warId).get()).data()?.opStarted);
     const livePower = ctx.isTest ? null : await core.readPower(ctx, ctx.actorId);
     const slotId = `${ctx.actorId}_${ctx.dateKey}_${ctx.slot}`;
 
@@ -40,7 +45,7 @@ export function createWarActions(core) {
       const wallet = ctx.isTest ? await readWallet(tx, ctx, ctx.actorId) : null;
       let sideKey;
       let org; // { type:'gang', gangId, member } | { type:'intel', rosterId, roster }
-      if ((war.type === 'trade' || (war.type === 'bet' && war.sides?.intel)) && wantIntel) {
+      if ((war.type === 'trade' || (war.type === 'bet' && betIntel)) && wantIntel) {
         const rid = requireIntel(membership);
         const r = (await tx.get(ctx.ref.roster(rid))).data();
         if (!r) fail('failed-precondition', 'İstihbarat üyesi değilsin.');
@@ -104,6 +109,10 @@ export function createWarActions(core) {
           const g = (await ctx.ref.gang(out.org.gangId).get()).data();
           upd[`sides.${out.sideKey}`] = { orgType: 'gang', orgId: out.org.gangId, name: g?.name || '', logo: g?.logo || null };
         }
+      }
+      if (war.type === 'bet' && out.sideKey === 'intel' && !war.sides?.intel) {
+        upd['sides.intel'] = { orgType: 'intel', orgId: 'main', name: INTEL.NAME, logo: INTEL.LOGO, role: 'intel' };
+        upd.intelInvolved = true;
       }
       if (war.type === 'defense' && !war.sides?.[out.sideKey]) {
         const g = (await ctx.ref.gang(out.org.gangId).get()).data();
@@ -270,12 +279,15 @@ export function createWarActions(core) {
       }
       if (rel.allianceBlocks) fail('failed-precondition', '🤝 İttifak varken bahisli savaş yapılamaz.');
       if (Number(myState.data()?.kasa || 0) < war.stake) fail('failed-precondition', 'Kasada yeterli para yok.');
+      // v35: bir sonraki saldırı diliminde başlar (00·06·12·18), 24 saat sürer
+      const startsAtMs = nextWindowStartMs(ctx.now);
+      const endsAtMs = startsAtMs + GANG.BET_DURATION_MS;
       tx.update(ctx.ref.gangState(gangId), { kasa: FV.increment(-war.stake) });
-      tx.update(ctx.ref.war(warId), { status: 'accepted', acceptedAtMs: ctx.now });
+      tx.update(ctx.ref.war(warId), { status: 'accepted', acceptedAtMs: ctx.now, startsAtMs, endsAtMs, dateKey: dateKeyOf(startsAtMs), slotTiming: true });
       ledger(tx, ctx, { type: 'bet_lock', amount: war.stake, from: { kind: 'gang', id: gangId }, to: { kind: 'escrow', id: warId }, before: myState.data()?.kasa, refId: warId });
-      announce(tx, ctx, gangId, '⚔️', `${me.name} bahisli savaşı kabul etti — ${war.dateKey} 00:00'da başlıyor.`);
-      announce(tx, ctx, war.proposerGangId, '⚔️', `${myName} bahisli savaş teklifini kabul etti — ${war.dateKey} 00:00'da başlıyor.`);
-      return { accepted: true };
+      announce(tx, ctx, gangId, '⚔️', `${me.name} bahisli savaşı kabul etti — ${hhmmOf(startsAtMs)}'de başlıyor, 24 saat sürer.`);
+      announce(tx, ctx, war.proposerGangId, '⚔️', `${myName} bahisli savaş teklifini kabul etti — ${hhmmOf(startsAtMs)}'de başlıyor, 24 saat sürer.`);
+      return { accepted: true, startsAtMs, endsAtMs };
     });
   }
 

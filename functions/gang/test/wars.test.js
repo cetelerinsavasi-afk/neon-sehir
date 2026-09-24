@@ -26,29 +26,74 @@ test('zar: katkı = (z1+z2) × güç; güç anlık görüntü, sonradan değişm
   assert.equal(h.member(A.gangId, A.baba).prestige, 10_000_000 + 320_000 + 6);
 });
 
-test('pencere: aynı 6 saatte ikinci savaş yok (eşzamanlı çift tık dahil); günde en fazla 4', async () => {
+test('pencere: aynı 6 saatte ikinci savaş yok (eşzamanlı çift tık dahil); bahis 4 dilim sürer', async () => {
   const h = await createHarness();
   const A = await setupGang(h, { members: 0, name: 'Alfa' });
   const B = await setupGang(h, { members: 0, name: 'Beta' });
   await h.fundKasa(A.gangId, 1_000_000);
   await h.fundKasa(B.gangId, 1_000_000);
   const { warId } = await h.act(A.baba, 'offerBet', { targetGangId: B.gangId, stake: 50_000 });
-  await h.act(B.baba, 'respondBet', { warId, accept: true });
-  await h.tickTo('2026-09-22', '00:01');
+  await h.act(B.baba, 'respondBet', { warId, accept: true }); // 09:00 → 12:00'de başlar
+  h.at('2026-09-21', '12:00');
   const rs = await Promise.allSettled([1, 2, 3, 4, 5].map(() => h.act(A.baba, 'rollDice', { warId })));
   assert.equal(rs.filter((r) => r.status === 'fulfilled').length, 1);
   let n = 1;
-  for (const t of ['06:00', '12:00', '18:00']) {
-    h.at('2026-09-22', t);
+  for (const [d, t] of [['2026-09-21', '18:00'], ['2026-09-22', '00:01'], ['2026-09-22', '06:00']]) {
+    if (t === '00:01') await h.tickTo(d, t);
+    else h.at(d, t);
     await h.act(A.baba, 'rollDice', { warId });
     n += 1;
     const again = await h.fails(A.baba, 'rollDice', { warId });
     assert.match(again.message, /pencerede/);
   }
   assert.equal(n, 4);
+  h.at('2026-09-22', '12:00');
+  const over = await h.fails(A.baba, 'rollDice', { warId });
+  assert.match(over.message, /süresi doldu|aktif değil/);
   const shards = h.db._dump(`gangWorlds/test/wars/${warId}/shards/`);
   const rolls = Object.values(shards).reduce((s, x) => s + x.rolls, 0);
   assert.equal(rolls, 4);
+});
+
+test('bahis zamanlaması: kabulden sonraki ilk dilimde başlar (14:xx → 18:00), 24 saat sonra (ertesi gün 18:00) biter', async () => {
+  const h = await createHarness({ start: Date.UTC(2026, 8, 21, 11, 0) }); // 14:00 İstanbul
+  const A = await setupGang(h, { members: 0, name: 'Alfa' });
+  const B = await setupGang(h, { members: 0, name: 'Beta' });
+  await h.fundKasa(A.gangId, 1_000_000);
+  await h.fundKasa(B.gangId, 1_000_000);
+  const { warId } = await h.act(A.baba, 'offerBet', { targetGangId: B.gangId, stake: 50_000 });
+  const r = await h.act(B.baba, 'respondBet', { warId, accept: true });
+  assert.equal(new Date(r.startsAtMs).toISOString(), '2026-09-21T15:00:00.000Z', '18:00 İstanbul');
+  assert.equal(r.endsAtMs - r.startsAtMs, 24 * 3600_000);
+  await h.fails(A.baba, 'rollDice', { warId }); // 18:00'den önce yok
+  h.at('2026-09-21', '18:00');
+  await h.act(A.baba, 'rollDice', { warId }); // saat turunu beklemeden
+  await h.internal.clock.runClock('test');
+  assert.equal(h.get(`wars/${warId}`).status, 'active');
+  h.at('2026-09-22', '17:59');
+  await h.internal.clock.runClock('test');
+  assert.equal(h.get(`wars/${warId}`).status, 'active');
+  h.at('2026-09-22', '18:01');
+  await h.internal.clock.runClock('test');
+  assert.equal(h.get(`wars/${warId}`).status, 'resolved');
+  assert.equal(h.get(`wars/${warId}`).result.winner, A.gangId);
+});
+
+test("v34'ten kalan (00:00'da başlayacak) kabul edilmiş bahis yeni kurala taşınır: şu andan sonraki ilk dilim", async () => {
+  const h = await createHarness({ start: Date.UTC(2026, 8, 21, 11, 0) }); // 14:00
+  const A = await setupGang(h, { members: 0, name: 'Alfa' });
+  const B = await setupGang(h, { members: 0, name: 'Beta' });
+  await h.fundKasa(A.gangId, 1_000_000);
+  await h.fundKasa(B.gangId, 1_000_000);
+  const { warId } = await h.act(A.baba, 'offerBet', { targetGangId: B.gangId, stake: 50_000 });
+  await h.act(B.baba, 'respondBet', { warId, accept: true });
+  // eski şemayı taklit et
+  const mid = Date.UTC(2026, 8, 21, 21, 0);
+  await h.db.doc(`gangWorlds/test/wars/${warId}`).update({ startsAtMs: mid, endsAtMs: mid + 24 * 3600_000, dateKey: '2026-09-22', slotTiming: null });
+  await h.internal.clock.runClock('test');
+  const w = h.get(`wars/${warId}`);
+  assert.equal(new Date(w.startsAtMs).toISOString(), '2026-09-21T15:00:00.000Z');
+  assert.equal(w.slotTiming, true);
 });
 
 test('bahis: kabul → 00:00 başlar → 24 saat sonra kazanan toplamı alır; tekrar çalışan saat çift ödeme yapmaz', async () => {

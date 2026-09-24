@@ -233,10 +233,13 @@ export function createIntelActions(core) {
   //  00:00'dan sonra İstihbarat müdahale edemez. Çeteler müdahaleyi savaş
   //  başlarken (00:00) öğrenir.
   // ---------------------------------------------------------------------------
+  // v35: bahis kabul edildikten sonra İLK SALDIRI DİLİMİNİN SONUNA kadar
+  // (başlangıç + 6 saat) müdahale edilebilir; sonrası çetelerin arasında.
   async function readBetForIntel(tx, ctx, warId) {
     const war = (await tx.get(ctx.ref.war(warId))).data();
     if (!war || war.type !== 'bet') fail('not-found', 'Bahis bulunamadı.');
-    if (war.status !== 'accepted' || ctx.now >= midnightMsOf(war.dateKey)) fail('failed-precondition', "Bu bahse artık müdahale edilemez (savaş 00:00'da başladı ya da iptal oldu).");
+    const deadline = Number(war.startsAtMs || 0) + GANG.BET_INTEL_WINDOW_MS;
+    if (!['accepted', 'active'].includes(war.status) || ctx.now >= deadline) fail('failed-precondition', 'Bu bahse artık müdahale edilemez (ilk saldırı dilimi bitti).');
     return war;
   }
 
@@ -261,6 +264,8 @@ export function createIntelActions(core) {
         names: { [a]: war.sides?.[a]?.name || '', [b]: war.sides?.[b]?.name || '' },
         logos: { [a]: war.sides?.[a]?.logo || null, [b]: war.sides?.[b]?.logo || null },
         dateKey: war.dateKey,
+        startsAtMs: war.startsAtMs,
+        intelDeadlineMs: Number(war.startsAtMs || 0) + GANG.BET_INTEL_WINDOW_MS,
         reportedByCode: rosterSnap.data().codeName,
         reportedAtMs: ctx.now,
         leaked: false,
@@ -316,7 +321,13 @@ export function createIntelActions(core) {
       tx.update(ctx.ref.betReport(warId), { opStarted: true, opByCode: me.data().codeName, opAtMs: ctx.now, opCost: price });
       core.ledger(tx, ctx, { type: 'intel_bet_op_cost', amount: price, from: { kind: 'intel', id: 'main' }, to: { kind: 'burn' }, before: state.kasa, refId: warId });
       const [a, b] = war.gangIds;
-      announceIntel(tx, ctx, '🎯', `${me.data().codeName}, ${war.sides?.[a]?.name} ⚔️ ${war.sides?.[b]?.name} bahsine operasyon başlattı (${price.toLocaleString('tr-TR')}). Savaş 00:00'da 3 taraflı başlar.`);
+      const started = ctx.now >= Number(war.startsAtMs || 0);
+      if (started && !war.sides?.intel) {
+        // Savaş zaten başladıysa İstihbarat hemen 3. taraf olur; çeteler şimdi öğrenir.
+        tx.update(ctx.ref.war(warId), { 'sides.intel': { orgType: 'intel', orgId: 'main', name: INTEL.NAME, logo: INTEL.LOGO, role: 'intel' }, intelInvolved: true });
+        for (const g of [a, b]) core.announce(tx, ctx, g, '🕵️', `İstihbarat ${war.sides?.[a]?.name} ⚔️ ${war.sides?.[b]?.name} bahisli savaşına dahil oldu! Artık 3 taraf var — en güçlü taraf tüm bahsi alır.`);
+      }
+      announceIntel(tx, ctx, '🎯', `${me.data().codeName}, ${war.sides?.[a]?.name} ⚔️ ${war.sides?.[b]?.name} bahsine operasyon başlattı (${price.toLocaleString('tr-TR')}). ${started ? 'Savaşa hemen katılabiliriz.' : 'Savaş başlayınca 3 taraflı olur.'}`);
       ctx.logs.push({ gang: 'intel_bet_op', world: ctx.worldId, warId });
       const res = { started: true, price };
       guard.save(res);

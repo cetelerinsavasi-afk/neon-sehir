@@ -14,6 +14,7 @@ import ProfileFullScreen from './components/ProfileFullScreen/ProfileFullScreen'
 import FutbolFullScreen from './components/FutbolScreen/FutbolFullScreen';
 import GangsFullScreen from './components/Gangs/GangsFullScreen';
 import { GangAlertsContext, useGangAlerts } from './components/Gangs/alerts';
+import { useUnreadNotifications } from './hooks/useUnreadNotifications';
 import ParkWorldScreen from './components/ParkWorldScreen/ParkWorldScreen';
 import BankWorldScreen from './components/BankWorldScreen/BankWorldScreen';
 import KarakolWorldScreen from './components/KarakolWorldScreen/KarakolWorldScreen';
@@ -68,6 +69,8 @@ function GameShell() {
   const { user } = useAuth();
   // Çeteler bildirim işaretleri (alt çubuk + çete içi sekmeler)
   const gangAlerts = useGangAlerts(user?.uid);
+  // Telefon rozeti + haritadaki ChatsApp kısayolunun "yeni mesaj" noktası (tek dinleyici)
+  const unread = useUnreadNotifications();
   const [activeRegion, setActiveRegion] = useState(null);
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [phoneInitialApp, setPhoneInitialApp] = useState(null);
@@ -312,6 +315,7 @@ function GameShell() {
         onHeistClick={() => openHeistScreen(null)}
         onGangsClick={() => setGangsOpen(true)}
         gangsBadge={gangAlerts.any}
+        phoneBadge={unread.totalBadge}
         onFutbolClick={() => setFutbolOpen(true)}
       />
 
@@ -329,6 +333,7 @@ function GameShell() {
         title="ChatsApp"
       >
         💬
+        {unread.chatsAppHasNew && <span className="map-chatsapp-dot" />}
       </button>
 
       {/* Yeni görev/hatırlatıcı paneli — ChatsApp butonunun tam simetriği,

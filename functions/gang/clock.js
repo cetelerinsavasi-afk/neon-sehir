@@ -11,7 +11,7 @@
 // doğrulanıp 'idle' yapılır). Tick yarıda kesilip tekrar çalışsa bile
 // işlenmiş varlıklar ikinci kez etki üretmez.
 import { GANG, INTEL, TRADE_PRODUCTS, MS_DAY, productById } from './config.js';
-import { addDays, midnightMsOf, weekdayOfKey, daysBetweenKeys, dateKeyOf } from './time.js';
+import { addDays, midnightMsOf, weekdayOfKey, daysBetweenKeys, dateKeyOf, nextWindowStartMs, hhmmOf } from './time.js';
 import { computeGangRanks, computeIntelRanks } from './ranks.js';
 
 const LIVE_GRACE_MS = 45 * 1000; // canlıda 00:00'dan sonra geç kalan zar yazımları için tampon
@@ -209,11 +209,11 @@ export function createClock(core, actions) {
   // ---------------------------------------------------------------------------
   // 2) BAHİSLİ SAVAŞ SONUCU
   // ---------------------------------------------------------------------------
-  async function resolveBet(ctx, warId, dayKey) {
+  async function resolveBet(ctx, warId) {
     const { totals } = await warActions.sumShards(ctx, warId);
     return db.runTransaction(async (tx) => {
       const war = (await tx.get(ctx.ref.war(warId))).data();
-      if (!war || war.status !== 'active' || war.dateKey !== dayKey) return { skipped: true };
+      if (!war || war.status !== 'active' || Number(war.endsAtMs || 0) > ctx.now) return { skipped: true };
       const [a, b] = war.gangIds;
       const hasIntel = Boolean(war.sides?.intel);
       const [ga, gb, intelSt] = await Promise.all([tx.get(ctx.ref.gang(a)), tx.get(ctx.ref.gang(b)), hasIntel ? tx.get(ctx.ref.intelState()) : null]);
@@ -742,27 +742,49 @@ export function createClock(core, actions) {
     }
   }
 
-  async function startBets(ctx) {
-    const snap = await ctx.ref.wars().where('type', '==', 'bet').where('status', '==', 'accepted').get();
-    for (const d of snap.docs) {
-      if (d.data().dateKey > ctx.dateKey) continue;
+  // v35 — BAHİSLİ SAVAŞ ZAMANLAMASI: kabul edilen bahis bir sonraki saldırı
+  // diliminde (00·06·12·18) başlar, 24 saat sürer. Saat turunda (her 5 dk) ve
+  // günlük turda çağrılır; tüm adımlar idempotent (durum + zaman kontrolü).
+  //  1) v34'ten kalan (00:00'da başlayacak) kabul edilmiş bahisler yeni kurala
+  //     taşınır: şu andan sonraki ilk dilimde başlar.
+  //  2) başlama anı gelen bahis açılır (taraflardan biri dağıldıysa iade).
+  //  3) bitiş anı gelen bahis sonuçlanır.
+  async function processBets(ctx) {
+    const acc = await ctx.ref.wars().where('type', '==', 'bet').where('status', '==', 'accepted').get();
+    for (const d of acc.docs) {
+      const w0 = d.data();
+      if (!w0.slotTiming && Number(w0.startsAtMs || 0) > ctx.now) {
+        await safe(ctx, `bet-migrate:${d.id}`, () =>
+          db.runTransaction(async (tx) => {
+            const w = (await tx.get(d.ref)).data();
+            if (!w || w.status !== 'accepted' || w.slotTiming) return;
+            const repSnap = await tx.get(ctx.ref.betReport(d.id));
+            const startsAtMs = nextWindowStartMs(ctx.now);
+            const endsAtMs = startsAtMs + GANG.BET_DURATION_MS;
+            tx.update(d.ref, { startsAtMs, endsAtMs, dateKey: dateKeyOf(startsAtMs), slotTiming: true });
+            if (repSnap.exists) tx.update(repSnap.ref, { startsAtMs, intelDeadlineMs: startsAtMs + GANG.BET_INTEL_WINDOW_MS, dateKey: dateKeyOf(startsAtMs) });
+            for (const g of w.gangIds) core.announce(tx, ctx, g, '⏰', `Bahisli savaş yeni kurala göre ${hhmmOf(startsAtMs)}'de başlıyor, 24 saat sürecek.`);
+          })
+        );
+        continue;
+      }
+      if (Number(w0.startsAtMs || 0) > ctx.now) continue;
       await safe(ctx, `bet-start:${d.id}`, () =>
         db.runTransaction(async (tx) => {
           const w = (await tx.get(d.ref)).data();
-          if (!w || w.status !== 'accepted' || w.dateKey > ctx.dateKey) return;
+          if (!w || w.status !== 'accepted' || Number(w.startsAtMs || 0) > ctx.now) return;
           const [a, b] = w.gangIds;
           const [ga, gb, repSnap] = await Promise.all([tx.get(ctx.ref.gang(a)), tx.get(ctx.ref.gang(b)), tx.get(ctx.ref.betReport(d.id))]);
           const aliveA = ga.data()?.status === 'active';
           const aliveB = gb.data()?.status === 'active';
           const op = repSnap.data()?.opStarted ? repSnap.data() : null;
-          if (w.dateKey < ctx.dateKey || !aliveA || !aliveB) {
-            // başlayamadı (kaçırılmış gün ya da taraf dağıldı) → iade
+          if (ctx.now >= Number(w.endsAtMs || 0) || !aliveA || !aliveB) {
+            // başlayamadı (süre kaçtı ya da taraf dağıldı) → iade
             for (const [g, alive] of [[a, aliveA], [b, aliveB]]) {
               if (alive) tx.update(ctx.ref.gangState(g), { kasa: FV.increment(w.stake) });
               ledger(tx, ctx, { type: alive ? 'bet_refund' : 'bet_refund_burn', amount: w.stake, from: { kind: 'escrow', id: d.id }, to: alive ? { kind: 'gang', id: g } : { kind: 'burn' }, refId: d.id, actorId: 'system' });
             }
             if (op && !op.opRefunded) {
-              // savaş hiç başlamadı → İstihbaratın operasyon ücreti iade
               tx.update(ctx.ref.intelState(), { kasa: FV.increment(Number(op.opCost || 0)) });
               tx.update(repSnap.ref, { opRefunded: true });
               ledger(tx, ctx, { type: 'intel_bet_op_refund', amount: Number(op.opCost || 0), from: { kind: 'system' }, to: { kind: 'intel', id: 'main' }, refId: d.id, actorId: 'system' });
@@ -770,15 +792,15 @@ export function createClock(core, actions) {
             tx.update(d.ref, { status: 'cancelled', activeGangIds: [], resolvedAtMs: ctx.now });
             return;
           }
-          const upd = { status: 'active', visibility: 'public', startsAtMs: midnightMsOf(ctx.dateKey), endsAtMs: midnightMsOf(addDays(ctx.dateKey, 1)) };
-          if (op) {
-            // İstihbarat müdahalesi: savaş 3 taraflı başlar
+          const upd = { status: 'active', visibility: 'public' };
+          const addIntel = Boolean(op) && !w.sides?.intel;
+          if (addIntel) {
+            // İstihbarat müdahalesi (başlamadan önce başlatılmış operasyon): 3 taraf
             upd['sides.intel'] = { orgType: 'intel', orgId: 'main', name: INTEL.NAME, logo: INTEL.LOGO, role: 'intel' };
-            upd['display.intel'] = 0;
             upd.intelInvolved = true;
           }
           tx.update(d.ref, upd);
-          if (op) {
+          if (addIntel) {
             for (const g of [a, b]) core.announce(tx, ctx, g, '🕵️', `İstihbarat ${w.sides[a]?.name} ⚔️ ${w.sides[b]?.name} bahisli savaşına dahil oldu! Artık 3 taraf var — en güçlü taraf tüm bahsi alır.`);
             core.announceIntel(tx, ctx, '⚔️', `Bahisli savaş başladı: ${w.sides[a]?.name} ⚔️ ${w.sides[b]?.name} — İstihbarat 3. taraf. Kazanan tüm bahsi alır.`);
           } else {
@@ -787,6 +809,11 @@ export function createClock(core, actions) {
           }
         })
       );
+    }
+    const act = await ctx.ref.wars().where('type', '==', 'bet').where('status', '==', 'active').get();
+    for (const d of act.docs) {
+      if (Number(d.data().endsAtMs || 0) > ctx.now) continue;
+      await safe(ctx, `bet:${d.id}`, () => resolveBet(ctx, d.id));
     }
   }
 
@@ -904,12 +931,9 @@ export function createClock(core, actions) {
       if (d.data().departDateKey >= dayKey) continue;
       await safe(ctx, `trip:${d.id}`, () => resolveTruckTrip(ctx, d.id, d.data().departDateKey));
     }
-    // 2) biten bahisli savaşlar
-    const bets = await ctx.ref.wars().where('type', '==', 'bet').where('status', '==', 'active').get();
-    for (const d of bets.docs) {
-      if (d.data().dateKey >= dayKey) continue;
-      await safe(ctx, `bet:${d.id}`, () => resolveBet(ctx, d.id, d.data().dateKey));
-    }
+    // 2) bahisli savaşlar: süresi dolanlar sonuçlanır, başlama dilimi gelenler açılır
+    //    (v35: gün içinde de her saat turunda — bkz. runClock → processBets)
+    await safe(ctx, 'bets', () => processBets(ctx));
     // 3) ticaret yolu savaşı (dün pazar ise)
     const trades = await ctx.ref.wars().where('type', '==', 'trade').where('status', '==', 'active').get();
     for (const d of trades.docs) {
@@ -946,7 +970,6 @@ export function createClock(core, actions) {
     await safe(ctx, 'intel-kasa', () => snapshotKasa(ctx, ctx.ref.intelState()));
 
     // 8) bugünün başlangıçları
-    await safe(ctx, 'bet-start', () => startBets(ctx));
     await safe(ctx, 'trade-war', () => createTradeWar(ctx, dayKey));
     await safe(ctx, 'trucks-depart', () => departTrucks(ctx));
 
@@ -1120,9 +1143,10 @@ export function createClock(core, actions) {
       last = next;
       n += 1;
     }
-    // 12:00 saldırı duyuruları (bugün)
+    // 12:00 saldırı duyuruları (bugün) + bahisli savaş başlangıç/bitişleri (her dilim)
     if (last >= ctx0.dateKey) {
       await safe(ctx0, 'announce-attacks', () => announceAttacks(ctx0));
+      await safe(ctx0, 'bets-live', () => processBets(ctx0));
     }
     // süresi dolan dağıtımlar
     const dists = await ctx0.ref.distributions().where('openUntilMs', '<=', ctx0.now).limit(200).get();
@@ -1147,5 +1171,5 @@ export function createClock(core, actions) {
     return { ticks: results, errors: ctx0.errors || [] };
   }
 
-  return { runClock, runDailyTick, cleanupGang, resolveTruckTrip, productForSunday, dateKeyOf };
+  return { runClock, runDailyTick, cleanupGang, resolveTruckTrip, productForSunday, dateKeyOf, processBets };
 }

@@ -47,3 +47,13 @@ export function daysBetweenKeys(fromKey, toKey) {
 export function compareKeys(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
+
+// v35: bir sonraki 6 saatlik saldırı diliminin başlangıcı (00 · 06 · 12 · 18),
+// "şu an"dan KESİNLİKLE sonra.
+export function nextWindowStartMs(ms) {
+  return midnightMsOf(dateKeyOf(ms)) + (windowSlotOf(ms) + 1) * WINDOW_HOURS * MS_HOUR;
+}
+export function hhmmOf(ms) {
+  const d = shifted(ms);
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+}

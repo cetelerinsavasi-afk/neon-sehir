@@ -7,7 +7,7 @@
 //  - Bir çetede Tetikçi+ olan üye, çetesinin yoldaki tırını ihbar edebilir.
 import { useState } from 'react';
 import { limit, where } from 'firebase/firestore';
-import { fmtCountdown, istDateKey, istHour, nextMidnight, useDocData, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
+import { fmtCountdown, istDateKey, istHour, useDocData, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
 import { AmountInput, Btn, Card, Confirm, Empty, Logo } from '../ui';
 import { INTEL_LEADERS, atLeast, fmt } from '../gangConstants';
 
@@ -21,15 +21,16 @@ function BetOps({ d }) {
   const now = useNow();
   const ms = d.membership;
   const lead = INTEL_LEADERS.includes(d.rank);
-  const tomorrow = istDateKey(nextMidnight(now) + 3600_000);
-  const { docs: reports } = useQueryData(path('betReports'), () => [where('dateKey', '==', tomorrow), limit(50)], `betrep_${tomorrow}`);
+  // v35: ilk saldırı diliminin sonuna kadar müdahale edilebilen ihbarlar
+  const hourKey = Math.floor(now / 3600_000) * 3600_000;
+  const { docs: repsAll } = useQueryData(path('betReports'), () => [where('intelDeadlineMs', '>', hourKey), limit(50)], `betrep_${hourKey}`);
+  const reports = repsAll.filter((r) => now < r.intelDeadlineMs);
   const canReport = Boolean(ms.gangId) && atLeast(ms.gangRank, 'tetikci');
   const canLeak = Boolean(ms.gangId) && atLeast(ms.gangRank, 'kidemli');
   const { docs: myWars } = useQueryData(canReport ? path('wars') : null, () => [where('activeGangIds', 'array-contains', ms.gangId), limit(60)], `mybets_${ms.gangId}_${canReport}`);
-  const myBets = myWars.filter((w) => w.type === 'bet' && w.status === 'accepted' && w.dateKey === tomorrow);
+  const myBets = myWars.filter((w) => w.type === 'bet' && ['accepted', 'active'].includes(w.status) && w.startsAtMs && now < w.startsAtMs + 6 * 3600_000);
   const reported = new Set(reports.map((r) => r.id));
   const [ask, setAsk] = useState(null);
-  const left = fmtCountdown(nextMidnight(now) - now);
   if (reports.length === 0 && myBets.length === 0) return null;
   const nameOf = (r, g) => r.names?.[g] || r.sides?.[g]?.name;
   const logoOf = (r, g) => r.logos?.[g] || r.sides?.[g]?.logo;
@@ -47,12 +48,12 @@ function BetOps({ d }) {
       {reports.length > 0 && (
         <div className="gx-section-head">
           <span>🎲 İhbarlı bahisler</span>
-          <span className="gx-timer">⏱ {left}</span>
         </div>
       )}
       {reports.map((r) => (
         <Card key={r.id} className="gx-report">
           <Pair r={r} />
+          <div className="gx-timer">⏱ {fmtCountdown(r.intelDeadlineMs - now)}</div>
           <div className="dim gx-mini">📡 {r.reportedByCode}</div>
           {r.leaked ? <div className="gx-reward">💰 {fmt(r.pot)}</div> : <div className="dim gx-mini">💰 ?</div>}
           <div className="gx-row-2">

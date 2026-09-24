@@ -53,6 +53,10 @@ export const GANG = {
   BET_OFFERS_PER_DAY: 1, // ONAYLI: çete başına günde 1 teklif
   // ONAYLI: bahis teklifi Cumartesi ve Pazar gönderilemez (Pzt–Cum açık).
   BET_OFFER_WEEKDAYS: [1, 2, 3, 4, 5],
+  // v35: kabul edilen bahis bir sonraki saldırı diliminde başlar, 24 saat (4 dilim) sürer
+  BET_DURATION_MS: 24 * MS_HOUR,
+  // İstihbarat ihbar/açma/operasyon için son an: ilk dilimin sonu
+  BET_INTEL_WINDOW_MS: 6 * MS_HOUR,
 
   // --- Sabotaj (ONAYLI) — ücret OYUN GENELİNDE her yeni sabotaj/operasyonla
   // 10.000 artar, 00:00'da sıfırlanır ---

@@ -141,3 +141,25 @@
   border: 2px solid #070a12;
   box-shadow: 0 0 8px var(--neon-pink);
 }
+
+/* v35: ChatsApp kısayolunda yeni mesaj noktası */
+.map-chatsapp-btn {
+  position: fixed;
+}
+.map-chatsapp-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--neon-pink);
+  border: 2px solid #070a12;
+  box-shadow: 0 0 8px var(--neon-pink);
+  animation: map-chatsapp-pulse 1.6s ease-in-out infinite;
+}
+@keyframes map-chatsapp-pulse {
+  50% {
+    transform: scale(1.25);
+  }
+}

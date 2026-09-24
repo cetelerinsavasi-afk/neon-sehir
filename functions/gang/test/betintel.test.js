@@ -112,3 +112,30 @@ test('bahis başlayamazsa (çete dağıldı) operasyon ücreti İstihbarata iade
   assert.equal(h.get(`wars/${S.warId}`).status, 'cancelled');
   assert.equal(h.get('intel/main/private/state').kasa, 150_000);
 });
+
+test('v35: ihbar/operasyon ilk saldırı diliminin sonuna kadar; savaş başladıktan sonra başlatılan operasyonla İstihbarat hemen 3. taraf olur', async () => {
+  const h = await createHarness();
+  const S = await setup(h);
+  await h.act(S.B.baba, 'respondBet', { warId: S.warId, accept: true }); // 09:00 → 12:00–(ertesi)12:00
+  h.at('2026-09-21', '13:00'); // savaş başladı, ilk dilim (12–18) sürüyor
+  await h.internal.clock.runClock('test');
+  assert.equal(h.get(`wars/${S.warId}`).status, 'active');
+  await h.act(S.A.ids[1], 'reportBet', { warId: S.warId });
+  assert.equal(h.get(`betReports/${S.warId}`).intelDeadlineMs, Date.UTC(2026, 8, 21, 15, 0), '18:00 İstanbul');
+  await h.act(S.bas, 'startBetOperation', { warId: S.warId });
+  assert.ok(h.get(`wars/${S.warId}`).sides.intel, 'hemen 3. taraf');
+  assert.ok(h.chat(S.A.gangId).some((m) => /dahil oldu/.test(m)));
+  await h.act(S.bas, 'rollDice', { warId: S.warId, side: 'intel' });
+  // ilk dilim bitti → artık müdahale yok
+  h.at('2026-09-21', '18:00');
+  await h.fails(S.A.ids[0], 'leakBet', { warId: S.warId });
+});
+
+test('v35: ilk dilim biterse ihbar edilemez', async () => {
+  const h = await createHarness();
+  const S = await setup(h);
+  await h.act(S.B.baba, 'respondBet', { warId: S.warId, accept: true });
+  h.at('2026-09-21', '18:00');
+  const err = await h.fails(S.A.ids[1], 'reportBet', { warId: S.warId });
+  assert.match(err.message, /ilk saldırı dilimi/);
+});

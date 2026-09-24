@@ -106,6 +106,11 @@ function AppIcon({ app, badge, dot, onOpen }) {
 export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }) {
   const [openApp, setOpenApp] = useState(initialApp);
   const [page, setPage] = useState(HOME_PAGE);
+  // Kısayoldan / bildirimden doğrudan açılan uygulama da "görüldü" sayılır
+  useEffect(() => {
+    if (initialApp === 'chatsapp') markChatsAppSeen();
+    if (initialApp === 'sixtagram') markSixtagramSeen();
+  }, [initialApp]);
   const pagerRef = useRef(null);
   // Ana ekrana her dönüşte kaldığın sayfaya (ilk açılışta ana sayfaya) kaydır
   useLayoutEffect(() => {

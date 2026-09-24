@@ -342,7 +342,7 @@ function ProposeSheet({ kind, gangId, out = [], blockedIds = [], onClose }) {
             <div className="gx-bet-target-main">
               <b>{shown.sides?.[shown.targetGangId]?.name}</b>
               <span className="gx-bet-stake">🎲 {fmt(shown.stake)}</span>
-              <span className="gx-bet-status">{pending ? '⏳ Cevap bekleniyor' : '✅ Kabul edildi'}</span>
+              <span className="gx-bet-status">{pending ? '⏳ Cevap bekleniyor' : `✅ ${fmtClock(shown.startsAtMs)}`}</span>
             </div>
             {pending && (
               <Btn small kind="danger" busy={busy === `wd_${pending.id}`} onClick={() => run('withdrawBet', { warId: pending.id }, { key: `wd_${pending.id}`, success: '↩️ Teklif geri çekildi' })}>
@@ -472,25 +472,28 @@ export default function WarsTab({ org, d }) {
   const doRoll = useCallback(() => call('rollDice', rolling.payload), [call, rolling]);
   const join = (war, payload, side) => setRolling({ war, payload: { warId: war.id, ...payload }, side });
 
+  const nowMin = useNow(30_000);
   const L = useMemo(() => {
     const active = wars.active;
+    // v35: kabul edilmiş bahis başlama dilimi gelince hemen oynanır (saat turunu beklemez)
+    const liveBets = wars.all.filter((w) => w.type === 'bet' && (w.status === 'active' || (w.status === 'accepted' && nowMin >= w.startsAtMs)) && nowMin < w.endsAtMs);
     const trade = active.filter((w) => w.type === 'trade');
     const attacksOnDef = (def) => wars.all.filter((w) => (w.type === 'sabotage' || w.type === 'intelop') && w.defenseWarId === def.id && w.status === 'active').sort((a, b) => (b.display?.attacker || 0) - (a.display?.attacker || 0));
-    if (isIntel) return { trade, ops: active.filter((w) => w.type === 'intelop'), bets: active.filter((w) => w.type === 'bet' && w.sides?.intel), attacksOnDef };
+    if (isIntel) return { trade, ops: active.filter((w) => w.type === 'intelop'), bets: liveBets.filter((w) => w.sides?.intel), attacksOnDef };
     const allyIds = new Set(d.alliances.filter((a) => ['active', 'ending'].includes(a.status)).flatMap((a) => a.gangIds).filter((g) => g !== gangId));
     return {
       trade,
       attacksOnDef,
-      bets: active.filter((w) => w.type === 'bet' && w.gangIds?.includes(gangId)),
+      bets: liveBets.filter((w) => w.gangIds?.includes(gangId)),
       myAttacks: active.filter((w) => w.type === 'sabotage' && w.attackerGangId === gangId),
       myDefs: active.filter((w) => w.type === 'defense' && w.defenderGangId === gangId && w.announced),
       allyDefs: active.filter((w) => w.type === 'defense' && allyIds.has(w.defenderGangId) && w.announced),
       betOffersIn: wars.all.filter((w) => w.type === 'bet' && w.status === 'offered' && w.targetGangId === gangId),
-      betOffersOut: wars.all.filter((w) => w.type === 'bet' && ['offered', 'accepted'].includes(w.status) && w.proposerGangId === gangId),
-      betsAccepted: wars.all.filter((w) => w.type === 'bet' && w.status === 'accepted' && w.targetGangId === gangId),
+      betOffersOut: wars.all.filter((w) => w.type === 'bet' && (w.status === 'offered' || (w.status === 'accepted' && nowMin < w.startsAtMs)) && w.proposerGangId === gangId),
+      betsAccepted: wars.all.filter((w) => w.type === 'bet' && w.status === 'accepted' && nowMin < w.startsAtMs && w.targetGangId === gangId),
       allianceIn: d.alliances.filter((a) => a.status === 'requested' && a.requestedBy !== gangId),
     };
-  }, [wars, isIntel, d.alliances, gangId]);
+  }, [wars, isIntel, d.alliances, gangId, nowMin]);
 
   const sideKey = isIntel ? 'intel' : gangId;
   const tradePos = (w) => {
@@ -653,7 +656,7 @@ export default function WarsTab({ org, d }) {
         L.betOffersOut.map((w) => (
           <Card key={w.id} className="gx-pending">
             <span>
-              🎲 <b>Bahisli savaş</b> · {w.sides?.[w.targetGangId]?.name} · {fmt(w.stake)} · {w.status === 'offered' ? '⏳ cevap bekleniyor' : '✅ yarın 00:00'}
+              🎲 <b>Bahisli savaş</b> · {w.sides?.[w.targetGangId]?.name} · {fmt(w.stake)} · {w.status === 'offered' ? '⏳ cevap bekleniyor' : `✅ ${fmtClock(w.startsAtMs)} · ⏱ ${fmtCountdown(w.startsAtMs - nowMin)}`}
             </span>
             {lead && w.status === 'offered' && (
               <Btn small kind="ghost" busy={busy === `wd_${w.id}`} onClick={() => run('withdrawBet', { warId: w.id }, { key: `wd_${w.id}`, success: 'Teklif geri çekildi' })}>
@@ -666,7 +669,7 @@ export default function WarsTab({ org, d }) {
         L.betsAccepted.map((w) => (
           <Card key={w.id} className="gx-pending">
             <span>
-              🎲 <b>Bahisli savaş</b> · {w.sides?.[w.proposerGangId]?.name} · {fmt(w.stake)} · ✅ yarın 00:00
+              🎲 <b>Bahisli savaş</b> · {w.sides?.[w.proposerGangId]?.name} · {fmt(w.stake)} · ✅ {fmtClock(w.startsAtMs)} · ⏱ {fmtCountdown(w.startsAtMs - nowMin)}
             </span>
           </Card>
         ))}

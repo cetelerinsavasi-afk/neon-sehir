@@ -16,6 +16,8 @@ function getLastSeenChatsApp() {
 /** ChatsApp ekranı açıldığında çağrılır — "yeni mesaj" rozetini temizler. */
 export function markChatsAppSeen() {
   localStorage.setItem(CHATSAPP_SEEN_KEY, String(Date.now()));
+  // açık rozetler (telefon, harita kısayolu) hemen sönsün
+  window.dispatchEvent(new Event('neon-chatsapp-seen'));
 }
 
 function getLastSeenSixtagram() {
@@ -43,6 +45,12 @@ export function useUnreadNotifications() {
 
   const smsUnreadCount = messages.filter((m) => !m.read).length;
 
+  const [seenTick, setSeenTick] = useState(0);
+  useEffect(() => {
+    const on = () => setSeenTick((n) => n + 1);
+    window.addEventListener('neon-chatsapp-seen', on);
+    return () => window.removeEventListener('neon-chatsapp-seen', on);
+  }, []);
   useEffect(() => {
     if (!user || chatMessages.length === 0) {
       setChatsAppHasNew(false);
@@ -53,7 +61,7 @@ export function useUnreadNotifications() {
     const latestMs = latest?.createdAt?.toMillis?.() ?? 0;
     // Kendi gönderdiğin mesajlar "yeni bildirim" saydırmasın.
     setChatsAppHasNew(latestMs > lastSeen && latest?.uid !== user.uid);
-  }, [chatMessages, user]);
+  }, [chatMessages, user, seenTick]);
 
   // Sixtagram'da "yeni post var mı" — en son postun createdAtMs'ini,
   // Sixtagram'ın son açılış zamanıyla karşılaştırır (ChatsApp'la aynı

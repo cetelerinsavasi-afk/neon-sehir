@@ -101,3 +101,7 @@ Kontrol listesi: `03-KURULUM-TEST-YAYIN.md`.
 
 ## v34 — ayrılma senaryolarında oylamalar, tekrar giriş yasağı, REC sayacı
 Oylamalar başlatan/hedef ayrılsa da sürer ve kurala göre sonuçlanır (bkz. 02). Çıkılan çeteye aynı gün girilemez (listede 🔒 00:00). Oylama, kişinin oylama başladığındaki üyeliğine (stint) bağlı — çık-gir ile sonuç atlatılamaz. Sixtagram/TV videolarında REC sayacı her döngüde sıfırlanıyor. Testler: 98/98.
+
+
+## v35 — dilime bağlı bahisli savaş, ChatsApp kısayolu bildirimi
+Bahis kabulden sonraki ilk saldırı diliminde başlar, 24 saat sürer; başlangıç/bitiş her 5 dakikalık saat turunda işlenir, başlama anında zar saat turunu beklemez. İstihbarat müdahalesi ilk dilimin sonuna kadar. v34'ten kalan kabul edilmiş bahisler ilk saat turunda yeni kurala taşınır (ör. 14:00'te → 18:00). Haritadaki ChatsApp kısayolunda yeni mesaj noktası; ChatsApp açılınca rozetler hemen söner. Testler: 102/102.
