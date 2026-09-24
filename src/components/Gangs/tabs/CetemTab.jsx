@@ -3,7 +3,7 @@
 // gönderim, ittifaklar (not / iptal), devirme / ayaklanma, çeteden ayrıl.
 import { useState } from 'react';
 import { limit, orderBy } from 'firebase/firestore';
-import { fmtDateTime, useGang, useGangAction, useQueryData } from '../GangContext';
+import { fmtDateTime, istHour, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
 import { AmountInput, Btn, Card, Chips, Confirm, Logo, RankBadge, Sheet } from '../ui';
 import { EditProfileSheet, KasaLine, MemberCard, RankTree, useMyWallet } from '../shared';
 import { DIST_GROUPS, GANG_RULES, LEADERS, RANK_ICONS, fmt } from '../gangConstants';
@@ -17,10 +17,11 @@ function MemberSheet({ member, myRank, onClose }) {
   const canRespect = myRank === 'baba' && !member.respected;
   const canKick = (myRank === 'baba' && (t === 'tetikci' || t === 'comez')) || (myRank === 'sagkol' && t === 'comez');
   const canKickVote = (KICK_VOTE_TARGETS[myRank] || []).includes(t);
+  const voteOpen = istHour(useNow(30_000)) < 12;
   const C = {
     respect: { icon: '🎩', title: `${member.name} için saygı göster`, lines: [`✦ +${fmt(GANG_RULES.RESPECT_PRESTIGE)}`], label: 'Saygı göster', act: () => run('giveRespect', { targetId: member.id }, { success: '🎩 Saygı gösterildi' }) },
     kick: { icon: '🚫', title: `${member.name} çeteden atılsın mı?`, lines: ['Prestiji kalıcı silinir.'], label: 'At', danger: true, act: () => run('kickMember', { targetId: member.id }, { success: '🚫 Üye atıldı' }) },
-    kickVote: { icon: '🗳️', title: `${member.name} için çıkarma oylaması`, lines: [], label: 'Talep et', act: () => run('requestVote', { type: 'kick', targetId: member.id }, { success: "🗳️ Talep alındı — 00:00'da başlar" }) },
+    kickVote: { icon: '🗳️', title: `${member.name} için çıkarma oylaması`, lines: [], label: 'Başlat', act: () => run('requestVote', { type: 'kick', targetId: member.id }, { success: '🗳️ Oylama başladı' }) },
   };
   const c = ask ? C[ask] : null;
   return (
@@ -34,8 +35,8 @@ function MemberSheet({ member, myRank, onClose }) {
       <div className="gx-stack">
         {canRespect && <Btn block onClick={() => setAsk('respect')}>🎩 Saygı göster (+{fmt(GANG_RULES.RESPECT_PRESTIGE)})</Btn>}
         {canKickVote && (
-          <Btn block kind="ghost" onClick={() => setAsk('kickVote')}>
-            🗳️ Çıkarma oylaması başlat
+          <Btn block kind="ghost" disabled={!voteOpen} onClick={() => setAsk('kickVote')}>
+            {voteOpen ? '🗳️ Çıkarma oylaması başlat' : '🔒 🗳️ 00:00–12:00'}
           </Btn>
         )}
         {canKick && (
@@ -224,6 +225,8 @@ export default function CetemTab({ d }) {
   const baba = byRank('baba')[0];
   const canDevirme = rank === 'sagkol' && (d.me?.prestige || 0) > (baba?.prestige || 0);
   const myLeaderPending = d.pending.filter((p) => p.type !== 'kick');
+  const voteOpen = istHour(useNow(30_000)) < 12;
+  const leadershipVote = d.votes.some((v) => v.type !== 'kick' && v.status === 'active');
   const card = (m) => (
     <MemberCard
       key={m.id}
@@ -289,16 +292,18 @@ export default function CetemTab({ d }) {
               </div>
             ))
           ) : (
-            <div className="gx-row-2">
-              {canDevirme && (
-                <Btn kind="primary" onClick={() => setLead('devirme')}>
-                  🗡️ Devir
+            leadershipVote ? null : (
+              <div className="gx-row-2">
+                {canDevirme && (
+                  <Btn kind="primary" disabled={!voteOpen} onClick={() => setLead('devirme')}>
+                    {voteOpen ? '🗡️ Devir' : '🔒 🗡️ 00:00–12:00'}
+                  </Btn>
+                )}
+                <Btn kind="danger" disabled={!voteOpen} onClick={() => setLead('ayaklanma')}>
+                  {voteOpen ? '🔥 Ayaklan' : '🔒 🔥 00:00–12:00'}
                 </Btn>
-              )}
-              <Btn kind="danger" onClick={() => setLead('ayaklanma')}>
-                🔥 Ayaklan
-              </Btn>
-            </div>
+              </div>
+            )
           )}
         </div>
       )}
@@ -344,7 +349,7 @@ export default function CetemTab({ d }) {
           busy={busy === 'requestVote'}
           onCancel={() => setLead(null)}
           onConfirm={async () => {
-            await run('requestVote', { type: lead }, { success: "🤫 Talep gizlice alındı — 00:00'da başlar" });
+            await run('requestVote', { type: lead }, { success: '🗳️ Oylama başladı' });
             setLead(null);
           }}
         />

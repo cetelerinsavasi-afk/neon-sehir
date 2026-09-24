@@ -2621,3 +2621,72 @@ textarea.gx-input {
 .gx-shop-row .gx-amount {
   flex-basis: 100%;
 }
+
+/* v33: 3 taraflı bahis savaşı */
+.gx-three {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 4px;
+}
+.gx-three-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 90px) 1fr auto;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.gx-three-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gx-three-bar {
+  height: 7px;
+  border-radius: 999px;
+  background: #0a0f1a;
+  overflow: hidden;
+}
+.gx-three-bar > div {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--neon-pink);
+}
+.gx-three-row.mine .gx-three-bar > div {
+  background: var(--neon-cyan);
+}
+.gx-three-row.mine {
+  font-weight: 700;
+}
+.gx-hide-warn {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(25, 232, 255, 0.45);
+  background: rgba(25, 232, 255, 0.08);
+  color: var(--neon-cyan);
+  font-weight: 700;
+  font-size: 14px;
+  text-align: center;
+}
+.gx-bet-pair {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 14px;
+}
+/* v33: sekme bildirim noktası */
+.gx-subnav-icon {
+  position: relative;
+}
+.gx-subnav-dot {
+  position: absolute;
+  top: -2px;
+  right: -6px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--neon-pink);
+  box-shadow: 0 0 6px var(--neon-pink);
+  border: 1.5px solid #070a12;
+}

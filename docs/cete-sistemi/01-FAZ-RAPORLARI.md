@@ -88,3 +88,12 @@ Kontrol listesi: `03-KURULUM-TEST-YAYIN.md`.
 **Oyun geneli:** seyyar satıcı 1000 altın (sunucu + Şüphe paneli + buton); borçluyken park satışı mesajı "X altına sattın. Y altın borçlarına gitti."; yeni görevler 16–20 (avatar, ChatsApp, silah geliştirme malzemesi, silah geliştirme, çeteye gir; otomatik geçişler: avatar var / 2.-3. seviye silah var / zaten çetede); 2. elden (ve çete depolarından) yasaklı madde / silah / araba / malzeme alımı ilgili görevleri tamamlar; görev 2 adı güncellendi; telefon ekranı gerçek telefon görünümüne geçti (durum çubuğu, saat widget'ı, ikon ızgarası, dock, home çubuğu).
 **Açılış:** `gangAdmin` + test şifresi kaldırıldı; canlı dünya ilk istekte transaction ile kurulur/açılır; bakım `liveOpen:false`. Test personaları sadece önizlemede.
 **Testler:** 90/90.
+
+
+## v33 — bildirimler, yeni oylama, bahse müdahale, telefon sayfaları
+**Çete:** alt çubuktaki Çeteler butonunda ve çete içi sekmelerde "yapılacak bir şey var" noktası (yeni mesaj — kanal bazında; katılabileceğin savaş + boş pencere; gelen teklif; oy vermediğin oylama; alabileceğin dağıtım; İstihbarat operasyon/ihbar fırsatı). "1 savaş hakkın var" sadece katılınabilecek savaş varken. Bahis kartlarında "Bahisli savaş" etiketi. İstihbarata katılırken "🤫 İyi gizlendiğinden emin ol".
+**Oylama:** 00:00–12:00 anında başlar, 00:00'da biter (çete + İstihbarat); 12:00 sonrası butonlar 🔒.
+**Bahse İstihbarat müdahalesi:** ihbar / içerik açma / 100.000'lik operasyon; 00:00'da 3 taraflı savaş; en güçlü tüm bahsi alır.
+**Telefon:** 3 sayfa yana kaydırılır — solda Neon TV (TV uygulaması kaldırıldı), ortada ana ekran, sağda Altın Mağazası · Neon Şehir (Sokak Rehberi, tasarım birebir) · Bi fikrin mi var? (fikir/hata/soru, 7 gün herkese açık liste, Instagram @cetelerinsavasi).
+**Rehber metni:** "Devirme ve Ayaklanma" sayfasındaki eski oylama satırı yeni kurala göre güncellendi.
+**Testler:** 93/93.

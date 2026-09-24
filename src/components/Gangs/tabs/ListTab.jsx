@@ -82,6 +82,7 @@ function JoinIntelSheet({ onClose }) {
         Kod adın
         <input className="gx-input" maxLength={GANG_RULES.CODENAME_MAX} value={code} onChange={(e) => setCode(e.target.value)} placeholder="ör. Baykuş" />
       </label>
+      <div className="gx-hide-warn">🤫 İyi gizlendiğinden emin ol</div>
       <Btn
         block
         disabled={!ok || code.trim().length < GANG_RULES.CODENAME_MIN}

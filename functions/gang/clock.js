@@ -215,31 +215,53 @@ export function createClock(core, actions) {
       const war = (await tx.get(ctx.ref.war(warId))).data();
       if (!war || war.status !== 'active' || war.dateKey !== dayKey) return { skipped: true };
       const [a, b] = war.gangIds;
-      const [ga, gb] = await Promise.all([tx.get(ctx.ref.gang(a)), tx.get(ctx.ref.gang(b))]);
+      const hasIntel = Boolean(war.sides?.intel);
+      const [ga, gb, intelSt] = await Promise.all([tx.get(ctx.ref.gang(a)), tx.get(ctx.ref.gang(b)), hasIntel ? tx.get(ctx.ref.intelState()) : null]);
       const aliveA = ga.data()?.status === 'active';
       const aliveB = gb.data()?.status === 'active';
       const pa = totals[a] || 0;
       const pb = totals[b] || 0;
+      const pi = totals.intel || 0;
       const pot = war.stake * 2;
+      // Yaşayan taraflar arasında EN GÜÇLÜ kazanır (İstihbarat varsa 3 taraf).
+      // Tek yaşayan çete kalmışsa ve İstihbarat yoksa o çete kazanır (eski kural).
+      // En yüksek güçte eşitlik → bahisler çetelere iade.
+      const alive = [aliveA && [a, pa], aliveB && [b, pb], hasIntel && ['intel', pi]].filter(Boolean);
       let winner = null;
-      if (aliveA && !aliveB) winner = a;
-      else if (aliveB && !aliveA) winner = b;
-      else if (aliveA && aliveB && pa !== pb) winner = pa > pb ? a : b;
-      if (winner) {
+      if (!hasIntel && alive.length === 1) winner = alive[0][0];
+      else if (alive.length > 0) {
+        const top = Math.max(...alive.map((x) => x[1]));
+        const tops = alive.filter((x) => x[1] === top);
+        if (tops.length === 1) winner = tops[0][0];
+      }
+      if (winner === 'intel') {
+        if (intelSt?.exists) tx.update(ctx.ref.intelState(), { kasa: FV.increment(pot) });
+        else tx.set(ctx.ref.intelState(), { kasa: pot, kasaAtMidnight: 0, midnightDateKey: ctx.dateKey, distributableLeft: 0 });
+        ledger(tx, ctx, { type: 'bet_payout_intel', amount: pot, from: { kind: 'escrow', id: warId }, to: { kind: 'intel', id: 'main' }, refId: warId, actorId: 'system' });
+      } else if (winner) {
         tx.update(ctx.ref.gangState(winner), { kasa: FV.increment(pot) });
         ledger(tx, ctx, { type: 'bet_payout', amount: pot, from: { kind: 'escrow', id: warId }, to: { kind: 'gang', id: winner }, refId: warId, actorId: 'system' });
       } else {
-        for (const [g, alive] of [[a, aliveA], [b, aliveB]]) {
-          if (alive) tx.update(ctx.ref.gangState(g), { kasa: FV.increment(war.stake) });
-          ledger(tx, ctx, { type: alive ? 'bet_refund' : 'bet_refund_burn', amount: war.stake, from: { kind: 'escrow', id: warId }, to: alive ? { kind: 'gang', id: g } : { kind: 'burn' }, refId: warId, actorId: 'system' });
+        for (const [g, al] of [[a, aliveA], [b, aliveB]]) {
+          if (al) tx.update(ctx.ref.gangState(g), { kasa: FV.increment(war.stake) });
+          ledger(tx, ctx, { type: al ? 'bet_refund' : 'bet_refund_burn', amount: war.stake, from: { kind: 'escrow', id: warId }, to: al ? { kind: 'gang', id: g } : { kind: 'burn' }, refId: warId, actorId: 'system' });
         }
       }
-      tx.update(ctx.ref.war(warId), { status: 'resolved', activeGangIds: [], resolvedAtMs: ctx.now, display: { [a]: pa, [b]: pb }, result: { winner, totals: { [a]: pa, [b]: pb }, pot } });
-      for (const [g, alive] of [[a, aliveA], [b, aliveB]]) {
-        if (!alive) continue;
-        const txt = winner === g ? `🏆 Bahisli savaşı kazandınız! +${pot.toLocaleString('tr-TR')} kasaya.` : winner ? '☠️ Bahisli savaşı kaybettiniz.' : '🤝 Bahisli savaş berabere — bahisler iade edildi.';
+      const disp = { [a]: pa, [b]: pb, ...(hasIntel ? { intel: pi } : {}) };
+      tx.update(ctx.ref.war(warId), { status: 'resolved', activeGangIds: [], resolvedAtMs: ctx.now, display: disp, result: { winner, totals: disp, pot } });
+      for (const [g, al] of [[a, aliveA], [b, aliveB]]) {
+        if (!al) continue;
+        const txt =
+          winner === g
+            ? `🏆 Bahisli savaşı kazandınız! +${pot.toLocaleString('tr-TR')} kasaya.`
+            : winner === 'intel'
+              ? '🕵️ Bahisli savaşı İstihbarat kazandı — tüm bahsi aldı.'
+              : winner
+                ? '☠️ Bahisli savaşı kaybettiniz.'
+                : '🤝 Bahisli savaş berabere — bahisler iade edildi.';
         gangLog(tx, ctx, g, winner === g ? '🏆' : winner ? '☠️' : '🤝', txt);
       }
+      if (hasIntel) core.announceIntel(tx, ctx, winner === 'intel' ? '🏆' : '☠️', winner === 'intel' ? `Bahisli savaşı kazandık! +${pot.toLocaleString('tr-TR')} İstihbarat kasasına.` : 'Bahisli savaşı kaybettik.');
       ctx.logs.push({ gang: 'bet_resolved', world: ctx.worldId, warId, winner });
       return { winner };
     });
@@ -506,6 +528,7 @@ export function createClock(core, actions) {
           endsAtMs: midnightMsOf(addDays(ctx.dateKey, 1)),
         });
         tx.update(p.ref, { status: 'started', voteId: voteRef.id, startDateKey: ctx.dateKey });
+        tx.set(ctx.ref.voteLock(gangId, p.type === 'kick' ? `kick_${String(p.targetId).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80)}` : 'leadership'), { voteId: voteRef.id, endsAtMs: midnightMsOf(addDays(ctx.dateKey, 1)) });
         started += 1;
         const label = p.type === 'devirme' ? 'Devirme' : p.type === 'ayaklanma' ? 'Ayaklanma' : 'Çıkarma';
         for (const id of voterIds) notify(tx, ctx, id, `🗳️ ${label} oylaması başladı (${gang.name}). 24 saat içinde oyunu kullan.`, 'vote');
@@ -659,21 +682,40 @@ export function createClock(core, actions) {
           const w = (await tx.get(d.ref)).data();
           if (!w || w.status !== 'accepted' || w.dateKey > ctx.dateKey) return;
           const [a, b] = w.gangIds;
-          const [ga, gb] = await Promise.all([tx.get(ctx.ref.gang(a)), tx.get(ctx.ref.gang(b))]);
+          const [ga, gb, repSnap] = await Promise.all([tx.get(ctx.ref.gang(a)), tx.get(ctx.ref.gang(b)), tx.get(ctx.ref.betReport(d.id))]);
           const aliveA = ga.data()?.status === 'active';
           const aliveB = gb.data()?.status === 'active';
+          const op = repSnap.data()?.opStarted ? repSnap.data() : null;
           if (w.dateKey < ctx.dateKey || !aliveA || !aliveB) {
             // başlayamadı (kaçırılmış gün ya da taraf dağıldı) → iade
             for (const [g, alive] of [[a, aliveA], [b, aliveB]]) {
               if (alive) tx.update(ctx.ref.gangState(g), { kasa: FV.increment(w.stake) });
               ledger(tx, ctx, { type: alive ? 'bet_refund' : 'bet_refund_burn', amount: w.stake, from: { kind: 'escrow', id: d.id }, to: alive ? { kind: 'gang', id: g } : { kind: 'burn' }, refId: d.id, actorId: 'system' });
             }
+            if (op && !op.opRefunded) {
+              // savaş hiç başlamadı → İstihbaratın operasyon ücreti iade
+              tx.update(ctx.ref.intelState(), { kasa: FV.increment(Number(op.opCost || 0)) });
+              tx.update(repSnap.ref, { opRefunded: true });
+              ledger(tx, ctx, { type: 'intel_bet_op_refund', amount: Number(op.opCost || 0), from: { kind: 'system' }, to: { kind: 'intel', id: 'main' }, refId: d.id, actorId: 'system' });
+            }
             tx.update(d.ref, { status: 'cancelled', activeGangIds: [], resolvedAtMs: ctx.now });
             return;
           }
-          tx.update(d.ref, { status: 'active', visibility: 'public', startsAtMs: midnightMsOf(ctx.dateKey), endsAtMs: midnightMsOf(addDays(ctx.dateKey, 1)) });
-          gangLog(tx, ctx, a, '⚔️', `Bahisli savaş başladı: ${w.sides[b]?.name}`);
-          gangLog(tx, ctx, b, '⚔️', `Bahisli savaş başladı: ${w.sides[a]?.name}`);
+          const upd = { status: 'active', visibility: 'public', startsAtMs: midnightMsOf(ctx.dateKey), endsAtMs: midnightMsOf(addDays(ctx.dateKey, 1)) };
+          if (op) {
+            // İstihbarat müdahalesi: savaş 3 taraflı başlar
+            upd['sides.intel'] = { orgType: 'intel', orgId: 'main', name: INTEL.NAME, logo: INTEL.LOGO, role: 'intel' };
+            upd['display.intel'] = 0;
+            upd.intelInvolved = true;
+          }
+          tx.update(d.ref, upd);
+          if (op) {
+            for (const g of [a, b]) core.announce(tx, ctx, g, '🕵️', `İstihbarat ${w.sides[a]?.name} ⚔️ ${w.sides[b]?.name} bahisli savaşına dahil oldu! Artık 3 taraf var — en güçlü taraf tüm bahsi alır.`);
+            core.announceIntel(tx, ctx, '⚔️', `Bahisli savaş başladı: ${w.sides[a]?.name} ⚔️ ${w.sides[b]?.name} — İstihbarat 3. taraf. Kazanan tüm bahsi alır.`);
+          } else {
+            gangLog(tx, ctx, a, '⚔️', `Bahisli savaş başladı: ${w.sides[b]?.name}`);
+            gangLog(tx, ctx, b, '⚔️', `Bahisli savaş başladı: ${w.sides[a]?.name}`);
+          }
         })
       );
     }

@@ -13,6 +13,7 @@ import OnNumaraFullScreen from './components/OnNumaraScreen/OnNumaraFullScreen';
 import ProfileFullScreen from './components/ProfileFullScreen/ProfileFullScreen';
 import FutbolFullScreen from './components/FutbolScreen/FutbolFullScreen';
 import GangsFullScreen from './components/Gangs/GangsFullScreen';
+import { GangAlertsContext, useGangAlerts } from './components/Gangs/alerts';
 import ParkWorldScreen from './components/ParkWorldScreen/ParkWorldScreen';
 import BankWorldScreen from './components/BankWorldScreen/BankWorldScreen';
 import KarakolWorldScreen from './components/KarakolWorldScreen/KarakolWorldScreen';
@@ -65,6 +66,8 @@ let onboardingPoliceRuleMigrationTriggered = false;
 // SignInPrompt gösterilir.
 function GameShell() {
   const { user } = useAuth();
+  // Çeteler bildirim işaretleri (alt çubuk + çete içi sekmeler)
+  const gangAlerts = useGangAlerts(user?.uid);
   const [activeRegion, setActiveRegion] = useState(null);
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [phoneInitialApp, setPhoneInitialApp] = useState(null);
@@ -308,6 +311,7 @@ function GameShell() {
         onPhoneClick={() => setPhoneOpen(true)}
         onHeistClick={() => openHeistScreen(null)}
         onGangsClick={() => setGangsOpen(true)}
+        gangsBadge={gangAlerts.any}
         onFutbolClick={() => setFutbolOpen(true)}
       />
 
@@ -349,7 +353,11 @@ function GameShell() {
       />
       {profileOpen && <ProfileFullScreen onClose={() => setProfileOpen(false)} />}
       {futbolOpen && <FutbolFullScreen onClose={() => setFutbolOpen(false)} />}
-      {gangsOpen && <GangsFullScreen onClose={() => setGangsOpen(false)} />}
+      {gangsOpen && (
+        <GangAlertsContext.Provider value={gangAlerts}>
+          <GangsFullScreen onClose={() => setGangsOpen(false)} />
+        </GangAlertsContext.Provider>
+      )}
 
       <RegionModal
         region={activeRegion}

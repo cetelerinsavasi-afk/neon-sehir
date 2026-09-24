@@ -88,6 +88,8 @@ export const GANG = {
   KICK_MIN_RATIO_EXCLUSIVE: 0.51, // ONAYLI: %51'den fazla
   // ONAYLI: başarısız ayaklanmada başlatan çeteden atılır.
   AYAKLANMA_FAIL_KICKS_INITIATOR: true,
+  // v33: oylamalar 00:00–12:00 arasında başlatılır, ANINDA başlar ve o gecenin 00:00'ında biter.
+  VOTE_START_DEADLINE_HOUR: 12,
   SUGGESTION_MIN_INTERVAL_MS: 60 * 1000,
 
   // --- Metin limitleri ---
@@ -104,6 +106,10 @@ export const INTEL = {
   CODENAME_MAX: 16,
   REPORT_PRESTIGE: 1_000_000, // ONAYLI: tır ihbarı
   LEAK_PRESTIGE: 1_000_000, // ONAYLI: tır içeriği sızdırma
+  // v33: bahisli savaşa müdahale — ihbar/açma ödülü tırlarla aynı; operasyon sabit ücret
+  BET_REPORT_PRESTIGE: 1_000_000,
+  BET_LEAK_PRESTIGE: 1_000_000,
+  BET_OP_PRICE: 100_000,
   TAKEDOWN_PRESTIGE: 10_000_000, // ONAYLI: çete çökertme
   POLICE_REWARD_PRESTIGE_PER_GOLD: 1, // ONAYLI: yakalama ödülü = prestij (1:1)
   WAR_WIN_KASA_RATIO: 1 / 10, // ONAYLI: pazar savaşı kazanırsa kullanılan gücün 1/10'u

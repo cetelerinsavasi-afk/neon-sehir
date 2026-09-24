@@ -133,6 +133,9 @@ export function createGangSystem(deps) {
     castIntelVote: intel.castIntelVote,
     reportTruck: intel.reportTruck,
     leakTruck: intel.leakTruck,
+    reportBet: intel.reportBet,
+    leakBet: intel.leakBet,
+    startBetOperation: intel.startBetOperation,
     intelDecision: intel.intelDecision,
   };
 

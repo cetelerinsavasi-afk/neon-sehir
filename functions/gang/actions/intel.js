@@ -5,6 +5,7 @@
 // şartı yok), karşı istihbarat yok, operasyona ekstra maliyet yok (sadece
 // sabotaj ücreti).
 import { GANG, INTEL, atLeast } from '../config.js';
+import { addDays, midnightMsOf } from '../time.js';
 
 const CODENAME_RE = /^[\p{L}\p{N}_\-. ]+$/u;
 
@@ -219,6 +220,111 @@ export function createIntelActions(core) {
   }
 
   // ---------------------------------------------------------------------------
+  // v33 — BAHİSLİ SAVAŞA MÜDAHALE
+  //  Bahis kabul edildikten sonra, savaş başlamadan (o gecenin 00:00'ından)
+  //  önce:
+  //   - İHBAR: iki çeteden birinde en az Tetikçi olan İstihbarat üyesi
+  //     (+1M). İstihbarat bahsi görür ama TUTARI göremez.
+  //   - İÇERİĞİ AÇMA: iki çeteden birinde en az Kıdemli olan İstihbarat
+  //     üyesi (+1M). İstihbarat toplam bahsi (havuzu) görür.
+  //   - OPERASYON: Başkan/Şef, İstihbarat kasasından 100.000 ile başlatır
+  //     (tutar görülmeden de başlatılabilir). Savaş 00:00'da 3 taraflı
+  //     başlar; en güçlü taraf havuzun tamamını alır.
+  //  00:00'dan sonra İstihbarat müdahale edemez. Çeteler müdahaleyi savaş
+  //  başlarken (00:00) öğrenir.
+  // ---------------------------------------------------------------------------
+  async function readBetForIntel(tx, ctx, warId) {
+    const war = (await tx.get(ctx.ref.war(warId))).data();
+    if (!war || war.type !== 'bet') fail('not-found', 'Bahis bulunamadı.');
+    if (war.status !== 'accepted' || ctx.now >= midnightMsOf(war.dateKey)) fail('failed-precondition', "Bu bahse artık müdahale edilemez (savaş 00:00'da başladı ya da iptal oldu).");
+    return war;
+  }
+
+  async function reportBet(ctx, data) {
+    const warId = String(data.warId || '');
+    return core.db.runTransaction(async (tx) => {
+      const membership = await readMembership(tx, ctx, ctx.actorId);
+      const rid = requireIntel(membership);
+      const war = await readBetForIntel(tx, ctx, warId);
+      if (!membership.gangId || !war.gangIds.includes(membership.gangId)) fail('permission-denied', 'Bu bahis senin çetenin değil.');
+      const [meSnap, rosterSnap, repSnap] = await Promise.all([
+        tx.get(ctx.ref.member(membership.gangId, ctx.actorId)),
+        tx.get(ctx.ref.roster(rid)),
+        tx.get(ctx.ref.betReport(warId)),
+      ]);
+      if (!atLeast(meSnap.data()?.rank, 'tetikci')) fail('permission-denied', 'Bahsi ihbar etmek için çetende en az Tetikçi olmalısın.');
+      if (repSnap.exists) fail('already-exists', 'Bu bahis zaten ihbar edildi.');
+      const [a, b] = war.gangIds;
+      tx.set(ctx.ref.betReport(warId), {
+        warId,
+        gangIds: war.gangIds,
+        names: { [a]: war.sides?.[a]?.name || '', [b]: war.sides?.[b]?.name || '' },
+        logos: { [a]: war.sides?.[a]?.logo || null, [b]: war.sides?.[b]?.logo || null },
+        dateKey: war.dateKey,
+        reportedByCode: rosterSnap.data().codeName,
+        reportedAtMs: ctx.now,
+        leaked: false,
+        pot: null,
+        opStarted: false,
+      });
+      tx.update(ctx.ref.roster(rid), { prestige: FV.increment(INTEL.BET_REPORT_PRESTIGE) });
+      announceIntel(tx, ctx, '🎲', `${rosterSnap.data().codeName}, ${war.sides?.[a]?.name} ⚔️ ${war.sides?.[b]?.name} bahisli savaşını ihbar etti.`);
+      ctx.logs.push({ gang: 'intel_bet_report', world: ctx.worldId, warId });
+      return { reported: true, prestige: INTEL.BET_REPORT_PRESTIGE };
+    });
+  }
+
+  async function leakBet(ctx, data) {
+    const warId = String(data.warId || '');
+    return core.db.runTransaction(async (tx) => {
+      const membership = await readMembership(tx, ctx, ctx.actorId);
+      const rid = requireIntel(membership);
+      const war = await readBetForIntel(tx, ctx, warId);
+      if (!membership.gangId || !war.gangIds.includes(membership.gangId)) fail('permission-denied', 'Bu bahis senin çetenin değil.');
+      const [meSnap, rosterSnap, repSnap] = await Promise.all([
+        tx.get(ctx.ref.member(membership.gangId, ctx.actorId)),
+        tx.get(ctx.ref.roster(rid)),
+        tx.get(ctx.ref.betReport(warId)),
+      ]);
+      if (!repSnap.exists) fail('failed-precondition', 'Önce bahis ihbar edilmeli.');
+      if (!atLeast(meSnap.data()?.rank, 'kidemli')) fail('permission-denied', 'Bahsin içeriğini açmak için çetende en az Kıdemli olmalısın.');
+      if (repSnap.data().leaked) fail('already-exists', 'Bu bahsin içeriği zaten açıldı.');
+      const pot = Number(war.stake || 0) * 2;
+      tx.update(ctx.ref.betReport(warId), { leaked: true, pot, leakedByCode: rosterSnap.data().codeName, leakedAtMs: ctx.now });
+      tx.update(ctx.ref.roster(rid), { prestige: FV.increment(INTEL.BET_LEAK_PRESTIGE) });
+      announceIntel(tx, ctx, '📦', `${rosterSnap.data().codeName} bahsin içeriğini açtı — toplam bahis ${pot.toLocaleString('tr-TR')}.`);
+      return { leaked: true, pot, prestige: INTEL.BET_LEAK_PRESTIGE };
+    });
+  }
+
+  async function startBetOperation(ctx, data) {
+    const warId = String(data.warId || '');
+    return core.db.runTransaction(async (tx) => {
+      const guard = await core.requestGuard(tx, ctx, data.requestId);
+      if (guard.done) return guard.result;
+      const membership = await readMembership(tx, ctx, ctx.actorId);
+      const rid = requireIntel(membership);
+      const war = await readBetForIntel(tx, ctx, warId);
+      const [me, repSnap, stSnap] = await Promise.all([tx.get(ctx.ref.roster(rid)), tx.get(ctx.ref.betReport(warId)), tx.get(ctx.ref.intelState())]);
+      if (!['baskan', 'sef'].includes(me.data()?.rank)) fail('permission-denied', 'Operasyonu sadece Başkan ve Şefler başlatabilir.');
+      if (!repSnap.exists) fail('failed-precondition', 'Önce bahis ihbar edilmeli.');
+      if (repSnap.data().opStarted) fail('already-exists', 'Bu bahse zaten operasyon var.');
+      const price = INTEL.BET_OP_PRICE;
+      const state = stSnap.data() || {};
+      if (Number(state.kasa || 0) < price) fail('failed-precondition', `Operasyon ücreti ${price.toLocaleString('tr-TR')} — İstihbarat kasasında yeterli para yok.`);
+      tx.update(ctx.ref.intelState(), { kasa: FV.increment(-price) });
+      tx.update(ctx.ref.betReport(warId), { opStarted: true, opByCode: me.data().codeName, opAtMs: ctx.now, opCost: price });
+      core.ledger(tx, ctx, { type: 'intel_bet_op_cost', amount: price, from: { kind: 'intel', id: 'main' }, to: { kind: 'burn' }, before: state.kasa, refId: warId });
+      const [a, b] = war.gangIds;
+      announceIntel(tx, ctx, '🎯', `${me.data().codeName}, ${war.sides?.[a]?.name} ⚔️ ${war.sides?.[b]?.name} bahsine operasyon başlattı (${price.toLocaleString('tr-TR')}). Savaş 00:00'da 3 taraflı başlar.`);
+      ctx.logs.push({ gang: 'intel_bet_op', world: ctx.worldId, warId });
+      const res = { started: true, price };
+      guard.save(res);
+      return res;
+    });
+  }
+
+  // ---------------------------------------------------------------------------
   // KARAR PANELİ — İstihbarat üyesi Mafya Babası olduysa sonraki 00:00'a kadar:
   //  'disband' → çete dağıtılır (tüm üyeler atılır), çökertme prestiji
   //  'stay'    → İstihbarattan (sessizce) ayrılır, Baba olarak devam
@@ -334,35 +440,49 @@ export function createIntelActions(core) {
     });
   }
 
+  // v33: oylama 00:00–12:00 arasında başlatılır, ANINDA başlar, o gecenin
+  // 00:00'ında biter. Oy hakkı başladığı andaki Başkan + Şefler + Uzmanlar.
   async function requestIntelKickVote(ctx, data) {
     const targetRosterId = String(data.targetRosterId || '');
+    if (ctx.hour >= GANG.VOTE_START_DEADLINE_HOUR) fail('deadline-exceeded', 'Oylama sadece 00:00–12:00 arasında başlatılabilir.');
     return core.db.runTransaction(async (tx) => {
       const membership = await readMembership(tx, ctx, ctx.actorId);
       const rid = requireIntel(membership);
       if (!targetRosterId || targetRosterId === rid) fail('invalid-argument', 'Geçersiz hedef.');
-      const [me, target, pend, act] = await Promise.all([
+      const lockRef = ctx.ref.intelVoteLock(targetRosterId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80));
+      const [me, target, act, rosterSnap, lockSnap] = await Promise.all([
         tx.get(ctx.ref.roster(rid)),
         tx.get(ctx.ref.roster(targetRosterId)),
-        tx.get(ctx.ref.intelPending().where('status', '==', 'pending')),
         tx.get(ctx.ref.intelVotes().where('status', '==', 'active')),
+        tx.get(ctx.ref.rosterCol()),
+        tx.get(lockRef),
       ]);
       if (!target.exists) fail('failed-precondition', 'Bu ajan artık İstihbaratta değil.');
       if (!intelKickVoteAllowed(me.data()?.rank, target.data().rank)) fail('permission-denied', 'Bu üye için çıkarma oylaması başlatamazsın.');
-      // Başkalarının gizli talepleri ifşa edilmez: sadece kendi talebin ve süren oylamalar kontrol edilir.
-      // Aynı hedefe birden çok gizli talep varsa 00:00'da ilki başlar, diğerleri sessizce düşer.
       if (act.docs.some((d) => d.data().targetRosterId === targetRosterId)) fail('already-exists', 'Bu üye için zaten bir oylama var.');
-      if (pend.docs.some((d) => d.data().targetRosterId === targetRosterId && d.data().initiatorRosterId === rid)) fail('already-exists', 'Bu üye için zaten talebin var.');
-      const ref = ctx.ref.intelPending().doc();
-      tx.set(ref, {
+      if (lockSnap.exists && Number(lockSnap.data().endsAtMs || 0) > ctx.now) {
+        const lv = (await tx.get(ctx.ref.intelVotes().doc(lockSnap.data().voteId))).data();
+        if (lv?.status === 'active') fail('already-exists', 'Bu üye için zaten bir oylama var.');
+      }
+      const voters = rosterSnap.docs.filter((d) => ['baskan', 'sef', 'uzman'].includes(d.data().rank)).map((d) => d.id);
+      const endsAtMs = midnightMsOf(addDays(ctx.dateKey, 1));
+      const vRef = ctx.ref.intelVotes().doc();
+      tx.set(vRef, {
         type: 'kick',
-        status: 'pending',
-        initiatorRosterId: rid,
+        status: 'active',
         initiatorCode: me.data().codeName,
         targetRosterId,
         targetCode: target.data().codeName,
-        requestedAtMs: ctx.now,
+        targetWasBaskan: target.data().rank === 'baskan',
+        voterIds: voters,
+        yes: 0,
+        no: 0,
+        votedCount: 0,
+        startsAtMs: ctx.now,
+        endsAtMs,
       });
-      return { pendingId: ref.id };
+      tx.set(lockRef, { voteId: vRef.id, endsAtMs });
+      return { voteId: vRef.id };
     });
   }
 
@@ -499,6 +619,9 @@ export function createIntelActions(core) {
     sendIntelChat,
     reportTruck,
     leakTruck,
+    reportBet,
+    leakBet,
+    startBetOperation,
     intelDecision,
     awardPoliceReward,
     intelDefaults,

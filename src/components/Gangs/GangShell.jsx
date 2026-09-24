@@ -5,6 +5,7 @@
 // kilitli). Üye açınca Savaş sekmesine düşer; hem çetede hem İstihbarattaysa
 // önce İstihbarat gösterilir. Çete ↔ İstihbarat geçişi "Çeteler" sekmesinden.
 import { useEffect, useRef, useState } from 'react';
+import { useGangAlertsCtx } from './alerts';
 import { useGangData, useIntelData } from './data';
 import { Gold, Logo, RankBadge } from './ui';
 import { INTEL_LOGO, fmt } from './gangConstants';
@@ -51,6 +52,12 @@ export default function GangShell({ membership }) {
     setOrg((o) => (o === 'intel' && !inIntel ? 'gang' : o === 'gang' && !inGang && inIntel ? 'intel' : o));
   }, [inGang, inIntel]);
   const member = org === 'intel' ? inIntel : inGang;
+  // Bildirim noktaları: bulunduğun örgütün sekmeleri; diğer örgütte bir şey
+  // varsa "Çeteler" sekmesinde (örgüt değiştirme yeri) nokta.
+  const alerts = useGangAlertsCtx();
+  const cur = alerts ? (org === 'intel' ? alerts.intel : alerts.gang) : {};
+  const other = alerts ? (org === 'intel' ? alerts.gang : alerts.intel) : {};
+  const dotOf = (id) => (id === 'ceteler' ? Object.values(other || {}).some(Boolean) && (org === 'intel' ? inGang : inIntel) : Boolean(cur?.[id]));
   const activeTab = member ? tab : 'ceteler';
 
   const open = (o) => {
@@ -81,6 +88,7 @@ export default function GangShell({ membership }) {
             <button key={t.id} role="tab" aria-selected={activeTab === t.id} className={`gx-subnav-btn${activeTab === t.id ? ' active' : ''}${locked ? ' locked' : ''}`} disabled={locked} onClick={() => pick(t.id)}>
               <span className="gx-subnav-icon" aria-hidden="true">
                 {locked ? '🔒' : t.icon}
+                {!locked && activeTab !== t.id && dotOf(t.id) && <span className="gx-subnav-dot" />}
               </span>
               <span className="gx-subnav-label">{t.label}</span>
             </button>

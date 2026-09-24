@@ -19794,3 +19794,56 @@ const gangFunctions = createGangFunctions({
 });
 export const gangAction = gangFunctions.gangAction;
 export const gangClock = gangFunctions.gangClock;
+
+// =============================================================================
+// v33 — "BİR FİKRİN Mİ VAR?" (telefon): oyuncular fikir / hata / soru yazar.
+// Yazılanlar 7 gün boyunca herkese listelenir. Sadece sunucu yazar; istemci
+// okur (firestore.rules → feedback). Kişi başı günde en fazla 3 gönderi.
+// Eski kayıtlar listeden 7 gün sonra düşer (createdAtMs filtresi); istenirse
+// Firestore TTL politikası `expiresAt` alanına kurulup otomatik silinebilir.
+// =============================================================================
+const FEEDBACK_KINDS = ['fikir', 'hata', 'soru'];
+const FEEDBACK_MIN = 10;
+const FEEDBACK_MAX = 1000;
+const FEEDBACK_PER_DAY = 3;
+const FEEDBACK_LIST_DAYS = 7;
+
+export const submitFeedback = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const kind = FEEDBACK_KINDS.includes(request.data?.kind) ? request.data.kind : 'fikir';
+  const text = String(request.data?.text || '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  if (text.length < FEEDBACK_MIN) {
+    throw new HttpsError('invalid-argument', `En az ${FEEDBACK_MIN} karakter yaz.`);
+  }
+  if (text.length > FEEDBACK_MAX) {
+    throw new HttpsError('invalid-argument', `En fazla ${FEEDBACK_MAX} karakter yazabilirsin.`);
+  }
+  const dateKey = istanbulDateKey();
+  const userRef = db.collection('users').doc(uid);
+  const limitRef = db.collection('feedbackLimits').doc(`${uid}_${dateKey}`);
+  const fbRef = db.collection('feedback').doc();
+  const nowMs = Date.now();
+  await db.runTransaction(async (tx) => {
+    const [userSnap, limitSnap] = await Promise.all([tx.get(userRef), tx.get(limitRef)]);
+    const count = limitSnap.exists ? limitSnap.data().count || 0 : 0;
+    if (count >= FEEDBACK_PER_DAY) {
+      throw new HttpsError('resource-exhausted', 'Bugün yeterince yazdın, yarın tekrar yazabilirsin.');
+    }
+    const user = userSnap.data() || {};
+    tx.set(limitRef, { count: count + 1, uid, dateKey }, { merge: true });
+    tx.set(fbRef, {
+      uid,
+      displayName: user.displayName || 'Oyuncu',
+      avatar: user.avatar || null,
+      kind,
+      text,
+      createdAtMs: nowMs,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      expiresAt: admin.firestore.Timestamp.fromMillis(nowMs + FEEDBACK_LIST_DAYS * 24 * 3600 * 1000),
+    });
+  });
+  return { ok: true, id: fbRef.id };
+});

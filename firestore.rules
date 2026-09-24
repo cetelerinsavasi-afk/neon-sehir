@@ -236,6 +236,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // v33: "Bir fikrin mi var?" — herkes okur, sadece sunucu yazar (submitFeedback)
+    match /feedback/{id} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
     // parkPresence/{uid} — Park dünyasındaki canlı konum/pose/elde-tutulan
     // ürün/sohbet balonu. İSTİSNAİ OLARAK doğrudan istemci yazımına izin
     // verilir (her hareket karesinde Cloud Function çağırmak pratik değil
@@ -590,7 +596,7 @@ service cloud.firestore {
           allow read: if gangRankIn(w, g, ['baba', 'sagkol', 'kidemli'])
             && resource.data.createdAtMs >= gmem(w).gangJoinedAtMs;
         }
-        // Devirme/ayaklanma talepleri 00:00'a kadar GİZLİ: sadece başlatan görür.
+        // (v32'den kalan) bekleyen talepler: sadece başlatan görür. v33'te oylama anında başlar.
         match /pending/{id} {
           allow read: if inGang(w, g) && resource.data.initiatorId == request.auth.uid;
         }
@@ -629,6 +635,10 @@ service cloud.firestore {
         allow read: if inIntel(w);
       }
       match /intelReports/{r} {
+        allow read: if inIntel(w);
+      }
+      // v33: ihbar edilen bahisler (tutar sadece içerik açılınca yazılır)
+      match /betReports/{r} {
         allow read: if inIntel(w);
       }
       match /intelChat_genel/{id} {

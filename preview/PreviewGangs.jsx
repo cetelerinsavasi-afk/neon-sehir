@@ -5,6 +5,7 @@ import GangsFullScreen from '../src/components/Gangs/GangsFullScreen';
 import { GangProvider, useDocData } from '../src/components/Gangs/GangContext';
 import { GangHome } from '../src/components/Gangs/GangsScreen';
 import TestBar from './TestBar';
+import { GangAlertsContext, useGangAlerts } from '../src/components/Gangs/alerts';
 import '../src/components/Gangs/Gangs.css';
 
 function TestWorld({ persona }) {
@@ -24,13 +25,16 @@ export default function PreviewGangs() {
   const [persona, setPersona] = useState(null);
   const [ready, setReady] = useState(false);
   const { data: config } = useDocData('gangSystem/config');
+  const alerts = useGangAlerts('previewAdmin');
   useEffect(() => {
     window.__gang.system.handleAdmin({ auth: { uid: 'previewAdmin' }, data: { action: 'unlock', password: 'test' } }).finally(() => setReady(true));
   }, []);
   if (mode === 'live') {
     return (
       <>
-        <GangsFullScreen onClose={() => {}} />
+        <GangAlertsContext.Provider value={alerts}>
+          <GangsFullScreen onClose={() => {}} />
+        </GangAlertsContext.Provider>
         <button className="pv-mode" onClick={() => setMode('test')}>
           🧪
         </button>

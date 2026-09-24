@@ -175,6 +175,32 @@ function WindowBanner({ slot }) {
   );
 }
 
+// Bahis savaşına İstihbarat girdiyse: 3 taraf, en güçlü alır
+function ThreeWay({ war, mine }) {
+  const sides = sidesRanked(war);
+  const max = Math.max(1, ...sides.map((s) => s.power));
+  return (
+    <div className="gx-three">
+      {sides.map((s) => (
+        <div key={s.key} className={`gx-three-row${s.key === mine ? ' mine' : ''}`}>
+          <Logo logo={s.orgType === 'intel' ? INTEL_LOGO : s.logo} size={18} />
+          <span className="gx-three-name">{s.name}</span>
+          <div className="gx-three-bar">
+            <div style={{ width: `${(s.power / max) * 100}%` }} />
+          </div>
+          <b>{fmt(s.power)}</b>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Şu an katılınabilecek (başlamış, bitmemiş) savaşlar — "savaş hakkın var" yazısı ve bildirim işareti için
+export function joinableWars(L, now) {
+  const all = [...(L.trade || []), ...(L.bets || []), ...(L.myAttacks || []), ...(L.myDefs || []), ...(L.allyDefs || []), ...(L.ops || [])];
+  return all.filter((w) => now >= (w.startsAtMs || 0) && now < (w.endsAtMs || 0));
+}
+
 // Tırımıza saldıranların listesi (dokununca açılır)
 function AttackersSheet({ def, attackers, lead, onClose }) {
   const { run, busy } = useGangAction();
@@ -450,7 +476,7 @@ export default function WarsTab({ org, d }) {
     const active = wars.active;
     const trade = active.filter((w) => w.type === 'trade');
     const attacksOnDef = (def) => wars.all.filter((w) => (w.type === 'sabotage' || w.type === 'intelop') && w.defenseWarId === def.id && w.status === 'active').sort((a, b) => (b.display?.attacker || 0) - (a.display?.attacker || 0));
-    if (isIntel) return { trade, ops: active.filter((w) => w.type === 'intelop'), attacksOnDef };
+    if (isIntel) return { trade, ops: active.filter((w) => w.type === 'intelop'), bets: active.filter((w) => w.type === 'bet' && w.sides?.intel), attacksOnDef };
     const allyIds = new Set(d.alliances.filter((a) => ['active', 'ending'].includes(a.status)).flatMap((a) => a.gangIds).filter((g) => g !== gangId));
     return {
       trade,
@@ -488,7 +514,7 @@ export default function WarsTab({ org, d }) {
   return (
     <div className="gx-stack">
       {!isIntel && d.membership.intelDecisionGangId === gangId && d.membership.intelRosterId && d.rank === 'baba' && <IntelDecisionPanel />}
-      <WindowBanner slot={slot} />
+      {joinableWars(L, slot.now).length > 0 && <WindowBanner slot={slot} />}
       {!isIntel && lead && (
         <div className="gx-row-2">
           <Btn small kind="ghost" onClick={() => setPropose('bet')}>
@@ -519,11 +545,12 @@ export default function WarsTab({ org, d }) {
       })}
 
       {(L.bets || []).map((w) => {
-        const other = Object.keys(w.sides || {}).find((k) => k !== gangId);
+        const other = Object.keys(w.sides || {}).find((k) => k !== gangId && k !== 'intel');
+        const mine = isIntel ? 'intel' : gangId;
         return (
-          <WarRow key={w.id} war={w} slotUsed={slot.used} onOpen={() => setDetail({ war: w, side: gangId })} onJoin={() => join(w, {}, d.gang?.name)}>
-            <Tug us={w.display?.[gangId] || 0} them={w.display?.[other] || 0} usLabel={d.gang?.name} themLabel={w.sides?.[other]?.name} />
-            <div className="dim gx-mini">🎲 Ödül {fmt(w.stake * 2)}</div>
+          <WarRow key={w.id} war={w} slotUsed={slot.used} onOpen={() => setDetail({ war: w, side: mine })} onJoin={() => join(w, isIntel ? { side: 'intel' } : {}, isIntel ? 'İstihbarat' : d.gang?.name)}>
+            {w.sides?.intel ? <ThreeWay war={w} mine={mine} /> : <Tug us={w.display?.[gangId] || 0} them={w.display?.[other] || 0} usLabel={d.gang?.name} themLabel={w.sides?.[other]?.name} />}
+            <div className="dim gx-mini">🏆 {fmt(w.stake * 2)}</div>
           </WarRow>
         );
       })}
@@ -626,7 +653,7 @@ export default function WarsTab({ org, d }) {
         L.betOffersOut.map((w) => (
           <Card key={w.id} className="gx-pending">
             <span>
-              🎲 {w.sides?.[w.targetGangId]?.name}: {fmt(w.stake)} · {w.status === 'offered' ? '⏳ cevap bekleniyor' : '✅ yarın 00:00'}
+              🎲 <b>Bahisli savaş</b> · {w.sides?.[w.targetGangId]?.name} · {fmt(w.stake)} · {w.status === 'offered' ? '⏳ cevap bekleniyor' : '✅ yarın 00:00'}
             </span>
             {lead && w.status === 'offered' && (
               <Btn small kind="ghost" busy={busy === `wd_${w.id}`} onClick={() => run('withdrawBet', { warId: w.id }, { key: `wd_${w.id}`, success: 'Teklif geri çekildi' })}>
@@ -639,7 +666,7 @@ export default function WarsTab({ org, d }) {
         L.betsAccepted.map((w) => (
           <Card key={w.id} className="gx-pending">
             <span>
-              🎲 {w.sides?.[w.proposerGangId]?.name} · {fmt(w.stake)} · ✅ yarın 00:00
+              🎲 <b>Bahisli savaş</b> · {w.sides?.[w.proposerGangId]?.name} · {fmt(w.stake)} · ✅ yarın 00:00
             </span>
           </Card>
         ))}

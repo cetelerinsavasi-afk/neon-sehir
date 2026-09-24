@@ -40,7 +40,7 @@ export function createWarActions(core) {
       const wallet = ctx.isTest ? await readWallet(tx, ctx, ctx.actorId) : null;
       let sideKey;
       let org; // { type:'gang', gangId, member } | { type:'intel', rosterId, roster }
-      if (war.type === 'trade' && wantIntel) {
+      if ((war.type === 'trade' || (war.type === 'bet' && war.sides?.intel)) && wantIntel) {
         const rid = requireIntel(membership);
         const r = (await tx.get(ctx.ref.roster(rid))).data();
         if (!r) fail('failed-precondition', 'İstihbarat üyesi değilsin.');

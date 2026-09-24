@@ -3,7 +3,7 @@
 // atma (anında) / çıkarma oylaması, ayrılma. İstihbarata bağış yoktur,
 // maaş yoktur; Başkan kasadan kendine para alamaz.
 import { useState } from 'react';
-import { useGangAction } from '../GangContext';
+import { istHour, useGangAction, useNow } from '../GangContext';
 import { AmountInput, Btn, Card, Chips, Confirm, RankBadge, Sheet } from '../ui';
 import { KasaLine, MemberCard, RankTree } from '../shared';
 import { DIST_GROUPS, GANG_RULES, INTEL_LEADERS, RANK_ICONS, fmt } from '../gangConstants';
@@ -20,6 +20,7 @@ function MemberSheet({ member, myRank, onClose }) {
   const [ask, setAsk] = useState(null);
   const canKick = (DIRECT[myRank] || []).includes(member.rank);
   const canVote = voteAllowed(myRank, member.rank);
+  const voteOpen = istHour(useNow(30_000)) < 12;
   return (
     <Sheet title={member.codeName} icon={RANK_ICONS[member.rank]} onClose={onClose}>
       <div className="gx-member-detail">
@@ -33,8 +34,8 @@ function MemberSheet({ member, myRank, onClose }) {
           </Btn>
         )}
         {canVote && (
-          <Btn block kind="ghost" onClick={() => setAsk('vote')}>
-            🗳️ Çıkarma oylaması başlat
+          <Btn block kind="ghost" disabled={!voteOpen} onClick={() => setAsk('vote')}>
+            {voteOpen ? '🗳️ Çıkarma oylaması başlat' : '🔒 🗳️ 00:00–12:00'}
           </Btn>
         )}
       </div>
@@ -48,11 +49,11 @@ function MemberSheet({ member, myRank, onClose }) {
               ? []
               : [member.rank === 'baskan' ? '%66+ evet' : '%51 evet']
           }
-          confirmLabel={ask === 'kick' ? 'At' : 'Talep et'}
+          confirmLabel={ask === 'kick' ? 'At' : 'Başlat'}
           busy={Boolean(busy)}
           onCancel={() => setAsk(null)}
           onConfirm={async () => {
-            const r = ask === 'kick' ? await run('kickIntelMember', { targetRosterId: member.id }, { success: '🚫 Atıldı' }) : await run('requestIntelKickVote', { targetRosterId: member.id }, { success: "🗳️ Talep alındı — 00:00'da başlar" });
+            const r = ask === 'kick' ? await run('kickIntelMember', { targetRosterId: member.id }, { success: '🚫 Atıldı' }) : await run('requestIntelKickVote', { targetRosterId: member.id }, { success: '🗳️ Oylama başladı' });
             setAsk(null);
             if (r) onClose();
           }}
@@ -116,6 +117,7 @@ export default function IntelTab({ d }) {
       {code != null && (
         <Sheet title="Kod adını değiştir" icon="✏️" onClose={() => setCode(null)}>
           <input className="gx-input" maxLength={GANG_RULES.CODENAME_MAX} value={code} onChange={(e) => setCode(e.target.value)} />
+          <div className="gx-hide-warn">🤫 İyi gizlendiğinden emin ol</div>
           <Btn
             block
             busy={busy === 'changeCodeName'}

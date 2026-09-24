@@ -128,3 +128,16 @@
   border-color: #b16bff;
   box-shadow: 0 0 24px rgba(177, 107, 255, 0.5);
 }
+
+/* v33: Çeteler butonunda "yapılacak bir şey var" noktası */
+.bottom-bar-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--neon-pink);
+  border: 2px solid #070a12;
+  box-shadow: 0 0 8px var(--neon-pink);
+}

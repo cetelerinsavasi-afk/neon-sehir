@@ -437,3 +437,147 @@
     padding-top: 12px;
   }
 }
+
+/* ==== v33: yana kaydırmalı sayfalar ==== */
+.phone-pager {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.phone-pager::-webkit-scrollbar {
+  display: none;
+}
+.phone-page {
+  flex: 0 0 100%;
+  width: 100%;
+  min-width: 0;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.phone-page-extra .phone-apps-grid {
+  padding-top: 36px;
+}
+
+/* sol sayfa: TV — cam panel üzerinde, haber sayfası gibi */
+.phone-page-tv {
+  padding: 6px 12px 12px;
+}
+.phone-tv-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 6px 10px;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+.phone-tv-logo {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  font-size: 18px;
+  background: linear-gradient(160deg, #ff4d6d, #8f1030);
+}
+.phone-tv-body {
+  flex: 1;
+  border-radius: 20px;
+  padding: 10px;
+  background: rgba(10, 14, 24, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  color: var(--text);
+}
+.phone-tv-idle {
+  height: 100%;
+  min-height: 200px;
+  display: grid;
+  place-items: center;
+  font-size: 48px;
+  opacity: 0.35;
+}
+
+/* sayfa noktaları */
+.phone-dots {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0 10px;
+  flex-shrink: 0;
+}
+.phone-dot {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  transition: width 0.2s ease, background 0.2s ease;
+}
+.phone-dot.on {
+  background: #fff;
+}
+.phone-dot.tv {
+  width: 9px;
+  height: 7px;
+  border-radius: 2px;
+}
+/* TV sayfasında dock gizli (telefonlardaki haber ekranı gibi) */
+.phone-screen.on-tv .phone-dock {
+  display: none;
+}
+.phone-screen.on-tv .phone-dots {
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+}
+
+/* yeni uygulama ikonları */
+.tone-rehber {
+  background:
+    radial-gradient(circle at 70% 20%, rgba(25, 232, 255, 0.55), transparent 55%),
+    linear-gradient(160deg, #1a1033, #070a12);
+  border: 1px solid rgba(25, 232, 255, 0.55);
+  color: #fff;
+  font-family: 'Oswald', 'Arial Narrow', Impact, sans-serif;
+  font-size: 34px;
+  text-shadow:
+    0 0 8px #19e8ff,
+    0 0 18px #ff2e8c;
+}
+.tone-fikir {
+  background: linear-gradient(160deg, #ffe066, #ff9f1c);
+}
+
+/* rehber tam ekran (kendi başlığı ve gezinmesi var) */
+.phone-app-body.full {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.phone-app-body.full > * {
+  flex: 1;
+  min-height: 0;
+}
+.phone-page-extra .phone-app-name {
+  white-space: normal;
+  max-width: 84px;
+  line-height: 1.2;
+}

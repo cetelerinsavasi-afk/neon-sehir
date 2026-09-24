@@ -3,13 +3,15 @@
 ## 1. Deploy (v32 — admin paneli ve şifre yok)
 Çeteler oyunculara **açık** gelir. Secret / şifre / ADMIN_UID ayarı gerekmez.
 ```bash
-npm --prefix functions test        # 90 otomatik test
+npm --prefix functions test        # 93 otomatik test
 firebase deploy --only firestore:rules,functions
 npm run build && (frontend deploy'unuz)
 ```
 - `gangAdmin` fonksiyonu v32'de **kaldırıldı**. Daha önce deploy edildiyse `firebase deploy --only functions` onu silmek için onay ister (evet deyin; CI'da `--force`). Başka hiçbir fonksiyon silinmez.
 - Önceden `firebase functions:secrets:set GANG_TEST_PASSWORD` yaptıysanız secret artık kullanılmıyor; isterseniz Secret Manager'dan silebilirsiniz (zorunlu değil).
 - **Composite index gerekmez**: tüm sorgular tek alanlı ya da sadece eşitlik filtreli.
+- v33 yeni fonksiyon: `submitFeedback` ("Bi fikrin mi var?"). Yeni koleksiyonlar: `feedback` (herkes okur), `feedbackLimits` (kapalı), `gangWorlds/*/betReports` (İstihbarat okur), `*/voteLocks` (kapalı). Rules dosyası güncel — `firestore:rules` ile birlikte deploy edin.
+- İsteğe bağlı: 7 günü geçen fikirleri otomatik silmek için Firestore konsolunda `feedback` koleksiyonuna `expiresAt` alanıyla TTL politikası ekleyin (eklenmese de liste 7 günü göstermez).
 
 ## 2. Canlı dünya nasıl açılır
 - İlk oyuncu Çeteler'e girdiğinde (ya da deploy sonrası ilk 5 dakikalık `gangClock` turunda) sunucu **tek seferlik** olarak `gangWorlds/live_<tarih>_<rastgele>` dünyasını kurar ve `gangSystem/config = { liveOpen: true, liveWorldId, autoOpened: true }` yazar. İşlem transaction içindedir; aynı anda gelen istekler ikinci bir dünya kuramaz.

@@ -3,7 +3,7 @@ import './BottomBar.css';
 
 // Alt çubuk: Çeteler – Soygun – Telefon – Futbol (Profil sekmesi kaldırıldı;
 // profil haritadaki "Ev"den açılır).
-export default function BottomBar({ onPhoneClick, onHeistClick, onGangsClick, onFutbolClick }) {
+export default function BottomBar({ onPhoneClick, onHeistClick, onGangsClick, onFutbolClick, gangsBadge = false }) {
   const { totalBadge } = useUnreadNotifications();
 
   return (
@@ -13,6 +13,7 @@ export default function BottomBar({ onPhoneClick, onHeistClick, onGangsClick, on
           <path d="M5 21V3" strokeLinecap="round" />
           <path d="M5 4h12l-2.5 4L17 12H5" fill="currentColor" fillOpacity="0.25" strokeLinejoin="round" />
         </svg>
+        {gangsBadge && <span className="bottom-bar-dot" />}
       </button>
       <button className="bottom-bar-btn danger" onClick={onHeistClick} aria-label="Mekanlar">
         <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor">

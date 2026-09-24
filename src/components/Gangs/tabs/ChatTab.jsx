@@ -8,12 +8,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { limit, orderBy, where } from 'firebase/firestore';
 import { fmtClock, useGang, useGangAction, useQueryData } from '../GangContext';
+import { markGangChatSeen, useGangAlertsCtx } from '../alerts';
 import { Btn, Chips, Logo } from '../ui';
 import { GANG_RULES, RANK_ICONS, atLeast } from '../gangConstants';
 import AvatarSvg from '../../AvatarSvg/AvatarSvg';
 
 export default function ChatTab({ org, d }) {
-  const { path, actorId } = useGang();
+  const { path, actorId, worldId } = useGang();
   const { run, busy } = useGangAction();
   const isIntel = org === 'intel';
   const ranked = isIntel ? ['baskan', 'sef', 'uzman'].includes(d.rank) : atLeast(d.rank, 'kidemli');
@@ -30,6 +31,15 @@ export default function ChatTab({ org, d }) {
     if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
   }, [docs.length, channel]);
 
+  // Bu kanal görüldü → bildirim noktası söner
+  const latestMs = docs[0]?.createdAtMs || 0;
+  useEffect(() => {
+    if (!latestMs || channel === 'tum') return;
+    markGangChatSeen(actorId, worldId, isIntel ? `i:${channel}` : `g:${d.gangId}:${channel}`, latestMs);
+  }, [latestMs, channel, actorId, worldId, isIntel, d.gangId]);
+  const alerts = useGangAlertsCtx();
+  const unread = alerts ? (isIntel ? alerts.chans?.intel : alerts.chans?.gang) || {} : {};
+
   const send = async () => {
     const t = text.trim();
     if (!t) return;
@@ -37,9 +47,10 @@ export default function ChatTab({ org, d }) {
     if (r) setText('');
   };
 
+  const dot = (id) => (unread[id] && channel !== id ? ' 🔴' : '');
   const channels = isIntel
-    ? [{ id: 'genel', label: 'Genel', icon: '💬' }, ...(ranked ? [{ id: 'yonetim', label: 'Rütbeliler', icon: '🔒' }] : [])]
-    : [{ id: 'genel', label: 'Çete', icon: '💬' }, ...(ranked ? [{ id: 'yonetim', label: 'Yönetim', icon: '🔒' }] : []), { id: 'tum', label: 'Tüm Çeteler', icon: '🌐' }];
+    ? [{ id: 'genel', label: `Genel${dot('genel')}`, icon: '💬' }, ...(ranked ? [{ id: 'yonetim', label: `Rütbeliler${dot('yonetim')}`, icon: '🔒' }] : [])]
+    : [{ id: 'genel', label: `Çete${dot('genel')}`, icon: '💬' }, ...(ranked ? [{ id: 'yonetim', label: `Yönetim${dot('yonetim')}`, icon: '🔒' }] : []), { id: 'tum', label: 'Tüm Çeteler', icon: '🌐' }];
 
   return (
     <div className="gx-chat">

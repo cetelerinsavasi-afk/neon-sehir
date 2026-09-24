@@ -298,6 +298,9 @@ export const markMessageRead = (messageId) =>
 
 export const sendChatMessage = (text) => httpsCallable(functions, 'sendChatMessage')({ text });
 
+// v33: "Bi fikrin mi var?" — fikir / hata / soru gönder (7 gün listelenir)
+export const submitFeedback = (kind, text) => httpsCallable(functions, 'submitFeedback')({ kind, text });
+
 // --- Ev: oyuncu profili ---
 
 export const setDisplayName = (displayName) =>

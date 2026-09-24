@@ -229,7 +229,7 @@ test('İstihbarat atma: Başkan → Ajan/Muhbir, Şef → Muhbir anında; oylama
   await h.fails(B.id, 'requestIntelKickVote', { targetRosterId: M2.rid }); // doğrudan atabileceğini oylatamaz
   await h.act(S1.id, 'requestIntelKickVote', { targetRosterId: B.rid }); // Şef Başkanı oylatabilir
   await h.act(U.id, 'requestIntelKickVote', { targetRosterId: S2.rid });
-  await h.nextDay();
+  await h.fails(S2.id, 'requestIntelKickVote', { targetRosterId: B.rid }); // aynı hedefe ikinci oylama yok
   const votes = Object.entries(h.db._dump('gangWorlds/test/intel/main/votes/'))
     .filter(([p, v]) => !p.includes('/ballots/') && v.status === 'active')
     .map(([p, v]) => ({ id: p.split('/').pop(), ...v }));
