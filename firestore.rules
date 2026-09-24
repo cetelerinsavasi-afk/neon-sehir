@@ -659,6 +659,13 @@ service cloud.firestore {
         match /rolls/{r} {
           allow read: if warReadable(w, get(/databases/$(database)/documents/gangWorlds/$(w)/wars/$(id)).data);
         }
+        // v37: bahis tutarı/pot — sadece iki çetenin Baba · Sağ Kol · Kıdemli'si
+        // (Çömez ve Tetikçi göremez; İstihbarat tutarı ancak içerik açılınca görür)
+        match /secret/{s} {
+          allow read: if liveGangWorld(w) && hasGmem(w)
+            && gmem(w).gangId in get(/databases/$(database)/documents/gangWorlds/$(w)/wars/$(id)).data.gangIds
+            && gmem(w).gangRank in ['baba', 'sagkol', 'kidemli'];
+        }
       }
 
       // 6 saatlik pencere kilidi — sadece kendi kaydı ({uid}_{gün}_{pencere})

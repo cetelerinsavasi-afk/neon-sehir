@@ -3,6 +3,7 @@
 // alt sayfa (sheet), onay penceresi, ilerleme çubuğu, boş durum.
 import InfoIcon from '../InfoIcon/InfoIcon';
 import { RANK_ICONS, RANK_LABELS, fmt } from './gangConstants';
+import { useNow } from './GangContext';
 
 export function Logo({ logo, size = 44, className = '' }) {
   const l = logo || { emoji: '🏴', color: '#ffffff', bg: '#101318' };
@@ -218,6 +219,37 @@ export function AmountInput({ value, onChange, max, min = 0, step = 1, quick = G
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+// v36: son ana kadar geri sayım (ihbar / haraç / rüşvet). Son 30 dk kırmızı yanıp söner.
+export function fmtTimer(msLeft) {
+  const s = Math.max(0, Math.floor(msLeft / 1000));
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`;
+}
+export function Deadline({ untilMs, label = '' }) {
+  const now = useNow(1000);
+  const left = Number(untilMs || 0) - now;
+  if (left <= 0) return <span className="gx-deadline over">🔒 {label}</span>;
+  return (
+    <span className={`gx-deadline${left < 30 * 60_000 ? ' hot' : ''}`}>
+      ⏱ {fmtTimer(left)}
+      {label ? ` ${label}` : ''}
+    </span>
+  );
+}
+
+// İki çete yan yana: 🦅 A ⚔️ B 🦂 (bahis kartları)
+export function BetPair({ names, logos, gangIds }) {
+  return (
+    <div className="gx-bet-pair">
+      <Logo logo={logos[gangIds[0]]} size={24} />
+      <b>{names[gangIds[0]]}</b>
+      <span className="dim">⚔️</span>
+      <b>{names[gangIds[1]]}</b>
+      <Logo logo={logos[gangIds[1]]} size={24} />
     </div>
   );
 }

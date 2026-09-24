@@ -105,3 +105,16 @@ Oylamalar başlatan/hedef ayrılsa da sürer ve kurala göre sonuçlanır (bkz. 
 
 ## v35 — dilime bağlı bahisli savaş, ChatsApp kısayolu bildirimi
 Bahis kabulden sonraki ilk saldırı diliminde başlar, 24 saat sürer; başlangıç/bitiş her 5 dakikalık saat turunda işlenir, başlama anında zar saat turunu beklemez. İstihbarat müdahalesi ilk dilimin sonuna kadar. v34'ten kalan kabul edilmiş bahisler ilk saat turunda yeni kurala taşınır (ör. 14:00'te → 18:00). Haritadaki ChatsApp kısayolunda yeni mesaj noktası; ChatsApp açılınca rozetler hemen söner. Testler: 102/102.
+
+## v36 — bahis ihbarı iki çeteye eşit, geri sayımlar, bilgili onay
+- İhbar paneli: `🦅 A ⚔️ B 🦂` · `💰 Bahis: gizli` · `⏱ sayaç` · `📡 İhbar et · ✦ +1M`. Kabul eden çetenin üyeleri de teklif edeninkiler gibi görür; rütbe yetmiyorsa buton kilitli (`🔒 Tetikçi+`).
+- Butona basınca ihbar hemen gitmez: onay penceresi (`✦ +1.000.000 İstihbarat prestiji`, ne olacağı, bahis çifti ve sayaç) → "İhbar et" ile gerçekleşir. İçeriği açma ve operasyon da aynı.
+- Haraç/rüşvet: saldırganlar sayfasında 18:00'e sayaç; "Öde" onayı tutarı, paranın gideceği yeri ve sonucu gösterir.
+- Ortak `Deadline` bileşeni (ui.jsx), son 30 dk kırmızıya döner, süre bitince 🔒.
+- Sunucu değişmedi; testler 102/102.
+
+## v37 — bahis tutarı rütbelilere özel, canlı sayaç, önce çete
+- Sunucu: yeni bahislerde tutar `wars/{id}/secret/stake`'te; sonuçta pot da orada. `core.readBetStake` eski/yeni belgeyi okur. Eski belgeler saat turunda bir kez taşınır (kopyala → aynı işlemde sil, idempotent; `betSecretV37` bayrağı; hata varsa sonraki turda tekrar).
+- Kurallar: `wars/{id}/secret/*` sadece iki çetenin baba/sagkol/kidemli üyeleri.
+- UI: `PendingBetCard`, `BetAmount`, `LiveCountdown`; gelen teklif kartı aynı tasarım. `BetPair` ui.jsx'e taşındı.
+- Testler 105/105 (+3: gizlilik, iade yolları, eski veri taşıma).

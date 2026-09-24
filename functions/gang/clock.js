@@ -216,13 +216,13 @@ export function createClock(core, actions) {
       if (!war || war.status !== 'active' || Number(war.endsAtMs || 0) > ctx.now) return { skipped: true };
       const [a, b] = war.gangIds;
       const hasIntel = Boolean(war.sides?.intel);
-      const [ga, gb, intelSt] = await Promise.all([tx.get(ctx.ref.gang(a)), tx.get(ctx.ref.gang(b)), hasIntel ? tx.get(ctx.ref.intelState()) : null]);
+      const [ga, gb, intelSt, stake] = await Promise.all([tx.get(ctx.ref.gang(a)), tx.get(ctx.ref.gang(b)), hasIntel ? tx.get(ctx.ref.intelState()) : null, core.readBetStake(tx, ctx, warId, war)]);
       const aliveA = ga.data()?.status === 'active';
       const aliveB = gb.data()?.status === 'active';
       const pa = totals[a] || 0;
       const pb = totals[b] || 0;
       const pi = totals.intel || 0;
-      const pot = war.stake * 2;
+      const pot = stake * 2;
       // Yaşayan taraflar arasında EN GÜÇLÜ kazanır (İstihbarat varsa 3 taraf).
       // Tek yaşayan çete kalmışsa ve İstihbarat yoksa o çete kazanır (eski kural).
       // En yüksek güçte eşitlik → bahisler çetelere iade.
@@ -243,23 +243,26 @@ export function createClock(core, actions) {
         ledger(tx, ctx, { type: 'bet_payout', amount: pot, from: { kind: 'escrow', id: warId }, to: { kind: 'gang', id: winner }, refId: warId, actorId: 'system' });
       } else {
         for (const [g, al] of [[a, aliveA], [b, aliveB]]) {
-          if (al) tx.update(ctx.ref.gangState(g), { kasa: FV.increment(war.stake) });
-          ledger(tx, ctx, { type: al ? 'bet_refund' : 'bet_refund_burn', amount: war.stake, from: { kind: 'escrow', id: warId }, to: al ? { kind: 'gang', id: g } : { kind: 'burn' }, refId: warId, actorId: 'system' });
+          if (al) tx.update(ctx.ref.gangState(g), { kasa: FV.increment(stake) });
+          ledger(tx, ctx, { type: al ? 'bet_refund' : 'bet_refund_burn', amount: stake, from: { kind: 'escrow', id: warId }, to: al ? { kind: 'gang', id: g } : { kind: 'burn' }, refId: warId, actorId: 'system' });
         }
       }
       const disp = { [a]: pa, [b]: pb, ...(hasIntel ? { intel: pi } : {}) };
-      tx.update(ctx.ref.war(warId), { status: 'resolved', activeGangIds: [], resolvedAtMs: ctx.now, display: disp, result: { winner, totals: disp, pot } });
+      // v37: pot herkese açık savaş belgesine yazılmaz (rütbelilere özel belgede)
+      tx.update(ctx.ref.war(warId), { status: 'resolved', activeGangIds: [], resolvedAtMs: ctx.now, display: disp, result: { winner, totals: disp }, ...(war.stake != null ? { stake: FV.delete() } : {}) });
+      tx.set(ctx.ref.betSecret(warId), { stake, pot, gangIds: war.gangIds }, { merge: true });
       for (const [g, al] of [[a, aliveA], [b, aliveB]]) {
         if (!al) continue;
         const txt =
           winner === g
-            ? `🏆 Bahisli savaşı kazandınız! +${pot.toLocaleString('tr-TR')} kasaya.`
+            ? '🏆 Bahisli savaşı kazandınız! Tüm bahis kasaya.'
             : winner === 'intel'
               ? '🕵️ Bahisli savaşı İstihbarat kazandı — tüm bahsi aldı.'
               : winner
                 ? '☠️ Bahisli savaşı kaybettiniz.'
                 : '🤝 Bahisli savaş berabere — bahisler iade edildi.';
         gangLog(tx, ctx, g, winner === g ? '🏆' : winner ? '☠️' : '🤝', txt);
+        core.announceMgmt(tx, ctx, g, '💰', winner === g ? `Bahis: +${pot.toLocaleString('tr-TR')} kasaya.` : winner ? `Bahis: ${stake.toLocaleString('tr-TR')} kaybedildi.` : `Bahis: ${stake.toLocaleString('tr-TR')} iade edildi.`);
       }
       if (hasIntel) core.announceIntel(tx, ctx, winner === 'intel' ? '🏆' : '☠️', winner === 'intel' ? `Bahisli savaşı kazandık! +${pot.toLocaleString('tr-TR')} İstihbarat kasasına.` : 'Bahisli savaşı kaybettik.');
       ctx.logs.push({ gang: 'bet_resolved', world: ctx.worldId, warId, winner });
@@ -733,10 +736,12 @@ export function createClock(core, actions) {
           const w = (await tx.get(d.ref)).data();
           if (!w || w.status !== 'offered' || w.offeredDateKey >= ctx.dateKey) return;
           const alive = (await tx.get(ctx.ref.gang(w.proposerGangId))).data()?.status === 'active';
-          if (alive) tx.update(ctx.ref.gangState(w.proposerGangId), { kasa: FV.increment(w.stake) });
+          const stake = await core.readBetStake(tx, ctx, d.id, w);
+          if (alive) tx.update(ctx.ref.gangState(w.proposerGangId), { kasa: FV.increment(stake) });
           tx.update(d.ref, { status: 'expired', activeGangIds: [], resolvedAtMs: ctx.now });
-          ledger(tx, ctx, { type: alive ? 'bet_refund' : 'bet_refund_burn', amount: w.stake, from: { kind: 'escrow', id: d.id }, to: alive ? { kind: 'gang', id: w.proposerGangId } : { kind: 'burn' }, refId: d.id, actorId: 'system' });
-          if (alive) gangLog(tx, ctx, w.proposerGangId, '⌛', `Bahis teklifi cevapsız kaldı, ${w.stake.toLocaleString('tr-TR')} kasaya döndü.`);
+          ledger(tx, ctx, { type: alive ? 'bet_refund' : 'bet_refund_burn', amount: stake, from: { kind: 'escrow', id: d.id }, to: alive ? { kind: 'gang', id: w.proposerGangId } : { kind: 'burn' }, refId: d.id, actorId: 'system' });
+          if (alive) gangLog(tx, ctx, w.proposerGangId, '⌛', 'Bahis teklifi cevapsız kaldı, bahis kasaya döndü.');
+          if (alive) core.announceMgmt(tx, ctx, w.proposerGangId, '💰', `Cevapsız bahis: ${stake.toLocaleString('tr-TR')} kasaya döndü.`);
         })
       );
     }
@@ -749,10 +754,53 @@ export function createClock(core, actions) {
   //     taşınır: şu andan sonraki ilk dilimde başlar.
   //  2) başlama anı gelen bahis açılır (taraflardan biri dağıldıysa iade).
   //  3) bitiş anı gelen bahis sonuçlanır.
+  // v37 — BAHİS TUTARI GİZLİLİĞİ: tutar (stake) ve pot, herkesin okuyabildiği
+  // savaş belgesinden wars/{id}/secret/stake belgesine taşınır (Baba/Sağ Kol/
+  // Kıdemli okur). Önce kopyalanır, aynı işlemde savaş belgesinden silinir →
+  // veri kaybı yok; idempotent (alan yoksa hiçbir şey yapmaz).
+  async function migrateBetStake(ctx, warId) {
+    return db.runTransaction(async (tx) => {
+      const snap = await tx.get(ctx.ref.war(warId));
+      const w = snap.data();
+      if (!w || w.type !== 'bet') return false;
+      const hasPot = w.result && w.result.pot != null;
+      if (w.stake == null && !hasPot) return false;
+      const secret = (await tx.get(ctx.ref.betSecret(warId))).data() || {};
+      const data = { gangIds: w.gangIds || [] };
+      if (w.stake != null && secret.stake == null) data.stake = Number(w.stake) || 0;
+      if (hasPot && secret.pot == null) data.pot = Number(w.result.pot) || 0;
+      tx.set(ctx.ref.betSecret(warId), data, { merge: true });
+      const upd = {};
+      if (w.stake != null) upd.stake = FV.delete();
+      if (hasPot) upd['result.pot'] = FV.delete();
+      tx.update(ctx.ref.war(warId), upd);
+      return true;
+    });
+  }
+  async function migrateBetStakes(ctx) {
+    if (ctx.world?.betSecretV37) return 0;
+    const all = await ctx.ref.wars().where('type', '==', 'bet').get();
+    let n = 0;
+    let failed = 0;
+    for (const d of all.docs) {
+      const w = d.data();
+      if (w.stake == null && !(w.result && w.result.pot != null)) continue;
+      const ok = await safe(ctx, `bet-secret:${d.id}`, () => migrateBetStake(ctx, d.id));
+      if (ok == null) failed += 1;
+      else if (ok) n += 1;
+    }
+    if (failed > 0) return n; // bir sonraki turda tekrar denenir
+    await ctx.ref.world().set({ betSecretV37: true }, { merge: true });
+    ctx.world = { ...(ctx.world || {}), betSecretV37: true };
+    return n;
+  }
+
   async function processBets(ctx) {
+    await safe(ctx, 'bet-secret-migrate', () => migrateBetStakes(ctx));
     const acc = await ctx.ref.wars().where('type', '==', 'bet').where('status', '==', 'accepted').get();
     for (const d of acc.docs) {
       const w0 = d.data();
+      if (w0.stake != null) await safe(ctx, `bet-secret:${d.id}`, () => migrateBetStake(ctx, d.id));
       if (!w0.slotTiming && Number(w0.startsAtMs || 0) > ctx.now) {
         await safe(ctx, `bet-migrate:${d.id}`, () =>
           db.runTransaction(async (tx) => {
@@ -774,15 +822,15 @@ export function createClock(core, actions) {
           const w = (await tx.get(d.ref)).data();
           if (!w || w.status !== 'accepted' || Number(w.startsAtMs || 0) > ctx.now) return;
           const [a, b] = w.gangIds;
-          const [ga, gb, repSnap] = await Promise.all([tx.get(ctx.ref.gang(a)), tx.get(ctx.ref.gang(b)), tx.get(ctx.ref.betReport(d.id))]);
+          const [ga, gb, repSnap, stake] = await Promise.all([tx.get(ctx.ref.gang(a)), tx.get(ctx.ref.gang(b)), tx.get(ctx.ref.betReport(d.id)), core.readBetStake(tx, ctx, d.id, w)]);
           const aliveA = ga.data()?.status === 'active';
           const aliveB = gb.data()?.status === 'active';
           const op = repSnap.data()?.opStarted ? repSnap.data() : null;
           if (ctx.now >= Number(w.endsAtMs || 0) || !aliveA || !aliveB) {
             // başlayamadı (süre kaçtı ya da taraf dağıldı) → iade
             for (const [g, alive] of [[a, aliveA], [b, aliveB]]) {
-              if (alive) tx.update(ctx.ref.gangState(g), { kasa: FV.increment(w.stake) });
-              ledger(tx, ctx, { type: alive ? 'bet_refund' : 'bet_refund_burn', amount: w.stake, from: { kind: 'escrow', id: d.id }, to: alive ? { kind: 'gang', id: g } : { kind: 'burn' }, refId: d.id, actorId: 'system' });
+              if (alive) tx.update(ctx.ref.gangState(g), { kasa: FV.increment(stake) });
+              ledger(tx, ctx, { type: alive ? 'bet_refund' : 'bet_refund_burn', amount: stake, from: { kind: 'escrow', id: d.id }, to: alive ? { kind: 'gang', id: g } : { kind: 'burn' }, refId: d.id, actorId: 'system' });
             }
             if (op && !op.opRefunded) {
               tx.update(ctx.ref.intelState(), { kasa: FV.increment(Number(op.opCost || 0)) });
@@ -812,6 +860,7 @@ export function createClock(core, actions) {
     }
     const act = await ctx.ref.wars().where('type', '==', 'bet').where('status', '==', 'active').get();
     for (const d of act.docs) {
+      if (d.data().stake != null) await safe(ctx, `bet-secret:${d.id}`, () => migrateBetStake(ctx, d.id));
       if (Number(d.data().endsAtMs || 0) > ctx.now) continue;
       await safe(ctx, `bet:${d.id}`, () => resolveBet(ctx, d.id));
     }
@@ -1089,13 +1138,14 @@ export function createClock(core, actions) {
           if (!['offered', 'accepted'].includes(cur?.status)) return;
           const other = cur.gangIds.find((g) => g !== gangId);
           const otherAlive = (await tx.get(ctx.ref.gang(other))).data()?.status === 'active';
+          const stake = await core.readBetStake(tx, ctx, b.id, cur);
           const otherPaid = cur.status === 'accepted' || cur.proposerGangId === other;
           if (otherPaid && otherAlive) {
-            tx.update(ctx.ref.gangState(other), { kasa: FV.increment(cur.stake) });
-            ledger(tx, ctx, { type: 'bet_refund', amount: cur.stake, from: { kind: 'escrow', id: b.id }, to: { kind: 'gang', id: other }, refId: b.id, actorId: 'system' });
+            tx.update(ctx.ref.gangState(other), { kasa: FV.increment(stake) });
+            ledger(tx, ctx, { type: 'bet_refund', amount: stake, from: { kind: 'escrow', id: b.id }, to: { kind: 'gang', id: other }, refId: b.id, actorId: 'system' });
           }
           const ownPaid = cur.status === 'accepted' || cur.proposerGangId === gangId;
-          if (ownPaid) ledger(tx, ctx, { type: 'bet_refund_burn', amount: cur.stake, from: { kind: 'escrow', id: b.id }, to: { kind: 'burn' }, refId: b.id, actorId: 'system' });
+          if (ownPaid) ledger(tx, ctx, { type: 'bet_refund_burn', amount: stake, from: { kind: 'escrow', id: b.id }, to: { kind: 'burn' }, refId: b.id, actorId: 'system' });
           tx.update(b.ref, { status: 'cancelled', activeGangIds: [], resolvedAtMs: ctx.now });
         })
       );

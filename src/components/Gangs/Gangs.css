@@ -2690,3 +2690,174 @@ textarea.gx-input {
   box-shadow: 0 0 6px var(--neon-pink);
   border: 1.5px solid #070a12;
 }
+
+/* v36: geri sayım rozeti */
+.gx-deadline {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--neon-yellow);
+  background: rgba(255, 210, 63, 0.12);
+  border: 1px solid rgba(255, 210, 63, 0.35);
+  white-space: nowrap;
+}
+.gx-deadline.hot {
+  color: var(--neon-pink);
+  background: rgba(255, 46, 140, 0.14);
+  border-color: rgba(255, 46, 140, 0.5);
+  animation: gx-pulse-text 1.2s ease-in-out infinite;
+}
+.gx-deadline.over {
+  color: var(--text-dim);
+  background: transparent;
+  border-color: #25314d;
+}
+.gx-betrep {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.gx-betrep-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.gx-betrep-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+.gx-betrep-stake {
+  font-weight: 800;
+}
+.gx-betrep-stake.hidden {
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+}
+.gx-betrep-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.gx-betrep-actions > * {
+  flex: 1;
+}
+.gx-confirm-deadline {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+/* v36 — haraç/rüşvet son saat sayacı */
+.gx-vs.gx-vs-deadline {
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.gx-pay-deadline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* v37 — bahis kartı: A ⚔️ B · tutar (rütbeliler) · canlı sayaç */
+.gx-betcard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-left: 4px solid var(--neon-yellow);
+}
+.gx-betcard.accepted {
+  border-left-color: var(--gx-green);
+}
+.gx-betcard-tag {
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.gx-betcard-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.gx-betcard-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.gx-betamt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 14px;
+}
+.gx-betamt-val {
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: var(--neon-yellow);
+}
+.gx-betamt-val.hidden {
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+}
+.gx-betamt-note {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid #25314d;
+}
+.gx-livecd {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  background: rgba(25, 232, 255, 0.08);
+  border: 1px solid rgba(25, 232, 255, 0.35);
+  white-space: nowrap;
+}
+.gx-livecd-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+.gx-livecd-time {
+  font-size: 17px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+  color: var(--neon-cyan);
+}
+.gx-livecd.hot {
+  background: rgba(255, 46, 140, 0.12);
+  border-color: rgba(255, 46, 140, 0.5);
+}
+.gx-livecd.hot .gx-livecd-time {
+  color: var(--neon-pink);
+  animation: gx-pulse-text 1.2s ease-in-out infinite;
+}
+.gx-livecd.done {
+  font-weight: 800;
+  color: var(--gx-green);
+}
+.gx-bet-status .gx-livecd {
+  padding: 4px 10px;
+}

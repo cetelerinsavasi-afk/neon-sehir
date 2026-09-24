@@ -229,7 +229,7 @@ export function createWarActions(core) {
         proposerGangId: gangId,
         proposedByName: me.name,
         targetGangId,
-        stake,
+        // v37: tutar belgede YOK → wars/{id}/secret/stake (Çömez/Tetikçi göremez)
         offeredDateKey: ctx.dateKey,
         dateKey: warDay,
         startsAtMs: midnightMsOf(warDay),
@@ -241,9 +241,12 @@ export function createWarActions(core) {
         display: { [gangId]: 0, [targetGangId]: 0 },
         createdAtMs: ctx.now,
       });
+      tx.set(ctx.ref.betSecret(warRef.id), { stake, gangIds: [gangId, targetGangId], createdAtMs: ctx.now });
       ledger(tx, ctx, { type: 'bet_lock', amount: stake, from: { kind: 'gang', id: gangId }, to: { kind: 'escrow', id: warRef.id }, before: st.kasa, refId: warRef.id });
-      announce(tx, ctx, gangId, '🎲', `${me.name}, ${tg.name} çetesine ${fmt(stake)} altınlık bahisli savaş teklif etti.`);
-      announce(tx, ctx, targetGangId, '🎲', `${mg.name} çetesi ${fmt(stake)} altınlık bahisli savaş teklif etti! 00:00'a kadar cevap verilmeli.`);
+      announce(tx, ctx, gangId, '🎲', `${me.name}, ${tg.name} çetesine bahisli savaş teklif etti.`);
+      announce(tx, ctx, targetGangId, '🎲', `${mg.name} çetesi bahisli savaş teklif etti! 00:00'a kadar cevap verilmeli.`);
+      core.announceMgmt(tx, ctx, gangId, '💰', `${tg.name} bahsi: ${fmt(stake)} altın (sadece rütbeliler görür).`);
+      core.announceMgmt(tx, ctx, targetGangId, '💰', `${mg.name} bahis teklifi: ${fmt(stake)} altın (sadece rütbeliler görür).`);
       notify(tx, ctx, tg.babaId, `🎲 ${mg.name} çetesi ${fmt(stake)} altınlık bahisli savaş teklif etti. 00:00'a kadar cevap ver.`, 'bet');
       ctx.logs.push({ gang: 'bet_created', world: ctx.worldId, warId: warRef.id, stake });
       const res = { warId: warRef.id };
@@ -262,29 +265,31 @@ export function createWarActions(core) {
       if (!war || war.type !== 'bet' || war.targetGangId !== gangId) fail('not-found', 'Teklif bulunamadı.');
       if (war.status !== 'offered') fail('failed-precondition', 'Bu teklif artık geçerli değil.');
       if (war.offeredDateKey !== ctx.dateKey) fail('deadline-exceeded', 'Teklifin süresi doldu.');
-      const [myState, rel, propState] = await Promise.all([
+      const [myState, rel, propState, stake] = await Promise.all([
         tx.get(ctx.ref.gangState(gangId)),
         accept ? blockingRelations(tx, ctx, gangId, war.proposerGangId) : null,
         accept ? null : tx.get(ctx.ref.gangState(war.proposerGangId)),
+        core.readBetStake(tx, ctx, warId, war),
       ]);
       const myName = war.sides?.[gangId]?.name || '';
       if (!accept) {
         // Reddedilen teklif günlük hakkı geri verir: teklif eden aynı gün yeni teklif gönderebilir.
-        tx.update(ctx.ref.gangState(war.proposerGangId), { kasa: FV.increment(war.stake), ...offerSlotBack(propState.data(), war) });
+        tx.update(ctx.ref.gangState(war.proposerGangId), { kasa: FV.increment(stake), ...offerSlotBack(propState.data(), war) });
         tx.update(ctx.ref.war(warId), { status: 'declined', activeGangIds: [], resolvedAtMs: ctx.now });
-        ledger(tx, ctx, { type: 'bet_refund', amount: war.stake, from: { kind: 'escrow', id: warId }, to: { kind: 'gang', id: war.proposerGangId }, refId: warId });
-        announce(tx, ctx, war.proposerGangId, '🙅', `${myName} bahisli savaş teklifini reddetti, ${fmt(war.stake)} altın kasaya döndü.`);
+        ledger(tx, ctx, { type: 'bet_refund', amount: stake, from: { kind: 'escrow', id: warId }, to: { kind: 'gang', id: war.proposerGangId }, refId: warId });
+        announce(tx, ctx, war.proposerGangId, '🙅', `${myName} bahisli savaş teklifini reddetti, bahis kasaya döndü.`);
+        core.announceMgmt(tx, ctx, war.proposerGangId, '💰', `${fmt(stake)} altın kasaya döndü.`);
         announce(tx, ctx, gangId, '🙅', `${me.name} bahis teklifini reddetti.`);
         return { declined: true };
       }
       if (rel.allianceBlocks) fail('failed-precondition', '🤝 İttifak varken bahisli savaş yapılamaz.');
-      if (Number(myState.data()?.kasa || 0) < war.stake) fail('failed-precondition', 'Kasada yeterli para yok.');
+      if (Number(myState.data()?.kasa || 0) < stake) fail('failed-precondition', 'Kasada yeterli para yok.');
       // v35: bir sonraki saldırı diliminde başlar (00·06·12·18), 24 saat sürer
       const startsAtMs = nextWindowStartMs(ctx.now);
       const endsAtMs = startsAtMs + GANG.BET_DURATION_MS;
-      tx.update(ctx.ref.gangState(gangId), { kasa: FV.increment(-war.stake) });
+      tx.update(ctx.ref.gangState(gangId), { kasa: FV.increment(-stake) });
       tx.update(ctx.ref.war(warId), { status: 'accepted', acceptedAtMs: ctx.now, startsAtMs, endsAtMs, dateKey: dateKeyOf(startsAtMs), slotTiming: true });
-      ledger(tx, ctx, { type: 'bet_lock', amount: war.stake, from: { kind: 'gang', id: gangId }, to: { kind: 'escrow', id: warId }, before: myState.data()?.kasa, refId: warId });
+      ledger(tx, ctx, { type: 'bet_lock', amount: stake, from: { kind: 'gang', id: gangId }, to: { kind: 'escrow', id: warId }, before: myState.data()?.kasa, refId: warId });
       announce(tx, ctx, gangId, '⚔️', `${me.name} bahisli savaşı kabul etti — ${hhmmOf(startsAtMs)}'de başlıyor, 24 saat sürer.`);
       announce(tx, ctx, war.proposerGangId, '⚔️', `${myName} bahisli savaş teklifini kabul etti — ${hhmmOf(startsAtMs)}'de başlıyor, 24 saat sürer.`);
       return { accepted: true, startsAtMs, endsAtMs };
@@ -299,9 +304,10 @@ export function createWarActions(core) {
       const war = warSnap.data();
       if (!war || war.type !== 'bet' || war.proposerGangId !== gangId) fail('not-found', 'Teklif bulunamadı.');
       if (war.status !== 'offered') fail('failed-precondition', 'Bu teklif artık geri çekilemez.');
-      tx.update(ctx.ref.gangState(gangId), { kasa: FV.increment(war.stake), ...offerSlotBack(stSnap.data(), war) });
+      const stake = await core.readBetStake(tx, ctx, warId, war);
+      tx.update(ctx.ref.gangState(gangId), { kasa: FV.increment(stake), ...offerSlotBack(stSnap.data(), war) });
       tx.update(ctx.ref.war(warId), { status: 'withdrawn', activeGangIds: [], resolvedAtMs: ctx.now });
-      ledger(tx, ctx, { type: 'bet_refund', amount: war.stake, from: { kind: 'escrow', id: warId }, to: { kind: 'gang', id: gangId }, refId: warId });
+      ledger(tx, ctx, { type: 'bet_refund', amount: stake, from: { kind: 'escrow', id: warId }, to: { kind: 'gang', id: gangId }, refId: warId });
       gangLog(tx, ctx, war.targetGangId, '↩️', `${war.sides?.[gangId]?.name || ''} bahis teklifini geri çekti.`);
       return { withdrawn: true };
     });

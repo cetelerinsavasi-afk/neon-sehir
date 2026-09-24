@@ -1,4 +1,4 @@
-# Kurallar ve Kararlar (v35)
+# Kurallar ve Kararlar (v37)
 
 v31'de kaynak olarak **oyun tasarımcısının kendi metni** esas alındı; önceki sürümdeki varsayımların çoğu bu metne göre düzeltildi. Sayısal değerlerin hepsi `functions/gang/config.js` içinde tek satırdan değiştirilebilir (istemci gösterimi: `src/components/Gangs/gangConstants.js`).
 
@@ -41,6 +41,7 @@ v31'de kaynak olarak **oyun tasarımcısının kendi metni** esas alındı; önc
 - **Saldırı hakkı (pencere):** gün 00–06, 06–12, 12–18, 18–24 pencerelerine ayrılır; oyuncu HER pencerede toplam 1 saldırı yapar — hangi savaş olursa olsun, çete ya da İstihbarat adına (ikisindeyse birini seçer). Pazar ve bahisli savaşlar 4 pencerenin hepsinde açıktır (günde en fazla 4); sabotaj/operasyon sadece 12–18 ve 18–24'te (günde en fazla 2). Farklı pencerelerde farklı savaşlara katılabilir.
 - **Oylamalar (v33):** gizli talep/bekleme kalktı; oylama 00:00–12:00 arasında başlatılır, hemen görünür (Tetikçi+ görür, 7 rütbeli oy verir) ve o gece 00:00'da biter. 00:00'da önce oylamalar sonuçlanır, sonra rütbeler hesaplanır. Aynı anda tek liderlik oylaması ve bir üyeye tek çıkarma oylaması (kilit belgesi; eşzamanlı istekler dahil). Aynı gece önce çıkarma, sonra devirme/ayaklanma sonuçlanır. v32'den kalan bekleyen talepler kaybolmaz, ilk 00:00'da başlar. İstihbarat atma oylamaları da aynı kurala geçti.
 - **Bahse müdahale (v35):** operasyon savaş başlamadan önce başlatıldıysa çeteler İstihbaratın girdiğini savaş başlarken, ilk dilimde başlatıldıysa hemen sohbetten öğrenir. Bahis başlayamazsa (çete dağıldı) operasyon ücreti İstihbarata iade. En yüksek güçte eşitlikte bahisler çetelere iade edilir. İstihbarat savaş katkısı 1:1 prestij.
+- **Bahis ihbarı (v36):** iki çete de eşit — teklif eden ve kabul eden çetenin İstihbarattaki üyeleri bahsi "📡 Çetemin bahisleri" listesinde görür (Tetikçi+ ihbar eder, altı kilitli görür). Bahis başına tek ihbar: bir taraf ihbar edince bahis "🎲 İhbarlı bahisler"e geçer. Her işlem (ihbar, içerik açma, operasyon, haraç, rüşvet) önce ne kazanıp ne kaybedileceğini gösteren onay penceresi açar; son dakikaya kadar geri sayım gösterilir (bahis: ilk dilim sonu, haraç/rüşvet: 18:00).
 - **Sipariş MAX:** en fazla adet = min(tır kapasitesi, kalan günlük limit ÷ fiyat, depo boş yeri ÷ ürün yeri, kasa ÷ fiyat).
 - **Sabotaj sayacı** oyun genelidir; İstihbarat operasyonları da aynı sayacı artırır.
 - **Sabotaj akışı:** tır 00:00'da yola çıkar → sabotaj/operasyon 00:00–12:00 arası başlatılır (tır sahibine hemen bildirim gitmez) → 12:00'de saldırı ve savunma AYNI ANDA, iki taraf da 0 güçle başlar ve tır sahibine duyurulur → 12–18 ve 18–24 pencerelerinde her üye birer kez zar atar → haraç/rüşvet 12:00–18:00 arası ödenir → 00:00'da sonuç. 12:00'den önce kimse zar atamaz.
@@ -51,3 +52,9 @@ v31'de kaynak olarak **oyun tasarımcısının kendi metni** esas alındı; önc
 - **İstihbarat Başkanı** en yüksek prestijli üyedir; rütbe için 1.000.000 prestij şartı çetedekiyle aynıdır.
 - **Tırlar** tüm çetelerin üyelerine görünür (sahibi görünür, içerik görünmez). İçerik (sipariş/yük) sadece sahibi çetenin Kıdemli+ üyelerine.
 - **Kasa** Çeteler listesinde herkese görünür (kart bilgisi).
+
+## v37
+- **Bahis tutarı gizli:** tutarı sadece iki çetenin Baba · Sağ Kol · Kıdemli'si görür. Çömez ve Tetikçi "💰 Bahis: gizli 🔒 rütbeliler görür" görür. Tutar herkese açık savaş belgesinde değil, `wars/{id}/secret/stake` belgesinde (Firestore kuralı ile korunur). Tutarlı sohbet mesajları yönetim sohbetine, genel sohbet/kayıtta tutar yok.
+- Not: çete kasası Çeteler listesinde herkese açık olduğundan kasa değişimi dolaylı ipucu verebilir (mevcut kural, değiştirilmedi).
+- **Sayaçlar:** bahis kartında saat yok; saniye saniye akan "⚔️ Başlamasına 03:59:12" / "⏳ Cevap için 09:59:50".
+- **Varsayılan örgüt:** hem çetede hem İstihbarattaysa Çeteler önce çete ile açılır.

@@ -36,16 +36,16 @@ export default function GangShell({ membership }) {
   const ms = membership || {};
   const inGang = Boolean(ms.gangId);
   const inIntel = Boolean(ms.intelRosterId);
-  const [org, setOrg] = useState(inIntel ? 'intel' : 'gang');
+  const [org, setOrg] = useState(inGang || !inIntel ? 'gang' : 'intel');
   const [tab, setTab] = useState(inIntel || inGang ? 'savas' : 'ceteler');
 
   // Oyuncu henüz kendisi bir sekme seçmediyse üyelik bilgisi gelince varsayılana
-  // geç (İstihbarat önce, sonra Savaş). Üyelik değişince (katıl/ayrıl/kur)
+  // geç (önce çete, çete yoksa İstihbarat; sekme Savaş). Üyelik değişince (katıl/ayrıl/kur)
   // geçersiz kalan görünümü düzelt.
   const picked = useRef(false);
   useEffect(() => {
     if (!picked.current) {
-      setOrg(inIntel ? 'intel' : 'gang');
+      setOrg(inGang || !inIntel ? 'gang' : 'intel');
       setTab(inIntel || inGang ? 'savas' : 'ceteler');
       return;
     }

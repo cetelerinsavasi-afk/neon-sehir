@@ -82,6 +82,8 @@ export function createCore(deps) {
         distribution: (id) => d(`distributions/${id}`),
         distributions: () => c('distributions'),
         war: (id) => d(`wars/${id}`),
+        // v37: bahis tutarı ayrı belgede — sadece Baba/Sağ Kol/Kıdemli okur (kurallar)
+        betSecret: (id) => d(`wars/${id}/secret/stake`),
         wars: () => c('wars'),
         shards: (id) => c(`wars/${id}/shards`),
         shard: (id, key) => d(`wars/${id}/shards/${key}`),
@@ -225,6 +227,19 @@ export function createCore(deps) {
     gangLog(tx, ctx, gangId, icon, text);
     systemChat(tx, ctx, ctx.ref.gangChat(gangId, 'genel'), `${icon} ${text}`);
   }
+  // v37: rütbelilere (Baba · Sağ Kol · Kıdemli) özel sistem mesajı — yönetim sohbeti
+  function announceMgmt(tx, ctx, gangId, icon, text) {
+    systemChat(tx, ctx, ctx.ref.gangChat(gangId, 'yonetim'), `${icon} ${text}`);
+  }
+
+  // v37: bahis tutarı. Eski belgelerde war.stake durur (taşınana kadar),
+  // yenilerde wars/{id}/secret/stake. İşlem içinde OKUMA aşamasında çağrılmalı.
+  async function readBetStake(tx, ctx, warId, war) {
+    if (war && war.stake != null) return Number(war.stake) || 0;
+    const s = await tx.get(ctx.ref.betSecret(warId));
+    return Number(s.data()?.stake || 0);
+  }
+
   function announceIntel(tx, ctx, icon, text) {
     intelLog(tx, ctx, icon, text);
     systemChat(tx, ctx, ctx.ref.intelChat('genel'), `${icon} ${text}`);
@@ -493,6 +508,8 @@ export function createCore(deps) {
     notify,
     systemChat,
     announce,
+    announceMgmt,
+    readBetStake,
     announceIntel,
     unitsOfItems,
     depotFree,

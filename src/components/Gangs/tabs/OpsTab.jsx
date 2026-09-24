@@ -7,102 +7,133 @@
 //  - Bir çetede Tetikçi+ olan üye, çetesinin yoldaki tırını ihbar edebilir.
 import { useState } from 'react';
 import { limit, where } from 'firebase/firestore';
-import { fmtCountdown, istDateKey, istHour, useDocData, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
-import { AmountInput, Btn, Card, Confirm, Empty, Logo } from '../ui';
+import { istDateKey, istHour, useDocData, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
+import { AmountInput, Btn, Card, Confirm, Deadline, BetPair, Empty, Logo } from '../ui';
 import { INTEL_LEADERS, atLeast, fmt } from '../gangConstants';
 
 // v33 — Bahisli savaşa müdahale: kabul edilmiş bahis 00:00'da başlamadan önce
 // ihbar (çetesinde Tetikçi+), içerik açma (Kıdemli+, toplam bahis görünür),
 // operasyon (Başkan/Şef, 100.000). Savaş 00:00'da 3 taraflı başlar.
 const BET_OP_PRICE = 100_000;
+const INTEL_WINDOW_MS = 6 * 3600_000;
+
 function BetOps({ d }) {
   const { path } = useGang();
   const { run, busy } = useGangAction();
-  const now = useNow();
+  const now = useNow(30_000);
   const ms = d.membership;
   const lead = INTEL_LEADERS.includes(d.rank);
   // v35: ilk saldırı diliminin sonuna kadar müdahale edilebilen ihbarlar
   const hourKey = Math.floor(now / 3600_000) * 3600_000;
   const { docs: repsAll } = useQueryData(path('betReports'), () => [where('intelDeadlineMs', '>', hourKey), limit(50)], `betrep_${hourKey}`);
   const reports = repsAll.filter((r) => now < r.intelDeadlineMs);
-  const canReport = Boolean(ms.gangId) && atLeast(ms.gangRank, 'tetikci');
-  const canLeak = Boolean(ms.gangId) && atLeast(ms.gangRank, 'kidemli');
-  const { docs: myWars } = useQueryData(canReport ? path('wars') : null, () => [where('activeGangIds', 'array-contains', ms.gangId), limit(60)], `mybets_${ms.gangId}_${canReport}`);
-  const myBets = myWars.filter((w) => w.type === 'bet' && ['accepted', 'active'].includes(w.status) && w.startsAtMs && now < w.startsAtMs + 6 * 3600_000);
+  const inGang = Boolean(ms.gangId);
+  const canReport = inGang && atLeast(ms.gangRank, 'tetikci');
+  const canLeak = inGang && atLeast(ms.gangRank, 'kidemli');
+  // Çetemin bahisleri: hem teklif eden hem kabul eden çetenin İstihbaratçısı görür
+  const { docs: myWars } = useQueryData(inGang ? path('wars') : null, () => [where('activeGangIds', 'array-contains', ms.gangId), limit(60)], `mybets_${ms.gangId}`);
   const reported = new Set(reports.map((r) => r.id));
+  const myBets = myWars.filter((w) => w.type === 'bet' && ['accepted', 'active'].includes(w.status) && w.startsAtMs && now < w.startsAtMs + INTEL_WINDOW_MS && !reported.has(w.id));
   const [ask, setAsk] = useState(null);
   if (reports.length === 0 && myBets.length === 0) return null;
-  const nameOf = (r, g) => r.names?.[g] || r.sides?.[g]?.name;
-  const logoOf = (r, g) => r.logos?.[g] || r.sides?.[g]?.logo;
-  const Pair = ({ r }) => (
-    <div className="gx-bet-pair">
-      <Logo logo={logoOf(r, r.gangIds[0])} size={24} />
-      <b>{nameOf(r, r.gangIds[0])}</b>
-      <span className="dim">⚔️</span>
-      <b>{nameOf(r, r.gangIds[1])}</b>
-      <Logo logo={logoOf(r, r.gangIds[1])} size={24} />
-    </div>
-  );
+  const pairOf = (w) => ({ gangIds: w.gangIds, names: Object.fromEntries(w.gangIds.map((g) => [g, w.names?.[g] || w.sides?.[g]?.name])), logos: Object.fromEntries(w.gangIds.map((g) => [g, w.logos?.[g] || w.sides?.[g]?.logo])) });
+
+  const CONFIRM = {
+    reportBet: { icon: '📡', title: 'Bahsi ihbar et', label: 'İhbar et', lines: ['✦ +1.000.000 İstihbarat prestiji', '🕵️ İstihbarat bu bahsi görür, tutarı göremez'] },
+    leakBet: { icon: '📦', title: 'Bahsin içeriğini aç', label: 'Aç', lines: ['✦ +1.000.000 İstihbarat prestiji', '💰 İstihbarat toplam bahsi görür'] },
+    startBetOperation: { icon: '🎯', title: 'Bahse operasyon', label: 'Başlat', danger: true, lines: [`💸 ${fmt(BET_OP_PRICE)} İstihbarat kasasından`, '⚔️ Savaş 3 taraflı olur', '🏆 En güçlü taraf tüm bahsi alır'] },
+  };
+  const c = ask ? CONFIRM[ask.type] : null;
+
   return (
     <>
-      {reports.length > 0 && (
-        <div className="gx-section-head">
-          <span>🎲 İhbarlı bahisler</span>
-        </div>
-      )}
-      {reports.map((r) => (
-        <Card key={r.id} className="gx-report">
-          <Pair r={r} />
-          <div className="gx-timer">⏱ {fmtCountdown(r.intelDeadlineMs - now)}</div>
-          <div className="dim gx-mini">📡 {r.reportedByCode}</div>
-          {r.leaked ? <div className="gx-reward">💰 {fmt(r.pot)}</div> : <div className="dim gx-mini">💰 ?</div>}
-          <div className="gx-row-2">
-            {!r.leaked && canLeak && r.gangIds.includes(ms.gangId) && (
-              <Btn small kind="ghost" onClick={() => setAsk({ type: 'leakBet', r })}>
-                📦 İçeriği aç
-              </Btn>
-            )}
-            {r.opStarted ? (
-              <span className="gx-pill intel">🎯 Operasyon başladı</span>
-            ) : lead ? (
-              <Btn small kind="danger" onClick={() => setAsk({ type: 'startBetOperation', r })}>
-                🎯 Operasyon · {fmt(BET_OP_PRICE)}
-              </Btn>
-            ) : null}
-          </div>
-        </Card>
-      ))}
       {myBets.length > 0 && (
         <div className="gx-section-head">
           <span>📡 Çetemin bahisleri</span>
         </div>
       )}
-      {myBets.map((w) => (
-        <div key={w.id} className="gx-truck-line">
-          <span className="gx-truck-code">🎲 {w.sides?.[w.gangIds.find((g) => g !== ms.gangId)]?.name}</span>
-          {reported.has(w.id) ? (
-            <span className="gx-pill intel">📡 İhbar edildi</span>
-          ) : (
-            <Btn small kind="ghost" onClick={() => setAsk({ type: 'reportBet', r: { id: w.id, gangIds: w.gangIds, sides: w.sides } })}>
-              📡 İhbar et
-            </Btn>
-          )}
+      {myBets.map((w) => {
+        const p = pairOf(w);
+        return (
+          <Card key={w.id} className="gx-report gx-betrep">
+            <BetPair {...p} />
+            <div className="gx-betrep-meta">
+              <span>
+                💰 Bahis: <span className="gx-betrep-stake hidden">gizli</span>
+              </span>
+              <Deadline untilMs={w.startsAtMs + INTEL_WINDOW_MS} />
+            </div>
+            <div className="gx-betrep-actions">
+              {canReport ? (
+                <Btn small onClick={() => setAsk({ type: 'reportBet', id: w.id, p, until: w.startsAtMs + INTEL_WINDOW_MS })}>
+                  📡 İhbar et · ✦ +1M
+                </Btn>
+              ) : (
+                <Btn small kind="ghost" disabled>
+                  🔒 📡 Tetikçi+
+                </Btn>
+              )}
+            </div>
+          </Card>
+        );
+      })}
+
+      {reports.length > 0 && (
+        <div className="gx-section-head">
+          <span>🎲 İhbarlı bahisler</span>
         </div>
-      ))}
-      {ask && (
+      )}
+      {reports.map((r) => {
+        const p = pairOf(r);
+        const mine = r.gangIds.includes(ms.gangId);
+        return (
+          <Card key={r.id} className="gx-report gx-betrep">
+            <div className="gx-betrep-top">
+              <BetPair {...p} />
+            </div>
+            <div className="gx-betrep-meta">
+              <span>
+                💰 Bahis: {r.leaked ? <span className="gx-betrep-stake">{fmt(r.pot)}</span> : <span className="gx-betrep-stake hidden">gizli</span>}
+              </span>
+              <Deadline untilMs={r.intelDeadlineMs} />
+            </div>
+            <div className="dim gx-mini">📡 {r.reportedByCode}</div>
+            <div className="gx-betrep-actions">
+              {!r.leaked && mine && canLeak && (
+                <Btn small kind="ghost" onClick={() => setAsk({ type: 'leakBet', id: r.id, p, until: r.intelDeadlineMs })}>
+                  📦 İçeriği aç · ✦ +1M
+                </Btn>
+              )}
+              {r.opStarted ? (
+                <span className="gx-pill intel">🎯 Operasyon başladı</span>
+              ) : lead ? (
+                <Btn small kind="danger" onClick={() => setAsk({ type: 'startBetOperation', id: r.id, p, until: r.intelDeadlineMs })}>
+                  🎯 Operasyon · {fmt(BET_OP_PRICE)}
+                </Btn>
+              ) : null}
+            </div>
+          </Card>
+        );
+      })}
+      {c && (
         <Confirm
-          icon={ask.type === 'startBetOperation' ? '🎯' : ask.type === 'leakBet' ? '📦' : '📡'}
-          danger={ask.type === 'startBetOperation'}
-          title={`${nameOf(ask.r, ask.r.gangIds[0])} ⚔️ ${nameOf(ask.r, ask.r.gangIds[1])}`}
-          lines={ask.type === 'startBetOperation' ? [`💸 ${fmt(BET_OP_PRICE)}`, '⚔️ 3 taraf · 🏆 en güçlü alır'] : ['✦ +1.000.000']}
-          confirmLabel={ask.type === 'startBetOperation' ? 'Başlat' : ask.type === 'leakBet' ? 'Aç' : 'İhbar et'}
+          icon={c.icon}
+          danger={c.danger}
+          title={c.title}
+          lines={c.lines}
+          confirmLabel={c.label}
           busy={Boolean(busy)}
           onCancel={() => setAsk(null)}
           onConfirm={async () => {
-            await run(ask.type, { warId: ask.r.id }, { success: ask.type === 'startBetOperation' ? '🎯 Operasyon başladı' : '🕵️ İstihbarata iletildi', withRequestId: ask.type === 'startBetOperation' });
+            await run(ask.type, { warId: ask.id }, { success: ask.type === 'startBetOperation' ? '🎯 Operasyon başladı' : '🕵️ İstihbarata iletildi', withRequestId: ask.type === 'startBetOperation' });
             setAsk(null);
           }}
-        />
+        >
+          <BetPair {...ask.p} />
+          <div className="gx-confirm-deadline">
+            <Deadline untilMs={ask.until} />
+          </div>
+        </Confirm>
       )}
     </>
   );
@@ -214,7 +245,7 @@ export default function OpsTab({ d }) {
         <Confirm
           icon={ask.type === 'report' ? '📡' : '📦'}
           title={ask.type === 'report' ? `TIR #${ask.t.code} ihbar edilsin mi?` : `TIR #${ask.r.truckCode} içeriği sızdırılsın mı?`}
-          lines={['✦ +1.000.000']}
+          lines={ask.type === 'report' ? ['✦ +1.000.000 İstihbarat prestiji', '🕵️ İstihbarat bu tırı görür, yükünü göremez'] : ['✦ +1.000.000 İstihbarat prestiji', '💰 İstihbarat yükün değerini görür']}
           confirmLabel={ask.type === 'report' ? 'İhbar et' : 'Sızdır'}
           busy={Boolean(busy)}
           onCancel={() => setAsk(null)}

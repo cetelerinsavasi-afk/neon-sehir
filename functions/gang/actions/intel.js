@@ -286,15 +286,16 @@ export function createIntelActions(core) {
       const rid = requireIntel(membership);
       const war = await readBetForIntel(tx, ctx, warId);
       if (!membership.gangId || !war.gangIds.includes(membership.gangId)) fail('permission-denied', 'Bu bahis senin çetenin değil.');
-      const [meSnap, rosterSnap, repSnap] = await Promise.all([
+      const [meSnap, rosterSnap, repSnap, stake] = await Promise.all([
         tx.get(ctx.ref.member(membership.gangId, ctx.actorId)),
         tx.get(ctx.ref.roster(rid)),
         tx.get(ctx.ref.betReport(warId)),
+        core.readBetStake(tx, ctx, warId, war),
       ]);
       if (!repSnap.exists) fail('failed-precondition', 'Önce bahis ihbar edilmeli.');
       if (!atLeast(meSnap.data()?.rank, 'kidemli')) fail('permission-denied', 'Bahsin içeriğini açmak için çetende en az Kıdemli olmalısın.');
       if (repSnap.data().leaked) fail('already-exists', 'Bu bahsin içeriği zaten açıldı.');
-      const pot = Number(war.stake || 0) * 2;
+      const pot = stake * 2;
       tx.update(ctx.ref.betReport(warId), { leaked: true, pot, leakedByCode: rosterSnap.data().codeName, leakedAtMs: ctx.now });
       tx.update(ctx.ref.roster(rid), { prestige: FV.increment(INTEL.BET_LEAK_PRESTIGE) });
       announceIntel(tx, ctx, '📦', `${rosterSnap.data().codeName} bahsin içeriğini açtı — toplam bahis ${pot.toLocaleString('tr-TR')}.`);
