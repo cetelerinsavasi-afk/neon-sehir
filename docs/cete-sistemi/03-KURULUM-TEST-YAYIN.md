@@ -3,7 +3,7 @@
 ## 1. Deploy (v32 — admin paneli ve şifre yok)
 Çeteler oyunculara **açık** gelir. Secret / şifre / ADMIN_UID ayarı gerekmez.
 ```bash
-npm --prefix functions test        # 93 otomatik test
+npm --prefix functions test        # 98 otomatik test
 firebase deploy --only firestore:rules,functions
 npm run build && (frontend deploy'unuz)
 ```

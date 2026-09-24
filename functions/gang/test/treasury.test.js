@@ -119,6 +119,7 @@ test('dağıtım açıldıktan sonra katılan (ya da ayrılıp dönen) oyuncu o 
   const u = A.ids[9];
   h.clock.now += 1000;
   await h.act(u, 'leaveGang');
+  await h.tickTo('2026-09-22', '00:05'); // aynı gün geri giremez
   await h.act(u, 'joinGang', { gangId: A.gangId });
   const err = await h.fails(u, 'claimDistribution', { distributionId });
   assert.match(err.message, /katılmadan önce/);

@@ -396,6 +396,17 @@ export function createClock(core, actions) {
   // ---------------------------------------------------------------------------
   // 4) OYLAMA SONUCU (çete bazında)
   // ---------------------------------------------------------------------------
+  // v34: başlatan ya da hedef çeteden ayrılmış/atılmış olsa da oylama
+  // sonuçlanır. "Çetede" sayılmak için üyeliğin oylama başladığı andaki
+  // üyelik (stint) olması gerekir — ayrılıp 00:00'dan sonra geri giren yeni
+  // üye eski oylamadan etkilenmez.
+  //  - Çıkarma: hedef ayrıldıysa sonuç hiçbir şeyi değiştirmez (zaten çıktı).
+  //  - Devirme/ayaklanma, başlatan ayrıldıysa:
+  //      geçti → Baba devrilir (devirmede çeteden çıkar, ayaklanmada üye
+  //              kalır); çetenin başına en yüksek prestijli üye geçer.
+  //      geçmedi → hiçbir şey değişmez (başlatan zaten çetede değil).
+  //  - Mafya Babası oylama sürerken çeteden çıktıysa liderlik oylaması
+  //    sonuçsuz kapanır (hedef yok; halef zaten başa geçti).
   async function resolveVote(ctx, gangId, voteId) {
     return db.runTransaction(async (tx) => {
       const voteRef = ctx.ref.votes(gangId).doc(voteId);
@@ -404,33 +415,90 @@ export function createClock(core, actions) {
       const gang = (await tx.get(ctx.ref.gang(gangId))).data();
       const [initSnap, targetSnap] = await Promise.all([tx.get(ctx.ref.member(gangId, vote.initiatorId)), tx.get(ctx.ref.member(gangId, vote.targetId))]);
       const { passed, ratio } = voteActions.voteOutcome(vote);
-      const initiator = initSnap.data();
-      const target = targetSnap.data();
-      const result = { passed, ratio, yes: vote.yes || 0, no: vote.no || 0 };
-      if (gang?.status !== 'active' || !initiator || !target) {
-        tx.update(voteRef, { status: 'cancelled', cancelReason: 'member_left', resolvedAtMs: ctx.now, result });
-        return { cancelled: true };
-      }
+      const sameStint = (snap, stint) => snap.exists && (!stint || snap.data().stint === stint);
+      const initiatorHere = sameStint(initSnap, vote.initiatorStint);
+      const targetHere = sameStint(targetSnap, vote.targetStint);
+      const initiator = initiatorHere ? initSnap.data() : null;
+      const target = targetHere ? targetSnap.data() : null;
+      const result = { passed, ratio, yes: vote.yes || 0, no: vote.no || 0, initiatorLeft: !initiatorHere, targetLeft: !targetHere };
       const pct = `%${Math.round(ratio * 100)}`;
-      if (vote.type === 'kick' && (target.rank === 'baba' || gang.babaId === vote.targetId)) {
-        // Oylama sürerken hedef Mafya Babası olduysa (ör. ayaklanma) çıkarma oylaması düşer.
-        tx.update(voteRef, { status: 'cancelled', cancelReason: 'target_is_baba', resolvedAtMs: ctx.now, result });
+      if (gang?.status !== 'active') {
+        tx.update(voteRef, { status: 'cancelled', cancelReason: 'gang_gone', resolvedAtMs: ctx.now, result });
         return { cancelled: true };
       }
+
       if (vote.type === 'kick') {
+        if (!target) {
+          tx.update(voteRef, { status: 'resolved', resolvedAtMs: ctx.now, result });
+          core.announce(tx, ctx, gangId, '🗳️', `${vote.targetName} için çıkarma oylaması bitti (${pct}) — zaten çeteden ayrılmıştı.`);
+          return result;
+        }
+        if (target.rank === 'baba' || gang.babaId === vote.targetId) {
+          // Oylama sürerken hedef Mafya Babası olduysa çıkarma oylaması düşer.
+          tx.update(voteRef, { status: 'cancelled', cancelReason: 'target_is_baba', resolvedAtMs: ctx.now, result });
+          return { cancelled: true };
+        }
         if (passed) {
           const plan = await core.planRemoval(tx, ctx, gangId, vote.targetId, { gangSnapData: gang });
+          plan.votes = (plan.votes || []).filter((v) => v.id !== voteId);
           core.applyRemoval(tx, ctx, plan, 'vote_kick', { notifyText: `🗳️ Oylama sonucu ${gang.name} çetesinden çıkarıldın (${pct}).` });
         }
         tx.update(voteRef, { status: 'resolved', resolvedAtMs: ctx.now, result });
         core.announce(tx, ctx, gangId, '🗳️', passed ? `${vote.targetName} oylamayla çeteden çıkarıldı (${pct}).` : `${vote.targetName} için çıkarma oylaması reddedildi (${pct}).`);
         return result;
       }
+
       // devirme / ayaklanma
-      if (target.rank !== 'baba' || gang.babaId !== vote.targetId) {
+      const label = vote.type === 'devirme' ? 'Devirme' : 'Ayaklanma';
+      if (!target || target.rank !== 'baba' || gang.babaId !== vote.targetId) {
         tx.update(voteRef, { status: 'cancelled', cancelReason: 'baba_changed', resolvedAtMs: ctx.now, result });
         return { cancelled: true };
       }
+
+      if (!initiator) {
+        // Başlatan çeteden ayrılmış/atılmış — oylama yine de sonuçlanır.
+        if (!passed) {
+          tx.update(voteRef, { status: 'resolved', resolvedAtMs: ctx.now, result });
+          core.announce(tx, ctx, gangId, '🗳️', `${label} yeterli desteği alamadı (${pct}) — Mafya Babası yerinde.`);
+          return result;
+        }
+        if (vote.type === 'devirme') {
+          // Baba çeteden çıkar; halef = en yüksek prestijli üye (başlatan zaten yok)
+          const plan = await core.planRemoval(tx, ctx, gangId, vote.targetId, { gangSnapData: gang });
+          plan.votes = (plan.votes || []).filter((v) => v.id !== voteId);
+          const succName = plan.successor?.name || null;
+          core.applyRemoval(tx, ctx, plan, 'devirme_lost', { notifyText: `🗳️ Devirme oylaması geçti ve ${gang.name} çetesinden çıkarıldın.` });
+          tx.update(voteRef, { status: 'resolved', resolvedAtMs: ctx.now, result });
+          core.announce(tx, ctx, gangId, '👑', `Devirme başarılı (${pct}): ${vote.targetName} çeteden çıkarıldı.${succName ? ` Başlatan çeteden ayrıldığı için ${succName} yeni Mafya Babası.` : ''}`);
+          return result;
+        }
+        // Ayaklanma: Baba görevden alınır (üye kalır); başa en yüksek prestijli diğer üye geçer
+        const all = (await tx.get(ctx.ref.members(gangId))).docs.map((d) => ({ id: d.id, ...d.data() })).filter((m) => m.id !== vote.targetId);
+        all.sort((x, y) => (y.prestige || 0) - (x.prestige || 0) || (x.joinedAtMs || 0) - (y.joinedAtMs || 0) || (x.id < y.id ? -1 : 1));
+        const succ = all[0] || null;
+        if (!succ) {
+          tx.update(voteRef, { status: 'resolved', resolvedAtMs: ctx.now, result });
+          core.announce(tx, ctx, gangId, '🗳️', `Ayaklanma geçti (${pct}) ama başa geçecek başka üye yok — Mafya Babası yerinde.`);
+          return result;
+        }
+        const succMs = await core.readMembership(tx, ctx, succ.id);
+        tx.update(ctx.ref.member(gangId, succ.id), { rank: 'baba' });
+        const sUpd = { gangRank: 'baba' };
+        if (succMs.intelRosterId) {
+          sUpd.intelDecisionGangId = gangId;
+          sUpd.intelDecisionDeadline = addDays(ctx.dateKey, 1);
+        }
+        tx.set(ctx.ref.membership(succ.id), sUpd, { merge: true });
+        tx.update(ctx.ref.gang(gangId), { babaId: succ.id, babaName: succ.name });
+        tx.update(ctx.ref.member(gangId, vote.targetId), { rank: 'sagkol' });
+        tx.set(ctx.ref.membership(vote.targetId), { gangRank: 'sagkol' }, { merge: true });
+        notify(tx, ctx, vote.targetId, '🔥 Ayaklanma başarılı oldu — Mafya Babalığından alındın.', 'vote');
+        notify(tx, ctx, succ.id, `👑 ${gang.name} çetesinin yeni Mafya Babası sensin.`, 'rank');
+        tx.update(voteRef, { status: 'resolved', resolvedAtMs: ctx.now, result });
+        core.announce(tx, ctx, gangId, '👑', `Ayaklanma başarılı (${pct}): ${vote.targetName} görevden alındı. Başlatan çeteden ayrıldığı için ${succ.name} yeni Mafya Babası.`);
+        return result;
+      }
+
       const challengerMembership = await core.readMembership(tx, ctx, vote.initiatorId);
       if (passed) {
         let removalPlan = null;
@@ -456,15 +524,14 @@ export function createClock(core, actions) {
           notify(tx, ctx, vote.targetId, `🔥 Ayaklanma başarılı oldu — Mafya Babalığından alındın.`, 'vote');
         }
         notify(tx, ctx, vote.initiatorId, `👑 ${gang.name} çetesinin yeni Mafya Babası sensin (${pct}).`, 'vote');
-        core.announce(tx, ctx, gangId, '👑', `${vote.type === 'devirme' ? 'Devirme' : 'Ayaklanma'} başarılı: ${initiator.name} yeni Mafya Babası (${pct}).`);
+        core.announce(tx, ctx, gangId, '👑', `${label} başarılı: ${initiator.name} yeni Mafya Babası (${pct}).`);
       } else if (vote.type === 'devirme' || GANG.AYAKLANMA_FAIL_KICKS_INITIATOR) {
-        // Devirme: kazanan Baba kalır, diğer aday (başlatan) çeteden atılır.
+        // Başarısız: başlatan çeteden atılır.
         const plan = await core.planRemoval(tx, ctx, gangId, vote.initiatorId, { gangSnapData: gang });
         plan.votes = (plan.votes || []).filter((v) => v.id !== voteId);
-        core.applyRemoval(tx, ctx, plan, `${vote.type}_failed`, { notifyText: `🗳️ ${vote.type === 'devirme' ? 'Devirme' : 'Ayaklanma'} yeterli desteği alamadı (${pct}) — çeteden çıkarıldın.` });
-        core.announce(tx, ctx, gangId, '🪦', `${vote.type === 'devirme' ? 'Devirme' : 'Ayaklanma'} başarısız (${pct}): ${initiator.name} çeteden çıkarıldı.`);
+        core.applyRemoval(tx, ctx, plan, `${vote.type}_failed`, { notifyText: `🗳️ ${label} yeterli desteği alamadı (${pct}) — çeteden çıkarıldın.` });
+        core.announce(tx, ctx, gangId, '🪦', `${label} başarısız (${pct}): ${initiator.name} çeteden çıkarıldı.`);
       } else {
-        // Ayaklanma başarısız: hiçbir şey değişmez.
         core.announce(tx, ctx, gangId, '🗳️', `Ayaklanma yeterli desteği alamadı (${pct}) — Mafya Babası yerinde.`);
       }
       tx.update(voteRef, { status: 'resolved', resolvedAtMs: ctx.now, result });
@@ -518,6 +585,8 @@ export function createClock(core, actions) {
           initiatorName: ini.name,
           targetId: p.targetId,
           targetName: members.get(p.targetId)?.name || p.targetName,
+          initiatorStint: ini.stint || null,
+          targetStint: members.get(p.targetId)?.stint || null,
           voterIds,
           voterStint,
           yes: 0,

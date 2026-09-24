@@ -40,7 +40,10 @@ test('katılma: yeni üye Çömez, prestij 0; başka çeteye geçiş onay ister 
   await h.act(u, 'joinGang', { gangId: B.gangId, confirmLeave: true });
   assert.equal(h.member(A.gangId, u), undefined);
   assert.equal(h.member(B.gangId, u).prestige, 0);
-  // eski çeteye geri dönünce yine 0
+  // aynı gün ayrıldığı çeteye 00:00'a kadar giremez; ertesi gün dönünce yine 0
+  const same = await h.fails(u, 'joinGang', { gangId: A.gangId, confirmLeave: true });
+  assert.match(same.message, /00:00/);
+  await h.nextDay();
   await h.act(u, 'joinGang', { gangId: A.gangId, confirmLeave: true });
   assert.equal(h.member(A.gangId, u).prestige, 0);
 });
@@ -118,6 +121,7 @@ test('Mafya Babası saygısı: +1M, üyelik başına bir kez; ayrılıp gelince 
   assert.match((await h.fails(A.baba, 'giveRespect', { targetId: u })).message, /zaten/);
   // eşzamanlı çift saygı → tek kez
   await h.act(u, 'leaveGang');
+  await h.nextDay();
   await h.act(u, 'joinGang', { gangId: A.gangId });
   const rs = await Promise.allSettled([h.act(A.baba, 'giveRespect', { targetId: u }), h.act(A.baba, 'giveRespect', { targetId: u })]);
   assert.equal(rs.filter((r) => r.status === 'fulfilled').length, 1);

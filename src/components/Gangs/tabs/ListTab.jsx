@@ -3,7 +3,7 @@
 // Sağ üstte "Çete kur +". Kendi çetende/İstihbaratta isen kartta "Aç".
 import { useMemo, useState } from 'react';
 import { limit, where } from 'firebase/firestore';
-import { useDocData, useGang, useGangAction, useQueryData } from '../GangContext';
+import { istDateKey, useDocData, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
 import { Btn, Card, Confirm, Empty, Gold, Logo, Sheet } from '../ui';
 import { LogoPicker, useMyWallet } from '../shared';
 import { GANG_RULES, INTEL_LOGO, fmt, productOf } from '../gangConstants';
@@ -137,6 +137,7 @@ export default function ListTab({ membership, onOpen }) {
   const { path } = useGang();
   const { run, busy } = useGangAction();
   const ms = membership || {};
+  const today = istDateKey(useNow(60_000));
   const { docs: gangs, loading } = useQueryData(path('gangs'), () => [where('status', '==', 'active'), limit(100)], 'active');
   const { data: intel } = useDocData(path('intel/main'));
   const { data: intelState } = useDocData(path('intel/main/private/state'));
@@ -211,8 +212,8 @@ export default function ListTab({ membership, onOpen }) {
                   Aç
                 </Btn>
               ) : (
-                <Btn small kind="ghost" onClick={() => setJoin(x.g)}>
-                  Çeteye gir
+                <Btn small kind="ghost" disabled={ms.gangExitDay?.[x.id] === today} onClick={() => setJoin(x.g)}>
+                  {ms.gangExitDay?.[x.id] === today ? '🔒 00:00' : 'Çeteye gir'}
                 </Btn>
               )
             }

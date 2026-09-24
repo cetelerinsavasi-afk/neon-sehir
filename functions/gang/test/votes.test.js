@@ -99,7 +99,7 @@ test('ayaklanma: %66dan fazla gerekir; başarılıysa Baba görevden alınır; b
   assert.ok(h.chat(G.gangId).some((m) => /Ayaklanma başarısız .*çeteden çıkarıldı/.test(m)));
 });
 
-test('çıkarma oylaması: Baba → Kıdemli; aynı hedefe ikinci oylama yok; hedef ayrılırsa iptal; oy hakkı snapshot', async () => {
+test('çıkarma oylaması: Baba → Kıdemli; aynı hedefe ikinci oylama yok; hedef ayrılsa da oylama sürer, sonuç bir şey değiştirmez', async () => {
   const h = await createHarness();
   const G = await fullGang(h);
   const target = G.ids[5];
@@ -110,9 +110,14 @@ test('çıkarma oylaması: Baba → Kıdemli; aynı hedefe ikinci oylama yok; he
   assert.equal(v.type, 'kick');
   await h.fails(G.ids[6], 'castVote', { voteId: v.id, choice: 'yes' });
   await h.act(target, 'leaveGang');
-  assert.equal(h.get(`gangs/${G.gangId}/votes/${v.id}`).status, 'cancelled');
-  // iptal olan oylamanın kilidi yeni oylamayı engellemez
-  await h.act(G.baba, 'requestVote', { type: 'kick', targetId: G.ids[4] });
+  assert.equal(h.get(`gangs/${G.gangId}/votes/${v.id}`).status, 'active', 'oylama devam eder');
+  await h.act(G.baba, 'castVote', { voteId: v.id, choice: 'no' });
+  await h.act(G.baba, 'requestVote', { type: 'kick', targetId: G.ids[4] }); // başka hedef serbest
+  await h.nextDay();
+  const done = h.get(`gangs/${G.gangId}/votes/${v.id}`);
+  assert.equal(done.status, 'resolved');
+  assert.equal(done.result.targetLeft, true);
+  assert.equal(h.member(G.gangId, target), undefined, 'reddedilse de zaten çıktı');
 });
 
 test('çıkarma oylaması geçer → hedef atılır; oy kullanmayan sayılmaz; 00:00 sonrası oy yok', async () => {
@@ -171,8 +176,10 @@ test('aynı gece: çıkarma oylaması ayaklanmadan önce çözülür (belirli s�
   await h.act(s1, 'castVote', { voteId: id('ayaklanma'), choice: 'yes' });
   await h.nextDay();
   assert.equal(h.member(G.gangId, s1), undefined, 's1 çıkarıldı');
-  assert.equal(h.get(`gangs/${G.gangId}`).babaId, G.baba, 'Baba yerinde');
-  assert.equal(h.get(`gangs/${G.gangId}/votes/${id('ayaklanma')}`).status, 'cancelled');
+  // başlatan çıkarılsa da ayaklanma sonuçlanır: geçti → Baba görevden alınır, başa en yüksek prestijli üye (s2)
+  assert.equal(h.get(`gangs/${G.gangId}/votes/${id('ayaklanma')}`).status, 'resolved');
+  assert.equal(h.get(`gangs/${G.gangId}`).babaId, s2);
+  assert.ok(h.member(G.gangId, G.baba), 'eski Baba çetede kalır');
 });
 
 test("v32'den kalan bekleyen talepler kaybolmaz: 00:00'da başlar", async () => {
@@ -183,4 +190,75 @@ test("v32'den kalan bekleyen talepler kaybolmaz: 00:00'da başlar", async () => 
   const v = activeVote(h, G.gangId);
   assert.equal(v.targetId, G.ids[5]);
   await h.fails(G.ids[0], 'requestVote', { type: 'kick', targetId: G.ids[5] }); // kilit de yazıldı
+});
+
+// ---- v34: ayrılma senaryoları (oylama devam eder) ----
+test('devirme başlatan ayrıldı + oylama geçti → eski Baba çıkar, başa en yüksek prestijli üye geçer', async () => {
+  const h = await createHarness();
+  const G = await fullGang(h, { sagPrestige: [12_000_000, 5_000_000] });
+  const [s1, s2] = G.ids;
+  const { voteId } = await h.act(s1, 'requestVote', { type: 'devirme' });
+  await voteAll(h, G, voteId, [[s1, 'yes'], [s2, 'yes'], [G.ids[2], 'yes'], [G.baba, 'no']]);
+  await h.act(s1, 'leaveGang');
+  assert.equal(h.get(`gangs/${G.gangId}/votes/${voteId}`).status, 'active', 'başlatan ayrılınca oylama sürer');
+  await h.nextDay();
+  const v = h.get(`gangs/${G.gangId}/votes/${voteId}`);
+  assert.equal(v.status, 'resolved');
+  assert.equal(v.result.initiatorLeft, true);
+  assert.equal(h.member(G.gangId, G.baba), undefined, 'devrilen Baba çıktı');
+  assert.equal(h.get(`gangs/${G.gangId}`).babaId, s2, 'en yüksek prestijli üye Baba');
+  assert.equal(h.member(G.gangId, s2).rank, 'baba');
+});
+
+test('devirme / ayaklanma başlatan ayrıldı + oylama geçmedi → hiçbir şey değişmez', async () => {
+  for (const type of ['devirme', 'ayaklanma']) {
+    const h = await createHarness();
+    const G = await fullGang(h, { sagPrestige: [12_000_000, 5_000_000] });
+    const s1 = G.ids[0];
+    const { voteId } = await h.act(s1, 'requestVote', { type });
+    await voteAll(h, G, voteId, [[G.baba, 'no'], [G.ids[1], 'no']]);
+    await h.act(s1, 'leaveGang');
+    await h.nextDay();
+    assert.equal(h.get(`gangs/${G.gangId}/votes/${voteId}`).status, 'resolved');
+    assert.equal(h.get(`gangs/${G.gangId}`).babaId, G.baba, `${type}: Baba yerinde`);
+  }
+});
+
+test('çıkarma: başlatan ayrılsa da oylama sürer ve geçerse hedef atılır', async () => {
+  const h = await createHarness();
+  const G = await fullGang(h);
+  const target = G.ids[4];
+  const { voteId } = await h.act(G.ids[0], 'requestVote', { type: 'kick', targetId: target }); // Sağ Kol → Kıdemli
+  await voteAll(h, G, voteId, [[G.ids[0], 'yes'], [G.baba, 'yes'], [G.ids[1], 'yes']]);
+  await h.act(G.ids[0], 'leaveGang');
+  await h.nextDay();
+  assert.equal(h.member(G.gangId, target), undefined, 'hedef atıldı');
+});
+
+test('ayrılan hedef 00:00 sonrası geri girse de eski oylamanın sonucu yeni üyeliğini etkilemez; aynı gün geri giremez', async () => {
+  const h = await createHarness();
+  const G = await fullGang(h);
+  const target = G.ids[4];
+  const { voteId } = await h.act(G.baba, 'requestVote', { type: 'kick', targetId: target });
+  await voteAll(h, G, voteId, [[G.baba, 'yes'], [G.ids[0], 'yes']]);
+  await h.act(target, 'leaveGang');
+  const same = await h.fails(target, 'joinGang', { gangId: G.gangId });
+  assert.match(same.message, /00:00/);
+  h.at('2026-09-22', '00:01'); // saat turu henüz çalışmadı
+  await h.act(target, 'joinGang', { gangId: G.gangId });
+  await h.internal.clock.runClock('test');
+  assert.equal(h.get(`gangs/${G.gangId}/votes/${voteId}`).status, 'resolved');
+  assert.ok(h.member(G.gangId, target), 'yeni üyelik eski oylamadan etkilenmedi');
+});
+
+test('Mafya Babası oylama sürerken çeteden ayrılırsa liderlik oylaması sonuçsuz kapanır (başlatan atılmaz)', async () => {
+  const h = await createHarness();
+  const G = await fullGang(h, { sagPrestige: [12_000_000, 5_000_000] });
+  const s1 = G.ids[0];
+  const { voteId } = await h.act(s1, 'requestVote', { type: 'devirme' });
+  await h.act(G.baba, 'leaveGang');
+  assert.equal(h.get(`gangs/${G.gangId}/votes/${voteId}`).status, 'cancelled');
+  await h.nextDay();
+  assert.ok(h.member(G.gangId, s1), 'başlatan çetede');
+  assert.equal(h.get(`gangs/${G.gangId}`).babaId, s1, 'halef: en yüksek prestijli üye');
 });

@@ -305,7 +305,9 @@ export function createCore(deps) {
     const { gangId, memberId, gang, member } = plan;
     if (!member) return { removed: false };
     tx.delete(ctx.ref.member(gangId, memberId)); // prestij kalıcı olarak silinir
-    const msUpdate = { gangId: null, gangRank: null, gangJoinedAtMs: null, gangStint: null };
+    // v34: aynı gün içinde (00:00'a kadar) bu çeteye tekrar girilemez → çık-gir
+    // ile oylama/prestij hileleri engellenir.
+    const msUpdate = { gangId: null, gangRank: null, gangJoinedAtMs: null, gangStint: null, gangExitDay: { [gangId]: ctx.dateKey } };
     if (plan.membership.intelDecisionGangId === gangId) {
       msUpdate.intelDecisionGangId = null;
       msUpdate.intelDecisionDeadline = null;
@@ -314,10 +316,13 @@ export function createCore(deps) {
     ctx.logs.push({ gang: 'membership', world: ctx.worldId, event: 'remove', gangId, memberId, reason });
 
     const babaChanged = member.rank === 'baba';
-    // Ayrılan/atılan kişinin hedef ya da başlatıcı olduğu oylamalar iptal.
+    // v34: başlatan ya da hedef çeteden ayrılsa/atılsa da oylamalar DEVAM EDER
+    // ve 00:00'da sonuçlanır (bkz. clock.resolveVote). Tek istisna: Mafya
+    // Babası çeteden çıktıysa (halef geçti) liderlik oylamasının hedefi
+    // kalmadığı için devirme/ayaklanma oylaması sonuçsuz kapanır.
     for (const v of plan.votes || []) {
-      if (v.targetId === memberId || v.initiatorId === memberId || (babaChanged && v.type !== 'kick')) {
-        tx.update(v.ref, { status: 'cancelled', cancelReason: 'member_left', resolvedAtMs: ctx.now });
+      if (babaChanged && v.type !== 'kick') {
+        tx.update(v.ref, { status: 'cancelled', cancelReason: 'baba_left', resolvedAtMs: ctx.now });
       }
     }
     for (const p of plan.pending || []) {

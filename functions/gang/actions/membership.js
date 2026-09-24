@@ -114,6 +114,7 @@ export function createMembershipActions(core, intelHelpers) {
       const gangSnap = await tx.get(ctx.ref.gang(gangId));
       if (!gangSnap.exists || gangSnap.data().status !== 'active') fail('failed-precondition', 'Bu çete artık yok.');
       if (membership.gangId === gangId) fail('failed-precondition', 'Zaten bu çetedesin.');
+      if (membership.gangExitDay?.[gangId] === ctx.dateKey) fail('failed-precondition', "Bugün ayrıldığın çeteye 00:00'a kadar giremezsin.");
       let removalPlan = null;
       if (membership.gangId) {
         if (!data.confirmLeave) fail('failed-precondition', 'CONFIRM_LEAVE_REQUIRED');

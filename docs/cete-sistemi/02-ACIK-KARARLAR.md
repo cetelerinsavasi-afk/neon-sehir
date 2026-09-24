@@ -1,4 +1,4 @@
-# Kurallar ve Kararlar (v33)
+# Kurallar ve Kararlar (v34)
 
 v31'de kaynak olarak **oyun tasarımcısının kendi metni** esas alındı; önceki sürümdeki varsayımların çoğu bu metne göre düzeltildi. Sayısal değerlerin hepsi `functions/gang/config.js` içinde tek satırdan değiştirilebilir (istemci gösterimi: `src/components/Gangs/gangConstants.js`).
 
@@ -32,6 +32,11 @@ v31'de kaynak olarak **oyun tasarımcısının kendi metni** esas alındı; önc
 5. (v32) Admin paneli ve test şifresi yok; çeteler oyunculara açık (bkz. 03).
 
 ## Uygulama yorumları
+- **Ayrılma ve oylamalar (v34):** başlatan ya da hedef ayrılsa/atılsa da oylama sürer ve 00:00'da sonuçlanır.
+  - Çıkarma: hedef ayrıldıysa sonuç bir şey değiştirmez (zaten çıktı). Başlatan ayrıldıysa sonuç yine uygulanır.
+  - Devirme/ayaklanma, başlatan ayrıldıysa: geçerse Baba devrilir (devirmede çeteden çıkar, ayaklanmada üye kalır) ve başa en yüksek prestijli üye geçer; geçmezse hiçbir şey değişmez.
+  - Mafya Babası oylama sürerken çeteden çıkarsa liderlik oylaması sonuçsuz kapanır (halef zaten başa geçti; başlatan atılmaz).
+  - Çıkılan (ayrılma ya da atılma) çeteye o gün 00:00'a kadar tekrar girilemez. 00:00'dan sonra geri giren yeni üyelik sayılır; eski oylamanın sonucu onu etkilemez.
 - **Saldırı hakkı (pencere):** gün 00–06, 06–12, 12–18, 18–24 pencerelerine ayrılır; oyuncu HER pencerede toplam 1 saldırı yapar — hangi savaş olursa olsun, çete ya da İstihbarat adına (ikisindeyse birini seçer). Pazar ve bahisli savaşlar 4 pencerenin hepsinde açıktır (günde en fazla 4); sabotaj/operasyon sadece 12–18 ve 18–24'te (günde en fazla 2). Farklı pencerelerde farklı savaşlara katılabilir.
 - **Oylamalar (v33):** gizli talep/bekleme kalktı; oylama 00:00–12:00 arasında başlatılır, hemen görünür (Tetikçi+ görür, 7 rütbeli oy verir) ve o gece 00:00'da biter. 00:00'da önce oylamalar sonuçlanır, sonra rütbeler hesaplanır. Aynı anda tek liderlik oylaması ve bir üyeye tek çıkarma oylaması (kilit belgesi; eşzamanlı istekler dahil). Aynı gece önce çıkarma, sonra devirme/ayaklanma sonuçlanır. v32'den kalan bekleyen talepler kaybolmaz, ilk 00:00'da başlar. İstihbarat atma oylamaları da aynı kurala geçti.
 - **Bahse müdahale (v33):** çeteler İstihbaratın girdiğini savaş başlarken (00:00) sohbetten öğrenir. Bahis başlayamazsa (çete dağıldı) operasyon ücreti İstihbarata iade. En yüksek güçte eşitlikte bahisler çetelere iade edilir. İstihbarat savaş katkısı 1:1 prestij.

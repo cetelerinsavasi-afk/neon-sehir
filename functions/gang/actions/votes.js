@@ -78,6 +78,9 @@ export function createVoteActions(core) {
         initiatorName: me.name,
         targetId: type === 'kick' ? targetId : gang.babaId,
         targetName: target.name,
+        // v34: kişi ayrılıp geri gelirse (yeni üyelik) eski oylamanın sonucundan etkilenmez
+        initiatorStint: me.stint || null,
+        targetStint: target.stint || null,
         voterIds,
         voterStint: Object.fromEntries(voters.map(([id, m]) => [id, m.stint || null])),
         yes: 0,

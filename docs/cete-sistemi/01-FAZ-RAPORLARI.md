@@ -97,3 +97,7 @@ Kontrol listesi: `03-KURULUM-TEST-YAYIN.md`.
 **Telefon:** 3 sayfa yana kaydırılır — solda Neon TV (TV uygulaması kaldırıldı), ortada ana ekran, sağda Altın Mağazası · Neon Şehir (Sokak Rehberi, tasarım birebir) · Bi fikrin mi var? (fikir/hata/soru, 7 gün herkese açık liste, Instagram @cetelerinsavasi).
 **Rehber metni:** "Devirme ve Ayaklanma" sayfasındaki eski oylama satırı yeni kurala göre güncellendi.
 **Testler:** 93/93.
+
+
+## v34 — ayrılma senaryolarında oylamalar, tekrar giriş yasağı, REC sayacı
+Oylamalar başlatan/hedef ayrılsa da sürer ve kurala göre sonuçlanır (bkz. 02). Çıkılan çeteye aynı gün girilemez (listede 🔒 00:00). Oylama, kişinin oylama başladığındaki üyeliğine (stint) bağlı — çık-gir ile sonuç atlatılamaz. Sixtagram/TV videolarında REC sayacı her döngüde sıfırlanıyor. Testler: 98/98.

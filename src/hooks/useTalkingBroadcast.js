@@ -25,6 +25,9 @@ export function useTalkingBroadcast(
   const [elapsedSec, setElapsedSec] = useState(0);
   const [done, setDone] = useState(false);
   const onMouthToggleRef = useRef(onMouthToggle);
+  // Videonun (döngünün) başladığı an — REC sayacı ve ilerleme çubuğu her
+  // döngüde buradan sıfırlanır (eskiden sayaç sonsuza kadar artıyordu).
+  const loopStartRef = useRef(0);
   onMouthToggleRef.current = onMouthToggle;
 
   const durations = useMemo(() => sentences.map((s) => estimateReadMs(s, { msPerChar })), [sentences, msPerChar]);
@@ -60,6 +63,7 @@ export function useTalkingBroadcast(
 
     const runSentence = () => {
       if (cancelled) return;
+      if (idx === 0) loopStartRef.current = performance.now();
       setSentenceIndex(idx);
       scheduleBlip();
       advanceTimer = setTimeout(() => {
@@ -98,15 +102,15 @@ export function useTalkingBroadcast(
     if (!active || !sentences.length) return undefined;
     let raf;
     let cancelled = false;
-    const startedAt = performance.now();
+    if (!loopStartRef.current) loopStartRef.current = performance.now();
     let lastUpdate = 0;
     const tick = (now) => {
       if (cancelled) return;
       if (now - lastUpdate > 160) {
         lastUpdate = now;
-        const elapsed = (now - startedAt) % totalMs;
+        const elapsed = Math.min(totalMs, Math.max(0, now - loopStartRef.current));
         setProgress(Math.min(1, elapsed / totalMs));
-        setElapsedSec(Math.floor(((now - startedAt) / 1000)));
+        setElapsedSec(Math.floor(elapsed / 1000));
       }
       raf = requestAnimationFrame(tick);
     };
