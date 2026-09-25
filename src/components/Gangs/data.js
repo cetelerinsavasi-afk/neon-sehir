@@ -10,9 +10,17 @@ export function useGangData(membership) {
   const now = useNow(30_000);
   const { data: gang } = useDocData(gangId ? path(`gangs/${gangId}`) : null);
   const { data: me } = useDocData(gangId ? path(`gangs/${gangId}/members/${actorId}`) : null);
-  const { data: state } = useDocData(gangId ? path(`gangs/${gangId}/private/state`) : null);
-  const { docs: members } = useQueryData(gangId ? path(`gangs/${gangId}/members`) : null, () => [limit(300)], gangId);
   const rank = me?.rank || membership?.gangRank || null;
+  // v38: anlık kasa sadece Tetikçi+; diğerleri çete belgesindeki 00:00 kasasını görür
+  const kasaLive = atLeast(rank, 'tetikci');
+  const { data: state } = useDocData(gangId && kasaLive ? path(`gangs/${gangId}/private/state`) : null);
+  // v38: üye listesi 00:00 prestijiyle (public/roster); kendi satırın anlık
+  const { data: rosterDoc } = useDocData(gangId ? path(`gangs/${gangId}/public/roster`) : null);
+  const members = useMemo(() => {
+    const list = Object.entries(rosterDoc?.members || {}).map(([id, v]) => ({ id, ...v, prestigeIsMidnight: true }));
+    if (me && !list.some((m) => m.id === actorId)) list.push({ id: actorId, ...me, prestigeIsMidnight: false });
+    return list.map((m) => (m.id === actorId && me ? { ...m, rank: me.rank || m.rank, prestige: Number(me.prestige || 0), prestigeIsMidnight: false } : m));
+  }, [rosterDoc, me, actorId]);
   const canSeeVotes = atLeast(rank, 'tetikci');
   const wars = useWarLists({ gangId });
   const { docs: alliances } = useQueryData(gangId ? path('alliances') : null, () => [where('gangIds', 'array-contains', gangId), limit(30)], gangId);
@@ -27,6 +35,9 @@ export function useGangData(membership) {
     rank,
     state,
     stateToday: state?.midnightDateKey === today,
+    kasaLive,
+    // gösterilecek kasa: Tetikçi+ anlık, diğerleri 00:00
+    kasaShown: kasaLive ? state?.kasa : gang?.kasaAtMidnight,
     members,
     wars,
     alliances: alliances.filter((a) => ['requested', 'accepted', 'active', 'ending'].includes(a.status)),
@@ -44,7 +55,13 @@ export function useIntelData(membership) {
   const { data: intel } = useDocData(path('intel/main'));
   const { data: state } = useDocData(path('intel/main/private/state'));
   const { data: me } = useDocData(rid ? path(`intelRoster/${rid}`) : null);
-  const { docs: roster } = useQueryData(rid ? path('intelRoster') : null, () => [limit(400)], rid);
+  // v38: kod adı listesi 00:00 prestijiyle; kendi satırın anlık
+  const { data: rosterDoc } = useDocData(rid ? path('intel/main/public/roster') : null);
+  const roster = useMemo(() => {
+    const list = Object.entries(rosterDoc?.members || {}).map(([id, v]) => ({ id, ...v, prestigeIsMidnight: true }));
+    if (me && !list.some((m) => m.id === rid)) list.push({ id: rid, ...me, prestigeIsMidnight: false });
+    return list.map((m) => (m.id === rid && me ? { ...m, rank: me.rank || m.rank, codeName: me.codeName || m.codeName, prestige: Number(me.prestige || 0), prestigeIsMidnight: false } : m));
+  }, [rosterDoc, me, rid]);
   const rank = me?.rank || membership?.intelRank || null;
   const canSeeVotes = ['baskan', 'sef', 'uzman', 'ajan'].includes(rank);
   const wars = useWarLists({ intel: Boolean(rid) });
@@ -57,6 +74,8 @@ export function useIntelData(membership) {
     intel,
     state,
     stateToday: state?.midnightDateKey === today,
+    kasaLive: true,
+    kasaShown: state?.kasa,
     me: me ? { id: rid, ...me } : null,
     rank,
     roster,

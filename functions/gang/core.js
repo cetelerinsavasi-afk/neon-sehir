@@ -81,6 +81,9 @@ export function createCore(deps) {
         betReports: () => c('betReports'),
         distribution: (id) => d(`distributions/${id}`),
         distributions: () => c('distributions'),
+        // v38: herkese açık görünümler (00:00 prestiji; anlık prestij sadece kendine)
+        gangRoster: (g) => d(`gangs/${g}/public/roster`),
+        intelRosterView: () => d('intel/main/public/roster'),
         war: (id) => d(`wars/${id}`),
         // v37: bahis tutarı ayrı belgede — sadece Baba/Sağ Kol/Kıdemli okur (kurallar)
         betSecret: (id) => d(`wars/${id}/secret/stake`),
@@ -227,6 +230,43 @@ export function createCore(deps) {
     gangLog(tx, ctx, gangId, icon, text);
     systemChat(tx, ctx, ctx.ref.gangChat(gangId, 'genel'), `${icon} ${text}`);
   }
+  // ---------------------------------------------------------------------------
+  // v38 — HERKESE AÇIK GÖRÜNÜM: diğer üyelerin prestiji 00:00'daki haliyle
+  // görünür (anlık prestij sadece sahibine). Üye/kod adı listeleri tek bir
+  // "roster" belgesinden okunur; asıl üye belgesi (anlık prestij) sadece
+  // sahibine açıktır (Firestore kuralı). Liste, üyelik değişince (katıl/ayrıl/
+  // at/saygı…) ve her gece 00:00'da yeniden yazılır.
+  // ---------------------------------------------------------------------------
+  function publicMemberView(m) {
+    return {
+      name: m.name || '',
+      rank: m.rank || 'comez',
+      avatar: m.avatar || null,
+      prestige: Number(m.prestigeAtMidnight ?? m.prestige ?? 0),
+      respected: Boolean(m.respected),
+      inactiveWarn: Boolean(m.inactiveWarn),
+      joinedAtMs: Number(m.joinedAtMs || 0),
+    };
+  }
+  async function refreshGangRoster(ctx, gangId) {
+    if (!gangId) return;
+    const snap = await ctx.ref.members(gangId).get();
+    const members = {};
+    snap.docs.forEach((d) => {
+      members[d.id] = publicMemberView(d.data());
+    });
+    await ctx.ref.gangRoster(gangId).set({ members, count: snap.size, updatedAtMs: ctx.now });
+  }
+  async function refreshIntelRoster(ctx) {
+    const snap = await ctx.ref.rosterCol().get();
+    const members = {};
+    snap.docs.forEach((d) => {
+      const r = d.data();
+      members[d.id] = { codeName: r.codeName || '', rank: r.rank || 'muhbir', prestige: Number(r.prestigeAtMidnight ?? r.prestige ?? 0), joinedAtMs: Number(r.joinedAtMs || 0) };
+    });
+    await ctx.ref.intelRosterView().set({ members, count: snap.size, updatedAtMs: ctx.now });
+  }
+
   // v37: rütbelilere (Baba · Sağ Kol · Kıdemli) özel sistem mesajı — yönetim sohbeti
   function announceMgmt(tx, ctx, gangId, icon, text) {
     systemChat(tx, ctx, ctx.ref.gangChat(gangId, 'yonetim'), `${icon} ${text}`);
@@ -320,9 +360,12 @@ export function createCore(deps) {
     const { gangId, memberId, gang, member } = plan;
     if (!member) return { removed: false };
     tx.delete(ctx.ref.member(gangId, memberId)); // prestij kalıcı olarak silinir
-    // v34: aynı gün içinde (00:00'a kadar) bu çeteye tekrar girilemez → çık-gir
-    // ile oylama/prestij hileleri engellenir.
-    const msUpdate = { gangId: null, gangRank: null, gangJoinedAtMs: null, gangStint: null, gangExitDay: { [gangId]: ctx.dateKey } };
+    // v34: KENDİ İSTEĞİYLE ayrılan aynı gün içinde (00:00'a kadar) bu çeteye
+    // tekrar giremez → çık-gir ile oylama/prestij hileleri engellenir.
+    // v38: ATILAN (oylama, Baba, aktiflik, başarısız devirme/ayaklanma) hemen
+    // tekrar girebilir — prestiji zaten 0'dan başlar.
+    const voluntary = String(reason || '').startsWith('left');
+    const msUpdate = { gangId: null, gangRank: null, gangJoinedAtMs: null, gangStint: null, ...(voluntary ? { gangExitDay: { [gangId]: ctx.dateKey } } : {}) };
     if (plan.membership.intelDecisionGangId === gangId) {
       msUpdate.intelDecisionGangId = null;
       msUpdate.intelDecisionDeadline = null;
@@ -509,6 +552,8 @@ export function createCore(deps) {
     systemChat,
     announce,
     announceMgmt,
+    refreshGangRoster,
+    refreshIntelRoster,
     readBetStake,
     announceIntel,
     unitsOfItems,

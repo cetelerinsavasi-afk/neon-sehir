@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useMyFactory } from '../../hooks/useMyFactory';
@@ -19,6 +19,7 @@ import {
   runFactoryMachines,
   fireEmployee,
   reassignEmployee,
+  ensureFactoryMigrationsV38,
 } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
@@ -45,7 +46,8 @@ const MACHINE_EMOJI = {
 // sıralanıyor, makine sayısı arttıkça karışık oluyor" — mining hariç diğer
 // 4 makine türü artık ana ekranda tek tek listelenmiyor, bunun yerine 2x2
 // kategori butonu olarak gösteriliyor (bkz. OwnerView).
-const MACHINE_CATEGORY_TYPES = ['tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme', 'yasakliMadde'];
+// v38: yasaklı madde makineleri kaldırıldı (yasaklı madde ticareti artık çetelerde).
+const MACHINE_CATEGORY_TYPES = ['tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme'];
 
 function machinePrice(type, cryptoPrice, ownedMiningCount = 0) {
   if (type !== 'mining') return MACHINE_PRICES[type];
@@ -72,7 +74,7 @@ function CreateFactoryModal({ onClose, isEmployed }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
-  const types = ['mining', 'tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme', 'yasakliMadde'];
+  const types = ['mining', 'tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme'];
 
   const handleCreate = async () => {
     if (isEmployed) {
@@ -144,7 +146,7 @@ function BuyMachineModal({ onClose, ownedMiningCount }) {
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
 
-  const types = ['mining', 'tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme', 'yasakliMadde'];
+  const types = ['mining', 'tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme'];
 
   const handleBuy = async (type) => {
     setBusy(type);
@@ -668,7 +670,10 @@ function OwnerView({ factory, machines, player, myUid }) {
     );
   };
 
-  const categoryMachines = activeCategory ? otherMachines.filter((m) => m.type === activeCategory) : [];
+  // v38: dolu (çalışanı olan) makineler üstte, boşlar altta
+  const categoryMachines = activeCategory
+    ? otherMachines.filter((m) => m.type === activeCategory).sort((a, b) => Number(Boolean(b.workerId)) - Number(Boolean(a.workerId)))
+    : [];
 
   return (
     <div className="factory-owner-screen">
@@ -1219,6 +1224,10 @@ export default function FactoryScreen() {
   const { user } = useAuth();
   const { player } = usePlayer();
   const { factory, machines } = useMyFactory();
+  // v38: yasaklı madde makinesi göçü (sunucuda idempotent; bir kez çalışır)
+  useEffect(() => {
+    if (user) ensureFactoryMigrationsV38().catch(() => {});
+  }, [user]);
 
   if (!user) {
     return <SignInPrompt message="Fabrikaya girmek için giriş yapmalısın." />;

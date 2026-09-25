@@ -18,15 +18,15 @@ test('zar: katkı = (z1+z2) × güç; güç anlık görüntü, sonradan değişm
   assert.deepEqual(r1.dice, [2, 6]);
   assert.equal(r1.contribution, 320_000);
   await h.setPersona(A.baba, { power: 1 });
-  const roll = h.get(`wars/${warId}/rolls/${A.baba}_2026-09-22_0`);
+  const roll = h.get(`wars/${warId}/rolls/${A.baba}_2026-09-22_w0`);
   assert.equal(roll.contribution, 320_000, 'eski katkı değişmemeli');
   h.at('2026-09-22', '06:30');
   const r2 = await h.act(A.baba, 'rollDice', { warId });
   assert.equal(r2.contribution, 6, 'yeni saldırı yeni gücü kullanır');
-  assert.equal(h.member(A.gangId, A.baba).prestige, 10_000_000 + 320_000 + 6);
+  assert.equal(h.member(A.gangId, A.baba).prestige, 10_000_000 + 160_000 + 3, 'v38: prestij = hasarın yarısı');
 });
 
-test('pencere: aynı 6 saatte ikinci savaş yok (eşzamanlı çift tık dahil); bahis 4 dilim sürer', async () => {
+test('v38 pencere: aynı 3 saatlik dilimde ikinci savaş yok (eşzamanlı çift tık dahil); bahis 8 dilim sürer', async () => {
   const h = await createHarness();
   const A = await setupGang(h, { members: 0, name: 'Alfa' });
   const B = await setupGang(h, { members: 0, name: 'Beta' });
@@ -37,25 +37,44 @@ test('pencere: aynı 6 saatte ikinci savaş yok (eşzamanlı çift tık dahil); 
   h.at('2026-09-21', '12:00');
   const rs = await Promise.allSettled([1, 2, 3, 4, 5].map(() => h.act(A.baba, 'rollDice', { warId })));
   assert.equal(rs.filter((r) => r.status === 'fulfilled').length, 1);
+  h.at('2026-09-21', '14:59');
+  assert.match((await h.fails(A.baba, 'rollDice', { warId })).message, /dilimde/);
   let n = 1;
-  for (const [d, t] of [['2026-09-21', '18:00'], ['2026-09-22', '00:01'], ['2026-09-22', '06:00']]) {
+  for (const [d, t] of [['2026-09-21', '15:00'], ['2026-09-21', '18:00'], ['2026-09-21', '21:00'], ['2026-09-22', '00:01'], ['2026-09-22', '03:00'], ['2026-09-22', '06:00'], ['2026-09-22', '09:00']]) {
     if (t === '00:01') await h.tickTo(d, t);
     else h.at(d, t);
     await h.act(A.baba, 'rollDice', { warId });
     n += 1;
     const again = await h.fails(A.baba, 'rollDice', { warId });
-    assert.match(again.message, /pencerede/);
+    assert.match(again.message, /dilimde/);
   }
-  assert.equal(n, 4);
+  assert.equal(n, 8);
   h.at('2026-09-22', '12:00');
   const over = await h.fails(A.baba, 'rollDice', { warId });
   assert.match(over.message, /süresi doldu|aktif değil/);
   const shards = h.db._dump(`gangWorlds/test/wars/${warId}/shards/`);
   const rolls = Object.values(shards).reduce((s, x) => s + x.rolls, 0);
-  assert.equal(rolls, 4);
+  assert.equal(rolls, 8);
 });
 
-test('bahis zamanlaması: kabulden sonraki ilk dilimde başlar (14:xx → 18:00), 24 saat sonra (ertesi gün 18:00) biter', async () => {
+test('v38 geçiş günü: eski 6 saatlik dilimde bu 3 saat içinde saldıran tekrar saldıramaz; önceki 3 saatteki eski saldırı engellemez', async () => {
+  const h = await createHarness();
+  const A = await setupGang(h, { members: 0, name: 'Alfa' });
+  const B = await setupGang(h, { members: 0, name: 'Beta' });
+  await h.fundKasa(A.gangId, 1_000_000);
+  await h.fundKasa(B.gangId, 1_000_000);
+  const { warId } = await h.act(A.baba, 'offerBet', { targetGangId: B.gangId, stake: 50_000 });
+  await h.act(B.baba, 'respondBet', { warId, accept: true }); // 12:00'de başlar
+  // eski sürüm 12:30'da saldırmış: slots/{uid}_{gün}_2 (12–18 dilimi)
+  const at1230 = Date.UTC(2026, 8, 21, 9, 30);
+  await h.db.doc(`gangWorlds/test/slots/${A.baba}_2026-09-21_2`).set({ warId, atMs: at1230 });
+  h.at('2026-09-21', '14:00');
+  assert.match((await h.fails(A.baba, 'rollDice', { warId })).message, /dilimde/);
+  h.at('2026-09-21', '15:00'); // yeni dilim → eski kayıt bu dilimde değil
+  await h.act(A.baba, 'rollDice', { warId });
+});
+
+test('bahis zamanlaması (v38): kabulden sonraki ilk dilimde başlar (14:xx → 15:00), 24 saat sonra (ertesi gün 15:00) biter', async () => {
   const h = await createHarness({ start: Date.UTC(2026, 8, 21, 11, 0) }); // 14:00 İstanbul
   const A = await setupGang(h, { members: 0, name: 'Alfa' });
   const B = await setupGang(h, { members: 0, name: 'Beta' });
@@ -63,17 +82,17 @@ test('bahis zamanlaması: kabulden sonraki ilk dilimde başlar (14:xx → 18:00)
   await h.fundKasa(B.gangId, 1_000_000);
   const { warId } = await h.act(A.baba, 'offerBet', { targetGangId: B.gangId, stake: 50_000 });
   const r = await h.act(B.baba, 'respondBet', { warId, accept: true });
-  assert.equal(new Date(r.startsAtMs).toISOString(), '2026-09-21T15:00:00.000Z', '18:00 İstanbul');
+  assert.equal(new Date(r.startsAtMs).toISOString(), '2026-09-21T12:00:00.000Z', '15:00 İstanbul');
   assert.equal(r.endsAtMs - r.startsAtMs, 24 * 3600_000);
-  await h.fails(A.baba, 'rollDice', { warId }); // 18:00'den önce yok
-  h.at('2026-09-21', '18:00');
+  await h.fails(A.baba, 'rollDice', { warId }); // 15:00'ten önce yok
+  h.at('2026-09-21', '15:00');
   await h.act(A.baba, 'rollDice', { warId }); // saat turunu beklemeden
   await h.internal.clock.runClock('test');
   assert.equal(h.get(`wars/${warId}`).status, 'active');
-  h.at('2026-09-22', '17:59');
+  h.at('2026-09-22', '14:59');
   await h.internal.clock.runClock('test');
   assert.equal(h.get(`wars/${warId}`).status, 'active');
-  h.at('2026-09-22', '18:01');
+  h.at('2026-09-22', '15:01');
   await h.internal.clock.runClock('test');
   assert.equal(h.get(`wars/${warId}`).status, 'resolved');
   assert.equal(h.get(`wars/${warId}`).result.winner, A.gangId);
@@ -92,7 +111,7 @@ test("v34'ten kalan (00:00'da başlayacak) kabul edilmiş bahis yeni kurala taş
   await h.db.doc(`gangWorlds/test/wars/${warId}`).update({ startsAtMs: mid, endsAtMs: mid + 24 * 3600_000, dateKey: '2026-09-22', slotTiming: null });
   await h.internal.clock.runClock('test');
   const w = h.get(`wars/${warId}`);
-  assert.equal(new Date(w.startsAtMs).toISOString(), '2026-09-21T15:00:00.000Z');
+  assert.equal(new Date(w.startsAtMs).toISOString(), '2026-09-21T12:00:00.000Z'); // v38: 14:00 → 15:00
   assert.equal(w.slotTiming, true);
 });
 
@@ -205,7 +224,7 @@ test('Pazar ticaret yolu savaşı: yasaklı madde→silah→araba; kazanan yolu 
   assert.equal(route.untilDateKey, '2026-10-19', '21 gün');
   assert.deepEqual(h.get(`gangs/${A.gangId}`).routeProducts, ['yasakliMadde']);
   assert.equal(h.member(B.gangId, B.baba).prestige, pB, 'kaybeden katkı prestijini korur');
-  assert.equal(pB, 10_000_000 + 100_000);
+  assert.equal(pB, 10_000_000 + 50_000, 'v38: prestij = hasarın yarısı');
   assert.equal(h.get(`gangs/${A.gangId}`).lastSundayPower, 500_000);
   assert.equal(h.get(`gangs/${B.gangId}`).lastSundayPower, 100_000);
   // rotasyon: yasaklı madde → silah → araba → yasaklı madde
@@ -281,7 +300,7 @@ test('hem çetede hem İstihbaratta olan üye: bir pencerede ya çetesi ya İsti
   const warId = 'trade_2026-09-27';
   await h.act(x, 'rollDice', { warId });
   const other = await h.fails(x, 'rollDice', { warId, side: 'intel' });
-  assert.match(other.message, /pencerede/);
+  assert.match(other.message, /dilimde/);
   h.at('2026-09-27', '06:00');
   await h.act(x, 'rollDice', { warId, side: 'intel' });
   await h.fails(x, 'rollDice', { warId });

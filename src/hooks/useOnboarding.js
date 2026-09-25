@@ -59,7 +59,7 @@ export const ONBOARDING_TASKS = [
  * - Tamamlandıktan sonra: koşulları o an sağlananları gösteren hatırlatıcı
  *   listesi.
  */
-export function useOnboarding() {
+export function useOnboarding(gangReminders = null) {
   const { user } = useAuth();
   const { player, loading: playerLoading } = usePlayer();
   const { actions, loading: actionsLoading } = useDailyActions();
@@ -169,8 +169,14 @@ export function useOnboarding() {
       list.push({ id: 'imam-salary', emoji: '🕌', text: 'Camiiden maaşını al' });
     }
 
+    // v38: çete hatırlatıcıları (bkz. components/Gangs/alerts.jsx)
+    if (gangReminders?.joinWar) list.push({ id: 'gang-war', emoji: '⚔️', text: 'Savaşa katıl' });
+    if (gangReminders?.takeMoney) list.push({ id: 'gang-money', emoji: '💰', text: 'Çeteden para al' });
+    if (gangReminders?.report) list.push({ id: 'gang-report', emoji: '📡', text: 'İhbar et' });
+    if (gangReminders?.leak) list.push({ id: 'gang-leak', emoji: '📦', text: 'İçeriği aç' });
+
     return list;
-  }, [player, actions, vehicles, team, futbolRole, employment, employmentMachine, factory, machines, todayKey, win]);
+  }, [player, actions, vehicles, team, futbolRole, employment, employmentMachine, factory, machines, todayKey, win, gangReminders?.joinWar, gangReminders?.takeMoney, gangReminders?.report, gangReminders?.leak]);
 
   return {
     loading: playerLoading || actionsLoading,

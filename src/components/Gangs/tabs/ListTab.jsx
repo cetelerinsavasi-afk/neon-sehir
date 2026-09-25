@@ -98,10 +98,14 @@ function JoinIntelSheet({ onClose }) {
   );
 }
 
-function GangKasa({ gangId }) {
-  const { path } = useGang();
-  const { data } = useDocData(path(`gangs/${gangId}/private/state`));
-  return <Gold value={data?.kasa} />;
+// v38: çetelerin kasası listede 00:00'daki haliyle görünür (anlık kasa sadece o çetenin Tetikçi+ rütbelerine)
+function GangKasa({ gang }) {
+  return (
+    <span className="gx-kasa-midnight">
+      <Gold value={gang?.kasaAtMidnight} />
+      <span className="gx-midnight-chip">🕛 00:00</span>
+    </span>
+  );
 }
 
 function OrgCard({ logo, name, note, kasa, power, members, leader, leaderIcon, routes = [], action, mine, rankNo }) {
@@ -199,7 +203,7 @@ export default function ListTab({ membership, onOpen }) {
             logo={x.g.logo}
             name={x.g.name}
             note={x.g.note}
-            kasa={<GangKasa gangId={x.id} />}
+            kasa={<GangKasa gang={x.g} />}
             power={x.power}
             members={x.g.memberCount}
             leader={x.g.babaName}

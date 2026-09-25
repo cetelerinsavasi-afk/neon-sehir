@@ -277,3 +277,18 @@ test('polis yakalama ödülü → İstihbarat prestiji (canlı dünya, idempoten
   const res = await h.system.onPoliceBustReward('someoneElse', 100, 'p2');
   assert.equal(res.skipped, true);
 });
+
+test('v38: tır ihbarı ve içerik sızdırma sadece yola çıktığı gün 00:00–12:00', async () => {
+  const h = await createHarness();
+  const { mole, truckId } = await tradeGangWithMole(h, { moleRank: 'kidemli' });
+  await h.act(mole, 'joinIntel', { codeName: 'Geçkalan' });
+  await h.tickTo('2026-09-22', '12:00');
+  assert.match((await h.fails(mole, 'reportTruck', { truckId })).message, /12:00/);
+  const h2 = await createHarness();
+  const X = await tradeGangWithMole(h2, { moleRank: 'kidemli' });
+  await h2.act(X.mole, 'joinIntel', { codeName: 'Erkenci' });
+  await h2.tickTo('2026-09-22', '11:59');
+  const { reportId } = await h2.act(X.mole, 'reportTruck', { truckId: X.truckId });
+  h2.at('2026-09-22', '12:00');
+  assert.match((await h2.fails(X.mole, 'leakTruck', { reportId })).message, /12:00/);
+});

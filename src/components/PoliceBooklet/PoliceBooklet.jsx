@@ -15,7 +15,7 @@ const PAGES_BEFORE_SALARY = [
       'Ana ekrandaki 📋 butonundaki temel görevleri bitirmiş olmalısın.',
       'Başvuru gece 00:00\'da onaylanır.',
       'Şüphe sadece başvuruda aranır. Polis olduktan sonra şüphenin önemi yoktur.',
-      'Polis fabrikada çalışamaz.',
+      'Polis fabrikada çalışabilir.',
     ],
   },
 ];

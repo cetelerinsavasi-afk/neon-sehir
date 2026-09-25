@@ -64,7 +64,7 @@ export default function FutbolLigler() {
   // sekmesine has bi şey olmasın" — "Maçlar"/"Maç Fikstürü"/"İddaa Bayii"
   // sekmelerinde de kupa maçlarını gösterebilmek için kupa verisi artık
   // burada (Kupa sekmesine girmeden) da dinleniyor.
-  const { cup, matches: cupMatches } = useFutbolCup(cupSeason);
+  const { cup, matches: cupMatches } = useFutbolCup(cupSeason, 'all');
   const { bets: myCupBets } = useMyFutbolCupBets(cupSeason);
 
   const activeLeague = leagues.find((l) => l.id === selectedLeagueId) || leagues[0] || null;
@@ -524,7 +524,7 @@ export default function FutbolLigler() {
         </>
       )}
 
-      {subTab === 'kupa' && <FutbolKupa season={cupSeason} />}
+      {subTab === 'kupa' && <FutbolKupa season={cupSeason} groupCount={Math.max(1, Math.floor(leagues.length / 2))} />}
 
       {selectedMatch && (
         <FutbolMatchDetail

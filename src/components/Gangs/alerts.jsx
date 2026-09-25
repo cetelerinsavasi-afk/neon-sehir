@@ -2,7 +2,7 @@
 // Çete bildirim işaretleri (v33): alt çubuktaki "Çeteler" butonu ve çete
 // içindeki sekmeler için "burada yapılacak bir şey var" noktaları.
 //  - Sohbet: son açılıştan sonra başkasından gelen yeni mesaj
-//  - Savaş: şu an katılabileceğin savaş + bu 6 saatlik pencerede hakkın var;
+//  - Savaş: şu an katılabileceğin savaş + bu 3 saatlik dilimde hakkın var;
 //           gelen bahis/ittifak teklifi (Baba/Sağ Kol); oy vermediğin oylama;
 //           alabileceğin dağıtım
 //  - Operasyon (İstihbarat): operasyon bekleyen ihbar (Başkan/Şef) ya da
@@ -11,7 +11,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { collection, doc, getDoc, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { istDateKey, istHour, windowSlot } from './GangContext';
+import { istDateKey, istHour, slotIdOf } from './GangContext';
 
 export const GangAlertsContext = createContext(null);
 export const useGangAlertsCtx = () => useContext(GangAlertsContext);
@@ -137,7 +137,7 @@ export function useGangAlerts(uid) {
   const gJoined = Number(ms.gangJoinedAtMs || 0);
   const iJoined = Number(ms.intelJoinedAtMs || 0);
   const today = istDateKey(now);
-  const slotId = `${uid}_${today}_${windowSlot(now)}`;
+  const slotId = slotIdOf(uid, now);
 
   // --- sohbet: her kanalın son mesajı ---
   const last = (coll, since) => () => query(collection(db, coll), where('createdAtMs', '>=', since), orderBy('createdAtMs', 'desc'), limit(1));
@@ -200,7 +200,8 @@ export function useGangAlerts(uid) {
 
     const reportedTrucks = new Set(truckReps.map((r) => r.truckId));
     const reportedBets = new Set(betReps.map((r) => r.id));
-    const myRoad = myTrucks.filter((t) => t.status === 'in_transit' && t.departDateKey === today && !reportedTrucks.has(t.id));
+    const beforeNoon = istHour(now) < 12; // v38: tır ihbarı / sızdırma / operasyon 12:00'ye kadar
+    const myRoad = beforeNoon ? myTrucks.filter((t) => t.status === 'in_transit' && t.departDateKey === today && !reportedTrucks.has(t.id)) : [];
     const myBets = [...all.values()].filter((x) => x.type === 'bet' && ['accepted', 'active'].includes(x.status) && x.startsAtMs && now < x.startsAtMs + 6 * 3600_000 && (x.gangIds || []).includes(gangId) && !reportedBets.has(x.id));
     const ops =
       Boolean(rid) &&
@@ -208,7 +209,17 @@ export function useGangAlerts(uid) {
 
     const gang = { sohbet: gangChat, savas: gangWar || offersIn || gUnvoted > 0 || gClaim };
     const intel = { sohbet: intelChat, savas: intelWar || iUnvoted > 0 || iClaim, operasyon: ops };
-    return { worldId: w, uid, gang, intel, chans, any: Object.values(gang).some(Boolean) || Object.values(intel).some(Boolean) };
+    // v38: anasayfa hatırlatıcıları (📋 paneli)
+    const canLeak = Boolean(rid && gangId && atLeast(rank, 'kidemli'));
+    const leakTruck = beforeNoon && truckReps.some((r) => r.gangId === gangId && !r.leaked);
+    const leakBet = betReps.some((r) => (r.gangIds || []).includes(gangId) && !r.leaked);
+    const reminders = {
+      joinWar: gangWar || intelWar,
+      takeMoney: gClaim || iClaim,
+      report: canReport && (myRoad.length > 0 || myBets.length > 0),
+      leak: canLeak && (leakTruck || leakBet),
+    };
+    return { worldId: w, uid, gang, intel, chans, reminders, any: Object.values(gang).some(Boolean) || Object.values(intel).some(Boolean) };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [now, seenTick, w, uid, gangId, rid, rank, irank, gGen, gYon, iGen, iYon, pub, mine, intelWars, slot, gVotes, iVotes, gDists, iDists, allianceIn, gUnvoted, iUnvoted, truckReps, betRepsAll, myTrucks, today, hourKey, gJoined, iJoined, canReport, isLead]);
 }

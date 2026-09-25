@@ -29,7 +29,8 @@ export const GANG = {
 
   // --- Prestij kaynakları ---
   DONATION_PRESTIGE_PER_GOLD: 5, // ONAYLI: 1 altın bağış = 5 prestij
-  WAR_PRESTIGE_PER_POWER: 1, // ONAYLI: 1 güç = 1 prestij
+  // v38: dilimler 8'e çıktığı için savaş prestiji hasarın YARISI (500.000 hasar → 250.000 prestij)
+  WAR_PRESTIGE_PER_POWER: 0.5,
   WITHDRAW_PRESTIGE_PER_GOLD: 5, // ONAYLI: Baba kendi hesabına aldığı her altın için 5 prestij kaybeder
 
   // --- Kasa & dağıtım (ONAYLI) ---
@@ -42,8 +43,8 @@ export const GANG = {
   DIST_MAX_SLOTS: 500,
   MIN_DONATION: 100,
 
-  // --- Haraç / rüşvet (ONAYLI: alt/üst sınır yok; 18:00'e kadar ödenir) ---
-  HARAC_PAY_DEADLINE_HOUR: 18,
+  // --- Haraç / rüşvet (ONAYLI: alt/üst sınır yok) — v38: son dilim (21:00) başlayana kadar ödenir ---
+  HARAC_PAY_DEADLINE_HOUR: 21,
   ATTACK_ANNOUNCE_HOUR: 12, // saldırılar tır sahibine 12:00'de duyurulur
 
   // --- Bahisli savaş ---
@@ -53,9 +54,9 @@ export const GANG = {
   BET_OFFERS_PER_DAY: 1, // ONAYLI: çete başına günde 1 teklif
   // ONAYLI: bahis teklifi Cumartesi ve Pazar gönderilemez (Pzt–Cum açık).
   BET_OFFER_WEEKDAYS: [1, 2, 3, 4, 5],
-  // v35: kabul edilen bahis bir sonraki saldırı diliminde başlar, 24 saat (4 dilim) sürer
+  // v35: kabul edilen bahis bir sonraki saldırı diliminde başlar, 24 saat (v38: 8 dilim) sürer
   BET_DURATION_MS: 24 * MS_HOUR,
-  // İstihbarat ihbar/açma/operasyon için son an: ilk dilimin sonu
+  // İstihbarat ihbar/açma/operasyon için son an: v38'de ilk 2 dilimin (6 saat) sonu
   BET_INTEL_WINDOW_MS: 6 * MS_HOUR,
 
   // --- Sabotaj (ONAYLI) — ücret OYUN GENELİNDE her yeni sabotaj/operasyonla
@@ -63,8 +64,7 @@ export const GANG = {
   SABOTAGE_BASE_PRICE: 10_000,
   SABOTAGE_PRICE_STEP: 10_000,
   SABOTAGE_START_DEADLINE_HOUR: 12,
-  ATTACK_PHASE_1_START_HOUR: 12,
-  ATTACK_PHASE_2_START_HOUR: 18,
+  ATTACK_PHASE_1_START_HOUR: 12, // sabotaj/operasyon 12:00–24:00 = 4 dilim (v38)
 
   // --- Ticaret yolu (ONAYLI) ---
   TRADE_ORDER_LIMIT_RATIO: 0.05, // günlük sipariş limiti = kazanırken kullanılan gücün %5'i
@@ -173,6 +173,8 @@ export function productById(id) {
 // Dağıtım hedef grupları
 export const DIST_GROUPS = ['rutbeli', 'tetikci', 'comez', 'hepsi'];
 
-// Savaş katılım pencereleri: 00,06,12,18 → slot 0..3 (ONAYLI)
-export const WINDOW_HOURS = 6;
+// Savaş katılım pencereleri — v38: 3 saatlik 8 dilim (00,03,06,…,21 → slot 0..7)
+export const WINDOW_HOURS = 3;
+// v38 öncesi 6 saatlik dilim (geçiş günü çift saldırı koruması için)
+export const LEGACY_WINDOW_HOURS = 6;
 export const WAR_SHARDS = 8;

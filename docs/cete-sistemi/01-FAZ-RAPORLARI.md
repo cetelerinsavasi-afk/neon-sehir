@@ -118,3 +118,14 @@ Bahis kabulden sonraki ilk saldırı diliminde başlar, 24 saat sürer; başlang
 - Kurallar: `wars/{id}/secret/*` sadece iki çetenin baba/sagkol/kidemli üyeleri.
 - UI: `PendingBetCard`, `BetAmount`, `LiveCountdown`; gelen teklif kartı aynı tasarım. `BetPair` ui.jsx'e taşındı.
 - Testler 105/105 (+3: gizlilik, iade yolları, eski veri taşıma).
+
+## v38 — büyük güncelleme (8 faz)
+1. Menajerlik seviyesi puan aralıklarıyla (−9..9 → 0, 10..29 → 1, 30..69 → 2 …). Eski seviye+streak'ten seviye korunarak puan türetilir (`futbolManagerPoints`).
+2. Fabrika: yasaklı madde makinesi mağaza/2. elden kalktı; tek seferlik göç (makine başı 100.000 + SMS, çalışan boş makineye taşınır yoksa işten çıkarılır, açık ilanlar kapanır, satıcıya 100.000). Dolu makineler üstte. Polis ve imam fabrikada çalışabilir.
+3. Futbol: sezon sonu ödülü taban × (lig sayısı − lig sırası + 1); taban 250/200/150/100/100/100/50/50 bin. 4. lig açılınca 3-4. Lig kupası (6. ligde 5-6), kupa ödülleri grup sayısına göre katlanır. 1. grubun belge kimliği değişmedi.
+4. Çete: 8 dilim, prestij = hasar/2, haraç/rüşvet 21:00, tır ihbarı 12:00 sınırı, sayaçlar (Katıldın butonu, sabotaj/ihbar/operasyon).
+5. Aktiflik kuralı (savaş/sohbet/ibadet), atılanın hemen geri girmesi.
+6. Prestij ve kasa 00:00 görünümü (sunucu + kurallar).
+7. Anasayfa çete hatırlatıcıları.
+8. Testler 110/110.
+- Yayın sırası (v38): önce Cloud Functions → bir saat turu (≤5 dk) `public/roster` ve `kasaAtMidnight` alanlarını kurar → sonra firestore.rules + hosting. Yasaklı madde makinesi göçü fabrika ekranı açılınca ya da 00:00'da kendiliğinden (kilitli, idempotent) çalışır.

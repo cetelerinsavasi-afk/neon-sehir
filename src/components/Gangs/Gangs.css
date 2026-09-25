@@ -2861,3 +2861,65 @@ textarea.gx-input {
 .gx-bet-status .gx-livecd {
   padding: 4px 10px;
 }
+
+/* v38 — "Katıldın" butonunda bir sonraki dilime geri sayım */
+.gx-join-btn .gx-join-timer {
+  font-size: 10.5px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: var(--neon-cyan);
+  letter-spacing: 0.02em;
+}
+.gx-join-btn:disabled:has(.gx-join-timer) {
+  width: 72px;
+  background: rgba(25, 232, 255, 0.07);
+  border: 1px solid rgba(25, 232, 255, 0.3);
+}
+
+/* v38 — 00:00 görünümü: diğerlerinin prestiji / Çömez kasası 00:00; kendi prestijin canlı */
+.gx-midnight-chip {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #b9c3dc;
+  background: rgba(185, 195, 220, 0.1);
+  border: 1px solid rgba(185, 195, 220, 0.25);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.gx-midnight-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+.gx-midnight-legend .gx-midnight-chip {
+  margin-left: 0;
+}
+.gx-live-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.gx-live-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: #3ddc84;
+  box-shadow: 0 0 6px #3ddc84;
+  animation: gx-live-pulse 1.6s ease-in-out infinite;
+  vertical-align: middle;
+}
+@keyframes gx-live-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}

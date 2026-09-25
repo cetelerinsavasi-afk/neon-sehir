@@ -15,8 +15,24 @@ import './FutbolIddaa.css';
 // eşleşti, kim bir üst tura çıktı) ve şampiyonu gösteriyor; kupa iddaası
 // (çoklu maç kuponu, FutbolCupBetting bileşeni) buradan kaldırıldı ve
 // SADECE İddaa Bayii sekmesinde gösteriliyor (bkz. FutbolLigler.jsx).
-export default function FutbolKupa({ season }) {
-  const { cup, matches, loading } = useFutbolCup(season);
+// v38: 4. lig açılınca 3-4. Lig kupası (6. ligde 5-6 …) — üstte grup sekmeleri.
+function cupGroupLabel(g) {
+  return `${2 * g - 1}-${2 * g}. Lig`;
+}
+
+export default function FutbolKupa({ season, groupCount = 1 }) {
+  const [group, setGroup] = useState(1);
+  const { cup, matches, loading } = useFutbolCup(season, group);
+  const groupTabs =
+    groupCount > 1 ? (
+      <div className="futbol-league-tabs">
+        {Array.from({ length: groupCount }, (_, i) => i + 1).map((g) => (
+          <button key={g} className={`futbol-league-tab ${group === g ? 'active' : ''}`} onClick={() => setGroup(g)}>
+            🏆 {cupGroupLabel(g)}
+          </button>
+        ))}
+      </div>
+    ) : null;
   const [selectedMatch, setSelectedMatch] = useState(null);
   const [selectedMatchHomeSponsor, setSelectedMatchHomeSponsor] = useState(null);
   // KULLANICI İSTEĞİ: "kupa maçlarında saat emojisi var, izlemeden sonucu
@@ -86,22 +102,35 @@ export default function FutbolKupa({ season }) {
     }
   }, [cup, cup?.status]);
 
-  if (loading) return <p className="futbol-placeholder">Yükleniyor...</p>;
+  if (loading)
+    return (
+      <>
+        {groupTabs}
+        <p className="futbol-placeholder">Yükleniyor...</p>
+      </>
+    );
 
   if (!cup) {
     return (
-      <p className="futbol-placeholder">
-        Bu sezon için Neon Kupası henüz oluşturulmadı — kupa, bir sonraki sezon başlangıcından itibaren
-        devreye girecek.
-      </p>
+      <>
+        {groupTabs}
+        <p className="futbol-placeholder">
+          Bu sezon için Neon Kupası henüz oluşturulmadı — kupa, bir sonraki sezon başlangıcından itibaren devreye
+          girecek.
+        </p>
+      </>
     );
   }
 
   return (
     <div className="futbol-kupa">
+      {groupTabs}
       {cup.status === 'DONE' ? (
         <div className="futbol-cup-champion-banner">
-          <p className="futbol-cup-champion-title">🏆 NEON KUPASI ŞAMPİYONU</p>
+          <p className="futbol-cup-champion-title">
+            🏆 NEON KUPASI ŞAMPİYONU
+            {groupCount > 1 ? ` · ${cupGroupLabel(group)}` : ''}
+          </p>
           {championInfo && (
             <div className="futbol-cup-champion-team">
               <FutbolCrest logo={championInfo.logo} initials={championInfo.name?.[0]} size={48} />
@@ -113,7 +142,10 @@ export default function FutbolKupa({ season }) {
               Final: {championInfo.finalMatch.homeTeamName} {championInfo.finalMatch.homeScore} -{' '}
               {championInfo.finalMatch.awayScore} {championInfo.finalMatch.awayTeamName}
               {championInfo.finalMatch.penalty && (
-                <> (Penaltılar: {championInfo.finalMatch.penalty.homeScore}-{championInfo.finalMatch.penalty.awayScore})</>
+                <>
+                  {' '}
+                  (Penaltılar: {championInfo.finalMatch.penalty.homeScore}-{championInfo.finalMatch.penalty.awayScore})
+                </>
               )}
             </p>
           )}

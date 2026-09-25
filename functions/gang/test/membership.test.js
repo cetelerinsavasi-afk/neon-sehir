@@ -178,3 +178,32 @@ test('sohbet: yönetim kanalı rütbelilere, çok hızlı mesaj engeli; sohbet a
   assert.equal(g.length, 1);
   assert.equal(g[0].gangName, 'Kara Kartallar');
 });
+
+test('v38 herkese açık görünüm: üye listesi 00:00 prestijini gösterir, anlık prestij sadece üyenin kendi belgesinde; kasa 00:00 değeri çete belgesinde', async () => {
+  const h = await createHarness({ dice: [6, 6] });
+  const A = await setupGang(h, { members: 2, name: 'Alfa' });
+  const B = await setupGang(h, { members: 0, name: 'Beta' });
+  await h.fundKasa(A.gangId, 1_000_000);
+  await h.fundKasa(B.gangId, 1_000_000);
+  await h.internal.clock.runClock('test'); // tek seferlik kurulum
+  const r0 = h.get(`gangs/${A.gangId}/public/roster`);
+  assert.equal(Object.keys(r0.members).length, 3);
+  assert.equal(r0.members[A.baba].rank, 'baba');
+  const p0 = r0.members[A.ids[0]].prestige;
+  // yeni üye listeye hemen düşer
+  const newbie = await h.persona({ displayName: 'Yeni', gold: 10, power: 5_000, reputation: 60 });
+  await h.act(newbie, 'joinGang', { gangId: A.gangId });
+  assert.equal(h.get(`gangs/${A.gangId}/public/roster`).members[newbie].prestige, 0);
+  // gün içi bağış anlık prestiji artırır ama listede 00:00 değeri kalır
+  await h.act(A.ids[0], 'donate', { amount: 1_000 });
+  assert.equal(h.member(A.gangId, A.ids[0]).prestige, p0 + 5_000);
+  assert.equal(h.get(`gangs/${A.gangId}/public/roster`).members[A.ids[0]].prestige, p0);
+  // ayrılan listeden hemen düşer
+  await h.act(newbie, 'leaveGang');
+  assert.equal(h.get(`gangs/${A.gangId}/public/roster`).members[newbie], undefined);
+  // 00:00'da liste ve 00:00 kasası güncellenir
+  const kasa = h.state(A.gangId).kasa;
+  await h.nextDay();
+  assert.equal(h.get(`gangs/${A.gangId}/public/roster`).members[A.ids[0]].prestige, p0 + 5_000);
+  assert.equal(h.get(`gangs/${A.gangId}`).kasaAtMidnight, kasa);
+});

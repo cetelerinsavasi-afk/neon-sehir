@@ -197,7 +197,7 @@ export function createClock(core, actions) {
           for (const a of active) tx.update(ctx.ref.war(a.id), { announced: true, gangIds: FV.arrayUnion(...add), activeGangIds: FV.arrayUnion(...add) });
           if (active.length === 0) return;
           const names = active.map((a) => (a.type === 'intelop' ? `🕵️ İstihbarat${a.bribe > 0 ? ` (rüşvet ${a.bribe.toLocaleString('tr-TR')})` : ''}` : `${a.sides?.attacker?.name || ''}${a.harac > 0 ? ` (haraç ${a.harac.toLocaleString('tr-TR')})` : ''}`));
-          core.announce(tx, ctx, def.defenderGangId, '⚠️', `TIR #${def.truckCode} saldırı altında! ${names.join(', ')}. Savunma 12:00–24:00; haraç/rüşvet 18:00'e kadar.`);
+          core.announce(tx, ctx, def.defenderGangId, '⚠️', `TIR #${def.truckCode} saldırı altında! ${names.join(', ')}. Savunma 12:00–24:00; haraç/rüşvet ${GANG.HARAC_PAY_DEADLINE_HOUR}:00'e kadar.`);
           if (defGang?.babaId) notify(tx, ctx, defGang.babaId, `⚠️ TIR #${def.truckCode} saldırı altında! Savunmaya katıl.`, 'sabotage');
           const defName = def.sides?.[def.defenderGangId]?.name || '';
           for (const g of allies) core.announce(tx, ctx, g, '🛡️', `Müttefik ${defName} çetesinin TIR #${def.truckCode} tırı saldırı altında — savunmaya katılabilirsiniz.`);
@@ -612,22 +612,49 @@ export function createClock(core, actions) {
   // ---------------------------------------------------------------------------
   // Aktiflik + rütbe + kasa anlık görüntüsü (çete bazında)
   // ---------------------------------------------------------------------------
+  // v38: yeni aktiflik kuralı devreye girdiği an herkes için taze bir başlangıç
+  // sayılır (sohbet/ibadet geçmişi daha önce kaydedilmiyordu → kimse haksız
+  // yere atılmasın). Dünya belgesine bir kez yazılır.
+  async function activityBaseline(ctx) {
+    const cur = Number(ctx.world?.activityV38StartMs || 0);
+    if (cur > 0) return cur;
+    const ref = ctx.ref.world();
+    const val = await db.runTransaction(async (tx) => {
+      const w = (await tx.get(ref)).data() || {};
+      if (Number(w.activityV38StartMs || 0) > 0) return Number(w.activityV38StartMs);
+      tx.set(ref, { activityV38StartMs: ctx.now }, { merge: true });
+      return ctx.now;
+    });
+    ctx.world = { ...(ctx.world || {}), activityV38StartMs: val };
+    return val;
+  }
+  function memberLastActivity(m, baseline, fallback) {
+    return Math.max(Number(m.lastActiveAtMs || m.joinedAtMs || fallback), Number(m.lastChatAtMs || 0), Number(m.lastSocialAtMs || 0), Number(baseline || 0));
+  }
+
   async function processInactivity(ctx, gangId) {
     const snap = await ctx.ref.members(gangId).get();
     const midnight = ctx.now;
     const toRemove = [];
     const batch = db.batch();
     let writes = 0;
-    // Aktiflik = SADECE savaşa katılım (zar atma). lastActiveAtMs katılmada ve
-    // her zar atışında güncellenir. Mafya Babası da muaf DEĞİL: atılırsa en
-    // yüksek prestijli üye Baba olur; kimse kalmazsa çete kapanır.
+    const baseline = await activityBaseline(ctx);
+    // v38 aktiflik = savaşa katılım (lastActiveAtMs) VEYA herhangi bir
+    // sohbete mesaj (lastChatAtMs / lastSocialAtMs) VEYA ibadet
+    // (lastSocialAtMs) — hangisi en yeniyse. Mafya Babası da muaf DEĞİL:
+    // atılırsa en yüksek prestijli üye Baba olur; kimse kalmazsa çete kapanır.
     for (const d of snap.docs) {
       const m = d.data();
-      const last = Number(m.lastActiveAtMs || m.joinedAtMs || midnight);
+      const last = memberLastActivity(m, baseline, midnight);
       const days = Math.floor((midnight - last) / MS_DAY);
       if (days >= GANG.INACTIVE_REMOVE_DAYS) toRemove.push({ id: d.id, name: m.name, lastActiveAtMs: last, isBaba: m.rank === 'baba' });
       else if (days >= GANG.INACTIVE_WARN_DAYS && !m.inactiveWarn) {
         batch.update(d.ref, { inactiveWarn: true });
+        writes += 1;
+      }
+      else if (days < GANG.INACTIVE_WARN_DAYS && m.inactiveWarn) {
+        // v38: yeni aktiflik tabanı / sohbet / ibadet sonrası eski uyarı kalkar
+        batch.update(d.ref, { inactiveWarn: false });
         writes += 1;
       }
     }
@@ -639,10 +666,10 @@ export function createClock(core, actions) {
         db.runTransaction(async (tx) => {
           const plan = await core.planRemoval(tx, ctx, gangId, r.id);
           if (!plan.member) return;
-          const last = Number(plan.member.lastActiveAtMs || plan.member.joinedAtMs || ctx.now);
-          if (Math.floor((ctx.now - last) / MS_DAY) < GANG.INACTIVE_REMOVE_DAYS) return; // bu arada savaşa katıldı
-          const res = core.applyRemoval(tx, ctx, plan, 'inactive', { notifyText: `💤 ${GANG.INACTIVE_REMOVE_DAYS} gündür hiçbir savaşa katılmadığın için ${plan.gang?.name || 'çete'} üyeliğin sona erdi.` });
-          if (!res.dissolved) core.announce(tx, ctx, gangId, '💤', `${plan.member.name} ${GANG.INACTIVE_REMOVE_DAYS} gündür savaşa katılmadığı için çeteden çıkarıldı.`);
+          const last = memberLastActivity(plan.member, baseline, ctx.now);
+          if (Math.floor((ctx.now - last) / MS_DAY) < GANG.INACTIVE_REMOVE_DAYS) return; // bu arada aktif oldu
+          const res = core.applyRemoval(tx, ctx, plan, 'inactive', { notifyText: `💤 ${GANG.INACTIVE_REMOVE_DAYS} gündür savaşa katılmadığın, mesaj yazmadığın ve ibadet etmediğin için ${plan.gang?.name || 'çete'} üyeliğin sona erdi.` });
+          if (!res.dissolved) core.announce(tx, ctx, gangId, '💤', `${plan.member.name} ${GANG.INACTIVE_REMOVE_DAYS} gündür hiç aktif olmadığı için çeteden çıkarıldı.`);
         })
       );
     }
@@ -656,6 +683,11 @@ export function createClock(core, actions) {
       const members = membersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
       const ranks = computeGangRanks(members, gang.babaId);
       const changed = members.filter((m) => ranks[m.id] !== m.rank);
+      // v38: herkesin göreceği prestij = 00:00'daki prestij
+      for (const m of members) {
+        if (ranks[m.id] === m.rank && Number(m.prestigeAtMidnight) === Number(m.prestige || 0)) continue;
+        tx.update(ctx.ref.member(gangId, m.id), { prestigeAtMidnight: Number(m.prestige || 0) });
+      }
       for (const m of changed) {
         tx.update(ctx.ref.member(gangId, m.id), { rank: ranks[m.id] });
         tx.set(ctx.ref.membership(m.id), { gangRank: ranks[m.id] }, { merge: true });
@@ -667,12 +699,19 @@ export function createClock(core, actions) {
     });
   }
 
-  async function snapshotKasa(ctx, stateRef) {
+  async function snapshotKasa(ctx, stateRef, gangRef = null) {
     return db.runTransaction(async (tx) => {
       const s = await tx.get(stateRef);
-      if (!s.exists || s.data().midnightDateKey === ctx.dateKey) return { skipped: true };
+      if (!s.exists) return { skipped: true };
+      if (s.data().midnightDateKey === ctx.dateKey) {
+        // v38: herkese açık 00:00 kasası (çete belgesi) eksikse tamamla
+        if (gangRef) tx.set(gangRef, { kasaAtMidnight: Number(s.data().kasaAtMidnight || 0), kasaAtMidnightDateKey: ctx.dateKey }, { merge: true });
+        return { skipped: true };
+      }
       const kasa = Number(s.data().kasa || 0);
       tx.update(stateRef, { kasaAtMidnight: kasa, distributableLeft: Math.floor(kasa * GANG.DISTRIBUTABLE_RATIO), midnightDateKey: ctx.dateKey });
+      // v38: çete kasası dışarıya ve Çömez'e 00:00'daki haliyle görünür (anlık kasa Tetikçi+)
+      if (gangRef) tx.set(gangRef, { kasaAtMidnight: kasa, kasaAtMidnightDateKey: ctx.dateKey }, { merge: true });
       return { kasa };
     });
   }
@@ -703,6 +742,67 @@ export function createClock(core, actions) {
         })
       );
     }
+  }
+
+  // v38: İstihbarat kod adı listesinde herkes 00:00 prestijini görür
+  async function snapshotIntelPrestige(ctx) {
+    const snap = await ctx.ref.rosterCol().get();
+    let batch = db.batch();
+    let n = 0;
+    for (const d of snap.docs) {
+      const r = d.data();
+      if (Number(r.prestigeAtMidnight) === Number(r.prestige || 0)) continue;
+      batch.update(d.ref, { prestigeAtMidnight: Number(r.prestige || 0) });
+      n += 1;
+      if (n % 400 === 0) {
+        await batch.commit();
+        batch = db.batch();
+      }
+    }
+    if (n % 400 !== 0) await batch.commit();
+  }
+
+  // v38 tek seferlik: herkese açık görünümleri (üye listesi, 00:00 kasası)
+  // mevcut verilerden kur — bir sonraki 00:00'ı beklemeden. Başlangıç değeri
+  // olarak "şu anki" prestij/kasa 00:00 değeri kabul edilir. İdempotent;
+  // dünya bayrağı ile bir kez çalışır.
+  async function ensurePublicViewsV38(ctx) {
+    if (ctx.world?.publicViewV38) return { skipped: true };
+    const gangs = await ctx.ref.gangs().where('status', '==', 'active').get();
+    for (const g of gangs.docs) {
+      const members = await ctx.ref.members(g.id).get();
+      const batch = db.batch();
+      let n = 0;
+      members.docs.forEach((d) => {
+        if (d.data().prestigeAtMidnight == null) {
+          batch.update(d.ref, { prestigeAtMidnight: Number(d.data().prestige || 0) });
+          n += 1;
+        }
+      });
+      if (n > 0) await batch.commit();
+      if (g.data().kasaAtMidnight == null) {
+        const st = (await ctx.ref.gangState(g.id).get()).data() || {};
+        await ctx.ref.gang(g.id).set({ kasaAtMidnight: Number(st.kasaAtMidnight ?? st.kasa ?? 0), kasaAtMidnightDateKey: st.midnightDateKey || ctx.dateKey }, { merge: true });
+      }
+      await core.refreshGangRoster(ctx, g.id);
+    }
+    const roster = await ctx.ref.rosterCol().get();
+    let batch = db.batch();
+    let n = 0;
+    for (const d of roster.docs) {
+      if (d.data().prestigeAtMidnight != null) continue;
+      batch.update(d.ref, { prestigeAtMidnight: Number(d.data().prestige || 0) });
+      n += 1;
+      if (n % 400 === 0) {
+        await batch.commit();
+        batch = db.batch();
+      }
+    }
+    if (n % 400 !== 0) await batch.commit();
+    await core.refreshIntelRoster(ctx);
+    await ctx.ref.world().set({ publicViewV38: true }, { merge: true });
+    ctx.world = { ...(ctx.world || {}), publicViewV38: true };
+    return { gangs: gangs.size };
   }
 
   // İstihbarat üyesi Baba karar süresi doldu → sessizce İstihbarattan çıkar.
@@ -748,7 +848,7 @@ export function createClock(core, actions) {
   }
 
   // v35 — BAHİSLİ SAVAŞ ZAMANLAMASI: kabul edilen bahis bir sonraki saldırı
-  // diliminde (00·06·12·18) başlar, 24 saat sürer. Saat turunda (her 5 dk) ve
+  // diliminde (v38: 3 saatlik) başlar, 24 saat sürer. Saat turunda (her 5 dk) ve
   // günlük turda çağrılır; tüm adımlar idempotent (durum + zaman kontrolü).
   //  1) v34'ten kalan (00:00'da başlayacak) kabul edilmiş bahisler yeni kurala
   //     taşınır: şu andan sonraki ilk dilimde başlar.
@@ -1010,13 +1110,16 @@ export function createClock(core, actions) {
       await safe(ctx, `inactivity:${gangId}`, () => processInactivity(ctx, gangId));
       await safe(ctx, `ranks:${gangId}`, () => recomputeGangRanks(ctx, gangId));
       await safe(ctx, `pending-votes:${gangId}`, () => startPendingVotes(ctx, gangId));
-      await safe(ctx, `kasa:${gangId}`, () => snapshotKasa(ctx, ctx.ref.gangState(gangId)));
+      await safe(ctx, `kasa:${gangId}`, () => snapshotKasa(ctx, ctx.ref.gangState(gangId), ctx.ref.gang(gangId)));
+      await safe(ctx, `roster:${gangId}`, () => core.refreshGangRoster(ctx, gangId));
     }
     // 7) İstihbarat: rütbe + kasa
     await safe(ctx, 'intel-votes', () => intelActions.resolveIntelVotes(ctx, safe));
     await safe(ctx, 'intel-ranks', () => recomputeIntelRanks(ctx));
     await safe(ctx, 'intel-pending-votes', () => intelActions.startIntelPendingVotes(ctx));
     await safe(ctx, 'intel-kasa', () => snapshotKasa(ctx, ctx.ref.intelState()));
+    await safe(ctx, 'intel-prestige-snapshot', () => snapshotIntelPrestige(ctx));
+    await safe(ctx, 'intel-roster', () => core.refreshIntelRoster(ctx));
 
     // 8) bugünün başlangıçları
     await safe(ctx, 'trade-war', () => createTradeWar(ctx, dayKey));
@@ -1182,6 +1285,7 @@ export function createClock(core, actions) {
       await ctx0.ref.world().set({ lastTickDateKey: last, launchDateKey: world.launchDateKey || last }, { merge: true });
       world.launchDateKey = world.launchDateKey || last;
     }
+    await safe(ctx0, 'public-views-v38', () => ensurePublicViewsV38(ctx0));
     const results = [];
     let n = 0;
     while (last < ctx0.dateKey && n < maxDays) {

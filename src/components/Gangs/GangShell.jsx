@@ -99,7 +99,7 @@ export default function GangShell({ membership }) {
   );
 }
 
-function OrgHeader({ logo, name, rank, prestige, kasa, intel = false, sub }) {
+function OrgHeader({ logo, name, rank, prestige, kasa, kasaMidnight = false, intel = false, sub }) {
   return (
     <div className={`gx-header${intel ? ' intel' : ''}`} style={{ '--gx-accent': logo?.color || '#19e8ff' }}>
       <Logo logo={logo} size={46} />
@@ -112,7 +112,7 @@ function OrgHeader({ logo, name, rank, prestige, kasa, intel = false, sub }) {
         </div>
       </div>
       <div className="gx-header-kasa">
-        <span className="dim">Kasa</span>
+        <span className="dim">Kasa{kasaMidnight && <span className="gx-midnight-chip">🕛 00:00</span>}</span>
         <Gold value={kasa} />
       </div>
     </div>
@@ -126,7 +126,7 @@ function GangViews({ membership, tab, onOpen }) {
   if (d.gang.status !== 'active') return <div className="gx-loading">Bu çete dağıldı.</div>;
   return (
     <div className="gx-page">
-      <OrgHeader logo={d.gang.logo} name={d.gang.name} rank={d.rank} prestige={d.me?.prestige} kasa={d.state?.kasa} />
+      <OrgHeader logo={d.gang.logo} name={d.gang.name} rank={d.rank} prestige={d.me?.prestige} kasa={d.kasaShown} kasaMidnight={!d.kasaLive} />
       {tab === 'sohbet' && <ChatTab org="gang" d={d} />}
       {tab === 'savas' && <WarsTab org="gang" d={d} />}
       {tab === 'ticaret' && <TradeTab d={d} />}

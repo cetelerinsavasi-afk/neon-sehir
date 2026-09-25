@@ -26,9 +26,6 @@ import './FutbolTakimim.css';
 
 const DONATE_QUICK_AMOUNTS = [1000, 10000, 100000];
 
-function levelThreshold(level) {
-  return 10 * Math.pow(2, Math.abs(level || 0));
-}
 
 // FutbolMenajer — Bölüm 10/16 role-aware panel: takımın başkanı VEYA
 // menajeri buradan takımın kasa/destek durumunu, maaş/borç bilgisini ve
@@ -113,10 +110,6 @@ export default function FutbolMenajer({ team, role }) {
     0,
     Math.floor((team.treasuryWithdrawBase || 0) * 0.2) - (team.treasuryWithdrawnToday || 0)
   );
-
-  const level = player?.futbolManagerLevel || 0;
-  const streak = player?.futbolManagerLevelStreak || 0;
-  const threshold = levelThreshold(level);
 
   return (
     <div className="futbol-buy-list">
@@ -224,7 +217,7 @@ export default function FutbolMenajer({ team, role }) {
             )}
           </div>
         )}
-        {(role === 'manager' || !isManaged) && <FutbolLevelBar level={level} streak={streak} threshold={threshold} />}
+        {(role === 'manager' || !isManaged) && <FutbolLevelBar player={player} />}
       </div>
 
       {/* --- OTO-BOT (başkan 5+ gün pasif) --- */}

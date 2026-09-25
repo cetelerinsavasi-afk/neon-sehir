@@ -15,7 +15,12 @@ export function useMarketplaceListings() {
     const unsubscribe = onSnapshot(
       q,
       (snap) => {
-        setListings(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        // v38: kaldırılan yasaklı madde makinesi ilanları gösterilmez
+        setListings(
+          snap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .filter((l) => !(l.itemType === 'machine' && l.machineType === 'yasakliMadde'))
+        );
         setLoading(false);
       },
       (err) => {

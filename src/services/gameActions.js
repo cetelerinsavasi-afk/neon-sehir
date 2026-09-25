@@ -416,6 +416,9 @@ export const forceRefreshFutbolTransferMarket = () =>
 export const runFutbolBotTreasuryFixNow = () =>
   httpsCallable(functions, 'runFutbolBotTreasuryFixNow')();
 
+// v38: yasaklı madde makinelerinin tek seferlik kaldırılması (idempotent, sessiz)
+export const ensureFactoryMigrationsV38 = () => httpsCallable(functions, 'ensureFactoryMigrationsV38')();
+
 export const ensureFutbolBotTreasuryFix = () =>
   httpsCallable(functions, 'ensureFutbolBotTreasuryFix')();
 

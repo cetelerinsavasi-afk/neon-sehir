@@ -241,7 +241,8 @@ function SellForm({ onCreated, onClose, initialItemType }) {
 
   const sellableVehicles = vehicles.filter((v) => !v.mortgaged && !v.seizedByBank && !v.listed);
   const sellableWeapons = weapons.filter((w) => !w.listed);
-  const sellableMachines = myMachines.filter((m) => !m.workerId);
+  // v38: yasaklı madde makineleri kaldırıldı — satışa çıkarılamaz (sahibine 100.000 ödenir)
+  const sellableMachines = myMachines.filter((m) => !m.workerId && m.type !== 'yasakliMadde');
 
   // DÜZELTME (yeni istek): kripto (mining) makineleri artık 2. el listeye
   // ÇIKARILAMAZ — sadece sabit fiyata "Anında Sat" mümkün (bkz.

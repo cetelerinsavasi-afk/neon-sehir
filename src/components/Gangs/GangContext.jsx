@@ -161,12 +161,18 @@ export function istMidnight(dateKey) {
 export function nextMidnight(ms) {
   return istMidnight(istDateKey(ms)) + 24 * 3600_000;
 }
+// v38: saldırı dilimleri 3 saatlik (00·03·06·…·21 → 8 dilim)
+export const WINDOW_HOURS = 3;
 export function windowSlot(ms) {
-  return Math.floor(istHour(ms) / 6);
+  return Math.floor(istHour(ms) / WINDOW_HOURS);
 }
 export function nextWindowStart(ms) {
   const base = istMidnight(istDateKey(ms));
-  return base + (windowSlot(ms) + 1) * 6 * 3600_000;
+  return base + (windowSlot(ms) + 1) * WINDOW_HOURS * 3600_000;
+}
+// Sunucudaki slotIdOf ile aynı: savaş hakkı belgesi kimliği
+export function slotIdOf(uid, ms) {
+  return `${uid}_${istDateKey(ms)}_w${windowSlot(ms)}`;
 }
 export function fmtCountdown(msLeft) {
   if (msLeft <= 0) return '00:00';

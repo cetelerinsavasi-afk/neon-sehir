@@ -60,7 +60,7 @@ export function createIntelActions(core) {
       if (!intelSnap.exists) tx.set(ctx.ref.intel(), intelDefaults());
       if (!stateSnap.exists) tx.set(ctx.ref.intelState(), intelStateDefaults(ctx));
       const rosterRef = ctx.ref.rosterCol().doc();
-      tx.set(rosterRef, { codeName, rank: 'muhbir', prestige: 0, joinedAtMs: ctx.now, lastActiveAtMs: ctx.now });
+      tx.set(rosterRef, { codeName, rank: 'muhbir', prestige: 0, prestigeAtMidnight: 0, joinedAtMs: ctx.now, lastActiveAtMs: ctx.now });
       tx.set(linkRef(ctx, rosterRef.id), { actorId: ctx.actorId });
       tx.set(ctx.ref.codeName(key), { rosterId: rosterRef.id });
       tx.set(
@@ -159,6 +159,8 @@ export function createIntelActions(core) {
       if (!truck || truck.gangId !== membership.gangId) fail('permission-denied', 'Bu tırı göremezsin.');
       if (!atLeast(meSnap.data()?.rank, 'tetikci')) fail('permission-denied', 'Tırları görmek için en az Tetikçi olmalısın.');
       if (truck.status !== 'in_transit') fail('failed-precondition', 'Sadece seferdeki tırlar ihbar edilebilir.');
+      // v38: ihbar, tır yola çıktığı gün 00:00–12:00 arasında (operasyon da 12:00'den önce başlamalı)
+      if (truck.departDateKey !== ctx.dateKey || ctx.hour >= GANG.SABOTAGE_START_DEADLINE_HOUR) fail('deadline-exceeded', 'Tır ihbarı sadece yola çıktığı gün 00:00–12:00 arasında yapılabilir.');
       const reportId = `${truckId}_${truck.departDateKey}`;
       const repSnap = await tx.get(ctx.ref.intelReport(reportId));
       if (repSnap.exists) fail('already-exists', 'Bu tır zaten ihbar edildi.');
@@ -192,6 +194,7 @@ export function createIntelActions(core) {
       if (!repSnap.exists) fail('failed-precondition', 'Önce tır ihbar edilmeli.');
       const rep = repSnap.data();
       if (membership.gangId !== rep.gangId) fail('permission-denied', 'Bu tırın içeriğini göremezsin.');
+      if (rep.departDateKey !== ctx.dateKey || ctx.hour >= GANG.SABOTAGE_START_DEADLINE_HOUR) fail('deadline-exceeded', 'İçerik sadece 00:00–12:00 arasında sızdırılabilir.');
       const [meSnap, rosterSnap, cargoSnap, truckSnap] = await Promise.all([
         tx.get(ctx.ref.member(rep.gangId, ctx.actorId)),
         tx.get(ctx.ref.roster(rid)),
@@ -234,7 +237,7 @@ export function createIntelActions(core) {
   //  başlarken (00:00) öğrenir.
   // ---------------------------------------------------------------------------
   // v35: bahis kabul edildikten sonra İLK SALDIRI DİLİMİNİN SONUNA kadar
-  // (başlangıç + 6 saat) müdahale edilebilir; sonrası çetelerin arasında.
+  // (başlangıç + 6 saat = ilk 2 dilim) müdahale edilebilir; sonrası çetelerin arasında.
   async function readBetForIntel(tx, ctx, warId) {
     const war = (await tx.get(ctx.ref.war(warId))).data();
     if (!war || war.type !== 'bet') fail('not-found', 'Bahis bulunamadı.');

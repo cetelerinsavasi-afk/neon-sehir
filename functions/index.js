@@ -886,7 +886,10 @@ export const getFactoryValue = onCall(async (request) => {
 export const buyFactoryMachine = onCall(async (request) => {
   const uid = requireAuth(request);
   const { machineType } = request.data || {};
-  if (!VALID_MACHINES.includes(machineType)) {
+  if (machineType === 'yasakliMadde') {
+    throw new HttpsError('failed-precondition', 'Yasaklı madde makineleri kaldırıldı — yasaklı madde ticareti artık çeteler üzerinden.');
+  }
+  if (!BUYABLE_MACHINES.includes(machineType)) {
     throw new HttpsError('invalid-argument', 'Geçersiz makine türü.');
   }
 
@@ -1042,9 +1045,7 @@ export const joinFactoryMachine = onCall(async (request) => {
     const [userSnap, machineSnap] = await Promise.all([tx.get(userRef), tx.get(machineRef)]);
     const user = userSnap.data();
     if (!user) throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
-    if (user.profession === 'polis' || user.pendingPoliceChange === 'apply') {
-      throw new HttpsError('failed-precondition', 'Polis mesleğindeyken fabrikada çalışamazsın.');
-    }
+    // v38: polisler ve imamlar da fabrikada çalışabilir.
     if (user.employment) {
       throw new HttpsError('failed-precondition', 'Zaten bir fabrikada çalışıyorsun — önce istifa et.');
     }
@@ -1054,6 +1055,9 @@ export const joinFactoryMachine = onCall(async (request) => {
     const machine = machineSnap.data();
     if (machine.type === 'mining') {
       throw new HttpsError('failed-precondition', 'Mining makinesi işçi gerektirmez.');
+    }
+    if (RETIRED_MACHINE_TYPES.includes(machine.type)) {
+      throw new HttpsError('failed-precondition', 'Bu makine kaldırıldı.');
     }
     if (machine.workerId) {
       throw new HttpsError('failed-precondition', 'Bu makinede zaten biri çalışıyor.');
@@ -1087,9 +1091,7 @@ export const autoJoinFactory = onCall(async (request) => {
     ]);
     const user = userSnap.data();
     if (!user) throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
-    if (user.profession === 'polis' || user.pendingPoliceChange === 'apply') {
-      throw new HttpsError('failed-precondition', 'Polis mesleğindeyken fabrikada çalışamazsın.');
-    }
+    // v38: polisler ve imamlar da fabrikada çalışabilir.
     if (user.employment) {
       throw new HttpsError('failed-precondition', 'Zaten bir fabrikada çalışıyorsun — önce istifa et.');
     }
@@ -1097,7 +1099,7 @@ export const autoJoinFactory = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Fabrika bulunamadı.');
     }
     const openMachines = machinesSnap.docs.filter(
-      (d) => d.data().type !== 'mining' && !d.data().workerId
+      (d) => WORKABLE_MACHINE(d.data().type) && !d.data().workerId
     );
     if (openMachines.length === 0) {
       throw new HttpsError('failed-precondition', 'Bu fabrikada boş yer kalmadı.');
@@ -1142,6 +1144,9 @@ export const reassignEmployee = onCall(async (request) => {
     }
     if (to.type === 'mining') {
       throw new HttpsError('failed-precondition', 'Mining makinesine işçi taşınamaz.');
+    }
+    if (RETIRED_MACHINE_TYPES.includes(to.type)) {
+      throw new HttpsError('failed-precondition', 'Bu makine kaldırıldı.');
     }
     if (to.workerId) {
       throw new HttpsError('failed-precondition', 'Hedef makine dolu.');
@@ -1465,6 +1470,13 @@ export const produceAtFactory = onCall(async (request) => {
     if (machine.lastProducedDateKey === dateKey) {
       throw new HttpsError('failed-precondition', 'Bugün bu makinede zaten üretim yaptın.');
     }
+    // v38: işçi günde bir kez üretir (makine değişse / başka fabrikaya geçse bile)
+    if (user.employmentProducedDateKey === dateKey) {
+      throw new HttpsError('failed-precondition', 'Bugün zaten üretim yaptın.');
+    }
+    if (RETIRED_MACHINE_TYPES.includes(machine.type)) {
+      throw new HttpsError('failed-precondition', 'Yasaklı madde makineleri kaldırıldı — fabrika sahibine makine başı 100.000 altın ödendi, sen de başka bir makineye aktarılacaksın.');
+    }
     const factorySnap = await tx.get(factoryRef);
     const salary = factorySnap.data()?.salary || FACTORY_MIN_SALARY;
 
@@ -1565,6 +1577,147 @@ export const resignFromFactory = onCall(async (request) => {
   });
 
   return { ok: true };
+});
+
+// ---------------------------------------------------------------------------
+// v38 — YASAKLI MADDE MAKİNELERİNİN KALDIRILMASI (tek seferlik göç)
+// Yasaklı madde ticareti artık çeteler üzerinden yapılıyor; fabrikalar
+// yasaklı madde üretemez. Makine mağazada ve 2. elde satılmaz. Elinde bu
+// makineden olan HER fabrika sahibine makine başına 100.000 altın ödenir,
+// makine silinir ve SMS gider. Makinede çalışan varsa aynı fabrikadaki boş
+// bir makineye (mining ve yasaklı madde hariç) taşınır; yoksa otomatik
+// işten çıkarılır (SMS). Açık 2. el ilanları kapatılır, satıcıya 100.000
+// ödenir. Her makine/ilan KENDİ işleminde "hâlâ var mı" kontrolüyle işlenir
+// → iki kez çalışsa bile kimseye iki kez ödeme yapılmaz. Tüm makineler
+// işlendiğinde migrations/ bayrağı yazılır; sonraki çağrılar hiçbir şey
+// yapmaz. Tetikleyiciler: dailyReset (00:00) + fabrika ekranı açılınca
+// (ensureFactoryMigrationsV38) — deploy sonrası beklemeye gerek kalmasın.
+// ---------------------------------------------------------------------------
+const RETIRED_MACHINE_TYPES = ['yasakliMadde'];
+const YASAKLI_MACHINE_COMPENSATION = 100000;
+const BUYABLE_MACHINES = VALID_MACHINES.filter((t) => !RETIRED_MACHINE_TYPES.includes(t));
+const WORKABLE_MACHINE = (type) => type !== 'mining' && !RETIRED_MACHINE_TYPES.includes(type);
+
+function addUserSms(writer, uid, text, type) {
+  writer.set(db.collection('users').doc(uid).collection('messages').doc(), {
+    text,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    read: false,
+    type,
+  });
+}
+
+// Tek bir yasaklı madde makinesini işler (idempotent). true = bu çağrıda işlendi.
+async function retireOneYasakliMachine(ownerUid, machineId) {
+  const factoryRef = db.collection('factories').doc(ownerUid);
+  const machinesRef = factoryRef.collection('machines');
+  const machineRef = machinesRef.doc(machineId);
+  return db.runTransaction(async (tx) => {
+    const mSnap = await tx.get(machineRef);
+    if (!mSnap.exists || !RETIRED_MACHINE_TYPES.includes(mSnap.data().type)) return false;
+    const m = mSnap.data();
+    let workerSnap = null;
+    let target = null;
+    if (m.workerId) {
+      const [allSnap, wSnap] = await Promise.all([tx.get(machinesRef), tx.get(db.collection('users').doc(m.workerId))]);
+      workerSnap = wSnap;
+      target = allSnap.docs
+        .filter((d) => d.id !== machineId && WORKABLE_MACHINE(d.data().type) && !d.data().workerId)
+        .sort((a, b) => (a.id < b.id ? -1 : 1))[0] || null;
+    }
+    // yazmalar
+    const ownerRef = db.collection('users').doc(ownerUid);
+    tx.set(ownerRef, { gold: admin.firestore.FieldValue.increment(YASAKLI_MACHINE_COMPENSATION) }, { merge: true });
+    tx.delete(machineRef);
+    if (m.workerId) {
+      const w = workerSnap?.data();
+      const stillHere = w?.employment?.factoryId === ownerUid && w?.employment?.machineId === machineId;
+      if (stillHere) {
+        if (target) {
+          tx.update(target.ref, { workerId: m.workerId, workerName: m.workerName || w.displayName || 'Oyuncu' });
+          tx.update(workerSnap.ref, { employment: { factoryId: ownerUid, machineId: target.id } });
+          addUserSms(tx, m.workerId, `🏭 Çalıştığın yasaklı madde makinesi kaldırıldı. Aynı fabrikada başka bir makineye (${MACHINE_TYPES[target.data().type]?.label || 'makine'}) aktarıldın.`, 'factory_machine_retired_moved');
+        } else {
+          tx.update(workerSnap.ref, { employment: admin.firestore.FieldValue.delete() });
+          addUserSms(tx, m.workerId, '🏭 Çalıştığın yasaklı madde makinesi kaldırıldı ve fabrikada boş makine olmadığı için işten çıkarıldın. Başka bir fabrikada iş bulabilirsin.', 'factory_machine_retired_fired');
+        }
+      }
+    }
+    return true;
+  });
+}
+
+async function retireOpenYasakliListing(listingId) {
+  const ref = db.collection('marketplaceListings').doc(listingId);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return false;
+    const l = snap.data();
+    if (l.sold || l.itemType !== 'machine' || !RETIRED_MACHINE_TYPES.includes(l.machineType)) return false;
+    tx.update(ref, { sold: true, cancelled: true, retiredMachine: true });
+    if (l.sellerId && l.sellerId !== 'system') {
+      tx.set(db.collection('users').doc(l.sellerId), { gold: admin.firestore.FieldValue.increment(YASAKLI_MACHINE_COMPENSATION) }, { merge: true });
+      addUserSms(tx, l.sellerId, `🏭 Yasaklı madde makineleri oyundan kaldırıldı. 2. el ilandaki makinen için ${YASAKLI_MACHINE_COMPENSATION.toLocaleString('tr-TR')} altın hesabına yatırıldı.`, 'factory_machine_retired_listing');
+    }
+    return true;
+  });
+}
+
+async function runYasakliMachineRetireV38() {
+  const migrationRef = db.collection('migrations').doc('yasakliMaddeMachinesRetiredV38');
+  if ((await migrationRef.get()).exists) return { skipped: true };
+  // Aynı anda tek çalıştırma (çok oyuncu aynı anda fabrika ekranını açsa bile);
+  // her makine zaten kendi işleminde idempotent — kilit sadece gereksiz taramayı önler.
+  const lockRef = db.collection('migrations').doc('yasakliMaddeMachinesRetiredV38_lock');
+  const gotLock = await db.runTransaction(async (tx) => {
+    const l = await tx.get(lockRef);
+    if (l.exists && Number(l.data().leaseUntilMs || 0) > Date.now()) return false;
+    tx.set(lockRef, { leaseUntilMs: Date.now() + 8 * 60 * 1000 });
+    return true;
+  });
+  if (!gotLock) return { skipped: 'running' };
+  let machines = 0;
+  let listings = 0;
+  let failed = 0;
+  const factoriesSnap = await db.collection('factories').get();
+  for (const f of factoriesSnap.docs) {
+    const mSnap = await f.ref.collection('machines').where('type', 'in', RETIRED_MACHINE_TYPES).get();
+    let paidHere = 0;
+    for (const m of mSnap.docs) {
+      try {
+        if (await retireOneYasakliMachine(f.id, m.id)) paidHere += 1;
+      } catch (err) {
+        failed += 1;
+        console.error('yasakli machine retire', f.id, m.id, err);
+      }
+    }
+    if (paidHere > 0) {
+      machines += paidHere;
+      const sms = db.batch();
+      addUserSms(sms, f.id, `🏭 Yasaklı madde üretimi artık çeteler üzerinden yapılıyor; fabrikalar yasaklı madde üretemez. ${paidHere} yasaklı madde makinen kaldırıldı ve ${(paidHere * YASAKLI_MACHINE_COMPENSATION).toLocaleString('tr-TR')} altın hesabına yatırıldı.`, 'factory_machine_retired');
+      await sms.commit();
+    }
+  }
+  const lSnap = await db.collection('marketplaceListings').where('itemType', '==', 'machine').where('sold', '==', false).get();
+  for (const l of lSnap.docs) {
+    if (!RETIRED_MACHINE_TYPES.includes(l.data().machineType)) continue;
+    try {
+      if (await retireOpenYasakliListing(l.id)) listings += 1;
+    } catch (err) {
+      failed += 1;
+      console.error('yasakli listing retire', l.id, err);
+    }
+  }
+  if (failed === 0) await migrationRef.set({ ranAt: admin.firestore.FieldValue.serverTimestamp(), machines, listings });
+  await lockRef.set({ leaseUntilMs: 0 }, { merge: true });
+  return { machines, listings, failed };
+}
+
+// Fabrika / 2. el ekranı açılınca istemci sessizce çağırır (idempotent).
+export const ensureFactoryMigrationsV38 = onCall(async (request) => {
+  requireAuth(request);
+  const r = await runYasakliMachineRetireV38();
+  return { ok: true, ...r };
 });
 
 // stampUntriggeredMining — bir fabrika sahibinin sahip olduğu, bugün henüz
@@ -1879,6 +2032,14 @@ export const dailyReset = onSchedule(
     // bilgi/rapor amaçlı tutulmaya devam ediyor.
     const miningTriggeredCountByOwner = new Map();
     const factoryDailyIncomeMap = new Map(); // ownerId -> bu geceki dailyIncome (altın) — hisse temettüsünün TEK kaynağı
+
+    // v38: yasaklı madde makinelerinin tek seferlik kaldırılması (idempotent;
+    // fabrika ekranı açılınca zaten çalışmış olabilir — o zaman hiçbir şey yapmaz).
+    try {
+      await runYasakliMachineRetireV38();
+    } catch (err) {
+      console.error('dailyReset yasakli machine retire', err);
+    }
 
     // 0) BORSA BÜLTENİ ANLIK GÖRÜNTÜSÜ (Gazete > Borsa Bülteni) — elmas/
     // hisse/kripto fiyatları hourlyInvestmentUpdate ile SAATTE BİR
@@ -4645,6 +4806,9 @@ export const prayAtMosque = onCall(async (request) => {
     await activityBatch.commit();
   }
 
+  // v38: çete aktifliği (30 gün kuralı) — ibadet aktif sayılır
+  await markGangActivity(uid);
+
   return { ok: true, window: win };
 });
 
@@ -6837,6 +7001,10 @@ export const expireOldMarketplaceListings = onSchedule({ schedule: 'every 24 hou
               { quantity: admin.firestore.FieldValue.increment(l.quantity) },
               { merge: true }
             );
+          } else if (l.itemType === 'machine' && RETIRED_MACHINE_TYPES.includes(l.machineType)) {
+            // v38: kaldırılan makine geri verilmez — satıcıya tazminat ödenir
+            tx.set(db.collection('users').doc(l.sellerId), { gold: admin.firestore.FieldValue.increment(YASAKLI_MACHINE_COMPENSATION) }, { merge: true });
+            addUserSms(tx, l.sellerId, `🏭 Yasaklı madde makineleri oyundan kaldırıldı. İlandaki makinen için ${YASAKLI_MACHINE_COMPENSATION.toLocaleString('tr-TR')} altın hesabına yatırıldı.`, 'factory_machine_retired_listing');
           } else if (l.itemType === 'machine') {
             const sellerMachinesRef = db.collection('factories').doc(l.sellerId).collection('machines');
             tx.set(sellerMachinesRef.doc(), {
@@ -6950,9 +7118,22 @@ export const sendChatMessage = onCall(async (request) => {
 
   // Onboarding görev 17 — "ChatsApp'ten bi mesaj gönder".
   await advanceOnboardingStep(uid, 17);
+  // v38: çete aktifliği (30 gün kuralı) — herhangi bir sohbete mesaj aktif sayılır
+  await markGangActivity(uid);
 
   return { ok: true };
 });
+
+// markGangActivity — v38: ChatsApp mesajı ve camide ibadet, çete üyeliğinin
+// "30 gün hiç aktif olmayan atılır" kuralında aktiflik sayılır. Best-effort:
+// hata asıl işlemi asla bozmaz.
+async function markGangActivity(uid) {
+  try {
+    await gangFunctions.system.onPlayerActivity(uid);
+  } catch (err) {
+    console.error('markGangActivity', uid, err?.message || err);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // setDisplayName — Ev'de oyuncunun kendi belirlediği, benzersiz oyun içi
@@ -8485,6 +8666,9 @@ export const createListing = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Bu makine size ait değil.');
     }
     const preMachineType = preSnap.data().type;
+    if (RETIRED_MACHINE_TYPES.includes(preMachineType)) {
+      throw new HttpsError('failed-precondition', 'Yasaklı madde makineleri kaldırıldı — makine başı 100.000 altın otomatik ödenecek.');
+    }
     // DÜZELTME (yeni istek): kripto (mining) makineleri artık oyuncular
     // arası 2. el listeye ÇIKARILAMAZ — sadece "anında sat" (bkz.
     // instantSellListing) mümkün. Sebep: az makineli bir hesaptan çok
@@ -8728,6 +8912,9 @@ export const instantSellListing = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Bu makine size ait değil.');
     }
     const mType = preSnap.data().type;
+    if (RETIRED_MACHINE_TYPES.includes(mType)) {
+      throw new HttpsError('failed-precondition', 'Yasaklı madde makineleri kaldırıldı — makine başı 100.000 altın otomatik ödenecek.');
+    }
     const isMiningMachine = mType === 'mining';
     // Kripto (mining) makinesi için taban BİLEREK SABİT tutuluyor:
     // miningMachinePrice() argümansız çağrılınca her zaman taban kademeyi
@@ -8816,6 +9003,10 @@ export const cancelListing = onCall(async (request) => {
         { quantity: admin.firestore.FieldValue.increment(listing.quantity) },
         { merge: true }
       );
+    } else if (listing.itemType === 'machine' && RETIRED_MACHINE_TYPES.includes(listing.machineType)) {
+      // v38: kaldırılan makine geri verilmez — satıcıya tazminat ödenir
+      tx.set(db.collection('users').doc(uid), { gold: admin.firestore.FieldValue.increment(YASAKLI_MACHINE_COMPENSATION) }, { merge: true });
+      addUserSms(tx, uid, `🏭 Yasaklı madde makineleri oyundan kaldırıldı. İlandaki makinen için ${YASAKLI_MACHINE_COMPENSATION.toLocaleString('tr-TR')} altın hesabına yatırıldı.`, 'factory_machine_retired_listing');
     } else if (listing.itemType === 'machine') {
       const factoryMachinesRef = db.collection('factories').doc(uid).collection('machines');
       tx.set(factoryMachinesRef.doc(), {
@@ -8949,6 +9140,9 @@ export const buyListing = onCall(async (request) => {
           'failed-precondition',
           'Kripto (mining) makineleri artık 2. el satın alınamaz.'
         );
+      }
+      if (RETIRED_MACHINE_TYPES.includes(listing.machineType)) {
+        throw new HttpsError('failed-precondition', 'Yasaklı madde makineleri oyundan kaldırıldı.');
       }
       const buyerFactorySnap = await tx.get(db.collection('factories').doc(uid));
       if (!buyerFactorySnap.exists) {
@@ -10214,32 +10408,62 @@ function futbolManagerSalary(tier, leagueCount, level) {
   return Math.round(base * Math.pow(FUTBOL_MANAGER_SALARY_LEVEL_MULT, level || 0));
 }
 
-// --- Bölüm 4: Menajerlik Seviyesi ---
-// Eşik katlanarak artar: 0→±1 net 10 puan, ±1→±2 net 20, ±2→±3 net 40 ...
-// yani seviye N'deyken bir sonraki değişim için gereken NET puan
-// 10 * 2^|N|. Kazanınca streak +1, kaybedince -1; |streak| eşiğe ulaşınca
-// seviye streak'in işareti yönünde 1 kayar, streak sıfırlanır. Seviye asla
-// başka bir mekanizmayla (sezon sonu, pasiflik vb.) sıfırlanmaz.
+// --- Bölüm 4: Menajerlik Seviyesi (v38 — puan aralıkları) ---
+// Her galibiyet +1, her mağlubiyet -1 PUAN; seviye doğrudan toplam puandan
+// hesaplanır (aralıklar ikiye katlanarak genişler, eksi taraf simetrik):
+//   -9..9 → 0 · 10..29 → 1 · 30..69 → 2 · 70..149 → 3 · ...
+//   -10..-29 → -1 · -30..-69 → -2 · ...
+// Yani 10 puanla 1. seviyeye çıkan oyuncu 1 maç kaybedince 9 puana düşer
+// ve tekrar 0. seviye olur.
+// ESKİ VERİ: futbolManagerPoints alanı olmayan kullanıcıda puan, eski
+// (seviye, streak) çiftinden SEVİYE AYNEN KORUNACAK şekilde türetilir
+// (futbolManagerPointsFromLegacy) — geçişte kimse seviye kaybetmez/kazanmaz.
+// futbolManagerLevel alanı her zaman yazılmaya devam eder (tüm okuyucular
+// — maaş, devralma, listeler — değişmeden çalışır).
 const FUTBOL_MANAGER_LEVEL_BASE_THRESHOLD = 10;
-function futbolManagerLevelThreshold(level) {
-  return FUTBOL_MANAGER_LEVEL_BASE_THRESHOLD * Math.pow(2, Math.abs(level || 0));
+function futbolManagerLevelLow(n) {
+  // pozitif n. seviyenin alt sınırı: 10·(2^n − 1)
+  return FUTBOL_MANAGER_LEVEL_BASE_THRESHOLD * (Math.pow(2, n) - 1);
 }
-// futbolApplyManagerLevelDelta — bir maç sonucundan sonra (kazandı: +1,
-// kaybetti: -1) kullanıcının seviye/streak'ini günceller, YENİ
-// {level, streak} döner (yazma işlemini YAPMAZ — çağıran batch/tx içinde
-// users/{uid} dokümanına uygular).
-function futbolApplyManagerLevelDelta(currentLevel, currentStreak, delta) {
-  let level = currentLevel || 0;
-  let streak = (currentStreak || 0) + delta;
-  const threshold = futbolManagerLevelThreshold(level);
-  if (streak >= threshold) {
-    level += 1;
-    streak = 0;
-  } else if (streak <= -threshold) {
-    level -= 1;
-    streak = 0;
-  }
-  return { level, streak };
+function futbolManagerLevelFromPoints(points) {
+  const p = Math.trunc(Number(points) || 0);
+  const a = Math.abs(p);
+  let n = 0;
+  while (a >= futbolManagerLevelLow(n + 1)) n += 1;
+  return p < 0 ? -n : n;
+}
+// [alt, üst] puan aralığı (dahil)
+function futbolManagerLevelRange(level) {
+  const L = Math.trunc(Number(level) || 0);
+  if (L === 0) return [-(FUTBOL_MANAGER_LEVEL_BASE_THRESHOLD - 1), FUTBOL_MANAGER_LEVEL_BASE_THRESHOLD - 1];
+  const n = Math.abs(L);
+  const lo = futbolManagerLevelLow(n);
+  const hi = futbolManagerLevelLow(n + 1) - 1;
+  return L > 0 ? [lo, hi] : [-hi, -lo];
+}
+// Seviyeye "yeni girildiği" nokta: 0 → 0, pozitif → alt sınır, negatif → üst sınır
+function futbolManagerLevelAnchor(level) {
+  const L = Math.trunc(Number(level) || 0);
+  if (L === 0) return 0;
+  const [lo, hi] = futbolManagerLevelRange(L);
+  return L > 0 ? lo : hi;
+}
+function futbolManagerPointsFromLegacy(level, streak) {
+  const [lo, hi] = futbolManagerLevelRange(level);
+  const p = futbolManagerLevelAnchor(level) + Math.trunc(Number(streak) || 0);
+  return Math.max(lo, Math.min(hi, p));
+}
+function futbolManagerCurrentPoints(user) {
+  if (user && Number.isFinite(user.futbolManagerPoints)) return Math.trunc(user.futbolManagerPoints);
+  return futbolManagerPointsFromLegacy(user?.futbolManagerLevel || 0, user?.futbolManagerLevelStreak || 0);
+}
+// futbolApplyManagerPointsDelta — maç sonucu (+1/−1) sonrası YENİ
+// {points, level, streak} döner (yazma yapmaz). streak = puan − seviyenin
+// giriş noktası (eski istemciler için geriye dönük uyum).
+function futbolApplyManagerPointsDelta(user, delta) {
+  const points = futbolManagerCurrentPoints(user) + delta;
+  const level = futbolManagerLevelFromPoints(points);
+  return { points, level, streak: points - futbolManagerLevelAnchor(level) };
 }
 
 // futbolApplyManagerLevelForMatch — bir maçın sonucundan sonra, bu takımın
@@ -10255,12 +10479,8 @@ async function futbolApplyManagerLevelForMatch(batch, team, won) {
   const userSnap = await userRef.get();
   if (!userSnap.exists) return;
   const user = userSnap.data();
-  const { level, streak } = futbolApplyManagerLevelDelta(
-    user.futbolManagerLevel || 0,
-    user.futbolManagerLevelStreak || 0,
-    won ? 1 : -1
-  );
-  batch.update(userRef, { futbolManagerLevel: level, futbolManagerLevelStreak: streak });
+  const { points, level, streak } = futbolApplyManagerPointsDelta(user, won ? 1 : -1);
+  batch.update(userRef, { futbolManagerPoints: points, futbolManagerLevel: level, futbolManagerLevelStreak: streak });
 }
 
 // futbolApplyManagerLossStreak — Bölüm 9: "3 maç üst üste kayıp" sayacı.
@@ -11267,7 +11487,14 @@ function rollFutbolInjuryDays(age, mucadeleMult) {
 // saha/4 defans/3 kaleci (eskisi: GK:2,DEF:3,MID:3,FWD:2).
 const FUTBOL_MIN_SQUAD = { GK: 3, DEF: 4, MID: 4, FWD: 4 };
 const FUTBOL_MAX_ROUNDS = 14;
-const FUTBOL_SEASON_REWARDS = { champion: 500000, secondThird: 250000, promoted: 250000, other: 100000 };
+// v38 — SEZON SONU ÖDÜLLERİ: en alt ligde sıraya göre taban ödül; her üst
+// lig bir kat daha fazla alır (kat = lig sayısı − lig sırası + 1). Ör. 4 lig
+// varken 1. ligin şampiyonu 250.000 × 4 = 1.000.000 kazanır.
+const FUTBOL_SEASON_REWARD_BASE = [250000, 200000, 150000, 100000, 100000, 100000, 50000, 50000];
+function futbolSeasonRewardFor(tier, leagueCount, rankIndex) {
+  const base = FUTBOL_SEASON_REWARD_BASE[Math.min(Math.max(0, rankIndex), FUTBOL_SEASON_REWARD_BASE.length - 1)];
+  return base * Math.max(1, (leagueCount || 1) - (tier || 1) + 1);
+}
 
 function futbolEffectivePower(p) {
   return p.power * (p.form / 100);
@@ -11874,7 +12101,29 @@ async function applyFutbolMatchResult(matchId, trainingIdsByTeam) {
 //     ödül/geçiş iki kez uygulanmaz.
 // =============================================================================
 
-const FUTBOL_CUP_TIERS = [1, 2]; // Kupa'ya SADECE 1. ve 2. Lig katılır (kullanıcı promptu madde 1).
+const FUTBOL_CUP_TIERS = [1, 2]; // 1. grup kupası: 1. ve 2. Lig (kullanıcı promptu madde 1).
+// v38 — ÇOKLU KUPA: her iki lig bir kupa grubu oluşturur (1-2, 3-4, 5-6 …);
+// grup, ancak iki ligi de açıksa sezon başında kurulur (4. lig açılınca 3-4
+// kupası, 6. lig açılınca 5-6 kupası). Ödüller grup sayısına göre katlanır:
+// en üst grup (1-2) = grup sayısı kat, en alt grup = 1 kat. 1. grubun belge
+// kimliği eskisi gibi String(season) — mevcut sezon/ekranlar değişmeden çalışır.
+function futbolCupGroupCount(leagueCount) {
+  return Math.max(1, Math.floor((leagueCount || 0) / 2));
+}
+function futbolCupGroupTiers(group) {
+  return [2 * group - 1, 2 * group];
+}
+function futbolCupDocId(season, group) {
+  return group > 1 ? `${season}_${group}` : String(season);
+}
+function futbolCupGroupOf(m) {
+  return (m && m.cupGroup) || 1;
+}
+function futbolCupName(group) {
+  if (!group || group <= 1) return 'Neon Kupası';
+  const [a, b] = futbolCupGroupTiers(group);
+  return `Neon Kupası (${a}.-${b}. Lig)`;
+}
 const FUTBOL_CUP_ROUND_ORDER = ['ROUND_OF_16', 'QUARTER_FINAL', 'SEMI_FINAL', 'FINAL'];
 const FUTBOL_CUP_ROUND_LABELS = {
   ROUND_OF_16: 'Son 16',
@@ -12117,19 +12366,34 @@ function shuffleFutbolArray(arr) {
 // promptu madde 1) tamamen rastgele eşleştirir. Seri başı / lig koruması
 // YOK — 1. Lig şampiyonu ile 1. Lig'in başka bir takımı bile eşleşebilir.
 async function createFutbolCupForSeason(season) {
-  const leaguesSnap = await db.collection('futbolLeagues').where('tier', 'in', FUTBOL_CUP_TIERS).get();
+  const leagueCount = await futbolActiveLeagueCount();
+  const groups = futbolCupGroupCount(leagueCount);
+  for (let group = 1; group <= groups; group += 1) {
+    await createFutbolCupGroup(season, group, groups);
+  }
+}
+
+async function createFutbolCupGroup(season, group, groupCount) {
+  const tiers = futbolCupGroupTiers(group);
+  const leaguesSnap = await db.collection('futbolLeagues').where('tier', 'in', tiers).get();
   const eligibleLeagueIds = leaguesSnap.docs.map((d) => d.id);
-  if (eligibleLeagueIds.length === 0) return;
+  // 1. grup eskisi gibi (tek lig bile olsa); üst gruplar ancak İKİ lig de açıksa
+  if (eligibleLeagueIds.length === 0 || (group > 1 && eligibleLeagueIds.length < 2)) return;
+
+  const cupRef = db.collection('futbolCups').doc(futbolCupDocId(season, group));
+  if ((await cupRef.get()).exists) return; // idempotent
 
   const teamsSnap = await db.collection('futbolTeams').where('leagueId', 'in', eligibleLeagueIds).get();
   const teams = teamsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
   if (teams.length < 2) return;
 
   const shuffled = shuffleFutbolArray(teams);
-  const cupRef = db.collection('futbolCups').doc(String(season));
   const batch = db.batch();
   batch.set(cupRef, {
     season,
+    group,
+    tiers,
+    rewardMult: Math.max(1, groupCount - group + 1),
     status: 'ROUND_OF_16',
     teamIds: shuffled.map((t) => t.id),
     championTeamId: null,
@@ -12144,6 +12408,7 @@ async function createFutbolCupForSeason(season) {
     const matchRef = db.collection('futbolCupMatches').doc();
     batch.set(matchRef, {
       cupSeason: season,
+      cupGroup: group,
       round: 'ROUND_OF_16',
       slot: i / 2,
       homeTeamId: home.id,
@@ -12170,7 +12435,7 @@ async function createFutbolCupForSeason(season) {
 // eşleştirip bir sonraki turu oluşturur. FINAL'den sonrası yok — final
 // tamamlandığında burası hiç çağrılmaz, onun yerine awardFutbolCupTrophy
 // çalışır.
-async function advanceFutbolCupToNextRound(season, finishedRound) {
+async function advanceFutbolCupToNextRound(season, finishedRound, group = 1) {
   const idx = FUTBOL_CUP_ROUND_ORDER.indexOf(finishedRound);
   const nextRound = FUTBOL_CUP_ROUND_ORDER[idx + 1];
   if (!nextRound) return;
@@ -12180,8 +12445,16 @@ async function advanceFutbolCupToNextRound(season, finishedRound) {
     .where('cupSeason', '==', season)
     .where('round', '==', finishedRound)
     .get();
-  const matches = matchesSnap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => a.slot - b.slot);
+  const matches = matchesSnap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((m) => futbolCupGroupOf(m) === group)
+    .sort((a, b) => a.slot - b.slot);
   if (matches.length === 0 || matches.some((m) => m.status !== 'finished' || !m.winnerTeamId)) return;
+  const cupDocRef = db.collection('futbolCups').doc(futbolCupDocId(season, group));
+  const cupDocSnap = await cupDocRef.get();
+  // idempotent: bu grubun kupası zaten bir sonraki tura geçtiyse tekrar etme
+  if (cupDocSnap.exists && cupDocSnap.data().status !== finishedRound) return;
+  const rewardMult = Math.max(1, Number(cupDocSnap.data()?.rewardMult) || 1);
 
   const winners = matches.map((m) => ({
     id: m.winnerTeamId,
@@ -12194,7 +12467,7 @@ async function advanceFutbolCupToNextRound(season, finishedRound) {
 
   // KULLANICI İSTEĞİ: turu atlatan (kazanan) HER takıma o turun ödülü
   // hemen (bir sonraki tur oluşturulurken) verilir — elenenlere yok.
-  const roundReward = FUTBOL_CUP_ROUND_CLEAR_REWARD[finishedRound];
+  const roundReward = (FUTBOL_CUP_ROUND_CLEAR_REWARD[finishedRound] || 0) * rewardMult;
   if (roundReward) {
     const roundLabel = FUTBOL_CUP_ROUND_LABELS[finishedRound] || finishedRound;
     const leagueCount = await futbolActiveLeagueCount();
@@ -12204,7 +12477,7 @@ async function advanceFutbolCupToNextRound(season, finishedRound) {
     for (const teamSnap of winnerTeamSnaps) {
       if (!teamSnap.exists) continue;
       const team = { ...teamSnap.data(), id: teamSnap.id };
-      const text = `⚽ ${team.name || 'Takımın'} Neon Kupası'nda ${roundLabel} turunu atlattı! ${roundReward.toLocaleString('tr-TR')} altın ödül hesabınıza yatırıldı.`;
+      const text = `⚽ ${team.name || 'Takımın'} ${futbolCupName(group)}'nda ${roundLabel} turunu atlattı! ${roundReward.toLocaleString('tr-TR')} altın ödül hesabınıza yatırıldı.`;
       await futbolCreditTeamIncome(batch, team, roundReward, leagueCount, {
         personalText: text,
         panelText: text,
@@ -12219,6 +12492,7 @@ async function advanceFutbolCupToNextRound(season, finishedRound) {
     const matchRef = db.collection('futbolCupMatches').doc();
     batch.set(matchRef, {
       cupSeason: season,
+      cupGroup: group,
       round: nextRound,
       slot: i / 2,
       homeTeamId: home.id,
@@ -12237,7 +12511,7 @@ async function advanceFutbolCupToNextRound(season, finishedRound) {
       playedAt: null,
     });
   }
-  batch.update(db.collection('futbolCups').doc(String(season)), {
+  batch.update(cupDocRef, {
     status: nextRound,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
@@ -12579,8 +12853,8 @@ async function resolveFutbolCupBetsForRound(season, round) {
 // olduğunu görüp HİÇBİR ŞEY yapmaz (madde 12/20/34 koruması). Ödül
 // transaction'ı BAŞARILI olduktan SONRA (aynı atomik transaction'ın
 // içinde, yani parayla birlikte) SMS yazılır — asla önce SMS değil.
-async function awardFutbolCupTrophy(season, finalMatch) {
-  const cupRef = db.collection('futbolCups').doc(String(season));
+async function awardFutbolCupTrophy(season, finalMatch, group = 1) {
+  const cupRef = db.collection('futbolCups').doc(futbolCupDocId(season, group));
   const champTeamId = finalMatch.winnerTeamId;
   const finalistTeamId = champTeamId === finalMatch.homeTeamId ? finalMatch.awayTeamId : finalMatch.homeTeamId;
   if (!champTeamId || !finalistTeamId) return false;
@@ -12593,6 +12867,7 @@ async function awardFutbolCupTrophy(season, finalMatch) {
   const didAward = await db.runTransaction(async (tx) => {
     const cupSnap = await tx.get(cupRef);
     if (!cupSnap.exists || cupSnap.data().status === 'DONE') return false;
+    const championReward = FUTBOL_CUP_CHAMPION_REWARD * Math.max(1, Number(cupSnap.data().rewardMult) || 1);
 
     const [champTeamSnap, finalistTeamSnap] = await Promise.all([
       tx.get(db.collection('futbolTeams').doc(champTeamId)),
@@ -12609,8 +12884,8 @@ async function awardFutbolCupTrophy(season, finalMatch) {
     if (champTeamSnap.exists) {
       tx.update(champTeamSnap.ref, { cupsCount: admin.firestore.FieldValue.increment(1) });
       const champTeam = { ...champTeamSnap.data(), id: champTeamSnap.id };
-      const champText = `🏆 Tebrikler!\n${champTeam.name} ile Neon Kupası'nı kazandınız.\n${FUTBOL_CUP_CHAMPION_REWARD.toLocaleString('tr-TR')} altın ödül hesabınıza yatırıldı.`;
-      await futbolCreditTeamIncome(tx, champTeam, FUTBOL_CUP_CHAMPION_REWARD, leagueCount, {
+      const champText = `🏆 Tebrikler!\n${champTeam.name} ile ${futbolCupName(group)}'nı kazandınız.\n${championReward.toLocaleString('tr-TR')} altın ödül hesabınıza yatırıldı.`;
+      await futbolCreditTeamIncome(tx, champTeam, championReward, leagueCount, {
         personalText: champText,
         panelText: champText,
         notifType: 'futbol_cup_champion',
@@ -12622,7 +12897,7 @@ async function awardFutbolCupTrophy(season, finalMatch) {
     // Sadece bilgilendirme mesajı gönderilir, para hareketi yok.
     if (finalistTeamSnap.exists) {
       const finalistTeam = { ...finalistTeamSnap.data(), id: finalistTeamSnap.id };
-      const finalistText = `🥈 ${finalistTeam.name} ile Neon Kupası'nı ikinci olarak tamamladın. Final için ek ödül yok — önceki turlardan kazandığın ödülleri zaten aldın.`;
+      const finalistText = `🥈 ${finalistTeam.name} ile ${futbolCupName(group)}'nı ikinci olarak tamamladın. Final için ek ödül yok — önceki turlardan kazandığın ödülleri zaten aldın.`;
       if (finalistTeam.ownerUid) {
         sendFutbolSms(tx, finalistTeam.ownerUid, finalistText, 'futbol_cup_finalist');
       }
@@ -12638,6 +12913,8 @@ async function awardFutbolCupTrophy(season, finalMatch) {
     const finalistLogo = champTeamId === finalMatch.homeTeamId ? finalMatch.awayLogo : finalMatch.homeLogo;
     await logNewsEvent('football_cup_final', {
       season,
+      cupGroup: group,
+      cupName: futbolCupName(group),
       championTeamName: champName,
       championLogo: champLogo || null,
       finalistTeamName: finalistName,
@@ -12744,10 +13021,7 @@ async function finishFutbolSeasonPart1(leagueIds) {
   leagueData.forEach(({ league, teams }, idx) => {
     const isTopTier = idx === 0;
     teams.forEach((team, rank) => {
-      let reward = FUTBOL_SEASON_REWARDS.other;
-      if (isTopTier && rank === 0) reward = FUTBOL_SEASON_REWARDS.champion;
-      else if (isTopTier && (rank === 1 || rank === 2)) reward = FUTBOL_SEASON_REWARDS.secondThird;
-      else if (!isTopTier && rank < 2) reward = FUTBOL_SEASON_REWARDS.promoted;
+      const reward = futbolSeasonRewardFor(league.tier, seasonEndLeagueCount, rank);
       if (isTopTier && rank < 3) {
         topThree.push({ rank: rank + 1, teamName: team.name, logo: team.logo || null });
       }
@@ -13486,18 +13760,24 @@ export const resolveFutbolMatchdayReveal = onSchedule(
 
       await resolveFutbolCupBetsForRound(state.season, state.pendingCupRound);
 
+      // v38: her kupa grubu (1-2, 3-4 …) kendi başına ilerler / kupasını verir
+      const cupGroupsToday = [...new Set(cupMatchesSnap.docs.map((d) => futbolCupGroupOf(d.data())))].sort();
       if (state.pendingCupRound === 'FINAL') {
         const finalSnap = await db
           .collection('futbolCupMatches')
           .where('cupSeason', '==', state.season)
           .where('round', '==', 'FINAL')
           .get();
-        const finalMatch = finalSnap.docs[0]?.data();
-        if (finalMatch && finalMatch.status === 'finished' && finalMatch.winnerTeamId) {
-          await awardFutbolCupTrophy(state.season, finalMatch);
+        for (const group of cupGroupsToday.length ? cupGroupsToday : [1]) {
+          const finalMatch = finalSnap.docs.map((d) => d.data()).find((m) => futbolCupGroupOf(m) === group);
+          if (finalMatch && finalMatch.status === 'finished' && finalMatch.winnerTeamId) {
+            await awardFutbolCupTrophy(state.season, finalMatch, group);
+          }
         }
       } else if (state.pendingCupRound) {
-        await advanceFutbolCupToNextRound(state.season, state.pendingCupRound);
+        for (const group of cupGroupsToday.length ? cupGroupsToday : [1]) {
+          await advanceFutbolCupToNextRound(state.season, state.pendingCupRound, group);
+        }
       }
 
       await db

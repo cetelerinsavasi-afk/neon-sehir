@@ -1,13 +1,13 @@
 // SAVAŞ ÇEKİRDEĞİ + bahisli savaş + ittifak + sabotaj + İstihbarat operasyonu
 //
 // Zar: 2 zar (sunucuda crypto.randomInt) → katkı = (z1+z2) × güç (anlık görüntü)
-// Pencere: 00/06/12/18 — oyuncu her 6 saatlik pencerede TEK bir savaşa
+// Pencere (v38): 3 saatlik 8 dilim — oyuncu her dilimde TEK bir savaşa
 // katılabilir (slots/{oyuncu}_{gün}_{pencere} deterministik kilit → çift
 // katılım imkânsız). Savaş toplamları shard belgelerinde tutulur (sonuç
 // buradan hesaplanır); savaş kartındaki gösterge best-effort artırılır ve
 // saat (clock) tarafından periyodik uzlaştırılır.
-import { GANG, INTEL, WAR_SHARDS, RANK_LABELS, productById, atLeast } from '../config.js';
-import { addDays, dateKeyOf, hhmmOf, midnightMsOf, nextWindowStartMs } from '../time.js';
+import { GANG, INTEL, LEGACY_WINDOW_HOURS, WAR_SHARDS, RANK_LABELS, productById, atLeast } from '../config.js';
+import { addDays, dateKeyOf, hhmmOf, midnightMsOf, nextWindowStartMs, slotIdOf, windowStartMs } from '../time.js';
 
 export const ALLIANCE_BLOCKING = ['accepted', 'active', 'ending'];
 export const ALLIANCE_DEFENSIVE = ['active', 'ending'];
@@ -37,10 +37,12 @@ export function createWarActions(core) {
     let betIntel = Boolean(war.sides?.intel);
     if (war.type === 'bet' && wantIntel && !betIntel) betIntel = Boolean((await ctx.ref.betReport(warId).get()).data()?.opStarted);
     const livePower = ctx.isTest ? null : await core.readPower(ctx, ctx.actorId);
-    const slotId = `${ctx.actorId}_${ctx.dateKey}_${ctx.slot}`;
+    const slotId = slotIdOf(ctx.actorId, ctx.now);
+    // v38 geçiş günü: eski 6 saatlik dilimde bu 3 saatlik dilim içinde saldırdıysa hak kullanılmış sayılır
+    const legacySlotId = `${ctx.actorId}_${ctx.dateKey}_${Math.floor(ctx.hour / LEGACY_WINDOW_HOURS)}`;
 
     const out = await core.db.runTransaction(async (tx) => {
-      const slotSnap = await tx.get(ctx.ref.slot(slotId));
+      const [slotSnap, legacySnap] = await Promise.all([tx.get(ctx.ref.slot(slotId)), tx.get(ctx.ref.slot(legacySlotId))]);
       const membership = await readMembership(tx, ctx, ctx.actorId);
       const wallet = ctx.isTest ? await readWallet(tx, ctx, ctx.actorId) : null;
       let sideKey;
@@ -80,7 +82,8 @@ export function createWarActions(core) {
           fail('failed-precondition', 'Bu savaşa katılamazsın.');
         }
       }
-      if (slotSnap.exists) fail('already-exists', 'Bu 6 saatlik pencerede zaten bir savaşa katıldın.');
+      const legacyUsed = legacySnap.exists && Number(legacySnap.data()?.atMs || 0) >= windowStartMs(ctx.now);
+      if (slotSnap.exists || legacyUsed) fail('already-exists', 'Bu 3 saatlik dilimde zaten bir savaşa katıldın.');
       const power = ctx.isTest ? Number(wallet.testPower || 0) : livePower;
       if (!(power > 0)) fail('failed-precondition', 'Gücün yok — önce bir silah edin.');
       const d1 = core.randomInt(1, 7);
@@ -284,7 +287,7 @@ export function createWarActions(core) {
       }
       if (rel.allianceBlocks) fail('failed-precondition', '🤝 İttifak varken bahisli savaş yapılamaz.');
       if (Number(myState.data()?.kasa || 0) < stake) fail('failed-precondition', 'Kasada yeterli para yok.');
-      // v35: bir sonraki saldırı diliminde başlar (00·06·12·18), 24 saat sürer
+      // v35: bir sonraki saldırı diliminde başlar (v38: 3 saatlik dilimler), 24 saat sürer
       const startsAtMs = nextWindowStartMs(ctx.now);
       const endsAtMs = startsAtMs + GANG.BET_DURATION_MS;
       tx.update(ctx.ref.gangState(gangId), { kasa: FV.increment(-stake) });
@@ -440,8 +443,8 @@ export function createWarActions(core) {
 
   // ---------------------------------------------------------------------------
   // SABOTAJ (çete) — 00:00–12:00 arası Baba/Sağ Kol başlatır; saldırılar
-  // tır sahibine 12:00'de duyurulur; saldırı 12–18 ve 18–24; haraç (alt/üst
-  // sınır yok) 18:00'e kadar ödenir; sonuç tır varışında (00:00).
+  // tır sahibine 12:00'de duyurulur; saldırı 12–24 (v38: 4 dilim); haraç (alt/üst
+  // sınır yok) 21:00'e kadar ödenir; sonuç tır varışında (00:00).
   // Ücret: OYUN GENELİNDE 10.000 → 20.000 → … (her yeni sabotaj/operasyon
   // +10.000, 00:00'da sıfırlanır).
   // Depo: saldıran çetenin deposunda tırın GERÇEK yükü kadar boş yer olmalı
@@ -598,7 +601,7 @@ export function createWarActions(core) {
 
   async function payHarac(ctx, data) {
     const warId = String(data.warId || '');
-    if (ctx.hour >= GANG.HARAC_PAY_DEADLINE_HOUR) fail('deadline-exceeded', 'Haraç ödeme süresi 18:00\'de kapandı.');
+    if (ctx.hour >= GANG.HARAC_PAY_DEADLINE_HOUR) fail('deadline-exceeded', `Haraç ödeme süresi ${GANG.HARAC_PAY_DEADLINE_HOUR}:00'de kapandı.`);
     return core.db.runTransaction(async (tx) => {
       const { gangId, me } = await myGangRole(tx, ctx, LEADERS, 'Haracı sadece Mafya Babası ve Sağ Kol ödeyebilir.');
       const war = (await tx.get(ctx.ref.war(warId))).data();
@@ -625,7 +628,7 @@ export function createWarActions(core) {
   // İSTİHBARAT OPERASYONU — ihbar edilmiş tıra (veya bugünkü tüm ihbarlara)
   // 12:00'ye kadar Başkan/Şef başlatır; ücret = (oyun geneli) sabotaj ücreti.
   // RÜŞVET tutarını operasyonu başlatan belirler (0 = rüşvet kabul edilmez);
-  // tır sahibi 18:00'e kadar öderse operasyon durur, para İstihbarat kasasına.
+  // tır sahibi 21:00'e kadar öderse operasyon durur, para İstihbarat kasasına.
   // ---------------------------------------------------------------------------
   async function startOperation(ctx, data) {
     if (ctx.hour >= GANG.SABOTAGE_START_DEADLINE_HOUR) fail('deadline-exceeded', 'Operasyon sadece 00:00–12:00 arasında başlatılabilir.');
@@ -726,10 +729,10 @@ export function createWarActions(core) {
     });
   }
 
-  // Tır sahibi, İstihbaratın belirlediği rüşveti 18:00'e kadar öder → operasyon durur.
+  // Tır sahibi, İstihbaratın belirlediği rüşveti 21:00'e kadar öder → operasyon durur.
   async function payBribe(ctx, data) {
     const warId = String(data.warId || '');
-    if (ctx.hour >= GANG.HARAC_PAY_DEADLINE_HOUR) fail('deadline-exceeded', 'Rüşvet süresi 18:00\'de kapandı.');
+    if (ctx.hour >= GANG.HARAC_PAY_DEADLINE_HOUR) fail('deadline-exceeded', `Rüşvet süresi ${GANG.HARAC_PAY_DEADLINE_HOUR}:00'de kapandı.`);
     return core.db.runTransaction(async (tx) => {
       const { gangId, me } = await myGangRole(tx, ctx, LEADERS, 'Rüşveti sadece Mafya Babası ve Sağ Kol ödeyebilir.');
       const war = (await tx.get(ctx.ref.war(warId))).data();

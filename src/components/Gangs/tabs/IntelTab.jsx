@@ -5,7 +5,7 @@
 import { useState } from 'react';
 import { istHour, useGangAction, useNow } from '../GangContext';
 import { AmountInput, Btn, Card, Chips, Confirm, RankBadge, Sheet } from '../ui';
-import { KasaLine, MemberCard, RankTree } from '../shared';
+import { KasaLine, MemberCard, MidnightLegend, RankTree } from '../shared';
 import { DIST_GROUPS, GANG_RULES, INTEL_LEADERS, RANK_ICONS, fmt } from '../gangConstants';
 
 const DIRECT = { baskan: ['ajan', 'muhbir'], sef: ['muhbir'] };
@@ -47,7 +47,7 @@ function MemberSheet({ member, myRank, onClose }) {
           lines={
             ask === 'kick'
               ? []
-              : [member.rank === 'baskan' ? '%66+ evet' : '%51 evet']
+              : [member.rank === 'baskan' ? '✅ %66+ evet → İstihbarattan çıkar' : '✅ %51 evet → İstihbarattan çıkar', '❌ geçmezse kimse atılmaz']
           }
           confirmLabel={ask === 'kick' ? 'At' : 'Başlat'}
           busy={Boolean(busy)}
@@ -106,6 +106,7 @@ export default function IntelTab({ d }) {
 
       <div className="gx-section-head">
         <span>🕵️ Teşkilat ({d.roster.length})</span>
+        <MidnightLegend />
       </div>
       <RankTree rows={[byRank('baskan'), byRank('sef'), byRank('uzman')]} rows2={[{ title: 'Ajanlar', items: byRank('ajan') }, { title: 'Muhbirler', items: byRank('muhbir') }]} renderCard={card} />
 

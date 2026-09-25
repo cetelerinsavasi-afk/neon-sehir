@@ -75,7 +75,7 @@ test('operasyon: Başkan/Şef, 100k, 00:00 öncesi; savaş 3 taraflı başlar; �
   await h.act(S.A.baba, 'rollDice', { warId: S.warId });
   await h.act(S.B.baba, 'rollDice', { warId: S.warId });
   const presBefore = h.get(`intelRoster/${S.basR}`).prestige;
-  assert.equal(presBefore, 5_000_000 + 480_000, 'İstihbarat savaş gücü = prestij');
+  assert.equal(presBefore, 5_000_000 + 240_000, 'v38: İstihbarat savaş prestiji = gücün yarısı');
   const kA = h.state(S.A.gangId).kasa;
   await h.tickTo('2026-09-23', '00:05');
   assert.equal(h.get(`wars/${S.warId}`).result.winner, 'intel');

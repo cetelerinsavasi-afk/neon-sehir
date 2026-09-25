@@ -231,9 +231,18 @@ export function createGangSystem(deps) {
     const world = await core.loadWorld(worldId);
     if (!world) fail('failed-precondition', '🚧 Çeteler şu an tadilatta.');
     const ctx = core.makeCtx(worldId, world, { actorId, authUid: uid });
+    const rosterAction = ROSTER_ACTIONS.has(data.action);
+    const msBefore = rosterAction ? (await db.doc(`gangWorlds/${worldId}/memberships/${actorId}`).get()).data() || {} : null;
     try {
       const res = await handler(ctx, data.payload || {});
       await runAfterCommit(ctx);
+      if (rosterAction) {
+        try {
+          await refreshRostersAfter(ctx, data.action, msBefore);
+        } catch (err) {
+          console.error('gang roster yenileme hata', err);
+        }
+      }
       // Onboarding kancaları (sadece canlı dünya; best-effort — hata işlemi bozmaz)
       if (!ctx.isTest) {
         try {
@@ -241,6 +250,14 @@ export function createGangSystem(deps) {
           if (data.action === 'buyMarketListing' && deps.onGangMarketBought) await deps.onGangMarketBought(uid, res || {});
         } catch (err) {
           console.error('gang onboarding kancası hata', err);
+        }
+      }
+      // v38 aktiflik: sohbet mesajı (çete/genel/İstihbarat) → çete üyeliği için aktif sayılır
+      if (SOCIAL_ACTIONS.has(data.action)) {
+        try {
+          await touchSocialActivity(worldId, actorId, world);
+        } catch (err) {
+          console.error('gang aktiflik kaydı hata', err);
         }
       }
       ctx.logs.push({ gang: 'action', world: worldId, action: data.action, actorId: ctx.isTest ? actorId : 'player' });
@@ -482,6 +499,44 @@ export function createGangSystem(deps) {
     return res;
   }
 
+  // ---------------------------------------------------------------------------
+  // v38 — AKTİFLİK: 30 gün boyunca savaşa katılmayan, HİÇBİR sohbete mesaj
+  // yazmayan ve ibadet etmeyen üye atılır (üçünden biri aktiflik sayılır).
+  // Savaş: members.lastActiveAtMs · çete sohbeti: members.lastChatAtMs ·
+  // diğer sohbetler/ibadet: members.lastSocialAtMs (burada, en fazla saatte
+  // bir yazılır — üye listesini dinleyenleri gereksiz tetiklememek için).
+  // ---------------------------------------------------------------------------
+  const SOCIAL_ACTIONS = new Set(['sendGangChat', 'sendGlobalChat', 'sendIntelChat']);
+  // v38: üye listesi (00:00 prestijli herkese açık görünüm) değiştiren işlemler
+  const ROSTER_ACTIONS = new Set(['createGang', 'joinGang', 'leaveGang', 'kickMember', 'giveRespect', 'joinIntel', 'leaveIntel', 'kickIntelMember', 'changeCodeName', 'intelDecision']);
+  const INTEL_ROSTER_ACTIONS = new Set(['joinIntel', 'leaveIntel', 'kickIntelMember', 'changeCodeName', 'intelDecision']);
+  async function refreshRostersAfter(ctx, action, before) {
+    const after = (await db.doc(`gangWorlds/${ctx.worldId}/memberships/${ctx.actorId}`).get()).data() || {};
+    const gangIds = new Set([before?.gangId, after.gangId].filter(Boolean));
+    if (action === 'kickMember' || action === 'giveRespect') gangIds.add(after.gangId || before?.gangId);
+    for (const g of gangIds) if (g) await core.refreshGangRoster(ctx, g);
+    if (INTEL_ROSTER_ACTIONS.has(action) || before?.intelRosterId !== after.intelRosterId) await core.refreshIntelRoster(ctx);
+  }
+  const SOCIAL_TOUCH_MIN_MS = 60 * 60 * 1000;
+  async function touchSocialActivity(worldId, uid, worldData = null) {
+    const ms = (await db.doc(`gangWorlds/${worldId}/memberships/${uid}`).get()).data();
+    if (!ms?.gangId) return { skipped: true };
+    const ref = db.doc(`gangWorlds/${worldId}/gangs/${ms.gangId}/members/${uid}`);
+    const m = (await ref.get()).data();
+    if (!m) return { skipped: true };
+    const world = worldData || (await core.loadWorld(worldId));
+    const now = core.makeCtx(worldId, world || {}).now;
+    if (now - Number(m.lastSocialAtMs || 0) < SOCIAL_TOUCH_MIN_MS) return { skipped: true };
+    await ref.update({ lastSocialAtMs: now, inactiveWarn: false });
+    return { touched: true };
+  }
+  // Oyunun diğer yerlerinden (ChatsApp mesajı, camide ibadet) — sadece canlı dünya, best-effort
+  async function onPlayerActivity(uid) {
+    const cfg = await getConfig();
+    if (!cfg.liveOpen || !cfg.liveWorldId) return { skipped: true };
+    return touchSocialActivity(cfg.liveWorldId, uid);
+  }
+
   // Oyuncu şu an (canlı dünyada) bir çetede mi? — onboarding otomatik geçişi için
   async function isInLiveGang(uid) {
     const cfg = await getConfig();
@@ -493,5 +548,5 @@ export function createGangSystem(deps) {
   // Testler için iç erişim (production'da kullanılmaz)
   const _internal = { core, membership, treasury, trade, market, wars, votes, intel, clock, HANDLERS };
 
-  return { handleAction, handleAdmin, runAllClocks, onPoliceBustReward, onSuspicionFine, isInLiveGang, ensureLiveWorld, _internal };
+  return { handleAction, handleAdmin, runAllClocks, onPoliceBustReward, onSuspicionFine, isInLiveGang, ensureLiveWorld, onPlayerActivity, touchSocialActivity, _internal };
 }

@@ -7,9 +7,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { limit, where } from 'firebase/firestore';
 import { istDateKey, istHour, istMidnight, useDocData, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
-import { AmountInput, Bar, Btn, Card, Chips, Confirm, Empty, Logo, Sheet } from '../ui';
+import { AmountInput, Bar, Btn, Card, Chips, Confirm, Deadline, Empty, Logo, Sheet } from '../ui';
 import { DIST_GROUPS, GANG_RULES, LEADERS, PRODUCTS, atLeast, fmt, productOf, unitsOf } from '../gangConstants';
 import { itemInfo, itemsFor } from '../itemInfo';
+
+const GANG_RULES_HARAC_HOUR_LABEL = '21:00'; // v38: haraç/rüşvet son dilim (21:00) başlayana kadar
 
 const daysBetween = (a, b) => (a && b ? Math.round((istMidnight(b) - istMidnight(a)) / 86400_000) : 0);
 
@@ -360,6 +362,7 @@ function RoadTrucks({ gangId, rank, alliances, wars }) {
   const [quote, setQuote] = useState(null);
   const [harac, setHarac] = useState(0);
   const open = istHour(now) < 12;
+  const sabotageUntil = istMidnight(today) + 12 * 3600_000; // v38: sabotaj 12:00'ye kadar başlatılır
   const others = road.filter((t) => t.gangId !== gangId && t.departDateKey === today);
   const allied = new Set(alliances.filter((a) => ['accepted', 'active', 'ending'].includes(a.status)).flatMap((a) => a.gangIds));
   const attacking = new Set(wars.all.filter((w) => w.type === 'sabotage' && w.attackerGangId === gangId).map((w) => w.truckId));
@@ -384,6 +387,7 @@ function RoadTrucks({ gangId, rank, alliances, wars }) {
     <>
       <div className="gx-section-head">
         <span>🛣️ Yoldaki tırlar ({others.length})</span>
+        {open && others.length > 0 && (lead || canRequest) && <Deadline untilMs={sabotageUntil} label="💣" />}
       </div>
       {others.length === 0 && <p className="dim gx-mini">🛣️ Yol boş</p>}
       {!open && others.length > 0 && <p className="dim gx-mini">🔒 00:00–12:00</p>}
@@ -420,7 +424,7 @@ function RoadTrucks({ gangId, rank, alliances, wars }) {
                 ? ['Teklif alınamadı.']
                 : quote.canReceive === false
                   ? ['🏚️ Depoda yer yok']
-                  : [`💸 ${fmt(quote.price)}`]
+                  : [`💸 ${fmt(quote.price)} çete kasasından`, '⚔️ Saldırı 12:00–24:00 · 4 dilim', `🤑 Tır sahibi haracı ${GANG_RULES_HARAC_HOUR_LABEL}'e kadar ödeyebilir`]
           }
           confirmLabel="Başlat"
           busy={busy === 'startSabotage'}
@@ -432,6 +436,9 @@ function RoadTrucks({ gangId, rank, alliances, wars }) {
             return r;
           }}
         >
+          <div className="gx-confirm-deadline">
+            <Deadline untilMs={sabotageUntil} label="içinde başlat" />
+          </div>
           {quote && !quote.error && quote.canReceive !== false && (
             <div className="gx-field">
               <span>

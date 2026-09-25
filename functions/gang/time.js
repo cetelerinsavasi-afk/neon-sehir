@@ -48,10 +48,17 @@ export function compareKeys(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-// v35: bir sonraki 6 saatlik saldırı diliminin başlangıcı (00 · 06 · 12 · 18),
+// Bir sonraki saldırı diliminin başlangıcı (v38: 3 saatlik — 00·03·06·…·21),
 // "şu an"dan KESİNLİKLE sonra.
 export function nextWindowStartMs(ms) {
   return midnightMsOf(dateKeyOf(ms)) + (windowSlotOf(ms) + 1) * WINDOW_HOURS * MS_HOUR;
+}
+export function windowStartMs(ms) {
+  return midnightMsOf(dateKeyOf(ms)) + windowSlotOf(ms) * WINDOW_HOURS * MS_HOUR;
+}
+// v38: savaş hakkı belgesi kimliği (3 saatlik dilim; eski 6 saatlik kimliklerle çakışmasın diye 'w' ön eki)
+export function slotIdOf(actorId, ms) {
+  return `${actorId}_${dateKeyOf(ms)}_w${windowSlotOf(ms)}`;
 }
 export function hhmmOf(ms) {
   const d = shifted(ms);

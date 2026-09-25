@@ -46,6 +46,7 @@ export function useMyWallet() {
 }
 
 // Futbol kartı tarzı üye kartı. İstihbaratta avatar yerine "?" + kod adı.
+// v38: diğer üyelerin prestiji 00:00 değeri; kendi kartında anlık (canlı nokta)
 export function MemberCard({ name, rank, prestige, avatar, secret = false, me = false, big = false, onClick, badges }) {
   return (
     <button type="button" className={`gx-fcard gx-fcard-${rank}${me ? ' me' : ''}${big ? ' big' : ''}`} onClick={onClick}>
@@ -54,7 +55,9 @@ export function MemberCard({ name, rank, prestige, avatar, secret = false, me = 
       </span>
       <span className="gx-fcard-avatar">{secret ? <span className="gx-fcard-q">?</span> : <AvatarSvg avatar={avatar} size={big ? 58 : 46} rounded />}</span>
       <span className="gx-fcard-name">{name}</span>
-      <span className="gx-fcard-prestige">✦ {fmtShort(prestige)}</span>
+      <span className="gx-fcard-prestige">
+        {me && <i className="gx-live-dot" title="Anlık" />}✦ {fmtShort(prestige)}
+      </span>
       {badges && <span className="gx-fcard-badges">{badges}</span>}
     </button>
   );
@@ -248,16 +251,32 @@ export function VoteCard({ vote, ballotPath, voterKey, action }) {
 }
 
 // Kısa "kasa + serbest para" satırı
-export function KasaLine({ state, isToday }) {
+// v38: Tetikçi+ anlık kasayı görür; Çömez 00:00 kasasını (🕛) görür
+export function KasaLine({ state, isToday, kasa = undefined, live = true }) {
   const free = isToday ? Number(state?.distributableLeft || 0) : 0;
   return (
     <div className="gx-kasa-line">
       <span>
-        💰 Kasa <b>{fmt(state?.kasa)}</b>
+        💰 Kasa <b>{fmt(kasa !== undefined ? kasa : state?.kasa)}</b>
+        {!live && <span className="gx-midnight-chip">🕛 00:00</span>}
       </span>
-      <span className="dim">
-        🔓 <b>{fmt(free)}</b>
-      </span>
+      {live && (
+        <span className="dim">
+          🔓 <b>{fmt(free)}</b>
+        </span>
+      )}
     </div>
+  );
+}
+
+// Üye listesi başlığında: "prestijler 00:00, seninki anlık"
+export function MidnightLegend() {
+  return (
+    <span className="gx-midnight-legend">
+      <span className="gx-midnight-chip">🕛 00:00</span>
+      <span className="gx-live-legend">
+        <i className="gx-live-dot" /> sen
+      </span>
+    </span>
   );
 }

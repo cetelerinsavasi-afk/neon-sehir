@@ -1,10 +1,10 @@
 .futbol-level-bar-wrap {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   margin: 6px 0;
   flex: 1;
-  min-width: 160px;
+  min-width: 180px;
 }
 
 .futbol-level-badge {
@@ -14,29 +14,32 @@
   white-space: nowrap;
 }
 
+.futbol-level-edge {
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.futbol-level-edge.down {
+  color: #ff5566;
+}
+.futbol-level-edge.up {
+  color: #3ddc84;
+}
+
 .futbol-level-track {
   position: relative;
   flex: 1;
   height: 8px;
   border-radius: 999px;
-  background: var(--panel);
+  background: linear-gradient(90deg, rgba(255, 85, 102, 0.18), rgba(61, 220, 132, 0.18));
   border: 1px solid var(--panel-border);
-  overflow: hidden;
-}
-
-.futbol-level-center {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: 2px;
-  height: 100%;
-  background: var(--panel-border);
-  transform: translateX(-1px);
 }
 
 .futbol-level-fill {
   position: absolute;
   top: 0;
+  left: 0;
   height: 100%;
   border-radius: 999px;
 }
@@ -47,4 +50,15 @@
 
 .futbol-level-fill.neg {
   background: #ff5566;
+}
+
+.futbol-level-dot {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.6);
+  transform: translate(-50%, -50%);
 }

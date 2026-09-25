@@ -338,7 +338,7 @@ function GameShell() {
 
       {/* Yeni görev/hatırlatıcı paneli — ChatsApp butonunun tam simetriği,
           sol altta aynı boyut/konumda (bkz. OnboardingPanel.css). */}
-      <OnboardingPanel />
+      <OnboardingPanel gangReminders={gangAlerts?.reminders} />
 
       {phoneOpen && (
         <PhoneScreen

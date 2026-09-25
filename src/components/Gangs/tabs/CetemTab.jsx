@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { limit, orderBy } from 'firebase/firestore';
 import { fmtDateTime, istHour, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
 import { AmountInput, Btn, Card, Chips, Confirm, Logo, RankBadge, Sheet } from '../ui';
-import { EditProfileSheet, KasaLine, MemberCard, RankTree, useMyWallet } from '../shared';
+import { EditProfileSheet, KasaLine, MemberCard, MidnightLegend, RankTree, useMyWallet } from '../shared';
 import { DIST_GROUPS, GANG_RULES, LEADERS, RANK_ICONS, fmt } from '../gangConstants';
 
 // Üyeye dokununca: saygı / at / çıkarma oylaması (yetkiye göre)
@@ -20,8 +20,8 @@ function MemberSheet({ member, myRank, onClose }) {
   const voteOpen = istHour(useNow(30_000)) < 12;
   const C = {
     respect: { icon: '🎩', title: `${member.name} için saygı göster`, lines: [`✦ +${fmt(GANG_RULES.RESPECT_PRESTIGE)}`], label: 'Saygı göster', act: () => run('giveRespect', { targetId: member.id }, { success: '🎩 Saygı gösterildi' }) },
-    kick: { icon: '🚫', title: `${member.name} çeteden atılsın mı?`, lines: ['Prestiji kalıcı silinir.'], label: 'At', danger: true, act: () => run('kickMember', { targetId: member.id }, { success: '🚫 Üye atıldı' }) },
-    kickVote: { icon: '🗳️', title: `${member.name} için çıkarma oylaması`, lines: [], label: 'Başlat', act: () => run('requestVote', { type: 'kick', targetId: member.id }, { success: '🗳️ Oylama başladı' }) },
+    kick: { icon: '🚫', title: `${member.name} çeteden atılsın mı?`, lines: ['Prestiji kalıcı silinir.', '🚪 İsterse hemen geri girebilir, prestiji 0\'dan başlar.'], label: 'At', danger: true, act: () => run('kickMember', { targetId: member.id }, { success: '🚫 Üye atıldı' }) },
+    kickVote: { icon: '🗳️', title: `${member.name} için çıkarma oylaması`, lines: ['✅ %51\'den fazla → çeteden çıkar', '❌ geçmezse kimse atılmaz'], label: 'Başlat', act: () => run('requestVote', { type: 'kick', targetId: member.id }, { success: '🗳️ Oylama başladı' }) },
   };
   const c = ask ? C[ask] : null;
   return (
@@ -30,7 +30,7 @@ function MemberSheet({ member, myRank, onClose }) {
         <RankBadge rank={member.rank} />
         <span className="gx-prestige">✦ {fmt(member.prestige)}</span>
         {member.respected && <span className="gx-pill">🎩 Saygı gördü</span>}
-        {member.inactiveWarn && <span className="gx-pill warn">💤 29 gündür savaşmadı</span>}
+        {member.inactiveWarn && <span className="gx-pill warn">💤 29 gündür aktif değil</span>}
       </div>
       <div className="gx-stack">
         {canRespect && <Btn block onClick={() => setAsk('respect')}>🎩 Saygı göster (+{fmt(GANG_RULES.RESPECT_PRESTIGE)})</Btn>}
@@ -257,7 +257,7 @@ export default function CetemTab({ d }) {
             </button>
           )}
         </div>
-        <KasaLine state={d.state} isToday={d.stateToday} />
+        <KasaLine state={d.state} isToday={d.stateToday} kasa={d.kasaShown} live={d.kasaLive} />
         <div className="gx-action-grid">
           <Btn small kind="ghost" onClick={() => setMoney('donate')}>
             💸 Bağış
@@ -310,6 +310,7 @@ export default function CetemTab({ d }) {
 
       <div className="gx-section-head">
         <span>👥 Üyeler · {d.members.length}</span>
+        <MidnightLegend />
       </div>
       <RankTree rows={[baba ? [baba] : [], byRank('sagkol'), byRank('kidemli')]} rows2={[{ title: 'Tetikçiler', items: byRank('tetikci') }, { title: 'Çömezler', items: byRank('comez') }]} renderCard={card} />
 

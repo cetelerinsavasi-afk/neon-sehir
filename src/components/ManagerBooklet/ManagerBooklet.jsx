@@ -27,8 +27,9 @@ const PAGES = [
   {
     title: '📈 Menajerlik Seviyen',
     body: [
-      'Herkes 0 seviyeden başlar. Kazandığın her maç +1, kaybettiğin her maç −1 puan.',
-      'Bir sonraki seviyeye geçmek için gereken puan her seferinde ikiye katlanır: 10 → 20 → 40 → …',
+      'Herkes 0 puanla başlar. Kazandığın her maç +1, kaybettiğin her maç −1 puan.',
+      'Seviyen toplam puanına göre belirlenir: −9 ile 9 arası 0. seviye, 10–29 arası 1. seviye, 30–69 arası 2. seviye… Aralıklar her seviyede ikiye katlanır; eksi tarafta da aynısı geçerlidir.',
+      'Örnek: 10 puanla 1. seviyeye çıktın, 1 maç kaybedersen 9 puana iner ve tekrar 0. seviye olursun.',
       'Seviyen hiçbir zaman sıfırlanmaz, kalıcıdır.',
       'Maaşın hem takımın liginden hem senin seviyenden belirlenir — her seviyede maaş %50 artar.',
     ],

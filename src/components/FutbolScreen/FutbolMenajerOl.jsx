@@ -12,9 +12,6 @@ import './FutbolTakimim.css';
 
 const FUTBOL_MANAGER_REPUTATION_REQUIRED = 50;
 
-function levelThreshold(level) {
-  return 10 * Math.pow(2, Math.abs(level || 0));
-}
 
 // FutbolMenajerOl — Bölüm 3/8/15: "Menajer Ol" sekmesi. Menajeri OLMAYAN
 // takımlar (bot/oto-bot → anında kabul; aktif başkanlı+gönüllü ilanlı →
@@ -75,13 +72,11 @@ export default function FutbolMenajerOl() {
     }
   };
 
-  const myLevel = player?.futbolManagerLevel || 0;
-  const myStreak = player?.futbolManagerLevelStreak || 0;
 
   return (
     <div className="futbol-buy-list">
       <div className="futbol-training-header-row">
-        <FutbolLevelBar level={myLevel} streak={myStreak} threshold={levelThreshold(myLevel)} />
+        <FutbolLevelBar player={player} />
         <button className="futbol-admin-reset" onClick={() => setShowBooklet(true)}>
           📖 Menajerlik Kitapçığı
         </button>

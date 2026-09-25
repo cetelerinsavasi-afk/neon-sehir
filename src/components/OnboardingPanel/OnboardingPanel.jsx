@@ -11,7 +11,7 @@ import './OnboardingPanel.css';
 // bitince "Görevler Tamamlandı!" ekranı gelir, "Tamam" butonuna
 // basıldığında panel kalıcı olarak "hatırlatıcı" moduna geçer ve sadece
 // o an geçerli olan hatırlatmalar varsa görünür kalır.
-export default function OnboardingPanel() {
+export default function OnboardingPanel({ gangReminders = null }) {
   const { user } = useAuth();
   const {
     loading,
@@ -20,7 +20,7 @@ export default function OnboardingPanel() {
     checklistDone,
     reminders,
     shouldHideButton,
-  } = useOnboarding();
+  } = useOnboarding(gangReminders);
 
   const [open, setOpen] = useState(false);
   const [claiming, setClaiming] = useState(false);

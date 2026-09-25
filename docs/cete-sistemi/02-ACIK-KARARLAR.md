@@ -1,4 +1,4 @@
-# Kurallar ve Kararlar (v37)
+# Kurallar ve Kararlar (v38)
 
 v31'de kaynak olarak **oyun tasarımcısının kendi metni** esas alındı; önceki sürümdeki varsayımların çoğu bu metne göre düzeltildi. Sayısal değerlerin hepsi `functions/gang/config.js` içinde tek satırdan değiştirilebilir (istemci gösterimi: `src/components/Gangs/gangConstants.js`).
 
@@ -58,3 +58,15 @@ v31'de kaynak olarak **oyun tasarımcısının kendi metni** esas alındı; önc
 - Not: çete kasası Çeteler listesinde herkese açık olduğundan kasa değişimi dolaylı ipucu verebilir (mevcut kural, değiştirilmedi).
 - **Sayaçlar:** bahis kartında saat yok; saniye saniye akan "⚔️ Başlamasına 03:59:12" / "⏳ Cevap için 09:59:50".
 - **Varsayılan örgüt:** hem çetede hem İstihbarattaysa Çeteler önce çete ile açılır.
+
+## v38
+- **Saldırı dilimleri:** 3 saatlik 8 dilim (00·03·…·21). Dilim başına 1 saldırı (tüm savaşlar ve iki örgüt toplamı). Hak belgesi `slots/{uid}_{gün}_w{dilim}`; geçiş günü eski 6 saatlik kayıt aynı 3 saatlik dilimdeyse hak kullanılmış sayılır.
+- **Bahis:** 24 saat = 8 dilim; ihbar/sızdırma/operasyon başladıktan sonraki ilk 2 dilim (6 saat) içinde.
+- **Pazar savaşı:** 00:00–24:00, 8 dilim (kurallar aynı).
+- **Sabotaj / operasyon:** 12:00'den önce başlatılır; savaş 12:00–24:00 = 4 dilim. **Haraç / rüşvet:** son dilim başlayana kadar (21:00).
+- **Tır ihbarı ve içerik sızdırma:** tır yola çıktığı gün 00:00–12:00 (sunucuda zorunlu).
+- **Savaş prestiji:** hasarın yarısı (500.000 hasar → 250.000 prestij).
+- **Aktiflik (30 gün):** savaş, herhangi bir sohbet mesajı (çete, genel çete, İstihbarat, ChatsApp) ya da camide ibadet aktif sayılır. Kural devreye girdiği an herkes için taze başlangıç.
+- **Tekrar giriş:** kendi isteğiyle ayrılan 00:00'ı bekler; atılan (Baba, oylama, aktiflik, başarısız devirme/ayaklanma) hemen girebilir, prestij 0.
+- **Görünürlük:** diğer üyelerin prestiji (çete ve İstihbarat) 00:00 değeriyle, kendi prestijin anlık. Çete kasası dışarıya ve Çömez'e 00:00 değeriyle; Tetikçi ve üstü anlık. Firestore kurallarıyla: üye / roster belgesi sadece sahibine, liste `public/roster`, anlık kasa (`private/state`) Tetikçi+.
+- **Anasayfa hatırlatıcıları:** Savaşa katıl · Çeteden para al · İhbar et · İçeriği aç.

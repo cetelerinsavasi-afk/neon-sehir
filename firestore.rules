@@ -577,12 +577,19 @@ service cloud.firestore {
 
       match /gangs/{g} {
         allow read: if liveGangWorld(w);
+        // v38: üye belgesi ANLIK prestiji taşır → sadece sahibi okur.
+        // Diğer üyeler listeyi public/roster'dan (00:00 prestiji) görür.
         match /members/{m} {
+          allow read: if inGang(w, g) && isSelf(m);
+        }
+        match /public/{docId} {
           allow read: if inGang(w, g);
         }
-        // state: kasa bilgisi Çeteler listesinde herkese açık; depo: çetenin üyeleri
+        // v38: anlık kasa (state) sadece çetenin Tetikçi ve üstü rütbelerine;
+        // herkes (ve Çömez) 00:00 kasasını çete belgesinden (kasaAtMidnight) görür.
+        // depo: çetenin üyeleri
         match /private/{docId} {
-          allow read: if (docId == 'state' && liveGangWorld(w))
+          allow read: if (docId == 'state' && gangRankIn(w, g, ['baba', 'sagkol', 'kidemli', 'tetikci']))
             || (docId == 'depot' && inGang(w, g));
         }
         match /log/{id} {
@@ -618,6 +625,10 @@ service cloud.firestore {
         match /log/{id} {
           allow read: if inIntel(w);
         }
+        // v38: kod adı listesi (00:00 prestiji) — İstihbarat üyeleri
+        match /public/{p} {
+          allow read: if inIntel(w);
+        }
         // Atma oylaması talebi 00:00'a kadar GİZLİ: sadece başlatan (kod adı kimliğiyle)
         match /pending/{id} {
           allow read: if inIntel(w) && resource.data.initiatorRosterId == gmem(w).intelRosterId;
@@ -631,8 +642,10 @@ service cloud.firestore {
         }
       }
       // Roster gerçek UID içermez (kod adı + rütbe + prestij).
+      // v38: roster belgesi ANLIK prestiji taşır → sadece sahibi okur; liste
+      // intel/main/public/roster'dan (00:00 prestiji).
       match /intelRoster/{r} {
-        allow read: if inIntel(w);
+        allow read: if inIntel(w) && r == gmem(w).intelRosterId;
       }
       match /intelReports/{r} {
         allow read: if inIntel(w);

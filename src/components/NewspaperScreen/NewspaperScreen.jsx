@@ -251,7 +251,10 @@ export default function NewspaperScreen() {
     .slice(0, 8);
   const cupMatchEvents = events.filter((e) => e.type === 'football_cup_match');
   const seasonEndEvent = events.find((e) => e.type === 'football_season_end');
-  const cupFinalEvent = events.find((e) => e.type === 'football_cup_final');
+  // v38: birden çok kupa grubu olabilir — manşette 1. grubun (1-2. Lig) finali öncelikli
+  const cupFinalEvent =
+    events.find((e) => e.type === 'football_cup_final' && (e.cupGroup || 1) === 1) ||
+    events.find((e) => e.type === 'football_cup_final');
   const newSeasonEvent = events.find((e) => e.type === 'football_new_season');
   const onboardingPoliceRuleEvent = events.find((e) => e.type === 'onboarding_police_rule');
 
@@ -298,7 +301,7 @@ export default function NewspaperScreen() {
       }
     } else if (cupFinalEvent) {
       lines.push(
-        `${cupFinalEvent.championTeamName}, finalde ${cupFinalEvent.finalistTeamName}'yı ${cupFinalEvent.homeScore}-${cupFinalEvent.awayScore} mağlup ederek Neon Kupası'nın sahibi oldu.`
+        `${cupFinalEvent.championTeamName}, finalde ${cupFinalEvent.finalistTeamName}'yı ${cupFinalEvent.homeScore}-${cupFinalEvent.awayScore} mağlup ederek ${cupFinalEvent.cupName || 'Neon Kupası'}'nın sahibi oldu.`
       );
     } else if (newSeasonEvent) {
       lines.push('Şehrin takımları yeni sezona merhaba dedi.');

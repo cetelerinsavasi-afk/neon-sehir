@@ -7,7 +7,7 @@
 //  - Bir çetede Tetikçi+ olan üye, çetesinin yoldaki tırını ihbar edebilir.
 import { useState } from 'react';
 import { limit, where } from 'firebase/firestore';
-import { istDateKey, istHour, useDocData, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
+import { istDateKey, istHour, istMidnight, useDocData, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
 import { AmountInput, Btn, Card, Confirm, Deadline, BetPair, Empty, Logo } from '../ui';
 import { INTEL_LEADERS, atLeast, fmt } from '../gangConstants';
 
@@ -147,6 +147,7 @@ export default function OpsTab({ d }) {
   const ms = d.membership;
   const lead = INTEL_LEADERS.includes(d.rank);
   const open = istHour(now) < 12;
+  const noonMs = istMidnight(today) + 12 * 3600_000; // v38: ihbar / sızdırma / operasyon 12:00'ye kadar
   const { docs: reports } = useQueryData(path('intelReports'), () => [where('departDateKey', '==', today), limit(100)], `rep_${today}`);
   const { data: day } = useDocData(path(`sabotageDays/${today}`));
   const canReport = Boolean(ms.gangId) && atLeast(ms.gangRank, 'tetikci');
@@ -163,6 +164,7 @@ export default function OpsTab({ d }) {
     <div className="gx-stack">
       <div className="gx-section-head">
         <span>🎯 İhbarlı tırlar ({reports.length})</span>
+        {open && reports.length > 0 && <Deadline untilMs={noonMs} label="🎯" />}
       </div>
       {lead && open && freeReports.length > 1 && (
         <Btn block kind="danger" onClick={() => { setOp({ all: true }); setBribe(0); }}>
@@ -183,7 +185,7 @@ export default function OpsTab({ d }) {
             </div>
             {r.leaked ? <div className="gx-reward">💰 {fmt(r.estReward)}</div> : <div className="dim gx-mini">💰 ?</div>}
             <div className="gx-row-2">
-              {!r.leaked && inThatGang && (
+              {!r.leaked && inThatGang && open && (
                 <Btn small kind="ghost" onClick={() => setAsk({ type: 'leak', r })}>
                   📦 İçeriği sızdır
                 </Btn>
@@ -206,6 +208,7 @@ export default function OpsTab({ d }) {
         <>
           <div className="gx-section-head">
             <span>📡 Çetemin yoldaki tırları</span>
+            {open && road.some((t) => !reported.has(t.id)) && <Deadline untilMs={noonMs} label="📡" />}
           </div>
           {road.length === 0 && <p className="dim gx-mini">🛣️ Yol boş</p>}
           {road.map((t) => (
@@ -213,6 +216,8 @@ export default function OpsTab({ d }) {
               <span className="gx-truck-code">🚛 #{t.code}</span>
               {reported.has(t.id) ? (
                 <span className="gx-pill intel">📡 İhbar edildi</span>
+              ) : !open ? (
+                <span className="gx-pill">🔒 12:00</span>
               ) : (
                 <Btn small kind="ghost" onClick={() => setAsk({ type: 'report', t })}>
                   📡 İhbar et
@@ -228,7 +233,7 @@ export default function OpsTab({ d }) {
           icon="🎯"
           danger
           title={op.all ? `${freeReports.length} tıra operasyon` : `TIR #${op.r.truckCode} (${op.r.gangName}) operasyonu`}
-          lines={[`💸 ${fmt(price)}${op.all ? '+' : ''}`]}
+          lines={[`💸 ${fmt(price)}${op.all ? '+' : ''} İstihbarat kasasından`, '⚔️ Saldırı 12:00–24:00 · 4 dilim', '💼 Tır sahibi rüşveti 21:00\'e kadar ödeyebilir']}
           confirmLabel="Başlat"
           busy={busy === 'startOperation'}
           onCancel={() => setOp(null)}
@@ -237,6 +242,9 @@ export default function OpsTab({ d }) {
             if (r) setOp(null);
           }}
         >
+          <div className="gx-confirm-deadline">
+            <Deadline untilMs={noonMs} label="içinde başlat" />
+          </div>
           <span className="dim gx-mini">💼 Rüşvet</span>
           <AmountInput value={bribe} onChange={setBribe} placeholder="0" />
         </Confirm>
@@ -253,7 +261,11 @@ export default function OpsTab({ d }) {
             await run(ask.type === 'report' ? 'reportTruck' : 'leakTruck', ask.type === 'report' ? { truckId: ask.t.id } : { reportId: ask.r.id }, { success: '🕵️ İstihbarata iletildi' });
             setAsk(null);
           }}
-        />
+        >
+          <div className="gx-confirm-deadline">
+            <Deadline untilMs={noonMs} label="içinde" />
+          </div>
+        </Confirm>
       )}
     </div>
   );

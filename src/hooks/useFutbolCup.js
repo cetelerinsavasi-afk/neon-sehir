@@ -8,7 +8,10 @@ import { db } from '../firebase';
 // yüklenmediyse) boş döner. Kupa maçı dokümanları takım adı/logo/tier
 // bilgisini ZATEN kendi üzerinde taşıdığı için ayrıca futbolTeams'e
 // bakmaya gerek yok.
-export function useFutbolCup(season) {
+// v38: `group` — kupa grubu (1: 1-2. Lig, 2: 3-4. Lig …). 'all' verilirse
+// kök doküman 1. grubun, maçlar TÜM grupların (bugünkü kupa maçları listesi
+// ve iddaa için). Eski maçlarda cupGroup alanı yok → 1. grup sayılır.
+export function useFutbolCup(season, group = 1) {
   const [cup, setCup] = useState(null);
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -21,7 +24,8 @@ export function useFutbolCup(season) {
       return undefined;
     }
     setLoading(true);
-    const cupRef = doc(db, 'futbolCups', String(season));
+    const g = group === 'all' ? 1 : Number(group) || 1;
+    const cupRef = doc(db, 'futbolCups', g > 1 ? `${season}_${g}` : String(season));
     const unsubCup = onSnapshot(
       cupRef,
       (snap) => setCup(snap.exists() ? { id: snap.id, ...snap.data() } : null),
@@ -32,7 +36,8 @@ export function useFutbolCup(season) {
     const unsubMatches = onSnapshot(
       matchesQuery,
       (snap) => {
-        setMatches(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setMatches(group === 'all' ? all : all.filter((m) => (m.cupGroup || 1) === g));
         setLoading(false);
       },
       (err) => {
@@ -45,7 +50,7 @@ export function useFutbolCup(season) {
       unsubCup();
       unsubMatches();
     };
-  }, [season]);
+  }, [season, group]);
 
   return { cup, matches, loading };
 }
