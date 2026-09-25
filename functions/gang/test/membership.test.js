@@ -207,3 +207,14 @@ test('v38 herkese açık görünüm: üye listesi 00:00 prestijini gösterir, an
   assert.equal(h.get(`gangs/${A.gangId}/public/roster`).members[A.ids[0]].prestige, p0 + 5_000);
   assert.equal(h.get(`gangs/${A.gangId}`).kasaAtMidnight, kasa);
 });
+
+test('v38 ensurePublicView: liste belgesi yoksa üye isteğiyle hemen kurulur', async () => {
+  const h = await createHarness();
+  const A = await setupGang(h, { members: 2, name: 'Alfa' });
+  await h.db.doc(`gangWorlds/test/gangs/${A.gangId}/public/roster`).delete();
+  const r = await h.act(A.ids[1], 'ensurePublicView', {});
+  assert.equal(r.gang, true);
+  assert.equal(Object.keys(h.get(`gangs/${A.gangId}/public/roster`).members).length, 3);
+  const again = await h.act(A.ids[1], 'ensurePublicView', {});
+  assert.equal(again.gang, false, 'güncelse tekrar yazmaz');
+});

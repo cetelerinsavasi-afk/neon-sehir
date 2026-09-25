@@ -1,8 +1,19 @@
 // Çete / İstihbarat paneli için ortak veri kancaları (limitli dinleyiciler).
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { limit, where } from 'firebase/firestore';
 import { istDateKey, useDocData, useGang, useNow, useQueryData } from './GangContext';
 import { atLeast } from './gangConstants';
+
+// v38: liste belgesi eksik/eskiyse sunucudan bir kez kurulmasını iste
+function useEnsurePublicView(needed, key) {
+  const { call } = useGang();
+  const asked = useRef(null);
+  useEffect(() => {
+    if (!needed || asked.current === key) return;
+    asked.current = key;
+    Promise.resolve(call?.('ensurePublicView', {})).catch(() => {});
+  }, [needed, key, call]);
+}
 
 export function useGangData(membership) {
   const { path, actorId } = useGang();
@@ -16,6 +27,11 @@ export function useGangData(membership) {
   const { data: state } = useDocData(gangId && kasaLive ? path(`gangs/${gangId}/private/state`) : null);
   // v38: üye listesi 00:00 prestijiyle (public/roster); kendi satırın anlık
   const { data: rosterDoc } = useDocData(gangId ? path(`gangs/${gangId}/public/roster`) : null);
+  const rosterStale =
+    rosterDoc !== undefined &&
+    gang != null &&
+    (!rosterDoc || !rosterDoc.members?.[actorId] || Number(rosterDoc.count || 0) !== Number(gang.memberCount || 0) || gang.kasaAtMidnight == null);
+  useEnsurePublicView(rosterStale, `g_${gangId}_${gang?.memberCount}`);
   const members = useMemo(() => {
     const list = Object.entries(rosterDoc?.members || {}).map(([id, v]) => ({ id, ...v, prestigeIsMidnight: true }));
     if (me && !list.some((m) => m.id === actorId)) list.push({ id: actorId, ...me, prestigeIsMidnight: false });
@@ -57,6 +73,7 @@ export function useIntelData(membership) {
   const { data: me } = useDocData(rid ? path(`intelRoster/${rid}`) : null);
   // v38: kod adı listesi 00:00 prestijiyle; kendi satırın anlık
   const { data: rosterDoc } = useDocData(rid ? path('intel/main/public/roster') : null);
+  useEnsurePublicView(rid && rosterDoc !== undefined && (!rosterDoc || !rosterDoc.members?.[rid]), `i_${rid}`);
   const roster = useMemo(() => {
     const list = Object.entries(rosterDoc?.members || {}).map(([id, v]) => ({ id, ...v, prestigeIsMidnight: true }));
     if (me && !list.some((m) => m.id === rid)) list.push({ id: rid, ...me, prestigeIsMidnight: false });

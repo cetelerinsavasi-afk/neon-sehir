@@ -38,6 +38,35 @@ export function createGangSystem(deps) {
   // Salt-okunur teklif/fiyat sorguları (istemci karşı çetenin özel kasasını /
   // tırın içeriğini okuyamadığı için sunucu hesaplar)
   // ---------------------------------------------------------------------------
+  // v38: üye listesi (public/roster) ya da 00:00 kasası eksik/eskiyse hemen kur.
+  // Çete ekranı açılınca istemci sessizce çağırır; saat turunu beklemeye gerek kalmaz.
+  async function ensurePublicView(ctx) {
+    const m = await core.readMembership(null, ctx, ctx.actorId);
+    const out = { gang: false, intel: false };
+    if (m.gangId) {
+      const [gSnap, rSnap] = await Promise.all([ctx.ref.gang(m.gangId).get(), ctx.ref.gangRoster(m.gangId).get()]);
+      const g = gSnap.data() || {};
+      const r = rSnap.data();
+      const stale = !r || !r.members?.[ctx.actorId] || Number(r.count || 0) !== Number(g.memberCount || 0);
+      if (stale) {
+        await core.refreshGangRoster(ctx, m.gangId);
+        out.gang = true;
+      }
+      if (g.kasaAtMidnight == null) {
+        const st = (await ctx.ref.gangState(m.gangId).get()).data() || {};
+        await ctx.ref.gang(m.gangId).set({ kasaAtMidnight: Number(st.kasaAtMidnight ?? st.kasa ?? 0), kasaAtMidnightDateKey: st.midnightDateKey || ctx.dateKey }, { merge: true });
+      }
+    }
+    if (m.intelRosterId) {
+      const r = (await ctx.ref.intelRosterView().get()).data();
+      if (!r || !r.members?.[m.intelRosterId]) {
+        await core.refreshIntelRoster(ctx);
+        out.intel = true;
+      }
+    }
+    return out;
+  }
+
   async function quoteSabotage(ctx, data) {
     const truckId = String(data.truckId || '');
     const m = await core.readMembership(null, ctx, ctx.actorId);
@@ -116,6 +145,7 @@ export function createGangSystem(deps) {
     startOperation: wars.startOperation,
     payBribe: wars.payBribe,
     quoteSabotage,
+    ensurePublicView,
     quoteBet,
     // oylama
     requestVote: votes.requestVote,
