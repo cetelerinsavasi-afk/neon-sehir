@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useGangAlertsCtx } from './alerts';
 import { useGangData, useIntelData } from './data';
-import { Gold, Logo, RankBadge } from './ui';
+import { Deadline, Gold, Logo, RankBadge } from './ui';
 import { INTEL_LOGO, fmt } from './gangConstants';
 import ListTab from './tabs/ListTab';
 import ChatTab from './tabs/ChatTab';
@@ -99,6 +99,19 @@ export default function GangShell({ membership }) {
   );
 }
 
+// v39: adına oylama sürerken yetkiler en alt rütbeye iner — neden butonların kapalı olduğunu göster
+function UnderVoteBanner({ until, low }) {
+  return (
+    <div className="gx-undervote">
+      <span className="gx-undervote-icon">🗳️</span>
+      <span className="gx-undervote-text">
+        Adına oylama var · yetkin <b>{low}</b>
+      </span>
+      <Deadline untilMs={until} />
+    </div>
+  );
+}
+
 function OrgHeader({ logo, name, rank, prestige, kasa, kasaMidnight = false, intel = false, sub }) {
   return (
     <div className={`gx-header${intel ? ' intel' : ''}`} style={{ '--gx-accent': logo?.color || '#19e8ff' }}>
@@ -126,7 +139,8 @@ function GangViews({ membership, tab, onOpen }) {
   if (d.gang.status !== 'active') return <div className="gx-loading">Bu çete dağıldı.</div>;
   return (
     <div className="gx-page">
-      <OrgHeader logo={d.gang.logo} name={d.gang.name} rank={d.rank} prestige={d.me?.prestige} kasa={d.kasaShown} kasaMidnight={!d.kasaLive} />
+      <OrgHeader logo={d.gang.logo} name={d.gang.name} rank={d.realRank} prestige={d.me?.prestige} kasa={d.kasaShown} kasaMidnight={!d.kasaLive} />
+      {d.underVote && <UnderVoteBanner until={d.underVoteUntilMs} low="Çömez" />}
       {tab === 'sohbet' && <ChatTab org="gang" d={d} />}
       {tab === 'savas' && <WarsTab org="gang" d={d} />}
       {tab === 'ticaret' && <TradeTab d={d} />}
@@ -140,6 +154,7 @@ function IntelViews({ membership, tab, onOpen }) {
   if (tab === 'ceteler') return <ListTab membership={membership} onOpen={onOpen} />;
   return (
     <div className="gx-page">
+      {d.underVote && <UnderVoteBanner until={d.underVoteUntilMs} low="Muhbir" />}
       <OrgHeader intel logo={INTEL_LOGO} name="İstihbarat Teşkilatı" rank={d.rank} prestige={d.me?.prestige} kasa={d.state?.kasa} sub={<span className="gx-codename">🕶️ {d.me?.codeName || membership.intelCodeName}</span>} />
       {tab === 'sohbet' && <ChatTab org="intel" d={d} />}
       {tab === 'savas' && <WarsTab org="intel" d={d} />}

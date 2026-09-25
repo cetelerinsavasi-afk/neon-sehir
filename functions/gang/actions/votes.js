@@ -46,7 +46,7 @@ export function createVoteActions(core) {
       const gang = gangSnap.data();
       if (gang?.status !== 'active') fail('failed-precondition', 'Bu çete artık yok.');
       const members = new Map(membersSnap.docs.map((d) => [d.id, d.data()]));
-      const me = members.get(ctx.actorId);
+      const me = core.withEffRank(members.get(ctx.actorId), ctx);
       if (!me) fail('failed-precondition', 'Bir çetede değilsin.');
       const active = activeSnap.docs.map((d) => d.data());
       // Kilit: aynı konuda süren oylama varsa yenisi açılamaz (eşzamanlı çift istek dahil)
@@ -91,6 +91,9 @@ export function createVoteActions(core) {
         endsAtMs,
       });
       tx.set(lockRef, { voteId: voteRef.id, endsAtMs });
+      // v39: hedef oylama bitene kadar Çömez yetkisinde
+      const tId = type === 'kick' ? targetId : gang.babaId;
+      tx.update(ctx.ref.member(gangId, tId), { underVoteUntilMs: Math.max(Number(target.underVoteUntilMs || 0), endsAtMs) });
       const label = type === 'devirme' ? 'Devirme' : type === 'ayaklanma' ? 'Ayaklanma' : 'Çıkarma';
       for (const id of voterIds) if (id !== ctx.actorId) core.notify(tx, ctx, id, `🗳️ ${label} oylaması başladı (${gang.name}). 00:00'a kadar oyunu kullan.`, 'vote');
       ctx.logs.push({ gang: 'vote_started', world: ctx.worldId, gangId, type });

@@ -91,7 +91,7 @@ export function createIntelActions(core) {
       const membership = await readMembership(tx, ctx, ctx.actorId);
       const rid = requireIntel(membership);
       const me = (await tx.get(ctx.ref.roster(rid))).data();
-      if (!me || !['baskan', 'sef'].includes(me.rank)) fail('permission-denied', 'Notu sadece Başkan ve Şefler değiştirebilir.');
+      if (!me || !['baskan', 'sef'].includes(core.effRank(me, ctx, 'muhbir'))) fail('permission-denied', 'Notu sadece Başkan ve Şefler değiştirebilir.');
       tx.set(ctx.ref.intel(), { note }, { merge: true });
       return { updated: true };
     });
@@ -131,7 +131,7 @@ export function createIntelActions(core) {
       const rid = requireIntel(membership);
       const me = (await tx.get(ctx.ref.roster(rid))).data();
       if (!me) fail('failed-precondition', 'İstihbarat üyesi değilsin.');
-      if (channel !== 'genel' && !atLeast(me.rank, 'kidemli')) fail('permission-denied', 'Bu kanala sadece rütbeliler yazabilir.');
+      if (channel !== 'genel' && !atLeast(core.effRank(me, ctx, 'muhbir'), 'kidemli')) fail('permission-denied', 'Bu kanala sadece rütbeliler yazabilir.');
       if (me.lastChatAtMs && ctx.now - me.lastChatAtMs < GANG.CHAT_MIN_INTERVAL_MS) fail('resource-exhausted', 'Biraz yavaş!');
       // Gerçek kimlik YOK: sadece kod adı + roster kimliği
       tx.set(ctx.ref.intelChat(channel).doc(), { rosterId: rid, codeName: me.codeName, rank: me.rank, text, createdAtMs: ctx.now });
@@ -157,7 +157,7 @@ export function createIntelActions(core) {
       ]);
       const truck = truckSnap.data();
       if (!truck || truck.gangId !== membership.gangId) fail('permission-denied', 'Bu tırı göremezsin.');
-      if (!atLeast(meSnap.data()?.rank, 'tetikci')) fail('permission-denied', 'Tırları görmek için en az Tetikçi olmalısın.');
+      if (!atLeast(core.effRank(meSnap.data(), ctx), 'tetikci')) fail('permission-denied', 'Tırları görmek için en az Tetikçi olmalısın.');
       if (truck.status !== 'in_transit') fail('failed-precondition', 'Sadece seferdeki tırlar ihbar edilebilir.');
       // v38: ihbar, tır yola çıktığı gün 00:00–12:00 arasında (operasyon da 12:00'den önce başlamalı)
       if (truck.departDateKey !== ctx.dateKey || ctx.hour >= GANG.SABOTAGE_START_DEADLINE_HOUR) fail('deadline-exceeded', 'Tır ihbarı sadece yola çıktığı gün 00:00–12:00 arasında yapılabilir.');
@@ -201,7 +201,7 @@ export function createIntelActions(core) {
         tx.get(ctx.ref.cargo(rep.truckId)),
         tx.get(ctx.ref.truck(rep.truckId)),
       ]);
-      if (!atLeast(meSnap.data()?.rank, 'kidemli')) fail('permission-denied', 'Tır içeriğini görmek için en az Kıdemli olmalısın.');
+      if (!atLeast(core.effRank(meSnap.data(), ctx), 'kidemli')) fail('permission-denied', 'Tır içeriğini görmek için en az Kıdemli olmalısın.');
       if (rep.leaked) fail('already-exists', 'Bu tırın içeriği zaten sızdırıldı.');
       if (truckSnap.data()?.status !== 'in_transit' || truckSnap.data()?.departDateKey !== rep.departDateKey) fail('failed-precondition', 'Bu sefer bitti.');
       const items = cargoSnap.data()?.items || {};
@@ -258,7 +258,7 @@ export function createIntelActions(core) {
         tx.get(ctx.ref.roster(rid)),
         tx.get(ctx.ref.betReport(warId)),
       ]);
-      if (!atLeast(meSnap.data()?.rank, 'tetikci')) fail('permission-denied', 'Bahsi ihbar etmek için çetende en az Tetikçi olmalısın.');
+      if (!atLeast(core.effRank(meSnap.data(), ctx), 'tetikci')) fail('permission-denied', 'Bahsi ihbar etmek için çetende en az Tetikçi olmalısın.');
       if (repSnap.exists) fail('already-exists', 'Bu bahis zaten ihbar edildi.');
       const [a, b] = war.gangIds;
       tx.set(ctx.ref.betReport(warId), {
@@ -296,7 +296,7 @@ export function createIntelActions(core) {
         core.readBetStake(tx, ctx, warId, war),
       ]);
       if (!repSnap.exists) fail('failed-precondition', 'Önce bahis ihbar edilmeli.');
-      if (!atLeast(meSnap.data()?.rank, 'kidemli')) fail('permission-denied', 'Bahsin içeriğini açmak için çetende en az Kıdemli olmalısın.');
+      if (!atLeast(core.effRank(meSnap.data(), ctx), 'kidemli')) fail('permission-denied', 'Bahsin içeriğini açmak için çetende en az Kıdemli olmalısın.');
       if (repSnap.data().leaked) fail('already-exists', 'Bu bahsin içeriği zaten açıldı.');
       const pot = stake * 2;
       tx.update(ctx.ref.betReport(warId), { leaked: true, pot, leakedByCode: rosterSnap.data().codeName, leakedAtMs: ctx.now });
@@ -315,7 +315,7 @@ export function createIntelActions(core) {
       const rid = requireIntel(membership);
       const war = await readBetForIntel(tx, ctx, warId);
       const [me, repSnap, stSnap] = await Promise.all([tx.get(ctx.ref.roster(rid)), tx.get(ctx.ref.betReport(warId)), tx.get(ctx.ref.intelState())]);
-      if (!['baskan', 'sef'].includes(me.data()?.rank)) fail('permission-denied', 'Operasyonu sadece Başkan ve Şefler başlatabilir.');
+      if (!['baskan', 'sef'].includes(core.effRank(me.data(), ctx, 'muhbir'))) fail('permission-denied', 'Operasyonu sadece Başkan ve Şefler başlatabilir.');
       if (!repSnap.exists) fail('failed-precondition', 'Önce bahis ihbar edilmeli.');
       if (repSnap.data().opStarted) fail('already-exists', 'Bu bahse zaten operasyon var.');
       const price = INTEL.BET_OP_PRICE;
@@ -447,7 +447,7 @@ export function createIntelActions(core) {
       if (!targetRosterId || targetRosterId === rid) fail('invalid-argument', 'Geçersiz üye.');
       const [me, target] = await Promise.all([tx.get(ctx.ref.roster(rid)), tx.get(ctx.ref.roster(targetRosterId))]);
       if (!target.exists) fail('failed-precondition', 'Bu ajan artık İstihbaratta değil.');
-      if (!(DIRECT_KICK[me.data()?.rank] || []).includes(target.data().rank)) fail('permission-denied', 'Bu üyeyi doğrudan atamazsın (oylama gerekir).');
+      if (!(DIRECT_KICK[core.effRank(me.data(), ctx, 'muhbir')] || []).includes(target.data().rank)) fail('permission-denied', 'Bu üyeyi doğrudan atamazsın (oylama gerekir).');
       const apply = await removeFromIntel(tx, ctx, targetRosterId, target.data(), '🚫 İstihbarattan çıkarıldın. İstihbarat prestijin silindi.');
       apply();
       announceIntel(tx, ctx, '🚫', `${target.data().codeName}, ${me.data().codeName} tarafından İstihbarattan çıkarıldı.`);
@@ -473,7 +473,7 @@ export function createIntelActions(core) {
         tx.get(lockRef),
       ]);
       if (!target.exists) fail('failed-precondition', 'Bu ajan artık İstihbaratta değil.');
-      if (!intelKickVoteAllowed(me.data()?.rank, target.data().rank)) fail('permission-denied', 'Bu üye için çıkarma oylaması başlatamazsın.');
+      if (!intelKickVoteAllowed(core.effRank(me.data(), ctx, 'muhbir'), target.data().rank)) fail('permission-denied', 'Bu üye için çıkarma oylaması başlatamazsın.');
       if (act.docs.some((d) => d.data().targetRosterId === targetRosterId)) fail('already-exists', 'Bu üye için zaten bir oylama var.');
       if (lockSnap.exists && Number(lockSnap.data().endsAtMs || 0) > ctx.now) {
         const lv = (await tx.get(ctx.ref.intelVotes().doc(lockSnap.data().voteId))).data();
@@ -497,6 +497,8 @@ export function createIntelActions(core) {
         endsAtMs,
       });
       tx.set(lockRef, { voteId: vRef.id, endsAtMs });
+      // v39: hedef oylama bitene kadar Muhbir yetkisinde
+      tx.update(ctx.ref.roster(targetRosterId), { underVoteUntilMs: Math.max(Number(target.data().underVoteUntilMs || 0), endsAtMs) });
       return { voteId: vRef.id };
     });
   }
@@ -598,6 +600,7 @@ export function createIntelActions(core) {
             endsAtMs: ctx.now + 24 * 3600_000,
           });
           tx.update(p.ref, { status: 'started', voteId: vRef.id });
+          tx.update(ctx.ref.roster(p.targetRosterId), { underVoteUntilMs: ctx.now + 24 * 3600_000 }); // v39
         }
     });
   }

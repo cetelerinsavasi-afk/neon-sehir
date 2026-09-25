@@ -21,9 +21,12 @@ export function useGangData(membership) {
   const now = useNow(30_000);
   const { data: gang } = useDocData(gangId ? path(`gangs/${gangId}`) : null);
   const { data: me } = useDocData(gangId ? path(`gangs/${gangId}/members/${actorId}`) : null);
-  const rank = me?.rank || membership?.gangRank || null;
+  // v39: adına oylama açılan üye oylama bitene kadar Çömez yetkisinde (asıl rütbe değişmez)
+  const underVote = Number(me?.underVoteUntilMs || 0) > now;
+  const realRank = me?.rank || membership?.gangRank || null;
+  const rank = underVote ? 'comez' : realRank;
   // v38: anlık kasa sadece Tetikçi+; diğerleri çete belgesindeki 00:00 kasasını görür
-  const kasaLive = atLeast(rank, 'tetikci');
+  const kasaLive = atLeast(realRank, 'tetikci'); // görmek yetki değildir: asıl rütbe
   const { data: state } = useDocData(gangId && kasaLive ? path(`gangs/${gangId}/private/state`) : null);
   // v38: üye listesi 00:00 prestijiyle (public/roster); kendi satırın anlık
   const { data: rosterDoc } = useDocData(gangId ? path(`gangs/${gangId}/public/roster`) : null);
@@ -49,6 +52,9 @@ export function useGangData(membership) {
     gang: gang ? { id: gangId, ...gang } : null,
     me: me ? { id: actorId, ...me } : null,
     rank,
+    realRank,
+    underVote,
+    underVoteUntilMs: Number(me?.underVoteUntilMs || 0),
     state,
     stateToday: state?.midnightDateKey === today,
     kasaLive,
@@ -79,7 +85,9 @@ export function useIntelData(membership) {
     if (me && !list.some((m) => m.id === rid)) list.push({ id: rid, ...me, prestigeIsMidnight: false });
     return list.map((m) => (m.id === rid && me ? { ...m, rank: me.rank || m.rank, codeName: me.codeName || m.codeName, prestige: Number(me.prestige || 0), prestigeIsMidnight: false } : m));
   }, [rosterDoc, me, rid]);
-  const rank = me?.rank || membership?.intelRank || null;
+  const underVote = Number(me?.underVoteUntilMs || 0) > now;
+  const realRank = me?.rank || membership?.intelRank || null;
+  const rank = underVote ? 'muhbir' : realRank;
   const canSeeVotes = ['baskan', 'sef', 'uzman', 'ajan'].includes(rank);
   const wars = useWarLists({ intel: Boolean(rid) });
   const { docs: votes } = useQueryData(rid && canSeeVotes ? path('intel/main/votes') : null, () => [where('status', '==', 'active'), limit(20)], `iv_${rid}_${canSeeVotes}`);
@@ -95,6 +103,9 @@ export function useIntelData(membership) {
     kasaShown: state?.kasa,
     me: me ? { id: rid, ...me } : null,
     rank,
+    realRank,
+    underVote,
+    underVoteUntilMs: Number(me?.underVoteUntilMs || 0),
     roster,
     wars,
     votes,

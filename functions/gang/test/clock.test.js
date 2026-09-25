@@ -205,3 +205,14 @@ test('onboarding kancaları: canlıda çete kur/katıl çağrılır; test dünya
   await h.system.handleAction({ auth: { uid }, data: { action: 'createGang', payload: { name: 'Kanca Çete', logo: { emoji: '🐺', color: '#ffd23f', bg: '#231c05' } } } });
   assert.deepEqual(h.hooks.filter((x) => x[0] === 'joined'), [['joined', uid]]);
 });
+
+test('v39 tek seferlik: elde tutulan yolun limiti %1e çekilir; bozuk üye sayısı düzeltilir', async () => {
+  const h = await createHarness();
+  const G = await setupGang(h, { members: 2 });
+  await h.db.doc('gangWorlds/test/routes/silah').set({ product: 'silah', holderType: 'gang', holderId: G.gangId, powerUsed: 800_000, dailyOrderLimit: 40_000 });
+  await h.db.doc(`gangWorlds/test/gangs/${G.gangId}`).update({ memberCount: 0 });
+  await h.db.doc('gangWorlds/test').set({ routeLimitV39: false }, { merge: true });
+  await h.internal.clock.runClock('test');
+  assert.equal(h.get('routes/silah').dailyOrderLimit, 8_000);
+  assert.equal(h.get(`gangs/${G.gangId}`).memberCount, 3);
+});

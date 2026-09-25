@@ -67,7 +67,7 @@ export const GANG = {
   ATTACK_PHASE_1_START_HOUR: 12, // sabotaj/operasyon 12:00–24:00 = 4 dilim (v38)
 
   // --- Ticaret yolu (ONAYLI) ---
-  TRADE_ORDER_LIMIT_RATIO: 0.05, // günlük sipariş limiti = kazanırken kullanılan gücün %5'i
+  TRADE_ORDER_LIMIT_RATIO: 0.01, // v39: günlük sipariş limiti = kazanırken kullanılan gücün %1'i (eskiden %5)
   TRADE_ROUTE_BUY_RATIO: 0.5, // mağaza (yasaklı madde: Amazor) fiyatının yarısı
   ROUTE_HOLD_DAYS: 21, // kazanan yolu 21 gün elinde tutar
   ORDER_WEEKDAYS: [1, 2, 3, 4, 5], // sipariş sadece Pzt–Cum

@@ -165,8 +165,8 @@ test('aynı gece: çıkarma oylaması ayaklanmadan önce çözülür (belirli s�
   const h = await createHarness();
   const G = await fullGang(h);
   const [s1, s2] = G.ids;
-  await h.act(s1, 'requestVote', { type: 'ayaklanma' });
   await h.act(G.baba, 'requestVote', { type: 'kick', targetId: s1 });
+  await h.act(s2, 'requestVote', { type: 'ayaklanma' });
   const all = Object.entries(h.db._dump(`gangWorlds/test/gangs/${G.gangId}/votes/`)).filter(([p, v]) => !p.includes('/ballots/') && v.status === 'active');
   assert.equal(all.length, 2);
   const id = (t) => all.find(([, v]) => v.type === t)[0].split('/').pop();
@@ -176,10 +176,28 @@ test('aynı gece: çıkarma oylaması ayaklanmadan önce çözülür (belirli s�
   await h.act(s1, 'castVote', { voteId: id('ayaklanma'), choice: 'yes' });
   await h.nextDay();
   assert.equal(h.member(G.gangId, s1), undefined, 's1 çıkarıldı');
-  // başlatan çıkarılsa da ayaklanma sonuçlanır: geçti → Baba görevden alınır, başa en yüksek prestijli üye (s2)
   assert.equal(h.get(`gangs/${G.gangId}/votes/${id('ayaklanma')}`).status, 'resolved');
   assert.equal(h.get(`gangs/${G.gangId}`).babaId, s2);
   assert.ok(h.member(G.gangId, G.baba), 'eski Baba çetede kalır');
+});
+
+test('v39: adına oylama açılan üye oylama bitene kadar Çömez yetkisinde (Baba dahil); 00:00 sonrası yetki geri gelir', async () => {
+  const h = await createHarness();
+  const G = await fullGang(h);
+  const [s1, s2] = G.ids;
+  await h.fundKasa(G.gangId, 1_000_000, { snapshot: true });
+  await h.act(s1, 'requestVote', { type: 'ayaklanma' });
+  // Baba: kasadan para alamaz, dağıtım yapamaz, çıkarma oylaması / doğrudan atma yok
+  assert.match((await h.fails(G.baba, 'withdrawToSelf', { amount: 1000 })).message, /oylama/);
+  await h.fails(G.baba, 'requestVote', { type: 'kick', targetId: s2 });
+  await h.fails(G.baba, 'kickMember', { targetId: G.ids[5] });
+  await h.fails(G.baba, 'buyTruck');
+  // başka bir üye için çıkarma oylaması → o üye de Çömez yetkisinde
+  await h.act(s2, 'castVote', { voteId: Object.keys(h.db._dump(`gangWorlds/test/gangs/${G.gangId}/votes/`)).find((k) => !k.includes('ballots')).split('/').pop(), choice: 'no' });
+  await h.nextDay();
+  // oylama bitti (geçmedi → başlatan atıldı); Baba yetkisi geri geldi
+  assert.equal(h.get(`gangs/${G.gangId}`).babaId, G.baba);
+  await h.act(G.baba, 'buyTruck');
 });
 
 test("v32'den kalan bekleyen talepler kaybolmaz: 00:00'da başlar", async () => {

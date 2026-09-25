@@ -165,7 +165,7 @@ export function createMembershipActions(core, intelHelpers) {
       const meSnap = await tx.get(ctx.ref.member(gangId, ctx.actorId));
       const plan = await planRemoval(tx, ctx, gangId, targetId);
       if (!plan.member) fail('failed-precondition', 'Bu oyuncu artık çetede değil.');
-      const myRank = meSnap.data()?.rank;
+      const myRank = core.effRank(meSnap.data(), ctx);
       const t = plan.member.rank;
       const allowed = (myRank === 'baba' && (t === 'tetikci' || t === 'comez')) || (myRank === 'sagkol' && t === 'comez');
       if (!allowed) fail('permission-denied', 'Bu üyeyi doğrudan atamazsın (oylama gerekir).');
@@ -183,7 +183,7 @@ export function createMembershipActions(core, intelHelpers) {
       const membership = await readMembership(tx, ctx, ctx.actorId);
       const gangId = requireGangMember(membership);
       const [meSnap, tSnap] = await Promise.all([tx.get(ctx.ref.member(gangId, ctx.actorId)), tx.get(ctx.ref.member(gangId, targetId))]);
-      if (meSnap.data()?.rank !== 'baba') fail('permission-denied', 'Saygıyı sadece Mafya Babası gösterebilir.');
+      if (core.effRank(meSnap.data(), ctx) !== 'baba') fail('permission-denied', 'Saygıyı sadece Mafya Babası gösterebilir.');
       if (!tSnap.exists) fail('failed-precondition', 'Bu oyuncu artık çetede değil.');
       if (tSnap.data().respected) fail('failed-precondition', 'Bu üyeye zaten saygı gösterildi.');
       tx.update(ctx.ref.member(gangId, targetId), { respected: true, prestige: FV.increment(GANG.RESPECT_PRESTIGE) });
@@ -200,7 +200,7 @@ export function createMembershipActions(core, intelHelpers) {
       const membership = await readMembership(tx, ctx, ctx.actorId);
       const gangId = requireGangMember(membership);
       const [meSnap, gangSnap] = await Promise.all([tx.get(ctx.ref.member(gangId, ctx.actorId)), tx.get(ctx.ref.gang(gangId))]);
-      const rank = meSnap.data()?.rank;
+      const rank = core.effRank(meSnap.data(), ctx);
       const gang = gangSnap.data();
       const upd = {};
       let newNameKey = null;
@@ -278,7 +278,7 @@ export function createMembershipActions(core, intelHelpers) {
       const me = meSnap.data();
       if (!me) fail('failed-precondition', 'Bir çetede değilsin.');
       const wallet = await readWallet(tx, ctx, ctx.actorId);
-      if (channel !== 'genel' && !isRanked(me.rank)) fail('permission-denied', 'Bu kanala sadece rütbeliler yazabilir.');
+      if (channel !== 'genel' && !isRanked(core.effRank(me, ctx))) fail('permission-denied', 'Bu kanala sadece rütbeliler yazabilir.');
       if (me.lastChatAtMs && ctx.now - me.lastChatAtMs < GANG.CHAT_MIN_INTERVAL_MS) fail('resource-exhausted', 'Biraz yavaş!');
       tx.set(ctx.ref.gangChat(gangId, channel).doc(), {
         authorId: ctx.actorId,
@@ -301,7 +301,7 @@ export function createMembershipActions(core, intelHelpers) {
       const [meSnap, gangSnap] = await Promise.all([tx.get(ctx.ref.member(gangId, ctx.actorId)), tx.get(ctx.ref.gang(gangId))]);
       const me = meSnap.data();
       if (!me) fail('failed-precondition', 'Bir çetede değilsin.');
-      if (!isRanked(me.rank)) fail('permission-denied', 'Bu sohbete sadece çetelerin rütbelileri yazabilir.');
+      if (!isRanked(core.effRank(me, ctx))) fail('permission-denied', 'Bu sohbete sadece çetelerin rütbelileri yazabilir.');
       const wallet = await readWallet(tx, ctx, ctx.actorId);
       if (me.lastGlobalChatAtMs && ctx.now - me.lastGlobalChatAtMs < GANG.CHAT_MIN_INTERVAL_MS) fail('resource-exhausted', 'Biraz yavaş!');
       const g = gangSnap.data() || {};

@@ -147,9 +147,9 @@ export function createWarActions(core) {
   async function myGangRole(tx, ctx, allowed, msg) {
     const membership = await readMembership(tx, ctx, ctx.actorId);
     const gangId = requireGangMember(membership);
-    const me = (await tx.get(ctx.ref.member(gangId, ctx.actorId))).data();
+    const me = core.withEffRank((await tx.get(ctx.ref.member(gangId, ctx.actorId))).data(), ctx);
     if (!me) fail('failed-precondition', 'Bir çetede değilsin.');
-    if (allowed && !allowed.includes(me.rank)) fail('permission-denied', msg || 'Bu işlem için yetkin yok.');
+    if (allowed && !allowed.includes(me.rank)) fail('permission-denied', core.underVote(me, ctx) ? '🗳️ Adına oylama sürüyor — 00:00\'a kadar Çömez yetkisindesin.' : msg || 'Bu işlem için yetkin yok.');
     return { gangId, me, membership };
   }
 
@@ -665,7 +665,7 @@ export function createWarActions(core) {
         tx.get(ctx.ref.intelState()),
         tx.get(ctx.ref.sabotageDay(ctx.dateKey)),
       ]);
-      if (!['baskan', 'sef'].includes(me.data()?.rank)) fail('permission-denied', 'Operasyonu sadece Başkan ve Şefler başlatabilir.');
+      if (!['baskan', 'sef'].includes(core.effRank(me.data(), ctx, 'muhbir'))) fail('permission-denied', 'Operasyonu sadece Başkan ve Şefler başlatabilir.');
       const rep = repSnap.data();
       if (!rep) fail('not-found', 'İhbar bulunamadı.');
       if (rep.opWarId) fail('already-exists', 'Bu tıra zaten operasyon var.');

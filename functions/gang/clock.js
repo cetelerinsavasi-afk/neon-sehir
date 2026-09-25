@@ -600,6 +600,7 @@ export function createClock(core, actions) {
           endsAtMs: midnightMsOf(addDays(ctx.dateKey, 1)),
         });
         tx.update(p.ref, { status: 'started', voteId: voteRef.id, startDateKey: ctx.dateKey });
+        if (members.get(p.targetId)) tx.update(ctx.ref.member(gangId, p.targetId), { underVoteUntilMs: midnightMsOf(addDays(ctx.dateKey, 1)) }); // v39
         tx.set(ctx.ref.voteLock(gangId, p.type === 'kick' ? `kick_${String(p.targetId).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80)}` : 'leadership'), { voteId: voteRef.id, endsAtMs: midnightMsOf(addDays(ctx.dateKey, 1)) });
         started += 1;
         const label = p.type === 'devirme' ? 'Devirme' : p.type === 'ayaklanma' ? 'Ayaklanma' : 'Çıkarma';
@@ -803,6 +804,28 @@ export function createClock(core, actions) {
     await ctx.ref.world().set({ publicViewV38: true }, { merge: true });
     ctx.world = { ...(ctx.world || {}), publicViewV38: true };
     return { gangs: gangs.size };
+  }
+
+  // v39 tek seferlik: elde tutulan ticaret yollarının günlük sipariş limiti
+  // yeni orana (%1) çekilir. Kullanılan güç (powerUsed) kayıtlı; veri kaybı yok.
+  // Ayrıca çetelerin üye sayısı (memberCount) gerçek üye sayısıyla eşitlenir.
+  async function ensureRouteLimitV39(ctx) {
+    if (ctx.world?.routeLimitV39) return { skipped: true };
+    const routes = await ctx.ref.routes().get();
+    for (const r of routes.docs) {
+      const d = r.data();
+      if (!d.holderId || !(Number(d.powerUsed) > 0)) continue;
+      const lim = Math.floor(Number(d.powerUsed) * GANG.TRADE_ORDER_LIMIT_RATIO);
+      if (Number(d.dailyOrderLimit || 0) !== lim) await r.ref.update({ dailyOrderLimit: lim });
+    }
+    const gangs = await ctx.ref.gangs().where('status', '==', 'active').get();
+    for (const g of gangs.docs) {
+      const n = (await ctx.ref.members(g.id).get()).size;
+      if (Number(g.data().memberCount) !== n) await g.ref.update({ memberCount: n });
+    }
+    await ctx.ref.world().set({ routeLimitV39: true }, { merge: true });
+    ctx.world = { ...(ctx.world || {}), routeLimitV39: true };
+    return { routes: routes.size };
   }
 
   // İstihbarat üyesi Baba karar süresi doldu → sessizce İstihbarattan çıkar.
@@ -1286,6 +1309,7 @@ export function createClock(core, actions) {
       world.launchDateKey = world.launchDateKey || last;
     }
     await safe(ctx0, 'public-views-v38', () => ensurePublicViewsV38(ctx0));
+    await safe(ctx0, 'route-limit-v39', () => ensureRouteLimitV39(ctx0));
     const results = [];
     let n = 0;
     while (last < ctx0.dateKey && n < maxDays) {

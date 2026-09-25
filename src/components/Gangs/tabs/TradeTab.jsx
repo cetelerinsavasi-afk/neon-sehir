@@ -476,6 +476,10 @@ export default function TradeTab({ d }) {
   const reserved = Number(depot?.reservedUnits || 0);
   const weekday = new Date(`${today}T12:00:00Z`).getUTCDay();
   const orderDay = weekday >= 1 && weekday <= 5;
+  // v39: çete günde 1 tır + 1 depo alabilir
+  const truckBoughtToday = d.state?.truckBuyDateKey === today;
+  const depotBoughtToday = d.state?.depotBuyDateKey === today;
+  const nextMidnightMs = istMidnight(today) + 24 * 3600_000;
   const orderOf = (t) => orders.find((o) => o.truckId === t.id && ['pending', 'in_transit'].includes(o.status) && (o.status === 'pending' || o.departedDateKey === t.departDateKey));
 
   return (
@@ -487,8 +491,16 @@ export default function TradeTab({ d }) {
       </div>
       {cap > 0 && <Bar value={used + reserved} max={cap} label={`${fmt(used + reserved)} / ${fmt(cap)}`} />}
       {lead && (
-        <Btn small kind="ghost" onClick={() => setAsk('depot')}>
-          🏚️ {cap === 0 ? 'Depo al' : 'Depoyu genişlet'} (+{GANG_RULES.DEPOT_STEP}) · {fmt(GANG_RULES.DEPOT_PRICE)}
+        <Btn small kind="ghost" disabled={depotBoughtToday} onClick={() => setAsk('depot')}>
+          {depotBoughtToday ? (
+            <>
+              🔒 🏚️ <Deadline untilMs={nextMidnightMs} />
+            </>
+          ) : (
+            <>
+              🏚️ {cap === 0 ? 'Depo al' : 'Depoyu genişlet'} (+{GANG_RULES.DEPOT_STEP}) · {fmt(GANG_RULES.DEPOT_PRICE)}
+            </>
+          )}
         </Btn>
       )}
 
@@ -497,8 +509,14 @@ export default function TradeTab({ d }) {
       </div>
       {lead && (
         <div className="gx-row-2">
-          <Btn small kind="ghost" onClick={() => setAsk('truck')}>
-            🚚 Tır al · {fmt(GANG_RULES.TRUCK_PRICE)}
+          <Btn small kind="ghost" disabled={truckBoughtToday} onClick={() => setAsk('truck')}>
+            {truckBoughtToday ? (
+              <>
+                🔒 🚚 <Deadline untilMs={nextMidnightMs} />
+              </>
+            ) : (
+              <>🚚 Tır al · {fmt(GANG_RULES.TRUCK_PRICE)}</>
+            )}
           </Btn>
           <Btn small disabled={!orderDay} onClick={() => setOrderOpen(true)}>
             Sipariş ver +
@@ -551,7 +569,7 @@ export default function TradeTab({ d }) {
         <Confirm
           icon={ask === 'truck' ? '🚚' : '🏚️'}
           title={ask === 'truck' ? 'Tır alınsın mı?' : 'Depo alınsın mı?'}
-          lines={ask === 'truck' ? [`💸 ${fmt(GANG_RULES.TRUCK_PRICE)}`, `⏳ ${GANG_RULES.TRUCK_LIFE_DAYS} gün`] : [`💸 ${fmt(GANG_RULES.DEPOT_PRICE)}`, `🏚️ +${GANG_RULES.DEPOT_STEP}`]}
+          lines={ask === 'truck' ? [`💸 ${fmt(GANG_RULES.TRUCK_PRICE)} kasadan`, `⏳ ${GANG_RULES.TRUCK_LIFE_DAYS} gün`, '📅 Çete günde 1 tır alabilir'] : [`💸 ${fmt(GANG_RULES.DEPOT_PRICE)} kasadan`, `🏚️ +${GANG_RULES.DEPOT_STEP}`, '📅 Çete günde 1 kez genişletebilir']}
           confirmLabel="Satın al"
           busy={Boolean(busy)}
           onCancel={() => setAsk(null)}

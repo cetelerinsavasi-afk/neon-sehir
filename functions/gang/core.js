@@ -248,6 +248,19 @@ export function createCore(deps) {
       joinedAtMs: Number(m.joinedAtMs || 0),
     };
   }
+  // v39: adına oylama açılan üye (çıkarma, devirme, ayaklanma hedefi) oylama
+  // bitene kadar (00:00) Çömez / Muhbir yetkisindedir. Asıl rütbe değişmez.
+  function underVote(m, ctx) {
+    return Boolean(m) && Number(m.underVoteUntilMs || 0) > ctx.now;
+  }
+  function effRank(m, ctx, lowest = 'comez') {
+    if (!m) return null;
+    return underVote(m, ctx) ? lowest : m.rank;
+  }
+  function withEffRank(m, ctx, lowest = 'comez') {
+    return m ? { ...m, realRank: m.rank, rank: effRank(m, ctx, lowest) } : m;
+  }
+
   async function refreshGangRoster(ctx, gangId) {
     if (!gangId) return;
     const snap = await ctx.ref.members(gangId).get();
@@ -256,6 +269,9 @@ export function createCore(deps) {
       members[d.id] = publicMemberView(d.data());
     });
     await ctx.ref.gangRoster(gangId).set({ members, count: snap.size, updatedAtMs: ctx.now });
+    // v39: Çeteler listesindeki üye sayısı gerçek sayıyla eşit kalsın
+    const g = await ctx.ref.gang(gangId).get();
+    if (g.exists && g.data().status === 'active' && Number(g.data().memberCount) !== snap.size) await ctx.ref.gang(gangId).update({ memberCount: snap.size });
   }
   async function refreshIntelRoster(ctx) {
     const snap = await ctx.ref.rosterCol().get();
@@ -553,6 +569,9 @@ export function createCore(deps) {
     announce,
     announceMgmt,
     refreshGangRoster,
+    underVote,
+    effRank,
+    withEffRank,
     refreshIntelRoster,
     readBetStake,
     announceIntel,

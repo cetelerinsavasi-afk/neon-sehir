@@ -117,7 +117,7 @@ export function warTitle(w) {
 function warPurpose(w) {
   const p = productOf(w.product);
   if (w.type === 'trade')
-    return `🎯 Kazanan ${p.emoji} ${p.label} ticaret yolunu ${GANG_RULES.ROUTE_DAYS} gün alır; günlük sipariş limiti = kullandığı gücün %5'i. İstihbarat kazanırsa yol kimseye verilmez, kasasına gücün 1/10'u girer. Herkes saldırı gücünün yarısı kadar prestij kazanır.`;
+    return `🎯 Kazanan ${p.emoji} ${p.label} ticaret yolunu ${GANG_RULES.ROUTE_DAYS} gün alır; günlük sipariş limiti = kullandığı gücün %1'i. İstihbarat kazanırsa yol kimseye verilmez, kasasına gücün 1/10'u girer. Herkes saldırı gücünün yarısı kadar prestij kazanır.`;
   if (w.type === 'bet') return '🎯 Kazanan tüm bahsi alır (iki çetenin bahsi toplamı).';
   if (w.type === 'sabotage') return '🎯 En güçlü saldırı savunmayı geçerse tırın yükü saldıranın deposuna gider. Tır her durumda sahibine döner.';
   if (w.type === 'intelop') return '🎯 Başarılı operasyonda yük imha edilir, İstihbarat anlık satış değerini ödül alır.';

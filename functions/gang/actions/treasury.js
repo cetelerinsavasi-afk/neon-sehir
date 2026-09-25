@@ -75,7 +75,7 @@ export function createTreasuryActions(core) {
       if (isIntel) {
         const rosterId = requireIntel(membership);
         const me = (await tx.get(ctx.ref.roster(rosterId))).data();
-        if (me?.rank !== 'baskan' && me?.rank !== 'sef') fail('permission-denied', 'Dağıtımı sadece Başkan ve Şefler yapabilir.');
+        if (!['baskan', 'sef'].includes(core.effRank(me, ctx, 'muhbir'))) fail('permission-denied', 'Dağıtımı sadece Başkan ve Şefler yapabilir.');
         orgId = 'main';
         stateRef = ctx.ref.intelState();
         creatorName = me.codeName;
@@ -83,7 +83,7 @@ export function createTreasuryActions(core) {
       } else {
         const gangId = requireGangMember(membership);
         const me = (await tx.get(ctx.ref.member(gangId, ctx.actorId))).data();
-        if (me?.rank !== 'baba' && me?.rank !== 'sagkol') fail('permission-denied', 'Dağıtımı sadece Mafya Babası ve Sağ Kol yapabilir.');
+        if (!['baba', 'sagkol'].includes(core.effRank(me, ctx))) fail('permission-denied', 'Dağıtımı sadece Mafya Babası ve Sağ Kol yapabilir.');
         orgId = gangId;
         stateRef = ctx.ref.gangState(gangId);
         creatorName = me.name;
@@ -153,7 +153,7 @@ export function createTreasuryActions(core) {
       if (dist.status !== 'open' || ctx.now >= dist.expiresAtMs) fail('deadline-exceeded', 'Süre doldu, para kasaya döndü.');
       if (dist.claims?.[key]) fail('failed-precondition', 'Payını zaten aldın.');
       if (Number(who.joinedAtMs || 0) > Number(dist.createdAtMs || 0)) fail('permission-denied', 'Bu dağıtım sen katılmadan önce açıldı.');
-      if (!inGroup(who.rank, dist.group, isIntel)) fail('permission-denied', `Bu dağıtım sadece ${dist.groupLabel} için.`);
+      if (!inGroup(core.effRank(who, ctx, isIntel ? 'muhbir' : 'comez'), dist.group, isIntel)) fail('permission-denied', `Bu dağıtım sadece ${dist.groupLabel} için.`);
       if (Number(dist.claimedCount || 0) >= Number(dist.slots || 0)) fail('resource-exhausted', 'Bu dağıtımın tüm payları alındı.');
       const before = wallet.gold;
       creditGold(tx, ctx, ctx.actorId, wallet, dist.perPerson);
@@ -221,7 +221,7 @@ export function createTreasuryActions(core) {
       const gangId = requireGangMember(membership);
       const [meSnap, stateSnap] = await Promise.all([tx.get(ctx.ref.member(gangId, ctx.actorId)), tx.get(ctx.ref.gangState(gangId))]);
       const me = meSnap.data();
-      if (me?.rank !== 'baba') fail('permission-denied', 'Kasadan kendi hesabına sadece Mafya Babası para alabilir.');
+      if (core.effRank(me, ctx) !== 'baba') fail('permission-denied', core.underVote(me, ctx) ? '🗳️ Adına oylama sürüyor — 00:00\'a kadar kasadan para alamazsın.' : 'Kasadan kendi hesabına sadece Mafya Babası para alabilir.');
       const wallet = await readWallet(tx, ctx, ctx.actorId);
       const state = stateSnap.data() || {};
       requireFree(state, ctx.dateKey, amount);
@@ -259,7 +259,7 @@ export function createTreasuryActions(core) {
         tx.get(ctx.ref.gangState(targetGangId)),
       ]);
       const me = meSnap.data();
-      if (me?.rank !== 'baba' && me?.rank !== 'sagkol') fail('permission-denied', 'Başka çeteye parayı sadece Mafya Babası ve Sağ Kol gönderebilir.');
+      if (!['baba', 'sagkol'].includes(core.effRank(me, ctx))) fail('permission-denied', 'Başka çeteye parayı sadece Mafya Babası ve Sağ Kol gönderebilir.');
       if (tgSnap.data()?.status !== 'active' || !tStateSnap.exists) fail('failed-precondition', 'Bu çete artık yok.');
       const state = stateSnap.data() || {};
       requireFree(state, ctx.dateKey, amount);

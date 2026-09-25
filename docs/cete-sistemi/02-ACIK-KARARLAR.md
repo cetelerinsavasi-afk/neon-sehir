@@ -1,4 +1,4 @@
-# Kurallar ve Kararlar (v38)
+# Kurallar ve Kararlar (v39)
 
 v31'de kaynak olarak **oyun tasarımcısının kendi metni** esas alındı; önceki sürümdeki varsayımların çoğu bu metne göre düzeltildi. Sayısal değerlerin hepsi `functions/gang/config.js` içinde tek satırdan değiştirilebilir (istemci gösterimi: `src/components/Gangs/gangConstants.js`).
 
@@ -9,7 +9,7 @@ v31'de kaynak olarak **oyun tasarımcısının kendi metni** esas alındı; önc
 | Prestij | 1 savaş gücü = 1 · 1 altın bağış = 5 · Baba saygısı = 1.000.000 (üyelik başına bir kez) |
 | Serbest para | 00:00 kasasının %20'si — dağıtım + Baba'nın kendine aktarımı (−5 prestij/altın) + başka çeteye gönderim bu tek hakkı paylaşır |
 | Dağıtım | kişi başı tutar × kişi sayısı; rütbeliler sabit 7, diğer gruplar en az 7; 24 saat, alınmayan kasaya döner |
-| Ticaret yolu | yasaklı madde → silah → araba (her Pazar); 21 gün; günlük sipariş limiti = kullanılan gücün %5'i; yarı fiyat |
+| Ticaret yolu | yasaklı madde → silah → araba (her Pazar); 21 gün; günlük sipariş limiti = kullanılan gücün %1'i (v39; eskiden %5); yarı fiyat |
 | Sipariş | sadece Pzt–Cum; Baba/Sağ Kol; yoldaki tıra da verilir; tıra günde 1 |
 | Tır | 100.000 · 10 araba / 10 silah / 100 yasaklı madde · 21 gün ömür · son gün sipariş yok · satılamaz |
 | Depo | 100.000 = +100 kapasite (genişletilebilir, ömürsüz) · yer: araba 10, silah 10, yasaklı 1 |
@@ -70,3 +70,9 @@ v31'de kaynak olarak **oyun tasarımcısının kendi metni** esas alındı; önc
 - **Tekrar giriş:** kendi isteğiyle ayrılan 00:00'ı bekler; atılan (Baba, oylama, aktiflik, başarısız devirme/ayaklanma) hemen girebilir, prestij 0.
 - **Görünürlük:** diğer üyelerin prestiji (çete ve İstihbarat) 00:00 değeriyle, kendi prestijin anlık. Çete kasası dışarıya ve Çömez'e 00:00 değeriyle; Tetikçi ve üstü anlık. Firestore kurallarıyla: üye / roster belgesi sadece sahibine, liste `public/roster`, anlık kasa (`private/state`) Tetikçi+.
 - **Anasayfa hatırlatıcıları:** Savaşa katıl · Çeteden para al · İhbar et · İçeriği aç.
+
+## v39
+- **Oylama hedefi:** adına oylama açılan üye (çıkarma hedefi; devirme/ayaklanmada Baba) oylama bitene kadar (00:00) Çömez yetkisindedir (İstihbaratta Muhbir). Asıl rütbesi değişmez; kasayı görmeye devam eder ama para çekemez, dağıtamaz, sipariş/tır/depo/bahis/ittifak/atma yapamaz. Üye belgesinde `underVoteUntilMs`.
+- **Tır / depo:** çete günde en fazla 1 tır alır ve depoyu 1 kez genişletir (`truckBuyDateKey`, `depotBuyDateKey`).
+- **Ticaret yolu sipariş limiti:** kazanırken kullanılan gücün %1'i (eskiden %5). Elde tutulan yollar da bir kez %1'e çekildi (`routeLimitV39`).
+- **Üye sayısı:** Çeteler listesindeki sayı üye listesi her yenilendiğinde gerçek sayıyla eşitlenir; mevcut çeteler bir kez yeniden sayıldı.

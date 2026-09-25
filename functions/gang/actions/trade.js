@@ -1,7 +1,7 @@
 // TİCARET — ticaret yolu, tır, sipariş, depo.
 //  - Sadece ticaret yolu sahibi çete (yol 21 gün elde kalır), o yolun ürününü
 //    mağaza (yasaklı madde: Amazor) fiyatının yarısına sipariş edebilir.
-//    Günlük sipariş limiti = yolu kazanırken kullanılan gücün %5'i (altın).
+//    Günlük sipariş limiti = yolu kazanırken kullanılan gücün %1'i (altın) — v39.
 //  - Sipariş sadece Pzt–Cum; sadece Mafya Babası + Sağ Kol.
 //  - Bugün verilen sipariş sonraki 00:00'da yola çıkar, 24 saat sonra (bir
 //    sonraki 00:00) depoya ulaşır. YOLDAKİ tır da yeni sipariş alabilir
@@ -25,9 +25,9 @@ export function createTradeActions(core, treasury) {
     const membership = await readMembership(tx, ctx, ctx.actorId);
     const gangId = requireGangMember(membership);
     const meSnap = await tx.get(ctx.ref.member(gangId, ctx.actorId));
-    const me = meSnap.data();
+    const me = core.withEffRank(meSnap.data(), ctx);
     if (!me) fail('failed-precondition', 'Bir çetede değilsin.');
-    if (minRank) requireRank(me.rank, minRank, msg);
+    if (minRank) requireRank(me.rank, minRank, core.underVote(me, ctx) ? '🗳️ Adına oylama sürüyor — 00:00\'a kadar Çömez yetkisindesin.' : msg);
     return { gangId, me, membership };
   }
 
@@ -51,6 +51,8 @@ export function createTradeActions(core, treasury) {
       const { gangId, me } = await readGangRole(tx, ctx, 'sagkol', 'Tır sadece Mafya Babası ve Sağ Kol tarafından alınabilir.');
       const [stateSnap, gangSnap] = await Promise.all([tx.get(ctx.ref.gangState(gangId)), tx.get(ctx.ref.gang(gangId))]);
       const kasa = Number(stateSnap.data()?.kasa || 0);
+      // v39: çete günde en fazla 1 tır alabilir (ayrılmak üzere olan birinin kasayı boşa harcamasını önler)
+      if (stateSnap.data()?.truckBuyDateKey === ctx.dateKey) fail('resource-exhausted', "Bugün zaten tır alındı — yenisi 00:00'dan sonra.");
       if (kasa < GANG.TRUCK_PRICE) fail('failed-precondition', 'Kasada yeterli para yok.');
       const codeSnaps = await Promise.all([...new Set(candidates)].map((c) => tx.get(ctx.ref.truckCode(c))));
       const free = codeSnaps.find((s) => !s.exists);
@@ -70,7 +72,7 @@ export function createTradeActions(core, treasury) {
         expiresDateKey: addDays(ctx.dateKey, GANG.TRUCK_LIFE_DAYS),
         createdAtMs: ctx.now,
       });
-      tx.update(ctx.ref.gangState(gangId), { kasa: FV.increment(-GANG.TRUCK_PRICE) });
+      tx.update(ctx.ref.gangState(gangId), { kasa: FV.increment(-GANG.TRUCK_PRICE), truckBuyDateKey: ctx.dateKey });
       ledger(tx, ctx, { type: 'truck_buy', amount: GANG.TRUCK_PRICE, from: { kind: 'gang', id: gangId }, to: { kind: 'burn' }, before: kasa, refId: truckRef.id });
       announce(tx, ctx, gangId, '🚚', `${me.name} yeni tır aldı: TIR #${code} (${GANG.TRUCK_LIFE_DAYS} gün ömürlü).`);
       const res = { truckId: truckRef.id, code };
@@ -89,9 +91,11 @@ export function createTradeActions(core, treasury) {
       const { gangId, me } = await readGangRole(tx, ctx, 'sagkol', 'Depoyu sadece Mafya Babası ve Sağ Kol alabilir.');
       const [stateSnap, depotSnap] = await Promise.all([tx.get(ctx.ref.gangState(gangId)), tx.get(ctx.ref.depot(gangId))]);
       const kasa = Number(stateSnap.data()?.kasa || 0);
+      // v39: çete günde en fazla 1 depo genişletmesi yapabilir
+      if (stateSnap.data()?.depotBuyDateKey === ctx.dateKey) fail('resource-exhausted', "Bugün zaten depo genişletildi — yenisi 00:00'dan sonra.");
       if (kasa < GANG.DEPOT_PRICE) fail('failed-precondition', 'Kasada yeterli para yok.');
       const cap = Number(depotSnap.data()?.capacity || 0) + GANG.DEPOT_CAPACITY_PER_PURCHASE;
-      tx.update(ctx.ref.gangState(gangId), { kasa: FV.increment(-GANG.DEPOT_PRICE) });
+      tx.update(ctx.ref.gangState(gangId), { kasa: FV.increment(-GANG.DEPOT_PRICE), depotBuyDateKey: ctx.dateKey });
       tx.set(ctx.ref.depot(gangId), { capacity: FV.increment(GANG.DEPOT_CAPACITY_PER_PURCHASE) }, { merge: true });
       ledger(tx, ctx, { type: 'depot_buy', amount: GANG.DEPOT_PRICE, from: { kind: 'gang', id: gangId }, to: { kind: 'burn' }, before: kasa });
       announce(tx, ctx, gangId, '🏚️', `${me.name} depoyu genişletti — kapasite ${fmt(cap)}.`);

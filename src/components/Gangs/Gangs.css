@@ -2923,3 +2923,23 @@ textarea.gx-input {
     opacity: 0.35;
   }
 }
+
+/* v39 — adına oylama sürerken yetki en alt rütbede */
+.gx-undervote {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(255, 46, 140, 0.1);
+  border: 1px solid rgba(255, 46, 140, 0.4);
+  font-size: 13px;
+}
+.gx-undervote-icon {
+  font-size: 18px;
+}
+.gx-undervote-text {
+  flex: 1;
+  min-width: 0;
+}
