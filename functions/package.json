@@ -11,7 +11,7 @@
     "build": "echo \"Build adimi gerekmiyor (JavaScript)\"",
     "serve": "firebase emulators:start --only functions,firestore,auth",
     "deploy": "firebase deploy --only functions",
-    "test": "node --test gang/test/*.test.js"
+    "test": "node --test gang/test/*.test.js && node scripts/check-investments.mjs"
   },
   "dependencies": {
     "busboy": "^1.6.0",

@@ -109,11 +109,12 @@ export function IntelDecisionPanel() {
         <button className="gx-decision-btn intel" onClick={() => setAsk('disband')}>
           <span className="big">💥</span>
           <b>Çeteyi İstihbarata teslim et</b>
-          <span className="dim">💥 · +10M ✦</span>
+          <span className="dim">💥 Üyeler dağılır · 💰 altın İstihbarata · +10M ✦</span>
         </button>
         <button className="gx-decision-btn baba" onClick={() => setAsk('stay')}>
           <span className="big">👑</span>
           <b>İstihbarattan ayrıl</b>
+          <span className="dim">👑 Mafya Babası olarak devam et</span>
         </button>
       </div>
       {ask && (
@@ -123,8 +124,8 @@ export function IntelDecisionPanel() {
           title={ask === 'disband' ? 'Çete İstihbarata teslim edilsin mi?' : 'İstihbarattan ayrıl?'}
           lines={
             ask === 'disband'
-              ? ['Çete kapanır, kasa İstihbarata geçer.']
-              : ['İstihbarat prestijin kalıcı silinir.']
+              ? ['💥 Çetedeki tüm üyeler dağılır', '💰 Çetedeki tüm altın İstihbarata geçer', '✦ +10.000.000 İstihbarat prestiji', '🕶️ Kimin teslim ettiği kimseye söylenmez']
+              : ['👑 Mafya Babası olarak devam edersin', '🕵️ İstihbarattan ayrılırsın, İstihbarat prestijin silinir']
           }
           confirmLabel={ask === 'disband' ? 'Teslim et' : 'Ayrıl, Baba kal'}
           busy={busy === 'intelDecision'}

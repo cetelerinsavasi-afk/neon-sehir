@@ -2221,6 +2221,26 @@ export const dailyReset = onSchedule(
       });
       await Promise.all(miningJobs);
 
+      // v40: mining üretimi = kripto ALIŞI — sahip başına AYRI kayıt (en büyük
+      // tek sahip dışlanabilsin), altın değeri = KR × bu geceki kripto fiyatı.
+      try {
+        let tradeBatch = db.batch();
+        let tradeOps = 0;
+        for (const [ownerId, qty] of miningCryptoQtyByOwner) {
+          const goldValue = qty * nightCryptoPrice;
+          if (!(goldValue > 0)) continue;
+          recordInvestmentTrade(tradeBatch, { assetType: 'crypto', uid: ownerId, type: 'buy', goldAmount: goldValue });
+          tradeOps += 1;
+          if (tradeOps % 400 === 0) {
+            await tradeBatch.commit();
+            tradeBatch = db.batch();
+          }
+        }
+        if (tradeOps % 400 !== 0) await tradeBatch.commit();
+      } catch (err) {
+        console.error('mining investmentTrades kaydı hatası', err);
+      }
+
       const efficiencyNote =
         efficiency < 1
           ? ` (kripto fiyatı yüksek olduğu için verimlilik %${Math.round(efficiency * 100)}'e düştü)`
@@ -3349,109 +3369,111 @@ export const dailyReset = onSchedule(
   }
 );
 
-// CRYPTO_TIME_WEIGHT_BUCKETS — kripto fiyat YÖNÜNÜ artık oyuncuların
-// gerçek alış/satış işlemleri belirliyor (kullanıcı isteğiyle yeniden
-// tasarlanan sistem). Her işlem, ne kadar YENİ olduğuna göre ağırlıklı
-// sayılıyor — yeni işlemler daha güçlü, eski işlemler daha zayıf etkili.
-// Sınır saat değeri dahil (<=) o kovaya girer; 24 saatten eski işlemler
-// (ağırlık 0) zaten sorguya hiç dahil edilmiyor.
-// GÜNCELLEME (kullanıcı revizesi): kovalar sadeleştirildi — son 6 saat 3x,
-// 7-12 saat 2x, 13-24 saat 1x (önceki 5 kademeli — 1/3/6/12/24 saat,
-// 4/3/2/1.5/1x — yapı yerine).
-const CRYPTO_TIME_WEIGHT_BUCKETS = [
+// =============================================================================
+// v40 — YATIRIM ALIŞ/SATIŞ TAKİBİ (elmas · hisse · kripto, üçü de AYNI sistem)
+// -----------------------------------------------------------------------------
+// investmentTrades/{id}: { assetType, uid, type: 'buy'|'sell', goldAmount, createdAt }
+//   - buyInvestment: harcanan altın · sellInvestment: KOMİSYON ÖNCESİ brüt tutar
+//   - dailyReset mining üretimi: sahip başına ayrı 'buy' (KR × gece fiyatı)
+// Saatlik hesap (her varlık ayrı): son 24 saat, yaşa göre ağırlık (altın bazlı)
+//   0–3 sa 4x · 3–6 sa 3x · 6–12 sa 2x · 12–24 sa 1x (üst sınır dahil).
+// Oyuncu bazında toplam ağırlıklı alış/satış; en büyük ALICININ ve en büyük
+// SATICININ payı birbirinden bağımsız çıkarılır (aynı kişi ikisiyse iki
+// taraftan da). Kalan alış oranı rejim seçiminde kullanılır (bkz.
+// pickInvestmentRegime). Fiyatın YÖNÜ her zaman %50/%50 yazı-tura.
+// =============================================================================
+const INVESTMENT_ASSETS = ['diamond', 'stock', 'crypto'];
+const INVESTMENT_TIME_WEIGHT_BUCKETS = [
+  { maxHours: 3, weight: 4 },
   { maxHours: 6, weight: 3 },
   { maxHours: 12, weight: 2 },
   { maxHours: 24, weight: 1 },
 ];
-function cryptoTradeWeight(ageMs) {
+// Fiyat eşikleri: üstü = TERS rejim (ekranda "düşme eğiliminde"); eşiğin
+// 1/10'unun altı = KOŞULSUZ normal rejim (taban kuralı).
+const INVESTMENT_REGIME_THRESHOLD = { diamond: 20000, stock: 200000000, crypto: 200000 };
+const INVESTMENT_BUY_PRESSURE_REVERSE = 0.75; // arada: alış oranı > %75 → gizli ters rejim
+
+function investmentTradeWeight(ageMs) {
   const ageHours = ageMs / (60 * 60 * 1000);
-  for (const bucket of CRYPTO_TIME_WEIGHT_BUCKETS) {
+  if (ageHours < 0) return INVESTMENT_TIME_WEIGHT_BUCKETS[0].weight;
+  for (const bucket of INVESTMENT_TIME_WEIGHT_BUCKETS) {
     if (ageHours <= bucket.maxHours) return bucket.weight;
   }
   return 0;
 }
 
-// computeWeightedCryptoBuyRatio — YENİ SİSTEM (kullanıcı tasarımı): "KR
-// fiyatının yönünü algoritma doğrudan belirlemesin; oyuncuların gerçek
-// alış/satış davranışları fiyatın yönünü etkilesin. Ancak tek bir
-// oyuncunun (ya da anlaşmalı küçük bir grubun) piyasayı tek başına
-// yönlendirmesi mümkün olmasın." Adımlar:
-//   1. Son 24 saatteki TÜM cryptoTrades kayıtları okunur (mining üretimi
-//      buraya HİÇ girmez — sadece gerçekleşmiş alım/satım işlemleri,
-//      bkz. buyInvestment/sellInvestment).
-//   2. Her işleme yaşına göre zaman ağırlığı uygulanır (yukarısı).
-//   3. Oyuncu bazında (uid) toplam ağırlıklı alış ve toplam ağırlıklı
-//      satış hesaplanır — İŞLEM SAYISINA göre değil, TOPLAM ağırlıklı
-//      hacme göre. Bir oyuncu 10M KR'yi 100×100K'lık parçaya bölerek
-//      satsa bile, o oyuncunun toplam ağırlıklı satış hacmi yine 10M
-//      olarak Map'te birikir — işlemi parçalara bölmek bu yüzden hiçbir
-//      şey kazandırmaz. Ağırlık ALTIN değil KR MİKTARI (krAmount)
-//      üzerinden hesaplanır (kullanıcı isteği).
-//   4-7. En büyük ağırlıklı ALICININ toplam alış hacmi alış toplamından,
-//      en büyük ağırlıklı SATICININ toplam satış hacmi satış toplamından
-//      AYRI AYRI (birbirinden bağımsız) çıkarılır. Aynı oyuncu hem en
-//      büyük alıcı hem en büyük satıcıysa, iki taraftan da (kendi payı
-//      kadar) düşülür — "en büyük İŞLEM" değil "en büyük OYUNCUNUN toplam
-//      hacmi" çıkarılıyor, bu yüzden 100 küçük işlem 1 büyük işlemden daha
-//      fazla ağırlık taşıyorsa yine o oyuncu "en büyük" sayılıp çıkarılır.
-//   8. Kalan (dışlanan oyuncular hariç) toplam alış/satış üzerinden oran
-//      hesaplanır — bu oran hourlyInvestmentUpdate'teki %80/%20 kuralına
-//      girdi olarak kullanılır (o kural DEĞİŞMEDİ, aynen korunuyor).
-// NEDEN: Tek bir oyuncu "1M sat → satış baskısı oluştur → sonra 2M al →
-// alış baskısı oluştur" döngüsünü tekrarlayarak fiyatı küçük hareketlerle
-// kendi lehine yönlendirmeye çalışabilir. En büyük alıcı/satıcının payını
-// hesaplamadan çıkarmak, tam olarak bu döngüyü (ve piyasadan görece kopuk
-// tek bir whale'in etkisini) devre dışı bırakır — bkz. bu fonksiyonun
-// altındaki test senaryoları için sohbet geçmişindeki analiz.
-// Dönüş: kalan ağırlıklı alış / (alış+satış) oranı — dışlama sonrası
-// anlamlı hacim kalmazsa (ör. tek oyuncu, ya da hiç işlem yoksa) null
-// döner, çağıran taraf bu durumda mevcut sistemdeki gibi tamamen rastgele
-// yöne döner (bkz. hourlyInvestmentUpdate).
-async function computeWeightedCryptoBuyRatio() {
-  const cutoff = admin.firestore.Timestamp.fromMillis(Date.now() - 24 * 60 * 60 * 1000);
-  const tradesSnap = await db.collection('cryptoTrades').where('createdAt', '>=', cutoff).get();
-  if (tradesSnap.empty) return null;
-
-  const nowMs = Date.now();
-  const buyByUid = new Map();
-  const sellByUid = new Map();
-  tradesSnap.forEach((doc) => {
-    const t = doc.data();
-    const tsMs = t.createdAt?.toMillis?.();
-    if (!tsMs || !t.uid) return;
-    const weight = cryptoTradeWeight(nowMs - tsMs);
-    if (weight <= 0) return;
-    const weighted = (t.krAmount || 0) * weight;
-    if (weighted <= 0) return;
-    const map = t.type === 'buy' ? buyByUid : t.type === 'sell' ? sellByUid : null;
-    if (!map) return;
+// SAF fonksiyon: trades = [{assetType, uid, type, goldAmount, createdAtMs}]
+// Dönüş: { diamond: oran|null, stock: oran|null, crypto: oran|null }
+function computeInvestmentBuyRatios(trades, nowMs) {
+  const acc = {};
+  for (const a of INVESTMENT_ASSETS) acc[a] = { buy: new Map(), sell: new Map() };
+  for (const t of trades) {
+    const bucket = acc[t.assetType];
+    if (!bucket || !t.uid || !t.createdAtMs) continue;
+    const w = investmentTradeWeight(nowMs - t.createdAtMs);
+    if (w <= 0) continue;
+    const weighted = Number(t.goldAmount || 0) * w;
+    if (!(weighted > 0)) continue;
+    const map = t.type === 'buy' ? bucket.buy : t.type === 'sell' ? bucket.sell : null;
+    if (!map) continue;
     map.set(t.uid, (map.get(t.uid) || 0) + weighted);
-  });
+  }
+  const out = {};
+  for (const a of INVESTMENT_ASSETS) {
+    let totalBuy = 0;
+    let maxBuy = 0;
+    acc[a].buy.forEach((v) => {
+      totalBuy += v;
+      if (v > maxBuy) maxBuy = v;
+    });
+    let totalSell = 0;
+    let maxSell = 0;
+    acc[a].sell.forEach((v) => {
+      totalSell += v;
+      if (v > maxSell) maxSell = v;
+    });
+    const remainingBuy = Math.max(0, totalBuy - maxBuy);
+    const remainingSell = Math.max(0, totalSell - maxSell);
+    const total = remainingBuy + remainingSell;
+    out[a] = total > 0 ? remainingBuy / total : null;
+  }
+  return out;
+}
 
-  // En büyük ağırlıklı alıcı/satıcının TOPLAM hacmini bul (tek işlem değil,
-  // o oyuncunun 24 saatteki tüm işlemlerinin toplamı — yukarıdaki Map zaten
-  // bunu tutuyor).
-  let totalBuy = 0;
-  let maxBuyVal = 0;
-  buyByUid.forEach((v) => {
-    totalBuy += v;
-    if (v > maxBuyVal) maxBuyVal = v;
-  });
-  let totalSell = 0;
-  let maxSellVal = 0;
-  sellByUid.forEach((v) => {
-    totalSell += v;
-    if (v > maxSellVal) maxSellVal = v;
-  });
+// SAF fonksiyon — rejim seçimi (sırayla):
+//  1) fiyat >= eşik            → TERS (ekranda gösterilir: shownReversed)
+//  2) fiyat <  eşik/10         → NORMAL (koşulsuz taban)
+//  3) arada: alış oranı > %75  → TERS (GİZLİ — ekranda gösterilmez)
+//     aksi halde               → NORMAL
+function pickInvestmentRegime(price, threshold, buyRatio) {
+  const p = Number(price) || 0;
+  if (p >= threshold) return { reversed: true, shownReversed: true, reason: 'price' };
+  if (p < threshold / 10) return { reversed: false, shownReversed: false, reason: 'floor' };
+  if (buyRatio != null && buyRatio > INVESTMENT_BUY_PRESSURE_REVERSE) return { reversed: true, shownReversed: false, reason: 'buy_pressure' };
+  return { reversed: false, shownReversed: false, reason: 'normal' };
+}
 
-  // Aynı oyuncu hem en büyük alıcı hem en büyük satıcı olsa bile sorun
-  // yok: maxBuyVal ve maxSellVal birbirinden bağımsız hesaplanıp ayrı ayrı
-  // düşülüyor, yani o oyuncunun etkisi HER İKİ taraftan da kalkıyor.
-  const remainingBuy = Math.max(0, totalBuy - maxBuyVal);
-  const remainingSell = Math.max(0, totalSell - maxSellVal);
-  const total = remainingBuy + remainingSell;
-  if (total <= 0) return null;
-  return remainingBuy / total;
+async function loadInvestmentTradesLast24h(nowMs) {
+  const cutoff = admin.firestore.Timestamp.fromMillis(nowMs - 24 * 60 * 60 * 1000);
+  const snap = await db.collection('investmentTrades').where('createdAt', '>=', cutoff).get();
+  const trades = [];
+  snap.forEach((doc) => {
+    const t = doc.data();
+    trades.push({ assetType: t.assetType, uid: t.uid, type: t.type, goldAmount: t.goldAmount, createdAtMs: t.createdAt?.toMillis?.() || 0 });
+  });
+  return trades;
+}
+
+function recordInvestmentTrade(writer, { assetType, uid, type, goldAmount }) {
+  if (!INVESTMENT_ASSETS.includes(assetType) || !uid || !(Number(goldAmount) > 0)) return;
+  writer.set(db.collection('investmentTrades').doc(), {
+    assetType,
+    uid,
+    type,
+    goldAmount: Number(goldAmount),
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
 }
 
 // =============================================================================
@@ -3475,14 +3497,10 @@ async function computeWeightedCryptoBuyRatio() {
 //     Fiyat tekrar eşiğin altına inince otomatik olarak normal rejime
 //     döner (ayrı bir "rejim" alanı saklanmıyor, her saat o anki fiyata
 //     bakılarak karar veriliyor — kripto ile birebir aynı desen).
-//   - Kripto: YÖN artık gerçek oyuncu alış/satış davranışına bağlı (bkz.
-//     computeWeightedCryptoBuyRatio). Miktar, fiyata göre iki rejimden
-//     biri kullanılarak seçiliyor: 1 kripto 200.000 altının ALTINDAYSA
-//     artış %1-%20 / düşüş %1-%16 (normal, mevcut davranış); 200.000
-//     altın ve ÜZERİNDEYSE rejim TERSİNE döner, artış %1-%16 / düşüş
-//     %1-%20 olur (fiyatın sonsuza dek yukarı sürüklenmesini engellemek
-//     için — kullanıcı revizesi). Fiyat tekrar 200.000 altının altına
-//     inince otomatik olarak normal rejime döner.
+//   - v40: Üç varlık da AYNI sistem: YÖN %50/%50 yazı-tura; rejim
+//     pickInvestmentRegime ile (fiyat eşiği → ters, eşik/10 altı → normal,
+//     arada son 24 saatin alış oranı > %75 → gizli ters rejim). Kripto
+//     aralıkları normal %1-20↑/%1-16↓, ters %1-16↑/%1-20↓.
 // Rejim bilgisi (diamondReversedRegime/stockReversedRegime/
 // cryptoReversedRegime) artık investments/current dokümanına da yazılıyor
 // — Banka ekranındaki panellerde "düşme eğiliminde ↓" uyarısını göstermek
@@ -3509,73 +3527,41 @@ export const hourlyInvestmentUpdate = onSchedule(
     // Sıralama (oynaklık artan): Elmas < Hisse Senedi < Kripto.
     // DIAMOND_REGIME_THRESHOLD / STOCK_REGIME_THRESHOLD — kullanıcının
     // belirlediği eşikler (bkz. yukarıdaki blok başlığı notu).
-    const DIAMOND_REGIME_THRESHOLD = 20000;
-    const STOCK_REGIME_THRESHOLD = 200000000;
-    const diamondReversedRegime = prev.diamondPrice >= DIAMOND_REGIME_THRESHOLD;
+    // v40: rejim her varlık için aynı kuralla seçilir (bkz. pickInvestmentRegime);
+    // YÖN her zaman %50/%50. Oyuncuya SADECE fiyat eşiği rejimi gösterilir.
+    const nowMsForTrades = Date.now();
+    let buyRatios = { diamond: null, stock: null, crypto: null };
+    try {
+      buyRatios = computeInvestmentBuyRatios(await loadInvestmentTradesLast24h(nowMsForTrades), nowMsForTrades);
+    } catch (err) {
+      console.error('investmentTrades okunamadı — sinyal yok sayıldı', err);
+    }
+    const diamondRegime = pickInvestmentRegime(prev.diamondPrice, INVESTMENT_REGIME_THRESHOLD.diamond, buyRatios.diamond);
+    const stockRegime = pickInvestmentRegime(prev.stockPrice ?? 10000, INVESTMENT_REGIME_THRESHOLD.stock, buyRatios.stock);
+    const cryptoRegime = pickInvestmentRegime(prev.cryptoPrice, INVESTMENT_REGIME_THRESHOLD.crypto, buyRatios.crypto);
+    // Ekranda gösterilen ("düşme eğiliminde ↓") — SADECE fiyat eşiği
+    const diamondReversedRegime = diamondRegime.shownReversed;
+    const stockReversedRegime = stockRegime.shownReversed;
+    const cryptoReversedRegime = cryptoRegime.shownReversed;
+
     const diamondUp = Math.random() < 0.5;
-    const diamondChangePct = diamondReversedRegime
+    const diamondChangePct = diamondRegime.reversed
       ? diamondUp
         ? Math.random() * 0.03 + 0.01 // TERS rejim: %1-4 artış
         : -(Math.random() * 0.04 + 0.01) // TERS rejim: %1-5 düşüş
       : diamondUp
         ? Math.random() * 0.04 + 0.01 // NORMAL rejim: %1-5 artış
         : -(Math.random() * 0.03 + 0.01); // NORMAL rejim: %1-4 düşüş
-    const stockReversedRegime = prev.stockPrice >= STOCK_REGIME_THRESHOLD;
     const stockUp = Math.random() < 0.5;
-    const stockChangePct = stockReversedRegime
+    const stockChangePct = stockRegime.reversed
       ? stockUp
         ? Math.random() * 0.07 + 0.01 // TERS rejim: %1-8 artış
         : -(Math.random() * 0.09 + 0.01) // TERS rejim: %1-10 düşüş
       : stockUp
         ? Math.random() * 0.09 + 0.01 // NORMAL rejim: %1-10 artış
         : -(Math.random() * 0.07 + 0.01); // NORMAL rejim: %1-8 düşüş
-
-    // YENİ SİSTEM: kripto fiyatının YÖNÜ artık coin-flip değil, gerçek
-    // oyuncu alış/satış davranışından hesaplanan olasılıkla belirleniyor
-    // (bkz. computeWeightedCryptoBuyRatio — o fonksiyon ARTIK hem "en
-    // büyük alıcı/satıcının payını çıkarma" mekanizmasını HEM DE zaman
-    // ağırlığını uyguluyor; ikisi birlikte, iki KATMANLI bir koruma
-    // oluşturuyor).
-    //
-    // 80/20 KURALI (en büyük alıcı/satıcı ÇIKARILDIKTAN SONRA, kalan
-    // oyuncuların oranına uygulanır): oran %20-%80 arasında (sınırlar DAHİL)
-    // ise doğrudan gerçek oran kullanılır (ör. %70 alış → %70 yükseliş
-    // ihtimali). Ancak oran bu sınırın dışına (ör. %81 alış ya da %19
-    // alış) çıkarsa sistem TAMAMEN NÖTR olur (%50/%50) — bu sayede toplu/
-    // organize bir manipülasyon ("hepimiz alalım, fiyat kesin yükselsin")
-    // ne kadar uç bir orana ulaşırsa ulaşsın, sınırı aştığı an kendi
-    // amacını boşa çıkarır. EPSILON, %80/%20 sınırındaki kayan noktalı
-    // (floating point) yuvarlama hatalarının örnek tablodaki "80/20 →
-    // hâlâ yönlü, 81/19 → nötr" davranışını bozmaması için var.
-    // Anlamlı işlem yoksa (null), ESKİ sistemdeki gibi %50/%50 tamamen
-    // rastgele — bu, yeni sisteme geçişte de (henüz cryptoTrades hiç
-    // birikmemişken) otomatik olarak devreye girer, fiyat mevcut
-    // değerinden SORUNSUZCA devam eder.
-    const cryptoBuyRatio = await computeWeightedCryptoBuyRatio();
-    const RATIO_EPSILON = 1e-9;
-    const withinEightyTwenty =
-      cryptoBuyRatio != null &&
-      cryptoBuyRatio >= 0.2 - RATIO_EPSILON &&
-      cryptoBuyRatio <= 0.8 + RATIO_EPSILON;
-    const cryptoUpProbability = withinEightyTwenty ? cryptoBuyRatio : 0.5;
-    const cryptoUp = Math.random() < cryptoUpProbability;
-
-    // REJİM DEĞİŞİMİ (kullanıcı revizesi): kripto fiyatı sürekli yukarı
-    // sürüklenmeye meyilliydi (artış aralığı %1-20, düşüş aralığı sadece
-    // %1-16 olduğu için). Bunu fiyat düşükken KORUYORUZ (oyunun doğal
-    // hissini bozmamak için), ama fiyat belli bir eşiği geçtikten sonra
-    // aralıkları TERSİNE çeviriyoruz — böylece kripto çok yükseldiğinde
-    // artık düşüşe daha meyilli oluyor ve sonsuza dek tırmanamıyor.
-    // Eşiğin altına tekrar indiğinde sistem otomatik olarak normale
-    // dönüyor (her saat prev.cryptoPrice'a bakılarak karar veriliyor,
-    // ayrı bir "rejim" alanı saklanmıyor).
-    //   - 1 kripto < 200.000 altın: NORMAL rejim → artış %1-20, düşüş %1-16
-    //     (mevcut/eski davranış, aynen korunuyor).
-    //   - 1 kripto >= 200.000 altın: TERS rejim → artış %1-16, düşüş %1-20
-    //     (yukarı ivmeyi frenler, aşağı ivmeyi güçlendirir).
-    const CRYPTO_REGIME_THRESHOLD = 200000;
-    const cryptoReversedRegime = prev.cryptoPrice >= CRYPTO_REGIME_THRESHOLD;
-    const cryptoChangePct = cryptoReversedRegime
+    const cryptoUp = Math.random() < 0.5;
+    const cryptoChangePct = cryptoRegime.reversed
       ? cryptoUp
         ? Math.random() * 0.15 + 0.01 // TERS rejim: %1-16 artış
         : -(Math.random() * 0.19 + 0.01) // TERS rejim: %1-20 düşüş
@@ -3599,10 +3585,7 @@ export const hourlyInvestmentUpdate = onSchedule(
       diamondChangePct: roundedDiamondPct,
       stockChangePct: roundedStockPct,
       cryptoChangePct: roundedCryptoPct,
-      // cryptoUpProbability — sadece teşhis/şeffaflık amaçlı (bkz. madde
-      // 3'teki örnek tablo) — hiçbir hesaplamada kullanılmıyor, istenirse
-      // ileride oyuncuya "piyasa duyarlılığı" göstergesi olarak sunulabilir.
-      cryptoUpProbability: Math.round(cryptoUpProbability * 1000) / 10,
+      // v40: eski kriptoya özel olasılık alanı (cryptoUpProbability) artık yazılmıyor — set() belgeyi baştan yazar.
       // Rejim bayrakları — Banka ekranındaki panellerde "düşme eğiliminde ↓"
       // kırmızı uyarısını göstermek için (bkz. BankScreen.jsx). Her saat
       // yeniden hesaplanıp burada üzerine yazılıyor, ayrı migration gerekmez.
@@ -3636,20 +3619,21 @@ export const hourlyInvestmentUpdate = onSchedule(
       await cleanupBatch.commit();
     }
 
-    // cryptoTrades temizliği — algoritma sadece son 24 saate bakıyor, 2
-    // günden eski kayıtların hiçbir işlevi kalmıyor (küçük bir tampon
-    // payıyla saklanıp siliniyor, ileride istenirse ham veri incelemesi
-    // için biraz daha uzun tutulabilir).
+    // investmentTrades temizliği — hesap son 24 saate bakıyor; 2 günden eski
+    // kayıtlar silinir (tüm varlık türleri).
     const tradesCutoff = admin.firestore.Timestamp.fromMillis(Date.now() - 2 * 24 * 60 * 60 * 1000);
-    const oldTradesSnap = await db
-      .collection('cryptoTrades')
-      .where('createdAt', '<', tradesCutoff)
-      .limit(300)
-      .get();
+    const oldTradesSnap = await db.collection('investmentTrades').where('createdAt', '<', tradesCutoff).limit(400).get();
     if (!oldTradesSnap.empty) {
       const tradesCleanupBatch = db.batch();
       oldTradesSnap.forEach((doc) => tradesCleanupBatch.delete(doc.ref));
       await tradesCleanupBatch.commit();
+    }
+    // v40: eski (artık kullanılmayan) cryptoTrades kayıtları boşalana kadar silinir
+    const legacyTradesSnap = await db.collection('cryptoTrades').limit(400).get();
+    if (!legacyTradesSnap.empty) {
+      const legacyBatch = db.batch();
+      legacyTradesSnap.forEach((doc) => legacyBatch.delete(doc.ref));
+      await legacyBatch.commit();
     }
   }
 );
@@ -4237,16 +4221,7 @@ export const buyInvestment = onCall(async (request) => {
   const costBasisField = INVESTMENT_COST_BASIS_FIELD[assetType];
 
   const userRef = db.collection('users').doc(uid);
-  // cryptoTrades — YENİ İSTEK (kripto fiyat sistemi yeniden tasarımı):
-  // KR fiyatının yönünü artık algoritma rastgele değil, oyuncuların
-  // GERÇEK alış/satış işlemleri belirliyor (bkz. hourlyInvestmentUpdate
-  // içindeki computeWeightedCryptoBuyRatio). Bunun için her KR alım/
-  // satımı burada kalıcı olarak kaydediliyor — SADECE kripto için (elmas/
-  // hisse senedi şimdilik eskisi gibi tamamen rastgele kalıyor). Ağırlık
-  // hesaplamasında ALTIN tutarı değil, alınan/satılan KR MİKTARI (units)
-  // kullanılıyor (kullanıcı isteği: "harcanan ya da kazanılan altın
-  // miktarı değil alınan ve satılan kripto miktarı hesaplanacak").
-  const tradeRef = assetType === 'crypto' ? db.collection('cryptoTrades').doc() : null;
+  // v40: her üç varlık için alış kaydı (investmentTrades, altın bazlı)
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(userRef);
     const user = snap.data();
@@ -4263,15 +4238,7 @@ export const buyInvestment = onCall(async (request) => {
       // isteği: her ekleme/çıkarmada sayaç sıfırlansın).
       [costBasisField]: newHoldings * unitPrice,
     });
-    if (tradeRef) {
-      tx.set(tradeRef, {
-        uid,
-        type: 'buy',
-        krAmount: units,
-        goldAmount,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-    }
+    recordInvestmentTrade(tx, { assetType, uid, type: 'buy', goldAmount });
   });
 
   return { ok: true, unitPrice, units };
@@ -4300,10 +4267,7 @@ export const sellInvestment = onCall(async (request) => {
   const SELL_COMMISSION_RATE = 0.01;
 
   const userRef = db.collection('users').doc(uid);
-  // cryptoTrades — bkz. buyInvestment'taki AYNI yorum. Ağırlıklandırma
-  // ALTIN değil KR MİKTARI (units) üzerinden yapılacağı için `krAmount`
-  // burada da satılan gerçek KR adedi.
-  const tradeRef = assetType === 'crypto' ? db.collection('cryptoTrades').doc() : null;
+  // v40: her üç varlık için satış kaydı — KOMİSYON ÖNCESİ brüt tutar
   let totalValue = 0;
   let grossValue = 0;
   let commission = 0;
@@ -4338,15 +4302,7 @@ export const sellInvestment = onCall(async (request) => {
       // "az önce güncel fiyattan yeniden alınmış" gibi davranır.
       [costBasisField]: remaining > 1e-9 ? remaining * unitPrice : 0,
     });
-    if (tradeRef && units > 0) {
-      tx.set(tradeRef, {
-        uid,
-        type: 'sell',
-        krAmount: units,
-        goldAmount: totalValue,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-    }
+    if (units > 0) recordInvestmentTrade(tx, { assetType, uid, type: 'sell', goldAmount: grossValue });
   });
 
   return { ok: true, unitPrice, totalValue, grossValue, commission };

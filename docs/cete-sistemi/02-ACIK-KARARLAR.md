@@ -76,3 +76,7 @@ v31'de kaynak olarak **oyun tasarımcısının kendi metni** esas alındı; önc
 - **Tır / depo:** çete günde en fazla 1 tır alır ve depoyu 1 kez genişletir (`truckBuyDateKey`, `depotBuyDateKey`).
 - **Ticaret yolu sipariş limiti:** kazanırken kullanılan gücün %1'i (eskiden %5). Elde tutulan yollar da bir kez %1'e çekildi (`routeLimitV39`).
 - **Üye sayısı:** Çeteler listesindeki sayı üye listesi her yenilendiğinde gerçek sayıyla eşitlenir; mevcut çeteler bir kez yeniden sayıldı.
+
+## v40
+- **Çete teslimi:** İstihbarat duyurusunda teslim edenin kod adı yazılmaz — sadece "X çetesi çökertildi ve İstihbarata teslim edildi". Karar panelinde teslim: üyeler dağılır · tüm altın İstihbarata · +10M prestij; ayrıl: Mafya Babası olarak devam.
+- **Yatırımlar (functions/index.js):** elmas/hisse/kripto aynı sistem — `investmentTrades` (alış: harcanan altın, satış: komisyon öncesi brüt, mining: sahip başına KR × gece fiyatı), yön %50/%50, rejim `pickInvestmentRegime` (eşik → ters/görünür, eşik/10 altı → normal, arada 24 saatlik ağırlıklı alış oranı > %75 → ters/gizli). `cryptoTrades` kaldırıldı. Kontrol: `node functions/scripts/check-investments.mjs`.

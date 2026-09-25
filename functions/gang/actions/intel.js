@@ -366,7 +366,8 @@ export function createIntelActions(core) {
       if (gang.nameKey) tx.delete(ctx.ref.gangName(gang.nameKey));
       tx.update(ctx.ref.roster(rid), { prestige: FV.increment(INTEL.TAKEDOWN_PRESTIGE) });
       tx.set(ctx.ref.membership(ctx.actorId), { intelDecisionGangId: null, intelDecisionDeadline: null }, { merge: true });
-      announceIntel(tx, ctx, '💥', `${rosterSnap.data().codeName}, ${gang.name} çetesini İstihbarata teslim etti! Çetenin kasası İstihbarat kasasına geçiyor.`);
+      // v40: kimin teslim ettiği kimseye söylenmez (kod adı dahil) — sadece çetenin çökertildiği duyurulur
+      announceIntel(tx, ctx, '💥', `${gang.name} çetesi çökertildi ve İstihbarata teslim edildi! Çetenin kasası İstihbarat kasasına geçiyor.`);
       ctx.logs.push({ gang: 'intel_takedown', world: ctx.worldId, gangId });
       ctx.afterCommit.push(() => core.cleanupGang(ctx, gangId));
       return { choice, gangId };
