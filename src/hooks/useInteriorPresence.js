@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { collection, doc, deleteDoc, limit, onSnapshot, query, where, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { useBlocks } from '../contexts/BlocksContext';
 
 // useParkPresence.js ile BİREBİR aynı desen (bkz. o dosyadaki yorumlar) —
 // tek fark, Banka/Karakol/Camii/Gazino'nun hepsi `locationId` alanıyla
@@ -74,5 +75,13 @@ export function useInteriorPresence(locationId) {
     []
   );
 
-  return { others, ...api };
+  // UGC D2: engellediğin oyuncunun konuşma balonu gösterilmez (avatarı görünür kalır).
+  // Tüm dünya ekranları "others"ı buradan aldığı için tek noktada uygulanır.
+  const { isBlocked } = useBlocks();
+  const visibleOthers = useMemo(
+    () => others.map((o) => (isBlocked(o.uid) && o.chatText ? { ...o, chatText: null, chatTs: null } : o)),
+    [others, isBlocked]
+  );
+
+  return { others: visibleOthers, ...api };
 }

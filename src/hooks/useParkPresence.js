@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { collection, doc, deleteDoc, limit, onSnapshot, query, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { useBlocks } from '../contexts/BlocksContext';
 
 // Bir presence kaydı ne kadar süre güncellenmezse "hayalet" (terk
 // edilmiş sekme/çökme) sayılıp listeden düşürülür. Sunucu tarafında da
@@ -90,5 +91,13 @@ export function useParkPresence() {
     []
   );
 
-  return { others, ...api };
+  // UGC D2: engellediğin oyuncunun konuşma balonu gösterilmez (avatarı görünür kalır).
+  // Tüm dünya ekranları "others"ı buradan aldığı için tek noktada uygulanır.
+  const { isBlocked } = useBlocks();
+  const visibleOthers = useMemo(
+    () => others.map((o) => (isBlocked(o.uid) && o.chatText ? { ...o, chatText: null, chatTs: null } : o)),
+    [others, isBlocked]
+  );
+
+  return { others: visibleOthers, ...api };
 }

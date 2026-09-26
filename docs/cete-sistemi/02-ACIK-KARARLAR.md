@@ -9,7 +9,7 @@ v31'de kaynak olarak **oyun tasarımcısının kendi metni** esas alındı; önc
 | Prestij | 1 savaş gücü = 1 · 1 altın bağış = 5 · Baba saygısı = 1.000.000 (üyelik başına bir kez) |
 | Serbest para | 00:00 kasasının %20'si — dağıtım + Baba'nın kendine aktarımı (−5 prestij/altın) + başka çeteye gönderim bu tek hakkı paylaşır |
 | Dağıtım | kişi başı tutar × kişi sayısı; rütbeliler sabit 7, diğer gruplar en az 7; 24 saat, alınmayan kasaya döner |
-| Ticaret yolu | yasaklı madde → silah → araba (her Pazar); 21 gün; günlük sipariş limiti = kullanılan gücün %1'i (v39; eskiden %5); yarı fiyat |
+| Ticaret yolu | yasaklı madde → silah → araba (her Pazar); 21 gün; günlük sipariş limiti = savaşa katılan tüm tarafların toplam gücünün %0,5'i (v50; İstihbarat gücü dahil; v39'da kazananın gücünün %1'i); yarı fiyat |
 | Sipariş | sadece Pzt–Cum; Baba/Sağ Kol; yoldaki tıra da verilir; tıra günde 1 |
 | Tır | 100.000 · 10 araba / 10 silah / 100 yasaklı madde · 21 gün ömür · son gün sipariş yok · satılamaz |
 | Depo | 100.000 = +100 kapasite (genişletilebilir, ömürsüz) · yer: araba 10, silah 10, yasaklı 1 |
@@ -22,7 +22,7 @@ v31'de kaynak olarak **oyun tasarımcısının kendi metni** esas alındı; önc
 | Bahse İstihbarat müdahalesi | kabul edildikten sonra ilk saldırı diliminin SONUNA kadar (ör. 18:00'de başlayan bahis için 24:00): ihbar (çetesinde Tetikçi+) +1M · içerik açma (Kıdemli+, toplam bahis görünür) +1M · operasyon (Başkan/Şef) 100.000 · savaş 3 taraflı, en güçlü tüm bahsi alır |
 | Aktiflik | 30 gün hiçbir savaşa katılmayan çıkarılır (Baba dahil; halef en yüksek prestij, kimse yoksa çete kapanır) |
 | İstihbarat prestiji | ihbar 1M · sızdırma 1M · çete teslimi 10M · savaş 1:1 · polis yakalama ödülü 1:1 |
-| İstihbarat kasası | pazar zaferi = gücün 1/10'u · operasyon ödülü · rüşvet · teslim edilen çetenin kasası · şüpheyle yakalanma cezaları |
+| İstihbarat kasası | pazar zaferi = savaşa katılan tüm tarafların toplam gücünün %5'i (v50; eskiden kendi gücünün 1/10'u) · operasyon ödülü · rüşvet · teslim edilen çetenin kasası · şüpheyle yakalanma cezalarının yarısı (v50; diğer yarısı yakılır) |
 
 ## Kullanıcının netleştirdiği kararlar
 1. Başarısız **ayaklanmada** başlatan çeteden atılır; başarısız **devirmede** de aday atılır.
@@ -74,12 +74,13 @@ v31'de kaynak olarak **oyun tasarımcısının kendi metni** esas alındı; önc
 ## v39
 - **Oylama hedefi:** adına oylama açılan üye (çıkarma hedefi; devirme/ayaklanmada Baba) oylama bitene kadar (00:00) Çömez yetkisindedir (İstihbaratta Muhbir). Asıl rütbesi değişmez; kasayı görmeye devam eder ama para çekemez, dağıtamaz, sipariş/tır/depo/bahis/ittifak/atma yapamaz. Üye belgesinde `underVoteUntilMs`.
 - **Tır / depo:** çete günde en fazla 1 tır alır ve depoyu 1 kez genişletir (`truckBuyDateKey`, `depotBuyDateKey`).
-- **Ticaret yolu sipariş limiti:** kazanırken kullanılan gücün %1'i (eskiden %5). Elde tutulan yollar da bir kez %1'e çekildi (`routeLimitV39`).
+- **Ticaret yolu sipariş limiti:** v50'den itibaren o pazar savaşına katılan tüm çetelerin toplam gücünün (çeteler + İstihbarat) %0,5'i (`GANG.TRADE_ORDER_LIMIT_TOTAL_RATIO`; yol belgesinde `totalWarPower`). İstihbarat kazanırsa kasasına aynı toplamın %5'i girer (`INTEL.WAR_WIN_KASA_TOTAL_RATIO`). Yeni kural bir sonraki pazar savaşından itibaren geçerlidir; o an elde tutulan yolların limiti değişmez. (v39: kazananın gücünün %1'i — `routeLimitV39` geçişi hâlâ bu eski oranı kullanır.)
+- **Şüpheyle yakalanma cezası (v50):** oyuncunun borcu tam ceza kadar yazılır; İstihbarat kasasına yalnızca yarısı (`INTEL.SUSPICION_FINE_KASA_RATIO`, aşağı yuvarlanır) girer, kalan yakılır.
 - **Üye sayısı:** Çeteler listesindeki sayı üye listesi her yenilendiğinde gerçek sayıyla eşitlenir; mevcut çeteler bir kez yeniden sayıldı.
 
 ## v40
 - **Çete teslimi:** İstihbarat duyurusunda teslim edenin kod adı yazılmaz — sadece "X çetesi çökertildi ve İstihbarata teslim edildi". Karar panelinde teslim: üyeler dağılır · tüm altın İstihbarata · +10M prestij; ayrıl: Mafya Babası olarak devam.
-- **Yatırımlar (functions/index.js):** elmas/hisse/kripto aynı sistem — `investmentTrades` (alış: harcanan altın, satış: komisyon öncesi brüt, mining: sahip başına KR × gece fiyatı), yön %50/%50, rejim `pickInvestmentRegime` (eşik → ters/görünür, eşik/10 altı → normal, arada 24 saatlik ağırlıklı alış oranı > %75 → ters/gizli). `cryptoTrades` kaldırıldı. Kontrol: `node functions/scripts/check-investments.mjs`.
+- **Yatırımlar (functions/index.js):** elmas/hisse/kripto aynı sistem — `investmentTrades` (alış: harcanan altın, satış: komisyon öncesi brüt, mining: sahip başına KR × gece fiyatı), yön %50/%50, rejim `pickInvestmentRegime` (eşik → ters/görünür, eşik/2 altı → normal (v50; eskiden eşik/10), arada 24 saatlik ağırlıklı alış oranı > %75 → ters/gizli). `cryptoTrades` kaldırıldı. Kontrol: `node functions/scripts/check-investments.mjs`.
 
 ## v41
 - **Baba ayrılınca / atılınca:** yerine hemen kimse geçmez; koltuk 00:00'a kadar boş (`babaId: null`), herkes mevkiinde kalır. 00:00'da rütbeler düzenlenirken en yüksek prestijli üye Mafya Babası olur. Son üye çıkarsa çete dağılır.

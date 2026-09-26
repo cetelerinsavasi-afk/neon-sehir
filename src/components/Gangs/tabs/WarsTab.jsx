@@ -15,6 +15,7 @@ import { AmountInput, Bar, BetPair, Btn, Card, Confirm, Deadline, Empty, Logo, S
 import DiceRoller from '../DiceRoller';
 import { IntelDecisionPanel, VoteCard } from '../shared';
 import { GANG_RULES, INTEL_LEADERS, INTEL_LOGO, LEADERS, fmt, productOf } from '../gangConstants';
+import { TRADE_COUNTDOWN_WINDOW_MS, nextTradeSunday } from '../tradeSchedule';
 
 const GANG_RULES_HARAC_HOUR = 21; // v38: son dilim (21:00) başlayana kadar
 // v37: bahis tutarını sadece rütbeliler (Baba · Sağ Kol · Kıdemli) görür —
@@ -85,6 +86,60 @@ function PendingBetCard({ war, us, rank, children }) {
     </Card>
   );
 }
+// v50 — PAZAR SAVAŞI GERİ SAYIMI: savaştan 24 saat önce (Cumartesi 00:00)
+// görünür; saat/dakika/saniye + bu haftanın ticaret yolu. Savaş belgesi
+// sunucuda Pazar 00:00 turunda açılır; o ana kadar kısa "başlıyor" satırı.
+function splitHms(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return [Math.floor(s / 3600), Math.floor((s % 3600) / 60), s % 60];
+}
+function UpcomingTradeWar({ hasActiveTrade }) {
+  const { path } = useGang();
+  const now = useNow(1000);
+  const { data: world } = useDocData(path('').replace(/\/$/, ''));
+  const next = nextTradeSunday(now, world?.launchDateKey);
+  if (!next) return null;
+  const left = next.startsAtMs - now;
+  if (left > TRADE_COUNTDOWN_WINDOW_MS) return null;
+  if (left <= 0 && (hasActiveTrade || left < -30 * 60_000)) return null;
+  const p = next.product;
+  const [h, m, sec] = splitHms(left);
+  const pad = (n) => String(n).padStart(2, '0');
+  return (
+    <Card className={`gx-upcoming-war${left > 0 && left < 3600_000 ? ' hot' : ''}`}>
+      <div className="gx-upcoming-tag">⚔️ PAZAR TİCARET YOLU SAVAŞI</div>
+      <div className="gx-upcoming-route">
+        <span className="gx-upcoming-emoji" aria-hidden="true">
+          {p.emoji}
+        </span>
+        <span>
+          Bu haftanın yolu: <b>{p.label}</b>
+        </span>
+      </div>
+      {left > 0 ? (
+        <div className="gx-upcoming-cd" role="timer" aria-label={`Savaşın başlamasına ${h} saat ${m} dakika ${sec} saniye`}>
+          <span className="gx-upcoming-label">Başlamasına</span>
+          <span className="gx-upcoming-seg">
+            <b>{pad(h)}</b>
+            <small>saat</small>
+          </span>
+          <span className="gx-upcoming-seg">
+            <b>{pad(m)}</b>
+            <small>dakika</small>
+          </span>
+          <span className="gx-upcoming-seg">
+            <b>{pad(sec)}</b>
+            <small>saniye</small>
+          </span>
+        </div>
+      ) : (
+        <div className="gx-upcoming-cd done">⚔️ Savaş başlıyor…</div>
+      )}
+      <div className="gx-upcoming-foot dim">Pazar 00:00 – 24:00 · kazanan çete yolu {GANG_RULES.ROUTE_DAYS} gün alır</div>
+    </Card>
+  );
+}
+
 const sum = (o) => Object.values(o || {}).reduce((a, b) => a + Number(b || 0), 0);
 
 function sidesRanked(war) {
@@ -117,7 +172,7 @@ export function warTitle(w) {
 function warPurpose(w) {
   const p = productOf(w.product);
   if (w.type === 'trade')
-    return `🎯 Kazanan ${p.emoji} ${p.label} ticaret yolunu ${GANG_RULES.ROUTE_DAYS} gün alır; günlük sipariş limiti = kullandığı gücün %1'i. İstihbarat kazanırsa yol kimseye verilmez, kasasına gücün 1/10'u girer. Herkes saldırı gücünün yarısı kadar prestij kazanır.`;
+    return `🎯 Kazanan ${p.emoji} ${p.label} ticaret yolunu ${GANG_RULES.ROUTE_DAYS} gün alır; günlük sipariş limiti = savaşa katılan tüm tarafların (İstihbarat dahil) toplam gücünün %0,5'i. İstihbarat kazanırsa yol kimseye verilmez, kasasına toplam gücün %5'i girer. Herkes saldırı gücünün yarısı kadar prestij kazanır.`;
   if (w.type === 'bet') return '🎯 Kazanan tüm bahsi alır (iki çetenin bahsi toplamı).';
   if (w.type === 'sabotage') return '🎯 En güçlü saldırı savunmayı geçerse tırın yükü saldıranın deposuna gider. Tır her durumda sahibine döner.';
   if (w.type === 'intelop') return '🎯 Başarılı operasyonda yük imha edilir, İstihbarat anlık satış değerini ödül alır.';
@@ -806,6 +861,8 @@ export default function WarsTab({ org, d }) {
           </Btn>
         </div>
       )}
+
+      <UpcomingTradeWar hasActiveTrade={L.trade.length > 0} />
 
       {!hasWar && <Empty icon="🕊️" text="Şu an savaş yok." />}
 

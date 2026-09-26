@@ -50,7 +50,7 @@ export const GANG_RULES = {
   DISTRIBUTION_HOURS: 24,
   DIST_RANKED_SLOTS: 7,
   DIST_MIN_SLOTS: 7,
-  ORDER_LIMIT_RATIO: 0.01, // v39
+  ORDER_LIMIT_RATIO: 0.005, // v50: savaşa katılan tüm tarafların (İstihbarat dahil) toplam gücünün %0,5'i
   ROUTE_DAYS: 21,
   TRUCK_PRICE: 100_000,
   TRUCK_LIFE_DAYS: 21,

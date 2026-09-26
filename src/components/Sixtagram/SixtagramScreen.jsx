@@ -9,6 +9,8 @@ import { useSixtagramProfile } from '../../hooks/useSixtagramProfile';
 import { useSixtagramNotifications } from '../../hooks/useSixtagramNotifications';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import PostCard from './PostCard';
+import { useBlocks } from '../../contexts/BlocksContext';
+import { isHiddenForMe } from '../../lib/ugcVisibility';
 import ComposeModal from './ComposeModal';
 import NotificationsPanel from './NotificationsPanel';
 import CommentsPanel from './CommentsPanel';
@@ -36,7 +38,10 @@ export default function SixtagramScreen() {
   // dinleyici yerine bu "girişte yenile" deseni kullanılıyor).
   const [homeRefreshKey, setHomeRefreshKey] = useState(0);
 
-  const { posts: feedPosts, loading: feedLoading } = useSixtagramFeed(homeRefreshKey);
+  const { posts: allFeedPosts, loading: feedLoading } = useSixtagramFeed(homeRefreshKey);
+  const { isBlocked } = useBlocks();
+  // UGC D2: gizlenen ve engellenen oyuncuların gönderileri akışta görünmez
+  const feedPosts = allFeedPosts.filter((p) => !isHiddenForMe(p, p.uid, isBlocked));
   const { posts: myPosts, loading: myPostsLoading } = useMySixtagramPosts();
   const likedIds = useMySixtagramLikedPostIds();
   const { profile: myProfile } = useSixtagramProfile(user?.uid);

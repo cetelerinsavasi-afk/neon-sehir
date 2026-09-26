@@ -202,7 +202,7 @@ test('bahis: Baba+Sağ Kol; günde 1 teklif; küçük kasa sınırı; ret ve cev
   assert.equal(h.get(`wars/${fri.warId}`).dateKey, '2026-10-03');
 });
 
-test('Pazar ticaret yolu savaşı: yasaklı madde→silah→araba; kazanan yolu 21 gün alır, limit = gücün %1i (v39); kaybeden de prestij kazanır', async () => {
+test('Pazar ticaret yolu savaşı: yasaklı madde→silah→araba; kazanan yolu 21 gün alır, limit = tüm çetelerin toplam gücünün %0,5i (v50); kaybeden de prestij kazanır', async () => {
   const h = await createHarness({ dice: [5, 5, 1, 1] });
   const A = await setupGang(h, { members: 0, name: 'Alfa' });
   const B = await setupGang(h, { members: 0, name: 'Beta' });
@@ -220,7 +220,9 @@ test('Pazar ticaret yolu savaşı: yasaklı madde→silah→araba; kazanan yolu 
   const route = h.get('routes/yasakliMadde');
   assert.equal(route.holderId, A.gangId);
   assert.equal(route.powerUsed, 500_000);
-  assert.equal(route.dailyOrderLimit, 5_000, 'v39: kullanılan gücün %1i');
+  assert.equal(route.totalWarPower, 600_000);
+  assert.equal(route.dailyOrderLimit, 3_000, 'v50: (500k + 100k) × %0,5');
+  assert.equal(h.get(`wars/${warId}`).result.orderLimit, 3_000);
   assert.equal(route.untilDateKey, '2026-10-19', '21 gün');
   assert.deepEqual(h.get(`gangs/${A.gangId}`).routeProducts, ['yasakliMadde']);
   assert.equal(h.member(B.gangId, B.baba).prestige, pB, 'kaybeden katkı prestijini korur');
@@ -240,7 +242,28 @@ test('Pazar ticaret yolu savaşı: yasaklı madde→silah→araba; kazanan yolu 
   assert.deepEqual(h.get(`gangs/${A.gangId}`).routeProducts, []);
 });
 
-test('İstihbarat pazar savaşını kazanırsa yol kimseye verilmez, kasaya gücün 1/10u', async () => {
+test('v50: sipariş limiti = İstihbarat dahil tüm tarafların toplam gücünün %0,5i', async () => {
+  const h = await createHarness({ dice: [6, 6, 3, 3, 1, 1] });
+  const A = await setupGang(h, { members: 0, name: 'Alfa' });
+  const B = await setupGang(h, { members: 0, name: 'Beta' });
+  await h.setPersona(A.baba, { power: 100_000 });
+  await h.setPersona(B.baba, { power: 100_000 });
+  const spy = await h.persona({ displayName: 'Casus', gold: 10, power: 100_000, reputation: 50 });
+  await h.act(spy, 'joinIntel', { codeName: 'Baykuş' });
+  await h.tickTo('2026-09-27', '00:10');
+  const warId = 'trade_2026-09-27';
+  await h.act(A.baba, 'rollDice', { warId }); // 12 × 100k = 1.2M
+  await h.act(spy, 'rollDice', { warId, side: 'intel' }); // 6 × 100k = 600k
+  await h.act(B.baba, 'rollDice', { warId }); // 2 × 100k = 200k
+  await h.tickTo('2026-09-28', '00:05');
+  const route = h.get('routes/yasakliMadde');
+  assert.equal(route.holderId, A.gangId);
+  assert.equal(route.powerUsed, 1_200_000);
+  assert.equal(route.totalWarPower, 2_000_000, '1.2M + 600k (İstihbarat) + 200k');
+  assert.equal(route.dailyOrderLimit, 10_000);
+});
+
+test('İstihbarat pazar savaşını kazanırsa yol kimseye verilmez, kasaya toplam gücün %5i (v50)', async () => {
   const h = await createHarness({ dice: [6, 6, 1, 1] });
   const A = await setupGang(h, { members: 0, name: 'Alfa' });
   const spy = await h.persona({ displayName: 'Casus', gold: 10, power: 100_000, reputation: 50 });
@@ -253,7 +276,10 @@ test('İstihbarat pazar savaşını kazanırsa yol kimseye verilmez, kasaya güc
   const route = h.get('routes/yasakliMadde');
   assert.equal(route.holderType, null);
   assert.equal(route.lastWinner, 'intel');
-  assert.equal(h.get('intel/main/private/state').kasa, 120_000);
+  const res = h.get(`wars/${warId}`).result;
+  assert.ok(res.totalWarPower > 1_200_000, 'çetenin gücü de toplamda');
+  assert.equal(res.intelIncome, Math.floor(res.totalWarPower * 0.05));
+  assert.equal(h.get('intel/main/private/state').kasa, res.intelIncome, 'v50: toplam gücün %5i');
   assert.equal(h.get('intel/main').lastSundayPower, 1_200_000);
   assert.deepEqual(h.get(`gangs/${A.gangId}`).routeProducts, []);
 });

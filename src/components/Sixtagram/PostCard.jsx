@@ -4,6 +4,7 @@ import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import PostAttachment from './PostAttachment';
 import AuthorPanel from './AuthorPanel';
 import CommentsPanel from './CommentsPanel';
+import ReportBlockSheet, { MoreButton } from '../ReportBlockSheet/ReportBlockSheet';
 import { toggleSixtagramLike, deleteSixtagramPost } from '../../services/gameActions';
 import './PostCard.css';
 
@@ -27,6 +28,7 @@ export default function PostCard({ post, liked, isOwn }) {
   const [deleting, setDeleting] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [hidden, setHidden] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
 
   const effectiveLiked = optimisticLiked ?? liked;
   const effectiveCount = optimisticCount ?? post.likeCount ?? 0;
@@ -93,6 +95,7 @@ export default function PostCard({ post, liked, isOwn }) {
             {confirmingDelete && <span>Emin misin?</span>}
           </button>
         )}
+        {!isOwn && <MoreButton onClick={() => setReportOpen(true)} label="Şikâyet et / Engelle" />}
       </div>
 
       {post.text && <p className="six-post-text">{post.text}</p>}
@@ -120,6 +123,18 @@ export default function PostCard({ post, liked, isOwn }) {
           <span>{post.commentCount || 0}</span>
         </button>
       </div>
+
+      {reportOpen && (
+        <ReportBlockSheet
+          targetUid={post.uid}
+          targetName={post.authorName || 'Oyuncu'}
+          items={[
+            { label: 'Gönderiyi şikâyet et', targetType: 'sixtagramPost', targetPath: `sixtagramPosts/${post.id}`, preview: post.text },
+            { label: 'Oyuncuyu / adını şikâyet et', targetType: 'user', targetPath: `users/${post.uid}` },
+          ]}
+          onClose={() => setReportOpen(false)}
+        />
+      )}
 
       {panelOpen && (
         <AuthorPanel

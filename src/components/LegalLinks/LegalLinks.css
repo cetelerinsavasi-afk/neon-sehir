@@ -1,0 +1,18 @@
+.legal-consent,
+.legal-footer {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-dim, #8a93a8);
+}
+
+.legal-footer {
+  text-align: center;
+  padding: 14px 0 4px;
+}
+
+.legal-link {
+  color: var(--neon-cyan, #19e8ff);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

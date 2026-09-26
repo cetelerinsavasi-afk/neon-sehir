@@ -252,7 +252,7 @@ test('İstihbarat atma: Başkan → Ajan/Muhbir, Şef → Muhbir anında; oylama
   assert.equal(h.get(`intelRoster/${S1.rid}`).rank, 'baskan', 'boşalan yer 00:00da doldu');
 });
 
-test('şüpheyle yakalanma cezası → İstihbarat kasasına (canlı dünya, idempotent); canlı kapalıyken etkisiz', async () => {
+test('şüpheyle yakalanma cezasının yarısı → İstihbarat kasasına, yarısı yakılır (canlı dünya, idempotent); canlı kapalıyken etkisiz', async () => {
   const h = await createHarness();
   const closed = await h.system.onSuspicionFine('u1', 40_000, 'heist_a');
   assert.equal(closed.skipped, true);
@@ -261,7 +261,11 @@ test('şüpheyle yakalanma cezası → İstihbarat kasasına (canlı dünya, ide
   await h.system.onSuspicionFine('u1', 40_000, 'heist_a_u1');
   await h.system.onSuspicionFine('u1', 40_000, 'heist_a_u1'); // tekrar → yok sayılır
   await h.system.onSuspicionFine('u2', 10_000, 'contraband_b');
-  assert.equal(h.raw(`gangWorlds/${cfg.liveWorldId}/intel/main/private/state`).kasa, 50_000);
+  // v50: cezanın yarısı kasaya, yarısı yakılır → (40.000 + 10.000) / 2
+  assert.equal(h.raw(`gangWorlds/${cfg.liveWorldId}/intel/main/private/state`).kasa, 25_000);
+  const odd = await h.system.onSuspicionFine('u3', 3, 'odd_c'); // tek sayı: aşağı yuvarlanır, fark yakılır
+  assert.deepEqual(odd, { credited: 1, burned: 2 });
+  assert.equal(h.raw(`gangWorlds/${cfg.liveWorldId}/intel/main/private/state`).kasa, 25_001);
   assert.equal(h.get('intel/main/private/state').kasa || 0, 0, 'test dünyasına yazılmaz');
 });
 

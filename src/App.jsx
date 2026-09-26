@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { BlocksProvider } from './contexts/BlocksContext';
 import Hud from './components/Hud/Hud';
 import CityMap from './components/CityMap/CityMap';
 import BottomBar from './components/BottomBar/BottomBar';
@@ -30,6 +31,7 @@ import { useMyActiveRaceRoom } from './hooks/useMyActiveRaceRoom';
 import { useFirestoreResume } from './hooks/useFirestoreResume';
 import { migrateArabaGelistirmeUnification, migrateVehicleWeaponLifeCap, migrateVehicleWeaponLifeCap20, resetFutbolTransferMarket, migrateOnboardingPoliceRule } from './services/gameActions';
 import { regions } from './data/regions';
+import { IS_ANDROID_APP } from './lib/platform';
 import './styles/theme.css';
 import './App.css';
 
@@ -299,7 +301,9 @@ function GameShell() {
         reputation={player?.reputation ?? 0}
         gold={player?.gold ?? 0}
         onGoldClick={() => {
-          setPhoneInitialApp('altin-magazasi');
+          // Android (Google Play TWA): Altın Mağazası yerine telefondaki
+          // Parara Bank açılır (altın bakiyesi başlıkta görünür). Web aynı.
+          setPhoneInitialApp(IS_ANDROID_APP ? 'banka' : 'altin-magazasi');
           setPhoneOpen(true);
         }}
       />
@@ -461,7 +465,10 @@ function GameShell() {
 export default function App() {
   return (
     <AuthProvider>
-      <GameShell />
+      {/* UGC D2: engelleme listesi — tek dinleyici, tüm ekranlar buradan okur */}
+      <BlocksProvider>
+        <GameShell />
+      </BlocksProvider>
     </AuthProvider>
   );
 }

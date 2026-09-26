@@ -607,17 +607,23 @@ export function createIntelActions(core) {
   }
 
   // Şüpheyle yakalanma cezası → İstihbarat kasası (idempotent: refId)
+  // v50: cezanın yalnızca INTEL.SUSPICION_FINE_KASA_RATIO kadarı (yarısı)
+  // kasaya girer; kalanı yakılır — hiçbir yere yazılmaz, sadece iz için
+  // işaret kaydında (burned) tutulur. amount = oyuncuya yazılan TAM ceza.
   async function creditFineToIntel(ctx, amount, refId) {
+    const credited = Math.floor(amount * INTEL.SUSPICION_FINE_KASA_RATIO);
+    const burned = amount - credited;
     return core.db.runTransaction(async (tx) => {
       const markRef = ctx.ref.request(`fine_${String(refId).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100)}`);
       const [mark, st] = await Promise.all([tx.get(markRef), tx.get(ctx.ref.intelState())]);
       if (mark.exists) return { skipped: true };
-      if (!st.exists) tx.set(ctx.ref.intelState(), { ...intelStateDefaults(ctx), kasa: amount });
-      else tx.update(ctx.ref.intelState(), { kasa: FV.increment(amount) });
-      tx.set(markRef, { atMs: ctx.now, amount });
-      core.ledger(tx, ctx, { type: 'intel_fine_income', amount, from: { kind: 'system' }, to: { kind: 'intel', id: 'main' }, refId: String(refId).slice(0, 100), actorId: 'system' });
-      intelLog(tx, ctx, '🚓', `Şüpheyle yakalanan bir suçlunun cezası kasaya girdi: +${amount.toLocaleString('tr-TR')}`);
-      return { credited: amount };
+      tx.set(markRef, { atMs: ctx.now, amount, credited, burned });
+      if (!(credited > 0)) return { credited: 0, burned };
+      if (!st.exists) tx.set(ctx.ref.intelState(), { ...intelStateDefaults(ctx), kasa: credited });
+      else tx.update(ctx.ref.intelState(), { kasa: FV.increment(credited) });
+      core.ledger(tx, ctx, { type: 'intel_fine_income', amount: credited, from: { kind: 'system' }, to: { kind: 'intel', id: 'main' }, refId: String(refId).slice(0, 100), actorId: 'system' });
+      intelLog(tx, ctx, '🚓', `Şüpheyle yakalanan bir suçlunun cezasının yarısı kasaya girdi: +${credited.toLocaleString('tr-TR')}`);
+      return { credited, burned };
     });
   }
 

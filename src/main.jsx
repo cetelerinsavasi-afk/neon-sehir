@@ -1,3 +1,7 @@
+// Platform tespiti (Web / Android TWA) — diğer tüm modüllerden ÖNCE,
+// render'dan önce bir kez çalışsın diye en üstte. Sadece okur, UI'a
+// dokunmaz (bkz. src/lib/platform.js).
+import './lib/platform.js'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'

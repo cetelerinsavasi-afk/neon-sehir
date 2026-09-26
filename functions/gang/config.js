@@ -67,7 +67,12 @@ export const GANG = {
   ATTACK_PHASE_1_START_HOUR: 12, // sabotaj/operasyon 12:00–24:00 = 4 dilim (v38)
 
   // --- Ticaret yolu (ONAYLI) ---
-  TRADE_ORDER_LIMIT_RATIO: 0.01, // v39: günlük sipariş limiti = kazanırken kullanılan gücün %1'i (eskiden %5)
+  // v50: günlük sipariş limiti = o pazar savaşına katılan TÜM tarafların
+  // (çeteler + İstihbarat) toplam gücünün %0,5'i. Yolu kazanan çete alır.
+  TRADE_ORDER_LIMIT_TOTAL_RATIO: 0.005,
+  // v39 (ESKİ): kazanan çetenin kendi gücünün %1'i. Artık yalnızca tek seferlik
+  // v39 geçişinde (ensureRouteLimitV39) kullanılır; yeni savaşları etkilemez.
+  TRADE_ORDER_LIMIT_RATIO: 0.01,
   TRADE_ROUTE_BUY_RATIO: 0.5, // mağaza (yasaklı madde: Amazor) fiyatının yarısı
   ROUTE_HOLD_DAYS: 21, // kazanan yolu 21 gün elinde tutar
   ORDER_WEEKDAYS: [1, 2, 3, 4, 5], // sipariş sadece Pzt–Cum
@@ -116,7 +121,12 @@ export const INTEL = {
   BET_OP_PRICE: 100_000,
   TAKEDOWN_PRESTIGE: 10_000_000, // ONAYLI: çete çökertme
   POLICE_REWARD_PRESTIGE_PER_GOLD: 1, // ONAYLI: yakalama ödülü = prestij (1:1)
-  WAR_WIN_KASA_RATIO: 1 / 10, // ONAYLI: pazar savaşı kazanırsa kullanılan gücün 1/10'u
+  // v50: pazar savaşını kazanırsa kasaya, savaşa katılan TÜM tarafların
+  // (çeteler + İstihbarat) toplam gücünün %5'i girer (eskiden kendi gücünün 1/10'u).
+  WAR_WIN_KASA_TOTAL_RATIO: 0.05,
+  // v50: şüpheyle yakalanma cezasının (soygun / yasaklı madde) SADECE yarısı
+  // kasaya girer; kalan yarısı yakılır (ekonomiden çıkar). Oyuncunun borcu değişmez.
+  SUSPICION_FINE_KASA_RATIO: 1 / 2,
   KICK_BASKAN_MIN_RATIO_EXCLUSIVE: 0.66, // Başkan'ı atmak: > %66
   KICK_MIN_RATIO: 0.51, // diğerleri: >= %51
   NAME: 'İstihbarat',

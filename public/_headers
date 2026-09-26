@@ -1,0 +1,16 @@
+# Cloudflare Workers Static Assets — özel yanıt başlıkları.
+# Bu dosyanın kendisi yayınlanmaz (Cloudflare onu kural dosyası olarak okur).
+#
+# Android TWA doğrulaması (Digital Asset Links): Google bu dosyayı
+# 200 OK + application/json olarak, yönlendirmesiz okumalı. Dosya mevcut
+# olduğu sürece Cloudflare onu doğrudan sunar; SPA fallback (index.html)
+# yalnızca dosya YOKSA devreye girer. Kontrol:
+#   node scripts/check-assetlinks.mjs https://<alan-adı>
+#
+# Content-Type BİLEREK burada verilmiyor: Cloudflare .json uzantısından
+# zaten "application/json" döndürüyor. Buraya yazılırsa, dosya deploy
+# edilmediğinde SPA fallback'in döndürdüğü index.html de application/json
+# başlığıyla gelir ve hata başlıklardan fark edilemez hale gelir.
+/.well-known/assetlinks.json
+  Access-Control-Allow-Origin: *
+  Cache-Control: public, max-age=300

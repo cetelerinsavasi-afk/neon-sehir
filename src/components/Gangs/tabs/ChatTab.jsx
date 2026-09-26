@@ -12,6 +12,8 @@ import { markGangChatSeen, useGangAlertsCtx } from '../alerts';
 import { Btn, Chips, Logo } from '../ui';
 import { GANG_RULES, RANK_ICONS, atLeast } from '../gangConstants';
 import AvatarSvg from '../../AvatarSvg/AvatarSvg';
+import ReportBlockSheet, { MoreButton } from '../../ReportBlockSheet/ReportBlockSheet';
+import { useBlocks } from '../../../contexts/BlocksContext';
 
 export default function ChatTab({ org, d }) {
   const { path, actorId, worldId } = useGang();
@@ -21,6 +23,11 @@ export default function ChatTab({ org, d }) {
   const [channel, setChannel] = useState('genel');
   const [text, setText] = useState('');
   const listRef = useRef(null);
+  // UGC D2: engellenen oyuncunun mesajı soluk/daraltılmış satır olarak görünür
+  // (çete içi taktik akışı kopmasın diye tamamen silinmez); dokununca bir kez açılır.
+  const { isBlocked } = useBlocks();
+  const [revealed, setRevealed] = useState(() => new Set());
+  const [reportTarget, setReportTarget] = useState(null);
   const coll = isIntel ? path(`intelChat_${channel}`) : channel === 'tum' ? path('globalChat') : path(`gangs/${d.gangId}/chat_${channel}`);
   const since = Number((isIntel ? d.membership.intelJoinedAtMs : d.membership.gangJoinedAtMs) || 0);
   const { docs } = useQueryData(coll, () => [where('createdAtMs', '>=', since), orderBy('createdAtMs', 'desc'), limit(60)], `${coll}_${since}`);
@@ -67,6 +74,28 @@ export default function ChatTab({ org, d }) {
           }
           const mine = isIntel ? m.rosterId === d.rid : m.authorId === actorId;
           const rank = isIntel ? m.rank : m.authorRank;
+          // Şikâyetlerle otomatik gizlenen mesaj (İstihbarat dahil)
+          if (m.hidden && !mine) {
+            return (
+              <div key={m.id} className="gx-chat-system gx-msg-muted">
+                {m.hiddenBy === 'moderator' ? '🛡️ Bu mesaj moderasyon ekibi tarafından kaldırıldı.' : '🚩 Bu mesaj şikâyetler nedeniyle incelemeye alındı.'}
+              </div>
+            );
+          }
+          // Engellenen oyuncu (İstihbarat anonim olduğu için orada uygulanmaz)
+          if (!isIntel && !mine && isBlocked(m.authorId) && !revealed.has(m.id)) {
+            return (
+              <button
+                key={m.id}
+                type="button"
+                className="gx-chat-system gx-msg-muted gx-msg-blocked"
+                onClick={() => setRevealed((prev) => new Set(prev).add(m.id))}
+                title="Göstermek için dokun"
+              >
+                🚫 Engellediğin oyuncudan mesaj · göster
+              </button>
+            );
+          }
           return (
             <div key={m.id} className={`gx-msg-wrap${mine ? ' mine' : ''}`}>
               {!mine && (
@@ -86,12 +115,32 @@ export default function ChatTab({ org, d }) {
                   </span>
                 )}
                 <span className="gx-msg-text">{m.text}</span>
-                <span className="gx-msg-time">{fmtClock(m.createdAtMs)}</span>
+                <span className="gx-msg-time">
+                  {fmtClock(m.createdAtMs)}
+                  {!mine && <MoreButton className="gx-msg-more" onClick={() => setReportTarget(m)} label={isIntel ? 'Şikâyet et' : 'Şikâyet et / Engelle'} />}
+                </span>
               </div>
             </div>
           );
         })}
       </div>
+      {reportTarget && (
+        <ReportBlockSheet
+          targetUid={isIntel ? null : reportTarget.authorId}
+          targetName={isIntel ? reportTarget.codeName || 'Ajan' : reportTarget.authorName || 'Oyuncu'}
+          canBlock={!isIntel}
+          items={[
+            {
+              label: 'Mesajı şikâyet et',
+              targetType: isIntel ? 'intelChat' : channel === 'tum' ? 'gangGlobalChat' : 'gangChat',
+              targetPath: `${coll}/${reportTarget.id}`,
+              preview: reportTarget.text,
+            },
+            ...(isIntel ? [] : [{ label: 'Oyuncuyu / adını şikâyet et', targetType: 'user', targetPath: `users/${reportTarget.authorId}` }]),
+          ]}
+          onClose={() => setReportTarget(null)}
+        />
+      )}
       {canWrite ? (
         <div className="gx-chat-input">
           <input className="gx-input" value={text} maxLength={GANG_RULES.CHAT_MAX} placeholder="Mesaj yaz…" onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && send()} />

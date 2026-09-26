@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { usePwaInstall } from '../../hooks/usePwaInstall';
+import { IS_ANDROID_APP } from '../../lib/platform';
 import './InstallAppButton.css';
 
 export default function InstallAppButton() {
@@ -7,7 +8,10 @@ export default function InstallAppButton() {
   const [showIosGuide, setShowIosGuide] = useState(false);
   const [preparing, setPreparing] = useState(false);
 
-  if (installed) return null;
+  // Android (Google Play TWA) zaten kurulu bir uygulama — "Ana Ekrana
+  // Ekle" daveti gösterilmez. Hook'lar yukarıda her durumda çağrıldığı
+  // için hook sırası değişmez. Web'de davranış aynı.
+  if (installed || IS_ANDROID_APP) return null;
 
   const handleClick = async () => {
     if (canPromptNatively) {

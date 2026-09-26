@@ -1,0 +1,32 @@
+.blocked-ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.blocked-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+}
+.blocked-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.blocked-unblock {
+  flex: none;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+.blocked-unblock:disabled {
+  opacity: 0.5;
+}

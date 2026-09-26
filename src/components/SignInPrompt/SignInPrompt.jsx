@@ -1,4 +1,5 @@
 import { useAuth } from '../../contexts/AuthContext';
+import LegalLinks from '../LegalLinks/LegalLinks';
 import './SignInPrompt.css';
 
 /**
@@ -16,6 +17,7 @@ export default function SignInPrompt({ message = 'Bunu yapmak için giriş yapma
       <button className="sign-in-prompt-button" onClick={signIn}>
         Google ile Giriş Yap
       </button>
+      <LegalLinks variant="consent" />
       {initError && <p className="sign-in-prompt-error">{initError}</p>}
     </div>
   );

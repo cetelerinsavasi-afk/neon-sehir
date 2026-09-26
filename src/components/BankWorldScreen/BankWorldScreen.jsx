@@ -15,6 +15,7 @@ import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import { createSixtagramPost, enterInterior, captureCameraSnapshot } from '../../services/gameActions';
 import '../../styles/worldScreenChrome.css';
 import './BankWorldScreen.css';
+import NearbyPlayersButton from '../NearbyPlayers/NearbyPlayersButton';
 
 // --- Banka içi (madde 2-4) -------------------------------------------------
 // Park'takiyle aynı "sabit mekan, karakter yürüyor" mantığı — ama TEK
@@ -879,6 +880,7 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
             <button className="ws-chatsapp-btn" onClick={() => { setPhoneInitialApp('chatsapp'); setPhoneOpen(true); }} title="ChatsApp">💬</button>
             <button className="ws-phone-btn" onClick={() => { setPhoneInitialApp(null); setPhoneOpen(true); }} title="Telefon">📱</button>
             <button className="ws-camera-btn" onClick={() => (user ? openCamera() : setShowGuestPrompt(true))} title="Fotoğraf çek">📷</button>
+            <NearbyPlayersButton others={others} collectionName="interiorPresence" variant="ws" />
           </>
         )}
         {myNumber != null && (

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#070a12" />
+<meta name="robots" content="index, follow" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<title>Hesap ve Veri Silme — Neon Şehir</title>
+<style>
+  :root { --bg:#070a12; --panel:#0e1320; --border:#1f2a40; --text:#e8edf6; --dim:#9aa3b8; --cyan:#19e8ff; --pink:#ff2e8c; --yellow:#ffd23f; }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.65 'Segoe UI', Roboto, system-ui, -apple-system, sans-serif; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+  .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  .brand { color: var(--cyan); font-weight: 700; letter-spacing: .5px; text-decoration: none; }
+  .nav a { color: var(--dim); text-decoration: none; font-size: 14px; margin-left: 14px; }
+  .nav a:first-child { margin-left: 0; }
+  .nav a[aria-current="page"] { color: var(--text); }
+  h1 { font-size: 28px; line-height: 1.25; margin: 0 0 6px; }
+  .meta { color: var(--dim); font-size: 14px; margin: 0 0 24px; }
+  h2 { font-size: 20px; margin: 36px 0 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+  h3 { font-size: 16px; margin: 22px 0 6px; color: var(--cyan); }
+  p, li { color: var(--text); }
+  ul { padding-left: 22px; }
+  li { margin: 4px 0; }
+  a { color: var(--cyan); }
+  strong { color: #fff; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin: 14px 0; }
+  .warn { border-left: 3px solid var(--yellow); }
+  .table { width: 100%; overflow-x: auto; margin: 12px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 520px; }
+  th, td { text-align: left; vertical-align: top; padding: 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--dim); font-weight: 600; }
+  .foot { margin-top: 48px; color: var(--dim); font-size: 14px; }
+  .btn { display: inline-block; margin: 6px 0 2px; padding: 12px 18px; border-radius: 8px; background: var(--pink); color: #fff; font-weight: 700; text-decoration: none; }
+  .btn:hover { filter: brightness(1.1); }
+  ol { padding-left: 22px; }
+  code { background: #05070c; border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-size: 14px; }
+  @media (max-width: 480px) { h1 { font-size: 24px; } body { font-size: 15px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="/">NEON ŞEHİR</a>
+    <nav class="nav">
+      <a href="/gizlilik">Gizlilik</a>
+      <a href="/kosullar">Kullanım Koşulları</a>
+      <a href="/hesap-silme" aria-current="page">Hesap Silme</a>
+    </nav>
+  </header>
+
+  <main>
+    <h1>Hesap ve Veri Silme</h1>
+    <p class="meta">Neon Şehir · Geliştirici iletişim: cetelerinsavasi@gmail.com</p>
+
+    <p>Bu sayfa, <strong>Neon Şehir</strong> oyunundaki (web ve Google Play Android uygulaması) hesabının ve hesabınla ilişkili verilerin silinmesini nasıl talep edeceğini açıklar. Uygulamanın yüklü olması gerekmez.</p>
+
+    <div class="card warn">
+      <strong>Hesap silme geri alınamaz.</strong> Altının, eşyaların, araçların, silahların ve tüm oyun ilerlemen kalıcı olarak silinir; daha sonra geri yüklenemez.
+    </div>
+
+    <h2>Nasıl talep ederim?</h2>
+    <h3>1. Oyun içinden</h3>
+    <p>Oyunda <strong>Profil (Ev)</strong> ekranını aç, en alttaki <strong>Hesap</strong> bölümünde <strong>"Hesabımı Sil"</strong>e dokun. Oyun, hesap bilgilerinin hazır yazıldığı bir e-posta oluşturur; göndermen yeterli.</p>
+
+    <h3>2. E-posta ile</h3>
+    <p><strong>Oyuna giriş yaptığın Google hesabının e-posta adresinden</strong> aşağıdaki adrese "Hesap silme talebi" konulu bir e-posta gönder. E-postaya oyun içi adını yazman işlemi hızlandırır.</p>
+    <p><a class="btn" href="mailto:cetelerinsavasi@gmail.com?subject=Hesap%20silme%20talebi&amp;body=Merhaba%2C%0A%0ANeon%20%C5%9Eehir%20hesab%C4%B1m%C4%B1n%20ve%20ili%C5%9Fkili%20verilerimin%20silinmesini%20talep%20ediyorum.%0A%0AOyun%20i%C3%A7i%20ad%C4%B1m%3A%20%0A%0ABu%20e-postay%C4%B1%20oyuna%20giri%C5%9F%20yapt%C4%B1%C4%9F%C4%B1m%20Google%20hesab%C4%B1m%C4%B1n%20e-posta%20adresinden%20g%C3%B6nderiyorum.%0A">Silme talebi e-postası oluştur</a></p>
+    <p>E-posta uygulaman açılmazsa: <strong>cetelerinsavasi@gmail.com</strong></p>
+
+    <div class="card">
+      <strong>Neden Google e-postan?</strong> Başkasının hesabını silmeye çalışmasını önlemek için talepleri yalnızca <strong>o hesaba bağlı Google e-posta adresinden</strong> gelirse işleme alırız. Başka bir adresten yazarsan, doğrulama için oyuna giriş yaptığın adresten tekrar yazmanı isteriz.
+    </div>
+
+    <h2>Süreç ve süre</h2>
+    <ol>
+      <li>Talebin bize ulaşır, e-posta adresinin hesapla eşleştiğini kontrol ederiz.</li>
+      <li>Hesabın ve verilerin en geç <strong>30 gün</strong> içinde silinir. Sonucunu e-postayla bildiririz.</li>
+      <li>İşlem tamamlanana kadar fikrini değiştirirsen aynı e-postaya yanıt vererek talebini geri alabilirsin.</li>
+    </ol>
+
+    <h2>Neler silinir?</h2>
+    <ul>
+      <li>Giriş bilgilerin (Google hesabı adı ve e-posta adresi) ve oyun hesabın.</li>
+      <li>Oyun içi adın, avatarın, altın ve banka bakiyen, envanterin, araçların, silahların, makinelerin, oyun ilerlemen ve SMS kutun.</li>
+      <li>Genel sohbet ve çete sohbeti mesajların, Sixtagram gönderilerin, yorumların ve beğenilerin, "Bi fikrin mi var?" önerilerin.</li>
+      <li>Devlete ve bankaya olan oyun içi borçların ve cezaların.</li>
+    </ul>
+
+    <h2>Neler saklanır veya anonimleştirilir?</h2>
+    <ul>
+      <li><strong>Geçmiş oyun kayıtları</strong> (örneğin maç sonuçları, haberler, çete geçmişi): diğer oyuncuların oyununu bozmamak için kayıt kalır, ancak adın ve avatarın <strong>"Silinmiş Oyuncu"</strong> olarak değiştirilir.</li>
+      <li><strong>Satın alma kayıtları:</strong> ilgili mevzuatta öngörülen süreler boyunca saklanır.</li>
+      <li><strong>Sunucu kayıtları:</strong> altyapı sağlayıcılarının saklama süreleri boyunca tutulur.</li>
+    </ul>
+
+    <h2>Diğer oyuncularla bağların</h2>
+    <p>Bir fabrikan, futbol takımın veya çetede bir görevin varsa, diğer oyuncular zarar görmeyecek şekilde ele alınır: fabrikadaki işçiler serbest kalır, fabrika kapatılır ya da sahipsiz kalır; futbol takımın sahipsiz sistem takımı olarak devam eder; çetedeki görevin oyunun çete kurallarına göre devredilir. Açık ilanların ve katıldığın masalar/odalar kapatılır.</p>
+
+    <p>Ayrıntılar için <a href="/gizlilik">Gizlilik Politikası</a>'na bakabilirsin.</p>
+  </main>
+
+  <footer class="foot">
+    <a href="/gizlilik">Gizlilik Politikası</a> · <a href="/kosullar">Kullanım Koşulları</a> · <a href="/">Neon Şehir'e dön</a>
+  </footer>
+</div>
+</body>
+</html>

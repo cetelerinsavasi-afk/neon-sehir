@@ -60,3 +60,15 @@
   font-weight: 700;
   color: var(--neon-pink);
 }
+
+/* UGC D2 */
+.author-panel-report {
+  margin-top: 10px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border, #1f2a40);
+  background: transparent;
+  color: var(--text-dim, #8a93a8);
+  font-size: 12px;
+  cursor: pointer;
+}

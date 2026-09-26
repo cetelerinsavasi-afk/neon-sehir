@@ -5,21 +5,25 @@ import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 const src = readFileSync(new URL('../index.js', import.meta.url), 'utf8');
 const code = src.slice(src.indexOf("const INVESTMENT_ASSETS = ['diamond', 'stock', 'crypto'];"), src.indexOf('async function loadInvestmentTradesLast24h'));
-const { INVESTMENT_REGIME_THRESHOLD, pickInvestmentRegime, investmentTradeWeight, computeInvestmentBuyRatios } = new Function(code + '\nreturn { INVESTMENT_REGIME_THRESHOLD, pickInvestmentRegime, investmentTradeWeight, computeInvestmentBuyRatios };')();
+const { INVESTMENT_REGIME_THRESHOLD, INVESTMENT_REGIME_FLOOR_RATIO, pickInvestmentRegime, investmentTradeWeight, computeInvestmentBuyRatios } = new Function(code + '\nreturn { INVESTMENT_REGIME_THRESHOLD, INVESTMENT_REGIME_FLOOR_RATIO, pickInvestmentRegime, investmentTradeWeight, computeInvestmentBuyRatios };')();
+assert.equal(INVESTMENT_REGIME_FLOOR_RATIO, 0.5);
 const H = 3600_000, now = Date.now();
 // D) rejim seçimi
 for (const [asset, th] of Object.entries(INVESTMENT_REGIME_THRESHOLD)) {
   // taban altı: oran ne olursa olsun normal
-  for (const r of [null, 0, 0.5, 0.76, 1]) assert.equal(pickInvestmentRegime(th / 10 - 1, th, r).reversed, false, `${asset} taban`);
+  for (const r of [null, 0, 0.5, 0.76, 1]) assert.equal(pickInvestmentRegime(th * INVESTMENT_REGIME_FLOOR_RATIO - 1, th, r).reversed, false, `${asset} taban`);
+  // v50: eski taban (eşik/10) ile yeni taban (eşik/2) arası artık koşulsuz normal
+  assert.equal(pickInvestmentRegime(th / 10, th, 0.9).reversed, false, `${asset} eski taban bölgesi → normal`);
+  assert.equal(pickInvestmentRegime(th * 0.49, th, 0.9).reason, 'floor');
   // eşik ve üstü: hep ters, gösterilir
   for (const r of [null, 0, 0.9]) { const x = pickInvestmentRegime(th, th, r); assert.equal(x.reversed, true); assert.equal(x.shownReversed, true); }
   // arada
-  const mid = th / 2;
+  const mid = th * 0.75;
   assert.equal(pickInvestmentRegime(mid, th, null).reversed, false, 'sinyal yok → normal');
   assert.equal(pickInvestmentRegime(mid, th, 0.75).reversed, false, '0.75 → normal');
   const hid = pickInvestmentRegime(mid, th, 0.7501);
   assert.equal(hid.reversed, true); assert.equal(hid.shownReversed, false, 'gizli ters');
-  assert.equal(pickInvestmentRegime(th / 10, th, 0.9).reversed, true, 'tam eşik/10 → aradadır');
+  assert.equal(pickInvestmentRegime(th / 2, th, 0.9).reversed, true, 'tam eşik/2 → aradadır');
 }
 // ağırlık kovaları (üst sınır dahil)
 assert.equal(investmentTradeWeight(0), 4); assert.equal(investmentTradeWeight(3 * H), 4); assert.equal(investmentTradeWeight(3 * H + 1), 3);

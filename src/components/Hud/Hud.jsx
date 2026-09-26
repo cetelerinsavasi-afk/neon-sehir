@@ -1,6 +1,11 @@
 import InfoIcon from '../InfoIcon/InfoIcon';
 import { useAuth } from '../../contexts/AuthContext';
+import { IS_ANDROID_APP } from '../../lib/platform';
 import './Hud.css';
+
+// Android (TWA) içinde altın butonu mağazayı değil Parara Bank'ı açar
+// (bkz. App.jsx onGoldClick) — ipucu metni de ona göre. Web'de metin aynı.
+const GOLD_BUTTON_TITLE = IS_ANDROID_APP ? 'Altın bakiyen' : "Altın Mağazası'nı aç";
 
 /**
  * Hud — Bölüm 3'teki üst bar. Faz 1'de mock veriyle çalışır,
@@ -53,7 +58,7 @@ export default function Hud({ suspicion = 0, reputation = 0, gold = 0, onGoldCli
         type="button"
         className="hud-gold hud-gold-btn"
         onClick={onGoldClick}
-        title="Altın Mağazası'nı aç"
+        title={GOLD_BUTTON_TITLE}
       >
         <span className="hud-gold-icon">●</span>
         <span>{gold.toLocaleString('tr-TR')}</span>

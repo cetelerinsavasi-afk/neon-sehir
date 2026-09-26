@@ -4,6 +4,9 @@ import { useGlobalChat } from '../../hooks/useGlobalChat';
 import { sendChatMessage } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
+import ReportBlockSheet, { MoreButton } from '../ReportBlockSheet/ReportBlockSheet';
+import { useBlocks } from '../../contexts/BlocksContext';
+import { isHiddenForMe } from '../../lib/ugcVisibility';
 import './ChatsAppScreen.css';
 
 function formatTime(ts) {
@@ -13,7 +16,11 @@ function formatTime(ts) {
 
 export default function ChatsAppScreen() {
   const { user } = useAuth();
-  const { messages } = useGlobalChat();
+  const { messages: allMessages } = useGlobalChat();
+  const { isBlocked } = useBlocks();
+  // UGC D2: gizlenen (şikâyetle) ve engellenen oyuncuların mesajları gösterilmez
+  const messages = allMessages.filter((m) => !isHiddenForMe(m, m.uid, isBlocked));
+  const [reportTarget, setReportTarget] = useState(null);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -53,7 +60,10 @@ export default function ChatsAppScreen() {
               </div>
             )}
             <div className={`chatsapp-bubble${m.uid === user.uid ? ' mine' : ''}`}>
-              <span className="chatsapp-sender">{m.displayName}</span>
+              <span className="chatsapp-sender">
+                {m.displayName}
+                {m.uid !== user.uid && <MoreButton className="chatsapp-more" onClick={() => setReportTarget(m)} label="Şikâyet et / Engelle" />}
+              </span>
               <span className="chatsapp-text">{m.text}</span>
               <span className="chatsapp-time">{formatTime(m.createdAt)}</span>
             </div>
@@ -76,6 +86,17 @@ export default function ChatsAppScreen() {
         </button>
       </div>
       {error && <p className="chatsapp-error">{error}</p>}
+      {reportTarget && (
+        <ReportBlockSheet
+          targetUid={reportTarget.uid}
+          targetName={reportTarget.displayName || 'Oyuncu'}
+          items={[
+            { label: 'Mesajı şikâyet et', targetType: 'globalChat', targetPath: `globalChat/${reportTarget.id}`, preview: reportTarget.text },
+            { label: 'Oyuncuyu / adını şikâyet et', targetType: 'user', targetPath: `users/${reportTarget.uid}` },
+          ]}
+          onClose={() => setReportTarget(null)}
+        />
+      )}
     </div>
   );
 }

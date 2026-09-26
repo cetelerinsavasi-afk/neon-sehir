@@ -1,0 +1,116 @@
+/* Sağdaki düğme sütunu: kamera (alt) · telefon 78px · ChatsApp 140px · 👥 202px */
+.nearby-btn {
+  position: absolute;
+  bottom: 202px;
+  right: 16px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  font-size: 22px;
+  cursor: pointer;
+  z-index: 5;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+.nearby-btn-ws {
+  border: 1px solid #d4af37;
+  background: rgba(20, 20, 20, 0.85);
+  color: #e8c766;
+}
+.nearby-btn-pw {
+  border: 1px solid rgba(25, 232, 255, 0.6);
+  background: rgba(7, 10, 18, 0.85);
+  color: #e8edf6;
+}
+.nearby-count {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: #19e8ff;
+  color: #04121a;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 18px;
+  box-sizing: border-box;
+}
+.nearby-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 190;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.nearby-sheet {
+  width: 100%;
+  max-width: 460px;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: #070a12;
+  border: 1px solid #1f2a40;
+  border-bottom: none;
+  border-radius: 16px 16px 0 0;
+  padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  color: #e8edf6;
+  font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
+}
+.nearby-title {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 800;
+}
+.nearby-empty {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #8a93a8;
+}
+.nearby-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.nearby-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 10px;
+  background: #0e1320;
+  border: 1px solid #1f2a40;
+}
+.nearby-avatar {
+  flex: none;
+}
+.nearby-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+}
+.nearby-text {
+  color: #8a93a8;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nearby-text.dim {
+  font-style: italic;
+}
+.nearby-close {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid #1f2a40;
+  background: transparent;
+  color: #8a93a8;
+  font-size: 14px;
+  cursor: pointer;
+}

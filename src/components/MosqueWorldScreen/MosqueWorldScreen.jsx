@@ -22,6 +22,7 @@ import PhoneScreen from '../Phone/PhoneScreen';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import '../../styles/worldScreenChrome.css';
 import './MosqueWorldScreen.css';
+import NearbyPlayersButton from '../NearbyPlayers/NearbyPlayersButton';
 
 // --- Camii içi (madde 5 revizyonu + madde 17 canlı/çok oyunculu) ----------
 // Kullanıcının başka bir Claude oturumuna hazırlattığı referans örneğe göre
@@ -982,6 +983,7 @@ export default function MosqueWorldScreen({ onExit }) {
             <button className="ws-chatsapp-btn" onClick={() => { setPhoneInitialApp('chatsapp'); setPhoneOpen(true); }} title="ChatsApp">💬</button>
             <button className="ws-phone-btn" onClick={() => { setPhoneInitialApp(null); setPhoneOpen(true); }} title="Telefon">📱</button>
             <button className="ws-camera-btn" onClick={() => (user ? openCamera() : setShowGuestPrompt(true))} title="Fotoğraf çek">📷</button>
+            <NearbyPlayersButton others={others} collectionName="interiorPresence" variant="ws" />
           </>
         )}
         {/* mww-pray-btn — yeni istek: imam makamının üstünde yüzen "İbadet

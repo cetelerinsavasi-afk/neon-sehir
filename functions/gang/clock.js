@@ -338,6 +338,11 @@ export function createClock(core, actions) {
       const intelState = winnerKey === 'intel' ? await tx.get(ctx.ref.intelState()) : null;
       const prevGang = prev?.holderType === 'gang' ? (await tx.get(ctx.ref.gang(prev.holderId))).data() : null;
       const power = winnerKey ? totals[winnerKey] : 0;
+      // v50: savaşa katılan TÜM tarafların (çeteler + İstihbarat) toplam gücü.
+      // Kazanan çetenin sipariş kapasitesi bunun %0,5'i; İstihbarat kazanırsa
+      // kasasına bunun %5'i girer.
+      const totalWarPower = Object.values(totals).reduce((acc, p) => acc + (Number(p) > 0 ? Number(p) : 0), 0);
+      const orderLimit = Math.floor(totalWarPower * GANG.TRADE_ORDER_LIMIT_TOTAL_RATIO);
 
       if (prev?.holderType === 'gang' && prevGang && (!winnerGang || prev.holderId !== winnerGang.id)) {
         tx.update(ctx.ref.gang(prev.holderId), { routeProducts: FV.arrayRemove(war.product) });
@@ -353,24 +358,25 @@ export function createClock(core, actions) {
           sinceDateKey: addDays(dayKey, 1),
           untilDateKey: addDays(dayKey, 1 + GANG.ROUTE_HOLD_DAYS),
           powerUsed: power,
-          dailyOrderLimit: Math.floor(power * GANG.TRADE_ORDER_LIMIT_RATIO),
+          totalWarPower,
+          dailyOrderLimit: orderLimit,
           warId,
         });
         tx.update(ctx.ref.gang(winnerGang.id), { routeProducts: FV.arrayUnion(war.product) });
-        gangLog(tx, ctx, winnerGang.id, '🛣️', `${war.productLabel} ticaret yolu sizin! Günlük sipariş limiti: ${Math.floor(power * GANG.TRADE_ORDER_LIMIT_RATIO).toLocaleString('tr-TR')}`);
+        gangLog(tx, ctx, winnerGang.id, '🛣️', `${war.productLabel} ticaret yolu sizin! Günlük sipariş limiti: ${orderLimit.toLocaleString('tr-TR')}`);
       } else {
         tx.set(routeRef, { product: war.product, holderType: null, holderId: null, holderName: null, holderLogo: null, sinceDateKey: addDays(dayKey, 1), untilDateKey: null, powerUsed: 0, dailyOrderLimit: 0, warId, lastWinner: winnerKey === 'intel' ? 'intel' : null });
       }
       let intelIncome = 0;
       if (winnerKey === 'intel') {
-        intelIncome = Math.floor(power * INTEL.WAR_WIN_KASA_RATIO);
+        intelIncome = Math.floor(totalWarPower * INTEL.WAR_WIN_KASA_TOTAL_RATIO);
         if (intelState?.exists && intelIncome > 0) {
           tx.update(ctx.ref.intelState(), { kasa: FV.increment(intelIncome) });
           ledger(tx, ctx, { type: 'intel_trade_war_win', amount: intelIncome, from: { kind: 'system' }, to: { kind: 'intel', id: 'main' }, refId: warId, actorId: 'system' });
         }
         intelLog(tx, ctx, '🏆', `Pazar savaşını İstihbarat kazandı! Yol kimseye verilmedi, kasaya +${intelIncome.toLocaleString('tr-TR')}.`);
       }
-      tx.update(ctx.ref.war(warId), { status: 'resolved', resolvedAtMs: ctx.now, display: totals, result: { winnerKey, power, intelIncome } });
+      tx.update(ctx.ref.war(warId), { status: 'resolved', resolvedAtMs: ctx.now, display: totals, result: { winnerKey, power, intelIncome, totalWarPower, orderLimit: winnerGang ? orderLimit : 0 } });
       ctx.logs.push({ gang: 'trade_war_resolved', world: ctx.worldId, warId, winnerKey, power });
       return { winnerKey, totals };
     });

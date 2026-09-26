@@ -267,6 +267,8 @@ export function createGangSystem(deps) {
     const rosterAction = ROSTER_ACTIONS.has(data.action);
     const msBefore = rosterAction ? (await db.doc(`gangWorlds/${worldId}/memberships/${actorId}`).get()).data() || {} : null;
     try {
+      // UGC D1: metin üreten eylemlerde susturma kontrolü (yalnızca canlı dünya)
+      if (!ctx.isTest && TEXT_ACTIONS.has(data.action) && deps.assertCanSpeak) await deps.assertCanSpeak(actorId);
       const res = await handler(ctx, data.payload || {});
       await runAfterCommit(ctx);
       if (rosterAction) {
@@ -541,6 +543,8 @@ export function createGangSystem(deps) {
   // ---------------------------------------------------------------------------
   const SOCIAL_ACTIONS = new Set(['sendGangChat', 'sendGlobalChat', 'sendIntelChat']);
   // v38: üye listesi (00:00 prestijli herkese açık görünüm) değiştiren işlemler
+  // UGC D1: oyuncunun serbest metin yazdığı eylemler (sohbet, ad, not, kod adı)
+  const TEXT_ACTIONS = new Set(['sendGangChat', 'sendGlobalChat', 'sendIntelChat', 'createGang', 'updateGangProfile', 'sendAllianceNote', 'joinIntel', 'updateIntelNote', 'changeCodeName']);
   const ROSTER_ACTIONS = new Set(['createGang', 'joinGang', 'leaveGang', 'kickMember', 'giveRespect', 'joinIntel', 'leaveIntel', 'kickIntelMember', 'changeCodeName', 'intelDecision']);
   const INTEL_ROSTER_ACTIONS = new Set(['joinIntel', 'leaveIntel', 'kickIntelMember', 'changeCodeName', 'intelDecision']);
   async function refreshRostersAfter(ctx, action, before) {

@@ -11,6 +11,15 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
+    // UGC D3 — Yönetim Paneli rolü. users/{uid}.role alanını yalnızca sunucu
+    // yazar (aşağıda users için write:false). Kurucu admin (functions ADMIN_UIDS)
+    // panelin ilk çağrısında role:'admin' olarak işaretlenir.
+    function isStaff() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') in ['admin', 'moderator'];
+    }
+
     // ---------------------------------------------------------------------
     // users/{uid} — oyuncu profili.
     // Tüm kritik alanlar (gold, suspicion, profession vb.) sadece Cloud
@@ -265,6 +274,17 @@ service cloud.firestore {
         && d.y is number && d.y >= 0 && d.y <= 2000
         && (d.chatText == null || (d.chatText is string && d.chatText.size() <= 140));
     }
+    // UGC D1: susturulmuş oyuncu dünya balonuna YENİ metin yazamaz. Kurallar
+    // kısa devre değerlendirildiği için mutes okuması YALNIZCA balon metni
+    // değişip boş olmadığında yapılır; konum güncellemeleri (sık yazılanlar)
+    // ek okuma maliyeti getirmez. Süresi dolmuş susturma engel olmaz.
+    function bubbleAllowed(uid) {
+      return request.resource.data.get('chatText', null) == null
+        || request.resource.data.get('chatText', null) == resource.data.get('chatText', null)
+        || !exists(/databases/$(database)/documents/mutes/$(uid))
+        || get(/databases/$(database)/documents/mutes/$(uid)).data.untilMs <= request.time.toMillis();
+    }
+
     match /parkPresence/{uid} {
       allow read: if isSignedIn();
       // İlk giriş sadece enterPark (Admin SDK) tarafından yapılır; Admin
@@ -274,7 +294,8 @@ service cloud.firestore {
       allow update: if isSelf(uid)
         && validParkPresenceFields()
         && request.resource.data.avatar == resource.data.avatar
-        && request.resource.data.displayName == resource.data.displayName;
+        && request.resource.data.displayName == resource.data.displayName
+        && bubbleAllowed(uid);
       // Park'tan çıkarken kendi konum kaydını silebilir (terk edilenler
       // ayrıca expireParkPresence ile arka planda süpürülür).
       allow delete: if isSelf(uid);
@@ -318,7 +339,8 @@ service cloud.firestore {
         && validInteriorPresenceFields()
         && request.resource.data.avatar == resource.data.avatar
         && request.resource.data.displayName == resource.data.displayName
-        && request.resource.data.locationId == resource.data.locationId;
+        && request.resource.data.locationId == resource.data.locationId
+        && bubbleAllowed(uid);
       // Mekandan çıkarken kendi konum kaydını silebilir (terk edilenler
       // ayrıca expireInteriorPresence ile arka planda süpürülür).
       allow delete: if isSelf(uid);
@@ -721,6 +743,34 @@ service cloud.firestore {
       match /alliances/{a} {
         allow read: if liveGangWorld(w);
       }
+    }
+
+    // -----------------------------------------------------------------------
+    // UGC D1 — moderasyon (functions/moderation.js). Hepsini yalnızca Cloud
+    // Functions yazar. Şikâyetler istemciye tamamen kapalı; engelleme listesi
+    // ve susturma kaydı yalnızca sahibine okunur (arayüz filtreleme / uyarı için).
+    // -----------------------------------------------------------------------
+    // D3: şikâyetleri yalnızca yetkililer (admin/moderatör) okuyabilir; yazma hep sunucuda.
+    match /reports/{reportId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+    match /userBlocks/{uid} {
+      allow read: if isSelf(uid);
+      allow write: if false;
+    }
+    match /mutes/{uid} {
+      allow read: if isSelf(uid) || isStaff();
+      allow write: if false;
+    }
+    // D3: ban kayıtları ve denetim kayıtları (admin_logs) — yalnızca sunucu yazar.
+    match /bans/{uid} {
+      allow read: if isSelf(uid) || isStaff();
+      allow write: if false;
+    }
+    match /admin_logs/{logId} {
+      allow read: if isStaff();
+      allow write: if false;
     }
 
     // Tanımlanmamış her şey varsayılan olarak kapalı.

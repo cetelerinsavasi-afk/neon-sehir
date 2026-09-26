@@ -4,6 +4,7 @@
 // Kaydırma (sağa/sola), ok tuşları, İçindekiler ve konum hatırlama korunur.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CATS } from './guideContent';
+import LegalLinks from '../LegalLinks/LegalLinks';
 import './GuideScreen.css';
 
 const POS_KEY = 'rehber:pos';
@@ -118,6 +119,7 @@ export default function GuideScreen() {
               </button>
             ))}
           </div>
+          <LegalLinks />
         </div>
       </article>
     );

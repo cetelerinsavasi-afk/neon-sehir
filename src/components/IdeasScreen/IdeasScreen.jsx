@@ -6,6 +6,10 @@ import { collection, limit, onSnapshot, orderBy, query, where } from 'firebase/f
 import { db } from '../../firebase';
 import { submitFeedback } from '../../services/gameActions';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
+import ReportBlockSheet from '../ReportBlockSheet/ReportBlockSheet';
+import { useAuth } from '../../contexts/AuthContext';
+import { useBlocks } from '../../contexts/BlocksContext';
+import { isHiddenForMe } from '../../lib/ugcVisibility';
 import './IdeasScreen.css';
 
 const KINDS = [
@@ -37,6 +41,9 @@ export default function IdeasScreen() {
   const [filter, setFilter] = useState('hepsi');
   const [open, setOpen] = useState(null);
   const [since] = useState(() => Date.now() - WEEK);
+  const { user } = useAuth();
+  const { isBlocked } = useBlocks();
+  const [reportTarget, setReportTarget] = useState(null);
 
   useEffect(() => {
     const q = query(collection(db, 'feedback'), where('createdAtMs', '>=', since), orderBy('createdAtMs', 'desc'), limit(100));
@@ -47,7 +54,11 @@ export default function IdeasScreen() {
     );
   }, [since]);
 
-  const shown = useMemo(() => (filter === 'hepsi' ? list : list.filter((x) => x.kind === filter)), [list, filter]);
+  // UGC D2: gizlenen ve engellenen oyuncuların önerileri gösterilmez
+  const shown = useMemo(() => {
+    const visible = list.filter((x) => !isHiddenForMe(x, x.uid, isBlocked));
+    return filter === 'hepsi' ? visible : visible.filter((x) => x.kind === filter);
+  }, [list, filter, isBlocked]);
   const len = text.trim().length;
 
   const send = async () => {
@@ -121,7 +132,8 @@ export default function IdeasScreen() {
           const k = KIND[x.kind] || KIND.fikir;
           const isOpen = open === x.id;
           return (
-            <button key={x.id} className={`ideas-item k-${k.id}${isOpen ? ' open' : ''}`} onClick={() => setOpen(isOpen ? null : x.id)}>
+            <div key={x.id} className="ideas-item-wrap">
+            <button className={`ideas-item k-${k.id}${isOpen ? ' open' : ''}`} onClick={() => setOpen(isOpen ? null : x.id)}>
               <span className="ideas-avatar">
                 <AvatarSvg avatar={x.avatar} size={36} rounded />
               </span>
@@ -136,9 +148,26 @@ export default function IdeasScreen() {
                 <span className="ideas-text">{x.text}</span>
               </span>
             </button>
+            {isOpen && user && x.uid !== user.uid && (
+              <button className="ideas-report" onClick={() => setReportTarget(x)}>
+                🚩 Şikâyet et / Engelle
+              </button>
+            )}
+            </div>
           );
         })}
       </div>
+      {reportTarget && (
+        <ReportBlockSheet
+          targetUid={reportTarget.uid}
+          targetName={reportTarget.displayName || 'Oyuncu'}
+          items={[
+            { label: 'Öneriyi şikâyet et', targetType: 'feedback', targetPath: `feedback/${reportTarget.id}`, preview: reportTarget.text },
+            { label: 'Oyuncuyu / adını şikâyet et', targetType: 'user', targetPath: `users/${reportTarget.uid}` },
+          ]}
+          onClose={() => setReportTarget(null)}
+        />
+      )}
     </div>
   );
 }

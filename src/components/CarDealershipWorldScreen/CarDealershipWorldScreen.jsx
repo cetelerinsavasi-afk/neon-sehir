@@ -14,6 +14,7 @@ import VehicleGalleryScreen from '../VehicleGalleryScreen/VehicleGalleryScreen';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import { createSixtagramPost, enterInterior, captureCameraSnapshot } from '../../services/gameActions';
 import '../../styles/worldScreenChrome.css';
+import NearbyPlayersButton from '../NearbyPlayers/NearbyPlayersButton';
 
 // --- Araba Galerisi içi --------------------------------------------------
 // BankWorldScreen/WeaponShopWorldScreen/TuningGarageWorldScreen ile BİREBİR
@@ -925,6 +926,7 @@ export default function CarDealershipWorldScreen({ onExit, onOpenHeist }) {
             <button className="ws-chatsapp-btn" onClick={() => { setPhoneInitialApp('chatsapp'); setPhoneOpen(true); }} title="ChatsApp">💬</button>
             <button className="ws-phone-btn" onClick={() => { setPhoneInitialApp(null); setPhoneOpen(true); }} title="Telefon">📱</button>
             <button className="ws-camera-btn" onClick={() => (user ? openCamera() : setShowGuestPrompt(true))} title="Fotoğraf çek">📷</button>
+            <NearbyPlayersButton others={others} collectionName="interiorPresence" variant="ws" />
           </>
         )}
       </div>

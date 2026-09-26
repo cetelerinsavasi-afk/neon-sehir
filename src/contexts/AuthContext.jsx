@@ -45,7 +45,16 @@ export function AuthProvider({ children }) {
 
   const signIn = useCallback(async () => {
     setInitError(null);
-    await signInWithPopup(auth, googleProvider);
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (err) {
+      // UGC D3: banlı hesap (Auth devre dışı) — anlaşılır mesaj göster
+      if (err?.code === 'auth/user-disabled') {
+        setInitError('Hesabın topluluk kurallarını ihlal ettiği için kısıtlandı. İtiraz için: cetelerinsavasi@gmail.com');
+        return;
+      }
+      throw err;
+    }
   }, []);
 
   const signOut = useCallback(() => firebaseSignOut(auth), []);

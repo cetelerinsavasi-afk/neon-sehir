@@ -10,6 +10,7 @@ import { istDateKey, istHour, istMidnight, useDocData, useGang, useGangAction, u
 import { AmountInput, Bar, Btn, Card, Chips, Confirm, Deadline, Empty, Logo, Sheet } from '../ui';
 import { DIST_GROUPS, GANG_RULES, LEADERS, PRODUCTS, atLeast, fmt, productOf, unitsOf } from '../gangConstants';
 import { itemInfo, itemsFor } from '../itemInfo';
+import { nextTradeSunday } from '../tradeSchedule';
 
 const GANG_RULES_HARAC_HOUR_LABEL = '21:00'; // v38: haraç/rüşvet son dilim (21:00) başlayana kadar
 
@@ -19,16 +20,8 @@ function useNextSundayProduct() {
   const { path } = useGang();
   const now = useNow(60_000);
   const { data: world } = useDocData(path('').replace(/\/$/, ''));
-  if (!world?.launchDateKey) return null;
-  const key = istDateKey(now);
-  const [y, m, d] = key.split('-').map(Number);
-  const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-  const sundayMs = Date.UTC(y, m - 1, d + ((7 - wd) % 7));
-  const [ly, lm, ld] = world.launchDateKey.split('-').map(Number);
-  const lwd = new Date(Date.UTC(ly, lm - 1, ld)).getUTCDay();
-  const firstSunday = Date.UTC(ly, lm - 1, ld + ((7 - lwd) % 7));
-  const weeks = Math.max(0, Math.round((sundayMs - firstSunday) / (7 * 86400_000)));
-  return { product: PRODUCTS[weeks % PRODUCTS.length], today: wd === 0 };
+  // v50: hesap ortak yardımcıda (Savaş panelindeki geri sayım da kullanır)
+  return nextTradeSunday(now, world?.launchDateKey);
 }
 
 function Routes({ routes, gangId, state, today }) {

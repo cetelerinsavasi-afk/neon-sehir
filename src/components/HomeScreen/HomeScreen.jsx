@@ -10,6 +10,9 @@ import VehicleCard, { LifeBar, MAX_REPAIRS, REPAIR_LIFE_BONUS_DAYS, repairRequir
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import AvatarBuilder from '../AvatarBuilder/AvatarBuilder';
+import DeleteAccountRequest from '../DeleteAccountRequest/DeleteAccountRequest';
+import BlockedPlayersList from '../BlockedPlayersList/BlockedPlayersList';
+import AdminPanelEntry from '../AdminPanel/AdminPanelEntry';
 import './HomeScreen.css';
 
 const MATERIAL_LABELS = {
@@ -179,6 +182,9 @@ export default function HomeScreen() {
     <div className="home-screen">
       <ProfileHeader player={player} onEditAvatar={() => setEditingAvatar(true)} />
 
+      {/* UGC D3: yalnızca yetkililere görünür */}
+      <AdminPanelEntry uid={user.uid} player={player} />
+
       <div className="home-referral-box">
         <span className="home-referral-emoji">🎁</span>
         <p className="home-hint">
@@ -232,6 +238,10 @@ export default function HomeScreen() {
       </div>
 
       {error && <p className="home-error">{error}</p>}
+
+      <BlockedPlayersList />
+
+      <DeleteAccountRequest />
     </div>
   );
 }

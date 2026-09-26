@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import MessagesScreen from '../MessagesScreen/MessagesScreen';
 import MarketplaceScreen from '../MarketplaceScreen/MarketplaceScreen';
 import BankScreen from '../BankScreen/BankScreen';
@@ -7,7 +7,6 @@ import ChatsAppScreen from '../ChatsAppScreen/ChatsAppScreen';
 import CasinoScreen from '../CasinoScreen/CasinoScreen';
 import NewspaperScreen from '../NewspaperScreen/NewspaperScreen';
 import FlappyBirdScreen from '../FlappyBirdScreen/FlappyBirdScreen';
-import GoldStoreScreen from '../GoldStoreScreen/GoldStoreScreen';
 import SixtagramScreen from '../Sixtagram/SixtagramScreen';
 import GuideScreen from '../GuideScreen/GuideScreen';
 import IdeasScreen from '../IdeasScreen/IdeasScreen';
@@ -15,7 +14,14 @@ import InstallAppButton from '../InstallAppButton/InstallAppButton';
 import { useMessages } from '../../hooks/useMessages';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useUnreadNotifications, markChatsAppSeen, markSixtagramSeen } from '../../hooks/useUnreadNotifications';
+import { IS_ANDROID_APP } from '../../lib/platform';
 import './PhoneScreen.css';
+
+// Altın Mağazası ayrı bir JS parçasına (chunk) bölünüyor: Shopier
+// linkleri/fiyatlar ana pakette yer almıyor, parça yalnızca mağaza ilk
+// açıldığında indiriliyor. Davranış aynı; sadece ilk açılışta çok kısa
+// bir yükleme anı olabilir.
+const GoldStoreScreen = lazy(() => import('../GoldStoreScreen/GoldStoreScreen'));
 
 // Telefon 3 sayfa, gerçek telefondaki gibi yana kaydırılır:
 //   [ TV (haberler) ]  ←  [ Ana ekran ]  →  [ Altın · Neon Şehir · Bi fikrin mi var? ]
@@ -31,6 +37,16 @@ const EXTRA_APPS = [
   { id: 'rehber', glyph: 'N', note: 'Neon Şehir', tone: 'rehber' },
   { id: 'fikir', glyph: '💡', note: 'Bi fikrin mi var?', tone: 'fikir' },
 ];
+
+// Android (Google Play TWA) içinde Altın Mağazası hiçbir yoldan açılamaz:
+// ikon listeden çıkarılır, initialApp/handleOpenApp ile gelse bile
+// yok sayılır ve render satırı da ayrıca korunur. Web'de (IS_ANDROID_APP
+// = false) VISIBLE_EXTRA_APPS birebir EXTRA_APPS'in kendisidir.
+const GOLD_STORE_APP_ID = 'altin-magazasi';
+const isAppBlocked = (id) => IS_ANDROID_APP && id === GOLD_STORE_APP_ID;
+const VISIBLE_EXTRA_APPS = IS_ANDROID_APP
+  ? EXTRA_APPS.filter((app) => app.id !== GOLD_STORE_APP_ID)
+  : EXTRA_APPS;
 const DOCK = [
   { id: 'sms', glyph: '✉️', note: 'SMS', tone: 'sms' },
   { id: 'chatsapp', glyph: '💬', note: 'ChatsApp', tone: 'chatsapp' },
@@ -104,7 +120,7 @@ function AppIcon({ app, badge, dot, onOpen }) {
 }
 
 export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }) {
-  const [openApp, setOpenApp] = useState(initialApp);
+  const [openApp, setOpenApp] = useState(isAppBlocked(initialApp) ? null : initialApp);
   const [page, setPage] = useState(HOME_PAGE);
   // Kısayoldan / bildirimden doğrudan açılan uygulama da "görüldü" sayılır
   useEffect(() => {
@@ -132,6 +148,7 @@ export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }
   const { time, date } = useClock();
 
   const handleOpenApp = (id) => {
+    if (isAppBlocked(id)) return;
     setOpenApp(id);
     if (id === 'chatsapp') markChatsAppSeen();
     if (id === 'sixtagram') markSixtagramSeen();
@@ -174,7 +191,11 @@ export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }
           {openApp === 'gazete' && <NewspaperScreen />}
           {openApp === 'flappy' && <FlappyBirdScreen />}
           {openApp === 'sixtagram' && <SixtagramScreen />}
-          {openApp === 'altin-magazasi' && <GoldStoreScreen />}
+          {openApp === GOLD_STORE_APP_ID && !IS_ANDROID_APP && (
+            <Suspense fallback={null}>
+              <GoldStoreScreen />
+            </Suspense>
+          )}
           {openApp === 'rehber' && <GuideScreen />}
           {openApp === 'fikir' && <IdeasScreen />}
         </div>
@@ -218,7 +239,7 @@ export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }
         {/* Sağ sayfa */}
         <section className="phone-page phone-page-extra" aria-label="Diğer uygulamalar">
           <div className="phone-apps-grid">
-            {EXTRA_APPS.map((app) => (
+            {VISIBLE_EXTRA_APPS.map((app) => (
               <AppIcon key={app.id} app={app} badge={0} dot={false} onOpen={handleOpenApp} />
             ))}
           </div>

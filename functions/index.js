@@ -7,6 +7,8 @@ import crypto from 'crypto';
 import Busboy from 'busboy';
 import { VEHICLE_CATALOG, WEAPON_CATALOG } from './catalogData.js';
 import { createGangFunctions } from './gang/firebase.js';
+import { createModeration, MODERATION, REPORT_TARGETS } from './moderation.js';
+import { createAdminPanel } from './adminPanel.js';
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -15,13 +17,26 @@ const db = admin.firestore();
 // (src/firebase.js) birebir aynı olmalı, yoksa çağrılar 404 döner.
 setGlobalOptions({ region: 'europe-west1' });
 
+// UGC moderasyonu (Faz D1): şikâyet, engelleme, susturma — ayrıntı functions/moderation.js
+const moderation = createModeration({
+  db,
+  FieldValue: admin.firestore.FieldValue,
+  HttpsError,
+  requireAuth: (request) => requireAuth(request),
+  onCall,
+  dateKey: () => istanbulDateKey(),
+});
+export const reportContent = moderation.reportContent;
+export const blockUser = moderation.blockUser;
+export const unblockUser = moderation.unblockUser;
+
 // ADMIN_UIDS — oyunculardan gizli, sadece geliştiriciye açık aksiyonlar
 // (örn. transfer piyasasını elle anında yeniden kurma) için basit bir
 // izin listesi. Firebase Console > Authentication > Users sekmesinden
 // kendi hesabının UID'sini kopyalayıp buraya ekle — src/config/admin.js
 // içindeki liste de BİREBİR AYNI UID(ler) ile güncellenmeli (istemci
 // tarafında butonun görünürlüğünü kontrol eden yer orası).
-const ADMIN_UIDS = ['REPLACE_WITH_YOUR_FIREBASE_AUTH_UID'];
+const ADMIN_UIDS = ['mAhrtYHc43SoQ7ptqfTYPLAh8tf2'];
 
 function requireAdmin(request) {
   const uid = requireAuth(request);
@@ -30,6 +45,26 @@ function requireAdmin(request) {
   }
   return uid;
 }
+
+// UGC Faz D3 — Oyun içi Yönetim Paneli (ayrıntı functions/adminPanel.js).
+// Roller users/{uid}.role ('admin' | 'moderator'); ADMIN_UIDS her zaman admin.
+const adminPanel = createAdminPanel({
+  db,
+  auth: admin.auth(),
+  FieldValue: admin.firestore.FieldValue,
+  HttpsError,
+  requireAuth: (request) => requireAuth(request),
+  onCall,
+  bootstrapAdminUids: ADMIN_UIDS,
+  reportTargets: REPORT_TARGETS,
+  banUntilMs: MODERATION.BAN_UNTIL_MS,
+});
+export const adminAction = adminPanel.adminAction;
+// Süresi dolan banları kaldırır (Auth hesabını yeniden açar) — saatte bir.
+export const adminBanSweep = onSchedule({ schedule: 'every 60 minutes' }, async () => {
+  const res = await adminPanel.sweepExpiredBans();
+  if (res.lifted) console.log(`adminBanSweep: ${res.lifted} ban kaldırıldı`);
+});
 
 // =============================================================================
 // ONBOARDING — Yeni oyuncu görev listesi + günlük hatırlatıcı (kullanıcı
@@ -963,6 +998,7 @@ export const setFactorySalary = onCall(async (request) => {
 const FACTORY_NAME_MAX_LEN = 22;
 export const setFactoryName = onCall(async (request) => {
   const uid = requireAuth(request);
+  await moderation.assertCanSpeak(uid); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
   const name = String(request.data?.name || '').trim();
   if (name.length < 1 || name.length > FACTORY_NAME_MAX_LEN) {
     throw new HttpsError(
@@ -3390,8 +3426,10 @@ const INVESTMENT_TIME_WEIGHT_BUCKETS = [
   { maxHours: 24, weight: 1 },
 ];
 // Fiyat eşikleri: üstü = TERS rejim (ekranda "düşme eğiliminde"); eşiğin
-// 1/10'unun altı = KOŞULSUZ normal rejim (taban kuralı).
+// YARISININ altı = KOŞULSUZ normal rejim (taban kuralı).
+// v50: taban eşiğin 1/10'u iken 1/2'si oldu (ör. kripto 200.000 → taban 100.000).
 const INVESTMENT_REGIME_THRESHOLD = { diamond: 20000, stock: 200000000, crypto: 200000 };
+const INVESTMENT_REGIME_FLOOR_RATIO = 1 / 2;
 const INVESTMENT_BUY_PRESSURE_REVERSE = 0.75; // arada: alış oranı > %75 → gizli ters rejim
 
 function investmentTradeWeight(ageMs) {
@@ -3443,13 +3481,13 @@ function computeInvestmentBuyRatios(trades, nowMs) {
 
 // SAF fonksiyon — rejim seçimi (sırayla):
 //  1) fiyat >= eşik            → TERS (ekranda gösterilir: shownReversed)
-//  2) fiyat <  eşik/10         → NORMAL (koşulsuz taban)
+//  2) fiyat <  eşik/2          → NORMAL (koşulsuz taban; v50 öncesi eşik/10)
 //  3) arada: alış oranı > %75  → TERS (GİZLİ — ekranda gösterilmez)
 //     aksi halde               → NORMAL
 function pickInvestmentRegime(price, threshold, buyRatio) {
   const p = Number(price) || 0;
   if (p >= threshold) return { reversed: true, shownReversed: true, reason: 'price' };
-  if (p < threshold / 10) return { reversed: false, shownReversed: false, reason: 'floor' };
+  if (p < threshold * INVESTMENT_REGIME_FLOOR_RATIO) return { reversed: false, shownReversed: false, reason: 'floor' };
   if (buyRatio != null && buyRatio > INVESTMENT_BUY_PRESSURE_REVERSE) return { reversed: true, shownReversed: false, reason: 'buy_pressure' };
   return { reversed: false, shownReversed: false, reason: 'normal' };
 }
@@ -3498,7 +3536,7 @@ function recordInvestmentTrade(writer, { assetType, uid, type, goldAmount }) {
 //     döner (ayrı bir "rejim" alanı saklanmıyor, her saat o anki fiyata
 //     bakılarak karar veriliyor — kripto ile birebir aynı desen).
 //   - v40: Üç varlık da AYNI sistem: YÖN %50/%50 yazı-tura; rejim
-//     pickInvestmentRegime ile (fiyat eşiği → ters, eşik/10 altı → normal,
+//     pickInvestmentRegime ile (fiyat eşiği → ters, eşik/2 altı → normal,
 //     arada son 24 saatin alış oranı > %75 → gizli ters rejim). Kripto
 //     aralıkları normal %1-20↑/%1-16↓, ters %1-16↑/%1-20↓.
 // Rejim bilgisi (diamondReversedRegime/stockReversedRegime/
@@ -3737,6 +3775,7 @@ export const renameVehicle = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'Geçersiz araç.');
   }
   const trimmed = String(name || '').trim();
+  if (trimmed) await moderation.assertCanSpeak(uid); // UGC D1: ad veriyorsa susturma kontrolü (adı silmek serbest)
   if (trimmed.length > VEHICLE_CUSTOM_NAME_MAX_LEN) {
     throw new HttpsError('invalid-argument', `Araç adı en fazla ${VEHICLE_CUSTOM_NAME_MAX_LEN} karakter olabilir.`);
   }
@@ -4910,6 +4949,7 @@ export const applyForImam = onCall(async (request) => {
 
 export const giveNasihat = onCall(async (request) => {
   const uid = requireAuth(request);
+  await moderation.assertCanSpeak(uid); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
   const text = String(request.data?.text || '').trim().slice(0, 280);
   if (!text) {
     throw new HttpsError('invalid-argument', 'Nasihat boş olamaz.');
@@ -4955,6 +4995,7 @@ export const claimImamSalary = onCall(async (request) => {
 export const becomeBeggar = onCall(async (request) => {
   const uid = requireAuth(request);
   const note = String(request.data?.note || '').slice(0, 140);
+  if (note.trim()) await moderation.assertCanSpeak(uid); // UGC D1: not yazıyorsa susturma kontrolü
   const dateKey = istanbulDateKey();
   const userRef = db.collection('users').doc(uid);
   const dailyRef = db.collection('dailyActions').doc(`${uid}_${dateKey}`);
@@ -5963,6 +6004,7 @@ export const createHeistPlan = onCall(async (request) => {
 // uyarılar için. Sadece plandaki katılımcılar (kurucu dahil) yazabilir.
 export const updateHeistPlanNote = onCall(async (request) => {
   const uid = requireAuth(request);
+  await moderation.assertCanSpeak(uid); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
   const { planId } = request.data || {};
   const note = String(request.data?.note || '').slice(0, 200);
   const planRef = db.collection('heistPlans').doc(planId);
@@ -7053,6 +7095,7 @@ const CHAT_MAX_LENGTH = 300;
 
 export const sendChatMessage = onCall(async (request) => {
   const uid = requireAuth(request);
+  await moderation.assertCanSpeak(uid); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
   const text = String(request.data?.text || '').trim();
   if (!text) {
     throw new HttpsError('invalid-argument', 'Mesaj boş olamaz.');
@@ -7098,6 +7141,7 @@ async function markGangActivity(uid) {
 // ---------------------------------------------------------------------------
 export const setDisplayName = onCall(async (request) => {
   const uid = requireAuth(request);
+  await moderation.assertCanSpeak(uid); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
   const raw = String(request.data?.displayName || '').trim();
   if (raw.length < 3 || raw.length > 20) {
     throw new HttpsError('invalid-argument', 'İsim 3-20 karakter arasında olmalı.');
@@ -14843,6 +14887,7 @@ export const withdrawFutbolTreasury20Percent = onCall(async (request) => {
 export const openFutbolTreasuryWithdrawRequest = onCall(async (request) => {
   const uid = requireAuth(request);
   const { teamId, amount, note } = request.data || {};
+  if (String(note || '').trim()) await moderation.assertCanSpeak(uid); // UGC D1: not yazıyorsa susturma kontrolü
   if (!teamId) throw new HttpsError('invalid-argument', 'teamId gerekli.');
   const cleanAmount = Math.round(Number(amount));
   if (!Number.isFinite(cleanAmount) || cleanAmount <= 0) {
@@ -17636,6 +17681,7 @@ export const respondSponsorshipFeeRaiseRequest = onCall(async (request) => {
 // anında, bkz. listSponsorshipTeamsForFactory/listSponsorshipFactoriesForTeam).
 export const updateSponsorshipNote = onCall(async (request) => {
   const uid = requireAuth(request);
+  await moderation.assertCanSpeak(uid); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
   const { factoryOwnerUid, teamId, note } = request.data || {};
   if (!factoryOwnerUid || !teamId) {
     throw new HttpsError('invalid-argument', 'factoryOwnerUid ve teamId gerekli.');
@@ -18842,6 +18888,7 @@ const SIXTAGRAM_COMMENT_MAX_LEN = 280;
 // yazınca kendine bildirim gitmesin).
 async function createSixtagramNotification(toUid, notif) {
   if (!toUid || toUid === notif.fromUid) return;
+  if (await moderation.isBlockedBy(toUid, notif.fromUid)) return; // UGC D1: engellenenden bildirim yok
   await db
     .collection('users')
     .doc(toUid)
@@ -19731,6 +19778,7 @@ async function buildSixtagramAttachment(uid, attachment) {
 // `attachment` verilebilir, ikisi de boşsa reddedilir.
 export const createSixtagramPost = onCall(async (request) => {
   const uid = requireAuth(request);
+  await moderation.assertCanSpeak(uid); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
   const { text, attachment } = request.data || {};
   const cleanText = typeof text === 'string' ? text.trim().slice(0, SIXTAGRAM_MAX_TEXT_LEN) : '';
 
@@ -19785,6 +19833,7 @@ export const createSixtagramPost = onCall(async (request) => {
 // verilen yorumun sahibine de ayrıca 'reply' bildirimi gider.
 export const createSixtagramComment = onCall(async (request) => {
   const uid = requireAuth(request);
+  await moderation.assertCanSpeak(uid); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
   const { postId, text, parentCommentId } = request.data || {};
   if (!postId) throw new HttpsError('invalid-argument', 'postId gerekli.');
   const cleanText = typeof text === 'string' ? text.trim().slice(0, SIXTAGRAM_COMMENT_MAX_LEN) : '';
@@ -19801,6 +19850,10 @@ export const createSixtagramComment = onCall(async (request) => {
     throw new HttpsError('not-found', 'Gönderi bulunamadı (süresi dolup silinmiş olabilir).');
   }
   const post = postSnap.data();
+  // UGC D1: gönderi sahibi bu oyuncuyu engellediyse yorum yapamaz
+  if (await moderation.isBlockedBy(post.uid, uid)) {
+    throw new HttpsError('permission-denied', 'Bu gönderiye yorum yapamazsın.');
+  }
   const user = userSnap.data() || {};
   const fromName = user.displayName || 'Bir oyuncu';
 
@@ -19882,6 +19935,14 @@ export const toggleSixtagramLike = onCall(async (request) => {
   const likeRef = postRef.collection('likes').doc(uid);
   const myLikesRef = db.collection('sixtagramUserLikes').doc(uid);
   const myUserRef = db.collection('users').doc(uid);
+
+  // UGC D1: gönderi sahibi bu oyuncuyu engellediyse beğenemez (beğeniyi geri almak serbest)
+  {
+    const [prePost, preLike] = await Promise.all([postRef.get(), likeRef.get()]);
+    if (prePost.exists && !preLike.exists && (await moderation.isBlockedBy(prePost.data().uid, uid))) {
+      throw new HttpsError('permission-denied', 'Bu gönderiyi beğenemezsin.');
+    }
+  }
 
   let liked = false;
   let postOwnerUid = null;
@@ -20027,6 +20088,8 @@ const gangFunctions = createGangFunctions({
     else if (res.material === 'yasakliMadde') await advanceOnboardingStep(uid, 2);
     else if (res.material === 'silahUpgrade') await advanceOnboardingStep(uid, 18);
   },
+  // UGC D1: susturulmuş oyuncu çete sohbetine/adına/notuna yazamaz
+  assertCanSpeak: (uid) => moderation.assertCanSpeak(uid),
 });
 export const gangAction = gangFunctions.gangAction;
 export const gangClock = gangFunctions.gangClock;
@@ -20046,6 +20109,7 @@ const FEEDBACK_LIST_DAYS = 7;
 
 export const submitFeedback = onCall(async (request) => {
   const uid = requireAuth(request);
+  await moderation.assertCanSpeak(uid); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
   const kind = FEEDBACK_KINDS.includes(request.data?.kind) ? request.data.kind : 'fikir';
   const text = String(request.data?.text || '')
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')

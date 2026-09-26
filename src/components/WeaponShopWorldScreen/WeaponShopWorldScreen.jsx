@@ -15,6 +15,7 @@ import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import { createSixtagramPost, enterInterior, captureCameraSnapshot } from '../../services/gameActions';
 import '../../styles/worldScreenChrome.css';
 import './WeaponShopWorldScreen.css';
+import NearbyPlayersButton from '../NearbyPlayers/NearbyPlayersButton';
 
 // --- Silah Mağazası içi ------------------------------------------------
 // BankWorldScreen.jsx'teki "sabit mekan, karakter yürüyor" kalıbının
@@ -823,6 +824,7 @@ export default function WeaponShopWorldScreen({ onExit }) {
             <button className="ws-chatsapp-btn" onClick={() => { setPhoneInitialApp('chatsapp'); setPhoneOpen(true); }} title="ChatsApp">💬</button>
             <button className="ws-phone-btn" onClick={() => { setPhoneInitialApp(null); setPhoneOpen(true); }} title="Telefon">📱</button>
             <button className="ws-camera-btn" onClick={() => (user ? openCamera() : setShowGuestPrompt(true))} title="Fotoğraf çek">📷</button>
+            <NearbyPlayersButton others={others} collectionName="interiorPresence" variant="ws" />
           </>
         )}
       </div>

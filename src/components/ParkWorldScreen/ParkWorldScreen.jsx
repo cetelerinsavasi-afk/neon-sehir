@@ -17,6 +17,7 @@ import ResultModal from '../ResultModal/ResultModal';
 import InfoIcon from '../InfoIcon/InfoIcon';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import './ParkWorldScreen.css';
+import NearbyPlayersButton from '../NearbyPlayers/NearbyPlayersButton';
 
 // --- Sahne düzeni -------------------------------------------------------
 // "Park sabit, karakter yürüyor": kamera kaydırması YOK — canvas'ın
@@ -919,6 +920,7 @@ export default function ParkWorldScreen({ onExit }) {
             <button className="pw-chatsapp-btn" onClick={() => { setPhoneInitialApp('chatsapp'); setPhoneOpen(true); }} title="ChatsApp">💬</button>
             <button className="pw-phone-btn" onClick={() => { setPhoneInitialApp(null); setPhoneOpen(true); }} title="Telefon">📱</button>
             <button className="pw-camera-btn" onClick={() => (user ? openCamera() : setShowGuestPrompt(true))} title="Fotoğraf çek">📷</button>
+            <NearbyPlayersButton others={others} collectionName="parkPresence" variant="pw" />
           </>
         )}
       </div>

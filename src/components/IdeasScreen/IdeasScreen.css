@@ -304,3 +304,16 @@
   -webkit-line-clamp: unset;
   display: block;
 }
+
+/* UGC D2 */
+.ideas-report {
+  display: block;
+  margin: 4px 0 0 auto;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border, #1f2a40);
+  background: transparent;
+  color: var(--text-dim, #8a93a8);
+  font-size: 12px;
+  cursor: pointer;
+}

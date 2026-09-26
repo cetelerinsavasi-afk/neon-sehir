@@ -634,3 +634,13 @@ export const markFutbolTeamNotificationsRead = (teamId) =>
 
 export const markFactoryNotificationsRead = () =>
   httpsCallable(functions, 'markFactoryNotificationsRead')();
+
+// --- UGC moderasyonu (Faz D1/D2): şikâyet ve engelleme ---
+// reportContent: { targetType, targetPath, reason, note?, platform? } — bkz. functions/moderation.js
+export const reportContent = (payload) => httpsCallable(functions, 'reportContent')(payload);
+export const blockUser = (targetUid) => httpsCallable(functions, 'blockUser')({ targetUid });
+export const unblockUser = (targetUid) => httpsCallable(functions, 'unblockUser')({ targetUid });
+
+// UGC D3 — Yönetim Paneli: tek callable, { action, payload } (bkz. functions/adminPanel.js).
+// Yetki sunucuda kontrol edilir; sonuç doğrudan data olarak döner.
+export const adminAction = (action, payload = {}) => httpsCallable(functions, 'adminAction')({ action, payload }).then((r) => r.data);

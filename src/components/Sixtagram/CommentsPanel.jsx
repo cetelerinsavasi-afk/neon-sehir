@@ -3,6 +3,10 @@ import { X } from 'lucide-react';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import { useSixtagramComments } from '../../hooks/useSixtagramComments';
 import { createSixtagramComment } from '../../services/gameActions';
+import ReportBlockSheet, { MoreButton } from '../ReportBlockSheet/ReportBlockSheet';
+import { useAuth } from '../../contexts/AuthContext';
+import { useBlocks } from '../../contexts/BlocksContext';
+import { isHiddenForMe } from '../../lib/ugcVisibility';
 import './CommentsPanel.css';
 
 function timeAgo(createdAtMs) {
@@ -16,7 +20,7 @@ function timeAgo(createdAtMs) {
   return `${Math.floor(hours / 24)} gün`;
 }
 
-function CommentRow({ comment, onReply }) {
+function CommentRow({ comment, onReply, myUid, onReport }) {
   return (
     <div className="six-comment-row">
       <div className="six-comment-avatar">
@@ -26,6 +30,7 @@ function CommentRow({ comment, onReply }) {
         <p className="six-comment-head">
           <span className="six-comment-author">{comment.authorName}</span>
           <span className="six-comment-time">{timeAgo(comment.createdAtMs)}</span>
+          {comment.uid !== myUid && <MoreButton onClick={() => onReport(comment)} label="Şikâyet et / Engelle" />}
         </p>
         <p className="six-comment-text">{comment.text}</p>
         <button className="six-comment-reply-btn" onClick={() => onReply(comment)}>
@@ -43,6 +48,7 @@ function CommentRow({ comment, onReply }) {
                   <p className="six-comment-head">
                     <span className="six-comment-author">{r.authorName}</span>
                     <span className="six-comment-time">{timeAgo(r.createdAtMs)}</span>
+                    {r.uid !== myUid && <MoreButton onClick={() => onReport(r)} label="Şikâyet et / Engelle" />}
                   </p>
                   <p className="six-comment-text">{r.text}</p>
                 </div>
@@ -56,7 +62,13 @@ function CommentRow({ comment, onReply }) {
 }
 
 export default function CommentsPanel({ postId, onClose }) {
-  const { comments, loading } = useSixtagramComments(postId);
+  const { comments: allComments, loading } = useSixtagramComments(postId);
+  const { user } = useAuth();
+  const { isBlocked } = useBlocks();
+  const [reportTarget, setReportTarget] = useState(null);
+  // UGC D2: gizlenen / engellenen oyuncuların yorum ve yanıtları gösterilmez
+  const visible = (c) => !isHiddenForMe(c, c.uid, isBlocked);
+  const comments = allComments.filter(visible).map((c) => ({ ...c, replies: (c.replies || []).filter(visible) }));
   const [text, setText] = useState('');
   const [replyTo, setReplyTo] = useState(null); // { id, authorName } | null
   const [posting, setPosting] = useState(false);
@@ -94,7 +106,7 @@ export default function CommentsPanel({ postId, onClose }) {
             <p className="six-comments-hint">Henüz yorum yok — ilk yorumu sen yaz!</p>
           )}
           {comments.map((c) => (
-            <CommentRow key={c.id} comment={c} onReply={(cm) => setReplyTo(cm)} />
+            <CommentRow key={c.id} comment={c} onReply={(cm) => setReplyTo(cm)} myUid={user?.uid} onReport={setReportTarget} />
           ))}
         </div>
 
@@ -127,6 +139,17 @@ export default function CommentsPanel({ postId, onClose }) {
           </button>
         </div>
       </div>
+      {reportTarget && (
+        <ReportBlockSheet
+          targetUid={reportTarget.uid}
+          targetName={reportTarget.authorName || 'Oyuncu'}
+          items={[
+            { label: 'Yorumu şikâyet et', targetType: 'sixtagramComment', targetPath: `sixtagramPosts/${postId}/comments/${reportTarget.id}`, preview: reportTarget.text },
+            { label: 'Oyuncuyu / adını şikâyet et', targetType: 'user', targetPath: `users/${reportTarget.uid}` },
+          ]}
+          onClose={() => setReportTarget(null)}
+        />
+      )}
     </div>
   );
 }

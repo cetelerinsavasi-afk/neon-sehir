@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { X } from 'lucide-react';
 import { useSixtagramNotifications } from '../../hooks/useSixtagramNotifications';
+import { useBlocks } from '../../contexts/BlocksContext';
 import { markAllSixtagramNotificationsRead } from '../../services/gameActions';
 import './NotificationsPanel.css';
 
@@ -31,7 +32,10 @@ function notifEmoji(type) {
 }
 
 export default function NotificationsPanel({ onClose, onOpenComments }) {
-  const { notifications } = useSixtagramNotifications();
+  const { notifications: allNotifications } = useSixtagramNotifications();
+  const { isBlocked } = useBlocks();
+  // UGC D2: engellediğin oyuncudan gelen (engellemeden önceki) bildirimler de gizlenir
+  const notifications = allNotifications.filter((n) => !isBlocked(n.fromUid));
 
   useEffect(() => {
     markAllSixtagramNotificationsRead().catch((err) =>
