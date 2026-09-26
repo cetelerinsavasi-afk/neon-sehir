@@ -1,6 +1,8 @@
 # UGC Moderasyonu — Faz D2: Arayüz
 
 > D1 altyapısının (`01-D1-ALTYAPI.md`) oyuncuya açılan yüzü. Backend'e dokunmaz.
+>
+> **Güncel durum (v53):** Aşağıdaki "⋯ menüsü" sütunu D2'nin ilk hâlidir. v53'te her mesajdaki ⋯ kaldırıldı; bildirme/engelleme artık **Oyuncu Kartı**'nın köşesindeki ⋯ ve mesaja **uzun basınca** açılan menüdedir ("Şikâyet et" → "Bildir"). Güncel tablo: `04-OYUNCU-KARTI.md`. Filtre sütunu hâlâ geçerlidir.
 
 ## Ortak parçalar
 | Dosya | Görev |
@@ -26,3 +28,7 @@
 | Dünya balonları (8 ekran) | engellenenin balon metni boş (`use*Presence` kancalarında) | 👥 → Balon · Oyuncu · Engelle |
 
 Android'de şikâyetler `platform: 'android'` ile gönderilir.
+
+**Kapanışta giderilen D2 sınırları (v54):**
+- Sixtagram okunmamış rozeti artık engellenen oyuncudan gelen eski bildirimleri saymıyor (`useSixtagramNotifications`).
+- Engellenen oyuncunun dünyadaki balonu, yerelde biriken balon geçmişiyle birlikte **anında** kayboluyor (eskiden 13 sn'ye kadar kalabiliyordu). Değişiklik 8 dünya ekranı ve `use*Presence` kancalarında: `blockedByMe`.

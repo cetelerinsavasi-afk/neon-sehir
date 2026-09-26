@@ -84,5 +84,6 @@ Her işlem için şu alanlar yazılır: `action`, `actorUid/Name/Role`, `targetU
 Yeni composite index gerekmez; tüm sorgular tek alanlıdır.
 
 ## 7. Bilinen sınırlar / sonraki adımlar
-- Hesap silme scripti (`delete-user.mjs`) henüz `bans` ve `admin_logs` kayıtlarını ele almıyor. Bu iş D5'te; `admin_logs` 12 ay saklama kararıyla birlikte yapılacak.
+- ~~Hesap silme scripti `bans` ve `admin_logs` kayıtlarını ele almıyor~~ — **D5'te (v54) yapıldı**, bkz. `05-D4-D5-KAPANIS.md`.
+- Oyuncu bilgilendirmeleri (uyarı, susturma, içerik kaldırma, ban) **D4'te (v54)** netleşti, bkz. `05-D4-D5-KAPANIS.md`. `warnUser` artık `reason` ister.
 - Kural testleri bu ortamda emülatörle çalıştırılamadı. Sunucu mantığı çevrimdışı testlerle ve tarayıcıda uçtan uca doğrulandı.

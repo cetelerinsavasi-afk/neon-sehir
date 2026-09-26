@@ -8,7 +8,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeFirestore, FieldValue } from '../gang/test/fakeFirestore.js';
-import { buildDeletionPlan, enforceReadOnly, formatPlan, findUidRefs, findNameFields, anonymizeData, applyPlan, collectOps, planFingerprint, TOMBSTONE_NAME } from './delete-user.mjs';
+import { buildDeletionPlan, enforceReadOnly, formatPlan, findUidRefs, findNameFields, anonymizeData, applyPlan, collectOps, planFingerprint, TOMBSTONE_NAME, TOMBSTONE_STAFF, REDACTED_TEXT } from './delete-user.mjs';
 
 // ---- Sahte Firestore'a eksik Admin SDK yüzeyleri --------------------------------
 const DOC_ID = { __documentId: true };
@@ -496,4 +496,50 @@ test('SİLME: plan parmak izi değişirse fark edilir (onay sırasında veri de�
 test('anonymizeData: tam ad alanı, metin içi ad, diğer oyuncular dokunulmaz', () => {
   const ch = anonymizeData({ a: 'Ahmet Yılmaz', b: { c: 'Ahmet Yılmaz kazandı', d: 'Diğer1' }, n: 5, arr: ['Ahmet Yılmaz', 'x'] }, ['Ahmet Yılmaz']);
   assert.deepEqual(ch, { a: TOMBSTONE_NAME, b: { c: 'Silinmiş Oyuncu kazandı', d: 'Diğer1' }, arr: [TOMBSTONE_NAME, 'x'] });
+});
+
+// ---------------------------------------------------------------------------
+// UGC D5 — moderasyon kayıtları
+// ---------------------------------------------------------------------------
+test('SİLME (D5): ban/susturma/engelleme silinir, bildirimler temizlenir, denetim kayıtları kimliksizleşir ama korunur', async () => {
+  const { db, auth } = await seed();
+  const S = (p, d) => db._store.set(p, { data: d, version: 1 });
+  S(`bans/${T}`, { active: true, untilMs: Date.now() + 864e5, permanent: false, reason: 'x', byUid: O1, byName: 'Mod' });
+  S(`mutes/${T}`, { untilMs: Date.now() + 864e5, level: 'ban', reason: 'x' });
+  S(`userBlocks/${T}`, { blocked: { [O1]: { at: 1, name: 'Diğer1' } } });
+  S(`userBlocks/${O1}`, { blocked: { [T]: { at: 5, name: NAME }, [O2]: { at: 6, name: 'Diğer2' } } });
+  S(`userBlocks/${O2}`, { blocked: { [O1]: { at: 7, name: 'Diğer1' } } });
+  S(`reports/hBy_${T}`, { reporterUid: T, targetUid: O1, textSnapshot: 'O1 metni', status: 'open', createdAtMs: 1 });
+  S(`reports/hAbout_${O1}`, { reporterUid: O1, targetUid: T, textSnapshot: `${NAME} küfretti`, status: 'open', reason: 'hakaret', createdAtMs: 2 });
+  S(`reports/hAbout2_${O2}`, { reporterUid: O2, targetUid: T, textSnapshot: 'eski metin', status: 'actioned', createdAtMs: 3 });
+  S('admin_logs/l1', { action: 'report_remove', actorUid: O1, actorName: 'Mod Ayşe', targetUid: T, targetName: NAME, reason: 'küfür', details: { before: 'kötü söz', effect: 'hidden' }, atMs: 1 });
+  S('admin_logs/l2', { action: 'mute', actorUid: T, actorName: NAME, actorRole: 'moderator', targetUid: O2, targetName: 'Diğer2', reason: 'spam', details: { duration: '1h' }, atMs: 2 });
+  S('admin_logs/l3', { action: 'warn', actorUid: O1, actorName: 'Mod Ayşe', targetUid: O2, targetName: 'Diğer2', reason: 'x', details: {}, atMs: 3 });
+
+  const plan = await planUnlocked(db, auth);
+  const whats = [...plan.delete, ...plan.flow].map((i) => i.what);
+  for (const w of ['Ban kaydı (bans) — AKTİF', 'Susturma kaydı (mutes)', 'Engelleme listesi (userBlocks)', 'Başka oyuncuların engelleme listelerindeki kaydı', 'Yaptığı bildirimler (reports)', 'Hakkındaki bildirimler (reports)', 'Yetkili işlem kayıtları (admin_logs — denetim izi korunur)'])
+    assert.ok(whats.includes(w), w);
+  // aktif ban ön temizlikte (dondurmadan hemen sonra) silinir
+  const banOp = collectOps(plan).find((o) => o.path === `bans/${T}`);
+  assert.equal(banOp.phase, 1);
+  const res = await applyPlan({ db, auth, FieldValue, callables: fakeCallables(db), plan });
+  assert.equal(res.ok, true, JSON.stringify(res.results.filter((r) => !r.ok)));
+
+  for (const p of [`bans/${T}`, `mutes/${T}`, `userBlocks/${T}`, `reports/hBy_${T}`]) assert.equal(db._get(p), undefined, p);
+  assert.deepEqual(Object.keys(db._get(`userBlocks/${O1}`).blocked), [O2], 'başkasının listesinden çıkarıldı, diğer satır kaldı');
+  assert.deepEqual(db._get(`userBlocks/${O2}`).blocked, { [O1]: { at: 7, name: 'Diğer1' } }, 'ilgisiz liste aynı');
+  const a1 = db._get(`reports/hAbout_${O1}`);
+  assert.equal(a1.textSnapshot, REDACTED_TEXT);
+  assert.equal(a1.status, 'closed_account_deleted', 'açık bildirim kapandı (kuyrukta görünmez)');
+  assert.equal(a1.reporterUid, O1, 'bildirenin kaydı korunur');
+  assert.equal(db._get(`reports/hAbout2_${O2}`).status, 'actioned', 'kapalı bildirimin durumu değişmez');
+  const l1 = db._get('admin_logs/l1');
+  assert.deepEqual([l1.targetName, l1.targetDeleted, l1.details.before, l1.details.effect, l1.reason, l1.actorName], [TOMBSTONE_NAME, true, REDACTED_TEXT, 'hidden', 'küfür', 'Mod Ayşe']);
+  const l2 = db._get('admin_logs/l2');
+  assert.deepEqual([l2.actorName, l2.actorDeleted, l2.targetName, l2.reason], [TOMBSTONE_STAFF, true, 'Diğer2', 'spam']);
+  assert.deepEqual(db._get('admin_logs/l3'), { action: 'warn', actorUid: O1, actorName: 'Mod Ayşe', targetUid: O2, targetName: 'Diğer2', reason: 'x', details: {}, atMs: 3 }, 'ilgisiz kayıt aynı');
+  // Ad hiçbir yerde kalmadı (denetim kayıtları dahil); uid yalnızca izin verilen denetim/bildirim kayıtlarında
+  const hits = tracesOf(db, T, [NAME, 'Ahmet Eski Ad']).filter((h) => !/^(admin_logs\/l1|admin_logs\/l2|reports\/hAbout_|reports\/hAbout2_).* \(uid\)$/.test(h));
+  assert.deepEqual(hits, []);
 });

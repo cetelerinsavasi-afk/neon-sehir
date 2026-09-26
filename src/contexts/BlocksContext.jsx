@@ -46,6 +46,7 @@ export function BlocksProvider({ children }) {
 }
 
 // Sağlayıcı yoksa (ör. önizleme ortamı) güvenli varsayılan döner: kimse engelli değil.
+// eslint-disable-next-line react-refresh/only-export-components -- sağlayıcı ve hook birlikte (AuthContext ile aynı desen)
 export function useBlocks() {
   return useContext(BlocksContext) || EMPTY;
 }

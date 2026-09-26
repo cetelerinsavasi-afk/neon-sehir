@@ -48,7 +48,7 @@ Tek yönlü; idempotent; en fazla 200. Liste: `userBlocks/{uid}.blocked.{hedefUi
 - Susturma kaydı yoksa her kontrol **1 okuma**; balonda yalnızca metin değiştiğinde.
 
 ## 4. Deploy
-1. **`functions/index.js` başındaki `ADMIN_UIDS`** ve **`src/config/admin.js`** içine kendi uid'ni yaz (ileride yönetici işlemleri için; D1'in çalışması için zorunlu değil).
+1. ~~`ADMIN_UIDS`'e kendi uid'ni yaz~~ — **v54'te yapıldı** (`functions/index.js` ve `src/config/admin.js`).
 2. `firebase deploy --only functions` (3 yeni fonksiyon: `reportContent`, `blockUser`, `unblockUser`).
 3. `firebase deploy --only firestore:rules`.
 4. Deploy sonrası kısa kontrol: Park'ta bir balon yaz (çalışmalı); ChatsApp'e mesaj gönder (çalışmalı).

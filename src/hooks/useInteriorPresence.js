@@ -79,7 +79,7 @@ export function useInteriorPresence(locationId) {
   // Tüm dünya ekranları "others"ı buradan aldığı için tek noktada uygulanır.
   const { isBlocked } = useBlocks();
   const visibleOthers = useMemo(
-    () => others.map((o) => (isBlocked(o.uid) && o.chatText ? { ...o, chatText: null, chatTs: null } : o)),
+    () => others.map((o) => (isBlocked(o.uid) ? { ...o, chatText: null, chatTs: null, blockedByMe: true } : o)),
     [others, isBlocked]
   );
 

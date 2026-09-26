@@ -87,7 +87,7 @@ function ReportCard({ g, status, onOpenUser, onDone }) {
   const resolve = () =>
     run(
       () => adminAction('resolveReport', { targetPath: g.targetPath, decision: mode, warn: mode === 'remove' && warn, note: note.trim() || undefined }),
-      (r) => (mode === 'remove' ? `İçerik ${effectLabel(r.effect)}${r.warned ? ', uyarı gönderildi' : ''}.` : `Şikâyet reddedildi${r.effect === 'unhidden' ? ', içerik yeniden görünür' : ''}.`)
+      (r) => (mode === 'remove' ? `İçerik ${effectLabel(r.effect)}${r.notified ? `, oyuncu bilgilendirildi${r.warned ? ' (uyarı)' : ''}` : ''}.` : `Şikâyet reddedildi${r.effect === 'unhidden' ? ', içerik yeniden görünür' : ''}.`)
     );
 
   return (
@@ -168,11 +168,20 @@ function ReportCard({ g, status, onOpenUser, onDone }) {
                 : 'Şikâyetler kapanacak, içerik olduğu gibi kalacak.'}
           </p>
           {mode === 'remove' && g.targetUid && (
-            <label className="adm-check">
-              <input type="checkbox" checked={warn} onChange={(e) => setWarn(e.target.checked)} /> Oyuncuya uyarı SMS'i gönder
-            </label>
+            <>
+              <p className="adm-confirm-text">📩 Oyuncuya sebebiyle birlikte bilgilendirme SMS'i gider.</p>
+              <label className="adm-check">
+                <input type="checkbox" checked={warn} onChange={(e) => setWarn(e.target.checked)} /> Resmi uyarı olarak işaretle
+              </label>
+            </>
           )}
-          <input className="adm-input" maxLength={200} placeholder="Not (isteğe bağlı, kayıtta görünür)" value={note} onChange={(e) => setNote(e.target.value)} />
+          <input
+            className="adm-input"
+            maxLength={200}
+            placeholder={mode === 'remove' ? 'Sebep (boşsa en çok seçilen bildirim sebebi yazılır)' : 'Not (isteğe bağlı, kayıtta görünür)'}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
           {error && <p className="adm-error">{error}</p>}
           <div className="adm-actions">
             <button className="adm-btn ghost" disabled={busy} onClick={() => setMode(null)}>

@@ -36,9 +36,41 @@ const DAY = 24 * HOUR;
 export const MUTE_DURATIONS = { '1h': HOUR, '24h': DAY, '7d': 7 * DAY, '30d': 30 * DAY };
 export const BAN_DURATIONS = { '1d': DAY, '7d': 7 * DAY, '30d': 30 * DAY, permanent: null };
 const MODERATOR_MUTE_KEYS = ['1h', '24h', '7d'];
-export const ADMIN_LIMITS = { REASON_MAX: 200, WARN_MAX: 300, SEARCH_MAX: 20, LOG_PAGE: 50, QUEUE_GROUPS: 100 };
+export const ADMIN_LIMITS = { REASON_MAX: 200, WARN_MAX: 300, SEARCH_MAX: 20, LOG_PAGE: 50, QUEUE_GROUPS: 100, REPORT_RETENTION_DAYS: 365, PURGE_BATCH: 400 };
 const HIDEABLE = ['globalChat', 'sixtagramPost', 'sixtagramComment', 'gangChat', 'gangGlobalChat', 'intelChat', 'feedback'];
 const DEFAULT_PLAYER_NAME = 'Oyuncu';
+
+// D4 — oyuncuya giden bilgilendirme SMS'leri için etiketler
+export const REASON_LABELS = {
+  hakaret: 'hakaret / küfür',
+  taciz: 'taciz / zorbalık',
+  nefret: 'nefret söylemi / ayrımcılık',
+  cinsel: 'cinsel / müstehcen içerik',
+  kisisel_bilgi: 'kişisel bilgi paylaşımı',
+  spam_dolandiricilik: 'spam / dolandırıcılık',
+  gercek_para: 'gerçek parayla alım-satım',
+  diger: 'topluluk kurallarına aykırılık',
+};
+const DURATION_LABELS = { '1h': '1 saat', '24h': '24 saat', '7d': '7 gün', '30d': '30 gün', '1d': '1 gün', permanent: 'süresiz' };
+// "Topluluk kurallarına aykırı bulunduğu için … kaldırıldı" cümlesindeki içerik adı
+const CONTENT_NOUNS = {
+  globalChat: 'ChatsApp mesajın',
+  sixtagramPost: 'Sixtagram gönderin',
+  sixtagramComment: 'Sixtagram yorumun',
+  gangChat: 'çete sohbetindeki mesajın',
+  gangGlobalChat: 'Tüm Çeteler sohbetindeki mesajın',
+  intelChat: 'İstihbarat sohbetindeki mesajın',
+  feedback: 'önerin',
+  bubble: 'konuşma balonun',
+  user: 'oyun içi adın',
+  gang: 'çetenin adı ve notu',
+  factory: 'fabrikanın adı',
+  vehicleName: 'aracının adı',
+  heistNote: 'soygun notun',
+  beggarNote: 'dilenci notun',
+  nasihat: 'nasihatin',
+};
+const WARNING_TAIL = ' Bu bir uyarıdır; tekrarlanırsa hesabın kısıtlanabilir.';
 
 const isUid = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);
 const clip = (v, n) => String(v || '').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -100,7 +132,7 @@ export function createAdminPanel({ db, auth, FieldValue, HttpsError, requireAuth
   // İstemciye dönen kayıt (serverTimestamp alanı olmadan)
   function publicLog(d) {
     const x = d.data();
-    return { id: d.id, action: x.action, actorUid: x.actorUid, actorName: x.actorName, actorRole: x.actorRole, targetUid: x.targetUid, targetName: x.targetName, targetPath: x.targetPath, targetType: x.targetType, reason: x.reason, details: x.details || {}, atMs: x.atMs };
+    return { id: d.id, action: x.action, actorUid: x.actorUid, actorName: x.actorName, actorRole: x.actorRole, targetUid: x.targetUid, targetName: x.targetName, targetPath: x.targetPath, targetType: x.targetType, reason: x.reason, details: x.details || {}, atMs: x.atMs, targetDeleted: Boolean(x.targetDeleted), actorDeleted: Boolean(x.actorDeleted) };
   }
   const writeLog = (actor, action, extra) => db.collection('admin_logs').add(logEntry(actor, action, extra));
 
@@ -247,6 +279,10 @@ export function createAdminPanel({ db, auth, FieldValue, HttpsError, requireAuth
     if (open.length === 0) fail('failed-precondition', 'Bu şikâyet zaten kapatılmış.');
     const first = open[0].data();
     const type = first.targetType;
+    // En çok seçilen bildirim sebebi (moderatör not yazmadıysa oyuncuya bu söylenir)
+    const tally = {};
+    for (const d of open) tally[d.data().reason] = (tally[d.data().reason] || 0) + 1;
+    const topReason = Object.entries(tally).sort((a, b) => b[1] - a[1])[0]?.[0];
     const targetUid = first.targetUid || null;
     validatedMatch(type, path);
 
@@ -263,15 +299,23 @@ export function createAdminPanel({ db, auth, FieldValue, HttpsError, requireAuth
     }
 
     let warned = false;
+    let notified = false;
     const batch = db.batch();
     for (const d of open) {
       batch.update(d.ref, { status: decision === 'remove' ? 'actioned' : 'dismissed', resolution: decision, resolvedAtMs: now(), resolvedBy: actor.uid, resolvedByName: actor.name, resolutionNote: note || null });
     }
-    if (p.warn && targetUid && decision === 'remove') {
+    // D4: içerik kaldırıldıysa / sıfırlandıysa oyuncu HER ZAMAN bilgilendirilir
+    // (sebep: moderatörün notu, yoksa en çok seçilen bildirim sebebi).
+    // "Uyarı" işaretliyse mesaja resmi uyarı cümlesi eklenir.
+    if (decision === 'remove' && targetUid && ['hidden', 'reset'].includes(effect.mode)) {
       const target = await loadTarget(targetUid).catch(() => null);
       if (target && target.role !== 'admin' && target.uid !== actor.uid) {
-        sms(batch, targetUid, clip(p.warnText, ADMIN_LIMITS.WARN_MAX) || 'Paylaştığın bir içerik topluluk kurallarına aykırı bulunduğu için kaldırıldı. Kurallara uymaya devam etmezsen hesabın kısıtlanabilir.');
-        warned = true;
+        const noun = CONTENT_NOUNS[type] || 'paylaştığın bir içerik';
+        const verb = effect.mode === 'hidden' ? 'kaldırıldı' : type === 'user' ? `"${DEFAULT_PLAYER_NAME}" olarak değiştirildi; yeni bir ad seçebilirsin` : 'varsayılana döndürüldü';
+        const reasonText = note || REASON_LABELS[topReason] || REASON_LABELS.diger;
+        sms(batch, targetUid, `🧹 Topluluk kurallarına aykırı bulunduğu için ${noun} ${verb}. Sebep: ${reasonText}.${p.warn ? WARNING_TAIL : ''}`);
+        notified = true;
+        warned = Boolean(p.warn);
       }
     }
     const targetName = targetUid ? (await userRef(targetUid).get()).data()?.displayName || null : null;
@@ -283,11 +327,11 @@ export function createAdminPanel({ db, auth, FieldValue, HttpsError, requireAuth
         targetPath: path,
         targetType: type,
         reason: note || null,
-        details: { reportCount: open.length, effect: effect.mode, before: effect.before ?? first.textSnapshot ?? null, after: effect.after || null, warned },
+        details: { reportCount: open.length, effect: effect.mode, before: effect.before ?? first.textSnapshot ?? null, after: effect.after || null, warned, notified, topReason: topReason || null },
       })
     );
     await batch.commit();
-    return { ok: true, effect: effect.mode, closed: open.length, warned };
+    return { ok: true, effect: effect.mode, closed: open.length, warned, notified };
   }
 
   // Moderatörün kaldırdığı (ya da otomatik gizlenen) içeriği geri aç.
@@ -379,10 +423,13 @@ export function createAdminPanel({ db, auth, FieldValue, HttpsError, requireAuth
   async function warnUser(actor, p) {
     const t = await loadTarget(p.uid);
     assertCanSanction(actor, t);
-    const text = clip(p.text, ADMIN_LIMITS.WARN_MAX) || 'Topluluk kurallarına aykırı davranışların nedeniyle uyarı aldın. Tekrarlanırsa hesabın kısıtlanabilir.';
+    const reason = clip(p.reason, ADMIN_LIMITS.REASON_MAX);
+    if (!reason) fail('invalid-argument', 'Sebep yazmalısın.');
+    const extra = clip(p.text, ADMIN_LIMITS.WARN_MAX);
+    const text = `⚠️ Moderasyon uyarısı. Sebep: ${reason}.${extra ? ` ${extra}` : ''} Tekrarlanırsa hesabın kısıtlanabilir.`;
     const batch = db.batch();
-    sms(batch, t.uid, `⚠️ Uyarı: ${text}`);
-    batch.set(db.collection('admin_logs').doc(), logEntry(actor, 'warn', { targetUid: t.uid, targetName: t.name, reason: clip(p.reason, ADMIN_LIMITS.REASON_MAX) || null, details: { text } }));
+    sms(batch, t.uid, text);
+    batch.set(db.collection('admin_logs').doc(), logEntry(actor, 'warn', { targetUid: t.uid, targetName: t.name, reason, details: { text: extra || null, notified: true } }));
     await batch.commit();
     return { ok: true };
   }
@@ -400,7 +447,7 @@ export function createAdminPanel({ db, auth, FieldValue, HttpsError, requireAuth
     const untilMs = now() + MUTE_DURATIONS[duration];
     const batch = db.batch();
     batch.set(db.collection('mutes').doc(t.uid), { untilMs, level: 'mute', reason, byUid: actor.uid, byName: actor.name, duration, createdAt: FieldValue.serverTimestamp(), createdAtMs: now() });
-    sms(batch, t.uid, `🔇 Topluluk kurallarını ihlal ettiğin için ${fmtUntil(untilMs)} tarihine kadar yazı yazamazsın. Sebep: ${reason}`);
+    sms(batch, t.uid, `🔇 Susturuldun (${DURATION_LABELS[duration]}). ${fmtUntil(untilMs)} tarihine kadar mesaj, gönderi, yorum, ad ve not yazamazsın. Sebep: ${reason}.`);
     batch.set(db.collection('admin_logs').doc(), logEntry(actor, 'mute', { targetUid: t.uid, targetName: t.name, reason, details: { duration, untilMs, replaced: st.mute ? st.mute.untilMs : null } }));
     await batch.commit();
     return { ok: true, untilMs };
@@ -414,6 +461,7 @@ export function createAdminPanel({ db, auth, FieldValue, HttpsError, requireAuth
     if (!st.mute) fail('failed-precondition', 'Oyuncunun aktif bir susturması yok.');
     const batch = db.batch();
     batch.set(db.collection('mutes').doc(t.uid), { untilMs: 0, liftedAtMs: now(), liftedBy: actor.uid }, { merge: true });
+    sms(batch, t.uid, '🔊 Susturman kaldırıldı, yeniden yazabilirsin.');
     batch.set(db.collection('admin_logs').doc(), logEntry(actor, 'unmute', { targetUid: t.uid, targetName: t.name, reason: clip(p.reason, ADMIN_LIMITS.REASON_MAX) || null, details: { wasUntilMs: st.mute.untilMs } }));
     await batch.commit();
     return { ok: true };
@@ -437,6 +485,8 @@ export function createAdminPanel({ db, auth, FieldValue, HttpsError, requireAuth
     const batch = db.batch();
     batch.set(db.collection('bans').doc(t.uid), { active: true, untilMs, permanent, duration, reason, byUid: actor.uid, byName: actor.name, createdAtMs: now(), createdAt: FieldValue.serverTimestamp(), prevMute, liftedAtMs: null, liftedBy: null });
     batch.set(db.collection('mutes').doc(t.uid), { untilMs, level: 'ban', reason, byUid: actor.uid, byName: actor.name, createdAt: FieldValue.serverTimestamp(), createdAtMs: now() });
+    // Oyuncu giriş yapamadığı için bu SMS'i ban kalkınca görür (kayıt olarak kalır)
+    sms(batch, t.uid, `⛔ Hesabın ${permanent ? 'süresiz olarak' : `${DURATION_LABELS[duration]} süreyle (${fmtUntil(untilMs)} tarihine kadar)`} kısıtlandı. Sebep: ${reason}.`);
     await batch.commit();
     let authOk = true;
     try {
@@ -466,7 +516,9 @@ export function createAdminPanel({ db, auth, FieldValue, HttpsError, requireAuth
     const batch = db.batch();
     batch.update(banRef, { active: false, liftedAtMs: now(), liftedBy: actor.uid });
     batch.set(db.collection('mutes').doc(uid), pm ? { untilMs: pm.untilMs, level: 'mute', reason: pm.reason, byUid: pm.byUid, byName: pm.byName, restoredAfterBan: true } : { untilMs: 0, level: 'mute', liftedAtMs: now(), liftedBy: actor.uid });
-    const name = (await userRef(uid).get()).data()?.displayName || DEFAULT_PLAYER_NAME;
+    const userSnap = await userRef(uid).get();
+    const name = userSnap.data()?.displayName || DEFAULT_PLAYER_NAME;
+    if (userSnap.exists) sms(batch, uid, `✅ Hesabının kısıtlaması sona erdi.${pm ? ` Önceki susturman ${fmtUntil(pm.untilMs)} tarihine kadar sürüyor.` : ''} Topluluk kurallarına uymaya devam etmeni rica ederiz.`);
     batch.set(db.collection('admin_logs').doc(), logEntry(actor, actor.uid === 'system' ? 'ban_expired' : 'unban', { targetUid: uid, targetName: name, reason: reason || null, details: { authEnabled: authOk, muteRestoredUntilMs: pm ? pm.untilMs : null } }));
     await batch.commit();
     return { lifted: true, authEnabled: authOk };
@@ -492,6 +544,24 @@ export function createAdminPanel({ db, auth, FieldValue, HttpsError, requireAuth
       }
     }
     return { lifted };
+  }
+
+  // ---- Saklama süresi (Gizlilik Politikası md. 6) ----------------------------------
+  // Sonuçlanmış bildirimler sonuçlandıktan 12 ay sonra silinir. Açık bildirimler
+  // (resolvedAtMs yok) dokunulmaz. Her çalışmada en fazla PURGE_BATCH belge.
+  async function purgeOldReports() {
+    const cutoff = now() - ADMIN_LIMITS.REPORT_RETENTION_DAYS * DAY;
+    const snap = await db.collection('reports').where('resolvedAtMs', '<', cutoff).limit(ADMIN_LIMITS.PURGE_BATCH).get();
+    if (snap.empty) return { purged: 0 };
+    const batch = db.batch();
+    let n = 0;
+    for (const d of snap.docs) {
+      if (d.data().status === 'open') continue;
+      batch.delete(d.ref);
+      n += 1;
+    }
+    if (n) await batch.commit();
+    return { purged: n };
   }
 
   // ---- Roller ---------------------------------------------------------------------
@@ -560,6 +630,7 @@ export function createAdminPanel({ db, auth, FieldValue, HttpsError, requireAuth
   return {
     adminAction: onCall(async (request) => handle(requireAuth(request), request.data || {})),
     sweepExpiredBans,
+    purgeOldReports,
     _impl: { handle, getActor, liftBan },
   };
 }

@@ -101,7 +101,7 @@ test('kuyruk: şikâyetler içerik başına gruplanır; kaldır → kalıcı giz
   assert.equal(g.targetName, 'BAD');
   assert.equal(g.hideable, true);
   const r = await h.call('mod1', 'resolveReport', { targetPath: 'globalChat/m1', decision: 'remove', warn: true, note: 'küfür' });
-  assert.deepEqual(r, { ok: true, effect: 'hidden', closed: 2, warned: true });
+  assert.deepEqual(r, { ok: true, effect: 'hidden', closed: 2, warned: true, notified: true });
   assert.equal(h.G('globalChat/m1').hidden, true);
   assert.equal(h.G('globalChat/m1').hiddenBy, 'moderator');
   assert.equal(h.G('globalChat/m1').text, 'kötü söz', 'metin silinmez (denetim için)');
@@ -195,11 +195,12 @@ test('susturma: moderatör ≤7 gün; sebep zorunlu; mesaj yazamaz; kaldırılab
   // hedef kuralları
   await rejects(h.call('mod1', 'muteUser', { uid: 'mod1', duration: '1h', reason: 'x' }), /Kendine/);
   await rejects(h.call('mod1', 'muteUser', { uid: 'mod2', duration: '1h', reason: 'x' }), /yalnızca yöneticiler/);
-  await rejects(h.call('mod1', 'warnUser', { uid: 'boss' }), /yöneticiye bu işlem uygulanamaz/);
+  await rejects(h.call('mod1', 'warnUser', { uid: 'boss', reason: 'x' }), /yöneticiye bu işlem uygulanamaz/);
   await rejects(h.call('admin2', 'muteUser', { uid: 'boss', duration: '1h', reason: 'x' }), /yöneticiye/);
   await h.call('boss', 'muteUser', { uid: 'mod2', duration: '30d', reason: 'admin moderatörü susturabilir' });
-  await h.call('mod1', 'warnUser', { uid: 'victim', text: 'dikkat et' });
-  assert.match(h.sms('victim')[0].text, /Uyarı: dikkat et/);
+  await rejects(h.call('mod1', 'warnUser', { uid: 'victim', text: 'dikkat et' }), /Sebep/);
+  await h.call('mod1', 'warnUser', { uid: 'victim', reason: 'küfürlü mesajlar', text: 'dikkat et' });
+  assert.match(h.sms('victim')[0].text, /Moderasyon uyarısı\. Sebep: küfürlü mesajlar\. dikkat et/);
 });
 
 test('ban: yalnızca admin; Auth kapanır + oturumlar iptal; yazı yasağı anında; önceki susturma geri gelir; süre dolunca otomatik kalkar; kalıcı kalır', async () => {
@@ -272,7 +273,7 @@ test('arama ve işlem geçmişi: ad/uid ile bulunur; kayıtlar yeniden eskiye, s
   await rejects(h.call('mod1', 'searchUsers', { q: 'a' }), /En az 2/);
   for (let i = 0; i < 55; i++) {
     h.clock.now = NOW + i * 1000;
-    await h.call('mod1', 'warnUser', { uid: 'victim', text: `u${i}` });
+    await h.call('mod1', 'warnUser', { uid: 'victim', reason: 'r', text: `u${i}` });
   }
   const p1 = await h.call('mod1', 'listLogs');
   assert.equal(p1.logs.length, 50);
@@ -281,4 +282,67 @@ test('arama ve işlem geçmişi: ad/uid ile bulunur; kayıtlar yeniden eskiye, s
   const p2 = await h.call('mod1', 'listLogs', { beforeMs: p1.nextBeforeMs });
   assert.equal(p2.logs.length, 5);
   assert.equal(p2.nextBeforeMs, null);
+});
+
+// ---------------------------------------------------------------------------
+// D4 — oyuncu bilgilendirmeleri (SMS kutusu): sebep ve süre açıkça yazar
+// ---------------------------------------------------------------------------
+test('D4: içerik kaldırılınca oyuncu HER ZAMAN bilgilendirilir; sebep = not ya da en çok seçilen bildirim sebebi', async () => {
+  const h = setup();
+  await h.report('old1', 'globalChat', 'globalChat/m1', 'taciz');
+  await h.report('old2', 'globalChat', 'globalChat/m1', 'taciz');
+  await h.report('old3', 'globalChat', 'globalChat/m2', 'hakaret');
+  await h.call('mod1', 'resolveReport', { targetPath: 'globalChat/m1', decision: 'remove' }); // uyarı işaretsiz, not yok
+  const [a] = h.sms('bad');
+  assert.equal(a.text, '🧹 Topluluk kurallarına aykırı bulunduğu için ChatsApp mesajın kaldırıldı. Sebep: taciz / zorbalık.');
+  assert.equal(a.from, 'Moderasyon');
+  await h.call('mod1', 'resolveReport', { targetPath: 'globalChat/m2', decision: 'remove', warn: true, note: 'spam' });
+  const texts = h.sms('bad').map((m) => m.text);
+  assert.ok(texts.includes('🧹 Topluluk kurallarına aykırı bulunduğu için ChatsApp mesajın kaldırıldı. Sebep: spam. Bu bir uyarıdır; tekrarlanırsa hesabın kısıtlanabilir.'));
+  assert.equal(h.logs().filter((l) => l.details.notified).length, 2);
+});
+
+test('D4: ad sıfırlama mesajı; reddette ve içerik zaten yoksa SMS gitmez', async () => {
+  const h = setup();
+  await h.report('victim', 'user', 'users/bad', 'hakaret');
+  await h.call('mod1', 'resolveReport', { targetPath: 'users/bad', decision: 'remove' });
+  assert.match(h.sms('bad')[0].text, /oyun içi adın "Oyuncu" olarak değiştirildi; yeni bir ad seçebilirsin\. Sebep: hakaret \/ küfür\./);
+  await h.report('victim', 'globalChat', 'globalChat/m2');
+  await h.call('mod1', 'resolveReport', { targetPath: 'globalChat/m2', decision: 'dismiss' });
+  assert.equal(h.sms('bad').length, 1, 'reddette SMS yok');
+  await h.report('old1', 'globalChat', 'globalChat/m1');
+  h.db._store.delete('globalChat/m1');
+  const r = await h.call('mod1', 'resolveReport', { targetPath: 'globalChat/m1', decision: 'remove' });
+  assert.equal(r.notified, false);
+  assert.equal(h.sms('bad').length, 1, 'içerik zaten silinmişse SMS yok');
+});
+
+test('D4: susturma, susturma kaldırma, ban ve ban bitişi SMS’leri süre ve sebep içerir', async () => {
+  const h = setup();
+  await h.call('mod1', 'muteUser', { uid: 'bad', duration: '24h', reason: 'hakaret' });
+  assert.match(h.sms('bad').at(-1).text, /^🔇 Susturuldun \(24 saat\)\. .+ tarihine kadar mesaj, gönderi, yorum, ad ve not yazamazsın\. Sebep: hakaret\.$/);
+  await h.call('mod1', 'unmuteUser', { uid: 'bad' });
+  assert.equal(h.sms('bad').length, 2);
+  assert.match(h.sms('bad').map((m) => m.text).join('|'), /Susturman kaldırıldı/);
+  await h.call('boss', 'banUser', { uid: 'bad', duration: '7d', reason: 'dolandırıcılık' });
+  assert.match(h.sms('bad').map((m) => m.text).join('|'), /⛔ Hesabın 7 gün süreyle \(.+ tarihine kadar\) kısıtlandı\. Sebep: dolandırıcılık\./);
+  h.clock.now = NOW + 8 * DAY;
+  await h.panel.sweepExpiredBans();
+  assert.match(h.sms('bad').map((m) => m.text).join('|'), /✅ Hesabının kısıtlaması sona erdi/);
+  await h.call('boss', 'banUser', { uid: 'victim', duration: 'permanent', reason: 'x' });
+  assert.match(h.sms('victim').map((m) => m.text).join('|'), /Hesabın süresiz olarak kısıtlandı/);
+});
+
+test('D5: sonuçlanmış bildirimler 12 ay sonra silinir; açık ve yeni olanlar kalır', async () => {
+  const h = setup();
+  h.S('reports/old_closed', { status: 'actioned', resolvedAtMs: NOW - 366 * DAY, createdAtMs: NOW - 400 * DAY });
+  h.S('reports/old_deleted', { status: 'closed_account_deleted', resolvedAtMs: NOW - 400 * DAY });
+  h.S('reports/recent_closed', { status: 'dismissed', resolvedAtMs: NOW - 30 * DAY });
+  h.S('reports/old_open', { status: 'open', createdAtMs: NOW - 500 * DAY });
+  assert.deepEqual(await h.panel.purgeOldReports(), { purged: 2 });
+  assert.equal(h.G('reports/old_closed'), undefined);
+  assert.equal(h.G('reports/old_deleted'), undefined);
+  assert.ok(h.G('reports/recent_closed'));
+  assert.ok(h.G('reports/old_open'), 'açık bildirim sonuçlanmadan silinmez');
+  assert.deepEqual(await h.panel.purgeOldReports(), { purged: 0 });
 });

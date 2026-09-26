@@ -237,18 +237,20 @@ function useSubmit(onDone) {
 }
 
 function WarnForm({ uid, onCancel, onDone }) {
+  const [reason, setReason] = useState('');
   const [text, setText] = useState('');
   const { busy, error, submit } = useSubmit(onDone);
   return (
     <div className="adm-confirm">
-      <p className="adm-confirm-text">Oyuncuya “⚠️ Uyarı:” başlıklı bir SMS gider. Boş bırakırsan standart uyarı metni kullanılır.</p>
-      <textarea className="adm-input" rows={3} maxLength={300} placeholder="Uyarı metni" value={text} onChange={(e) => setText(e.target.value)} />
+      <p className="adm-confirm-text">Oyuncuya “⚠️ Moderasyon uyarısı. Sebep: …” SMS'i gider. İstersen kısa bir açıklama ekleyebilirsin.</p>
+      <input className="adm-input" maxLength={200} placeholder="Sebep (zorunlu, oyuncu görür)" value={reason} onChange={(e) => setReason(e.target.value)} />
+      <textarea className="adm-input" rows={3} maxLength={300} placeholder="Açıklama (isteğe bağlı)" value={text} onChange={(e) => setText(e.target.value)} />
       {error && <p className="adm-error">{error}</p>}
       <div className="adm-actions">
         <button className="adm-btn ghost" disabled={busy} onClick={onCancel}>
           Vazgeç
         </button>
-        <button className="adm-btn primary" disabled={busy} onClick={() => submit(() => adminAction('warnUser', { uid, text: text.trim() || undefined }))}>
+        <button className="adm-btn primary" disabled={busy || !reason.trim()} onClick={() => submit(() => adminAction('warnUser', { uid, reason: reason.trim(), text: text.trim() || undefined }))}>
           {busy ? '…' : 'Gönder'}
         </button>
       </div>
@@ -266,8 +268,8 @@ function DurationForm({ kind, isAdmin, uid, onCancel, onDone }) {
     <div className={`adm-confirm${isBan ? ' danger' : ''}`}>
       <p className="adm-confirm-text">
         {isBan
-          ? 'Oyuncunun hesabı kapatılır, açık oturumları sonlandırılır ve yazı yazamaz. Süreli banlar süre dolunca otomatik kalkar.'
-          : 'Oyuncu bu süre boyunca mesaj, gönderi, yorum, isim ve not yazamaz. Kendisine SMS ile bildirilir.'}
+          ? 'Oyuncunun hesabı kapatılır, açık oturumları sonlandırılır ve yazı yazamaz. Süreli banlar süre dolunca otomatik kalkar. Sebep ve süre SMS kutusuna yazılır (ban kalkınca görür).'
+          : 'Oyuncu bu süre boyunca mesaj, gönderi, yorum, isim ve not yazamaz. Sebep ve süre kendisine SMS ile bildirilir.'}
       </p>
       <div className="adm-chips">
         {options.map((o) => (

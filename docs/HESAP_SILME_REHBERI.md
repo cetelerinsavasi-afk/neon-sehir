@@ -65,6 +65,7 @@ node functions/scripts/delete-user.mjs --email <GÖNDEREN_E-POSTA> --key C:\User
 | **ANONİMLEŞTİRİLECEK** | Kayıt kalacak, ad "Silinmiş Oyuncu" olacak (geçmiş maç/masa/haber/çete kayıtları). |
 | **OYUN KURALIYLA ÇÖZÜLECEK** | Mevcut oyun mantığıyla çözülecek: çeteden ayrılma (Baba ise gece yeni Baba atanır), fabrikanın kapatılması ve işçilerin serbest kalması, takımın sistem (bot) takımına dönmesi, polislikten ayrılma, soygun planından çıkma, açık ilanların kaldırılması. |
 | **SAKLANACAK — yasal** | Web satın alma kayıtları; silinmez. |
+| **Moderasyon (UGC D5)** | Ban, susturma ve engelleme listesi silinir. Aktif ban **ön temizlikte** silinir: saatlik ban taraması silinmiş hesaba dokunmasın. Başkalarının engelleme listelerindeki satırı çıkarılır. Yaptığı bildirimler silinir. Hakkındaki bildirimlerde metin kopyası `[hesap silindi]` olur, açık olanlar kuyruktan düşer. `admin_logs` **silinmez**: hedef/yetkili adı "Silinmiş Oyuncu"/"Silinmiş Yetkili" olur, kaldırılan içeriğin kopyası çıkarılır, uid kalır. Kişi yetkiliyse rolü users belgesiyle düşer; `ADMIN_UIDS` listesindeyse oradan elle çıkar. |
 | **BİLGİ** | Borçlar, serbest kalacak işçiler, davet ettiği oyuncular, sınırlamalar. |
 
 Betiğin çıkış kodu: **0** = engel yok, **1** = engel var ya da hata.
@@ -143,7 +144,7 @@ Tabloda **Durum = Tamamlandı**, **Tamamlanma = tarih** yaz. Raporları (`rapor-
 
 ## Teknik notlar
 
-- **Dosyalar:** `functions/scripts/delete-user.mjs` (araç), `functions/scripts/delete-user.test.mjs` (çevrimdışı test, silme modu dahil 11 senaryo: `node --test functions/scripts/delete-user.test.mjs`).
+- **Dosyalar:** `functions/scripts/delete-user.mjs` (araç), `functions/scripts/delete-user.test.mjs` (çevrimdışı test, silme modu ve moderasyon kayıtları dahil 12 senaryo: `node --test functions/scripts/delete-user.test.mjs`).
 - `functions/scripts/**` klasörü `firebase.json`'daki kural gereği **Cloud Functions'a deploy edilmez**; araç yalnızca senin bilgisayarında çalışır.
 - **Salt-okunur güvence:** Plan HER ZAMAN (silme modunda da) Firestore ve Auth'un tüm yazma metotları kilitliyken hesaplanır; kilit kendini doğrular, doğrulanamazsa betik çalışmaz. Yazma yalnızca `--apply` + `[y/N]` onayından sonra, uygulama adımlarında yapılır.
 - **Oyun fonksiyonlarının yeniden kullanımı:** `--apply` modunda `functions/index.js` yüklenir; takım devri, menajerlik, çete ve soygun işlemleri canlıdaki fonksiyonların `.run()` metoduyla, oyuncunun kimliğiyle **aynı kodla** yapılır.

@@ -50,7 +50,9 @@ export default function AuditLogTab({ onOpenUser }) {
           {(l.targetUid || l.targetType) && (
             <div className="adm-log-line">
               <span className="adm-dim">Hedef:</span>{' '}
-              {l.targetUid ? (
+              {l.targetUid && l.targetDeleted ? (
+                <span>{l.targetName || 'Silinmiş Oyuncu'} <span className="adm-dim">(hesap silindi)</span></span>
+              ) : l.targetUid ? (
                 <button className="adm-link" onClick={() => onOpenUser(l.targetUid)}>
                   {l.targetName || l.targetUid}
                 </button>
@@ -80,7 +82,8 @@ function LogDetails({ l }) {
   if (d.untilMs) parts.push(`bitiş: ${fmtDate(d.untilMs)}`);
   if (d.effect && d.effect !== 'none') parts.push(effectLabel(d.effect));
   if (d.reportCount) parts.push(`${d.reportCount} şikâyet kapandı`);
-  if (d.warned) parts.push('uyarı gönderildi');
+  if (d.notified) parts.push(d.warned ? 'oyuncu bilgilendirildi (uyarı)' : 'oyuncu bilgilendirildi');
+  else if (d.warned) parts.push('uyarı gönderildi');
   if (l.action === 'set_role') parts.push(`${ROLE_LABELS[d.from] || 'Oyuncu'} → ${ROLE_LABELS[d.to] || 'Oyuncu'}`);
   if (d.authDisabled === false || d.authEnabled === false) parts.push('⚠️ Auth güncellenemedi');
   return (

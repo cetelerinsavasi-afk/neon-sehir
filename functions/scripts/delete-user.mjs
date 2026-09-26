@@ -44,6 +44,8 @@ import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 
 export const TOMBSTONE_NAME = 'Silinmiş Oyuncu';
+export const TOMBSTONE_STAFF = 'Silinmiş Yetkili';
+export const REDACTED_TEXT = '[hesap silindi]';
 const SAMPLE_LIMIT = 5;
 
 // Uygulama sırası (küçükten büyüğe). Önce hesabı dondur, sonra arka plan
@@ -643,6 +645,69 @@ export async function buildDeletionPlan({ db, auth, uid, email, FieldPath, now =
   }
   if (user?.profession === 'polis') add('flow', { what: 'Polis', paths: [`users/${uid}.profession`], detail: 'users dokümanıyla birlikte düşer; polis maaş havuzu hesabında artık yer almaz.' });
 
+  // ---- 8b) Moderasyon kayıtları (UGC D5) -----------------------------------------
+  // - Kendi engelleme listesi, susturma ve ban kaydı silinir. Aktif ban varsa kayıt
+  //   ÖN TEMİZLİKTE silinir: saatlik ban taraması silinmiş hesabın Auth kaydını
+  //   yeniden açmaya çalışmasın (hesap zaten dondurulur).
+  // - Başka oyuncuların engelleme listelerindeki kaydı (uid + ad) çıkarılır.
+  // - Yaptığı bildirimler silinir; hakkındaki bildirimlerde içeriğin metin kopyası
+  //   çıkarılır, açık olanlar "hesap silindi" olarak kapanır (12 ay saklama).
+  // - admin_logs (denetim izi) KORUNUR: hedef/yetkili adı ve kaldırılan içeriğin
+  //   metin kopyası çıkarılır; uid kalır (kimseyle eşleşmez), kayıtlar tutarlı kalır.
+  const [ownBlocks, muteDoc, banDoc] = await Promise.all([
+    counted(db.collection('userBlocks').doc(uid).get()),
+    counted(db.collection('mutes').doc(uid).get()),
+    counted(db.collection('bans').doc(uid).get()),
+  ]);
+  if (banDoc.exists) {
+    const b = banDoc.data() || {};
+    add('delete', {
+      what: `Ban kaydı (bans)${b.active ? ' — AKTİF' : ''}`,
+      paths: [banDoc.ref.path],
+      note: b.active ? 'aktif ban: ön temizlikte silinir (hesap zaten dondurulur; saatlik tarama silinmiş hesaba dokunmaz)' : undefined,
+      ops: [del(banDoc.ref.path, PHASES.PRECLEAN)],
+    });
+  }
+  if (muteDoc.exists) add('delete', { what: 'Susturma kaydı (mutes)', paths: [muteDoc.ref.path], ops: [del(muteDoc.ref.path)] });
+  if (ownBlocks.exists) add('delete', { what: 'Engelleme listesi (userBlocks)', paths: [ownBlocks.ref.path], detail: `${Object.keys(ownBlocks.data()?.blocked || {}).length} kayıt`, ops: [del(ownBlocks.ref.path)] });
+  const blockedBy = await counted(getDocs(db.collection('userBlocks').where(`blocked.${uid}.at`, '>', 0)));
+  if (blockedBy.length)
+    add('flow', {
+      what: 'Başka oyuncuların engelleme listelerindeki kaydı',
+      paths: blockedBy.map((d) => d.ref.path),
+      detail: `${blockedBy.length} listeden bu oyuncunun satırı (uid + ad) çıkarılır.`,
+      ops: blockedBy.map((d) => ({ phase: PHASES.CONTENT, type: 'removeBlockEntry', path: d.ref.path })),
+    });
+  const [reportsBy, reportsAbout, logsAbout, logsBy] = await Promise.all([
+    counted(getDocs(db.collection('reports').where('reporterUid', '==', uid))),
+    counted(getDocs(db.collection('reports').where('targetUid', '==', uid))),
+    counted(getDocs(db.collection('admin_logs').where('targetUid', '==', uid))),
+    counted(getDocs(db.collection('admin_logs').where('actorUid', '==', uid))),
+  ]);
+  if (reportsBy.length) add('delete', { what: 'Yaptığı bildirimler (reports)', paths: reportsBy.map((d) => d.ref.path), ops: reportsBy.map((d) => del(d.ref.path)) });
+  if (reportsAbout.length) {
+    const open = reportsAbout.filter((d) => d.data().status === 'open').length;
+    add('flow', {
+      what: 'Hakkındaki bildirimler (reports)',
+      paths: reportsAbout.map((d) => d.ref.path),
+      detail: `İçeriğin metin kopyası çıkarılır${open ? `; ${open} açık bildirim "hesap silindi" olarak kapanır` : ''}. Kayıtlar 12 aylık saklama süresince kalır.`,
+      ops: reportsAbout.map((d) => ({ phase: PHASES.ANONYMIZE, type: 'redactReport', path: d.ref.path })),
+    });
+  }
+  if (logsAbout.length || logsBy.length) {
+    add('flow', {
+      what: 'Yetkili işlem kayıtları (admin_logs — denetim izi korunur)',
+      paths: [...logsAbout, ...logsBy].map((d) => d.ref.path),
+      detail: `${logsAbout.length} kayıtta hedef, ${logsBy.length} kayıtta yetkili olarak geçiyor: ad → "${TOMBSTONE_NAME}"/"${TOMBSTONE_STAFF}", kaldırılan içeriğin metin kopyası çıkarılır; kayıt silinmez.`,
+      ops: [
+        ...logsAbout.map((d) => ({ phase: PHASES.ANONYMIZE, type: 'redactAuditLog', path: d.ref.path, as: 'target' })),
+        ...logsBy.map((d) => ({ phase: PHASES.ANONYMIZE, type: 'redactAuditLog', path: d.ref.path, as: 'actor' })),
+      ],
+    });
+  }
+  if (user && ['admin', 'moderator'].includes(user.role))
+    add('info', { what: `Yetkili hesabı (${user.role})`, detail: 'Rol users belgesiyle birlikte düşer. Bu uid functions/index.js ve src/config/admin.js ADMIN_UIDS listesindeyse oradan da çıkar.' });
+
   // ---- 9) Anonimleştirme — haberler + op'ların üretilmesi ---------------------
   const nameList = [...names];
   plan.names = nameList;
@@ -823,6 +888,34 @@ export async function applyPlan({ db, auth, FieldValue, callables, plan, log = (
         tx.delete(ref);
         if (p.exists && (p.data()[op.counter] || 0) > 0) tx.update(parent, { [op.counter]: FieldValue.increment(-1) });
       });
+    },
+    // UGC D5 — moderasyon kayıtları
+    async removeBlockEntry(op) {
+      const ref = db.doc(op.path);
+      const s = await ref.get();
+      if (s.exists && s.data()?.blocked?.[uid]) await ref.update({ [`blocked.${uid}`]: FieldValue.delete() });
+    },
+    async redactReport(op) {
+      const ref = db.doc(op.path);
+      const s = await ref.get();
+      if (!s.exists) return;
+      const r = s.data() || {};
+      const upd = { textSnapshot: REDACTED_TEXT, targetDeleted: true };
+      if (r.status === 'open') Object.assign(upd, { status: 'closed_account_deleted', resolution: 'account_deleted', resolvedAtMs: Date.now(), resolvedBy: 'system', resolvedByName: 'Sistem' });
+      await ref.update(upd);
+    },
+    async redactAuditLog(op) {
+      const ref = db.doc(op.path);
+      const s = await ref.get();
+      if (!s.exists) return;
+      const l = s.data() || {};
+      const upd = {};
+      if (op.as === 'target' && l.targetUid === uid) {
+        Object.assign(upd, { targetName: TOMBSTONE_NAME, targetDeleted: true });
+        if (l.details?.before != null) upd['details.before'] = REDACTED_TEXT;
+      }
+      if (op.as === 'actor' && l.actorUid === uid) Object.assign(upd, { actorName: TOMBSTONE_STAFF, actorDeleted: true });
+      if (Object.keys(upd).length) await ref.update(upd);
     },
     async anonymizeCollection(op) {
       const docs = await getDocs(db.collection(op.path));

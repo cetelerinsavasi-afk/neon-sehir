@@ -72,10 +72,17 @@ const playerCard = createPlayerCard({
   factoryDisplayName: (f) => factoryDisplayName(f),
 });
 export const getPlayerCard = playerCard.getPlayerCard;
-// Süresi dolan banları kaldırır (Auth hesabını yeniden açar) — saatte bir.
+// Süresi dolan banları kaldırır (Auth hesabını yeniden açar) ve 12 aydan eski
+// sonuçlanmış bildirimleri siler (Gizlilik Politikası md. 6) — saatte bir.
 export const adminBanSweep = onSchedule({ schedule: 'every 60 minutes' }, async () => {
   const res = await adminPanel.sweepExpiredBans();
   if (res.lifted) console.log(`adminBanSweep: ${res.lifted} ban kaldırıldı`);
+  try {
+    const p = await adminPanel.purgeOldReports();
+    if (p.purged) console.log(`adminBanSweep: ${p.purged} eski bildirim silindi (12 ay)`);
+  } catch (err) {
+    console.error('purgeOldReports', err?.message || err);
+  }
 });
 
 // =============================================================================

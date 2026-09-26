@@ -420,6 +420,8 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
     othersRef.current = others;
     const now = Date.now();
     others.forEach((o) => {
+      // UGC (kapanış): engellenen oyuncunun yerelde biriken balonları da hemen silinir
+      if (o.blockedByMe) { othersBubbleHistoryRef.current.delete(o.uid); return; }
       if (!o.chatText || !o.chatTs) return;
       if (lastSeenChatTsRef.current.get(o.uid) === o.chatTs) return; // zaten kaydedildi
       lastSeenChatTsRef.current.set(o.uid, o.chatTs);
