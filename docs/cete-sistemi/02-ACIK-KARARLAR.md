@@ -80,3 +80,8 @@ v31'de kaynak olarak **oyun tasarımcısının kendi metni** esas alındı; önc
 ## v40
 - **Çete teslimi:** İstihbarat duyurusunda teslim edenin kod adı yazılmaz — sadece "X çetesi çökertildi ve İstihbarata teslim edildi". Karar panelinde teslim: üyeler dağılır · tüm altın İstihbarata · +10M prestij; ayrıl: Mafya Babası olarak devam.
 - **Yatırımlar (functions/index.js):** elmas/hisse/kripto aynı sistem — `investmentTrades` (alış: harcanan altın, satış: komisyon öncesi brüt, mining: sahip başına KR × gece fiyatı), yön %50/%50, rejim `pickInvestmentRegime` (eşik → ters/görünür, eşik/10 altı → normal, arada 24 saatlik ağırlıklı alış oranı > %75 → ters/gizli). `cryptoTrades` kaldırıldı. Kontrol: `node functions/scripts/check-investments.mjs`.
+
+## v41
+- **Baba ayrılınca / atılınca:** yerine hemen kimse geçmez; koltuk 00:00'a kadar boş (`babaId: null`), herkes mevkiinde kalır. 00:00'da rütbeler düzenlenirken en yüksek prestijli üye Mafya Babası olur. Son üye çıkarsa çete dağılır.
+- **Ayrılma duyurusu:** kendi isteğiyle ayrılan (başka çeteye geçen / yeni çete kuran dahil) herkes için sohbette "X çeteden ayrıldı".
+- **Başkanlık devri:** Baba bir Sağ Kola devir talebi gönderir (`gangs/{g}/public/handover`). Sağ Kol Savaş ekranından 00:00'a kadar kabul/ret; kabul → 00:00'da yeni Baba, ret → Baba devam, cevapsız → iptal. Baba talebi iptal edebilir. Adına oylama olan Baba devredemez.

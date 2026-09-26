@@ -10,17 +10,26 @@ import { DIST_GROUPS, GANG_RULES, LEADERS, RANK_ICONS, fmt } from '../gangConsta
 
 // Üyeye dokununca: saygı / at / çıkarma oylaması (yetkiye göre)
 const KICK_VOTE_TARGETS = { baba: ['sagkol', 'kidemli'], sagkol: ['kidemli', 'tetikci'], kidemli: ['tetikci', 'comez'] };
-function MemberSheet({ member, myRank, onClose }) {
+function MemberSheet({ member, myRank, handover, onClose }) {
   const { run, busy } = useGangAction();
   const [ask, setAsk] = useState(null);
   const t = member.rank;
   const canRespect = myRank === 'baba' && !member.respected;
   const canKick = (myRank === 'baba' && (t === 'tetikci' || t === 'comez')) || (myRank === 'sagkol' && t === 'comez');
   const canKickVote = (KICK_VOTE_TARGETS[myRank] || []).includes(t);
+  // v41: Baba → Sağ Kol başkanlık devri (günde bir açık talep)
+  const canHandover = myRank === 'baba' && t === 'sagkol' && !handover;
   const voteOpen = istHour(useNow(30_000)) < 12;
   const C = {
     respect: { icon: '🎩', title: `${member.name} için saygı göster`, lines: [`✦ +${fmt(GANG_RULES.RESPECT_PRESTIGE)}`], label: 'Saygı göster', act: () => run('giveRespect', { targetId: member.id }, { success: '🎩 Saygı gösterildi' }) },
     kick: { icon: '🚫', title: `${member.name} çeteden atılsın mı?`, lines: ['Prestiji kalıcı silinir.', '🚪 İsterse hemen geri girebilir, prestiji 0\'dan başlar.'], label: 'At', danger: true, act: () => run('kickMember', { targetId: member.id }, { success: '🚫 Üye atıldı' }) },
+    handover: {
+      icon: '👑',
+      title: `Başkanlığı ${member.name} adlı Sağ Kola devret?`,
+      lines: [`✅ ${member.name} kabul ederse 00:00'da yeni Mafya Babası o olur`, '❌ Reddederse Mafya Babası olarak devam edersin', "⏱ 00:00'a kadar cevap gelmezse talep iptal olur", '🚪 Çeteden ayrılmazsın; rütben 00:00\'da prestijine göre belirlenir'],
+      label: 'Devret',
+      act: () => run('offerHandover', { targetId: member.id }, { success: '👑 Devir talebi gönderildi' }),
+    },
     kickVote: { icon: '🗳️', title: `${member.name} için çıkarma oylaması`, lines: ['✅ %51\'den fazla → çeteden çıkar', '❌ geçmezse kimse atılmaz'], label: 'Başlat', act: () => run('requestVote', { type: 'kick', targetId: member.id }, { success: '🗳️ Oylama başladı' }) },
   };
   const c = ask ? C[ask] : null;
@@ -33,6 +42,11 @@ function MemberSheet({ member, myRank, onClose }) {
         {member.inactiveWarn && <span className="gx-pill warn">💤 29 gündür aktif değil</span>}
       </div>
       <div className="gx-stack">
+        {canHandover && (
+          <Btn block kind="ghost" onClick={() => setAsk('handover')}>
+            👑 Başkanlığı devret
+          </Btn>
+        )}
         {canRespect && <Btn block onClick={() => setAsk('respect')}>🎩 Saygı göster (+{fmt(GANG_RULES.RESPECT_PRESTIGE)})</Btn>}
         {canKickVote && (
           <Btn block kind="ghost" disabled={!voteOpen} onClick={() => setAsk('kickVote')}>
@@ -62,6 +76,21 @@ function MemberSheet({ member, myRank, onClose }) {
         />
       )}
     </Sheet>
+  );
+}
+
+// v41: Baba'nın gönderdiği devir talebinin durumu
+function HandoverStatus({ h }) {
+  const { run, busy } = useGangAction();
+  return (
+    <div className={`gx-handover ${h.status}`}>
+      <span className="gx-handover-main">
+        👑 <b>{h.toName}</b> · {h.status === 'accepted' ? "✅ kabul etti — 00:00'da Mafya Babası" : '⏳ cevap bekleniyor'}
+      </span>
+      <Btn small kind="ghost" busy={busy === 'ho_cancel'} onClick={() => run('cancelHandover', {}, { key: 'ho_cancel', success: '👑 Devir iptal edildi' })}>
+        İptal
+      </Btn>
+    </div>
   );
 }
 
@@ -258,6 +287,8 @@ export default function CetemTab({ d }) {
           )}
         </div>
         <KasaLine state={d.state} isToday={d.stateToday} kasa={d.kasaShown} live={d.kasaLive} />
+        {!d.gang.babaId && <div className="gx-baba-vacant">👑 Mafya Babası koltuğu boş · 00:00'da en yüksek prestijli üye geçer</div>}
+        {d.handover && d.handover.fromId === actorId && <HandoverStatus h={d.handover} />}
         <div className="gx-action-grid">
           <Btn small kind="ghost" onClick={() => setMoney('donate')}>
             💸 Bağış
@@ -333,7 +364,7 @@ export default function CetemTab({ d }) {
         🚪 Çeteden ayrıl
       </Btn>
 
-      {sel && <MemberSheet member={sel} myRank={rank} onClose={() => setSel(null)} />}
+      {sel && <MemberSheet member={sel} myRank={rank} handover={d.handover} onClose={() => setSel(null)} />}
       {money && <MoneySheet kind={money} d={d} onClose={() => setMoney(null)} />}
       {edit && <EditProfileSheet gang={d.gang} rank={rank} onClose={() => setEdit(false)} />}
       {lead && (

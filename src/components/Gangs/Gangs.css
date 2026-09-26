@@ -2943,3 +2943,36 @@ textarea.gx-input {
   flex: 1;
   min-width: 0;
 }
+
+/* v41 — başkanlık devri / boş Baba koltuğu */
+.gx-baba-vacant {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: var(--neon-yellow);
+  background: rgba(255, 210, 63, 0.08);
+  border: 1px dashed rgba(255, 210, 63, 0.4);
+}
+.gx-handover {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  background: rgba(255, 210, 63, 0.08);
+  border: 1px solid rgba(255, 210, 63, 0.35);
+}
+.gx-handover.accepted {
+  background: rgba(124, 255, 107, 0.08);
+  border-color: rgba(124, 255, 107, 0.4);
+}
+.gx-handover-main {
+  min-width: 0;
+}
+.gx-handover-text {
+  font-size: 14px;
+}

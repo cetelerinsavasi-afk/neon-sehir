@@ -30,6 +30,8 @@ export function useGangData(membership) {
   const { data: state } = useDocData(gangId && kasaLive ? path(`gangs/${gangId}/private/state`) : null);
   // v38: üye listesi 00:00 prestijiyle (public/roster); kendi satırın anlık
   const { data: rosterDoc } = useDocData(gangId ? path(`gangs/${gangId}/public/roster`) : null);
+  // v41: başkanlık devri talebi (bugüne ait ve açık olanlar anlamlı)
+  const { data: handoverDoc } = useDocData(gangId ? path(`gangs/${gangId}/public/handover`) : null);
   const rosterStale =
     rosterDoc !== undefined &&
     gang != null &&
@@ -55,6 +57,7 @@ export function useGangData(membership) {
     realRank,
     underVote,
     underVoteUntilMs: Number(me?.underVoteUntilMs || 0),
+    handover: handoverDoc && handoverDoc.dateKey === today && ['pending', 'accepted'].includes(handoverDoc.status) ? handoverDoc : null,
     state,
     stateToday: state?.midnightDateKey === today,
     kasaLive,

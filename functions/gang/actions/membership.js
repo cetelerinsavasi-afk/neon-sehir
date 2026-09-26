@@ -1,5 +1,6 @@
 // Çete kurma / katılma / ayrılma / atma / saygı / profil / bağış / sohbet
 import { GANG, LOGO_EMOJIS, LOGO_COLORS, LOGO_BGS, RANK_LABELS, isRanked, rankLevel } from '../config.js';
+import { addDays, midnightMsOf } from '../time.js';
 
 export function createMembershipActions(core, intelHelpers) {
   const { FV, fail, readWallet, debitGold, readMembership, planRemoval, applyRemoval, ledger, gangLog, notify, systemChat, cleanText, posInt, nameKeyOf, requireGangMember, requireRank, requestGuard } = core;
@@ -149,8 +150,7 @@ export function createMembershipActions(core, intelHelpers) {
       const gangId = requireGangMember(membership);
       const plan = await planRemoval(tx, ctx, gangId, ctx.actorId);
       if (!plan.member) fail('failed-precondition', 'Bir çetede değilsin.');
-      const res = applyRemoval(tx, ctx, plan, 'left');
-      if (!res.dissolved) core.announce(tx, ctx, gangId, '🚪', `${plan.member.name} çeteden ayrıldı.`);
+      const res = applyRemoval(tx, ctx, plan, 'left'); // duyuru applyRemoval içinde (v41)
       return { left: true, dissolved: res.dissolved };
     });
   }
@@ -321,5 +321,76 @@ export function createMembershipActions(core, intelHelpers) {
     });
   }
 
-  return { createGang, joinGang, leaveGang, kickMember, giveRespect, updateGangProfile, donate, sendGangChat, sendGlobalChat, validLogo, RANK_LABELS, rankLevel };
+  // ---------------------------------------------------------------------------
+  // v41 — BAŞKANLIK DEVRİ: Mafya Babası bir Sağ Kola devir talebi gönderir.
+  // Sağ Kol 00:00'a kadar kabul ederse 00:00'da yeni Mafya Babası olur;
+  // reddederse Baba devam eder; cevap gelmezse talep 00:00'da iptal olur.
+  // Tek belge: gangs/{g}/public/handover (status: pending|accepted|rejected|
+  // cancelled|done|expired). Uygulama clock.processHandover'da.
+  // ---------------------------------------------------------------------------
+  async function offerHandover(ctx, data) {
+    const targetId = String(data.targetId || '');
+    if (!targetId || targetId === ctx.actorId) fail('invalid-argument', 'Geçersiz üye.');
+    return core.db.runTransaction(async (tx) => {
+      const membership = await readMembership(tx, ctx, ctx.actorId);
+      const gangId = requireGangMember(membership);
+      const [meSnap, tSnap, hSnap, gSnap] = await Promise.all([
+        tx.get(ctx.ref.member(gangId, ctx.actorId)),
+        tx.get(ctx.ref.member(gangId, targetId)),
+        tx.get(ctx.ref.handover(gangId)),
+        tx.get(ctx.ref.gang(gangId)),
+      ]);
+      if (core.effRank(meSnap.data(), ctx) !== 'baba' || gSnap.data()?.babaId !== ctx.actorId) fail('permission-denied', 'Başkanlığı sadece Mafya Babası devredebilir.');
+      if (!tSnap.exists) fail('failed-precondition', 'Bu oyuncu artık çetede değil.');
+      if (tSnap.data().rank !== 'sagkol') fail('failed-precondition', 'Başkanlık sadece bir Sağ Kola devredilebilir.');
+      const h = hSnap.data();
+      if (h && h.dateKey === ctx.dateKey && ['pending', 'accepted'].includes(h.status)) fail('already-exists', 'Bugün zaten bir devir talebi var.');
+      const expiresAtMs = midnightMsOf(addDays(ctx.dateKey, 1));
+      tx.set(ctx.ref.handover(gangId), {
+        status: 'pending',
+        fromId: ctx.actorId,
+        fromName: meSnap.data().name,
+        toId: targetId,
+        toName: tSnap.data().name,
+        dateKey: ctx.dateKey,
+        createdAtMs: ctx.now,
+        expiresAtMs,
+      });
+      notify(tx, ctx, targetId, `👑 Mafya Babası ${meSnap.data().name} başkanlığı sana devretmek istiyor. 00:00'a kadar Savaş ekranından cevap ver.`, 'handover');
+      gangLog(tx, ctx, gangId, '👑', `${meSnap.data().name}, başkanlığı ${tSnap.data().name} adlı Sağ Kola devretmek istiyor.`);
+      return { offered: true, expiresAtMs };
+    });
+  }
+
+  async function respondHandover(ctx, data) {
+    const accept = Boolean(data.accept);
+    return core.db.runTransaction(async (tx) => {
+      const membership = await readMembership(tx, ctx, ctx.actorId);
+      const gangId = requireGangMember(membership);
+      const hSnap = await tx.get(ctx.ref.handover(gangId));
+      const h = hSnap.data();
+      if (!h || h.toId !== ctx.actorId || h.status !== 'pending' || h.dateKey !== ctx.dateKey) fail('failed-precondition', 'Bekleyen bir devir talebi yok.');
+      tx.update(ctx.ref.handover(gangId), { status: accept ? 'accepted' : 'rejected', respondedAtMs: ctx.now });
+      notify(tx, ctx, h.fromId, accept ? `👑 ${h.toName} devri kabul etti — 00:00'da yeni Mafya Babası o olacak.` : `👑 ${h.toName} devri reddetti — Mafya Babası olarak devam ediyorsun.`, 'handover');
+      if (accept) core.announce(tx, ctx, gangId, '👑', `${h.fromName} başkanlığı ${h.toName} adlı Sağ Kola devrediyor — 00:00'da yeni Mafya Babası ${h.toName}.`);
+      else gangLog(tx, ctx, gangId, '👑', `${h.toName} başkanlık devrini reddetti.`);
+      return { accepted: accept };
+    });
+  }
+
+  async function cancelHandover(ctx) {
+    return core.db.runTransaction(async (tx) => {
+      const membership = await readMembership(tx, ctx, ctx.actorId);
+      const gangId = requireGangMember(membership);
+      const hSnap = await tx.get(ctx.ref.handover(gangId));
+      const h = hSnap.data();
+      if (!h || h.fromId !== ctx.actorId || !['pending', 'accepted'].includes(h.status) || h.dateKey !== ctx.dateKey) fail('failed-precondition', 'İptal edilecek bir devir talebi yok.');
+      tx.update(ctx.ref.handover(gangId), { status: 'cancelled', respondedAtMs: ctx.now });
+      notify(tx, ctx, h.toId, `👑 ${h.fromName} başkanlık devrini iptal etti.`, 'handover');
+      if (h.status === 'accepted') core.announce(tx, ctx, gangId, '👑', `${h.fromName} başkanlık devrini iptal etti — Mafya Babası olarak devam ediyor.`);
+      return { cancelled: true };
+    });
+  }
+
+  return { offerHandover, respondHandover, cancelHandover, createGang, joinGang, leaveGang, kickMember, giveRespect, updateGangProfile, donate, sendGangChat, sendGlobalChat, validLogo, RANK_LABELS, rankLevel };
 }

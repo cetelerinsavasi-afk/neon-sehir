@@ -352,6 +352,43 @@ function AttackersSheet({ def, attackers, lead, onClose }) {
   );
 }
 
+// v41: Mafya Babasının başkanlığı devretme teklifi (Sağ Kol görür)
+function HandoverOffer({ h }) {
+  const { run, busy } = useGangAction();
+  const [ask, setAsk] = useState(null);
+  return (
+    <Card className="gx-betcard waiting gx-handover-offer">
+      <div className="gx-betcard-tag">👑 Başkanlık devri</div>
+      <div className="gx-handover-text">
+        <b>{h.fromName}</b> başkanlığı sana devretmek istiyor.
+      </div>
+      <div className="gx-betcard-row">
+        <LiveCountdown untilMs={h.expiresAtMs} label="⏳ Cevap için" doneLabel="⌛ Süre doldu" />
+      </div>
+      <div className="gx-row-2">
+        <Btn kind="ghost" onClick={() => setAsk('reject')}>
+          ❌ Reddet
+        </Btn>
+        <Btn onClick={() => setAsk('accept')}>✅ Kabul</Btn>
+      </div>
+      {ask && (
+        <Confirm
+          icon={ask === 'accept' ? '👑' : '❌'}
+          title={ask === 'accept' ? 'Başkanlığı kabul et?' : 'Devri reddet?'}
+          lines={ask === 'accept' ? ["👑 00:00'da yeni Mafya Babası sen olursun", `🎖️ ${h.fromName} çetede kalır`] : [`👑 ${h.fromName} Mafya Babası olarak devam eder`]}
+          confirmLabel={ask === 'accept' ? 'Kabul' : 'Reddet'}
+          busy={Boolean(busy)}
+          onCancel={() => setAsk(null)}
+          onConfirm={async () => {
+            await run('respondHandover', { accept: ask === 'accept' }, { success: ask === 'accept' ? "👑 Kabul edildi — 00:00'da Mafya Babasısın" : 'Devir reddedildi' });
+            setAsk(null);
+          }}
+        />
+      )}
+    </Card>
+  );
+}
+
 // Gelen bahis / ittifak teklifi
 function OfferCard({ kind, item, rank }) {
   const { run, busy } = useGangAction();
@@ -910,6 +947,12 @@ export default function WarsTab({ org, d }) {
           </WarRow>
         );
       })}
+
+      {/* v41: başkanlık devri talebi (Sağ Kola) */}
+      {!isIntel && d.handover && d.handover.toId === actorId && d.handover.status === 'pending' && <HandoverOffer h={d.handover} />}
+      {!isIntel && d.handover && d.handover.toId === actorId && d.handover.status === 'accepted' && (
+        <Card className="gx-handover accepted">👑 Kabul ettin — 00:00'da yeni Mafya Babası sensin.</Card>
+      )}
 
       {/* Teklifler */}
       {!isIntel && (L.betOffersIn.length > 0 || L.allianceIn.length > 0) && (

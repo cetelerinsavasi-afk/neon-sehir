@@ -82,11 +82,16 @@ test('başka çetedeyken yeni çete kurmak: eski çeteden çıkar, prestij silin
   assert.equal(h.get(`intelCodeNames/gölge`), undefined, 'kod adı serbest kalmalı');
 });
 
-test('Baba ayrılırsa en yüksek prestijli üye Baba olur; son üye ayrılırsa çete dağılır', async () => {
+test('v41: Baba ayrılırsa 00:00da en yüksek prestijli üye Baba olur; son üye ayrılırsa çete dağılır', async () => {
   const h = await createHarness();
   const A = await setupGang(h, { members: 2, name: 'Alfa' });
   await h.setPrestige(A.gangId, A.ids[1], 5_000_000);
   await h.act(A.baba, 'leaveGang');
+  // v41: gün içinde yerine kimse geçmez; herkes mevkiinde kalır, sohbette duyurulur
+  assert.equal(h.get(`gangs/${A.gangId}`).babaId, null);
+  assert.notEqual(h.member(A.gangId, A.ids[1]).rank, 'baba');
+  assert.ok(h.chat(A.gangId).some((m) => /çeteden ayrıldı.*00:00/.test(m)));
+  await h.nextDay(); // 00:00: en yüksek prestijli üye Baba
   assert.equal(h.get(`gangs/${A.gangId}`).babaId, A.ids[1]);
   assert.equal(h.member(A.gangId, A.ids[1]).rank, 'baba');
   await h.act(A.ids[1], 'leaveGang');
@@ -217,4 +222,38 @@ test('v38 ensurePublicView: liste belgesi yoksa üye isteğiyle hemen kurulur', 
   assert.equal(Object.keys(h.get(`gangs/${A.gangId}/public/roster`).members).length, 3);
   const again = await h.act(A.ids[1], 'ensurePublicView', {});
   assert.equal(again.gang, false, 'güncelse tekrar yazmaz');
+});
+
+test('v41 başkanlık devri: Baba → Sağ Kol; kabul → 00:00da yeni Baba; ret → Baba devam; cevapsız → iptal', async () => {
+  const h = await createHarness();
+  const A = await setupGang(h, { members: 3, name: 'Devir' });
+  const [s1, s2, c] = A.ids;
+  await h.setPrestige(A.gangId, s1, 5_000_000);
+  await h.setPrestige(A.gangId, s2, 4_000_000);
+  await h.setRank(A.gangId, s1, 'sagkol');
+  await h.setRank(A.gangId, s2, 'sagkol');
+  // sadece Baba, sadece Sağ Kola
+  await h.fails(s1, 'offerHandover', { targetId: s2 });
+  assert.match((await h.fails(A.baba, 'offerHandover', { targetId: c })).message, /Sağ Kol/);
+  // 1) kabul
+  await h.act(A.baba, 'offerHandover', { targetId: s2 });
+  await h.fails(A.baba, 'offerHandover', { targetId: s1 }); // günde tek talep
+  await h.fails(s1, 'respondHandover', { accept: true }); // başkası cevaplayamaz
+  await h.act(s2, 'respondHandover', { accept: true });
+  assert.equal(h.get(`gangs/${A.gangId}`).babaId, A.baba, '00:00a kadar herkes mevkiinde');
+  await h.nextDay();
+  assert.equal(h.get(`gangs/${A.gangId}`).babaId, s2);
+  assert.equal(h.member(A.gangId, s2).rank, 'baba');
+  assert.notEqual(h.member(A.gangId, A.baba).rank, 'baba');
+  assert.ok(h.member(A.gangId, A.baba), 'eski Baba çetede kalır');
+  // 2) ret
+  await h.act(s2, 'offerHandover', { targetId: s1 });
+  await h.act(s1, 'respondHandover', { accept: false });
+  await h.nextDay();
+  assert.equal(h.get(`gangs/${A.gangId}`).babaId, s2);
+  // 3) cevapsız → iptal
+  await h.act(s2, 'offerHandover', { targetId: s1 });
+  await h.nextDay();
+  assert.equal(h.get(`gangs/${A.gangId}`).babaId, s2);
+  assert.equal(h.get(`gangs/${A.gangId}/public/handover`).status, 'expired');
 });

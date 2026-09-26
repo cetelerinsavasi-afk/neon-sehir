@@ -167,7 +167,8 @@ test('çeteyi İstihbarata teslim et → çete kapanır, üyeler atılır, TÜM 
   const spy = G.ids[0];
   await h.act(spy, 'joinIntel', { codeName: 'Truva' });
   await h.setPrestige(G.gangId, spy, 50_000_000);
-  await h.act(G.baba, 'leaveGang'); // halef: en yüksek prestij → casus
+  await h.act(G.baba, 'leaveGang'); // v41: halef 00:00'da → en yüksek prestij → casus
+  await h.nextDay();
   const ms = await h.membership(spy);
   assert.equal(ms.intelDecisionGangId, G.gangId);
   assert.equal(h.get(`gangs/${G.gangId}`).babaId, spy);
@@ -191,6 +192,7 @@ test('çeteyi İstihbarata teslim et → çete kapanır, üyeler atılır, TÜM 
   await h.act(spy2, 'joinIntel', { codeName: 'Sessiz' });
   await h.setPrestige(H.gangId, spy2, 50_000_000);
   await h.act(H.baba, 'leaveGang');
+  await h.nextDay(); // v41: 00:00'da casus Baba olur, karar süresi başlar
   const intelCount = h.get('intel/main').memberCount;
   await h.nextDay();
   const ms2 = await h.membership(spy2);

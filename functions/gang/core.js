@@ -83,6 +83,8 @@ export function createCore(deps) {
         distributions: () => c('distributions'),
         // v38: herkese açık görünümler (00:00 prestiji; anlık prestij sadece kendine)
         gangRoster: (g) => d(`gangs/${g}/public/roster`),
+        // v41: başkanlık devri talebi (tek belge; çete üyeleri okur)
+        handover: (g) => d(`gangs/${g}/public/handover`),
         intelRosterView: () => d('intel/main/public/roster'),
         war: (id) => d(`wars/${id}`),
         // v37: bahis tutarı ayrı belgede — sadece Baba/Sağ Kol/Kıdemli okur (kurallar)
@@ -208,6 +210,7 @@ export function createCore(deps) {
   }
 
   function notify(tx, ctx, actorId, text, kind = 'gang') {
+    if (!actorId) return; // v41: boş Baba koltuğu vb.
     if (ctx.isTest) {
       tx.set(ctx.ref.inbox().doc(), { to: actorId, text, kind, atMs: ctx.now });
     } else {
@@ -358,8 +361,10 @@ export function createCore(deps) {
     ]);
     plan.votes = votesSnap.docs.map((d) => ({ id: d.id, ref: d.ref, ...d.data() }));
     plan.pending = pendingSnap.docs.map((d) => ({ id: d.id, ref: d.ref, ...d.data() }));
+    // v41: kalan üye sayısı her çıkarmada bilinmeli (Baba koltuğu boşken son üye çıkarsa çete dağılır)
+    const all = await tx.get(ctx.ref.members(gangId));
+    plan.othersCount = all.docs.filter((d) => d.id !== memberId).length;
     if (plan.member.rank === 'baba') {
-      const all = await tx.get(ctx.ref.members(gangId));
       const others = all.docs.map((d) => ({ id: d.id, ...d.data() })).filter((m) => m.id !== memberId);
       others.sort(
         (a, b) => (b.prestige || 0) - (a.prestige || 0) || (a.joinedAtMs || 0) - (b.joinedAtMs || 0) || (a.id < b.id ? -1 : 1)
@@ -407,21 +412,16 @@ export function createCore(deps) {
 
     const gangUpdate = { memberCount: FV.increment(-1) };
     let dissolved = false;
-    if (babaChanged) {
-      if (plan.successor) {
-        const s = plan.successor;
-        tx.update(ctx.ref.member(gangId, s.id), { rank: 'baba' });
-        const sUpd = { gangRank: 'baba' };
-        if (plan.successorMembership?.intelRosterId) {
-          // İstihbarat üyesi Baba oldu → gizli karar paneli (sonraki 00:00'a kadar)
-          sUpd.intelDecisionGangId = gangId;
-          sUpd.intelDecisionDeadline = addDays(ctx.dateKey, 1);
-        }
-        tx.set(ctx.ref.membership(s.id), sUpd, { merge: true });
-        gangUpdate.babaId = s.id;
-        gangUpdate.babaName = s.name;
-        gangLog(tx, ctx, gangId, '👑', `${s.name} yeni Mafya Babası oldu.`);
-        notify(tx, ctx, s.id, `👑 ${gang?.name || 'Çete'} çetesinin yeni Mafya Babası sensin.`, 'rank');
+    const lastOne = plan.othersCount === 0;
+    if (babaChanged || lastOne) {
+      if (plan.successor && !lastOne) {
+        // v41: Baba ayrılınca/atılınca yerine HEMEN kimse geçmez — herkes
+        // 00:00'a kadar mevkiinde kalır; 00:00'da rütbeler düzenlenirken en
+        // yüksek prestijli üye Mafya Babası olur (bkz. clock.recomputeGangRanks).
+        gangUpdate.babaId = null;
+        gangUpdate.babaName = null;
+        gangUpdate.babaVacantSinceMs = ctx.now;
+        gangLog(tx, ctx, gangId, '👑', 'Mafya Babası koltuğu boş — yeni Mafya Babası 00:00\'da belirlenecek.');
       } else {
         dissolved = true;
         gangUpdate.status = 'disbanded';
@@ -434,6 +434,8 @@ export function createCore(deps) {
     }
     tx.update(ctx.ref.gang(gangId), gangUpdate);
     if (notifyText) notify(tx, ctx, memberId, notifyText, 'membership');
+    // v41: kendi isteğiyle ayrılan herkes için sohbette duyuru (başka çeteye geçiş / yeni çete kurma dahil)
+    if (voluntary && !dissolved) announce(tx, ctx, gangId, '🚪', `${member.name} çeteden ayrıldı.${babaChanged ? ' 👑 Yeni Mafya Babası 00:00\'da belirlenecek.' : ''}`);
     return { removed: true, dissolved };
   }
 

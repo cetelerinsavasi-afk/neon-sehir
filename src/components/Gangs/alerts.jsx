@@ -151,6 +151,7 @@ export function useGangAlerts(uid) {
   const mine = useDocs(base && gangId ? `mine_${base}_${gangId}` : null, () => query(collection(db, `${base}/wars`), where('activeGangIds', 'array-contains', gangId), limit(60)));
   const intelWars = useDocs(base && rid ? `iw_${base}` : null, () => query(collection(db, `${base}/wars`), where('intelInvolved', '==', true), where('status', '==', 'active'), limit(60)));
   const slot = useDoc(base && uid ? `${base}/slots/${slotId}` : null);
+  const handover = useDoc(base && gangId ? `${base}/gangs/${gangId}/public/handover` : null); // v41
 
   // --- oylamalar, dağıtımlar, ittifak teklifleri ---
   const gVotes = useDocs(base && gangId && atLeast(rank, 'tetikci') ? `gv_${base}_${gangId}` : null, () => query(collection(db, `${base}/gangs/${gangId}/votes`), where('status', '==', 'active'), limit(20)));
@@ -207,7 +208,8 @@ export function useGangAlerts(uid) {
       Boolean(rid) &&
       ((isLead && ((istHour(now) < 12 && truckReps.some((r) => !r.opWarId)) || betReps.some((r) => !r.opStarted))) || (canReport && (myRoad.length > 0 || myBets.length > 0)));
 
-    const gang = { sohbet: gangChat, savas: gangWar || offersIn || gUnvoted > 0 || gClaim };
+    const handoverForMe = Boolean(handover && handover.toId === uid && handover.status === 'pending' && handover.dateKey === today);
+    const gang = { sohbet: gangChat, savas: gangWar || offersIn || gUnvoted > 0 || gClaim || handoverForMe };
     const intel = { sohbet: intelChat, savas: intelWar || iUnvoted > 0 || iClaim, operasyon: ops };
     // v38: anasayfa hatırlatıcıları (📋 paneli)
     const canLeak = Boolean(rid && gangId && atLeast(rank, 'kidemli'));
@@ -221,5 +223,5 @@ export function useGangAlerts(uid) {
     };
     return { worldId: w, uid, gang, intel, chans, reminders, any: Object.values(gang).some(Boolean) || Object.values(intel).some(Boolean) };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [now, seenTick, w, uid, gangId, rid, rank, irank, gGen, gYon, iGen, iYon, pub, mine, intelWars, slot, gVotes, iVotes, gDists, iDists, allianceIn, gUnvoted, iUnvoted, truckReps, betRepsAll, myTrucks, today, hourKey, gJoined, iJoined, canReport, isLead]);
+  }, [now, seenTick, handover, w, uid, gangId, rid, rank, irank, gGen, gYon, iGen, iYon, pub, mine, intelWars, slot, gVotes, iVotes, gDists, iDists, allianceIn, gUnvoted, iUnvoted, truckReps, betRepsAll, myTrucks, today, hourKey, gJoined, iJoined, canReport, isLead]);
 }

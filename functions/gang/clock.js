@@ -676,13 +676,66 @@ export function createClock(core, actions) {
     }
   }
 
+  // v41: başkanlık devri — dünkü (00:00 öncesi) talep: kabul edildiyse ve
+  // devralan hâlâ çetedeyse yeni Mafya Babası olur (Baba bu gece oylamayla
+  // değişmediyse); cevapsız talep iptal. Eski Baba'nın rütbesi hemen ardından
+  // recomputeGangRanks'te prestijine göre belirlenir.
+  async function processHandover(ctx, gangId) {
+    return db.runTransaction(async (tx) => {
+      const hRef = ctx.ref.handover(gangId);
+      const h = (await tx.get(hRef)).data();
+      if (!h || !['pending', 'accepted'].includes(h.status) || h.dateKey >= ctx.dateKey) return { skipped: true };
+      const [gSnap, toSnap] = await Promise.all([tx.get(ctx.ref.gang(gangId)), tx.get(ctx.ref.member(gangId, h.toId))]);
+      const gang = gSnap.data();
+      if (h.status === 'pending') {
+        tx.update(hRef, { status: 'expired', resolvedAtMs: ctx.now });
+        notify(tx, ctx, h.fromId, `👑 ${h.toName} 00:00'a kadar cevap vermedi — devir talebi iptal oldu.`, 'handover');
+        return { expired: true };
+      }
+      const babaUnchanged = !gang?.babaId || gang.babaId === h.fromId;
+      if (gang?.status !== 'active' || !toSnap.exists || !babaUnchanged) {
+        tx.update(hRef, { status: 'cancelled', cancelReason: !toSnap.exists ? 'target_left' : 'baba_changed', resolvedAtMs: ctx.now });
+        return { cancelled: true };
+      }
+      const toMs = await core.readMembership(tx, ctx, h.toId);
+      tx.update(ctx.ref.gang(gangId), { babaId: h.toId, babaName: toSnap.data().name, babaVacantSinceMs: null });
+      tx.update(ctx.ref.member(gangId, h.toId), { rank: 'baba' });
+      const upd = { gangRank: 'baba' };
+      if (toMs.intelRosterId) {
+        upd.intelDecisionGangId = gangId;
+        upd.intelDecisionDeadline = addDays(ctx.dateKey, 1);
+      }
+      tx.set(ctx.ref.membership(h.toId), upd, { merge: true });
+      tx.update(hRef, { status: 'done', resolvedAtMs: ctx.now });
+      notify(tx, ctx, h.toId, `👑 ${gang.name} çetesinin yeni Mafya Babası sensin.`, 'rank');
+      core.announce(tx, ctx, gangId, '👑', `Başkanlık devredildi: ${toSnap.data().name} yeni Mafya Babası.`);
+      return { done: true };
+    });
+  }
+
   async function recomputeGangRanks(ctx, gangId) {
     return db.runTransaction(async (tx) => {
       const [gangSnap, membersSnap] = await Promise.all([tx.get(ctx.ref.gang(gangId)), tx.get(ctx.ref.members(gangId))]);
       const gang = gangSnap.data();
       if (gang?.status !== 'active') return { skipped: true };
       const members = membersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      const ranks = computeGangRanks(members, gang.babaId);
+      // v41: Baba koltuğu boşsa (gün içinde ayrıldı/atıldı) → en yüksek prestijli üye
+      let babaId = gang.babaId;
+      let newBaba = null;
+      if (!babaId || !members.some((m) => m.id === babaId)) {
+        const sorted = [...members].sort((x, y) => (y.prestige || 0) - (x.prestige || 0) || (x.joinedAtMs || 0) - (y.joinedAtMs || 0) || (x.id < y.id ? -1 : 1));
+        newBaba = sorted[0] || null;
+        babaId = newBaba?.id || null;
+      }
+      const newBabaMs = newBaba ? await core.readMembership(tx, ctx, newBaba.id) : null;
+      const ranks = computeGangRanks(members, babaId);
+      if (newBaba) {
+        tx.update(ctx.ref.gang(gangId), { babaId: newBaba.id, babaName: newBaba.name, babaVacantSinceMs: null });
+        if (newBabaMs?.intelRosterId) {
+          tx.set(ctx.ref.membership(newBaba.id), { intelDecisionGangId: gangId, intelDecisionDeadline: addDays(ctx.dateKey, 1) }, { merge: true });
+        }
+        core.announce(tx, ctx, gangId, '👑', `${newBaba.name} yeni Mafya Babası oldu.`);
+      }
       const changed = members.filter((m) => ranks[m.id] !== m.rank);
       // v38: herkesin göreceği prestij = 00:00'daki prestij
       for (const m of members) {
@@ -1131,6 +1184,7 @@ export function createClock(core, actions) {
         await safe(ctx, `vote:${gangId}:${v.id}`, () => resolveVote(ctx, gangId, v.id));
       }
       await safe(ctx, `inactivity:${gangId}`, () => processInactivity(ctx, gangId));
+      await safe(ctx, `handover:${gangId}`, () => processHandover(ctx, gangId));
       await safe(ctx, `ranks:${gangId}`, () => recomputeGangRanks(ctx, gangId));
       await safe(ctx, `pending-votes:${gangId}`, () => startPendingVotes(ctx, gangId));
       await safe(ctx, `kasa:${gangId}`, () => snapshotKasa(ctx, ctx.ref.gangState(gangId), ctx.ref.gang(gangId)));
