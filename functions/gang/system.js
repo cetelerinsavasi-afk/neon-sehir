@@ -153,7 +153,21 @@ export function createGangSystem(deps) {
     // oylama
     requestVote: votes.requestVote,
     cancelVoteRequest: votes.cancelVoteRequest,
-    castVote: votes.castVote,
+    // v52: oy sonucu kesinleştirdiyse oylama hemen sonuçlanır. Sonuçlandırma
+    // hata verirse oy yine de geçerlidir; oylama 00:00'da normal yolla biter.
+    castVote: async (ctx, data) => {
+      const r = await votes.castVote(ctx, data);
+      let ended = false;
+      if (r.decided) {
+        try {
+          const res = await clock.resolveVoteEarly(ctx, r.gangId, r.voteId);
+          ended = !res?.skipped;
+        } catch (err) {
+          ctx.logs.push({ gang: 'vote_early_error', world: ctx.worldId, voteId: r.voteId, err: String(err?.message || err) });
+        }
+      }
+      return { voted: true, ended };
+    },
     // istihbarat
     joinIntel: intel.joinIntel,
     leaveIntel: intel.leaveIntel,
@@ -163,7 +177,19 @@ export function createGangSystem(deps) {
     kickIntelMember: intel.kickIntelMember,
     requestIntelKickVote: intel.requestIntelKickVote,
     cancelIntelVoteRequest: intel.cancelIntelVoteRequest,
-    castIntelVote: intel.castIntelVote,
+    castIntelVote: async (ctx, data) => {
+      const r = await intel.castIntelVote(ctx, data);
+      let ended = false;
+      if (r.decided) {
+        try {
+          const res = await intel.resolveIntelVoteEarly(ctx, r.voteId);
+          ended = !res?.skipped;
+        } catch (err) {
+          ctx.logs.push({ gang: 'vote_early_error', world: ctx.worldId, voteId: r.voteId, err: String(err?.message || err) });
+        }
+      }
+      return { voted: true, ended };
+    },
     reportTruck: intel.reportTruck,
     leakTruck: intel.leakTruck,
     reportBet: intel.reportBet,

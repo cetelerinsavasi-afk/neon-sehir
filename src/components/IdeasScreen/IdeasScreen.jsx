@@ -6,7 +6,7 @@ import { collection, limit, onSnapshot, orderBy, query, where } from 'firebase/f
 import { db } from '../../firebase';
 import { submitFeedback } from '../../services/gameActions';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
-import ReportBlockSheet from '../ReportBlockSheet/ReportBlockSheet';
+import PlayerCard from '../PlayerCard/PlayerCard';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBlocks } from '../../contexts/BlocksContext';
 import { isHiddenForMe } from '../../lib/ugcVisibility';
@@ -150,21 +150,20 @@ export default function IdeasScreen() {
             </button>
             {isOpen && user && x.uid !== user.uid && (
               <button className="ideas-report" onClick={() => setReportTarget(x)}>
-                🚩 Şikâyet et / Engelle
+                👤 {x.displayName || 'Oyuncu'} profilini gör
               </button>
             )}
             </div>
           );
         })}
       </div>
+      {/* v53: olumlu giriş — Oyuncu Kartı; öneriyi bildirmek kartın ⋯ menüsünde */}
       {reportTarget && (
-        <ReportBlockSheet
-          targetUid={reportTarget.uid}
-          targetName={reportTarget.displayName || 'Oyuncu'}
-          items={[
-            { label: 'Öneriyi şikâyet et', targetType: 'feedback', targetPath: `feedback/${reportTarget.id}`, preview: reportTarget.text },
-            { label: 'Oyuncuyu / adını şikâyet et', targetType: 'user', targetPath: `users/${reportTarget.uid}` },
-          ]}
+        <PlayerCard
+          uid={reportTarget.uid}
+          name={reportTarget.displayName}
+          avatar={reportTarget.avatar}
+          reportItems={[{ label: 'Bu öneriyi bildir', targetType: 'feedback', targetPath: `feedback/${reportTarget.id}`, preview: reportTarget.text }]}
           onClose={() => setReportTarget(null)}
         />
       )}

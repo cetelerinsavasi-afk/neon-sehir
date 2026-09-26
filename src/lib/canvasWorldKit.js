@@ -39,20 +39,31 @@ export const SPRITE_H = 118; // ekrandaki karakter boyu (piksel) — tüm mekanl
 export const INTERIOR_AVATAR_SCALE = 1.42;
 
 // --- Avatar görsel önbelleği (SVG -> <img>) -------------------------------
-export function createAvatarImageCache(buildFullAvatarSvgMarkup, DEFAULT_AVATAR) {
+// v52 DÜZELTME ("Sixtagram'da birden fazla oyunculu fotoğraflarda avatarlar
+// görünmüyor, beğenince bir anlığına gelip gidiyor"): önbellek en fazla 50
+// kayıt tutuyor ve EN ESKİ eklenen kaydı atıyordu (kullanılıyor olsa bile).
+// Akışta çok sayıda çok kişilik fotoğraf (+ mekan NPC'leri) olunca kayıtlar
+// yüklenir yüklenmez atılıyor, her çizimde yeniden oluşturuluyordu. Artık
+// son KULLANILAN tutulur (LRU) ve Sixtagram daha geniş bir sınır verir.
+// Dünya ekranlarının varsayılan sınırı (50) değişmedi.
+export function createAvatarImageCache(buildFullAvatarSvgMarkup, DEFAULT_AVATAR, { maxSize = 50 } = {}) {
   const cache = new Map();
   return function getAvatarImage(avatar, pose) {
     const av = avatar || DEFAULT_AVATAR;
     const key = JSON.stringify(av) + '|' + pose;
     let entry = cache.get(key);
-    if (!entry) {
+    if (entry) {
+      // LRU: kullanılan kayıt en sona taşınır
+      cache.delete(key);
+      cache.set(key, entry);
+    } else {
       const markup = buildFullAvatarSvgMarkup(av, { pose });
       const img = new Image();
       entry = { img, ready: false };
       img.onload = () => { entry.ready = true; };
       img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(markup);
       cache.set(key, entry);
-      if (cache.size > 50) {
+      if (cache.size > maxSize) {
         const firstKey = cache.keys().next().value;
         cache.delete(firstKey);
       }

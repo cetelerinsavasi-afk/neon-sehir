@@ -301,6 +301,7 @@ test('ittifak: Baba+Sağ Kol; öneri; 00:00 başlar; not; aktifken bahis ve sabo
   await h.act(A.baba, 'sendAllianceNote', { allianceId, text: 'Salı gecesi tırlarımızı koruyun' });
   assert.equal(h.get(`alliances/${allianceId}`).notes[A.gangId].text, 'Salı gecesi tırlarımızı koruyun');
   assert.ok(h.chat(B.gangId).some((m) => /Müttefik Alfa: “Salı gecesi/.test(m)));
+  assert.ok(h.chat(A.gangId).some((m) => /📤 .+ → Müttefik Beta: “Salı gecesi/.test(m)), 'v52: giden not kendi sohbetimizde');
   await h.fails(B.ids[0], 'sendAllianceNote', { allianceId, text: 'x' });
   assert.equal(h.get(`alliances/${allianceId}`).status, 'accepted');
   const err = await h.fails(A.baba, 'offerBet', { targetGangId: B.gangId, stake: 10_000 });

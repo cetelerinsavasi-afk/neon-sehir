@@ -42,7 +42,9 @@ export function useGangData(membership) {
     if (me && !list.some((m) => m.id === actorId)) list.push({ id: actorId, ...me, prestigeIsMidnight: false });
     return list.map((m) => (m.id === actorId && me ? { ...m, rank: me.rank || m.rank, prestige: Number(me.prestige || 0), prestigeIsMidnight: false } : m));
   }, [rosterDoc, me, actorId]);
-  const canSeeVotes = atLeast(rank, 'tetikci');
+  // v52: adına oylama açılan rütbeli (Çömez yetkisinde olsa da) oylamaları görür ve
+  // oy hakkı varsa kullanır — asıl rütbeye bakılır (Firestore kuralı da asıl rütbeye bakar)
+  const canSeeVotes = atLeast(realRank, 'tetikci');
   const wars = useWarLists({ gangId });
   const { docs: alliances } = useQueryData(gangId ? path('alliances') : null, () => [where('gangIds', 'array-contains', gangId), limit(30)], gangId);
   const { docs: votes } = useQueryData(gangId && canSeeVotes ? path(`gangs/${gangId}/votes`) : null, () => [where('status', '==', 'active'), limit(20)], `${gangId}_${canSeeVotes}`);
@@ -91,7 +93,7 @@ export function useIntelData(membership) {
   const underVote = Number(me?.underVoteUntilMs || 0) > now;
   const realRank = me?.rank || membership?.intelRank || null;
   const rank = underVote ? 'muhbir' : realRank;
-  const canSeeVotes = ['baskan', 'sef', 'uzman', 'ajan'].includes(rank);
+  const canSeeVotes = ['baskan', 'sef', 'uzman', 'ajan'].includes(realRank); // v52: asıl rütbe
   const wars = useWarLists({ intel: Boolean(rid) });
   const { docs: votes } = useQueryData(rid && canSeeVotes ? path('intel/main/votes') : null, () => [where('status', '==', 'active'), limit(20)], `iv_${rid}_${canSeeVotes}`);
   const { docs: myPending } = useQueryData(rid ? path('intel/main/pending') : null, () => [where('initiatorRosterId', '==', rid), limit(10)], `ip_${rid}`);

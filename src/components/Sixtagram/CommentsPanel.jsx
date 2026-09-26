@@ -3,7 +3,10 @@ import { X } from 'lucide-react';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import { useSixtagramComments } from '../../hooks/useSixtagramComments';
 import { createSixtagramComment } from '../../services/gameActions';
-import ReportBlockSheet, { MoreButton } from '../ReportBlockSheet/ReportBlockSheet';
+import ReportBlockSheet from '../ReportBlockSheet/ReportBlockSheet';
+import PlayerCard from '../PlayerCard/PlayerCard';
+import ActionMenu from '../ActionMenu/ActionMenu';
+import { copyText, useLongPress } from '../ActionMenu/actionMenuUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBlocks } from '../../contexts/BlocksContext';
 import { isHiddenForMe } from '../../lib/ugcVisibility';
@@ -20,19 +23,44 @@ function timeAgo(createdAtMs) {
   return `${Math.floor(hours / 24)} gün`;
 }
 
-function CommentRow({ comment, onReply, myUid, onReport }) {
+// v53: avatar/ada dokununca Oyuncu Kartı; yoruma uzun basınca menü
+function ReplyRow({ r, onProfile, onMenu }) {
+  const press = useLongPress(() => onMenu(r));
+  return (
+    <div className="six-comment-row six-comment-reply-row">
+      <button type="button" className="six-comment-avatar pc-trigger" onClick={() => onProfile(r)} aria-label={`${r.authorName || 'Oyuncu'} profilini gör`}>
+        <AvatarSvg avatar={r.authorAvatar} size={24} rounded />
+      </button>
+      <div className="six-comment-body" {...press}>
+        <p className="six-comment-head">
+          <button type="button" className="six-comment-author pc-trigger" onClick={() => onProfile(r)}>
+            {r.authorName}
+          </button>
+          <span className="six-comment-time">{timeAgo(r.createdAtMs)}</span>
+        </p>
+        <p className="six-comment-text">{r.text}</p>
+      </div>
+    </div>
+  );
+}
+
+function CommentRow({ comment, onReply, onProfile, onMenu }) {
+  const press = useLongPress(() => onMenu(comment));
   return (
     <div className="six-comment-row">
-      <div className="six-comment-avatar">
+      <button type="button" className="six-comment-avatar pc-trigger" onClick={() => onProfile(comment)} aria-label={`${comment.authorName || 'Oyuncu'} profilini gör`}>
         <AvatarSvg avatar={comment.authorAvatar} size={28} rounded />
-      </div>
+      </button>
       <div className="six-comment-body">
-        <p className="six-comment-head">
-          <span className="six-comment-author">{comment.authorName}</span>
-          <span className="six-comment-time">{timeAgo(comment.createdAtMs)}</span>
-          {comment.uid !== myUid && <MoreButton onClick={() => onReport(comment)} label="Şikâyet et / Engelle" />}
-        </p>
-        <p className="six-comment-text">{comment.text}</p>
+        <div {...press}>
+          <p className="six-comment-head">
+            <button type="button" className="six-comment-author pc-trigger" onClick={() => onProfile(comment)}>
+              {comment.authorName}
+            </button>
+            <span className="six-comment-time">{timeAgo(comment.createdAtMs)}</span>
+          </p>
+          <p className="six-comment-text">{comment.text}</p>
+        </div>
         <button className="six-comment-reply-btn" onClick={() => onReply(comment)}>
           Yanıtla
         </button>
@@ -40,19 +68,7 @@ function CommentRow({ comment, onReply, myUid, onReport }) {
         {comment.replies?.length > 0 && (
           <div className="six-comment-replies">
             {comment.replies.map((r) => (
-              <div key={r.id} className="six-comment-row six-comment-reply-row">
-                <div className="six-comment-avatar">
-                  <AvatarSvg avatar={r.authorAvatar} size={24} rounded />
-                </div>
-                <div className="six-comment-body">
-                  <p className="six-comment-head">
-                    <span className="six-comment-author">{r.authorName}</span>
-                    <span className="six-comment-time">{timeAgo(r.createdAtMs)}</span>
-                    {r.uid !== myUid && <MoreButton onClick={() => onReport(r)} label="Şikâyet et / Engelle" />}
-                  </p>
-                  <p className="six-comment-text">{r.text}</p>
-                </div>
-              </div>
+              <ReplyRow key={r.id} r={r} onProfile={onProfile} onMenu={onMenu} />
             ))}
           </div>
         )}
@@ -66,6 +82,9 @@ export default function CommentsPanel({ postId, onClose }) {
   const { user } = useAuth();
   const { isBlocked } = useBlocks();
   const [reportTarget, setReportTarget] = useState(null);
+  const [profileOf, setProfileOf] = useState(null);
+  const [menuFor, setMenuFor] = useState(null);
+  const commentPath = (c) => `sixtagramPosts/${postId}/comments/${c.id}`;
   // UGC D2: gizlenen / engellenen oyuncuların yorum ve yanıtları gösterilmez
   const visible = (c) => !isHiddenForMe(c, c.uid, isBlocked);
   const comments = allComments.filter(visible).map((c) => ({ ...c, replies: (c.replies || []).filter(visible) }));
@@ -106,7 +125,7 @@ export default function CommentsPanel({ postId, onClose }) {
             <p className="six-comments-hint">Henüz yorum yok — ilk yorumu sen yaz!</p>
           )}
           {comments.map((c) => (
-            <CommentRow key={c.id} comment={c} onReply={(cm) => setReplyTo(cm)} myUid={user?.uid} onReport={setReportTarget} />
+            <CommentRow key={c.id} comment={c} onReply={(cm) => setReplyTo(cm)} onProfile={setProfileOf} onMenu={setMenuFor} />
           ))}
         </div>
 
@@ -139,14 +158,36 @@ export default function CommentsPanel({ postId, onClose }) {
           </button>
         </div>
       </div>
+      {menuFor && (
+        <ActionMenu
+          title={`${menuFor.authorName || 'Oyuncu'}: “${String(menuFor.text || '').slice(0, 60)}”`}
+          onClose={() => setMenuFor(null)}
+          actions={[
+            { key: 'copy', icon: '📋', label: 'Kopyala', onClick: () => copyText(menuFor.text || '') },
+            ...(menuFor.uid !== user?.uid
+              ? [
+                  { key: 'profile', icon: '👤', label: 'Profili gör', onClick: () => setProfileOf(menuFor) },
+                  { key: 'report', icon: '⚑', label: 'Bildir', subtle: true, onClick: () => setReportTarget(menuFor) },
+                ]
+              : []),
+          ]}
+        />
+      )}
+      {profileOf && (
+        <PlayerCard
+          uid={profileOf.uid}
+          name={profileOf.authorName}
+          avatar={profileOf.authorAvatar}
+          reportItems={profileOf.uid !== user?.uid ? [{ label: 'Bu yorumu bildir', targetType: 'sixtagramComment', targetPath: commentPath(profileOf), preview: profileOf.text }] : []}
+          onClose={() => setProfileOf(null)}
+        />
+      )}
       {reportTarget && (
         <ReportBlockSheet
           targetUid={reportTarget.uid}
           targetName={reportTarget.authorName || 'Oyuncu'}
-          items={[
-            { label: 'Yorumu şikâyet et', targetType: 'sixtagramComment', targetPath: `sixtagramPosts/${postId}/comments/${reportTarget.id}`, preview: reportTarget.text },
-            { label: 'Oyuncuyu / adını şikâyet et', targetType: 'user', targetPath: `users/${reportTarget.uid}` },
-          ]}
+          canBlock={false}
+          items={[{ label: 'Yorumu bildir', targetType: 'sixtagramComment', targetPath: commentPath(reportTarget), preview: reportTarget.text }]}
           onClose={() => setReportTarget(null)}
         />
       )}

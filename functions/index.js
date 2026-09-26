@@ -9,6 +9,7 @@ import { VEHICLE_CATALOG, WEAPON_CATALOG } from './catalogData.js';
 import { createGangFunctions } from './gang/firebase.js';
 import { createModeration, MODERATION, REPORT_TARGETS } from './moderation.js';
 import { createAdminPanel } from './adminPanel.js';
+import { createPlayerCard } from './playerCard.js';
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -60,6 +61,17 @@ const adminPanel = createAdminPanel({
   banUntilMs: MODERATION.BAN_UNTIL_MS,
 });
 export const adminAction = adminPanel.adminAction;
+
+// v53 — Oyuncu Kartı: avatara/ada dokununca görünen herkese açık özet
+// (çete, fabrika, takım). İstihbarat üyeliği ASLA dönülmez. Bkz. functions/playerCard.js
+const playerCard = createPlayerCard({
+  db,
+  HttpsError,
+  requireAuth: (request) => requireAuth(request),
+  onCall,
+  factoryDisplayName: (f) => factoryDisplayName(f),
+});
+export const getPlayerCard = playerCard.getPlayerCard;
 // Süresi dolan banları kaldırır (Auth hesabını yeniden açar) — saatte bir.
 export const adminBanSweep = onSchedule({ schedule: 'every 60 minutes' }, async () => {
   const res = await adminPanel.sweepExpiredBans();

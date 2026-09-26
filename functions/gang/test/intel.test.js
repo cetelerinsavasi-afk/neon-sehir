@@ -298,3 +298,29 @@ test('v38: tır ihbarı ve içerik sızdırma sadece yola çıktığı gün 00:0
   h2.at('2026-09-22', '12:00');
   assert.match((await h2.fails(X.mole, 'leakTruck', { reportId })).message, /12:00/);
 });
+
+test('v52: İstihbarat çıkarma oylaması sonuç kesinleşince hemen biter (hedef de oy kullanabilir)', async () => {
+  const h = await createHarness();
+  const mk = async (name, prestige, rank) => {
+    const id = await h.persona({ displayName: name, gold: 1, power: 1000, reputation: 60 });
+    const r = await h.act(id, 'joinIntel', { codeName: name });
+    await h.db.doc(`gangWorlds/test/intelRoster/${r.rosterId}`).update({ rank, prestige });
+    await h.db.doc(`gangWorlds/test/memberships/${id}`).set({ intelRank: rank }, { merge: true });
+    return { id, rid: r.rosterId };
+  };
+  const B = await mk('Baskan', 9_000_000, 'baskan');
+  const S1 = await mk('Sef1', 8_000_000, 'sef');
+  const S2 = await mk('Sef2', 7_500_000, 'sef');
+  const U = await mk('Uzman', 7_000_000, 'uzman');
+  const { voteId } = await h.act(S1.id, 'requestIntelKickVote', { targetRosterId: S2.rid });
+  await h.act(S2.id, 'castIntelVote', { voteId, choice: 'no' }); // hedef oy kullanabilir
+  await h.act(B.id, 'castIntelVote', { voteId, choice: 'yes' });
+  assert.equal(h.get(`intel/main/votes/${voteId}`).status, 'active', '1-1, kalan 2 → belli değil');
+  const r = await h.act(S1.id, 'castIntelVote', { voteId, choice: 'yes' }); // en kötü 2/4 = %50 < %51 → hâlâ belirsiz
+  assert.equal(r.ended, false);
+  const r2 = await h.act(U.id, 'castIntelVote', { voteId, choice: 'yes' }); // herkes oy verdi: 3/4
+  assert.equal(r2.ended, true);
+  assert.equal(h.get(`intel/main/votes/${voteId}`).result.endedEarly, true);
+  assert.equal(h.get(`intelRoster/${S2.rid}`), undefined, 'hedef gece beklemeden çıkarıldı');
+  assert.ok(h.intelChat().some((m) => /erken bitti/.test(m)));
+});

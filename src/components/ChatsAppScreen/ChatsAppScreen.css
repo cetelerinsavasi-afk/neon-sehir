@@ -102,3 +102,21 @@
   padding: 0 12px 8px;
   margin: 0;
 }
+
+/* v53: avatar ve ad dokunulabilir (Oyuncu Kartı); mesaja uzun basınca menü */
+.chatsapp-avatar.pc-trigger {
+  display: block;
+  line-height: 0;
+  border-radius: 50%;
+}
+.chatsapp-sender.pc-trigger {
+  align-self: flex-start;
+  font-size: 10px;
+  font-weight: 700;
+  color: #25d366;
+}
+.chatsapp-bubble {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}

@@ -193,6 +193,7 @@ export function VoteCard({ vote, ballotPath, voterKey, action }) {
   const total = (vote.yes || 0) + (vote.no || 0);
   const canVote = (vote.voterIds || []).includes(voterKey);
   const target = intel ? vote.targetCode : vote.targetName;
+  const aboutMe = intel ? vote.targetRosterId === voterKey : vote.targetId === voterKey;
   return (
     <Card className="gx-vote">
       <div className="gx-war-top">
@@ -217,8 +218,9 @@ export function VoteCard({ vote, ballotPath, voterKey, action }) {
         <Bar value={vote.no || 0} max={Math.max(1, total)} label={`❌ Hayır ${vote.no || 0}`} color="var(--neon-pink)" />
       </div>
       <div className="dim gx-mini">
-        🗳️ {vote.votedCount || 0}/{(vote.voterIds || []).length} · {r.need}
+        🗳️ {vote.votedCount || 0}/{(vote.voterIds || []).length} · {r.need} · sonuç kesinleşince hemen biter
       </div>
+      {aboutMe && <div className="gx-pill gx-vote-me">🎯 Bu oylama senin hakkında{canVote ? ' — sen de oy kullanabilirsin' : ''}</div>}
       {canVote ? (
         ballot ? (
           <div className="gx-pill">✓ Oyunu kullandın ({ballot.choice === 'yes' ? 'Evet' : 'Hayır'})</div>
@@ -242,7 +244,7 @@ export function VoteCard({ vote, ballotPath, voterKey, action }) {
           busy={busy === action}
           onCancel={() => setAsk(null)}
           onConfirm={async () => {
-            await run(action, { voteId: vote.id, choice: ask }, { success: '🗳️ Oyun kaydedildi' });
+            await run(action, { voteId: vote.id, choice: ask }, { success: (res) => (res?.ended ? '🗳️ Oyun kaydedildi — sonuç kesinleşti, oylama bitti' : '🗳️ Oyun kaydedildi') });
             setAsk(null);
           }}
         />

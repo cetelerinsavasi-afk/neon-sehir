@@ -22,11 +22,11 @@ import './PostAttachment.css';
 // Tüm parkPhoto kartları arasında paylaşılan avatar görsel önbelleği —
 // aynı avatarı tekrar tekrar SVG'den <img>'e çevirmemek için (bkz.
 // lib/parkScene.js createAvatarImageCache).
-const parkPhotoImageCache = createAvatarImageCache(buildFullAvatarSvgMarkup, DEFAULT_AVATAR);
+const parkPhotoImageCache = createAvatarImageCache(buildFullAvatarSvgMarkup, DEFAULT_AVATAR, { maxSize: 400 });
 
 // interiorPhoto kartları için ayrı önbellek (parkPhoto'yla karıştırmamak
 // için) — aynı jenerik createAvatarImageCache, sadece ayrı bir örnek.
-const interiorPhotoImageCache = createAvatarImageCache2(buildFullAvatarSvgMarkup, DEFAULT_AVATAR);
+const interiorPhotoImageCache = createAvatarImageCache2(buildFullAvatarSvgMarkup, DEFAULT_AVATAR, { maxSize: 400 });
 
 // locationId -> mekanın kendi drawXxxSceneBackground'ı (bkz. madde 11/12) —
 // her mekan zaten kendi WorldScreen dosyasında dışa açık, burada sadece
@@ -53,6 +53,43 @@ const INTERIOR_BACKGROUNDS = {
   modifiye_garaji: (ctx, getAvatarImage) => drawGarageSceneBackground(ctx, getAvatarImage),
 };
 
+// v52 DÜZELTME — fotoğraf kareleri:
+//  1) Çizim, karedeki TÜM avatarlar yüklenene kadar sürer (eskiden sabit 90
+//     kare ≈ 1,5 sn sonra duruyordu; o ana kadar yüklenmeyen avatar hiç
+//     görünmüyordu). Güvenlik sınırı ~10 sn; hepsi yüklenince son bir kare
+//     daha çizilip durulur.
+//  2) Beğeni/yorum gibi etkileşimlerde gönderi belgesi yeniden gelir ve
+//     `entities` YENİ bir dizi olur; içerik aynıysa çizim baştan başlatılmaz
+//     (eskiden her etkileşimde kare sıfırdan, avatarsız çiziliyordu).
+const PHOTO_MAX_FRAMES = 600;
+function usePhotoDraw(canvasRef, contentKey, paint) {
+  const paintRef = useRef(paint);
+  paintRef.current = paint;
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return undefined;
+    const ctx = canvas.getContext('2d');
+    let raf;
+    let frames = 0;
+    let settled = 0;
+    const draw = () => {
+      let missing = false;
+      // İzleyen sarmalayıcı: bu karede hazır olmayan avatar var mı?
+      const track = (cache) => (avatar, pose) => {
+        const img = cache(avatar, pose);
+        if (!img) missing = true;
+        return img;
+      };
+      paintRef.current(ctx, canvas, track);
+      frames += 1;
+      settled = missing ? 0 : settled + 1;
+      if (frames < PHOTO_MAX_FRAMES && settled < 2) raf = requestAnimationFrame(draw);
+    };
+    raf = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf);
+  }, [canvasRef, contentKey]);
+}
+
 // InteriorPhotoCanvas — Banka/Karakol/Camii/Gazino'da çekilen fotoğrafı,
 // ParkPhotoCanvas'la AYNI mantıkla ama girilebilir mekanın kendi gerçek
 // arka planıyla render eder. `extra` — SADECE Camii'nin ihtiyaç duyduğu,
@@ -69,31 +106,22 @@ const INTERIOR_BACKGROUNDS = {
 // kalmasına sebep oluyordu — artık burada da aynı sabit kullanılıyor.
 function InteriorPhotoCanvas({ locationId, entities, originX, originY, extra }) {
   const canvasRef = useRef(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const drawBackground = INTERIOR_BACKGROUNDS[locationId];
-    if (!canvas || !entities?.length || !drawBackground) return undefined;
-    const ctx = canvas.getContext('2d');
-    let raf;
-    let frames = 0;
-    const draw = () => {
-      renderPhotoFrame(ctx, {
-        width: canvas.width,
-        height: canvas.height,
-        originX: originX ?? 0,
-        originY: originY ?? 0,
-        entities,
-        getAvatarImage: interiorPhotoImageCache,
-        drawBackground: (bgCtx) => drawBackground(bgCtx, interiorPhotoImageCache, extra),
-        focalScale: INTERIOR_AVATAR_SCALE,
-      });
-      frames += 1;
-      if (frames < 90) raf = requestAnimationFrame(draw);
-    };
-    raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
-  }, [locationId, entities, originX, originY, extra]);
+  const drawBackground = INTERIOR_BACKGROUNDS[locationId];
+  const contentKey = JSON.stringify([locationId, entities, originX, originY, extra]);
+  usePhotoDraw(canvasRef, contentKey, (ctx, canvas, track) => {
+    if (!entities?.length || !drawBackground) return;
+    const get = track(interiorPhotoImageCache);
+    renderPhotoFrame(ctx, {
+      width: canvas.width,
+      height: canvas.height,
+      originX: originX ?? 0,
+      originY: originY ?? 0,
+      entities,
+      getAvatarImage: get,
+      drawBackground: (bgCtx) => drawBackground(bgCtx, get, extra),
+      focalScale: INTERIOR_AVATAR_SCALE,
+    });
+  });
 
   return <canvas ref={canvasRef} width={320} height={320} className="post-att-parkphoto-canvas" />;
 }
@@ -107,33 +135,23 @@ function InteriorPhotoCanvas({ locationId, entities, originX, originY, extra }) 
 // bile sonsuz bir animasyon döngüsü çalıştırmamak için).
 function ParkPhotoCanvas({ entities, originX, originY }) {
   const canvasRef = useRef(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !entities?.length) return undefined;
-    const ctx = canvas.getContext('2d');
-    let raf;
-    let frames = 0;
-    const draw = () => {
-      // DÜZELTME (madde 16): originX/originY artık sunucudan (fotoğrafı
-      // çekenin GERÇEK parkPresence konumu) geliyor — eskiden sabit 0,0
-      // kullanılıyordu, bu da arka planın her zaman dünya orijinine yakın
-      // (parkın üst tarafı) yanlış bir köşeyi göstermesine yol açıyordu.
-      parkRenderPhotoFrame(ctx, {
-        width: canvas.width,
-        height: canvas.height,
-        originX: originX ?? 0,
-        originY: originY ?? 0,
-        entities,
-        getAvatarImage: parkPhotoImageCache,
-        focalScale: INTERIOR_AVATAR_SCALE,
-      });
-      frames += 1;
-      if (frames < 90) raf = requestAnimationFrame(draw);
-    };
-    raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
-  }, [entities, originX, originY]);
+  const contentKey = JSON.stringify([entities, originX, originY]);
+  usePhotoDraw(canvasRef, contentKey, (ctx, canvas, track) => {
+    if (!entities?.length) return;
+    // DÜZELTME (madde 16): originX/originY artık sunucudan (fotoğrafı
+    // çekenin GERÇEK parkPresence konumu) geliyor — eskiden sabit 0,0
+    // kullanılıyordu, bu da arka planın her zaman dünya orijinine yakın
+    // (parkın üst tarafı) yanlış bir köşeyi göstermesine yol açıyordu.
+    parkRenderPhotoFrame(ctx, {
+      width: canvas.width,
+      height: canvas.height,
+      originX: originX ?? 0,
+      originY: originY ?? 0,
+      entities,
+      getAvatarImage: track(parkPhotoImageCache),
+      focalScale: INTERIOR_AVATAR_SCALE,
+    });
+  });
 
   return <canvas ref={canvasRef} width={320} height={320} className="post-att-parkphoto-canvas" />;
 }

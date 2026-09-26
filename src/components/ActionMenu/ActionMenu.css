@@ -1,0 +1,87 @@
+/* v53 — küçük seçenek listesi (uzun basma / ⋯). Tüm katmanların üstünde. */
+.am-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.am-sheet {
+  width: 100%;
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
+  background: var(--bg, #070a12);
+  border: 1px solid var(--panel-border, #1f2a40);
+  border-bottom: none;
+  border-radius: 16px 16px 0 0;
+  box-sizing: border-box;
+  color: var(--text, #e8edf6);
+  font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
+  animation: am-up 0.16s ease;
+}
+@keyframes am-up {
+  from {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.am-title {
+  margin: 2px 4px 6px;
+  font-size: 12.5px;
+  color: var(--text-dim, #8a93a8);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.am-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text, #e8edf6);
+  font-size: 14.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.am-row:hover,
+.am-row:focus-visible {
+  background: rgba(255, 255, 255, 0.05);
+}
+.am-row.subtle {
+  font-size: 13px;
+  color: var(--text-dim, #8a93a8);
+  padding: 9px 10px;
+}
+.am-ico {
+  width: 20px;
+  text-align: center;
+}
+.am-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--panel-border, #1f2a40);
+}
+.am-cancel {
+  margin-top: 4px;
+  padding: 11px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border, #1f2a40);
+  background: transparent;
+  color: var(--text-dim, #8a93a8);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}

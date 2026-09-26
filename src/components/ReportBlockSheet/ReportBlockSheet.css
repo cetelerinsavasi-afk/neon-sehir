@@ -3,7 +3,7 @@
 .rbs-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  z-index: 1600;
   background: rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: flex-end;
@@ -76,6 +76,12 @@
 
 .rbs-row.danger {
   color: var(--neon-pink, #ff2e8c);
+}
+
+/* v53: Engelle — soluk, öne çıkmayan */
+.rbs-row.subtle {
+  color: var(--text-dim, #8a93a8);
+  background: transparent;
 }
 
 .rbs-ico {

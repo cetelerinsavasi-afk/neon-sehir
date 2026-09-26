@@ -72,6 +72,7 @@ function muteMessage(m) {
   return `Topluluk kurallarını ihlal ettiğin için ${until} tarihine kadar yazı yazamazsın.`;
 }
 
+// v53: oyuncuya görünen metinlerde "şikâyet" yerine "bildir" kullanılır.
 // deps: { db, FieldValue, HttpsError, requireAuth, onCall, dateKey: () => 'YYYY-MM-DD', now?: () => ms }
 export function createModeration({ db, FieldValue, HttpsError, requireAuth, onCall, dateKey, now = () => Date.now() }) {
   // ---- Susturma ---------------------------------------------------------------
@@ -133,11 +134,11 @@ export function createModeration({ db, FieldValue, HttpsError, requireAuth, onCa
     const note = String(data?.note || '').replace(/\s+/g, ' ').trim().slice(0, MODERATION.NOTE_MAX);
     const platform = data?.platform === 'android' ? 'android' : 'web';
     const spec = REPORT_TARGETS[type];
-    if (!spec) throw new HttpsError('invalid-argument', 'Geçersiz şikâyet türü.');
-    if (!REPORT_REASONS.includes(reason)) throw new HttpsError('invalid-argument', 'Geçersiz şikâyet sebebi.');
+    if (!spec) throw new HttpsError('invalid-argument', 'Geçersiz bildirim türü.');
+    if (!REPORT_REASONS.includes(reason)) throw new HttpsError('invalid-argument', 'Geçersiz bildirim sebebi.');
     const m = path.match(spec.re);
     if (!m) throw new HttpsError('invalid-argument', 'Geçersiz içerik.');
-    if (spec.access && !(await spec.access(db, uid, m))) throw new HttpsError('permission-denied', 'Bu içeriği şikâyet edemezsin.');
+    if (spec.access && !(await spec.access(db, uid, m))) throw new HttpsError('permission-denied', 'Bu içeriği bildiremezsin.');
 
     const targetSnap = await db.doc(path).get();
     if (!targetSnap.exists) throw new HttpsError('not-found', 'İçerik bulunamadı (silinmiş olabilir).');
@@ -145,7 +146,7 @@ export function createModeration({ db, FieldValue, HttpsError, requireAuth, onCa
     const targetUid = spec.resolveUid ? await spec.resolveUid(db, m, picked) : picked.uid || null;
     const text = String(picked.text || '').slice(0, MODERATION.SNAPSHOT_MAX);
     if (type === 'bubble' && !text) throw new HttpsError('failed-precondition', 'Balon artık görünmüyor.');
-    if (targetUid && targetUid === uid) throw new HttpsError('invalid-argument', 'Kendini şikâyet edemezsin.');
+    if (targetUid && targetUid === uid) throw new HttpsError('invalid-argument', 'Kendini bildiremezsin.');
 
     const reporterSnap = await db.collection('users').doc(uid).get();
     const createdMs = reporterSnap.data()?.createdAt?.toMillis?.() ?? null;
@@ -155,9 +156,9 @@ export function createModeration({ db, FieldValue, HttpsError, requireAuth, onCa
     const dailyRef = db.collection('dailyActions').doc(`${uid}_${dateKey()}`);
     await db.runTransaction(async (tx) => {
       const [rs, ds] = await Promise.all([tx.get(reportRef), tx.get(dailyRef)]);
-      if (rs.exists) throw new HttpsError('already-exists', 'Bu içeriği zaten şikâyet ettin.');
+      if (rs.exists) throw new HttpsError('already-exists', 'Bu içeriği zaten bildirdin.');
       const count = Number(ds.data()?.reportCount || 0);
-      if (count >= MODERATION.REPORTS_PER_DAY) throw new HttpsError('resource-exhausted', 'Bugün yeterince şikâyet gönderdin, yarın tekrar deneyebilirsin.');
+      if (count >= MODERATION.REPORTS_PER_DAY) throw new HttpsError('resource-exhausted', 'Bugün yeterince bildirim gönderdin, yarın tekrar deneyebilirsin.');
       tx.set(reportRef, {
         reporterUid: uid,
         targetUid,

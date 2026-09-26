@@ -437,6 +437,8 @@ export function createWarActions(core) {
       const other = al.gangIds.find((g) => g !== gangId);
       tx.update(ctx.ref.alliance(allianceId), { [`notes.${gangId}`]: { text, byName: me.name, atMs: ctx.now } });
       core.systemChat(tx, ctx, ctx.ref.gangChat(other, 'genel'), `✉️ Müttefik ${al.names[gangId]}: “${text}”`);
+      // v52: giden not da kendi çetemizin sohbetinde görünsün
+      core.systemChat(tx, ctx, ctx.ref.gangChat(gangId, 'genel'), `📤 ${me.name} → Müttefik ${al.names[other]}: “${text}”`);
       return { sent: true };
     });
   }

@@ -3069,3 +3069,27 @@ button.gx-msg-blocked {
 .gx-upcoming-foot {
   font-size: 11.5px;
 }
+
+/* v52 — oylama hedefine bilgi satırı */
+.gx-pill.gx-vote-me {
+  margin-top: 6px;
+  color: var(--neon-yellow);
+  border-color: rgba(255, 210, 63, 0.4);
+  background: rgba(255, 210, 63, 0.07);
+  white-space: normal;
+}
+
+/* v53 — avatar/ad dokunulabilir (Oyuncu Kartı); mesaja uzun basınca menü */
+button.gx-msg-avatar.pc-trigger {
+  line-height: 0;
+  border-radius: 50%;
+}
+.gx-msg-author-btn {
+  color: inherit;
+  font-weight: inherit;
+}
+.gx-msg {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}

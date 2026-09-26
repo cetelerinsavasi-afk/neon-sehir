@@ -12,8 +12,52 @@ import { markGangChatSeen, useGangAlertsCtx } from '../alerts';
 import { Btn, Chips, Logo } from '../ui';
 import { GANG_RULES, RANK_ICONS, atLeast } from '../gangConstants';
 import AvatarSvg from '../../AvatarSvg/AvatarSvg';
-import ReportBlockSheet, { MoreButton } from '../../ReportBlockSheet/ReportBlockSheet';
+import ReportBlockSheet from '../../ReportBlockSheet/ReportBlockSheet';
+import PlayerCard from '../../PlayerCard/PlayerCard';
+import ActionMenu from '../../ActionMenu/ActionMenu';
+import { copyText, useLongPress } from '../../ActionMenu/actionMenuUtils';
 import { useBlocks } from '../../../contexts/BlocksContext';
+
+// v53: mesaj balonu — avatara/ada dokununca Oyuncu Kartı (İstihbarat'ta yok:
+// anonim); mesaja uzun basınca Kopyala · Profili gör · Bildir menüsü.
+function GangMsg({ m, mine, rank, isIntel, channel, onProfile, onMenu }) {
+  const press = useLongPress(() => onMenu(m));
+  const canProfile = !isIntel && !mine && m.authorId;
+  return (
+    <div className={`gx-msg-wrap${mine ? ' mine' : ''}`}>
+      {!mine &&
+        (canProfile ? (
+          <button type="button" className="gx-msg-avatar pc-trigger" onClick={() => onProfile(m)} aria-label={`${m.authorName || 'Oyuncu'} profilini gör`}>
+            <AvatarSvg avatar={m.authorAvatar} size={30} rounded />
+          </button>
+        ) : (
+          <span className="gx-msg-avatar">{isIntel ? <span className="gx-fcard-q sm">?</span> : <AvatarSvg avatar={m.authorAvatar} size={30} rounded />}</span>
+        ))}
+      <div className={`gx-msg${mine ? ' mine' : ''}`} {...press}>
+        {!mine && (
+          <span className="gx-msg-author">
+            {canProfile ? (
+              <button type="button" className="pc-trigger gx-msg-author-btn" onClick={() => onProfile(m)}>
+                {RANK_ICONS[rank] || ''} {m.authorName}
+              </button>
+            ) : (
+              <>
+                {RANK_ICONS[rank] || ''} {isIntel ? m.codeName : m.authorName}
+              </>
+            )}
+            {channel === 'tum' && m.gangName && (
+              <span className="gx-msg-gang">
+                <Logo logo={m.gangLogo} size={14} /> {m.gangName}
+              </span>
+            )}
+          </span>
+        )}
+        <span className="gx-msg-text">{m.text}</span>
+        <span className="gx-msg-time">{fmtClock(m.createdAtMs)}</span>
+      </div>
+    </div>
+  );
+}
 
 export default function ChatTab({ org, d }) {
   const { path, actorId, worldId } = useGang();
@@ -28,6 +72,8 @@ export default function ChatTab({ org, d }) {
   const { isBlocked } = useBlocks();
   const [revealed, setRevealed] = useState(() => new Set());
   const [reportTarget, setReportTarget] = useState(null);
+  const [profileOf, setProfileOf] = useState(null);
+  const [menuFor, setMenuFor] = useState(null);
   const coll = isIntel ? path(`intelChat_${channel}`) : channel === 'tum' ? path('globalChat') : path(`gangs/${d.gangId}/chat_${channel}`);
   const since = Number((isIntel ? d.membership.intelJoinedAtMs : d.membership.gangJoinedAtMs) || 0);
   const { docs } = useQueryData(coll, () => [where('createdAtMs', '>=', since), orderBy('createdAtMs', 'desc'), limit(60)], `${coll}_${since}`);
@@ -96,48 +142,35 @@ export default function ChatTab({ org, d }) {
               </button>
             );
           }
-          return (
-            <div key={m.id} className={`gx-msg-wrap${mine ? ' mine' : ''}`}>
-              {!mine && (
-                <span className="gx-msg-avatar">
-                  {isIntel ? <span className="gx-fcard-q sm">?</span> : <AvatarSvg avatar={m.authorAvatar} size={30} rounded />}
-                </span>
-              )}
-              <div className={`gx-msg${mine ? ' mine' : ''}`}>
-                {!mine && (
-                  <span className="gx-msg-author">
-                    {RANK_ICONS[rank] || ''} {isIntel ? m.codeName : m.authorName}
-                    {channel === 'tum' && m.gangName && (
-                      <span className="gx-msg-gang">
-                        <Logo logo={m.gangLogo} size={14} /> {m.gangName}
-                      </span>
-                    )}
-                  </span>
-                )}
-                <span className="gx-msg-text">{m.text}</span>
-                <span className="gx-msg-time">
-                  {fmtClock(m.createdAtMs)}
-                  {!mine && <MoreButton className="gx-msg-more" onClick={() => setReportTarget(m)} label={isIntel ? 'Şikâyet et' : 'Şikâyet et / Engelle'} />}
-                </span>
-              </div>
-            </div>
-          );
+          return <GangMsg key={m.id} m={m} mine={mine} rank={rank} isIntel={isIntel} channel={channel} onProfile={setProfileOf} onMenu={setMenuFor} />;
         })}
       </div>
+      {menuFor && (
+        <ActionMenu
+          title={`${isIntel ? menuFor.codeName || 'Ajan' : menuFor.authorName || 'Oyuncu'}: “${String(menuFor.text || '').slice(0, 60)}”`}
+          onClose={() => setMenuFor(null)}
+          actions={[
+            { key: 'copy', icon: '📋', label: 'Kopyala', onClick: () => copyText(menuFor.text || '') },
+            ...(!isIntel && menuFor.authorId && menuFor.authorId !== actorId ? [{ key: 'profile', icon: '👤', label: 'Profili gör', onClick: () => setProfileOf(menuFor) }] : []),
+            ...((isIntel ? menuFor.rosterId !== d.rid : menuFor.authorId !== actorId) ? [{ key: 'report', icon: '⚑', label: 'Bildir', subtle: true, onClick: () => setReportTarget(menuFor) }] : []),
+          ]}
+        />
+      )}
+      {profileOf && (
+        <PlayerCard
+          uid={profileOf.authorId}
+          name={profileOf.authorName}
+          avatar={profileOf.authorAvatar}
+          reportItems={[{ label: 'Bu mesajı bildir', targetType: channel === 'tum' ? 'gangGlobalChat' : 'gangChat', targetPath: `${coll}/${profileOf.id}`, preview: profileOf.text }]}
+          onClose={() => setProfileOf(null)}
+        />
+      )}
       {reportTarget && (
         <ReportBlockSheet
           targetUid={isIntel ? null : reportTarget.authorId}
           targetName={isIntel ? reportTarget.codeName || 'Ajan' : reportTarget.authorName || 'Oyuncu'}
-          canBlock={!isIntel}
-          items={[
-            {
-              label: 'Mesajı şikâyet et',
-              targetType: isIntel ? 'intelChat' : channel === 'tum' ? 'gangGlobalChat' : 'gangChat',
-              targetPath: `${coll}/${reportTarget.id}`,
-              preview: reportTarget.text,
-            },
-            ...(isIntel ? [] : [{ label: 'Oyuncuyu / adını şikâyet et', targetType: 'user', targetPath: `users/${reportTarget.authorId}` }]),
-          ]}
+          canBlock={false}
+          items={[{ label: 'Mesajı bildir', targetType: isIntel ? 'intelChat' : channel === 'tum' ? 'gangGlobalChat' : 'gangChat', targetPath: `${coll}/${reportTarget.id}`, preview: reportTarget.text }]}
           onClose={() => setReportTarget(null)}
         />
       )}

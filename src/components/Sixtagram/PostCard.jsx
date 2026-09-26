@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Heart, MessageCircle, Trash2 } from 'lucide-react';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import PostAttachment from './PostAttachment';
-import AuthorPanel from './AuthorPanel';
+import PlayerCard from '../PlayerCard/PlayerCard';
+import ActionMenu from '../ActionMenu/ActionMenu';
 import CommentsPanel from './CommentsPanel';
 import ReportBlockSheet, { MoreButton } from '../ReportBlockSheet/ReportBlockSheet';
 import { toggleSixtagramLike, deleteSixtagramPost } from '../../services/gameActions';
@@ -29,6 +30,7 @@ export default function PostCard({ post, liked, isOwn }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const effectiveLiked = optimisticLiked ?? liked;
   const effectiveCount = optimisticCount ?? post.likeCount ?? 0;
@@ -95,7 +97,7 @@ export default function PostCard({ post, liked, isOwn }) {
             {confirmingDelete && <span>Emin misin?</span>}
           </button>
         )}
-        {!isOwn && <MoreButton onClick={() => setReportOpen(true)} label="Şikâyet et / Engelle" />}
+        {!isOwn && <MoreButton onClick={() => setMenuOpen(true)} label="Seçenekler" />}
       </div>
 
       {post.text && <p className="six-post-text">{post.text}</p>}
@@ -124,23 +126,34 @@ export default function PostCard({ post, liked, isOwn }) {
         </button>
       </div>
 
+      {/* v53: ⋯ → önce olumlu seçenekler, "Bildir" en altta ve soluk */}
+      {menuOpen && (
+        <ActionMenu
+          title={post.authorName || 'Oyuncu'}
+          onClose={() => setMenuOpen(false)}
+          actions={[
+            { key: 'profile', icon: '👤', label: 'Profili gör', onClick: () => setPanelOpen(true) },
+            { key: 'comments', icon: '💬', label: 'Yorumlar', onClick: () => setCommentsOpen(true) },
+            { key: 'report', icon: '⚑', label: 'Bildir', subtle: true, onClick: () => setReportOpen(true) },
+          ]}
+        />
+      )}
       {reportOpen && (
         <ReportBlockSheet
           targetUid={post.uid}
           targetName={post.authorName || 'Oyuncu'}
-          items={[
-            { label: 'Gönderiyi şikâyet et', targetType: 'sixtagramPost', targetPath: `sixtagramPosts/${post.id}`, preview: post.text },
-            { label: 'Oyuncuyu / adını şikâyet et', targetType: 'user', targetPath: `users/${post.uid}` },
-          ]}
+          canBlock={false}
+          items={[{ label: 'Gönderiyi bildir', targetType: 'sixtagramPost', targetPath: `sixtagramPosts/${post.id}`, preview: post.text }]}
           onClose={() => setReportOpen(false)}
         />
       )}
 
       {panelOpen && (
-        <AuthorPanel
+        <PlayerCard
           uid={post.uid}
           name={post.authorName}
           avatar={post.authorAvatar}
+          reportItems={[{ label: 'Bu gönderiyi bildir', targetType: 'sixtagramPost', targetPath: `sixtagramPosts/${post.id}`, preview: post.text }]}
           onClose={() => setPanelOpen(false)}
         />
       )}

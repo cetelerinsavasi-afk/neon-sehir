@@ -416,11 +416,15 @@ export function createClock(core, actions) {
   //      geçmedi → hiçbir şey değişmez (başlatan zaten çetede değil).
   //  - Mafya Babası oylama sürerken çeteden çıktıysa liderlik oylaması
   //    sonuçsuz kapanır (hedef yok; halef zaten başa geçti).
-  async function resolveVote(ctx, gangId, voteId) {
+  // v52: early=true → süre dolmadan, sonuç KESİNLEŞTİĞİ için (son oy verildiği
+  // anda) sonuçlanır; kesinlik işlem içinde yeniden doğrulanır.
+  async function resolveVote(ctx, gangId, voteId, { early = false } = {}) {
     return db.runTransaction(async (tx) => {
       const voteRef = ctx.ref.votes(gangId).doc(voteId);
       const vote = (await tx.get(voteRef)).data();
-      if (!vote || vote.status !== 'active' || vote.endsAtMs > ctx.now) return { skipped: true };
+      if (!vote || vote.status !== 'active') return { skipped: true };
+      const endedEarly = vote.endsAtMs > ctx.now;
+      if (endedEarly && !(early && voteActions.decidedOutcome(vote, voteActions.voteOutcome))) return { skipped: true };
       const gang = (await tx.get(ctx.ref.gang(gangId))).data();
       const [initSnap, targetSnap] = await Promise.all([tx.get(ctx.ref.member(gangId, vote.initiatorId)), tx.get(ctx.ref.member(gangId, vote.targetId))]);
       const { passed, ratio } = voteActions.voteOutcome(vote);
@@ -429,8 +433,8 @@ export function createClock(core, actions) {
       const targetHere = sameStint(targetSnap, vote.targetStint);
       const initiator = initiatorHere ? initSnap.data() : null;
       const target = targetHere ? targetSnap.data() : null;
-      const result = { passed, ratio, yes: vote.yes || 0, no: vote.no || 0, initiatorLeft: !initiatorHere, targetLeft: !targetHere };
-      const pct = `%${Math.round(ratio * 100)}`;
+      const result = { passed, ratio, yes: vote.yes || 0, no: vote.no || 0, initiatorLeft: !initiatorHere, targetLeft: !targetHere, endedEarly };
+      const pct = `%${Math.round(ratio * 100)}${endedEarly ? ' · sonuç kesinleşti, oylama erken bitti' : ''}`;
       if (gang?.status !== 'active') {
         tx.update(voteRef, { status: 'cancelled', cancelReason: 'gang_gone', resolvedAtMs: ctx.now, result });
         return { cancelled: true };
@@ -547,6 +551,24 @@ export function createClock(core, actions) {
       ctx.logs.push({ gang: 'vote_resolved', world: ctx.worldId, gangId, voteId, type: vote.type, passed });
       return result;
     });
+  }
+
+  // v52: oy verildiği anda sonuç kesinleştiyse oylamayı hemen sonuçlandır.
+  // Hedef çetede kaldıysa "oylama altında (Çömez yetkisi)" durumu da biter;
+  // üye listesi (public roster) yenilenir.
+  async function resolveVoteEarly(ctx, gangId, voteId) {
+    const res = await resolveVote(ctx, gangId, voteId, { early: true });
+    if (res?.skipped) return res;
+    const vote = (await ctx.ref.votes(gangId).doc(voteId).get()).data();
+    if (vote?.targetId) {
+      await db.runTransaction(async (tx) => {
+        const ref = ctx.ref.member(gangId, vote.targetId);
+        const m = (await tx.get(ref)).data();
+        if (m && Number(m.underVoteUntilMs || 0) > ctx.now) tx.update(ref, { underVoteUntilMs: 0 }); // 0: istemci saatinden bağımsız hemen biter
+      });
+    }
+    await core.refreshGangRoster(ctx, gangId);
+    return res;
   }
 
   async function startPendingVotes(ctx, gangId) {
@@ -1409,5 +1431,5 @@ export function createClock(core, actions) {
     return { ticks: results, errors: ctx0.errors || [] };
   }
 
-  return { runClock, runDailyTick, cleanupGang, resolveTruckTrip, productForSunday, dateKeyOf, processBets };
+  return { runClock, runDailyTick, cleanupGang, resolveTruckTrip, productForSunday, dateKeyOf, processBets, resolveVoteEarly };
 }

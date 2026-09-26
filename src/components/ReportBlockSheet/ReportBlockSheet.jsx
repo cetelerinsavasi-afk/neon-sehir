@@ -1,10 +1,14 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { reportContent, blockUser, unblockUser } from '../../services/gameActions';
 import { useBlocks } from '../../contexts/BlocksContext';
 import { IS_ANDROID_APP } from '../../lib/platform';
 import './ReportBlockSheet.css';
 
-// ReportBlockSheet — tüm UGC yüzeylerinin ortak "Şikâyet et / Engelle" alt sayfası.
+// ReportBlockSheet — tüm UGC yüzeylerinin ortak "Bildir / Engelle" alt sayfası.
+// v53: artık doğrudan görünmez — Oyuncu Kartı'nın ⋯ düğmesinden ya da mesaja
+// uzun basınca açılan menüdeki "Bildir"den açılır. Sayfanın gövdesine
+// (document.body) taşınır, her katmanın üstünde durur.
 //
 // props:
 //   targetUid   — içeriğin sahibi (engelleme için). null ise engelleme gösterilmez.
@@ -56,12 +60,12 @@ export default function ReportBlockSheet({ targetUid = null, targetName = 'Oyunc
           note: note.trim() || undefined,
           platform: IS_ANDROID_APP ? 'android' : 'web',
         }),
-      'Teşekkürler, şikâyetini aldık. Ekibimiz inceleyecek.'
+      'Teşekkürler, bildirimini aldık. Ekibimiz inceleyecek.'
     );
 
-  return (
+  return createPortal(
     <div className="rbs-backdrop" onClick={onClose}>
-      <div className="rbs-sheet" role="dialog" aria-modal="true" aria-label="Şikâyet et veya engelle" onClick={(e) => e.stopPropagation()}>
+      <div className="rbs-sheet" role="dialog" aria-modal="true" aria-label="Bildir veya engelle" onClick={(e) => e.stopPropagation()}>
         <div className="rbs-grip" aria-hidden="true" />
         <p className="rbs-title">{targetName}</p>
 
@@ -74,7 +78,7 @@ export default function ReportBlockSheet({ targetUid = null, targetName = 'Oyunc
               </button>
             ))}
             {canBlock && targetUid && !blocked && (
-              <button className="rbs-row danger" onClick={() => setStep({ name: 'block' })}>
+              <button className="rbs-row subtle" onClick={() => setStep({ name: 'block' })}>
                 <span className="rbs-ico" aria-hidden="true">🚫</span>
                 <span>Engelle</span>
               </button>
@@ -94,7 +98,7 @@ export default function ReportBlockSheet({ targetUid = null, targetName = 'Oyunc
         {step.name === 'reason' && (
           <div className="rbs-list">
             {step.item.preview && <p className="rbs-preview">“{String(step.item.preview).slice(0, 140)}”</p>}
-            <p className="rbs-sub">Neden şikâyet ediyorsun?</p>
+            <p className="rbs-sub">Ne tür bir sorun var?</p>
             <div className="rbs-reasons" role="radiogroup">
               {REASONS.map((r) => (
                 <button key={r.id} role="radio" aria-checked={reason === r.id} className={`rbs-chip${reason === r.id ? ' on' : ''}`} onClick={() => setReason(r.id)}>
@@ -109,7 +113,7 @@ export default function ReportBlockSheet({ targetUid = null, targetName = 'Oyunc
                 Geri
               </button>
               <button className="rbs-primary" disabled={!reason || busy} onClick={submitReport}>
-                {busy ? '…' : 'Şikâyet et'}
+                {busy ? '…' : 'Bildir'}
               </button>
             </div>
           </div>
@@ -141,7 +145,8 @@ export default function ReportBlockSheet({ targetUid = null, targetName = 'Oyunc
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

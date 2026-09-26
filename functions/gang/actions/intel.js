@@ -6,6 +6,7 @@
 // sabotaj ücreti).
 import { GANG, INTEL, atLeast } from '../config.js';
 import { addDays, midnightMsOf } from '../time.js';
+import { decidedOutcome } from './votes.js';
 
 const CODENAME_RE = /^[\p{L}\p{N}_\-. ]+$/u;
 
@@ -534,7 +535,37 @@ export function createIntelActions(core) {
       if (ballotSnap.exists) fail('already-exists', 'Oyunu zaten kullandın.');
       tx.set(ctx.ref.intelBallot(voteId, rid), { choice, atMs: ctx.now });
       tx.update(voteRef, { [choice]: FV.increment(1), votedCount: FV.increment(1) });
-      return { voted: true };
+      // v52: bu oyla sonuç kesinleştiyse oylama hemen sonuçlandırılır (bkz. system.js)
+      const after = { ...vote, [choice]: Number(vote[choice] || 0) + 1, votedCount: Number(vote.votedCount || 0) + 1 };
+      return { voted: true, voteId, decided: Boolean(decidedOutcome(after, intelVoteOutcome)) };
+    });
+  }
+
+  // Tek bir İstihbarat oylamasını sonuçlandırır. early=true → süre dolmadan,
+  // sonuç KESİNLEŞTİĞİ için (v52); kesinlik işlem içinde yeniden doğrulanır.
+  function resolveOneIntelVote(ctx, ref, { early = false } = {}) {
+    return core.db.runTransaction(async (tx) => {
+          const d = { ref };
+          const vote = (await tx.get(d.ref)).data();
+          if (!vote || vote.status !== 'active') return { skipped: true };
+          const endedEarly = vote.endsAtMs > ctx.now;
+          if (endedEarly && !(early && decidedOutcome(vote, intelVoteOutcome))) return { skipped: true };
+          const target = await tx.get(ctx.ref.roster(vote.targetRosterId));
+          const { passed, ratio } = intelVoteOutcome(vote);
+          const pct = `%${Math.round(ratio * 100)}${endedEarly ? ' · sonuç kesinleşti, oylama erken bitti' : ''}`;
+          const result = { passed, ratio, yes: vote.yes || 0, no: vote.no || 0, endedEarly };
+          if (!target.exists) {
+            tx.update(d.ref, { status: 'cancelled', cancelReason: 'member_left', resolvedAtMs: ctx.now, result });
+            return { cancelled: true };
+          }
+          let apply = null;
+          if (passed) apply = await removeFromIntel(tx, ctx, vote.targetRosterId, target.data(), `🗳️ Oylama sonucu İstihbarattan çıkarıldın (${pct}).`);
+          tx.update(d.ref, { status: 'resolved', resolvedAtMs: ctx.now, result });
+          if (apply) apply();
+          // v52: erken bittiyse ve hedef kaldıysa "oylama altında (Muhbir yetkisi)" durumu biter
+          else if (endedEarly && Number(target.data().underVoteUntilMs || 0) > ctx.now) tx.update(ctx.ref.roster(vote.targetRosterId), { underVoteUntilMs: 0 });
+          announceIntel(tx, ctx, '🗳️', passed ? `${vote.targetCode} oylamayla İstihbarattan çıkarıldı (${pct}).` : `${vote.targetCode} için çıkarma oylaması reddedildi (${pct}).`);
+          return { resolved: true, passed };
     });
   }
 
@@ -543,26 +574,15 @@ export function createIntelActions(core) {
     const act = await ctx.ref.intelVotes().where('status', '==', 'active').get();
     for (const d of act.docs) {
       if (d.data().endsAtMs > ctx.now) continue;
-      await safe(ctx, `intel-vote:${d.id}`, () =>
-        core.db.runTransaction(async (tx) => {
-          const vote = (await tx.get(d.ref)).data();
-          if (!vote || vote.status !== 'active' || vote.endsAtMs > ctx.now) return;
-          const target = await tx.get(ctx.ref.roster(vote.targetRosterId));
-          const { passed, ratio } = intelVoteOutcome(vote);
-          const pct = `%${Math.round(ratio * 100)}`;
-          const result = { passed, ratio, yes: vote.yes || 0, no: vote.no || 0 };
-          if (!target.exists) {
-            tx.update(d.ref, { status: 'cancelled', cancelReason: 'member_left', resolvedAtMs: ctx.now, result });
-            return;
-          }
-          let apply = null;
-          if (passed) apply = await removeFromIntel(tx, ctx, vote.targetRosterId, target.data(), `🗳️ Oylama sonucu İstihbarattan çıkarıldın (${pct}).`);
-          tx.update(d.ref, { status: 'resolved', resolvedAtMs: ctx.now, result });
-          if (apply) apply();
-          announceIntel(tx, ctx, '🗳️', passed ? `${vote.targetCode} oylamayla İstihbarattan çıkarıldı (${pct}).` : `${vote.targetCode} için çıkarma oylaması reddedildi (${pct}).`);
-        })
-      );
+      await safe(ctx, `intel-vote:${d.id}`, () => resolveOneIntelVote(ctx, d.ref));
     }
+  }
+
+  // v52: oy verildiği anda sonuç kesinleştiyse hemen sonuçlandır + kod adı listesini yenile
+  async function resolveIntelVoteEarly(ctx, voteId) {
+    const res = await resolveOneIntelVote(ctx, ctx.ref.intelVotes().doc(voteId), { early: true });
+    if (!res?.skipped) await core.refreshIntelRoster(ctx);
+    return res;
   }
 
   async function startIntelPendingVotes(ctx) {
@@ -652,6 +672,7 @@ export function createIntelActions(core) {
     intelDefaults,
     intelStateDefaults,
     resolveIntelVotes,
+    resolveIntelVoteEarly,
     startIntelPendingVotes,
     linkRef,
   };

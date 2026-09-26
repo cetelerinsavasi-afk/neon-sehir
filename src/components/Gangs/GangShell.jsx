@@ -105,7 +105,7 @@ function UnderVoteBanner({ until, low }) {
     <div className="gx-undervote">
       <span className="gx-undervote-icon">🗳️</span>
       <span className="gx-undervote-text">
-        Adına oylama var · yetkin <b>{low}</b>
+        Adına oylama var · yetkin <b>{low}</b> · oylamayı Savaş sekmesinden izleyebilirsin
       </span>
       <Deadline untilMs={until} />
     </div>

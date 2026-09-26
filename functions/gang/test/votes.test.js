@@ -47,13 +47,16 @@ test('devirme: sadece prestiji Babayı geçen Sağ Kol; 00:00–12:00 arası ANI
   assert.ok(!v.voterIds.includes(G.ids[6]), 'Tetikçi oy veremez');
   await h.fails(s2, 'requestVote', { type: 'ayaklanma' }); // aynı anda ikinci liderlik oylaması yok
   await h.fails(G.ids[6], 'castVote', { voteId: v.id, choice: 'yes' });
-  // 4 evet / 3 hayır = %57
-  await voteAll(h, G, v.id, [[s1, 'yes'], [G.ids[2], 'yes'], [G.ids[3], 'yes'], [G.ids[4], 'yes'], [G.baba, 'no'], [s2, 'no'], [G.ids[5], 'no']]);
+  // 4 evet / 3 hayır = %57 (v52: sıra, son oya kadar sonucu belirsiz bırakacak şekilde)
+  await voteAll(h, G, v.id, [[G.baba, 'no'], [s2, 'no'], [G.ids[5], 'no'], [s1, 'yes'], [G.ids[2], 'yes'], [G.ids[3], 'yes']]);
   await h.fails(s1, 'castVote', { voteId: v.id, choice: 'yes' }); // ikinci oy
+  assert.equal(h.get(`gangs/${G.gangId}/votes/${v.id}`).status, 'active', '6 oyda sonuç henüz belli değil');
+  await voteAll(h, G, v.id, [[G.ids[4], 'yes']]); // herkes oy verdi → v52: hemen sonuçlanır
   const tally = h.get(`gangs/${G.gangId}/votes/${v.id}`);
   assert.equal(tally.yes, 4);
   assert.equal(tally.no, 3);
-  await h.nextDay();
+  assert.equal(tally.status, 'resolved');
+  assert.equal(tally.result.endedEarly, true);
   const g = h.get(`gangs/${G.gangId}`);
   assert.equal(g.babaId, s1);
   assert.equal(h.member(G.gangId, G.baba), undefined, 'eski Baba çeteden çıktı');
@@ -170,10 +173,12 @@ test('aynı gece: çıkarma oylaması ayaklanmadan önce çözülür (belirli s�
   const all = Object.entries(h.db._dump(`gangWorlds/test/gangs/${G.gangId}/votes/`)).filter(([p, v]) => !p.includes('/ballots/') && v.status === 'active');
   assert.equal(all.length, 2);
   const id = (t) => all.find(([, v]) => v.type === t)[0].split('/').pop();
-  const voters = [G.baba, s2, G.ids[2], G.ids[3], G.ids[4], G.ids[5]];
-  for (const v of voters) await h.act(v, 'castVote', { voteId: id('kick'), choice: 'yes' });
-  for (const v of voters.slice(1)) await h.act(v, 'castVote', { voteId: id('ayaklanma'), choice: 'yes' });
+  // v52: sonuçlar gün içinde kesinleşmeyecek kadar oy (00:00 sırası sınanır)
+  for (const v of [G.baba, s2, G.ids[2]]) await h.act(v, 'castVote', { voteId: id('kick'), choice: 'yes' });
+  for (const v of [s2, G.ids[2], G.ids[3]]) await h.act(v, 'castVote', { voteId: id('ayaklanma'), choice: 'yes' });
   await h.act(s1, 'castVote', { voteId: id('ayaklanma'), choice: 'yes' });
+  assert.equal(h.get(`gangs/${G.gangId}/votes/${id('kick')}`).status, 'active');
+  assert.equal(h.get(`gangs/${G.gangId}/votes/${id('ayaklanma')}`).status, 'active');
   await h.nextDay();
   assert.equal(h.member(G.gangId, s1), undefined, 's1 çıkarıldı');
   assert.equal(h.get(`gangs/${G.gangId}/votes/${id('ayaklanma')}`).status, 'resolved');
@@ -279,4 +284,89 @@ test('Mafya Babası oylama sürerken çeteden ayrılırsa liderlik oylaması son
   await h.nextDay();
   assert.ok(h.member(G.gangId, s1), 'başlatan çetede');
   assert.equal(h.get(`gangs/${G.gangId}`).babaId, s1, 'halef: en yüksek prestijli üye');
+});
+
+// ---------------------------------------------------------------------------
+// v52 — hedef ve başlatan oy kullanır; sonuç kesinleşince oylama hemen biter
+// ---------------------------------------------------------------------------
+test('v52: ayaklanma hedefi Baba (Çömez yetkisindeyken) ve başlatan Sağ Kol oy kullanabilir', async () => {
+  const h = await createHarness();
+  const G = await fullGang(h);
+  const [s1] = G.ids;
+  const { voteId } = await h.act(s1, 'requestVote', { type: 'ayaklanma' });
+  const v = h.get(`gangs/${G.gangId}/votes/${voteId}`);
+  assert.ok(v.voterIds.includes(G.baba) && v.voterIds.includes(s1));
+  await h.act(G.baba, 'castVote', { voteId, choice: 'no' });
+  await h.act(s1, 'castVote', { voteId, choice: 'yes' });
+  const t = h.get(`gangs/${G.gangId}/votes/${voteId}`);
+  assert.equal(t.yes, 1);
+  assert.equal(t.no, 1);
+});
+
+test('v52: çıkarma — kalan herkes Hayır dese bile geçiyorsa oylama anında biter, hedef hemen çıkar', async () => {
+  const h = await createHarness();
+  const G = await fullGang(h);
+  const [s1, s2] = G.ids;
+  const { voteId } = await h.act(G.baba, 'requestVote', { type: 'kick', targetId: s1 });
+  const r3 = await voteAll(h, G, voteId, [[G.baba, 'yes'], [s2, 'yes'], [G.ids[2], 'yes']]);
+  void r3;
+  assert.equal(h.get(`gangs/${G.gangId}/votes/${voteId}`).status, 'active', '3/7: kalan 4 Hayır derse %43 → belli değil');
+  const res = await h.act(G.ids[3], 'castVote', { voteId, choice: 'yes' }); // 4/7 = %57 > %51 → kesin
+  assert.equal(res.ended, true);
+  const vote = h.get(`gangs/${G.gangId}/votes/${voteId}`);
+  assert.equal(vote.status, 'resolved');
+  assert.equal(vote.result.passed, true);
+  assert.equal(vote.result.endedEarly, true);
+  assert.equal(h.member(G.gangId, s1), undefined, 'hedef gece beklemeden çıkarıldı');
+  assert.ok(h.chat(G.gangId).some((m) => /erken bitti/.test(m)), 'duyuruda erken bittiği yazar');
+  await h.fails(G.ids[4], 'castVote', { voteId, choice: 'no' }); // oylama kapandı
+  // aynı gece 00:00'da tekrar sonuçlanmaz
+  await h.nextDay();
+  assert.equal(h.get(`gangs/${G.gangId}/votes/${voteId}`).resolvedAtMs, vote.resolvedAtMs);
+});
+
+test('v52: kalan herkes Evet dese bile geçmiyorsa oylama anında reddedilir; hedefin Çömez yetkisi hemen kalkar', async () => {
+  const h = await createHarness();
+  const G = await fullGang(h);
+  const [s1] = G.ids;
+  const { voteId } = await h.act(G.baba, 'requestVote', { type: 'kick', targetId: s1 });
+  await h.fails(s1, 'requestVote', { type: 'kick', targetId: G.ids[6] }); // oylama altında: Çömez yetkisi
+  await voteAll(h, G, voteId, [[s1, 'no'], [G.ids[1], 'no'], [G.ids[2], 'no']]);
+  assert.equal(h.get(`gangs/${G.gangId}/votes/${voteId}`).status, 'active', '3 hayır: kalan 4 evet → %57 → belli değil');
+  await h.act(G.ids[3], 'castVote', { voteId, choice: 'no' }); // en fazla 3/7 = %43 → kesin reddedildi
+  const vote = h.get(`gangs/${G.gangId}/votes/${voteId}`);
+  assert.equal(vote.status, 'resolved');
+  assert.equal(vote.result.passed, false);
+  assert.ok(h.member(G.gangId, s1), 'hedef çetede kalır');
+  assert.equal(h.member(G.gangId, s1).rank, 'sagkol');
+  await h.act(s1, 'requestVote', { type: 'kick', targetId: G.ids[6] }); // Çömez yetkisi bitti (gece beklenmedi)
+});
+
+test('v52: ayaklanma erken geçer → yeni Baba hemen başa geçer, eski Baba Sağ Kol olur', async () => {
+  const h = await createHarness();
+  const G = await fullGang(h);
+  const [s1, s2] = G.ids;
+  const { voteId } = await h.act(s1, 'requestVote', { type: 'ayaklanma' });
+  // > %66: 5 evet → kalan 2 hayır derse 5/7 = %71 → kesin
+  await voteAll(h, G, voteId, [[s1, 'yes'], [s2, 'yes'], [G.ids[2], 'yes'], [G.ids[3], 'yes']]);
+  assert.equal(h.get(`gangs/${G.gangId}/votes/${voteId}`).status, 'active');
+  await h.act(G.ids[4], 'castVote', { voteId, choice: 'yes' });
+  assert.equal(h.get(`gangs/${G.gangId}/votes/${voteId}`).status, 'resolved');
+  assert.equal(h.get(`gangs/${G.gangId}`).babaId, s1);
+  assert.equal(h.member(G.gangId, G.baba).rank, 'sagkol');
+  assert.ok(!(Number(h.member(G.gangId, G.baba).underVoteUntilMs || 0) > h.clock.now), 'eski Babanın oylama kısıtı kalktı');
+});
+
+test('v52: decidedOutcome — örnek: 3 oy hakkı, %50 gereken oylamada 2 aynı oy sonucu belirler', async () => {
+  const { decidedOutcome } = await import('../actions/votes.js');
+  const half = (v) => {
+    const t = v.yes + v.no;
+    return { passed: t > 0 && v.yes / t > 0.5 };
+  };
+  const base = { voterIds: ['a', 'b', 'c'] };
+  assert.deepEqual(decidedOutcome({ ...base, yes: 2, no: 0, votedCount: 2 }, half), { passed: true });
+  assert.deepEqual(decidedOutcome({ ...base, yes: 0, no: 2, votedCount: 2 }, half), { passed: false });
+  assert.equal(decidedOutcome({ ...base, yes: 1, no: 1, votedCount: 2 }, half), null);
+  assert.equal(decidedOutcome({ ...base, yes: 1, no: 0, votedCount: 1 }, half), null);
+  assert.deepEqual(decidedOutcome({ ...base, yes: 2, no: 1, votedCount: 3 }, half), { passed: true }, 'herkes oy verdi');
 });

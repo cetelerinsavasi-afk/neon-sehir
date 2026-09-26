@@ -14,6 +14,22 @@
 import { GANG } from '../config.js';
 import { addDays, midnightMsOf } from '../time.js';
 
+// v52 — SONUÇ KESİNLEŞTİ Mİ? (çete ve İstihbarat oylamaları için ortak)
+// Oy kullanmayanlar sayılmadığı ve oranlar tek yönlü değiştiği için:
+//  - kalan HERKES "Hayır" dese bile geçiyorsa → kesin GEÇTİ
+//  - kalan HERKES "Evet" dese bile geçmiyorsa → kesin GEÇMEDİ
+// "Kalan" = oy hakkı olup henüz oy vermeyenler (çeteden ayrılmış olsalar bile
+// sayılır — ihtiyatlı). Herkes oy verdiyse sonuç da kesindir.
+// Dönüş: null (belli değil) | { passed }
+export function decidedOutcome(vote, outcomeFn) {
+  const remaining = Math.max(0, (vote.voterIds || []).length - Number(vote.votedCount || 0));
+  const yes = Number(vote.yes || 0);
+  const no = Number(vote.no || 0);
+  if (outcomeFn({ ...vote, yes, no: no + remaining }).passed) return { passed: true };
+  if (!outcomeFn({ ...vote, yes: yes + remaining, no }).passed) return { passed: false };
+  return null;
+}
+
 export function createVoteActions(core) {
   const { FV, fail, readMembership, requireGangMember } = core;
 
@@ -134,7 +150,9 @@ export function createVoteActions(core) {
       tx.set(ballotRef, { choice, atMs: ctx.now });
       tx.update(voteRef, { [choice === 'yes' ? 'yes' : 'no']: FV.increment(1), votedCount: FV.increment(1) });
       ctx.logs.push({ gang: 'vote_cast', world: ctx.worldId, gangId, voteId });
-      return { voted: true };
+      // v52: bu oyla sonuç kesinleştiyse oylama hemen sonuçlandırılır (bkz. system.js)
+      const after = { ...vote, [choice]: Number(vote[choice] || 0) + 1, votedCount: Number(vote.votedCount || 0) + 1 };
+      return { voted: true, gangId, voteId, decided: Boolean(decidedOutcome(after, voteOutcome)) };
     });
   }
 
@@ -149,5 +167,5 @@ export function createVoteActions(core) {
     return { passed: total > 0 && ratio > GANG.KICK_MIN_RATIO_EXCLUSIVE, ratio };
   }
 
-  return { requestVote, cancelVoteRequest, castVote, voteOutcome, kickAllowed };
+  return { requestVote, cancelVoteRequest, castVote, voteOutcome, kickAllowed, decidedOutcome };
 }

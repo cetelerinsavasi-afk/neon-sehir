@@ -97,25 +97,25 @@ test('şikâyet: tüm hedef türleri doğru oyuncuyu ve metni bulur', async () =
 
 test('şikâyet: geçersiz tür/sebep/yol, kendini şikâyet, olmayan içerik, boş balon reddedilir', async () => {
   const { report, rep } = setup();
-  await rejects(report('old1', { targetType: 'yok', targetPath: 'globalChat/m1', reason: 'hakaret' }), /Geçersiz şikâyet türü/);
-  await rejects(report('old1', { targetType: 'globalChat', targetPath: 'globalChat/m1', reason: 'canimsikildi' }), /Geçersiz şikâyet sebebi/);
+  await rejects(report('old1', { targetType: 'yok', targetPath: 'globalChat/m1', reason: 'hakaret' }), /Geçersiz bildirim türü/);
+  await rejects(report('old1', { targetType: 'globalChat', targetPath: 'globalChat/m1', reason: 'canimsikildi' }), /Geçersiz bildirim sebebi/);
   await rejects(rep('old1', 'globalChat', 'users/bad'), /Geçersiz içerik/, 'yol, türün kalıbına uymalı');
   await rejects(rep('old1', 'globalChat', 'globalChat/../users/bad'), /Geçersiz içerik/);
-  await rejects(rep('bad', 'globalChat', 'globalChat/m1'), /Kendini şikâyet/);
+  await rejects(rep('bad', 'globalChat', 'globalChat/m1'), /Kendini bildiremezsin/);
   await rejects(rep('old1', 'globalChat', 'globalChat/yok'), /bulunamadı/);
   await rejects(rep('old1', 'bubble', 'parkPresence/victim'), /Balon artık görünmüyor/);
 });
 
 test('şikâyet: çete sohbetini yalnızca o çetenin üyesi şikâyet edebilir', async () => {
   const { rep } = setup();
-  await rejects(rep('old2', 'gangChat', 'gangWorlds/w1/gangs/g1/chat_genel/x1'), /şikâyet edemezsin/);
+  await rejects(rep('old2', 'gangChat', 'gangWorlds/w1/gangs/g1/chat_genel/x1'), /bildiremezsin/);
   await rep('old1', 'gangChat', 'gangWorlds/w1/gangs/g1/chat_genel/x1');
 });
 
 test('şikâyet: aynı içerik ikinci kez şikâyet edilemez; günlük sınır', async () => {
   const { S, rep } = setup();
   await rep('old1', 'globalChat', 'globalChat/m1');
-  await rejects(rep('old1', 'globalChat', 'globalChat/m1'), /zaten şikâyet/);
+  await rejects(rep('old1', 'globalChat', 'globalChat/m1'), /zaten bildirdin/);
   for (let i = 0; i <= MODERATION.REPORTS_PER_DAY; i++) S(`globalChat/z${i}`, { uid: 'bad', text: `m${i}` });
   for (let i = 0; i < MODERATION.REPORTS_PER_DAY; i++) await rep('old2', 'globalChat', `globalChat/z${i}`);
   await rejects(rep('old2', 'globalChat', `globalChat/z${MODERATION.REPORTS_PER_DAY}`), /Bugün yeterince/);

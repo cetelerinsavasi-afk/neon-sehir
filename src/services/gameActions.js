@@ -641,6 +641,9 @@ export const reportContent = (payload) => httpsCallable(functions, 'reportConten
 export const blockUser = (targetUid) => httpsCallable(functions, 'blockUser')({ targetUid });
 export const unblockUser = (targetUid) => httpsCallable(functions, 'unblockUser')({ targetUid });
 
+// v53 — Oyuncu Kartı: herkese açık özet (çete, fabrika, takım, Sixtagram). Bkz. functions/playerCard.js
+export const getPlayerCard = (uid) => httpsCallable(functions, 'getPlayerCard')({ uid }).then((r) => r.data);
+
 // UGC D3 — Yönetim Paneli: tek callable, { action, payload } (bkz. functions/adminPanel.js).
 // Yetki sunucuda kontrol edilir; sonuç doğrudan data olarak döner.
 export const adminAction = (action, payload = {}) => httpsCallable(functions, 'adminAction')({ action, payload }).then((r) => r.data);

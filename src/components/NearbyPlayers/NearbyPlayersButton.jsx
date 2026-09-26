@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
-import ReportBlockSheet, { MoreButton } from '../ReportBlockSheet/ReportBlockSheet';
+import PlayerCard from '../PlayerCard/PlayerCard';
 import { useBlocks } from '../../contexts/BlocksContext';
 import './NearbyPlayersButton.css';
 
 // NearbyPlayersButton — dünya ekranlarında (Park + 7 mekân) sağdaki düğme
-// sütununun en üstünde 👥. Aynı ekrandaki oyuncuları listeler; her oyuncu
-// için "Balonu şikâyet et / Oyuncuyu şikâyet et / Engelle". Canvas'a
-// dokunmadan (avatar seçimi gerektirmeden) balon şikâyetini mümkün kılar.
+// sütununun en üstünde 👥. Aynı ekrandaki oyuncuları listeler; bir oyuncuya
+// dokununca Oyuncu Kartı açılır (v53). Balonu bildirmek kartın ⋯ menüsünde.
 //
 // props: others (use*Presence'tan), collectionName ('parkPresence' | 'interiorPresence'),
 //        className (ekranın düğme stili: 'pw' | 'ws')
@@ -29,7 +28,7 @@ export default function NearbyPlayersButton({ others = [], collectionName, varia
             {others.length === 0 && <p className="nearby-empty">Şu an burada başka oyuncu yok.</p>}
             <div className="nearby-list">
               {others.map((o) => (
-                <div key={o.uid} className="nearby-row">
+                <button type="button" key={o.uid} className="nearby-row" onClick={() => setTarget(o)}>
                   <span className="nearby-avatar">
                     <AvatarSvg avatar={o.avatar} size={32} rounded />
                   </span>
@@ -41,8 +40,8 @@ export default function NearbyPlayersButton({ others = [], collectionName, varia
                       o.chatText && <span className="nearby-text">“{o.chatText}”</span>
                     )}
                   </span>
-                  <MoreButton onClick={() => setTarget(o)} label={`${o.displayName || 'Oyuncu'} için seçenekler`} />
-                </div>
+                  <span className="nearby-go" aria-hidden="true">›</span>
+                </button>
               ))}
             </div>
             <button className="nearby-close" onClick={() => setOpen(false)}>
@@ -53,15 +52,15 @@ export default function NearbyPlayersButton({ others = [], collectionName, varia
       )}
 
       {target && (
-        <ReportBlockSheet
-          targetUid={target.uid}
-          targetName={target.displayName || 'Oyuncu'}
-          items={[
-            ...(target.chatText && !isBlocked(target.uid)
-              ? [{ label: 'Konuşma balonunu şikâyet et', targetType: 'bubble', targetPath: `${collectionName}/${target.uid}`, preview: target.chatText }]
-              : []),
-            { label: 'Oyuncuyu / adını şikâyet et', targetType: 'user', targetPath: `users/${target.uid}` },
-          ]}
+        <PlayerCard
+          uid={target.uid}
+          name={target.displayName}
+          avatar={target.avatar}
+          reportItems={
+            target.chatText && !isBlocked(target.uid)
+              ? [{ label: 'Konuşma balonunu bildir', targetType: 'bubble', targetPath: `${collectionName}/${target.uid}`, preview: target.chatText }]
+              : []
+          }
           onClose={() => setTarget(null)}
         />
       )}
