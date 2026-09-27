@@ -2444,8 +2444,8 @@ export const dailyReset = onSchedule(
       });
       await Promise.all(miningJobs);
 
-      // v40: mining üretimi = kripto ALIŞI — sahip başına AYRI kayıt (en büyük
-      // tek sahip dışlanabilsin), altın değeri = KR × bu geceki kripto fiyatı.
+      // v40: mining üretimi = kripto ALIŞI — sahip başına ayrı kayıt,
+      // altın değeri = KR × bu geceki kripto fiyatı (v63: hepsi orana dahil).
       try {
         let tradeBatch = db.batch();
         let tradeOps = 0;
@@ -3600,10 +3600,10 @@ export const dailyReset = onSchedule(
 //   - dailyReset mining üretimi: sahip başına ayrı 'buy' (KR × gece fiyatı)
 // Saatlik hesap (her varlık ayrı): son 24 saat, yaşa göre ağırlık (altın bazlı)
 //   0–3 sa 4x · 3–6 sa 3x · 6–12 sa 2x · 12–24 sa 1x (üst sınır dahil).
-// Oyuncu bazında toplam ağırlıklı alış/satış; en büyük ALICININ ve en büyük
-// SATICININ payı birbirinden bağımsız çıkarılır (aynı kişi ikisiyse iki
-// taraftan da). Kalan alış oranı rejim seçiminde kullanılır (bkz.
-// pickInvestmentRegime). Fiyatın YÖNÜ her zaman %50/%50 yazı-tura.
+// Toplam ağırlıklı alış / (alış + satış) oranı rejim seçiminde kullanılır
+// (bkz. pickInvestmentRegime). v63: en büyük alıcı ve satıcıyı dışlama
+// KALDIRILDI — tüm alış, satış ve mining üretimleri (en büyükler dahil) sayılır.
+// Fiyatın YÖNÜ her zaman %50/%50 yazı-tura.
 // =============================================================================
 const INVESTMENT_ASSETS = ['diamond', 'stock', 'crypto'];
 const INVESTMENT_TIME_WEIGHT_BUCKETS = [
@@ -3646,22 +3646,17 @@ function computeInvestmentBuyRatios(trades, nowMs) {
   }
   const out = {};
   for (const a of INVESTMENT_ASSETS) {
+    // v63: herkes dahil (en büyük alıcı/satıcı dışlanmaz)
     let totalBuy = 0;
-    let maxBuy = 0;
     acc[a].buy.forEach((v) => {
       totalBuy += v;
-      if (v > maxBuy) maxBuy = v;
     });
     let totalSell = 0;
-    let maxSell = 0;
     acc[a].sell.forEach((v) => {
       totalSell += v;
-      if (v > maxSell) maxSell = v;
     });
-    const remainingBuy = Math.max(0, totalBuy - maxBuy);
-    const remainingSell = Math.max(0, totalSell - maxSell);
-    const total = remainingBuy + remainingSell;
-    out[a] = total > 0 ? remainingBuy / total : null;
+    const total = totalBuy + totalSell;
+    out[a] = total > 0 ? totalBuy / total : null;
   }
   return out;
 }

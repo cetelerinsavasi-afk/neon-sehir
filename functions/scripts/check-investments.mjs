@@ -1,4 +1,4 @@
-// v40 yatırım rejimi / alış oranı kontrolü (Firebase gerektirmez).
+// v40 yatırım rejimi / alış oranı kontrolü (Firebase gerektirmez). v63: dışlama yok.
 // Çalıştır: node functions/scripts/check-investments.mjs
 // index.js içindeki SAF fonksiyonları metinden alıp çalıştırır.
 import { readFileSync } from 'node:fs';
@@ -28,22 +28,22 @@ for (const [asset, th] of Object.entries(INVESTMENT_REGIME_THRESHOLD)) {
 // ağırlık kovaları (üst sınır dahil)
 assert.equal(investmentTradeWeight(0), 4); assert.equal(investmentTradeWeight(3 * H), 4); assert.equal(investmentTradeWeight(3 * H + 1), 3);
 assert.equal(investmentTradeWeight(6 * H), 3); assert.equal(investmentTradeWeight(12 * H), 2); assert.equal(investmentTradeWeight(24 * H), 1); assert.equal(investmentTradeWeight(24 * H + 1), 0);
-// C) oran — en büyük alıcı ve en büyük satıcı ayrı ayrı dışlanır
+// C) oran — v63: en büyük alıcı ve satıcı DAHİL, herkes sayılır
 const t = (assetType, uid, type, goldAmount, ageH) => ({ assetType, uid, type, goldAmount, createdAtMs: now - ageH * H });
 let r = computeInvestmentBuyRatios([
-  t('crypto', 'whale', 'buy', 1_000_000, 1),
+  t('crypto', 'whale', 'buy', 1_000, 1),
   t('crypto', 'a', 'buy', 100, 1), t('crypto', 'b', 'buy', 100, 1),
-  t('crypto', 'c', 'sell', 100, 1), t('crypto', 'd', 'sell', 50, 1),
+  t('crypto', 'c', 'sell', 600, 1), t('crypto', 'd', 'sell', 200, 1),
 ], now);
-// alış: 4M+400+400 → whale çıkar → 800 ; satış: 400+200 → c çıkar → 200 ; oran 0.8
-assert.equal(r.crypto, 0.8); assert.equal(r.diamond, null); assert.equal(r.stock, null);
-// aynı kişi hem en büyük alıcı hem en büyük satıcı → iki taraftan da
+// alış: (1000+100+100)×4 = 4800 ; satış: (600+200)×4 = 3200 ; oran 4800/8000 = 0.6 (whale ve c dahil)
+assert.equal(r.crypto, 0.6); assert.equal(r.diamond, null); assert.equal(r.stock, null);
+// aynı kişi hem alıp hem satsa: ikisi de sayılır
 r = computeInvestmentBuyRatios([t('stock', 'x', 'buy', 1000, 1), t('stock', 'x', 'sell', 1000, 1), t('stock', 'y', 'buy', 10, 1), t('stock', 'z', 'sell', 30, 1)], now);
-assert.equal(r.stock, 0.25);
-// tek oyuncu → sinyal yok
+assert.equal(r.stock, 1010 / 2040);
+// tek oyuncu da sinyal verir (artık dışlanmıyor)
 r = computeInvestmentBuyRatios([t('diamond', 'solo', 'buy', 500, 1)], now);
-assert.equal(r.diamond, null);
-// 24 saatten eski sayılmaz; parçalamak kazandırmaz
-r = computeInvestmentBuyRatios([...Array.from({ length: 100 }, () => t('crypto', 'split', 'buy', 10_000, 1)), t('crypto', 'm', 'buy', 5, 1), t('crypto', 'n', 'sell', 5, 1), t('crypto', 'o', 'sell', 5, 1), t('crypto', 'old', 'buy', 1e9, 25)], now);
-assert.equal(r.crypto, 0.5, 'parçalı whale dışlandı, eski kayıt yok');
+assert.equal(r.diamond, 1);
+// 24 saatten eski sayılmaz; yaş ağırlığı uygulanır
+r = computeInvestmentBuyRatios([t('crypto', 'm', 'buy', 100, 1), t('crypto', 'n', 'sell', 100, 20), t('crypto', 'old', 'buy', 1e9, 25)], now);
+assert.equal(r.crypto, 400 / 500, '1 sa ×4 alış, 20 sa ×1 satış; eski kayıt yok');
 console.log('YATIRIM TESTLERİ TAMAM');
