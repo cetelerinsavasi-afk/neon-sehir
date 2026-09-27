@@ -5,7 +5,7 @@
 # 200 OK + application/json olarak, yönlendirmesiz okumalı. Dosya mevcut
 # olduğu sürece Cloudflare onu doğrudan sunar; SPA fallback (index.html)
 # yalnızca dosya YOKSA devreye girer. Kontrol:
-#   node scripts/check-assetlinks.mjs https://<alan-adı>
+#   node scripts/check-assetlinks.mjs            (varsayılan: https://cetelerinsavasi.com)
 #
 # Content-Type BİLEREK burada verilmiyor: Cloudflare .json uzantısından
 # zaten "application/json" döndürüyor. Buraya yazılırsa, dosya deploy

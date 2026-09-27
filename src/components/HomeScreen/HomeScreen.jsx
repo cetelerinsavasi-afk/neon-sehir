@@ -13,6 +13,7 @@ import AvatarBuilder from '../AvatarBuilder/AvatarBuilder';
 import DeleteAccountRequest from '../DeleteAccountRequest/DeleteAccountRequest';
 import BlockedPlayersList from '../BlockedPlayersList/BlockedPlayersList';
 import AdminPanelEntry from '../AdminPanel/AdminPanelEntry';
+import LegalLinks from '../LegalLinks/LegalLinks';
 import './HomeScreen.css';
 
 const MATERIAL_LABELS = {
@@ -242,6 +243,9 @@ export default function HomeScreen() {
       <BlockedPlayersList />
 
       <DeleteAccountRequest />
+
+      {/* Play: gizlilik politikası ve hesap silme bağlantıları uygulama içinde de erişilebilir */}
+      <LegalLinks />
     </div>
   );
 }

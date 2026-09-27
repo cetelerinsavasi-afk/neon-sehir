@@ -2,7 +2,8 @@
 // doğrular. Bağımlılık yok (Node 18+ yerleşik fetch).
 //
 // Kullanım:
-//   node scripts/check-assetlinks.mjs https://alan-adin.com        (canlı, deploy sonrası)
+//   node scripts/check-assetlinks.mjs                              (canlı, varsayılan: https://cetelerinsavasi.com)
+//   node scripts/check-assetlinks.mjs https://alan-adin.com        (canlı, başka alan adı)
 //   node scripts/check-assetlinks.mjs public/.well-known/assetlinks.json   (yerel dosya)
 //   İsteğe bağlı 2. argüman: beklenen paket adı (varsayılan com.cetelerinsavasi.twa)
 //
@@ -12,7 +13,7 @@
 // yer tutucuları kaldıysa HATA verir.
 import { readFile } from 'node:fs/promises';
 
-const target = process.argv[2];
+const target = process.argv[2] || 'https://cetelerinsavasi.com';
 const expectedPackage = process.argv[3] || 'com.cetelerinsavasi.twa';
 const FP_RE = /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/;
 const errors = [];

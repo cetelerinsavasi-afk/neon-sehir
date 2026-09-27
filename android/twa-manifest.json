@@ -1,0 +1,42 @@
+{
+  "packageId": "com.cetelerinsavasi.twa",
+  "host": "cetelerinsavasi.com",
+  "name": "Neon Şehir",
+  "launcherName": "Neon Şehir",
+  "display": "standalone",
+  "orientation": "portrait",
+  "themeColor": "#070A12",
+  "themeColorDark": "#070A12",
+  "navigationColor": "#070A12",
+  "navigationColorDark": "#070A12",
+  "navigationDividerColor": "#00000000",
+  "navigationDividerColorDark": "#00000000",
+  "backgroundColor": "#070A12",
+  "enableNotifications": false,
+  "startUrl": "/?src=twa",
+  "iconUrl": "https://cetelerinsavasi.com/pwa-icon-512.png",
+  "maskableIconUrl": "https://cetelerinsavasi.com/pwa-maskable-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./android.keystore",
+    "alias": "android"
+  },
+  "appVersionCode": 1,
+  "appVersion": "1.0.0",
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://cetelerinsavasi.com/manifest.json",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": false,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://cetelerinsavasi.com/",
+  "minSdkVersion": 21,
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": []
+}

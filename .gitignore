@@ -32,3 +32,23 @@ ui-debug.log
 *.njsproj
 *.sln
 *.sw?
+
+# Android (TWA) — imza anahtarı ASLA commit edilmez (kaybolursa/sızarsa: docs/play-store/01-TWA-VE-AAB.md)
+android/*.keystore
+android/*.jks
+# Bubblewrap'ın twa-manifest.json'dan ürettiği proje ve derleme çıktıları
+android/app/
+android/gradle/
+android/.gradle/
+android/build/
+android/gradlew
+android/gradlew.bat
+android/build.gradle
+android/settings.gradle
+android/gradle.properties
+android/local.properties
+android/store_icon.png
+android/manifest-checksum.txt
+android/*.aab
+android/*.apk
+android/*.idsig
