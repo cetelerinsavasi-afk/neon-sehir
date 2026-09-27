@@ -195,3 +195,41 @@
   cursor: pointer;
   text-align: inherit;
 }
+
+/* v60 — Arkadaşlık düğmeleri */
+.pc-social {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: -4px 0 12px;
+}
+.pc-social-btn {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border, #1f2a40);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text, #e8edf6);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.pc-social-btn.primary {
+  border-color: #25d366;
+  background: rgba(37, 211, 102, 0.15);
+}
+.pc-social-btn.danger {
+  border-color: var(--neon-pink, #ff2e8c);
+  color: var(--neon-pink, #ff2e8c);
+}
+.pc-social-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.pc-social-msg {
+  width: 100%;
+  margin: 0;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--text-dim, #8a93a8);
+}

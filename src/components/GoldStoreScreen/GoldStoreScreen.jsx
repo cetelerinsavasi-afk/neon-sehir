@@ -95,7 +95,7 @@ export default function GoldStoreScreen() {
         <p className="gold-store-hint">
           Shopier'de satın alırken <strong>"Sipariş Notu"</strong> alanına bu kodu yapıştır,
           siparişin otomatik olarak hesabına yansıyacak. Kodu yazmayı unutursan
-          cetelerinsavasi@gmail.com adresine mail atabilirsin.
+          studyohustle@gmail.com adresine mail atabilirsin.
         </p>
       </div>
 

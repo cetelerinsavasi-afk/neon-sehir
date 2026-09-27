@@ -3,9 +3,14 @@ import { createPortal } from 'react-dom';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import FutbolCrest from '../FutbolScreen/FutbolCrest';
 import ReportBlockSheet from '../ReportBlockSheet/ReportBlockSheet';
-import { getPlayerCard } from '../../services/gameActions';
+import { collection, doc, getDoc, getDocs, limit, query, where } from 'firebase/firestore';
+import { db } from '../../firebase';
+import { getPlayerCard, socialAction } from '../../services/gameActions';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBlocks } from '../../contexts/BlocksContext';
+import { useSocial } from '../../contexts/SocialContext';
+import { openDmWith } from '../../lib/chatsappNav';
+import { factoryDisplayName } from '../FactoryScreen/factoryHelpers';
 import './PlayerCard.css';
 
 // PlayerCard — v53 Oyuncu Kartı. Bir oyuncunun avatarına / adına dokununca
@@ -26,6 +31,39 @@ const CACHE_MS = 60_000;
 // bir mesaj göster; asıl hata geliştirici konsoluna yazılır. "internal" çoğu
 // zaman getPlayerCard fonksiyonunun sunucuda (europe-west1) bulunmadığı ya da
 // herkese açık çağrı izninin olmadığı anlamına gelir (bkz. v56 notları).
+// v60 — Yedek gösterim: sunucuya (getPlayerCard) ulaşılamazsa herkese açık
+// verilerle doldurulur (fabrika, takım, Sixtagram beğenisi). Çete üyeliği
+// gizli veri olduğu için yedekte GÖSTERİLMEZ.
+async function publicCardOf(uid) {
+  const [fac, owned, managed, six] = await Promise.all([
+    getDoc(doc(db, 'factories', uid)).catch(() => null),
+    getDocs(query(collection(db, 'futbolTeams'), where('ownerUid', '==', uid), limit(3))).catch(() => null),
+    getDocs(query(collection(db, 'futbolTeams'), where('managerUid', '==', uid), limit(3))).catch(() => null),
+    getDoc(doc(db, 'sixtagramProfiles', uid)).catch(() => null),
+  ]);
+  const teams = [];
+  const seen = new Set();
+  for (const [snap, role] of [
+    [owned, 'owner'],
+    [managed, 'manager'],
+  ]) {
+    for (const d of snap?.docs || []) {
+      if (seen.has(d.id)) continue;
+      seen.add(d.id);
+      const t = d.data();
+      teams.push({ id: d.id, name: t.name || 'Takım', logo: t.logo || null, role: t.ownerUid === uid ? 'owner' : role });
+    }
+  }
+  return {
+    uid,
+    gang: null,
+    factory: fac?.exists() ? { name: factoryDisplayName(fac.data()) } : null,
+    teams,
+    sixtagramLikes: Number((six?.exists() ? six.data()?.totalLikes : 0) || 0),
+    partial: true,
+  };
+}
+
 function friendlyError(err) {
   const code = String(err?.code || '').replace(/^functions\//, '');
   const msg = String(err?.message || '');
@@ -33,9 +71,14 @@ function friendlyError(err) {
   return 'Oyuncu bilgileri şu an yüklenemedi.';
 }
 
-export default function PlayerCard({ uid, name, avatar, reportItems = [], onClose }) {
+export default function PlayerCard({ uid, name, avatar, reportItems = [], onClose, hideMessageButton = false }) {
   const { user } = useAuth();
   const { isBlocked } = useBlocks();
+  const { relationOf } = useSocial();
+  const relation = relationOf(uid);
+  const [socialBusy, setSocialBusy] = useState(false);
+  const [socialMsg, setSocialMsg] = useState('');
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const [card, setCard] = useState(() => {
     const c = cache.get(uid);
     return c && Date.now() - c.at < CACHE_MS ? c.data : null;
@@ -55,9 +98,20 @@ export default function PlayerCard({ uid, name, avatar, reportItems = [], onClos
         cache.set(uid, { at: Date.now(), data });
         if (alive) setCard(data);
       })
-      .catch((err) => {
+      .catch(async (err) => {
         console.warn('getPlayerCard hatası', err?.code, err?.message, err?.details);
-        if (alive) setError(friendlyError(err));
+        const code = String(err?.code || '').replace(/^functions\//, '');
+        if (code === 'invalid-argument' || code === 'not-found' || code === 'unauthenticated') {
+          if (alive) setError(friendlyError(err));
+          return;
+        }
+        // v60: sunucuya ulaşılamadı → herkese açık verilerle yedek kart
+        try {
+          const fallback = await publicCardOf(uid);
+          if (alive) setCard(fallback);
+        } catch {
+          if (alive) setError(friendlyError(err));
+        }
       });
     return () => {
       alive = false;
@@ -69,6 +123,20 @@ export default function PlayerCard({ uid, name, avatar, reportItems = [], onClos
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  const runSocial = async (action, payload, okText) => {
+    setSocialBusy(true);
+    setSocialMsg('');
+    try {
+      const r = await socialAction(action, payload);
+      // Başarı düğmelerin değişmesinden anlaşılır; yalnızca karşılıklı istekte kısa not
+      if (r?.result === 'accepted') setSocialMsg(okText(r));
+    } catch (err) {
+      setSocialMsg(err.message || 'İşlem yapılamadı.');
+    } finally {
+      setSocialBusy(false);
+    }
+  };
 
   const shownName = card?.name || name || 'Oyuncu';
   const shownAvatar = card?.avatar || avatar || null;
@@ -96,6 +164,61 @@ export default function PlayerCard({ uid, name, avatar, reportItems = [], onClos
               </p>
               {isBlocked(uid) && <span className="pc-blocked">Engelledin</span>}
             </div>
+
+            {/* v60 — Arkadaşlık */}
+            {user && !isSelf && !isBlocked(uid) && (
+              <div className="pc-social">
+                {relation === 'none' && (
+                  <button className="pc-social-btn primary" disabled={socialBusy} onClick={() => runSocial('sendFriendRequest', { targetUid: uid }, (r) => (r?.result === 'accepted' ? 'Artık arkadaşsınız! 🎉' : 'Arkadaşlık isteği gönderildi.'))}>
+                    ➕ Arkadaş ekle
+                  </button>
+                )}
+                {relation === 'outgoing' && (
+                  <button className="pc-social-btn" disabled={socialBusy} onClick={() => runSocial('cancelFriendRequest', { targetUid: uid }, () => 'İstek geri alındı.')}>
+                    ⏳ İstek gönderildi · Geri al
+                  </button>
+                )}
+                {relation === 'incoming' && (
+                  <>
+                    <button className="pc-social-btn primary" disabled={socialBusy} onClick={() => runSocial('respondFriendRequest', { fromUid: uid, accept: true }, () => 'Artık arkadaşsınız! 🎉')}>
+                      ✅ İsteği kabul et
+                    </button>
+                    <button className="pc-social-btn" disabled={socialBusy} onClick={() => runSocial('respondFriendRequest', { fromUid: uid, accept: false }, () => 'İstek reddedildi.')}>
+                      Reddet
+                    </button>
+                  </>
+                )}
+                {relation === 'friend' && !confirmRemove && (
+                  <>
+                    {!hideMessageButton && (
+                      <button
+                        className="pc-social-btn primary"
+                        onClick={() => {
+                          onClose();
+                          openDmWith(uid, shownName, shownAvatar);
+                        }}
+                      >
+                        💬 Mesaj
+                      </button>
+                    )}
+                    <button className="pc-social-btn" onClick={() => setConfirmRemove(true)}>
+                      👥 Arkadaşlıktan çıkar
+                    </button>
+                  </>
+                )}
+                {relation === 'friend' && confirmRemove && (
+                  <>
+                    <button className="pc-social-btn danger" disabled={socialBusy} onClick={() => runSocial('removeFriend', { targetUid: uid }, () => 'Arkadaşlıktan çıkarıldı.').then(() => setConfirmRemove(false))}>
+                      Evet, çıkar (sohbet silinir)
+                    </button>
+                    <button className="pc-social-btn" onClick={() => setConfirmRemove(false)}>
+                      Vazgeç
+                    </button>
+                  </>
+                )}
+                {socialMsg && <p className="pc-social-msg">{socialMsg}</p>}
+              </div>
+            )}
     
             {!card && !error && <p className="pc-loading">Yükleniyor…</p>}
             {error && (
@@ -155,7 +278,8 @@ export default function PlayerCard({ uid, name, avatar, reportItems = [], onClos
                     <span className="pc-sub">toplam beğeni</span>
                   </span>
                 </div>
-                {nothing && <p className="pc-empty">Henüz bir çetesi, fabrikası ya da takımı yok.</p>}
+                {nothing && !card.partial && <p className="pc-empty">Henüz bir çetesi, fabrikası ya da takımı yok.</p>}
+                {card.partial && <p className="pc-empty">Çete bilgisi şu an gösterilemiyor.</p>}
               </div>
             )}
     

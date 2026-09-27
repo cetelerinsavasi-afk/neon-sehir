@@ -63,3 +63,15 @@
   font-size: 11px;
   cursor: pointer;
 }
+
+/* v62: açık silme talebi bilgisi */
+.del-acc-pending {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 46, 140, 0.35);
+  background: rgba(255, 46, 140, 0.08);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text);
+}

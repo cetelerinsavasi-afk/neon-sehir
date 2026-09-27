@@ -53,6 +53,13 @@ export const REPORT_TARGETS = {
       picked.rosterId ? (await db.doc(`gangWorlds/${m[1]}/intelRosterLinks/${picked.rosterId}`).get()).data()?.actorId || null : null,
   },
   feedback: { re: new RegExp(`^feedback/${S}$`), hideable: true, pick: (d) => ({ uid: d.uid, text: d.text }) },
+  // v60: özel mesaj — yalnızca o sohbetin üyesi bildirebilir
+  dmMessage: {
+    re: new RegExp(`^dmChats/${S}/dmMessages/${S}$`),
+    hideable: true,
+    pick: (d) => ({ uid: d.uid, text: d.text }),
+    access: async (db, reporterUid, m) => ((await db.doc(`dmChats/${m[1]}`).get()).data()?.members || []).includes(reporterUid),
+  },
   bubble: { re: new RegExp(`^(parkPresence|interiorPresence)/${S}$`), hideable: false, pick: (d, m) => ({ uid: m[2], text: d.chatText }) },
   user: { re: new RegExp(`^users/${S}$`), hideable: false, pick: (d, m) => ({ uid: m[1], text: `Oyun içi ad: ${d.displayName || '-'}` }) },
   gang: { re: new RegExp(`^gangWorlds/${S}/gangs/${S}$`), hideable: false, pick: (d) => ({ uid: d.babaId, text: `Çete adı: ${d.name || '-'}${d.note ? ` · Not: ${d.note}` : ''}` }) },
@@ -73,8 +80,8 @@ function muteMessage(m) {
 }
 
 // v53: oyuncuya görünen metinlerde "şikâyet" yerine "bildir" kullanılır.
-// deps: { db, FieldValue, HttpsError, requireAuth, onCall, dateKey: () => 'YYYY-MM-DD', now?: () => ms }
-export function createModeration({ db, FieldValue, HttpsError, requireAuth, onCall, dateKey, now = () => Date.now() }) {
+// deps: { db, FieldValue, HttpsError, requireAuth, onCall, dateKey: () => 'YYYY-MM-DD', now?: () => ms, onBlocked?: (uid, targetUid) => Promise }
+export function createModeration({ db, FieldValue, HttpsError, requireAuth, onCall, dateKey, now = () => Date.now(), onBlocked = null }) {
   // ---- Susturma ---------------------------------------------------------------
   async function getActiveMute(uid) {
     if (!uid) return null;
@@ -113,6 +120,14 @@ export function createModeration({ db, FieldValue, HttpsError, requireAuth, onCa
       }
       tx.set(ref, { blocked: { [targetUid]: { at: now(), name } }, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     });
+    // v60: engelleme arkadaşlığı, özel sohbeti ve bekleyen istekleri siler (functions/social.js)
+    if (onBlocked) {
+      try {
+        await onBlocked(uid, targetUid);
+      } catch (err) {
+        console.error('blockUser onBlocked', err);
+      }
+    }
     return { ok: true };
   }
 

@@ -1,5 +1,15 @@
 # Hesap Silme Talebi — İşleme Rehberi
 
+> **v62 — Önerilen yol: Yönetim Paneli.** Oyundaki "Hesabımı Sil" artık bir **talep** açar (ve eskisi gibi e-posta da açılır). Talepler Yönetim Paneli › **🗑️ Silme** sekmesine düşer (yalnızca yönetici).
+> - `/hesap-silme` web sayfasından yalnızca e-posta gelir. O talebi aynı sekmede **"E-postayla gelen talep ekle"** alanına gönderenin e-postasını yazarak eklersin. Adres bir oyun hesabıyla eşleşmezse eklenmez.
+> - Sıra: **🔍 Önizle** → engel yoksa **🗑️ Hesabı sil** → **SİL** yazıp onayla. Ya da **Talebi iptal et** (oyuncuya SMS gider).
+> - Silme kodu bu rehberdeki yerel araçla **birebir aynıdır** (`functions/accountDeletion.js`). Önizleme ile silme arasında hesabın verisi değişirse işlem durur ve yeniden önizleme ister.
+> - Bir adımda durursa hesap girişe kapalı kalır. Aynı talepte "Hesabı sil"e tekrar basınca kaldığı yerden devam eder.
+> - Yetkili (moderatör/yönetici) hesabı panelden silinmez; önce rolünü kaldır.
+> - İşlem `admin_logs`'a "🗑️ Hesap silindi" olarak yazılır. Talep kaydı silinir.
+>
+> Aşağıdaki yerel araç yedek yol olarak durur (ör. panel çalışmıyorsa ya da ayrıntılı rapor gerekiyorsa).
+
 > **Durum (Faz 5b-2):** Araç varsayılan olarak **deneme modunda** çalışır (hiçbir şey değiştirmez). Gerçek silme yalnızca `--apply` ile, `[y/N]` onayından sonra yapılır.
 >
 > **Söz verdiğimiz süre:** Talep tarihinden itibaren **en geç 30 gün** (Gizlilik Politikası md. 6–7, `/hesap-silme` sayfası).

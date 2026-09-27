@@ -120,3 +120,269 @@
   -webkit-user-select: none;
   user-select: none;
 }
+
+/* ===================== v60 — WhatsApp benzeri ChatsApp ===================== */
+.ca-top-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--panel-border);
+}
+.ca-top-btn {
+  min-width: 0;
+  padding: 9px 6px;
+  border-radius: 12px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.ca-top-btn.hot {
+  border-color: #25d366;
+  box-shadow: 0 0 0 1px rgba(37, 211, 102, 0.35) inset;
+}
+.ca-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.ca-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  box-sizing: border-box;
+}
+.ca-row:active {
+  background: rgba(255, 255, 255, 0.04);
+}
+.ca-row.static {
+  cursor: default;
+}
+.ca-row-avatar {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid var(--panel-border);
+  padding: 0;
+  background: #0b0f1a;
+  line-height: 0;
+  cursor: pointer;
+}
+.ca-group-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  line-height: 1;
+  background: linear-gradient(135deg, #0f3d2a, #0b1a33);
+}
+.ca-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ca-row-top,
+.ca-row-bottom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.ca-row-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ca-row-time {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.ca-row-time.new {
+  color: #25d366;
+  font-weight: 700;
+}
+.ca-row-last {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ca-badge {
+  flex-shrink: 0;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: #25d366;
+  color: #04120a;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 20px;
+  text-align: center;
+  box-sizing: border-box;
+}
+.ca-dot {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #25d366;
+}
+.ca-empty,
+.ca-hint {
+  margin: 14px 16px;
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: center;
+  line-height: 1.45;
+}
+.ca-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--panel-border);
+  background: rgba(37, 211, 102, 0.06);
+}
+.ca-back {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ca-header .ca-group-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  font-size: 18px;
+}
+.ca-header-person {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+}
+.ca-header-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ca-header-name {
+  font-size: 14px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ca-header-sub {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.ca-dm-note {
+  align-self: center;
+  margin: 2px 0 6px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: rgba(255, 210, 63, 0.08);
+  color: #e8d49a;
+  font-size: 10.5px;
+  text-align: center;
+}
+.ca-day {
+  align-self: center;
+  margin: 6px 0 2px;
+  padding: 3px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-dim);
+  font-size: 10.5px;
+}
+.ca-dm-bubble .chatsapp-text {
+  white-space: pre-wrap;
+}
+.ca-btn {
+  flex-shrink: 0;
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ca-btn.primary {
+  border-color: #25d366;
+  background: rgba(37, 211, 102, 0.15);
+}
+.ca-btn.danger {
+  border-color: var(--neon-pink, #ff2e8c);
+  color: var(--neon-pink, #ff2e8c);
+}
+.ca-btn.ghost {
+  background: transparent;
+  color: var(--text-dim);
+}
+.ca-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.ca-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: 1px solid var(--panel-border);
+}
+.ca-tab {
+  padding: 10px 6px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ca-tab.on {
+  color: #25d366;
+  border-bottom-color: #25d366;
+}

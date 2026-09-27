@@ -7,9 +7,9 @@
 |---|---|---|
 | Gizlilik politikası | `https://cetelerinsavasi.com/gizlilik` | Giriş ekranı (onay cümlesi) · Rehber altı · **Profil (Ev) altı** |
 | Hesap silme (web) | `https://cetelerinsavasi.com/hesap-silme` | Profil altındaki "Hesap Silme" bağlantısı |
-| Hesap silme (uygulama içi) | – | Profil (Ev) › **"Hesabımı Sil"** (uid'li e-posta talebi) |
+| Hesap silme (uygulama içi) | – | Profil (Ev) › **"Hesabımı Sil"** (talep Yönetim Paneli'ne düşer + uid'li e-posta) |
 | Kullanım koşulları | `https://cetelerinsavasi.com/kosullar` | Giriş ekranı · Rehber · Profil |
-| Destek e-postası | `cetelerinsavasi@gmail.com` | Tüm yasal sayfalar |
+| Destek e-postası | `studyohustle@gmail.com` | Tüm yasal sayfalar |
 
 Sayfalar yerelde doğrulandı: hepsi yönlendirmesiz `200 text/html` dönüyor, `/.well-known/assetlinks.json` `200 application/json`. Android içinde `?p=android` eki web'e özel satın alma bölümünü gizliyor (Faz 4).
 

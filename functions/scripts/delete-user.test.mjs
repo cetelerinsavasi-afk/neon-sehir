@@ -543,3 +543,100 @@ test('SİLME (D5): ban/susturma/engelleme silinir, bildirimler temizlenir, denet
   const hits = tracesOf(db, T, [NAME, 'Ahmet Eski Ad']).filter((h) => !/^(admin_logs\/l1|admin_logs\/l2|reports\/hAbout_|reports\/hAbout2_).* \(uid\)$/.test(h));
   assert.deepEqual(hits, []);
 });
+
+test('SİLME (v60): arkadaş listesi, istekler ve özel sohbetler silinir; başkalarının listesinden çıkarılır; iz kalmaz', async () => {
+  const { db, auth } = await seed();
+  const S = (p, d) => db._store.set(p, { data: d, version: 1 });
+  const chat = [T, O1].sort().join('__');
+  const other = [O1, O2].sort().join('__');
+  S(`friendships/${T}`, { friends: { [O1]: { name: 'Diğer1', sinceMs: 1 } } });
+  S(`friendships/${O1}`, { friends: { [T]: { name: NAME, avatar: { skin: '#fff' }, sinceMs: 1 }, [O2]: { name: 'Diğer2', sinceMs: 2 } } });
+  S(`friendships/${O2}`, { friends: { [O1]: { name: 'Diğer1', sinceMs: 2 } } });
+  S(`friendRequests/${T}_${O2}`, { fromUid: T, toUid: O2, fromName: NAME, toName: 'Diğer2', createdAtMs: 1, expiresAtMs: 9e15 });
+  S(`friendRequests/${O2}_${T}`, { fromUid: O2, toUid: T, fromName: 'Diğer2', toName: NAME, createdAtMs: 1, expiresAtMs: 9e15 });
+  S(`dmChats/${chat}`, { members: [T, O1].sort(), names: { [T]: NAME, [O1]: 'Diğer1' }, lastText: 'selam', lastSenderUid: T, lastAtMs: 5 });
+  S(`dmChats/${chat}/dmMessages/m1`, { uid: T, text: 'selam', createdAtMs: 5 });
+  S(`dmChats/${chat}/dmMessages/m2`, { uid: O1, text: 'naber', createdAtMs: 6 });
+  S(`dmChats/${other}`, { members: [O1, O2].sort(), names: { [O1]: 'Diğer1', [O2]: 'Diğer2' }, lastText: 'x', lastAtMs: 7 });
+  S(`dmChats/${other}/dmMessages/k1`, { uid: O2, text: 'x', createdAtMs: 7 });
+
+  const plan = await planUnlocked(db, auth);
+  const whats = [...plan.delete, ...plan.flow].map((i) => i.what);
+  for (const w of ['Arkadaş listesi (friendships)', 'Başka oyuncuların arkadaş listelerindeki kaydı', 'Arkadaşlık istekleri (friendRequests)', 'Özel sohbetler ve mesajları (dmChats)']) assert.ok(whats.includes(w), w);
+  const res = await applyPlan({ db, auth, FieldValue, callables: fakeCallables(db), plan });
+  assert.equal(res.ok, true, JSON.stringify(res.results.filter((r) => !r.ok)));
+  for (const p of [`friendships/${T}`, `friendRequests/${T}_${O2}`, `friendRequests/${O2}_${T}`, `dmChats/${chat}`, `dmChats/${chat}/dmMessages/m1`, `dmChats/${chat}/dmMessages/m2`]) assert.equal(db._get(p), undefined, p);
+  assert.deepEqual(Object.keys(db._get(`friendships/${O1}`).friends), [O2], 'başkasının listesinden çıkarıldı, diğer arkadaş kaldı');
+  assert.ok(db._get(`dmChats/${other}`) && db._get(`dmChats/${other}/dmMessages/k1`), 'ilgisiz sohbet aynı');
+  assert.deepEqual(tracesOf(db, T, [NAME, 'Ahmet Eski Ad']), []);
+});
+
+// ---- v62: Yönetim Paneli üzerinden silme (functions/deletionRequests.js) -----------------
+import { createDeletionRequests } from '../deletionRequests.js';
+import { createAdminPanel } from '../adminPanel.js';
+
+class TestHttpsError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+  }
+}
+async function panelSetup(opts = {}) {
+  const { db, auth } = await seed(opts);
+  const S = (p, d) => db._store.set(p, { data: d, version: 1 });
+  S('users/boss', { displayName: 'Boss', createdAt: ts(1) });
+  S('users/mod1', { displayName: 'Mod', role: 'moderator', createdAt: ts(1) });
+  const base = { db, auth, FieldValue, HttpsError: TestHttpsError, requireAuth: (r) => r.auth.uid, onCall: (fn) => fn };
+  const panel = createAdminPanel({ ...base, bootstrapAdminUids: ['boss'], reportTargets: {}, banUntilMs: 0 });
+  const dr = createDeletionRequests({ ...base, FieldPath, getActor: panel.getActor, logAction: panel.logAction, callables: fakeCallables(db), bootstrapAdminUids: ['boss'] });
+  const admin = (uid, action, payload) => dr.adminAccountDeletion({ auth: { uid }, data: { action, payload } });
+  const player = (uid, email) => dr.requestAccountDeletion({ auth: { uid, token: { email } }, data: {} });
+  return { db, auth, S, admin, player };
+}
+
+test('PANEL (v62): oyuncu talep açar → yönetici önizler → siler; talep kaydı kalmaz, işlem denetim kaydında', async () => {
+  const { db, admin, player } = await panelSetup();
+  const r = await player(T, 'ahmet@gmail.com');
+  assert.equal(r.ok, true);
+  assert.equal((await player(T, 'ahmet@gmail.com')).already, true, 'ikinci talep açılmaz');
+  const req = db._get(`deletionRequests/${T}`);
+  assert.deepEqual([req.status, req.source, req.email, req.name], ['pending', 'app', 'ahmet@gmail.com', NAME]);
+  await assert.rejects(admin('mod1', 'list'), /yalnızca yöneticilere/);
+  const { requests } = await admin('boss', 'list');
+  assert.deepEqual(requests.map((x) => x.uid), [T]);
+  const { plan } = await admin('boss', 'preview', { uid: T });
+  assert.equal(plan.blocker.length, 0);
+  assert.equal(plan.identity.emailMatches, true);
+  assert.ok(plan.delete.some((d) => /users/.test(d.what) || d.count > 0));
+  await assert.rejects(admin('boss', 'apply', { uid: T, fingerprint: 'yanlış' }), /verisi değişti/);
+  assert.equal(db._get(`deletionRequests/${T}`).status, 'pending', 'reddedilince talep bekler');
+  const res = await admin('boss', 'apply', { uid: T, fingerprint: plan.fingerprint });
+  assert.equal(res.ok, true);
+  assert.equal(db._get(`users/${T}`), undefined, 'hesap silindi');
+  assert.equal(db._get(`deletionRequests/${T}`), undefined, 'talep kaydı kalmadı');
+  const logs = [...db._store.keys()].filter((k) => k.startsWith('admin_logs/')).map((k) => db._get(k));
+  const del = logs.find((l) => l.action === 'account_delete');
+  assert.ok(del && del.targetUid === T && del.targetName === 'Silinmiş Oyuncu' && del.actorUid === 'boss');
+  assert.deepEqual(tracesOf(db, T, [NAME, 'ahmet@gmail.com']).filter((h) => !h.startsWith('admin_logs/') && !h.startsWith('shopierOrders/o1')), []); // sipariş kaydı yasal saklama
+});
+
+test('PANEL (v62): e-postayla gelen talep eklenir; iptal edilince oyuncuya SMS; engel varsa silinmez; yetkili/kendi hesabı silinemez', async () => {
+  const { db, S, admin } = await panelSetup({ pendingBet: true });
+  await assert.rejects(admin('boss', 'addByEmail', { email: 'yok@ornek.com' }), /kayıtlı bir oyun hesabı yok/);
+  const add = await admin('boss', 'addByEmail', { email: 'ahmet@gmail.com' });
+  assert.equal(add.uid, T);
+  assert.equal(db._get(`deletionRequests/${T}`).source, 'email');
+  const { plan } = await admin('boss', 'preview', { uid: T });
+  assert.ok(plan.blocker.length > 0, 'bekleyen bahis engel');
+  await assert.rejects(admin('boss', 'apply', { uid: T, fingerprint: plan.fingerprint }), /Engel var/);
+  assert.ok(db._get(`users/${T}`), 'engel varken hesap duruyor');
+  await admin('boss', 'cancel', { uid: T });
+  assert.equal(db._get(`deletionRequests/${T}`).status, 'cancelled');
+  const sms = [...db._store.keys()].filter((k) => k.startsWith(`users/${T}/messages/`)).map((k) => db._get(k).text);
+  assert.ok(sms.some((t) => /silme talebin iptal edildi/.test(t)));
+  assert.deepEqual((await admin('boss', 'list')).requests, []);
+  // yetkili hesabı
+  S(`users/${T}`, { ...db._get(`users/${T}`), role: 'moderator' });
+  await admin('boss', 'addByEmail', { email: 'ahmet@gmail.com' });
+  await assert.rejects(admin('boss', 'apply', { uid: T, fingerprint: 'x' }), /rolünü kaldır/);
+});

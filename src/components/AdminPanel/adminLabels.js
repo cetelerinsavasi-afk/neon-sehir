@@ -43,6 +43,10 @@ export const ACTION_LABELS = {
   ban_expired: '⏱️ Ban süresi doldu',
   set_role: '🎖️ Rol değişti',
   shop_credit: '💰 Mağaza paketi yüklendi',
+  deletion_request_add: '🗑️ Silme talebi eklendi',
+  deletion_request_cancel: '↩️ Silme talebi iptal edildi',
+  account_delete: '🗑️ Hesap silindi',
+  account_delete_failed: '⚠️ Hesap silme yarım kaldı',
 };
 
 export const MUTE_OPTIONS = [

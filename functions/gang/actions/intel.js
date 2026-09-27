@@ -5,7 +5,7 @@
 // şartı yok), karşı istihbarat yok, operasyona ekstra maliyet yok (sadece
 // sabotaj ücreti).
 import { GANG, INTEL, atLeast } from '../config.js';
-import { addDays, midnightMsOf } from '../time.js';
+import { addDays, midnightMsOf, dateKeyOf } from '../time.js';
 import { decidedOutcome } from './votes.js';
 
 const CODENAME_RE = /^[\p{L}\p{N}_\-. ]+$/u;
@@ -441,15 +441,25 @@ export function createIntelActions(core) {
     };
   }
 
+  // v61 — istismar önlemi: az üyeyle (≤7) kimse atılamaz; yeni katılan üye
+  // katıldığı günün 00:00'ına kadar atılamaz (ör. 23:00'te giren 00:00'dan sonra).
+  function kickBlockReason(ctx, rosterSize, target) {
+    if (rosterSize < INTEL.KICK_MIN_MEMBERS) return `İstihbaratta ${INTEL.KICK_MIN_MEMBERS - 1} ya da daha az üye varken kimse çıkarılamaz.`;
+    if (target && Number(target.joinedAtMs || 0) > 0 && dateKeyOf(Number(target.joinedAtMs)) === ctx.dateKey) return "Yeni katılan üye 00:00'a kadar çıkarılamaz.";
+    return null;
+  }
+
   async function kickIntelMember(ctx, data) {
     const targetRosterId = String(data.targetRosterId || '');
     return core.db.runTransaction(async (tx) => {
       const membership = await readMembership(tx, ctx, ctx.actorId);
       const rid = requireIntel(membership);
       if (!targetRosterId || targetRosterId === rid) fail('invalid-argument', 'Geçersiz üye.');
-      const [me, target] = await Promise.all([tx.get(ctx.ref.roster(rid)), tx.get(ctx.ref.roster(targetRosterId))]);
+      const [me, target, rosterSnap] = await Promise.all([tx.get(ctx.ref.roster(rid)), tx.get(ctx.ref.roster(targetRosterId)), tx.get(ctx.ref.rosterCol())]);
       if (!target.exists) fail('failed-precondition', 'Bu ajan artık İstihbaratta değil.');
       if (!(DIRECT_KICK[core.effRank(me.data(), ctx, 'muhbir')] || []).includes(target.data().rank)) fail('permission-denied', 'Bu üyeyi doğrudan atamazsın (oylama gerekir).');
+      const blocked = kickBlockReason(ctx, rosterSnap.size, target.data());
+      if (blocked) fail('failed-precondition', blocked);
       const apply = await removeFromIntel(tx, ctx, targetRosterId, target.data(), '🚫 İstihbarattan çıkarıldın. İstihbarat prestijin silindi.');
       apply();
       announceIntel(tx, ctx, '🚫', `${target.data().codeName}, ${me.data().codeName} tarafından İstihbarattan çıkarıldı.`);
@@ -476,6 +486,8 @@ export function createIntelActions(core) {
       ]);
       if (!target.exists) fail('failed-precondition', 'Bu ajan artık İstihbaratta değil.');
       if (!intelKickVoteAllowed(core.effRank(me.data(), ctx, 'muhbir'), target.data().rank)) fail('permission-denied', 'Bu üye için çıkarma oylaması başlatamazsın.');
+      const blocked = kickBlockReason(ctx, rosterSnap.size, target.data());
+      if (blocked) fail('failed-precondition', blocked);
       if (act.docs.some((d) => d.data().targetRosterId === targetRosterId)) fail('already-exists', 'Bu üye için zaten bir oylama var.');
       if (lockSnap.exists && Number(lockSnap.data().endsAtMs || 0) > ctx.now) {
         const lv = (await tx.get(ctx.ref.intelVotes().doc(lockSnap.data().voteId))).data();
@@ -550,13 +562,20 @@ export function createIntelActions(core) {
           if (!vote || vote.status !== 'active') return { skipped: true };
           const endedEarly = vote.endsAtMs > ctx.now;
           if (endedEarly && !(early && decidedOutcome(vote, intelVoteOutcome))) return { skipped: true };
-          const target = await tx.get(ctx.ref.roster(vote.targetRosterId));
+          const [target, rosterSnap] = await Promise.all([tx.get(ctx.ref.roster(vote.targetRosterId)), tx.get(ctx.ref.rosterCol())]);
           const { passed, ratio } = intelVoteOutcome(vote);
           const pct = `%${Math.round(ratio * 100)}${endedEarly ? ' · sonuç kesinleşti, oylama erken bitti' : ''}`;
           const result = { passed, ratio, yes: vote.yes || 0, no: vote.no || 0, endedEarly };
           if (!target.exists) {
             tx.update(d.ref, { status: 'cancelled', cancelReason: 'member_left', resolvedAtMs: ctx.now, result });
             return { cancelled: true };
+          }
+          // v61: sonuçlanma anında üye sayısı 7 ya da altına düştüyse çıkarma uygulanmaz
+          if (passed && rosterSnap.size < INTEL.KICK_MIN_MEMBERS) {
+            tx.update(d.ref, { status: 'cancelled', cancelReason: 'min_members', resolvedAtMs: ctx.now, result });
+            if (Number(target.data().underVoteUntilMs || 0) > ctx.now) tx.update(ctx.ref.roster(vote.targetRosterId), { underVoteUntilMs: 0 });
+            announceIntel(tx, ctx, '🗳️', `${vote.targetCode} için çıkarma oylaması geçti ama İstihbaratta ${INTEL.KICK_MIN_MEMBERS - 1} ya da daha az üye kaldığı için uygulanmadı.`);
+            return { cancelled: true, reason: 'min_members' };
           }
           let apply = null;
           if (passed) apply = await removeFromIntel(tx, ctx, vote.targetRosterId, target.data(), `🗳️ Oylama sonucu İstihbarattan çıkarıldın (${pct}).`);
@@ -600,7 +619,7 @@ export function createIntelActions(core) {
         for (const p of pend) {
           const ini = roster.get(p.initiatorRosterId);
           const tgt = roster.get(p.targetRosterId);
-          if (!ini || !tgt || started.has(p.targetRosterId) || !intelKickVoteAllowed(ini.rank, tgt.rank)) {
+          if (!ini || !tgt || started.has(p.targetRosterId) || !intelKickVoteAllowed(ini.rank, tgt.rank) || kickBlockReason(ctx, roster.size, tgt)) {
             tx.update(p.ref, { status: 'cancelled', cancelReason: 'invalid_at_midnight' });
             continue;
           }

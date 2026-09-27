@@ -3,24 +3,33 @@
 // atma (anında) / çıkarma oylaması, ayrılma. İstihbarata bağış yoktur,
 // maaş yoktur; Başkan kasadan kendine para alamaz.
 import { useState } from 'react';
-import { istHour, useGangAction, useNow } from '../GangContext';
+import { istDateKey, istHour, useGangAction, useNow } from '../GangContext';
 import { AmountInput, Btn, Card, Chips, Confirm, RankBadge, Sheet } from '../ui';
 import { KasaLine, MemberCard, MidnightLegend, RankTree } from '../shared';
 import { DIST_GROUPS, GANG_RULES, INTEL_LEADERS, RANK_ICONS, fmt } from '../gangConstants';
 
 const DIRECT = { baskan: ['ajan', 'muhbir'], sef: ['muhbir'] };
+// v61 — istismar önlemi (sunucuyla aynı: functions/gang/config.js INTEL)
+const KICK_MIN_MEMBERS = 8;
+const DIST_MIN_GROUP_MEMBERS = 5;
+const GROUP_OF = { baskan: 'rutbeli', sef: 'rutbeli', uzman: 'rutbeli', ajan: 'tetikci', muhbir: 'comez' };
+const GROUP_NOUN = { rutbeli: 'rütbeli', tetikci: 'ajan', comez: 'muhbir', hepsi: 'üye' };
 function voteAllowed(my, t) {
   if (my === 'baskan' || my === 'sef') return !(DIRECT[my] || []).includes(t);
   if (my === 'uzman') return t !== 'baskan';
   return false;
 }
 
-function MemberSheet({ member, myRank, onClose }) {
+function MemberSheet({ member, myRank, rosterSize, onClose }) {
   const { run, busy } = useGangAction();
   const [ask, setAsk] = useState(null);
+  const now = useNow(30_000);
   const canKick = (DIRECT[myRank] || []).includes(member.rank);
   const canVote = voteAllowed(myRank, member.rank);
-  const voteOpen = istHour(useNow(30_000)) < 12;
+  const voteOpen = istHour(now) < 12;
+  const tooFew = rosterSize < KICK_MIN_MEMBERS;
+  const isNew = Number(member.joinedAtMs || 0) > 0 && istDateKey(member.joinedAtMs) === istDateKey(now);
+  const lockReason = tooFew ? `🔒 ${KICK_MIN_MEMBERS - 1} ya da daha az üye varken kimse çıkarılamaz` : isNew ? "🔒 Yeni üye 00:00'a kadar çıkarılamaz" : null;
   return (
     <Sheet title={member.codeName} icon={RANK_ICONS[member.rank]} onClose={onClose}>
       <div className="gx-member-detail">
@@ -29,15 +38,16 @@ function MemberSheet({ member, myRank, onClose }) {
       </div>
       <div className="gx-stack">
         {canKick && (
-          <Btn block kind="danger" onClick={() => setAsk('kick')}>
+          <Btn block kind="danger" disabled={Boolean(lockReason)} onClick={() => setAsk('kick')}>
             🚫 İstihbarattan at
           </Btn>
         )}
         {canVote && (
-          <Btn block kind="ghost" disabled={!voteOpen} onClick={() => setAsk('vote')}>
+          <Btn block kind="ghost" disabled={!voteOpen || Boolean(lockReason)} onClick={() => setAsk('vote')}>
             {voteOpen ? '🗳️ Çıkarma oylaması başlat' : '🔒 🗳️ 00:00–12:00'}
           </Btn>
         )}
+        {(canKick || canVote) && lockReason && <div className="dim gx-mini">{lockReason}</div>}
       </div>
       {ask && (
         <Confirm
@@ -77,6 +87,9 @@ export default function IntelTab({ d }) {
   const byRank = (r) => d.roster.filter((m) => m.rank === r).sort((a, b) => (b.prestige || 0) - (a.prestige || 0));
   const free = d.stateToday ? Number(d.state?.distributableLeft || 0) : 0;
   const n = group === 'rutbeli' ? GANG_RULES.DIST_RANKED_SLOTS : slots;
+  // v61: her grup için en az 5 üye şartı (Tüm üyeler = İstihbaratın tamamı)
+  const groupCount = (g) => (g === 'hepsi' ? d.roster.length : d.roster.filter((m) => GROUP_OF[m.rank] === g).length);
+  const groupOk = groupCount(group) >= DIST_MIN_GROUP_MEMBERS;
   const card = (m) => <MemberCard key={m.id} secret name={m.codeName} rank={m.rank} prestige={m.prestige} me={m.id === d.rid} big={m.rank === 'baskan'} onClick={() => m.id !== d.rid && setSel(m)} />;
 
   return (
@@ -114,7 +127,7 @@ export default function IntelTab({ d }) {
         🚪 İstihbarattan ayrıl
       </Btn>
 
-      {sel && <MemberSheet member={sel} myRank={d.rank} onClose={() => setSel(null)} />}
+      {sel && <MemberSheet member={sel} myRank={d.rank} rosterSize={d.roster.length} onClose={() => setSel(null)} />}
       {code != null && (
         <Sheet title="Kod adını değiştir" icon="✏️" onClose={() => setCode(null)}>
           <input className="gx-input" maxLength={GANG_RULES.CODENAME_MAX} value={code} onChange={(e) => setCode(e.target.value)} />
@@ -150,7 +163,12 @@ export default function IntelTab({ d }) {
       {dist && (
         <Sheet title="Altın dağıt" icon="💰" onClose={() => setDist(false)}>
           <div className="gx-free-line">🔓 <b>{fmt(free)}</b></div>
-          <Chips options={DIST_GROUPS.map((g) => ({ id: g.id, label: g.intelLabel, icon: g.icon }))} value={group} onChange={setGroup} />
+          <Chips options={DIST_GROUPS.map((g) => ({ id: g.id, label: `${g.intelLabel} (${groupCount(g.id)})`, icon: g.icon, disabled: groupCount(g.id) < DIST_MIN_GROUP_MEMBERS }))} value={group} onChange={setGroup} />
+          {!groupOk && (
+            <div className="dim gx-mini">
+              🔒 Dağıtım için bu grupta en az {DIST_MIN_GROUP_MEMBERS} {GROUP_NOUN[group]} olmalı (şu an {groupCount(group)}).
+            </div>
+          )}
           {group === 'rutbeli' ? (
             <div className="gx-free-line">👥 {GANG_RULES.DIST_RANKED_SLOTS}</div>
           ) : (
@@ -165,7 +183,7 @@ export default function IntelTab({ d }) {
           <Btn
             block
             busy={busy === 'createDistribution'}
-            disabled={!amount || n < GANG_RULES.DIST_MIN_SLOTS}
+            disabled={!amount || n < GANG_RULES.DIST_MIN_SLOTS || !groupOk}
             onClick={async () => {
               const r = await run('createDistribution', { org: 'intel', group, perPerson: amount, slots: n }, { success: '💰 Dağıtım açıldı', withRequestId: true });
               if (r) setDist(false);

@@ -50,7 +50,7 @@ export function AuthProvider({ children }) {
     } catch (err) {
       // UGC D3: banlı hesap (Auth devre dışı) — anlaşılır mesaj göster
       if (err?.code === 'auth/user-disabled') {
-        setInitError('Hesabın topluluk kurallarını ihlal ettiği için kısıtlandı. İtiraz için: cetelerinsavasi@gmail.com');
+        setInitError('Hesabın topluluk kurallarını ihlal ettiği için kısıtlandı. İtiraz için: studyohustle@gmail.com');
         return;
       }
       throw err;

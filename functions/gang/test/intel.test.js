@@ -208,7 +208,8 @@ test('İstihbarat atma: Başkan → Ajan/Muhbir, Şef → Muhbir anında; oylama
   const mk = async (name, prestige, rank) => {
     const id = await h.persona({ displayName: name, gold: 1, power: 1000, reputation: 60 });
     const r = await h.act(id, 'joinIntel', { codeName: name });
-    await h.db.doc(`gangWorlds/test/intelRoster/${r.rosterId}`).update({ rank, prestige });
+    // v61: dünden beri üye (yeni üye 00:00'a kadar atılamaz kuralı bu testin konusu değil)
+    await h.db.doc(`gangWorlds/test/intelRoster/${r.rosterId}`).update({ rank, prestige, joinedAtMs: 1 });
     await h.db.doc(`gangWorlds/test/memberships/${id}`).set({ intelRank: rank }, { merge: true });
     return { id, rid: r.rosterId };
   };
@@ -219,6 +220,7 @@ test('İstihbarat atma: Başkan → Ajan/Muhbir, Şef → Muhbir anında; oylama
   const A = await mk('Ajan', 2_000_000, 'ajan');
   const M = await mk('Muhbir', 0, 'muhbir');
   const M2 = await mk('Muhbir2', 0, 'muhbir');
+  for (let i = 0; i < 4; i++) await mk(`Dolgu${i}`, 0, 'muhbir'); // v61: atma için en az 8 üye
   await h.fails(S1.id, 'kickIntelMember', { targetRosterId: A.rid }); // Şef Ajanı atamaz
   await h.act(S1.id, 'kickIntelMember', { targetRosterId: M.rid });
   await h.act(B.id, 'kickIntelMember', { targetRosterId: A.rid });
@@ -304,7 +306,8 @@ test('v52: İstihbarat çıkarma oylaması sonuç kesinleşince hemen biter (hed
   const mk = async (name, prestige, rank) => {
     const id = await h.persona({ displayName: name, gold: 1, power: 1000, reputation: 60 });
     const r = await h.act(id, 'joinIntel', { codeName: name });
-    await h.db.doc(`gangWorlds/test/intelRoster/${r.rosterId}`).update({ rank, prestige });
+    // v61: dünden beri üye (yeni üye 00:00'a kadar atılamaz kuralı bu testin konusu değil)
+    await h.db.doc(`gangWorlds/test/intelRoster/${r.rosterId}`).update({ rank, prestige, joinedAtMs: 1 });
     await h.db.doc(`gangWorlds/test/memberships/${id}`).set({ intelRank: rank }, { merge: true });
     return { id, rid: r.rosterId };
   };
@@ -312,6 +315,7 @@ test('v52: İstihbarat çıkarma oylaması sonuç kesinleşince hemen biter (hed
   const S1 = await mk('Sef1', 8_000_000, 'sef');
   const S2 = await mk('Sef2', 7_500_000, 'sef');
   const U = await mk('Uzman', 7_000_000, 'uzman');
+  for (let i = 0; i < 4; i++) await mk(`Dolgu${i}`, 0, 'muhbir'); // v61: en az 8 üye
   const { voteId } = await h.act(S1.id, 'requestIntelKickVote', { targetRosterId: S2.rid });
   await h.act(S2.id, 'castIntelVote', { voteId, choice: 'no' }); // hedef oy kullanabilir
   await h.act(B.id, 'castIntelVote', { voteId, choice: 'yes' });
@@ -323,4 +327,43 @@ test('v52: İstihbarat çıkarma oylaması sonuç kesinleşince hemen biter (hed
   assert.equal(h.get(`intel/main/votes/${voteId}`).result.endedEarly, true);
   assert.equal(h.get(`intelRoster/${S2.rid}`), undefined, 'hedef gece beklemeden çıkarıldı');
   assert.ok(h.intelChat().some((m) => /erken bitti/.test(m)));
+});
+
+test('v61: İstihbaratta 7 ya da daha az üye varken atma/oylama yok; yeni üye 00:00a kadar atılamaz; sonuçlanırken 7ye düşerse uygulanmaz', async () => {
+  const h = await createHarness();
+  const mk = async (name, prestige, rank, old = true) => {
+    const id = await h.persona({ displayName: name, gold: 1, power: 1000, reputation: 60 });
+    const r = await h.act(id, 'joinIntel', { codeName: name });
+    await h.db.doc(`gangWorlds/test/intelRoster/${r.rosterId}`).update({ rank, prestige, ...(old ? { joinedAtMs: 1 } : {}) });
+    await h.db.doc(`gangWorlds/test/memberships/${id}`).set({ intelRank: rank }, { merge: true });
+    return { id, rid: r.rosterId };
+  };
+  const B = await mk('Baskan', 9_000_000, 'baskan');
+  const S1 = await mk('Sef1', 8_000_000, 'sef');
+  const S2 = await mk('Sef2', 7_500_000, 'sef');
+  const U = await mk('Uzman', 7_000_000, 'uzman');
+  const fill = [];
+  for (let i = 0; i < 3; i++) fill.push(await mk(`Dolgu${i}`, 0, 'muhbir'));
+  // 7 üye → atma ve oylama yok
+  assert.match((await h.fails(B.id, 'kickIntelMember', { targetRosterId: fill[0].rid })).message, /7 ya da daha az/);
+  assert.match((await h.fails(S1.id, 'requestIntelKickVote', { targetRosterId: S2.rid })).message, /7 ya da daha az/);
+  // 8. üye bugün katıldı → 8 üye var ama yeni üye atılamaz; eski üye atılabilir
+  const N = await mk('Yeni', 0, 'muhbir', false);
+  assert.match((await h.fails(B.id, 'kickIntelMember', { targetRosterId: N.rid })).message, /Yeni katılan üye 00:00/);
+  // oylama başlat (8 üye), sonra biri kendi isteğiyle ayrılır → 7 → oylama geçse de uygulanmaz
+  const { voteId } = await h.act(S1.id, 'requestIntelKickVote', { targetRosterId: S2.rid });
+  await h.act(fill[1].id, 'leaveIntel'); // kendi çıkmak serbest
+  await h.act(S1.id, 'castIntelVote', { voteId, choice: 'yes' });
+  await h.act(B.id, 'castIntelVote', { voteId, choice: 'yes' });
+  await h.act(U.id, 'castIntelVote', { voteId, choice: 'yes' });
+  const v = h.get(`intel/main/votes/${voteId}`);
+  assert.equal(v.status, 'cancelled');
+  assert.equal(v.cancelReason, 'min_members');
+  assert.ok(h.get(`intelRoster/${S2.rid}`), 'hedef İstihbaratta kaldı');
+  assert.ok(h.intelChat().some((m) => /uygulanmadı/.test(m)));
+  // 00:00'dan sonra yeni üye artık "yeni" değil; 8 üye olunca atılabilir
+  await mk('Dolgu9', 0, 'muhbir');
+  await h.nextDay();
+  await h.act(B.id, 'kickIntelMember', { targetRosterId: N.rid });
+  assert.equal(h.get(`intelRoster/${N.rid}`), undefined);
 });

@@ -1,15 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
+import { requestAccountDeletion } from '../../services/gameActions';
 import '../ConfirmModal/ConfirmModal.css';
 import './DeleteAccountRequest.css';
 
 // DeleteAccountRequest — Profil (Ev) ekranının en altındaki "Hesabımı Sil".
-// Faz 5a: silme SUNUCUDA OTOMATİK YAPILMAZ. Oyuncunun uid'sini içeren
-// hazır bir e-posta oluşturulur; talep, hesabın Google e-postasından
-// geldiği doğrulandıktan sonra elle (yerel silme aracıyla) işlenir.
-// Hiçbir veriye yazmaz, hiçbir Cloud Function çağırmaz.
-const SUPPORT_EMAIL = 'cetelerinsavasi@gmail.com';
+// v62: onaylayınca sunucuda bir silme TALEBİ açılır (Yönetim Paneli › 🗑️ Silme'ye
+// düşer) ve eskisi gibi hazır bir e-posta da açılır. Silme otomatik değildir;
+// yönetici panelden inceleyip siler ya da talebi iptal eder.
+const SUPPORT_EMAIL = 'studyohustle@gmail.com'; // v61: hesap silme talepleri bu adrese gelir
 
 function buildMailto(uid, displayName) {
   const subject = 'Hesap silme talebi';
@@ -31,6 +33,21 @@ export default function DeleteAccountRequest() {
   const { player } = usePlayer();
   const [step, setStep] = useState(null); // null | 'confirm' | 'sent'
   const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [requestSaved, setRequestSaved] = useState(null); // true | false (kaydedilemedi, yalnızca e-posta)
+  const [pending, setPending] = useState(null); // açık talep (deletionRequests/{uid})
+
+  useEffect(() => {
+    if (!user) return undefined;
+    return onSnapshot(
+      doc(db, 'deletionRequests', user.uid),
+      (s) => {
+        const d = s.exists() ? s.data() : null;
+        setPending(d && ['pending', 'processing', 'failed'].includes(d.status) ? d : null);
+      },
+      () => setPending(null)
+    );
+  }, [user]);
 
   if (!user) return null;
 
@@ -39,7 +56,17 @@ export default function DeleteAccountRequest() {
     setCopied(false);
   };
 
-  const openMail = () => {
+  const submit = async () => {
+    setBusy(true);
+    try {
+      await requestAccountDeletion();
+      setRequestSaved(true);
+    } catch (err) {
+      console.warn('requestAccountDeletion', err?.code, err?.message);
+      setRequestSaved(false); // sunucuya ulaşılamadı — talep e-postayla yine iletilir
+    } finally {
+      setBusy(false);
+    }
     window.location.href = buildMailto(user.uid, player?.displayName);
     setStep('sent');
   };
@@ -56,9 +83,16 @@ export default function DeleteAccountRequest() {
   return (
     <div className="home-section del-acc">
       <p className="home-section-title">Hesap</p>
-      <button type="button" className="del-acc-btn" onClick={() => setStep('confirm')}>
-        Hesabımı Sil
-      </button>
+      {pending ? (
+        <p className="del-acc-pending">
+          🗑️ Hesap silme talebin alındı ({new Date(pending.createdAtMs || Date.now()).toLocaleDateString('tr-TR')}). Yönetici inceledikten sonra hesabın
+          silinecek; vazgeçtiysen {SUPPORT_EMAIL} adresine yaz.
+        </p>
+      ) : (
+        <button type="button" className="del-acc-btn" onClick={() => setStep('confirm')}>
+          Hesabımı Sil
+        </button>
+      )}
 
       {step && (
         <div className="confirm-modal-backdrop" onClick={close}>
@@ -74,8 +108,8 @@ export default function DeleteAccountRequest() {
                   içinde <strong>kalıcı olarak</strong> silinir. Bu işlem geri alınamaz.
                 </p>
                 <p className="confirm-modal-message">
-                  Devam edersen hesap bilgilerinin hazır yazıldığı bir e-posta açılır. Talebin işleme
-                  alınabilmesi için e-postayı <strong>oyuna giriş yaptığın Google adresinden</strong>
+                  Devam edersen silme talebin kaydedilir ve hesap bilgilerinin hazır yazıldığı bir e-posta açılır.
+                  E-postayı <strong>oyuna giriş yaptığın Google adresinden</strong>
                   {user.email ? (
                     <>
                       {' '}(<strong className="del-acc-email">{user.email}</strong>)
@@ -86,7 +120,15 @@ export default function DeleteAccountRequest() {
               </>
             )}
 
-            {step === 'sent' && (
+            {step === 'sent' && requestSaved && (
+              <p className="confirm-modal-message">
+                ✅ <strong>Silme talebin alındı.</strong> Yönetici inceledikten sonra hesabın silinecek.
+              </p>
+            )}
+            {step === 'sent' && requestSaved && (
+              <p className="confirm-modal-message">E-posta uygulaman açılmadıysa sorun değil — talebin kayıtlı.</p>
+            )}
+            {step === 'sent' && !requestSaved && (
               <p className="confirm-modal-message">
                 E-posta uygulaman açılmadıysa <strong>{SUPPORT_EMAIL}</strong> adresine "Hesap silme
                 talebi" konulu bir e-posta gönder ve aşağıdaki oyun kimliğini ekle.
@@ -106,8 +148,8 @@ export default function DeleteAccountRequest() {
                 {step === 'sent' ? 'Kapat' : 'Vazgeç'}
               </button>
               {step === 'confirm' && (
-                <button className="confirm-modal-confirm del-acc-confirm" onClick={openMail}>
-                  E-postayı Oluştur
+                <button className="confirm-modal-confirm del-acc-confirm" disabled={busy} onClick={submit}>
+                  {busy ? '…' : 'Evet, silme talebi gönder'}
                 </button>
               )}
             </div>

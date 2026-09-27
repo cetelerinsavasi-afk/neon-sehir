@@ -171,7 +171,7 @@ test('başka çeteye para: Baba/Sağ Kol, serbest paradan; iki sohbete duyuru', 
 test('İstihbarat dağıtımı: dağıtan ve Başkan alamaz; belge gerçek oyuncu kimliği içermez; İstihbarata bağış yok', async () => {
   const h = await createHarness();
   const ids = [];
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 5; i++) {
     const id = await h.persona({ displayName: `Ajan${i}`, gold: 10, power: 1000, reputation: 60 });
     await h.act(id, 'joinIntel', { codeName: `Kod${i}` });
     ids.push(id);
@@ -182,6 +182,10 @@ test('İstihbarat dağıtımı: dağıtan ve Başkan alamaz; belge gerçek oyunc
   const ctx = h.internal.core.makeCtx('test', h.raw('gangWorlds/test'));
   await h.db.doc('gangWorlds/test/intel/main/private/state').set({ kasa: 50_000, kasaAtMidnight: 50_000, midnightDateKey: ctx.dateKey, distributableLeft: 10_000 }, { merge: true });
   h.clock.now += 1000;
+  // v61: grupta en az 5 üye şartı — 2 rütbeli, 0 ajan, 3 muhbir var
+  assert.match((await h.fails(ids[1], 'createDistribution', { org: 'intel', group: 'rutbeli', perPerson: 100 })).message, /en az 5 rütbeli olmalı \(şu an 2\)/);
+  assert.match((await h.fails(ids[1], 'createDistribution', { org: 'intel', group: 'tetikci', perPerson: 100, slots: 7 })).message, /şu an 0/);
+  assert.match((await h.fails(ids[1], 'createDistribution', { org: 'intel', group: 'comez', perPerson: 100, slots: 7 })).message, /şu an 3/);
   const res = await h.act(ids[1], 'createDistribution', { org: 'intel', group: 'hepsi', perPerson: 1000, slots: 7 });
   assert.equal(res.total, 7000);
   const e1 = await h.fails(ids[1], 'claimDistribution', { distributionId: res.distributionId });

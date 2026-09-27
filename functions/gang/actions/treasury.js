@@ -17,7 +17,7 @@
 //  - Başka çeteye: Baba/Sağ Kol, serbest paradan; iki çetenin sohbetine düşer.
 //  - claim/iade aynı belge üzerinden transaction ile serileşir → çift claim,
 //    çift iade, claim–iade yarışı imkânsız.
-import { GANG, DIST_GROUPS, RANK_LABELS } from '../config.js';
+import { GANG, INTEL, DIST_GROUPS, RANK_LABELS } from '../config.js';
 
 export function createTreasuryActions(core) {
   const { FV, fail, readMembership, readWallet, creditGold, ledger, gangLog, announce, announceIntel, requestGuard, posInt, requireGangMember, requireIntel } = core;
@@ -76,6 +76,13 @@ export function createTreasuryActions(core) {
         const rosterId = requireIntel(membership);
         const me = (await tx.get(ctx.ref.roster(rosterId))).data();
         if (!['baskan', 'sef'].includes(core.effRank(me, ctx, 'muhbir'))) fail('permission-denied', 'Dağıtımı sadece Başkan ve Şefler yapabilir.');
+        // v61 — istismar önlemi: hedef grupta en az 5 üye olmalı
+        const rosterSnap = await tx.get(ctx.ref.rosterCol());
+        const inTarget = rosterSnap.docs.filter((d) => inGroup(core.effRank(d.data(), ctx, 'muhbir'), group, true)).length;
+        if (inTarget < INTEL.DIST_MIN_GROUP_MEMBERS) {
+          const noun = { rutbeli: 'rütbeli', tetikci: 'ajan', comez: 'muhbir', hepsi: 'üye' }[group];
+          fail('failed-precondition', `${INTEL_GROUP_LABEL[group]} grubuna dağıtım için İstihbaratta en az ${INTEL.DIST_MIN_GROUP_MEMBERS} ${noun} olmalı (şu an ${inTarget}).`);
+        }
         orgId = 'main';
         stateRef = ctx.ref.intelState();
         creatorName = me.codeName;

@@ -13,7 +13,9 @@ import IdeasScreen from '../IdeasScreen/IdeasScreen';
 import InstallAppButton from '../InstallAppButton/InstallAppButton';
 import { useMessages } from '../../hooks/useMessages';
 import { usePlayer } from '../../hooks/usePlayer';
-import { useUnreadNotifications, markChatsAppSeen, markSixtagramSeen } from '../../hooks/useUnreadNotifications';
+import { useUnreadNotifications, markSixtagramSeen } from '../../hooks/useUnreadNotifications';
+import { useSocial } from '../../contexts/SocialContext';
+import { OPEN_DM_EVENT } from '../../lib/chatsappNav';
 import { IS_ANDROID_APP } from '../../lib/platform';
 import './PhoneScreen.css';
 
@@ -123,10 +125,18 @@ export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }
   const [openApp, setOpenApp] = useState(isAppBlocked(initialApp) ? null : initialApp);
   const [page, setPage] = useState(HOME_PAGE);
   // Kısayoldan / bildirimden doğrudan açılan uygulama da "görüldü" sayılır
+  // v60: ChatsApp'ta "görüldü" artık Neon Şehir grubu açılınca işaretlenir (GroupChat)
   useEffect(() => {
-    if (initialApp === 'chatsapp') markChatsAppSeen();
     if (initialApp === 'sixtagram') markSixtagramSeen();
   }, [initialApp]);
+  // v60: Oyuncu Kartı → "💬 Mesaj" telefon açıkken de ChatsApp'a geçsin
+  useEffect(() => {
+    const on = () => setOpenApp('chatsapp');
+    window.addEventListener(OPEN_DM_EVENT, on);
+    return () => window.removeEventListener(OPEN_DM_EVENT, on);
+  }, []);
+  const social = useSocial();
+  const chatsAppCount = social.unreadTotal + social.requestCount;
   const pagerRef = useRef(null);
   // Ana ekrana her dönüşte kaldığın sayfaya (ilk açılışta ana sayfaya) kaydır
   useLayoutEffect(() => {
@@ -150,10 +160,9 @@ export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }
   const handleOpenApp = (id) => {
     if (isAppBlocked(id)) return;
     setOpenApp(id);
-    if (id === 'chatsapp') markChatsAppSeen();
     if (id === 'sixtagram') markSixtagramSeen();
   };
-  const badgeOf = (id) => (id === 'sms' ? unreadCount : 0);
+  const badgeOf = (id) => (id === 'sms' ? unreadCount : id === 'chatsapp' ? chatsAppCount : 0);
   const dotOf = (id) => (id === 'chatsapp' && chatsAppHasNew) || (id === 'sixtagram' && sixtagramHasNew);
 
   if (openApp) {

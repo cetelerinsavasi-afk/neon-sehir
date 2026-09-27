@@ -648,6 +648,17 @@ export const unblockUser = (targetUid) => httpsCallable(functions, 'unblockUser'
 // v53 — Oyuncu Kartı: herkese açık özet (çete, fabrika, takım, Sixtagram). Bkz. functions/playerCard.js
 export const getPlayerCard = (uid) => httpsCallable(functions, 'getPlayerCard')({ uid }).then((r) => r.data);
 
+// v60 — Arkadaşlık + özel sohbet (functions/social.js). action:
+// sendFriendRequest · cancelFriendRequest · respondFriendRequest · removeFriend · sendDm · markDmRead
+// v62 — Hesap silme talebi (oyuncu) ve Yönetim Paneli silme işlemleri (yönetici)
+export const requestAccountDeletion = () => httpsCallable(functions, 'requestAccountDeletion')({}).then((r) => r.data);
+// Silme uzun sürebilir (sunucuda 9 dk sınırı) — istemci de bekler
+export const adminAccountDeletion = (action, payload = {}) =>
+  httpsCallable(functions, 'adminAccountDeletion', { timeout: 540_000 })({ action, payload }).then((r) => r.data);
+
+export const socialAction = (action, payload = {}) =>
+  httpsCallable(functions, 'socialAction')({ action, payload }).then((r) => r.data);
+
 // UGC D3 — Yönetim Paneli: tek callable, { action, payload } (bkz. functions/adminPanel.js).
 // Yetki sunucuda kontrol edilir; sonuç doğrudan data olarak döner.
 export const adminAction = (action, payload = {}) => httpsCallable(functions, 'adminAction')({ action, payload }).then((r) => r.data);

@@ -37,7 +37,7 @@ export const MUTE_DURATIONS = { '1h': HOUR, '24h': DAY, '7d': 7 * DAY, '30d': 30
 export const BAN_DURATIONS = { '1d': DAY, '7d': 7 * DAY, '30d': 30 * DAY, permanent: null };
 const MODERATOR_MUTE_KEYS = ['1h', '24h', '7d'];
 export const ADMIN_LIMITS = { REASON_MAX: 200, WARN_MAX: 300, SEARCH_MAX: 20, LOG_PAGE: 50, QUEUE_GROUPS: 100, REPORT_RETENTION_DAYS: 365, PURGE_BATCH: 400 };
-const HIDEABLE = ['globalChat', 'sixtagramPost', 'sixtagramComment', 'gangChat', 'gangGlobalChat', 'intelChat', 'feedback'];
+const HIDEABLE = ['globalChat', 'sixtagramPost', 'sixtagramComment', 'gangChat', 'gangGlobalChat', 'intelChat', 'feedback', 'dmMessage'];
 const DEFAULT_PLAYER_NAME = 'Oyuncu';
 
 // D4 — oyuncuya giden bilgilendirme SMS'leri için etiketler
@@ -61,6 +61,7 @@ const CONTENT_NOUNS = {
   gangGlobalChat: 'Tüm Çeteler sohbetindeki mesajın',
   intelChat: 'İstihbarat sohbetindeki mesajın',
   feedback: 'önerin',
+  dmMessage: 'özel mesajın',
   bubble: 'konuşma balonun',
   user: 'oyun içi adın',
   gang: 'çetenin adı ve notu',
@@ -666,6 +667,9 @@ export function createAdminPanel({ db, auth, FieldValue, HttpsError, requireAuth
     adminAction: onCall(async (request) => handle(requireAuth(request), request.data || {})),
     sweepExpiredBans,
     purgeOldReports,
+    // v62: hesap silme talepleri modülü (functions/deletionRequests.js) yetki ve denetim kaydı için kullanır
+    getActor,
+    logAction: (actor, action, extra) => writeLog(actor, action, extra),
     _impl: { handle, getActor, liftBan },
   };
 }

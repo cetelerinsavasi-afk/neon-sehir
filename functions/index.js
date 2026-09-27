@@ -10,6 +10,8 @@ import { createGangFunctions } from './gang/firebase.js';
 import { createModeration, MODERATION, REPORT_TARGETS } from './moderation.js';
 import { createAdminPanel } from './adminPanel.js';
 import { createPlayerCard } from './playerCard.js';
+import { createSocial } from './social.js';
+import { createDeletionRequests } from './deletionRequests.js';
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -26,6 +28,7 @@ const moderation = createModeration({
   requireAuth: (request) => requireAuth(request),
   onCall,
   dateKey: () => istanbulDateKey(),
+  onBlocked: (uid, targetUid) => social.onBlocked(uid, targetUid), // v60 (social aşağıda tanımlı; çağrı anında hazır)
 });
 export const reportContent = moderation.reportContent;
 export const blockUser = moderation.blockUser;
@@ -67,6 +70,34 @@ const adminPanel = createAdminPanel({
 });
 export const adminAction = adminPanel.adminAction;
 
+// v62 — Hesap silme talepleri: oyuncu talep açar, yönetici Yönetim Paneli'nden
+// önizler, siler ya da iptal eder. Silme kodu yerel betikle aynı
+// (functions/accountDeletion.js). Bazı adımlar oyunun kendi fonksiyonlarıyla
+// (takımı devretme, çeteden ayrılma…) oyuncunun kimliğiyle yapılır.
+const deletionRequests = createDeletionRequests({
+  db,
+  auth: admin.auth(),
+  FieldValue: admin.firestore.FieldValue,
+  FieldPath: admin.firestore.FieldPath,
+  HttpsError,
+  requireAuth: (request) => requireAuth(request),
+  onCall,
+  getActor: (uid) => adminPanel.getActor(uid),
+  logAction: (actor, action, extra) => adminPanel.logAction(actor, action, extra),
+  bootstrapAdminUids: ADMIN_UIDS,
+  // Aşağıda tanımlı oyun fonksiyonları — çağrı anında hazırdır
+  callables: {
+    sellFutbolTeam: (req) => sellFutbolTeam.run(req),
+    resignFutbolManager: (req) => resignFutbolManager.run(req),
+    leaveHeistPlan: (req) => leaveHeistPlan.run(req),
+    cancelHeistPlan: (req) => cancelHeistPlan.run(req),
+    gangAction: (req) => gangAction.run(req),
+  },
+  heavyOpts: { timeoutSeconds: 540, memory: '1GiB' },
+});
+export const requestAccountDeletion = deletionRequests.requestAccountDeletion;
+export const adminAccountDeletion = deletionRequests.adminAccountDeletion;
+
 // v53 — Oyuncu Kartı: avatara/ada dokununca görünen herkese açık özet
 // (çete, fabrika, takım). İstihbarat üyeliği ASLA dönülmez. Bkz. functions/playerCard.js
 const playerCard = createPlayerCard({
@@ -77,6 +108,24 @@ const playerCard = createPlayerCard({
   factoryDisplayName: (f) => factoryDisplayName(f),
 });
 export const getPlayerCard = playerCard.getPlayerCard;
+
+// v60 — Arkadaşlık + özel sohbet (ChatsApp). Ayrıntı functions/social.js
+const social = createSocial({
+  db,
+  FieldValue: admin.firestore.FieldValue,
+  HttpsError,
+  requireAuth: (request) => requireAuth(request),
+  onCall,
+  assertCanSpeak: (uid) => moderation.assertCanSpeak(uid),
+  isBlockedBy: (a, b) => moderation.isBlockedBy(a, b),
+  dateKey: () => istanbulDateKey(),
+});
+export const socialAction = social.socialAction;
+// Süresi dolan arkadaşlık istekleri (48 sa) ve 7 gündür sessiz sohbetler — saatte bir
+export const socialCleanup = onSchedule({ schedule: 'every 60 minutes' }, async () => {
+  const r = await social.cleanup();
+  if (r.requests || r.chats) console.log(`socialCleanup: ${r.requests} istek, ${r.chats} sohbet silindi`);
+});
 // Süresi dolan banları kaldırır (Auth hesabını yeniden açar) ve 12 aydan eski
 // sonuçlanmış bildirimleri siler (Gizlilik Politikası md. 6) — saatte bir.
 export const adminBanSweep = onSchedule({ schedule: 'every 60 minutes' }, async () => {

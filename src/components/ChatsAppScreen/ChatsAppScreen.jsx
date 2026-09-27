@@ -1,141 +1,109 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useSocial } from '../../contexts/SocialContext';
 import { useGlobalChat } from '../../hooks/useGlobalChat';
-import { sendChatMessage } from '../../services/gameActions';
-import SignInPrompt from '../SignInPrompt/SignInPrompt';
-import AvatarSvg from '../AvatarSvg/AvatarSvg';
-import ReportBlockSheet from '../ReportBlockSheet/ReportBlockSheet';
-import PlayerCard from '../PlayerCard/PlayerCard';
-import ActionMenu from '../ActionMenu/ActionMenu';
-import { copyText, useLongPress } from '../ActionMenu/actionMenuUtils';
+import { useUnreadNotifications } from '../../hooks/useUnreadNotifications';
 import { useBlocks } from '../../contexts/BlocksContext';
 import { isHiddenForMe } from '../../lib/ugcVisibility';
+import { OPEN_DM_EVENT, takePendingDm } from '../../lib/chatsappNav';
+import SignInPrompt from '../SignInPrompt/SignInPrompt';
+import AvatarSvg from '../AvatarSvg/AvatarSvg';
+import GroupChat from './GroupChat';
+import DmChat from './DmChat';
+import { FriendsView, RequestsView } from './SocialViews';
+import { listTimeOf, tsMs } from './chatsappTime';
 import './ChatsAppScreen.css';
 
-function formatTime(ts) {
-  if (!ts?.toDate) return '';
-  return ts.toDate().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-}
-
-// v53: mesaj satırı — avatara / ada dokununca Oyuncu Kartı; mesaja uzun
-// basınca (masaüstünde sağ tık) Kopyala · Profili gör · Bildir menüsü.
-function ChatRow({ m, mine, onProfile, onMenu }) {
-  const press = useLongPress(() => onMenu(m));
-  return (
-    <div className={`chatsapp-row${mine ? ' mine' : ''}`}>
-      {!mine && (
-        <button type="button" className="chatsapp-avatar pc-trigger" onClick={() => onProfile(m)} aria-label={`${m.displayName || 'Oyuncu'} profilini gör`}>
-          <AvatarSvg avatar={m.avatar} size={28} rounded />
-        </button>
-      )}
-      <div className={`chatsapp-bubble${mine ? ' mine' : ''}`} {...press}>
-        {mine ? (
-          <span className="chatsapp-sender">{m.displayName}</span>
-        ) : (
-          <button type="button" className="chatsapp-sender pc-trigger" onClick={() => onProfile(m)}>
-            {m.displayName}
-          </button>
-        )}
-        <span className="chatsapp-text">{m.text}</span>
-        <span className="chatsapp-time">{formatTime(m.createdAt)}</span>
-      </div>
-    </div>
-  );
-}
-
+// v60 — ChatsApp artık WhatsApp benzeri: üstte Arkadaşlar / İstekler,
+// altta sohbet listesi. "Neon Şehir" (tüm oyuncuların grubu = eski genel
+// sohbet) sabit en üstte; arkadaş sohbetleri son mesaja göre sıralı.
 export default function ChatsAppScreen() {
   const { user } = useAuth();
-  const { messages: allMessages } = useGlobalChat();
+  const { chats, friends, requestCount } = useSocial();
+  const { messages } = useGlobalChat();
+  const { chatsAppHasNew } = useUnreadNotifications();
   const { isBlocked } = useBlocks();
-  // UGC D2: gizlenen (şikâyetle) ve engellenen oyuncuların mesajları gösterilmez
-  const messages = allMessages.filter((m) => !isHiddenForMe(m, m.uid, isBlocked));
-  const [reportTarget, setReportTarget] = useState(null);
-  const [profileOf, setProfileOf] = useState(null);
-  const [menuFor, setMenuFor] = useState(null);
-  const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
-  const bottomRef = useRef(null);
+  const [view, setView] = useState(() => {
+    const p = takePendingDm();
+    return p ? { name: 'dm', target: p } : { name: 'list' };
+  });
 
+  // Oyuncu Kartı → "💬 Mesaj" (ChatsApp açıkken de çalışsın)
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length]);
+    const on = () => {
+      const p = takePendingDm();
+      if (p) setView({ name: 'dm', target: p });
+    };
+    window.addEventListener(OPEN_DM_EVENT, on);
+    return () => window.removeEventListener(OPEN_DM_EVENT, on);
+  }, []);
 
   if (!user) {
     return <SignInPrompt message="Sohbete katılmak için giriş yapmalısın." />;
   }
 
-  const handleSend = async () => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await sendChatMessage(trimmed);
-      setText('');
-    } catch (err) {
-      setError(err.message || 'Mesaj gönderilemedi.');
-    } finally {
-      setBusy(false);
-    }
-  };
+  const back = () => setView({ name: 'list' });
+  if (view.name === 'group') return <GroupChat onBack={back} />;
+  if (view.name === 'dm') return <DmChat key={view.target.uid} target={view.target} onBack={back} />;
+  if (view.name === 'friends') return <FriendsView onBack={back} onOpenChat={(f) => setView({ name: 'dm', target: f })} />;
+  if (view.name === 'requests') return <RequestsView onBack={back} />;
+
+  const visible = messages.filter((m) => !isHiddenForMe(m, m.uid, isBlocked));
+  const lastGroup = visible[visible.length - 1];
+  const groupPreview = lastGroup ? `${lastGroup.uid === user.uid ? 'Sen' : lastGroup.displayName || 'Oyuncu'}: ${lastGroup.text}` : 'Tüm oyuncuların sohbeti';
 
   return (
     <div className="chatsapp-screen">
-      <div className="chatsapp-messages">
-        {messages.map((m) => (
-          <ChatRow key={m.id} m={m} mine={m.uid === user.uid} onProfile={setProfileOf} onMenu={setMenuFor} />
-        ))}
-        <div ref={bottomRef} />
-      </div>
-      <div className="chatsapp-input-row">
-        <input
-          type="text"
-          placeholder="Mesaj yaz…"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          maxLength={300}
-          className="chatsapp-input"
-        />
-        <button className="chatsapp-send" disabled={busy || !text.trim()} onClick={handleSend}>
-          Gönder
+      <div className="ca-top-buttons">
+        <button className="ca-top-btn" onClick={() => setView({ name: 'friends' })}>
+          👥 Arkadaşlar ({friends.length})
+        </button>
+        <button className={`ca-top-btn${requestCount > 0 ? ' hot' : ''}`} onClick={() => setView({ name: 'requests' })}>
+          📨 Arkadaşlık istekleri ({requestCount})
         </button>
       </div>
-      {error && <p className="chatsapp-error">{error}</p>}
-      {menuFor && (
-        <ActionMenu
-          title={`${menuFor.displayName || 'Oyuncu'}: “${String(menuFor.text || '').slice(0, 60)}”`}
-          onClose={() => setMenuFor(null)}
-          actions={[
-            { key: 'copy', icon: '📋', label: 'Kopyala', onClick: () => copyText(menuFor.text || '') },
-            ...(menuFor.uid !== user.uid
-              ? [
-                  { key: 'profile', icon: '👤', label: 'Profili gör', onClick: () => setProfileOf(menuFor) },
-                  { key: 'report', icon: '⚑', label: 'Bildir', subtle: true, onClick: () => setReportTarget(menuFor) },
-                ]
-              : []),
-          ]}
-        />
-      )}
-      {profileOf && (
-        <PlayerCard
-          uid={profileOf.uid}
-          name={profileOf.displayName}
-          avatar={profileOf.avatar}
-          reportItems={[{ label: 'Bu mesajı bildir', targetType: 'globalChat', targetPath: `globalChat/${profileOf.id}`, preview: profileOf.text }]}
-          onClose={() => setProfileOf(null)}
-        />
-      )}
-      {reportTarget && (
-        <ReportBlockSheet
-          targetUid={reportTarget.uid}
-          targetName={reportTarget.displayName || 'Oyuncu'}
-          canBlock={false}
-          items={[{ label: 'Mesajı bildir', targetType: 'globalChat', targetPath: `globalChat/${reportTarget.id}`, preview: reportTarget.text }]}
-          onClose={() => setReportTarget(null)}
-        />
-      )}
+      <div className="ca-list">
+        <button className="ca-row" onClick={() => setView({ name: 'group' })}>
+          <span className="ca-row-avatar ca-group-avatar" aria-hidden="true">
+            🌆
+          </span>
+          <span className="ca-row-main">
+            <span className="ca-row-top">
+              <span className="ca-row-name">📌 Neon Şehir</span>
+              <span className={`ca-row-time${chatsAppHasNew ? ' new' : ''}`}>{lastGroup ? listTimeOf(tsMs(lastGroup.createdAt)) : ''}</span>
+            </span>
+            <span className="ca-row-bottom">
+              <span className="ca-row-last">{groupPreview}</span>
+              {chatsAppHasNew && <span className="ca-dot" aria-label="yeni mesaj" />}
+            </span>
+          </span>
+        </button>
+        {chats.map((c) => (
+          <button key={c.id} className="ca-row" onClick={() => setView({ name: 'dm', target: { uid: c.otherUid, name: c.otherName, avatar: c.otherAvatar } })}>
+            <span className="ca-row-avatar">
+              <AvatarSvg avatar={c.otherAvatar} size={44} rounded />
+            </span>
+            <span className="ca-row-main">
+              <span className="ca-row-top">
+                <span className="ca-row-name">{c.otherName}</span>
+                <span className={`ca-row-time${c.myUnread ? ' new' : ''}`}>{listTimeOf(c.lastAtMs)}</span>
+              </span>
+              <span className="ca-row-bottom">
+                <span className="ca-row-last">
+                  {c.lastSenderUid === user.uid ? 'Sen: ' : ''}
+                  {c.lastText}
+                </span>
+                {c.myUnread > 0 && <span className="ca-badge">{c.myUnread > 99 ? '99+' : c.myUnread}</span>}
+              </span>
+            </span>
+          </button>
+        ))}
+        {chats.length === 0 && (
+          <p className="ca-empty">
+            {friends.length ? 'Arkadaşlarınla sohbet başlatmak için 👥 Arkadaşlar’a dokun.' : 'Oyuncuların adına dokunup ➕ Arkadaş ekle diyerek arkadaş edinebilirsin.'}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

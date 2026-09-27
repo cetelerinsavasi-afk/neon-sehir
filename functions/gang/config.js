@@ -129,6 +129,12 @@ export const INTEL = {
   SUSPICION_FINE_KASA_RATIO: 1 / 2,
   KICK_BASKAN_MIN_RATIO_EXCLUSIVE: 0.66, // Başkan'ı atmak: > %66
   KICK_MIN_RATIO: 0.51, // diğerleri: >= %51
+  // v61 (istismar önlemi): İstihbaratta en az bu kadar üye yoksa kimse atılamaz,
+  // çıkarma oylaması başlatılamaz/uygulanmaz (kendi isteğiyle ayrılmak serbest).
+  KICK_MIN_MEMBERS: 8,
+  // v61: dağıtım yapılabilmesi için hedef grupta en az bu kadar üye olmalı
+  // (Rütbeliler / Ajanlar / Muhbirler / Tüm üyeler — her biri ayrı sayılır).
+  DIST_MIN_GROUP_MEMBERS: 5,
   NAME: 'İstihbarat',
   LOGO: { emoji: '🕵️', color: '#19e8ff', bg: '#06222b' },
 };

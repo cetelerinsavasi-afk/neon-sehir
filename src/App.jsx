@@ -6,6 +6,8 @@ import CityMap from './components/CityMap/CityMap';
 import BottomBar from './components/BottomBar/BottomBar';
 import PhoneScreen from './components/Phone/PhoneScreen';
 import RegionModal from './components/RegionModal/RegionModal';
+import { SocialProvider, useSocial } from './contexts/SocialContext';
+import { OPEN_DM_EVENT } from './lib/chatsappNav';
 import MekanlarScreen from './components/MekanlarScreen/MekanlarScreen';
 import ReferralPrompt from './components/ReferralPrompt/ReferralPrompt';
 import RaceFullScreen from './components/RaceTrackScreen/RaceFullScreen';
@@ -77,6 +79,17 @@ function GameShell() {
   const [activeRegion, setActiveRegion] = useState(null);
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [phoneInitialApp, setPhoneInitialApp] = useState(null);
+  // v60: arkadaş sohbetleri + istekler (ChatsApp rozeti) ve Oyuncu Kartı → "💬 Mesaj"
+  const social = useSocial();
+  const chatsAppCount = social.unreadTotal + social.requestCount;
+  useEffect(() => {
+    const on = () => {
+      setPhoneInitialApp('chatsapp');
+      setPhoneOpen(true);
+    };
+    window.addEventListener(OPEN_DM_EVENT, on);
+    return () => window.removeEventListener(OPEN_DM_EVENT, on);
+  }, []);
   const [heistTarget, setHeistTarget] = useState(undefined); // undefined=kapalı, null=açık/hedefsiz (Mekanlar ekranı)
   // mekanlarTab — Mekanlar ekranı açıkken hangi sekme aktif (yeni istek:
   // "Soygun sekmesinin adını Mekanlar yapacağız, 3 ana sekmeye ayrılacak:
@@ -330,7 +343,7 @@ function GameShell() {
         onHeistClick={() => openHeistScreen(null)}
         onGangsClick={() => setGangsOpen(true)}
         gangsBadge={gangAlerts.any}
-        phoneBadge={unread.totalBadge}
+        phoneBadge={unread.totalBadge + chatsAppCount}
         onFutbolClick={() => setFutbolOpen(true)}
       />
 
@@ -348,7 +361,11 @@ function GameShell() {
         title="ChatsApp"
       >
         💬
-        {unread.chatsAppHasNew && <span className="map-chatsapp-dot" />}
+        {chatsAppCount > 0 ? (
+          <span className="map-chatsapp-badge">{chatsAppCount > 99 ? '99+' : chatsAppCount}</span>
+        ) : (
+          unread.chatsAppHasNew && <span className="map-chatsapp-dot" />
+        )}
       </button>
 
       {/* Yeni görev/hatırlatıcı paneli — ChatsApp butonunun tam simetriği,
@@ -478,7 +495,10 @@ export default function App() {
     <AuthProvider>
       {/* UGC D2: engelleme listesi — tek dinleyici, tüm ekranlar buradan okur */}
       <BlocksProvider>
-        <GameShell />
+        {/* v60: arkadaşlar, istekler, özel sohbetler — tek sağlayıcı */}
+        <SocialProvider>
+          <GameShell />
+        </SocialProvider>
       </BlocksProvider>
     </AuthProvider>
   );
