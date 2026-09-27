@@ -267,7 +267,7 @@ export function createTradeActions(core, treasury) {
   // ömrü mevcut gece işleminde ilk kez sonraki 00:00'da azalır), testte
   // persona envanteri.
   function deliverItem(tx, ctx, actorId, it, qty) {
-    const { catalogs, lifeDays } = core.deps;
+    const { catalogs, lifeDays, weaponLifeDays } = core.deps;
     if (ctx.isTest) {
       tx.update(ctx.ref.player(actorId), { [`inventory.${it.key.replace(':', '_')}`]: FV.increment(qty) });
       return;
@@ -287,7 +287,7 @@ export function createTradeActions(core, treasury) {
           basePower: c.power,
           power: c.power,
           level: 1,
-          lifeDays,
+          lifeDays: weaponLifeDays ?? lifeDays, // v58: silah 10 gün
           repairsUsed: 0,
           purchasedAt: FV.serverTimestamp(),
           source: 'gang_depot',

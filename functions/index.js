@@ -411,6 +411,18 @@ const VALID_MACHINES = Object.keys(MACHINE_TYPES);
 const VEHICLE_WEAPON_INITIAL_LIFE_DAYS = 20;
 const VEHICLE_WEAPON_MAX_REPAIRS = 10;
 const REPAIR_LIFE_BONUS_DAYS = 2;
+// v58 (kullanıcı revizesi): SİLAHLARIN azami ömrü 10 gün, her tamir +1 gün,
+// tamir hakkı yine 10 → bir silah en fazla 20 gün kullanılır. Araçlar
+// değişmedi (20 gün, tamir +2). Fiyat ve tamir malzemesi maliyeti aynı.
+// Eski silahlar için tek seferlik göç: runWeaponLifeCap10Migration.
+const WEAPON_INITIAL_LIFE_DAYS = 10;
+const WEAPON_REPAIR_LIFE_BONUS_DAYS = 1;
+function lifeCapOf(kind) {
+  return kind === 'weapon' ? WEAPON_INITIAL_LIFE_DAYS : VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
+}
+function repairBonusOf(kind) {
+  return kind === 'weapon' ? WEAPON_REPAIR_LIFE_BONUS_DAYS : REPAIR_LIFE_BONUS_DAYS;
+}
 
 // 2. el satış değeri artık hem ÖMÜR hem KALAN TAMİR HAKKI birlikte
 // hesaplanır (kullanıcı revizesi, 2. sürüm): sadece tamir hakkına bakmak da
@@ -423,12 +435,15 @@ const REPAIR_LIFE_BONUS_DAYS = 2;
 // kullanılamıyor. Tamir hakkı bitmiş (0) ama ömür hâlâ tam (30) ise yine
 // 30/60 = ratio 0.5 — bu da mantıklı, çünkü bir daha hiç tamir edilemeyecek
 // ve yakında hurdaya çıkacak.
-function valueRatioOf(item) {
+// v58: kind = 'vehicle' | 'weapon' (silahın tavanı/tamir bonusu farklı).
+function valueRatioOf(item, kind = 'vehicle') {
+  const cap = lifeCapOf(kind);
+  const bonus = repairBonusOf(kind);
   const repairsUsed = item?.repairsUsed || 0;
   const remainingRepairs = Math.max(0, VEHICLE_WEAPON_MAX_REPAIRS - repairsUsed);
-  const lifeDays = Math.max(0, item?.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS);
-  const combined = remainingRepairs * REPAIR_LIFE_BONUS_DAYS + lifeDays;
-  const maxCombined = VEHICLE_WEAPON_MAX_REPAIRS * REPAIR_LIFE_BONUS_DAYS + VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
+  const lifeDays = Math.max(0, item?.lifeDays ?? cap);
+  const combined = remainingRepairs * bonus + lifeDays;
+  const maxCombined = VEHICLE_WEAPON_MAX_REPAIRS * bonus + cap;
   return Math.max(0, Math.min(1, combined / maxCombined));
 }
 
@@ -2301,6 +2316,14 @@ export const dailyReset = onSchedule(
     // (migrations/vehicleWeaponLifeCap20) korunuyor.
     await runVehicleWeaponLifeCap20Migration();
 
+    // v58: silah ömür tavanı 20 → 10 (tek seferlik; bayrak: migrations/weaponLifeCap10).
+    // Ömür azaltmadan (-0.3) ÖNCE çalışır. Hata gece işlemini durdurmaz.
+    try {
+      await runWeaponLifeCap10Migration();
+    } catch (err) {
+      console.error('dailyReset weaponLifeCap10', err);
+    }
+
     // -0.74) TEK SEFERLİK GÖÇ: "polis olmak için onboarding görev listesini
     // bitirmiş olmak da gerekiyor" kuralı — mevcut tüm polisleri görevden
     // alır, bekleyen başvuruları iptal eder, gazetede duyuru yayınlar.
@@ -2973,7 +2996,7 @@ export const dailyReset = onSchedule(
         const snap = await db.collection(collName).get();
         const jobs = snap.docs.map(async (docSnap) => {
           const item = docSnap.data();
-          const currentLife = item.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
+          const currentLife = item.lifeDays ?? lifeCapOf(collName === 'weapons' ? 'weapon' : 'vehicle');
           const newLife = Math.max(0, currentLife - 1);
           const repairsUsed = item.repairsUsed || 0;
           if (newLife <= 0 && repairsUsed >= VEHICLE_WEAPON_MAX_REPAIRS) {
@@ -4094,7 +4117,7 @@ export const buyWeapon = onCall(async (request) => {
       basePower: catalogEntry.power,
       power: catalogEntry.power,
       level: 1,
-      lifeDays: VEHICLE_WEAPON_INITIAL_LIFE_DAYS,
+      lifeDays: WEAPON_INITIAL_LIFE_DAYS,
       repairsUsed: 0,
       purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
@@ -4163,8 +4186,8 @@ export const upgradeWeapon = onCall(async (request) => {
 });
 
 // ---------------------------------------------------------------------------
-// repairItem — araç/silah tamiri. Ömrü (lifeDays) +3 gün uzatır (orijinal
-// 30 günü aşmaz), tamir hakkını (repairsUsed) 1 artırır (toplamda en fazla
+// repairItem — araç/silah tamiri. Ömrü (lifeDays) araçta +2, silahta +1 gün
+// uzatır (araçta 20, silahta 10 günlük tavanı aşmaz; v58), tamir hakkını (repairsUsed) 1 artırır (toplamda en fazla
 // 10 kez tamir edilebilir). Gereken tamir malzemesi = fiyat/100 (araçta
 // GÜNCEL katalog fiyatı — eski araçlar da yeni fiyata göre hesaplanır,
 // silahta basePrice) — silah geliştirmeyle aynı oran.
@@ -4203,8 +4226,14 @@ export const repairItem = onCall(async (request) => {
         `Yetersiz tamir malzemesi (${requiredQty} adet gerekli, ${have} adedin var).`
       );
     }
-    const currentLife = item.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
-    const newLife = Math.min(VEHICLE_WEAPON_INITIAL_LIFE_DAYS, currentLife + REPAIR_LIFE_BONUS_DAYS);
+    // v58: silahta tavan 10 / tamir +1, araçta tavan 20 / tamir +2.
+    // Ömür zaten doluyken tamir yapılmaz (malzeme ve tamir hakkı boşa gitmesin).
+    const cap = lifeCapOf(itemType);
+    const currentLife = item.lifeDays ?? cap;
+    if (currentLife >= cap) {
+      throw new HttpsError('failed-precondition', 'Ömrü zaten dolu, tamire gerek yok.');
+    }
+    const newLife = Math.min(cap, currentLife + repairBonusOf(itemType));
     tx.set(
       inventoryRef,
       { quantity: admin.firestore.FieldValue.increment(-requiredQty) },
@@ -4960,7 +4989,7 @@ async function computeTotalWealth(uid, userData, prices) {
     const w = d.data();
     const base = WEAPON_CATALOG[w.catalogId]?.price || 0;
     const mult = w.level || 1;
-    weaponsValue += Math.floor((base * mult * valueRatioOf(w)) / 2);
+    weaponsValue += Math.floor((base * mult * valueRatioOf(w, 'weapon')) / 2);
   });
 
   return gold + bankBalance + diamondValue + stockValue + cryptoValue + vehiclesValue + weaponsValue;
@@ -5454,7 +5483,7 @@ async function getMaxWeaponPower(uid) {
   snap.forEach((d) => {
     const w = d.data();
     if (w.listed) return; // satılmış/satışa çıkarılmış silah artık elimizde sayılmaz
-    const lifeDays = w.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
+    const lifeDays = w.lifeDays ?? WEAPON_INITIAL_LIFE_DAYS;
     if (lifeDays <= 0) return; // ömrü bitmiş silah — tamir edilene kadar gücü sayılmaz
     maxPower = Math.max(maxPower, w.power || 0);
   });
@@ -7051,6 +7080,62 @@ export const migrateVehicleWeaponLifeCap20 = onCall(async (request) => {
   requireAuth(request);
   await runVehicleWeaponLifeCap20Migration();
   return { ok: true };
+});
+
+// v58 — migrateWeaponLifeCap10: silahların azami ömrü 20 → 10 gün. Ömrü
+// 10'dan FAZLA olan silahlar TEK SEFERLİK 10'a düşer, 10 ve altındakiler
+// olduğu gibi devam eder (araçlara dokunulmaz). Satıştaki ilanın donmuş
+// ömür alanı da eşitlenir. Bayrak (migrations/weaponLifeCap10), iş
+// başlamadan ÖNCE transaction ile ele geçirilir → aynı anda birden çok
+// çağrı gelse bile iş yalnızca bir kez yapılır (bkz.
+// runOnboardingPoliceRuleMigration). İş yarıda kalırsa (hata) bayrak
+// "done" olmadığı için 10 dakika sonra başka bir çağrı yeniden dener; iş
+// idempotent (yalnızca >10 olanları 10'a çeker).
+async function runWeaponLifeCap10Migration() {
+  const migrationRef = db.collection('migrations').doc('weaponLifeCap10');
+  const nowMs = Date.now();
+  let claimed = false;
+  await db.runTransaction(async (tx) => {
+    claimed = false; // transaction yeniden denenirse önceki denemenin sonucu taşınmasın
+    const snap = await tx.get(migrationRef);
+    const m = snap.exists ? snap.data() : null;
+    if (m?.done) return;
+    if (m?.claimedAtMs && nowMs - m.claimedAtMs < 10 * 60 * 1000) return;
+    tx.set(migrationRef, { claimedAtMs: nowMs }, { merge: true });
+    claimed = true;
+  });
+  if (!claimed) return { skipped: true };
+
+  const snap = await db.collection('weapons').get();
+  let capped = 0;
+  const docs = snap.docs.filter((d) => typeof d.data().lifeDays === 'number' && d.data().lifeDays > WEAPON_INITIAL_LIFE_DAYS);
+  for (let k = 0; k < docs.length; k += 50) {
+    await Promise.all(
+      docs.slice(k, k + 50).map(async (docSnap) => {
+        await docSnap.ref.update({ lifeDays: WEAPON_INITIAL_LIFE_DAYS });
+        capped += 1;
+        if (docSnap.data().listed) {
+          const listingSnap = await db
+            .collection('marketplaceListings')
+            .where('weaponId', '==', docSnap.id)
+            .where('sold', '==', false)
+            .limit(1)
+            .get();
+          if (!listingSnap.empty && listingSnap.docs[0].data().weaponLifeDays !== WEAPON_INITIAL_LIFE_DAYS) {
+            await listingSnap.docs[0].ref.update({ weaponLifeDays: WEAPON_INITIAL_LIFE_DAYS });
+          }
+        }
+      })
+    );
+  }
+  await migrationRef.set({ done: true, cappedCount: capped, ranAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  return { capped };
+}
+
+export const migrateWeaponLifeCap10 = onCall(async (request) => {
+  requireAuth(request);
+  const r = await runWeaponLifeCap10Migration();
+  return { ok: true, ...r };
 });
 
 
@@ -8737,14 +8822,14 @@ export const createListing = onCall(async (request) => {
       }
       const baseWeaponPrice = WEAPON_CATALOG[w.catalogId]?.price || 0;
       const weaponMult = w.level || 1;
-      const weaponLifeDays = w.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
+      const weaponLifeDays = w.lifeDays ?? WEAPON_INITIAL_LIFE_DAYS;
       if (weaponLifeDays <= 0) {
         throw new HttpsError(
           'failed-precondition',
           'Bu silahın ömrü bitti — satışa çıkarmadan önce tamir ettirmelisin.'
         );
       }
-      const weaponMax = Math.round(baseWeaponPrice * weaponMult * valueRatioOf(w));
+      const weaponMax = Math.round(baseWeaponPrice * weaponMult * valueRatioOf(w, 'weapon'));
       const weaponMin = Math.floor(weaponMax / 2);
       if (priceNum < weaponMin || priceNum > weaponMax) {
         throw new HttpsError(
@@ -8984,14 +9069,14 @@ export const instantSellListing = onCall(async (request) => {
       }
       const base = WEAPON_CATALOG[w.catalogId]?.price || 0;
       const mult = w.level || 1;
-      const weaponLifeDays = w.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
+      const weaponLifeDays = w.lifeDays ?? WEAPON_INITIAL_LIFE_DAYS;
       if (weaponLifeDays <= 0) {
         throw new HttpsError(
           'failed-precondition',
           'Bu silahın ömrü bitti — satmadan önce tamir ettirmelisin.'
         );
       }
-      const minPrice = Math.floor((base * mult * valueRatioOf(w)) / 2);
+      const minPrice = Math.floor((base * mult * valueRatioOf(w, 'weapon')) / 2);
       payout = minPrice;
       const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, minPrice);
       tx.update(sellerRef, {
@@ -20189,6 +20274,7 @@ const gangFunctions = createGangFunctions({
   splitIncomeForDebt,
   catalogs: { VEHICLE_CATALOG, WEAPON_CATALOG, AMAZOR_PRICES },
   lifeDays: VEHICLE_WEAPON_INITIAL_LIFE_DAYS,
+  weaponLifeDays: WEAPON_INITIAL_LIFE_DAYS, // v58
   onGangJoined: (uid) => advanceOnboardingStep(uid, 20),
   // Çete depolarından (2. el) alım da ilgili satın alma görevlerini tamamlar
   onGangMarketBought: async (uid, res) => {

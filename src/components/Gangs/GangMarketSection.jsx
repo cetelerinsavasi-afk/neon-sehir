@@ -65,7 +65,7 @@ export default function GangMarketSection({ view }) {
                 {Number(l.unitPrice).toLocaleString('tr-TR')} altın / adet · {l.quantity} adet
                 <span className="market-seller"> · {l.gangName}</span>
               </span>
-              {l.itemType !== 'material' && <span className="market-listing-life-label">Ömür: 20 / 20 gün · Tamir hakkı: 10/10</span>}
+              {l.itemType !== 'material' && <span className="market-listing-life-label">{l.itemType === 'weapon' ? 'Ömür: 10 / 10 gün' : 'Ömür: 20 / 20 gün'} · Tamir hakkı: 10/10</span>}
               {l.quantity > 1 && (
                 <QuantityStepper value={qty[l.id] || 1} onChange={(v) => setQty({ ...qty, [l.id]: Math.max(1, v) })} max={l.quantity} quickAmounts={[5, 10, 50].filter((q) => q < l.quantity)} />
               )}

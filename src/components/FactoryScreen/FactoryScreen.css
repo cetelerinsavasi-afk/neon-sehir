@@ -1186,3 +1186,13 @@
   width: 100%;
   box-sizing: border-box;
 }
+
+/* v58: Makine Al penceresi açık kalır — alınan adet ve Tamam düğmesi */
+.factory-machine-bought {
+  color: var(--neon-green, #39ff88);
+  font-weight: 700;
+}
+.factory-buy-done {
+  width: 100%;
+  margin-top: 10px;
+}

@@ -147,15 +147,18 @@ function BuyMachineModal({ onClose, ownedMiningCount }) {
   const { prices } = useInvestmentPrices();
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
+  // v58: pencere her alımdan sonra kapanmıyor — art arda istenen kadar alınabilir
+  const [bought, setBought] = useState({});
 
   const types = ['mining', 'tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme'];
+  const boughtTotal = Object.values(bought).reduce((a, b) => a + b, 0);
 
   const handleBuy = async (type) => {
     setBusy(type);
     setError(null);
     try {
       await buyFactoryMachine(type);
-      onClose();
+      setBought((prev) => ({ ...prev, [type]: (prev[type] || 0) + 1 }));
     } catch (err) {
       setError(err.message || 'Makine alınamadı.');
     } finally {
@@ -185,10 +188,13 @@ function BuyMachineModal({ onClose, ownedMiningCount }) {
                       ? 'İşçi gerekmez · günde 0.01-0.1 kripto üretir'
                       : `İşçi gerekir · günde ${machineProductionRangeLabel(type)} adet üretir`}
                   </span>
+                  {bought[type] > 0 && (
+                    <span className="factory-machine-buy-desc factory-machine-bought">✅ {bought[type]} adet alındı</span>
+                  )}
                 </div>
                 <button
                   className="factory-btn primary small"
-                  disabled={busy === type}
+                  disabled={busy !== null}
                   onClick={() => handleBuy(type)}
                 >
                   {busy === type ? '…' : `${price.toLocaleString('tr-TR')} altın`}
@@ -198,6 +204,11 @@ function BuyMachineModal({ onClose, ownedMiningCount }) {
           })}
         </div>
         {error && <p className="factory-error">{error}</p>}
+        {boughtTotal > 0 && (
+          <button className="factory-btn primary factory-buy-done" onClick={onClose}>
+            Tamam ({boughtTotal} makine alındı)
+          </button>
+        )}
       </div>
     </div>
   );

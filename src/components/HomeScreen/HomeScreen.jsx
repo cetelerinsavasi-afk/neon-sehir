@@ -6,7 +6,7 @@ import { useWeapons } from '../../hooks/useWeapons';
 import { useInventory } from '../../hooks/useInventory';
 import { upgradeVehicle, upgradeWeapon, repairItem, setDisplayName } from '../../services/gameActions';
 import { weaponCatalog, weaponLivePrice } from '../../data/weaponCatalog';
-import VehicleCard, { LifeBar, MAX_REPAIRS, REPAIR_LIFE_BONUS_DAYS, repairRequiredQty } from '../VehicleCard/VehicleCard';
+import VehicleCard, { LifeBar, MAX_REPAIRS, WEAPON_REPAIR_LIFE_BONUS_DAYS, isLifeFull, repairRequiredQty } from '../VehicleCard/VehicleCard';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import AvatarBuilder from '../AvatarBuilder/AvatarBuilder';
@@ -108,6 +108,7 @@ function WeaponCard({ weapon, materialQty, repairQty, busy, onUpgrade, onRepair 
   const repairsUsed = weapon.repairsUsed || 0;
   const repairReq = repairRequiredQty(weaponLivePrice(weapon));
   const repairMaxed = repairsUsed >= MAX_REPAIRS;
+  const lifeFull = isLifeFull(weapon, 'weapon'); // v58
   return (
     <div className="home-item-card">
       {img && <img className="home-item-photo" src={img} alt={weapon.name} />}
@@ -116,7 +117,7 @@ function WeaponCard({ weapon, materialQty, repairQty, busy, onUpgrade, onRepair 
           {weapon.name} <span className="home-item-level">Sv. {weapon.level}</span>
         </span>
         <span className="home-item-stats">Güç: {weapon.power.toLocaleString('tr-TR')}</span>
-        <LifeBar item={weapon} />
+        <LifeBar item={weapon} kind="weapon" />
         <div className="home-controls">
           <button
             className="home-btn small"
@@ -129,10 +130,11 @@ function WeaponCard({ weapon, materialQty, repairQty, busy, onUpgrade, onRepair 
           </button>
           <button
             className="home-btn small"
-            disabled={repairMaxed || repairQty < repairReq || busy === `${weapon.id}-repair`}
+            disabled={repairMaxed || lifeFull || repairQty < repairReq || busy === `${weapon.id}-repair`}
             onClick={() => onRepair(weapon.id)}
+            title={lifeFull ? 'Ömrü dolu — tamire gerek yok' : undefined}
           >
-            {repairMaxed ? 'Tamir Hakkı Bitti' : `Tamir Et (${repairReq} malzeme) +${REPAIR_LIFE_BONUS_DAYS} gün`}
+            {repairMaxed ? 'Tamir Hakkı Bitti' : `Tamir Et (${repairReq} malzeme) +${WEAPON_REPAIR_LIFE_BONUS_DAYS} gün`}
           </button>
         </div>
       </div>

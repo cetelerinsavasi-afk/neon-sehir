@@ -12,10 +12,25 @@ import './VehicleCard.css';
 export const INITIAL_LIFE_DAYS = 20;
 export const MAX_REPAIRS = 10;
 export const REPAIR_LIFE_BONUS_DAYS = 2;
+// v58: silahların azami ömrü 10 gün, her tamir +1 gün (araçlar değişmedi).
+// Sunucudaki ikizi: functions/index.js WEAPON_INITIAL_LIFE_DAYS.
+export const WEAPON_INITIAL_LIFE_DAYS = 10;
+export const WEAPON_REPAIR_LIFE_BONUS_DAYS = 1;
+export function lifeCapOf(kind) {
+  return kind === 'weapon' ? WEAPON_INITIAL_LIFE_DAYS : INITIAL_LIFE_DAYS;
+}
+export function repairBonusOf(kind) {
+  return kind === 'weapon' ? WEAPON_REPAIR_LIFE_BONUS_DAYS : REPAIR_LIFE_BONUS_DAYS;
+}
+// v58: ömrü doluyken tamir düğmesi pasif
+export function isLifeFull(item, kind = 'vehicle') {
+  return (item?.lifeDays ?? lifeCapOf(kind)) >= lifeCapOf(kind);
+}
 
-export function lifeRatio(item) {
-  const life = item?.lifeDays ?? INITIAL_LIFE_DAYS;
-  return Math.max(0, Math.min(1, life / INITIAL_LIFE_DAYS));
+export function lifeRatio(item, kind = 'vehicle') {
+  const cap = lifeCapOf(kind);
+  const life = item?.lifeDays ?? cap;
+  return Math.max(0, Math.min(1, life / cap));
 }
 
 export function repairRequiredQty(price) {
@@ -50,15 +65,16 @@ export function vehicleRequiredQty(vehicle) {
   return Math.max(2, Math.round(vehicleLivePrice(vehicle) / 500));
 }
 
-export function LifeBar({ item }) {
-  const life = item?.lifeDays ?? INITIAL_LIFE_DAYS;
+export function LifeBar({ item, kind = 'vehicle' }) {
+  const cap = lifeCapOf(kind);
+  const life = item?.lifeDays ?? cap;
   const repairsUsed = item?.repairsUsed || 0;
-  const percent = Math.round(lifeRatio(item) * 100);
+  const percent = Math.round(lifeRatio(item, kind) * 100);
   return (
     <div className="vcard-life-row">
       <div className="vcard-life-label">
         <span>
-          Ömür: {life} / {INITIAL_LIFE_DAYS} gün
+          Ömür: {life} / {cap} gün
         </span>
         <span>
           Tamir hakkı: {MAX_REPAIRS - repairsUsed}/{MAX_REPAIRS}
@@ -77,6 +93,7 @@ export default function VehicleCard({ vehicle, materialsQty, repairQty, busy, on
   const repairsUsed = vehicle.repairsUsed || 0;
   const repairReq = repairRequiredQty(vehicleLivePrice(vehicle));
   const repairMaxed = repairsUsed >= MAX_REPAIRS;
+  const lifeFull = isLifeFull(vehicle, 'vehicle');
   const displayName = vehicleDisplayName(vehicle);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(displayName);
@@ -161,8 +178,9 @@ export default function VehicleCard({ vehicle, materialsQty, repairQty, busy, on
           </button>
           <button
             className="vcard-btn"
-            disabled={repairMaxed || repairQty < repairReq || busy === `${vehicle.id}-repair`}
+            disabled={repairMaxed || lifeFull || repairQty < repairReq || busy === `${vehicle.id}-repair`}
             onClick={() => onRepair(vehicle.id)}
+            title={lifeFull ? 'Ömrü dolu — tamire gerek yok' : undefined}
           >
             {repairMaxed ? 'Tamir Hakkı Bitti' : `Tamir Et (${repairReq} malzeme) +${REPAIR_LIFE_BONUS_DAYS} gün`}
           </button>

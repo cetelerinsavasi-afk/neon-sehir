@@ -29,7 +29,7 @@ import OnboardingPanel from './components/OnboardingPanel/OnboardingPanel';
 import { usePlayer } from './hooks/usePlayer';
 import { useMyActiveRaceRoom } from './hooks/useMyActiveRaceRoom';
 import { useFirestoreResume } from './hooks/useFirestoreResume';
-import { migrateArabaGelistirmeUnification, migrateVehicleWeaponLifeCap, migrateVehicleWeaponLifeCap20, resetFutbolTransferMarket, migrateOnboardingPoliceRule } from './services/gameActions';
+import { migrateArabaGelistirmeUnification, migrateVehicleWeaponLifeCap, migrateVehicleWeaponLifeCap20, migrateWeaponLifeCap10, resetFutbolTransferMarket, migrateOnboardingPoliceRule } from './services/gameActions';
 import { regions } from './data/regions';
 import { IS_ANDROID_APP } from './lib/platform';
 import './styles/theme.css';
@@ -47,6 +47,7 @@ let arabaGelistirmeMigrationTriggered = false;
 // yarısını beklemeden hemen çalışsın diye ekstra bir güvence.)
 let lifeCapMigrationTriggered = false;
 let lifeCap20MigrationTriggered = false;
+let weaponLifeCap10MigrationTriggered = false; // v58
 // Futbol transfer piyasası eski (dengesiz) sistem stoğunu yeni,
 // takımlardaki gerçek güce göre dengelenmiş kurallara sıfırlayan
 // geçişin bu oturumda tetiklenip tetiklenmediği. Sunucu tarafında bir
@@ -141,6 +142,16 @@ function GameShell() {
     lifeCap20MigrationTriggered = true;
     migrateVehicleWeaponLifeCap20().catch((err) => {
       console.error('Araç/silah ömür tavanı (20) geçişi başarısız:', err);
+    });
+  }, [user]);
+
+  // v58: silah ömür tavanı 20 → 10 — deploy sonrası ilk açılışta tek seferlik
+  // göçü tetikle (gece 00:00'da da ayrıca denenir; sunucu bayrağıyla bir kez çalışır).
+  useEffect(() => {
+    if (!user || weaponLifeCap10MigrationTriggered) return;
+    weaponLifeCap10MigrationTriggered = true;
+    migrateWeaponLifeCap10().catch((err) => {
+      console.error('Silah ömür tavanı (10) geçişi başarısız:', err);
     });
   }, [user]);
 

@@ -17,7 +17,7 @@ import {
 } from '../../services/gameActions';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
 import { weaponCatalog } from '../../data/weaponCatalog';
-import { MAX_REPAIRS, vehicleDisplayName } from '../VehicleCard/VehicleCard';
+import { MAX_REPAIRS, vehicleDisplayName, lifeCapOf, repairBonusOf } from '../VehicleCard/VehicleCard';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './MarketplaceScreen.css';
 
@@ -77,8 +77,7 @@ const AD_DURATION_MS = 24 * 60 * 60 * 1000;
 const AMAZOR_PRICES = { tamirMalzemesi: 10, silahUpgrade: 100, arabaGelistirme: 500, yasakliMadde: 2500 };
 const MACHINE_PRICES = { tamirMalzemesi: 100000, silahUpgrade: 50000, arabaGelistirme: 50000, yasakliMadde: 100000 };
 
-const INITIAL_LIFE_DAYS = 20;
-const REPAIR_LIFE_BONUS_DAYS = 2;
+// v58: silahta tavan 10 gün / tamir +1, araçta 20 / +2 (bkz. VehicleCard lifeCapOf)
 
 // MATERIAL_QUICK_AMOUNTS — KULLANICI REVİZESİ (Amazor/Liman/2. el sitesi
 // hepsinde aynı): "1 ve 5 butonunu kaldıralım, 1000 butonu ekleyelim,
@@ -102,16 +101,18 @@ function materialQuickAmountsFor(materialType) {
 // Ürünler" paneli için: canlı araç/silah objesi değil, market ilanının
 // KENDİ dondurulmuş alanlarından (vehicleLifeDays/vehicleRepairsUsed vb.)
 // aynı oranı yeniden hesaplamamız gerekiyor, bkz. listingCeilingPrice).
-function valueRatioFromLife(lifeDays, repairsUsed) {
+function valueRatioFromLife(lifeDays, repairsUsed, kind = 'vehicle') {
+  const cap = lifeCapOf(kind);
+  const bonus = repairBonusOf(kind);
   const remainingRepairs = Math.max(0, MAX_REPAIRS - (repairsUsed || 0));
-  const life = Math.max(0, lifeDays ?? INITIAL_LIFE_DAYS);
-  const combined = remainingRepairs * REPAIR_LIFE_BONUS_DAYS + life;
-  const maxCombined = MAX_REPAIRS * REPAIR_LIFE_BONUS_DAYS + INITIAL_LIFE_DAYS;
+  const life = Math.max(0, lifeDays ?? cap);
+  const combined = remainingRepairs * bonus + life;
+  const maxCombined = MAX_REPAIRS * bonus + cap;
   return Math.max(0, Math.min(1, combined / maxCombined));
 }
 
-function valueRatio(item) {
-  return valueRatioFromLife(item?.lifeDays, item?.repairsUsed);
+function valueRatio(item, kind = 'vehicle') {
+  return valueRatioFromLife(item?.lifeDays, item?.repairsUsed, kind);
 }
 
 function vehiclePriceRange(vehicle) {
@@ -124,7 +125,7 @@ function vehiclePriceRange(vehicle) {
 function weaponPriceRange(weapon) {
   const base = weaponCatalog.find((w) => w.id === weapon.catalogId)?.price || 0;
   const mult = weapon.level || 1;
-  const max = Math.round(base * mult * valueRatio(weapon));
+  const max = Math.round(base * mult * valueRatio(weapon, 'weapon'));
   return { min: Math.floor(max / 2), max };
 }
 
@@ -162,7 +163,7 @@ function listingCeilingPrice(listing) {
   if (listing.itemType === 'weapon') {
     const base = weaponCatalog.find((w) => w.id === listing.weaponCatalogId)?.price || 0;
     const mult = listing.weaponLevel || 1;
-    return Math.round(base * mult * valueRatioFromLife(listing.weaponLifeDays, listing.weaponRepairsUsed));
+    return Math.round(base * mult * valueRatioFromLife(listing.weaponLifeDays, listing.weaponRepairsUsed, 'weapon'));
   }
   if (listing.itemType === 'material') {
     return AMAZOR_PRICES[listing.materialType] || 0;
@@ -594,9 +595,9 @@ function ListingCard({ listing, isMine, busy, onCancel, onBuy }) {
   // Eski (ömür sisteminden önce açılmış) ilanlarda vehicleLifeDays/
   // weaponLifeDays alanı olmayabilir — bu durumda tam ömür (INITIAL_LIFE_DAYS/
   // INITIAL_LIFE_DAYS) varsayıyoruz, böylece bar HER araç/silah ilanında görünür.
+  const lifeCap = lifeCapOf(listing.itemType === 'weapon' ? 'weapon' : 'vehicle');
   const lifeDays = isLifeItem
-    ? (listing.itemType === 'vehicle' ? listing.vehicleLifeDays : listing.weaponLifeDays) ??
-      INITIAL_LIFE_DAYS
+    ? (listing.itemType === 'vehicle' ? listing.vehicleLifeDays : listing.weaponLifeDays) ?? lifeCap
     : null;
   // Aynı şekilde eski ilanlarda tamir hakkı alanı olmayabilir — bu durumda
   // hiç kullanılmamış (10/10) varsayıyoruz.
@@ -625,13 +626,13 @@ function ListingCard({ listing, isMine, busy, onCancel, onBuy }) {
         {lifeDays != null && (
           <div className="market-listing-life-row">
             <span className="market-listing-life-label">
-              Ömür: {lifeDays} / {INITIAL_LIFE_DAYS} gün · Tamir hakkı: {MAX_REPAIRS - repairsUsed}/
+              Ömür: {lifeDays} / {lifeCap} gün · Tamir hakkı: {MAX_REPAIRS - repairsUsed}/
               {MAX_REPAIRS}
             </span>
             <div className="market-listing-life-bar">
               <div
                 className="market-listing-life-fill"
-                style={{ width: `${Math.round(Math.max(0, Math.min(1, lifeDays / INITIAL_LIFE_DAYS)) * 100)}%` }}
+                style={{ width: `${Math.round(Math.max(0, Math.min(1, lifeDays / lifeCap)) * 100)}%` }}
               />
             </div>
           </div>

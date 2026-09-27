@@ -204,6 +204,10 @@ export const migrateVehicleWeaponLifeCap = () =>
 export const migrateVehicleWeaponLifeCap20 = () =>
   httpsCallable(functions, 'migrateVehicleWeaponLifeCap20')();
 
+// v58: silah ömür tavanı 20 → 10 (tek seferlik, sunucuda bayrakla korunur)
+export const migrateWeaponLifeCap10 = () =>
+  httpsCallable(functions, 'migrateWeaponLifeCap10')();
+
 // --- Faz 5: Şüphe Yönetimi ve Soygun ---
 
 export const prayAtMosque = () => httpsCallable(functions, 'prayAtMosque')();
