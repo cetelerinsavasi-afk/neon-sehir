@@ -322,8 +322,10 @@
    butonları — her biri kare, üstünde sahip olunan makine sayısı yazıyor. */
 .factory-machine-category-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  /* v57: minmax(0, 1fr) — uzun makine adları sütunu içeriği kadar
+     genişletip dar ekranlarda (ör. iPhone 13, 390px) yatay kaymaya yol açmasın */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
   margin-top: 10px;
 }
 
@@ -334,6 +336,8 @@
   justify-content: center;
   gap: 4px;
   aspect-ratio: 1;
+  min-width: 0;
+  padding: 6px 4px;
   border-radius: 14px;
   border: 1px solid var(--panel-border);
   background: #05070c;
@@ -356,9 +360,13 @@
 }
 
 .factory-machine-category-label {
+  max-width: 100%;
   font-size: 12px;
   font-weight: 700;
+  line-height: 1.2;
   text-align: center;
+  overflow-wrap: anywhere;
+  hyphens: auto;
 }
 
 /* --- Owner screen --- */

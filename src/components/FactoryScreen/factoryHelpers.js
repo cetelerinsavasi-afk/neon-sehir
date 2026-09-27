@@ -66,3 +66,51 @@ export function computeFactoryValue(machines, cryptoPrice) {
   value += miningFleetValue(miningCount, cryptoPrice);
   return value;
 }
+
+// ---------------------------------------------------------------------------
+// v57 — Fabrikalar listesi: değere göre sıralama + 30 gün hareketsizleri gizleme
+// ---------------------------------------------------------------------------
+// "Hareket": bir işçinin ya da patronun kendisinin üretim yapması (maaş da
+// bununla ödenir → makinenin lastProducedDateKey'i), patronun "Makineleri
+// Çalıştır"ı (ownerTriggeredDateKey) ya da mining'i başlatması
+// (miningTriggeredDateKey). Yeni kurulan fabrika kurulduğu günden itibaren
+// 30 gün hareketli sayılır. Veriler zaten makine belgelerinde duruyor;
+// sunucuya yeni alan eklenmedi. Biri tekrar çalışınca fabrika kendiliğinden
+// listeye döner.
+export const FACTORY_INACTIVE_DAYS = 30;
+const DATE_KEY_FMT = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/Istanbul',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+export function istanbulDateKeyOf(ms) {
+  return DATE_KEY_FMT.format(new Date(ms));
+}
+function tsToMs(ts) {
+  if (!ts) return 0;
+  if (typeof ts.toMillis === 'function') return ts.toMillis();
+  if (typeof ts.seconds === 'number') return ts.seconds * 1000;
+  if (typeof ts === 'number') return ts;
+  return 0;
+}
+export function factoryLastActivityKey(f) {
+  let last = '';
+  const created = tsToMs(f?.createdAt);
+  if (created) last = istanbulDateKeyOf(created);
+  for (const m of f?.machines || []) {
+    for (const k of [m.lastProducedDateKey, m.ownerTriggeredDateKey, m.miningTriggeredDateKey]) {
+      if (typeof k === 'string' && k > last) last = k;
+    }
+  }
+  return last || null;
+}
+// keepIds: izleyenin kendi fabrikası gibi her zaman görünmesi gerekenler
+export function rankFactoriesForList(factories, cryptoPrice, { nowMs = Date.now(), keepIds = [] } = {}) {
+  const cutoff = istanbulDateKeyOf(nowMs - FACTORY_INACTIVE_DAYS * 86400000);
+  return (factories || [])
+    .filter((f) => keepIds.includes(f.id) || (factoryLastActivityKey(f) || '') > cutoff)
+    .map((f) => ({ f, value: computeFactoryValue(f.machines, cryptoPrice) }))
+    .sort((a, b) => b.value - a.value || b.f.openSlots - a.f.openSlots)
+    .map(({ f, value }) => ({ ...f, value }));
+}

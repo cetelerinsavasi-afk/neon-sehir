@@ -29,7 +29,7 @@ import FactoryShareSellModal from './FactoryShareSellModal';
 import FactoryShareBuyModal from './FactoryShareBuyModal';
 import FactorySponsorModal from './FactorySponsorModal';
 import NotificationBell from '../NotificationBell/NotificationBell';
-import { factoryDisplayName, computeFactoryValue } from './factoryHelpers';
+import { factoryDisplayName, computeFactoryValue, rankFactoriesForList } from './factoryHelpers';
 import './FactoryScreen.css';
 
 const FACTORY_CREATE_COST = 100000;
@@ -208,8 +208,10 @@ function BuyMachineModal({ onClose, ownedMiningCount }) {
 // işten ayrılmadan/rekabeti görmek için kullanır.
 // ---------------------------------------------------------------------------
 function BrowseFactoriesModal({ onClose, onJoin, joinBusy, myUid, canJoin }) {
-  const { factories } = useOpenFactories();
+  const { factories: allFactories } = useOpenFactories();
   const { prices } = useInvestmentPrices();
+  // v57: değere göre sıralı; 30 gündür hareketsiz fabrikalar gizli (kendi fabrikan hep görünür)
+  const factories = rankFactoriesForList(allFactories, prices.cryptoPrice, { keepIds: [myUid] });
   // DÜZELTME (madde 3): "hisse alma butonunu göremiyorum" — bu sorgu
   // collectionGroup('shares') üzerinde çalışıyor ve Firestore indeksi
   // deploy edilmemişse SESSİZCE boş dönüyordu (sadece console.error), bu
@@ -228,7 +230,11 @@ function BrowseFactoriesModal({ onClose, onJoin, joinBusy, myUid, canJoin }) {
           </button>
         </div>
         <div className="factory-browse-list">
-          {factories.length === 0 && <p className="factory-hint">Henüz kurulmuş bir fabrika yok.</p>}
+          {factories.length === 0 && (
+            <p className="factory-hint">
+              {allFactories.length === 0 ? 'Henüz kurulmuş bir fabrika yok.' : 'Şu an listede aktif fabrika yok.'}
+            </p>
+          )}
           {factories.map((f) => (
             <div key={f.id} className="factory-browse-card">
               <div className="factory-browse-top">
@@ -242,7 +248,7 @@ function BrowseFactoriesModal({ onClose, onJoin, joinBusy, myUid, canJoin }) {
               </div>
               <p className="factory-browse-value">
                 Fabrika değeri:{' '}
-                <strong>{computeFactoryValue(f.machines, prices.cryptoPrice).toLocaleString('tr-TR')} altın</strong>
+                <strong>{f.value.toLocaleString('tr-TR')} altın</strong>
               </p>
               <p className="factory-browse-meta">
                 {f.machineCount} makine ·{' '}
@@ -785,7 +791,9 @@ function OwnerView({ factory, machines, player, myUid }) {
                 >
                   <span className="factory-machine-category-count">{count} adet</span>
                   <span className="factory-machine-category-emoji">{MACHINE_EMOJI[type]}</span>
-                  <span className="factory-machine-category-label">{MACHINE_LABELS[type]}</span>
+                  <span className="factory-machine-category-label">
+                    {MACHINE_LABELS[type].replace(/ Makinesi$/, '')}
+                  </span>
                 </button>
               );
             })}
@@ -1136,8 +1144,10 @@ function WorkerView({ player, myUid }) {
 // Fabrika seçmemiş/çalışmayan oyuncu — gezinme ekranı
 // ---------------------------------------------------------------------------
 function BrowseView({ myUid }) {
-  const { factories } = useOpenFactories();
+  const { factories: allFactories } = useOpenFactories();
   const { prices } = useInvestmentPrices();
+  // v57: değere göre sıralı; 30 gündür hareketsiz fabrikalar gizli (kendi fabrikan hep görünür)
+  const factories = rankFactoriesForList(allFactories, prices.cryptoPrice, { keepIds: [myUid] });
   const { byFactoryId, error: shareError } = useListedFactoryShares();
   const [showCreate, setShowCreate] = useState(false);
   const [joinBusy, setJoinBusy] = useState(null);
@@ -1165,7 +1175,11 @@ function BrowseView({ myUid }) {
         </button>
       </div>
 
-      {factories.length === 0 && <p className="factory-hint">Henüz kurulmuş bir fabrika yok.</p>}
+      {factories.length === 0 && (
+            <p className="factory-hint">
+              {allFactories.length === 0 ? 'Henüz kurulmuş bir fabrika yok.' : 'Şu an listede aktif fabrika yok.'}
+            </p>
+          )}
       <div className="factory-browse-list">
         {factories.map((f) => (
           <div key={f.id} className="factory-browse-card">
@@ -1180,7 +1194,7 @@ function BrowseView({ myUid }) {
             </div>
             <p className="factory-browse-value">
               Fabrika değeri:{' '}
-              <strong>{computeFactoryValue(f.machines, prices.cryptoPrice).toLocaleString('tr-TR')} altın</strong>
+              <strong>{f.value.toLocaleString('tr-TR')} altın</strong>
             </p>
             <p className="factory-browse-meta">
               {f.machineCount} makine ·{' '}

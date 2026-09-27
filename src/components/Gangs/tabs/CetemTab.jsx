@@ -22,7 +22,7 @@ function MemberSheet({ member, myRank, handover, onClose }) {
   const voteOpen = istHour(useNow(30_000)) < 12;
   const C = {
     respect: { icon: '🎩', title: `${member.name} için saygı göster`, lines: [`✦ +${fmt(GANG_RULES.RESPECT_PRESTIGE)}`], label: 'Saygı göster', act: () => run('giveRespect', { targetId: member.id }, { success: '🎩 Saygı gösterildi' }) },
-    kick: { icon: '🚫', title: `${member.name} çeteden atılsın mı?`, lines: ['Prestiji kalıcı silinir.', '🚪 İsterse hemen geri girebilir, prestiji 0\'dan başlar.'], label: 'At', danger: true, act: () => run('kickMember', { targetId: member.id }, { success: '🚫 Üye atıldı' }) },
+    kick: { icon: '🚫', title: `${member.name} çeteden atılsın mı?`, lines: ['Prestiji kalıcı silinir.', '🚪 Bu çeteye 00:00\'a kadar geri giremez; sonra prestiji 0\'dan başlar.'], label: 'At', danger: true, act: () => run('kickMember', { targetId: member.id }, { success: '🚫 Üye atıldı' }) },
     handover: {
       icon: '👑',
       title: `Başkanlığı ${member.name} adlı Sağ Kola devret?`,
