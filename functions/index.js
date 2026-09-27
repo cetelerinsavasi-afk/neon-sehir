@@ -874,6 +874,14 @@ export const cancelPendingPoliceChange = onCall(async (request) => {
 
 // ---------------------------------------------------------------------------
 // createFactory — 100.000 altın, oyuncu başına en fazla 1 fabrika, satılamaz.
+// v56: Başka bir fabrikada çalışan oyuncu da kurabilir. Kurduğu anda o işten
+// otomatik ayrılır (users.employment silinir, eski patronun fabrika
+// bildirimlerine düşer). Adı eski makinede 00:00'a kadar görünmeye devam eder
+// (workerLeftDateKey + factoryWorkerReleases kaydı; makine 00:00'da boşalır —
+// bkz. releaseLeftFactoryWorkers). Aynı gün kendi fabrikasında da
+// çalışabilir: günlük "bugün üretim yaptın" işareti
+// (employmentProducedDateKey) bir kereliğine sıfırlanır. Fabrika kişi başı
+// yalnızca bir kez kurulabildiği için bu en fazla bir kez olur.
 // ---------------------------------------------------------------------------
 export const createFactory = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -886,13 +894,43 @@ export const createFactory = onCall(async (request) => {
     if (factorySnap.exists) {
       throw new HttpsError('failed-precondition', 'Zaten bir fabrikan var.');
     }
-    if (user?.employment) {
-      throw new HttpsError('failed-precondition', 'Fabrika kurmak için önce işinden ayrılmalısın.');
-    }
     if (!user || (user.gold || 0) < FACTORY_CREATE_COST) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
-    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-FACTORY_CREATE_COST) });
+    // Mevcut işten otomatik ayrılma (okuma, yazmalardan önce).
+    const job = user.employment?.factoryId && user.employment?.machineId ? user.employment : null;
+    let oldMachineSnap = null;
+    let oldFactorySnap = null;
+    if (job) {
+      const oldFactoryRef = db.collection('factories').doc(job.factoryId);
+      [oldMachineSnap, oldFactorySnap] = await Promise.all([
+        tx.get(oldFactoryRef.collection('machines').doc(job.machineId)),
+        tx.get(oldFactoryRef),
+      ]);
+    }
+    const userUpdate = { gold: admin.firestore.FieldValue.increment(-FACTORY_CREATE_COST) };
+    if (user.employment) userUpdate.employment = admin.firestore.FieldValue.delete();
+    if (user.employmentProducedDateKey) userUpdate.employmentProducedDateKey = admin.firestore.FieldValue.delete();
+    tx.update(userRef, userUpdate);
+    if (job && oldMachineSnap?.exists && oldMachineSnap.data().workerId === uid) {
+      const leftDateKey = istanbulDateKey();
+      tx.update(oldMachineSnap.ref, { workerLeftDateKey: leftDateKey });
+      tx.set(db.collection(FACTORY_WORKER_RELEASES).doc(`${job.factoryId}_${job.machineId}`), {
+        factoryId: job.factoryId,
+        machineId: job.machineId,
+        workerId: uid,
+        dateKey: leftDateKey,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      if (job.factoryId !== uid && oldFactorySnap?.exists) {
+        sendFactoryNotification(
+          tx,
+          job.factoryId,
+          `${user.displayName || 'Bir işçin'} kendi fabrikasını kurduğu için fabrikandaki işinden ayrıldı. Adı 00:00'a kadar makinede görünür, sonra makine boşalır.`,
+          'worker_left_own_factory'
+        );
+      }
+    }
     tx.set(factoryRef, {
       ownerId: uid,
       ownerName: user.displayName || 'Oyuncu',
@@ -903,6 +941,36 @@ export const createFactory = onCall(async (request) => {
 
   return { ok: true };
 });
+
+// v56 — Kendi fabrikasını kurup ayrılan işçinin eski makinesini 00:00'da
+// boşaltır. Kayıtlar factoryWorkerReleases/{factoryId_machineId} altında
+// (yalnızca sunucu yazar/okur). Makineye bu arada başkası atanmışsa ya da
+// makine silinmişse yalnızca kayıt silinir. Idempotent; dailyReset ve fabrika
+// ekranı açılışı (ensureFactoryMigrationsV38) çağırır.
+const FACTORY_WORKER_RELEASES = 'factoryWorkerReleases';
+async function releaseLeftFactoryWorkers(todayKey = istanbulDateKey()) {
+  const snap = await db.collection(FACTORY_WORKER_RELEASES).where('dateKey', '<', todayKey).limit(300).get();
+  let released = 0;
+  for (const d of snap.docs) {
+    try {
+      await db.runTransaction(async (tx) => {
+        const r = d.data();
+        const machineRef = db.collection('factories').doc(String(r.factoryId)).collection('machines').doc(String(r.machineId));
+        const [relSnap, mSnap] = await Promise.all([tx.get(d.ref), tx.get(machineRef)]);
+        if (!relSnap.exists) return;
+        const m = mSnap.exists ? mSnap.data() : null;
+        if (m && m.workerId === r.workerId && m.workerLeftDateKey) {
+          tx.update(machineRef, { workerId: null, workerName: null, workerLeftDateKey: admin.firestore.FieldValue.delete() });
+          released += 1;
+        }
+        tx.delete(d.ref);
+      });
+    } catch (err) {
+      console.error('releaseLeftFactoryWorkers', d.id, err);
+    }
+  }
+  return released;
+}
 
 // getFactoryValue — bir fabrikanın GÜNCEL parasal değerini sunucu
 // tarafında (Admin SDK ile, canlı kripto fiyatı üzerinden) hesaplar ve
@@ -1193,6 +1261,9 @@ export const reassignEmployee = onCall(async (request) => {
     const to = toSnap.data();
     if (!from.workerId) {
       throw new HttpsError('failed-precondition', 'Bu makinede kimse çalışmıyor.');
+    }
+    if (from.workerLeftDateKey) {
+      throw new HttpsError('failed-precondition', 'Bu işçi kendi fabrikasını kurup ayrıldı; makine 00:00\'da boşalacak.');
     }
     if (from.lastProducedDateKey === dateKey) {
       throw new HttpsError('failed-precondition', 'Bu işçi bugün üretim yaptı, bugün taşınamaz.');
@@ -1772,6 +1843,12 @@ async function runYasakliMachineRetireV38() {
 export const ensureFactoryMigrationsV38 = onCall(async (request) => {
   requireAuth(request);
   const r = await runYasakliMachineRetireV38();
+  // v56: 00:00 çalışmadıysa/geciktiyse ayrılan işçilerin makineleri burada da boşalır.
+  try {
+    await releaseLeftFactoryWorkers();
+  } catch (err) {
+    console.error('ensureFactoryMigrationsV38 releaseLeftFactoryWorkers', err);
+  }
   return { ok: true, ...r };
 });
 
@@ -1884,12 +1961,20 @@ export const fireEmployee = onCall(async (request) => {
     if (!machine.workerId) {
       throw new HttpsError('failed-precondition', 'Bu makinede kimse çalışmıyor.');
     }
+    if (machine.workerLeftDateKey) {
+      throw new HttpsError('failed-precondition', 'Bu işçi kendi fabrikasını kurup ayrıldı; makine 00:00\'da boşalacak.');
+    }
     if (machine.lastProducedDateKey === dateKey) {
       throw new HttpsError('failed-precondition', 'Bu işçi bugün üretim yaptı, bugün çıkaramazsın.');
     }
-    tx.update(db.collection('users').doc(machine.workerId), {
-      employment: admin.firestore.FieldValue.delete(),
-    });
+    // v56: işçinin iş kaydı yalnızca GERÇEKTEN bu makineyi gösteriyorsa silinir
+    // (başka bir işe geçmiş oyuncunun yeni işine dokunulmaz).
+    const workerRef = db.collection('users').doc(machine.workerId);
+    const workerSnap = await tx.get(workerRef);
+    const emp = workerSnap.data()?.employment;
+    if (emp && emp.factoryId === uid && emp.machineId === machineId) {
+      tx.update(workerRef, { employment: admin.firestore.FieldValue.delete() });
+    }
     tx.update(machineRef, { workerId: null, workerName: null });
   });
 
@@ -2094,6 +2179,12 @@ export const dailyReset = onSchedule(
       await runYasakliMachineRetireV38();
     } catch (err) {
       console.error('dailyReset yasakli machine retire', err);
+    }
+    // v56: kendi fabrikasını kurup ayrılan işçilerin eski makineleri boşalır.
+    try {
+      await releaseLeftFactoryWorkers(dateKey);
+    } catch (err) {
+      console.error('dailyReset releaseLeftFactoryWorkers', err);
     }
 
     // 0) BORSA BÜLTENİ ANLIK GÖRÜNTÜSÜ (Gazete > Borsa Bülteni) — elmas/

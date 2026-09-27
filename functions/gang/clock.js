@@ -25,6 +25,7 @@ export function createClock(core, actions) {
   function tickCtx(worldId, world, dayKey) {
     const ctx = core.makeCtx(worldId, world, { actorId: 'system' });
     ctx.realNowVirtual = ctx.now;
+    ctx.nightly = true; // v56: 00:00 sonuçlandırması — atılan hemen geri girebilir (bkz. core.applyRemoval)
     ctx.now = midnightMsOf(dayKey);
     ctx.dateKey = dayKey;
     ctx.hour = 0;

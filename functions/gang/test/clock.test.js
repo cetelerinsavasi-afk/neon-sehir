@@ -129,7 +129,7 @@ test('v38 aktiflik: savaş, herhangi bir sohbet ya da ibadet aktif sayılır; 29
   assert.equal(h.get(`gangs/${Solo.gangId}`).status, 'disbanded', 'kimse kalmadı → çete kapandı');
   const msg = Object.values(h.db._dump('gangWorlds/test/inbox/')).find((m) => m.to === lazy && /mesaj yazmadığın ve ibadet etmediğin/.test(m.text));
   assert.ok(msg);
-  // atılan aynı gün tekrar girebilir, prestij 0
+  // aktiflik nedeniyle çıkarılan aynı gün tekrar girebilir (v56 kilidi yalnızca atmalar için), prestij 0
   await h.act(lazy, 'joinGang', { gangId: G.gangId });
   assert.equal(h.member(G.gangId, lazy).prestige, 0);
 });
@@ -143,14 +143,18 @@ test('v38 geçiş: aktiflik kuralı devreye girdiği an herkes için taze başla
   assert.ok(Number(h.raw('gangWorlds/test').activityV38StartMs) > 0);
 });
 
-test('v38: kendi isteğiyle ayrılan 00:00a kadar giremez, atılan hemen girebilir', async () => {
+test('v56: ayrılan da atılan da o çeteye 00:00a kadar giremez; başka çeteye girebilir; ertesi gün girer', async () => {
   const h = await createHarness();
   const G = await setupGang(h, { members: 2 });
+  const O = await setupGang(h, { members: 0, name: 'Öteki' });
   const [leaver, kicked] = G.ids;
   await h.act(leaver, 'leaveGang');
   assert.match((await h.fails(leaver, 'joinGang', { gangId: G.gangId })).message, /00:00/);
   await h.act(G.baba, 'kickMember', { targetId: kicked });
-  await h.act(kicked, 'joinGang', { gangId: G.gangId });
+  assert.match((await h.fails(kicked, 'joinGang', { gangId: G.gangId })).message, /atıldığın çeteye 00:00/);
+  await h.act(kicked, 'joinGang', { gangId: O.gangId }); // başka çete serbest
+  await h.nextDay();
+  await h.act(kicked, 'joinGang', { gangId: G.gangId, confirmLeave: true });
   assert.equal(h.member(G.gangId, kicked).prestige, 0);
 });
 

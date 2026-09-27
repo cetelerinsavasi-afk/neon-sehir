@@ -377,16 +377,24 @@ export function createCore(deps) {
     return plan;
   }
 
+  function isKickReason(reason) {
+    const r = String(reason || '');
+    return r === 'kicked' || r === 'vote_kick' || r === 'devirme_lost' || r.endsWith('_failed');
+  }
+
   function applyRemoval(tx, ctx, plan, reason, { notifyText = null } = {}) {
     const { gangId, memberId, gang, member } = plan;
     if (!member) return { removed: false };
     tx.delete(ctx.ref.member(gangId, memberId)); // prestij kalıcı olarak silinir
     // v34: KENDİ İSTEĞİYLE ayrılan aynı gün içinde (00:00'a kadar) bu çeteye
     // tekrar giremez → çık-gir ile oylama/prestij hileleri engellenir.
-    // v38: ATILAN (oylama, Baba, aktiflik, başarısız devirme/ayaklanma) hemen
-    // tekrar girebilir — prestiji zaten 0'dan başlar.
+    // v56: GÜN İÇİNDE ATILAN da (Baba/Sağ Kol doğrudan atma, erken sonuçlanan
+    // atma/devirme/ayaklanma oylaması) o gün 00:00'a kadar aynı çeteye giremez.
+    // 00:00 sonuçlandırmasında (ctx.nightly) atılan ve aktiflik temizliğiyle
+    // ('inactive') çıkarılan hemen tekrar girebilir.
     const voluntary = String(reason || '').startsWith('left');
-    const msUpdate = { gangId: null, gangRank: null, gangJoinedAtMs: null, gangStint: null, ...(voluntary ? { gangExitDay: { [gangId]: ctx.dateKey } } : {}) };
+    const lockOut = voluntary || (isKickReason(reason) && !ctx.nightly);
+    const msUpdate = { gangId: null, gangRank: null, gangJoinedAtMs: null, gangStint: null, ...(lockOut ? { gangExitDay: { [gangId]: ctx.dateKey } } : {}) };
     if (plan.membership.intelDecisionGangId === gangId) {
       msUpdate.intelDecisionGangId = null;
       msUpdate.intelDecisionDeadline = null;

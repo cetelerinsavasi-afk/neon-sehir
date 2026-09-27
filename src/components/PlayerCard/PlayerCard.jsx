@@ -22,6 +22,17 @@ import './PlayerCard.css';
 const cache = new Map(); // oturum içi kısa önbellek: aynı kişiye tekrar dokununca anında
 const CACHE_MS = 60_000;
 
+// v56: Sunucudan ham "internal" gibi teknik bir kod gelirse oyuncuya anlaşılır
+// bir mesaj göster; asıl hata geliştirici konsoluna yazılır. "internal" çoğu
+// zaman getPlayerCard fonksiyonunun sunucuda (europe-west1) bulunmadığı ya da
+// herkese açık çağrı izninin olmadığı anlamına gelir (bkz. v56 notları).
+function friendlyError(err) {
+  const code = String(err?.code || '').replace(/^functions\//, '');
+  const msg = String(err?.message || '');
+  if (code === 'invalid-argument' || code === 'not-found' || code === 'unauthenticated') return msg || 'Oyuncu bulunamadı.';
+  return 'Oyuncu bilgileri şu an yüklenemedi.';
+}
+
 export default function PlayerCard({ uid, name, avatar, reportItems = [], onClose }) {
   const { user } = useAuth();
   const { isBlocked } = useBlocks();
@@ -30,6 +41,7 @@ export default function PlayerCard({ uid, name, avatar, reportItems = [], onClos
     return c && Date.now() - c.at < CACHE_MS ? c.data : null;
   });
   const [error, setError] = useState('');
+  const [attempt, setAttempt] = useState(0);
   const [moreOpen, setMoreOpen] = useState(false);
   const isSelf = user?.uid === uid;
 
@@ -37,16 +49,20 @@ export default function PlayerCard({ uid, name, avatar, reportItems = [], onClos
     let alive = true;
     const c = cache.get(uid);
     if (c && Date.now() - c.at < CACHE_MS) return undefined;
+    setError('');
     getPlayerCard(uid)
       .then((data) => {
         cache.set(uid, { at: Date.now(), data });
         if (alive) setCard(data);
       })
-      .catch((err) => alive && setError(err?.message || 'Bilgiler yüklenemedi.'));
+      .catch((err) => {
+        console.warn('getPlayerCard hatası', err?.code, err?.message, err?.details);
+        if (alive) setError(friendlyError(err));
+      });
     return () => {
       alive = false;
     };
-  }, [uid]);
+  }, [uid, attempt]);
 
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose();
@@ -82,7 +98,14 @@ export default function PlayerCard({ uid, name, avatar, reportItems = [], onClos
             </div>
     
             {!card && !error && <p className="pc-loading">Yükleniyor…</p>}
-            {error && <p className="pc-error">{error}</p>}
+            {error && (
+              <p className="pc-error">
+                {error}{' '}
+                <button className="pc-retry" onClick={() => setAttempt((n) => n + 1)}>
+                  Tekrar dene
+                </button>
+              </p>
+            )}
             {card && (
               <div className="pc-rows">
                 {card.gang && (

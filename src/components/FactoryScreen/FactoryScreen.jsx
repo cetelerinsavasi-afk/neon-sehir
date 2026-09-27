@@ -77,10 +77,6 @@ function CreateFactoryModal({ onClose, isEmployed }) {
   const types = ['mining', 'tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme'];
 
   const handleCreate = async () => {
-    if (isEmployed) {
-      setError('Fabrika kurmak için önce işinden ayrılmalısın.');
-      return;
-    }
     setBusy(true);
     setError(null);
     try {
@@ -107,6 +103,12 @@ function CreateFactoryModal({ onClose, isEmployed }) {
           oyuncu sadece 1 kez fabrika kurabilir, fabrika satılamaz. Kurduktan sonra istediğin
           kadar makine alabilirsin.
         </p>
+        {isEmployed && (
+          <p className="factory-hint">
+            Şu an bir fabrikada çalışıyorsun. Fabrikanı kurduğun anda o işten otomatik ayrılırsın
+            ve bugün kendi fabrikanda da çalışabilirsin.
+          </p>
+        )}
 
         <p className="factory-step-label">Fabrikanda Alabileceğin Makineler</p>
         <div className="factory-machine-list">
@@ -454,8 +456,10 @@ function ManagementModal({ factory, machines, onClose }) {
         <div className="factory-employee-list">
           {employees.map((m) => {
             const producedToday = m.lastProducedDateKey === dateKey;
+            // v56: kendi fabrikasını kurup ayrılan işçi — adı 00:00'a kadar görünür
+            const leftForOwn = Boolean(m.workerLeftDateKey);
             const availableTargets = openMachines.filter((om) => om.id !== m.id);
-            const canReassign = !producedToday && availableTargets.length > 0;
+            const canReassign = !leftForOwn && !producedToday && availableTargets.length > 0;
             return (
               <div key={m.id} className="factory-employee-row-wrap">
                 <div className="factory-employee-row">
@@ -465,15 +469,22 @@ function ManagementModal({ factory, machines, onClose }) {
                       {MACHINE_EMOJI[m.type]} {MACHINE_LABELS[m.type]} ·{' '}
                       {producedToday ? `bugün ${m.lastProducedQty} adet üretti` : 'bugün henüz üretmedi'}
                     </span>
+                    {leftForOwn && (
+                      <span className="factory-employee-meta">
+                        🏭 Kendi fabrikasını kurdu · makine 00:00'da boşalacak
+                      </span>
+                    )}
                   </div>
-                  <button
-                    className="factory-fire-btn"
-                    disabled={producedToday || fireBusy === m.id}
-                    onClick={() => handleFire(m.id)}
-                    title={producedToday ? 'Bugün üretim yaptı, işten atamazsın' : 'İşten at'}
-                  >
-                    {fireBusy === m.id ? '…' : 'İşten At'}
-                  </button>
+                  {!leftForOwn && (
+                    <button
+                      className="factory-fire-btn"
+                      disabled={producedToday || fireBusy === m.id}
+                      onClick={() => handleFire(m.id)}
+                      title={producedToday ? 'Bugün üretim yaptı, işten atamazsın' : 'İşten at'}
+                    >
+                      {fireBusy === m.id ? '…' : 'İşten At'}
+                    </button>
+                  )}
                 </div>
                 {canReassign && (
                   <div className="factory-reassign-row">

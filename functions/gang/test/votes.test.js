@@ -99,6 +99,8 @@ test('ayaklanma: %66dan fazla gerekir; başarılıysa Baba görevden alınır; b
   await h.nextDay();
   assert.equal(h.member(G.gangId, rebel), undefined, 'başlatan atıldı');
   assert.equal(h.get(`gangs/${G.gangId}`).babaId, s2);
+  await h.act(rebel, 'joinGang', { gangId: G.gangId }); // v56: 00:00'da çıkarılan hemen sıfırdan girebilir
+  assert.equal(h.member(G.gangId, rebel).prestige, 0);
   assert.ok(h.chat(G.gangId).some((m) => /Ayaklanma başarısız .*çeteden çıkarıldı/.test(m)));
 });
 
@@ -134,6 +136,10 @@ test('çıkarma oylaması geçer → hedef atılır; oy kullanmayan sayılmaz; 0
   assert.equal(h.member(G.gangId, target), undefined);
   const late = await h.fails(G.ids[1], 'castVote', { voteId: v.id, choice: 'no' });
   assert.match(late.message, /kapandı/);
+  // v56: 00:00'da sonuçlanan oylamayla atılan hemen sıfırdan girebilir
+  await h.act(target, 'joinGang', { gangId: G.gangId });
+  assert.equal(h.member(G.gangId, target).rank, 'comez');
+  assert.equal(h.member(G.gangId, target).prestige, 0);
 });
 
 test('çıkarma oylaması yetkileri: Sağ Kol → Kıdemli/Tetikçi, Kıdemli → Tetikçi/Çömez; 1-1 (%50) geçmez', async () => {
@@ -320,9 +326,14 @@ test('v52: çıkarma — kalan herkes Hayır dese bile geçiyorsa oylama anında
   assert.equal(h.member(G.gangId, s1), undefined, 'hedef gece beklemeden çıkarıldı');
   assert.ok(h.chat(G.gangId).some((m) => /erken bitti/.test(m)), 'duyuruda erken bittiği yazar');
   await h.fails(G.ids[4], 'castVote', { voteId, choice: 'no' }); // oylama kapandı
+  // v56: gün içinde erken atılan o gün 00:00'a kadar aynı çeteye giremez
+  assert.match((await h.fails(s1, 'joinGang', { gangId: G.gangId })).message, /atıldığın çeteye 00:00/);
   // aynı gece 00:00'da tekrar sonuçlanmaz
   await h.nextDay();
   assert.equal(h.get(`gangs/${G.gangId}/votes/${voteId}`).resolvedAtMs, vote.resolvedAtMs);
+  // 00:00'dan sonra sıfırdan girebilir
+  await h.act(s1, 'joinGang', { gangId: G.gangId });
+  assert.equal(h.member(G.gangId, s1).prestige, 0);
 });
 
 test('v52: kalan herkes Evet dese bile geçmiyorsa oylama anında reddedilir; hedefin Çömez yetkisi hemen kalkar', async () => {
