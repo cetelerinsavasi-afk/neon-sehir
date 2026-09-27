@@ -42,6 +42,7 @@ export const ACTION_LABELS = {
   unban: '🟢 Ban kaldırıldı',
   ban_expired: '⏱️ Ban süresi doldu',
   set_role: '🎖️ Rol değişti',
+  shop_credit: '💰 Mağaza paketi yüklendi',
 };
 
 export const MUTE_OPTIONS = [

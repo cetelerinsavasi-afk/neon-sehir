@@ -59,6 +59,11 @@ const adminPanel = createAdminPanel({
   bootstrapAdminUids: ADMIN_UIDS,
   reportTargets: REPORT_TARGETS,
   banUntilMs: MODERATION.BAN_UNTIL_MS,
+  // v59: Altın Mağazası sipariş telafisi (yalnızca yönetici)
+  shop: {
+    getOrder: (orderId) => getShopierOrderSummary(orderId),
+    creditMissing: (args) => creditMissingShopierPackage(args),
+  },
 });
 export const adminAction = adminPanel.adminAction;
 
@@ -18707,6 +18712,53 @@ const SHOPIER_PRODUCT_TO_PACKAGE = {
   '49730517': 'paket2',
 };
 
+// v59 — ÇOK ÜRÜNLÜ SİPARİŞ DÜZELTMESİ: oyuncu iki paketi aynı sepette alınca
+// Shopier TEK bildirim gönderiyor; `productid` yalnızca bir ürünü gösteriyor,
+// tüm ürünler `productlist`te. Eskiden yalnızca productid okunduğu için
+// ikinci paket yüklenmiyordu (ör. sipariş 277575017: 130 TL, yalnızca paket1).
+// parseShopierPackages — bildirimdeki paketleri çıkarır. productlist'in
+// biçimi (virgüllü metin / JSON dizi / nesne dizisi) değişse de çalışsın diye
+// esnek okunur; bilinen ürün ID'lerinin HER geçişi bir paket sayılır.
+// Paketlerin toplamı ödenen tutarla tutmuyorsa (`consistent:false`) bulunan
+// paketler yine yüklenir ama sipariş elle kontrol için işaretlenir — tahminle
+// fazladan altın basılmaz.
+function shopierProductIdsFrom(value) {
+  if (value == null || value === '') return [];
+  if (Array.isArray(value)) {
+    const out = [];
+    for (const item of value) {
+      if (item && typeof item === 'object') {
+        const id = item.productid ?? item.product_id ?? item.productId ?? item.id;
+        const qty = Math.max(1, Math.min(20, Math.floor(Number(item.quantity ?? item.qty ?? item.count ?? 1)) || 1));
+        for (let i = 0; i < qty; i++) out.push(String(id));
+      } else {
+        out.push(...shopierProductIdsFrom(item));
+      }
+    }
+    return out;
+  }
+  if (typeof value === 'object') return shopierProductIdsFrom(Object.values(value));
+  const str = String(value).trim();
+  if (str.startsWith('[') || str.startsWith('{')) {
+    try {
+      return shopierProductIdsFrom(JSON.parse(str));
+    } catch {
+      /* düz metin gibi oku */
+    }
+  }
+  return str.match(/\d{5,}/g) || [];
+}
+function parseShopierPackages(order) {
+  const fromList = shopierProductIdsFrom(order?.productlist).filter((id) => SHOPIER_PRODUCT_TO_PACKAGE[id]);
+  const single = SHOPIER_PRODUCT_TO_PACKAGE[String(order?.productid ?? '')] ? [String(order.productid)] : [];
+  const ids = fromList.length > 0 ? fromList.slice(0, 20) : single;
+  const packageIds = ids.map((id) => SHOPIER_PRODUCT_TO_PACKAGE[id]);
+  const expected = packageIds.reduce((sum, id) => sum + GOLD_STORE_PACKAGES[id].priceTRY, 0);
+  const paid = Number(String(order?.price ?? '').replace(',', '.'));
+  const consistent = !Number.isFinite(paid) || paid <= 0 || Math.abs(paid - expected) < 0.01;
+  return { packageIds, expectedTRY: expected, paidTRY: Number.isFinite(paid) ? paid : null, consistent };
+}
+
 const REDEMPTION_CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // 0/O, 1/I/L gibi karışabilecek karakterler çıkarıldı
 function generateRedemptionCode() {
   let code = '';
@@ -18752,39 +18804,128 @@ export const getMyRedemptionCode = onCall(async (request) => {
 });
 
 // creditGoldStorePackage — bir paketin altın/eşyalarını bir kullanıcıya
-// basar. Hem shopierOsbWebhook (otomatik) hem de elle telafi durumları
-// için ortak.
-async function creditGoldStorePackage(uid, packageId, meta = {}) {
+// basar (transaction içine yazar). v59: sipariş belgesiyle AYNI transaction'da
+// çalışan creditShopierOrder / creditMissingShopierPackage tarafından kullanılır.
+function writeGoldStorePackage(tx, uid, packageId) {
   const pack = GOLD_STORE_PACKAGES[packageId];
   if (!pack) throw new Error(`Bilinmeyen paket: ${packageId}`);
-
   const userRef = db.collection('users').doc(uid);
-  await db.runTransaction(async (tx) => {
-    tx.set(userRef, { gold: admin.firestore.FieldValue.increment(pack.gold) }, { merge: true });
-    Object.entries(pack.items).forEach(([materialType, qty]) => {
-      const inventoryRef = userRef.collection('inventory').doc(materialType);
-      tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(qty) }, { merge: true });
-    });
-    const msgRef = userRef.collection('messages').doc();
-    tx.set(msgRef, {
-      from: 'Altın Mağazası',
-      text: `${pack.name} satın alımın tamamlandı — hesabına ${pack.gold.toLocaleString('tr-TR')} altın yüklendi.`,
-      read: false,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+  tx.set(userRef, { gold: admin.firestore.FieldValue.increment(pack.gold) }, { merge: true });
+  Object.entries(pack.items).forEach(([materialType, qty]) => {
+    const inventoryRef = userRef.collection('inventory').doc(materialType);
+    tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(qty) }, { merge: true });
   });
+  tx.set(userRef.collection('messages').doc(), {
+    from: 'Altın Mağazası',
+    text: `${pack.name} satın alımın tamamlandı — hesabına ${pack.gold.toLocaleString('tr-TR')} altın yüklendi.`,
+    read: false,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+}
 
+// Tek paketlik eski arayüz (adminManualCreditPackage kullanıyor) — davranış aynı.
+async function creditGoldStorePackage(uid, packageId, meta = {}) {
+  if (!GOLD_STORE_PACKAGES[packageId]) throw new Error(`Bilinmeyen paket: ${packageId}`);
+  await db.runTransaction(async (tx) => {
+    writeGoldStorePackage(tx, uid, packageId);
+  });
   if (meta.orderId) {
     await db.collection('shopierOrders').doc(String(meta.orderId)).set(
+      { uid, packageId, creditedPackages: [packageId], creditedAt: admin.firestore.FieldValue.serverTimestamp(), ...meta },
+      { merge: true }
+    );
+  }
+}
+
+// v59 — creditShopierOrder: bir siparişin TÜM paketlerini tek transaction'da
+// yükler. Sipariş belgesi aynı transaction'da okunur → Shopier bildirimi
+// tekrar gelse (retry) ya da iki kez aynı anda gelse bile iki kez yüklenmez.
+async function creditShopierOrder(uid, orderId, packageIds, meta = {}) {
+  const orderRef = db.collection('shopierOrders').doc(String(orderId));
+  let credited = false;
+  await db.runTransaction(async (tx) => {
+    credited = false;
+    const snap = await tx.get(orderRef);
+    if (snap.exists && snap.data().creditedAt) return;
+    for (const packageId of packageIds) writeGoldStorePackage(tx, uid, packageId);
+    tx.set(
+      orderRef,
       {
         uid,
-        packageId,
+        packageId: packageIds[0], // eski alan (tek paket) — geriye dönük uyum
+        creditedPackages: packageIds,
         creditedAt: admin.firestore.FieldValue.serverTimestamp(),
         ...meta,
       },
       { merge: true }
     );
-  }
+    credited = true;
+  });
+  return { credited };
+}
+
+// v59 — creditMissingShopierPackage: eksik yüklenmiş bir siparişi Yönetim
+// Paneli'nden telafi eder (yalnızca yönetici). Kural: siparişe yüklenen
+// paketlerin toplam fiyatı ÖDENEN TUTARI AŞAMAZ → aynı eksik paket iki kez
+// yüklenemez. Eski siparişlerde creditedPackages yoksa packageId esas alınır.
+function creditedPackagesOf(order) {
+  if (Array.isArray(order?.creditedPackages)) return order.creditedPackages;
+  return order?.packageId ? [order.packageId] : [];
+}
+function shopierOrderSummary(orderId, order) {
+  const credited = creditedPackagesOf(order);
+  const creditedTRY = credited.reduce((sum, id) => sum + (GOLD_STORE_PACKAGES[id]?.priceTRY || 0), 0);
+  const paid = Number(String(order?.price ?? '').replace(',', '.'));
+  const paidTRY = Number.isFinite(paid) ? paid : null;
+  const remainingTRY = paidTRY == null ? null : Math.max(0, paidTRY - creditedTRY);
+  return {
+    orderId: String(orderId),
+    uid: order?.uid || null,
+    email: order?.email || null,
+    paidTRY,
+    creditedPackages: credited,
+    creditedTRY,
+    remainingTRY,
+    creditable: Object.values(GOLD_STORE_PACKAGES)
+      .filter((p) => remainingTRY != null && order?.uid && p.priceTRY <= remainingTRY)
+      .map((p) => ({ id: p.id, name: p.name, priceTRY: p.priceTRY, gold: p.gold })),
+    needsReview: Boolean(order?.needsReview),
+  };
+}
+async function getShopierOrderSummary(orderId) {
+  const snap = await db.collection('shopierOrders').doc(String(orderId)).get();
+  if (!snap.exists) return null;
+  return shopierOrderSummary(orderId, snap.data());
+}
+async function creditMissingShopierPackage({ orderId, packageId, actorUid }) {
+  const pack = GOLD_STORE_PACKAGES[packageId];
+  if (!pack) throw new HttpsError('invalid-argument', 'Geçersiz paket.');
+  const orderRef = db.collection('shopierOrders').doc(String(orderId));
+  let summary = null;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(orderRef);
+    if (!snap.exists) throw new HttpsError('not-found', 'Bu numarayla yüklenmiş bir sipariş yok.');
+    const order = snap.data();
+    if (!order.uid) throw new HttpsError('failed-precondition', 'Siparişin oyuncusu belli değil.');
+    const s0 = shopierOrderSummary(orderId, order);
+    if (s0.paidTRY == null) throw new HttpsError('failed-precondition', 'Siparişin tutarı kayıtlı değil; elle kontrol et.');
+    if (pack.priceTRY > s0.remainingTRY) {
+      throw new HttpsError('failed-precondition', `Bu siparişin tutarı (${s0.paidTRY} TL) zaten karşılanmış; ${pack.name} yüklenemez.`);
+    }
+    writeGoldStorePackage(tx, order.uid, packageId);
+    const nextCredited = [...s0.creditedPackages, packageId];
+    tx.set(
+      orderRef,
+      {
+        creditedPackages: nextCredited,
+        manualCredits: admin.firestore.FieldValue.arrayUnion({ packageId, byUid: actorUid, atMs: Date.now() }),
+        needsReview: false,
+      },
+      { merge: true }
+    );
+    summary = shopierOrderSummary(orderId, { ...order, creditedPackages: nextCredited, needsReview: false });
+  });
+  return summary;
 }
 
 // shopierOsbWebhook — Shopier'in "Otomatik Sipariş Bildirimi" (OSB)
@@ -18884,7 +19025,9 @@ export const shopierOsbWebhook = onRequest(
         return;
       }
 
-      const packageId = SHOPIER_PRODUCT_TO_PACKAGE[String(productid)];
+      // v59: sepetteki TÜM paketler (bkz. parseShopierPackages)
+      const parsed = parseShopierPackages(order);
+      const packageId = parsed.packageIds[0] || null;
       const orderRef = db.collection('shopierOrders').doc(String(orderid || `unknown_${Date.now()}`));
       const orderSnap = await orderRef.get();
       if (orderSnap.exists && orderSnap.data().creditedAt) {
@@ -18950,6 +19093,7 @@ export const shopierOsbWebhook = onRequest(
           orderid: orderid || null,
           productid: productid || null,
           packageId,
+          packageIds: parsed.packageIds, // v59
           price: price || null,
           email: email || null,
           customernote: customernote || null,
@@ -18959,13 +19103,31 @@ export const shopierOsbWebhook = onRequest(
         return;
       }
 
-      await creditGoldStorePackage(uid, packageId, {
+      await creditShopierOrder(uid, orderid || orderRef.id, parsed.packageIds, {
         orderId: orderid || null,
         productid: productid || null,
         price: price || null,
         email: email || null,
         matchedBy,
+        // tanı için ham alanlar (biçim değişirse görülebilsin)
+        productcount: order.productcount ?? null,
+        productlist: typeof order.productlist === 'string' ? order.productlist.slice(0, 500) : JSON.stringify(order.productlist ?? null).slice(0, 500),
+        expectedTRY: parsed.expectedTRY,
+        needsReview: !parsed.consistent,
       });
+      if (!parsed.consistent) {
+        console.error('shopierOsbWebhook: paket toplamı ödenen tutarla tutmuyor — elle kontrol', orderid, parsed);
+        await db.collection('shopierUnmatchedOrders').doc(String(orderid || Date.now())).set({
+          reason: 'price-mismatch',
+          orderid: orderid || null,
+          uid,
+          creditedPackages: parsed.packageIds,
+          expectedTRY: parsed.expectedTRY,
+          price: price || null,
+          email: email || null,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
 
       res.status(200).send('success');
     } catch (err) {

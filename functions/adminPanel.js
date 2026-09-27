@@ -78,7 +78,7 @@ const nameKeyOfGang = (name) => name.toLocaleLowerCase('tr-TR').replace(/\s+/g, 
 const fmtUntil = (ms) => new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', dateStyle: 'short', timeStyle: 'short' }).format(new Date(ms));
 
 // deps: { db, auth, FieldValue, HttpsError, requireAuth, onCall, bootstrapAdminUids, reportTargets, banUntilMs, now? }
-export function createAdminPanel({ db, auth, FieldValue, HttpsError, requireAuth, onCall, bootstrapAdminUids = [], reportTargets, banUntilMs, now = () => Date.now() }) {
+export function createAdminPanel({ db, auth, FieldValue, HttpsError, requireAuth, onCall, bootstrapAdminUids = [], reportTargets, banUntilMs, now = () => Date.now(), shop = null }) {
   const fail = (code, msg) => {
     throw new HttpsError(code, msg);
   };
@@ -600,6 +600,39 @@ export function createAdminPanel({ db, auth, FieldValue, HttpsError, requireAuth
     return { logs, nextBeforeMs: logs.length === ADMIN_LIMITS.LOG_PAGE ? logs[logs.length - 1].atMs : null };
   }
 
+  // ---- v59: Altın Mağazası sipariş telafisi (yalnızca yönetici) -----------------
+  // Eksik yüklenen Shopier siparişini tamamlar. Asıl kural sunucuda
+  // (functions/index.js creditMissingShopierPackage): yüklenen paketlerin
+  // toplamı ödenen tutarı aşamaz → aynı eksik paket iki kez yüklenemez.
+  const cleanOrderId = (v) => {
+    const id = String(v ?? '').trim();
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) fail('invalid-argument', 'Geçersiz sipariş numarası.');
+    return id;
+  };
+  async function withPlayerName(summary) {
+    if (!summary) return null;
+    let playerName = null;
+    if (summary.uid && isUid(summary.uid)) {
+      const u = await userRef(summary.uid).get();
+      playerName = u.exists ? u.data()?.displayName || DEFAULT_PLAYER_NAME : null;
+    }
+    return { ...summary, playerName };
+  }
+  async function getShopOrder(actor, p) {
+    if (!shop) fail('failed-precondition', 'Mağaza modülü bağlı değil.');
+    const order = await withPlayerName(await shop.getOrder(cleanOrderId(p.orderId)));
+    if (!order) fail('not-found', 'Bu numarayla yüklenmiş bir sipariş bulunamadı (shopierUnmatchedOrders\'a bak).');
+    return { order };
+  }
+  async function creditShopOrder(actor, p) {
+    if (!shop) fail('failed-precondition', 'Mağaza modülü bağlı değil.');
+    const orderId = cleanOrderId(p.orderId);
+    const packageId = String(p.packageId || '');
+    const order = await withPlayerName(await shop.creditMissing({ orderId, packageId, actorUid: actor.uid }));
+    await writeLog(actor, 'shop_credit', { targetUid: order?.uid || null, targetName: order?.playerName || null, reason: clip(p.reason, ADMIN_LIMITS.REASON_MAX) || 'Eksik yüklenen paket', details: { orderId, packageId, paidTRY: order?.paidTRY ?? null, creditedPackages: order?.creditedPackages || [] } });
+    return { ok: true, order };
+  }
+
   // ---- Yönlendirici -------------------------------------------------------------
   // minRole: bu eylemi çağırabilecek en düşük rol
   const ACTIONS = {
@@ -617,6 +650,8 @@ export function createAdminPanel({ db, auth, FieldValue, HttpsError, requireAuth
     unbanUser: { minRole: 'admin', run: unbanUser },
     setRole: { minRole: 'admin', run: setRole },
     listStaff: { minRole: 'admin', run: listStaff },
+    getShopOrder: { minRole: 'admin', run: getShopOrder },
+    creditShopOrder: { minRole: 'admin', run: creditShopOrder },
   };
 
   async function handle(uid, data) {

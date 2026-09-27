@@ -4,6 +4,7 @@ import ModerationTab from './ModerationTab';
 import UserManagementTab from './UserManagementTab';
 import AuditLogTab from './AuditLogTab';
 import StaffTab from './StaffTab';
+import ShopTab from './ShopTab';
 import { ROLE_LABELS, errText } from './adminLabels';
 import './AdminPanel.css';
 
@@ -42,7 +43,7 @@ export default function AdminPanel({ onClose }) {
     { id: 'reports', label: '🚩 Şikâyetler' },
     { id: 'users', label: '👤 Oyuncular' },
     { id: 'logs', label: '📜 Geçmiş' },
-    ...(me?.role === 'admin' ? [{ id: 'staff', label: '🎖️ Ekip' }] : []),
+    ...(me?.role === 'admin' ? [{ id: 'staff', label: '🎖️ Ekip' }, { id: 'shop', label: '💰 Mağaza' }] : []),
   ];
 
   return (
@@ -82,6 +83,7 @@ export default function AdminPanel({ onClose }) {
               {tab === 'users' && <UserManagementTab me={me} focusUid={focusUid} onFocusUid={setFocusUid} />}
               {tab === 'logs' && <AuditLogTab onOpenUser={openUser} />}
               {tab === 'staff' && <StaffTab me={me} onOpenUser={openUser} />}
+              {tab === 'shop' && <ShopTab onOpenUser={openUser} />}
             </div>
           </>
         )}
