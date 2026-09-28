@@ -5,7 +5,27 @@
   transform: translateX(-50%);
   z-index: 20;
   display: flex;
-  gap: 16px;
+  gap: 14px;
+}
+
+/* v65: 5 sekme — dar ekranlarda butonlar küçülür, çubuk ekrana sığar. */
+@media (max-width: 420px) {
+  .bottom-bar {
+    gap: 10px;
+  }
+  .bottom-bar .bottom-bar-btn {
+    width: 58px;
+    height: 58px;
+  }
+}
+@media (max-width: 350px) {
+  .bottom-bar {
+    gap: 7px;
+  }
+  .bottom-bar .bottom-bar-btn {
+    width: 52px;
+    height: 52px;
+  }
 }
 
 .bottom-bar-btn {

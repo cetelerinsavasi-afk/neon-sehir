@@ -1,4 +1,4 @@
-import { system, PREVIEW_UID, fakeDb } from './backend.js';
+import { system, PREVIEW_UID, fakeDb, houses } from './backend.js';
 export function getFunctions() {
   return {};
 }
@@ -7,6 +7,7 @@ export function httpsCallable(functions, name) {
     const request = { auth: { uid: PREVIEW_UID }, data };
     try {
       if (name === 'gangAction') return { data: await system.handleAction(request) };
+      if (name === 'houseAction') return { data: await houses.houseAction(request) };
       if (name === 'gangAdmin') return { data: await system.handleAdmin(request) };
       if (name === 'submitFeedback') {
         // önizleme: gerçek sunucu mantığının sadeleştirilmiş taklidi

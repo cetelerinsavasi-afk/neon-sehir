@@ -346,6 +346,54 @@ service cloud.firestore {
       allow delete: if isSelf(uid);
     }
 
+    // ---------------------------------------------------------------------
+    // v65 — 3D EV (functions/houses.js). Şimdilik sadece admin + davetlileri.
+    // houses/{ownerUid}: tasarım + davetliler — sahibi ve davetliler okur,
+    // yazma SADECE sunucudan (houseAction).
+    // ---------------------------------------------------------------------
+    function canSeeHouse(ownerUid) {
+      return isSelf(ownerUid)
+        || (isSignedIn()
+          && exists(/databases/$(database)/documents/houses/$(ownerUid))
+          && request.auth.uid in get(/databases/$(database)/documents/houses/$(ownerUid)).data.get('guestUids', []));
+    }
+    match /houses/{ownerUid} {
+      allow read: if canSeeHouse(ownerUid);
+      allow write: if false;
+      match /chat/{msgId} {
+        allow read: if canSeeHouse(ownerUid);
+        allow write: if false;
+      }
+    }
+    match /houseInvites/{uid} {
+      allow read: if isSelf(uid);
+      allow write: if false;
+    }
+    // housePresence/{uid} — interiorPresence ile aynı güven modeli: ilk kayıt
+    // (ad/avatar/ev) sunucudan; istemci sadece konum/oturma alanlarını günceller.
+    function validHousePresence() {
+      let d = request.resource.data;
+      return d.keys().hasOnly([
+        'houseId', 'displayName', 'avatar', 'x', 'z', 'left', 'seat',
+        'updatedAt', 'enteredAt', 'lastChatMs'
+      ])
+        && d.x is number && d.x >= -20 && d.x <= 20
+        && d.z is number && d.z >= -20 && d.z <= 20
+        && d.left is bool
+        && (d.seat == null || (d.seat is string && d.seat.size() <= 40));
+    }
+    match /housePresence/{uid} {
+      allow read: if isSignedIn();
+      allow create: if false;
+      allow update: if isSelf(uid)
+        && validHousePresence()
+        && request.resource.data.houseId == resource.data.houseId
+        && request.resource.data.avatar == resource.data.avatar
+        && request.resource.data.displayName == resource.data.displayName
+        && request.resource.data.get('lastChatMs', 0) == resource.data.get('lastChatMs', 0);
+      allow delete: if isSelf(uid);
+    }
+
     // usernames/{lowercaseName} — benzersiz oyun içi isim rezervasyonu.
     // Sadece varlık kontrolü için okunabilir; yazma Cloud Functions ile.
     match /usernames/{name} {

@@ -278,7 +278,7 @@ export async function buildDeletionPlan({ db, auth, uid, email, FieldPath, now =
     }
   }
 
-  const byIdCollections = ['trainingProgress', 'flappyScores', 'photoSnapshots', 'parkPresence', 'interiorPresence', 'sixtagramProfiles', 'sixtagramUserLikes', 'heldItems'];
+  const byIdCollections = ['trainingProgress', 'flappyScores', 'photoSnapshots', 'parkPresence', 'interiorPresence', 'sixtagramProfiles', 'sixtagramUserLikes', 'heldItems', 'housePresence', 'houseInvites'];
   const byIdSnaps = await counted(getMany(byIdCollections.map((c) => db.collection(c).doc(uid))));
   for (const s of byIdSnaps) {
     if (s.ref.parent.id === 'sixtagramProfiles' && s.data()?.displayName) names.add(s.data().displayName);

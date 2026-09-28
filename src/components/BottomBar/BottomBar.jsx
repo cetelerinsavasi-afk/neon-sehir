@@ -1,9 +1,9 @@
 import './BottomBar.css';
 
-// Alt çubuk: Çeteler – Soygun – Telefon – Futbol (Profil sekmesi kaldırıldı;
-// profil haritadaki "Ev"den açılır).
+// Alt çubuk: Çeteler – Mekanlar – Telefon – Futbol – Profil.
+// v65: Profil tekrar alt çubukta (en sağda); haritadaki "Ev" artık 3D ev.
 // Telefon rozeti App'te tek dinleyiciyle hesaplanıp buraya verilir (phoneBadge).
-export default function BottomBar({ onPhoneClick, onHeistClick, onGangsClick, onFutbolClick, gangsBadge = false, phoneBadge = 0 }) {
+export default function BottomBar({ onPhoneClick, onHeistClick, onGangsClick, onFutbolClick, onProfileClick, gangsBadge = false, phoneBadge = 0 }) {
   const totalBadge = phoneBadge;
 
   return (
@@ -39,6 +39,12 @@ export default function BottomBar({ onPhoneClick, onHeistClick, onGangsClick, on
             stroke="currentColor"
           />
           <path d="M12 2.5V7.2M4.6 7.4l3.6 2.6M19.4 7.4l-3.6 2.6M6.7 18.5l2.9-4.1M17.3 18.5l-2.9-4.1M2.6 12h4M17.4 12h4" />
+        </svg>
+      </button>
+      <button className="bottom-bar-btn profile" onClick={onProfileClick} aria-label="Profil">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <circle cx="12" cy="8.2" r="4" fill="currentColor" fillOpacity="0.25" />
+          <path d="M4.5 20.5c.8-4 3.9-6.3 7.5-6.3s6.7 2.3 7.5 6.3" strokeLinecap="round" />
         </svg>
       </button>
     </div>

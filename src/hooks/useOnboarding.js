@@ -46,10 +46,10 @@ export const ONBOARDING_TASKS = [
   { step: 14, emoji: '🏦', title: 'Bankadan kredi çek', info: 'Arabanı ipotek ettirerek kredi çekebilirsin.' },
   { step: 15, emoji: '📱', title: "Telefondaki 2. el satış uygulamasından alışveriş yap", info: 'Elindeki ürünleri sat, uygun fiyatlı ürünleri satın al (ilana ürün yüklemek, anında satmak, herhangi bir ürün almak bu görevi tamamlamak için yeterli).' },
   // v32 — listenin sonuna eklenen görevler (kaldığın yerden devam edersin)
-  { step: 16, emoji: '🏠', title: 'Eve git ve avatarını düzenle', info: "Ev'de avatarını düzenleyebilir, adını değiştirebilirsin." },
+  { step: 16, emoji: '👤', title: 'Profile gir ve avatarını düzenle', info: "Alttaki Profil sekmesinden avatarını düzenleyebilir, adını değiştirebilirsin." },
   { step: 17, emoji: '💬', title: 'Telefon > ChatsApp uygulamasına gir ve bi mesaj gönder', info: 'Diğer oyuncularla konuş.' },
   { step: 18, emoji: '🧰', title: 'Telefon > Amazor ya da 2. el satış uygulamasından silah geliştirme malzemesi satın al', info: 'Silahını geliştirmek için ihtiyacın olacak.' },
-  { step: 19, emoji: '🔧', title: 'Eve gir ve silahını geliştir', info: 'Silahını geliştirerek daha büyük soygunlar yapabilirsin.' },
+  { step: 19, emoji: '🔧', title: 'Profile gir ve silahını geliştir', info: 'Profil sekmesinden silahını geliştirerek daha büyük soygunlar yapabilirsin.' },
   { step: 20, emoji: '🏴', title: 'Bi çeteye gir', info: 'Tüm mafya babaları bu yollardan geçti.' },
 ];
 

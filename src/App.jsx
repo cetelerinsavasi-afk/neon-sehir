@@ -14,6 +14,7 @@ import RaceFullScreen from './components/RaceTrackScreen/RaceFullScreen';
 import RaceBubble from './components/RaceTrackScreen/RaceBubble';
 import OnNumaraFullScreen from './components/OnNumaraScreen/OnNumaraFullScreen';
 import ProfileFullScreen from './components/ProfileFullScreen/ProfileFullScreen';
+import HouseGate from './components/HouseScreen/HouseGate';
 import FutbolFullScreen from './components/FutbolScreen/FutbolFullScreen';
 import GangsFullScreen from './components/Gangs/GangsFullScreen';
 import { GangAlertsContext, useGangAlerts } from './components/Gangs/alerts';
@@ -110,6 +111,7 @@ function GameShell() {
   const [raceLobbyMode, setRaceLobbyMode] = useState(null);
   const [activeTableId, setActiveTableId] = useState(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [houseOpen, setHouseOpen] = useState(false);
   const [gangsOpen, setGangsOpen] = useState(false);
   const [futbolOpen, setFutbolOpen] = useState(false);
   const [parkOpen, setParkOpen] = useState(false);
@@ -206,10 +208,11 @@ function GameShell() {
   }, [myActiveRoom?.status]);
 
   const handleRegionClick = (regionId, regionMeta) => {
-    // "Ev" ve "Park" artık ara bir onay ekranı göstermiyor — doğrudan
-    // ilgili tam ekrana giriyor.
+    // v65: "Ev" artık profil DEĞİL — 3D ev (şimdilik sadece admin ve
+    // admin'in davet ettikleri; diğer herkes "Tadilatta" ekranını görür).
+    // Profil alttaki 5. sekmeye (👤) taşındı.
     if (regionMeta?.screen === 'ev') {
-      setProfileOpen(true);
+      setHouseOpen(true);
       return;
     }
     if (regionMeta?.screen === 'park') {
@@ -345,6 +348,7 @@ function GameShell() {
         gangsBadge={gangAlerts.any}
         phoneBadge={unread.totalBadge + chatsAppCount}
         onFutbolClick={() => setFutbolOpen(true)}
+        onProfileClick={() => setProfileOpen(true)}
       />
 
       {/* Yeni istek: "chatsapp ... anasayfada sağ alta yakın bi noktada
@@ -389,6 +393,7 @@ function GameShell() {
         }}
       />
       {profileOpen && <ProfileFullScreen onClose={() => setProfileOpen(false)} />}
+      {houseOpen && <HouseGate onClose={() => setHouseOpen(false)} />}
       {futbolOpen && <FutbolFullScreen onClose={() => setFutbolOpen(false)} />}
       {gangsOpen && (
         <GangAlertsContext.Provider value={gangAlerts}>

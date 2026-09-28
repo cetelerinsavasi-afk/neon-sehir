@@ -15,7 +15,8 @@
     "firebase": "^12.15.0",
     "lucide-react": "^1.28.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "three": "^0.169.0"
   },
   "devDependencies": {
     "@types/react": "^19.2.17",

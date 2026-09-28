@@ -664,3 +664,7 @@ export const socialAction = (action, payload = {}) =>
 // UGC D3 — Yönetim Paneli: tek callable, { action, payload } (bkz. functions/adminPanel.js).
 // Yetki sunucuda kontrol edilir; sonuç doğrudan data olarak döner.
 export const adminAction = (action, payload = {}) => httpsCallable(functions, 'adminAction')({ action, payload }).then((r) => r.data);
+
+// --- Ev (3D ev tasarımı, v65) — tek callable: functions/houses.js ---
+// op: 'enter' | 'save' | 'invite' | 'uninvite' | 'chat'
+export const houseAction = (payload) => httpsCallable(functions, 'houseAction')(payload);

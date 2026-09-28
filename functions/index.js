@@ -12,6 +12,7 @@ import { createAdminPanel } from './adminPanel.js';
 import { createPlayerCard } from './playerCard.js';
 import { createSocial } from './social.js';
 import { createDeletionRequests } from './deletionRequests.js';
+import { createHouses } from './houses.js';
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -121,6 +122,18 @@ const social = createSocial({
   dateKey: () => istanbulDateKey(),
 });
 export const socialAction = social.socialAction;
+
+// v65 — 3D Ev (şimdilik sadece admin + davetlileri). Ayrıntı functions/houses.js
+const houses = createHouses({
+  db,
+  FieldValue: admin.firestore.FieldValue,
+  HttpsError,
+  requireAuth: (request) => requireAuth(request),
+  onCall,
+  isAdmin: (uid) => ADMIN_UIDS.includes(uid),
+  assertCanSpeak: (uid) => moderation.assertCanSpeak(uid),
+});
+export const houseAction = houses.houseAction;
 // Süresi dolan arkadaşlık istekleri (48 sa) ve 7 gündür sessiz sohbetler — saatte bir
 export const socialCleanup = onSchedule({ schedule: 'every 60 minutes' }, async () => {
   const r = await social.cleanup();
@@ -167,7 +180,7 @@ export const adminBanSweep = onSchedule({ schedule: 'every 60 minutes' }, async 
 // yapısı değişmedi: görevleri henüz bitirmemiş oyuncular kaldıkları adımdan
 // devam eder (15'i bitirip "Tamam"a basmamış olan 16'dan devam eder).
 // onboardingRewardClaimed=true olanlar (listeyi bitirmiş) ETKİLENMEZ.
-//   16 · Eve git ve avatarını düzenle (avatarı zaten varsa otomatik geçer)
+//   16 · Profile gir ve avatarını düzenle (avatarı zaten varsa otomatik geçer) — v65: Ev → Profil sekmesi
 //   17 · ChatsApp'ten mesaj gönder
 //   18 · Amazor ya da 2. elden silah geliştirme malzemesi al (1 adet yeter)
 //   19 · Silahını geliştir (2./3. seviye silahı varsa otomatik geçer)
@@ -5886,6 +5899,8 @@ export const expireInteriorPresence = onSchedule({ schedule: 'every 5 minutes' }
   if (!staleSnap.empty) {
     await Promise.all(staleSnap.docs.map((d) => d.ref.delete()));
   }
+  // v65: 3D Ev canlı kayıtları da aynı süpürmeyle temizlenir.
+  await houses.expirePresence(TWO_MIN, admin.firestore.Timestamp).catch((err) => console.error('housePresence süpürme:', err));
 });
 
 // ---------------------------------------------------------------------------
@@ -7529,7 +7544,7 @@ export const setAvatar = onCall(async (request) => {
   }
 
   await db.collection('users').doc(uid).update({ avatar });
-  // Onboarding görev 16 — "eve git ve avatarını düzenle".
+  // Onboarding görev 16 — "profile gir ve avatarını düzenle" (v65).
   await advanceOnboardingStep(uid, 16);
   return { ok: true };
 });
