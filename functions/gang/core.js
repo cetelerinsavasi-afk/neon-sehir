@@ -240,6 +240,11 @@ export function createCore(deps) {
   // sahibine açıktır (Firestore kuralı). Liste, üyelik değişince (katıl/ayrıl/
   // at/saygı…) ve her gece 00:00'da yeniden yazılır.
   // ---------------------------------------------------------------------------
+  // v64: üyenin son saygı gördüğü hafta (eski kayıtlar: RESPECT_LEGACY_WEEK)
+  function respectWeekOf(m) {
+    if (m?.respectWeekKey) return m.respectWeekKey;
+    return m?.respected ? GANG.RESPECT_LEGACY_WEEK : null;
+  }
   function publicMemberView(m) {
     return {
       name: m.name || '',
@@ -247,6 +252,7 @@ export function createCore(deps) {
       avatar: m.avatar || null,
       prestige: Number(m.prestigeAtMidnight ?? m.prestige ?? 0),
       respected: Boolean(m.respected),
+      respectWeekKey: respectWeekOf(m), // v64: istemci "bu hafta saygı gördü mü"yü bununla hesaplar
       inactiveWarn: Boolean(m.inactiveWarn),
       joinedAtMs: Number(m.joinedAtMs || 0),
     };
@@ -605,6 +611,7 @@ export function createCore(deps) {
     requireRank,
     requireIntel,
     intelRankEquiv,
+    respectWeekOf,
     EMPTY_MEMBERSHIP,
     constants: { GANG, INTEL, TRADE_PRODUCTS, RANK_LABELS },
   };

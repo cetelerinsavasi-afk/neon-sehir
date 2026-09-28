@@ -129,3 +129,52 @@ button.nearby-row {
   color: #8a93a8;
   font-size: 20px;
 }
+
+/* v64 — Ismarla */
+.nearby-row-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.nearby-row-wrap .nearby-row {
+  flex: 1;
+  min-width: 0;
+}
+.nearby-gift {
+  flex-shrink: 0;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid #ffd23f;
+  background: rgba(255, 210, 63, 0.14);
+  color: #ffe9a3;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.nearby-gift:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.nearby-gift-msg {
+  margin: 0 0 8px;
+  font-size: 12px;
+  text-align: center;
+  color: #ffe9a3;
+}
+.gift-toast {
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  max-width: calc(100% - 32px);
+  padding: 9px 14px;
+  border-radius: 12px;
+  border: 1px solid #ffd23f;
+  background: rgba(10, 12, 20, 0.92);
+  color: #ffe9a3;
+  font-size: 13px;
+  text-align: center;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}

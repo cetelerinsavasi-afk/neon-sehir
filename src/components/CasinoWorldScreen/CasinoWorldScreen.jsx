@@ -19,6 +19,8 @@ import { buyFromGazinoBar, createSixtagramPost, enterInterior, leaveOnNumaraTabl
 import '../../styles/worldScreenChrome.css';
 import './CasinoWorldScreen.css';
 import NearbyPlayersButton from '../NearbyPlayers/NearbyPlayersButton';
+import { useHeldItem } from '../../hooks/useHeldItem';
+import GiftToast from '../NearbyPlayers/GiftToast';
 
 // --- Gazino içi (madde 15 revizyonu + madde 17 canlı/çok oyunculu) --------
 // Kullanıcının başka bir Claude oturumuna hazırlattığı referans örneğe göre
@@ -47,7 +49,6 @@ const INTERACT_RADIUS = 76;
 // CAMERA_RADIUS — yeni istek (madde 2): yakındaki gerçek oyuncuları da
 // fotoğraf karesine dahil etmek için, Park'takiyle AYNI değer.
 const CAMERA_RADIUS = 170;
-const HOLDING_MS = 120_000; // Park büfesiyle aynı süre (bkz. ParkWorldScreen)
 
 // AVATAR_SCALE (madde 13, ve yeni istek: "genel olarak avatarları ...
 // büyütelim") — bkz. BankWorldScreen'deki aynı gerekçe.
@@ -84,10 +85,11 @@ const BARTENDER_NPC = {
     neckAcc: 'bow', pantsColor: '#0d0d0d', background: 'transparent',
   },
 };
+// v64 fiyatları (sunucudaki GAZINO_BAR_PRICES ile aynı)
 const BAR_MENU = [
-  { id: 'cay', label: 'Çay', price: 20, emoji: '🍵' },
-  { id: 'kahve', label: 'Kahve', price: 50, emoji: '☕' },
-  { id: 'kokteyl', label: 'Kokteyl', price: 500, emoji: '🍸' },
+  { id: 'cay', label: 'Çay', price: 100, emoji: '🍵' },
+  { id: 'kahve', label: 'Kahve', price: 500, emoji: '☕' },
+  { id: 'kokteyl', label: 'Kokteyl', price: 1000, emoji: '🍸' },
 ];
 
 // PIYANGO — sol üstte, referanstaki gibi bar/masaların yanında ayrı bir
@@ -408,6 +410,8 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist }) {
   const { user } = useAuth();
   const { player } = usePlayer();
   const { others, updatePresence, clearPresence } = useInteriorPresence('gazino');
+  // v64: eldeki içecek sunucuda (heldItems) — ısmarlanınca da buradan gelir
+  const { held, gift, clearGift } = useHeldItem('gazino');
 
   const [ready, setReady] = useState(false);
   const [panel, setPanel] = useState(null); // 'slot' | 'piyango' | 'onnumara' | 'bar' | null
@@ -517,6 +521,11 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist }) {
   useEffect(() => () => {
     if (holdingTimeoutRef.current) clearTimeout(holdingTimeoutRef.current);
   }, []);
+
+  // v64: eldeki ürün sunucudaki kayıttan gelir (satın alma, ısmarlanma, süre bitimi)
+  useEffect(() => {
+    holdingRef.current = held?.itemId || null;
+  }, [held?.itemId]);
 
   useEffect(() => {
     if (myBubbles.length === 0) return undefined;
@@ -817,11 +826,7 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist }) {
     setBarError(null);
     try {
       await buyFromGazinoBar(item.id);
-      holdingRef.current = item.id;
-      if (holdingTimeoutRef.current) clearTimeout(holdingTimeoutRef.current);
-      holdingTimeoutRef.current = setTimeout(() => {
-        holdingRef.current = null;
-      }, HOLDING_MS);
+      holdingRef.current = item.id; // sunucu kaydı (useHeldItem) birazdan aynısını getirir; süre orada
     } catch (err) {
       setBarError(err.message || 'Satın alma başarısız.');
     } finally {
@@ -855,6 +860,7 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist }) {
         facing: o.facing || 'down', name: o.displayName || 'Oyuncu',
         bubbleList: (othersBubbleHistoryRef.current.get(o.uid) || []).filter((b) => now - b.ts < CHAT_BUBBLE_MS),
         activity: o.activity || null,
+        holding: o.holding || null, // v64: ısmarlanan/alınan ürün başkalarında da görünsün
         isSelf: false,
       })),
       {
@@ -1002,9 +1008,10 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist }) {
             <button className="ws-chatsapp-btn" onClick={() => { setPhoneInitialApp('chatsapp'); setPhoneOpen(true); }} title="ChatsApp">💬</button>
             <button className="ws-phone-btn" onClick={() => { setPhoneInitialApp(null); setPhoneOpen(true); }} title="Telefon">📱</button>
             <button className="ws-camera-btn" onClick={() => (user ? openCamera() : setShowGuestPrompt(true))} title="Fotoğraf çek">📷</button>
-            <NearbyPlayersButton others={others} collectionName="interiorPresence" variant="ws" />
+            <NearbyPlayersButton others={others} collectionName="interiorPresence" variant="ws" giftVenue="gazino" myHolding={held?.itemId || null} />
           </>
         )}
+        {gift && <GiftToast gift={gift} onDone={clearGift} />}
       </div>
 
       <div className="ws-chat-row">

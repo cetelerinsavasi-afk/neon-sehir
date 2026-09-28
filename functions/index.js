@@ -5892,15 +5892,39 @@ export const expireInteriorPresence = onSchedule({ schedule: 'every 5 minutes' }
 // buyFromBufe — Park'taki büfeden içecek/atıştırmalık satın alma.
 // Ekonomiye dokunduğu (altın harcanıyor) için, tüm diğer satın alma
 // işlemleri gibi bu da Cloud Function üzerinden, transaction'la yapılır.
+// v64: fiyatlar güncellendi (çay 20 · oralet 40 · kahve 100 · sosisli 200 ·
+// tost 300 · latte 500) ve eldeki ürün SUNUCUDA tutulur (heldItems/{uid},
+// 2 dakika) — arkadaşa ısmarlama (giftHeldItem) bu kayda dayanır.
 // ---------------------------------------------------------------------------
 const BUFE_PRICES = {
-  sosisli: 100,
-  tost: 100,
-  cay: 10,
-  kahve: 30,
-  oralet: 20,
+  sosisli: 200,
+  tost: 300,
+  cay: 20,
+  kahve: 100,
+  oralet: 40,
   latte: 500,
 };
+const HELD_ITEM_MS = 120_000; // istemcideki HOLDING_MS ile aynı (2 dakika)
+const HELD_VENUES = { park: { items: BUFE_PRICES }, gazino: {} }; // gazino.items aşağıda atanır
+
+async function buyVenueItem(uid, venue, itemId, price) {
+  const userRef = db.collection('users').doc(uid);
+  const heldRef = db.collection('heldItems').doc(uid);
+  const t = Date.now();
+  await db.runTransaction(async (tx) => {
+    const [userSnap, presSnap] = await Promise.all([tx.get(userRef), tx.get(venuePresenceRef(venue, uid))]);
+    const user = userSnap.data();
+    if (!user || (user.gold || 0) < price) {
+      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    }
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-price) });
+    // Yeni alınan ürün eldekinin yerini alır (eski davranış), süre baştan başlar
+    tx.set(heldRef, { itemId, venue, untilMs: t + HELD_ITEM_MS, boughtAtMs: t });
+    // Diğerleri de görsün (Gazino istemcisi konum kaydına "holding" yazmıyordu)
+    if (presSnap.exists && (venue === 'park' || presSnap.data().locationId === venue)) tx.update(presSnap.ref, { holding: itemId });
+  });
+  return { ok: true, itemId, price, untilMs: t + HELD_ITEM_MS };
+}
 
 export const buyFromBufe = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -5909,31 +5933,19 @@ export const buyFromBufe = onCall(async (request) => {
   if (!price) {
     throw new HttpsError('invalid-argument', 'Geçersiz büfe ürünü.');
   }
-
-  const userRef = db.collection('users').doc(uid);
-  await db.runTransaction(async (tx) => {
-    const userSnap = await tx.get(userRef);
-    const user = userSnap.data();
-    if (!user || (user.gold || 0) < price) {
-      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
-    }
-    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-price) });
-  });
-
-  return { ok: true, itemId, price };
+  return buyVenueItem(uid, 'park', itemId, price);
 });
 
 // ---------------------------------------------------------------------------
 // buyFromGazinoBar — Gazino'daki bardan içecek satın alma. buyFromBufe ile
-// AYNI yapı (transaction'la altın düşme) — tek fark kendi fiyat listesi
-// (Gazino barı Park büfesinden farklı fiyatlandırılıyor, bkz. kullanıcı
-// isteği: çay 20, kahve 50, kokteyl 500).
+// AYNI yapı — tek fark kendi fiyat listesi. v64: çay 100 · kahve 500 · kokteyl 1.000.
 // ---------------------------------------------------------------------------
 const GAZINO_BAR_PRICES = {
-  cay: 20,
-  kahve: 50,
-  kokteyl: 500,
+  cay: 100,
+  kahve: 500,
+  kokteyl: 1000,
 };
+HELD_VENUES.gazino.items = GAZINO_BAR_PRICES;
 
 export const buyFromGazinoBar = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -5942,18 +5954,62 @@ export const buyFromGazinoBar = onCall(async (request) => {
   if (!price) {
     throw new HttpsError('invalid-argument', 'Geçersiz bar ürünü.');
   }
+  return buyVenueItem(uid, 'gazino', itemId, price);
+});
 
-  const userRef = db.collection('users').doc(uid);
+// ---------------------------------------------------------------------------
+// giftHeldItem — v64: elindeki yiyecek/içeceği aynı mekandaki bir oyuncuya
+// ısmarla. Süre SIFIRLANMAZ, kaldığı yerden devam eder. Karşı tarafın elinde
+// başka bir şey varsa ısmarlanamaz. İki taraf da mekânda olmalı (son 2 dk
+// içinde görünen konum kaydı); engelleme varsa ısmarlanamaz.
+// ---------------------------------------------------------------------------
+const VENUE_ITEM_LABELS = { sosisli: 'Sosisli', tost: 'Tost', cay: 'Çay', kahve: 'Kahve', oralet: 'Oralet', latte: 'Latte', kokteyl: 'Kokteyl' };
+function venuePresenceRef(venue, uid) {
+  return venue === 'park' ? db.collection('parkPresence').doc(uid) : db.collection('interiorPresence').doc(uid);
+}
+function presenceActive(snap, venue, nowMs) {
+  if (!snap?.exists) return false;
+  const d = snap.data();
+  if (venue !== 'park' && d.locationId !== venue) return false;
+  const at = d.updatedAt?.toMillis?.() || 0;
+  return nowMs - at < 2 * 60 * 1000;
+}
+
+export const giftHeldItem = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const targetUid = String(request.data?.targetUid || '');
+  const venue = request.data?.venue;
+  if (!HELD_VENUES[venue]) throw new HttpsError('invalid-argument', 'Geçersiz mekan.');
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(targetUid) || targetUid === uid) throw new HttpsError('invalid-argument', 'Geçersiz oyuncu.');
+  const [iBlocked, theyBlocked] = await Promise.all([moderation.isBlockedBy(uid, targetUid), moderation.isBlockedBy(targetUid, uid)]);
+  if (iBlocked || theyBlocked) throw new HttpsError('failed-precondition', 'Bu oyuncuya ısmarlanamıyor.');
+  const myHeldRef = db.collection('heldItems').doc(uid);
+  const theirHeldRef = db.collection('heldItems').doc(targetUid);
+  let result = null;
   await db.runTransaction(async (tx) => {
-    const userSnap = await tx.get(userRef);
-    const user = userSnap.data();
-    if (!user || (user.gold || 0) < price) {
-      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
-    }
-    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-price) });
+    const t = Date.now();
+    const [mine, theirs, myPres, theirPres, meSnap] = await Promise.all([
+      tx.get(myHeldRef),
+      tx.get(theirHeldRef),
+      tx.get(venuePresenceRef(venue, uid)),
+      tx.get(venuePresenceRef(venue, targetUid)),
+      tx.get(db.collection('users').doc(uid)),
+    ]);
+    const h = mine.exists ? mine.data() : null;
+    if (!h || h.venue !== venue || !(Number(h.untilMs) > t)) throw new HttpsError('failed-precondition', 'Elinde ısmarlayacak bir şey yok.');
+    if (!presenceActive(theirPres, venue, t)) throw new HttpsError('failed-precondition', 'Bu oyuncu artık burada değil.');
+    if (!presenceActive(myPres, venue, t)) throw new HttpsError('failed-precondition', 'Ismarlamak için mekânda olmalısın.');
+    const th = theirs.exists ? theirs.data() : null;
+    if (th && Number(th.untilMs) > t) throw new HttpsError('failed-precondition', 'Bu oyuncunun elinde zaten bir şey var.');
+    const fromName = meSnap.data()?.displayName || 'Bir oyuncu';
+    tx.delete(myHeldRef);
+    tx.set(theirHeldRef, { itemId: h.itemId, venue, untilMs: Number(h.untilMs), giftedBy: uid, giftedByName: fromName, giftedAtMs: t });
+    // Diğer oyuncular eldeki ürünü hemen görsün (konum kaydındaki "holding")
+    tx.update(myPres.ref, { holding: null });
+    tx.update(theirPres.ref, { holding: h.itemId });
+    result = { ok: true, itemId: h.itemId, label: VENUE_ITEM_LABELS[h.itemId] || 'ikram', untilMs: Number(h.untilMs) };
   });
-
-  return { ok: true, itemId, price };
+  return result;
 });
 
 // ---------------------------------------------------------------------------

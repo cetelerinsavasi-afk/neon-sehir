@@ -23,6 +23,12 @@ export function weekdayOfKey(dateKey) {
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
 
+// v64: haftanın Pazartesi günü (hafta Pazar'ı Pazartesi'ye bağlayan 00:00'da başlar)
+export function weekKeyOf(dateKey) {
+  const wd = weekdayOfKey(dateKey); // 0 = Pazar
+  return addDays(dateKey, wd === 0 ? -6 : 1 - wd);
+}
+
 export function midnightMsOf(dateKey) {
   const [y, m, d] = dateKey.split('-').map(Number);
   return Date.UTC(y, m - 1, d) - ISTANBUL_OFFSET_MS;

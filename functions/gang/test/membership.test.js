@@ -117,20 +117,41 @@ test('atma yetkileri: Baba → Tetikçi/Çömez, Sağ Kol → sadece Çömez', a
   assert.match((await h.fails(k, 'kickMember', { targetId: s })).message, /oylama/);
 });
 
-test('Mafya Babası saygısı: +1M, üyelik başına bir kez; ayrılıp gelince tekrar verilebilir', async () => {
-  const h = await createHarness();
+test('v64 Mafya Babası saygısı: +1M, her oyuncuya HAFTADA bir kez; çete değişse de aynı hafta yok; Pazartesi 00:00 yeni hak', async () => {
+  const h = await createHarness(); // Pazartesi 2026-09-21
   const A = await setupGang(h, { members: 1 });
   const u = A.ids[0];
   await h.act(A.baba, 'giveRespect', { targetId: u });
   assert.equal(h.member(A.gangId, u).prestige, 1_000_000);
-  assert.match((await h.fails(A.baba, 'giveRespect', { targetId: u })).message, /zaten/);
-  // eşzamanlı çift saygı → tek kez
+  assert.equal(h.member(A.gangId, u).respectWeekKey, '2026-09-21');
+  assert.match((await h.fails(A.baba, 'giveRespect', { targetId: u })).message, /bu hafta zaten/);
+  // ayrılıp ertesi gün geri gelse de aynı hafta → saygı yok
   await h.act(u, 'leaveGang');
   await h.nextDay();
   await h.act(u, 'joinGang', { gangId: A.gangId });
+  assert.match((await h.fails(A.baba, 'giveRespect', { targetId: u })).message, /bu hafta zaten/);
+  // Pazar 23:59 hâlâ aynı hafta
+  h.at('2026-09-27', '23:59');
+  assert.match((await h.fails(A.baba, 'giveRespect', { targetId: u })).message, /bu hafta zaten/);
+  // Pazartesi 00:00 → yeni hafta; eşzamanlı çift saygı → tek kez
+  await h.tickTo('2026-09-28', '00:05');
   const rs = await Promise.allSettled([h.act(A.baba, 'giveRespect', { targetId: u }), h.act(A.baba, 'giveRespect', { targetId: u })]);
   assert.equal(rs.filter((r) => r.status === 'fulfilled').length, 1);
-  assert.equal(h.member(A.gangId, u).prestige, 1_000_000);
+  assert.equal(h.member(A.gangId, u).prestige, 1_000_000, 'eski prestij yeniden katılımda sıfırlandı; yeni saygı +1M');
+  assert.equal(h.member(A.gangId, u).respectWeekKey, '2026-09-28');
+});
+
+test('v64 eski saygılar (hafta bilgisi yok) 2026-09-28 haftasına sayılır; ilk sıfırlanma 2026-10-05 00:00', async () => {
+  const h = await createHarness({ start: Date.UTC(2026, 8, 28, 10, 0) }); // Pazartesi 13:00 İstanbul
+  const A = await setupGang(h, { members: 1 });
+  const u = A.ids[0];
+  await h.db.doc(`gangWorlds/test/gangs/${A.gangId}/members/${u}`).update({ respected: true }); // v63 öncesi kayıt
+  assert.match((await h.fails(A.baba, 'giveRespect', { targetId: u })).message, /bu hafta zaten/);
+  await h.tickTo('2026-10-04', '23:00');
+  assert.match((await h.fails(A.baba, 'giveRespect', { targetId: u })).message, /bu hafta zaten/);
+  await h.tickTo('2026-10-05', '00:05');
+  await h.act(A.baba, 'giveRespect', { targetId: u });
+  assert.equal(h.member(A.gangId, u).respectWeekKey, '2026-10-05');
 });
 
 test('bağış: 1 altın = 5 prestij, requestId ile çift tıklama tek işlem', async () => {

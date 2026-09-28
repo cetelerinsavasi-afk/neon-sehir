@@ -18,6 +18,8 @@ import InfoIcon from '../InfoIcon/InfoIcon';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import './ParkWorldScreen.css';
 import NearbyPlayersButton from '../NearbyPlayers/NearbyPlayersButton';
+import { useHeldItem } from '../../hooks/useHeldItem';
+import GiftToast from '../NearbyPlayers/GiftToast';
 
 // --- Sahne düzeni -------------------------------------------------------
 // "Park sabit, karakter yürüyor": kamera kaydırması YOK — canvas'ın
@@ -38,7 +40,6 @@ const CHAT_BUBBLE_MS = 13000; // yeni istek: "bi tık daha uzun dursun" (eskisi 
 // değeri kullanıyor (hem canlı sahnede hem kamera karesinde, bkz. aşağı).
 const AVATAR_SCALE = INTERIOR_AVATAR_SCALE;
 const PARK_SELL_PRICE = 5000;
-const HOLDING_MS = 120_000; // elde tutulan büfe ürünü 2 dakika sonra kaybolur
 const CAMERA_RADIUS = 170;
 
 // --- Firebase maliyet ayarları (bkz. önceki not) -------------------------
@@ -46,12 +47,13 @@ const MOVE_SYNC_INTERVAL_MS = 300;
 const MOVE_SYNC_MIN_DIST = 6;
 const IDLE_HEARTBEAT_MS = 12_000;
 
+// v64 fiyatları (sunucudaki BUFE_PRICES ile aynı)
 const BUFE_MENU = [
-  { id: 'sosisli', label: 'Sosisli', price: 100 },
-  { id: 'tost', label: 'Tost', price: 100 },
-  { id: 'cay', label: 'Çay', price: 10 },
-  { id: 'kahve', label: 'Kahve', price: 30 },
-  { id: 'oralet', label: 'Oralet', price: 20 },
+  { id: 'sosisli', label: 'Sosisli', price: 200 },
+  { id: 'tost', label: 'Tost', price: 300 },
+  { id: 'cay', label: 'Çay', price: 20 },
+  { id: 'kahve', label: 'Kahve', price: 100 },
+  { id: 'oralet', label: 'Oralet', price: 40 },
   { id: 'latte', label: 'Latte', price: 500 },
 ];
 
@@ -178,6 +180,8 @@ export default function ParkWorldScreen({ onExit }) {
   const { player } = usePlayer();
   const { inventory } = useInventory();
   const { others, updatePresence, clearPresence } = useParkPresence();
+  // v64: eldeki ürün sunucuda (heldItems) — ısmarlanınca da buradan gelir
+  const { held, gift, clearGift } = useHeldItem('park');
 
   const [ready, setReady] = useState(false);
   const [panel, setPanel] = useState(null); // 'npc' | 'bufe' | null
@@ -255,6 +259,23 @@ export default function ParkWorldScreen({ onExit }) {
   }, [others]);
   useEffect(() => { playerRef.current = player; }, [player]);
   useEffect(() => () => { if (holdingTimeoutRef.current) clearTimeout(holdingTimeoutRef.current); }, []);
+
+  // v64: eldeki ürün sunucudaki kayıttan gelir (satın alma, ısmarlanma, süre bitimi);
+  // değişince konum kaydındaki "holding" de güncellenir ki diğerleri görsün.
+  const heldId = held?.itemId || null;
+  useEffect(() => {
+    if (holdingRef.current === heldId) return;
+    setHolding(heldId);
+    holdingRef.current = heldId;
+    if (user) {
+      updatePresence(user.uid, {
+        x: posRef.current.x, y: posRef.current.y, facing: facingRef.current,
+        pose: sittingSeatRef.current ? 'sit' : 'idle', seat: sittingSeatRef.current,
+        holding: heldId,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heldId]);
 
   // --- Avatar SVG'sini canvas'a çizilebilir bir <img>'e çeviren önbellek.
   // Arka planı YOK (şeffaf) — karakterler çim üzerine doğal oturuyor,
@@ -725,29 +746,9 @@ export default function ParkWorldScreen({ onExit }) {
     setBufeBusy(item.id);
     setError(null);
     try {
+      // v64: sunucu eldeki ürünü (heldItems) yazar; ekran ve konum kaydı
+      // useHeldItem üzerinden güncellenir, 2 dakikalık süre de orada tutulur.
       await buyFromBufe(item.id);
-      setHolding(item.id);
-      holdingRef.current = item.id;
-      if (user) {
-        updatePresence(user.uid, {
-          x: posRef.current.x, y: posRef.current.y, facing: facingRef.current,
-          pose: sittingSeatRef.current ? 'sit' : 'idle', seat: sittingSeatRef.current,
-          holding: item.id,
-        });
-      }
-      // Elde tutulan ürün 1 dakika sonra kaybolur (bkz. HOLDING_MS).
-      if (holdingTimeoutRef.current) clearTimeout(holdingTimeoutRef.current);
-      holdingTimeoutRef.current = setTimeout(() => {
-        setHolding(null);
-        holdingRef.current = null;
-        if (user) {
-          updatePresence(user.uid, {
-            x: posRef.current.x, y: posRef.current.y, facing: facingRef.current,
-            pose: sittingSeatRef.current ? 'sit' : 'idle', seat: sittingSeatRef.current,
-            holding: null,
-          });
-        }
-      }, HOLDING_MS);
     } catch (err) {
       setError(err.message || 'Satın alma başarısız.');
     } finally {
@@ -922,9 +923,10 @@ export default function ParkWorldScreen({ onExit }) {
             <button className="pw-chatsapp-btn" onClick={() => { setPhoneInitialApp('chatsapp'); setPhoneOpen(true); }} title="ChatsApp">💬</button>
             <button className="pw-phone-btn" onClick={() => { setPhoneInitialApp(null); setPhoneOpen(true); }} title="Telefon">📱</button>
             <button className="pw-camera-btn" onClick={() => (user ? openCamera() : setShowGuestPrompt(true))} title="Fotoğraf çek">📷</button>
-            <NearbyPlayersButton others={others} collectionName="parkPresence" variant="pw" />
+            <NearbyPlayersButton others={others} collectionName="parkPresence" variant="pw" giftVenue="park" myHolding={heldId} />
           </>
         )}
+        {gift && <GiftToast gift={gift} onDone={clearGift} />}
       </div>
 
       {phoneOpen && (

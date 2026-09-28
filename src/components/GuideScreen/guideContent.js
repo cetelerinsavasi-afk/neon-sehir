@@ -135,7 +135,7 @@ export const CATS = [
         { i: '👑', name: 'Baba', sub: 'Son söz senin.', lines: [
           'Çetenin adını ve logosunu değiştirirsin.',
           'Tetikçi ve Çömez’i tek hamlede atarsın.',
-          'Bir üyeye saygı gösterip prestij verirsin.',
+          'Üyelere saygı gösterip prestij verirsin (her üyeye haftada bir).',
           'Kasadan kendi cebine para alırsın. Ama prestijin erir.',
           'Bahis ve ittifaka sen karar verirsin.',
           'Tır, depo ve siparişler senden sorulur.' ] },

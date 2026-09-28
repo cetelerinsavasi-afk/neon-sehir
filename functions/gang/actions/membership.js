@@ -1,6 +1,6 @@
 // Çete kurma / katılma / ayrılma / atma / saygı / profil / bağış / sohbet
 import { GANG, LOGO_EMOJIS, LOGO_COLORS, LOGO_BGS, RANK_LABELS, isRanked, rankLevel } from '../config.js';
-import { addDays, midnightMsOf } from '../time.js';
+import { addDays, midnightMsOf, weekKeyOf } from '../time.js';
 
 export function createMembershipActions(core, intelHelpers) {
   const { FV, fail, readWallet, debitGold, readMembership, planRemoval, applyRemoval, ledger, gangLog, notify, systemChat, cleanText, posInt, nameKeyOf, requireGangMember, requireRank, requestGuard } = core;
@@ -175,18 +175,24 @@ export function createMembershipActions(core, intelHelpers) {
     });
   }
 
-  // Mafya Babası saygısı: üyelik başına bir kez, +1.000.000 prestij.
+  // Mafya Babası saygısı: +1.000.000 prestij. v64: her oyuncuya HAFTADA bir kez
+  // (hafta Pazartesi 00:00'da başlar). Baba değişse ya da oyuncu çete değiştirse
+  // bile aynı hafta içinde ikinci saygı yok (hafta bilgisi üyelik kaydında da tutulur).
   async function giveRespect(ctx, data) {
     const targetId = String(data.targetId || '');
     if (!targetId || targetId === ctx.actorId) fail('invalid-argument', 'Geçersiz üye.');
     return core.db.runTransaction(async (tx) => {
       const membership = await readMembership(tx, ctx, ctx.actorId);
       const gangId = requireGangMember(membership);
-      const [meSnap, tSnap] = await Promise.all([tx.get(ctx.ref.member(gangId, ctx.actorId)), tx.get(ctx.ref.member(gangId, targetId))]);
+      const [meSnap, tSnap, tMs] = await Promise.all([tx.get(ctx.ref.member(gangId, ctx.actorId)), tx.get(ctx.ref.member(gangId, targetId)), tx.get(ctx.ref.membership(targetId))]);
       if (core.effRank(meSnap.data(), ctx) !== 'baba') fail('permission-denied', 'Saygıyı sadece Mafya Babası gösterebilir.');
       if (!tSnap.exists) fail('failed-precondition', 'Bu oyuncu artık çetede değil.');
-      if (tSnap.data().respected) fail('failed-precondition', 'Bu üyeye zaten saygı gösterildi.');
-      tx.update(ctx.ref.member(gangId, targetId), { respected: true, prestige: FV.increment(GANG.RESPECT_PRESTIGE) });
+      const week = weekKeyOf(ctx.dateKey);
+      if (core.respectWeekOf(tSnap.data()) === week || tMs.data()?.respectWeekKey === week) {
+        fail('failed-precondition', "Bu üyeye bu hafta zaten saygı gösterildi. Yeni hafta Pazartesi 00:00'da başlar.");
+      }
+      tx.update(ctx.ref.member(gangId, targetId), { respected: true, respectWeekKey: week, prestige: FV.increment(GANG.RESPECT_PRESTIGE) });
+      tx.set(ctx.ref.membership(targetId), { respectWeekKey: week }, { merge: true });
       notify(tx, ctx, targetId, `🎩 Mafya Babası sana saygı gösterdi: +${GANG.RESPECT_PRESTIGE.toLocaleString('tr-TR')} prestij.`, 'prestige');
       gangLog(tx, ctx, gangId, '🎩', `Mafya Babası ${tSnap.data().name} adlı üyeye saygı gösterdi.`);
       ctx.logs.push({ gang: 'prestige', world: ctx.worldId, event: 'respect', gangId, memberId: targetId, amount: GANG.RESPECT_PRESTIGE });

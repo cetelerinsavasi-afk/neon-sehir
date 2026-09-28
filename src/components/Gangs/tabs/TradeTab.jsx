@@ -14,6 +14,10 @@ import { nextTradeSunday } from '../tradeSchedule';
 
 const GANG_RULES_HARAC_HOUR_LABEL = '21:00'; // v38: haraç/rüşvet son dilim (21:00) başlayana kadar
 
+// v64: yol kartında büyük sayılar sığsın diye kısa gösterim (ör. 1,2 Mn)
+const COMPACT = new Intl.NumberFormat('tr-TR', { notation: 'compact', maximumFractionDigits: 1 });
+const compact = (n) => (Math.abs(Number(n || 0)) < 10_000 ? fmt(n) : COMPACT.format(Number(n || 0)));
+
 const daysBetween = (a, b) => (a && b ? Math.round((istMidnight(b) - istMidnight(a)) / 86400_000) : 0);
 
 function useNextSundayProduct() {
@@ -46,17 +50,38 @@ function Routes({ routes, gangId, state, today }) {
             <div key={p.id} className={`gx-route${mine ? ' mine' : ''}${r?.holderType ? '' : ' empty'}`}>
               <span className="gx-route-emoji">{p.emoji}</span>
               <span className="gx-route-label">{p.label}</span>
-              {r?.holderType === 'gang' ? (
+              {mine ? (
+                // v64: kendi yolumuz — logo/"SİZİN" yok; sade istatistikler
+                (() => {
+                  const total = Number(r.dailyOrderLimit || 0);
+                  const left = Math.max(0, total - spent);
+                  const pct = total > 0 ? Math.round((left / total) * 100) : 0;
+                  const days = r.untilDateKey ? Math.max(0, daysBetween(today, r.untilDateKey)) : null;
+                  return (
+                    <div className="gx-route-stats">
+                      <div className="gx-route-stat">
+                        <span>Günlük limit</span>
+                        <b title={`${fmt(left)} / ${fmt(total)}`}>
+                          {compact(left)}
+                          <i> / {compact(total)}</i>
+                        </b>
+                      </div>
+                      <div className="gx-route-meter" aria-hidden="true">
+                        <span style={{ width: `${pct}%` }} />
+                      </div>
+                      <div className="gx-route-stat">
+                        <span>Kalan süre</span>
+                        <b>{days == null ? '—' : `${days} gün`}</b>
+                      </div>
+                    </div>
+                  );
+                })()
+              ) : r?.holderType === 'gang' ? (
                 <span className="gx-route-holder">
-                  <Logo logo={r.holderLogo} size={16} /> {mine ? 'SİZİN' : r.holderName}
+                  <Logo logo={r.holderLogo} size={16} /> {r.holderName}
                 </span>
               ) : (
                 <span className="gx-route-holder dim">{r?.lastWinner === 'intel' ? '🕵️ kapatıldı' : 'boş'}</span>
-              )}
-              {mine && (
-                <span className="gx-route-sub">
-                  📅 limit {fmt(Math.max(0, (r.dailyOrderLimit || 0) - spent))}/{fmt(r.dailyOrderLimit)} · ⏳ {r.untilDateKey ? `${Math.max(0, daysBetween(today, r.untilDateKey))} gün` : '—'}
-                </span>
               )}
             </div>
           );

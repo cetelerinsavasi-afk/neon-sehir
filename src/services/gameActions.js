@@ -253,6 +253,8 @@ export const buyFromBufe = (itemId) => httpsCallable(functions, 'buyFromBufe')({
 // --- Gazino Dünyası (madde 7-9) ---
 
 export const buyFromGazinoBar = (itemId) => httpsCallable(functions, 'buyFromGazinoBar')({ itemId });
+// v64: elindeki yiyecek/içeceği aynı mekândaki oyuncuya ısmarla (venue: 'park' | 'gazino')
+export const giftHeldItem = (targetUid, venue) => httpsCallable(functions, 'giftHeldItem')({ targetUid, venue }).then((r) => r.data);
 
 // --- Girilebilir mekanlar: canlı/çok oyunculu (madde 17) ---
 

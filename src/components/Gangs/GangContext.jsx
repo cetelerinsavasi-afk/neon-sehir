@@ -158,6 +158,17 @@ export function istMidnight(dateKey) {
   const [y, m, d] = dateKey.split('-').map(Number);
   return Date.UTC(y, m - 1, d) - OFF;
 }
+// v64: haftanın Pazartesi'si (saygı hakkı Pazartesi 00:00'da yenilenir)
+export function istWeekKey(ms) {
+  const key = istDateKey(ms);
+  const wd = new Date(istMidnight(key) + OFF).getUTCDay(); // 0 = Pazar
+  return istDateKey(istMidnight(key) + (wd === 0 ? -6 : 1 - wd) * 24 * 3600_000 + 3600_000);
+}
+// v64: üyenin bu hafta saygı görüp görmediği (eski kayıtlar 2026-09-28 haftasına sayılır)
+export function respectedThisWeek(m, ms) {
+  const wk = m?.respectWeekKey || (m?.respected ? '2026-09-28' : null);
+  return Boolean(wk) && wk === istWeekKey(ms);
+}
 export function nextMidnight(ms) {
   return istMidnight(istDateKey(ms)) + 24 * 3600_000;
 }

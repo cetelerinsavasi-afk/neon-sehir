@@ -773,6 +773,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // v64: elde tutulan mekân ürünü (büfe/bar) — yalnızca sahibi okur, sunucu yazar.
+    match /heldItems/{uid} {
+      allow read: if isSelf(uid);
+      allow write: if false;
+    }
+
     // v62: hesap silme talepleri — oyuncu kendi talebini, yetkililer hepsini okur.
     match /deletionRequests/{uid} {
       allow read: if isSelf(uid) || isStaff();

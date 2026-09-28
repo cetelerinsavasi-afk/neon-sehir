@@ -3093,3 +3093,63 @@ button.gx-msg-avatar.pc-trigger {
   -webkit-user-select: none;
   user-select: none;
 }
+
+/* v64 — kendi ticaret yolumuz: sade istatistik kartı */
+.gx-route.mine {
+  align-items: stretch;
+  text-align: left;
+  padding: 8px 8px 9px;
+  background: linear-gradient(180deg, rgba(255, 210, 63, 0.08), rgba(255, 210, 63, 0.02));
+}
+.gx-route.mine .gx-route-emoji,
+.gx-route.mine .gx-route-label {
+  align-self: center;
+}
+.gx-route-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+  width: 100%;
+  min-width: 0;
+}
+.gx-route-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.gx-route-stat span {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--gx-dim, #8a93a8);
+}
+.gx-route-stat b {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text, #e8edf6);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gx-route-stat b i {
+  font-style: normal;
+  font-weight: 600;
+  font-size: 10.5px;
+  color: var(--gx-dim, #8a93a8);
+}
+.gx-route-meter {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.gx-route-meter span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--neon-yellow, #ffd23f);
+}
