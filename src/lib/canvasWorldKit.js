@@ -432,3 +432,55 @@ export function renderPhotoFrame(ctx, { width, height, originX, originY, entitie
   ctx.fillRect(0, 0, width, height);
   ctx.restore();
 }
+
+// --- v73 — Diğer oyuncuların konumunu yumuşatma (maliyet optimizasyonu) ----
+// Konum artık ~1 sn'de bir yazılıyor (eskiden 0,3 sn — her yazma, mekandaki
+// HERKESE bir Firestore okuması demek). Aradaki boşlukta avatar son bilinen
+// konuma doğru sabit/orantılı hızla kayar; yürüme animasyonu yerelde üretilir.
+export function createRemoteSmoother(speed) {
+  const map = new Map();
+  let lastPrune = 0;
+  return {
+    // { x, y, moving } döner; her karede çağrılır
+    pos(uid, tx, ty) {
+      const now = performance.now();
+      let e = map.get(uid);
+      if (!e || !Number.isFinite(e.x)) {
+        e = { x: tx, y: ty, t: now };
+        map.set(uid, e);
+        return { x: tx, y: ty, moving: false };
+      }
+      const dt = Math.min(0.1, Math.max(0, (now - e.t) / 1000));
+      e.t = now;
+      const dx = tx - e.x;
+      const dy = ty - e.y;
+      const d = Math.hypot(dx, dy);
+      if (d > 260) {
+        // ışınlanma / uzun kopukluk → doğrudan yerine
+        e.x = tx;
+        e.y = ty;
+        return { x: tx, y: ty, moving: false };
+      }
+      if (d > 0.5) {
+        const step = Math.min(d, Math.max(speed * 0.6, d * 1.6) * dt);
+        e.x += (dx / d) * step;
+        e.y += (dy / d) * step;
+      } else {
+        e.x = tx;
+        e.y = ty;
+      }
+      if (now - lastPrune > 30_000) {
+        lastPrune = now;
+        map.forEach((v, k) => now - v.t > 30_000 && map.delete(k));
+      }
+      return { x: e.x, y: e.y, moving: d > 2 };
+    },
+  };
+}
+
+// Uzaktaki oyuncunun çizim pozu: kayarken yerel yürüme karesi, dururken belgedeki poz
+export function remotePose(docPose, moving) {
+  if (docPose === 'sit') return 'sit';
+  if (moving) return Math.floor(performance.now() / 160) % 2 === 0 ? 'walk1' : 'walk2';
+  return 'idle';
+}

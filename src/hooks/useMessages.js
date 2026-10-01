@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { collection, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { IS_ANDROID_APP } from '../lib/platform';
@@ -10,6 +10,7 @@ import { IS_ANDROID_APP } from '../lib/platform';
 // işaretlenmez — sadece bu hook'un döndürdüğü listeden düşülür. Bu hook'u
 // kullanan her yer (SMS listesi, okunmamış rozetleri, üst bildirim
 // şeridi) böylece tek noktadan temizlenir. Web'de liste birebir aynıdır.
+const MESSAGES_LIMIT = 100;
 const GOLD_STORE_SENDERS = ['Altın Mağazası', 'Zümrüt Mağazası'];
 const isHiddenOnAndroid = (m) => GOLD_STORE_SENDERS.includes(m.from);
 
@@ -32,7 +33,9 @@ export function useMessages() {
     setLoading(true);
     const q = query(
       collection(db, 'users', user.uid, 'messages'),
-      orderBy('createdAt', 'desc')
+      orderBy('createdAt', 'desc'),
+      // v73 — maliyet: eskiden alınan TÜM SMS'ler (hiç silinmiyor) her açılışta okunuyordu
+      limit(MESSAGES_LIMIT)
     );
     const unsubscribe = onSnapshot(
       q,

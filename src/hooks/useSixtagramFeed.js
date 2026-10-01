@@ -18,11 +18,37 @@ const FETCH_LIMIT = 150;
  * kalır, ama sekmeden çıkıp tekrar girince en güncel (doğru) sıraya
  * göre yeniden dizilir.
  */
-export function useSixtagramFeed(refreshKey) {
-  const [posts, setPosts] = useState([]);
-  const [loading, setLoading] = useState(true);
+// v73 — maliyet: Anasayfa sekmesine her girişte 150 gönderi okunuyordu.
+// 90 sn içinde tekrar girilirse son liste kullanılır (elle yenileme / yeni
+// paylaşım her zaman taze çeker).
+const CACHE_MS = 90_000;
+let feedCache = { at: 0, posts: null };
 
-  const fetchFeed = useCallback(async () => {
+// Önbellekteki tek gönderiyi günceller/siler (beğeni sayısı, silme) — tekrar
+// girişte eski sayı görünmesin.
+export function patchSixtagramFeedPost(id, patch) {
+  if (!feedCache.posts) return;
+  feedCache = {
+    ...feedCache,
+    posts: patch ? feedCache.posts.map((p) => (p.id === id ? { ...p, ...patch } : p)) : feedCache.posts.filter((p) => p.id !== id),
+  };
+}
+
+export function invalidateSixtagramFeed() {
+  feedCache = { at: 0, posts: null };
+}
+
+export function useSixtagramFeed(refreshKey) {
+  const [posts, setPosts] = useState(() => feedCache.posts || []);
+  const [loading, setLoading] = useState(!feedCache.posts);
+
+  const fetchFeed = useCallback(async (opts) => {
+    const force = opts === true || opts?.force === true;
+    if (!force && feedCache.posts && Date.now() - feedCache.at < CACHE_MS) {
+      setPosts(feedCache.posts);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const q = query(
@@ -44,7 +70,9 @@ export function useSixtagramFeed(refreshKey) {
       const older = list
         .filter((p) => now - (p.createdAtMs || 0) >= ONE_HOUR_MS)
         .sort((a, b) => (b.likeCount || 0) - (a.likeCount || 0));
-      setPosts([...recent, ...older]);
+      const next = [...recent, ...older];
+      feedCache = { at: Date.now(), posts: next };
+      setPosts(next);
     } catch (err) {
       console.error('useSixtagramFeed çekme hatası:', err);
     } finally {
@@ -56,5 +84,5 @@ export function useSixtagramFeed(refreshKey) {
     fetchFeed();
   }, [refreshKey, fetchFeed]);
 
-  return { posts, loading, refresh: fetchFeed };
+  return { posts, loading, refresh: () => fetchFeed(true) };
 }

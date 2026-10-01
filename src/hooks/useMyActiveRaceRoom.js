@@ -23,25 +23,36 @@ export function useMyActiveRaceRoom() {
       return;
     }
     setLoading(true);
-    const q = query(
-      collection(db, 'raceRooms'),
-      where('participantUids', 'array-contains', user.uid)
-    );
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => {
-        const active = snap.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
-          .find((r) => r.status === 'waiting' || r.status === 'ready' || r.status === 'racing');
-        setRoom(active || null);
-        setLoading(false);
-      },
-      (err) => {
+    // v73 — maliyet: eskiden oyuncunun GİRDİĞİ TÜM odalar (bitmişler dahil, hiç
+    // silinmiyor) her açılışta okunuyordu. Artık sadece bitmemiş odalar
+    // (firestore.indexes.json: participantUids + status). İndeks henüz hazır
+    // değilse (yayın sırası) eski sorguya düşer — oyun bozulmaz.
+    const ACTIVE = ['waiting', 'ready', 'racing'];
+    const onSnap = (snap) => {
+      const active = snap.docs.map((d) => ({ id: d.id, ...d.data() })).find((r) => ACTIVE.includes(r.status));
+      setRoom(active || null);
+      setLoading(false);
+    };
+    let unsub = () => {};
+    let alive = true;
+    const legacy = () =>
+      onSnapshot(query(collection(db, 'raceRooms'), where('participantUids', 'array-contains', user.uid)), onSnap, (err) => {
         console.error('useMyActiveRaceRoom dinleme hatası:', err);
         setLoading(false);
+      });
+    unsub = onSnapshot(
+      query(collection(db, 'raceRooms'), where('participantUids', 'array-contains', user.uid), where('status', 'in', ACTIVE)),
+      onSnap,
+      (err) => {
+        if (!alive) return;
+        console.warn('useMyActiveRaceRoom: indeks hazır değil, eski sorgu kullanılıyor', err?.code);
+        unsub = legacy();
       }
     );
-    return unsubscribe;
+    return () => {
+      alive = false;
+      unsub();
+    };
   }, [user]);
 
   return { room, loading };

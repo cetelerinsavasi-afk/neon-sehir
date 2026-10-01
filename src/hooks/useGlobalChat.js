@@ -9,12 +9,14 @@ const MESSAGE_LIMIT = 100;
  * sırada) canlı dinler. Tek alanda orderBy kullanıldığı için composite
  * index gerektirmez.
  */
-export function useGlobalChat() {
+// v73 — maliyet: rozet/bildirim şeridi sadece SON mesaja bakar → max=1
+// (eskiden her oyuncu her açılışta 100 mesaj okuyordu). Sohbet ekranı 100.
+export function useGlobalChat({ max = MESSAGE_LIMIT } = {}) {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const q = query(collection(db, 'globalChat'), orderBy('createdAt', 'desc'), limit(MESSAGE_LIMIT));
+    const q = query(collection(db, 'globalChat'), orderBy('createdAt', 'desc'), limit(max));
     const unsubscribe = onSnapshot(
       q,
       (snap) => {
@@ -28,7 +30,7 @@ export function useGlobalChat() {
       }
     );
     return unsubscribe;
-  }, []);
+  }, [max]);
 
   return { messages, loading };
 }

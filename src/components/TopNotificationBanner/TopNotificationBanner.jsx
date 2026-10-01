@@ -13,7 +13,7 @@ import './TopNotificationBanner.css';
 export default function TopNotificationBanner({ onOpenPhone }) {
   const { user } = useAuth();
   const { messages } = useMessages();
-  const { messages: chatMessages } = useGlobalChat();
+  const { messages: chatMessages } = useGlobalChat({ max: 1 });
   const { isBlocked } = useBlocks();
   const [toast, setToast] = useState(null);
   const lastSmsIdRef = useRef(null);

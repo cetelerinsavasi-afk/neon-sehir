@@ -39,8 +39,9 @@ export function HouseRow({ h, onEnter, mineRow }) {
 export default function HouseHub({ onClose, initialHouseId = null }) {
   const { user } = useAuth();
   const { player } = usePlayer();
-  const list = useHouseList({ enabled: Boolean(user) });
   const [houseId, setHouseId] = useState(initialHouseId);
+  // v73 — evin içindeyken ev listesi dinlenmez (maliyet)
+  const list = useHouseList({ enabled: Boolean(user) && !houseId });
   const [buyOpen, setBuyOpen] = useState(false);
   const [buyName, setBuyName] = useState('');
   const [busy, setBusy] = useState(false);

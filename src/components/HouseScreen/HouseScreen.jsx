@@ -396,6 +396,7 @@ export default function HouseScreen({ houseId, onExit }) {
   useEffect(() => {
     if (phase !== 'ready') return undefined;
     let last = '';
+    let lastKey = '';
     let lastAt = 0;
     const iv = setInterval(() => {
       const eng = engineRef.current;
@@ -403,9 +404,15 @@ export default function HouseScreen({ houseId, onExit }) {
       const st = eng.getSelfState();
       const em = lastEmoteRef.current;
       const sig = `${st.x}|${st.z}|${st.seat}|${st.left}|${em.ts}`;
+      // v73 — maliyet: yürürken en fazla ~0,65 sn'de bir yazılır (eskiden 0,22 sn;
+      // her yazma evdeki herkese bir okuma). Oturma/hareket (emote) hemen gider;
+      // diğerleri aradaki boşlukta yumuşak kayar (houseEngine).
+      const keySig = `${st.seat}|${em.ts}`;
       const now = Date.now();
-      if (sig === last && now - lastAt < 10_000) return;
+      if (sig === last && now - lastAt < 15_000) return;
+      if (sig !== last && keySig === lastKey && now - lastAt < 650) return;
       last = sig;
+      lastKey = keySig;
       lastAt = now;
       setDoc(
         doc(db, 'housePresence', user.uid),

@@ -6,8 +6,7 @@ import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes
 import {
   roundRectC, drawAvatarSprite, createAvatarImageCache, renderPhotoFrame,
   wrapBubbleText, measureBubble, layoutBubbles, drawBubbleBox,
-  resolveObstaclePosition, cyclingLine, SPRITE_H,
-} from '../../lib/canvasWorldKit';
+  resolveObstaclePosition, cyclingLine, SPRITE_H, createRemoteSmoother, remotePose } from '../../lib/canvasWorldKit';
 import Hud from '../Hud/Hud';
 import PhoneScreen from '../Phone/PhoneScreen';
 import GarageScreen from '../GarageScreen/GarageScreen';
@@ -451,6 +450,8 @@ export default function TuningGarageWorldScreen({ onExit, onOpenHeist }) {
   const { others, updatePresence, clearPresence } = useInteriorPresence('modifiye_garaji');
   // v71 — hareketler (dans et, el salla...) — bkz. lib/worldEmotes.js
   const [worldEmotes] = useState(createEmoteTracker);
+  // v73 — diğer oyuncular seyrek konum güncellemesi arasında yumuşak kayar
+  const [remoteSmooth] = useState(() => createRemoteSmoother(PLAYER_SPEED));
   const doWorldEmote = (kind) => {
     if (!user) {
       setShowGuestPrompt(true);
@@ -503,9 +504,9 @@ export default function TuningGarageWorldScreen({ onExit, onOpenHeist }) {
   const lastSyncedPosRef = useRef({ ...START_POS });
   const wasMovingRef = useRef(false);
   const pausedRef = useRef(false);
-  const MOVE_SYNC_INTERVAL_MS = 300;
+  const MOVE_SYNC_INTERVAL_MS = 1000; // v73: 300 → 1000 (diğerleri yumuşatılarak çizilir)
   const MOVE_SYNC_MIN_DIST = 6;
-  const IDLE_HEARTBEAT_MS = 12_000;
+  const IDLE_HEARTBEAT_MS = 20_000; // v73: 12 sn → 20 sn
   const CHAT_BUBBLE_MS = 13000; // yeni istek: "bi tık daha uzun dursun" (eskisi 9500)
 
   useEffect(() => { playerRef.current = player; }, [player]);
@@ -788,12 +789,15 @@ export default function TuningGarageWorldScreen({ onExit, onOpenHeist }) {
     const myBubblesNow = myBubblesRef.current.filter((b) => now - b.ts < CHAT_BUBBLE_MS);
 
     const rawEntities = [
-      ...othersRef.current.map((o) => ({
-        x: o.x, y: o.y, avatar: o.avatar, pose: o.pose || 'idle',
+      ...othersRef.current.map((o) => {
+        const sm = remoteSmooth.pos(o.uid, o.x, o.y);
+        return {
+        x: sm.x, y: sm.y, avatar: o.avatar, pose: remotePose(o.pose, sm.moving),
         facing: o.facing || 'down', name: o.displayName || 'Oyuncu', emote: worldEmotes.observe(o.uid, o.emote, o.emoteTs),
         bubbleList: (othersBubbleHistoryRef.current.get(o.uid) || []).filter((b) => now - b.ts < CHAT_BUBBLE_MS),
         isSelf: false,
-      })),
+        };
+      }),
       {
         x: posRef.current.x, y: posRef.current.y, avatar: playerRef.current?.avatar,
         pose: poseRef.current, facing: facingRef.current,

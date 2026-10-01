@@ -1,5 +1,5 @@
-import { useParkPresence } from '../../hooks/useParkPresence';
-import { useInteriorPresence } from '../../hooks/useInteriorPresence';
+import { usePolledPresence } from '../../hooks/usePolledPresence';
+import { useAuth } from '../../contexts/AuthContext';
 import { regionEmojis, regionLabels } from '../../data/regions';
 import GuestOverlay from '../GuestOverlay/GuestOverlay';
 import { useHouseList } from '../../hooks/useHouseList';
@@ -15,16 +15,23 @@ import './VisitTab.css';
 // içindeki oyuncu sayısı en çok olan en üstte.
 export default function VisitTab({ onVisitVenue, onVisitHouse }) {
   // v66: içinde en az 1 kişi olan ve girebileceğin evler de burada
-  const houseList = useHouseList();
+  // v73 — maliyet: 8 mekanın + tüm evlerin canlı konum dinleyicisi yerine 30 sn'de
+  // bir sadece aktif oyuncuları okuyan tek seferlik sorgular (sayı göstermek için yeterli)
+  const { user } = useAuth();
+  const houseList = useHouseList({ onlyLive: true });
   const liveHouses = [...houseList.mine, ...houseList.enterable].filter((h) => h.people > 0).sort((a, b) => b.people - a.people);
-  const park = useParkPresence();
-  const banka = useInteriorPresence('banka');
-  const karakol = useInteriorPresence('karakol');
-  const camii = useInteriorPresence('camii');
-  const gazino = useInteriorPresence('gazino');
-  const arabaGalerisi = useInteriorPresence('araba_galerisi');
-  const silahMagazasi = useInteriorPresence('silah_magazasi');
-  const modifiyeGaraji = useInteriorPresence('modifiye_garaji');
+  const parkList = usePolledPresence('parkPresence', { max: 200 });
+  const interiorList = usePolledPresence('interiorPresence', { max: 400 });
+  const notMe = (p) => p.uid !== user?.uid;
+  const at = (loc) => ({ others: interiorList.filter((p) => p.locationId === loc && notMe(p)) });
+  const park = { others: parkList.filter(notMe) };
+  const banka = at('banka');
+  const karakol = at('karakol');
+  const camii = at('camii');
+  const gazino = at('gazino');
+  const arabaGalerisi = at('araba_galerisi');
+  const silahMagazasi = at('silah_magazasi');
+  const modifiyeGaraji = at('modifiye_garaji');
 
   const items = [
     { key: 'park', name: regionLabels.park, emoji: regionEmojis.park, count: park.others.length, openKey: 'park' },

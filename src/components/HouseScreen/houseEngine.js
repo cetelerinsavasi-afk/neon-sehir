@@ -260,7 +260,8 @@ class AvatarFigure {
         this.z = this.tz;
       } else if (d > 0.001) {
         // sabit hızla hedefe (ağ aralıklarında takılmasın)
-        const step = Math.min(d, Math.max(WALK_SPEED * 1.1, d * 4) * dt);
+        // v73: konum ~0,65 sn'de bir geldiği için orantılı yaklaşım (araya duraklama girmesin)
+        const step = Math.min(d, Math.max(WALK_SPEED * 0.6, d * 2.2) * dt);
         this.x += (dx / d) * step;
         this.z += (dz / d) * step;
       }

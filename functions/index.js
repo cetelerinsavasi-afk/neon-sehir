@@ -6517,7 +6517,19 @@ export const updateHeistPlanNote = onCall(async (request) => {
 export const refreshHeistPlanParticipants = onCall(async (request) => {
   requireAuth(request);
   const { planId } = request.data || {};
+  if (typeof planId !== 'string' || !planId) return { ok: true };
   const planRef = db.collection('heistPlans').doc(planId);
+  // v73 — maliyet: kartı açık tutan HER izleyici 15 sn'de bir bu işlemi
+  // tetikliyordu (her seferinde tüm katılımcıların kullanıcı + silah
+  // belgeleri okunup hepsi yeniden yazılıyordu). Artık plan başına en fazla
+  // 40 sn'de bir tazelenir ve sadece DEĞİŞEN katılımcı yazılır.
+  // (Kısıt sayacı ayrı bir belgede — plan belgesine yazılsaydı plan listesini
+  // izleyen herkese okuma yazdırırdı.)
+  const nowMs = Date.now();
+  const throttleRef = db.collection('heistPlanRefresh').doc(planId);
+  const tSnap = await throttleRef.get();
+  if (nowMs - Number(tSnap.data()?.atMs || 0) < 40_000) return { ok: true, skipped: true };
+  await throttleRef.set({ atMs: nowMs }).catch(() => {});
   const participantsSnap = await planRef.collection('participants').get();
   if (participantsSnap.empty) return { ok: true };
 
@@ -6528,15 +6540,20 @@ export const refreshHeistPlanParticipants = onCall(async (request) => {
         db.collection('users').doc(uid).get(),
         getMaxWeaponPower(uid),
       ]);
-      return { ref: doc.ref, suspicion: userSnap.data()?.suspicion || 0, power };
+      const cur = doc.data() || {};
+      const suspicion = userSnap.data()?.suspicion || 0;
+      return { ref: doc.ref, suspicion, power, changed: cur.suspicion !== suspicion || cur.weaponPower !== power };
     })
   );
 
-  const batch = db.batch();
-  updates.forEach(({ ref, suspicion, power }) => {
-    batch.update(ref, { suspicion, weaponPower: power });
-  });
-  await batch.commit();
+  const changed = updates.filter((u) => u.changed);
+  if (changed.length) {
+    const batch = db.batch();
+    changed.forEach(({ ref, suspicion, power }) => {
+      batch.update(ref, { suspicion, weaponPower: power });
+    });
+    await batch.commit();
+  }
 
   return { ok: true };
 });
@@ -16073,7 +16090,31 @@ function futbolMinSquadFutureListingViolationMessage(worstCaseRemaining, positio
 // alma, saatlik bakım ya da aşağıdaki forceRefreshFutbolTransferMarket
 // ile ANINDA) taban da otomatik düzelir.
 const FUTBOL_BASELINE_TOP_N = 3;
+// v73 — maliyet: eskiden HER SAAT tüm futbolPlayers koleksiyonu okunuyordu.
+// Artık her mevki için en güçlü 30 oyuncu (firestore.indexes.json: position +
+// power desc) okunur; içlerinde takımı olan en az TOP_N kişi yoksa ya da indeks
+// hazır değilse eski tam taramaya düşülür (sonuç birebir aynı).
 async function computeFutbolMaxPowerByPosition() {
+  try {
+    const baseline = {};
+    const positions = ['GK', 'DEF', 'MID', 'FWD'];
+    const snaps = await Promise.all(
+      positions.map((pos) => db.collection('futbolPlayers').where('position', '==', pos).orderBy('power', 'desc').limit(30).get())
+    );
+    let ok = true;
+    positions.forEach((pos, i) => {
+      const owned = snaps[i].docs.map((d) => d.data()).filter((p) => p.teamId && typeof p.power === 'number');
+      const topN = owned.map((p) => p.power).sort((a, b) => b - a).slice(0, FUTBOL_BASELINE_TOP_N);
+      if (topN.length < FUTBOL_BASELINE_TOP_N && snaps[i].size >= 30) ok = false; // emin değiliz → tam tarama
+      baseline[pos] = topN.length > 0 ? topN.reduce((sum, v) => sum + v, 0) / topN.length : FUTBOL_SYSTEM_FALLBACK_POWER;
+    });
+    if (ok) return baseline;
+  } catch (err) {
+    console.warn('computeFutbolMaxPowerByPosition: indeksli sorgu başarısız, tam taramaya düşülüyor', err?.message || err);
+  }
+  return computeFutbolMaxPowerByPositionFullScan();
+}
+async function computeFutbolMaxPowerByPositionFullScan() {
   const snap = await db.collection('futbolPlayers').get();
   const powersByPosition = { GK: [], DEF: [], MID: [], FWD: [] };
   snap.docs.forEach((d) => {

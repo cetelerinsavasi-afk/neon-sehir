@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Bell } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
-import { useSixtagramFeed } from '../../hooks/useSixtagramFeed';
+import { invalidateSixtagramFeed, useSixtagramFeed } from '../../hooks/useSixtagramFeed';
 import { useMySixtagramPosts } from '../../hooks/useMySixtagramPosts';
 import { useMySixtagramLikedPostIds } from '../../hooks/useMySixtagramLikedPostIds';
 import { useSixtagramProfile } from '../../hooks/useSixtagramProfile';
@@ -135,6 +135,7 @@ export default function SixtagramScreen() {
         <ComposeModal
           onClose={() => setComposeOpen(false)}
           onPosted={() => {
+            invalidateSixtagramFeed();
             setTab('home');
             setHomeRefreshKey((k) => k + 1);
           }}

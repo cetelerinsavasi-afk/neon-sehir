@@ -22,6 +22,8 @@ export async function setDoc(ref, data, opts) {
 export async function deleteDoc(ref) {
   await fakeDb.doc(ref.path).delete();
 }
+// v73: önizlemede zaman damgaları sayı (ms)
+export const Timestamp = { fromMillis: (ms) => ms, now: () => Date.now() };
 export function serverTimestamp() {
   return Date.now();
 }

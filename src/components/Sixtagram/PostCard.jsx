@@ -8,6 +8,7 @@ import CommentsPanel from './CommentsPanel';
 import ReportBlockSheet, { MoreButton } from '../ReportBlockSheet/ReportBlockSheet';
 import { toggleSixtagramLike, deleteSixtagramPost } from '../../services/gameActions';
 import './PostCard.css';
+import { patchSixtagramFeedPost } from '../../hooks/useSixtagramFeed';
 
 function timeAgo(createdAtMs) {
   if (!createdAtMs) return '';
@@ -43,6 +44,7 @@ export default function PostCard({ post, liked, isOwn }) {
     setOptimisticCount(effectiveCount + (nextLiked ? 1 : -1));
     try {
       await toggleSixtagramLike(post.id);
+      patchSixtagramFeedPost(post.id, { likeCount: effectiveCount + (nextLiked ? 1 : -1) });
     } catch (err) {
       console.error('Beğeni hatası:', err);
       // Başarısız olursa iyimser güncellemeyi geri al.
@@ -61,6 +63,7 @@ export default function PostCard({ post, liked, isOwn }) {
     setDeleting(true);
     try {
       await deleteSixtagramPost(post.id);
+      patchSixtagramFeedPost(post.id, null);
       setHidden(true);
     } catch (err) {
       console.error('Gönderi silme hatası:', err);

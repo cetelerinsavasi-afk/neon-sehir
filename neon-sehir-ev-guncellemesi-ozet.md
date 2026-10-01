@@ -1,3 +1,39 @@
+# v73 — Maliyet optimizasyonu (Firestore okumaları)
+
+Görünür oyun davranışı aynı; aşağıdakiler arka planda daha az okuma/yazma yapar.
+
+## Mekânlar ve evler (en büyük kalem)
+- Park + 7 mekânda yürürken konum 0,3 sn yerine **1 sn'de bir** yazılır (bekleme nabzı 12 → 20 sn). Diğer oyuncular aradaki boşlukta ekranda **yumuşakça kayar**, yürüme animasyonu yerelde üretilir — eskisinden daha akıcı görünür. Her konum yazımı mekândaki herkese bir okuma demekti → ~%65 azalma.
+- Evde konum 0,22 sn yerine **~0,65 sn'de bir** yazılır; oturma/hareket (dans vb.) anında gider. Diğerleri yumuşak takip edilir.
+- **Ev listesi:** tüm evlerdeki herkesin her adımını canlı dinliyordu (evin İÇİNDEYKEN bile). Artık kişi sayıları 30 sn'de bir, sadece aktif kayıtlar okunarak güncellenir; evin içindeyken liste hiç dinlenmez.
+- **Mekânlar > Ziyaret:** 8 mekânın + tüm evlerin canlı konum dinleyicisi kaldırıldı → 30 sn'de bir 3 küçük sorgu.
+
+## Her oyuncuda sürekli açık olanlar
+- Genel sohbet rozeti/bildirim şeridi her açılışta **100 mesaj** okuyordu → artık 1 (sohbet ekranı yine 100).
+- SMS'ler: alınan TÜM SMS'ler (hiç silinmiyor) her açılışta okunuyordu → son 100.
+- Aktif yarış odası kontrolü: oyuncunun girdiği TÜM yarış odaları (bitmişler dahil) okunuyordu → sadece bitmemiş odalar (yeni indeks; indeks hazır değilse eski sorguya düşer, oyun bozulmaz).
+- Sixtagram "yeni gönderi" rozeti: en yeni gönderiye gelen her beğeni/yorum çevrimiçi herkese okuma yazdırıyordu → 60 sn'de bir tek okuma.
+
+## Ekranlar
+- Fabrika listesi: tüm fabrikalar + her fabrikanın makineleri canlı dinleniyordu (her üretim izleyenlere okuma) → açılışta bir kez + 90 sn'de bir yenileme.
+- Sixtagram akışı: Anasayfa'ya her girişte 150 gönderi → 90 sn içinde tekrar girilirse son liste kullanılır (yeni paylaşım/elle yenileme her zaman taze çeker; beğeni sayısı ve silme önbellekte de güncellenir).
+- Soygun planı kartı: her izleyici 15 sn'de bir tüm katılımcıların kullanıcı + silah belgelerini yeniden hesaplatıp hepsini yeniden yazıyordu → plan başına en fazla 40 sn'de bir, sadece değişen katılımcı yazılır; istemci 45 sn.
+
+## Sunucu
+- Futbol transfer bakımı **her saat tüm futbolcuları** okuyordu → mevki başına en güçlü 30 oyuncu (yeni indeks). Sonuç birebir aynı (test edildi); indeks yoksa eski taramaya düşer.
+
+## Yayınlama (SIRA ÖNEMLİ)
+1. `firebase deploy --only firestore:indexes` → Firebase Console > Firestore > Indexes'te iki yeni indeks "Enabled" olana kadar bekle (birkaç dk).
+2. Sadece değişen fonksiyonlar: `firebase deploy --only functions:futbolTransferMarketHourlyMaintenance,functions:forceRefreshFutbolTransferMarket,functions:resetFutbolTransferMarket,functions:refreshHeistPlanParticipants`
+3. Web.
+
+## Maliyet için ayrıca önemli
+- **Projede 210 fonksiyon var.** `firebase deploy --only functions` her seferinde 210'unun hepsini yeniden derler (Cloud Build dakikası + Artifact Registry'de her biri için yeni imaj). Sık tam yayın, Firestore'dan bağımsız ciddi maliyet yaratabilir. Bundan sonra sadece değişen fonksiyonları yayınla (notlarda listeyi vereceğim).
+- Eski fonksiyon imajlarını otomatik silmek için: `firebase functions:artifacts:setpolicy` (firebase-tools güncel olmalı).
+- Neyin ne kadar tuttuğunu kesin görmek için: Google Cloud Console > Billing > Reports > "Group by: SKU".
+
+---
+
 # v72 — Kare ev fotoğrafı + Sixtagram'da resim çizme + ChatsApp yanıt/tepki
 
 1. **Ev fotoğrafı yine KARE, ama çekildiği açıyla:** dikey çekimde yatay görüş açısı korunur, üstten/alttan kırpılır (yatay çekimde yanlardan). Çekim önizlemesi de aynı kare kırpılmış hâli gösterir, paylaşılanla birebir aynı. İsim/balon kadrajın üstünden taşacaksa aşağı itilir, kesilmez.

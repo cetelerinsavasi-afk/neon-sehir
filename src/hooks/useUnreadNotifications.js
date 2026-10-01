@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useMessages } from './useMessages';
 import { useGlobalChat } from './useGlobalChat';
@@ -27,6 +27,7 @@ function getLastSeenSixtagram() {
 /** Sixtagram (Anasayfa) açıldığında çağrılır — "yeni post" rozetini temizler. */
 export function markSixtagramSeen() {
   localStorage.setItem(SIXTAGRAM_SEEN_KEY, String(Date.now()));
+  window.dispatchEvent(new Event('neon-sixtagram-seen'));
 }
 
 /**
@@ -38,7 +39,7 @@ export function markSixtagramSeen() {
 export function useUnreadNotifications() {
   const { user } = useAuth();
   const { messages } = useMessages();
-  const { messages: chatMessages } = useGlobalChat();
+  const { messages: chatMessages } = useGlobalChat({ max: 1 });
   const { unreadCount: sixtagramUnreadNotifCount } = useSixtagramNotifications();
   const [chatsAppHasNew, setChatsAppHasNew] = useState(false);
   const [sixtagramNewPost, setSixtagramNewPost] = useState(false);
@@ -71,23 +72,37 @@ export function useUnreadNotifications() {
       setSixtagramNewPost(false);
       return undefined;
     }
-    const q = query(collection(db, 'sixtagramPosts'), orderBy('createdAtMs', 'desc'), limit(1));
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => {
+    // v73 — maliyet: canlı dinleyici yerine 60 sn'de bir tek okuma. En yeni
+    // gönderiye gelen HER beğeni/yorum, çevrimiçi TÜM oyunculara okuma
+    // yazdırıyordu; rozet için 1 dakikalık gecikme yeterli.
+    let alive = true;
+    const check = async () => {
+      if (document.hidden) return;
+      try {
+        const snap = await getDocs(query(collection(db, 'sixtagramPosts'), orderBy('createdAtMs', 'desc'), limit(1)));
+        if (!alive) return;
         if (snap.empty) {
           setSixtagramNewPost(false);
           return;
         }
         const latest = snap.docs[0].data();
-        const lastSeen = getLastSeenSixtagram();
-        setSixtagramNewPost((latest.createdAtMs || 0) > lastSeen && latest.uid !== user.uid);
-      },
-      (err) => {
-        console.error('useUnreadNotifications (sixtagram) dinleme hatası:', err);
+        setSixtagramNewPost((latest.createdAtMs || 0) > getLastSeenSixtagram() && latest.uid !== user.uid);
+      } catch (err) {
+        console.warn('useUnreadNotifications (sixtagram):', err?.code || err);
       }
-    );
-    return unsubscribe;
+    };
+    check();
+    const iv = setInterval(check, 60_000);
+    const onSeen = () => setSixtagramNewPost(false);
+    window.addEventListener('neon-sixtagram-seen', onSeen);
+    const onVis = () => !document.hidden && check();
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('neon-sixtagram-seen', onSeen);
+    };
   }, [user]);
 
   const sixtagramHasNew = sixtagramNewPost || sixtagramUnreadNotifCount > 0;

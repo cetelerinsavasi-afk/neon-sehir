@@ -155,9 +155,10 @@ function PlanCard({ plan, myUid, onChanged }) {
   // olarak (ve açılır açılmaz bir kez) sunucudan tazeliyoruz.
   useEffect(() => {
     refreshHeistPlanParticipants(plan.id).catch(() => {});
+    // v73 — maliyet: 15 sn → 45 sn (sunucu da plan başına 40 sn'de bir tazeler)
     const id = setInterval(() => {
-      refreshHeistPlanParticipants(plan.id).catch(() => {});
-    }, 15000);
+      if (!document.hidden) refreshHeistPlanParticipants(plan.id).catch(() => {});
+    }, 45000);
     return () => clearInterval(id);
   }, [plan.id]);
 
