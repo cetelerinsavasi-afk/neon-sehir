@@ -5,7 +5,7 @@
 // şartı yok), karşı istihbarat yok, operasyona ekstra maliyet yok (sadece
 // sabotaj ücreti).
 import { GANG, INTEL, atLeast } from '../config.js';
-import { addDays, midnightMsOf, dateKeyOf } from '../time.js';
+import { addDays, midnightMsOf, dateKeyOf, truckTimes } from '../time.js';
 import { decidedOutcome } from './votes.js';
 
 const CODENAME_RE = /^[\p{L}\p{N}_\-. ]+$/u;
@@ -160,8 +160,9 @@ export function createIntelActions(core) {
       if (!truck || truck.gangId !== membership.gangId) fail('permission-denied', 'Bu tırı göremezsin.');
       if (!atLeast(core.effRank(meSnap.data(), ctx), 'tetikci')) fail('permission-denied', 'Tırları görmek için en az Tetikçi olmalısın.');
       if (truck.status !== 'in_transit') fail('failed-precondition', 'Sadece seferdeki tırlar ihbar edilebilir.');
-      // v38: ihbar, tır yola çıktığı gün 00:00–12:00 arasında (operasyon da 12:00'den önce başlamalı)
-      if (truck.departDateKey !== ctx.dateKey || ctx.hour >= GANG.SABOTAGE_START_DEADLINE_HOUR) fail('deadline-exceeded', 'Tır ihbarı sadece yola çıktığı gün 00:00–12:00 arasında yapılabilir.');
+      // v67: ihbar, tır yola çıktıktan sonraki 6 saat içinde (sonra saldırı başlar)
+      const { departAtMs, attackAtMs } = truckTimes(truck);
+      if (truck.departDateKey !== ctx.dateKey || ctx.now >= attackAtMs) fail('deadline-exceeded', 'Tır ihbarı, tır yola çıktıktan sonraki 6 saat içinde yapılabilir.');
       const reportId = `${truckId}_${truck.departDateKey}`;
       const repSnap = await tx.get(ctx.ref.intelReport(reportId));
       if (repSnap.exists) fail('already-exists', 'Bu tır zaten ihbar edildi.');
@@ -173,6 +174,8 @@ export function createIntelActions(core) {
         gangName: gang?.name || truck.gangName,
         gangLogo: gang?.logo || null,
         departDateKey: truck.departDateKey,
+        departAtMs,
+        attackAtMs,
         reportedByCode: rosterSnap.data().codeName,
         reportedAtMs: ctx.now,
         leaked: false,
@@ -195,7 +198,7 @@ export function createIntelActions(core) {
       if (!repSnap.exists) fail('failed-precondition', 'Önce tır ihbar edilmeli.');
       const rep = repSnap.data();
       if (membership.gangId !== rep.gangId) fail('permission-denied', 'Bu tırın içeriğini göremezsin.');
-      if (rep.departDateKey !== ctx.dateKey || ctx.hour >= GANG.SABOTAGE_START_DEADLINE_HOUR) fail('deadline-exceeded', 'İçerik sadece 00:00–12:00 arasında sızdırılabilir.');
+      if (rep.departDateKey !== ctx.dateKey || ctx.now >= truckTimes(rep).attackAtMs) fail('deadline-exceeded', 'İçerik, tır yola çıktıktan sonraki 6 saat içinde sızdırılabilir.');
       const [meSnap, rosterSnap, cargoSnap, truckSnap] = await Promise.all([
         tx.get(ctx.ref.member(rep.gangId, ctx.actorId)),
         tx.get(ctx.ref.roster(rid)),

@@ -139,6 +139,53 @@ function machinePriceRange(machineType, cryptoPrice) {
   return { min: Math.floor(max / 2), max };
 }
 
+// --- v67 — TAHMİNİ DEĞER (araç / silah) ---
+// Ürünün yıpranma puanı: yapılan her tamir 2 puan, her geliştirme 10 puan.
+// Puana göre ürünün en yüksek fiyatının (katalog × geliştirme çarpanı) yüzdesi:
+//   0-9 puan → %90 · 10-19 → %80 · 20-29 → %70 · 30+ → %60
+// Sadece alıcıya/satıcıya yol gösteren bir değerdir; ilan fiyatı sınırları
+// değişmedi (sunucu doğrular).
+function wearPercent(points) {
+  if (points >= 30) return 0.6;
+  if (points >= 20) return 0.7;
+  if (points >= 10) return 0.8;
+  return 0.9;
+}
+function estimateValue({ kind, catalogId, repairsUsed, gearUpgraded, tankUpgraded, level }) {
+  if (kind === 'vehicle') {
+    const base = vehicleCatalog.find((v) => v.id === catalogId)?.price || 0;
+    const upgrades = (gearUpgraded ? 1 : 0) + (tankUpgraded ? 1 : 0);
+    const max = base * (upgrades === 2 ? 3 : upgrades === 1 ? 2 : 1);
+    const points = (repairsUsed || 0) * 2 + upgrades * 10;
+    const pct = wearPercent(points);
+    return { value: Math.round(max * pct), points, pct, max };
+  }
+  const base = weaponCatalog.find((w) => w.id === catalogId)?.price || 0;
+  const lvl = Math.max(1, level || 1);
+  const max = base * lvl;
+  const points = (repairsUsed || 0) * 2 + (lvl - 1) * 10;
+  const pct = wearPercent(points);
+  return { value: Math.round(max * pct), points, pct, max };
+}
+function estimateOfListing(l) {
+  if (l.itemType === 'vehicle')
+    return estimateValue({ kind: 'vehicle', catalogId: l.vehicleCatalogId, repairsUsed: l.vehicleRepairsUsed, gearUpgraded: l.vehicleGearUpgraded, tankUpgraded: l.vehicleTankUpgraded });
+  if (l.itemType === 'weapon') return estimateValue({ kind: 'weapon', catalogId: l.weaponCatalogId, repairsUsed: l.weaponRepairsUsed, level: l.weaponLevel });
+  return null;
+}
+function EstimateLine({ est }) {
+  if (!est || !est.max) return null;
+  return (
+    <span className="market-estimate">
+      💡 Tahmini değer: <strong>{est.value.toLocaleString('tr-TR')} altın</strong>
+      <span className="market-estimate-sub">
+        {' '}
+        · yıpranma {est.points} puan → en yüksek fiyatın %{Math.round(est.pct * 100)}'i
+      </span>
+    </span>
+  );
+}
+
 // --- "Avantajlı Ürünler" paneli — kullanıcı revizesi ---
 // "burada fiyatı tavan fiyatının %75'inin altında olan ürünler
 // listelenecek" — tavan fiyat, o SPESİFİK ilanın (aracın/silahın ömrü,
@@ -268,6 +315,19 @@ function SellForm({ onCreated, onClose, initialItemType }) {
     if (itemType === 'machine') {
       const m = sellableMachines.find((x) => x.id === machineId);
       return m ? machinePriceRange(m.type, prices.cryptoPrice) : null;
+    }
+    return null;
+  })();
+
+  // v67 — ilan verirken tahmini değer
+  const sellEstimate = (() => {
+    if (itemType === 'vehicle') {
+      const v = sellableVehicles.find((x) => x.id === selectedId);
+      return v ? estimateValue({ kind: 'vehicle', catalogId: v.catalogId, repairsUsed: v.repairsUsed, gearUpgraded: v.gearUpgraded, tankUpgraded: v.tankUpgraded }) : null;
+    }
+    if (itemType === 'weapon') {
+      const w = sellableWeapons.find((x) => x.id === selectedId);
+      return w ? estimateValue({ kind: 'weapon', catalogId: w.catalogId, repairsUsed: w.repairsUsed, level: w.level }) : null;
     }
     return null;
   })();
@@ -535,9 +595,11 @@ function SellForm({ onCreated, onClose, initialItemType }) {
                   {itemType === 'material' ? ' (adet başına)' : ''}
                 </p>
               )}
+              {sellEstimate && <EstimateLine est={sellEstimate} />}
               <QuantityStepper
                 value={price}
                 onChange={setPrice}
+                min={priceRange?.min || 0}
                 max={priceRange?.max}
                 quickAmounts={
                   itemType === 'material' ? [1, 10, 50, 100] : [10, 100, 1000, 10000, 100000]
@@ -623,6 +685,7 @@ function ListingCard({ listing, isMine, busy, onCancel, onBuy }) {
           )}
           {!isMine && <span className="market-seller"> · {listing.sellerName}</span>}
         </span>
+        {isLifeItem && <EstimateLine est={estimateOfListing(listing)} />}
         {lifeDays != null && (
           <div className="market-listing-life-row">
             <span className="market-listing-life-label">
@@ -791,11 +854,8 @@ export default function MarketplaceScreen() {
     });
   }, [user]);
 
-  // Avantajlı/Reklam panelleri TÜM kategorilerden besleniyor (ana sayfa),
-  // en büyük indirim / en yeni reklam önde olacak şekilde sıralanıyor.
-  const advantageousListings = listings
-    .filter(isAdvantageousListing)
-    .sort((a, b) => listingComparablePrice(a) / listingCeilingPrice(a) - listingComparablePrice(b) / listingCeilingPrice(b));
+  // v67 — Avantajlı ürünler artık ana sayfada değil, her KATEGORİNİN İÇİNDE
+  // (o kategorinin en büyük indirimleri en üstte). Reklam paneli ana sayfada.
   const advertisedListings = listings
     .filter(isAdvertisedListing)
     .sort((a, b) => (b.adExpiresAt?.toMillis() || 0) - (a.adExpiresAt?.toMillis() || 0));
@@ -807,7 +867,11 @@ export default function MarketplaceScreen() {
           .filter((l) => l.itemType === view)
           .filter((l) => view !== 'material' || materialFilter === 'all' || l.materialType === materialFilter);
   const myListings = categoryListings.filter((l) => l.sellerId === user?.uid);
-  const otherListings = categoryListings.filter((l) => l.sellerId !== user?.uid);
+  const advantageousListings = categoryListings
+    .filter((l) => l.sellerId !== user?.uid && isAdvantageousListing(l))
+    .sort((a, b) => listingComparablePrice(a) / listingCeilingPrice(a) - listingComparablePrice(b) / listingCeilingPrice(b));
+  const advantageousIds = new Set(advantageousListings.map((l) => l.id));
+  const otherListings = categoryListings.filter((l) => l.sellerId !== user?.uid && !advantageousIds.has(l.id));
 
   const buyOrOpenModal = (l) =>
     l.itemType === 'material' ? setBuyModalListing(l) : run(l.id, () => buyListing(l.id));
@@ -830,22 +894,6 @@ export default function MarketplaceScreen() {
             <div className="market-home-panel">
               <p className="market-section-title">📢 Reklam Verilen Ürünler</p>
               {advertisedListings.map((l) => (
-                <ListingCard
-                  key={l.id}
-                  listing={l}
-                  isMine={l.sellerId === user?.uid}
-                  busy={busy === l.id}
-                  onCancel={() => run(l.id, () => cancelListing(l.id))}
-                  onBuy={() => buyOrOpenModal(l)}
-                />
-              ))}
-            </div>
-          )}
-
-          {advantageousListings.length > 0 && (
-            <div className="market-home-panel">
-              <p className="market-section-title">🔥 Avantajlı Ürünler</p>
-              {advantageousListings.map((l) => (
                 <ListingCard
                   key={l.id}
                   listing={l}
@@ -912,10 +960,19 @@ export default function MarketplaceScreen() {
             </>
           )}
 
+          {advantageousListings.length > 0 && (
+            <div className="market-home-panel">
+              <p className="market-section-title">🔥 Avantajlı Ürünler</p>
+              {advantageousListings.map((l) => (
+                <ListingCard key={l.id} listing={l} isMine={false} busy={busy === l.id} onBuy={() => buyOrOpenModal(l)} />
+              ))}
+            </div>
+          )}
+
           <GangMarketSection view={view} />
 
           <p className="market-section-title">Diğer İlanlar</p>
-          {otherListings.length === 0 && <p className="market-hint">Bu kategoride başka ilan yok.</p>}
+          {otherListings.length === 0 && <p className="market-hint">{advantageousListings.length ? 'Bu kategoride başka ilan yok.' : 'Bu kategoride ilan yok.'}</p>}
           {otherListings.map((l) => (
             <ListingCard
               key={l.id}

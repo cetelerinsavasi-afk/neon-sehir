@@ -5,7 +5,7 @@ import './Hud.css';
 
 // Android (TWA) içinde altın butonu mağazayı değil Parara Bank'ı açar
 // (bkz. App.jsx onGoldClick) — ipucu metni de ona göre. Web'de metin aynı.
-const GOLD_BUTTON_TITLE = IS_ANDROID_APP ? 'Altın bakiyen' : "Altın Mağazası'nı aç";
+const GOLD_BUTTON_TITLE = IS_ANDROID_APP ? 'Altın bakiyen' : "Zümrüt Mağazası'nı aç";
 
 /**
  * Hud — Bölüm 3'teki üst bar. Faz 1'de mock veriyle çalışır,

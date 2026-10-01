@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHarness, setupGang } from './harness.js';
+import { createHarness, setupGang, ist } from './harness.js';
 
 async function tradeGangWithMole(h, { moleRank = 'kidemli' } = {}) {
   const G = await setupGang(h, { members: 3, name: 'Hedef' });
@@ -14,6 +14,8 @@ async function tradeGangWithMole(h, { moleRank = 'kidemli' } = {}) {
   await h.giveRoute(G.gangId, 'yasakliMadde', 1_000_000);
   await h.giveDepot(G.gangId, 1000);
   const { truckId, code } = await h.act(G.baba, 'buyTruck');
+  // v67: 05:30 siparişi 06:00'da yola çıkar → 12:00'ye kadar ihbar/sızdırma/operasyon
+  if (h.clock.now < ist('2026-09-22', '05:30')) await h.tickTo('2026-09-22', '05:30');
   await h.act(G.baba, 'placeOrder', { truckId, product: 'yasakliMadde', items: { yasakliMadde: 80 } });
   return { G, mole, truckId, code };
 }
@@ -286,19 +288,22 @@ test('polis yakalama ödülü → İstihbarat prestiji (canlı dünya, idempoten
   assert.equal(res.skipped, true);
 });
 
-test('v38: tır ihbarı ve içerik sızdırma sadece yola çıktığı gün 00:00–12:00', async () => {
+test('v67: tır ihbarı ve içerik sızdırma tır yola çıktıktan sonraki 6 saat içinde', async () => {
   const h = await createHarness();
   const { mole, truckId } = await tradeGangWithMole(h, { moleRank: 'kidemli' });
   await h.act(mole, 'joinIntel', { codeName: 'Geçkalan' });
+  // kalkıştan (06:00) önce ihbar yok — tır henüz yolda değil
+  assert.match((await h.fails(mole, 'reportTruck', { truckId })).message, /seferdeki/);
   await h.tickTo('2026-09-22', '12:00');
-  assert.match((await h.fails(mole, 'reportTruck', { truckId })).message, /12:00/);
+  assert.match((await h.fails(mole, 'reportTruck', { truckId })).message, /6 saat/);
   const h2 = await createHarness();
   const X = await tradeGangWithMole(h2, { moleRank: 'kidemli' });
   await h2.act(X.mole, 'joinIntel', { codeName: 'Erkenci' });
   await h2.tickTo('2026-09-22', '11:59');
   const { reportId } = await h2.act(X.mole, 'reportTruck', { truckId: X.truckId });
+  assert.equal(h2.get(`intelReports/${reportId}`).attackAtMs, ist('2026-09-22', '12:00'));
   h2.at('2026-09-22', '12:00');
-  assert.match((await h2.fails(X.mole, 'leakTruck', { reportId })).message, /12:00/);
+  assert.match((await h2.fails(X.mole, 'leakTruck', { reportId })).message, /6 saat/);
 });
 
 test('v52: İstihbarat çıkarma oylaması sonuç kesinleşince hemen biter (hedef de oy kullanabilir)', async () => {

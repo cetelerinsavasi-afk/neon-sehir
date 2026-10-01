@@ -203,3 +203,12 @@ export function fmtDateTime(ms) {
   const days = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
   return `${days[d.getUTCDay()]} ${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')} ${fmtClock(ms)}`;
 }
+
+// v67 — tır seferinin saldırı başlangıcı (sunucudaki functions/gang/time.js truckTimes ile aynı):
+// yola çıkış + 6 saat; bu sürümden önce 00:00'da çıkmış seferlerde 12:00.
+export function truckAttackAt(t) {
+  if (!t) return 0;
+  if (t.attackAtMs) return Number(t.attackAtMs);
+  if (t.departAtMs) return Number(t.departAtMs) + 6 * 3600_000;
+  return t.departDateKey ? istMidnight(t.departDateKey) + 12 * 3600_000 : 0;
+}

@@ -10,7 +10,7 @@ import { createIntelActions } from './actions/intel.js';
 import { createMarketActions } from './actions/market.js';
 import { createClock } from './clock.js';
 import { GANG, MS_HOUR, MS_DAY } from './config.js';
-import { nextMidnightMs as nextMidnightMsOf, dateKeyOf as dateKeyOfMs } from './time.js';
+import { nextMidnightMs as nextMidnightMsOf, dateKeyOf as dateKeyOfMs, truckTimes } from './time.js';
 
 const ADMIN_SESSION_MS = 12 * MS_HOUR;
 const ADMIN_MAX_FAILS = 5;
@@ -90,7 +90,8 @@ export function createGangSystem(deps) {
       canReceive = core.depotFree(depot.data()) >= Number(cargo.data()?.units || 0);
       allied = ['accepted', 'active', 'ending'].includes(al.data()?.status);
     }
-    return { price, canReceive, allied, open: ctx.hour < GANG.SABOTAGE_START_DEADLINE_HOUR };
+    const { attackAtMs } = truckTimes(truck);
+    return { price, canReceive, allied, open: ctx.now < attackAtMs, attackAtMs };
   }
 
   // Bahis üst sınırı (iki çetenin küçük 00:00 kasasının 1/4'ü) — karşı
@@ -101,6 +102,55 @@ export function createGangSystem(deps) {
     const targetGangId = String(data.targetGangId || '');
     const [a, b] = await Promise.all([ctx.ref.gangState(gangId).get(), ctx.ref.gangState(targetGangId).get()]);
     return { maxBet: wars.betLimit(a.data(), b.data(), ctx.dateKey), minBet: GANG.BET_MIN_STAKE };
+  }
+
+  // v68 — DEVAM EDEN SAVAŞLARI İZLE (herkes: çetesi olmayan oyuncu dahil, salt okunur).
+  // Gizli bilgi DÖNÜLMEZ: bahis tutarı, tır yükü/ödül değeri, haraç/rüşvet
+  // tutarı, sabotaj ücreti, ayrılan depo yeri. Tır saldırıları ancak tır sahibine
+  // duyurulduktan (saldırı başladıktan) sonra görünür. Sonuç sunucuda 15 sn
+  // önbelleklenir (çok izleyici = az okuma).
+  const watchCache = new Map();
+  async function watchWars(ctx) {
+    const m = await core.readMembership(null, ctx, ctx.actorId);
+    const myGang = m?.gangId || null;
+    const key = ctx.worldId;
+    const hit = watchCache.get(key);
+    let wars;
+    if (hit && ctx.now - hit.at < 15_000 && !ctx.isTest) wars = hit.wars;
+    else {
+      const snap = await ctx.ref.wars().where('status', '==', 'active').limit(150).get();
+      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const byId = new Map(docs.map((w) => [w.id, w]));
+      const live = (w) => ctx.now >= Number(w.startsAtMs || 0) && ctx.now < Number(w.endsAtMs || 0);
+      const side = (k, sd, power, role) => ({ key: k, name: sd?.name || (sd?.orgType === 'intel' ? 'İstihbarat' : ''), logo: sd?.logo || null, role: role || sd?.role || null, power: Math.max(0, Math.round(Number(power || 0))) });
+      wars = [];
+      for (const w of docs) {
+        if (!live(w)) continue;
+        if (w.type === 'trade' || w.type === 'bet') {
+          const sides = Object.entries(w.sides || {}).map(([k, sd]) => side(k, sd, w.display?.[k]));
+          wars.push({ id: w.id, type: w.type, product: w.type === 'trade' ? w.product || null : null, startsAtMs: w.startsAtMs, endsAtMs: w.endsAtMs, gangIds: Object.keys(w.sides || {}), sides });
+        } else if (w.type === 'defense' && w.announced) {
+          const defPower = Object.values(w.display || {}).reduce((a, v) => a + Number(v || 0), 0);
+          const defenders = Object.entries(w.sides || {}).map(([k, sd]) => side(k, sd, w.display?.[k], 'defender'));
+          const attackers = [];
+          const attackerGangs = [];
+          for (const id of w.attackWarIds || []) {
+            let a = byId.get(id);
+            if (!a) a = (await ctx.ref.war(id).get()).data();
+            if (!a || a.status !== 'active') continue;
+            if (a.attackerGangId) attackerGangs.push(a.attackerGangId);
+            attackers.push(side(id, a.sides?.attacker, a.display?.attacker, a.type === 'intelop' ? 'intel' : 'attacker'));
+          }
+          if (attackers.length === 0) continue;
+          wars.push({ id: w.id, type: 'truck', truckCode: w.truckCode, startsAtMs: w.startsAtMs, endsAtMs: w.endsAtMs, gangIds: [w.defenderGangId, ...Object.keys(w.sides || {}), ...attackerGangs], defenderGangId: w.defenderGangId, defensePower: Math.round(defPower), sides: [...defenders, ...attackers] });
+        }
+      }
+      watchCache.set(key, { at: ctx.now, wars });
+    }
+    return {
+      now: ctx.now,
+      wars: wars.map((w) => ({ ...w, mine: Boolean(myGang && (w.gangIds || []).includes(myGang)) })),
+    };
   }
 
   const HANDLERS = {
@@ -147,6 +197,7 @@ export function createGangSystem(deps) {
     payHarac: wars.payHarac,
     startOperation: wars.startOperation,
     payBribe: wars.payBribe,
+    watchWars,
     quoteSabotage,
     ensurePublicView,
     quoteBet,

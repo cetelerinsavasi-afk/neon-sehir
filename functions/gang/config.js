@@ -73,13 +73,20 @@ export const GANG = {
   // --- Ticaret yolu (ONAYLI) ---
   // v50: günlük sipariş limiti = o pazar savaşına katılan TÜM tarafların
   // (çeteler + İstihbarat) toplam gücünün %0,5'i. Yolu kazanan çete alır.
-  TRADE_ORDER_LIMIT_TOTAL_RATIO: 0.005,
+  // v67: %0,5 → %1 (mevcut yolların limiti de bir kez 2 katına çıkarılır — ensureRouteLimitV67)
+  TRADE_ORDER_LIMIT_TOTAL_RATIO: 0.01,
   // v39 (ESKİ): kazanan çetenin kendi gücünün %1'i. Artık yalnızca tek seferlik
   // v39 geçişinde (ensureRouteLimitV39) kullanılır; yeni savaşları etkilemez.
   TRADE_ORDER_LIMIT_RATIO: 0.01,
   TRADE_ROUTE_BUY_RATIO: 0.5, // mağaza (yasaklı madde: Amazor) fiyatının yarısı
   ROUTE_HOLD_DAYS: 21, // kazanan yolu 21 gün elinde tutar
-  ORDER_WEEKDAYS: [1, 2, 3, 4, 5], // sipariş sadece Pzt–Cum
+  // v67: sipariş Pzt–Cmt, 00:00–12:00 arası. Tır siparişten sonraki ilk 3 saatlik
+  // dilimde (03·06·09·12) yola çıkar, o gecenin 00:00'ında depoya varır.
+  // Yola çıktıktan sonraki 6 saat: ihbar / içerik sızdırma / sabotaj / operasyon.
+  // Ardından saldırı (savunma) başlar ve 24:00'te biter. Haraç/rüşvet 21:00'e kadar.
+  ORDER_WEEKDAYS: [1, 2, 3, 4, 5, 6],
+  ORDER_DEADLINE_HOUR: 12,
+  TRUCK_INTEL_WINDOW_MS: 6 * MS_HOUR,
 
   // --- Tır (ONAYLI) ---
   TRUCK_PRICE: 100_000,

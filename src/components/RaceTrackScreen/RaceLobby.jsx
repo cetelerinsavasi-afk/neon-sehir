@@ -6,6 +6,10 @@ import { createRaceRoom, joinRaceRoom, createTrainingRace } from '../../services
 import { vehicleCatalog } from '../../data/vehicleCatalog';
 import { INITIAL_LIFE_DAYS, vehicleDisplayName } from '../VehicleCard/VehicleCard';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
+import { usePlayer } from '../../hooks/usePlayer';
+
+// v67 — bahisli yarışta en yüksek bahis (sunucuda da aynı sınır: RACE_MAX_BET)
+const RACE_MAX_BET = 100_000;
 import './RaceTrackScreen.css';
 
 const TRAINING_LEVELS = 10;
@@ -149,6 +153,8 @@ function CreateRoomModal({ vehicles, onClose, onCreated }) {
   const [myVehicleId, setMyVehicleId] = useState('');
   const [betAmount, setBetAmount] = useState(0);
   const [busy, setBusy] = useState(false);
+  const { player } = usePlayer();
+  const betMax = Math.max(0, Math.min(RACE_MAX_BET, Math.floor(Number(player?.gold || 0))));
   const [error, setError] = useState(null);
 
   const handleCreate = async () => {
@@ -178,7 +184,8 @@ function CreateRoomModal({ vehicles, onClose, onCreated }) {
         <p className="race-bet-label">
           Bahsi Belirle: <strong>{betAmount.toLocaleString('tr-TR')} altın</strong>
         </p>
-        <QuantityStepper value={betAmount} onChange={setBetAmount} quickAmounts={[10, 100, 1000]} />
+        <QuantityStepper value={betAmount} onChange={setBetAmount} max={betMax} />
+        <p className="race-hint">En fazla {RACE_MAX_BET.toLocaleString('tr-TR')} altın bahis.{betMax < RACE_MAX_BET ? ` Altının: ${Math.floor(Number(player?.gold || 0)).toLocaleString('tr-TR')}` : ''}</p>
         <button
           className="race-btn primary"
           disabled={busy || !myVehicleId || !betAmount}

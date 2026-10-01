@@ -64,3 +64,43 @@
   border-color: var(--neon-pink);
   color: var(--neon-pink);
 }
+
+/* v67 — adım seçici */
+.qty-stepper-steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.qty-stepper-steps-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  margin-right: 2px;
+}
+.qty-stepper-step {
+  min-width: 34px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.qty-stepper-step.on {
+  border-color: var(--neon-cyan);
+  background: rgba(25, 232, 255, 0.14);
+  color: var(--neon-cyan);
+}
+.qty-stepper-quick-btn.max {
+  border-color: var(--neon-yellow, #ffd23f);
+  color: var(--neon-yellow, #ffd23f);
+}
+.qty-stepper-quick-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

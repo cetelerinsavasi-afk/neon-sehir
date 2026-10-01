@@ -2,12 +2,13 @@
 //  - İhbar edilen tırlar (sahibi çete ile); içeriği sızdırılanlarda sadece
 //    ÖDÜL DEĞERİ görünür (ürün adetleri görünmez).
 //  - O çetede rütbeli (Kıdemli+) olan İstihbarat üyesine "İçeriği sızdır".
-//  - Başkan ve Şef 12:00'ye kadar tek tıra ya da tüm ihbarlı tırlara
-//    operasyon başlatır ve RÜŞVET tutarını belirler.
+//  - v67: Başkan ve Şef, tır yola çıktıktan sonraki 6 saat içinde tek tıra ya da
+//    tüm ihbarlı tırlara operasyon başlatır ve RÜŞVET tutarını belirler. Başlatılan
+//    operasyonda saldırının başlamasına kalan süre gösterilir.
 //  - Bir çetede Tetikçi+ olan üye, çetesinin yoldaki tırını ihbar edebilir.
 import { useState } from 'react';
 import { limit, where } from 'firebase/firestore';
-import { istDateKey, istHour, istMidnight, useDocData, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
+import { fmtClock, istDateKey, truckAttackAt, useDocData, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
 import { AmountInput, Btn, Card, Confirm, Deadline, BetPair, Empty, Logo } from '../ui';
 import { INTEL_LEADERS, atLeast, fmt } from '../gangConstants';
 
@@ -146,8 +147,8 @@ export default function OpsTab({ d }) {
   const today = istDateKey(now);
   const ms = d.membership;
   const lead = INTEL_LEADERS.includes(d.rank);
-  const open = istHour(now) < 12;
-  const noonMs = istMidnight(today) + 12 * 3600_000; // v38: ihbar / sızdırma / operasyon 12:00'ye kadar
+  // v67: her tırın kendi penceresi — yola çıkıştan 6 saat sonra saldırı başlar
+  const isOpen = (x) => now < truckAttackAt(x);
   const { docs: reports } = useQueryData(path('intelReports'), () => [where('departDateKey', '==', today), limit(100)], `rep_${today}`);
   const { data: day } = useDocData(path(`sabotageDays/${today}`));
   const canReport = Boolean(ms.gangId) && atLeast(ms.gangRank, 'tetikci');
@@ -158,15 +159,18 @@ export default function OpsTab({ d }) {
   const price = 10_000 + 10_000 * Number(day?.count || 0);
   const reported = new Set(reports.map((r) => r.truckId));
   const road = myTrucks.filter((t) => t.status === 'in_transit' && t.departDateKey === today);
-  const freeReports = reports.filter((r) => !r.opWarId);
+  const freeReports = reports.filter((r) => !r.opWarId && isOpen(r));
+  const nextDeadline = (list) => list.filter(isOpen).map(truckAttackAt).sort((a, b) => a - b)[0] || 0;
+  const repDeadline = nextDeadline(reports.filter((r) => !r.opWarId));
+  const roadDeadline = nextDeadline(road.filter((t) => !reported.has(t.id)));
 
   return (
     <div className="gx-stack">
       <div className="gx-section-head">
         <span>🎯 İhbarlı tırlar ({reports.length})</span>
-        {open && reports.length > 0 && <Deadline untilMs={noonMs} label="🎯" />}
+        {repDeadline > 0 && <Deadline untilMs={repDeadline} label="🎯" />}
       </div>
-      {lead && open && freeReports.length > 1 && (
+      {lead && freeReports.length > 1 && (
         <Btn block kind="danger" onClick={() => { setOp({ all: true }); setBribe(0); }}>
           🎯 Hepsine operasyon ({freeReports.length})
         </Btn>
@@ -174,6 +178,8 @@ export default function OpsTab({ d }) {
       {reports.length === 0 && <Empty icon="📡" text="İhbar yok." />}
       {reports.map((r) => {
         const inThatGang = ms.gangId === r.gangId && atLeast(ms.gangRank, 'kidemli');
+        const atk = truckAttackAt(r);
+        const open = now < atk;
         return (
           <Card key={r.id} className="gx-report">
             <div className="gx-report-gang">
@@ -184,6 +190,15 @@ export default function OpsTab({ d }) {
               </div>
             </div>
             {r.leaked ? <div className="gx-reward">💰 {fmt(r.estReward)}</div> : <div className="dim gx-mini">💰 ?</div>}
+            <div className="gx-op-timer">
+              {r.opWarId ? (
+                <Deadline untilMs={atk} label={`⚔️ saldırı ${fmtClock(atk)}'de başlar`} />
+              ) : open ? (
+                <Deadline untilMs={atk} label="🎯 operasyon için" />
+              ) : (
+                <span className="dim gx-mini">🔒 Süre doldu ({fmtClock(atk)})</span>
+              )}
+            </div>
             <div className="gx-row-2">
               {!r.leaked && inThatGang && open && (
                 <Btn small kind="ghost" onClick={() => setAsk({ type: 'leak', r })}>
@@ -208,7 +223,7 @@ export default function OpsTab({ d }) {
         <>
           <div className="gx-section-head">
             <span>📡 Çetemin yoldaki tırları</span>
-            {open && road.some((t) => !reported.has(t.id)) && <Deadline untilMs={noonMs} label="📡" />}
+            {roadDeadline > 0 && <Deadline untilMs={roadDeadline} label="📡" />}
           </div>
           {road.length === 0 && <p className="dim gx-mini">🛣️ Yol boş</p>}
           {road.map((t) => (
@@ -216,8 +231,8 @@ export default function OpsTab({ d }) {
               <span className="gx-truck-code">🚛 #{t.code}</span>
               {reported.has(t.id) ? (
                 <span className="gx-pill intel">📡 İhbar edildi</span>
-              ) : !open ? (
-                <span className="gx-pill">🔒 12:00</span>
+              ) : !isOpen(t) ? (
+                <span className="gx-pill">🔒 {fmtClock(truckAttackAt(t))}</span>
               ) : (
                 <Btn small kind="ghost" onClick={() => setAsk({ type: 'report', t })}>
                   📡 İhbar et
@@ -233,7 +248,11 @@ export default function OpsTab({ d }) {
           icon="🎯"
           danger
           title={op.all ? `${freeReports.length} tıra operasyon` : `TIR #${op.r.truckCode} (${op.r.gangName}) operasyonu`}
-          lines={[`💸 ${fmt(price)}${op.all ? '+' : ''} İstihbarat kasasından`, '⚔️ Saldırı 12:00–24:00 · 4 dilim', '💼 Tır sahibi rüşveti 21:00\'e kadar ödeyebilir']}
+          lines={[
+            `💸 ${fmt(price)}${op.all ? '+' : ''} İstihbarat kasasından`,
+            op.all ? '⚔️ Saldırı her tırın kendi saatinde başlar (yola çıkış + 6 saat) ve 24:00\'te biter' : `⚔️ Saldırı ${fmtClock(truckAttackAt(op.r))}–24:00`,
+            '💼 Tır sahibi rüşveti 21:00\'e kadar ödeyebilir',
+          ]}
           confirmLabel="Başlat"
           busy={busy === 'startOperation'}
           onCancel={() => setOp(null)}
@@ -243,7 +262,7 @@ export default function OpsTab({ d }) {
           }}
         >
           <div className="gx-confirm-deadline">
-            <Deadline untilMs={noonMs} label="içinde başlat" />
+            <Deadline untilMs={op.all ? repDeadline : truckAttackAt(op.r)} label="içinde başlat" />
           </div>
           <span className="dim gx-mini">💼 Rüşvet</span>
           <AmountInput value={bribe} onChange={setBribe} placeholder="0" />
@@ -263,7 +282,7 @@ export default function OpsTab({ d }) {
           }}
         >
           <div className="gx-confirm-deadline">
-            <Deadline untilMs={noonMs} label="içinde" />
+            <Deadline untilMs={truckAttackAt(ask.type === 'report' ? ask.t : ask.r)} label="içinde" />
           </div>
         </Confirm>
       )}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { BlocksProvider } from './contexts/BlocksContext';
 import Hud from './components/Hud/Hud';
@@ -8,25 +8,10 @@ import PhoneScreen from './components/Phone/PhoneScreen';
 import RegionModal from './components/RegionModal/RegionModal';
 import { SocialProvider, useSocial } from './contexts/SocialContext';
 import { OPEN_DM_EVENT } from './lib/chatsappNav';
-import MekanlarScreen from './components/MekanlarScreen/MekanlarScreen';
 import ReferralPrompt from './components/ReferralPrompt/ReferralPrompt';
-import RaceFullScreen from './components/RaceTrackScreen/RaceFullScreen';
 import RaceBubble from './components/RaceTrackScreen/RaceBubble';
-import OnNumaraFullScreen from './components/OnNumaraScreen/OnNumaraFullScreen';
-import ProfileFullScreen from './components/ProfileFullScreen/ProfileFullScreen';
-import HouseGate from './components/HouseScreen/HouseGate';
-import FutbolFullScreen from './components/FutbolScreen/FutbolFullScreen';
-import GangsFullScreen from './components/Gangs/GangsFullScreen';
 import { GangAlertsContext, useGangAlerts } from './components/Gangs/alerts';
 import { useUnreadNotifications } from './hooks/useUnreadNotifications';
-import ParkWorldScreen from './components/ParkWorldScreen/ParkWorldScreen';
-import BankWorldScreen from './components/BankWorldScreen/BankWorldScreen';
-import KarakolWorldScreen from './components/KarakolWorldScreen/KarakolWorldScreen';
-import MosqueWorldScreen from './components/MosqueWorldScreen/MosqueWorldScreen';
-import CasinoWorldScreen from './components/CasinoWorldScreen/CasinoWorldScreen';
-import CarDealershipWorldScreen from './components/CarDealershipWorldScreen/CarDealershipWorldScreen';
-import WeaponShopWorldScreen from './components/WeaponShopWorldScreen/WeaponShopWorldScreen';
-import TuningGarageWorldScreen from './components/TuningGarageWorldScreen/TuningGarageWorldScreen';
 import TopNotificationBanner from './components/TopNotificationBanner/TopNotificationBanner';
 import OnboardingPanel from './components/OnboardingPanel/OnboardingPanel';
 import { usePlayer } from './hooks/usePlayer';
@@ -35,8 +20,52 @@ import { useFirestoreResume } from './hooks/useFirestoreResume';
 import { migrateArabaGelistirmeUnification, migrateVehicleWeaponLifeCap, migrateVehicleWeaponLifeCap20, migrateWeaponLifeCap10, resetFutbolTransferMarket, migrateOnboardingPoliceRule } from './services/gameActions';
 import { regions } from './data/regions';
 import { IS_ANDROID_APP } from './lib/platform';
+import { exitApp, installBackHandler, rearmBack, useBackClose } from './lib/backStack';
+import ConfirmModal from './components/ConfirmModal/ConfirmModal';
 import './styles/theme.css';
 import './App.css';
+
+
+// v67 — "ilk açılışta / sekme geçişlerinde kasma": tam ekran sayfalar ve
+// mekân dünyaları ana paketten ayrıldı (ilk yükleme küçüldü). Uygulama
+// açıldıktan birkaç saniye sonra boşta arka planda önceden indirilir, böylece
+// sekmeye ilk dokunuşta beklenmez.
+const LAZY_LOADERS = [];
+function lazyScreen(loader) {
+  LAZY_LOADERS.push(loader);
+  const C = lazy(loader);
+  const Wrapped = (props) => (
+    <Suspense fallback={<div className="app-lazy-fallback" aria-busy="true"><span /></div>}>
+      <C {...props} />
+    </Suspense>
+  );
+  return Wrapped;
+}
+const MekanlarScreen = lazyScreen(() => import('./components/MekanlarScreen/MekanlarScreen'));
+const RaceFullScreen = lazyScreen(() => import('./components/RaceTrackScreen/RaceFullScreen'));
+const OnNumaraFullScreen = lazyScreen(() => import('./components/OnNumaraScreen/OnNumaraFullScreen'));
+const ProfileFullScreen = lazyScreen(() => import('./components/ProfileFullScreen/ProfileFullScreen'));
+const HouseHub = lazyScreen(() => import('./components/HouseScreen/HouseHub'));
+const FutbolFullScreen = lazyScreen(() => import('./components/FutbolScreen/FutbolFullScreen'));
+const GangsFullScreen = lazyScreen(() => import('./components/Gangs/GangsFullScreen'));
+const ParkWorldScreen = lazyScreen(() => import('./components/ParkWorldScreen/ParkWorldScreen'));
+const BankWorldScreen = lazyScreen(() => import('./components/BankWorldScreen/BankWorldScreen'));
+const KarakolWorldScreen = lazyScreen(() => import('./components/KarakolWorldScreen/KarakolWorldScreen'));
+const MosqueWorldScreen = lazyScreen(() => import('./components/MosqueWorldScreen/MosqueWorldScreen'));
+const CasinoWorldScreen = lazyScreen(() => import('./components/CasinoWorldScreen/CasinoWorldScreen'));
+const CarDealershipWorldScreen = lazyScreen(() => import('./components/CarDealershipWorldScreen/CarDealershipWorldScreen'));
+const WeaponShopWorldScreen = lazyScreen(() => import('./components/WeaponShopWorldScreen/WeaponShopWorldScreen'));
+const TuningGarageWorldScreen = lazyScreen(() => import('./components/TuningGarageWorldScreen/TuningGarageWorldScreen'));
+
+function prefetchScreens() {
+  let i = 0;
+  const next = () => {
+    if (i >= LAZY_LOADERS.length) return;
+    LAZY_LOADERS[i++]().catch(() => {});
+    (window.requestIdleCallback || ((f) => setTimeout(f, 300)))(next);
+  };
+  next();
+}
 
 const RACE_TRACK_REGION = regions.find((r) => r.screen === 'yaris-pisti');
 
@@ -111,7 +140,8 @@ function GameShell() {
   const [raceLobbyMode, setRaceLobbyMode] = useState(null);
   const [activeTableId, setActiveTableId] = useState(null);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [houseOpen, setHouseOpen] = useState(false);
+  // v66: Ev ekranı — null kapalı, { houseId } açık (houseId null → liste)
+  const [houseView, setHouseView] = useState(null);
   const [gangsOpen, setGangsOpen] = useState(false);
   const [futbolOpen, setFutbolOpen] = useState(false);
   const [parkOpen, setParkOpen] = useState(false);
@@ -124,73 +154,73 @@ function GameShell() {
   const [tuningGarageOpen, setTuningGarageOpen] = useState(false);
   const { player } = usePlayer();
 
+  // v68 — Android geri tuşu: açık ekran/mekân varsa onu kapatır (mekândan →
+  // ana sayfa); ana sayfadayken "Çıkmak istiyor musun?" sorulur.
+  const [exitAsk, setExitAsk] = useState(false);
+  useEffect(() => {
+    installBackHandler(() => setExitAsk(true));
+  }, []);
+  const venueClose = (fn) => () => closeVenueMaybeReturnToVisit(fn);
+  useBackClose(Boolean(activeRegion), () => setActiveRegion(null));
+  useBackClose(profileOpen, () => setProfileOpen(false));
+  useBackClose(futbolOpen, () => setFutbolOpen(false));
+  useBackClose(gangsOpen, () => setGangsOpen(false));
+  useBackClose(heistTarget !== undefined, () => setHeistTarget(undefined));
+  useBackClose(parkOpen, venueClose(setParkOpen));
+  useBackClose(bankOpen, venueClose(setBankOpen));
+  useBackClose(karakolOpen, venueClose(setKarakolOpen));
+  useBackClose(mosqueOpen, venueClose(setMosqueOpen));
+  useBackClose(casinoOpen, venueClose(setCasinoOpen));
+  useBackClose(dealershipOpen, venueClose(setDealershipOpen));
+  useBackClose(weaponShopOpen, venueClose(setWeaponShopOpen));
+  useBackClose(tuningGarageOpen, venueClose(setTuningGarageOpen));
+  useBackClose(raceExpanded, () => setRaceExpanded(false));
+  useBackClose(Boolean(activeTableId), () => setActiveTableId(null));
+
   // Uygulama arka plana alınıp geri geldiğinde (özellikle iOS'ta) Firestore
   // dinleyicilerinin durağanlaşmasını önlemek için — bkz. hook içindeki not.
   useFirestoreResume();
 
-  // Depo + Vites Geliştirme Malzemeleri birleştirme geçişini, kullanıcı
-  // giriş yapar yapmaz sessizce (bir kez) tetikle — hangi ekranı önce
-  // açtığından bağımsız olarak çalışsın diye en üst seviyede.
+  // v67 — açılıştaki kasmayı azaltmak için: eski tek seferlik göç
+  // çağrıları (hepsi sunucuda bayraklı/idempotent ve gece 00:00'da zaten
+  // otomatik çalışıyor) artık açılışın ilk saniyelerinde ağı meşgul etmiyor —
+  // 20 sn sonra, cihaz başına GÜNDE en fazla bir kez, sırayla tetikleniyor.
+  // Ekranlar da 3 sn sonra arka planda önceden indiriliyor.
   useEffect(() => {
-    if (!user || arabaGelistirmeMigrationTriggered) return;
-    arabaGelistirmeMigrationTriggered = true;
-    migrateArabaGelistirmeUnification().catch((err) => {
-      console.error('Araba geliştirme malzemesi geçişi başarısız:', err);
-    });
-  }, [user]);
-
-  // Araç/silah ömür tavanı 50→30 güne düştüğü için, eski (50 güne göre
-  // yaşlanmış) kayıtları yeni tavana çeken geçişi de aynı şekilde tetikle.
-  useEffect(() => {
-    if (!user || lifeCapMigrationTriggered) return;
-    lifeCapMigrationTriggered = true;
-    migrateVehicleWeaponLifeCap().catch((err) => {
-      console.error('Araç/silah ömür tavanı geçişi başarısız:', err);
-    });
-  }, [user]);
-
-  // Araç/silah ömür tavanı 30→20 güne düştüğü için (kullanıcı revizesi),
-  // eski (30 güne göre yaşlanmış) kayıtları yeni tavana çeken geçişi de
-  // aynı şekilde tetikle.
-  useEffect(() => {
-    if (!user || lifeCap20MigrationTriggered) return;
-    lifeCap20MigrationTriggered = true;
-    migrateVehicleWeaponLifeCap20().catch((err) => {
-      console.error('Araç/silah ömür tavanı (20) geçişi başarısız:', err);
-    });
-  }, [user]);
-
-  // v58: silah ömür tavanı 20 → 10 — deploy sonrası ilk açılışta tek seferlik
-  // göçü tetikle (gece 00:00'da da ayrıca denenir; sunucu bayrağıyla bir kez çalışır).
-  useEffect(() => {
-    if (!user || weaponLifeCap10MigrationTriggered) return;
-    weaponLifeCap10MigrationTriggered = true;
-    migrateWeaponLifeCap10().catch((err) => {
-      console.error('Silah ömür tavanı (10) geçişi başarısız:', err);
-    });
-  }, [user]);
-
-  // Futbol transfer piyasasını yeni (takımlardaki gerçek güce göre
-  // dengelenmiş) kurallara sıfırla — bkz. yukarıdaki not.
-  useEffect(() => {
-    if (!user || futbolTransferMarketResetTriggered) return;
-    futbolTransferMarketResetTriggered = true;
-    resetFutbolTransferMarket().catch((err) => {
-      console.error('Futbol transfer piyasası sıfırlama başarısız:', err);
-    });
-  }, [user]);
-
-  // Onboarding polis kuralı göçünü tetikle — kullanıcı revizesi: "tek
-  // seferlik çalışan bi kod yaz, push ettiğimde otomatik çalışsın, elle
-  // bir buton olmasın". İdempotent (bkz. functions/index.js
-  // runOnboardingPoliceRuleMigration), bu yüzden her kullanıcı için
-  // tetiklemek zararsız — sadece ilk çağıran gerçek işi yapar.
-  useEffect(() => {
-    if (!user || onboardingPoliceRuleMigrationTriggered) return;
-    onboardingPoliceRuleMigrationTriggered = true;
-    migrateOnboardingPoliceRule().catch((err) => {
-      console.error('Onboarding polis kuralı göçü başarısız:', err);
-    });
+    if (!user) return undefined;
+    const pre = setTimeout(prefetchScreens, 3000);
+    const t = setTimeout(async () => {
+      const key = `ns_migrations_${new Date().toISOString().slice(0, 10)}`;
+      try {
+        if (localStorage.getItem(key)) return;
+      } catch {
+        /* depolama yok — yine de çalıştır */
+      }
+      const jobs = [
+        [() => !arabaGelistirmeMigrationTriggered && ((arabaGelistirmeMigrationTriggered = true), migrateArabaGelistirmeUnification()), 'Araba geliştirme malzemesi geçişi'],
+        [() => !lifeCapMigrationTriggered && ((lifeCapMigrationTriggered = true), migrateVehicleWeaponLifeCap()), 'Araç/silah ömür tavanı geçişi'],
+        [() => !lifeCap20MigrationTriggered && ((lifeCap20MigrationTriggered = true), migrateVehicleWeaponLifeCap20()), 'Araç/silah ömür tavanı (20) geçişi'],
+        [() => !weaponLifeCap10MigrationTriggered && ((weaponLifeCap10MigrationTriggered = true), migrateWeaponLifeCap10()), 'Silah ömür tavanı (10) geçişi'],
+        [() => !futbolTransferMarketResetTriggered && ((futbolTransferMarketResetTriggered = true), resetFutbolTransferMarket()), 'Futbol transfer piyasası sıfırlama'],
+        [() => !onboardingPoliceRuleMigrationTriggered && ((onboardingPoliceRuleMigrationTriggered = true), migrateOnboardingPoliceRule()), 'Onboarding polis kuralı göçü'],
+      ];
+      for (const [run, label] of jobs) {
+        try {
+          await run();
+        } catch (err) {
+          console.error(`${label} başarısız:`, err);
+        }
+      }
+      try {
+        localStorage.setItem(key, '1');
+      } catch {
+        /* yoksay */
+      }
+    }, 20_000);
+    return () => {
+      clearTimeout(pre);
+      clearTimeout(t);
+    };
   }, [user]);
 
   // Aktif bir yarışım varsa (kurdum/katıldım/devam ediyor), harita üzerinde
@@ -208,11 +238,10 @@ function GameShell() {
   }, [myActiveRoom?.status]);
 
   const handleRegionClick = (regionId, regionMeta) => {
-    // v65: "Ev" artık profil DEĞİL — 3D ev (şimdilik sadece admin ve
-    // admin'in davet ettikleri; diğer herkes "Tadilatta" ekranını görür).
-    // Profil alttaki 5. sekmeye (👤) taşındı.
+    // v66: "Ev" → Evler ekranı (ev satın al, evlerim, girebileceğim evler).
+    // Profil alttaki 5. sekmede (👤).
     if (regionMeta?.screen === 'ev') {
-      setHouseOpen(true);
+      setHouseView({ houseId: null });
       return;
     }
     if (regionMeta?.screen === 'park') {
@@ -323,6 +352,19 @@ function GameShell() {
 
   return (
     <div className="app-shell">
+      {exitAsk && (
+        <ConfirmModal
+          title="Çıkmak istiyor musun?"
+          message="İlerlemen kayıtlı. Çıkmak için geri tuşuna bir kez daha bas."
+          confirmLabel="Çık"
+          cancelLabel="Oyunda kal"
+          onCancel={() => {
+            setExitAsk(false);
+            rearmBack();
+          }}
+          onConfirm={() => exitApp()}
+        />
+      )}
       <Hud
         suspicion={player?.suspicion ?? 0}
         reputation={player?.reputation ?? 0}
@@ -393,7 +435,20 @@ function GameShell() {
         }}
       />
       {profileOpen && <ProfileFullScreen onClose={() => setProfileOpen(false)} />}
-      {houseOpen && <HouseGate onClose={() => setHouseOpen(false)} />}
+      {houseView && (
+        <HouseHub
+          initialHouseId={houseView.houseId}
+          onClose={() => {
+            const fromVisit = Boolean(houseView.houseId) && visitReturnPending;
+            setHouseView(null);
+            if (fromVisit) {
+              setVisitReturnPending(false);
+              setMekanlarTab('ziyaret');
+              setHeistTarget(null);
+            }
+          }}
+        />
+      )}
       {futbolOpen && <FutbolFullScreen onClose={() => setFutbolOpen(false)} />}
       {gangsOpen && (
         <GangAlertsContext.Provider value={gangAlerts}>
@@ -462,6 +517,11 @@ function GameShell() {
           initialHeistTarget={heistTarget}
           onClose={() => setHeistTarget(undefined)}
           onVisitVenue={handleVisitVenue}
+          onVisitHouse={(houseId) => {
+            setHeistTarget(undefined);
+            setVisitReturnPending(true);
+            setHouseView({ houseId });
+          }}
         />
       )}
 

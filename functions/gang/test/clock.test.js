@@ -215,8 +215,21 @@ test('v39 tek seferlik: elde tutulan yolun limiti %1e çekilir; bozuk üye sayı
   const G = await setupGang(h, { members: 2 });
   await h.db.doc('gangWorlds/test/routes/silah').set({ product: 'silah', holderType: 'gang', holderId: G.gangId, powerUsed: 800_000, dailyOrderLimit: 40_000 });
   await h.db.doc(`gangWorlds/test/gangs/${G.gangId}`).update({ memberCount: 0 });
-  await h.db.doc('gangWorlds/test').set({ routeLimitV39: false }, { merge: true });
+  await h.db.doc('gangWorlds/test').set({ routeLimitV39: false, routeLimitV67: true }, { merge: true });
   await h.internal.clock.runClock('test');
   assert.equal(h.get('routes/silah').dailyOrderLimit, 8_000);
   assert.equal(h.get(`gangs/${G.gangId}`).memberCount, 3);
+});
+
+test('v67 tek seferlik: elde tutulan yolların günlük sipariş limiti 2 katına çıkar (bir kez)', async () => {
+  const h = await createHarness();
+  const G = await setupGang(h, { members: 1 });
+  await h.db.doc('gangWorlds/test/routes/silah').set({ product: 'silah', holderType: 'gang', holderId: G.gangId, powerUsed: 800_000, dailyOrderLimit: 40_000 });
+  await h.db.doc('gangWorlds/test/routes/araba').set({ product: 'araba', holderType: null, holderId: null, dailyOrderLimit: 0 });
+  await h.db.doc('gangWorlds/test').set({ routeLimitV39: true, routeLimitV67: false }, { merge: true });
+  await h.internal.clock.runClock('test');
+  assert.equal(h.get('routes/silah').dailyOrderLimit, 80_000);
+  await h.internal.clock.runClock('test');
+  assert.equal(h.get('routes/silah').dailyOrderLimit, 80_000, 'ikinci kez artmaz');
+  assert.equal(h.get('routes/araba').dailyOrderLimit, 0);
 });

@@ -81,6 +81,7 @@ export default function SuspicionTab() {
       name: regionLabels.karakol,
       actionLabel: `Rüşvet Ver (${BRIBE_COST.toLocaleString('tr-TR')} altın)`,
       costLabel: `${BRIBE_COST.toLocaleString('tr-TR')} altın`,
+      cost: BRIBE_COST,
       suspicionDelta: 20,
       available: !actions.bribed,
       unavailableNote: 'Bugün zaten rüşvet verdin',
@@ -96,6 +97,7 @@ export default function SuspicionTab() {
         name: regionLabels[vendorId],
         actionLabel: `Alışveriş Yap (${VENDOR_COST.toLocaleString('tr-TR')} altın)`,
         costLabel: `${VENDOR_COST.toLocaleString('tr-TR')} altın`,
+        cost: VENDOR_COST,
         suspicionDelta: 5,
         reputationDelta: reputationGainFor(player?.reputation || 0),
         available: !alreadyBought && !blockedByHeist,
@@ -136,7 +138,12 @@ export default function SuspicionTab() {
                   </span>
                 </div>
               </div>
-              {item.available ? (
+              {item.available && item.cost && Number(player?.gold || 0) < item.cost ? (
+                // v67 — altını yetmeyen oyuncuya buton yerine açık uyarı
+                <button className="suspicion-card-btn poor" disabled>
+                  Yetersiz altın
+                </button>
+              ) : item.available ? (
                 <button
                   className="suspicion-card-btn"
                   disabled={busyKey === item.key}

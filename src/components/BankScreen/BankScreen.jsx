@@ -14,7 +14,7 @@ import {
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import PriceChart from '../PriceChart/PriceChart';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
-import VehicleLoanSection from './VehicleLoanSection';
+import CreditSection from './CreditSection';
 import './BankScreen.css';
 
 function formatUnits(n) {
@@ -491,7 +491,7 @@ function PenaltiesTab({ player, busy, error, run }) {
 
 const CARDS = [
   { id: 'yatirimlar', label: 'Yatırımlar', emoji: '📈', desc: 'Elmas ve kripto al-sat, faize para yatır.' },
-  { id: 'krediler', label: 'Krediler', emoji: '🚗', desc: 'Aracına kredi çek ya da borcunu öde.' },
+  { id: 'krediler', label: 'Krediler', emoji: '🏦', desc: 'Kredi puanınla kredi çek, borcunu öde.' },
   { id: 'cezalar', label: 'Cezalar', emoji: '⚖️', desc: 'Devlete olan borcunu gör ve öde.' },
 ];
 
@@ -542,7 +542,7 @@ export default function BankScreen() {
       {tab === 'yatirimlar' && (
         <InvestmentsTab player={player} prices={prices} busy={busy} error={error} run={run} />
       )}
-      {tab === 'krediler' && <VehicleLoanSection />}
+      {tab === 'krediler' && <CreditSection />}
       {tab === 'cezalar' && <PenaltiesTab player={player} busy={busy} error={error} run={run} />}
     </div>
   );

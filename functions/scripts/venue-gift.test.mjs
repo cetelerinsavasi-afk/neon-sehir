@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { FakeFirestore, FieldValue, Timestamp } from '../gang/test/fakeFirestore.js';
+import { HOUSE_PRODUCTS } from '../houseCatalogData.js';
 
 const src = fs.readFileSync(fileURLToPath(new URL('../index.js', import.meta.url)), 'utf8');
 const a = src.indexOf('const BUFE_PRICES = {');
@@ -23,8 +24,8 @@ function setup() {
   const G = (p) => db._store.get(p)?.data;
   const blocks = new Set();
   const moderation = { isBlockedBy: async (o, t) => blocks.has(`${o}>${t}`) };
-  const fns = new Function('db', 'admin', 'HttpsError', 'onCall', 'requireAuth', 'moderation', code)(
-    db, { firestore: { FieldValue } }, HttpsError, (fn) => fn, (r) => r.auth.uid, moderation
+  const fns = new Function('db', 'admin', 'HttpsError', 'onCall', 'requireAuth', 'moderation', 'HOUSE_PRODUCTS', code)(
+    db, { firestore: { FieldValue } }, HttpsError, (fn) => fn, (r) => r.auth.uid, moderation, HOUSE_PRODUCTS
   );
   const fresh = () => new Timestamp(Date.now());
   for (const [u, g] of [['ali', 5000], ['veli', 5000], ['ayse', 5000]]) S(`users/${u}`, { displayName: u.toUpperCase(), gold: g });
@@ -87,4 +88,19 @@ test('süresi dolmuş ürün ısmarlanamaz; karşının süresi dolmuşsa ısmar
   await assert.rejects(call('giftHeldItem', 'ali', { targetUid: 'ayse', venue: 'park' }), /artık burada değil/);
   await call('giftHeldItem', 'ali', { targetUid: 'veli', venue: 'park' });
   assert.equal(G('heldItems/veli').itemId, 'tost');
+});
+
+test('v66 ev: aynı evdeki oyuncuya ısmarlanır, başka evdekine ısmarlanmaz', async () => {
+  const { S, G, call, fresh } = setup();
+  const until = Date.now() + 60_000;
+  S('heldItems/ali', { itemId: 'kola', venue: 'ev', houseId: 'h1', untilMs: until });
+  S('housePresence/ali', { houseId: 'h1', holding: 'kola', updatedAt: fresh() });
+  S('housePresence/veli', { houseId: 'h1', holding: null, updatedAt: fresh() });
+  S('housePresence/ayse', { houseId: 'h2', holding: null, updatedAt: fresh() });
+  await assert.rejects(call('giftHeldItem', 'ali', { targetUid: 'ayse', venue: 'ev' }), /bu evde değil/);
+  const r = await call('giftHeldItem', 'ali', { targetUid: 'veli', venue: 'ev' });
+  assert.equal(r.label, 'Kola');
+  assert.equal(G('heldItems/veli').itemId, 'kola');
+  assert.equal(G('heldItems/veli').untilMs, until);
+  assert.equal(G('housePresence/veli').holding, 'kola');
 });

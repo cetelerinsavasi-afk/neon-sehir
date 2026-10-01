@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import FutbolCrest from '../FutbolScreen/FutbolCrest';
 import PriceChart from '../PriceChart/PriceChart';
@@ -18,6 +18,9 @@ import { drawWeaponShopSceneBackground } from '../WeaponShopWorldScreen/WeaponSh
 import { drawGarageSceneBackground } from '../TuningGarageWorldScreen/TuningGarageWorldScreen';
 import InterviewPlayer from '../Broadcast/InterviewPlayer';
 import './PostAttachment.css';
+
+// v66 — ev fotoğrafı: three.js'i ana pakete sokmamak için tembel yüklenir.
+const HousePhoto = lazy(() => import('../HouseScreen/HousePhoto'));
 
 // Tüm parkPhoto kartları arasında paylaşılan avatar görsel önbelleği —
 // aynı avatarı tekrar tekrar SVG'den <img>'e çevirmemek için (bkz.
@@ -486,6 +489,23 @@ export default function PostAttachment({ attachment }) {
           />
         </div>
         <p className="post-att-parkphoto-names">📷 {names.join(' · ')} · {label}</p>
+      </div>
+    );
+  }
+
+  if (attachment.type === 'housePhoto') {
+    const people = attachment.people || [];
+    const names = people.map((p) => p.displayName || 'Oyuncu');
+    return (
+      <div className="post-att post-att-parkphoto">
+        <div className="post-att-parkphoto-frame post-att-housephoto">
+          <Suspense fallback={<div className="post-att-housephoto-empty">Fotoğraf yükleniyor…</div>}>
+            <HousePhoto attachment={attachment} />
+          </Suspense>
+        </div>
+        <p className="post-att-parkphoto-names">
+          📷 {names.length ? `${names.join(' · ')} · ` : ''}🏠 {attachment.houseName || 'Ev'}
+        </p>
       </div>
     );
   }

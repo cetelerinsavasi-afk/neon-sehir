@@ -1,66 +1,72 @@
+import { useMemo, useState } from 'react';
 import './QuantityStepper.css';
 
-// Boş "adet yaz" kutusu yerine görsel bir seçici: -/+ butonları + hızlı
-// miktar butonları (max varsa "Hepsi").
-export default function QuantityStepper({ value, onChange, max, step = 1, quickAmounts = [] }) {
+// v67 — ortak adım sistemi (oyunun her yerinde aynı):
+//   [−]  değer  [+]
+//   Adım: 1 · 10 · 100 · 1.000 · 10.000   ← seçilen adım kadar artar/azalır (varsayılan 1)
+//   Max · Sıfırla
+// `step` taban birimidir (ör. fiyatlarda 10) — adımlar onun 10'ar katlarıdır.
+// `quickAmounts` geriye uyumluluk için duruyor: içindeki en büyük değer adım
+// listesinin ne kadar büyüyeceğini belirler (ör. 100.000'e kadar).
+const fmt = (n) => Number(n || 0).toLocaleString('tr-TR');
+
+export default function QuantityStepper({ value, onChange, max, min = 0, step = 1, quickAmounts = [], steps: stepsProp, showMax = true }) {
   const num = Number(value) || 0;
+  const base = Math.max(1, Number(step) || 1);
+
+  const steps = useMemo(() => {
+    if (Array.isArray(stepsProp) && stepsProp.length) return stepsProp;
+    const quickMax = quickAmounts.reduce((m, q) => Math.max(m, Number(typeof q === 'object' ? q.value : q) || 0), 0);
+    const list = [];
+    for (let s = base, k = 0; k < 7; k++, s *= 10) {
+      if (k > 4 && s > quickMax) break;
+      list.push(s);
+    }
+    const cap = max !== undefined ? Math.max(base, Number(max) || 0) : Infinity;
+    return list.filter((s, i) => i === 0 || s <= cap);
+  }, [stepsProp, quickAmounts, base, max]);
+
+  const [picked, setPicked] = useState(null);
+  const sel = picked && steps.includes(picked) ? picked : steps[0];
 
   const clamp = (v) => {
-    let n = Math.max(0, v);
-    if (max !== undefined) n = Math.min(n, max);
+    let n = Math.max(min, v);
+    if (max !== undefined) n = Math.min(n, Math.max(min, Number(max) || 0));
     return n;
   };
+
+  const atMax = max !== undefined && num >= max;
 
   return (
     <div className="qty-stepper">
       <div className="qty-stepper-row">
-        <button
-          type="button"
-          className="qty-stepper-btn"
-          disabled={num <= 0}
-          onClick={() => onChange(clamp(num - step))}
-        >
+        <button type="button" className="qty-stepper-btn" disabled={num <= min} onClick={() => onChange(clamp(num - sel))} aria-label={`${fmt(sel)} azalt`}>
           −
         </button>
-        <span className="qty-stepper-value">{num}</span>
-        <button
-          type="button"
-          className="qty-stepper-btn"
-          disabled={max !== undefined && num >= max}
-          onClick={() => onChange(clamp(num + step))}
-        >
+        <span className="qty-stepper-value">{fmt(num)}</span>
+        <button type="button" className="qty-stepper-btn" disabled={atMax} onClick={() => onChange(clamp(num + sel))} aria-label={`${fmt(sel)} artır`}>
           +
         </button>
       </div>
-      {(quickAmounts.length > 0 || num > 0) && (
+      {steps.length > 1 && (
+        <div className="qty-stepper-steps" role="group" aria-label="Adım">
+          <span className="qty-stepper-steps-label">Adım</span>
+          {steps.map((s) => (
+            <button key={s} type="button" className={`qty-stepper-step${s === sel ? ' on' : ''}`} onClick={() => setPicked(s)} aria-pressed={s === sel}>
+              {s >= 1_000_000 ? `${s / 1_000_000}M` : fmt(s)}
+            </button>
+          ))}
+        </div>
+      )}
+      {((showMax && max !== undefined && max > 0) || num > min) && (
         <div className="qty-stepper-quick">
-          {quickAmounts.map((q) => {
-            // Her öğe düz bir sayı ya da { value, label } şeklinde olabilir,
-            // böylece 100.000 / 1M gibi kısaltılmış etiketler gösterebiliriz.
-            const value = typeof q === 'object' ? q.value : q;
-            const label = typeof q === 'object' ? q.label : q;
-            return (
-              <button
-                key={value}
-                type="button"
-                className="qty-stepper-quick-btn"
-                onClick={() => onChange(clamp(num + value))}
-              >
-                {label}
-              </button>
-            );
-          })}
-          {max !== undefined && max > 0 && (
-            <button type="button" className="qty-stepper-quick-btn" onClick={() => onChange(max)}>
-              Hepsi ({max})
+          {showMax && max !== undefined && max > 0 && (
+            <button type="button" className="qty-stepper-quick-btn max" disabled={atMax} onClick={() => onChange(clamp(max))}>
+              Max ({fmt(max)})
             </button>
           )}
-          {num > 0 && (
-            <button
-              type="button"
-              className="qty-stepper-quick-btn reset"
-              onClick={() => onChange(0)}
-            >
+          {num > min && (
+            <button type="button" className="qty-stepper-quick-btn reset" onClick={() => onChange(min)}>
               Sıfırla
             </button>
           )}

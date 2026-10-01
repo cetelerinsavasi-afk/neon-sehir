@@ -10,8 +10,8 @@ import { IS_ANDROID_APP } from '../lib/platform';
 // işaretlenmez — sadece bu hook'un döndürdüğü listeden düşülür. Bu hook'u
 // kullanan her yer (SMS listesi, okunmamış rozetleri, üst bildirim
 // şeridi) böylece tek noktadan temizlenir. Web'de liste birebir aynıdır.
-const GOLD_STORE_SENDER = 'Altın Mağazası';
-const isHiddenOnAndroid = (m) => m.from === GOLD_STORE_SENDER;
+const GOLD_STORE_SENDERS = ['Altın Mağazası', 'Zümrüt Mağazası'];
+const isHiddenOnAndroid = (m) => GOLD_STORE_SENDERS.includes(m.from);
 
 /**
  * useMessages — users/{uid}/messages alt koleksiyonunu (en yeni önce)

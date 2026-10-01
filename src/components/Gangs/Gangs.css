@@ -3153,3 +3153,57 @@ button.gx-msg-avatar.pc-trigger {
   border-radius: 2px;
   background: var(--neon-yellow, #ffd23f);
 }
+
+/* v67 — tır zaman çizelgesi */
+.gx-order-plan {
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(25, 232, 255, 0.08);
+  border: 1px solid rgba(25, 232, 255, 0.3);
+}
+.gx-op-timer {
+  margin: 4px 0;
+  font-size: 12px;
+}
+
+/* v68 — savaş izleme */
+.gx-watch-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.gx-watch-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.gx-watch-side {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 13px;
+}
+.gx-watch-side.top {
+  background: rgba(255, 210, 63, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(255, 210, 63, 0.35);
+}
+.gx-watch-ico {
+  font-size: 18px;
+  text-align: center;
+}
+.gx-watch-name em {
+  font-style: normal;
+  color: var(--text-dim, #8a93a8);
+  font-size: 11px;
+}
+.gx-watch-power {
+  font-variant-numeric: tabular-nums;
+}

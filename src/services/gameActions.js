@@ -110,8 +110,6 @@ export const sellAllInvestment = (assetType) =>
 
 // --- Banka Kredisi: Araç İpoteği (Bölüm 8.4) ---
 
-export const takeVehicleLoan = (vehicleId, termDays) =>
-  httpsCallable(functions, 'takeVehicleLoan')({ vehicleId, termDays });
 
 export const repayVehicleLoan = (vehicleId, amount) =>
   httpsCallable(functions, 'repayVehicleLoan')({ vehicleId, amount });
@@ -299,6 +297,7 @@ export const executeHeistPlan = (planId) =>
 
 export const markMessageRead = (messageId) =>
   httpsCallable(functions, 'markMessageRead')({ messageId });
+export const markAllMessagesRead = () => httpsCallable(functions, 'markAllMessagesRead')({});
 
 // --- ChatsApp (genel sohbet) ---
 
@@ -668,3 +667,17 @@ export const adminAction = (action, payload = {}) => httpsCallable(functions, 'a
 // --- Ev (3D ev tasarımı, v65) — tek callable: functions/houses.js ---
 // op: 'enter' | 'save' | 'invite' | 'uninvite' | 'chat'
 export const houseAction = (payload) => httpsCallable(functions, 'houseAction')(payload);
+
+// v66 — Zümrüt Mağazası: zümrüt karşılığı altın paketi
+export const buyEmeraldOffer = (offerId) => httpsCallable(functions, 'buyEmeraldOffer')({ offerId });
+
+// v67 — Fikirler: beğen / geri al
+export const toggleFeedbackLike = (id) => httpsCallable(functions, 'toggleFeedbackLike')({ id });
+
+// v67 — Kredi puanı & banka kredisi
+export const getCreditInfo = () => httpsCallable(functions, 'getCreditInfo')({});
+export const takeCredit = (amount) => httpsCallable(functions, 'takeCredit')({ amount });
+export const repayCredit = (amount) => httpsCallable(functions, 'repayCredit')({ amount });
+
+// v67 — Başarılar: duruma bağlı başarıları (imam, Mafya Babası, İstihbarat Başkanı) kontrol et
+export const syncAchievements = () => httpsCallable(functions, 'syncAchievements')({});

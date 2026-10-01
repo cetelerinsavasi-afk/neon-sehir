@@ -10,6 +10,7 @@ import FlappyBirdScreen from '../FlappyBirdScreen/FlappyBirdScreen';
 import SixtagramScreen from '../Sixtagram/SixtagramScreen';
 import GuideScreen from '../GuideScreen/GuideScreen';
 import IdeasScreen from '../IdeasScreen/IdeasScreen';
+import AchievementsScreen from '../AchievementsScreen/AchievementsScreen';
 import InstallAppButton from '../InstallAppButton/InstallAppButton';
 import { useMessages } from '../../hooks/useMessages';
 import { usePlayer } from '../../hooks/usePlayer';
@@ -17,6 +18,7 @@ import { useUnreadNotifications, markSixtagramSeen } from '../../hooks/useUnread
 import { useSocial } from '../../contexts/SocialContext';
 import { OPEN_DM_EVENT } from '../../lib/chatsappNav';
 import { IS_ANDROID_APP } from '../../lib/platform';
+import { useBackClose } from '../../lib/backStack';
 import './PhoneScreen.css';
 
 // Altın Mağazası ayrı bir JS parçasına (chunk) bölünüyor: Shopier
@@ -33,9 +35,10 @@ const APPS = [
   { id: 'casino', glyph: '🎰', note: 'Casino', tone: 'casino' },
   { id: 'sixtagram', glyph: '📸', note: 'Sixtagram', tone: 'sixtagram' },
   { id: 'flappy', glyph: '🐤', note: 'Flappy Kuş', tone: 'flappy' },
+  { id: 'basarilar', glyph: '🏆', note: 'Başarılar', tone: 'basarilar' },
 ];
 const EXTRA_APPS = [
-  { id: 'altin-magazasi', glyph: '', note: 'Altın Mağazası', tone: 'gold' },
+  { id: 'altin-magazasi', glyph: '', note: 'Zümrüt Mağazası', tone: 'emerald' },
   { id: 'rehber', glyph: 'N', note: 'Neon Şehir', tone: 'rehber' },
   { id: 'fikir', glyph: '💡', note: 'Bi fikrin mi var?', tone: 'fikir' },
 ];
@@ -68,9 +71,10 @@ const APP_TITLES = {
   gazete: 'Neon TV',
   flappy: 'Flappy Kuş',
   sixtagram: 'Sixtagram',
-  'altin-magazasi': 'Altın Mağazası',
+  'altin-magazasi': 'Zümrüt Mağazası',
   rehber: 'Neon Şehir',
   fikir: 'Bi Fikrin mi Var?',
+  basarilar: 'Başarılar',
 };
 
 function useClock() {
@@ -112,7 +116,7 @@ function AppIcon({ app, badge, dot, onOpen }) {
   return (
     <button className="phone-app" onClick={() => onOpen(app.id)}>
       <span className={`phone-app-icon tone-${app.tone}`}>
-        {app.tone === 'gold' ? <span className="phone-gold-glyph" /> : <span className="phone-app-glyph">{app.glyph}</span>}
+        {app.tone === 'gold' ? <span className="phone-gold-glyph" /> : app.tone === 'emerald' ? <span className="emerald-icon" style={{ width: 30, height: 30 }} /> : <span className="phone-app-glyph">{app.glyph}</span>}
         {badge > 0 && <span className="phone-app-badge">{badge > 99 ? '99+' : badge}</span>}
         {dot && <span className="phone-app-dot" />}
       </span>
@@ -124,6 +128,9 @@ function AppIcon({ app, badge, dot, onOpen }) {
 export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }) {
   const [openApp, setOpenApp] = useState(isAppBlocked(initialApp) ? null : initialApp);
   const [page, setPage] = useState(HOME_PAGE);
+  // v68 — Android geri tuşu: önce açık uygulama kapanır, sonra telefon
+  useBackClose(true, onClose);
+  useBackClose(Boolean(openApp), () => setOpenApp(null));
   // Kısayoldan / bildirimden doğrudan açılan uygulama da "görüldü" sayılır
   // v60: ChatsApp'ta "görüldü" artık Neon Şehir grubu açılınca işaretlenir (GroupChat)
   useEffect(() => {
@@ -207,6 +214,7 @@ export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }
           )}
           {openApp === 'rehber' && <GuideScreen />}
           {openApp === 'fikir' && <IdeasScreen />}
+          {openApp === 'basarilar' && <AchievementsScreen />}
         </div>
       </div>
     );

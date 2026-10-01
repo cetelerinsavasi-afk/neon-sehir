@@ -11,7 +11,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { collection, doc, getDoc, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { istDateKey, istHour, slotIdOf } from './GangContext';
+import { istDateKey, slotIdOf, truckAttackAt } from './GangContext';
 
 export const GangAlertsContext = createContext(null);
 export const useGangAlertsCtx = () => useContext(GangAlertsContext);
@@ -201,19 +201,20 @@ export function useGangAlerts(uid) {
 
     const reportedTrucks = new Set(truckReps.map((r) => r.truckId));
     const reportedBets = new Set(betReps.map((r) => r.id));
-    const beforeNoon = istHour(now) < 12; // v38: tır ihbarı / sızdırma / operasyon 12:00'ye kadar
-    const myRoad = beforeNoon ? myTrucks.filter((t) => t.status === 'in_transit' && t.departDateKey === today && !reportedTrucks.has(t.id)) : [];
+    // v67: tır ihbarı / sızdırma / operasyon her tırın kendi 6 saatlik penceresinde
+    const openRep = (r) => now < truckAttackAt(r);
+    const myRoad = myTrucks.filter((t) => t.status === 'in_transit' && t.departDateKey === today && now < truckAttackAt(t) && !reportedTrucks.has(t.id));
     const myBets = [...all.values()].filter((x) => x.type === 'bet' && ['accepted', 'active'].includes(x.status) && x.startsAtMs && now < x.startsAtMs + 6 * 3600_000 && (x.gangIds || []).includes(gangId) && !reportedBets.has(x.id));
     const ops =
       Boolean(rid) &&
-      ((isLead && ((istHour(now) < 12 && truckReps.some((r) => !r.opWarId)) || betReps.some((r) => !r.opStarted))) || (canReport && (myRoad.length > 0 || myBets.length > 0)));
+      ((isLead && (truckReps.some((r) => !r.opWarId && openRep(r)) || betReps.some((r) => !r.opStarted))) || (canReport && (myRoad.length > 0 || myBets.length > 0)));
 
     const handoverForMe = Boolean(handover && handover.toId === uid && handover.status === 'pending' && handover.dateKey === today);
     const gang = { sohbet: gangChat, savas: gangWar || offersIn || gUnvoted > 0 || gClaim || handoverForMe };
     const intel = { sohbet: intelChat, savas: intelWar || iUnvoted > 0 || iClaim, operasyon: ops };
     // v38: anasayfa hatırlatıcıları (📋 paneli)
     const canLeak = Boolean(rid && gangId && atLeast(rank, 'kidemli'));
-    const leakTruck = beforeNoon && truckReps.some((r) => r.gangId === gangId && !r.leaked);
+    const leakTruck = truckReps.some((r) => r.gangId === gangId && !r.leaked && openRep(r));
     const leakBet = betReps.some((r) => (r.gangIds || []).includes(gangId) && !r.leaked);
     const reminders = {
       joinWar: gangWar || intelWar,

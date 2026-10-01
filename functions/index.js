@@ -13,6 +13,8 @@ import { createPlayerCard } from './playerCard.js';
 import { createSocial } from './social.js';
 import { createDeletionRequests } from './deletionRequests.js';
 import { createHouses } from './houses.js';
+import { createAchievements } from './achievements.js';
+import { HOUSE_PRODUCTS } from './houseCatalogData.js';
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -123,7 +125,7 @@ const social = createSocial({
 });
 export const socialAction = social.socialAction;
 
-// v65 — 3D Ev (şimdilik sadece admin + davetlileri). Ayrıntı functions/houses.js
+// v66 — 3D Ev (herkese açık: satın alma, envanter, sepet, davet). Ayrıntı functions/houses.js
 const houses = createHouses({
   db,
   FieldValue: admin.firestore.FieldValue,
@@ -132,8 +134,24 @@ const houses = createHouses({
   onCall,
   isAdmin: (uid) => ADMIN_UIDS.includes(uid),
   assertCanSpeak: (uid) => moderation.assertCanSpeak(uid),
+  isFriend: async (a, b) => {
+    const snap = await db.collection('friendships').doc(a).get();
+    return Boolean(snap.exists && snap.data()?.friends?.[b]);
+  },
 });
 export const houseAction = houses.houseAction;
+
+// v67 — Başarılar (bkz. functions/achievements.js)
+const achievements = createAchievements({ db, FieldValue: admin.firestore.FieldValue });
+export const syncAchievements = onCall(async (request) => {
+  const uid = requireAuth(request);
+  await achievements.syncUser(uid);
+  const snap = await db.collection('users').doc(uid).get();
+  return { achievements: snap.data()?.achievements || {} };
+});
+export const achievementsSweep = onSchedule({ schedule: 'every 60 minutes' }, async () => {
+  await achievements.sweep();
+});
 // Süresi dolan arkadaşlık istekleri (48 sa) ve 7 gündür sessiz sohbetler — saatte bir
 export const socialCleanup = onSchedule({ schedule: 'every 60 minutes' }, async () => {
   const r = await social.cleanup();
@@ -897,9 +915,7 @@ export const applyForPolice = onCall(async (request) => {
   if (user.profession === 'polis') {
     throw new HttpsError('failed-precondition', 'Zaten polissin.');
   }
-  if (user.isImam) {
-    throw new HttpsError('failed-precondition', 'İmamken polis olamazsın.');
-  }
+  // v67 — meslekler bağımsız: imam da polis olabilir (görevlerini yapmak şartıyla).
   if (user.pendingPoliceChange) {
     throw new HttpsError('failed-precondition', 'Bekleyen bir başvurun zaten var.');
   }
@@ -2128,6 +2144,7 @@ async function resolveStuckLotteryAndChampionship(dateKey) {
             read: false,
             type: 'lottery_win',
           });
+          await achievements.grant(winnerUid, 'piyango'); // v67 — Başarılar
           summary.lotteryGoldPaid += lottery.jackpot;
         }
       } else {
@@ -2177,6 +2194,7 @@ async function resolveStuckLotteryAndChampionship(dateKey) {
             read: false,
             type: 'championship_win',
           });
+          if (String(catalogId) === '10') await achievements.grant(leader.uid, 'cabrioSampiyon'); // v67 — Üstün Cabrio
           summary.championshipGoldPaid += reward;
         }
         await champRef.update({
@@ -3614,8 +3632,10 @@ export const dailyReset = onSchedule(
 // Saatlik hesap (her varlık ayrı): son 24 saat, yaşa göre ağırlık (altın bazlı)
 //   0–3 sa 4x · 3–6 sa 3x · 6–12 sa 2x · 12–24 sa 1x (üst sınır dahil).
 // Toplam ağırlıklı alış / (alış + satış) oranı rejim seçiminde kullanılır
-// (bkz. pickInvestmentRegime). v63: en büyük alıcı ve satıcıyı dışlama
-// KALDIRILDI — tüm alış, satış ve mining üretimleri (en büyükler dahil) sayılır.
+// (bkz. pickInvestmentRegime). v67: oranı en çok etkileyen TEK alıcı ve TEK
+// satıcı (ağırlıklı toplamı en büyük olan) hesaptan çıkarılır — tek bir
+// balina piyasayı yönlendiremesin. Alıcılar çoğunluktaysa (> %50) gizli
+// ters rejim devreye girer.
 // Fiyatın YÖNÜ her zaman %50/%50 yazı-tura.
 // =============================================================================
 const INVESTMENT_ASSETS = ['diamond', 'stock', 'crypto'];
@@ -3630,7 +3650,7 @@ const INVESTMENT_TIME_WEIGHT_BUCKETS = [
 // v50: taban eşiğin 1/10'u iken 1/2'si oldu (ör. kripto 200.000 → taban 100.000).
 const INVESTMENT_REGIME_THRESHOLD = { diamond: 20000, stock: 200000000, crypto: 200000 };
 const INVESTMENT_REGIME_FLOOR_RATIO = 1 / 2;
-const INVESTMENT_BUY_PRESSURE_REVERSE = 0.75; // arada: alış oranı > %75 → gizli ters rejim
+const INVESTMENT_BUY_PRESSURE_REVERSE = 0.5; // v67: arada: alıcılar çoğunlukta (> %50) → gizli ters rejim
 
 function investmentTradeWeight(ageMs) {
   const ageHours = ageMs / (60 * 60 * 1000);
@@ -3659,15 +3679,18 @@ function computeInvestmentBuyRatios(trades, nowMs) {
   }
   const out = {};
   for (const a of INVESTMENT_ASSETS) {
-    // v63: herkes dahil (en büyük alıcı/satıcı dışlanmaz)
-    let totalBuy = 0;
-    acc[a].buy.forEach((v) => {
-      totalBuy += v;
-    });
-    let totalSell = 0;
-    acc[a].sell.forEach((v) => {
-      totalSell += v;
-    });
+    // v67: en büyük alıcı ve en büyük satıcı hesaba katılmaz
+    const sumWithoutTop = (map) => {
+      let total = 0;
+      let top = 0;
+      map.forEach((v) => {
+        total += v;
+        if (v > top) top = v;
+      });
+      return total - top;
+    };
+    const totalBuy = sumWithoutTop(acc[a].buy);
+    const totalSell = sumWithoutTop(acc[a].sell);
     const total = totalBuy + totalSell;
     out[a] = total > 0 ? totalBuy / total : null;
   }
@@ -3732,8 +3755,8 @@ function recordInvestmentTrade(writer, { assetType, uid, type, goldAmount }) {
 //     bakılarak karar veriliyor — kripto ile birebir aynı desen).
 //   - v40: Üç varlık da AYNI sistem: YÖN %50/%50 yazı-tura; rejim
 //     pickInvestmentRegime ile (fiyat eşiği → ters, eşik/2 altı → normal,
-//     arada son 24 saatin alış oranı > %75 → gizli ters rejim). Kripto
-//     aralıkları normal %1-20↑/%1-16↓, ters %1-16↑/%1-20↓.
+//     arada son 24 saatin alış oranı > %50 → gizli ters rejim). Kripto
+//     aralıkları normal %1-20↑/%1-16↓, ters (v67) %1-20↑/%1-20↓.
 // Rejim bilgisi (diamondReversedRegime/stockReversedRegime/
 // cryptoReversedRegime) artık investments/current dokümanına da yazılıyor
 // — Banka ekranındaki panellerde "düşme eğiliminde ↓" uyarısını göstermek
@@ -3777,30 +3800,18 @@ export const hourlyInvestmentUpdate = onSchedule(
     const stockReversedRegime = stockRegime.shownReversed;
     const cryptoReversedRegime = cryptoRegime.shownReversed;
 
-    const diamondUp = Math.random() < 0.5;
-    const diamondChangePct = diamondRegime.reversed
-      ? diamondUp
-        ? Math.random() * 0.03 + 0.01 // TERS rejim: %1-4 artış
-        : -(Math.random() * 0.04 + 0.01) // TERS rejim: %1-5 düşüş
-      : diamondUp
-        ? Math.random() * 0.04 + 0.01 // NORMAL rejim: %1-5 artış
-        : -(Math.random() * 0.03 + 0.01); // NORMAL rejim: %1-4 düşüş
-    const stockUp = Math.random() < 0.5;
-    const stockChangePct = stockRegime.reversed
-      ? stockUp
-        ? Math.random() * 0.07 + 0.01 // TERS rejim: %1-8 artış
-        : -(Math.random() * 0.09 + 0.01) // TERS rejim: %1-10 düşüş
-      : stockUp
-        ? Math.random() * 0.09 + 0.01 // NORMAL rejim: %1-10 artış
-        : -(Math.random() * 0.07 + 0.01); // NORMAL rejim: %1-8 düşüş
-    const cryptoUp = Math.random() < 0.5;
-    const cryptoChangePct = cryptoRegime.reversed
-      ? cryptoUp
-        ? Math.random() * 0.15 + 0.01 // TERS rejim: %1-16 artış
-        : -(Math.random() * 0.19 + 0.01) // TERS rejim: %1-20 düşüş
-      : cryptoUp
-        ? Math.random() * 0.19 + 0.01 // NORMAL rejim: %1-20 artış
-        : -(Math.random() * 0.15 + 0.01); // NORMAL rejim: %1-16 düşüş
+    // v67 — ters rejimde (düşüş eğilimi ya da alıcılar çoğunlukta) artış ve
+    // düşüş aralıkları EŞİT: kripto %1-20 / %1-20, hisse %1-10 / %1-10,
+    // elmas %1-5 / %1-5. Normal rejim aynı kaldı.
+    const pct = (lo, hi) => Math.random() * (hi - lo) + lo;
+    const move = (reversed, normalUp, normalDown, revMax) => {
+      const up = Math.random() < 0.5;
+      if (reversed) return up ? pct(0.01, revMax) : -pct(0.01, revMax);
+      return up ? pct(0.01, normalUp) : -pct(0.01, normalDown);
+    };
+    const diamondChangePct = move(diamondRegime.reversed, 0.05, 0.04, 0.05);
+    const stockChangePct = move(stockRegime.reversed, 0.1, 0.08, 0.1);
+    const cryptoChangePct = move(cryptoRegime.reversed, 0.2, 0.16, 0.2);
 
     const diamondPrice = Math.max(1, Math.round(prev.diamondPrice * (1 + diamondChangePct)));
     const stockPrice = Math.max(1, Math.round((prev.stockPrice ?? 10000) * (1 + stockChangePct)));
@@ -4571,9 +4582,15 @@ export const sellInvestment = onCall(async (request) => {
 const LOAN_TERMS = {
   10: 0.2,
 };
+const LEGACY_VEHICLE_LOANS_OPEN = false; // v67: yeni araç kredisi verilmez
 
 export const takeVehicleLoan = onCall(async (request) => {
   const uid = requireAuth(request);
+  // v67 — araç ipoteği kapandı: yeni kredi "Kredi Puanı" sistemiyle çekilir
+  // (bkz. takeCredit). Eski krediler repayVehicleLoan ile ödenmeye devam eder.
+  if (!LEGACY_VEHICLE_LOANS_OPEN) {
+    throw new HttpsError('failed-precondition', 'Araç kredisi kaldırıldı. Banka > Krediler bölümünden kredi puanınla kredi çekebilirsin.');
+  }
   const { vehicleId, termDays } = request.data || {};
   const interestRate = LOAN_TERMS[termDays];
   if (!interestRate) {
@@ -4693,6 +4710,208 @@ export const repayVehicleLoan = onCall(async (request) => {
   });
 
   return { ok: true };
+});
+
+// =============================================================================
+// v67 — KREDİ PUANI & BANKA KREDİSİ (araç ipoteğinin yerini alır)
+// -----------------------------------------------------------------------------
+// Kredi puanı (= çekilebilecek en yüksek kredi) =
+//   %20 × ( araçların + silahların + malzemelerin ANINDA SATIŞ değeri
+//          + fabrikanın değeri (sende kalan hisse oranıyla)
+//          + sahibi olduğun futbol takım(lar)ının değeri )
+// Aynı anda TEK aktif kredi. Vade 10 gün, faiz %20 (anaparaya eklenir).
+// Dilim dilim ya da tek seferde ödenir. Vade dolunca ödenmeyen kısım
+// devlete borca (debtToState) aktarılır — borç bitene kadar kazancın
+// yarısı otomatik kesilir (bkz. splitIncomeForDebt). v68: devlete borcu olan
+// da kredi çekebilir; çekilen kredinin tamamı hesaba yatar (borca kesinti yok).
+// Eski araç ipotekli krediler (takeVehicleLoan) kapandı; ödemesi sürenler
+// eskisi gibi ödenir/işlenir, ama varken yeni kredi çekilemez.
+// =============================================================================
+const CREDIT_SCORE_RATIO = 0.2;
+const CREDIT_TERM_DAYS = 10;
+const CREDIT_INTEREST = 0.2;
+const CREDIT_MIN_AMOUNT = 1000;
+
+async function computeCreditScore(uid) {
+  const [vehiclesSnap, weaponsSnap, invSnap, factorySnap, teamsSnap, prices] = await Promise.all([
+    db.collection('vehicles').where('ownerId', '==', uid).get(),
+    db.collection('weapons').where('ownerId', '==', uid).get(),
+    db.collection('users').doc(uid).collection('inventory').get(),
+    db.collection('factories').doc(uid).get(),
+    db.collection('futbolTeams').where('ownerUid', '==', uid).get(),
+    getCurrentPrices(),
+  ]);
+  let vehicles = 0;
+  vehiclesSnap.forEach((d) => {
+    const v = d.data();
+    if (v.mortgaged || v.seizedByBank || v.listed) return;
+    if ((v.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS) <= 0) return;
+    const base = VEHICLE_CATALOG[v.catalogId]?.price || 0;
+    const mult = v.gearUpgraded && v.tankUpgraded ? 3 : v.gearUpgraded || v.tankUpgraded ? 2 : 1;
+    vehicles += Math.floor((base * mult * valueRatioOf(v)) / 2);
+  });
+  let weapons = 0;
+  weaponsSnap.forEach((d) => {
+    const w = d.data();
+    if (w.listed) return;
+    const base = WEAPON_CATALOG[w.catalogId]?.price || 0;
+    weapons += Math.floor((base * (w.level || 1) * valueRatioOf(w, 'weapon')) / 2);
+  });
+  let materials = 0;
+  invSnap.forEach((d) => {
+    if (!AMAZOR_PRICES[d.id]) return;
+    materials += Math.max(0, Math.floor(Number(d.data().quantity || 0))) * Math.floor(AMAZOR_PRICES[d.id] / 2);
+  });
+  let factory = 0;
+  if (factorySnap.exists) {
+    const [machinesSnap, sharesSnap] = await Promise.all([
+      factorySnap.ref.collection('machines').get(),
+      factorySnap.ref.collection('shares').get(),
+    ]);
+    const machinesByType = {};
+    machinesSnap.forEach((d) => {
+      const type = d.data().type;
+      machinesByType[type] = (machinesByType[type] || 0) + 1;
+    });
+    let away = 0;
+    sharesSnap.forEach((d) => {
+      const sh = d.data();
+      if (sh.status === 'listed' || sh.status === 'active') away += Number(sh.percent || 0);
+    });
+    const ownedPct = Math.max(0, Math.min(100, 100 - away)) / 100;
+    factory = Math.floor(computeFactoryValue(machinesByType, prices.cryptoPrice || 0) * ownedPct);
+  }
+  let team = 0;
+  for (const d of teamsSnap.docs) team += await computeFutbolTeamValue(d.id);
+  const total = vehicles + weapons + materials + factory + team;
+  return { vehicles, weapons, materials, factory, team, total, limit: Math.floor(total * CREDIT_SCORE_RATIO) };
+}
+
+export const getCreditInfo = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const [score, userSnap, mortgagedSnap] = await Promise.all([
+    computeCreditScore(uid),
+    db.collection('users').doc(uid).get(),
+    db.collection('vehicles').where('ownerId', '==', uid).where('mortgaged', '==', true).limit(1).get(),
+  ]);
+  const user = userSnap.data() || {};
+  return {
+    ...score,
+    ratio: CREDIT_SCORE_RATIO,
+    termDays: CREDIT_TERM_DAYS,
+    interest: CREDIT_INTEREST,
+    minAmount: CREDIT_MIN_AMOUNT,
+    credit: user.credit || null,
+    hasVehicleLoan: !mortgagedSnap.empty,
+    debtToState: user.debtToState || 0,
+  };
+});
+
+export const takeCredit = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const amount = Number(request.data?.amount);
+  if (!Number.isInteger(amount) || amount < CREDIT_MIN_AMOUNT) {
+    throw new HttpsError('invalid-argument', `En az ${CREDIT_MIN_AMOUNT.toLocaleString('tr-TR')} altın kredi çekebilirsin.`);
+  }
+  const mortgagedSnap = await db.collection('vehicles').where('ownerId', '==', uid).where('mortgaged', '==', true).limit(1).get();
+  if (!mortgagedSnap.empty) {
+    throw new HttpsError('failed-precondition', 'Önce araç kredini kapatmalısın — aynı anda tek kredi olabilir.');
+  }
+  const score = await computeCreditScore(uid);
+  if (amount > score.limit) {
+    throw new HttpsError('failed-precondition', `Kredi puanın en fazla ${score.limit.toLocaleString('tr-TR')} altın kredi çekmene izin veriyor.`);
+  }
+  const userRef = db.collection('users').doc(uid);
+  const totalOwed = Math.round(amount * (1 + CREDIT_INTEREST));
+  const now = Date.now();
+  const dueAtMs = now + CREDIT_TERM_DAYS * 24 * 60 * 60 * 1000;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(userRef);
+    const user = snap.data();
+    if (!user) throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
+    if (user.credit) throw new HttpsError('failed-precondition', 'Zaten aktif bir kredin var. Önce onu kapat.');
+    // v68: devlete borcu olan da kredi çekebilir. Kredi anaparası borçlanılan
+    // paradır, kazanç değildir — yarısı otomatik borca GİTMEZ, tamamı hesaba yatar.
+    tx.update(userRef, {
+      gold: admin.firestore.FieldValue.increment(amount),
+      credit: { principal: amount, totalOwed, paid: 0, startedAtMs: now, dueAtMs },
+    });
+    tx.set(userRef.collection('messages').doc(), {
+      from: 'Banka',
+      text: `🏦 ${amount.toLocaleString('tr-TR')} altın kredin hesabına yattı. ${CREDIT_TERM_DAYS} gün içinde toplam ${totalOwed.toLocaleString('tr-TR')} altın ödemelisin; ödenmeyen kısım devlete borç olarak yazılır.`,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      read: false,
+      type: 'loan_started',
+    });
+  });
+  // Onboarding görev 14 — "bankadan kredi çek".
+  await advanceOnboardingStep(uid, 14);
+  return { ok: true, principal: amount, totalOwed, dueAtMs };
+});
+
+export const repayCredit = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const amt = Number(request.data?.amount);
+  if (!Number.isInteger(amt) || amt <= 0) throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
+  const userRef = db.collection('users').doc(uid);
+  let result = null;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(userRef);
+    const user = snap.data();
+    const c = user?.credit;
+    if (!c) throw new HttpsError('failed-precondition', 'Aktif bir kredin yok.');
+    const remaining = Math.max(0, c.totalOwed - (c.paid || 0));
+    const applied = Math.min(amt, remaining);
+    if ((user.gold || 0) < applied) throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    const paid = (c.paid || 0) + applied;
+    const done = paid >= c.totalOwed;
+    tx.update(userRef, {
+      gold: admin.firestore.FieldValue.increment(-applied),
+      credit: done ? admin.firestore.FieldValue.delete() : { ...c, paid },
+    });
+    if (done) {
+      tx.set(userRef.collection('messages').doc(), {
+        from: 'Banka',
+        text: '🏦 Kredin tamamen kapandı. Teşekkür ederiz!',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        read: false,
+        type: 'loan_closed',
+      });
+    }
+    result = { applied, remaining: Math.max(0, c.totalOwed - paid), closed: done };
+  });
+  return { ok: true, ...result };
+});
+
+// Vadesi dolan krediler: kalan borç devlete borca aktarılır.
+export const processCreditDefaults = onSchedule({ schedule: 'every 60 minutes' }, async () => {
+  const now = Date.now();
+  const snap = await db.collection('users').where('credit.dueAtMs', '<=', now).limit(300).get();
+  for (const d of snap.docs) {
+    try {
+      await db.runTransaction(async (tx) => {
+        const fresh = await tx.get(d.ref);
+        const c = fresh.data()?.credit;
+        if (!c || c.dueAtMs > now) return;
+        const remaining = Math.max(0, c.totalOwed - (c.paid || 0));
+        tx.update(d.ref, {
+          credit: admin.firestore.FieldValue.delete(),
+          ...(remaining > 0 ? { debtToState: admin.firestore.FieldValue.increment(remaining) } : {}),
+        });
+        if (remaining > 0) {
+          tx.set(d.ref.collection('messages').doc(), {
+            from: 'Banka',
+            text: `🏦 Kredinin vadesi doldu. Ödenmeyen ${remaining.toLocaleString('tr-TR')} altın devlete borç olarak yazıldı — borç bitene kadar kazancının yarısı otomatik kesilecek.`,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            read: false,
+            type: 'loan_defaulted',
+          });
+        }
+      });
+    } catch (err) {
+      console.error('processCreditDefaults', d.id, err);
+    }
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -5024,7 +5243,6 @@ export const prayAtMosque = onCall(async (request) => {
 // (instantSellListing'deki formülle BİREBİR AYNI: taban fiyat × yükseltme
 // çarpanı × aşınma oranı / 2) toplamı olarak hesaplanıyor.
 // ---------------------------------------------------------------------------
-const BEGGAR_WEALTH_LIMIT = 100000;
 const BEGGAR_DAILY_EARN_CAP = 10000;
 const BEGGAR_MAX_SINGLE_DONATION = 10000;
 
@@ -5068,8 +5286,8 @@ async function computeTotalWealth(uid, userData, prices) {
 // (işçi/üretici/fabrika sahibi vb.) kalmaya devam eder, fabrikada
 // çalışabilir ve suç işleyebilir (bkz. joinFactoryMachine/autoJoinFactory/
 // attemptHeist/createHeistPlan/joinHeistPlan/sellContrabandAtPark —
-// hiçbirinde artık imam kontrolü yok). TEK istisna: polis imam olamaz,
-// imam da polis olamaz (bkz. applyForPolice > isImam kontrolü).
+// hiçbirinde artık imam kontrolü yok). v67: polis de imam olabilir (eskiden
+// tek istisna buydu) — imamın görevleri (5 vakit + nasihat) yine geçerli.
 // İmam maaşı günde 10.000 altın (manuel alınır, polis maaşı gibi).
 // Görevler: imamlığa başladığı andan itibaren günde 5 vakit ibadet +
 // takvim günü (00:00-00:00) başına en az 1 nasihat — bunlardan biri
@@ -5116,12 +5334,7 @@ export const applyForImam = onCall(async (request) => {
         throw new HttpsError('failed-precondition', 'İmamlıktan yeni atıldığın için imam olamazsın.');
       }
     }
-    if (user.profession === 'polis' || user.pendingPoliceChange === 'apply') {
-      throw new HttpsError(
-        'failed-precondition',
-        'Polis mesleğindeyken/başvurun beklerken imam olamazsın.'
-      );
-    }
+    // v67 — polis de imam olabilir (meslekler birbirinden bağımsız).
     if ((user.reputation || 0) < IMAM_REPUTATION_REQUIRED) {
       throw new HttpsError(
         'failed-precondition',
@@ -5145,6 +5358,7 @@ export const applyForImam = onCall(async (request) => {
     tx.update(userRef, { isImam: true });
   });
 
+  await achievements.grant(uid, 'imam'); // v67 — Başarılar
   return { ok: true };
 });
 
@@ -5208,14 +5422,9 @@ export const becomeBeggar = onCall(async (request) => {
       'Bugün dilencilik kazanç sınırına zaten ulaştın, yarın tekrar deneyebilirsin.'
     );
   }
-  const prices = await getCurrentPrices();
-  const totalWealth = await computeTotalWealth(uid, user, prices);
-  if (totalWealth > BEGGAR_WEALTH_LIMIT) {
-    throw new HttpsError(
-      'failed-precondition',
-      `Toplam servetin (${Math.floor(totalWealth).toLocaleString('tr-TR')} altın) ${BEGGAR_WEALTH_LIMIT.toLocaleString('tr-TR')} altını aştığı için dilenci olamazsın.`
-    );
-  }
+  // v67 — herkes dilenci olabilir (servet sınırı kaldırıldı); tek bedeli
+  // saygınlığın sıfırlanması.
+  if (!user) throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
   await db.collection('beggars').doc(dateKey).collection('entries').doc(uid).set({
     uid,
     displayName: user?.displayName || 'Oyuncu',
@@ -5264,6 +5473,15 @@ export const donateToBeggar = onCall(async (request) => {
     const beggarEntry = beggarEntrySnap.data();
     if ((beggarEntry.todayEarned || 0) >= BEGGAR_DAILY_EARN_CAP) {
       throw new HttpsError('failed-precondition', 'Bu dilenci bugünkü kazanç sınırına ulaştı.');
+    }
+    // v67 — bir dilenciye günde TOPLAM en fazla 10.000 altın bağışlanabilir
+    // (eskiden sınırı aşan son bağış da tamamen geçiyordu).
+    const remaining = BEGGAR_DAILY_EARN_CAP - (beggarEntry.todayEarned || 0);
+    if (amount > remaining) {
+      throw new HttpsError(
+        'failed-precondition',
+        `Bu dilenciye bugün en fazla ${remaining.toLocaleString('tr-TR')} altın daha bağışlanabilir.`
+      );
     }
     if (!donor || (donor.gold || 0) < amount) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
@@ -5648,6 +5866,7 @@ export const attemptHeist = onCall(async (request) => {
     await logNewsEvent('arrest', { count: 1, totalFine: result.penalty });
   } else {
     await logNewsEvent('heist_success', { target, amount: result.reward });
+    if (target === 'banka' && result.success) await achievements.grant(uid, 'bankaSoy'); // v67 — Başarılar
   }
 
   // Onboarding görev 6 — "bi seyyar satıcıdan haraç kes" (yakalansa da olur,
@@ -5920,7 +6139,7 @@ const BUFE_PRICES = {
   latte: 500,
 };
 const HELD_ITEM_MS = 120_000; // istemcideki HOLDING_MS ile aynı (2 dakika)
-const HELD_VENUES = { park: { items: BUFE_PRICES }, gazino: {} }; // gazino.items aşağıda atanır
+const HELD_VENUES = { park: { items: BUFE_PRICES }, gazino: {}, ev: { items: {} } }; // gazino.items aşağıda atanır · v66: ev (3D ev eşyalarından ücretsiz)
 
 async function buyVenueItem(uid, venue, itemId, price) {
   const userRef = db.collection('users').doc(uid);
@@ -5978,14 +6197,18 @@ export const buyFromGazinoBar = onCall(async (request) => {
 // başka bir şey varsa ısmarlanamaz. İki taraf da mekânda olmalı (son 2 dk
 // içinde görünen konum kaydı); engelleme varsa ısmarlanamaz.
 // ---------------------------------------------------------------------------
-const VENUE_ITEM_LABELS = { sosisli: 'Sosisli', tost: 'Tost', cay: 'Çay', kahve: 'Kahve', oralet: 'Oralet', latte: 'Latte', kokteyl: 'Kokteyl' };
+const VENUE_ITEM_LABELS = {
+  ...Object.fromEntries(Object.entries(HOUSE_PRODUCTS).map(([k, v]) => [k, v.label])),
+  sosisli: 'Sosisli', tost: 'Tost', cay: 'Çay', kahve: 'Kahve', oralet: 'Oralet', latte: 'Latte', kokteyl: 'Kokteyl',
+};
 function venuePresenceRef(venue, uid) {
+  if (venue === 'ev') return db.collection('housePresence').doc(uid);
   return venue === 'park' ? db.collection('parkPresence').doc(uid) : db.collection('interiorPresence').doc(uid);
 }
 function presenceActive(snap, venue, nowMs) {
   if (!snap?.exists) return false;
   const d = snap.data();
-  if (venue !== 'park' && d.locationId !== venue) return false;
+  if (venue !== 'park' && venue !== 'ev' && d.locationId !== venue) return false;
   const at = d.updatedAt?.toMillis?.() || 0;
   return nowMs - at < 2 * 60 * 1000;
 }
@@ -6014,6 +6237,7 @@ export const giftHeldItem = onCall(async (request) => {
     if (!h || h.venue !== venue || !(Number(h.untilMs) > t)) throw new HttpsError('failed-precondition', 'Elinde ısmarlayacak bir şey yok.');
     if (!presenceActive(theirPres, venue, t)) throw new HttpsError('failed-precondition', 'Bu oyuncu artık burada değil.');
     if (!presenceActive(myPres, venue, t)) throw new HttpsError('failed-precondition', 'Ismarlamak için mekânda olmalısın.');
+    if (venue === 'ev' && theirPres.data().houseId !== myPres.data().houseId) throw new HttpsError('failed-precondition', 'Bu oyuncu artık bu evde değil.');
     const th = theirs.exists ? theirs.data() : null;
     if (th && Number(th.untilMs) > t) throw new HttpsError('failed-precondition', 'Bu oyuncunun elinde zaten bir şey var.');
     const fromName = meSnap.data()?.displayName || 'Bir oyuncu';
@@ -6696,6 +6920,12 @@ export const executeHeistPlan = onCall(async (request) => {
     result: { busted, caughtBySuspicion, totalReward, policeOnly },
   });
   await batch.commit();
+
+  // v67 — Başarılar: banka soygunu başarılı / polis banka soyguncularını yakaladı
+  if (plan.target === 'banka') {
+    await achievements.grantMany(successSmsList.map((x) => x.uid), 'bankaSoy');
+    await achievements.grantMany(policeEarningSmsList.map((x) => x.uid), 'polisBanka');
+  }
 
   await Promise.all(
     captureSmsList.map((c) =>
@@ -7402,6 +7632,17 @@ export const markMessageRead = onCall(async (request) => {
   return { ok: true };
 });
 
+// v67 — SMS: tümünü okundu işaretle (en fazla 450'şer, okunmamışlar)
+export const markAllMessagesRead = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const snap = await db.collection('users').doc(uid).collection('messages').where('read', '==', false).limit(450).get();
+  if (snap.empty) return { ok: true, count: 0 };
+  const batch = db.batch();
+  snap.docs.forEach((d) => batch.update(d.ref, { read: true }));
+  await batch.commit();
+  return { ok: true, count: snap.size };
+});
+
 // ---------------------------------------------------------------------------
 // sendChatMessage — Telefon > ChatsApp. Tüm oyuncuların ortak kullandığı
 // tek genel sohbet kanalı.
@@ -7815,6 +8056,9 @@ function finalizeRace({ tx, roomRef, room, winnerUid, players, userRefs, userSna
 // ekstra bir güvenlik önlemi olarak duruyor.
 // ---------------------------------------------------------------------------
 
+// v67 — bahisli yarışta tek odanın en yüksek bahsi
+const RACE_MAX_BET = 100_000;
+
 // createRaceRoom — oda kurar (status: 'waiting', rakip yok).
 export const createRaceRoom = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -7822,6 +8066,9 @@ export const createRaceRoom = onCall(async (request) => {
   const amount = Number(betAmount);
   if (!Number.isInteger(amount) || amount <= 0) {
     throw new HttpsError('invalid-argument', 'Geçersiz bahis miktarı.');
+  }
+  if (amount > RACE_MAX_BET) {
+    throw new HttpsError('invalid-argument', `Bahis en fazla ${RACE_MAX_BET.toLocaleString('tr-TR')} altın olabilir.`);
   }
   const vehicle = await getVehicleForRace(uid, vehicleId);
 
@@ -13222,6 +13469,9 @@ async function awardFutbolCupTrophy(season, finalMatch, group = 1) {
   });
 
   if (didAward) {
+    // v67 — Başarılar: sahibi olduğun takımla kupa (1. ya da 2. Lig kupası)
+    const champOwner = (await db.collection('futbolTeams').doc(champTeamId).get()).data()?.ownerUid;
+    if (champOwner) await achievements.grant(champOwner, 'superKupa');
     const champName = champTeamId === finalMatch.homeTeamId ? finalMatch.homeTeamName : finalMatch.awayTeamName;
     const champLogo = champTeamId === finalMatch.homeTeamId ? finalMatch.homeLogo : finalMatch.awayLogo;
     const finalistName = champTeamId === finalMatch.homeTeamId ? finalMatch.awayTeamName : finalMatch.homeTeamName;
@@ -13403,6 +13653,10 @@ async function finishFutbolSeasonPart1(leagueIds) {
     });
   }
   await rewardBatch.commit();
+  // v67 — Başarılar: sahibi olduğun takımla 1. Lig şampiyonu
+  if (championTeam?.ownerUid && Number(leagueData[0]?.league?.tier) === 1) {
+    await achievements.grant(championTeam.ownerUid, 'ligSampiyonu');
+  }
 
   const seasonStats = await computeFutbolSeasonEndStats();
 
@@ -18798,25 +19052,37 @@ const shopierOsbPassword = defineSecret('SHOPIER_OSB_PASSWORD');
 
 // Paket tanımları — sadece burada, sunucuda. Shopier ürün ID'leriyle
 // eşleştirilir (aşağıdaki SHOPIER_PRODUCT_TO_PACKAGE).
+// v66: Zümrüt Mağazası — gerçek parayla artık ZÜMRÜT satılıyor (Shopier ürün
+// ID'leri aynı; fiyatları Shopier panelinden 29 / 99 TL yapılmalı). Altın
+// paketleri artık zümrütle alınıyor (bkz. EMERALD_SHOP_OFFERS / buyEmeraldOffer).
 const GOLD_STORE_PACKAGES = {
   paket1: {
     id: 'paket1',
-    name: 'Başlangıç Paketi',
-    priceTRY: 30,
-    gold: 30000,
+    name: '50 Zümrüt',
+    priceTRY: 29,
+    gold: 0,
+    emerald: 50,
     items: {},
   },
   paket2: {
     id: 'paket2',
-    name: '100.000 Altın + Özel Paket',
-    priceTRY: 100,
+    name: '200 Zümrüt',
+    priceTRY: 99,
+    gold: 0,
+    emerald: 200,
+    items: {},
+  },
+};
+
+// v66: zümrüt harcama paketleri (Zümrüt Mağazası'nın alt bölümü).
+const EMERALD_SHOP_OFFERS = {
+  altin30k: { id: 'altin30k', name: '30.000 Altın', cost: 49, gold: 30000, items: {} },
+  altin100k: {
+    id: 'altin100k',
+    name: '100.000 Altın + Ekstra Hediyeler',
+    cost: 199,
     gold: 100000,
-    items: {
-      yasakliMadde: 4,
-      tamirMalzemesi: 1000,
-      silahUpgrade: 100,
-      arabaGelistirme: 20,
-    },
+    items: { yasakliMadde: 4, tamirMalzemesi: 1000, silahUpgrade: 100, arabaGelistirme: 20 },
   },
 };
 
@@ -18863,15 +19129,56 @@ function shopierProductIdsFrom(value) {
   }
   return str.match(/\d{5,}/g) || [];
 }
+// v67 — "2 paketlik siparişte yalnızca biri yüklendi" düzeltmesi: aynı paketten
+// 2 adet alınınca Shopier productlist'te ürünü BİR kez yazıp adedi ayrı
+// (`productcount` / sepet ayrıntısı `chartdetails[].quantity`) verebiliyor.
+// Sıra: sepet ayrıntısı (adetli) → productlist → productid; tek çeşit üründe
+// productcount daha büyükse adet ona göre çoğaltılır. Hâlâ ödenen tutar
+// eksik kalıyorsa ve fark paket fiyatlarının TEK bir kombinasyonuyla birebir
+// karşılanıyorsa o paketler de eklenir (`inferred`) ve sipariş yine de elle
+// kontrol için işaretlenir. Tahmin edilemeyen durumda fazladan bir şey basılmaz.
 function parseShopierPackages(order) {
-  const fromList = shopierProductIdsFrom(order?.productlist).filter((id) => SHOPIER_PRODUCT_TO_PACKAGE[id]);
-  const single = SHOPIER_PRODUCT_TO_PACKAGE[String(order?.productid ?? '')] ? [String(order.productid)] : [];
-  const ids = fromList.length > 0 ? fromList.slice(0, 20) : single;
-  const packageIds = ids.map((id) => SHOPIER_PRODUCT_TO_PACKAGE[id]);
-  const expected = packageIds.reduce((sum, id) => sum + GOLD_STORE_PACKAGES[id].priceTRY, 0);
+  const known = (id) => Boolean(SHOPIER_PRODUCT_TO_PACKAGE[id]);
+  const fromChart = shopierProductIdsFrom(order?.chartdetails ?? order?.chartDetails ?? order?.cartdetails ?? null).filter(known);
+  const fromList = shopierProductIdsFrom(order?.productlist).filter(known);
+  const single = known(String(order?.productid ?? '')) ? [String(order.productid)] : [];
+  let ids = (fromChart.length > 0 ? fromChart : fromList.length > 0 ? fromList : single).slice(0, 20);
+  const count = Math.floor(Number(order?.productcount));
+  if (ids.length > 0 && new Set(ids).size === 1 && Number.isFinite(count) && count > ids.length && count <= 20) {
+    ids = new Array(count).fill(ids[0]);
+  }
+  const priceOf = (pid) => GOLD_STORE_PACKAGES[pid].priceTRY;
+  let packageIds = ids.map((id) => SHOPIER_PRODUCT_TO_PACKAGE[id]);
+  let expected = packageIds.reduce((sum, id) => sum + priceOf(id), 0);
   const paid = Number(String(order?.price ?? '').replace(',', '.'));
+  let inferred = false;
+  if (packageIds.length > 0 && Number.isFinite(paid) && paid > expected + 0.01) {
+    const diff = Math.round((paid - expected) * 100) / 100;
+    const pids = Object.keys(GOLD_STORE_PACKAGES);
+    const combos = [];
+    const walk = (i, left, acc, n) => {
+      if (n > 20 - packageIds.length) return;
+      if (i === pids.length) {
+        if (Math.abs(left) < 0.01 && n > 0) combos.push(acc.slice());
+        return;
+      }
+      for (let k = 0; k * priceOf(pids[i]) <= left + 0.01 && n + k <= 20; k++) {
+        acc.push(k);
+        walk(i + 1, Math.round((left - k * priceOf(pids[i])) * 100) / 100, acc, n + k);
+        acc.pop();
+      }
+    };
+    walk(0, diff, [], 0);
+    if (combos.length === 1) {
+      combos[0].forEach((k, i) => {
+        for (let j = 0; j < k; j++) packageIds.push(pids[i]);
+      });
+      expected = packageIds.reduce((sum, id) => sum + priceOf(id), 0);
+      inferred = true;
+    }
+  }
   const consistent = !Number.isFinite(paid) || paid <= 0 || Math.abs(paid - expected) < 0.01;
-  return { packageIds, expectedTRY: expected, paidTRY: Number.isFinite(paid) ? paid : null, consistent };
+  return { packageIds, expectedTRY: expected, paidTRY: Number.isFinite(paid) ? paid : null, consistent: consistent && !inferred, inferred };
 }
 
 const REDEMPTION_CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // 0/O, 1/I/L gibi karışabilecek karakterler çıkarıldı
@@ -18918,6 +19225,34 @@ export const getMyRedemptionCode = onCall(async (request) => {
   throw new HttpsError('internal', 'Kod üretilemedi, tekrar dene.');
 });
 
+// v66 — buyEmeraldOffer: zümrüt karşılığı altın paketi. Bakiye transaction
+// içinde kontrol edilir → zümrütü yetmeyen alamaz, çift tıklama iki kez düşmez.
+export const buyEmeraldOffer = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const offer = EMERALD_SHOP_OFFERS[String(request.data?.offerId || '')];
+  if (!offer) throw new HttpsError('invalid-argument', 'Geçersiz paket.');
+  const userRef = db.collection('users').doc(uid);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(userRef);
+    const emerald = Number(snap.data()?.emerald || 0);
+    if (emerald < offer.cost) throw new HttpsError('failed-precondition', `Yetersiz zümrüt (${emerald}/${offer.cost}).`);
+    tx.update(userRef, {
+      emerald: admin.firestore.FieldValue.increment(-offer.cost),
+      gold: admin.firestore.FieldValue.increment(offer.gold),
+    });
+    Object.entries(offer.items).forEach(([materialType, qty]) => {
+      tx.set(userRef.collection('inventory').doc(materialType), { quantity: admin.firestore.FieldValue.increment(qty) }, { merge: true });
+    });
+    tx.set(userRef.collection('messages').doc(), {
+      from: 'Zümrüt Mağazası',
+      text: `${offer.name} paketini ${offer.cost} zümrüt karşılığında aldın. Hesabına ${offer.gold.toLocaleString('tr-TR')} altın${Object.keys(offer.items).length ? ' ve ekstra hediyeler' : ''} yüklendi.`,
+      read: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  });
+  return { ok: true };
+});
+
 // creditGoldStorePackage — bir paketin altın/eşyalarını bir kullanıcıya
 // basar (transaction içine yazar). v59: sipariş belgesiyle AYNI transaction'da
 // çalışan creditShopierOrder / creditMissingShopierPackage tarafından kullanılır.
@@ -18925,14 +19260,18 @@ function writeGoldStorePackage(tx, uid, packageId) {
   const pack = GOLD_STORE_PACKAGES[packageId];
   if (!pack) throw new Error(`Bilinmeyen paket: ${packageId}`);
   const userRef = db.collection('users').doc(uid);
-  tx.set(userRef, { gold: admin.firestore.FieldValue.increment(pack.gold) }, { merge: true });
+  const inc = {};
+  if (pack.gold) inc.gold = admin.firestore.FieldValue.increment(pack.gold);
+  if (pack.emerald) inc.emerald = admin.firestore.FieldValue.increment(pack.emerald);
+  tx.set(userRef, inc, { merge: true });
   Object.entries(pack.items).forEach(([materialType, qty]) => {
     const inventoryRef = userRef.collection('inventory').doc(materialType);
     tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(qty) }, { merge: true });
   });
+  const got = [pack.emerald ? `${pack.emerald} zümrüt` : null, pack.gold ? `${pack.gold.toLocaleString('tr-TR')} altın` : null].filter(Boolean).join(' + ');
   tx.set(userRef.collection('messages').doc(), {
-    from: 'Altın Mağazası',
-    text: `${pack.name} satın alımın tamamlandı — hesabına ${pack.gold.toLocaleString('tr-TR')} altın yüklendi.`,
+    from: 'Zümrüt Mağazası',
+    text: `${pack.name} satın alımın tamamlandı — hesabına ${got} yüklendi. 💎`,
     read: false,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
@@ -19003,7 +19342,7 @@ function shopierOrderSummary(orderId, order) {
     remainingTRY,
     creditable: Object.values(GOLD_STORE_PACKAGES)
       .filter((p) => remainingTRY != null && order?.uid && p.priceTRY <= remainingTRY)
-      .map((p) => ({ id: p.id, name: p.name, priceTRY: p.priceTRY, gold: p.gold })),
+      .map((p) => ({ id: p.id, name: p.name, priceTRY: p.priceTRY, gold: p.gold, emerald: p.emerald || 0 })),
     needsReview: Boolean(order?.needsReview),
   };
 }
@@ -19635,6 +19974,9 @@ export const captureCameraSnapshot = onCall(async (request) => {
 async function buildSixtagramAttachment(uid, attachment) {
   if (!attachment || !attachment.type) return null;
   const { type } = attachment;
+
+  // v66: 3D ev fotoğrafı (functions/houses.js)
+  if (type === 'housePhoto') return houses.buildPhotoAttachment(uid, attachment);
 
   if (type === 'avatar') {
     const userSnap = await db.collection('users').doc(uid).get();
@@ -20455,6 +20797,11 @@ export const toggleSixtagramLike = onCall(async (request) => {
     }
   });
 
+  // v67 — Başarılar: gönderilerin toplam 100 beğeniye ulaştı
+  if (liked && postOwnerUid) {
+    const prof = await db.collection('sixtagramProfiles').doc(postOwnerUid).get();
+    if (Number(prof.data()?.totalLikes || 0) >= 100) await achievements.grant(postOwnerUid, 'sixtagram100');
+  }
   // Sadece BEĞENİRKEN bildirim gönder (beğeniyi geri çekince değil).
   if (liked && postOwnerUid) {
     await createSixtagramNotification(postOwnerUid, {
@@ -20579,6 +20926,28 @@ const FEEDBACK_MIN = 10;
 const FEEDBACK_MAX = 1000;
 const FEEDBACK_PER_DAY = 3;
 const FEEDBACK_LIST_DAYS = 7;
+
+// v67 — Fikirler: beğen / beğeniyi geri al. Beğenenler belgede `likes`
+// haritasında tutulur (öneriler 7 gün yaşar, belge küçük kalır); sayaç
+// `likeCount`. Kendi önerini beğenemezsin.
+export const toggleFeedbackLike = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const id = String(request.data?.id || '');
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) throw new HttpsError('invalid-argument', 'Geçersiz öneri.');
+  const ref = db.collection('feedback').doc(id);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new HttpsError('not-found', 'Öneri bulunamadı.');
+    const d = snap.data();
+    if (d.uid === uid) throw new HttpsError('failed-precondition', 'Kendi yazdığını beğenemezsin.');
+    const liked = Boolean(d.likes?.[uid]);
+    tx.update(ref, {
+      [`likes.${uid}`]: liked ? admin.firestore.FieldValue.delete() : true,
+      likeCount: Math.max(0, Number(d.likeCount || 0) + (liked ? -1 : 1)),
+    });
+    return { ok: true, liked: !liked };
+  });
+});
 
 export const submitFeedback = onCall(async (request) => {
   const uid = requireAuth(request);

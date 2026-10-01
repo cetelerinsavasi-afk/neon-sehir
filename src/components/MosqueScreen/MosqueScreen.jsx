@@ -35,8 +35,8 @@ export const WINDOW_HOURS = {
 // Bu iki sabit sadece EKRANDA GÖSTERİLEN metin/kelepçe için — gerçek kural
 // sunucu tarafında (functions/index.js: BEGGAR_WEALTH_LIMIT,
 // BEGGAR_MAX_SINGLE_DONATION) uygulanıyor; ikisi senkron tutulmalı.
-const BEGGAR_WEALTH_LIMIT = 100000;
 const BEGGAR_MAX_SINGLE_DONATION = 10000;
+const BEGGAR_DAILY_EARN_CAP = 10000; // bir dilenciye günde toplam bağış sınırı
 
 export function ImamPanel() {
   const { user } = useAuth();
@@ -231,9 +231,8 @@ function BecomeBeggarForm({ onClose, onDone }) {
       <div className="beggar-form" onClick={(e) => e.stopPropagation()}>
         <p className="beggar-form-title">Dilenci Ol</p>
         <p className="beggar-form-hint">
-          Bağışçıların görmesi için kısa bir not yazabilirsin. Toplam servetin (elindeki altın +
-          bankadaki/yatırımlardaki para + araç ve silahlarının anında satış değeri){' '}
-          {BEGGAR_WEALTH_LIMIT.toLocaleString('tr-TR')} altını aşıyorsa dilenci olamazsın.
+          Bağışçıların görmesi için kısa bir not yazabilirsin. Bugün en fazla{' '}
+          {BEGGAR_DAILY_EARN_CAP.toLocaleString('tr-TR')} altın bağış toplayabilirsin. Dilenci olunca saygınlığın sıfırlanır.
         </p>
         <textarea
           className="beggar-note-input"
@@ -280,6 +279,9 @@ function BeggarCard({ beggar, myUid }) {
   };
 
   const isMe = beggar.id === myUid;
+  const { player } = usePlayer();
+  const remaining = Math.max(0, BEGGAR_DAILY_EARN_CAP - (beggar.todayEarned || 0));
+  const donateMax = Math.max(0, Math.min(BEGGAR_MAX_SINGLE_DONATION, remaining, Math.floor(Number(player?.gold || 0))));
 
   return (
     <div className="beggar-card">
@@ -304,9 +306,11 @@ function BeggarCard({ beggar, myUid }) {
           <QuantityStepper
             value={amount}
             onChange={setAmount}
-            max={BEGGAR_MAX_SINGLE_DONATION}
-            quickAmounts={[10, 100, 1000]}
+            max={donateMax}
           />
+          <p className="beggar-card-earned">
+            Bu dilenciye bugün en fazla {remaining.toLocaleString('tr-TR')} altın daha bağışlanabilir.
+          </p>
           <button className="beggar-btn primary" disabled={busy || !amount} onClick={handleDonate}>
             {busy ? '…' : `Bağışla — ${amount.toLocaleString('tr-TR')} altın`}
           </button>

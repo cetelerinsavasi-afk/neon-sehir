@@ -1,8 +1,12 @@
 import { useEffect } from 'react';
 import './NearbyPlayersButton.css';
+import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
 
 // v64 — biri sana yiyecek/içecek ısmarlayınca mekânda kısa bir bildirim.
-const LABELS = { sosisli: 'Sosisli', tost: 'Tost', cay: 'Çay', kahve: 'Kahve', oralet: 'Oralet', latte: 'Latte', kokteyl: 'Kokteyl' };
+const LABELS = {
+  ...Object.fromEntries(Object.entries(HOUSE_PRODUCTS).map(([k, v]) => [k, v.label])),
+  sosisli: 'Sosisli', tost: 'Tost', cay: 'Çay', kahve: 'Kahve', oralet: 'Oralet', latte: 'Latte', kokteyl: 'Kokteyl',
+};
 
 export default function GiftToast({ gift, onDone }) {
   useEffect(() => {

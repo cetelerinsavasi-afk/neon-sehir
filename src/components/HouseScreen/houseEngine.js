@@ -3,18 +3,24 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes';
 import { CATALOG_MAP, buildItem, itemBoxes, disposeObject, TINTS, M } from './houseCatalog';
 import { FLOORS, WALLS, floorDef, wallDef, surfaceTexture } from './houseTextures';
+import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
 
 // =============================================================================
 // houseEngine.js — Ev'in 3D motoru (three.js). React'ten bağımsız; HouseScreen
 // bir <div> verir, motor içine canvas + isim/balon katmanı kurar.
 //
-// İki mod:
-//   'build' → yukarıdan yörünge kamera. Eşya ekle / sürükle / döndür / boya / sil.
-//   'walk'  → 3. şahıs kamera, joystick/WASD ile yürü, otur, TV aç vb.
+// Modlar:
+//   'walk' (varsayılan) → evde gez. view '3d' = 3. şahıs kamera, view '2d' =
+//                          kuş bakışı. Dokunduğun yere yürürsün (masaüstünde WASD).
+//   'build'             → sahibi için tasarım: eşya ekle / sürükle / döndür / boya / sil.
 //
-// Avatarlar: oyunun mevcut SVG avatarları (buildFullAvatarSvgMarkup) birebir
-// dokuya çevrilip kameraya dönen "kağıt figür" (billboard) olarak çiziliyor —
-// böylece 2D'deki tipler hiç bozulmadan 3D evin içinde yürüyor.
+// Avatarlar: oyunun mevcut SVG avatarları birebir dokuya çevrilip kameraya dönen
+// "kağıt figür" (billboard) olarak çiziliyor — 2D'deki tipler hiç bozulmuyor.
+//
+// KARARLILIK (v66): Tarayıcılar aynı anda ~16 WebGL bağlamına izin verir. Eskiden
+// eve her girişte YENİ bir renderer açılıyordu; birkaç giriş-çıkıştan sonra tarayıcı
+// eski bağlamları düşürüp oyunu bozuyordu ("arka plandan silip tekrar gir" sorunu).
+// Artık TEK ortak renderer var (getSharedRenderer) ve kaybolursa yeniden kurulur.
 // =============================================================================
 
 export const ROOM = { W: 18, D: 14, H: 3.4 };
@@ -29,11 +35,61 @@ const AV_PLANE_W = 320 * AV_UNIT;
 const AV_FEET = (580 - 562) * AV_UNIT;
 const AV_WAIST_FROM_TOP = 380 * AV_UNIT;
 const SPAWN = { x: 5, z: D / 2 - 3.2 };
+const EMOTE_MS = 3200;
+export const EMOTES = [
+  { key: 'dans', label: 'Dans et', emoji: '💃' },
+  { key: 'selam', label: 'El salla', emoji: '👋' },
+  { key: 'alkis', label: 'Alkışla', emoji: '👏' },
+  { key: 'zipla', label: 'Zıpla', emoji: '🤸' },
+  { key: 'kalp', label: 'Kalp at', emoji: '❤️' },
+];
+const EMOTE_EMOJI = Object.fromEntries(EMOTES.map((e) => [e.key, e.emoji]));
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const snap = (v) => Math.round(v / SNAP) * SNAP;
 let idSeq = 0;
 export const newItemId = () => `${Date.now().toString(36).slice(-5)}${(idSeq++ % 1296).toString(36).padStart(2, '0')}`;
+
+// --- Ortak renderer'lar ------------------------------------------------------
+function makeRenderer(opts) {
+  const r = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', ...opts });
+  r.toneMapping = THREE.ACESFilmicToneMapping;
+  r.outputColorSpace = THREE.SRGBColorSpace;
+  r.shadowMap.enabled = true;
+  r.shadowMap.type = THREE.PCFSoftShadowMap;
+  r.__lost = false;
+  r.domElement.addEventListener('webglcontextlost', (e) => {
+    e.preventDefault();
+    r.__lost = true;
+    r.__onLost?.();
+  });
+  return r;
+}
+const shared = { main: null, mainEnv: null, snap: null, snapEnv: null };
+function envFor(r) {
+  const pm = new THREE.PMREMGenerator(r);
+  const tex = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+  pm.dispose();
+  return tex;
+}
+function getSharedRenderer(kind = 'main') {
+  let r = shared[kind];
+  if (r && r.__lost) {
+    try {
+      r.dispose();
+    } catch {
+      /* bağlam zaten yok */
+    }
+    r = null;
+    shared[kind] = null;
+  }
+  if (!r) {
+    r = makeRenderer(kind === 'snap' ? { preserveDrawingBuffer: true } : {});
+    shared[kind] = r;
+    shared[`${kind}Env`] = envFor(r);
+  }
+  return { renderer: r, env: shared[`${kind}Env`] };
+}
 
 // --- Avatar dokuları ---------------------------------------------------------
 const avatarTexCache = new Map();
@@ -44,6 +100,7 @@ function avatarTextures(avatar) {
   if (entry) return entry;
   entry = { ready: false, tex: {} };
   avatarTexCache.set(key, entry);
+  if (avatarTexCache.size > 60) avatarTexCache.delete(avatarTexCache.keys().next().value);
   const poses = ['idle', 'walk1', 'walk2', 'sit'];
   let left = poses.length;
   poses.forEach((pose) => {
@@ -89,6 +146,7 @@ class AvatarFigure {
     this.mat = new THREE.MeshBasicMaterial({ transparent: true, alphaTest: 0.35, toneMapped: false, side: THREE.DoubleSide });
     this.plane = new THREE.Mesh(new THREE.PlaneGeometry(AV_PLANE_W, AV_PLANE_H), this.mat);
     this.plane.visible = false;
+    this.plane.userData.playerUid = uid;
     this.group.add(this.plane);
     this.shadow = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.55), new THREE.MeshBasicMaterial({ map: blobShadowTexture(), transparent: true, depthWrite: false }));
     this.shadow.rotation.x = -Math.PI / 2;
@@ -102,27 +160,44 @@ class AvatarFigure {
     this.moving = false;
     this.walkT = 0;
     this.facingLeft = false;
-    this.seat = null;
     this.bubbles = [];
-    this.label = document.createElement('div');
-    this.label.className = `hs-label${isSelf ? ' self' : ''}`;
-    this.bubbleBox = document.createElement('div');
-    this.bubbleBox.className = 'hs-bubbles';
-    this.nameEl = document.createElement('div');
-    this.nameEl.className = 'hs-name';
-    this.label.append(this.bubbleBox, this.nameEl);
-    labelLayer.appendChild(this.label);
+    this.emote = null;
+    this.label = null;
+    if (labelLayer) {
+      this.label = document.createElement('div');
+      this.label.className = `hs-label${isSelf ? ' self' : ''}`;
+      this.bubbleBox = document.createElement('div');
+      this.bubbleBox.className = 'hs-bubbles';
+      this.emoteEl = document.createElement('div');
+      this.emoteEl.className = 'hs-emote';
+      this.nameEl = document.createElement('div');
+      this.nameEl.className = 'hs-name';
+      this.label.append(this.bubbleBox, this.emoteEl, this.nameEl);
+      labelLayer.appendChild(this.label);
+    }
     this.setIdentity(name, avatar);
   }
   setIdentity(name, avatar) {
-    this.nameEl.textContent = name || 'Oyuncu';
+    this.name = name || 'Oyuncu';
+    this.renderName();
     const key = JSON.stringify(avatar || DEFAULT_AVATAR);
     if (key !== this.avKey) {
       this.avKey = key;
       this.tex = avatarTextures(avatar);
     }
   }
+  setHolding(product) {
+    if (product === this.holding) return;
+    this.holding = product || null;
+    this.renderName();
+  }
+  renderName() {
+    if (!this.nameEl) return;
+    const em = this.holding ? HOUSE_PRODUCTS[this.holding]?.emoji || '🎁' : '';
+    this.nameEl.textContent = em ? `${em} ${this.name}` : this.name;
+  }
   say(text) {
+    if (!this.bubbleBox) return;
     const el = document.createElement('div');
     el.className = 'hs-bubble';
     el.textContent = text;
@@ -131,8 +206,17 @@ class AvatarFigure {
     this.bubbles.push(b);
     while (this.bubbles.length > 3) this.bubbles.shift().el.remove();
   }
+  playEmote(kind, at = performance.now()) {
+    if (!EMOTE_EMOJI[kind]) return;
+    this.emote = { kind, t0: at };
+    if (this.emoteEl) {
+      this.emoteEl.textContent = EMOTE_EMOJI[kind];
+      this.emoteEl.classList.remove('on');
+      void this.emoteEl.offsetWidth;
+      this.emoteEl.classList.add('on');
+    }
+  }
   update(dt, camera, now, seatPos) {
-    // konum
     if (seatPos) {
       this.x = seatPos.x;
       this.z = seatPos.z;
@@ -140,25 +224,51 @@ class AvatarFigure {
       const dx = this.tx - this.x;
       const dz = this.tz - this.z;
       const d = Math.hypot(dx, dz);
-      if (d > 3) {
+      if (d > 4) {
         this.x = this.tx;
         this.z = this.tz;
-      } else {
-        const k = 1 - Math.exp(-dt * 10);
-        this.x += dx * k;
-        this.z += dz * k;
+      } else if (d > 0.001) {
+        // sabit hızla hedefe (ağ aralıklarında takılmasın)
+        const step = Math.min(d, Math.max(WALK_SPEED * 1.1, d * 4) * dt);
+        this.x += (dx / d) * step;
+        this.z += (dz / d) * step;
       }
-      this.moving = d > 0.04;
+      this.moving = d > 0.05;
     }
     this.group.position.set(this.x, 0, this.z);
-    // kameraya dön (sadece y ekseni)
     const ang = Math.atan2(camera.position.x - this.x, camera.position.z - this.z);
-    this.plane.rotation.y = ang;
-    // yürüme karesi
+    // hareket animasyonu (dans, el sallama...)
+    let tilt = 0;
+    let lift = 0;
+    let forceWalk = false;
+    if (this.emote) {
+      const e = (now - this.emote.t0) / 1000;
+      if (e > EMOTE_MS / 1000) {
+        this.emote = null;
+        this.emoteEl?.classList.remove('on');
+      } else {
+        const k = this.emote.kind;
+        if (k === 'dans') {
+          tilt = Math.sin(e * 11) * 0.16;
+          lift = Math.abs(Math.sin(e * 11)) * 0.07;
+          forceWalk = true;
+        } else if (k === 'zipla') lift = Math.abs(Math.sin(e * 6)) * 0.4;
+        else if (k === 'selam') tilt = Math.sin(e * 8) * 0.06;
+        else if (k === 'alkis') lift = Math.abs(Math.sin(e * 14)) * 0.04;
+        else if (k === 'kalp') lift = Math.sin(e * 3) * 0.03 + 0.03;
+      }
+    }
+    // kamera yukarıdaysa (2D kuş bakışı) avatar düzlemi kameraya doğru yatırılır,
+    // yoksa tepeden bakınca ince bir çizgi gibi görünür.
+    const hd = Math.hypot(camera.position.x - this.x, camera.position.z - this.z);
+    const el = Math.atan2(camera.position.y - AV_PLANE_H / 2, hd);
+    const back = el > 0.35 ? Math.min(el - 0.35, 1.05) : 0;
+    this.plane.rotation.order = 'YXZ';
+    this.plane.rotation.set(-back, ang, tilt);
     let pose = 'idle';
     if (seatPos) pose = 'sit';
-    else if (this.moving) {
-      this.walkT += dt;
+    else if (this.moving || forceWalk) {
+      this.walkT += dt * (forceWalk ? 0.7 : 1);
       pose = Math.floor(this.walkT / 0.16) % 2 ? 'walk2' : 'walk1';
     }
     if (this.tex.ready) {
@@ -169,17 +279,15 @@ class AvatarFigure {
       }
       this.plane.visible = true;
     }
-    const sx = this.facingLeft ? -1 : 1;
-    this.plane.scale.set(sx, 1, 1);
+    this.plane.scale.set(this.facingLeft ? -1 : 1, 1, 1);
     if (seatPos) {
       const topY = seatPos.y + 0.04 + AV_WAIST_FROM_TOP;
-      this.plane.position.y = topY - AV_PLANE_H / 2;
+      this.plane.position.y = topY - AV_PLANE_H / 2 + lift;
       this.shadow.visible = false;
     } else {
-      this.plane.position.y = AV_PLANE_H / 2 - AV_FEET;
+      this.plane.position.y = AV_PLANE_H / 2 - AV_FEET + lift;
       this.shadow.visible = true;
     }
-    // balonların süresi
     this.bubbles = this.bubbles.filter((b) => {
       if (now > b.until) {
         b.el.remove();
@@ -189,7 +297,6 @@ class AvatarFigure {
     });
   }
   headWorld(v) {
-    // saçın tepesi SVG'de ~y=55 → düzlemin üstünden ~0.19 m aşağıda
     const top = this.plane.position.y + AV_PLANE_H / 2 - 0.12;
     return v.set(this.x, top, this.z);
   }
@@ -199,7 +306,7 @@ class AvatarFigure {
     this.mat.dispose();
     this.shadow.geometry.dispose();
     this.shadow.material.dispose();
-    this.label.remove();
+    this.label?.remove();
   }
 }
 
@@ -207,16 +314,14 @@ class AvatarFigure {
 let thumbCtx = null;
 const thumbCache = new Map();
 function thumbRenderer() {
-  if (thumbCtx) return thumbCtx;
-  const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+  if (thumbCtx && !thumbCtx.r.__lost) return thumbCtx;
+  const r = makeRenderer({ alpha: true, preserveDrawingBuffer: true });
+  r.shadowMap.enabled = false;
   r.setSize(160, 160, false);
   r.setPixelRatio(1);
-  r.toneMapping = THREE.ACESFilmicToneMapping;
   r.toneMappingExposure = 1.1;
-  r.outputColorSpace = THREE.SRGBColorSpace;
   const s = new THREE.Scene();
-  const pm = new THREE.PMREMGenerator(r);
-  s.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+  s.environment = envFor(r);
   s.environmentIntensity = 0.9;
   s.add(new THREE.HemisphereLight('#dfe8ff', '#302420', 1.2));
   const dl = new THREE.DirectionalLight('#fff4e0', 2.2);
@@ -252,31 +357,55 @@ export function getThumb(k, ti = 0) {
   }
 }
 
+// Deneme (henüz satın alınmamış) eşyayı yarı saydam "hologram" yap.
+function ghostify(obj) {
+  obj.traverse((o) => {
+    if (!o.isMesh) return;
+    o.castShadow = false;
+    o.material = [].concat(o.material).map((m) => {
+      const c = m.clone();
+      c.transparent = true;
+      c.opacity = Math.min(c.opacity ?? 1, 0.6);
+      c.depthWrite = false;
+      if (c.emissive) {
+        c.emissive = new THREE.Color('#19e8ff');
+        c.emissiveIntensity = 0.14;
+      }
+      c.userData = { own: true };
+      return c;
+    });
+    if (o.material.length === 1) o.material = o.material[0];
+  });
+}
+
 // =============================================================================
 // MOTOR
 // =============================================================================
-export function createHouseEngine(container, { canEdit, selfUid, onSelectionChange, onDesignChange, onInteractChange, onReady } = {}) {
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+export function createHouseEngine(
+  container,
+  { canEdit, selfUid, onSelectionChange, onDesignChange, onInteractChange, onPlayerTap, onContextLost, snapshot = false } = {}
+) {
+  const { renderer, env } = getSharedRenderer(snapshot ? 'snap' : 'main');
+  renderer.__onLost = snapshot ? null : () => onContextLost?.();
+  renderer.setPixelRatio(snapshot ? 1 : Math.min(window.devicePixelRatio || 1, 1.75));
   renderer.toneMappingExposure = 1.0;
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
   const canvas = renderer.domElement;
   canvas.className = 'hs-gl';
   container.appendChild(canvas);
-  const labelLayer = document.createElement('div');
-  labelLayer.className = 'hs-labels';
-  container.appendChild(labelLayer);
+  let labelLayer = null;
+  if (!snapshot) {
+    labelLayer = document.createElement('div');
+    labelLayer.className = 'hs-labels';
+    container.appendChild(labelLayer);
+  }
+  const owned = []; // bu sahneye ait, dispose edilecek kaynaklar
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#07080d');
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environment = env;
   scene.environmentIntensity = 0.32;
 
-  const camera = new THREE.PerspectiveCamera(52, 1, 0.05, 120);
+  const camera = new THREE.PerspectiveCamera(58, 1, 0.05, 120);
   camera.rotation.order = 'YXZ';
 
   // --- Işıklar ---------------------------------------------------------------
@@ -290,8 +419,8 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
   sun.shadow.bias = -0.0005;
   sun.shadow.normalBias = 0.02;
   scene.add(sun);
-  // tavan şerit ışıkları (sabit)
   const stripMat = new THREE.MeshStandardMaterial({ color: '#000', emissive: '#ffe2b0', emissiveIntensity: 2.4 });
+  owned.push(stripMat);
   const ceilLights = [];
   for (let x = -6; x <= 6; x += 6) {
     for (let z = -4; z <= 4; z += 8) {
@@ -304,7 +433,6 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
       ceilLights.push(b, l);
     }
   }
-  // eşya ışıkları havuzu (sabit sayıda → shader yeniden derlenmez)
   const LIGHT_POOL = 6;
   const pool = [];
   for (let i = 0; i < LIGHT_POOL; i++) {
@@ -332,10 +460,11 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
   const wallMatLong = new THREE.MeshStandardMaterial({ roughness: 0.9 });
   const wallMatShort = new THREE.MeshStandardMaterial({ roughness: 0.9 });
   const dividerMat = new THREE.MeshStandardMaterial({ roughness: 0.9 });
+  dividerMat.userData.shared = true; // eşyalar dispose ederken dokunmasın
   const trimMat = new THREE.MeshStandardMaterial({ color: '#141416', roughness: 0.5 });
   const capMat = new THREE.MeshStandardMaterial({ color: '#23242a', roughness: 0.8 });
+  owned.push(floorMat, wallMatLong, wallMatShort, dividerMat, trimMat, capMat, outside.material, ceiling.material);
   const STUB_H = 0.45;
-  // duvar: 0=arka (z=-D/2), 1=sağ (x=W/2), 2=ön (z=D/2), 3=sol (x=-W/2)
   const walls = [
     { len: W, pos: [0, -D / 2], ry: 0, mat: wallMatLong },
     { len: D, pos: [W / 2, 0], ry: -Math.PI / 2, mat: wallMatShort },
@@ -371,7 +500,6 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
     scene.add(grp);
     return { ...w, i, grp, full, stub, hidden: false };
   });
-  // sabit ön kapı (spawn noktası)
   {
     const door = new THREE.Group();
     const fr = new THREE.Mesh(new THREE.BoxGeometry(1.3, 2.4, 0.12), new THREE.MeshStandardMaterial({ color: '#15151a', roughness: 0.4 }));
@@ -384,8 +512,12 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
     mat.rotation.x = -Math.PI / 2;
     mat.position.set(0, 0.012, 0.6);
     door.add(fr, pn, hd, mat);
-    door.traverse((o) => { if (o.isMesh) o.receiveShadow = true; });
-    // ön duvar grubunun yerel koordinatında: x ekseni ters (ry=PI)
+    door.traverse((o) => {
+      if (o.isMesh) {
+        o.receiveShadow = true;
+        owned.push(o.material);
+      }
+    });
     door.position.set(-SPAWN.x, 0, 0);
     walls[2].full.add(door);
   }
@@ -397,7 +529,6 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
   grid.material.depthWrite = false;
   scene.add(grid);
 
-  // seçim göstergesi
   const selMat = new THREE.LineBasicMaterial({ color: '#19e8ff', transparent: true, opacity: 0.95, depthTest: false });
   const selBox = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), selMat);
   selBox.renderOrder = 999;
@@ -408,22 +539,30 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
   selRing.position.y = 0.02;
   selRing.visible = false;
   scene.add(selRing);
+  // yürüme hedefi işareti
+  const targetRing = new THREE.Mesh(new THREE.RingGeometry(0.16, 0.24, 32), new THREE.MeshBasicMaterial({ color: '#ffd23f', transparent: true, opacity: 0.85, depthWrite: false }));
+  targetRing.rotation.x = -Math.PI / 2;
+  targetRing.position.y = 0.025;
+  targetRing.visible = false;
+  scene.add(targetRing);
+  owned.push(selMat, selRing.material, targetRing.material, grid.material);
 
   // --- Durum ---------------------------------------------------------------------
   let design = { items: [], wall: WALLS[0].key, floor: FLOORS[0].key };
   const objs = new Map(); // id -> { obj, data, sig }
   let selectedId = null;
-  let mode = canEdit ? 'build' : 'walk';
+  let mode = 'walk';
+  let view = '3d';
   const undoStack = [];
-  // yörünge kamera
   const orbit = { az: 0.35, el: 0.95, dist: 20, tx: 0, tz: 0 };
   const orbitCur = { ...orbit };
-  // yürüme
-  const self = { x: SPAWN.x, z: SPAWN.z, camYaw: 0, camPitch: 0.36, camDist: 3.8, seat: null, fig: null };
-  const joy = { x: 0, y: 0 };
+  const top = { az: 0.0, el: 1.3, dist: 21 }; // 2D kuş bakışı (oyuncuyu takip eder)
+  const topCur = { ...top };
+  const self = { x: SPAWN.x, z: SPAWN.z, camYaw: 0, camPitch: 0.34, camDist: 4.8, seat: null, fig: null, target: null, stuckT: 0, lastD: 0 };
   const keys = {};
   const others = new Map();
   let disposed = false;
+  let musicItemId = null;
 
   function setSurfaces() {
     const f = floorDef(design.floor);
@@ -454,12 +593,14 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
   function snapToWall(data) {
     const dists = [data.z + D / 2, W / 2 - data.x, D / 2 - data.z, data.x + W / 2];
     let wi = 0;
-    dists.forEach((d, i) => { if (d < dists[wi]) wi = i; });
+    dists.forEach((d, i) => {
+      if (d < dists[wi]) wi = i;
+    });
     const m = 0.9;
-    if (wi === 0) { data.z = -D / 2 + 0.005; data.r = 0; data.x = clamp(data.x, -W / 2 + m, W / 2 - m); }
-    if (wi === 2) { data.z = D / 2 - 0.005; data.r = 4; data.x = clamp(data.x, -W / 2 + m, W / 2 - m); }
-    if (wi === 3) { data.x = -W / 2 + 0.005; data.r = 2; data.z = clamp(data.z, -D / 2 + m, D / 2 - m); }
-    if (wi === 1) { data.x = W / 2 - 0.005; data.r = 6; data.z = clamp(data.z, -D / 2 + m, D / 2 - m); }
+    if (wi === 0) Object.assign(data, { z: -D / 2 + 0.005, r: 0, x: clamp(data.x, -W / 2 + m, W / 2 - m) });
+    if (wi === 2) Object.assign(data, { z: D / 2 - 0.005, r: 4, x: clamp(data.x, -W / 2 + m, W / 2 - m) });
+    if (wi === 3) Object.assign(data, { x: -W / 2 + 0.005, r: 2, z: clamp(data.z, -D / 2 + m, D / 2 - m) });
+    if (wi === 1) Object.assign(data, { x: W / 2 - 0.005, r: 6, z: clamp(data.z, -D / 2 + m, D / 2 - m) });
   }
   function normalizePlacement(data) {
     const def = CATALOG_MAP[data.k];
@@ -477,16 +618,25 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
     obj.rotation.y = (data.r || 0) * (Math.PI / 4);
     obj.updateMatrixWorld(true);
   }
+  const sigOf = (d) => `${d.k}|${d.c || 0}|${d.p === 1 ? 1 : 0}`;
   function buildEntry(data) {
-    const obj = buildItem(data.k, { ti: data.c || 0, live: true, wallMat: dividerMat, H });
+    const obj = buildItem(data.k, { ti: data.c || 0, live: !snapshot, wallMat: dividerMat, H });
     if (!obj) return null;
-    obj.traverse((o) => { o.userData.itemId = data.i; });
+    const isOwned = data.p === 1;
+    const ctl = obj.userData.ctl;
+    if (!isOwned) {
+      ghostify(obj);
+      if (ctl?.setOn) ctl.setOn(false);
+    }
+    obj.traverse((o) => {
+      o.userData.itemId = data.i;
+    });
     obj.userData.itemId = data.i;
     scene.add(obj);
-    const entry = { obj, data: { ...data }, sig: `${data.k}|${data.c || 0}` };
+    const entry = { obj, data: { ...data }, sig: sigOf(data) };
     applyTransform(entry);
-    const ctl = obj.userData.ctl;
-    if (ctl?.setOn && typeof data.o === 'boolean') ctl.setOn(data.o);
+    if (isOwned && ctl?.setOn && typeof data.o === 'boolean') ctl.setOn(data.o);
+    if (isOwned && data.k === 'jukebox' && ctl?.setOn) ctl.setOn(musicItemId === data.i);
     return entry;
   }
   function removeEntry(id) {
@@ -501,20 +651,22 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
     design.items.forEach((d) => {
       seen.add(d.i);
       const e = objs.get(d.i);
-      const sig = `${d.k}|${d.c || 0}`;
-      if (e && e.sig === sig) {
+      if (e && e.sig === sigOf(d)) {
         e.data = { ...d };
         applyTransform(e);
         const ctl = e.obj.userData.ctl;
-        if (ctl?.setOn && typeof d.o === 'boolean' && ctl.on !== d.o) ctl.setOn(d.o);
+        if (d.p === 1 && ctl?.setOn && typeof d.o === 'boolean' && ctl.on !== d.o) ctl.setOn(d.o);
       } else {
         if (e) removeEntry(d.i);
         const ne = buildEntry(d);
         if (ne) objs.set(d.i, ne);
       }
     });
-    [...objs.keys()].forEach((id) => { if (!seen.has(id)) removeEntry(id); });
+    [...objs.keys()].forEach((id) => {
+      if (!seen.has(id)) removeEntry(id);
+    });
     if (selectedId && !objs.has(selectedId)) select(null);
+    if (self.seat && !isUsable(self.seat.id)) self.seat = null;
     updateSelectionVisual();
   }
   function emitDesign() {
@@ -525,6 +677,7 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
     undoStack.push(JSON.stringify(design));
     if (undoStack.length > 40) undoStack.shift();
   }
+  const isUsable = (id) => objs.get(id)?.data.p === 1;
 
   function select(id) {
     selectedId = id;
@@ -552,17 +705,18 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
     selRing.visible = true;
   }
 
-  // --- Duvar gizleme (tasarım modunda kameraya bakan duvarlar alçalır) -------
+  const overhead = () => mode === 'build' || view === '2d';
   function updateWalls() {
     const p = camera.position;
     walls.forEach((w) => {
       let hide = false;
-      if (mode === 'build') {
-        if (w.i === 0) hide = p.z < -D / 2 + 0.5;
-        if (w.i === 2) hide = p.z > D / 2 - 0.5;
-        if (w.i === 3) hide = p.x < -W / 2 + 0.5;
-        if (w.i === 1) hide = p.x > W / 2 - 0.5;
-      }
+      // kuş bakışında duvara yakınken, 3D gezide ise kamera duvarın
+      // arkasına geçince o duvar kesilir (Sims tarzı) — oyuncu hep görünür.
+      const m = overhead() ? 0.5 : -0.05;
+      if (w.i === 0) hide = p.z < -D / 2 + m;
+      if (w.i === 2) hide = p.z > D / 2 - m;
+      if (w.i === 3) hide = p.x < -W / 2 + m;
+      if (w.i === 1) hide = p.x > W / 2 - m;
       if (hide !== w.hidden) {
         w.hidden = hide;
         w.full.visible = !hide;
@@ -574,18 +728,20 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
       if (!def?.wall) return;
       e.obj.visible = !walls[wallIndexForRot(e.data.r)].hidden;
     });
-    ceiling.visible = mode === 'walk';
-    ceilLights.forEach((o) => { if (o.isMesh) o.visible = mode === 'walk'; });
+    const showCeil = !overhead();
+    ceiling.visible = showCeil;
+    ceilLights.forEach((o) => {
+      if (o.isMesh) o.visible = showCeil;
+    });
   }
 
-  // --- Işık havuzu ---------------------------------------------------------------
   let lightTimer = 0;
   const lp = new THREE.Vector3();
   function updateLightPool(focus) {
     const list = [];
     objs.forEach((e) => {
       const ctl = e.obj.userData.ctl;
-      if (!ctl?.light || !ctl.on || !e.obj.visible) return;
+      if (!ctl?.light || !ctl.on || !e.obj.visible || e.data.p !== 1) return;
       lp.set(ctl.light.x, ctl.light.y, ctl.light.z);
       e.obj.localToWorld(lp);
       list.push({ p: lp.clone(), l: ctl.light, d: lp.distanceToSquared(focus) });
@@ -604,7 +760,7 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
     });
   }
 
-  // --- Çarpışma (yürüme) ------------------------------------------------------
+  // --- Çarpışma ------------------------------------------------------------------
   function collide(p) {
     p.x = clamp(p.x, -W / 2 + PLAYER_R, W / 2 - PLAYER_R);
     p.z = clamp(p.z, -D / 2 + PLAYER_R, D / 2 - PLAYER_R);
@@ -619,7 +775,6 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
       boxes.forEach(([bx, bz, hx, hz]) => {
         const dx = p.x - e.data.x;
         const dz = p.z - e.data.z;
-        // dünya → yerel (R_y(-ry))
         let lx = dx * c - dz * s - bx;
         let lz = dx * s + dz * c - bz;
         const px = hx + PLAYER_R - Math.abs(lx);
@@ -647,33 +802,46 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
     return out;
   }
 
-  // --- Etkileşim bulma ------------------------------------------------------------
+  // --- Etkileşim --------------------------------------------------------------------
   let currentInteract = null;
+  function actionsFor(e) {
+    const def = CATALOG_MAP[e.data.k];
+    const ctl = e.obj.userData.ctl;
+    const acts = [];
+    if (def.seats?.length) acts.push({ kind: 'sit', label: def.cat === 'araba' ? '🚗 Arabaya bin' : def.cat === 'motor' ? '🏍️ Motora bin' : '🪑 Otur' });
+    if (def.panel === 'arcade') acts.push({ kind: 'panel', panel: 'arcade', label: '🕹️ Oyna' });
+    if (def.panel === 'jukebox') acts.push({ kind: 'panel', panel: 'jukebox', label: '🎵 Müzik' });
+    if (!def.panel && ctl?.act && !ctl.noToggle) acts.push({ kind: 'toggle', label: ctl.act });
+    (def.takes || []).forEach((product) => {
+      const p = HOUSE_PRODUCTS[product];
+      if (p) acts.push({ kind: 'take', product, label: `${p.emoji} ${p.label} al` });
+    });
+    return acts;
+  }
   function findInteract() {
     if (mode !== 'walk') return null;
     if (self.seat) {
       const e = objs.get(self.seat.id);
-      const ctl = e?.obj.userData.ctl;
-      return { id: self.seat.id, sit: 'Kalk', toggle: ctl?.act && !ctl.noToggle ? ctl.act : null };
+      if (!e) return null;
+      const acts = [{ kind: 'sit', label: '⬆️ Kalk' }, ...actionsFor(e).filter((a) => a.kind !== 'sit')];
+      return { id: self.seat.id, name: CATALOG_MAP[e.data.k].name, actions: acts };
     }
+    if (self.target) return null;
     let best = null;
-    let bd = 1.4;
+    let bd = 1.25;
     const v = new THREE.Vector3();
     objs.forEach((e) => {
       const def = CATALOG_MAP[e.data.k];
-      const ctl = e.obj.userData.ctl;
-      const canToggle = ctl?.act && !ctl.noToggle;
-      const hasSeat = def?.seats?.length;
-      if (!canToggle && !hasSeat) return;
-      // en yakın kutu kenarı / oturma noktası
+      if (!def) return;
+      const acts = e.data.p === 1 ? actionsFor(e) : [];
+      if (!acts.length && e.data.p === 1) return;
+      if (e.data.p !== 1 && !actionsFor(e).length) return;
       let d = Infinity;
-      if (hasSeat) {
-        def.seats.forEach((s) => {
-          v.set(s[0], 0, s[2]);
-          e.obj.localToWorld(v);
-          d = Math.min(d, Math.hypot(v.x - self.x, v.z - self.z) - 0.35);
-        });
-      }
+      def.seats?.forEach((s) => {
+        v.set(s[0], 0, s[2]);
+        e.obj.localToWorld(v);
+        d = Math.min(d, Math.hypot(v.x - self.x, v.z - self.z) - 0.35);
+      });
       const boxes = itemBoxes(def);
       const ry = e.obj.rotation.y;
       const c = Math.cos(ry);
@@ -685,14 +853,16 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
         const lz = dx * s + dz * c - bz;
         d = Math.min(d, Math.hypot(Math.max(Math.abs(lx) - hx, 0), Math.max(Math.abs(lz) - hz, 0)));
       });
-      if (!boxes.length && def.wall) {
-        v.set(0, 0, 0.3);
+      if (!boxes.length) {
+        v.set(0, 0, def.wall ? 0.3 : 0);
         e.obj.localToWorld(v);
-        d = Math.min(d, Math.hypot(v.x - self.x, v.z - self.z) - 0.2);
+        d = Math.min(d, Math.hypot(v.x - self.x, v.z - self.z) - 0.25);
       }
-      if (d < bd) {
-        bd = d;
-        best = { id: e.data.i, sit: hasSeat ? (def.cat === 'araba' ? 'Arabaya bin' : def.cat === 'motor' ? 'Motora bin' : 'Otur') : null, toggle: canToggle ? ctl.act : null };
+      // oyuncunun dokunup yanına gittiği eşya, daha yakın başka eşya olsa da öncelikli
+      const dd = e.data.i === self.focusId && d < 1.7 ? -1 : d;
+      if (dd < bd) {
+        bd = dd;
+        best = { id: e.data.i, name: def.name, trial: e.data.p !== 1, actions: acts };
       }
     });
     return best;
@@ -703,7 +873,7 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
   const ndc = new THREE.Vector2();
   const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   const pointers = new Map();
-  let drag = null; // { type:'orbit'|'item'|'pan'|'look', ... }
+  let drag = null;
   let pinch = null;
 
   function setNdc(e) {
@@ -718,9 +888,10 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
   function pickItem(e) {
     setNdc(e);
     const list = [];
-    objs.forEach((en) => { if (en.obj.visible) list.push(en.obj); });
+    objs.forEach((en) => {
+      if (en.obj.visible) list.push(en.obj);
+    });
     const hits = ray.intersectObjects(list, true);
-    // halı/sahne gibi düz eşyalar en son tercih edilir
     let flatHit = null;
     for (const h of hits) {
       const id = h.object.userData.itemId;
@@ -734,30 +905,86 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
     }
     return flatHit;
   }
+  function pickPlayer(e) {
+    setNdc(e);
+    const planes = [];
+    others.forEach((o) => {
+      if (o.fig.plane.visible) planes.push(o.fig.plane);
+    });
+    const hit = ray.intersectObjects(planes, false)[0];
+    return hit?.object.userData.playerUid || null;
+  }
+
+  function walkTo(x, z) {
+    if (self.seat) standUp();
+    self.target = { x: clamp(x, -W / 2 + PLAYER_R, W / 2 - PLAYER_R), z: clamp(z, -D / 2 + PLAYER_R, D / 2 - PLAYER_R) };
+    self.stuckT = 0;
+    self.lastD = Infinity;
+    targetRing.position.set(self.target.x, 0.025, self.target.z);
+    targetRing.visible = true;
+  }
+  function approachItem(id) {
+    const e = objs.get(id);
+    if (!e) return;
+    const def = CATALOG_MAP[e.data.k];
+    // en yakın oturma noktası ya da eşyanın kenarı
+    const v = new THREE.Vector3();
+    let best = null;
+    let bd = Infinity;
+    const cands = [];
+    def.seats?.forEach((s) => cands.push([s[0], s[2] + 0.45]));
+    const box = def.box || (def.boxWall ? [def.boxWall[0], def.boxWall[1] * 2] : [0.4, 0.4]);
+    const bz = def.boxWall ? def.boxWall[1] : 0;
+    const off = def.wall ? 0.75 : 0.5;
+    cands.push([0, bz + box[1] + off], [0, bz - box[1] - off], [box[0] + off, bz], [-box[0] - off, bz]);
+    cands.forEach(([lx, lz]) => {
+      v.set(lx, 0, lz);
+      e.obj.localToWorld(v);
+      if (Math.abs(v.x) > W / 2 - PLAYER_R || Math.abs(v.z) > D / 2 - PLAYER_R) return;
+      const d = Math.hypot(v.x - self.x, v.z - self.z);
+      if (d < bd) {
+        bd = d;
+        best = v.clone();
+      }
+    });
+    self.focusId = id;
+    if (best) walkTo(best.x, best.z);
+  }
+  function handleWalkTap(e) {
+    const pu = pickPlayer(e);
+    if (pu) {
+      onPlayerTap?.(pu);
+      return;
+    }
+    const id = pickItem(e);
+    if (id && !CATALOG_MAP[objs.get(id)?.data.k]?.flat) {
+      approachItem(id);
+      return;
+    }
+    const fp = floorPoint(e);
+    if (fp) {
+      self.focusId = null;
+      walkTo(fp.x, fp.z);
+    }
+  }
 
   function onPointerDown(e) {
     canvas.setPointerCapture(e.pointerId);
-    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY });
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.size === 2) {
       const [a, b] = [...pointers.values()];
       pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
-      if (drag?.type === 'item') finishItemDrag();
+      if (drag?.type === 'item') emitDesign();
       drag = null;
       return;
     }
     if (mode === 'build') {
       const id = pickItem(e);
-      if (id && canEdit) {
-        drag = { type: 'itemCandidate', id, moved: 0, button: e.button };
-      } else {
-        drag = { type: e.button === 2 ? 'pan' : 'orbit', moved: 0, tapEmpty: true };
-      }
+      if (id && canEdit) drag = { type: 'itemCandidate', id, moved: 0 };
+      else drag = { type: e.button === 2 ? 'pan' : 'orbit', moved: 0, tapEmpty: true };
     } else {
-      drag = { type: 'look', moved: 0 };
+      drag = { type: 'look', moved: 0, tap: true };
     }
-  }
-  function finishItemDrag() {
-    if (drag?.type === 'item') emitDesign();
   }
   function onPointerMove(e) {
     const p = pointers.get(e.pointerId);
@@ -771,12 +998,12 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
       const d = Math.hypot(a.x - b.x, a.y - b.y);
       const mx = (a.x + b.x) / 2;
       const my = (a.y + b.y) / 2;
+      const ratio = pinch.d / Math.max(d, 1);
       if (mode === 'build') {
-        orbit.dist = clamp(orbit.dist * (pinch.d / Math.max(d, 1)), 5, 38);
+        orbit.dist = clamp(orbit.dist * ratio, 5, 38);
         panBy(mx - pinch.mx, my - pinch.my);
-      } else {
-        self.camDist = clamp(self.camDist * (pinch.d / Math.max(d, 1)), 1.8, 7);
-      }
+      } else if (view === '2d') top.dist = clamp(top.dist * ratio, 6, 32);
+      else self.camDist = clamp(self.camDist * ratio, 1.8, 8);
       pinch = { d, mx, my };
       return;
     }
@@ -808,9 +1035,14 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
       orbit.el = clamp(orbit.el + dy * 0.005, 0.2, 1.45);
     } else if (drag.type === 'pan') {
       panBy(dx, dy);
-    } else if (drag.type === 'look') {
-      self.camYaw -= dx * 0.006;
-      self.camPitch = clamp(self.camPitch + dy * 0.004, -0.25, 1.1);
+    } else if (drag.type === 'look' && drag.moved > 6) {
+      if (view === '2d') {
+        top.az -= dx * 0.006;
+        top.el = clamp(top.el + dy * 0.004, 0.55, 1.45);
+      } else {
+        self.camYaw -= dx * 0.006;
+        self.camPitch = clamp(self.camPitch + dy * 0.004, -0.25, 1.1);
+      }
     }
   }
   function panBy(dx, dy) {
@@ -825,57 +1057,60 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
     if (pointers.size < 2) pinch = null;
     if (!drag) return;
     if (drag.type === 'itemCandidate' && drag.moved <= 6) select(drag.id);
-    else if (drag.type === 'item') finishItemDrag();
+    else if (drag.type === 'item') emitDesign();
     else if (drag.tapEmpty && drag.moved <= 6 && mode === 'build') select(null);
+    else if (drag.type === 'look' && drag.moved <= 8 && e.type === 'pointerup') handleWalkTap(e);
     drag = null;
   }
   function onWheel(e) {
     e.preventDefault();
     if (mode === 'build') orbit.dist = clamp(orbit.dist + e.deltaY * 0.012, 5, 38);
-    else self.camDist = clamp(self.camDist + e.deltaY * 0.004, 1.8, 7);
+    else if (view === '2d') top.dist = clamp(top.dist + e.deltaY * 0.01, 6, 32);
+    else self.camDist = clamp(self.camDist + e.deltaY * 0.004, 1.8, 8);
   }
   const onKeyDown = (e) => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
     keys[e.code] = true;
-    if (mode === 'walk' && e.code === 'KeyE') api.interact('sit');
-    if (mode === 'walk' && e.code === 'KeyF') api.interact('toggle');
     if (mode === 'build' && canEdit) {
       if (e.code === 'KeyR') api.rotateSelected(1);
-      if (e.code === 'Delete' || e.code === 'Backspace') api.deleteSelected();
+      if (e.code === 'Delete') api.deleteSelected();
       if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)) api.undo();
     }
   };
-  const onKeyUp = (e) => { keys[e.code] = false; };
-  canvas.addEventListener('pointerdown', onPointerDown);
-  canvas.addEventListener('pointermove', onPointerMove);
-  canvas.addEventListener('pointerup', onPointerUp);
-  canvas.addEventListener('pointercancel', onPointerUp);
-  canvas.addEventListener('wheel', onWheel, { passive: false });
-  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-  window.addEventListener('keydown', onKeyDown);
-  window.addEventListener('keyup', onKeyUp);
+  const onKeyUp = (e) => {
+    keys[e.code] = false;
+  };
+  const onCtx = (e) => e.preventDefault();
+  if (!snapshot) {
+    canvas.addEventListener('pointerdown', onPointerDown);
+    canvas.addEventListener('pointermove', onPointerMove);
+    canvas.addEventListener('pointerup', onPointerUp);
+    canvas.addEventListener('pointercancel', onPointerUp);
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    canvas.addEventListener('contextmenu', onCtx);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+  }
 
   // --- Boyut --------------------------------------------------------------------
+  let sized = false;
   function resize() {
     const w = container.clientWidth || 1;
     const h = container.clientHeight || 1;
     renderer.setSize(w, h, false);
-    // dar (telefon) ekranda oda sığsın diye kamera biraz geri çekilir
-    if (!resize.done && w > 50 && h > 50) {
-      resize.done = true;
-      if (w / h < 0.8) {
-        // dikey telefon: odanın uzun kenarı ekranın dikeyine gelsin
-        Object.assign(orbit, { az: Math.PI / 2 + 0.3, el: 1.05, dist: 27 });
-      } else {
-        Object.assign(orbit, { az: 0.35, el: 0.95, dist: 20 });
-      }
+    if (!sized && w > 50 && h > 50) {
+      sized = true;
+      if (w / h < 0.8) Object.assign(orbit, { az: Math.PI / 2 + 0.3, el: 1.05, dist: 27 });
+      else Object.assign(orbit, { az: 0.35, el: 0.95, dist: 20 });
       Object.assign(orbitCur, orbit);
+      if (w / h < 0.8) Object.assign(top, { dist: 15 });
+      Object.assign(topCur, top);
     }
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
   }
-  const ro = new ResizeObserver(resize);
-  ro.observe(container);
+  const ro = snapshot ? null : new ResizeObserver(resize);
+  ro?.observe(container);
   resize();
 
   // --- Ana döngü ----------------------------------------------------------------
@@ -885,44 +1120,70 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
   const camPos = new THREE.Vector3(0, 12, 18);
   const head = new THREE.Vector3();
   const seatV = new THREE.Vector3();
+  const camRight = new THREE.Vector3();
   let raf = 0;
   let firstFrame = true;
   let lastInteractKey = '';
+  let paused = false;
 
   function stepWalk(dt) {
-    let f = -joy.y;
-    let s = joy.x;
+    let f = 0;
+    let s = 0;
     if (keys.KeyW || keys.ArrowUp) f += 1;
     if (keys.KeyS || keys.ArrowDown) f -= 1;
     if (keys.KeyD || keys.ArrowRight) s += 1;
     if (keys.KeyA || keys.ArrowLeft) s -= 1;
-    const mag = Math.hypot(f, s);
-    if (mag > 1) {
-      f /= mag;
-      s /= mag;
-    }
+    const manual = Math.hypot(f, s) > 0;
     const fig = self.fig;
+    if (manual && self.target) {
+      self.target = null;
+      targetRing.visible = false;
+    }
     if (self.seat) {
-      if (mag > 0.4) {
-        standUp();
-      } else {
+      if (manual) standUp();
+      else {
         if (fig) fig.moving = false;
         return;
       }
     }
-    const moving = mag > 0.08;
+    let vx = 0;
+    let vz = 0;
+    if (manual) {
+      const mag = Math.hypot(f, s);
+      f /= mag;
+      s /= mag;
+      const yaw = view === '2d' ? topCur.az : self.camYaw;
+      vx = (-Math.sin(yaw) * f + Math.cos(yaw) * s) * WALK_SPEED * dt;
+      vz = (-Math.cos(yaw) * f - Math.sin(yaw) * s) * WALK_SPEED * dt;
+    } else if (self.target) {
+      const dx = self.target.x - self.x;
+      const dz = self.target.z - self.z;
+      const d = Math.hypot(dx, dz);
+      if (d < 0.12) {
+        self.target = null;
+        targetRing.visible = false;
+      } else {
+        const step = Math.min(d, WALK_SPEED * dt);
+        vx = (dx / d) * step;
+        vz = (dz / d) * step;
+        // takılma kontrolü (eşyaya çarpıp ilerleyemiyorsa dur)
+        if (d > self.lastD - 0.004) self.stuckT += dt;
+        else self.stuckT = 0;
+        self.lastD = d;
+        if (self.stuckT > 0.5) {
+          self.target = null;
+          targetRing.visible = false;
+        }
+      }
+    }
+    const moving = Math.hypot(vx, vz) > 0.0005;
     if (moving) {
-      const yaw = self.camYaw;
-      const vx = (-Math.sin(yaw) * f + Math.cos(yaw) * s) * WALK_SPEED * dt;
-      const vz = (-Math.cos(yaw) * f - Math.sin(yaw) * s) * WALK_SPEED * dt;
       self.x += vx;
       self.z += vz;
       collide(self);
-      if (fig) {
-        // ekran-uzayında sola gidiyorsa aynala
-        const sx = vx * Math.cos(yaw) - vz * Math.sin(yaw);
-        if (Math.abs(sx) > 0.001) fig.facingLeft = sx < 0;
-      }
+      camRight.setFromMatrixColumn(camera.matrixWorld, 0);
+      const sx = vx * camRight.x + vz * camRight.z;
+      if (fig && Math.abs(sx) > 0.0008) fig.facingLeft = sx < 0;
     }
     if (fig) {
       fig.x = self.x;
@@ -937,7 +1198,7 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
     const def = e && CATALOG_MAP[e.data.k];
     const sp = def?.seats?.[seat.idx];
     if (e && sp) {
-      const v = new THREE.Vector3(sp[0], 0, (def.box?.[1] ?? 0.5) + 0.55);
+      const v = new THREE.Vector3(sp[0], 0, sp[2] + 0.75);
       if (def.cat === 'araba' || def.cat === 'motor') v.set((def.box?.[0] ?? 0.5) + 0.6, 0, sp[2]);
       e.obj.localToWorld(v);
       self.x = v.x;
@@ -946,61 +1207,87 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
     }
   }
 
-  function loop() {
-    raf = requestAnimationFrame(loop);
-    if (document.hidden) return;
-    const dt = Math.min(clock.getDelta(), 0.1);
-    const t = clock.elapsedTime;
-    const now = performance.now();
-    objs.forEach((e) => e.obj.userData.ctl?.tick?.(t, dt));
-
+  function placeCamera(dt) {
     if (mode === 'build') {
       const k = 1 - Math.exp(-dt * 9);
-      Object.keys(orbit).forEach((key) => { orbitCur[key] += (orbit[key] - orbitCur[key]) * k; });
+      Object.keys(orbit).forEach((key) => {
+        orbitCur[key] += (orbit[key] - orbitCur[key]) * k;
+      });
       camTarget.set(orbitCur.tx, 0.4, orbitCur.tz);
+      const asp = camera.aspect || 1;
+      const od = orbitCur.dist * (asp < 1 ? 1 + (1 - asp) * 0.7 : 1);
       camPos.set(
-        camTarget.x + Math.sin(orbitCur.az) * Math.cos(orbitCur.el) * orbitCur.dist,
-        camTarget.y + Math.sin(orbitCur.el) * orbitCur.dist,
-        camTarget.z + Math.cos(orbitCur.az) * Math.cos(orbitCur.el) * orbitCur.dist
+        camTarget.x + Math.sin(orbitCur.az) * Math.cos(orbitCur.el) * od,
+        camTarget.y + Math.sin(orbitCur.el) * od,
+        camTarget.z + Math.cos(orbitCur.az) * Math.cos(orbitCur.el) * od
       );
       camera.position.copy(camPos);
       camera.lookAt(camTarget);
       focus.copy(camTarget);
-    } else {
-      stepWalk(dt);
-      const sw = self.seat ? seatWorld(self.seat, seatV) : null;
-      const px = sw ? sw.x : self.x;
-      const pz = sw ? sw.z : self.z;
-      const eyeY = sw ? sw.y + 1.0 : 1.55;
-      const yaw = self.camYaw;
-      const pitch = self.camPitch;
-      const dist = self.camDist;
-      const want = new THREE.Vector3(
-        px + Math.sin(yaw) * Math.cos(pitch) * dist,
-        eyeY + Math.sin(pitch) * dist,
-        pz + Math.cos(yaw) * Math.cos(pitch) * dist
-      );
-      want.x = clamp(want.x, -W / 2 + 0.15, W / 2 - 0.15);
-      want.z = clamp(want.z, -D / 2 + 0.15, D / 2 - 0.15);
-      want.y = clamp(want.y, 0.4, H - 0.15);
-      const k = firstFrame ? 1 : 1 - Math.exp(-dt * 12);
-      camPos.lerp(want, k);
-      camera.position.copy(camPos);
-      camera.lookAt(px, eyeY - 0.15, pz);
-      focus.set(px, 1, pz);
+      return;
     }
+    const sw = self.seat ? seatWorld(self.seat, seatV) : null;
+    const px = sw ? sw.x : self.x;
+    const pz = sw ? sw.z : self.z;
+    if (view === '2d') {
+      const k = firstFrame ? 1 : 1 - Math.exp(-dt * 8);
+      Object.keys(top).forEach((key) => {
+        topCur[key] += (top[key] - topCur[key]) * k;
+      });
+      // oyuncuyu takip et ama görüntü odanın dışına taşmasın (boş siyah alan kalmaz)
+      const tv = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+      const halfW = tv * (camera.aspect || 1) * topCur.dist;
+      const halfD = (tv * topCur.dist) / Math.max(0.5, Math.sin(topCur.el));
+      const lim = (v, half, room) => (half >= room / 2 ? 0 : clamp(v, -room / 2 + half, room / 2 - half));
+      const cosA = Math.abs(Math.cos(topCur.az)) > 0.7;
+      camTarget.set(lim(px, cosA ? halfW : halfD, W), 0.6, lim(pz, cosA ? halfD : halfW, D));
+      const want = new THREE.Vector3(
+        camTarget.x + Math.sin(topCur.az) * Math.cos(topCur.el) * topCur.dist,
+        0.6 + Math.sin(topCur.el) * topCur.dist,
+        camTarget.z + Math.cos(topCur.az) * Math.cos(topCur.el) * topCur.dist
+      );
+      camPos.lerp(want, firstFrame ? 1 : 1 - Math.exp(-dt * 10));
+      camera.position.copy(camPos);
+      camera.lookAt(camTarget);
+      focus.set(px, 1, pz);
+      return;
+    }
+    const eyeY = sw ? sw.y + 1.0 : 1.55;
+    const yaw = self.camYaw;
+    const pitch = self.camPitch;
+    // dikey (telefon) ekranda yatay görüş dar → kamera biraz geri çekilir
+    const aspect = camera.aspect || 1;
+    const dist = self.camDist * (aspect < 1 ? 1 + (1 - aspect) * 0.55 : 1);
+    const want = new THREE.Vector3(px + Math.sin(yaw) * Math.cos(pitch) * dist, eyeY + Math.sin(pitch) * dist, pz + Math.cos(yaw) * Math.cos(pitch) * dist);
+    want.x = clamp(want.x, -W / 2 - 3.5, W / 2 + 3.5);
+    want.z = clamp(want.z, -D / 2 - 3.5, D / 2 + 3.5);
+    want.y = clamp(want.y, 0.4, H - 0.2);
+    camPos.lerp(want, firstFrame ? 1 : 1 - Math.exp(-dt * 12));
+    camera.position.copy(camPos);
+    camera.lookAt(px, eyeY - 0.15, pz);
+    focus.set(px, 1, pz);
+  }
+
+  function frame(dt) {
+    const t = clock.elapsedTime;
+    const now = performance.now();
+    objs.forEach((e) => {
+      if (e.data.p === 1) e.obj.userData.ctl?.tick?.(t, dt);
+    });
+    if (mode === 'walk') stepWalk(dt);
+    placeCamera(dt);
     firstFrame = false;
     updateWalls();
+    if (targetRing.visible) targetRing.scale.setScalar(1 + Math.sin(t * 6) * 0.12);
 
-    // avatarlar
     if (self.fig) {
       const sw = self.seat ? seatWorld(self.seat, seatV) : null;
       self.fig.update(dt, camera, now, sw ? sw.clone() : null);
       self.fig.group.visible = mode === 'walk';
-      self.fig.label.style.display = mode === 'walk' ? '' : 'none';
+      if (self.fig.label) self.fig.label.style.display = mode === 'walk' ? '' : 'none';
     }
     others.forEach((o) => {
-      const sw = o.seat ? seatWorld(o.seat, new THREE.Vector3()) : null;
+      const sw = o.seat && isUsable(o.seat.id) ? seatWorld(o.seat, new THREE.Vector3()) : null;
       o.fig.update(dt, camera, now, sw);
     });
 
@@ -1010,38 +1297,48 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
       updateLightPool(focus);
     }
 
-    // etkileşim ipucu
     const it = findInteract();
-    const key = it ? `${it.id}|${it.sit}|${it.toggle}` : '';
+    const key = it ? `${it.id}|${it.trial ? 1 : 0}|${it.actions.map((a) => a.label).join(',')}` : '';
     if (key !== lastInteractKey) {
       lastInteractKey = key;
       currentInteract = it;
-      onInteractChange?.(it ? { sit: it.sit, toggle: it.toggle } : null);
+      onInteractChange?.(it);
     }
 
     renderer.render(scene, camera);
 
-    // isim/balon etiketleri
-    const rw = container.clientWidth;
-    const rh = container.clientHeight;
-    const place = (fig) => {
-      if (!fig.group.visible) return;
-      fig.headWorld(head);
-      head.project(camera);
-      const vis = head.z < 1 && Math.abs(head.x) < 1.2 && Math.abs(head.y) < 1.2;
-      fig.label.style.visibility = vis ? 'visible' : 'hidden';
-      if (vis) fig.label.style.transform = `translate(${((head.x + 1) / 2) * rw}px, ${((1 - head.y) / 2) * rh}px) translate(-50%, -100%)`;
-    };
-    if (self.fig) place(self.fig);
-    others.forEach((o) => {
-      o.fig.label.style.display = '';
-      place(o.fig);
-    });
+    if (labelLayer) {
+      const rw = container.clientWidth;
+      const rh = container.clientHeight;
+      const place = (fig) => {
+        if (!fig.label) return;
+        if (!fig.group.visible) return;
+        fig.headWorld(head);
+        head.project(camera);
+        const vis = head.z < 1 && Math.abs(head.x) < 1.2 && Math.abs(head.y) < 1.2;
+        fig.label.style.visibility = vis ? 'visible' : 'hidden';
+        if (vis) fig.label.style.transform = `translate(${((head.x + 1) / 2) * rw}px, ${((1 - head.y) / 2) * rh}px) translate(-50%, -100%)`;
+      };
+      if (self.fig) place(self.fig);
+      others.forEach((o) => place(o.fig));
+    }
+  }
+
+  function loop() {
+    raf = requestAnimationFrame(loop);
+    const dt = Math.min(clock.getDelta(), 0.1);
+    if (document.hidden || paused || renderer.__lost) return;
+    frame(dt);
   }
 
   // --- API ---------------------------------------------------------------------
   const api = {
-    get mode() { return mode; },
+    get mode() {
+      return mode;
+    },
+    get view() {
+      return view;
+    },
     setMode(m) {
       if (!canEdit && m === 'build') return;
       mode = m;
@@ -1049,12 +1346,25 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
       if (m === 'walk') {
         select(null);
         firstFrame = true;
-        camera.fov = 62;
       } else {
-        camera.fov = 52;
+        self.target = null;
+        targetRing.visible = false;
       }
+      camera.fov = m === 'build' ? 52 : view === '2d' ? 50 : 62;
       camera.updateProjectionMatrix();
       updateSelectionVisual();
+    },
+    setView(v) {
+      view = v === '2d' ? '2d' : '3d';
+      firstFrame = true;
+      if (view === '2d') {
+        top.az = self.camYaw;
+        topCur.az = top.az;
+      }
+      api.setMode(mode);
+    },
+    setPaused(p) {
+      paused = !!p;
     },
     setDesign(next, { force = false } = {}) {
       if (!next) return;
@@ -1067,13 +1377,15 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
       if (wallChanged) setSurfaces();
       syncFromDesign();
     },
-    getDesign() { return design; },
-    addItem(k, ti = 0) {
-      if (!canEdit || !CATALOG_MAP[k]) return;
+    getDesign() {
+      return design;
+    },
+    addItem(k, ti = 0, { owned: isOwned = false } = {}) {
+      if (!canEdit || !CATALOG_MAP[k]) return null;
       if (objs.size >= MAX_ITEMS) return 'limit';
       pushUndo();
       const data = { i: newItemId(), k, x: orbit.tx, z: orbit.tz, r: 0, c: ti || 0 };
-      // görüş merkezine yakın, mümkünse boş bir nokta
+      if (isOwned) data.p = 1;
       const def = CATALOG_MAP[k];
       if (!def.wall) {
         const cand = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [2, 1], [-2, 1], [2, -1], [-2, -1]];
@@ -1081,7 +1393,9 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
           const x = orbit.tx + a * 1.5;
           const z = orbit.tz + b * 1.5;
           let free = true;
-          objs.forEach((e) => { if (Math.hypot(e.data.x - x, e.data.z - z) < 1.2) free = false; });
+          objs.forEach((e) => {
+            if (Math.hypot(e.data.x - x, e.data.z - z) < 1.2) free = false;
+          });
           if (free) {
             data.x = x;
             data.z = z;
@@ -1089,18 +1403,16 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
           }
         }
       } else {
-        // kameranın baktığı en uzak duvar
         data.x = orbit.tx - Math.sin(orbit.az) * 20;
         data.z = orbit.tz - Math.cos(orbit.az) * 20;
       }
       normalizePlacement(data);
       const e = buildEntry(data);
-      if (!e) return;
+      if (!e) return null;
       e.obj.scale.setScalar(0.01);
-      e.grow = true;
       objs.set(data.i, e);
       const grow = () => {
-        if (disposed) return;
+        if (disposed || !objs.has(data.i)) return;
         const s = Math.min(1, e.obj.scale.x + 0.12);
         e.obj.scale.setScalar(s);
         if (s < 1) requestAnimationFrame(grow);
@@ -1116,7 +1428,7 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
       if (!e || !canEdit) return;
       if (CATALOG_MAP[e.data.k].wall) return;
       pushUndo();
-      e.data.r = (((e.data.r || 0) + dir) % 8 + 8) % 8;
+      e.data.r = ((((e.data.r || 0) + dir) % 8) + 8) % 8;
       applyTransform(e);
       updateSelectionVisual();
       emitDesign();
@@ -1136,7 +1448,10 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
       const e = selectedId && objs.get(selectedId);
       if (!e || !canEdit || objs.size >= MAX_ITEMS) return;
       pushUndo();
+      // kopya her zaman "deneme" olarak eklenir (satın alınmadan kullanılamaz)
       const data = { ...e.data, i: newItemId(), x: e.data.x + 0.75, z: e.data.z + 0.75 };
+      delete data.p;
+      delete data.o;
       normalizePlacement(data);
       const ne = buildEntry(data);
       objs.set(data.i, ne);
@@ -1150,6 +1465,13 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
       select(null);
       emitDesign();
     },
+    removeTrials() {
+      if (!canEdit) return;
+      pushUndo();
+      [...objs.values()].filter((e) => e.data.p !== 1).forEach((e) => removeEntry(e.data.i));
+      select(null);
+      emitDesign();
+    },
     undo() {
       const prev = undoStack.pop();
       if (!prev) return false;
@@ -1158,46 +1480,36 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
       onDesignChange?.(design);
       return true;
     },
-    canUndo() { return undoStack.length > 0; },
-    clearAll() {
-      if (!canEdit) return;
-      pushUndo();
-      [...objs.keys()].forEach(removeEntry);
-      select(null);
-      emitDesign();
-    },
     setWall(key) {
       if (!canEdit) return;
-      pushUndo();
       design = { ...design, wall: key };
       setSurfaces();
       onDesignChange?.(design);
     },
     setFloor(key) {
       if (!canEdit) return;
-      pushUndo();
       design = { ...design, floor: key };
       setSurfaces();
       onDesignChange?.(design);
     },
-    deselect() { select(null); },
-    setView(v) { Object.assign(orbit, v); },
-    setJoystick(x, y) {
-      joy.x = x;
-      joy.y = y;
+    deselect() {
+      select(null);
     },
-    interact(kind) {
+    setOrbit(v) {
+      Object.assign(orbit, v);
+    },
+    // sırayla: etkileşim butonu tıklandı
+    interact(action) {
       const it = currentInteract;
-      if (!it) return;
+      if (!it || !action) return null;
       const e = objs.get(it.id);
-      if (!e) return;
-      if (kind === 'sit' && it.sit) {
+      if (!e || e.data.p !== 1) return null;
+      if (action.kind === 'sit') {
         if (self.seat) {
           standUp();
-          return;
+          return { kind: 'sit' };
         }
         const def = CATALOG_MAP[e.data.k];
-        // en yakın boş koltuk
         let best = -1;
         let bd = Infinity;
         const v = new THREE.Vector3();
@@ -1212,8 +1524,14 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
             best = idx;
           }
         });
-        if (best >= 0) self.seat = { id: it.id, idx: best };
-      } else if (kind === 'toggle' && it.toggle) {
+        if (best >= 0) {
+          self.seat = { id: it.id, idx: best };
+          self.target = null;
+          targetRing.visible = false;
+        }
+        return { kind: 'sit' };
+      }
+      if (action.kind === 'toggle') {
         const ctl = e.obj.userData.ctl;
         ctl.setOn(!ctl.on);
         lightTimer = 0;
@@ -1221,7 +1539,18 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
           e.data.o = ctl.on;
           emitDesign();
         }
+        return { kind: 'toggle' };
       }
+      if (action.kind === 'take') return { kind: 'take', itemId: it.id, product: action.product };
+      if (action.kind === 'panel') return { kind: 'panel', panel: action.panel, itemId: it.id };
+      return null;
+    },
+    setMusic(itemId) {
+      musicItemId = itemId || null;
+      objs.forEach((e) => {
+        if (e.data.k === 'jukebox' && e.data.p === 1) e.obj.userData.ctl?.setOn(e.data.i === musicItemId);
+      });
+      lightTimer = 0;
     },
     // --- oyuncular
     setSelf({ uid, name, avatar }) {
@@ -1230,6 +1559,20 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
         self.fig.x = self.x;
         self.fig.z = self.z;
       } else self.fig.setIdentity(name, avatar);
+    },
+    setSelfPos(x, z) {
+      self.x = x;
+      self.z = z;
+      if (self.fig) {
+        self.fig.x = x;
+        self.fig.z = z;
+      }
+    },
+    setSelfHolding(product) {
+      self.fig?.setHolding(product);
+    },
+    emote(kind) {
+      self.fig?.playEmote(kind);
     },
     getSelfState() {
       return {
@@ -1247,7 +1590,7 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
         seen.add(p.uid);
         let o = others.get(p.uid);
         if (!o) {
-          o = { fig: new AvatarFigure(scene, labelLayer, { uid: p.uid, name: p.displayName, avatar: p.avatar, isSelf: false }) };
+          o = { fig: new AvatarFigure(scene, labelLayer, { uid: p.uid, name: p.displayName, avatar: p.avatar, isSelf: false }), emoteTs: p.emoteTs || 0 };
           o.fig.x = o.fig.tx = Number(p.x) || 0;
           o.fig.z = o.fig.tz = Number(p.z) || 0;
           others.set(p.uid, o);
@@ -1256,8 +1599,13 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
         o.fig.tx = Number(p.x) || 0;
         o.fig.tz = Number(p.z) || 0;
         o.fig.facingLeft = !!p.left;
+        o.fig.setHolding(p.holdingVisible || null);
         const [sid, sidx] = typeof p.seat === 'string' ? p.seat.split(':') : [];
         o.seat = sid ? { id: sid, idx: Number(sidx) || 0 } : null;
+        if (p.emote && Number(p.emoteTs || 0) > o.emoteTs) {
+          o.emoteTs = Number(p.emoteTs);
+          if (Date.now() - o.emoteTs < EMOTE_MS) o.fig.playEmote(p.emote);
+        }
       });
       [...others.keys()].forEach((uid) => {
         if (!seen.has(uid)) {
@@ -1270,30 +1618,71 @@ export function createHouseEngine(container, { canEdit, selfUid, onSelectionChan
       if (uid === selfUid) self.fig?.say(text);
       else others.get(uid)?.fig.say(text);
     },
-    screenshot() {
+    getCameraPose() {
+      const dir = new THREE.Vector3();
+      camera.getWorldDirection(dir);
+      const r = (v) => Math.round(v * 100) / 100;
+      return { px: r(camera.position.x), py: r(camera.position.y), pz: r(camera.position.z), dx: r(dir.x), dy: r(dir.y), dz: r(dir.z), fov: camera.fov };
+    },
+    // fotoğraf (Sixtagram) için tek kare: verilen kamera pozuyla
+    renderPose(pose, w = 480, h = 480) {
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.fov = pose.fov || 58;
+      camera.updateProjectionMatrix();
+      camera.position.set(pose.px, pose.py, pose.pz);
+      camera.lookAt(pose.px + pose.dx, pose.py + pose.dy, pose.pz + pose.dz);
+      mode = 'walk';
+      view = pose.py > H ? '2d' : '3d';
+      updateWalls();
+      updateLightPool(new THREE.Vector3(pose.px, 1, pose.pz));
+      others.forEach((o) => {
+        o.fig.x = o.fig.tx;
+        o.fig.z = o.fig.tz;
+        const sw = o.seat ? seatWorld(o.seat, new THREE.Vector3()) : null;
+        o.fig.update(0, camera, performance.now(), sw);
+      });
       renderer.render(scene, camera);
       return canvas.toDataURL('image/jpeg', 0.85);
+    },
+    avatarsReady() {
+      return [...others.values()].every((o) => o.fig.tex.ready);
     },
     dispose() {
       disposed = true;
       cancelAnimationFrame(raf);
-      ro.disconnect();
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
+      ro?.disconnect();
+      if (!snapshot) {
+        canvas.removeEventListener('pointerdown', onPointerDown);
+        canvas.removeEventListener('pointermove', onPointerMove);
+        canvas.removeEventListener('pointerup', onPointerUp);
+        canvas.removeEventListener('pointercancel', onPointerUp);
+        canvas.removeEventListener('wheel', onWheel);
+        canvas.removeEventListener('contextmenu', onCtx);
+        window.removeEventListener('keydown', onKeyDown);
+        window.removeEventListener('keyup', onKeyUp);
+      }
       [...objs.keys()].forEach(removeEntry);
       others.forEach((o) => o.fig.dispose(scene));
       self.fig?.dispose(scene);
-      renderer.dispose();
-      pmrem.dispose();
-      canvas.remove();
-      labelLayer.remove();
+      // sahneye ait geometri/malzemeler (renderer ORTAK — dispose edilmez)
+      scene.traverse((o) => {
+        if (o.geometry) o.geometry.dispose();
+      });
+      owned.forEach((m) => {
+        if (m.map) m.map.dispose();
+        m.dispose?.();
+      });
+      renderer.__onLost = null;
+      renderer.renderLists?.dispose?.();
+      if (canvas.parentNode === container) container.removeChild(canvas);
+      labelLayer?.remove();
     },
   };
 
   setSurfaces();
-  api.setMode(mode);
-  loop();
-  onReady?.();
+  api.setMode('walk');
+  if (!snapshot) loop();
   return api;
 }
 

@@ -2,6 +2,7 @@ import { useParkPresence } from '../../hooks/useParkPresence';
 import { useInteriorPresence } from '../../hooks/useInteriorPresence';
 import { regionEmojis, regionLabels } from '../../data/regions';
 import GuestOverlay from '../GuestOverlay/GuestOverlay';
+import { useHouseList } from '../../hooks/useHouseList';
 import './VisitTab.css';
 
 // VisitTab (Ziyaret) — yeni istek: "burada ziyaret edebileceğimiz mekanlar
@@ -12,7 +13,10 @@ import './VisitTab.css';
 // — Fabrika/Liman gibi anlık oyuncu sayısı takip edilmeyen "yönetim"
 // ekranları kapsam dışı (zaten "ziyaret" kavramına uymuyorlar). Sıralama:
 // içindeki oyuncu sayısı en çok olan en üstte.
-export default function VisitTab({ onVisitVenue }) {
+export default function VisitTab({ onVisitVenue, onVisitHouse }) {
+  // v66: içinde en az 1 kişi olan ve girebileceğin evler de burada
+  const houseList = useHouseList();
+  const liveHouses = [...houseList.mine, ...houseList.enterable].filter((h) => h.people > 0).sort((a, b) => b.people - a.people);
   const park = useParkPresence();
   const banka = useInteriorPresence('banka');
   const karakol = useInteriorPresence('karakol');
@@ -66,6 +70,23 @@ export default function VisitTab({ onVisitVenue }) {
             </button>
           ))}
         </div>
+        {liveHouses.length > 0 && (
+          <>
+            <p className="visit-section">🏠 Evler</p>
+            <div className="visit-list">
+              {liveHouses.map((h) => (
+                <button key={h.id} className="visit-card" onClick={() => onVisitHouse?.(h.id)}>
+                  <span className="visit-card-emoji">🏠</span>
+                  <span className="visit-card-name">
+                    {h.name || 'Ev'}
+                    <small className="visit-card-sub">{h.ownerName || 'Oyuncu'}</small>
+                  </span>
+                  <span className="visit-card-count active">👤 {h.people}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </GuestOverlay>
     </div>
   );

@@ -24,11 +24,11 @@ test('depodan 2. ele: Baba/Sağ Kol; fiyat aralığı; ilandaki ürün depoda ye
   assert.equal(d.items['araba:2'], 3);
   assert.equal(d.listed['araba:2'], 2);
   assert.equal(d.usedUnits, 80, 'ilandaki ürün depoda yer kaplamaya devam eder');
-  await h.fails(G.baba, 'sellFromDepot', { itemKey: 'araba:2', qty: 2 }); // sadece 1 serbest
-  await h.act(G.baba, 'sellFromDepot', { itemKey: 'araba:2', qty: 1 });
-  await h.fails(G.baba, 'listDepotItem', { itemKey: 'araba:2', qty: 1, unitPrice: 8000 });
+  await h.fails(G.baba, 'sellFromDepot', { itemKey: 'araba:2', qty: 1 }); // v67: anında satış yok
+  await h.act(G.baba, 'listDepotItem', { itemKey: 'araba:2', qty: 1, unitPrice: 8000 }); // kalan 1 serbest
+  await h.fails(G.baba, 'listDepotItem', { itemKey: 'araba:2', qty: 1, unitPrice: 8000 }); // hepsi ilanda
   await h.act(G.baba, 'cancelDepotListing', { listingId });
-  assert.equal(depotOf(h, G.gangId).listed['araba:2'], 0);
+  assert.equal(depotOf(h, G.gangId).listed['araba:2'], 1, 'ikinci ilan hâlâ açık');
   assert.equal(h.get(`market/${listingId}`).status, 'cancelled');
 });
 

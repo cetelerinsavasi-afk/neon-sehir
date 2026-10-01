@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { surfacePrice } from '../../../functions/houseCatalogData.js';
 
 // =============================================================================
 // houseTextures.js — Ev için prosedürel (kodla çizilen) zemin/duvar dokuları.
@@ -208,6 +209,20 @@ export const FLOORS = [
       g.shadowColor = '#19e8ff';
       g.strokeRect(w / 2 - 60, h / 2 - 60, 120, 120);
     } },
+  { key: 'epoksi_siyah', name: 'Parlak Siyah Epoksi', swatch: '#0c0c0e', rough: 0.08, rep: 2,
+    draw: (g, w, h, r) => {
+      g.fillStyle = '#0c0c0e';
+      g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 1200; i++) {
+        g.fillStyle = ['#2a2a30', '#4a4a52', '#1a1a1e'][Math.floor(r() * 3)];
+        g.fillRect(r() * w, r() * h, 2, 2);
+      }
+    } },
+  ...[
+    ['zemin_siyah', 'Düz Siyah', '#151517'], ['zemin_beyaz', 'Düz Beyaz', '#e8e6e0'], ['zemin_gri', 'Düz Gri', '#6a6d72'],
+    ['zemin_yesil', 'Düz Yeşil', '#2d6a3e'], ['zemin_mavi', 'Düz Mavi', '#1f4a8a'], ['zemin_mor', 'Düz Mor', '#4a2a6a'],
+    ['zemin_kirmizi', 'Düz Kırmızı', '#7a1a1e'],
+  ].map(([key, name, c]) => ({ key, name, swatch: c, rough: 0.35, rep: 3, draw: solid(c, 0.03) })),
 ];
 
 // ---------------------------------------------------------------------------
@@ -317,7 +332,15 @@ export const WALLS = [
         g.fillRect(0, y, w, 4);
       });
     } },
+  ...[
+    ['boya_yesil', 'Yeşil', '#2f6b45'], ['boya_mavi', 'Mavi', '#2a5a9a'], ['boya_pembe', 'Pembe', '#c86a8a'],
+    ['boya_turuncu', 'Turuncu', '#c8682a'], ['boya_sari', 'Sarı', '#d6b03a'], ['boya_turkuaz', 'Turkuaz', '#2a8a8a'],
+  ].map(([key, name, c]) => ({ key, name, swatch: c, rough: 0.9, rep: 3, draw: solid(c) })),
 ];
+
+// v66: fiyatlar sunucuyla ortak listeden (functions/houseCatalogData.js)
+FLOORS.forEach((f) => { f.price = surfacePrice('floor', f.key); });
+WALLS.forEach((w) => { w.price = surfacePrice('wall', w.key); });
 
 export function floorDef(key) {
   return FLOORS.find((f) => f.key === key) || FLOORS[0];

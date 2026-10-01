@@ -51,7 +51,7 @@ export default function GangMarketSection({ view }) {
 
   return (
     <>
-      <p className="market-section-title">🏴 Çete depoları</p>
+      <p className="market-section-title">🏴 Çete ilanları</p>
       {items.map((l) => {
         const it = itemInfo(l.itemKey);
         return (
@@ -66,8 +66,14 @@ export default function GangMarketSection({ view }) {
                 <span className="market-seller"> · {l.gangName}</span>
               </span>
               {l.itemType !== 'material' && <span className="market-listing-life-label">{l.itemType === 'weapon' ? 'Ömür: 10 / 10 gün' : 'Ömür: 20 / 20 gün'} · Tamir hakkı: 10/10</span>}
+              {l.itemType !== 'material' && (
+                <span className="market-estimate">
+                  💡 Tahmini değer: <strong>{Number(l.storePrice || 0).toLocaleString('tr-TR')} altın</strong>
+                  <span className="market-estimate-sub"> · çete ürünü, değer kaybı yok</span>
+                </span>
+              )}
               {l.quantity > 1 && (
-                <QuantityStepper value={qty[l.id] || 1} onChange={(v) => setQty({ ...qty, [l.id]: Math.max(1, v) })} max={l.quantity} quickAmounts={[5, 10, 50].filter((q) => q < l.quantity)} />
+                <QuantityStepper value={qty[l.id] || 1} onChange={(v) => setQty({ ...qty, [l.id]: Math.max(1, v) })} min={1} max={l.quantity} quickAmounts={[5, 10, 50].filter((q) => q < l.quantity)} />
               )}
             </div>
             <button className="market-btn small" disabled={busy === l.id} onClick={() => buy(l)}>

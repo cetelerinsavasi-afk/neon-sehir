@@ -6,7 +6,7 @@ import { errText } from './adminLabels';
 // siparişini tamamlar. Sipariş numarası = Shopier panelindeki sipariş no =
 // Firestore shopierOrders belge adı. Sunucu kuralı: yüklenen paketlerin
 // toplamı ödenen tutarı aşamaz, yani aynı eksik paket iki kez yüklenemez.
-const PACKAGE_LABELS = { paket1: 'Başlangıç Paketi', paket2: '100.000 Altın + Özel Paket' };
+const PACKAGE_LABELS = { paket1: '50 Zümrüt (29 TL)', paket2: '200 Zümrüt (99 TL)' };
 
 export default function ShopTab({ onOpenUser }) {
   const [orderId, setOrderId] = useState('');

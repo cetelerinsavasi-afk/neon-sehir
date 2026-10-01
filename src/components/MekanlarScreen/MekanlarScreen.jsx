@@ -16,7 +16,7 @@ const TABS = [
   { key: 'ziyaret', label: '🚶 Ziyaret' },
 ];
 
-export default function MekanlarScreen({ tab, onTabChange, initialHeistTarget, onClose, onVisitVenue }) {
+export default function MekanlarScreen({ tab, onTabChange, initialHeistTarget, onClose, onVisitVenue, onVisitHouse }) {
   return (
     <div className="mekanlar-screen-backdrop" onClick={onClose}>
       <div className="mekanlar-screen" onClick={(e) => e.stopPropagation()}>
@@ -41,7 +41,7 @@ export default function MekanlarScreen({ tab, onTabChange, initialHeistTarget, o
 
         {tab === 'soygun' && <SoygunTab initialTarget={initialHeistTarget} />}
         {tab === 'suphe' && <SuspicionTab />}
-        {tab === 'ziyaret' && <VisitTab onVisitVenue={onVisitVenue} />}
+        {tab === 'ziyaret' && <VisitTab onVisitVenue={onVisitVenue} onVisitHouse={onVisitHouse} />}
       </div>
     </div>
   );

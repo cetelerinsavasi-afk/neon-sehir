@@ -10,7 +10,7 @@ const PAGES = [
     body: [
       'Oyunda tek bir imam vardır.',
       'İmamlık bir meslek değil, bir statüdür: fabrikada çalışmaya ve suç işlemeye devam edebilirsin.',
-      'Polis imam olamaz, imam da polis olamaz.',
+      'Polisler de imam olabilir; imamlık ile polislik birbirine engel değildir.',
       'İmam maaşı günde 10.000 altındır. Camiden günde 1 kez alırsın.',
     ],
   },

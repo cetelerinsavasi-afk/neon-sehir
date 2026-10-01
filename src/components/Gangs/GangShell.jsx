@@ -16,6 +16,7 @@ import TradeTab from './tabs/TradeTab';
 import CetemTab from './tabs/CetemTab';
 import OpsTab from './tabs/OpsTab';
 import IntelTab from './tabs/IntelTab';
+import { WatchWarsList } from './WatchWars';
 
 const GANG_TABS = [
   { id: 'ceteler', icon: '🏴', label: 'Çeteler' },
@@ -58,7 +59,7 @@ export default function GangShell({ membership }) {
   const cur = alerts ? (org === 'intel' ? alerts.intel : alerts.gang) : {};
   const other = alerts ? (org === 'intel' ? alerts.gang : alerts.intel) : {};
   const dotOf = (id) => (id === 'ceteler' ? Object.values(other || {}).some(Boolean) && (org === 'intel' ? inGang : inIntel) : Boolean(cur?.[id]));
-  const activeTab = member ? tab : 'ceteler';
+  const activeTab = member ? tab : tab === 'savas' ? 'savas' : 'ceteler';
 
   const open = (o) => {
     picked.current = true;
@@ -77,13 +78,21 @@ export default function GangShell({ membership }) {
           <GangViews membership={ms} tab={activeTab} onOpen={open} />
         ) : org === 'intel' && inIntel ? (
           <IntelViews membership={ms} tab={activeTab} onOpen={open} />
+        ) : !member && activeTab === 'savas' ? (
+          // v68: çetesi olmayan oyuncu savaşları izleyebilir (katılamaz)
+          <div className="gx-page">
+            <div className="gx-section-head">
+              <span>👁️ Devam eden savaşlar</span>
+            </div>
+            <WatchWarsList />
+          </div>
         ) : (
           <ListTab membership={ms} onOpen={open} />
         )}
       </div>
       <nav className="gx-subnav" role="tablist">
         {(org === 'intel' ? INTEL_TABS : GANG_TABS).map((t) => {
-          const locked = !member && t.id !== 'ceteler';
+          const locked = !member && t.id !== 'ceteler' && t.id !== 'savas';
           return (
             <button key={t.id} role="tab" aria-selected={activeTab === t.id} className={`gx-subnav-btn${activeTab === t.id ? ' active' : ''}${locked ? ' locked' : ''}`} disabled={locked} onClick={() => pick(t.id)}>
               <span className="gx-subnav-icon" aria-hidden="true">

@@ -175,11 +175,12 @@ export function createClock(core, actions) {
 
   // 12:00 — tır sahibine (ve müttefiklerine) saldırılar duyurulur; o andan
   // itibaren savunma/haraç/rüşvet kartlarını görürler.
+  // v67: her tırın saldırısı kendi saatinde (yola çıkış + 6 saat) duyurulur.
   async function announceAttacks(ctx) {
-    if (ctx.hour < GANG.ATTACK_ANNOUNCE_HOUR) return;
     const snap = await ctx.ref.wars().where('type', '==', 'defense').where('dateKey', '==', ctx.dateKey).get();
     for (const d of snap.docs) {
       if (d.data().announced || d.data().status !== 'active') continue;
+      if (ctx.now < Number(d.data().startsAtMs || 0)) continue;
       await safe(ctx, `announce:${d.id}`, () =>
         db.runTransaction(async (tx) => {
           const def = (await tx.get(d.ref)).data();
@@ -198,7 +199,7 @@ export function createClock(core, actions) {
           for (const a of active) tx.update(ctx.ref.war(a.id), { announced: true, gangIds: FV.arrayUnion(...add), activeGangIds: FV.arrayUnion(...add) });
           if (active.length === 0) return;
           const names = active.map((a) => (a.type === 'intelop' ? `🕵️ İstihbarat${a.bribe > 0 ? ` (rüşvet ${a.bribe.toLocaleString('tr-TR')})` : ''}` : `${a.sides?.attacker?.name || ''}${a.harac > 0 ? ` (haraç ${a.harac.toLocaleString('tr-TR')})` : ''}`));
-          core.announce(tx, ctx, def.defenderGangId, '⚠️', `TIR #${def.truckCode} saldırı altında! ${names.join(', ')}. Savunma 12:00–24:00; haraç/rüşvet ${GANG.HARAC_PAY_DEADLINE_HOUR}:00'e kadar.`);
+          core.announce(tx, ctx, def.defenderGangId, '⚠️', `TIR #${def.truckCode} saldırı altında! ${names.join(', ')}. Savunma ${hhmmOf(def.startsAtMs)}–24:00; haraç/rüşvet ${GANG.HARAC_PAY_DEADLINE_HOUR}:00'e kadar.`);
           if (defGang?.babaId) notify(tx, ctx, defGang.babaId, `⚠️ TIR #${def.truckCode} saldırı altında! Savunmaya katıl.`, 'sabotage');
           const defName = def.sides?.[def.defenderGangId]?.name || '';
           for (const g of allies) core.announce(tx, ctx, g, '🛡️', `Müttefik ${defName} çetesinin TIR #${def.truckCode} tırı saldırı altında — savunmaya katılabilirsiniz.`);
@@ -910,6 +911,20 @@ export function createClock(core, actions) {
     return { routes: routes.size };
   }
 
+  // v67: sipariş limiti %0,5 → %1 — elde tutulan mevcut yolların limiti BİR KEZ 2 katına çıkar.
+  async function ensureRouteLimitV67(ctx) {
+    if (ctx.world?.routeLimitV67) return { skipped: true };
+    const routes = await ctx.ref.routes().get();
+    for (const r of routes.docs) {
+      const d = r.data();
+      if (!d.holderId || !(Number(d.dailyOrderLimit) > 0)) continue;
+      await r.ref.update({ dailyOrderLimit: Math.floor(Number(d.dailyOrderLimit) * 2), limitV67Doubled: true });
+    }
+    await ctx.ref.world().set({ routeLimitV67: true }, { merge: true });
+    ctx.world = { ...(ctx.world || {}), routeLimitV67: true };
+    return { routes: routes.size };
+  }
+
   // İstihbarat üyesi Baba karar süresi doldu → sessizce İstihbarattan çıkar.
   async function processIntelDecisions(ctx) {
     const snap = await ctx.ref.memberships().where('intelDecisionDeadline', '<=', ctx.dateKey).get();
@@ -1117,13 +1132,21 @@ export function createClock(core, actions) {
         })
       );
     }
+    await departOrders(ctx);
+  }
+
+  // v67: bekleyen siparişler kalkış saatleri gelince (03·06·09·12) yola çıkar —
+  // 00:00 turunda ve gün içinde her saat turunda çalışır. Eski (bu sürümden
+  // önce verilmiş, departAtMs'siz) siparişler kalkış günü 00:00'da çıkar.
+  const dueAt = (o) => (o.departAtMs ? Number(o.departAtMs) : midnightMsOf(o.departDateKey));
+  async function departOrders(ctx) {
     const orders = await ctx.ref.orders().where('status', '==', 'pending').get();
     for (const o of orders.docs) {
-      if (o.data().departDateKey > ctx.dateKey) continue;
+      if (dueAt(o.data()) > ctx.now || o.data().departDateKey > ctx.dateKey) continue;
       await safe(ctx, `truck-depart:${o.id}`, () =>
         db.runTransaction(async (tx) => {
           const order = (await tx.get(o.ref)).data();
-          if (order?.status !== 'pending' || order.departDateKey > ctx.dateKey) return;
+          if (order?.status !== 'pending' || dueAt(order) > ctx.now || order.departDateKey > ctx.dateKey) return;
           const [tSnap, gSnap] = await Promise.all([tx.get(ctx.ref.truck(order.truckId)), tx.get(ctx.ref.gang(order.gangId))]);
           const t = tSnap.data();
           if (gSnap.data()?.status !== 'active') {
@@ -1139,10 +1162,14 @@ export function createClock(core, actions) {
             return;
           }
           if (t.status !== 'idle') return; // önceki sefer henüz çözülmedi → bir sonraki çalıştırmada
-          tx.update(tSnap.ref, { status: 'in_transit', departDateKey: ctx.dateKey });
+          // Kalkış anı: planlanan saat (saat turu birkaç dakika geç kalsa da pencere planlanandan sayılır);
+          // sipariş günü kaçırıldıysa bugünün 00:00'ı.
+          const departAtMs = Math.max(dueAt(order), midnightMsOf(ctx.dateKey));
+          const attackAtMs = departAtMs + GANG.TRUCK_INTEL_WINDOW_MS;
+          tx.update(tSnap.ref, { status: 'in_transit', departDateKey: ctx.dateKey, departAtMs, attackAtMs });
           tx.set(ctx.ref.cargo(order.truckId), { items: order.items, product: order.product, units: order.units, cost: order.cost, orderId: o.id, loadedBy: order.createdByName, departDateKey: ctx.dateKey });
-          tx.update(o.ref, { status: 'in_transit', departedDateKey: ctx.dateKey });
-          core.announce(tx, ctx, order.gangId, '🚛', `TIR #${t.code} yola çıktı — yarın 00:00'da varacak.`);
+          tx.update(o.ref, { status: 'in_transit', departedDateKey: ctx.dateKey, departAtMs, attackAtMs });
+          core.announce(tx, ctx, order.gangId, '🚛', `TIR #${t.code} yola çıktı — ${hhmmOf(attackAtMs)}'e kadar ihbar/sabotaj riski, saldırılar ${hhmmOf(attackAtMs)}–24:00; gece 00:00'da depoda.`);
         })
       );
     }
@@ -1393,6 +1420,7 @@ export function createClock(core, actions) {
     }
     await safe(ctx0, 'public-views-v38', () => ensurePublicViewsV38(ctx0));
     await safe(ctx0, 'route-limit-v39', () => ensureRouteLimitV39(ctx0));
+    await safe(ctx0, 'route-limit-v67', () => ensureRouteLimitV67(ctx0));
     const results = [];
     let n = 0;
     while (last < ctx0.dateKey && n < maxDays) {
@@ -1404,8 +1432,9 @@ export function createClock(core, actions) {
       last = next;
       n += 1;
     }
-    // 12:00 saldırı duyuruları (bugün) + bahisli savaş başlangıç/bitişleri (her dilim)
+    // v67: tır kalkışları + saldırı duyuruları (her tırın kendi saati) + bahisli savaş başlangıç/bitişleri
     if (last >= ctx0.dateKey) {
+      await safe(ctx0, 'depart-orders', () => departOrders(ctx0));
       await safe(ctx0, 'announce-attacks', () => announceAttacks(ctx0));
       await safe(ctx0, 'bets-live', () => processBets(ctx0));
     }

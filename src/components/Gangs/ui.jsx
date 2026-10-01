@@ -2,6 +2,7 @@
 // Çete arayüzünün küçük yapı taşları: logo, rütbe rozeti, kart, sekme,
 // alt sayfa (sheet), onay penceresi, ilerleme çubuğu, boş durum.
 import InfoIcon from '../InfoIcon/InfoIcon';
+import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import { RANK_ICONS, RANK_LABELS, fmt } from './gangConstants';
 import { useNow } from './GangContext';
 
@@ -178,49 +179,13 @@ export function Stat({ icon, label, children }) {
   );
 }
 
-// Sayı girişi — klavye YOK, oyunun geri kalanındaki gibi buton sistemi:
-//   [ − ]  değer  [ + ]
-//   hızlı ekleme: 10 · 100 · 1K · 10K · 100K · 1M · MAX · Sıfırla
-// Hızlı butonlar değere EKLER (oyundaki QuantityStepper ile aynı davranış).
+// Sayı girişi — v67: oyunun her yerindeki ortak adım sistemi (QuantityStepper):
+//   [ − ]  değer  [ + ]   ·   Adım: 1 · 10 · 100 · 1.000 · 10.000 …   ·   Max · Sıfırla
 export const GOLD_QUICK = [10, 100, 1000, 10_000, 100_000, 1_000_000];
-const shortNum = (q) => (q >= 1_000_000 ? `${q / 1_000_000}M` : q >= 1000 ? `${q / 1000}K` : String(q));
 
 export function AmountInput({ value, onChange, max, min = 0, step = 1, quick = GOLD_QUICK }) {
-  const num = Number(value) || 0;
-  const hi = max != null ? Math.max(min, Math.floor(max)) : Infinity;
-  const clamp = (v) => Math.min(hi, Math.max(min, Math.floor(v)));
-  return (
-    <div className="gx-amount">
-      <div className="gx-amount-row">
-        <button type="button" className="gx-amount-step" disabled={num <= min} onClick={() => onChange(clamp(num - step))} aria-label="Azalt">
-          −
-        </button>
-        <span className="gx-amount-value">{fmt(num)}</span>
-        <button type="button" className="gx-amount-step" disabled={num >= hi} onClick={() => onChange(clamp(num + step))} aria-label="Artır">
-          +
-        </button>
-      </div>
-      <div className="gx-amount-quick">
-        {quick
-          .filter((q) => q <= hi)
-          .map((q) => (
-            <button key={q} type="button" disabled={num >= hi} onClick={() => onChange(clamp(num + q))}>
-              +{shortNum(q)}
-            </button>
-          ))}
-        {max != null && hi > 0 && (
-          <button type="button" className="max" disabled={num >= hi} onClick={() => onChange(hi)}>
-            MAX
-          </button>
-        )}
-        {num > min && (
-          <button type="button" className="reset" onClick={() => onChange(min)}>
-            Sıfırla
-          </button>
-        )}
-      </div>
-    </div>
-  );
+  const hi = max != null ? Math.max(min, Math.floor(max)) : undefined;
+  return <QuantityStepper value={value} onChange={(v) => onChange(Math.floor(v))} max={hi} min={min} step={step} quickAmounts={quick} />;
 }
 
 // v36: son ana kadar geri sayım (ihbar / haraç / rüşvet). Son 30 dk kırmızı yanıp söner.

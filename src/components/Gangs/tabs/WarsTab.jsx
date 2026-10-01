@@ -8,6 +8,7 @@
 //  - İttifak çetenin tırı: müttefik savunmasına katıl
 //  - Gelen bahis/ittifak teklifleri (Baba/Sağ Kol karar, Kıdemli/Tetikçi öneri)
 //  - Oylamalar, ardından dağıtım "Al" butonları
+import { WatchWarsButton } from '../WatchWars';
 import { useCallback, useMemo, useState } from 'react';
 import { limit, orderBy } from 'firebase/firestore';
 import { fmtClock, fmtCountdown, istDateKey, istHour, istMidnight, nextWindowStart, useDocData, useGang, useGangAction, useNow, slotIdOf, useQueryData } from '../GangContext';
@@ -1059,6 +1060,9 @@ export default function WarsTab({ org, d }) {
       )}
 
       <ClaimList dists={d.dists} rank={d.rank} isIntel={isIntel} myKey={isIntel ? d.rid : actorId} joinedAtMs={isIntel ? d.me?.joinedAtMs : d.me?.joinedAtMs} />
+
+      {/* v68: bize ait olmayan savaşları izle */}
+      <WatchWarsButton />
 
       {detail && <WarDetail war={wars.all.find((w) => w.id === detail.war.id) || detail.war} mySideKey={detail.side} onClose={() => setDetail(null)} />}
       {attackersOf && (

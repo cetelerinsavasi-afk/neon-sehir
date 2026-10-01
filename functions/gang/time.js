@@ -70,3 +70,13 @@ export function hhmmOf(ms) {
   const d = shifted(ms);
   return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 }
+
+// v67 — bir seferin zaman çizelgesi: yola çıkış (departAtMs) ve saldırının
+// başladığı an (attackAtMs = çıkış + 6 saat). Bu sürümden önce 00:00'da yola
+// çıkmış seferler eski kuralla (saldırı 12:00) değerlendirilir.
+export function truckTimes(truck) {
+  const mid = truck?.departDateKey ? midnightMsOf(truck.departDateKey) : 0;
+  const departAtMs = Number(truck?.departAtMs) || mid;
+  const attackAtMs = Number(truck?.attackAtMs) || (truck?.departAtMs ? departAtMs + 6 * MS_HOUR : mid + 12 * MS_HOUR);
+  return { departAtMs, attackAtMs };
+}

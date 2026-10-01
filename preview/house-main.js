@@ -36,6 +36,6 @@ if (q.get('thumbs')) {
   const box = document.createElement('div');
   box.style.cssText = 'position:fixed;inset:0;overflow:auto;background:#223;display:flex;flex-wrap:wrap;gap:4px;z-index:99';
   document.body.appendChild(box);
-  CATALOG.forEach((d) => { const im = new Image(); im.src = getThumb(d.k, 0); im.title = d.k; im.style.width = '110px'; im.style.background = '#334'; box.appendChild(im); });
+  (q.get('from') ? CATALOG.slice(Number(q.get('from'))) : CATALOG).forEach((d) => { const im = new Image(); im.src = getThumb(d.k, 0); im.title = d.k; im.style.width = '110px'; im.style.background = '#334'; box.appendChild(im); });
 }
 window.ready = true;

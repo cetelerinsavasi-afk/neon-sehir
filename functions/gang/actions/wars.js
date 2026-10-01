@@ -7,7 +7,7 @@
 // buradan hesaplanır); savaş kartındaki gösterge best-effort artırılır ve
 // saat (clock) tarafından periyodik uzlaştırılır.
 import { GANG, INTEL, LEGACY_WINDOW_HOURS, WAR_SHARDS, RANK_LABELS, productById, atLeast } from '../config.js';
-import { addDays, dateKeyOf, hhmmOf, midnightMsOf, nextWindowStartMs, slotIdOf, windowStartMs } from '../time.js';
+import { addDays, dateKeyOf, hhmmOf, midnightMsOf, nextWindowStartMs, slotIdOf, windowStartMs, truckTimes } from '../time.js';
 
 export const ALLIANCE_BLOCKING = ['accepted', 'active', 'ending'];
 export const ALLIANCE_DEFENSIVE = ['active', 'ending'];
@@ -480,7 +480,7 @@ export function createWarActions(core) {
       intelInvolved: false,
       attackWarIds: [],
       dateKey: ctx.dateKey,
-      startsAtMs: midnightMsOf(ctx.dateKey) + GANG.ATTACK_PHASE_1_START_HOUR * 3600_000,
+      startsAtMs: truckTimes(truck).attackAtMs,
       endsAtMs: midnightMsOf(addDays(ctx.dateKey, 1)),
       sides: { [truck.gangId]: { orgType: 'gang', orgId: truck.gangId, name: defenderGang.name, logo: defenderGang.logo, role: 'defender' } },
       display: {},
@@ -497,7 +497,6 @@ export function createWarActions(core) {
   async function startSabotage(ctx, data) {
     const truckId = String(data.truckId || '');
     const harac = parseHarac(data.harac);
-    if (ctx.hour >= GANG.SABOTAGE_START_DEADLINE_HOUR) fail('deadline-exceeded', 'Sabotaj sadece 00:00–12:00 arasında başlatılabilir.');
     return core.db.runTransaction(async (tx) => {
       const guard = await requestGuard(tx, ctx, data.requestId);
       if (guard.done) return guard.result;
@@ -506,6 +505,8 @@ export function createWarActions(core) {
       const truck = truckSnap.exists ? { id: truckSnap.id, ...truckSnap.data() } : null;
       if (!truck || truck.status !== 'in_transit' || truck.departDateKey !== ctx.dateKey) fail('failed-precondition', 'Bu tır şu an yolda değil.');
       if (truck.gangId === gangId) fail('invalid-argument', 'Kendi tırına saldıramazsın.');
+      const { attackAtMs } = truckTimes(truck);
+      if (ctx.now >= attackAtMs) fail('deadline-exceeded', `Sabotaj, tır yola çıktıktan sonraki 6 saat içinde (${hhmmOf(attackAtMs)}'e kadar) başlatılabilir.`);
       const warId = `sab_${truckId}_${ctx.dateKey}_${gangId}`;
       const defId = `def_${truckId}_${ctx.dateKey}`;
       const [myGang, myState, myDepot, defGang, cargoSnap, warSnap, defSnap, daySnap] = await Promise.all([
@@ -565,7 +566,7 @@ export function createWarActions(core) {
         reservedUnits: units,
         startedByName: me.name,
         dateKey: ctx.dateKey,
-        startsAtMs: midnightMsOf(ctx.dateKey) + GANG.ATTACK_PHASE_1_START_HOUR * 3600_000,
+        startsAtMs: attackAtMs,
         endsAtMs: midnightMsOf(addDays(ctx.dateKey, 1)),
         sides: {
           attacker: { orgType: 'gang', orgId: gangId, name: mg.name, logo: mg.logo, role: 'attacker' },
@@ -575,7 +576,7 @@ export function createWarActions(core) {
         createdAtMs: ctx.now,
       });
       ledger(tx, ctx, { type: 'sabotage_cost', amount: price, from: { kind: 'gang', id: gangId }, to: { kind: 'burn' }, before: myState.data()?.kasa, refId: warId });
-      announce(tx, ctx, gangId, '💣', `${me.name}, TIR #${truck.code} (${dg.name}) için sabotaj başlattı (${fmt(price)})${harac > 0 ? ` — haraç: ${fmt(harac)}` : ''}. Saldırı 12:00'de başlar.`);
+      announce(tx, ctx, gangId, '💣', `${me.name}, TIR #${truck.code} (${dg.name}) için sabotaj başlattı (${fmt(price)})${harac > 0 ? ` — haraç: ${fmt(harac)}` : ''}. Saldırı ${hhmmOf(attackAtMs)}'de başlar.`);
       ctx.logs.push({ gang: 'sabotage_started', world: ctx.worldId, warId, price });
       const res = { warId, price };
       guard.save(res);
@@ -586,7 +587,6 @@ export function createWarActions(core) {
   // Kıdemli / Tetikçi: sabotaj başlatma TALEBİ → çete sohbetine düşer.
   async function requestSabotage(ctx, data) {
     const truckId = String(data.truckId || '');
-    if (ctx.hour >= GANG.SABOTAGE_START_DEADLINE_HOUR) fail('deadline-exceeded', 'Sabotaj talebi sadece 00:00–12:00 arasında gönderilebilir.');
     return core.db.runTransaction(async (tx) => {
       const { gangId, me } = await myGangRole(tx, ctx, ['kidemli', 'tetikci'], 'Sabotaj talebini Kıdemli ve Tetikçiler gönderir.');
       const markRef = ctx.ref.request(`sabreq_${ctx.actorId}_${truckId.replace(/[^a-zA-Z0-9]/g, '')}_${ctx.dateKey}`);
@@ -594,6 +594,7 @@ export function createWarActions(core) {
       const truck = truckSnap.data();
       if (!truck || truck.status !== 'in_transit' || truck.departDateKey !== ctx.dateKey) fail('failed-precondition', 'Bu tır şu an yolda değil.');
       if (truck.gangId === gangId) fail('invalid-argument', 'Kendi tırınız.');
+      if (ctx.now >= truckTimes(truck).attackAtMs) fail('deadline-exceeded', 'Sabotaj talebi, tır yola çıktıktan sonraki 6 saat içinde gönderilebilir.');
       if (mark.exists) fail('already-exists', 'Bu tır için zaten talep gönderdin.');
       tx.set(markRef, { atMs: ctx.now });
       core.systemChat(tx, ctx, ctx.ref.gangChat(gangId, 'genel'), `📣 ${me.name} (${RANK_LABELS[me.rank]}) sabotaj talebi gönderdi: TIR #${truck.code} (${truck.gangName})`);
@@ -633,12 +634,12 @@ export function createWarActions(core) {
   // tır sahibi 21:00'e kadar öderse operasyon durur, para İstihbarat kasasına.
   // ---------------------------------------------------------------------------
   async function startOperation(ctx, data) {
-    if (ctx.hour >= GANG.SABOTAGE_START_DEADLINE_HOUR) fail('deadline-exceeded', 'Operasyon sadece 00:00–12:00 arasında başlatılabilir.');
     const bribe = parseHarac(data.bribe);
     let reportIds;
     if (data.all) {
       const snap = await ctx.ref.intelReports().where('departDateKey', '==', ctx.dateKey).get();
-      reportIds = snap.docs.filter((d) => !d.data().opWarId).map((d) => d.id);
+      // v67: sadece 6 saatlik penceresi hâlâ açık olanlar
+      reportIds = snap.docs.filter((d) => !d.data().opWarId && ctx.now < truckTimes({ departDateKey: d.data().departDateKey, departAtMs: d.data().departAtMs, attackAtMs: d.data().attackAtMs }).attackAtMs).map((d) => d.id);
       if (reportIds.length === 0) fail('failed-precondition', 'Operasyon yapılabilecek ihbarlı tır yok.');
     } else {
       reportIds = [String(data.reportId || '')];
@@ -675,6 +676,8 @@ export function createWarActions(core) {
       const truckSnap = await tx.get(ctx.ref.truck(rep.truckId));
       const truck = truckSnap.exists ? { id: truckSnap.id, ...truckSnap.data() } : null;
       if (!truck || truck.status !== 'in_transit' || truck.departDateKey !== ctx.dateKey) fail('failed-precondition', 'Bu tır şu an yolda değil.');
+      const { attackAtMs } = truckTimes(truck);
+      if (ctx.now >= attackAtMs) fail('deadline-exceeded', `Operasyon, tır yola çıktıktan sonraki 6 saat içinde (${hhmmOf(attackAtMs)}'e kadar) başlatılabilir.`);
       const warId = `op_${truck.id}_${ctx.dateKey}`;
       const defId = `def_${truck.id}_${ctx.dateKey}`;
       const [defSnap, defGang] = await Promise.all([tx.get(ctx.ref.war(defId)), tx.get(ctx.ref.gang(truck.gangId))]);
@@ -714,7 +717,7 @@ export function createWarActions(core) {
         cost: price,
         startedByCode: me.data().codeName,
         dateKey: ctx.dateKey,
-        startsAtMs: midnightMsOf(ctx.dateKey) + GANG.ATTACK_PHASE_1_START_HOUR * 3600_000,
+        startsAtMs: attackAtMs,
         endsAtMs: midnightMsOf(addDays(ctx.dateKey, 1)),
         sides: {
           attacker: { orgType: 'intel', orgId: 'main', name: INTEL.NAME, logo: INTEL.LOGO, role: 'attacker' },
@@ -725,7 +728,7 @@ export function createWarActions(core) {
       });
       tx.update(ctx.ref.intelReport(reportId), { opWarId: warId });
       ledger(tx, ctx, { type: 'intel_op_cost', amount: price, from: { kind: 'intel', id: 'main' }, to: { kind: 'burn' }, before: state.kasa, refId: warId });
-      core.announceIntel(tx, ctx, '🎯', `${me.data().codeName}, TIR #${truck.code} (${dg.name}) için operasyon başlattı (${fmt(price)})${bribe > 0 ? ` — rüşvet: ${fmt(bribe)}` : ''}.`);
+      core.announceIntel(tx, ctx, '🎯', `${me.data().codeName}, TIR #${truck.code} (${dg.name}) için operasyon başlattı (${fmt(price)})${bribe > 0 ? ` — rüşvet: ${fmt(bribe)}` : ''}. Saldırı ${hhmmOf(attackAtMs)}'de başlar.`);
       ctx.logs.push({ gang: 'intel_operation', world: ctx.worldId, warId, price });
       return { warId, price };
     });

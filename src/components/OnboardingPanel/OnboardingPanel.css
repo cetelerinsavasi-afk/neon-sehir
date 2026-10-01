@@ -382,3 +382,55 @@
   font-size: 13px;
   padding: 20px 0;
 }
+
+/* v68 — iPhone 11 (iOS Safari) taşma düzeltmesi:
+   - 82vh iOS'ta araç çubukları gizliyken ölçülür → panel görünür alanın
+     altına taşıyordu. dvh (dinamik görünür yükseklik) destekleniyorsa o
+     kullanılır; üst güvenli alan (çentik) da bırakılır.
+   - Esnek sütunda kaydırılan gövde min-height:0 olmadan büyüyüp paneli
+     taşırıyordu → gövde kalan alanı doldurur ve kendi içinde kayar.
+   - Uzun görev adları/ipuçları yatay taşmasın. */
+.onboarding-panel {
+  max-height: calc(82vh - env(safe-area-inset-top));
+  overflow: hidden;
+  box-sizing: border-box;
+}
+@supports (height: 1dvh) {
+  .onboarding-panel {
+    max-height: calc(88dvh - env(safe-area-inset-top));
+  }
+}
+.onboarding-panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding-bottom: 4px;
+}
+.onboarding-task-content {
+  min-width: 0;
+}
+.onboarding-task-title {
+  overflow-wrap: anywhere;
+}
+.onboarding-panel-backdrop {
+  padding-top: env(safe-area-inset-top);
+}
+/* ipucu balonu dar ekranda sağdan taşmasın: ekranın ortasına hizalanır */
+.onboarding-panel .info-icon-popover {
+  position: fixed;
+  top: auto;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 22px;
+  width: min(260px, calc(100vw - 32px));
+  box-sizing: border-box;
+}
+.onboarding-task-content {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+.onboarding-task-title {
+  flex: 1 1 0;
+  min-width: 0;
+}

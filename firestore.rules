@@ -347,40 +347,48 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------------------
-    // v65 — 3D EV (functions/houses.js). Şimdilik sadece admin + davetlileri.
-    // houses/{ownerUid}: tasarım + davetliler — sahibi ve davetliler okur,
-    // yazma SADECE sunucudan (houseAction).
+    // v66 — 3D EV (functions/houses.js). Tüm yazmalar sunucudan (houseAction).
+    // houses: ev listesi herkese görünür (ad, sahip, tasarım). Sohbet sadece
+    // ev sahibine ve o an evde olanlara açık.
     // ---------------------------------------------------------------------
-    function canSeeHouse(ownerUid) {
-      return isSelf(ownerUid)
-        || (isSignedIn()
-          && exists(/databases/$(database)/documents/houses/$(ownerUid))
-          && request.auth.uid in get(/databases/$(database)/documents/houses/$(ownerUid)).data.get('guestUids', []));
+    function inHouse(houseId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/housePresence/$(request.auth.uid))
+        && get(/databases/$(database)/documents/housePresence/$(request.auth.uid)).data.houseId == houseId;
     }
-    match /houses/{ownerUid} {
-      allow read: if canSeeHouse(ownerUid);
+    match /houses/{houseId} {
+      allow read: if isSignedIn();
       allow write: if false;
       match /chat/{msgId} {
-        allow read: if canSeeHouse(ownerUid);
+        allow read: if isSignedIn()
+          && (get(/databases/$(database)/documents/houses/$(houseId)).data.ownerUid == request.auth.uid
+            || inHouse(houseId));
         allow write: if false;
       }
     }
+    match /houseInventories/{uid} {
+      allow read: if isSelf(uid);
+      allow write: if false;
+    }
+    // eski (v65) davet kayıtları — sadece okunur/silinir
     match /houseInvites/{uid} {
       allow read: if isSelf(uid);
       allow write: if false;
     }
-    // housePresence/{uid} — interiorPresence ile aynı güven modeli: ilk kayıt
-    // (ad/avatar/ev) sunucudan; istemci sadece konum/oturma alanlarını günceller.
+    // housePresence/{uid} — ilk kayıt (ad/avatar/ev/eldeki ürün) sunucudan;
+    // istemci sadece konum/oturma/hareket (emote) alanlarını günceller.
     function validHousePresence() {
       let d = request.resource.data;
       return d.keys().hasOnly([
-        'houseId', 'displayName', 'avatar', 'x', 'z', 'left', 'seat',
-        'updatedAt', 'enteredAt', 'lastChatMs'
+        'houseId', 'displayName', 'avatar', 'x', 'z', 'left', 'seat', 'holding',
+        'emote', 'emoteTs', 'updatedAt', 'enteredAt', 'lastChatMs'
       ])
         && d.x is number && d.x >= -20 && d.x <= 20
         && d.z is number && d.z >= -20 && d.z <= 20
         && d.left is bool
-        && (d.seat == null || (d.seat is string && d.seat.size() <= 40));
+        && (d.seat == null || (d.seat is string && d.seat.size() <= 40))
+        && (!('emote' in d) || d.emote == null || (d.emote is string && d.emote.size() <= 12))
+        && (!('emoteTs' in d) || d.emoteTs is number);
     }
     match /housePresence/{uid} {
       allow read: if isSignedIn();
@@ -390,6 +398,8 @@ service cloud.firestore {
         && request.resource.data.houseId == resource.data.houseId
         && request.resource.data.avatar == resource.data.avatar
         && request.resource.data.displayName == resource.data.displayName
+        && (request.resource.data.get('holding', null) == resource.data.get('holding', null)
+          || request.resource.data.get('holding', null) == null)
         && request.resource.data.get('lastChatMs', 0) == resource.data.get('lastChatMs', 0);
       allow delete: if isSelf(uid);
     }

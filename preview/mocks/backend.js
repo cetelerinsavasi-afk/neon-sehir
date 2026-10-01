@@ -30,7 +30,7 @@ export const system = createGangSystem({
 });
 
 // normal oyuncu belgesi (usePlayer için)
-fakeDb.doc(`users/${PREVIEW_UID}`).set({ displayName: 'Önizleme Admin', gold: 5_000_000, reputation: 100, suspicion: 0 });
+fakeDb.doc(`users/${PREVIEW_UID}`).set({ displayName: 'Önizleme Admin', gold: 5_000_000, emerald: 120, reputation: 100, suspicion: 0 });
 if (typeof window !== 'undefined') window.__gang = { fakeDb, system };
 
 // v65 3D Ev önizlemesi
@@ -42,6 +42,22 @@ export const houses = createHouses({
   onCall: (fn) => fn,
   isAdmin: (uid) => uid === PREVIEW_UID,
   assertCanSpeak: async () => {},
+  isFriend: async (a, b) => Boolean((await fakeDb.doc(`friendships/${a}`).get()).data()?.friends?.[b]),
 });
-fakeDb.doc('users/misafir1').set({ displayName: 'Misafir Ali', avatar: { gender: 'kadin', hairStyle: 'long', clothColor: '#8a1d1d' } });
+fakeDb.doc('users/misafir1').set({ gold: 3_000_000, emerald: 10, displayName: 'Misafir Ali', avatar: { gender: 'kadin', hairStyle: 'long', clothColor: '#8a1d1d' } });
 fakeDb.doc('usernames/misafir ali').set({ uid: 'misafir1' });
+fakeDb.doc(`friendships/${PREVIEW_UID}`).set({ friends: { misafir1: true } });
+fakeDb.doc('friendships/misafir1').set({ friends: { [PREVIEW_UID]: true } });
+
+// v67 önizleme verileri
+fakeDb.doc(`users/${PREVIEW_UID}`).set({ achievements: { imam: Date.now() - 86400000, piyango: Date.now() - 3600000 } }, { merge: true });
+['Banka: kredin yattı.', 'Başarılar: 🏆 Piyango kazandın!', 'Emlak: evin hazır.'].forEach((text, i) =>
+  fakeDb.collection(`users/${PREVIEW_UID}/messages`).doc(`m${i}`).set({ text, read: false, createdAt: { toDate: () => new Date(Date.now() - i * 60000) } })
+);
+[
+  { kind: 'fikir', text: 'Evlerde havuz olsun, yazın partiler verelim!', likeCount: 12, ago: 30 },
+  { kind: 'hata', text: 'Yarış ekranında bazen geri tuşu çalışmıyor.', likeCount: 3, ago: 60 * 50 },
+  { kind: 'fikir', text: 'Çetelere bayrak tasarımı eklensin.', likeCount: 27, ago: 60 * 70 },
+].forEach((f, i) =>
+  fakeDb.collection('feedback').doc(`f${i}`).set({ uid: `o${i}`, displayName: ['Ayşe', 'Mert', 'Can'][i], avatar: null, kind: f.kind, text: f.text, likeCount: f.likeCount, createdAtMs: Date.now() - f.ago * 60000 })
+);

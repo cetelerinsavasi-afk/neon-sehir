@@ -383,6 +383,7 @@ export default function FactorySponsorModal({ onClose }) {
                         <QuantityStepper
                           value={raiseValue}
                           onChange={(v) => setRaiseDrafts((d) => ({ ...d, [t.id]: Math.max(v, minRaiseAmount) }))}
+                          min={Math.min(minRaiseAmount, offerCap)}
                           max={offerCap}
                           step={1}
                           quickAmounts={SPONSOR_QUICK_AMOUNTS}
@@ -515,7 +516,13 @@ export default function FactorySponsorModal({ onClose }) {
 
                 {pendingIsMe ? (
                   <p className="factory-sp-alert ok">
-                    <span>✅ Teklifin kabul edildi — {settle}'da sponsor olacaksın.</span>
+                    <span>
+                      ✅ Teklifin kabul edildi: <strong>{fmt(t.pendingSponsorDailyAmount)} altın/gün</strong> — {settle}'da sponsor
+                      olacaksın.
+                      <br />
+                      ⚠️ {settle}'a kadar başka bir fabrikanın daha yüksek teklifi kabul edilirse anlaşma ona geçer.
+                      {t.sponsorFactoryOwnerUid && t.sponsorFactoryOwnerUid !== user.uid ? ' Şu anki sponsorun da ücretini yükselterek sponsorluğu tutabilir.' : ''}
+                    </span>
                   </p>
                 ) : myOffer ? (
                   <div className="factory-sp-alert ask">

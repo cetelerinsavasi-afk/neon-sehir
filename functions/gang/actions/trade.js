@@ -2,10 +2,9 @@
 //  - Sadece ticaret yolu sahibi çete (yol 21 gün elde kalır), o yolun ürününü
 //    mağaza (yasaklı madde: Amazor) fiyatının yarısına sipariş edebilir.
 //    Günlük sipariş limiti = yolu kazanırken kullanılan gücün %1'i (altın) — v39.
-//  - Sipariş sadece Pzt–Cum; sadece Mafya Babası + Sağ Kol.
-//  - Bugün verilen sipariş sonraki 00:00'da yola çıkar, 24 saat sonra (bir
-//    sonraki 00:00) depoya ulaşır. YOLDAKİ tır da yeni sipariş alabilir
-//    (bugünkü sipariş yarın çıkar). Her tıra günde tek sipariş.
+//  - v67: Sipariş Pzt–Cmt 00:00–12:00; sadece Mafya Babası + Sağ Kol.
+//  - Tır siparişten sonraki ilk 3 saatlik dilimde (03·06·09·12) yola çıkar,
+//    aynı gecenin 00:00'ında depoya ulaşır. Her tıra günde tek sefer.
 //  - Tır: 100.000 altın, kapasite 10 araba YA DA 10 silah YA DA 100 yasaklı
 //    madde (tek tür), ömrü 21 GÜN; son gün sipariş verilemez; ömrü bitince
 //    hurdaya çıkar; satılamaz.
@@ -15,7 +14,7 @@
 //    Kıdemli+ üyelerine görünür). Tır belgesi herkese görünür ama içerik
 //    içermez.
 import { GANG, productById, atLeast } from '../config.js';
-import { addDays, daysBetweenKeys } from '../time.js';
+import { addDays, daysBetweenKeys, hhmmOf, nextWindowStartMs } from '../time.js';
 
 export function createTradeActions(core, treasury) {
   const { FV, fail, readMembership, ledger, gangLog, announce, posInt, requireGangMember, requireRank, requestGuard, unitsOfItems, depotFree } = core;
@@ -126,7 +125,9 @@ export function createTradeActions(core, treasury) {
     const productId = String(data.product || '');
     const product = productById(productId);
     if (!product) fail('invalid-argument', 'Geçersiz ürün.');
-    if (!GANG.ORDER_WEEKDAYS.includes(ctx.weekday)) fail('failed-precondition', 'Sipariş sadece Pazartesi–Cuma verilebilir.');
+    if (!GANG.ORDER_WEEKDAYS.includes(ctx.weekday)) fail('failed-precondition', 'Sipariş sadece Pazartesi–Cumartesi verilebilir.');
+    if (ctx.hour >= GANG.ORDER_DEADLINE_HOUR) fail('deadline-exceeded', `Sipariş sadece 00:00–${GANG.ORDER_DEADLINE_HOUR}:00 arasında verilebilir.`);
+    const departAtMs = nextWindowStartMs(ctx.now);
     const items = parseOrderItems(productId, data.items);
     const count = Object.values(items).reduce((s, q) => s + q, 0);
     const maxCount = GANG.TRUCK_CAPACITY[productId];
@@ -153,6 +154,7 @@ export function createTradeActions(core, treasury) {
       const truck = truckSnap.data();
       if (!truck || truck.gangId !== gangId || truck.status === 'retired') fail('failed-precondition', 'Tır bulunamadı.');
       if (truckLifeLeft(truck, ctx.dateKey) < 2) fail('failed-precondition', 'Tırın ömrü bitmek üzere — sipariş verilemez.');
+      if (truck.status === 'in_transit' && truck.departDateKey === ctx.dateKey) fail('failed-precondition', 'Bu tır bugün zaten yola çıktı — yarın tekrar sipariş verebilirsin.');
       if ((orderSnap.exists && orderSnap.data().status !== 'cancelled') || pendingSnap.docs.some((d) => d.data().status === 'pending')) fail('already-exists', 'Bu tırın bekleyen bir siparişi var.');
       const state = stateSnap.data() || {};
       const spentToday = state.orderSpent?.dateKey === ctx.dateKey ? Number(state.orderSpent.byProduct?.[productId] || 0) : 0;
@@ -178,13 +180,14 @@ export function createTradeActions(core, treasury) {
         cost,
         status: 'pending',
         dateKey: ctx.dateKey,
-        departDateKey: addDays(ctx.dateKey, 1),
+        departDateKey: ctx.dateKey,
+        departAtMs,
         createdByName: me.name,
         createdAtMs: ctx.now,
       });
       ledger(tx, ctx, { type: 'trade_order', amount: cost, from: { kind: 'gang', id: gangId }, to: { kind: 'burn' }, before: state.kasa, refId: orderId });
-      announce(tx, ctx, gangId, '📦', `TIR #${truck.code} için sipariş verildi (${product.label}) — 00:00'da yola çıkacak.`);
-      const res = { orderId, cost, units };
+      announce(tx, ctx, gangId, '📦', `TIR #${truck.code} için sipariş verildi (${product.label}) — ${hhmmOf(departAtMs)}'de yola çıkacak, gece 00:00'da depoda.`);
+      const res = { orderId, cost, units, departAtMs };
       guard.save(res);
       return res;
     });
@@ -198,6 +201,7 @@ export function createTradeActions(core, treasury) {
       const [orderSnap, stateSnap] = await Promise.all([tx.get(ctx.ref.order(orderId)), tx.get(ctx.ref.gangState(gangId))]);
       const order = orderSnap.data();
       if (!order || order.gangId !== gangId || order.status !== 'pending' || order.dateKey !== ctx.dateKey) fail('failed-precondition', 'Bu sipariş artık iptal edilemez.');
+      if (order.departAtMs && ctx.now >= order.departAtMs) fail('failed-precondition', 'Tır yola çıktı — sipariş artık iptal edilemez.');
       const state = stateSnap.data() || {};
       const upd = { kasa: FV.increment(order.cost || 0) };
       if (state.orderSpent?.dateKey === order.dateKey) upd[`orderSpent.byProduct.${order.product}`] = FV.increment(-(order.cost || 0));
@@ -212,6 +216,8 @@ export function createTradeActions(core, treasury) {
 
   // Depodan sisteme sat: anlık satış değeri (mağaza fiyatının yarısı) → kasa
   async function sellFromDepot(ctx, data) {
+    // v67: çete depo ürünleri anında satılamaz — sadece 2. el pazarına (çete adıyla) konur.
+    fail('failed-precondition', 'Çete deposundaki ürünler anında satılamaz — 2. el pazarına çete adıyla koyabilirsin.');
     const key = String(data.itemKey || '');
     const qty = posInt(data.qty);
     const it = core.parseItemKey(key);
@@ -236,6 +242,8 @@ export function createTradeActions(core, treasury) {
 
   // Depodan üyelere dağıt — gruplara eşit, doğrudan envantere (20/20 yeni ürün).
   async function distributeFromDepot(ctx, data) {
+    // v67: çete depo ürünleri dağıtılamaz — sadece 2. el pazarına (çete adıyla) konur.
+    fail('failed-precondition', 'Çete deposundaki ürünler dağıtılamaz — 2. el pazarına çete adıyla koyabilirsin.');
     const key = String(data.itemKey || '');
     const qty = posInt(data.qty);
     const group = String(data.group || '');

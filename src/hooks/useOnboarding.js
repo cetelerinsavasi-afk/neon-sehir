@@ -43,7 +43,7 @@ export const ONBOARDING_TASKS = [
   { step: 11, emoji: '🚗', title: 'Herhangi bir araba al', info: 'Arabanla yarışlara katılabilirsin.' },
   { step: 12, emoji: '🏎️', title: 'Yarış pistinden antrenmana gir ve 1. seviyeyi tamamla', info: 'Hem kendini geliştir hem para kazan.' },
   { step: 13, emoji: '🏆', title: 'Yarış pistinden Şampiyonaya gir', info: 'Günün şampiyonu para ödülünü alır.' },
-  { step: 14, emoji: '🏦', title: 'Bankadan kredi çek', info: 'Arabanı ipotek ettirerek kredi çekebilirsin.' },
+  { step: 14, emoji: '🏦', title: 'Bankadan kredi çek', info: 'Kredi puanını yükselterek daha fazla kredi çekebilirsin.' },
   { step: 15, emoji: '📱', title: "Telefondaki 2. el satış uygulamasından alışveriş yap", info: 'Elindeki ürünleri sat, uygun fiyatlı ürünleri satın al (ilana ürün yüklemek, anında satmak, herhangi bir ürün almak bu görevi tamamlamak için yeterli).' },
   // v32 — listenin sonuna eklenen görevler (kaldığın yerden devam edersin)
   { step: 16, emoji: '👤', title: 'Profile gir ve avatarını düzenle', info: "Alttaki Profil sekmesinden avatarını düzenleyebilir, adını değiştirebilirsin." },

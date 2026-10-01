@@ -2,11 +2,14 @@
 // kasa altını ve yoldaki tüm tırlar (sabotaj / sabotaj talebi).
 //  - Sipariş: "Sipariş ver +" → tır seç → sahip olunan yolu seç → galeri /
 //    silah mağazası gibi liste (yarı fiyat) ya da yasaklı madde miktarı.
+//  - v67: sipariş Pzt–Cmt 00:00–12:00; tır sonraki 3 saatlik dilimde yola çıkar,
+//    6 saat ihbar/sabotaj/operasyon penceresi, sonra saldırı, gece 00:00 depoda.
+//    Depodaki ürünler anında satılamaz/dağıtılamaz — sadece 2. elde (çete adıyla).
 //  - Görünürlük: tırları tüm üyeler görür; sipariş/yük içeriği Kıdemli+.
 //    Yönetim (tır/depo al, sipariş, sat/dağıt/2. el) Baba + Sağ Kol.
 import { useEffect, useMemo, useState } from 'react';
 import { limit, where } from 'firebase/firestore';
-import { istDateKey, istHour, istMidnight, useDocData, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
+import { fmtClock, istDateKey, istHour, istMidnight, nextWindowStart, truckAttackAt, useDocData, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
 import { AmountInput, Bar, Btn, Card, Chips, Confirm, Deadline, Empty, Logo, Sheet } from '../ui';
 import { DIST_GROUPS, GANG_RULES, LEADERS, PRODUCTS, atLeast, fmt, productOf, unitsOf } from '../gangConstants';
 import { itemInfo, itemsFor } from '../itemInfo';
@@ -99,7 +102,8 @@ function OrderSheet({ trucks, routes, state, depot, gangId, orders, onClose }) {
   const now = useNow(60_000);
   const today = istDateKey(now);
   const pendingTruck = new Set(orders.filter((o) => o.status === 'pending').map((o) => o.truckId));
-  const eligible = trucks.filter((t) => t.status !== 'retired' && daysBetween(today, t.expiresDateKey) >= 2 && !pendingTruck.has(t.id));
+  const eligible = trucks.filter((t) => t.status !== 'retired' && daysBetween(today, t.expiresDateKey) >= 2 && !pendingTruck.has(t.id) && !(t.status === 'in_transit' && t.departDateKey === today));
+  const departAt = nextWindowStart(now);
   const myRoutes = routes.filter((r) => r.holderType === 'gang' && r.holderId === gangId && (!r.untilDateKey || today < r.untilDateKey));
   const [truckId, setTruckId] = useState(eligible[0]?.id || null);
   const [product, setProduct] = useState(myRoutes[0]?.id || null);
@@ -161,6 +165,9 @@ function OrderSheet({ trucks, routes, state, depot, gangId, orders, onClose }) {
   }
   return (
     <Sheet title="Sipariş ver" icon="📦" onClose={onClose}>
+      <div className="gx-order-plan">
+        🕒 Kalkış <b>{fmtClock(departAt)}</b> · 🎯 ihbar/sabotaj riski <b>{fmtClock(departAt + 6 * 3600_000)}</b>'e kadar · ⚔️ saldırı {fmtClock(departAt + 6 * 3600_000)}–24:00 · 🏚️ teslim <b>00:00</b>
+      </div>
       <Chips options={eligible.map((t) => ({ id: t.id, label: `#${t.code}${t.status === 'in_transit' ? ' 🚛' : ''}`, icon: '🚚' }))} value={truckId} onChange={setTruckId} />
       <Chips
         options={myRoutes.map((r) => ({ id: r.id, label: productOf(r.id).label, icon: productOf(r.id).emoji }))}
@@ -271,6 +278,7 @@ function DepotItems({ depot, lead, listings }) {
   };
   return (
     <>
+      <p className="dim gx-mini">🏪 Depodaki ürünler anında satılamaz ve dağıtılamaz — 2. el pazarında çetenin adıyla satılır, satış parası kasaya girer.</p>
       {groups.map((g) => {
         const rows = entries.filter(([k]) => itemInfo(k).product === g.id);
         return (
@@ -294,13 +302,7 @@ function DepotItems({ depot, lead, listings }) {
                   {lead && free > 0 && (
                     <span className="gx-depot-acts">
                       <Btn small kind="ghost" onClick={() => open('list', k, it, free)}>
-                        🏪 2. el
-                      </Btn>
-                      <Btn small kind="ghost" onClick={() => open('sell', k, it, free)}>
-                        🏷️
-                      </Btn>
-                      <Btn small kind="ghost" onClick={() => open('dist', k, it, free)}>
-                        🎁
+                        🏪 2. ele koy
                       </Btn>
                     </span>
                   )}
@@ -379,9 +381,10 @@ function RoadTrucks({ gangId, rank, alliances, wars }) {
   const [target, setTarget] = useState(null);
   const [quote, setQuote] = useState(null);
   const [harac, setHarac] = useState(0);
-  const open = istHour(now) < 12;
-  const sabotageUntil = istMidnight(today) + 12 * 3600_000; // v38: sabotaj 12:00'ye kadar başlatılır
+  // v67: her tırın kendi penceresi (yola çıkış + 6 saat)
   const others = road.filter((t) => t.gangId !== gangId && t.departDateKey === today);
+  const openFor = (t) => now < truckAttackAt(t);
+  const nearest = others.filter(openFor).map(truckAttackAt).sort((a, b) => a - b)[0] || 0;
   const allied = new Set(alliances.filter((a) => ['accepted', 'active', 'ending'].includes(a.status)).flatMap((a) => a.gangIds));
   const attacking = new Set(wars.all.filter((w) => w.type === 'sabotage' && w.attackerGangId === gangId).map((w) => w.truckId));
   const lead = LEADERS.includes(rank);
@@ -405,16 +408,18 @@ function RoadTrucks({ gangId, rank, alliances, wars }) {
     <>
       <div className="gx-section-head">
         <span>🛣️ Yoldaki tırlar ({others.length})</span>
-        {open && others.length > 0 && (lead || canRequest) && <Deadline untilMs={sabotageUntil} label="💣" />}
+        {nearest > 0 && (lead || canRequest) && <Deadline untilMs={nearest} label="💣" />}
       </div>
       {others.length === 0 && <p className="dim gx-mini">🛣️ Yol boş</p>}
-      {!open && others.length > 0 && <p className="dim gx-mini">🔒 00:00–12:00</p>}
-      {others.map((t) => (
+      {others.map((t) => {
+        const open = openFor(t);
+        return (
         <div key={t.id} className="gx-truck-line">
           <span className="gx-truck-code">🚛 #{t.code}</span>
           <span className="gx-truck-owner">
             <Logo logo={t.gangLogo} size={16} /> {t.gangName}
           </span>
+          {!open && !allied.has(t.gangId) && !attacking.has(t.id) && <span className="gx-pill">🔒 {fmtClock(truckAttackAt(t))}</span>}
           {allied.has(t.gangId) ? (
             <span className="gx-pill ally">🤝 İTTİFAK</span>
           ) : attacking.has(t.id) ? (
@@ -429,7 +434,8 @@ function RoadTrucks({ gangId, rank, alliances, wars }) {
             </Btn>
           ) : null}
         </div>
-      ))}
+        );
+      })}
       {target && (
         <Confirm
           icon="💣"
@@ -442,7 +448,7 @@ function RoadTrucks({ gangId, rank, alliances, wars }) {
                 ? ['Teklif alınamadı.']
                 : quote.canReceive === false
                   ? ['🏚️ Depoda yer yok']
-                  : [`💸 ${fmt(quote.price)} çete kasasından`, '⚔️ Saldırı 12:00–24:00 · 4 dilim', `🤑 Tır sahibi haracı ${GANG_RULES_HARAC_HOUR_LABEL}'e kadar ödeyebilir`]
+                  : [`💸 ${fmt(quote.price)} çete kasasından`, `⚔️ Saldırı ${fmtClock(truckAttackAt(target))}–24:00`, `🤑 Tır sahibi haracı ${GANG_RULES_HARAC_HOUR_LABEL}'e kadar ödeyebilir`]
           }
           confirmLabel="Başlat"
           busy={busy === 'startSabotage'}
@@ -455,7 +461,7 @@ function RoadTrucks({ gangId, rank, alliances, wars }) {
           }}
         >
           <div className="gx-confirm-deadline">
-            <Deadline untilMs={sabotageUntil} label="içinde başlat" />
+            <Deadline untilMs={truckAttackAt(target)} label="içinde başlat" />
           </div>
           {quote && !quote.error && quote.canReceive !== false && (
             <div className="gx-field">
@@ -493,7 +499,7 @@ export default function TradeTab({ d }) {
   const used = Number(depot?.usedUnits || 0);
   const reserved = Number(depot?.reservedUnits || 0);
   const weekday = new Date(`${today}T12:00:00Z`).getUTCDay();
-  const orderDay = weekday >= 1 && weekday <= 5;
+  const orderDay = GANG_RULES.ORDER_WEEKDAYS.includes(weekday) && istHour(now) < GANG_RULES.ORDER_DEADLINE_HOUR;
   // v39: çete günde 1 tır + 1 depo alabilir
   const truckBoughtToday = d.state?.truckBuyDateKey === today;
   const depotBoughtToday = d.state?.depotBuyDateKey === today;
@@ -537,7 +543,7 @@ export default function TradeTab({ d }) {
             )}
           </Btn>
           <Btn small disabled={!orderDay} onClick={() => setOrderOpen(true)}>
-            Sipariş ver +
+            {orderDay ? 'Sipariş ver +' : '🔒 Sipariş: Pzt–Cmt 00:00–12:00'}
           </Btn>
         </div>
       )}
@@ -553,6 +559,15 @@ export default function TradeTab({ d }) {
               <span className="dim gx-mini">⏳ {life} gün</span>
             </div>
             <Bar value={Math.max(0, life)} max={GANG_RULES.TRUCK_LIFE_DAYS} height={4} color={life <= 2 ? 'var(--neon-pink)' : '#7cff6b'} />
+            {t.status === 'in_transit' && t.departDateKey === today && (
+              <div className="dim gx-mini">
+                {now < truckAttackAt(t) ? (
+                  <>🎯 İhbar/sabotaj riski <Deadline untilMs={truckAttackAt(t)} /> · ⚔️ saldırı {fmtClock(truckAttackAt(t))}–24:00 · 🏚️ 00:00</>
+                ) : (
+                  <>⚔️ Saldırı penceresi · 🏚️ <Deadline untilMs={istMidnight(today) + 24 * 3600_000} label="sonra depoda" /></>
+                )}
+              </div>
+            )}
             {seeCargo && t.status === 'in_transit' && o && (
               <div className="gx-cargo">
                 🛣️{' '}
@@ -567,7 +582,8 @@ export default function TradeTab({ d }) {
                 {Object.entries(pend.items || {})
                   .map(([k, q]) => `${q} × ${itemInfo(k).label}`)
                   .join(', ')}
-                {lead && pend.dateKey === today && (
+                {pend.departAtMs && <span className="dim"> · 🕒 {fmtClock(pend.departAtMs)}'de yola çıkacak</span>}
+                {lead && pend.dateKey === today && (!pend.departAtMs || now < pend.departAtMs) && (
                   <button className="gx-link" onClick={() => run('cancelOrder', { orderId: pend.id }, { success: 'Sipariş iptal edildi' })}>
                     iptal
                   </button>

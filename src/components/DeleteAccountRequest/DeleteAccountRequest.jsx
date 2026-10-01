@@ -29,7 +29,8 @@ function buildMailto(uid, displayName) {
 }
 
 export default function DeleteAccountRequest() {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
+  const [logoutAsk, setLogoutAsk] = useState(false);
   const { player } = usePlayer();
   const [step, setStep] = useState(null); // null | 'confirm' | 'sent'
   const [copied, setCopied] = useState(false);
@@ -88,10 +89,45 @@ export default function DeleteAccountRequest() {
           🗑️ Hesap silme talebin alındı ({new Date(pending.createdAtMs || Date.now()).toLocaleDateString('tr-TR')}). Yönetici inceledikten sonra hesabın
           silinecek; vazgeçtiysen {SUPPORT_EMAIL} adresine yaz.
         </p>
-      ) : (
-        <button type="button" className="del-acc-btn" onClick={() => setStep('confirm')}>
-          Hesabımı Sil
+      ) : null}
+      <div className="del-acc-row">
+        <button type="button" className="del-acc-btn logout" onClick={() => setLogoutAsk(true)}>
+          ↪ Çıkış Yap
         </button>
+        {!pending && (
+          <button type="button" className="del-acc-btn" onClick={() => setStep('confirm')}>
+            Hesabımı Sil
+          </button>
+        )}
+      </div>
+
+      {logoutAsk && (
+        <div className="confirm-modal-backdrop" onClick={() => setLogoutAsk(false)}>
+          <div className="confirm-modal del-acc-modal" onClick={(e) => e.stopPropagation()}>
+            <p className="confirm-modal-title">Çıkış yapmak istiyor musun?</p>
+            <p className="confirm-modal-message">
+              {user.isAnonymous
+                ? 'Misafir hesaptasın: çıkış yaparsan bu hesaba bir daha giremezsin!'
+                : 'İlerlemen kaybolmaz; aynı Google hesabıyla tekrar giriş yapabilirsin.'}
+            </p>
+            <div className="confirm-modal-actions">
+              <button className="confirm-modal-cancel" onClick={() => setLogoutAsk(false)}>Vazgeç</button>
+              <button
+                className="confirm-modal-confirm"
+                onClick={async () => {
+                  setLogoutAsk(false);
+                  try {
+                    await signOut();
+                  } catch (err) {
+                    console.error('signOut', err);
+                  }
+                }}
+              >
+                Çıkış Yap
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {step && (

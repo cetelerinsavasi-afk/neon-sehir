@@ -278,11 +278,21 @@ export async function buildDeletionPlan({ db, auth, uid, email, FieldPath, now =
     }
   }
 
-  const byIdCollections = ['trainingProgress', 'flappyScores', 'photoSnapshots', 'parkPresence', 'interiorPresence', 'sixtagramProfiles', 'sixtagramUserLikes', 'heldItems', 'housePresence', 'houseInvites'];
+  const byIdCollections = ['trainingProgress', 'flappyScores', 'photoSnapshots', 'parkPresence', 'interiorPresence', 'sixtagramProfiles', 'sixtagramUserLikes', 'heldItems', 'housePresence', 'houseInvites', 'houseInventories'];
   const byIdSnaps = await counted(getMany(byIdCollections.map((c) => db.collection(c).doc(uid))));
   for (const s of byIdSnaps) {
     if (s.ref.parent.id === 'sixtagramProfiles' && s.data()?.displayName) names.add(s.data().displayName);
     add('delete', { what: s.ref.parent.id, paths: [s.ref.path], ops: [del(s.ref.path)] });
+  }
+
+  // v66: oyuncunun evleri (ve sohbet alt koleksiyonları) silinir
+  const ownedHouses = await counted(getDocs(db.collection('houses').where('ownerUid', '==', uid)));
+  if (ownedHouses.length) {
+    add('delete', {
+      what: 'houses (evler + ev sohbetleri)',
+      paths: ownedHouses.map((d) => d.ref.path),
+      ops: ownedHouses.map((d) => ({ phase: PHASES.USER_DOC, type: 'recursiveDelete', path: d.ref.path })),
+    });
   }
 
   if (user?.redemptionCode) {

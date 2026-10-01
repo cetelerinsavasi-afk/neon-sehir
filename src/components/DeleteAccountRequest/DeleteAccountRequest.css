@@ -75,3 +75,14 @@
   line-height: 1.45;
   color: var(--text);
 }
+
+/* v67 — çıkış yap butonu, hesabımı sil'in yanında */
+.del-acc-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.del-acc-btn.logout:hover {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}

@@ -117,3 +117,13 @@
   font-size: 12px;
   color: var(--neon-pink);
 }
+
+/* v67 — yetersiz altın */
+.suspicion-card-btn.poor,
+.suspicion-card-btn.poor:disabled {
+  background: rgba(255, 95, 109, 0.12);
+  border-color: rgba(255, 95, 109, 0.6);
+  color: #ff8a95;
+  opacity: 1;
+  cursor: not-allowed;
+}

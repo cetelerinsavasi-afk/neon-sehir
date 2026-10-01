@@ -317,3 +317,30 @@
   font-size: 12px;
   cursor: pointer;
 }
+
+/* v67 — beğeni */
+.ideas-item-box {
+  position: relative;
+}
+.ideas-item {
+  padding-bottom: 30px;
+}
+.ideas-like {
+  position: absolute;
+  right: 10px;
+  bottom: 6px;
+  border: 1px solid #2a3654;
+  background: rgba(14, 19, 32, 0.9);
+  color: #cfd6e4;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.ideas-like.on {
+  border-color: #ff2e8c;
+  color: #ff8fc0;
+}
+.ideas-like:disabled {
+  opacity: 0.7;
+}

@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHarness, setupGang } from './harness.js';
+import { createHarness, setupGang, ist } from './harness.js';
 
 // Harness başlangıcı: 2026-09-21 Pazartesi 09:00 (İstanbul)
+// v67 zaman çizelgesi: sipariş Pzt–Cmt 00:00–12:00 → sonraki 3 saatlik dilimde
+// (03·06·09·12) yola çıkar → 6 saat ihbar/sabotaj/operasyon → saldırı → 00:00 teslim.
 
 async function setupTradeGang(h, name = 'Alfa', { depot = 1000 } = {}) {
   const G = await setupGang(h, { members: 4, name });
@@ -58,7 +60,7 @@ test('depo: 100.000 = +100 kapasite, her alımda genişler; sadece Baba/Sağ Kol
   assert.equal(h.state(G.gangId).kasa, 5_000_000 - 200_000);
   assert.ok(h.chat(G.gangId).some((m) => /kapasite 200/.test(m)));
 });
-test('sipariş: yol sahibi, yarı fiyat, Pzt–Cum, tır kapasitesi 10/10/100, tek tür, depo yeri, günlük limit, iptal', async () => {
+test('sipariş: yol sahibi, yarı fiyat, Pzt–Cmt 00:00–12:00, tır kapasitesi 10/10/100, tek tür, depo yeri, günlük limit, iptal', async () => {
   const h = await createHarness();
   const G = await setupTradeGang(h, 'Alfa', { depot: 0 });
   const { truckId } = await h.act(G.baba, 'buyTruck');
@@ -96,40 +98,70 @@ test('sipariş: yol sahibi, yarı fiyat, Pzt–Cum, tır kapasitesi 10/10/100, t
   await h.act(G.baba, 'cancelOrder', { orderId: `${truckId}_2026-09-21` });
   assert.equal(depotOf(h, G.gangId).reservedUnits, 20);
   await h.act(G.baba, 'placeOrder', { truckId, product: 'yasakliMadde', items: { yasakliMadde: 80 } });
-  // hafta sonu sipariş yok (Cumartesi)
-  h.at('2026-09-26', '10:00');
+  // v67: kalkış saati bir sonraki 3 saatlik dilim (09:00 siparişi → 12:00)
+  assert.equal(h.get(`orders/${truckId}_2026-09-21`).departAtMs, ist('2026-09-21', '12:00'));
+  // 12:00'den sonra sipariş yok
+  h.at('2026-09-21', '12:00');
+  const noon = await h.fails(G.baba, 'placeOrder', { truckId: t2, product: 'silah', items: { 'silah:1': 1 } });
+  assert.match(noon.message, /00:00–12:00/);
+  // Pazar sipariş yok
+  h.at('2026-09-27', '10:00');
   const we = await h.fails(G.baba, 'placeOrder', { truckId: t2, product: 'silah', items: { 'silah:1': 1 } });
-  assert.match(we.message, /Pazartesi–Cuma/);
+  assert.match(we.message, /Pazartesi–Cumartesi/);
 });
 
-test('yoldaki tıra yeni sipariş: bugün verilen yarın 00:00 çıkar, ertesi 00:00 depoya ulaşır; çift teslim yok', async () => {
+test('v67: Cumartesi sipariş verilir; yola çıkan tır aynı gün iptal edilemez ve ikinci kez yüklenemez', async () => {
   const h = await createHarness();
   const G = await setupTradeGang(h);
   await h.giveRoute(G.gangId, 'araba', 1_000_000);
   const { truckId } = await h.act(G.baba, 'buyTruck');
-  await h.act(G.baba, 'placeOrder', { truckId, product: 'araba', items: { 'araba:1': 4 } });
-  await h.tickTo('2026-09-22', '00:05');
+  await h.tickTo('2026-09-26', '02:10'); // Cumartesi
+  await h.act(G.baba, 'placeOrder', { truckId, product: 'araba', items: { 'araba:1': 2 } });
+  await h.tickTo('2026-09-26', '03:01');
+  const t = h.get(`trucks/${truckId}`);
+  assert.equal(t.status, 'in_transit');
+  assert.equal(t.departAtMs, ist('2026-09-26', '03:00'));
+  assert.equal(t.attackAtMs, ist('2026-09-26', '09:00'));
+  const c = await h.fails(G.baba, 'cancelOrder', { orderId: `${truckId}_2026-09-26` });
+  assert.match(c.message, /iptal edilemez/);
+  const again = await h.fails(G.baba, 'placeOrder', { truckId, product: 'araba', items: { 'araba:1': 1 } });
+  assert.match(again.message, /zaten yola çıktı/);
+  await h.tickTo('2026-09-27', '00:05');
+  assert.equal(depotOf(h, G.gangId).items['araba:1'], 2, 'gece 00:00 teslim');
+});
+
+test('v67: sipariş verilen gün sonraki dilimde yola çıkar, gece 00:00 depoya ulaşır; ertesi gün tekrar yüklenir; çift teslim yok', async () => {
+  const h = await createHarness();
+  const G = await setupTradeGang(h);
+  await h.giveRoute(G.gangId, 'araba', 1_000_000);
+  const { truckId } = await h.act(G.baba, 'buyTruck');
+  await h.act(G.baba, 'placeOrder', { truckId, product: 'araba', items: { 'araba:1': 4 } }); // Pzt 09:00
+  await h.tickTo('2026-09-21', '11:55');
+  assert.equal(h.get(`trucks/${truckId}`).status, 'idle', 'kalkış saati gelmedi');
+  await h.tickTo('2026-09-21', '12:02');
   let t = h.get(`trucks/${truckId}`);
   assert.equal(t.status, 'in_transit');
-  assert.equal(t.departDateKey, '2026-09-22');
+  assert.equal(t.departDateKey, '2026-09-21');
+  assert.equal(t.attackAtMs, ist('2026-09-21', '18:00'));
   assert.deepEqual(h.get(`trucks/${truckId}/cargo/main`).items, { 'araba:1': 4 });
-  // yoldayken yeni sipariş
-  await h.act(G.baba, 'placeOrder', { truckId, product: 'araba', items: { 'araba:2': 3 } });
-  await h.tickTo('2026-09-23', '00:05');
-  const d = depotOf(h, G.gangId);
+  assert.ok(h.chat(G.gangId).some((m) => /yola çıktı — 18:00'e kadar/.test(m)));
+  await h.tickTo('2026-09-22', '00:05');
+  let d = depotOf(h, G.gangId);
   assert.equal(d.items['araba:1'], 4);
   assert.equal(d.usedUnits, 40);
-  assert.equal(d.reservedUnits, 30, 'yeni sipariş yolda (30 yer ayrılı)');
-  t = h.get(`trucks/${truckId}`);
-  assert.equal(t.status, 'in_transit', 'aynı 00:00da tekrar yola çıktı');
-  assert.equal(t.departDateKey, '2026-09-23');
-  assert.ok(h.chat(G.gangId).some((m) => /depoya ulaştı: 4 × /.test(m)));
+  assert.equal(h.get(`trucks/${truckId}`).status, 'idle');
+  // ertesi gün yeni sipariş
+  h.at('2026-09-22', '07:30');
+  await h.act(G.baba, 'placeOrder', { truckId, product: 'araba', items: { 'araba:2': 3 } });
+  await h.tickTo('2026-09-22', '09:00');
+  assert.equal(h.get(`trucks/${truckId}`).status, 'in_transit');
   await h.internal.clock.runClock('test');
   assert.equal(depotOf(h, G.gangId).items['araba:1'], 4);
-  await h.tickTo('2026-09-24', '00:05');
-  assert.equal(depotOf(h, G.gangId).items['araba:2'], 3);
-  assert.equal(depotOf(h, G.gangId).usedUnits, 70);
-  assert.equal(depotOf(h, G.gangId).reservedUnits, 0);
+  await h.tickTo('2026-09-23', '00:05');
+  d = depotOf(h, G.gangId);
+  assert.equal(d.items['araba:2'], 3);
+  assert.equal(d.usedUnits, 70);
+  assert.equal(d.reservedUnits, 0);
   assert.equal(h.get(`trucks/${truckId}`).status, 'idle');
 });
 
@@ -150,27 +182,25 @@ test('tır ömrü: son gün sipariş yok; ömrü dolunca hurdaya çıkar, kimlik
   assert.equal(h.get(`truckCodes/${code}`), undefined);
 });
 
-test('depo: sisteme sat (anlık değer) ve gruplara dağıt (eşit, envantere); yer serbest kalır', async () => {
+test('v67: çete depo ürünleri anında satılamaz ve dağıtılamaz (sadece 2. el)', async () => {
   const h = await createHarness();
   const G = await setupTradeGang(h);
   await h.db.doc(`gangWorlds/test/gangs/${G.gangId}/private/depot`).set({ items: { yasakliMadde: 100, 'silah:2': 5 }, capacity: 200, usedUnits: 150, reservedUnits: 0 });
   const kasa0 = h.state(G.gangId).kasa;
-  const r = await h.act(G.baba, 'sellFromDepot', { itemKey: 'yasakliMadde', qty: 10 });
-  assert.equal(r.value, 12_500);
-  assert.equal(h.state(G.gangId).kasa, kasa0 + 12_500);
-  assert.equal(depotOf(h, G.gangId).usedUnits, 140);
-  await h.fails(G.ids[1], 'sellFromDepot', { itemKey: 'yasakliMadde', qty: 1 });
-  await h.fails(G.baba, 'sellFromDepot', { itemKey: 'yasakliMadde', qty: 5000 });
-  const d = await h.act(G.baba, 'distributeFromDepot', { itemKey: 'silah:2', qty: 5, group: 'rutbeli' });
-  assert.equal(d.per, 1);
-  assert.equal(d.recipients, 5);
-  assert.equal(h.raw(`gangWorlds/test/players/${G.ids[1]}`).inventory.silah_2, 1);
-  assert.equal(depotOf(h, G.gangId).usedUnits, 90);
+  assert.match((await h.fails(G.baba, 'sellFromDepot', { itemKey: 'yasakliMadde', qty: 10 })).message, /anında satılamaz/);
+  assert.match((await h.fails(G.baba, 'distributeFromDepot', { itemKey: 'silah:2', qty: 5, group: 'rutbeli' })).message, /dağıtılamaz/);
+  assert.equal(h.state(G.gangId).kasa, kasa0);
+  assert.equal(depotOf(h, G.gangId).usedUnits, 150);
+  const l = await h.act(G.baba, 'listDepotItem', { itemKey: 'silah:2', qty: 2, unitPrice: 8_000 });
+  assert.ok(l.listingId, '2. ele konabilir');
 });
 
 // Sabotaj kurulum: A'nın n tırı yolda (yasaklı madde)
-async function trucksOnRoad(h, A, n, qty = 50, product = 'yasakliMadde') {
+// v67: sipariş o günün 05:30'unda verilir → 06:00'da yola çıkar → 12:00'ye kadar
+// ihbar/sabotaj/operasyon, 12:00–24:00 saldırı (eski testlerle aynı pencere).
+async function trucksOnRoad(h, A, n, qty = 50, product = 'yasakliMadde', day = '2026-09-22') {
   await h.giveRoute(A.gangId, product, 5_000_000);
+  if (h.clock.now < ist(day, '05:30')) await h.tickTo(day, '05:30');
   const ids = [];
   for (let i = 0; i < n; i++) {
     const { truckId } = await buyTruckAnyDay(h, A.gangId, A.baba);
@@ -204,7 +234,7 @@ test('sabotaj ücreti OYUN GENELİNDE 10k→20k→30k (operasyon dahil), 00:00 s
   const late = await h.fails(B.baba, 'startSabotage', { truckId: trucks[2] });
   assert.match(late.message, /12:00/);
   // ertesi gün sıfır
-  const [t4] = await trucksOnRoad(h, A, 1);
+  const [t4] = await trucksOnRoad(h, A, 1, 50, 'yasakliMadde', '2026-09-23');
   await h.tickTo('2026-09-23', '09:00');
   assert.equal((await h.act(B.baba, 'quoteSabotage', { truckId: t4 })).price, 10_000);
 });
@@ -320,7 +350,7 @@ test('depo yeri tırın GERÇEK yüküyle: 1 arabası olan 100lük depoya 100 ya
   const [big] = await trucksOnRoad(h, A, 1, 100);
   await h.giveRoute(A.gangId, 'araba', 5_000_000);
   const small = (await buyTruckAnyDay(h, A.gangId, A.baba)).truckId;
-  await h.act(A.baba, 'placeOrder', { truckId: small, product: 'araba', items: { 'araba:1': 9 } });
+  await h.act(A.baba, 'placeOrder', { truckId: small, product: 'araba', items: { 'araba:1': 9 } }); // aynı gün 05:30
   await h.db.doc(`gangWorlds/test/gangs/${B.gangId}/private/depot`).set({ items: { 'araba:1': 1 }, capacity: 100, usedUnits: 10, reservedUnits: 0 });
   await h.tickTo('2026-09-22', '09:00');
   const q = await h.act(B.baba, 'quoteSabotage', { truckId: big });
@@ -381,4 +411,36 @@ test('v38: sabotajda günde 4 dilim (12·15·18·21): 12:00 öncesi zar yok; dil
   }
   const slots = Object.keys(h.db._dump('gangWorlds/test/slots/')).filter((k) => k.includes(B.baba));
   assert.equal(slots.length, 4, 'sabotaj gününde en fazla 4 saldırı');
+});
+
+test('v67: 09:00 siparişi → 12:00 kalkış → 18:00e kadar sabotaj → 18:00 duyuru ve saldırı → haraç 21:00e kadar → 00:00 sonuç', async () => {
+  const h = await createHarness({ dice: [6, 6, 1, 1] });
+  const A = await setupTradeGang(h, 'Alfa');
+  const B = await setupTradeGang(h, 'Beta');
+  await h.giveRoute(A.gangId, 'yasakliMadde', 5_000_000);
+  const { truckId } = await h.act(A.baba, 'buyTruck');
+  await h.act(A.baba, 'placeOrder', { truckId, product: 'yasakliMadde', items: { yasakliMadde: 30 } }); // Pzt 09:00
+  assert.match((await h.fails(B.baba, 'startSabotage', { truckId })).message, /yolda değil/, 'kalkıştan önce sabotaj yok');
+  await h.tickTo('2026-09-21', '17:59');
+  const q = await h.act(B.baba, 'quoteSabotage', { truckId });
+  assert.equal(q.open, true);
+  assert.equal(q.attackAtMs, ist('2026-09-21', '18:00'));
+  const { warId } = await h.act(B.baba, 'startSabotage', { truckId, harac: 1000 });
+  assert.equal(h.get(`wars/${warId}`).startsAtMs, ist('2026-09-21', '18:00'));
+  assert.match((await h.fails(B.baba, 'rollDice', { warId })).message, /başlamadı/);
+  assert.ok(!h.chat(A.gangId).some((m) => /saldırı altında/.test(m)));
+  const C = await setupTradeGang(h, 'Gama');
+  h.at('2026-09-21', '18:00');
+  assert.match((await h.fails(C.baba, 'startSabotage', { truckId })).message, /6 saat/);
+  await h.tickTo('2026-09-21', '18:01');
+  assert.ok(h.chat(A.gangId).some((m) => /saldırı altında! .*Savunma 18:00–24:00/.test(m)));
+  await h.act(B.baba, 'rollDice', { warId });
+  await h.act(A.baba, 'rollDice', { warId: `def_${truckId}_2026-09-21` });
+  h.at('2026-09-21', '20:59');
+  const kA = h.state(A.gangId).kasa;
+  await h.act(A.baba, 'payHarac', { warId });
+  assert.equal(h.state(A.gangId).kasa, kA - 1000);
+  await h.tickTo('2026-09-22', '00:05');
+  assert.equal(h.get(`trucks/${truckId}`).lastTrip.outcome, 'delivered');
+  assert.equal(depotOf(h, A.gangId).items.yasakliMadde, 30);
 });

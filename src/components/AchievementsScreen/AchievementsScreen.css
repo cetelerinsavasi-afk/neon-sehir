@@ -1,0 +1,113 @@
+.ach {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+.ach-hero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  background:
+    radial-gradient(100% 120% at 0% 0%, rgba(255, 210, 63, 0.25), transparent 60%),
+    linear-gradient(160deg, #1b1407, #0a0d16);
+  border: 1px solid rgba(255, 210, 63, 0.45);
+}
+.ach-trophy {
+  font-size: 38px;
+  filter: drop-shadow(0 0 12px rgba(255, 210, 63, 0.6));
+}
+.ach-hero-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ach-hero-text b {
+  font-size: 18px;
+}
+.ach-hero-text span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.ach-bar {
+  height: 6px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+.ach-bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #ffd23f, #39ff88);
+}
+.ach-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ach-card {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+}
+.ach-emoji {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  background: rgba(255, 255, 255, 0.05);
+}
+.ach-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.ach-body b {
+  font-size: 14px;
+}
+.ach-body span {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.ach-body em {
+  font-style: normal;
+  font-size: 11px;
+  color: #39ff88;
+}
+.ach-reward {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 900;
+  color: #4dffb5;
+  font-size: 14px;
+}
+/* tamamlanan başarılar karartılır */
+.ach-card.done {
+  opacity: 0.45;
+  filter: grayscale(0.6);
+  background: #07090f;
+}
+.ach-card.done .ach-reward {
+  color: #39ff88;
+}
+.ach-note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: center;
+}
