@@ -4,13 +4,12 @@
   "name": "Neon Şehir",
   "launcherName": "Neon Şehir",
   "display": "standalone",
-  "orientation": "portrait",
   "themeColor": "#070A12",
   "themeColorDark": "#070A12",
   "navigationColor": "#070A12",
   "navigationColorDark": "#070A12",
-  "navigationDividerColor": "#00000000",
-  "navigationDividerColorDark": "#00000000",
+  "navigationDividerColor": "#000000",
+  "navigationDividerColorDark": "#000000",
   "backgroundColor": "#070A12",
   "enableNotifications": false,
   "startUrl": "/?src=twa",
@@ -21,8 +20,8 @@
     "path": "./android.keystore",
     "alias": "android"
   },
-  "appVersionCode": 1,
-  "appVersion": "1.0.0",
+  "appVersionName": "1.0.7 / 6",
+  "appVersionCode": 7,
   "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
   "webManifestUrl": "https://cetelerinsavasi.com/manifest.json",
@@ -36,7 +35,19 @@
   "isMetaQuest": false,
   "fullScopeUrl": "https://cetelerinsavasi.com/",
   "minSdkVersion": 21,
-  "fingerprints": [],
+  "orientation": "portrait",
+  "fingerprints": [
+    {
+      "name": "Yükleme anahtarı",
+      "value": "0D:A9:B3:57:F9:CF:76:80:90:9A:F3:D1:F8:E1:05:B9:9E:49:D9:6B:50:F4:B2:08:AB:27:7F:82:FB:31:02:F8"
+    },
+    {
+      "name": "Play uygulama imzalama anahtarı",
+      "value": "CC:FC:76:A5:38:A8:D3:35:3B:AA:E2:33:64:BF:B0:BC:39:F9:74:DA:64:C6:07:CD:36:58:D2:A6:79:40:69:DA"
+    }
+  ],
   "additionalTrustedOrigins": [],
-  "retainedBundles": []
+  "retainedBundles": [],
+  "displayOverride": [],
+  "appVersion": "1.0.8"
 }
