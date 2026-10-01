@@ -21,6 +21,8 @@
 // Tüm sorgular tek alanlıdır (array-contains / == / <) → yeni indeks gerekmez.
 // =============================================================================
 
+import { isMsgId, nextReaction, replyQuoteOf } from './chatExtras.js';
+
 export const SOCIAL = {
   MAX_FRIENDS: 200,
   REQUESTS_PER_DAY: 30,
@@ -182,14 +184,28 @@ export function createSocial({ db, FieldValue, HttpsError, requireAuth, onCall, 
     const t = now();
     const cRef = chatRef(uid, target);
     const msgRef = cRef.collection('dmMessages').doc();
+    // v72: yanıt (alıntı sunucuda yanıtlanan mesajdan okunur)
+    const replyToId = p.replyToId;
+    if (replyToId != null && !isMsgId(replyToId)) fail('invalid-argument', 'Geçersiz mesaj.');
     await db.runTransaction(async (tx) => {
-      const [myF, chat] = await Promise.all([tx.get(friendsRef(uid)), tx.get(cRef)]);
+      const [myF, chat, rSnap] = await Promise.all([
+        tx.get(friendsRef(uid)),
+        tx.get(cRef),
+        replyToId != null ? tx.get(cRef.collection('dmMessages').doc(replyToId)) : Promise.resolve(null),
+      ]);
       const friend = friendsMapOf(myF)[target];
       if (!friend) fail('permission-denied', 'Yalnızca arkadaşlarına mesaj gönderebilirsin.');
       const c = chat.exists ? chat.data() : null;
       const last = Number(c?.lastSentAtMs?.[uid] || 0);
       if (t - last < SOCIAL.MIN_SEND_INTERVAL_MS) fail('resource-exhausted', 'Biraz yavaş — mesajlar arasında kısa bir süre bekle.');
-      tx.set(msgRef, { uid, text, createdAtMs: t, createdAt: FieldValue.serverTimestamp() });
+      let replyTo = null;
+      if (replyToId != null) {
+        const rd = rSnap?.exists ? rSnap.data() : null;
+        const rName = rd?.uid === uid ? myName : c?.names?.[rd?.uid] || friend.name;
+        replyTo = rd ? replyQuoteOf(replyToId, rd, rName) : null;
+        if (!replyTo) fail('failed-precondition', 'Yanıtlanan mesaj artık yok.');
+      }
+      tx.set(msgRef, { uid, text, ...(replyTo ? { replyTo } : {}), createdAtMs: t, createdAt: FieldValue.serverTimestamp() });
       const [a, b] = uid < target ? [uid, target] : [target, uid];
       tx.set(
         cRef,
@@ -223,6 +239,25 @@ export function createSocial({ db, FieldValue, HttpsError, requireAuth, onCall, 
       console.error('sendDm prune', err);
     }
     return { ok: true, id: msgRef.id };
+  }
+
+  // v72: özel sohbette mesaja emoji tepkisi (sadece sohbet üyeleri ve arkadaşlar)
+  async function reactDm(uid, p) {
+    const target = p.targetUid;
+    if (!isUid(target) || target === uid) fail('invalid-argument', 'Geçersiz sohbet.');
+    if (!isMsgId(p.msgId)) fail('invalid-argument', 'Geçersiz mesaj.');
+    const cRef = chatRef(uid, target);
+    const mRef = cRef.collection('dmMessages').doc(p.msgId);
+    await db.runTransaction(async (tx) => {
+      const [myF, chat, m] = await Promise.all([tx.get(friendsRef(uid)), tx.get(cRef), tx.get(mRef)]);
+      if (!friendsMapOf(myF)[target]) fail('permission-denied', 'Yalnızca arkadaşlarınla yazışabilirsin.');
+      if (!chat.exists || !(chat.data().members || []).includes(uid)) fail('not-found', 'Sohbet bulunamadı.');
+      if (!m.exists || m.data()?.hidden) fail('failed-precondition', 'Mesaj artık yok.');
+      const r = nextReaction(m.data()?.reactions?.[uid], p.emoji);
+      if (r.error) fail('invalid-argument', r.error);
+      tx.update(mRef, { [`reactions.${uid}`]: r.remove ? FieldValue.delete() : r.value });
+    });
+    return { ok: true };
   }
 
   async function markDmRead(uid, p) {
@@ -270,7 +305,7 @@ export function createSocial({ db, FieldValue, HttpsError, requireAuth, onCall, 
     return { requests, chats };
   }
 
-  const ACTIONS = { sendFriendRequest, cancelFriendRequest, respondFriendRequest, removeFriend, sendDm, markDmRead };
+  const ACTIONS = { sendFriendRequest, cancelFriendRequest, respondFriendRequest, removeFriend, sendDm, markDmRead, reactDm };
   async function handle(uid, data) {
     const fn = ACTIONS[data?.action];
     if (!fn) fail('invalid-argument', 'Geçersiz işlem.');

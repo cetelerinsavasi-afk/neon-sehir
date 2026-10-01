@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useGlobalChat } from '../../hooks/useGlobalChat';
 import { markChatsAppSeen } from '../../hooks/useUnreadNotifications';
-import { sendChatMessage } from '../../services/gameActions';
+import { reactChatMessage, sendChatMessage } from '../../services/gameActions';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import ReportBlockSheet from '../ReportBlockSheet/ReportBlockSheet';
 import PlayerCard from '../PlayerCard/PlayerCard';
@@ -11,13 +11,14 @@ import { copyText, useLongPress } from '../ActionMenu/actionMenuUtils';
 import { useBlocks } from '../../contexts/BlocksContext';
 import { isHiddenForMe } from '../../lib/ugcVisibility';
 import { clockOf, tsMs } from './chatsappTime';
+import { CHAT_REACTIONS, ReactionChips, ReplyBar, ReplyQuote, replyDraftOf } from './chatExtras';
 
 // v60 — "Neon Şehir" grubu: eski ChatsApp genel sohbeti (tüm oyuncular).
 // Davranış v53 ile aynı; yalnızca üstte WhatsApp tarzı grup başlığı var.
-function ChatRow({ m, mine, onProfile, onMenu }) {
+function ChatRow({ m, mine, myUid, onProfile, onMenu, onReact, isBlocked }) {
   const press = useLongPress(() => onMenu(m));
   return (
-    <div className={`chatsapp-row${mine ? ' mine' : ''}`}>
+    <div id={`ca-msg-${m.id}`} className={`chatsapp-row${mine ? ' mine' : ''}`}>
       {!mine && (
         <button type="button" className="chatsapp-avatar pc-trigger" onClick={() => onProfile(m)} aria-label={`${m.displayName || 'Oyuncu'} profilini gör`}>
           <AvatarSvg avatar={m.avatar} size={28} rounded />
@@ -31,7 +32,9 @@ function ChatRow({ m, mine, onProfile, onMenu }) {
             {m.displayName}
           </button>
         )}
+        <ReplyQuote replyTo={m.replyTo} myUid={myUid} hidden={m.replyTo && isBlocked(m.replyTo.uid)} />
         <span className="chatsapp-text">{m.text}</span>
+        <ReactionChips reactions={m.reactions} myUid={myUid} onReact={(e) => onReact(m, e)} />
         <span className="chatsapp-time">{clockOf(tsMs(m.createdAt))}</span>
       </div>
     </div>
@@ -50,7 +53,18 @@ export default function GroupChat({ onBack }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [replyTo, setReplyTo] = useState(null); // v72 — yanıtlanan mesaj
   const bottomRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const react = async (m, emoji) => {
+    setError(null);
+    try {
+      await reactChatMessage(m.id, emoji);
+    } catch (err) {
+      setError(err.message || 'Tepki verilemedi.');
+    }
+  };
 
   // Grup açıkken gelen mesajlar "görüldü" sayılır (liste ve harita rozeti söner)
   useEffect(() => {
@@ -67,8 +81,9 @@ export default function GroupChat({ onBack }) {
     setBusy(true);
     setError(null);
     try {
-      await sendChatMessage(trimmed);
+      await sendChatMessage(trimmed, replyTo?.id || null);
       setText('');
+      setReplyTo(null);
     } catch (err) {
       setError(err.message || 'Mesaj gönderilemedi.');
     } finally {
@@ -92,12 +107,14 @@ export default function GroupChat({ onBack }) {
       </div>
       <div className="chatsapp-messages">
         {messages.map((m) => (
-          <ChatRow key={m.id} m={m} mine={m.uid === user.uid} onProfile={setProfileOf} onMenu={setMenuFor} />
+          <ChatRow key={m.id} m={m} mine={m.uid === user.uid} myUid={user.uid} onProfile={setProfileOf} onMenu={setMenuFor} onReact={react} isBlocked={isBlocked} />
         ))}
         <div ref={bottomRef} />
       </div>
+      <ReplyBar replyTo={replyTo} myUid={user.uid} onCancel={() => setReplyTo(null)} />
       <div className="chatsapp-input-row">
         <input
+          ref={inputRef}
           type="text"
           placeholder="Mesaj yaz…"
           value={text}
@@ -115,7 +132,19 @@ export default function GroupChat({ onBack }) {
         <ActionMenu
           title={`${menuFor.displayName || 'Oyuncu'}: “${String(menuFor.text || '').slice(0, 60)}”`}
           onClose={() => setMenuFor(null)}
+          emojis={CHAT_REACTIONS}
+          selectedEmoji={menuFor.reactions?.[user.uid]}
+          onEmoji={(e) => react(menuFor, e)}
           actions={[
+            {
+              key: 'reply',
+              icon: '↩️',
+              label: 'Yanıtla',
+              onClick: () => {
+                setReplyTo(replyDraftOf(menuFor, menuFor.displayName || 'Oyuncu'));
+                setTimeout(() => inputRef.current?.focus(), 50);
+              },
+            },
             { key: 'copy', icon: '📋', label: 'Kopyala', onClick: () => copyText(menuFor.text || '') },
             ...(menuFor.uid !== user.uid
               ? [

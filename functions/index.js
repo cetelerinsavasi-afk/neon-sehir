@@ -15,6 +15,8 @@ import { createDeletionRequests } from './deletionRequests.js';
 import { createHouses } from './houses.js';
 import { createAchievements } from './achievements.js';
 import { HOUSE_PRODUCTS } from './houseCatalogData.js';
+import { sanitizeDrawing } from './drawingData.js';
+import { isMsgId, nextReaction, replyQuoteOf } from './chatExtras.js';
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -7659,6 +7661,15 @@ export const sendChatMessage = onCall(async (request) => {
   if (text.length > CHAT_MAX_LENGTH) {
     throw new HttpsError('invalid-argument', `Mesaj en fazla ${CHAT_MAX_LENGTH} karakter olabilir.`);
   }
+  // v72: yanıt — alıntı yanıtlanan mesajın kendisinden okunur (functions/chatExtras.js)
+  const replyToId = request.data?.replyToId;
+  let replyTo = null;
+  if (replyToId != null) {
+    if (!isMsgId(replyToId)) throw new HttpsError('invalid-argument', 'Geçersiz mesaj.');
+    const rSnap = await db.collection('globalChat').doc(replyToId).get();
+    replyTo = rSnap.exists ? replyQuoteOf(replyToId, rSnap.data()) : null;
+    if (!replyTo) throw new HttpsError('failed-precondition', 'Yanıtlanan mesaj artık yok.');
+  }
   const userSnap = await db.collection('users').doc(uid).get();
   const displayName = userSnap.data()?.displayName || 'Oyuncu';
   const avatar = userSnap.data()?.avatar || null;
@@ -7668,6 +7679,7 @@ export const sendChatMessage = onCall(async (request) => {
     displayName,
     avatar,
     text,
+    ...(replyTo ? { replyTo } : {}),
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
@@ -7676,6 +7688,23 @@ export const sendChatMessage = onCall(async (request) => {
   // v38: çete aktifliği (30 gün kuralı) — herhangi bir sohbete mesaj aktif sayılır
   await markGangActivity(uid);
 
+  return { ok: true };
+});
+
+// reactChatMessage — v72: genel sohbette bir mesaja emoji tepkisi (kişi başı
+// tek tepki; aynı emoji tekrar → kaldırılır). Bkz. functions/chatExtras.js
+export const reactChatMessage = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { msgId, emoji } = request.data || {};
+  if (!isMsgId(msgId)) throw new HttpsError('invalid-argument', 'Geçersiz mesaj.');
+  const ref = db.collection('globalChat').doc(msgId);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists || snap.data()?.hidden) throw new HttpsError('failed-precondition', 'Mesaj artık yok.');
+    const r = nextReaction(snap.data()?.reactions?.[uid], emoji);
+    if (r.error) throw new HttpsError('invalid-argument', r.error);
+    tx.update(ref, { [`reactions.${uid}`]: r.remove ? admin.firestore.FieldValue.delete() : r.value });
+  });
   return { ok: true };
 });
 
@@ -19977,6 +20006,13 @@ async function buildSixtagramAttachment(uid, attachment) {
 
   // v66: 3D ev fotoğrafı (functions/houses.js)
   if (type === 'housePhoto') return houses.buildPhotoAttachment(uid, attachment);
+
+  // v72: "Resim Çiz" — fırça darbeleri doğrulanıp olduğu gibi saklanır (görsel yüklenmez)
+  if (type === 'drawing') {
+    const r = sanitizeDrawing(attachment);
+    if (r.error) throw new HttpsError('invalid-argument', r.error);
+    return r.drawing;
+  }
 
   if (type === 'avatar') {
     const userSnap = await db.collection('users').doc(uid).get();

@@ -301,7 +301,10 @@ export const markAllMessagesRead = () => httpsCallable(functions, 'markAllMessag
 
 // --- ChatsApp (genel sohbet) ---
 
-export const sendChatMessage = (text) => httpsCallable(functions, 'sendChatMessage')({ text });
+export const sendChatMessage = (text, replyToId = null) =>
+  httpsCallable(functions, 'sendChatMessage')(replyToId ? { text, replyToId } : { text });
+// v72 — genel sohbette mesaja emoji tepkisi (aynı emoji tekrar → kaldırır)
+export const reactChatMessage = (msgId, emoji) => httpsCallable(functions, 'reactChatMessage')({ msgId, emoji });
 
 // v33: "Bi fikrin mi var?" — fikir / hata / soru gönder (7 gün listelenir)
 export const submitFeedback = (kind, text) => httpsCallable(functions, 'submitFeedback')({ kind, text });

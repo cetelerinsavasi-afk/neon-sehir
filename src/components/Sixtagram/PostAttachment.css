@@ -224,3 +224,14 @@
   color: #8a93a8;
   font-size: 13px;
 }
+
+/* v72 — "Resim Çiz" gönderisi */
+.post-att-drawing {
+  border-radius: 10px;
+  overflow: hidden;
+}
+.post-att-drawing-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}

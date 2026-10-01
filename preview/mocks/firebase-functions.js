@@ -1,4 +1,7 @@
 import { system, PREVIEW_UID, fakeDb, houses } from './backend.js';
+import { FieldValue } from '../../functions/gang/test/fakeFirestore.js';
+import { sanitizeDrawing } from '../../functions/drawingData.js';
+import { nextReaction, replyQuoteOf } from '../../functions/chatExtras.js';
 export function getFunctions() {
   return {};
 }
@@ -35,6 +38,36 @@ export function httpsCallable(functions, name) {
         const d = (await ref.get()).data();
         const liked = Boolean(d.likes?.[PREVIEW_UID]);
         await ref.set({ likes: { ...(d.likes || {}), [PREVIEW_UID]: !liked }, likeCount: (d.likeCount || 0) + (liked ? -1 : 1) }, { merge: true });
+        return { data: { ok: true } };
+      }
+      // v72 önizleme: genel sohbet (yanıt + tepki) ve Sixtagram çizim paylaşımı
+      if (name === 'sendChatMessage') {
+        let replyTo = null;
+        if (data.replyToId) {
+          const r = await fakeDb.doc(`globalChat/${data.replyToId}`).get();
+          replyTo = r.exists ? replyQuoteOf(data.replyToId, r.data()) : null;
+          if (!replyTo) throw Object.assign(new Error('Yanıtlanan mesaj artık yok.'), { code: 'failed-precondition' });
+        }
+        await fakeDb.collection('globalChat').doc().set({ uid: PREVIEW_UID, displayName: 'Önizleme Admin', avatar: null, text: data.text, ...(replyTo ? { replyTo } : {}), createdAt: FieldValue.serverTimestamp() });
+        return { data: { ok: true } };
+      }
+      if (name === 'reactChatMessage') {
+        const ref = fakeDb.doc(`globalChat/${data.msgId}`);
+        const d = (await ref.get()).data();
+        const r = nextReaction(d?.reactions?.[PREVIEW_UID], data.emoji);
+        if (r.error) throw Object.assign(new Error(r.error), { code: 'invalid-argument' });
+        await ref.update({ [`reactions.${PREVIEW_UID}`]: r.remove ? FieldValue.delete() : r.value });
+        return { data: { ok: true } };
+      }
+      if (name === 'createSixtagramPost') {
+        let attachment = null;
+        if (data.attachment?.type === 'drawing') {
+          const r = sanitizeDrawing(data.attachment);
+          if (r.error) throw Object.assign(new Error(r.error), { code: 'invalid-argument' });
+          attachment = r.drawing;
+        }
+        const now = Date.now();
+        await fakeDb.collection('sixtagramPosts').doc().set({ uid: PREVIEW_UID, authorName: 'Önizleme Admin', authorAvatar: null, text: data.text || '', attachment, likeCount: 0, createdAt: FieldValue.serverTimestamp(), createdAtMs: now, expiresAtMs: now + 86400000 });
         return { data: { ok: true } };
       }
       return { data: { ok: true } };

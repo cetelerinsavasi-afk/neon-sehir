@@ -188,3 +188,33 @@ test('özel mesaj bildirme: yalnızca sohbet üyesi', async () => {
   assert.equal(r.targetUid, 'ali');
   assert.equal(r.textSnapshot, 'kötü söz');
 });
+
+test('v72: yanıt — alıntı sunucuda yanıtlanan mesajdan; olmayan mesaja yanıt yok', async () => {
+  const h = setup();
+  await befriend(h, 'ali', 'veli');
+  const a = await h.act('ali', 'sendDm', { targetUid: 'veli', text: 'Akşam galeriye gidelim mi?' });
+  h.clock.now += 2000;
+  const b = await h.act('veli', 'sendDm', { targetUid: 'ali', text: 'Olur!', replyToId: a.id });
+  const cid = chatIdOf('ali', 'veli');
+  const m = h.G(`dmChats/${cid}/dmMessages/${b.id}`);
+  assert.deepEqual(m.replyTo, { id: a.id, uid: 'ali', name: 'Ali', text: 'Akşam galeriye gidelim mi?' });
+  h.clock.now += 2000;
+  await assert.rejects(h.act('veli', 'sendDm', { targetUid: 'ali', text: 'x', replyToId: 'yokboyle' }), /artık yok/);
+  await assert.rejects(h.act('veli', 'sendDm', { targetUid: 'ali', text: 'x', replyToId: '../hack' }), /Geçersiz/);
+});
+
+test('v72: tepki — kişi başı tek emoji, aynı emoji kaldırır, geçersiz emoji/yabancı yok', async () => {
+  const h = setup();
+  await befriend(h, 'ali', 'veli');
+  const a = await h.act('ali', 'sendDm', { targetUid: 'veli', text: 'selam' });
+  const path = `dmChats/${chatIdOf('ali', 'veli')}/dmMessages/${a.id}`;
+  await h.act('veli', 'reactDm', { targetUid: 'ali', msgId: a.id, emoji: '❤️' });
+  await h.act('ali', 'reactDm', { targetUid: 'veli', msgId: a.id, emoji: '😂' });
+  assert.deepEqual(h.G(path).reactions, { veli: '❤️', ali: '😂' });
+  await h.act('veli', 'reactDm', { targetUid: 'ali', msgId: a.id, emoji: '👍' });
+  assert.equal(h.G(path).reactions.veli, '👍');
+  await h.act('veli', 'reactDm', { targetUid: 'ali', msgId: a.id, emoji: '👍' });
+  assert.deepEqual(h.G(path).reactions, { ali: '😂' });
+  await assert.rejects(h.act('veli', 'reactDm', { targetUid: 'ali', msgId: a.id, emoji: '💩' }), /Geçersiz tepki/);
+  await assert.rejects(h.act('ayse', 'reactDm', { targetUid: 'ali', msgId: a.id, emoji: '👍' }), /arkadaş/);
+});

@@ -1,3 +1,24 @@
+# v72 — Kare ev fotoğrafı + Sixtagram'da resim çizme + ChatsApp yanıt/tepki
+
+1. **Ev fotoğrafı yine KARE, ama çekildiği açıyla:** dikey çekimde yatay görüş açısı korunur, üstten/alttan kırpılır (yatay çekimde yanlardan). Çekim önizlemesi de aynı kare kırpılmış hâli gösterir, paylaşılanla birebir aynı. İsim/balon kadrajın üstünden taşacaksa aşağı itilir, kesilmez.
+2. **Sixtagram → Görsel Ekle → 🎨 Resim Çiz** (listenin en üstünde):
+   - Boş kare tuval, 12 renk, 3 fırça kalınlığı.
+   - **↩️ Geri al:** son fırça darbesini siler (art arda basılabilir).
+   - **Tuval rengi:** 8 zemin rengi; istediğin an değiştirilebilir, çizim korunur.
+   - **🗑️ Temizle** (yanlışlıkla silmesin diye iki kez basılır).
+   - "Bitti" → gönderide önizleme (✏️ Çizimi düzenle ile geri dönülebilir) → Paylaş. Akışta normal fotoğraf gibi kare görünür.
+   - Görsel YÜKLENMEZ: fırça darbeleri saklanır ve her telefonda yeniden çizilir. Sunucu renkleri/kalınlıkları/koordinatları doğrular. Bir tablo en fazla 500 darbe ve 8.000 nokta olabilir; tuvalin altındaki çubuk kalan yeri gösterir.
+3. **ChatsApp (Neon Şehir grubu + arkadaş sohbetleri):** mesaja basılı tutunca açılan panelde:
+   - En üstte **emoji tepkileri** (👍 ❤️ 😂 😮 😢 🙏 🔥 👏). Mesajın altında sayılarıyla görünür. Kişi başı bir tepki; aynı emojiye tekrar basınca kalkar. Balonun altındaki rozete dokunarak da tepki verilebilir.
+   - **↩️ Yanıtla:** mesaj kutusunun üstünde "Yanıtlanıyor · İsim" çubuğu çıkar (✕ ile iptal). Gönderilen mesajın içinde alıntı görünür; alıntıya dokununca asıl mesaja kayar ve vurgulanır.
+   - Alıntı sunucuda asıl mesajdan okunur (sahte alıntı yazılamaz). Silinmiş/gizlenmiş mesaja yanıt verilemez. Engellediğin oyuncunun alıntılanan metni gösterilmez.
+
+Testler: 214 test geçiyor (çizim doğrulama, DM yanıt/tepki eklendi).
+
+Yayınlama: `firebase deploy --only functions` (yeni: `reactChatMessage`; güncel: `sendChatMessage`, `socialAction`, `createSixtagramPost`) + web. Kurallarda değişiklik yok.
+
+---
+
 # v71 — Düzeltmeler + mekân hareketleri + çete reklamı
 
 1. **Mobilya SMS'i kaldırıldı:** mobilya/duvar/zemin alışverişinden sonra "Mobilya Mağazası" mesajı gelmez.

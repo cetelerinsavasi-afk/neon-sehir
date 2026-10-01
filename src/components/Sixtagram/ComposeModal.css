@@ -281,3 +281,11 @@
 .six-compose-sublist-actions .six-compose-submit {
   flex: 1;
 }
+
+/* v72 — "Resim Çiz" önizlemesinde düzenle */
+.six-compose-edit-drawing {
+  color: var(--neon-cyan);
+  margin: 0 0 6px auto;
+  font-size: 12px;
+  font-weight: 700;
+}

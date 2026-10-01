@@ -1,0 +1,185 @@
+/* v72 — Sixtagram "Resim Çiz" tuvali */
+.dp-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1600;
+  background: rgba(0, 0, 0, 0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  box-sizing: border-box;
+}
+.dp-sheet {
+  width: 100%;
+  max-width: 480px;
+  max-height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  box-sizing: border-box;
+  background: var(--bg, #070a12);
+  color: var(--text, #e8edf6);
+  font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
+}
+.dp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.dp-title {
+  font-weight: 800;
+  font-size: 15px;
+}
+.dp-head-btn {
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border, #1f2a40);
+  background: var(--panel, #0d1322);
+  color: var(--text-dim, #8a93a8);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.dp-head-btn.primary {
+  border-color: var(--neon-cyan, #19e8ff);
+  background: rgba(25, 232, 255, 0.14);
+  color: var(--neon-cyan, #19e8ff);
+}
+.dp-head-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.dp-canvas-wrap {
+  position: relative;
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+}
+.dp-canvas {
+  display: block;
+  touch-action: none;
+  cursor: crosshair;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.dp-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  color: rgba(120, 120, 130, 0.75);
+  font-size: 14px;
+  font-weight: 700;
+}
+.dp-ink {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--panel, #0d1322);
+  overflow: hidden;
+}
+.dp-ink-bar {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #19e8ff, #ff4fd8);
+  transition: width 0.15s;
+}
+.dp-full {
+  margin: 0;
+  font-size: 12px;
+  color: #ffb74d;
+}
+.dp-tools {
+  display: flex;
+  gap: 8px;
+}
+.dp-tool {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 6px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border, #1f2a40);
+  background: var(--panel, #0d1322);
+  color: var(--text, #e8edf6);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.dp-tool.on {
+  border-color: var(--neon-cyan, #19e8ff);
+}
+.dp-tool.danger {
+  border-color: #ff5252;
+  color: #ff8a80;
+}
+.dp-tool:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.dp-bg-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+.dp-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+.dp-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  padding: 0;
+}
+.dp-swatch.bg {
+  border-radius: 8px;
+}
+.dp-swatch.on {
+  border-color: var(--neon-cyan, #19e8ff);
+  box-shadow: 0 0 0 2px rgba(25, 232, 255, 0.35);
+  transform: scale(1.1);
+}
+.dp-size {
+  width: 44px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border, #1f2a40);
+  background: var(--panel, #0d1322);
+  cursor: pointer;
+}
+.dp-size span {
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+.dp-size.on {
+  border-color: var(--neon-cyan, #19e8ff);
+}
+.dp-colors .dp-swatch {
+  width: 30px;
+  height: 30px;
+}
+/* Telefon ekranında 12 renk iki satır (6+6) */
+@media (max-width: 420px) {
+  .dp-colors {
+    display: grid;
+    grid-template-columns: repeat(6, 30px);
+    justify-content: center;
+  }
+}

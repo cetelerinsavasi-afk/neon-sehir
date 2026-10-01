@@ -22,6 +22,7 @@ import { vehicleImage, vehicleDisplayName } from '../VehicleCard/VehicleCard';
 import { createSixtagramPost } from '../../services/gameActions';
 import { INTERVIEW_LOCATIONS } from '../../lib/interviewLocations';
 import PostAttachment from './PostAttachment';
+import DrawingPad from './DrawingPad';
 import './ComposeModal.css';
 
 const MAX_LEN = 280;
@@ -77,6 +78,8 @@ export default function ComposeModal({ onClose, onPosted }) {
   const [error, setError] = useState('');
   const [posting, setPosting] = useState(false);
   const [betPreviewLoading, setBetPreviewLoading] = useState(false);
+  // v72 — "Resim Çiz" editörü (null = kapalı; {} = yeni tuval; çizim = düzenle)
+  const [drawing, setDrawing] = useState(null);
 
   const { user } = useAuth();
   const { player } = usePlayer();
@@ -206,6 +209,8 @@ export default function ComposeModal({ onClose, onPosted }) {
   const ATTACHMENT_TYPES = [
     // "Röportaj Yap" — KULLANICI İSTEĞİ: görsel ekle seçeneklerinin en
     // üstünde olacak, bu yüzden listenin ilk elemanı (madde 1).
+    // v72 — boş tuvale çizip tablo paylaş
+    { id: 'drawing', label: 'Resim Çiz', emoji: '🎨', available: true },
     { id: 'interview', label: 'Röportaj Yap', emoji: '🎤', available: avatarAvailable },
     { id: 'avatar', label: 'Avatarım', emoji: '🧑', available: avatarAvailable },
     { id: 'vehicle', label: 'Arabam', emoji: '🚗', available: vehicleAvailable },
@@ -234,6 +239,11 @@ export default function ComposeModal({ onClose, onPosted }) {
 
   const chooseType = (typeId) => {
     setError('');
+    if (typeId === 'drawing') {
+      setDrawing(attachmentDraft?.type === 'drawing' ? attachmentDraft : {});
+      setPickerOpen(false);
+      return;
+    }
     if (typeId === 'vehicle' || typeId === 'iddaa' || typeId === 'investment') {
       setSubPicker(typeId);
       return;
@@ -589,6 +599,11 @@ export default function ComposeModal({ onClose, onPosted }) {
                 <X size={14} /> Kaldır
               </button>
             </div>
+            {attachmentPreview.type === 'drawing' && (
+              <button className="six-compose-remove-btn six-compose-edit-drawing" onClick={() => setDrawing(attachmentDraft)}>
+                ✏️ Çizimi düzenle
+              </button>
+            )}
             {betPreviewLoading && attachmentPreview.type === 'iddaa' ? (
               <p className="six-compose-note">Kupon yükleniyor…</p>
             ) : (
@@ -795,6 +810,16 @@ export default function ComposeModal({ onClose, onPosted }) {
           </div>
         )}
       </div>
+      {drawing && (
+        <DrawingPad
+          initial={drawing}
+          onCancel={() => setDrawing(null)}
+          onDone={(d) => {
+            setDrawing(null);
+            setAttachment(d, d);
+          }}
+        />
+      )}
     </div>
   );
 }

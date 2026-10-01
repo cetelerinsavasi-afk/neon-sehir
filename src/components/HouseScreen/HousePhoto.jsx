@@ -11,6 +11,18 @@ import { createHouseEngine } from './houseEngine';
 // =============================================================================
 const cache = new Map();
 
+// Çekim pozunu kare kadraja çevirir (kırpma): dikeyde dikey görüş açısı
+// yatay açıya eşitlenir; etiket ölçeği de kalan kenara göre ayarlanır.
+function squareCam(cam, a) {
+  const fov = Number(cam.fov) || 58;
+  const cw = Number(cam.cw) || 400;
+  if (a < 1) {
+    const f = (2 * Math.atan(a * Math.tan((fov * Math.PI) / 360)) * 180) / Math.PI;
+    return { ...cam, fov: f, cw };
+  }
+  return { ...cam, fov, cw: cw / a };
+}
+
 function housePhotoAspect(att) {
   const a = Number(att?.cam?.a);
   return Number.isFinite(a) && a > 0 ? Math.max(0.4, Math.min(2.5, a)) : 1;
@@ -24,11 +36,13 @@ function renderHousePhoto(att, key) {
   const job = (queue = queue
     .catch(() => {})
     .then(async () => {
-      // v71 — kare çekim anındaki en/boy oranıyla çizilir (eskiden hep kareydi →
-      // dikey telefonda çekilen fotoğraf çok daha geniş açılı görünüyordu).
+      // v72 — kare her zaman KARE, ama çekim anındaki açıyla: dikey çekimde
+      // yatay görüş açısı korunur (üstten/alttan kırpılır), yatay çekimde
+      // dikey açı korunur (yanlardan kırpılır).
       const a = housePhotoAspect(att);
-      const w = a >= 1 ? 640 : 480;
-      const h = Math.round(w / a);
+      const w = 540;
+      const h = 540;
+      const cam = squareCam(att.cam || {}, a);
       const host = document.createElement('div');
       host.style.cssText = `position:fixed;left:-10000px;top:0;width:${w}px;height:${h}px;pointer-events:none;`;
       document.body.appendChild(host);
@@ -41,7 +55,7 @@ function renderHousePhoto(att, key) {
         while (!eng.avatarsReady() && Date.now() - t0 < 5000) await wait(120);
         // çekim anındaki mesaj balonları (sunucu dondurdu)
         (att.people || []).forEach((p) => (Array.isArray(p.says) ? p.says : []).slice(-3).forEach((t) => eng.say(p.uid, String(t))));
-        return eng.renderPose(att.cam, w, h);
+        return eng.renderPose(cam, w, h);
       } finally {
         try {
           eng?.dispose();

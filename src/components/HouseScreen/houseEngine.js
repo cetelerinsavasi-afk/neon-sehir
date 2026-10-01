@@ -1416,7 +1416,7 @@ export function createHouseEngine(
     if (cur) lines.push(cur);
     return lines.slice(0, 6);
   }
-  function drawFigLabels(ctx, W, H, s) {
+  function drawFigLabels(ctx, W, H, s, minY = 0) {
     const font = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
     const figs = [];
     if (self.fig) figs.push(self.fig);
@@ -1433,13 +1433,25 @@ export function createHouseEngine(
       list.push({ fig, d, x: ((v.x + 1) / 2) * W, y: ((1 - v.y) / 2) * H });
     });
     list.sort((a, b) => b.d - a.d); // uzaktan yakına: yakındakiler üstte
-    list.forEach(({ fig, x, y }) => {
+    list.forEach(({ fig, x, y: y0 }) => {
+      let y = y0;
       // isim
       const em = fig.holding ? HOUSE_PRODUCTS[fig.holding]?.emoji || '🎁' : '';
       const name = em ? `${em} ${fig.name}` : fig.name;
       ctx.font = `700 ${11 * s}px ${font}`;
       const nw = ctx.measureText(name).width + 16 * s;
       const nh = 17 * s;
+      // v72 — etiket+balon yığını kadrajın üstünden taşarsa aşağı itilir (kesilmesin)
+      const bubbles = fig.bubbles.filter((b) => b.text && now <= b.until);
+      ctx.font = `${13 * s}px ${font}`;
+      const lh = 13 * 1.3 * s;
+      const laid = bubbles.map((b, i) => {
+        const lines = wrapText(ctx, b.text, 170 * s);
+        return { lines, bw: Math.max(...lines.map((l) => ctx.measureText(l).width)) + 20 * s, bh: lines.length * lh + 12 * s, gap: (i === bubbles.length - 1 ? 10 : 4) * s };
+      });
+      const stackH = nh + laid.reduce((a, l) => a + l.bh + l.gap, 0);
+      if (y - stackH < minY + 4 * s) y = minY + 4 * s + stackH;
+      ctx.font = `700 ${11 * s}px ${font}`;
       let top = y - nh;
       rrect(ctx, x - nw / 2, top, nw, nh, nh / 2);
       ctx.fillStyle = 'rgba(8,10,18,0.72)';
@@ -1452,14 +1464,9 @@ export function createHouseEngine(
       ctx.textBaseline = 'middle';
       ctx.fillText(name, x, top + nh / 2 + 0.5 * s);
       // balonlar (en yenisi altta, ismin hemen üstünde)
-      const bubbles = fig.bubbles.filter((b) => b.text && now <= b.until);
       ctx.font = `${13 * s}px ${font}`;
-      const lh = 13 * 1.3 * s;
       for (let i = bubbles.length - 1; i >= 0; i--) {
-        const lines = wrapText(ctx, bubbles[i].text, 170 * s);
-        const bw = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 20 * s;
-        const bh = lines.length * lh + 12 * s;
-        const gap = (i === bubbles.length - 1 ? 10 : 4) * s;
+        const { lines, bw, bh, gap } = laid[i];
         top = top - gap - bh;
         ctx.save();
         ctx.shadowColor = 'rgba(0,0,0,0.35)';
@@ -1487,7 +1494,7 @@ export function createHouseEngine(
   }
   // Son çizilen WebGL karesini 2D tuvale kopyalayıp etiketleri ekler (aynı
   // görev içinde çağrılmalı — tampon henüz temizlenmemişken).
-  function composeShot(type, quality, s) {
+  function composeShot(type, quality, s, square = false) {
     const W = canvas.width;
     const H = canvas.height;
     try {
@@ -1497,9 +1504,17 @@ export function createHouseEngine(
       const ctx = c2.getContext('2d');
       ctx.drawImage(canvas, 0, 0);
       try {
-        drawFigLabels(ctx, W, H, s);
+        drawFigLabels(ctx, W, H, s, square && H > W ? (H - W) / 2 : 0);
       } catch {
         /* etiket çizilemezse sadece kare */
+      }
+      if (square && W !== H) {
+        const side = Math.min(W, H);
+        const c3 = document.createElement('canvas');
+        c3.width = side;
+        c3.height = side;
+        c3.getContext('2d').drawImage(c2, (W - side) / 2, (H - side) / 2, side, side, 0, 0, side, side);
+        return c3.toDataURL(type, quality);
       }
       return c2.toDataURL(type, quality);
     } catch {
@@ -1817,7 +1832,8 @@ export function createHouseEngine(
     captureFrame(type = 'image/jpeg', quality = 0.85) {
       try {
         renderer.render(scene, camera);
-        return composeShot(type, quality, canvas.width / Math.max(1, container.clientWidth || canvas.width));
+        // v72 — paylaşılan kare gibi ortadan KARE kırpılır
+        return composeShot(type, quality, canvas.width / Math.max(1, container.clientWidth || canvas.width), true);
       } catch {
         return null;
       }

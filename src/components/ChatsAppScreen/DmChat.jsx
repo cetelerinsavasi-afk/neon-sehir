@@ -12,6 +12,7 @@ import ActionMenu from '../ActionMenu/ActionMenu';
 import ReportBlockSheet from '../ReportBlockSheet/ReportBlockSheet';
 import { copyText, useLongPress } from '../ActionMenu/actionMenuUtils';
 import { clockOf, dayLabelOf, sameDay } from './chatsappTime';
+import { CHAT_REACTIONS, ReactionChips, ReplyBar, ReplyQuote, replyDraftOf } from './chatExtras';
 
 // v60 — Arkadaşla birebir sohbet (WhatsApp benzeri). Mesajlar sunucudan
 // geçer (socialAction → sendDm); 7 günden eski mesajlar gösterilmez ve silinir.
@@ -38,12 +39,14 @@ function useDmMessages(chatId, enabled) {
   return messages;
 }
 
-function Bubble({ m, mine, onMenu }) {
+function Bubble({ m, mine, myUid, onMenu, onReact }) {
   const press = useLongPress(() => onMenu(m));
   return (
-    <div className={`chatsapp-row${mine ? ' mine' : ''}`}>
+    <div id={`ca-msg-${m.id}`} className={`chatsapp-row${mine ? ' mine' : ''}`}>
       <div className={`chatsapp-bubble ca-dm-bubble${mine ? ' mine' : ''}`} {...press}>
+        <ReplyQuote replyTo={m.replyTo} myUid={myUid} />
         <span className="chatsapp-text">{m.text}</span>
+        <ReactionChips reactions={m.reactions} myUid={myUid} onReact={onReact ? (e) => onReact(m, e) : () => {}} />
         <span className="chatsapp-time">{clockOf(m.createdAtMs)}</span>
       </div>
     </div>
@@ -67,8 +70,19 @@ export default function DmChat({ target, onBack }) {
   const [menuFor, setMenuFor] = useState(null);
   const [reportOf, setReportOf] = useState(null);
   const [showCard, setShowCard] = useState(false);
+  const [replyTo, setReplyTo] = useState(null); // v72 — yanıtlanan mesaj
   const bottomRef = useRef(null);
+  const inputRef = useRef(null);
   const myUnread = chat?.myUnread || 0;
+
+  const react = async (m, emoji) => {
+    setError(null);
+    try {
+      await socialAction('reactDm', { targetUid: target.uid, msgId: m.id, emoji });
+    } catch (err) {
+      setError(err.message || 'Tepki verilemedi.');
+    }
+  };
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -85,8 +99,9 @@ export default function DmChat({ target, onBack }) {
     setBusy(true);
     setError(null);
     try {
-      await socialAction('sendDm', { targetUid: target.uid, text: t });
+      await socialAction('sendDm', { targetUid: target.uid, text: t, ...(replyTo ? { replyToId: replyTo.id } : {}) });
       setText('');
+      setReplyTo(null);
     } catch (err) {
       setError(err.message || 'Mesaj gönderilemedi.');
     } finally {
@@ -113,15 +128,17 @@ export default function DmChat({ target, onBack }) {
         {messages.map((m, i) => (
           <Fragment key={m.id}>
             {(i === 0 || !sameDay(messages[i - 1].createdAtMs, m.createdAtMs)) && <p className="ca-day">{dayLabelOf(m.createdAtMs)}</p>}
-            <Bubble m={m} mine={m.uid === user.uid} onMenu={setMenuFor} />
+            <Bubble m={m} mine={m.uid === user.uid} myUid={user.uid} onMenu={setMenuFor} onReact={friend ? react : null} />
           </Fragment>
         ))}
         {messages.length === 0 && friend && <p className="ca-empty">Henüz mesaj yok. İlk mesajı sen gönder! 👋</p>}
         <div ref={bottomRef} />
       </div>
+      {friend && <ReplyBar replyTo={replyTo} myUid={user.uid} onCancel={() => setReplyTo(null)} />}
       {friend ? (
         <div className="chatsapp-input-row">
           <input
+            ref={inputRef}
             type="text"
             placeholder="Mesaj yaz…"
             value={text}
@@ -143,7 +160,23 @@ export default function DmChat({ target, onBack }) {
         <ActionMenu
           title={`“${String(menuFor.text || '').slice(0, 60)}”`}
           onClose={() => setMenuFor(null)}
+          emojis={friend ? CHAT_REACTIONS : null}
+          selectedEmoji={menuFor.reactions?.[user.uid]}
+          onEmoji={(e) => react(menuFor, e)}
           actions={[
+            ...(friend
+              ? [
+                  {
+                    key: 'reply',
+                    icon: '↩️',
+                    label: 'Yanıtla',
+                    onClick: () => {
+                      setReplyTo(replyDraftOf(menuFor, menuFor.uid === user.uid ? 'Sen' : name));
+                      setTimeout(() => inputRef.current?.focus(), 50);
+                    },
+                  },
+                ]
+              : []),
             { key: 'copy', icon: '📋', label: 'Kopyala', onClick: () => copyText(menuFor.text || '') },
             ...(menuFor.uid !== user.uid ? [{ key: 'report', icon: '⚑', label: 'Bildir', subtle: true, onClick: () => setReportOf(menuFor) }] : []),
           ]}

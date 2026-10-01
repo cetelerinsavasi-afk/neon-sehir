@@ -85,3 +85,32 @@
   font-weight: 700;
   cursor: pointer;
 }
+
+/* v72 — emoji tepki satırı */
+.am-emojis {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 4px 2px 8px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--panel-border, #1f2a40);
+}
+.am-emoji {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 0;
+  border: none;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+.am-emoji:active {
+  transform: scale(1.2);
+}
+.am-emoji.on {
+  background: rgba(25, 232, 255, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(25, 232, 255, 0.6);
+}

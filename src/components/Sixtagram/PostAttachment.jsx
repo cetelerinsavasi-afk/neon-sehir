@@ -17,15 +17,11 @@ import { drawDealershipSceneBackground } from '../CarDealershipWorldScreen/CarDe
 import { drawWeaponShopSceneBackground } from '../WeaponShopWorldScreen/WeaponShopWorldScreen';
 import { drawGarageSceneBackground } from '../TuningGarageWorldScreen/TuningGarageWorldScreen';
 import InterviewPlayer from '../Broadcast/InterviewPlayer';
+import DrawingView from './DrawingView';
 import './PostAttachment.css';
 
 // v66 — ev fotoğrafı: three.js'i ana pakete sokmamak için tembel yüklenir.
 const HousePhoto = lazy(() => import('../HouseScreen/HousePhoto'));
-// v71 — ev fotoğrafı çekim anındaki en/boy oranıyla gösterilir (eskiler kare)
-const houseAspectOf = (att) => {
-  const a = Number(att?.cam?.a);
-  return Number.isFinite(a) && a > 0 ? Math.max(0.4, Math.min(2.5, a)) : 1;
-};
 
 // Tüm parkPhoto kartları arasında paylaşılan avatar görsel önbelleği —
 // aynı avatarı tekrar tekrar SVG'den <img>'e çevirmemek için (bkz.
@@ -498,12 +494,23 @@ export default function PostAttachment({ attachment }) {
     );
   }
 
+  // v72 — "Resim Çiz": oyuncunun çizdiği tablo (fotoğraf gibi kare)
+  if (attachment.type === 'drawing') {
+    return (
+      <div className="post-att post-att-parkphoto">
+        <div className="post-att-parkphoto-frame post-att-drawing">
+          <DrawingView drawing={attachment} />
+        </div>
+      </div>
+    );
+  }
+
   if (attachment.type === 'housePhoto') {
     const people = attachment.people || [];
     const names = people.map((p) => p.displayName || 'Oyuncu');
     return (
       <div className="post-att post-att-parkphoto">
-        <div className="post-att-parkphoto-frame post-att-housephoto" style={{ aspectRatio: houseAspectOf(attachment) }}>
+        <div className="post-att-parkphoto-frame post-att-housephoto">
           <Suspense fallback={<div className="post-att-housephoto-empty">Fotoğraf yükleniyor…</div>}>
             <HousePhoto attachment={attachment} />
           </Suspense>
