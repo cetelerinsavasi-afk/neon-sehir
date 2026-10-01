@@ -1,3 +1,20 @@
+# v70 — Düzeltmeler
+
+1. **Başarılar** telefonun sağ sayfasında, "Bi fikrin mi var?"ın sağında.
+2. **2. el – çete ilanları** oyuncu ilanlarıyla aynı kartlarda (satıcı = çete adı). Aynı çete aynı ürünü aynı fiyata koyarsa ilan birleşir (sunucu yeni ilanı mevcut ilana ekler). Fiyatı uygunsa "Avantajlı Ürünler"e girer. Ayrı "Çete ilanları" bölümü kalktı.
+3. **Adım butonları:** sayı butonuna basınca değer o kadar ARTAR ve buton seçili olur; tekrar bastıkça artmaya devam eder. [+] seçili kadar artırır, [−] seçili kadar azaltır.
+4. **Ev 2D modu:** açı değiştirirken sıçrama/titreme giderildi (görünür alan hesabı 45°'de eksen değiştiriyordu; kamera da iki kez yumuşatılıyordu).
+5. **Ev kamerası:** fotoğraf siyah çıkıyordu (WebGL tamponu okunmadan temizleniyordu) — kare artık çekim anında çizilip okunuyor.
+6. **"Ev sahibi seni evden çıkardı" yanlış uyarısı:** girişte ilk (önbellek) görüntüde kayıt henüz yok diye çıkarılmış sayılıyordu. Artık sadece ev sahibi gerçekten çıkardıysa (15 dk yasak) uyarı çıkar; kayıt başka sebeple düşerse (ör. uygulama arka planda kaldı) sessizce yeniden girilir.
+7. **Evde eldeki ürün** artık diğer mekânlardaki gibi karakterin elinde görünüyor (herkes görür).
+8. **Ev fiyatı** 500.000 altın.
+9. **Banka kredisi** adımlarına +100.000 ve +1M eklendi.
+10. **Makam masası:** koltuk masanın arkasına (ekranın olduğu tarafa) alındı.
+
+Yayınlama: `firebase deploy --only functions` (houseAction fiyat, gangAction ilan birleştirme) + web.
+
+---
+
 # v69 — Faz 4 (Android) + son istekler
 
 ## Krediler

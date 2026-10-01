@@ -2476,9 +2476,9 @@ function officeDesk(g, ctx) {
   C(g, 0.04, 0.035, 0.1, 0.2, 0.84, 0.15, GOLD());
   RB(g, 0.5, 0.32, 0.02, 0.01, 0, 1.02, -0.25, BLACK(), [-0.1, 0, 0]);
   PLANE(g, 0.46, 0.28, own(new THREE.MeshStandardMaterial({ color: '#000', emissive: '#fff', emissiveMap: codeTexture(), emissiveIntensity: 0.8 })), 0, 1.02, -0.238, [-0.1, 0, 0]);
-  // makam koltuğu
+  // makam koltuğu — v70: masanın ARKASINDA (ekranın baktığı tarafta), masaya dönük
   const chair = new THREE.Group();
-  chair.position.set(0, 0, -0.95);
+  chair.position.set(0, 0, 0.95);
   chair.rotation.y = Math.PI;
   g.add(chair);
   gamingChair(chair, { tint: { c: '#3a2216' } });
@@ -2675,7 +2675,7 @@ export const CATALOG = [
   // v66 — YENİ EŞYALAR
   { k: 'cafetable', name: 'Kafe Masası (2 Sandalye)', cat: 'masa', icon: '☕', tints: 'wood', build: cafeTable, box: [0.95, 0.4] },
   { k: 'bartable', name: 'Bar Masası', cat: 'masa', icon: '🍸', tints: 'wood', build: barTable, box: [0.35, 0.35] },
-  { k: 'officedesk', name: 'Makam Masası', cat: 'masa', icon: '💼', tints: 'wood', build: officeDesk, boxes: [[0, 0, 1.0, 0.45], [0, -0.95, 0.3, 0.3]], seats: [[0, 0.55, -0.97]] },
+  { k: 'officedesk', name: 'Makam Masası', cat: 'masa', icon: '💼', tints: 'wood', build: officeDesk, boxes: [[0, 0, 1.0, 0.45], [0, 0.95, 0.3, 0.3]], seats: [[0, 0.55, 0.97]] },
   { k: 'washer', name: 'Çamaşır Makinesi', cat: 'banyo', icon: '🫧', tints: 'appliance', build: washer(false), box: [0.31, 0.3] },
   { k: 'dryer', name: 'Kurutma Makinesi', cat: 'banyo', icon: '🌀', tints: 'appliance', build: washer(true), box: [0.31, 0.3] },
   { k: 'pcstation', name: 'İnternet Kafe İstasyonu', cat: 'elektronik', icon: '🖥️', tints: 'neon', build: pcStation, box: [1.1, 0.38] },

@@ -25,7 +25,7 @@ test('depodan 2. ele: Baba/Sağ Kol; fiyat aralığı; ilandaki ürün depoda ye
   assert.equal(d.listed['araba:2'], 2);
   assert.equal(d.usedUnits, 80, 'ilandaki ürün depoda yer kaplamaya devam eder');
   await h.fails(G.baba, 'sellFromDepot', { itemKey: 'araba:2', qty: 1 }); // v67: anında satış yok
-  await h.act(G.baba, 'listDepotItem', { itemKey: 'araba:2', qty: 1, unitPrice: 8000 }); // kalan 1 serbest
+  await h.act(G.baba, 'listDepotItem', { itemKey: 'araba:2', qty: 1, unitPrice: 8500 }); // kalan 1 serbest (farklı fiyat → ayrı ilan)
   await h.fails(G.baba, 'listDepotItem', { itemKey: 'araba:2', qty: 1, unitPrice: 8000 }); // hepsi ilanda
   await h.act(G.baba, 'cancelDepotListing', { listingId });
   assert.equal(depotOf(h, G.gangId).listed['araba:2'], 1, 'ikinci ilan hâlâ açık');
@@ -87,4 +87,17 @@ test('çete dağılınca açık ilanları kapanır', async () => {
   await h.act(G.baba, 'leaveGang');
   await h.internal.clock.runClock('test');
   assert.equal(h.get(`market/${listingId}`).status, 'cancelled');
+});
+
+test('v70: aynı çete aynı ürünü aynı fiyata koyarsa ilanlar birleşir; farklı fiyat ayrı ilan', async () => {
+  const h = await createHarness();
+  const G = await gangWithStock(h);
+  const a = await h.act(G.baba, 'listDepotItem', { itemKey: 'araba:2', qty: 1, unitPrice: 8000 });
+  const b = await h.act(G.baba, 'listDepotItem', { itemKey: 'araba:2', qty: 1, unitPrice: 8000 });
+  assert.equal(b.listingId, a.listingId);
+  assert.equal(b.merged, true);
+  assert.equal(h.get(`market/${a.listingId}`).quantity, 2);
+  const c = await h.act(G.baba, 'listDepotItem', { itemKey: 'araba:2', qty: 1, unitPrice: 9000 });
+  assert.notEqual(c.listingId, a.listingId);
+  assert.equal(depotOf(h, G.gangId).listed['araba:2'], 3);
 });

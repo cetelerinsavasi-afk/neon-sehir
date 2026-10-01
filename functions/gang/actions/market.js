@@ -31,9 +31,23 @@ export function createMarketActions(core, trade) {
       const guard = await requestGuard(tx, ctx, data.requestId);
       if (guard.done) return guard.result;
       const { gangId, me } = await trade.readGangRole(tx, ctx, 'sagkol', 'Depodan ilanı sadece Mafya Babası ve Sağ Kol verebilir.');
-      const [depotSnap, gangSnap] = await Promise.all([tx.get(ctx.ref.depot(gangId)), tx.get(ctx.ref.gang(gangId))]);
+      const [depotSnap, gangSnap, sameSnap] = await Promise.all([
+        tx.get(ctx.ref.depot(gangId)),
+        tx.get(ctx.ref.gang(gangId)),
+        tx.get(ctx.ref.listings().where('gangId', '==', gangId).where('itemKey', '==', key).where('status', '==', 'open')),
+      ]);
       if (trade.availableOf(depotSnap.data(), key) < qty) fail('failed-precondition', 'Depoda bu kadar (ilanda olmayan) ürün yok.');
       const g = gangSnap.data();
+      // v70: aynı ürün aynı fiyatla zaten ilandaysa yeni ilan açılmaz, mevcut ilana eklenir
+      const same = sameSnap.docs.find((d) => Number(d.data().unitPrice) === unitPrice);
+      if (same) {
+        tx.update(same.ref, { quantity: FV.increment(qty), listedQty: FV.increment(qty) });
+        tx.update(ctx.ref.depot(gangId), { [`listed.${key}`]: FV.increment(qty) });
+        announce(tx, ctx, gangId, '🏷️', `${me.name} 2. eldeki ${it.label} ilanına ${qty} adet ekledi (adet ${fmt(unitPrice)}).`);
+        const res = { listingId: same.id, merged: true };
+        guard.save(res);
+        return res;
+      }
       const ref = ctx.ref.listings().doc();
       tx.set(ref, {
         gangId,

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import GangMarketSection from '../Gangs/GangMarketSection';
+import { buyGangListing, useGangMarketListings } from '../Gangs/GangMarketSection';
 import { useAuth } from '../../contexts/AuthContext';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useWeapons } from '../../hooks/useWeapons';
@@ -168,6 +168,11 @@ function estimateValue({ kind, catalogId, repairsUsed, gearUpgraded, tankUpgrade
   return { value: Math.round(max * pct), points, pct, max };
 }
 function estimateOfListing(l) {
+  // çete ürünleri yeni ve değer kaybetmez → tahmini değer = en yüksek fiyat
+  if (l.gang) {
+    const est = l.itemType === 'vehicle' ? estimateValue({ kind: 'vehicle', catalogId: l.vehicleCatalogId }) : estimateValue({ kind: 'weapon', catalogId: l.weaponCatalogId });
+    return { ...est, value: est.max, pct: 1, points: 0 };
+  }
   if (l.itemType === 'vehicle')
     return estimateValue({ kind: 'vehicle', catalogId: l.vehicleCatalogId, repairsUsed: l.vehicleRepairsUsed, gearUpgraded: l.vehicleGearUpgraded, tankUpgraded: l.vehicleTankUpgraded });
   if (l.itemType === 'weapon') return estimateValue({ kind: 'weapon', catalogId: l.weaponCatalogId, repairsUsed: l.weaponRepairsUsed, level: l.weaponLevel });
@@ -258,9 +263,10 @@ function listingLabel(listing) {
   if (listing.itemType === 'vehicle') {
     const stats = `Vites ${listing.vehicleGearLevel} · Depo ${listing.vehicleTank}L`;
     const upgraded = listing.vehicleGearUpgraded || listing.vehicleTankUpgraded;
-    return `${listing.vehicleModel} (${stats}${upgraded ? ' — geliştirilmiş' : ''})`;
+    return `${listing.vehicleModel} (${stats}${upgraded ? ' — geliştirilmiş' : ''})${listing.gang && listing.quantity > 1 ? ` · ${listing.quantity} adet` : ''}`;
   }
   if (listing.itemType === 'weapon') {
+    if (listing.gang && listing.quantity > 1) return `${listing.weaponName} (Güç ${listing.weaponPower?.toLocaleString('tr-TR')}) · ${listing.quantity} adet`;
     return listing.weaponLevel > 1
       ? `${listing.weaponName} (Sv. ${listing.weaponLevel}, Güç ${listing.weaponPower?.toLocaleString('tr-TR')} — geliştirilmiş)`
       : `${listing.weaponName} (Güç ${listing.weaponPower?.toLocaleString('tr-TR')})`;
@@ -721,7 +727,8 @@ function BuyMaterialModal({ listing, onClose, onBought }) {
     setBusy(true);
     setError(null);
     try {
-      await buyListing(listing.id, qty);
+      if (listing.gang) await buyGangListing(listing, qty);
+      else await buyListing(listing.id, qty);
       onBought?.();
       onClose();
     } catch (err) {
@@ -806,7 +813,10 @@ function MyListingWithAd({ listing, busy, onCancel, advertising, onStartAdvertis
 
 export default function MarketplaceScreen() {
   const { user } = useAuth();
-  const { listings } = useMarketplaceListings();
+  const { listings: playerListings } = useMarketplaceListings();
+  // v70: çete ilanları oyuncu ilanlarıyla aynı listede (aynı kart, avantajlı hesabı dahil)
+  const gangListings = useGangMarketListings();
+  const listings = [...playerListings, ...gangListings];
   // view — 'home' (yeni ana sayfa: avantajlı/reklam panelleri + 4 kategori
   // butonu) ya da CATEGORIES id'lerinden biri (kategori içine girildiğinde).
   // Eski üstteki sekme çubuğu kaldırıldı (kullanıcı revizesi).
@@ -874,7 +884,7 @@ export default function MarketplaceScreen() {
   const otherListings = categoryListings.filter((l) => l.sellerId !== user?.uid && !advantageousIds.has(l.id));
 
   const buyOrOpenModal = (l) =>
-    l.itemType === 'material' ? setBuyModalListing(l) : run(l.id, () => buyListing(l.id));
+    l.itemType === 'material' ? setBuyModalListing(l) : run(l.id, () => (l.gang ? buyGangListing(l, 1) : buyListing(l.id)));
 
   return (
     <div className="market-screen">
@@ -968,8 +978,6 @@ export default function MarketplaceScreen() {
               ))}
             </div>
           )}
-
-          <GangMarketSection view={view} />
 
           <p className="market-section-title">Diğer İlanlar</p>
           {otherListings.length === 0 && <p className="market-hint">{advantageousListings.length ? 'Bu kategoride başka ilan yok.' : 'Bu kategoride ilan yok.'}</p>}

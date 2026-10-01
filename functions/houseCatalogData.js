@@ -7,7 +7,7 @@
 // kalır. g = altın, z = zümrüt.
 // =============================================================================
 
-export const HOUSE_PRICE = 1_000_000; // altın
+export const HOUSE_PRICE = 500_000; // altın (v70: 1.000.000 → 500.000)
 // v68: ev sayısı sınırı kaldırıldı (eski istemciler için sabit duruyor, kullanılmıyor)
 export const MAX_HOUSES_PER_PLAYER = Infinity;
 export const MAX_ITEMS_PER_HOUSE = 300;

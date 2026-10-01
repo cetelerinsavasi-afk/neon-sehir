@@ -108,6 +108,9 @@ export default function HouseScreen({ houseId, onExit }) {
   const { isBlocked } = useBlocks();
   const { held, gift, clearGift } = useHeldItem('ev');
   const mountRef = useRef(null);
+  const seenSelfRef = useRef(false);
+  const rejoinRef = useRef(false);
+  const houseDocRef = useRef(null);
   const engineRef = useRef(null);
   const [engineKey, setEngineKey] = useState(0);
   const [phase, setPhase] = useState('loading');
@@ -305,6 +308,7 @@ export default function HouseScreen({ houseId, onExit }) {
         }
         const data = snap.data();
         setHouseDoc(data);
+        houseDocRef.current = data;
         const eng = engineRef.current;
         if (!eng) return;
         const dsg = { items: data.items || [], wall: data.wall, floor: data.floor };
@@ -364,9 +368,25 @@ export default function HouseScreen({ houseId, onExit }) {
         });
         engineRef.current?.setOthers(list.filter((p) => p.uid !== user.uid));
         setOnline(list);
-        // ev sahibi beni çıkardıysa konum kaydım silinir
-        if (!meThere && enteredRef.current && !leavingRef.current && !snap.metadata?.hasPendingWrites) {
-          exit('Ev sahibi seni evden çıkardı.');
+        // ev sahibi beni çıkardıysa konum kaydım silinir.
+        // v70: girişte ilk anlık görüntüler (önbellekten) kaydımı henüz
+        // içermeyebilir → "çıkarıldın" yanlış alarmı. Kaydımı sunucudan en az
+        // bir kez gördükten SONRA kaybolursa çıkarılmış sayılırım.
+        if (meThere && !snap.metadata?.fromCache) seenSelfRef.current = true;
+        if (!meThere && seenSelfRef.current && enteredRef.current && !leavingRef.current && !snap.metadata?.hasPendingWrites && !snap.metadata?.fromCache) {
+          const kickedUntil = Number(houseDocRef.current?.kicked?.[user.uid] || 0);
+          if (kickedUntil > Date.now()) {
+            exit('Ev sahibi seni evden çıkardı.');
+          } else if (!rejoinRef.current) {
+            // kaydım başka bir sebeple düştü (ör. uygulama uzun süre arka planda kaldı) → sessizce yeniden gir
+            rejoinRef.current = true;
+            seenSelfRef.current = false;
+            houseAction({ op: 'enter', houseId })
+              .catch((err) => exit(err?.message || 'Evden ayrıldın.'))
+              .finally(() => {
+                rejoinRef.current = false;
+              });
+          }
         }
       },
       (err) => console.error('Ev presence hatası:', err)
@@ -589,13 +609,7 @@ export default function HouseScreen({ houseId, onExit }) {
 
   // --- kamera ------------------------------------------------------------------------
   const openCamera = () => {
-    const c = mountRef.current?.querySelector('canvas');
-    let shot = null;
-    try {
-      shot = c?.toDataURL('image/jpeg', 0.8) || null;
-    } catch {
-      shot = null;
-    }
+    const shot = engineRef.current?.captureFrame('image/jpeg', 0.82) || null;
     setCameraShot({ img: shot, pose: engineRef.current?.getCameraPose() });
     setCameraCaption('');
     setPanel('camera');

@@ -13,7 +13,7 @@
 //   heldItems/{uid}             — eldeki ürün (venue:'ev') — bkz. index.js giftHeldItem
 //
 // Ekonomi kuralları:
-//   - Ev 1.000.000 altın. v68: ev sayısı sınırı yok.
+//   - Ev 500.000 altın (v70). v68: ev sayısı sınırı yok.
 //   - Eşya fiyatları functions/houseCatalogData.js (istemciyle ORTAK dosya).
 //   - Odaya mağazadan konan eşya "deneme"dir (p yok): herkes görür ama kullanılamaz.
 //     'checkout' tüm deneme eşyaları + seçili kaplamaları TEK transaction'da satın

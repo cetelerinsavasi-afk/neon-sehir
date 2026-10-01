@@ -1,9 +1,12 @@
 import { useMemo, useState } from 'react';
 import './QuantityStepper.css';
 
-// v67 — ortak adım sistemi (oyunun her yerinde aynı):
+// v67/v70 — ortak adım sistemi (oyunun her yerinde aynı):
 //   [−]  değer  [+]
-//   Adım: 1 · 10 · 100 · 1.000 · 10.000   ← seçilen adım kadar artar/azalır (varsayılan 1)
+//   1 · 10 · 100 · 1.000 · 10.000 …
+//   - Bir sayı butonuna basınca değer O KADAR ARTAR ve o buton SEÇİLİ olur;
+//     tekrar bastıkça artmaya devam eder.
+//   - [+] seçili sayı kadar artırır, [−] seçili sayı kadar azaltır (varsayılan 1).
 //   Max · Sıfırla
 // `step` taban birimidir (ör. fiyatlarda 10) — adımlar onun 10'ar katlarıdır.
 // `quickAmounts` geriye uyumluluk için duruyor: içindeki en büyük değer adım
@@ -50,10 +53,19 @@ export default function QuantityStepper({ value, onChange, max, min = 0, step = 
       </div>
       {steps.length > 1 && (
         <div className="qty-stepper-steps" role="group" aria-label="Adım">
-          <span className="qty-stepper-steps-label">Adım</span>
           {steps.map((s) => (
-            <button key={s} type="button" className={`qty-stepper-step${s === sel ? ' on' : ''}`} onClick={() => setPicked(s)} aria-pressed={s === sel}>
-              {s >= 1_000_000 ? `${s / 1_000_000}M` : fmt(s)}
+            <button
+              key={s}
+              type="button"
+              className={`qty-stepper-step${s === sel ? ' on' : ''}`}
+              disabled={atMax}
+              onClick={() => {
+                setPicked(s);
+                onChange(clamp(num + s));
+              }}
+              aria-pressed={s === sel}
+            >
+              +{s >= 1_000_000 ? `${s / 1_000_000}M` : fmt(s)}
             </button>
           ))}
         </div>

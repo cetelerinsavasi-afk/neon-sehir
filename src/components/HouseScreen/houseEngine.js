@@ -138,6 +138,24 @@ function blobShadowTexture() {
   return blobTex;
 }
 
+// v70 — eldeki ürün (içecek/yiyecek/silah): diğer mekânlardaki gibi elde
+// görünen küçük ikon (kameraya dönük sprite, hafifçe sallanır).
+const heldTexCache = new Map();
+function heldTexture(product) {
+  if (heldTexCache.has(product)) return heldTexCache.get(product);
+  const c = document.createElement('canvas');
+  c.width = c.height = 96;
+  const g = c.getContext('2d');
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.font = '72px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+  g.fillText(HOUSE_PRODUCTS[product]?.emoji || '🎁', 48, 52);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  heldTexCache.set(product, t);
+  return t;
+}
+
 class AvatarFigure {
   constructor(scene, labelLayer, { uid, name, avatar, isSelf }) {
     this.uid = uid;
@@ -152,6 +170,10 @@ class AvatarFigure {
     this.shadow.rotation.x = -Math.PI / 2;
     this.shadow.position.y = 0.015;
     this.group.add(this.shadow);
+    this.heldSprite = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: true, toneMapped: false }));
+    this.heldSprite.scale.set(0.34, 0.34, 1);
+    this.heldSprite.visible = false;
+    this.group.add(this.heldSprite);
     scene.add(this.group);
     this.x = 0;
     this.z = 0;
@@ -189,6 +211,11 @@ class AvatarFigure {
   setHolding(product) {
     if (product === this.holding) return;
     this.holding = product || null;
+    if (this.holding) {
+      this.heldSprite.material.map = heldTexture(this.holding);
+      this.heldSprite.material.needsUpdate = true;
+    }
+    this.heldSprite.visible = Boolean(this.holding);
     this.renderName();
   }
   renderName() {
@@ -280,6 +307,15 @@ class AvatarFigure {
       this.plane.visible = true;
     }
     this.plane.scale.set(this.facingLeft ? -1 : 1, 1, 1);
+    if (this.holding) {
+      // el hizası: gövdenin yanında, kameraya doğru biraz önde
+      const side = this.facingLeft ? -1 : 1;
+      const rx = Math.cos(ang) * side;
+      const rz = -Math.sin(ang) * side;
+      const bob = Math.sin(now / 480) * 0.02;
+      const handY = (seatPos ? seatPos.y + 0.55 : AV_PLANE_H * 0.47 - AV_FEET) + bob;
+      this.heldSprite.position.set(rx * 0.3 + Math.sin(ang) * 0.12, handY, rz * 0.3 + Math.cos(ang) * 0.12);
+    }
     if (seatPos) {
       const topY = seatPos.y + 0.04 + AV_WAIST_FROM_TOP;
       this.plane.position.y = topY - AV_PLANE_H / 2 + lift;
@@ -306,6 +342,7 @@ class AvatarFigure {
     this.mat.dispose();
     this.shadow.geometry.dispose();
     this.shadow.material.dispose();
+    this.heldSprite.material.dispose();
     this.label?.remove();
   }
 }
@@ -1239,14 +1276,21 @@ export function createHouseEngine(
       const halfW = tv * (camera.aspect || 1) * topCur.dist;
       const halfD = (tv * topCur.dist) / Math.max(0.5, Math.sin(topCur.el));
       const lim = (v, half, room) => (half >= room / 2 ? 0 : clamp(v, -room / 2 + half, room / 2 - half));
-      const cosA = Math.abs(Math.cos(topCur.az)) > 0.7;
-      camTarget.set(lim(px, cosA ? halfW : halfD, W), 0.6, lim(pz, cosA ? halfD : halfW, D));
-      const want = new THREE.Vector3(
+      // v70: görünür alanın döndürülmüş kutusu SÜREKLİ hesaplanır (eskiden 45°'de
+      // eksen değiştiriyordu → açı değiştirirken görüntü sıçrıyordu)
+      const ca = Math.abs(Math.cos(topCur.az));
+      const sa = Math.abs(Math.sin(topCur.az));
+      const tx = lim(px, ca * halfW + sa * halfD, W);
+      const tz = lim(pz, sa * halfW + ca * halfD, D);
+      // hedef yumuşak takip edilir; kamera konumu açıdan DOĞRUDAN hesaplanır
+      // (çift yumuşatma döndürürken yakınlaşıp uzaklaşma/titreme yapıyordu)
+      const kt = firstFrame ? 1 : 1 - Math.exp(-dt * 10);
+      camTarget.set(camTarget.x + (tx - camTarget.x) * kt, 0.6, camTarget.z + (tz - camTarget.z) * kt);
+      camPos.set(
         camTarget.x + Math.sin(topCur.az) * Math.cos(topCur.el) * topCur.dist,
         0.6 + Math.sin(topCur.el) * topCur.dist,
         camTarget.z + Math.cos(topCur.az) * Math.cos(topCur.el) * topCur.dist
       );
-      camPos.lerp(want, firstFrame ? 1 : 1 - Math.exp(-dt * 10));
       camera.position.copy(camPos);
       camera.lookAt(camTarget);
       focus.set(px, 1, pz);
@@ -1623,6 +1667,16 @@ export function createHouseEngine(
       camera.getWorldDirection(dir);
       const r = (v) => Math.round(v * 100) / 100;
       return { px: r(camera.position.x), py: r(camera.position.y), pz: r(camera.position.z), dx: r(dir.x), dy: r(dir.y), dz: r(dir.z), fov: camera.fov };
+    },
+    // v70 — ekran görüntüsü: WebGL tamponu çizimden sonra temizlendiği için
+    // (preserveDrawingBuffer kapalı) kare AYNI anda çizilip okunur → siyah çıkmaz.
+    captureFrame(type = 'image/jpeg', quality = 0.85) {
+      try {
+        renderer.render(scene, camera);
+        return canvas.toDataURL(type, quality);
+      } catch {
+        return null;
+      }
     },
     // fotoğraf (Sixtagram) için tek kare: verilen kamera pozuyla
     renderPose(pose, w = 480, h = 480) {

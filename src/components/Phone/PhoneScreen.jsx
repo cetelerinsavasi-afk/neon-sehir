@@ -35,12 +35,12 @@ const APPS = [
   { id: 'casino', glyph: '🎰', note: 'Casino', tone: 'casino' },
   { id: 'sixtagram', glyph: '📸', note: 'Sixtagram', tone: 'sixtagram' },
   { id: 'flappy', glyph: '🐤', note: 'Flappy Kuş', tone: 'flappy' },
-  { id: 'basarilar', glyph: '🏆', note: 'Başarılar', tone: 'basarilar' },
 ];
 const EXTRA_APPS = [
   { id: 'altin-magazasi', glyph: '', note: 'Zümrüt Mağazası', tone: 'emerald' },
   { id: 'rehber', glyph: 'N', note: 'Neon Şehir', tone: 'rehber' },
   { id: 'fikir', glyph: '💡', note: 'Bi fikrin mi var?', tone: 'fikir' },
+  { id: 'basarilar', glyph: '🏆', note: 'Başarılar', tone: 'basarilar' },
 ];
 
 // Android (Google Play TWA) içinde Altın Mağazası hiçbir yoldan açılamaz:

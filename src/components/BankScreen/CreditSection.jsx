@@ -11,6 +11,8 @@ import './CreditSection.css';
 // değeri + futbol takımının değeri). Aynı anda tek kredi; 10 gün, %20 faiz.
 // Asıl hesap sunucuda (functions/index.js computeCreditScore).
 const fmt = (n) => Math.floor(Number(n) || 0).toLocaleString('tr-TR');
+// v70: kredi tutarları büyük — 100.000 ve 1M butonları her zaman görünsün
+const CREDIT_STEPS = [1, 10, 100, 1000, 10_000, 100_000, 1_000_000];
 const PARTS = [
   { key: 'vehicles', icon: '🚗', label: 'Araçlar' },
   { key: 'weapons', icon: '🔫', label: 'Silahlar' },
@@ -138,7 +140,7 @@ export default function CreditSection() {
             <span>Kalan</span>
             <b className="cr-remaining">{fmt(credit.totalOwed - (credit.paid || 0))}</b>
           </div>
-          <QuantityStepper value={repay} onChange={setRepay} max={Math.min(gold, credit.totalOwed - (credit.paid || 0))} />
+          <QuantityStepper value={repay} onChange={setRepay} max={Math.min(gold, credit.totalOwed - (credit.paid || 0))} steps={CREDIT_STEPS} />
           <button
             className="cr-btn"
             disabled={!repay || busy === 'repay'}
@@ -162,7 +164,7 @@ export default function CreditSection() {
             <p className="cr-err">{blockedReason}</p>
           ) : (
             <>
-              <QuantityStepper value={amount} onChange={setAmount} max={limit} />
+              <QuantityStepper value={amount} onChange={setAmount} max={limit} steps={CREDIT_STEPS} />
               {amount > 0 && (
                 <div className="cr-rows">
                   <span>Hesabına yatacak</span>
