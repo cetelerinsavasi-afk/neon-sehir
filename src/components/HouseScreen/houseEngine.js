@@ -224,14 +224,18 @@ class AvatarFigure {
     this.nameEl.textContent = em ? `${em} ${this.name}` : this.name;
   }
   say(text) {
-    if (!this.bubbleBox) return;
-    const el = document.createElement('div');
-    el.className = 'hs-bubble';
-    el.textContent = text;
-    this.bubbleBox.appendChild(el);
-    const b = { el, until: performance.now() + 9000 };
+    // v71 — metin her zaman tutulur (fotoğrafa balon çizmek için; snapshot
+    // motorunda DOM etiketi yoktur).
+    const b = { el: null, text: String(text || ''), until: performance.now() + 9000 };
+    if (this.bubbleBox) {
+      const el = document.createElement('div');
+      el.className = 'hs-bubble';
+      el.textContent = b.text;
+      this.bubbleBox.appendChild(el);
+      b.el = el;
+    }
     this.bubbles.push(b);
-    while (this.bubbles.length > 3) this.bubbles.shift().el.remove();
+    while (this.bubbles.length > 3) this.bubbles.shift().el?.remove();
   }
   playEmote(kind, at = performance.now()) {
     if (!EMOTE_EMOJI[kind]) return;
@@ -326,7 +330,7 @@ class AvatarFigure {
     }
     this.bubbles = this.bubbles.filter((b) => {
       if (now > b.until) {
-        b.el.remove();
+        b.el?.remove();
         return false;
       }
       return true;
@@ -1375,6 +1379,134 @@ export function createHouseEngine(
     frame(dt);
   }
 
+  // --- v71 — fotoğraf: WebGL karesi + isim/balon etiketleri tek görselde --------
+  function rrect(ctx, x, y, w, h, r) {
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+  }
+  function wrapText(ctx, text, maxW) {
+    const lines = [];
+    let cur = '';
+    const push = (w) => {
+      // tek başına sığmayan uzun kelimeler harf harf bölünür
+      let word = w;
+      while (ctx.measureText(word).width > maxW && word.length > 1) {
+        let i = word.length - 1;
+        while (i > 1 && ctx.measureText(word.slice(0, i)).width > maxW) i--;
+        if (cur) {
+          lines.push(cur);
+          cur = '';
+        }
+        lines.push(word.slice(0, i));
+        word = word.slice(i);
+      }
+      const t = cur ? `${cur} ${word}` : word;
+      if (cur && ctx.measureText(t).width > maxW) {
+        lines.push(cur);
+        cur = word;
+      } else cur = t;
+    };
+    String(text).split(/\s+/).filter(Boolean).forEach(push);
+    if (cur) lines.push(cur);
+    return lines.slice(0, 6);
+  }
+  function drawFigLabels(ctx, W, H, s) {
+    const font = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+    const figs = [];
+    if (self.fig) figs.push(self.fig);
+    others.forEach((o) => figs.push(o.fig));
+    const v = new THREE.Vector3();
+    const list = [];
+    const now = performance.now();
+    figs.forEach((fig) => {
+      if (!fig.group.visible || !fig.plane.visible) return;
+      fig.headWorld(v);
+      const d = v.distanceTo(camera.position);
+      v.project(camera);
+      if (!(v.z < 1) || Math.abs(v.x) > 1.2 || Math.abs(v.y) > 1.2) return;
+      list.push({ fig, d, x: ((v.x + 1) / 2) * W, y: ((1 - v.y) / 2) * H });
+    });
+    list.sort((a, b) => b.d - a.d); // uzaktan yakına: yakındakiler üstte
+    list.forEach(({ fig, x, y }) => {
+      // isim
+      const em = fig.holding ? HOUSE_PRODUCTS[fig.holding]?.emoji || '🎁' : '';
+      const name = em ? `${em} ${fig.name}` : fig.name;
+      ctx.font = `700 ${11 * s}px ${font}`;
+      const nw = ctx.measureText(name).width + 16 * s;
+      const nh = 17 * s;
+      let top = y - nh;
+      rrect(ctx, x - nw / 2, top, nw, nh, nh / 2);
+      ctx.fillStyle = 'rgba(8,10,18,0.72)';
+      ctx.fill();
+      ctx.lineWidth = Math.max(1, s);
+      ctx.strokeStyle = fig.isSelf ? 'rgba(255,210,63,0.55)' : 'rgba(25,232,255,0.35)';
+      ctx.stroke();
+      ctx.fillStyle = fig.isSelf ? '#ffe9a8' : '#dff9ff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(name, x, top + nh / 2 + 0.5 * s);
+      // balonlar (en yenisi altta, ismin hemen üstünde)
+      const bubbles = fig.bubbles.filter((b) => b.text && now <= b.until);
+      ctx.font = `${13 * s}px ${font}`;
+      const lh = 13 * 1.3 * s;
+      for (let i = bubbles.length - 1; i >= 0; i--) {
+        const lines = wrapText(ctx, bubbles[i].text, 170 * s);
+        const bw = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 20 * s;
+        const bh = lines.length * lh + 12 * s;
+        const gap = (i === bubbles.length - 1 ? 10 : 4) * s;
+        top = top - gap - bh;
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.35)';
+        ctx.shadowBlur = 12 * s;
+        ctx.shadowOffsetY = 4 * s;
+        rrect(ctx, x - bw / 2, top, bw, bh, 12 * s);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+        ctx.restore();
+        if (i === bubbles.length - 1) {
+          ctx.beginPath();
+          ctx.moveTo(x - 6 * s, top + bh - 0.5);
+          ctx.lineTo(x + 6 * s, top + bh - 0.5);
+          ctx.lineTo(x, top + bh + 6 * s);
+          ctx.closePath();
+          ctx.fillStyle = '#fff';
+          ctx.fill();
+        }
+        ctx.fillStyle = '#151515';
+        ctx.textBaseline = 'top';
+        lines.forEach((l, j) => ctx.fillText(l, x, top + 6 * s + j * lh + 1.5 * s));
+        ctx.textBaseline = 'middle';
+      }
+    });
+  }
+  // Son çizilen WebGL karesini 2D tuvale kopyalayıp etiketleri ekler (aynı
+  // görev içinde çağrılmalı — tampon henüz temizlenmemişken).
+  function composeShot(type, quality, s) {
+    const W = canvas.width;
+    const H = canvas.height;
+    try {
+      const c2 = document.createElement('canvas');
+      c2.width = W;
+      c2.height = H;
+      const ctx = c2.getContext('2d');
+      ctx.drawImage(canvas, 0, 0);
+      try {
+        drawFigLabels(ctx, W, H, s);
+      } catch {
+        /* etiket çizilemezse sadece kare */
+      }
+      return c2.toDataURL(type, quality);
+    } catch {
+      return canvas.toDataURL(type, quality);
+    }
+  }
+
   // --- API ---------------------------------------------------------------------
   const api = {
     get mode() {
@@ -1666,14 +1798,26 @@ export function createHouseEngine(
       const dir = new THREE.Vector3();
       camera.getWorldDirection(dir);
       const r = (v) => Math.round(v * 100) / 100;
-      return { px: r(camera.position.x), py: r(camera.position.y), pz: r(camera.position.z), dx: r(dir.x), dy: r(dir.y), dz: r(dir.z), fov: camera.fov };
+      // v71 — a: çekim anındaki en/boy oranı, cw: ekran genişliği (etiket ölçeği)
+      return {
+        px: r(camera.position.x),
+        py: r(camera.position.y),
+        pz: r(camera.position.z),
+        dx: r(dir.x),
+        dy: r(dir.y),
+        dz: r(dir.z),
+        fov: camera.fov,
+        a: Math.round(camera.aspect * 1000) / 1000,
+        cw: Math.round(container.clientWidth || 400),
+      };
     },
     // v70 — ekran görüntüsü: WebGL tamponu çizimden sonra temizlendiği için
     // (preserveDrawingBuffer kapalı) kare AYNI anda çizilip okunur → siyah çıkmaz.
+    // v71 — isim etiketleri ve mesaj balonları da kareye çizilir.
     captureFrame(type = 'image/jpeg', quality = 0.85) {
       try {
         renderer.render(scene, camera);
-        return canvas.toDataURL(type, quality);
+        return composeShot(type, quality, canvas.width / Math.max(1, container.clientWidth || canvas.width));
       } catch {
         return null;
       }
@@ -1697,7 +1841,7 @@ export function createHouseEngine(
         o.fig.update(0, camera, performance.now(), sw);
       });
       renderer.render(scene, camera);
-      return canvas.toDataURL('image/jpeg', 0.85);
+      return composeShot('image/jpeg', 0.85, canvas.width / Math.max(200, Math.min(2000, Number(pose.cw) || 400)));
     },
     avatarsReady() {
       return [...others.values()].every((o) => o.fig.tex.ready);

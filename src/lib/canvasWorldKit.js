@@ -1,3 +1,4 @@
+import { emoteMotion } from './worldEmotes.js';
 // canvasWorldKit.js — TAMAMEN jenerik (mekana özel HİÇBİR şey bilmeyen)
 // canvas-dünya yardımcıları: yuvarlak dikdörtgen, avatar sprite çizimi,
 // elde-tutulan ürün ikonu, konuşma baloncuğu düzeni, engel/çarpışma
@@ -143,12 +144,16 @@ export function drawHeldIcon(ctx, type, x, y, { animate = true } = {}) {
 // köşeye sığdırılmış çizimler (bkz. MosqueWorldScreen drawBeggarNpcs) veya
 // mekana özel büyütme (madde 13, AVATAR_SCALE) için kullanılır.
 export function drawAvatarSprite(ctx, entity, getAvatarImage, { showName = true, scale = 1 } = {}) {
-  const img = getAvatarImage(entity.avatar, entity.pose);
+  // v71 — hareket (dans/zıpla...) animasyonu: bkz. lib/worldEmotes.js
+  const mo = entity.emote ? emoteMotion(entity.emote) : null;
+  const pose = mo?.pose && entity.pose !== 'sit' ? mo.pose : entity.pose;
+  const img = getAvatarImage(entity.avatar, pose);
   const h = SPRITE_H * scale;
   const w = h * SPRITE_ASPECT;
 
   ctx.save();
-  ctx.translate(entity.x, entity.baseY);
+  ctx.translate(entity.x, entity.baseY - (mo ? mo.lift * h : 0));
+  if (mo?.tilt) ctx.rotate(mo.tilt);
   if (entity.facing === 'left') ctx.scale(-1, 1);
   if (img) {
     ctx.drawImage(img, -w / 2, -h, w, h);
@@ -159,6 +164,16 @@ export function drawAvatarSprite(ctx, entity, getAvatarImage, { showName = true,
   ctx.restore();
 
   if (entity.holding) drawHeldIcon(ctx, entity.holding, entity.x + w * 0.32, entity.baseY - h * 0.42);
+
+  if (mo?.emoji && mo.alpha > 0) {
+    ctx.save();
+    ctx.globalAlpha = mo.alpha;
+    ctx.font = `${Math.round(26 * Math.max(0.7, scale))}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(mo.emoji, entity.x + w * 0.38, entity.baseY - h * 0.92 - mo.lift * h + mo.float);
+    ctx.restore();
+  }
 
   if (showName && entity.name && !entity.isSelf) {
     ctx.fillStyle = 'rgba(20,12,8,0.75)';

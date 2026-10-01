@@ -34,7 +34,7 @@ function setup() {
   S('users/veli', { displayName: 'Veli', gold: 1000 });
   const act = (uid, data) => houses.houseAction({ auth: { uid }, data });
   const fresh = () => new Timestamp(clock.now);
-  return { db, S, G, keys, clock, act, fresh };
+  return { db, S, G, keys, clock, act, fresh, houses };
 }
 async function withHouse(h) {
   const r = await h.act('zengin', { op: 'buy' });
@@ -167,4 +167,41 @@ test('ayarlar: isim doğrulama', async () => {
   const r = await h.act('zengin', { op: 'settings', houseId: id, name: 'Neon Kafe & Bar' });
   assert.equal(r.name, 'Neon Kafe & Bar');
   await assert.rejects(h.act('ali', { op: 'settings', houseId: id, name: 'Benim' }), /senin değil/);
+});
+
+test('v71: L koltuk (büyük harfli anahtar) sepette atılmaz, fiyatı doğru; mobilya alışverişinde SMS gelmez', async () => {
+  const h = setup();
+  const id = await withHouse(h);
+  const before = h.keys('users/zengin/messages/').length;
+  const design = { items: [it('l1', 'sofaL')], wall: null, floor: null };
+  const q = await h.act('zengin', { op: 'quote', houseId: id, design });
+  assert.equal(q.gold, ITEM_PRICES.sofaL.v);
+  const c = await h.act('zengin', { op: 'checkout', houseId: id, design, expect: { gold: ITEM_PRICES.sofaL.v, gem: 0 } });
+  assert.equal(c.count, 1);
+  assert.equal(h.G(`houses/${id}`).items[0].k, 'sofaL');
+  assert.equal(h.G(`houses/${id}`).items[0].p, 1);
+  assert.equal(h.keys('users/zengin/messages/').length, before, 'SMS yok');
+});
+
+test('v71: ev fotoğrafı en/boy oranını ve çekim anındaki mesaj balonlarını dondurur', async () => {
+  const h = setup();
+  const id = await withHouse(h);
+  await h.act('zengin', { op: 'enter', houseId: id });
+  await h.act('zengin', { op: 'chat', houseId: id, text: 'eski mesaj' });
+  h.clock.now += 20_000;
+  await h.act('zengin', { op: 'chat', houseId: id, text: 'selam millet' });
+  h.clock.now += 3000;
+  const cam = { px: 0, py: 2, pz: 5, dx: 0, dy: -0.2, dz: -1, fov: 58, a: 0.5, cw: 390 };
+  const att = await h.houses.buildPhotoAttachment('zengin', { houseId: id, cam, shotAgoMs: 1000 });
+  assert.equal(att.cam.a, 0.5);
+  assert.equal(att.cam.cw, 390);
+  const me = att.people.find((p) => p.uid === 'zengin');
+  assert.deepEqual(me.says, ['selam millet']);
+  // eski istemci: oran yok → kare; balon yok
+  const old = await h.houses.buildPhotoAttachment('zengin', { houseId: id, cam: { ...cam, a: undefined, cw: undefined } });
+  assert.equal(old.cam.a, 1);
+  assert.equal(old.people.find((p) => p.uid === 'zengin').says, undefined);
+  // uç değerler sınırlanır
+  const ext = await h.houses.buildPhotoAttachment('zengin', { houseId: id, cam: { ...cam, a: 99 }, shotAgoMs: 1e12 });
+  assert.equal(ext.cam.a, 2.5);
 });

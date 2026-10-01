@@ -16,6 +16,8 @@ import { createSixtagramPost, enterInterior, captureCameraSnapshot } from '../..
 import '../../styles/worldScreenChrome.css';
 import './WeaponShopWorldScreen.css';
 import NearbyPlayersButton from '../NearbyPlayers/NearbyPlayersButton';
+import WorldEmoteButton from '../WorldEmotes/WorldEmoteButton';
+import { createEmoteTracker } from '../../lib/worldEmotes';
 
 // --- Silah Mağazası içi ------------------------------------------------
 // BankWorldScreen.jsx'teki "sabit mekan, karakter yürüyor" kalıbının
@@ -401,6 +403,16 @@ export default function WeaponShopWorldScreen({ onExit }) {
   const { user } = useAuth();
   const { player } = usePlayer();
   const { others, updatePresence, clearPresence } = useInteriorPresence('silah_magazasi');
+  // v71 — hareketler (dans et, el salla...) — bkz. lib/worldEmotes.js
+  const [worldEmotes] = useState(createEmoteTracker);
+  const doWorldEmote = (kind) => {
+    if (!user) {
+      setShowGuestPrompt(true);
+      return;
+    }
+    worldEmotes.play('self', kind);
+    updatePresence(user.uid, { emote: kind, emoteTs: Date.now() });
+  };
 
   const [ready, setReady] = useState(false);
   const [panel, setPanel] = useState(null); // 'weapon' | null
@@ -739,14 +751,14 @@ export default function WeaponShopWorldScreen({ onExit }) {
     const rawEntities = [
       ...othersRef.current.map((o) => ({
         x: o.x, y: o.y, avatar: o.avatar, pose: o.pose || 'idle',
-        facing: o.facing || 'down', name: o.displayName || 'Oyuncu',
+        facing: o.facing || 'down', name: o.displayName || 'Oyuncu', emote: worldEmotes.observe(o.uid, o.emote, o.emoteTs),
         bubbleList: (othersBubbleHistoryRef.current.get(o.uid) || []).filter((b) => now - b.ts < CHAT_BUBBLE_MS),
         isSelf: false,
       })),
       {
         x: posRef.current.x, y: posRef.current.y, avatar: playerRef.current?.avatar,
         pose: poseRef.current, facing: facingRef.current,
-        name: playerRef.current?.displayName || 'Sen', bubbleList: myBubblesNow, isSelf: true,
+        name: playerRef.current?.displayName || 'Sen', bubbleList: myBubblesNow, emote: worldEmotes.get('self'), isSelf: true,
       },
     ];
     const entities = rawEntities
@@ -827,6 +839,7 @@ export default function WeaponShopWorldScreen({ onExit }) {
             <button className="ws-phone-btn" onClick={() => { setPhoneInitialApp(null); setPhoneOpen(true); }} title="Telefon">📱</button>
             <button className="ws-camera-btn" onClick={() => (user ? openCamera() : setShowGuestPrompt(true))} title="Fotoğraf çek">📷</button>
             <NearbyPlayersButton others={others} collectionName="interiorPresence" variant="ws" />
+            <WorldEmoteButton variant="ws" onEmote={doWorldEmote} />
           </>
         )}
       </div>

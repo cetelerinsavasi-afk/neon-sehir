@@ -89,6 +89,34 @@ export function createMarketActions(core, trade) {
     });
   }
 
+  // v71 — ilana reklam: "📢 Reklam Verilen Ürünler" panelinde 24 saat görünür.
+  // Ücret çete kasasından düşer, iade edilmez (oyuncu ilan reklamıyla aynı).
+  async function advertiseDepotListing(ctx, data) {
+    const listingId = String(data.listingId || '');
+    if (!listingId) fail('invalid-argument', 'İlan bulunamadı.');
+    return core.db.runTransaction(async (tx) => {
+      const guard = await requestGuard(tx, ctx, data.requestId);
+      if (guard.done) return guard.result;
+      const { gangId, me } = await trade.readGangRole(tx, ctx, 'sagkol', 'İlana reklamı sadece Mafya Babası ve Sağ Kol verebilir.');
+      const [lSnap, stateSnap] = await Promise.all([tx.get(ctx.ref.listing(listingId)), tx.get(ctx.ref.gangState(gangId))]);
+      const l = lSnap.data();
+      if (!l || l.gangId !== gangId) fail('not-found', 'İlan bulunamadı.');
+      if (l.status !== 'open' || Number(l.quantity || 0) <= 0) fail('failed-precondition', 'Bu ilan artık açık değil.');
+      if (Number(l.adExpiresAtMs || 0) > ctx.now) fail('failed-precondition', 'Bu ilan zaten reklamda, süresi dolmadan tekrar reklam verilemez.');
+      const kasa = Number(stateSnap.data()?.kasa || 0);
+      const price = GANG.MARKET_AD_PRICE;
+      if (kasa < price) fail('failed-precondition', 'Kasada yeterli para yok.');
+      const adExpiresAtMs = ctx.now + GANG.MARKET_AD_DURATION_MS;
+      tx.update(ctx.ref.gangState(gangId), { kasa: FV.increment(-price) });
+      tx.update(ctx.ref.listing(listingId), { adExpiresAtMs, adPurchasedAtMs: ctx.now });
+      ledger(tx, ctx, { type: 'gang_market_ad', amount: price, from: { kind: 'gang', id: gangId }, to: { kind: 'burn' }, before: kasa, refId: listingId });
+      announce(tx, ctx, gangId, '📢', `${me.name} 2. eldeki ${l.label} ilanına reklam verdi (${fmt(price)} altın, 24 saat).`);
+      const res = { listingId, adExpiresAtMs };
+      guard.save(res);
+      return res;
+    });
+  }
+
   async function buyMarketListing(ctx, data) {
     const listingId = String(data.listingId || '');
     const qty = posInt(data.qty ?? 1, 'Adet');
@@ -125,5 +153,5 @@ export function createMarketActions(core, trade) {
     });
   }
 
-  return { listDepotItem, cancelDepotListing, buyMarketListing, priceRange, MAX_LIST: GANG.DEPOT_CAPACITY_PER_PURCHASE };
+  return { listDepotItem, cancelDepotListing, advertiseDepotListing, buyMarketListing, priceRange, MAX_LIST: GANG.DEPOT_CAPACITY_PER_PURCHASE };
 }

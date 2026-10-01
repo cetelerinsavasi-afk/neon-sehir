@@ -837,7 +837,12 @@ function gunRackWall(gold) {
 }
 function gunCabinet(g, ctx) {
   const body = M(tintHex(ctx, '#141416'), 0.4, 0.3);
-  B(g, 1.4, 2.1, 0.5, 0, 1.05, 0, body);
+  // v71 — içi boş gövde (eskiden dolu kutuydu, silahlar içinde gizli kalıyordu)
+  B(g, 1.4, 2.1, 0.04, 0, 1.05, -0.23, body); // arka
+  B(g, 0.05, 2.1, 0.5, -0.675, 1.05, 0, body); // sol
+  B(g, 0.05, 2.1, 0.5, 0.675, 1.05, 0, body); // sağ
+  B(g, 1.4, 0.06, 0.5, 0, 2.07, 0, body); // üst
+  B(g, 1.4, 0.14, 0.5, 0, 0.07, 0, body); // taban
   B(g, 1.3, 1.9, 0.01, 0, 1.08, -0.2, M('#0a0a0c', 0.6));
   B(g, 1.3, 1.9, 0.01, 0, 1.08, 0.251, GLASS());
   [-0.34, 0.34].forEach((x) => B(g, 0.02, 0.06, 0.03, x, 1.1, 0.27, CHROME()));

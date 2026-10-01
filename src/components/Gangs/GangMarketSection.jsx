@@ -30,6 +30,10 @@ function toPlayerListing(group) {
     createdAt: null,
     createdAtMs: l.createdAtMs,
   };
+  // v71 — çete ilan reklamı ("📢 Reklam Verilen Ürünler"); oyuncu ilanlarındaki
+  // gibi Timestamp benzeri (toMillis) alan
+  const adMs = Math.max(0, ...group.map((x) => Number(x.adExpiresAtMs || 0)));
+  if (adMs > 0) base.adExpiresAt = { toMillis: () => adMs };
   const cid = Number(l.catalogId);
   if (l.itemType === 'vehicle') {
     const c = vehicleCatalog.find((v) => v.id === cid) || {};

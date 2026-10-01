@@ -19,6 +19,8 @@ import { buyFromGazinoBar, createSixtagramPost, enterInterior, leaveOnNumaraTabl
 import '../../styles/worldScreenChrome.css';
 import './CasinoWorldScreen.css';
 import NearbyPlayersButton from '../NearbyPlayers/NearbyPlayersButton';
+import WorldEmoteButton from '../WorldEmotes/WorldEmoteButton';
+import { createEmoteTracker } from '../../lib/worldEmotes';
 import { useHeldItem } from '../../hooks/useHeldItem';
 import GiftToast from '../NearbyPlayers/GiftToast';
 
@@ -410,6 +412,16 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist }) {
   const { user } = useAuth();
   const { player } = usePlayer();
   const { others, updatePresence, clearPresence } = useInteriorPresence('gazino');
+  // v71 — hareketler (dans et, el salla...) — bkz. lib/worldEmotes.js
+  const [worldEmotes] = useState(createEmoteTracker);
+  const doWorldEmote = (kind) => {
+    if (!user) {
+      setShowGuestPrompt(true);
+      return;
+    }
+    worldEmotes.play('self', kind);
+    updatePresence(user.uid, { emote: kind, emoteTs: Date.now() });
+  };
   // v64: eldeki içecek sunucuda (heldItems) — ısmarlanınca da buradan gelir
   const { held, gift, clearGift } = useHeldItem('gazino');
 
@@ -857,7 +869,7 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist }) {
     const rawEntities = [
       ...othersRef.current.map((o) => ({
         x: o.x, y: o.y, avatar: o.avatar, pose: o.pose === 'sit' ? 'sit' : (o.pose || 'idle'),
-        facing: o.facing || 'down', name: o.displayName || 'Oyuncu',
+        facing: o.facing || 'down', name: o.displayName || 'Oyuncu', emote: worldEmotes.observe(o.uid, o.emote, o.emoteTs),
         bubbleList: (othersBubbleHistoryRef.current.get(o.uid) || []).filter((b) => now - b.ts < CHAT_BUBBLE_MS),
         activity: o.activity || null,
         holding: o.holding || null, // v64: ısmarlanan/alınan ürün başkalarında da görünsün
@@ -866,7 +878,7 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist }) {
       {
         x: posRef.current.x, y: posRef.current.y, avatar: playerRef.current?.avatar,
         pose: sittingSeatRef.current ? 'sit' : poseRef.current, facing: facingRef.current, holding: holdingRef.current,
-        name: playerRef.current?.displayName || 'Sen', bubbleList: myBubblesNow, isSelf: true,
+        name: playerRef.current?.displayName || 'Sen', bubbleList: myBubblesNow, emote: worldEmotes.get('self'), isSelf: true,
       },
     ];
     const entities = rawEntities
@@ -1009,6 +1021,7 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist }) {
             <button className="ws-phone-btn" onClick={() => { setPhoneInitialApp(null); setPhoneOpen(true); }} title="Telefon">📱</button>
             <button className="ws-camera-btn" onClick={() => (user ? openCamera() : setShowGuestPrompt(true))} title="Fotoğraf çek">📷</button>
             <NearbyPlayersButton others={others} collectionName="interiorPresence" variant="ws" giftVenue="gazino" myHolding={held?.itemId || null} />
+            <WorldEmoteButton variant="ws" onEmote={doWorldEmote} />
           </>
         )}
         {gift && <GiftToast gift={gift} onDone={clearGift} />}

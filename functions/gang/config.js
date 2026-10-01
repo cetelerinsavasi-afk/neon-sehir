@@ -96,6 +96,9 @@ export const GANG = {
   // --- Depo (ONAYLI) --- her alım +100 kapasite, ömürsüz, satılamaz
   DEPOT_PRICE: 100_000,
   DEPOT_CAPACITY_PER_PURCHASE: 100,
+  // v71 — 2. el çete ilanına reklam (oyuncu ilanlarıyla aynı: 1000 altın / 24 saat, kasadan)
+  MARKET_AD_PRICE: 1000,
+  MARKET_AD_DURATION_MS: 24 * 60 * 60 * 1000,
   DEPOT_UNIT_SIZE: { araba: 10, silah: 10, yasakliMadde: 1 },
 
   // --- Aktiflik (ONAYLI: 30 gün hiçbir savaşa katılmayan atılır; Baba dahil) ---

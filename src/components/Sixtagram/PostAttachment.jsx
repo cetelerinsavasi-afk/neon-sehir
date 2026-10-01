@@ -21,6 +21,11 @@ import './PostAttachment.css';
 
 // v66 — ev fotoğrafı: three.js'i ana pakete sokmamak için tembel yüklenir.
 const HousePhoto = lazy(() => import('../HouseScreen/HousePhoto'));
+// v71 — ev fotoğrafı çekim anındaki en/boy oranıyla gösterilir (eskiler kare)
+const houseAspectOf = (att) => {
+  const a = Number(att?.cam?.a);
+  return Number.isFinite(a) && a > 0 ? Math.max(0.4, Math.min(2.5, a)) : 1;
+};
 
 // Tüm parkPhoto kartları arasında paylaşılan avatar görsel önbelleği —
 // aynı avatarı tekrar tekrar SVG'den <img>'e çevirmemek için (bkz.
@@ -498,7 +503,7 @@ export default function PostAttachment({ attachment }) {
     const names = people.map((p) => p.displayName || 'Oyuncu');
     return (
       <div className="post-att post-att-parkphoto">
-        <div className="post-att-parkphoto-frame post-att-housephoto">
+        <div className="post-att-parkphoto-frame post-att-housephoto" style={{ aspectRatio: houseAspectOf(attachment) }}>
           <Suspense fallback={<div className="post-att-housephoto-empty">Fotoğraf yükleniyor…</div>}>
             <HousePhoto attachment={attachment} />
           </Suspense>

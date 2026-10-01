@@ -1251,7 +1251,8 @@
   border-radius: 12px;
   display: block;
   max-height: 46vh;
-  object-fit: cover;
+  object-fit: contain; /* v71 — kırpma yok: paylaşılan kareyle birebir aynı */
+  background: #05070d;
 }
 
 /* --- atari --- */

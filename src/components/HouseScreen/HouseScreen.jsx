@@ -610,14 +610,14 @@ export default function HouseScreen({ houseId, onExit }) {
   // --- kamera ------------------------------------------------------------------------
   const openCamera = () => {
     const shot = engineRef.current?.captureFrame('image/jpeg', 0.82) || null;
-    setCameraShot({ img: shot, pose: engineRef.current?.getCameraPose() });
+    setCameraShot({ img: shot, pose: engineRef.current?.getCameraPose(), at: Date.now() });
     setCameraCaption('');
     setPanel('camera');
   };
   const shareCamera = async () => {
     setBusy(true);
     try {
-      await createSixtagramPost(cameraCaption, { type: 'housePhoto', houseId, cam: cameraShot.pose });
+      await createSixtagramPost(cameraCaption, { type: 'housePhoto', houseId, cam: cameraShot.pose, shotAgoMs: Math.max(0, Date.now() - (cameraShot.at || Date.now())) });
       setPanel(null);
       flash("📸 Sixtagram'da paylaşıldı!");
     } catch (err) {

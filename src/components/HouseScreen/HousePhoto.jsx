@@ -10,6 +10,11 @@ import { createHouseEngine } from './houseEngine';
 // anda tek bir ekran dışı sahne vardır.
 // =============================================================================
 const cache = new Map();
+
+function housePhotoAspect(att) {
+  const a = Number(att?.cam?.a);
+  return Number.isFinite(a) && a > 0 ? Math.max(0.4, Math.min(2.5, a)) : 1;
+}
 let queue = Promise.resolve();
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -19,8 +24,13 @@ function renderHousePhoto(att, key) {
   const job = (queue = queue
     .catch(() => {})
     .then(async () => {
+      // v71 — kare çekim anındaki en/boy oranıyla çizilir (eskiden hep kareydi →
+      // dikey telefonda çekilen fotoğraf çok daha geniş açılı görünüyordu).
+      const a = housePhotoAspect(att);
+      const w = a >= 1 ? 640 : 480;
+      const h = Math.round(w / a);
       const host = document.createElement('div');
-      host.style.cssText = 'position:fixed;left:-10000px;top:0;width:480px;height:480px;pointer-events:none;';
+      host.style.cssText = `position:fixed;left:-10000px;top:0;width:${w}px;height:${h}px;pointer-events:none;`;
       document.body.appendChild(host);
       let eng = null;
       try {
@@ -29,7 +39,9 @@ function renderHousePhoto(att, key) {
         eng.setOthers((att.people || []).map((p) => ({ ...p, holdingVisible: null })));
         const t0 = Date.now();
         while (!eng.avatarsReady() && Date.now() - t0 < 5000) await wait(120);
-        return eng.renderPose(att.cam, 480, 480);
+        // çekim anındaki mesaj balonları (sunucu dondurdu)
+        (att.people || []).forEach((p) => (Array.isArray(p.says) ? p.says : []).slice(-3).forEach((t) => eng.say(p.uid, String(t))));
+        return eng.renderPose(att.cam, w, h);
       } finally {
         try {
           eng?.dispose();
@@ -46,7 +58,7 @@ function renderHousePhoto(att, key) {
 }
 
 export default function HousePhoto({ attachment }) {
-  const key = JSON.stringify([attachment.houseId, attachment.cam, attachment.people?.length, attachment.design?.items?.length]);
+  const key = JSON.stringify([attachment.houseId, attachment.cam, attachment.people?.length, attachment.design?.items?.length, (attachment.people || []).map((p) => p.says?.length || 0)]);
   const [src, setSrc] = useState(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {

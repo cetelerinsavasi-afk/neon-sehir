@@ -18,6 +18,8 @@ import InfoIcon from '../InfoIcon/InfoIcon';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import './ParkWorldScreen.css';
 import NearbyPlayersButton from '../NearbyPlayers/NearbyPlayersButton';
+import WorldEmoteButton from '../WorldEmotes/WorldEmoteButton';
+import { createEmoteTracker } from '../../lib/worldEmotes';
 import { useHeldItem } from '../../hooks/useHeldItem';
 import GiftToast from '../NearbyPlayers/GiftToast';
 
@@ -180,6 +182,16 @@ export default function ParkWorldScreen({ onExit }) {
   const { player } = usePlayer();
   const { inventory } = useInventory();
   const { others, updatePresence, clearPresence } = useParkPresence();
+  // v71 — hareketler (dans et, el salla...) — bkz. lib/worldEmotes.js
+  const [worldEmotes] = useState(createEmoteTracker);
+  const doWorldEmote = (kind) => {
+    if (!user) {
+      setShowGuestPrompt(true);
+      return;
+    }
+    worldEmotes.play('self', kind);
+    updatePresence(user.uid, { emote: kind, emoteTs: Date.now() });
+  };
   // v64: eldeki ürün sunucuda (heldItems) — ısmarlanınca da buradan gelir
   const { held, gift, clearGift } = useHeldItem('park');
 
@@ -591,14 +603,14 @@ export default function ParkWorldScreen({ onExit }) {
       { x: NPC_POS.x, y: NPC_POS.y, avatar: NPC_AVATAR, pose: 'idle', facing: 'right', name: 'Şüpheli Adam', bubbleList: [], holding: null },
       ...othersRef.current.map((o) => ({
         x: o.x, y: o.y, avatar: o.avatar, pose: o.pose === 'sit' ? 'sit' : (o.pose || 'idle'),
-        facing: o.facing || 'down', name: o.displayName || 'Oyuncu',
+        facing: o.facing || 'down', name: o.displayName || 'Oyuncu', emote: worldEmotes.observe(o.uid, o.emote, o.emoteTs),
         bubbleList: (othersBubbleHistoryRef.current.get(o.uid) || []).filter((b) => now - b.ts < CHAT_BUBBLE_MS),
         holding: o.holding || null,
       })),
       {
         x: posRef.current.x, y: posRef.current.y, avatar: myAvatar,
         pose: sittingSeatRef.current ? 'sit' : poseRef.current, facing: facingRef.current,
-        name: playerRef.current?.displayName || 'Sen', bubbleList: myBubblesNow, holding: holdingRef.current, isSelf: true,
+        name: playerRef.current?.displayName || 'Sen', bubbleList: myBubblesNow, emote: worldEmotes.get('self'), holding: holdingRef.current, isSelf: true,
       },
     ];
 
@@ -924,6 +936,7 @@ export default function ParkWorldScreen({ onExit }) {
             <button className="pw-phone-btn" onClick={() => { setPhoneInitialApp(null); setPhoneOpen(true); }} title="Telefon">📱</button>
             <button className="pw-camera-btn" onClick={() => (user ? openCamera() : setShowGuestPrompt(true))} title="Fotoğraf çek">📷</button>
             <NearbyPlayersButton others={others} collectionName="parkPresence" variant="pw" giftVenue="park" myHolding={heldId} />
+            <WorldEmoteButton variant="pw" onEmote={doWorldEmote} />
           </>
         )}
         {gift && <GiftToast gift={gift} onDone={clearGift} />}

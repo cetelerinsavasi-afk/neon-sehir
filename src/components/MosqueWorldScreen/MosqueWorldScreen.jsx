@@ -23,6 +23,8 @@ import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import '../../styles/worldScreenChrome.css';
 import './MosqueWorldScreen.css';
 import NearbyPlayersButton from '../NearbyPlayers/NearbyPlayersButton';
+import WorldEmoteButton from '../WorldEmotes/WorldEmoteButton';
+import { createEmoteTracker } from '../../lib/worldEmotes';
 
 // --- Camii içi (madde 5 revizyonu + madde 17 canlı/çok oyunculu) ----------
 // Kullanıcının başka bir Claude oturumuna hazırlattığı referans örneğe göre
@@ -460,6 +462,16 @@ export default function MosqueWorldScreen({ onExit }) {
   const { beggars } = useBeggars();
   const { actions } = useDailyActions();
   const { others, updatePresence, clearPresence } = useInteriorPresence('camii');
+  // v71 — hareketler (dans et, el salla...) — bkz. lib/worldEmotes.js
+  const [worldEmotes] = useState(createEmoteTracker);
+  const doWorldEmote = (kind) => {
+    if (!user) {
+      setShowGuestPrompt(true);
+      return;
+    }
+    worldEmotes.play('self', kind);
+    updatePresence(user.uid, { emote: kind, emoteTs: Date.now() });
+  };
 
   // hasPrayedThisWindow — yeni istek: imam makamının üstünde yüzen "İbadet
   // Et" butonu, bu vakitte zaten ibadet ettiysek kaybolsun.
@@ -859,14 +871,14 @@ export default function MosqueWorldScreen({ onExit }) {
     const rawEntities = [
       ...othersRef.current.map((o) => ({
         x: o.x, y: o.y, avatar: o.avatar, pose: o.pose || 'idle',
-        facing: o.facing || 'down', name: o.displayName || 'Oyuncu',
+        facing: o.facing || 'down', name: o.displayName || 'Oyuncu', emote: worldEmotes.observe(o.uid, o.emote, o.emoteTs),
         bubbleList: (othersBubbleHistoryRef.current.get(o.uid) || []).filter((b) => now - b.ts < CHAT_BUBBLE_MS),
         isSelf: false,
       })),
       {
         x: posRef.current.x, y: posRef.current.y, avatar: playerRef.current?.avatar,
         pose: poseRef.current, facing: facingRef.current,
-        name: playerRef.current?.displayName || 'Sen', bubbleList: myBubblesNow, isSelf: true,
+        name: playerRef.current?.displayName || 'Sen', bubbleList: myBubblesNow, emote: worldEmotes.get('self'), isSelf: true,
       },
     ];
     const entities = rawEntities
@@ -986,6 +998,7 @@ export default function MosqueWorldScreen({ onExit }) {
             <button className="ws-phone-btn" onClick={() => { setPhoneInitialApp(null); setPhoneOpen(true); }} title="Telefon">📱</button>
             <button className="ws-camera-btn" onClick={() => (user ? openCamera() : setShowGuestPrompt(true))} title="Fotoğraf çek">📷</button>
             <NearbyPlayersButton others={others} collectionName="interiorPresence" variant="ws" />
+            <WorldEmoteButton variant="ws" onEmote={doWorldEmote} />
           </>
         )}
         {/* mww-pray-btn — yeni istek: imam makamının üstünde yüzen "İbadet

@@ -21,6 +21,13 @@ const GANG_RULES_HARAC_HOUR_LABEL = '21:00'; // v38: haraç/rüşvet son dilim (
 const COMPACT = new Intl.NumberFormat('tr-TR', { notation: 'compact', maximumFractionDigits: 1 });
 const compact = (n) => (Math.abs(Number(n || 0)) < 10_000 ? fmt(n) : COMPACT.format(Number(n || 0)));
 
+// v71 — 2. el çete ilan reklamı (functions/gang/config.js MARKET_AD_PRICE ile aynı)
+const GANG_MARKET_AD_PRICE = 1000;
+const adLeftLabel = (ms) => {
+  const h = Math.max(0, Math.ceil((Number(ms || 0) - Date.now()) / 3600_000));
+  return h <= 1 ? '1 saatten az' : `${h} saat`;
+};
+
 const daysBetween = (a, b) => (a && b ? Math.round((istMidnight(b) - istMidnight(a)) / 86400_000) : 0);
 
 function useNextSundayProduct() {
@@ -265,6 +272,7 @@ function DepotItems({ depot, lead, listings }) {
   const [qty, setQty] = useState(0);
   const [price, setPrice] = useState(0);
   const [group, setGroup] = useState('rutbeli');
+  const [adFor, setAdFor] = useState(null); // v71 — reklam onayı
   const entries = Object.entries(depot?.items || {}).filter(([, q]) => q > 0);
   const groups = [
     { id: 'araba', title: '🚗 Arabalar' },
@@ -323,6 +331,15 @@ function DepotItems({ depot, lead, listings }) {
                 {l.label} · {l.quantity} adet × {fmt(l.unitPrice)}
                 {l.soldQty > 0 && <span className="dim"> · {l.soldQty} satıldı</span>}
               </span>
+              {Number(l.adExpiresAtMs || 0) > Date.now() ? (
+                <span className="dim gx-mini">📢 Reklamda · {adLeftLabel(l.adExpiresAtMs)}</span>
+              ) : (
+                lead && (
+                  <Btn small kind="ghost" busy={busy === `ad_${l.id}`} onClick={() => setAdFor(l)}>
+                    📢 Reklam
+                  </Btn>
+                )
+              )}
               {lead && (
                 <Btn small kind="ghost" busy={busy === `cl_${l.id}`} onClick={() => run('cancelDepotListing', { listingId: l.id }, { key: `cl_${l.id}`, success: 'İlan kaldırıldı' })}>
                   Kaldır
@@ -331,6 +348,20 @@ function DepotItems({ depot, lead, listings }) {
             </div>
           ))}
         </>
+      )}
+      {adFor && (
+        <Confirm
+          icon="📢"
+          title={`${adFor.label} ilanına reklam verilsin mi?`}
+          lines={[`💰 ${fmt(GANG_MARKET_AD_PRICE)} altın (çete kasasından)`, '⏱️ 24 saat boyunca 2. El Pazarı\'nda "📢 Reklam Verilen Ürünler" bölümünde görünür.', 'Ücret iade edilmez (ilan satılsa/kaldırılsa da).']}
+          confirmLabel="Reklam Ver"
+          busy={busy === `ad_${adFor.id}`}
+          onCancel={() => setAdFor(null)}
+          onConfirm={async () => {
+            const r = await run('advertiseDepotListing', { listingId: adFor.id }, { key: `ad_${adFor.id}`, success: '📢 Reklam verildi', withRequestId: true });
+            if (r) setAdFor(null);
+          }}
+        />
       )}
       {act && (
         <Confirm

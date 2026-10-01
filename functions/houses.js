@@ -50,7 +50,9 @@ export const PRIVACY = ['public', 'friends', 'private'];
 
 const isUid = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);
 const isHouseId = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(v);
-const KEY_RE = /^[a-z0-9_]{1,32}$/;
+const PHOTO_BUBBLE_MS = 9000;
+const PHOTO_SHOT_MAX_AGO_MS = 10 * 60 * 1000;
+const KEY_RE = /^[a-zA-Z0-9_]{1,32}$/;
 const ID_RE = /^[a-z0-9]{1,16}$/;
 const nameOf = (u) => String(u?.displayName || 'Oyuncu').slice(0, 40);
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
@@ -335,13 +337,6 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       tx.update(houseRef(houseId), { items, wall, floor, updatedAtMs: now() });
       tx.set(invRef(uid), { items: invItems, walls, floors, updatedAtMs: now() });
       const cnt = Object.values(q.lines).reduce((a, b) => a + b, 0);
-      const parts = [q.gold ? `${q.gold.toLocaleString('tr-TR')} altın` : null, q.gem ? `${q.gem} zümrüt` : null].filter(Boolean).join(' + ');
-      tx.set(userRef(uid).collection('messages').doc(), {
-        from: 'Mobilya Mağazası',
-        text: `${cnt} ürünlük alışverişin tamamlandı (${parts}). Güle güle kullan! 🛋️`,
-        read: false,
-        createdAt: FieldValue.serverTimestamp(),
-      });
       result = { ok: true, gold: q.gold, gem: q.gem, count: cnt, wall, floor };
     });
     return result;
@@ -418,6 +413,10 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     const nums = ['px', 'py', 'pz', 'dx', 'dy', 'dz', 'fov'].map((k) => num(c[k]));
     if (nums.some((v) => v === null) || nums.slice(0, 3).some((v) => Math.abs(v) > 40)) fail('invalid-argument', 'Geçersiz kamera.');
     const [px, py, pz, dx, dy, dz, fov] = nums;
+    // v71 — çekim anının en/boy oranı (paylaşılan kare aynı açıyla çizilir) ve
+    // ekran genişliği (etiket ölçeği). Eski istemciler göndermez → kare (1).
+    const aspect = num(c.a) !== null ? Math.max(0.4, Math.min(2.5, c.a)) : 1;
+    const cw = num(c.cw) !== null ? Math.round(Math.max(200, Math.min(2000, c.cw))) : 400;
     const pres = await db.collection('housePresence').where('houseId', '==', houseId).limit(16).get();
     const t = now();
     const people = [];
@@ -427,13 +426,33 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       if (at && t - at > HOUSE.PRESENCE_ACTIVE_MS) return;
       people.push({ uid: d.id, displayName: v.displayName || 'Oyuncu', avatar: v.avatar || null, x: num(v.x) ?? 0, z: num(v.z) ?? 0, left: !!v.left, seat: typeof v.seat === 'string' ? v.seat.slice(0, 40) : null });
     });
+    // v71 — çekim anında ekranda olan mesaj balonları (sunucudaki ev
+    // sohbetinden; istemci metin gönderemez). Balon ekranda 9 sn kalır.
+    const ago = num(a?.shotAgoMs);
+    if (ago !== null && people.length) {
+      const shotAt = t - Math.max(0, Math.min(PHOTO_SHOT_MAX_AGO_MS, ago));
+      try {
+        const cs = await houseRef(houseId).collection('chat').where('createdAtMs', '>=', shotAt - PHOTO_BUBBLE_MS).orderBy('createdAtMs', 'asc').limit(60).get();
+        const byUid = {};
+        cs.forEach((d) => {
+          const m = d.data();
+          if (!m || typeof m.text !== 'string' || Number(m.createdAtMs) > shotAt + 500) return;
+          (byUid[m.uid] = byUid[m.uid] || []).push(m.text.slice(0, HOUSE.CHAT_MAX));
+        });
+        people.forEach((pp) => {
+          if (byUid[pp.uid]) pp.says = byUid[pp.uid].slice(-3);
+        });
+      } catch {
+        /* balonlar olmadan devam */
+      }
+    }
     return {
       type: 'housePhoto',
       houseId,
       houseName: h.name || 'Ev',
       design: { items: (h.items || []).filter((it) => it.p === 1).slice(0, 300), wall: h.wall || null, floor: h.floor || null },
       people,
-      cam: { px, py, pz, dx, dy, dz, fov: Math.max(30, Math.min(80, fov)) },
+      cam: { px, py, pz, dx, dy, dz, fov: Math.max(30, Math.min(80, fov)), a: aspect, cw },
     };
   }
 

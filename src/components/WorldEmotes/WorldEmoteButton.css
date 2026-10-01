@@ -1,0 +1,71 @@
+/* Sağdaki düğme sütunu: kamera (alt) · telefon 78px · ChatsApp 140px · 👥 202px · 😀 264px */
+.wemote-btn {
+  position: absolute;
+  bottom: 264px;
+  right: 16px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  font-size: 22px;
+  cursor: pointer;
+  z-index: 5;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+.wemote-btn-ws {
+  border: 1px solid #d4af37;
+  background: rgba(20, 20, 20, 0.85);
+  color: #e8c766;
+}
+.wemote-btn-pw {
+  border: 1px solid rgba(25, 232, 255, 0.6);
+  background: rgba(7, 10, 18, 0.85);
+  color: #e8edf6;
+}
+.wemote-btn.on {
+  filter: brightness(1.35);
+}
+.wemote-list {
+  position: absolute;
+  right: 78px;
+  bottom: 264px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  animation: wemote-pop 0.15s ease-out;
+}
+.wemote-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-weight: 800;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+.wemote-item span {
+  font-size: 20px;
+}
+.wemote-item-ws {
+  border: 1px solid #d4af37;
+  background: rgba(20, 20, 20, 0.92);
+  color: #ffe9a8;
+}
+.wemote-item-pw {
+  border: 1px solid rgba(25, 232, 255, 0.6);
+  background: rgba(7, 10, 18, 0.92);
+  color: #e8edf6;
+}
+@keyframes wemote-pop {
+  from {
+    transform: scale(0.85);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}

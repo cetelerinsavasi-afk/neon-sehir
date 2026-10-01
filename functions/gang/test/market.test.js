@@ -101,3 +101,27 @@ test('v70: aynı çete aynı ürünü aynı fiyata koyarsa ilanlar birleşir; fa
   assert.notEqual(c.listingId, a.listingId);
   assert.equal(depotOf(h, G.gangId).listed['araba:2'], 3);
 });
+
+test('v71: çete ilanına reklam — sadece Baba/Sağ Kol, kasadan 1000, 24 saat, süre dolmadan tekrar yok, kasa yetmezse yok', async () => {
+  const h = await createHarness();
+  const G = await gangWithStock(h);
+  const { listingId } = await h.act(G.baba, 'listDepotItem', { itemKey: 'araba:2', qty: 1, unitPrice: 8000 });
+  await h.fails(G.ids[0], 'advertiseDepotListing', { listingId }); // Tetikçi
+  await h.fails(G.baba, 'advertiseDepotListing', { listingId: 'yok' });
+  const k0 = h.state(G.gangId).kasa;
+  const rs = await Promise.allSettled([1, 2, 3].map(() => h.act(G.baba, 'advertiseDepotListing', { listingId })));
+  assert.equal(rs.filter((r) => r.status === 'fulfilled').length, 1, 'aynı anda birden fazla reklam ücreti alınmaz');
+  assert.equal(h.state(G.gangId).kasa, k0 - 1000);
+  const l = h.get(`market/${listingId}`);
+  assert.equal(l.adExpiresAtMs - l.adPurchasedAtMs, 24 * 3600_000);
+  await h.fails(G.baba, 'advertiseDepotListing', { listingId }); // zaten reklamda
+  // kasa yetersiz
+  const { listingId: l2 } = await h.act(G.baba, 'listDepotItem', { itemKey: 'araba:2', qty: 1, unitPrice: 9000 });
+  await h.db.doc(`gangWorlds/test/gangs/${G.gangId}/private/state`).set({ kasa: 999 }, { merge: true });
+  await h.fails(G.baba, 'advertiseDepotListing', { listingId: l2 });
+  assert.equal(h.state(G.gangId).kasa, 999);
+  // kapalı ilana reklam yok
+  await h.act(G.baba, 'cancelDepotListing', { listingId: l2 });
+  await h.fundKasa(G.gangId, 10_000);
+  await h.fails(G.baba, 'advertiseDepotListing', { listingId: l2 });
+});

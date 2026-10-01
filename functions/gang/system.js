@@ -179,6 +179,7 @@ export function createGangSystem(deps) {
     cancelOrder: trade.cancelOrder,
     listDepotItem: market.listDepotItem,
     cancelDepotListing: market.cancelDepotListing,
+    advertiseDepotListing: market.advertiseDepotListing,
     buyMarketListing: market.buyMarketListing,
     sellFromDepot: trade.sellFromDepot,
     distributeFromDepot: trade.distributeFromDepot,

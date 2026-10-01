@@ -7,8 +7,8 @@
       "namespace": "android_app",
       "package_name": "com.cetelerinsavasi.twa",
       "sha256_cert_fingerprints": [
-        "0D:A9:B3:57:F9:CF:76:80:90:9A:F3:D1:F8:E1:05:B9:9E:49:D9:6B:50:F4:B2:08:AB:27:7F:82:FB:31:02:F8",
-        "CC:FC:76:A5:38:A8:D3:35:3B:AA:E2:33:64:BF:B0:BC:39:F9:74:DA:64:C6:07:CD:36:58:D2:A6:79:40:69:DA"
+        "REPLACE_WITH_PLAY_APP_SIGNING_SHA256_FINGERPRINT",
+        "REPLACE_WITH_UPLOAD_KEY_SHA256_FINGERPRINT"
       ]
     }
   }

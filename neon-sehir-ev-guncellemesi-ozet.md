@@ -1,3 +1,24 @@
+# v71 — Düzeltmeler + mekân hareketleri + çete reklamı
+
+1. **Mobilya SMS'i kaldırıldı:** mobilya/duvar/zemin alışverişinden sonra "Mobilya Mağazası" mesajı gelmez.
+2. **2. El – tahmini değer:** "yıpranma X puan → en yüksek fiyatın %Y'i" alt yazısı kaldırıldı; sadece "💡 Tahmini değer: … altın" görünür.
+3. **L koltuk alınamıyordu ("Sepet tutarı değişti"):** sunucudaki eşya kodu kontrolü büyük harfe izin vermiyordu, `sofaL` sepetten sessizce düşüyor, iki taraf farklı tutar hesaplıyordu. Düzeltildi (aynı sebeple L koltuk kaydedilmiyordu da).
+4. **Camlı silah dolabı:** gövde dolu bir kutuydu, silahlar içinde kalıyordu (denemede yarı saydam olduğu için görünüyordu). Dolap artık içi boş (arka, yan, üst, taban panelleri + cam kapak). Satın aldıktan sonra da silahlar görünüyor.
+5. **Ev fotoğrafları:**
+   - Paylaşılan kare artık **çekildiği en/boy oranıyla** çiziliyor (eskiden hep kare çiziliyordu, bu yüzden dikey telefonda çekilen fotoğraf çok daha geniş açılı görünüyordu). Sixtagram'daki çerçeve de aynı oranda.
+   - **İsim etiketleri ve mesaj balonları** fotoğrafta çıkıyor: hem çekim önizlemesinde hem paylaşılan karede. Balonlar, çekim anında ekranda olan mesajlardır (sunucu ev sohbetinden alır; istemci metin gönderemez).
+   - Çekim önizlemesi artık kırpılmıyor (paylaşılanla birebir aynı).
+   - Eski paylaşımlar kare olarak görünmeye devam eder.
+6. **Hareketler (Dans et, El salla, Alkışla, Zıpla, Kalp at) tüm mekânlarda:** Park, Banka, Karakol, Camii, Gazino, Araba Galerisi, Silah Mağazası, Modifiye Garajı. Sağ sütunda 👥'nin üstünde 😀 düğmesi. Herkes görür; mekâna sonradan giren eski hareketleri oynatmaz.
+7. **Çete ilanlarına reklam:** Ticaret → "🏪 2. eldeki ilanlarımız" satırında **📢 Reklam** (Baba / Sağ Kol). 1.000 altın çete kasasından, 24 saat; ilan 2. El Pazarı'nda "📢 Reklam Verilen Ürünler" bölümüne girer. Süre dolmadan tekrar reklam verilemez, ücret iade edilmez (oyuncu ilan reklamıyla aynı kurallar). Kasa yetmezse verilemez; aynı anda birkaç kez basılsa da tek ücret alınır.
+
+Testler: 207 çete/sistem testi + yeni ev testleri (L koltuk, SMS yok, fotoğraf oranı/balonlar) + çete reklam testi geçiyor.
+
+Yayınlama: `firebase deploy --only functions,firestore:rules` (houseAction: L koltuk + SMS + fotoğraf; gangAction: `advertiseDepotListing`; kurallar: mekân hareketleri için `emote`/`emoteTs` alanları) + web.
+⚠️ Kurallar yayınlanmadan web yayınlanırsa hareketler sadece kendi ekranında görünür (başkalarına gitmez); başka hiçbir şey etkilenmez.
+
+---
+
 # v70 — Düzeltmeler
 
 1. **Başarılar** telefonun sağ sayfasında, "Bi fikrin mi var?"ın sağında.

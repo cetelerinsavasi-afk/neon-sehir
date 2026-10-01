@@ -268,11 +268,18 @@ service cloud.firestore {
       let d = request.resource.data;
       return d.keys().hasOnly([
         'displayName', 'avatar', 'x', 'y', 'facing', 'pose', 'holding', 'seat',
-        'chatText', 'chatTs', 'updatedAt', 'enteredAt'
+        'chatText', 'chatTs', 'updatedAt', 'enteredAt', 'emote', 'emoteTs'
       ])
         && d.x is number && d.x >= 0 && d.x <= 2000
         && d.y is number && d.y >= 0 && d.y <= 2000
-        && (d.chatText == null || (d.chatText is string && d.chatText.size() <= 140));
+        && (d.chatText == null || (d.chatText is string && d.chatText.size() <= 140))
+        && validWorldEmote(d);
+    }
+    // v71 — mekanlarda hareketler (dans et, el salla...). Anahtar hiç yoksa
+    // (eski dokümanlar) `in` kontrolü hata vermeden geçer.
+    function validWorldEmote(d) {
+      return (!('emote' in d) || d.emote == null || d.emote in ['dans', 'selam', 'alkis', 'zipla', 'kalp'])
+        && (!('emoteTs' in d) || d.emoteTs == null || d.emoteTs is number);
     }
     // UGC D1: susturulmuş oyuncu dünya balonuna YENİ metin yazamaz. Kurallar
     // kısa devre değerlendirildiği için mutes okuması YALNIZCA balon metni
@@ -309,7 +316,7 @@ service cloud.firestore {
       let d = request.resource.data;
       return d.keys().hasOnly([
         'locationId', 'displayName', 'avatar', 'x', 'y', 'facing', 'pose', 'holding', 'seat',
-        'chatText', 'chatTs', 'updatedAt', 'enteredAt', 'activity'
+        'chatText', 'chatTs', 'updatedAt', 'enteredAt', 'activity', 'emote', 'emoteTs'
       ])
         && d.locationId in ['banka', 'karakol', 'camii', 'gazino', 'araba_galerisi', 'silah_magazasi', 'modifiye_garaji']
         && d.x is number && d.x >= 0 && d.x <= 2000
@@ -329,7 +336,8 @@ service cloud.firestore {
         // hep giriş noktasında donmuş görünüyordu, mesajlar gitmiyordu.
         // `'activity' in d` ÖNCE anahtarın var olup olmadığını (hata
         // fırlatmadan) kontrol eder.
-        && (!('activity' in d) || d.activity == null || d.activity == 'onnumara');
+        && (!('activity' in d) || d.activity == null || d.activity == 'onnumara')
+        && validWorldEmote(d);
     }
     match /interiorPresence/{uid} {
       allow read: if isSignedIn();

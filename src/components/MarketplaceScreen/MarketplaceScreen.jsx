@@ -183,10 +183,6 @@ function EstimateLine({ est }) {
   return (
     <span className="market-estimate">
       💡 Tahmini değer: <strong>{est.value.toLocaleString('tr-TR')} altın</strong>
-      <span className="market-estimate-sub">
-        {' '}
-        · yıpranma {est.points} puan → en yüksek fiyatın %{Math.round(est.pct * 100)}'i
-      </span>
     </span>
   );
 }
