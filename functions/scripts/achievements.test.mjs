@@ -15,7 +15,7 @@ function setup() {
 
 test('10 başarı, ödüller', () => {
   assert.equal(ACHIEVEMENTS.length, 10);
-  assert.deepEqual(ACHIEVEMENTS.map((x) => x.reward), [1, 1, 1, 1, 1, 1, 2, 3, 4, 5]);
+  assert.deepEqual(ACHIEVEMENTS.map((x) => x.reward), [1, 1, 2, 2, 3, 3, 4, 4, 5, 5]);
 });
 
 test('başarı bir kez verilir; zümrüt + SMS', async () => {
@@ -41,8 +41,34 @@ test('durum taraması: imam, mafya babası, istihbarat başkanı', async () => {
   S('gangWorlds/w/intelRosterLinks/r1', { actorId: 'u3' });
   await a.sweep();
   assert.equal(G('users/u1').emerald, 1);
-  assert.equal(G('users/u2').emerald, 2);
-  assert.equal(G('users/u3').emerald, 3);
+  assert.equal(G('users/u2').emerald, 4);
+  assert.equal(G('users/u3').emerald, 4);
+  assert.equal(G('users/u3').achievementRewards.istihbaratBaskani, 4);
   await a.syncUser('u3');
-  assert.equal(G('users/u3').emerald, 3, 'tekrar ödül yok');
+  assert.equal(G('users/u3').emerald, 4, 'tekrar ödül yok');
+});
+
+test('v76: eski başarıların farkı tek seferlik yüklenir (toplu tarama + oyuncu bazında)', async () => {
+  const { S, G, sms, a } = setup();
+  // u1: eski kodla 3 başarı almış (achievementRewards yok) → fark: bankaSoy +1, mafyaBabasi +2; imam farkı 0
+  S('users/u1', { emerald: 10, achievements: { imam: 1, bankaSoy: 2, mafyaBabasi: 3 } });
+  // u2: yeni kodla almış → fark yok
+  S('users/u2', { emerald: 4, achievements: { bankaSoy: 5 }, achievementRewards: { bankaSoy: 2 } });
+  // u3: başarı yok
+  S('users/u3', { emerald: 1 });
+  const r = await a.topupAll();
+  assert.deepEqual(r, { users: 1, emerald: 3 });
+  assert.equal(G('users/u1').emerald, 13);
+  assert.deepEqual(G('users/u1').achievementRewards, { imam: 1, bankaSoy: 2, mafyaBabasi: 4 });
+  assert.equal(sms('u1'), 1, 'tek SMS');
+  assert.equal(G('users/u2').emerald, 4);
+  assert.equal(G('users/u3').emerald, 1);
+  // ikinci kez: bayrak var → atlanır; oyuncu bazında da tekrar verilmez
+  assert.deepEqual(await a.topupAll(), { skipped: true });
+  assert.equal(await a.topupUser('u1'), 0);
+  assert.equal(G('users/u1').emerald, 13);
+  // bayraktan sonra eski kodla başarı almış biri: Başarılar ekranını açınca (syncUser) alır
+  S('users/u4', { emerald: 0, achievements: { superKupa: 7 } });
+  await a.syncUser('u4');
+  assert.equal(G('users/u4').emerald, 1);
 });

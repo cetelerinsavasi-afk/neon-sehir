@@ -13,7 +13,7 @@ import { CATALOG, CATALOG_MAP, CATEGORIES, TINTS } from './houseCatalog';
 import { FLOORS, WALLS } from './houseTextures';
 import { FREE_SURFACES, HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
 import { TRACKS, playTrack, stopMusic, unlockAudio, setVolume, getVolume } from './houseAudio';
-import ArcadeGame from './ArcadeGame';
+import ArcadeHub from '../Arcade/ArcadeHub';
 import PhoneScreen from '../Phone/PhoneScreen';
 import PlayerCard from '../PlayerCard/PlayerCard';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
@@ -471,6 +471,12 @@ export default function HouseScreen({ houseId, onExit }) {
         flash(err?.message || 'Alınamadı.');
       }
     } else if (r.kind === 'panel') {
+      if (r.panel === 'atm') {
+        // v76: ATM → telefonda Parara (banka) uygulaması açılır
+        setPhoneApp('banka');
+        setPanel('phone');
+        return;
+      }
       setPanel(r.panel === 'arcade' ? 'arcade' : 'jukebox');
       setPanelItem(r.itemId);
     }
@@ -1049,7 +1055,7 @@ export default function HouseScreen({ houseId, onExit }) {
             </div>
           )}
 
-          {panel === 'arcade' && <ArcadeGame onClose={() => setPanel(null)} />}
+          {panel === 'arcade' && <ArcadeHub onClose={() => setPanel(null)} />}
 
           {/* KAMERA */}
           {panel === 'camera' && cameraShot && (

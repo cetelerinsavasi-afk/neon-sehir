@@ -1,0 +1,39 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "arcade": {
+      "$game": {
+        ".read": "auth != null",
+        ".indexOn": ["meta/status"],
+        "$room": {
+          ".write": "auth != null && data.child('meta/hostUid').val() === auth.uid && !newData.exists()",
+          "meta": {
+            ".write": "auth != null && ((!data.exists() && newData.child('hostUid').val() === auth.uid) || data.child('hostUid').val() === auth.uid)",
+            ".validate": "newData.hasChildren(['game', 'hostUid', 'hostName', 'status', 'createdAt']) && newData.child('game').val() === $game && newData.child('hostName').isString() && newData.child('hostName').val().length <= 40 && newData.child('status').val().matches(/^(open|playing|done)$/)"
+          },
+          "guest": {
+            ".write": "auth != null && ((!data.exists() && newData.child('uid').val() === auth.uid && data.parent().child('meta/status').val() === 'open') || data.child('uid').val() === auth.uid || data.parent().child('meta/hostUid').val() === auth.uid)",
+            "uid": { ".validate": "newData.isString()" },
+            "name": { ".validate": "newData.isString() && newData.val().length <= 40" },
+            "left": { ".validate": "newData.isBoolean()" },
+            "$other": { ".validate": false }
+          },
+          "state": {
+            ".write": "auth != null && data.parent().child('meta/hostUid').val() === auth.uid",
+            ".validate": "newData.isString() && newData.val().length < 6000"
+          },
+          "inH": {
+            ".write": "auth != null && data.parent().child('meta/hostUid').val() === auth.uid",
+            ".validate": "newData.isNumber()"
+          },
+          "inG": {
+            ".write": "auth != null && data.parent().child('guest/uid').val() === auth.uid",
+            ".validate": "newData.isNumber()"
+          },
+          "$other": { ".validate": false }
+        }
+      }
+    }
+  }
+}

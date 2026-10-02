@@ -983,7 +983,7 @@ export default function MosqueWorldScreen({ onExit }) {
           {imam ? `İmam: ${imam.displayName}` : 'İmamlık Başvurusu'}
         </button>
         <button className="mww-menu-btn" onClick={() => setBookletOpen(true)}>İmam Kitapçığı</button>
-        <button className="mww-menu-btn" onClick={() => setPanel('congregation')}>Vakitteki Cemaat</button>
+        <button className="mww-menu-btn" onClick={() => setPanel('congregation')}>{win}. Vakitteki Cemaat ({members.length})</button>
       </div>
       <button className="ws-exit-btn" onClick={onExit}>✕</button>
 
@@ -1055,7 +1055,7 @@ export default function MosqueWorldScreen({ onExit }) {
         <div className="ws-panel-backdrop" onClick={() => setPanel(null)}>
           <div className="ws-panel" onClick={(e) => e.stopPropagation()}>
             <p className="ws-panel-title">
-              {panel === 'imam' ? '🕌 Mihrap — İbadet ve İmam' : panel === 'beggars' ? '🤲 Dilenciler' : `📿 ${win}. Vakitteki Cemaat`}
+              {panel === 'imam' ? '🕌 Mihrap — İbadet ve İmam' : panel === 'beggars' ? '🤲 Dilenciler' : `📿 ${win}. Vakitteki Cemaat (${members.length})`}
             </p>
             {panel === 'imam' && (
               <>

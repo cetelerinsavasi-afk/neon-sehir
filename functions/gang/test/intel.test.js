@@ -156,6 +156,7 @@ test('rüşvet: tutarı İstihbarat operasyonda belirler; savunan 12:00 duyurusu
   const rs = await Promise.allSettled([h.act(G.baba, 'payBribe', { warId }), h.act(G.ids[0], 'payBribe', { warId })]);
   assert.equal(rs.filter((r) => r.status === 'fulfilled').length, 1, 'çift ödeme yok');
   assert.equal(h.get(`wars/${warId}`).status, 'cancelled_bribe');
+  assert.equal(h.get(`wars/def_${truckId}_2026-09-22`).status, 'ended_paid', 'v74: tek saldırgan → savunma da biter');
   assert.equal(h.state(G.gangId).kasa, kasa - 75_000);
   assert.equal(h.get('intel/main/private/state').kasa, 90_000 + 75_000);
   await h.tickTo('2026-09-23', '00:05');

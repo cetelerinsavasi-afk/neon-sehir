@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { usePlayer } from '../../hooks/usePlayer';
 import { syncAchievements } from '../../services/gameActions';
-import { ACHIEVEMENTS } from '../../../functions/achievementsData.js';
+import { ACHIEVEMENTS, LEGACY_ACHIEVEMENT_REWARDS } from '../../../functions/achievementsData.js';
 import './AchievementsScreen.css';
 
 // v67 — Telefon › Başarılar. Her başarı bir kez kazanılır, ödülü zümrüttür
@@ -14,7 +14,9 @@ export default function AchievementsScreen() {
     syncAchievements().catch(() => {});
   }, []);
   const doneCount = ACHIEVEMENTS.filter((a) => done[a.id]).length;
-  const earned = ACHIEVEMENTS.filter((a) => done[a.id]).reduce((s, a) => s + a.reward, 0);
+  // v74: önceden kazanılanlar eski ödülle sayılır (fark verilmedi)
+  const got = player?.achievementRewards || {};
+  const earned = ACHIEVEMENTS.filter((a) => done[a.id]).reduce((s, a) => s + (got[a.id] ?? LEGACY_ACHIEVEMENT_REWARDS[a.id] ?? a.reward), 0);
   const total = ACHIEVEMENTS.reduce((s, a) => s + a.reward, 0);
   // tamamlanmayanlar üstte, kendi içlerinde ödül sırasıyla
   const list = [...ACHIEVEMENTS].sort((a, b) => Number(Boolean(done[a.id])) - Number(Boolean(done[b.id])));

@@ -602,6 +602,25 @@ export function createWarActions(core) {
     });
   }
 
+  // v74: haraç/rüşvet ödendikten sonra tıra saldıran kimse kalmadıysa savunma
+  // savaşı da hemen biter (eskiden 24:00'e kadar "aktif" görünüyordu). Okumalar
+  // transaction'ın yazmalarından ÖNCE yapılır (readOtherAttacks), karar sonra.
+  async function readOtherAttacks(tx, ctx, war, warId) {
+    if (!war.defenseWarId) return null;
+    const defRef = ctx.ref.war(war.defenseWarId);
+    const defSnap = await tx.get(defRef);
+    if (!defSnap.exists) return null;
+    const ids = (defSnap.data().attackWarIds || []).filter((id) => id !== warId);
+    const snaps = await Promise.all(ids.map((id) => tx.get(ctx.ref.war(id))));
+    return { defRef, def: defSnap.data(), anyLive: snaps.some((x) => x.data()?.status === 'active') };
+  }
+  function endDefenseIfClear(tx, ctx, info, gangId, truckCode) {
+    if (!info || info.anyLive || info.def.status !== 'active') return false;
+    tx.update(info.defRef, { status: 'ended_paid', activeGangIds: [], resolvedAtMs: ctx.now });
+    announce(tx, ctx, gangId, '🕊️', `TIR #${truckCode}: saldıran kimse kalmadı — savunma sona erdi, tır yoluna devam ediyor.`);
+    return true;
+  }
+
   async function payHarac(ctx, data) {
     const warId = String(data.warId || '');
     if (ctx.hour >= GANG.HARAC_PAY_DEADLINE_HOUR) fail('deadline-exceeded', `Haraç ödeme süresi ${GANG.HARAC_PAY_DEADLINE_HOUR}:00'de kapandı.`);
@@ -613,6 +632,7 @@ export function createWarActions(core) {
       if (!(war.harac > 0)) fail('failed-precondition', 'Bu saldırıda haraç talebi yok.');
       const [st, attGang] = await Promise.all([tx.get(ctx.ref.gangState(gangId)), tx.get(ctx.ref.gang(war.attackerGangId))]);
       if (Number(st.data()?.kasa || 0) < war.harac) fail('failed-precondition', 'Kasada yeterli para yok.');
+      const others = await readOtherAttacks(tx, ctx, war, warId);
       tx.update(ctx.ref.gangState(gangId), { kasa: FV.increment(-war.harac) });
       const attAlive = attGang.data()?.status === 'active';
       if (attAlive) {
@@ -623,7 +643,8 @@ export function createWarActions(core) {
       ledger(tx, ctx, { type: attAlive ? 'harac_paid' : 'harac_paid_burn', amount: war.harac, from: { kind: 'gang', id: gangId }, to: attAlive ? { kind: 'gang', id: war.attackerGangId } : { kind: 'burn' }, before: st.data()?.kasa, refId: warId });
       announce(tx, ctx, gangId, '🤑', `${me.name}, TIR #${war.truckCode} için ${war.sides?.attacker?.name || ''} çetesine ${fmt(war.harac)} haraç ödedi — o saldırı durdu.`);
       if (attAlive) announce(tx, ctx, war.attackerGangId, '🤑', `TIR #${war.truckCode} sahibi ${fmt(war.harac)} haraç ödedi — saldırı bitti, para kasada.`);
-      return { paid: war.harac };
+      const defenseEnded = endDefenseIfClear(tx, ctx, others, gangId, war.truckCode);
+      return { paid: war.harac, defenseEnded };
     });
   }
 
@@ -746,13 +767,15 @@ export function createWarActions(core) {
       if (!(war.bribe > 0)) fail('failed-precondition', 'İstihbarat bu operasyon için rüşvet kabul etmiyor.');
       const [st, intelSt] = await Promise.all([tx.get(ctx.ref.gangState(gangId)), tx.get(ctx.ref.intelState())]);
       if (Number(st.data()?.kasa || 0) < war.bribe) fail('failed-precondition', 'Kasada yeterli para yok.');
+      const others = await readOtherAttacks(tx, ctx, war, warId);
       tx.update(ctx.ref.gangState(gangId), { kasa: FV.increment(-war.bribe) });
       if (intelSt.exists) tx.update(ctx.ref.intelState(), { kasa: FV.increment(war.bribe) });
       tx.update(ctx.ref.war(warId), { status: 'cancelled_bribe', bribePaid: true, activeGangIds: [], resolvedAtMs: ctx.now });
       ledger(tx, ctx, { type: 'bribe_paid', amount: war.bribe, from: { kind: 'gang', id: gangId }, to: { kind: 'intel', id: 'main' }, before: st.data()?.kasa, refId: warId });
       announce(tx, ctx, gangId, '💼', `${me.name}, TIR #${war.truckCode} için İstihbarata ${fmt(war.bribe)} rüşvet ödedi — operasyon durdu.`);
       core.announceIntel(tx, ctx, '💼', `TIR #${war.truckCode} sahibi ${fmt(war.bribe)} rüşvet ödedi — operasyon durdu, para kasada.`);
-      return { paid: war.bribe };
+      const defenseEnded = endDefenseIfClear(tx, ctx, others, gangId, war.truckCode);
+      return { paid: war.bribe, defenseEnded };
     });
   }
 

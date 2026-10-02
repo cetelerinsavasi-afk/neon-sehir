@@ -4,7 +4,8 @@ export function getAuth() {
 }
 export class GoogleAuthProvider {}
 export function onAuthStateChanged(auth, cb) {
-  const t = setTimeout(() => cb({ uid: PREVIEW_UID, displayName: 'Önizleme Admin' }), 0);
+  const q = new URLSearchParams(location.search).get('uid'); // önizleme: ikinci oyuncu için
+  const t = setTimeout(() => cb({ uid: q || PREVIEW_UID, displayName: q ? `Oyuncu ${q}` : 'Önizleme Admin' }), 0);
   return () => clearTimeout(t);
 }
 export async function signInWithPopup() {}

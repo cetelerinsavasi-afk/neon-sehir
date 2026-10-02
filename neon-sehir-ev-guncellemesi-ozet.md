@@ -1,3 +1,62 @@
+# v76 — Başarı farkı + ATM
+
+1. **Başarı ödül farkı (tek seferlik):** ödüller artırılmadan önce kazanılmış başarıların farkı (yeni − eski) bir kez yüklenir: Banka soy +1, Sixtagram 100 beğeni +1, Cabrio şampiyonu +2, Banka soyguncusu yakala +2, Mafya Babası +2, İstihbarat Başkanı +1, Süper Kupa +1 (İmam, Piyango, 1. Lig şampiyonu zaten aynı). Oyuncuya tek SMS gider.
+   - Yayından sonraki ilk saatlik taramada (achievementsSweep) herkes için otomatik yapılır; ayrıca oyuncu Başarılar ekranını açınca da kontrol edilir. İkinci kez verilmez (her başarıya "verilen ödül" kaydı yazılır; toplu tarama bayrakla bir kez çalışır).
+2. **ATM:** evdeki ATM'ye yaklaşınca "🏧 Parara Bank" → telefonda Parara uygulaması açılır (yatırım, kredi, ceza işlemleri).
+
+Yayınlama:
+```
+firebase deploy --only functions:achievementsSweep,functions:syncAchievements
+```
++ web.
+
+---
+
+# v75 — Oyun Salonu (evde konsol / bilgisayar / atari)
+
+**Nereden açılır:** Atari Makinesi, Oyuncu Bilgisayarı, İnternet Kafe İstasyonu, Konsol & TV Seti → "🎮 Oyna". Bu eşyalardan birinin 3 m yakınındaki bir koltuğa/sandalyeye oturunca da oturduğun yerden "🎮 Oyna" çıkar.
+
+**4 oyun:**
+- ⚽ **Kafa Topu** — 60 sn, koca kafalı futbol (◀ ▶ · zıpla · şut).
+- 🥊 **Sokak Dövüşü** — 3 raunt, 2 raunt alan kazanır (yumruk · tekme · rakibin tersine basılı tut = blok).
+- 🏎️ **Neon Yarış** — kuşbakışı pist, 4 tur, kamera kendi arabanı izler, mini harita (direksiyon · gaz · fren).
+- 🧱 **Tuğla Kırma** — mevcut atari oyunu (tek kişilik).
+
+**Modlar (ilk üç oyun):**
+- 🤖 **Bota karşı** — hemen başlar. Botlar dengelendi (bot-bot yüzlerce maçta iki taraf eşit kazanıyor; kendi kalesine gol / sıra avantajı hataları giderildi).
+- 🌐 **Online** — "Oda kur" → odan herkesin "Açık odalar" listesinde görünür, biri katılınca maç başlar (beklerken "Bota karşı oyna"ya geçebilirsin). Farklı evlerden/cihazlardan bağlanılır. Rakip çıkarsa kalan kazanır.
+- Telefon: ekrandaki büyük butonlar; bilgisayar: klavye (← → ↑ · Boşluk/J · K).
+
+**Online için bir kerelik kurulum (Firebase Realtime Database):** Firestore'da her hareket ücretli okuma/yazma olurdu; Realtime Database bant genişliğiyle ücretlenir ve bu kullanımda ücretsiz kotada kalır, ayrıca daha hızlıdır.
+1. Firebase Console → Build → **Realtime Database** → Create Database → konum **Belgium (europe-west1)** → "Locked mode".
+2. Açılan sayfadaki adresi kopyala (`https://…-default-rtdb.europe-west1.firebasedatabase.app`) → `.env` dosyasına: `VITE_FIREBASE_DATABASE_URL=<adres>`
+3. `firebase deploy --only database` (kurallar: `database.rules.json` — sadece giriş yapmış oyuncular; odayı sadece kuran yönetir, konuk sadece kendi girdisini yazar).
+4. Web'i derle/yayınla.
+Bu adımlar yapılmadan web yayınlanırsa oyunlar **bota karşı** çalışır, online seçeneği "yakında" yazar — hiçbir şey bozulmaz.
+⚠️ `firebase.json`'a database eklendi: veritabanı oluşturulmadan düz `firebase deploy` (hepsi) hata verir; `--only` ile yayınlamaya devam et.
+
+Yayınlama: sadece web (+ hazır olunca `firebase deploy --only database`). Cloud Functions değişmedi.
+
+---
+
+# v74 — Android adres çubuğu + revizeler
+
+1. **Android adres çubuğu:** `public/.well-known/assetlinks.json` içine Play imza anahtarının SHA-256'sı işlendi (0D:A9:…:02:F8). Web yayınlanınca telefonda uygulamayı kapatıp aç; hemen kalkmazsa uygulamanın önbelleğini temizle / yeniden yükle. Uygulamayı yeniden derlemek gerekmez. Kontrol: `node scripts/check-assetlinks.mjs`.
+2. **Başarı ödülleri:** 1, 1, 2, 2, 3, 3, 4, 4, 5, 5 zümrüt (toplam 30). Önceden kazanılanlara fark verilmez; ekranda onlar için kazanılan eski ödül sayılır.
+3. **Tır sabotajı:**
+   - Haraç/rüşvet ödendikten sonra tıra saldıran kimse kalmadıysa savunma savaşı da **hemen biter** (eskiden gece yarısına kadar aktif kalıyordu). Başka saldırgan varsa savunma sürer.
+   - Savunan çete ("⚠️ Tırlarımıza saldırı" kartı) ve saldıran çete ("💣 Saldırdığımız tırlar" kartı) da artık müttefikin gördüğü **🏆 Sıralama** ve **🔥 En çok katkı** detaylarını görür (savunma tarafları + saldırganlar tek listede). Saldıran çete diğer saldırganları göremez (gizli kalır).
+4. **Cami:** "X. Vakitteki Cemaat (Y)" — hem menü düğmesinde hem panel başlığında kişi sayısıyla.
+5. **Miktar butonları (oyunun tamamı):** değer üst sınırdayken de tüm butonlar basılabilir; sayı artmaz ama adım seçilir, böylece [−] ile istenen miktarda azaltılabilir.
+
+Yayınlama (sadece değişenler):
+```
+firebase deploy --only functions:gangAction,functions:achievementsSweep,functions:syncAchievements,functions:applyForImam,functions:attemptHeist,functions:executeHeistPlan,functions:toggleSixtagramLike,functions:dailyReset,functions:resolveStuckRewardsNow,functions:resolveFutbolMatchdayReveal
+```
++ web (assetlinks dosyası web ile gider).
+
+---
+
 # v73 — Maliyet optimizasyonu (Firestore okumaları)
 
 Görünür oyun davranışı aynı; aşağıdakiler arka planda daha az okuma/yazma yapar.

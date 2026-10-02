@@ -13,9 +13,11 @@ export default defineConfig({
       { find: /^firebase\/auth$/, replacement: m('firebase-auth.js') },
       { find: /^firebase\/functions$/, replacement: m('firebase-functions.js') },
       { find: /^firebase\/firestore$/, replacement: m('firebase-firestore.js') },
+      { find: /^firebase\/database$/, replacement: m('firebase-database.js') },
       { find: /^crypto$/, replacement: m('crypto.js') },
       { find: /.*\/config\/admin(\.js)?$/, replacement: m('admin-config.js') },
     ],
   },
+  define: { 'import.meta.env.VITE_FIREBASE_DATABASE_URL': JSON.stringify('mock://rtdb') },
   server: { port: 5199, host: '127.0.0.1', fs: { allow: [path.resolve(__dirname)] } },
 });

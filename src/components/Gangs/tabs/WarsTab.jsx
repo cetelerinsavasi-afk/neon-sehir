@@ -9,7 +9,7 @@
 //  - Gelen bahis/ittifak teklifleri (Baba/Sağ Kol karar, Kıdemli/Tetikçi öneri)
 //  - Oylamalar, ardından dağıtım "Al" butonları
 import { WatchWarsButton } from '../WatchWars';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { limit, orderBy } from 'firebase/firestore';
 import { fmtClock, fmtCountdown, istDateKey, istHour, istMidnight, nextWindowStart, useDocData, useGang, useGangAction, useNow, slotIdOf, useQueryData } from '../GangContext';
 import { AmountInput, Bar, BetPair, Btn, Card, Confirm, Deadline, Empty, Logo, Sheet, fmtTimer } from '../ui';
@@ -227,6 +227,94 @@ function WarDetail({ war, onClose, mySideKey }) {
   );
 }
 
+// v74 — Tır savaşı (savunma + saldırılar) ortak detayı: hem savunan, hem saldıran,
+// hem müttefik aynı sıralamayı ve en çok katkı yapanları görür. Saldıran taraf
+// sadece kendi saldırısını görür (diğer saldırganlar gizli kalır — belgeleri ona açık değil).
+function WarRollsFeed({ warId, side, onData }) {
+  const { path } = useGang();
+  const { docs } = useQueryData(path(`wars/${warId}/rolls`), () => [orderBy('contribution', 'desc'), limit(10)], warId);
+  useEffect(() => {
+    onData(warId, docs.map((r) => ({ ...r, side })));
+  }, [docs, warId, side, onData]);
+  return null;
+}
+
+function TruckWarBody({ def, attacks, mySideKey }) {
+  const [rollMap, setRollMap] = useState({});
+  const onData = useCallback((id, list) => setRollMap((m) => (m[id] === list ? m : { ...m, [id]: list })), []);
+  const rows = [
+    ...(def ? sidesRanked(def).map((x) => ({ ...x, role: 'defender' })) : []),
+    ...attacks.map((a) => ({
+      key: a.id,
+      name: a.type === 'intelop' ? 'İstihbarat' : a.sides?.attacker?.name || '',
+      logo: a.type === 'intelop' ? INTEL_LOGO : a.sides?.attacker?.logo,
+      orgType: a.type === 'intelop' ? 'intel' : 'gang',
+      role: 'attacker',
+      power: a.display?.attacker || 0,
+    })),
+  ].sort((a, b) => b.power - a.power);
+  const max = rows[0]?.power || 1;
+  const rolls = Object.values(rollMap)
+    .flat()
+    .sort((a, b) => (b.contribution || 0) - (a.contribution || 0))
+    .slice(0, 10);
+  return (
+    <>
+      {def && <WarRollsFeed warId={def.id} side="defender" onData={onData} />}
+      {attacks.map((a) => (
+        <WarRollsFeed key={a.id} warId={a.id} side="attacker" onData={onData} />
+      ))}
+      <div className="gx-section-head">
+        <span>🏆 Sıralama</span>
+      </div>
+      {rows.length === 0 && <p className="dim">Henüz kimse katılmadı.</p>}
+      {rows.map((r, i) => (
+        <div key={r.key} className={`gx-rank-row${r.key === mySideKey ? ' mine' : ''}`}>
+          <span className="gx-rank-pos">#{i + 1}</span>
+          <Logo logo={r.orgType === 'intel' ? INTEL_LOGO : r.logo} size={26} />
+          <div className="gx-rank-main">
+            <div className="gx-rank-name">
+              {r.role === 'defender' ? '🛡️ ' : '⚔️ '}
+              {r.name}
+            </div>
+            <Bar value={r.power} max={max} color={r.key === mySideKey ? 'var(--neon-yellow)' : r.role === 'defender' ? 'var(--neon-cyan)' : 'var(--neon-pink, #ff4fd8)'} height={6} />
+          </div>
+          <span className="gx-rank-power">{fmt(r.power)}</span>
+        </div>
+      ))}
+      {rolls.length > 0 && (
+        <>
+          <div className="gx-section-head">
+            <span>🔥 En çok katkı</span>
+          </div>
+          {rolls.map((r) => (
+            <div key={`${r.side}_${r.id}`} className="gx-roll-row">
+              <span>
+                {r.side === 'defender' ? '🛡️ ' : '⚔️ '}
+                {r.name}
+              </span>
+              <span className="dim">
+                🎲{r.dice?.[0]}+{r.dice?.[1]} × {fmt(r.power)}
+              </span>
+              <b>{fmt(r.contribution)}</b>
+            </div>
+          ))}
+        </>
+      )}
+    </>
+  );
+}
+
+function TruckWarDetail({ def, attacks, mySideKey, onClose }) {
+  const title = `TIR #${def?.truckCode || attacks[0]?.truckCode || ''}`;
+  return (
+    <Sheet title={title} icon="🛡️" onClose={onClose}>
+      <div className="gx-purpose">{warPurpose(def || attacks[0])}</div>
+      <TruckWarBody def={def} attacks={attacks} mySideKey={mySideKey} />
+    </Sheet>
+  );
+}
+
 // Kart: solda bilgi, sağda KATIL
 // "Katıldın" butonunda saniye saniye akan sayaç: bir sonraki dilimde yeni hak
 function JoinedTimer({ until }) {
@@ -376,6 +464,7 @@ function AttackersSheet({ def, attackers, lead, onClose }) {
           </div>
         );
       })}
+      <TruckWarBody def={def} attacks={attackers} mySideKey={def.defenderGangId} />
       {ask && (
         <Confirm
           icon={ask.type === 'intelop' ? '💼' : '🤑'}
@@ -779,6 +868,7 @@ export default function WarsTab({ org, d }) {
   const [detail, setDetail] = useState(null);
   const [rolling, setRolling] = useState(null);
   const [attackersOf, setAttackersOf] = useState(null);
+  const [truckDetail, setTruckDetail] = useState(null); // v74
   const [propose, setPropose] = useState(null);
   const isIntel = org === 'intel';
   const gangId = d.gangId;
@@ -950,7 +1040,7 @@ export default function WarsTab({ org, d }) {
       {(L.myAttacks || []).map((w) => {
         const def = wars.all.find((x) => x.id === w.defenseWarId);
         return (
-          <WarRow key={w.id} war={w} slotUsed={slot.used} onOpen={() => setDetail({ war: w, side: 'attacker' })} onJoin={() => join(w, {}, d.gang?.name)} joinLabel="SALDIR">
+          <WarRow key={w.id} war={w} slotUsed={slot.used} onOpen={() => setTruckDetail({ defId: w.defenseWarId, attackId: w.id, side: w.id })} onJoin={() => join(w, {}, d.gang?.name)} joinLabel="SALDIR">
             <div className="dim gx-mini">🏴 {w.sides?.defender?.name}</div>
             <div className="gx-vs">
               <span>⚔️ {fmt(w.display?.attacker)}</span>
@@ -974,7 +1064,7 @@ export default function WarsTab({ org, d }) {
             key={w.id}
             war={w}
             slotUsed={slot.used}
-            onOpen={() => setDetail({ war: w, side: gangId })}
+            onOpen={() => setTruckDetail({ defId: w.id, side: gangId })}
             onJoin={() => join(w, { side: 'defense' }, d.gang?.name)}
             joinLabel="SAVUN"
           >
@@ -1065,6 +1155,14 @@ export default function WarsTab({ org, d }) {
       <WatchWarsButton />
 
       {detail && <WarDetail war={wars.all.find((w) => w.id === detail.war.id) || detail.war} mySideKey={detail.side} onClose={() => setDetail(null)} />}
+      {truckDetail &&
+        (() => {
+          const def = wars.all.find((x) => x.id === truckDetail.defId) || null;
+          const own = truckDetail.attackId ? wars.all.find((x) => x.id === truckDetail.attackId) : null;
+          const attacks = def ? wars.all.filter((x) => (x.type === 'sabotage' || x.type === 'intelop') && x.defenseWarId === def.id && x.status === 'active') : own ? [own] : [];
+          if (own && !attacks.some((a) => a.id === own.id)) attacks.push(own);
+          return <TruckWarDetail def={def} attacks={attacks} mySideKey={truckDetail.side} onClose={() => setTruckDetail(null)} />;
+        })()}
       {attackersOf && (
         <AttackersSheet
           def={wars.all.find((w) => w.id === attackersOf.id) || attackersOf}

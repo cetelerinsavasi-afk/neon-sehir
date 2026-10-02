@@ -36,7 +36,12 @@
   "isMetaQuest": false,
   "fullScopeUrl": "https://cetelerinsavasi.com/",
   "minSdkVersion": 21,
-  "fingerprints": [],
+  "fingerprints": [
+    {
+      "name": "Play uygulama imzalama anahtarı",
+      "value": "0D:A9:B3:57:F9:CF:76:80:90:9A:F3:D1:F8:E1:05:B9:9E:49:D9:6B:50:F4:B2:08:AB:27:7F:82:FB:31:02:F8"
+    }
+  ],
   "additionalTrustedOrigins": [],
   "retainedBundles": []
 }

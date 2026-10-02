@@ -851,8 +851,9 @@ export function createHouseEngine(
     const ctl = e.obj.userData.ctl;
     const acts = [];
     if (def.seats?.length) acts.push({ kind: 'sit', label: def.cat === 'araba' ? '🚗 Arabaya bin' : def.cat === 'motor' ? '🏍️ Motora bin' : '🪑 Otur' });
-    if (def.panel === 'arcade') acts.push({ kind: 'panel', panel: 'arcade', label: '🕹️ Oyna' });
+    if (def.game) acts.push({ kind: 'panel', panel: 'arcade', label: '🎮 Oyna' });
     if (def.panel === 'jukebox') acts.push({ kind: 'panel', panel: 'jukebox', label: '🎵 Müzik' });
+    if (def.panel === 'atm') acts.push({ kind: 'panel', panel: 'atm', label: '🏧 Parara Bank' });
     if (!def.panel && ctl?.act && !ctl.noToggle) acts.push({ kind: 'toggle', label: ctl.act });
     (def.takes || []).forEach((product) => {
       const p = HOUSE_PRODUCTS[product];
@@ -866,6 +867,18 @@ export function createHouseEngine(
       const e = objs.get(self.seat.id);
       if (!e) return null;
       const acts = [{ kind: 'sit', label: '⬆️ Kalk' }, ...actionsFor(e).filter((a) => a.kind !== 'sit')];
+      // v75 — konsolun/bilgisayarın karşısındaki koltukta oturuyorsan oradan da oyna
+      if (!acts.some((a) => a.panel === 'arcade')) {
+        const sp = seatWorld(self.seat, new THREE.Vector3());
+        let near = false;
+        if (sp) {
+          objs.forEach((o) => {
+            if (near || !CATALOG_MAP[o.data.k]?.game) return;
+            if (Math.hypot(o.data.x - sp.x, o.data.z - sp.z) < 3.2) near = true;
+          });
+        }
+        if (near) acts.push({ kind: 'panel', panel: 'arcade', label: '🎮 Oyna' });
+      }
       return { id: self.seat.id, name: CATALOG_MAP[e.data.k].name, actions: acts };
     }
     if (self.target) return null;

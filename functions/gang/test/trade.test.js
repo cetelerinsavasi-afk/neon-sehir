@@ -329,6 +329,7 @@ test('haraç: alt/üst sınır yok; 21:00e kadar (v38); en güçlünün haracı 
   await h.act(A.ids[0], 'payHarac', { warId: sB.warId });
   assert.equal(h.get(`wars/${sB.warId}`).status, 'cancelled_harac');
   assert.equal(h.state(B.gangId).kasa, kasaB + 40_000);
+  assert.equal(h.get(`wars/def_${t1}_2026-09-22`).status, 'active', 'v74: C hâlâ saldırıyor → savunma sürer');
   await h.fails(A.baba, 'payHarac', { warId: sB.warId }); // ikinci ödeme yok
   // v38: son ödeme son dilim (21:00) başlayana kadar
   h.at('2026-09-22', '18:00');
@@ -438,8 +439,14 @@ test('v67: 09:00 siparişi → 12:00 kalkış → 18:00e kadar sabotaj → 18:00
   await h.act(A.baba, 'rollDice', { warId: `def_${truckId}_2026-09-21` });
   h.at('2026-09-21', '20:59');
   const kA = h.state(A.gangId).kasa;
-  await h.act(A.baba, 'payHarac', { warId });
+  const paid = await h.act(A.baba, 'payHarac', { warId });
   assert.equal(h.state(A.gangId).kasa, kA - 1000);
+  // v74: saldıran kalmadı → savunma savaşı da hemen biter
+  assert.equal(paid.defenseEnded, true);
+  const defId = `def_${truckId}_2026-09-21`;
+  assert.equal(h.get(`wars/${defId}`).status, 'ended_paid');
+  assert.deepEqual(h.get(`wars/${defId}`).activeGangIds, []);
+  assert.match((await h.fails(A.ids[0], 'rollDice', { warId: defId })).message, /aktif değil/);
   await h.tickTo('2026-09-22', '00:05');
   assert.equal(h.get(`trucks/${truckId}`).lastTrip.outcome, 'delivered');
   assert.equal(depotOf(h, A.gangId).items.yasakliMadde, 30);

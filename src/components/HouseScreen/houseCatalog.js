@@ -2739,7 +2739,13 @@ CATALOG.forEach((d) => {
   d.takes = HOUSE_TAKEABLES[d.k] || null;
 });
 CATALOG.find((d) => d.k === 'arcade').panel = 'arcade';
+// v75 — oyun salonu: bu eşyalardan (ve karşılarındaki koltuklardan) oyun oynanır
+['arcade', 'pc', 'pcstation', 'console'].forEach((k) => {
+  const d = CATALOG.find((x) => x.k === k);
+  if (d) d.game = true;
+});
 CATALOG.find((d) => d.k === 'jukebox').panel = 'jukebox';
+CATALOG.find((d) => d.k === 'atm').panel = 'atm'; // v76: ATM → Parara (banka uygulaması)
 export const CATALOG_MAP = Object.fromEntries(CATALOG.map((d) => [d.k, d]));
 
 export function formatPrice(p) {

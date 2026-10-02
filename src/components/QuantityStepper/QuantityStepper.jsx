@@ -8,6 +8,8 @@ import './QuantityStepper.css';
 //     tekrar bastıkça artmaya devam eder.
 //   - [+] seçili sayı kadar artırır, [−] seçili sayı kadar azaltır (varsayılan 1).
 //   Max · Sıfırla
+//   v74: değer üst sınırdayken de TÜM butonlar basılabilir (sayı artmaz, ama
+//   adım seçilebilir → [−] ile istenen miktarda azaltılabilir).
 // `step` taban birimidir (ör. fiyatlarda 10) — adımlar onun 10'ar katlarıdır.
 // `quickAmounts` geriye uyumluluk için duruyor: içindeki en büyük değer adım
 // listesinin ne kadar büyüyeceğini belirler (ör. 100.000'e kadar).
@@ -47,7 +49,7 @@ export default function QuantityStepper({ value, onChange, max, min = 0, step = 
           −
         </button>
         <span className="qty-stepper-value">{fmt(num)}</span>
-        <button type="button" className="qty-stepper-btn" disabled={atMax} onClick={() => onChange(clamp(num + sel))} aria-label={`${fmt(sel)} artır`}>
+        <button type="button" className={`qty-stepper-btn${atMax ? ' at-max' : ''}`} onClick={() => onChange(clamp(num + sel))} aria-label={`${fmt(sel)} artır`}>
           +
         </button>
       </div>
@@ -58,7 +60,6 @@ export default function QuantityStepper({ value, onChange, max, min = 0, step = 
               key={s}
               type="button"
               className={`qty-stepper-step${s === sel ? ' on' : ''}`}
-              disabled={atMax}
               onClick={() => {
                 setPicked(s);
                 onChange(clamp(num + s));
@@ -73,7 +74,7 @@ export default function QuantityStepper({ value, onChange, max, min = 0, step = 
       {((showMax && max !== undefined && max > 0) || num > min) && (
         <div className="qty-stepper-quick">
           {showMax && max !== undefined && max > 0 && (
-            <button type="button" className="qty-stepper-quick-btn max" disabled={atMax} onClick={() => onChange(clamp(max))}>
+            <button type="button" className="qty-stepper-quick-btn max" onClick={() => onChange(clamp(max))}>
               Max ({fmt(max)})
             </button>
           )}
