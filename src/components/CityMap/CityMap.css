@@ -1,7 +1,14 @@
+/*
+ * Harita ekranın TAMAMINI kaplamıyor: üstten 0, alttan ise alt sekme
+ * butonlarının (BottomBar: bottom 20px + safe-area, 64px yükseklik) bir tık
+ * altında bitiyor. Altında kalan ince şerit oyunun arka plan rengi (siyah).
+ * Harita (kare) bu alanın YÜKSEKLİĞİNE sığdırılır — bkz. useMapPanZoom.js.
+ */
 .map-viewport {
+  --map-bottom-gap: calc(10px + env(safe-area-inset-bottom, 0px));
   position: relative;
   width: 100%;
-  height: 100%;
+  height: calc(100% - var(--map-bottom-gap));
   overflow: hidden;
   touch-action: none; /* tarayıcının varsayılan pinch/scroll davranışını engelle, kendi pan/zoom'umuzu kullan */
   cursor: grab;
