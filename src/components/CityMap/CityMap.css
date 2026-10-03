@@ -1,14 +1,18 @@
 /*
- * Harita ekranın TAMAMINI kaplamıyor: üstten 0, alttan ise alt sekme
- * butonlarının (BottomBar: bottom 20px + safe-area, 64px yükseklik) bir tık
- * altında bitiyor. Altında kalan ince şerit oyunun arka plan rengi (siyah).
- * Harita (kare) bu alanın YÜKSEKLİĞİNE sığdırılır — bkz. useMapPanZoom.js.
+ * Harita ekranın TAMAMINI kaplamıyor: üstten HUD'daki "Şüphe / Saygınlık"
+ * yazılarının bir tık üstünden başlıyor (HUD: padding-top 10px + safe-area),
+ * alttan ise alt sekme butonlarının (BottomBar: bottom 20px + safe-area,
+ * 64px yükseklik) bir tık altında bitiyor. Üstte ve altta kalan ince
+ * şeritler oyunun arka plan rengi (siyah). Harita (kare) bu alanın
+ * YÜKSEKLİĞİNE sığdırılır — bkz. useMapPanZoom.js.
  */
 .map-viewport {
+  --map-top-gap: calc(5px + env(safe-area-inset-top, 0px));
   --map-bottom-gap: calc(10px + env(safe-area-inset-bottom, 0px));
   position: relative;
   width: 100%;
-  height: calc(100% - var(--map-bottom-gap));
+  margin-top: var(--map-top-gap);
+  height: calc(100% - var(--map-top-gap) - var(--map-bottom-gap));
   overflow: hidden;
   touch-action: none; /* tarayıcının varsayılan pinch/scroll davranışını engelle, kendi pan/zoom'umuzu kullan */
   cursor: grab;
