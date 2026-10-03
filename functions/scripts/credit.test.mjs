@@ -58,7 +58,7 @@ test('kredi puanı = %20 × varlıkların anında satış değeri + fabrika + ta
 test('kredi çek: limit, tek aktif kredi, devlet borcu, ödeme ve kapanış', async () => {
   const { fns, G, S, call } = setup();
   await assert.rejects(call(fns.takeCredit, { amount: 103_001 }), /kredi puanın/i);
-  await assert.rejects(call(fns.takeCredit, { amount: 500 }), /En az/);
+  await assert.rejects(call(fns.takeCredit, { amount: 5 }), /En az/);
   const r = await call(fns.takeCredit, { amount: 100_000 });
   assert.equal(r.totalOwed, 120_000);
   assert.equal(G('users/u1').gold, 105_000);

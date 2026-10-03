@@ -1,14 +1,19 @@
 import { useEffect, useRef } from 'react';
 
-// Baca konumları (harita yüzdesi, regions.js'teki Fabrika kutusuna göre
-// tahmin edilmiştir — bina çatısının hemen üstünde, dumanın başladığı
-// nokta). Gerekirse buradan ince ayar yapılabilir.
+// Baca konumları (YENİ genişletilmiş kare haritanın yüzdesi, 1000x1000
+// görselde ölçüldü: iki yüksek bacanın tepesi). Tüm konumlar HARİTAYA
+// göre (%) olduğu için, harita sağa/sola kaydırılınca (ya da zoom
+// yapılınca) duman bacalarla birlikte hareket eder, konumunu kaybetmez.
 const CHIMNEYS = [
-  { xPct: 87.5, yPct: 27.5 },
-  { xPct: 92.5, yPct: 25.5 },
+  { xPct: 48.6, yPct: 27.5 },
+  { xPct: 51.7, yPct: 29 },
 ];
 
-const RAIN_COUNT = 18;
+// Harita eskiden 0.558 en/boy oranlıydı, şimdi kare: yatay yüzde birimleri
+// 1.79 kat daha geniş bir alana denk geliyor. Duman salınımı ve yağmur
+// yoğunluğu eski görünümle aynı kalsın diye bu oranla ölçekleniyor.
+const OLD_ASPECT = 0.558;
+const RAIN_COUNT = Math.round(18 / OLD_ASPECT);
 
 /**
  * MapAmbience — haritanın donuk/statik hissini kırmak için çok hafif bir
@@ -106,8 +111,8 @@ export default function MapAmbience() {
       smokeRef.current.forEach((p) => {
         const t = (now - p.bornAt) / p.life; // 0 → 1
         const c = CHIMNEYS[p.chimneyIdx];
-        const riseY = c.yPct - t * 16; // yukarı doğru yüksel (harita %'si)
-        const driftX = p.x + Math.sin(now * p.driftFreq + p.phase) * p.driftAmp * t;
+        const riseY = c.yPct - t * 12; // yukarı doğru yüksel (harita %'si)
+        const driftX = p.x + Math.sin(now * p.driftFreq + p.phase) * p.driftAmp * OLD_ASPECT * t;
         const px = (driftX / 100) * width;
         const py = (riseY / 100) * height;
         const radius = 2 + p.maxRadius * t;

@@ -36,3 +36,24 @@
     transform: rotate(360deg);
   }
 }
+
+/* "Çok yakında" mesajı (yapılmamış mekanlara tıklayınca) */
+.coming-soon-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(110px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 60;
+  padding: 12px 20px;
+  border-radius: 14px;
+  background: var(--panel);
+  border: 1px solid var(--neon-cyan);
+  color: var(--text, #fff);
+  font-weight: 700;
+  box-shadow: 0 0 24px rgba(25, 232, 255, 0.35);
+  pointer-events: none;
+  animation: coming-soon-in 0.2s ease-out;
+}
+@keyframes coming-soon-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+}

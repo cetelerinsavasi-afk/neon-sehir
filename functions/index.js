@@ -4732,7 +4732,7 @@ export const repayVehicleLoan = onCall(async (request) => {
 const CREDIT_SCORE_RATIO = 0.2;
 const CREDIT_TERM_DAYS = 10;
 const CREDIT_INTEREST = 0.2;
-const CREDIT_MIN_AMOUNT = 1000;
+const CREDIT_MIN_AMOUNT = 10; // alt limit: 10 altın
 
 async function computeCreditScore(uid) {
   const [vehiclesSnap, weaponsSnap, invSnap, factorySnap, teamsSnap, prices] = await Promise.all([

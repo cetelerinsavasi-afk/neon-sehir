@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { BlocksProvider } from './contexts/BlocksContext';
 import Hud from './components/Hud/Hud';
@@ -144,6 +144,15 @@ function GameShell() {
   const [houseView, setHouseView] = useState(null);
   const [gangsOpen, setGangsOpen] = useState(false);
   const [futbolOpen, setFutbolOpen] = useState(false);
+  // comingSoon — "Çok yakında" mesajı (mekan adı), 2 sn sonra kendiliğinden kapanır.
+  const [comingSoon, setComingSoon] = useState(null);
+  const comingSoonTimer = useRef(null);
+  const showComingSoon = (name) => {
+    setComingSoon(name);
+    clearTimeout(comingSoonTimer.current);
+    comingSoonTimer.current = setTimeout(() => setComingSoon(null), 2200);
+  };
+  useEffect(() => () => clearTimeout(comingSoonTimer.current), []);
   const [parkOpen, setParkOpen] = useState(false);
   const [bankOpen, setBankOpen] = useState(false);
   const [karakolOpen, setKarakolOpen] = useState(false);
@@ -242,6 +251,17 @@ function GameShell() {
     // Profil alttaki 5. sekmede (👤).
     if (regionMeta?.screen === 'ev') {
       setHouseView({ houseId: null });
+      return;
+    }
+    // Stadyum → doğrudan Futbol paneli (alttaki Futbol butonu kaldırıldı).
+    if (regionMeta?.screen === 'futbol') {
+      setFutbolOpen(true);
+      return;
+    }
+    // Henüz yapılmamış mekanlar (Spor Salonu, Cafe, Bar, İnternet Kafe,
+    // Belediye): kısa bir "Çok yakında" mesajı.
+    if (regionMeta?.screen === 'yakinda') {
+      showComingSoon(regionMeta.name);
       return;
     }
     if (regionMeta?.screen === 'park') {
@@ -384,14 +404,33 @@ function GameShell() {
       <ReferralPrompt />
 
       <BottomBar
-        onPhoneClick={() => setPhoneOpen(true)}
         onHeistClick={() => openHeistScreen(null)}
         onGangsClick={() => setGangsOpen(true)}
         gangsBadge={gangAlerts.any}
-        phoneBadge={unread.totalBadge + chatsAppCount}
-        onFutbolClick={() => setFutbolOpen(true)}
         onProfileClick={() => setProfileOpen(true)}
       />
+
+      {/* Telefon kısayolu — ChatsApp butonunun TAM üstünde, aynı boyutta. */}
+      <button
+        className="map-phone-btn"
+        onClick={() => setPhoneOpen(true)}
+        aria-label="Telefon"
+        title="Telefon"
+      >
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="6" y="2" width="12" height="20" rx="2" />
+          <line x1="11" y1="18" x2="13" y2="18" />
+        </svg>
+        {unread.totalBadge > 0 && (
+          <span className="bottom-bar-badge">{unread.totalBadge > 9 ? '9+' : unread.totalBadge}</span>
+        )}
+      </button>
+
+      {comingSoon && (
+        <div className="coming-soon-toast" role="status">
+          🚧 {comingSoon} — Çok yakında
+        </div>
+      )}
 
       {/* Yeni istek: "chatsapp ... anasayfada sağ alta yakın bi noktada
           kısa yolu bulunsun" — alttaki 4 sekmeden biri DEĞİL, çubuğun

@@ -114,14 +114,14 @@ test('operasyon: sadece ihbarlı tıra, 12:00ye kadar, ücret oyun geneli sabota
   await h.act(mole, 'joinIntel', { codeName: 'Köstebek' });
   const chief = await intelChief(h, 'Kartal');
   await h.tickTo('2026-09-22', '07:00');
-  await h.db.doc('gangWorlds/test/intel/main/private/state').set({ kasa: 100_000 }, { merge: true });
+  await h.db.doc('gangWorlds/test/intel/main/private/state').set({ kasa: 200_000 }, { merge: true });
   const reportId = `${truckId}_2026-09-22`;
   assert.match((await h.fails(chief, 'startOperation', { reportId })).message, /bulunamadı/);
   await h.act(mole, 'reportTruck', { truckId });
   await h.fails(mole, 'startOperation', { reportId }); // Muhbir başlatamaz
   const op = await h.act(chief, 'startOperation', { reportId, bribe: 0 });
-  assert.equal(op.started[0].price, 10_000);
-  assert.equal(h.get('intel/main/private/state').kasa, 90_000);
+  assert.equal(op.started[0].price, 100_000, 'İstihbarat operasyonu sabit 100.000');
+  assert.equal(h.get('intel/main/private/state').kasa, 100_000);
   assert.equal(h.get('sabotageDays/2026-09-22').count, 1, 'operasyon oyun geneli sayacı artırır');
   await h.fails(chief, 'startOperation', { reportId });
   const warId = op.started[0].warId;
@@ -134,7 +134,7 @@ test('operasyon: sadece ihbarlı tıra, 12:00ye kadar, ücret oyun geneli sabota
   const depot = h.get(`gangs/${G.gangId}/private/depot`);
   assert.equal(depot.items?.yasakliMadde || 0, 0, 'ürün kimseye geçmez');
   assert.equal(depot.reservedUnits, 0);
-  assert.equal(h.get('intel/main/private/state').kasa, 90_000 + 100_000);
+  assert.equal(h.get('intel/main/private/state').kasa, 100_000 + 100_000);
 });
 
 test('rüşvet: tutarı İstihbarat operasyonda belirler; savunan 12:00 duyurusundan sonra 18:00e kadar öder → operasyon durur, para İstihbarata', async () => {
@@ -143,7 +143,7 @@ test('rüşvet: tutarı İstihbarat operasyonda belirler; savunan 12:00 duyurusu
   await h.act(mole, 'joinIntel', { codeName: 'Köstebek' });
   const chief = await intelChief(h, 'Kartal');
   await h.tickTo('2026-09-22', '07:00');
-  await h.db.doc('gangWorlds/test/intel/main/private/state').set({ kasa: 100_000 }, { merge: true });
+  await h.db.doc('gangWorlds/test/intel/main/private/state').set({ kasa: 200_000 }, { merge: true });
   await h.act(mole, 'reportTruck', { truckId });
   const op = await h.act(chief, 'startOperation', { reportId: `${truckId}_2026-09-22`, bribe: 75_000 });
   const warId = op.started[0].warId;
@@ -158,7 +158,7 @@ test('rüşvet: tutarı İstihbarat operasyonda belirler; savunan 12:00 duyurusu
   assert.equal(h.get(`wars/${warId}`).status, 'cancelled_bribe');
   assert.equal(h.get(`wars/def_${truckId}_2026-09-22`).status, 'ended_paid', 'v74: tek saldırgan → savunma da biter');
   assert.equal(h.state(G.gangId).kasa, kasa - 75_000);
-  assert.equal(h.get('intel/main/private/state').kasa, 90_000 + 75_000);
+  assert.equal(h.get('intel/main/private/state').kasa, 100_000 + 75_000);
   await h.tickTo('2026-09-23', '00:05');
   assert.equal(h.get(`trucks/${truckId}`).lastTrip.outcome, 'delivered');
 });

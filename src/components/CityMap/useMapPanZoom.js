@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 const MIN_SCALE = 1; // taban ölçek: ekrana tam sığdırılmış hâl. Bunun altına inilemez (ekstra uzaklaştırma yok).
 const MAX_SCALE = 2.5;
@@ -29,9 +29,14 @@ const TAP_TIME_DISTANCE_CAP = 40; // süre bazlı toleranstaki üst mesafe sın�
  * useMapPanZoom — tek elle sürükleme, iki parmakla pinch-zoom (mobil),
  * fare tekerleğiyle zoom (masaüstü test için) ve çift tıkla sıfırlama sağlar.
  *
- * Harita varsayılan olarak ekrana tam sığacak şekilde ölçeklenir (letterbox).
- * Kullanıcı sadece İÇERİ yakınlaştırabilir (scale 1 → 2.5); bu taban ölçeğin
- * altına inilemez, böylece haritanın bir kısmı asla ekran dışına taşmaz.
+ * GENİŞLETİLMİŞ (kare) HARİTA: harita ekran YÜKSEKLİĞİNE sığdırılır
+ * (scale 1), genişliği ekrandan fazla olduğu için oyun açıldığında SOLA
+ * YASLI (x = 0) gösterilir; oyuncu sağa kaydırarak kalan kısmı görür.
+ * Transform orijini SOL-ÜST köşedir (CSS: transform-origin: 0 0), bu yüzden
+ * x = 0 her zaman haritanın en solu demektir ve ekran boyutu değişse de
+ * (adres çubuğu, döndürme) sol kenar yerinde kalır.
+ * Kullanıcı sadece İÇERİ yakınlaştırabilir (scale 1 → 2.5); yakınlaştırma
+ * parmakların/imlecin altındaki noktaya doğru yapılır.
  *
  * ÖNEMLİ #1: Sınır (clamp) hesaplamaları için harita ve ekran boyutu HER
  * SEFERİNDE canlı ölçülür (önbelleğe alınmaz) — mobil adres çubuğu
@@ -58,22 +63,32 @@ export function useMapPanZoom(viewportRef, wrapRef, onTap) {
   const wasMultiTouch = useRef(false);
   const singlePointerDownAt = useRef(0);
 
+  // Sınır hesabı (orijin sol-üst): harita ekrandan genişse x ∈ [vw - w*scale, 0];
+  // ekrandan dar kalırsa (çok geniş masaüstü pencere) ortalanır.
   const clampTransform = useCallback((next) => {
     const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, next.scale));
     const vp = viewportRef.current;
     const wrap = wrapRef.current;
     const vw = vp?.clientWidth ?? 0;
     const vh = vp?.clientHeight ?? 0;
-    const w = wrap?.offsetWidth ?? 0;
-    const h = wrap?.offsetHeight ?? 0;
-    const overflowX = Math.max(0, (w * scale - vw) / 2);
-    const overflowY = Math.max(0, (h * scale - vh) / 2);
-    return {
-      scale,
-      x: Math.min(overflowX, Math.max(-overflowX, next.x)),
-      y: Math.min(overflowY, Math.max(-overflowY, next.y)),
-    };
+    const cw = (wrap?.offsetWidth ?? 0) * scale;
+    const ch = (wrap?.offsetHeight ?? 0) * scale;
+    const fit = (pos, view, content) =>
+      content <= view ? (view - content) / 2 : Math.min(0, Math.max(view - content, pos));
+    return { scale, x: fit(next.x, vw, cw), y: fit(next.y, vh, ch) };
   }, [viewportRef, wrapRef]);
+
+  // (cx, cy) viewport içi noktası sabit kalacak şekilde ölçeği değiştirir.
+  const zoomAround = useCallback((prev, nextScale, cx, cy) => {
+    const ns = Math.min(MAX_SCALE, Math.max(MIN_SCALE, nextScale));
+    const k = ns / prev.scale;
+    return clampTransform({ scale: ns, x: cx - (cx - prev.x) * k, y: cy - (cy - prev.y) * k });
+  }, [clampTransform]);
+
+  const localPoint = useCallback((clientX, clientY) => {
+    const r = viewportRef.current?.getBoundingClientRect();
+    return { x: clientX - (r?.left ?? 0), y: clientY - (r?.top ?? 0) };
+  }, [viewportRef]);
 
   const getDistance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
@@ -98,10 +113,13 @@ export function useMapPanZoom(viewportRef, wrapRef, onTap) {
       pinchStart.current = {
         distance: getDistance(p1, p2),
         scale: transform.scale,
+        x: transform.x,
+        y: transform.y,
+        mid: localPoint((p1.x + p2.x) / 2, (p1.y + p2.y) / 2),
       };
       dragStart.current = null;
     }
-  }, [transform, viewportRef]);
+  }, [transform, viewportRef, localPoint]);
 
   const onPointerMove = useCallback((e) => {
     if (!pointers.current.has(e.pointerId)) return;
@@ -111,8 +129,17 @@ export function useMapPanZoom(viewportRef, wrapRef, onTap) {
       const [p1, p2] = [...pointers.current.values()];
       const newDistance = getDistance(p1, p2);
       const ratio = newDistance / (pinchStart.current.distance || 1);
-      const nextScale = pinchStart.current.scale * ratio;
-      setTransform((prev) => clampTransform({ ...prev, scale: nextScale }));
+      const ps = pinchStart.current;
+      const ns = Math.min(MAX_SCALE, Math.max(MIN_SCALE, ps.scale * ratio));
+      const k = ns / ps.scale;
+      const mid = localPoint((p1.x + p2.x) / 2, (p1.y + p2.y) / 2);
+      // Pinch başladığında parmakların ortasındaki harita noktası, parmaklar
+      // hareket ettikçe yeni orta noktanın altında kalır (zoom + pan birlikte).
+      setTransform(clampTransform({
+        scale: ns,
+        x: mid.x - (ps.mid.x - ps.x) * k,
+        y: mid.y - (ps.mid.y - ps.y) * k,
+      }));
       return;
     }
 
@@ -123,7 +150,7 @@ export function useMapPanZoom(viewportRef, wrapRef, onTap) {
       movedDistance.current = Math.max(movedDistance.current, Math.hypot(dx, dy));
       setTransform((prev) => clampTransform({ ...prev, x: tx + dx, y: ty + dy }));
     }
-  }, [clampTransform]);
+  }, [clampTransform, localPoint]);
 
   const endPointer = useCallback((e) => {
     // Android'de kısa/hızlı dokunuşlarda tarayıcı bazen `pointerup` yerine
@@ -177,11 +204,12 @@ export function useMapPanZoom(viewportRef, wrapRef, onTap) {
     const handleWheel = (e) => {
       e.preventDefault();
       const delta = -e.deltaY * 0.0015;
-      setTransform((prev) => clampTransform({ ...prev, scale: prev.scale + delta }));
+      const pt = localPoint(e.clientX, e.clientY);
+      setTransform((prev) => zoomAround(prev, prev.scale + delta, pt.x, pt.y));
     };
     el.addEventListener('wheel', handleWheel, { passive: false });
     return () => el.removeEventListener('wheel', handleWheel);
-  }, [viewportRef, clampTransform]);
+  }, [viewportRef, zoomAround, localPoint]);
 
   // Ekran boyutu değişince (adres çubuğu gizlenmesi, döndürme, klavye açılması vb.)
   // mevcut transform'u yeni sınırlara göre yeniden kelepçele — sınır dışında kalmasın.
@@ -201,9 +229,14 @@ export function useMapPanZoom(viewportRef, wrapRef, onTap) {
     };
   }, [clampTransform]);
 
+  // İlk açılışta (ve reset'te) harita SOLA YASLI başlar: x = 0.
+  useLayoutEffect(() => {
+    setTransform((prev) => clampTransform({ ...prev, x: 0, y: 0 }));
+  }, [clampTransform]);
+
   const reset = useCallback(() => {
-    setTransform({ scale: 1, x: 0, y: 0 });
-  }, []);
+    setTransform(clampTransform({ scale: 1, x: 0, y: 0 }));
+  }, [clampTransform]);
 
   return {
     transform,

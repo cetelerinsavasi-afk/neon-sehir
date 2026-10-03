@@ -447,14 +447,17 @@ export function createWarActions(core) {
   // SABOTAJ (çete) — 00:00–12:00 arası Baba/Sağ Kol başlatır; saldırılar
   // tır sahibine 12:00'de duyurulur; saldırı 12–24 (v38: 4 dilim); haraç (alt/üst
   // sınır yok) 21:00'e kadar ödenir; sonuç tır varışında (00:00).
-  // Ücret: OYUN GENELİNDE 10.000 → 20.000 → … (her yeni sabotaj/operasyon
-  // +10.000, 00:00'da sıfırlanır).
+  // Ücret: SABİT — çete sabotajı 50.000, İstihbarat operasyonu 100.000
+  // (artık her yeni sabotaj/operasyonla artmaz).
   // Depo: saldıran çetenin deposunda tırın GERÇEK yükü kadar boş yer olmalı
   // (başlarken ayrılır, sonuçta/haraçta serbest kalır).
   // ---------------------------------------------------------------------------
-  function sabotagePrice(dayDoc) {
+  // org === 'intel' → İstihbarat operasyonu (100.000); aksi halde çete sabotajı (50.000).
+  // `count` yalnızca günlük sayaç olarak tutulur, fiyatı ETKİLEMEZ.
+  function sabotagePrice(dayDoc, org) {
     const count = Number(dayDoc?.count || 0);
-    return { price: GANG.SABOTAGE_BASE_PRICE + GANG.SABOTAGE_PRICE_STEP * count, count };
+    const price = org === 'intel' ? GANG.INTEL_OP_PRICE : GANG.SABOTAGE_PRICE;
+    return { price, count };
   }
 
   async function readActiveAllies(tx, ctx, gangId) {
@@ -705,7 +708,7 @@ export function createWarActions(core) {
       const def = defSnap.data() || null;
       const allies = def?.announced ? await readActiveAllies(tx, ctx, truck.gangId) : [];
       const state = stSnap.data() || {};
-      const { price, count } = sabotagePrice(daySnap.data());
+      const { price, count } = sabotagePrice(daySnap.data(), 'intel');
       if (Number(state.kasa || 0) < price) fail('failed-precondition', `Operasyon ücreti ${fmt(price)} — İstihbarat kasasında yeterli para yok.`);
       const dg = defGang.data();
       tx.update(ctx.ref.intelState(), { kasa: FV.increment(-price) });

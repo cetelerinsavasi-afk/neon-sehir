@@ -8,7 +8,7 @@
 //  - Bir çetede Tetikçi+ olan üye, çetesinin yoldaki tırını ihbar edebilir.
 import { useState } from 'react';
 import { limit, where } from 'firebase/firestore';
-import { fmtClock, istDateKey, truckAttackAt, useDocData, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
+import { fmtClock, istDateKey, truckAttackAt, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
 import { AmountInput, Btn, Card, Confirm, Deadline, BetPair, Empty, Logo } from '../ui';
 import { INTEL_LEADERS, atLeast, fmt } from '../gangConstants';
 
@@ -150,13 +150,12 @@ export default function OpsTab({ d }) {
   // v67: her tırın kendi penceresi — yola çıkıştan 6 saat sonra saldırı başlar
   const isOpen = (x) => now < truckAttackAt(x);
   const { docs: reports } = useQueryData(path('intelReports'), () => [where('departDateKey', '==', today), limit(100)], `rep_${today}`);
-  const { data: day } = useDocData(path(`sabotageDays/${today}`));
   const canReport = Boolean(ms.gangId) && atLeast(ms.gangRank, 'tetikci');
   const { docs: myTrucks } = useQueryData(canReport ? path('trucks') : null, () => [where('gangId', '==', ms.gangId), limit(50)], `mytrucks_${ms.gangId}_${canReport}`);
   const [op, setOp] = useState(null);
   const [bribe, setBribe] = useState(0);
   const [ask, setAsk] = useState(null);
-  const price = 10_000 + 10_000 * Number(day?.count || 0);
+  const price = 100_000; // İstihbarat operasyonu: sabit 100.000 (artık artmaz)
   const reported = new Set(reports.map((r) => r.truckId));
   const road = myTrucks.filter((t) => t.status === 'in_transit' && t.departDateKey === today);
   const freeReports = reports.filter((r) => !r.opWarId && isOpen(r));

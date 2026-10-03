@@ -211,7 +211,7 @@ async function trucksOnRoad(h, A, n, qty = 50, product = 'yasakliMadde', day = '
   return ids;
 }
 
-test('sabotaj ücreti OYUN GENELİNDE 10k→20k→30k (operasyon dahil), 00:00 sıfırlanır; 12:00 sonrası yok; Kıdemli başlatamaz', async () => {
+test('sabotaj ücreti SABİT 50k (her yeni sabotajla artmaz); 12:00 sonrası yok; Kıdemli başlatamaz', async () => {
   const h = await createHarness();
   const A = await setupTradeGang(h, 'Alfa', { depot: 5000 });
   const B = await setupTradeGang(h, 'Beta', { depot: 5000 });
@@ -220,23 +220,23 @@ test('sabotaj ücreti OYUN GENELİNDE 10k→20k→30k (operasyon dahil), 00:00 s
   await h.tickTo('2026-09-22', '08:00');
   const kB = h.state(B.gangId).kasa;
   const q = await h.act(B.baba, 'quoteSabotage', { truckId: trucks[0] });
-  assert.equal(q.price, 10_000);
+  assert.equal(q.price, 50_000);
   await h.act(B.baba, 'startSabotage', { truckId: trucks[0] });
   const q2 = await h.act(C.baba, 'quoteSabotage', { truckId: trucks[1] });
-  assert.equal(q2.price, 20_000, 'başka çetenin sabotajı da fiyatı artırır');
+  assert.equal(q2.price, 50_000, 'başka çetenin sabotajı fiyatı ARTIRMAZ');
   await h.act(C.ids[0], 'startSabotage', { truckId: trucks[1] });
   await h.fails(B.ids[1], 'startSabotage', { truckId: trucks[2] }); // Kıdemli yetkisiz
   const q3 = await h.act(B.baba, 'quoteSabotage', { truckId: trucks[2] });
-  assert.equal(q3.price, 30_000);
-  assert.equal(h.state(B.gangId).kasa, kB - 10_000);
+  assert.equal(q3.price, 50_000);
+  assert.equal(h.state(B.gangId).kasa, kB - 50_000);
   await h.fails(B.baba, 'startSabotage', { truckId: trucks[0] }); // aynı tır tekrar
   h.at('2026-09-22', '12:00');
   const late = await h.fails(B.baba, 'startSabotage', { truckId: trucks[2] });
   assert.match(late.message, /12:00/);
-  // ertesi gün sıfır
+  // ertesi gün de aynı sabit fiyat
   const [t4] = await trucksOnRoad(h, A, 1, 50, 'yasakliMadde', '2026-09-23');
   await h.tickTo('2026-09-23', '09:00');
-  assert.equal((await h.act(B.baba, 'quoteSabotage', { truckId: t4 })).price, 10_000);
+  assert.equal((await h.act(B.baba, 'quoteSabotage', { truckId: t4 })).price, 50_000);
 });
 
 test('sabotaj talebi: Kıdemli/Tetikçi sohbete talep gönderir, Çömez gönderemez, tekrar yok', async () => {

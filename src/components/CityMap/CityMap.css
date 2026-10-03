@@ -3,9 +3,6 @@
   width: 100%;
   height: 100%;
   overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   touch-action: none; /* tarayıcının varsayılan pinch/scroll davranışını engelle, kendi pan/zoom'umuzu kullan */
   cursor: grab;
 }
@@ -14,12 +11,19 @@
   cursor: grabbing;
 }
 
+/*
+ * GENİŞLETİLMİŞ HARİTA: görsel kare (1:1). Harita ekran YÜKSEKLİĞİNE
+ * sığdırılır; genişliği ekrandan büyük olduğu için sağa doğru kaydırılır.
+ * transform-origin SOL-ÜST: translate(0,0) = harita sola yaslı (oyun
+ * açıldığında görünen hâl). Bkz. useMapPanZoom.js.
+ */
 .map-wrap {
-  position: relative;
-  width: min(100vw, calc(100dvh / 1.7917));
-  aspect-ratio: 1 / 1.7917;
-  max-height: 100dvh;
-  transform-origin: center center;
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  aspect-ratio: 1 / 1;
+  transform-origin: 0 0;
   will-change: transform;
 }
 
@@ -55,6 +59,7 @@
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   outline: none;
+  border-radius: 30%; /* tasarım prototipindeki tıklama alanı şekliyle aynı */
 }
 
 .region-label {

@@ -73,7 +73,7 @@ export function createGangSystem(deps) {
     const truck = (await ctx.ref.truck(truckId).get()).data();
     if (!truck || truck.status !== 'in_transit') fail('failed-precondition', 'Bu tır şu an yolda değil.');
     const day = (await ctx.ref.sabotageDay(ctx.dateKey).get()).data();
-    const price = wars.sabotagePrice(day).price;
+    const price = wars.sabotagePrice(day, data.org === 'intel' ? 'intel' : 'gang').price;
     let canReceive = true;
     let allied = false;
     if (data.org === 'intel') {

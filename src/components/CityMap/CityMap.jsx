@@ -10,6 +10,11 @@ import './CityMap.css';
  * Bölge koordinatları ve görsel asset birebir korunmuştur.
  * Tıklamalar onRegionClick(regionId, regionMeta) ile dışarı yönlendirilir.
  *
+ * Harita KARE ve ekran yüksekliğine sığdırılıyor; oyun açıldığında SOLA
+ * YASLI görünür, sağa kaydırarak genişletilmiş kısım görülür. Fabrika
+ * duman efekti (MapAmbience) haritanın içinde olduğu için harita kayarken
+ * bacalarla birlikte hareket eder.
+ *
  * Zoom + pan: kullanıcı sadece içeri yakınlaştırabilir (taban "ekrana sığdır"
  * ölçeğinin altına inilemez), yakınlaştırınca sürükleyerek (mobilde tek/iki
  * parmak, masaüstünde fare + tekerlek) gezinebilir. Çift tıklama sıfırlar.

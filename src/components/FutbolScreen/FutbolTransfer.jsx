@@ -21,6 +21,14 @@ import './FutbolTakimim.css';
 const POSITION_LABELS = { GK: 'Kaleci', DEF: 'Defans', MID: 'Orta Saha', FWD: 'Forvet' };
 const PLAYER_PRICE_QUICK_AMOUNTS = [100, 1000, 10000, 100000];
 
+// InjuryBadge — transfer listesinde (piyasa + kadro) sakat oyuncuyu ve kalan
+// sakatlık süresini (gün) gösterir. Sağlam oyuncuda hiçbir şey çizmez.
+function InjuryBadge({ days }) {
+  const d = Number(days) || 0;
+  if (d <= 0) return null;
+  return <span className="futbol-transfer-injury">🚑 Sakat · {d} gün</span>;
+}
+
 export default function FutbolTransfer({ team, role }) {
   // KULLANICI İSTEĞİ: menajer varken başkan bu sekmeye girip inceleyebilir
   // ama işlem yapamaz.
@@ -187,13 +195,14 @@ export default function FutbolTransfer({ team, role }) {
                 const instantPrice = Math.round((p.value * 2) / 3);
                 const maxPrice = Math.round((p.value * 4) / 3);
                 return (
-                  <div key={p.id} className="futbol-transfer-row">
+                  <div key={p.id} className={`futbol-transfer-row${(p.injuryDaysLeft || 0) > 0 ? ' injured' : ''}`}>
                     <FutbolPlayerAvatar playerId={p.id} position={p.position} size={40} />
                     <div className="futbol-transfer-info">
                       <p className="futbol-transfer-name">{p.name}</p>
                       <p className="futbol-buy-meta">
                         {p.age} yaş · {p.power.toFixed(1)} güç · {p.value.toLocaleString('tr-TR')} altın değer
                       </p>
+                      <InjuryBadge days={p.injuryDaysLeft} />
                     </div>
                     {p.forSale ? (
                       <button
@@ -294,7 +303,7 @@ export default function FutbolTransfer({ team, role }) {
             const canAfford = availableBudget >= price;
             const showingInsufficient = insufficientId === p.id;
             return (
-              <div key={p.id} className="futbol-transfer-row">
+              <div key={p.id} className={`futbol-transfer-row${(p.injuryDaysLeft || 0) > 0 ? ' injured' : ''}`}>
                 <FutbolPlayerAvatar playerId={p.id} position={p.position} size={40} />
                 <div className="futbol-transfer-info">
                   <p className="futbol-transfer-name">{p.name}</p>
@@ -304,6 +313,7 @@ export default function FutbolTransfer({ team, role }) {
                       <> · Piyasa değeri: {p.value.toLocaleString('tr-TR')} altın</>
                     )}
                   </p>
+                  <InjuryBadge days={p.injuryDaysLeft} />
                 </div>
                 <button
                   className={`futbol-admin-submit${showingInsufficient ? ' futbol-buy-insufficient' : ''}`}

@@ -70,8 +70,7 @@ function Operations({ roster, state, reports, wars }) {
   const lead = ['baskan', 'sef'].includes(roster?.rank);
   const open = istHour(now) < 12;
   const today = istDateKey(now);
-  const count = state?.sabotage?.dateKey === today ? state.sabotage.count || 0 : 0;
-  const price = 10_000 + 10_000 * count;
+  const price = 100_000; // İstihbarat operasyonu: sabit 100.000 (artık artmaz)
   const [ask, setAsk] = useState(null);
   const todays = reports.filter((r) => r.departDateKey === today);
   const free = todays.filter((r) => !r.opWarId);
@@ -79,7 +78,7 @@ function Operations({ roster, state, reports, wars }) {
     <div className="gx-stack">
       <div className="gx-section-head">
         <span>🎯 İhbar edilen tırlar</span>
-        <Info text="Çetelere sızmış ajanlar (Tetikçi+) seferdeki tırları ihbar eder, Kıdemli+ olanlar içeriği sızdırır. Başkan ve Şefler 12:00'ye kadar operasyon başlatır (ücret = sabotaj ücreti, her yenisi +10.000, 00:00'da sıfırlanır). Başarılı operasyonda yük imha edilir, kasaya anlık satış değeri kadar ödül gelir." />
+        <Info text="Çetelere sızmış ajanlar (Tetikçi+) seferdeki tırları ihbar eder, Kıdemli+ olanlar içeriği sızdırır. Başkan ve Şefler 12:00'ye kadar operasyon başlatır (ücret sabit 100.000 altın). Başarılı operasyonda yük imha edilir, kasaya anlık satış değeri kadar ödül gelir." />
       </div>
       {lead && free.length > 1 && open && (
         <Btn block kind="danger" onClick={() => setAsk({ all: true })}>
@@ -126,7 +125,7 @@ function Operations({ roster, state, reports, wars }) {
           icon="🎯"
           danger
           title={ask.all ? `${free.length} tıra operasyon` : `TIR #${ask.report.truckCode} operasyonu`}
-          lines={[ask.all ? `💸 ${fmt(price)}'dan başlayıp her biri +10.000` : `💸 ${fmt(price)} (İstihbarat kasasından)`, '⚔️ Saldırı 12:00–24:00 arası, iki pencere.', '🔥 Başarılıysa yük imha, kasaya anlık satış değeri.']}
+          lines={[ask.all ? `💸 Her biri ${fmt(price)} (toplam ${fmt(price * free.length)})` : `💸 ${fmt(price)} (İstihbarat kasasından)`, '⚔️ Saldırı 12:00–24:00 arası, iki pencere.', '🔥 Başarılıysa yük imha, kasaya anlık satış değeri.']}
           confirmLabel="Başlat"
           busy={busy === 'startOperation'}
           onCancel={() => setAsk(null)}

@@ -63,10 +63,10 @@ export const GANG = {
   // İstihbarat ihbar/açma/operasyon için son an: v38'de ilk 2 dilimin (6 saat) sonu
   BET_INTEL_WINDOW_MS: 6 * MS_HOUR,
 
-  // --- Sabotaj (ONAYLI) — ücret OYUN GENELİNDE her yeni sabotaj/operasyonla
-  // 10.000 artar, 00:00'da sıfırlanır ---
-  SABOTAGE_BASE_PRICE: 10_000,
-  SABOTAGE_PRICE_STEP: 10_000,
+  // --- Sabotaj / Operasyon — SABİT ücret (artık her yeni sabotaj/operasyonla
+  // ARTMAZ). Çete sabotajı 50.000, İstihbarat operasyonu 100.000 altın. ---
+  SABOTAGE_PRICE: 50_000,
+  INTEL_OP_PRICE: 100_000,
   SABOTAGE_START_DEADLINE_HOUR: 12,
   ATTACK_PHASE_1_START_HOUR: 12, // sabotaj/operasyon 12:00–24:00 = 4 dilim (v38)
 

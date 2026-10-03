@@ -75,7 +75,7 @@ export default function CreditSection() {
   const limit = info?.limit || 0;
   const interest = info?.interest ?? 0.2;
   const termDays = info?.termDays ?? 10;
-  const minAmount = info?.minAmount ?? 1000;
+  const minAmount = info?.minAmount ?? 10;
   const owed = Math.round(amount * (1 + interest));
   const blockedReason = credit
     ? null
