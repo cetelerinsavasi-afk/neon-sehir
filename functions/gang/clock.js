@@ -341,7 +341,7 @@ export function createClock(core, actions) {
       const prevGang = prev?.holderType === 'gang' ? (await tx.get(ctx.ref.gang(prev.holderId))).data() : null;
       const power = winnerKey ? totals[winnerKey] : 0;
       // v50: savaşa katılan TÜM tarafların (çeteler + İstihbarat) toplam gücü.
-      // Kazanan çetenin sipariş kapasitesi bunun %0,5'i; İstihbarat kazanırsa
+      // Kazanan çetenin sipariş kapasitesi bunun %0,5'i (v67'de %1, v75'te yine %0,5); İstihbarat kazanırsa
       // kasasına bunun %5'i girer.
       const totalWarPower = Object.values(totals).reduce((acc, p) => acc + (Number(p) > 0 ? Number(p) : 0), 0);
       const orderLimit = Math.floor(totalWarPower * GANG.TRADE_ORDER_LIMIT_TOTAL_RATIO);
@@ -925,6 +925,20 @@ export function createClock(core, actions) {
     return { routes: routes.size };
   }
 
+  // v75: sipariş limiti %1 → %0,5 — elde tutulan mevcut yolların limiti BİR KEZ yarıya iner.
+  async function ensureRouteLimitV75(ctx) {
+    if (ctx.world?.routeLimitV75) return { skipped: true };
+    const routes = await ctx.ref.routes().get();
+    for (const r of routes.docs) {
+      const d = r.data();
+      if (!d.holderId || !(Number(d.dailyOrderLimit) > 0)) continue;
+      await r.ref.update({ dailyOrderLimit: Math.floor(Number(d.dailyOrderLimit) / 2), limitV75Halved: true });
+    }
+    await ctx.ref.world().set({ routeLimitV75: true }, { merge: true });
+    ctx.world = { ...(ctx.world || {}), routeLimitV75: true };
+    return { routes: routes.size };
+  }
+
   // İstihbarat üyesi Baba karar süresi doldu → sessizce İstihbarattan çıkar.
   async function processIntelDecisions(ctx) {
     const snap = await ctx.ref.memberships().where('intelDecisionDeadline', '<=', ctx.dateKey).get();
@@ -1421,6 +1435,7 @@ export function createClock(core, actions) {
     await safe(ctx0, 'public-views-v38', () => ensurePublicViewsV38(ctx0));
     await safe(ctx0, 'route-limit-v39', () => ensureRouteLimitV39(ctx0));
     await safe(ctx0, 'route-limit-v67', () => ensureRouteLimitV67(ctx0));
+    await safe(ctx0, 'route-limit-v75', () => ensureRouteLimitV75(ctx0));
     const results = [];
     let n = 0;
     while (last < ctx0.dateKey && n < maxDays) {

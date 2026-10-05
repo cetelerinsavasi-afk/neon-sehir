@@ -50,7 +50,7 @@ export const GANG_RULES = {
   DISTRIBUTION_HOURS: 24,
   DIST_RANKED_SLOTS: 7,
   DIST_MIN_SLOTS: 7,
-  ORDER_LIMIT_RATIO: 0.01, // v67: savaşa katılan tüm tarafların (İstihbarat dahil) toplam gücünün %1'i
+  ORDER_LIMIT_RATIO: 0.005, // v75: savaşa katılan tüm tarafların (İstihbarat dahil) toplam gücünün %0,5'i
   ORDER_WEEKDAYS: [1, 2, 3, 4, 5, 6], // v67: Pzt–Cmt
   ORDER_DEADLINE_HOUR: 12, // v67: sipariş 00:00–12:00
   ROUTE_DAYS: 21,

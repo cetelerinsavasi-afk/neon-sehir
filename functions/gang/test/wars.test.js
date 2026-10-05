@@ -202,7 +202,7 @@ test('bahis: Baba+Sağ Kol; günde 1 teklif; küçük kasa sınırı; ret ve cev
   assert.equal(h.get(`wars/${fri.warId}`).dateKey, '2026-10-03');
 });
 
-test('Pazar ticaret yolu savaşı: yasaklı madde→silah→araba; kazanan yolu 21 gün alır, limit = tüm çetelerin toplam gücünün %1i (v67); kaybeden de prestij kazanır', async () => {
+test('Pazar ticaret yolu savaşı: yasaklı madde→silah→araba; kazanan yolu 21 gün alır, limit = tüm çetelerin toplam gücünün %0,5i (v75); kaybeden de prestij kazanır', async () => {
   const h = await createHarness({ dice: [5, 5, 1, 1] });
   const A = await setupGang(h, { members: 0, name: 'Alfa' });
   const B = await setupGang(h, { members: 0, name: 'Beta' });
@@ -221,8 +221,8 @@ test('Pazar ticaret yolu savaşı: yasaklı madde→silah→araba; kazanan yolu 
   assert.equal(route.holderId, A.gangId);
   assert.equal(route.powerUsed, 500_000);
   assert.equal(route.totalWarPower, 600_000);
-  assert.equal(route.dailyOrderLimit, 6_000, 'v67: (500k + 100k) × %1');
-  assert.equal(h.get(`wars/${warId}`).result.orderLimit, 6_000);
+  assert.equal(route.dailyOrderLimit, 3_000, 'v75: (500k + 100k) × %0,5');
+  assert.equal(h.get(`wars/${warId}`).result.orderLimit, 3_000);
   assert.equal(route.untilDateKey, '2026-10-19', '21 gün');
   assert.deepEqual(h.get(`gangs/${A.gangId}`).routeProducts, ['yasakliMadde']);
   assert.equal(h.member(B.gangId, B.baba).prestige, pB, 'kaybeden katkı prestijini korur');
@@ -242,7 +242,7 @@ test('Pazar ticaret yolu savaşı: yasaklı madde→silah→araba; kazanan yolu 
   assert.deepEqual(h.get(`gangs/${A.gangId}`).routeProducts, []);
 });
 
-test('v67: sipariş limiti = İstihbarat dahil tüm tarafların toplam gücünün %1i', async () => {
+test('v75: sipariş limiti = İstihbarat dahil tüm tarafların toplam gücünün %0,5i', async () => {
   const h = await createHarness({ dice: [6, 6, 3, 3, 1, 1] });
   const A = await setupGang(h, { members: 0, name: 'Alfa' });
   const B = await setupGang(h, { members: 0, name: 'Beta' });
@@ -260,7 +260,7 @@ test('v67: sipariş limiti = İstihbarat dahil tüm tarafların toplam gücünü
   assert.equal(route.holderId, A.gangId);
   assert.equal(route.powerUsed, 1_200_000);
   assert.equal(route.totalWarPower, 2_000_000, '1.2M + 600k (İstihbarat) + 200k');
-  assert.equal(route.dailyOrderLimit, 20_000);
+  assert.equal(route.dailyOrderLimit, 10_000);
 });
 
 test('İstihbarat pazar savaşını kazanırsa yol kimseye verilmez, kasaya toplam gücün %5i (v50)', async () => {

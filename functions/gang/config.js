@@ -74,7 +74,8 @@ export const GANG = {
   // v50: günlük sipariş limiti = o pazar savaşına katılan TÜM tarafların
   // (çeteler + İstihbarat) toplam gücünün %0,5'i. Yolu kazanan çete alır.
   // v67: %0,5 → %1 (mevcut yolların limiti de bir kez 2 katına çıkarılır — ensureRouteLimitV67)
-  TRADE_ORDER_LIMIT_TOTAL_RATIO: 0.01,
+  // v75: %1 → %0,5 (mevcut yolların limiti de bir kez yarıya indirilir — ensureRouteLimitV75)
+  TRADE_ORDER_LIMIT_TOTAL_RATIO: 0.005,
   // v39 (ESKİ): kazanan çetenin kendi gücünün %1'i. Artık yalnızca tek seferlik
   // v39 geçişinde (ensureRouteLimitV39) kullanılır; yeni savaşları etkilemez.
   TRADE_ORDER_LIMIT_RATIO: 0.01,
