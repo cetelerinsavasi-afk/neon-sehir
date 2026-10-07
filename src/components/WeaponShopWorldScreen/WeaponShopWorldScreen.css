@@ -5,3 +5,4 @@
    WeaponShopWorldScreen.jsx importu. Bu dosya, BankWorldScreen.css ile aynı
    dosya-yapısı kuralına uymak için (her WorldScreen kendi CSS dosyasını
    import eder) boş bırakıldı. */
+.ws-shop-tabs { justify-content: center; margin-bottom: 10px; }

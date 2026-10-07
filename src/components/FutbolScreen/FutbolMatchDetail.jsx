@@ -1,7 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import FutbolCrest from './FutbolCrest';
 import { useNowTick, computeLiveMatchState } from './futbolLiveMatch';
+import FutbolLivePitch from './FutbolLivePitch';
+import { shotVariant, VARIANT_ICON, MISS_LABEL } from './futbolPitchScript';
 import './FutbolMatchDetail.css';
+
+const toMs = (ts) => (ts?.toMillis ? ts.toMillis() : typeof ts === 'number' ? ts : ts ? Date.parse(ts) : null);
+const REPLAY_SPEED = 6; // özet: saniyede 6 maç dakikası (~15 sn)
 
 function interpolatePossession(checkpoints, minute) {
   if (!checkpoints || checkpoints.length === 0) return { home: 50, away: 50 };
@@ -30,26 +35,43 @@ export default function FutbolMatchDetail({
   homeSponsorName,
   onClose,
 }) {
-  const now = useNowTick(5000);
-  const [pulse, setPulse] = useState(null);
-  const lastRevealedCountRef = useRef(0);
+  const [replayAt, setReplayAt] = useState(null);
+  const now = useNowTick(replayAt ? 250 : 5000);
 
-  const state = computeLiveMatchState(match, now);
-  const possessionCheckpoints = match?.possessionCheckpoints || [];
-  const revealedEvents = state.events || [];
-
+  // özet tekrarı (bitmiş maçlarda): skor ve anlatım da tekrar dakikasına göre
+  const replayMin = replayAt ? Math.min(90, ((now - replayAt) / 1000) * REPLAY_SPEED) : null;
+  const liveState = computeLiveMatchState(match, now);
+  const state =
+    replayMin !== null
+      ? (() => {
+          const events = (match?.timeline || []).filter((e) => e.minute <= replayMin);
+          return {
+            phase: 'live',
+            elapsedMinute: replayMin,
+            events,
+            homeScore: events.filter((e) => e.type === 'goal' && e.team === 'home').length,
+            awayScore: events.filter((e) => e.type === 'goal' && e.team === 'away').length,
+          };
+        })()
+      : liveState;
   useEffect(() => {
-    if (state.phase !== 'live') return undefined;
-    if (revealedEvents.length > lastRevealedCountRef.current) {
-      const newest = revealedEvents[revealedEvents.length - 1];
-      lastRevealedCountRef.current = revealedEvents.length;
-      setPulse({ ...newest, key: `${newest.minute}-${revealedEvents.length}` });
-      const t = setTimeout(() => setPulse(null), 1300);
+    if (replayMin !== null && replayMin >= 90) {
+      const t = setTimeout(() => setReplayAt(null), 2500);
       return () => clearTimeout(t);
     }
     return undefined;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [revealedEvents.length, state.phase]);
+  }, [replayMin]);
+  // saha her karede kendi dakikasını hesaplar (canlıda gerçek zaman, özette hızlı)
+  const startMs = toMs(match?.matchStartAt);
+  const endMs = toMs(match?.revealAt) || (startMs ? startMs + 3600000 : null);
+  const getMinute = () => {
+    if (replayAt) return Math.min(90, ((Date.now() - replayAt) / 1000) * REPLAY_SPEED);
+    if (match?.status === 'finished' || !startMs) return 90;
+    return Math.min(90, Math.max(0, ((Date.now() - startMs) / (endMs - startMs)) * 90));
+  };
+  const possessionCheckpoints = match?.possessionCheckpoints || [];
+  const revealedEvents = state.events || [];
+
 
   const stats = useMemo(() => {
     const forTeam = (team) => {
@@ -112,23 +134,19 @@ export default function FutbolMatchDetail({
           </p>
         )}
 
-        <div className="futbol-pitch">
-          {homeSponsorName && (
-            <div className="futbol-pitch-ad-banner">🤝 Sponsor: {homeSponsorName}</div>
-          )}
-          <div className="futbol-pitch-halfline" />
-          <div className="futbol-pitch-circle" />
-          <div className="futbol-pitch-goal futbol-pitch-goal-left" />
-          <div className="futbol-pitch-goal futbol-pitch-goal-right" />
-          {pulse && (
-            <div
-              key={pulse.key}
-              className={`futbol-pitch-ball ${pulse.team === 'home' ? 'to-right' : 'to-left'} ${
-                pulse.type === 'goal' ? 'is-goal' : ''
-              }`}
-            />
-          )}
-        </div>
+        <FutbolLivePitch
+          timeline={match?.timeline || []}
+          possessionCheckpoints={possessionCheckpoints}
+          getMinute={getMinute}
+          homeName={homeName}
+          awayName={awayName}
+          sponsorName={homeSponsorName}
+        />
+        {match?.status === 'finished' && (
+          <button className={`futbol-replay-btn${replayAt ? ' on' : ''}`} onClick={() => setReplayAt(replayAt ? null : Date.now())}>
+            {replayAt ? '⏹ Durdur' : '▶ Maç özetini izle'}
+          </button>
+        )}
 
         <div className="futbol-possession-bar">
           <div className="futbol-possession-home" style={{ width: `${possession.home}%` }}>
@@ -154,12 +172,18 @@ export default function FutbolMatchDetail({
             .slice()
             .reverse()
             .map((e, i) => (
-              <div key={`${e.minute}-${e.team}-${e.label}-${i}`} className={`futbol-commentary-row ${e.type}`}>
+              <div key={`${e.minute}-${e.team}-${e.label}-${i}`} className={`futbol-commentary-row ${e.type} ${shotVariant(e)}`}>
                 <span className="futbol-commentary-minute">{e.minute}&apos;</span>
-                <span className="futbol-commentary-icon">{EVENT_ICON[e.type]}</span>
+                <span className="futbol-commentary-icon">{e.type === 'shot_off' ? VARIANT_ICON[shotVariant(e)] : EVENT_ICON[e.type]}</span>
                 <span className="futbol-commentary-text">
-                  {e.team === 'home' ? homeName : awayName} — {e.label}
+                  {e.team === 'home' ? homeName : awayName} — {e.type === 'shot_off' ? MISS_LABEL[shotVariant(e)] : e.label}
                   {e.type === 'goal' ? ' — GOL!' : ''}
+                  {e.type === 'goal' && e.scorerName && (
+                    <span className="futbol-commentary-scorer">
+                      ⚽ <b>{e.scorerName}</b>
+                      {e.assistName && <> · 🎯 {e.assistName}</>}
+                    </span>
+                  )}
                 </span>
               </div>
             ))}

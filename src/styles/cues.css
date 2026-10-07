@@ -1,0 +1,128 @@
+/* =============================================================================
+   cues.css — v77 görsel sözlük (yazısız tasarım). Her yerde aynı durum aynı
+   görselle: tüm işletme ekranları bu sınıfları kullanır.
+   - .cue-ring      : kırmızı halka (stok yok / gerekli / kilitli öğe)
+   - .cue-shake     : sarsılma (yetersiz altın, dolu cihaz) — bir kez oynar
+   - .cue-blink     : kırmızı yanıp sönme (altın sayacı)
+   - .cue-pulse     : sıradaki adım nabzı (ilk kullanım vurgusu)
+   - .cue-dim       : soluk (kullanılamaz)
+   - .cue-lock      : sağ üstte 🔒 rozeti
+   - .cue-done      : sağ üstte ✓ rozeti
+   - .cue-sold      : çapraz bant (satıldı / stokta yok)
+   - .cue-glow      : altın parıltı (bonus tuttu)
+   ============================================================================= */
+.cue-ring {
+  position: relative;
+  box-shadow: 0 0 0 2px var(--neon-pink, #ff2e8c), 0 0 12px rgba(255, 46, 140, 0.45) !important;
+  border-radius: 12px;
+}
+.cue-shake {
+  animation: cue-shake 0.38s ease-in-out 2;
+}
+@keyframes cue-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(4px);
+  }
+}
+.cue-blink {
+  animation: cue-blink 0.5s ease-in-out 4;
+  color: var(--neon-pink, #ff2e8c) !important;
+}
+@keyframes cue-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+.cue-pulse {
+  animation: cue-pulse 1.3s ease-in-out infinite;
+}
+@keyframes cue-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(25, 232, 255, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(25, 232, 255, 0);
+  }
+}
+.cue-dim {
+  opacity: 0.42;
+  filter: grayscale(0.7);
+}
+.cue-lock,
+.cue-done {
+  position: relative;
+}
+.cue-lock::after,
+.cue-done::after {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  line-height: 1;
+  pointer-events: none;
+}
+.cue-lock::after {
+  content: '🔒';
+  background: #2a1020;
+  border: 1px solid var(--neon-pink, #ff2e8c);
+}
+.cue-done::after {
+  content: '✓';
+  color: #04130a;
+  font-weight: 800;
+  background: #7cff6b;
+}
+.cue-sold {
+  position: relative;
+  overflow: hidden;
+  filter: grayscale(0.85);
+}
+.cue-sold::before {
+  content: '';
+  position: absolute;
+  left: -20%;
+  right: -20%;
+  top: 46%;
+  height: 12px;
+  background: repeating-linear-gradient(45deg, rgba(255, 46, 140, 0.85) 0 8px, rgba(0, 0, 0, 0.7) 8px 16px);
+  transform: rotate(-18deg);
+  pointer-events: none;
+}
+.cue-glow {
+  color: var(--neon-yellow, #ffd23f) !important;
+  text-shadow: 0 0 8px rgba(255, 210, 63, 0.9), 0 0 18px rgba(255, 210, 63, 0.6);
+}
+
+/* Basılı tutarak onay — dolum çubuğu (--hold: 0..1) */
+.cue-hold {
+  position: relative;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.cue-hold::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  transform: scaleX(var(--hold, 0));
+  background: rgba(255, 46, 140, 0.35);
+  pointer-events: none;
+}
+.cue-hold > * {
+  position: relative;
+}

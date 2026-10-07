@@ -1,0 +1,85 @@
+/* v77 — Piyano */
+.pn-panel {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  z-index: 30;
+  padding: 10px;
+  border-radius: 16px;
+  background: rgba(8, 11, 20, 0.92);
+  border: 1px solid rgba(255, 210, 63, 0.4);
+  backdrop-filter: blur(10px);
+}
+.pn-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 20px;
+}
+.pn-x {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: transparent;
+  color: inherit;
+}
+.pn-keys {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 3px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.pn-key {
+  height: 128px;
+  border-radius: 0 0 8px 8px;
+  border: 1px solid #222;
+  background: linear-gradient(#fdfdfd, #e6e6ea);
+  color: #333;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 6px;
+  font-size: 9px;
+  font-weight: 800;
+  transition: transform 0.06s;
+}
+.pn-key.hi {
+  background: linear-gradient(#fffdf2, #ece6cf);
+}
+.pn-key.on {
+  transform: translateY(3px);
+  background: linear-gradient(#ffe680, #ffd23f);
+  box-shadow: 0 0 14px rgba(255, 210, 63, 0.9);
+}
+/* dinleyen: kim çalıyor + sessize al */
+.pn-listen {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: calc(118px + var(--hs-safe-t, 0px));
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 14px;
+  background: rgba(8, 11, 20, 0.82);
+  border: 1px solid rgba(255, 210, 63, 0.45);
+  font-size: 13px;
+}
+.pn-listen button {
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  color: inherit;
+}
+.pn-listen .pn-notes {
+  animation: cue-blink 0.9s ease-in-out infinite;
+}

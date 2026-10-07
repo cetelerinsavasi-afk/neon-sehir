@@ -684,3 +684,14 @@ export const repayCredit = (amount) => httpsCallable(functions, 'repayCredit')({
 
 // v67 — Başarılar: duruma bağlı başarıları (imam, Mafya Babası, İstihbarat Başkanı) kontrol et
 export const syncAchievements = () => httpsCallable(functions, 'syncAchievements')({});
+
+// v77 — İşletmeler Faz 2: Atölye (tamir/geliştirme) + vitrin + dükkân stoğu/fiyatları
+// op: 'workshop' | 'stock' | 'prices' | 'vitrinAdd' | 'vitrinList' | 'vitrinUnlist' | 'vitrinRemove' | 'vitrinInstantSell'
+export const shopAction = (payload) => httpsCallable(functions, 'shopAction')(payload).then((r) => r.data);
+
+// v77 Faz 4 — takım antrenmanı: bir spor salonuna mevki kutusu ödemesi
+export const payFutbolTrainingSlot = (teamId, position, gymId, expect) =>
+  httpsCallable(functions, 'payFutbolTrainingSlot')({ teamId, position, gymId, expect }).then((r) => r.data);
+
+// v77 Faz 5 — gerçek futbolcular: ilan, teklif, imza, zam, fesih
+export const futbolProAction = (payload) => httpsCallable(functions, 'futbolProAction')(payload).then((r) => r.data);

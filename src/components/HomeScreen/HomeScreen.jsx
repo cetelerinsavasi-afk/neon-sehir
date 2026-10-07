@@ -4,9 +4,9 @@ import { usePlayer } from '../../hooks/usePlayer';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useWeapons } from '../../hooks/useWeapons';
 import { useInventory } from '../../hooks/useInventory';
-import { upgradeVehicle, upgradeWeapon, repairItem, setDisplayName } from '../../services/gameActions';
-import { weaponCatalog, weaponLivePrice } from '../../data/weaponCatalog';
-import VehicleCard, { LifeBar, MAX_REPAIRS, WEAPON_REPAIR_LIFE_BONUS_DAYS, isLifeFull, repairRequiredQty } from '../VehicleCard/VehicleCard';
+import { setDisplayName } from '../../services/gameActions';
+import { weaponCatalog } from '../../data/weaponCatalog';
+import VehicleCard, { LifeBar, UpgradeCells } from '../VehicleCard/VehicleCard';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import AvatarBuilder from '../AvatarBuilder/AvatarBuilder';
@@ -99,18 +99,13 @@ function ProfileHeader({ player, onEditAvatar }) {
   );
 }
 
-function WeaponCard({ weapon, materialQty, repairQty, busy, onUpgrade, onRepair }) {
-  const requiredQty = Math.round(weaponLivePrice(weapon) / 100);
+// v77: profilde sadece ömür + "geliştirilebilir mi" (Sv.2 / Sv.3 hücreleri).
+// Tamir ve geliştirme Silahçı Atölyesi'nde.
+function WeaponCard({ weapon, locked = false }) {
   const img = weaponImage(weapon.catalogId);
-  const nextMultiplier = weapon.level === 1 ? 1.5 : 2;
-  const nextPower = Math.round(weapon.basePower * nextMultiplier);
-  const powerGain = nextPower - weapon.power;
-  const repairsUsed = weapon.repairsUsed || 0;
-  const repairReq = repairRequiredQty(weaponLivePrice(weapon));
-  const repairMaxed = repairsUsed >= MAX_REPAIRS;
-  const lifeFull = isLifeFull(weapon, 'weapon'); // v58
+  const lv = weapon.level || 1;
   return (
-    <div className="home-item-card">
+    <div className={`home-item-card${locked ? ' cue-dim cue-lock' : ''}`}>
       {img && <img className="home-item-photo" src={img} alt={weapon.name} />}
       <div className="home-item-body">
         <span className="home-item-name">
@@ -118,25 +113,7 @@ function WeaponCard({ weapon, materialQty, repairQty, busy, onUpgrade, onRepair 
         </span>
         <span className="home-item-stats">Güç: {weapon.power.toLocaleString('tr-TR')}</span>
         <LifeBar item={weapon} kind="weapon" />
-        <div className="home-controls">
-          <button
-            className="home-btn small"
-            disabled={weapon.level >= 3 || materialQty < requiredQty || busy === `${weapon.id}-w`}
-            onClick={() => onUpgrade(weapon.id)}
-          >
-            {weapon.level >= 3
-              ? 'Maks. Seviye'
-              : `Geliştir (${requiredQty} malzeme) +${powerGain.toLocaleString('tr-TR')} güç`}
-          </button>
-          <button
-            className="home-btn small"
-            disabled={repairMaxed || lifeFull || repairQty < repairReq || busy === `${weapon.id}-repair`}
-            onClick={() => onRepair(weapon.id)}
-            title={lifeFull ? 'Ömrü dolu — tamire gerek yok' : undefined}
-          >
-            {repairMaxed ? 'Tamir Hakkı Bitti' : `Tamir Et (${repairReq} malzeme) +${WEAPON_REPAIR_LIFE_BONUS_DAYS} gün`}
-          </button>
-        </div>
+        <UpgradeCells slots={[lv >= 2, lv >= 3]} icons={['2', '3']} />
       </div>
     </div>
   );
@@ -150,8 +127,6 @@ export default function HomeScreen() {
   const { vehicles } = useVehicles();
   const { weapons } = useWeapons();
   const { inventory } = useInventory();
-  const [busy, setBusy] = useState(null);
-  const [error, setError] = useState(null);
   const [editingAvatar, setEditingAvatar] = useState(false);
 
   if (!user) {
@@ -162,24 +137,9 @@ export default function HomeScreen() {
     return <AvatarBuilder onBack={() => setEditingAvatar(false)} />;
   }
 
-  const run = async (key, fn) => {
-    setBusy(key);
-    setError(null);
-    try {
-      await fn();
-    } catch (err) {
-      setError(err.message || 'İşlem başarısız.');
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const myVehicles = vehicles.filter((v) => !v.listed);
-  const myWeapons = weapons.filter((w) => !w.listed);
-
-  const materialsQty = {
-    araba: inventory.arabaGelistirme || 0,
-  };
+  // v77: vitrindeki (dükkândaki) ürünler kilitli — soluk ve 🔒 ile gösterilir
+  const myVehicles = vehicles.filter((v) => !v.listed || v.shopHouseId);
+  const myWeapons = weapons.filter((w) => !w.listed || w.shopHouseId);
 
   return (
     <div className="home-screen">
@@ -200,15 +160,7 @@ export default function HomeScreen() {
         <p className="home-section-title">Araçların</p>
         {myVehicles.length === 0 && <p className="home-hint">Henüz bir aracın yok.</p>}
         {myVehicles.map((v) => (
-          <VehicleCard
-            key={v.id}
-            vehicle={v}
-            materialsQty={materialsQty}
-            repairQty={inventory.tamirMalzemesi || 0}
-            busy={busy}
-            onUpgrade={(id, type) => run(`${id}-${type}`, () => upgradeVehicle(id, type))}
-            onRepair={(id) => run(`${id}-repair`, () => repairItem('vehicle', id))}
-          />
+          <VehicleCard key={v.id} vehicle={v} locked={Boolean(v.shopHouseId)} />
         ))}
       </div>
 
@@ -216,15 +168,7 @@ export default function HomeScreen() {
         <p className="home-section-title">Silahların</p>
         {myWeapons.length === 0 && <p className="home-hint">Henüz bir silahın yok.</p>}
         {myWeapons.map((w) => (
-          <WeaponCard
-            key={w.id}
-            weapon={w}
-            materialQty={inventory.silahUpgrade || 0}
-            repairQty={inventory.tamirMalzemesi || 0}
-            busy={busy}
-            onUpgrade={(id) => run(`${id}-w`, () => upgradeWeapon(id))}
-            onRepair={(id) => run(`${id}-repair`, () => repairItem('weapon', id))}
-          />
+          <WeaponCard key={w.id} weapon={w} locked={Boolean(w.shopHouseId)} />
         ))}
       </div>
 
@@ -239,8 +183,6 @@ export default function HomeScreen() {
           </div>
         ))}
       </div>
-
-      {error && <p className="home-error">{error}</p>}
 
       <BlockedPlayersList />
 

@@ -17,6 +17,29 @@ import ArcadeHub from '../Arcade/ArcadeHub';
 import PhoneScreen from '../Phone/PhoneScreen';
 import PlayerCard from '../PlayerCard/PlayerCard';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
+import { BizListPanel, BizSettings, BizRemovePanel } from './HouseBusiness';
+import { removalBreaksBiz, parseBizError } from './houseBusinessLogic';
+import { BIZ_TYPES, checkBizRequirements } from '../../../functions/businessCatalogData.js';
+import Workshop from '../Workshop/Workshop';
+import ShopShowcase from '../Shop/ShopShowcase';
+import MenuPanel from '../Venue/MenuPanel';
+import NetCreditRing from '../Venue/NetCreditRing';
+import PianoPanel from '../Piano/PianoPanel';
+import { claimPiano, releasePiano, watchPiano } from '../Piano/pianoNet';
+import { playPianoKey } from '../Piano/pianoSynth';
+import { useNetCredits, useNetOccupancy } from '../../hooks/useVenueData';
+import { useMyGymMembership } from '../../hooks/useGym';
+import GymPanel from '../Gym/GymPanel';
+import TaskTree from '../Gym/TaskTree';
+import GymMiniGame from '../Gym/GymMiniGame';
+import GymResult from '../Gym/GymResult';
+import { EQUIP } from '../Gym/gymMeta';
+import '../Gym/Gym.css';
+import { shopAction } from '../../services/gameActions';
+import { MENU_TYPES, isMenuProduct, netPriceOf, NET_DEVICE_CAP, NET_SEEN_MS } from '../../../functions/venue.js';
+import '../Venue/Venue.css';
+import '../Piano/Piano.css';
+import '../Workshop/Workshop.css';
 import './HouseScreen.css';
 
 // =============================================================================
@@ -29,6 +52,18 @@ import './HouseScreen.css';
 // =============================================================================
 
 const PRESENCE_STALE_MS = 45_000;
+// v77 — işletmeye girince üstte çıkan butonlar
+const BIZ_TOP_BUTTONS = {
+  silahci: [
+    { panel: 'showcase', label: '🔫 Satılık' },
+    { panel: 'workshop', label: '🛠️ Atölye' },
+  ],
+  modifiye: [{ panel: 'workshop', label: '🛠️ Atölye' }],
+  galeri: [{ panel: 'showcase', label: '🚗 Satılık' }],
+  cafe: [{ panel: 'menu', label: '🍽️ Menü' }],
+  bar: [{ panel: 'menu', label: '🍽️ Menü' }],
+  spor: [{ panel: 'gym', label: '🏋️ Üyelik' }],
+};
 const SAVE_DEBOUNCE_MS = 1200;
 const PRIVACY = [
   { key: 'public', label: '🌐 Herkese açık', hint: 'Herkes evini listede görür ve girebilir.' },
@@ -101,7 +136,7 @@ const ownedCount = (items) => {
   return m;
 };
 
-export default function HouseScreen({ houseId, onExit }) {
+export default function HouseScreen({ houseId, onExit, onOpenGameVenue }) {
   const { user } = useAuth();
   const { player } = usePlayer();
   const social = useSocial();
@@ -140,6 +175,10 @@ export default function HouseScreen({ houseId, onExit }) {
   const [busy, setBusy] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState({ name: '', privacy: 'public' });
   const [cameraShot, setCameraShot] = useState(null);
+  // v77 — işletme: kaldırma uyarısı { type, status } · İşletmeler panelinde vurgulanan tür
+  const [bizRemove, setBizRemove] = useState(null);
+  const [bizFlash, setBizFlash] = useState(null);
+  const allowBizCloseRef = useRef(false);
   const [cameraCaption, setCameraCaption] = useState('');
   const [muted, setMuted] = useState(getVolume() === 0);
   const [showHelp, setShowHelp] = useState(() => {
@@ -217,13 +256,30 @@ export default function HouseScreen({ houseId, onExit }) {
     if (!dsg || !isOwner) return Promise.resolve();
     pendingDesignRef.current = null;
     setSaveState('saving');
+    const allowBizClose = allowBizCloseRef.current;
     return enqueue(async () => {
       try {
-        await houseAction({ op: 'save', houseId, design: dsg });
+        const res = await houseAction({ op: 'save', houseId, design: dsg, ...(allowBizClose ? { allowBizClose: true } : {}) });
+        if (allowBizClose) allowBizCloseRef.current = false;
         setSaveState(pendingDesignRef.current ? 'dirty' : 'saved');
+        const closed = res?.data?.bizClosed;
+        if (closed) flash(`${BIZ_TYPES[closed.type]?.icon || '🏪'} ✕`);
       } catch (err) {
         console.error('Ev kaydı başarısız:', err);
-        setSaveState('error');
+        allowBizCloseRef.current = false;
+        const be = parseBizError(err);
+        setSaveState(be ? 'saved' : 'error');
+        if (be) {
+          // v77: gerekli mobilya kaldırılamadı → eşya yerine döner (sunucudaki hâl)
+          pendingDesignRef.current = null;
+          const hd = houseDocRef.current;
+          if (hd && engineRef.current) {
+            engineRef.current.setDesign({ items: hd.items || [], wall: hd.wall, floor: hd.floor }, { force: true });
+            setDesign(engineRef.current.getDesign());
+          }
+          flash(be.kind === 'locked' ? `🔒 ${be.people ? `👤 ${be.people}` : '⏳'}` : '🔒');
+          return;
+        }
         flash(err?.message || 'Kaydedilemedi.');
         // sunucu reddettiyse (örn. envanter) sunucudaki hâle dön
         appliedFirstRef.current = false;
@@ -253,6 +309,7 @@ export default function HouseScreen({ houseId, onExit }) {
       },
     });
     engineRef.current = eng;
+    if (import.meta.env?.DEV) window.__houseEngine = eng; // sadece geliştirme/önizleme
     eng.setMode(mode);
     eng.setView(view);
     appliedFirstRef.current = false;
@@ -461,8 +518,39 @@ export default function HouseScreen({ houseId, onExit }) {
   // --- etkileşimler --------------------------------------------------------------------
   const doAction = async (a) => {
     unlockAudio();
+    // v77 Faz 4: spor salonu görevi → mini oyun
+    if (a.kind === 'gym') {
+      if (a.equipment === gymTaskKey) setGymGame(a.equipment);
+      return;
+    }
+    const seatBefore = engineRef.current?.getSelfState()?.seat || null;
     const r = engineRef.current?.interact(a);
     if (!r) return;
+    // v77: dolu koltuk (ör. piyano) → silüet + sarsılma
+    if (a.kind === 'sit' && r.kind === 'sit' && !seatBefore && !engineRef.current?.getSelfState()?.seat) {
+      setSeatFull(Date.now());
+      return;
+    }
+    // v77: cafe/bar işletmesinde yiyecek-içecek menüden (ücretli) alınır
+    if (r.kind === 'take' && bizType && MENU_TYPES.includes(bizType) && !isOwner && isMenuProduct(r.product)) {
+      setPanel('menu');
+      return;
+    }
+    // v77: internet kafede cihaza dokun → öde → oyna
+    if (r.kind === 'panel' && r.panel === 'arcade' && bizType === 'internet' && !isOwner) {
+      await startNet(r.itemId);
+      return;
+    }
+    if (r.kind === 'panel' && r.panel === 'piano') {
+      const c = await claimPiano(houseId, { uid: user.uid, name: player?.displayName });
+      if (!c.ok) {
+        setSeatFull(Date.now());
+        flash(`🎹 👤 ${c.holder?.name || ''}`);
+        return;
+      }
+      setPanel('piano');
+      return;
+    }
     if (r.kind === 'take') {
       try {
         const res = await houseAction({ op: 'take', houseId, itemId: r.itemId, product: r.product });
@@ -588,7 +676,8 @@ export default function HouseScreen({ houseId, onExit }) {
       setPanel(null);
       flash(`🎉 ${res.data?.count || ''} ürün senin! Güle güle kullan.`);
     } catch (err) {
-      flash(err?.message || 'Satın alınamadı.');
+      // v77: sepette gerekli bir işletme mobilyası eksikse (ör. geri alma ile kaldırıldı)
+      flash(parseBizError(err) ? '🔒 🏪' : err?.message || 'Satın alınamadı.');
     } finally {
       setBusy(false);
     }
@@ -615,6 +704,205 @@ export default function HouseScreen({ houseId, onExit }) {
       flash('Ayarlar kaydedildi.');
     } catch (err) {
       flash(err?.message || 'Kaydedilemedi.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // --- işletme (v77) ------------------------------------------------------------------
+  const bizType = houseDoc?.biz?.type || null;
+  const bizIntent = !bizType ? houseDoc?.bizIntent || null : null;
+  const intentReady = Boolean(bizIntent && checkBizRequirements(bizIntent, design?.items).ok);
+  // --- v77 Faz 4: spor salonu (üyelik → 3 görev → güç) ---------------------------------
+  const { active: gymMembership } = useMyGymMembership();
+  const gymActive = bizType === 'spor' && gymMembership?.gymId === houseId && gymMembership.step < 3 ? gymMembership : null;
+  const gymTaskKey = gymActive ? gymActive.tasks[gymActive.step] : null;
+  const [gymGame, setGymGame] = useState(null);
+  const [gymResult, setGymResult] = useState(null);
+  useEffect(() => {
+    engineRef.current?.setGymTask?.(gymTaskKey);
+  }, [gymTaskKey, phase, engineKey]);
+  const onGymStepDone = useCallback((r) => {
+    setGymGame(null);
+    if (r?.done) setGymResult(r);
+  }, []);
+  // --- v77 Faz 3: internet kafe (öde → oyna; kredi mekâna bağlı) -----------------------
+  const [seatFull, setSeatFull] = useState(0);
+  const netCredits = useNetCredits();
+  const myNet = netCredits.find((r) => r.houseId === houseId) || null;
+  const myNetRef = useRef(null);
+  myNetRef.current = myNet;
+  const netOcc = useNetOccupancy(houseId, bizType === 'internet');
+  const netActiveRef = useRef(false);
+  const netPrice = netPriceOf(houseDoc);
+  const deviceOcc = (deviceId) => {
+    const t = Date.now();
+    return netOcc.filter((s) => s.deviceId === deviceId && s.uid !== user?.uid && t - Number(s.lastSeenMs || 0) < NET_SEEN_MS).length;
+  };
+  const deviceCap = (deviceId) => NET_DEVICE_CAP[(houseDoc?.items || []).find((it) => it.i === deviceId)?.k] || 1;
+  const startNet = async (deviceId) => {
+    try {
+      const r = await shopAction({ op: 'netStart', houseId, itemId: deviceId, expect: netPrice });
+      netActiveRef.current = true;
+      setPanel('arcade');
+      if (r.charged) flash(`🖥️ −${r.charged.toLocaleString('tr-TR')}`);
+    } catch (err) {
+      const m = String(err?.message || '');
+      if (m === 'device-full') {
+        setSeatFull(Date.now());
+        flash('👤👤');
+      } else if (m === 'gold') flash('💰 ✕');
+      else if (m.startsWith('price-changed')) flash('💲 ↻');
+      else flash(m || 'Olmadı.');
+    }
+  };
+  // Oyun açıkken nabız: 20 sn'de bir ya da kredi bitmek üzereyken (sunucu sadece
+  // süre bitiyorsa yeni dakikayı çeker). Oyun kapanınca cihazdan kalkılır.
+  useEffect(() => {
+    if (panel !== 'arcade' || !netActiveRef.current) return undefined;
+    let lastTick = Date.now();
+    let busyTick = false;
+    const iv = setInterval(async () => {
+      const until = Number(myNetRef.current?.creditUntilMs || 0);
+      const t = Date.now();
+      if (busyTick || (until - t > 4000 && t - lastTick < 20_000)) return;
+      busyTick = true;
+      lastTick = t;
+      try {
+        const r = await shopAction({ op: 'netTick', houseId });
+        if (r.stopped && r.stopped !== 'none') {
+          setPanel(null);
+          flash(r.stopped === 'gold' ? '💰 ✕' : '🖥️ ✕');
+        } else if (r.charged) flash(`🖥️ −${r.charged.toLocaleString('tr-TR')}`);
+      } catch {
+        /* bir sonraki nabızda yeniden denenir */
+      } finally {
+        busyTick = false;
+      }
+    }, 2000);
+    return () => {
+      clearInterval(iv);
+      if (netActiveRef.current) {
+        netActiveRef.current = false;
+        shopAction({ op: 'netLeave', houseId }).catch(() => {});
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panel, houseId]);
+
+  // --- v77 Faz 3: piyano (tek kişi çalar, herkes duyar) ---------------------------------
+  const hasPiano = (houseDoc?.items || []).some((it) => it.k === 'piano' && it.p === 1);
+  const [pianoPlayer, setPianoPlayer] = useState(null);
+  const [pianoMuted, setPianoMuted] = useState(() => {
+    try {
+      return localStorage.getItem('ns_piano_muted') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const pianoMutedRef = useRef(pianoMuted);
+  pianoMutedRef.current = pianoMuted;
+  useEffect(() => {
+    if (phase !== 'ready' || !hasPiano || !user) return undefined;
+    return watchPiano(houseId, ({ player: pl, note }) => {
+      setPianoPlayer(pl);
+      if (note && note.uid !== user.uid && !pianoMutedRef.current) playPianoKey(Number(note.k), 0.5 * (getVolume() || 0.6));
+    });
+  }, [phase, hasPiano, houseId, user]);
+  useEffect(() => {
+    if (panel === 'piano' || !user) return undefined;
+    if (pianoPlayer?.uid === user.uid) releasePiano(houseId, user.uid).catch(() => {});
+    return undefined;
+  }, [panel, pianoPlayer?.uid, houseId, user]);
+  useEffect(() => () => user && releasePiano(houseId, user.uid).catch(() => {}), [houseId, user]);
+  const toggleMute = () => {
+    setPianoMuted((m) => {
+      try {
+        localStorage.setItem('ns_piano_muted', m ? '0' : '1');
+      } catch {
+        /* */
+      }
+      return !m;
+    });
+  };
+
+  const requestDelete = async () => {
+    const eng = engineRef.current;
+    if (!eng || !sel) return;
+    if (!removalBreaksBiz(houseDoc, design?.items, sel)) {
+      eng.deleteSelected();
+      return;
+    }
+    setBizRemove({ type: bizType, status: null });
+    try {
+      const r = await houseAction({ op: 'bizStatus', houseId });
+      setBizRemove((cur) => (cur ? { ...cur, status: r.data } : cur));
+    } catch (err) {
+      setBizRemove(null);
+      flash(err?.message || 'Olmadı.');
+    }
+  };
+  const confirmBizRemove = async () => {
+    const eng = engineRef.current;
+    setBizRemove(null);
+    if (!eng) return;
+    allowBizCloseRef.current = true;
+    eng.deleteSelected();
+    await flushSave();
+  };
+  // v77 — "Hepsini al": envanterdeki gerekli mobilyalar yerleşir, eksikler deneme
+  // eşyası olarak eklenir ve sepet onayı açılır (her şey tek dokunuşla).
+  const fillMissing = (type, m) => {
+    const eng = engineRef.current;
+    if (!eng) return;
+    switchMode('build');
+    let n = 0;
+    let full = false;
+    const add = (k, owned) => {
+      const r = eng.addItem(k, 0, owned ? { owned: true } : undefined);
+      if (r === 'limit') full = true;
+      else if (r) n += 1;
+    };
+    Object.entries(m.place).forEach(([k, q]) => {
+      for (let i = 0; i < q; i++) add(k, true);
+    });
+    const nBuy = Object.values(m.buy).reduce((a, b) => a + b, 0);
+    Object.entries(m.buy).forEach(([k, q]) => {
+      for (let i = 0; i < q; i++) add(k, false);
+    });
+    eng.deselect?.();
+    if (full) flash('🪑 Eşya sınırı doldu.');
+    setPanel(nBuy > 0 && !full ? 'checkout' : null);
+    if (!nBuy && n) flash(`📦 ${n} ✓ → ⚙️ ${BIZ_TYPES[type].icon}`);
+  };
+  const openBiz = async (type) => {
+    setBusy(true);
+    try {
+      await flushSave();
+      await houseAction({ op: 'bizOpen', houseId, type });
+      setPanel(null);
+      flash(`${BIZ_TYPES[type].icon} ${BIZ_TYPES[type].label} ●`);
+    } catch (err) {
+      if (parseBizError(err)) {
+        setBizFlash(type);
+        setTimeout(() => setBizFlash(null), 1200);
+      } else flash(err?.message || 'Açılamadı.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const closeBiz = async () => {
+    setBusy(true);
+    try {
+      await houseAction({ op: 'bizClose', houseId });
+      flash('🏠');
+    } catch (err) {
+      const be = parseBizError(err);
+      if (be?.kind === 'locked') {
+        setBizFlash(bizType);
+        setTimeout(() => setBizFlash(null), 1200);
+        flash(`🔒 ${be.people ? `👤 ${be.people}` : '⏳'}`);
+      } else flash(err?.message || 'Olmadı.');
     } finally {
       setBusy(false);
     }
@@ -674,7 +962,7 @@ export default function HouseScreen({ houseId, onExit }) {
           <div className="hs-top">
             <button className="hs-icon-btn" onClick={() => exit()} title="Evden çık">✕</button>
             <div className="hs-title">
-              <b>🏠 {houseName}</b>
+              <b>{bizType ? BIZ_TYPES[bizType].icon : '🏠'} {houseName}</b>
               <span>
                 {online.length} kişi evde
                 {isOwner && mode === 'build' && (
@@ -684,6 +972,7 @@ export default function HouseScreen({ houseId, onExit }) {
                 )}
               </span>
             </div>
+            <NetCreditRing houseId={houseId} />
             {mode === 'walk' && (
               <button className="hs-view-btn" onClick={toggleView} title="Görünümü değiştir">
                 {view === '3d' ? '3D' : '2D'}
@@ -696,9 +985,86 @@ export default function HouseScreen({ houseId, onExit }) {
               </div>
             )}
             {isOwner && (
-              <button className="hs-icon-btn" onClick={openSettings} title="Ayarlar">⚙️</button>
+              <button className={`hs-icon-btn${intentReady ? ' cue-pulse' : ''}${houseDoc?.bizShortagePending ? ' hb-dot' : ''}`} onClick={openSettings} title="Ayarlar">⚙️</button>
             )}
           </div>
+
+          {/* v77 — MEKÂN ÜST BUTONLARI (işletme türüne göre) */}
+          {bizType && mode === 'walk' && BIZ_TOP_BUTTONS[bizType] && (
+            <div className="hb-topbtns">
+              {BIZ_TOP_BUTTONS[bizType].map((b) => (
+                <button key={b.panel} className="hb-topbtn" onClick={() => setPanel(b.panel)}>
+                  {b.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {panel === 'workshop' && bizType && (
+            <div className="wk-sheet-bg" onClick={() => setPanel(null)}>
+              <div className="wk-sheet" onClick={(e) => e.stopPropagation()}>
+                <Workshop
+                  shop={{ kind: 'player', type: bizType, houseId, houseDoc }}
+                  onClose={() => setPanel(null)}
+                  onGoGame={onOpenGameVenue ? () => onOpenGameVenue(bizType) : undefined}
+                />
+              </div>
+            </div>
+          )}
+          {panel === 'menu' && bizType && (
+            <div className="wk-sheet-bg" onClick={() => setPanel(null)}>
+              <div className="wk-sheet" onClick={(e) => e.stopPropagation()}>
+                <MenuPanel
+                  houseId={houseId}
+                  houseDoc={houseDoc}
+                  onClose={() => setPanel(null)}
+                  onBought={(r) => {
+                    setPanel(null);
+                    flash(`${HOUSE_PRODUCTS[r.product]?.emoji || ''} ${r.label}${r.price ? ` −${r.price.toLocaleString('tr-TR')}` : ''}`);
+                  }}
+                />
+              </div>
+            </div>
+          )}
+          {panel === 'gym' && bizType === 'spor' && (
+            <div className="wk-sheet-bg" onClick={() => setPanel(null)}>
+              <div className="wk-sheet" onClick={(e) => e.stopPropagation()}>
+                <GymPanel houseId={houseId} houseDoc={houseDoc} onClose={() => setPanel(null)} onStarted={() => setPanel(null)} />
+              </div>
+            </div>
+          )}
+          {gymActive && mode === 'walk' && !gymGame && (
+            <TaskTree membership={gymActive} onTapCurrent={(k) => engineRef.current?.approachNearest?.(k)} />
+          )}
+          {gymGame && (
+            <div className="wk-sheet-bg">
+              <div className="wk-sheet" onClick={(e) => e.stopPropagation()}>
+                <GymMiniGame equipment={gymGame} onDone={onGymStepDone} onClose={() => setGymGame(null)} />
+              </div>
+            </div>
+          )}
+          {gymResult && <GymResult result={gymResult} onClose={() => setGymResult(null)} />}
+          {panel === 'piano' && user && <PianoPanel houseId={houseId} me={{ uid: user.uid, name: player?.displayName }} onClose={() => setPanel(null)} />}
+          {hasPiano && pianoPlayer && pianoPlayer.uid !== user?.uid && mode === 'walk' && (
+            <div className="pn-listen">
+              <span className="pn-notes">🎹 ♪</span>
+              <b>{pianoPlayer.name}</b>
+              <button onClick={toggleMute} title="Sessize al">
+                {pianoMuted ? '🔇' : '🔊'}
+              </button>
+            </div>
+          )}
+          {seatFull > 0 && Date.now() - seatFull < 1500 && (
+            <div className="hb-seatfull cue-shake" key={seatFull}>
+              👤
+            </div>
+          )}
+          {panel === 'showcase' && bizType && (
+            <div className="wk-sheet-bg" onClick={() => setPanel(null)}>
+              <div className="wk-sheet" onClick={(e) => e.stopPropagation()}>
+                <ShopShowcase houseId={houseId} kind={bizType === 'galeri' ? 'vehicle' : 'weapon'} onClose={() => setPanel(null)} />
+              </div>
+            </div>
+          )}
 
           {/* TASARIM: bakiye + sepet */}
           {isOwner && mode === 'build' && (
@@ -761,7 +1127,7 @@ export default function HouseScreen({ houseId, onExit }) {
                 {!sel.def?.wall && <button onClick={() => engineRef.current?.rotateSelected(-1)}>↺</button>}
                 {!sel.def?.wall && <button onClick={() => engineRef.current?.rotateSelected(1)}>↻</button>}
                 <button onClick={() => engineRef.current?.duplicateSelected()}>⧉ Bir tane daha</button>
-                <button className="danger" onClick={() => engineRef.current?.deleteSelected()}>{sel.p === 1 ? '📦 Envantere' : '🗑 Kaldır'}</button>
+                <button className={`danger${removalBreaksBiz(houseDoc, design?.items, sel) ? ' cue-lock' : ''}`} onClick={requestDelete}>{sel.p === 1 ? '📦 Envantere' : '🗑 Kaldır'}</button>
               </div>
             </div>
           )}
@@ -874,11 +1240,50 @@ export default function HouseScreen({ houseId, onExit }) {
               {interact.trial ? (
                 <div className="hs-trial-note">🛒 Deneme ürünü — ev sahibi satın alınca kullanılabilir</div>
               ) : (
-                interact.actions.map((a) => (
-                  <button key={a.label} className={`hs-act${a.kind === 'take' ? ' take' : ''}`} onClick={() => doAction(a)}>
-                    {a.label}
-                  </button>
-                ))
+                interact.actions.map((a) => {
+                  // v77: internet kafede cihaz: doluluk (👤 n/kapasite) + dakika ücreti
+                  if (bizType === 'internet' && !isOwner && a.panel === 'arcade' && a.deviceId) {
+                    const occ = deviceOcc(a.deviceId);
+                    const cap = deviceCap(a.deviceId);
+                    const full = occ >= cap;
+                    return (
+                      <button key={a.label} className={`hs-act${full ? ' cue-dim' : ''}`} onClick={() => doAction(a)}>
+                        🎮 {'👤'.repeat(Math.min(occ, cap))}
+                        {'·'.repeat(Math.max(0, cap - occ))} <span className="gold-coin-icon" style={{ width: 11, height: 11 }} /> {netPrice}/dk
+                      </button>
+                    );
+                  }
+                  // cafe/bar: yiyecek-içecek fiyatıyla (menüden alınır)
+                  if (a.kind === 'take' && bizType && MENU_TYPES.includes(bizType) && !isOwner && isMenuProduct(a.product)) {
+                    return (
+                      <button key={a.label} className="hs-act take" onClick={() => doAction(a)}>
+                        🍽️ {HOUSE_PRODUCTS[a.product]?.emoji} {HOUSE_PRODUCTS[a.product]?.label}
+                      </button>
+                    );
+                  }
+                  if (a.kind === 'gym') {
+                    // görev az önce ilerlediyse motorun eski etiketi bir kare kalabilir
+                    if (a.equipment !== gymTaskKey) return null;
+                    return (
+                      <button key={a.label} className="hs-act take cue-pulse" onClick={() => doAction(a)}>
+                        ⭐ {EQUIP[a.equipment]?.icon || '🏋️'}
+                      </button>
+                    );
+                  }
+                  // piyano başkası tarafından çalınıyorsa: soluk + silüet
+                  if (a.panel === 'piano' && pianoPlayer && pianoPlayer.uid !== user?.uid) {
+                    return (
+                      <button key={a.label} className="hs-act cue-dim" onClick={() => doAction(a)}>
+                        🎹 👤
+                      </button>
+                    );
+                  }
+                  return (
+                    <button key={a.label} className={`hs-act${a.kind === 'take' ? ' take' : ''}`} onClick={() => doAction(a)}>
+                      {a.label}
+                    </button>
+                  );
+                })
               )}
             </div>
           )}
@@ -960,23 +1365,50 @@ export default function HouseScreen({ houseId, onExit }) {
             <div className="hs-modal-bg" onClick={() => !busy && setPanel(null)}>
               <div className="hs-modal" onClick={(e) => e.stopPropagation()}>
                 <div className="hs-modal-head">
-                  <b>⚙️ Ev Ayarları</b>
+                  <b>⚙️ {bizType ? `${BIZ_TYPES[bizType].icon} ${BIZ_TYPES[bizType].label}` : 'Ev Ayarları'}</b>
                   <button className="hs-x" onClick={() => setPanel(null)}>✕</button>
                 </div>
-                <label className="hs-field-label">Evin adı</label>
+                <label className="hs-field-label">{bizType ? 'Adı' : 'Evin adı'}</label>
                 <input className="hh-input" value={settingsDraft.name} maxLength={30} onChange={(e) => setSettingsDraft((d) => ({ ...d, name: e.target.value }))} placeholder="örn. Neon Kafe, Garaj 34, Çete Mekanı" />
-                <label className="hs-field-label">Evin türü</label>
-                <div className="hs-privacy">
-                  {PRIVACY.map((p) => (
-                    <button key={p.key} className={settingsDraft.privacy === p.key ? 'on' : ''} onClick={() => setSettingsDraft((d) => ({ ...d, privacy: p.key }))}>
-                      <b>{p.label}</b>
-                      <span>{p.hint}</span>
-                    </button>
-                  ))}
-                </div>
+                {bizType ? (
+                  <BizSettings houseId={houseId} houseDoc={houseDoc} />
+                ) : (
+                  <>
+                    <label className="hs-field-label">Evin türü</label>
+                    <div className="hs-privacy">
+                      {PRIVACY.map((p) => (
+                        <button key={p.key} className={settingsDraft.privacy === p.key ? 'on' : ''} onClick={() => setSettingsDraft((d) => ({ ...d, privacy: p.key }))}>
+                          <b>{p.label}</b>
+                          <span>{p.hint}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
                 <button className="hs-btn gold wide" disabled={busy} onClick={saveSettings}>{busy ? 'Kaydediliyor…' : 'Kaydet'}</button>
+                <button className={`hs-btn ghost wide hb-open-list${intentReady ? ' cue-pulse' : ''}`} disabled={busy} onClick={() => setPanel('biz')}>
+                  🏪 İşletmeler{bizIntent ? ` · ${BIZ_TYPES[bizIntent].icon}` : ''}
+                </button>
               </div>
             </div>
+          )}
+
+          {/* v77 — İŞLETMELER */}
+          {panel === 'biz' && (
+            <BizListPanel
+              items={design?.items}
+              invItems={inv?.items}
+              onFillMissing={fillMissing}
+              houseDoc={houseDoc}
+              busy={busy}
+              flashType={bizFlash}
+              onOpenBiz={openBiz}
+              onCloseBiz={closeBiz}
+              onClose={() => setPanel(null)}
+            />
+          )}
+          {bizRemove && (
+            <BizRemovePanel type={bizRemove.type} status={bizRemove.status} busy={busy} onConfirm={confirmBizRemove} onCancel={() => setBizRemove(null)} />
           )}
 
           {/* SATIN ALMA ONAYI */}

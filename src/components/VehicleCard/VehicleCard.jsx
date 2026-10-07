@@ -87,13 +87,23 @@ export function LifeBar({ item, kind = 'vehicle' }) {
   );
 }
 
-export default function VehicleCard({ vehicle, materialsQty, repairQty, busy, onUpgrade, onRepair }) {
-  const req = vehicleRequiredQty(vehicle);
+// v77: Profilde sadece bilgi — tamir/geliştirme Modifiye Garajı Atölyesi'nde.
+// "Geliştirilebilir mi" göstergesi: ⚙️ vites · ⛽ depo hücreleri (dolu = yapıldı).
+export function UpgradeCells({ slots, icons }) {
+  return (
+    <span className="vcard-upcells">
+      <span className="vcard-up-ico">⬆</span>
+      {slots.map((on, i) => (
+        <i key={i} className={on ? 'on' : ''}>
+          {icons[i]}
+        </i>
+      ))}
+    </span>
+  );
+}
+
+export default function VehicleCard({ vehicle, locked = false }) {
   const img = vehicleImage(vehicle.catalogId);
-  const repairsUsed = vehicle.repairsUsed || 0;
-  const repairReq = repairRequiredQty(vehicleLivePrice(vehicle));
-  const repairMaxed = repairsUsed >= MAX_REPAIRS;
-  const lifeFull = isLifeFull(vehicle, 'vehicle');
   const displayName = vehicleDisplayName(vehicle);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(displayName);
@@ -120,7 +130,7 @@ export default function VehicleCard({ vehicle, materialsQty, repairQty, busy, on
   };
 
   return (
-    <div className="vcard-card">
+    <div className={`vcard-card${locked ? ' cue-dim cue-lock' : ''}`}>
       {img && <img className="vcard-photo" src={img} alt={displayName} />}
       <div className="vcard-body">
         {editingName ? (
@@ -161,30 +171,7 @@ export default function VehicleCard({ vehicle, materialsQty, repairQty, busy, on
           {vehicle.seizedByBank && ' · Bankaya el konuldu'}
         </span>
         <LifeBar item={vehicle} />
-        <div className="vcard-controls">
-          <button
-            className="vcard-btn"
-            disabled={vehicle.gearUpgraded || materialsQty.araba < req || busy === `${vehicle.id}-gear`}
-            onClick={() => onUpgrade(vehicle.id, 'gear')}
-          >
-            {vehicle.gearUpgraded ? 'Vites Geliştirildi' : `Vites Geliştir (${req} malzeme) +1 vites`}
-          </button>
-          <button
-            className="vcard-btn"
-            disabled={vehicle.tankUpgraded || materialsQty.araba < req || busy === `${vehicle.id}-tank`}
-            onClick={() => onUpgrade(vehicle.id, 'tank')}
-          >
-            {vehicle.tankUpgraded ? 'Depo Geliştirildi' : `Depo Geliştir (${req} malzeme) +50 depo`}
-          </button>
-          <button
-            className="vcard-btn"
-            disabled={repairMaxed || lifeFull || repairQty < repairReq || busy === `${vehicle.id}-repair`}
-            onClick={() => onRepair(vehicle.id)}
-            title={lifeFull ? 'Ömrü dolu — tamire gerek yok' : undefined}
-          >
-            {repairMaxed ? 'Tamir Hakkı Bitti' : `Tamir Et (${repairReq} malzeme) +${REPAIR_LIFE_BONUS_DAYS} gün`}
-          </button>
-        </div>
+        <UpgradeCells slots={[Boolean(vehicle.gearUpgraded), Boolean(vehicle.tankUpgraded)]} icons={['⚙️', '⛽']} />
       </div>
     </div>
   );

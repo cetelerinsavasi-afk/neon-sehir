@@ -46,6 +46,8 @@ export const CATS = [
         { i: '🧢', name: 'Menajer', t: 'Başkasının takımı, senin kaderin.', go: { cat: 'menajer', page: 0 } },
         { i: '⚽', name: 'Kulüp Başkanı', t: 'Tribünler senin.', go: { cat: 'futbol', page: 0 } },
         { i: '🏭', name: 'Fabrikatör', t: 'Baca senin, kâr senin.', go: { cat: 'fabrika', page: 0 } },
+        { i: '🏪', name: 'İşletmeci', t: 'Tabelayı as, kasayı kur.', go: { cat: 'isletmeler', page: 0 } },
+        { i: '🏋️', name: 'Futbolcu', t: 'Salonda ter, sahada isim.', go: { cat: 'isletmeler', page: 2 } },
         { i: '🏴', name: 'Çete Üyesi', t: 'Sokakların gerçek sahipleri.', go: { cat: 'ceteler', page: 0 } },
         { i: '🕵️', name: 'Ajan', t: 'Adı yok, yüzü yok.', go: { cat: 'ceteler', page: 7 } },
       ] },
@@ -294,7 +296,9 @@ export const CATS = [
           'Yeni yetenek al, eskiyi elden çıkar.' ] },
         { i: '🏋️', name: 'Antrenman', lines: [
           'Dört mevki için birer kutu: kaleci, defans, orta saha, forvet.',
-          'Kutuya bir oyuncu koy, gelişsin. Antrenmandaki oyuncu sahaya çıkamaz.' ] },
+          'Önce bir spor salonu seç ve öde. Menajerin varsa kasadan, yoksa cebinden.',
+          'Kutuya bir oyuncu koy, gelişsin. Antrenmandaki oyuncu sahaya çıkamaz.',
+          '🔥 işaretli salonda oyuncular %10 fazla gelişir.' ] },
         { i: '🩺', name: 'Doktor', lines: [
           '10.000 altına bir sakatı daha hızlı iyileştir.',
           'Doktor günde tek hastaya bakar.' ] },
@@ -314,6 +318,18 @@ export const CATS = [
         L('👛', 'Takımı kendin yönetiyorsan bilet parası doğrudan cebine düşer.'),
         L('🏦', 'Menajerin varsa para takımın kasasına yatar. Sen her gün bir kısmını çekersin.'),
         L('🤖', '5 gün ortadan kaybolursan takımı oto-bot devralır.'),
+      ] },
+    { type: 'lines', title: 'Sahaya Çık',
+      kicker: 'Bot değil, sensin. Formanın içinde gerçek bir isim.',
+      lines: [
+        L('⚡', 'Spor salonunda 200 güce ulaş: maaşlı futbolcular listesine girersin.'),
+        L('📢', 'İlana çık ve maaşını sen koy, takım doğrudan imzalasın. Ya da gelen teklifleri bekle.'),
+        L('📨', 'Teklifler 24 saat geçerli. Beğenmediğini reddet.'),
+        L('🔁', 'Takımdayken de teklif gelir; kabul edersen transfer olursun. Takımdayken ilana çıkamazsın.'),
+        L('💰', 'Maaş her gün 19:00’da yatar. Menajerli takımda kasadan, yoksa başkanın cebinden.'),
+        L('📉', 'Ödenmeyen maaş borç olarak birikir. Sözleşme biterse borç takımın borcu olur, para gelince ödenir.'),
+        L('💸', 'Zam iste ya da takımın kendiliğinden artırsın. İstediğin an feshet; aynı takıma 19:00’dan sonra dönebilirsin.'),
+        L('📊', 'Gol, asist, maç puanı ve maçın yıldızı. Ligler › Oyuncular’da adını en üste taşı.'),
       ] },
     { type: 'lines', title: 'Taraftar',
       kicker: 'Tribün doluysa oyun da senin.',
@@ -380,6 +396,68 @@ export const CATS = [
         L('⚔️', 'Rakip fabrika daha yüksek teklif verirse sponsorluğu kapabilir. Sen de yükseltip geri alırsın.'),
         L('🌙', 'Yeni sponsorluk her zaman ertesi gece yarısı başlar.'),
         L('🧾', 'Ücret fabrikanın günlük giderine yazılır.'),
+      ] },
+  ] },
+
+  /* -------------------------------------------------------------- */
+  { id: 'isletmeler', icon: '🏪', name: 'İşletmeler', tag: 'Evin bir tabela kadar uzakta', color: '#3df5c4', pages: [
+    { type: 'lines', title: 'Evini Dükkâna Çevir',
+      kicker: 'Kapıyı aç, tabelayı as, kasayı kur.',
+      lines: [
+        L('🏠', 'Yeni bir ev al ya da elindeki evi seç. Gerekli mobilyaları diz.'),
+        L('🛒', 'Eksik mobilyalar tek dokunuşla: Hepsini al.'),
+        L('⚙️', 'Ayarlar › İşletmeler’den kepengi aç.'),
+        L('🌐', 'İşletmenin kapısı herkese açıktır. Kimseyi geri çeviremezsin.'),
+        L('🔒', 'İçeride müşteri ya da süren bir iş varken gerekli mobilyalar yerinden oynamaz.'),
+        L('📦', 'Kepengi indirirsen içerideki malzeme ve ürünler sana döner.'),
+      ] },
+    { type: 'pick', title: 'Yedi Tabela',
+      kicker: 'Hangi kapının ardında hangi para?',
+      items: [
+        { i: '🔫', name: 'Silahçı', lines: [
+          'Vitrine 10 silah koy, fiyatı sen belirle. Vitrindeki silah eskimez.',
+          'Atölyede tamir ve geliştirme. Malzeme müşteriden ya da senden, işçilik %30’a kadar.' ] },
+        { i: '🚗', name: 'Araba Galerisi', lines: [
+          'Arabalarını vitrine çıkar. İlan 7 günde düşer, araba galeride kalır.',
+          'Vitrindeki araba eskimez.' ] },
+        { i: '🔧', name: 'Modifiye Garajı', lines: [
+          'Araba tamiri, vites ve depo geliştirmesi senin tezgahında.' ] },
+        { i: '🏋️', name: 'Spor Salonu', lines: [
+          'Günlük üyelik 500 ile 2.000 arası. Müşteri üç alette ter döker, gücü artar.',
+          'Takımlar da oyuncularını senin salonuna yollar.' ] },
+        { i: '🖥️', name: 'İnternet Kafe', lines: [
+          'Dakikayı sen fiyatlarsın. Müşteri öder, oynar; kredisi mekâna bağlı akar.' ] },
+        { i: '☕', name: 'Cafe', lines: [
+          'Menüyü dolapların belirler. Pasta vitrini koy, pasta da sat.',
+          'Burada hiçbir şey bedava değil. Sahibi hariç.' ] },
+        { i: '🍸', name: 'Bar', lines: [
+          'Dolaplar menüyü büyütür. Sahneye bir piyano koy, mekân çalsın.' ] },
+      ] },
+    { type: 'lines', title: 'Futbolcu Ol',
+      kicker: 'Ter senin. Efsane de senin.',
+      lines: [
+        L('🎯', 'Mevkini seç: kaleci, defans, orta saha ya da forvet.'),
+        L('🎟️', 'Üyeliği öde. Salonda üç alet seni bekler, her biri kısa bir oyun.'),
+        L('⚡', 'Güç 100’den başlar. 200’e kadar günde 1–16, sonra 1–4 artar.'),
+        L('⏳', 'Üyelik 19:00’da biter. Son saatte başlarsan bir saatin var.'),
+        L('👑', 'Salon sahibi kendi salonunda günde bir kez bedava çalışır.'),
+        L('📢', '200 güçte maaşlı futbolcusun. Ayrıntılar Futbol Takımı › Sahaya Çık sayfasında.'),
+      ] },
+    { type: 'lines', title: '🔥 Bonuslu Salon',
+      kicker: 'Kalabalık her zaman haklı değildir.',
+      lines: [
+        L('📉', 'Dün liderin yarısından az kazanan salon bugün bonusludur.'),
+        L('🔥', 'Bonuslu salonda gelişim %10 fazla. Takımların oyuncuları dahil.'),
+        L('🆕', 'Yeni salon ilk akşamı bekler. Bir tam gün geçmeden bonus yok.'),
+      ] },
+    { type: 'lines', title: 'Defter ve Sıra',
+      kicker: 'Her gün kapanış, her gün yeni sıralama.',
+      lines: [
+        L('📊', 'Rapor: bugün ve dün ne kazandın, kaç müşteri geldi, en çok ne sattın.'),
+        L('🏆', 'Listede yerin dünkü kazancına göre. Oyunun dükkânları da yarışta.'),
+        L('🌙', 'Gün gece yarısı kapanır. Spor salonu futbol gibi 19:00’da.'),
+        L('⚖️', 'Devlete borcun varsa kazancının yarısı borca gider.'),
+        L('🤫', 'Kazancını sadece sen görürsün. Herkes yalnızca sıranı bilir.'),
       ] },
   ] },
 ];

@@ -1,4 +1,4 @@
-import { system, PREVIEW_UID, fakeDb, houses } from './backend.js';
+import { system, PREVIEW_UID, fakeDb, houses, shop, futbolPro } from './backend.js';
 import { FieldValue } from '../../functions/gang/test/fakeFirestore.js';
 import { sanitizeDrawing } from '../../functions/drawingData.js';
 import { nextReaction, replyQuoteOf } from '../../functions/chatExtras.js';
@@ -11,6 +11,8 @@ export function httpsCallable(functions, name) {
     try {
       if (name === 'gangAction') return { data: await system.handleAction(request) };
       if (name === 'houseAction') return { data: await houses.houseAction(request) };
+      if (name === 'shopAction') return { data: await shop.shopAction(request) };
+      if (name === 'futbolProAction') return { data: await futbolPro.action(PREVIEW_UID, data) };
       if (name === 'gangAdmin') return { data: await system.handleAdmin(request) };
       if (name === 'submitFeedback') {
         // önizleme: gerçek sunucu mantığının sadeleştirilmiş taklidi

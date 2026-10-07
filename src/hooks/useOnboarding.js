@@ -49,7 +49,7 @@ export const ONBOARDING_TASKS = [
   { step: 16, emoji: '👤', title: 'Profile gir ve avatarını düzenle', info: "Alttaki Profil sekmesinden avatarını düzenleyebilir, adını değiştirebilirsin." },
   { step: 17, emoji: '💬', title: 'Telefon > ChatsApp uygulamasına gir ve bi mesaj gönder', info: 'Diğer oyuncularla konuş.' },
   { step: 18, emoji: '🧰', title: 'Telefon > Amazor ya da 2. el satış uygulamasından silah geliştirme malzemesi satın al', info: 'Silahını geliştirmek için ihtiyacın olacak.' },
-  { step: 19, emoji: '🔧', title: 'Profile gir ve silahını geliştir', info: 'Profil sekmesinden silahını geliştirerek daha büyük soygunlar yapabilirsin.' },
+  { step: 19, emoji: '🔧', title: 'Silahçıda silahını geliştir', info: 'Silah Mağazası ya da bir oyuncunun silahçı dükkânında 🛠️ Atölye\'den silahını geliştirerek daha büyük soygunlar yapabilirsin.' },
   { step: 20, emoji: '🏴', title: 'Bi çeteye gir', info: 'Tüm mafya babaları bu yollardan geçti.' },
 ];
 

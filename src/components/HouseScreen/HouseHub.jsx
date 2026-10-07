@@ -5,6 +5,7 @@ import { useHouseList } from '../../hooks/useHouseList';
 import { houseAction } from '../../services/gameActions';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import { HOUSE_PRICE } from '../../../functions/houseCatalogData.js';
+import { BIZ_TYPES } from '../../../functions/businessCatalogData.js';
 import './HouseScreen.css';
 import { useBackClose } from '../../lib/backStack';
 
@@ -20,9 +21,12 @@ export function HouseRow({ h, onEnter, mineRow }) {
         <AvatarSvg avatar={h.ownerAvatar} size={42} rounded />
       </span>
       <span className="hh-info">
-        <b>{h.name || `${h.ownerName || 'Oyuncu'}'in Evi`}</b>
+        <b>
+          {h.bizType && BIZ_TYPES[h.bizType] ? `${BIZ_TYPES[h.bizType].icon} ` : ''}
+          {h.name || `${h.ownerName || 'Oyuncu'}'in Evi`}
+        </b>
         <span>
-          {h.ownerName || 'Oyuncu'} · {PRIVACY_LABEL[h.privacy || 'public']}
+          {h.ownerName || 'Oyuncu'} · {h.bizType && BIZ_TYPES[h.bizType] ? BIZ_TYPES[h.bizType].label : PRIVACY_LABEL[h.privacy || 'public']}
           {h.invited && <em className="hh-invited"> · 💌 davetlisin</em>}
         </span>
       </span>

@@ -19,10 +19,12 @@ import { useMyActiveRaceRoom } from './hooks/useMyActiveRaceRoom';
 import { useFirestoreResume } from './hooks/useFirestoreResume';
 import { migrateArabaGelistirmeUnification, migrateVehicleWeaponLifeCap, migrateVehicleWeaponLifeCap20, migrateWeaponLifeCap10, resetFutbolTransferMarket, migrateOnboardingPoliceRule } from './services/gameActions';
 import { regions } from './data/regions';
+import { BIZ_BY_REGION } from '../functions/businessCatalogData.js';
 import { IS_ANDROID_APP } from './lib/platform';
 import { exitApp, installBackHandler, rearmBack, useBackClose } from './lib/backStack';
 import ConfirmModal from './components/ConfirmModal/ConfirmModal';
 import './styles/theme.css';
+import './styles/cues.css';
 import './App.css';
 
 
@@ -46,6 +48,8 @@ const RaceFullScreen = lazyScreen(() => import('./components/RaceTrackScreen/Rac
 const OnNumaraFullScreen = lazyScreen(() => import('./components/OnNumaraScreen/OnNumaraFullScreen'));
 const ProfileFullScreen = lazyScreen(() => import('./components/ProfileFullScreen/ProfileFullScreen'));
 const HouseHub = lazyScreen(() => import('./components/HouseScreen/HouseHub'));
+const BusinessHub = lazyScreen(() => import('./components/BusinessHub/BusinessHub'));
+const NetCreditRing = lazyScreen(() => import('./components/Venue/NetCreditRing'));
 const FutbolFullScreen = lazyScreen(() => import('./components/FutbolScreen/FutbolFullScreen'));
 const GangsFullScreen = lazyScreen(() => import('./components/Gangs/GangsFullScreen'));
 const ParkWorldScreen = lazyScreen(() => import('./components/ParkWorldScreen/ParkWorldScreen'));
@@ -142,6 +146,8 @@ function GameShell() {
   const [profileOpen, setProfileOpen] = useState(false);
   // v66: Ev ekranı — null kapalı, { houseId } açık (houseId null → liste)
   const [houseView, setHouseView] = useState(null);
+  // v77: İşletme listesi — null kapalı, { type } açık (spor, cafe, bar, internet, silahci, galeri, modifiye)
+  const [businessView, setBusinessView] = useState(null);
   const [gangsOpen, setGangsOpen] = useState(false);
   const [futbolOpen, setFutbolOpen] = useState(false);
   // comingSoon — "Çok yakında" mesajı (mekan adı), 2 sn sonra kendiliğinden kapanır.
@@ -258,8 +264,15 @@ function GameShell() {
       setFutbolOpen(true);
       return;
     }
-    // Henüz yapılmamış mekanlar (Spor Salonu, Cafe, Bar, İnternet Kafe,
-    // Belediye): kısa bir "Çok yakında" mesajı.
+    // v77: işletme türleri (Spor Salonu, Cafe, Bar, İnternet Kafe, Silah
+    // Mağazası, Araba Galerisi, Modifiye Garajı) → o türdeki aktif dükkânlar +
+    // "[tür] aç". Oyunun kendi dükkânı (silah/galeri/modifiye) listenin en üstünde.
+    const bizType = BIZ_BY_REGION[regionMeta?.id];
+    if (bizType) {
+      setBusinessView({ type: bizType });
+      return;
+    }
+    // Henüz yapılmamış mekanlar (Belediye): kısa bir "Çok yakında" mesajı.
     if (regionMeta?.screen === 'yakinda') {
       showComingSoon(regionMeta.name);
       return;
@@ -397,6 +410,9 @@ function GameShell() {
         }}
       />
 
+      {/* v77: internet kafe ödenmiş süre halkası — mekân dışında da görünür */}
+      {user && <NetCreditRing className="vn-fixed" />}
+
       <main className="map-stage">
         <CityMap onRegionClick={handleRegionClick} />
       </main>
@@ -485,6 +501,17 @@ function GameShell() {
               setMekanlarTab('ziyaret');
               setHeistTarget(null);
             }
+          }}
+        />
+      )}
+      {businessView && (
+        <BusinessHub
+          type={businessView.type}
+          onClose={() => setBusinessView(null)}
+          onOpenGameVenue={() => {
+            const open = { silahci: setWeaponShopOpen, galeri: setDealershipOpen, modifiye: setTuningGarageOpen }[businessView.type];
+            setBusinessView(null);
+            open?.(true);
           }}
         />
       )}

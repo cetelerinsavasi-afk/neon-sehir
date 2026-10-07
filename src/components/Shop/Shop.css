@@ -1,0 +1,323 @@
+/* v77 — Silahçı / Galeri vitrini + sahip panelleri */
+.sh-root {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+}
+.sh-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 17px;
+}
+.sh-wallet {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 800;
+}
+.sh-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 28px 0;
+  font-size: 40px;
+  opacity: 0.45;
+}
+.sh-empty b {
+  font-size: 15px;
+}
+.sh-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.sh-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  min-width: 0;
+}
+.sh-img {
+  height: 74px;
+  border-radius: 9px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.3);
+  display: grid;
+  place-items: center;
+  font-size: 30px;
+}
+.sh-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.sh-name {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sh-stat,
+.sh-repairs {
+  font-size: 11px;
+  opacity: 0.8;
+}
+.sh-life {
+  display: flex;
+  gap: 2px;
+}
+.sh-life i {
+  flex: 1;
+  min-width: 3px;
+  height: 7px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+}
+.sh-life i.on {
+  background: #7cff6b;
+}
+.sh-life i.broken {
+  background: repeating-linear-gradient(45deg, var(--neon-pink, #ff2e8c) 0 2px, transparent 2px 4px);
+  animation: cue-blink 0.9s ease-in-out infinite;
+}
+.sh-buy {
+  margin-top: 2px;
+  height: 36px;
+  border-radius: 10px;
+  border: none;
+  font-weight: 800;
+  color: #0b0f19;
+  background: linear-gradient(90deg, #ffd23f, #ff9f1c);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+.sh-buy.dim {
+  opacity: 0.45;
+}
+.sh-buy:disabled {
+  opacity: 0.6;
+}
+
+/* sahip panelleri */
+.sh-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.sh-mat-price {
+  padding: 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sh-mat-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.sh-unit {
+  margin-left: auto;
+  font-size: 11px;
+  opacity: 0.75;
+}
+.sh-slider {
+  display: grid;
+  grid-template-columns: 22px 1fr 52px;
+  align-items: center;
+  gap: 6px;
+}
+.sh-slider-ico {
+  font-size: 15px;
+}
+.sh-slider-track {
+  position: relative;
+  padding-top: 10px;
+}
+.sh-slider-track input {
+  width: 100%;
+  accent-color: var(--neon-cyan, #19e8ff);
+}
+.sh-npc {
+  position: absolute;
+  top: -4px;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: var(--neon-yellow, #ffd23f);
+  pointer-events: none;
+}
+.sh-slider-ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  opacity: 0.55;
+}
+.sh-slider-val {
+  text-align: right;
+  font-size: 14px;
+}
+.sh-count {
+  align-self: flex-start;
+  padding: 3px 10px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 13px;
+  font-weight: 700;
+}
+.sh-vrow {
+  padding: 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sh-vrow-main {
+  display: grid;
+  grid-template-columns: 54px 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+.sh-thumb {
+  width: 54px;
+  height: 40px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.3);
+  display: grid;
+  place-items: center;
+}
+.sh-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.sh-vrow-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: 12px;
+}
+.sh-vrow-info b {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sh-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 800;
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: rgba(255, 210, 63, 0.12);
+}
+.sh-tag.off {
+  opacity: 0.5;
+  background: rgba(255, 255, 255, 0.05);
+}
+.sh-vrow-acts {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+}
+.sh-vrow-acts .hs-btn {
+  padding: 8px 4px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.sh-vrow-acts .sh-life {
+  width: 28px;
+}
+.sh-listform {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 4px;
+}
+.sh-pickgrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.sh-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+.sh-pick .sh-thumb {
+  width: 100%;
+}
+.sh-pick.on {
+  border-color: var(--neon-cyan, #19e8ff);
+}
+.sh-stock {
+  padding: 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sh-stock-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+.sh-stock-head b {
+  font-size: 20px;
+}
+.sh-stock-n {
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: rgba(25, 232, 255, 0.1);
+}
+.sh-stock-n.mine {
+  background: rgba(255, 210, 63, 0.12);
+}
+.sh-stock-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+}
+.sh-num {
+  text-align: center;
+  margin: 0 !important;
+}
+.sh-quick {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.sh-quick button {
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+}

@@ -1,0 +1,245 @@
+/* v77 — Canlı saha */
+.flp {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 110 / 70;
+  margin-bottom: 10px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #0f4a27;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.25), 0 6px 22px rgba(0, 0, 0, 0.35);
+  user-select: none;
+}
+.flp-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.flp-grass.a {
+  fill: #1a6b3a;
+}
+.flp-grass.b {
+  fill: #1d7841;
+}
+.flp-lines rect,
+.flp-lines line,
+.flp-lines circle {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 0.35;
+}
+.flp-lines .flp-dot {
+  fill: rgba(255, 255, 255, 0.7);
+}
+.flp-net rect {
+  fill: rgba(255, 255, 255, 0.12);
+  stroke: rgba(255, 255, 255, 0.75);
+  stroke-width: 0.3;
+  stroke-dasharray: 0.6 0.4;
+}
+.flp-net.shake {
+  animation: flp-net-shake 0.5s ease-in-out 3;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.flp-net.shake rect {
+  fill: rgba(255, 255, 255, 0.4);
+}
+@keyframes flp-net-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(0.8px) scaleY(1.06);
+  }
+  75% {
+    transform: translateX(-0.6px) scaleY(0.96);
+  }
+}
+.flp-post {
+  stroke: #fff;
+  stroke-width: 0.7;
+}
+.flp-post.hit {
+  stroke: #ffd34d;
+  stroke-width: 1.1;
+  filter: drop-shadow(0 0 1.5px #ffd34d);
+}
+.flp-danger {
+  fill: #ff2e5a;
+  animation: flp-danger 0.6s ease-in-out infinite alternate;
+}
+@keyframes flp-danger {
+  from {
+    filter: brightness(0.9);
+  }
+  to {
+    filter: brightness(1.4);
+  }
+}
+.flp-pl {
+  stroke: rgba(0, 0, 0, 0.45);
+  stroke-width: 0.3;
+  transition: cx 0.25s linear, cy 0.25s linear;
+}
+.flp-pl.home {
+  fill: var(--neon-cyan, #19e8ff);
+}
+.flp-pl.away {
+  fill: var(--neon-pink, #ff2e8c);
+}
+.flp-pl.gk.home {
+  fill: #b9f6ff;
+}
+.flp-pl.gk.away {
+  fill: #ffc2dc;
+}
+.flp-shadow {
+  fill: rgba(0, 0, 0, 0.35);
+}
+.flp-trail {
+  fill: #fff;
+}
+.flp-ball {
+  fill: #fff;
+  stroke: #222;
+  stroke-width: 0.25;
+}
+.flp-ball.fast {
+  filter: drop-shadow(0 0 1.5px #fff);
+}
+
+/* üst bilgiler */
+.flp-clock {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+}
+.flp-sponsor {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #ffd34d;
+}
+.flp-attack {
+  position: absolute;
+  bottom: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #071018;
+  animation: flp-pulse 0.7s ease-in-out infinite alternate;
+}
+.flp-attack.home {
+  right: 8px;
+  background: var(--neon-cyan, #19e8ff);
+}
+.flp-attack.away {
+  left: 8px;
+  background: var(--neon-pink, #ff2e8c);
+}
+@keyframes flp-pulse {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.07);
+  }
+}
+
+/* olay bandı */
+.flp-banner {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 16px;
+  border-radius: 14px;
+  background: rgba(5, 8, 16, 0.78);
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  color: #fff;
+  text-align: center;
+  animation: flp-pop 0.35s cubic-bezier(0.2, 1.6, 0.4, 1);
+  pointer-events: none;
+}
+.flp-banner b {
+  font-size: 20px;
+  letter-spacing: 0.06em;
+}
+.flp-banner small {
+  font-size: 12px;
+  opacity: 0.9;
+}
+.flp-banner-ico {
+  font-size: 22px;
+}
+.flp-banner.goal {
+  border-color: #ffd34d;
+  box-shadow: 0 0 24px rgba(255, 211, 77, 0.6);
+}
+.flp-banner.goal b {
+  font-size: 28px;
+  color: #ffd34d;
+}
+.flp-banner.post b {
+  color: #ffd34d;
+}
+.flp-banner.save b {
+  color: #6dffa8;
+}
+@keyframes flp-pop {
+  from {
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+}
+.flp-goal::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  animation: flp-flash 0.9s ease-out 2;
+}
+.flp-goal.home::after {
+  background: radial-gradient(circle at 100% 50%, rgba(25, 232, 255, 0.55), transparent 60%);
+}
+.flp-goal.away::after {
+  background: radial-gradient(circle at 0% 50%, rgba(255, 46, 140, 0.55), transparent 60%);
+}
+@keyframes flp-flash {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .flp-net.shake,
+  .flp-danger,
+  .flp-attack,
+  .flp-goal::after {
+    animation: none;
+  }
+}

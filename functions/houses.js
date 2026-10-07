@@ -33,6 +33,19 @@ import {
   HOUSE_TAKEABLES,
   HOUSE_PRODUCTS,
 } from './houseCatalogData.js';
+import { BIZ_TYPES, BIZ_DEFAULT_NAME, checkBizRequirements } from './businessCatalogData.js';
+import { MENU_TYPES, isMenuProduct } from './venue.js';
+
+// v77 — Ev → İşletme. houses/{id} üzerine eklenen alanlar:
+//   biz: { type, openedAtMs } | null   — açık işletme (yoksa ev)
+//   bizType: string | null             — sorgu için düz alan (biz.type ile aynı)
+//   bizIntent: string | null           — "İşletme aç" ekranından alınan evin hedef türü
+//   bizRank: number                    — dünkü kazanç sırası (1 = en çok); kazanç gizli
+//   bizLockUntilMs: number             — ödenmiş/bitmemiş hizmet (spor/internet) varken
+//                                        gerekli mobilyalar kaldırılamaz
+// businessInventories/{houseId}        — { ownerUid, type, materials:{k:adet} }
+//   İşletme kapanınca içindekiler sahibin envanterine döner (bizHooks.onClose
+//   ile silah/araç gibi ek türler sonraki fazlarda eklenir).
 
 export const HOUSE = {
   W: 18,
@@ -107,7 +120,7 @@ const countOwned = (items) => {
 const ownsSurface = (inv, type, key) => FREE_SURFACES[type].includes(key) || (inv?.[type === 'wall' ? 'walls' : 'floors'] || []).includes(key);
 
 // deps: { db, FieldValue, HttpsError, requireAuth, onCall, isAdmin, assertCanSpeak, isFriend, now? }
-export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, isAdmin, assertCanSpeak, isFriend, now = () => Date.now() }) {
+export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, isAdmin, assertCanSpeak, isFriend, now = () => Date.now(), bizHooks = {} }) {
   const fail = (code, msg) => {
     throw new HttpsError(code, msg);
   };
@@ -149,8 +162,11 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
   async function buy(uid, p) {
     const uSnap = await userRef(uid).get();
     const user = uSnap.data() || {};
+    // v77: "İşletme aç" ekranından alınan ev — mobilyalar tamamlanana kadar EV'dir;
+    // bizIntent sadece hangi işletmeye hazırlandığını hatırlatır.
+    const bizIntent = p.bizIntent && BIZ_TYPES[p.bizIntent] ? p.bizIntent : null;
     // v68: ev sayısı sınırı yok — oyuncu istediği kadar ev alabilir.
-    const name = p.name ? cleanHouseName(p.name) : defaultHouseName(user.displayName);
+    const name = p.name ? cleanHouseName(p.name) : bizIntent ? cleanHouseName(BIZ_DEFAULT_NAME(user.displayName, bizIntent)) || defaultHouseName(user.displayName) : defaultHouseName(user.displayName);
     if (!name) fail('invalid-argument', 'Ev adı 3-30 karakter olmalı.');
     if (p.name) await assertCanSpeak(uid);
     const ref = db.collection('houses').doc();
@@ -171,12 +187,17 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
         music: null,
         kicked: {},
         invites: {},
+        biz: null,
+        bizType: null,
+        bizIntent,
         createdAtMs: now(),
         updatedAtMs: now(),
       });
       tx.set(userRef(uid).collection('messages').doc(), {
         from: 'Emlak',
-        text: `Hayırlı olsun! "${name}" artık senin. Haritadan Ev'e tıklayıp evine girebilir, Tasarla ile döşeyebilirsin. 🏠`,
+        text: bizIntent
+          ? `Hayırlı olsun! "${name}" artık senin. ${BIZ_TYPES[bizIntent].icon} Gerekli mobilyaları yerleştir, ⚙️ Ayarlar › İşletmeler'den aç.`
+          : `Hayırlı olsun! "${name}" artık senin. Haritadan Ev'e tıklayıp evine girebilir, Tasarla ile döşeyebilirsin. 🏠`,
         read: false,
         createdAt: FieldValue.serverTimestamp(),
       });
@@ -192,6 +213,8 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     const kickedUntil = Number(h.kicked?.[uid] || 0);
     if (kickedUntil > t) return { ok: false, msg: `Bu evden çıkarıldın. ${Math.ceil((kickedUntil - t) / 60000)} dk sonra tekrar deneyebilirsin.` };
     if (Number(h.invites?.[uid] || 0) > t) return { ok: true };
+    // v77: işletmeler her zaman herkese açıktır
+    if (h.biz) return { ok: true };
     const privacy = h.privacy || 'public';
     if (privacy === 'public') return { ok: true };
     if (privacy === 'friends') {
@@ -254,6 +277,170 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     return { items, invItems };
   }
 
+  // ---- işletme (v77) ------------------------------------------------------------------
+  const bizInvRef = (houseId) => db.collection('businessInventories').doc(houseId);
+
+  // Gerekli mobilyaları kaldırmayı engelleyen durumlar: içeride (sahip dışında)
+  // aktif müşteri var ya da ödenmiş ama bitmemiş hizmet (bizLockUntilMs) var.
+  // tx verilirse sorgu transaction içinde okunur (OKUMALAR yazmalardan önce).
+  async function bizLockState(houseId, h, tx = null) {
+    const t = now();
+    const q = db.collection('housePresence').where('houseId', '==', houseId).limit(40);
+    const snap = tx ? await tx.get(q) : await q.get();
+    let people = 0;
+    snap.forEach((d) => {
+      if (d.id === h.ownerUid) return;
+      const v = d.data();
+      const at = v.updatedAt?.toMillis?.() ?? Number(v.updatedAt || 0);
+      if (at && t - at > HOUSE.PRESENCE_ACTIVE_MS) return;
+      people += 1;
+    });
+    const untilMs = Math.max(0, Number(h.bizLockUntilMs || 0));
+    return { locked: people > 0 || untilMs > t, people, untilMs: untilMs > t ? untilMs : 0 };
+  }
+
+  // İşletme envanterini oku (transaction içinde, yazmalardan ÖNCE çağrılmalı)
+  async function readBizInv(tx, houseId) {
+    const s = await tx.get(bizInvRef(houseId));
+    return s.exists ? s.data() : null;
+  }
+  // İşletmeyi kapat: içindekiler sahibin envanterine döner, ev yeniden "ev" olur.
+  // Sadece YAZMA yapar (okumalar önceden yapılmış olmalı: bizInv + hook okumaları).
+  function writeBizClose(tx, { houseId, h, bizInv, hookState }) {
+    const returned = { materials: {} };
+    Object.entries(bizInv?.materials || {}).forEach(([k, n]) => {
+      const q = Math.max(0, Math.floor(Number(n) || 0));
+      if (!q) return;
+      returned.materials[k] = q;
+      tx.set(userRef(h.ownerUid).collection('inventory').doc(k), { quantity: FieldValue.increment(q) }, { merge: true });
+    });
+    // merge YOK: eski malzeme anahtarları tamamen silinmeli (yoksa iki kez iade edilir)
+    if (bizInv) tx.set(bizInvRef(houseId), { ownerUid: h.ownerUid, type: null, materials: {}, updatedAtMs: now() });
+    if (bizHooks.onCloseWrite) Object.assign(returned, bizHooks.onCloseWrite(tx, { houseId, h, state: hookState }) || {});
+    tx.update(houseRef(houseId), { biz: null, bizType: null, bizRank: FieldValue.delete(), updatedAtMs: now() });
+    return returned;
+  }
+  async function readBizCloseState(tx, houseId, h) {
+    const bizInv = await readBizInv(tx, houseId);
+    const hookState = bizHooks.onCloseRead ? await bizHooks.onCloseRead(tx, { houseId, h }) : null;
+    return { bizInv, hookState };
+  }
+
+  // Yeni tasarım açık işletmenin şartını bozuyorsa: kilit varsa reddet, sahip
+  // onay vermediyse reddet (istemci uyarıyı gösterir), aksi halde işletmeyi kapat.
+  // Döner: kapanış bilgisi ya da null. (Tüm okumalar burada, yazmalar çağırana kalır.)
+  async function guardBizDesign(tx, { houseId, h, items, allowBizClose }) {
+    if (!h.biz?.type) return null;
+    if (checkBizRequirements(h.biz.type, items).ok) return null;
+    const lock = await bizLockState(houseId, h, tx);
+    if (lock.locked) fail('failed-precondition', `biz-locked:${lock.people}:${lock.untilMs}`);
+    if (!allowBizClose) fail('failed-precondition', 'biz-required');
+    return readBizCloseState(tx, houseId, h);
+  }
+
+  async function bizOpen(uid, p) {
+    const houseId = String(p.houseId || '');
+    const type = String(p.type || '');
+    if (!BIZ_TYPES[type]) fail('invalid-argument', 'Geçersiz işletme türü.');
+    let result = null;
+    await db.runTransaction(async (tx) => {
+      const hs = await tx.get(houseRef(houseId));
+      if (!hs.exists) fail('not-found', 'Ev bulunamadı.');
+      const h = hs.data();
+      if (h.ownerUid !== uid) fail('permission-denied', 'Bu ev senin değil.');
+      if (h.biz?.type) fail('failed-precondition', h.biz.type === type ? 'Bu işletme zaten açık.' : 'Bir ev aynı anda tek işletme olabilir.');
+      if (!checkBizRequirements(type, h.items).ok) fail('failed-precondition', 'biz-required');
+      const bizInv = await readBizInv(tx, houseId);
+      tx.update(houseRef(houseId), {
+        biz: { type, openedAtMs: now() },
+        bizType: type,
+        bizIntent: null,
+        privacy: 'public',
+        // v77: yeni açılan spor salonu bonussuz başlar (ilk 19:00 da sayılmaz)
+        ...(type === 'spor' ? { gymBonusDay: null } : {}),
+        updatedAtMs: now(),
+      });
+      tx.set(bizInvRef(houseId), { ownerUid: uid, type, materials: bizInv?.materials || {}, updatedAtMs: now() }, { merge: true });
+      result = { ok: true, type };
+    });
+    return result;
+  }
+
+  // v77 — "Hepsini al" (işletme aç ekranı): eksik mobilyaları envantere satın al.
+  // p: { items:{ key: adet }, expect:{ gold, gem } }
+  async function buyItems(uid, p) {
+    const want = {};
+    let total = 0;
+    Object.entries(p.items || {}).forEach(([k, n]) => {
+      const q = Math.floor(Number(n) || 0);
+      if (!KEY_RE.test(k) || !ITEM_PRICES[k] || q < 1 || q > 20) fail('invalid-argument', 'Geçersiz eşya.');
+      want[k] = q;
+      total += q;
+    });
+    if (!total || total > 40) fail('invalid-argument', 'Geçersiz sepet.');
+    let gold = 0;
+    let gem = 0;
+    Object.entries(want).forEach(([k, q]) => {
+      const pr = ITEM_PRICES[k];
+      if (pr.t === 'gem') gem += pr.v * q;
+      else gold += pr.v * q;
+    });
+    const exp = p.expect || {};
+    if (Number(exp.gold) !== gold || Number(exp.gem) !== gem) fail('aborted', 'Sepet tutarı değişti, lütfen tekrar kontrol et.');
+    await db.runTransaction(async (tx) => {
+      const us = await tx.get(userRef(uid));
+      const user = us.data() || {};
+      if (Number(user.gold || 0) < gold) fail('failed-precondition', 'gold');
+      if (Number(user.emerald || 0) < gem) fail('failed-precondition', 'gem');
+      const patch = {};
+      if (gold) patch.gold = FieldValue.increment(-gold);
+      if (gem) patch.emerald = FieldValue.increment(-gem);
+      tx.update(userRef(uid), patch);
+      tx.set(invRef(uid), { items: Object.fromEntries(Object.entries(want).map(([k, q]) => [k, FieldValue.increment(q)])), updatedAtMs: now() }, { merge: true });
+    });
+    return { ok: true, gold, gem, items: want };
+  }
+
+  // v77 — mevcut evi bir işletmeye hazırla (aç ekranındaki "evini çevir" önerisi)
+  async function setBizIntent(uid, p) {
+    const houseId = String(p.houseId || '');
+    const type = p.type === null ? null : String(p.type || '');
+    if (type !== null && !BIZ_TYPES[type]) fail('invalid-argument', 'Geçersiz işletme türü.');
+    const h = await loadOwnedHouse(uid, houseId);
+    if (h.biz?.type) fail('failed-precondition', 'Bu ev zaten bir işletme.');
+    await houseRef(houseId).update({ bizIntent: type, updatedAtMs: now() });
+    return { ok: true, houseId, type };
+  }
+
+  async function bizClose(uid, p) {
+    const houseId = String(p.houseId || '');
+    let result = null;
+    await db.runTransaction(async (tx) => {
+      const hs = await tx.get(houseRef(houseId));
+      if (!hs.exists) fail('not-found', 'Ev bulunamadı.');
+      const h = hs.data();
+      if (h.ownerUid !== uid) fail('permission-denied', 'Bu ev senin değil.');
+      if (!h.biz?.type) fail('failed-precondition', 'Bu ev zaten işletme değil.');
+      const lock = await bizLockState(houseId, h, tx);
+      if (lock.locked) fail('failed-precondition', `biz-locked:${lock.people}:${lock.untilMs}`);
+      const st = await readBizCloseState(tx, houseId, h);
+      const returned = writeBizClose(tx, { houseId, h, ...st });
+      result = { ok: true, closed: h.biz.type, returned };
+    });
+    return result;
+  }
+
+  // İstemcinin uyarı ekranı için: kilit durumu + kapanırsa sahibine dönecekler
+  async function bizStatus(uid, p) {
+    const houseId = String(p.houseId || '');
+    const h = await loadOwnedHouse(uid, houseId);
+    const lock = await bizLockState(houseId, h);
+    const invSnap = await bizInvRef(houseId).get();
+    const materials = invSnap.exists ? invSnap.data().materials || {} : {};
+    const extra = bizHooks.statusExtra ? await bizHooks.statusExtra({ houseId, h }) : {};
+    return { ok: true, type: h.biz?.type || null, lock, returns: { materials, ...extra } };
+  }
+
   async function save(uid, p) {
     const houseId = String(p.houseId || '');
     const design = clean(p.design);
@@ -264,14 +451,17 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       const h = hs.data();
       if (h.ownerUid !== uid) fail('permission-denied', 'Bu ev senin değil.');
       const inv = is.exists ? is.data() : {};
+      const closing = await guardBizDesign(tx, { houseId, h, items: design.items, allowBizClose: p.allowBizClose === true });
       const { items, invItems } = applyDesignTx(tx, { houseId, h, inv, uid, design });
       // Kaplama: sadece sahip olunan uygulanır; değilse eskisi kalır (önizleme istemcide).
       const wall = design.wall && ownsSurface(inv, 'wall', design.wall) ? design.wall : h.wall || FREE_SURFACES.wall[0];
       const floor = design.floor && ownsSurface(inv, 'floor', design.floor) ? design.floor : h.floor || FREE_SURFACES.floor[0];
+      let closed = null;
+      if (closing) closed = { type: h.biz.type, returned: writeBizClose(tx, { houseId, h, ...closing }) };
       tx.update(houseRef(houseId), { items, wall, floor, updatedAtMs: now() });
       // Envanter belgesi küçük: tamamı tek yazımla (silinen anahtarlar da gider)
       tx.set(invRef(uid), { items: invItems, walls: inv.walls || [], floors: inv.floors || [], updatedAtMs: now() });
-      result = { ok: true, count: items.length, wall, floor };
+      result = { ok: true, count: items.length, wall, floor, ...(closed ? { bizClosed: closed } : {}) };
     });
     return result;
   }
@@ -319,9 +509,12 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       const emerald = Number(user.emerald || 0);
       if (gold < q.gold) fail('failed-precondition', `Yetersiz altın (${gold.toLocaleString('tr-TR')} / ${q.gold.toLocaleString('tr-TR')}).`);
       if (emerald < q.gem) fail('failed-precondition', `Yetersiz zümrüt (${emerald} / ${q.gem}).`);
+      const items = design.items.map((it) => ({ ...it, p: 1 }));
+      // v77: satın alma sırasında gerekli bir mobilya kaldırılmışsa işletme kuralı
+      const closing = await guardBizDesign(tx, { houseId, h, items, allowBizClose: p.allowBizClose === true });
       // Önce mevcut (satın alınmış) eşyaların envanter farkını uygula, sonra denemeleri satın al.
       const { invItems } = applyDesignTx(tx, { houseId, h, inv, uid, design });
-      const items = design.items.map((it) => ({ ...it, p: 1 }));
+      if (closing) writeBizClose(tx, { houseId, h, ...closing });
       const walls = [...(inv.walls || [])];
       const floors = [...(inv.floors || [])];
       q.surfaces.forEach(([type, key]) => {
@@ -364,6 +557,8 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     }
     if (p.privacy !== undefined) {
       if (!PRIVACY.includes(p.privacy)) fail('invalid-argument', 'Geçersiz tür.');
+      // v77: işletme her zaman herkese açık
+      if (h.biz && p.privacy !== 'public') fail('failed-precondition', 'İşletmeler her zaman herkese açıktır.');
       patch.privacy = p.privacy;
     }
     if (Object.keys(patch).length) await houseRef(houseId).update({ ...patch, updatedAtMs: now() });
@@ -506,6 +701,8 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     if (!it) fail('not-found', 'Eşya bulunamadı.');
     if (it.p !== 1) fail('failed-precondition', 'Bu eşya henüz satın alınmamış (deneme).');
     if (!(HOUSE_TAKEABLES[it.k] || []).includes(product) || !HOUSE_PRODUCTS[product]) fail('invalid-argument', 'Bu eşyadan bu ürün alınamaz.');
+    // v77: cafe/bar işletmesinde yiyecek-içecek müşteriye ücretsiz değil → menüden alınır
+    if (h.biz?.type && MENU_TYPES.includes(h.biz.type) && isMenuProduct(product) && h.ownerUid !== uid) fail('failed-precondition', 'biz-menu');
     const pres = await presentIn(uid, houseId);
     if (!pres) fail('failed-precondition', 'Bu evde değilsin.');
     const t = now();
@@ -558,6 +755,16 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
         return take(uid, p);
       case 'music':
         return music(uid, p);
+      case 'bizOpen':
+        return bizOpen(uid, p);
+      case 'bizClose':
+        return bizClose(uid, p);
+      case 'bizStatus':
+        return bizStatus(uid, p);
+      case 'buyItems':
+        return buyItems(uid, p);
+      case 'bizIntent':
+        return setBizIntent(uid, p);
       default:
         return fail('invalid-argument', 'Bilinmeyen işlem.');
     }
@@ -570,5 +777,5 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     return stale.size;
   }
 
-  return { houseAction, expirePresence, quoteOf, buildPhotoAttachment };
+  return { houseAction, expirePresence, quoteOf, buildPhotoAttachment, bizLockState };
 }

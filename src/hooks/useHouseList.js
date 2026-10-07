@@ -97,6 +97,8 @@ export function useHouseList({ enabled = true, onlyLive = false } = {}) {
     const enterable = [];
     [...invited, ...open].forEach((h) => {
       if (seen.has(h.id) || h.ownerUid === uid) return;
+      // v77: açık işletmeler kendi türlerinin listesinde (haritadan) görünür
+      if (h.bizType && !onlyLive) return;
       if (Number(h.kicked?.[uid] || 0) > now) return;
       const isInvited = Number(h.invites?.[uid] || 0) > now;
       const privacy = h.privacy || 'public';
@@ -113,5 +115,5 @@ export function useHouseList({ enabled = true, onlyLive = false } = {}) {
       enterable: enterable.map(withCount).sort(sortFn),
       counts,
     };
-  }, [mine, open, invited, presence, social?.friendMap, user?.uid, loading, tick]);
+  }, [mine, open, invited, presence, social?.friendMap, user?.uid, loading, tick, onlyLive]);
 }

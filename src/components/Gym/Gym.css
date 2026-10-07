@@ -1,0 +1,391 @@
+/* v77 — Spor salonu: üyelik paneli, görev ağacı, mini oyun, sonuç sayacı */
+.gy-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 460px;
+  margin: 0 auto;
+}
+.gy-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 24px;
+}
+.gy-bonus {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #ffb547;
+  background: rgba(255, 140, 0, 0.14);
+  border: 1px solid rgba(255, 160, 40, 0.45);
+}
+.gy-wallet {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 15px;
+  font-weight: 800;
+}
+.gy-power {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+}
+.gy-power b {
+  font-size: 26px;
+  min-width: 56px;
+}
+.gy-power-bar {
+  flex: 1;
+  height: 10px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.gy-power-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--neon-cyan, #19e8ff), #ffd34d);
+  transition: width 0.5s;
+}
+.gy-dim {
+  opacity: 0.45;
+  font-size: 13px;
+}
+.gy-positions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.gy-pos {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 10px 4px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+}
+.gy-pos span {
+  font-size: 26px;
+}
+.gy-pos small {
+  font-size: 10px;
+  opacity: 0.75;
+}
+.gy-pos.on {
+  border-color: var(--neon-cyan, #19e8ff);
+  background: rgba(25, 232, 255, 0.12);
+  box-shadow: 0 0 12px rgba(25, 232, 255, 0.35);
+}
+.gy-mini {
+  margin: 0;
+  text-align: center;
+  font-size: 12px;
+  opacity: 0.8;
+}
+.gy-state {
+  position: relative;
+  padding: 14px;
+  text-align: center;
+  border-radius: 14px;
+  font-size: 20px;
+  background: rgba(255, 255, 255, 0.05);
+}
+.gy-state.done {
+  color: #6dffa8;
+}
+.gy-state small {
+  font-size: 12px;
+  opacity: 0.7;
+  margin-left: 6px;
+}
+.gy-go {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 52px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 16px;
+  font-size: 18px;
+  font-weight: 800;
+  color: #071018;
+  background: linear-gradient(135deg, var(--neon-cyan, #19e8ff), #6dffa8);
+}
+.gy-go:active {
+  transform: scale(0.97);
+}
+.gy-go.dim {
+  filter: grayscale(0.7);
+  opacity: 0.55;
+}
+
+/* Görev ağacı — sağ üstte, "Üyelik" butonunun altında yatay 3 düğüm
+   (sağdaki yan butonlarla çakışmaz) */
+.gy-tree {
+  position: absolute;
+  right: 8px;
+  top: calc(122px + var(--hs-safe-t, 0px));
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(8, 12, 24, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(6px);
+}
+.gy-tree-row {
+  display: flex;
+  align-items: center;
+}
+.gy-tree-line {
+  display: block;
+  width: 14px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.15);
+}
+.gy-tree-line.on {
+  background: #6dffa8;
+}
+.gy-node {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  font-size: 20px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  opacity: 0.5;
+}
+.gy-node.cur {
+  opacity: 1;
+  border-color: var(--neon-cyan, #19e8ff);
+  box-shadow: 0 0 14px rgba(25, 232, 255, 0.5);
+}
+.gy-node.done {
+  opacity: 1;
+  border-color: #6dffa8;
+  color: #6dffa8;
+  font-weight: 900;
+}
+.gy-tree-bonus {
+  margin-left: 6px;
+  font-size: 16px;
+}
+
+/* Mini oyun */
+.gy-game {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+.gy-game-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.gy-game-ico {
+  font-size: 30px;
+}
+.gy-game-bar {
+  flex: 1;
+  height: 14px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.gy-game-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #6dffa8, var(--neon-cyan, #19e8ff));
+  transition: width 0.15s linear;
+}
+.gy-game-wait {
+  display: grid;
+  place-items: center;
+  height: 220px;
+  font-size: 48px;
+}
+.gy-pads {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  height: 220px;
+}
+.gy-pad {
+  border-radius: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font-size: 44px;
+  opacity: 0.45;
+  transition: opacity 0.1s, transform 0.08s;
+}
+.gy-pad:nth-child(2) {
+  transform: scaleX(-1);
+}
+.gy-pad.next {
+  opacity: 1;
+  border-color: var(--neon-cyan, #19e8ff);
+  box-shadow: 0 0 16px rgba(25, 232, 255, 0.35);
+}
+.gy-hold {
+  --h: 0;
+  position: relative;
+  height: 220px;
+  border-radius: 24px;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  background:
+    linear-gradient(0deg, rgba(109, 255, 168, 0.35) calc(var(--h) * 100%), transparent calc(var(--h) * 100%)),
+    rgba(255, 255, 255, 0.04);
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.gy-hold span {
+  font-size: 54px;
+}
+.gy-hold b,
+.gy-swipe b {
+  font-size: 16px;
+  opacity: 0.8;
+}
+.gy-punch {
+  height: 220px;
+  border-radius: 50%;
+  aspect-ratio: 1;
+  margin: 0 auto;
+  border: 3px solid rgba(255, 255, 255, 0.12);
+  background: radial-gradient(circle, rgba(255, 46, 140, 0.25), rgba(255, 255, 255, 0.03));
+  color: inherit;
+  font-size: 80px;
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+.gy-punch.beat {
+  transform: scale(1.06);
+  box-shadow: 0 0 26px rgba(255, 46, 140, 0.5);
+  border-color: var(--neon-pink, #ff2e8c);
+}
+.gy-punch:active {
+  transform: scale(0.92);
+}
+.gy-swipe {
+  height: 240px;
+  border-radius: 24px;
+  border: 2px dashed rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.gy-swipe-arrow {
+  font-size: 36px;
+  color: var(--neon-cyan, #19e8ff);
+  animation: gy-up 1s ease-in-out infinite;
+}
+.gy-swipe-ico {
+  font-size: 56px;
+}
+@keyframes gy-up {
+  0% {
+    transform: translateY(14px);
+    opacity: 0.2;
+  }
+  60% {
+    transform: translateY(-10px);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-16px);
+    opacity: 0;
+  }
+}
+
+/* Sonuç sayacı */
+.gy-result-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(2, 4, 10, 0.75);
+  backdrop-filter: blur(4px);
+}
+.gy-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: min(320px, 100%);
+  padding: 22px 18px;
+  border-radius: 24px;
+  background: #0d1424;
+  border: 1px solid rgba(25, 232, 255, 0.3);
+  box-shadow: 0 0 40px rgba(25, 232, 255, 0.2);
+}
+.gy-result-ico {
+  font-size: 40px;
+}
+.gy-result-num {
+  font-size: 64px;
+  font-weight: 900;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.gy-result-gain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 22px;
+  font-weight: 800;
+  color: #6dffa8;
+}
+.gy-result-star {
+  font-size: 22px;
+  font-weight: 900;
+  color: #ffd34d;
+}
+.gy-result .gy-go {
+  width: 100%;
+}
+.gy-tree-time {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.8;
+  white-space: nowrap;
+}

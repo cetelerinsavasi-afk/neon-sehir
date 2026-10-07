@@ -5,17 +5,19 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { AMAZOR_PRICES } from './harness.js';
+import { AMAZOR_PRICES as SHARED_AMAZOR_PRICES } from '../../itemRules.js';
 import { computeGangRanks, computeIntelRanks } from '../ranks.js';
 import { dateKeyOf, hourOf, addDays, midnightMsOf, weekdayOfKey } from '../time.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const indexSrc = fs.readFileSync(path.join(here, '../../index.js'), 'utf8');
 
+// v77: AMAZOR_PRICES index.js'ten functions/itemRules.js'e taşındı (Atölye ile ortak);
+// index.js onu oradan içe aktarır.
 test('AMAZOR fiyatları index.js ile aynı (ticaret yolu yarı fiyat / anlık değer bunlardan)', () => {
-  const m = indexSrc.match(/const AMAZOR_PRICES = \{([^}]+)\}/);
-  assert.ok(m);
-  const obj = Object.fromEntries(m[1].split(',').map((x) => x.trim()).filter(Boolean).map((x) => x.split(':').map((y) => y.trim())).map(([k, v]) => [k, Number(v)]));
-  assert.deepEqual(obj, AMAZOR_PRICES);
+  assert.ok(/AMAZOR_PRICES,[\s\S]*?from '\.\/itemRules\.js'/.test(indexSrc), 'index.js AMAZOR_PRICES\'ı itemRules.js\'ten almalı');
+  assert.ok(!/const AMAZOR_PRICES = \{/.test(indexSrc), 'index.js içinde ikinci bir AMAZOR_PRICES tanımı olmamalı');
+  assert.deepEqual(SHARED_AMAZOR_PRICES, AMAZOR_PRICES);
 });
 
 test('index.js: dailyReset içine çete kodu eklenmedi; çete fonksiyonları export ediliyor', () => {

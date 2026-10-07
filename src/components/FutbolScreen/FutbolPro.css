@@ -1,0 +1,487 @@
+/* v77 Faz 5 — gerçek futbolcular: Futbolcu sekmesi, Transfer › futbolcular, Ligler › Oyuncular */
+.fp-wrap,
+.fp-market {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 0;
+  margin: 0 0 12px;
+  padding: 0;
+  min-width: 0;
+}
+.fp-market:disabled {
+  opacity: 0.55;
+}
+.fp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.fp-dim {
+  font-size: 13px;
+  opacity: 0.8;
+}
+.fp-title {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 800;
+  font-size: 14px;
+}
+.fp-count {
+  font-style: normal;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(25, 232, 255, 0.15);
+  color: var(--neon-cyan, #19e8ff);
+}
+.fp-hint {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.7;
+  line-height: 1.4;
+}
+.fp-msg {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #ffd0d0;
+  background: rgba(255, 46, 90, 0.12);
+  border: 1px solid rgba(255, 46, 90, 0.4);
+}
+.fp-msg.ok {
+  color: #c9ffe0;
+  background: rgba(109, 255, 168, 0.1);
+  border-color: rgba(109, 255, 168, 0.4);
+}
+.fp-wide {
+  width: 100%;
+}
+.fp-danger {
+  border-color: var(--neon-pink, #ff2e8c) !important;
+  color: var(--neon-pink, #ff2e8c) !important;
+}
+.fp-debt {
+  color: #ff8a8a;
+  font-style: normal;
+}
+.fp-pending {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+  color: #ffd34d;
+}
+.fp-mini {
+  min-width: 28px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+  color: inherit;
+}
+.fp-mini.ok {
+  border-color: #6dffa8;
+  color: #6dffa8;
+}
+.fp-real {
+  margin-left: 4px;
+  font-style: normal;
+  font-size: 12px;
+}
+
+/* boş durum */
+.fp-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 16px;
+  text-align: center;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.fp-empty-ico {
+  font-size: 44px;
+}
+.fp-empty p {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+/* üst kart */
+.fp-hero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(25, 232, 255, 0.12), rgba(177, 107, 255, 0.12));
+  border: 1px solid rgba(25, 232, 255, 0.25);
+}
+.fp-pos {
+  font-size: 34px;
+}
+.fp-hero-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.fp-name {
+  font-size: 17px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fp-sub {
+  font-size: 12px;
+  opacity: 0.75;
+}
+.fp-bar {
+  display: block;
+  height: 7px;
+  margin-top: 4px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+.fp-bar > i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--neon-cyan, #19e8ff), #ffd34d);
+}
+.fp-power {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.fp-power b {
+  font-size: 24px;
+  line-height: 1;
+}
+.fp-pro {
+  margin-top: 3px;
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  padding: 1px 6px;
+  border-radius: 6px;
+  color: #071018;
+  background: #ffd34d;
+}
+
+/* gün sonu kartı */
+.fp-day {
+  border-color: rgba(25, 232, 255, 0.3);
+}
+.fp-day.star {
+  border-color: #ffd34d;
+  box-shadow: 0 0 18px rgba(255, 211, 77, 0.25);
+}
+.fp-day-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fp-day-ico {
+  font-size: 22px;
+}
+.fp-day-head small {
+  margin-left: auto;
+  opacity: 0.6;
+  font-size: 11px;
+}
+.fp-score {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.fp-score span:first-child {
+  text-align: right;
+}
+.fp-score b {
+  font-size: 20px;
+}
+.fp-line {
+  margin: 0;
+  font-weight: 700;
+}
+.fp-day-grid {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.fp-rating {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid var(--neon-cyan, #19e8ff);
+}
+.fp-rating.hi {
+  border-color: #6dffa8;
+}
+.fp-rating.lo {
+  border-color: #ff8a8a;
+}
+.fp-rating b {
+  font-size: 18px;
+  line-height: 1;
+}
+.fp-rating small {
+  font-size: 9px;
+  opacity: 0.7;
+}
+.fp-chipcol {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+.fp-up {
+  font-style: normal;
+  color: #6dffa8;
+  font-weight: 800;
+}
+.fp-ranks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.fp-ranks span {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(255, 211, 77, 0.12);
+  border: 1px solid rgba(255, 211, 77, 0.35);
+}
+
+/* sezon */
+.fp-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+.fp-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 2px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.fp-stat b {
+  font-size: 16px;
+}
+.fp-stat small {
+  font-size: 10px;
+  opacity: 0.65;
+}
+
+/* ilan / teklif / sözleşme */
+.fp-listed {
+  border-color: rgba(255, 211, 77, 0.4);
+}
+.fp-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+.fp-offer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.fp-offer-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+.fp-offer-main span {
+  font-size: 12px;
+  opacity: 0.8;
+}
+.fp-contract {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.fp-contract > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.fp-contract small {
+  font-size: 10px;
+  opacity: 0.65;
+}
+.fp-raise {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+/* takım tarafı satırlar */
+.fp-prow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.fp-prow.listed {
+  border-color: rgba(255, 211, 77, 0.35);
+}
+.fp-prow-pos {
+  font-size: 24px;
+}
+.fp-prow-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 13px;
+}
+.fp-prow-main > span {
+  font-size: 12px;
+  opacity: 0.85;
+}
+.fp-ask {
+  font-style: normal;
+  color: #ffd34d;
+  font-weight: 700;
+}
+.fp-prow-acts {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* Ligler › Oyuncular */
+.fp-boards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.fp-board-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.fp-board-tabs::-webkit-scrollbar {
+  display: none;
+}
+.fp-board-tab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.fp-board-tab.on {
+  border-color: var(--neon-cyan, #19e8ff);
+  background: rgba(25, 232, 255, 0.12);
+  color: var(--neon-cyan, #19e8ff);
+}
+.fp-board {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.fp-board-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.fp-board-row.top1 {
+  background: rgba(255, 211, 77, 0.1);
+  border: 1px solid rgba(255, 211, 77, 0.35);
+}
+.fp-board-row.real .fp-board-main b {
+  color: var(--neon-cyan, #19e8ff);
+}
+.fp-board-rank {
+  width: 26px;
+  text-align: center;
+  font-weight: 800;
+}
+.fp-board-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.fp-board-main b {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fp-board-main span {
+  font-size: 11px;
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fp-board-val {
+  font-size: 18px;
+}
+.fp-inteam {
+  font-style: normal;
+  opacity: 0.8;
+}
+.fp-warn {
+  margin: 0;
+  font-size: 12px;
+  color: #ffb547;
+}

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import FutbolLigler from './FutbolLigler';
 import FutbolTakimim from './FutbolTakimim';
+import FutbolFutbolcu from './FutbolFutbolcu';
 import './FutbolFullScreen.css';
 
 /**
@@ -33,14 +34,16 @@ export default function FutbolShell({ onClose }) {
         >
           Takımım
         </button>
+        <button
+          className={`futbol-subtab-btn ${tab === 'futbolcu' ? 'active' : ''}`}
+          onClick={() => setTab('futbolcu')}
+        >
+          🏃 Futbolcu
+        </button>
       </div>
 
       <div className="futbol-fullscreen-body">
-        {tab === 'ligler' ? (
-          <FutbolLigler />
-        ) : (
-          <FutbolTakimim />
-        )}
+        {tab === 'ligler' ? <FutbolLigler /> : tab === 'futbolcu' ? <FutbolFutbolcu /> : <FutbolTakimim />}
       </div>
     </div>
   );

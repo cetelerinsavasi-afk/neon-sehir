@@ -1,34 +1,13 @@
-import { useState } from 'react';
 import { useWeapons } from '../../hooks/useWeapons';
-import { useInventory } from '../../hooks/useInventory';
-import { upgradeWeapon } from '../../services/gameActions';
-import { weaponLivePrice } from '../../data/weaponCatalog';
+import { LifeBar, UpgradeCells } from '../VehicleCard/VehicleCard';
 
-// Silah geliştirme işlemleri artık Silah Mağazası'nda değil, burada
-// (Soygun ekranı > Silahlarım) yapılıyor.
+// v77: silah geliştirme artık Silahçı Atölyesi'nde (oyunun Silah Mağazası ya
+// da oyuncuların silahçı dükkânları). Burada sadece güç, ömür ve "geliştirilebilir
+// mi" (Sv.2 / Sv.3 hücreleri) görünür.
 export default function MyWeaponsPanel() {
   const { weapons: allWeapons } = useWeapons();
-  const { inventory } = useInventory();
-  const [busy, setBusy] = useState(null);
-  const [error, setError] = useState(null);
-
-  // 2. el sitesinde satılmış/satışa çıkarılmış (listed: true) bir silah
-  // artık fiilen elimizde değil — burada gösterilmemeli/geliştirilmemeli.
+  // 2. el / vitrin (listed: true) silah fiilen kullanılamaz — gösterilmez
   const weapons = allWeapons.filter((w) => !w.listed);
-
-  const materialQty = inventory.silahUpgrade || 0;
-
-  const run = async (key, fn) => {
-    setBusy(key);
-    setError(null);
-    try {
-      await fn();
-    } catch (err) {
-      setError(err.message || 'İşlem başarısız.');
-    } finally {
-      setBusy(null);
-    }
-  };
 
   if (weapons.length === 0) {
     return <p className="heist-hint">Henüz bir silahın yok — Silah Mağazası'ndan satın alabilirsin.</p>;
@@ -36,28 +15,21 @@ export default function MyWeaponsPanel() {
 
   return (
     <div className="heist-weapons-list">
-      <p className="heist-hint">Gelişim malzemesi: {materialQty} adet</p>
       {weapons.map((w) => {
-        const requiredQty = Math.round(weaponLivePrice(w) / 100);
+        const lv = w.level || 1;
         return (
           <div key={w.id} className="heist-weapon-card">
             <div className="heist-weapon-info">
               <span className="heist-weapon-name">
-                {w.name} <span className="heist-weapon-level">Sv. {w.level}</span>
+                {w.name} <span className="heist-weapon-level">Sv. {lv}</span>
               </span>
               <span className="heist-weapon-power">Güç: {w.power.toLocaleString('tr-TR')}</span>
+              <LifeBar item={w} kind="weapon" />
+              <UpgradeCells slots={[lv >= 2, lv >= 3]} icons={['2', '3']} />
             </div>
-            <button
-              className="heist-weapon-btn"
-              disabled={w.level >= 3 || materialQty < requiredQty || busy === w.id}
-              onClick={() => run(w.id, () => upgradeWeapon(w.id))}
-            >
-              {w.level >= 3 ? 'Maks. Seviye' : `Geliştir (${requiredQty} malzeme)`}
-            </button>
           </div>
         );
       })}
-      {error && <p className="heist-panel-error">{error}</p>}
     </div>
   );
 }

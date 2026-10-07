@@ -263,3 +263,29 @@
   color: var(--text-dim);
   min-width: 26px;
 }
+/* v77 Faz 5 — golü atan / asist */
+.futbol-commentary-scorer {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  opacity: 0.9;
+}
+.futbol-replay-btn {
+  display: block;
+  width: 100%;
+  margin: -4px 0 10px;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid var(--neon-cyan, #19e8ff);
+  background: rgba(25, 232, 255, 0.08);
+  color: var(--neon-cyan, #19e8ff);
+  font-weight: 800;
+}
+.futbol-replay-btn.on {
+  border-color: var(--neon-pink, #ff2e8c);
+  color: var(--neon-pink, #ff2e8c);
+  background: rgba(255, 46, 140, 0.08);
+}
+.futbol-commentary-row.post .futbol-commentary-text {
+  color: #ffd34d;
+}

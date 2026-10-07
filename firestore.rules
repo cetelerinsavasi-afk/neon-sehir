@@ -378,6 +378,53 @@ service cloud.firestore {
       allow read: if isSelf(uid);
       allow write: if false;
     }
+    // v77 — İşletmeler (functions/houses.js + business.js). Tüm yazmalar sunucudan.
+    // İşletme envanteri müşterilere de görünür (stok/fiyat); günlük rapor
+    // (kazanç) sadece sahibine; günlük kapanış özetleri istemciye kapalı.
+    match /businessInventories/{houseId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    match /businessDaily/{docId} {
+      allow read: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
+      allow write: if false;
+    }
+    match /businessRollups/{docId} {
+      allow read, write: if false;
+    }
+    // v77 — oyunun dükkânlarının dünkü kazanç sırası (tutar yok, sadece sıra)
+    // v77 Faz 5 — futbolcu teklifleri ve oyuncu istatistikleri (yazma sadece sunucu)
+    match /futbolOffers/{id} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    match /futbolPlayerStats/{id} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    match /gameVenues/{type} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    // v77 Faz 3 — internet kafe oturumları (cihaz doluluğu herkese, kredi HUD'u
+    // oyuncunun kendisine) ve cafe/bar günlük harcama sayacı (sadece kendisi).
+    match /netSessions/{docId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    match /bizSpend/{docId} {
+      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
+    // v77 Faz 4 — futbolcu profili (güç/mevki herkese görünür) ve salon üyeliği (kendisi)
+    match /footballers/{uid} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    match /gymMemberships/{docId} {
+      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
     // eski (v65) davet kayıtları — sadece okunur/silinir
     match /houseInvites/{uid} {
       allow read: if isSelf(uid);

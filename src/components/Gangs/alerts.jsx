@@ -9,7 +9,7 @@
 //           ihbar edebileceğin çete tırı/bahsi
 // Tamamen okuma: sunucuya yazmaz. Dinleyiciler limitlidir (çoğu limit 1).
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { collection, doc, getDoc, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
+import { collection, doc, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { istDateKey, slotIdOf, truckAttackAt } from './GangContext';
 
@@ -92,29 +92,33 @@ export function claimable(dists, { rank, isIntel, myKey, joinedAtMs, now }) {
   );
 }
 
-// Oy verilmemiş oylamalar (ballot belgesi tek seferlik okunur)
+// Oy verilmemiş oylamalar. v77 düzeltme: ballot belgesi eskiden TEK SEFER okunuyordu;
+// oy verince işaret sönmüyordu (oylama listesi değişmediği için yeniden okunmuyordu).
+// Artık her ballot belgesi dinleniyor → oy verildiği an nokta söner.
 function useUnvoted(votes, ballotPathOf, voterKey) {
-  const [unvoted, setUnvoted] = useState(0);
+  const [voted, setVoted] = useState({});
   const ids = votes
     .filter((v) => (v.voterIds || []).includes(voterKey))
     .map((v) => v.id)
     .sort()
     .join(',');
   useEffect(() => {
-    let alive = true;
     if (!ids) {
-      setUnvoted(0);
+      setVoted({});
       return undefined;
     }
-    Promise.all(ids.split(',').map((id) => getDoc(doc(db, ballotPathOf(id))).then((s) => (s.exists() ? 0 : 1)).catch(() => 0))).then((r) => {
-      if (alive) setUnvoted(r.reduce((a, b) => a + b, 0));
-    });
-    return () => {
-      alive = false;
-    };
+    const offs = ids.split(',').map((id) =>
+      onSnapshot(
+        doc(db, ballotPathOf(id)),
+        (s) => setVoted((m) => ({ ...m, [id]: s.exists() })),
+        () => setVoted((m) => ({ ...m, [id]: true }))
+      )
+    );
+    return () => offs.forEach((off) => off());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ids]);
-  return unvoted;
+  // henüz okunmamış ballot "oy verilmiş" sayılır (yanlış alarm yerine kısa gecikme)
+  return ids ? ids.split(',').filter((id) => voted[id] === false).length : 0;
 }
 
 export function useGangAlerts(uid) {
@@ -144,6 +148,8 @@ export function useGangAlerts(uid) {
   const gGen = useDocs(base && gangId ? `gg_${base}_${gangId}_${gJoined}` : null, last(`${base}/gangs/${gangId}/chat_genel`, gJoined))[0];
   const gYon = useDocs(base && gangId && atLeast(rank, 'kidemli') ? `gy_${base}_${gangId}_${gJoined}` : null, last(`${base}/gangs/${gangId}/chat_yonetim`, gJoined))[0];
   const iGen = useDocs(base && rid ? `ig_${base}_${rid}_${iJoined}` : null, last(`${base}/intelChat_genel`, iJoined))[0];
+  // v77: "Tüm Çeteler" ortak sohbeti de (sadece çete üyeleri görür)
+  const gTum = useDocs(base && gangId ? `gt_${base}_${gJoined}` : null, last(`${base}/globalChat`, gJoined))[0];
   const iYon = useDocs(base && rid && ['baskan', 'sef', 'uzman'].includes(irank) ? `iy_${base}_${rid}_${iJoined}` : null, last(`${base}/intelChat_yonetim`, iJoined))[0];
 
   // --- savaşlar ---
@@ -174,10 +180,15 @@ export function useGangAlerts(uid) {
   return useMemo(() => {
     const newer = (m, chan, meKey) => Boolean(m && !m.system && m.createdAtMs > readSeen(uid, w, chan) && m[meKey.field] !== meKey.value);
     const chans = {
-      gang: { genel: Boolean(gangId) && newer(gGen, `g:${gangId}:genel`, { field: 'authorId', value: uid }), yonetim: Boolean(gangId) && newer(gYon, `g:${gangId}:yonetim`, { field: 'authorId', value: uid }) },
+      gang: {
+        genel: Boolean(gangId) && newer(gGen, `g:${gangId}:genel`, { field: 'authorId', value: uid }),
+        yonetim: Boolean(gangId) && newer(gYon, `g:${gangId}:yonetim`, { field: 'authorId', value: uid }),
+        tum: Boolean(gangId) && newer(gTum, 'g:tum', { field: 'authorId', value: uid }),
+      },
       intel: { genel: Boolean(rid) && newer(iGen, 'i:genel', { field: 'rosterId', value: rid }), yonetim: Boolean(rid) && newer(iYon, 'i:yonetim', { field: 'rosterId', value: rid }) },
     };
     const gangChat = chans.gang.genel || chans.gang.yonetim;
+    const tumChat = chans.gang.tum;
     const intelChat = chans.intel.genel || chans.intel.yonetim;
 
     const all = new Map();
@@ -210,7 +221,7 @@ export function useGangAlerts(uid) {
       ((isLead && (truckReps.some((r) => !r.opWarId && openRep(r)) || betReps.some((r) => !r.opStarted))) || (canReport && (myRoad.length > 0 || myBets.length > 0)));
 
     const handoverForMe = Boolean(handover && handover.toId === uid && handover.status === 'pending' && handover.dateKey === today);
-    const gang = { sohbet: gangChat, savas: gangWar || offersIn || gUnvoted > 0 || gClaim || handoverForMe };
+    const gang = { sohbet: gangChat || tumChat, savas: gangWar || offersIn || gUnvoted > 0 || gClaim || handoverForMe };
     const intel = { sohbet: intelChat, savas: intelWar || iUnvoted > 0 || iClaim, operasyon: ops };
     // v38: anasayfa hatırlatıcıları (📋 paneli)
     const canLeak = Boolean(rid && gangId && atLeast(rank, 'kidemli'));
@@ -222,7 +233,8 @@ export function useGangAlerts(uid) {
       report: canReport && (myRoad.length > 0 || myBets.length > 0),
       leak: canLeak && (leakTruck || leakBet),
     };
+    // alt çubuktaki "Çeteler" noktası: "Tüm Çeteler" sohbeti de yakar (kullanıcı isteği)
     return { worldId: w, uid, gang, intel, chans, reminders, any: Object.values(gang).some(Boolean) || Object.values(intel).some(Boolean) };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [now, seenTick, handover, w, uid, gangId, rid, rank, irank, gGen, gYon, iGen, iYon, pub, mine, intelWars, slot, gVotes, iVotes, gDists, iDists, allianceIn, gUnvoted, iUnvoted, truckReps, betRepsAll, myTrucks, today, hourKey, gJoined, iJoined, canReport, isLead]);
+  }, [now, seenTick, handover, w, uid, gangId, rid, rank, irank, gGen, gYon, gTum, iGen, iYon, pub, mine, intelWars, slot, gVotes, iVotes, gDists, iDists, allianceIn, gUnvoted, iUnvoted, truckReps, betRepsAll, myTrucks, today, hourKey, gJoined, iJoined, canReport, isLead]);
 }

@@ -1,0 +1,164 @@
+/* v77 — İşletme listesi + "işletme aç" ekranı (HouseHub sınıflarının üzerine) */
+
+.bh-game {
+  border-color: var(--neon-yellow, #ffd23f) !important;
+  background: linear-gradient(90deg, rgba(255, 210, 63, 0.12), transparent) !important;
+}
+.bh-game-ico {
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: rgba(255, 210, 63, 0.15);
+}
+.bh-go {
+  font-size: 26px;
+  color: var(--neon-yellow, #ffd23f);
+  padding: 0 6px;
+}
+.bh-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 40px 0;
+  opacity: 0.5;
+  font-size: 36px;
+}
+.bh-empty b {
+  font-size: 16px;
+}
+.bh-open-modal {
+  max-height: 88dvh;
+  overflow-y: auto;
+}
+.bh-lead {
+  margin: 2px 0 10px;
+  text-align: center;
+  font-size: 13px;
+}
+.bh-coin {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.bh-coin.bad {
+  color: var(--neon-pink, #ff2e8c);
+  animation: cue-blink 0.5s ease-in-out 3;
+}
+.bh-cost-row,
+.bh-total,
+.bh-wallet {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  margin-bottom: 6px;
+}
+.bh-req {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.bh-req-row {
+  text-align: left;
+  display: grid;
+  grid-template-columns: 28px 1fr auto auto;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  font-size: 13px;
+}
+.bh-req-ico {
+  font-size: 18px;
+  text-align: center;
+}
+.bh-req-name i {
+  font-style: normal;
+  color: var(--neon-cyan, #19e8ff);
+  font-weight: 700;
+}
+.bh-alt {
+  font-style: normal;
+  opacity: 0.6;
+  margin-left: 4px;
+}
+.bh-total {
+  border: 1px solid var(--neon-yellow, #ffd23f);
+  font-weight: 800;
+}
+.bh-total-vals {
+  display: inline-flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.bh-wallet.shake {
+  animation: cue-shake 0.38s ease-in-out 2;
+}
+.bh-dim {
+  opacity: 0.45;
+}
+
+/* v77 Faz 4 — dünkü kazancı düşük salon bugün +%10 */
+.bh-bonus {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 800;
+  color: #ffb547;
+  background: rgba(255, 140, 0, 0.14);
+  border: 1px solid rgba(255, 160, 40, 0.45);
+  vertical-align: middle;
+}
+
+/* v77 — envanterdeki mobilya / hepsini al / evini çevir */
+.bh-inv {
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+.bh-have {
+  font-weight: 900;
+  color: #6dffa8;
+  text-align: right;
+}
+.bh-buyall {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+  border-color: var(--neon-cyan, #19e8ff) !important;
+}
+.bh-allset {
+  margin: 8px 0 0;
+  text-align: center;
+  font-weight: 800;
+  color: #6dffa8;
+}
+.bh-convert {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bh-convert-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 46vh;
+  overflow-y: auto;
+}

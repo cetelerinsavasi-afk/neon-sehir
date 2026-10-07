@@ -365,3 +365,76 @@
 .futbol-doktor-treat-btn {
   width: 100%;
 }
+
+/* v77 — takım antrenmanı: salon seçimi + ücretli mevki kutuları */
+.futbol-gym-picker {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 4px 0 8px;
+}
+.futbol-gym-chip {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font-size: 12px;
+  max-width: 160px;
+}
+.futbol-gym-chip.on {
+  border-color: var(--neon-cyan, #19e8ff);
+  background: rgba(25, 232, 255, 0.12);
+}
+.futbol-gym-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+.futbol-gym-chip b {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--neon-yellow, #ffd23f);
+}
+.futbol-training-slot.locked {
+  opacity: 0.85;
+}
+.futbol-slot-pay {
+  width: 100%;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px dashed var(--neon-yellow, #ffd23f);
+  background: rgba(255, 210, 63, 0.06);
+  color: var(--neon-yellow, #ffd23f);
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+.futbol-slot-gym {
+  margin-left: 6px;
+  font-size: 10px;
+  opacity: 0.7;
+  font-weight: 400;
+}
+/* v77 — bonuslu (🔥) salon: antrenmanda gelişim +%10 */
+.futbol-gym-bonus {
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 800;
+  color: #ffb547;
+  background: rgba(255, 140, 0, 0.14);
+  border: 1px solid rgba(255, 160, 40, 0.45);
+  white-space: nowrap;
+}

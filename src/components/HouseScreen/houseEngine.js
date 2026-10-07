@@ -846,12 +846,15 @@ export function createHouseEngine(
 
   // --- Etkileşim --------------------------------------------------------------------
   let currentInteract = null;
+  let gymTask = null;
   function actionsFor(e) {
     const def = CATALOG_MAP[e.data.k];
     const ctl = e.obj.userData.ctl;
     const acts = [];
     if (def.seats?.length) acts.push({ kind: 'sit', label: def.cat === 'araba' ? '🚗 Arabaya bin' : def.cat === 'motor' ? '🏍️ Motora bin' : '🪑 Otur' });
-    if (def.game) acts.push({ kind: 'panel', panel: 'arcade', label: '🎮 Oyna' });
+    if (def.game) acts.push({ kind: 'panel', panel: 'arcade', label: '🎮 Oyna', deviceId: e.data.i });
+    // v77: piyanoya oturunca çal (aynı anda tek kişi — HouseScreen/pianoNet)
+    if (e.data.k === 'piano' && self.seat?.id === e.data.i) acts.push({ kind: 'panel', panel: 'piano', label: '🎹 Çal' });
     if (def.panel === 'jukebox') acts.push({ kind: 'panel', panel: 'jukebox', label: '🎵 Müzik' });
     if (def.panel === 'atm') acts.push({ kind: 'panel', panel: 'atm', label: '🏧 Parara Bank' });
     if (!def.panel && ctl?.act && !ctl.noToggle) acts.push({ kind: 'toggle', label: ctl.act });
@@ -859,6 +862,8 @@ export function createHouseEngine(
       const p = HOUSE_PRODUCTS[product];
       if (p) acts.push({ kind: 'take', product, label: `${p.emoji} ${p.label} al` });
     });
+    // v77: spor salonu — aktif görevin aletinde "⭐ Görev"
+    if (gymTask && e.data.k === gymTask && e.data.p === 1) acts.unshift({ kind: 'gym', equipment: gymTask, label: '⭐ Görev' });
     return acts;
   }
   function findInteract() {
@@ -870,14 +875,20 @@ export function createHouseEngine(
       // v75 — konsolun/bilgisayarın karşısındaki koltukta oturuyorsan oradan da oyna
       if (!acts.some((a) => a.panel === 'arcade')) {
         const sp = seatWorld(self.seat, new THREE.Vector3());
-        let near = false;
+        // v77: en yakın oyun cihazı (internet kafede cihaz doluluğu/ödemesi için)
+        let near = null;
+        let nd = 3.2;
         if (sp) {
           objs.forEach((o) => {
-            if (near || !CATALOG_MAP[o.data.k]?.game) return;
-            if (Math.hypot(o.data.x - sp.x, o.data.z - sp.z) < 3.2) near = true;
+            if (!CATALOG_MAP[o.data.k]?.game || o.data.p !== 1) return;
+            const d = Math.hypot(o.data.x - sp.x, o.data.z - sp.z);
+            if (d < nd) {
+              nd = d;
+              near = o;
+            }
           });
         }
-        if (near) acts.push({ kind: 'panel', panel: 'arcade', label: '🎮 Oyna' });
+        if (near) acts.push({ kind: 'panel', panel: 'arcade', label: '🎮 Oyna', deviceId: near.data.i });
       }
       return { id: self.seat.id, name: CATALOG_MAP[e.data.k].name, actions: acts };
     }
@@ -1593,10 +1604,14 @@ export function createHouseEngine(
       if (isOwned) data.p = 1;
       const def = CATALOG_MAP[k];
       if (!def.wall) {
-        const cand = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [2, 1], [-2, 1], [2, -1], [-2, -1]];
+        // v77: toplu ekleme (işletme "Hepsini al") için daha geniş boş yer araması
+        const cand = [];
+        for (let a = -5; a <= 5; a++) for (let b = -4; b <= 4; b++) cand.push([a, b]);
+        cand.sort((p, q) => Math.hypot(p[0], p[1]) - Math.hypot(q[0], q[1]));
         for (const [a, b] of cand) {
           const x = orbit.tx + a * 1.5;
           const z = orbit.tz + b * 1.5;
+          if (Math.abs(x) > W / 2 - 1 || Math.abs(z) > D / 2 - 1) continue;
           let free = true;
           objs.forEach((e) => {
             if (Math.hypot(e.data.x - x, e.data.z - z) < 1.2) free = false;
@@ -1697,6 +1712,40 @@ export function createHouseEngine(
       setSurfaces();
       onDesignChange?.(design);
     },
+    // v77: spor salonunda aktif görev aleti (null = yok)
+    setGymTask(k) {
+      gymTask = k || null;
+      lastInteractKey = null;
+    },
+    // v77: en yakın k türü alete yürü
+    approachNearest(k) {
+      if (mode !== 'walk') return false;
+      let best = null;
+      let bd = Infinity;
+      objs.forEach((e) => {
+        if (e.data.k !== k || e.data.p !== 1) return;
+        const d = Math.hypot(e.data.x - self.x, e.data.z - self.z);
+        if (d < bd) {
+          bd = d;
+          best = e.data.i;
+        }
+      });
+      if (!best) return false;
+      approachItem(best);
+      return true;
+    },
+    // v77: eşyanın yanına yürü (spor salonu görev ağacı → sıradaki alet)
+    approach(id) {
+      if (mode !== 'walk' || !objs.has(id)) return false;
+      approachItem(id);
+      return true;
+    },
+    // v77: kimliğiyle seç (önizleme/test ve ileride "eksik mobilyayı göster" için)
+    selectById(id) {
+      if (!canEdit || !objs.has(id)) return false;
+      select(id);
+      return true;
+    },
     deselect() {
       select(null);
     },
@@ -1747,7 +1796,7 @@ export function createHouseEngine(
         return { kind: 'toggle' };
       }
       if (action.kind === 'take') return { kind: 'take', itemId: it.id, product: action.product };
-      if (action.kind === 'panel') return { kind: 'panel', panel: action.panel, itemId: it.id };
+      if (action.kind === 'panel') return { kind: 'panel', panel: action.panel, itemId: action.deviceId || it.id };
       return null;
     },
     setMusic(itemId) {

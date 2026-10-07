@@ -89,6 +89,24 @@ export default function FutbolSeasonCelebration() {
       )}
 
       <div className="futbol-celebration-stats">
+        {/* v77 Faz 5 — sezonun oyuncu ödülleri */}
+        {[
+          ['topScorer', '👑 Gol Kralı', 'gol'],
+          ['topAssist', '🎯 Asist Kralı', 'asist'],
+          ['star', '⭐ Sezonun Yıldızı', 'kez maçın yıldızı'],
+        ].map(([k, label, unit]) => {
+          const a = event.playerAwards?.[k];
+          if (!a) return null;
+          return (
+            <div key={k} className="futbol-celebration-stat award">
+              <p className="futbol-celebration-stat-label">{label}</p>
+              <p className="futbol-celebration-stat-value">
+                {a.name}
+                {a.real ? ' 👤' : ''} — {a.teamName} ({a.value} {unit})
+              </p>
+            </div>
+          );
+        })}
         {event.topScorerTeam && (
           <div className="futbol-celebration-stat">
             <p className="futbol-celebration-stat-label">⚽ En Çok Gol Atan Takım</p>

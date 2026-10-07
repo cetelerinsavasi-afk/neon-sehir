@@ -9,7 +9,9 @@ import {
   resolveObstaclePosition, cyclingLine, SPRITE_H, createRemoteSmoother, remotePose } from '../../lib/canvasWorldKit';
 import Hud from '../Hud/Hud';
 import PhoneScreen from '../Phone/PhoneScreen';
+import Workshop from '../Workshop/Workshop';
 import WeaponShopScreen from '../WeaponShopScreen/WeaponShopScreen';
+import '../Workshop/Workshop.css';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import { createSixtagramPost, enterInterior, captureCameraSnapshot } from '../../services/gameActions';
 import '../../styles/worldScreenChrome.css';
@@ -417,6 +419,7 @@ export default function WeaponShopWorldScreen({ onExit }) {
 
   const [ready, setReady] = useState(false);
   const [panel, setPanel] = useState(null); // 'weapon' | null
+  const [shopTab, setShopTab] = useState('buy'); // v77: 🔫 satın al · 🛠️ atölye
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [phoneInitialApp, setPhoneInitialApp] = useState(null);
   const [chatText, setChatText] = useState('');
@@ -881,8 +884,15 @@ export default function WeaponShopWorldScreen({ onExit }) {
       {panel === 'weapon' && (
         <div className="ws-panel-backdrop" onClick={() => setPanel(null)}>
           <div className="ws-panel" onClick={(e) => e.stopPropagation()}>
-            <p className="ws-panel-title">🔫 Silah Mağazası — Tezgah</p>
-            <WeaponShopScreen />
+            <div className="wk-tabs ws-shop-tabs">
+              <button className={shopTab === 'buy' ? 'on' : ''} onClick={() => setShopTab('buy')} title="Satın al">
+                🔫
+              </button>
+              <button className={shopTab === 'workshop' ? 'on' : ''} onClick={() => setShopTab('workshop')} title="Atölye">
+                🛠️
+              </button>
+            </div>
+            {shopTab === 'buy' ? <WeaponShopScreen /> : user ? <Workshop shop={{ kind: 'game', type: 'silahci' }} /> : <SignInPrompt message="Bunun için giriş yapmalısın." />}
             <button className="ws-panel-btn" onClick={() => setPanel(null)}>Tezgahtan Uzaklaş</button>
           </div>
         </div>

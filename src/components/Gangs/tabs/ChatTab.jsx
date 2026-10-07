@@ -87,8 +87,8 @@ export default function ChatTab({ org, d }) {
   // Bu kanal görüldü → bildirim noktası söner
   const latestMs = docs[0]?.createdAtMs || 0;
   useEffect(() => {
-    if (!latestMs || channel === 'tum') return;
-    markGangChatSeen(actorId, worldId, isIntel ? `i:${channel}` : `g:${d.gangId}:${channel}`, latestMs);
+    if (!latestMs) return;
+    markGangChatSeen(actorId, worldId, isIntel ? `i:${channel}` : channel === 'tum' ? 'g:tum' : `g:${d.gangId}:${channel}`, latestMs);
   }, [latestMs, channel, actorId, worldId, isIntel, d.gangId]);
   const alerts = useGangAlertsCtx();
   const unread = alerts ? (isIntel ? alerts.chans?.intel : alerts.chans?.gang) || {} : {};
@@ -103,7 +103,7 @@ export default function ChatTab({ org, d }) {
   const dot = (id) => (unread[id] && channel !== id ? ' 🔴' : '');
   const channels = isIntel
     ? [{ id: 'genel', label: `Genel${dot('genel')}`, icon: '💬' }, ...(ranked ? [{ id: 'yonetim', label: `Rütbeliler${dot('yonetim')}`, icon: '🔒' }] : [])]
-    : [{ id: 'genel', label: `Çete${dot('genel')}`, icon: '💬' }, ...(ranked ? [{ id: 'yonetim', label: `Yönetim${dot('yonetim')}`, icon: '🔒' }] : []), { id: 'tum', label: 'Tüm Çeteler', icon: '🌐' }];
+    : [{ id: 'genel', label: `Çete${dot('genel')}`, icon: '💬' }, ...(ranked ? [{ id: 'yonetim', label: `Yönetim${dot('yonetim')}`, icon: '🔒' }] : []), { id: 'tum', label: `Tüm Çeteler${dot('tum')}`, icon: '🌐' }];
 
   return (
     <div className="gx-chat">

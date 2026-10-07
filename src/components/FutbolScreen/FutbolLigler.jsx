@@ -15,6 +15,7 @@ import FutbolCrest from './FutbolCrest';
 import FutbolIddaa, { betSelections, STATUS_LABELS, PICK_LABELS } from './FutbolIddaa';
 import FutbolKulupler from './FutbolKulupler';
 import FutbolTeamDetail from './FutbolTeamDetail';
+import FutbolOyuncular from './FutbolOyuncular';
 import FutbolKupa from './FutbolKupa';
 import FutbolCupBetting, {
   ROUND_LABELS,
@@ -34,6 +35,7 @@ const SUB_TABS = [
   { id: 'kulupler', label: 'Kulüpler' },
   { id: 'iddaa', label: 'İddaa Bayii' },
   { id: 'kupa', label: 'Kupa' },
+  { id: 'oyuncular', label: 'Oyuncular' },
 ];
 
 export default function FutbolLigler() {
@@ -524,6 +526,7 @@ export default function FutbolLigler() {
         </>
       )}
 
+      {subTab === 'oyuncular' && <FutbolOyuncular season={cupSeason} />}
       {subTab === 'kupa' && <FutbolKupa season={cupSeason} groupCount={Math.max(1, Math.floor(leagues.length / 2))} />}
 
       {selectedMatch && (

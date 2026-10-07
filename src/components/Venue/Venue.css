@@ -1,0 +1,130 @@
+/* v77 — Cafe/Bar menüsü + internet kafe kredi halkası */
+.vn-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+}
+.vn-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 22px;
+}
+.vn-wallet {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 15px;
+  font-weight: 800;
+}
+.vn-ring {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+}
+.vn-ring svg {
+  transform: rotate(-90deg);
+}
+.vn-ring circle {
+  fill: none;
+  stroke-width: 5;
+}
+.vn-ring .bg {
+  stroke: rgba(255, 255, 255, 0.1);
+}
+.vn-ring .fg {
+  stroke: var(--neon-cyan, #19e8ff);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.4s;
+}
+.vn-ring.full .fg {
+  stroke: var(--neon-pink, #ff2e8c);
+}
+.vn-ring b {
+  position: absolute;
+  font-size: 10px;
+}
+.vn-menu {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.vn-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 6px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+}
+.vn-item:active {
+  transform: scale(0.97);
+}
+.vn-item.poor {
+  opacity: 0.5;
+}
+.vn-emoji {
+  font-size: 30px;
+}
+.vn-name {
+  font-size: 12px;
+}
+.vn-price {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--neon-yellow, #ffd23f);
+}
+.vn-credit {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+}
+.vn-credit svg {
+  transform: rotate(-90deg);
+}
+.vn-credit circle {
+  fill: rgba(8, 11, 20, 0.75);
+  stroke-width: 4;
+}
+.vn-credit .bg {
+  stroke: rgba(255, 255, 255, 0.12);
+}
+.vn-credit .fg {
+  fill: none;
+  stroke: #7cff6b;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1s linear;
+}
+.vn-credit.warn .fg {
+  stroke: var(--neon-yellow, #ffd23f);
+}
+.vn-credit b {
+  position: absolute;
+  font-size: 10px;
+}
+.vn-credit.vn-fixed {
+  position: fixed;
+  top: calc(56px + env(safe-area-inset-top));
+  right: 10px;
+  z-index: 50;
+}
+.vn-limit-warn {
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  color: #ffd0d0;
+  background: rgba(255, 46, 90, 0.12);
+  border: 1px solid rgba(255, 46, 90, 0.45);
+}

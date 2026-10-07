@@ -69,6 +69,94 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "futbolPlayerStats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "season",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "goals",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "futbolPlayerStats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "season",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "assists",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "futbolPlayerStats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "season",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "motm",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "futbolPlayerStats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "season",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ratingAvg",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "futbolPlayerStats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "season",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "position",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "cleanSheets",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "footballers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "teamId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "power",
+          "order": "DESCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [

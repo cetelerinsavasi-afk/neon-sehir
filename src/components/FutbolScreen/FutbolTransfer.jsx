@@ -12,6 +12,7 @@ import {
   forceRefreshFutbolTransferMarket,
 } from '../../services/gameActions';
 import FutbolPlayerAvatar from './FutbolPlayerAvatar';
+import FutbolProMarket from './FutbolProMarket';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import ConfirmModal from '../ConfirmModal/ConfirmModal';
 import { groupFutbolPlayersByPositionOrdered } from './futbolPositionOrder';
@@ -181,6 +182,9 @@ export default function FutbolTransfer({ team, role }) {
     <fieldset className="futbol-transfer" disabled={readOnly}>
       {error && <p className="futbol-admin-error">{error}</p>}
 
+      {/* v77 Faz 5 — gerçek futbolcular (sözleşme + serbest futbolcular) */}
+      <FutbolProMarket team={team} readOnly={readOnly} />
+
       <button className="futbol-admin-reset" onClick={() => setShowSellPanel((v) => !v)}>
         {showSellPanel ? 'Kadromu Gizle' : 'Oyuncu Sat'}
       </button>
@@ -188,7 +192,7 @@ export default function FutbolTransfer({ team, role }) {
       {showSellPanel && (
         <div className="futbol-transfer-roster">
           <p className="futbol-kadro-section-title">Kadrondaki Oyuncular</p>
-          {groupFutbolPlayersByPositionOrdered(myPlayers).map((group) => (
+          {groupFutbolPlayersByPositionOrdered(myPlayers.filter((p) => !p.real)).map((group) => (
             <div key={group.position} className="futbol-transfer-position-group">
               <p className="futbol-transfer-group-header">{group.label}</p>
               {group.players.map((p) => {

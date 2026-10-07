@@ -13,6 +13,23 @@ import { createPlayerCard } from './playerCard.js';
 import { createSocial } from './social.js';
 import { createDeletionRequests } from './deletionRequests.js';
 import { createHouses } from './houses.js';
+import { createBusiness } from './business.js';
+import { createShop } from './shop.js';
+import { createVenue } from './venue.js';
+import { createGym, GAME_GYM_ID, gymPriceOf, withBonus } from './gym.js';
+import { createFutbolPro, assignGoalCredits, computeMatchRatings } from './futbolPro.js';
+import { futbolDayKey, prevDayKey, bizDayStartMs } from './businessCatalogData.js';
+import {
+  VEHICLE_WEAPON_INITIAL_LIFE_DAYS,
+  VEHICLE_WEAPON_MAX_REPAIRS,
+  WEAPON_INITIAL_LIFE_DAYS,
+  lifeCapOf,
+  repairBonusOf,
+  repairRequiredQty,
+  valueRatioOf,
+  AMAZOR_PRICES,
+  itemListingBand,
+} from './itemRules.js';
 import { createAchievements } from './achievements.js';
 import { HOUSE_PRODUCTS } from './houseCatalogData.js';
 import { sanitizeDrawing } from './drawingData.js';
@@ -128,7 +145,52 @@ const social = createSocial({
 export const socialAction = social.socialAction;
 
 // v66 — 3D Ev (herkese açık: satın alma, envanter, sepet, davet). Ayrıntı functions/houses.js
+// v77 — İşletmeler: günlük rapor/sıralama (business) + silahçı/modifiye/galeri
+// (shop: atölye + vitrin). shop'un kapanış kancaları houses'a verilir.
+const business = createBusiness({ db, FieldValue: admin.firestore.FieldValue });
+const venue = createVenue({
+  db,
+  FieldValue: admin.firestore.FieldValue,
+  HttpsError,
+  splitIncomeForDebt: (debt, amount) => splitIncomeForDebt(debt, amount),
+  business,
+});
+const gym = createGym({
+  db,
+  FieldValue: admin.firestore.FieldValue,
+  HttpsError,
+  splitIncomeForDebt: (debt, amount) => splitIncomeForDebt(debt, amount),
+  business,
+});
+// v77 Faz 5 — gerçek futbolcular: sözleşme, maaş, teklif, istatistik
+const futbolPro = createFutbolPro({
+  db,
+  FieldValue: admin.firestore.FieldValue,
+  HttpsError,
+  futbolDayKey,
+  getControlMode: (t) => getFutbolTeamControlMode(t),
+  controllerUidOf: (t) => futbolTeamControllerUid(t),
+  isLockedHour: () => futbolIsLineupLockedIstanbul(),
+  splitIncomeForDebt: (debt, amount) => splitIncomeForDebt(debt, amount),
+});
+export const futbolProAction = onCall(async (request) => {
+  const uid = requireAuth(request);
+  return futbolPro.action(uid, request.data || {});
+});
+const shop = createShop({
+  extraOps: { ...venue.ops, ...gym.ops },
+  db,
+  FieldValue: admin.firestore.FieldValue,
+  HttpsError,
+  requireAuth: (request) => requireAuth(request),
+  onCall,
+  splitIncomeForDebt: (debt, amount) => splitIncomeForDebt(debt, amount),
+  business,
+  advanceOnboardingStep: (uid, n) => advanceOnboardingStep(uid, n),
+});
+export const shopAction = shop.shopAction;
 const houses = createHouses({
+  bizHooks: shop.bizHooks,
   db,
   FieldValue: admin.firestore.FieldValue,
   HttpsError,
@@ -142,6 +204,16 @@ const houses = createHouses({
   },
 });
 export const houseAction = houses.houseAction;
+
+// v77 — İşletmeler: günlük rapor + dünkü kazanca göre sıralama. Saatlik
+// çalışır ama her tür/gün için yalnızca bir kez yazar (businessRollups bayrağı):
+// 00:05'te 00:00 sınırlı türler, 19:05'te spor salonu kapanır.
+export const businessRollover = onSchedule({ schedule: '5 * * * *', timeZone: 'Europe/Istanbul' }, async () => {
+  await business.rollover();
+  await business.sendShortageSms();
+  await venue.cleanup();
+  await gym.expireMemberships();
+});
 
 // v67 — Başarılar (bkz. functions/achievements.js)
 const achievements = createAchievements({ db, FieldValue: admin.firestore.FieldValue });
@@ -495,50 +567,8 @@ const VALID_MACHINES = Object.keys(MACHINE_TYPES);
 // (Kullanıcı revizesi: max ömür 30 → 20 güne düşürüldü, tamir bonusu 3 → 2
 // güne düşürüldü; bkz. migrations/vehicleWeaponLifeCap20.)
 // ---------------------------------------------------------------------------
-const VEHICLE_WEAPON_INITIAL_LIFE_DAYS = 20;
-const VEHICLE_WEAPON_MAX_REPAIRS = 10;
-const REPAIR_LIFE_BONUS_DAYS = 2;
-// v58 (kullanıcı revizesi): SİLAHLARIN azami ömrü 10 gün, her tamir +1 gün,
-// tamir hakkı yine 10 → bir silah en fazla 20 gün kullanılır. Araçlar
-// değişmedi (20 gün, tamir +2). Fiyat ve tamir malzemesi maliyeti aynı.
-// Eski silahlar için tek seferlik göç: runWeaponLifeCap10Migration.
-const WEAPON_INITIAL_LIFE_DAYS = 10;
-const WEAPON_REPAIR_LIFE_BONUS_DAYS = 1;
-function lifeCapOf(kind) {
-  return kind === 'weapon' ? WEAPON_INITIAL_LIFE_DAYS : VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
-}
-function repairBonusOf(kind) {
-  return kind === 'weapon' ? WEAPON_REPAIR_LIFE_BONUS_DAYS : REPAIR_LIFE_BONUS_DAYS;
-}
-
-// 2. el satış değeri artık hem ÖMÜR hem KALAN TAMİR HAKKI birlikte
-// hesaplanır (kullanıcı revizesi, 2. sürüm): sadece tamir hakkına bakmak da
-// eksikti — mesela ömrü 0'a düşmüş (henüz tamir edilmemiş, tamir hakkı hâlâ
-// dolu) bir araç bu şekilde "tam fiyat" görünüyordu, ki o an fiilen
-// kullanılamaz durumda. Formül: (kalanTamirHakkı × 3) + kalanÖmür.
-// Maksimum: 10 tamir hakkının hepsi duruyorsa (10×3=30) + tam ömür (30) =
-// 60 → oran 1 (tam fiyat). Örnek: tamir hakkının hepsi dolu ama ömür 0 ise
-// 30/60 = ratio 0.5 (yarı fiyat) — mantıklı, çünkü tamir edilmeden
-// kullanılamıyor. Tamir hakkı bitmiş (0) ama ömür hâlâ tam (30) ise yine
-// 30/60 = ratio 0.5 — bu da mantıklı, çünkü bir daha hiç tamir edilemeyecek
-// ve yakında hurdaya çıkacak.
-// v58: kind = 'vehicle' | 'weapon' (silahın tavanı/tamir bonusu farklı).
-function valueRatioOf(item, kind = 'vehicle') {
-  const cap = lifeCapOf(kind);
-  const bonus = repairBonusOf(kind);
-  const repairsUsed = item?.repairsUsed || 0;
-  const remainingRepairs = Math.max(0, VEHICLE_WEAPON_MAX_REPAIRS - repairsUsed);
-  const lifeDays = Math.max(0, item?.lifeDays ?? cap);
-  const combined = remainingRepairs * bonus + lifeDays;
-  const maxCombined = VEHICLE_WEAPON_MAX_REPAIRS * bonus + cap;
-  return Math.max(0, Math.min(1, combined / maxCombined));
-}
-
-// Tamir için gereken malzeme: fiyat/100 (100₺'lik silah için 1 adet,
-// 1.000₺'lik için 10 adet — silah geliştirme malzemesiyle aynı oran).
-function repairRequiredQty(price) {
-  return Math.max(1, Math.round((price || 0) / 100));
-}
+// v77: ömür/tamir sabitleri ve valueRatioOf/repairRequiredQty artık
+// functions/itemRules.js'te (Atölye ve istemciyle ortak). Değerler aynı.
 
 // miningMachinePrice — mining makinesinin fiyatı canlı kripto fiyatına
 // bağlı VE oyuncunun elindeki mining makinesi sayısına göre kademeli
@@ -3083,6 +3113,8 @@ export const dailyReset = onSchedule(
         const snap = await db.collection(collName).get();
         const jobs = snap.docs.map(async (docSnap) => {
           const item = docSnap.data();
+          // v77: silahçı/galeri vitrinindeki ürünlerin ömrü azalmaz (çete deposu gibi)
+          if (item.shopHouseId) return;
           const currentLife = item.lifeDays ?? lifeCapOf(collName === 'weapons' ? 'weapon' : 'vehicle');
           const newLife = Math.max(0, currentLife - 1);
           const repairsUsed = item.repairsUsed || 0;
@@ -3924,6 +3956,7 @@ export const buyVehicle = onCall(async (request) => {
       { gold: admin.firestore.FieldValue.increment(-catalogEntry.price) },
       { merge: true }
     );
+    business.recordGameIncomeTx(tx, { type: 'galeri', amount: catalogEntry.price, kind: 'sale', customerUid: uid, products: { [catalogEntry.name]: 1 } });
     const newVehicleRef = vehiclesRef.doc();
     tx.set(newVehicleRef, {
       ownerId: uid,
@@ -4008,6 +4041,10 @@ export const renameVehicle = onCall(async (request) => {
 // ---------------------------------------------------------------------------
 export const upgradeVehicle = onCall(async (request) => {
   const uid = requireAuth(request);
+  // v77: tamir ve geliştirme artık sadece Atölye'de (Silahçı / Modifiye Garajı,
+  // oyuncu dükkânı ya da oyunun kendi dükkânı) — işçilik ücretiyle (bkz. shop.js).
+  // Eski istemciler bu ucu çağırırsa işçiliksiz bedava işlem yapılmasın diye kapalı.
+  if (uid) throw new HttpsError('failed-precondition', 'Tamir ve geliştirme artık Silahçı / Modifiye Garajı Atölyesi\'nde yapılıyor.');
   const { vehicleId, upgradeType } = request.data || {};
   if (!['gear', 'tank'].includes(upgradeType)) {
     throw new HttpsError('invalid-argument', 'Geçersiz geliştirme türü.');
@@ -4073,12 +4110,7 @@ export const upgradeVehicle = onCall(async (request) => {
 // Modifiye Garajı ve Silah Mağazası'ndan malzeme alım/satımı KALDIRILDI —
 // tüm malzeme alımı artık Amazor'dan, tüm satımı Liman & Depo > Depo'dan.
 // ---------------------------------------------------------------------------
-const AMAZOR_PRICES = {
-  tamirMalzemesi: 10,
-  silahUpgrade: 100,
-  arabaGelistirme: 500,
-  yasakliMadde: 2500,
-};
+// v77: AMAZOR_PRICES functions/itemRules.js'te (Atölye fiyatlarının tabanı).
 
 export const buyFromAmazor = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -4183,6 +4215,7 @@ export const buyWeapon = onCall(async (request) => {
       { gold: admin.firestore.FieldValue.increment(-catalogEntry.price) },
       { merge: true }
     );
+    business.recordGameIncomeTx(tx, { type: 'silahci', amount: catalogEntry.price, kind: 'sale', customerUid: uid, products: { [catalogEntry.name]: 1 } });
     const newWeaponRef = weaponsRef.doc();
     tx.set(newWeaponRef, {
       ownerId: uid,
@@ -4212,6 +4245,10 @@ export const buyWeapon = onCall(async (request) => {
 // ---------------------------------------------------------------------------
 export const upgradeWeapon = onCall(async (request) => {
   const uid = requireAuth(request);
+  // v77: tamir ve geliştirme artık sadece Atölye'de (Silahçı / Modifiye Garajı,
+  // oyuncu dükkânı ya da oyunun kendi dükkânı) — işçilik ücretiyle (bkz. shop.js).
+  // Eski istemciler bu ucu çağırırsa işçiliksiz bedava işlem yapılmasın diye kapalı.
+  if (uid) throw new HttpsError('failed-precondition', 'Tamir ve geliştirme artık Silahçı / Modifiye Garajı Atölyesi\'nde yapılıyor.');
   const { weaponId } = request.data || {};
 
   const weaponRef = db.collection('weapons').doc(weaponId);
@@ -4269,6 +4306,10 @@ export const upgradeWeapon = onCall(async (request) => {
 // ---------------------------------------------------------------------------
 export const repairItem = onCall(async (request) => {
   const uid = requireAuth(request);
+  // v77: tamir ve geliştirme artık sadece Atölye'de (Silahçı / Modifiye Garajı,
+  // oyuncu dükkânı ya da oyunun kendi dükkânı) — işçilik ücretiyle (bkz. shop.js).
+  // Eski istemciler bu ucu çağırırsa işçiliksiz bedava işlem yapılmasın diye kapalı.
+  if (uid) throw new HttpsError('failed-precondition', 'Tamir ve geliştirme artık Silahçı / Modifiye Garajı Atölyesi\'nde yapılıyor.');
   const { itemType, itemId } = request.data || {};
   if (!['vehicle', 'weapon'].includes(itemType)) {
     throw new HttpsError('invalid-argument', 'Geçersiz ürün türü.');
@@ -7548,7 +7589,11 @@ export const expireOldMarketplaceListings = onSchedule({ schedule: 'every 24 hou
             return;
           }
 
-          if (l.itemType === 'vehicle') {
+          if (l.shopHouseId && (l.itemType === 'vehicle' || l.itemType === 'weapon')) {
+            // v77: dükkân ilanı 7 günde düşer ama ürün vitrinde (kilitli) kalır;
+            // sahibi yeniden ilana koyabilir.
+            tx.update(db.collection(l.itemType === 'vehicle' ? 'vehicles' : 'weapons').doc(l.itemType === 'vehicle' ? l.vehicleId : l.weaponId), { shopListingId: null });
+          } else if (l.itemType === 'vehicle') {
             tx.update(db.collection('vehicles').doc(l.vehicleId), { listed: false });
           } else if (l.itemType === 'weapon') {
             tx.update(db.collection('weapons').doc(l.weaponId), { listed: false });
@@ -9171,9 +9216,6 @@ export const createListing = onCall(async (request) => {
       if (v.listed) {
         throw new HttpsError('failed-precondition', 'Bu araç zaten listelenmiş.');
       }
-      const baseVehiclePrice = VEHICLE_CATALOG[v.catalogId]?.price || 0;
-      const vehicleUpgradeMult =
-        v.gearUpgraded && v.tankUpgraded ? 3 : v.gearUpgraded || v.tankUpgraded ? 2 : 1;
       const vehicleLifeDays = v.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
       if (vehicleLifeDays <= 0) {
         throw new HttpsError(
@@ -9181,8 +9223,8 @@ export const createListing = onCall(async (request) => {
           'Bu aracın ömrü bitti — satışa çıkarmadan önce tamir ettirmelisin.'
         );
       }
-      const vehicleMax = Math.round(baseVehiclePrice * vehicleUpgradeMult * valueRatioOf(v));
-      const vehicleMin = Math.floor(vehicleMax / 2);
+      // v77: fiyat bandı itemRules.itemListingBand'de (dükkân vitriniyle ORTAK)
+      const { max: vehicleMax, min: vehicleMin } = itemListingBand('vehicle', v);
       if (priceNum < vehicleMin || priceNum > vehicleMax) {
         throw new HttpsError(
           'invalid-argument',
@@ -9233,8 +9275,6 @@ export const createListing = onCall(async (request) => {
       if (w.listed) {
         throw new HttpsError('failed-precondition', 'Bu silah zaten listelenmiş.');
       }
-      const baseWeaponPrice = WEAPON_CATALOG[w.catalogId]?.price || 0;
-      const weaponMult = w.level || 1;
       const weaponLifeDays = w.lifeDays ?? WEAPON_INITIAL_LIFE_DAYS;
       if (weaponLifeDays <= 0) {
         throw new HttpsError(
@@ -9242,8 +9282,7 @@ export const createListing = onCall(async (request) => {
           'Bu silahın ömrü bitti — satışa çıkarmadan önce tamir ettirmelisin.'
         );
       }
-      const weaponMax = Math.round(baseWeaponPrice * weaponMult * valueRatioOf(w, 'weapon'));
-      const weaponMin = Math.floor(weaponMax / 2);
+      const { max: weaponMax, min: weaponMin } = itemListingBand('weapon', w);
       if (priceNum < weaponMin || priceNum > weaponMax) {
         throw new HttpsError(
           'invalid-argument',
@@ -9423,8 +9462,6 @@ export const instantSellListing = onCall(async (request) => {
       if (v.mortgaged || v.seizedByBank || v.listed) {
         throw new HttpsError('failed-precondition', 'Bu araç şu an satılamaz.');
       }
-      const base = VEHICLE_CATALOG[v.catalogId]?.price || 0;
-      const mult = v.gearUpgraded && v.tankUpgraded ? 3 : v.gearUpgraded || v.tankUpgraded ? 2 : 1;
       const vehicleLifeDays = v.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
       if (vehicleLifeDays <= 0) {
         throw new HttpsError(
@@ -9432,7 +9469,7 @@ export const instantSellListing = onCall(async (request) => {
           'Bu aracın ömrü bitti — satmadan önce tamir ettirmelisin.'
         );
       }
-      const minPrice = Math.floor((base * mult * valueRatioOf(v)) / 2);
+      const minPrice = itemListingBand('vehicle', v).instant;
       payout = minPrice;
       const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, minPrice);
       tx.update(sellerRef, {
@@ -9480,8 +9517,6 @@ export const instantSellListing = onCall(async (request) => {
       if (w.listed) {
         throw new HttpsError('failed-precondition', 'Bu silah zaten listelenmiş.');
       }
-      const base = WEAPON_CATALOG[w.catalogId]?.price || 0;
-      const mult = w.level || 1;
       const weaponLifeDays = w.lifeDays ?? WEAPON_INITIAL_LIFE_DAYS;
       if (weaponLifeDays <= 0) {
         throw new HttpsError(
@@ -9489,7 +9524,7 @@ export const instantSellListing = onCall(async (request) => {
           'Bu silahın ömrü bitti — satmadan önce tamir ettirmelisin.'
         );
       }
-      const minPrice = Math.floor((base * mult * valueRatioOf(w, 'weapon')) / 2);
+      const minPrice = itemListingBand('weapon', w).instant;
       payout = minPrice;
       const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, minPrice);
       tx.update(sellerRef, {
@@ -9596,7 +9631,11 @@ export const cancelListing = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Bu ilan zaten satılmış.');
     }
 
-    if (listing.itemType === 'vehicle') {
+    if (listing.shopHouseId && (listing.itemType === 'vehicle' || listing.itemType === 'weapon')) {
+      // v77: dükkân ilanı kaldırılınca ürün vitrinde kalır (cezasız). Vitrinden
+      // çıkarmak (ömür −1) sadece dükkândan yapılır (shopAction vitrinRemove).
+      tx.update(db.collection(listing.itemType === 'vehicle' ? 'vehicles' : 'weapons').doc(listing.itemType === 'vehicle' ? listing.vehicleId : listing.weaponId), { shopListingId: null });
+    } else if (listing.itemType === 'vehicle') {
       tx.update(db.collection('vehicles').doc(listing.vehicleId), { listed: false });
     } else if (listing.itemType === 'weapon') {
       tx.update(db.collection('weapons').doc(listing.weaponId), { listed: false });
@@ -9735,6 +9774,8 @@ export const buyListing = onCall(async (request) => {
     const isSystemListing = listing.sellerId === 'system';
     const sellerRef = isSystemListing ? null : db.collection('users').doc(listing.sellerId);
     const sellerSnap = isSystemListing ? null : await tx.get(sellerRef);
+    // v77: dükkân ilanıysa satış dükkânın günlük raporuna "satış" olarak yazılır
+    const shopHouseSnap = listing.shopHouseId ? await tx.get(db.collection('houses').doc(listing.shopHouseId)) : null;
 
     // Makine sadece bir fabrikaya yerleştirilebileceği için, alıcının
     // kendi fabrikası olmalı — yoksa makineyi "koyacak" bir yeri yok.
@@ -9776,10 +9817,24 @@ export const buyListing = onCall(async (request) => {
     }
 
     // Ürünü transfer et.
+    const shopClear = listing.shopHouseId
+      ? { shopHouseId: admin.firestore.FieldValue.delete(), shopListingId: admin.firestore.FieldValue.delete() }
+      : {};
+    if (shopHouseSnap?.exists && shopHouseSnap.data().ownerUid === listing.sellerId) {
+      business.recordIncomeTx(tx, {
+        houseId: listing.shopHouseId,
+        h: shopHouseSnap.data(),
+        amount: cost,
+        kind: 'sale',
+        customerUid: uid,
+        products: { [listing.itemType === 'vehicle' ? listing.vehicleModel || 'araç' : listing.weaponName || 'silah']: 1 },
+      });
+    }
     if (listing.itemType === 'vehicle') {
       tx.update(db.collection('vehicles').doc(listing.vehicleId), {
         ownerId: uid,
         listed: false,
+        ...shopClear,
       });
       tx.update(listingRef, {
         sold: true,
@@ -9790,6 +9845,7 @@ export const buyListing = onCall(async (request) => {
       tx.update(db.collection('weapons').doc(listing.weaponId), {
         ownerId: uid,
         listed: false,
+        ...shopClear,
       });
       tx.update(listingRef, {
         sold: true,
@@ -11212,6 +11268,7 @@ async function rejuvenateFutbolBotPlayers(teamId, batch) {
   const rejuvenatedValue = Math.round((99 * 1000 * remainingSeasonsAt20) / 20);
   playersSnap.docs.forEach((d) => {
     const p = d.data();
+    if (p.real) return; // v77 Faz 5: gerçek futbolcuya dokunulmaz
     const updates = {};
     if ((p.injuryDaysLeft || 0) > 0) updates.injuryDaysLeft = admin.firestore.FieldValue.delete();
     if (p.age > 30) {
@@ -12395,6 +12452,9 @@ async function computeFutbolMatchLive(match) {
   const homeLines = futbolLinePowers(homeResolved.selected, true, homeResolved.tactic, homeResolved.mucadeleConfig.powerMult);
   const awayLines = futbolLinePowers(awayResolved.selected, false, awayResolved.tactic, awayResolved.mucadeleConfig.powerMult);
   const { homeScore, awayScore, timeline, possessionCheckpoints } = simulateFutbolMatch(homeLines, awayLines);
+  // v77 Faz 5: golü kim attı / asist (skor değişmez) + maç puanları
+  assignGoalCredits(timeline, homeResolved.selected, awayResolved.selected);
+  const { ratings, motmId } = computeMatchRatings({ timeline, homeSel: homeResolved.selected, awaySel: awayResolved.selected, homeScore, awayScore });
 
   // matchStartAt→revealAt (18:00→19:00, tam 1 saat) istemcinin canlı
   // anlatımı GERÇEK zamana yayması için — bkz. FutbolMatchDetail.jsx.
@@ -12410,6 +12470,8 @@ async function computeFutbolMatchLive(match) {
     revealAt: admin.firestore.Timestamp.fromDate(revealAt),
     timeline,
     possessionCheckpoints,
+    ratings,
+    motmId,
     // 19:00'da applyFutbolMatchResult'ın kimi hariç tuttuğunu tekrar
     // hesaplamasına gerek kalmasın diye kadroları da saklıyoruz.
     homeLineupIds: homeResolved.selected.map((p) => p.id),
@@ -12580,10 +12642,13 @@ async function applyFutbolMatchResult(matchId, trainingIdsByTeam) {
   const homeMucadele = futbolMucadeleConfig(homeTeamData);
   const awayMucadele = futbolMucadeleConfig(awayTeamData);
   const injuredThisMatchByTeam = new Map(); // teamId -> [playerName, ...]
+  const proPlayersById = {}; // v77 Faz 5: istatistik + gerçek futbolcu kartı
+  const proUpdatesById = {};
   const applyPlayerUpdates = (snap, lineupSet, teamId, mucadele, isBotRun) => {
     const trainingIds = trainingIdsByTeam?.get(teamId) || null;
     snap.docs.forEach((d) => {
       const p = d.data();
+      proPlayersById[d.id] = { id: d.id, ...p };
       if (lineupSet.has(d.id)) {
         const gain = Math.round(randomInRange(0.1, 2.0) * 10) / 10;
         const updates = {
@@ -12599,6 +12664,7 @@ async function applyFutbolMatchResult(matchId, trainingIdsByTeam) {
           }
         }
         batch.update(d.ref, updates);
+        proUpdatesById[d.id] = updates;
         // "Gelişimler" ekranı için: bu maçta gelişim yaşayan oyuncuyu
         // kısa bir günlük kaydına da yazıyoruz.
         logFutbolGrowth(batch, { teamId, playerId: d.id, playerName: p.name, amount: gain, type: 'mac' });
@@ -12608,11 +12674,23 @@ async function applyFutbolMatchResult(matchId, trainingIdsByTeam) {
         // antrenman ile dinlenme birbirini dışlıyor.
       } else {
         batch.update(d.ref, { form: Math.min(100, p.form + 50) });
+        proUpdatesById[d.id] = { form: Math.min(100, p.form + 50) };
       }
     });
   };
   applyPlayerUpdates(homePlayersSnap, homeLineupSet, match.homeTeamId, homeMucadele, futbolTeamIsBotRun(homeTeamData));
   applyPlayerUpdates(awayPlayersSnap, awayLineupSet, match.awayTeamId, awayMucadele, futbolTeamIsBotRun(awayTeamData));
+  // v77 Faz 5: lig istatistikleri (gol/asist/puan/yıldız) + gerçek futbolcunun gün sonu kartı
+  await futbolPro.recordLeagueMatch(batch, {
+    match: { ...match, id: matchId },
+    season: match.season,
+    homeTeam: homeTeamData,
+    awayTeam: awayTeamData,
+    homeTeamId: match.homeTeamId,
+    awayTeamId: match.awayTeamId,
+    playersById: proPlayersById,
+    updatesById: proUpdatesById,
+  });
 
   // SMS — takım sahiplerine maç sonucu (+ ev sahibiyse bilet geliri, +
   // varsa bu maçta sakatlanan oyuncuların isimleri).
@@ -13154,6 +13232,9 @@ async function computeFutbolCupMatchLive(match) {
   const homeLines = futbolLinePowers(homeResolved.selected, false, homeResolved.tactic, homeResolved.mucadeleConfig.powerMult);
   const awayLines = futbolLinePowers(awayResolved.selected, false, awayResolved.tactic, awayResolved.mucadeleConfig.powerMult);
   const { homeScore, awayScore, timeline, possessionCheckpoints } = simulateFutbolMatch(homeLines, awayLines);
+  // v77 Faz 5: gol/asist sahipleri + maç puanı (kupa istatistiğe sayılmaz, sadece kart)
+  assignGoalCredits(timeline, homeResolved.selected, awayResolved.selected);
+  const { ratings, motmId } = computeMatchRatings({ timeline, homeSel: homeResolved.selected, awaySel: awayResolved.selected, homeScore, awayScore });
 
   let penalty = null;
   let winnerTeamId;
@@ -13177,6 +13258,8 @@ async function computeFutbolCupMatchLive(match) {
     revealAt: admin.firestore.Timestamp.fromDate(revealAt),
     timeline,
     possessionCheckpoints,
+    ratings,
+    motmId,
     homeLineupIds: homeResolved.selected.map((p) => p.id),
     awayLineupIds: awayResolved.selected.map((p) => p.id),
     // 19:00'da (applyFutbolCupMatchResult) TEKRAR HESAPLANMAZ, aynen
@@ -13231,10 +13314,13 @@ async function applyFutbolCupMatchResult(matchId, trainingIdsByTeam) {
   const homeLineupSet = new Set(match.homeLineupIds || []);
   const awayLineupSet = new Set(match.awayLineupIds || []);
   const injuredThisMatchByTeam = new Map();
+  const cupPlayersById = {};
+  const cupUpdatesById = {};
   const applyPlayerUpdates = (snap, lineupSet, teamId, mucadele, isBotRun) => {
     const trainingIds = trainingIdsByTeam?.get(teamId) || null;
     snap.docs.forEach((d) => {
       const p = d.data();
+      cupPlayersById[d.id] = { id: d.id, ...p };
       if (lineupSet.has(d.id)) {
         const gain = Math.round(randomInRange(0.1, 2.0) * 10) / 10;
         const updates = {
@@ -13250,6 +13336,7 @@ async function applyFutbolCupMatchResult(matchId, trainingIdsByTeam) {
           }
         }
         batch.update(d.ref, updates);
+        cupUpdatesById[d.id] = updates;
         logFutbolGrowth(batch, { teamId, playerId: d.id, playerName: p.name, amount: gain, type: 'kupa' });
       } else if (trainingIds && trainingIds.has(d.id)) {
         // KULLANICI REVİZESİ: antrenmandaki oyuncunun formuna dokunulmuyor
@@ -13277,6 +13364,17 @@ async function applyFutbolCupMatchResult(matchId, trainingIdsByTeam) {
       futbolTeamIsBotRun(awayTeamSnap.data())
     );
   }
+  // v77 Faz 5: gerçek futbolcunun gün sonu kartı (kupa → istatistik yok)
+  await futbolPro.recordLeagueMatch(batch, {
+    match: { ...match, id: matchId },
+    cup: true,
+    homeTeam: homeTeamSnap.exists ? homeTeamSnap.data() : { name: match.homeTeamName },
+    awayTeam: awayTeamSnap.exists ? awayTeamSnap.data() : { name: match.awayTeamName },
+    homeTeamId: match.homeTeamId,
+    awayTeamId: match.awayTeamId,
+    playersById: cupPlayersById,
+    updatesById: cupUpdatesById,
+  });
   const injuryNote = (teamId) => {
     const names = injuredThisMatchByTeam.get(teamId);
     if (!names || names.length === 0) return '';
@@ -13732,6 +13830,8 @@ async function finishFutbolSeasonPart1(leagueIds) {
     relegations: relegationPlan.map((p) => ({ teamName: p.teamName, fromTier: p.fromTier, toTier: p.toTier })),
     cup: cupSummary,
     ...seasonStats,
+    // v77 Faz 5: sezonun oyuncu ödülleri (gol kralı / asist kralı / yıldız)
+    playerAwards: await futbolPro.seasonAwards(oldSeason),
   });
 
   await db.collection('futbolSeasonState').doc('current').set(
@@ -13843,6 +13943,7 @@ async function finishFutbolSeasonPart2(state) {
   let opCount = 0;
   for (const doc of allPlayersSnap.docs) {
     const player = doc.data();
+    if (player.real) continue; // v77 Faz 5: gerçek futbolcu yaşlanmaz/silinmez
     const isBotRunTeam = futbolTeamIsBotRun(teamByIdForAging[player.teamId] || {});
     if (isBotRunTeam) {
       if (player.age > 30) {
@@ -13900,7 +14001,10 @@ async function finishFutbolSeasonPart2(state) {
     revertBatch.update(db.collection('users').doc(team.ownerUid), {
       gold: admin.firestore.FieldValue.increment(payout),
     });
-    oldPlayersSnap.docs.forEach((d) => revertBatch.delete(d.ref));
+    // v77 Faz 5: gerçek futbolcular silinmez; takım BOT olunca 19:00'da son maaşla ayrılırlar
+    oldPlayersSnap.docs.forEach((d) => {
+      if (!d.data().real) revertBatch.delete(d.ref);
+    });
     const template = randomFutbolSquadComposition(team.tier);
     template.forEach(([position, tierBand]) => {
       const playerRef = db.collection('futbolPlayers').doc();
@@ -13954,22 +14058,31 @@ async function resolveFutbolTrainingForAllTeams() {
   const teamsSnap = await db.collection('futbolTeams').get();
   const batch = db.batch();
   let count = 0;
+  // v77: antrenman 19:00'da biten futbol gününün ödenmiş kutularıyla işlenir;
+  // kutunun salonu o gün bonusluysa (🔥) gelişim ×1.1 (botlar dahil).
+  const endedDay = prevDayKey(futbolDayKey(Date.now()));
   for (const teamDoc of teamsSnap.docs) {
     const trainingPlayerIds = teamDoc.data().trainingPlayerIds;
     if (!Array.isArray(trainingPlayerIds) || trainingPlayerIds.length === 0) continue;
+    const slots = teamDoc.data().trainingSlots || {};
     for (const playerId of trainingPlayerIds) {
       const playerRef = db.collection('futbolPlayers').doc(playerId);
       const playerSnap = await playerRef.get();
       if (playerSnap.exists && playerSnap.data().teamId === teamDoc.id) {
-        const gain = Math.round(randomInRange(0.1, 4.0) * 10) / 10;
+        const slot = slots[playerSnap.data().position];
+        const bonus = Boolean(slot?.bonus && slot.dayKey === endedDay);
+        const gain = withBonus(Math.round(randomInRange(0.1, 4.0) * 10) / 10, bonus);
         const newPower = Math.round((playerSnap.data().power + gain) * 10) / 10;
         batch.update(playerRef, { power: newPower });
+        // v77 Faz 5: gerçek futbolcu → gücü footballers'a da yansır + gün sonu kartı
+        futbolPro.recordTraining(batch, { p: playerSnap.data(), teamName: teamDoc.data().name, gain, bonus });
         logFutbolGrowth(batch, {
           teamId: teamDoc.id,
           playerId,
           playerName: playerSnap.data().name,
           amount: gain,
           type: 'antrenman',
+          ...(bonus ? { bonus: true } : {}),
         });
       }
     }
@@ -14082,11 +14195,46 @@ function pickFutbolBotTrainingIds(players, excludeIds) {
 // maç içi güç kazancı zaten ikisini de eşit tutuyordu, antrenman da tutarlı
 // olsun diye.
 async function assignFutbolBotTraining() {
+  // v77 Faz 4: botlar da salona ödeyerek antrenman yapar — kasada para varsa EN
+  // UCUZ salonu seçerler (birden fazla en ucuz salon varsa takımlar aralarında
+  // sırayla/eşit dağıtılır). Kasa yetmiyorsa yetecek kadar mevki, hiç yetmiyorsa
+  // antrenman yok. Gelişim kuralı değişmedi (0,1–4). Ödeme salonun gelirine
+  // (bonus hesabına) dahildir; oyunun salonu (2.000) seçilirse para oyundan çıkar.
+  await gym.gymEnsureGame().catch(() => {});
+  // 19:00 kapanışı (sıra + bugünün 🔥 bonusu) saatlik işi beklemeden yazılsın
+  await business.rollover(['spor']).catch((e) => console.error('spor rollover', e));
+  const gymsSnap = await db.collection('houses').where('bizType', '==', 'spor').limit(500).get();
+  const dayKey = futbolDayKey(Date.now());
+  // v77: bonuslu (🔥) salon %10 fazla gelişim verir → botlar "etkin fiyata"
+  // (fiyat / 1,1) bakar; en düşük etkin fiyatlı salon(lar) arasında sırayla dağılır.
+  // Kasası o salona yetmeyen takım en ucuz salon(lar)a gider.
+  const gyms = gymsSnap.docs
+    .map((d) => {
+      const h = d.data();
+      const bonus = !h.bizGame && h.gymBonusDay === dayKey;
+      const price = gymPriceOf(h);
+      return { id: d.id, h, price, bonus, eff: bonus ? price / 1.1 : price };
+    })
+    .filter((g) => g.h.biz?.type === 'spor');
+  if (!gyms.length) return;
+  const bestEff = Math.min(...gyms.map((g) => g.eff));
+  const pool = gyms.filter((g) => Math.abs(g.eff - bestEff) < 1e-6).sort((a, b) => a.id.localeCompare(b.id));
+  // kasası verimli salona yetmeyen takım en ucuz salon(lar)a gider
+  const minPrice = Math.min(...gyms.map((g) => g.price));
+  const cheapPool = gyms.filter((g) => g.price === minPrice).sort((a, b) => a.id.localeCompare(b.id));
+  const poolPrice = Math.max(...pool.map((g) => g.price));
+  const lockUntil = bizDayStartMs('spor', dayKey) + 24 * 60 * 60 * 1000 + 10 * 60 * 1000;
   const allTeamsSnap = await db.collection('futbolTeams').get();
-  const botTeamsSnap = { docs: allTeamsSnap.docs.filter((d) => futbolTeamIsBotRun(d.data())) };
-  let batch = db.batch();
-  let opCount = 0;
-  for (const teamDoc of botTeamsSnap.docs) {
+  const botTeams = allTeamsSnap.docs.filter((d) => futbolTeamIsBotRun(d.data())).sort((a, b) => a.id.localeCompare(b.id));
+  let rr = 0;
+  let rc = 0;
+  for (const teamDoc of botTeams) {
+    const team = teamDoc.data();
+    const cash = Math.max(0, team.treasury || 0);
+    const useBest = cash >= poolPrice;
+    const unitPrice = useBest ? poolPrice : minPrice;
+    const affordable = Math.min(FUTBOL_TRAINING_SLOTS, Math.floor(cash / unitPrice));
+    if (affordable <= 0) continue;
     const playersSnap = await db.collection('futbolPlayers').where('teamId', '==', teamDoc.id).get();
     const players = playersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
     if (players.length === 0) continue;
@@ -14094,17 +14242,28 @@ async function assignFutbolBotTraining() {
     // kullanıcıların tabi olduğu kuralla birebir aynı.
     const auto = pickFutbolLineup(groupFutbolPlayersByPositionArr(players), FUTBOL_DEFAULT_FORMATION);
     const lineupIds = new Set(auto.selected.map((p) => p.id));
-    const trainingIds = pickFutbolBotTrainingIds(players, lineupIds);
-    if (trainingIds.length > 0) {
-      batch.update(teamDoc.ref, { trainingPlayerIds: trainingIds });
-      opCount += 1;
-      if (opCount % 450 === 0) {
-        await batch.commit();
-        batch = db.batch();
-      }
-    }
+    const trainingIds = pickFutbolBotTrainingIds(players, lineupIds).slice(0, affordable);
+    if (!trainingIds.length) continue;
+    const g = useBest ? pool[rr++ % pool.length] : cheapPool[rc++ % cheapPool.length];
+    const cost = g.price * trainingIds.length;
+    const byId = Object.fromEntries(players.map((p) => [p.id, p]));
+    await db.runTransaction(async (tx) => {
+      const [ts, gs] = await Promise.all([tx.get(teamDoc.ref), tx.get(db.collection('houses').doc(g.id))]);
+      const t = ts.data();
+      const gh = gs.exists ? gs.data() : null;
+      if (!t || (t.treasury || 0) < cost || !gh || gh.biz?.type !== 'spor') return;
+      const ownerSnap = gh.bizGame ? null : await tx.get(db.collection('users').doc(gh.ownerUid));
+      gym.payGymTx(tx, { gymId: g.id, h: gh, ownerSnap, amount: cost, customerUid: `team_${teamDoc.id}`, kind: 'team', atMs: Date.now(), products: { 'takım:bot': trainingIds.length } });
+      const slots = {};
+      trainingIds.forEach((id) => {
+        const pos = byId[id]?.position;
+        if (pos) slots[pos] = { dayKey, gymId: g.id, gymName: String(gh.name || 'Spor Salonu').slice(0, 40), price: g.price, bonus: g.bonus, paidAtMs: Date.now(), paidBy: 'bot' };
+      });
+      // antrenmanı olan salon 19:00'a kadar kapatılamaz / gerekli aletleri kaldırılamaz
+      if (!gh.bizGame && Number(gh.bizLockUntilMs || 0) < lockUntil) tx.update(db.collection('houses').doc(g.id), { bizLockUntilMs: lockUntil });
+      tx.update(teamDoc.ref, { trainingPlayerIds: trainingIds, treasury: admin.firestore.FieldValue.increment(-cost), trainingSlots: slots });
+    });
   }
-  if (opCount % 450 !== 0) await batch.commit();
 }
 
 // dailySweepFutbolTeamsBeforeMatchday — her gün 18:00'de, o günün
@@ -14168,7 +14327,10 @@ async function dailySweepFutbolTeamsBeforeMatchday() {
       revertBatch.update(db.collection('users').doc(team.ownerUid), {
         gold: admin.firestore.FieldValue.increment(payout),
       });
-      players.forEach((p) => revertBatch.delete(db.collection('futbolPlayers').doc(p.id)));
+      // v77 Faz 5: gerçek futbolcular silinmez (19:00'da son maaşla ayrılırlar)
+      players.forEach((p) => {
+        if (!p.real) revertBatch.delete(db.collection('futbolPlayers').doc(p.id));
+      });
       const template = randomFutbolSquadComposition(team.tier);
       template.forEach(([position, tierBand]) => {
         const playerRef = db.collection('futbolPlayers').doc();
@@ -14202,7 +14364,8 @@ async function dailySweepFutbolTeamsBeforeMatchday() {
     const filledPositions = new Set(
       currentTrainingIds.map((id) => byId[id]?.position).filter(Boolean)
     );
-    const openPositions = ['GK', 'DEF', 'MID', 'FWD'].filter((pos) => !filledPositions.has(pos));
+    // v77: sadece o gün salona ödemesi yapılmış (boş) kutular doldurulur
+    const openPositions = ['GK', 'DEF', 'MID', 'FWD'].filter((pos) => !filledPositions.has(pos) && futbolTrainingSlotPaid(team, pos));
     if (openPositions.length === 0) continue; // kutular zaten dolu
 
     const excludeIds = new Set([...lineupIds, ...currentTrainingIds]);
@@ -14315,6 +14478,10 @@ export const resolveFutbolMatchdayReveal = onSchedule(
     // claimFutbolRevealForToday'in çift-tetikleme korumasından SONRA
     // olduğu için bu da günde sadece bir kez uygulanır.
     await runFutbolDailyClock();
+    // v77 Faz 5: gerçek futbolcu maaşları (menajer maaşıyla aynı mantık) ve
+    // fesihten kalan takım borçları
+    await futbolPro.paySalaries().catch((e) => console.error('futbolPro.paySalaries', e));
+    await futbolPro.settleTeamDebts().catch((e) => console.error('futbolPro.settleTeamDebts', e));
 
     // KULLANICI İSTEĞİ: "kupa günlerinde antrenmana soktuğumuz oyuncular
     // antrenman yapmıyor (aynı şekilde şampiyonluk kutlaması gününde) ...
@@ -15993,6 +16160,7 @@ async function getFutbolTeamPositionCounts(teamId, excludePlayerId) {
   const counts = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
   snap.docs.forEach((d) => {
     if (d.id === excludePlayerId) return;
+    if (d.data().real) return; // v77 Faz 5: gerçek futbolcular minimum kadro sayımına girmez
     const pos = d.data().position;
     if (counts[pos] !== undefined) counts[pos] += 1;
   });
@@ -16103,7 +16271,7 @@ async function computeFutbolMaxPowerByPosition() {
     );
     let ok = true;
     positions.forEach((pos, i) => {
-      const owned = snaps[i].docs.map((d) => d.data()).filter((p) => p.teamId && typeof p.power === 'number');
+      const owned = snaps[i].docs.map((d) => d.data()).filter((p) => p.teamId && !p.real && typeof p.power === 'number');
       const topN = owned.map((p) => p.power).sort((a, b) => b - a).slice(0, FUTBOL_BASELINE_TOP_N);
       if (topN.length < FUTBOL_BASELINE_TOP_N && snaps[i].size >= 30) ok = false; // emin değiliz → tam tarama
       baseline[pos] = topN.length > 0 ? topN.reduce((sum, v) => sum + v, 0) / topN.length : FUTBOL_SYSTEM_FALLBACK_POWER;
@@ -16119,7 +16287,7 @@ async function computeFutbolMaxPowerByPositionFullScan() {
   const powersByPosition = { GK: [], DEF: [], MID: [], FWD: [] };
   snap.docs.forEach((d) => {
     const p = d.data();
-    if (!p.teamId) return; // transfer listesinde/sahipsiz — sayılmaz
+    if (!p.teamId || p.real) return; // transfer listesinde/sahipsiz ya da gerçek futbolcu — sayılmaz
     if (powersByPosition[p.position]) powersByPosition[p.position].push(p.power);
   });
   const baseline = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
@@ -16377,6 +16545,8 @@ export const instantSellFutbolPlayer = onCall(async (request) => {
   if (!playerSnap.exists) throw new HttpsError('not-found', 'Oyuncu bulunamadı.');
   const player = playerSnap.data();
   if (!player.teamId) throw new HttpsError('failed-precondition', 'Bu oyuncu bir takıma ait değil.');
+  // v77 Faz 5: gerçek futbolcu satılamaz/ilana konamaz — sözleşme ancak feshedilir
+  if (player.real) throw new HttpsError('failed-precondition', 'Gerçek futbolcu satılamaz; sözleşmesini feshedebilirsin.');
 
   const teamRef = db.collection('futbolTeams').doc(player.teamId);
   const teamSnap = await teamRef.get();
@@ -16444,6 +16614,8 @@ export const listFutbolPlayerForSale = onCall(async (request) => {
   if (!playerSnap.exists) throw new HttpsError('not-found', 'Oyuncu bulunamadı.');
   const player = playerSnap.data();
   if (!player.teamId) throw new HttpsError('failed-precondition', 'Bu oyuncu bir takıma ait değil.');
+  // v77 Faz 5: gerçek futbolcu satılamaz/ilana konamaz — sözleşme ancak feshedilir
+  if (player.real) throw new HttpsError('failed-precondition', 'Gerçek futbolcu satılamaz; sözleşmesini feshedebilirsin.');
 
   const teamRef = db.collection('futbolTeams').doc(player.teamId);
   const teamSnap = await teamRef.get();
@@ -16666,6 +16838,9 @@ export const buyFutbolPlayer = onCall(async (request) => {
 // hesaplanıp paylaşılır — gereksiz tekrar taramayı önler.
 export const futbolTransferMarketHourlyMaintenance = onSchedule({ schedule: 'every 60 minutes' }, async () => {
   await runFutbolDataIntegrityFix();
+  // v77 Faz 5: 24 saati geçen teklifler + kasaya para geldiyse eski maaş borçları
+  await futbolPro.expireOffers().catch((e) => console.error('futbolPro.expireOffers', e));
+  await futbolPro.settleTeamDebts().catch((e) => console.error('futbolPro.settleTeamDebts', e));
 
   const nowMs = Date.now();
   const nowTs = admin.firestore.Timestamp.now();
@@ -16785,6 +16960,10 @@ export const addFutbolTraining = onCall(async (request) => {
   if ((newPlayer.injuryDaysLeft || 0) > 0) {
     throw new HttpsError('failed-precondition', 'Sakat oyuncu antrenmana sokulamaz.');
   }
+  // v77: mevki kutusu ancak bir spor salonuna o gün için ödeme yapılınca açılır
+  if (!futbolTrainingSlotPaid(teamSnap.data(), newPlayer.position)) {
+    throw new HttpsError('failed-precondition', 'slot-unpaid');
+  }
   if (current.length > 0) {
     const currentPlayersSnap = await db
       .collection('futbolPlayers')
@@ -16806,6 +16985,62 @@ export const addFutbolTraining = onCall(async (request) => {
   futbolMarkControllerActive(teamRef, team, batch);
   await batch.commit();
   return { ok: true };
+});
+
+// --- v77 Faz 4: takım antrenmanında spor salonu seçimi -----------------------------
+// Antrenman paneli: salon seç → 4 mevki kutusunun üstünde günlük fiyat → basınca
+// ödenir, kutu açılır, oyuncu konur. Fiyat o gün için kilitlenir; salon kapansa da
+// iade yok (oyuncular salona fiziksel gitmez, antrenman normal işlenir). Ödeme
+// MANAGED'da kasadan, başkan yönetiyorsa başkanın altınından — transfer
+// desteğinden ÖDENEMEZ. Takım ödemesi salonun gelirine (bonus hesabına) dahil.
+// Oyunun salonu (2.000) da listede. Gelişim tablosu değişmedi (0,1–4); salon o gün
+// bonusluysa (🔥) gelişim ×1.1 (botlar dahil). Ödenmiş antrenmanı olan salon o
+// günün 19:00'una kadar kapatılamaz, gerekli aletleri kaldırılamaz.
+// team.trainingSlots[mevki] = { dayKey, gymId, gymName, price, paidAtMs, paidBy }
+function futbolTrainingSlotPaid(team, position) {
+  return team?.trainingSlots?.[position]?.dayKey === futbolDayKey(Date.now());
+}
+
+export const payFutbolTrainingSlot = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { teamId, position, gymId, expect } = request.data || {};
+  if (!FUTBOL_TRANSFER_POSITIONS.includes(position)) throw new HttpsError('invalid-argument', 'Geçersiz mevki.');
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(String(gymId || ''))) throw new HttpsError('invalid-argument', 'Geçersiz salon.');
+  const teamRef = db.collection('futbolTeams').doc(String(teamId || ''));
+  const gymRef = db.collection('houses').doc(gymId);
+  const userRef = db.collection('users').doc(uid);
+  let result = null;
+  // bonus (🔥) ödeme anındaki güne göre — transaction dışında okunur (salon günlük raporu)
+  const dayKey = futbolDayKey(Date.now());
+  const gymPre = await gymRef.get();
+  const bonus = gymPre.exists ? await gym.gymBonus(gymRef.id, gymPre.data(), dayKey) : false;
+  const lockUntil = bizDayStartMs('spor', dayKey) + 24 * 60 * 60 * 1000 + 10 * 60 * 1000;
+  await db.runTransaction(async (tx) => {
+    const [teamSnap, gymSnap, userSnap] = await Promise.all([tx.get(teamRef), tx.get(gymRef), tx.get(userRef)]);
+    const { team, mode } = requireFutbolTeamController(teamSnap, uid);
+    if (futbolTrainingSlotPaid(team, position)) throw new HttpsError('failed-precondition', 'slot-paid');
+    const g = gymSnap.exists ? gymSnap.data() : null;
+    if (!g || g.biz?.type !== 'spor') throw new HttpsError('failed-precondition', 'biz-closed');
+    const ownerSnap = g.bizGame ? null : await tx.get(db.collection('users').doc(g.ownerUid));
+    const price = gymPriceOf(g);
+    if (Number(expect) !== price) throw new HttpsError('aborted', `price-changed:${price}`);
+    if (mode === 'MANAGED') {
+      if ((team.treasury || 0) < price) throw new HttpsError('failed-precondition', 'treasury');
+      tx.update(teamRef, { treasury: admin.firestore.FieldValue.increment(-price) });
+    } else {
+      if ((userSnap.data()?.gold || 0) < price) throw new HttpsError('failed-precondition', 'gold');
+      tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-price) });
+    }
+    gym.payGymTx(tx, { gymId, h: g, ownerSnap, amount: price, customerUid: `team_${teamRef.id}`, kind: 'team', atMs: Date.now(), products: { [`takım:${position}`]: 1 } });
+    tx.update(teamRef, {
+      [`trainingSlots.${position}`]: { dayKey, gymId, gymName: String(g.name || 'Spor Salonu').slice(0, 40), price, bonus, paidAtMs: Date.now(), paidBy: uid },
+    });
+    // antrenmanı olan salon 19:00'a kadar kapatılamaz / gerekli aletleri kaldırılamaz
+    if (!g.bizGame && Number(g.bizLockUntilMs || 0) < lockUntil) tx.update(gymRef, { bizLockUntilMs: lockUntil });
+    futbolMarkControllerActive(teamRef, team, tx);
+    result = { ok: true, position, price };
+  });
+  return result;
 });
 
 export const removeFutbolTraining = onCall(async (request) => {

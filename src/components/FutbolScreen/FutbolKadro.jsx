@@ -427,7 +427,10 @@ function PlayerPicker({ position, players, usedPlayerIds, currentId, onPick, onC
               >
                 <FutbolPlayerAvatar playerId={p.id} position={p.position} size={38} />
                 <span className="futbol-picker-info">
-                  <strong>{p.name}</strong>
+                  <strong>
+                    {p.name}
+                    {p.real && <em className="fp-real" title="Gerçek oyuncu">👤</em>}
+                  </strong>
                   <span>
                     {p.age} yaş · {p.power.toFixed(1)} güç · {Math.round(p.form)}% form
                   </span>

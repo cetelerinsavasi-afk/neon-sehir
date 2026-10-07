@@ -4,6 +4,12 @@ import { FakeFirestore, FieldValue } from '../../functions/gang/test/fakeFiresto
 import { createGangSystem } from '../../functions/gang/system.js';
 import { VEHICLE_CATALOG, WEAPON_CATALOG } from '../../functions/catalogData.js';
 import { createHouses } from '../../functions/houses.js';
+import { createBusiness } from '../../functions/business.js';
+import { createShop } from '../../functions/shop.js';
+import { createVenue } from '../../functions/venue.js';
+import { createGym } from '../../functions/gym.js';
+import { createFutbolPro } from '../../functions/futbolPro.js';
+import { futbolDayKey } from '../../functions/businessCatalogData.js';
 
 export const PREVIEW_UID = 'previewAdmin';
 export const PREVIEW_PASSWORD = 'test';
@@ -33,8 +39,24 @@ export const system = createGangSystem({
 fakeDb.doc(`users/${PREVIEW_UID}`).set({ displayName: 'Önizleme Admin', gold: 5_000_000, emerald: 120, reputation: 100, suspicion: 0 });
 if (typeof window !== 'undefined') window.__gang = { fakeDb, system };
 
+// v77 İşletmeler önizlemesi (gerçek sunucu kodu)
+export const business = createBusiness({ db: fakeDb, FieldValue });
+export const venue = createVenue({ db: fakeDb, FieldValue, HttpsError: PreviewHttpsError, splitIncomeForDebt: (debt, amount) => ({ goldDelta: amount, debtDelta: 0 }), business });
+export const gym = createGym({ db: fakeDb, FieldValue, HttpsError: PreviewHttpsError, splitIncomeForDebt: (debt, amount) => ({ goldDelta: amount, debtDelta: 0 }), business });
+export const shop = createShop({
+  extraOps: { ...venue.ops, ...gym.ops },
+  db: fakeDb,
+  FieldValue,
+  HttpsError: PreviewHttpsError,
+  requireAuth: (r) => r.auth.uid,
+  onCall: (fn) => fn,
+  splitIncomeForDebt: (debt, amount) => ({ goldDelta: amount, debtDelta: 0 }),
+  business,
+});
+
 // v65 3D Ev önizlemesi
 export const houses = createHouses({
+  bizHooks: shop.bizHooks,
   db: fakeDb,
   FieldValue,
   HttpsError: PreviewHttpsError,
@@ -61,3 +83,14 @@ fakeDb.doc(`users/${PREVIEW_UID}`).set({ achievements: { imam: Date.now() - 8640
 ].forEach((f, i) =>
   fakeDb.collection('feedback').doc(`f${i}`).set({ uid: `o${i}`, displayName: ['Ayşe', 'Mert', 'Can'][i], avatar: null, kind: f.kind, text: f.text, likeCount: f.likeCount, createdAtMs: Date.now() - f.ago * 60000 })
 );
+
+// v77 Faz 5 önizlemesi — gerçek futbolcular (aynı sunucu modülü)
+const fMode = (t) => (t.managerUid ? 'MANAGED' : !t.ownerUid ? 'BOT' : t.autoManaged ? 'OWNER_AUTO' : 'OWNER_ACTIVE');
+export const futbolPro = createFutbolPro({
+  db: fakeDb,
+  FieldValue,
+  HttpsError: PreviewHttpsError,
+  futbolDayKey,
+  getControlMode: fMode,
+  controllerUidOf: (t) => (t.managerUid ? t.managerUid : fMode(t) === 'OWNER_ACTIVE' ? t.ownerUid : null),
+});
