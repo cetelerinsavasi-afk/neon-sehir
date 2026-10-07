@@ -26,12 +26,18 @@ export default function NetCreditRing({ houseId = null, className = '' }) {
   const r = 13;
   const c = 2 * Math.PI * r;
   return (
-    <span className={`vn-credit${warn ? ' warn' : ''} ${className}`} title={`🖥️ ${left} sn`}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <circle cx={size / 2} cy={size / 2} r={r} className="bg" />
-        <circle cx={size / 2} cy={size / 2} r={r} className="fg" strokeDasharray={c} strokeDashoffset={c * (1 - p)} />
-      </svg>
-      <b>{left}</b>
+    <span className={`vn-credit-pill${warn ? ' warn' : ''} ${className}`} title="İnternet kafe: ödenmiş oyun süren">
+      <span className={`vn-credit${warn ? ' warn' : ''}`}>
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+          <circle cx={size / 2} cy={size / 2} r={r} className="bg" />
+          <circle cx={size / 2} cy={size / 2} r={r} className="fg" strokeDasharray={c} strokeDashoffset={c * (1 - p)} />
+        </svg>
+        <b>{left}</b>
+      </span>
+      <span className="vn-credit-txt">
+        🖥️ {left} sn kaldı
+        {warn && <small>Altının sonraki dakikaya yetmiyor</small>}
+      </span>
     </span>
   );
 }

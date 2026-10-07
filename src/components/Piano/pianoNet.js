@@ -19,10 +19,21 @@ function rt() {
   if (!modP) modP = import('firebase/database').then((m) => ({ m, db: m.getDatabase(app, DB_URL) }));
   return modP;
 }
+// Realtime Database'e ulaşılamazsa (kurulmamış/kurallar yüklenmemiş/ağ) piyano
+// donmasın: kısa süre içinde cevap gelmezse yerel moda düşer (sadece çalan duyar).
+const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
 
-// Çalma hakkını al. Döner: { ok, holder }
+// Çalma hakkını al. Döner: { ok, holder, local }
 export async function claimPiano(houseId, me) {
-  if (!PIANO_ONLINE) return { ok: true, holder: null };
+  if (!PIANO_ONLINE) return { ok: true, holder: null, local: true };
+  try {
+    return await withTimeout(claimOnline(houseId, me), 3500);
+  } catch (e) {
+    console.warn('piyano çevrim içi değil, yerel çalınıyor:', e?.message || e);
+    return { ok: true, holder: null, local: true };
+  }
+}
+async function claimOnline(houseId, me) {
   const { m, db } = await rt();
   const r = m.ref(db, `piano/${houseId}/player`);
   let holder = null;

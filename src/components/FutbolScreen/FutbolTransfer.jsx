@@ -12,7 +12,7 @@ import {
   forceRefreshFutbolTransferMarket,
 } from '../../services/gameActions';
 import FutbolPlayerAvatar from './FutbolPlayerAvatar';
-import FutbolProMarket from './FutbolProMarket';
+import { ProPlayersList } from './FutbolProMarket';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import ConfirmModal from '../ConfirmModal/ConfirmModal';
 import { groupFutbolPlayersByPositionOrdered } from './futbolPositionOrder';
@@ -44,6 +44,7 @@ export default function FutbolTransfer({ team, role }) {
   const [listingId, setListingId] = useState(null);
   const [listingPrice, setListingPrice] = useState(0);
   const [showSellPanel, setShowSellPanel] = useState(false);
+  const [showPros, setShowPros] = useState(false);
   const [confirmSellId, setConfirmSellId] = useState(null);
   const [refreshingMarket, setRefreshingMarket] = useState(false);
   // boughtIds — kullanıcı revizesi: satın alınca oyuncu listeden ANINDA
@@ -182,12 +183,16 @@ export default function FutbolTransfer({ team, role }) {
     <fieldset className="futbol-transfer" disabled={readOnly}>
       {error && <p className="futbol-admin-error">{error}</p>}
 
-      {/* v77 Faz 5 — gerçek futbolcular (sözleşme + serbest futbolcular) */}
-      <FutbolProMarket team={team} readOnly={readOnly} />
-
-      <button className="futbol-admin-reset" onClick={() => setShowSellPanel((v) => !v)}>
-        {showSellPanel ? 'Kadromu Gizle' : 'Oyuncu Sat'}
-      </button>
+      <div className="fp-tbtns">
+        <button className={`futbol-admin-reset${showSellPanel ? ' on' : ''}`} onClick={() => setShowSellPanel((v) => !v)}>
+          {showSellPanel ? 'Kadromu Gizle' : 'Oyuncu Sat'}
+        </button>
+        {/* v77 — oyundaki 200+ güçlü (maaşlı) futbolcular: teklif / imza */}
+        <button className={`futbol-admin-reset${showPros ? ' on' : ''}`} onClick={() => setShowPros((v) => !v)}>
+          {showPros ? 'Maaşlıları Gizle' : '💰 Maaşlı futbolcular'}
+        </button>
+      </div>
+      {showPros && <ProPlayersList team={team} readOnly={readOnly} />}
 
       {showSellPanel && (
         <div className="futbol-transfer-roster">

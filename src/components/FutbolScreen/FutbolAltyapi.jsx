@@ -3,7 +3,6 @@ import { useFutbolTeamPlayers } from '../../hooks/useFutbolTeamPlayers';
 import { useFutbolGrowthLog } from '../../hooks/useFutbolGrowthLog';
 import { addFutbolTraining, removeFutbolTraining, payFutbolTrainingSlot, shopAction } from '../../services/gameActions';
 import { useBusinessList } from '../../hooks/useBusinessList';
-import HoldButton from '../HoldButton/HoldButton';
 import { futbolDayKey } from '../../../functions/businessCatalogData.js';
 import { gymPriceOf } from '../../../functions/gym.js';
 import FutbolPlayerAvatar from './FutbolPlayerAvatar';
@@ -104,20 +103,50 @@ function GrowthLogSection({ teamId }) {
 // (basılı tut) ödenir ve kutu açılır. Fiyat o gün için kilitlenir.
 function GymPicker({ gyms, selected, onSelect }) {
   const today = futbolDayKey(Date.now());
+  const [open, setOpen] = useState(false);
+  const sel = gyms.find((g) => g.id === selected) || null;
+  const isBonus = (g) => !g.bizGame && g.gymBonusDay === today;
   return (
-    <div className="futbol-gym-picker">
-      {gyms.map((g) => (
-        <button key={g.id} className={`futbol-gym-chip${selected === g.id ? ' on' : ''}`} onClick={() => onSelect(g.id)}>
-          <span className="futbol-gym-name">
-            {g.bizGame ? '★ ' : '🏋️ '}
-            {g.name}
-          </span>
-          {!g.bizGame && g.gymBonusDay === today && <em className="futbol-gym-bonus">🔥 +%10</em>}
+    <div className={`futbol-gym-box${open ? ' open' : ''}`}>
+      <button className="futbol-gym-head" onClick={() => setOpen((v) => !v)}>
+        <span className="futbol-gym-head-main">
+          <small>Spor salonu</small>
           <b>
-            <span className="gold-coin-icon" style={{ width: 11, height: 11 }} /> {gymPriceOf(g).toLocaleString('tr-TR')}
+            🏋️ {sel ? sel.name : 'Seç'}
+            {sel && isBonus(sel) && <em className="futbol-gym-bonus">🔥 +%10</em>}
           </b>
-        </button>
-      ))}
+        </span>
+        {sel && (
+          <span className="futbol-gym-price">
+            <span className="gold-coin-icon" style={{ width: 11, height: 11 }} /> {gymPriceOf(sel).toLocaleString('tr-TR')}
+          </span>
+        )}
+        <span className="futbol-gym-caret">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="futbol-gym-list">
+          {gyms.map((g) => (
+            <button
+              key={g.id}
+              className={`futbol-gym-item${selected === g.id ? ' on' : ''}`}
+              onClick={() => {
+                onSelect(g.id);
+                setOpen(false);
+              }}
+            >
+              <span className="futbol-gym-name">
+                {selected === g.id ? '✓ ' : ''}
+                {g.name}
+                {g.bizGame ? ' (oyunun)' : ''}
+              </span>
+              {isBonus(g) && <em className="futbol-gym-bonus">🔥 +%10</em>}
+              <b>
+                <span className="gold-coin-icon" style={{ width: 11, height: 11 }} /> {gymPriceOf(g).toLocaleString('tr-TR')}
+              </b>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -141,7 +170,15 @@ function TrainingSection({ teamId, players, allPlayers, trainingPlayerIds, train
       await payFutbolTrainingSlot(teamId, pos, gymSel.id, gymPriceOf(gymSel));
     } catch (err) {
       const m = String(err?.message || '');
-      setError(m === 'treasury' ? '💰 Kasa ✕' : m === 'gold' ? '💰 ✕' : m.startsWith('price-changed') ? '💲 ↻' : m || 'Ödenemedi.');
+      setError(
+        m === 'treasury'
+          ? 'Takım kasasında yeterli para yok.'
+          : m === 'gold'
+            ? 'Altının yetmiyor.'
+            : m.startsWith('price-changed')
+              ? 'Salonun fiyatı az önce değişti; tekrar kontrol edip öde.'
+              : m || 'Ödenemedi.'
+      );
     } finally {
       setBusyId(null);
     }
@@ -245,15 +282,23 @@ function TrainingSection({ teamId, players, allPlayers, trainingPlayerIds, train
                 {POSITION_LABELS[pos]}
                 {slotPaid(pos) && (
                   <span className="futbol-slot-gym">
-                    🏋️ {trainingSlots[pos].gymName}
-                    {trainingSlots[pos].bonus && <em className="futbol-gym-bonus">🔥</em>}
+                    ✓ Ödendi · 🏋️ {trainingSlots[pos].gymName}
+                    {trainingSlots[pos].bonus && <em className="futbol-gym-bonus">🔥 +%10</em>}
                   </span>
                 )}
               </p>
               {!slotPaid(pos) ? (
-                <HoldButton className="futbol-slot-pay" disabled={!gymSel || busyId === `pay_${pos}`} onDone={() => paySlot(pos)}>
-                  🔒 <span className="gold-coin-icon" style={{ width: 12, height: 12 }} /> {gymSel ? gymPriceOf(gymSel).toLocaleString('tr-TR') : '—'}
-                </HoldButton>
+                <button className="futbol-slot-pay" disabled={!gymSel || busyId === `pay_${pos}`} onClick={() => paySlot(pos)}>
+                  {busyId === `pay_${pos}` ? (
+                    'Ödeniyor…'
+                  ) : gymSel ? (
+                    <>
+                      Öde — <span className="gold-coin-icon" style={{ width: 12, height: 12 }} /> {gymPriceOf(gymSel).toLocaleString('tr-TR')}
+                    </>
+                  ) : (
+                    'Önce salon seç'
+                  )}
+                </button>
               ) : occupant ? (
                 <div className="futbol-training-row">
                   <FutbolPlayerAvatar playerId={occupant.id} position={occupant.position} size={34} />

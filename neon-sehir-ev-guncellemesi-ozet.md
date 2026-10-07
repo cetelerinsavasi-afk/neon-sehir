@@ -1,3 +1,214 @@
+# v77 — Faz 5 sonrası istekler
+
+- **Canlı maç sahası:** maç izlerken top gerçek zamanlı akıyor; 6'şar oyuncu topu takip ediyor. Atakta top rakip yarıya iniyor, ceza sahası kızarıyor ("⚡ Takım atakta"), şut çıkıyor: **GOOOL!** (ağlar sallanır, saha parlar, golü atan ve asist) · **KURTARIŞ** · **DİREK** (direk sararır) · **AUT** · **BLOK**. Görsel tamamen zaman çizelgesinden üretilir; sonucu değiştirmez, herkes aynı anı görür. Bitmiş maçlarda **▶ Maç özetini izle** (~15 sn hızlı tekrar, skor ve anlatım da tekrar dakikasına göre). Anlatımda isabetsiz şutlar çeşitlendi (direkten döndü / auta çıktı / defansa çarptı).
+- **Takımdaki futbolcuya teklif:** takımlar başka takımdaki futbolcuya da teklif gönderebilir. Futbolcu kabul ederse transfer olur: eski sözleşme biter, birikmiş maaş borcu eski takımın borcu olarak kalır; form/sakatlık/güç taşınır. Maç saatinde (18:00–19:00) transfer kabul edilemez. Takımdayken ilana çıkılamaz. Transfer › Futbolcular listesinde başka takımdakiler "👕 takım" ile görünür.
+- **Botların salon seçimi:** bonuslu salonu hesaba katan "etkin fiyat" — ama kasası o salona yetmeyen bot takım en ucuz salona gider.
+- **Tüm Çeteler sohbeti** yeni mesajda alt çubuktaki "Çeteler" noktasını da yakar.
+- Testler: 253.
+
+Yayınlama: `firebase deploy --only functions:futbolProAction,functions:resolveFutbolMatchdayReveal` + web.
+
+---
+
+# v77 — Faz 5: Gerçek futbolcular, transfer, maaş, maç istatistikleri
+
+**Futbolcu olmak**
+- Spor salonunda 200 güce ulaşan oyuncu **maaşlı futbolcu** sayılır. Takımı yoksa ilana koymasa da Takımım › Transfer › 🧑 Futbolcular listesinde görünür.
+- Yeni sekme **Futbol › 🏃 Futbolcu**: güç, mevki, 200'e ilerleme; takımsızken 📢 ilan (maaşını kendin koy) ve 📨 gelen teklifler (24 saat, ✓ basılı tut / ✕).
+
+**Takım tarafı (Takımım › Transfer)**
+- 🧑 Futbolcular: ilandakiler istediği maaşla **✍️ İmzala** (basılı tut); diğerlerine **📨 Teklif** (maaş seç, 24 saat geçerli, geri çekilebilir).
+- 👤 Sözleşmeliler: maaş, borç, zam isteği (✓/✕), 💸 doğrudan zam, ✂️ fesih. Eski futbolculara kalan borç uyarısı.
+- Teklif/imza/zam/fesihi takımı yöneten yapar (menajer varsa menajer, yoksa aktif başkan). Menajer kendi takımında oynayabilir.
+
+**Sözleşme ve maaş**
+- Süre sınırı yok; bir taraf feshedene kadar sürer. 18:00–19:00 maç saatinde fesih yok. Fesihten sonra aynı takıma bir sonraki 19:00'dan sonra dönülebilir.
+- Maaş her gün **19:00**'da: menajerli takımda kasadan, başkan yönetiyorsa başkanın altınından (transfer desteğinden ödenmez). Yetmezse kalan **borç** birikir ve sonraki 19:00'da maaşla birlikte istenir (menajer maaşı gibi). Devlete borcu olan futbolcunun maaşının yarısı borca gider. Kesinti yok.
+- Fesihte kalan borç **takımın borcu** olur; kasaya/başkana para gelince (saatlik + 19:00) otomatik ödenir.
+- Takım sahipsiz kalıp bota düşerse sözleşme 19:00'da son maaşla biter.
+- Zam: futbolcu ister, yönetici kabul/ret eder; yönetici kendiliğinden de artırabilir (düşüremez).
+- Maaş bandı: günlük 1.000 – 50.000.
+
+**Takımdaki gerçek futbolcu**
+- Takımın oyuncu listesine girer (yaş sabit 24, değer 0). Satılamaz, ilana konamaz, yaşlanmaz/silinmez, gençleştirilmez; minimum kadro sayımına girmez. Kadro elden alınsa bile silinmez (19:00'da son maaşla ayrılır).
+- Gelişim takım kurallarıyla (antrenman 0,1–4 ×🔥, maç 0,1–2); güç futbolcu profiline de yansır. Takımdayken salonda bireysel antrenman yok.
+
+**Maç istatistikleri**
+- Her golün sahibi ve (%70) asisti belirlenir — skor değişmez. Forvet golü forvetten, orta saha golü orta sahadan, serbest atak herkesten (güçlüye daha çok şans).
+- Maç puanı 6,0'dan başlar (3–10): gol +1, asist +0,6, galibiyet +0,5 / beraberlik +0,1 / mağlubiyet −0,3, gol yemeden: kaleci +1, defans +0,7; kaleci kurtardığı her şut +0,2, yediği her gol −0,4 (defans −0,2). En yüksek puan **maçın yıldızı**.
+- Maç anlatımında golü atan ve asist yapan görünür.
+- **Ligler › Oyuncular**: ⚽ Gol Kralı · 🎯 Asist · ⭐ Yıldızlar · 📈 Form (en az 5 maç, puan ortalaması) · 🧤 Kale Bekçisi · 🛡️ Duvar. Sadece lig maçları; her sezon sıfırlanır. Gerçek oyuncular 👤 ile.
+- Şampiyonluk kutlamasında 👑 Gol Kralı, 🎯 Asist Kralı ve ⭐ Sezonun Yıldızı takımlarıyla.
+
+**Gün sonu kartı (Futbolcu sekmesi)**
+- Bugün maç mı (lig/kupa), antrenman mı, yedek mi; skor, kısa cümle ("2 gol attın, 1 asist yaptın. Maçın yıldızı sensin!"), maç puanı halkası, ⚡ güç değişimi, form, sıralamadaki yerin (⚽ #2 · 9 gol, 🎯 #2 · 3 asist, ⭐ #1 · 4 yıldız) ve sezon özeti.
+- Rehber › Futbol Takımı › **Sahaya Çık** sayfası eklendi.
+
+**Teknik**
+- Yeni: `functions/futbolPro.js` (`futbolProAction` callable: proList, offerSend, offerCancel, offerRespond, sign, raiseRequest, raiseRespond, raiseSet, terminate; 19:00 `paySalaries` + `settleTeamDebts`; saatlik `expireOffers`; maç kaydı `recordLeagueMatch`, `recordTraining`, `seasonAwards`).
+- Koleksiyonlar: `futbolPlayers/real_{uid}` (real:true), `futbolOffers/{takım}_{uid}`, `futbolPlayerStats/{sezon}_{oyuncu}`; `footballers` → teamId/teamName/listed/askSalary/lastDay/lastLeft; `futbolTeams.playerDebts`.
+- Maç belgelerine `ratings`, `motmId`, gol olaylarına `scorerId/Name`, `assistId/Name`.
+- Testler: `functions/scripts/futbolPro.test.mjs` (7) — toplam 252.
+
+Yayınlama:
+```
+firebase deploy --only firestore:rules,firestore:indexes
+firebase deploy --only functions
+```
+(+ web). Çok sayıda futbol fonksiyonu değiştiği için tüm fonksiyonları yayınlamak en güvenlisi. İndekslerin oluşması birkaç dakika sürebilir; o sırada Oyuncular sekmesi boş görünebilir.
+
+---
+
+# v77 — Ara güncelleme (Faz 4 sonrası istekler)
+
+- **Salon üyeliği süresi:** 24 saat yerine o günün 19:00'una kadar; 18:00–18:59 arası başlatılırsa 1 saat (18:59 → 19:59). Görev ağacında ⏳ saat görünür.
+- **Takım antrenmanı salonu kilitler:** bir takım (ya da bot) bir salona antrenman ücreti ödediyse salon o günün 19:00'una kadar kapatılamaz, gerekli aletleri kaldırılamaz.
+- **Takım antrenmanında 🔥 bonus:** salon seçicide bonuslu salonlar "🔥 +%10" rozetiyle; bonuslu salonda antrenman yapan oyuncular %10 fazla gelişir (botlar dahil). Botlar artık "etkin fiyata" bakar (bonuslu salonun fiyatı ÷ 1,1) — en ucuz değil, en verimli salona giderler.
+- **Bonus eşiği:** oyunun salonu da sayılır.
+- **Cafe/Bar limiti gizli:** halka kaldırıldı; 10.000 aşılmak istenince "🔒 Bir mekânda günde en fazla 10.000 altın harcayabilirsin." uyarısı.
+- **Rehber:** "🏪 İşletmeler" bölümü (5 sayfa) + Meslekler'de İşletmeci / Futbolcu kartları; Kulüp Odası › Antrenman salon ve 🔥 bilgisiyle güncellendi.
+- **Hepsini al:** İşletme aç ekranında envanterde olanlar 📦 ile sayılır, eksikler tek dokunuşla envantere alınır. Evin içinde Ayarlar › İşletmeler'de "🛒 Hepsini al" envanterdekileri yerleştirir, eksikleri sepete koyar ve satın alma onayını açar.
+- **Evini çevir:** "Satın al"a basınca işletme olmayan evin varsa önce "Evini spor salonu yapmak ister misin?" önerisi; istersen yine yeni ev alırsın.
+- **Çete bildirimleri:** oy verince oylama noktası hemen söner (eskiden sayfa yenilenene kadar kalıyordu). "Tüm Çeteler" sohbetine de yeni mesaj noktası; çete sekmesi noktaları nabız atıyor. Ortak sohbet tek başına alt çubuktaki noktayı yakmaz (çok hareketli).
+- Yeni house op'ları: `buyItems`, `bizIntent`. Testler: 245.
+
+Yayınlama: `firebase deploy --only functions:houseAction,functions:shopAction,functions:businessRollover,functions:payFutbolTrainingSlot,functions:resolveFutbolMatchdayReveal` + web.
+
+---
+
+# v77 — İşletmeler, Faz 4: Spor Salonu + takım antrenman ödemesi
+
+**Bireysel antrenman (takımsız gerçek oyuncu)**
+- Salona gir → üstte **🏋️ Üyelik** → mevki seç (🧤 🛡️ 🎯 ⚽) → **▶ öde**. Mevki takımda değilken değiştirilebilir; değiştirince 7 gün kilitli.
+- Ödeme emanette durur; sağ üstte **3 düğümlü görev ağacı** açılır (salondaki aletlerden rastgele 3'ü). Sıradaki düğüme dokun → karakter en yakın o alete yürür → **⭐** butonu → 10–15 sn'lik mini oyun (koşu bandı: sağ-sol adım · bench: basılı tut · boks torbası: ritimli vuruş · dambıl: yukarı kaydır). Başarısızlık yok; süre sunucuda da doğrulanır.
+- 3. görev bitince savaş zarı gibi **güç sayacı**: 200'ün altında +1–16, 200 ve üstünde +1–4. Başlangıç gücü 100, tavan yok. 200'ü geçince ⭐ parlar.
+- Günde 1 üyelik (gün 19:00'da döner). Üyelik o günün 19:00'una kadar geçerli; son saatte (18:00–18:59) başlatılırsa başlangıçtan itibaren 1 saat. Süresinde bitmeyen üyelik iade edilir. Bitince ödeme salon sahibine geçer ve ödeme gününün gelirine yazılır.
+- Takımdaki oyuncu bireysel antrenman yapamaz. Salon sahibi kendi salonunda günde 1 kez **ücretsiz** antrenman yapar (gelir yazılmaz).
+- Örnek: taban artış 8 çıktıysa bonuslu salonda 8,8 (her zaman 1–16 arası rastgele, ×1,1, tek ondalık).
+
+**Salon sahibi**
+- Ayarlar › Fiyatlar: günlük üyelik 500–2.000 (varsayılan 1.000). Envanter: aletler (🥊 🏃 🏋️ 💪). Rapor'da 🔥 satırı: dünkü kazanç vs eşik.
+- **🔥 +%10 bonus:** dünkü kazancı, en çok kazanan oyuncu salonunun yarısından az olan (ya da hiç kazanmayan) salon bugün bonuslu — üyelerin gelişimi ×1.1. Listede "🔥 +%10" rozeti.
+- **Yeni salon:** açıldıktan sonraki ilk 19:00'da geliri ne olursa olsun bonuslu olamaz (o gün tam değil). İkinci 19:00'da o tam günün gelirine bakılır. Rapor'da bu süre 🆕 ⏳ 19:00 olarak görünür.
+- Bitmemiş üyelik varken gerekli aletler kaldırılamaz.
+
+**Oyunun dükkânları artık en üstte sabit değil**
+- Neon Silah Mağazası, Neon Araba Galerisi, Neon Modifiye Garajı ve Neon Spor Salonu da oyuncu dükkânları gibi **dünkü kazancına göre** sıralanır (eşitlikte oyuncu dükkânı önde). Gelirleri sadece sıralama için kaydedilir: silah/araç satışı, atölye işleri, salon üyeliği ve takım antrenmanı.
+- Neon Spor Salonu her zaman açık, gerçek 3D mekân (houses/game_spor). Sabit 2.000, bonus almaz ama bonus eşiğine sayılır (en çok kazanan o ise eşik onun yarısı).
+
+**Futbol takım antrenmanı**
+- Antrenman kutusuna oyuncu koymadan önce o mevki için salon seçilip ücret ödenir (🔒 fiyat). Menajerli takımda kasadan, değilse başkanın altınından; transfer desteğinden ödenemez. Ödenmemiş kutuya oyuncu konmaz (`slot-unpaid`). Ücret 19:00'a kadar geçerli.
+- Bot takımlar: kasada para varsa en ucuz salona öder (birden fazla en ucuz varsa sırayla dağıtılır); para yoksa antrenman yok.
+
+**Teknik**
+- Yeni koleksiyon `gameVenues/{tür}` (oyunun dükkânının sırası; herkes okur). Oyunun gelirleri `businessDaily/game_{tür}_{gün}`.
+- Yeni: `functions/gym.js` (shopAction op'ları: gymEnsureGame, gymPrice, gymStart, gymStep, gymStepDone, footballerPosition). Koleksiyonlar: `footballers/{uid}` (güç, mevki), `gymMemberships/{uid}_{gün}`.
+- Yeni callable: `payFutbolTrainingSlot`. `addFutbolTraining` ödenmemiş kutuyu reddeder. `businessRollover` saatlik: spor bonusunu yazar + süresi dolan üyelikleri iade eder.
+- Testler: `functions/scripts/gym.test.mjs` (5 test) — toplam 243 test geçiyor.
+
+Yayınlama:
+```
+firebase deploy --only firestore:rules
+firebase deploy --only functions:shopAction,functions:houseAction,functions:businessRollover,functions:buyWeapon,functions:buyVehicle,functions:payFutbolTrainingSlot,functions:addFutbolTraining,functions:resolveFutbolMatchdayStart,functions:resolveFutbolMatchdayReveal
+```
++ web.
+
+---
+
+# v77 — İşletmeler, Faz 3: Cafe / Bar / İnternet Kafe / Piyano
+
+**Cafe ve Bar**
+- **Menü** = mekândaki dolapların verdiği yiyecek/içecekler (Kafe Bar Tezgahı, Pasta Vitrini, İçecek Dolabı, Buzdolabı, Bar Tezgahı, Kafe Masası, Dondurma Dolabı…). Ne kadar farklı mobilya, o kadar geniş menü; Pasta Vitrini pasta + kurabiye verir.
+- Fiyat: varsayılan 100, 10–1.000 (Ayarlar › Fiyatlar). Envanter sekmesinde menüyü oluşturan dolaplar görünür.
+- Mekâna girince üstte **🍽️ Menü**; dokununca anında alınır, ürün eldeki ürün olur (2 dk, ısmarlanabilir; oyundaki etkisi aynı). Dolaba dokunmak da menüyü açar — işletmede yiyecek/içecek müşteriye ücretsiz değil (sahip bedava alır).
+- **Günlük sınır:** bir oyuncu bir mekânda günde en fazla 10.000 altınlık alışveriş yapar (menüde dolan halka; dolunca ürünler gri + 🔒). Başka mekânda ayrı sayılır.
+- Altın yetmezse sayaç yanıp söner, ürün sarsılır. Fiyat değiştiyse etiket parlar.
+
+**İnternet Kafe**
+- Sahip tüm cihazlar için tek dakika ücreti belirler (50–500, varsayılan 100). Üst buton yok: cihaza dokun → öde → oyna.
+- İlk 60 sn ödenir; ödenen süre oyuncu + mekân çiftine bağlı kredidir ve gerçek zamanda akar. Başka cihaza geçmek ya da çıkıp gelmek yeniden ödetmez. Süre bitince oyuncu bir cihazda oyundaysa yeni 60 sn çekilir, değilse çekilmez. Fiyat değişirse ödenmiş kredi eski fiyatla biter. Altın bitince oyun kapanır.
+- **Kredi halkası** HUD'da (mekân dışında da) ve mekânın üst çubuğunda; altın bir sonraki dakikaya yetmiyorsa sarı.
+- Kapasite: İnternet Kafe İstasyonu ve Konsol & TV 2 kişi, Oyuncu Bilgisayarı ve Atari 1 kişi; cihaz düğmesinde 👤 doluluk + dakika ücreti, doluysa soluk + silüet.
+- Kredi sürerken (müşteri çıkmış olsa bile) gerekli mobilyalar kaldırılamaz.
+
+**Piyano** (her evde ve işletmede)
+- Piyanoya otur → **🎹 Çal**: 12 tuşlu klavye, tuş sıklığı sınırlı. Aynı anda tek kişi çalar; başkası çalıyorsa "Çal" soluk + 👤. Mekândaki herkes duyar; dinleyenlerde "🎹 ♪ isim" rozeti ve 🔇 sessize alma. Ödül/bahşiş yok.
+- Notalar Realtime Database'den gider (Firestore'da her nota ücretli yazma olurdu).
+
+**Teknik**
+- Yeni: `functions/venue.js` (shopAction op'ları: menuPrices, menuBuy, netPrice, netStart, netTick, netLeave — ayrı fonksiyon yayını yok). Koleksiyonlar: `netSessions` (cihaz doluluğu/kredi), `bizSpend` (günlük sayaç, saatlik temizlenir).
+- `houseAction take`: cafe/bar işletmesinde müşteriye yiyecek-içecek kapalı (`biz-menu`).
+- Realtime Database: `piano/{houseId}` kuralları (`database.rules.json`).
+- Testler: `functions/scripts/venue.test.mjs` (5 test) — toplam 237 test geçiyor.
+
+Yayınlama:
+```
+firebase deploy --only firestore:rules,database
+firebase deploy --only functions:shopAction,functions:houseAction,functions:businessRollover
+```
++ web. (Realtime Database kurulu değilse piyano sadece çalan kişide ses verir.)
+
+---
+
+# v77 — İşletmeler, Faz 2: Silahçı / Modifiye Garajı / Araba Galerisi
+
+**Tamir ve geliştirme artık sadece Atölye'de** (profilden ve soygun ekranından kaldırıldı; profilde ömür ve ⬆ "geliştirilebilir mi" hücreleri görünür). Silahçı: silah tamiri + geliştirme · Modifiye: araç tamiri + vites/depo geliştirme.
+- **Oyunun dükkânları her zaman açık:** Silah Mağazası tezgahında 🔫 / 🛠️ sekmesi, Modifiye Garajı'nda Atölye. Fiyat: malzeme %100 + işçilik %30 (Amazor fiyatına göre; tamir malzemesi başına 10 + 3 = 13), sınırsız malzeme.
+- **Oyuncu dükkânı:** sahip malzeme başına fiyat belirler — malzeme %70–100, işçilik %10–30 (kaydırıcıda ★ oyunun fiyatı). Dükkâna malzemeyi kendi envanterinden koyar / geri alır.
+- **Atölye ekranı (yazısız):** 🔧 / ⬆ sekmeleri, ürün kartı (ömür hücreleri, tamirle dolacak kısım parlar; gelişim basamakları, sıradaki nabız atar — araçta ⚙️ vites / ⛽ depo seçilir), malzeme çubuğu (sol dükkânın, sağ benim; %0/50/100'de yapışır; yetmeyen taraf kilitli ve taralı), kilitli işçilik + toplam + tek onay. İki tarafta da yetmiyorsa çubuk kırmızı taralı ve 🚪★ oyunun dükkânına götürür. Altın yetmezse sayaç yanıp söner, toplam sarsılır. Fiyat onay anında değiştiyse fiyatlar parlar, yeniden onay istenir.
+  - İşçilik her adet için zorunlu; müşteri kendi malzemesini kullanırsa o kısım için sadece işçilik öder. **Müşterinin malzemesi harcanır, kimseye geçmez.** Dükkânın malzemesi işletme envanterinden düşer.
+  - Oyuncu dükkânında işlem için dükkânda olmak gerekir (sahip olmasa da olur). Sahip kendi dükkânında ücret ödemez.
+  - Stok aynı işi bir daha karşılayamayacak kadar azalınca sahibin ⚙️'ünde kırmızı nokta + günde en fazla 1 toplu SMS.
+- **Vitrin (silahçı: en fazla 10 silah · galeri: en fazla 10 araç):** Ayarlar › Envanter'den vitrine koy (fiyat bandı 2. el ile aynı fonksiyon). Dükkân ilanı = 2. el ilanı (2. El Pazarı'nda da görünür). Müşteri dükkânda **🔫 / 🚗 Satılık** ile görür ve satın alır; satış dükkânın raporuna "satış" olarak girer.
+  - Vitrindeki ürün kilitlidir (kullanılamaz; profilde soluk + 🔒) ve **00:00'da ömrü azalmaz**.
+  - İlan 7 günde düşer ya da 2. el uygulamasından kaldırılırsa ürün vitrinde kalır, sahip yeniden ilana koyar (cezasız).
+  - **Vitrinden geri çek:** ömür −1, ürün 00:00'a kadar tekrar konamaz (basılı tutarak; son ömür hücresi kırık görünür). **⚡ Anında sat:** 2. el anında satışla aynı ödeme + sistem ilanı.
+  - **İşletme kapanırsa** vitrindeki ürünler sahibine döner — geri çekmekle aynı: ömür −1, bugün tekrar konamaz; sonra normal yaşlanır. Kapanış uyarısı bunu gösterir (🔫/🚗 sayısı + kırık hücre), sahip vazgeçebilir. Malzemeler cezasız döner.
+  - Polisin elinde en az 1 kullanılabilir silah kalmalı (2. el kuralı vitrinde de geçerli). Ömrü 0 ürün konamaz.
+- Onboarding görev 19: "Silahçıda silahını geliştir".
+
+**Teknik**
+- Yeni: `functions/itemRules.js` (ömür/tamir/geliştirme/Amazor/Atölye bantları/2. el bandı — index.js ve istemci ortak; değerler değişmedi), `functions/shop.js` (`shopAction`: workshop, stock, prices, vitrinAdd/List/Unlist/Remove/InstantSell). `createListing`/`instantSellListing` fiyat bandını artık `itemListingBand`'den alıyor (aynı formül).
+- Kapatılan uçlar: `upgradeVehicle`, `upgradeWeapon`, `repairItem` (eski istemciler işçiliksiz işlem yapamasın).
+- `dailyReset` vitrindeki ürünün ömrünü düşürmez; `expireOldMarketplaceListings`/`cancelListing` dükkân ilanında ürünü vitrinde bırakır; `buyListing` vitrin izini temizler ve dükkân raporuna yazar.
+- Testler: `functions/scripts/shop.test.mjs` (9 test) — toplam 232 test geçiyor. Önizleme: `/biz-app.html?type=silahci` (müşteri → Ali'nin Yeri → Atölye), `/biz-app.html?type=silahci&mine=1` (sahip).
+
+Yayınlama:
+```
+firebase deploy --only functions:shopAction,functions:houseAction,functions:businessRollover,functions:upgradeVehicle,functions:upgradeWeapon,functions:repairItem,functions:dailyReset,functions:expireOldMarketplaceListings,functions:cancelListing,functions:buyListing,functions:createListing,functions:instantSellListing
+```
++ web. Kural/indeks değişikliği yok.
+
+---
+
+# v77 — İşletmeler, Faz 1: Ev → İşletme dönüşümü
+
+**Haritada:** Spor Salonu, Cafe, Bar, İnternet Kafe, Silah Mağazası, Araba Galerisi, Modifiye Garajı → o türdeki açık dükkânlar (ad, sahibi, içerideki kişi sayısı). Sıra dünkü kazanca göre (en çok kazanan üstte; kazanç gösterilmez, sunucu sadece sırayı yazar). Silah/Galeri/Modifiye listesinin en üstünde oyunun kendi dükkânı (★ 7/24) — eskisi gibi açılır.
+- Üstte **"[tür] aç"**: ev fiyatı (500.000) + gerekli mobilyaların en ucuz seçenekle maliyeti + toplam + bakiye. Satın al → ev alınır ve içine girilir. Mobilyalar tamamlanana kadar orası **ev**dir.
+- Evdeyken **⚙️ Ayarlar › 🏪 İşletmeler**: 7 tür, her birinin gerekli mobilyaları (yerleşen ✓, eksik soluk, sayı x/y). Hepsi tamamsa **Aç**. Bir ev aynı anda tek işletme. Haritadan "aç" ile alınan evde şartlar tamamlanınca ⚙️ nabız atar.
+- İşletme açılınca: ev listesinden çıkar, kendi türünün listesine geçer, **her zaman herkese açık** olur. Ayarlar'da "Evin türü" yerine **Fiyatlar / Envanter / Rapor** (rapor: bugün/dün gelir, müşteri, gelir türleri, en çok satan, kullanılan malzeme — sadece sahibi görür). Fiyatlar ve envanter içeriği Faz 2-4'te dolar.
+- **Mobilya taşımak serbest.** Gerekli bir mobilyayı envantere kaldırmak:
+  - İçeride müşteri varsa ya da ödenmiş/bitmemiş hizmet varsa (spor/internet, sonraki fazlar) → 🔒 kaldırılamaz (kişi sayısı / bitiş saati görünür).
+  - Yoksa uyarı: "[tür] kapanır" + sahibine dönecekler → **basılı tutarak** onay. İşletme kapanır, işletme envanterindeki her şey sahibin envanterine döner. Mobilyayı geri koyunca hemen yeniden açılabilir.
+  - İşletmeler panelinden de basılı tutarak kapatılabilir (aynı kilit kuralı).
+- Gerekli mobilyalar (`functions/businessCatalogData.js`): "veya" seçeneklerinin hepsi şartı sağlar (ör. Çelik/Altın Kasa, herhangi bir araba mobilyası; motor sayılmaz). Deneme eşyalar sayılmaz.
+- Günlük gider/vergi yok; günlük rapor `businessDaily` koleksiyonunda tutulur (ileride vergi için).
+
+**Teknik**
+- Ev belgesi: `biz {type, openedAtMs}`, `bizType`, `bizIntent`, `bizRank`, `bizLockUntilMs`. Yeni koleksiyonlar: `businessInventories/{houseId}` (müşteriler okur), `businessDaily/{houseId}_{gün}` (sadece sahibi okur), `businessRollups` (istemciye kapalı).
+- `houseAction` yeni op'lar: `bizOpen`, `bizClose`, `bizStatus`; `save`/`checkout` gerekli mobilyayı kaldırınca `biz-required` / `biz-locked` ile reddeder, istemci onay verince `allowBizClose` ile kapatır.
+- Yeni zamanlanmış fonksiyon `businessRollover` (saatlik, her tür/gün için bir kez): 00:00 sınırlı türlerin sırası 00:05'te, spor salonunun (19:00 futbol günü) 19:05'te yazılır.
+- Testler: `functions/scripts/business.test.mjs` (7 test) — toplam 223 test geçiyor. Önizleme: `npm run preview:gangs` → `/biz-app.html?type=spor` (liste), `/biz-app.html?type=spor&mine=1` (kendi evin, şartlar hazır).
+
+Yayınlama (sırayla):
+```
+firebase deploy --only firestore:rules
+firebase deploy --only functions:houseAction,functions:businessRollover
+```
++ web. Kurallar yayınlanmadan web yayınlanırsa Rapor/Envanter sekmeleri boş görünür (başka bir şey bozulmaz).
+
+---
+
 # v76 — Başarı farkı + ATM
 
 1. **Başarı ödül farkı (tek seferlik):** ödüller artırılmadan önce kazanılmış başarıların farkı (yeni − eski) bir kez yüklenir: Banka soy +1, Sixtagram 100 beğeni +1, Cabrio şampiyonu +2, Banka soyguncusu yakala +2, Mafya Babası +2, İstihbarat Başkanı +1, Süper Kupa +1 (İmam, Piyango, 1. Lig şampiyonu zaten aynı). Oyuncuya tek SMS gider.
@@ -306,3 +517,14 @@ Yayınlama: `firebase deploy --only functions` (houseAction fiyat, gangAction il
 - Sunucu: `functions/houses.js` + `functions/scripts/houses.test.mjs`.
 - Önizleme (sadece geliştirme): `npm run preview:gangs` sonra `/house.html` (sadece motor) ve `/house-app.html` (tam ekran, sahte misafirle).
 - Satışa geçerken: fiyat listesi sunucuya taşınmalı, `save` sadece sahip olunan eşyalara izin vermeli (houses.js'teki not).
+
+## Anlaşılırlık güncellemesi (v77 son)
+
+- **Kısa ve öz yazılar:** İşletme ekranlarındaki uzun açıklamalar kaldırıldı; her yerde sadece gereken kısa yazı var ("Dakika ücreti", "Vitrine silah ekle", "Yeterli malzeme yok" gibi). Σ yerine "Toplam", 👛 yerine "Cebindeki altın".
+- **Tamir / geliştirme:** Seçili ürünün ömrü, kalan tamir hakkı, geliştirmeye açık/kapalı olduğu, gereken malzeme, envanterindeki ve dükkândaki malzeme, malzeme ücreti + işçilik + toplam tek ekranda yazıyla.
+- **Ev › Ayarlar › İşletmeler:** Gerekli mobilyaların resmi, adı ve fiyatı; iki seçenekli olanlarda iki seçenek de görünür. "Eksikleri al" artık hemen satın almaz: alınacaklar fiyatlarıyla listelenir, onaydan sonra alınır. Haritadaki "… aç" ekranı da aynı.
+- **Dolu yerler:** Oturulamayan koltukta / dolu cihazda / çalınan piyanoda "Dolu" yazar. Piyano bağlantı yavaşsa da çalar.
+- **Spor salonu mini oyunları:** 3-2-1 başlangıç; koşu bandında sol-sağ ritim ve hız göstergesi, bench'te zamanlama ibresi, boks torbasında yanan hedefler, dambılda sol/sağ kol; seri sayacı ve "Harika!" geri bildirimleri.
+- **Mevki:** Artık Futbol › Futbolcu ekranından seçilir. Günde 1 kez değişir; 200 güce ulaşınca kalıcı olur. Takımdayken değişmez.
+- **Takım antrenmanı:** Spor salonu seçimi açılır/kapanır bir panelde, seçili salon üstte görünür. Ödeme basılı tutmadan tek dokunuşla yapılır.
+- **Transfer:** "Oyuncu Sat" yanında "💰 Maaşlı futbolcular" butonu: oyundaki 200+ güçlü tüm futbolcular (takımlı/takımsız) listelenir, teklif gönderilir ya da ilandakiler imzalanır. Sözleşmeli futbolcular Transfer'den kaldırıldı; Takımım › Takımın'da, sadece sözleşmeli futbolcu varsa görünür.

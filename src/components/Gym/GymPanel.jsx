@@ -3,119 +3,125 @@ import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useFootballer, useMyGymMembership } from '../../hooks/useGym';
 import { shopAction } from '../../services/gameActions';
-import { gymPriceOf } from '../../../functions/gym.js';
+import { gymPriceOf, gymDeadlineMs } from '../../../functions/gym.js';
 import { futbolDayKey } from '../../../functions/businessCatalogData.js';
-import { POS, EQUIP, POSITION_LOCK_MS } from './gymMeta';
+import { bizErrText } from '../../lib/bizErrors';
+import { POS, EQUIP } from './gymMeta';
+import '../../styles/bizui.css';
 import './Gym.css';
 
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
+const f1 = (v) => Number(v || 0).toFixed(1).replace('.0', '');
+const hhmm = (ms) => new Date(ms).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 
-// v77 — "Üyeliği başlat": mevki seç → öde → görev ağacı açılır
+// v77 — Spor salonu üyeliği: mevki seç → öde → 3 görevlik antrenman başlar.
 export default function GymPanel({ houseId, houseDoc, onClose, onStarted }) {
   const { user } = useAuth();
   const { player } = usePlayer();
   const { fb } = useFootballer(user?.uid);
   const { active, today } = useMyGymMembership();
-  const [pos, setPos] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [cue, setCue] = useState(null);
+  const [msg, setMsg] = useState(null);
   const isOwner = !houseDoc?.bizGame && houseDoc?.ownerUid === user?.uid;
-  // sahip kendi salonunda günde 1 kez ücretsiz
-  const price = isOwner ? 0 : gymPriceOf(houseDoc);
+  const price = isOwner ? 0 : gymPriceOf(houseDoc); // sahip kendi salonunda günde 1 kez ücretsiz
   const gold = Number(player?.gold || 0);
   const bonus = !houseDoc?.bizGame && houseDoc?.gymBonusDay === futbolDayKey(Date.now());
-  const position = pos || fb?.position || null;
-  const lockedUntil = fb?.position ? Number(fb.positionChangedAtMs || 0) + POSITION_LOCK_MS : 0;
-  const posLocked = Boolean(fb?.teamId) || (fb?.position && lockedUntil > Date.now());
+  const position = fb?.position || null;
   const inTeam = Boolean(fb?.teamId);
   const doneToday = today && today.status === 'done';
   const elsewhere = active && active.gymId !== houseId;
   const poor = gold < price;
-  const flash = (kind) => setCue({ kind, n: Date.now() });
+  const power = Number(fb?.power || 100);
+  const deadline = gymDeadlineMs(Date.now());
 
   const start = async () => {
-    if (!position) return flash('pos');
-    if (poor) return flash('gold');
+    if (!position) return setMsg('Önce Futbol › Futbolcu ekranından mevkini seç.');
+    if (poor) return setMsg(`Altının yetmiyor: ${fmt(price)} altın lazım, cebinde ${fmt(gold)} var.`);
     setBusy(true);
+    setMsg(null);
     try {
-      const r = await shopAction({ op: 'gymStart', houseId, expect: price, ...(position !== fb?.position ? { position } : {}) });
+      const r = await shopAction({ op: 'gymStart', houseId, expect: price });
       onStarted?.(r);
     } catch (err) {
-      const m = String(err?.message || '');
-      flash(m === 'gold' ? 'gold' : m.startsWith('price-changed') ? 'price' : m.startsWith('position') ? 'pos' : 'err');
+      setMsg(bizErrText(err));
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="gy-panel" onClick={(e) => e.stopPropagation()}>
-      <div className="gy-head">
-        <b>🏋️</b>
-        {bonus && <span className="gy-bonus">🔥 +%10</span>}
-        <span className={`gy-wallet${cue?.kind === 'gold' ? ' cue-blink' : ''}`} key={cue?.kind === 'gold' ? cue.n : 'w'}>
-          <span className="gold-coin-icon" style={{ width: 14, height: 14 }} /> {fmt(gold)}
-        </span>
-        <button className="wk-x" onClick={onClose}>
+    <div className="bz gy-panel" onClick={(e) => e.stopPropagation()}>
+      <div className="bz-head">
+        <div className="bz-head-main">
+          <h3>🏋️ Spor salonu</h3>
+        </div>
+        <button className="bz-x" onClick={onClose}>
           ✕
         </button>
       </div>
+      <div className="bz-wallet">
+        <span>Cebindeki altın</span>
+        <b>
+          <span className="gold-coin-icon" style={{ width: 14, height: 14 }} /> {fmt(gold)}
+        </b>
+      </div>
+      {bonus && <p className="bz-ok">🔥 Bonuslu salon: +%10 güç</p>}
 
-      <div className="gy-power">
-        <span>⚡</span>
-        <b>{fb ? Number(fb.power).toFixed(1).replace('.0', '') : 100}</b>
-        <i className="gy-power-bar">
-          <i style={{ width: `${Math.min(100, ((fb?.power || 100) / 200) * 100)}%` }} />
-        </i>
-        <span className={Number(fb?.power || 100) >= 200 ? 'cue-glow' : 'gy-dim'}>⭐ 200</span>
+      <div className="bz-sec">
+        <p className="bz-sec-title">⚡ Gücün</p>
+        <div className="gy-power">
+          <b>{f1(power)}</b>
+          <i className="gy-power-bar">
+            <i style={{ width: `${Math.min(100, (power / 200) * 100)}%` }} />
+          </i>
+          <span className={power >= 200 ? 'cue-glow' : 'gy-dim'}>hedef 200</span>
+        </div>
       </div>
 
-      <div className={`gy-positions${cue?.kind === 'pos' ? ' cue-shake' : ''}`} key={cue?.kind === 'pos' ? cue.n : 'p'}>
-        {Object.entries(POS).map(([k, v]) => {
-          const on = position === k;
-          const lock = posLocked && fb?.position !== k;
-          return (
-            <button key={k} className={`gy-pos${on ? ' on' : ''}${lock ? ' cue-dim cue-lock' : ''}${!position ? ' cue-pulse' : ''}`} disabled={lock} onClick={() => setPos(k)} title={v.name}>
-              <span>{v.icon}</span>
-              <small>{v.name}</small>
-            </button>
-          );
-        })}
+      <div className="bz-row">
+        <span>⚽ Mevkin</span>
+        <b>{position ? `${POS[position].icon} ${POS[position].name}` : 'seçilmedi'}</b>
       </div>
-      {posLocked && !inTeam && fb?.position && (
-        <p className="gy-mini">
-          🔒 ⏳ {new Date(lockedUntil).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
-        </p>
-      )}
+      {!position && <p className="bz-warn">Mevkini Futbol › Futbolcu ekranından seç.</p>}
+
+      <div className="bz-sec">
+        <p className="bz-sec-title">🎟️ Üyelik</p>
+        <div className="bz-row">
+          <span>Günlük ücret</span>
+          <b>{isOwner ? 'Ücretsiz (senin salonun)' : `${fmt(price)} altın`}</b>
+        </div>
+        <div className="bz-row">
+          <span>Geçerli</span>
+          <b>{hhmm(deadline)}&apos;a kadar</b>
+        </div>
+      </div>
 
       {inTeam ? (
-        <div className="gy-state cue-lock">⚽ 👕</div>
+        <p className="bz-note">⚽ Takımdasın; antrenmanını takımın yaptırır.</p>
       ) : doneToday ? (
-        <div className="gy-state done">
-          ✓ <b>+{today.result?.gain}</b> {today.result?.bonus && <span className="cue-glow">🔥</span>} <small>⏳ 19:00</small>
-        </div>
+        <p className="bz-ok">
+          ✓ Bugün yaptın: +{f1(today.result?.gain)} güç{today.result?.bonus ? ' 🔥' : ''}. Yeni hak 19:00&apos;da.
+        </p>
       ) : elsewhere ? (
-        <div className="gy-state cue-ring">
-          📍 {active.gymName} · {active.tasks.map((t, i) => (i < active.step ? '✓' : EQUIP[t].icon)).join(' ')}
-        </div>
+        <p className="bz-note">
+          📍 Üyeliğin <b>{active.gymName}</b> salonunda devam ediyor ({active.step}/{active.tasks.length}).
+        </p>
       ) : active ? (
-        <button className="gy-go" onClick={onClose}>
-          {active.tasks.map((t, i) => (i < active.step ? '✓' : EQUIP[t].icon)).join(' ')} ▶
-        </button>
+        <>
+          <p className="bz-note">
+            Görev {active.step}/{active.tasks.length} · sıradaki: {EQUIP[active.tasks[active.step]]?.name}
+          </p>
+          <button className="bz-btn gold wide" onClick={onClose}>
+            ▶ Antrenmana devam et
+          </button>
+        </>
       ) : (
-        <button className={`gy-go${poor || !position ? ' dim' : ''}${cue?.kind === 'gold' ? ' cue-shake' : ''}`} key={cue?.n || 'go'} disabled={busy} onClick={start}>
-          {busy ? '…' : (
-            <>
-              ▶ {isOwner ? '👑 0' : (
-                <>
-                  <span className="gold-coin-icon" style={{ width: 16, height: 16 }} /> {fmt(price)}
-                </>
-              )}
-            </>
-          )}
+        <button className="bz-btn gold wide" disabled={busy || !position} onClick={start}>
+          {busy ? 'Başlatılıyor…' : isOwner ? '▶ Başla — ücretsiz' : `▶ Başla — ${fmt(price)} altın`}
         </button>
       )}
-      {cue?.kind === 'price' && <p className="gy-mini cue-glow">💲 ↻</p>}
+      {!active && !doneToday && !inTeam && poor && <p className="bz-warn">{fmt(price - gold)} altın eksik.</p>}
+      {msg && <p className="bz-warn">{msg}</p>}
     </div>
   );
 }

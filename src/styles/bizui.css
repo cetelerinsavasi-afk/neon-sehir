@@ -1,0 +1,350 @@
+/* =============================================================================
+   v77 — İşletme ekranlarının ortak, YAZILI ve anlaşılır parçaları
+   (atölye, vitrin, menü, internet kafe, spor salonu, ayarlar, işletme aç)
+   Kural: her sayı bir etiketle gelir ("Cebindeki altın", "Toplam", "İşçilik"),
+   her engel bir cümleyle söylenir ("Yeterli malzeme yok: …").
+   ============================================================================= */
+.bz {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  color: var(--text, #e8edf6);
+}
+.bz-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.bz-head h3 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.2;
+}
+.bz-head p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  opacity: 0.7;
+}
+.bz-head-main {
+  flex: 1;
+  min-width: 0;
+}
+.bz-x {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+}
+.bz-wallet {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(255, 211, 77, 0.08);
+  border: 1px solid rgba(255, 211, 77, 0.25);
+  font-size: 13px;
+}
+.bz-wallet b {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 15px;
+}
+.bz-tabs {
+  display: flex;
+  gap: 6px;
+}
+.bz-tabs button {
+  flex: 1;
+  min-height: 42px;
+  padding: 0 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font-size: 14px;
+  font-weight: 700;
+}
+.bz-tabs button.on {
+  border-color: var(--neon-cyan, #19e8ff);
+  background: rgba(25, 232, 255, 0.14);
+  color: var(--neon-cyan, #19e8ff);
+}
+.bz-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.bz-sec-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--neon-cyan, #19e8ff);
+}
+.bz-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+}
+.bz-row > span:first-child {
+  opacity: 0.8;
+}
+.bz-row b {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  text-align: right;
+}
+.bz-row.total {
+  padding-top: 8px;
+  margin-top: 2px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.18);
+  font-size: 15px;
+}
+.bz-row.total > span:first-child {
+  opacity: 1;
+  font-weight: 800;
+}
+.bz-good {
+  color: #6dffa8;
+}
+.bz-bad {
+  color: #ff7a8f;
+}
+.bz-note,
+.bz-warn,
+.bz-ok {
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.bz-note {
+  background: rgba(25, 232, 255, 0.07);
+  border: 1px solid rgba(25, 232, 255, 0.22);
+}
+.bz-warn {
+  color: #ffd0d6;
+  background: rgba(255, 46, 90, 0.12);
+  border: 1px solid rgba(255, 46, 90, 0.45);
+}
+.bz-ok {
+  color: #c9ffe0;
+  background: rgba(109, 255, 168, 0.1);
+  border: 1px solid rgba(109, 255, 168, 0.4);
+}
+.bz-hint {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.7;
+  line-height: 1.4;
+}
+.bz-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 46px;
+  padding: 0 16px;
+  border-radius: 14px;
+  border: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: #071018;
+  background: linear-gradient(135deg, var(--neon-cyan, #19e8ff), #6dffa8);
+}
+.bz-btn:disabled {
+  filter: grayscale(0.8);
+  opacity: 0.5;
+}
+.bz-btn.ghost {
+  color: inherit;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+.bz-btn.gold {
+  background: linear-gradient(135deg, #ffd34d, #ffb547);
+}
+.bz-btn.danger {
+  color: #fff;
+  background: linear-gradient(135deg, #ff2e5a, #ff2e8c);
+}
+.bz-btn.wide {
+  width: 100%;
+}
+.bz-btn.sm {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 13px;
+  border-radius: 10px;
+}
+.bz-btns {
+  display: flex;
+  gap: 8px;
+}
+.bz-btns > * {
+  flex: 1;
+}
+.bz-gold {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.bz-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bz-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  font-size: 13px;
+}
+.bz-item.ok {
+  border-color: rgba(109, 255, 168, 0.35);
+}
+.bz-item.miss {
+  border-color: rgba(255, 46, 90, 0.35);
+}
+.bz-thumb {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  overflow: hidden;
+}
+.bz-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.bz-item-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.bz-item-main b {
+  font-size: 13px;
+}
+.bz-item-main small {
+  font-size: 11px;
+  opacity: 0.75;
+}
+.bz-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.08);
+}
+.bz-tag.ok {
+  color: #6dffa8;
+  background: rgba(109, 255, 168, 0.12);
+}
+.bz-tag.bad {
+  color: #ff8a9a;
+  background: rgba(255, 46, 90, 0.14);
+}
+.bz-tag.warn {
+  color: #ffd34d;
+  background: rgba(255, 211, 77, 0.12);
+}
+.bz-meter {
+  display: flex;
+  gap: 3px;
+}
+.bz-meter i {
+  flex: 1;
+  height: 9px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+}
+.bz-meter i.on {
+  background: #6dffa8;
+}
+.bz-meter i.gain {
+  background: rgba(109, 255, 168, 0.45);
+  outline: 1px dashed #6dffa8;
+}
+.bz-meter.low i.on {
+  background: #ffb547;
+}
+.bz-meter.crit i.on {
+  background: #ff5a7a;
+}
+.bz-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bz-field label {
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.85;
+}
+.bz-range {
+  width: 100%;
+  accent-color: var(--neon-cyan, #19e8ff);
+}
+.bz-range-ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  opacity: 0.7;
+}
+.bz-modal-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(2, 4, 10, 0.75);
+}
+.bz-modal {
+  width: min(440px, 100%);
+  max-height: 88dvh;
+  overflow-y: auto;
+  padding: 16px;
+  border-radius: 18px;
+  background: #0d1424;
+  border: 1px solid rgba(25, 232, 255, 0.3);
+}
+/* koyu zeminli ekranlardaki genel "button" renk kurallarını ez */
+.bz-btn:not(.ghost):not(.danger) {
+  color: #10131c;
+}

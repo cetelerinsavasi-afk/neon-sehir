@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import '../../styles/bizui.css';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useInteriorPresence } from '../../hooks/useInteriorPresence';
@@ -884,12 +885,12 @@ export default function WeaponShopWorldScreen({ onExit }) {
       {panel === 'weapon' && (
         <div className="ws-panel-backdrop" onClick={() => setPanel(null)}>
           <div className="ws-panel" onClick={(e) => e.stopPropagation()}>
-            <div className="wk-tabs ws-shop-tabs">
-              <button className={shopTab === 'buy' ? 'on' : ''} onClick={() => setShopTab('buy')} title="Satın al">
-                🔫
+            <div className="bz-tabs ws-shop-tabs">
+              <button className={shopTab === 'buy' ? 'on' : ''} onClick={() => setShopTab('buy')}>
+                🔫 Silah satın al
               </button>
-              <button className={shopTab === 'workshop' ? 'on' : ''} onClick={() => setShopTab('workshop')} title="Atölye">
-                🛠️
+              <button className={shopTab === 'workshop' ? 'on' : ''} onClick={() => setShopTab('workshop')}>
+                🛠️ Tamir / Geliştirme
               </button>
             </div>
             {shopTab === 'buy' ? <WeaponShopScreen /> : user ? <Workshop shop={{ kind: 'game', type: 'silahci' }} /> : <SignInPrompt message="Bunun için giriş yapmalısın." />}

@@ -7,33 +7,20 @@ import { POS_META, PRO_SALARY, fmt, pw, hoursLeft, proErrText } from './futbolPr
 import './FutbolPro.css';
 
 // =============================================================================
-// v77 Faz 5 — Takımım › Transfer: gerçek futbolcular
-//   👤 Sözleşmeliler: maaş, borç, zam isteği (✓/✕), doğrudan zam, fesih
-//   🧑 Futbolcular: takımsız 200+ güçlü oyuncular. İlandaysa istediği maaşla
-//      doğrudan imzala; değilse teklif gönder (24 saat geçerli).
+// v77 Faz 5 — gerçek (maaşlı) futbolcular
+//   ProContracts  (Takımım › Takımın): sözleşmeliler — maaş, zam, fesih.
+//                 Hiç sözleşmeli yoksa görünmez.
+//   ProPlayersList (Takımım › Transfer › "Maaşlı futbolcular"): oyundaki 200+
+//                 güçlü tüm futbolcular (takımlı/takımsız). İlandaysa imzala,
+//                 değilse teklif gönder (24 saat geçerli).
 //   Maaş her 19:00'da: menajerli takımda kasadan, başkan yönetiyorsa başkanın
 //   altınından. Transfer desteği kullanılmaz.
 // =============================================================================
 const SALARY_STEPS = [100, 1000, 10000];
 
-export default function FutbolProMarket({ team, readOnly }) {
-  const { contracts } = useTeamContracts(team.id);
-  const { pros: allPros } = useProList(true);
-  // kendi takımımızdakiler hariç; önce takımsızlar (ilandakiler en üstte), sonra başka takımlardakiler
-  const pros = allPros
-    .filter((p) => p.teamId !== team.id)
-    .sort((a, b) => Number(Boolean(a.teamId)) - Number(Boolean(b.teamId)) || Number(Boolean(b.listed && !b.teamId)) - Number(Boolean(a.listed && !a.teamId)) || b.power - a.power);
-  const { offers } = useTeamProOffers(team.id);
+function useProRun() {
   const [busy, setBusy] = useState(null);
   const [msg, setMsg] = useState(null);
-  const [offerFor, setOfferFor] = useState(null);
-  const [salary, setSalary] = useState(5000);
-  const [raiseFor, setRaiseFor] = useState(null);
-  const [raise, setRaise] = useState(0);
-  const offerByUid = Object.fromEntries(offers.map((o) => [o.uid, o]));
-  const debts = Object.entries(team.playerDebts || {}).filter(([, v]) => Number(v) > 0);
-  const debtTotal = debts.reduce((a, [, v]) => a + Number(v), 0);
-
   const run = async (key, payload, okText) => {
     setBusy(key);
     setMsg(null);
@@ -48,18 +35,27 @@ export default function FutbolProMarket({ team, readOnly }) {
       setBusy(null);
     }
   };
+  return { busy, msg, run };
+}
 
+// Sözleşmeli futbolcular — hiç yoksa hiçbir şey göstermez
+export function ProContracts({ team, readOnly }) {
+  const { contracts } = useTeamContracts(team.id);
+  const { busy, msg, run } = useProRun();
+  const [raiseFor, setRaiseFor] = useState(null);
+  const [raise, setRaise] = useState(0);
+  const debts = Object.entries(team.playerDebts || {}).filter(([, v]) => Number(v) > 0);
+  const debtTotal = debts.reduce((a, [, v]) => a + Number(v), 0);
+  if (!contracts.length) return null;
   return (
     <fieldset className="fp-market" disabled={readOnly}>
       {msg && <p className={`fp-msg${msg.ok ? ' ok' : ''}`}>{msg.text}</p>}
-
       <div className="fp-card">
         <p className="fp-title">
           👤 Sözleşmeli futbolcular <em className="fp-count">{contracts.length}</em>
         </p>
-        <p className="fp-hint">Maaş her gün 19:00'da {team.managerUid ? 'takım kasasından' : 'senin altınından'} ödenir; yetmezse borç birikir.</p>
-        {debtTotal > 0 && <p className="fp-pending">⚠️ Eski futbolculara borç: {fmt(debtTotal)} — para gelince otomatik ödenir.</p>}
-        {contracts.length === 0 && <p className="fp-hint">Kadronda gerçek futbolcu yok.</p>}
+        <p className="fp-hint">Maaş 19:00&apos;da {team.managerUid ? 'kasadan' : 'altınından'} ödenir.</p>
+        {debtTotal > 0 && <p className="fp-pending">⚠️ Eski futbolculara borç: {fmt(debtTotal)}</p>}
         {contracts.map((c) => {
           const pos = POS_META[c.position] || {};
           return (
@@ -106,10 +102,10 @@ export default function FutbolProMarket({ team, readOnly }) {
                     setRaise(Number(c.salary) + 1000);
                   }}
                 >
-                  💸
+                  💸 Zam
                 </button>
                 <HoldButton className="futbol-admin-reset fp-danger" ms={1400} disabled={Boolean(busy)} onDone={() => run(`t_${c.id}`, { op: 'terminate', uid: c.realUid }, `${c.name} ile yollar ayrıldı.`)}>
-                  ✂️
+                  ✂️ Feshet
                 </HoldButton>
               </div>
             </div>
@@ -117,12 +113,31 @@ export default function FutbolProMarket({ team, readOnly }) {
         })}
       </div>
 
+    </fieldset>
+  );
+}
+
+// Oyundaki 200+ güçlü futbolcular (takımlı ya da takımsız): teklif / imza
+export function ProPlayersList({ team, readOnly }) {
+  const { pros: allPros } = useProList(true);
+  // kendi takımımızdakiler hariç; önce ilandakiler, sonra takımsızlar, sonra takımlılar
+  const pros = allPros
+    .filter((p) => p.teamId !== team.id)
+    .sort((a, b) => Number(Boolean(a.teamId)) - Number(Boolean(b.teamId)) || Number(Boolean(b.listed && !b.teamId)) - Number(Boolean(a.listed && !a.teamId)) || b.power - a.power);
+  const { offers } = useTeamProOffers(team.id);
+  const { busy, msg, run } = useProRun();
+  const [offerFor, setOfferFor] = useState(null);
+  const [salary, setSalary] = useState(5000);
+  const offerByUid = Object.fromEntries(offers.map((o) => [o.uid, o]));
+  return (
+    <fieldset className="fp-market" disabled={readOnly}>
+      {msg && <p className={`fp-msg${msg.ok ? ' ok' : ''}`}>{msg.text}</p>}
       <div className="fp-card">
         <p className="fp-title">
-          🧑 Futbolcular <em className="fp-count">{pros.length}</em>
+          💰 Maaşlı futbolcular <em className="fp-count">{pros.length}</em>
         </p>
-        <p className="fp-hint">200+ güçlü oyuncular. 📢 ilandakiler kendi maaşıyla hemen imzalar; diğerlerine (başka takımdakiler dahil) teklif gönder, 24 saat geçerli.</p>
-        {pros.length === 0 && <p className="fp-hint">Şu an futbolcu yok.</p>}
+        <p className="fp-hint">200+ güç · teklifler 24 saat geçerli</p>
+        {pros.length === 0 && <p className="fp-hint">Şu an yok.</p>}
         {pros.map((p) => {
           const pos = POS_META[p.position] || {};
           const sent = offerByUid[p.uid];
@@ -169,7 +184,7 @@ export default function FutbolProMarket({ team, readOnly }) {
                   </HoldButton>
                 ) : (
                   <button className="futbol-admin-submit" onClick={() => setOfferFor(offerFor === p.id ? null : p.id)}>
-                    {sent ? '↻' : '📨'} Teklif
+                    {sent ? '↻ Teklifi güncelle' : '📨 Teklif ver'}
                   </button>
                 )}
               </div>

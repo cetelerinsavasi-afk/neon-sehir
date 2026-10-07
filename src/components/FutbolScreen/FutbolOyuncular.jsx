@@ -29,7 +29,7 @@ export default function FutbolOyuncular({ season }) {
         ))}
       </div>
       {b.minApps && <p className="fp-hint">En az {b.minApps} maç oynayanlar · maç puanı ortalaması</p>}
-      {loading && <p className="futbol-placeholder">…</p>}
+      {loading && <p className="futbol-placeholder">Yükleniyor…</p>}
       {!loading && rows.length === 0 && <p className="futbol-placeholder">Bu sezon henüz kayıt yok.</p>}
       <div className="fp-board">
         {rows.map((r, i) => (

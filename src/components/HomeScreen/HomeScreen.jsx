@@ -113,7 +113,7 @@ function WeaponCard({ weapon, locked = false }) {
         </span>
         <span className="home-item-stats">Güç: {weapon.power.toLocaleString('tr-TR')}</span>
         <LifeBar item={weapon} kind="weapon" />
-        <UpgradeCells slots={[lv >= 2, lv >= 3]} icons={['2', '3']} />
+        <UpgradeCells slots={[lv >= 2, lv >= 3]} kind="weapon" />
       </div>
     </div>
   );

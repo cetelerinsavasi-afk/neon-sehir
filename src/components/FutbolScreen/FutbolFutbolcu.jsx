@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFootballer } from '../../hooks/useGym';
 import { useRealContract, useMyProOffers, useCurrentFutbolSeason, usePlayerSeasonStats, useStatBoard } from '../../hooks/useFutbolPro';
-import { futbolProAction } from '../../services/gameActions';
+import { futbolProAction, shopAction } from '../../services/gameActions';
+import { futbolDayKey } from '../../../functions/businessCatalogData.js';
+import { bizErrText } from '../../lib/bizErrors';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import HoldButton from '../HoldButton/HoldButton';
 import { POS_META, PRO_SALARY, PRO_MIN_POWER, fmt, pw, hoursLeft, proErrText } from './futbolProMeta';
@@ -43,15 +45,16 @@ export default function FutbolFutbolcu() {
     }
   };
 
-  if (loading) return <p className="futbol-placeholder">…</p>;
+  if (loading) return <p className="futbol-placeholder">Yükleniyor…</p>;
   if (!fb || !fb.position) {
     return (
       <div className="fp-wrap">
         <div className="fp-empty">
-          <span className="fp-empty-ico">🏋️</span>
-          <b>Futbolcu olmak için spor salonuna git</b>
-          <p>Mevkini seç, her gün antrenman yap. {PRO_MIN_POWER} güce ulaşınca takımlar seni görür.</p>
+          <span className="fp-empty-ico">⚽</span>
+          <b>Futbolcu ol: önce mevkini seç</b>
+          <p>Sonra spor salonunda antrenman yap. {PRO_MIN_POWER} güçte takımlar seni görür.</p>
         </div>
+        <PositionCard fb={fb} />
       </div>
     );
   }
@@ -87,6 +90,8 @@ export default function FutbolFutbolcu() {
 
       {msg && <p className={`fp-msg${msg.ok ? ' ok' : ''}`}>{msg.text}</p>}
 
+      <PositionCard fb={fb} power={power} />
+
       <DayCard day={fb.lastDay} season={season} playerId={playerId} />
 
       {!pro && (
@@ -111,6 +116,46 @@ export default function FutbolFutbolcu() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Mevki: günde 1 kez değişir; 200 güçte ve takımdayken kilitli
+function PositionCard({ fb, power = 0 }) {
+  const [busy, setBusy] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const cur = fb?.position || null;
+  const inTeam = Boolean(fb?.teamId);
+  const pro = cur && Number(power || fb?.power || 0) >= PRO_MIN_POWER;
+  const today = cur && fb?.positionDayKey === futbolDayKey(Date.now());
+  const locked = inTeam || pro || today;
+  const pick = async (k) => {
+    if (k === cur || locked) return;
+    setBusy(k);
+    setMsg(null);
+    try {
+      await shopAction({ op: 'footballerPosition', position: k });
+    } catch (e) {
+      setMsg(bizErrText(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <div className="fp-card">
+      <p className="fp-title">⚽ Mevki</p>
+      <div className="fp-posgrid">
+        {Object.entries(POS_META).map(([k, v]) => (
+          <button key={k} className={`fp-posbtn${cur === k ? ' on' : ''}`} disabled={Boolean(busy) || (locked && cur !== k)} onClick={() => pick(k)}>
+            <span>{v.icon}</span>
+            <small>{busy === k ? '…' : v.name}</small>
+          </button>
+        ))}
+      </div>
+      <p className="fp-dim fp-small">
+        {inTeam ? 'Takımdayken değişmez.' : pro ? '200 güçte mevki kalıcıdır.' : today ? 'Bugün değiştirdin. Yarın 19:00\'dan sonra.' : 'Günde 1 kez değişir. 200 güçte kalıcı olur.'}
+      </p>
+      {msg && <p className="fp-msg">{msg}</p>}
     </div>
   );
 }
@@ -226,7 +271,7 @@ function FreeAgentPanel({ fb, busy, run }) {
           </div>
         ) : (
           <>
-            <p className="fp-hint">İlanda değilsen de takımlar seni görür ve teklif gönderebilir. İlana koyarsan maaşını sen belirlersin, takım doğrudan imzalar.</p>
+            <p className="fp-hint">Maaşını sen belirle; takım doğrudan imzalar.</p>
             <QuantityStepper value={ask} onChange={(v) => setAsk(Math.max(PRO_SALARY.min, Math.min(PRO_SALARY.max, v)))} min={PRO_SALARY.min} max={PRO_SALARY.max} step={100} steps={SALARY_STEPS} />
             <button className="futbol-admin-submit fp-wide" disabled={busy === 'list'} onClick={() => run('list', { op: 'proList', listed: true, askSalary: ask }, 'İlana çıktın.')}>
               📢 {fmt(ask)}/gün ile ilana çık

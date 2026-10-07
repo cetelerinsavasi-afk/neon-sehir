@@ -321,3 +321,112 @@
   color: inherit;
   font-size: 12px;
 }
+
+/* v77 (anlaşılırlık) — fiyat alanı + sahip ekranları */
+.pf {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.2);
+}
+.pf-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pf-label {
+  font-size: 13px;
+  font-weight: 700;
+}
+.pf-val {
+  font-size: 18px;
+  color: #ffd34d;
+  white-space: nowrap;
+}
+.pf-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pf-step {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  font-size: 18px;
+  font-weight: 800;
+}
+.pf-track {
+  position: relative;
+  flex: 1;
+}
+.pf-track input {
+  width: 100%;
+  accent-color: #ffd34d;
+}
+.pf-ref {
+  position: absolute;
+  top: -6px;
+  width: 2px;
+  height: 8px;
+  margin-left: -1px;
+  background: var(--neon-cyan, #19e8ff);
+}
+.pf-ends {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+.pf-ref-txt {
+  color: var(--neon-cyan, #19e8ff);
+  opacity: 1;
+}
+.pf-dirty {
+  margin: 0;
+  font-size: 11px;
+  color: #ffd34d;
+}
+.sh-matbox {
+  background: rgba(0, 0, 0, 0.15);
+}
+.sh-cmp {
+  font-weight: 400;
+  opacity: 0.6;
+  font-size: 11px;
+}
+.sh-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.sh-vitem {
+  align-items: flex-start;
+}
+.sh-pickrow {
+  width: 100%;
+  color: inherit;
+  text-align: left;
+}
+.sh-pickrow.on {
+  border-color: #ffd34d;
+  background: rgba(255, 211, 77, 0.08);
+}
+.sh-pickrow:disabled {
+  opacity: 0.55;
+}
+.sh-price {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 800;
+  color: #ffd34d;
+}

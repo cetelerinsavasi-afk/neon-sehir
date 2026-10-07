@@ -55,7 +55,7 @@ export function gymDeadlineMs(t) {
   return Math.max(next19, t + GYM_MIN_WINDOW_MS);
 }
 export const POSITIONS = ['GK', 'DEF', 'MID', 'FWD'];
-export const POSITION_LOCK_MS = 7 * 24 * 60 * 60 * 1000;
+export const POSITION_LOCK_MS = 7 * 24 * 60 * 60 * 1000; // (eski kural; artık kullanılmıyor)
 export const FOOTBALLER_START_POWER = 100;
 export const PRO_POWER = 200;
 
@@ -214,8 +214,11 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
     if (!POSITIONS.includes(position)) fail('invalid-argument', 'Geçersiz mevki.');
     if (fb.position === position) return null;
     if (fb.teamId) fail('failed-precondition', 'position-team');
-    if (fb.position && now() - Number(fb.positionChangedAtMs || 0) < POSITION_LOCK_MS) fail('failed-precondition', `position-lock:${Number(fb.positionChangedAtMs) + POSITION_LOCK_MS}`);
-    return { position, positionChangedAtMs: now() };
+    // v77: 200 güce ulaşan futbolcunun mevki kalıcıdır; altında günde 1 kez değişir (gün 19:00'da döner)
+    if (fb.position && Number(fb.power || 0) >= PRO_POWER) fail('failed-precondition', 'position-pro');
+    const day = futbolDayKey(now());
+    if (fb.position && fb.positionDayKey === day) fail('failed-precondition', 'position-today');
+    return { position, positionChangedAtMs: now(), positionDayKey: day };
   }
   async function footballerPosition(uid, p) {
     let result = null;

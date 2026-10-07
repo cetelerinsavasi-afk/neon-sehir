@@ -170,13 +170,18 @@ test('üyelik süresi: sonraki 19:00; son 1 saatte başlarsa +1 saat', () => {
   assert.equal(gymDeadlineMs(at(8, 2)), at(8, 19));
 });
 
-test('mevki: takımdayken değişmez, değişince 7 gün kilit', async () => {
+test('mevki: günde 1 kez değişir, 200 güçte kalıcı, takımdayken değişmez', async () => {
   const h = setup();
   await h.act('ali', { op: 'footballerPosition', position: 'GK' });
   assert.equal(h.G('footballers/ali').power, 100);
-  await assert.rejects(h.act('ali', { op: 'footballerPosition', position: 'FWD' }), /position-lock/);
-  h.clock.now += 7 * 24 * H + 1;
+  await assert.rejects(h.act('ali', { op: 'footballerPosition', position: 'FWD' }), /position-today/);
+  h.clock.now += 24 * H;
   await h.act('ali', { op: 'footballerPosition', position: 'FWD' });
+  assert.equal(h.G('footballers/ali').position, 'FWD');
+  h.clock.now += 24 * H;
+  h.S('footballers/ali', { ...h.G('footballers/ali'), power: 200 });
+  await assert.rejects(h.act('ali', { op: 'footballerPosition', position: 'MID' }), /position-pro/);
+  h.S('footballers/ali', { ...h.G('footballers/ali'), power: 150 });
   h.S('footballers/ali', { ...h.G('footballers/ali'), teamId: 't1', positionChangedAtMs: 0 });
   await assert.rejects(h.act('ali', { op: 'footballerPosition', position: 'MID' }), /position-team/);
 });

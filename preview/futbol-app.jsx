@@ -3,7 +3,7 @@
 import { createRoot } from 'react-dom/client';
 import { AuthProvider } from '../src/contexts/AuthContext';
 import FutbolFutbolcu from '../src/components/FutbolScreen/FutbolFutbolcu';
-import FutbolProMarket from '../src/components/FutbolScreen/FutbolProMarket';
+import { ProContracts, ProPlayersList } from '../src/components/FutbolScreen/FutbolProMarket';
 import FutbolOyuncular from '../src/components/FutbolScreen/FutbolOyuncular';
 import FutbolMatchDetail from '../src/components/FutbolScreen/FutbolMatchDetail';
 import { fakeDb, futbolPro, PREVIEW_UID } from './mocks/backend.js';
@@ -92,7 +92,10 @@ seed().then(() =>
           {v === 'pitch' || v === 'live' ? (
             <FutbolMatchDetail match={DEMO_MATCH} homeName="Neon FK" awayName="Gece SK" homeSponsorName="Demir Fabrika" onClose={() => {}} />
           ) : v === 'team' ? (
-            <FutbolProMarket team={{ id: 't1', name: 'Neon FK', managerUid: null, playerDebts: { eski: 3000 } }} readOnly={false} />
+            <>
+              <ProContracts team={{ id: 't1', name: 'Neon FK', managerUid: null, playerDebts: { eski: 3000 } }} readOnly={false} />
+              <ProPlayersList team={{ id: 't1', name: 'Neon FK', managerUid: null }} readOnly={false} />
+            </>
           ) : v === 'board' ? (
             <FutbolOyuncular season={3} />
           ) : (

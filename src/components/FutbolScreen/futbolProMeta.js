@@ -17,7 +17,7 @@ export function hoursLeft(ms) {
 }
 
 const ERR = {
-  'not-footballer': 'Önce spor salonunda mevkini seçip antrenmana başla.',
+  'not-footballer': 'Önce Futbolcu ekranından mevkini seç, sonra salonda antrenman yap.',
   'in-team': 'Takımdayken ilana çıkılamaz.',
   'same-team': 'Bu futbolcu zaten bu takımda.',
   'position-required': 'Önce mevki seç.',

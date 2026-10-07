@@ -247,8 +247,15 @@
   opacity: 0.45;
   transition: opacity 0.1s, transform 0.08s;
 }
-.gy-pad:nth-child(2) {
+.gy-pad-ico {
+  font-size: 40px;
+  line-height: 1;
+}
+.gy-pad:nth-child(2) .gy-pad-ico {
   transform: scaleX(-1);
+}
+.gy-pad:active {
+  transform: scale(0.96);
 }
 .gy-pad.next {
   opacity: 1;
@@ -388,4 +395,376 @@
   font-weight: 700;
   opacity: 0.8;
   white-space: nowrap;
+}
+
+/* ---- v77 anlaşılırlık: görev listesi yazılı ---- */
+.gy-tree {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  border-radius: 14px;
+  padding: 7px 10px;
+  max-width: 220px;
+}
+.gy-tree-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #fff;
+}
+.gy-tree-nodes {
+  display: flex;
+  align-items: center;
+}
+.gy-tree-sub {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.72);
+  text-align: right;
+  line-height: 1.3;
+}
+.gy-tree-sub.hot {
+  color: #ffb547;
+}
+.gy-power {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.gy-power b {
+  font-size: 22px;
+}
+.gy-pos small {
+  font-size: 12px;
+}
+
+/* sonuç ekranı yazıları */
+.gy-result-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 900;
+}
+.gy-result-line {
+  margin: 2px 0;
+  font-size: 14px;
+  text-align: center;
+}
+.gy-result-line.hot {
+  color: #ffb547;
+}
+.gy-result-line.dim {
+  opacity: 0.65;
+  font-size: 12px;
+}
+.gy-result-star {
+  font-size: 14px;
+  font-weight: 800;
+  text-align: center;
+  color: #ffd76a;
+}
+
+/* ---- mini oyunlar ---- */
+.gy-game-titles {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.gy-game-titles b {
+  font-size: 16px;
+}
+.gy-game-titles small {
+  font-size: 12px;
+  opacity: 0.8;
+}
+.gy-game > .gy-game-bar {
+  display: block;
+  flex: none;
+}
+.gy-how {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(25, 232, 255, 0.07);
+  border: 1px solid rgba(25, 232, 255, 0.2);
+}
+.gy-game-wait.small {
+  font-size: 16px;
+  text-align: center;
+  padding: 0 10px;
+}
+.gy-count {
+  font-size: 64px;
+  font-weight: 900;
+  animation: gy-count-pop 0.6s ease-out;
+}
+@keyframes gy-count-pop {
+  from {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.gy-arena {
+  position: relative;
+}
+.gy-pop {
+  position: absolute;
+  left: 50%;
+  top: -6px;
+  z-index: 3;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 900;
+  white-space: nowrap;
+  color: #0b1a10;
+  background: #6dffa8;
+  pointer-events: none;
+  animation: gy-pop 0.9s ease-out forwards;
+}
+.gy-pop.bad {
+  color: #fff;
+  background: #ff5b6e;
+}
+@keyframes gy-pop {
+  0% {
+    transform: translate(-50%, 8px) scale(0.8);
+    opacity: 0;
+  }
+  20% {
+    transform: translate(-50%, 0) scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -26px) scale(1);
+    opacity: 0;
+  }
+}
+.gy-pad {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.gy-pad small {
+  font-size: 13px;
+  font-weight: 800;
+}
+/* koşu bandı */
+.gy-tm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.gy-tm-track {
+  position: relative;
+  height: 54px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0 18px, transparent 18px 36px);
+  background-size: 36px 100%;
+  animation: gy-belt var(--spd, 1s) linear infinite;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+@keyframes gy-belt {
+  to {
+    background-position: -36px 0;
+  }
+}
+.gy-tm-runner {
+  position: absolute;
+  left: 30%;
+  top: 6px;
+  font-size: 36px;
+  transform: scaleX(-1);
+  transition: transform 0.2s;
+}
+.gy-tm-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.gy-tm-speed {
+  flex: 1;
+  height: 8px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+.gy-tm-speed > i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #ffd76a, #ff6b3d);
+  transition: width 0.12s;
+}
+.gy-tm .gy-pads {
+  height: 150px;
+}
+/* bench */
+.gy-bench {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.gy-bench-bar {
+  font-size: 54px;
+  transition: transform 0.18s;
+}
+.gy-bench-bar.up {
+  transform: translateY(-22px) scale(1.1);
+}
+.gy-meter {
+  position: relative;
+  width: 100%;
+  height: 30px;
+  border-radius: 10px;
+  background: rgba(255, 91, 110, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  overflow: hidden;
+}
+.gy-meter-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(109, 255, 168, 0.55);
+  box-shadow: inset 0 0 0 2px #6dffa8;
+  transition: left 0.25s, width 0.25s;
+}
+.gy-meter-needle {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 4px;
+  margin-left: -2px;
+  background: #fff;
+  box-shadow: 0 0 8px #fff;
+}
+.gy-bigbtn {
+  width: 100%;
+  height: 92px;
+  border: 0;
+  border-radius: 16px;
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  color: #10131c;
+  background: linear-gradient(180deg, #ffd76a, #ff9f3d);
+  touch-action: manipulation;
+}
+.gy-bigbtn:active {
+  transform: scale(0.97);
+}
+/* boks torbası */
+.gy-bag {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  width: 78%;
+  margin: 0 auto;
+  padding: 14px;
+  border-radius: 40px 40px 60px 60px;
+  background: linear-gradient(180deg, #8c2b2b, #5a1717);
+  border: 3px solid rgba(0, 0, 0, 0.35);
+}
+.gy-bag.hit-a {
+  animation: gy-bag-a 0.18s;
+}
+.gy-bag.hit-b {
+  animation: gy-bag-b 0.18s;
+}
+@keyframes gy-bag-a {
+  50% {
+    transform: rotate(-3deg) translateX(-3px);
+  }
+}
+@keyframes gy-bag-b {
+  50% {
+    transform: rotate(3deg) translateX(3px);
+  }
+}
+.gy-bag-cell {
+  aspect-ratio: 1;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.22);
+  font-size: 26px;
+  padding: 0;
+  touch-action: manipulation;
+}
+.gy-bag-cell.on {
+  background: radial-gradient(circle, #ffe27a, #ff9f3d);
+  box-shadow: 0 0 16px #ffcf4a;
+  animation: gy-target 0.9s ease-in forwards;
+}
+@keyframes gy-target {
+  from {
+    transform: scale(1.1);
+  }
+  to {
+    transform: scale(0.75);
+    opacity: 0.6;
+  }
+}
+/* dambıl */
+.gy-db {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  height: 220px;
+  touch-action: none;
+}
+.gy-db-half {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 2px dashed rgba(255, 255, 255, 0.12);
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+.gy-db-half.on {
+  opacity: 1;
+  border-color: var(--neon-cyan, #19e8ff);
+  background: rgba(25, 232, 255, 0.08);
+}
+.gy-db-half small {
+  font-size: 13px;
+  font-weight: 800;
+}
+.gy-db-arrow {
+  height: 30px;
+  font-size: 28px;
+  color: var(--neon-cyan, #19e8ff);
+  animation: gy-arrow 0.8s ease-in-out infinite;
+}
+@keyframes gy-arrow {
+  50% {
+    transform: translateY(-8px);
+  }
+}
+.gy-db-ico {
+  font-size: 46px;
+  transition: transform 0.2s;
+}
+.gy-db-half.up .gy-db-ico {
+  transform: translateY(-26px) scale(1.15);
+}
+.gy-game .gy-bigbtn {
+  color: #10131c;
+}
+.gy-result .gy-go,
+.gy-panel .gy-go {
+  color: #071018;
 }

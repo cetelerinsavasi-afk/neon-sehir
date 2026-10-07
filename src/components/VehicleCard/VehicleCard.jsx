@@ -87,17 +87,24 @@ export function LifeBar({ item, kind = 'vehicle' }) {
   );
 }
 
-// v77: Profilde sadece bilgi — tamir/geliştirme Modifiye Garajı Atölyesi'nde.
-// "Geliştirilebilir mi" göstergesi: ⚙️ vites · ⛽ depo hücreleri (dolu = yapıldı).
-export function UpgradeCells({ slots, icons }) {
+// v77: Profilde sadece bilgi — tamir/geliştirme dükkânların "Tamir / Geliştirme"
+// ekranında (silah: Silahçı, araba: Modifiye Garajı). Yazıyla gösterilir.
+//   kind 'vehicle': slots=[vites, depo] · kind 'weapon': slots=[sv2, sv3]
+export function UpgradeCells({ slots, kind = 'vehicle' }) {
+  if (kind === 'weapon') {
+    const lv = 1 + slots.filter(Boolean).length;
+    return (
+      <span className="vcard-upinfo">
+        Geliştirme: <b className={lv >= 3 ? 'done' : ''}>{lv >= 3 ? 'en yüksek seviye (3/3)' : `seviye ${lv}/3 · geliştirilebilir`}</b>
+        <small>Silahçı › Tamir / Geliştirme</small>
+      </span>
+    );
+  }
   return (
-    <span className="vcard-upcells">
-      <span className="vcard-up-ico">⬆</span>
-      {slots.map((on, i) => (
-        <i key={i} className={on ? 'on' : ''}>
-          {icons[i]}
-        </i>
-      ))}
+    <span className="vcard-upinfo">
+      Geliştirme: Vites <b className={slots[0] ? 'done' : ''}>{slots[0] ? '✓ yapıldı' : 'yapılabilir'}</b> · Depo{' '}
+      <b className={slots[1] ? 'done' : ''}>{slots[1] ? '✓ yapıldı' : 'yapılabilir'}</b>
+      <small>Modifiye Garajı › Tamir / Geliştirme</small>
     </span>
   );
 }
@@ -171,7 +178,7 @@ export default function VehicleCard({ vehicle, locked = false }) {
           {vehicle.seizedByBank && ' · Bankaya el konuldu'}
         </span>
         <LifeBar item={vehicle} />
-        <UpgradeCells slots={[Boolean(vehicle.gearUpgraded), Boolean(vehicle.tankUpgraded)]} icons={['⚙️', '⛽']} />
+        <UpgradeCells slots={[Boolean(vehicle.gearUpgraded), Boolean(vehicle.tankUpgraded)]} kind="vehicle" />
       </div>
     </div>
   );

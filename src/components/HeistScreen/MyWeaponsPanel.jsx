@@ -25,7 +25,7 @@ export default function MyWeaponsPanel() {
               </span>
               <span className="heist-weapon-power">Güç: {w.power.toLocaleString('tr-TR')}</span>
               <LifeBar item={w} kind="weapon" />
-              <UpgradeCells slots={[lv >= 2, lv >= 3]} icons={['2', '3']} />
+              <UpgradeCells slots={[lv >= 2, lv >= 3]} kind="weapon" />
             </div>
           </div>
         );

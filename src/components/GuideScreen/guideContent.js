@@ -436,7 +436,7 @@ export const CATS = [
     { type: 'lines', title: 'Futbolcu Ol',
       kicker: 'Ter senin. Efsane de senin.',
       lines: [
-        L('🎯', 'Mevkini seç: kaleci, defans, orta saha ya da forvet.'),
+        L('🎯', 'Mevkini Futbol › Futbolcu ekranından seç. Günde 1 kez değişir, 200 güçte kalıcı olur.'),
         L('🎟️', 'Üyeliği öde. Salonda üç alet seni bekler, her biri kısa bir oyun.'),
         L('⚡', 'Güç 100’den başlar. 200’e kadar günde 1–16, sonra 1–4 artar.'),
         L('⏳', 'Üyelik 19:00’da biter. Son saatte başlarsan bir saatin var.'),

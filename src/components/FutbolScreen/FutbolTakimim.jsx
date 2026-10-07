@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ProContracts } from './FutbolProMarket';
 import { useMyFutbolTeam } from '../../hooks/useMyFutbolTeam';
 import { useFutbolTeams } from '../../hooks/useFutbolTeams';
 import { useFutbolTeamPlayers } from '../../hooks/useFutbolTeamPlayers';
@@ -393,6 +394,9 @@ function MyTeamOverview({ team, role }) {
           </div>
         ))}
       </div>
+
+      {/* v77 — sözleşmeli (maaşlı) futbolcular; hiç yoksa görünmez */}
+      <ProContracts team={team} readOnly={role === 'owner' && Boolean(team.managerUid)} />
 
       {confirmInstantSell && (
         <ConfirmModal

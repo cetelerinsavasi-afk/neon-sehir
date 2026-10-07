@@ -4,7 +4,7 @@ import { PIANO_NOTE_MIN_MS, pianoHeartbeat, sendNote } from './pianoNet';
 import './Piano.css';
 
 // v77 — Piyano klavyesi (çalan kişi). 12 tuş; tuş sıklığı sınırlı (spam/gecikme).
-export default function PianoPanel({ houseId, me, onClose }) {
+export default function PianoPanel({ houseId, me, local = false, onClose }) {
   const [lit, setLit] = useState(null);
   const lastRef = useRef(0);
   useEffect(() => {
@@ -23,7 +23,8 @@ export default function PianoPanel({ houseId, me, onClose }) {
   return (
     <div className="pn-panel" onClick={(e) => e.stopPropagation()}>
       <div className="pn-head">
-        <b>🎹</b>
+        <b>🎹 Piyano</b>
+        <small className="pn-sub">{local ? 'Bağlantı yok — şu an sadece sen duyuyorsun' : 'Mekândaki herkes duyuyor'}</small>
         <button className="pn-x" onClick={onClose}>
           ✕
         </button>

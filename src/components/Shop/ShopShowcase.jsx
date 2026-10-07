@@ -5,43 +5,34 @@ import { usePlayer } from '../../hooks/usePlayer';
 import { buyListing } from '../../services/gameActions';
 import { weaponCatalog } from '../../data/weaponCatalog';
 import { vehicleImage } from '../VehicleCard/VehicleCard';
-import { lifeCapOf } from '../../../functions/itemRules.js';
+import HoldButton from '../HoldButton/HoldButton';
+import { lifeCapOf, VEHICLE_WEAPON_MAX_REPAIRS } from '../../../functions/itemRules.js';
+import '../../styles/bizui.css';
 import './Shop.css';
 
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
 const weaponImage = (id) => weaponCatalog.find((w) => w.id === id)?.image;
 
-export function ListingCells({ life, cap, broken = false }) {
-  return (
-    <div className="sh-life" title={`${life}/${cap}`}>
-      {Array.from({ length: cap }, (_, i) => (
-        <i key={i} className={`${i < life ? 'on' : ''}${broken && i === life - 1 ? ' broken' : ''}`} />
-      ))}
-    </div>
-  );
-}
-
-// v77 — Müşteri: "Satılık silahlar / araçlar" (vitrindeki ilanlar, fiyat listesi gibi)
+// v77 — Müşteri: dükkânın vitrinindeki satılık silahlar / arabalar
 export default function ShopShowcase({ houseId, kind, onClose }) {
   const { user } = useAuth();
   const { player } = usePlayer();
   const listings = useShopListings(houseId);
   const [busy, setBusy] = useState(null);
-  const [cue, setCue] = useState(null);
+  const [msg, setMsg] = useState(null);
   const [sold, setSold] = useState({});
   const gold = Number(player?.gold || 0);
+  const isW = kind === 'weapon';
 
   const buy = async (l) => {
-    if (gold < l.price) {
-      setCue({ id: l.id, kind: 'gold', n: Date.now() });
-      return;
-    }
     setBusy(l.id);
+    setMsg(null);
     try {
       await buyListing(l.id);
       setSold((s) => ({ ...s, [l.id]: true }));
+      setMsg({ ok: true, text: `✓ Satın aldın: ${isW ? l.weaponName : l.vehicleModel}. ${isW ? 'Silahların' : 'Arabaların'} arasında.` });
     } catch (err) {
-      setCue({ id: l.id, kind: /satılmış|bulunamadı/i.test(err?.message || '') ? 'gone' : 'err', n: Date.now() });
+      setMsg({ ok: false, text: /satılmış|bulunamadı/i.test(err?.message || '') ? 'Bu ürün az önce satıldı.' : err?.message || 'Satın alınamadı.' });
     } finally {
       setBusy(null);
     }
@@ -49,54 +40,61 @@ export default function ShopShowcase({ houseId, kind, onClose }) {
 
   const list = listings.filter((l) => l.itemType === kind).sort((a, b) => a.price - b.price);
   return (
-    <div className="sh-root">
-      <div className="sh-head">
-        <b>{kind === 'weapon' ? '🔫' : '🚗'} Satılık</b>
-        <span className={`sh-wallet${cue?.kind === 'gold' ? ' cue-blink' : ''}`} key={cue?.kind === 'gold' ? cue.n : 'w'}>
-          <span className="gold-coin-icon" style={{ width: 14, height: 14 }} /> {fmt(gold)}
-        </span>
+    <div className="bz sh-root">
+      <div className="bz-head">
+        <div className="bz-head-main">
+          <h3>{isW ? '🔫 Satılık silahlar' : '🚗 Satılık arabalar'}</h3>
+          <p>Almak için basılı tut.</p>
+        </div>
         {onClose && (
-          <button className="wk-x" onClick={onClose}>
+          <button className="bz-x" onClick={onClose}>
             ✕
           </button>
         )}
       </div>
-      {list.length === 0 && (
-        <div className="sh-empty">
-          <span>{kind === 'weapon' ? '🔫' : '🚗'}</span>
-          <b>0</b>
-        </div>
-      )}
+      <div className="bz-wallet">
+        <span>Cebindeki altın</span>
+        <b>
+          <span className="gold-coin-icon" style={{ width: 14, height: 14 }} /> {fmt(gold)}
+        </b>
+      </div>
+      {msg && <p className={msg.ok ? 'bz-ok' : 'bz-warn'}>{msg.text}</p>}
+      {list.length === 0 && <p className="bz-note">Şu an satılık {isW ? 'silah' : 'araba'} yok.</p>}
       <div className="sh-grid">
         {list.map((l) => {
-          const isW = l.itemType === 'weapon';
           const img = isW ? weaponImage(l.weaponCatalogId) : vehicleImage(l.vehicleCatalogId);
           const cap = lifeCapOf(l.itemType);
-          const life = isW ? l.weaponLifeDays : l.vehicleLifeDays;
+          const life = (isW ? l.weaponLifeDays : l.vehicleLifeDays) ?? cap;
+          const repairsLeft = VEHICLE_WEAPON_MAX_REPAIRS - (isW ? l.weaponRepairsUsed || 0 : l.vehicleRepairsUsed || 0);
           const mine = l.sellerId === user?.uid;
-          const gone = sold[l.id] || (cue?.id === l.id && cue.kind === 'gone');
+          const gone = sold[l.id];
           const poor = gold < l.price;
           return (
             <div key={l.id} className={`sh-card${gone ? ' cue-sold' : ''}`}>
               <div className="sh-img">{img ? <img src={img} alt="" /> : <span>{isW ? '🔫' : '🚗'}</span>}</div>
               <b className="sh-name">{isW ? l.weaponName : l.vehicleModel}</b>
               <span className="sh-stat">
-                {isW ? `Sv.${l.weaponLevel} · ⚡ ${fmt(l.weaponPower)}` : `⚙️ ${l.vehicleGearLevel} · ⛽ ${l.vehicleTank}${l.vehicleGearUpgraded ? ' ⬆' : ''}${l.vehicleTankUpgraded ? ' ⬆' : ''}`}
+                {isW
+                  ? `Seviye ${l.weaponLevel} · güç ${fmt(l.weaponPower)}`
+                  : `Vites ${l.vehicleGearLevel}${l.vehicleGearUpgraded ? ' (geliştirilmiş)' : ''} · depo ${l.vehicleTank}${l.vehicleTankUpgraded ? ' (geliştirilmiş)' : ''}`}
               </span>
-              <ListingCells life={life ?? cap} cap={cap} />
-              <span className="sh-repairs">🔧 {10 - (isW ? l.weaponRepairsUsed || 0 : l.vehicleRepairsUsed || 0)}/10</span>
-              <button
-                className={`sh-buy${poor && !mine ? ' dim' : ''}${cue?.id === l.id && cue.kind === 'gold' ? ' cue-shake' : ''}`}
-                key={cue?.id === l.id ? cue.n : l.id}
-                disabled={mine || gone || busy === l.id}
-                onClick={() => buy(l)}
-              >
-                {mine ? '★' : busy === l.id ? '…' : (
-                  <>
-                    <span className="gold-coin-icon" style={{ width: 13, height: 13 }} /> {fmt(l.price)}
-                  </>
-                )}
-              </button>
+              <span className="sh-stat">
+                Ömür {life}/{cap} gün · tamir hakkı {repairsLeft}/{VEHICLE_WEAPON_MAX_REPAIRS}
+              </span>
+              <span className="sh-price">
+                <span className="gold-coin-icon" style={{ width: 13, height: 13 }} /> {fmt(l.price)} altın
+              </span>
+              {mine ? (
+                <span className="bz-tag">Senin ilanın</span>
+              ) : gone ? (
+                <span className="bz-tag ok">Satın alındı</span>
+              ) : poor ? (
+                <span className="bz-tag bad">Altının yetmiyor</span>
+              ) : (
+                <HoldButton className="bz-btn gold sm" disabled={busy === l.id} onDone={() => buy(l)}>
+                  {busy === l.id ? 'Alınıyor…' : 'Basılı tut: satın al'}
+                </HoldButton>
+              )}
             </div>
           );
         })}

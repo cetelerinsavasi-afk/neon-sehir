@@ -273,12 +273,13 @@
   top: 42%;
   transform: translate(-50%, -50%);
   z-index: 25;
-  width: 84px;
-  height: 84px;
-  border-radius: 50%;
+  padding: 14px 22px;
+  border-radius: 18px;
   display: grid;
   place-items: center;
-  font-size: 48px;
+  font-size: 26px;
+  font-weight: 800;
+  white-space: nowrap;
   background: rgba(8, 11, 20, 0.7);
   border: 2px solid var(--neon-pink, #ff2e8c);
   pointer-events: none;
@@ -305,4 +306,90 @@
   align-items: center;
   gap: 3px;
   font-weight: 800;
+}
+
+/* v77 (anlaşılırlık) — İşletmeler listesi: açılır kartlar + gerekli mobilyalar */
+.hb-row2 {
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+}
+.hb-row2.open {
+  border-color: rgba(109, 255, 168, 0.45);
+}
+.hb-row2-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.hb-row2-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.hb-row2-title b {
+  font-size: 14px;
+}
+.hb-row2-title small {
+  font-size: 11px;
+  opacity: 0.7;
+}
+.hb-row2-arrow {
+  opacity: 0.6;
+}
+.hb-row2-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 12px 12px;
+}
+.hb-req {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 46, 90, 0.25);
+}
+.hb-req.ok {
+  border-color: rgba(109, 255, 168, 0.3);
+}
+.hb-req-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+.hb-req-sub {
+  font-size: 11px;
+  opacity: 0.75;
+}
+.hb-req-opts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.hb-req-opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.hb-req-opt .bz-thumb .hs-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.bz-gold.gem {
+  color: #6dffa8;
 }

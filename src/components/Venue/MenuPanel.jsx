@@ -5,6 +5,7 @@ import { useBizSpend } from '../../hooks/useVenueData';
 import { shopAction } from '../../services/gameActions';
 import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
 import { menuOf, menuPriceOf, MENU_DAILY_LIMIT } from '../../../functions/venue.js';
+import '../../styles/bizui.css';
 import './Venue.css';
 
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
@@ -42,27 +43,31 @@ export default function MenuPanel({ houseId, houseDoc, onClose, onBought }) {
   };
 
   return (
-    <div className="vn-panel" onClick={(e) => e.stopPropagation()}>
-      <div className="vn-head">
-        <b>🍽️</b>
-        <span className={`vn-wallet${cue?.kind === 'gold' ? ' cue-blink' : ''}`} key={cue?.kind === 'gold' ? cue.n : 'w'}>
-          <span className="gold-coin-icon" style={{ width: 14, height: 14 }} /> {fmt(gold)}
-        </span>
-        <button className="wk-x" onClick={onClose}>
+    <div className="vn-panel bz" onClick={(e) => e.stopPropagation()}>
+      <div className="bz-head">
+        <div className="bz-head-main">
+          <h3>🍽️ Menü</h3>
+          <p>{isOwner ? 'Kendi mekânın: ücretsiz.' : 'Ürüne dokun, satın al.'}</p>
+        </div>
+        <button className="bz-x" onClick={onClose}>
           ✕
         </button>
       </div>
+      <div className={`bz-wallet${cue?.kind === 'gold' ? ' cue-blink' : ''}`} key={cue?.kind === 'gold' ? cue.n : 'w'}>
+        <span>Cebindeki altın</span>
+        <b>
+          <span className="gold-coin-icon" style={{ width: 14, height: 14 }} /> {fmt(gold)}
+        </b>
+      </div>
+      {cue?.kind === 'gold' && <p className="bz-warn">Altının yetmiyor.</p>}
+      {cue?.kind === 'err' && <p className="bz-warn">Satın alınamadı, tekrar dene.</p>}
+      {Object.values(stale).some(Boolean) && <p className="bz-note">Bazı fiyatlar az önce değişti; yeni fiyatlara bakıp tekrar dokun.</p>}
       {cue?.kind === 'limit' && (
         <div className="vn-limit-warn cue-shake" key={cue.n}>
           🔒 Bir mekânda günde en fazla {fmt(MENU_DAILY_LIMIT)} altın harcayabilirsin.
         </div>
       )}
-      {menu.length === 0 && (
-        <div className="sh-empty">
-          <span>🍽️</span>
-          <b>0</b>
-        </div>
-      )}
+      {menu.length === 0 && <p className="bz-note">Bu mekânın menüsü boş.</p>}
       <div className="vn-menu">
         {menu.map((k) => {
           const p = HOUSE_PRODUCTS[k];
@@ -79,7 +84,7 @@ export default function MenuPanel({ houseId, houseDoc, onClose, onBought }) {
               <span className="vn-emoji">{p.emoji}</span>
               <span className="vn-name">{p.label}</span>
               <span className={`vn-price${stale[k] ? ' cue-glow' : ''}`}>
-                {isOwner ? '★' : (
+                {isOwner ? 'Ücretsiz' : (
                   <>
                     <span className="gold-coin-icon" style={{ width: 11, height: 11 }} /> {fmt(price)}
                   </>
