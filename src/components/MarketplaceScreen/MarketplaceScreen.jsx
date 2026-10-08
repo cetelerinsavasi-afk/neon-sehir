@@ -1,3 +1,4 @@
+import { resaleTax } from '../../../functions/tax.js';
 import { useEffect, useState } from 'react';
 import { buyGangListing, useGangMarketListings } from '../Gangs/GangMarketSection';
 import { useAuth } from '../../contexts/AuthContext';
@@ -572,7 +573,7 @@ function SellForm({ onCreated, onClose, initialItemType }) {
               </p>
             )}
             <button className="market-instant-sell-btn" disabled={busy || !priceRange} onClick={handleInstantSell}>
-              {(instantSellTotal ?? 0).toLocaleString('tr-TR')} altına Anında Sat
+              {(instantSellTotal ?? 0).toLocaleString('tr-TR')} altına Anında Sat (eline geçen {((instantSellTotal ?? 0) - resaleTax(instantSellTotal ?? 0)).toLocaleString('tr-TR')})
             </button>
           </div>
         ) : (
@@ -588,6 +589,14 @@ function SellForm({ onCreated, onClose, initialItemType }) {
               {itemType === 'material' && quantity > 0 && price > 0 && (
                 <p className="market-price-range-hint">
                   Toplam: {(price * quantity).toLocaleString('tr-TR')} altın ({quantity} adet)
+                </p>
+              )}
+              {price > 0 && (itemType !== 'material' || quantity > 0) && (
+                <p className="market-price-range-hint">
+                  🏛️ Vergi (%1): {resaleTax(price * (itemType === 'material' ? quantity : 1)).toLocaleString('tr-TR')} altın · Satılınca eline geçen:{' '}
+                  <strong>
+                    {(price * (itemType === 'material' ? quantity : 1) - resaleTax(price * (itemType === 'material' ? quantity : 1))).toLocaleString('tr-TR')} altın
+                  </strong>
                 </p>
               )}
               {priceRange && (
@@ -628,7 +637,7 @@ function SellForm({ onCreated, onClose, initialItemType }) {
               </button>
               {priceRange && (itemType !== 'material' || quantity > 0) && (
                 <button className="market-instant-sell-btn" disabled={busy} onClick={handleInstantSell}>
-                  {(instantSellTotal ?? 0).toLocaleString('tr-TR')} altına Anında Sat
+                  {(instantSellTotal ?? 0).toLocaleString('tr-TR')} altına Anında Sat (eline geçen {((instantSellTotal ?? 0) - resaleTax(instantSellTotal ?? 0)).toLocaleString('tr-TR')})
                 </button>
               )}
             </div>

@@ -1,3 +1,4 @@
+import { recordVenueVisit } from '../services/gameActions';
 import { useEffect, useMemo, useState } from 'react';
 import { collection, doc, deleteDoc, limit, onSnapshot, query, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -34,6 +35,12 @@ const MAX_PRESENCE_DOCS = 40;
 export function useParkPresence() {
   const { user } = useAuth();
   const [others, setOthers] = useState([]);
+
+  // v77: ziyaret sayacı (Ziyaret › Popüler; günde hesap başına 1)
+  useEffect(() => {
+    if (!user) return;
+    recordVenueVisit('park').catch(() => {});
+  }, [user]);
 
   useEffect(() => {
     if (!user) {

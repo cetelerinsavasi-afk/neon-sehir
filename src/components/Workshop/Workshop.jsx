@@ -45,7 +45,8 @@ function Gold({ v, cls = '' }) {
   );
 }
 
-export default function Workshop({ shop, onClose, onGoGame }) {
+// v77: oyuncu dükkânından oyunun dükkânına yönlendirme yok (para oyunculara kazandırılır)
+export default function Workshop({ shop, onClose }) {
   const { user } = useAuth();
   const { player } = usePlayer();
   const { weapons } = useWeapons();
@@ -321,7 +322,6 @@ export default function Workshop({ shop, onClose, onGoGame }) {
                 {impossible ? (
                   <p className="bz-warn">
                     Yeterli malzeme yok: {fmt(qty)} adet lazım, sende {fmt(have)}, dükkânda {fmt(shopHave)} var.
-                    {!isGame && ' Oyunun dükkânında malzeme sınırsızdır.'} Malzemeyi Amazor'dan da alabilirsin.
                   </p>
                 ) : (
                   maxOwn > minOwn && (
@@ -347,11 +347,6 @@ export default function Workshop({ shop, onClose, onGoGame }) {
                       </div>
                     </div>
                   )
-                )}
-                {impossible && !isGame && onGoGame && (
-                  <button className="bz-btn ghost sm" onClick={onGoGame}>
-                    🚪 Oyunun dükkânına git
-                  </button>
                 )}
               </div>
 

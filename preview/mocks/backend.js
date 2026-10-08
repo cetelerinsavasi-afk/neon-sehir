@@ -1,5 +1,6 @@
 // Önizleme arka ucu: GERÇEK çete sistemi + bellek içi Firestore, tarayıcıda.
 // Sadece görsel inceleme / uçtan uca akış testi içindir; production build'e girmez.
+import { createVisits } from '../../functions/visits.js';
 import { FakeFirestore, FieldValue } from '../../functions/gang/test/fakeFirestore.js';
 import { createGangSystem } from '../../functions/gang/system.js';
 import { VEHICLE_CATALOG, WEAPON_CATALOG } from '../../functions/catalogData.js';
@@ -54,8 +55,11 @@ export const shop = createShop({
   business,
 });
 
+// v77 ziyaret sayacı
+export const visits = createVisits({ db: fakeDb, FieldValue });
 // v65 3D Ev önizlemesi
 export const houses = createHouses({
+  visits,
   bizHooks: shop.bizHooks,
   db: fakeDb,
   FieldValue,

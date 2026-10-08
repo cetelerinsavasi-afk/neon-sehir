@@ -606,7 +606,8 @@ export function createHouseEngine(
   const orbitCur = { ...orbit };
   const top = { az: 0.0, el: 1.3, dist: 21 }; // 2D kuş bakışı (oyuncuyu takip eder)
   const topCur = { ...top };
-  const self = { x: SPAWN.x, z: SPAWN.z, camYaw: 0, camPitch: 0.34, camDist: 4.8, seat: null, fig: null, target: null, stuckT: 0, lastD: 0 };
+  // fpPitch: göz görüşünde yukarı/aşağı bakış (v77)
+  const self = { x: SPAWN.x, z: SPAWN.z, camYaw: 0, camPitch: 0.34, camDist: 4.8, fpPitch: -0.12, seat: null, fig: null, target: null, stuckT: 0, lastD: 0 };
   const keys = {};
   const others = new Map();
   let disposed = false;
@@ -638,13 +639,77 @@ export function createHouseEngine(
     const rr = ((r % 8) + 8) % 8;
     return rr === 0 ? 0 : rr === 2 ? 3 : rr === 4 ? 2 : 1;
   }
+  // --- v77: bölme duvarlarına duvar eşyası takma ----------------------------------
+  // Duvar eşyaları (TV, raf, saat, garaj kapısı…) odanın 4 duvarının yanında
+  // bölme duvarlarının iki yüzüne de takılır. Yüzeyler: düz bölmelerde tüm boy,
+  // kapılı bölmede kapı boşluğu hariç iki parça. Cam bölmeye takılmaz.
+  const DIV_FACE = 0.075; // bölme kalınlığının yarısı + pay
+  const DIVIDER_SEGS = { wall2: [[-1, 1]], wall4: [[-2, 2]], walldoor: [[-1.2, -0.42], [0.42, 1.2]] };
+  const isDivider = (k) => Boolean(DIVIDER_SEGS[k]);
+  const toLocal = (div, x, z) => {
+    const th = (div.r || 0) * (Math.PI / 4);
+    const c = Math.cos(th);
+    const s2 = Math.sin(th);
+    const dx = x - div.x;
+    const dz = z - div.z;
+    return { lx: dx * c - dz * s2, lz: dx * s2 + dz * c };
+  };
+  const toWorld = (div, lx, lz) => {
+    const th = (div.r || 0) * (Math.PI / 4);
+    const c = Math.cos(th);
+    const s2 = Math.sin(th);
+    return { x: div.x + lx * c + lz * s2, z: div.z - lx * s2 + lz * c };
+  };
+  // Eşya bir bölme yüzüne takılıysa o bölme ve yerel konumu
+  function attachedWallItems(divData) {
+    const out = [];
+    const segs = DIVIDER_SEGS[divData.k];
+    if (!segs) return out;
+    objs.forEach((e) => {
+      if (!CATALOG_MAP[e.data.k]?.wall) return;
+      const { lx, lz } = toLocal(divData, e.data.x, e.data.z);
+      if (Math.abs(Math.abs(lz) - (DIV_FACE + 0.005)) > 0.03) return;
+      if (!segs.some(([a0, a1]) => lx >= a0 - 0.05 && lx <= a1 + 0.05)) return;
+      out.push({ e, lx, lz, dr: ((((e.data.r || 0) - (divData.r || 0)) % 8) + 8) % 8 });
+    });
+    return out;
+  }
+  function moveAttached(divData, list) {
+    list.forEach(({ e, lx, lz, dr }) => {
+      const w = toWorld(divData, lx, lz);
+      e.data.x = w.x;
+      e.data.z = w.z;
+      e.data.r = ((divData.r || 0) + dr) % 8;
+      applyTransform(e);
+    });
+  }
   function snapToWall(data) {
     const dists = [data.z + D / 2, W / 2 - data.x, D / 2 - data.z, data.x + W / 2];
     let wi = 0;
     dists.forEach((d, i) => {
       if (d < dists[wi]) wi = i;
     });
-    const m = 0.9;
+    const half = CATALOG_MAP[data.k]?.wallW || 0.45;
+    // en yakın bölme yüzü (oda duvarından daha yakınsa oraya takılır)
+    let best = null;
+    objs.forEach((e) => {
+      const segs = DIVIDER_SEGS[e.data.k];
+      if (!segs || e.data.i === data.i) return;
+      const { lx, lz } = toLocal(e.data, data.x, data.z);
+      segs.forEach(([a0, a1]) => {
+        if (a1 - a0 < half * 2 - 0.01) return; // eşya bu parçaya sığmıyor
+        const cx = clamp(lx, a0 + half, a1 - half);
+        const side = lz >= 0 ? 1 : -1;
+        const d = Math.hypot(lx - cx, lz - side * DIV_FACE);
+        if (d < 1.2 && (!best || d < best.d)) best = { d, div: e.data, cx, side };
+      });
+    });
+    if (best && best.d < dists[wi]) {
+      const w = toWorld(best.div, best.cx, best.side * (DIV_FACE + 0.005));
+      Object.assign(data, { x: w.x, z: w.z, r: (((best.div.r || 0) + (best.side > 0 ? 0 : 4)) % 8 + 8) % 8 });
+      return;
+    }
+    const m = Math.max(0.9, half);
     if (wi === 0) Object.assign(data, { z: -D / 2 + 0.005, r: 0, x: clamp(data.x, -W / 2 + m, W / 2 - m) });
     if (wi === 2) Object.assign(data, { z: D / 2 - 0.005, r: 4, x: clamp(data.x, -W / 2 + m, W / 2 - m) });
     if (wi === 3) Object.assign(data, { x: -W / 2 + 0.005, r: 2, z: clamp(data.z, -D / 2 + m, D / 2 - m) });
@@ -774,13 +839,83 @@ export function createHouseEngine(
     objs.forEach((e) => {
       const def = CATALOG_MAP[e.data.k];
       if (!def?.wall) return;
-      e.obj.visible = !walls[wallIndexForRot(e.data.r)].hidden;
+      // v77: sadece dış duvardakiler o duvarla birlikte gizlenir (bölme duvarındakiler değil)
+      const onOuter = Math.abs(e.data.z + D / 2) < 0.05 || Math.abs(e.data.z - D / 2) < 0.05 || Math.abs(e.data.x + W / 2) < 0.05 || Math.abs(e.data.x - W / 2) < 0.05;
+      e.obj.visible = !onOuter || !walls[wallIndexForRot(e.data.r)].hidden;
     });
     const showCeil = !overhead();
     ceiling.visible = showCeil;
     ceilLights.forEach((o) => {
       if (o.isMesh) o.visible = showCeil;
     });
+  }
+
+  // --- v77: kamera ile karakter arasındaki eşyalar/duvarlar yarı saydam -------------
+  // Sadece 3D gezide: kameradan karakterin göğsüne ve başına giden çizgiyi kesen
+  // eşyalar (bölme duvarları, dolaplar…) saydamlaşır; karakter hep görünür.
+  const fadeMatCache = new WeakMap();
+  const fadedMat = (m) => {
+    if (!m) return m;
+    let f = fadeMatCache.get(m);
+    if (!f) {
+      f = m.clone();
+      f.transparent = true;
+      f.opacity = Math.min(m.opacity ?? 1, 0.22);
+      f.depthWrite = false;
+      fadeMatCache.set(m, f);
+      owned.push(f);
+    }
+    return f;
+  };
+  function setFaded(e, on) {
+    if (Boolean(e.faded) === on) return;
+    e.faded = on;
+    e.obj.traverse((o) => {
+      if (!o.isMesh) return;
+      if (on) {
+        o.userData.origMat = o.material;
+        o.material = Array.isArray(o.material) ? o.material.map(fadedMat) : fadedMat(o.material);
+      } else if (o.userData.origMat) {
+        o.material = o.userData.origMat;
+        delete o.userData.origMat;
+      }
+    });
+  }
+  const fadeRay = new THREE.Raycaster();
+  const fadeTo = new THREE.Vector3();
+  const fadeDir = new THREE.Vector3();
+  let fadeTimer = 0;
+  function updateOccluders(dt) {
+    fadeTimer -= dt;
+    if (fadeTimer > 0) return;
+    fadeTimer = 0.12;
+    const active = mode === 'walk' && view === '3d' && !paused;
+    const hit = new Set();
+    if (active) {
+      const sw = self.seat ? seatWorld(self.seat, new THREE.Vector3()) : null;
+      const px = sw ? sw.x : self.x;
+      const pz = sw ? sw.z : self.z;
+      const base = sw ? sw.y : 0;
+      const list = [];
+      objs.forEach((e) => {
+        if (e.data.p === 1 || canEdit) list.push(e.obj);
+      });
+      [0.9, 1.5].forEach((hy) => {
+        fadeTo.set(px, base + hy, pz);
+        fadeDir.subVectors(fadeTo, camera.position);
+        const far = fadeDir.length() - 0.35;
+        if (far <= 0.05) return;
+        fadeRay.set(camera.position, fadeDir.normalize());
+        fadeRay.far = far;
+        fadeRay.intersectObjects(list, true).forEach((h) => {
+          let o = h.object;
+          while (o && !o.userData?.itemId && o.parent) o = o.parent;
+          const id = o?.userData?.itemId;
+          if (id && id !== self.seat?.id) hit.add(id);
+        });
+      });
+    }
+    objs.forEach((e, id) => setFaded(e, hit.has(id)));
   }
 
   let lightTimer = 0;
@@ -1252,7 +1387,7 @@ export function createHouseEngine(
         orbit.dist = clamp(orbit.dist * ratio, 5, 38);
         panBy(mx - pinch.mx, my - pinch.my);
       } else if (view === '2d') top.dist = clamp(top.dist * ratio, 6, 32);
-      else self.camDist = clamp(self.camDist * ratio, 1.8, 8);
+      else if (view !== 'fp') self.camDist = clamp(self.camDist * ratio, 1.8, 8);
       pinch = { d, mx, my };
       return;
     }
@@ -1267,7 +1402,7 @@ export function createHouseEngine(
       pushUndo();
       if (selectedId !== drag.id) select(drag.id);
       const fp = floorPoint(e);
-      drag = { type: 'item', id: drag.id, off: fp ? { x: e0.data.x - fp.x, z: e0.data.z - fp.z } : { x: 0, z: 0 }, moved: drag.moved };
+      drag = { type: 'item', id: drag.id, off: fp ? { x: e0.data.x - fp.x, z: e0.data.z - fp.z } : { x: 0, z: 0 }, moved: drag.moved, attached: isDivider(e0.data.k) ? attachedWallItems(e0.data) : null };
     }
     if (drag.type === 'item') {
       const en = objs.get(drag.id);
@@ -1277,6 +1412,7 @@ export function createHouseEngine(
         en.data.z = fp.z + drag.off.z;
         normalizePlacement(en.data);
         applyTransform(en);
+        if (drag.attached?.length) moveAttached(en.data, drag.attached); // bölmeyle birlikte üstündekiler
         updateSelectionVisual();
       }
     } else if (drag.type === 'orbit' && drag.moved > 4) {
@@ -1288,6 +1424,10 @@ export function createHouseEngine(
       if (view === '2d') {
         top.az -= dx * 0.006;
         top.el = clamp(top.el + dy * 0.004, 0.55, 1.45);
+      } else if (view === 'fp') {
+        // göz görüşü: sürükleyerek etrafa bak (görüntüyü tutup çeker gibi)
+        self.camYaw += dx * 0.005;
+        self.fpPitch = clamp(self.fpPitch + dy * 0.004, -1.2, 1.0);
       } else {
         self.camYaw -= dx * 0.006;
         self.camPitch = clamp(self.camPitch + dy * 0.004, -0.25, 1.1);
@@ -1315,7 +1455,7 @@ export function createHouseEngine(
     e.preventDefault();
     if (mode === 'build') orbit.dist = clamp(orbit.dist + e.deltaY * 0.012, 5, 38);
     else if (view === '2d') top.dist = clamp(top.dist + e.deltaY * 0.01, 6, 32);
-    else self.camDist = clamp(self.camDist + e.deltaY * 0.004, 1.8, 8);
+    else if (view !== 'fp') self.camDist = clamp(self.camDist + e.deltaY * 0.004, 1.8, 8);
   }
   const onKeyDown = (e) => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
@@ -1524,6 +1664,17 @@ export function createHouseEngine(
       focus.set(px, 1, pz);
       return;
     }
+    if (view === 'fp') {
+      // v77 — göz görüşü: kamera karakterin göz hizasında, baktığı yöne
+      const ey = sw ? (seatStand(self.seat) ? sw.y + 1.62 : sw.y + 1.05) : 1.62;
+      const fy = self.camYaw;
+      const fpch = self.fpPitch;
+      camPos.set(px, ey, pz);
+      camera.position.copy(camPos);
+      camera.lookAt(px - Math.sin(fy) * Math.cos(fpch), ey + Math.sin(fpch), pz - Math.cos(fy) * Math.cos(fpch));
+      focus.set(px, 1, pz);
+      return;
+    }
     const eyeY = sw ? sw.y + 1.0 : 1.55;
     const yaw = self.camYaw;
     const pitch = self.camPitch;
@@ -1549,6 +1700,7 @@ export function createHouseEngine(
     });
     if (mode === 'walk') stepWalk(dt);
     placeCamera(dt);
+    updateOccluders(dt);
     firstFrame = false;
     updateWalls();
     if (targetRing.visible) targetRing.scale.setScalar(1 + Math.sin(t * 6) * 0.12);
@@ -1556,8 +1708,8 @@ export function createHouseEngine(
     if (self.fig) {
       const sw = self.seat ? seatWorld(self.seat, seatV) : null;
       self.fig.update(dt, camera, now, sw ? sw.clone() : null, seatStand(self.seat));
-      self.fig.group.visible = mode === 'walk';
-      if (self.fig.label) self.fig.label.style.display = mode === 'walk' ? '' : 'none';
+      self.fig.group.visible = mode === 'walk' && view !== 'fp';
+      if (self.fig.label) self.fig.label.style.display = mode === 'walk' && view !== 'fp' ? '' : 'none';
     }
     others.forEach((o) => {
       const sw = o.seat && isUsable(o.seat.id) ? seatWorld(o.seat, new THREE.Vector3()) : null;
@@ -1769,12 +1921,13 @@ export function createHouseEngine(
         self.path = null;
         targetRing.visible = false;
       }
-      camera.fov = m === 'build' ? 52 : view === '2d' ? 50 : 62;
+      camera.fov = m === 'build' ? 52 : view === '2d' ? 50 : view === 'fp' ? 72 : 62;
       camera.updateProjectionMatrix();
       updateSelectionVisual();
     },
     setView(v) {
-      view = v === '2d' ? '2d' : '3d';
+      view = v === '2d' ? '2d' : v === 'fp' ? 'fp' : '3d';
+      if (view === 'fp') self.fpPitch = -0.12;
       firstFrame = true;
       if (view === '2d') {
         top.az = self.camYaw;
@@ -1851,8 +2004,10 @@ export function createHouseEngine(
       if (!e || !canEdit) return;
       if (CATALOG_MAP[e.data.k].wall) return;
       pushUndo();
+      const att = isDivider(e.data.k) ? attachedWallItems(e.data) : null;
       e.data.r = ((((e.data.r || 0) + dir) % 8) + 8) % 8;
       applyTransform(e);
+      if (att?.length) moveAttached(e.data, att);
       updateSelectionVisual();
       emitDesign();
     },
@@ -1884,6 +2039,9 @@ export function createHouseEngine(
     deleteSelected() {
       if (!selectedId || !canEdit) return;
       pushUndo();
+      // v77: bölme kaldırılınca üstündeki duvar eşyaları da kalkar (kaydedince envantere döner)
+      const sel = objs.get(selectedId);
+      if (sel && isDivider(sel.data.k)) attachedWallItems(sel.data).forEach(({ e }) => removeEntry(e.data.i));
       removeEntry(selectedId);
       select(null);
       emitDesign();

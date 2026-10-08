@@ -1880,6 +1880,49 @@ function doorDecor(g) {
   B(g, 0.03, 0.2, 0.05, 0.38, 1.05, 0.13, GOLD());
 }
 
+// v77 — Garaj kapısı (duvara takılır): katlanır panjur; aç/kapat ile yukarı
+// sarılır, arkası karanlık garaj boşluğu gibi görünür.
+function garageDoor(g, ctx) {
+  const Wd = 2.6;
+  const Hd = 2.35;
+  const frame = M('#2a2c31', 0.45, 0.4);
+  B(g, Wd + 0.2, 0.18, 0.12, 0, Hd + 0.09, 0.06, frame);
+  [-1, 1].forEach((sx) => B(g, 0.1, Hd + 0.18, 0.12, sx * (Wd / 2 + 0.05), (Hd + 0.18) / 2, 0.06, frame));
+  // açılınca görünen karanlık iç
+  B(g, Wd, Hd, 0.01, 0, Hd / 2, 0.012, M('#07080b', 0.95));
+  const panel = new THREE.Group();
+  panel.position.set(0, Hd, 0.06);
+  g.add(panel);
+  const slatM = M(tintHex(ctx, '#c9cdd3'), 0.35, 0.55);
+  const lineM = M('#8e939b', 0.5, 0.5);
+  const N = 9;
+  const sh = Hd / N;
+  for (let i = 0; i < N; i++) {
+    B(panel, Wd, sh - 0.012, 0.04, 0, -(i + 0.5) * sh, 0, slatM);
+    B(panel, Wd, 0.012, 0.045, 0, -(i + 1) * sh + 0.006, 0.002, lineM);
+  }
+  B(panel, 0.5, 0.05, 0.05, 0, -Hd + 0.12, 0.04, M('#3a3d44', 0.4, 0.6));
+  // üst sarma kutusu
+  B(g, Wd + 0.1, 0.22, 0.26, 0, Hd + 0.2, 0.13, frame);
+  let on = false; // true = açık
+  let k = 0;
+  return {
+    act: 'Garaj kapısını aç / kapat',
+    get on() {
+      return on;
+    },
+    setOn(v) {
+      on = Boolean(v);
+    },
+    tick(t, dt = 0.016) {
+      const target = on ? 1 : 0;
+      if (Math.abs(k - target) < 0.001) return;
+      k += Math.sign(target - k) * Math.min(Math.abs(target - k), (dt || 0.016) * 0.8);
+      panel.scale.y = Math.max(0.04, 1 - k * 0.96);
+    },
+  };
+}
+
 // =============================================================================
 // v66 — YENİ EŞYALAR (dükkan, kafe, kulüp, spor, ofis, dış mekan, duvar süsleri)
 // =============================================================================
@@ -2717,6 +2760,7 @@ export const CATALOG = [
   { k: 'column', name: 'Kolon', cat: 'yapi', icon: '🏛️', price: G(2000), tints: 'wood', build: column, box: [0.3, 0.3] },
   { k: 'podium', name: 'LED Sahne', cat: 'yapi', icon: '🎤', price: E(50), tints: 'neon', build: podium, nobox: true, flat: true },
   { k: 'doordeco', name: 'Ahşap Kapı', cat: 'yapi', icon: '🚪', price: G(2500), build: doorDecor, wall: true, nobox: true },
+  { k: 'garagedoor', name: 'Garaj Kapısı', cat: 'yapi', icon: '🚘', price: G(150000), tints: 'metal', build: garageDoor, wall: true, nobox: true, wallW: 1.4 },
 
   // v66 — YENİ EŞYALAR
   { k: 'cafetable', name: 'Kafe Masası (2 Sandalye)', cat: 'masa', icon: '☕', tints: 'wood', build: cafeTable, box: [0.95, 0.4] },

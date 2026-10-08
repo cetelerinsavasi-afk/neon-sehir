@@ -60,7 +60,7 @@ export const ITEM_PRICES = {
   // DIŞ MEKAN
   fence: g(8000), parkbench: g(20000), streetlamp: g(30000), turf: g(25000),
   // YAPI
-  wall2: g(10000), wall4: g(20000), walldoor: g(30000), glassdiv: g(50000), column: g(100000), podium: z(5), doordeco: g(20000),
+  wall2: g(10000), wall4: g(20000), walldoor: g(30000), glassdiv: g(50000), column: g(100000), podium: z(5), doordeco: g(20000), garagedoor: g(150000),
 };
 
 // Duvar & zemin kaplamaları bir kez alınır, oyuncunun TÜM evlerinde kullanılır.

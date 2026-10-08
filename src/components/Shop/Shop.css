@@ -447,3 +447,8 @@
   max-height: 100%;
   object-fit: contain;
 }
+.pf-tax {
+  margin: 4px 0 0;
+  font-size: 12px;
+  opacity: 0.85;
+}

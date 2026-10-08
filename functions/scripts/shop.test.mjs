@@ -139,7 +139,8 @@ test('atölye (oyuncu dükkânı): karışık malzeme, işçilik zorunlu, malzem
   const r = await h.act('ali', { ...req, ownQty: 4, expect: 68 });
   assert.equal(r.total, 68);
   assert.equal(h.G('users/ali').gold, 100_000 - 68);
-  assert.equal(h.G('users/usta').gold, 2_000_000 - 500_000 + 68);
+  // v77 vergi %10: işçilik 20 → 2, malzeme 48 → 5 (ayrı ayrı yuvarlanır)
+  assert.equal(h.G('users/usta').gold, 2_000_000 - 500_000 + 68 - 2 - 5);
   assert.equal(inv(h, 'ali', 'tamirMalzemesi'), 3);
   assert.equal(h.G(`businessInventories/${id}`).materials.tamirMalzemesi, 0);
   const totalMatAfter = inv(h, 'ali', 'tamirMalzemesi') + inv(h, 'usta', 'tamirMalzemesi') + h.G(`businessInventories/${id}`).materials.tamirMalzemesi;
@@ -151,6 +152,9 @@ test('atölye (oyuncu dükkânı): karışık malzeme, işçilik zorunlu, malzem
   assert.equal(rep.revenue, 68);
   assert.equal(rep.byKind.labor, 20);
   assert.equal(rep.byKind.material, 48);
+  assert.equal(rep.tax, 7);
+  assert.equal(h.G('taxLedger/2026-10-07_usta').total, 7);
+  assert.equal(h.G('taxLedger/2026-10-07_usta').bySource.isletme, 7);
   assert.equal(rep.materialsUsed.tamirMalzemesi, 6);
   assert.ok(rep.cust.ali);
   // stok bitti → sahibe SMS işareti
@@ -261,7 +265,9 @@ test('vitrin: polisin son silahı konamaz; vitrinden anında sat (2. el ile ayn�
   const before = h.G('users/usta').gold;
   const r = await h.act('usta', { op: 'vitrinInstantSell', houseId: id, itemId: 'p2' });
   assert.equal(r.payout, itemListingBand('weapon', h.G('weapons/p2')).instant);
-  assert.equal(h.G('users/usta').gold, before + r.payout);
+  // v77 vergi: 2. el / vitrin %1
+  assert.equal(r.tax, Math.round(r.payout * 0.01));
+  assert.equal(h.G('users/usta').gold, before + r.payout - r.tax);
   const p2 = h.G('weapons/p2');
   assert.equal(p2.listed, true);
   assert.equal(p2.shopHouseId, undefined);

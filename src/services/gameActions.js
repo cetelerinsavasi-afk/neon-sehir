@@ -670,6 +670,7 @@ export const adminAction = (action, payload = {}) => httpsCallable(functions, 'a
 // --- Ev (3D ev tasarımı, v65) — tek callable: functions/houses.js ---
 // op: 'enter' | 'save' | 'invite' | 'uninvite' | 'chat'
 export const houseAction = (payload) => httpsCallable(functions, 'houseAction')(payload);
+export const recordVenueVisit = (venue) => httpsCallable(functions, 'recordVenueVisit')({ venue });
 
 // v66 — Zümrüt Mağazası: zümrüt karşılığı altın paketi
 export const buyEmeraldOffer = (offerId) => httpsCallable(functions, 'buyEmeraldOffer')({ offerId });

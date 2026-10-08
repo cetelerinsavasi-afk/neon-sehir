@@ -9,7 +9,8 @@ import { houseAction, shopAction } from '../../services/gameActions';
 import { futbolDayKey } from '../../../functions/businessCatalogData.js';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import { HOUSE_PRICE } from '../../../functions/houseCatalogData.js';
-import { BIZ_TYPES, bizMissing } from '../../../functions/businessCatalogData.js';
+import { BIZ_TYPES, BIZ_TYPE_KEYS, bizMissing } from '../../../functions/businessCatalogData.js';
+import PlaceTypePicker from '../PlaceTypePicker/PlaceTypePicker';
 import BizRequirements, { FillConfirm } from '../HouseScreen/BizRequirements';
 import { bizErrText } from '../../lib/bizErrors';
 import { useBackClose } from '../../lib/backStack';
@@ -44,7 +45,11 @@ function Coin({ gem, v, bad }) {
 // İnternet Kafe, Silahçı, Galeri, Modifiye) tıklayınca açılır. Aktif dükkânlar
 // (dünkü kazanç sırasıyla; kazanç gösterilmez), en üstte "[tür] aç" ve varsa
 // oyunun kendi dükkânı. Bir dükkâna girince 3D ev ekranı açılır.
-export default function BusinessHub({ type, onClose, onOpenGameVenue }) {
+// v77: üstte açılır tür seçici — haritadan hangi türe tıklandıysa o seçili gelir,
+// buradan diğer türlere de geçilebilir. Sıra: önce içerideki kişi, eşitlikte dünkü ciro.
+const TYPE_OPTIONS = BIZ_TYPE_KEYS.map((k) => ({ key: k, icon: BIZ_TYPES[k].icon, label: BIZ_TYPES[k].label }));
+export default function BusinessHub({ type: initialType, onClose, onOpenGameVenue }) {
+  const [type, setType] = useState(initialType);
   const t = BIZ_TYPES[type];
   const { user } = useAuth();
   const { player } = usePlayer();
@@ -99,7 +104,6 @@ export default function BusinessHub({ type, onClose, onOpenGameVenue }) {
             setHouseId(null);
             if (note) setMsg(note);
           }}
-          onOpenGameVenue={GAME_VENUE[type] && !GAME_VENUE[type].house ? () => onOpenGameVenue?.() : undefined}
         />
       </Suspense>
     );
@@ -111,7 +115,7 @@ export default function BusinessHub({ type, onClose, onOpenGameVenue }) {
 
   const today = futbolDayKey(Date.now());
   const openGame = async () => {
-    if (!game?.house) return onOpenGameVenue?.();
+    if (!game?.house) return onOpenGameVenue?.(type);
     setBusy(true);
     setMsg(null);
     try {
@@ -184,9 +188,7 @@ export default function BusinessHub({ type, onClose, onOpenGameVenue }) {
       <div className="hh-head">
         <button className="hs-icon-btn" onClick={onClose} title="Kapat">✕</button>
         <div className="hh-title">
-          <b>
-            {t.icon} {t.label}
-          </b>
+          <b>🏪 İşletmeler</b>
         </div>
         {user && (
           <button
@@ -203,6 +205,15 @@ export default function BusinessHub({ type, onClose, onOpenGameVenue }) {
       </div>
 
       <div className="hh-body">
+        <PlaceTypePicker
+          options={TYPE_OPTIONS}
+          value={type}
+          title="İşletme türü"
+          onChange={(k) => {
+            setType(k);
+            setMsg(null);
+          }}
+        />
         {msg && !openAsk && <p className="hs-err">{msg}</p>}
         {!user && <p className="hs-dim hh-empty">İşletmeleri görmek için giriş yap.</p>}
         {user && loading && <p className="hs-dim">Yükleniyor…</p>}
@@ -213,11 +224,11 @@ export default function BusinessHub({ type, onClose, onOpenGameVenue }) {
           </div>
         )}
         {(() => {
-          const rank = (h) => (Number.isFinite(h.bizRank) && h.bizRank > 0 ? h.bizRank : Infinity);
-          const gr = Number.isFinite(gameRank) ? gameRank : Infinity;
-          const at = game ? list.filter((h) => rank(h) < gr || (gr === Infinity && rank(h) !== Infinity)).length : -1;
-          const rows = list.map((h) => ({ kind: 'h', h }));
-          if (game) rows.splice(at, 0, { kind: 'game' });
+          // önce içerideki kişi sayısı, eşitlikte dünkü ciro sırası (bizRank; oyunun dükkânı dahil)
+          const rank = (r) => (Number.isFinite(r) && r > 0 ? r : Infinity);
+          const rows = list.map((h, i) => ({ kind: 'h', h, people: h.people || 0, r: rank(h.bizRank), i }));
+          if (game) rows.push({ kind: 'game', people: gamePeople || 0, r: rank(gameRank), i: -1 });
+          rows.sort((a, b) => b.people - a.people || a.r - b.r || a.i - b.i);
           return rows;
         })().map(({ kind, h }) =>
           kind === 'game' ? (

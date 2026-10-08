@@ -113,7 +113,7 @@ test('üyelik: mevki zorunlu, emanet ödeme, 3 görev (≥10 sn), gelişim, öde
   assert.equal(done.to, Math.round((100 + done.gain) * 10) / 10);
   assert.equal(done.gain, withBonus(done.base, true));
   assert.equal(h.G('footballers/ali').power, done.to);
-  assert.equal(h.G('users/sahip').gold, 1_500_800, 'görev bitince salona');
+  assert.equal(h.G('users/sahip').gold, 1_500_720, 'görev bitince salona (800 − %10 vergi)');
   assert.equal(h.G(`businessDaily/${id}_2026-10-06`).revenue, 800, 'ödeme gününün gelirine');
   // bugünün (7 Ekim futbol günü) hakkı hemen alınabilir
   h.present('ali', id);

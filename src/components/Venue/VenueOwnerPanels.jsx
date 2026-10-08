@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { shopAction } from '../../services/gameActions';
 import PriceField from '../Shop/PriceField';
+import { BIZ_TAX_RATE } from '../../../functions/tax.js';
 import HeldIcon from '../HouseScreen/HeldIcon';
 import { bizErrText } from '../../lib/bizErrors';
 import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
@@ -48,6 +49,7 @@ export function MenuPriceSection({ houseId, houseDoc }) {
           value={draft[k] ?? MENU_PRICE.def}
           refPrice={MENU_PRICE.def}
           refLabel="Varsayılan"
+          taxRate={BIZ_TAX_RATE}
           saved={menuPriceOf(houseDoc, k)}
           onChange={(v) => setDraft((d) => ({ ...d, [k]: v }))}
         />
@@ -120,6 +122,7 @@ export function NetPriceSection({ houseId, houseDoc }) {
         value={v}
         refPrice={NET_MINUTE.def}
         refLabel="Varsayılan"
+        taxRate={BIZ_TAX_RATE}
         saved={cur}
         onChange={setV}
       />

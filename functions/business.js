@@ -18,6 +18,7 @@
 // =============================================================================
 
 import { BIZ_TYPES, BIZ_TYPE_KEYS, bizDayKey, prevDayKey, bizOpenAllDay } from './businessCatalogData.js';
+import { taxLedgerWrite } from './tax.js';
 
 export const BIZ_INCOME_KINDS = ['service', 'sale', 'material', 'labor', 'menu', 'team'];
 // Oyunun kendi işletmeleri de kazancına göre sıralanır (en üstte durmak zorunda
@@ -32,7 +33,8 @@ export function createBusiness({ db, FieldValue, now = () => Date.now() }) {
 
   // Sadece YAZMA (transaction'ın en sonunda çağrılabilir). Sahibin kendi
   // alışverişi müşteri sayılmaz ve rapora yazılmaz.
-  function recordIncomeTx(tx, { houseId, h, amount, kind, customerUid, products, materialsUsed, materialsIn, atMs }) {
+  // v77 vergi: `tax` → rapora (günlük `tax`) ve vergi defterine (functions/tax.js)
+  function recordIncomeTx(tx, { houseId, h, amount, kind, customerUid, products, materialsUsed, materialsIn, atMs, tax = 0, taxSource = 'isletme' }) {
     const type = h?.biz?.type;
     if (!type || !houseId) return null;
     if (customerUid && customerUid === h.ownerUid) return null;
@@ -49,6 +51,12 @@ export function createBusiness({ db, FieldValue, now = () => Date.now() }) {
       updatedAtMs: now(),
     };
     if (customerUid) patch.cust = { [customerUid]: true };
+    const tx10 = Math.max(0, Math.round(Number(tax) || 0));
+    if (tx10 > 0) {
+      patch.tax = FieldValue.increment(tx10);
+      patch.taxByKind = { [k]: FieldValue.increment(tx10) };
+      taxLedgerWrite(tx, db, FieldValue, { amount: tx10, source: taxSource, uid: h.ownerUid, atMs: atMs ?? now(), ref: houseId });
+    }
     const addMap = (field, m) => {
       if (!m) return;
       const out = {};
@@ -77,9 +85,9 @@ export function createBusiness({ db, FieldValue, now = () => Date.now() }) {
     return dayKey;
   }
   // Oyunun dükkânının geliri (sadece sıralama için). YAZMA.
-  function recordGameIncomeTx(tx, { type, amount, kind, customerUid, products, materialsUsed, atMs }) {
+  function recordGameIncomeTx(tx, { type, amount, kind, customerUid, products, materialsUsed, atMs, tax = 0 }) {
     if (!GAME_VENUE_TYPES.includes(type)) return null;
-    return recordIncomeTx(tx, { houseId: gameVenueId(type), h: { biz: { type }, ownerUid: GAME_VENUE_OWNER }, amount, kind, customerUid, products, materialsUsed, atMs });
+    return recordIncomeTx(tx, { houseId: gameVenueId(type), h: { biz: { type }, ownerUid: GAME_VENUE_OWNER }, amount, kind, customerUid, products, materialsUsed, atMs, tax });
   }
 
   // Gün kapanışı: türün gün sınırı geçtiyse dünkü kazanca göre sıra yazılır.

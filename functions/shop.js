@@ -29,6 +29,7 @@
 // =============================================================================
 
 import { BIZ_TYPES, midnightDayKey } from './businessCatalogData.js';
+import { bizTax, resaleTax, taxLedgerWrite } from './tax.js';
 import {
   WORKSHOP_MATERIALS,
   WORKSHOP_ITEM_TYPE,
@@ -186,12 +187,15 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       if (cost.own > 0) tx.set(invDoc(uid, material), { quantity: FieldValue.increment(-cost.own) }, { merge: true });
       if (!isGame) {
         if (cost.shopQty > 0) tx.set(bizInvRef(houseId), { materials: { [material]: FieldValue.increment(-cost.shopQty) }, updatedAtMs: now() }, { merge: true });
+        // v77 vergi: cironun %10'u (işçilik ve malzeme ayrı ayrı)
+        const taxLabor = selfService ? 0 : bizTax(cost.labor);
+        const taxMat = selfService ? 0 : bizTax(cost.material);
         if (!selfService && cost.total > 0) {
-          const { goldDelta, debtDelta } = splitIncomeForDebt(os.data()?.debtToState, cost.total);
+          const { goldDelta, debtDelta } = splitIncomeForDebt(os.data()?.debtToState, cost.total - taxLabor - taxMat);
           tx.update(userRef(h.ownerUid), { gold: FieldValue.increment(goldDelta), debtToState: FieldValue.increment(debtDelta) });
         }
-        business?.recordIncomeTx(tx, { houseId, h, amount: cost.labor, kind: 'labor', customerUid: uid, products: { [`${action}:${itemType}`]: 1 } });
-        if (cost.material > 0) business?.recordIncomeTx(tx, { houseId, h, amount: cost.material, kind: 'material', customerUid: uid, materialsUsed: { [material]: cost.shopQty } });
+        business?.recordIncomeTx(tx, { houseId, h, amount: cost.labor, kind: 'labor', customerUid: uid, products: { [`${action}:${itemType}`]: 1 }, tax: taxLabor });
+        if (cost.material > 0) business?.recordIncomeTx(tx, { houseId, h, amount: cost.material, kind: 'material', customerUid: uid, materialsUsed: { [material]: cost.shopQty }, tax: taxMat });
         // Aynı işi bir daha karşılayamayacak kadar stok kaldıysa sahibe (günde en
         // fazla bir kez, toplu) SMS için işaretle — bkz. business.sendShortageSms
         const left = shopHave - cost.shopQty;
@@ -201,8 +205,8 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       }
       if (isGame && cost.total > 0) {
         // oyunun dükkânı: gelir sadece sıralama için kaydedilir
-        business?.recordGameIncomeTx?.(tx, { type, amount: cost.labor, kind: 'labor', customerUid: uid, products: { [`${action}:${itemType}`]: 1 } });
-        if (cost.material > 0) business?.recordGameIncomeTx?.(tx, { type, amount: cost.material, kind: 'material', customerUid: uid });
+        business?.recordGameIncomeTx?.(tx, { type, amount: cost.labor, kind: 'labor', customerUid: uid, products: { [`${action}:${itemType}`]: 1 }, tax: bizTax(cost.labor) });
+        if (cost.material > 0) business?.recordGameIncomeTx?.(tx, { type, amount: cost.material, kind: 'material', customerUid: uid, tax: bizTax(cost.material) });
       }
       // ürün güncellemesi (eski repairItem / upgradeWeapon / upgradeVehicle ile aynı)
       let patch;
@@ -357,7 +361,10 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       const us = await tx.get(userRef(uid));
       const payout = itemListingBand(itemType, item).instant;
       if (listing) tx.update(listing.ref, { sold: true, cancelled: true });
-      const { goldDelta, debtDelta } = splitIncomeForDebt(us.data()?.debtToState, payout);
+      // v77 vergi: 2. el / vitrin satışı %1
+      const tax = resaleTax(payout);
+      taxLedgerWrite(tx, db, FieldValue, { amount: tax, source: 'ikinciEl', uid, atMs: now(), ref: String(p.houseId || '') });
+      const { goldDelta, debtDelta } = splitIncomeForDebt(us.data()?.debtToState, payout - tax);
       tx.update(userRef(uid), { gold: FieldValue.increment(goldDelta), debtToState: FieldValue.increment(debtDelta) });
       const sysRef = listingsRef.doc();
       tx.set(sysRef, {
@@ -369,7 +376,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
         sold: false,
       });
       tx.update(itemRef, { listed: true, shopHouseId: FieldValue.delete(), shopListingId: FieldValue.delete() });
-      result = { ok: true, payout };
+      result = { ok: true, payout, tax, net: payout - tax };
     });
     return result;
   }

@@ -182,13 +182,22 @@ function ReportCard({ label, d, type }) {
   return (
     <div className="bz-sec">
       <p className="bz-sec-title">{label}</p>
+      <div className="bz-row">
+        <span>Ciro (toplam satış)</span>
+        <b>{fmt(d?.revenue)} altın</b>
+      </div>
+      <div className="bz-row">
+        <span>🏛️ Vergi</span>
+        <b className="bz-bad">−{fmt(d?.tax)} altın</b>
+      </div>
       <div className="bz-row total">
-        <span>Toplam kazanç</span>
+        <span>Net kazanç</span>
         <b>
           <span className="gold-coin-icon" style={{ width: 14, height: 14 }} />
-          {fmt(d?.revenue)} altın
+          {fmt((Number(d?.revenue) || 0) - (Number(d?.tax) || 0))} altın
         </b>
       </div>
+      <p className="bz-hint">Vergi: hizmet ve satışlarda %10, vitrinden satılan silah/arabada %1.</p>
       <div className="bz-row">
         <span>Müşteri sayısı</span>
         <b>{fmt(customers)}</b>

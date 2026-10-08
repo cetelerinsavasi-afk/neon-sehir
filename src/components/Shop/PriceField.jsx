@@ -1,3 +1,4 @@
+import { taxOf } from '../../../functions/tax.js';
 import '../../styles/bizui.css';
 import './Shop.css';
 
@@ -6,7 +7,8 @@ const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
 // v77 — Fiyat belirleme alanı: ne ayarladığın yazar ("Dakika ücreti"), seçtiğin
 // fiyat büyük görünür, en az / en çok sınırları ve karşılaştırma fiyatı
 // (ör. "Oyunun fiyatı: 2.000") yazıyla verilir. − / + ile adım adım da ayarlanır.
-export default function PriceField({ label, hint, value, min, max, step = 1, onChange, refPrice, refLabel = 'Oyunun fiyatı', unit = 'altın', saved }) {
+// taxRate: verilirse vergi ve satıcının eline geçen tutar yazılır (functions/tax.js)
+export default function PriceField({ label, hint, value, min, max, step = 1, onChange, refPrice, refLabel = 'Oyunun fiyatı', unit = 'altın', saved, taxRate }) {
   const clamp = (v) => Math.min(max, Math.max(min, Math.round(v / step) * step));
   const pos = (v) => (max > min ? ((v - min) / (max - min)) * 100 : 100);
   return (
@@ -39,6 +41,11 @@ export default function PriceField({ label, hint, value, min, max, step = 1, onC
         )}
         <span>En çok {fmt(max)}</span>
       </div>
+      {taxRate > 0 && (
+        <p className="pf-tax">
+          🏛️ Vergi (%{Math.round(taxRate * 100)}): {fmt(taxOf(value, taxRate))} · Eline geçen: <b>{fmt(value - taxOf(value, taxRate))} {unit}</b>
+        </p>
+      )}
       {saved !== undefined && saved !== value && <p className="pf-dirty">Şu an kayıtlı fiyat: {fmt(saved)} {unit} — değişikliği kaydetmeyi unutma.</p>}
     </div>
   );

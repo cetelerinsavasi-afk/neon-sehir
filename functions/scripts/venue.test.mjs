@@ -65,7 +65,7 @@ test('cafe: fiyat bandı, anında al, para sahibine, rapor, ücretsiz alma kapal
   const r = await h.act('ali', { op: 'menuBuy', houseId: id, product: 'pasta', expect: 250 });
   assert.equal(r.spent, 250);
   assert.equal(h.G('users/ali').gold, 50_000 - 250);
-  assert.equal(h.G('users/sahip').gold, 2_000_000 - 500_000 + 250);
+  assert.equal(h.G('users/sahip').gold, 2_000_000 - 500_000 + 225); // 250 − %10 vergi
   assert.equal(h.G('heldItems/ali').itemId, 'pasta');
   assert.equal(h.G('housePresence/ali').holding, 'pasta');
   const rep = h.G(`businessDaily/${id}_2026-10-07`);

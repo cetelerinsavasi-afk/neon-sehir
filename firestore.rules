@@ -392,6 +392,19 @@ service cloud.firestore {
     match /businessRollups/{docId} {
       allow read, write: if false;
     }
+    // v77 — vergi defteri (functions/tax.js): sadece sunucu yazar; ödeyen kendi kaydını görür
+    // v77 — mekân ziyaret sayacı (functions/visits.js): herkes okur, sadece sunucu yazar
+    match /venueVisits/{docId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    match /venueVisitLast/{uid} {
+      allow read, write: if false;
+    }
+    match /taxLedger/{docId} {
+      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
     // v77 — oyunun dükkânlarının dünkü kazanç sırası (tutar yok, sadece sıra)
     // v77 Faz 5 — futbolcu teklifleri ve oyuncu istatistikleri (yazma sadece sunucu)
     match /futbolOffers/{id} {

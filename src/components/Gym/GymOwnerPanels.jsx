@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { shopAction } from '../../services/gameActions';
 import PriceField from '../Shop/PriceField';
+import { BIZ_TAX_RATE } from '../../../functions/tax.js';
 import { bizErrText } from '../../lib/bizErrors';
 import { GYM_PRICE, GYM_EQUIPMENT, GAME_GYM_PRICE, gymPriceOf } from '../../../functions/gym.js';
 import { EQUIP } from './gymMeta';
@@ -27,6 +28,7 @@ export function GymPriceSection({ houseId, houseDoc }) {
         value={v}
         refPrice={GAME_GYM_PRICE}
         refLabel="Oyunun salonu"
+        taxRate={BIZ_TAX_RATE}
         saved={cur}
         onChange={setV}
       />

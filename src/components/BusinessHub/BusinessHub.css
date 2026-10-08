@@ -182,3 +182,7 @@
   max-height: 46vh;
   overflow-y: auto;
 }
+
+.bh-root .ptp {
+  margin-bottom: 10px;
+}

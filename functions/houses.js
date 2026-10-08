@@ -120,7 +120,7 @@ const countOwned = (items) => {
 const ownsSurface = (inv, type, key) => FREE_SURFACES[type].includes(key) || (inv?.[type === 'wall' ? 'walls' : 'floors'] || []).includes(key);
 
 // deps: { db, FieldValue, HttpsError, requireAuth, onCall, isAdmin, assertCanSpeak, isFriend, now? }
-export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, isAdmin, assertCanSpeak, isFriend, now = () => Date.now(), bizHooks = {} }) {
+export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, isAdmin, assertCanSpeak, isFriend, now = () => Date.now(), bizHooks = {}, visits = null }) {
   const fail = (code, msg) => {
     throw new HttpsError(code, msg);
   };
@@ -257,6 +257,8 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     if (isOwner && !h.name) patch.name = defaultHouseName(user.displayName);
     if (isOwner && !h.privacy) patch.privacy = 'public';
     if (Object.keys(patch).length) await houseRef(houseId).update(patch);
+    // v77: ziyaret sayacı (hesap başına günde 1)
+    if (!already && visits) await visits.recordHouseVisit(uid, houseId, { ...h, ...patch });
     return { status: 'ok', houseId, isOwner, name: patch.name || h.name || defaultHouseName(h.ownerName), ownerName: h.ownerName || 'Oyuncu' };
   }
 

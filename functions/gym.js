@@ -41,6 +41,7 @@
 // =============================================================================
 
 import { futbolDayKey, prevDayKey, bizOpenAllDay, bizDayStartMs } from './businessCatalogData.js';
+import { bizTax, taxLedgerWrite } from './tax.js';
 
 export const GAME_GYM_ID = 'game_spor';
 export const GAME_OWNER = '__game__';
@@ -129,13 +130,14 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
   // Salona ödeme (oyunun salonu → oyundan çıkar). YAZMA. ownerSnap önceden okunmalı.
   function payGymTx(tx, { gymId, h, ownerSnap, amount, customerUid, kind, atMs, products }) {
     if (amount <= 0) return;
+    const tax = bizTax(amount); // v77 vergi %10
     if (isGameGym(h)) {
-      business?.recordGameIncomeTx?.(tx, { type: 'spor', amount, kind, customerUid, atMs, products });
+      business?.recordGameIncomeTx?.(tx, { type: 'spor', amount, kind, customerUid, atMs, products, tax });
       return;
     }
-    const { goldDelta, debtDelta } = splitIncomeForDebt(ownerSnap?.data()?.debtToState, amount);
+    const { goldDelta, debtDelta } = splitIncomeForDebt(ownerSnap?.data()?.debtToState, amount - tax);
     tx.update(userRef(h.ownerUid), { gold: FieldValue.increment(goldDelta), debtToState: FieldValue.increment(debtDelta) });
-    business?.recordIncomeTx(tx, { houseId: gymId, h, amount, kind, customerUid, atMs, products });
+    business?.recordIncomeTx(tx, { houseId: gymId, h, amount, kind, customerUid, atMs, products, tax });
   }
 
   // Bonus: dünkü kazanç < en çok kazanan salonun (oyunun dahil) yarısı (ya da 0)
@@ -367,10 +369,11 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
       if (hs.exists && hs.data().biz?.type === 'spor' && !isGameGym(hs.data()) && hs.data().ownerUid === m.ownerUid) {
         payGymTx(tx, { gymId: m.gymId, h: hs.data(), ownerSnap: os, amount: m.price, customerUid: uid, kind: 'service', atMs: m.paidAtMs, products: { üyelik: 1 } });
       } else if (m.game && m.price > 0) {
-        business?.recordGameIncomeTx?.(tx, { type: 'spor', amount: m.price, kind: 'service', customerUid: uid, atMs: m.paidAtMs, products: { üyelik: 1 } });
+        business?.recordGameIncomeTx?.(tx, { type: 'spor', amount: m.price, kind: 'service', customerUid: uid, atMs: m.paidAtMs, products: { üyelik: 1 }, tax: bizTax(m.price) });
       } else if (m.ownerUid && os && m.price > 0) {
-        // salon kapanmış/sahibi değişmiş olsa da parası ödenmiş hizmet tamamlandı → sahibe
-        const { goldDelta, debtDelta } = splitIncomeForDebt(os.data()?.debtToState, m.price);
+        // salon kapanmış/sahibi değişmiş olsa da parası ödenmiş hizmet tamamlandı → sahibe (vergi düşülerek)
+        taxLedgerWrite(tx, db, FieldValue, { amount: bizTax(m.price), source: 'isletme', uid: m.ownerUid, atMs: t, ref: m.gymId });
+        const { goldDelta, debtDelta } = splitIncomeForDebt(os.data()?.debtToState, m.price - bizTax(m.price));
         tx.update(userRef(m.ownerUid), { gold: FieldValue.increment(goldDelta), debtToState: FieldValue.increment(debtDelta) });
       }
       tx.update(ref, { step: 3, stepStartedAtMs: null, status: 'done', doneAtMs: t, result: training });

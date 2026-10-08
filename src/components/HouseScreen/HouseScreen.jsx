@@ -106,7 +106,7 @@ const ownedCount = (items) => {
   return m;
 };
 
-export default function HouseScreen({ houseId, onExit, onOpenGameVenue }) {
+export default function HouseScreen({ houseId, onExit }) {
   const { user } = useAuth();
   const { player } = usePlayer();
   const social = useSocial();
@@ -600,10 +600,12 @@ export default function HouseScreen({ houseId, onExit, onOpenGameVenue }) {
     if (m === 'walk') setSel(null);
     if (m === 'build') setPanel(null);
   };
+  // v77: 3 görünüm sırayla — 3D (varsayılan) → 2D (kuş bakışı) → Göz (karakterin gözünden)
   const toggleView = () => {
-    const v = view === '3d' ? '2d' : '3d';
+    const v = view === '3d' ? '2d' : view === '2d' ? 'fp' : '3d';
     setView(v);
     engineRef.current?.setView(v);
+    if (v === 'fp') flash('👁️ Göz görüşü: etrafa bakmak için ekranı kaydır, yürümek için yere dokun.');
   };
 
   // --- sepet / envanter ------------------------------------------------------------
@@ -975,7 +977,7 @@ export default function HouseScreen({ houseId, onExit, onOpenGameVenue }) {
             <NetCreditRing houseId={houseId} />
             {mode === 'walk' && (
               <button className="hs-view-btn" onClick={toggleView} title="Görünümü değiştir">
-                {view === '3d' ? '3D' : '2D'}
+                {view === '3d' ? '3D' : view === '2d' ? '2D' : '👁️ Göz'}
               </button>
             )}
             {isOwner && (
@@ -1005,7 +1007,6 @@ export default function HouseScreen({ houseId, onExit, onOpenGameVenue }) {
                 <Workshop
                   shop={{ kind: 'player', type: bizType, houseId, houseDoc }}
                   onClose={() => setPanel(null)}
-                  onGoGame={onOpenGameVenue ? () => onOpenGameVenue(bizType) : undefined}
                 />
               </div>
             </div>

@@ -14,6 +14,8 @@ import { createSocial } from './social.js';
 import { createDeletionRequests } from './deletionRequests.js';
 import { createHouses } from './houses.js';
 import { createBusiness } from './business.js';
+import { resaleTax, factoryTax, taxLedgerWrite } from './tax.js';
+import { createVisits } from './visits.js';
 import { createShop } from './shop.js';
 import { createVenue } from './venue.js';
 import { createGym, GAME_GYM_ID, gymPriceOf, withBonus } from './gym.js';
@@ -189,7 +191,14 @@ const shop = createShop({
   advanceOnboardingStep: (uid, n) => advanceOnboardingStep(uid, n),
 });
 export const shopAction = shop.shopAction;
+// v77 — mekân ziyaret sayacı (functions/visits.js)
+const visits = createVisits({ db, FieldValue: admin.firestore.FieldValue });
+export const recordVenueVisit = onCall(async (request) => {
+  const uid = requireAuth(request);
+  return visits.recordVenueVisit(uid, request.data || {});
+});
 const houses = createHouses({
+  visits,
   bizHooks: shop.bizHooks,
   db,
   FieldValue: admin.firestore.FieldValue,
@@ -1721,11 +1730,17 @@ async function sendSalaryPenaltySms(uid, penaltyAmount, newTotalDebt) {
 // düşülür, yetmeyen kısım (varsa) sendSalaryPenaltySms ile AYNI desende
 // debtToState'e yazılır — bkz. dailyReset'teki elektrik faturası bloğu.
 // Bölüm 16: artık kişisel SMS DEĞİL, fabrika bildirim paneli.
-async function sendElectricityBillSms(uid, bill, shortfall, newTotalDebt) {
+// v77: fabrika vergisi (%10) de aynı bildirimde (tax).
+async function sendElectricityBillSms(uid, bill, shortfall, newTotalDebt, tax = 0) {
+  const fmtTr = (n) => Math.round(n || 0).toLocaleString('tr-TR');
+  const parts = [];
+  if (bill > 0) parts.push(`${fmtTr(bill)} altın elektrik faturası`);
+  if (tax > 0) parts.push(`${fmtTr(tax)} altın vergi (günlük kazancın %10'u)`);
+  const what = parts.join(' ve ');
   const text =
     shortfall > 0
-      ? `Fabrikandaki makineler için ${bill.toLocaleString('tr-TR')} altın elektrik faturası kesildi. Altının yetmediği için ${shortfall.toLocaleString('tr-TR')} altın devlete borç yazıldı. Toplam borcun: ${newTotalDebt.toLocaleString('tr-TR')} altın.`
-      : `Fabrikandaki makineler için ${bill.toLocaleString('tr-TR')} altın elektrik faturası kesildi ve otomatik ödendi.`;
+      ? `Fabrikan için ${what} kesildi. Altının yetmediği için ${fmtTr(shortfall)} altın devlete borç (ceza) yazıldı. Toplam borcun: ${fmtTr(newTotalDebt)} altın.`
+      : `Fabrikan için ${what} kesildi ve otomatik ödendi.`;
   await sendFactoryNotification(null, uid, text, 'factory_electricity_bill');
 }
 
@@ -2785,7 +2800,15 @@ export const dailyReset = onSchedule(
       // — aşağıdaki batch yazımı senkron kurulduğu için, nakit/borç ayrımı bu
       // okumadan sonra hesaplanmalı (produceAtFactory'deki maaş açığı
       // mantığıyla AYNI desen, sadece transaction yerine toplu okuma).
-      const electricityOwnerIds = Array.from(electricityBillByFactory.keys());
+      // v77 vergi: fabrikanın günlük brüt üretim kazancının %10'u (functions/tax.js).
+      // Elektrik faturasıyla birlikte sahibin altınından düşülür; yetmezse
+      // kalanı devlete borç (ceza) yazılır.
+      const factoryTaxByFactory = new Map();
+      incomeByFactory.forEach((v, id) => {
+        const t = factoryTax(Math.round(v || 0));
+        if (t > 0) factoryTaxByFactory.set(id, t);
+      });
+      const electricityOwnerIds = Array.from(new Set([...electricityBillByFactory.keys(), ...factoryTaxByFactory.keys()]));
       const electricityOwnerSnaps = await Promise.all(
         electricityOwnerIds.map((id) => db.collection('users').doc(id).get())
       );
@@ -2826,7 +2849,8 @@ export const dailyReset = onSchedule(
         // masrafı yüksek bir fabrikanın hisseleri daha düşük değerlenir/
         // temettü öder, kasıtlı ve istenen davranış.
         const electricityBill = electricityBillByFactory.get(f.id) || 0;
-        const dailyIncome = Math.round(grossIncome - salaryPaid - electricityBill);
+        const taxAmount = factoryTaxByFactory.get(f.id) || 0;
+        const dailyIncome = Math.round(grossIncome - salaryPaid - electricityBill - taxAmount);
         factoryDailyIncomeMap.set(f.id, dailyIncome);
 
         // Son 10 günlük gelir geçmişi: Firestore'da atomik "ekle ve N ile
@@ -2873,6 +2897,8 @@ export const dailyReset = onSchedule(
           ? f.data().dailyElectricityExpenseHistory
           : [];
         const dailyElectricityExpenseHistory = [...existingElectricityHistory, electricityBill].slice(-10);
+        const existingTaxHistory = Array.isArray(f.data().dailyTaxExpenseHistory) ? f.data().dailyTaxExpenseHistory : [];
+        const dailyTaxExpenseHistory = [...existingTaxHistory, taxAmount].slice(-10);
 
         // Kullanıcı revizesi: günlük rapora GELİR olarak "hisse satışı" da
         // eklensin. shareSaleIncomeToday, buyFactoryShare tarafından gün
@@ -2898,6 +2924,8 @@ export const dailyReset = onSchedule(
           dailySalaryExpenseHistory,
           dailyElectricityExpense: electricityBill,
           dailyElectricityExpenseHistory,
+          dailyTaxExpense: taxAmount,
+          dailyTaxExpenseHistory,
           dailyShareSaleIncome: shareSaleIncome,
           dailyShareSaleIncomeHistory,
           dailyProducedByType,
@@ -2918,10 +2946,15 @@ export const dailyReset = onSchedule(
         // (produceAtFactory'deki maaş açığı mantığıyla AYNI şekilde)
         // devlete borç yazılır. Fatura 0 ise (bugün çalışan makine yoksa)
         // hiçbir para hareketi/SMS olmaz.
-        if (electricityBill > 0) {
+        if (electricityBill > 0 || taxAmount > 0) {
           const ownerGold = electricityOwnerGold.get(f.id) || 0;
-          const paidFromGold = Math.min(electricityBill, ownerGold);
-          const shortfall = electricityBill - paidFromGold;
+          const totalBill = electricityBill + taxAmount;
+          const paidFromGold = Math.min(totalBill, ownerGold);
+          const shortfall = totalBill - paidFromGold;
+          if (taxAmount > 0) {
+            taxLedgerWrite(batch, db, admin.firestore.FieldValue, { amount: taxAmount, source: 'fabrika', uid: f.id, dayKey: prevDateKey, atMs: Date.now() });
+            opCount += 1;
+          }
           batch.update(db.collection('users').doc(f.id), {
             gold: admin.firestore.FieldValue.increment(-paidFromGold),
             debtToState: admin.firestore.FieldValue.increment(shortfall),
@@ -2935,6 +2968,7 @@ export const dailyReset = onSchedule(
           electricitySmsJobs.push({
             ownerId: f.id,
             bill: electricityBill,
+            tax: taxAmount,
             shortfall,
             newTotalDebt: (electricityOwnerDebt.get(f.id) || 0) + shortfall,
           });
@@ -2947,7 +2981,7 @@ export const dailyReset = onSchedule(
       // gibi, para hareketi kesinleşmeden bildirim gitmesin diye).
       await Promise.all(
         electricitySmsJobs.map((job) =>
-          sendElectricityBillSms(job.ownerId, job.bill, job.shortfall, job.newTotalDebt)
+          sendElectricityBillSms(job.ownerId, job.bill, job.shortfall, job.newTotalDebt, job.tax)
         )
       );
     }
@@ -9455,7 +9489,9 @@ export const instantSellListing = onCall(async (request) => {
       if (have < qty) {
         throw new HttpsError('failed-precondition', 'Yeterli malzemeniz yok.');
       }
-      const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, payout);
+      // v77 vergi: 2. el satışı %1
+      taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: resaleTax(payout), source: 'ikinciEl', uid, atMs: Date.now() });
+      const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, payout - resaleTax(payout));
       tx.update(sellerRef, {
         gold: admin.firestore.FieldValue.increment(goldDelta),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
@@ -9484,7 +9520,7 @@ export const instantSellListing = onCall(async (request) => {
     // Onboarding görev 15 — "2. el satış uygulamasından alışveriş yap"
     // (anında satmak da sayılıyor).
     await advanceOnboardingStep(uid, 15);
-    return { ok: true, listingId: mergedListingRef.id, payout };
+    return { ok: true, listingId: mergedListingRef.id, payout, tax: resaleTax(payout), net: payout - resaleTax(payout) };
   }
 
   const listingRef = db.collection('marketplaceListings').doc();
@@ -9511,7 +9547,9 @@ export const instantSellListing = onCall(async (request) => {
       }
       const minPrice = itemListingBand('vehicle', v).instant;
       payout = minPrice;
-      const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, minPrice);
+      // v77 vergi: 2. el satışı %1
+      taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: resaleTax(minPrice), source: 'ikinciEl', uid, atMs: Date.now() });
+      const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, minPrice - resaleTax(minPrice));
       tx.update(sellerRef, {
         gold: admin.firestore.FieldValue.increment(goldDelta),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
@@ -9566,7 +9604,9 @@ export const instantSellListing = onCall(async (request) => {
       }
       const minPrice = itemListingBand('weapon', w).instant;
       payout = minPrice;
-      const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, minPrice);
+      // v77 vergi: 2. el satışı %1
+      taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: resaleTax(minPrice), source: 'ikinciEl', uid, atMs: Date.now() });
+      const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, minPrice - resaleTax(minPrice));
       tx.update(sellerRef, {
         gold: admin.firestore.FieldValue.increment(goldDelta),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
@@ -9619,7 +9659,9 @@ export const instantSellListing = onCall(async (request) => {
           'Bu makinede biri çalışıyor, önce işçiyi çıkarmalısın.'
         );
       }
-      const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, minPrice);
+      // v77 vergi: 2. el satışı %1
+      taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: resaleTax(minPrice), source: 'ikinciEl', uid, atMs: Date.now() });
+      const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, minPrice - resaleTax(minPrice));
       tx.update(sellerRef, {
         gold: admin.firestore.FieldValue.increment(goldDelta),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
@@ -9650,7 +9692,7 @@ export const instantSellListing = onCall(async (request) => {
   // (anında satmak da sayılıyor).
   await advanceOnboardingStep(uid, 15);
 
-  return { ok: true, listingId: listingRef.id, payout };
+  return { ok: true, listingId: listingRef.id, payout, tax: resaleTax(payout), net: payout - resaleTax(payout) };
 });
 
 export const cancelListing = onCall(async (request) => {
@@ -9848,19 +9890,24 @@ export const buyListing = onCall(async (request) => {
     // Satıcıya gelir — borç varsa Bölüm 10 kuralına göre bölüştürülür.
     // "Sistem" ilanlarında satıcı zaten anında ödemesini almıştı — bu para
     // kimseye gitmez, oyun ekonomisinden çıkar.
+    // v77 vergi: 2. el ve dükkân vitrini satışları %1 (functions/tax.js)
+    const saleTax = isSystemListing ? 0 : resaleTax(cost);
     if (!isSystemListing) {
-      const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, cost);
+      const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, cost - saleTax);
       tx.update(sellerRef, {
         gold: admin.firestore.FieldValue.increment(goldDelta),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
       });
     }
+    const isShopSale = Boolean(shopHouseSnap?.exists && shopHouseSnap.data().ownerUid === listing.sellerId);
+    // dükkân satışında vergi işletme raporuna da yazılır (recordIncomeTx defteri de günceller)
+    if (saleTax > 0 && !isShopSale) taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: saleTax, source: 'ikinciEl', uid: listing.sellerId, atMs: Date.now(), ref: listingRef.id });
 
     // Ürünü transfer et.
     const shopClear = listing.shopHouseId
       ? { shopHouseId: admin.firestore.FieldValue.delete(), shopListingId: admin.firestore.FieldValue.delete() }
       : {};
-    if (shopHouseSnap?.exists && shopHouseSnap.data().ownerUid === listing.sellerId) {
+    if (isShopSale) {
       business.recordIncomeTx(tx, {
         houseId: listing.shopHouseId,
         h: shopHouseSnap.data(),
@@ -9868,6 +9915,8 @@ export const buyListing = onCall(async (request) => {
         kind: 'sale',
         customerUid: uid,
         products: { [listing.itemType === 'vehicle' ? listing.vehicleModel || 'araç' : listing.weaponName || 'silah']: 1 },
+        tax: saleTax,
+        taxSource: 'ikinciEl',
       });
     }
     if (listing.itemType === 'vehicle') {
@@ -9932,7 +9981,7 @@ export const buyListing = onCall(async (request) => {
       });
     }
 
-    result = { cost, quantity: qty, sellerId: listing.sellerId, itemType: listing.itemType, materialType: listing.materialType || null };
+    result = { cost, tax: saleTax, quantity: qty, sellerId: listing.sellerId, itemType: listing.itemType, materialType: listing.materialType || null };
   });
 
   if (result.sellerId && result.sellerId !== 'system') {
@@ -9951,7 +10000,7 @@ export const buyListing = onCall(async (request) => {
       .doc(result.sellerId)
       .collection('messages')
       .add({
-        text: `2. El: "${itemLabel}" ilanın ${result.cost.toLocaleString('tr-TR')} altına satıldı.`,
+        text: `2. El: "${itemLabel}" ilanın ${result.cost.toLocaleString('tr-TR')} altına satıldı. Vergi (%1): ${(result.tax || 0).toLocaleString('tr-TR')} · Eline geçen: ${(result.cost - (result.tax || 0)).toLocaleString('tr-TR')} altın.`,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         read: false,
         type: 'marketplace_sale',

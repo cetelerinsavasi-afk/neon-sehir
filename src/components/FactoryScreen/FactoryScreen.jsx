@@ -910,6 +910,8 @@ function DailyReportModal({ factory, onClose }) {
   // salaryPaid - electricityBill). Yine de ayrı bir kalem olarak da
   // gösteriliyor ki sahip kârın neye gittiğini görebilsin.
   const electricityToday = factory.dailyElectricityExpense || 0;
+  // v77 — vergi: günlük brüt kazancın %10'u (net kâra dahil)
+  const taxToday = factory.dailyTaxExpense || 0;
   // Yeni kalemler — sadece "varsa" (0'dan büyükse) gösterilir: hisse satışı
   // geliri, hisse kâr payı gideri, sponsorluk gideri (bkz. functions/index.js
   // dailyReset — Part A + dividend bloğu + processFutbolSponsorshipsNightly).
@@ -926,6 +928,7 @@ function DailyReportModal({ factory, onClose }) {
     ? factory.dailyElectricityExpenseHistory
     : [];
   const netHistory = Array.isArray(factory.dailyIncomeHistory) ? factory.dailyIncomeHistory : [];
+  const taxHistory = Array.isArray(factory.dailyTaxExpenseHistory) ? factory.dailyTaxExpenseHistory : [];
   const rowCount = Math.max(grossHistory.length, expenseHistory.length, electricityHistory.length, netHistory.length);
   // Tabloyu en yeni gün en üstte olacak şekilde göster.
   const rows = Array.from({ length: rowCount }, (_, i) => {
@@ -935,6 +938,8 @@ function DailyReportModal({ factory, onClose }) {
       gross: grossHistory[idx] ?? null,
       expense: expenseHistory[idx] ?? null,
       electricity: electricityHistory[idx] ?? null,
+      // vergi geçmişi yeni; eski günler için hizalanır (sondan)
+      tax: taxHistory[idx - (rowCount - taxHistory.length)] ?? 0,
       net: netHistory[idx] ?? null,
     };
   });
@@ -982,6 +987,12 @@ function DailyReportModal({ factory, onClose }) {
               −{electricityToday.toLocaleString('tr-TR')} altın
             </span>
           </div>
+          <div className="factory-report-stat">
+            <span className="factory-report-stat-label">🏛️ Vergi (%10)</span>
+            <span className="factory-report-stat-value expense">
+              −{taxToday.toLocaleString('tr-TR')} altın
+            </span>
+          </div>
           {shareDividendExpenseToday > 0 && (
             <div className="factory-report-stat">
               <span className="factory-report-stat-label">🪙 Hisse pay giderleri</span>
@@ -1025,17 +1036,19 @@ function DailyReportModal({ factory, onClose }) {
         {rows.length === 0 && <p className="factory-hint">Henüz rapor geçmişi yok.</p>}
         {rows.length > 0 && (
           <div className="factory-report-table">
-            <div className="factory-report-row factory-report-row-head factory-report-row-4col">
+            <div className="factory-report-row factory-report-row-head factory-report-row-5col">
               <span>Kazanç</span>
               <span>Maaş</span>
               <span>Elektrik</span>
+              <span>Vergi</span>
               <span>Net</span>
             </div>
             {rows.map((r) => (
-              <div key={r.key} className="factory-report-row factory-report-row-4col">
+              <div key={r.key} className="factory-report-row factory-report-row-5col">
                 <span>{(r.gross ?? 0).toLocaleString('tr-TR')}</span>
                 <span>−{(r.expense ?? 0).toLocaleString('tr-TR')}</span>
                 <span>−{(r.electricity ?? 0).toLocaleString('tr-TR')}</span>
+                <span>−{(r.tax ?? 0).toLocaleString('tr-TR')}</span>
                 <span className={(r.net ?? 0) < 0 ? 'negative' : 'positive'}>
                   {(r.net ?? 0).toLocaleString('tr-TR')}
                 </span>

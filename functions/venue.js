@@ -28,6 +28,7 @@
 
 import { HOUSE_TAKEABLES, HOUSE_PRODUCTS } from './houseCatalogData.js';
 import { midnightDayKey } from './businessCatalogData.js';
+import { bizTax } from './tax.js';
 
 export const MENU_TYPES = ['cafe', 'bar'];
 export const MENU_PRICE = { def: 100, min: 10, max: 1000 };
@@ -136,9 +137,9 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
         if (spent + price > MENU_DAILY_LIMIT) fail('failed-precondition', `limit:${spent}`);
         if (Number(us.data()?.gold || 0) < price) fail('failed-precondition', 'gold');
         tx.update(userRef(uid), { gold: FieldValue.increment(-price) });
-        payOwnerTx(tx, os, h.ownerUid, price);
+        payOwnerTx(tx, os, h.ownerUid, price - bizTax(price)); // v77 vergi %10
         tx.set(spendRef, { houseId, uid, dayKey, amount: FieldValue.increment(price), updatedAtMs: t }, { merge: true });
-        business?.recordIncomeTx(tx, { houseId, h, amount: price, kind: 'menu', customerUid: uid, products: { [product]: 1 } });
+        business?.recordIncomeTx(tx, { houseId, h, amount: price, kind: 'menu', customerUid: uid, products: { [product]: 1 }, tax: bizTax(price) });
       }
       tx.set(db.collection('heldItems').doc(uid), { itemId: product, venue: 'ev', houseId, untilMs: t + HELD_MS, boughtAtMs: t });
       tx.update(presRef, { holding: product });
@@ -168,8 +169,8 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
     const creditUntilMs = from + NET_SLOT_MS;
     if (h.ownerUid !== uid) {
       tx.update(userRef(uid), { gold: FieldValue.increment(-price) });
-      payOwnerTx(tx, os, h.ownerUid, price);
-      business?.recordIncomeTx(tx, { houseId, h, amount: price, kind: 'service', customerUid: uid, products: { dakika: 1 } });
+      payOwnerTx(tx, os, h.ownerUid, price - bizTax(price)); // v77 vergi %10
+      business?.recordIncomeTx(tx, { houseId, h, amount: price, kind: 'service', customerUid: uid, products: { dakika: 1 }, tax: bizTax(price) });
     }
     // kredi sürerken gerekli mobilyalar kaldırılamaz
     if (Number(h.bizLockUntilMs || 0) < creditUntilMs) tx.update(houseRef(houseId), { bizLockUntilMs: creditUntilMs });

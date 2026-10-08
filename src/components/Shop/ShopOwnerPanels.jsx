@@ -8,6 +8,7 @@ import { weaponCatalog } from '../../data/weaponCatalog';
 import { vehicleImage, vehicleDisplayName } from '../VehicleCard/VehicleCard';
 import HoldButton from '../HoldButton/HoldButton';
 import PriceField from './PriceField';
+import { BIZ_TAX_RATE, RESALE_TAX_RATE, resaleTax } from '../../../functions/tax.js';
 import { bizErrText } from '../../lib/bizErrors';
 import { WORKSHOP_MATERIALS, workshopBand, gameWorkshopPrice, clampWorkshopPrice, itemListingBand, lifeCapOf, VEHICLE_WEAPON_MAX_REPAIRS } from '../../../functions/itemRules.js';
 import { BIZ_MATERIALS, midnightDayKey } from '../../../functions/businessCatalogData.js';
@@ -99,6 +100,7 @@ function MaterialPrices({ houseId, houseDoc, type }) {
                 <Gold v={d.mat + d.labor} /> <small className="sh-cmp">oyunda {fmt(g.mat + g.labor)}</small>
               </b>
             </div>
+            <p className="bz-hint">🏛️ Kazancından %{Math.round(BIZ_TAX_RATE * 100)} vergi kesilir (örn. 100 altınlık işten sana 90 kalır).</p>
           </div>
         );
       })}
@@ -190,8 +192,8 @@ function VitrinManager({ houseId, kind }) {
                     🏷️ İlana koy
                   </button>
                 )}
-                <HoldButton className="bz-btn ghost sm" disabled={!!busy} onDone={() => run(`i${it.id}`, { op: 'vitrinInstantSell', itemId: it.id }, `Hemen satıldı: ${fmt(band.instant)} altın.`)}>
-                  ⚡ Basılı tut: hemen sat ({fmt(band.instant)})
+                <HoldButton className="bz-btn ghost sm" disabled={!!busy} onDone={() => run(`i${it.id}`, { op: 'vitrinInstantSell', itemId: it.id }, `Hemen satıldı: eline ${fmt(band.instant - resaleTax(band.instant))} altın geçti (vergi %1).`)}>
+                  ⚡ Basılı tut: hemen sat ({fmt(band.instant - resaleTax(band.instant))} eline geçer)
                 </HoldButton>
                 <HoldButton className="bz-btn danger sm" disabled={!!busy} onDone={() => run(`r${it.id}`, { op: 'vitrinRemove', itemId: it.id }, 'Envanterine geri alındı (ömrü 1 gün azaldı).')}>
                   ↩ Basılı tut: geri al (ömür −1)
@@ -199,7 +201,7 @@ function VitrinManager({ houseId, kind }) {
               </div>
               {isOpen && !listing && (
                 <div className="bz-field">
-                  <PriceField label="Satış fiyatı" min={band.min} max={band.max} value={price} onChange={setPrice} refPrice={band.max} refLabel="Önerilen" />
+                  <PriceField label="Satış fiyatı" min={band.min} max={band.max} value={price} onChange={setPrice} refPrice={band.max} refLabel="Önerilen" taxRate={RESALE_TAX_RATE} />
                   <button className="bz-btn gold wide" disabled={!!busy} onClick={() => run(`l${it.id}`, { op: 'vitrinList', itemId: it.id, price }, 'İlana kondu!')}>
                     🏷️ {fmt(price)} altına ilana koy
                   </button>
@@ -282,7 +284,7 @@ function VitrinAdd({ houseId, kind }) {
       </div>
       {sel && band && (
         <div className="bz-field">
-          <PriceField label={`${sel.name || 'Ürün'} — satış fiyatı`} min={band.min} max={band.max} value={price} onChange={setPrice} refPrice={band.max} refLabel="Önerilen" />
+          <PriceField label={`${sel.name || 'Ürün'} — satış fiyatı`} min={band.min} max={band.max} value={price} onChange={setPrice} refPrice={band.max} refLabel="Önerilen" taxRate={RESALE_TAX_RATE} />
           <button className="bz-btn gold wide" disabled={busy} onClick={add}>
             {busy ? 'Ekleniyor…' : `➕ Vitrine koy · ${fmt(price)} altına sat`}
           </button>

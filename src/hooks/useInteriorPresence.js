@@ -1,3 +1,4 @@
+import { recordVenueVisit } from '../services/gameActions';
 import { useEffect, useMemo, useState } from 'react';
 import { collection, doc, deleteDoc, limit, onSnapshot, query, where, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -18,6 +19,12 @@ const MAX_PRESENCE_DOCS = 40;
 export function useInteriorPresence(locationId) {
   const { user } = useAuth();
   const [others, setOthers] = useState([]);
+
+  // v77: ziyaret sayacı (Ziyaret › Popüler; sunucu bir hesabı bir mekâna günde 1 kez sayar)
+  useEffect(() => {
+    if (!user || !locationId) return;
+    recordVenueVisit(locationId).catch(() => {});
+  }, [user, locationId]);
 
   useEffect(() => {
     if (!user || !locationId) {

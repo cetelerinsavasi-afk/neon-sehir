@@ -550,3 +550,15 @@ Yayınlama: `firebase deploy --only functions` (houseAction fiyat, gangAction il
 - **Oyunun dükkânları:** Listede oyuncu dükkânlarıyla aynı görünür (çerçeve, "her zaman açık" ve "Gir ›" kaldırıldı; "Sahibi: Neon Şehir" ve içerideki kişi sayısı yazar — Soygun › Ziyaret sekmesiyle aynı sayı). Sıra yine dünkü kazanca göre.
 - **Fotoğraflar:** Vitrin, satılık ürünler, envanter ve atölyedeki silah/araba fotoğrafları kutuya tam sığar ve ortalanır (kırpılmaz).
 - **Yürüme:** Dokunduğun yere giderken eşyalara takılıp durmak yerine etrafından dolaşan en kısa yolu bulur. Hedef bir eşyanın içindeyse ona en yakın boş noktaya gider.
+
+## Vergi, ziyaret listesi, göz görüşü, garaj kapısı
+
+- **Vergi (belediye için altyapı):** İşletme gelirlerinden (işçilik, malzeme, menü, internet dakikası, spor üyeliği, takım antrenmanı) cironun %10'u; 2. el ve vitrin satışlarından (silah, araba, malzeme, makine) %1. Oyunun mekânları da vergi öder. Fabrikalardan her gece günlük brüt kazancın %10'u elektrikle birlikte kesilir; altın yetmezse devlete borç (ceza) yazılır. Vergi şimdilik hiçbir yere gitmez; her ödeyen için günlük kayıt tutulur (taxLedger) — belediye gelince oraya aktarılacak.
+  - İşletme raporunda Ciro / Vergi / Net kazanç; fabrika raporunda "Vergi (%10)" satırı ve sütunu.
+  - Fiyat belirlerken vergi ve eline geçecek tutar yazar (2. el ilanı, anında satış, vitrin, menü, dakika, üyelik).
+- **Yönlendirme yok:** Oyuncu dükkânında malzeme yetmeyince "Oyunun dükkânına git" butonu ve önerisi kaldırıldı.
+- **Ziyaret sekmesi:** Üstte açılır seçici; varsayılan "Popüler". Bir hesap bir mekâna/eve günde en fazla 1 ziyaret sayılır (günde 100 kez girse de 1; sahibi dahil; gün 00:00'da döner). Popüler listesi: dünün en çok ziyaret edilen 8 mekânı + şu an içinde biri olanlar; önce anlık kişi, eşitlikte dünkü ziyaret; hep 8 mekân. Ayrıca Oyunun mekânları, her işletme türü ve Evler filtreleri.
+- **İşletme listesi:** Üstte açılır tür seçici (haritada tıklanan tür seçili gelir). Sıra: önce içerideki kişi, eşitlikte dünkü ciro (oyunun dükkânı dahil).
+- **Kamera:** 3D (varsayılan) → 2D → 👁️ Göz (karakterin gözünden) butonla sırayla değişir. 3D'de kamera ile karakter arasına giren duvar ve eşyalar yarı saydam olur.
+- **Bölme duvarlarına aksesuar:** TV, raf, saat vb. duvar eşyaları bölme duvarlarının iki yüzüne de takılır (kapılı bölmenin kapı boşluğu hariç). Bölme taşınınca/döndürülünce üstündekiler de gelir; bölme kaldırılınca üstündekiler de kalkar ve kaydedince envantere döner.
+- **Garaj Kapısı:** Yapı kategorisinde yeni duvar mobilyası (150.000 altın, renk seçilebilir). "Garaj kapısını aç / kapat" ile panjur yukarı sarılır.

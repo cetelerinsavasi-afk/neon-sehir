@@ -1222,3 +1222,8 @@
   font-size: 12px;
   opacity: 0.75;
 }
+/* v77 — vergi sütunu */
+.factory-report-row-5col {
+  grid-template-columns: repeat(5, 1fr);
+  font-size: 12px;
+}
