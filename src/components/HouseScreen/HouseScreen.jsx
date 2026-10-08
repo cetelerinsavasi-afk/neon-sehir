@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useBackClose } from '../../lib/backStack';
-import { collection, doc, limit, onSnapshot, orderBy, query, setDoc, deleteDoc, serverTimestamp, where } from 'firebase/firestore';
+import { collection, doc, getDoc, limit, onSnapshot, orderBy, query, setDoc, deleteDoc, serverTimestamp, where } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSocial } from '../../contexts/SocialContext';
@@ -121,6 +121,7 @@ export default function HouseScreen({ houseId, onExit }) {
   const [phase, setPhase] = useState('loading');
   const [errMsg, setErrMsg] = useState('');
   const [info, setInfo] = useState(null);
+  const [entered, setEntered] = useState(false); // sunucu girişi onayladı mı (v77: sahne öncesinden kurulur)
   const [mode, setMode] = useState('walk');
   const [view, setView] = useState('3d');
   const [sel, setSel] = useState(null);
@@ -133,6 +134,7 @@ export default function HouseScreen({ houseId, onExit }) {
   const [houseDoc, setHouseDoc] = useState(null);
   const [inv, setInv] = useState({ items: {}, walls: [], floors: [] });
   const [online, setOnline] = useState([]);
+  const onlineKeyRef = useRef('');
   const [messages, setMessages] = useState([]);
   const [chatText, setChatText] = useState('');
   const [chatBusy, setChatBusy] = useState(false);
@@ -201,12 +203,27 @@ export default function HouseScreen({ houseId, onExit }) {
       return undefined;
     }
     let cancelled = false;
+    // v77 performans: sahne, giriş isteğinin (bulut fonksiyonu; soğuk başlangıçta
+    // birkaç saniye sürebilir) dönmesini BEKLEMEDEN ev belgesinden hemen kurulur.
+    // Sunucu girişi onaylayınca konum/sohbet başlar; reddederse ekrandan çıkılır.
+    getDoc(doc(db, 'houses', houseId))
+      .then((s) => {
+        if (cancelled || !s.exists() || enteredRef.current) return;
+        const h = s.data();
+        const isOwnerEarly = h.ownerUid === user.uid;
+        if (!isOwnerEarly && (h.privacy || 'public') !== 'public' && !h.biz?.type) return; // izin gerekiyorsa sunucuyu bekle
+        if (Number(h.kicked?.[user.uid] || 0) > Date.now()) return;
+        setInfo((cur) => cur || { houseId, isOwner: isOwnerEarly, name: h.name, ownerName: h.ownerName });
+        setPhase((ph) => (ph === 'loading' ? 'ready' : ph));
+      })
+      .catch(() => {});
     houseAction({ op: 'enter', houseId })
       .then((res) => {
         if (cancelled) return;
         const d = res.data || {};
         enteredRef.current = true;
-        setInfo({ houseId, isOwner: !!d.isOwner, name: d.name, ownerName: d.ownerName });
+        setEntered(true);
+        setInfo((cur) => (cur && cur.isOwner === !!d.isOwner ? { ...cur, name: d.name, ownerName: d.ownerName } : { houseId, isOwner: !!d.isOwner, name: d.name, ownerName: d.ownerName }));
         setPhase('ready');
       })
       .catch((err) => {
@@ -319,7 +336,7 @@ export default function HouseScreen({ houseId, onExit }) {
   useEffect(() => {
     engineRef.current?.setSelfHolding(held?.itemId || null);
     // süresi dolan ürünü konum kaydından da temizle (başkaları görmesin)
-    if (!held && user && phase === 'ready') {
+    if (!held && user && phase === 'ready' && enteredRef.current) {
       setDoc(doc(db, 'housePresence', user.uid), { holding: null }, { merge: true }).catch(() => {});
     }
   }, [held, user, phase, engineKey]);
@@ -400,7 +417,13 @@ export default function HouseScreen({ houseId, onExit }) {
           list.push({ uid: d.id, ...p, holdingVisible: p.holding || null });
         });
         engineRef.current?.setOthers(list.filter((p) => p.uid !== user.uid));
-        setOnline(list);
+        // v77 performans: konumlar 3D motora doğrudan gider; ekranı (React) sadece
+        // kişi listesi/isim/avatar/eldeki ürün değişince yeniden çiz
+        const onlineKey = list.map((p) => `${p.uid}|${p.displayName || ''}|${p.holding || ''}|${JSON.stringify(p.avatar || null)}`).join(';');
+        if (onlineKey !== onlineKeyRef.current) {
+          onlineKeyRef.current = onlineKey;
+          setOnline(list);
+        }
         // ev sahibi beni çıkardıysa konum kaydım silinir.
         // v70: girişte ilk anlık görüntüler (önbellekten) kaydımı henüz
         // içermeyebilir → "çıkarıldın" yanlış alarmı. Kaydımı sunucudan en az
@@ -427,7 +450,7 @@ export default function HouseScreen({ houseId, onExit }) {
   }, [phase, houseId, user?.uid, exit, engineKey]);
 
   useEffect(() => {
-    if (phase !== 'ready') return undefined;
+    if (phase !== 'ready' || !entered) return undefined; // konum, sunucu girişi onaylayınca
     let last = '';
     let lastKey = '';
     let lastAt = 0;
@@ -454,11 +477,11 @@ export default function HouseScreen({ houseId, onExit }) {
       ).catch(() => {});
     }, 220);
     return () => clearInterval(iv);
-  }, [phase, user?.uid]);
+  }, [phase, user?.uid, entered]);
 
   // --- 5) sohbet -----------------------------------------------------------------------
   useEffect(() => {
-    if (phase !== 'ready') return undefined;
+    if (phase !== 'ready' || !entered) return undefined; // sohbet okuma izni girişten sonra
     const q = query(collection(db, 'houses', houseId, 'chat'), orderBy('createdAtMs', 'desc'), limit(40));
     return onSnapshot(
       q,
@@ -475,7 +498,7 @@ export default function HouseScreen({ houseId, onExit }) {
       },
       (err) => console.error('Ev sohbet hatası:', err)
     );
-  }, [phase, houseId, isBlocked]);
+  }, [phase, houseId, isBlocked, entered]);
 
   const sendChat = async () => {
     const text = chatText.trim();

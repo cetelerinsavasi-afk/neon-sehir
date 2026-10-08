@@ -481,17 +481,24 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
       return undefined;
     }
     let cancelled = false;
+    // v77 performans: sunucu cevabını beklemeden hemen içeri gir (soğuk başlatmada
+    // birkaç saniye siyah ekran oluyordu). Sunucu kayıtlı bir konum dönerse ve
+    // oyuncu henüz kıpırdamadıysa oraya alınır.
+    const start0 = { ...START_POS };
+    posRef.current = start0;
+    lastSyncedPosRef.current = start0;
+    setReady(true);
     enterInterior('banka')
       .then((res) => {
         if (cancelled) return;
-        const start = res.data?.presence || START_POS;
-        posRef.current = start;
-        lastSyncedPosRef.current = start;
-        setReady(true);
+        const p = res.data?.presence;
+        if (p && posRef.current.x === start0.x && posRef.current.y === start0.y) {
+          posRef.current = p;
+          lastSyncedPosRef.current = p;
+        }
       })
       .catch((err) => {
         console.error('Bankaya giriş hatası:', err);
-        setReady(true);
       });
     return () => {
       cancelled = true;

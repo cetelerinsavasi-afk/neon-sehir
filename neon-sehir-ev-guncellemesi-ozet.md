@@ -562,3 +562,13 @@ Yayınlama: `firebase deploy --only functions` (houseAction fiyat, gangAction il
 - **Kamera:** 3D (varsayılan) → 2D → 👁️ Göz (karakterin gözünden) butonla sırayla değişir. 3D'de kamera ile karakter arasına giren duvar ve eşyalar yarı saydam olur.
 - **Bölme duvarlarına aksesuar:** TV, raf, saat vb. duvar eşyaları bölme duvarlarının iki yüzüne de takılır (kapılı bölmenin kapı boşluğu hariç). Bölme taşınınca/döndürülünce üstündekiler de gelir; bölme kaldırılınca üstündekiler de kalkar ve kaydedince envantere döner.
 - **Garaj Kapısı:** Yapı kategorisinde yeni duvar mobilyası (150.000 altın, renk seçilebilir). "Garaj kapısını aç / kapat" ile panjur yukarı sarılır.
+
+## Akıcılık ve optimizasyon
+- Göz modunda ekranı sağa kaydırınca bakış da sağa döner. Yukarı/aşağı kaydırma doğal yönde çalışır.
+- Canlı futbol: 1 maç dakikası artık 40 sn. Top 1,6 sn'de bir pas yapıyor, hücum ~6,5 sn, şut 0,7 sn sürüyor ve top akıcı hareket ediyor. Tekrar izlemede eski hız korunuyor.
+- Mekânlara anında giriş: ev, işletme, park, banka, gazino, karakol, cami, galeri, silah dükkânı ve modifiye garajı sunucu cevabını beklemeden açılıyor. Sunucu işi arka planda bitiyor.
+- Oyuncu verisi tek dinleyiciden geliyor. Eskiden 40'tan fazla ayrı dinleyici vardı. Ana ekran sadece altın, şüphe ve itibar değişince yeniden çiziliyor.
+- Bir ekran açıkken arkadaki harita animasyonu duruyor. Duman ve ışık efektleri daha hafif çiziliyor.
+- Uygulama kısa süre arka plana alınınca bağlantı artık sıfırlanmıyor. Bağlantı yalnızca 20 sn'den uzun aradan sonra yenileniyor. Mekândan atılma ve fazladan okuma bu yüzden azalıyor.
+- Firestore maliyetini artıran yeni bir okuma ya da yazma yok. Tersine, dinleyiciler ve yeniden bağlanmalar azaldığı için okuma sayısı düşüyor.
+- Kafa topu (online): odaya sonradan katılan oyuncu artık kendi karakterini kendi cihazında hesaplıyor. Tuşa basınca karakter anında tepki veriyor. Skor ve sonuç her zaman odayı kuranın cihazından geliyor. Ağ gecikmesi ölçülüyor ve tahmin o kadar ileri sarılıyor, düzeltmeler de yumuşatılıyor. Yayın hızı 15'ten 20 Hz'e çıktı.

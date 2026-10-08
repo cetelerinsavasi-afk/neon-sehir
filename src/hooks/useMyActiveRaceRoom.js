@@ -29,8 +29,11 @@ export function useMyActiveRaceRoom() {
     // değilse (yayın sırası) eski sorguya düşer — oyun bozulmaz.
     const ACTIVE = ['waiting', 'ready', 'racing'];
     const onSnap = (snap) => {
-      const active = snap.docs.map((d) => ({ id: d.id, ...d.data() })).find((r) => ACTIVE.includes(r.status));
-      setRoom(active || null);
+      const hit = snap.docs.find((d) => ACTIVE.includes(d.data().status));
+      // v77 performans: kök bileşen sadece oda kimliği/durumu değişince yeniden çizilsin
+      // (yarış sırasında oda belgesi her hamlede değişir; tam belgeyi RaceTrackScreen ayrıca dinler)
+      const next = hit ? { id: hit.id, status: hit.data().status } : null;
+      setRoom((prev) => (prev?.id === next?.id && prev?.status === next?.status ? prev : next));
       setLoading(false);
     };
     let unsub = () => {};

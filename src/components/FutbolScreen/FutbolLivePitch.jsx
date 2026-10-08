@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { pitchStateAt, teamDots, VARIANT_TEXT, VARIANT_ICON } from './futbolPitchScript';
+import { pitchStateAt, teamDots, VARIANT_TEXT, VARIANT_ICON, LIVE_SEC_PER_MIN } from './futbolPitchScript';
 import './FutbolLivePitch.css';
 
 // =============================================================================
-// v77 — Canlı saha: top gerçek zamanlı akar (1 maç dakikası ≈ 40 sn).
+// v77 — Canlı saha: top gerçek zamanlı akar (1 maç dakikası ≈ 40 sn); top
+// oyuncular arasında 1–2 sn'de bir pas olarak hızlı hareket eder (60 fps).
 // Atakta top rakip yarıya iner, ceza sahası kızarır ("tehlike"), şut çıkar:
 // GOL → ağlar sallanır, ekran parlar · KURTARIŞ · DİREK · AUT · BLOK.
 // getMinute(): o anki simüle dakika (canlı ya da özet tekrarı).
 // =============================================================================
-export default function FutbolLivePitch({ timeline, possessionCheckpoints, getMinute, homeName, awayName, sponsorName }) {
+export default function FutbolLivePitch({ timeline, possessionCheckpoints, getMinute, secPerMinute = LIVE_SEC_PER_MIN, homeName, awayName, sponsorName }) {
   const [, force] = useState(0);
   const trail = useRef([]);
   const lastT = useRef(0);
@@ -16,7 +17,7 @@ export default function FutbolLivePitch({ timeline, possessionCheckpoints, getMi
     let raf = 0;
     let last = 0;
     const loop = (now) => {
-      if (now - last > 33) {
+      if (now - last > 15) {
         last = now;
         force((n) => (n + 1) % 1e6);
       }
@@ -27,17 +28,17 @@ export default function FutbolLivePitch({ timeline, possessionCheckpoints, getMi
   }, []);
 
   const t = Math.max(0, Math.min(90, getMinute()));
-  const st = pitchStateAt(timeline, possessionCheckpoints, t);
+  const st = pitchStateAt(timeline, possessionCheckpoints, t, secPerMinute);
   // top izi (geri sarma/atlama olursa sıfırla)
-  if (t < lastT.current || t - lastT.current > 1) trail.current = [];
+  if (t < lastT.current || (t - lastT.current) * secPerMinute > 2) trail.current = [];
   lastT.current = t;
   trail.current = [...trail.current, st.ball].slice(-7);
 
   const home = teamDots('home', st.ball);
   const away = teamDots('away', st.ball);
   const e = st.event;
-  const showBanner = e && (st.phase === 'shot' || (st.phase === 'after' && st.since < 0.42));
-  const goalFlash = st.variant === 'goal' && st.phase === 'after' && st.since < 0.42;
+  const showBanner = e && (st.phase === 'shot' || (st.phase === 'after' && st.sinceK < 0.85));
+  const goalFlash = st.variant === 'goal' && st.phase === 'after' && st.sinceK < 0.85;
   const dangerSide = st.phase === 'attack' && st.danger > 0.35 ? (st.attackSide === 'home' ? 'right' : 'left') : null;
   const netShake = goalFlash ? (st.attackSide === 'home' ? 'right' : 'left') : null;
   const teamName = (side) => (side === 'home' ? homeName : awayName);

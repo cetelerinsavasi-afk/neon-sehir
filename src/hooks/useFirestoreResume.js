@@ -15,6 +15,9 @@ let lastTriggeredAt = 0;
 // (bu hook'un asıl çözmeye çalıştığı "donmuş ekran" sorunu) hâlâ ilk
 // tetiklemede düzeliyor, sadece kısa aralıklı tekrar tetiklenmeler engelleniyor.
 const MIN_INTERVAL_MS = 15000;
+// sayfa en az bu kadar arka planda kaldıysa yeniden bağlan (kısa geçişlerde değil)
+const HIDDEN_MIN_MS = 20000;
+let hiddenAt = 0;
 
 function triggerReconnect() {
   const now = Date.now();
@@ -52,10 +55,17 @@ export function useFirestoreResume({ runOnMount = false } = {}) {
       triggerReconnect();
     }
 
+    // v77 performans: ağı kapat-aç TÜM dinleyicileri sıfırdan kurar (okuma +
+    // uygulama genelinde yeniden çizim fırtınası). Artık sadece sayfa en az
+    // HIDDEN_MIN_MS arka planda kaldıysa yapılır; kısa sekme/pencere geçişleri
+    // ve masaüstündeki "focus" olayları tetiklemez.
     const onVisible = () => {
-      if (document.visibilityState === 'visible') {
-        triggerReconnect();
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = Date.now();
+        return;
       }
+      if (hiddenAt && Date.now() - hiddenAt >= HIDDEN_MIN_MS) triggerReconnect();
+      hiddenAt = 0;
     };
     const onPageShow = (e) => {
       // e.persisted: sayfa bfcache'den (ör. iOS Safari'de geri/ileri
@@ -66,12 +76,10 @@ export function useFirestoreResume({ runOnMount = false } = {}) {
 
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('pageshow', onPageShow);
-    window.addEventListener('focus', onVisible);
 
     return () => {
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('pageshow', onPageShow);
-      window.removeEventListener('focus', onVisible);
     };
   }, [runOnMount]);
 }

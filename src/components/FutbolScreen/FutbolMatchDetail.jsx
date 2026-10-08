@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import FutbolCrest from './FutbolCrest';
 import { useNowTick, computeLiveMatchState } from './futbolLiveMatch';
 import FutbolLivePitch from './FutbolLivePitch';
+import { LIVE_SEC_PER_MIN } from './futbolPitchScript';
 import { shotVariant, VARIANT_ICON, MISS_LABEL } from './futbolPitchScript';
 import './FutbolMatchDetail.css';
 
@@ -138,6 +139,7 @@ export default function FutbolMatchDetail({
           timeline={match?.timeline || []}
           possessionCheckpoints={possessionCheckpoints}
           getMinute={getMinute}
+          secPerMinute={replayAt ? 1 / REPLAY_SPEED : LIVE_SEC_PER_MIN}
           homeName={homeName}
           awayName={awayName}
           sponsorName={homeSponsorName}

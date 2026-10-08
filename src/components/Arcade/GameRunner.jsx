@@ -6,10 +6,18 @@ import { connectRoom } from './net';
 // v75 — GameRunner: oyun döngüsü + dokunmatik/klavye kontrolleri.
 //  mode.kind: 'bot'   → yerel simülasyon, rakip bot
 //             'host'  → simülasyonu bu cihaz yürütür, durumu ~15 Hz yayınlar
-//             'guest' → ev sahibinden gelen durumu yumuşatarak çizer, girdi yollar
+//             'guest' → v77: İSTEMCİ TAHMİNİ — konuk aynı simülasyonu kendi
+//                       cihazında da yürütür; kendi girdisi ANINDA ekrana
+//                       yansır. Ev sahibinden gelen her durum (yetkili kaynak)
+//                       geldiğinde tahmin, ağ gecikmesi kadar ileri sarılarak
+//                       düzeltilir ve görüntü yumuşakça yeni duruma kayar.
+//                       Skor/sonuç her zaman ev sahibinin durumundan gelir.
 // =============================================================================
 const DT = 1 / 60;
-const SEND_MS = 66;
+const SEND_MS = 50; // ~20 Hz durum yayını
+const clone = (o) => JSON.parse(JSON.stringify(o));
+// tahminde ev sahibinin durumundan aynen alınan (skor/sonuç) alanlar
+const NET_AUTH = ['sc', 'wins', 'round', 'over', 'win', 'msg', 'names'];
 const BTN_LABEL = { L: '◀', R: '▶', U: '⤴', A: 'A', B: 'B' };
 const KEYMAP = { ArrowLeft: 'L', a: 'L', A: 'L', ArrowRight: 'R', d: 'R', D: 'R', ArrowUp: 'U', w: 'U', W: 'U', ' ': 'A', j: 'A', J: 'A', k: 'B', K: 'B', l: 'B', L: 'B', ArrowDown: 'B' };
 
@@ -73,10 +81,16 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
     let last = performance.now();
     let lastSend = 0;
     let guestInput = 0;
+    let guestEcho = 0; // konuğun son girdisinin gönderim anı (geri yansıtılır)
+    // konuk tahmini
+    let pred = null; // yerel simülasyon
+    let vis = null; // ekrana çizilen (düzeltmeler yumuşatılır)
+    let rtt = 150;
+    let lastEcho = 0;
+    let predAcc = 0;
     let conn = null;
     let ended = false;
-    // konuk: son iki durum (yumuşatma için)
-    let snapA = null;
+    // konuk: ev sahibinden gelen son (yetkili) durum
     let snapB = null;
 
     const finish = (res) => {
@@ -87,14 +101,27 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
 
     if (mode.kind !== 'bot') {
       connectRoom(mode.gameId, mode.roomId, mode.kind, {
-        onInput: (bits) => {
-          guestInput = bits;
+        onInput: (v) => {
+          guestInput = v % 32;
+          guestEcho = Math.floor(v / 32);
         },
         onState: (json) => {
           try {
             const s = JSON.parse(json);
-            snapA = snapB;
-            snapB = { s, at: performance.now() };
+            const now = performance.now();
+            snapB = { s, at: now };
+            // gecikme ölçümü: ev sahibi son girdimizin zamanını geri yolladı
+            if (s._echo && s._echo !== lastEcho) {
+              lastEcho = s._echo;
+              const sample = now - s._echo;
+              if (sample > 0 && sample < 3000) rtt = rtt * 0.8 + sample * 0.2;
+            }
+            // tahmini yetkili duruma oturt ve gecikme kadar ileri sar
+            pred = clone(s);
+            const hostIn = s._in?.[0] || 0;
+            const ahead = Math.min(0.3, Math.max(0, rtt / 2000 + SEND_MS / 2000));
+            for (let k = Math.round(ahead / DT); k > 0; k--) game.step(pred, [hostIn, inputRef.current], DT);
+            if (!vis) vis = clone(pred);
             setNetMsg('');
           } catch {
             /* bozuk paket */
@@ -128,16 +155,26 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
       last = now;
       if (mode.kind === 'guest') {
         conn?.sendInput(inputRef.current);
-        if (snapB) {
-          let s = snapB.s;
-          if (snapA) {
-            const span = Math.max(30, snapB.at - snapA.at);
-            const t = Math.min(1, (now - snapB.at) / span);
-            s = (game.lerp || lerpState)(snapA.s, snapB.s, t);
+        if (snapB && pred) {
+          // kendi girdimizle yerel simülasyon (anında tepki)
+          const hostIn = snapB.s._in?.[0] || 0;
+          predAcc += dt;
+          while (predAcc >= DT) {
+            predAcc -= DT;
+            game.step(pred, [hostIn, inputRef.current], DT);
           }
-          draw(s);
+          // skor/sonuç hep ev sahibinden
+          NET_AUTH.forEach((k) => {
+            if (k in snapB.s) pred[k] = clone(snapB.s[k]);
+          });
+          // düzeltmeleri yumuşat (~50 ms)
+          const k = 1 - Math.exp(-dt * 22);
+          vis = (game.lerp || lerpState)(vis || pred, pred, k);
+          draw(vis);
           const res = game.result(snapB.s);
           if (res) finish(res);
+        } else if (snapB) {
+          draw(snapB.s);
         } else {
           ctx.setTransform(1, 0, 0, 1, 0, 0);
           ctx.fillStyle = '#05070d';
@@ -155,7 +192,8 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
       draw(state);
       if (mode.kind === 'host' && conn && now - lastSend > SEND_MS) {
         lastSend = now;
-        conn.sendState(JSON.stringify(state));
+        // _in: girdiler (konuk tahmini için) · _echo: konuğun son girdi zamanı (gecikme ölçümü)
+        conn.sendState(JSON.stringify({ ...state, _in: [inputRef.current, guestInput], _echo: guestEcho }));
       }
       const res = game.result(state);
       if (res) {

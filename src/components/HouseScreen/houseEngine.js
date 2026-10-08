@@ -1425,9 +1425,9 @@ export function createHouseEngine(
         top.az -= dx * 0.006;
         top.el = clamp(top.el + dy * 0.004, 0.55, 1.45);
       } else if (view === 'fp') {
-        // göz görüşü: sürükleyerek etrafa bak (görüntüyü tutup çeker gibi)
-        self.camYaw += dx * 0.005;
-        self.fpPitch = clamp(self.fpPitch + dy * 0.004, -1.2, 1.0);
+        // göz görüşü: parmak hangi yöne kayarsa o yöne dönülür (sağa kaydır → sağa dön)
+        self.camYaw -= dx * 0.005;
+        self.fpPitch = clamp(self.fpPitch - dy * 0.004, -1.2, 1.0);
       } else {
         self.camYaw -= dx * 0.006;
         self.camPitch = clamp(self.camPitch + dy * 0.004, -0.25, 1.1);

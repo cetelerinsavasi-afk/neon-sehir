@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { memo, useCallback, useRef, useState } from 'react';
 import { regions } from '../../data/regions';
 import mapImage from '../../assets/sehir-haritasi.jpg';
 import { useMapPanZoom } from './useMapPanZoom';
@@ -23,7 +23,9 @@ import './CityMap.css';
  * useMapPanZoom.js'teki not) — `onTap` ile gelen ekran koordinatını
  * document.elementFromPoint ile çözüp hangi bölgeye dokunulduğunu buluruz.
  */
-export default function CityMap({ onRegionClick }) {
+// v77 performans: memo — kök bileşen her yeniden çizildiğinde harita (onlarca bölge)
+// yeniden çizilmez; paused: üstünde tam ekran bir mekân/telefon açıkken efektler durur.
+function CityMap({ onRegionClick, paused = false }) {
   const [selectedId, setSelectedId] = useState(null);
   const viewportRef = useRef(null);
   const wrapRef = useRef(null);
@@ -62,7 +64,7 @@ export default function CityMap({ onRegionClick }) {
       >
         <div className="map-aspect">
           <img src={mapImage} alt="Neon Şehir Haritası" draggable={false} />
-          <MapAmbience />
+          <MapAmbience paused={paused} />
           {regions.map((r, i) => (
             <div
               key={`${r.id}-${i}`}
@@ -87,3 +89,5 @@ export default function CityMap({ onRegionClick }) {
     </div>
   );
 }
+
+export default memo(CityMap);

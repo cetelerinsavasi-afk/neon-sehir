@@ -10,9 +10,16 @@
 // =============================================================================
 export const PITCH_W = 100;
 export const PITCH_H = 64;
-const BUILD = 0.75; // atak süresi (dakika)
-const SHOT = 0.1; // şut uçuşu
-const AFTER = 0.45; // toparlanma
+// v77 — süreler GERÇEK SANİYE cinsinden (canlıda 1 maç dakikası = 40 sn).
+// Eskiden dakika cinsindendi: canlıda atak 30 sn, şut 4 sn sürüyordu (çok yavaş).
+// Hızlı özet tekrarında (1 dk ≈ 0,17 sn) eski dakika süreleri kullanılır.
+export const LIVE_SEC_PER_MIN = 40;
+const DUR_LIVE_S = { build: 6.5, shot: 0.7, after: 3.2 };
+const DUR_REPLAY_MIN = { build: 0.75, shot: 0.1, after: 0.45 };
+function durations(spm) {
+  if (spm >= 5) return { build: DUR_LIVE_S.build / spm, shot: DUR_LIVE_S.shot / spm, after: DUR_LIVE_S.after / spm };
+  return DUR_REPLAY_MIN;
+}
 
 // basit deterministik "rastgele" (dakika + ek)
 function hash(n) {
@@ -50,12 +57,45 @@ function possessionAt(checkpoints, minute) {
   return a.home + (b.home - a.home) * ((minute - a.minute) / (b.minute - a.minute || 10));
 }
 
-// Olay yokken dolaşma (topla oynamaya göre hafif yanlı)
+// Olay yokken dolaşma (hızlı özet için: dakika tabanlı yumuşak yol)
 function wander(t, poss) {
   const bias = (poss - 50) * 0.7; // ev sahibi fazla oynuyorsa top rakip yarıda
   const x = 50 + bias + Math.sin(t * 1.31 + 0.7) * 17 + Math.sin(t * 3.7) * 6;
   const y = 32 + Math.sin(t * 0.93 + 1.9) * 15 + Math.sin(t * 2.71) * 6;
   return { x: Math.max(8, Math.min(92, x)), y: Math.max(6, Math.min(58, y)) };
+}
+
+// v77 — CANLI pas oyunu: top oyuncudan oyuncuya ~1–2 sn'de bir pas olarak
+// gider; topa sahip takım, topla oynama oranına göre seçilir. Saniye tabanlı
+// ve deterministik (aynı anda her izleyicide aynı).
+const PASS_S = 1.6;
+function passTarget(n, poss) {
+  const home = hash(n * 1.37 + 0.11) * 100 < poss;
+  const tilt = Math.sin(n * 0.21) * 22 + (poss - 50) * 0.5; // sahanın hangi yarısında oynanıyor
+  const idx = 1 + Math.floor(hash(n * 2.71 + 0.5) * 5); // kaleci hariç
+  const [bx, by] = SHAPE[idx];
+  const x = (home ? bx : 100 - bx) + tilt + (hash(n + 0.3) - 0.5) * 10;
+  const y = by + (hash(n + 0.9) - 0.5) * 12;
+  return { x: Math.max(6, Math.min(94, x)), y: Math.max(5, Math.min(59, y)), home };
+}
+function passPlay(sec, poss) {
+  const n = Math.floor(sec / PASS_S);
+  const f = sec / PASS_S - n;
+  const a = passTarget(n - 1, poss);
+  const b = passTarget(n, poss);
+  if (f < 0.42) {
+    // pas: hızlı çıkış, yumuşak varış
+    const k = 1 - Math.pow(1 - f / 0.42, 2.2);
+    const arc = Math.sin(k * Math.PI) * Math.min(4, Math.hypot(b.x - a.x, b.y - a.y) * 0.06);
+    return { x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k) - arc };
+  }
+  // alan oyuncu topu sürer
+  const d = (f - 0.42) / 0.58;
+  const dir = b.home ? 1 : -1;
+  return { x: b.x + dir * d * 5 + Math.sin(sec * 9) * 0.5, y: b.y + Math.sin(sec * 3.1 + n) * 1.4 };
+}
+function playBall(t, poss, spm) {
+  return spm >= 5 ? passPlay(t * spm, poss) : wander(t, poss);
 }
 
 function shotPoint(e) {
@@ -89,9 +129,11 @@ function afterPoint(e, v) {
 }
 
 // t (simüle dakika, kesirli) anındaki sahne
-export function pitchStateAt(timeline, checkpoints, t) {
+// spm: 1 maç dakikası kaç gerçek saniye (canlı 40; özet tekrarı ≈ 0,17)
+export function pitchStateAt(timeline, checkpoints, t, spm = LIVE_SEC_PER_MIN) {
   const events = timeline || [];
   const poss = possessionAt(checkpoints, t);
+  const { build: BUILD, shot: SHOT, after: AFTER } = durations(spm);
   let active = null;
   for (const e of events) {
     if (t >= e.minute - BUILD && t < e.minute + SHOT + AFTER) {
@@ -100,7 +142,7 @@ export function pitchStateAt(timeline, checkpoints, t) {
     }
   }
   if (!active) {
-    const p = wander(t, poss);
+    const p = playBall(t, poss, spm);
     return { ball: p, phase: 'play', attackSide: null, event: null, poss };
   }
   const e = active;
@@ -112,8 +154,9 @@ export function pitchStateAt(timeline, checkpoints, t) {
   if (t < e.minute) {
     // atak: dolaşmadan şut noktasına
     const k = ease((t - (e.minute - BUILD)) / BUILD);
-    const from = wander(e.minute - BUILD, poss);
-    const wob = Math.sin(t * 25) * 1.2 * (1 - k);
+    const from = playBall(e.minute - BUILD, poss, spm);
+    // canlıda atak: kısa paslarla ilerleyen top (dalga), özet tekrarında hafif titreşim
+    const wob = spm >= 5 ? Math.sin(t * spm * 4.2) * 3.2 * (1 - k) : Math.sin(t * 25) * 1.2 * (1 - k);
     return { ball: { x: lerp(from.x, sp.x, k), y: lerp(from.y, sp.y, k) + wob }, phase: 'attack', attackSide, danger: k, event: e, variant: v, poss };
   }
   if (t < e.minute + SHOT) {
@@ -122,7 +165,7 @@ export function pitchStateAt(timeline, checkpoints, t) {
     return { ball: { x: lerp(sp.x, tgt.x, k), y: lerp(sp.y, tgt.y, k) - lift }, phase: 'shot', attackSide, event: e, variant: v, poss };
   }
   const k = ease(Math.min(1, (t - e.minute - SHOT) / AFTER));
-  // gol: top ağlarda biraz bekler, sonra santraya
+  // gol: top ağlarda biraz bekler, sonra santraya (banner/flash süreleri: since/AFTER)
   const hold = v === 'goal' ? Math.min(1, k * 1.6) : k;
   return {
     ball: { x: lerp(tgt.x, after.x, v === 'goal' ? Math.max(0, hold * 1.4 - 0.4) : hold), y: lerp(tgt.y, after.y, v === 'goal' ? Math.max(0, hold * 1.4 - 0.4) : hold) },
@@ -131,6 +174,7 @@ export function pitchStateAt(timeline, checkpoints, t) {
     event: e,
     variant: v,
     since: t - e.minute,
+    sinceK: (t - e.minute) / (SHOT + AFTER), // 0..1 (şut + toparlanma)
     poss,
   };
 }

@@ -23,8 +23,11 @@ const RAIN_COUNT = Math.round(18 / OLD_ASPECT);
  * karışmaz — elementFromPoint bu canvas'ı atlayıp altındaki gerçek
  * elementi bulur.
  */
-export default function MapAmbience() {
+// paused: harita tam ekran bir mekân/telefon altında kaldığında çizim durur (v77 performans)
+export default function MapAmbience({ paused = false }) {
   const canvasRef = useRef(null);
+  const pausedRef = useRef(paused);
+  pausedRef.current = paused;
   const rainRef = useRef([]);
   const smokeRef = useRef([]);
   const nextSpawnRef = useRef(CHIMNEYS.map(() => 0));
@@ -62,8 +65,16 @@ export default function MapAmbience() {
 
     let lastTime = performance.now();
 
+    let alive = true;
     const draw = (now) => {
-      const dt = now - lastTime;
+      if (!alive) return;
+      // harita bir mekânın/telefonun altında kaldıysa çizme (yarım saniyede bir kontrol)
+      if (pausedRef.current || document.hidden) {
+        lastTime = now;
+        rafRef.current = setTimeout(() => requestAnimationFrame(draw), 500);
+        return;
+      }
+      const dt = Math.min(100, now - lastTime);
       lastTime = now;
       ctx.clearRect(0, 0, width, height);
 
@@ -119,14 +130,18 @@ export default function MapAmbience() {
         // opacity: 0 → ~0.5 → 0
         const opacity = t < 0.25 ? (t / 0.25) * 0.5 : t > 0.7 ? ((1 - t) / 0.3) * 0.5 : 0.5;
 
-        ctx.save();
-        ctx.filter = 'blur(3px)';
+        // v77 performans: canvas blur filtresi (mobilde çok pahalı) yerine
+        // yumuşak kenarlı radyal gradyan — görünüm aynı, maliyet çok düşük
         ctx.globalAlpha = Math.max(0, opacity);
-        ctx.fillStyle = 'rgba(150,150,155,1)';
+        const rr = radius + 3;
+        const sg = ctx.createRadialGradient(px, py, 0, px, py, rr);
+        sg.addColorStop(0, 'rgba(150,150,155,1)');
+        sg.addColorStop(0.55, 'rgba(150,150,155,0.6)');
+        sg.addColorStop(1, 'rgba(150,150,155,0)');
+        ctx.fillStyle = sg;
         ctx.beginPath();
-        ctx.arc(px, py, radius, 0, Math.PI * 2);
+        ctx.arc(px, py, rr, 0, Math.PI * 2);
         ctx.fill();
-        ctx.restore();
       });
       ctx.globalAlpha = 1;
 
@@ -156,7 +171,6 @@ export default function MapAmbience() {
           const flicker = Math.abs(Math.sin(ft * Math.PI * 6));
           const alpha = f.peak * flicker * (1 - Math.abs(ft - 0.5) * 1.2);
           ctx.save();
-          ctx.filter = 'blur(6px)';
           ctx.globalAlpha = Math.max(0, alpha);
           const grad = ctx.createRadialGradient(px, py, 0, px, py, 30);
           grad.addColorStop(0, 'rgba(255,240,200,1)');
@@ -176,7 +190,9 @@ export default function MapAmbience() {
     rafRef.current = requestAnimationFrame(draw);
 
     return () => {
+      alive = false;
       cancelAnimationFrame(rafRef.current);
+      clearTimeout(rafRef.current);
       ro.disconnect();
     };
   }, []);

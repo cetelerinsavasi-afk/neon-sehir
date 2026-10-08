@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { BlocksProvider } from './contexts/BlocksContext';
 import Hud from './components/Hud/Hud';
@@ -14,7 +14,8 @@ import { GangAlertsContext, useGangAlerts } from './components/Gangs/alerts';
 import { useUnreadNotifications } from './hooks/useUnreadNotifications';
 import TopNotificationBanner from './components/TopNotificationBanner/TopNotificationBanner';
 import OnboardingPanel from './components/OnboardingPanel/OnboardingPanel';
-import { usePlayer } from './hooks/usePlayer';
+import { usePlayerSelect } from './hooks/usePlayer';
+const selectHud = (p) => `${p?.suspicion ?? 0}|${p?.reputation ?? 0}|${p?.gold ?? 0}`;
 import { useMyActiveRaceRoom } from './hooks/useMyActiveRaceRoom';
 import { useFirestoreResume } from './hooks/useFirestoreResume';
 import { migrateArabaGelistirmeUnification, migrateVehicleWeaponLifeCap, migrateVehicleWeaponLifeCap20, migrateWeaponLifeCap10, resetFutbolTransferMarket, migrateOnboardingPoliceRule } from './services/gameActions';
@@ -104,12 +105,45 @@ let onboardingPoliceRuleMigrationTriggered = false;
 // HUD'un içinde (sağ üstteki "Giriş Yap" butonu) yaşıyor. Bir aksiyon
 // (fabrikada çalışma vb.) denendiğinde ayrıca RegionModal içinde de
 // SignInPrompt gösterilir.
+// v77 performans köprüleri: dinleyici yoğun hook'lar burada çalışır, sonuç
+// değişmedikçe üst bileşeni yeniden çizdirmez (içerik karşılaştırması).
+const EMPTY_GANG_ALERTS = {
+  worldId: null,
+  uid: null,
+  gang: { sohbet: false, savas: false },
+  intel: { sohbet: false, savas: false, operasyon: false },
+  chans: { gang: { genel: false, yonetim: false, tum: false }, intel: { genel: false, yonetim: false } },
+  reminders: { joinWar: false, takeMoney: false, report: false, leak: false },
+  any: false,
+};
+const EMPTY_UNREAD = { smsUnreadCount: 0, chatsAppHasNew: false, sixtagramHasNew: false, sixtagramUnreadNotifCount: 0, totalBadge: 0 };
+function useChangeEmitter(value, onChange) {
+  const last = useRef('');
+  useEffect(() => {
+    const key = JSON.stringify(value);
+    if (key === last.current) return;
+    last.current = key;
+    onChange(value);
+  });
+}
+function GangAlertsBridge({ uid, onChange }) {
+  useChangeEmitter(useGangAlerts(uid), onChange);
+  return null;
+}
+function UnreadBridge({ onChange }) {
+  useChangeEmitter(useUnreadNotifications(), onChange);
+  return null;
+}
+
 function GameShell() {
   const { user } = useAuth();
   // Çeteler bildirim işaretleri (alt çubuk + çete içi sekmeler)
-  const gangAlerts = useGangAlerts(user?.uid);
   // Telefon rozeti + haritadaki ChatsApp kısayolunun "yeni mesaj" noktası (tek dinleyici)
-  const unread = useUnreadNotifications();
+  // v77 performans: bu iki hook'un ~25 canlı dinleyicisi (sohbetler, savaşlar, SMS…)
+  // artık küçük "köprü" bileşenlerinde çalışır; kök bileşen (harita, HUD, açık mekân)
+  // sadece SONUÇ gerçekten değişince yeniden çizilir.
+  const [gangAlerts, setGangAlerts] = useState(EMPTY_GANG_ALERTS);
+  const [unread, setUnread] = useState(EMPTY_UNREAD);
   const [activeRegion, setActiveRegion] = useState(null);
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [phoneInitialApp, setPhoneInitialApp] = useState(null);
@@ -167,7 +201,9 @@ function GameShell() {
   const [dealershipOpen, setDealershipOpen] = useState(false);
   const [weaponShopOpen, setWeaponShopOpen] = useState(false);
   const [tuningGarageOpen, setTuningGarageOpen] = useState(false);
-  const { player } = usePlayer();
+  // v77 performans: kök bileşen sadece HUD alanları değişince yeniden çizilir
+  const hudKey = usePlayerSelect(selectHud);
+  const [hudSusp, hudRep, hudGold] = hudKey.split('|').map(Number);
 
   // v68 — Android geri tuşu: açık ekran/mekân varsa onu kapatır (mekândan →
   // ana sayfa); ana sayfadayken "Çıkmak istiyor musun?" sorulur.
@@ -383,8 +419,19 @@ function GameShell() {
     setActiveTableId(tableId);
   };
 
+  // v77 performans: harita için sabit tıklama işleyicisi (memo bozulmasın) ve
+  // üstünde tam ekran bir şey açıkken harita efektlerini durdurma bayrağı
+  const regionClickRef = useRef(handleRegionClick);
+  regionClickRef.current = handleRegionClick;
+  const onRegionClickStable = useCallback((...a) => regionClickRef.current(...a), []);
+  const mapCovered = Boolean(
+    phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || weaponShopOpen || tuningGarageOpen || heistTarget !== undefined || (effectiveRaceRoomId && raceExpanded)
+  );
+
   return (
     <div className="app-shell">
+      <GangAlertsBridge uid={user?.uid} onChange={setGangAlerts} />
+      <UnreadBridge onChange={setUnread} />
       {exitAsk && (
         <ConfirmModal
           title="Çıkmak istiyor musun?"
@@ -399,9 +446,9 @@ function GameShell() {
         />
       )}
       <Hud
-        suspicion={player?.suspicion ?? 0}
-        reputation={player?.reputation ?? 0}
-        gold={player?.gold ?? 0}
+        suspicion={hudSusp}
+        reputation={hudRep}
+        gold={hudGold}
         onGoldClick={() => {
           // Android (Google Play TWA): Altın Mağazası yerine telefondaki
           // Parara Bank açılır (altın bakiyesi başlıkta görünür). Web aynı.
@@ -414,7 +461,7 @@ function GameShell() {
       {user && <NetCreditRing className="vn-fixed" />}
 
       <main className="map-stage">
-        <CityMap onRegionClick={handleRegionClick} />
+        <CityMap onRegionClick={onRegionClickStable} paused={mapCovered} />
       </main>
 
       <ReferralPrompt />

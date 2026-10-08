@@ -77,12 +77,14 @@ export async function connectRoom(gameId, roomId, role, handlers) {
   let lastInAt = 0;
   return {
     sendState: (json) => m.set(m.ref(db, `${base}/state`), json).catch(() => {}),
+    // v77: girdi + gönderim anı tek sayıda (kural: sayı) → ev sahibi zamanı geri
+    // yansıtır (state._echo), konuk gecikmeyi ölçer. değer = zaman(ms)·32 + bitler
     sendInput: (bits) => {
       const now = performance.now();
-      if (bits === lastIn && now - lastInAt < 1000) return;
+      if (bits === lastIn && now - lastInAt < 500) return;
       lastIn = bits;
       lastInAt = now;
-      m.set(m.ref(db, `${base}/${role === 'host' ? 'inH' : 'inG'}`), bits).catch(() => {});
+      m.set(m.ref(db, `${base}/${role === 'host' ? 'inH' : 'inG'}`), Math.round(now) * 32 + (bits & 31)).catch(() => {});
     },
     setStatus: (status, extra = {}) => m.update(m.ref(db, `${base}/meta`), { status, ...extra }).catch(() => {}),
     leave: async () => {
