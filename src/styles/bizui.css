@@ -244,7 +244,7 @@
 .bz-thumb img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 .bz-item-main {
   flex: 1;
@@ -347,4 +347,17 @@
 /* koyu zeminli ekranlardaki genel "button" renk kurallarını ez */
 .bz-btn:not(.ghost):not(.danger) {
   color: #10131c;
+}
+.bz-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.bz-thumb img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
 }

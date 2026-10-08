@@ -543,3 +543,10 @@ Yayınlama: `firebase deploy --only functions` (houseAction fiyat, gangAction il
 - **Bedel = 100.000 (kuruluş) + 100.000 (tamir) + 50.000 (silah) + 50.000 (araba) + 2 × kripto fiyatı** → 300.000 altın + 2 kriptonun değeri. Kripto saatlik değiştiği için bedel de saatlik değişir.
 - Fabrika Kur ekranı gelenleri tek tek fiyatıyla, toplamı ve cebindeki altını gösterir. Fiyat ödeme anında değişmişse işlem yapılmaz, yeni fiyat yazılır.
 - Daha önce kurulmuş fabrikalar olduğu gibi devam eder.
+
+## Satış SMS'i, eşit dükkân listesi, fotoğraflar, yol bulma
+
+- **Satış SMS'i:** İşletmende satış olunca "🔫 X işletmende yeni satışlar var." SMS'i gelir. İşletme başına tek mesajdır: okumadığın sürece yeni SMS gelmez; okuduktan sonraki ilk satışta tekrar gelir.
+- **Oyunun dükkânları:** Listede oyuncu dükkânlarıyla aynı görünür (çerçeve, "her zaman açık" ve "Gir ›" kaldırıldı; "Sahibi: Neon Şehir" ve içerideki kişi sayısı yazar — Soygun › Ziyaret sekmesiyle aynı sayı). Sıra yine dünkü kazanca göre.
+- **Fotoğraflar:** Vitrin, satılık ürünler, envanter ve atölyedeki silah/araba fotoğrafları kutuya tam sığar ve ortalanır (kırpılmaz).
+- **Yürüme:** Dokunduğun yere giderken eşyalara takılıp durmak yerine etrafından dolaşan en kısa yolu bulur. Hedef bir eşyanın içindeyse ona en yakın boş noktaya gider.

@@ -244,3 +244,26 @@ test('hepsini al: eksik mobilyalar envantere, evini işletmeye hazırla', async 
   assert.equal(h.G(`houses/${houseId}`).bizIntent, 'spor');
   await assert.rejects(h.act('ali', { op: 'bizIntent', houseId, type: 'cafe' }));
 });
+
+test('satış SMS: işletme başına tek mesaj; okunmamışken yığılmaz, okunduktan sonra tekrar okunmamış olur', async () => {
+  const h = setup();
+  const houseId = 'dukkan1';
+  const house = { ownerUid: 'zengin', name: 'Demir Silah', biz: { type: 'silahci' } };
+  const sell = (uid, amount) => h.db.runTransaction(async (tx) => h.business.recordIncomeTx(tx, { houseId, h: house, amount, kind: 'labor', customerUid: uid }));
+  const msgs = () => [...h.db._store.keys()].filter((k) => k.startsWith('users/zengin/messages/'));
+  await sell('ali', 500);
+  assert.equal(msgs().length, 1);
+  const p = msgs()[0];
+  assert.match(h.G(p).text, /Demir Silah işletmende yeni satışlar var/);
+  assert.equal(h.G(p).read, false);
+  await sell('ali', 300);
+  assert.equal(msgs().length, 1, 'okunmamışken yeni SMS yok');
+  h.S(p, { ...h.G(p), read: true });
+  await sell('ali', 200);
+  assert.equal(msgs().length, 1);
+  assert.equal(h.G(p).read, false, 'okunduktan sonraki satış yine bildirir');
+  // sahibin kendi alışverişi ve oyunun dükkânı SMS üretmez
+  h.db._store.delete(p);
+  await sell('zengin', 100);
+  assert.equal(msgs().length, 0);
+});

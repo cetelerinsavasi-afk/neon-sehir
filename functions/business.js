@@ -62,6 +62,18 @@ export function createBusiness({ db, FieldValue, now = () => Date.now() }) {
     addMap('materialsUsed', materialsUsed);
     addMap('materialsIn', materialsIn);
     tx.set(dailyRef(houseId, dayKey), patch, { merge: true });
+    // v77 — "yeni satışlar var" SMS'i: işletme başına TEK mesaj (sabit kimlik).
+    // Okunmamışken yeni satış olursa aynı mesaj güncellenir (yeni SMS
+    // yığılmaz); okunduktan sonraki ilk satış onu tekrar okunmamış yapar.
+    if (amt > 0 && h.ownerUid && h.ownerUid !== GAME_VENUE_OWNER) {
+      tx.set(db.collection('users').doc(h.ownerUid).collection('messages').doc(`bizsale_${houseId}`), {
+        text: `${BIZ_TYPES[type]?.icon || '🏪'} ${h.name || BIZ_TYPES[type]?.label || 'İşletme'} işletmende yeni satışlar var.`,
+        createdAt: FieldValue.serverTimestamp(),
+        read: false,
+        type: 'biz_sale',
+        houseId,
+      });
+    }
     return dayKey;
   }
   // Oyunun dükkânının geliri (sadece sıralama için). YAZMA.

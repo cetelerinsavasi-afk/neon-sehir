@@ -999,12 +999,177 @@ export function createHouseEngine(
     return hit?.object.userData.playerUid || null;
   }
 
+  // --- v77: yol bulma (ızgara üzerinde A*) ------------------------------------------
+  // Dokunulan yere düz gitmek yerine eşyaların etrafından dolaşan en kısa yol
+  // bulunur. Hedef bir eşyanın içindeyse ona en yakın boş noktaya gidilir.
+  const PATH_CELL = 0.2;
+  // engeller: eşya kutuları (dönüş + kabaca çevreleyen yarıçap; uzaktakiler hızla atlanır)
+  let obstCache = null;
+  function obstacles() {
+    if (obstCache) return obstCache;
+    const list = [];
+    objs.forEach((e) => {
+      const def = CATALOG_MAP[e.data.k];
+      if (!def) return;
+      const boxes = itemBoxes(def);
+      if (!boxes.length) return;
+      const ry = e.obj.rotation.y;
+      let rad = 0;
+      boxes.forEach(([bx, bz, hx, hz]) => (rad = Math.max(rad, Math.hypot(Math.abs(bx) + hx, Math.abs(bz) + hz))));
+      list.push({ x: e.data.x, z: e.data.z, c: Math.cos(ry), s: Math.sin(ry), boxes, rad });
+    });
+    obstCache = list;
+    return list;
+  }
+  function blockedAt(x, z, r = PLAYER_R * 0.92) {
+    if (Math.abs(x) > W / 2 - r || Math.abs(z) > D / 2 - r) return true;
+    for (const o of obstacles()) {
+      const dx = x - o.x;
+      const dz = z - o.z;
+      if (Math.abs(dx) > o.rad + r || Math.abs(dz) > o.rad + r) continue;
+      for (const [bx, bz, hx, hz] of o.boxes) {
+        const lx = dx * o.c - dz * o.s - bx;
+        const lz = dx * o.s + dz * o.c - bz;
+        if (Math.abs(lx) < hx + r && Math.abs(lz) < hz + r) return true;
+      }
+    }
+    return false;
+  }
+  function clearLine(ax, az, bx, bz) {
+    const d = Math.hypot(bx - ax, bz - az);
+    const n = Math.max(1, Math.ceil(d / (PATH_CELL * 0.5)));
+    for (let i = 1; i <= n; i++) {
+      const t = i / n;
+      if (blockedAt(ax + (bx - ax) * t, az + (bz - az) * t)) return false;
+    }
+    return true;
+  }
+  function findPath(sx, sz, tx, tz) {
+    obstCache = null; // eşyalar yer değiştirmiş olabilir
+    const nx = Math.max(1, Math.floor(W / PATH_CELL));
+    const nz = Math.max(1, Math.floor(D / PATH_CELL));
+    const cx = (i) => -W / 2 + (i + 0.5) * (W / nx);
+    const cz = (j) => -D / 2 + (j + 0.5) * (D / nz);
+    const ci = (x) => clamp(Math.floor(((x + W / 2) / W) * nx), 0, nx - 1);
+    const cj = (z) => clamp(Math.floor(((z + D / 2) / D) * nz), 0, nz - 1);
+    const block = new Uint8Array(nx * nz);
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) block[j * nx + i] = blockedAt(cx(i), cz(j)) ? 1 : 0;
+    const start = cj(sz) * nx + ci(sx);
+    let goal = cj(tz) * nx + ci(tx);
+    let goalFree = !block[goal];
+    if (!goalFree) {
+      // hedefe en yakın boş hücre (genişleyen halka)
+      let best = -1;
+      let bd = Infinity;
+      for (let k = 0; k < nx * nz; k++) {
+        if (block[k]) continue;
+        const d = Math.hypot(cx(k % nx) - tx, cz(Math.floor(k / nx)) - tz);
+        if (d < bd) {
+          bd = d;
+          best = k;
+        }
+      }
+      if (best < 0) return null;
+      goal = best;
+    }
+    block[start] = 0; // oyuncu bir eşyaya yaslanmış olabilir
+    if (start === goal) return [{ x: goalFree ? tx : cx(goal % nx), z: goalFree ? tz : cz(Math.floor(goal / nx)) }];
+    const g = new Float32Array(nx * nz).fill(Infinity);
+    const from = new Int32Array(nx * nz).fill(-1);
+    const open = [start];
+    const inOpen = new Uint8Array(nx * nz);
+    const closed = new Uint8Array(nx * nz);
+    const gi = goal % nx;
+    const gj = Math.floor(goal / nx);
+    const h = (k) => {
+      const dx = Math.abs((k % nx) - gi);
+      const dz = Math.abs(Math.floor(k / nx) - gj);
+      return Math.max(dx, dz) + 0.414 * Math.min(dx, dz);
+    };
+    const f = new Float32Array(nx * nz).fill(Infinity);
+    g[start] = 0;
+    f[start] = h(start);
+    inOpen[start] = 1;
+    const DIRS = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.414], [1, -1, 1.414], [-1, 1, 1.414], [-1, -1, 1.414]];
+    let found = false;
+    let guard = 0;
+    while (open.length && guard++ < 20000) {
+      let bi = 0;
+      for (let q = 1; q < open.length; q++) if (f[open[q]] < f[open[bi]]) bi = q;
+      const cur = open[bi];
+      open[bi] = open[open.length - 1];
+      open.pop();
+      inOpen[cur] = 0;
+      if (cur === goal) {
+        found = true;
+        break;
+      }
+      closed[cur] = 1;
+      const i0 = cur % nx;
+      const j0 = Math.floor(cur / nx);
+      for (const [di, dj, cost] of DIRS) {
+        const i1 = i0 + di;
+        const j1 = j0 + dj;
+        if (i1 < 0 || j1 < 0 || i1 >= nx || j1 >= nz) continue;
+        const k = j1 * nx + i1;
+        if (block[k] || closed[k]) continue;
+        // çaprazda köşe kesme yok
+        if (di && dj && (block[j0 * nx + i1] || block[j1 * nx + i0])) continue;
+        const ng = g[cur] + cost;
+        if (ng < g[k]) {
+          g[k] = ng;
+          from[k] = cur;
+          f[k] = ng + h(k);
+          if (!inOpen[k]) {
+            inOpen[k] = 1;
+            open.push(k);
+          }
+        }
+      }
+    }
+    if (!found) return null;
+    const cells = [];
+    for (let k = goal; k !== -1 && k !== start; k = from[k]) cells.push({ x: cx(k % nx), z: cz(Math.floor(k / nx)) });
+    cells.reverse();
+    if (goalFree) cells[cells.length - 1] = { x: tx, z: tz };
+    // yolu sadeleştir: görüş hattı olan noktaları atla
+    const out = [];
+    let ax = sx;
+    let az = sz;
+    let idx = 0;
+    while (idx < cells.length) {
+      let far = idx;
+      for (let q = cells.length - 1; q > idx; q--) {
+        if (clearLine(ax, az, cells[q].x, cells[q].z)) {
+          far = q;
+          break;
+        }
+      }
+      out.push(cells[far]);
+      ax = cells[far].x;
+      az = cells[far].z;
+      idx = far + 1;
+    }
+    return out;
+  }
   function walkTo(x, z) {
     if (self.seat) standUp();
-    self.target = { x: clamp(x, -W / 2 + PLAYER_R, W / 2 - PLAYER_R), z: clamp(z, -D / 2 + PLAYER_R, D / 2 - PLAYER_R) };
+    const tx = clamp(x, -W / 2 + PLAYER_R, W / 2 - PLAYER_R);
+    const tz = clamp(z, -D / 2 + PLAYER_R, D / 2 - PLAYER_R);
+    let path = null;
+    try {
+      path = findPath(self.x, self.z, tx, tz);
+    } catch {
+      path = null;
+    }
+    if (!path || !path.length) path = [{ x: tx, z: tz }];
+    self.path = path;
+    self.target = self.path.shift();
+    self.repaths = 0;
     self.stuckT = 0;
     self.lastD = Infinity;
-    targetRing.position.set(self.target.x, 0.025, self.target.z);
+    const end = path.length ? path[path.length - 1] : self.target;
+    targetRing.position.set(end.x, 0.025, end.z);
     targetRing.visible = true;
   }
   function approachItem(id) {
@@ -1220,6 +1385,7 @@ export function createHouseEngine(
     const manual = Math.hypot(f, s) > 0;
     const fig = self.fig;
     if (manual && self.target) {
+      self.path = null;
       self.target = null;
       targetRing.visible = false;
     }
@@ -1243,8 +1409,14 @@ export function createHouseEngine(
       const dx = self.target.x - self.x;
       const dz = self.target.z - self.z;
       const d = Math.hypot(dx, dz);
-      if (d < 0.12) {
+      if (d < 0.12 && self.path?.length) {
+        // sıradaki ara noktaya geç
+        self.target = self.path.shift();
+        self.lastD = Infinity;
+        self.stuckT = 0;
+      } else if (d < 0.12) {
         self.target = null;
+        self.path = null;
         targetRing.visible = false;
       } else {
         const step = Math.min(d, WALK_SPEED * dt);
@@ -1255,8 +1427,17 @@ export function createHouseEngine(
         else self.stuckT = 0;
         self.lastD = d;
         if (self.stuckT > 0.5) {
-          self.target = null;
-          targetRing.visible = false;
+          // takıldıysa bulunduğu yerden yolu bir kez daha hesapla, olmazsa dur
+          const end = self.path?.length ? self.path[self.path.length - 1] : self.target;
+          if ((self.repaths || 0) < 2 && end) {
+            const tries = (self.repaths || 0) + 1;
+            walkTo(end.x, end.z);
+            self.repaths = tries;
+          } else {
+            self.target = null;
+            self.path = null;
+            targetRing.visible = false;
+          }
         }
       }
     }
@@ -1585,6 +1766,7 @@ export function createHouseEngine(
         firstFrame = true;
       } else {
         self.target = null;
+        self.path = null;
         targetRing.visible = false;
       }
       camera.fov = m === 'build' ? 52 : view === '2d' ? 50 : 62;

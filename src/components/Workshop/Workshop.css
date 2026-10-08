@@ -112,3 +112,17 @@
   background: #0b101c;
   border: 1px solid rgba(25, 232, 255, 0.25);
 }
+/* v77 — fotoğraflar kutuya tam sığsın */
+.wk-item-img {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.wk-item-img img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}

@@ -4,6 +4,7 @@ import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useBusinessList } from '../../hooks/useBusinessList';
+import { usePolledPresence } from '../../hooks/usePolledPresence';
 import { houseAction, shopAction } from '../../services/gameActions';
 import { futbolDayKey } from '../../../functions/businessCatalogData.js';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
@@ -21,9 +22,10 @@ const HouseScreen = lazy(() => import('../HouseScreen/HouseScreen'));
 // Oyunun kendi dükkânı (her zaman açık) — oyuncu dükkânları gibi dünkü kazancına
 // göre sıralanır (gameVenues/{tür}.bizRank); sırası yoksa sıralılardan sonra.
 const GAME_VENUE = {
-  silahci: { name: 'Neon Silah Mağazası' },
-  galeri: { name: 'Neon Araba Galerisi' },
-  modifiye: { name: 'Neon Modifiye Garajı' },
+  // loc: interiorPresence.locationId (Soygun › Ziyaret sekmesindeki sayıyla aynı kaynak)
+  silahci: { name: 'Neon Silah Mağazası', loc: 'silah_magazasi' },
+  galeri: { name: 'Neon Araba Galerisi', loc: 'araba_galerisi' },
+  modifiye: { name: 'Neon Modifiye Garajı', loc: 'modifiye_garaji' },
   // spor: oyunun salonu da 3D bir ev (houses/game_spor) — içine girilir
   spor: { name: 'Neon Spor Salonu', house: true },
 };
@@ -47,7 +49,11 @@ export default function BusinessHub({ type, onClose, onOpenGameVenue }) {
   const { user } = useAuth();
   const { player } = usePlayer();
   const [houseId, setHouseId] = useState(null);
-  const { list, loading, gameRank, gamePeople } = useBusinessList(type, { enabled: Boolean(user) && !houseId });
+  const { list, loading, gameRank, gamePeople: gameHousePeople } = useBusinessList(type, { enabled: Boolean(user) && !houseId });
+  // oyunun ev olmayan dükkânları (silahçı/galeri/modifiye): içerideki kişi sayısı
+  const gameLoc = GAME_VENUE[type]?.loc || null;
+  const interior = usePolledPresence('interiorPresence', { enabled: Boolean(user && gameLoc && !houseId), max: 400 });
+  const gamePeople = gameLoc ? interior.filter((p) => p.locationId === gameLoc).length : gameHousePeople;
   const [openAsk, setOpenAsk] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -215,20 +221,16 @@ export default function BusinessHub({ type, onClose, onOpenGameVenue }) {
           return rows;
         })().map(({ kind, h }) =>
           kind === 'game' ? (
-            <button key="game" className="hh-row bh-game" disabled={busy} onClick={openGame}>
+            <button key="game" className="hh-row" disabled={busy} onClick={openGame}>
               <span className="hh-avatar bh-game-ico">{t.icon}</span>
               <span className="hh-info">
                 <b>{game.name}</b>
-                <span>Oyunun dükkânı · her zaman açık</span>
+                <span>Sahibi: Neon Şehir</span>
               </span>
-              {game.house ? (
-                <span className={`hh-count${gamePeople ? ' live' : ''}`}>
-                  <i />
-                  {gamePeople} kişi
-                </span>
-              ) : (
-                <span className="bh-go">Gir ›</span>
-              )}
+              <span className={`hh-count${gamePeople ? ' live' : ''}`}>
+                <i />
+                {gamePeople || 0} kişi
+              </span>
             </button>
           ) : (
           <button key={h.id} className={`hh-row${h.mine ? ' mine' : ''}`} onClick={() => setHouseId(h.id)}>
