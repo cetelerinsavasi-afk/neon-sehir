@@ -4,6 +4,7 @@ import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes
 import { CATALOG_MAP, buildItem, itemBoxes, disposeObject, TINTS, M } from './houseCatalog';
 import { FLOORS, WALLS, floorDef, wallDef, surfaceTexture } from './houseTextures';
 import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
+import { heldCanvas, heldDataUrl } from './heldArt';
 
 // =============================================================================
 // houseEngine.js — Ev'in 3D motoru (three.js). React'ten bağımsız; HouseScreen
@@ -141,16 +142,11 @@ function blobShadowTexture() {
 // v70 — eldeki ürün (içecek/yiyecek/silah): diğer mekânlardaki gibi elde
 // görünen küçük ikon (kameraya dönük sprite, hafifçe sallanır).
 const heldTexCache = new Map();
+const GYM_FREE_KEYS = ['bag', 'treadmill', 'bench', 'dumbbells'];
 function heldTexture(product) {
   if (heldTexCache.has(product)) return heldTexCache.get(product);
-  const c = document.createElement('canvas');
-  c.width = c.height = 96;
-  const g = c.getContext('2d');
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  g.font = '72px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
-  g.fillText(HOUSE_PRODUCTS[product]?.emoji || '🎁', 48, 52);
-  const t = new THREE.CanvasTexture(c);
+  // v77 — emoji yerine her ürünün kendi çizimi (heldArt.js)
+  const t = new THREE.CanvasTexture(heldCanvas(product));
   t.colorSpace = THREE.SRGBColorSpace;
   heldTexCache.set(product, t);
   return t;
@@ -220,8 +216,14 @@ class AvatarFigure {
   }
   renderName() {
     if (!this.nameEl) return;
-    const em = this.holding ? HOUSE_PRODUCTS[this.holding]?.emoji || '🎁' : '';
-    this.nameEl.textContent = em ? `${em} ${this.name}` : this.name;
+    this.nameEl.textContent = this.name;
+    if (this.holding) {
+      const img = document.createElement('img');
+      img.className = 'hs-name-held';
+      img.alt = HOUSE_PRODUCTS[this.holding]?.label || '';
+      img.src = heldDataUrl(this.holding);
+      this.nameEl.prepend(img);
+    }
   }
   say(text) {
     // v71 — metin her zaman tutulur (fotoğrafa balon çizmek için; snapshot
@@ -247,7 +249,8 @@ class AvatarFigure {
       this.emoteEl.classList.add('on');
     }
   }
-  update(dt, camera, now, seatPos) {
+  // stand: oturma noktası ayakta kullanılıyor (duşakabin)
+  update(dt, camera, now, seatPos, stand = false) {
     if (seatPos) {
       this.x = seatPos.x;
       this.z = seatPos.z;
@@ -298,7 +301,7 @@ class AvatarFigure {
     this.plane.rotation.order = 'YXZ';
     this.plane.rotation.set(-back, ang, tilt);
     let pose = 'idle';
-    if (seatPos) pose = 'sit';
+    if (seatPos && !stand) pose = 'sit';
     else if (this.moving || forceWalk) {
       this.walkT += dt * (forceWalk ? 0.7 : 1);
       pose = Math.floor(this.walkT / 0.16) % 2 ? 'walk2' : 'walk1';
@@ -318,10 +321,13 @@ class AvatarFigure {
       const rx = Math.cos(ang) * side;
       const rz = -Math.sin(ang) * side;
       const bob = Math.sin(now / 480) * 0.02;
-      const handY = (seatPos ? seatPos.y + 0.55 : AV_PLANE_H * 0.47 - AV_FEET) + bob;
+      const handY = (seatPos && !stand ? seatPos.y + 0.55 : AV_PLANE_H * 0.47 - AV_FEET + (seatPos ? seatPos.y : 0)) + bob;
       this.heldSprite.position.set(rx * 0.3 + Math.sin(ang) * 0.12, handY, rz * 0.3 + Math.cos(ang) * 0.12);
     }
-    if (seatPos) {
+    if (seatPos && stand) {
+      this.plane.position.y = AV_PLANE_H / 2 - AV_FEET + seatPos.y + lift;
+      this.shadow.visible = false;
+    } else if (seatPos) {
       const topY = seatPos.y + 0.04 + AV_WAIST_FROM_TOP;
       this.plane.position.y = topY - AV_PLANE_H / 2 + lift;
       this.shadow.visible = false;
@@ -833,6 +839,16 @@ export function createHouseEngine(
     });
   }
 
+  const seatStand = (seat) => Boolean(seat && CATALOG_MAP[objs.get(seat.id)?.data.k]?.stand);
+  // v77 — duşakabin: içinde biri varken su akar
+  function updateShowers() {
+    objs.forEach((e) => {
+      const ctl = e.obj.userData.ctl;
+      if (!ctl?.setRunning) return;
+      const busy = (self.seat?.id === e.data.i && mode === 'walk') || [...others.values()].some((o) => o.seat?.id === e.data.i);
+      if (ctl.running !== busy) ctl.setRunning(busy);
+    });
+  }
   function seatWorld(seat, out = new THREE.Vector3()) {
     if (!seat) return null;
     const e = objs.get(seat.id);
@@ -851,7 +867,7 @@ export function createHouseEngine(
     const def = CATALOG_MAP[e.data.k];
     const ctl = e.obj.userData.ctl;
     const acts = [];
-    if (def.seats?.length) acts.push({ kind: 'sit', label: def.cat === 'araba' ? '🚗 Arabaya bin' : def.cat === 'motor' ? '🏍️ Motora bin' : '🪑 Otur' });
+    if (def.seats?.length) acts.push({ kind: 'sit', label: def.stand ? '🚿 Duş al' : def.cat === 'araba' ? '🚗 Arabaya bin' : def.cat === 'motor' ? '🏍️ Motora bin' : '🪑 Otur' });
     if (def.game) acts.push({ kind: 'panel', panel: 'arcade', label: '🎮 Oyna', deviceId: e.data.i });
     // v77: piyanoya oturunca çal (aynı anda tek kişi — HouseScreen/pianoNet)
     if (e.data.k === 'piano' && self.seat?.id === e.data.i) acts.push({ kind: 'panel', panel: 'piano', label: '🎹 Çal' });
@@ -864,6 +880,8 @@ export function createHouseEngine(
     });
     // v77: spor salonu — aktif görevin aletinde "⭐ Görev"
     if (gymTask && e.data.k === gymTask && e.data.p === 1) acts.unshift({ kind: 'gym', equipment: gymTask, label: '⭐ Görev' });
+    // v77: aletler üyeliksiz de kullanılır (serbest çalışma; güç kazandırmaz)
+    else if (GYM_FREE_KEYS.includes(e.data.k) && e.data.p === 1) acts.push({ kind: 'gymfree', equipment: e.data.k, label: '💪 Serbest çalış' });
     return acts;
   }
   function findInteract() {
@@ -871,7 +889,7 @@ export function createHouseEngine(
     if (self.seat) {
       const e = objs.get(self.seat.id);
       if (!e) return null;
-      const acts = [{ kind: 'sit', label: '⬆️ Kalk' }, ...actionsFor(e).filter((a) => a.kind !== 'sit')];
+      const acts = [{ kind: 'sit', label: CATALOG_MAP[e.data.k].stand ? '🚪 Duştan çık' : '⬆️ Kalk' }, ...actionsFor(e).filter((a) => a.kind !== 'sit')];
       // v75 — konsolun/bilgisayarın karşısındaki koltukta oturuyorsan oradan da oyna
       if (!acts.some((a) => a.panel === 'arcade')) {
         const sp = seatWorld(self.seat, new THREE.Vector3());
@@ -1344,6 +1362,7 @@ export function createHouseEngine(
   function frame(dt) {
     const t = clock.elapsedTime;
     const now = performance.now();
+    updateShowers();
     objs.forEach((e) => {
       if (e.data.p === 1) e.obj.userData.ctl?.tick?.(t, dt);
     });
@@ -1355,13 +1374,13 @@ export function createHouseEngine(
 
     if (self.fig) {
       const sw = self.seat ? seatWorld(self.seat, seatV) : null;
-      self.fig.update(dt, camera, now, sw ? sw.clone() : null);
+      self.fig.update(dt, camera, now, sw ? sw.clone() : null, seatStand(self.seat));
       self.fig.group.visible = mode === 'walk';
       if (self.fig.label) self.fig.label.style.display = mode === 'walk' ? '' : 'none';
     }
     others.forEach((o) => {
       const sw = o.seat && isUsable(o.seat.id) ? seatWorld(o.seat, new THREE.Vector3()) : null;
-      o.fig.update(dt, camera, now, sw);
+      o.fig.update(dt, camera, now, sw, seatStand(o.seat));
     });
 
     lightTimer -= dt;
@@ -1461,10 +1480,11 @@ export function createHouseEngine(
     list.forEach(({ fig, x, y: y0 }) => {
       let y = y0;
       // isim
-      const em = fig.holding ? HOUSE_PRODUCTS[fig.holding]?.emoji || '🎁' : '';
-      const name = em ? `${em} ${fig.name}` : fig.name;
+      const name = fig.name;
+      const held = fig.holding ? heldCanvas(fig.holding) : null;
+      const iw = held ? 15 * s : 0;
       ctx.font = `700 ${11 * s}px ${font}`;
-      const nw = ctx.measureText(name).width + 16 * s;
+      const nw = ctx.measureText(name).width + 16 * s + iw;
       const nh = 17 * s;
       // v72 — etiket+balon yığını kadrajın üstünden taşarsa aşağı itilir (kesilmesin)
       const bubbles = fig.bubbles.filter((b) => b.text && now <= b.until);
@@ -1487,7 +1507,8 @@ export function createHouseEngine(
       ctx.fillStyle = fig.isSelf ? '#ffe9a8' : '#dff9ff';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(name, x, top + nh / 2 + 0.5 * s);
+      ctx.fillText(name, x + iw / 2, top + nh / 2 + 0.5 * s);
+      if (held) ctx.drawImage(held, x - nw / 2 + 5 * s, top + 1 * s, nh - 2 * s, nh - 2 * s);
       // balonlar (en yenisi altta, ismin hemen üstünde)
       ctx.font = `${13 * s}px ${font}`;
       for (let i = bubbles.length - 1; i >= 0; i--) {
@@ -1917,8 +1938,10 @@ export function createHouseEngine(
         o.fig.x = o.fig.tx;
         o.fig.z = o.fig.tz;
         const sw = o.seat ? seatWorld(o.seat, new THREE.Vector3()) : null;
-        o.fig.update(0, camera, performance.now(), sw);
+        o.fig.update(0, camera, performance.now(), sw, seatStand(o.seat));
       });
+      updateShowers();
+      objs.forEach((e) => e.data.p === 1 && e.obj.userData.ctl?.tick?.(1.3, 0.016));
       renderer.render(scene, camera);
       return composeShot('image/jpeg', 0.85, canvas.width / Math.max(200, Math.min(2000, Number(pose.cw) || 400)));
     },

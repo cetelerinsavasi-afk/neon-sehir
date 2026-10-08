@@ -94,7 +94,7 @@ export const HOUSE_PRODUCTS = {
   ayran: { label: 'Ayran', emoji: '🥛' },
   meyveSuyu: { label: 'Meyve Suyu', emoji: '🧃' },
   enerji: { label: 'Enerji İçeceği', emoji: '🥫' },
-  su: { label: 'Su', emoji: '💧' },
+  su: { label: 'Su', emoji: '🚰' },
   kahve: { label: 'Kahve', emoji: '☕' },
   latte: { label: 'Latte', emoji: '☕' },
   espresso: { label: 'Espresso', emoji: '☕' },

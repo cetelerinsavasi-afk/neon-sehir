@@ -13,7 +13,7 @@ export const resignFromPolice = () => httpsCallable(functions, 'resignFromPolice
 export const cancelPendingPoliceChange = () =>
   httpsCallable(functions, 'cancelPendingPoliceChange')();
 
-export const createFactory = () => httpsCallable(functions, 'createFactory')();
+export const createFactory = (expect) => httpsCallable(functions, 'createFactory')({ expect });
 
 export const buyFactoryMachine = (machineType) =>
   httpsCallable(functions, 'buyFactoryMachine')({ machineType });

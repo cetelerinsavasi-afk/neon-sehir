@@ -449,6 +449,47 @@ function shower(g) {
   C(g, 0.015, 0.015, 1.1, -0.45, 1.6, -0.45, CHROME());
   TUBE(g, [-0.45, 2.1, -0.45], [-0.2, 2.1, -0.2], 0.015, CHROME());
   C(g, 0.12, 0.12, 0.02, -0.18, 2.08, -0.18, CHROME());
+  // v77 — içinde biri varken akan su + buhar
+  const dropM = own(new THREE.MeshBasicMaterial({ color: '#8fd3ff', transparent: true, opacity: 0.8, depthWrite: false }));
+  const steamM = own(new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.18, depthWrite: false }));
+  const drops = [];
+  for (let i = 0; i < 40; i++) {
+    const d = B(g, 0.014, 0.18, 0.014, -0.18 + (Math.random() - 0.5) * 0.34, 1.2, -0.18 + (Math.random() - 0.5) * 0.34, dropM);
+    d.userData.ph = Math.random();
+    d.visible = false;
+    drops.push(d);
+  }
+  const steam = [];
+  for (let i = 0; i < 5; i++) {
+    const st = SP(g, 0.22 + i * 0.03, (Math.random() - 0.5) * 0.4, 1.4, (Math.random() - 0.5) * 0.4, steamM);
+    st.userData.ph = i / 5;
+    st.visible = false;
+    steam.push(st);
+  }
+  let running = false;
+  return {
+    noToggle: true,
+    get running() {
+      return running;
+    },
+    setRunning(v) {
+      running = Boolean(v);
+      drops.forEach((d) => (d.visible = running));
+      steam.forEach((st) => (st.visible = running));
+    },
+    tick(t) {
+      if (!running) return;
+      drops.forEach((d) => {
+        const p = (t * 1.6 + d.userData.ph) % 1;
+        d.position.y = 2.0 - p * 1.9;
+      });
+      steam.forEach((st) => {
+        const p = (t * 0.25 + st.userData.ph) % 1;
+        st.position.y = 1.2 + p * 0.9;
+        st.scale.setScalar(0.8 + p * 0.8);
+      });
+    },
+  };
 }
 function bathtub(g, ctx) {
   const outer = M(tintHex(ctx, '#f2f1ee'), 0.15, 0.05);
@@ -2584,7 +2625,7 @@ export const CATALOG = [
   // BANYO
   { k: 'toilet', name: 'Klozet', cat: 'banyo', icon: '🚽', price: null, build: toilet, box: [0.22, 0.34], seats: [[0, 0.5, 0.05]] },
   { k: 'bsink', name: 'Lavabo & Ayna', cat: 'banyo', icon: '🪞', price: G(4000), tints: 'wood', build: sinkBath, box: [0.4, 0.25] },
-  { k: 'shower', name: 'Duşakabin', cat: 'banyo', icon: '🚿', price: G(7000), build: shower, box: [0.5, 0.5] },
+  { k: 'shower', name: 'Duşakabin', cat: 'banyo', icon: '🚿', price: G(7000), build: shower, box: [0.5, 0.5], seats: [[0, 0.08, -0.06]], stand: true },
   { k: 'bathtub', name: 'Küvet', cat: 'banyo', icon: '🛁', price: G(9000), build: bathtub, box: [0.88, 0.42], seats: [[0, 0.45, 0]] },
   { k: 'jacuzzi', name: 'Jakuzi', cat: 'banyo', icon: '🫧', price: E(120), build: jacuzzi, box: [1.15, 1.15], seats: [[0, 0.45, 0.6], [0.6, 0.45, 0], [-0.6, 0.45, 0]] },
 

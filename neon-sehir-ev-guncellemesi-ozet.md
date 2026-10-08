@@ -528,3 +528,18 @@ Yayınlama: `firebase deploy --only functions` (houseAction fiyat, gangAction il
 - **Mevki:** Artık Futbol › Futbolcu ekranından seçilir. Günde 1 kez değişir; 200 güce ulaşınca kalıcı olur. Takımdayken değişmez.
 - **Takım antrenmanı:** Spor salonu seçimi açılır/kapanır bir panelde, seçili salon üstte görünür. Ödeme basılı tutmadan tek dokunuşla yapılır.
 - **Transfer:** "Oyuncu Sat" yanında "💰 Maaşlı futbolcular" butonu: oyundaki 200+ güçlü tüm futbolcular (takımlı/takımsız) listelenir, teklif gönderilir ya da ilandakiler imzalanır. Sözleşmeli futbolcular Transfer'den kaldırıldı; Takımım › Takımın'da, sadece sözleşmeli futbolcu varsa görünür.
+
+## Mekânlarda sosyalleşme (v77 ek)
+
+- **Mevki:** Hiç mevki seçmediysen ilk üyelikten önce spor salonu ekranında da seçebilirsin.
+- **Eldeki ürünler:** Emoji yerine her yiyecek/içeceğin kendi çizimi var (su şişe, kahve karton bardak, latte uzun bardak, espresso fincan, çay ince belli bardak, ayran köpüklü bardak, viski buzlu bardak…). Aynı çizim isim etiketinde, menüde ve "Elinde" yazısında da görünür.
+- **Fotoğraflar:** Sixtagram'da paylaşılan ev fotoğraflarında elindeki içecek/yiyecek de çıkıyor.
+- **Duşakabin:** "🚿 Duş al" ile içine girilir, su akar ve buhar çıkar; "🚪 Duştan çık" ile çıkılır. İçeride biri varken "Dolu" yazar.
+- **Spor aletleri:** Üyelik olmadan da "💪 Serbest çalış" ile kullanılabilir (mini oyun; güç kazandırmaz).
+
+## Fabrika kurma (yeni sistem)
+
+- Fabrika artık **her makineden 1 tane** ile kurulur: 1 Mining, 1 Tamir Malzemesi, 1 Silah Geliştirme, 1 Araba Geliştirme makinesi.
+- **Bedel = 100.000 (kuruluş) + 100.000 (tamir) + 50.000 (silah) + 50.000 (araba) + 2 × kripto fiyatı** → 300.000 altın + 2 kriptonun değeri. Kripto saatlik değiştiği için bedel de saatlik değişir.
+- Fabrika Kur ekranı gelenleri tek tek fiyatıyla, toplamı ve cebindeki altını gösterir. Fiyat ödeme anında değişmişse işlem yapılmaz, yeni fiyat yazılır.
+- Daha önce kurulmuş fabrikalar olduğu gibi devam eder.

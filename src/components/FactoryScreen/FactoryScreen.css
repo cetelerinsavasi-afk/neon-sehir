@@ -1196,3 +1196,29 @@
   width: 100%;
   margin-top: 10px;
 }
+
+/* v77 — fabrika kurma: toplam ve cüzdan */
+.factory-create-total,
+.factory-create-wallet {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 2px;
+  font-size: 14px;
+}
+.factory-create-total {
+  margin-top: 8px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.2);
+  font-size: 16px;
+}
+.factory-create-total b {
+  color: var(--neon-yellow, #ffd23f);
+}
+.factory-create-wallet b.bad {
+  color: #ff5b6e;
+}
+.factory-create-note {
+  margin-top: 0;
+  font-size: 12px;
+  opacity: 0.75;
+}

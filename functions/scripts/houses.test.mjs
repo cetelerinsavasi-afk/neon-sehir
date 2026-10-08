@@ -205,3 +205,16 @@ test('v71: ev fotoğrafı en/boy oranını ve çekim anındaki mesaj balonların
   const ext = await h.houses.buildPhotoAttachment('zengin', { houseId: id, cam: { ...cam, a: 99 }, shotAgoMs: 1e12 });
   assert.equal(ext.cam.a, 2.5);
 });
+
+test('v77: ev fotoğrafında eldeki içecek de görünür (geçersiz ürün yok sayılır)', async () => {
+  const h = setup();
+  const id = await withHouse(h);
+  await h.act('zengin', { op: 'enter', houseId: id });
+  const cam = { px: 0, py: 2, pz: 5, dx: 0, dy: -0.2, dz: -1, fov: 58 };
+  h.S('housePresence/zengin', { ...h.G('housePresence/zengin'), holding: 'cay' });
+  let att = await h.houses.buildPhotoAttachment('zengin', { houseId: id, cam });
+  assert.equal(att.people.find((p) => p.uid === 'zengin').holding, 'cay');
+  h.S('housePresence/zengin', { ...h.G('housePresence/zengin'), holding: '<script>' });
+  att = await h.houses.buildPhotoAttachment('zengin', { houseId: id, cam });
+  assert.equal(att.people.find((p) => p.uid === 'zengin').holding, undefined);
+});

@@ -4,6 +4,7 @@ import { usePlayer } from '../../hooks/usePlayer';
 import { useBizSpend } from '../../hooks/useVenueData';
 import { shopAction } from '../../services/gameActions';
 import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
+import HeldIcon from '../HouseScreen/HeldIcon';
 import { menuOf, menuPriceOf, MENU_DAILY_LIMIT } from '../../../functions/venue.js';
 import '../../styles/bizui.css';
 import './Venue.css';
@@ -81,7 +82,9 @@ export default function MenuPanel({ houseId, houseDoc, onClose, onBought }) {
               disabled={busy === k}
               onClick={() => buy(k)}
             >
-              <span className="vn-emoji">{p.emoji}</span>
+              <span className="vn-emoji">
+                <HeldIcon product={k} size={30} />
+              </span>
               <span className="vn-name">{p.label}</span>
               <span className={`vn-price${stale[k] ? ' cue-glow' : ''}`}>
                 {isOwner ? 'Ücretsiz' : (

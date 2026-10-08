@@ -26,7 +26,8 @@ export default function GymPanel({ houseId, houseDoc, onClose, onStarted }) {
   const price = isOwner ? 0 : gymPriceOf(houseDoc); // sahip kendi salonunda günde 1 kez ücretsiz
   const gold = Number(player?.gold || 0);
   const bonus = !houseDoc?.bizGame && houseDoc?.gymBonusDay === futbolDayKey(Date.now());
-  const position = fb?.position || null;
+  const [pos, setPos] = useState(null);
+  const position = fb?.position || pos || null;
   const inTeam = Boolean(fb?.teamId);
   const doneToday = today && today.status === 'done';
   const elsewhere = active && active.gymId !== houseId;
@@ -35,12 +36,12 @@ export default function GymPanel({ houseId, houseDoc, onClose, onStarted }) {
   const deadline = gymDeadlineMs(Date.now());
 
   const start = async () => {
-    if (!position) return setMsg('Önce Futbol › Futbolcu ekranından mevkini seç.');
+    if (!position) return setMsg('Önce mevkini seç.');
     if (poor) return setMsg(`Altının yetmiyor: ${fmt(price)} altın lazım, cebinde ${fmt(gold)} var.`);
     setBusy(true);
     setMsg(null);
     try {
-      const r = await shopAction({ op: 'gymStart', houseId, expect: price });
+      const r = await shopAction({ op: 'gymStart', houseId, expect: price, ...(!fb?.position && pos ? { position: pos } : {}) });
       onStarted?.(r);
     } catch (err) {
       setMsg(bizErrText(err));
@@ -78,11 +79,26 @@ export default function GymPanel({ houseId, houseDoc, onClose, onStarted }) {
         </div>
       </div>
 
-      <div className="bz-row">
-        <span>⚽ Mevkin</span>
-        <b>{position ? `${POS[position].icon} ${POS[position].name}` : 'seçilmedi'}</b>
-      </div>
-      {!position && <p className="bz-warn">Mevkini Futbol › Futbolcu ekranından seç.</p>}
+      {fb?.position ? (
+        <div className="bz-row">
+          <span>⚽ Mevkin</span>
+          <b>{`${POS[fb.position].icon} ${POS[fb.position].name}`}</b>
+        </div>
+      ) : (
+        // v77: hiç mevki seçmediyse ilk antrenmandan önce burada da seçebilir
+        <div className="bz-sec">
+          <p className="bz-sec-title">⚽ Mevkini seç</p>
+          <div className="gy-positions">
+            {Object.entries(POS).map(([k, v]) => (
+              <button key={k} className={`gy-pos${pos === k ? ' on' : ''}`} onClick={() => setPos(k)}>
+                <span>{v.icon}</span>
+                <small>{v.name}</small>
+              </button>
+            ))}
+          </div>
+          <p className="bz-hint">Günde 1 kez değişir. 200 güçte kalıcı olur.</p>
+        </div>
+      )}
 
       <div className="bz-sec">
         <p className="bz-sec-title">🎟️ Üyelik</p>

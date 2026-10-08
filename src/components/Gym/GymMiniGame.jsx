@@ -25,7 +25,8 @@ const HOW = {
 const PRAISE = ['Harika!', 'Süper!', 'Mükemmel!', 'Böyle devam!', 'Güçlü!'];
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 
-export default function GymMiniGame({ equipment, onDone, onClose }) {
+// free: üyeliksiz serbest çalışma — sunucuya gitmez, güç kazandırmaz
+export default function GymMiniGame({ equipment, onDone, onClose, free = false }) {
   const [score, setScore] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [phase, setPhase] = useState('starting'); // starting | count | play | saving | err
@@ -41,13 +42,17 @@ export default function GymMiniGame({ equipment, onDone, onClose }) {
   // sunucuda adımı başlat → 3-2-1 → oyun
   useEffect(() => {
     let alive = true;
+    if (free) {
+      setPhase('count');
+      return undefined;
+    }
     shopAction({ op: 'gymStep', equipment })
       .then(() => alive && setPhase('count'))
       .catch(() => alive && setPhase('err'));
     return () => {
       alive = false;
     };
-  }, [equipment]);
+  }, [equipment, free]);
   useEffect(() => {
     if (phase !== 'count') return undefined;
     if (count <= 0) {
@@ -67,6 +72,10 @@ export default function GymMiniGame({ equipment, onDone, onClose }) {
   useEffect(() => {
     if (phase !== 'play' || prog < 1) return;
     setPhase('saving');
+    if (free) {
+      setTimeout(() => onDone?.({ free: true }), 700);
+      return;
+    }
     let tries = 0;
     const send = () =>
       shopAction({ op: 'gymStepDone' })
@@ -76,7 +85,7 @@ export default function GymMiniGame({ equipment, onDone, onClose }) {
           else setPhase('err');
         });
     send();
-  }, [prog, phase, onDone]);
+  }, [prog, phase, onDone, free]);
 
   const hit = useCallback(
     (n = 1, text) => {
@@ -112,7 +121,9 @@ export default function GymMiniGame({ equipment, onDone, onClose }) {
               ? moveDone
                 ? 'Tamam, set bitiyor!'
                 : `${Math.min(score, need)}/${need} · ${combo >= 3 ? `🔥 ${combo} seri` : 'seri yap!'}`
-              : 'Görev'}
+              : free
+                ? 'Serbest çalışma'
+                : 'Görev'}
           </small>
         </div>
         {onClose && (
@@ -133,7 +144,7 @@ export default function GymMiniGame({ equipment, onDone, onClose }) {
         </div>
       )}
       {phase === 'err' && <div className="gy-game-wait small">Bağlantı sorunu oldu. Kapatıp alete tekrar dokun.</div>}
-      {phase === 'saving' && <div className="gy-game-wait small cue-glow">✓ Görev tamamlandı!</div>}
+      {phase === 'saving' && <div className="gy-game-wait small cue-glow">{free ? '💪 Güzel çalıştın!' : '✓ Görev tamamlandı!'}</div>}
 
       {play && (
         <div className="gy-arena">

@@ -69,18 +69,28 @@ function machineProductionRangeLabel(type) {
 // ---------------------------------------------------------------------------
 // Fabrika kurma modalı
 // ---------------------------------------------------------------------------
+// v77 — fabrika her makineden 1'er tane ile kurulur; bedel kripto fiyatıyla
+// saatlik değişir (sunucudaki factoryStarterCost ile aynı formül).
+const FACTORY_STARTER_MACHINES = ['mining', 'tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme'];
+function factoryStarterCost(cryptoPrice) {
+  return FACTORY_CREATE_COST + FACTORY_STARTER_MACHINES.reduce((a, t) => a + machinePrice(t, cryptoPrice || 0), 0);
+}
+
 function CreateFactoryModal({ onClose, isEmployed }) {
-  const { prices } = useInvestmentPrices();
+  const { prices, loading } = useInvestmentPrices();
+  const { player } = usePlayer();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-
-  const types = ['mining', 'tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme'];
+  const total = factoryStarterCost(prices.cryptoPrice);
+  const gold = Number(player?.gold || 0);
+  const poor = gold < total;
+  const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
 
   const handleCreate = async () => {
     setBusy(true);
     setError(null);
     try {
-      await createFactory();
+      await createFactory(total);
       onClose();
     } catch (err) {
       setError(err.message || 'Fabrika kurulamadı.');
@@ -98,42 +108,47 @@ function CreateFactoryModal({ onClose, isEmployed }) {
             ✕
           </button>
         </div>
-        <p className="factory-hint">
-          {FACTORY_CREATE_COST.toLocaleString('tr-TR')} altına kendi fabrikanı kurarsın. Her
-          oyuncu sadece 1 kez fabrika kurabilir, fabrika satılamaz. Kurduktan sonra istediğin
-          kadar makine alabilirsin.
-        </p>
-        {isEmployed && (
-          <p className="factory-hint">
-            Şu an bir fabrikada çalışıyorsun. Fabrikanı kurduğun anda o işten otomatik ayrılırsın
-            ve bugün kendi fabrikanda da çalışabilirsin.
-          </p>
-        )}
+        <p className="factory-hint">Fabrikan her makineden 1 tane ile kurulur. Kurduğun anda 4 makinen hazır olur.</p>
+        {isEmployed && <p className="factory-hint">Kurduğunda şu anki işinden otomatik ayrılırsın.</p>}
 
-        <p className="factory-step-label">Fabrikanda Alabileceğin Makineler</p>
+        <p className="factory-step-label">Fabrikayla birlikte gelenler</p>
         <div className="factory-machine-list">
-          {types.map((type) => {
-            const price = machinePrice(type, prices.cryptoPrice);
-            return (
-              <div key={type} className="factory-machine-buy-card">
-                <span className="factory-machine-emoji">{MACHINE_EMOJI[type]}</span>
-                <div className="factory-machine-buy-info">
-                  <span className="factory-machine-buy-title">{MACHINE_LABELS[type]}</span>
-                  <span className="factory-machine-buy-desc">
-                    {type === 'mining'
-                      ? 'İşçi gerekmez · günde 0.01-0.1 kripto üretir'
-                      : `İşçi gerekir · günde ${machineProductionRangeLabel(type)} adet üretir`}
-                  </span>
-                </div>
-                <span className="factory-machine-buy-price">{price.toLocaleString('tr-TR')} altın</span>
+          <div className="factory-machine-buy-card">
+            <span className="factory-machine-emoji">🏭</span>
+            <div className="factory-machine-buy-info">
+              <span className="factory-machine-buy-title">Fabrika binası</span>
+              <span className="factory-machine-buy-desc">Kuruluş ücreti</span>
+            </div>
+            <span className="factory-machine-buy-price">{fmt(FACTORY_CREATE_COST)} altın</span>
+          </div>
+          {FACTORY_STARTER_MACHINES.map((type) => (
+            <div key={type} className="factory-machine-buy-card">
+              <span className="factory-machine-emoji">{MACHINE_EMOJI[type]}</span>
+              <div className="factory-machine-buy-info">
+                <span className="factory-machine-buy-title">1 × {MACHINE_LABELS[type]}</span>
+                <span className="factory-machine-buy-desc">
+                  {type === 'mining' ? `2 × kripto fiyatı · işçi gerekmez` : `İşçi gerekir · günde ${machineProductionRangeLabel(type)} adet`}
+                </span>
               </div>
-            );
-          })}
+              <span className="factory-machine-buy-price">{fmt(machinePrice(type, prices.cryptoPrice))} altın</span>
+            </div>
+          ))}
         </div>
 
+        <div className="factory-create-total">
+          <span>Toplam</span>
+          <b>{loading ? '…' : `${fmt(total)} altın`}</b>
+        </div>
+        <p className="factory-hint factory-create-note">Fiyat kripto fiyatına göre saatlik değişir.</p>
+        <div className="factory-create-wallet">
+          <span>Cebindeki altın</span>
+          <b className={poor ? 'bad' : ''}>{fmt(gold)}</b>
+        </div>
+        {poor && !loading && <p className="factory-error">{fmt(total - gold)} altın eksik.</p>}
+
         {error && <p className="factory-error">{error}</p>}
-        <button className="factory-btn primary" disabled={busy} onClick={handleCreate}>
-          {busy ? '…' : `Fabrika Kur (${FACTORY_CREATE_COST.toLocaleString('tr-TR')} altın)`}
+        <button className="factory-btn primary" disabled={busy || loading || poor} onClick={handleCreate}>
+          {busy ? 'Kuruluyor…' : `Fabrika Kur — ${fmt(total)} altın`}
         </button>
       </div>
     </div>

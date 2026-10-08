@@ -1003,7 +1003,7 @@ export const cancelPendingPoliceChange = onCall(async (request) => {
 });
 
 // ---------------------------------------------------------------------------
-// createFactory — 100.000 altın, oyuncu başına en fazla 1 fabrika, satılamaz.
+// createFactory — v77: her makineden 1'er tane ile kurulur (bkz. factoryStarterCost); oyuncu başına en fazla 1 fabrika, satılamaz.
 // v56: Başka bir fabrikada çalışan oyuncu da kurabilir. Kurduğu anda o işten
 // otomatik ayrılır (users.employment silinir, eski patronun fabrika
 // bildirimlerine düşer). Adı eski makinede 00:00'a kadar görünmeye devam eder
@@ -1013,10 +1013,36 @@ export const cancelPendingPoliceChange = onCall(async (request) => {
 // (employmentProducedDateKey) bir kereliğine sıfırlanır. Fabrika kişi başı
 // yalnızca bir kez kurulabildiği için bu en fazla bir kez olur.
 // ---------------------------------------------------------------------------
+// v77 — Yeni kuruluş: fabrika her makineden 1'er tane ile (mining, tamir,
+// silah, araba) kurulur. Bedel = 100.000 kuruluş + sabit makine fiyatları
+// (100.000 + 50.000 + 50.000) + ilk mining makinesi (2 × kripto fiyatı) →
+// kripto saatlik değiştiği için kuruluş bedeli de saatlik değişir. İstemci
+// gördüğü fiyatı `expect` ile gönderir; fiyat değiştiyse işlem yapılmaz.
+// Önceden kurulmuş fabrikalar olduğu gibi devam eder.
+const FACTORY_STARTER_MACHINES = ['mining', 'tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme'];
+function factoryStarterCost(cryptoPrice) {
+  let total = FACTORY_CREATE_COST;
+  for (const t of FACTORY_STARTER_MACHINES) {
+    total += t === 'mining' ? Math.ceil(2 * (cryptoPrice || 0)) : MACHINE_TYPES[t].price;
+  }
+  return total;
+}
+
 export const createFactory = onCall(async (request) => {
   const uid = requireAuth(request);
   const userRef = db.collection('users').doc(uid);
   const factoryRef = db.collection('factories').doc(uid);
+  const expect = Number(request.data?.expect);
+  if (!Number.isFinite(expect)) {
+    throw new HttpsError('failed-precondition', 'Fabrika kurma fiyatı değişti; uygulamayı güncelleyip tekrar dene.');
+  }
+  const prices = await getCurrentPrices();
+  const cryptoPrice = prices.cryptoPrice || 0;
+  if (!(cryptoPrice > 0)) throw new HttpsError('unavailable', 'Kripto fiyatı alınamadı, biraz sonra tekrar dene.');
+  const cost = factoryStarterCost(cryptoPrice);
+  if (Math.round(expect) !== cost) {
+    throw new HttpsError('aborted', `Fiyat güncellendi: yeni kuruluş bedeli ${cost.toLocaleString('tr-TR')} altın. Kontrol edip tekrar dene.`);
+  }
 
   await db.runTransaction(async (tx) => {
     const [userSnap, factorySnap] = await Promise.all([tx.get(userRef), tx.get(factoryRef)]);
@@ -1024,7 +1050,7 @@ export const createFactory = onCall(async (request) => {
     if (factorySnap.exists) {
       throw new HttpsError('failed-precondition', 'Zaten bir fabrikan var.');
     }
-    if (!user || (user.gold || 0) < FACTORY_CREATE_COST) {
+    if (!user || (user.gold || 0) < cost) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
     // Mevcut işten otomatik ayrılma (okuma, yazmalardan önce).
@@ -1038,7 +1064,7 @@ export const createFactory = onCall(async (request) => {
         tx.get(oldFactoryRef),
       ]);
     }
-    const userUpdate = { gold: admin.firestore.FieldValue.increment(-FACTORY_CREATE_COST) };
+    const userUpdate = { gold: admin.firestore.FieldValue.increment(-cost) };
     if (user.employment) userUpdate.employment = admin.firestore.FieldValue.delete();
     if (user.employmentProducedDateKey) userUpdate.employmentProducedDateKey = admin.firestore.FieldValue.delete();
     tx.update(userRef, userUpdate);
@@ -1066,10 +1092,24 @@ export const createFactory = onCall(async (request) => {
       ownerName: user.displayName || 'Oyuncu',
       salary: FACTORY_MIN_SALARY,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createCost: cost,
+      starterKit: true,
     });
+    // her makineden birer tane
+    for (const type of FACTORY_STARTER_MACHINES) {
+      tx.set(factoryRef.collection('machines').doc(), {
+        type,
+        workerId: null,
+        workerName: null,
+        lastProducedDateKey: null,
+        lastProducedQty: 0,
+        purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
+        starter: true,
+      });
+    }
   });
 
-  return { ok: true };
+  return { ok: true, cost, machines: FACTORY_STARTER_MACHINES.length };
 });
 
 // v56 — Kendi fabrikasını kurup ayrılan işçinin eski makinesini 00:00'da

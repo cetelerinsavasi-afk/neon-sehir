@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { shopAction } from '../../services/gameActions';
 import PriceField from '../Shop/PriceField';
+import HeldIcon from '../HouseScreen/HeldIcon';
 import { bizErrText } from '../../lib/bizErrors';
 import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
 import { menuOf, menuPriceOf, MENU_PRICE, NET_MINUTE, NET_DEVICE_CAP, netPriceOf } from '../../../functions/venue.js';
@@ -36,7 +37,11 @@ export function MenuPriceSection({ houseId, houseDoc }) {
       {products.map((k) => (
         <PriceField
           key={k}
-          label={`${HOUSE_PRODUCTS[k].emoji} ${HOUSE_PRODUCTS[k].label}`}
+          label={
+            <>
+              <HeldIcon product={k} size={20} /> {HOUSE_PRODUCTS[k].label}
+            </>
+          }
           min={MENU_PRICE.min}
           max={MENU_PRICE.max}
           step={10}
@@ -84,7 +89,13 @@ export function MenuInvSection({ houseDoc }) {
           <span>
             {BIZ_ITEM_LABELS[k]?.icon || '🧊'} {BIZ_ITEM_LABELS[k]?.name || k}
           </span>
-          <b>{[...prods].map((p) => `${HOUSE_PRODUCTS[p].emoji} ${HOUSE_PRODUCTS[p].label}`).join(', ')}</b>
+          <b>
+            {[...prods].map((p) => (
+              <span key={p} style={{ marginLeft: 6, whiteSpace: 'nowrap' }}>
+                <HeldIcon product={p} size={16} /> {HOUSE_PRODUCTS[p].label}
+              </span>
+            ))}
+          </b>
         </div>
       ))}
     </div>

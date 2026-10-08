@@ -24,7 +24,7 @@ export default function PriceField({ label, hint, value, min, max, step = 1, onC
         </button>
         <div className="pf-track">
           {refPrice !== undefined && <span className="pf-ref" style={{ left: `${pos(refPrice)}%` }} />}
-          <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(clamp(Number(e.target.value)))} aria-label={label} />
+          <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(clamp(Number(e.target.value)))} aria-label={typeof label === 'string' ? label : 'Fiyat'} />
         </div>
         <button type="button" className="pf-step" onClick={() => onChange(clamp(value + step))} disabled={value >= max} aria-label="Artır">
           +

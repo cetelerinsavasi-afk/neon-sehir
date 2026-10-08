@@ -32,6 +32,7 @@ import { useNetCredits, useNetOccupancy } from '../../hooks/useVenueData';
 import { useMyGymMembership } from '../../hooks/useGym';
 import GymPanel from '../Gym/GymPanel';
 import TaskTree from '../Gym/TaskTree';
+import HeldIcon from './HeldIcon';
 import GymMiniGame from '../Gym/GymMiniGame';
 import GymResult from '../Gym/GymResult';
 import { EQUIP } from '../Gym/gymMeta';
@@ -495,7 +496,16 @@ export default function HouseScreen({ houseId, onExit, onOpenGameVenue }) {
     unlockAudio();
     // v77 Faz 4: spor salonu görevi → mini oyun
     if (a.kind === 'gym') {
-      if (a.equipment === gymTaskKey) setGymGame(a.equipment);
+      if (a.equipment === gymTaskKey) {
+        setGymFree(false);
+        setGymGame(a.equipment);
+      }
+      return;
+    }
+    // v77: üyeliksiz serbest çalışma (güç kazandırmaz, sosyal)
+    if (a.kind === 'gymfree') {
+      setGymFree(true);
+      setGymGame(a.equipment);
       return;
     }
     const seatBefore = engineRef.current?.getSelfState()?.seat || null;
@@ -694,14 +704,17 @@ export default function HouseScreen({ houseId, onExit, onOpenGameVenue }) {
   const gymActive = bizType === 'spor' && gymMembership?.gymId === houseId && gymMembership.step < 3 ? gymMembership : null;
   const gymTaskKey = gymActive ? gymActive.tasks[gymActive.step] : null;
   const [gymGame, setGymGame] = useState(null);
+  const [gymFree, setGymFree] = useState(false); // üyeliksiz serbest çalışma
   const [gymResult, setGymResult] = useState(null);
   useEffect(() => {
     engineRef.current?.setGymTask?.(gymTaskKey);
   }, [gymTaskKey, phase, engineKey]);
   const onGymStepDone = useCallback((r) => {
     setGymGame(null);
+    setGymFree(false);
     if (r?.done) setGymResult(r);
-  }, []);
+    if (r?.free) flash(bizType === 'spor' ? '💪 Güzel çalıştın! Güç kazanmak için üyelik al.' : '💪 Güzel çalıştın!');
+  }, [flash, bizType]);
   // --- v77 Faz 3: internet kafe (öde → oyna; kredi mekâna bağlı) -----------------------
   const [seatFull, setSeatFull] = useState(0);
   const netCredits = useNetCredits();
@@ -1025,7 +1038,7 @@ export default function HouseScreen({ houseId, onExit, onOpenGameVenue }) {
           {gymGame && (
             <div className="wk-sheet-bg">
               <div className="wk-sheet" onClick={(e) => e.stopPropagation()}>
-                <GymMiniGame equipment={gymGame} onDone={onGymStepDone} onClose={() => setGymGame(null)} />
+                <GymMiniGame key={`${gymGame}${gymFree ? 'f' : ''}`} equipment={gymGame} free={gymFree} onDone={onGymStepDone} onClose={() => setGymGame(null)} />
               </div>
             </div>
           )}
@@ -1243,7 +1256,7 @@ export default function HouseScreen({ houseId, onExit, onOpenGameVenue }) {
                   if (a.kind === 'take' && bizType && MENU_TYPES.includes(bizType) && !isOwner && isMenuProduct(a.product)) {
                     return (
                       <button key={a.label} className="hs-act take" onClick={() => doAction(a)}>
-                        🍽️ {HOUSE_PRODUCTS[a.product]?.emoji} {HOUSE_PRODUCTS[a.product]?.label} — menüden satın al
+                        <HeldIcon product={a.product} size={20} /> {HOUSE_PRODUCTS[a.product]?.label} — menüden satın al
                       </button>
                     );
                   }
@@ -1266,7 +1279,13 @@ export default function HouseScreen({ houseId, onExit, onOpenGameVenue }) {
                   }
                   return (
                     <button key={a.label} className={`hs-act${a.kind === 'take' ? ' take' : ''}`} onClick={() => doAction(a)}>
-                      {a.label}
+                      {a.kind === 'take' ? (
+                        <>
+                          <HeldIcon product={a.product} size={20} /> {HOUSE_PRODUCTS[a.product]?.label} al
+                        </>
+                      ) : (
+                        a.label
+                      )}
                     </button>
                   );
                 })
@@ -1276,7 +1295,7 @@ export default function HouseScreen({ houseId, onExit, onOpenGameVenue }) {
 
           {mode === 'walk' && myHolding && (
             <div className="hs-holding">
-              {HOUSE_PRODUCTS[myHolding]?.emoji} Elinde: <b>{HOUSE_PRODUCTS[myHolding]?.label}</b>
+              <HeldIcon product={myHolding} size={22} /> Elinde: <b>{HOUSE_PRODUCTS[myHolding]?.label}</b>
               <em>👥'dan ısmarlayabilirsin</em>
             </div>
           )}
@@ -1321,7 +1340,7 @@ export default function HouseScreen({ houseId, onExit, onOpenGameVenue }) {
                           {me && <em> (sen)</em>}
                           {o.uid === houseDoc?.ownerUid && <em> 👑</em>}
                         </span>
-                        {o.holding && <span title="Elinde">{HOUSE_PRODUCTS[o.holding]?.emoji}</span>}
+                        {o.holding && <HeldIcon product={o.holding} size={18} />}
                       </button>
                       {!me && myHolding && !o.holding && !isBlocked(o.uid) && <button onClick={() => giftTo(o)}>🎁 Ismarla</button>}
                       {!me && isOwner && <button className="ghost" onClick={() => kick(o)}>Çıkar</button>}

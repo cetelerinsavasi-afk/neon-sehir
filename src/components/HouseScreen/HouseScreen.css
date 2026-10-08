@@ -1516,3 +1516,11 @@
   .hs-seg button { padding: 7px 9px; }
   .hs-view-btn { min-width: 40px; padding: 0 8px; }
 }
+/* v77 — isim etiketinde eldeki ürünün çizimi */
+.hs-name-held {
+  width: 15px;
+  height: 15px;
+  vertical-align: -3px;
+  margin-right: 4px;
+  object-fit: contain;
+}
