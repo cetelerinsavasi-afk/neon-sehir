@@ -11,7 +11,8 @@
 //    streams/{id} (yayın), streams/{id}/chat.
 // =============================================================================
 import { useEffect, useState } from 'react';
-import { collection, doc, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { collection, doc, getDoc, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { streamAction } from '../../services/gameActions';
 import { db, app } from '../../firebase';
 
 export const STREAM_STALE_MS = 90_000;
@@ -84,79 +85,93 @@ const rt = () => {
   return modP;
 };
 const safe = (s) => String(s || '').replace(/[.#$[\]/]/g, '_').slice(0, 128);
-export const streamDiag = { watchErr: null, gameErr: null };
+export const streamDiag = { watchErr: null, gameErr: null, lastOkAt: 0 };
 
-// İzleyici olarak katıl (bağlantı koparsa kendiliğinden düşer). Dönüş: ayrıl()
+// =============================================================================
+// v81 — İZLEYİCİ SAYISI SUNUCUDA: izleyici streamAction({op:'watch'}) ile katılır,
+// ~30 sn'de bir nabız atar, çıkınca ayrılır. Sayı streams/{id}.viewers alanına
+// yazılır; yayıncı, izleyiciler ve liste oradan okur. (v80'de RTDB'deki
+// streamWatch yolu kullanılıyordu; sunucuda RTDB kuralları güncel değilse yazma
+// reddediliyor ve sayı hep 0 görünüyordu.)
+// =============================================================================
+const WATCH_BEAT_MS = 30_000;
 export function joinViewers(streamId, uid) {
-  if (!STREAM_RT || !streamId || !uid) return () => {};
-  let ref = null;
+  if (!streamId || !uid) return () => {};
   let alive = true;
-  rt()
-    .then(({ m, db: d }) => {
-      if (!alive) return;
-      ref = m.ref(d, `streamWatch/${safe(streamId)}/${safe(uid)}`);
-      m.onDisconnect(ref).remove().catch(() => {});
-      m.set(ref, true).catch((e) => {
-        // v81: izleyici sayısı hep 0 ise en sık neden: RTDB kuralları yayınlanmamış
-        streamDiag.watchErr = String(e?.code || e?.message || 'hata');
-        console.warn('[yayın] izleyici kaydı yazılamadı (database.rules.json yayınlandı mı? firebase deploy --only database):', e?.message || e);
-      });
-    })
-    .catch(() => {});
+  const beat = (on = true) => streamAction({ op: 'watch', streamId, on }).catch(() => {});
+  beat(true);
+  const iv = setInterval(() => !document.hidden && alive && beat(true), WATCH_BEAT_MS);
+  const vis = () => !document.hidden && alive && beat(true);
+  document.addEventListener('visibilitychange', vis);
   return () => {
     alive = false;
-    if (ref) rt().then(({ m }) => m.remove(ref).catch(() => {}));
+    clearInterval(iv);
+    document.removeEventListener('visibilitychange', vis);
+    beat(false);
   };
 }
-// İzleyicileri dinle: cb({ count, uids })
+// İzleyici sayısını dinle: cb({ count, uids }) — yayın belgesinden
 export function watchViewers(streamId, cb) {
-  if (!STREAM_RT || !streamId) return () => {};
-  let off = () => {};
-  let alive = true;
-  rt()
-    .then(({ m, db: d }) => {
-      if (!alive) return;
-      off = m.onValue(
-        m.ref(d, `streamWatch/${safe(streamId)}`),
-        (s) => {
-          const v = s.val() || {};
-          const uids = Object.keys(v);
-          cb({ count: uids.length, uids });
-        },
-        (e) => {
-          streamDiag.watchErr = String(e?.code || e?.message || 'hata');
-          console.warn('[yayın] izleyiciler okunamadı (database.rules.json yayınlandı mı?):', e?.message || e);
-          cb({ count: 0, uids: [], error: true });
-        }
-      );
-    })
-    .catch(() => {});
-  return () => {
-    alive = false;
-    off();
-  };
+  if (!streamId) return () => {};
+  return onSnapshot(
+    doc(db, 'streams', streamId),
+    (d) => cb({ count: Number(d.data()?.viewers || 0), seen: Number(d.data()?.seen || 0), uids: [] }),
+    () => cb({ count: 0, uids: [], error: true })
+  );
 }
 export async function readViewerCounts(ids) {
-  if (!STREAM_RT || !ids.length) return {};
-  try {
-    const { m, db: d } = await rt();
-    const out = {};
-    await Promise.all(
-      ids.map(async (id) => {
-        const s = await m.get(m.ref(d, `streamWatch/${safe(id)}`));
-        out[id] = s.exists() ? Object.keys(s.val() || {}).length : 0;
-      })
-    );
-    return out;
-  } catch {
-    return {};
-  }
+  if (!ids.length) return {};
+  const out = {};
+  await Promise.all(
+    ids.map(async (id) => {
+      try {
+        const d = await getDoc(doc(db, 'streams', id));
+        out[id] = Number(d.data()?.viewers || 0);
+      } catch {
+        out[id] = 0;
+      }
+    })
+  );
+  return out;
 }
+
+// =============================================================================
+// v81 — YAYIN KANALI (RTDB) — iki yol, hangisi çalışırsa:
+//   A) streamGame/{uid} · streamThumb/{uid}         (v80 kuralları gerekir)
+//   B) arcade/yayin/{uid}/state · …/meta/img         (oyun salonunun v75'ten beri
+//      sunucuda yüklü olan kurallarıyla çalışır)
+// Yayıncı önce A'yı dener; izin hatası alırsa B'ye geçer. İzleyici ikisini de
+// dinler, en son gelen kareyi kullanır. Böylece database.rules.json yeniden
+// yüklenmemiş olsa bile oyun/yarış yayına yansır.
+// =============================================================================
+const LEG_GAME = 'yayin';
+let chan = 'A'; // A | B
+let legacyReadyFor = null; // B yolunda meta yazılmış yayıncı uid'i
+const isPerm = (e) => /permission|PERMISSION_DENIED/i.test(String(e?.code || e?.message || e));
+const legRoom = (uid) => `arcade/${LEG_GAME}/${safe(uid)}`;
+async function ensureLegacyRoom(m, d, uid) {
+  if (legacyReadyFor === uid) return;
+  const room = m.ref(d, legRoom(uid));
+  await m.set(m.child(room, 'meta'), { game: LEG_GAME, hostUid: uid, hostName: 'Canlı yayın', status: 'playing', createdAt: m.serverTimestamp() });
+  m.onDisconnect(room).remove().catch(() => {});
+  legacyReadyFor = uid;
+}
+
 export async function publishThumb(uid, dataUrl) {
   if (!STREAM_RT || !uid || !dataUrl) return;
   try {
     const { m, db: d } = await rt();
-    await m.set(m.ref(d, `streamThumb/${safe(uid)}`), { img: dataUrl, at: m.serverTimestamp() });
+    if (chan === 'A') {
+      try {
+        await m.set(m.ref(d, `streamThumb/${safe(uid)}`), { img: dataUrl, at: m.serverTimestamp() });
+        return;
+      } catch (e) {
+        if (!isPerm(e)) return;
+        chan = 'B';
+      }
+    }
+    await ensureLegacyRoom(m, d, uid);
+    await m.set(m.ref(d, `${legRoom(uid)}/meta/img`), dataUrl);
   } catch {
     /* önizleme olmazsa liste yine çalışır */
   }
@@ -168,8 +183,21 @@ export async function readThumbs(uids) {
     const out = {};
     await Promise.all(
       uids.map(async (u) => {
-        const s = await m.get(m.ref(d, `streamThumb/${safe(u)}`));
-        if (s.exists()) out[u] = s.val()?.img || null;
+        try {
+          const s = await m.get(m.ref(d, `streamThumb/${safe(u)}`));
+          if (s.exists() && s.val()?.img) {
+            out[u] = s.val().img;
+            return;
+          }
+        } catch {
+          /* B yoluna bak */
+        }
+        try {
+          const s2 = await m.get(m.ref(d, `${legRoom(u)}/meta/img`));
+          if (s2.exists()) out[u] = s2.val();
+        } catch {
+          /* yok */
+        }
       })
     );
     return out;
@@ -178,45 +206,79 @@ export async function readThumbs(uids) {
   }
 }
 
-// --- yayında oynanan oyun salonu oyunu ---------------------------------------------
-// GameRunner, aktif yayın varsa durumu buraya yollar (~8/sn); izleyici izler.
+// --- yayında oynanan oyun / yarış ---------------------------------------------------
+// GameRunner / TimeAttackRace, aktif yayın varsa durumu buraya yollar; izleyici izler.
 export const streamBroadcast = { uid: null, streamId: null };
 let lastGamePub = 0;
-let gameRef = null;
-// v81: oyunun durumu çok büyükse (ör. boyama tuvali) sadece izleyicinin çizmek
-// için ihtiyaç duyduğu alanlar kalsın diye büyük dizileri ayıklamayı dener.
-function shrinkState(pub) {
+let sending = false;
+let sendingAt = 0;
+const LIMIT_A = 7800;
+const LIMIT_B = 5600; // arcade/state kuralı: < 6000 (tüm paket metin olarak)
+
+// oyunun durumu çok büyükse büyük dizileri kırpmayı dener
+function shrinkState(pub, limit) {
   let json = JSON.stringify(pub);
-  if (json.length <= 7800) return json;
+  if (json.length <= limit) return json;
   const out = { ...pub };
   const keys = Object.keys(out).sort((a, b) => JSON.stringify(out[b] ?? null).length - JSON.stringify(out[a] ?? null).length);
   for (const k of keys) {
-    if (json.length <= 7800) break;
+    if (json.length <= limit) break;
     const v = out[k];
     if (Array.isArray(v) && v.length > 40) out[k] = v.slice(-40);
     else if (typeof v === 'string' && v.length > 2000) delete out[k];
     json = JSON.stringify(out);
   }
-  return json.length <= 7800 ? json : null;
+  return json.length <= limit ? json : null;
 }
-let gameRefUid = null;
-function sendFrame(payload) {
+function sendFrame(g, json, names, me) {
+  // önceki kare hâlâ yoldaysa bunu atla (yavaş bağlantıda birikmesin); 3 sn'den uzun
+  // süren gönderim takılmış sayılır
+  if (sending && performance.now() - sendingAt < 3000) return;
+  const uid = streamBroadcast.uid;
+  if (!uid) return;
+  sending = true;
+  sendingAt = performance.now();
+  const payload = { g, s: json, n: (names || []).slice(0, 4).map((x) => String(x).slice(0, 14)), me: me || 0, at: Date.now() };
   rt()
-    .then(({ m, db: d }) => {
-      if (!gameRef || gameRefUid !== streamBroadcast.uid) {
-        gameRefUid = streamBroadcast.uid;
-        gameRef = m.ref(d, `streamGame/${safe(streamBroadcast.uid)}`);
-        m.onDisconnect(gameRef).remove().catch(() => {});
+    .then(async ({ m, db: d }) => {
+      if (chan === 'A') {
+        try {
+          const ref = m.ref(d, `streamGame/${safe(uid)}`);
+          await m.set(ref, payload);
+          m.onDisconnect(ref).remove().catch(() => {});
+          streamDiag.gameErr = null;
+          streamDiag.lastOkAt = Date.now();
+          return;
+        } catch (e) {
+          if (!isPerm(e)) throw e;
+          console.info('[yayın] streamGame izinli değil → oyun salonu kanalına geçiliyor (arcade/yayin)');
+          chan = 'B';
+        }
       }
-      return m.set(gameRef, payload);
-    })
-    .then(() => {
+      const txt = JSON.stringify(payload);
+      if (txt.length >= 6000) return;
+      await ensureLegacyRoom(m, d, uid);
+      await m.set(m.ref(d, `${legRoom(uid)}/state`), txt);
       streamDiag.gameErr = null;
+      streamDiag.lastOkAt = Date.now();
     })
     .catch((e) => {
-      if (!streamDiag.gameErr) console.warn('[yayın] oyun karesi yazılamadı (database.rules.json yayınlandı mı?):', e?.message || e);
+      if (!streamDiag.gameErr) console.warn('[yayın] oyun karesi gönderilemedi:', e?.message || e);
       streamDiag.gameErr = String(e?.code || e?.message || 'hata');
+    })
+    .finally(() => {
+      sending = false;
     });
+}
+// Yayıncı için: oyun karesi izleyicilere gidiyor mu? 'ok' | 'err' | 'idle'
+export function useStreamGameHealth(active = true) {
+  const [st, setSt] = useState('idle');
+  useEffect(() => {
+    if (!active) return undefined;
+    const iv = setInterval(() => setSt(streamDiag.gameErr ? 'err' : streamDiag.lastOkAt && Date.now() - streamDiag.lastOkAt < 4000 ? 'ok' : 'idle'), 1000);
+    return () => clearInterval(iv);
+  }, [active]);
+  return st;
 }
 export function publishGameFrame(game, state, names, me) {
   if (!STREAM_RT || !streamBroadcast.uid) return;
@@ -229,14 +291,13 @@ export function publishGameFrame(game, state, names, me) {
     void _lastIn;
     void _in;
     void _e;
-    json = shrinkState(pub);
+    json = shrinkState(pub, chan === 'A' ? LIMIT_A : LIMIT_B);
   } catch {
     return;
   }
-  if (!json) return;
-  sendFrame({ g: game.id, s: json, n: (names || []).slice(0, 4).map((x) => String(x).slice(0, 14)), me: me || 0, at: Date.now() });
+  if (json) sendFrame(game.id, json, names, me);
 }
-// v81 — yarış (şampiyona / bahisli / antrenman) yayını: g='race'
+// v81 — yarış (şampiyona / bahisli / antrenman): g='race'
 export function publishRaceFrame(payload) {
   if (!STREAM_RT || !streamBroadcast.uid || !payload) return;
   const t = performance.now();
@@ -248,32 +309,74 @@ export function publishRaceFrame(payload) {
   } catch {
     return;
   }
-  if (json.length > 7800) return;
-  sendFrame({ g: 'race', s: json, n: [], me: 0, at: Date.now() });
+  if (json.length < LIMIT_B) sendFrame('race', json, [], 0);
 }
 export function clearGameFrame() {
-  if (!STREAM_RT || !streamBroadcast.uid) return;
+  const uid = streamBroadcast.uid;
+  if (!STREAM_RT || !uid) return;
   rt()
-    .then(({ m, db: d }) => m.remove(m.ref(d, `streamGame/${safe(streamBroadcast.uid)}`)))
+    .then(({ m, db: d }) => {
+      m.remove(m.ref(d, `streamGame/${safe(uid)}`)).catch(() => {});
+      if (legacyReadyFor === uid) m.remove(m.ref(d, `${legRoom(uid)}/state`)).catch(() => {});
+    })
+    .catch(() => {});
+}
+// Yayın bitince B yolundaki oda da silinsin
+export function closeStreamChannel(uid) {
+  if (!STREAM_RT || !uid) return;
+  rt()
+    .then(({ m, db: d }) => {
+      m.remove(m.ref(d, `streamGame/${safe(uid)}`)).catch(() => {});
+      if (legacyReadyFor === uid) {
+        legacyReadyFor = null;
+        m.remove(m.ref(d, legRoom(uid))).catch(() => {});
+      }
+    })
     .catch(() => {});
 }
 export function watchGameFrames(streamerUid, cb) {
   if (!STREAM_RT || !streamerUid) return () => {};
-  let off = () => {};
+  const offs = [];
   let alive = true;
+  let lastAt = 0;
+  const take = (f) => {
+    if (!f) {
+      cb(null);
+      return;
+    }
+    if (Number(f.at || 0) < lastAt) return; // iki kanaldan eski kare gelirse yoksay
+    lastAt = Number(f.at || 0);
+    cb(f);
+  };
   rt()
     .then(({ m, db: d }) => {
       if (!alive) return;
-      off = m.onValue(
-        m.ref(d, `streamGame/${safe(streamerUid)}`),
-        (s) => cb(s.val() || null),
-        () => cb(null)
+      offs.push(
+        m.onValue(
+          m.ref(d, `streamGame/${safe(streamerUid)}`),
+          (s) => s.exists() && take(s.val()),
+          () => {}
+        )
+      );
+      offs.push(
+        m.onValue(
+          m.ref(d, `${legRoom(streamerUid)}/state`),
+          (s) => {
+            if (!s.exists()) return;
+            try {
+              take(JSON.parse(s.val()));
+            } catch {
+              /* bozuk kare */
+            }
+          },
+          () => {}
+        )
       );
     })
     .catch(() => {});
   return () => {
     alive = false;
-    off();
+    offs.forEach((f) => f());
   };
 }
 

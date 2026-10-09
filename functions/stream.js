@@ -13,6 +13,8 @@
 //   op 'donate' { streamId, amount, note }           → 10 / 100 / 1000; kişi başı yayıncıya günde 10.000
 //   op 'chat'   { streamId, text }                   → yayın sohbeti
 //   op 'price'  { houseId, price }                   → internet kafe sahibi: yayın seti dakika ücreti
+//   op 'watch'  { streamId, on }                     → v81: izleyici katıldı/nabız (~30 sn) / ayrıldı;
+//                                                       izleyici sayısı SUNUCUDA sayılır (streams/{id}.viewers)
 //
 // Belgeler:
 //   streams/{id}                 — yayın (herkes okur)
@@ -42,6 +44,8 @@ export const STREAM_NOTE_MAX = 80;
 export const STREAM_CHAT_MAX = 140;
 export const STREAM_ROOM_MAX = 24;
 const CHAT_MIN_MS = 1200;
+export const WATCH_BEAT_MS = 30_000; // izleyici nabzı
+export const WATCH_TTL_MS = 75_000; // bu kadar nabız gelmeyen izleyici sayılmaz
 const PRESENCE_ACTIVE_MS = 2 * 60 * 1000;
 const FX_KEEP = 6;
 const LIST_MAX = 30;
@@ -89,6 +93,24 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
   const liveHouseRef = (houseId) => db.collection('streamHouses').doc(houseId);
   const nameOf = (u) => String(u?.displayName || 'Oyuncu').slice(0, 40);
   const fresh = (s, t) => s && s.status === 'live' && t - Number(s.lastBeatMs || 0) < STREAM_STALE_MS;
+  // v81 — izleyiciler: streams/{id}/watchers/{uid} = { atMs, name } (ayrılınca atMs: 0)
+  const watchersRef = (id) => streamRef(id).collection('watchers');
+  async function countOf(q) {
+    try {
+      if (typeof q.count === 'function') {
+        const a = await q.count().get();
+        return Number(a.data().count) || 0;
+      }
+    } catch {
+      /* sayım desteklenmiyorsa aşağıda belge sayılır */
+    }
+    const snap = await q.get();
+    return snap.size;
+  }
+  async function viewerCounts(id, t) {
+    const [viewers, seen] = await Promise.all([countOf(watchersRef(id).where('atMs', '>', t - WATCH_TTL_MS)), countOf(watchersRef(id))]);
+    return { viewers, seen };
+  }
 
   async function txPresent(tx, uid, houseId) {
     const p = await tx.get(db.collection('housePresence').doc(uid));
@@ -212,6 +234,13 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
   async function tick(uid, p) {
     const id = String(p.streamId || '');
     if (!isId(id)) fail('invalid-argument', 'Geçersiz yayın.');
+    // v81: izleyici sayısı istemciden değil, sunucudaki izleyici kayıtlarından
+    let counted = null;
+    try {
+      counted = await viewerCounts(id, now());
+    } catch {
+      counted = null;
+    }
     let result = null;
     await db.runTransaction(async (tx) => {
       const t = now();
@@ -223,8 +252,8 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
         result = { ok: true, stopped: 'ended', summary: s.summary || null };
         return;
       }
-      const viewers = Math.max(0, Math.min(100000, Math.floor(Number(p.viewers) || 0)));
-      const seen = Math.max(0, Math.min(1000000, Math.floor(Number(p.seen) || 0)));
+      const viewers = counted ? counted.viewers : Math.max(0, Math.min(100000, Math.floor(Number(p.viewers) || 0)));
+      const seen = counted ? counted.seen : Math.max(0, Math.min(1000000, Math.floor(Number(p.seen) || 0)));
       const needCharge = s.cafe && Number(s.paidUntilMs || 0) - t <= 3000;
       const present = await txPresent(tx, uid, s.houseId);
       const reads = [tx.get(userRef(uid)), tx.get(listRef())];
@@ -257,6 +286,8 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
         patch.price = price;
         result = { ok: true, charged: price, paidUntilMs: patch.paidUntilMs, price };
       } else result = { ok: true, paidUntilMs: Number(s.paidUntilMs || 0) };
+      result.viewers = viewers;
+      result.seen = Math.max(Number(s.seen || 0), seen);
       tx.update(streamRef(id), patch);
       tx.set(seatRef(s.houseId, s.chairId), { streamId: id, uid, lastBeatMs: t });
       tx.set(liveHouseRef(s.houseId), { streamId: id, uid, beatMs: t });
@@ -267,6 +298,12 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
   async function stop(uid, p) {
     const id = String(p.streamId || '');
     if (!isId(id)) fail('invalid-argument', 'Geçersiz yayın.');
+    let counted = null;
+    try {
+      counted = await viewerCounts(id, now());
+    } catch {
+      counted = null;
+    }
     let result = null;
     await db.runTransaction(async (tx) => {
       const t = now();
@@ -279,7 +316,7 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
         return;
       }
       const [us, list] = await Promise.all([tx.get(userRef(uid)), tx.get(listRef())]);
-      result = { ok: true, summary: finalizeTx(tx, { id, s, us, list, t, viewers: p.viewers, seen: p.seen, reason: 'stop' }) };
+      result = { ok: true, summary: finalizeTx(tx, { id, s, us, list, t, viewers: counted ? counted.viewers : p.viewers, seen: counted ? counted.seen : p.seen, reason: 'stop' }) };
     });
     return result;
   }
@@ -329,6 +366,28 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
     batch.update(userRef(uid), { lastStreamChatMs: t });
     await batch.commit();
     return { ok: true };
+  }
+
+  // v81 — izleyici katıldı / nabız / ayrıldı. Sayı değiştiyse yayın belgesine
+  // yazılır (yayıncı ve izleyiciler oradan okur — RTDB kuralına bağlı değil).
+  async function watch(uid, p) {
+    const id = String(p.streamId || '');
+    if (!isId(id)) fail('invalid-argument', 'Geçersiz yayın.');
+    const on = p.on !== false;
+    const t = now();
+    const ss = await streamRef(id).get();
+    if (!ss.exists) return { ok: true, ended: true, viewers: 0 };
+    const s = ss.data();
+    if (!fresh(s, t)) return { ok: true, ended: true, viewers: Number(s.viewers || 0) };
+    if (s.uid === uid) return { ok: true, self: true, viewers: Number(s.viewers || 0) };
+    await watchersRef(id).doc(uid).set({ atMs: on ? t : 0, uid }, { merge: true });
+    const { viewers, seen } = await viewerCounts(id, t);
+    const patch = {};
+    if (viewers !== Number(s.viewers || 0)) patch.viewers = viewers;
+    if (viewers > Number(s.peak || 0)) patch.peak = viewers;
+    if (seen > Number(s.seen || 0)) patch.seen = seen;
+    if (Object.keys(patch).length) await streamRef(id).update(patch).catch(() => {});
+    return { ok: true, viewers, seen, beatMs: WATCH_BEAT_MS };
   }
 
   async function price(uid, p) {
@@ -385,6 +444,8 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
         return chat(uid, p);
       case 'price':
         return price(uid, p);
+      case 'watch':
+        return watch(uid, p);
       default:
         fail('invalid-argument', 'Geçersiz işlem.');
     }

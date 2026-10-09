@@ -983,3 +983,7 @@ body.ns-streaming .race-exit-confirm-backdrop {
   font-size: 40px;
   color: #ffc83d;
 }
+.st-arcade-chip.bad,
+.ta-onair.bad {
+  background: #8a5a00;
+}

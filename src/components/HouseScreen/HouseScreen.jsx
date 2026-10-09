@@ -46,7 +46,7 @@ import '../Workshop/Workshop.css';
 import './HouseScreen.css';
 import { streamAction } from '../../services/gameActions';
 import { StreamStartSheet, StreamHostPanel, StreamSummary, StreamPlaySheet } from '../Stream/StreamHost';
-import { streamBroadcast, clearGameFrame, streamPose, useLiveStreams, useStreamDoc, watchViewers } from '../Stream/streamShared';
+import { streamBroadcast, clearGameFrame, closeStreamChannel, streamPose, useLiveStreams, useStreamDoc, watchViewers, useStreamGameHealth } from '../Stream/streamShared';
 import { streamPriceOf } from '../../../functions/stream.js';
 
 // =============================================================================
@@ -361,6 +361,7 @@ export default function HouseScreen({ houseId, onExit }) {
   // v81: yayında yarış pisti evin üstünde açıkken de duraklat (yarışın ok tuşları
   // avatarı koltuktan kaldırıp yayını kapatmasın)
   const [raceUp, setRaceUp] = useState(false);
+  const streamGameHealth = useStreamGameHealth(Boolean(myStream) && panel === 'arcade');
   useEffect(() => {
     engineRef.current?.setPaused(panel === 'phone' || panel === 'arcade' || raceUp);
   }, [panel, engineKey, raceUp]);
@@ -819,6 +820,7 @@ export default function HouseScreen({ houseId, onExit }) {
     }
   };
   const endStreamLocal = useCallback((summary, reason) => {
+    if (streamBroadcast.uid) closeStreamChannel(streamBroadcast.uid);
     streamBroadcast.uid = null;
     streamBroadcast.streamId = null;
     clearGameFrame();
@@ -833,8 +835,9 @@ export default function HouseScreen({ houseId, onExit }) {
       myStreamRef.current = null;
       setStreamBusy(true);
       // önce yerelde kapat (oyun yayını vb. hemen dursun), özet sunucudan
-      streamBroadcast.uid = null;
       clearGameFrame();
+      if (streamBroadcast.uid) closeStreamChannel(streamBroadcast.uid);
+      streamBroadcast.uid = null;
       try {
         const r = await streamAction({ op: 'stop', streamId: st.id, viewers: streamStatsRef.current.viewers, seen: streamStatsRef.current.seen });
         endStreamLocal(r?.summary, reason);
@@ -1760,7 +1763,7 @@ export default function HouseScreen({ houseId, onExit }) {
             />
           )}
           {myStream && playAsk && <StreamPlaySheet onArcade={playArcade} onRace={playRace} onClose={() => setPlayAsk(false)} />}
-          {myStream && panel === 'arcade' && <div className="st-arcade-chip">🔴 CANLI · oyun yayında</div>}
+          {myStream && panel === 'arcade' && <div className={`st-arcade-chip${streamGameHealth === 'err' ? ' bad' : ''}`}>{streamGameHealth === 'err' ? '⚠ Oyun yayına gönderilemiyor' : '🔴 CANLI · oyun yayında'}</div>}
           {streamSum && <StreamSummary summary={streamSum.summary} reason={streamSum.reason} cost={streamSum.cost} onClose={() => setStreamSum(null)} />}
           {streamWarn && (
             <div className="st-sheet-bg" onClick={() => setStreamWarn(false)}>

@@ -89,7 +89,9 @@ test('evde yayın: ücretsiz, liste, bağış (not, sınır), kapatınca %10 ver
   h.muted.add('veli');
   h.clock.now += 24 * 3600 * 1000; // ertesi gün (sınır sıfırlanır)
   h.present('ali', 'ev1');
-  await h.act('ali', { op: 'tick', streamId: r.streamId, viewers: 3, seen: 5 });
+  // v81: izleyiciler sunucuda sayılır
+  await h.act('ali', { op: 'tick', streamId: r.streamId, viewers: 99, seen: 99 });
+  for (const u of ['veli', 'kafeci', 'izleyici3']) await h.act(u, { op: 'watch', streamId: r.streamId, on: true });
   await assert.rejects(h.act('veli', { op: 'donate', streamId: r.streamId, amount: 10, note: 'merhaba' }), /muted/);
   await h.act('veli', { op: 'donate', streamId: r.streamId, amount: 10 });
   // sohbet
@@ -103,7 +105,7 @@ test('evde yayın: ücretsiz, liste, bağış (not, sınır), kapatınca %10 ver
   assert.equal(end.summary.tax, 1001);
   assert.equal(end.summary.net, 9009);
   assert.equal(end.summary.peak, 3);
-  assert.equal(end.summary.seen, 7);
+  assert.equal(end.summary.seen, 3);
   assert.equal(h.G('users/ali').gold, before + 9009);
   assert.equal(h.G(`streams/${r.streamId}`).status, 'ended');
   assert.equal(h.G('users/ali').streamId, undefined);
@@ -180,4 +182,32 @@ test('yayıncı odadan çıkarsa nabızda kapanır; nabzı kesilen yayın süpü
   assert.notEqual(r4.streamId, r3.streamId);
   assert.equal(h.G(`streams/${r3.streamId}`).status, 'ended');
   assert.equal(h.G('users/ali').gold, g2 + 900);
+});
+
+test('v81: izleyici sayısı sunucuda sayılır (katıl / nabız / ayrıl / zaman aşımı)', async () => {
+  const h = setup();
+  h.present('ali', 'ev1');
+  const { streamId } = await h.act('ali', { op: 'start', houseId: 'ev1', chairId: 'ch1' });
+  let r = await h.act('veli', { op: 'watch', streamId, on: true });
+  assert.equal(r.viewers, 1);
+  r = await h.act('kafeci', { op: 'watch', streamId, on: true });
+  assert.equal(r.viewers, 2);
+  assert.equal(h.G(`streams/${streamId}`).viewers, 2);
+  assert.equal(h.G(`streams/${streamId}`).peak, 2);
+  // yayıncı kendini izleyici saymaz
+  r = await h.act('ali', { op: 'watch', streamId, on: true });
+  assert.equal(r.self, true);
+  // biri ayrıldı
+  r = await h.act('kafeci', { op: 'watch', streamId, on: false });
+  assert.equal(r.viewers, 1);
+  assert.equal(h.G(`streams/${streamId}`).viewers, 1);
+  // nabzı kesilen izleyici düşer; yayıncı nabzı sayıyı günceller
+  h.clock.now += 80_000;
+  h.present('ali', 'ev1');
+  const t = await h.act('ali', { op: 'tick', streamId, viewers: 99, seen: 99 });
+  assert.equal(t.viewers, 0, 'istemcinin yolladığı sayı değil, sunucu sayısı');
+  assert.equal(h.G(`streams/${streamId}`).viewers, 0);
+  const st = await h.act('ali', { op: 'stop', streamId, viewers: 50, seen: 50 });
+  assert.equal(st.summary.seen, 2, 'farklı izleyici sayısı');
+  assert.equal(st.summary.peak, 2);
 });
