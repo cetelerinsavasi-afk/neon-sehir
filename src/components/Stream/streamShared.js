@@ -314,6 +314,12 @@ export function publishRaceFrame(payload) {
   }
   if (json.length < LIMIT_B) sendFrame('race', json, [], 0);
 }
+// v82.2 — kart oyunu (10 Numara): sadece masa kimliği gider (~1/sn); izleyici masayı
+// kendisi dinler ve salt-izleme kipinde çizer (masa kaydı zaten herkese açık)
+export function publishCardsFrame(tableId) {
+  if (!STREAM_RT || !streamBroadcast.uid || !tableId) return;
+  sendFrame('onnumara', JSON.stringify({ t: String(tableId).slice(0, 128) }), [], 0);
+}
 export function clearGameFrame() {
   const uid = streamBroadcast.uid;
   if (!STREAM_RT || !uid) return;

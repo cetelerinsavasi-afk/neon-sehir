@@ -100,7 +100,8 @@ function Seat({ name, cards, status, hidden, isActive, isDealer, reaction, secon
   );
 }
 
-export default function OnNumaraTable({ tableId, myUid, onLeave }) {
+// spectate (v82.2): yayın izleyicisi — sadece izler, butonlar yok; hostUid = yayıncı
+export default function OnNumaraTable({ tableId, myUid, onLeave, spectate = false, hostUid = null }) {
   const { table } = useOnNumaraTableById(tableId);
   const { player } = usePlayer();
   const [busy, setBusy] = useState(false);
@@ -116,7 +117,7 @@ export default function OnNumaraTable({ tableId, myUid, onLeave }) {
   const round = table?.round;
   const isMyTurn = round?.phase === 'playing' && round.currentTurnUid === myUid;
   const secondsLeft = useCountdown(round?.turnDeadline);
-  useAutoStandWatcher(tableId, round?.turnDeadline, round?.phase === 'playing');
+  useAutoStandWatcher(tableId, round?.turnDeadline, !spectate && round?.phase === 'playing');
 
   useEffect(() => {
     const pending = pendingConfirmRef.current;
@@ -170,11 +171,13 @@ export default function OnNumaraTable({ tableId, myUid, onLeave }) {
   const dealerHidden = round && round.phase !== 'resolved' && round.phase !== 'dealer';
 
   return (
-    <div className="onn-table">
-      <div className="onn-gold-row">
-        <span className="onn-gold-coin" />
-        <span className="onn-gold-value">{(player?.gold ?? 0).toLocaleString('tr-TR')}</span>
-      </div>
+    <div className={`onn-table${spectate ? ' onn-spectate' : ''}`}>
+      {!spectate && (
+        <div className="onn-gold-row">
+          <span className="onn-gold-coin" />
+          <span className="onn-gold-value">{(player?.gold ?? 0).toLocaleString('tr-TR')}</span>
+        </div>
+      )}
       <div className="onn-pot-row">
         <div className="onn-pot-badge">POT: {(round?.pot || 0).toLocaleString('tr-TR')}</div>
       </div>
@@ -200,7 +203,7 @@ export default function OnNumaraTable({ tableId, myUid, onLeave }) {
           return (
             <Seat
               key={uid}
-              name={`${seat?.displayName || 'Oyuncu'}${uid === myUid ? ' (Sen)' : ''}`}
+              name={`${spectate && uid === hostUid ? '🎥 ' : ''}${seat?.displayName || 'Oyuncu'}${!spectate && uid === myUid ? ' (Sen)' : ''}`}
               cards={hand?.cards || []}
               status={hand?.status || (round ? 'playing' : 'idle')}
               hidden={false}
@@ -230,6 +233,7 @@ export default function OnNumaraTable({ tableId, myUid, onLeave }) {
         </p>
       )}
 
+      {!spectate && (
       <div className="onn-controls">
         {canDeal && iAmSeated && (
           <button className="onn-btn-deal" disabled={busy} onClick={() => run('deal', () => dealOnNumaraCards(tableId))}>
@@ -259,8 +263,9 @@ export default function OnNumaraTable({ tableId, myUid, onLeave }) {
           Masadan Ayrıl
         </button>
       </div>
+      )}
 
-      {iAmSeated && (
+      {!spectate && iAmSeated && (
         <div className="onn-emoji-row">
           {EMOJIS.map((e) => (
             <button key={e} className="onn-emoji-btn" onClick={() => sendOnNumaraEmoji(tableId, e).catch(() => {})}>
@@ -276,7 +281,7 @@ export default function OnNumaraTable({ tableId, myUid, onLeave }) {
           </button>
         </div>
       )}
-      {iAmSeated && <p className="onn-refresh-hint">Oyun donduysa 🔄 yenile butonuna bas.</p>}
+      {!spectate && iAmSeated && <p className="onn-refresh-hint">Oyun donduysa 🔄 yenile butonuna bas.</p>}
 
       {error && <p className="onn-error">{error}</p>}
     </div>

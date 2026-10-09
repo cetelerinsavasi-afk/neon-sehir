@@ -1345,3 +1345,22 @@ p.don .don-note {
 body.ns-streaming .onnumara-fullscreen {
   z-index: 1310;
 }
+
+/* v82.2 — izleyici: yayında 10 Numara (salt izleme) */
+.st-game.st-cards {
+  align-items: flex-start;
+  overflow-y: auto;
+  padding: 6px 8px 12px;
+}
+.st-cards-inner {
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  zoom: 0.92;
+}
+.st-cards-title {
+  margin: 0 0 4px;
+  font-weight: 800;
+  font-size: 14px;
+  color: #e8c766;
+}
