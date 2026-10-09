@@ -191,6 +191,11 @@ export function workshopCost({ mat, labor, qty, ownQty }) {
   return { own, shopQty, labor: laborTotal, material: matTotal, total: laborTotal + matTotal };
 }
 
+// v79: kendi malzemesi her zaman önce ve otomatik kullanılır (oyuncu seçmez).
+export function autoOwnQty(qty, have) {
+  return Math.max(0, Math.min(qty || 0, Math.floor(Number(have) || 0)));
+}
+
 // Ürün geliştirilebilir mi? (profilde sadece bilgi olarak gösterilir)
 export function upgradeSlots(itemType, item) {
   if (itemType === 'weapon') {

@@ -125,28 +125,36 @@ export function accLayers(acc, { animAura = false } = {}) {
 }
 
 // --- Evcil hayvan çizimi -----------------------------------------------------------
-// s: prototip boyu (piksel, avatar ~160 px iken). k:'q' dört ayaklı · 'b' kuş
+// s: prototip boyu (piksel, avatar ~160 px iken).
+// k: 'q' dört ayaklı · 'm' iki ayak üstünde yürüyen · 'b' kuş
+// v79: dört ayaklılar yeniden çizildi (göğüs/kalça hacmi, boyun, burun tipi,
+//      bacak salınımı, gövdeye bağlı kuyruk, desenler gövdeye kırpılır,
+//      sarkık köpek kulakları başın ÖNÜNDE). Tavşan, hamster ve panda artık
+//      maymun gibi iki ayak üstünde yürür (form).
+//   snout: 'dog' uzun burun · 'cat' kısa · 'fox' sivri · 'flat' basık · 'horse' at
+//   ear:   'pt' sivri · 'rd' yuvarlak · 'dr' sarkık (köpek) · 'lg' uzun (tavşan)
+//   tail:  'lg' ince uzun · 'fe' tüylü (golden) · 'fl' kabarık · 'sh' kısa
 export const PET_ART = {
-  hamster: { k: 'q', c: '#d9a066', c2: '#f4e2c8', s: 26, ear: 'rd', tail: 'no', cheek: 1 },
-  sokak: { k: 'q', c: '#c98f4a', c2: '#e8c79a', leg: '#a9722f', s: 44, ear: 'pt', tail: 'lg', stripe: '#8a5a22' },
+  hamster: { k: 'm', form: 'hamster', c: '#d9944a', c2: '#fbeedd', s: 34 },
+  sokak: { k: 'q', c: '#c98f4a', c2: '#f1dcb8', s: 44, ear: 'pt', tail: 'lg', snout: 'cat', tabby: '#8a5a22', eye: '#9bd34a' },
   hindi: { k: 'b', c: '#8a5a34', c2: '#c0392b', beak: '#f2b632', fan: 1, s: 52 },
-  tavsan: { k: 'q', c: '#f1ece4', c2: '#f7d4dc', s: 36, ear: 'lg', tail: 'sh' },
-  golden: { k: 'q', c: '#e0b05a', c2: '#f0d29a', ec: '#a9722f', s: 54, ear: 'dr', tail: 'lg' },
-  karakedi: { k: 'q', c: '#1d1d26', c2: '#33334a', s: 44, ear: 'pt', tail: 'lg', eye: '#ffd23f' },
+  tavsan: { k: 'm', form: 'rabbit', c: '#f1ece4', c2: '#ffffff', ec: '#f7c3cf', s: 44 },
+  golden: { k: 'q', c: '#e2ae58', c2: '#f6deae', ec: '#b97a32', s: 54, ear: 'dr', tail: 'fe', snout: 'dog', fluff: 1 },
+  karakedi: { k: 'q', c: '#1d1d26', c2: '#2c2c3c', s: 44, ear: 'pt', tail: 'lg', snout: 'cat', eye: '#ffd23f', inner: '#4a3a4a' },
   marti: { k: 'b', c: '#f4f6f8', c2: '#9aa5b1', beak: '#f2b632', s: 46 },
-  dalmacyali: { k: 'q', c: '#f4f4f4', c2: '#ffffff', ec: '#222', s: 52, ear: 'dr', tail: 'lg', spots: '#151515' },
+  dalmacyali: { k: 'q', c: '#f6f6f4', c2: '#ffffff', ec: '#1c1c1c', s: 54, ear: 'dr', tail: 'lg', snout: 'dog', spots: '#151515', lean: 1 },
   baykus: { k: 'b', c: '#8a6a4a', c2: '#e8d8b8', beak: '#e2a92a', owl: 1, s: 42 },
   penguen: { k: 'b', c: '#1b2230', c2: '#fff', wc: '#0c1018', belly: 1, beak: '#f59e0b', s: 44 },
-  tilki: { k: 'q', c: '#e8782a', c2: '#fff3e0', leg: '#3a2418', s: 48, ear: 'pt', tail: 'fl' },
-  papagan: { k: 'b', c: '#e63946', c2: '#2a9df4', beak: '#222', long: 1, s: 48 },
-  maymun: { k: 'm', c: '#7a4a2a', c2: '#e8c9a0', s: 48 },
-  panda: { k: 'q', c: '#f5f5f5', c2: '#fff', leg: '#111', ec: '#111', patch: '#111', s: 56, ear: 'rd', tail: 'sh' },
-  zengin: { k: 'q', c: '#2b2b33', c2: '#d4af37', s: 46, ear: 'pt', tail: 'lg', monocle: 1, hat: 1 },
-  bulldog: { k: 'q', c: '#c9a27a', c2: '#f1e2cc', ec: '#7a5a3a', s: 50, ear: 'rd', tail: 'sh', jowl: 1, chain: 1, shades: 1 },
-  midilli: { k: 'q', c: '#fff', c2: '#ffd0ec', glow: '#ff9ad5', horn: '#ffd23f', rainbow: 1, s: 70, ear: 'pt', tail: 'fl', flat: 1 },
-  aslan: { k: 'q', c: '#d9a441', c2: '#f1d29a', mane: '#8a4b12', s: 66, ear: 'rd', tail: 'lg' },
-  kurt: { k: 'q', c: '#101826', c2: '#22d3ee', stripe: '#22d3ee', glow: '#22d3ee', s: 64, ear: 'pt', tail: 'fl', eye: '#22d3ee' },
-  ejder: { k: 'q', c: '#2fae5f', c2: '#f4d27a', wing: '#1d7a42', horn: '#f4d27a', fire: 1, s: 62, ear: 'pt', tail: 'lg' },
+  tilki: { k: 'q', c: '#e8782a', c2: '#fff6ea', leg: '#3a2418', s: 48, ear: 'pt', tail: 'fl', snout: 'fox', tip: '#fff6ea', inner: '#3a2418', lean: 1 },
+  papagan: { k: 'b', parrot: 1, c: '#e3262f', c2: '#1f6fd6', yel: '#ffcc1a', grn: '#2fae5f', beak: '#f1e6d0', s: 52 },
+  maymun: { k: 'm', form: 'monkey', c: '#7a4a2a', c2: '#e8c9a0', s: 48 },
+  panda: { k: 'm', form: 'panda', c: '#f7f7f5', c2: '#ffffff', dark: '#15151a', s: 60 },
+  zengin: { k: 'q', c: '#2b2b33', c2: '#d4af37', s: 46, ear: 'pt', tail: 'lg', snout: 'cat', eye: '#9bd34a', monocle: 1, hat: 1 },
+  bulldog: { k: 'q', c: '#c9a27a', c2: '#f4e6d2', ec: '#8a6440', s: 50, ear: 'rd', tail: 'sh', snout: 'flat', stocky: 1, chain: 1, shades: 1 },
+  midilli: { k: 'q', c: '#ffffff', c2: '#ffd0ec', glow: '#ff9ad5', horn: '#ffd23f', rainbow: 1, s: 70, ear: 'pt', tail: 'fl', snout: 'horse', tip: '#ff9ad5', hoof: '#f2b8d8', flat: 1, lean: 1 },
+  aslan: { k: 'q', c: '#d9a441', c2: '#f3dca8', mane: '#8a4b12', s: 66, ear: 'rd', tail: 'lg', snout: 'cat', tuft: '#8a4b12', big: 1 },
+  kurt: { k: 'q', c: '#101826', c2: '#1d3a4a', stripe: '#22d3ee', glow: '#22d3ee', s: 64, ear: 'pt', tail: 'fl', snout: 'fox', eye: '#22d3ee', tip: '#22d3ee', inner: '#22d3ee', lean: 1 },
+  ejder: { k: 'q', c: '#2fae5f', c2: '#f4d27a', wing: '#1d7a42', horn: '#f4d27a', fire: 1, s: 62, ear: 'pt', tail: 'lg', snout: 'dog', spikes: '#f4d27a', scales: 1 },
 };
 
 const shadeHex = (h, a) => {
@@ -163,344 +171,909 @@ const rr = (c, x, y, w, h, r) => {
   c.arcTo(x, y, x + w, y, r);
   c.closePath();
 };
+const disc = (c, x, y, r) => {
+  c.beginPath();
+  c.arc(x, y, r, 0, 7);
+  c.fill();
+};
+const oval = (c, x, y, rx, ry, rot = 0) => {
+  c.beginPath();
+  c.ellipse(x, y, rx, ry, rot, 0, 7);
+  c.fill();
+};
+// parlak göz (renkli: kedi gözü — dikey göz bebeği)
+function eyeAt(c, x, y, r, col) {
+  if (col) {
+    c.fillStyle = col;
+    oval(c, x, y, r * 1.1, r);
+    c.fillStyle = '#111';
+    oval(c, x + r * 0.15, y, r * 0.32, r * 0.85);
+  } else {
+    c.fillStyle = '#121014';
+    disc(c, x, y, r);
+  }
+  c.fillStyle = 'rgba(255,255,255,.92)';
+  disc(c, x + r * 0.35, y - r * 0.35, r * 0.36);
+}
+// tasma: boynun SADECE görünen (bize bakan) yarısından geçen bant + künye.
+// Halkanın arka yarısı boynun arkasında kaldığı için hiç çizilmez.
+function collarBand(c, s, x1, y1, x2, y2, col, gold) {
+  const main = gold ? '#d4af37' : col;
+  const w = Math.max(1.5, s * 0.055);
+  const mx = ((x1 + x2) / 2 + 0.035) * s;
+  const my = ((y1 + y2) / 2 + 0.01) * s;
+  c.lineCap = 'butt';
+  c.strokeStyle = 'rgba(0,0,0,.28)';
+  c.lineWidth = w + Math.max(1, s * 0.012);
+  c.beginPath();
+  c.moveTo(x1 * s, y1 * s);
+  c.quadraticCurveTo(mx, my, x2 * s, y2 * s);
+  c.stroke();
+  c.strokeStyle = main;
+  c.lineWidth = w;
+  c.stroke();
+  c.strokeStyle = 'rgba(255,255,255,.35)';
+  c.lineWidth = Math.max(0.6, w * 0.25);
+  c.beginPath();
+  c.moveTo((x1 + 0.012) * s, (y1 - 0.01) * s);
+  c.quadraticCurveTo(mx + s * 0.01, my - s * 0.012, (x2 + 0.012) * s, (y2 - 0.012) * s);
+  c.stroke();
+  c.fillStyle = '#ffd23f';
+  disc(c, x2 * s - s * 0.01, y2 * s + s * (gold ? 0.045 : 0.03), s * (gold ? 0.045 : 0.026));
+}
+// dört ayaklıda tasmanın iki ucu: boynun üst-arka kenarından alt-ön kenarına
+const quadHead = (p) => ({
+  hx: p?.snout === 'horse' ? 0.44 : 0.42,
+  hy: p?.snout === 'horse' ? -0.86 : p?.stocky ? -0.66 : -0.74,
+  hr: p?.big ? 0.18 : p?.stocky ? 0.19 : 0.16,
+});
+function QUAD_COLLAR(p) {
+  const { hx, hy, hr } = quadHead(p);
+  return [hx - 0.19, hy + 0.06, hx - 0.07, hy + hr + 0.07];
+}
 
+// --- Dört ayaklı (yan görünüm, sağa bakar; zemin y=0) -------------------------------
 function quad(c, p, s, st, t, collar) {
+  const S = (v) => v * s;
   const leg = p.leg || p.c;
-  const wag = Math.sin(t / 160) * 0.25;
+  const farLeg = shadeHex(leg[0] === '#' ? leg : '#888888', -0.22);
   const ec = p.ec || p.c;
+  const lean = p.lean ? 0.9 : p.stocky ? 1.12 : 1;
+  const hipY = -0.42;
+  const legLen = p.stocky ? 0.36 : 0.42;
+  const by = p.stocky ? -0.4 : -0.46; // gövde merkezi
+  const { hx, hy, hr } = quadHead(p); // baş merkezi / yarıçapı
+
+  // ejder kanadı (arkada)
   if (p.wing) {
     c.fillStyle = p.wing;
     c.save();
-    c.translate(-0.05 * s, -0.55 * s);
-    c.rotate(-0.9 + Math.sin(t / 200) * 0.25);
-    c.beginPath();
-    c.ellipse(-0.05 * s, -0.3 * s, 0.1 * s, 0.36 * s, 0, 0, 7);
-    c.fill();
-    c.restore();
-  }
-  c.strokeStyle = p.c;
-  c.fillStyle = p.c;
-  c.lineCap = 'round';
-  c.save();
-  c.translate(-0.4 * s, -0.45 * s);
-  c.rotate(wag);
-  if (p.tail === 'lg') {
-    c.lineWidth = s * 0.08;
+    c.translate(S(-0.02), S(by - 0.12));
+    c.rotate(-0.5 + Math.sin(t / 200) * 0.2);
     c.beginPath();
     c.moveTo(0, 0);
-    c.quadraticCurveTo(-0.2 * s, -0.05 * s, -0.25 * s, -0.3 * s);
+    c.lineTo(S(-0.12), S(-0.5));
+    c.quadraticCurveTo(S(-0.2), S(-0.3), S(-0.42), S(-0.32));
+    c.quadraticCurveTo(S(-0.3), S(-0.16), S(-0.36), S(-0.04));
+    c.quadraticCurveTo(S(-0.18), S(-0.06), 0, 0);
+    c.fill();
+    c.strokeStyle = shadeHex(p.wing, -0.35);
+    c.lineWidth = S(0.018);
+    c.beginPath();
+    c.moveTo(0, 0);
+    c.lineTo(S(-0.12), S(-0.5));
+    c.moveTo(0, 0);
+    c.lineTo(S(-0.42), S(-0.32));
+    c.moveTo(0, 0);
+    c.lineTo(S(-0.36), S(-0.04));
     c.stroke();
-  } else if (p.tail === 'cu') {
-    c.lineWidth = s * 0.07;
-    c.beginPath();
-    c.arc(-0.12 * s, -0.12 * s, 0.12 * s, 0.4, Math.PI * 1.9);
-    c.stroke();
-  } else if (p.tail === 'fl') {
-    c.beginPath();
-    c.ellipse(-0.2 * s, -0.1 * s, 0.22 * s, 0.1 * s, -0.5, 0, 7);
-    c.fill();
-    c.fillStyle = p.c2;
-    c.beginPath();
-    c.ellipse(-0.3 * s, -0.17 * s, 0.08 * s, 0.05 * s, -0.5, 0, 7);
-    c.fill();
-  } else if (p.tail === 'sh') {
-    c.beginPath();
-    c.arc(-0.04 * s, -0.04 * s, 0.07 * s, 0, 7);
-    c.fill();
+    c.restore();
   }
-  c.restore();
-  c.fillStyle = leg;
-  [[-0.3, 1], [-0.15, -1], [0.18, -1], [0.32, 1]].forEach(([lx, sg]) => {
-    const lf = Math.max(0, sg * st) * 0.07 * s;
-    rr(c, lx * s - 0.045 * s, -0.3 * s - lf, 0.09 * s, 0.3 * s, 0.03 * s);
+
+  // kuyruk (gövdeye bağlı, sallanır)
+  const wag = Math.sin(t / 160) * 0.22;
+  const tx0 = -0.36 * lean;
+  c.save();
+  c.translate(S(tx0), S(by - 0.04));
+  c.rotate(wag);
+  c.fillStyle = p.c;
+  c.strokeStyle = p.c;
+  c.lineCap = 'round';
+  if (p.tail === 'lg') {
+    // incelen eğri
+    for (let i = 0; i < 3; i++) {
+      c.lineWidth = S(0.075 - i * 0.022);
+      c.beginPath();
+      c.moveTo(0, 0);
+      c.bezierCurveTo(S(-0.18), S(0.02), S(-0.22), S(-0.16 - i * 0.02), S(-0.26 + i * 0.01), S(-0.34 + i * 0.01));
+      c.stroke();
+    }
+    if (p.tuft) {
+      c.fillStyle = p.tuft;
+      oval(c, S(-0.26), S(-0.36), S(0.05), S(0.07), -0.4);
+    }
+    if (p.spikes) {
+      c.fillStyle = p.spikes;
+      c.beginPath();
+      c.moveTo(S(-0.22), S(-0.3));
+      c.lineTo(S(-0.3), S(-0.46));
+      c.lineTo(S(-0.3), S(-0.28));
+      c.fill();
+    }
+  } else if (p.tail === 'fe') {
+    // golden: kökte ince, aşağı-arkaya sarkıp ucu hafif kalkan tüylü kuyruk
+    c.beginPath();
+    c.moveTo(0, S(-0.035));
+    c.bezierCurveTo(S(-0.14), S(-0.06), S(-0.26), S(0.0), S(-0.34), S(0.1));
+    c.quadraticCurveTo(S(-0.38), S(0.16), S(-0.42), S(0.13));
+    c.quadraticCurveTo(S(-0.36), S(0.2), S(-0.28), S(0.18));
+    c.quadraticCurveTo(S(-0.26), S(0.22), S(-0.2), S(0.17));
+    c.quadraticCurveTo(S(-0.16), S(0.2), S(-0.12), S(0.13));
+    c.bezierCurveTo(S(-0.08), S(0.08), S(-0.03), S(0.05), 0, S(0.035));
     c.fill();
-  });
-  // gövde (hafif hacim gölgesi; flat: örnekteki düz, parlak görünüm)
-  if (p.flat) c.fillStyle = p.c;
-  else {
-    const g = c.createLinearGradient(0, -0.65 * s, 0, -0.19 * s);
-    g.addColorStop(0, shadeHex(p.c, 0.12));
-    g.addColorStop(1, shadeHex(p.c, -0.18));
-    c.fillStyle = g;
-  }
-  c.beginPath();
-  c.ellipse(0, -0.42 * s, 0.42 * s, 0.23 * s, 0, 0, 7);
-  c.fill();
-  if (!p.flat) {
     c.fillStyle = p.c2;
     c.globalAlpha = 0.55;
     c.beginPath();
-    c.ellipse(0.05 * s, -0.3 * s, 0.26 * s, 0.09 * s, 0, 0, 7);
+    c.moveTo(S(-0.12), S(0.1));
+    c.quadraticCurveTo(S(-0.26), S(0.14), S(-0.36), S(0.14));
+    c.quadraticCurveTo(S(-0.26), S(0.19), S(-0.14), S(0.13));
     c.fill();
     c.globalAlpha = 1;
+  } else if (p.tail === 'fl' && p.rainbow) {
+    // midilli: gökkuşağı renkli, dalgalanan kuyruk telleri
+    const sway = Math.sin(t / 260) * 0.04;
+    for (let i = 0; i < 6; i++) {
+      c.strokeStyle = `hsl(${(t / 8 + i * 55) % 360},90%,${i % 2 ? 70 : 62}%)`;
+      c.lineWidth = S(0.05 - i * 0.004);
+      c.beginPath();
+      c.moveTo(S(0.01), S(-0.04 + i * 0.012));
+      c.bezierCurveTo(S(-0.2), S(-0.12 + i * 0.02), S(-0.3 + sway), S(0.04 + i * 0.03), S(-0.36 + i * 0.02 + sway), S(0.22 + i * 0.012));
+      c.stroke();
+    }
+  } else if (p.tail === 'fl') {
+    // kabarık (tilki/kurt/midilli): kökte ince, ortada şişkin, uçta renkli
+    c.beginPath();
+    c.moveTo(0, S(-0.05));
+    c.bezierCurveTo(S(-0.18), S(-0.16), S(-0.5), S(-0.14), S(-0.58), S(0.06));
+    c.bezierCurveTo(S(-0.44), S(0.12), S(-0.24), S(0.1), 0, S(0.05));
+    c.fill();
+    c.save();
+    c.clip();
+    c.fillStyle = p.tip || p.c2;
+    oval(c, S(-0.56), S(0.02), S(0.12), S(0.12));
+    c.restore();
+  } else if (p.tail === 'sh') {
+    disc(c, S(-0.02), S(-0.03), S(0.055));
   }
+  c.restore();
+
+  // bacaklar: kalça/omuzdan sallanır, uzak bacaklar koyu
+  const drawLeg = (lx, phase, col, front) => {
+    const a = st * 0.38 * phase;
+    c.save();
+    c.translate(S(lx), S(hipY));
+    c.rotate(a);
+    c.fillStyle = col;
+    const w0 = p.stocky ? 0.13 : 0.11;
+    const w1 = p.stocky ? 0.1 : p.lean ? 0.06 : 0.075;
+    c.beginPath();
+    c.moveTo(S(-w0 / 2), 0);
+    c.lineTo(S(w0 / 2), 0);
+    if (!front) c.quadraticCurveTo(S(w0 / 2 + 0.03), S(legLen * 0.5), S(w1 / 2), S(legLen - 0.03));
+    else c.lineTo(S(w1 / 2), S(legLen - 0.03));
+    c.lineTo(S(-w1 / 2), S(legLen - 0.03));
+    c.closePath();
+    c.fill();
+    // pati / toynak
+    c.fillStyle = p.hoof || col;
+    oval(c, S(0.02), S(legLen - 0.03), S(w1 * 0.8), S(0.035));
+    c.restore();
+  };
+  const backX = -0.27 * lean;
+  const frontX = 0.24 * lean;
+  drawLeg(backX + 0.09, -1, farLeg, false);
+  drawLeg(frontX + 0.08, 1, farLeg, true);
+
+  // gövde: göğüs + karın + kalça hacmi
+  const bodyPath = () => {
+    c.beginPath();
+    c.ellipse(0, S(by), S(0.36 * lean), S(p.stocky ? 0.2 : 0.18), 0, 0, 7);
+    c.moveTo(S(frontX + 0.2), S(by - 0.02));
+    c.ellipse(S(frontX), S(by - 0.02), S(p.stocky ? 0.22 : 0.19), S(p.stocky ? 0.22 : 0.19), 0, 0, 7);
+    c.moveTo(S(backX + 0.18), S(by));
+    c.ellipse(S(backX), S(by), S(0.17), S(0.18), 0, 0, 7);
+    // boyun
+    c.moveTo(S(frontX - 0.06), S(by - 0.1));
+    c.lineTo(S(hx - 0.14), S(hy - 0.02));
+    c.lineTo(S(hx + 0.06), S(hy + 0.08));
+    c.lineTo(S(frontX + 0.16), S(by + 0.04));
+    c.closePath();
+  };
+  if (p.flat) c.fillStyle = p.c;
+  else {
+    const g = c.createLinearGradient(0, S(by - 0.24), 0, S(by + 0.2));
+    g.addColorStop(0, shadeHex(p.c, 0.14));
+    g.addColorStop(1, shadeHex(p.c, -0.16));
+    c.fillStyle = g;
+  }
+  bodyPath();
+  c.fill('nonzero');
+  // desenler gövdeye kırpılır
+  c.save();
+  bodyPath();
+  c.clip('nonzero');
+  c.fillStyle = p.c2;
+  c.globalAlpha = p.flat ? 0.5 : 0.7;
+  oval(c, S(0.05), S(by + 0.15), S(0.34 * lean), S(0.1));
+  if (p.fluff || p.snout === 'fox' || p.snout === 'cat') oval(c, S(frontX + 0.08), S(by + 0.02), S(0.12), S(0.15));
+  c.globalAlpha = 1;
   if (p.spots) {
     c.fillStyle = p.spots;
-    [[-0.22, -0.5, 0.05], [-0.05, -0.56, 0.04], [0.12, -0.45, 0.05], [-0.28, -0.36, 0.035], [0.25, -0.52, 0.03]].forEach(([x, y, r]) => {
+    [[-0.3, -0.56, 0.045], [-0.12, -0.6, 0.035], [0.04, -0.52, 0.05], [0.18, -0.6, 0.03], [-0.22, -0.42, 0.035], [0.26, -0.45, 0.04], [-0.04, -0.38, 0.03], [0.32, -0.66, 0.03], [-0.38, -0.46, 0.03], [0.1, -0.42, 0.025], [0.36, -0.8, 0.025]].forEach(([x, y, r]) => disc(c, S(x), S(y), S(r)));
+  }
+  if (p.tabby) {
+    c.strokeStyle = p.tabby;
+    c.lineWidth = S(0.035);
+    for (let i = -3; i <= 2; i++) {
       c.beginPath();
-      c.arc(x * s, y * s, r * s, 0, 7);
-      c.fill();
-    });
+      c.moveTo(S(i * 0.11), S(by - 0.22));
+      c.quadraticCurveTo(S(i * 0.11 + 0.04), S(by - 0.08), S(i * 0.11 - 0.01), S(by + 0.02));
+      c.stroke();
+    }
   }
   if (p.stripe) {
     c.strokeStyle = p.stripe;
-    c.lineWidth = s * 0.04;
-    for (let i = -1; i <= 1; i++) {
+    c.lineWidth = S(0.03);
+    for (let i = -2; i <= 2; i++) {
       c.beginPath();
-      c.moveTo(i * 0.14 * s, -0.63 * s);
-      c.lineTo(i * 0.14 * s + 0.03 * s, -0.46 * s);
+      c.moveTo(S(i * 0.13), S(by - 0.22));
+      c.lineTo(S(i * 0.13 + 0.05), S(by - 0.04));
       c.stroke();
     }
   }
-  if (p.patch) {
-    c.fillStyle = p.patch;
-    c.beginPath();
-    c.ellipse(0.2 * s, -0.44 * s, 0.1 * s, 0.19 * s, 0, 0, 7);
-    c.fill();
-  }
-  if (p.mane) {
-    c.fillStyle = p.mane;
-    c.beginPath();
-    c.arc(0.36 * s, -0.6 * s, 0.27 * s, 0, 7);
-    c.fill();
+  if (p.scales) {
+    c.fillStyle = p.c2;
+    c.globalAlpha = 0.35;
+    for (let i = -3; i <= 3; i++) disc(c, S(i * 0.1), S(by - 0.16 + (i % 2) * 0.03), S(0.03));
+    c.globalAlpha = 1;
   }
   if (p.rainbow)
     for (let i = 0; i < 5; i++) {
-      c.strokeStyle = `hsl(${(t / 8 + i * 50) % 360},90%,60%)`;
-      c.lineWidth = s * 0.05;
+      c.strokeStyle = `hsl(${(t / 8 + i * 50) % 360},90%,62%)`;
+      c.lineWidth = S(0.05);
       c.beginPath();
-      c.moveTo(0.28 * s, -0.78 * s + i * 0.035 * s);
-      c.quadraticCurveTo(0.1 * s, -0.7 * s + i * 0.03 * s, 0.02 * s + i * 0.02 * s, -0.5 * s);
+      c.moveTo(S(hx - 0.12 + i * 0.02), S(hy - 0.14 + i * 0.03));
+      c.quadraticCurveTo(S(hx - 0.28), S(hy + 0.06), S(frontX - 0.14 + i * 0.02), S(by - 0.06));
       c.stroke();
     }
-  c.fillStyle = ec;
+  c.restore();
+  // ejder sırt dikenleri
+  if (p.spikes) {
+    c.fillStyle = p.spikes;
+    for (let i = -3; i <= 2; i++) {
+      const x0 = i * 0.11;
+      const yTop = by - (i >= 1 ? 0.2 : 0.18);
+      c.beginPath();
+      c.moveTo(S(x0 - 0.04), S(yTop + 0.02));
+      c.lineTo(S(x0), S(yTop - 0.07));
+      c.lineTo(S(x0 + 0.04), S(yTop + 0.02));
+      c.fill();
+    }
+  }
+  // yakın bacaklar
+  drawLeg(backX, 1, leg, false);
+  drawLeg(frontX, -1, leg, true);
+
+  // aslan yelesi (başın arkasında, dalgalı)
+  if (p.mane) {
+    c.fillStyle = p.mane;
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2;
+      disc(c, S(hx - 0.02 + Math.cos(a) * 0.2), S(hy + 0.02 + Math.sin(a) * 0.22), S(0.09));
+    }
+    disc(c, S(hx - 0.02), S(hy + 0.02), S(0.22));
+  }
+  // arkadaki kulak (sivri/yuvarlak)
+  c.fillStyle = shadeHex(ec, -0.25);
   if (p.ear === 'pt') {
     c.beginPath();
-    c.moveTo(0.28 * s, -0.76 * s);
-    c.lineTo(0.3 * s, -0.98 * s);
-    c.lineTo(0.43 * s, -0.78 * s);
+    c.moveTo(S(hx - 0.14), S(hy - 0.06));
+    c.lineTo(S(hx - 0.13), S(hy - 0.3));
+    c.lineTo(S(hx - 0.01), S(hy - 0.12));
     c.fill();
-    c.beginPath();
-    c.moveTo(0.4 * s, -0.78 * s);
-    c.lineTo(0.5 * s, -0.96 * s);
-    c.lineTo(0.55 * s, -0.74 * s);
-    c.fill();
-  } else if (p.ear === 'rd') {
-    c.beginPath();
-    c.arc(0.3 * s, -0.8 * s, 0.07 * s, 0, 7);
-    c.arc(0.5 * s, -0.8 * s, 0.07 * s, 0, 7);
-    c.fill();
-  } else if (p.ear === 'lg') {
-    c.beginPath();
-    c.ellipse(0.33 * s, -0.95 * s, 0.045 * s, 0.17 * s, -0.1, 0, 7);
-    c.ellipse(0.45 * s, -0.95 * s, 0.045 * s, 0.17 * s, 0.15, 0, 7);
-    c.fill();
-  } else if (p.ear === 'dr') {
-    c.beginPath();
-    c.ellipse(0.3 * s, -0.62 * s, 0.06 * s, 0.13 * s, 0.1, 0, 7);
-    c.fill();
-  }
+  } else if (p.ear === 'rd') disc(c, S(hx - 0.1), S(hy - 0.13), S(0.06));
+
   // baş
   if (p.flat) c.fillStyle = p.c;
   else {
-    const hg = c.createRadialGradient(0.36 * s, -0.7 * s, 0.02 * s, 0.4 * s, -0.62 * s, 0.22 * s);
-    hg.addColorStop(0, shadeHex(p.c, 0.18));
+    const hg = c.createRadialGradient(S(hx - 0.03), S(hy - 0.06), S(0.02), S(hx), S(hy), S(hr + 0.04));
+    hg.addColorStop(0, shadeHex(p.c, 0.2));
     hg.addColorStop(1, p.c);
     c.fillStyle = hg;
   }
-  c.beginPath();
-  c.arc(0.4 * s, -0.62 * s, 0.19 * s, 0, 7);
-  c.fill();
-  if (p.jowl) {
+  disc(c, S(hx), S(hy), S(hr));
+
+  // burun / ağız bölgesi
+  const sn = p.snout;
+  let nose = [hx + 0.2, hy + 0.02];
+  if (sn === 'dog') {
+    c.fillStyle = p.c;
+    oval(c, S(hx + 0.13), S(hy + 0.05), S(0.13), S(0.085), 0.08);
+    c.fillStyle = p.c2;
+    oval(c, S(hx + 0.15), S(hy + 0.09), S(0.1), S(0.05), 0.08);
+    nose = [hx + 0.26, hy + 0.02];
+    c.strokeStyle = 'rgba(40,20,10,.55)';
+    c.lineWidth = Math.max(1, S(0.014));
+    c.beginPath();
+    c.moveTo(S(nose[0] - 0.01), S(nose[1] + 0.04));
+    c.quadraticCurveTo(S(hx + 0.18), S(hy + 0.13), S(hx + 0.1), S(hy + 0.1));
+    c.stroke();
+  } else if (sn === 'fox') {
+    c.fillStyle = p.c;
+    c.beginPath();
+    c.moveTo(S(hx + 0.04), S(hy - 0.08));
+    c.quadraticCurveTo(S(hx + 0.2), S(hy - 0.02), S(hx + 0.3), S(hy + 0.04));
+    c.quadraticCurveTo(S(hx + 0.2), S(hy + 0.12), S(hx + 0.02), S(hy + 0.12));
+    c.fill();
     c.fillStyle = p.c2;
     c.beginPath();
-    c.ellipse(0.5 * s, -0.5 * s, 0.14 * s, 0.09 * s, 0, 0, 7);
+    c.moveTo(S(hx - 0.06), S(hy + 0.04));
+    c.quadraticCurveTo(S(hx + 0.14), S(hy + 0.02), S(hx + 0.29), S(hy + 0.05));
+    c.quadraticCurveTo(S(hx + 0.16), S(hy + 0.15), S(hx - 0.02), S(hy + 0.15));
     c.fill();
+    nose = [hx + 0.3, hy + 0.035];
+  } else if (sn === 'flat') {
+    c.fillStyle = p.c2;
+    oval(c, S(hx + 0.1), S(hy + 0.08), S(0.14), S(0.1));
+    c.strokeStyle = 'rgba(80,50,30,.5)';
+    c.lineWidth = Math.max(1, S(0.014));
+    c.beginPath();
+    c.arc(S(hx + 0.06), S(hy + 0.02), S(0.1), 0.3, 1.4);
+    c.stroke();
+    nose = [hx + 0.18, hy + 0.02];
+  } else if (sn === 'horse') {
+    c.fillStyle = p.c;
+    oval(c, S(hx + 0.13), S(hy + 0.08), S(0.15), S(0.09), 0.45);
+    c.fillStyle = p.c2;
+    oval(c, S(hx + 0.22), S(hy + 0.15), S(0.07), S(0.055), 0.45);
+    nose = null;
+    c.fillStyle = 'rgba(120,60,90,.6)';
+    disc(c, S(hx + 0.24), S(hy + 0.13), S(0.015));
+  } else {
+    // kedi / aslan: kısa ağız + bıyık
+    c.fillStyle = p.c2;
+    oval(c, S(hx + 0.11), S(hy + 0.06), S(p.big ? 0.1 : 0.08), S(p.big ? 0.07 : 0.055));
+    nose = [hx + 0.16, hy + 0.025];
+  }
+  if (nose) {
+    c.fillStyle = sn === 'cat' && !p.big ? '#e88a9a' : '#1a1210';
+    oval(c, S(nose[0]), S(nose[1]), S(sn === 'dog' ? 0.035 : 0.025), S(sn === 'dog' ? 0.026 : 0.02));
+  }
+  if (sn === 'cat') {
+    c.strokeStyle = 'rgba(255,255,255,.6)';
+    c.lineWidth = Math.max(0.6, S(0.007));
+    for (const dy of [-0.01, 0.02]) {
+      c.beginPath();
+      c.moveTo(S(hx + 0.12), S(hy + 0.06 + dy));
+      c.lineTo(S(hx + 0.27), S(hy + 0.04 + dy * 2));
+      c.stroke();
+    }
+  }
+  if (p.jowl || sn === 'flat') {
+    c.fillStyle = p.c2;
+    oval(c, S(hx + 0.06), S(hy + 0.14), S(0.1), S(0.06));
+  }
+
+  // önteki kulak
+  if (p.ear === 'pt') {
+    c.fillStyle = ec;
+    c.beginPath();
+    c.moveTo(S(hx - 0.08), S(hy - 0.1));
+    c.lineTo(S(hx - 0.02), S(hy - 0.33));
+    c.lineTo(S(hx + 0.07), S(hy - 0.12));
+    c.fill();
+    c.fillStyle = p.inner || '#f2a7b8';
+    c.globalAlpha = 0.8;
+    c.beginPath();
+    c.moveTo(S(hx - 0.05), S(hy - 0.13));
+    c.lineTo(S(hx - 0.02), S(hy - 0.27));
+    c.lineTo(S(hx + 0.03), S(hy - 0.13));
+    c.fill();
+    c.globalAlpha = 1;
+  } else if (p.ear === 'rd') {
+    c.fillStyle = ec;
+    disc(c, S(hx - 0.02), S(hy - hr + 0.01), S(0.065));
+    c.fillStyle = p.c2;
+    disc(c, S(hx - 0.02), S(hy - hr + 0.015), S(0.03));
+  } else if (p.ear === 'dr') {
+    // v79: sarkık köpek kulağı — başın önünde, tepe-arkadan aşağı sarkar
+    const flop = Math.sin(t / 140) * (st ? 0.12 : 0.03);
+    c.save();
+    c.translate(S(hx - 0.07), S(hy - 0.12));
+    c.rotate(0.25 + flop);
+    c.fillStyle = ec;
+    c.beginPath();
+    c.moveTo(S(-0.04), 0);
+    c.quadraticCurveTo(S(0.07), S(-0.03), S(0.07), S(0.06));
+    c.quadraticCurveTo(S(0.08), S(0.2), S(0.01), S(0.23));
+    c.quadraticCurveTo(S(-0.07), S(0.22), S(-0.07), S(0.1));
+    c.quadraticCurveTo(S(-0.07), S(0.03), S(-0.04), 0);
+    c.fill();
+    c.fillStyle = 'rgba(0,0,0,.18)';
+    oval(c, S(0.0), S(0.12), S(0.025), S(0.07));
+    c.restore();
+  }
+
+  // göz
+  eyeAt(c, S(hx + 0.06), S(hy - 0.04), S(p.eye ? 0.032 : 0.028), p.eye);
+  if (sn === 'dog' || sn === 'flat') {
+    c.strokeStyle = 'rgba(40,20,10,.35)';
+    c.lineWidth = Math.max(0.8, S(0.01));
+    c.beginPath();
+    c.arc(S(hx + 0.06), S(hy - 0.075), S(0.03), Math.PI * 1.15, Math.PI * 1.85);
+    c.stroke();
   }
   if (p.horn) {
     c.fillStyle = p.horn;
     c.beginPath();
-    c.moveTo(0.4 * s, -0.8 * s);
-    c.lineTo(0.5 * s, -1.1 * s);
-    c.lineTo(0.5 * s, -0.78 * s);
+    c.moveTo(S(hx - 0.02), S(hy - hr + 0.03));
+    c.lineTo(S(hx + 0.08), S(hy - hr - 0.24));
+    c.lineTo(S(hx + 0.07), S(hy - hr + 0.03));
     c.fill();
+    if (p.snout === 'horse') {
+      c.strokeStyle = 'rgba(180,120,0,.6)';
+      c.lineWidth = S(0.01);
+      for (let i = 1; i < 4; i++) {
+        c.beginPath();
+        c.moveTo(S(hx + 0.0 + i * 0.02), S(hy - hr - i * 0.06 + 0.04));
+        c.lineTo(S(hx + 0.07), S(hy - hr - i * 0.06 + 0.02));
+        c.stroke();
+      }
+    }
   }
-  c.fillStyle = p.c2;
-  c.beginPath();
-  c.ellipse(0.56 * s, -0.58 * s, 0.1 * s, 0.07 * s, 0, 0, 7);
-  c.fill();
-  if (p.cheek) {
-    c.fillStyle = 'rgba(255,140,160,.55)';
-    c.beginPath();
-    c.arc(0.44 * s, -0.55 * s, 0.06 * s, 0, 7);
-    c.fill();
-  }
-  if (p.patch) {
-    c.fillStyle = p.patch;
-    c.beginPath();
-    c.ellipse(0.46 * s, -0.67 * s, 0.05 * s, 0.035 * s, 0, 0, 7);
-    c.fill();
-  }
-  // burun + göz (parıltılı)
-  c.fillStyle = '#1a1210';
-  c.beginPath();
-  c.arc(0.64 * s, -0.6 * s, 0.025 * s, 0, 7);
-  c.fill();
-  c.fillStyle = p.eye || '#111';
-  c.beginPath();
-  c.arc(0.46 * s, -0.67 * s, 0.026 * s, 0, 7);
-  c.fill();
-  if (p.eye) {
-    c.fillStyle = '#111';
-    c.fillRect(0.455 * s, -0.69 * s, 0.01 * s, 0.04 * s);
-  }
-  c.fillStyle = 'rgba(255,255,255,.9)';
-  c.beginPath();
-  c.arc(0.468 * s, -0.678 * s, 0.009 * s, 0, 7);
-  c.fill();
   if (p.shades) {
     c.fillStyle = '#0d0d0d';
-    rr(c, 0.4 * s, -0.71 * s, 0.14 * s, 0.06 * s, 0.02 * s);
+    rr(c, S(hx - 0.01), S(hy - 0.08), S(0.15), S(0.06), S(0.02));
     c.fill();
   }
   if (p.fire && t % 2400 < 900)
     for (let i = 0; i < 3; i++) {
       c.fillStyle = i % 2 ? '#ffd23f' : '#ff6a1a';
-      c.beginPath();
-      c.arc(0.7 * s + i * 0.08 * s, -0.58 * s - i * 0.01 * s, (0.05 - 0.012 * i) * s, 0, 7);
-      c.fill();
+      disc(c, S(nose[0] + 0.06 + i * 0.08), S(nose[1] + i * 0.01), S(0.05 - 0.012 * i));
     }
   if (p.monocle) {
     c.strokeStyle = '#ffd23f';
-    c.lineWidth = Math.max(1, s * 0.03);
+    c.lineWidth = Math.max(1, S(0.022));
     c.beginPath();
-    c.arc(0.47 * s, -0.67 * s, 0.06 * s, 0, 7);
-    c.moveTo(0.5 * s, -0.62 * s);
-    c.lineTo(0.5 * s, -0.45 * s);
+    c.arc(S(hx + 0.06), S(hy - 0.04), S(0.055), 0, 7);
+    c.moveTo(S(hx + 0.08), S(hy + 0.01));
+    c.lineTo(S(hx + 0.08), S(hy + 0.16));
     c.stroke();
   }
   if (p.hat) {
     c.fillStyle = '#111';
-    rr(c, 0.3 * s, -0.86 * s, 0.2 * s, 0.05 * s, 0.02 * s);
+    rr(c, S(hx - 0.12), S(hy - hr - 0.02), S(0.22), S(0.05), S(0.02));
     c.fill();
-    rr(c, 0.34 * s, -1.02 * s, 0.12 * s, 0.17 * s, 0.02 * s);
+    rr(c, S(hx - 0.07), S(hy - hr - 0.18), S(0.13), S(0.17), S(0.02));
     c.fill();
     c.fillStyle = '#d4af37';
-    c.fillRect(0.34 * s, -0.9 * s, 0.12 * s, 0.03 * s);
+    c.fillRect(S(hx - 0.07), S(hy - hr - 0.06), S(0.13), S(0.03));
   }
-  if (collar || p.chain) {
-    c.strokeStyle = p.chain ? '#d4af37' : collar;
-    c.lineWidth = Math.max(1.5, s * 0.045);
-    c.beginPath();
-    c.ellipse(0.31 * s, -0.52 * s, 0.05 * s, 0.13 * s, -0.35, 0, 7);
-    c.stroke();
-    if (p.chain) {
-      c.fillStyle = '#d4af37';
-      c.beginPath();
-      c.arc(0.34 * s, -0.4 * s, 0.035 * s, 0, 7);
-      c.fill();
-    }
-  }
+  if (collar || p.chain) collarBand(c, s, ...QUAD_COLLAR(p), collar, p.chain);
 }
 
-// İki ayak üstünde yürüyen (maymun). Yan görünüm, sağa bakar.
+// --- İki ayak üstünde yürüyenler (maymun, tavşan, hamster, panda) ------------------
+// Yan/üç çeyrek görünüm, sağa bakar. Her formun ölçüleri BIPED_FORMS'ta.
+const BIPED_FORMS = {
+  //       bacak  bacak-gen ayak   gövde-y  gövde-rx ry    baş-y  baş-r  kol    kol-gen
+  monkey: { L: 0.38, lw: 0.09, fl: 0.07, by: -0.62, rx: 0.17, ry: 0.25, hy: -1.0, hr: 0.17, al: 0.34, aw: 0.07 },
+  rabbit: { L: 0.16, lw: 0.1, fl: 0.13, by: -0.38, rx: 0.18, ry: 0.23, hy: -0.74, hr: 0.15, al: 0.15, aw: 0.06 },
+  hamster: { L: 0.08, lw: 0.08, fl: 0.06, by: -0.32, rx: 0.25, ry: 0.27, hy: -0.68, hr: 0.19, al: 0.1, aw: 0.06 },
+  panda: { L: 0.18, lw: 0.13, fl: 0.08, by: -0.44, rx: 0.25, ry: 0.28, hy: -0.9, hr: 0.21, al: 0.24, aw: 0.11 },
+};
+export const bipedNeck = (form) => {
+  const f = BIPED_FORMS[form] || BIPED_FORMS.monkey;
+  return [0.02, f.hy + f.hr * 0.95];
+};
+
 function biped(c, p, s, st, t, collar) {
-  const dark = shadeHex(p.c, -0.25);
-  // kuyruk (arkada kıvrık)
-  c.strokeStyle = p.c;
-  c.lineCap = 'round';
-  c.lineWidth = s * 0.06;
-  c.beginPath();
-  c.moveTo(-0.12 * s, -0.45 * s);
-  c.quadraticCurveTo(-0.42 * s, -0.4 * s + Math.sin(t / 300) * 0.04 * s, -0.36 * s, -0.72 * s);
-  c.arc(-0.29 * s, -0.72 * s, 0.07 * s, Math.PI, Math.PI * 2.3);
-  c.stroke();
-  // bacaklar (yürürken sırayla öne-arkaya)
-  const leg = (ox, ang, col) => {
-    c.save();
-    c.translate(ox * s, -0.4 * s);
-    c.rotate(ang);
-    c.fillStyle = col;
-    rr(c, -0.045 * s, 0, 0.09 * s, 0.38 * s, 0.04 * s);
-    c.fill();
-    c.fillStyle = p.c2;
+  const S = (v) => v * s;
+  const F = BIPED_FORMS[p.form] || BIPED_FORMS.monkey;
+  const form = p.form || 'monkey';
+  const isPanda = form === 'panda';
+  const limb = isPanda ? p.dark : p.c;
+  const limbFar = shadeHex(isPanda ? '#2a2a30' : p.c, isPanda ? -0.3 : -0.25);
+  const hipY = F.by + F.ry * 0.62;
+  const shY = F.by - F.ry * 0.6;
+  const hx = 0.04;
+
+  // maymun kuyruğu (arkada kıvrık)
+  if (form === 'monkey') {
+    c.strokeStyle = p.c;
+    c.lineCap = 'round';
+    c.lineWidth = S(0.06);
     c.beginPath();
-    c.ellipse(0.04 * s, 0.38 * s, 0.07 * s, 0.035 * s, 0, 0, 7);
-    c.fill();
-    c.restore();
-  };
-  leg(-0.04, -st * 0.35, dark);
-  // arka kol
-  const arm = (ox, ang, col) => {
-    c.save();
-    c.translate(ox * s, -0.78 * s);
-    c.rotate(ang);
-    c.fillStyle = col;
-    rr(c, -0.035 * s, 0, 0.07 * s, 0.34 * s, 0.035 * s);
-    c.fill();
-    c.fillStyle = p.c2;
-    c.beginPath();
-    c.arc(0, 0.35 * s, 0.045 * s, 0, 7);
-    c.fill();
-    c.restore();
-  };
-  arm(-0.06, -0.15 + st * 0.4, dark);
-  // gövde
-  c.fillStyle = p.c;
-  c.beginPath();
-  c.ellipse(0, -0.62 * s, 0.17 * s, 0.25 * s, 0, 0, 7);
-  c.fill();
-  c.fillStyle = p.c2;
-  c.beginPath();
-  c.ellipse(0.06 * s, -0.58 * s, 0.09 * s, 0.17 * s, 0, 0, 7);
-  c.fill();
-  leg(0.05, st * 0.35, p.c);
-  // baş
-  const hx = 0.04 * s;
-  const hy = -1.0 * s;
-  c.fillStyle = p.c;
-  c.beginPath();
-  c.arc(hx - 0.16 * s, hy, 0.065 * s, 0, 7);
-  c.fill();
-  c.fillStyle = p.c2;
-  c.beginPath();
-  c.arc(hx - 0.16 * s, hy, 0.035 * s, 0, 7);
-  c.fill();
-  c.fillStyle = p.c;
-  c.beginPath();
-  c.arc(hx, hy, 0.17 * s, 0, 7);
-  c.fill();
-  c.fillStyle = p.c2;
-  c.beginPath();
-  c.ellipse(hx + 0.07 * s, hy + 0.03 * s, 0.11 * s, 0.1 * s, 0, 0, 7);
-  c.fill();
-  c.fillStyle = '#111';
-  c.beginPath();
-  c.arc(hx + 0.05 * s, hy - 0.02 * s, 0.02 * s, 0, 7);
-  c.arc(hx + 0.12 * s, hy - 0.02 * s, 0.02 * s, 0, 7);
-  c.fill();
-  c.fillStyle = 'rgba(255,255,255,.9)';
-  c.beginPath();
-  c.arc(hx + 0.056 * s, hy - 0.026 * s, 0.007 * s, 0, 7);
-  c.arc(hx + 0.126 * s, hy - 0.026 * s, 0.007 * s, 0, 7);
-  c.fill();
-  c.strokeStyle = dark;
-  c.lineWidth = Math.max(1, s * 0.02);
-  c.beginPath();
-  c.arc(hx + 0.1 * s, hy + 0.05 * s, 0.04 * s, 0.2, Math.PI - 0.2);
-  c.stroke();
-  if (collar) {
-    c.strokeStyle = collar;
-    c.lineWidth = Math.max(1.5, s * 0.04);
-    c.beginPath();
-    c.ellipse(0.01 * s, -0.84 * s, 0.11 * s, 0.035 * s, 0, 0, 7);
+    c.moveTo(S(-0.12), S(-0.45));
+    c.quadraticCurveTo(S(-0.42), S(-0.4 + Math.sin(t / 300) * 0.04), S(-0.36), S(-0.72));
+    c.arc(S(-0.29), S(-0.72), S(0.07), Math.PI, Math.PI * 2.3);
     c.stroke();
   }
-  // ön kol
-  arm(0.08, 0.15 - st * 0.4, p.c);
+
+  const legFn = (ox, ang, col) => {
+    c.save();
+    c.translate(S(ox), S(hipY));
+    c.rotate(ang);
+    c.fillStyle = col;
+    rr(c, S(-F.lw / 2), S(-0.04), S(F.lw), S(F.L + 0.04), S(F.lw / 2));
+    c.fill();
+    // ayak (tavşanın uzun arka ayağı)
+    c.fillStyle = form === 'monkey' ? p.c2 : col;
+    oval(c, S(F.fl * 0.45), S(F.L), S(F.fl), S(form === 'rabbit' ? 0.04 : 0.035));
+    if (form === 'rabbit' || form === 'hamster') {
+      c.fillStyle = 'rgba(255,190,200,.55)';
+      oval(c, S(F.fl * 0.6), S(F.L + 0.01), S(F.fl * 0.45), S(0.015));
+    }
+    c.restore();
+  };
+  const armFn = (ox, ang, col) => {
+    c.save();
+    c.translate(S(ox), S(shY));
+    c.rotate(ang);
+    c.fillStyle = col;
+    rr(c, S(-F.aw / 2), 0, S(F.aw), S(F.al), S(F.aw / 2));
+    c.fill();
+    c.fillStyle = form === 'monkey' ? p.c2 : col;
+    disc(c, 0, S(F.al), S(F.aw * 0.62));
+    c.restore();
+  };
+  const swing = form === 'monkey' ? 0.35 : form === 'panda' ? 0.3 : 0.45;
+  legFn(-F.rx * 0.3, -st * swing, limbFar);
+  armFn(-F.rx * 0.35, -0.15 + st * 0.4, limbFar);
+
+  // tavşan ponpon kuyruğu (gövdenin arkasında)
+  if (form === 'rabbit') {
+    c.fillStyle = '#ffffff';
+    disc(c, S(-F.rx - 0.02), S(F.by + 0.1), S(0.075));
+  }
+  if (form === 'panda') {
+    c.fillStyle = p.c;
+    disc(c, S(-F.rx + 0.02), S(F.by + 0.16), S(0.05));
+  }
+
+  // gövde
+  if (form === 'rabbit') {
+    // armut gövde
+    const g = c.createLinearGradient(0, S(F.by - F.ry), 0, S(F.by + F.ry));
+    g.addColorStop(0, shadeHex(p.c, 0.3));
+    g.addColorStop(1, shadeHex(p.c, -0.1));
+    c.fillStyle = g;
+    c.beginPath();
+    c.moveTo(S(0), S(F.by - F.ry));
+    c.bezierCurveTo(S(F.rx * 0.8), S(F.by - F.ry), S(F.rx * 1.25), S(F.by + F.ry * 0.9), S(0.02), S(F.by + F.ry));
+    c.bezierCurveTo(S(-F.rx * 1.35), S(F.by + F.ry), S(-F.rx * 1.0), S(F.by - F.ry), S(0), S(F.by - F.ry));
+    c.fill();
+  } else {
+    const g = c.createLinearGradient(0, S(F.by - F.ry), 0, S(F.by + F.ry));
+    g.addColorStop(0, shadeHex(p.c, 0.14));
+    g.addColorStop(1, shadeHex(p.c, -0.14));
+    c.fillStyle = g;
+    oval(c, 0, S(F.by), S(F.rx), S(F.ry));
+  }
+  // karın
+  c.fillStyle = p.c2;
+  if (form === 'monkey') oval(c, S(0.06), S(-0.58), S(0.09), S(0.17));
+  else if (form === 'hamster') oval(c, S(0.06), S(F.by + 0.04), S(F.rx * 0.65), S(F.ry * 0.72));
+  else if (form === 'rabbit') oval(c, S(0.05), S(F.by + 0.06), S(F.rx * 0.55), S(F.ry * 0.6));
+  // panda: siyah omuz kuşağı
+  if (isPanda) {
+    c.save();
+    oval(c, 0, S(F.by), S(F.rx), S(F.ry)); // yol
+    c.beginPath();
+    c.ellipse(0, S(F.by), S(F.rx), S(F.ry), 0, 0, 7);
+    c.clip();
+    c.fillStyle = p.dark;
+    c.beginPath();
+    c.ellipse(S(-0.02), S(F.by - F.ry * 0.55), S(F.rx * 1.1), S(F.ry * 0.32), -0.12, 0, 7);
+    c.fill();
+    c.restore();
+  }
+  legFn(F.rx * 0.25, st * swing, limb);
+
+  // baş
+  const hy = F.hy;
+  const hr = F.hr;
+  const hxx = hx;
+  // kulaklar (arkada)
+  if (form === 'rabbit') {
+    const twitch = Math.sin(t / 700) * 0.06;
+    const ear = (ex, rot, col, inner) => {
+      c.save();
+      c.translate(S(ex), S(hy - hr * 0.7));
+      c.rotate(rot);
+      c.fillStyle = col;
+      oval(c, 0, S(-0.17), S(0.055), S(0.19));
+      if (inner) {
+        c.fillStyle = p.ec;
+        oval(c, S(0.006), S(-0.16), S(0.028), S(0.14));
+      }
+      c.restore();
+    };
+    ear(hxx - 0.06, -0.28 + twitch, shadeHex(p.c, -0.12), false);
+    ear(hxx + 0.03, -0.08 - twitch, p.c, true);
+  } else if (form === 'hamster') {
+    c.fillStyle = shadeHex(p.c, -0.1);
+    disc(c, S(hxx - 0.1), S(hy - hr * 0.82), S(0.055));
+    disc(c, S(hxx + 0.1), S(hy - hr * 0.85), S(0.055));
+    c.fillStyle = '#f2a7a0';
+    disc(c, S(hxx - 0.1), S(hy - hr * 0.82), S(0.028));
+    disc(c, S(hxx + 0.1), S(hy - hr * 0.85), S(0.028));
+  } else if (isPanda) {
+    c.fillStyle = p.dark;
+    disc(c, S(hxx - 0.15), S(hy - hr * 0.78), S(0.075));
+    disc(c, S(hxx + 0.14), S(hy - hr * 0.8), S(0.075));
+  } else {
+    c.fillStyle = p.c;
+    disc(c, S(hxx - 0.16), S(hy), S(0.065));
+    c.fillStyle = p.c2;
+    disc(c, S(hxx - 0.16), S(hy), S(0.035));
+  }
+  // kafa
+  const hg = c.createRadialGradient(S(hxx - 0.04), S(hy - 0.06), S(0.02), S(hxx), S(hy), S(hr + 0.04));
+  hg.addColorStop(0, shadeHex(p.c, 0.22));
+  hg.addColorStop(1, p.c);
+  c.fillStyle = hg;
+  if (form === 'hamster') oval(c, S(hxx), S(hy + 0.02), S(hr * 1.08), S(hr * 0.98));
+  else disc(c, S(hxx), S(hy), S(hr));
+
+  // yüz
+  const eyeY = hy - hr * 0.12;
+  const e1 = hxx + hr * 0.18;
+  const e2 = hxx + hr * 0.6;
+  if (form === 'monkey') {
+    c.fillStyle = p.c2;
+    oval(c, S(hxx + 0.07), S(hy + 0.03), S(0.11), S(0.1));
+    eyeAt(c, S(hxx + 0.05), S(hy - 0.02), S(0.02));
+    eyeAt(c, S(hxx + 0.12), S(hy - 0.02), S(0.02));
+    c.strokeStyle = shadeHex(p.c, -0.25);
+    c.lineWidth = Math.max(1, S(0.02));
+    c.beginPath();
+    c.arc(S(hxx + 0.1), S(hy + 0.05), S(0.04), 0.2, Math.PI - 0.2);
+    c.stroke();
+  } else if (form === 'rabbit') {
+    c.fillStyle = p.c2;
+    oval(c, S(hxx + hr * 0.62), S(hy + hr * 0.32), S(hr * 0.42), S(hr * 0.3));
+    eyeAt(c, S(e1), S(eyeY), S(0.026));
+    eyeAt(c, S(e2), S(eyeY), S(0.022));
+    c.fillStyle = '#f08aa0';
+    c.beginPath();
+    c.moveTo(S(hxx + hr * 0.6), S(hy + hr * 0.18));
+    c.lineTo(S(hxx + hr * 0.84), S(hy + hr * 0.18));
+    c.lineTo(S(hxx + hr * 0.72), S(hy + hr * 0.32));
+    c.fill();
+    c.strokeStyle = 'rgba(120,100,100,.45)';
+    c.lineWidth = Math.max(0.6, S(0.008));
+    for (const d of [-0.02, 0.02]) {
+      c.beginPath();
+      c.moveTo(S(hxx + hr * 0.75), S(hy + hr * 0.3 + d));
+      c.lineTo(S(hxx + hr * 1.5), S(hy + hr * 0.24 + d * 2));
+      c.stroke();
+    }
+    c.fillStyle = 'rgba(255,150,170,.35)';
+    disc(c, S(hxx + hr * 0.15), S(hy + hr * 0.35), S(0.035));
+  } else if (form === 'hamster') {
+    // dolu yanaklar
+    c.fillStyle = p.c2;
+    oval(c, S(hxx + hr * 0.15), S(hy + hr * 0.45), S(hr * 0.55), S(hr * 0.42));
+    oval(c, S(hxx + hr * 0.78), S(hy + hr * 0.42), S(hr * 0.42), S(hr * 0.38));
+    c.fillStyle = 'rgba(255,140,160,.45)';
+    disc(c, S(hxx + hr * 0.05), S(hy + hr * 0.4), S(0.04));
+    eyeAt(c, S(e1 - 0.01), S(eyeY - 0.01), S(0.03));
+    eyeAt(c, S(e2 + 0.01), S(eyeY - 0.01), S(0.026));
+    c.fillStyle = '#e88a8a';
+    oval(c, S(hxx + hr * 0.5), S(hy + hr * 0.2), S(0.022), S(0.016));
+    c.strokeStyle = 'rgba(90,60,40,.4)';
+    c.lineWidth = Math.max(0.6, S(0.008));
+    for (const d of [-0.015, 0.015]) {
+      c.beginPath();
+      c.moveTo(S(hxx + hr * 0.6), S(hy + hr * 0.28 + d));
+      c.lineTo(S(hxx + hr * 1.3), S(hy + hr * 0.2 + d * 2));
+      c.stroke();
+    }
+    // ön dişler
+    c.fillStyle = '#fff';
+    c.fillRect(S(hxx + hr * 0.45), S(hy + hr * 0.32), S(0.024), S(0.03));
+  } else if (isPanda) {
+    // göz lekeleri (gözyaşı şekli, dışa eğik)
+    c.fillStyle = p.dark;
+    oval(c, S(e1 - 0.01), S(eyeY + 0.01), S(0.05), S(0.065), 0.5);
+    oval(c, S(e2 + 0.03), S(eyeY + 0.01), S(0.045), S(0.06), -0.5);
+    c.fillStyle = '#fff';
+    disc(c, S(e1), S(eyeY - 0.005), S(0.02));
+    disc(c, S(e2 + 0.02), S(eyeY - 0.005), S(0.018));
+    c.fillStyle = '#111';
+    disc(c, S(e1 + 0.003), S(eyeY - 0.003), S(0.012));
+    disc(c, S(e2 + 0.023), S(eyeY - 0.003), S(0.011));
+    // ağız bölgesi + burun
+    c.fillStyle = p.c2;
+    oval(c, S(hxx + hr * 0.55), S(hy + hr * 0.45), S(hr * 0.42), S(hr * 0.3));
+    c.fillStyle = p.dark;
+    oval(c, S(hxx + hr * 0.62), S(hy + hr * 0.3), S(0.035), S(0.024));
+    c.strokeStyle = p.dark;
+    c.lineWidth = Math.max(0.8, S(0.012));
+    c.beginPath();
+    c.moveTo(S(hxx + hr * 0.62), S(hy + hr * 0.38));
+    c.lineTo(S(hxx + hr * 0.62), S(hy + hr * 0.5));
+    c.arc(S(hxx + hr * 0.52), S(hy + hr * 0.5), S(hr * 0.1), 0, Math.PI * 0.8);
+    c.stroke();
+  }
+  if (collar) {
+    const [nx, ny] = bipedNeck(form);
+    c.strokeStyle = collar;
+    c.lineWidth = Math.max(1.5, S(0.04));
+    c.beginPath();
+    c.ellipse(S(nx), S(ny), S(Math.min(0.13, F.rx * 0.6)), S(0.03), 0, 0, Math.PI);
+    c.stroke();
+    c.fillStyle = '#ffd23f';
+    disc(c, S(nx + 0.04), S(ny + 0.05), S(0.022));
+  }
+  // ön kol (panda: bambu tutar gibi hafif önde)
+  armFn(F.rx * 0.35, 0.15 - st * 0.4, limb);
+}
+
+// v79: papağan (kırmızı ara/makao) — beyaz yüz maskesi, kıvrık fildişi gaga,
+// kanatta sarı-yeşil örtü tüyleri + mavi uç tüyleri, uzun kırmızı-mavi kuyruk,
+// gri ayaklar (iki parmak önde). Uçarken iki kanat açılıp çırpar.
+function parrot(c, p, s, st, t, flying) {
+  const S = (v) => v * s;
+  const red = p.c;
+  const blue = p.c2;
+  // ayakta: kısa bacak, gövde yere yakın (her şey 0.09 aşağı; ayaklar telafi edilir)
+  const drop = flying ? 0 : 0.09;
+  c.save();
+  c.translate(0, S(drop));
+  const lean = flying ? -0.75 : -0.28;
+  // kuyruk (uzun, incelen; altta mavi, üstte kırmızı)
+  const tailSway = Math.sin(t / 380) * 0.03;
+  const tail = (len, w, col) => {
+    c.fillStyle = col;
+    c.beginPath();
+    c.moveTo(S(-0.02), S(-0.36));
+    c.quadraticCurveTo(S(-0.2), S(-0.18), S(-len * 0.72 + tailSway), S(flying ? -0.2 : -0.1));
+    c.lineTo(S(-len * 0.72 - 0.02 + tailSway), S(flying ? -0.18 : -0.075));
+    c.quadraticCurveTo(S(-0.2 + w), S(-0.12), S(0.06), S(-0.3));
+    c.fill();
+  };
+  tail(0.62, 0.02, blue);
+  tail(0.5, 0.05, red);
+  // ayaklar (gri, zigodaktil)
+  if (!flying) {
+    c.save();
+    c.translate(0, S(-drop));
+    c.strokeStyle = '#6b6f78';
+    c.lineCap = 'round';
+    c.lineWidth = S(0.035);
+    for (const g of [-1, 1]) {
+      const fx = g * 0.04 + st * g * 0.03;
+      c.beginPath();
+      c.moveTo(S(fx), S(-0.11));
+      c.lineTo(S(fx), S(-0.02));
+      c.moveTo(S(fx), S(-0.02));
+      c.lineTo(S(fx + 0.06), S(0));
+      c.moveTo(S(fx), S(-0.02));
+      c.lineTo(S(fx - 0.05), S(0));
+      c.stroke();
+    }
+    c.restore();
+  }
+  // arka kanat (uçarken görünür)
+  const flap = flying ? Math.sin(t / 60) * 0.55 : 0;
+  const wing = (rot, far) => {
+    c.save();
+    c.translate(S(0.0), S(-0.6));
+    c.rotate(rot);
+    const path = () => {
+      c.beginPath();
+      c.moveTo(S(0.06), S(-0.02));
+      c.quadraticCurveTo(S(0.08), S(0.2), S(-0.06), S(0.42));
+      c.lineTo(S(-0.12), S(0.46));
+      c.quadraticCurveTo(S(-0.14), S(0.18), S(-0.06), S(-0.02));
+      c.closePath();
+    };
+    path();
+    c.fillStyle = far ? shadeHex(blue, -0.3) : blue;
+    c.fill();
+    c.save();
+    path();
+    c.clip();
+    // örtü tüyleri: kırmızı omuz → sarı → yeşil uç
+    c.fillStyle = far ? shadeHex(red, -0.3) : red;
+    oval(c, S(0), S(0.02), S(0.12), S(0.08));
+    c.fillStyle = far ? shadeHex(p.yel, -0.3) : p.yel;
+    oval(c, S(-0.01), S(0.13), S(0.11), S(0.07), 0.2);
+    c.fillStyle = far ? shadeHex(p.grn, -0.3) : p.grn;
+    oval(c, S(-0.03), S(0.2), S(0.1), S(0.035), 0.25);
+    // tüy çizgileri
+    c.strokeStyle = 'rgba(0,0,30,.35)';
+    c.lineWidth = Math.max(0.6, S(0.008));
+    for (let i = 0; i < 4; i++) {
+      c.beginPath();
+      c.moveTo(S(0.04 - i * 0.035), S(0.24));
+      c.lineTo(S(-0.04 - i * 0.03), S(0.44));
+      c.stroke();
+    }
+    c.restore();
+    c.restore();
+  };
+  // uçarken kanatlar yukarı-arkaya açılır ve çırpar
+  if (flying) wing(2.75 + flap, true);
+  // gövde
+  c.save();
+  c.translate(S(0.02), S(-0.48));
+  c.rotate(lean);
+  const g = c.createLinearGradient(S(-0.17), 0, S(0.17), 0);
+  g.addColorStop(0, shadeHex(red, -0.22));
+  g.addColorStop(0.6, red);
+  g.addColorStop(1, shadeHex(red, 0.12));
+  c.fillStyle = g;
+  oval(c, 0, 0, S(0.16), S(0.27));
+  c.restore();
+  // yakın kanat (katlı ya da çırpan)
+  wing(flying ? 2.45 + flap : 0.18 + Math.sin(t / 500) * 0.02, false);
+  // baş
+  const hx = 0.12;
+  const hy = -0.8;
+  const hg = c.createRadialGradient(S(hx - 0.02), S(hy - 0.04), S(0.02), S(hx), S(hy), S(0.15));
+  hg.addColorStop(0, shadeHex(red, 0.18));
+  hg.addColorStop(1, red);
+  c.fillStyle = hg;
+  disc(c, S(hx), S(hy), S(0.13));
+  // beyaz yüz maskesi + ince kırmızı tüy çizgileri
+  c.fillStyle = '#fbf6f0';
+  oval(c, S(hx + 0.065), S(hy + 0.005), S(0.07), S(0.055), -0.2);
+  c.strokeStyle = 'rgba(200,40,50,.5)';
+  c.lineWidth = Math.max(0.5, S(0.006));
+  for (let i = 0; i < 3; i++) {
+    c.beginPath();
+    c.moveTo(S(hx + 0.03), S(hy + 0.015 + i * 0.014));
+    c.lineTo(S(hx + 0.09), S(hy + 0.005 + i * 0.014));
+    c.stroke();
+  }
+  // göz (açık sarı iris)
+  c.fillStyle = '#f4e9a0';
+  disc(c, S(hx + 0.055), S(hy - 0.02), S(0.026));
+  c.fillStyle = '#111';
+  disc(c, S(hx + 0.058), S(hy - 0.02), S(0.014));
+  c.fillStyle = 'rgba(255,255,255,.9)';
+  disc(c, S(hx + 0.063), S(hy - 0.026), S(0.006));
+  // gaga: üstte kıvrık fildişi kanca, altta koyu çene
+  c.fillStyle = '#26221f';
+  c.beginPath();
+  c.moveTo(S(hx + 0.1), S(hy + 0.04));
+  c.quadraticCurveTo(S(hx + 0.17), S(hy + 0.05), S(hx + 0.18), S(hy + 0.09));
+  c.quadraticCurveTo(S(hx + 0.13), S(hy + 0.1), S(hx + 0.1), S(hy + 0.07));
+  c.fill();
+  c.fillStyle = p.beak;
+  c.beginPath();
+  c.moveTo(S(hx + 0.1), S(hy - 0.045));
+  c.bezierCurveTo(S(hx + 0.2), S(hy - 0.06), S(hx + 0.25), S(hy + 0.02), S(hx + 0.2), S(hy + 0.11));
+  c.quadraticCurveTo(S(hx + 0.19), S(hy + 0.05), S(hx + 0.15), S(hy + 0.045));
+  c.quadraticCurveTo(S(hx + 0.12), S(hy + 0.05), S(hx + 0.1), S(hy + 0.04));
+  c.closePath();
+  c.fill();
+  c.fillStyle = 'rgba(60,40,30,.35)';
+  c.beginPath();
+  c.moveTo(S(hx + 0.1), S(hy - 0.045));
+  c.quadraticCurveTo(S(hx + 0.12), S(hy), S(hx + 0.1), S(hy + 0.04));
+  c.lineTo(S(hx + 0.115), S(hy + 0.04));
+  c.quadraticCurveTo(S(hx + 0.13), S(hy), S(hx + 0.11), S(hy - 0.045));
+  c.fill();
+  c.fillStyle = 'rgba(255,255,255,.5)';
+  oval(c, S(hx + 0.16), S(hy - 0.035), S(0.03), S(0.01), 0.3);
+  c.restore();
 }
 
 function bird(c, p, s, st, t, flying) {
+  if (p.parrot) return parrot(c, p, s, st, t, flying);
   c.strokeStyle = '#f59e0b';
   c.lineWidth = s * 0.04;
   c.lineCap = 'round';
@@ -651,7 +1224,16 @@ export function drawPet(c, id, x, y, t, { moving = false, flip = false, flying =
 
 export const isPerchPet = (id) => Boolean(PET_MAP[id]?.perch);
 // tasma halkasının hayvan üzerindeki yeri (boy oranı, sağa bakarken)
-export const petCollarAt = (id) => (PET_ART[id]?.k === 'm' ? [0.01, -0.84] : [0.31, -0.52]);
+export const petCollarAt = (id) => {
+  const p = PET_ART[id];
+  if (p?.k === 'm') {
+    const [nx, ny] = bipedNeck(p.form);
+    return [nx + 0.04, ny + 0.05];
+  }
+  // dört ayaklı: künyenin yeri (quad() içindeki collarBand ile aynı)
+  const [, , x2, y2] = QUAD_COLLAR(p);
+  return [x2 - 0.01, y2 + 0.03];
+};
 export const petMeta = (id) => PET_MAP[id] || null;
 
 // Oyun içi boy: prototipteki hayvanlar biraz büyüktü → %72'si.

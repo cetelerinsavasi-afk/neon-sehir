@@ -39,6 +39,7 @@ import {
   workshopJob,
   vehicleLevelUpPatch,
   workshopCost,
+  autoOwnQty,
   lifeCapOf,
   repairBonusOf,
   weaponPowerAtLevel,
@@ -142,7 +143,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
 
   // ---- ATÖLYE: tamir / geliştirme ---------------------------------------------------
   // p: { shop: houseId | 'game', shopType ('silahci'|'modifiye', oyun dükkânı için),
-  //      itemId, action:'repair'|'upgrade', upgradeType?, ownQty, expect }
+  //      itemId, action:'repair'|'upgrade', upgradeType?, expect }
   async function workshop(uid, p) {
     const isGame = p.shop === 'game';
     const houseId = isGame ? null : String(p.shop || '');
@@ -174,9 +175,9 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       const user = us.data() || {};
       const myHave = Math.max(0, Number(mi.exists ? mi.data().quantity || 0 : 0));
       const shopHave = isGame ? Infinity : Math.max(0, Number(bi?.exists ? bi.data().materials?.[material] || 0 : 0));
-      const ownQty = Math.floor(Number(p.ownQty) || 0);
-      if (ownQty < 0 || ownQty > qty) fail('invalid-argument', 'Geçersiz miktar.');
-      if (ownQty > myHave) fail('failed-precondition', 'own-short');
+      // v79: oyuncu miktar seçmez — önce kendi malzemesi (ücretsiz), eksik kalan
+      // dükkândan. İkisi birlikte yetmiyorsa iş yapılamaz. (p.ownQty yok sayılır.)
+      const ownQty = autoOwnQty(qty, myHave);
       if (qty - ownQty > shopHave) fail('failed-precondition', 'shop-short');
       const cost = workshopCost({ mat: price.mat, labor: price.labor, qty, ownQty });
       if (Number(p.expect) !== cost.total) fail('aborted', `price-changed:${cost.total}`);

@@ -131,3 +131,102 @@
 .wk-carstats {
   margin-top: 8px;
 }
+
+/* v79 — sade akış: sekme → ürün → tek buton */
+.wk-tabs button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-height: 52px;
+  font-size: 15px;
+}
+.wk-tabs button small {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.7;
+}
+.wk-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.wk-src {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 6px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+  text-align: center;
+  opacity: 0.55;
+}
+.wk-src.on {
+  opacity: 1;
+  border-color: rgba(25, 232, 255, 0.35);
+  background: rgba(25, 232, 255, 0.07);
+}
+.wk-src.bad {
+  opacity: 1;
+  border-color: rgba(255, 46, 90, 0.5);
+  background: rgba(255, 46, 90, 0.1);
+}
+.wk-src span {
+  font-size: 12px;
+  opacity: 0.85;
+}
+.wk-src b {
+  font-size: 22px;
+  line-height: 1.1;
+}
+.wk-src small {
+  font-size: 11px;
+  opacity: 0.75;
+}
+.wk-pay {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 211, 77, 0.08);
+  border: 1px solid rgba(255, 211, 77, 0.28);
+}
+.wk-pay > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.wk-pay span {
+  font-size: 14px;
+  font-weight: 800;
+}
+.wk-pay small {
+  font-size: 11px;
+  opacity: 0.75;
+}
+.wk-pay > b {
+  font-size: 20px;
+}
+.wk-pay.changed {
+  border-color: #ffd34d;
+  box-shadow: 0 0 12px rgba(255, 211, 77, 0.3);
+}
+.wk-go {
+  min-height: 52px;
+  font-size: 16px;
+}
+.wk-wallet {
+  margin: -2px 0 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  opacity: 0.7;
+}

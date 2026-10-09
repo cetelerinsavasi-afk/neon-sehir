@@ -15,6 +15,7 @@ import {
   clampWorkshopPrice,
   workshopJob,
   workshopCost,
+  autoOwnQty,
   lifeCapOf,
   VEHICLE_WEAPON_MAX_REPAIRS,
   WEAPON_MAX_LEVEL,
@@ -27,10 +28,10 @@ import './Workshop.css';
 
 // =============================================================================
 // Atölye (silahçı: silah · modifiye garajı: araba) — tamir ve geliştirme.
-// Her şey yazıyla söylenir: ürünün ömrü, kalan tamir hakkı, geliştirilebilir mi,
-// kaç malzeme gerekiyor, sende ve dükkânda ne kadar var, malzeme ücreti,
-// işçilik, toplam ve cebindeki altın. Tutarlar sunucuda (shop.js) yeniden
-// hesaplanır; ekrandaki hesap aynı kurallarla (itemRules.js) yapılır.
+// v79 sade akış: 1) sekme seç (Tamir / Geliştir) 2) ürünü seç 3) tek butona bas.
+// Malzeme miktarını oyuncu SEÇMEZ: envanterdeki malzeme önce ve bedava
+// kullanılır, eksik kalan dükkândan alınır; ikisi birlikte yetmiyorsa iş
+// yapılamaz. Tutar sunucuda (shop.js) aynı kuralla (itemRules.js) hesaplanır.
 // shop: { kind:'game', type } | { kind:'player', type, houseId, houseDoc }
 // =============================================================================
 
@@ -58,9 +59,6 @@ export default function Workshop({ shop, onClose }) {
   const isGame = shop.kind === 'game';
   const [tab, setTab] = useState('repair');
   const [itemId, setItemId] = useState(null);
-  const upgradeType = 'level'; // v78: araç geliştirmesi = seviye (1 → 2 → 3)
-  const [ownQty, setOwnQty] = useState(0);
-  const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const [stock, setStock] = useState({});
@@ -78,7 +76,7 @@ export default function Workshop({ shop, onClose }) {
     if (!itemId && items[0]) setItemId(items[0].id);
   }, [itemId, items]);
 
-  const job = item ? workshopJob({ itemType, item, action: tab, upgradeType: isWeapon ? undefined : upgradeType }) : null;
+  const job = item ? workshopJob({ itemType, item, action: tab, upgradeType: isWeapon ? undefined : 'level' }) : null;
   const material = job?.material || (tab === 'repair' ? 'tamirMalzemesi' : isWeapon ? 'silahUpgrade' : 'arabaGelistirme');
   const mat = BIZ_MATERIALS[material] || { icon: '📦', name: material };
   const price = isGame ? gameWorkshopPrice(material) : clampWorkshopPrice(material, shop.houseDoc?.bizPrices?.materials?.[material]);
@@ -86,48 +84,66 @@ export default function Workshop({ shop, onClose }) {
   const qty = job?.qty || 0;
   const have = Math.max(0, Number(inventory[material] || 0));
   const shopHave = isGame ? Infinity : Math.max(0, Number(stock[material] || 0));
-  // kendi malzemenden en az / en çok kaç adet kullanılabilir
-  const maxOwn = Math.min(qty, have);
-  const minOwn = Math.max(0, qty - Math.min(qty, shopHave));
-  const impossible = qty > 0 && minOwn > maxOwn;
+
+  // önce envanter (bedava), eksik kalan dükkândan — oyuncu seçmez
+  const ownQty = autoOwnQty(qty, have);
+  const fromShop = qty - ownQty;
+  const notEnough = qty > 0 && fromShop > shopHave;
+  const cost = workshopCost({ mat: price.mat, labor: price.labor, qty, ownQty });
 
   useEffect(() => {
-    setTouched(false);
     setMsg(null);
-  }, [item?.id, tab, upgradeType]);
-  // varsayılan: önce kendi malzemen (ücretsiz), eksik kalanı dükkândan
-  useEffect(() => {
-    if (!touched) setOwnQty(maxOwn);
-    else setOwnQty((v) => Math.min(maxOwn, Math.max(minOwn, v)));
-  }, [minOwn, maxOwn, touched]);
-  const priceChanged = seenPrice !== null && seenPrice !== priceKey;
+  }, [item?.id, tab]);
+  // ürün/sekme değişince o anki fiyat "görülmüş" sayılır; panel açıkken
+  // dükkân sahibi fiyatı değiştirirse buton bir kez onay ister.
   useEffect(() => {
     setSeenPrice(priceKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [material, item?.id]);
+  const priceChanged = seenPrice !== null && seenPrice !== priceKey;
 
-  const cost = workshopCost({ mat: price.mat, labor: price.labor, qty, ownQty });
   const gold = Number(player?.gold || 0);
   const isOwner = !isGame && shop.houseDoc?.ownerUid === user?.uid;
   const payable = isOwner ? 0 : cost.total;
   const poor = gold < payable;
 
-  // engel cümlesi (varsa)
-  let blockText = null;
-  let blockOk = false;
-  if (job?.block === 'repairs') blockText = `Tamir hakkı bitti: ${VEHICLE_WEAPON_MAX_REPAIRS} tamirin hepsi kullanıldı.`;
-  else if (job?.block === 'full') {
-    blockText = 'Ömrü zaten dolu, tamire gerek yok.';
-    blockOk = true;
-  } else if (job?.block === 'maxLevel') {
-    const mx = isWeapon ? WEAPON_MAX_LEVEL : VEHICLE_MAX_LEVEL;
-    blockText = `En yüksek seviyede (${mx}/${mx}). Daha fazla geliştirilemez.`;
-    blockOk = true;
-  } else if (job?.block === 'listed') blockText = 'Bu ürün ilanda/vitrinde. Önce ilandan kaldır.';
-  const canDo = Boolean(item && job && !job.block && qty > 0 && !impossible && !poor && !busy && !priceChanged);
+  // ---- ürün bilgileri ---------------------------------------------------------------
+  const cap = item ? lifeCapOf(itemType) : 0;
+  const life = item ? Math.max(0, item.lifeDays ?? cap) : 0;
+  const repairsLeft = VEHICLE_WEAPON_MAX_REPAIRS - (item?.repairsUsed || 0);
+  const level = isWeapon ? item?.level || 1 : vehicleRaceLevel(item);
+  const maxLevel = isWeapon ? WEAPON_MAX_LEVEL : VEHICLE_MAX_LEVEL;
+  const img = item ? (isWeapon ? weaponImage(item.catalogId) : vehicleImage(item.catalogId)) : null;
+  const name = item ? (isWeapon ? item.name : vehicleDisplayName(item)) : '';
+  const gain = tab === 'repair' && !job?.block ? job?.gain || 0 : 0;
+  const lifeCls = life <= Math.ceil(cap * 0.2) ? 'crit' : life <= Math.ceil(cap * 0.5) ? 'low' : '';
+  const kindName = isWeapon ? 'silah' : 'araba';
+  const isRepair = tab === 'repair';
+  const actIcon = isRepair ? '🔧' : '⬆️';
+  const actName = isRepair ? 'Tamir et' : 'Geliştir';
+
+  // ---- neden yapılamıyor? (tek cümle) --------------------------------------------------
+  let block = null; // { text, ok }
+  if (job?.block === 'repairs') block = { text: `Tamir hakkı bitti (${VEHICLE_WEAPON_MAX_REPAIRS}/${VEHICLE_WEAPON_MAX_REPAIRS} kullanıldı). Bu ${kindName} artık tamir edilemez.` };
+  else if (job?.block === 'full') block = { ok: true, text: 'Ömrü zaten tam dolu, tamire gerek yok.' };
+  else if (job?.block === 'maxLevel') block = { ok: true, text: `En yüksek seviyede (${maxLevel}/${maxLevel}). Daha fazla geliştirilemez.` };
+  else if (job?.block === 'listed') block = { text: 'Bu ürün ilanda/vitrinde. Önce ilandan kaldır.' };
+  else if (job?.block) block = { text: 'Bu işlem bu ürün için yapılamaz.' };
+
+  let reason = null; // butonun altındaki kırmızı cümle
+  if (!block) {
+    if (notEnough) reason = `Malzeme yetmiyor: ${fmt(qty)} lazım, sende ${fmt(have)}, dükkânda ${fmt(shopHave)} var.`;
+    else if (poor) reason = `Altının yetmiyor: ${fmt(payable)} altın lazım, cebinde ${fmt(gold)} var.`;
+  }
+  const canDo = Boolean(item && job && !block && qty > 0 && !reason && !busy);
 
   const confirm = async () => {
     if (!canDo) return;
+    if (priceChanged) {
+      // ilk dokunuş: yeni fiyatı gördüğünü onayla
+      setSeenPrice(priceKey);
+      return;
+    }
     setBusy(true);
     setMsg(null);
     try {
@@ -137,28 +153,24 @@ export default function Workshop({ shop, onClose }) {
         shopType: shop.type,
         itemId: item.id,
         action: tab,
-        upgradeType: isWeapon ? undefined : upgradeType,
-        ownQty: cost.own,
+        upgradeType: isWeapon ? undefined : 'level',
         expect: cost.total,
       });
       setMsg({
         ok: true,
-        text:
-          tab === 'repair'
-            ? `✓ Tamir edildi! Ömrüne ${job.gain} gün eklendi.`
-            : isWeapon
-              ? `✓ Geliştirildi! Yeni seviye ${(item.level || 1) + 1}.`
-              : `✓ Geliştirildi! Yeni seviye ${vehicleRaceLevel(item) + 1} — hız, ivme ve nitro arttı.`,
+        text: isRepair
+          ? `✓ Tamir edildi! Ömrüne ${job.gain} gün eklendi.`
+          : isWeapon
+            ? `✓ Geliştirildi! Yeni seviye ${(item.level || 1) + 1}.`
+            : `✓ Geliştirildi! Yeni seviye ${vehicleRaceLevel(item) + 1} — hız, ivme ve nitro arttı.`,
       });
-      setTouched(false);
     } catch (err) {
       const m = String(err?.message || '');
       if (m.startsWith('price-changed')) {
         setSeenPrice('__stale__');
-        setMsg({ ok: false, text: 'Dükkân fiyatı az önce değişti. Yeni tutarı kontrol edip tekrar onayla.' });
+        setMsg({ ok: false, text: 'Tutar az önce değişti. Butondaki yeni tutarı kontrol edip tekrar bas.' });
       } else if (m === 'gold') setMsg({ ok: false, text: 'Altının yetmiyor.' });
-      else if (m === 'shop-short') setMsg({ ok: false, text: 'Dükkânda yeterli malzeme kalmadı.' });
-      else if (m === 'own-short') setMsg({ ok: false, text: 'Envanterinde yeterli malzeme yok.' });
+      else if (m === 'shop-short' || m === 'own-short') setMsg({ ok: false, text: 'Malzeme yetmiyor (az önce azalmış olabilir).' });
       else if (m === 'not-present') setMsg({ ok: false, text: 'Dükkânın içinde olmalısın.' });
       else setMsg({ ok: false, text: m || 'İşlem yapılamadı.' });
     } finally {
@@ -166,25 +178,24 @@ export default function Workshop({ shop, onClose }) {
     }
   };
 
-  // ---- ürün bilgileri ---------------------------------------------------------------
-  const cap = item ? lifeCapOf(itemType) : 0;
-  const life = item ? Math.max(0, item.lifeDays ?? cap) : 0;
-  const repairsUsed = item ? item.repairsUsed || 0 : 0;
-  const repairsLeft = VEHICLE_WEAPON_MAX_REPAIRS - repairsUsed;
-  const level = isWeapon ? item?.level || 1 : vehicleRaceLevel(item);
-  const img = item ? (isWeapon ? weaponImage(item.catalogId) : vehicleImage(item.catalogId)) : null;
-  const name = item ? (isWeapon ? item.name : vehicleDisplayName(item)) : '';
-  const gain = tab === 'repair' && !job?.block ? job?.gain || 0 : 0;
-  const lifeCls = life <= Math.ceil(cap * 0.2) ? 'crit' : life <= Math.ceil(cap * 0.5) ? 'low' : '';
-  const kindName = isWeapon ? 'silah' : 'araba';
-  const actName = tab === 'repair' ? 'Tamir et' : 'Geliştir';
+  const btnText = busy
+    ? 'İşleniyor…'
+    : notEnough
+      ? 'Malzeme yetmiyor'
+      : poor
+        ? 'Altın yetmiyor'
+        : priceChanged
+      ? `Fiyat değişti: ${fmt(payable)} altın — onayla`
+      : payable > 0
+        ? `${actIcon} ${actName} · ${fmt(payable)} altın`
+        : `${actIcon} ${actName} · ücretsiz`;
 
   return (
     <div className="bz wk-root" onClick={(e) => e.stopPropagation()}>
       <div className="bz-head">
         <div className="bz-head-main">
-          <h3>🛠️ {isWeapon ? 'Silah' : 'Araba'} tamir ve geliştirme</h3>
-          <p>{isGame ? 'Oyunun dükkânı · malzeme sınırsız' : `${shop.houseDoc?.name || 'Dükkân'}${isOwner ? ' · senin dükkânın (ücret ödemezsin)' : ''}`}</p>
+          <h3>🛠️ {isWeapon ? 'Silah' : 'Araba'} atölyesi</h3>
+          <p>{isGame ? 'Oyunun dükkânı' : `${shop.houseDoc?.name || 'Dükkân'}${isOwner ? ' · senin dükkânın' : ''}`}</p>
         </div>
         {onClose && (
           <button className="bz-x" onClick={onClose} aria-label="Kapat">
@@ -192,19 +203,15 @@ export default function Workshop({ shop, onClose }) {
           </button>
         )}
       </div>
-      <div className="bz-wallet">
-        <span>Cebindeki altın</span>
-        <b>
-          <Gold v={gold} />
-        </b>
-      </div>
 
-      <div className="bz-tabs">
-        <button className={tab === 'repair' ? 'on' : ''} onClick={() => setTab('repair')}>
+      <div className="bz-tabs wk-tabs">
+        <button className={isRepair ? 'on' : ''} onClick={() => setTab('repair')}>
           🔧 Tamir
+          <small>ömrü uzat</small>
         </button>
-        <button className={tab === 'upgrade' ? 'on' : ''} onClick={() => setTab('upgrade')}>
-          ⬆️ Geliştirme
+        <button className={!isRepair ? 'on' : ''} onClick={() => setTab('upgrade')}>
+          ⬆️ Geliştir
+          <small>{isWeapon ? 'gücü artır' : 'hızı artır'}</small>
         </button>
       </div>
 
@@ -213,23 +220,20 @@ export default function Workshop({ shop, onClose }) {
       ) : (
         <>
           {items.length > 1 && (
-            <div className="bz-field">
-              <label>{isWeapon ? 'Silahını seç' : 'Arabanı seç'}</label>
-              <div className="wk-picker">
-                {items.map((x) => {
-                  const xi = isWeapon ? weaponImage(x.catalogId) : vehicleImage(x.catalogId);
-                  return (
-                    <button key={x.id} className={x.id === item?.id ? 'on' : ''} onClick={() => setItemId(x.id)}>
-                      {xi ? <img src={xi} alt="" /> : <span>{isWeapon ? '🔫' : '🚗'}</span>}
-                      <small>{isWeapon ? x.name : vehicleDisplayName(x)}</small>
-                    </button>
-                  );
-                })}
-              </div>
+            <div className="wk-picker">
+              {items.map((x) => {
+                const xi = isWeapon ? weaponImage(x.catalogId) : vehicleImage(x.catalogId);
+                return (
+                  <button key={x.id} className={x.id === item?.id ? 'on' : ''} onClick={() => setItemId(x.id)}>
+                    {xi ? <img src={xi} alt="" /> : <span>{isWeapon ? '🔫' : '🚗'}</span>}
+                    <small>{isWeapon ? x.name : vehicleDisplayName(x)}</small>
+                  </button>
+                );
+              })}
             </div>
           )}
 
-          {/* ürün kartı */}
+          {/* 1 — ürün ve işin sonucu */}
           <div className="bz-sec">
             <div className="wk-item">
               <div className="wk-item-img">{img ? <img src={img} alt="" /> : <span>{isWeapon ? '🔫' : '🚗'}</span>}</div>
@@ -237,153 +241,117 @@ export default function Workshop({ shop, onClose }) {
                 <b>{name}</b>
                 {isWeapon ? (
                   <small>
-                    Güç {fmt(item.power)} · Seviye {level}/{WEAPON_MAX_LEVEL}
+                    Seviye {level}/{maxLevel} · Güç {fmt(item.power)}
                   </small>
                 ) : (
                   <small>
-                    <LevelPips level={level} /> Seviye {level}/{VEHICLE_MAX_LEVEL}
+                    <LevelPips level={level} />
                   </small>
                 )}
               </div>
             </div>
-            <div className="bz-row">
-              <span>Ömür</span>
-              <b className={lifeCls === 'crit' ? 'bz-bad' : ''}>
-                {life} / {cap} gün{gain > 0 && <em className="bz-good"> → {life + gain}</em>}
-              </b>
-            </div>
-            <div className={`bz-meter ${lifeCls}`}>
-              {Array.from({ length: cap }, (_, i) => (
-                <i key={i} className={i < life ? 'on' : i < life + gain ? 'gain' : ''} />
-              ))}
-            </div>
-            <div className="bz-row">
-              <span>Kalan tamir hakkı</span>
-              <b className={repairsLeft <= 0 ? 'bz-bad' : ''}>
-                {repairsLeft} / {VEHICLE_WEAPON_MAX_REPAIRS}
-              </b>
-            </div>
-            {isWeapon ? (
-              <div className="bz-row">
-                <span>Geliştirme</span>
-                <b className={level >= WEAPON_MAX_LEVEL ? 'bz-good' : ''}>{level >= WEAPON_MAX_LEVEL ? 'En yüksek seviyede' : `Açık (seviye ${level} → ${level + 1})`}</b>
-              </div>
+
+            {isRepair ? (
+              <>
+                <div className="bz-row">
+                  <span>Ömür</span>
+                  <b className={lifeCls === 'crit' ? 'bz-bad' : ''}>
+                    {life} gün{gain > 0 && <em className="bz-good"> → {life + gain} gün</em>}
+                  </b>
+                </div>
+                <div className={`bz-meter ${lifeCls}`}>
+                  {Array.from({ length: cap }, (_, i) => (
+                    <i key={i} className={i < life ? 'on' : i < life + gain ? 'gain' : ''} />
+                  ))}
+                </div>
+                <div className="bz-row">
+                  <span>Kalan tamir hakkı</span>
+                  <b className={repairsLeft <= 0 ? 'bz-bad' : ''}>
+                    {repairsLeft} / {VEHICLE_WEAPON_MAX_REPAIRS}
+                  </b>
+                </div>
+              </>
+            ) : isWeapon ? (
+              <>
+                <div className="bz-row">
+                  <span>Seviye</span>
+                  <b>{level < maxLevel ? <>{level} <em className="bz-good">→ {level + 1}</em></> : `${level} (en yüksek)`}</b>
+                </div>
+                {level < maxLevel && (
+                  <div className="bz-row">
+                    <span>Güç</span>
+                    <b>
+                      {fmt(item.power)} <em className="bz-good">→ {fmt(weaponPowerAtLevel(item.basePower, level + 1))}</em>
+                    </b>
+                  </div>
+                )}
+              </>
             ) : (
               <>
                 <div className="bz-row">
-                  <span>Geliştirme</span>
-                  <b className={level >= VEHICLE_MAX_LEVEL ? 'bz-good' : ''}>
-                    {level >= VEHICLE_MAX_LEVEL ? 'En yüksek seviyede' : `Açık (seviye ${level} → ${level + 1})`}
-                  </b>
+                  <span>Seviye</span>
+                  <b>{level < maxLevel ? <>{level} <em className="bz-good">→ {level + 1}</em></> : `${level} (en yüksek)`}</b>
                 </div>
                 <div className="wk-carstats">
-                  <CarStatBars catalogId={item.catalogId} level={level} next={tab === 'upgrade' && level < VEHICLE_MAX_LEVEL} />
+                  <CarStatBars catalogId={item.catalogId} level={level} next={level < maxLevel} />
                 </div>
               </>
             )}
           </div>
 
-          {blockText ? (
-            <p className={blockOk ? 'bz-ok' : 'bz-warn'}>{blockText}</p>
+          {block ? (
+            <p className={block.ok ? 'bz-ok' : 'bz-warn'}>{block.text}</p>
           ) : (
             <>
-              {/* malzeme */}
+              {/* 2 — malzeme: otomatik paylaştırılır */}
               <div className="bz-sec">
                 <p className="bz-sec-title">
-                  Gerekli malzeme: {mat.icon} {mat.name} × {fmt(qty)}
+                  Gerekli: {mat.icon} {mat.name} × {fmt(qty)}
                 </p>
-                <div className="bz-row">
-                  <span>Senin envanterinde</span>
-                  <b className={have >= qty ? 'bz-good' : ''}>{fmt(have)} adet</b>
-                </div>
-                <div className="bz-row">
-                  <span>Dükkânın stoğunda</span>
-                  <b>{isGame ? 'Sınırsız' : `${fmt(shopHave)} adet`}</b>
-                </div>
-                {tab === 'upgrade' && isWeapon && (
-                  <div className="bz-row">
-                    <span>Güç</span>
-                    <b className="bz-good">
-                      {fmt(item.power)} → {fmt(weaponPowerAtLevel(item.basePower, level + 1))}
-                    </b>
+                <div className="wk-split">
+                  <div className={`wk-src${ownQty > 0 ? ' on' : ''}`}>
+                    <span>🎒 Envanterinden</span>
+                    <b>{fmt(ownQty)}</b>
+                    <small>{ownQty > 0 ? 'bedava' : 'sende yok'}</small>
                   </div>
-                )}
-                {impossible ? (
-                  <p className="bz-warn">
-                    Yeterli malzeme yok: {fmt(qty)} adet lazım, sende {fmt(have)}, dükkânda {fmt(shopHave)} var.
-                  </p>
-                ) : (
-                  maxOwn > minOwn && (
-                    <div className="bz-field">
-                      <label>
-                        Kendi malzemenden kullan: <b>{fmt(ownQty)}</b> adet · dükkândan satın al: <b>{fmt(qty - ownQty)}</b> adet
-                      </label>
-                      <input
-                        className="bz-range"
-                        type="range"
-                        min={minOwn}
-                        max={maxOwn}
-                        step={1}
-                        value={ownQty}
-                        onChange={(e) => {
-                          setTouched(true);
-                          setOwnQty(Number(e.target.value));
-                        }}
-                      />
-                      <div className="bz-range-ends">
-                        <span>Daha çok dükkândan</span>
-                        <span>Daha çok kendimden</span>
-                      </div>
-                    </div>
-                  )
-                )}
+                  <div className={`wk-src${fromShop > 0 ? ' on' : ''}${notEnough ? ' bad' : ''}`}>
+                    <span>🏪 Dükkândan</span>
+                    <b>{fmt(fromShop)}</b>
+                    <small>{notEnough ? `dükkânda ${fmt(shopHave)} var` : fromShop > 0 ? `tanesi ${fmt(price.mat)} altın` : 'gerek yok'}</small>
+                  </div>
+                </div>
+                <p className="bz-hint">Envanterindeki malzeme önce ve bedava kullanılır, eksik kalan dükkândan alınır.</p>
               </div>
 
-              {/* ücret */}
-              {!impossible && (
-                <div className={`bz-sec${priceChanged ? ' wk-changed-box' : ''}`}>
-                  <p className="bz-sec-title">Ücret</p>
-                  <div className="bz-row">
-                    <span>
-                      Malzeme ücreti ({fmt(cost.shopQty)} adet × {fmt(price.mat)})
-                    </span>
-                    <b>
-                      <Gold v={cost.material} />
-                    </b>
+              {/* 3 — tek buton */}
+              {!notEnough && (
+                <div className={`wk-pay${priceChanged ? ' changed' : ''}`}>
+                  <div>
+                    <span>Ödeyeceğin</span>
+                    <small>
+                      {isOwner
+                        ? 'Kendi dükkânın: ücret yok, stoktan düşer'
+                        : cost.material > 0
+                          ? `İşçilik ${fmt(cost.labor)} + malzeme ${fmt(cost.material)}`
+                          : `Sadece işçilik (${fmt(qty)} × ${fmt(price.labor)})`}
+                    </small>
                   </div>
-                  <div className="bz-row">
-                    <span>
-                      İşçilik ({fmt(qty)} adet × {fmt(price.labor)})
-                    </span>
-                    <b>
-                      <Gold v={cost.labor} />
-                    </b>
-                  </div>
-                  {cost.own > 0 && (
-                    <div className="bz-row">
-                      <span>Kendi malzemen ({fmt(cost.own)} adet)</span>
-                      <b className="bz-good">ücretsiz</b>
-                    </div>
-                  )}
-                  <div className="bz-row total">
-                    <span>Toplam</span>
-                    <b className={poor ? 'bz-bad' : ''}>
-                      <Gold v={payable} />
-                    </b>
-                  </div>
-                  {isOwner && <p className="bz-hint">Kendi dükkânında ücret ödemezsin; sadece malzeme stoğundan düşer.</p>}
-                  {poor && <p className="bz-warn">Altının yetmiyor: {fmt(payable)} altın gerekli, cebinde {fmt(gold)} var.</p>}
-                  {priceChanged && (
-                    <button className="bz-btn ghost sm" onClick={() => setSeenPrice(priceKey)}>
-                      Yeni fiyatı gördüm
-                    </button>
-                  )}
+                  <b className={poor ? 'bz-bad' : ''}>
+                    <Gold v={payable} />
+                  </b>
                 </div>
               )}
 
-              <button className="bz-btn wide" disabled={!canDo} onClick={confirm}>
-                {busy ? 'İşleniyor…' : `${tab === 'repair' ? '🔧' : '⬆️'} ${actName} — ${fmt(payable)} altın`}
+              <button className="bz-btn wide wk-go" disabled={!canDo} onClick={confirm}>
+                {btnText}
               </button>
+              {reason ? (
+                <p className="bz-warn">{reason}</p>
+              ) : (
+                <p className="wk-wallet">
+                  Cebinde <Gold v={gold} />
+                </p>
+              )}
             </>
           )}
           {msg && <p className={msg.ok ? 'bz-ok' : 'bz-warn'}>{msg.text}</p>}

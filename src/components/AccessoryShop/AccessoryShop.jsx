@@ -12,7 +12,22 @@ import './AccessoryShop.css';
 //  • Satın alınan ürün kuşanılır; kuşanılanlar gittiğin her mekânda görünür.
 //  • Satın alınmayan ürün sadece burada denenir, mekânlarda görünmez.
 //  • Tasma: aç/kapat + renk (sadece yerde yürüyen hayvanlarda).
+//  • v79 Kaydet: denediğin görünüm (hayvan, aksesuarlar, tasma) alttaki
+//    "Kaydet" ile tek seferde kuşanılır; satın alınmayanlar kaydedilmez.
 // =============================================================================
+
+// iki görünüm aynı mı? (hayvan + tasma + aksesuar yuvaları)
+function sameLook(a, b) {
+  const pa = a?.pet || null;
+  const pb = b?.pet || null;
+  if (Boolean(pa) !== Boolean(pb)) return false;
+  if (pa && (pa.id !== pb.id || (pa.leash !== false) !== (pb.leash !== false) || (pa.leashColor || LEASH_COLORS[0]) !== (pb.leashColor || LEASH_COLORS[0]))) return false;
+  const aa = a?.acc || {};
+  const ab = b?.acc || {};
+  const keys = new Set([...Object.keys(aa), ...Object.keys(ab)]);
+  for (const k of keys) if (aa[k] !== ab[k]) return false;
+  return true;
+}
 
 const fmt = (n) => Math.round(n || 0).toLocaleString('tr-TR');
 const SLOT_VIEWBOX = { head: '80 10 160 130', face: '90 140 140 80', neck: '100 245 120 95', back: '0 240 320 300', aura: '0 180 320 400' };
@@ -195,6 +210,7 @@ export default function AccessoryShop({ onBack }) {
   const [trial, setTrial] = useState(null); // { pet, acc } | null = kuşanılmış hal
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(null);
+  const [leaveAsk, setLeaveAsk] = useState(false);
   const [toast, setToast] = useState(null);
   const sayRef = useRef(null);
   const stageRef = useRef(null);
@@ -216,11 +232,27 @@ export default function AccessoryShop({ onBack }) {
       .filter((id) => !owned.accs[id])
       .map((id) => ACCESSORIES.find((a) => a.id === id)),
   ].filter(Boolean);
+  const dirty = Boolean(trial) && !sameLook(trial, { pet: equippedPet, acc: equippedAcc });
+  // Kaydet'e basılınca sunucuda olacak görünüm (functions/cosmetics.js 'save' ile aynı
+  // kural): satın alınmayan ürünün yuvasında önceden kuşanılmış olan kalır.
+  const willSave = (() => {
+    if (!trial) return null;
+    const pet = trial.pet ? (owned.pets[trial.pet.id] ? trial.pet : equippedPet) : null;
+    const acc = {};
+    for (const [slot, id] of Object.entries(trial.acc || {})) {
+      if (owned.accs[id]) acc[slot] = id;
+      else if (equippedAcc[slot]) acc[slot] = equippedAcc[slot];
+    }
+    return { pet, acc };
+  })();
+  const ownedChange = dirty && !sameLook(willSave, { pet: equippedPet, acc: equippedAcc });
 
+  const toastTimer = useRef(0);
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
   const flash = (text, ok = true) => {
     setToast({ text, ok });
-    clearTimeout(flash.t);
-    flash.t = setTimeout(() => setToast(null), 2600);
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 3000);
   };
   const petSay = (id) => {
     const p = PETS.find((x) => x.id === id);
@@ -279,16 +311,22 @@ export default function AccessoryShop({ onBack }) {
       if (kind === 'pet') petSay(item.id);
     }
   };
-  const setLeash = async (patch) => {
-    if (trial || !equippedPet || !owned.pets[equippedPet.id]) {
-      // önizlemede: sadece görüntü
-      const base = trial || { pet: equippedPet, acc: equippedAcc };
-      if (!base.pet) return;
-      setTrial({ ...base, pet: { ...base.pet, ...(patch.on !== undefined ? { leash: patch.on } : {}), ...(patch.color ? { leashColor: patch.color, leash: true } : {}) } });
-      return;
-    }
-    await run({ op: 'leash', ...patch });
+  // v79: tasma ayarı da önizlemeye girer, "Kaydet" ile birlikte saklanır
+  const setLeash = (patch) => {
+    const base = trial || { pet: equippedPet, acc: { ...equippedAcc } };
+    if (!base.pet) return;
+    setTrial({ ...base, pet: { ...base.pet, ...(patch.on !== undefined ? { leash: patch.on } : {}), ...(patch.color ? { leashColor: patch.color, leash: true } : {}) } });
   };
+  const save = async () => {
+    if (!dirty) return true;
+    const res = await run({ op: 'save', pet: view.pet || null, acc: view.acc || {} });
+    if (!res) return false;
+    const skipped = (res.skipped || []).map((id) => PETS.find((x) => x.id === id)?.name || ACCESSORIES.find((x) => x.id === id)?.name).filter(Boolean);
+    flash(skipped.length ? `Kaydedildi ✓ — satın alınmadığı için kaydedilmedi: ${skipped.join(', ')}` : 'Görünümün kaydedildi ✓', true);
+    setTrial(null);
+    return true;
+  };
+  const back = () => (dirty ? setLeaveAsk(true) : onBack?.());
 
   const list = tab === 'pet' ? PETS : ACCESSORIES.filter((a) => flt === 'all' || a.slot === flt);
   const leashOn = view.pet && view.pet.leash !== false;
@@ -297,7 +335,7 @@ export default function AccessoryShop({ onBack }) {
   return (
     <div className="acs-root">
       <div className="acs-head">
-        <button className="acs-back" onClick={onBack} aria-label="Geri">
+        <button className="acs-back" onClick={back} aria-label="Geri">
           ←
         </button>
         <div className="acs-title">
@@ -323,11 +361,6 @@ export default function AccessoryShop({ onBack }) {
               🦮 Tasma {leashOn ? 'açık' : 'kapalı'}
             </button>
           )}
-          {trial && (
-            <button onClick={() => setTrial(null)} title="Önizlemeyi bırak">
-              ↺ Kuşandıklarım
-            </button>
-          )}
         </div>
         {view.pet && !perchPet && leashOn && (
           <div className="acs-leash-colors" aria-label="Tasma rengi">
@@ -340,7 +373,7 @@ export default function AccessoryShop({ onBack }) {
       {/* v78: önizleme notu sahnenin altında (hayvanların ayaklarını kapatmasın) */}
       {trialItems.length > 0 && (
         <div className="acs-trial">
-          <b>Önizleme</b> — {trialItems.map((i) => i.name).join(', ')}. Mekânlarda görünmesi için satın al.
+          <b>Deneme</b> — {trialItems.map((i) => i.name).join(', ')}. Satın almadan kaydedilmez.
         </div>
       )}
 
@@ -406,6 +439,50 @@ export default function AccessoryShop({ onBack }) {
           })}
         </div>
       </div>
+
+      {/* v79: kaydet çubuğu (her zaman görünür) */}
+      <div className={`acs-savebar${dirty ? ' dirty' : ''}`}>
+        <span className="acs-savebar-txt">{dirty ? (ownedChange ? 'Kaydedilmemiş değişiklik var' : 'Denediklerin satın alınmadan kaydedilmez') : '✓ Görünümün kayıtlı'}</span>
+        {dirty && (
+          <button className="acs-btn" disabled={busy} onClick={() => setTrial(null)}>
+            Vazgeç
+          </button>
+        )}
+        <button className="acs-save" disabled={!dirty || !ownedChange || busy} onClick={save}>
+          {busy ? 'Kaydediliyor…' : '💾 Kaydet'}
+        </button>
+      </div>
+
+      {leaveAsk && (
+        <div className="acs-confirm-bg" onClick={() => setLeaveAsk(false)}>
+          <div className="acs-confirm" onClick={(e) => e.stopPropagation()}>
+            <p className="acs-confirm-title">Değişiklikleri kaydetmedin</p>
+            <p className="acs-confirm-note">Kaydetmeden çıkarsan son kaydettiğin görünüm kalır.</p>
+            <div className="acs-confirm-btns">
+              <button
+                className="acs-btn"
+                onClick={() => {
+                  setLeaveAsk(false);
+                  setTrial(null);
+                  onBack?.();
+                }}
+              >
+                Kaydetmeden çık
+              </button>
+              <button
+                className="acs-btn buy"
+                disabled={busy || !ownedChange}
+                onClick={async () => {
+                  setLeaveAsk(false);
+                  if (await save()) onBack?.();
+                }}
+              >
+                Kaydet ve çık
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {confirm && (
         <div className="acs-confirm-bg" onClick={() => setConfirm(null)}>

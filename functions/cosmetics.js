@@ -5,6 +5,10 @@
 //   op 'equip'  { kind, id }                  → sahip olunan ürünü kuşan
 //   op 'unequip'{ kind, slot? }               → hayvanı / bir aksesuar yuvasını çıkar
 //   op 'leash'  { on?, color? }               → tasma aç/kapat, rengini değiştir
+//   op 'save'   { pet: {id,leash,leashColor}|null, acc: {slot:id} }
+//                                             → v79 Kaydet: önizlemedeki tüm
+//                                               görünümü tek seferde kuşan; sahip
+//                                               olunmayanlar atlanır (skipped)
 // Kuşanılanlar users/{uid}.avatar içine yazılır (avatar.acc / avatar.pet):
 // mekânlara giriş fonksiyonları avatarı zaten buradan kopyaladığı için
 // hayvan ve aksesuarlar herkesin ekranında görünür. Satın alınmayan ürün
@@ -73,6 +77,31 @@ export function createCosmetics({ db, FieldValue, HttpsError, now = () => Date.n
           equipped.pet.leashColor = p.color;
           equipped.pet.leash = true;
         }
+      } else if (op === 'save') {
+        // Sahip olunmayan ürün kaydedilmez: o yuvada önceden kuşanılmış olan kalır.
+        const want = {};
+        const skipped = [];
+        if (p.pet && typeof p.pet === 'object') {
+          const id = String(p.pet.id || '');
+          if (!PET_MAP[id]) fail('invalid-argument', 'Geçersiz evcil hayvan.');
+          if (!cos.pets[id]) {
+            skipped.push(id);
+            if (equipped.pet) want.pet = equipped.pet;
+          } else want.pet = { id, leash: p.pet.leash !== false, leashColor: LEASH_COLORS.includes(p.pet.leashColor) ? p.pet.leashColor : LEASH_COLORS[0] };
+        }
+        const srcAcc = p.acc && typeof p.acc === 'object' ? p.acc : {};
+        const acc = {};
+        for (const slot of Object.keys(srcAcc)) {
+          const id = String(srcAcc[slot] || '');
+          if (!ACC_SLOTS[slot] || ACC_MAP[id]?.slot !== slot) fail('invalid-argument', 'Geçersiz aksesuar.');
+          if (!cos.accs[id]) {
+            skipped.push(id);
+            if (equipped.acc?.[slot]) acc[slot] = equipped.acc[slot];
+          } else acc[slot] = id;
+        }
+        if (Object.keys(acc).length) want.acc = acc;
+        equipped = cleanEquipped(want, cos);
+        result = { ok: true, skipped };
       } else fail('invalid-argument', 'Geçersiz işlem.');
 
       // avatar.acc / avatar.pet güncelle (avatarın geri kalanına dokunma)

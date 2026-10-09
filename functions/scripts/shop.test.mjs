@@ -7,7 +7,7 @@ import { createHouses } from '../houses.js';
 import { createBusiness } from '../business.js';
 import { createShop, SHOP_MAX_ITEMS } from '../shop.js';
 import { BIZ_TYPES } from '../businessCatalogData.js';
-import { workshopBand, gameWorkshopPrice, itemListingBand, valueRatioOf, workshopJob, workshopCost } from '../itemRules.js';
+import { workshopBand, gameWorkshopPrice, itemListingBand, valueRatioOf, workshopJob, workshopCost, autoOwnQty } from '../itemRules.js';
 import { WEAPON_CATALOG, VEHICLE_CATALOG } from '../catalogData.js';
 
 class HttpsError extends Error {
@@ -99,6 +99,9 @@ test('kurallar: atölye bantları, oyunun fiyatı (tamir 13), 2. el bandı eski 
   assert.equal(workshopJob({ itemType: 'vehicle', item: { catalogId: 2, gearUpgraded: true, tankUpgraded: true }, action: 'upgrade', upgradeType: 'level' }).block, 'maxLevel');
   assert.equal(workshopJob({ itemType: 'vehicle', item: { catalogId: 2, listed: true }, action: 'repair' }).block, 'listed');
   assert.deepEqual(workshopCost({ mat: 8, labor: 2, qty: 10, ownQty: 4 }), { own: 4, shopQty: 6, labor: 20, material: 48, total: 68 });
+  assert.equal(autoOwnQty(10, 7), 7);
+  assert.equal(autoOwnQty(10, 25), 10);
+  assert.equal(autoOwnQty(10, 0), 0);
 });
 
 test('stok + fiyat: sahibin envanteri ⇄ dükkân, bant dışı fiyat reddedilir, sadece sahibi', async () => {
@@ -120,46 +123,51 @@ test('stok + fiyat: sahibin envanteri ⇄ dükkân, bant dışı fiyat reddedili
   await assert.rejects(h.act('usta', { op: 'prices', houseId: id, materials: { tamirMalzemesi: { mat: 8, labor: 4 } } }), /price-band:tamirMalzemesi:labor/);
 });
 
-test('atölye (oyuncu dükkânı): karışık malzeme, işçilik zorunlu, malzeme KOPYALANMAZ, para sahibine, rapor', async () => {
+test('atölye (oyuncu dükkânı): önce kendi malzemesi otomatik, eksik dükkândan; işçilik zorunlu, malzeme KOPYALANMAZ, para sahibine, rapor', async () => {
   const h = setup();
   const id = await openShop(h, 'silahci');
   h.S('users/usta/inventory/tamirMalzemesi', { quantity: 6 });
   await h.act('usta', { op: 'stock', houseId: id, material: 'tamirMalzemesi', qty: 6 });
   await h.act('usta', { op: 'prices', houseId: id, materials: { tamirMalzemesi: { mat: 8, labor: 2 } } });
   weapon(h, 'w1', 'ali');
-  h.S('users/ali/inventory/tamirMalzemesi', { quantity: 7 });
   const req = { op: 'workshop', shop: id, itemId: 'w1', action: 'repair' };
   // içeride değil
-  await assert.rejects(h.act('ali', { ...req, ownQty: 4, expect: 68 }), /not-present/);
+  await assert.rejects(h.act('ali', { ...req, expect: 44 }), /not-present/);
   h.present('ali', id);
-  // dükkân stoğu 6 → en az 4 kendi malzemesi gerekli
-  await assert.rejects(h.act('ali', { ...req, ownQty: 3, expect: 76 }), /shop-short/);
-  await assert.rejects(h.act('ali', { ...req, ownQty: 8, expect: 20 }), /own-short/);
+  // 10 lazım: sende 3 + dükkânda 6 = 9 → yetmez
+  h.S('users/ali/inventory/tamirMalzemesi', { quantity: 3 });
+  await assert.rejects(h.act('ali', { ...req, expect: 20 + 7 * 8 }), /shop-short/);
+  // sende 7 → 7'si otomatik kullanılır, 3'ü dükkândan: işçilik 20 + malzeme 24 = 44
+  h.S('users/ali/inventory/tamirMalzemesi', { quantity: 7 });
   // fiyat değişti (istemci eski fiyatla onayladı)
-  await assert.rejects(h.act('ali', { ...req, ownQty: 4, expect: 60 }), /price-changed:68/);
+  await assert.rejects(h.act('ali', { ...req, expect: 60 }), /price-changed:44/);
+  // eski istemci ownQty gönderse bile yok sayılır (kendi malzemesi önce)
+  await assert.rejects(h.act('ali', { ...req, ownQty: 4, expect: 68 }), /price-changed:44/);
   const totalMatBefore = inv(h, 'ali', 'tamirMalzemesi') + inv(h, 'usta', 'tamirMalzemesi') + h.G(`businessInventories/${id}`).materials.tamirMalzemesi;
-  const r = await h.act('ali', { ...req, ownQty: 4, expect: 68 });
-  assert.equal(r.total, 68);
-  assert.equal(h.G('users/ali').gold, 100_000 - 68);
-  // v77 vergi %10: işçilik 20 → 2, malzeme 48 → 5 (ayrı ayrı yuvarlanır)
-  assert.equal(h.G('users/usta').gold, 2_000_000 - 500_000 + 68 - 2 - 5);
-  assert.equal(inv(h, 'ali', 'tamirMalzemesi'), 3);
-  assert.equal(h.G(`businessInventories/${id}`).materials.tamirMalzemesi, 0);
+  const r = await h.act('ali', { ...req, expect: 44 });
+  assert.equal(r.total, 44);
+  assert.equal(r.own, 7);
+  assert.equal(r.shopQty, 3);
+  assert.equal(h.G('users/ali').gold, 100_000 - 44);
+  // v77 vergi %10: işçilik 20 → 2, malzeme 24 → 2
+  assert.equal(h.G('users/usta').gold, 2_000_000 - 500_000 + 44 - 2 - 2);
+  assert.equal(inv(h, 'ali', 'tamirMalzemesi'), 0);
+  assert.equal(h.G(`businessInventories/${id}`).materials.tamirMalzemesi, 3);
   const totalMatAfter = inv(h, 'ali', 'tamirMalzemesi') + inv(h, 'usta', 'tamirMalzemesi') + h.G(`businessInventories/${id}`).materials.tamirMalzemesi;
   assert.equal(totalMatBefore - totalMatAfter, 10, 'tam olarak işin gerektirdiği kadar malzeme yok olur');
   const w = h.G('weapons/w1');
   assert.equal(w.lifeDays, 6);
   assert.equal(w.repairsUsed, 1);
   const rep = h.G(`businessDaily/${id}_2026-10-07`);
-  assert.equal(rep.revenue, 68);
+  assert.equal(rep.revenue, 44);
   assert.equal(rep.byKind.labor, 20);
-  assert.equal(rep.byKind.material, 48);
-  assert.equal(rep.tax, 7);
-  assert.equal(h.G('taxLedger/2026-10-07_usta').total, 7);
-  assert.equal(h.G('taxLedger/2026-10-07_usta').bySource.isletme, 7);
-  assert.equal(rep.materialsUsed.tamirMalzemesi, 6);
+  assert.equal(rep.byKind.material, 24);
+  assert.equal(rep.tax, 4);
+  assert.equal(h.G('taxLedger/2026-10-07_usta').total, 4);
+  assert.equal(h.G('taxLedger/2026-10-07_usta').bySource.isletme, 4);
+  assert.equal(rep.materialsUsed.tamirMalzemesi, 3);
   assert.ok(rep.cust.ali);
-  // stok bitti → sahibe SMS işareti
+  // kalan stok (3) bir sonraki işe yetmez → sahibe SMS işareti
   assert.equal(h.G(`houses/${id}`).bizShortagePending, true);
 });
 

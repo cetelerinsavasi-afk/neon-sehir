@@ -74,3 +74,30 @@ test('cleanEquipped: avatar düzenlenince sadece sahip olunan, geçerli kuşanı
   assert.deepEqual(out, { acc: { head: 'crown' }, pet: { id: 'tilki', leash: true, leashColor: '#ff2e88' } });
   assert.deepEqual(cleanEquipped({ pet: { id: 'aslan' } }, cos), {}, 'sahip olunmayan hayvan düşer');
 });
+
+test('v79 kaydet: önizlemedeki görünüm tek seferde kuşanılır, sahip olunmayanlar atlanır', async () => {
+  const h = setup({ cosmetics: { pets: { golden: 1, tavsan: 1 }, accs: { crown: 1, monocle: 1 } }, avatar: { gender: 'erkek', hat: 'fedora', pet: { id: 'tavsan' }, acc: { face: 'monocle' } } });
+  await h.init();
+  const r = await h.c.action('ali', { op: 'save', pet: { id: 'golden', leash: false, leashColor: '#22d3ee' }, acc: { head: 'crown', back: 'angel' } });
+  assert.deepEqual(r.skipped, ['angel']);
+  const u = h.G('users/ali');
+  assert.deepEqual(u.avatar.pet, { id: 'golden', leash: false, leashColor: '#22d3ee' });
+  assert.deepEqual(u.avatar.acc, { head: 'crown' }, 'monokl çıkarıldı, sahip olunmayan melek kanadı yazılmadı');
+  assert.equal(u.avatar.hat, 'fedora');
+  // hepsini çıkar
+  await h.c.action('ali', { op: 'save', pet: null, acc: {} });
+  assert.equal(h.G('users/ali').avatar.pet, undefined);
+  assert.equal(h.G('users/ali').avatar.acc, undefined);
+  // geçersiz kimlik / yuva
+  await assert.rejects(h.c.action('ali', { op: 'save', pet: { id: 'yok' } }), /Geçersiz/);
+  await assert.rejects(h.c.action('ali', { op: 'save', acc: { face: 'crown' } }), /Geçersiz/);
+  // satın alınmamış hayvan denenip kaydedilirse mevcut hayvan KALIR
+  await h.c.action('ali', { op: 'save', pet: { id: 'tavsan' }, acc: { face: 'monocle' } });
+  const r2 = await h.c.action('ali', { op: 'save', pet: { id: 'aslan' }, acc: { face: 'visor', head: 'crown' } });
+  assert.deepEqual(r2.skipped, ['aslan', 'visor']);
+  assert.equal(h.G('users/ali').avatar.pet.id, 'tavsan');
+  assert.deepEqual(h.G('users/ali').avatar.acc, { face: 'monocle', head: 'crown' });
+  // renk paletten değilse varsayılan
+  await h.c.action('ali', { op: 'save', pet: { id: 'golden', leashColor: 'red;}' } });
+  assert.equal(h.G('users/ali').avatar.pet.leashColor, '#ff2e88');
+});
