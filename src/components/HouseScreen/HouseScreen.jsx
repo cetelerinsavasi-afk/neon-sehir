@@ -45,7 +45,7 @@ import '../Piano/Piano.css';
 import '../Workshop/Workshop.css';
 import './HouseScreen.css';
 import { streamAction } from '../../services/gameActions';
-import { StreamStartSheet, StreamHostPanel, StreamSummary } from '../Stream/StreamHost';
+import { StreamStartSheet, StreamHostPanel, StreamSummary, StreamPlaySheet } from '../Stream/StreamHost';
 import { streamBroadcast, clearGameFrame, streamPose, useLiveStreams, useStreamDoc, watchViewers } from '../Stream/streamShared';
 import { streamPriceOf } from '../../../functions/stream.js';
 
@@ -151,7 +151,9 @@ export default function HouseScreen({ houseId, onExit }) {
   const [streamAsk, setStreamAsk] = useState(null); // { chairId, pcId } → "Yayın aç" paneli
   const [myStream, setMyStream] = useState(null); // { id, chairId, pcId }
   const [streamBusy, setStreamBusy] = useState(false);
-  const [streamSum, setStreamSum] = useState(null); // { summary, reason }
+  const [streamSum, setStreamSum] = useState(null); // { summary, reason, cost }
+  const [playAsk, setPlayAsk] = useState(false); // v81: yayında "Oyun oyna" seçimi
+  const streamCostRef = useRef({ cafe: false, play: 0 }); // v81: yayın sırasındaki internet kafe masrafı
   const [noStream, setNoStream] = useState(false);
   const [streamWarn, setStreamWarn] = useState(false);
   const [cardTarget, setCardTarget] = useState(null);
@@ -356,9 +358,12 @@ export default function HouseScreen({ houseId, onExit }) {
   }, [held, user, phase, engineKey]);
 
   // Telefon/arkaplan açıkken 3D çizimi duraklat (pil + kasma)
+  // v81: yayında yarış pisti evin üstünde açıkken de duraklat (yarışın ok tuşları
+  // avatarı koltuktan kaldırıp yayını kapatmasın)
+  const [raceUp, setRaceUp] = useState(false);
   useEffect(() => {
-    engineRef.current?.setPaused(panel === 'phone' || panel === 'arcade');
-  }, [panel, engineKey]);
+    engineRef.current?.setPaused(panel === 'phone' || panel === 'arcade' || raceUp);
+  }, [panel, engineKey, raceUp]);
 
   // --- 3) ev belgesi ---------------------------------------------------------------
   useEffect(() => {
@@ -802,6 +807,7 @@ export default function HouseScreen({ houseId, onExit }) {
       const r = await streamAction({ op: 'start', houseId, chairId: streamAsk.chairId, title, expect: cafeStreamPrice });
       streamBroadcast.uid = user.uid;
       streamBroadcast.streamId = r.streamId;
+      streamCostRef.current = { cafe: cafeStreamPrice > 0, play: 0 };
       setMyStream({ id: r.streamId, chairId: streamAsk.chairId, pcId: streamAsk.pcId });
       setStreamAsk(null);
       flash(r.charged ? `🔴 Yayındasın! −${r.charged.toLocaleString('tr-TR')} altın (1 dk)` : '🔴 Yayındasın!');
@@ -817,7 +823,8 @@ export default function HouseScreen({ houseId, onExit }) {
     streamBroadcast.streamId = null;
     clearGameFrame();
     setMyStream(null);
-    if (summary) setStreamSum({ summary, reason });
+    setPlayAsk(false);
+    if (summary) setStreamSum({ summary, reason, cost: { ...streamCostRef.current } });
   }, []);
   const stopStream = useCallback(
     async (reason = 'stop') => {
@@ -830,7 +837,7 @@ export default function HouseScreen({ houseId, onExit }) {
       clearGameFrame();
       try {
         const r = await streamAction({ op: 'stop', streamId: st.id, viewers: streamStatsRef.current.viewers, seen: streamStatsRef.current.seen });
-        endStreamLocal(r?.summary, reason === 'left' ? 'left' : 'stop');
+        endStreamLocal(r?.summary, reason);
       } catch {
         endStreamLocal(null);
       } finally {
@@ -848,9 +855,38 @@ export default function HouseScreen({ houseId, onExit }) {
     const iv = setInterval(() => {
       const seat = engineRef.current?.getSelfState()?.seat || '';
       if (seat.split(':')[0] !== myStream.chairId) stopStream('stood');
-    }, 700);
+    }, 500);
     return () => clearInterval(iv);
   }, [myStream, stopStream]);
+  // v81 — yayın TÜM EKRANI kaplar: ana kamera yayın kamerasına geçer (izleyicinin
+  // gördüğünün aynısı), evin diğer düğmeleri gizlenir (bkz. .hs-root.streaming)
+  useEffect(() => {
+    const eng = engineRef.current;
+    if (!myStream || !streamPoseNow || !eng) return undefined;
+    eng.setFixedCamera(streamPoseNow);
+    return () => engineRef.current?.setFixedCamera(null);
+  }, [myStream, streamPoseNow, engineKey]);
+  useEffect(() => {
+    if (!myStream) return undefined;
+    document.body.classList.add('ns-streaming');
+    const iv = setInterval(() => setRaceUp(Boolean(document.querySelector('.region-modal-backdrop, .race-fullscreen, .ta-root:not(.st-race)'))), 400);
+    return () => {
+      clearInterval(iv);
+      setRaceUp(false);
+      document.body.classList.remove('ns-streaming');
+    };
+  }, [myStream]);
+  const playArcade = () => {
+    setPlayAsk(false);
+    const a = interact?.actions?.find((x) => x.kind === 'panel' && x.panel === 'arcade');
+    if (a) doAction(a);
+    else setPanel('arcade');
+  };
+  const playRace = () => {
+    setPlayAsk(false);
+    // yarış pisti App seviyesinde açılır; yayındayken evin üstünde görünür (body.ns-streaming)
+    window.dispatchEvent(new CustomEvent('ns:stream-race'));
+  };
   // ekran kapanırken açık yayın kalmasın
   useEffect(() => () => stopStreamRef.current?.('left'), []);
 
@@ -930,6 +966,7 @@ export default function HouseScreen({ houseId, onExit }) {
     try {
       const r = await shopAction({ op: 'netStart', houseId, itemId: deviceId, expect: netPrice });
       netActiveRef.current = true;
+      if (r.charged && myStreamRef.current) streamCostRef.current.play += Number(r.charged) || 0;
       setPanel('arcade');
       if (r.charged) flash(`🖥️ 1 dakika başladı: −${r.charged.toLocaleString('tr-TR')} altın`);
     } catch (err) {
@@ -959,7 +996,10 @@ export default function HouseScreen({ houseId, onExit }) {
         if (r.stopped && r.stopped !== 'none') {
           setPanel(null);
           flash(r.stopped === 'gold' ? '💰 Altının bitti, oyun kapandı.' : '🖥️ Oyun kapandı.');
-        } else if (r.charged) flash(`🖥️ Yeni dakika: −${r.charged.toLocaleString('tr-TR')} altın`);
+        } else if (r.charged) {
+          if (myStreamRef.current) streamCostRef.current.play += Number(r.charged) || 0;
+          flash(`🖥️ Yeni dakika: −${r.charged.toLocaleString('tr-TR')} altın`);
+        }
       } catch {
         /* bir sonraki nabızda yeniden denenir */
       } finally {
@@ -1143,7 +1183,7 @@ export default function HouseScreen({ houseId, onExit }) {
   }
 
   return (
-    <div className="hs-root" onPointerDown={() => unlockAudio()}>
+    <div className={`hs-root${myStream ? ' streaming' : ''}`} onPointerDown={() => unlockAudio()}>
       <div ref={mountRef} className="hs-stage" key={engineKey} />
 
       {phase === 'loading' && (
@@ -1706,11 +1746,22 @@ export default function HouseScreen({ houseId, onExit }) {
           {panel === 'arcade' && <ArcadeHub onClose={() => setPanel(null)} />}
           {/* v80 — yayın */}
           {streamAsk && !myStream && <StreamStartSheet cafePrice={cafeStreamPrice} busy={streamBusy} onStart={startStream} onCancel={() => setStreamAsk(null)} />}
-          {myStream && myStreamDoc && panel !== 'arcade' && (
-            <StreamHostPanel stream={myStreamDoc} pose={streamPoseNow} engineRef={engineRef} statsRef={streamStatsRef} stopping={streamBusy} onStopRequest={() => stopStream('stop')} onEnded={endStreamLocal} />
+          {myStream && myStreamDoc && (
+            <StreamHostPanel
+              stream={myStreamDoc}
+              pose={streamPoseNow}
+              engineRef={engineRef}
+              statsRef={streamStatsRef}
+              stopping={streamBusy}
+              onStopRequest={stopStream}
+              onEnded={endStreamLocal}
+              onPlay={() => setPlayAsk(true)}
+              compact={panel === 'arcade'}
+            />
           )}
+          {myStream && playAsk && <StreamPlaySheet onArcade={playArcade} onRace={playRace} onClose={() => setPlayAsk(false)} />}
           {myStream && panel === 'arcade' && <div className="st-arcade-chip">🔴 CANLI · oyun yayında</div>}
-          {streamSum && <StreamSummary summary={streamSum.summary} reason={streamSum.reason} onClose={() => setStreamSum(null)} />}
+          {streamSum && <StreamSummary summary={streamSum.summary} reason={streamSum.reason} cost={streamSum.cost} onClose={() => setStreamSum(null)} />}
           {streamWarn && (
             <div className="st-sheet-bg" onClick={() => setStreamWarn(false)}>
               <div className="st-sheet" onClick={(e) => e.stopPropagation()}>

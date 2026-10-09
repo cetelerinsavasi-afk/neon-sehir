@@ -138,6 +138,23 @@ export const TINTS = {
     { n: 'Gün Batımı', c: '#ff6a3d' }, { n: 'Okyanus', c: '#1f6fb8' }, { n: 'Neon', c: '#ff2d8a' },
     { n: 'Orman', c: '#2d8a4a' }, { n: 'Altın', c: '#d4a53a' }, { n: 'Gece', c: '#3a2a8a' },
   ],
+  // v81 — Bar Tezgahı: gövde (c) + üst tabla (t) + alt LED (l). İlk seçenek eski görünüm.
+  barcounter: [
+    { n: 'Koyu Ceviz', c: '#2b1a12', t: '#9a6a35', l: '#ffb030' },
+    { n: 'Siyah Mermer', c: '#141416', t: '#d9d6cf', l: '#ffc23d' },
+    { n: 'Beyaz & Meşe', c: '#e8e4dc', t: '#a3764a', l: '#ffd9a0' },
+    { n: 'Lacivert & Pirinç', c: '#18213a', t: '#c9a24a', l: '#19e8ff' },
+    { n: 'Bordo Deri', c: '#4a1216', t: '#2b1a12', l: '#ff3b3b' },
+    { n: 'Zümrüt', c: '#1d4d3c', t: '#c7b595', l: '#39ff88' },
+    { n: 'Neon Mor', c: '#1b1230', t: '#3a2a5a', l: '#b16bff' },
+    { n: 'Endüstriyel Gri', c: '#4c4d53', t: '#5a3a24', l: '#f4f0ff' },
+  ],
+  // v81 — Boks Torbası (ilk seçenek eski görünüm)
+  punchbag: [
+    { n: 'Kırmızı', c: '#b8141e' }, { n: 'Siyah', c: '#19191b' }, { n: 'Mavi', c: '#1f4fb8' },
+    { n: 'Sarı', c: '#e0a800' }, { n: 'Yeşil', c: '#1d7a3c' }, { n: 'Beyaz', c: '#e6e2da' },
+    { n: 'Pembe', c: '#ff2d8a' }, { n: 'Kahverengi Deri', c: '#6a3a1c' }, { n: 'Altın', c: '#d4a53a', m: 0.6 },
+  ],
   bed: [
     { n: 'Beyaz', c: '#ecebe6' }, { n: 'Gri', c: '#7c7f86' }, { n: 'Lacivert', c: '#23305a' },
     { n: 'Bordo', c: '#6b1a22' }, { n: 'Siyah Saten', c: '#141416' }, { n: 'Altın Saten', c: '#c9a24a' },
@@ -1710,10 +1727,11 @@ function ceilingFan(g, ctx) {
     noLight: true,
   };
 }
-function bar(g) {
+function bar(g, ctx = {}) {
   const go = GOLD();
-  B(g, 2.6, 1.05, 0.7, 0, 0.525, 0, M('#2b1a12', 0.5));
-  RB(g, 2.72, 0.08, 0.86, 0.02, 0, 1.09, 0.05, M('#9a6a35', 0.25, 0.1));
+  const t = ctx.tint || TINTS.barcounter[0];
+  B(g, 2.6, 1.05, 0.7, 0, 0.525, 0, M(t.c, 0.5));
+  RB(g, 2.72, 0.08, 0.86, 0.02, 0, 1.09, 0.05, M(t.t, 0.25, 0.1));
   B(g, 2.62, 0.04, 0.02, 0, 0.75, 0.36, go);
   B(g, 2.62, 0.04, 0.02, 0, 0.3, 0.36, go);
   ['#c9a227', '#1e6b3a', '#6b1a1a', '#2a4a7a', '#999999', '#e8e2d6'].forEach((c, i) => {
@@ -1723,9 +1741,9 @@ function bar(g) {
     C(g, 0.022, 0.03, 0.12, x, 1.45, -0.12, bm);
   });
   [-0.3, 0.5].forEach((x) => LATHE(g, [[0, 0], [0.03, 0], [0.005, 0.01], [0.005, 0.08], [0.05, 0.14], [0.045, 0.14], [0, 0.1]], M('#ffffff', 0.05, 0.1, { transparent: true, opacity: 0.5 }), x, 1.13, 0.3));
-  const led = emissiveMat('#ffb030', 1.4);
+  const led = emissiveMat(t.l, 1.4);
   B(g, 2.5, 0.02, 0.02, 0, 0.05, 0.37, led);
-  return { light: { x: 0, y: 0.5, z: 0.8, color: '#ffb030', intensity: 1.5, distance: 3 }, on: true, setOn() {}, noToggle: true };
+  return { light: { x: 0, y: 0.5, z: 0.8, color: t.l, intensity: 1.5, distance: 3 }, on: true, setOn() {}, noToggle: true };
 }
 function moneyPile(g) {
   const cash = M('#3f7a4a', 0.8);
@@ -1774,12 +1792,13 @@ function poolTable(g) {
   });
   TUBE(g, [-0.2, 0.86, 0.3], [1.0, 0.95, 0.5], 0.012, M('#c9a24a', 0.5));
 }
-function punchingBag(g) {
+function punchingBag(g, ctx = {}) {
+  const tb = ctx.tint || TINTS.punchbag[0];
   B(g, 0.8, 0.05, 0.8, 0, 0.025, 0, BLACK());
   C(g, 0.04, 0.04, 2.3, -0.35, 1.15, 0, BLACK());
   B(g, 0.8, 0.05, 0.05, 0.05, 2.28, 0, BLACK());
   TUBE(g, [0.4, 2.27, 0], [0.4, 1.75, 0], 0.008, CHROME());
-  const bag = C(g, 0.18, 0.18, 1.0, 0.4, 1.2, 0, M('#b8141e', 0.4, 0.1), null, 24);
+  const bag = C(g, 0.18, 0.18, 1.0, 0.4, 1.2, 0, M(tb.c, 0.4, tb.m ?? 0.1), null, 24);
   C(g, 0.18, 0.18, 0.06, 0.4, 1.72, 0, BLACK());
   return { tick(t) { bag.rotation.z = Math.sin(t * 1.2) * 0.03; } };
 }
@@ -2758,13 +2777,13 @@ export const CATALOG = [
   { k: 'fireplace', name: 'Şömine', cat: 'luks', icon: '🔥', price: E(85), build: fireplace, wall: true, boxWall: [0.95, 0.35] },
   { k: 'aquarium', name: 'Akvaryum', cat: 'luks', icon: '🐠', price: E(75), build: aquarium, box: [0.8, 0.26] },
   { k: 'statue', name: 'Altın Heykel', cat: 'luks', icon: '🗿', price: E(130), build: statue, box: [0.32, 0.32] },
-  { k: 'bar', name: 'Bar Tezgahı', cat: 'luks', icon: '🥃', price: E(65), build: bar, box: [1.35, 0.45] },
+  { k: 'bar', name: 'Bar Tezgahı', cat: 'luks', icon: '🥃', price: E(65), tints: 'barcounter', build: bar, box: [1.35, 0.45] },
   { k: 'money', name: 'Para Yığını', cat: 'luks', icon: '💵', price: E(160), build: moneyPile, box: [0.6, 0.4] },
   { k: 'goldbars', name: 'Altın Külçeler', cat: 'luks', icon: '🪙', price: E(250), build: goldBars, box: [0.5, 0.35] },
 
   // SPOR & OYUN
   { k: 'pool', name: 'Bilardo Masası', cat: 'spor', icon: '🎱', price: E(110), build: poolTable, box: [1.27, 0.72] },
-  { k: 'bag', name: 'Boks Torbası', cat: 'spor', icon: '🥊', price: G(4500), build: punchingBag, box: [0.4, 0.4] },
+  { k: 'bag', name: 'Boks Torbası', cat: 'spor', icon: '🥊', price: G(4500), tints: 'punchbag', build: punchingBag, box: [0.4, 0.4] },
   { k: 'bench', name: 'Bench Press', cat: 'spor', icon: '🏋️', price: G(6000), build: benchPress, box: [0.9, 0.62], seats: [[0, 0.52, 0.2]] },
   { k: 'treadmill', name: 'Koşu Bandı', cat: 'spor', icon: '🏃', price: G(7500), build: treadmill, box: [0.4, 0.9] },
   { k: 'dart', name: 'Dart Tahtası', cat: 'duvar', icon: '🎯', price: G(1500), build: dartBoard, wall: true, nobox: true },

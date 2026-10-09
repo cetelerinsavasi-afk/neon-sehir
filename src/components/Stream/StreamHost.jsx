@@ -48,31 +48,46 @@ export function StreamStartSheet({ cafePrice = 0, busy, onStart, onCancel }) {
 
 const TICK_MS = 20_000;
 const THUMB_MS = 30_000;
+export const ALERT_MS = 12_000; // v81: bağış yazısı ekranda daha uzun kalsın (eskiden ~6 sn)
+const AFK_MS = 5 * 60_000; // v81: bu kadar süre hiç dokunulmazsa "Hâlâ orada mısın?"
+const AFK_GRACE_S = 30;
+const HIDDEN_STOP_MS = 20_000; // v81: uygulama/sekme arka planda bu kadar kalırsa yayın kapanır
 
-export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopRequest, stopping, statsRef }) {
+// =============================================================================
+// v81 — YAYINCI EKRANI: yayın TÜM EKRANI kaplar (ana sahne yayın kamerasından
+// çizilir — izleyicinin gördüğünün aynısı). Üstte CANLI · süre · 👁 · bağış ·
+// Bitir; altta izleyici mesajları (TikTok canlı yayını gibi) ve yazma kutusu.
+// Yayıncının yazdıkları avatarının üstünde KONUŞMA BALONU olarak çıkar (hem
+// yayıncıda hem izleyicilerde). Sağ altta 🎮 Oyun oyna (oyun salonu / yarış).
+// compact: oyun açıkken arayüz gizlenir ama nabız/izleyici takibi sürer.
+// =============================================================================
+export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopRequest, stopping, statsRef, onPlay, compact = false }) {
   const { user } = useAuth();
   const { isBlocked } = useBlocks();
   const streamId = stream?.id;
   const chat = useStreamChat(streamId, 30);
   const [viewers, setViewers] = useState(0);
-  const [min, setMin] = useState(false);
+  const [viewErr, setViewErr] = useState(false);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [alerts, setAlerts] = useState([]);
   const [now, setNow] = useState(Date.now());
   const [err, setErr] = useState('');
+  const [afkLeft, setAfkLeft] = useState(0); // >0 → "Hâlâ orada mısın?" geri sayımı
   const seenRef = useRef(new Set());
   const viewersRef = useRef(0);
-  const camRef = useRef(null);
+  const thumbRef = useRef(null);
   const seenFx = useRef(null);
   const alertTimers = useRef([]);
+  const lastInputRef = useRef(Date.now());
   useEffect(() => () => alertTimers.current.forEach(clearTimeout), []);
   const endedRef = useRef(false);
 
   // izleyiciler (anlık + toplam farklı kişi)
   useEffect(() => {
     if (!streamId) return undefined;
-    return watchViewers(streamId, ({ count, uids }) => {
+    return watchViewers(streamId, ({ count, uids, error }) => {
+      setViewErr(Boolean(error));
       setViewers(count);
       viewersRef.current = count;
       uids.forEach((u) => seenRef.current.add(u));
@@ -80,7 +95,7 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
     });
   }, [streamId, statsRef]);
 
-  // nabız (kafe: dakika ücreti burada çekilir)
+  // nabız (kafe: dakika ücreti burada çekilir) — oyun açıkken de sürer
   useEffect(() => {
     if (!streamId) return undefined;
     let alive = true;
@@ -106,27 +121,68 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
     };
   }, [streamId, onEnded]);
 
-  // kendi görüntün (yayın kamerası) ~2 kez/sn + listedeki önizleme 30 sn'de bir
+  // v81 — "bilgisayardan kalkınca" yayın kapanır:
+  //  • uygulama/sekme kapanırsa hemen, arka planda 20 sn kalırsa
+  //  • 5 dk hiç dokunulmazsa "Hâlâ orada mısın?" → 30 sn içinde cevap yoksa
+  //  (oyunda koltuktan kalkınca kapanma HouseScreen'de)
   useEffect(() => {
-    if (!pose || min) return undefined;
-    let lastThumb = 0;
-    const iv = setInterval(() => {
-      const cv = camRef.current;
-      const eng = engineRef.current;
-      if (!cv || !eng?.renderStreamView || document.hidden) return;
-      if (!eng.renderStreamView(pose, cv)) return;
-      const t = Date.now();
-      if (t - lastThumb > THUMB_MS && user?.uid) {
-        lastThumb = t;
-        try {
-          publishThumb(user.uid, cv.toDataURL('image/jpeg', 0.55));
-        } catch {
-          /* yoksay */
-        }
+    if (!streamId) return undefined;
+    const touch = () => {
+      lastInputRef.current = Date.now();
+    };
+    const evs = ['pointerdown', 'keydown', 'touchstart', 'wheel'];
+    evs.forEach((e) => window.addEventListener(e, touch, { passive: true }));
+    let hiddenAt = 0;
+    const vis = () => {
+      if (document.hidden) hiddenAt = Date.now();
+      else {
+        hiddenAt = 0;
+        touch();
       }
-    }, 500);
-    return () => clearInterval(iv);
-  }, [pose, min, engineRef, user?.uid]);
+    };
+    const bye = () => onStopRequest('away');
+    document.addEventListener('visibilitychange', vis);
+    window.addEventListener('pagehide', bye);
+    const iv = setInterval(() => {
+      const t = Date.now();
+      if (hiddenAt && t - hiddenAt > HIDDEN_STOP_MS) {
+        hiddenAt = 0;
+        onStopRequest('away');
+        return;
+      }
+      const idle = t - lastInputRef.current;
+      if (idle > AFK_MS + AFK_GRACE_S * 1000) onStopRequest('afk');
+      else setAfkLeft(idle > AFK_MS ? Math.ceil((AFK_MS + AFK_GRACE_S * 1000 - idle) / 1000) : 0);
+    }, 1000);
+    return () => {
+      evs.forEach((e) => window.removeEventListener(e, touch));
+      document.removeEventListener('visibilitychange', vis);
+      window.removeEventListener('pagehide', bye);
+      clearInterval(iv);
+    };
+  }, [streamId, onStopRequest]);
+
+  // listedeki küçük önizleme (30 sn'de bir)
+  useEffect(() => {
+    if (!pose) return undefined;
+    const shot = () => {
+      const cv = thumbRef.current;
+      const eng = engineRef.current;
+      if (!cv || !eng?.renderStreamView || document.hidden || !user?.uid) return;
+      if (!eng.renderStreamView(pose, cv)) return;
+      try {
+        publishThumb(user.uid, cv.toDataURL('image/jpeg', 0.55));
+      } catch {
+        /* yoksay */
+      }
+    };
+    const first = setTimeout(shot, 1500);
+    const iv = setInterval(shot, THUMB_MS);
+    return () => {
+      clearTimeout(first);
+      clearInterval(iv);
+    };
+  }, [pose, engineRef, user?.uid]);
 
   // başımdaki rozet
   useEffect(() => {
@@ -147,7 +203,7 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
     setAlerts((a) => [...a, ...fresh.filter((e) => !isBlocked(e.u)).map((e) => ({ ...e, key: `${e.at}|${e.u}` }))].slice(-3));
     // zamanlayıcı efekt temizliğine bağlı DEĞİL (belge her nabızda yenilenir)
     const keys = fresh.map((e) => `${e.at}|${e.u}`);
-    alertTimers.current.push(setTimeout(() => setAlerts((a) => a.filter((x) => !keys.includes(x.key))), 6500));
+    alertTimers.current.push(setTimeout(() => setAlerts((a) => a.filter((x) => !keys.includes(x.key))), ALERT_MS));
     return undefined;
   }, [stream?.fx, isBlocked]);
 
@@ -158,6 +214,8 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
     try {
       await streamAction({ op: 'chat', streamId, text: t });
       setText('');
+      // konuşma balonu (izleyicilerde de aynı mesaj balon olarak çıkar)
+      engineRef.current?.say?.(user?.uid, t);
     } catch (e) {
       setErr(String(e?.message || 'Gönderilemedi.'));
     } finally {
@@ -165,52 +223,41 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
     }
   };
 
-  const shown = useMemo(() => chat.filter((m) => !isBlocked(m.uid)).slice(-4), [chat, isBlocked]);
+  // izleyici mesajları (kendi yazdıkların balon olarak görünür, listede değil)
+  const shown = useMemo(() => chat.filter((m) => !isBlocked(m.uid) && !(m.host && m.uid === user?.uid)).slice(-6), [chat, isBlocked, user?.uid]);
   const dur = fmtDur(now - Number(stream?.startedAtMs || now));
   const paidLeft = stream?.cafe ? Math.max(0, Math.ceil((Number(stream.paidUntilMs || 0) - now) / 1000)) : 0;
 
+  const thumbCanvas = <canvas ref={thumbRef} width={144} height={252} style={{ display: 'none' }} />;
+  if (compact) return thumbCanvas;
+
   return (
-    <div className={`st-host${min ? ' min' : ''}`} onClick={(e) => e.stopPropagation()}>
-      <div className="st-host-bar" onClick={() => setMin((v) => !v)}>
+    <div className="st-hostfs" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+      {thumbCanvas}
+      <div className="st-top">
+        <div className="st-who">
+          <span className="st-ava">{String(user?.displayName || stream?.name || '?').slice(0, 1).toUpperCase()}</span>
+          <span className="st-who-txt">
+            <b>{stream?.title || 'Canlı yayın'}</b>
+            <small>
+              {dur}
+              {stream?.cafe ? ` · 💳 ${fmtN(stream.price)}/dk` : ''}
+            </small>
+          </span>
+        </div>
         <span className="st-live">CANLI</span>
-        <span>{dur}</span>
-        <span>👁 {fmtN(viewers)}</span>
-        <span className="st-host-gold">
+        <span className="st-eye" title={viewErr ? 'İzleyici sayısı okunamıyor' : 'Şu an izleyen'}>
+          👁 {viewErr ? '?' : fmtN(viewers)}
+        </span>
+        <span className="st-eye st-gold">
           <span className="gold-coin-icon" style={{ width: 12, height: 12 }} /> {fmtN(stream?.donated || 0)}
         </span>
-        {stream?.cafe && <span className="st-host-fee">💳 {fmtN(stream.price)}/dk</span>}
-        <span className="st-host-tog">{min ? '▸' : '▾'}</span>
+        <button className="st-btn stop st-end" disabled={stopping} onClick={() => onStopRequest('stop')}>
+          {stopping ? '…' : '⏹ Bitir'}
+        </button>
       </div>
-      {!min && (
-        <>
-          <div className="st-host-body">
-            <div className="st-host-cam">
-              <canvas ref={camRef} width={144} height={252} />
-              <small>Senin yayının</small>
-            </div>
-            <div className="st-host-chat">
-              {shown.length === 0 && <p className="st-chat-empty">İzleyici mesajları burada görünür</p>}
-              {shown.map((m) => (
-                <p key={m.id} className={m.host ? 'host' : ''}>
-                  <b>{m.name}</b> {m.text}
-                </p>
-              ))}
-            </div>
-          </div>
-          <div className="st-host-row">
-            <input className="ws-chat-input" maxLength={140} placeholder="İzleyicilere yaz…" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && send()} />
-            <button className="ws-chat-send" disabled={busy || !text.trim()} onClick={send}>
-              ➤
-            </button>
-            <button className="st-btn stop" disabled={stopping} onClick={onStopRequest}>
-              {stopping ? '…' : '⏹ Kapat'}
-            </button>
-          </div>
-          {stream?.cafe && paidLeft <= 10 && <small className="st-host-note">💳 Yeni dakika birazdan çekilecek ({fmtN(stream.price)} altın)</small>}
-          {err && <small className="st-host-note bad">{err}</small>}
-        </>
-      )}
-      <div className="st-alerts host">
+
+      <div className="st-alerts">
         {alerts.map((a) => (
           <div key={a.key} className={`st-alert${a.a >= 1000 ? ' big' : ''}`}>
             <b>
@@ -220,14 +267,85 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
           </div>
         ))}
       </div>
+
+      {afkLeft > 0 && (
+        <div className="st-afk" onClick={() => (lastInputRef.current = Date.now())}>
+          <b>Hâlâ orada mısın?</b>
+          <span>{afkLeft} sn içinde dokunmazsan yayın kapanacak.</span>
+          <button className="st-btn gold">Buradayım</button>
+        </div>
+      )}
+
+      <div className="st-hostfs-bottom">
+        <div className="st-hostfs-chat">
+          {shown.length === 0 && <p className="st-chat-empty">İzleyici mesajları burada görünür</p>}
+          {shown.map((m) => (
+            <p key={m.id}>
+              <b>{m.name}</b> {m.text}
+            </p>
+          ))}
+        </div>
+        <button className="st-play-btn" onClick={onPlay} aria-label="Oyun oyna">
+          <span>🎮</span>
+          <small>Oyun oyna</small>
+        </button>
+      </div>
+      {(err || viewErr || (stream?.cafe && paidLeft <= 10)) && (
+        <div className="st-hostfs-notes">
+          {stream?.cafe && paidLeft <= 10 && <small className="st-host-note">💳 Yeni dakika birazdan çekilecek ({fmtN(stream.price)} altın)</small>}
+          {viewErr && <small className="st-host-note bad">👁 İzleyici sayısı okunamıyor (veritabanı kuralları)</small>}
+          {err && <small className="st-host-note bad">{err}</small>}
+        </div>
+      )}
+      <div className="ws-chat-row st-input st-hostfs-input">
+        <input className="ws-chat-input" maxLength={140} placeholder="İzleyicilere yaz… (balon olarak görünür)" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && send()} />
+        <button className="ws-chat-send" disabled={busy || !text.trim()} onClick={send}>
+          Gönder
+        </button>
+      </div>
     </div>
   );
 }
 
-const REASON = { stop: '', left: 'Odadan ayrıldığın için yayın kapandı.', gold: 'Altının bittiği için yayın kapandı.', set: 'Yayın seti kaldırıldığı için yayın kapandı.', ended: '', stale: 'Bağlantı koptuğu için yayın kapandı.' };
+// v81 — "Oyun oyna": oyun salonu ya da yarış pisti (şampiyona / bahisli / antrenman)
+export function StreamPlaySheet({ onArcade, onRace, onClose }) {
+  return (
+    <div className="st-sheet-bg st-top-layer" onClick={onClose}>
+      <div className="st-sheet" onClick={(e) => e.stopPropagation()}>
+        <p className="st-sheet-title">🎮 Yayında oyna</p>
+        <p className="st-sum-why" style={{ color: '#f2ecdd' }}>
+          Oynadığın oyun izleyicilerin ekranında büyük görünür, sen köşede küçük pencerede kalırsın.
+        </p>
+        <div className="st-play-opts">
+          <button onClick={onArcade}>
+            <span>🕹️</span>
+            <b>Oyun Salonu</b>
+            <small>Uzay koşusu, tank, sumo, kafa topu…</small>
+          </button>
+          <button onClick={onRace}>
+            <span>🏁</span>
+            <b>Yarış Pisti</b>
+            <small>Şampiyona · Bahisli Yarış · Antrenman</small>
+          </button>
+        </div>
+        <button className="st-btn ghost" onClick={onClose}>
+          Vazgeç
+        </button>
+      </div>
+    </div>
+  );
+}
 
-export function StreamSummary({ summary, reason, onClose }) {
+const REASON = { stop: '', left: 'Odadan ayrıldığın için yayın kapandı.', stood: 'Bilgisayarın başından kalktığın için yayın kapandı.', away: 'Uygulamadan çıktığın için yayın kapandı.', afk: 'Uzun süre hareketsiz kaldığın için yayın kapandı.', gold: 'Altının bittiği için yayın kapandı.', set: 'Yayın seti kaldırıldığı için yayın kapandı.', ended: '', stale: 'Bağlantı koptuğu için yayın kapandı.' };
+
+// cost: { cafe: bool, play: internet kafede yayın sırasında oyun cihazına ödenen }
+export function StreamSummary({ summary, reason, cost = null, onClose }) {
   const s = summary || {};
+  const seatFee = Number(s.paidTotal || 0);
+  const playFee = Number(cost?.play || 0);
+  const cafeCost = seatFee + playFee;
+  const showCafe = Boolean(cost?.cafe || cafeCost > 0);
+  const balance = Number(s.net || 0) - cafeCost;
   return (
     <div className="st-sheet-bg" onClick={onClose}>
       <div className="st-sheet st-sum" onClick={(e) => e.stopPropagation()}>
@@ -260,17 +378,37 @@ export function StreamSummary({ summary, reason, onClose }) {
             <span>Vergi (%10)</span>
             <b>−{fmtN(s.tax || 0)} altın</b>
           </div>
-          {s.paidTotal > 0 && (
-            <div>
-              <span>Kafe yayın ücreti (ödendi)</span>
-              <b>{fmtN(s.paidTotal)} altın</b>
-            </div>
-          )}
           <div className="total">
-            <span>Cebine geçen</span>
+            <span>Cebine geçen (bağış)</span>
             <b>+{fmtN(s.net || 0)} altın</b>
           </div>
         </div>
+        {showCafe && (
+          <div className="st-sum-money st-sum-cost">
+            <p className="st-sum-sub">🖥️ İnternet kafe masrafı</p>
+            <div>
+              <span>Yayın seti ({fmtDur(s.durationMs || 0)})</span>
+              <b>−{fmtN(seatFee)} altın</b>
+            </div>
+            {playFee > 0 && (
+              <div>
+                <span>Oyun süresi (cihaz)</span>
+                <b>−{fmtN(playFee)} altın</b>
+              </div>
+            )}
+            <div className="total">
+              <span>Toplam masraf</span>
+              <b>−{fmtN(cafeCost)} altın</b>
+            </div>
+            <div className={`total ${balance >= 0 ? 'pos' : 'neg'}`}>
+              <span>Yayın kârı / zararı</span>
+              <b>
+                {balance >= 0 ? '+' : '−'}
+                {fmtN(Math.abs(balance))} altın
+              </b>
+            </div>
+          </div>
+        )}
         <button className="st-btn gold" onClick={onClose}>
           Tamam
         </button>

@@ -360,6 +360,14 @@ function GameShell() {
     if (fn) openVenueForVisit(fn);
   };
 
+  // v81 — yayındayken koltuktan "Oyun oyna → Yarış Pisti": yarış pisti lobisi
+  // evin (yayının) üstünde açılır; yayın arkada sürer, yarış izleyicilere gider.
+  useEffect(() => {
+    const on = () => setActiveRegion(RACE_TRACK_REGION);
+    window.addEventListener('ns:stream-race', on);
+    return () => window.removeEventListener('ns:stream-race', on);
+  }, []);
+
   const openRace = (roomId) => {
     setActiveRegion(null);
     setActiveRaceRoomId(roomId);

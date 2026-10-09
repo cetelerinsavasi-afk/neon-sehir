@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { collection, doc, limit, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, doc, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { createHouseEngine } from '../HouseScreen/houseEngine';
 import { watchLive, mergeLive } from '../../lib/liveNet';
@@ -14,7 +14,7 @@ import { streamPose } from './streamShared';
 // =============================================================================
 const PRESENCE_STALE_MS = 60_000;
 
-export default function StreamScene({ houseId, chairId, pcId, className = '' }) {
+export default function StreamScene({ houseId, chairId, pcId, bubble = null, className = '' }) {
   const mountRef = useRef(null);
   const engRef = useRef(null);
   const fsRef = useRef([]);
@@ -48,6 +48,23 @@ export default function StreamScene({ houseId, chairId, pcId, className = '' }) 
       fsRef.current = s.docs.map((d) => ({ uid: d.id, ...d.data() }));
       push();
     });
+    // v81: odadakilerin sohbeti → kameradaki avatarlarının üstünde konuşma balonu
+    const seenMsg = new Set();
+    const since = Date.now() - 3000;
+    const offChat = onSnapshot(
+      query(collection(db, 'houses', houseId, 'chat'), orderBy('createdAtMs', 'desc'), limit(15)),
+      (s) => {
+        s.docs.forEach((d) => {
+          if (seenMsg.has(d.id)) return;
+          seenMsg.add(d.id);
+          const m = d.data();
+          if (Number(m.createdAtMs || 0) < since || blockedRef.current?.(m.uid)) return;
+          if (fsRef.current.some((p) => p.uid === m.uid && p.noStream)) return;
+          eng.say(m.uid, String(m.text || ''));
+        });
+      },
+      () => {}
+    );
     let timer = 0;
     const offLive = watchLive(`house/${houseId}`, (m) => {
       liveRef.current = m;
@@ -56,12 +73,29 @@ export default function StreamScene({ houseId, chairId, pcId, className = '' }) 
     return () => {
       offHouse();
       offPres();
+      offChat();
       offLive();
       clearTimeout(timer);
       eng.dispose();
       engRef.current = null;
     };
   }, [houseId, chairId, pcId]);
+
+  // v81: yayıncının izleyicilere yazdığı mesaj → avatarının üstünde konuşma balonu
+  useEffect(() => {
+    if (!bubble?.uid || !bubble.text) return undefined;
+    let tries = 0;
+    // avatar henüz yüklenmemiş olabilir: kısa süre yeniden dene
+    const t = setInterval(() => {
+      tries += 1;
+      const eng = engRef.current;
+      if (eng && (eng.hasOther?.(bubble.uid) ?? true)) {
+        eng.say(bubble.uid, bubble.text);
+        clearInterval(t);
+      } else if (tries > 10) clearInterval(t);
+    }, 300);
+    return () => clearInterval(t);
+  }, [bubble?.key, bubble?.uid, bubble?.text]);
 
   return <div ref={mountRef} className={`st-scene ${className}`} />;
 }

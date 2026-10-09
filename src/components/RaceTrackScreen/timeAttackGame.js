@@ -155,7 +155,7 @@ function nearestIdx(x, y, hint = 0) {
  *  opp: { look, name, sample(f) → {x,y,a,nos}|null, finishMs? } | null
  *  onStartRace(): GO anında · onFinish({ frames, runs, hits }) · onFrame(f)
  */
-export function createTimeAttackGame({ canvas, mini, hud, car, opp = null, onStartRace, onFinish, onFrame }) {
+export function createTimeAttackGame({ canvas, mini, hud, car, opp = null, onStartRace, onFinish, onFrame, spectate = false }) {
   const ctx = canvas.getContext('2d');
   const mmx = mini?.getContext('2d');
   let W;
@@ -179,8 +179,15 @@ export function createTimeAttackGame({ canvas, mini, hud, car, opp = null, onSta
   let alive = true;
   let oppIdx = TRACK.START;
   let gs = null; // rakip yumuşatma durumu
-  let muted = false;
+  let muted = spectate;
   let AC = null;
+  // v81 — yayın izleyicisi: fizik yok; yayıncının yolladığı kareler (~10/sn)
+  // arasında ~180 ms geriden ara değerlenerek çizilir.
+  const SPEC_DELAY = 180;
+  const specSnaps = [];
+  let specOpp = null;
+  let lastOppOut = null;
+  let specCd = '';
   let osc = null;
   let gn = null;
   const hs = {};
@@ -283,8 +290,52 @@ export function createTimeAttackGame({ canvas, mini, hud, car, opp = null, onSta
     onFrame?.(S.f);
   }
 
+  function spectateTick(now) {
+    if (!specSnaps.length) return;
+    const target = now - SPEC_DELAY;
+    let a = specSnaps[0];
+    let b = specSnaps[specSnaps.length - 1];
+    for (let k = specSnaps.length - 1; k > 0; k--) {
+      if (specSnaps[k - 1].at <= target) {
+        a = specSnaps[k - 1];
+        b = specSnaps[k];
+        break;
+      }
+    }
+    let t = 1;
+    if (a !== b && target > a.at && target < b.at) t = (target - a.at) / Math.max(1, b.at - a.at);
+    else if (target <= a.at) t = 0;
+    const A = a.v;
+    const B = b.v;
+    const L = (p, q) => p + (q - p) * t;
+    S.x = L(A.x, B.x);
+    S.y = L(A.y, B.y);
+    S.a = A.a + ang(B.a, A.a) * t;
+    S.vx = L(A.vx, B.vx);
+    S.vy = L(A.vy, B.vy);
+    S.f = Math.round(L(A.f, B.f));
+    S.nos = B.nos || 0;
+    S.nitro = B.ni ?? S.nitro;
+    S.pads = B.pd || 0;
+    S.idx = nearestIdx(S.x, S.y, S.idx || TRACK.START);
+    P0 = { x: S.x, y: S.y, a: S.a };
+    acc = 0;
+    if (A.o && B.o) specOpp = { x: L(A.o.x, B.o.x), y: L(A.o.y, B.o.y), a: A.o.a + ang(B.o.a, A.o.a) * t, nos: B.o.n || 0 };
+    else specOpp = B.o ? { x: B.o.x, y: B.o.y, a: B.o.a, nos: B.o.n || 0 } : null;
+    const ph = B.ph === 'count' ? 'count' : B.ph === 'done' ? 'done' : 'race';
+    if (hud.cd) {
+      const want = ph === 'count' ? String(B.cd || '') : phase === 'count' && ph === 'race' ? 'GO!' : specCd === 'GO!' ? 'GO!' : '';
+      if (want !== specCd) {
+        specCd = want;
+        hud.cd.innerHTML = want ? `<b>${want}</b>` : '';
+        if (want === 'GO!') setTimeout(() => alive && specCd === 'GO!' && ((specCd = ''), hud.cd && (hud.cd.innerHTML = '')), 800);
+      }
+    }
+    phase = ph;
+  }
+
   function step(dt) {
-    if (phase === 'done' && !S.coastEnd) {
+    if (!spectate && phase === 'done' && !S.coastEnd) {
       // bitişten sonra araç süzülerek yavaşlar (sadece görüntü)
       const k = Math.pow(0.35, dt);
       S.vx *= k;
@@ -634,7 +685,8 @@ export function createTimeAttackGame({ canvas, mini, hud, car, opp = null, onSta
     // --- rakip (hayalet — çarpışma yok) ---
     let oppDraw = null;
     if (opp) {
-      let o = opp.sample(phase === 'count' ? 0 : S.f + (phase === 'race' ? al : 0));
+      let o = spectate ? specOpp : opp.sample(phase === 'count' ? 0 : S.f + (phase === 'race' ? al : 0));
+      lastOppOut = o ? { x: o.x, y: o.y, a: o.a, n: o.nos ? 1 : 0 } : null;
       if (o && opp.smooth) {
         // Yeni veri gelince oluşan sıçramaları gizle: ekrandaki konum ile hedef
         // arasındaki fark yavaşça (≈0,3 sn) sıfırlanır; sabit hızda gecikme yok.
@@ -797,7 +849,8 @@ export function createTimeAttackGame({ canvas, mini, hud, car, opp = null, onSta
     const dt = Math.min(0.05, (now - last) / 1000);
     const realDt = (now - last) / 1000;
     last = now;
-    simulate(realDt, now);
+    if (spectate) spectateTick(now);
+    else simulate(realDt, now);
     step(dt);
     const pos = render(dt);
     updateHud(pos);
@@ -830,6 +883,31 @@ export function createTimeAttackGame({ canvas, mini, hud, car, opp = null, onSta
     },
     get state() {
       return S;
+    },
+    // v81 — yayına gönderilecek küçük kare (konum, hız, nitro, geri sayım, rakip)
+    get streamView() {
+      const r1 = (v) => Math.round(v * 10) / 10;
+      const n = phase === 'count' ? Math.max(1, 3 - Math.floor((performance.now() - cd0) / 1000)) : 0;
+      return {
+        x: r1(S.x),
+        y: r1(S.y),
+        a: Math.round(S.a * 1000) / 1000,
+        vx: r1(S.vx),
+        vy: r1(S.vy),
+        f: S.f,
+        nos: S.nos ? 1 : 0,
+        ni: Math.round((S.nitro || 0) * 100) / 100,
+        pd: S.pads || 0,
+        ph: phase,
+        cd: n,
+        o: lastOppOut ? { x: r1(lastOppOut.x), y: r1(lastOppOut.y), a: Math.round(lastOppOut.a * 1000) / 1000, n: lastOppOut.n } : null,
+      };
+    },
+    // izleyici: yeni kare
+    feed(v) {
+      if (!spectate || !v) return;
+      specSnaps.push({ at: performance.now(), v });
+      if (specSnaps.length > 10) specSnaps.shift();
     },
     stop() {
       phase = 'done';

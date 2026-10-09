@@ -383,9 +383,12 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if false;
       match /chat/{msgId} {
+        // v81: odada canlı yayın sürerken izleyiciler de okur (konuşma balonları)
         allow read: if isSignedIn()
           && (get(/databases/$(database)/documents/houses/$(houseId)).data.ownerUid == request.auth.uid
-            || inHouse(houseId));
+            || inHouse(houseId)
+            || (exists(/databases/$(database)/documents/streamHouses/$(houseId))
+              && get(/databases/$(database)/documents/streamHouses/$(houseId)).data.beatMs > request.time.toMillis() - 120000));
         allow write: if false;
       }
     }

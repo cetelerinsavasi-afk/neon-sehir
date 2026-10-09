@@ -1921,8 +1921,10 @@ export function createHouseEngine(
     if (self.fig) {
       const sw = self.seat ? seatWorld(self.seat, seatV) : null;
       self.fig.update(dt, camera, now, sw ? sw.clone() : null, seatStand(self.seat));
-      self.fig.group.visible = mode === 'walk' && view !== 'fp';
-      if (self.fig.label) self.fig.label.style.display = mode === 'walk' && view !== 'fp' ? '' : 'none';
+      // v81: yayın kamerası açıkken (göz görüşünde bile) kendi avatarın görünür
+      const selfVis = mode === 'walk' && (view !== 'fp' || Boolean(fixedPose));
+      self.fig.group.visible = selfVis;
+      if (self.fig.label) self.fig.label.style.display = selfVis ? '' : 'none';
     }
     others.forEach((o) => {
       const sw = o.seat && isUsable(o.seat.id) ? seatWorld(o.seat, new THREE.Vector3()) : null;
@@ -2442,13 +2444,24 @@ export function createHouseEngine(
         }
       });
     },
+    hasOther(uid) {
+      return others.has(uid);
+    },
     say(uid, text) {
       if (uid === selfUid) self.fig?.say(text);
       else others.get(uid)?.fig.say(text);
     },
     // v80 — yayın kamerası (izleyici): { px,py,pz, tx,ty,tz, fov } | null
+    // v81: yayıncının ana ekranında da kullanılır (yayın tüm ekranı kaplar);
+    // kapatınca görünümün kendi görüş açısına dönülür.
     setFixedCamera(pose) {
+      const had = Boolean(fixedPose);
       fixedPose = pose ? { fov: 64, ...pose } : null;
+      if (had && !fixedPose && !spectate) {
+        camera.fov = mode === 'build' ? 52 : view === '2d' ? 50 : view === 'fp' ? 72 : 62;
+        camera.updateProjectionMatrix();
+        firstFrame = true;
+      }
     },
     // v80 — yayıncının kendi küçük önizlemesi: ana sahneyi yayın kamerasından
     // tek kare çizip hedef 2B tuvale kopyalar, sonra normal kareyi geri çizer

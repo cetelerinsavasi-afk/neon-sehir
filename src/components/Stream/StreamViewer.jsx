@@ -6,6 +6,8 @@ import { useBackClose } from '../../lib/backStack';
 import { streamAction } from '../../services/gameActions';
 import StreamScene from './StreamScene';
 import StreamGameView from './StreamGameView';
+import StreamRaceView from './StreamRaceView';
+import { ALERT_MS } from './StreamHost';
 import { DONATION_AMOUNTS, DONATION_DAILY_CAP, STREAM_STALE_MS, fmtDur, fmtN, joinViewers, useStreamChat, useStreamDoc, watchGameFrames, watchViewers } from './streamShared';
 import '../../styles/worldScreenChrome.css';
 import './Stream.css';
@@ -40,6 +42,9 @@ export default function StreamViewer({ streamId, onClose }) {
   const [toast, setToast] = useState(null);
   const [alerts, setAlerts] = useState([]);
   const [gameOn, setGameOn] = useState(false);
+  const [gameKind, setGameKind] = useState('arcade'); // arcade | race
+  const [bubble, setBubble] = useState(null); // yayıncının mesajı → avatarının üstünde konuşma balonu
+  const seenHostMsg = useRef(null);
   const frameRef = useRef(null);
   const seenFx = useRef(null);
   const alertTimers = useRef([]);
@@ -58,14 +63,21 @@ export default function StreamViewer({ streamId, onClose }) {
   }, [streamId, user, isHost]);
   useEffect(() => (streamId ? watchViewers(streamId, ({ count }) => setViewers(count)) : undefined), [streamId]);
 
-  // yayında oyun var mı (oyun salonu)
+  // yayında oyun var mı (oyun salonu ya da yarış)
+  // v81: tazelik artık karenin GELİŞ anına göre ölçülür — eskiden yayıncının
+  // saatiyle (f.at) karşılaştırılıyordu; iki cihazın saati birkaç saniye farklıysa
+  // oyun izleyicide hiç görünmüyordu.
   useEffect(() => {
     if (!s?.uid) return undefined;
     let timer = 0;
+    let first = true;
     const off = watchGameFrames(s.uid, (f) => {
       frameRef.current = f;
-      const fresh = Boolean(f && Date.now() - Number(f.at || 0) < 5000);
+      // ilk okumada (yayına sonradan girildi) kabaca bayatlık kontrolü, sonra her yeni kare canlıdır
+      const fresh = Boolean(f && (!first || Math.abs(Date.now() - Number(f.at || 0)) < 60_000));
+      first = false;
       setGameOn(fresh);
+      if (f) setGameKind(f.g === 'race' ? 'race' : 'arcade');
       clearTimeout(timer);
       if (fresh) timer = setTimeout(() => setGameOn(false), 4000);
     });
@@ -88,9 +100,22 @@ export default function StreamViewer({ streamId, onClose }) {
     setAlerts((a) => [...a, ...fresh.filter((e) => !isBlocked(e.u)).map((e) => ({ ...e, key: `${e.at}|${e.u}` }))].slice(-3));
     // zamanlayıcı efekt temizliğine bağlı DEĞİL (belge her nabızda yenilenir)
     const keys = fresh.map((e) => `${e.at}|${e.u}`);
-    alertTimers.current.push(setTimeout(() => setAlerts((a) => a.filter((x) => !keys.includes(x.key))), 6000));
+    alertTimers.current.push(setTimeout(() => setAlerts((a) => a.filter((x) => !keys.includes(x.key))), ALERT_MS));
     return undefined;
   }, [s?.fx, isBlocked]);
+
+  // v81: yayıncının yazdıkları sahnede avatarının üstünde konuşma balonu olur
+  useEffect(() => {
+    const hostMsgs = chat.filter((m) => m.host);
+    if (seenHostMsg.current === null) {
+      if (chat.length || s) seenHostMsg.current = new Set(hostMsgs.map((m) => m.id));
+      return;
+    }
+    const fresh = hostMsgs.filter((m) => !seenHostMsg.current.has(m.id));
+    fresh.forEach((m) => seenHostMsg.current.add(m.id));
+    const last = fresh[fresh.length - 1];
+    if (last) setBubble({ uid: last.uid, text: last.text, key: last.id });
+  }, [chat, s]);
 
   useEffect(() => {
     if (openChat) chatEndRef.current?.scrollIntoView({ block: 'end' });
@@ -137,8 +162,8 @@ export default function StreamViewer({ streamId, onClose }) {
   return (
     <div className="st-root" onClick={(e) => e.stopPropagation()}>
       <div className={`st-stage${gameOn ? ' gaming' : ''}`}>
-        {s && s.houseId && live && <StreamScene houseId={s.houseId} chairId={s.chairId} pcId={s.pcId} className={gameOn ? 'pip' : ''} />}
-        {gameOn && live && <StreamGameView frameRef={frameRef} />}
+        {s && s.houseId && live && <StreamScene houseId={s.houseId} chairId={s.chairId} pcId={s.pcId} bubble={bubble} className={gameOn ? 'pip' : ''} />}
+        {gameOn && live && (gameKind === 'race' ? <StreamRaceView frameRef={frameRef} /> : <StreamGameView frameRef={frameRef} />)}
         <div className="st-top">
           <div className="st-who">
             <span className="st-ava">{String(s?.name || '?').slice(0, 1).toUpperCase()}</span>

@@ -84,6 +84,9 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
   const streamRef = (id) => db.collection('streams').doc(id);
   const seatRef = (houseId, chairId) => db.collection('streamSeats').doc(`${houseId}_${chairId}`);
   const listRef = () => db.collection('stats').doc('streams');
+  // v81: yayın olan mekân — izleyiciler bu sürece odanın sohbetini (konuşma
+  // balonları) okuyabilir (firestore.rules: houses/{id}/chat)
+  const liveHouseRef = (houseId) => db.collection('streamHouses').doc(houseId);
   const nameOf = (u) => String(u?.displayName || 'Oyuncu').slice(0, 40);
   const fresh = (s, t) => s && s.status === 'live' && t - Number(s.lastBeatMs || 0) < STREAM_STALE_MS;
 
@@ -197,6 +200,7 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
       };
       tx.set(ref, doc);
       tx.set(seatRef(houseId, chairId), { streamId: ref.id, uid, lastBeatMs: t });
+      tx.set(liveHouseRef(houseId), { streamId: ref.id, uid, beatMs: t });
       tx.update(userRef(uid), { streamId: ref.id });
       const prevItems = ((list?.exists ? list.data().items : null) || []).filter((x) => x.id !== old?.id && x.uid !== uid);
       tx.set(listRef(), { items: [{ id: ref.id, uid, name: doc.name, title: doc.title, houseId, houseName: doc.houseName, startedAtMs: t }, ...prevItems].slice(0, LIST_MAX), updatedAtMs: t });
@@ -255,6 +259,7 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
       } else result = { ok: true, paidUntilMs: Number(s.paidUntilMs || 0) };
       tx.update(streamRef(id), patch);
       tx.set(seatRef(s.houseId, s.chairId), { streamId: id, uid, lastBeatMs: t });
+      tx.set(liveHouseRef(s.houseId), { streamId: id, uid, beatMs: t });
     });
     return result;
   }

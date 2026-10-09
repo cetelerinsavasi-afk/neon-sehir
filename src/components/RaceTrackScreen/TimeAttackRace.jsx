@@ -4,6 +4,7 @@ import { db } from '../../firebase';
 import { carStats, trainingBotRun, gradeOf, RACE_CAR_LOOKS, FPS } from '../../../functions/raceSim.js';
 import { createTimeAttackGame, makeSampler, fmtRace } from './timeAttackGame';
 import { taStart, taFinish, taTimeout, createTrainingRace, forfeitRace } from '../../services/gameActions';
+import { streamBroadcast, publishRaceFrame, clearGameFrame } from '../Stream/streamShared';
 import './TimeAttackRace.css';
 
 // =============================================================================
@@ -190,6 +191,41 @@ export default function TimeAttackRace({ room, myUid, onExit, onSwitchRoom }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // v81 — YAYIN: yayındaysan (koltuktan "Oyun oyna → Yarış Pisti") izleyiciler
+  // yarışı canlı izler. ~10 kare/sn küçük durum gönderilir; izleyici aynı pisti
+  // kendi cihazında çizer. Sonuç ekranı da yayına yansır.
+  const [onAir] = useState(() => Boolean(streamBroadcast.uid));
+  const pubRef = useRef({});
+  pubRef.current = { phase, myResult, grade: myResult?.grade || me.grade || null, finished: room.status === 'finished', winnerUid: room.winnerUid };
+  useEffect(() => {
+    if (!onAir) return undefined;
+    const base = {
+      md: mode,
+      cat: car.catalogId || 1,
+      lv: car.level || 1,
+      oc: mode === 'training' ? bot?.catalogId || 1 : mode === 'bet' ? other?.catalogId || 1 : 0,
+      on: mode === 'training' ? 'Bot' : mode === 'bet' ? String(other?.displayName || 'Rakip').slice(0, 16) : '',
+    };
+    const iv = setInterval(() => {
+      if (!streamBroadcast.uid) return;
+      const g = gameRef.current;
+      const pr = pubRef.current;
+      const v = g ? g.streamView : null;
+      let res = null;
+      if (pr.phase !== 'running') {
+        const ms = pr.myResult?.ms || me.finishMs || null;
+        const won = pr.finished && mode !== 'champ' ? pr.winnerUid === myUid : null;
+        res = { ms, gr: pr.grade || (ms ? gradeOf(ms, car.catalogId, car.level) : null), w: won === null ? null : won ? 1 : pr.winnerUid === 'draw' ? 2 : 0 };
+      }
+      publishRaceFrame({ ...base, ...(v || { ph: 'done' }), res });
+    }, 100);
+    return () => {
+      clearInterval(iv);
+      if (streamBroadcast.uid) clearGameFrame();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onAir, room.id]);
+
   // hayalet yazımı (0,7 sn'de bir)
   useEffect(() => {
     if (mode !== 'bet' || phase !== 'running') return undefined;
@@ -322,6 +358,7 @@ export default function TimeAttackRace({ room, myUid, onExit, onSwitchRoom }) {
 
   return (
     <div className="ta-root">
+      {onAir && <div className="ta-onair">🔴 CANLI · yarış yayında</div>}
       <canvas ref={canvasRef} className="ta-canvas" style={{ visibility: showGame ? 'visible' : 'hidden' }} />
       {showGame && (
         <>

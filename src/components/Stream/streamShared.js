@@ -84,6 +84,7 @@ const rt = () => {
   return modP;
 };
 const safe = (s) => String(s || '').replace(/[.#$[\]/]/g, '_').slice(0, 128);
+export const streamDiag = { watchErr: null, gameErr: null };
 
 // İzleyici olarak katıl (bağlantı koparsa kendiliğinden düşer). Dönüş: ayrıl()
 export function joinViewers(streamId, uid) {
@@ -95,7 +96,11 @@ export function joinViewers(streamId, uid) {
       if (!alive) return;
       ref = m.ref(d, `streamWatch/${safe(streamId)}/${safe(uid)}`);
       m.onDisconnect(ref).remove().catch(() => {});
-      m.set(ref, true).catch(() => {});
+      m.set(ref, true).catch((e) => {
+        // v81: izleyici sayısı hep 0 ise en sık neden: RTDB kuralları yayınlanmamış
+        streamDiag.watchErr = String(e?.code || e?.message || 'hata');
+        console.warn('[yayın] izleyici kaydı yazılamadı (database.rules.json yayınlandı mı? firebase deploy --only database):', e?.message || e);
+      });
     })
     .catch(() => {});
   return () => {
@@ -118,7 +123,11 @@ export function watchViewers(streamId, cb) {
           const uids = Object.keys(v);
           cb({ count: uids.length, uids });
         },
-        () => cb({ count: 0, uids: [] })
+        (e) => {
+          streamDiag.watchErr = String(e?.code || e?.message || 'hata');
+          console.warn('[yayın] izleyiciler okunamadı (database.rules.json yayınlandı mı?):', e?.message || e);
+          cb({ count: 0, uids: [], error: true });
+        }
       );
     })
     .catch(() => {});
@@ -174,29 +183,73 @@ export async function readThumbs(uids) {
 export const streamBroadcast = { uid: null, streamId: null };
 let lastGamePub = 0;
 let gameRef = null;
+// v81: oyunun durumu çok büyükse (ör. boyama tuvali) sadece izleyicinin çizmek
+// için ihtiyaç duyduğu alanlar kalsın diye büyük dizileri ayıklamayı dener.
+function shrinkState(pub) {
+  let json = JSON.stringify(pub);
+  if (json.length <= 7800) return json;
+  const out = { ...pub };
+  const keys = Object.keys(out).sort((a, b) => JSON.stringify(out[b] ?? null).length - JSON.stringify(out[a] ?? null).length);
+  for (const k of keys) {
+    if (json.length <= 7800) break;
+    const v = out[k];
+    if (Array.isArray(v) && v.length > 40) out[k] = v.slice(-40);
+    else if (typeof v === 'string' && v.length > 2000) delete out[k];
+    json = JSON.stringify(out);
+  }
+  return json.length <= 7800 ? json : null;
+}
+let gameRefUid = null;
+function sendFrame(payload) {
+  rt()
+    .then(({ m, db: d }) => {
+      if (!gameRef || gameRefUid !== streamBroadcast.uid) {
+        gameRefUid = streamBroadcast.uid;
+        gameRef = m.ref(d, `streamGame/${safe(streamBroadcast.uid)}`);
+        m.onDisconnect(gameRef).remove().catch(() => {});
+      }
+      return m.set(gameRef, payload);
+    })
+    .then(() => {
+      streamDiag.gameErr = null;
+    })
+    .catch((e) => {
+      if (!streamDiag.gameErr) console.warn('[yayın] oyun karesi yazılamadı (database.rules.json yayınlandı mı?):', e?.message || e);
+      streamDiag.gameErr = String(e?.code || e?.message || 'hata');
+    });
+}
 export function publishGameFrame(game, state, names, me) {
   if (!STREAM_RT || !streamBroadcast.uid) return;
   const t = performance.now();
-  if (t - lastGamePub < 120) return;
+  if (t - lastGamePub < 110) return;
   lastGamePub = t;
   let json;
   try {
-    const { _lastIn, ...pub } = state || {};
+    const { _lastIn, _in, _e, ...pub } = state || {};
     void _lastIn;
-    json = JSON.stringify(pub);
+    void _in;
+    void _e;
+    json = shrinkState(pub);
+  } catch {
+    return;
+  }
+  if (!json) return;
+  sendFrame({ g: game.id, s: json, n: (names || []).slice(0, 4).map((x) => String(x).slice(0, 14)), me: me || 0, at: Date.now() });
+}
+// v81 — yarış (şampiyona / bahisli / antrenman) yayını: g='race'
+export function publishRaceFrame(payload) {
+  if (!STREAM_RT || !streamBroadcast.uid || !payload) return;
+  const t = performance.now();
+  if (t - lastGamePub < 95) return;
+  lastGamePub = t;
+  let json;
+  try {
+    json = JSON.stringify(payload);
   } catch {
     return;
   }
   if (json.length > 7800) return;
-  rt()
-    .then(({ m, db: d }) => {
-      if (!gameRef) {
-        gameRef = m.ref(d, `streamGame/${safe(streamBroadcast.uid)}`);
-        m.onDisconnect(gameRef).remove().catch(() => {});
-      }
-      return m.set(gameRef, { g: game.id, s: json, n: names.slice(0, 4).map((x) => String(x).slice(0, 14)), me: me || 0, at: Date.now() });
-    })
-    .catch(() => {});
+  sendFrame({ g: 'race', s: json, n: [], me: 0, at: Date.now() });
 }
 export function clearGameFrame() {
   if (!STREAM_RT || !streamBroadcast.uid) return;
