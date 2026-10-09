@@ -6258,13 +6258,15 @@ export const presenceSummary = onSchedule({ schedule: 'every 2 minutes' }, async
 });
 // v81 — mekâna giriş/çıkışta sayılar hemen güncellenir (en fazla ~8 sn'de bir sayım).
 // Sadece belge OLUŞUNCA/SİLİNİNCE tetiklenir (nabız güncellemeleri tetiklemez).
+// v82.1: isimler 'mekanSayac…' — sunucuda eski sürümden kalma presenceInteriorIn adlı
+// HTTPS fonksiyonuyla çakışmasın (Firebase aynı isimde tür değişikliğine izin vermiyor).
 const presenceNudge = (event) => presenceSummaryJob.nudge(Date.parse(event.time) || Date.now()).catch((err) => console.error('presence nudge:', err));
-export const presenceParkIn = onDocumentCreated('parkPresence/{uid}', presenceNudge);
-export const presenceParkOut = onDocumentDeleted('parkPresence/{uid}', presenceNudge);
-export const presenceInteriorIn = onDocumentCreated('interiorPresence/{uid}', presenceNudge);
-export const presenceInteriorOut = onDocumentDeleted('interiorPresence/{uid}', presenceNudge);
-export const presenceHouseIn = onDocumentCreated('housePresence/{uid}', presenceNudge);
-export const presenceHouseOut = onDocumentDeleted('housePresence/{uid}', presenceNudge);
+export const mekanSayacParkGiris = onDocumentCreated('parkPresence/{uid}', presenceNudge);
+export const mekanSayacParkCikis = onDocumentDeleted('parkPresence/{uid}', presenceNudge);
+export const mekanSayacIcGiris = onDocumentCreated('interiorPresence/{uid}', presenceNudge);
+export const mekanSayacIcCikis = onDocumentDeleted('interiorPresence/{uid}', presenceNudge);
+export const mekanSayacEvGiris = onDocumentCreated('housePresence/{uid}', presenceNudge);
+export const mekanSayacEvCikis = onDocumentDeleted('housePresence/{uid}', presenceNudge);
 
 // ---------------------------------------------------------------------------
 // buyFromBufe — Park'taki büfeden içecek/atıştırmalık satın alma.
