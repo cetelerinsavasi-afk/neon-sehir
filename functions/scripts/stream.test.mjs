@@ -51,7 +51,9 @@ function setup() {
 }
 
 test('kurulum: koltuk + menzilde bilgisayar gerekli', () => {
-  assert.ok(streamSetOf([{ i: 'c', k: 'gamer', x: 0, z: 0, p: 1 }, { i: 'p', k: 'pcstation', x: 2, z: 2, p: 1 }], 'c'));
+  assert.ok(streamSetOf([{ i: 'c', k: 'gamer', x: 0, z: 0, p: 1 }, { i: 'p', k: 'pc', x: 2, z: 2, p: 1 }], 'c'));
+  // v81: İnternet Kafe İstasyonu yayın seti sayılmaz (sadece Oyuncu Bilgisayarı)
+  assert.equal(streamSetOf([{ i: 'c', k: 'gamer', x: 0, z: 0, p: 1 }, { i: 'p', k: 'pcstation', x: 1, z: 0, p: 1 }], 'c'), null);
   assert.equal(streamSetOf([{ i: 'c', k: 'gamer', x: 0, z: 0, p: 1 }, { i: 'p', k: 'pc', x: 5, z: 0, p: 1 }], 'c'), null, 'bilgisayar çok uzak');
   assert.equal(streamSetOf([{ i: 'c', k: 'chairw', x: 0, z: 0, p: 1 }, { i: 'p', k: 'pc', x: 1, z: 0, p: 1 }], 'c'), null, 'oyuncu koltuğu değil');
   assert.equal(streamSetOf([{ i: 'c', k: 'gamer', x: 0, z: 0, p: 0 }, { i: 'p', k: 'pc', x: 1, z: 0, p: 1 }], 'c'), null, 'deneme ürünü');

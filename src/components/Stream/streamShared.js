@@ -19,7 +19,7 @@ export const STREAM_STALE_MS = 90_000;
 export const DONATION_AMOUNTS = [10, 100, 1000];
 export const DONATION_DAILY_CAP = 10_000;
 export const STREAM_CHAIRS = ['gamer'];
-export const STREAM_PCS = ['pc', 'pcstation'];
+export const STREAM_PCS = ['pc']; // v81: sadece Oyuncu Bilgisayarı
 export const STREAM_SET_RANGE = 3.2;
 
 // koltuğa en yakın yayın bilgisayarı (sunucudaki streamSetOf ile aynı)

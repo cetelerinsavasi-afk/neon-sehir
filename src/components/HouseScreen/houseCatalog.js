@@ -2843,7 +2843,7 @@ export const CATALOG = [
   { k: 'dumbbells', name: 'Dambıl Seti', cat: 'spor', icon: '🏋️', build: dumbbells, box: [0.72, 0.25] },
   { k: 'bike', name: 'Kondisyon Bisikleti', cat: 'spor', icon: '🚴', tints: 'fabric', build: exerciseBike, box: [0.25, 0.5], seats: [[0, 0.82, -0.15]] },
   { k: 'yogamat', name: 'Yoga Matı', cat: 'spor', icon: '🧘', tints: 'neon', build: yogaMat, nobox: true, flat: true },
-  { k: 'pullup', name: 'Barfiks İstasyonu', cat: 'spor', icon: '💪', build: pullup, boxes: [[-0.6, 0, 0.06, 0.4], [0.6, 0, 0.06, 0.4]] },
+  { k: 'pullup', name: 'Barfiks İstasyonu', cat: 'spor', icon: '💪', pick: [1.36, 2.35, 0.8], build: pullup, boxes: [[-0.6, 0, 0.06, 0.4], [0.6, 0, 0.06, 0.4]] },
   { k: 'foosball', name: 'Langırt', cat: 'spor', icon: '⚽', build: foosball, box: [0.65, 0.42] },
   { k: 'pingpong', name: 'Masa Tenisi', cat: 'spor', icon: '🏓', build: pingpong, box: [1.37, 0.78] },
   { k: 'guitar', name: 'Elektro Gitar', cat: 'spor', icon: '🎸', build: guitar, box: [0.18, 0.18] },
@@ -2876,6 +2876,8 @@ export function formatPrice(p) {
 }
 
 // Bir eşyanın 3D nesnesini üretir. live=false → önizleme/küçük resim (ışık yok).
+const PICK_MAT = new THREE.MeshBasicMaterial({ visible: false });
+PICK_MAT.userData = { shared: true };
 export function buildItem(k, { ti = 0, live = true, wallMat = null, H = 3.4 } = {}) {
   const def = CATALOG_MAP[k];
   if (!def) return null;
@@ -2883,6 +2885,17 @@ export function buildItem(k, { ti = 0, live = true, wallMat = null, H = 3.4 } = 
   const tints = def.tints ? TINTS[def.tints] : null;
   const tint = tints ? tints[Math.max(0, Math.min(tints.length - 1, ti || 0))] : null;
   const ret = def.build(g, { tint, ti: ti || 0, live, wallMat, H }) || null;
+  // v81 — ince parçalı eşyalar (ör. barfiks) için görünmez "tutma kutusu":
+  // dokunma/sürükleme eşyanın tamamında çalışır (görünmez nesne de ışına değer).
+  if (def.pick) {
+    const [pw, ph, pd] = def.pick;
+    const proxy = new THREE.Mesh(new THREE.BoxGeometry(pw, ph, pd), PICK_MAT);
+    proxy.position.y = ph / 2;
+    proxy.visible = false;
+    proxy.castShadow = false;
+    proxy.userData.pickOnly = true;
+    g.add(proxy);
+  }
   g.userData.def = def;
   g.userData.ctl = ret;
   return g;

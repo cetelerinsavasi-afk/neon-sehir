@@ -39,7 +39,7 @@ const AV_WAIST_FROM_TOP = 380 * AV_UNIT;
 const SPAWN = { x: 5, z: D / 2 - 3.2 };
 const EMOTE_MS = 3200;
 const STREAM_CHAIR_KEYS = ['gamer']; // v80 yayın seti
-const STREAM_PC_KEYS = ['pc', 'pcstation'];
+const STREAM_PC_KEYS = ['pc']; // v81: yayın sadece Oyuncu Bilgisayarı ile (İnternet Kafe İstasyonu değil)
 export const EMOTES = [
   { key: 'dans', label: 'Dans et', emoji: '💃' },
   { key: 'selam', label: 'El salla', emoji: '👋' },
@@ -1037,6 +1037,7 @@ export function createHouseEngine(
         fadeRay.set(camera.position, fadeDir.normalize());
         fadeRay.far = far;
         fadeRay.intersectObjects(list, true).forEach((h) => {
+          if (h.object.userData?.pickOnly) return; // v81: görünmez tutma kutusu soldurmaz
           let o = h.object;
           while (o && !o.userData?.itemId && o.parent) o = o.parent;
           const id = o?.userData?.itemId;

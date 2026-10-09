@@ -1,7 +1,7 @@
 // =============================================================================
 // v80 — YAYINCILIK (streamAction)
 // Evinde/dükkânında (ya da internet kafede) Oyuncu Koltuğu + yakınında Oyuncu
-// Bilgisayarı (ya da İnternet Kafe İstasyonu) olan herkes koltuğa oturup canlı
+// Bilgisayarı (v81: sadece bu; İnternet Kafe İstasyonu değil) olan herkes koltuğa oturup canlı
 // yayın açabilir. İzleyiciler odayı bilgisayarın üstündeki kameradan canlı görür
 // (sahne istemcide yeniden kurulur — bkz. src/components/Stream), sohbet eder,
 // bağış atar. Yayın bitince bağışların %10'u vergi olarak kesilir, kalanı
@@ -32,7 +32,7 @@ import { midnightDayKey } from './businessCatalogData.js';
 import { bizTax, taxOf, taxLedgerWrite } from './tax.js';
 
 export const STREAM_CHAIRS = ['gamer'];
-export const STREAM_PCS = ['pc', 'pcstation'];
+export const STREAM_PCS = ['pc']; // v81: sadece Oyuncu Bilgisayarı (İnternet Kafe İstasyonu yayın seti değil)
 export const STREAM_SET_RANGE = 3.2; // bilgisayar koltuğa en fazla bu kadar uzak (m)
 export const STREAM_PRICE = { def: 200, min: 50, max: 1000 }; // kafe: dakika ücreti
 export const STREAM_SLOT_MS = 60_000;
