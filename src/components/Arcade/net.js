@@ -71,33 +71,80 @@ export async function createRoom(gameId, me, max = 2) {
   return roomRef.key;
 }
 
-// Boş bir koltuğa oturur. Döner: koltuk numarası
+// v79.1 — UYUMLULUK: sunucudaki Realtime Database kuralları henüz yeni koltuk
+// alanlarına (p/, i/) izin vermiyorsa (kurallar yüklenmemiş), eski tek-konuk
+// yoluna (guest / inG) otomatik düşülür. Böylece 2 kişilik maçlar ve "1 arkadaş +
+// botlar" her durumda çalışır; 3–4 gerçek oyuncu için yeni kurallar gerekir.
+export const LEGACY_SLOT = 'g';
+const isPerm = (e) => /permission|PERMISSION_DENIED/i.test(String(e?.code || e?.message || e));
+
+// Boş bir koltuğa oturur. Döner: koltuk numarası (1–3) ya da 'g' (eski yol)
 export async function joinRoom(gameId, roomId, me, max = 2) {
   const { m, db } = await rt();
+  const base = `arcade/${gameId}/${roomId}`;
+  let denied = false;
   for (const slot of SLOTS.slice(0, Math.max(1, max - 1))) {
-    const r = m.ref(db, `arcade/${gameId}/${roomId}/p/${slot}`);
+    const r = m.ref(db, `${base}/p/${slot}`);
     try {
       const res = await m.runTransaction(r, (cur) => (cur && cur.uid && !cur.left && cur.uid !== me.uid ? undefined : { uid: me.uid, name: cleanName(me.name) }));
       if (res.committed) {
         await m.onDisconnect(m.child(r, 'left')).set(true);
         return slot;
       }
-    } catch {
-      /* oda başlamış/kapanmış olabilir → sonraki koltuk */
+    } catch (e) {
+      if (isPerm(e)) {
+        denied = true;
+        break;
+      }
     }
+  }
+  if (denied) {
+    // eski yol: tek konuk koltuğu
+    const g = m.ref(db, `${base}/guest`);
+    try {
+      const res = await m.runTransaction(g, (cur) => (cur && cur.uid && !cur.left && cur.uid !== me.uid ? undefined : { uid: me.uid, name: cleanName(me.name) }));
+      if (res.committed) {
+        await m.onDisconnect(m.child(g, 'left')).set(true);
+        return LEGACY_SLOT;
+      }
+    } catch (e) {
+      console.warn('arcade join (eski yol):', e?.code || e);
+    }
+    throw new Error('Bu oda dolu ya da maç başladı.');
   }
   throw new Error('Bu oda dolu ya da maç başladı.');
 }
 
+const seatPath = (base, slot) => (slot === LEGACY_SLOT ? `${base}/guest/left` : `${base}/p/${slot}/left`);
+
 export async function leaveSeat(gameId, roomId, slot) {
   const { m, db } = await rt();
   try {
-    const r = m.ref(db, `arcade/${gameId}/${roomId}/p/${slot}/left`);
+    const r = m.ref(db, seatPath(`arcade/${gameId}/${roomId}`, slot));
     await m.set(r, true);
     await m.onDisconnect(r).cancel();
   } catch {
     /* yoksay */
   }
+}
+
+// p/ (yeni) + guest (eski) koltuklarını tek listede birleştirir
+function seatWatcher(m, db, base, cb) {
+  let p = {};
+  let g = null;
+  const emit = () => {
+    const list = playersOf(p);
+    if (g && g.uid && !g.left && !list.some((x) => x.uid === g.uid)) list.push({ slot: LEGACY_SLOT, uid: g.uid, name: String(g.name || 'Oyuncu').slice(0, 14) });
+    cb(list, { p, g });
+  };
+  const ok = (fn) => (s) => {
+    fn(s.val());
+    emit();
+  };
+  return [
+    m.onValue(m.ref(db, `${base}/p`), ok((v) => (p = v || {})), () => {}),
+    m.onValue(m.ref(db, `${base}/guest`), ok((v) => (g = v || null)), () => {}),
+  ];
 }
 
 // Bekleme odası: oyuncular ve meta (başladı mı) dinlenir
@@ -107,10 +154,7 @@ export function watchLobby(gameId, roomId, { onPlayers, onMeta }) {
   rt().then(({ m, db }) => {
     if (!alive) return;
     const base = `arcade/${gameId}/${roomId}`;
-    offs = [
-      m.onValue(m.ref(db, `${base}/p`), (s) => onPlayers?.(playersOf(s.val()))),
-      m.onValue(m.ref(db, `${base}/meta`), (s) => onMeta?.(s.val())),
-    ];
+    offs = [...seatWatcher(m, db, base, (list) => onPlayers?.(list)), m.onValue(m.ref(db, `${base}/meta`), (s) => onMeta?.(s.val()))];
   });
   return () => {
     alive = false;
@@ -125,18 +169,28 @@ export async function startRoom(gameId, roomId, roster) {
 }
 
 // Maç bağlantısı: role 'host' | 'guest'
-export async function connectRoom(gameId, roomId, role, handlers, myUid) {
+export async function connectRoom(gameId, roomId, role, handlers, myUid, mySlot) {
   const { m, db } = await rt();
   const base = `arcade/${gameId}/${roomId}`;
   const offs = [];
-  const on = (path, fn) => offs.push(m.onValue(m.ref(db, `${base}/${path}`), (s) => fn(s.val())));
+  const on = (path, fn) => offs.push(m.onValue(m.ref(db, `${base}/${path}`), (s) => fn(s.val()), () => {}));
   on('meta', (v) => handlers.onMeta?.(v));
   if (role === 'host') {
+    let legacyUid = '';
     on('i', (v) => handlers.onInputs?.(v || {}));
-    on('p', (v) => handlers.onPlayers?.(v || {}));
+    on('inG', (v) => legacyUid && v != null && handlers.onInputs?.({ [legacyUid]: v }));
+    offs.push(
+      ...seatWatcher(m, db, base, (_list, { p, g }) => {
+        if (g?.uid) legacyUid = g.uid;
+        const all = { ...(p || {}) };
+        if (g?.uid) all[LEGACY_SLOT] = g;
+        handlers.onPlayers?.(all);
+      })
+    );
   } else on('state', (v) => v && handlers.onState?.(v));
   let lastIn = -1;
   let lastInAt = 0;
+  let legacyIn = mySlot === LEGACY_SLOT;
   return {
     sendState: (json) => m.set(m.ref(db, `${base}/state`), json).catch(() => {}),
     // girdi + gönderim anı tek sayıda → ev sahibi zamanı geri yansıtır (state._e),
@@ -147,7 +201,12 @@ export async function connectRoom(gameId, roomId, role, handlers, myUid) {
       if (bits === lastIn && now - lastInAt < 400) return;
       lastIn = bits;
       lastInAt = now;
-      m.set(m.ref(db, `${base}/i/${myUid}`), Math.round(now) * 64 + (bits & IN_MASK)).catch(() => {});
+      const v = Math.round(now) * 64 + (bits & IN_MASK);
+      if (legacyIn) m.set(m.ref(db, `${base}/inG`), v).catch(() => {});
+      else
+        m.set(m.ref(db, `${base}/i/${myUid}`), v).catch((e) => {
+          if (isPerm(e)) legacyIn = true; // kurallar eski → eski girdi yolu
+        });
     },
     setStatus: (status, extra = {}) => m.update(m.ref(db, `${base}/meta`), { status, ...extra }).catch(() => {}),
     leave: async (slot) => {
@@ -155,8 +214,8 @@ export async function connectRoom(gameId, roomId, role, handlers, myUid) {
       try {
         if (role === 'host') await m.remove(m.ref(db, base));
         else if (slot) {
-          await m.set(m.ref(db, `${base}/p/${slot}/left`), true);
-          await m.onDisconnect(m.ref(db, `${base}/p/${slot}/left`)).cancel();
+          await m.set(m.ref(db, seatPath(base, slot)), true);
+          await m.onDisconnect(m.ref(db, seatPath(base, slot))).cancel();
         }
       } catch {
         /* yoksay */

@@ -43,13 +43,12 @@ export default function ArcadeHub({ onClose }) {
   const [rooms, setRooms] = useState([]);
   const [lobby, setLobby] = useState([]);
   const [fillBots, setFillBots] = useState(true);
-  const [botCount, setBotCount] = useState(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [runKey, setRunKey] = useState(0);
   const game = useMemo(() => GAMES.find((g) => g.id === gameId) || null, [gameId]);
   const max = maxOf(game);
-  const bots = Math.min(max - 1, botCount ?? max - 1);
+  const bots = max - 1; // bota karşı: masa botlarla dolar
 
   const back = () => {
     if (view === 'play' || view === 'brick') {
@@ -197,7 +196,6 @@ export default function ArcadeHub({ onClose }) {
         if (g.id === 'tugla') setView('brick');
         else {
           setGameId(g.id);
-          setBotCount(null);
           setView('mode');
         }
       }}
@@ -237,16 +235,6 @@ export default function ArcadeHub({ onClose }) {
           <div className="gs-modes">
             <p className="gs-desc">{game.desc}</p>
             {game.how && <p className="gs-sub">🎮 {game.how}</p>}
-            {max > 2 && (
-              <div className="gs-count">
-                <span>Kaç bot rakip?</span>
-                {Array.from({ length: max - 1 }, (_, i) => i + 1).map((k) => (
-                  <button key={k} type="button" className={bots === k ? 'on' : ''} onClick={() => setBotCount(k)}>
-                    {k}
-                  </button>
-                ))}
-              </div>
-            )}
             <button type="button" className="gs-mode primary" onClick={startBot}>
               <span>🤖</span>
               <b>Bota karşı oyna</b>

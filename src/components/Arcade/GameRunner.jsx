@@ -172,7 +172,8 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
             if (mode.kind === 'guest' && !meta && !ended) finish({ winner: -2, text: 'Ev sahibi oyundan ayrıldı', forfeit: true });
           },
         },
-        myUid
+        myUid,
+        mode.slot
       ).then((c) => {
         if (!alive) {
           c.close();

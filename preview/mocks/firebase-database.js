@@ -63,7 +63,11 @@ export function push(r) {
   return ref(null, `${r.path}/${key}`);
 }
 export const serverTimestamp = () => ({ '.sv': 'timestamp' });
+// önizleme: ?oldrules=1 → sunucu kuralları eskiymiş gibi yeni oda alanlarına (p/, i/) yazma reddedilir
+const denied = (path) => new URLSearchParams(location.search).get('oldrules') === '1' && /^arcade\/[^/]+\/[^/]+\/(p|i)(\/|$)/.test(path);
+const permErr = () => Object.assign(new Error('PERMISSION_DENIED: Permission denied'), { code: 'PERMISSION_DENIED' });
 export async function set(r, v) {
+  if (denied(r.path)) throw permErr();
   write((root) => setAt(root, r.path, resolveTs(v)));
 }
 export async function update(r, obj) {
@@ -118,6 +122,7 @@ export function onValue(q, cb) {
   return () => listeners.delete(l);
 }
 export async function runTransaction(r, fn) {
+  if (denied(r.path)) throw permErr();
   let committed = false;
   write((root) => {
     const cur = getAt(root, r.path);
