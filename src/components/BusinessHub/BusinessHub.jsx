@@ -131,11 +131,12 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
   const missing = bizMissing(type, [], invItems);
   const toBuy = Object.values(missing.buy).reduce((a, b) => a + b, 0);
   // Onay ekranından (FillConfirm) sonra çağrılır; alınanlar envantere gider.
-  const buyMissing = async () => {
+  // v79: chosen = onay ekranında seçilen ürünlerle (ör. hangi araba) yeniden hesaplanmış liste
+  const buyMissing = async (chosen = missing) => {
     setBusy(true);
     setMsg(null);
     try {
-      await houseAction({ op: 'buyItems', items: missing.buy, expect: { gold: missing.gold, gem: missing.gem } });
+      await houseAction({ op: 'buyItems', items: chosen.buy, expect: { gold: chosen.gold, gem: chosen.gem } });
       setFillAsk(false);
       setFillMsg(`✓ ${toBuy} parça mobilya envanterine eklendi. Evine girince Ev › Ayarlar › İşletmeler'den odaya yerleştirebilirsin.`);
     } catch (err) {

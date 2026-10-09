@@ -1,6 +1,6 @@
 // v75 — KAFA TOPU: iki koca kafalı oyuncu, 60 sn, en çok golü atan kazanır.
 // Kontrol: ◀ ▶ hareket · ⤴ zıpla · 👟 şut
-import { IN, has, clamp, r1, PCOL, drawHud, drawBanner } from './common.js';
+import { IN, has, clamp, r1, PCOL, drawHud, drawBanner, rnd } from './common.js';
 
 const W = 320;
 const H = 180;
@@ -26,11 +26,14 @@ export default {
   title: 'Kafa Topu',
   emoji: '⚽',
   desc: '60 saniyede en çok golü at. Kafa vur, zıpla, şut çek!',
+  how: '◀ ▶ koş · ⤴ zıpla · 👟 şut',
+  min: 2,
+  max: 2,
   W,
   H,
   controls: { left: ['L', 'R'], right: ['U', 'A'], labels: { U: '⤴', A: '👟' } },
   create(names) {
-    const s = { names, t: MATCH_S, sc: [0, 0], pause: 1.2, msg: 'HAZIR', over: false };
+    const s = { names, t: MATCH_S, sc: [0, 0], pause: 1.2, msg: 'HAZIR', over: false, tick: 0 };
     kickoff(s, -1);
     return s;
   },
@@ -42,6 +45,7 @@ export default {
       return;
     }
     s.t = Math.max(0, s.t - dt);
+    s.tick = (s.tick || 0) + 1;
     s.p.forEach((p, i) => {
       const inp = inputs[i] || 0;
       const dir = i === 0 ? 1 : -1;
@@ -65,7 +69,7 @@ export default {
         const dy = s.b.y - fy;
         if (Math.hypot(dx, dy) < 22) {
           s.b.vx = dir * 330 + p.vx * 0.3;
-          s.b.vy = -230 - Math.random() * 40;
+          s.b.vy = -230 - rnd(s.tick * 7 + i) * 40; // v79: iki cihazda aynı (deterministik)
         }
       }
     });
@@ -140,13 +144,19 @@ export default {
     let scorer = -1;
     if (b.x < GOAL_W - 2 && b.y > BAR_Y) scorer = 1;
     if (b.x > W - GOAL_W + 2 && b.y > BAR_Y) scorer = 0;
+    // v79: konuğun yerel tahmini gol saymaz / santra yapmaz (sadece ev sahibi)
+    if (scorer >= 0 && s._pred) {
+      b.vx *= -0.2;
+      b.x = clamp(b.x, GOAL_W + BR, W - GOAL_W - BR);
+      scorer = -1;
+    }
     if (scorer >= 0) {
       s.sc[scorer] += 1;
       s.msg = 'GOOOL!';
       s.pause = 1.4;
       kickoff(s, scorer);
     }
-    if (s.t <= 0) {
+    if (s.t <= 0 && !s._pred) {
       s.over = true;
       s.msg = s.sc[0] === s.sc[1] ? 'BERABERE' : `${s.names[s.sc[0] > s.sc[1] ? 0 : 1]} KAZANDI`;
     }

@@ -6,7 +6,7 @@ import { FakeFirestore, FieldValue, Timestamp } from '../gang/test/fakeFirestore
 import { createHouses } from '../houses.js';
 import { createBusiness } from '../business.js';
 import { createShop } from '../shop.js';
-import { createVenue, menuOf, MENU_DAILY_LIMIT } from '../venue.js';
+import { createVenue, menuOf, MENU_DAILY_LIMIT, NET_LOCK_PAD_MS } from '../venue.js';
 import { BIZ_TYPES } from '../businessCatalogData.js';
 
 class HttpsError extends Error {
@@ -120,7 +120,7 @@ test('internet kafe: ilk 60 sn ödenir, kredi mekâna bağlı (cihaz değişince
   const r = await h.act('ali', { op: 'netStart', houseId: id, itemId: station, expect: 200 });
   assert.equal(r.charged, 200);
   assert.equal(h.G('users/ali').gold, 49_800);
-  assert.equal(h.G(`houses/${id}`).bizLockUntilMs, h.clock.now + 60_000);
+  assert.equal(h.G(`houses/${id}`).bizLockUntilMs, h.clock.now + 60_000 + NET_LOCK_PAD_MS, 'v79: kilit 5 dk payla');
   // 20 sn sonra başka cihaza: ödeme yok
   h.clock.now += 20_000;
   h.present('ali', id);

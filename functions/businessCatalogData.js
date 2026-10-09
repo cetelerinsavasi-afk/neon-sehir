@@ -270,6 +270,26 @@ export function bizMissing(type, placedItems, invItems) {
   return out;
 }
 
+// v79 — "Eksikleri al" ekranında birden çok seçeneği olan şartlarda oyuncunun
+// seçtiği ürünü uygular. choice: { grupSırası: anahtar } (geçersizse en ucuz kalır).
+// bizMissing sonucunu değiştirmeden yeni bir sonuç döner (buy/gold/gem yeniden).
+export function applyBizChoice(m, choice = {}) {
+  if (!m?.groups) return m;
+  const out = { ...m, buy: {}, gold: 0, gem: 0, groups: [] };
+  m.groups.forEach((g, i) => {
+    const want = choice[i];
+    const buyKey = g.buy > 0 && typeof want === 'string' && g.any.includes(want) ? want : g.buyKey;
+    out.groups.push({ ...g, buyKey });
+    if (g.buy > 0 && buyKey) {
+      out.buy[buyKey] = (out.buy[buyKey] || 0) + g.buy;
+      const p = ITEM_PRICES[buyKey];
+      if (p?.t === 'gem') out.gem += p.v * g.buy;
+      else if (p) out.gold += p.v * g.buy;
+    }
+  });
+  return out;
+}
+
 // Bir eşya (anahtar) bu işletme türü için gerekli mi?
 export function isBizRequiredKey(type, key) {
   const t = BIZ_TYPES[type];

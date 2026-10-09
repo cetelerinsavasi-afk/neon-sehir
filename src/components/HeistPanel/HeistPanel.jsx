@@ -120,10 +120,9 @@ function suspicionClass(s) {
   return 'heist-suspicion-low';
 }
 
-// 0-20 arası şüpheyi TAM sayı olarak göstermiyoruz.
+// v79: şüphe her zaman tam değeriyle gösterilir (eskiden 0-20 arası "%0-20" yazıyordu).
 function suspicionLabel(s) {
-  if (s <= 20) return '%0-20';
-  return `%${s}`;
+  return `%${Math.round(Number(s) || 0)}`;
 }
 
 function PlanCard({ plan, myUid, onChanged }) {

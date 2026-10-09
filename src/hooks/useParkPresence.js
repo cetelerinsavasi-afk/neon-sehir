@@ -4,6 +4,8 @@ import { collection, doc, deleteDoc, limit, onSnapshot, query, setDoc, serverTim
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { useBlocks } from '../contexts/BlocksContext';
+import { createPresenceWriter, useLiveMerge, useLiveRoomCleanup } from '../lib/livePresence';
+import { liveRemove } from '../lib/liveNet';
 
 // Bir presence kaydı ne kadar süre güncellenmezse "hayalet" (terk
 // edilmiş sekme/çökme) sayılıp listeden düşürülür. Sunucu tarafında da
@@ -69,41 +71,41 @@ export function useParkPresence() {
     return unsubscribe;
   }, [user]);
 
+  // v79 maliyet: yürürken konum RTDB'den akar, Firestore seyrek yenilenir (bkz. lib/livePresence.js)
+  const liveRoom = 'park/park';
   const api = useMemo(
-    () => ({
-      // Hareket sırasında sık sık (throttled) çağrılır — konum/pose gibi
-      // ekonomiyle ilgisiz alanları doğrudan yazar (bkz. firestore.rules:
-      // avatar/displayName burada DEĞİŞTİRİLEMEZ, sadece enterPark ile
-      // yazılabilir).
-      updatePresence: async (uid, patch) => {
+    () => {
+      const write = createPresenceWriter(liveRoom, async (uid, patch) => {
         try {
-          await setDoc(
-            doc(db, 'parkPresence', uid),
-            { ...patch, updatedAt: serverTimestamp() },
-            { merge: true }
-          );
+          await setDoc(doc(db, 'parkPresence', uid), { ...patch, updatedAt: serverTimestamp() }, { merge: true });
         } catch (err) {
           console.error('Park konum güncelleme hatası:', err);
         }
-      },
-      clearPresence: async (uid) => {
-        try {
-          await deleteDoc(doc(db, 'parkPresence', uid));
-        } catch {
-          // Sekme zaten kapanıyor olabilir — sessizce yut, sunucu tarafı
-          // expireParkPresence zaten birkaç dakika içinde temizler.
-        }
-      },
-    }),
-    []
+      });
+      return {
+        updatePresence: (uid, patch) => write(uid, patch),
+        clearPresence: async (uid) => {
+          liveRemove(liveRoom, uid);
+          try {
+            await deleteDoc(doc(db, 'parkPresence', uid));
+          } catch {
+            // Sekme zaten kapanıyor olabilir — sunucu tarafı süpürme zaten temizler.
+          }
+        },
+      };
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [liveRoom]
   );
+  useLiveRoomCleanup(liveRoom, user?.uid);
+  const liveOthers = useLiveMerge(liveRoom, others, Boolean(user));
 
   // UGC D2: engellediğin oyuncunun konuşma balonu gösterilmez (avatarı görünür kalır).
   // Tüm dünya ekranları "others"ı buradan aldığı için tek noktada uygulanır.
   const { isBlocked } = useBlocks();
   const visibleOthers = useMemo(
-    () => others.map((o) => (isBlocked(o.uid) ? { ...o, chatText: null, chatTs: null, blockedByMe: true } : o)),
-    [others, isBlocked]
+    () => liveOthers.map((o) => (isBlocked(o.uid) ? { ...o, chatText: null, chatTs: null, blockedByMe: true } : o)),
+    [liveOthers, isBlocked]
   );
 
   return { others: visibleOthers, ...api };

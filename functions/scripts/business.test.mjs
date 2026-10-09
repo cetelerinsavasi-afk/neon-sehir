@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import { FakeFirestore, FieldValue, Timestamp } from '../gang/test/fakeFirestore.js';
 import { createHouses } from '../houses.js';
 import { createBusiness } from '../business.js';
-import { BIZ_TYPES, bizMinCost, checkBizRequirements, futbolDayKey, midnightDayKey, prevDayKey, bizMissing } from '../businessCatalogData.js';
+import { BIZ_TYPES, bizMinCost, checkBizRequirements, futbolDayKey, midnightDayKey, prevDayKey, bizMissing, applyBizChoice, CAR_DECOR_KEYS } from '../businessCatalogData.js';
+import { ITEM_PRICES } from '../houseCatalogData.js';
 
 class HttpsError extends Error {
   constructor(code, message) {
@@ -266,4 +267,24 @@ test('satış SMS: işletme başına tek mesaj; okunmamışken yığılmaz, okun
   h.db._store.delete(p);
   await sell('zengin', 100);
   assert.equal(msgs().length, 0);
+});
+
+test('v79 eksikleri al: çok seçenekli şartta seçilen ürün alınır, fiyat yeniden hesaplanır', () => {
+  const m = bizMissing('modifiye', [], {});
+  const gi = m.groups.findIndex((g) => g.any === CAR_DECOR_KEYS || g.any.includes('car_super'));
+  assert.ok(gi >= 0);
+  const def = m.groups[gi].buyKey;
+  const pick = CAR_DECOR_KEYS.find((k) => k !== def);
+  const m2 = applyBizChoice(m, { [gi]: pick });
+  assert.equal(m2.buy[pick], 1);
+  assert.equal(m2.buy[def], undefined);
+  const priceOf = (mm) => mm.gold + mm.gem * 1e9;
+  const pDef = ITEM_PRICES[def];
+  const pPick = ITEM_PRICES[pick];
+  const delta = (pPick.t === 'gem' ? pPick.v * 1e9 : pPick.v) - (pDef.t === 'gem' ? pDef.v * 1e9 : pDef.v);
+  assert.equal(priceOf(m2) - priceOf(m), delta);
+  // geçersiz seçim → varsayılan (en ucuz)
+  assert.deepEqual(applyBizChoice(m, { [gi]: 'bag' }).buy, m.buy);
+  // seçim yok → aynı
+  assert.deepEqual(applyBizChoice(m, {}).buy, m.buy);
 });

@@ -4,6 +4,8 @@ import { collection, doc, deleteDoc, limit, onSnapshot, query, where, setDoc, se
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { useBlocks } from '../contexts/BlocksContext';
+import { createPresenceWriter, useLiveMerge, useLiveRoomCleanup } from '../lib/livePresence';
+import { liveRemove } from '../lib/liveNet';
 
 // useParkPresence.js ile BİREBİR aynı desen (bkz. o dosyadaki yorumlar) —
 // tek fark, Banka/Karakol/Camii/Gazino'nun hepsi `locationId` alanıyla
@@ -57,37 +59,41 @@ export function useInteriorPresence(locationId) {
     return unsubscribe;
   }, [user, locationId]);
 
+  // v79 maliyet: yürürken konum RTDB'den akar, Firestore seyrek yenilenir (bkz. lib/livePresence.js)
+  const liveRoom = locationId ? `int/${locationId}` : null;
   const api = useMemo(
-    () => ({
-      updatePresence: async (uid, patch) => {
+    () => {
+      const write = createPresenceWriter(liveRoom, async (uid, patch) => {
         try {
-          await setDoc(
-            doc(db, 'interiorPresence', uid),
-            { ...patch, updatedAt: serverTimestamp() },
-            { merge: true }
-          );
+          await setDoc(doc(db, 'interiorPresence', uid), { ...patch, updatedAt: serverTimestamp() }, { merge: true });
         } catch (err) {
           console.error('Mekan konum güncelleme hatası:', err);
         }
-      },
-      clearPresence: async (uid) => {
-        try {
-          await deleteDoc(doc(db, 'interiorPresence', uid));
-        } catch {
-          // Sekme zaten kapanıyor olabilir — sessizce yut, sunucu tarafı
-          // expireInteriorPresence zaten birkaç dakika içinde temizler.
-        }
-      },
-    }),
-    []
+      });
+      return {
+        updatePresence: (uid, patch) => write(uid, patch),
+        clearPresence: async (uid) => {
+          liveRemove(liveRoom, uid);
+          try {
+            await deleteDoc(doc(db, 'interiorPresence', uid));
+          } catch {
+            // Sekme zaten kapanıyor olabilir — sunucu tarafı süpürme zaten temizler.
+          }
+        },
+      };
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [liveRoom]
   );
+  useLiveRoomCleanup(liveRoom, user?.uid);
+  const liveOthers = useLiveMerge(liveRoom, others, Boolean(user));
 
   // UGC D2: engellediğin oyuncunun konuşma balonu gösterilmez (avatarı görünür kalır).
   // Tüm dünya ekranları "others"ı buradan aldığı için tek noktada uygulanır.
   const { isBlocked } = useBlocks();
   const visibleOthers = useMemo(
-    () => others.map((o) => (isBlocked(o.uid) ? { ...o, chatText: null, chatTs: null, blockedByMe: true } : o)),
-    [others, isBlocked]
+    () => liveOthers.map((o) => (isBlocked(o.uid) ? { ...o, chatText: null, chatTs: null, blockedByMe: true } : o)),
+    [liveOthers, isBlocked]
   );
 
   return { others: visibleOthers, ...api };

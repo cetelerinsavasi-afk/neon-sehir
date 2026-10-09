@@ -1,4 +1,5 @@
-import { BIZ_TYPES, BIZ_ITEM_LABELS, ownedCounts } from '../../../functions/businessCatalogData.js';
+import { useState } from 'react';
+import { BIZ_TYPES, BIZ_ITEM_LABELS, ownedCounts, applyBizChoice } from '../../../functions/businessCatalogData.js';
 import { ITEM_PRICES } from '../../../functions/houseCatalogData.js';
 import { CATALOG_MAP } from './houseCatalog';
 import ItemThumb from './ItemThumb';
@@ -90,10 +91,20 @@ export default function BizRequirements({ type, placedItems, invItems, showPlace
 
 // "Hepsini al" onay ekranı: neler yerleştirilecek / satın alınacak, fiyatlar,
 // toplam ve cebindeki para. Onaylamadan hiçbir şey alınmaz.
-//   m: bizMissing(...) sonucu · gold/gem: cebindeki · onConfirm / onCancel
-export function FillConfirm({ type, m, gold = 0, gem = 0, busy, onConfirm, onCancel, placeNote = true, placeTitle = 'Envanterinden odaya konacaklar (ücretsiz)', note }) {
+// v79: birden çok seçeneği olan şartlarda (ör. modifiye garajı için hangi araba)
+// oyuncu alınacak ürünü buradan seçer; toplam anında güncellenir.
+//   m: bizMissing(...) sonucu · gold/gem: cebindeki · onConfirm(seçimli m) / onCancel
+export function FillConfirm({ type, m: baseM, gold = 0, gem = 0, busy, onConfirm, onCancel, placeNote = true, placeTitle = 'Envanterinden odaya konacaklar (ücretsiz)', note }) {
   const t = BIZ_TYPES[type] || {};
-  const buyRows = Object.entries(m.buy || {});
+  const [choice, setChoice] = useState({});
+  const m = applyBizChoice(baseM, choice);
+  const choosable = (m.groups || []).map((g, i) => ({ g, i })).filter(({ g }) => g.buy > 0 && g.any.length > 1);
+  // tek seçenekli eksikler (çok seçenekliler yukarıdaki seçim kartlarında)
+  const fixedBuy = {};
+  (m.groups || []).forEach((g) => {
+    if (g.buy > 0 && g.any.length === 1 && g.buyKey) fixedBuy[g.buyKey] = (fixedBuy[g.buyKey] || 0) + g.buy;
+  });
+  const buyRows = Object.entries(m.groups ? fixedBuy : m.buy || {});
   const placeRows = Object.entries(m.place || {});
   const poorGold = gold < (m.gold || 0);
   const poorGem = gem < (m.gem || 0);
@@ -112,9 +123,32 @@ export function FillConfirm({ type, m, gold = 0, gem = 0, busy, onConfirm, onCan
             ✕
           </button>
         </div>
+        {choosable.map(({ g, i }) => (
+          <div key={`c${i}`} className="bz-sec">
+            <p className="bz-sec-title">
+              Hangisini alalım? {g.buy > 1 ? `(${g.buy} tane)` : ''}
+            </p>
+            <p className="bz-hint">Bu seçeneklerden herhangi biri olur. Dokunarak seç:</p>
+            <div className="fc-pick">
+              {g.any.map((k) => {
+                const on = g.buyKey === k;
+                return (
+                  <button key={k} type="button" className={`fc-opt${on ? ' on' : ''}`} disabled={busy} onClick={() => setChoice((c) => ({ ...c, [i]: k }))} aria-pressed={on}>
+                    {on && <i className="fc-tick">✓</i>}
+                    <span className="fc-thumb">
+                      <ItemThumb k={k} icon={CATALOG_MAP[k]?.icon || BIZ_ITEM_LABELS[k]?.icon || '📦'} />
+                    </span>
+                    <b>{nameOf(k)}</b>
+                    <PriceText price={ITEM_PRICES[k]} n={g.buy} />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
         {buyRows.length > 0 && (
           <div className="bz-sec">
-            <p className="bz-sec-title">Satın alınacaklar</p>
+            <p className="bz-sec-title">{choosable.length ? 'Diğer satın alınacaklar' : 'Satın alınacaklar'}</p>
             {buyRows.map(([k, n]) => (
               <div key={k} className="bz-item">
                 <span className="bz-thumb">
@@ -174,8 +208,8 @@ export function FillConfirm({ type, m, gold = 0, gem = 0, busy, onConfirm, onCan
           <button className="bz-btn ghost" disabled={busy} onClick={onCancel}>
             Vazgeç
           </button>
-          <button className="bz-btn gold" disabled={busy || poorGold || poorGem} onClick={onConfirm}>
-            {busy ? 'İşleniyor…' : buyRows.length ? 'Onayla ve satın al' : 'Odaya yerleştir'}
+          <button className="bz-btn gold" disabled={busy || poorGold || poorGem} onClick={() => onConfirm(m)}>
+            {busy ? 'İşleniyor…' : Object.keys(m.buy || {}).length ? 'Onayla ve satın al' : 'Odaya yerleştir'}
           </button>
         </div>
       </div>

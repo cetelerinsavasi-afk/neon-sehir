@@ -18,6 +18,7 @@ import { resaleTax, factoryTax, taxLedgerWrite } from './tax.js';
 import { createVisits } from './visits.js';
 import { createShop } from './shop.js';
 import { createVenue } from './venue.js';
+import { createPresenceSummary } from './presenceSummary.js';
 import { createGym, GAME_GYM_ID, gymPriceOf, withBonus } from './gym.js';
 import { createFutbolPro, assignGoalCredits, computeMatchRatings } from './futbolPro.js';
 import { futbolDayKey, prevDayKey, bizDayStartMs } from './businessCatalogData.js';
@@ -6246,6 +6247,12 @@ export const expireInteriorPresence = onSchedule({ schedule: 'every 5 minutes' }
   await houses.expirePresence(TWO_MIN, admin.firestore.Timestamp).catch((err) => console.error('housePresence süpürme:', err));
 });
 
+// v79 maliyet: "kaç kişi var" sayıları tek belgede (bkz. functions/presenceSummary.js)
+const presenceSummaryJob = createPresenceSummary({ db, Timestamp: admin.firestore.Timestamp });
+export const presenceSummary = onSchedule({ schedule: 'every 2 minutes' }, async () => {
+  await presenceSummaryJob.run();
+});
+
 // ---------------------------------------------------------------------------
 // buyFromBufe — Park'taki büfeden içecek/atıştırmalık satın alma.
 // Ekonomiye dokunduğu (altın harcanıyor) için, tüm diğer satın alma
@@ -7448,7 +7455,13 @@ async function runArabaGelistirmeMigration() {
 // bağımlı değil.
 export const migrateArabaGelistirmeUnification = onCall(async (request) => {
   requireAuth(request);
+  // v79 maliyet: dailyReset ile AYNI bayrak. Eskiden bu sarmalayıcı bayraksızdı
+  // ve her oyuncunun açılışında TÜM kullanıcıları/envanterleri/fabrikaları/liman
+  // siparişlerini baştan okuyordu (oyuncu sayısıyla katlanan okuma maliyeti).
+  const ref = db.collection('migrations').doc('arabaGelistirmeUnification');
+  if ((await ref.get()).exists) return { ok: true, skipped: true };
   await runArabaGelistirmeMigration();
+  await ref.set({ ranAt: admin.firestore.FieldValue.serverTimestamp() });
   return { ok: true };
 });
 

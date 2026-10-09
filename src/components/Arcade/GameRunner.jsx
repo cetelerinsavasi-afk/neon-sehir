@@ -1,34 +1,47 @@
 import { useEffect, useRef, useState } from 'react';
-import { IN, lerpState } from './games/common.js';
+import { IN, IN_MASK, lerpState, NO_LERP } from './games/common.js';
 import { connectRoom } from './net';
 
 // =============================================================================
-// v75 — GameRunner: oyun döngüsü + dokunmatik/klavye kontrolleri.
-//  mode.kind: 'bot'   → yerel simülasyon, rakip bot
-//             'host'  → simülasyonu bu cihaz yürütür, durumu ~15 Hz yayınlar
-//             'guest' → v77: İSTEMCİ TAHMİNİ — konuk aynı simülasyonu kendi
-//                       cihazında da yürütür; kendi girdisi ANINDA ekrana
-//                       yansır. Ev sahibinden gelen her durum (yetkili kaynak)
-//                       geldiğinde tahmin, ağ gecikmesi kadar ileri sarılarak
-//                       düzeltilir ve görüntü yumuşakça yeni duruma kayar.
-//                       Skor/sonuç her zaman ev sahibinin durumundan gelir.
+// v79 — GameRunner: 2–4 oyunculu oyun döngüsü + dokunmatik/klavye kontrolleri.
+//  mode.kind: 'bot'   → yerel simülasyon, rakipler bot
+//             'host'  → simülasyonu bu cihaz yürütür (yetkili), durumu ~20 Hz yayınlar;
+//                       ayrılan oyuncunun yerine bot geçer
+//             'guest' → ANLIK GÖRÜNTÜ ARA DEĞERLEME: ekrana ev sahibinin son iki
+//                       durumu arasında ~100 ms geriden, akıcı çizilir (zıplama yok).
+//                       Sadece KENDİ karakterin yerelde tahmin edilir (anında tepki);
+//                       skor/olay/sonuç her zaman ev sahibinden gelir.
+//                       (v79 öncesi: tüm durum 0,3 sn ileri tahmin ediliyor, konukta
+//                       kendi kendine gol/duraklama oluyor ve skor ara değere
+//                       çekiliyordu → kasma + bozuk skor tablosu.)
+// Oyun arayüzü: { id, W, H, min, max, controls, create(names), step(s, inputs, dt),
+//   bot(s, i, mem), result(s), render(c, s, me), selfKey?='p', predict?=true, noLerp? }
 // =============================================================================
 const DT = 1 / 60;
 const SEND_MS = 50; // ~20 Hz durum yayını
+const INTERP_MS = 105; // konuk: ekranı bu kadar geriden çiz (iki paket arası ara değer)
 const clone = (o) => JSON.parse(JSON.stringify(o));
-// tahminde ev sahibinin durumundan aynen alınan (skor/sonuç) alanlar
-const NET_AUTH = ['sc', 'wins', 'round', 'over', 'win', 'msg', 'names'];
-const BTN_LABEL = { L: '◀', R: '▶', U: '⤴', A: 'A', B: 'B' };
-const KEYMAP = { ArrowLeft: 'L', a: 'L', A: 'L', ArrowRight: 'R', d: 'R', D: 'R', ArrowUp: 'U', w: 'U', W: 'U', ' ': 'A', j: 'A', J: 'A', k: 'B', K: 'B', l: 'B', L: 'B', ArrowDown: 'B' };
+const BTN_LABEL = { L: '◀', R: '▶', U: '⤴', D: '⤵', A: 'A', B: 'B' };
+const KEYMAP = { ArrowLeft: 'L', a: 'L', A: 'L', ArrowRight: 'R', d: 'R', D: 'R', ArrowUp: 'U', w: 'U', W: 'U', ' ': 'A', j: 'A', J: 'A', k: 'B', K: 'B', l: 'B', L: 'B', ArrowDown: 'B', s: 'B', S: 'B' };
 
 export default function GameRunner({ game, mode, names, onExit, onAgain }) {
   const canvasRef = useRef(null);
   const wrapRef = useRef(null);
+  const stickRef = useRef(null);
+  const draggingRef = useRef(false);
   const inputRef = useRef(0);
   const [result, setResult] = useState(null);
   const [netMsg, setNetMsg] = useState(mode.kind === 'guest' ? 'Bağlanılıyor…' : '');
   const [pressed, setPressed] = useState(0);
-  const me = mode.kind === 'guest' ? 1 : 0;
+  const [knob, setKnob] = useState(null);
+  const me = mode.kind === 'guest' ? mode.me : 0;
+  const stick = Boolean(game.controls.stick);
+  const selfKey = game.selfKey || 'p';
+
+  const setBits = (fn) => {
+    inputRef.current = fn(inputRef.current) & IN_MASK;
+    setPressed(inputRef.current);
+  };
 
   // tuval boyutu
   useEffect(() => {
@@ -49,14 +62,14 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
     return () => ro.disconnect();
   }, [game]);
 
-  // klavye
+  // klavye (joystick'li oyunlarda ↓ = aşağı)
   useEffect(() => {
     const set = (k, v) => {
-      const b = KEYMAP[k];
+      let b = KEYMAP[k];
+      if (stick && (k === 'ArrowDown' || k === 's' || k === 'S')) b = 'D';
       if (!b) return false;
       const bit = IN[b];
-      inputRef.current = v ? inputRef.current | bit : inputRef.current & ~bit;
-      setPressed(inputRef.current);
+      setBits((cur) => (v ? cur | bit : cur & ~bit));
       return true;
     };
     const down = (e) => set(e.key, true) && e.preventDefault();
@@ -67,79 +80,105 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
       window.removeEventListener('keydown', down);
       window.removeEventListener('keyup', up);
     };
-  }, []);
+  }, [stick]);
 
   // ana döngü
   useEffect(() => {
     const cv = canvasRef.current;
     const ctx = cv.getContext('2d');
+    const n = names.length;
+    const roster = mode.roster || names.map((nm, i) => ({ name: nm, bot: i !== 0 }));
+    const myUid = mode.myUid || '';
     let raf = 0;
     let alive = true;
     let state = game.create(names);
-    const botMem = {};
+    const botMem = names.map(() => ({}));
     let acc = 0;
     let last = performance.now();
     let lastSend = 0;
-    let guestInput = 0;
-    let guestEcho = 0; // konuğun son girdisinin gönderim anı (geri yansıtılır)
-    // konuk tahmini
-    let pred = null; // yerel simülasyon
-    let vis = null; // ekrana çizilen (düzeltmeler yumuşatılır)
-    let rtt = 150;
-    let lastEcho = 0;
-    let predAcc = 0;
     let conn = null;
     let ended = false;
-    // konuk: ev sahibinden gelen son (yetkili) durum
-    let snapB = null;
+    // ev sahibi
+    const guestIn = {}; // uid → bitler
+    const guestEcho = {}; // uid → konuğun son girdi zamanı (geri yansıtılır)
+    const gone = new Set(); // ayrılan oyuncuların uid'leri (yerlerine bot)
+    // konuk
+    const snaps = []; // [{ at, s }]
+    let pred = null;
+    let predAcc = 0;
+    let selfVis = null;
+    let rtt = 140;
+    let lastEcho = 0;
+    let lastSnapAt = 0;
 
     const finish = (res) => {
       if (ended) return;
       ended = true;
       setResult(res);
     };
+    const humanOthers = () => roster.filter((r, i) => i !== 0 && !r.bot && r.uid && !gone.has(r.uid));
 
     if (mode.kind !== 'bot') {
-      connectRoom(mode.gameId, mode.roomId, mode.kind, {
-        onInput: (v) => {
-          guestInput = v % 32;
-          guestEcho = Math.floor(v / 32);
-        },
-        onState: (json) => {
-          try {
-            const s = JSON.parse(json);
-            const now = performance.now();
-            snapB = { s, at: now };
-            // gecikme ölçümü: ev sahibi son girdimizin zamanını geri yolladı
-            if (s._echo && s._echo !== lastEcho) {
-              lastEcho = s._echo;
-              const sample = now - s._echo;
-              if (sample > 0 && sample < 3000) rtt = rtt * 0.8 + sample * 0.2;
+      connectRoom(
+        mode.gameId,
+        mode.roomId,
+        mode.kind,
+        {
+          onInputs: (obj) => {
+            Object.entries(obj).forEach(([uid, v]) => {
+              const num = Number(v) || 0;
+              guestIn[uid] = num % 64;
+              guestEcho[uid] = Math.floor(num / 64);
+            });
+          },
+          onPlayers: (p) => {
+            Object.values(p).forEach((v) => {
+              if (v?.uid && v.left) gone.add(v.uid);
+            });
+            if (mode.kind === 'host' && !ended && humanOthers().length === 0 && roster.filter((r) => !r.bot).length === 2) {
+              finish({ winner: 0, text: 'Rakip oyundan ayrıldı', forfeit: true });
             }
-            // tahmini yetkili duruma oturt ve gecikme kadar ileri sar
-            pred = clone(s);
-            const hostIn = s._in?.[0] || 0;
-            const ahead = Math.min(0.3, Math.max(0, rtt / 2000 + SEND_MS / 2000));
-            for (let k = Math.round(ahead / DT); k > 0; k--) game.step(pred, [hostIn, inputRef.current], DT);
-            if (!vis) vis = clone(pred);
-            setNetMsg('');
-          } catch {
-            /* bozuk paket */
-          }
+          },
+          onState: (json) => {
+            try {
+              const s = JSON.parse(json);
+              const now = performance.now();
+              snaps.push({ at: now, s });
+              while (snaps.length > 14) snaps.shift();
+              lastSnapAt = now;
+              // gecikme ölçümü: ev sahibi son girdimizin zamanını geri yolladı
+              const echo = s._e?.[myUid];
+              if (echo && echo !== lastEcho) {
+                lastEcho = echo;
+                const sample = now - echo;
+                if (sample > 0 && sample < 3000) rtt = rtt * 0.8 + sample * 0.2;
+              }
+              // kendi karakterimiz için tahmin: yetkili duruma otur, gecikme kadar ileri sar
+              if (game.predict !== false && !s.over) {
+                const base = clone(s);
+                base._pred = true;
+                const ahead = Math.min(0.25, Math.max(0, rtt / 2000 + SEND_MS / 2000));
+                const ins = (s._in || []).slice();
+                ins[me] = inputRef.current;
+                if (!(base.pause > 0)) for (let k = Math.round(ahead / DT); k > 0; k--) game.step(base, ins, DT);
+                pred = base;
+              } else pred = null;
+              setNetMsg('');
+            } catch {
+              /* bozuk paket */
+            }
+          },
+          onMeta: (meta) => {
+            if (mode.kind === 'guest' && !meta && !ended) finish({ winner: -2, text: 'Ev sahibi oyundan ayrıldı', forfeit: true });
+          },
         },
-        onGuest: (g) => {
-          if (mode.kind === 'host' && g?.left && !ended) finish({ winner: 0, text: 'Rakip oyundan ayrıldı', forfeit: true });
-        },
-        onMeta: (meta) => {
-          if (mode.kind === 'guest' && !meta && !ended) finish({ winner: 1, text: 'Ev sahibi oyundan ayrıldı', forfeit: true });
-        },
-      }).then((c) => {
+        myUid
+      ).then((c) => {
         if (!alive) {
           c.close();
           return;
         }
         conn = c;
-        if (mode.kind === 'host') c.setStatus('playing');
       });
     }
 
@@ -147,58 +186,94 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
       ctx.setTransform(cv.width / game.W, 0, 0, cv.height / game.H, 0, 0);
       game.render(ctx, s, me);
     };
+    const skip = game.noLerp ? new Set([...NO_LERP, ...game.noLerp]) : NO_LERP;
+    const lerpFn = game.lerp || ((a, b, t) => lerpState(a, b, t, skip));
 
     const loop = (now) => {
       if (!alive) return;
       raf = requestAnimationFrame(loop);
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
+
       if (mode.kind === 'guest') {
         conn?.sendInput(inputRef.current);
-        if (snapB && pred) {
-          // kendi girdimizle yerel simülasyon (anında tepki)
-          const hostIn = snapB.s._in?.[0] || 0;
-          predAcc += dt;
-          while (predAcc >= DT) {
-            predAcc -= DT;
-            game.step(pred, [hostIn, inputRef.current], DT);
-          }
-          // skor/sonuç hep ev sahibinden
-          NET_AUTH.forEach((k) => {
-            if (k in snapB.s) pred[k] = clone(snapB.s[k]);
-          });
-          // düzeltmeleri yumuşat (~50 ms)
-          const k = 1 - Math.exp(-dt * 22);
-          vis = (game.lerp || lerpState)(vis || pred, pred, k);
-          draw(vis);
-          const res = game.result(snapB.s);
-          if (res) finish(res);
-        } else if (snapB) {
-          draw(snapB.s);
-        } else {
+        if (!snaps.length) {
           ctx.setTransform(1, 0, 0, 1, 0, 0);
           ctx.fillStyle = '#05070d';
           ctx.fillRect(0, 0, cv.width, cv.height);
+          return;
         }
+        // ekran zamanı: en yeni paketten INTERP_MS geride → iki paket arası
+        const target = now - INTERP_MS;
+        let a = snaps[0];
+        let b = snaps[snaps.length - 1];
+        for (let k = snaps.length - 1; k > 0; k--) {
+          if (snaps[k - 1].at <= target) {
+            a = snaps[k - 1];
+            b = snaps[k];
+            break;
+          }
+        }
+        let view;
+        if (target >= b.at || a === b) view = b.s;
+        else if (target <= a.at) view = a.s;
+        else view = lerpFn(a.s, b.s, (target - a.at) / Math.max(1, b.at - a.at));
+        // kendi karakterimiz: yerel tahmin (anında tepki), düzeltmeler yumuşak
+        if (pred && !view.over) {
+          const latest = snaps[snaps.length - 1].s;
+          if (!(pred.pause > 0)) {
+            predAcc += dt;
+            const ins = (latest._in || []).slice();
+            ins[me] = inputRef.current;
+            let guard = 0;
+            while (predAcc >= DT && guard++ < 8) {
+              predAcc -= DT;
+              game.step(pred, ins, DT);
+            }
+          }
+          const mine = pred[selfKey]?.[me];
+          if (mine && view[selfKey]?.[me]) {
+            selfVis = selfVis ? lerpFn(selfVis, mine, 1 - Math.exp(-dt * 25)) : clone(mine);
+            // tahmin yetkili konumdan çok uzaklaştıysa (ölüm/ışınlanma) yetkiliyi kullan
+            const auth = latest[selfKey]?.[me];
+            const far = auth && typeof auth.x === 'number' && Math.hypot((selfVis.x ?? 0) - auth.x, (selfVis.y ?? 0) - (auth.y ?? 0)) > 70;
+            view = { ...view, [selfKey]: view[selfKey].map((p, i) => (i === me && !far && !p.dead && !p.out ? { ...p, ...selfVis, dead: p.dead, out: p.out } : p)) };
+          }
+        }
+        draw(view);
+        if (import.meta.env?.DEV && window.__gsTrace) window.__gsTrace.push([now, view.b?.x ?? view.p?.[0]?.x, view.b?.y ?? view.p?.[0]?.y, view.sc ? view.sc.join('-') : '']);
+        if (now - lastSnapAt > 6000 && !ended) setNetMsg('Bağlantı zayıf…');
+        const res = game.result(snaps[snaps.length - 1].s);
+        if (res) finish(res);
         return;
       }
+
       if (document.hidden && mode.kind === 'bot') return;
       acc += dt;
-      while (acc >= DT) {
+      let guard = 0;
+      while (acc >= DT && guard++ < 10) {
         acc -= DT;
-        const other = mode.kind === 'bot' ? game.bot(state, 1, botMem) : guestInput;
-        game.step(state, [inputRef.current, other], DT);
+        const ins = [];
+        for (let i = 0; i < n; i++) {
+          const r = roster[i] || {};
+          if (i === 0) ins.push(inputRef.current);
+          else if (mode.kind === 'bot' || r.bot || !r.uid || gone.has(r.uid)) ins.push(game.bot(state, i, botMem[i]));
+          else ins.push(guestIn[r.uid] || 0);
+        }
+        state._lastIn = ins;
+        game.step(state, ins, DT);
       }
       draw(state);
       if (mode.kind === 'host' && conn && now - lastSend > SEND_MS) {
         lastSend = now;
-        // _in: girdiler (konuk tahmini için) · _echo: konuğun son girdi zamanı (gecikme ölçümü)
-        conn.sendState(JSON.stringify({ ...state, _in: [inputRef.current, guestInput], _echo: guestEcho }));
+        const { _lastIn, ...pub } = state;
+        conn.sendState(JSON.stringify({ ...pub, _in: _lastIn || [], _e: guestEcho }));
       }
       const res = game.result(state);
       if (res) {
         if (mode.kind === 'host' && conn) {
-          conn.sendState(JSON.stringify(state));
+          const { _lastIn, ...pub } = state;
+          conn.sendState(JSON.stringify({ ...pub, _in: _lastIn || [] }));
           conn.setStatus('done');
         }
         finish(res);
@@ -208,7 +283,7 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
     return () => {
       alive = false;
       cancelAnimationFrame(raf);
-      if (conn) conn.leave();
+      if (conn) conn.leave(mode.slot);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game, mode]);
@@ -216,15 +291,14 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
   const press = (b, v) => (e) => {
     e.preventDefault();
     const bit = IN[b];
-    inputRef.current = v ? inputRef.current | bit : inputRef.current & ~bit;
-    setPressed(inputRef.current);
+    setBits((cur) => (v ? cur | bit : cur & ~bit));
   };
   // (bileşen değil düz fonksiyon: her basışta yeniden oluşturulup dokunmayı kaybetmesin)
   const renderBtn = (b) => (
     <button
       key={b}
       type="button"
-      className={`gs-btn${pressed & IN[b] ? ' on' : ''}`}
+      className={`gs-btn${pressed & IN[b] ? ' on' : ''}${game.controls.big?.includes(b) ? ' big' : ''}`}
       onPointerDown={press(b, true)}
       onPointerUp={press(b, false)}
       onPointerLeave={press(b, false)}
@@ -235,12 +309,56 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
     </button>
   );
 
-  const outcome = result ? (result.winner < 0 ? 'Berabere' : result.winner === me ? 'Kazandın! 🎉' : 'Kaybettin') : '';
+  // v79 — sanal joystick (8 yön → L/R/U/D bitleri)
+  const stickMove = (e) => {
+    const el = stickRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    let dx = (e.clientX - cx) / (r.width / 2);
+    let dy = (e.clientY - cy) / (r.height / 2);
+    const len = Math.hypot(dx, dy);
+    if (len > 1) {
+      dx /= len;
+      dy /= len;
+    }
+    setKnob({ x: dx, y: dy });
+    const dead = 0.32;
+    let bits = 0;
+    if (len > dead) {
+      const ang = Math.atan2(dy, dx);
+      const oct = Math.round(ang / (Math.PI / 4)); // -4..4
+      const dirs = { 0: IN.R, 1: IN.R | IN.D, 2: IN.D, 3: IN.L | IN.D, 4: IN.L, '-4': IN.L, '-3': IN.L | IN.U, '-2': IN.U, '-1': IN.R | IN.U };
+      bits = dirs[oct] || 0;
+    }
+    setBits((cur) => (cur & ~(IN.L | IN.R | IN.U | IN.D)) | bits);
+  };
+  const stickEnd = () => {
+    draggingRef.current = false;
+    setKnob(null);
+    setBits((cur) => cur & ~(IN.L | IN.R | IN.U | IN.D));
+  };
+  // v79 — ekrana dokun = A (ör. Uzay Koşusu'nda yerçekimini çevir)
+  const tapProps = game.controls.tap
+    ? {
+        onPointerDown: (e) => {
+          e.preventDefault();
+          setBits((cur) => cur | IN.A);
+        },
+        onPointerUp: () => setBits((cur) => cur & ~IN.A),
+        onPointerLeave: () => setBits((cur) => cur & ~IN.A),
+        onPointerCancel: () => setBits((cur) => cur & ~IN.A),
+      }
+    : {};
+
+  const winnerName = result && result.winner >= 0 ? names[result.winner] : '';
+  const outcome = result ? (result.winner === -2 ? 'Maç bitti' : result.winner < 0 ? 'Berabere' : result.winner === me ? 'Kazandın! 🎉' : names.length > 2 ? `${winnerName} kazandı` : 'Kaybettin') : '';
 
   return (
     <div className="gs-runner">
       <div className="gs-canvas-wrap" ref={wrapRef}>
-        <canvas ref={canvasRef} className="gs-canvas" />
+        <canvas ref={canvasRef} className="gs-canvas" {...tapProps} onContextMenu={(e) => e.preventDefault()} />
         {netMsg && <div className="gs-net">{netMsg}</div>}
         {result && (
           <div className="gs-result">
@@ -261,13 +379,30 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
       </div>
       <div className="gs-pad">
         <div className="gs-pad-side">
-          {game.controls.left.map(renderBtn)}
+          {stick ? (
+            <div
+              ref={stickRef}
+              className="gs-stick"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.currentTarget.setPointerCapture?.(e.pointerId);
+                draggingRef.current = true;
+                stickMove(e);
+              }}
+              onPointerMove={(e) => draggingRef.current && stickMove(e)}
+              onPointerUp={stickEnd}
+              onPointerCancel={stickEnd}
+              onContextMenu={(e) => e.preventDefault()}
+            >
+              <span className="gs-knob" style={knob ? { transform: `translate(${knob.x * 34}px, ${knob.y * 34}px)` } : undefined} />
+            </div>
+          ) : (
+            game.controls.left.map(renderBtn)
+          )}
         </div>
-        <div className="gs-pad-side right">
-          {game.controls.right.map(renderBtn)}
-        </div>
+        <div className="gs-pad-side right">{game.controls.right.map(renderBtn)}</div>
       </div>
-      <p className="gs-keys">Klavye: ← → hareket · ↑ zıpla · Boşluk / J · K</p>
+      <p className="gs-keys">{game.controls.hint || (stick ? 'Klavye: ok tuşları hareket · Boşluk / J · K' : 'Klavye: ← → hareket · ↑ zıpla · Boşluk / J · K')}</p>
     </div>
   );
 }

@@ -63,6 +63,7 @@ export function netPriceOf(h) {
 
 const HELD_MS = 120_000;
 const PRESENCE_ACTIVE_MS = 2 * 60 * 1000;
+export const NET_LOCK_PAD_MS = 5 * 60 * 1000;
 
 export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, business, now = () => Date.now() }) {
   const fail = (code, msg) => {
@@ -172,8 +173,10 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
       payOwnerTx(tx, os, h.ownerUid, price - bizTax(price)); // v77 vergi %10
       business?.recordIncomeTx(tx, { houseId, h, amount: price, kind: 'service', customerUid: uid, products: { dakika: 1 }, tax: bizTax(price) });
     }
-    // kredi sürerken gerekli mobilyalar kaldırılamaz
-    if (Number(h.bizLockUntilMs || 0) < creditUntilMs) tx.update(houseRef(houseId), { bizLockUntilMs: creditUntilMs });
+    // kredi sürerken gerekli mobilyalar kaldırılamaz.
+    // v79 maliyet: kilit 5 dk payla uzatılır → ev belgesi her dakika değil ~5 dk'da
+    // bir yazılır (her yazma içerideki herkese ve listelere okuma demekti).
+    if (Number(h.bizLockUntilMs || 0) < creditUntilMs) tx.update(houseRef(houseId), { bizLockUntilMs: creditUntilMs + NET_LOCK_PAD_MS });
     return creditUntilMs;
   }
 

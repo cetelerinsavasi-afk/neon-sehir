@@ -334,3 +334,99 @@
     font-size: 21px;
   }
 }
+
+/* v79 — joystick, büyük tuş, lobi, oyuncu sayısı */
+.gs-btn.big {
+  width: 86px;
+  height: 86px;
+  font-size: 30px;
+}
+.gs-stick {
+  position: relative;
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  border: 2px solid rgba(25, 232, 255, 0.45);
+  background: radial-gradient(circle, rgba(25, 232, 255, 0.08), rgba(8, 12, 24, 0.9) 70%);
+  touch-action: none;
+  -webkit-touch-callout: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+}
+.gs-knob {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.5), rgba(25, 232, 255, 0.55));
+  box-shadow: 0 0 14px rgba(25, 232, 255, 0.5);
+  pointer-events: none;
+  transition: transform 0.05s linear;
+}
+.gs-canvas {
+  touch-action: none;
+}
+.gs-count {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: rgba(232, 237, 246, 0.75);
+}
+.gs-count button {
+  min-width: 40px;
+  height: 32px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.05);
+  color: #e8edf6;
+  font-weight: 800;
+  cursor: pointer;
+}
+.gs-count button.on {
+  border-color: #19e8ff;
+  background: rgba(25, 232, 255, 0.16);
+  color: #19e8ff;
+}
+.gs-lobby {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+.gs-seat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 13px;
+}
+.gs-seat i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex: none;
+}
+.gs-seat.empty {
+  opacity: 0.55;
+  border-style: dashed;
+}
+.gs-seat b {
+  flex: 1;
+}
+.gs-game-tag.multi {
+  color: #ffd23f;
+}
+.gs-section {
+  grid-column: 1 / -1;
+  margin: 6px 0 0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  color: rgba(232, 237, 246, 0.6);
+}

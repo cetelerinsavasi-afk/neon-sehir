@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useBackClose } from '../../lib/backStack';
 import { collection, doc, getDoc, limit, onSnapshot, orderBy, query, setDoc, deleteDoc, serverTimestamp, where } from 'firebase/firestore';
 import { db } from '../../firebase';
+import { liveReady, liveWrite, liveRemove, watchLive, mergeLive } from '../../lib/liveNet';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSocial } from '../../contexts/SocialContext';
 import { useBlocks } from '../../contexts/BlocksContext';
@@ -400,6 +401,21 @@ export default function HouseScreen({ houseId, onExit }) {
   }, [music]);
 
   // --- 4) canlı oyuncular -----------------------------------------------------------
+  // v79 maliyet: konumlar RTDB'den (live/house/{evId}) akar; Firestore kaydı
+  // kim içeride / ad / avatar / eldeki ürün için. İkisi zamanına göre birleşir.
+  const fsOthersRef = useRef([]);
+  const liveMapRef = useRef({});
+  const pushOthers = useCallback(() => {
+    const merged = fsOthersRef.current.map((p) => mergeLive(p, liveMapRef.current[p.uid], p.updatedAt?.toMillis?.() ?? 0));
+    engineRef.current?.setOthers(merged);
+  }, []);
+  useEffect(() => {
+    if (phase !== 'ready') return undefined;
+    return watchLive(`house/${houseId}`, (m) => {
+      liveMapRef.current = m;
+      pushOthers();
+    });
+  }, [phase, houseId, engineKey, pushOthers]);
   useEffect(() => {
     if (phase !== 'ready') return undefined;
     const q = query(collection(db, 'housePresence'), where('houseId', '==', houseId), limit(40));
@@ -416,7 +432,8 @@ export default function HouseScreen({ houseId, onExit }) {
           if (now - ms > PRESENCE_STALE_MS && d.id !== user.uid) return;
           list.push({ uid: d.id, ...p, holdingVisible: p.holding || null });
         });
-        engineRef.current?.setOthers(list.filter((p) => p.uid !== user.uid));
+        fsOthersRef.current = list.filter((p) => p.uid !== user.uid);
+        pushOthers();
         // v77 performans: konumlar 3D motora doğrudan gider; ekranı (React) sadece
         // kişi listesi/isim/avatar/eldeki ürün değişince yeniden çiz
         const onlineKey = list.map((p) => `${p.uid}|${p.displayName || ''}|${p.holding || ''}|${JSON.stringify(p.avatar || null)}`).join(';');
@@ -447,37 +464,59 @@ export default function HouseScreen({ houseId, onExit }) {
       },
       (err) => console.error('Ev presence hatası:', err)
     );
-  }, [phase, houseId, user?.uid, exit, engineKey]);
+  }, [phase, houseId, user?.uid, exit, engineKey, pushOthers]);
 
   useEffect(() => {
     if (phase !== 'ready' || !entered) return undefined; // konum, sunucu girişi onaylayınca
+    const room = `house/${houseId}`;
     let last = '';
     let lastKey = '';
-    let lastAt = 0;
+    let lastFsAt = 0;
+    let lastLiveAt = 0;
+    let moving = false;
     const iv = setInterval(() => {
       const eng = engineRef.current;
       if (!eng || document.hidden || leavingRef.current) return;
       const st = eng.getSelfState();
       const em = lastEmoteRef.current;
       const sig = `${st.x}|${st.z}|${st.seat}|${st.left}|${em.ts}`;
-      // v73 — maliyet: yürürken en fazla ~0,65 sn'de bir yazılır (eskiden 0,22 sn;
-      // her yazma evdeki herkese bir okuma). Oturma/hareket (emote) hemen gider;
-      // diğerleri aradaki boşlukta yumuşak kayar (houseEngine).
       const keySig = `${st.seat}|${em.ts}`;
       const now = Date.now();
-      if (sig === last && now - lastAt < 15_000) return;
-      if (sig !== last && keySig === lastKey && now - lastAt < 650) return;
+      const pos = { x: st.x, z: st.z, left: st.left, seat: st.seat, emote: em.emote, emoteTs: em.ts };
+      const writeFs = () => {
+        lastFsAt = now;
+        setDoc(doc(db, 'housePresence', user.uid), { ...pos, updatedAt: serverTimestamp() }, { merge: true }).catch(() => {});
+      };
+      if (liveReady()) {
+        // v79 — maliyet + akıcılık: yürürken konum RTDB'ye ~0,35 sn'de bir (ucuz,
+        // hızlı); Firestore'a sadece oturma/hareket değişince, durunca ve 15 sn'de
+        // bir nabız (sunucunun "içeride mi" kontrolleri ve fotoğraf için).
+        const changed = sig !== last;
+        const keyChanged = keySig !== lastKey;
+        if (changed && !keyChanged && now - lastLiveAt < 350) return;
+        if (changed) {
+          liveWrite(room, user.uid, pos);
+          lastLiveAt = now;
+        }
+        const stopped = moving && !changed;
+        if (keyChanged || stopped || now - lastFsAt >= 15_000) writeFs();
+        moving = changed && !keyChanged;
+        last = sig;
+        lastKey = keySig;
+        return;
+      }
+      // RTDB yoksa eski yol (v73): yürürken ~0,65 sn'de bir Firestore
+      if (sig === last && now - lastFsAt < 15_000) return;
+      if (sig !== last && keySig === lastKey && now - lastFsAt < 650) return;
       last = sig;
       lastKey = keySig;
-      lastAt = now;
-      setDoc(
-        doc(db, 'housePresence', user.uid),
-        { x: st.x, z: st.z, left: st.left, seat: st.seat, emote: em.emote, emoteTs: em.ts, updatedAt: serverTimestamp() },
-        { merge: true }
-      ).catch(() => {});
-    }, 220);
-    return () => clearInterval(iv);
-  }, [phase, user?.uid, entered]);
+      writeFs();
+    }, 120);
+    return () => {
+      clearInterval(iv);
+      liveRemove(room, user.uid);
+    };
+  }, [phase, user?.uid, entered, houseId]);
 
   // --- 5) sohbet -----------------------------------------------------------------------
   useEffect(() => {

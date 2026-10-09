@@ -5,8 +5,14 @@ import { useBackClose } from '../../lib/backStack';
 import headSoccer from './games/headSoccer';
 import fighter from './games/fighter';
 import racer from './games/racer';
+import spaceRun from './games/spaceRun';
+import tanks from './games/tanks';
+import sumo from './games/sumo';
+import bomb from './games/bomb';
+import paint from './games/paint';
 import GameRunner from './GameRunner';
-import { ONLINE_ENABLED, cancelRoom, connectRoom, createRoom, joinRoom, watchRooms } from './net';
+import { PCOL } from './games/common.js';
+import { ONLINE_ENABLED, cancelRoom, createRoom, joinRoom, leaveSeat, startRoom, watchLobby, watchRooms } from './net';
 import './Arcade.css';
 
 const BrickBreaker = lazy(() => import('../HouseScreen/ArcadeGame'));
@@ -14,33 +20,43 @@ const BrickBreaker = lazy(() => import('../HouseScreen/ArcadeGame'));
 // =============================================================================
 // v75 — OYUN SALONU (evde Atari Makinesi / Oyuncu Bilgisayarı / İnternet Kafe
 // İstasyonu / Konsol & TV Seti'nden ya da karşılarındaki koltuktan açılır).
-// 4 oyun: Kafa Topu · Sokak Dövüşü · Neon Yarış · Tuğla Kırma.
-// İlk üçü: 🤖 bota karşı ya da 🌐 online (oda kur → rakip gelince başlar /
-// açık odalardan birine katıl). Online: Realtime Database (bkz. net.js).
+// v79 — 2–4 kişilik oyunlar: Uzay Koşusu · Tank Savaşı · Sumo · Sıcak Bomba ·
+// Boya Savaşı · Drift Yarışı (yeni). Bota karşı (rakip sayısı seçilir) ya da
+// online oda: kuran bekleme odasında katılanları görür, "Başlat" der; boş
+// koltuklar bota döner. Online: Realtime Database (bkz. net.js).
 // =============================================================================
-const GAMES = [headSoccer, fighter, racer];
-const BRICK = { id: 'tugla', title: 'Tuğla Kırma', emoji: '🧱', desc: 'Klasik atari: topu sektir, tüm tuğlaları kır.' };
+const GAMES = [spaceRun, tanks, sumo, bomb, paint, racer, headSoccer, fighter];
+const BRICK = { id: 'tugla', title: 'Tuğla Kırma', emoji: '🧱', desc: 'Klasik atari: topu sektir, tüm tuğlaları kır.', min: 1, max: 1 };
+const maxOf = (g) => g?.max || 2;
+const botNames = (k) => Array.from({ length: k }, (_, i) => (k > 1 ? `🤖 Bot ${i + 1}` : '🤖 Bot'));
 
 export default function ArcadeHub({ onClose }) {
   const { user } = useAuth();
   const { player } = usePlayer();
   const myName = String(player?.displayName || user?.displayName || 'Oyuncu').slice(0, 14);
   const [gameId, setGameId] = useState(null);
-  const [view, setView] = useState('menu'); // menu | mode | waiting | play | brick
+  const [view, setView] = useState('menu'); // menu | mode | waiting | joined | play | brick
   const [mode, setMode] = useState(null);
   const [names, setNames] = useState(['', '']);
   const [roomId, setRoomId] = useState(null);
+  const [seat, setSeat] = useState(null);
   const [rooms, setRooms] = useState([]);
+  const [lobby, setLobby] = useState([]);
+  const [fillBots, setFillBots] = useState(true);
+  const [botCount, setBotCount] = useState(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [runKey, setRunKey] = useState(0);
   const game = useMemo(() => GAMES.find((g) => g.id === gameId) || null, [gameId]);
+  const max = maxOf(game);
+  const bots = Math.min(max - 1, botCount ?? max - 1);
 
   const back = () => {
     if (view === 'play' || view === 'brick') {
       setView(gameId && view === 'play' ? 'mode' : 'menu');
       setMode(null);
     } else if (view === 'waiting') leaveWaiting();
+    else if (view === 'joined') leaveJoined();
     else if (view === 'mode') setView('menu');
     else onClose();
   };
@@ -52,32 +68,47 @@ export default function ArcadeHub({ onClose }) {
     return watchRooms(game.id, (list) => setRooms(list.filter((r) => r.hostUid !== user.uid)));
   }, [view, game, user]);
 
-  // oda kurduk: rakip bekleniyor
+  // oda kurduk: oyuncular bekleniyor
   useEffect(() => {
     if (view !== 'waiting' || !roomId || !game) return undefined;
-    let conn = null;
-    let alive = true;
-    connectRoom(game.id, roomId, 'host', {
-      onGuest: (g) => {
-        if (!alive || !g?.uid || g.left) return;
-        alive = false;
-        conn?.close();
-        setNames([myName, String(g.name || 'Rakip').slice(0, 14)]);
-        setMode({ kind: 'host', gameId: game.id, roomId });
-        setView('play');
+    return watchLobby(game.id, roomId, { onPlayers: setLobby });
+  }, [view, roomId, game]);
+  // 2 kişilik oyun / oda doldu → otomatik başla
+  useEffect(() => {
+    if (view === 'waiting' && game && lobby.length >= max - 1) begin();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lobby, view]);
+
+  // odaya katıldık: ev sahibi başlatana kadar bekle
+  useEffect(() => {
+    if (view !== 'joined' || !roomId || !game || !user) return undefined;
+    return watchLobby(game.id, roomId, {
+      onPlayers: setLobby,
+      onMeta: (meta) => {
+        if (!meta) {
+          setErr('Oda kapandı.');
+          setRoomId(null);
+          setView('mode');
+          return;
+        }
+        if (meta.status === 'playing' && Array.isArray(meta.roster)) {
+          const roster = meta.roster;
+          const idx = roster.findIndex((r) => r.uid === user.uid);
+          if (idx < 0) {
+            setErr('Maç sensiz başladı.');
+            setView('mode');
+            return;
+          }
+          setNames(roster.map((r) => String(r.name || 'Oyuncu').slice(0, 14)));
+          setMode({ kind: 'guest', gameId: game.id, roomId, roster, me: idx, slot: seat, myUid: user.uid });
+          setView('play');
+        }
       },
-    }).then((c) => {
-      conn = c;
-      if (!alive) c.close();
     });
-    return () => {
-      alive = false;
-      conn?.close();
-    };
-  }, [view, roomId, game, myName]);
+  }, [view, roomId, game, user, seat]);
 
   const startBot = () => {
-    setNames([myName, '🤖 Bot']);
+    setNames([myName, ...botNames(bots)]);
     setMode({ kind: 'bot' });
     setRunKey((k) => k + 1);
     setView('play');
@@ -86,11 +117,32 @@ export default function ArcadeHub({ onClose }) {
     setErr('');
     setBusy(true);
     try {
-      const id = await createRoom(game.id, { uid: user.uid, name: myName });
+      const id = await createRoom(game.id, { uid: user.uid, name: myName }, max);
+      setLobby([]);
       setRoomId(id);
       setView('waiting');
     } catch (e) {
       setErr(e?.message || 'Oda kurulamadı.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const begin = async () => {
+    if (!roomId || !game || busy) return;
+    const humans = lobby.slice(0, max - 1);
+    const roster = [{ uid: user.uid, name: myName, bot: false }, ...humans.map((p) => ({ uid: p.uid, name: p.name, bot: false }))];
+    if (fillBots || roster.length < 2) {
+      const k = max - roster.length;
+      botNames(k).forEach((nm) => roster.push({ uid: '', name: nm, bot: true }));
+    }
+    setBusy(true);
+    try {
+      await startRoom(game.id, roomId, roster);
+      setNames(roster.map((r) => r.name));
+      setMode({ kind: 'host', gameId: game.id, roomId, roster });
+      setView('play');
+    } catch (e) {
+      setErr(e?.message || 'Maç başlatılamadı.');
     } finally {
       setBusy(false);
     }
@@ -100,14 +152,21 @@ export default function ArcadeHub({ onClose }) {
     setRoomId(null);
     setView('mode');
   };
+  const leaveJoined = () => {
+    if (roomId && game && seat) leaveSeat(game.id, roomId, seat);
+    setRoomId(null);
+    setSeat(null);
+    setView('mode');
+  };
   const join = async (room) => {
     setErr('');
     setBusy(true);
     try {
-      await joinRoom(game.id, room.id, { uid: user.uid, name: myName });
-      setNames([String(room.hostName || 'Rakip').slice(0, 14), myName]);
-      setMode({ kind: 'guest', gameId: game.id, roomId: room.id });
-      setView('play');
+      const slot = await joinRoom(game.id, room.id, { uid: user.uid, name: myName }, room.max || 2);
+      setSeat(slot);
+      setRoomId(room.id);
+      setLobby([]);
+      setView('joined');
     } catch (e) {
       setErr(e?.message || 'Odaya katılınamadı.');
     } finally {
@@ -123,6 +182,33 @@ export default function ArcadeHub({ onClose }) {
     );
   }
 
+  const seats = (hostName) => {
+    const list = [{ name: hostName, uid: 'host' }, ...lobby];
+    return Array.from({ length: max }, (_, i) => list[i] || null);
+  };
+  const tagOf = (g) => (g.id === 'tugla' ? 'Tek kişilik' : maxOf(g) > 2 ? `👥 2–${maxOf(g)} kişi · 🤖 · 🌐` : '👥 2 kişi · 🤖 · 🌐');
+  const card = (g) => (
+    <button
+      key={g.id}
+      type="button"
+      className={`gs-game gs-game-${g.id}`}
+      onClick={() => {
+        setErr('');
+        if (g.id === 'tugla') setView('brick');
+        else {
+          setGameId(g.id);
+          setBotCount(null);
+          setView('mode');
+        }
+      }}
+    >
+      <span className="gs-game-emoji">{g.emoji}</span>
+      <span className="gs-game-title">{g.title}</span>
+      <span className="gs-game-desc">{g.desc}</span>
+      <span className={`gs-game-tag${maxOf(g) > 2 ? ' multi' : ''}`}>{tagOf(g)}</span>
+    </button>
+  );
+
   return (
     <div className="gs-backdrop">
       <div className="gs-sheet">
@@ -130,9 +216,7 @@ export default function ArcadeHub({ onClose }) {
           <button type="button" className="gs-back" onClick={back} aria-label="Geri">
             ‹
           </button>
-          <span className="gs-title">
-            {view === 'menu' ? '🎮 Oyun Salonu' : `${game?.emoji} ${game?.title}`}
-          </span>
+          <span className="gs-title">{view === 'menu' ? '🎮 Oyun Salonu' : `${game?.emoji} ${game?.title}`}</span>
           <button type="button" className="gs-back" onClick={onClose} aria-label="Kapat">
             ✕
           </button>
@@ -140,49 +224,48 @@ export default function ArcadeHub({ onClose }) {
 
         {view === 'menu' && (
           <div className="gs-games">
-            {[...GAMES, BRICK].map((g) => (
-              <button
-                key={g.id}
-                type="button"
-                className={`gs-game gs-game-${g.id}`}
-                onClick={() => {
-                  setErr('');
-                  if (g.id === 'tugla') setView('brick');
-                  else {
-                    setGameId(g.id);
-                    setView('mode');
-                  }
-                }}
-              >
-                <span className="gs-game-emoji">{g.emoji}</span>
-                <span className="gs-game-title">{g.title}</span>
-                <span className="gs-game-desc">{g.desc}</span>
-                <span className="gs-game-tag">{g.id === 'tugla' ? 'Tek kişilik' : '🤖 Bot · 🌐 Online'}</span>
-              </button>
-            ))}
+            <p className="gs-section">👥 ARKADAŞLARLA (2–4 KİŞİ)</p>
+            {GAMES.filter((g) => maxOf(g) > 2).map(card)}
+            <p className="gs-section">⚔️ BİRE BİR</p>
+            {GAMES.filter((g) => maxOf(g) <= 2).map(card)}
+            <p className="gs-section">🕹️ TEK KİŞİLİK</p>
+            {card(BRICK)}
           </div>
         )}
 
         {view === 'mode' && game && (
           <div className="gs-modes">
             <p className="gs-desc">{game.desc}</p>
+            {game.how && <p className="gs-sub">🎮 {game.how}</p>}
+            {max > 2 && (
+              <div className="gs-count">
+                <span>Kaç bot rakip?</span>
+                {Array.from({ length: max - 1 }, (_, i) => i + 1).map((k) => (
+                  <button key={k} type="button" className={bots === k ? 'on' : ''} onClick={() => setBotCount(k)}>
+                    {k}
+                  </button>
+                ))}
+              </div>
+            )}
             <button type="button" className="gs-mode primary" onClick={startBot}>
               <span>🤖</span>
               <b>Bota karşı oyna</b>
-              <small>Hemen başla</small>
+              <small>{max > 2 ? `${bots} botla hemen başla` : 'Hemen başla'}</small>
             </button>
             {ONLINE_ENABLED && user ? (
               <>
                 <button type="button" className="gs-mode" onClick={host} disabled={busy}>
                   <span>🌐</span>
                   <b>Oda kur</b>
-                  <small>Rakip katılınca maç başlar</small>
+                  <small>{max > 2 ? `En fazla ${max} kişi · istediğinde başlat` : 'Rakip katılınca maç başlar'}</small>
                 </button>
                 <p className="gs-sub">Açık odalar ({rooms.length})</p>
                 {rooms.length === 0 && <p className="gs-empty">Şu an bekleyen oda yok — sen kur, biri katılsın!</p>}
                 {rooms.map((r) => (
                   <button key={r.id} type="button" className="gs-room" onClick={() => join(r)} disabled={busy}>
-                    <span>🎮 {r.hostName}</span>
+                    <span>
+                      🎮 {r.hostName} {r.max > 2 ? `· ${r.n}/${r.max}` : ''}
+                    </span>
                     <b>Katıl ›</b>
                   </button>
                 ))}
@@ -194,24 +277,55 @@ export default function ArcadeHub({ onClose }) {
           </div>
         )}
 
-        {view === 'waiting' && game && (
+        {(view === 'waiting' || view === 'joined') && game && (
           <div className="gs-waiting">
-            <div className="gs-spinner" />
-            <p>Rakip bekleniyor…</p>
-            <small>Odan herkesin "Açık odalar" listesinde görünüyor.</small>
-            <button
-              type="button"
-              className="gs-pill primary"
-              onClick={() => {
-                leaveWaiting();
-                startBot();
-              }}
-            >
-              🤖 Beklemeden bota karşı oyna
-            </button>
-            <button type="button" className="gs-pill" onClick={leaveWaiting}>
-              Odayı kapat
-            </button>
+            <div className="gs-lobby">
+              {seats(view === 'waiting' ? `${myName} (sen · kurucu)` : 'Kurucu').map((p, i) => (
+                <div key={i} className={`gs-seat${p ? '' : ' empty'}`}>
+                  <i style={{ background: PCOL[i] }} />
+                  <b>{p ? (p.uid === user?.uid ? `${p.name} (sen)` : p.name) : 'Boş koltuk'}</b>
+                  {!p && view === 'waiting' && fillBots && max > 2 && <small>🤖 bot olur</small>}
+                </div>
+              ))}
+            </div>
+            {view === 'waiting' ? (
+              <>
+                <p>{lobby.length ? `${lobby.length + 1}/${max} kişi hazır` : 'Oyuncular bekleniyor…'}</p>
+                <small>Odan herkesin "Açık odalar" listesinde görünüyor.</small>
+                {max > 2 && (
+                  <>
+                    <label className="gs-count">
+                      <input type="checkbox" checked={fillBots} onChange={(e) => setFillBots(e.target.checked)} /> Boş koltuklara bot koy
+                    </label>
+                    <button type="button" className="gs-pill primary" disabled={busy || lobby.length < 1} onClick={begin}>
+                      ▶ Maçı başlat ({lobby.length + 1 + (fillBots ? max - 1 - lobby.length : 0)} oyuncu)
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  className="gs-pill"
+                  onClick={() => {
+                    leaveWaiting();
+                    startBot();
+                  }}
+                >
+                  🤖 Beklemeden bota karşı oyna
+                </button>
+                <button type="button" className="gs-pill" onClick={leaveWaiting}>
+                  Odayı kapat
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="gs-spinner" />
+                <p>Kurucunun maçı başlatması bekleniyor…</p>
+                <button type="button" className="gs-pill" onClick={leaveJoined}>
+                  Odadan çık
+                </button>
+              </>
+            )}
+            {err && <p className="gs-err">{err}</p>}
           </div>
         )}
 

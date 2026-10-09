@@ -1,16 +1,29 @@
-// v75 — NEON YARIŞ: kuşbakışı pist, 4 tur. Kamera kendi arabanı izler.
-// Kontrol: ◀ ▶ direksiyon · ⛽ gaz · 🛑 fren/geri
-import { IN, has, clamp, r1, PCOL, drawHud, drawBanner, rrect } from './common.js';
+// v79 — DRIFT YARIŞI (2–4 kişi) — eski "Neon Yarış"ın yerine. Pistin tamamı
+// ekranda (4 kişide herkes birbirini görür). Araba kendi gaz verir; ◀ ▶
+// direksiyon, 🌀 drift (virajda kayarak dön → nitro dolar), 🔥 nitro.
+// Pistteki ok işaretleri anlık hız verir. 5 tur, ilk bitiren kazanır.
+import { IN, has, clamp, r1, r2, PCOL, drawHudN, drawBanner, rnd, angNorm, TAU } from './common.js';
 
 const W = 320;
 const H = 180;
-const WW = 540; // dünya
-const WH = 320;
-const HALF = 19; // pist yarı genişliği
-const LAPS = 4;
-const LIMIT_S = 240;
+const HALF = 11;
+const LAPS = 5;
+const LIMIT_S = 200;
+const VMAX = 96;
+const VOFF = 52;
+const ACC = 120;
+const CR = 4.5; // çarpışma yarıçapı
 const CTRL = [
-  [70, 70], [250, 42], [450, 66], [490, 150], [430, 205], [335, 168], [255, 214], [310, 268], [160, 280], [58, 228], [84, 145],
+  [44, 46],
+  [150, 36],
+  [262, 44],
+  [298, 86],
+  [268, 126],
+  [206, 108],
+  [156, 146],
+  [92, 164],
+  [34, 142],
+  [24, 96],
 ];
 
 function catmull(points, per) {
@@ -33,8 +46,9 @@ function catmull(points, per) {
   }
   return out;
 }
-const PATH = catmull(CTRL, 8);
+const PATH = catmull(CTRL, 10);
 const N = PATH.length;
+const PADS = [12, 47, 78]; // hız okları (yol indeksleri)
 
 function segDist(px, py, a, b) {
   const dx = b[0] - a[0];
@@ -43,243 +57,313 @@ function segDist(px, py, a, b) {
   const t = clamp(((px - a[0]) * dx + (py - a[1]) * dy) / l2, 0, 1);
   return Math.hypot(px - (a[0] + dx * t), py - (a[1] + dy * t));
 }
-function trackDist(car) {
+function nearest(c) {
   let best = Infinity;
-  for (let k = -4; k <= 4; k++) {
-    const i = (car.i + k + N) % N;
-    best = Math.min(best, segDist(car.x, car.y, PATH[i], PATH[(i + 1) % N]));
+  let bi = c.i;
+  for (let k = -5; k <= 6; k++) {
+    const i = (c.i + k + N) % N;
+    const d = segDist(c.x, c.y, PATH[i], PATH[(i + 1) % N]);
+    if (d < best) {
+      best = d;
+      bi = i;
+    }
   }
-  return best;
+  return { d: best, i: bi };
 }
-const angNorm = (a) => {
-  while (a > Math.PI) a -= Math.PI * 2;
-  while (a < -Math.PI) a += Math.PI * 2;
-  return a;
+const dirAt = (i) => {
+  const a = PATH[i % N];
+  const b = PATH[(i + 1) % N];
+  return Math.atan2(b[1] - a[1], b[0] - a[0]);
 };
-const progress = (c) => c.lap * N + c.i;
+const prog = (c) => c.lap * N + c.i;
 
 export default {
   id: 'yaris',
-  title: 'Neon Yarış',
+  title: 'Drift Yarışı',
   emoji: '🏎️',
-  desc: '4 tur, ilk bitiren kazanır. Pistten çıkarsan yavaşlarsın!',
+  desc: '5 tur, ilk bitiren kazanır! Virajda drift at, nitroyu doldur, oklardan hız al.',
+  how: '◀ ▶ direksiyon · 🌀 drift · 🔥 nitro',
+  min: 2,
+  max: 4,
   W,
   H,
-  controls: { left: ['L', 'R'], right: ['B', 'A'], labels: { A: '⛽', B: '🛑' } },
+  controls: { left: ['L', 'R'], right: ['B', 'A'], labels: { A: '🔥', B: '🌀' } },
+  noLerp: ['nitro', 'drift'],
   create(names) {
-    const p0 = PATH[0];
-    const p1 = PATH[2];
-    const a = Math.atan2(p1[1] - p0[1], p1[0] - p0[0]);
-    const nx = -Math.sin(a);
-    const ny = Math.cos(a);
-    const car = (side) => ({ x: r1(p0[0] - Math.cos(a) * 10 + nx * side * 8), y: r1(p0[1] - Math.sin(a) * 10 + ny * side * 8), a, v: 0, i: 0, lap: 0, done: 0 });
-    return { names, c: [car(-1), car(1)], t: 0, pause: 3, msg: '', over: false, win: -1 };
+    const a = dirAt(0);
+    const fx = Math.cos(a);
+    const fy = Math.sin(a);
+    const nx = -fy;
+    const ny = fx;
+    const p = names.map((_, i) => {
+      const row = Math.floor(i / 2);
+      const side = i % 2 ? 1 : -1;
+      return { x: r1(PATH[0][0] - fx * (8 + row * 14) + nx * side * 5), y: r1(PATH[0][1] - fy * (8 + row * 14) + ny * side * 5), a: r2(a), vx: 0, vy: 0, i: N - 1, lap: -1, cp: 1, nitro: 0.3, boost: 0, drift: 0, fin: 0, pin: 0 };
+    });
+    return { names, seed: Math.floor(Math.random() * 1e9), p, t: 0, pause: 3, msg: '', over: false, win: -1, place: [] };
   },
   step(s, inputs, dt) {
     if (s.over) return;
     if (s.pause > 0) {
       s.pause -= dt;
+      s.msg = s.pause > 2 ? '3' : s.pause > 1 ? '2' : s.pause > 0.15 ? '1' : 'BAŞLA!';
+      if (s.pause <= 0) s.msg = '';
       return;
     }
     s.t += dt;
-    s.c.forEach((c, idx) => {
-      const inp = inputs[idx] || 0;
-      const steer = (has(inp, IN.R) ? 1 : 0) - (has(inp, IN.L) ? 1 : 0);
-      if (has(inp, IN.A)) c.v += 150 * dt;
-      if (has(inp, IN.B)) c.v -= 230 * dt;
-      c.v -= c.v * 0.55 * dt;
-      const off = trackDist(c) > HALF;
-      if (off) {
-        c.v -= c.v * 2.4 * dt;
-        c.v = Math.min(c.v, 75);
+    s.p.forEach((c, k) => {
+      const inp = inputs[k] || 0;
+      const nitroPress = has(inp, IN.A) && !has(c.pin, IN.A);
+      c.pin = inp;
+      if (c.fin) {
+        c.vx *= 1 - 2 * dt;
+        c.vy *= 1 - 2 * dt;
+        c.x += c.vx * dt;
+        c.y += c.vy * dt;
+        return;
       }
-      c.v = clamp(c.v, -45, 178);
-      c.a = angNorm(c.a + steer * 2.7 * dt * clamp(c.v / 70, -1, 1));
-      c.x = clamp(c.x + Math.cos(c.a) * c.v * dt, 6, WW - 6);
-      c.y = clamp(c.y + Math.sin(c.a) * c.v * dt, 6, WH - 6);
-      // tur takibi: önümüzdeki 10 noktadan en yakını
-      let best = c.i;
-      let bd = Infinity;
-      for (let k = 0; k <= 10; k++) {
-        const j = c.i + k;
-        const p = PATH[j % N];
-        const d = Math.hypot(c.x - p[0], c.y - p[1]);
-        if (d < bd) {
-          bd = d;
-          best = j;
+      const near = nearest(c);
+      const onTrack = near.d < HALF;
+      const steer = (has(inp, IN.R) ? 1 : 0) - (has(inp, IN.L) ? 1 : 0);
+      const drifting = has(inp, IN.B) && steer !== 0;
+      c.drift = drifting ? 1 : 0;
+      const fx = Math.cos(c.a);
+      const fy = Math.sin(c.a);
+      let fwd = c.vx * fx + c.vy * fy;
+      let lat = -c.vx * fy + c.vy * fx;
+      const turn = (drifting ? 4.4 : 3.1) * clamp(Math.abs(fwd) / 60, 0.25, 1);
+      c.a = angNorm(c.a + steer * turn * dt);
+      c.boost = Math.max(0, c.boost - dt);
+      if (nitroPress && c.nitro >= 1) {
+        c.nitro = 0;
+        c.boost = 1.3;
+      }
+      const vmax = (onTrack ? VMAX : VOFF) * (c.boost > 0 ? 1.5 : 1);
+      fwd += (fwd < vmax ? ACC * (c.boost > 0 ? 1.8 : 1) : -ACC * 1.5) * dt;
+      lat *= 1 - (drifting ? 2.2 : onTrack ? 9 : 6) * dt; // tutuş: drift'te kayar
+      const nfx = Math.cos(c.a);
+      const nfy = Math.sin(c.a);
+      c.vx = nfx * fwd - nfy * lat;
+      c.vy = nfy * fwd + nfx * lat;
+      if (drifting && Math.abs(fwd) > 55) c.nitro = Math.min(1, c.nitro + 0.42 * dt);
+      else c.nitro = Math.min(1, c.nitro + 0.03 * dt);
+      c.x = clamp(c.x + c.vx * dt, 4, W - 4);
+      c.y = clamp(c.y + c.vy * dt, 22, H - 4);
+      // ilerleme / tur
+      const before = c.i;
+      c.i = near.i;
+      if (c.i > N * 0.4 && c.i < N * 0.7) c.cp = 1;
+      if (before > N * 0.85 && c.i < N * 0.15 && c.cp) {
+        c.lap += 1;
+        c.cp = 0;
+        if (c.lap >= LAPS && !c.fin && !s._pred) {
+          c.fin = 1;
+          s.place.push(k);
         }
       }
-      if (bd < HALF * 2.2 && best !== c.i) {
-        if (best >= N) c.lap += 1;
-        c.i = best % N;
-      }
-      if (c.lap >= LAPS && !c.done) c.done = r1(s.t);
+      // hız okları
+      for (const pi of PADS) if (c.i === pi && onTrack && c.boost < 0.5) c.boost = Math.max(c.boost, 0.7);
     });
-    // arabalar çarpışır
-    const [a, b] = s.c;
-    const d = Math.hypot(b.x - a.x, b.y - a.y);
-    if (d < 13 && d > 0) {
-      const nx = (b.x - a.x) / d;
-      const ny = (b.y - a.y) / d;
-      const push = (14 - d) / 2;
-      a.x -= nx * push;
-      a.y -= ny * push;
-      b.x += nx * push;
-      b.y += ny * push;
-      // sadece birbirine doğru giderken hafif yavaşlat (yan yana yapışıp sürünmesinler)
-      const rel = (Math.cos(b.a) * b.v - Math.cos(a.a) * a.v) * nx + (Math.sin(b.a) * b.v - Math.sin(a.a) * a.v) * ny;
-      if (rel < 0) {
-        a.v *= 0.97;
-        b.v *= 0.97;
+    // araç çarpışmaları
+    for (let a = 0; a < s.p.length; a++)
+      for (let b = a + 1; b < s.p.length; b++) {
+        const A = s.p[a];
+        const B = s.p[b];
+        const dx = B.x - A.x;
+        const dy = B.y - A.y;
+        const d = Math.hypot(dx, dy);
+        if (d <= 0 || d >= CR * 2) continue;
+        const nx = dx / d;
+        const ny = dy / d;
+        const o = (CR * 2 - d) / 2;
+        A.x -= nx * o;
+        A.y -= ny * o;
+        B.x += nx * o;
+        B.y += ny * o;
+        const rel = (B.vx - A.vx) * nx + (B.vy - A.vy) * ny;
+        if (rel < 0) {
+          A.vx += rel * nx * 0.8;
+          A.vy += rel * ny * 0.8;
+          B.vx -= rel * nx * 0.8;
+          B.vy -= rel * ny * 0.8;
+        }
       }
-    }
-    const finished = s.c.findIndex((c) => c.done);
-    if (finished >= 0 || s.t >= LIMIT_S) {
-      s.over = true;
-      s.win = finished >= 0 ? finished : progress(a) === progress(b) ? -1 : progress(a) > progress(b) ? 0 : 1;
-      s.msg = s.win < 0 ? 'BERABERE' : `${s.names[s.win]} KAZANDI`;
-    }
-    s.c.forEach((c) => {
+    s.p.forEach((c) => {
       c.x = r1(c.x);
       c.y = r1(c.y);
-      c.v = r1(c.v);
-      c.a = Math.round(c.a * 1000) / 1000;
+      c.vx = r1(c.vx);
+      c.vy = r1(c.vy);
+      c.a = r2(c.a);
+      c.nitro = r2(c.nitro);
     });
-    s.t = Math.round(s.t * 1000) / 1000;
+    if (!s._pred) {
+      if (s.place.length) {
+        s.over = true;
+        s.win = s.place[0];
+      } else if (s.t >= LIMIT_S) {
+        s.over = true;
+        s.win = s.p.reduce((b, c, i) => (prog(c) > prog(s.p[b]) ? i : b), 0);
+      }
+      if (s.over) s.msg = `${s.names[s.win]} KAZANDI`;
+    }
   },
   result(s) {
     if (!s.over) return null;
-    return { winner: s.win, text: s.win >= 0 ? `${s.names[s.win]} · ${s.t.toFixed(1)} sn` : '' };
-  },
-  lerp(a, b, t) {
-    // açılar en kısa yoldan
-    const out = { ...b, c: b.c.map((cb, k) => {
-      const ca = a.c[k];
-      return { ...cb, x: ca.x + (cb.x - ca.x) * t, y: ca.y + (cb.y - ca.y) * t, a: ca.a + angNorm(cb.a - ca.a) * t };
-    }) };
-    return out;
+    const order = s.p.map((c, i) => i).sort((a, b) => (s.place.indexOf(a) + 1 || 99) - (s.place.indexOf(b) + 1 || 99) || prog(s.p[b]) - prog(s.p[a]));
+    return { winner: s.win, text: order.map((i, k) => `${k + 1}. ${s.names[i]}`).join('  ') };
   },
   bot(s, i, mem) {
-    const c = s.c[i];
-    const tgt = PATH[(c.i + 5) % N];
-    const nxt = PATH[(c.i + 6) % N];
-    // her bot kendi şeridinde (birbirine girmesin): hedefe dik yönde ±7 px
-    const ta = Math.atan2(nxt[1] - tgt[1], nxt[0] - tgt[0]);
-    if (mem.lap !== c.lap || mem.lane == null) {
+    const c = s.p[i];
+    if (!c || s.pause > 0 || c.fin) return 0;
+    mem.t = (mem.t || 0) + 1;
+    const sd = s.seed || 1;
+    mem.skill = mem.skill ?? 0.8 + rnd(sd + i * 31 + 7) * 0.18;
+    // her turda farklı çizgi (iç/dış) → sıralama değişir
+    if (mem.lap !== c.lap) {
       mem.lap = c.lap;
-      mem.lane = (Math.random() < 0.5 ? -1 : 1) * (4 + Math.random() * 5); // her turda şerit değiştirir
+      mem.lane = (rnd(sd + i * 977 + c.lap * 13) - 0.5) * 12;
     }
-    const lane = mem.lane;
-    const tx = tgt[0] - Math.sin(ta) * lane;
-    const ty = tgt[1] + Math.cos(ta) * lane;
+    const look = 4 + Math.floor(Math.hypot(c.vx, c.vy) / 30);
+    const ti = (c.i + look) % N;
+    const ta = dirAt(ti);
+    const tx = PATH[ti][0] - Math.sin(ta) * mem.lane;
+    const ty = PATH[ti][1] + Math.cos(ta) * mem.lane;
     const want = Math.atan2(ty - c.y, tx - c.x);
-    mem.noise = (mem.noise || 0) * 0.98 + (Math.random() - 0.5) * 0.02;
-    const diff = angNorm(want - c.a + mem.noise);
+    const d = angNorm(want - c.a) + (rnd(sd + mem.t * 3 + i) - 0.5) * (1 - mem.skill) * 2.4;
     let bits = 0;
-    if (diff > 0.08) bits |= IN.R;
-    if (diff < -0.08) bits |= IN.L;
-    if (Math.abs(diff) < 0.75 || c.v < 70) bits |= IN.A;
-    else if (c.v > 120) bits |= IN.B;
+    if (d > 0.06) bits |= IN.R;
+    if (d < -0.06) bits |= IN.L;
+    // keskin virajda drift
+    const bend = Math.abs(angNorm(dirAt(c.i + 12) - dirAt(c.i)));
+    if (Math.abs(d) > 0.35 || (bend > 1 && Math.abs(d) > 0.15)) bits |= IN.B;
+    // düzlükte nitro
+    if (c.nitro >= 1 && bend < 0.3 && Math.abs(d) < 0.15 && rnd(sd + mem.t + i * 13) < 0.08 * mem.skill) bits |= IN.A;
     return bits;
   },
   render(c, s, me) {
-    const meCar = s.c[me] || s.c[0];
-    const cx = clamp(meCar.x - W / 2, 0, WW - W);
-    const cy = clamp(meCar.y - H / 2, 0, WH - H);
-    c.save();
-    c.fillStyle = '#1d5c2a';
+    // çim
+    c.fillStyle = '#123a1c';
     c.fillRect(0, 0, W, H);
-    c.translate(-cx, -cy);
-    // çim desen
-    c.fillStyle = '#226a31';
-    for (let x = 0; x < WW; x += 40) for (let y = 0; y < WH; y += 40) if (((x + y) / 40) % 2 === 0) c.fillRect(x, y, 40, 40);
-    // pist
-    const path = () => {
+    for (let k = 0; k < 60; k++) {
+      c.fillStyle = 'rgba(255,255,255,0.03)';
+      c.fillRect((k * 53) % W, (k * 37) % H, 6, 2);
+    }
+    const trace = () => {
       c.beginPath();
-      PATH.forEach((p, k) => (k ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])));
+      PATH.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y)));
       c.closePath();
     };
     c.lineJoin = 'round';
     c.lineCap = 'round';
-    path();
-    c.strokeStyle = '#e8e8e8';
-    c.lineWidth = HALF * 2 + 6;
+    // bordür (kırmızı-beyaz)
+    trace();
+    c.strokeStyle = '#eee';
+    c.lineWidth = HALF * 2 + 5;
     c.stroke();
-    c.setLineDash([8, 8]);
-    path();
-    c.strokeStyle = '#d32f2f';
+    c.setLineDash([6, 6]);
+    trace();
+    c.strokeStyle = '#d7263d';
     c.stroke();
     c.setLineDash([]);
-    path();
-    c.strokeStyle = '#3b3f48';
+    // asfalt
+    trace();
+    c.strokeStyle = '#2b2d3a';
     c.lineWidth = HALF * 2;
     c.stroke();
-    c.setLineDash([6, 8]);
-    path();
-    c.strokeStyle = 'rgba(255,255,255,0.45)';
+    c.setLineDash([4, 6]);
+    trace();
+    c.strokeStyle = 'rgba(255,255,255,0.25)';
     c.lineWidth = 1;
     c.stroke();
     c.setLineDash([]);
-    // start/bitiş çizgisi
-    const p0 = PATH[0];
-    const p1 = PATH[1];
-    const ang = Math.atan2(p1[1] - p0[1], p1[0] - p0[0]);
+    // başlangıç çizgisi
+    const a0 = dirAt(0);
     c.save();
-    c.translate(p0[0], p0[1]);
-    c.rotate(ang);
-    for (let k = -HALF; k < HALF; k += 4) for (let m = 0; m < 2; m++) {
-      c.fillStyle = (k / 4 + m) % 2 ? '#fff' : '#111';
-      c.fillRect(m * 4 - 4, k, 4, 4);
-    }
+    c.translate(PATH[0][0], PATH[0][1]);
+    c.rotate(a0);
+    for (let k = -HALF; k < HALF; k += 3)
+      for (let j = 0; j < 2; j++) {
+        c.fillStyle = ((k + HALF) / 3 + j) % 2 ? '#fff' : '#111';
+        c.fillRect(-2 + j * 2, k, 2, 3);
+      }
     c.restore();
+    // hız okları
+    for (const pi of PADS) {
+      const a = dirAt(pi);
+      c.save();
+      c.translate(PATH[pi][0], PATH[pi][1]);
+      c.rotate(a);
+      c.fillStyle = 'rgba(255,210,63,0.85)';
+      for (let k = 0; k < 2; k++) {
+        c.beginPath();
+        c.moveTo(-4 + k * 5, -5);
+        c.lineTo(1 + k * 5, 0);
+        c.lineTo(-4 + k * 5, 5);
+        c.lineTo(-2 + k * 5, 0);
+        c.fill();
+      }
+      c.restore();
+    }
     // arabalar
-    s.c.forEach((car, i) => {
+    s.p.forEach((car, i) => {
       c.save();
       c.translate(car.x, car.y);
       c.rotate(car.a);
-      c.fillStyle = 'rgba(0,0,0,0.35)';
-      rrect(c, -8, -4, 18, 10, 3);
-      c.fill();
+      if (car.boost > 0) {
+        c.fillStyle = Math.floor(s.t * 30) % 2 ? '#ffd23f' : '#ff6a1a';
+        c.beginPath();
+        c.moveTo(-5, -2);
+        c.lineTo(-11, 0);
+        c.lineTo(-5, 2);
+        c.fill();
+      }
+      if (car.drift) {
+        c.fillStyle = 'rgba(220,220,220,0.35)';
+        c.beginPath();
+        c.arc(-6, -3, 2.5, 0, TAU);
+        c.arc(-6, 3, 2.5, 0, TAU);
+        c.fill();
+      }
+      c.fillStyle = '#111';
+      c.fillRect(-4, -3.6, 2.5, 1.4);
+      c.fillRect(-4, 2.2, 2.5, 1.4);
+      c.fillRect(2, -3.6, 2.5, 1.4);
+      c.fillRect(2, 2.2, 2.5, 1.4);
       c.fillStyle = PCOL[i];
-      rrect(c, -9, -5, 18, 10, 3);
-      c.fill();
-      c.fillStyle = '#0b1020';
-      c.fillRect(-1, -4, 5, 8);
-      c.fillStyle = '#fffbd0';
-      c.fillRect(8, -4, 1.5, 2.5);
-      c.fillRect(8, 1.5, 1.5, 2.5);
+      c.fillRect(-5, -2.6, 10, 5.2);
+      c.fillStyle = 'rgba(10,20,40,0.85)';
+      c.fillRect(0, -2, 2.6, 4);
+      if (i === me) {
+        c.strokeStyle = '#fff';
+        c.lineWidth = 0.9;
+        c.strokeRect(-5.5, -3.1, 11, 6.2);
+      }
       c.restore();
-      c.font = 'bold 6px system-ui, sans-serif';
-      c.textAlign = 'center';
-      c.fillStyle = i === me ? '#ffe14d' : '#fff';
-      c.fillText(s.names[i], car.x, car.y - 9);
     });
-    c.restore();
-    // mini harita
-    const mw = 70;
-    const mh = (mw * WH) / WW;
-    const mx = W - mw - 4;
-    const my = H - mh - 4;
-    c.fillStyle = 'rgba(0,0,0,0.45)';
-    rrect(c, mx - 2, my - 2, mw + 4, mh + 4, 4);
-    c.fill();
-    c.beginPath();
-    PATH.forEach((p, k) => (k ? c.lineTo(mx + (p[0] / WW) * mw, my + (p[1] / WH) * mh) : c.moveTo(mx + (p[0] / WW) * mw, my + (p[1] / WH) * mh)));
-    c.closePath();
-    c.strokeStyle = 'rgba(255,255,255,0.6)';
-    c.lineWidth = 2;
-    c.stroke();
-    s.c.forEach((car, i) => {
-      c.fillStyle = PCOL[i];
-      c.beginPath();
-      c.arc(mx + (car.x / WW) * mw, my + (car.y / WH) * mh, 2.5, 0, Math.PI * 2);
-      c.fill();
-    });
-    const pos = progress(s.c[me] || s.c[0]) >= progress(s.c[1 - (me || 0)]) ? 1 : 2;
-    const myLap = Math.min(LAPS, (s.c[me] || s.c[0]).lap + 1);
-    drawHud(c, W, { left: s.names[0], right: s.names[1], center: `Tur ${myLap}/${LAPS} · ${pos}.`, me });
-    if (s.pause > 0) drawBanner(c, W, H, String(Math.ceil(s.pause)), 'Hazır ol!');
-    else if (s.t < 0.8) drawBanner(c, W, H, 'BAŞLA!', '');
-    if (s.msg) drawBanner(c, W, H, s.msg, s.over ? (s.win >= 0 ? `${s.t.toFixed(1)} sn` : '') : '');
+    // üst şerit: sıralama + tur
+    const order = s.p.map((_, i) => i).sort((a, b) => (s.place.indexOf(a) + 1 || 99) - (s.place.indexOf(b) + 1 || 99) || prog(s.p[b]) - prog(s.p[a]));
+    const rank = order.indexOf(me) + 1;
+    const mine = s.p[me];
+    drawHudN(
+      c,
+      W,
+      s.p.map((car, i) => ({ text: `${order.indexOf(i) + 1}. ${s.names[i]}` })),
+      { center: `Tur ${clamp((mine?.lap ?? 0) + 1, 1, LAPS)}/${LAPS}`, me, y: 3 }
+    );
+    // nitro çubuğu (benim)
+    if (mine) {
+      c.fillStyle = 'rgba(5,8,16,0.75)';
+      c.fillRect(W - 66, H - 12, 60, 7);
+      c.fillStyle = mine.nitro >= 1 ? '#ffd23f' : '#ff6a1a';
+      c.fillRect(W - 65, H - 11, 58 * mine.nitro, 5);
+      c.font = 'bold 7px system-ui, sans-serif';
+      c.textAlign = 'right';
+      c.fillStyle = '#fff';
+      c.fillText(mine.nitro >= 1 ? '🔥 NİTRO HAZIR' : 'NİTRO', W - 68, H - 6);
+      c.textAlign = 'left';
+      c.font = 'bold 10px system-ui, sans-serif';
+      c.fillText(`${rank}.`, 6, H - 6);
+    }
+    if (s.msg) drawBanner(c, W, H, s.msg, s.over ? '' : s.pause > 0 ? 'Virajda 🌀 drift → nitro dolar' : '');
   },
 };

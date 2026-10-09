@@ -125,8 +125,8 @@ export function BizListPanel({ items, invItems, houseDoc, busy, gold = 0, gem = 
             gem={gem}
             busy={busy}
             onCancel={() => setConfirm(null)}
-            onConfirm={async () => {
-              const ok = await onFillMissing(confirm.type, confirm.m);
+            onConfirm={async (chosen) => {
+              const ok = await onFillMissing(confirm.type, chosen || confirm.m);
               if (ok !== false) setConfirm(null);
             }}
           />

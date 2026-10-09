@@ -430,6 +430,11 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if false;
     }
+    // v79 — presence özeti (sunucu yazar: functions/presenceSummary.js)
+    match /stats/presence {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
     match /gameVenues/{type} {
       allow read: if isSignedIn();
       allow write: if false;

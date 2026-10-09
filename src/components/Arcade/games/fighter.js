@@ -27,6 +27,10 @@ export default {
   title: 'Sokak Dövüşü',
   emoji: '🥊',
   desc: '3 raunt, 2 raunt alan kazanır. Rakibin tersine basılı tutarak blok yap!',
+  how: '◀ ▶ yürü (geri = blok) · ⤴ zıpla · 👊 yumruk · 🦵 tekme',
+  min: 2,
+  max: 2,
+  selfKey: 'f',
   W,
   H,
   controls: { left: ['L', 'R'], right: ['U', 'A', 'B'], labels: { U: '⤴', A: '👊', B: '🦵' } },
@@ -129,7 +133,7 @@ export default {
     }
     // raunt sonu
     const ko = a.hp <= 0 || b.hp <= 0;
-    if (ko || s.t <= 0) {
+    if ((ko || s.t <= 0) && !s._pred) {
       let w = -1;
       if (a.hp !== b.hp) w = a.hp > b.hp ? 0 : 1;
       if (w >= 0) s.wins[w] += 1;

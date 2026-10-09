@@ -18,7 +18,6 @@ import { usePlayerSelect } from './hooks/usePlayer';
 const selectHud = (p) => `${p?.suspicion ?? 0}|${p?.reputation ?? 0}|${p?.gold ?? 0}`;
 import { useMyActiveRaceRoom } from './hooks/useMyActiveRaceRoom';
 import { useFirestoreResume } from './hooks/useFirestoreResume';
-import { migrateArabaGelistirmeUnification, migrateVehicleWeaponLifeCap, migrateVehicleWeaponLifeCap20, migrateWeaponLifeCap10, resetFutbolTransferMarket, migrateOnboardingPoliceRule } from './services/gameActions';
 import { regions } from './data/regions';
 import { BIZ_BY_REGION } from '../functions/businessCatalogData.js';
 import { IS_ANDROID_APP } from './lib/platform';
@@ -74,31 +73,6 @@ function prefetchScreens() {
 
 const RACE_TRACK_REGION = regions.find((r) => r.screen === 'yaris-pisti');
 
-// Depo + Vites Geliştirme Malzemeleri birleştirme geçişi bu oturumda
-// zaten tetiklendi mi? (Gereksiz tekrar çağrıyı önlemek için — işlemin
-// kendisi zararsız/idempotent olsa da.)
-let arabaGelistirmeMigrationTriggered = false;
-// Araç/silah ömür tavanı 50→30 geçişi bu oturumda tetiklendi mi? (Bu göç
-// artık ASIL OLARAK sunucudaki dailyReset içinde her gece otomatik
-// çalışıyor — bu istemci tetiklemesi sadece deploy edilir edilmez, gece
-// yarısını beklemeden hemen çalışsın diye ekstra bir güvence.)
-let lifeCapMigrationTriggered = false;
-let lifeCap20MigrationTriggered = false;
-let weaponLifeCap10MigrationTriggered = false; // v58
-// Futbol transfer piyasası eski (dengesiz) sistem stoğunu yeni,
-// takımlardaki gerçek güce göre dengelenmiş kurallara sıfırlayan
-// geçişin bu oturumda tetiklenip tetiklenmediği. Sunucu tarafında bir
-// migration bayrağıyla İDEMPOTENT olduğu için tekrar tekrar çağırmak
-// zararsız, ama gereksiz ağ isteğini önlemek için burada da işaretliyoruz.
-let futbolTransferMarketResetTriggered = false;
-// Onboarding polis kuralı göçü (tüm mevcut polisleri görevden alma +
-// bekleyen başvuruları iptal etme + gazete duyurusu) bu oturumda
-// tetiklendi mi? Asıl olarak sunucudaki dailyReset içinde her gece
-// otomatik çalışıyor (bkz. functions/index.js runOnboardingPoliceRuleMigration)
-// — bu istemci tetiklemesi, deploy'dan sonra kullanıcı uygulamayı ilk
-// açtığı an, gece yarısını beklemeden hemen çalışsın diye ekstra bir
-// güvence. TAMAMEN OTOMATİK — hiçbir elle tıklama gerektirmez.
-let onboardingPoliceRuleMigrationTriggered = false;
 
 // Harita, HUD ve telefon giriş yapmadan da görülebilir/gezilebilir — giriş
 // çağrısı artık haritayı bloklayan ayrı bir katman yerine, her ekranda görünen
@@ -240,37 +214,12 @@ function GameShell() {
   useEffect(() => {
     if (!user) return undefined;
     const pre = setTimeout(prefetchScreens, 3000);
-    const t = setTimeout(async () => {
-      const key = `ns_migrations_${new Date().toISOString().slice(0, 10)}`;
-      try {
-        if (localStorage.getItem(key)) return;
-      } catch {
-        /* depolama yok — yine de çalıştır */
-      }
-      const jobs = [
-        [() => !arabaGelistirmeMigrationTriggered && ((arabaGelistirmeMigrationTriggered = true), migrateArabaGelistirmeUnification()), 'Araba geliştirme malzemesi geçişi'],
-        [() => !lifeCapMigrationTriggered && ((lifeCapMigrationTriggered = true), migrateVehicleWeaponLifeCap()), 'Araç/silah ömür tavanı geçişi'],
-        [() => !lifeCap20MigrationTriggered && ((lifeCap20MigrationTriggered = true), migrateVehicleWeaponLifeCap20()), 'Araç/silah ömür tavanı (20) geçişi'],
-        [() => !weaponLifeCap10MigrationTriggered && ((weaponLifeCap10MigrationTriggered = true), migrateWeaponLifeCap10()), 'Silah ömür tavanı (10) geçişi'],
-        [() => !futbolTransferMarketResetTriggered && ((futbolTransferMarketResetTriggered = true), resetFutbolTransferMarket()), 'Futbol transfer piyasası sıfırlama'],
-        [() => !onboardingPoliceRuleMigrationTriggered && ((onboardingPoliceRuleMigrationTriggered = true), migrateOnboardingPoliceRule()), 'Onboarding polis kuralı göçü'],
-      ];
-      for (const [run, label] of jobs) {
-        try {
-          await run();
-        } catch (err) {
-          console.error(`${label} başarısız:`, err);
-        }
-      }
-      try {
-        localStorage.setItem(key, '1');
-      } catch {
-        /* yoksay */
-      }
-    }, 20_000);
+    // v79 maliyet: tek seferlik göç çağrıları istemciden kaldırıldı — hepsi
+    // sunucuda bayraklı ve her gece dailyReset içinde zaten çalışıyor. Eskiden
+    // her cihaz günde bir kez 6 bulut fonksiyonu çağırıyordu (biri bayraksızdı
+    // ve tüm kullanıcıları okuyordu).
     return () => {
       clearTimeout(pre);
-      clearTimeout(t);
     };
   }, [user]);
 
