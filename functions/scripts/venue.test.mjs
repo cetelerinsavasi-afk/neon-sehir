@@ -178,3 +178,31 @@ test('internet kafe: kapasite (istasyon 2, bilgisayar 1), altın bitince oturum 
   const removed = { items: d.items.filter((x) => x.k !== 'speaker'), wall: d.wall, floor: d.floor };
   await assert.rejects(h.hact('sahip', { op: 'save', houseId: id, design: removed, allowBizClose: true }), /biz-locked:0:/);
 });
+
+test('v81: internet kafede canlı yayındaysan oyun süresi ücretsiz (yayın seti ücreti zaten ödeniyor)', async () => {
+  const h = setup();
+  const id = await openBiz(h, 'internet', [it('pc')]);
+  const items = h.G(`houses/${id}`).items;
+  const pc = items.find((x) => x.k === 'pc').i;
+  await h.act('sahip', { op: 'netPrice', houseId: id, price: 200 });
+  h.present('ali', id);
+  // bu kafede canlı yayın
+  h.S('streams/y1', { uid: 'ali', houseId: id, status: 'live', lastBeatMs: h.clock.now });
+  h.S('users/ali', { ...h.G('users/ali'), streamId: 'y1' });
+  const r = await h.act('ali', { op: 'netStart', houseId: id, itemId: pc, expect: 999 });
+  assert.equal(r.charged, 0);
+  assert.equal(h.G('users/ali').gold, 50_000);
+  h.clock.now += 58_000;
+  h.present('ali', id);
+  h.S('streams/y1', { ...h.G('streams/y1'), lastBeatMs: h.clock.now });
+  const t = await h.act('ali', { op: 'netTick', houseId: id });
+  assert.equal(t.charged, 0);
+  assert.equal(h.G('users/ali').gold, 50_000);
+  // yayın bitti → oyun yine ücretli
+  h.S('streams/y1', { ...h.G('streams/y1'), status: 'ended' });
+  h.clock.now += 61_000;
+  h.present('ali', id);
+  const t2 = await h.act('ali', { op: 'netTick', houseId: id });
+  assert.equal(t2.charged, 200);
+  assert.equal(h.G('users/ali').gold, 49_800);
+});

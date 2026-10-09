@@ -4,7 +4,7 @@ import { db } from '../../firebase';
 import { carStats, trainingBotRun, gradeOf, RACE_CAR_LOOKS, FPS } from '../../../functions/raceSim.js';
 import { createTimeAttackGame, makeSampler, fmtRace } from './timeAttackGame';
 import { taStart, taFinish, taTimeout, createTrainingRace, forfeitRace } from '../../services/gameActions';
-import { streamBroadcast, publishRaceFrame, clearGameFrame, useStreamGameHealth } from '../Stream/streamShared';
+import { streamBroadcast, publishRaceFrame, clearGameFrame } from '../Stream/streamShared';
 import './TimeAttackRace.css';
 
 // =============================================================================
@@ -195,7 +195,6 @@ export default function TimeAttackRace({ room, myUid, onExit, onSwitchRoom }) {
   // yarışı canlı izler. ~10 kare/sn küçük durum gönderilir; izleyici aynı pisti
   // kendi cihazında çizer. Sonuç ekranı da yayına yansır.
   const [onAir] = useState(() => Boolean(streamBroadcast.uid));
-  const onAirHealth = useStreamGameHealth(onAir);
   const pubRef = useRef({});
   pubRef.current = { phase, myResult, grade: myResult?.grade || me.grade || null, finished: room.status === 'finished', winnerUid: room.winnerUid };
   useEffect(() => {
@@ -359,7 +358,6 @@ export default function TimeAttackRace({ room, myUid, onExit, onSwitchRoom }) {
 
   return (
     <div className="ta-root">
-      {onAir && <div className={`ta-onair${onAirHealth === 'err' ? ' bad' : ''}`}>{onAirHealth === 'err' ? '⚠ Yarış yayına gönderilemiyor' : '🔴 CANLI · yarış yayında'}</div>}
       <canvas ref={canvasRef} className="ta-canvas" style={{ visibility: showGame ? 'visible' : 'hidden' }} />
       {showGame && (
         <>

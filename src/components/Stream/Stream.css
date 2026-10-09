@@ -987,3 +987,125 @@ body.ns-streaming .race-exit-confirm-backdrop {
 .ta-onair.bad {
   background: #8a5a00;
 }
+
+/* v81 — yayıncı oyundayken köşedeki küçük yayın penceresi */
+.st-pip {
+  position: fixed;
+  z-index: 1400;
+  width: 92px;
+  aspect-ratio: 9 / 16;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 2px solid rgba(255, 46, 90, 0.85);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
+  background: #07080d;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.st-pip canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.st-pip.tr {
+  top: calc(env(safe-area-inset-top) + 64px);
+  right: 8px;
+}
+.st-pip.rm {
+  top: 38%;
+  right: 8px;
+}
+.st-pip.lm {
+  top: 38%;
+  left: 8px;
+}
+.st-pip.tl {
+  top: calc(env(safe-area-inset-top) + 64px);
+  left: 8px;
+}
+.st-pip.bl {
+  bottom: calc(env(safe-area-inset-bottom) + 150px);
+  left: 8px;
+}
+.st-pip.br {
+  bottom: calc(env(safe-area-inset-bottom) + 150px);
+  right: 8px;
+}
+.st-pip-top {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 3px;
+  pointer-events: none;
+}
+.st-pip-top b {
+  padding: 1px 4px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font: 800 9px/1.2 system-ui, sans-serif;
+}
+.st-pip-dur {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font: 700 9px/1.2 system-ui, sans-serif;
+  pointer-events: none;
+}
+.st-pip-warn {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 18px;
+  padding: 3px;
+  background: rgba(138, 90, 0, 0.92);
+  color: #fff;
+  font: 800 9px/1.2 system-ui, sans-serif;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* v81 — yayıncı: mesajlara dokununca geçmiş açılır */
+.st-hostfs-chat {
+  cursor: pointer;
+}
+.st-hostfs-chat.open {
+  max-height: 52vh;
+  overflow-y: auto;
+  justify-content: flex-start;
+  padding: 8px;
+  border-radius: 14px;
+  background: rgba(5, 6, 10, 0.78);
+  -webkit-mask-image: none;
+  mask-image: none;
+  overscroll-behavior: contain;
+}
+.st-hostfs-chat-head {
+  position: sticky;
+  top: -8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: -8px -8px 4px;
+  padding: 8px;
+  background: rgba(5, 6, 10, 0.95);
+  font-size: 12px;
+}
+.st-hostfs-chat-head span {
+  opacity: 0.7;
+  font-size: 11px;
+}
+.st-hostfs-chat .st-chat-more {
+  font-size: 11px;
+  opacity: 0.75;
+  padding-left: 4px;
+}

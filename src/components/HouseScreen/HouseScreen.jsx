@@ -46,7 +46,7 @@ import '../Workshop/Workshop.css';
 import './HouseScreen.css';
 import { streamAction } from '../../services/gameActions';
 import { StreamStartSheet, StreamHostPanel, StreamSummary, StreamPlaySheet } from '../Stream/StreamHost';
-import { streamBroadcast, clearGameFrame, closeStreamChannel, streamPose, useLiveStreams, useStreamDoc, watchViewers, useStreamGameHealth } from '../Stream/streamShared';
+import { streamBroadcast, clearGameFrame, closeStreamChannel, streamPose, useLiveStreams, useStreamDoc, watchViewers } from '../Stream/streamShared';
 import { streamPriceOf } from '../../../functions/stream.js';
 
 // =============================================================================
@@ -361,7 +361,6 @@ export default function HouseScreen({ houseId, onExit }) {
   // v81: yayında yarış pisti evin üstünde açıkken de duraklat (yarışın ok tuşları
   // avatarı koltuktan kaldırıp yayını kapatmasın)
   const [raceUp, setRaceUp] = useState(false);
-  const streamGameHealth = useStreamGameHealth(Boolean(myStream) && panel === 'arcade');
   useEffect(() => {
     engineRef.current?.setPaused(panel === 'phone' || panel === 'arcade' || raceUp);
   }, [panel, engineKey, raceUp]);
@@ -591,7 +590,7 @@ export default function HouseScreen({ houseId, onExit }) {
     }
     // v80 — yayın aç
     if (a.kind === 'stream') {
-      if (myStream) return;
+      if (myStream || (!isOwner && bizType !== 'internet')) return;
       setStreamAsk({ chairId: a.chairId, pcId: a.pcId });
       return;
     }
@@ -798,6 +797,7 @@ export default function HouseScreen({ houseId, onExit }) {
     if (m === 'no-set') return '🎮 Yayın için Oyuncu Koltuğu ve yakınında Oyuncu Bilgisayarı gerekli.';
     if (m === 'seat-busy') return '🔴 Bu koltukta zaten canlı yayın var.';
     if (m === 'not-present') return 'Odada olmalısın.';
+    if (m === 'not-owner') return '🔒 Sadece kendi evinde/dükkânında ya da internet kafede yayın açabilirsin.';
     if (m.startsWith('price-changed')) return `💲 Yayın seti ücreti değişti: ${Number(m.split(':')[1] || 0).toLocaleString('tr-TR')} altın/dk. Tekrar dene.`;
     return m || 'Yayın açılamadı.';
   };
@@ -1514,6 +1514,9 @@ export default function HouseScreen({ houseId, onExit }) {
                     );
                   }
                   // v80 — yayın aç (yayındaysan bilgi)
+                  // v81: sadece kendi evinde/dükkânında ya da internet kafede (ücretli);
+                  // başkasının setinde yalnızca "🎮 Oyna" görünür
+                  if (a.kind === 'stream' && !isOwner && bizType !== 'internet') return null;
                   if (a.kind === 'stream') {
                     return (
                       <button key={a.label} className={`hs-act st-act${myStream ? ' cue-dim' : ''}`} disabled={Boolean(myStream)} onClick={() => doAction(a)}>
@@ -1759,11 +1762,10 @@ export default function HouseScreen({ houseId, onExit }) {
               onStopRequest={stopStream}
               onEnded={endStreamLocal}
               onPlay={() => setPlayAsk(true)}
-              compact={panel === 'arcade'}
+              compact={panel === 'arcade' || raceUp}
             />
           )}
           {myStream && playAsk && <StreamPlaySheet onArcade={playArcade} onRace={playRace} onClose={() => setPlayAsk(false)} />}
-          {myStream && panel === 'arcade' && <div className={`st-arcade-chip${streamGameHealth === 'err' ? ' bad' : ''}`}>{streamGameHealth === 'err' ? '⚠ Oyun yayına gönderilemiyor' : '🔴 CANLI · oyun yayında'}</div>}
           {streamSum && <StreamSummary summary={streamSum.summary} reason={streamSum.reason} cost={streamSum.cost} onClose={() => setStreamSum(null)} />}
           {streamWarn && (
             <div className="st-sheet-bg" onClick={() => setStreamWarn(false)}>

@@ -73,7 +73,8 @@ test('evde yayın: ücretsiz, liste, bağış (not, sınır), kapatınca %10 ver
   assert.equal(h.G('stats/streams').items[0].id, r.streamId);
   // aynı koltukta başkası yayın açamaz
   h.present('veli', 'ev1');
-  await assert.rejects(h.act('veli', { op: 'start', houseId: 'ev1', chairId: 'ch1' }), /seat-busy/);
+  // v81: başkasının evinde zaten yayın açılamaz
+  await assert.rejects(h.act('veli', { op: 'start', houseId: 'ev1', chairId: 'ch1' }), /not-owner/);
   // bağış
   await assert.rejects(h.act('ali', { op: 'donate', streamId: r.streamId, amount: 100 }), /self/);
   await assert.rejects(h.act('veli', { op: 'donate', streamId: r.streamId, amount: 50 }), /Geçersiz miktar/);
@@ -210,4 +211,23 @@ test('v81: izleyici sayısı sunucuda sayılır (katıl / nabız / ayrıl / zama
   const st = await h.act('ali', { op: 'stop', streamId, viewers: 50, seen: 50 });
   assert.equal(st.summary.seen, 2, 'farklı izleyici sayısı');
   assert.equal(st.summary.peak, 2);
+});
+
+test('v81: başkasının evindeki/dükkânındaki setle yayın açılamaz; internet kafede ücretli açılır', async () => {
+  const h = setup();
+  h.present('veli', 'ev1'); // ev1 Ali'nin
+  await assert.rejects(h.act('veli', { op: 'start', houseId: 'ev1', chairId: 'ch1' }), /not-owner/);
+  h.S('houses/dukkan', { ownerUid: 'ali', name: 'Ali Kafe', items: h.G('houses/ev1').items, biz: { type: 'cafe' } });
+  h.present('veli', 'dukkan');
+  await assert.rejects(h.act('veli', { op: 'start', houseId: 'dukkan', chairId: 'ch1' }), /not-owner/);
+  h.present('veli', 'kafe'); // internet kafe: ücretli olur
+  const r = await h.act('veli', { op: 'start', houseId: 'kafe', chairId: 'ch1', expect: 300 });
+  assert.equal(r.charged, 300);
+  // aynı kafe koltuğunda ikinci yayın açılamaz
+  h.S('users/ayse', { displayName: 'Ayşe', gold: 5000 });
+  h.present('ayse', 'kafe');
+  await assert.rejects(h.act('ayse', { op: 'start', houseId: 'kafe', chairId: 'ch1', expect: 300 }), /seat-busy/);
+  h.present('ali', 'dukkan'); // sahibi kendi dükkânında ücretsiz
+  const r2 = await h.act('ali', { op: 'start', houseId: 'dukkan', chairId: 'ch1' });
+  assert.equal(r2.charged, 0);
 });

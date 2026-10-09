@@ -6,6 +6,7 @@ import { ARCADE_GAMES } from './games/index.js';
 import GameRunner from './GameRunner';
 import { PCOL } from './games/common.js';
 import { ONLINE_ENABLED, cancelRoom, createRoom, joinRoom, leaveSeat, startRoom, watchLobby, watchRooms } from './net';
+import { streamBroadcast } from '../Stream/streamShared';
 import './Arcade.css';
 
 const BrickBreaker = lazy(() => import('../HouseScreen/ArcadeGame'));
@@ -220,7 +221,8 @@ export default function ArcadeHub({ onClose }) {
             <p className="gs-section">⚔️ BİRE BİR</p>
             {GAMES.filter((g) => maxOf(g) <= 2).map(card)}
             <p className="gs-section">🕹️ TEK KİŞİLİK</p>
-            {card(BRICK)}
+            {/* v81: Tuğla Kırma yayına aktarılamıyor → yayındayken listede yok */}
+            {!streamBroadcast.uid && card(BRICK)}
           </div>
         )}
 

@@ -164,11 +164,22 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
     return { ok: true, price };
   }
 
-  // Bir dakikalık ücreti çeker (yazmalar). Sahip ücret ödemez.
-  function chargeMinuteTx(tx, { houseId, h, uid, os, sess, price, t }) {
+  // v81 — Bu kafede canlı yayındaysa oyun süresi ücretsiz (yayın setinin dakika
+  // ücreti zaten ödeniyor). OKUMA — yazmalardan önce çağrılmalı.
+  const STREAM_FRESH_MS = 90_000;
+  async function txStreamingHere(tx, us, houseId, t) {
+    const sid = us?.data()?.streamId;
+    if (!sid || typeof sid !== 'string') return false;
+    const ss = await tx.get(db.collection('streams').doc(sid));
+    const s = ss.exists ? ss.data() : null;
+    return Boolean(s && s.status === 'live' && s.houseId === houseId && t - Number(s.lastBeatMs || 0) < STREAM_FRESH_MS);
+  }
+
+  // Bir dakikalık ücreti çeker (yazmalar). Sahip (ve v81: burada yayında olan) ücret ödemez.
+  function chargeMinuteTx(tx, { houseId, h, uid, os, sess, price, t, free = false }) {
     const from = Math.max(t, Number(sess?.creditUntilMs || 0));
     const creditUntilMs = from + NET_SLOT_MS;
-    if (h.ownerUid !== uid) {
+    if (h.ownerUid !== uid && !free) {
       tx.update(userRef(uid), { gold: FieldValue.increment(-price) });
       payOwnerTx(tx, os, h.ownerUid, price - bizTax(price)); // v77 vergi %10
       business?.recordIncomeTx(tx, { houseId, h, amount: price, kind: 'service', customerUid: uid, products: { dakika: 1 }, tax: bizTax(price) });
@@ -196,7 +207,8 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
       const ref = sessRef(houseId, uid);
       const [ss, us, os] = await Promise.all([tx.get(ref), tx.get(userRef(uid)), tx.get(userRef(h.ownerUid))]);
       const sess = ss.exists ? ss.data() : null;
-      const isOwner = h.ownerUid === uid;
+      const streaming = h.ownerUid !== uid && (await txStreamingHere(tx, us, houseId, t));
+      const isOwner = h.ownerUid === uid || streaming;
       let creditUntilMs = Number(sess?.creditUntilMs || 0);
       let charged = 0;
       const price = netPriceOf(h);
@@ -206,7 +218,7 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
           if (Number(p.expect) !== price) fail('aborted', `price-changed:${price}`);
           if (Number(us.data()?.gold || 0) < price) fail('failed-precondition', 'gold');
         }
-        creditUntilMs = chargeMinuteTx(tx, { houseId, h, uid, us, os, sess, price, t });
+        creditUntilMs = chargeMinuteTx(tx, { houseId, h, uid, us, os, sess, price, t, free: streaming });
         charged = isOwner ? 0 : price;
       }
       tx.set(ref, { houseId, uid, deviceId, deviceKey: dev.k, creditUntilMs, lastPrice: charged ? price : Number(sess?.lastPrice || price), lastSeenMs: t, updatedAtMs: t });
@@ -240,13 +252,14 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
       let charged = 0;
       const price = netPriceOf(h);
       if (creditUntilMs - t <= 3000) {
-        const isOwner = h.ownerUid === uid;
+        const streaming = h.ownerUid !== uid && (await txStreamingHere(tx, us, houseId, t));
+        const isOwner = h.ownerUid === uid || streaming;
         if (!isOwner && Number(us.data()?.gold || 0) < price) {
           tx.update(ref, { deviceId: null, lastSeenMs: t, updatedAtMs: t });
           result = { ok: true, stopped: 'gold', creditUntilMs };
           return;
         }
-        creditUntilMs = chargeMinuteTx(tx, { houseId, h, uid, us, os, sess, price, t });
+        creditUntilMs = chargeMinuteTx(tx, { houseId, h, uid, us, os, sess, price, t, free: streaming });
         charged = isOwner ? 0 : price;
       }
       tx.update(ref, { creditUntilMs, lastSeenMs: t, updatedAtMs: t, ...(charged ? { lastPrice: price } : {}) });

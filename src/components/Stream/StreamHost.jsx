@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBlocks } from '../../contexts/BlocksContext';
 import { streamAction } from '../../services/gameActions';
-import { fmtDur, fmtN, publishThumb, useStreamChat, watchViewers } from './streamShared';
+import { createPortal } from 'react-dom';
+import { fmtDur, fmtN, publishThumb, useStreamChat, useStreamGameHealth, watchViewers } from './streamShared';
 import '../../styles/worldScreenChrome.css';
 import './Stream.css';
 
@@ -65,7 +66,7 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
   const { user } = useAuth();
   const { isBlocked } = useBlocks();
   const streamId = stream?.id;
-  const chat = useStreamChat(streamId, 30);
+  const chat = useStreamChat(streamId, 60);
   const [viewers, setViewers] = useState(0);
   const [viewErr, setViewErr] = useState(false);
   const [text, setText] = useState('');
@@ -73,7 +74,9 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
   const [alerts, setAlerts] = useState([]);
   const [now, setNow] = useState(Date.now());
   const [err, setErr] = useState('');
-  const [afkLeft, setAfkLeft] = useState(0); // >0 → "Hâlâ orada mısın?" geri sayımı
+  const [afkLeft, setAfkLeft] = useState(0);
+  const [chatOpen, setChatOpen] = useState(false); // v81: mesajlara dokununca geçmiş açılır
+  const chatEndRef = useRef(null); // >0 → "Hâlâ orada mısın?" geri sayımı
   const seenRef = useRef(new Set());
   const viewersRef = useRef(0);
   const thumbRef = useRef(null);
@@ -224,12 +227,23 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
   };
 
   // izleyici mesajları (kendi yazdıkların balon olarak görünür, listede değil)
-  const shown = useMemo(() => chat.filter((m) => !isBlocked(m.uid) && !(m.host && m.uid === user?.uid)).slice(-6), [chat, isBlocked, user?.uid]);
+  const visibleChat = useMemo(() => chat.filter((m) => !isBlocked(m.uid) && !(m.host && m.uid === user?.uid)), [chat, isBlocked, user?.uid]);
+  const shown = chatOpen ? visibleChat : visibleChat.slice(-6);
+  useEffect(() => {
+    if (chatOpen) chatEndRef.current?.scrollIntoView({ block: 'end' });
+  }, [chatOpen, visibleChat.length]);
   const dur = fmtDur(now - Number(stream?.startedAtMs || now));
   const paidLeft = stream?.cafe ? Math.max(0, Math.ceil((Number(stream.paidUntilMs || 0) - now) / 1000)) : 0;
 
   const thumbCanvas = <canvas ref={thumbRef} width={144} height={252} style={{ display: 'none' }} />;
-  if (compact) return thumbCanvas;
+  // oyun/yarış açıkken: ekranda OYUN büyük, yayın kameran köşede küçük pencere
+  if (compact)
+    return (
+      <>
+        {thumbCanvas}
+        <StreamPip engineRef={engineRef} pose={pose} viewers={viewers} dur={dur} />
+      </>
+    );
 
   return (
     <div className="st-hostfs" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
@@ -277,13 +291,21 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
       )}
 
       <div className="st-hostfs-bottom">
-        <div className="st-hostfs-chat">
+        <div className={`st-hostfs-chat${chatOpen ? ' open' : ''}`} onClick={() => setChatOpen((v) => !v)}>
+          {chatOpen && (
+            <div className="st-hostfs-chat-head">
+              <b>💬 Sohbet · son {visibleChat.length} mesaj</b>
+              <span>▾ küçült</span>
+            </div>
+          )}
           {shown.length === 0 && <p className="st-chat-empty">İzleyici mesajları burada görünür</p>}
           {shown.map((m) => (
             <p key={m.id}>
               <b>{m.name}</b> {m.text}
             </p>
           ))}
+          {!chatOpen && visibleChat.length > 6 && <small className="st-chat-more">Daha fazlası için dokun</small>}
+          <span ref={chatEndRef} />
         </div>
         <button className="st-play-btn" onClick={onPlay} aria-label="Oyun oyna">
           <span>🎮</span>
@@ -307,6 +329,58 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
   );
 }
 
+// =============================================================================
+// v81 — Yayıncı oyun oynarken köşedeki küçük yayın penceresi (gerçek yayıncılar
+// gibi: oyun tam ekran, kamera köşede). Sahne yayın kamerasından ~7 kare/sn
+// çizilir. Dokununca köşe değiştirir (oyunun düğmelerini kapatmasın diye).
+// Yarış pisti evin üstünde açıldığı için pencere body'ye taşınır (portal).
+// =============================================================================
+const PIP_POS = ['tr', 'rm', 'lm', 'tl', 'bl', 'br'];
+function StreamPip({ engineRef, pose, viewers, dur }) {
+  const cvRef = useRef(null);
+  const health = useStreamGameHealth(true);
+  const [pos, setPos] = useState(() => {
+    try {
+      const v = localStorage.getItem('st_pip_pos');
+      return PIP_POS.includes(v) ? v : 'tr';
+    } catch {
+      return 'tr';
+    }
+  });
+  useEffect(() => {
+    if (!pose) return undefined;
+    const iv = setInterval(() => {
+      const cv = cvRef.current;
+      const eng = engineRef.current;
+      if (!cv || !eng?.renderStreamView || document.hidden) return;
+      eng.renderStreamView(pose, cv);
+    }, 140);
+    return () => clearInterval(iv);
+  }, [pose, engineRef]);
+  const cycle = (e) => {
+    e.stopPropagation();
+    const next = PIP_POS[(PIP_POS.indexOf(pos) + 1) % PIP_POS.length];
+    setPos(next);
+    try {
+      localStorage.setItem('st_pip_pos', next);
+    } catch {
+      /* yoksay */
+    }
+  };
+  return createPortal(
+    <div className={`st-pip ${pos}`} onPointerDown={(e) => e.stopPropagation()} onClick={cycle} title="Dokun: köşe değiştir">
+      <canvas ref={cvRef} width={162} height={288} />
+      <span className="st-pip-top">
+        <i className="st-live small">CANLI</i>
+        <b>👁 {fmtN(viewers)}</b>
+      </span>
+      <span className="st-pip-dur">{dur}</span>
+      {health === 'err' && <span className="st-pip-warn">⚠ Oyun yayına gitmiyor</span>}
+    </div>,
+    document.body
+  );
+}
+
 // v81 — "Oyun oyna": oyun salonu ya da yarış pisti (şampiyona / bahisli / antrenman)
 export function StreamPlaySheet({ onArcade, onRace, onClose }) {
   return (
@@ -314,7 +388,7 @@ export function StreamPlaySheet({ onArcade, onRace, onClose }) {
       <div className="st-sheet" onClick={(e) => e.stopPropagation()}>
         <p className="st-sheet-title">🎮 Yayında oyna</p>
         <p className="st-sum-why" style={{ color: '#f2ecdd' }}>
-          Oynadığın oyun izleyicilerin ekranında büyük görünür, sen köşede küçük pencerede kalırsın.
+          Oynadığın oyun izleyicilerin ekranında büyük görünür, sen köşede küçük pencerede kalırsın. İnternet kafede yayındayken oyun süresi için ayrıca ödeme yapmazsın.
         </p>
         <div className="st-play-opts">
           <button onClick={onArcade}>

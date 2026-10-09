@@ -77,7 +77,10 @@ export const fmtDur = (ms) => {
 export const fmtN = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
 
 // --- RTDB --------------------------------------------------------------------------
-const DB_URL = import.meta.env.VITE_FIREBASE_DATABASE_URL;
+// v81: canlı sürüm (Cloudflare Pages) .env'i okumaz; panelde VITE_FIREBASE_DATABASE_URL
+// tanımlı değilse yayın kanalı sessizce KAPALI kalıyordu (oyun/yarış yayına gitmiyordu).
+// Adres gizli değildir (Firebase istemci ayarı) → yoksa projenin RTDB adresi kullanılır.
+const DB_URL = import.meta.env.VITE_FIREBASE_DATABASE_URL || 'https://neon-sehir-default-rtdb.europe-west1.firebasedatabase.app';
 export const STREAM_RT = Boolean(DB_URL);
 let modP = null;
 const rt = () => {
@@ -275,7 +278,7 @@ export function useStreamGameHealth(active = true) {
   const [st, setSt] = useState('idle');
   useEffect(() => {
     if (!active) return undefined;
-    const iv = setInterval(() => setSt(streamDiag.gameErr ? 'err' : streamDiag.lastOkAt && Date.now() - streamDiag.lastOkAt < 4000 ? 'ok' : 'idle'), 1000);
+    const iv = setInterval(() => setSt(!STREAM_RT || streamDiag.gameErr ? 'err' : streamDiag.lastOkAt && Date.now() - streamDiag.lastOkAt < 4000 ? 'ok' : 'idle'), 1000);
     return () => clearInterval(iv);
   }, [active]);
   return st;

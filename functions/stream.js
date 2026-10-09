@@ -25,7 +25,8 @@
 //   users/{uid}.streamId         — kullanıcının açık yayını
 // İnternet kafede (işletme türü 'internet') sahibi dışındaki yayıncı dakika ücreti
 // öder (houses.bizPrices.stream); ücret kafe sahibine (%10 vergi düşülerek) yazılır.
-// Kafe dışındaki her yerde yayın ücretsizdir.
+// Kafe dışındaki her yerde yayın ücretsizdir. v81: kafe dışında sadece mekânın
+// SAHİBİ yayın açabilir (başkasının evindeki/dükkânındaki setle yayın yok).
 // =============================================================================
 import { midnightDayKey } from './businessCatalogData.js';
 import { bizTax, taxOf, taxLedgerWrite } from './tax.js';
@@ -165,6 +166,9 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
       const h = hs.data();
       const set = streamSetOf(h.items, chairId);
       if (!set) fail('failed-precondition', 'no-set');
+      // v81: sadece kendi evinde/dükkânında (ücretsiz) ya da internet kafede (ücretli)
+      // yayın açılır — başkasının setiyle yayın yok (orada sadece oyun oynanır)
+      if (h.ownerUid !== uid && h.biz?.type !== 'internet') fail('failed-precondition', 'not-owner');
       if (!(await txPresent(tx, uid, houseId))) fail('failed-precondition', 'not-present');
       const cafe = h.biz?.type === 'internet' && h.ownerUid !== uid;
       const [us, seat, list, os] = await Promise.all([tx.get(userRef(uid)), tx.get(seatRef(houseId, chairId)), tx.get(listRef()), cafe ? tx.get(userRef(h.ownerUid)) : Promise.resolve(null)]);
