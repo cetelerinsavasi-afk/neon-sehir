@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes';
-import { drawPet, isPerchPet, PET_ART } from '../../lib/cosmeticsArt';
+import { drawPet, isPerchPet, petCollarAt, PET_ART } from '../../lib/cosmeticsArt';
 import { CATALOG_MAP, buildItem, itemBoxes, disposeObject, TINTS, M } from './houseCatalog';
 import { FLOORS, WALLS, floorDef, wallDef, surfaceTexture } from './houseTextures';
 import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
@@ -244,9 +244,10 @@ class PetFollower {
       const hz = owner.z + rz * 0.24 * side;
       const hy = seatPos ? seatPos.y + 0.5 : 0.92;
       const fdir = this.flip ? -1 : 1;
-      const px = this.x + rx * 0.31 * this.sm * fdir;
-      const pz = this.z + rz * 0.31 * this.sm * fdir;
-      const py = this.y + 0.52 * this.sm;
+      const [ccx, ccy] = petCollarAt(this.id);
+      const px = this.x + rx * ccx * this.sm * fdir;
+      const pz = this.z + rz * ccx * this.sm * fdir;
+      const py = this.y - ccy * this.sm;
       const pos = this.leashGeo.attributes.position;
       for (let i = 0; i < 12; i++) {
         const t = i / 11;

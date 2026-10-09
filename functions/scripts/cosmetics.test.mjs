@@ -44,7 +44,7 @@ test('satın al: zümrüt/altın düşer, ürün sahiplenilir ve avatara kuşan�
   assert.equal(u.gold, 190_000);
   assert.deepEqual(u.avatar.acc, { head: 'foil' });
   // yetersiz bakiye
-  await assert.rejects(h.c.action('ali', { op: 'buy', kind: 'acc', id: 'dragonw' }), /Yetersiz zümrüt/);
+  await assert.rejects(h.c.action('ali', { op: 'buy', kind: 'acc', id: 'fire' }), /Yetersiz zümrüt/);
   await assert.rejects(h.c.action('ali', { op: 'buy', kind: 'acc', id: 'mustache' }), /Yetersiz altın/);
   assert.equal(priceOf(ACCESSORIES.find((a) => a.id === 'mustache')).amount, 200_000);
 });

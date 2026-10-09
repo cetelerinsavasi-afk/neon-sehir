@@ -111,14 +111,10 @@
   box-shadow: 0 0 0 2px #fff, 0 0 10px #fff;
 }
 .acs-trial {
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: 8px;
-  background: #000a;
-  border: 1px dashed var(--ye);
-  border-radius: 10px;
-  padding: 6px 10px;
+  flex: none;
+  background: #000;
+  border-top: 1px dashed var(--ye);
+  padding: 6px 12px;
   font-size: 11px;
   color: #fff3c4;
 }
@@ -377,6 +373,14 @@
     flex: 1;
     min-height: 0;
     height: calc(100% - 58px);
+  }
+  .acs-trial {
+    position: absolute;
+    left: 8px;
+    bottom: 8px;
+    max-width: calc(100% - 490px);
+    border: 1px dashed var(--ye);
+    border-radius: 10px;
   }
   .acs-panel {
     flex: none;

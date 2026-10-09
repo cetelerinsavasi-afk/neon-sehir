@@ -3,7 +3,7 @@
 // Fizik functions/raceSim.js (deterministik, sabit 60 Hz adım). Bu dosya
 // sadece girdi, döngü, kamera ve görsel efektlerden sorumlu.
 // =============================================================================
-import { TRACK, HALF, DT, FPS, KMH, stepCar, newCarState, createInputRecorder, angDiff, IN_L, IN_R, IN_G, IN_B, IN_N } from '../../../functions/raceSim.js';
+import { TRACK, HALF, STEP, DT, FPS, KMH, stepCar, newCarState, createInputRecorder, angDiff, IN_L, IN_R, IN_G, IN_B, IN_N } from '../../../functions/raceSim.js';
 import { drawCarRear } from './raceDraw';
 
 const { PT, N, TAN, NRM, ANG, LE, RE, LINE0, FIN, PADS } = TRACK;
@@ -82,9 +82,26 @@ function miniBg() {
 }
 
 // Rakip örneklerinden (kare, x, y, açı, nitro) belirli karedeki konum
-export function makeSampler(samples, { extrapolate = 60 } = {}) {
+// Bir noktayı pist boyunca `dist` kadar ilerlet (yanal konumu koruyarak)
+function trackAdvance(x, y, dist, hint) {
+  const i0 = nearestIdx(x, y, hint);
+  const t0 = TAN[i0];
+  const n0 = NRM[i0];
+  const dx = x - PT[i0][0];
+  const dy = y - PT[i0][1];
+  const lat = dx * n0[0] + dy * n0[1];
+  const sArc = i0 * STEP + dx * t0[0] + dy * t0[1] + dist;
+  const i = Math.max(0, Math.min(N - 2, Math.floor(sArc / STEP)));
+  const rem = sArc - i * STEP;
+  return { x: PT[i][0] + TAN[i][0] * rem + NRM[i][0] * lat, y: PT[i][1] + TAN[i][1] * rem + NRM[i][1] * lat, a: ANG[i], idx: i0 };
+}
+
+// track: son örneğin ötesinde rakibi son hızıyla PİST BOYUNCA ilerlet
+// (virajda düz çizgide gitmesin) — yeni veri gelene kadar akıcı görünür.
+export function makeSampler(samples, { extrapolate = 60, track = false } = {}) {
   // samples: kareye göre sıralı [[f,x,y,a,nos], ...] (dizi büyüyebilir)
   let k = 0;
+  let hint = TRACK.START;
   return (f) => {
     const n = samples.length;
     if (!n) return null;
@@ -103,6 +120,13 @@ export function makeSampler(samples, { extrapolate = 60 } = {}) {
     }
     // son örneğin ötesi: kısa süre hızla tahmin, sonra bekle
     const p = samples[n - 2];
+    if (track && p) {
+      const ahead = Math.min(f - a[0], extrapolate);
+      const v = Math.hypot(a[1] - p[1], a[2] - p[2]) / Math.max(1, a[0] - p[0]);
+      const r = trackAdvance(a[1], a[2], v * ahead, hint);
+      hint = r.idx;
+      return { x: r.x, y: r.y, a: a[3] + ang(r.a, a[3]) * Math.min(1, ahead / 30), nos: a[4] || 0 };
+    }
     if (!p || f - a[0] > extrapolate) return { x: a[1], y: a[2], a: a[3], nos: a[4] || 0, stale: f - a[0] > extrapolate };
     const t = (f - a[0]) / Math.max(1, a[0] - p[0]);
     return { x: a[1] + (a[1] - p[1]) * t, y: a[2] + (a[2] - p[2]) * t, a: a[3], nos: a[4] || 0 };
@@ -154,6 +178,7 @@ export function createTimeAttackGame({ canvas, mini, hud, car, opp = null, onSta
   let last = performance.now();
   let alive = true;
   let oppIdx = TRACK.START;
+  let gs = null; // rakip yumuşatma durumu
   let muted = false;
   let AC = null;
   let osc = null;
@@ -609,7 +634,33 @@ export function createTimeAttackGame({ canvas, mini, hud, car, opp = null, onSta
     // --- rakip (hayalet — çarpışma yok) ---
     let oppDraw = null;
     if (opp) {
-      const o = opp.sample(phase === 'count' ? 0 : S.f + (phase === 'race' ? al : 0));
+      let o = opp.sample(phase === 'count' ? 0 : S.f + (phase === 'race' ? al : 0));
+      if (o && opp.smooth) {
+        // Yeni veri gelince oluşan sıçramaları gizle: ekrandaki konum ile hedef
+        // arasındaki fark yavaşça (≈0,3 sn) sıfırlanır; sabit hızda gecikme yok.
+        if (!gs || Math.hypot(o.x - gs.lx, o.y - gs.ly) > 700) gs = { lx: o.x, ly: o.y, la: o.a, ox: 0, oy: 0, oa: 0, vx: 0, vy: 0 };
+        else if (dt > 0) {
+          const dx = o.x - gs.lx;
+          const dy = o.y - gs.ly;
+          const kv = Math.min(1, dt * 4);
+          const jump = Math.hypot(dx - gs.vx * dt, dy - gs.vy * dt);
+          gs.ox += gs.vx * dt - dx;
+          gs.oy += gs.vy * dt - dy;
+          gs.oa += -ang(o.a, gs.la) * (jump > 30 ? 1 : 0);
+          if (jump <= 30) {
+            gs.vx += (dx / dt - gs.vx) * kv;
+            gs.vy += (dy / dt - gs.vy) * kv;
+          }
+          const decay = Math.exp(-dt * 3.5);
+          gs.ox *= decay;
+          gs.oy *= decay;
+          gs.oa *= decay;
+          gs.lx = o.x;
+          gs.ly = o.y;
+          gs.la = o.a;
+        }
+        o = { ...o, x: o.x + gs.ox, y: o.y + gs.oy, a: o.a + gs.oa };
+      }
       if (o) {
         oppIdx = nearestIdx(o.x, o.y, oppIdx);
         const C = P(o.x, o.y);

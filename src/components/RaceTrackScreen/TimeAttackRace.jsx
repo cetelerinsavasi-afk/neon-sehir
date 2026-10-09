@@ -85,7 +85,12 @@ export default function TimeAttackRace({ room, myUid, onExit, onSwitchRoom }) {
       return { look: RACE_CAR_LOOKS[bot.catalogId] || RACE_CAR_LOOKS[1], name: 'Bot', sample: makeSampler(run.samples, { extrapolate: 4 }) };
     }
     if (mode === 'bet' && other) {
-      return { look: RACE_CAR_LOOKS[other.catalogId] || RACE_CAR_LOOKS[1], name: other.displayName || 'Rakip', sample: makeSampler(ghost.samplesRef.current) };
+      return {
+        look: RACE_CAR_LOOKS[other.catalogId] || RACE_CAR_LOOKS[1],
+        name: other.displayName || 'Rakip',
+        sample: makeSampler(ghost.samplesRef.current, { extrapolate: 150, track: true }),
+        smooth: true,
+      };
     }
     return null;
     // eslint-disable-next-line react-hooks/exhaustive-deps

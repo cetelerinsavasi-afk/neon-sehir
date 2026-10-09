@@ -993,3 +993,30 @@
 .champ-card-stats-bars {
   margin: 8px 0 4px;
 }
+
+/* v78 — açık oda kartı: rakibin aracı */
+.race-room-top {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 10px;
+  align-items: center;
+}
+.race-room-thumb {
+  border-radius: 8px;
+}
+.race-room-info p {
+  margin: 0 0 3px;
+}
+.race-room-car {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.race-room-card .car-stats {
+  margin: 8px 0;
+}
+img.race-room-thumb {
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  object-fit: cover;
+  background: #c9b9a3;
+}

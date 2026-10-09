@@ -32,6 +32,52 @@ const star = (x, y, r, fill) =>
 const flame = (x, h, c1, c2) =>
   `<path d="M${x - 16},562 Q${x - 20},${562 - h * 0.5} ${x},${562 - h} Q${x + 4},${562 - h * 0.6} ${x + 14},${562 - h * 0.7} Q${x + 22},${562 - h * 0.3} ${x + 16},562 Z" fill="${c1}"/><path d="M${x - 8},562 Q${x - 8},${562 - h * 0.4} ${x + 2},${562 - h * 0.62} Q${x + 10},${562 - h * 0.3} ${x + 8},562 Z" fill="${c2}"/>`;
 
+// Melek kanadı: kemik eğrisi boyunca dizilmiş, üst üste binen tüy katmanları
+// (uzun birincil tüyler → orta tüyler → kısa örtü tüyleri). Sol kanat
+// çizilir, sağ kanat aynalanır. Tamamı 0…320 genişliğinde kalır.
+const angelWing = (() => {
+  const P0 = [116, 290];
+  const P1 = [56, 196];
+  const P2 = [30, 186];
+  const bone = (t) => {
+    const u = 1 - t;
+    return [u * u * P0[0] + 2 * u * t * P1[0] + t * t * P2[0], u * u * P0[1] + 2 * u * t * P1[1] + t * t * P2[1]];
+  };
+  const f1 = (n) => n.toFixed(1);
+  const feather = (x, y, deg, len, w, fill, stroke) => {
+    const r = (deg * Math.PI) / 180;
+    const cx = x + Math.cos(r) * len * 0.5;
+    const cy = y + Math.sin(r) * len * 0.5;
+    const qx = x + Math.cos(r) * len * 0.92;
+    const qy = y + Math.sin(r) * len * 0.92;
+    return `<ellipse cx="${f1(cx)}" cy="${f1(cy)}" rx="${f1(len / 2)}" ry="${f1(w / 2)}" transform="rotate(${f1(deg)} ${f1(cx)} ${f1(cy)})" fill="${fill}" stroke="${stroke}" stroke-width="1.6"/><path d="M${f1(x)},${f1(y)} L${f1(qx)},${f1(qy)}" stroke="${stroke}" stroke-width="1" opacity=".7"/>`;
+  };
+  let out = '<ellipse cx="66" cy="300" rx="62" ry="120" fill="#fff6c8" opacity=".18"/>';
+  // birincil (uzun) tüyler — uca doğru uzar
+  for (let i = 9; i >= 0; i--) {
+    const t = 0.3 + (i / 9) * 0.7;
+    const [x, y] = bone(t);
+    out += feather(x, y, 84 + t * 16, 70 + t * 128, 24, '#eef3fa', '#c3cfe2');
+  }
+  // orta tüyler
+  for (let i = 8; i >= 0; i--) {
+    const t = 0.08 + (i / 8) * 0.86;
+    const [x, y] = bone(t);
+    out += feather(x, y, 80 + t * 14, 52 + t * 58, 22, '#f6f9fd', '#cfd9ea');
+  }
+  // örtü tüyleri (kısa, kemik boyunca)
+  for (let i = 12; i >= 0; i--) {
+    const t = i / 12;
+    const [x, y] = bone(t);
+    out += feather(x, y + 4, 70 + t * 30, 30 + t * 18, 18, '#ffffff', '#d8e1ee');
+  }
+  // kemik / üst kenar
+  const pts = Array.from({ length: 13 }, (_, i) => bone(i / 12));
+  out += `<path d="M${pts.map((q) => `${f1(q[0])},${f1(q[1])}`).join(' L')}" stroke="#ffffff" stroke-width="12" fill="none" stroke-linecap="round"/>`;
+  out += `<path d="M${pts.map((q) => `${f1(q[0])},${f1(q[1] - 5)}`).join(' L')}" stroke="#d8e1ee" stroke-width="2" fill="none" stroke-linecap="round"/>`;
+  return out;
+})();
+
 export const ACC_ART = {
   simit: { f: `<ellipse cx="160" cy="88" rx="62" ry="22" fill="none" stroke="#b9722a" stroke-width="20"/><ellipse cx="160" cy="88" rx="62" ry="22" fill="none" stroke="#d99a4a" stroke-width="12"/><ellipse cx="148" cy="80" rx="22" ry="5" fill="#f0c27a" opacity=".55"/>${sesame}` },
   foil: { f: '<path d="M160,18 L110,122 L210,122 Z" fill="#cfd6df" stroke="#8b95a3" stroke-width="2"/><path d="M160,18 L146,122" stroke="#fff" stroke-width="4" opacity=".7"/><path d="M160,18 L176,122" stroke="#8b95a3" stroke-width="3"/><path d="M128,84 L146,96 M182,70 L194,92" stroke="#fff" stroke-width="2" opacity=".6"/>' },
@@ -48,7 +94,7 @@ export const ACC_ART = {
   medal: { f: '<path d="M132,258 L152,300 M188,258 L168,300" stroke="#c81d3f" stroke-width="8"/><path d="M132,258 L152,300 M188,258 L168,300" stroke="#ffd23f" stroke-width="2"/><circle cx="160" cy="312" r="17" fill="#e6b422" stroke="#b8860b" stroke-width="3"/>' + star(160, 312, 6, '#fff3b0') },
   hero: { b: cape('#1fd1f0', '#0a7a99'), f: '<circle cx="104" cy="270" r="6" fill="#ffd23f"/><circle cx="216" cy="270" r="6" fill="#ffd23f"/>' },
   kilim: { b: cape('#8c2f1b', '#5a1a0f') + `<path d="M36,440 ${'l16,-18 l16,18 '.repeat(8)}" stroke="#f2c14e" stroke-width="5" fill="none"/><path d="M36,472 ${'l16,-18 l16,18 '.repeat(8)}" stroke="#e8e6df" stroke-width="5" fill="none"/>`, f: clasp },
-  angel: { b: '<g transform="translate(29,0) scale(0.82,1)"><g fill="#fff" stroke="#d9e2ee" stroke-width="3"><path d="M110,290 Q-30,180 -20,360 Q10,430 100,380 Z"/><path d="M210,290 Q350,180 340,360 Q310,430 220,380 Z"/></g><path d="M100,300 Q20,240 0,330 M104,330 Q40,300 10,380 M220,300 Q300,240 320,330 M216,330 Q280,300 310,380" stroke="#d9e2ee" stroke-width="3" fill="none"/></g>' },
+  angel: { b: `<g>${angelWing}</g><g transform="translate(320,0) scale(-1,1)">${angelWing}</g>` },
   jet: { b: '<g fill="#b8c2d0" stroke="#6b7685" stroke-width="3"><rect x="56" y="272" width="34" height="110" rx="14"/><rect x="230" y="272" width="34" height="110" rx="14"/></g><rect x="62" y="290" width="22" height="8" rx="3" fill="#ff2e88"/><rect x="236" y="290" width="22" height="8" rx="3" fill="#ff2e88"/><path d="M63,384 L73,440 L83,384 Z M237,384 L247,440 L257,384 Z" fill="#ff8a1a"/><path d="M68,384 L73,418 L78,384 Z M242,384 L247,418 L252,384 Z" fill="#ffe566"/>' },
   royal: { b: cape('#a3122f', '#5c0a1b'), f: '<ellipse cx="160" cy="268" rx="64" ry="15" fill="#f4f1ea"/><circle cx="130" cy="268" r="3" fill="#222"/><circle cx="160" cy="276" r="3" fill="#222"/><circle cx="190" cy="268" r="3" fill="#222"/>' + clasp },
   dragonw: { b: `<g transform="translate(40,0) scale(0.75,1)">${dragonWing}<g transform="translate(320,0) scale(-1,1)">${dragonWing}</g></g>` },
@@ -58,7 +104,9 @@ export const ACC_ART = {
 };
 
 // avatar.acc → { back, front } SVG; çakışan avatar parçaları (şapka, yüz/boyun aksesuarı) gizlenir
-export function accLayers(acc) {
+// animAura: canvas dünyaları yıldız tozunu kendisi canlandırır (drawAuraFx) →
+// SVG'deki sabit yıldızlar çizilmez.
+export function accLayers(acc, { animAura = false } = {}) {
   const out = { back: '', front: '', hideHat: false, hideFace: false, hideNeck: false };
   if (!acc || typeof acc !== 'object') return out;
   for (const slot of ['aura', 'back', 'neck', 'face', 'head']) {
@@ -66,6 +114,7 @@ export function accLayers(acc) {
     const meta = ACC_MAP[id];
     const art = ACC_ART[id];
     if (!meta || meta.slot !== slot || !art) continue;
+    if (animAura && id === 'spark') continue;
     out.back += art.b || '';
     out.front += art.f || '';
     if (slot === 'head') out.hideHat = true;
@@ -90,11 +139,11 @@ export const PET_ART = {
   penguen: { k: 'b', c: '#1b2230', c2: '#fff', wc: '#0c1018', belly: 1, beak: '#f59e0b', s: 44 },
   tilki: { k: 'q', c: '#e8782a', c2: '#fff3e0', leg: '#3a2418', s: 48, ear: 'pt', tail: 'fl' },
   papagan: { k: 'b', c: '#e63946', c2: '#2a9df4', beak: '#222', long: 1, s: 48 },
-  maymun: { k: 'q', c: '#7a4a2a', c2: '#e8c9a0', s: 48, ear: 'rd', tail: 'cu' },
+  maymun: { k: 'm', c: '#7a4a2a', c2: '#e8c9a0', s: 48 },
   panda: { k: 'q', c: '#f5f5f5', c2: '#fff', leg: '#111', ec: '#111', patch: '#111', s: 56, ear: 'rd', tail: 'sh' },
   zengin: { k: 'q', c: '#2b2b33', c2: '#d4af37', s: 46, ear: 'pt', tail: 'lg', monocle: 1, hat: 1 },
   bulldog: { k: 'q', c: '#c9a27a', c2: '#f1e2cc', ec: '#7a5a3a', s: 50, ear: 'rd', tail: 'sh', jowl: 1, chain: 1, shades: 1 },
-  midilli: { k: 'q', c: '#fff', c2: '#ffd0ec', glow: '#ff9ad5', horn: '#ffd23f', rainbow: 1, s: 70, ear: 'pt', tail: 'fl' },
+  midilli: { k: 'q', c: '#fff', c2: '#ffd0ec', glow: '#ff9ad5', horn: '#ffd23f', rainbow: 1, s: 70, ear: 'pt', tail: 'fl', flat: 1 },
   aslan: { k: 'q', c: '#d9a441', c2: '#f1d29a', mane: '#8a4b12', s: 66, ear: 'rd', tail: 'lg' },
   kurt: { k: 'q', c: '#101826', c2: '#22d3ee', stripe: '#22d3ee', glow: '#22d3ee', s: 64, ear: 'pt', tail: 'fl', eye: '#22d3ee' },
   ejder: { k: 'q', c: '#2fae5f', c2: '#f4d27a', wing: '#1d7a42', horn: '#f4d27a', fire: 1, s: 62, ear: 'pt', tail: 'lg' },
@@ -166,20 +215,25 @@ function quad(c, p, s, st, t, collar) {
     rr(c, lx * s - 0.045 * s, -0.3 * s - lf, 0.09 * s, 0.3 * s, 0.03 * s);
     c.fill();
   });
-  // gövde (hafif hacim gölgesi)
-  const g = c.createLinearGradient(0, -0.65 * s, 0, -0.19 * s);
-  g.addColorStop(0, shadeHex(p.c, 0.12));
-  g.addColorStop(1, shadeHex(p.c, -0.18));
-  c.fillStyle = g;
+  // gövde (hafif hacim gölgesi; flat: örnekteki düz, parlak görünüm)
+  if (p.flat) c.fillStyle = p.c;
+  else {
+    const g = c.createLinearGradient(0, -0.65 * s, 0, -0.19 * s);
+    g.addColorStop(0, shadeHex(p.c, 0.12));
+    g.addColorStop(1, shadeHex(p.c, -0.18));
+    c.fillStyle = g;
+  }
   c.beginPath();
   c.ellipse(0, -0.42 * s, 0.42 * s, 0.23 * s, 0, 0, 7);
   c.fill();
-  c.fillStyle = p.c2;
-  c.globalAlpha = 0.55;
-  c.beginPath();
-  c.ellipse(0.05 * s, -0.3 * s, 0.26 * s, 0.09 * s, 0, 0, 7);
-  c.fill();
-  c.globalAlpha = 1;
+  if (!p.flat) {
+    c.fillStyle = p.c2;
+    c.globalAlpha = 0.55;
+    c.beginPath();
+    c.ellipse(0.05 * s, -0.3 * s, 0.26 * s, 0.09 * s, 0, 0, 7);
+    c.fill();
+    c.globalAlpha = 1;
+  }
   if (p.spots) {
     c.fillStyle = p.spots;
     [[-0.22, -0.5, 0.05], [-0.05, -0.56, 0.04], [0.12, -0.45, 0.05], [-0.28, -0.36, 0.035], [0.25, -0.52, 0.03]].forEach(([x, y, r]) => {
@@ -247,10 +301,13 @@ function quad(c, p, s, st, t, collar) {
     c.fill();
   }
   // baş
-  const hg = c.createRadialGradient(0.36 * s, -0.7 * s, 0.02 * s, 0.4 * s, -0.62 * s, 0.22 * s);
-  hg.addColorStop(0, shadeHex(p.c, 0.18));
-  hg.addColorStop(1, p.c);
-  c.fillStyle = hg;
+  if (p.flat) c.fillStyle = p.c;
+  else {
+    const hg = c.createRadialGradient(0.36 * s, -0.7 * s, 0.02 * s, 0.4 * s, -0.62 * s, 0.22 * s);
+    hg.addColorStop(0, shadeHex(p.c, 0.18));
+    hg.addColorStop(1, p.c);
+    c.fillStyle = hg;
+  }
   c.beginPath();
   c.arc(0.4 * s, -0.62 * s, 0.19 * s, 0, 7);
   c.fill();
@@ -344,6 +401,103 @@ function quad(c, p, s, st, t, collar) {
       c.fill();
     }
   }
+}
+
+// İki ayak üstünde yürüyen (maymun). Yan görünüm, sağa bakar.
+function biped(c, p, s, st, t, collar) {
+  const dark = shadeHex(p.c, -0.25);
+  // kuyruk (arkada kıvrık)
+  c.strokeStyle = p.c;
+  c.lineCap = 'round';
+  c.lineWidth = s * 0.06;
+  c.beginPath();
+  c.moveTo(-0.12 * s, -0.45 * s);
+  c.quadraticCurveTo(-0.42 * s, -0.4 * s + Math.sin(t / 300) * 0.04 * s, -0.36 * s, -0.72 * s);
+  c.arc(-0.29 * s, -0.72 * s, 0.07 * s, Math.PI, Math.PI * 2.3);
+  c.stroke();
+  // bacaklar (yürürken sırayla öne-arkaya)
+  const leg = (ox, ang, col) => {
+    c.save();
+    c.translate(ox * s, -0.4 * s);
+    c.rotate(ang);
+    c.fillStyle = col;
+    rr(c, -0.045 * s, 0, 0.09 * s, 0.38 * s, 0.04 * s);
+    c.fill();
+    c.fillStyle = p.c2;
+    c.beginPath();
+    c.ellipse(0.04 * s, 0.38 * s, 0.07 * s, 0.035 * s, 0, 0, 7);
+    c.fill();
+    c.restore();
+  };
+  leg(-0.04, -st * 0.35, dark);
+  // arka kol
+  const arm = (ox, ang, col) => {
+    c.save();
+    c.translate(ox * s, -0.78 * s);
+    c.rotate(ang);
+    c.fillStyle = col;
+    rr(c, -0.035 * s, 0, 0.07 * s, 0.34 * s, 0.035 * s);
+    c.fill();
+    c.fillStyle = p.c2;
+    c.beginPath();
+    c.arc(0, 0.35 * s, 0.045 * s, 0, 7);
+    c.fill();
+    c.restore();
+  };
+  arm(-0.06, -0.15 + st * 0.4, dark);
+  // gövde
+  c.fillStyle = p.c;
+  c.beginPath();
+  c.ellipse(0, -0.62 * s, 0.17 * s, 0.25 * s, 0, 0, 7);
+  c.fill();
+  c.fillStyle = p.c2;
+  c.beginPath();
+  c.ellipse(0.06 * s, -0.58 * s, 0.09 * s, 0.17 * s, 0, 0, 7);
+  c.fill();
+  leg(0.05, st * 0.35, p.c);
+  // baş
+  const hx = 0.04 * s;
+  const hy = -1.0 * s;
+  c.fillStyle = p.c;
+  c.beginPath();
+  c.arc(hx - 0.16 * s, hy, 0.065 * s, 0, 7);
+  c.fill();
+  c.fillStyle = p.c2;
+  c.beginPath();
+  c.arc(hx - 0.16 * s, hy, 0.035 * s, 0, 7);
+  c.fill();
+  c.fillStyle = p.c;
+  c.beginPath();
+  c.arc(hx, hy, 0.17 * s, 0, 7);
+  c.fill();
+  c.fillStyle = p.c2;
+  c.beginPath();
+  c.ellipse(hx + 0.07 * s, hy + 0.03 * s, 0.11 * s, 0.1 * s, 0, 0, 7);
+  c.fill();
+  c.fillStyle = '#111';
+  c.beginPath();
+  c.arc(hx + 0.05 * s, hy - 0.02 * s, 0.02 * s, 0, 7);
+  c.arc(hx + 0.12 * s, hy - 0.02 * s, 0.02 * s, 0, 7);
+  c.fill();
+  c.fillStyle = 'rgba(255,255,255,.9)';
+  c.beginPath();
+  c.arc(hx + 0.056 * s, hy - 0.026 * s, 0.007 * s, 0, 7);
+  c.arc(hx + 0.126 * s, hy - 0.026 * s, 0.007 * s, 0, 7);
+  c.fill();
+  c.strokeStyle = dark;
+  c.lineWidth = Math.max(1, s * 0.02);
+  c.beginPath();
+  c.arc(hx + 0.1 * s, hy + 0.05 * s, 0.04 * s, 0.2, Math.PI - 0.2);
+  c.stroke();
+  if (collar) {
+    c.strokeStyle = collar;
+    c.lineWidth = Math.max(1.5, s * 0.04);
+    c.beginPath();
+    c.ellipse(0.01 * s, -0.84 * s, 0.11 * s, 0.035 * s, 0, 0, 7);
+    c.stroke();
+  }
+  // ön kol
+  arm(0.08, 0.15 - st * 0.4, p.c);
 }
 
 function bird(c, p, s, st, t, flying) {
@@ -490,11 +644,14 @@ export function drawPet(c, id, x, y, t, { moving = false, flip = false, flying =
   const st = moving ? Math.sin(t / 85) : 0;
   c.translate(0, moving && !flying ? -Math.abs(Math.sin(t / 85)) * s * 0.05 : Math.sin(t / 450) * s * 0.012);
   if (p.k === 'b') bird(c, p, s, st, t, flying);
+  else if (p.k === 'm') biped(c, p, s, st, t, collar);
   else quad(c, p, s, st, t, collar);
   c.restore();
 }
 
 export const isPerchPet = (id) => Boolean(PET_MAP[id]?.perch);
+// tasma halkasının hayvan üzerindeki yeri (boy oranı, sağa bakarken)
+export const petCollarAt = (id) => (PET_ART[id]?.k === 'm' ? [0.01, -0.84] : [0.31, -0.52]);
 export const petMeta = (id) => PET_MAP[id] || null;
 
 // Oyun içi boy: prototipteki hayvanlar biraz büyüktü → %72'si.
@@ -552,8 +709,9 @@ export function drawOwnerPet(ctx, { key, x, baseY, facing, h, w, pet, moving = f
   if (pet.leash !== false && !perch) {
     const hx = x + dir * w * 0.3;
     const hy = baseY - h * 0.42;
-    const px = st.x + (flip ? -1 : 1) * 0.31 * size;
-    const py = st.y - 0.52 * size;
+    const [cx, cy] = petCollarAt(id);
+    const px = st.x + (flip ? -1 : 1) * cx * size;
+    const py = st.y + cy * size;
     ctx.save();
     ctx.strokeStyle = pet.leashColor || '#ff2e88';
     ctx.shadowColor = pet.leashColor || '#ff2e88';
@@ -572,4 +730,33 @@ export function drawOwnerPet(ctx, { key, x, baseY, facing, h, w, pet, moving = f
     collar: pet.leash !== false && !perch ? pet.leashColor || '#ff2e88' : null,
     size,
   });
+}
+
+// --- Canlı aura efektleri (canvas) — örnekteki yıldız tozu ---------------------------
+// x, baseY: avatarın ayak noktası · h: ekrandaki avatar boyu
+export function drawAuraFx(ctx, acc, x, baseY, h, now = performance.now()) {
+  if (acc?.aura !== 'spark') return;
+  const k = h / 159;
+  ctx.save();
+  ctx.fillStyle = '#ffe566';
+  ctx.shadowColor = '#ffd23f';
+  ctx.shadowBlur = 8 * k;
+  for (let i = 0; i < 12; i++) {
+    const a = now / 900 + i * 0.52;
+    const r = (44 + Math.sin(now / 500 + i) * 8) * k;
+    const sx = x + Math.cos(a) * r;
+    const sy = baseY - h * 0.5 + Math.sin(a * 1.3 + i) * h * 0.45;
+    const z = (2 + Math.abs(Math.sin(now / 200 + i)) * 3) * k;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - z * 1.6);
+    ctx.lineTo(sx + z * 0.5, sy - z * 0.5);
+    ctx.lineTo(sx + z * 1.6, sy);
+    ctx.lineTo(sx + z * 0.5, sy + z * 0.5);
+    ctx.lineTo(sx, sy + z * 1.6);
+    ctx.lineTo(sx - z * 0.5, sy + z * 0.5);
+    ctx.lineTo(sx - z * 1.6, sy);
+    ctx.lineTo(sx - z * 0.5, sy - z * 0.5);
+    ctx.fill();
+  }
+  ctx.restore();
 }

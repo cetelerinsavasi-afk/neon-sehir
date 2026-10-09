@@ -1,5 +1,5 @@
 import { emoteMotion } from './worldEmotes.js';
-import { drawOwnerPet } from './cosmeticsArt.js';
+import { drawOwnerPet, drawAuraFx } from './cosmeticsArt.js';
 // canvasWorldKit.js — TAMAMEN jenerik (mekana özel HİÇBİR şey bilmeyen)
 // canvas-dünya yardımcıları: yuvarlak dikdörtgen, avatar sprite çizimi,
 // elde-tutulan ürün ikonu, konuşma baloncuğu düzeni, engel/çarpışma
@@ -59,7 +59,7 @@ export function createAvatarImageCache(buildFullAvatarSvgMarkup, DEFAULT_AVATAR,
       cache.delete(key);
       cache.set(key, entry);
     } else {
-      const markup = buildFullAvatarSvgMarkup(av, { pose });
+      const markup = buildFullAvatarSvgMarkup(av, { pose, animAura: true });
       const img = new Image();
       entry = { img, ready: false };
       img.onload = () => { entry.ready = true; };
@@ -179,6 +179,8 @@ export function drawAvatarSprite(ctx, entity, getAvatarImage, { showName = true,
       isStatic: petStatic,
     });
   }
+
+  if (entity.avatar?.acc?.aura) drawAuraFx(ctx, entity.avatar.acc, entity.x, entity.baseY, h);
 
   if (entity.holding) drawHeldIcon(ctx, entity.holding, entity.x + w * 0.32, entity.baseY - h * 0.42);
 

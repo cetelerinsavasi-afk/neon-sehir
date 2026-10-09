@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePlayer } from '../../hooks/usePlayer';
 import { cosmeticsAction } from '../../services/gameActions';
 import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes';
-import { ACC_ART, drawPet, drawOwnerPet, PET_ART } from '../../lib/cosmeticsArt';
+import { ACC_ART, drawPet, drawOwnerPet, drawAuraFx, PET_ART } from '../../lib/cosmeticsArt';
 import { PETS, ACCESSORIES, ACC_SLOTS, RARITY, LEASH_COLORS, priceOf } from '../../../functions/cosmeticsData.js';
 import './AccessoryShop.css';
 
@@ -77,7 +77,7 @@ function Stage({ avatar, onPet, sayRef }) {
       if (!e) {
         e = { ready: false, img: new Image() };
         e.img.onload = () => (e.ready = true);
-        e.img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(buildFullAvatarSvgMarkup(av, { pose }));
+        e.img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(buildFullAvatarSvgMarkup(av, { pose, animAura: true }));
         cache.set(key, e);
         if (cache.size > 40) cache.delete(cache.keys().next().value);
       }
@@ -147,6 +147,7 @@ function Stage({ avatar, onPet, sayRef }) {
       if (im) ctx.drawImage(im, -w / 2, -h, w, h);
       ctx.restore();
       if (av.pet?.id) drawOwnerPet(ctx, { key: '__shop', x, baseY, facing: P.dir < 0 ? 'left' : 'right', h, w, pet: av.pet, moving, now });
+      if (av.acc?.aura) drawAuraFx(ctx, av.acc, x, baseY, h, now);
       // kalpler + konuşma
       ctx.font = '20px sans-serif';
       ctx.textAlign = 'center';
@@ -335,12 +336,13 @@ export default function AccessoryShop({ onBack }) {
             ))}
           </div>
         )}
-        {trialItems.length > 0 && (
-          <div className="acs-trial">
-            <b>Önizleme</b> — {trialItems.map((i) => i.name).join(', ')}. Mekânlarda görünmesi için satın al.
-          </div>
-        )}
       </div>
+      {/* v78: önizleme notu sahnenin altında (hayvanların ayaklarını kapatmasın) */}
+      {trialItems.length > 0 && (
+        <div className="acs-trial">
+          <b>Önizleme</b> — {trialItems.map((i) => i.name).join(', ')}. Mekânlarda görünmesi için satın al.
+        </div>
+      )}
 
       <div className="acs-panel">
         <div className="acs-tabs">

@@ -95,8 +95,7 @@ function TrainingStartModal({ level, vehicles, onClose, onCreated }) {
           <CarThumb catalogId={trainingBot(level).catalogId} />
           <div>
             <p className="race-hint">
-              Rakibin: <strong>{vehicleCatalog.find((c) => c.id === trainingBot(level).catalogId)?.name}</strong> süren bot (galeri hali, seviye 1). Botu
-              hayalet olarak görürsün; pisti ondan kısa sürede bitir.
+              Rakibin: <strong>{vehicleCatalog.find((c) => c.id === trainingBot(level).catalogId)?.name}</strong> süren bot
             </p>
             <CarStatBars catalogId={trainingBot(level).catalogId} level={1} compact />
           </div>
@@ -217,17 +216,20 @@ export default function RaceLobby({ myUid, onEnterRoom }) {
   const vehicles = allVehicles.filter(raceable);
   const { rooms } = useOpenRaceRooms();
   const [showCreate, setShowCreate] = useState(false);
-  const [joinVehicleByRoom, setJoinVehicleByRoom] = useState({});
+  // v78: önce rakibin aracı görünür; "Yarışa Katıl"a basınca araç seçimi açılır
+  const [joinRoom, setJoinRoom] = useState(null);
+  const [joinVehicleId, setJoinVehicleId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
   const handleJoin = async (roomId) => {
-    const vehicleId = joinVehicleByRoom[roomId];
+    const vehicleId = joinVehicleId;
     if (!vehicleId) return;
     setBusy(true);
     setError(null);
     try {
       await joinRaceRoom(roomId, vehicleId);
+      setJoinRoom(null);
       onEnterRoom(roomId);
     } catch (err) {
       setError(err.message || 'Odaya katılamadın.');
@@ -251,34 +253,66 @@ export default function RaceLobby({ myUid, onEnterRoom }) {
           const creatorInfo = r.players?.[r.creatorUid];
           return (
             <div key={r.id} className="race-room-card">
-              <p className="race-room-meta">Bahis: {r.betAmount.toLocaleString('tr-TR')} altın</p>
-              {creatorInfo && (
-                <p className="race-room-creator">
-                  {creatorInfo.displayName} — {creatorInfo.vehicleModel}
-                  {r.engine === 'ta'
-                    ? ` (Seviye ${creatorInfo.level || 1})`
-                    : ` (Vites ${creatorInfo.maxGear}, Depo ${creatorInfo.maxFuel}L${creatorInfo.turboTotal > 0 ? `, Turbo ×${creatorInfo.turboTotal}` : ''})`}
-                </p>
-              )}
+              <div className="race-room-top">
+                {creatorInfo?.catalogId && <img className="race-room-thumb" src={vehicleImage(creatorInfo.catalogId)} alt={creatorInfo.vehicleModel} />}
+                <div className="race-room-info">
+                  <p className="race-room-creator">
+                    <strong>{creatorInfo?.displayName || 'Oyuncu'}</strong>
+                  </p>
+                  <p className="race-room-car">
+                    {creatorInfo?.vehicleModel}
+                    {r.engine === 'ta' ? (
+                      <>
+                        {' '}
+                        <LevelPips level={creatorInfo?.level || 1} />
+                      </>
+                    ) : (
+                      ` (Vites ${creatorInfo?.maxGear}, Depo ${creatorInfo?.maxFuel}L)`
+                    )}
+                  </p>
+                  <p className="race-room-meta">💰 Bahis: {r.betAmount.toLocaleString('tr-TR')} altın</p>
+                </div>
+              </div>
               {creatorInfo?.catalogId && <CarStatBars catalogId={creatorInfo.catalogId} level={creatorInfo.level || 1} compact />}
-              <VehiclePicker
-                vehicles={vehicles}
-                value={joinVehicleByRoom[r.id] || ''}
-                onChange={(v) => setJoinVehicleByRoom((prev) => ({ ...prev, [r.id]: v }))}
-              />
               <button
-                className="race-btn"
-                disabled={busy || !joinVehicleByRoom[r.id]}
-                onClick={() => handleJoin(r.id)}
+                className="race-btn primary"
+                disabled={busy}
+                onClick={() => {
+                  setError(null);
+                  setJoinVehicleId('');
+                  setJoinRoom(r);
+                }}
               >
-                Katıl
+                🏁 Yarışa Katıl
               </button>
             </div>
           );
         })}
       </div>
 
-      {error && <p className="race-error">{error}</p>}
+      {error && !joinRoom && <p className="race-error">{error}</p>}
+
+      {joinRoom && (
+        <div className="race-create-backdrop" onClick={() => !busy && setJoinRoom(null)}>
+          <div className="race-create-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="race-create-header">
+              <p className="race-section-title">Aracını Seç</p>
+              <button className="race-create-close" onClick={() => setJoinRoom(null)}>
+                ✕
+              </button>
+            </div>
+            <p className="race-hint">
+              Rakip: <strong>{joinRoom.players?.[joinRoom.creatorUid]?.displayName}</strong> · {joinRoom.players?.[joinRoom.creatorUid]?.vehicleModel} · Bahis{' '}
+              {joinRoom.betAmount.toLocaleString('tr-TR')} altın
+            </p>
+            <VehiclePicker vehicles={vehicles} value={joinVehicleId} onChange={setJoinVehicleId} />
+            <button className="race-btn primary" disabled={busy || !joinVehicleId} onClick={() => handleJoin(joinRoom.id)}>
+              {busy ? 'Katılınıyor…' : `Katıl — ${joinRoom.betAmount.toLocaleString('tr-TR')} altın bahis`}
+            </button>
+            {error && <p className="race-error">{error}</p>}
+          </div>
+        </div>
+      )}
 
       {showCreate && (
         <CreateRoomModal

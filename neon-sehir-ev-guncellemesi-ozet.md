@@ -1,3 +1,17 @@
+# v78.1 — Geri bildirim düzeltmeleri
+
+- **Gökkuşağı Midilli** örnekteki düz, parlak görünümüne döndü (boyu aynı). Evcil hayvan fiyat sırası: Midilli 200 💎, Neon Kurt 150, Mini Ejder 100, Aslan 50.
+- **Maymun** artık iki ayak üstünde yürüyor (kollar ve bacaklar sırayla sallanır, tasma boynuna bağlı).
+- **Melek Kanatları** tüy tüy: uzun birincil tüyler, orta tüyler ve kısa örtü tüyleri üst üste.
+- **Yıldız Tozu** örnekteki gibi canlı: avatarın çevresinde dönen parıltılar (mekânlarda ve mağaza önizlemesinde).
+- Aksesuar fiyat sırası: Ateş Aurası 200 💎, Yıldız Tozu 150, Neon Halka 100, Roket Sırt Çantası 50 (diğerleri 2–40).
+- Mağazada "Önizleme — … satın al" yazısı sahnenin altına alındı; hayvanların ayakları artık kapanmıyor.
+- **Bahisli yarış lobisi**: açık odada rakibin aracının fotoğrafı, seviyesi ve HIZ/İVME/NİTRO göstergeleri; kendi araçların listelenmiyor. "🏁 Yarışa Katıl"a basınca araçların açılıyor, birini seçip katılıyorsun.
+- **Rakip hayaleti akıcı**: yeni konum gelene kadar rakip son hızıyla pist boyunca (virajı takip ederek) ilerletiliyor; yeni veri gelince oluşan sıçrama ~0,3 sn'de yumuşakça kapanıyor. (Ölçüm: eskiden rakip çoğu karede yerinde duruyor ve ışınlanıyordu; şimdi sürekli, normal hızında hareket ediyor.)
+- Antrenman penceresinde sadece "Rakibin: Pickup süren bot" yazıyor.
+
+---
+
 # v78 — Zamana karşı yarış, evcil hayvan & aksesuar, ev düzeltmeleri
 
 **1. Ziyaret › Evler**
