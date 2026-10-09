@@ -15,7 +15,8 @@ test('presence özeti: aktifleri sayar, değişmediyse yazmaz, 10 dk sonra canl�
   S('interiorPresence/c', { locationId: 'banka', updatedAt: ts(1_000) });
   S('interiorPresence/d', { locationId: 'banka', updatedAt: ts(1_000) });
   S('housePresence/e', { houseId: 'h1', updatedAt: ts(1_000) });
-  S('housePresence/f', { houseId: 'h2', updatedAt: ts(80_000) });
+  S('housePresence/f', { houseId: 'h2', updatedAt: ts(50_000) }); // v82: aktiflik penceresi 60 sn
+  S('housePresence/g', { houseId: 'h3', updatedAt: ts(70_000) }); // v82: 60 sn'yi aştı → sayılmaz
   const job = createPresenceSummary({ db, Timestamp, now: () => clock.t });
   let r = await job.run();
   assert.equal(r.written, true);

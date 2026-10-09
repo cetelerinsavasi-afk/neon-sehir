@@ -20488,6 +20488,32 @@ async function buildSixtagramAttachment(uid, attachment) {
   // v66: 3D ev fotoğrafı (functions/houses.js)
   if (type === 'housePhoto') return houses.buildPhotoAttachment(uid, attachment);
 
+  // v82: YAYIN RAPORU — sadece kendi bitmiş yayınının; sayılar sunucudaki yayın
+  // kaydından okunur (istemciden alınmaz, kimse sahte rapor paylaşamaz)
+  if (type === 'streamReport') {
+    const sid = String(attachment.streamId || '');
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(sid)) throw new HttpsError('invalid-argument', 'Geçersiz yayın.');
+    const ss = await db.collection('streams').doc(sid).get();
+    const s = ss.exists ? ss.data() : null;
+    if (!s || s.uid !== uid) throw new HttpsError('permission-denied', 'Bu yayın senin değil.');
+    if (s.status !== 'ended' || !s.summary) throw new HttpsError('failed-precondition', 'Yayın henüz bitmedi.');
+    const sm = s.summary;
+    const top = (Array.isArray(sm.top) ? sm.top : []).slice(0, 3).map((x) => ({ n: String(x.n || 'Oyuncu').slice(0, 24), a: Number(x.a) || 0 }));
+    return {
+      type: 'streamReport',
+      streamId: sid,
+      title: String(s.title || '').slice(0, 60),
+      houseName: String(s.houseName || '').slice(0, 50),
+      durationMs: Number(sm.durationMs) || 0,
+      seen: Number(sm.seen) || 0,
+      peak: Number(sm.peak) || 0,
+      donated: Number(sm.donated) || 0,
+      donationCount: Number(sm.donationCount) || 0,
+      top,
+      endedAtMs: Number(s.endedAtMs) || 0,
+    };
+  }
+
   // v72: "Resim Çiz" — fırça darbeleri doğrulanıp olduğu gibi saklanır (görsel yüklenmez)
   if (type === 'drawing') {
     const r = sanitizeDrawing(attachment);

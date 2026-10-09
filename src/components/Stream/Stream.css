@@ -1217,3 +1217,131 @@ body.ns-streaming .race-exit-confirm-backdrop {
 .st-top3 p:first-child {
   background: linear-gradient(90deg, rgba(212, 175, 55, 0.55), rgba(0, 0, 0, 0.5));
 }
+
+/* v82 — sohbette bağışlar (renkli: miktar + not) */
+.st-chat-list p.don,
+.st-hostfs-chat p.don,
+.st-pipfeed p.don {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: linear-gradient(120deg, rgba(212, 175, 55, 0.9), rgba(255, 120, 40, 0.88) 55%, rgba(255, 46, 140, 0.85));
+  color: #1a1206;
+  box-shadow: 0 2px 10px rgba(255, 140, 40, 0.35);
+  text-shadow: none;
+  font-weight: 600;
+}
+.st-chat-list p.don.big,
+.st-hostfs-chat p.don.big,
+.st-pipfeed p.don.big {
+  background: linear-gradient(120deg, #ff2e8c, #ffb21e 50%, #7b2cff);
+  color: #fff;
+  box-shadow: 0 0 14px rgba(255, 46, 140, 0.6);
+}
+p.don .don-ico {
+  font-size: 15px;
+}
+p.don b {
+  color: inherit !important;
+  font-weight: 900;
+}
+p.don i {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-style: normal;
+  font-weight: 900;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.22);
+  color: #fff;
+}
+p.don .don-note {
+  flex-basis: 100%;
+  font-style: italic;
+  font-weight: 700;
+}
+
+/* v82 — 👁 izleyici sayısı dokunulabilir */
+.st-eye-btn {
+  border: 0;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.st-eye-btn:active {
+  transform: scale(0.95);
+}
+.st-viewers {
+  max-height: 72vh;
+  display: flex;
+  flex-direction: column;
+}
+.st-viewers-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0 10px;
+}
+.st-viewer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+}
+.st-viewer .st-ava {
+  width: 28px;
+  height: 28px;
+  font-size: 13px;
+}
+
+/* v82 — yayın raporu paylaş */
+.st-share-btn {
+  width: 100%;
+  margin-bottom: 8px;
+}
+.st-share {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.st-share-ok {
+  margin: 0 0 8px;
+  color: #6dff9c;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* v82 — yayında 10 Numara */
+.st-play-opts .wide {
+  grid-column: 1 / -1;
+}
+.st-cards-sheet {
+  max-height: 86vh;
+  overflow-y: auto;
+  width: min(96vw, 520px);
+}
+.st-cards-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.st-cards-head .st-btn {
+  padding: 4px 10px;
+}
+body.ns-streaming .onnumara-fullscreen {
+  z-index: 1310;
+}

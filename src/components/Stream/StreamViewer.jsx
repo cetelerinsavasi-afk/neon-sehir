@@ -7,7 +7,7 @@ import { streamAction } from '../../services/gameActions';
 import StreamScene from './StreamScene';
 import StreamGameView from './StreamGameView';
 import StreamRaceView from './StreamRaceView';
-import { ALERT_MS, StreamTopDonors } from './StreamHost';
+import { ALERT_MS, StreamTopDonors, StreamChatLine, StreamViewersSheet } from './StreamHost';
 import { DONATION_AMOUNTS, DONATION_DAILY_CAP, STREAM_STALE_MS, fmtDur, fmtN, joinViewers, useStreamChat, useStreamDoc, watchGameFrames, watchViewers } from './streamShared';
 import '../../styles/worldScreenChrome.css';
 import './Stream.css';
@@ -42,6 +42,7 @@ export default function StreamViewer({ streamId, onClose }) {
   const [toast, setToast] = useState(null);
   const [alerts, setAlerts] = useState([]);
   const [gameOn, setGameOn] = useState(false);
+  const [viewersOpen, setViewersOpen] = useState(false); // v82: izleyenler paneli
   const [gameKind, setGameKind] = useState('arcade'); // arcade | race
   const [bubble, setBubble] = useState(null); // yayıncının mesajı → avatarının üstünde konuşma balonu
   const seenHostMsg = useRef(null);
@@ -51,7 +52,7 @@ export default function StreamViewer({ streamId, onClose }) {
   const toastTimer = useRef(0);
   useEffect(() => () => alertTimers.current.forEach(clearTimeout), []);
   const chatEndRef = useRef(null);
-  useBackClose(true, () => (donOpen ? setDonOpen(false) : openChat ? setOpenChat(false) : onClose()));
+  useBackClose(true, () => (viewersOpen ? setViewersOpen(false) : donOpen ? setDonOpen(false) : openChat ? setOpenChat(false) : onClose()));
 
   const live = s && s.status === 'live' && Date.now() - Number(s.lastBeatMs || 0) < STREAM_STALE_MS + 30_000;
   const isHost = s?.uid === user?.uid;
@@ -173,7 +174,9 @@ export default function StreamViewer({ streamId, onClose }) {
             </span>
           </div>
           {live && <span className="st-live">CANLI</span>}
-          <span className="st-eye">👁 {fmtN(viewers)}</span>
+          <button className="st-eye st-eye-btn" title="İzleyenleri gör" onClick={() => setViewersOpen(true)}>
+            👁 {fmtN(viewers)}
+          </button>
           <button className="st-x" onClick={onClose} aria-label="Kapat">
             ✕
           </button>
@@ -211,7 +214,9 @@ export default function StreamViewer({ streamId, onClose }) {
         {!s && <div className="st-ended">Yükleniyor…</div>}
       </div>
 
-      <div className={`st-chat${openChat ? ' open' : ''}`} onClick={() => !openChat && setOpenChat(true)}>
+      {viewersOpen && <StreamViewersSheet streamId={streamId} isBlocked={isBlocked} onClose={() => setViewersOpen(false)} />}
+      {/* v82: sohbete dokununca açılır, tekrar dokununca kapanır */}
+      <div className={`st-chat${openChat ? ' open' : ''}`} onClick={() => setOpenChat((v) => !v)}>
         {openChat && (
           <div className="st-chat-head">
             <b>💬 Sohbet</b>
@@ -228,9 +233,7 @@ export default function StreamViewer({ streamId, onClose }) {
         <div className="st-chat-list">
           {shownChat.length === 0 && <p className="st-chat-empty">İlk mesajı sen yaz 👋</p>}
           {shownChat.map((m) => (
-            <p key={m.id} className={m.host ? 'host' : ''}>
-              <b>{m.host ? `🎥 ${m.name}` : m.name}</b> {m.text}
-            </p>
+            <StreamChatLine key={m.id} m={m} showHost />
           ))}
           <span ref={chatEndRef} />
         </div>

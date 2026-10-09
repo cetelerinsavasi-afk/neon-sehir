@@ -260,3 +260,22 @@ test('v81: internet kafe — sette oyun için ödenmiş süre varken yayın açm
   assert.equal(r.paidUntilMs, h.clock.now + 40_000);
   assert.equal(h.G('users/veli').gold, goldBefore);
 });
+
+test('v82: bağış sohbete düşer; izleyici listesi isimleriyle gelir', async () => {
+  const h = setup();
+  h.present('ali', 'ev1');
+  const { streamId } = await h.act('ali', { op: 'start', houseId: 'ev1', chairId: 'ch1' });
+  await h.act('veli', { op: 'watch', streamId, on: true });
+  await h.act('kafeci', { op: 'watch', streamId, on: true });
+  await h.act('veli', { op: 'donate', streamId, amount: 100, note: 'Süpersin' });
+  const chat = [...h.db._store.entries()].filter(([k]) => k.startsWith(`streams/${streamId}/chat/`)).map(([, v]) => v.data);
+  assert.equal(chat.length, 1);
+  assert.equal(chat[0].donation, 100);
+  assert.equal(chat[0].text, 'Süpersin');
+  assert.equal(chat[0].name, 'Veli');
+  const v = await h.act('ali', { op: 'viewers', streamId });
+  assert.deepEqual(v.viewers.map((x) => x.name), ['Kafeci', 'Veli']);
+  await h.act('kafeci', { op: 'watch', streamId, on: false });
+  const v2 = await h.act('veli', { op: 'viewers', streamId });
+  assert.deepEqual(v2.viewers.map((x) => x.name), ['Veli']);
+});

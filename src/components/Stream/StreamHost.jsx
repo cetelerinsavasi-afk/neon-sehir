@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBlocks } from '../../contexts/BlocksContext';
-import { streamAction } from '../../services/gameActions';
+import { streamAction, createSixtagramPost } from '../../services/gameActions';
 import { createPortal } from 'react-dom';
 import { fmtDur, fmtN, publishThumb, useStreamChat, useStreamGameHealth, watchViewers } from './streamShared';
 import '../../styles/worldScreenChrome.css';
@@ -76,6 +76,7 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
   const [err, setErr] = useState('');
   const [afkLeft, setAfkLeft] = useState(0);
   const [chatOpen, setChatOpen] = useState(false); // v81: mesajlara dokununca geçmiş açılır
+  const [viewersOpen, setViewersOpen] = useState(false); // v82: izleyenler paneli
   const chatEndRef = useRef(null); // >0 → "Hâlâ orada mısın?" geri sayımı
   const seenRef = useRef(new Set());
   const viewersRef = useRef(0);
@@ -241,7 +242,7 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
     return (
       <>
         {thumbCanvas}
-        <StreamPip engineRef={engineRef} pose={pose} viewers={viewers} dur={dur} chat={visibleChat} alerts={alerts} now={now} />
+        <StreamPip engineRef={engineRef} pose={pose} viewers={viewers} dur={dur} chat={visibleChat} now={now} />
       </>
     );
 
@@ -260,9 +261,9 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
           </span>
         </div>
         <span className="st-live">CANLI</span>
-        <span className="st-eye" title={viewErr ? 'İzleyici sayısı okunamıyor' : 'Şu an izleyen'}>
+        <button className="st-eye st-eye-btn" title="İzleyenleri gör" onClick={() => setViewersOpen(true)}>
           👁 {viewErr ? '?' : fmtN(viewers)}
-        </span>
+        </button>
         <span className="st-eye st-gold">
           <span className="gold-coin-icon" style={{ width: 12, height: 12 }} /> {fmtN(stream?.donated || 0)}
         </span>
@@ -272,6 +273,7 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
       </div>
 
       <StreamTopDonors top={stream?.top} isBlocked={isBlocked} className="host" />
+      {viewersOpen && <StreamViewersSheet streamId={streamId} isBlocked={isBlocked} onClose={() => setViewersOpen(false)} />}
       <div className="st-alerts">
         {alerts.map((a) => (
           <div key={a.key} className={`st-alert${a.a >= 1000 ? ' big' : ''}`}>
@@ -301,9 +303,7 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
           )}
           {shown.length === 0 && <p className="st-chat-empty">İzleyici mesajları burada görünür</p>}
           {shown.map((m) => (
-            <p key={m.id}>
-              <b>{m.name}</b> {m.text}
-            </p>
+            <StreamChatLine key={m.id} m={m} />
           ))}
           {!chatOpen && visibleChat.length > 6 && <small className="st-chat-more">Daha fazlası için dokun</small>}
           <span ref={chatEndRef} />
@@ -338,7 +338,7 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
 // =============================================================================
 const PIP_POS = ['tr', 'rm', 'lm', 'tl', 'bl', 'br'];
 const FEED_MS = 20_000; // oyun sırasında bir mesaj bu kadar süre silik görünür
-function StreamPip({ engineRef, pose, viewers, dur, chat = [], alerts = [], now = Date.now() }) {
+function StreamPip({ engineRef, pose, viewers, dur, chat = [], now = Date.now() }) {
   const cvRef = useRef(null);
   const health = useStreamGameHealth(true);
   const [pos, setPos] = useState(() => {
@@ -374,17 +374,10 @@ function StreamPip({ engineRef, pose, viewers, dur, chat = [], alerts = [], now 
   const recent = chat.filter((m) => now - Number(m.createdAtMs || 0) < FEED_MS).slice(-4);
   return createPortal(
     <>
-      {(recent.length > 0 || alerts.length > 0) && (
+      {recent.length > 0 && (
         <div className={`st-pipfeed ${pos}`}>
-          {alerts.map((a) => (
-            <p key={a.key} className="don">
-              🎁 <b>{a.n}</b> {fmtN(a.a)} altın{a.m ? ` · “${a.m}”` : ''}
-            </p>
-          ))}
           {recent.map((m) => (
-            <p key={m.id} style={{ opacity: Math.max(0.35, 1 - (now - Number(m.createdAtMs || 0)) / FEED_MS) }}>
-              <b>{m.name}</b> {m.text}
-            </p>
+            <StreamChatLine key={m.id} m={m} style={{ opacity: Math.max(0.35, 1 - (now - Number(m.createdAtMs || 0)) / FEED_MS) }} />
           ))}
         </div>
       )}
@@ -399,6 +392,69 @@ function StreamPip({ engineRef, pose, viewers, dur, chat = [], alerts = [], now 
     </div>
     </>,
     document.body
+  );
+}
+
+// v82 — Sohbet satırı: bağışlar renkli (miktar + not), yayıncının mesajı işaretli
+export function StreamChatLine({ m, showHost = false, style }) {
+  if (m.donation) {
+    return (
+      <p className={`don${m.donation >= 1000 ? ' big' : ''}`} style={style}>
+        <span className="don-ico">🎁</span>
+        <b>{m.name}</b>
+        <i>
+          <span className="gold-coin-icon" style={{ width: 11, height: 11 }} /> {fmtN(m.donation)} altın
+        </i>
+        {m.text ? <span className="don-note">“{m.text}”</span> : null}
+      </p>
+    );
+  }
+  return (
+    <p className={m.host ? 'host' : ''} style={style}>
+      <b>{showHost && m.host ? `🎥 ${m.name}` : m.name}</b> {m.text}
+    </p>
+  );
+}
+
+// v82 — İzleyenler paneli (👁 sayısına dokununca). Liste sunucudan gelir, açıkken 10 sn'de bir tazelenir.
+export function StreamViewersSheet({ streamId, isBlocked, onClose }) {
+  const [list, setList] = useState(null);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    if (!streamId) return undefined;
+    let alive = true;
+    const load = () =>
+      streamAction({ op: 'viewers', streamId })
+        .then((r) => alive && (setList(r.viewers || []), setErr('')))
+        .catch(() => alive && setErr('Liste alınamadı.'));
+    load();
+    const iv = setInterval(load, 10_000);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+    };
+  }, [streamId]);
+  const shown = (list || []).filter((v) => !isBlocked?.(v.uid));
+  return (
+    <div className="st-sheet-bg st-top-layer" onClick={onClose}>
+      <div className="st-sheet st-viewers" onClick={(e) => e.stopPropagation()}>
+        <p className="st-sheet-title">👁 Şu an izleyenler{list ? ` · ${shown.length}` : ''}</p>
+        {!list && !err && <p className="st-chat-empty">Yükleniyor…</p>}
+        {err && <p className="st-host-note bad">{err}</p>}
+        {list && shown.length === 0 && <p className="st-chat-empty">Şu an kimse izlemiyor.</p>}
+        <div className="st-viewers-list">
+          {shown.map((v) => (
+            <div key={v.uid} className="st-viewer">
+              <span className="st-ava">{String(v.name || '?').slice(0, 1).toUpperCase()}</span>
+              <b>{v.name}</b>
+            </div>
+          ))}
+        </div>
+        <button className="st-btn ghost" onClick={onClose}>
+          Kapat
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -423,7 +479,7 @@ export function StreamTopDonors({ top, isBlocked, className = '' }) {
 }
 
 // v81 — "Oyun oyna": oyun salonu ya da yarış pisti (şampiyona / bahisli / antrenman)
-export function StreamPlaySheet({ onArcade, onRace, onClose }) {
+export function StreamPlaySheet({ onArcade, onRace, onCards, onClose }) {
   return (
     <div className="st-sheet-bg st-top-layer" onClick={onClose}>
       <div className="st-sheet" onClick={(e) => e.stopPropagation()}>
@@ -442,6 +498,13 @@ export function StreamPlaySheet({ onArcade, onRace, onClose }) {
             <b>Yarış Pisti</b>
             <small>Şampiyona · Bahisli Yarış · Antrenman</small>
           </button>
+          {onCards && (
+            <button onClick={onCards} className="wide">
+              <span>🃏</span>
+              <b>10 Numara</b>
+              <small>Kart masası kur ya da bir masaya otur</small>
+            </button>
+          )}
         </div>
         <button className="st-btn ghost" onClick={onClose}>
           Vazgeç
@@ -454,8 +517,28 @@ export function StreamPlaySheet({ onArcade, onRace, onClose }) {
 const REASON = { stop: '', left: 'Odadan ayrıldığın için yayın kapandı.', stood: 'Bilgisayarın başından kalktığın için yayın kapandı.', away: 'Uygulamadan çıktığın için yayın kapandı.', afk: 'Uzun süre hareketsiz kaldığın için yayın kapandı.', gold: 'Altının bittiği için yayın kapandı.', set: 'Yayın seti kaldırıldığı için yayın kapandı.', ended: '', stale: 'Bağlantı koptuğu için yayın kapandı.' };
 
 // cost: { cafe: bool, play: internet kafede yayın sırasında oyun cihazına ödenen }
-export function StreamSummary({ summary, reason, cost = null, onClose }) {
+export function StreamSummary({ summary, reason, cost = null, streamId = null, onClose }) {
   const s = summary || {};
+  // v82: yayın raporunu Sixtagram'da paylaş
+  const [shareOpen, setShareOpen] = useState(false);
+  const [caption, setCaption] = useState('');
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shared, setShared] = useState(false);
+  const [shareErr, setShareErr] = useState('');
+  const share = async () => {
+    if (!streamId || shareBusy) return;
+    setShareBusy(true);
+    setShareErr('');
+    try {
+      await createSixtagramPost(caption.trim(), { type: 'streamReport', streamId });
+      setShared(true);
+      setShareOpen(false);
+    } catch (e) {
+      setShareErr(String(e?.message || 'Paylaşılamadı.'));
+    } finally {
+      setShareBusy(false);
+    }
+  };
   const seatFee = Number(s.paidTotal || 0);
   const playFee = Number(cost?.play || 0);
   const cafeCost = seatFee + playFee;
@@ -537,6 +620,26 @@ export function StreamSummary({ summary, reason, cost = null, onClose }) {
             </div>
           </div>
         )}
+        {streamId && !shared && !shareOpen && (
+          <button className="st-btn live st-share-btn" onClick={() => setShareOpen(true)}>
+            📸 Raporu Sixtagram'da paylaş
+          </button>
+        )}
+        {shareOpen && (
+          <div className="st-share">
+            <input className="ws-chat-input" maxLength={200} placeholder="Bir şeyler yaz… (isteğe bağlı)" value={caption} onChange={(e) => setCaption(e.target.value)} autoFocus />
+            <div className="st-sheet-btns">
+              <button className="st-btn ghost" disabled={shareBusy} onClick={() => setShareOpen(false)}>
+                Vazgeç
+              </button>
+              <button className="st-btn live" disabled={shareBusy} onClick={share}>
+                {shareBusy ? 'Paylaşılıyor…' : '📤 Paylaş'}
+              </button>
+            </div>
+          </div>
+        )}
+        {shared && <p className="st-share-ok">✓ Yayın raporun Sixtagram'da paylaşıldı!</p>}
+        {shareErr && <p className="st-host-note bad">{shareErr}</p>}
         <button className="st-btn gold" onClick={onClose}>
           Tamam
         </button>

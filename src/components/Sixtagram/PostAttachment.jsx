@@ -328,6 +328,50 @@ export default function PostAttachment({ attachment }) {
     );
   }
 
+  // v82: YAYIN RAPORU (sayılar sunucuda yayın kaydından alınır)
+  if (attachment.type === 'streamReport') {
+    const d = Math.max(0, Math.floor((attachment.durationMs || 0) / 1000));
+    const dur = d >= 3600 ? `${Math.floor(d / 3600)} sa ${Math.floor((d % 3600) / 60)} dk` : `${Math.floor(d / 60)} dk ${d % 60} sn`;
+    const n = (v) => Number(v || 0).toLocaleString('tr-TR');
+    const medal = ['🥇', '🥈', '🥉'];
+    return (
+      <div className="post-att post-att-card post-att-stream">
+        <p className="post-att-card-title">
+          <span className="post-att-stream-live">CANLI</span> Yayın Raporu
+        </p>
+        {attachment.title && <p className="post-att-stream-title">{attachment.title}</p>}
+        {attachment.houseName && <p className="post-att-stream-place">📍 {attachment.houseName}</p>}
+        <div className="post-att-stream-grid">
+          <div>
+            <b>{dur}</b>
+            <small>Süre</small>
+          </div>
+          <div>
+            <b>{n(attachment.seen)}</b>
+            <small>Kişi izledi</small>
+          </div>
+          <div>
+            <b>{n(attachment.peak)}</b>
+            <small>Aynı anda</small>
+          </div>
+          <div>
+            <b>{n(attachment.donated)}</b>
+            <small>Altın bağış</small>
+          </div>
+        </div>
+        {Array.isArray(attachment.top) && attachment.top.length > 0 && (
+          <div className="post-att-stream-top">
+            {attachment.top.map((x, i) => (
+              <span key={i}>
+                {medal[i]} <b>{x.n}</b> {n(x.a)}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   if (attachment.type === 'lotteryWin') {
     return (
       <div className="post-att post-att-card post-att-lottery-win">

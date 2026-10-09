@@ -365,7 +365,13 @@ function GameShell() {
   useEffect(() => {
     const on = () => setActiveRegion(RACE_TRACK_REGION);
     window.addEventListener('ns:stream-race', on);
-    return () => window.removeEventListener('ns:stream-race', on);
+    // v82: yayındayken 10 Numara masası (ev içinden seçilir)
+    const onTable = (e) => e?.detail && setActiveTableId(e.detail);
+    window.addEventListener('ns:open-table', onTable);
+    return () => {
+      window.removeEventListener('ns:stream-race', on);
+      window.removeEventListener('ns:open-table', onTable);
+    };
   }, []);
 
   const openRace = (roomId) => {

@@ -378,6 +378,8 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
         .slice(0, TOP_DONORS)
         .map(({ u, n, a }) => ({ u, n, a }));
       tx.update(streamRef(id), { donated: FieldValue.increment(amount), donationCount: FieldValue.increment(1), fx, donors, top });
+      // v82: bağış sohbete de düşer (miktar + not, renkli gösterilir)
+      tx.set(streamRef(id).collection('chat').doc(), { uid, name: nameOf(us.data()), text: note || '', donation: amount, createdAtMs: t, host: false });
       result = { ok: true, left: DONATION_DAILY_CAP - used - amount };
     });
     return result;
@@ -413,7 +415,8 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
     const s = ss.data();
     if (!fresh(s, t)) return { ok: true, ended: true, viewers: Number(s.viewers || 0) };
     if (s.uid === uid) return { ok: true, self: true, viewers: Number(s.viewers || 0) };
-    await watchersRef(id).doc(uid).set({ atMs: on ? t : 0, uid }, { merge: true });
+    const name = on ? nameOf((await userRef(uid).get()).data()) : undefined;
+    await watchersRef(id).doc(uid).set({ atMs: on ? t : 0, uid, ...(name ? { name } : {}) }, { merge: true });
     const { viewers, seen } = await viewerCounts(id, t);
     const patch = {};
     if (viewers !== Number(s.viewers || 0)) patch.viewers = viewers;
@@ -421,6 +424,19 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
     if (seen > Number(s.seen || 0)) patch.seen = seen;
     if (Object.keys(patch).length) await streamRef(id).update(patch).catch(() => {});
     return { ok: true, viewers, seen, beatMs: WATCH_BEAT_MS };
+  }
+
+  // v82 — şu an izleyenler (yayıncı ve izleyiciler görür; en fazla 100)
+  async function viewers(uid, p) {
+    const id = String(p.streamId || '');
+    if (!isId(id)) fail('invalid-argument', 'Geçersiz yayın.');
+    const t = now();
+    const snap = await watchersRef(id).where('atMs', '>', t - WATCH_TTL_MS).get();
+    const list = snap.docs
+      .map((d) => ({ uid: d.id, name: String(d.data().name || 'Oyuncu').slice(0, 40), atMs: Number(d.data().atMs || 0) }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+      .slice(0, 100);
+    return { ok: true, viewers: list, count: snap.size };
   }
 
   async function price(uid, p) {
@@ -479,6 +495,8 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
         return price(uid, p);
       case 'watch':
         return watch(uid, p);
+      case 'viewers':
+        return viewers(uid, p);
       default:
         fail('invalid-argument', 'Geçersiz işlem.');
     }

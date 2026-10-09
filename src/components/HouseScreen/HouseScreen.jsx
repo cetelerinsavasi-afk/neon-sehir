@@ -16,6 +16,7 @@ import { FLOORS, WALLS } from './houseTextures';
 import { FREE_SURFACES, HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
 import { TRACKS, playTrack, stopMusic, unlockAudio, setVolume, getVolume } from './houseAudio';
 import ArcadeHub from '../Arcade/ArcadeHub';
+import OnNumaraScreen from '../OnNumaraScreen/OnNumaraScreen';
 import PhoneScreen from '../Phone/PhoneScreen';
 import PlayerCard from '../PlayerCard/PlayerCard';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
@@ -154,6 +155,7 @@ export default function HouseScreen({ houseId, onExit }) {
   const [streamSum, setStreamSum] = useState(null); // { summary, reason, cost }
   const [playAsk, setPlayAsk] = useState(false); // v81: yayında "Oyun oyna" seçimi
   const streamCostRef = useRef({ cafe: false, play: 0 }); // v81: yayın sırasındaki internet kafe masrafı
+  const lastStreamIdRef = useRef(null); // v82: yayın sonu raporunu Sixtagram'da paylaşmak için
   const [noStream, setNoStream] = useState(false);
   const [streamWarn, setStreamWarn] = useState(false);
   const [cardTarget, setCardTarget] = useState(null);
@@ -809,6 +811,7 @@ export default function HouseScreen({ houseId, onExit }) {
       streamBroadcast.uid = user.uid;
       streamBroadcast.streamId = r.streamId;
       streamCostRef.current = { cafe: cafeStreamPrice > 0, play: 0 };
+      lastStreamIdRef.current = r.streamId;
       setMyStream({ id: r.streamId, chairId: streamAsk.chairId, pcId: streamAsk.pcId });
       setStreamAsk(null);
       flash(r.charged ? `🔴 Yayındasın! −${r.charged.toLocaleString('tr-TR')} altın (1 dk)` : '🔴 Yayındasın!');
@@ -826,7 +829,7 @@ export default function HouseScreen({ houseId, onExit }) {
     clearGameFrame();
     setMyStream(null);
     setPlayAsk(false);
-    if (summary) setStreamSum({ summary, reason, cost: { ...streamCostRef.current } });
+    if (summary) setStreamSum({ summary, reason, cost: { ...streamCostRef.current }, streamId: lastStreamIdRef.current });
   }, []);
   const stopStream = useCallback(
     async (reason = 'stop') => {
@@ -872,7 +875,7 @@ export default function HouseScreen({ houseId, onExit }) {
   useEffect(() => {
     if (!myStream) return undefined;
     document.body.classList.add('ns-streaming');
-    const iv = setInterval(() => setRaceUp(Boolean(document.querySelector('.region-modal-backdrop, .race-fullscreen, .ta-root:not(.st-race)'))), 400);
+    const iv = setInterval(() => setRaceUp(Boolean(document.querySelector('.region-modal-backdrop, .race-fullscreen, .ta-root:not(.st-race), .onnumara-fullscreen'))), 400);
     return () => {
       clearInterval(iv);
       setRaceUp(false);
@@ -884,6 +887,11 @@ export default function HouseScreen({ houseId, onExit }) {
     const a = interact?.actions?.find((x) => x.kind === 'panel' && x.panel === 'arcade');
     if (a) doAction(a);
     else setPanel('arcade');
+  };
+  // v82: 10 Numara — masa lobisi evin içinde, masaya oturunca oyun App'te yayının üstünde açılır
+  const playCards = () => {
+    setPlayAsk(false);
+    setPanel('onnumara');
   };
   const playRace = () => {
     setPlayAsk(false);
@@ -1768,8 +1776,26 @@ export default function HouseScreen({ houseId, onExit }) {
               compact={panel === 'arcade' || raceUp}
             />
           )}
-          {myStream && playAsk && <StreamPlaySheet onArcade={playArcade} onRace={playRace} onClose={() => setPlayAsk(false)} />}
-          {streamSum && <StreamSummary summary={streamSum.summary} reason={streamSum.reason} cost={streamSum.cost} onClose={() => setStreamSum(null)} />}
+          {myStream && playAsk && <StreamPlaySheet onArcade={playArcade} onRace={playRace} onCards={playCards} onClose={() => setPlayAsk(false)} />}
+          {panel === 'onnumara' && (
+            <div className="st-sheet-bg" onClick={() => setPanel(null)}>
+              <div className="st-sheet st-cards-sheet" onClick={(e) => e.stopPropagation()}>
+                <div className="st-cards-head">
+                  <b>🃏 10 Numara</b>
+                  <button className="st-btn ghost" onClick={() => setPanel(null)}>
+                    ✕
+                  </button>
+                </div>
+                <OnNumaraScreen
+                  onEnterTable={(tableId) => {
+                    setPanel(null);
+                    window.dispatchEvent(new CustomEvent('ns:open-table', { detail: tableId }));
+                  }}
+                />
+              </div>
+            </div>
+          )}
+          {streamSum && <StreamSummary summary={streamSum.summary} reason={streamSum.reason} cost={streamSum.cost} streamId={streamSum.streamId} onClose={() => setStreamSum(null)} />}
           {streamWarn && (
             <div className="st-sheet-bg" onClick={() => setStreamWarn(false)}>
               <div className="st-sheet" onClick={(e) => e.stopPropagation()}>
