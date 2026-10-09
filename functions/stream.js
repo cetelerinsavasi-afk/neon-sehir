@@ -49,6 +49,7 @@ export const WATCH_BEAT_MS = 30_000; // izleyici nabzı
 export const WATCH_TTL_MS = 75_000; // bu kadar nabız gelmeyen izleyici sayılmaz
 const PRESENCE_ACTIVE_MS = 2 * 60 * 1000;
 const FX_KEEP = 6;
+export const TOP_DONORS = 3;
 const LIST_MAX = 30;
 
 export function streamPriceOf(h) {
@@ -143,7 +144,7 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
     const peak = Math.max(Number(s.peak || 0), Number(viewers) || 0);
     const seenN = Math.max(Number(s.seen || 0), Number(seen) || 0);
     const endAt = reason === 'stale' ? Number(s.lastBeatMs || t) : t;
-    const summary = { durationMs: Math.max(0, endAt - Number(s.startedAtMs || endAt)), donated, tax, net, donationCount: Number(s.donationCount || 0), peak, seen: seenN, paidTotal: Number(s.paidTotal || 0) };
+    const summary = { top: Array.isArray(s.top) ? s.top : [], durationMs: Math.max(0, endAt - Number(s.startedAtMs || endAt)), donated, tax, net, donationCount: Number(s.donationCount || 0), peak, seen: seenN, paidTotal: Number(s.paidTotal || 0) };
     tx.update(streamRef(id), { status: 'ended', endedAtMs: endAt, endReason: reason, peak, seen: seenN, summary });
     tx.delete(seatRef(s.houseId, s.chairId));
     if (us?.exists && us.data()?.streamId === id) tx.update(userRef(s.uid), { streamId: FieldValue.delete() });
@@ -348,7 +349,16 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
       const fx = [...(Array.isArray(s.fx) ? s.fx : []), { n: nameOf(us.data()), a: amount, m: note, at: t, u: uid }].slice(-FX_KEEP);
       tx.update(userRef(uid), { gold: FieldValue.increment(-amount) });
       tx.set(capRef, { amount: used + amount, donor: uid, streamer: s.uid, dayKey: midnightDayKey(t), updatedAtMs: t }, { merge: true });
-      tx.update(streamRef(id), { donated: FieldValue.increment(amount), donationCount: FieldValue.increment(1), fx });
+      // v81 — en çok bağış yapan 3 kişi (yayının sol üstünde herkes görür)
+      const donors = { ...(s.donors && typeof s.donors === 'object' ? s.donors : {}) };
+      const prev = donors[uid] || { n: nameOf(us.data()), a: 0 };
+      donors[uid] = { n: nameOf(us.data()), a: Number(prev.a || 0) + amount, at: t };
+      const top = Object.entries(donors)
+        .map(([u, d]) => ({ u, n: String(d.n || 'Oyuncu').slice(0, 24), a: Number(d.a || 0), at: Number(d.at || 0) }))
+        .sort((x, y) => y.a - x.a || x.at - y.at)
+        .slice(0, TOP_DONORS)
+        .map(({ u, n, a }) => ({ u, n, a }));
+      tx.update(streamRef(id), { donated: FieldValue.increment(amount), donationCount: FieldValue.increment(1), fx, donors, top });
       result = { ok: true, left: DONATION_DAILY_CAP - used - amount };
     });
     return result;

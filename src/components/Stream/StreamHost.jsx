@@ -241,7 +241,7 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
     return (
       <>
         {thumbCanvas}
-        <StreamPip engineRef={engineRef} pose={pose} viewers={viewers} dur={dur} />
+        <StreamPip engineRef={engineRef} pose={pose} viewers={viewers} dur={dur} chat={visibleChat} alerts={alerts} now={now} />
       </>
     );
 
@@ -271,6 +271,7 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
         </button>
       </div>
 
+      <StreamTopDonors top={stream?.top} isBlocked={isBlocked} className="host" />
       <div className="st-alerts">
         {alerts.map((a) => (
           <div key={a.key} className={`st-alert${a.a >= 1000 ? ' big' : ''}`}>
@@ -336,7 +337,8 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
 // Yarış pisti evin üstünde açıldığı için pencere body'ye taşınır (portal).
 // =============================================================================
 const PIP_POS = ['tr', 'rm', 'lm', 'tl', 'bl', 'br'];
-function StreamPip({ engineRef, pose, viewers, dur }) {
+const FEED_MS = 20_000; // oyun sırasında bir mesaj bu kadar süre silik görünür
+function StreamPip({ engineRef, pose, viewers, dur, chat = [], alerts = [], now = Date.now() }) {
   const cvRef = useRef(null);
   const health = useStreamGameHealth(true);
   const [pos, setPos] = useState(() => {
@@ -367,7 +369,25 @@ function StreamPip({ engineRef, pose, viewers, dur }) {
       /* yoksay */
     }
   };
+  // v81: oyun oynarken son mesajlar ve bağışlar pencerenin yanında silik görünür
+  // (dokunmaları oyuna geçirir — kontrolleri engellemez)
+  const recent = chat.filter((m) => now - Number(m.createdAtMs || 0) < FEED_MS).slice(-4);
   return createPortal(
+    <>
+      {(recent.length > 0 || alerts.length > 0) && (
+        <div className={`st-pipfeed ${pos}`}>
+          {alerts.map((a) => (
+            <p key={a.key} className="don">
+              🎁 <b>{a.n}</b> {fmtN(a.a)} altın{a.m ? ` · “${a.m}”` : ''}
+            </p>
+          ))}
+          {recent.map((m) => (
+            <p key={m.id} style={{ opacity: Math.max(0.35, 1 - (now - Number(m.createdAtMs || 0)) / FEED_MS) }}>
+              <b>{m.name}</b> {m.text}
+            </p>
+          ))}
+        </div>
+      )}
     <div className={`st-pip ${pos}`} onPointerDown={(e) => e.stopPropagation()} onClick={cycle} title="Dokun: köşe değiştir">
       <canvas ref={cvRef} width={162} height={288} />
       <span className="st-pip-top">
@@ -376,8 +396,29 @@ function StreamPip({ engineRef, pose, viewers, dur }) {
       </span>
       <span className="st-pip-dur">{dur}</span>
       {health === 'err' && <span className="st-pip-warn">⚠ Oyun yayına gitmiyor</span>}
-    </div>,
+    </div>
+    </>,
     document.body
+  );
+}
+
+// v81 — En çok bağış yapan 3 kişi (yayının sol üstü; yayıncı ve izleyiciler görür)
+const MEDAL = ['🥇', '🥈', '🥉'];
+export function StreamTopDonors({ top, isBlocked, className = '' }) {
+  const list = (Array.isArray(top) ? top : []).filter((x) => x && !isBlocked?.(x.u)).slice(0, 3);
+  if (!list.length) return null;
+  return (
+    <div className={`st-top3 ${className}`}>
+      {list.map((x, i) => (
+        <p key={x.u}>
+          <span>{MEDAL[i]}</span>
+          <b>{x.n}</b>
+          <i>
+            <span className="gold-coin-icon" style={{ width: 10, height: 10 }} /> {fmtN(x.a)}
+          </i>
+        </p>
+      ))}
+    </div>
   );
 }
 
@@ -457,6 +498,19 @@ export function StreamSummary({ summary, reason, cost = null, onClose }) {
             <b>+{fmtN(s.net || 0)} altın</b>
           </div>
         </div>
+        {Array.isArray(s.top) && s.top.length > 0 && (
+          <div className="st-sum-money st-sum-cost">
+            <p className="st-sum-sub">🏆 En çok destekleyenler</p>
+            {s.top.map((x, i) => (
+              <div key={x.u}>
+                <span>
+                  {MEDAL[i]} {x.n}
+                </span>
+                <b>{fmtN(x.a)} altın</b>
+              </div>
+            ))}
+          </div>
+        )}
         {showCafe && (
           <div className="st-sum-money st-sum-cost">
             <p className="st-sum-sub">🖥️ İnternet kafe masrafı</p>

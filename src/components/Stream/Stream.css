@@ -1109,3 +1109,111 @@ body.ns-streaming .race-exit-confirm-backdrop {
   opacity: 0.75;
   padding-left: 4px;
 }
+
+/* v81 — oyun oynarken silik sohbet + bağışlar (yayın penceresinin yanında) */
+.st-pipfeed {
+  position: fixed;
+  z-index: 1399;
+  width: min(200px, 52vw);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  pointer-events: none;
+  opacity: 0.72;
+}
+.st-pipfeed p {
+  margin: 0;
+  padding: 3px 8px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.38);
+  color: #fff;
+  font-size: 11.5px;
+  line-height: 1.25;
+  word-break: break-word;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  transition: opacity 0.6s;
+}
+.st-pipfeed p b {
+  color: #e8c766;
+  margin-right: 3px;
+}
+.st-pipfeed p.don {
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.55), rgba(255, 46, 140, 0.45));
+  font-weight: 700;
+  animation: st-pop 0.35s ease-out;
+}
+.st-pipfeed p.don b {
+  color: #fff;
+}
+/* konum: pencerenin altında (alt köşelerde üstünde), aynı kenara hizalı */
+.st-pipfeed.tr,
+.st-pipfeed.rm,
+.st-pipfeed.br {
+  right: 8px;
+  align-items: flex-end;
+}
+.st-pipfeed.tl,
+.st-pipfeed.lm,
+.st-pipfeed.bl {
+  left: 8px;
+  align-items: flex-start;
+}
+.st-pipfeed.tr,
+.st-pipfeed.tl {
+  top: calc(env(safe-area-inset-top) + 64px + 172px);
+}
+.st-pipfeed.rm,
+.st-pipfeed.lm {
+  top: calc(38% + 172px);
+}
+.st-pipfeed.bl,
+.st-pipfeed.br {
+  bottom: calc(env(safe-area-inset-bottom) + 150px + 172px);
+  flex-direction: column;
+}
+
+/* v81 — en çok bağış yapan 3 kişi (sol üst) */
+.st-top3 {
+  position: absolute;
+  top: 80px;
+  left: 10px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-width: 62%;
+  pointer-events: none;
+}
+.st-top3.host {
+  top: calc(env(safe-area-inset-top) + 58px);
+}
+.st-top3 p {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  padding: 3px 9px 3px 5px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(3px);
+  font-size: 11.5px;
+  color: #f2ecdd;
+  white-space: nowrap;
+  align-self: flex-start;
+}
+.st-top3 p b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+.st-top3 p i {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-style: normal;
+  font-weight: 800;
+  color: #e8c766;
+}
+.st-top3 p:first-child {
+  background: linear-gradient(90deg, rgba(212, 175, 55, 0.55), rgba(0, 0, 0, 0.5));
+}

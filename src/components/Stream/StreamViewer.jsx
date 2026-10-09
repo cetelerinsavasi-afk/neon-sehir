@@ -7,7 +7,7 @@ import { streamAction } from '../../services/gameActions';
 import StreamScene from './StreamScene';
 import StreamGameView from './StreamGameView';
 import StreamRaceView from './StreamRaceView';
-import { ALERT_MS } from './StreamHost';
+import { ALERT_MS, StreamTopDonors } from './StreamHost';
 import { DONATION_AMOUNTS, DONATION_DAILY_CAP, STREAM_STALE_MS, fmtDur, fmtN, joinViewers, useStreamChat, useStreamDoc, watchGameFrames, watchViewers } from './streamShared';
 import '../../styles/worldScreenChrome.css';
 import './Stream.css';
@@ -184,6 +184,7 @@ export default function StreamViewer({ streamId, onClose }) {
             {s.startedAtMs ? ` · ${fmtDur(Date.now() - s.startedAtMs)}` : ''}
           </div>
         )}
+        {live && <StreamTopDonors top={s?.top} isBlocked={isBlocked} />}
         <div className="st-alerts">
           {alerts.map((a) => (
             <div key={a.key} className={`st-alert${a.a >= 1000 ? ' big' : ''}`}>

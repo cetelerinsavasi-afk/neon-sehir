@@ -233,3 +233,19 @@ test('v81: başkasının evindeki/dükkânındaki setle yayın açılamaz; inter
   const r2 = await h.act('ali', { op: 'start', houseId: 'dukkan', chairId: 'ch1' });
   assert.equal(r2.charged, 0);
 });
+
+test('v81: en çok bağış yapan 3 kişi (toplam, sıralı) yayın belgesinde', async () => {
+  const h = setup();
+  h.present('ali', 'ev1');
+  const { streamId } = await h.act('ali', { op: 'start', houseId: 'ev1', chairId: 'ch1' });
+  for (const u of ['u1', 'u2', 'u3', 'u4']) h.S(`users/${u}`, { displayName: u.toUpperCase(), gold: 10_000 });
+  await h.act('u1', { op: 'donate', streamId, amount: 100 });
+  await h.act('u2', { op: 'donate', streamId, amount: 1000 });
+  await h.act('u3', { op: 'donate', streamId, amount: 10 });
+  await h.act('u1', { op: 'donate', streamId, amount: 1000 }); // u1 toplam 1100 → birinci
+  await h.act('u4', { op: 'donate', streamId, amount: 100 }); // u3'ü geçer
+  const top = h.G(`streams/${streamId}`).top;
+  assert.deepEqual(top.map((x) => [x.n, x.a]), [['U1', 1100], ['U2', 1000], ['U4', 100]]);
+  const end = await h.act('ali', { op: 'stop', streamId });
+  assert.equal(end.summary.top[0].n, 'U1');
+});
