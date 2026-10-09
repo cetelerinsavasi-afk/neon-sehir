@@ -26,6 +26,7 @@
 //   - Kredi sürerken mekânın gerekli mobilyaları kaldırılamaz (bizLockUntilMs).
 // =============================================================================
 
+import { cafeDevicePrice } from './stream.js';
 import { HOUSE_TAKEABLES, HOUSE_PRODUCTS } from './houseCatalogData.js';
 import { midnightDayKey } from './businessCatalogData.js';
 import { bizTax } from './tax.js';
@@ -150,6 +151,9 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
   }
 
   // ---- İNTERNET KAFE -------------------------------------------------------------------------
+  // v81: yayın setindeki bilgisayar (oyuncu koltuğu yanında) yayın seti ücretiyle;
+  // diğer cihazlar normal dakika ücretiyle
+  const devicePriceOf = (h, deviceId) => cafeDevicePrice(h, deviceId, netPriceOf(h));
   const sessRef = (houseId, uid) => db.collection('netSessions').doc(`${houseId}_${uid}`);
 
   async function netPrice(uid, p) {
@@ -211,7 +215,7 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
       const isOwner = h.ownerUid === uid || streaming;
       let creditUntilMs = Number(sess?.creditUntilMs || 0);
       let charged = 0;
-      const price = netPriceOf(h);
+      const price = devicePriceOf(h, deviceId);
       if (creditUntilMs <= t) {
         // yeni dakika: istemcinin gördüğü fiyatla onay
         if (!isOwner) {
@@ -250,7 +254,7 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
       const [us, os] = await Promise.all([tx.get(userRef(uid)), tx.get(userRef(h.ownerUid))]);
       let creditUntilMs = Number(sess.creditUntilMs || 0);
       let charged = 0;
-      const price = netPriceOf(h);
+      const price = devicePriceOf(h, sess.deviceId);
       if (creditUntilMs - t <= 3000) {
         const streaming = h.ownerUid !== uid && (await txStreamingHere(tx, us, houseId, t));
         const isOwner = h.ownerUid === uid || streaming;

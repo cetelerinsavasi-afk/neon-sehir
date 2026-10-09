@@ -206,3 +206,27 @@ test('v81: internet kafede canlı yayındaysan oyun süresi ücretsiz (yayın se
   assert.equal(t2.charged, 200);
   assert.equal(h.G('users/ali').gold, 49_800);
 });
+
+test('v81: yayın setindeki bilgisayar yayın seti ücretiyle, diğer cihazlar normal ücretle', async () => {
+  const h = setup();
+  const id = await openBiz(h, 'internet', [it('pc', { x: 0, z: 0 }), it('gamer', { x: 1, z: 0 }), it('pc', { x: 6, z: 4 })]);
+  const items = h.G(`houses/${id}`).items;
+  const pcs = items.filter((x) => x.k === 'pc');
+  const setPc = pcs.find((x) => x.x === 0).i;
+  const plainPc = pcs.find((x) => x.x === 6).i;
+  await h.act('sahip', { op: 'netPrice', houseId: id, price: 100 });
+  h.S(`houses/${id}`, { ...h.G(`houses/${id}`), bizPrices: { ...(h.G(`houses/${id}`).bizPrices || {}), minute: 100, stream: 400 } });
+  h.present('ali', id);
+  await assert.rejects(h.act('ali', { op: 'netStart', houseId: id, itemId: setPc, expect: 100 }), /price-changed:400/);
+  const r = await h.act('ali', { op: 'netStart', houseId: id, itemId: setPc, expect: 400 });
+  assert.equal(r.charged, 400);
+  h.S('users/veli', { displayName: 'Veli', gold: 5000 });
+  h.present('veli', id);
+  const r2 = await h.act('veli', { op: 'netStart', houseId: id, itemId: plainPc, expect: 100 });
+  assert.equal(r2.charged, 100);
+  // süre bitince sette yeni dakika da yayın seti ücretiyle
+  h.clock.now += 59_000;
+  h.present('ali', id);
+  const t = await h.act('ali', { op: 'netTick', houseId: id });
+  assert.equal(t.charged, 400);
+});

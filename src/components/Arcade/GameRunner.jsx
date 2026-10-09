@@ -19,8 +19,14 @@ import { publishGameFrame, clearGameFrame, streamBroadcast } from '../Stream/str
 //   bot(s, i, mem), result(s), render(c, s, me), selfKey?='p', predict?=true, noLerp? }
 // =============================================================================
 const DT = 1 / 60;
-const SEND_MS = 50; // ~20 Hz durum yayını
-const INTERP_MS = 105; // konuk: ekranı bu kadar geriden çiz (iki paket arası ara değer)
+const SEND_MS = 33; // v81: ~30 Hz durum yayını (eskiden 20 Hz) — RTDB bant genişliği, Firestore değil
+// v81 — konuk: ekranı geriden çizme payı artık AĞA GÖRE kendiliğinden ayarlanır
+// (paketlerin geliş aralığı + titremesi). Sabit 105 ms, mobil ağda paket geç
+// gelince ekranı dondurup sıçratıyordu ("lag").
+const INTERP_MIN = 55;
+const INTERP_MAX = 240;
+const INTERP_START = 100;
+const EXTRAP_MAX = 0.45; // paket gecikirse en fazla bu oranda ileri tahmin
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const BTN_LABEL = { L: '◀', R: '▶', U: '⤴', D: '⤵', A: 'A', B: 'B' };
 const KEYMAP = { ArrowLeft: 'L', a: 'L', A: 'L', ArrowRight: 'R', d: 'R', D: 'R', ArrowUp: 'U', w: 'U', W: 'U', ' ': 'A', j: 'A', J: 'A', k: 'B', K: 'B', l: 'B', L: 'B', ArrowDown: 'B', s: 'B', S: 'B' };
@@ -111,6 +117,10 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
     let rtt = 140;
     let lastEcho = 0;
     let lastSnapAt = 0;
+    let avgIv = SEND_MS * 1.5; // paket geliş aralığı (ortalama)
+    let jit = 15; // titreme
+    let interpMs = INTERP_START;
+    const predVis = {}; // v81: game.predictKeys (ör. kafa topunda top) — yerel tahmin, yumuşak düzeltme
 
     const finish = (res) => {
       if (ended) return;
@@ -144,8 +154,13 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
             try {
               const s = JSON.parse(json);
               const now = performance.now();
+              if (lastSnapAt) {
+                const iv = Math.min(1000, now - lastSnapAt);
+                avgIv = avgIv * 0.92 + iv * 0.08;
+                jit = jit * 0.9 + Math.abs(iv - avgIv) * 0.1;
+              }
               snaps.push({ at: now, s });
-              while (snaps.length > 14) snaps.shift();
+              while (snaps.length > 20) snaps.shift();
               lastSnapAt = now;
               // gecikme ölçümü: ev sahibi son girdimizin zamanını geri yolladı
               const echo = s._e?.[myUid];
@@ -205,8 +220,10 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
           ctx.fillRect(0, 0, cv.width, cv.height);
           return;
         }
-        // ekran zamanı: en yeni paketten INTERP_MS geride → iki paket arası
-        const target = now - INTERP_MS;
+        // ekran zamanı: en yeni paketten interpMs geride → iki paket arası
+        const want = Math.max(INTERP_MIN, Math.min(INTERP_MAX, avgIv * 1.15 + jit * 2.5 + 8));
+        interpMs += (want - interpMs) * Math.min(1, dt * 1.5); // yavaş uyum: zaman sıçramasın
+        const target = now - interpMs;
         let a = snaps[0];
         let b = snaps[snaps.length - 1];
         for (let k = snaps.length - 1; k > 0; k--) {
@@ -217,8 +234,12 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
           }
         }
         let view;
-        if (target >= b.at || a === b) view = b.s;
-        else if (target <= a.at) view = a.s;
+        if (a === b) view = b.s;
+        else if (target >= b.at) {
+          // paket gecikti: donmak yerine kısa süre aynı hızla ileri tahmin
+          const over = (target - b.at) / Math.max(1, b.at - a.at);
+          view = over > 0 && !b.s.over && !(b.s.pause > 0) ? lerpFn(a.s, b.s, 1 + Math.min(EXTRAP_MAX, over)) : b.s;
+        } else if (target <= a.at) view = a.s;
         else view = lerpFn(a.s, b.s, (target - a.at) / Math.max(1, b.at - a.at));
         // kendi karakterimiz: yerel tahmin (anında tepki), düzeltmeler yumuşak
         if (pred && !view.over) {
@@ -240,6 +261,21 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
             const auth = latest[selfKey]?.[me];
             const far = auth && typeof auth.x === 'number' && Math.hypot((selfVis.x ?? 0) - auth.x, (selfVis.y ?? 0) - (auth.y ?? 0)) > 70;
             view = { ...view, [selfKey]: view[selfKey].map((p, i) => (i === me && !far && !p.dead && !p.out ? { ...p, ...selfVis, dead: p.dead, out: p.out } : p)) };
+          }
+          // v81: ek tahmin (ör. kafa topunda top): kendi vuruşuna anında tepki verir,
+          // ev sahibinden gelen gerçek konuma yumuşakça çekilir; ışınlanmada (gol/başlama) atlar
+          if (Array.isArray(game.predictKeys)) {
+            for (const k of game.predictKeys) {
+              const pk = pred[k];
+              if (!pk || typeof pk !== 'object') continue;
+              const auth = latest[k];
+              // gol / başlama (oyun duraklamada): gerçek konuma atla
+              const reset = latest.pause > 0 || pred.pause > 0;
+              const cur = predVis[k];
+              const tooFar = cur && typeof cur.x === 'number' && Math.hypot((cur.x ?? 0) - (pk.x ?? 0), (cur.y ?? 0) - (pk.y ?? 0)) > 160;
+              predVis[k] = reset && auth ? clone(auth) : !cur || tooFar ? clone(pk) : lerpFn(cur, pk, 1 - Math.exp(-dt * 22));
+              view = { ...view, [k]: predVis[k] };
+            }
           }
         }
         draw(view);
@@ -277,7 +313,7 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
       if (res) {
         if (mode.kind === 'host' && conn) {
           const { _lastIn, ...pub } = state;
-          conn.sendState(JSON.stringify({ ...pub, _in: _lastIn || [] }));
+          conn.sendState(JSON.stringify({ ...pub, _in: _lastIn || [] }), true); // maç sonu: her zaman gönder
           conn.setStatus('done');
         }
         finish(res);

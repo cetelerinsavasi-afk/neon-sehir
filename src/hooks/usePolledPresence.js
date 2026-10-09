@@ -4,6 +4,8 @@ import { db } from '../firebase';
 
 // =============================================================================
 // "Mekanda/evde kaç kişi var" sayıları.
+// v81 — sunucu biri mekâna girince/çıkınca sayıları HEMEN (en fazla ~8 sn'de bir)
+// yeniden sayar; 2 dakikalık iş sadece nabzı kesilenleri düşürür.
 // v79 — maliyet: sunucu 2 dakikada bir sayıları TEK belgeye yazar
 // (stats/presence, bkz. functions/presenceSummary.js). Uygulamadaki bütün
 // listeler bu tek belgeyi PAYLAŞIMLI dinler (sayfa başına 1 dinleyici, sadece

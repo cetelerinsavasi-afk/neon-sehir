@@ -1,5 +1,6 @@
 import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { onDocumentCreated, onDocumentDeleted } from 'firebase-functions/v2/firestore';
 import { setGlobalOptions } from 'firebase-functions/v2';
 import { defineSecret } from 'firebase-functions/params';
 import admin from 'firebase-admin';
@@ -6255,6 +6256,15 @@ const presenceSummaryJob = createPresenceSummary({ db, Timestamp: admin.firestor
 export const presenceSummary = onSchedule({ schedule: 'every 2 minutes' }, async () => {
   await presenceSummaryJob.run();
 });
+// v81 — mekâna giriş/çıkışta sayılar hemen güncellenir (en fazla ~8 sn'de bir sayım).
+// Sadece belge OLUŞUNCA/SİLİNİNCE tetiklenir (nabız güncellemeleri tetiklemez).
+const presenceNudge = (event) => presenceSummaryJob.nudge(Date.parse(event.time) || Date.now()).catch((err) => console.error('presence nudge:', err));
+export const presenceParkIn = onDocumentCreated('parkPresence/{uid}', presenceNudge);
+export const presenceParkOut = onDocumentDeleted('parkPresence/{uid}', presenceNudge);
+export const presenceInteriorIn = onDocumentCreated('interiorPresence/{uid}', presenceNudge);
+export const presenceInteriorOut = onDocumentDeleted('interiorPresence/{uid}', presenceNudge);
+export const presenceHouseIn = onDocumentCreated('housePresence/{uid}', presenceNudge);
+export const presenceHouseOut = onDocumentDeleted('housePresence/{uid}', presenceNudge);
 
 // ---------------------------------------------------------------------------
 // buyFromBufe — Park'taki büfeden içecek/atıştırmalık satın alma.

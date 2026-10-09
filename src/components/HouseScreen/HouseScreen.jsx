@@ -47,7 +47,7 @@ import './HouseScreen.css';
 import { streamAction } from '../../services/gameActions';
 import { StreamStartSheet, StreamHostPanel, StreamSummary, StreamPlaySheet } from '../Stream/StreamHost';
 import { streamBroadcast, clearGameFrame, closeStreamChannel, streamPose, useLiveStreams, useStreamDoc, watchViewers } from '../Stream/streamShared';
-import { streamPriceOf } from '../../../functions/stream.js';
+import { streamPriceOf, cafeDevicePrice, isStreamSetPc } from '../../../functions/stream.js';
 
 // =============================================================================
 // HouseScreen — 3D Ev (v66, herkese açık)
@@ -960,6 +960,8 @@ export default function HouseScreen({ houseId, onExit }) {
   const netOcc = useNetOccupancy(houseId, bizType === 'internet');
   const netActiveRef = useRef(false);
   const netPrice = netPriceOf(houseDoc);
+  // v81: yayın setindeki bilgisayar yayın seti ücretiyle (oyun da yayın da aynı fiyat)
+  const devicePrice = (deviceId) => cafeDevicePrice(houseDoc, deviceId, netPrice);
   const deviceOcc = (deviceId) => {
     const t = Date.now();
     return netOcc.filter((s) => s.deviceId === deviceId && s.uid !== user?.uid && t - Number(s.lastSeenMs || 0) < NET_SEEN_MS).length;
@@ -967,7 +969,7 @@ export default function HouseScreen({ houseId, onExit }) {
   const deviceCap = (deviceId) => NET_DEVICE_CAP[(houseDoc?.items || []).find((it) => it.i === deviceId)?.k] || 1;
   const startNet = async (deviceId) => {
     try {
-      const r = await shopAction({ op: 'netStart', houseId, itemId: deviceId, expect: netPrice });
+      const r = await shopAction({ op: 'netStart', houseId, itemId: deviceId, expect: devicePrice(deviceId) });
       netActiveRef.current = true;
       if (r.charged && myStreamRef.current) streamCostRef.current.play += Number(r.charged) || 0;
       setPanel('arcade');
@@ -1492,7 +1494,8 @@ export default function HouseScreen({ houseId, onExit }) {
                     const full = occ >= cap;
                     return (
                       <button key={a.label} className={`hs-act${full ? ' cue-dim' : ''}`} onClick={() => doAction(a)}>
-                        🎮 {full ? 'Dolu' : 'Oyna'} · {occ}/{cap} kişi · <span className="gold-coin-icon" style={{ width: 11, height: 11 }} /> {netPrice} / dakika
+                        🎮 {full ? 'Dolu' : 'Oyna'} · {occ}/{cap} kişi · <span className="gold-coin-icon" style={{ width: 11, height: 11 }} /> {devicePrice(a.deviceId)} / dakika
+                        {isStreamSetPc(houseDoc?.items, a.deviceId) ? ' · 🔴 yayın seti' : ''}
                       </button>
                     );
                   }

@@ -249,3 +249,14 @@ test('v81: en çok bağış yapan 3 kişi (toplam, sıralı) yayın belgesinde',
   const end = await h.act('ali', { op: 'stop', streamId });
   assert.equal(end.summary.top[0].n, 'U1');
 });
+
+test('v81: internet kafe — sette oyun için ödenmiş süre varken yayın açmak ikinci kez ücret almaz', async () => {
+  const h = setup();
+  h.present('veli', 'kafe');
+  h.S('netSessions/kafe_veli', { houseId: 'kafe', uid: 'veli', deviceId: 'pc1', creditUntilMs: h.clock.now + 40_000 });
+  const goldBefore = h.G('users/veli').gold;
+  const r = await h.act('veli', { op: 'start', houseId: 'kafe', chairId: 'ch1', expect: 1 });
+  assert.equal(r.charged, 0);
+  assert.equal(r.paidUntilMs, h.clock.now + 40_000);
+  assert.equal(h.G('users/veli').gold, goldBefore);
+});

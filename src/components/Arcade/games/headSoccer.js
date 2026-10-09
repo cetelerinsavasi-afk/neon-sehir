@@ -32,6 +32,7 @@ export default {
   W,
   H,
   controls: { left: ['L', 'R'], right: ['U', 'A'], labels: { U: '⤴', A: '👟' } },
+  predictKeys: ['b'], // v81: top da konukta yerel tahmin edilir (vuruşa anında tepki)
   create(names) {
     const s = { names, t: MATCH_S, sc: [0, 0], pause: 1.2, msg: 'HAZIR', over: false, tick: 0 };
     kickoff(s, -1);

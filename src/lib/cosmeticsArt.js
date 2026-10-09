@@ -931,7 +931,8 @@ function parrot(c, p, s, st, t, flying) {
   const drop = flying ? 0 : 0.09;
   c.save();
   c.translate(0, S(drop));
-  const lean = flying ? -0.75 : -0.28;
+  // v81: ayakta daha dik duruş (eskiden -0.28 + öndeki kafa kambur görünüyordu)
+  const lean = flying ? -0.75 : -0.16;
   // kuyruk (uzun, incelen; altta mavi, üstte kırmızı)
   const tailSway = Math.sin(t / 380) * 0.03;
   const tail = (len, w, col) => {
@@ -1019,9 +1020,9 @@ function parrot(c, p, s, st, t, flying) {
   c.restore();
   // yakın kanat (katlı ya da çırpan)
   wing(flying ? 2.45 + flap : 0.18 + Math.sin(t / 500) * 0.02, false);
-  // baş
-  const hx = 0.12;
-  const hy = -0.8;
+  // baş — v81: ayaktayken gövdenin TAM ÜSTÜNDE (hafif önde), boynu dik
+  const hx = flying ? 0.12 : 0.03;
+  const hy = flying ? -0.8 : -0.86;
   const hg = c.createRadialGradient(S(hx - 0.02), S(hy - 0.04), S(0.02), S(hx), S(hy), S(0.15));
   hg.addColorStop(0, shadeHex(red, 0.18));
   hg.addColorStop(1, red);

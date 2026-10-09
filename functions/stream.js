@@ -73,6 +73,17 @@ export function streamSetOf(items, chairId) {
   });
   return pc ? { chair, pc } : null;
 }
+// v81 — Bu bilgisayar bir YAYIN SETİNİN parçası mı? (yanında, ona en yakın bilgisayar
+// bu olan bir oyuncu koltuğu var). İnternet kafede yayın setinde oyun oynamak da
+// yayın seti dakika ücretiyle olur — set kullanılıyor, yayın açılsa da açılmasa da.
+export function isStreamSetPc(items, pcId) {
+  const list = Array.isArray(items) ? items : [];
+  return list.some((it) => it?.p === 1 && STREAM_CHAIRS.includes(it.k) && streamSetOf(list, it.i)?.pc?.i === pcId);
+}
+// Yayın setindeki sandalyeye en yakın kafede cihazın dakika ücreti
+export function cafeDevicePrice(h, deviceId, netPrice) {
+  return isStreamSetPc(h?.items, deviceId) ? streamPriceOf(h) : netPrice;
+}
 const cleanText = (s, max) =>
   String(s || '')
     .replace(/[\u0000-\u001f\u007f<>]/g, ' ')
@@ -189,14 +200,22 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
       let price = 0;
       let charged = 0;
       let paidUntilMs = 0;
+      // v81: bu sette zaten (oyun için) ödenmiş süre varsa yayın onunla başlar — çift ücret yok
+      let netCredit = 0;
+      if (cafe) {
+        const ns = await tx.get(db.collection('netSessions').doc(`${houseId}_${uid}`));
+        const nd = ns.exists ? ns.data() : null;
+        if (nd && nd.deviceId === set.pc.i && Number(nd.creditUntilMs || 0) > t + 3000) netCredit = Number(nd.creditUntilMs);
+      }
       if (cafe) {
         price = streamPriceOf(h);
-        if (Number(p.expect) !== price) fail('aborted', `price-changed:${price}`);
-        if (Number(user.gold || 0) < price) fail('failed-precondition', 'gold');
+        if (!netCredit && Number(p.expect) !== price) fail('aborted', `price-changed:${price}`);
+        if (!netCredit && Number(user.gold || 0) < price) fail('failed-precondition', 'gold');
       }
       // --- yazmalar ---
       if (old) finalizeTx(tx, { id: old.id, s: old.s, us, list, t, reason: 'replaced' });
-      if (cafe) {
+      if (cafe && netCredit) paidUntilMs = netCredit;
+      else if (cafe) {
         chargeTx(tx, { houseId, h, uid, os, price });
         charged = price;
         paidUntilMs = t + STREAM_SLOT_MS;

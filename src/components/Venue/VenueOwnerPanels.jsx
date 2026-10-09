@@ -167,11 +167,11 @@ function StreamSetPriceSection({ houseId, houseDoc }) {
     <div style={{ marginTop: 14 }}>
       <p className="bz-sec-title">🔴 Yayın seti</p>
       <p className="bz-note">
-        Oyuncu koltuğu ile oyuncu bilgisayarı yan yanaysa müşterin orada canlı yayın açabilir. Yayın süresince dakika başı ücret öder; altını bitince yayın kapanır.
+        Oyuncu koltuğu ile oyuncu bilgisayarı yan yanaysa orası bir yayın setidir. Müşterin sette ister yayın açsın ister sadece oyun oynasın, dakika başı bu ücreti öder (yayın + oyun birlikte tek ücret). Diğer cihazlar normal dakika ücretiyle çalışır.
         {sets > 0 ? ` Mekânında ${sets} yayın seti var.` : ' Şu an mekânında yayın seti yok (oyuncu koltuğunu bir oyuncu bilgisayarının yanına koy).'}
       </p>
       <PriceField
-        label="Yayın dakikası"
+        label="Yayın seti dakikası"
         min={STREAM_PRICE.min}
         max={STREAM_PRICE.max}
         step={10}
