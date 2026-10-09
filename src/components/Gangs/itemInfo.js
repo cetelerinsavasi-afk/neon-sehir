@@ -2,11 +2,12 @@
 import { weaponCatalog } from '../../data/weaponCatalog';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
 import { productOf } from './gangConstants';
+import { carStats, statBars } from '../../../functions/raceSim.js';
 
 export function itemsFor(productId) {
   const p = productOf(productId);
   if (p.kind === 'weapon') return weaponCatalog.map((w) => ({ key: `silah:${w.id}`, label: w.name, storePrice: w.price, image: w.image, sub: `💪 ${w.power.toLocaleString('tr-TR')} güç` }));
-  if (p.kind === 'vehicle') return vehicleCatalog.map((v) => ({ key: `araba:${v.id}`, label: v.name, storePrice: v.price, image: v.image, sub: `⚙️ vites ${v.gearLevel}` }));
+  if (p.kind === 'vehicle') return vehicleCatalog.map((v) => ({ key: `araba:${v.id}`, label: v.name, storePrice: v.price, image: v.image, sub: `🏁 ${statBars(carStats(v.id, 1)).kmh} km/h` }));
   return [{ key: p.id, label: p.label, storePrice: p.storePrice, emoji: p.emoji }];
 }
 

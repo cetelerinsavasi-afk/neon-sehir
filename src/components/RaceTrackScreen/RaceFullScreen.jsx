@@ -3,12 +3,13 @@ import { useRaceRoomById } from '../../hooks/useRaceRoomById';
 import { useFirestoreResume } from '../../hooks/useFirestoreResume';
 import { forfeitRace } from '../../services/gameActions';
 import RaceRoom from './RaceRoom';
+import TimeAttackRace from './TimeAttackRace';
 import './RaceFullScreen.css';
 
 // onCollapse: rakip beklenirken (henüz yarış başlamamışken) ekranı küçük
 // bir yuvarlağa küçültür — oda hâlâ aktif kalır, harita gezilebilir.
 // onExit: odadan TAMAMEN çıkar (yarış bittiğinde ya da forfeit sonrası).
-export default function RaceFullScreen({ roomId, myUid, onCollapse, onExit }) {
+export default function RaceFullScreen({ roomId, myUid, onCollapse, onExit, onSwitchRoom }) {
   // Yarış ekranına her girişte Firestore ağını taze bir bağlantıya
   // zorlar — "ekrana girince başta lag oluyor, sonra düzeliyor" hissinin
   // kök nedeni altta yatan bağlantının durağanlaşmış olmasıydı.
@@ -23,6 +24,11 @@ export default function RaceFullScreen({ roomId, myUid, onCollapse, onExit }) {
         <p className="race-hint">Yükleniyor…</p>
       </div>
     );
+  }
+
+  // v78 — zamana karşı yarış: yarış ve sonuç ekranı tam ekran oyun
+  if (room.engine === 'ta' && (room.status === 'racing' || room.status === 'finished')) {
+    return <TimeAttackRace key={room.id} room={room} myUid={myUid} onExit={onExit} onSwitchRoom={onSwitchRoom} />;
   }
 
   const handleCloseAttempt = () => {

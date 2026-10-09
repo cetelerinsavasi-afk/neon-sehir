@@ -1,3 +1,46 @@
+# v78 — Zamana karşı yarış, evcil hayvan & aksesuar, ev düzeltmeleri
+
+**1. Ziyaret › Evler**
+- Evler filtresinde artık içinde kimse olmasa da girebileceğin TÜM evler listelenir (herkese açık, arkadaşının ve davetli olduğun evler + kendi evlerin).
+- İçinde biri olan evler kişi sayısına göre en üstte; altında boş evler dünün en çok ziyaret edilenlerine göre (en popüler 8, "Tüm evleri göster" ile hepsi). Hiç dolu ev yoksa en popüler 8 ev görünür.
+
+**2. Kafe Masası** — iki sandalyesine de oturulabiliyor (🪑 Otur). Yaklaşma noktası masanın kutusunun dışına alındı.
+
+**3. Yarış sistemi tamamen yenilendi — Zamana Karşı Yarış**
+- Gönderilen örnekteki gece pisti: gaz / fren / ◀ ▶ / NOS, nitro pedleri, mini harita, ters yön uyarısı, S/A/B/C notu. Araçlar galerideki 10 aracın yarış hali (tip ve renkler orijinale yakın).
+- **Araç değerleri** fiyat + seviyeye göre: en ucuz araç seviye 1 = örnekteki en ucuz hız (230), en pahalı araç seviye 3 = oyunun tavanı (560, örnekteki en hızlıdan bir tık hızlı). Her seviye hız, ivme ve nitroda belirgin artış (≈ +18 km/h).
+- **Geliştirme**: araçlar silahlar gibi seviye 1 → 2 → 3. Maliyet değişmedi (eski vites/depo geliştirmesiyle aynı malzeme + işçilik). Daha önce yapılmış vites/depo geliştirmeleri seviyeye sayılır (ikisi de yapılmışsa seviye 3). Tamir ve ömür aynen devam.
+- Galeri, araç kartı, Atölye, yarış lobisi ve şampiyonada **HIZ / İVME / NİTRO** göstergeleri; Atölye'de bir sonraki seviyenin kazandıracağı kısım yeşil çizgili gösterilir.
+- **Şampiyona**: pisti günün EN KISA SÜRESİNDE bitiren kazanır (araç başına, günde 1 hak, ödül aynı: galeri fiyatının 1/5'i).
+- **Antrenman**: 10 seviye; N. seviyede bot N. galeri aracını (seviye 1) sürer. Bot hayalet olarak görünür, ödüller aynı.
+- **Bahisli yarış (çevrimiçi)**: iki oyuncu aynı anda kendi cihazında yarışır; rakip, Firestore'dan gelen konumlarıyla **hayalet** (yarı saydam, çarpışma yok) olarak AYNI YARIŞ SÜRESİNDEKİ yerinde çizilir. Kendi aracın tamamen yerel → lag yok. Kısa süre kazanır; rakibin süresini geçtiğin an yarış biter. 4 dk içinde bitirmeyen kaybeder (ikisi de bitirmezse iade).
+- **Hile koruması**: fizik deterministik (functions/raceSim.js, kendi trigonometri fonksiyonları — tüm tarayıcılarda aynı sonuç). Bitişte sadece tuş kaydı gönderilir; sunucu yarışı aynı motorla yeniden oynatıp süreyi KENDİSİ hesaplar. Her odada tek deneme (yenileyip tekrar denemek yok), hızlandırılmış oyun (speedhack) reddedilir. Süre gerçek saat değil fizik adımı sayısıdır → kasma/donma oyuncuyu cezalandırmaz.
+
+**4. Profil › Aksesuarlar (evcil hayvan & aksesuar)**
+- "Avatarımı Düzenle"nin altında **🐾 Aksesuarlar**. Ürüne dokununca avatarının üstünde anında önizlenir; satın almadan mekânlarda görünmez.
+- 20 evcil hayvan, 22 aksesuar (baş, yüz, boyun, sırt, aura). Fiyatlar: her kategoride 1 ürün 100.000 altın, 1 ürün 200.000 altın; zümrütle en değerli 200, sonra 150 / 100 / 50, diğerleri 2–40.
+- Hayvanlar prototipe göre küçültüldü, yanında yürür; **papağan, baykuş ve martı** sen durunca omzuna konar, yürürken başının üstünde süzülür. Tasma aç/kapat + 10 renk.
+- Kuşanılanlar avatarın içine (sunucuda doğrulanarak) yazılır → park, banka, karakol, cami, gazino, galeri, silahçı, modifiye, evler (3D), fotoğraflar ve Sixtagram'da herkes görür. Başa takılan aksesuar şapkayı, yüz/boyun aksesuarı avatarın aynı yuvadaki parçasını gizler.
+
+**5. Ev tasarımı** — Bir mobilyayı taşımak için önce dokunup seç, sonra sürükle. Seçili olmayan bir eşyanın üstünden başlayan sürükleme artık o eşyayı kapmaz, kamerayı çevirir; seçili eşyanın önünde başka eşya olsa bile seçili olan taşınır.
+
+**Teknik**
+- Yeni: `functions/raceSim.js` (paylaşılan deterministik fizik + bot + tekrar oynatma), `functions/raceTa.js` (taStart / taFinish / taTimeout), `functions/cosmeticsData.js`, `functions/cosmetics.js` (`cosmeticsAction` callable), `src/lib/cosmeticsArt.js`, `src/components/RaceTrackScreen/TimeAttackRace.jsx` + `timeAttackGame.js` + `CarStats.jsx`, `src/components/AccessoryShop/`.
+- `raceRooms`: `engine:'ta'`, oyuncuda `catalogId`, `level`, `finishMs`, `runStartedAtMs`; bahisli odada `startedAtMs`, `deadlineMs`. Eski zar sistemiyle açık kalmış odalar eski ekranla bitirilebilir.
+- `raceGhosts/{oda}_{uid}`: her oyuncu sadece kendi hayalet belgesini yazar (kural eklendi).
+- `vehicles.raceLevel` (1-3); `users.cosmetics.{pets,accs}`; `users.avatar.acc` / `users.avatar.pet`. `setAvatar` kuşanılanları korur.
+- `expireRaceRooms`: süresi dolan bahisli yarışları ve kapatılmış antrenman/şampiyona odalarını da kapatır (2 yeni indeks).
+- Testler: `raceTa.test.mjs` (9), `cosmetics.test.mjs` (4) — toplam 270.
+
+Yayınlama:
+```
+firebase deploy --only firestore:rules,firestore:indexes
+firebase deploy --only functions
+```
+(+ web). Yeni fonksiyon: `cosmeticsAction`; değişen: `raceHubAction`, `createRaceRoom`, `joinRaceRoom`, `startRace`, `expireRaceRooms`, `setAvatar`, `shopAction`, dailyReset (şampiyona mesajı). İndekslerin oluşması birkaç dakika sürebilir.
+
+---
+
 # v77 — Faz 5 sonrası istekler
 
 - **Canlı maç sahası:** maç izlerken top gerçek zamanlı akıyor; 6'şar oyuncu topu takip ediyor. Atakta top rakip yarıya iniyor, ceza sahası kızarıyor ("⚡ Takım atakta"), şut çıkıyor: **GOOOL!** (ağlar sallanır, saha parlar, golü atan ve asist) · **KURTARIŞ** · **DİREK** (direk sararır) · **AUT** · **BLOK**. Görsel tamamen zaman çizelgesinden üretilir; sonucu değiştirmez, herkes aynı anı görür. Bitmiş maçlarda **▶ Maç özetini izle** (~15 sn hızlı tekrar, skor ve anlatım da tekrar dakikasına göre). Anlatımda isabetsiz şutlar çeşitlendi (direkten döndü / auta çıktı / defansa çarptı).

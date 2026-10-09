@@ -8,6 +8,7 @@
 // =============================================================================
 
 import { VEHICLE_CATALOG, WEAPON_CATALOG } from './catalogData.js';
+import { vehicleRaceLevel, VEHICLE_MAX_LEVEL } from './raceSim.js';
 
 // --- Ömür + tamir (v58 değerleri) ---------------------------------------------
 export const VEHICLE_WEAPON_INITIAL_LIFE_DAYS = 20; // araç ömür tavanı
@@ -54,7 +55,8 @@ export function itemListingBand(itemType, item) {
   let raw = 0;
   if (itemType === 'vehicle') {
     const base = VEHICLE_CATALOG[item?.catalogId]?.price || 0;
-    const mult = item?.gearUpgraded && item?.tankUpgraded ? 3 : item?.gearUpgraded || item?.tankUpgraded ? 2 : 1;
+    // v78: araç seviyesi (1-3) — eski vites/depo geliştirmeleri seviyeye sayılır
+    const mult = vehicleRaceLevel(item);
     raw = base * mult * valueRatioOf(item, 'vehicle');
   } else if (itemType === 'weapon') {
     const base = WEAPON_CATALOG[item?.catalogId]?.price || 0;
@@ -76,6 +78,7 @@ export function itemListingFields(itemType, itemId, item) {
       vehicleTank: (item.baseTank || 0) + (item.tankBonus || 0),
       vehicleGearUpgraded: Boolean(item.gearUpgraded),
       vehicleTankUpgraded: Boolean(item.tankUpgraded),
+      vehicleRaceLevel: vehicleRaceLevel(item),
       vehicleLifeDays: item.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS,
       vehicleRepairsUsed: item.repairsUsed || 0,
     };
@@ -167,9 +170,12 @@ export function workshopJob({ itemType, item, action, upgradeType }) {
       return { ...out, block: null };
     }
     if (itemType === 'vehicle') {
-      if (upgradeType !== 'gear' && upgradeType !== 'tank') return { block: 'type' };
-      const out = { material: 'arabaGelistirme', qty: vehicleUpgradeQty(vehicleLivePrice(item)) };
-      if (item[upgradeType === 'gear' ? 'gearUpgraded' : 'tankUpgraded']) return { ...out, block: 'done' };
+      // v78: araçlar da silahlar gibi seviye 1 → 2 → 3 (hız/ivme/nitro artar).
+      // Maliyet değişmedi (eski vites/depo geliştirmesiyle aynı). Eski
+      // istemciden gelen 'gear'/'tank' de bir seviye sayılır.
+      if (upgradeType && !['level', 'gear', 'tank'].includes(upgradeType)) return { block: 'type' };
+      const out = { material: 'arabaGelistirme', qty: vehicleUpgradeQty(vehicleLivePrice(item)), level: vehicleRaceLevel(item) };
+      if (out.level >= VEHICLE_MAX_LEVEL) return { ...out, block: 'maxLevel' };
       return { ...out, block: null };
     }
   }
@@ -191,5 +197,12 @@ export function upgradeSlots(itemType, item) {
     const lv = item?.level || 1;
     return [lv >= 2, lv >= 3];
   }
-  return [Boolean(item?.gearUpgraded), Boolean(item?.tankUpgraded)];
+  const lv = vehicleRaceLevel(item);
+  return [lv >= 2, lv >= 3];
+}
+// v78: araç seviye geliştirmesinin belge yaması (eski bayraklar da tutulur —
+// 2. el değeri ve eski ekranlar seviyeyi bunlardan da okuyabilsin)
+export function vehicleLevelUpPatch(item) {
+  const level = Math.min(VEHICLE_MAX_LEVEL, vehicleRaceLevel(item) + 1);
+  return { raceLevel: level, gearUpgraded: level >= 2, tankUpgraded: level >= 3 };
 }

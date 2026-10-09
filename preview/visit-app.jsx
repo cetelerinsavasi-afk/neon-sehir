@@ -25,6 +25,16 @@ const y = prevDayKey(midnightDayKey(Date.now()));
   await V(`h_${cafe}`, 8, { houseId: cafe, name: 'Ali Kafe', ownerName: 'Misafir Ali', bizType: 'cafe' });
   for (const [k, n] of [['banka', 4], ['park', 3], ['gazino', 4], ['karakol', 3], ['silah_magazasi', 2], ['araba_galerisi', 1], ['modifiye_garaji', 1]]) await V(k, n);
   const now = Timestamp.fromMillis(Date.now());
+  // v78: Evler filtresi için boş ama girilebilir evler
+  if (scenario === 'houses') {
+    for (const [uid, name, gold] of [['ev1', 'Deniz Manzaralı Villa', 9e6], ['ev2', 'Çatı Katı', 9e6], ['ev3', 'Bahçeli Ev', 9e6]]) {
+      fakeDb.doc(`users/${uid}`).set({ gold, displayName: name.split(' ')[0] });
+      const { houseId } = await guest(uid, { op: 'buy', name });
+      await fakeDb.doc(`houses/${houseId}`).set({ privacy: 'public' }, { merge: true });
+      if (uid === 'ev2') await fakeDb.doc('housePresence/ev2').set({ houseId, updatedAt: now });
+      if (uid === 'ev3') await V(`h_${houseId}`, 5, { houseId, name, ownerName: 'Bahçeli' });
+    }
+  }
   if (scenario === 'live') {
     // Demir Net'te 2 kişi, galeride 1 kişi
     await fakeDb.doc('housePresence/misafir1').set({ houseId: net, updatedAt: now });

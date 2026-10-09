@@ -73,9 +73,12 @@ export default function VisitTab({ onVisitVenue, onVisitHouse }) {
   const isBiz = Boolean(BIZ_TYPES[filter]);
   // v73 — maliyet: canlı dinleyici yerine 30 sn'de bir aktif oyuncu sorgusu
   const houseList = useHouseList({ onlyLive: true });
+  // v78 — Evler filtresi: içinde kimse olmasa da girebileceğim tüm evler
+  const allHouses = useHouseList({ enabled: Boolean(user) && filter === 'houses' });
+  const [showAllHouses, setShowAllHouses] = useState(false);
   const parkList = usePolledPresence('parkPresence', { max: 200 });
   const interiorList = usePolledPresence('interiorPresence', { max: 400 });
-  const yVisits = useYesterdayVisits(Boolean(user) && filter === 'popular');
+  const yVisits = useYesterdayVisits(Boolean(user) && (filter === 'popular' || filter === 'houses'));
   const biz = useBusinessList(isBiz ? filter : null, { enabled: isBiz, includeGame: true });
 
   const venuePeople = useMemo(() => {
@@ -135,7 +138,26 @@ export default function VisitTab({ onVisitVenue, onVisitHouse }) {
       return [...cand.values()].sort(byPeople).slice(0, POPULAR_N);
     }
     if (filter === 'game') return GAME_VENUES.map((g) => gameItem(g.key)).sort(byPeople);
-    if (filter === 'houses') return liveHouses.filter((h) => !h.biz?.type).map((h) => houseItem(h)).sort(byPeople);
+    if (filter === 'houses') {
+      // v78: dolu evler kişi sayısına göre en üstte; ardından boş ama girilebilir
+      // evler dünün ziyaretine göre (en popüler 8; "tümünü göster" ile hepsi).
+      const yv = Object.fromEntries(yVisits.map((r) => [r.key, r.count || 0]));
+      const seen = new Set();
+      const all = [];
+      [...liveHouses, ...allHouses.mine, ...allHouses.enterable].forEach((h) => {
+        if (!h?.id || seen.has(h.id) || h.biz?.type || h.bizType || h.bizGame) return;
+        seen.add(h.id);
+        const people = Math.max(h.people || 0, allHouses.counts?.[h.id] || 0);
+        all.push(houseItem({ ...h, people }, yv[`h_${h.id}`] || 0));
+      });
+      const full = all.filter((x) => x.people > 0).sort(byPeople);
+      const empty = all
+        .filter((x) => !(x.people > 0))
+        .sort((a, b) => b.yv - a.yv || a.name.localeCompare(b.name, 'tr'));
+      const out = [...full, ...(showAllHouses ? empty : empty.slice(0, POPULAR_N))];
+      out.hiddenEmpty = showAllHouses ? 0 : Math.max(0, empty.length - POPULAR_N);
+      return out;
+    }
     // işletme türü: önce kalabalık, eşitlikte dünkü ciro sırası
     const rank = (r) => (Number.isFinite(r) && r > 0 ? r : 9999);
     const list = biz.list.map((h, i) => ({ ...houseItem(h), sub: `Sahibi: ${h.bizGame ? 'Neon Şehir' : h.ownerName || 'Oyuncu'}`, yv: -rank(h.bizRank) - i * 1e-6 }));
@@ -143,7 +165,8 @@ export default function VisitTab({ onVisitVenue, onVisitHouse }) {
     if (gk) list.push({ ...gameItem(gk), sub: 'Sahibi: Neon Şehir', yv: -rank(biz.gameRank) });
     return list.sort(byPeople);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter, yVisits, venuePeople, liveHouses, biz.list, biz.gameRank]);
+  }, [filter, yVisits, venuePeople, liveHouses, biz.list, biz.gameRank, allHouses, showAllHouses]);
+  const hiddenEmpty = filter === 'houses' ? items.hiddenEmpty || 0 : 0;
 
   return (
     <div className="visit-tab">
@@ -152,7 +175,9 @@ export default function VisitTab({ onVisitVenue, onVisitHouse }) {
         <p className="visit-hint">
           {filter === 'popular'
             ? 'En kalabalık mekânlar üstte; boşsa dünün en çok ziyaret edilenleri.'
-            : 'En kalabalık üstte. Girmek için dokun; çıkınca bu ekrana dönersin.'}
+            : filter === 'houses'
+              ? 'İçinde biri olan evler üstte; boş evler dünün en çok ziyaret edilenlerine göre.'
+              : 'En kalabalık üstte. Girmek için dokun; çıkınca bu ekrana dönersin.'}
         </p>
         <div className="visit-list">
           {items.map((item) => (
@@ -165,8 +190,19 @@ export default function VisitTab({ onVisitVenue, onVisitHouse }) {
               <span className={`visit-card-count ${item.people > 0 ? 'active' : ''}`}>👤 {item.people} kişi</span>
             </button>
           ))}
+          {hiddenEmpty > 0 && (
+            <button className="visit-more" onClick={() => setShowAllHouses(true)}>
+              Tüm evleri göster (+{hiddenEmpty})
+            </button>
+          )}
           {items.length === 0 && (
-            <p className="visit-hint">{isBiz && biz.loading ? 'Yükleniyor…' : filter === 'houses' ? 'Şu an içinde kimse olan ev yok.' : 'Burada henüz mekân yok.'}</p>
+            <p className="visit-hint">
+              {(isBiz && biz.loading) || (filter === 'houses' && allHouses.loading)
+                ? 'Yükleniyor…'
+                : filter === 'houses'
+                  ? 'Girebileceğin bir ev yok.'
+                  : 'Burada henüz mekân yok.'}
+            </p>
           )}
         </div>
       </GuestOverlay>

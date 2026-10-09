@@ -14,6 +14,7 @@ import { WORKSHOP_MATERIALS, workshopBand, gameWorkshopPrice, clampWorkshopPrice
 import { BIZ_MATERIALS, midnightDayKey } from '../../../functions/businessCatalogData.js';
 import '../../styles/bizui.css';
 import './Shop.css';
+import { vehicleRaceLine } from '../RaceTrackScreen/CarStats';
 
 // =============================================================================
 // v77 — Silahçı / Modifiye Garajı / Araba Galerisi: SAHİP ekranları
@@ -117,7 +118,7 @@ function itemView(kind, it) {
   return {
     img: kind === 'weapon' ? weaponImage(it.catalogId) : vehicleImage(it.catalogId),
     name: kind === 'weapon' ? it.name : vehicleDisplayName(it),
-    sub: kind === 'weapon' ? `Seviye ${it.level || 1} · güç ${fmt(it.power)}` : `Vites ${it.gearLevel} · depo ${fmt((it.baseTank || 0) + (it.tankBonus || 0))}`,
+    sub: kind === 'weapon' ? `Seviye ${it.level || 1} · güç ${fmt(it.power)}` : vehicleRaceLine(it),
     cap,
     life: Math.max(0, it.lifeDays ?? cap),
     repairsLeft: VEHICLE_WEAPON_MAX_REPAIRS - (it.repairsUsed || 0),

@@ -16,6 +16,7 @@ import {
 import { useLocalRace } from '../../hooks/useLocalRace';
 import InfoIcon from '../InfoIcon/InfoIcon';
 import DiceRoll from './DiceRoll';
+import { CarStatBars } from './CarStats';
 import './RaceTrackScreen.css';
 
 const RACE_EMOJIS = ['😂', '😢', '😡', '😮', '👍', '🔥'];
@@ -219,6 +220,11 @@ export default function RaceRoom({ room: initialRoom, myUid, onDismissFinished }
     return (
       <div className="race-screen">
         <p className="race-hint">Rakip bekleniyor… Bahis: {room.betAmount.toLocaleString('tr-TR')} altın</p>
+        {room.engine === 'ta' && (
+          <p className="race-hint">
+            Rakip gelince ikiniz de aynı pistte aynı anda yarışırsınız; rakibini hayalet olarak görürsün (çarpışma yok). Pisti daha kısa sürede bitiren bahsi kazanır.
+          </p>
+        )}
         <button className="race-btn" disabled={busy} onClick={() => run('cancel', () => cancelRaceRoom(room.id).then(onDismissFinished))}>
           Odayı İptal Et
         </button>
@@ -249,9 +255,21 @@ export default function RaceRoom({ room: initialRoom, myUid, onDismissFinished }
     return (
       <div className="race-screen">
         <p className="race-hint">
-          <strong>{other?.displayName}</strong> katıldı — {other?.vehicleModel} (Vites{' '}
-          {other?.maxGear}, Depo {other?.maxFuel}L)
+          <strong>{other?.displayName}</strong> katıldı — {other?.vehicleModel}
+          {room.engine === 'ta' ? ` (Seviye ${other?.level || 1})` : ` (Vites ${other?.maxGear}, Depo ${other?.maxFuel}L)`}
         </p>
+        {room.engine === 'ta' && other?.catalogId && (
+          <div className="race-ta-vs">
+            <div>
+              <span>Sen · {me?.vehicleModel}</span>
+              <CarStatBars catalogId={me?.catalogId} level={me?.level} compact />
+            </div>
+            <div>
+              <span>{other.displayName} · {other.vehicleModel}</span>
+              <CarStatBars catalogId={other.catalogId} level={other.level} compact />
+            </div>
+          </div>
+        )}
         <div className="race-controls">
           <button className="race-btn primary" disabled={busy} onClick={() => run('start', () => startRace(room.id))}>
             Yarışı Başlat

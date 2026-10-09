@@ -8,6 +8,11 @@ import { fakeDb, houses } from './mocks/backend.js';
 import '../src/index.css';
 import '../src/styles/theme.css';
 
+// v78: ?pets=1 → oyuncu ve misafir evcil hayvan + aksesuarla
+if (new URLSearchParams(location.search).get('pets') === '1') {
+  fakeDb.doc('users/previewAdmin').set({ avatar: { gender: 'erkek', hairStyle: 'slick', clothing: 'suit', pet: { id: 'golden', leash: true, leashColor: '#22d3ee' }, acc: { head: 'crown', back: 'royal' } } }, { merge: true });
+  fakeDb.doc('users/misafir1').set({ avatar: { gender: 'kadin', hairStyle: 'long', clothColor: '#8a1d1d', pet: { id: 'papagan' }, acc: { back: 'angel', face: 'visor' } } }, { merge: true });
+}
 // sahte ikinci oyuncu: kendi evini alır, içinde dolaşır ve konuşur
 const guest = (data) => houses.houseAction({ auth: { uid: 'misafir1' }, data });
 setTimeout(async () => {

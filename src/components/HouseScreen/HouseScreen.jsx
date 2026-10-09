@@ -1125,8 +1125,8 @@ export default function HouseScreen({ houseId, onExit }) {
             >
               <b>Nasıl tasarlanır?</b>
               <span><b>Mağaza</b>'dan ürün seç → odaya <b>deneme</b> olarak gelir (yarı saydam). Beğendiklerini sepetten satın al.</span>
-              <span>Eşyayı <b>sürükle</b>: taşı · <b>dokun</b>: seç (döndür, renk, kaldır). Kaldırdığın satın alınmış eşya <b>Envanter</b>'e gider.</span>
-              <span>Boş alanı sürükle: kamerayı çevir · İki parmak: yakınlaş/kaydır.</span>
+              <span>Önce eşyaya <b>dokun</b>: seç (döndür, renk, kaldır) · sonra <b>seçili eşyayı sürükle</b>: taşı. Kaldırdığın satın alınmış eşya <b>Envanter</b>'e gider.</span>
+              <span>Boş alanı ya da seçili olmayan eşyayı sürükle: kamerayı çevir · İki parmak: yakınlaş/kaydır.</span>
               <i>Kapatmak için dokun</i>
             </div>
           )}

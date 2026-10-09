@@ -372,6 +372,13 @@ export const createChampionshipRace = (vehicleId) =>
 // ekonomik etkisi olan her şey hâlâ sunucuda karara bağlanıyor.
 export const finishSoloRace = (payload) => raceHub('finishSoloRace', payload);
 
+// v78 — Zamana karşı yarış (bkz. functions/raceSim.js):
+//   taStart: GO'dan önce tek deneme kaydı · taFinish: tuş kaydı (sunucu yarışı
+//   yeniden oynatıp süreyi hesaplar) · taTimeout: bahisli yarışta süre doldu
+export const taStart = (roomId) => raceHub('taStart', { roomId });
+export const taFinish = (roomId, runs, dnf = false) => raceHub('taFinish', { roomId, runs: dnf ? null : runs, dnf });
+export const taTimeout = (roomId) => raceHub('taTimeout', { roomId });
+
 export const raceRefuel = (roomId) => raceHub('raceRefuel', { roomId });
 
 export const raceBuyNitro = (roomId) => raceHub('raceBuyNitro', { roomId });
@@ -696,3 +703,7 @@ export const payFutbolTrainingSlot = (teamId, position, gymId, expect) =>
 
 // v77 Faz 5 — gerçek futbolcular: ilan, teklif, imza, zam, fesih
 export const futbolProAction = (payload) => httpsCallable(functions, 'futbolProAction')(payload).then((r) => r.data);
+
+// v78 — Evcil hayvan & aksesuar mağazası (functions/cosmetics.js)
+//   { op:'buy'|'equip', kind:'pet'|'acc', id } · { op:'unequip', kind, slot? } · { op:'leash', on?, color? }
+export const cosmeticsAction = (data) => httpsCallable(functions, 'cosmeticsAction')(data);

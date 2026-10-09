@@ -37,6 +37,7 @@ import {
   gameWorkshopPrice,
   clampWorkshopPrice,
   workshopJob,
+  vehicleLevelUpPatch,
   workshopCost,
   lifeCapOf,
   repairBonusOf,
@@ -216,10 +217,9 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       } else if (itemType === 'weapon') {
         const level = (item.level || 1) + 1;
         patch = { level, power: weaponPowerAtLevel(item.basePower, level) };
-      } else if (p.upgradeType === 'gear') {
-        patch = { gearLevel: FieldValue.increment(1), gearUpgraded: true };
       } else {
-        patch = { tankBonus: FieldValue.increment(50), tankUpgraded: true };
+        // v78: araç seviyesi +1 (hız / ivme / nitro)
+        patch = vehicleLevelUpPatch(item);
       }
       tx.update(itemRef, patch);
       result = { ok: true, action, itemType, qty, own: cost.own, shopQty: cost.shopQty, labor: cost.labor, material: cost.material, total: cost.total };

@@ -21,6 +21,7 @@ import { weaponCatalog } from '../../data/weaponCatalog';
 import { MAX_REPAIRS, vehicleDisplayName, lifeCapOf, repairBonusOf } from '../VehicleCard/VehicleCard';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './MarketplaceScreen.css';
+import { vehicleRaceLine, listingRaceLine } from '../RaceTrackScreen/CarStats';
 
 // Bu oturumda eski (deterministik ID sisteminden önce açılmış) malzeme
 // ilanlarını birleştirme işlemi zaten tetiklendi mi? (Gereksiz tekrar
@@ -258,7 +259,7 @@ function weaponImage(catalogId) {
 
 function listingLabel(listing) {
   if (listing.itemType === 'vehicle') {
-    const stats = `Vites ${listing.vehicleGearLevel} · Depo ${listing.vehicleTank}L`;
+    const stats = listingRaceLine(listing);
     const upgraded = listing.vehicleGearUpgraded || listing.vehicleTankUpgraded;
     return `${listing.vehicleModel} (${stats}${upgraded ? ' — geliştirilmiş' : ''})${listing.gang && listing.quantity > 1 ? ` · ${listing.quantity} adet` : ''}`;
   }
@@ -461,8 +462,7 @@ function SellForm({ onCreated, onClose, initialItemType }) {
                     {img && <img className="market-item-photo" src={img} alt={vehicleDisplayName(v)} />}
                     <span className="market-item-name">{vehicleDisplayName(v)}</span>
                     <span className="market-item-stats">
-                      Vites {v.gearLevel} · Depo {v.baseTank + (v.tankBonus || 0)}L
-                      {v.turboCount > 0 ? ` · Turbo ×${v.turboCount}` : ''}
+                      {vehicleRaceLine(v)}
                     </span>
                   </button>
                 );

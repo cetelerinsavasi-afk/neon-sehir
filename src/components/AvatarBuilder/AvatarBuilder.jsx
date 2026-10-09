@@ -292,6 +292,12 @@ export default function AvatarBuilder({ onBack }) {
         </div>
       </div>
 
+      {/* v78: takılı aksesuar aynı yuvadaki avatar parçasını gizler */}
+      {(avatar?.acc?.head || avatar?.acc?.face || avatar?.acc?.neck) && (
+        <p className="avb-acc-note">
+          🐾 Takılı aksesuarın var: {[avatar.acc.head && 'şapka', avatar.acc.face && 'yüz aksesuarı', avatar.acc.neck && 'boyun aksesuarı'].filter(Boolean).join(', ')} seçimin aksesuarı çıkarınca görünür (Profil › Aksesuarlar).
+        </p>
+      )}
       {ok && <p className="avb-success">Kaydedildi!</p>}
       {error && <p className="avb-error">{error}</p>}
 

@@ -94,7 +94,9 @@ test('kurallar: atölye bantları, oyunun fiyatı (tamir 13), 2. el bandı eski 
   // iş gereksinimleri ve maliyet
   assert.deepEqual(workshopJob({ itemType: 'weapon', item: { catalogId: 1, lifeDays: 10 }, action: 'repair' }).block, 'full');
   assert.equal(workshopJob({ itemType: 'weapon', item: { catalogId: 1, level: 3 }, action: 'upgrade' }).block, 'maxLevel');
-  assert.equal(workshopJob({ itemType: 'vehicle', item: { catalogId: 2, gearUpgraded: true }, action: 'upgrade', upgradeType: 'gear' }).block, 'done');
+  // v78: araç geliştirmesi seviye 1→3; eski iki geliştirme = seviye 3
+  assert.equal(workshopJob({ itemType: 'vehicle', item: { catalogId: 2, gearUpgraded: true }, action: 'upgrade', upgradeType: 'level' }).block, null);
+  assert.equal(workshopJob({ itemType: 'vehicle', item: { catalogId: 2, gearUpgraded: true, tankUpgraded: true }, action: 'upgrade', upgradeType: 'level' }).block, 'maxLevel');
   assert.equal(workshopJob({ itemType: 'vehicle', item: { catalogId: 2, listed: true }, action: 'repair' }).block, 'listed');
   assert.deepEqual(workshopCost({ mat: 8, labor: 2, qty: 10, ownQty: 4 }), { own: 4, shopQty: 6, labor: 20, material: 48, total: 68 });
 });
@@ -195,8 +197,11 @@ test('atölye (oyunun dükkânı): %130, sınırsız malzeme, kendi malzemesiyle
   assert.equal(inv(h, 'ali', 'arabaGelistirme'), 0);
   const v = h.G('vehicles/v1');
   assert.equal(v.gearUpgraded, true);
-  assert.equal(v.gearLevel, VEHICLE_CATALOG[2].gearLevel + 1);
-  await assert.rejects(h.act('ali', { op: 'workshop', shop: 'game', shopType: 'modifiye', itemId: 'v1', action: 'upgrade', upgradeType: 'gear', ownQty: 0, expect: 0 }), /job-done/);
+  assert.equal(v.raceLevel, 2, 'v78: araç seviye 2');
+  // ikinci geliştirme → seviye 3, sonra en yüksek seviye
+  await h.act('ali', { op: 'workshop', shop: 'game', shopType: 'modifiye', itemId: 'v1', action: 'upgrade', upgradeType: 'level', ownQty: 0, expect: 20 * 650 });
+  assert.equal(h.G('vehicles/v1').raceLevel, 3);
+  await assert.rejects(h.act('ali', { op: 'workshop', shop: 'game', shopType: 'modifiye', itemId: 'v1', action: 'upgrade', upgradeType: 'level', ownQty: 0, expect: 0 }), /job-maxLevel/);
   // tamir: 100 malzeme × 13 = 1.300
   await h.act('ali', { op: 'workshop', shop: 'game', shopType: 'modifiye', itemId: 'v1', action: 'repair', ownQty: 0, expect: 1300 });
   assert.equal(h.G('vehicles/v1').lifeDays, 12);

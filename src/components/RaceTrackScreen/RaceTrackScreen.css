@@ -952,3 +952,44 @@
   color: var(--text-dim);
   text-align: center;
 }
+
+/* v78 — zamana karşı yarış lobisi */
+.race-vehicle-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.race-bot-card {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 10px;
+  align-items: center;
+}
+.race-bot-card .race-hint {
+  margin: 0 0 6px;
+}
+.training-level-car {
+  display: block;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+.race-ta-vs {
+  display: grid;
+  gap: 10px;
+  margin: 6px 0 10px;
+}
+.race-ta-vs > div {
+  display: grid;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.champ-card-time {
+  font-family: ui-monospace, Consolas, Menlo, monospace;
+}
+.champ-card-stats-bars {
+  margin: 8px 0 4px;
+}

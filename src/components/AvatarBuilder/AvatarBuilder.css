@@ -169,3 +169,11 @@
   text-align: center;
   margin: 0;
 }
+
+/* v78 */
+.avb-acc-note {
+  margin: 6px 12px 0;
+  font-size: 11px;
+  color: #ffd23f;
+  opacity: 0.85;
+}

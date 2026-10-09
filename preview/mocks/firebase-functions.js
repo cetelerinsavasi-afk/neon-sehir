@@ -1,4 +1,4 @@
-import { system, PREVIEW_UID, fakeDb, houses, shop, futbolPro, visits } from './backend.js';
+import { system, PREVIEW_UID, fakeDb, houses, shop, futbolPro, visits, raceTa, cosmetics } from './backend.js';
 import { FieldValue } from '../../functions/gang/test/fakeFirestore.js';
 import { sanitizeDrawing } from '../../functions/drawingData.js';
 import { nextReaction, replyQuoteOf } from '../../functions/chatExtras.js';
@@ -10,6 +10,18 @@ export function httpsCallable(functions, name) {
     const request = { auth: { uid: PREVIEW_UID }, data };
     try {
       if (name === 'gangAction') return { data: await system.handleAction(request) };
+      if (name === 'cosmeticsAction') return { data: await cosmetics.action(PREVIEW_UID, data) };
+      if (name === 'raceHubAction') {
+        if (data.action === 'taStart') return { data: await raceTa.start(request) };
+        if (data.action === 'taFinish') return { data: await raceTa.finish(request) };
+        if (data.action === 'taTimeout') return { data: await raceTa.timeout(request) };
+        if (data.action === 'createTrainingRace' && window.__createTraining) return { data: await window.__createTraining(data.level) };
+        return { data: { ok: true } };
+      }
+      if (name === 'forfeitRace') {
+        await fakeDb.doc(`raceRooms/${data.roomId}`).set({ status: 'finished', winnerUid: 'bot' }, { merge: true });
+        return { data: { ok: true } };
+      }
       if (name === 'houseAction') return { data: await houses.houseAction(request) };
       if (name === 'shopAction') return { data: await shop.shopAction(request) };
       if (name === 'recordVenueVisit') return { data: await visits.recordVenueVisit(PREVIEW_UID, data) };

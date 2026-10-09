@@ -9,6 +9,7 @@ import HoldButton from '../HoldButton/HoldButton';
 import { lifeCapOf, VEHICLE_WEAPON_MAX_REPAIRS } from '../../../functions/itemRules.js';
 import '../../styles/bizui.css';
 import './Shop.css';
+import { listingRaceLine } from '../RaceTrackScreen/CarStats';
 
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
 const weaponImage = (id) => weaponCatalog.find((w) => w.id === id)?.image;
@@ -76,7 +77,7 @@ export default function ShopShowcase({ houseId, kind, onClose }) {
               <span className="sh-stat">
                 {isW
                   ? `Seviye ${l.weaponLevel} · güç ${fmt(l.weaponPower)}`
-                  : `Vites ${l.vehicleGearLevel}${l.vehicleGearUpgraded ? ' (geliştirilmiş)' : ''} · depo ${l.vehicleTank}${l.vehicleTankUpgraded ? ' (geliştirilmiş)' : ''}`}
+                  : listingRaceLine(l)}
               </span>
               <span className="sh-stat">
                 Ömür {life}/{cap} gün · tamir hakkı {repairsLeft}/{VEHICLE_WEAPON_MAX_REPAIRS}

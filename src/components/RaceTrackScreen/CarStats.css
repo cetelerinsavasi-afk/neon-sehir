@@ -1,0 +1,84 @@
+/* v78 — araç yarış göstergeleri */
+.car-thumb {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 150 / 96;
+  border-radius: 9px;
+  background: radial-gradient(circle at 50% 60%, #1b2148, #090b19);
+}
+.car-stats {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+}
+.car-stats-row {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #9aa3cf;
+}
+.car-stats.compact .car-stats-row {
+  grid-template-columns: 36px 1fr;
+  font-size: 9px;
+}
+.car-stats-bar {
+  position: relative;
+  height: 6px;
+  border-radius: 4px;
+  background: #171b38;
+  overflow: hidden;
+}
+.car-stats-bar i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 4px;
+  transition: width 0.35s ease;
+}
+.car-stats-fill.spd {
+  background: linear-gradient(90deg, #0a8bff, #00f0ff);
+}
+.car-stats-fill.acc {
+  background: linear-gradient(90deg, #ff9d00, #ffd84d);
+}
+.car-stats-fill.nit {
+  background: linear-gradient(90deg, #8a5bff, #ff2bd6);
+}
+.car-stats-next {
+  background: repeating-linear-gradient(90deg, rgba(109, 255, 156, 0.55) 0 4px, rgba(109, 255, 156, 0.25) 4px 7px);
+}
+.car-stats-meta {
+  font-size: 10px;
+  color: #8e97c4;
+}
+.car-stats-meta em {
+  font-style: normal;
+  color: #6dff9c;
+}
+.car-level {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  vertical-align: middle;
+}
+.car-level i {
+  width: 12px;
+  height: 5px;
+  border-radius: 3px;
+  background: #232a55;
+}
+.car-level i.on {
+  background: linear-gradient(90deg, #ffc83d, #ff9d00);
+  box-shadow: 0 0 6px rgba(255, 200, 61, 0.6);
+}
+.car-level b {
+  margin-left: 3px;
+  font-size: 10px;
+  color: #ffc83d;
+}

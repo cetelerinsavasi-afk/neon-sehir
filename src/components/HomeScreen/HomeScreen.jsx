@@ -10,6 +10,7 @@ import VehicleCard, { LifeBar, UpgradeCells } from '../VehicleCard/VehicleCard';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import AvatarBuilder from '../AvatarBuilder/AvatarBuilder';
+import AccessoryShop from '../AccessoryShop/AccessoryShop';
 import DeleteAccountRequest from '../DeleteAccountRequest/DeleteAccountRequest';
 import BlockedPlayersList from '../BlockedPlayersList/BlockedPlayersList';
 import AdminPanelEntry from '../AdminPanel/AdminPanelEntry';
@@ -33,7 +34,7 @@ function weaponImage(catalogId) {
   return weaponCatalog.find((w) => w.id === catalogId)?.image;
 }
 
-function ProfileHeader({ player, onEditAvatar }) {
+function ProfileHeader({ player, onEditAvatar, onAccessories }) {
   const [editingName, setEditingName] = useState(false);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -95,6 +96,10 @@ function ProfileHeader({ player, onEditAvatar }) {
       <button className="home-btn" onClick={onEditAvatar}>
         🎭 Avatarımı Düzenle
       </button>
+      {/* v78 — evcil hayvan & aksesuar mağazası */}
+      <button className="home-btn home-btn-acc" onClick={onAccessories}>
+        🐾 Aksesuarlar
+      </button>
     </div>
   );
 }
@@ -128,6 +133,7 @@ export default function HomeScreen() {
   const { weapons } = useWeapons();
   const { inventory } = useInventory();
   const [editingAvatar, setEditingAvatar] = useState(false);
+  const [accShop, setAccShop] = useState(false);
 
   if (!user) {
     return <SignInPrompt message="Evine girmek için giriş yapmalısın." />;
@@ -136,6 +142,9 @@ export default function HomeScreen() {
   if (editingAvatar) {
     return <AvatarBuilder onBack={() => setEditingAvatar(false)} />;
   }
+  if (accShop) {
+    return <AccessoryShop onBack={() => setAccShop(false)} />;
+  }
 
   // v77: vitrindeki (dükkândaki) ürünler kilitli — soluk ve 🔒 ile gösterilir
   const myVehicles = vehicles.filter((v) => !v.listed || v.shopHouseId);
@@ -143,7 +152,7 @@ export default function HomeScreen() {
 
   return (
     <div className="home-screen">
-      <ProfileHeader player={player} onEditAvatar={() => setEditingAvatar(true)} />
+      <ProfileHeader player={player} onEditAvatar={() => setEditingAvatar(true)} onAccessories={() => setAccShop(true)} />
 
       {/* UGC D3: yalnızca yetkililere görünür */}
       <AdminPanelEntry uid={user.uid} player={player} />

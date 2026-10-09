@@ -7,9 +7,9 @@ import { warmUpRaceHub } from '../../services/gameActions';
 import './RaceTrackScreen.css';
 
 const CARDS = [
-  { id: 'championship', label: 'Şampiyona', emoji: '🏆', desc: 'Aracınla tek başına yarış, en az turda bitir, günün ödülünü kap.' },
-  { id: 'bet', label: 'Bahisli Yarış', emoji: '🏁', desc: 'Başka bir oyuncuya karşı altın bahsiyle yarış.' },
-  { id: 'training', label: 'Antrenman', emoji: '🎓', desc: 'Botlara karşı ücretsiz pratik yap.' },
+  { id: 'championship', label: 'Şampiyona', emoji: '🏆', desc: 'Gece pistinde kronometreye karşı sür; günün en hızlısı ödülü kapar.' },
+  { id: 'bet', label: 'Bahisli Yarış', emoji: '🏁', desc: 'Başka bir oyuncuyla aynı anda yarış; kısa sürede bitiren bahsi alır.' },
+  { id: 'training', label: 'Antrenman', emoji: '🎓', desc: '10 seviye: her seviyede bir üst galeri aracını süren bota karşı yarış.' },
 ];
 
 // Aktif bir yarışın (kurdum/katıldım/devam ediyor) tam ekran gösterimi

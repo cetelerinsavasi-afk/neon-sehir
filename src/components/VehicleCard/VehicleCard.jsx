@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
 import { renameVehicle } from '../../services/gameActions';
+import { CarStatBars, vehicleRaceLevel } from '../RaceTrackScreen/CarStats';
 import './VehicleCard.css';
 
 // VehicleCard — Profil (HomeScreen) VE Modifiye Garajı (GarageScreen)
@@ -100,10 +101,11 @@ export function UpgradeCells({ slots, kind = 'vehicle' }) {
       </span>
     );
   }
+  // v78: araçlar da seviye 1 → 2 → 3 (hız / ivme / nitro)
+  const lv = 1 + slots.filter(Boolean).length;
   return (
     <span className="vcard-upinfo">
-      Geliştirme: Vites <b className={slots[0] ? 'done' : ''}>{slots[0] ? '✓ yapıldı' : 'yapılabilir'}</b> · Depo{' '}
-      <b className={slots[1] ? 'done' : ''}>{slots[1] ? '✓ yapıldı' : 'yapılabilir'}</b>
+      Geliştirme: <b className={lv >= 3 ? 'done' : ''}>{lv >= 3 ? 'en yüksek seviye (3/3)' : `seviye ${lv}/3 · geliştirilebilir`}</b>
       <small>Modifiye Garajı › Tamir / Geliştirme</small>
     </span>
   );
@@ -173,12 +175,13 @@ export default function VehicleCard({ vehicle, locked = false }) {
         )}
         {nameError && <p className="vcard-name-error">{nameError}</p>}
         <span className="vcard-stats">
-          Vites {vehicle.gearLevel} · Depo {vehicle.baseTank + (vehicle.tankBonus || 0)}L
+          Seviye {vehicleRaceLevel(vehicle)}/3
           {vehicle.mortgaged && !vehicle.seizedByBank && ' · İpotekli'}
           {vehicle.seizedByBank && ' · Bankaya el konuldu'}
         </span>
+        <CarStatBars catalogId={vehicle.catalogId} level={vehicleRaceLevel(vehicle)} compact />
         <LifeBar item={vehicle} />
-        <UpgradeCells slots={[Boolean(vehicle.gearUpgraded), Boolean(vehicle.tankUpgraded)]} kind="vehicle" />
+        <UpgradeCells slots={[vehicleRaceLevel(vehicle) >= 2, vehicleRaceLevel(vehicle) >= 3]} kind="vehicle" />
       </div>
     </div>
   );

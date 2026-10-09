@@ -21,6 +21,7 @@ import {
   weaponPowerAtLevel,
 } from '../../../functions/itemRules.js';
 import { BIZ_MATERIALS } from '../../../functions/businessCatalogData.js';
+import { CarStatBars, LevelPips, vehicleRaceLevel, VEHICLE_MAX_LEVEL } from '../RaceTrackScreen/CarStats';
 import '../../styles/bizui.css';
 import './Workshop.css';
 
@@ -57,7 +58,7 @@ export default function Workshop({ shop, onClose }) {
   const isGame = shop.kind === 'game';
   const [tab, setTab] = useState('repair');
   const [itemId, setItemId] = useState(null);
-  const [upgradeType, setUpgradeType] = useState('gear');
+  const upgradeType = 'level'; // v78: araç geliştirmesi = seviye (1 → 2 → 3)
   const [ownQty, setOwnQty] = useState(0);
   const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -119,10 +120,8 @@ export default function Workshop({ shop, onClose }) {
     blockText = 'Ömrü zaten dolu, tamire gerek yok.';
     blockOk = true;
   } else if (job?.block === 'maxLevel') {
-    blockText = `En yüksek seviyede (${WEAPON_MAX_LEVEL}/${WEAPON_MAX_LEVEL}). Daha fazla geliştirilemez.`;
-    blockOk = true;
-  } else if (job?.block === 'done') {
-    blockText = upgradeType === 'gear' ? 'Vites geliştirmesi zaten yapıldı.' : 'Depo geliştirmesi zaten yapıldı.';
+    const mx = isWeapon ? WEAPON_MAX_LEVEL : VEHICLE_MAX_LEVEL;
+    blockText = `En yüksek seviyede (${mx}/${mx}). Daha fazla geliştirilemez.`;
     blockOk = true;
   } else if (job?.block === 'listed') blockText = 'Bu ürün ilanda/vitrinde. Önce ilandan kaldır.';
   const canDo = Boolean(item && job && !job.block && qty > 0 && !impossible && !poor && !busy && !priceChanged);
@@ -149,7 +148,7 @@ export default function Workshop({ shop, onClose }) {
             ? `✓ Tamir edildi! Ömrüne ${job.gain} gün eklendi.`
             : isWeapon
               ? `✓ Geliştirildi! Yeni seviye ${(item.level || 1) + 1}.`
-              : `✓ ${upgradeType === 'gear' ? 'Vites' : 'Depo'} geliştirildi!`,
+              : `✓ Geliştirildi! Yeni seviye ${vehicleRaceLevel(item) + 1} — hız, ivme ve nitro arttı.`,
       });
       setTouched(false);
     } catch (err) {
@@ -172,7 +171,7 @@ export default function Workshop({ shop, onClose }) {
   const life = item ? Math.max(0, item.lifeDays ?? cap) : 0;
   const repairsUsed = item ? item.repairsUsed || 0 : 0;
   const repairsLeft = VEHICLE_WEAPON_MAX_REPAIRS - repairsUsed;
-  const level = item?.level || 1;
+  const level = isWeapon ? item?.level || 1 : vehicleRaceLevel(item);
   const img = item ? (isWeapon ? weaponImage(item.catalogId) : vehicleImage(item.catalogId)) : null;
   const name = item ? (isWeapon ? item.name : vehicleDisplayName(item)) : '';
   const gain = tab === 'repair' && !job?.block ? job?.gain || 0 : 0;
@@ -242,7 +241,7 @@ export default function Workshop({ shop, onClose }) {
                   </small>
                 ) : (
                   <small>
-                    Vites {item.gearLevel} · Depo {fmt((item.baseTank || 0) + (item.tankBonus || 0))}
+                    <LevelPips level={level} /> Seviye {level}/{VEHICLE_MAX_LEVEL}
                   </small>
                 )}
               </div>
@@ -272,27 +271,17 @@ export default function Workshop({ shop, onClose }) {
             ) : (
               <>
                 <div className="bz-row">
-                  <span>Vites geliştirmesi</span>
-                  <b className={item.gearUpgraded ? 'bz-good' : ''}>{item.gearUpgraded ? '✓ Yapıldı' : 'Yapılabilir'}</b>
+                  <span>Geliştirme</span>
+                  <b className={level >= VEHICLE_MAX_LEVEL ? 'bz-good' : ''}>
+                    {level >= VEHICLE_MAX_LEVEL ? 'En yüksek seviyede' : `Açık (seviye ${level} → ${level + 1})`}
+                  </b>
                 </div>
-                <div className="bz-row">
-                  <span>Depo geliştirmesi</span>
-                  <b className={item.tankUpgraded ? 'bz-good' : ''}>{item.tankUpgraded ? '✓ Yapıldı' : 'Yapılabilir'}</b>
+                <div className="wk-carstats">
+                  <CarStatBars catalogId={item.catalogId} level={level} next={tab === 'upgrade' && level < VEHICLE_MAX_LEVEL} />
                 </div>
               </>
             )}
           </div>
-
-          {tab === 'upgrade' && !isWeapon && (
-            <div className="bz-tabs">
-              <button className={upgradeType === 'gear' ? 'on' : ''} onClick={() => setUpgradeType('gear')}>
-                ⚙️ Vites {item.gearUpgraded && '✓'}
-              </button>
-              <button className={upgradeType === 'tank' ? 'on' : ''} onClick={() => setUpgradeType('tank')}>
-                ⛽ Depo {item.tankUpgraded && '✓'}
-              </button>
-            </div>
-          )}
 
           {blockText ? (
             <p className={blockOk ? 'bz-ok' : 'bz-warn'}>{blockText}</p>

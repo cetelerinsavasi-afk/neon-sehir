@@ -103,8 +103,9 @@ export const CATS = [
           'Bankada kripto, hisse, elmas: fiyatlar canlı oynar.',
           'Varlıkların kredi puanını yükseltir; puanın kadar kredi çek.' ] },
         { i: '🏁', name: 'Yarışçı', lines: [
-          'Pistte antrenman yap, günün şampiyonasına gir.',
-          'Ya da başka bir oyuncuya altın basarak meydan oku.' ] },
+          'Gece pistinde kronometreye karşı sür: gaz, fren, direksiyon ve NOS.',
+          'Antrenmanda 10 bot, şampiyonada günün en hızlı süresi, bahiste rakibin hayaleti.',
+          'Arabanı geliştir (seviye 1→3): hız, ivme ve nitro belirgin artar.' ] },
       ] },
   ] },
 
@@ -424,7 +425,7 @@ export const CATS = [
           'Arabalarını vitrine çıkar. İlan 7 günde düşer, araba galeride kalır.',
           'Vitrindeki araba eskimez.' ] },
         { i: '🔧', name: 'Modifiye Garajı', lines: [
-          'Araba tamiri, vites ve depo geliştirmesi senin tezgahında.' ] },
+          'Araba tamiri ve seviye geliştirmesi (1→2→3) senin tezgahında.' ] },
         { i: '🏋️', name: 'Spor Salonu', lines: [
           'Günlük üyelik 500 ile 2.000 arası. Müşteri üç alette ter döker, gücü artar.',
           'Takımlar da oyuncularını senin salonuna yollar.' ] },

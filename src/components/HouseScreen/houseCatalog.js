@@ -2763,7 +2763,7 @@ export const CATALOG = [
   { k: 'garagedoor', name: 'Garaj Kapısı', cat: 'yapi', icon: '🚘', price: G(150000), tints: 'metal', build: garageDoor, wall: true, nobox: true, wallW: 1.4 },
 
   // v66 — YENİ EŞYALAR
-  { k: 'cafetable', name: 'Kafe Masası (2 Sandalye)', cat: 'masa', icon: '☕', tints: 'wood', build: cafeTable, box: [0.95, 0.4] },
+  { k: 'cafetable', name: 'Kafe Masası (2 Sandalye)', cat: 'masa', icon: '☕', tints: 'wood', build: cafeTable, box: [0.95, 0.4], seats: [[-0.62, 0.52, -0.06], [0.62, 0.52, -0.06]] },
   { k: 'bartable', name: 'Bar Masası', cat: 'masa', icon: '🍸', tints: 'wood', build: barTable, box: [0.35, 0.35] },
   { k: 'officedesk', name: 'Makam Masası', cat: 'masa', icon: '💼', tints: 'wood', build: officeDesk, boxes: [[0, 0, 1.0, 0.45], [0, 0.95, 0.3, 0.3]], seats: [[0, 0.55, 0.97]] },
   { k: 'washer', name: 'Çamaşır Makinesi', cat: 'banyo', icon: '🫧', tints: 'appliance', build: washer(false), box: [0.31, 0.3] },

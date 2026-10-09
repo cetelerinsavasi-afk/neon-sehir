@@ -6,10 +6,14 @@ import { createChampionshipRace } from '../../services/gameActions';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
 import { INITIAL_LIFE_DAYS } from '../VehicleCard/VehicleCard';
 import InfoIcon from '../InfoIcon/InfoIcon';
+import { CarStatBars, LevelPips, vehicleRaceLevel } from './CarStats';
+import { fmtRace } from './timeAttackGame';
 import './RaceTrackScreen.css';
 
 const RULES_TEXT =
-  'Sahip olduğun her araçla günde 1 kez şampiyonaya katılabilirsin. Rakibin yok, tek başına 300 karelik pisti tamamlıyorsun. Benzinin biterse o araçla bugünlük elendin. Pisti tamamlarsan kaç turda (kaç zar atışında) bitirdiğine bakılır — o araçla günün en az turunu yapan, gece 00:00\'da aracın galeri fiyatının 1/5\'i kadar altın kazanır.';
+  'Sahip olduğun her araçla günde 1 kez şampiyonaya katılabilirsin. Gece pistinde tek başına, kronometreye karşı sürüyorsun. Yarış bitmeden çıkarsan o araçla bugünkü hakkın yanar. O araçla günün EN HIZLI süresini yapan, gece 00:00\'da aracın galeri fiyatının 1/5\'i kadar altın kazanır. Aracını Modifiye Garajı\'nda geliştirirsen (seviye 2-3) hızın, ivmen ve nitron artar.';
+// v78: eski günlerin kaydı tur sayısıyla, yenileri süreyle tutulur
+const resultText = (ms, turns) => (ms ? fmtRace(ms) : turns ? `${turns} tur` : '');
 
 export default function ChampionshipScreen({ onEnterRace }) {
   const { vehicles } = useVehicles();
@@ -48,8 +52,7 @@ export default function ChampionshipScreen({ onEnterRace }) {
         <InfoIcon text={RULES_TEXT} />
       </p>
       <p className="race-hint">
-        Her araç için ayrı bir şampiyona var. Amacın en az turda (en az zar atışında) pisti
-        bitirmek.
+        Her araç için ayrı bir şampiyona var. Amacın pisti günün en kısa süresinde bitirmek.
       </p>
 
       {error && <p className="race-error">{error}</p>}
@@ -99,9 +102,14 @@ export default function ChampionshipScreen({ onEnterRace }) {
                   />
                 )}
                 <div className="champ-card-info">
-                  <span className="champ-card-name">{catalogVehicle.name}</span>
+                  <span className="champ-card-name">
+                    {catalogVehicle.name} {owned && <LevelPips level={vehicleRaceLevel(myVehicle)} />}
+                  </span>
                   <span className="champ-card-reward">🏆 Ödül: {reward.toLocaleString('tr-TR')} altın</span>
                 </div>
+              </div>
+              <div className="champ-card-stats-bars">
+                <CarStatBars catalogId={catalogVehicle.id} level={owned ? vehicleRaceLevel(myVehicle) : 1} compact />
               </div>
 
               <div className="champ-card-stats">
@@ -109,11 +117,11 @@ export default function ChampionshipScreen({ onEnterRace }) {
                   Dünün kazananı:{' '}
                   {yesterday?.winnerUid ? (
                     <strong>
-                      {yesterday.winnerName} — {yesterday.winnerTurns} tur
+                      {yesterday.winnerName} — <span className="champ-card-time">{resultText(yesterday.winnerTimeMs, yesterday.winnerTurns)}</span>
                     </strong>
                   ) : yesterday?.leaderUid && !yesterday?.finalized ? (
                     <strong>
-                      {yesterday.leaderName} — {yesterday.leaderTurns} tur (hesaplanıyor)
+                      {yesterday.leaderName} — <span className="champ-card-time">{resultText(yesterday.leaderTimeMs, yesterday.leaderTurns)}</span> (hesaplanıyor)
                     </strong>
                   ) : (
                     'Kimse tamamlayamadı'
@@ -124,7 +132,7 @@ export default function ChampionshipScreen({ onEnterRace }) {
                   {today?.leaderUid ? (
                     <>
                       <strong>
-                        {today.leaderName} — {today.leaderTurns} tur
+                        {today.leaderName} — <span className="champ-card-time">{resultText(today.leaderTimeMs, today.leaderTurns)}</span>
                       </strong>
                       {hasTiedLeaders && (
                         <button
@@ -132,7 +140,7 @@ export default function ChampionshipScreen({ onEnterRace }) {
                           className="champ-leaders-toggle"
                           onClick={() => toggleExpanded(catalogVehicle.id)}
                         >
-                          {isExpanded ? '▲ gizle' : `▼ +${todayLeaders.length - 1} kişi daha aynı turda`}
+                          {isExpanded ? '▲ gizle' : `▼ +${todayLeaders.length - 1} kişi daha aynı sürede`}
                         </button>
                       )}
                     </>

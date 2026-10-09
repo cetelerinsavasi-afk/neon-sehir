@@ -7,6 +7,8 @@ import { vehicleCatalog } from '../../data/vehicleCatalog';
 import { INITIAL_LIFE_DAYS, vehicleDisplayName } from '../VehicleCard/VehicleCard';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import { usePlayer } from '../../hooks/usePlayer';
+import { CarStatBars, CarThumb, LevelPips, vehicleRaceLevel } from './CarStats';
+import { trainingBot } from '../../../functions/raceSim.js';
 
 // v67 — bahisli yarışta en yüksek bahis (sunucuda da aynı sınır: RACE_MAX_BET)
 const RACE_MAX_BET = 100_000;
@@ -48,10 +50,11 @@ function VehiclePicker({ vehicles, value, onChange }) {
             onClick={() => onChange(v.id)}
           >
             {img && <img className="race-vehicle-photo" src={img} alt={vehicleDisplayName(v)} />}
-            <span className="race-vehicle-name">{vehicleDisplayName(v)}</span>
-            <span className="race-vehicle-stats">
-              Vites {v.gearLevel} · Depo {v.baseTank + (v.tankBonus || 0)}L
-              {v.turboCount > 0 ? ` · Turbo ×${v.turboCount}` : ''}
+            <span className="race-vehicle-info">
+              <span className="race-vehicle-name">
+                {vehicleDisplayName(v)} <LevelPips level={vehicleRaceLevel(v)} />
+              </span>
+              <CarStatBars catalogId={v.catalogId} level={vehicleRaceLevel(v)} compact />
             </span>
           </button>
         );
@@ -88,7 +91,16 @@ function TrainingStartModal({ level, vehicles, onClose, onCreated }) {
             ✕
           </button>
         </div>
-        <p className="race-hint">Rakibin, {level}. vitesle sabit ilerleyen bir bot.</p>
+        <div className="race-bot-card">
+          <CarThumb catalogId={trainingBot(level).catalogId} />
+          <div>
+            <p className="race-hint">
+              Rakibin: <strong>{vehicleCatalog.find((c) => c.id === trainingBot(level).catalogId)?.name}</strong> süren bot (galeri hali, seviye 1). Botu
+              hayalet olarak görürsün; pisti ondan kısa sürede bitir.
+            </p>
+            <CarStatBars catalogId={trainingBot(level).catalogId} level={1} compact />
+          </div>
+        </div>
         <VehiclePicker vehicles={vehicles} value={myVehicleId} onChange={setMyVehicleId} />
         <button className="race-btn primary" disabled={busy || !myVehicleId} onClick={handleStart}>
           {busy ? 'Başlatılıyor…' : 'Antrenmana Başla'}
@@ -113,7 +125,7 @@ function TrainingSection({ vehicles, onEnterRoom }) {
   return (
     <div className="race-section">
       <p className="race-section-title">🎓 Antrenman Modu</p>
-      <p className="race-hint">Botlara karşı ücretsiz pratik yap.</p>
+      <p className="race-hint">Botlara karşı ücretsiz pratik yap. Her seviyede bot bir üst galeri aracını sürer: 1. seviye en ucuz araç, 10. seviye en pahalı araç.</p>
       <div className="training-level-list">
         {Array.from({ length: TRAINING_LEVELS }, (_, i) => i + 1).map((lvl) => {
           const locked = lvl > unlockedLevel;
@@ -128,6 +140,7 @@ function TrainingSection({ vehicles, onEnterRoom }) {
               <span className="training-level-row-title">
                 {locked ? '🔒 ' : ''}
                 {lvl}. Seviye
+                <small className="training-level-car">{vehicleCatalog.find((c) => c.id === trainingBot(lvl).catalogId)?.name}</small>
               </span>
               <span className="training-level-row-reward">
                 {(lvl * 1000).toLocaleString('tr-TR')} altın{beaten ? ' · ✓ Kazanıldı' : ''}
@@ -241,11 +254,13 @@ export default function RaceLobby({ myUid, onEnterRoom }) {
               <p className="race-room-meta">Bahis: {r.betAmount.toLocaleString('tr-TR')} altın</p>
               {creatorInfo && (
                 <p className="race-room-creator">
-                  {creatorInfo.displayName} — {creatorInfo.vehicleModel} (Vites{' '}
-                  {creatorInfo.maxGear}, Depo {creatorInfo.maxFuel}L
-                  {creatorInfo.turboTotal > 0 ? `, Turbo ×${creatorInfo.turboTotal}` : ''})
+                  {creatorInfo.displayName} — {creatorInfo.vehicleModel}
+                  {r.engine === 'ta'
+                    ? ` (Seviye ${creatorInfo.level || 1})`
+                    : ` (Vites ${creatorInfo.maxGear}, Depo ${creatorInfo.maxFuel}L${creatorInfo.turboTotal > 0 ? `, Turbo ×${creatorInfo.turboTotal}` : ''})`}
                 </p>
               )}
+              {creatorInfo?.catalogId && <CarStatBars catalogId={creatorInfo.catalogId} level={creatorInfo.level || 1} compact />}
               <VehiclePicker
                 vehicles={vehicles}
                 value={joinVehicleByRoom[r.id] || ''}

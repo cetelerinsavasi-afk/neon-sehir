@@ -70,3 +70,15 @@
   font-weight: 500;
   color: var(--text-dim);
 }
+
+/* v78: evler — tümünü göster */
+.visit-more {
+  background: transparent;
+  border: 1px dashed var(--panel-border);
+  border-radius: 10px;
+  padding: 9px;
+  color: var(--neon-cyan);
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+}

@@ -33,6 +33,10 @@ import {
   itemListingBand,
 } from './itemRules.js';
 import { createAchievements } from './achievements.js';
+import { trainingBotRun, vehicleRaceLevel, carStats } from './raceSim.js';
+import { createRaceTa } from './raceTa.js';
+import { createCosmetics } from './cosmetics.js';
+import { cleanEquipped } from './cosmeticsData.js';
 import { HOUSE_PRODUCTS } from './houseCatalogData.js';
 import { sanitizeDrawing } from './drawingData.js';
 import { isMsgId, nextReaction, replyQuoteOf } from './chatExtras.js';
@@ -2276,7 +2280,9 @@ async function resolveStuckLotteryAndChampionship(dateKey) {
             debtToState: admin.firestore.FieldValue.increment(debtDelta),
           });
           await winnerRef.collection('messages').add({
-            text: `Tebrikler! ${VEHICLE_CATALOG[catalogId]?.name} şampiyonasını ${champ.leaderTurns} turda tamamlayarak kazandın. Ödül: ${reward.toLocaleString('tr-TR')} altın.`,
+            text: champ.leaderTimeMs
+              ? `Tebrikler! ${VEHICLE_CATALOG[catalogId]?.name} şampiyonasını ${fmtRaceMs(champ.leaderTimeMs)} sürede tamamlayarak kazandın. Ödül: ${reward.toLocaleString('tr-TR')} altın.`
+              : `Tebrikler! ${VEHICLE_CATALOG[catalogId]?.name} şampiyonasını ${champ.leaderTurns} turda tamamlayarak kazandın. Ödül: ${reward.toLocaleString('tr-TR')} altın.`,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             read: false,
             type: 'championship_win',
@@ -2289,7 +2295,8 @@ async function resolveStuckLotteryAndChampionship(dateKey) {
           winnerUid: champ.leaderUid,
           winnerName: champ.leaderName,
           winnerVehicleModel: champ.leaderVehicleModel,
-          winnerTurns: champ.leaderTurns,
+          winnerTurns: champ.leaderTurns ?? null,
+          winnerTimeMs: champ.leaderTimeMs ?? null,
           winners: leaders,
           rewardAmount: reward,
         });
@@ -7190,6 +7197,29 @@ export const expireRaceRooms = onSchedule({ schedule: 'every 5 minutes' }, async
     }
   });
   if (refunds.length) await Promise.all(refunds);
+  // v78 — zamana karşı bahisli yarış: 4 dk içinde bitirmeyen kaybeder
+  const racingSnap = await db.collection('raceRooms').where('status', '==', 'racing').where('deadlineMs', '<', now).limit(100).get();
+  for (const d of racingSnap.docs) {
+    try {
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(d.ref);
+        const room = snap.data();
+        if (!room || room.engine !== 'ta' || room.status !== 'racing' || !room.deadlineMs || room.deadlineMs > now) return;
+        await raceTa.finalizeBetRoom(tx, d.ref, room, { ...room.players });
+      });
+    } catch (err) {
+      console.warn('expire ta room', d.id, err?.message || err);
+    }
+  }
+  // antrenman/şampiyona: 15 dk'dır açık kalan (uygulama kapatılmış) odalar kapanır
+  const staleSnap = await db.collection('raceRooms').where('status', '==', 'racing').where('startedAtMs', '<', now - 15 * 60 * 1000).limit(100).get();
+  const closes = [];
+  staleSnap.forEach((d) => {
+    const room = d.data();
+    if (room.engine !== 'ta' || !(room.isTraining || room.isChampionship)) return;
+    closes.push(d.ref.update({ status: 'finished', winnerUid: room.isTraining ? 'bot' : null, championshipResult: room.isChampionship ? 'dnf' : null, rewardProcessed: true }));
+  });
+  if (closes.length) await Promise.all(closes);
 });
 
 // mergeLegacyMaterialListings — adet-fiyatlı/birleştirilebilir sisteme
@@ -7949,10 +7979,24 @@ export const setAvatar = onCall(async (request) => {
     avatar[field] = v;
   }
 
-  await db.collection('users').doc(uid).update({ avatar });
+  // v78: kuşanılmış evcil hayvan/aksesuar avatar düzenlenince kaybolmasın
+  // (sadece sahip olunanlar korunur — bkz. functions/cosmetics.js)
+  const avatarUserRef = db.collection('users').doc(uid);
+  await db.runTransaction(async (tx) => {
+    const cur = (await tx.get(avatarUserRef)).data() || {};
+    Object.assign(avatar, cleanEquipped(cur.avatar, cur.cosmetics));
+    tx.update(avatarUserRef, { avatar });
+  });
   // Onboarding görev 16 — "profile gir ve avatarını düzenle" (v65).
   await advanceOnboardingStep(uid, 16);
   return { ok: true };
+});
+
+// v78 — Evcil hayvan & aksesuar mağazası (Profil › Aksesuarlar)
+const cosmetics = createCosmetics({ db, FieldValue: admin.firestore.FieldValue, HttpsError });
+export const cosmeticsAction = onCall(async (request) => {
+  const uid = requireAuth(request);
+  return cosmetics.action(uid, request.data || {});
 });
 
 // =============================================================================
@@ -8099,6 +8143,31 @@ function freshRacePlayerState(displayName, vehicleId, vehicle) {
     finished: false,
     lostByFuel: false,
   };
+}
+
+// v78 — ZAMANA KARŞI YARIŞ (engine: 'ta'): yarış tamamen istemcide akar
+// (functions/raceSim.js — deterministik fizik). Odada sadece araç kimliği ve
+// seviyesi tutulur; bitişte istemci tuş kaydını gönderir, sunucu yarışı
+// raceSim ile baştan oynatıp süreyi KENDİSİ hesaplar (hile koruması).
+const RACE_TA_DEADLINE_MS = 4 * 60 * 1000; // bahisli yarış: başlangıçtan 4 dk sonra bitirmeyen kaybeder
+function taPlayerState(displayName, vehicleId, vehicle) {
+  const catalogId = Number(vehicle.catalogId) || 1;
+  const level = vehicleRaceLevel(vehicle);
+  const st = carStats(catalogId, level);
+  return {
+    displayName,
+    vehicleId,
+    vehicleModel: vehicle.customName || vehicle.model,
+    catalogId,
+    level,
+    vmax: Math.round(st.vmax),
+    finishMs: null,
+    dnf: false,
+  };
+}
+function fmtRaceMs(ms) {
+  const v = Math.max(0, Math.round(Number(ms) || 0));
+  return `${String(Math.floor(v / 60000)).padStart(2, '0')}:${String(Math.floor(v / 1000) % 60).padStart(2, '0')}.${String(v % 1000).padStart(3, '0')}`;
 }
 
 function requirePlayerInRoom(room, uid) {
@@ -8249,6 +8318,7 @@ export const createRaceRoom = onCall(async (request) => {
     tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-amount) });
     tx.set(roomRef, {
       status: 'waiting',
+      engine: 'ta', // v78 — zamana karşı yarış
       betAmount: amount,
       creatorUid: uid,
       participantUids: [uid],
@@ -8258,7 +8328,7 @@ export const createRaceRoom = onCall(async (request) => {
       winnerUid: null,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       players: {
-        [uid]: freshRacePlayerState(user.displayName || 'Oyuncu', vehicleId, vehicle),
+        [uid]: taPlayerState(user.displayName || 'Oyuncu', vehicleId, vehicle),
       },
     });
   });
@@ -8313,7 +8383,10 @@ export const joinRaceRoom = onCall(async (request) => {
     tx.update(roomRef, {
       status: 'ready',
       participantUids: admin.firestore.FieldValue.arrayUnion(uid),
-      [`players.${uid}`]: freshRacePlayerState(user.displayName || 'Oyuncu', vehicleId, vehicle),
+      [`players.${uid}`]:
+        room.engine === 'ta'
+          ? taPlayerState(user.displayName || 'Oyuncu', vehicleId, vehicle)
+          : freshRacePlayerState(user.displayName || 'Oyuncu', vehicleId, vehicle),
     });
   });
 
@@ -8435,6 +8508,12 @@ export const startRace = onCall(async (request) => {
     const room = roomSnap.data();
     if (room.creatorUid !== uid || room.status !== 'ready') {
       throw new HttpsError('failed-precondition', 'Yarış şu an başlatılamaz.');
+    }
+    if (room.engine === 'ta') {
+      // v78: iki taraf da kendi cihazında yarışır; sıra/zar yok
+      const nowMs = Date.now();
+      tx.update(roomRef, { status: 'racing', startedAtMs: nowMs, deadlineMs: nowMs + RACE_TA_DEADLINE_MS });
+      return;
     }
     const updates = {
       status: 'racing',
@@ -8634,30 +8713,6 @@ async function doRollDice(request) {
 const TRAINING_LEVELS = 10;
 const TRAINING_REWARD_PER_LEVEL = 1000;
 
-function freshBotPlayerState(level) {
-  return {
-    displayName: `Seviye ${level} Bot`,
-    vehicleModel: `Bot Aracı (${level}. Vites — Sabit)`,
-    maxGear: level,
-    turboTotal: 0,
-    position: 0,
-    gear: level,
-    gearAtTurnStart: level,
-    fuel: 999999,
-    maxFuel: 999999,
-    raceGold: 0,
-    wheelBonus: 0,
-    fuelSavingBonus: 0,
-    nitroActive: false,
-    turboCount: 0,
-    hasRolledOnce: true, // vitesi hep sabit — "1. tur zorla vites 1" kuralı bota uygulanmaz
-    lastRollSteps: null,
-    lastRollSum: null,
-    lastRollMultiplier: null,
-    finished: false,
-    lostByFuel: false,
-  };
-}
 
 // doCreateTrainingRace / doCreateChampionshipRace — kullanıcı revizesi:
 // "şampiyona/antrenman başında 30 saniyelik donma devam ediyor" —
@@ -8685,33 +8740,34 @@ async function doCreateTrainingRace(request) {
   const user = userSnap.data();
 
   const roomRef = db.collection('raceRooms').doc();
+  // v78 — zamana karşı: N. seviye botu N. galeri aracını (seviye 1) sürer;
+  // botun süresi deterministik simülasyondan (raceSim.trainingBotRun).
+  const bot = trainingBotRun(lvl);
   await roomRef.set({
     status: 'racing',
+    engine: 'ta',
+    startedAtMs: Date.now(),
     betAmount: 0,
     creatorUid: uid,
     participantUids: [uid, 'bot'],
-    firstStarterUid: uid,
-    currentTurnUid: uid,
-    turnDeadline: null,
-    finalTurnFor: null,
     winnerUid: null,
     isTraining: true,
     trainingLevel: lvl,
     rewardProcessed: false,
-    // localMode — kullanıcı önerisi: botla antrenmanda sunucunun asıl işi
-    // sadece hakkı/aracı doğrulayıp odayı açmak; zar/vites/nitro/benzin
-    // mekaniği bundan sonra TAMAMEN istemcide çalışır (bkz.
-    // src/hooks/useLocalRace.js), sunucuya tur başına hiçbir istek gitmez.
-    // Bu bayrak istemciye "bu odada canlı dinlemeyi bırak, kendi simüle
-    // et" sinyalini verir.
-    localMode: true,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     players: {
-      [uid]: freshRacePlayerState(user?.displayName || 'Oyuncu', vehicleId, vehicle),
-      bot: freshBotPlayerState(lvl),
+      [uid]: taPlayerState(user?.displayName || 'Oyuncu', vehicleId, vehicle),
+      bot: {
+        displayName: `Seviye ${lvl} Bot`,
+        vehicleModel: VEHICLE_CATALOG[bot.catalogId]?.name || 'Bot',
+        catalogId: bot.catalogId,
+        level: bot.level,
+        skill: bot.skill,
+        finishMs: bot.ms,
+        isBot: true,
+      },
     },
   });
-
   return { ok: true, roomId: roomRef.id };
 }
 
@@ -8952,6 +9008,8 @@ async function doCreateChampionshipRace(request) {
       finalTurnFor: null,
       winnerUid: null,
       isChampionship: true,
+      engine: 'ta', // v78 — en hızlı süre kazanır
+      startedAtMs: Date.now(),
       championshipCatalogId: catalogId,
       championshipDateKey: dateKey,
       rewardProcessed: true,
@@ -8962,10 +9020,7 @@ async function doCreateChampionshipRace(request) {
       localMode: true,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       players: {
-        [uid]: {
-          ...freshRacePlayerState(user?.displayName || 'Oyuncu', vehicleId, vehicle),
-          turnsUsed: 0,
-        },
+        [uid]: taPlayerState(user?.displayName || 'Oyuncu', vehicleId, vehicle),
       },
     });
   });
@@ -9136,6 +9191,23 @@ async function doFinishSoloRace(request) {
   return { ok: true };
 }
 
+// =============================================================================
+// v78 — ZAMANA KARŞI YARIŞ: bitiş / zaman aşımı
+//   taFinish  { roomId, runs (tuş kaydı RLE), dnf? } → sunucu yarışı raceSim ile
+//             oynatır, süreyi kendisi bulur. Antrenman: bota karşı; şampiyona:
+//             günün en hızlısı; bahisli: iki süre de gelince kısa süre kazanır.
+//             dnf: oyuncu bitiremedi / rakibin süresini geçti (kaybetti).
+//   taTimeout { roomId } → bahisli yarışta süre (4 dk) dolduysa bitirmeyen kaybeder.
+// =============================================================================
+const raceTa = createRaceTa({
+  db,
+  FieldValue: admin.firestore.FieldValue,
+  HttpsError,
+  requireAuth,
+  finalizeRace,
+  processTrainingReward,
+});
+
 // raceHubAction — yukarıdaki 7 yarış aksiyonunun (rollDice, training,
 // autoRoll, refuel, nitro, vites, şampiyona) TEK giriş noktası. Ayrıca
 // istemcinin yarış ekranına girer girmez (kullanıcı henüz hiçbir butona
@@ -9175,6 +9247,13 @@ export const raceHubAction = onCall({ cpu: 1, concurrency: 10 }, async (request)
     // hiç istek gitmiyor — sadece yarış bitince BURASI çağrılıyor.
     case 'finishSoloRace':
       return doFinishSoloRace(request);
+    // v78 — zamana karşı yarış
+    case 'taFinish':
+      return raceTa.finish(request);
+    case 'taTimeout':
+      return raceTa.timeout(request);
+    case 'taStart':
+      return raceTa.start(request);
     default:
       throw new HttpsError('invalid-argument', 'Geçersiz aksiyon.');
   }
@@ -9316,6 +9395,7 @@ export const createListing = onCall(async (request) => {
         vehicleGearLevel: v.gearLevel,
         vehicleTank: (v.baseTank || 0) + (v.tankBonus || 0),
         vehicleGearUpgraded: Boolean(v.gearUpgraded),
+        vehicleRaceLevel: vehicleRaceLevel(v),
         vehicleTankUpgraded: Boolean(v.tankUpgraded),
         vehicleLifeDays,
         vehicleRepairsUsed: v.repairsUsed || 0,
@@ -9565,6 +9645,7 @@ export const instantSellListing = onCall(async (request) => {
         vehicleGearLevel: v.gearLevel,
         vehicleTank: (v.baseTank || 0) + (v.tankBonus || 0),
         vehicleGearUpgraded: Boolean(v.gearUpgraded),
+        vehicleRaceLevel: vehicleRaceLevel(v),
         vehicleTankUpgraded: Boolean(v.tankUpgraded),
         vehicleLifeDays,
         vehicleRepairsUsed: v.repairsUsed || 0,
@@ -20452,6 +20533,7 @@ async function buildSixtagramAttachment(uid, attachment) {
       gearUpgraded: !!v.gearUpgraded,
       tankUpgraded: !!v.tankUpgraded,
       lifeDays: v.lifeDays ?? null,
+      raceLevel: vehicleRaceLevel(v),
     };
   }
 

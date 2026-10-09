@@ -19,6 +19,7 @@ import { drawGarageSceneBackground } from '../TuningGarageWorldScreen/TuningGara
 import InterviewPlayer from '../Broadcast/InterviewPlayer';
 import DrawingView from './DrawingView';
 import './PostAttachment.css';
+import { vehicleRaceLine } from '../RaceTrackScreen/CarStats';
 
 // v66 — ev fotoğrafı: three.js'i ana pakete sokmamak için tembel yüklenir.
 const HousePhoto = lazy(() => import('../HouseScreen/HousePhoto'));
@@ -186,9 +187,7 @@ export default function PostAttachment({ attachment }) {
         <div className="post-att-vehicle-caption">
           <p className="post-att-vehicle-name">{attachment.model}</p>
           <p className="post-att-vehicle-sub">
-            Vites {attachment.gearLevel}
-            {attachment.gearUpgraded ? ' (geliştirilmiş)' : ''}
-            {attachment.tankUpgraded ? ' · Depo geliştirilmiş' : ''}
+            {vehicleRaceLine(attachment)}
           </p>
         </div>
       </div>

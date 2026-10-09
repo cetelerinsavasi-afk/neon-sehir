@@ -249,3 +249,11 @@
   font-size: 22px;
   flex-shrink: 0;
 }
+
+/* v78 — Aksesuarlar butonu (evcil hayvan & aksesuar mağazası) */
+.home-btn.home-btn-acc {
+  margin-top: 6px;
+  border-color: #ff2e88;
+  background: linear-gradient(90deg, rgba(255, 46, 136, 0.18), rgba(34, 211, 238, 0.14));
+  font-weight: 700;
+}

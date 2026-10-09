@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes';
+import { drawPet, isPerchPet, PET_ART } from '../../lib/cosmeticsArt';
 import { CATALOG_MAP, buildItem, itemBoxes, disposeObject, TINTS, M } from './houseCatalog';
 import { FLOORS, WALLS, floorDef, wallDef, surfaceTexture } from './houseTextures';
 import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
@@ -152,8 +153,122 @@ function heldTexture(product) {
   return t;
 }
 
+// v78 — evcil hayvan (avatar.pet): sahibinin yanında yürüyen, kameraya dönük
+// küçük sprite + tasma çizgisi. Papağan/baykuş/martı sahibi durunca omzuna konar.
+const PET_CV = 256;
+const PET_PX = 140; // canvas'ta hayvan boyu
+const PET_OX = 110;
+const PET_OY = 220;
+class PetFollower {
+  constructor(scene, pet) {
+    this.scene = scene;
+    this.id = pet.id;
+    this.perch = isPerchPet(pet.id);
+    this.cv = document.createElement('canvas');
+    this.cv.width = this.cv.height = PET_CV;
+    this.ctx = this.cv.getContext('2d');
+    this.tex = new THREE.CanvasTexture(this.cv);
+    this.tex.colorSpace = THREE.SRGBColorSpace;
+    this.sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.tex, transparent: true, alphaTest: 0.2, toneMapped: false }));
+    this.sm = ((PET_ART[pet.id]?.s || 40) * 0.72 * 1.75) / 159; // metre (avatar 1,75 m)
+    const k = (PET_CV / PET_PX) * this.sm;
+    this.sprite.scale.set(k, k, 1);
+    this.sprite.center.set(PET_OX / PET_CV, 1 - PET_OY / PET_CV);
+    scene.add(this.sprite);
+    this.leashGeo = new THREE.BufferGeometry().setFromPoints(Array.from({ length: 12 }, () => new THREE.Vector3()));
+    this.leash = new THREE.Line(this.leashGeo, new THREE.LineBasicMaterial({ color: 0xff2e88, toneMapped: false }));
+    scene.add(this.leash);
+    this.x = null;
+    this.y = 0;
+    this.z = 0;
+    this.flip = false;
+    this.lastDraw = 0;
+    this.set(pet);
+  }
+  set(pet) {
+    this.pet = pet;
+    this.leash.material.color.set(pet.leashColor || '#ff2e88');
+  }
+  update(dt, now, owner, ang, seatPos) {
+    const rx = Math.cos(ang);
+    const rz = -Math.sin(ang);
+    const side = owner.facingLeft ? -1 : 1;
+    let tx;
+    let ty;
+    let tz;
+    let flying = false;
+    if (this.perch && !owner.moving) {
+      tx = owner.x - rx * 0.16 * side;
+      tz = owner.z - rz * 0.16 * side;
+      ty = (seatPos ? seatPos.y + 0.95 : 1.42) - 0.02;
+    } else if (this.perch) {
+      flying = true;
+      tx = owner.x - rx * 0.3 * side + Math.sin(now / 420) * 0.15;
+      tz = owner.z - rz * 0.3 * side;
+      ty = 1.95 + Math.sin(now / 260) * 0.06;
+    } else {
+      tx = owner.x + rx * (0.5 + this.sm * 0.3) * side;
+      tz = owner.z + rz * (0.5 + this.sm * 0.3) * side;
+      ty = 0;
+    }
+    if (this.x === null) {
+      this.x = tx;
+      this.y = ty;
+      this.z = tz;
+    }
+    const k = Math.min(1, dt * (this.perch ? 5 : 3.5));
+    const dx = tx - this.x;
+    const dz = tz - this.z;
+    this.x += dx * k;
+    this.y += (ty - this.y) * k;
+    this.z += dz * k;
+    const lateral = dx * rx + dz * rz;
+    if (Math.abs(lateral) > 0.01) this.flip = lateral < 0;
+    if (this.perch && !owner.moving && Math.hypot(dx, dz, ty - this.y) > 0.05) flying = true;
+    const moving = Math.hypot(dx, dz) * k / Math.max(dt, 0.001) > 0.25;
+    this.sprite.position.set(this.x, this.y, this.z);
+    // doku ~20 fps (yürüme/kuyruk animasyonu)
+    if (now - this.lastDraw > 50) {
+      this.lastDraw = now;
+      const c = this.ctx;
+      c.clearRect(0, 0, PET_CV, PET_CV);
+      const showLeash = this.pet.leash !== false && !this.perch;
+      drawPet(c, this.id, PET_OX, PET_OY, now, { moving, flip: this.perch && !flying ? side < 0 : this.flip, flying, collar: showLeash ? this.pet.leashColor || '#ff2e88' : null, size: PET_PX });
+      this.tex.needsUpdate = true;
+    }
+    // tasma: el → tasma halkası
+    const showLeash = this.pet.leash !== false && !this.perch;
+    this.leash.visible = showLeash;
+    if (showLeash) {
+      const hx = owner.x + rx * 0.24 * side;
+      const hz = owner.z + rz * 0.24 * side;
+      const hy = seatPos ? seatPos.y + 0.5 : 0.92;
+      const fdir = this.flip ? -1 : 1;
+      const px = this.x + rx * 0.31 * this.sm * fdir;
+      const pz = this.z + rz * 0.31 * this.sm * fdir;
+      const py = this.y + 0.52 * this.sm;
+      const pos = this.leashGeo.attributes.position;
+      for (let i = 0; i < 12; i++) {
+        const t = i / 11;
+        const sag = Math.sin(t * Math.PI) * 0.18;
+        pos.setXYZ(i, hx + (px - hx) * t, hy + (py - hy) * t - sag, hz + (pz - hz) * t);
+      }
+      pos.needsUpdate = true;
+    }
+  }
+  dispose() {
+    this.scene.remove(this.sprite);
+    this.scene.remove(this.leash);
+    this.sprite.material.dispose();
+    this.tex.dispose();
+    this.leashGeo.dispose();
+    this.leash.material.dispose();
+  }
+}
+
 class AvatarFigure {
   constructor(scene, labelLayer, { uid, name, avatar, isSelf }) {
+    this.scene = scene;
     this.uid = uid;
     this.isSelf = isSelf;
     this.group = new THREE.Group();
@@ -203,6 +318,12 @@ class AvatarFigure {
       this.avKey = key;
       this.tex = avatarTextures(avatar);
     }
+    // v78 evcil hayvan
+    const pet = avatar?.pet && PET_ART[avatar.pet.id] ? avatar.pet : null;
+    if (!pet || this.pet?.id !== pet.id) {
+      this.pet?.dispose();
+      this.pet = pet && this.scene ? new PetFollower(this.scene, pet) : null;
+    } else this.pet.set(pet);
   }
   setHolding(product) {
     if (product === this.holding) return;
@@ -342,6 +463,7 @@ class AvatarFigure {
       }
       return true;
     });
+    this.pet?.update(Math.max(dt, 0.016), now, this, ang, seatPos && !stand ? seatPos : null);
   }
   headWorld(v) {
     const top = this.plane.position.y + AV_PLANE_H / 2 - 0.12;
@@ -355,6 +477,8 @@ class AvatarFigure {
     this.shadow.material.dispose();
     this.heldSprite.material.dispose();
     this.label?.remove();
+    this.pet?.dispose();
+    this.pet = null;
   }
 }
 
@@ -1124,6 +1248,30 @@ export function createHouseEngine(
     }
     return flatHit;
   }
+  // v78: dokunulan noktada seçili eşya var mı? (önünde başka eşya olsa bile
+  // ışın seçili eşyaya da değiyorsa ya da zemindeki izdüşümü seçili eşyanın
+  // kutusunun içindeyse) — sürükleme sadece seçili eşyayı taşır.
+  function hitsSelected(e) {
+    if (!selectedId || !objs.has(selectedId)) return false;
+    const en = objs.get(selectedId);
+    setNdc(e);
+    const hits = ray.intersectObject(en.obj, true);
+    if (hits.length) return true;
+    const fp = floorPoint(e);
+    if (!fp) return false;
+    const def = CATALOG_MAP[en.data.k];
+    const boxes = def ? itemBoxes(def) : [];
+    const ry = en.obj.rotation.y;
+    const c = Math.cos(ry);
+    const sn = Math.sin(ry);
+    const dx = fp.x - en.data.x;
+    const dz = fp.z - en.data.z;
+    return boxes.some(([bx, bz, hx, hz]) => {
+      const lx = dx * c - dz * sn - bx;
+      const lz = dx * sn + dz * c - bz;
+      return Math.abs(lx) <= hx + 0.12 && Math.abs(lz) <= hz + 0.12;
+    });
+  }
   function pickPlayer(e) {
     setNdc(e);
     const planes = [];
@@ -1316,8 +1464,14 @@ export function createHouseEngine(
     let best = null;
     let bd = Infinity;
     const cands = [];
-    def.seats?.forEach((s) => cands.push([s[0], s[2] + 0.45]));
     const box = def.box || (def.boxWall ? [def.boxWall[0], def.boxWall[1] * 2] : [0.4, 0.4]);
+    // v78: oturma noktasının önü eşyanın kendi kutusunun içindeyse (ör. kafe
+    // masasının yandaki sandalyeleri) yaklaşma noktası kutunun dışına, yana alınır.
+    def.seats?.forEach((s) => {
+      const fz = s[2] + 0.45;
+      if (def.box && Math.abs(s[0]) < def.box[0] && Math.abs(fz) < def.box[1]) cands.push([Math.sign(s[0] || 1) * (def.box[0] + 0.45), s[2]]);
+      else cands.push([s[0], fz]);
+    });
     const bz = def.boxWall ? def.boxWall[1] : 0;
     const off = def.wall ? 0.75 : 0.5;
     cands.push([0, bz + box[1] + off], [0, bz - box[1] - off], [box[0] + off, bz], [-box[0] - off, bz]);
@@ -1363,9 +1517,15 @@ export function createHouseEngine(
       return;
     }
     if (mode === 'build') {
-      const id = pickItem(e);
-      if (id && canEdit) drag = { type: 'itemCandidate', id, moved: 0 };
-      else drag = { type: e.button === 2 ? 'pan' : 'orbit', moved: 0, tapEmpty: true };
+      // v78: önce dokunarak seç, sonra sürükle. Seçili eşyanın üstünden başlayan
+      // sürükleme onu taşır; başka bir eşyanın üstünden başlayan sürükleme sadece
+      // kamerayı çevirir (kısa dokunuş o eşyayı seçer).
+      if (canEdit && hitsSelected(e)) drag = { type: 'itemCandidate', id: selectedId, moved: 0, canMove: true };
+      else {
+        const id = pickItem(e);
+        if (id && canEdit) drag = { type: 'itemCandidate', id, moved: 0, canMove: false, orbitType: e.button === 2 ? 'pan' : 'orbit' };
+        else drag = { type: e.button === 2 ? 'pan' : 'orbit', moved: 0, tapEmpty: true };
+      }
     } else {
       drag = { type: 'look', moved: 0, tap: true };
     }
@@ -1393,6 +1553,10 @@ export function createHouseEngine(
     }
     if (!drag) return;
     drag.moved += Math.abs(dx) + Math.abs(dy);
+    if (drag.type === 'itemCandidate' && drag.moved > 6 && !drag.canMove) {
+      // seçili olmayan eşya: taşınmaz, kamera döner
+      drag = { type: drag.orbitType || 'orbit', moved: drag.moved };
+    }
     if (drag.type === 'itemCandidate' && drag.moved > 6) {
       const e0 = objs.get(drag.id);
       if (!e0) {

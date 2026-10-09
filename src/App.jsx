@@ -643,6 +643,10 @@ function GameShell() {
           roomId={effectiveRaceRoomId}
           myUid={user.uid}
           onCollapse={() => setRaceExpanded(false)}
+          onSwitchRoom={(id) => {
+            setActiveRaceRoomId(id);
+            setRaceExpanded(true);
+          }}
           onExit={() => {
             setActiveRaceRoomId(null);
             setRaceExpanded(false);

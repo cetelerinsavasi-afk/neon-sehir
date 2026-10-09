@@ -5,6 +5,7 @@ import { vehicleCatalog } from '../../data/vehicleCatalog';
 import { buyVehicle } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import './VehicleGalleryScreen.css';
+import { CarStatBars } from '../RaceTrackScreen/CarStats';
 
 // Kullanıcı revizesi: "galeriden araba satın aldığımızda bi süre butonda
 // satın alındı yazsın, araba aldığımı anlayamadım oyuncular yanlışlıkla
@@ -74,10 +75,7 @@ export default function VehicleGalleryScreen() {
             <img className="vehicle-card-image" src={car.image} alt={car.name} />
             <div className="vehicle-card-info">
               <span className="vehicle-card-name">{car.name}</span>
-              <span className="vehicle-card-stats">
-                Vites {car.gearLevel} · Depo {car.baseTank}L
-                {car.turboCount > 0 ? ` · ${car.turboCount} Turbo` : ''}
-              </span>
+              <CarStatBars catalogId={car.id} level={1} compact />
               <span className="vehicle-card-price">{car.price.toLocaleString('tr-TR')} altın</span>
             </div>
             <button

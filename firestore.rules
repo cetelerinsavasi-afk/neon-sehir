@@ -205,6 +205,21 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // v78 — raceGhosts/{roomId}_{uid}: bahisli zamana karşı yarışta rakibin
+    // "hayalet" görüntüsü. Her oyuncu SADECE kendi belgesini (son birkaç konum
+    // örneği) yazar; sonuç bunlardan değil, sunucunun tuş kaydı tekrarından
+    // belirlenir. Çarpışma yok, sadece görüntü.
+    match /raceGhosts/{docId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn()
+        && docId == request.resource.data.roomId + '_' + request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'roomId', 's', 'fin', 'at'])
+        && request.resource.data.s is list
+        && request.resource.data.s.size() <= 80;
+      allow delete: if false;
+    }
+
     // trainingProgress/{uid} — antrenman modunda açılan seviyeler/ödül
     // alınan seviyeler. Sadece sahibi okuyabilir.
     match /trainingProgress/{uid} {

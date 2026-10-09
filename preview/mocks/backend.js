@@ -11,6 +11,8 @@ import { createVenue } from '../../functions/venue.js';
 import { createGym } from '../../functions/gym.js';
 import { createFutbolPro } from '../../functions/futbolPro.js';
 import { futbolDayKey } from '../../functions/businessCatalogData.js';
+import { createRaceTa } from '../../functions/raceTa.js';
+import { createCosmetics } from '../../functions/cosmetics.js';
 
 export const PREVIEW_UID = 'previewAdmin';
 export const PREVIEW_PASSWORD = 'test';
@@ -98,3 +100,25 @@ export const futbolPro = createFutbolPro({
   getControlMode: fMode,
   controllerUidOf: (t) => (t.managerUid ? t.managerUid : fMode(t) === 'OWNER_ACTIVE' ? t.ownerUid : null),
 });
+
+// v78 zamana karşı yarış önizlemesi (gerçek sunucu modülü raceTa)
+export const raceTa = createRaceTa({
+  db: fakeDb,
+  FieldValue,
+  HttpsError: PreviewHttpsError,
+  requireAuth: (r) => r.auth.uid,
+  finalizeRace: ({ tx, roomRef, room, winnerUid, players, userRefs }) => {
+    Object.keys(players).forEach((u) => {
+      if (u === 'bot') return;
+      const amount = winnerUid === 'draw' ? room.betAmount : winnerUid === u ? room.betAmount * 2 : 0;
+      if (amount > 0) tx.update(userRefs[u], { gold: FieldValue.increment(amount) });
+    });
+    const upd = { status: 'finished', winnerUid };
+    Object.keys(players).forEach((u) => (upd[`players.${u}`] = players[u]));
+    tx.update(roomRef, upd);
+  },
+  processTrainingReward: async () => {},
+});
+
+// v78 evcil hayvan & aksesuar önizlemesi (gerçek sunucu modülü)
+export const cosmetics = createCosmetics({ db: fakeDb, FieldValue, HttpsError: PreviewHttpsError });

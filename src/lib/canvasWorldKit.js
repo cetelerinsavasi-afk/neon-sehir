@@ -1,4 +1,5 @@
 import { emoteMotion } from './worldEmotes.js';
+import { drawOwnerPet } from './cosmeticsArt.js';
 // canvasWorldKit.js — TAMAMEN jenerik (mekana özel HİÇBİR şey bilmeyen)
 // canvas-dünya yardımcıları: yuvarlak dikdörtgen, avatar sprite çizimi,
 // elde-tutulan ürün ikonu, konuşma baloncuğu düzeni, engel/çarpışma
@@ -143,7 +144,7 @@ export function drawHeldIcon(ctx, type, x, y, { animate = true } = {}) {
 // `scale` — varsayılan 1 (tam boy); Camii'deki dilenci NPC'leri gibi küçük,
 // köşeye sığdırılmış çizimler (bkz. MosqueWorldScreen drawBeggarNpcs) veya
 // mekana özel büyütme (madde 13, AVATAR_SCALE) için kullanılır.
-export function drawAvatarSprite(ctx, entity, getAvatarImage, { showName = true, scale = 1 } = {}) {
+export function drawAvatarSprite(ctx, entity, getAvatarImage, { showName = true, scale = 1, petStatic = false } = {}) {
   // v71 — hareket (dans/zıpla...) animasyonu: bkz. lib/worldEmotes.js
   const mo = entity.emote ? emoteMotion(entity.emote) : null;
   const pose = mo?.pose && entity.pose !== 'sit' ? mo.pose : entity.pose;
@@ -162,6 +163,22 @@ export function drawAvatarSprite(ctx, entity, getAvatarImage, { showName = true,
     roundRectC(ctx, -w * 0.28, -h, w * 0.56, h, 12); ctx.fill();
   }
   ctx.restore();
+
+  // v78 — kuşanılmış evcil hayvan (avatar.pet): yanında yürür, tasmalı;
+  // papağan/baykuş/martı durunca omzuna konar. Oturunca hayvan yerde bekler.
+  if (entity.avatar?.pet?.id) {
+    drawOwnerPet(ctx, {
+      key: entity.uid || (entity.isSelf ? '__self' : entity.name || 'npc'),
+      x: entity.x,
+      baseY: entity.baseY,
+      facing: entity.facing,
+      h,
+      w,
+      pet: entity.avatar.pet,
+      moving: pose === 'walk1' || pose === 'walk2',
+      isStatic: petStatic,
+    });
+  }
 
   if (entity.holding) drawHeldIcon(ctx, entity.holding, entity.x + w * 0.32, entity.baseY - h * 0.42);
 
@@ -390,7 +407,7 @@ export function renderPhotoFrame(ctx, { width, height, originX, originY, entitie
         isSelf: e.isSelf,
       },
       getAvatarImage,
-      { showName: false, scale: e.scale ?? focalScale }
+      { showName: false, scale: e.scale ?? focalScale, petStatic: true }
     );
   });
 

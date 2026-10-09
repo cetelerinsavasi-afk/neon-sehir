@@ -1,3 +1,4 @@
+import { accLayers } from './cosmeticsArt.js';
 // Avatar SVG parça üretimi — kullanıcının verdiği "Mafya Kimlik
 // Oluşturucu" prototipinden birebir taşındı. Her fonksiyon ham SVG
 // markup'ı (string) döner; AvatarSvg bileşeni bunları birleştirip
@@ -729,6 +730,13 @@ function heldItemShape(s) {
 // görünmez, bu yüzden pose orada etkisizdir.
 export function buildAvatarSvgInner(rawState, opts = {}) {
   const s = { ...DEFAULT_AVATAR, ...rawState };
+  // v78 — kuşanılmış aksesuarlar (avatar.acc): arka katman (pelerin/kanat/aura)
+  // avatarın arkasına, ön katman (şapka/gözlük/kolye) üstüne. Aynı yuvadaki
+  // avatar parçası (şapka, yüz/boyun aksesuarı) gizlenir.
+  const L = accLayers(s.acc);
+  if (L.hideHat) s.hat = 'none';
+  if (L.hideFace) s.faceAcc = 'none';
+  if (L.hideNeck) s.neckAcc = 'none';
   const pose = opts.pose || 'idle';
   const bob = pose === 'walk1' ? -3 : pose === 'walk2' ? 3 : 0;
 
@@ -751,9 +759,11 @@ export function buildAvatarSvgInner(rawState, opts = {}) {
   upperBody += hairFrontShape(s);
   upperBody += hatShape(s);
   upperBody += faceAccShape(s);
+  upperBody += L.front;
 
   let svg = '';
   svg += `<ellipse cx="160" cy="${GROUND_Y}" rx="74" ry="12" fill="#000" opacity="0.35"/>`;
+  if (L.back) svg += `<g transform="translate(0,${bob})">${L.back}</g>`;
   svg += legsShape(s, pose);
   svg += shoesShape(s, pose);
   svg += `<g transform="translate(0,${bob})">${upperBody}</g>`;
