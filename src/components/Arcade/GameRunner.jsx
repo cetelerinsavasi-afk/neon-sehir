@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { IN, IN_MASK, lerpState, NO_LERP } from './games/common.js';
 import { connectRoom } from './net';
+import { publishGameFrame, clearGameFrame, streamBroadcast } from '../Stream/streamShared';
 
 // =============================================================================
 // v79 — GameRunner: 2–4 oyunculu oyun döngüsü + dokunmatik/klavye kontrolleri.
@@ -242,6 +243,7 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
           }
         }
         draw(view);
+        if (streamBroadcast.uid) publishGameFrame(game, view, names, me); // v80: yayındaysam izleyiciler de görsün
         if (import.meta.env?.DEV && window.__gsTrace) window.__gsTrace.push([now, view.b?.x ?? view.p?.[0]?.x, view.b?.y ?? view.p?.[0]?.y, view.sc ? view.sc.join('-') : '']);
         if (now - lastSnapAt > 6000 && !ended) setNetMsg('Bağlantı zayıf…');
         const res = game.result(snaps[snaps.length - 1].s);
@@ -265,6 +267,7 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
         game.step(state, ins, DT);
       }
       draw(state);
+      if (streamBroadcast.uid) publishGameFrame(game, state, names, me); // v80: yayındaysam izleyiciler de görsün
       if (mode.kind === 'host' && conn && now - lastSend > SEND_MS) {
         lastSend = now;
         const { _lastIn, ...pub } = state;
@@ -285,6 +288,7 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
       alive = false;
       cancelAnimationFrame(raf);
       if (conn) conn.leave(mode.slot);
+      if (streamBroadcast.uid) clearGameFrame();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game, mode]);

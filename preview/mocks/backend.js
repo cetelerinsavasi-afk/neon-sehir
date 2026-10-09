@@ -13,6 +13,7 @@ import { createFutbolPro } from '../../functions/futbolPro.js';
 import { futbolDayKey } from '../../functions/businessCatalogData.js';
 import { createRaceTa } from '../../functions/raceTa.js';
 import { createCosmetics } from '../../functions/cosmetics.js';
+import { createStream } from '../../functions/stream.js';
 
 export const PREVIEW_UID = 'previewAdmin';
 export const PREVIEW_PASSWORD = 'test';
@@ -56,6 +57,10 @@ export const shop = createShop({
   splitIncomeForDebt: (debt, amount) => ({ goldDelta: amount, debtDelta: 0 }),
   business,
 });
+
+// v80 Yayıncılık (gerçek sunucu modülü)
+export const stream = createStream({ db: fakeDb, FieldValue, HttpsError: PreviewHttpsError, splitIncomeForDebt: (debt, amount) => ({ goldDelta: amount, debtDelta: 0 }), business });
+if (typeof window !== 'undefined') window.__stream = stream;
 
 // v77 ziyaret sayacı
 export const visits = createVisits({ db: fakeDb, FieldValue });

@@ -1984,16 +1984,33 @@ function glassCounter(g, ctx) {
 }
 function drinkFridge(g, ctx) {
   const body = M(tintHex(ctx, '#c8141e'), 0.35, 0.3);
-  B(g, 0.85, 2.0, 0.7, 0, 1.0, 0, body);
-  B(g, 0.75, 1.6, 0.02, 0, 1.0, 0.351, GLASS());
+  // v80 — içi boş gövde + şeffaf cam kapak (silah dolabı gibi); eskiden dolu
+  // kutuydu, içecekler gövdenin içinde gizli kalıyordu
+  B(g, 0.85, 2.0, 0.04, 0, 1.0, -0.33, body); // arka
+  [-0.4, 0.4].forEach((x) => B(g, 0.05, 2.0, 0.7, x, 1.0, 0, body)); // yanlar
+  B(g, 0.85, 0.22, 0.7, 0, 1.89, 0, body); // üst (tabela)
+  B(g, 0.85, 0.16, 0.7, 0, 0.08, 0, body); // taban
+  [-0.37, 0.37].forEach((x) => B(g, 0.04, 1.62, 0.03, x, 0.98, 0.34, body)); // kapak kasası
+  B(g, 0.78, 1.6, 0.01, 0, 0.98, 0.345, GLASS());
+  B(g, 0.025, 0.5, 0.04, 0.33, 1.0, 0.37, CHROME()); // kulp
   const light = emissiveMat('#e8f6ff', 0.6);
   B(g, 0.72, 1.56, 0.02, 0, 1.0, -0.3, light);
   [0.4, 0.8, 1.2, 1.6].forEach((y, k) => {
     B(g, 0.72, 0.02, 0.55, 0, y - 0.1, 0, M('#cfd4da', 0.3, 0.8));
     for (let i = 0; i < 6; i++) C(g, 0.035, 0.035, 0.16, -0.3 + i * 0.12, y - 0.01, 0.05, M(PRODUCT_COLS[(i + k) % 8], 0.3, 0.3), null, 10);
   });
-  const sign = labelTexture('drinkf', 256, 64, (c, w, h) => { c.fillStyle = '#c8141e'; c.fillRect(0, 0, w, h); c.fillStyle = '#fff'; c.font = 'bold 40px sans-serif'; c.textAlign = 'center'; c.fillText('SOĞUK İÇECEK', w / 2, 46); });
-  PLANE(g, 0.78, 0.2, own(new THREE.MeshStandardMaterial({ map: sign, emissive: '#ffffff', emissiveMap: sign, emissiveIntensity: 0.4 })), 0, 1.88, 0.352);
+  const sign = labelTexture('drinkf2', 512, 128, (c, w, h) => {
+    c.fillStyle = '#c8141e';
+    c.fillRect(0, 0, w, h);
+    c.fillStyle = '#fff';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    let fs = 70;
+    c.font = `bold ${fs}px sans-serif`;
+    while (fs > 20 && c.measureText('SOĞUK İÇECEK').width > w - 36) c.font = `bold ${(fs -= 2)}px sans-serif`;
+    c.fillText('SOĞUK İÇECEK', w / 2, h / 2 + 4);
+  });
+  PLANE(g, 0.78, 0.19, own(new THREE.MeshStandardMaterial({ map: sign, emissive: '#ffffff', emissiveMap: sign, emissiveIntensity: 0.4 })), 0, 1.89, 0.352);
   return { light: { x: 0, y: 1.0, z: 0.6, color: '#d8f0ff', intensity: 1.2, distance: 3 }, on: true, setOn() {}, noToggle: true };
 }
 function iceCream(g) {

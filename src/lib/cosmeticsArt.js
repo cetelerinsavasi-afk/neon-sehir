@@ -1197,7 +1197,61 @@ function bird(c, p, s, st, t, flying) {
 }
 
 // x,y = zemin noktası. size: piksel boyu (yoksa prototip boyu). opts: { moving, flip, flying, collar }
-export function drawPet(c, id, x, y, t, { moving = false, flip = false, flying = false, collar = null, size = null } = {}) {
+// --- v79.2 performans: hayvan kareleri önbelleğe alınır ----------------------------
+// Ayrıntılı hayvan çizimi (degrade, kırpma, onlarca yol) her karede her hayvan için
+// tekrar edilince zayıf telefonlarda kare hızını düşürüyordu. Artık her hayvanın
+// yürüme (8 kare), bekleme (24 kare, 2,4 sn döngü) ve uçma (8 kare) kareleri ekran
+// çözünürlüğünde BİR KEZ ekran dışı tuvale çizilir; sonra sadece kopyalanır.
+const FRAME_CACHE = new Map();
+const FRAME_MAX = 700;
+const BOX = { x0: -0.95, x1: 0.95, y0: -1.45, y1: 0.2 }; // hayvanın kaplayabileceği alan (boy oranı)
+const TAU2 = Math.PI * 2;
+const canOffscreen = typeof document !== 'undefined';
+
+function drawBody(c, p, s, st, t, flying, collar) {
+  if (p.glow) {
+    c.shadowColor = p.glow;
+    c.shadowBlur = Math.max(6, s * 0.25);
+  }
+  if (p.k === 'b') bird(c, p, s, st, t, flying);
+  else if (p.k === 'm') biped(c, p, s, st, t, collar);
+  else quad(c, p, s, st, t, collar);
+}
+
+function frameFor(id, p, s, scale, kind, k, collar) {
+  const key = `${id}|${Math.round(s * scale)}|${kind}${k}|${collar || ''}`;
+  let fr = FRAME_CACHE.get(key);
+  if (fr) return fr;
+  const px = s * scale;
+  const pad = p.glow ? 0.3 : 0.06;
+  const w = Math.ceil((BOX.x1 - BOX.x0 + pad * 2) * px);
+  const h = Math.ceil((BOX.y1 - BOX.y0 + pad * 2) * px);
+  const cv = document.createElement('canvas');
+  cv.width = Math.max(1, w);
+  cv.height = Math.max(1, h);
+  const c = cv.getContext('2d');
+  const ox = (-BOX.x0 + pad) * px;
+  const oy = (-BOX.y0 + pad) * px;
+  c.translate(ox, oy);
+  c.scale(scale, scale);
+  // kareye göre animasyon parametreleri
+  let st = 0;
+  let t = 0;
+  if (kind === 'm') {
+    const ph = ((k + 0.5) / 8) * TAU2;
+    st = Math.sin(ph);
+    t = ph * 85; // kuyruk/kulak yürümeyle uyumlu sallanır
+  } else if (kind === 'f') t = ((k + 0.5) / 8) * TAU2 * 55;
+  else t = k * 100;
+  drawBody(c, p, s, st, t, kind === 'f', collar);
+  fr = { cv, ox: ox / scale, oy: oy / scale, w: cv.width / scale, h: cv.height / scale };
+  FRAME_CACHE.set(key, fr);
+  if (FRAME_CACHE.size > FRAME_MAX) FRAME_CACHE.delete(FRAME_CACHE.keys().next().value);
+  return fr;
+}
+
+// x,y = zemin noktası. size: piksel boyu (yoksa prototip boyu). opts: { moving, flip, flying, collar, live }
+export function drawPet(c, id, x, y, t, { moving = false, flip = false, flying = false, collar = null, size = null, live = false } = {}) {
   const p = PET_ART[id];
   if (!p) return;
   const s = size || p.s;
@@ -1210,15 +1264,25 @@ export function drawPet(c, id, x, y, t, { moving = false, flip = false, flying =
     c.ellipse(0, 2, s * 0.5, s * 0.1, 0, 0, 7);
     c.fill();
   }
-  if (p.glow) {
-    c.shadowColor = p.glow;
-    c.shadowBlur = Math.max(6, s * 0.25);
-  }
-  const st = moving ? Math.sin(t / 85) : 0;
   c.translate(0, moving && !flying ? -Math.abs(Math.sin(t / 85)) * s * 0.05 : Math.sin(t / 450) * s * 0.012);
-  if (p.k === 'b') bird(c, p, s, st, t, flying);
-  else if (p.k === 'm') biped(c, p, s, st, t, collar);
-  else quad(c, p, s, st, t, collar);
+  if (live || !canOffscreen) {
+    drawBody(c, p, s, moving ? Math.sin(t / 85) : 0, t, flying, collar);
+  } else {
+    // ekrandaki ölçek (dpr/kamera yakınlaştırması) → keskin kare
+    const m = c.getTransform ? c.getTransform() : null;
+    const scale = m ? Math.min(4, Math.max(0.5, Math.round(Math.hypot(m.a, m.b) * 2) / 2)) : 1;
+    let kind = 'i';
+    let k = Math.floor((((t % 2400) + 2400) % 2400) / 100);
+    if (flying) {
+      kind = 'f';
+      k = Math.floor(((((t / 55) % TAU2) + TAU2) % TAU2) / TAU2 * 8);
+    } else if (moving) {
+      kind = 'm';
+      k = Math.floor(((((t / 85) % TAU2) + TAU2) % TAU2) / TAU2 * 8);
+    }
+    const fr = frameFor(id, p, s, scale, kind, k, collar);
+    c.drawImage(fr.cv, -fr.ox, -fr.oy, fr.w, fr.h);
+  }
   c.restore();
 }
 

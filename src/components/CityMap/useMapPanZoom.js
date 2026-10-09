@@ -52,6 +52,29 @@ const TAP_TIME_DISTANCE_CAP = 40; // süre bazlı toleranstaki üst mesafe sın�
  * dışarıya bildiriyoruz. CityMap bu koordinatla elementFromPoint kullanarak
  * hangi bölgeye dokunulduğunu kendisi buluyor.
  */
+// v79.3 — Android "hayalet tıklama": dokunuş pointerup'ta işlenip yeni bir ekran
+// (ör. spor salonu listesi) açılınca, tarayıcı ~0–350 ms sonra AYNI noktaya ayrıca
+// bir `click` gönderir; bu tıklama yeni açılan ekranda o noktadaki öğeye basıyordu
+// (oyunun salonuna kendiliğinden girme). Harita dokunuşundan sonraki kısa süre
+// içindeki ilk tıklama yakalama aşamasında yutulur.
+function swallowGhostClick(ms = 600) {
+  if (typeof window === 'undefined') return;
+  const until = Date.now() + ms;
+  const kill = (ev) => {
+    if (Date.now() > until) return cleanup();
+    ev.preventDefault();
+    ev.stopPropagation();
+    ev.stopImmediatePropagation?.();
+    cleanup();
+  };
+  const cleanup = () => {
+    window.removeEventListener('click', kill, true);
+    clearTimeout(timer);
+  };
+  const timer = setTimeout(cleanup, ms);
+  window.addEventListener('click', kill, true);
+}
+
 export function useMapPanZoom(viewportRef, wrapRef, onTap) {
   const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -177,6 +200,7 @@ export function useMapPanZoom(viewportRef, wrapRef, onTap) {
     if (!wasMultiTouch.current && isTap && pointers.current.size === 0) {
       const x = lastKnown?.x ?? e.clientX;
       const y = lastKnown?.y ?? e.clientY;
+      swallowGhostClick();
       onTap?.(x, y);
     }
 

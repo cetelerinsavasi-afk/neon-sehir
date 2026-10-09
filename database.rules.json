@@ -153,6 +153,56 @@
           }
         }
       }
+    },
+    "streamWatch": {
+      "$sid": {
+        ".read": "auth != null",
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid",
+          ".validate": "newData.isBoolean()"
+        }
+      }
+    },
+    "streamThumb": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['img','at']) && newData.child('img').isString() && newData.child('img').val().length < 60000 && newData.child('img').val().beginsWith('data:image/jpeg') && newData.child('at').isNumber()",
+        "img": {
+          ".validate": true
+        },
+        "at": {
+          ".validate": true
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "streamGame": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['g','s','at']) && newData.child('g').isString() && newData.child('g').val().length <= 20 && newData.child('s').isString() && newData.child('s').val().length < 8000 && newData.child('at').isNumber()",
+        "g": {
+          ".validate": true
+        },
+        "s": {
+          ".validate": true
+        },
+        "at": {
+          ".validate": true
+        },
+        "me": {
+          ".validate": "newData.isNumber()"
+        },
+        "n": {
+          ".validate": true
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
     }
   }
 }

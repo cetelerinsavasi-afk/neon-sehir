@@ -707,3 +707,6 @@ export const futbolProAction = (payload) => httpsCallable(functions, 'futbolProA
 // v78 — Evcil hayvan & aksesuar mağazası (functions/cosmetics.js)
 //   { op:'buy'|'equip', kind:'pet'|'acc', id } · { op:'unequip', kind, slot? } · { op:'leash', on?, color? }
 export const cosmeticsAction = (data) => httpsCallable(functions, 'cosmeticsAction')(data);
+
+// v80 — Yayıncılık (functions/stream.js)
+export const streamAction = (payload) => httpsCallable(functions, 'streamAction')(payload).then((r) => r.data);

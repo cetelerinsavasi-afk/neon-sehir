@@ -9,7 +9,7 @@ import HoldButton from '../HoldButton/HoldButton';
 import { lifeCapOf, VEHICLE_WEAPON_MAX_REPAIRS } from '../../../functions/itemRules.js';
 import '../../styles/bizui.css';
 import './Shop.css';
-import { listingRaceLine } from '../RaceTrackScreen/CarStats';
+import { ListingCarStats } from '../RaceTrackScreen/CarStats';
 
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
 const weaponImage = (id) => weaponCatalog.find((w) => w.id === id)?.image;
@@ -74,11 +74,7 @@ export default function ShopShowcase({ houseId, kind, onClose }) {
             <div key={l.id} className={`sh-card${gone ? ' cue-sold' : ''}`}>
               <div className="sh-img">{img ? <img src={img} alt="" /> : <span>{isW ? '🔫' : '🚗'}</span>}</div>
               <b className="sh-name">{isW ? l.weaponName : l.vehicleModel}</b>
-              <span className="sh-stat">
-                {isW
-                  ? `Seviye ${l.weaponLevel} · güç ${fmt(l.weaponPower)}`
-                  : listingRaceLine(l)}
-              </span>
+              {isW ? <span className="sh-stat">{`Seviye ${l.weaponLevel} · güç ${fmt(l.weaponPower)}`}</span> : <ListingCarStats listing={l} />}
               <span className="sh-stat">
                 Ömür {life}/{cap} gün · tamir hakkı {repairsLeft}/{VEHICLE_WEAPON_MAX_REPAIRS}
               </span>

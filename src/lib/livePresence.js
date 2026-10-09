@@ -39,7 +39,27 @@ export function useLiveMerge(room, others, enabled = true) {
       setLive({});
       return undefined;
     }
-    return watchLive(room, setLive);
+    // v79.2 performans: her RTDB olayında ekranı yeniden çizdirme — en fazla
+    // ~5 kez/sn toplu güncelle (diğer oyuncular zaten yumuşatılarak çizilir)
+    let pending = null;
+    let timer = 0;
+    let lastAt = 0;
+    const flush = () => {
+      timer = 0;
+      lastAt = Date.now();
+      if (pending) setLive(pending);
+      pending = null;
+    };
+    const off = watchLive(room, (v) => {
+      pending = v;
+      if (timer) return;
+      const wait = Math.max(0, 200 - (Date.now() - lastAt));
+      timer = setTimeout(flush, wait);
+    });
+    return () => {
+      off();
+      clearTimeout(timer);
+    };
   }, [room, enabled]);
   return useMemo(
     () =>

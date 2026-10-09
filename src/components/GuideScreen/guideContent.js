@@ -465,4 +465,47 @@ export const CATS = [
         L('🤫', 'Kazancını sadece sen görürsün. Herkes yalnızca sıranı bilir.'),
       ] },
   ] },
+
+  /* -------------------------------------------------------------- */
+  { id: 'yayincilik', icon: '🔴', name: 'Yayıncılık', tag: 'Şehir seni izliyor. Bu sefer isteyerek.', color: '#ff2e5a', pages: [
+    { type: 'lines', title: 'Yayın Seti Kur',
+      kicker: 'Bir koltuk, bir bilgisayar, bir kamera.',
+      lines: [
+        L('🪑', 'Oyuncu koltuğunu bir oyuncu bilgisayarının yanına koy. İşte yayın seti.'),
+        L('🏠', 'Evde de olur, dükkânda da. Başkasının setine oturup sen de yayın açabilirsin.'),
+        L('🔴', 'Koltuğa otur. “Oyun oyna”nın yanında “Yayın aç” belirir. Başlık isteğe bağlı.'),
+        L('📷', 'Kamera bilgisayarın üstünde. Seni ve arkandaki odayı gösterir.'),
+        L('🆓', 'İnternet kafe dışında her yerde yayın ücretsiz.'),
+      ] },
+    { type: 'lines', title: 'İnternet Kafede Yayın',
+      kicker: 'Set kiralık. Saat işliyor.',
+      lines: [
+        L('💳', 'Kafede yayın setinin dakika ücreti var. Fiyatı ve oda adını kafe sahibi belirler.'),
+        L('⏱️', 'Ücret her dakika cebinden çekilir. Altının bitince yayın kendiliğinden kapanır.'),
+        L('🏦', 'Ücret kafe sahibine gider, işletme vergisi düşülür.'),
+      ] },
+    { type: 'lines', title: 'İzle, Yaz, Bağışla',
+      kicker: 'Kalabalık büyüdükçe ses de büyür.',
+      lines: [
+        L('📺', 'Biri canlıyken ana sayfada sol altta 🔴 CANLI belirir. Dokun, izle.'),
+        L('💬', 'Sohbet altta. Dokununca tamamı açılır.'),
+        L('🎁', '🎁 ile 10, 100 ya da 1.000 altın gönder. Kısa notun birkaç saniye ekranda kalır.'),
+        L('🛑', 'Bir yayıncıya günde en fazla 10.000 altın bağışlanır.'),
+        L('🎮', 'Yayıncı oyun salonunda oynarsa oyun büyük, yayıncı köşede görünür.'),
+      ] },
+    { type: 'lines', title: 'Yayın Bitince',
+      kicker: 'Perde iner, hesap çıkar.',
+      lines: [
+        L('📊', 'Özet ekranı: süre, kaç kişi izledi, kaç bağış geldi.'),
+        L('💰', 'Bağışlar %10 vergi kesilerek cebine geçer.'),
+        L('🚪', 'Koltuktan kalkarsan ya da odadan çıkarsan yayın kapanır.'),
+      ] },
+    { type: 'lines', title: 'Mahremiyet',
+      kicker: 'Kameraya girmek de bir seçim.',
+      lines: [
+        L('🔴', 'Yayın olan odada üstte “YAYIN VAR” yazar. Girerken uyarılırsın.'),
+        L('🙈', '“Yayında görünme” dersen izleyiciler seni görmez.'),
+        L('🚫', 'Engellediğin kişileri yayında ve sohbette görmezsin.'),
+      ] },
+  ] },
 ];

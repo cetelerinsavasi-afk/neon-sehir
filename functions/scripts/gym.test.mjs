@@ -250,3 +250,20 @@ test('oyunun dükkânları kazanca göre sıralanır (en üstte sabit değil)', 
   await h.business.rollover(['silahci']);
   assert.equal(h.G('gameVenues/silahci').bizRank, 1);
 });
+
+test('v79.3 bot takımlar: aynı en düşük fiyattaki salonlara eşit bölünür (9 takım / 2 salon → 5–4)', async () => {
+  const { botGymPool } = await import('../gym.js');
+  const gyms = [
+    { id: 'b', price: 500, bonus: true },
+    { id: 'a', price: 500, bonus: false },
+    { id: 'c', price: 900, bonus: false },
+    { id: 'game', price: 2000, bonus: false },
+  ];
+  const pool = botGymPool(gyms);
+  assert.deepEqual(pool.map((g) => g.id), ['a', 'b']);
+  const counts = {};
+  for (let i = 0; i < 9; i++) counts[pool[i % pool.length].id] = (counts[pool[i % pool.length].id] || 0) + 1;
+  assert.deepEqual(counts, { a: 5, b: 4 });
+  assert.deepEqual(botGymPool([{ id: 'x', price: 300 }]).map((g) => g.id), ['x']);
+  assert.deepEqual(botGymPool([]), []);
+});

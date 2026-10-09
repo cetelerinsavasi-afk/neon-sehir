@@ -430,6 +430,19 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if false;
     }
+    // v80 — canlı yayınlar (sunucu yazar: functions/stream.js)
+    match /stats/streams {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    match /streams/{streamId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+      match /chat/{msgId} {
+        allow read: if isSignedIn();
+        allow write: if false;
+      }
+    }
     // v79 — presence özeti (sunucu yazar: functions/presenceSummary.js)
     match /stats/presence {
       allow read: if isSignedIn();
@@ -469,14 +482,15 @@ service cloud.firestore {
       let d = request.resource.data;
       return d.keys().hasOnly([
         'houseId', 'displayName', 'avatar', 'x', 'z', 'left', 'seat', 'holding',
-        'emote', 'emoteTs', 'updatedAt', 'enteredAt', 'lastChatMs'
+        'emote', 'emoteTs', 'updatedAt', 'enteredAt', 'lastChatMs', 'noStream'
       ])
         && d.x is number && d.x >= -20 && d.x <= 20
         && d.z is number && d.z >= -20 && d.z <= 20
         && d.left is bool
         && (d.seat == null || (d.seat is string && d.seat.size() <= 40))
         && (!('emote' in d) || d.emote == null || (d.emote is string && d.emote.size() <= 12))
-        && (!('emoteTs' in d) || d.emoteTs is number);
+        && (!('emoteTs' in d) || d.emoteTs is number)
+        && (!('noStream' in d) || d.noStream is bool);
     }
     match /housePresence/{uid} {
       allow read: if isSignedIn();

@@ -38,6 +38,8 @@ const AV_FEET = (580 - 562) * AV_UNIT;
 const AV_WAIST_FROM_TOP = 380 * AV_UNIT;
 const SPAWN = { x: 5, z: D / 2 - 3.2 };
 const EMOTE_MS = 3200;
+const STREAM_CHAIR_KEYS = ['gamer']; // v80 yayın seti
+const STREAM_PC_KEYS = ['pc', 'pcstation'];
 export const EMOTES = [
   { key: 'dans', label: 'Dans et', emoji: '💃' },
   { key: 'selam', label: 'El salla', emoji: '👋' },
@@ -67,7 +69,7 @@ function makeRenderer(opts) {
   });
   return r;
 }
-const shared = { main: null, mainEnv: null, snap: null, snapEnv: null };
+const shared = { main: null, mainEnv: null, snap: null, snapEnv: null, spec: null, specEnv: null };
 function envFor(r) {
   const pm = new THREE.PMREMGenerator(r);
   const tex = pm.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -556,11 +558,13 @@ function ghostify(obj) {
 // =============================================================================
 export function createHouseEngine(
   container,
-  { canEdit, selfUid, onSelectionChange, onDesignChange, onInteractChange, onPlayerTap, onContextLost, snapshot = false } = {}
+  { canEdit, selfUid, onSelectionChange, onDesignChange, onInteractChange, onPlayerTap, onContextLost, snapshot = false, spectate = false } = {}
 ) {
-  const { renderer, env } = getSharedRenderer(snapshot ? 'snap' : 'main');
+  // v80 — spectate: yayın izleyicisi. Kendi WebGL bağlamı, giriş dinlemez, kamera
+  // sabit pozda (bilgisayarın üstü → koltuk), sürekli çizer.
+  const { renderer, env } = getSharedRenderer(snapshot ? 'snap' : spectate ? 'spec' : 'main');
   renderer.__onLost = snapshot ? null : () => onContextLost?.();
-  renderer.setPixelRatio(snapshot ? 1 : Math.min(window.devicePixelRatio || 1, 1.75));
+  renderer.setPixelRatio(snapshot ? 1 : Math.min(window.devicePixelRatio || 1, spectate ? 1.5 : 1.75));
   renderer.toneMappingExposure = 1.0;
   const canvas = renderer.domElement;
   canvas.className = 'hs-gl';
@@ -1168,6 +1172,21 @@ export function createHouseEngine(
         }
         if (near) acts.push({ kind: 'panel', panel: 'arcade', label: '🎮 Oyna', deviceId: near.data.i });
       }
+      // v80 — YAYIN: Oyuncu Koltuğu + yakınında Oyuncu Bilgisayarı / İnternet Kafe
+      // İstasyonu (≤3,2 m, satın alınmış) → "🔴 Yayın aç"
+      if (STREAM_CHAIR_KEYS.includes(e.data.k) && e.data.p === 1) {
+        let pc = null;
+        let pd = 3.2;
+        objs.forEach((o) => {
+          if (!STREAM_PC_KEYS.includes(o.data.k) || o.data.p !== 1) return;
+          const d = Math.hypot(o.data.x - e.data.x, o.data.z - e.data.z);
+          if (d <= pd) {
+            pd = d;
+            pc = o;
+          }
+        });
+        if (pc) acts.push({ kind: 'stream', label: '🔴 Yayın aç', chairId: e.data.i, pcId: pc.data.i });
+      }
       return { id: self.seat.id, name: CATALOG_MAP[e.data.k].name, actions: acts };
     }
     if (self.target) return null;
@@ -1377,6 +1396,8 @@ export function createHouseEngine(
     const DIRS = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.414], [1, -1, 1.414], [-1, 1, 1.414], [-1, -1, 1.414]];
     let found = false;
     let guard = 0;
+    let nearK = start; // hedefe ulaşılamazsa (ör. etrafı duvarla kapalı) en yakın erişilebilir nokta
+    let nearH = h(start);
     while (open.length && guard++ < 20000) {
       let bi = 0;
       for (let q = 1; q < open.length; q++) if (f[open[q]] < f[open[bi]]) bi = q;
@@ -1387,6 +1408,10 @@ export function createHouseEngine(
       if (cur === goal) {
         found = true;
         break;
+      }
+      if (h(cur) < nearH) {
+        nearH = h(cur);
+        nearK = cur;
       }
       closed[cur] = 1;
       const i0 = cur % nx;
@@ -1411,7 +1436,11 @@ export function createHouseEngine(
         }
       }
     }
-    if (!found) return null;
+    if (!found) {
+      if (nearK === start || guard >= 20000) return null;
+      goal = nearK;
+      goalFree = false;
+    }
     const cells = [];
     for (let k = goal; k !== -1 && k !== start; k = from[k]) cells.push({ x: cx(k % nx), z: cz(Math.floor(k / nx)) });
     cells.reverse();
@@ -1497,8 +1526,15 @@ export function createHouseEngine(
     }
     const id = pickItem(e);
     if (id && !CATALOG_MAP[objs.get(id)?.data.k]?.flat) {
-      approachItem(id);
-      return;
+      // v80: sadece KULLANILABİLEN eşyaya (oturulan, oynanan, alınan…) ya da
+      // henüz satın alınmamış eşyaya dokununca ona yürü. Duvar, bölme, dolap gibi
+      // kullanılmayan bir engel önüne geçmişse dokunuş arkasındaki zemine sayılır
+      // ve yol bulma engelin etrafından dolaşır (kenar duvarlarındaki gibi).
+      const en = objs.get(id);
+      if (en.data.p !== 1 || actionsFor(en).length) {
+        approachItem(id);
+        return;
+      }
     }
     const fp = floorPoint(e);
     if (fp) {
@@ -1635,7 +1671,7 @@ export function createHouseEngine(
     keys[e.code] = false;
   };
   const onCtx = (e) => e.preventDefault();
-  if (!snapshot) {
+  if (!snapshot && !spectate) {
     canvas.addEventListener('pointerdown', onPointerDown);
     canvas.addEventListener('pointermove', onPointerMove);
     canvas.addEventListener('pointerup', onPointerUp);
@@ -1777,7 +1813,19 @@ export function createHouseEngine(
     }
   }
 
+  let fixedPose = null; // v80: yayın kamerası
   function placeCamera(dt) {
+    if (fixedPose) {
+      if (camera.fov !== fixedPose.fov) {
+        camera.fov = fixedPose.fov;
+        camera.updateProjectionMatrix();
+      }
+      camPos.set(fixedPose.px, fixedPose.py, fixedPose.pz);
+      camera.position.copy(camPos);
+      camera.lookAt(fixedPose.tx, fixedPose.ty, fixedPose.tz);
+      focus.set(fixedPose.tx, 1, fixedPose.tz);
+      return;
+    }
     if (mode === 'build') {
       const k = 1 - Math.exp(-dt * 9);
       Object.keys(orbit).forEach((key) => {
@@ -2398,6 +2446,65 @@ export function createHouseEngine(
       if (uid === selfUid) self.fig?.say(text);
       else others.get(uid)?.fig.say(text);
     },
+    // v80 — yayın kamerası (izleyici): { px,py,pz, tx,ty,tz, fov } | null
+    setFixedCamera(pose) {
+      fixedPose = pose ? { fov: 64, ...pose } : null;
+    },
+    // v80 — yayıncının kendi küçük önizlemesi: ana sahneyi yayın kamerasından
+    // tek kare çizip hedef 2B tuvale kopyalar, sonra normal kareyi geri çizer
+    // (aynı görev içinde → titreme yok). ~2 kez/sn çağrılır.
+    renderStreamView(pose, target) {
+      if (!pose || !target || renderer.__lost) return false;
+      try {
+        const cw = canvas.width;
+        const ch = canvas.height;
+        const want = target.width / target.height;
+        let vw = cw;
+        let vh = Math.round(cw / want);
+        if (vh > ch) {
+          vh = ch;
+          vw = Math.round(ch * want);
+        }
+        const saved = { p: camera.position.clone(), q: camera.quaternion.clone(), fov: camera.fov, asp: camera.aspect };
+        camera.fov = pose.fov || 64;
+        camera.aspect = want;
+        camera.updateProjectionMatrix();
+        camera.position.set(pose.px, pose.py, pose.pz);
+        camera.lookAt(pose.tx, pose.ty, pose.tz);
+        const pr = renderer.getPixelRatio();
+        renderer.setViewport(0, 0, vw / pr, vh / pr);
+        renderer.render(scene, camera);
+        const g = target.getContext('2d');
+        g.drawImage(canvas, 0, ch - vh, vw, vh, 0, 0, target.width, target.height);
+        renderer.setViewport(0, 0, cw / pr, ch / pr);
+        camera.position.copy(saved.p);
+        camera.quaternion.copy(saved.q);
+        camera.fov = saved.fov;
+        camera.aspect = saved.asp;
+        camera.updateProjectionMatrix();
+        renderer.render(scene, camera);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    // v80 — yayıncının başında "🔴 CANLI · 👁 n" rozeti
+    setLiveBadge(uid, text) {
+      const fig = uid === selfUid ? self.fig : others.get(uid)?.fig;
+      if (!fig?.label) return;
+      let b = fig.label.querySelector('.hs-live-badge');
+      if (!text) {
+        b?.remove();
+        return;
+      }
+      if (!b) {
+        b = document.createElement('span');
+        b.className = 'hs-live-badge';
+        if (fig.nameEl && fig.nameEl.parentNode === fig.label) fig.label.insertBefore(b, fig.nameEl);
+        else fig.label.prepend(b);
+      }
+      if (b.textContent !== text) b.textContent = text;
+    },
     getCameraPose() {
       const dir = new THREE.Vector3();
       camera.getWorldDirection(dir);
@@ -2457,7 +2564,7 @@ export function createHouseEngine(
       disposed = true;
       cancelAnimationFrame(raf);
       ro?.disconnect();
-      if (!snapshot) {
+      if (!snapshot && !spectate) {
         canvas.removeEventListener('pointerdown', onPointerDown);
         canvas.removeEventListener('pointermove', onPointerMove);
         canvas.removeEventListener('pointerup', onPointerUp);

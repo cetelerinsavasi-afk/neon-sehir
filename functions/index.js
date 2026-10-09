@@ -19,7 +19,7 @@ import { createVisits } from './visits.js';
 import { createShop } from './shop.js';
 import { createVenue } from './venue.js';
 import { createPresenceSummary } from './presenceSummary.js';
-import { createGym, GAME_GYM_ID, gymPriceOf, withBonus } from './gym.js';
+import { createGym, gymPriceOf, withBonus, botGymPool } from './gym.js';
 import { createFutbolPro, assignGoalCredits, computeMatchRatings } from './futbolPro.js';
 import { futbolDayKey, prevDayKey, bizDayStartMs } from './businessCatalogData.js';
 import {
@@ -37,6 +37,7 @@ import { createAchievements } from './achievements.js';
 import { trainingBotRun, vehicleRaceLevel, carStats } from './raceSim.js';
 import { createRaceTa } from './raceTa.js';
 import { createCosmetics } from './cosmetics.js';
+import { createStream } from './stream.js';
 import { cleanEquipped } from './cosmeticsData.js';
 import { HOUSE_PRODUCTS } from './houseCatalogData.js';
 import { sanitizeDrawing } from './drawingData.js';
@@ -6245,6 +6246,8 @@ export const expireInteriorPresence = onSchedule({ schedule: 'every 5 minutes' }
   }
   // v65: 3D Ev canlı kayıtları da aynı süpürmeyle temizlenir.
   await houses.expirePresence(TWO_MIN, admin.firestore.Timestamp).catch((err) => console.error('housePresence süpürme:', err));
+  // v80: nabzı kesilen yayınlar kapatılır, bağışları ödenir
+  await stream.sweep().catch((err) => console.error('yayın süpürme:', err));
 });
 
 // v79 maliyet: "kaç kişi var" sayıları tek belgede (bkz. functions/presenceSummary.js)
@@ -8006,6 +8009,19 @@ export const setAvatar = onCall(async (request) => {
 });
 
 // v78 — Evcil hayvan & aksesuar mağazası (Profil › Aksesuarlar)
+// v80 — YAYINCILIK (functions/stream.js)
+const stream = createStream({
+  db,
+  FieldValue: admin.firestore.FieldValue,
+  HttpsError,
+  splitIncomeForDebt: (debt, amount) => splitIncomeForDebt(debt, amount),
+  business,
+  assertCanSpeak: (uid) => moderation.assertCanSpeak(uid),
+});
+export const streamAction = onCall(async (request) => {
+  const uid = requireAuth(request);
+  return stream.action(uid, request.data || {});
+});
 const cosmetics = createCosmetics({ db, FieldValue: admin.firestore.FieldValue, HttpsError });
 export const cosmeticsAction = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -14379,8 +14395,8 @@ function pickFutbolBotTrainingIds(players, excludeIds) {
 // olsun diye.
 async function assignFutbolBotTraining() {
   // v77 Faz 4: botlar da salona ödeyerek antrenman yapar — kasada para varsa EN
-  // UCUZ salonu seçerler (birden fazla en ucuz salon varsa takımlar aralarında
-  // sırayla/eşit dağıtılır). Kasa yetmiyorsa yetecek kadar mevki, hiç yetmiyorsa
+  // UCUZ salonu seçerler (v79.3: aynı fiyatta birden fazla salon varsa takımlar
+  // aralarında sırayla/eşit dağıtılır, 🔥 bonus bu seçimi değiştirmez). Kasa yetmiyorsa yetecek kadar mevki, hiç yetmiyorsa
   // antrenman yok. Gelişim kuralı değişmedi (0,1–4). Ödeme salonun gelirine
   // (bonus hesabına) dahildir; oyunun salonu (2.000) seçilirse para oyundan çıkar.
   await gym.gymEnsureGame().catch(() => {});
@@ -14388,35 +14404,29 @@ async function assignFutbolBotTraining() {
   await business.rollover(['spor']).catch((e) => console.error('spor rollover', e));
   const gymsSnap = await db.collection('houses').where('bizType', '==', 'spor').limit(500).get();
   const dayKey = futbolDayKey(Date.now());
-  // v77: bonuslu (🔥) salon %10 fazla gelişim verir → botlar "etkin fiyata"
-  // (fiyat / 1,1) bakar; en düşük etkin fiyatlı salon(lar) arasında sırayla dağılır.
-  // Kasası o salona yetmeyen takım en ucuz salon(lar)a gider.
+  // v79.3: botlar EN UCUZ salon(lar)ı seçer. Aynı en düşük fiyatta birden fazla
+  // salon varsa HEPSİ eşit tercih edilir ve takımlar aralarında sırayla bölünür
+  // (ör. 9 takım / 2 salon → 5–4). Eskiden 🔥 bonuslu salon "etkin fiyatla" %10
+  // ucuz sayıldığından aynı fiyattaki salonlar arasında hep o seçiliyordu.
   const gyms = gymsSnap.docs
     .map((d) => {
       const h = d.data();
       const bonus = !h.bizGame && h.gymBonusDay === dayKey;
       const price = gymPriceOf(h);
-      return { id: d.id, h, price, bonus, eff: bonus ? price / 1.1 : price };
+      return { id: d.id, h, price, bonus };
     })
     .filter((g) => g.h.biz?.type === 'spor');
   if (!gyms.length) return;
-  const bestEff = Math.min(...gyms.map((g) => g.eff));
-  const pool = gyms.filter((g) => Math.abs(g.eff - bestEff) < 1e-6).sort((a, b) => a.id.localeCompare(b.id));
-  // kasası verimli salona yetmeyen takım en ucuz salon(lar)a gider
-  const minPrice = Math.min(...gyms.map((g) => g.price));
-  const cheapPool = gyms.filter((g) => g.price === minPrice).sort((a, b) => a.id.localeCompare(b.id));
-  const poolPrice = Math.max(...pool.map((g) => g.price));
+  const cheapPool = botGymPool(gyms);
+  const minPrice = cheapPool[0].price;
   const lockUntil = bizDayStartMs('spor', dayKey) + 24 * 60 * 60 * 1000 + 10 * 60 * 1000;
   const allTeamsSnap = await db.collection('futbolTeams').get();
   const botTeams = allTeamsSnap.docs.filter((d) => futbolTeamIsBotRun(d.data())).sort((a, b) => a.id.localeCompare(b.id));
-  let rr = 0;
   let rc = 0;
   for (const teamDoc of botTeams) {
     const team = teamDoc.data();
     const cash = Math.max(0, team.treasury || 0);
-    const useBest = cash >= poolPrice;
-    const unitPrice = useBest ? poolPrice : minPrice;
-    const affordable = Math.min(FUTBOL_TRAINING_SLOTS, Math.floor(cash / unitPrice));
+    const affordable = Math.min(FUTBOL_TRAINING_SLOTS, Math.floor(cash / Math.max(1, minPrice)));
     if (affordable <= 0) continue;
     const playersSnap = await db.collection('futbolPlayers').where('teamId', '==', teamDoc.id).get();
     const players = playersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -14427,7 +14437,7 @@ async function assignFutbolBotTraining() {
     const lineupIds = new Set(auto.selected.map((p) => p.id));
     const trainingIds = pickFutbolBotTrainingIds(players, lineupIds).slice(0, affordable);
     if (!trainingIds.length) continue;
-    const g = useBest ? pool[rr++ % pool.length] : cheapPool[rc++ % cheapPool.length];
+    const g = cheapPool[rc++ % cheapPool.length];
     const cost = g.price * trainingIds.length;
     const byId = Object.fromEntries(players.map((p) => [p.id, p]));
     await db.runTransaction(async (tx) => {

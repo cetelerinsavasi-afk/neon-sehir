@@ -78,11 +78,26 @@ export function LevelPips({ level = 1 }) {
 // "Seviye 2 · 165 km/h" — kısa açıklama satırı
 export function vehicleRaceLine(v) {
   const lv = vehicleRaceLevel(v);
-  const b = statBars(carStats(v?.catalogId || v?.vehicleCatalogId || 1, lv));
-  return `Seviye ${lv} · ${b.kmh} km/h · Nitro ${b.nitroSec.toLocaleString('tr-TR')} sn`;
+  return `Seviye ${lv}/${VEHICLE_MAX_LEVEL}${lv > 1 ? ' · geliştirilmiş' : ''}`;
 }
 
 // 2. el / vitrin ilanı için aynı satır
 export function listingRaceLine(l) {
   return vehicleRaceLine({ catalogId: l?.vehicleCatalogId, raceLevel: l?.vehicleRaceLevel, gearUpgraded: l?.vehicleGearUpgraded, tankUpgraded: l?.vehicleTankUpgraded });
+}
+
+// v80: 2. el / vitrin ilanının yarış seviyesi (profil kartıyla aynı hesap)
+export function listingRaceLevel(l) {
+  return vehicleRaceLevel({ catalogId: l?.vehicleCatalogId, raceLevel: l?.vehicleRaceLevel, gearUpgraded: l?.vehicleGearUpgraded, tankUpgraded: l?.vehicleTankUpgraded });
+}
+// ilan kartı: "Seviye 2/3" + HIZ / İVME / NİTRO çubukları (sayı yok, profildeki gibi)
+export function ListingCarStats({ listing, vehicle }) {
+  const catalogId = vehicle ? vehicle.catalogId : listing?.vehicleCatalogId;
+  const lv = vehicle ? vehicleRaceLevel(vehicle) : listingRaceLevel(listing);
+  return (
+    <div className="car-stats-listing">
+      <span className="car-stats-lvtxt">Seviye {lv}/{VEHICLE_MAX_LEVEL}{lv > 1 ? ' · geliştirilmiş' : ''}</span>
+      <CarStatBars catalogId={catalogId || 1} level={lv} compact />
+    </div>
+  );
 }

@@ -1,4 +1,4 @@
-import { system, PREVIEW_UID, fakeDb, houses, shop, futbolPro, visits, raceTa, cosmetics } from './backend.js';
+import { system, PREVIEW_UID, fakeDb, houses, shop, futbolPro, visits, raceTa, cosmetics, stream } from './backend.js';
 import { FieldValue } from '../../functions/gang/test/fakeFirestore.js';
 import { sanitizeDrawing } from '../../functions/drawingData.js';
 import { nextReaction, replyQuoteOf } from '../../functions/chatExtras.js';
@@ -22,6 +22,7 @@ export function httpsCallable(functions, name) {
         await fakeDb.doc(`raceRooms/${data.roomId}`).set({ status: 'finished', winnerUid: 'bot' }, { merge: true });
         return { data: { ok: true } };
       }
+      if (name === 'streamAction') return { data: await stream.action(PREVIEW_UID, data) };
       if (name === 'houseAction') return { data: await houses.houseAction(request) };
       if (name === 'shopAction') return { data: await shop.shopAction(request) };
       if (name === 'recordVenueVisit') return { data: await visits.recordVenueVisit(PREVIEW_UID, data) };

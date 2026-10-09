@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { collection, doc, limit, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -50,6 +50,9 @@ function Coin({ gem, v, bad }) {
 const TYPE_OPTIONS = BIZ_TYPE_KEYS.map((k) => ({ key: k, icon: BIZ_TYPES[k].icon, label: BIZ_TYPES[k].label }));
 export default function BusinessHub({ type: initialType, onClose, onOpenGameVenue }) {
   const [type, setType] = useState(initialType);
+  // v79.3: liste açılır açılmaz gelen (açan dokunuşun) hayalet tıklama bir salona sokmasın
+  const openedAtRef = useRef(Date.now());
+  const settled = () => Date.now() - openedAtRef.current > 450;
   const t = BIZ_TYPES[type];
   const { user } = useAuth();
   const { player } = usePlayer();
@@ -233,7 +236,7 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
           return rows;
         })().map(({ kind, h }) =>
           kind === 'game' ? (
-            <button key="game" className="hh-row" disabled={busy} onClick={openGame}>
+            <button key="game" className="hh-row" disabled={busy} onClick={() => settled() && openGame()}>
               <span className="hh-avatar bh-game-ico">{t.icon}</span>
               <span className="hh-info">
                 <b>{game.name}</b>
@@ -245,7 +248,7 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
               </span>
             </button>
           ) : (
-          <button key={h.id} className={`hh-row${h.mine ? ' mine' : ''}`} onClick={() => setHouseId(h.id)}>
+          <button key={h.id} className={`hh-row${h.mine ? ' mine' : ''}`} onClick={() => settled() && setHouseId(h.id)}>
             <span className="hh-avatar">
               <AvatarSvg avatar={h.ownerAvatar} size={42} rounded />
             </span>

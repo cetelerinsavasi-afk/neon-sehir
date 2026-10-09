@@ -2,14 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useBackClose } from '../../lib/backStack';
-import headSoccer from './games/headSoccer';
-import fighter from './games/fighter';
-import racer from './games/racer';
-import spaceRun from './games/spaceRun';
-import tanks from './games/tanks';
-import sumo from './games/sumo';
-import bomb from './games/bomb';
-import paint from './games/paint';
+import { ARCADE_GAMES } from './games/index.js';
 import GameRunner from './GameRunner';
 import { PCOL } from './games/common.js';
 import { ONLINE_ENABLED, cancelRoom, createRoom, joinRoom, leaveSeat, startRoom, watchLobby, watchRooms } from './net';
@@ -25,7 +18,7 @@ const BrickBreaker = lazy(() => import('../HouseScreen/ArcadeGame'));
 // online oda: kuran bekleme odasında katılanları görür, "Başlat" der; boş
 // koltuklar bota döner. Online: Realtime Database (bkz. net.js).
 // =============================================================================
-const GAMES = [spaceRun, tanks, sumo, bomb, paint, racer, headSoccer, fighter];
+const GAMES = ARCADE_GAMES;
 const BRICK = { id: 'tugla', title: 'Tuğla Kırma', emoji: '🧱', desc: 'Klasik atari: topu sektir, tüm tuğlaları kır.', min: 1, max: 1 };
 const maxOf = (g) => g?.max || 2;
 const botNames = (k) => Array.from({ length: k }, (_, i) => (k > 1 ? `🤖 Bot ${i + 1}` : '🤖 Bot'));

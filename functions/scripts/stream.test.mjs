@@ -1,0 +1,183 @@
+// v80 — Yayıncılık (functions/stream.js)
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { FakeFirestore, FieldValue, Timestamp } from '../gang/test/fakeFirestore.js';
+import { createStream, streamSetOf, DONATION_DAILY_CAP, STREAM_STALE_MS } from '../stream.js';
+
+class HttpsError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+  }
+}
+const splitIncomeForDebt = (debt, amount) => {
+  const d = debt || 0;
+  if (d <= 0 || amount <= 0) return { goldDelta: amount, debtDelta: 0 };
+  const repay = Math.min(Math.floor(amount / 2), d);
+  return { goldDelta: amount - repay, debtDelta: -repay };
+};
+
+function setup() {
+  const db = new FakeFirestore({ yieldEvery: false });
+  const S = (p, d) => db._store.set(p, { data: d, version: 1 });
+  const G = (p) => db._store.get(p)?.data;
+  const clock = { now: Date.UTC(2026, 9, 9, 15) };
+  const income = [];
+  const muted = new Set();
+  const st = createStream({
+    db,
+    FieldValue,
+    HttpsError,
+    splitIncomeForDebt,
+    business: { recordIncomeTx: (tx, r) => income.push(r) },
+    assertCanSpeak: async (uid) => {
+      if (muted.has(uid)) throw new HttpsError('permission-denied', 'muted');
+    },
+    now: () => clock.now,
+  });
+  const present = (uid, houseId) => S(`housePresence/${uid}`, { houseId, updatedAt: new Timestamp(clock.now) });
+  const items = (extra = []) => [
+    { i: 'ch1', k: 'gamer', x: 0, z: 0, r: 0, c: 0, p: 1 },
+    { i: 'pc1', k: 'pc', x: 1.5, z: 0.5, r: 0, c: 0, p: 1 },
+    ...extra,
+  ];
+  S('users/ali', { displayName: 'Ali', gold: 50_000 });
+  S('users/veli', { displayName: 'Veli', gold: 30_000 });
+  S('users/kafeci', { displayName: 'Kafeci', gold: 0 });
+  S('houses/ev1', { ownerUid: 'ali', name: 'Ali Evi', items: items() });
+  S('houses/kafe', { ownerUid: 'kafeci', name: 'Neon Kafe', items: items(), biz: { type: 'internet' }, bizPrices: { stream: 300 } });
+  const act = (uid, data) => st.action(uid, data);
+  return { db, S, G, clock, act, present, income, muted, st };
+}
+
+test('kurulum: koltuk + menzilde bilgisayar gerekli', () => {
+  assert.ok(streamSetOf([{ i: 'c', k: 'gamer', x: 0, z: 0, p: 1 }, { i: 'p', k: 'pcstation', x: 2, z: 2, p: 1 }], 'c'));
+  assert.equal(streamSetOf([{ i: 'c', k: 'gamer', x: 0, z: 0, p: 1 }, { i: 'p', k: 'pc', x: 5, z: 0, p: 1 }], 'c'), null, 'bilgisayar çok uzak');
+  assert.equal(streamSetOf([{ i: 'c', k: 'chairw', x: 0, z: 0, p: 1 }, { i: 'p', k: 'pc', x: 1, z: 0, p: 1 }], 'c'), null, 'oyuncu koltuğu değil');
+  assert.equal(streamSetOf([{ i: 'c', k: 'gamer', x: 0, z: 0, p: 0 }, { i: 'p', k: 'pc', x: 1, z: 0, p: 1 }], 'c'), null, 'deneme ürünü');
+});
+
+test('evde yayın: ücretsiz, liste, bağış (not, sınır), kapatınca %10 vergiyle ödeme', async () => {
+  const h = setup();
+  await assert.rejects(h.act('ali', { op: 'start', houseId: 'ev1', chairId: 'ch1' }), /not-present/);
+  h.present('ali', 'ev1');
+  await assert.rejects(h.act('ali', { op: 'start', houseId: 'ev1', chairId: 'pc1' }), /no-set/);
+  const r = await h.act('ali', { op: 'start', houseId: 'ev1', chairId: 'ch1', title: '  Akşam   yayını <b> ' });
+  assert.ok(r.streamId);
+  assert.equal(r.charged, 0);
+  const s = h.G(`streams/${r.streamId}`);
+  assert.equal(s.status, 'live');
+  assert.equal(s.title, 'Akşam yayını b');
+  assert.equal(s.pcId, 'pc1');
+  assert.equal(h.G('users/ali').streamId, r.streamId);
+  assert.equal(h.G('stats/streams').items[0].id, r.streamId);
+  // aynı koltukta başkası yayın açamaz
+  h.present('veli', 'ev1');
+  await assert.rejects(h.act('veli', { op: 'start', houseId: 'ev1', chairId: 'ch1' }), /seat-busy/);
+  // bağış
+  await assert.rejects(h.act('ali', { op: 'donate', streamId: r.streamId, amount: 100 }), /self/);
+  await assert.rejects(h.act('veli', { op: 'donate', streamId: r.streamId, amount: 50 }), /Geçersiz miktar/);
+  await h.act('veli', { op: 'donate', streamId: r.streamId, amount: 1000, note: 'Helal olsun!' });
+  for (let k = 0; k < 9; k++) await h.act('veli', { op: 'donate', streamId: r.streamId, amount: 1000 });
+  await assert.rejects(h.act('veli', { op: 'donate', streamId: r.streamId, amount: 10 }), /cap:0/);
+  assert.equal(h.G('users/veli').gold, 30_000 - DONATION_DAILY_CAP);
+  const s2 = h.G(`streams/${r.streamId}`);
+  assert.equal(s2.donated, 10_000);
+  assert.equal(s2.fx.length, 6);
+  assert.equal(h.G(`streams/${r.streamId}`).fx[0].a, 1000);
+  // susturulmuş oyuncu not yazamaz
+  h.muted.add('veli');
+  h.clock.now += 24 * 3600 * 1000; // ertesi gün (sınır sıfırlanır)
+  h.present('ali', 'ev1');
+  await h.act('ali', { op: 'tick', streamId: r.streamId, viewers: 3, seen: 5 });
+  await assert.rejects(h.act('veli', { op: 'donate', streamId: r.streamId, amount: 10, note: 'merhaba' }), /muted/);
+  await h.act('veli', { op: 'donate', streamId: r.streamId, amount: 10 });
+  // sohbet
+  h.muted.delete('veli');
+  await h.act('veli', { op: 'chat', streamId: r.streamId, text: 'selam yayın' });
+  await assert.rejects(h.act('veli', { op: 'chat', streamId: r.streamId, text: 'hızlı' }), /yavaş/);
+  // kapat: 10.010 bağış → 1.001 vergi, 9.009 cebe
+  const before = h.G('users/ali').gold;
+  const end = await h.act('ali', { op: 'stop', streamId: r.streamId, viewers: 2, seen: 7 });
+  assert.equal(end.summary.donated, 10_010);
+  assert.equal(end.summary.tax, 1001);
+  assert.equal(end.summary.net, 9009);
+  assert.equal(end.summary.peak, 3);
+  assert.equal(end.summary.seen, 7);
+  assert.equal(h.G('users/ali').gold, before + 9009);
+  assert.equal(h.G(`streams/${r.streamId}`).status, 'ended');
+  assert.equal(h.G('users/ali').streamId, undefined);
+  assert.equal(h.G('stats/streams').items.length, 0);
+  const ledger = Object.entries(Object.fromEntries(h.db._store)).filter(([k]) => k.startsWith('taxLedger/'));
+  assert.equal(ledger[0][1].data.bySource.yayin, 1001);
+  // bitmiş yayına bağış olmaz
+  await assert.rejects(h.act('veli', { op: 'donate', streamId: r.streamId, amount: 10 }), /ended/);
+});
+
+test('internet kafe: yayın seti dakika ücreti kafe sahibine, para bitince yayın kapanır', async () => {
+  const h = setup();
+  h.S('users/veli', { displayName: 'Veli', gold: 700 });
+  h.present('veli', 'kafe');
+  await assert.rejects(h.act('veli', { op: 'start', houseId: 'kafe', chairId: 'ch1', expect: 200 }), /price-changed:300/);
+  const r = await h.act('veli', { op: 'start', houseId: 'kafe', chairId: 'ch1', expect: 300 });
+  assert.equal(r.charged, 300);
+  assert.equal(h.G('users/veli').gold, 400);
+  assert.equal(h.G('users/kafeci').gold, 270, '%10 vergi düşülür');
+  assert.equal(h.income[0].products.yayin, 1);
+  // süre dolmadan nabız: ücret yok
+  h.clock.now += 20_000;
+  h.present('veli', 'kafe');
+  let t = await h.act('veli', { op: 'tick', streamId: r.streamId, viewers: 1 });
+  assert.equal(t.charged, undefined);
+  // dakika doldu: yeni ücret
+  h.clock.now += 40_000;
+  h.present('veli', 'kafe');
+  t = await h.act('veli', { op: 'tick', streamId: r.streamId, viewers: 1 });
+  assert.equal(t.charged, 300);
+  assert.equal(h.G('users/veli').gold, 100);
+  // bir sonraki dakikaya para yetmez → yayın kapanır
+  h.clock.now += 60_000;
+  h.present('veli', 'kafe');
+  t = await h.act('veli', { op: 'tick', streamId: r.streamId, viewers: 1 });
+  assert.equal(t.stopped, 'gold');
+  assert.equal(h.G(`streams/${r.streamId}`).status, 'ended');
+  assert.equal(h.G(`streams/${r.streamId}`).summary.paidTotal, 600);
+  // kafe sahibi kendi kafesinde ücret ödemez; fiyat ayarı
+  h.present('kafeci', 'kafe');
+  const own = await h.act('kafeci', { op: 'start', houseId: 'kafe', chairId: 'ch1' });
+  assert.equal(own.charged, 0);
+  await assert.rejects(h.act('kafeci', { op: 'price', houseId: 'kafe', price: 20 }), /price-band/);
+  await h.act('kafeci', { op: 'price', houseId: 'kafe', price: 500 });
+  assert.equal(h.G('houses/kafe').bizPrices.stream, 500);
+  await assert.rejects(h.act('ali', { op: 'price', houseId: 'ev1', price: 500 }), /internet/);
+});
+
+test('yayıncı odadan çıkarsa nabızda kapanır; nabzı kesilen yayın süpürmede kapanıp bağışları ödenir', async () => {
+  const h = setup();
+  h.present('ali', 'ev1');
+  const r = await h.act('ali', { op: 'start', houseId: 'ev1', chairId: 'ch1' });
+  h.S('housePresence/ali', { houseId: 'baska', updatedAt: new Timestamp(h.clock.now) });
+  const t = await h.act('ali', { op: 'tick', streamId: r.streamId });
+  assert.equal(t.stopped, 'left');
+  // yeni yayın + bağış + uygulama kapandı (nabız yok)
+  h.present('ali', 'ev1');
+  const r2 = await h.act('ali', { op: 'start', houseId: 'ev1', chairId: 'ch1' });
+  await h.act('veli', { op: 'donate', streamId: r2.streamId, amount: 100 });
+  const gold = h.G('users/ali').gold;
+  h.clock.now += STREAM_STALE_MS + 1000;
+  const sw = await h.st.sweep();
+  assert.equal(sw.closed, 1);
+  assert.equal(h.G(`streams/${r2.streamId}`).status, 'ended');
+  assert.equal(h.G('users/ali').gold, gold + 90);
+  // aynı kişi yeni yayın açınca eski açık yayını kapatıp öder (bağışlar kaybolmaz)
+  h.present('ali', 'ev1');
+  const r3 = await h.act('ali', { op: 'start', houseId: 'ev1', chairId: 'ch1' });
+  await h.act('veli', { op: 'donate', streamId: r3.streamId, amount: 1000 });
+  h.clock.now += STREAM_STALE_MS + 1000;
+  h.present('ali', 'ev1');
+  const g2 = h.G('users/ali').gold;
+  const r4 = await h.act('ali', { op: 'start', houseId: 'ev1', chairId: 'ch1' });
+  assert.notEqual(r4.streamId, r3.streamId);
+  assert.equal(h.G(`streams/${r3.streamId}`).status, 'ended');
+  assert.equal(h.G('users/ali').gold, g2 + 900);
+});

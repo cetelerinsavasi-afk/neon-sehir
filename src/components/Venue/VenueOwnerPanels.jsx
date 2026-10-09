@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { shopAction } from '../../services/gameActions';
+import { shopAction, streamAction } from '../../services/gameActions';
+import { STREAM_PRICE, STREAM_ROOM_MAX, streamPriceOf, streamSetOf } from '../../../functions/stream.js';
 import PriceField from '../Shop/PriceField';
 import { BIZ_TAX_RATE } from '../../../functions/tax.js';
 import HeldIcon from '../HouseScreen/HeldIcon';
@@ -136,6 +137,72 @@ export function NetPriceSection({ houseId, houseDoc }) {
           try {
             await shopAction({ op: 'netPrice', houseId, price: v });
             setMsg({ ok: true, text: `✓ Dakika ücreti ${fmt(v)} altın olarak kaydedildi.` });
+          } catch (e) {
+            setMsg({ ok: false, text: bizErrText(e) });
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+      {msg && <p className={msg.ok ? 'bz-ok' : 'bz-warn'}>{msg.text}</p>}
+      <StreamSetPriceSection houseId={houseId} houseDoc={houseDoc} />
+    </div>
+  );
+}
+
+// v80 Yayıncılık — internet kafe "yayın seti" (oyuncu koltuğu + oyuncu bilgisayarı)
+// dakika ücreti ve yayın odası adı. Ücret yayın süresince dakika başı çekilir.
+function StreamSetPriceSection({ houseId, houseDoc }) {
+  const cur = streamPriceOf(houseDoc);
+  const curRoom = String(houseDoc?.streamRoom || '');
+  const [v, setV] = useState(cur);
+  const [room, setRoom] = useState(curRoom);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  useEffect(() => setV(cur), [cur]);
+  useEffect(() => setRoom(curRoom), [curRoom]);
+  const items = houseDoc?.items || [];
+  const sets = items.filter((it) => it.p === 1 && streamSetOf(items, it.i)).length;
+  return (
+    <div style={{ marginTop: 14 }}>
+      <p className="bz-sec-title">🔴 Yayın seti</p>
+      <p className="bz-note">
+        Oyuncu koltuğu ile oyuncu bilgisayarı yan yanaysa müşterin orada canlı yayın açabilir. Yayın süresince dakika başı ücret öder; altını bitince yayın kapanır.
+        {sets > 0 ? ` Mekânında ${sets} yayın seti var.` : ' Şu an mekânında yayın seti yok (oyuncu koltuğunu bir oyuncu bilgisayarının yanına koy).'}
+      </p>
+      <PriceField
+        label="Yayın dakikası"
+        min={STREAM_PRICE.min}
+        max={STREAM_PRICE.max}
+        step={10}
+        value={v}
+        refPrice={STREAM_PRICE.def}
+        refLabel="Varsayılan"
+        taxRate={BIZ_TAX_RATE}
+        saved={cur}
+        onChange={setV}
+      />
+      <label className="bz-note" style={{ display: 'block', marginTop: 8 }}>
+        Yayın odası adı (izleyiciler görür, isteğe bağlı)
+        <input
+          className="ws-chat-input"
+          style={{ width: '100%', marginTop: 4, boxSizing: 'border-box' }}
+          maxLength={STREAM_ROOM_MAX}
+          placeholder="örn. Turnuva Odası"
+          value={room}
+          onChange={(e) => setRoom(e.target.value)}
+        />
+      </label>
+      <SaveBtn
+        busy={busy}
+        dirty={v !== cur || room.trim() !== curRoom}
+        label="Yayın setini kaydet"
+        onClick={async () => {
+          setBusy(true);
+          setMsg(null);
+          try {
+            await streamAction({ op: 'price', houseId, price: v, room: room.trim() });
+            setMsg({ ok: true, text: `✓ Yayın dakikası ${fmt(v)} altın olarak kaydedildi.` });
           } catch (e) {
             setMsg({ ok: false, text: bizErrText(e) });
           } finally {

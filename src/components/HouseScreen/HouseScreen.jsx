@@ -44,6 +44,10 @@ import '../Venue/Venue.css';
 import '../Piano/Piano.css';
 import '../Workshop/Workshop.css';
 import './HouseScreen.css';
+import { streamAction } from '../../services/gameActions';
+import { StreamStartSheet, StreamHostPanel, StreamSummary } from '../Stream/StreamHost';
+import { streamBroadcast, clearGameFrame, streamPose, useLiveStreams, useStreamDoc, watchViewers } from '../Stream/streamShared';
+import { streamPriceOf } from '../../../functions/stream.js';
 
 // =============================================================================
 // HouseScreen — 3D Ev (v66, herkese açık)
@@ -143,6 +147,13 @@ export default function HouseScreen({ houseId, onExit }) {
   const [panel, setPanel] = useState(null); // people | settings | checkout | arcade | jukebox | camera | phone | emotes
   const [phoneApp, setPhoneApp] = useState(null);
   const [panelItem, setPanelItem] = useState(null);
+  // v80 — yayın
+  const [streamAsk, setStreamAsk] = useState(null); // { chairId, pcId } → "Yayın aç" paneli
+  const [myStream, setMyStream] = useState(null); // { id, chairId, pcId }
+  const [streamBusy, setStreamBusy] = useState(false);
+  const [streamSum, setStreamSum] = useState(null); // { summary, reason }
+  const [noStream, setNoStream] = useState(false);
+  const [streamWarn, setStreamWarn] = useState(false);
   const [cardTarget, setCardTarget] = useState(null);
   const [toast, setToast] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -168,6 +179,7 @@ export default function HouseScreen({ houseId, onExit }) {
   const appliedFirstRef = useRef(false);
   const seenMsgRef = useRef(new Set());
   const mountedAtRef = useRef(Date.now());
+  const stopStreamRef = useRef(null); // v80: yayını kapat (evden çıkarken)
   const leavingRef = useRef(false);
   const enteredRef = useRef(false);
   const lastEmoteRef = useRef({ emote: null, ts: 0 });
@@ -181,6 +193,7 @@ export default function HouseScreen({ houseId, onExit }) {
     (note) => {
       leavingRef.current = true;
       stopMusic();
+      stopStreamRef.current?.('left');
       if (user) deleteDoc(doc(db, 'housePresence', user.uid)).catch(() => {});
       onExit?.(note);
     },
@@ -570,6 +583,12 @@ export default function HouseScreen({ houseId, onExit }) {
       setGymGame(a.equipment);
       return;
     }
+    // v80 — yayın aç
+    if (a.kind === 'stream') {
+      if (myStream) return;
+      setStreamAsk({ chairId: a.chairId, pcId: a.pcId });
+      return;
+    }
     const seatBefore = engineRef.current?.getSelfState()?.seat || null;
     const r = engineRef.current?.interact(a);
     if (!r) return;
@@ -761,6 +780,120 @@ export default function HouseScreen({ houseId, onExit }) {
 
   // --- işletme (v77) ------------------------------------------------------------------
   const bizType = houseDoc?.biz?.type || null;
+
+  // --- v80 — YAYINCILIK -----------------------------------------------------------------
+  const myStreamDoc = useStreamDoc(myStream?.id || null);
+  const streamStatsRef = useRef({ viewers: 0, seen: 0 });
+  const streamPoseNow = useMemo(() => (myStream ? streamPose(houseDoc?.items, myStream.chairId, myStream.pcId) : null), [myStream, houseDoc?.items]);
+  const cafeStreamPrice = bizType === 'internet' && !isOwner ? streamPriceOf(houseDoc) : 0;
+  const streamErr = (e) => {
+    const m = String(e?.message || '');
+    if (m === 'gold') return '💰 Altının yetmiyor.';
+    if (m === 'no-set') return '🎮 Yayın için Oyuncu Koltuğu ve yakınında Oyuncu Bilgisayarı gerekli.';
+    if (m === 'seat-busy') return '🔴 Bu koltukta zaten canlı yayın var.';
+    if (m === 'not-present') return 'Odada olmalısın.';
+    if (m.startsWith('price-changed')) return `💲 Yayın seti ücreti değişti: ${Number(m.split(':')[1] || 0).toLocaleString('tr-TR')} altın/dk. Tekrar dene.`;
+    return m || 'Yayın açılamadı.';
+  };
+  const startStream = async (title) => {
+    if (!streamAsk || streamBusy) return;
+    setStreamBusy(true);
+    try {
+      const r = await streamAction({ op: 'start', houseId, chairId: streamAsk.chairId, title, expect: cafeStreamPrice });
+      streamBroadcast.uid = user.uid;
+      streamBroadcast.streamId = r.streamId;
+      setMyStream({ id: r.streamId, chairId: streamAsk.chairId, pcId: streamAsk.pcId });
+      setStreamAsk(null);
+      flash(r.charged ? `🔴 Yayındasın! −${r.charged.toLocaleString('tr-TR')} altın (1 dk)` : '🔴 Yayındasın!');
+    } catch (e) {
+      flash(streamErr(e));
+      if (String(e?.message || '').startsWith('price-changed')) setStreamAsk(null);
+    } finally {
+      setStreamBusy(false);
+    }
+  };
+  const endStreamLocal = useCallback((summary, reason) => {
+    streamBroadcast.uid = null;
+    streamBroadcast.streamId = null;
+    clearGameFrame();
+    setMyStream(null);
+    if (summary) setStreamSum({ summary, reason });
+  }, []);
+  const stopStream = useCallback(
+    async (reason = 'stop') => {
+      const st = myStreamRef.current;
+      if (!st) return;
+      myStreamRef.current = null;
+      setStreamBusy(true);
+      // önce yerelde kapat (oyun yayını vb. hemen dursun), özet sunucudan
+      streamBroadcast.uid = null;
+      clearGameFrame();
+      try {
+        const r = await streamAction({ op: 'stop', streamId: st.id, viewers: streamStatsRef.current.viewers, seen: streamStatsRef.current.seen });
+        endStreamLocal(r?.summary, reason === 'left' ? 'left' : 'stop');
+      } catch {
+        endStreamLocal(null);
+      } finally {
+        setStreamBusy(false);
+      }
+    },
+    [endStreamLocal]
+  );
+  const myStreamRef = useRef(null);
+  myStreamRef.current = myStream;
+  stopStreamRef.current = stopStream;
+  // koltuktan kalkınca yayın kapanır
+  useEffect(() => {
+    if (!myStream) return undefined;
+    const iv = setInterval(() => {
+      const seat = engineRef.current?.getSelfState()?.seat || '';
+      if (seat.split(':')[0] !== myStream.chairId) stopStream('stood');
+    }, 700);
+    return () => clearInterval(iv);
+  }, [myStream, stopStream]);
+  // ekran kapanırken açık yayın kalmasın
+  useEffect(() => () => stopStreamRef.current?.('left'), []);
+
+  // odada canlı yayın var mı (başkasının) → 🔴 YAYIN VAR + girişte uyarı
+  const liveAll = useLiveStreams(phase === 'ready');
+  const roomStreams = useMemo(() => liveAll.filter((x) => x.houseId === houseId), [liveAll, houseId]);
+  const othersLive = roomStreams.filter((x) => x.uid !== user?.uid);
+  const warnedRef = useRef(false);
+  useEffect(() => {
+    if (phase === 'ready' && entered && othersLive.length && !warnedRef.current) {
+      warnedRef.current = true;
+      setStreamWarn(true);
+    }
+  }, [phase, entered, othersLive.length]);
+  const toggleNoStream = async (v = !noStream) => {
+    setNoStream(v);
+    try {
+      await setDoc(doc(db, 'housePresence', user.uid), { noStream: v }, { merge: true });
+      flash(v ? '🙈 Yayınlarda görünmüyorsun.' : '👀 Kameranın gördüğü yerde yayında görünürsün.');
+    } catch {
+      setNoStream(!v);
+    }
+  };
+  // diğer yayıncıların başında "🔴 CANLI · 👁 n"
+  const [roomViewers, setRoomViewers] = useState({});
+  const roomKey = othersLive.map((x) => x.id).join(',');
+  useEffect(() => {
+    if (!roomKey) return undefined;
+    const offs = othersLive.map((x) => watchViewers(x.id, ({ count }) => setRoomViewers((v) => ({ ...v, [x.id]: count }))));
+    return () => offs.forEach((f) => f());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomKey]);
+  useEffect(() => {
+    if (!othersLive.length) return undefined;
+    const apply = () => othersLive.forEach((x) => engineRef.current?.setLiveBadge?.(x.uid, `🔴 CANLI · 👁 ${roomViewers[x.id] || 0}`));
+    apply();
+    const iv = setInterval(apply, 2000); // sonradan yüklenen avatarlar için
+    return () => {
+      clearInterval(iv);
+      othersLive.forEach((x) => engineRef.current?.setLiveBadge?.(x.uid, null));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomKey, roomViewers, engineKey]);
   const bizIntent = !bizType ? houseDoc?.bizIntent || null : null;
   const intentReady = Boolean(bizIntent && checkBizRequirements(bizIntent, design?.items).ok);
   // --- v77 Faz 4: spor salonu (üyelik → 3 görev → güç) ---------------------------------
@@ -1037,6 +1170,11 @@ export default function HouseScreen({ houseId, onExit }) {
               </span>
             </div>
             <NetCreditRing houseId={houseId} />
+            {othersLive.length > 0 && (
+              <button className={`st-room-badge${noStream ? ' off' : ''}`} onClick={() => setStreamWarn(true)} title="Bu odada canlı yayın var">
+                {noStream ? '🙈 Yayında değilsin' : '🔴 YAYIN VAR'}
+              </button>
+            )}
             {mode === 'walk' && (
               <button className="hs-view-btn" onClick={toggleView} title="Görünümü değiştir">
                 {view === '3d' ? '3D' : view === '2d' ? '2D' : '👁️ Göz'}
@@ -1332,6 +1470,14 @@ export default function HouseScreen({ houseId, onExit }) {
                       </button>
                     );
                   }
+                  // v80 — yayın aç (yayındaysan bilgi)
+                  if (a.kind === 'stream') {
+                    return (
+                      <button key={a.label} className={`hs-act st-act${myStream ? ' cue-dim' : ''}`} disabled={Boolean(myStream)} onClick={() => doAction(a)}>
+                        {myStream ? '🔴 Yayındasın' : cafeStreamPrice ? `🔴 Yayın aç · ${cafeStreamPrice.toLocaleString('tr-TR')}/dk` : '🔴 Yayın aç'}
+                      </button>
+                    );
+                  }
                   // piyano başkası tarafından çalınıyorsa: soluk + silüet
                   if (a.panel === 'piano' && pianoPlayer && pianoPlayer.uid !== user?.uid) {
                     return (
@@ -1558,6 +1704,31 @@ export default function HouseScreen({ houseId, onExit }) {
           )}
 
           {panel === 'arcade' && <ArcadeHub onClose={() => setPanel(null)} />}
+          {/* v80 — yayın */}
+          {streamAsk && !myStream && <StreamStartSheet cafePrice={cafeStreamPrice} busy={streamBusy} onStart={startStream} onCancel={() => setStreamAsk(null)} />}
+          {myStream && myStreamDoc && panel !== 'arcade' && (
+            <StreamHostPanel stream={myStreamDoc} pose={streamPoseNow} engineRef={engineRef} statsRef={streamStatsRef} stopping={streamBusy} onStopRequest={() => stopStream('stop')} onEnded={endStreamLocal} />
+          )}
+          {myStream && panel === 'arcade' && <div className="st-arcade-chip">🔴 CANLI · oyun yayında</div>}
+          {streamSum && <StreamSummary summary={streamSum.summary} reason={streamSum.reason} onClose={() => setStreamSum(null)} />}
+          {streamWarn && (
+            <div className="st-sheet-bg" onClick={() => setStreamWarn(false)}>
+              <div className="st-sheet" onClick={(e) => e.stopPropagation()}>
+                <p className="st-sheet-title">🔴 Bu odada canlı yayın var</p>
+                <p className="st-sum-why" style={{ color: '#f2ecdd' }}>
+                  {othersLive.map((x) => x.name).join(', ')} şu an yayında. Yayın kamerasının gördüğü yerde durursan izleyiciler seni görür (sesin değil, sadece avatarın ve hareketlerin).
+                </p>
+                <div className="st-sheet-btns">
+                  <button className="st-btn ghost" onClick={() => toggleNoStream(!noStream).then(() => setStreamWarn(false))}>
+                    {noStream ? '👀 Yayında görün' : '🙈 Yayında görünme'}
+                  </button>
+                  <button className="st-btn gold" onClick={() => setStreamWarn(false)}>
+                    Anladım
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* KAMERA */}
           {panel === 'camera' && cameraShot && (

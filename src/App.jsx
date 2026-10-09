@@ -23,6 +23,7 @@ import { BIZ_BY_REGION } from '../functions/businessCatalogData.js';
 import { IS_ANDROID_APP } from './lib/platform';
 import { exitApp, installBackHandler, rearmBack, useBackClose } from './lib/backStack';
 import ConfirmModal from './components/ConfirmModal/ConfirmModal';
+import LiveStreamsButton from './components/Stream/LiveStreamsButton';
 import './styles/theme.css';
 import './styles/cues.css';
 import './App.css';
@@ -43,6 +44,7 @@ function lazyScreen(loader) {
   );
   return Wrapped;
 }
+const StreamViewer = lazyScreen(() => import('./components/Stream/StreamViewer'));
 const MekanlarScreen = lazyScreen(() => import('./components/MekanlarScreen/MekanlarScreen'));
 const RaceFullScreen = lazyScreen(() => import('./components/RaceTrackScreen/RaceFullScreen'));
 const OnNumaraFullScreen = lazyScreen(() => import('./components/OnNumaraScreen/OnNumaraFullScreen'));
@@ -160,6 +162,7 @@ function GameShell() {
   const [futbolOpen, setFutbolOpen] = useState(false);
   // comingSoon — "Çok yakında" mesajı (mekan adı), 2 sn sonra kendiliğinden kapanır.
   const [comingSoon, setComingSoon] = useState(null);
+  const [watchStreamId, setWatchStreamId] = useState(null);
   const comingSoonTimer = useRef(null);
   const showComingSoon = (name) => {
     setComingSoon(name);
@@ -374,7 +377,7 @@ function GameShell() {
   regionClickRef.current = handleRegionClick;
   const onRegionClickStable = useCallback((...a) => regionClickRef.current(...a), []);
   const mapCovered = Boolean(
-    phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || weaponShopOpen || tuningGarageOpen || heistTarget !== undefined || (effectiveRaceRoomId && raceExpanded)
+    watchStreamId || phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || weaponShopOpen || tuningGarageOpen || heistTarget !== undefined || (effectiveRaceRoomId && raceExpanded)
   );
 
   return (
@@ -468,6 +471,11 @@ function GameShell() {
       {/* Yeni görev/hatırlatıcı paneli — ChatsApp butonunun tam simetriği,
           sol altta aynı boyut/konumda (bkz. OnboardingPanel.css). */}
       <OnboardingPanel gangReminders={gangAlerts?.reminders} />
+
+      {/* v80 Yayıncılık — canlı yayın varken Görevler'in tam üstünde (telefonun
+          karşısında) 🔴 CANLI; yoksa görünmez. */}
+      <LiveStreamsButton className="map-live-btn" onWatch={setWatchStreamId} />
+      {watchStreamId && <StreamViewer streamId={watchStreamId} onClose={() => setWatchStreamId(null)} />}
 
       {phoneOpen && (
         <PhoneScreen

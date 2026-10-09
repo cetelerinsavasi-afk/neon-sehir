@@ -47,23 +47,18 @@ function Price({ item }) {
   );
 }
 
+// v79.2 performans: küçük resimler BİR KEZ çizilir (eskiden 20 kart × her kare yeniden çiziliyordu)
 function PetThumb({ id }) {
   const ref = useRef(null);
   useEffect(() => {
     const cv = ref.current;
-    if (!cv) return undefined;
+    if (!cv) return;
     const x = cv.getContext('2d');
-    let raf = 0;
-    const draw = (now) => {
-      x.setTransform(1, 0, 0, 1, 0, 0);
-      x.clearRect(0, 0, cv.width, cv.height);
-      const s = PET_ART[id]?.s || 40;
-      const size = Math.min(76, 62 * (s / 50) + 20);
-      drawPet(x, id, cv.width * 0.44, cv.height - 10, now, { size });
-      raf = requestAnimationFrame(draw);
-    };
-    raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
+    x.setTransform(1, 0, 0, 1, 0, 0);
+    x.clearRect(0, 0, cv.width, cv.height);
+    const s = PET_ART[id]?.s || 40;
+    const size = Math.min(76, 62 * (s / 50) + 20);
+    drawPet(x, id, cv.width * 0.44, cv.height - 10, 300, { size, live: true });
   }, [id]);
   return <canvas ref={ref} className="acs-thumb" width="150" height="100" />;
 }

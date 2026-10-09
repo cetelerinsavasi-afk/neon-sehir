@@ -61,6 +61,14 @@ export const FOOTBALLER_START_POWER = 100;
 export const PRO_POWER = 200;
 
 export const isGameGym = (h) => Boolean(h?.bizGame);
+// v79.3: bot takımların salon havuzu — en düşük fiyatlı salonların HEPSİ (bonus
+// fark etmez), kimliğe göre sıralı; takımlar sırayla (round-robin) dağıtılır.
+export function botGymPool(gyms) {
+  if (!gyms.length) return [];
+  const min = Math.min(...gyms.map((g) => g.price));
+  return gyms.filter((g) => g.price === min).sort((a, b) => a.id.localeCompare(b.id));
+}
+
 export function gymPriceOf(h) {
   if (isGameGym(h)) return GAME_GYM_PRICE;
   const v = Number(h?.bizPrices?.gym);

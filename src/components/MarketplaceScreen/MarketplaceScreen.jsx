@@ -21,7 +21,7 @@ import { weaponCatalog } from '../../data/weaponCatalog';
 import { MAX_REPAIRS, vehicleDisplayName, lifeCapOf, repairBonusOf } from '../VehicleCard/VehicleCard';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './MarketplaceScreen.css';
-import { vehicleRaceLine, listingRaceLine } from '../RaceTrackScreen/CarStats';
+import { ListingCarStats } from '../RaceTrackScreen/CarStats';
 
 // Bu oturumda eski (deterministik ID sisteminden önce açılmış) malzeme
 // ilanlarını birleştirme işlemi zaten tetiklendi mi? (Gereksiz tekrar
@@ -259,9 +259,7 @@ function weaponImage(catalogId) {
 
 function listingLabel(listing) {
   if (listing.itemType === 'vehicle') {
-    const stats = listingRaceLine(listing);
-    const upgraded = listing.vehicleGearUpgraded || listing.vehicleTankUpgraded;
-    return `${listing.vehicleModel} (${stats}${upgraded ? ' — geliştirilmiş' : ''})${listing.gang && listing.quantity > 1 ? ` · ${listing.quantity} adet` : ''}`;
+    return `${listing.vehicleModel}${listing.gang && listing.quantity > 1 ? ` · ${listing.quantity} adet` : ''}`;
   }
   if (listing.itemType === 'weapon') {
     if (listing.gang && listing.quantity > 1) return `${listing.weaponName} (Güç ${listing.weaponPower?.toLocaleString('tr-TR')}) · ${listing.quantity} adet`;
@@ -461,9 +459,7 @@ function SellForm({ onCreated, onClose, initialItemType }) {
                   >
                     {img && <img className="market-item-photo" src={img} alt={vehicleDisplayName(v)} />}
                     <span className="market-item-name">{vehicleDisplayName(v)}</span>
-                    <span className="market-item-stats">
-                      {vehicleRaceLine(v)}
-                    </span>
+                    <ListingCarStats vehicle={v} />
                   </button>
                 );
               })}
@@ -683,6 +679,7 @@ function ListingCard({ listing, isMine, busy, onCancel, onBuy }) {
       {media}
       <div className="market-listing-info">
         <span className="market-listing-label">{listingLabel(listing)}</span>
+        {listing.itemType === 'vehicle' && <ListingCarStats listing={listing} />}
         <span className="market-listing-price">
           {isQuantifiable ? (
             <>
