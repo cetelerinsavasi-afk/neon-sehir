@@ -124,7 +124,10 @@ const deletionRequests = createDeletionRequests({
     cancelHeistPlan: (req) => cancelHeistPlan.run(req),
     gangAction: (req) => gangAction.run(req),
   },
-  heavyOpts: { timeoutSeconds: 540, memory: '1GiB' },
+  // v84: admin hesap silme aracı — en fazla 2 kopya. Varsayılan (20 kopya × 1 vCPU)
+  // bölgenin toplam CPU kotasını aşıyordu: "Quota exceeded for total allowable CPU
+  // per project per region" → deploy'da Container Healthcheck failed.
+  heavyOpts: { timeoutSeconds: 540, memory: '1GiB', maxInstances: 2 },
 });
 export const requestAccountDeletion = deletionRequests.requestAccountDeletion;
 export const adminAccountDeletion = deletionRequests.adminAccountDeletion;
