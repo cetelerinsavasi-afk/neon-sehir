@@ -20288,7 +20288,8 @@ async function buildMosqueNpcSnapshot() {
 // veriye hiç bakmaz. Doküman (eşleşse de eşleşmese de) HER ZAMAN silinir
 // — tek kullanımlık, eski/yanlış türden bir kare bir SONRAKİ fotoğrafa
 // asla sızmasın diye.
-async function tryUseFrozenSnapshot(uid, type, locationId) {
+const safeShotId = (v) => (typeof v === 'string' && /^[a-z0-9]{4,40}$/.test(v) ? v : null);
+async function tryUseFrozenSnapshot(uid, type, locationId, shotId = null) {
   const ref = db.collection('photoSnapshots').doc(uid);
   const snap = await ref.get();
   if (!snap.exists) return null;
@@ -20296,7 +20297,9 @@ async function tryUseFrozenSnapshot(uid, type, locationId) {
   await ref.delete().catch(() => {});
   const ms = data.capturedAt?.toMillis?.() ?? 0;
   const fresh = ms > 0 && Date.now() - ms < PHOTO_SNAPSHOT_MAX_AGE_MS;
-  const matches = data.type === type && (type !== 'interiorPhoto' || data.locationId === locationId);
+  // v85: paylaşım bir çekim kimliği taşıyorsa sadece O çekimin karesi kullanılır
+  // (makine açılıp kapanmış eski bir kare yeni paylaşıma sızmasın)
+  const matches = data.type === type && (type !== 'interiorPhoto' || data.locationId === locationId) && (!shotId || data.shotId === shotId);
   if (!fresh || !matches) return null;
   return {
     originX: data.originX ?? 0,
@@ -20310,6 +20313,35 @@ async function tryUseFrozenSnapshot(uid, type, locationId) {
     imam: data.imam ?? null,
     beggars: Array.isArray(data.beggars) ? data.beggars : [],
   };
+}
+
+function parkNpcEntity(originX, originY, radius) {
+    // Şüpheli Adam (Park NPC'si) — gerçek bir oyuncu değil, konumu (x:140,
+    // y:1030) ve görünümü src/components/ParkWorldScreen/ParkWorldScreen.jsx
+    // içindeki NPC_POS/NPC_AVATAR ile BİREBİR AYNI (o dosya Cloud
+    // Functions'a import edilemediği için burada sabit tekrarlanıyor).
+    const NPC_POS = { x: 140, y: 1030 };
+    const NPC_AVATAR = {
+      gender: 'erkek', build: 'iri', skin: '#a86b3c', eyeColor: '#3b2a1a',
+      faceShape: 'oval', background: 'transparent',
+      hairStyle: 'short', hairColor: '#0d0a08',
+      eyebrowShape: 'straight', eyeShape: 'almond', eyelash: 'none',
+      noseShape: 'small', mouthShape: 'neutral', lipColor: '#a85a52',
+      facialHair: 'none', faceAcc: 'sunglasses', earring: 'yok', tattoo: 'yok',
+      clothing: 'trenchcoat', clothColor: '#22262f', neckAcc: 'tie',
+      hat: 'fedora', hatColor: '#0d0d0d', heldItem: 'yok',
+      pantsColor: '#0d0d0d', shoeColor: '#0d0d0d', shoeStyle: 'klasik',
+    };
+    const npcDx = NPC_POS.x - originX;
+    const npcDy = NPC_POS.y - originY;
+    if (Math.hypot(npcDx, npcDy) < radius) {
+      return ({
+        dx: npcDx, dy: npcDy, isSelf: false,
+        pose: 'idle', facing: 'right', holding: null,
+        displayName: 'Şüpheli Adam', avatar: NPC_AVATAR, isNpc: true, bubbleText: null,
+      });
+    }
+    return null;
 }
 
 // buildPresenceEntities — Park VE girilebilir mekanların (Banka/Karakol/
@@ -20402,33 +20434,102 @@ async function buildPresenceEntities({ uid, presenceCollection, locationFilter, 
   ];
 
   if (includeNpc) {
-    // Şüpheli Adam (Park NPC'si) — gerçek bir oyuncu değil, konumu (x:140,
-    // y:1030) ve görünümü src/components/ParkWorldScreen/ParkWorldScreen.jsx
-    // içindeki NPC_POS/NPC_AVATAR ile BİREBİR AYNI (o dosya Cloud
-    // Functions'a import edilemediği için burada sabit tekrarlanıyor).
-    const NPC_POS = { x: 140, y: 1030 };
-    const NPC_AVATAR = {
-      gender: 'erkek', build: 'iri', skin: '#a86b3c', eyeColor: '#3b2a1a',
-      faceShape: 'oval', background: 'transparent',
-      hairStyle: 'short', hairColor: '#0d0a08',
-      eyebrowShape: 'straight', eyeShape: 'almond', eyelash: 'none',
-      noseShape: 'small', mouthShape: 'neutral', lipColor: '#a85a52',
-      facialHair: 'none', faceAcc: 'sunglasses', earring: 'yok', tattoo: 'yok',
-      clothing: 'trenchcoat', clothColor: '#22262f', neckAcc: 'tie',
-      hat: 'fedora', hatColor: '#0d0d0d', heldItem: 'yok',
-      pantsColor: '#0d0d0d', shoeColor: '#0d0d0d', shoeStyle: 'klasik',
-    };
-    const npcDx = NPC_POS.x - originX;
-    const npcDy = NPC_POS.y - originY;
-    if (Math.hypot(npcDx, npcDy) < radius) {
-      entities.push({
-        dx: npcDx, dy: npcDy, isSelf: false,
-        pose: 'idle', facing: 'right', holding: null,
-        displayName: 'Şüpheli Adam', avatar: NPC_AVATAR, isNpc: true, bubbleText: null,
-      });
-    }
+    const npc = parkNpcEntity(originX, originY, radius);
+    if (npc) entities.push(npc);
   }
 
+  return { originX, originY, entities };
+}
+
+// v85 — buildFrameFromClient: önizlemede GÖRÜLEN kare (istemci gönderir)
+// sunucuda doğrulanıp aynen kullanılır. Eskiden kare Firestore presence'tan
+// yeniden kuruluyordu; ama yürürken konum RTDB'den akıyor ve Firestore
+// presence 20 sn'ye kadar geride kalabiliyor → paylaşılan fotoğraf, çekilen
+// andan farklı çıkıyordu (madde 3). Ayrıca o an oynayan hareket (dans,
+// zıpla...) hiç dondurulmuyordu (madde 2).
+// Güvenlik: avatar/isim YİNE users/{uid}'den; karedeki diğer oyuncular aynı
+// mekanda TAZE presence kaydı olanlarla sınırlı; konumlar yarıçapla, poz/
+// yön/hareket allowlist ile kelepçelenir; balon metni sadece o oyuncunun
+// presence'taki son mesajıyla birebir aynıysa kabul edilir (istemci metin
+// uyduramaz); eldeki ürün presence'tan okunur.
+const PHOTO_EMOTES = ['dans', 'selam', 'alkis', 'zipla', 'kalp'];
+const PHOTO_EMOTE_MS = 3200;
+async function buildFrameFromClient({ uid, frame, presenceCollection, locationFilter, radius, includeNpc }) {
+  if (!frame || typeof frame !== 'object' || !Array.isArray(frame.entities)) return null;
+  const PRESENCE_STALE_MS = 60_000;
+  const ALLOWED_POSES = ['idle', 'walk1', 'walk2', 'sit'];
+  const ALLOWED_FACINGS = ['up', 'down', 'left', 'right'];
+  const fin = (v) => typeof v === 'number' && Number.isFinite(v);
+  const isFresh = (data) => {
+    const ms = data?.updatedAt?.toMillis?.() ?? 0;
+    return ms > 0 && Date.now() - ms < PRESENCE_STALE_MS;
+  };
+  const safeEmote = (e) => {
+    if (!e || !PHOTO_EMOTES.includes(e.kind) || !fin(e.at)) return null;
+    return { kind: e.kind, at: Math.round(Math.max(0, Math.min(PHOTO_EMOTE_MS, e.at))) };
+  };
+  const bubbleOf = (claimed, pres) => {
+    if (typeof claimed !== 'string' || !claimed.trim() || typeof pres?.chatText !== 'string') return null;
+    const want = String(pres.chatText).slice(0, 140);
+    return claimed.slice(0, 140) === want ? want : null;
+  };
+  if (!fin(frame.originX) || !fin(frame.originY)) return null;
+  const originX = Math.max(-5000, Math.min(10000, frame.originX));
+  const originY = Math.max(-5000, Math.min(10000, frame.originY));
+
+  const mySnap = await db.collection(presenceCollection).doc(uid).get();
+  const myPresence = mySnap.exists ? mySnap.data() : null;
+  if (!myPresence || !isFresh(myPresence) || (locationFilter && myPresence.locationId !== locationFilter)) return null;
+
+  const claimedSelf = frame.entities.find((e) => e && e.self) || {};
+  const claimedOthers = [];
+  const seen = new Set([uid]);
+  for (const e of frame.entities) {
+    if (!e || e.self || typeof e.uid !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(e.uid) || seen.has(e.uid)) continue;
+    if (!fin(e.dx) || !fin(e.dy) || Math.hypot(e.dx, e.dy) > radius * 1.25) continue;
+    seen.add(e.uid);
+    claimedOthers.push(e);
+    if (claimedOthers.length >= 4) break;
+  }
+  const otherPres = await Promise.all(claimedOthers.map((e) => db.collection(presenceCollection).doc(e.uid).get()));
+  const others = [];
+  claimedOthers.forEach((e, i) => {
+    const pres = otherPres[i].exists ? otherPres[i].data() : null;
+    if (!pres || !isFresh(pres) || (locationFilter && pres.locationId !== locationFilter)) return;
+    others.push({ e, pres });
+  });
+
+  const uids = [uid, ...others.map((o) => o.e.uid)];
+  const snaps = await Promise.all(uids.map((id) => db.collection('users').doc(id).get()));
+  const userByUid = new Map();
+  snaps.forEach((sn) => {
+    if (sn.exists) userByUid.set(sn.id, { displayName: sn.data().displayName || 'Oyuncu', avatar: sn.data().avatar || null });
+  });
+  if (!userByUid.has(uid)) return null;
+
+  const entityOf = (e, pres, who, isSelf) => ({
+    dx: isSelf ? 0 : Math.round(e.dx * 10) / 10,
+    dy: isSelf ? 0 : Math.round(e.dy * 10) / 10,
+    isSelf,
+    pose: ALLOWED_POSES.includes(e.pose) ? e.pose : 'idle',
+    facing: ALLOWED_FACINGS.includes(e.facing) ? e.facing : 'down',
+    holding: typeof pres.holding === 'string' ? pres.holding.slice(0, 40) : null,
+    displayName: who.displayName,
+    avatar: who.avatar,
+    bubbleText: bubbleOf(e.bubbleText, pres),
+    ...(safeEmote(e.emote) ? { emote: safeEmote(e.emote) } : {}),
+  });
+
+  const entities = [
+    entityOf(claimedSelf, myPresence, userByUid.get(uid), true),
+    ...others.filter((o) => userByUid.has(o.e.uid)).map((o) => entityOf(o.e, o.pres, userByUid.get(o.e.uid), false)),
+  ];
+
+  if (includeNpc) {
+    // Park'ın Şüpheli Adam NPC'si — buildPresenceEntities'tekiyle aynı.
+    const live = parkNpcEntity(originX, originY, radius);
+    if (live) entities.push(live);
+  }
   return { originX, originY, entities };
 }
 
@@ -20441,7 +20542,7 @@ async function buildPresenceEntities({ uid, presenceCollection, locationFilter, 
 // onu paylaşsın").
 export const captureCameraSnapshot = onCall(async (request) => {
   const uid = requireAuth(request);
-  const { type, locationId } = request.data || {};
+  const { type, locationId, frame } = request.data || {};
   const ALLOWED_LOCATIONS = ['banka', 'karakol', 'camii', 'gazino', 'araba_galerisi', 'silah_magazasi', 'modifiye_garaji'];
 
   if (type !== 'parkPhoto' && type !== 'interiorPhoto') {
@@ -20452,13 +20553,15 @@ export const captureCameraSnapshot = onCall(async (request) => {
   }
 
   const CAMERA_RADIUS = 170;
-  const result = await buildPresenceEntities({
+  const opts = {
     uid,
     presenceCollection: type === 'parkPhoto' ? 'parkPresence' : 'interiorPresence',
     locationFilter: type === 'parkPhoto' ? null : locationId,
     radius: CAMERA_RADIUS,
     includeNpc: type === 'parkPhoto',
-  });
+  };
+  // v85: önce önizlemede görülen kare (doğrulanmış), yoksa eski yol (presence)
+  const result = (await buildFrameFromClient({ ...opts, frame })) || (await buildPresenceEntities(opts));
   if (!result) {
     throw new HttpsError(
       'failed-precondition',
@@ -20477,6 +20580,7 @@ export const captureCameraSnapshot = onCall(async (request) => {
     originX: result.originX,
     originY: result.originY,
     entities: result.entities,
+    shotId: safeShotId(frame?.shotId),
     ...(mosqueNpc ? { imam: mosqueNpc.imam, beggars: mosqueNpc.beggars } : {}),
     capturedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
@@ -21026,10 +21130,14 @@ async function buildSixtagramAttachment(uid, attachment) {
   // (buildPresenceEntities) yeniden inşa edilir — eskiden burada olan
   // mantığın AYNISI, ortak fonksiyona taşındı.
   if (type === 'parkPhoto') {
-    const frozen = await tryUseFrozenSnapshot(uid, 'parkPhoto', null);
+    const frozen = await tryUseFrozenSnapshot(uid, 'parkPhoto', null, safeShotId(attachment.frame?.shotId));
     if (frozen) {
       return { type: 'parkPhoto', originX: frozen.originX, originY: frozen.originY, entities: frozen.entities };
     }
+    // v85: dondurulmuş kare yoksa (ör. makine açılırken ağ hatası) paylaşımla
+    // gelen önizleme karesi aynı doğrulamayla kullanılır
+    const seen = await buildFrameFromClient({ uid, frame: attachment.frame, presenceCollection: 'parkPresence', locationFilter: null, radius: 170, includeNpc: true });
+    if (seen) return { type: 'parkPhoto', originX: seen.originX, originY: seen.originY, entities: seen.entities };
 
     const live = await buildPresenceEntities({
       uid,
@@ -21086,11 +21194,19 @@ async function buildSixtagramAttachment(uid, attachment) {
       return { imam: live.imam, beggars: live.beggars };
     };
 
-    const frozen = await tryUseFrozenSnapshot(uid, 'interiorPhoto', locationId);
+    const frozen = await tryUseFrozenSnapshot(uid, 'interiorPhoto', locationId, safeShotId(attachment.frame?.shotId));
     if (frozen) {
       return {
         type: 'interiorPhoto', locationId, originX: frozen.originX, originY: frozen.originY, entities: frozen.entities,
         ...(await mosqueExtra(frozen)),
+      };
+    }
+    // v85: dondurulmuş kare yoksa paylaşımla gelen önizleme karesi (doğrulanmış)
+    const seen = await buildFrameFromClient({ uid, frame: attachment.frame, presenceCollection: 'interiorPresence', locationFilter: locationId, radius: 170, includeNpc: false });
+    if (seen) {
+      return {
+        type: 'interiorPhoto', locationId, originX: seen.originX, originY: seen.originY, entities: seen.entities,
+        ...(await mosqueExtra(null)),
       };
     }
 

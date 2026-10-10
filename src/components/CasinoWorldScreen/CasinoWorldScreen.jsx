@@ -19,7 +19,7 @@ import '../../styles/worldScreenChrome.css';
 import './CasinoWorldScreen.css';
 import NearbyPlayersButton from '../NearbyPlayers/NearbyPlayersButton';
 import WorldEmoteButton from '../WorldEmotes/WorldEmoteButton';
-import { createEmoteTracker } from '../../lib/worldEmotes';
+import { createEmoteTracker, freezeEmote, wirePhotoFrame } from '../../lib/worldEmotes';
 import { useHeldItem } from '../../hooks/useHeldItem';
 import GiftToast from '../NearbyPlayers/GiftToast';
 
@@ -762,7 +762,11 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist }) {
           avatar: o.avatar,
           pose: o.pose === 'sit' ? 'sit' : (o.pose || 'idle'),
           facing: o.facing || 'down',
+          holding: o.holding || null,
           isSelf: false,
+          uid: o.uid,
+          // v85: o anki hareket (dans vb.) fotoğrafa dondurulur
+          emote: freezeEmote(worldEmotes.observe(o.uid, o.emote, o.emoteTs)),
           bubbleText: bubble?.text || null,
           bubbleTs: bubble?.ts || 0,
         };
@@ -773,7 +777,9 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist }) {
       avatar: playerRef.current?.avatar,
       pose: sittingSeatRef.current ? 'sit' : (poseRef.current || 'idle'),
       facing: facingRef.current,
+      holding: holdingRef.current || null,
       isSelf: true,
+      emote: freezeEmote(worldEmotes.get('self')),
       scale: AVATAR_SCALE,
       bubbleText: selfBubble?.text || null,
       bubbleTs: selfBubble?.ts || 0,
@@ -792,7 +798,7 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist }) {
     cameraOpenRef.current = true;
     // Yeni istek (madde 1): makine AÇILDIĞI anda o anki kareyi sunucuda
     // dondur (bkz. functions/index.js captureCameraSnapshot).
-    captureCameraSnapshot({ type: 'interiorPhoto', locationId: 'gazino' }).catch(() => {});
+    captureCameraSnapshot({ type: 'interiorPhoto', locationId: 'gazino', frame: wirePhotoFrame(frame) }).catch(() => {});
   }
 
   function closeCamera() {
@@ -826,6 +832,7 @@ export default function CasinoWorldScreen({ onExit, onOpenHeist }) {
       await createSixtagramPost(cameraCaption, {
         type: 'interiorPhoto', locationId: 'gazino',
         pose: self?.pose, facing: self?.facing, x: frame?.originX, y: frame?.originY,
+        frame: wirePhotoFrame(frame), // v85: önizlemede görülen kare
         bubbleText: self?.bubbleText || null,
       });
       setCameraDone(true);

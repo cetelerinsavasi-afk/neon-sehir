@@ -16,7 +16,7 @@ import '../../styles/worldScreenChrome.css';
 import './KarakolWorldScreen.css';
 import NearbyPlayersButton from '../NearbyPlayers/NearbyPlayersButton';
 import WorldEmoteButton from '../WorldEmotes/WorldEmoteButton';
-import { createEmoteTracker } from '../../lib/worldEmotes';
+import { createEmoteTracker, freezeEmote, wirePhotoFrame } from '../../lib/worldEmotes';
 
 // --- Karakol içi (madde 3/4 revizyonu + madde 17 canlı/çok oyunculu) -------
 // Kullanıcının başka bir Claude oturumuna hazırlattığı referans örneğe göre
@@ -684,6 +684,9 @@ export default function KarakolWorldScreen({ onExit }) {
           pose: o.pose || 'idle',
           facing: o.facing || 'down',
           isSelf: false,
+          uid: o.uid,
+          // v85: o anki hareket (dans vb.) fotoğrafa dondurulur
+          emote: freezeEmote(worldEmotes.observe(o.uid, o.emote, o.emoteTs)),
           bubbleText: bubble?.text || null,
           bubbleTs: bubble?.ts || 0,
         };
@@ -695,6 +698,7 @@ export default function KarakolWorldScreen({ onExit }) {
       pose: poseRef.current || 'idle',
       facing: facingRef.current,
       isSelf: true,
+      emote: freezeEmote(worldEmotes.get('self')),
       scale: AVATAR_SCALE,
       bubbleText: selfBubble?.text || null,
       bubbleTs: selfBubble?.ts || 0,
@@ -713,7 +717,7 @@ export default function KarakolWorldScreen({ onExit }) {
     cameraOpenRef.current = true;
     // Yeni istek (madde 1): makine AÇILDIĞI anda o anki kareyi sunucuda
     // dondur (bkz. functions/index.js captureCameraSnapshot).
-    captureCameraSnapshot({ type: 'interiorPhoto', locationId: 'karakol' }).catch(() => {});
+    captureCameraSnapshot({ type: 'interiorPhoto', locationId: 'karakol', frame: wirePhotoFrame(frame) }).catch(() => {});
   }
 
   function closeCamera() {
@@ -747,6 +751,7 @@ export default function KarakolWorldScreen({ onExit }) {
       await createSixtagramPost(cameraCaption, {
         type: 'interiorPhoto', locationId: 'karakol',
         pose: self?.pose, facing: self?.facing, x: frame?.originX, y: frame?.originY,
+        frame: wirePhotoFrame(frame), // v85: önizlemede görülen kare
         bubbleText: self?.bubbleText || null,
       });
       setCameraDone(true);

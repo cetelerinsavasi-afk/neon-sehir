@@ -50,7 +50,8 @@ function renderHousePhoto(att, key) {
       try {
         eng = createHouseEngine(host, { canEdit: false, selfUid: null, snapshot: true });
         eng.setDesign(att.design || { items: [] }, { force: true });
-        eng.setOthers((att.people || []).map((p) => ({ ...p, holdingVisible: p.holding || null })));
+        // v85: çekim anındaki hareket (dans vb.) ve yürüme adımı dondurulmuş gelir
+        eng.setOthers((att.people || []).map((p) => ({ ...p, holdingVisible: p.holding || null, frozen: { moving: !!p.moving, wp: p.wp ? 1 : 0, emote: p.emote || null } })));
         const t0 = Date.now();
         while (!eng.avatarsReady() && Date.now() - t0 < 5000) await wait(120);
         // çekim anındaki mesaj balonları (sunucu dondurdu)
@@ -72,7 +73,7 @@ function renderHousePhoto(att, key) {
 }
 
 export default function HousePhoto({ attachment }) {
-  const key = JSON.stringify([attachment.houseId, attachment.cam, attachment.people?.length, attachment.design?.items?.length, (attachment.people || []).map((p) => `${p.says?.length || 0}${p.holding || ''}`)]);
+  const key = JSON.stringify([attachment.houseId, attachment.cam, attachment.people?.length, attachment.design?.items?.length, (attachment.people || []).map((p) => `${p.says?.length || 0}${p.holding || ''}${p.emote?.kind || ''}${p.emote?.at || ''}${p.x},${p.z}`)]);
   const [src, setSrc] = useState(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {

@@ -407,6 +407,8 @@ export function renderPhotoFrame(ctx, { width, height, originX, originY, entitie
         holding: e.holding,
         name: e.name,
         isSelf: e.isSelf,
+        // v85 — çekim anındaki hareket (dans, zıpla...) — dondurulmuş { kind, at }
+        emote: e.emote && Number.isFinite(e.emote.at) ? e.emote : null,
       },
       getAvatarImage,
       { showName: false, scale: e.scale ?? focalScale, petStatic: true }

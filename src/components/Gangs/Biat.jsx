@@ -12,7 +12,7 @@ import { LEADERS, fmt } from './gangConstants';
 
 export const BIAT_SUMMARY =
   'Biat ettiğin çeteyle birbirinize saldıramazsınız ve onun tırlarını savunabilirsiniz. Pazar ticaret yolu savaşına kendi adınıza katılamazsınız: üyelerinizin tüm hasarı biat ettiğiniz çetenin gücüne eklenir. Bahisli savaşlara katkınız olmaz.';
-export const BIAT_TIMING = "Karşı çetenin Mafya Babası ya da Sağ Kolu kabul ederse 00:00'da başlar; taraflardan biri bozarsa 00:00'da biter.";
+export const BIAT_TIMING = "Karşı çetenin Mafya Babası ya da Sağ Kolu kabul ederse 00:00'da başlar; iki tarafın da Mafya Babası ya da Sağ Kolu bozabilir, bozulursa 00:00'da biter. Biat ittifaktan bağımsızdır: ittifakınız olsa da olmasa da biat edebilir, biatı bozunca ittifak sürer.";
 
 const STATUS_LABEL = {
   requested: '⏳ Cevap bekleniyor',
@@ -58,7 +58,7 @@ export function BiatSheet({ gangId, blockedIds = [], onClose }) {
     .filter((g) => g.id !== gangId && g.status === 'active')
     .map((g) => ({
       g,
-      reason: g.biat?.gangId ? `${g.biat.name || 'başka bir çete'} çetesine biat etmiş` : blockedIds.includes(g.id) ? 'Aranızda ittifak/bahis var' : null,
+      reason: g.biat?.gangId ? `${g.biat.name || 'başka bir çete'} çetesine biat etmiş` : blockedIds.includes(g.id) ? 'Aranızda biat süreci/bahis var' : null,
     }))
     .sort((a, b) => Number(Boolean(a.reason)) - Number(Boolean(b.reason)) || Number(b.g.lastSundayPower || 0) - Number(a.g.lastSundayPower || 0));
   return (
@@ -132,7 +132,8 @@ export function BiatStatus({ d, info }) {
               <b>{mine.names?.[mine.overlordId]}</b>
               <span className="gx-mini">{STATUS_LABEL[mine.status]}</span>
             </div>
-            {d.rank === 'baba' && mine.status !== 'ending' && (
+            {/* v85.1: biat eden tarafta da Mafya Babası + Sağ Kol bozabilir */}
+            {lead && mine.status !== 'ending' && (
               <Btn small kind="danger" onClick={() => setEnd(mine)}>
                 {mine.status === 'active' ? 'Biatı boz' : 'Geri çek'}
               </Btn>
@@ -172,7 +173,13 @@ export function BiatStatus({ d, info }) {
           icon="💔"
           danger
           title={end.status === 'active' ? `${end.names?.[otherOf(end)]} ile biat bozulsun mu?` : 'Biat süreci iptal edilsin mi?'}
-          lines={end.status === 'active' ? ["Biat bu gece 00:00'da sona erer."] : ['Teklif / başlangıç hemen iptal edilir.']}
+          lines={[
+            end.status === 'active' ? "Biat bu gece 00:00'da sona erer." : 'Teklif / başlangıç hemen iptal edilir.',
+            // v85.1: biat ve ittifak bağımsız — biatı bozmak ittifaka dokunmaz
+            ...((d.alliances || []).some((a) => a.gangIds?.includes(otherOf(end)) && ['accepted', 'active', 'ending'].includes(a.status))
+              ? ['🤝 Bu çeteyle ittifakınız devam eder (ittifakı ayrıca bozabilirsiniz).']
+              : []),
+          ]}
           confirmLabel={end.status === 'active' ? 'Boz' : 'İptal et'}
           busy={busy === 'endBiat'}
           onCancel={() => setEnd(null)}

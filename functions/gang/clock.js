@@ -186,7 +186,7 @@ export function createClock(core, actions) {
           const def = (await tx.get(d.ref)).data();
           if (!def || def.announced || def.status !== 'active') return;
           const alSnap = await tx.get(ctx.ref.alliances().where('gangIds', 'array-contains', def.defenderGangId));
-          const allies = alSnap.docs.map((x) => x.data()).filter((a) => ['active', 'ending'].includes(a.status)).map((a) => a.gangIds.find((g) => g !== def.defenderGangId));
+          const allies = alSnap.docs.map((x) => x.data()).filter((a) => ['active', 'ending'].includes(a.status)).map((a) => a.gangIds.find((g) => g !== def.defenderGangId)).filter((g, i, arr) => arr.indexOf(g) === i);
           const attacks = [];
           for (const id of def.attackWarIds || []) {
             const s = await tx.get(ctx.ref.war(id));

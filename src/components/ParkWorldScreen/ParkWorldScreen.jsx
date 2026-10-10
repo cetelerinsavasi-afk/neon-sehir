@@ -19,7 +19,7 @@ import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import './ParkWorldScreen.css';
 import NearbyPlayersButton from '../NearbyPlayers/NearbyPlayersButton';
 import WorldEmoteButton from '../WorldEmotes/WorldEmoteButton';
-import { createEmoteTracker } from '../../lib/worldEmotes';
+import { createEmoteTracker, freezeEmote, wirePhotoFrame } from '../../lib/worldEmotes';
 import { useHeldItem } from '../../hooks/useHeldItem';
 import GiftToast from '../NearbyPlayers/GiftToast';
 
@@ -835,6 +835,9 @@ export default function ParkWorldScreen({ onExit }) {
           facing: o.facing || 'down',
           holding: o.holding || null,
           isSelf: false,
+          uid: o.uid,
+          // v85: o anki hareket (dans vb.) fotoğrafa dondurulur
+          emote: freezeEmote(worldEmotes.observe(o.uid, o.emote, o.emoteTs)),
           bubbleText: bubble?.text || null,
           bubbleTs: bubble?.ts || 0,
         };
@@ -847,6 +850,7 @@ export default function ParkWorldScreen({ onExit }) {
       facing: facingRef.current,
       holding: holdingRef.current,
       isSelf: true,
+      emote: freezeEmote(worldEmotes.get('self')),
       bubbleText: selfBubble?.text || null,
       bubbleTs: selfBubble?.ts || 0,
     };
@@ -883,7 +887,7 @@ export default function ParkWorldScreen({ onExit }) {
     // functions/index.js captureCameraSnapshot/tryUseFrozenSnapshot).
     // Başarısız olursa sessizce yutulur — sunucu tarafında CANLI veri
     // yedek katmanı zaten var, fotoğraf özelliği bu yüzden engellenmez.
-    captureCameraSnapshot({ type: 'parkPhoto' }).catch(() => {});
+    captureCameraSnapshot({ type: 'parkPhoto', frame: wirePhotoFrame(frame) }).catch(() => {});
   }
 
   function closeCamera() {
@@ -914,7 +918,7 @@ export default function ParkWorldScreen({ onExit }) {
     setCameraBusy(true);
     setCameraError(null);
     try {
-      await createSixtagramPost(cameraCaption, { type: 'parkPhoto' });
+      await createSixtagramPost(cameraCaption, { type: 'parkPhoto', frame: wirePhotoFrame(cameraFrameRef.current) });
       setCameraDone(true);
       cameraDoneRef.current = true;
     } catch (err) {

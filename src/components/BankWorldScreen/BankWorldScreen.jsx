@@ -16,7 +16,7 @@ import '../../styles/worldScreenChrome.css';
 import './BankWorldScreen.css';
 import NearbyPlayersButton from '../NearbyPlayers/NearbyPlayersButton';
 import WorldEmoteButton from '../WorldEmotes/WorldEmoteButton';
-import { createEmoteTracker } from '../../lib/worldEmotes';
+import { createEmoteTracker, freezeEmote, wirePhotoFrame } from '../../lib/worldEmotes';
 
 // --- Banka içi (madde 2-4) -------------------------------------------------
 // Park'takiyle aynı "sabit mekan, karakter yürüyor" mantığı — ama TEK
@@ -644,6 +644,9 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
           pose: o.pose === 'sit' ? 'sit' : (o.pose || 'idle'),
           facing: o.facing || 'down',
           isSelf: false,
+          uid: o.uid,
+          // v85: o anki hareket (dans vb.) fotoğrafa dondurulur
+          emote: freezeEmote(worldEmotes.observe(o.uid, o.emote, o.emoteTs)),
           bubbleText: bubble?.text || null,
           bubbleTs: bubble?.ts || 0,
         };
@@ -655,6 +658,7 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
       pose: sittingSeatRef.current ? 'sit' : (poseRef.current || 'idle'),
       facing: facingRef.current,
       isSelf: true,
+      emote: freezeEmote(worldEmotes.get('self')),
       scale: AVATAR_SCALE,
       bubbleText: selfBubble?.text || null,
       bubbleTs: selfBubble?.ts || 0,
@@ -673,7 +677,7 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
     cameraOpenRef.current = true;
     // Yeni istek (madde 1): makine AÇILDIĞI anda o anki kareyi sunucuda
     // dondur (bkz. functions/index.js captureCameraSnapshot).
-    captureCameraSnapshot({ type: 'interiorPhoto', locationId: 'banka' }).catch(() => {});
+    captureCameraSnapshot({ type: 'interiorPhoto', locationId: 'banka', frame: wirePhotoFrame(frame) }).catch(() => {});
   }
 
   function closeCamera() {
@@ -727,6 +731,7 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
       await createSixtagramPost(cameraCaption, {
         type: 'interiorPhoto', locationId: 'banka',
         pose: self?.pose, facing: self?.facing, x: frame?.originX, y: frame?.originY,
+        frame: wirePhotoFrame(frame), // v85: önizlemede görülen kare
         bubbleText: self?.bubbleText || null,
       });
       setCameraDone(true);

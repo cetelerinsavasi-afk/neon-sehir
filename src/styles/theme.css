@@ -35,6 +35,50 @@ button {
   font-family: inherit;
 }
 
+/* v85 — "oyun gibi" dokunma (tüm ekranlar):
+   • Android: dokunulan butonun etrafındaki şeffaf mavi vurgu kapatıldı.
+   • iPhone: butona/ekrana basılı tutunca çıkan metin seçme / "Kopyala"
+     menüsü ve büyüteç kapatıldı (yarışta NOS/sağ/sol basılı tutulurken
+     araya giriyordu). Yazı yazılan alanlar (input/textarea) etkilenmez. */
+*,
+*::before,
+*::after {
+  -webkit-tap-highlight-color: transparent;
+}
+html,
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+input,
+textarea,
+select,
+[contenteditable='true'],
+[contenteditable='true'] *,
+.selectable,
+.selectable * {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+button,
+[role='button'],
+a {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation; /* çift dokunma yakınlaştırması + 300 ms gecikme yok */
+}
+/* fareyle/dokunmayla basınca çıkan odak çerçevesi gizlenir; klavyeyle
+   gezinirken (focus-visible) erişilebilirlik için görünmeye devam eder */
+button:focus:not(:focus-visible),
+[role='button']:focus:not(:focus-visible),
+a:focus:not(:focus-visible),
+[tabindex]:focus:not(:focus-visible) {
+  outline: none;
+}
+
 /* gold-coin-icon — 🪙 emojisi bazı platformlarda (masaüstü tarayıcılar,
    bazı iPhone sürümleri) hiç görünmüyor ya da gümüşi/soluk çıkıyor —
    bkz. SlotScreen'deki .slot-gold-coin. Bu yüzden altın simgesi emoji

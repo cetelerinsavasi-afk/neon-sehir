@@ -15,7 +15,7 @@ import { createSixtagramPost, enterInterior, captureCameraSnapshot } from '../..
 import '../../styles/worldScreenChrome.css';
 import NearbyPlayersButton from '../NearbyPlayers/NearbyPlayersButton';
 import WorldEmoteButton from '../WorldEmotes/WorldEmoteButton';
-import { createEmoteTracker } from '../../lib/worldEmotes';
+import { createEmoteTracker, freezeEmote, wirePhotoFrame } from '../../lib/worldEmotes';
 
 // --- Modifiye Garajı içi -----------------------------------------------
 // BankWorldScreen ile BİREBİR aynı iskelet (sabit mekan, karakter yürüyor,
@@ -702,6 +702,9 @@ export default function TuningGarageWorldScreen({ onExit, onOpenHeist }) {
           pose: o.pose || 'idle',
           facing: o.facing || 'down',
           isSelf: false,
+          uid: o.uid,
+          // v85: o anki hareket (dans vb.) fotoğrafa dondurulur
+          emote: freezeEmote(worldEmotes.observe(o.uid, o.emote, o.emoteTs)),
           bubbleText: bubble?.text || null,
           bubbleTs: bubble?.ts || 0,
         };
@@ -713,6 +716,7 @@ export default function TuningGarageWorldScreen({ onExit, onOpenHeist }) {
       pose: poseRef.current || 'idle',
       facing: facingRef.current,
       isSelf: true,
+      emote: freezeEmote(worldEmotes.get('self')),
       scale: AVATAR_SCALE,
       bubbleText: selfBubble?.text || null,
       bubbleTs: selfBubble?.ts || 0,
@@ -731,7 +735,7 @@ export default function TuningGarageWorldScreen({ onExit, onOpenHeist }) {
     cameraOpenRef.current = true;
     // Yeni istek (madde 1): makine AÇILDIĞI anda o anki kareyi sunucuda
     // dondur (bkz. functions/index.js captureCameraSnapshot).
-    captureCameraSnapshot({ type: 'interiorPhoto', locationId: 'modifiye_garaji' }).catch(() => {});
+    captureCameraSnapshot({ type: 'interiorPhoto', locationId: 'modifiye_garaji', frame: wirePhotoFrame(frame) }).catch(() => {});
   }
 
   function closeCamera() {
@@ -765,6 +769,7 @@ export default function TuningGarageWorldScreen({ onExit, onOpenHeist }) {
       await createSixtagramPost(cameraCaption, {
         type: 'interiorPhoto', locationId: 'modifiye_garaji',
         pose: self?.pose, facing: self?.facing, x: frame?.originX, y: frame?.originY,
+        frame: wirePhotoFrame(frame), // v85: önizlemede görülen kare
         bubbleText: self?.bubbleText || null,
       });
       setCameraDone(true);

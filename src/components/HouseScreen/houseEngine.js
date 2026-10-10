@@ -393,6 +393,8 @@ class AvatarFigure {
         this.z += (dz / d) * step;
       }
       this.moving = d > 0.05;
+      // v85 — fotoğraf karesi: çekim anındaki yürüme durumu aynen
+      if (this.frozenMoving != null) this.moving = this.frozenMoving;
     }
     this.group.position.set(this.x, 0, this.z);
     const ang = Math.atan2(camera.position.x - this.x, camera.position.z - this.z);
@@ -2058,6 +2060,19 @@ export function createHouseEngine(
       ctx.textBaseline = 'middle';
       ctx.fillText(name, x + iw / 2, top + nh / 2 + 0.5 * s);
       if (held) ctx.drawImage(held, x - nw / 2 + 5 * s, top + 1 * s, nh - 2 * s, nh - 2 * s);
+      // v85 — o an oynayan hareketin emojisi (dans 💃 vb.) fotoğrafta da görünsün
+      if (fig.emote && EMOTE_EMOJI[fig.emote.kind]) {
+        const e = (now - fig.emote.t0) / 1000;
+        if (e >= 0 && e <= EMOTE_MS / 1000) {
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, Math.min(1, e / 0.2, (EMOTE_MS / 1000 - e) / 0.3));
+          ctx.font = `${22 * s}px ${font}`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(EMOTE_EMOJI[fig.emote.kind], x + nw / 2 + 14 * s, y - nh / 2 - 4 * s + Math.sin(e * 4) * 3 * s);
+          ctx.restore();
+        }
+      }
       // balonlar (en yenisi altta, ismin hemen üstünde)
       ctx.font = `${13 * s}px ${font}`;
       for (let i = bubbles.length - 1; i >= 0; i--) {
@@ -2433,6 +2448,8 @@ export function createHouseEngine(
         o.fig.setHolding(p.holdingVisible || null);
         const [sid, sidx] = typeof p.seat === 'string' ? p.seat.split(':') : [];
         o.seat = sid ? { id: sid, idx: Number(sidx) || 0 } : null;
+        // v85 — paylaşılan fotoğraf: çekim anındaki hareket/yürüme dondurulmuş gelir
+        o.frozen = p.frozen || null;
         if (p.emote && Number(p.emoteTs || 0) > o.emoteTs) {
           o.emoteTs = Number(p.emoteTs);
           if (Date.now() - o.emoteTs < EMOTE_MS) o.fig.playEmote(p.emote);
@@ -2519,6 +2536,20 @@ export function createHouseEngine(
       }
       if (b.textContent !== text) b.textContent = text;
     },
+    // v85 — fotoğraf çekildiği AN ekranda görünen herkesin durumu (konum,
+    // yön, koltuk, yürüme, o an oynayan hareket). Paylaşılan kare bununla
+    // çizilir → paylaşım anındaki konum değil, çekim anı görünür.
+    getPeopleState() {
+      const now = performance.now();
+      const r = (v) => Math.round(v * 100) / 100;
+      const em = (fig) => (fig?.emote && EMOTE_EMOJI[fig.emote.kind] && now - fig.emote.t0 >= 0 && now - fig.emote.t0 <= EMOTE_MS ? { kind: fig.emote.kind, at: Math.round(now - fig.emote.t0) } : null);
+      const wp = (fig) => (Math.floor((fig?.walkT || 0) / 0.16) % 2 ? 1 : 0);
+      const seatStr = (st) => (st ? `${st.id}:${st.idx}` : null);
+      const list = [];
+      if (self.fig && selfUid) list.push({ uid: selfUid, x: r(self.x), z: r(self.z), left: !!self.fig.facingLeft, seat: seatStr(self.seat), moving: !!self.fig.moving, wp: wp(self.fig), emote: em(self.fig) });
+      others.forEach((o, uid) => list.push({ uid, x: r(o.fig.x), z: r(o.fig.z), left: !!o.fig.facingLeft, seat: seatStr(o.seat), moving: !!o.fig.moving, wp: wp(o.fig), emote: em(o.fig) }));
+      return list;
+    },
     getCameraPose() {
       const dir = new THREE.Vector3();
       camera.getWorldDirection(dir);
@@ -2560,11 +2591,18 @@ export function createHouseEngine(
       view = pose.py > H ? '2d' : '3d';
       updateWalls();
       updateLightPool(new THREE.Vector3(pose.px, 1, pose.pz));
+      const now = performance.now();
       others.forEach((o) => {
         o.fig.x = o.fig.tx;
         o.fig.z = o.fig.tz;
+        // v85 — çekim anındaki hareket (dans...) ve yürüme adımı
+        if (o.frozen) {
+          o.fig.frozenMoving = Boolean(o.frozen.moving);
+          o.fig.walkT = o.frozen.wp ? 0.16 : 0;
+          o.fig.emote = o.frozen.emote && EMOTE_EMOJI[o.frozen.emote.kind] ? { kind: o.frozen.emote.kind, t0: now - Math.max(0, Math.min(EMOTE_MS, Number(o.frozen.emote.at) || 0)) } : null;
+        }
         const sw = o.seat ? seatWorld(o.seat, new THREE.Vector3()) : null;
-        o.fig.update(0, camera, performance.now(), sw, seatStand(o.seat));
+        o.fig.update(0, camera, now, sw, seatStand(o.seat));
       });
       updateShowers();
       objs.forEach((e) => e.data.p === 1 && e.obj.userData.ctl?.tick?.(1.3, 0.016));

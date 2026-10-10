@@ -22,6 +22,21 @@ export function pairKeyOf(a, b) {
   return [a, b].sort().join('__');
 }
 
+// v85 — biat artık ittifaktan AYRI belgede (alliances/{çiftAnahtarı}__biat):
+// iki çete müttefikken biri diğerine biat edebilir. v84'te açılmış eski
+// biatlar çift anahtarında kalır → okurken ikisine de bakılır.
+export function biatKeyOf(a, b) {
+  return `${pairKeyOf(a, b)}__biat`;
+}
+
+// Bir ikilinin canlı biat belgesi (yeni anahtar önce, sonra eski v84 anahtarı)
+export async function readPairBiat(tx, ctx, a, b) {
+  const get = (ref) => (tx ? tx.get(ref) : ref.get());
+  const [nb, ob] = await Promise.all([get(ctx.ref.alliance(biatKeyOf(a, b))), get(ctx.ref.alliance(pairKeyOf(a, b)))]);
+  const live = (snap) => (snap.exists && isBiat(snap.data()) && BIAT_LIVE.includes(snap.data().status) ? { id: snap.id, ...snap.data() } : null);
+  return live(nb) || live(ob);
+}
+
 export function createWarActions(core) {
   const { FV, fail, readMembership, readWallet, ledger, gangLog, announce, notify, posInt, requireGangMember, requireIntel, requestGuard } = core;
 
@@ -75,8 +90,7 @@ export function createWarActions(core) {
           // v84 — biat eden çete Pazar savaşına biat ettiği çete adına katılır
           const g = (await tx.get(ctx.ref.gang(gangId))).data();
           if (g?.biat?.gangId) {
-            const [al, og] = await Promise.all([tx.get(ctx.ref.alliance(pairKeyOf(gangId, g.biat.gangId))), tx.get(ctx.ref.gang(g.biat.gangId))]);
-            const a = al.data();
+            const [a, og] = await Promise.all([readPairBiat(tx, ctx, gangId, g.biat.gangId), tx.get(ctx.ref.gang(g.biat.gangId))]);
             if (isBiat(a) && a.vassalId === gangId && ALLIANCE_DEFENSIVE.includes(a.status) && og.data()?.status === 'active') {
               sideKey = g.biat.gangId;
               org.via = { gangId, name: g.name || '', logo: g.logo || null, overlordName: og.data().name || '', overlordLogo: og.data().logo || null };
@@ -90,8 +104,8 @@ export function createWarActions(core) {
           sideKey = 'attacker';
         } else if (war.type === 'defense') {
           if (war.defenderGangId !== gangId) {
-            const al = await tx.get(ctx.ref.alliance(pairKeyOf(gangId, war.defenderGangId)));
-            if (!ALLIANCE_DEFENSIVE.includes(al.data()?.status)) fail('permission-denied', 'Sadece tır sahibi ve müttefikleri savunabilir.');
+            const [al, bi] = await Promise.all([tx.get(ctx.ref.alliance(pairKeyOf(gangId, war.defenderGangId))), readPairBiat(tx, ctx, gangId, war.defenderGangId)]);
+            if (!ALLIANCE_DEFENSIVE.includes(al.data()?.status) && !ALLIANCE_DEFENSIVE.includes(bi?.status)) fail('permission-denied', 'Sadece tır sahibi ve müttefikleri savunabilir.');
           }
           sideKey = gangId;
         } else {
@@ -196,11 +210,19 @@ export function createWarActions(core) {
 
   async function blockingRelations(tx, ctx, a, b) {
     const pk = pairKeyOf(a, b);
-    const [al, wars] = await Promise.all([tx.get(ctx.ref.alliance(pk)), tx.get(ctx.ref.wars().where('pairKey', '==', pk))]);
-    const allianceStatus = al.data()?.status || null;
-    const allianceKind = isBiat(al.data()) ? 'biat' : 'alliance';
+    const [al, biat, wars] = await Promise.all([tx.get(ctx.ref.alliance(pk)), readPairBiat(tx, ctx, a, b), tx.get(ctx.ref.wars().where('pairKey', '==', pk))]);
+    // v85: ittifak ve biat ayrı belgeler — eski (v84) biat çift anahtarında durabilir
+    const ally = isBiat(al.data()) ? null : al.data() || null;
+    const pactStatus = ally?.status || null;
+    const biatStatus = biat?.status || null;
+    const allyBlocks = ALLIANCE_BLOCKING.includes(pactStatus);
+    const biatBlocks = ALLIANCE_BLOCKING.includes(biatStatus);
+    // allianceStatus/allianceKind: geriye uyum — herhangi bir bağ (ittifak öncelikli)
+    const allianceStatus = allyBlocks || pactStatus === 'requested' ? pactStatus : biatStatus || pactStatus;
+    // engel mesajı: engeli gerçekten koyan bağın adı (biat engelliyorsa "Biat varken…")
+    const allianceKind = allyBlocks ? 'alliance' : biatBlocks ? 'biat' : pactStatus ? 'alliance' : biatStatus ? 'biat' : 'alliance';
     const liveWars = wars.docs.map((d) => ({ id: d.id, ...d.data() })).filter((w) => ['offered', 'accepted', 'active'].includes(w.status));
-    return { pk, allianceStatus, allianceKind, allianceBlocks: ALLIANCE_BLOCKING.includes(allianceStatus), liveWars };
+    return { pk, bk: biatKeyOf(a, b), legacyBiatAtPk: isBiat(al.data()), pactStatus, biatStatus, biat, allianceStatus, allianceKind, allianceBlocks: allyBlocks || biatBlocks, liveWars };
   }
 
   const LEADERS = ['baba', 'sagkol'];
@@ -398,7 +420,14 @@ export function createWarActions(core) {
       const [myGang, targetGang] = await Promise.all([tx.get(ctx.ref.gang(gangId)), tx.get(ctx.ref.gang(targetGangId))]);
       if (targetGang.data()?.status !== 'active') fail('failed-precondition', 'Bu çete artık yok.');
       const rel = await blockingRelations(tx, ctx, gangId, targetGangId);
-      if (['requested', ...ALLIANCE_BLOCKING].includes(rel.allianceStatus)) fail('failed-precondition', rel.allianceKind === 'biat' ? 'Bu çeteyle aranızda biat var.' : 'Bu çeteyle zaten bir ittifak süreci var.');
+      if (['requested', ...ALLIANCE_BLOCKING].includes(rel.pactStatus)) fail('failed-precondition', 'Bu çeteyle zaten bir ittifak süreci var.');
+      // v85.1: biat ittifaka engel DEĞİL — ikisi bağımsız yönetilir. v84'ten kalma
+      // bir biat çift anahtarında duruyorsa önce kendi belgesine (…__biat) taşınır,
+      // ittifak onun üstüne yazmaz.
+      if (rel.legacyBiatAtPk && rel.biat && rel.biat.id === rel.pk) {
+        const { id: _legacyId, ...legacy } = rel.biat;
+        tx.set(ctx.ref.alliance(rel.bk), { ...legacy, migratedFrom: rel.pk });
+      }
       if (rel.liveWars.length > 0) fail('failed-precondition', 'Aranızda süren bir bahis/sabotaj varken ittifak kurulamaz.');
       const mg = myGang.data();
       const tg = targetGang.data();
@@ -517,9 +546,10 @@ export function createWarActions(core) {
       if (mine.asVassal) fail('failed-precondition', mine.asVassal.status === 'requested' ? 'Zaten cevap bekleyen bir biat teklifiniz var.' : 'Zaten bir çeteye biat ettiniz.');
       if (mine.vassals.length > 0) fail('failed-precondition', 'Size biat eden çeteler varken başka bir çeteye biat edemezsiniz.');
       if (theirs.asVassal && theirs.asVassal.status !== 'requested') fail('failed-precondition', `${tg.name} başka bir çeteye biat etmiş — ona biat edilemez.`);
-      if (['requested', ...ALLIANCE_BLOCKING].includes(rel.allianceStatus)) fail('failed-precondition', 'Bu çeteyle aranızda ittifak süreci var — biat için önce ittifakı bitirin.');
+      // v85: ittifak biata engel DEĞİL — müttefik çeteler de birbirine biat edebilir.
+      if (rel.biatStatus) fail('failed-precondition', 'Bu çeteyle aranızda zaten bir biat süreci var.');
       if (rel.liveWars.length > 0) fail('failed-precondition', 'Aranızda süren bir bahis/sabotaj varken biat edilemez.');
-      tx.set(ctx.ref.alliance(rel.pk), {
+      tx.set(ctx.ref.alliance(rel.bk), {
         kind: 'biat',
         gangIds: [gangId, targetGangId].sort(),
         names: { [gangId]: mg.name, [targetGangId]: tg.name },
@@ -538,7 +568,7 @@ export function createWarActions(core) {
       announce(tx, ctx, targetGangId, '⛓️', `${mg.name} çetesi size biat etmek istiyor! Mafya Babası ya da Sağ Kol kabul edebilir.`);
       notify(tx, ctx, tg.babaId, `⛓️ ${mg.name} çetesi size biat etmek istiyor.`, 'biat');
       ctx.logs.push({ gang: 'biat_requested', world: ctx.worldId, vassal: gangId, overlord: targetGangId });
-      const res = { biatId: rel.pk };
+      const res = { biatId: rel.bk };
       guard.save(res);
       return res;
     });
@@ -574,7 +604,8 @@ export function createWarActions(core) {
     });
   }
 
-  // Biat eden tarafta sadece Mafya Babası; biat edilen tarafta Baba + Sağ Kol bozabilir.
+  // v85.1: iki tarafta da Mafya Babası ve Sağ Kol bozabilir. Biat ittifaktan
+  // bağımsızdır: biatı bozmak ittifaka dokunmaz (ittifak ayrı belgede).
   async function endBiat(ctx, data) {
     const biatId = String(data.biatId || '');
     return core.db.runTransaction(async (tx) => {
@@ -582,7 +613,6 @@ export function createWarActions(core) {
       const al = (await tx.get(ctx.ref.alliance(biatId))).data();
       if (!al || !isBiat(al) || !al.gangIds.includes(gangId)) fail('not-found', 'Biat bulunamadı.');
       const isVassal = al.vassalId === gangId;
-      if (isVassal && me.rank !== 'baba') fail('permission-denied', 'Biatı sadece Mafya Babası bozabilir.');
       const other = isVassal ? al.overlordId : al.vassalId;
       if (al.status === 'requested' || al.status === 'accepted') {
         tx.update(ctx.ref.alliance(biatId), { status: 'ended', endedAtMs: ctx.now, endedBy: gangId });
@@ -621,7 +651,8 @@ export function createWarActions(core) {
     return snap.docs
       .map((d) => d.data())
       .filter((a) => ALLIANCE_DEFENSIVE.includes(a.status))
-      .map((a) => a.gangIds.find((g) => g !== gangId));
+      .map((a) => a.gangIds.find((g) => g !== gangId))
+      .filter((g, i, arr) => arr.indexOf(g) === i); // v85: ittifak + biat aynı çete → tek sayılır
   }
 
   function defenseWarDoc(ctx, truck, defenderGang) {

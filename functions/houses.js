@@ -617,13 +617,47 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     const pres = await db.collection('housePresence').where('houseId', '==', houseId).limit(16).get();
     const t = now();
     const people = [];
+    // v85 — çekim ANINDAKİ durum (istemci gönderir): konum, yön, koltuk, yürüme
+    // ve o an oynayan hareket (dans...). Eskiden kişiler paylaşım anındaki
+    // presence'tan okunuyordu → paylaşılan fotoğraf çekilen kareden farklıydı.
+    // Güvenlik: sadece şu an bu evde TAZE presence kaydı olan kişiler; isim/
+    // avatar/eldeki ürün yine presence'tan; değerler kelepçelenir.
+    const EMOTE_KEYS = ['dans', 'selam', 'alkis', 'zipla', 'kalp'];
+    const shot = new Map();
+    if (Array.isArray(a?.people)) {
+      a.people.slice(0, 16).forEach((q) => {
+        if (!q || typeof q.uid !== 'string' || !isUid(q.uid)) return;
+        const x = num(q.x);
+        const z = num(q.z);
+        if (x === null || z === null || Math.abs(x) > 40 || Math.abs(z) > 40) return;
+        const em = q.emote && EMOTE_KEYS.includes(q.emote.kind) && num(q.emote.at) !== null ? { kind: q.emote.kind, at: Math.round(Math.max(0, Math.min(3200, q.emote.at))) } : null;
+        shot.set(q.uid, {
+          x,
+          z,
+          left: !!q.left,
+          seat: typeof q.seat === 'string' && /^[A-Za-z0-9_-]{1,40}:\d{1,2}$/.test(q.seat) ? q.seat : null,
+          moving: !!q.moving,
+          wp: q.wp ? 1 : 0,
+          ...(em ? { emote: em } : {}),
+        });
+      });
+    }
+    const useShot = shot.size > 0 && shot.has(uid);
     pres.forEach((d) => {
       const v = d.data();
       const at = v.updatedAt?.toMillis?.() ?? Number(v.updatedAt || 0);
       if (at && t - at > HOUSE.PRESENCE_ACTIVE_MS) return;
       // v77 — elindeki yiyecek/içecek fotoğrafta da görünsün
       const holding = typeof v.holding === 'string' && HOUSE_PRODUCTS[v.holding] ? v.holding : null;
-      people.push({ uid: d.id, displayName: v.displayName || 'Oyuncu', avatar: v.avatar || null, x: num(v.x) ?? 0, z: num(v.z) ?? 0, left: !!v.left, seat: typeof v.seat === 'string' ? v.seat.slice(0, 40) : null, ...(holding ? { holding } : {}) });
+      const base = { uid: d.id, displayName: v.displayName || 'Oyuncu', avatar: v.avatar || null, x: num(v.x) ?? 0, z: num(v.z) ?? 0, left: !!v.left, seat: typeof v.seat === 'string' ? v.seat.slice(0, 40) : null, ...(holding ? { holding } : {}) };
+      if (useShot) {
+        // çekim anında karede olmayan (sonradan gelen) kişi fotoğrafa girmez
+        const s0 = shot.get(d.id);
+        if (!s0) return;
+        people.push({ ...base, ...s0 });
+        return;
+      }
+      people.push(base);
     });
     // v71 — çekim anında ekranda olan mesaj balonları (sunucudaki ev
     // sohbetinden; istemci metin gönderemez). Balon ekranda 9 sn kalır.

@@ -17,6 +17,28 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// v85 — dokunmatik cihazlarda basılı tutunca çıkan sistem menüsü (Android
+// "kopyala/paylaş", iPhone metin seçimi) oyunda araya girmesin. Yazı alanları
+// (input/textarea) ve .selectable işaretli yerler hariç.
+const TEXT_OK = 'input, textarea, select, [contenteditable="true"], .selectable';
+const textOk = (t) => {
+  const el = t instanceof Element ? t : t?.parentElement;
+  return Boolean(el?.closest?.(TEXT_OK));
+};
+if (typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches) {
+  document.addEventListener(
+    'contextmenu',
+    (e) => {
+      if (!textOk(e.target)) e.preventDefault();
+    },
+    { capture: true },
+  );
+  // iOS: oyun dışı bir yere basılı tutunca kalan seçimi temizle
+  document.addEventListener('selectstart', (e) => {
+    if (!textOk(e.target)) e.preventDefault();
+  });
+}
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <App />

@@ -48,7 +48,9 @@ export function createEmoteTracker() {
 // değerleri (yükseklik h'ye oranla) + dans sırasında yürüme pozu.
 export function emoteMotion(emote, now = performance.now()) {
   if (!emote) return null;
-  const e = (now - emote.t0) / 1000;
+  // v85 — fotoğrafta DONDURULMUŞ hareket: { kind, at } (at = hareketin
+  // başlangıcından bu yana geçen ms) → her zaman aynı kare çizilir.
+  const e = Number.isFinite(emote.at) ? emote.at / 1000 : (now - emote.t0) / 1000;
   if (e < 0 || e > WORLD_EMOTE_MS / 1000) return null;
   let tilt = 0;
   let lift = 0;
@@ -64,4 +66,40 @@ export function emoteMotion(emote, now = performance.now()) {
   else if (k === 'kalp') lift = Math.sin(e * 3) * 0.015 + 0.015;
   const fade = Math.min(1, e / 0.2, (WORLD_EMOTE_MS / 1000 - e) / 0.3);
   return { tilt, lift, pose, emoji: WORLD_EMOTE_EMOJI[k], float: Math.sin(e * 4) * 4, alpha: Math.max(0, fade) };
+}
+
+// v85 — fotoğraf çekilirken o an oynayan hareketi dondurur: { kind, at }.
+// Önizleme ve paylaşılan fotoğraf aynı kareyi çizer (dans ederken çekilen
+// fotoğrafta dans pozu/emoji görünür).
+export function freezeEmote(emote, now = performance.now()) {
+  if (!emote || !WORLD_EMOTE_EMOJI[emote.kind]) return null;
+  if (Number.isFinite(emote.at)) return { kind: emote.kind, at: emote.at };
+  const at = now - emote.t0;
+  if (!(at >= 0 && at <= WORLD_EMOTE_MS)) return null;
+  return { kind: emote.kind, at: Math.round(at) };
+}
+
+// v85 — önizlemede görülen kareyi sunucuya gönderilecek sade biçime çevirir
+// (avatar/isim gönderilmez — sunucu users/{uid}'den okur; NPC'ler gönderilmez).
+export function wirePhotoFrame(frame) {
+  if (!frame) return null;
+  const r = (v) => Math.round(Number(v) * 10) / 10;
+  // aynı çekimin "makine açıldı" ve "paylaş" çağrıları aynı kimliği taşır
+  if (!frame.shotId) frame.shotId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+  return {
+    shotId: frame.shotId,
+    originX: r(frame.originX),
+    originY: r(frame.originY),
+    entities: (frame.entities || [])
+      .filter((e) => e.isSelf || e.uid)
+      .map((e) => ({
+        ...(e.isSelf ? { self: true } : { uid: e.uid }),
+        dx: r(e.dx || 0),
+        dy: r(e.dy || 0),
+        pose: e.pose || 'idle',
+        facing: e.facing || 'down',
+        bubbleText: e.bubbleText || null,
+        emote: e.emote && Number.isFinite(e.emote.at) ? { kind: e.emote.kind, at: e.emote.at } : null,
+      })),
+  };
 }

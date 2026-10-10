@@ -967,7 +967,8 @@ export default function WarsTab({ org, d }) {
   // Teklif listesinde görünmeyecek çeteler: müttefikler ve zaten bahis olanlar
   const pacts = d.pacts || d.alliances || [];
   const biatPartners = new Set((d.biats || []).filter((a) => ['active', 'ending'].includes(a.status)).flatMap((a) => a.gangIds));
-  const allyBlocked = isIntel ? [] : pacts.filter((a) => ['requested', 'accepted', 'active', 'ending'].includes(a.status)).flatMap((a) => a.gangIds);
+  // v85.1: ittifak ve biat bağımsız — ittifak teklifini sadece aynı ikilideki ittifak süreci kilitler
+  const allyBlocked = isIntel ? [] : pacts.filter((a) => a.kind !== 'biat' && ['requested', 'accepted', 'active', 'ending'].includes(a.status)).flatMap((a) => a.gangIds);
   const betBlocked = isIntel
     ? []
     : [
@@ -975,7 +976,8 @@ export default function WarsTab({ org, d }) {
         ...wars.all.filter((w) => w.type === 'bet' && ['offered', 'accepted', 'active'].includes(w.status)).flatMap((w) => w.gangIds || []),
       ];
   const pendingOut = (L.betOffersOut || []).find((w) => w.status === 'offered');
-  const biatBlocked = isIntel ? [] : [...new Set([...allyBlocked, ...wars.all.filter((w) => w.type === 'bet' && ['offered', 'accepted', 'active'].includes(w.status)).flatMap((w) => w.gangIds || [])])];
+  // v85: ittifak biata engel değil — sadece aynı ikilideki biat süreci ve bahisler kilitler
+  const biatBlocked = isIntel ? [] : [...new Set([...pacts.filter((a) => a.kind === 'biat' && ['requested', 'accepted', 'active', 'ending'].includes(a.status)).flatMap((a) => a.gangIds), ...wars.all.filter((w) => w.type === 'bet' && ['offered', 'accepted', 'active'].includes(w.status)).flatMap((w) => w.gangIds || [])])];
 
   const hasWar = L.trade.length + (L.bets?.length || 0) + (L.myAttacks?.length || 0) + (L.myDefs?.length || 0) + (L.allyDefs?.length || 0) + (L.ops?.length || 0) > 0;
 
