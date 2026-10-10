@@ -169,7 +169,7 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
     const chairId = String(p.chairId || '');
     if (!isId(houseId) || !isId(chairId)) fail('invalid-argument', 'Geçersiz koltuk.');
     const title = cleanText(p.title, STREAM_TITLE_MAX);
-    if (title) await assertCanSpeak(uid);
+    if (title) await assertCanSpeak(uid, title);
     let result = null;
     await db.runTransaction(async (tx) => {
       const t = now();
@@ -351,7 +351,7 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
     if (!isId(id)) fail('invalid-argument', 'Geçersiz yayın.');
     if (!DONATION_AMOUNTS.includes(amount)) fail('invalid-argument', 'Geçersiz miktar.');
     const note = cleanText(p.note, STREAM_NOTE_MAX);
-    if (note) await assertCanSpeak(uid);
+    if (note) await assertCanSpeak(uid, note);
     let result = null;
     await db.runTransaction(async (tx) => {
       const t = now();
@@ -390,14 +390,22 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
     if (!isId(id)) fail('invalid-argument', 'Geçersiz yayın.');
     const text = cleanText(p.text, STREAM_CHAT_MAX);
     if (!text) fail('invalid-argument', 'Boş mesaj.');
-    await assertCanSpeak(uid);
+    await assertCanSpeak(uid, text);
     const t = now();
     const [ss, us] = await Promise.all([streamRef(id).get(), userRef(uid).get()]);
     if (!ss.exists || !fresh(ss.data(), t)) fail('failed-precondition', 'ended');
     const u = us.data() || {};
     if (t - Number(u.lastStreamChatMs || 0) < CHAT_MIN_MS) fail('resource-exhausted', 'Biraz yavaş 🙂');
     const batch = db.batch();
-    batch.set(streamRef(id).collection('chat').doc(), { uid, name: nameOf(u), text, createdAtMs: t, host: ss.data().uid === uid });
+    const isHost = ss.data().uid === uid;
+    batch.set(streamRef(id).collection('chat').doc(), { uid, name: nameOf(u), text, createdAtMs: t, host: isHost });
+    // v86: yayıncının yazdıkları bulunduğu odada da görünsün (yanındakiyle konuşabilsin):
+    // ev sohbetine de yazılır → odadakilerde balon + sohbet listesi. viaStream: izleyiciler
+    // bu mesajı zaten yayın balonundan görür (çift balon olmasın diye işaret).
+    const hid = ss.data().houseId;
+    if (isHost && typeof hid === 'string' && isId(hid)) {
+      batch.set(houseRef(hid).collection('chat').doc(), { uid, name: nameOf(u), text, createdAtMs: t, createdAt: FieldValue.serverTimestamp(), viaStream: true });
+    }
     batch.update(userRef(uid), { lastStreamChatMs: t });
     await batch.commit();
     return { ok: true };
@@ -453,7 +461,7 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
     const v = Math.floor(Number(p.price) || 0);
     if (v < STREAM_PRICE.min || v > STREAM_PRICE.max) fail('invalid-argument', `price-band:${STREAM_PRICE.min}-${STREAM_PRICE.max}`);
     const room = typeof p.room === 'string' ? p.room.replace(/\s+/g, ' ').trim().slice(0, STREAM_ROOM_MAX) : null;
-    if (room) await assertCanSpeak(uid);
+    if (room) await assertCanSpeak(uid, room);
     await db.runTransaction(async (tx) => {
       const hs = await tx.get(houseRef(houseId));
       if (!hs.exists) fail('not-found', 'Mekân bulunamadı.');

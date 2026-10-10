@@ -4,7 +4,7 @@ import { createCore, TEST_WORLD } from './core.js';
 import { createMembershipActions } from './actions/membership.js';
 import { createTreasuryActions } from './actions/treasury.js';
 import { createTradeActions } from './actions/trade.js';
-import { createWarActions } from './actions/wars.js';
+import { createWarActions, foldBiatTotals } from './actions/wars.js';
 import { createVoteActions } from './actions/votes.js';
 import { createIntelActions } from './actions/intel.js';
 import { createMarketActions } from './actions/market.js';
@@ -128,9 +128,26 @@ export function createGangSystem(deps) {
       for (const w of docs) {
         if (!live(w)) continue;
         if (w.type === 'trade' || w.type === 'bet') {
-          const sides = Object.entries(w.sides || {}).map(([k, sd]) => side(k, sd, w.display?.[k]));
+          // v86: Pazar savaşında biat edenin kendi hanesi yok — gücü biat edilene katılır
+          let display = w.display || {};
+          let biatDisplay = w.biatDisplay || {};
+          let sideDefs = w.sides || {};
+          let biatDefs = w.biatSides || {};
+          if (w.type === 'trade' && w.biatLinks) {
+            const f = foldBiatTotals(display, biatDisplay, w.biatLinks);
+            display = f.totals;
+            biatDisplay = f.via;
+            sideDefs = { ...sideDefs };
+            biatDefs = {};
+            for (const [vid, l] of Object.entries(w.biatLinks)) {
+              delete sideDefs[vid];
+              if (!sideDefs[l.overlordId]) sideDefs[l.overlordId] = { orgType: 'gang', name: l.overlordName, logo: l.overlordLogo };
+              biatDefs[vid] = { name: l.name, logo: l.logo, overlordId: l.overlordId, overlordName: l.overlordName };
+            }
+          }
+          const sides = Object.entries(sideDefs).map(([k, sd]) => side(k, sd, display[k]));
           // v84: biat edenler — kimin adına ne kadar katkı verdi (herkes görür)
-          const biat = w.type === 'trade' ? Object.entries(w.biatSides || {}).map(([k, sd]) => ({ ...side(k, sd, w.biatDisplay?.[k], 'biat'), forKey: sd.overlordId || null, forName: sd.overlordName || '' })) : [];
+          const biat = w.type === 'trade' ? Object.entries(biatDefs).map(([k, sd]) => ({ ...side(k, sd, biatDisplay[k], 'biat'), forKey: sd.overlordId || null, forName: sd.overlordName || '' })) : [];
           wars.push({ id: w.id, type: w.type, product: w.type === 'trade' ? w.product || null : null, startsAtMs: w.startsAtMs, endsAtMs: w.endsAtMs, gangIds: [...Object.keys(w.sides || {}), ...biat.map((b) => b.key)], sides, ...(biat.length ? { biat } : {}) });
         } else if (w.type === 'defense' && w.announced) {
           const defPower = Object.values(w.display || {}).reduce((a, v) => a + Number(v || 0), 0);
@@ -352,7 +369,7 @@ export function createGangSystem(deps) {
     const msBefore = rosterAction ? (await db.doc(`gangWorlds/${worldId}/memberships/${actorId}`).get()).data() || {} : null;
     try {
       // UGC D1: metin üreten eylemlerde susturma kontrolü (yalnızca canlı dünya)
-      if (!ctx.isTest && TEXT_ACTIONS.has(data.action) && deps.assertCanSpeak) await deps.assertCanSpeak(actorId);
+      if (!ctx.isTest && TEXT_ACTIONS.has(data.action) && deps.assertCanSpeak) await deps.assertCanSpeak(actorId, data);
       const res = await handler(ctx, data.payload || {});
       await runAfterCommit(ctx);
       if (rosterAction) {

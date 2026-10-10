@@ -223,6 +223,8 @@ export async function startRoom(gameId, roomId, roster) {
   await m.update(m.ref(db, `arcade/${gameId}/${roomId}/meta`), { status: 'playing', roster: roster.map((r) => ({ uid: r.uid || '', name: String(r.name || '').slice(0, 14), bot: Boolean(r.bot) })) });
 }
 
+const INPUT_REFRESH_MS = 33;
+
 // Maç bağlantısı: role 'host' | 'guest'
 export async function connectRoom(gameId, roomId, role, handlers, myUid, mySlot) {
   const { m, db } = await rt();
@@ -284,7 +286,9 @@ export async function connectRoom(gameId, roomId, role, handlers, myUid, mySlot)
     sendInput: (bits) => {
       if (role !== 'guest' || !myUid) return;
       const now = performance.now();
-      if (bits === lastIn && now - lastInAt < 400) return;
+      // v86: değişmese de ~30 Hz gönderilir → ev sahibinin geri yansıttığı zaman (state._e)
+      // hep taze kalır; konuk hangi girdilerinin henüz işlenmediğini doğru bilir
+      if (bits === lastIn && now - lastInAt < INPUT_REFRESH_MS) return;
       lastIn = bits;
       lastInAt = now;
       const v = Math.round(now) * 64 + (bits & IN_MASK);

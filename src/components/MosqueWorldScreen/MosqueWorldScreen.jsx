@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { blockProfanity } from '../../lib/profanityGuard';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useImamState } from '../../hooks/useImamState';
@@ -695,6 +696,7 @@ export default function MosqueWorldScreen({ onExit }) {
   const sendChat = () => {
     const text = chatText.trim();
     if (!text || !user) return;
+    if (blockProfanity(text)) return; // v86.1: küfürlü balon gönderilmez (yazı kutuda kalır)
     const ts = Date.now();
     setMyBubbles((prev) => [...prev.filter((b) => ts - b.ts < CHAT_BUBBLE_MS), { text, ts }]);
     updatePresence(user.uid, {

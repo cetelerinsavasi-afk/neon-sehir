@@ -157,3 +157,47 @@ export const angNorm = (a) => {
   while (a < -Math.PI) a += TAU;
   return a;
 };
+
+// v86 — BOT ZORLUĞU. 'hard' = eski botlar (değişmeden). 'easy' = aynı bot
+// beyni, ama girdisi insan acemiliğine çekilir (tüm oyunlarda ortak):
+//   • tepki gecikmesi (~0,25 sn): bot olanı biraz geç görür
+//   • ara ara duraksama: ~2 sn'de bir ~0,4 sn hiçbir şey yapmaz
+//   • aksiyon tuşu (şut/ateş/yumruk/zıplama...) basışlarının bir kısmını kaçırır
+//     (basış BÜTÜN olarak atlanır — tuşa basılı tutmayı bozmaz)
+// game.easy = { actions: maske, miss: 0..1, skill: sayı } ile oyun başına ayar.
+export const BOT_LEVELS = [
+  { key: 'easy', label: 'Kolay', emoji: '🙂' },
+  { key: 'hard', label: 'Zor', emoji: '😈' },
+];
+export function softenBotInput(raw, mem, cfg = {}) {
+  const e = mem.__easy || (mem.__easy = { q: [], idle: 0, prev: 0, skip: 0, n: 0 });
+  e.n += 1;
+  const actions = cfg.actions ?? IN.A | IN.B;
+  const miss = cfg.miss ?? 0.45;
+  const delay = cfg.delay ?? 15; // kare (60 fps)
+  e.q.push(raw | 0);
+  let out = e.q.length > delay ? e.q.shift() : 0;
+  if (e.idle > 0) {
+    e.idle -= 1;
+    e.prev = 0;
+    return 0;
+  }
+  if (Math.random() < (cfg.pause ?? 1 / 120)) {
+    e.idle = 18 + Math.floor(Math.random() * 14);
+    e.prev = 0;
+    return 0;
+  }
+  // yeni basılan aksiyon tuşları: bir kısmı tamamen kaçırılır (bırakılana kadar)
+  const pressed = out & actions & ~e.prev;
+  for (const bit of [IN.A, IN.B, IN.U, IN.D, IN.L, IN.R]) {
+    if (!(actions & bit)) continue;
+    if (pressed & bit) {
+      if (Math.random() < miss) e.skip |= bit;
+      else e.skip &= ~bit;
+    }
+    if (!(out & bit)) e.skip &= ~bit;
+  }
+  e.prev = out;
+  out &= ~e.skip;
+  return out;
+}

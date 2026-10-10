@@ -53,6 +53,7 @@ export default {
   title: 'Tank Savaşı',
   emoji: '🪖',
   desc: 'Arenada son ayakta kalan tank ol! Mermiler duvardan seker, 3 canın var.',
+  easy: { actions: IN.A, miss: 0.55 }, // v86: kolay bot — atışların yarısını kaçırır
   how: 'Joystick: sür · 💥 ateş',
   min: 2,
   max: 4,

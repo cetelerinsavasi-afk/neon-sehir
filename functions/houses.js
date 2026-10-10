@@ -168,7 +168,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     // v68: ev sayısı sınırı yok — oyuncu istediği kadar ev alabilir.
     const name = p.name ? cleanHouseName(p.name) : bizIntent ? cleanHouseName(BIZ_DEFAULT_NAME(user.displayName, bizIntent)) || defaultHouseName(user.displayName) : defaultHouseName(user.displayName);
     if (!name) fail('invalid-argument', 'Ev adı 3-30 karakter olmalı.');
-    if (p.name) await assertCanSpeak(uid);
+    if (p.name) await assertCanSpeak(uid, p.name);
     const ref = db.collection('houses').doc();
     await db.runTransaction(async (tx) => {
       const u = await tx.get(userRef(uid));
@@ -554,7 +554,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     if (p.name !== undefined && p.name !== h.name) {
       const name = cleanHouseName(p.name);
       if (!name) fail('invalid-argument', 'Ev adı 3-30 karakter olmalı (harf, rakam ve basit işaretler).');
-      await assertCanSpeak(uid);
+      await assertCanSpeak(uid, p);
       patch.name = name;
     }
     if (p.privacy !== undefined) {
@@ -708,7 +708,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     const houseId = String(p.houseId || '');
     const text = String(p.text || '').replace(/\s+/g, ' ').trim().slice(0, HOUSE.CHAT_MAX);
     if (!text) fail('invalid-argument', 'Boş mesaj.');
-    await assertCanSpeak(uid);
+    await assertCanSpeak(uid, text);
     const h = await loadHouse(houseId);
     const pSnap = await presentIn(uid, houseId);
     if (!pSnap && h.ownerUid !== uid) fail('permission-denied', 'Bu evde değilsin.');

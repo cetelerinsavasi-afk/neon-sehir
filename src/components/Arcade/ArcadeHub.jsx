@@ -4,7 +4,7 @@ import { usePlayer } from '../../hooks/usePlayer';
 import { useBackClose } from '../../lib/backStack';
 import { ARCADE_GAMES } from './games/index.js';
 import GameRunner from './GameRunner';
-import { PCOL } from './games/common.js';
+import { BOT_LEVELS, PCOL } from './games/common.js';
 import { ONLINE_ENABLED, cancelRoom, createRoom, joinRoom, leaveSeat, startRoom, watchLobby, watchRooms } from './net';
 import { streamBroadcast } from '../Stream/streamShared';
 import './Arcade.css';
@@ -37,6 +37,22 @@ export default function ArcadeHub({ onClose }) {
   const [rooms, setRooms] = useState([]);
   const [lobby, setLobby] = useState([]);
   const [fillBots, setFillBots] = useState(true);
+  // v86: bot zorluğu — Kolay (varsayılan) / Zor (eski botlar). Cihazda hatırlanır.
+  const [level, setLevelState] = useState(() => {
+    try {
+      return localStorage.getItem('arcade_bot_level') === 'hard' ? 'hard' : 'easy';
+    } catch {
+      return 'easy';
+    }
+  });
+  const setLevel = (v) => {
+    setLevelState(v);
+    try {
+      localStorage.setItem('arcade_bot_level', v);
+    } catch {
+      /* yoksay */
+    }
+  };
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [runKey, setRunKey] = useState(0);
@@ -102,7 +118,7 @@ export default function ArcadeHub({ onClose }) {
 
   const startBot = () => {
     setNames([myName, ...botNames(bots)]);
-    setMode({ kind: 'bot' });
+    setMode({ kind: 'bot', level });
     setRunKey((k) => k + 1);
     setView('play');
   };
@@ -132,7 +148,7 @@ export default function ArcadeHub({ onClose }) {
     try {
       await startRoom(game.id, roomId, roster);
       setNames(roster.map((r) => r.name));
-      setMode({ kind: 'host', gameId: game.id, roomId, roster });
+      setMode({ kind: 'host', gameId: game.id, roomId, roster, level });
       setView('play');
     } catch (e) {
       setErr(e?.message || 'Maç başlatılamadı.');
@@ -230,9 +246,24 @@ export default function ArcadeHub({ onClose }) {
           <div className="gs-modes">
             <p className="gs-desc">{game.desc}</p>
             {game.how && <p className="gs-sub">🎮 {game.how}</p>}
+            <div className="gs-level" role="radiogroup" aria-label="Bot zorluğu">
+              <span className="gs-level-lbl">🤖 Bot zorluğu</span>
+              {BOT_LEVELS.map((l) => (
+                <button
+                  key={l.key}
+                  type="button"
+                  role="radio"
+                  aria-checked={level === l.key}
+                  className={`gs-level-opt${level === l.key ? ' on' : ''}`}
+                  onClick={() => setLevel(l.key)}
+                >
+                  {l.emoji} {l.label}
+                </button>
+              ))}
+            </div>
             <button type="button" className="gs-mode primary" onClick={startBot}>
               <span>🤖</span>
-              <b>Bota karşı oyna</b>
+              <b>Bota karşı oyna · {level === 'hard' ? 'Zor' : 'Kolay'}</b>
               <small>{max > 2 ? `${bots} botla hemen başla` : 'Hemen başla'}</small>
             </button>
             {ONLINE_ENABLED && user ? (

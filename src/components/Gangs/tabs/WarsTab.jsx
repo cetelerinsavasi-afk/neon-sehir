@@ -17,7 +17,7 @@ import DiceRoller from '../DiceRoller';
 import { IntelDecisionPanel, VoteCard } from '../shared';
 import { GANG_RULES, INTEL_LEADERS, INTEL_LOGO, LEADERS, fmt, productOf } from '../gangConstants';
 import { TRADE_COUNTDOWN_WINDOW_MS, nextTradeSunday } from '../tradeSchedule';
-import { BiatContribRows, BiatSheet, BiatStatus, biatRowsOf, useBiatInfo } from '../Biat';
+import { BiatSection, BiatSheet, BiatStatus, biatRowsOf, foldTradeWar, useBiatInfo } from '../Biat';
 
 const GANG_RULES_HARAC_HOUR = 21; // v38: son dilim (21:00) başlayana kadar
 // v37: bahis tutarını sadece rütbeliler (Baba · Sağ Kol · Kıdemli) görür —
@@ -199,7 +199,10 @@ function WarDetail({ war, onClose, mySideKey, myGangId }) {
         <span>🏆 Sıralama</span>
       </div>
       {sides.length === 0 && <p className="dim">Henüz kimse katılmadı.</p>}
-      {sides.map((s, i) => (
+      {sides.map((s, i) => {
+        // v86: bu tarafın gücüne dahil olan biat gücü (detayı aşağıdaki Biat bölümünde)
+        const fromBiat = war.type === 'trade' ? biatRowsOf(war, s.key).reduce((a, r) => a + r.power, 0) : 0;
+        return (
         <div key={s.key}>
           <div className={`gx-rank-row${s.key === mySideKey ? ' mine' : ''}`}>
             <span className="gx-rank-pos">#{i + 1}</span>
@@ -211,14 +214,15 @@ function WarDetail({ war, onClose, mySideKey, myGangId }) {
               </div>
               <Bar value={s.power} max={max} color={s.key === mySideKey ? 'var(--neon-yellow)' : 'var(--neon-cyan)'} height={6} />
             </div>
-            <span className="gx-rank-power">{fmt(s.power)}</span>
+            <span className="gx-rank-power">
+              {fmt(s.power)}
+              {fromBiat > 0 && <em className="gx-rank-biat">⛓️ +{fmt(fromBiat)} biat dahil</em>}
+            </span>
           </div>
-          {war.type === 'trade' && <BiatContribRows war={war} sideKey={s.key} mineKey={myGangId} />}
         </div>
-      ))}
-      {war.type === 'trade' && Object.keys(war.biatSides || {}).length > 0 && (
-        <p className="dim gx-mini">⛓️ Biat eden çeteler kendi adlarına değil, biat ettikleri çete adına savaşır; katkıları o çetenin gücüne dahildir.</p>
-      )}
+        );
+      })}
+      {war.type === 'trade' && <BiatSection war={war} mineKey={myGangId} />}
       {rolls.length > 0 && (
         <>
           <div className="gx-section-head">
@@ -919,7 +923,8 @@ export default function WarsTab({ org, d }) {
     const active = wars.active;
     // v35: kabul edilmiş bahis başlama dilimi gelince hemen oynanır (saat turunu beklemez)
     const liveBets = wars.all.filter((w) => w.type === 'bet' && (w.status === 'active' || (w.status === 'accepted' && nowMin >= w.startsAtMs)) && nowMin < w.endsAtMs);
-    const trade = active.filter((w) => w.type === 'trade');
+    // v86: biat edenin gücü biat edilenin toplamında (ayrı sırada görünmez)
+    const trade = active.filter((w) => w.type === 'trade').map(foldTradeWar);
     const attacksOnDef = (def) =>
       wars.all
         .filter((w) => (w.type === 'sabotage' || w.type === 'intelop') && w.defenseWarId === def.id && w.status === 'active')
@@ -954,9 +959,9 @@ export default function WarsTab({ org, d }) {
 
   // v84: biat eden çete Pazar savaşında biat ettiği çetenin hanesine yazılır
   const sideKey = isIntel ? 'intel' : biat.fightingFor?.gangId || gangId;
-  const tradePos = (w) => {
+  const tradePos = (w, key = sideKey) => {
     const s = sidesRanked(w);
-    const i = s.findIndex((x) => x.key === sideKey);
+    const i = s.findIndex((x) => x.key === key);
     return {
       pos: i >= 0 ? i + 1 : null,
       power: i >= 0 ? s[i].power : 0,
@@ -1008,9 +1013,12 @@ export default function WarsTab({ org, d }) {
       {!hasWar && <Empty icon="🕊️" text="Şu an savaş yok." />}
 
       {L.trade.map((w) => {
-        const t = tradePos(w);
+        // v86: bugün kabul edilen biat da bu savaşta sayılır (biatLinks)
+        const link = isIntel ? null : w.biatLinks?.[gangId];
+        const ff = isIntel ? null : biat.fightingFor || (link ? { gangId: link.overlordId, name: link.overlordName, logo: link.overlordLogo } : null);
+        const myKey = isIntel ? 'intel' : ff?.gangId || gangId;
+        const t = tradePos(w, myKey);
         const p = productOf(w.product);
-        const ff = biat.fightingFor;
         const myContrib = ff ? Number(w.biatDisplay?.[gangId] || 0) : 0;
         const fromVassals = !isIntel && !ff ? biatRowsOf(w, gangId) : [];
         return (
@@ -1019,7 +1027,7 @@ export default function WarsTab({ org, d }) {
             war={w}
             tone={ff ? 'biat' : undefined}
             slotUsed={slot.used}
-            onOpen={() => setDetail({ war: w, side: sideKey })}
+            onOpen={() => setDetail({ war: w, side: myKey })}
             onJoin={() => join(w, isIntel ? { side: 'intel' } : {}, isIntel ? 'İstihbarat' : ff ? `${d.gang?.name} ⛓️ ${ff.name} adına` : d.gang?.name)}
           >
             {ff && (
@@ -1222,7 +1230,7 @@ export default function WarsTab({ org, d }) {
       {/* v68: bize ait olmayan savaşları izle */}
       <WatchWarsButton />
 
-      {detail && <WarDetail war={wars.all.find((w) => w.id === detail.war.id) || detail.war} mySideKey={detail.side} myGangId={isIntel ? null : gangId} onClose={() => setDetail(null)} />}
+      {detail && <WarDetail war={foldTradeWar(wars.all.find((w) => w.id === detail.war.id) || detail.war)} mySideKey={detail.side} myGangId={isIntel ? null : gangId} onClose={() => setDetail(null)} />}
       {truckDetail &&
         (() => {
           const def = wars.all.find((x) => x.id === truckDetail.defId) || null;

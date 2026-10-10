@@ -14,6 +14,7 @@
 // =============================================================================
 
 import crypto from 'crypto';
+import { profanityCheck, PROFANITY_WARNING } from './profanity.js';
 
 export const MODERATION = {
   MAX_BLOCKS: 200,
@@ -90,7 +91,10 @@ export function createModeration({ db, FieldValue, HttpsError, requireAuth, onCa
     const m = s.data() || {};
     return (Number(m.untilMs) || 0) > now() ? m : null;
   }
-  async function assertCanSpeak(uid) {
+  // v86.1: content verilirse (yazı / istek gövdesi) bariz küfür de kontrol edilir →
+  // paylaşılmaz, kısa uyarı döner (functions/profanity.js). Ceza vermez.
+  async function assertCanSpeak(uid, content) {
+    if (content !== undefined && profanityCheck(content)) throw new HttpsError('invalid-argument', PROFANITY_WARNING);
     const m = await getActiveMute(uid);
     if (m) throw new HttpsError('permission-denied', muteMessage(m));
   }

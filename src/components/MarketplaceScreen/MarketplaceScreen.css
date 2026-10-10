@@ -603,3 +603,10 @@
     animation: none;
   }
 }
+
+/* v86 — tahmini değerin dayanağı (seviye + ömür) */
+.market-estimate-why {
+  font-size: 11px;
+  opacity: 0.7;
+  font-weight: 500;
+}

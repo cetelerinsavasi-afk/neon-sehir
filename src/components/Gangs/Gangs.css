@@ -3424,3 +3424,75 @@ button.gx-msg-avatar.pc-trigger {
   font-size: 11px;
   color: var(--gx-biat);
 }
+
+/* v86 — Pazar savaşı detayı: Biat bölümü (sıralamanın altında) */
+.gx-rank-power {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.gx-rank-biat {
+  font-style: normal;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--gx-biat);
+  white-space: nowrap;
+}
+.gx-biat-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  margin-bottom: 8px;
+  border-radius: 12px;
+  background: var(--gx-biat-bg);
+  box-shadow: inset 0 0 0 1px rgba(180, 140, 255, 0.18);
+}
+.gx-biat-line {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto 22px minmax(0, auto);
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px;
+  border-radius: 8px;
+  color: #e4d4ff;
+  font-size: 13px;
+}
+.gx-biat-line.mine {
+  box-shadow: inset 0 0 0 1px var(--gx-biat);
+}
+.gx-biat-line-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.gx-biat-line-main b,
+.gx-biat-line-to {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gx-biat-line-main .gx-mini {
+  color: #a99bc4;
+  font-variant-numeric: tabular-nums;
+}
+.gx-biat-line-arrow {
+  color: var(--gx-biat);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.gx-biat-line-to {
+  max-width: 110px;
+}
+.gx-biat-total {
+  border-top: 1px dashed rgba(180, 140, 255, 0.25);
+  padding-top: 6px;
+  font-size: 12.5px;
+  color: #e4d4ff;
+}
+.gx-biat-total b {
+  font-variant-numeric: tabular-nums;
+}
+.gx-biat-total .dim {
+  font-size: 11px;
+}

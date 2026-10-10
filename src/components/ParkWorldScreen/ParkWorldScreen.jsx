@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { blockProfanity } from '../../lib/profanityGuard';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useInventory } from '../../hooks/useInventory';
@@ -784,6 +785,7 @@ export default function ParkWorldScreen({ onExit }) {
   const sendChat = () => {
     const text = chatText.trim();
     if (!text || !user) return;
+    if (blockProfanity(text)) return; // v86.1: küfürlü balon gönderilmez (yazı kutuda kalır)
     const ts = Date.now();
     // Yeni mesaj ESKİSİNİ silmiyor, diziye ekleniyor — her biri kendi
     // süresi (CHAT_BUBBLE_MS) bitene kadar ekranda kalmaya devam eder.

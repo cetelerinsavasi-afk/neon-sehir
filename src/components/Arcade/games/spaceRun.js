@@ -66,6 +66,8 @@ export default {
   title: 'Uzay Koşusu',
   emoji: '🚀',
   desc: 'Ekrana dokun, yerçekimi ters dönsün! Boşluğa düşme, geride kalma, bitişe ilk sen var.',
+  // v86: kolay bot — tehlikeye daha geç tepki verir
+  easy: { actions: IN.A, miss: 0.12, skill: 0.5, delay: 5, pause: 1 / 400 },
   how: 'Ekrana dokun / ⇅ / Boşluk: zemin ⇄ tavan',
   min: 2,
   max: 4,

@@ -41,6 +41,7 @@ export default {
   title: 'Sumo',
   emoji: '🤼',
   desc: 'Rakiplerini minderden it! Hamleyle atıl, kenarda dikkat et. 2 raunt alan kazanır.',
+  easy: { actions: IN.A, miss: 0.55 }, // v86: kolay bot — hamlelerin yarısını kaçırır
   how: 'Joystick: hareket · ⚡ hamle (atıl)',
   min: 2,
   max: 4,

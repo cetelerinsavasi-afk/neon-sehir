@@ -27,6 +27,8 @@ export default {
   title: 'Sokak Dövüşü',
   emoji: '🥊',
   desc: '3 raunt, 2 raunt alan kazanır. Rakibin tersine basılı tutarak blok yap!',
+  // v86: kolay bot — yumruk/tekme/zıplamaların bir kısmını kaçırır
+  easy: { actions: IN.A | IN.B | IN.U, miss: 0.4 },
   how: '◀ ▶ yürü (geri = blok) · ⤴ zıpla · 👊 yumruk · 🦵 tekme',
   min: 2,
   max: 2,

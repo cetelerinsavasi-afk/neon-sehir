@@ -1364,3 +1364,10 @@ body.ns-streaming .onnumara-fullscreen {
   font-size: 14px;
   color: #e8c766;
 }
+
+/* v86 — yayıncının ekranında odadakilerin (ev sohbeti) mesajları */
+.st-hostfs-chat p.room b,
+.st-host-chat p.room b,
+.st-chat-list p.room b {
+  color: #7ff0c4;
+}

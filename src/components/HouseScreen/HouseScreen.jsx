@@ -552,12 +552,14 @@ export default function HouseScreen({ houseId, onExit }) {
         list.forEach((m) => {
           if (seenMsgRef.current.has(m.id)) return;
           seenMsgRef.current.add(m.id);
+          // v86: yayıncının yayından yazdığı (viaStream) kendi mesajı zaten yerelde balon oldu
+          if (m.viaStream && m.uid === user?.uid) return;
           if ((m.createdAtMs || 0) > mountedAtRef.current - 2000 && !isBlocked(m.uid)) engineRef.current?.say(m.uid, m.text);
         });
       },
       (err) => console.error('Ev sohbet hatası:', err)
     );
-  }, [phase, houseId, isBlocked, entered]);
+  }, [phase, houseId, isBlocked, entered, user?.uid]);
 
   const sendChat = async () => {
     const text = chatText.trim();
@@ -1767,6 +1769,7 @@ export default function HouseScreen({ houseId, onExit }) {
           {myStream && myStreamDoc && (
             <StreamHostPanel
               stream={myStreamDoc}
+              roomChat={messages}
               pose={streamPoseNow}
               engineRef={engineRef}
               statsRef={streamStatsRef}

@@ -34,6 +34,7 @@ export default {
   title: 'Boya Savaşı',
   emoji: '🎨',
   desc: 'Geçtiğin yer senin rengin olur. 60 saniyede en çok alanı boya! Rakibin boyasının üstünden geç.',
+  easy: { actions: IN.A, miss: 0.5 }, // v86: kolay bot
   how: 'Joystick: gez · 🎨 boya bombası',
   min: 2,
   max: 4,

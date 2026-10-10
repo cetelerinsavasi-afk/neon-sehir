@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { IN, IN_MASK, lerpState, NO_LERP } from './games/common.js';
+import { IN, IN_MASK, lerpState, NO_LERP, softenBotInput } from './games/common.js';
 import { connectRoom } from './net';
 import { publishGameFrame, clearGameFrame, streamBroadcast } from '../Stream/streamShared';
 
@@ -27,6 +27,7 @@ const INTERP_MIN = 55;
 const INTERP_MAX = 240;
 const INTERP_START = 100;
 const EXTRAP_MAX = 0.45; // paket gecikirse en fazla bu oranda ileri tahmin
+const PRED_MAX_MS = 1200; // v86: konuk kendi girdilerini en fazla bu kadar geriden yeniden oynatır
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const BTN_LABEL = { L: '◀', R: '▶', U: '⤴', D: '⤵', A: 'A', B: 'B' };
 const KEYMAP = { ArrowLeft: 'L', a: 'L', A: 'L', ArrowRight: 'R', d: 'R', D: 'R', ArrowUp: 'U', w: 'U', W: 'U', ' ': 'A', j: 'A', J: 'A', k: 'B', K: 'B', l: 'B', L: 'B', ArrowDown: 'B', s: 'B', S: 'B' };
@@ -99,7 +100,13 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
     let raf = 0;
     let alive = true;
     let state = game.create(names);
-    const botMem = names.map(() => ({}));
+    // v86: bot zorluğu (kolay = aynı bot, insan acemiliğinde; zor = eski botlar)
+    const easy = mode.level === 'easy';
+    const botMem = names.map(() => (easy && game.easy?.skill != null ? { skill: game.easy.skill } : {}));
+    const botIn = (i) => {
+      const raw = game.bot(state, i, botMem[i]);
+      return easy ? softenBotInput(raw, botMem[i], game.easy) : raw;
+    };
     let acc = 0;
     let last = performance.now();
     let lastSend = 0;
@@ -121,6 +128,15 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
     let jit = 15; // titreme
     let interpMs = INTERP_START;
     const predVis = {}; // v81: game.predictKeys (ör. kafa topunda top) — yerel tahmin, yumuşak düzeltme
+    // v86 — konuğun girdi geçmişi (zaman, bitler): ev sahibinin "şu ana kadar aldım"
+    // dediği andan (state._e) sonraki girdiler yetkili durumun üstünde yeniden oynatılır
+    // (istemci tarafı uzlaştırma). Eskiden sadece rtt/2 ileri sarılıyordu → katılanın
+    // kendi karakteri her pakette geri çekiliyor, donuyor, bırakınca kayıyordu.
+    const hist = [];
+    const bitsAt = (t) => {
+      for (let k = hist.length - 1; k >= 0; k--) if (hist[k][0] <= t) return hist[k][1];
+      return hist.length ? hist[0][1] : 0;
+    };
 
     const finish = (res) => {
       if (ended) return;
@@ -169,14 +185,28 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
                 const sample = now - echo;
                 if (sample > 0 && sample < 3000) rtt = rtt * 0.8 + sample * 0.2;
               }
-              // kendi karakterimiz için tahmin: yetkili duruma otur, gecikme kadar ileri sar
+              // kendi karakterimiz için tahmin: yetkili duruma otur, ev sahibinin henüz
+              // almadığı girdilerimizi (echo'dan bu yana) geçmişten yeniden oynat
               if (game.predict !== false && !s.over) {
                 const base = clone(s);
                 base._pred = true;
-                const ahead = Math.min(0.25, Math.max(0, rtt / 2000 + SEND_MS / 2000));
                 const ins = (s._in || []).slice();
-                ins[me] = inputRef.current;
-                if (!(base.pause > 0)) for (let k = Math.round(ahead / DT); k > 0; k--) game.step(base, ins, DT);
+                if (!(base.pause > 0)) {
+                  const from = echo && now - echo > 0 && now - echo < PRED_MAX_MS ? echo : null;
+                  if (from != null) {
+                    const steps = Math.round((now - from) / 1000 / DT);
+                    for (let k = 0; k < steps; k++) {
+                      ins[me] = bitsAt(from + k * DT * 1000);
+                      game.step(base, ins, DT);
+                      if (base.pause > 0) break;
+                    }
+                  } else {
+                    ins[me] = inputRef.current;
+                    const ahead = Math.min(PRED_MAX_MS / 1000, Math.max(0, rtt / 1000));
+                    for (let k = Math.round(ahead / DT); k > 0; k--) game.step(base, ins, DT);
+                  }
+                }
+                predAcc = 0;
                 pred = base;
               } else pred = null;
               setNetMsg('');
@@ -214,6 +244,9 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
 
       if (mode.kind === 'guest') {
         conn?.sendInput(inputRef.current);
+        // girdi geçmişi (en fazla ~1,5 sn)
+        if (!hist.length || hist[hist.length - 1][1] !== inputRef.current) hist.push([now, inputRef.current]);
+        while (hist.length > 2 && hist[1][0] < now - PRED_MAX_MS - 300) hist.shift();
         if (!snaps.length) {
           ctx.setTransform(1, 0, 0, 1, 0, 0);
           ctx.fillStyle = '#05070d';
@@ -259,7 +292,8 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
             selfVis = selfVis ? lerpFn(selfVis, mine, 1 - Math.exp(-dt * 25)) : clone(mine);
             // tahmin yetkili konumdan çok uzaklaştıysa (ölüm/ışınlanma) yetkiliyi kullan
             const auth = latest[selfKey]?.[me];
-            const far = auth && typeof auth.x === 'number' && Math.hypot((selfVis.x ?? 0) - auth.x, (selfVis.y ?? 0) - (auth.y ?? 0)) > 70;
+            // (tahmin artık tam gecikme kadar ileride → eşik gecikmeyle büyür)
+            const far = auth && typeof auth.x === 'number' && Math.hypot((selfVis.x ?? 0) - auth.x, (selfVis.y ?? 0) - (auth.y ?? 0)) > Math.max(70, rtt * 0.3);
             view = { ...view, [selfKey]: view[selfKey].map((p, i) => (i === me && !far && !p.dead && !p.out ? { ...p, ...selfVis, dead: p.dead, out: p.out } : p)) };
           }
           // v81: ek tahmin (ör. kafa topunda top): kendi vuruşuna anında tepki verir,
@@ -296,7 +330,7 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
         for (let i = 0; i < n; i++) {
           const r = roster[i] || {};
           if (i === 0) ins.push(inputRef.current);
-          else if (mode.kind === 'bot' || r.bot || !r.uid || gone.has(r.uid)) ins.push(game.bot(state, i, botMem[i]));
+          else if (mode.kind === 'bot' || r.bot || !r.uid || gone.has(r.uid)) ins.push(botIn(i));
           else ins.push(guestIn[r.uid] || 0);
         }
         state._lastIn = ins;

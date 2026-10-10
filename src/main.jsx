@@ -33,6 +33,19 @@ if (typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').ma
     },
     { capture: true },
   );
+  // v86 — iPhone: CSS (user-select/touch-callout) basılı tutmada "Kopyala"yı her
+  // zaman durdurmuyor. Oyun kontrollerinde dokunmanın varsayılan davranışı
+  // iptal edilir (seçim/büyüteç/menü hiç başlamaz). Bu alanlar sadece pointer
+  // olaylarıyla çalışır (onClick yok) → tuşlar etkilenmez.
+  const HOLD_AREAS = '.gs-pad, .gs-canvas, .gs-stick, .gs-btn, .ta-ctl, .cue-hold, [data-hold]';
+  document.addEventListener(
+    'touchstart',
+    (e) => {
+      const el = e.target instanceof Element ? e.target : e.target?.parentElement;
+      if (el?.closest?.(HOLD_AREAS) && !textOk(el)) e.preventDefault();
+    },
+    { passive: false, capture: true },
+  );
   // iOS: oyun dışı bir yere basılı tutunca kalan seçimi temizle
   document.addEventListener('selectstart', (e) => {
     if (!textOk(e.target)) e.preventDefault();

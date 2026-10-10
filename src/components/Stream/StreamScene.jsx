@@ -60,6 +60,7 @@ export default function StreamScene({ houseId, chairId, pcId, bubble = null, cla
           const m = d.data();
           if (Number(m.createdAtMs || 0) < since || blockedRef.current?.(m.uid)) return;
           if (fsRef.current.some((p) => p.uid === m.uid && p.noStream)) return;
+          if (m.viaStream) return; // v86: yayıncının yayın mesajı — balonu StreamViewer zaten gösteriyor
           eng.say(m.uid, String(m.text || ''));
         });
       },

@@ -26,6 +26,8 @@ export default {
   title: 'Kafa Topu',
   emoji: '⚽',
   desc: '60 saniyede en çok golü at. Kafa vur, zıpla, şut çek!',
+  // v86: kolay bot — şut ve zıplamaların bir kısmını kaçırır
+  easy: { actions: IN.A | IN.U, miss: 0.4 },
   how: '◀ ▶ koş · ⤴ zıpla · 👟 şut',
   min: 2,
   max: 2,

@@ -120,7 +120,8 @@ function valueRatio(item, kind = 'vehicle') {
 
 function vehiclePriceRange(vehicle) {
   const base = vehicleCatalog.find((v) => v.id === vehicle.catalogId)?.price || 0;
-  const mult = vehicle.gearUpgraded && vehicle.tankUpgraded ? 3 : vehicle.gearUpgraded || vehicle.tankUpgraded ? 2 : 1;
+  // v86: sunucuyla aynı — araç seviyesi (raceLevel; eski vites/depo geliştirmeleri seviyeye sayılır)
+  const mult = vehicleLevelOf(vehicle.raceLevel, vehicle.gearUpgraded, vehicle.tankUpgraded);
   const max = Math.round(base * mult * valueRatio(vehicle));
   return { min: Math.floor(max / 2), max };
 }
@@ -142,43 +143,38 @@ function machinePriceRange(machineType, cryptoPrice) {
   return { min: Math.floor(max / 2), max };
 }
 
-// --- v67 — TAHMİNİ DEĞER (araç / silah) ---
-// Ürünün yıpranma puanı: yapılan her tamir 2 puan, her geliştirme 10 puan.
-// Puana göre ürünün en yüksek fiyatının (katalog × geliştirme çarpanı) yüzdesi:
-//   0-9 puan → %90 · 10-19 → %80 · 20-29 → %70 · 30+ → %60
-// Sadece alıcıya/satıcıya yol gösteren bir değerdir; ilan fiyatı sınırları
-// değişmedi (sunucu doğrular).
-function wearPercent(points) {
-  if (points >= 30) return 0.6;
-  if (points >= 20) return 0.7;
-  if (points >= 10) return 0.8;
-  return 0.9;
-}
-function estimateValue({ kind, catalogId, repairsUsed, gearUpgraded, tankUpgraded, level }) {
-  if (kind === 'vehicle') {
-    const base = vehicleCatalog.find((v) => v.id === catalogId)?.price || 0;
-    const upgrades = (gearUpgraded ? 1 : 0) + (tankUpgraded ? 1 : 0);
-    const max = base * (upgrades === 2 ? 3 : upgrades === 1 ? 2 : 1);
-    const points = (repairsUsed || 0) * 2 + upgrades * 10;
-    const pct = wearPercent(points);
-    return { value: Math.round(max * pct), points, pct, max };
-  }
-  const base = weaponCatalog.find((w) => w.id === catalogId)?.price || 0;
-  const lvl = Math.max(1, level || 1);
+// --- v86 — TAHMİNİ DEĞER (araç / silah): ÖMÜR + GELİŞİM ---
+// Değer = mağaza fiyatı × seviye × (kalan ömür birimi / toplam ömür birimi).
+// Kalan ömür birimi = kalan gün + kalan tamir hakkı × tamirin verdiği gün:
+//   • Silah: 10 gün + 10 tamir × 1 gün = 20 birim → her gün değerin 1/20'si düşer
+//   • Araç : 20 gün + 10 tamir × 2 gün = 40 birim → her gün değerin 1/40'ı düşer
+// Ömrü ve tamir hakları tam bir ürün = mağaza fiyatı × seviye (100.000'lik
+// silah seviye 1: 100.000 · seviye 2: 200.000 · seviye 3: 300.000; araç da aynı).
+// İlan fiyat sınırı (en yüksek fiyat) da aynı formül (bkz. functions/itemRules.js
+// itemListingBand) → tahmini değer = o ürünün satılabileceği en yüksek fiyat.
+function estimateValue({ kind, catalogId, repairsUsed, lifeDays, level }) {
+  const catalog = kind === 'vehicle' ? vehicleCatalog : weaponCatalog;
+  const base = catalog.find((x) => x.id === catalogId)?.price || 0;
+  const lvl = Math.max(1, Math.min(3, Number(level) || 1));
   const max = base * lvl;
-  const points = (repairsUsed || 0) * 2 + (lvl - 1) * 10;
-  const pct = wearPercent(points);
-  return { value: Math.round(max * pct), points, pct, max };
+  const cap = lifeCapOf(kind);
+  const bonus = repairBonusOf(kind);
+  const total = cap + MAX_REPAIRS * bonus;
+  const life = Math.max(0, Math.min(cap, lifeDays ?? cap));
+  const left = life + Math.max(0, MAX_REPAIRS - (repairsUsed || 0)) * bonus;
+  const pct = Math.max(0, Math.min(1, left / total));
+  return { value: Math.round(max * pct), pct, max, left, total, level: lvl };
 }
+const vehicleLevelOf = (raceLevel, gearUp, tankUp) => (Number.isInteger(raceLevel) && raceLevel >= 1 ? raceLevel : 1 + (gearUp ? 1 : 0) + (tankUp ? 1 : 0));
 function estimateOfListing(l) {
   // çete ürünleri yeni ve değer kaybetmez → tahmini değer = en yüksek fiyat
   if (l.gang) {
     const est = l.itemType === 'vehicle' ? estimateValue({ kind: 'vehicle', catalogId: l.vehicleCatalogId }) : estimateValue({ kind: 'weapon', catalogId: l.weaponCatalogId });
-    return { ...est, value: est.max, pct: 1, points: 0 };
+    return { ...est, value: est.max, pct: 1 };
   }
   if (l.itemType === 'vehicle')
-    return estimateValue({ kind: 'vehicle', catalogId: l.vehicleCatalogId, repairsUsed: l.vehicleRepairsUsed, gearUpgraded: l.vehicleGearUpgraded, tankUpgraded: l.vehicleTankUpgraded });
-  if (l.itemType === 'weapon') return estimateValue({ kind: 'weapon', catalogId: l.weaponCatalogId, repairsUsed: l.weaponRepairsUsed, level: l.weaponLevel });
+    return estimateValue({ kind: 'vehicle', catalogId: l.vehicleCatalogId, repairsUsed: l.vehicleRepairsUsed, lifeDays: l.vehicleLifeDays, level: vehicleLevelOf(l.vehicleRaceLevel, l.vehicleGearUpgraded, l.vehicleTankUpgraded) });
+  if (l.itemType === 'weapon') return estimateValue({ kind: 'weapon', catalogId: l.weaponCatalogId, repairsUsed: l.weaponRepairsUsed, lifeDays: l.weaponLifeDays, level: l.weaponLevel });
   return null;
 }
 function EstimateLine({ est }) {
@@ -186,6 +182,12 @@ function EstimateLine({ est }) {
   return (
     <span className="market-estimate">
       💡 Tahmini değer: <strong>{est.value.toLocaleString('tr-TR')} altın</strong>
+      {est.total ? (
+        <small className="market-estimate-why">
+          {' '}
+          · seviye {est.level} · ömür {est.left}/{est.total} (%{Math.round(est.pct * 100)})
+        </small>
+      ) : null}
     </span>
   );
 }
@@ -338,11 +340,11 @@ function SellForm({ onCreated, onClose, initialItemType }) {
   const sellEstimate = (() => {
     if (itemType === 'vehicle') {
       const v = sellableVehicles.find((x) => x.id === selectedId);
-      return v ? estimateValue({ kind: 'vehicle', catalogId: v.catalogId, repairsUsed: v.repairsUsed, gearUpgraded: v.gearUpgraded, tankUpgraded: v.tankUpgraded }) : null;
+      return v ? estimateValue({ kind: 'vehicle', catalogId: v.catalogId, repairsUsed: v.repairsUsed, lifeDays: v.lifeDays, level: vehicleLevelOf(v.raceLevel, v.gearUpgraded, v.tankUpgraded) }) : null;
     }
     if (itemType === 'weapon') {
       const w = sellableWeapons.find((x) => x.id === selectedId);
-      return w ? estimateValue({ kind: 'weapon', catalogId: w.catalogId, repairsUsed: w.repairsUsed, level: w.level }) : null;
+      return w ? estimateValue({ kind: 'weapon', catalogId: w.catalogId, repairsUsed: w.repairsUsed, lifeDays: w.lifeDays, level: w.level }) : null;
     }
     return null;
   })();

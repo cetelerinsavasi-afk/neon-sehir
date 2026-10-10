@@ -62,7 +62,7 @@ const HIDDEN_STOP_MS = 20_000; // v81: uygulama/sekme arka planda bu kadar kalı
 // yayıncıda hem izleyicilerde). Sağ altta 🎮 Oyun oyna (oyun salonu / yarış).
 // compact: oyun açıkken arayüz gizlenir ama nabız/izleyici takibi sürer.
 // =============================================================================
-export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopRequest, stopping, statsRef, onPlay, compact = false }) {
+export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopRequest, stopping, statsRef, onPlay, compact = false, roomChat = [] }) {
   const { user } = useAuth();
   const { isBlocked } = useBlocks();
   const streamId = stream?.id;
@@ -228,7 +228,16 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
   };
 
   // izleyici mesajları (kendi yazdıkların balon olarak görünür, listede değil)
-  const visibleChat = useMemo(() => chat.filter((m) => !isBlocked(m.uid) && !(m.host && m.uid === user?.uid)), [chat, isBlocked, user?.uid]);
+  // v86: odadakilerin (ev sohbeti) yazdıkları da yayıncının listesinde — 🏠 işaretiyle
+  const startedAt = Number(stream?.startedAtMs || 0);
+  const visibleChat = useMemo(() => {
+    const fromStream = chat.filter((m) => !isBlocked(m.uid) && !(m.host && m.uid === user?.uid));
+    const fromRoom = (roomChat || [])
+      .filter((m) => !m.viaStream && m.uid !== user?.uid && !isBlocked(m.uid) && Number(m.createdAtMs || 0) >= startedAt)
+      .map((m) => ({ ...m, id: `room_${m.id}`, room: true }));
+    if (!fromRoom.length) return fromStream;
+    return [...fromStream, ...fromRoom].sort((a, b) => Number(a.createdAtMs || 0) - Number(b.createdAtMs || 0));
+  }, [chat, roomChat, isBlocked, user?.uid, startedAt]);
   const shown = chatOpen ? visibleChat : visibleChat.slice(-6);
   useEffect(() => {
     if (chatOpen) chatEndRef.current?.scrollIntoView({ block: 'end' });
@@ -301,7 +310,7 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
               <span>▾ küçült</span>
             </div>
           )}
-          {shown.length === 0 && <p className="st-chat-empty">İzleyici mesajları burada görünür</p>}
+          {shown.length === 0 && <p className="st-chat-empty">İzleyici ve odadakilerin (🏠) mesajları burada görünür</p>}
           {shown.map((m) => (
             <StreamChatLine key={m.id} m={m} />
           ))}
@@ -321,7 +330,7 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
         </div>
       )}
       <div className="ws-chat-row st-input st-hostfs-input">
-        <input className="ws-chat-input" maxLength={140} placeholder="İzleyicilere yaz… (balon olarak görünür)" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && send()} />
+        <input className="ws-chat-input" maxLength={140} placeholder="İzleyicilere ve odadakilere yaz…" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && send()} />
         <button className="ws-chat-send" disabled={busy || !text.trim()} onClick={send}>
           Gönder
         </button>
@@ -410,8 +419,8 @@ export function StreamChatLine({ m, showHost = false, style }) {
     );
   }
   return (
-    <p className={m.host ? 'host' : ''} style={style}>
-      <b>{showHost && m.host ? `🎥 ${m.name}` : m.name}</b> {m.text}
+    <p className={m.host ? 'host' : m.room ? 'room' : ''} style={style}>
+      <b>{showHost && m.host ? `🎥 ${m.name}` : m.room ? `🏠 ${m.name}` : m.name}</b> {m.text}
     </p>
   );
 }

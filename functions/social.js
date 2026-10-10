@@ -177,7 +177,7 @@ export function createSocial({ db, FieldValue, HttpsError, requireAuth, onCall, 
     const text = cleanText(p.text);
     if (!text) fail('invalid-argument', 'Mesaj boş olamaz.');
     if (text.length > SOCIAL.MESSAGE_MAX) fail('invalid-argument', `Mesaj en fazla ${SOCIAL.MESSAGE_MAX} karakter olabilir.`);
-    await assertCanSpeak(uid);
+    await assertCanSpeak(uid, p);
     const meSnap = await userRef(uid).get();
     const myName = nameOf(meSnap.data());
     const myAvatar = avatarOf(meSnap.data());

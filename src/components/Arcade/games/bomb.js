@@ -42,6 +42,7 @@ export default {
   title: 'Sıcak Bomba',
   emoji: '💣',
   desc: 'Bomba sendeyse birine dokun ve kurtul! Fitil bitince elinde patlayan elenir.',
+  easy: { actions: IN.A, miss: 0.5 }, // v86: kolay bot
   how: 'Joystick: koş · 💨 hızlan',
   min: 2,
   max: 4,

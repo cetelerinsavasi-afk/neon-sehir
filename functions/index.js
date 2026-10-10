@@ -39,6 +39,8 @@ import { trainingBotRun, vehicleRaceLevel, carStats } from './raceSim.js';
 import { createRaceTa } from './raceTa.js';
 import { createCosmetics } from './cosmetics.js';
 import { createStream } from './stream.js';
+import { createNameSync } from './nameSync.js';
+import { profanityCheck, PROFANITY_WARNING } from './profanity.js';
 import { cleanEquipped } from './cosmeticsData.js';
 import { HOUSE_PRODUCTS } from './houseCatalogData.js';
 import { sanitizeDrawing } from './drawingData.js';
@@ -52,6 +54,13 @@ const db = admin.firestore();
 setGlobalOptions({ region: 'europe-west1' });
 
 // UGC moderasyonu (Faz D1): şikâyet, engelleme, susturma — ayrıntı functions/moderation.js
+// v86.1: oyuncu adı değişince kopyalarını (çete, imam, ev sahibi...) güncelle
+const nameSync = createNameSync({ db, FieldValue: admin.firestore.FieldValue });
+// v86.1: susturma kontrolü olmayan yazılı isteklerde sadece küfür kontrolü
+const assertClean = (content) => {
+  if (profanityCheck(content)) throw new HttpsError('invalid-argument', PROFANITY_WARNING);
+};
+
 const moderation = createModeration({
   db,
   FieldValue: admin.firestore.FieldValue,
@@ -150,7 +159,7 @@ const social = createSocial({
   HttpsError,
   requireAuth: (request) => requireAuth(request),
   onCall,
-  assertCanSpeak: (uid) => moderation.assertCanSpeak(uid),
+  assertCanSpeak: (uid, content) => moderation.assertCanSpeak(uid, content),
   isBlockedBy: (a, b) => moderation.isBlockedBy(a, b),
   dateKey: () => istanbulDateKey(),
 });
@@ -216,7 +225,7 @@ const houses = createHouses({
   requireAuth: (request) => requireAuth(request),
   onCall,
   isAdmin: (uid) => ADMIN_UIDS.includes(uid),
-  assertCanSpeak: (uid) => moderation.assertCanSpeak(uid),
+  assertCanSpeak: (uid, content) => moderation.assertCanSpeak(uid, content),
   isFriend: async (a, b) => {
     const snap = await db.collection('friendships').doc(a).get();
     return Boolean(snap.exists && snap.data()?.friends?.[b]);
@@ -242,6 +251,12 @@ export const syncAchievements = onCall(async (request) => {
   const snap = await db.collection('users').doc(uid).get();
   return { achievements: snap.data()?.achievements || {} };
 });
+// v86.1 — haftalık ad taraması (Pazartesi 04:40): eski adda kalmış kopyalar düzeltilir
+export const playerNameSweep = onSchedule({ schedule: '40 4 * * 1', timeZone: 'Europe/Istanbul', timeoutSeconds: 540 }, async () => {
+  const res = await nameSync.sweepNames();
+  console.log(JSON.stringify({ nameSweep: res }));
+});
+
 export const achievementsSweep = onSchedule({ schedule: 'every 60 minutes' }, async () => {
   await achievements.sweep();
 });
@@ -1048,6 +1063,7 @@ function factoryStarterCost(cryptoPrice) {
 }
 
 export const createFactory = onCall(async (request) => {
+  assertClean(request.data); // v86.1: küfür filtresi
   const uid = requireAuth(request);
   const userRef = db.collection('users').doc(uid);
   const factoryRef = db.collection('factories').doc(uid);
@@ -1274,7 +1290,7 @@ export const setFactorySalary = onCall(async (request) => {
 const FACTORY_NAME_MAX_LEN = 22;
 export const setFactoryName = onCall(async (request) => {
   const uid = requireAuth(request);
-  await moderation.assertCanSpeak(uid); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
+  await moderation.assertCanSpeak(uid, request.data); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
   const name = String(request.data?.name || '').trim();
   if (name.length < 1 || name.length > FACTORY_NAME_MAX_LEN) {
     throw new HttpsError(
@@ -4103,7 +4119,7 @@ export const renameVehicle = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'Geçersiz araç.');
   }
   const trimmed = String(name || '').trim();
-  if (trimmed) await moderation.assertCanSpeak(uid); // UGC D1: ad veriyorsa susturma kontrolü (adı silmek serbest)
+  if (trimmed) await moderation.assertCanSpeak(uid, request.data); // UGC D1: ad veriyorsa susturma kontrolü (adı silmek serbest)
   if (trimmed.length > VEHICLE_CUSTOM_NAME_MAX_LEN) {
     throw new HttpsError('invalid-argument', `Araç adı en fazla ${VEHICLE_CUSTOM_NAME_MAX_LEN} karakter olabilir.`);
   }
@@ -5494,7 +5510,7 @@ export const applyForImam = onCall(async (request) => {
 
 export const giveNasihat = onCall(async (request) => {
   const uid = requireAuth(request);
-  await moderation.assertCanSpeak(uid); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
+  await moderation.assertCanSpeak(uid, request.data); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
   const text = String(request.data?.text || '').trim().slice(0, 280);
   if (!text) {
     throw new HttpsError('invalid-argument', 'Nasihat boş olamaz.');
@@ -5540,7 +5556,7 @@ export const claimImamSalary = onCall(async (request) => {
 export const becomeBeggar = onCall(async (request) => {
   const uid = requireAuth(request);
   const note = String(request.data?.note || '').slice(0, 140);
-  if (note.trim()) await moderation.assertCanSpeak(uid); // UGC D1: not yazıyorsa susturma kontrolü
+  if (note.trim()) await moderation.assertCanSpeak(uid, request.data); // UGC D1: not yazıyorsa susturma kontrolü
   const dateKey = istanbulDateKey();
   const userRef = db.collection('users').doc(uid);
   const dailyRef = db.collection('dailyActions').doc(`${uid}_${dateKey}`);
@@ -6561,6 +6577,7 @@ async function isAlreadyInActiveHeistPlanForTarget(uid, target) {
 }
 
 export const createHeistPlan = onCall(async (request) => {
+  assertClean(request.data); // v86.1: küfür filtresi
   const uid = requireAuth(request);
   const { target } = request.data || {};
   if (!HEIST_TARGETS.includes(target)) {
@@ -6636,7 +6653,7 @@ export const createHeistPlan = onCall(async (request) => {
 // uyarılar için. Sadece plandaki katılımcılar (kurucu dahil) yazabilir.
 export const updateHeistPlanNote = onCall(async (request) => {
   const uid = requireAuth(request);
-  await moderation.assertCanSpeak(uid); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
+  await moderation.assertCanSpeak(uid, request.data); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
   const { planId } = request.data || {};
   const note = String(request.data?.note || '').slice(0, 200);
   const planRef = db.collection('heistPlans').doc(planId);
@@ -7850,7 +7867,7 @@ const CHAT_MAX_LENGTH = 300;
 
 export const sendChatMessage = onCall(async (request) => {
   const uid = requireAuth(request);
-  await moderation.assertCanSpeak(uid); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
+  await moderation.assertCanSpeak(uid, request.data); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
   const text = String(request.data?.text || '').trim();
   if (!text) {
     throw new HttpsError('invalid-argument', 'Mesaj boş olamaz.');
@@ -7923,7 +7940,7 @@ async function markGangActivity(uid) {
 // ---------------------------------------------------------------------------
 export const setDisplayName = onCall(async (request) => {
   const uid = requireAuth(request);
-  await moderation.assertCanSpeak(uid); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
+  await moderation.assertCanSpeak(uid, request.data); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
   const raw = String(request.data?.displayName || '').trim();
   if (raw.length < 3 || raw.length > 20) {
     throw new HttpsError('invalid-argument', 'İsim 3-20 karakter arasında olmalı.');
@@ -7946,8 +7963,15 @@ export const setDisplayName = onCall(async (request) => {
       tx.delete(db.collection('usernames').doc(oldNameKey));
     }
     tx.set(newNameRef, { uid });
-    tx.update(userRef, { displayName: raw, displayNameKey: key });
+    tx.update(userRef, { displayName: raw, displayNameKey: key, ...(user?.displayName && user.displayName !== raw ? { nameChangedAtMs: Date.now() } : {}) });
   });
+
+  // v86.1: yeni ad; çete, imam, ev/işletme, fabrika, Sixtagram, arkadaş listelerine de yazılır
+  try {
+    await nameSync.syncPlayerName(uid);
+  } catch (err) {
+    console.error('syncPlayerName', uid, err?.message || err);
+  }
 
   return { ok: true };
 });
@@ -8031,7 +8055,7 @@ const stream = createStream({
   HttpsError,
   splitIncomeForDebt: (debt, amount) => splitIncomeForDebt(debt, amount),
   business,
-  assertCanSpeak: (uid) => moderation.assertCanSpeak(uid),
+  assertCanSpeak: (uid, content) => moderation.assertCanSpeak(uid, content),
 });
 export const streamAction = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -8339,6 +8363,7 @@ const RACE_MAX_BET = 100_000;
 
 // createRaceRoom — oda kurar (status: 'waiting', rakip yok).
 export const createRaceRoom = onCall(async (request) => {
+  assertClean(request.data); // v86.1: küfür filtresi
   const uid = requireAuth(request);
   const { vehicleId, betAmount } = request.data || {};
   const amount = Number(betAmount);
@@ -10214,6 +10239,7 @@ function sumCards(cards) {
 }
 
 export const createOnNumaraTable = onCall(async (request) => {
+  assertClean(request.data); // v86.1: küfür filtresi
   const uid = requireAuth(request);
   const { capacity, betAmount } = request.data || {};
   const cap = Number(capacity);
@@ -15877,7 +15903,7 @@ export const withdrawFutbolTreasury20Percent = onCall(async (request) => {
 export const openFutbolTreasuryWithdrawRequest = onCall(async (request) => {
   const uid = requireAuth(request);
   const { teamId, amount, note } = request.data || {};
-  if (String(note || '').trim()) await moderation.assertCanSpeak(uid); // UGC D1: not yazıyorsa susturma kontrolü
+  if (String(note || '').trim()) await moderation.assertCanSpeak(uid, request.data); // UGC D1: not yazıyorsa susturma kontrolü
   if (!teamId) throw new HttpsError('invalid-argument', 'teamId gerekli.');
   const cleanAmount = Math.round(Number(amount));
   if (!Number.isFinite(cleanAmount) || cleanAmount <= 0) {
@@ -18168,6 +18194,7 @@ async function notifyOutbidFactoryOwner(team, newFrontRunnerUid, newAmount, team
 // reddedilir. Kulüp OYUNCU sahipliyse teklif 'pending' olarak beklemeye
 // alınır, kulüp sahibi respondSponsorshipOffer ile kabul/red eder.
 export const sendFactorySponsorshipOffer = onCall(async (request) => {
+  assertClean(request.data); // v86.1: küfür filtresi
   const uid = requireAuth(request);
   const { teamId, dailyAmount } = request.data || {};
   const cleanAmount = Math.round(Number(dailyAmount));
@@ -18279,6 +18306,7 @@ export const sendFactorySponsorshipOffer = onCall(async (request) => {
 // sahipli olduğu için burada otomatik kabul YOK — fabrika sahibi
 // respondSponsorshipOffer ile kabul/red eder.
 export const sendClubSponsorshipOffer = onCall(async (request) => {
+  assertClean(request.data); // v86.1: küfür filtresi
   const uid = requireAuth(request);
   const { factoryOwnerUid, dailyAmount } = request.data || {};
   const cleanAmount = Math.round(Number(dailyAmount));
@@ -18763,7 +18791,7 @@ export const respondSponsorshipFeeRaiseRequest = onCall(async (request) => {
 // anında, bkz. listSponsorshipTeamsForFactory/listSponsorshipFactoriesForTeam).
 export const updateSponsorshipNote = onCall(async (request) => {
   const uid = requireAuth(request);
-  await moderation.assertCanSpeak(uid); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
+  await moderation.assertCanSpeak(uid, request.data); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
   const { factoryOwnerUid, teamId, note } = request.data || {};
   if (!factoryOwnerUid || !teamId) {
     throw new HttpsError('invalid-argument', 'factoryOwnerUid ve teamId gerekli.');
@@ -21255,7 +21283,7 @@ async function buildSixtagramAttachment(uid, attachment) {
 // `attachment` verilebilir, ikisi de boşsa reddedilir.
 export const createSixtagramPost = onCall(async (request) => {
   const uid = requireAuth(request);
-  await moderation.assertCanSpeak(uid); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
+  await moderation.assertCanSpeak(uid, request.data); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
   const { text, attachment } = request.data || {};
   const cleanText = typeof text === 'string' ? text.trim().slice(0, SIXTAGRAM_MAX_TEXT_LEN) : '';
 
@@ -21310,7 +21338,7 @@ export const createSixtagramPost = onCall(async (request) => {
 // verilen yorumun sahibine de ayrıca 'reply' bildirimi gider.
 export const createSixtagramComment = onCall(async (request) => {
   const uid = requireAuth(request);
-  await moderation.assertCanSpeak(uid); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
+  await moderation.assertCanSpeak(uid, request.data); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
   const { postId, text, parentCommentId } = request.data || {};
   if (!postId) throw new HttpsError('invalid-argument', 'postId gerekli.');
   const cleanText = typeof text === 'string' ? text.trim().slice(0, SIXTAGRAM_COMMENT_MAX_LEN) : '';
@@ -21572,7 +21600,7 @@ const gangFunctions = createGangFunctions({
     else if (res.material === 'silahUpgrade') await advanceOnboardingStep(uid, 18);
   },
   // UGC D1: susturulmuş oyuncu çete sohbetine/adına/notuna yazamaz
-  assertCanSpeak: (uid) => moderation.assertCanSpeak(uid),
+  assertCanSpeak: (uid, content) => moderation.assertCanSpeak(uid, content),
 });
 export const gangAction = gangFunctions.gangAction;
 export const gangClock = gangFunctions.gangClock;
@@ -21614,7 +21642,7 @@ export const toggleFeedbackLike = onCall(async (request) => {
 
 export const submitFeedback = onCall(async (request) => {
   const uid = requireAuth(request);
-  await moderation.assertCanSpeak(uid); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
+  await moderation.assertCanSpeak(uid, request.data); // UGC D1: susturulmuş oyuncu yazamaz (functions/moderation.js)
   const kind = FEEDBACK_KINDS.includes(request.data?.kind) ? request.data.kind : 'fikir';
   const text = String(request.data?.text || '')
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')

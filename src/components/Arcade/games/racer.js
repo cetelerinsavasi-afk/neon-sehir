@@ -82,6 +82,8 @@ export default {
   title: 'Drift Yarışı',
   emoji: '🏎️',
   desc: '5 tur, ilk bitiren kazanır! Virajda drift at, nitroyu doldur, oklardan hız al.',
+  // v86: kolay bot — daha dalgın sürüş, nitro/drift'i kaçırır
+  easy: { actions: IN.A | IN.B, miss: 0.5, skill: 0.45, delay: 8 },
   how: '◀ ▶ direksiyon · 🌀 drift · 🔥 nitro',
   min: 2,
   max: 4,

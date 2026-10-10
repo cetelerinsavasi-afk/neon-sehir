@@ -193,6 +193,88 @@ export function BiatStatus({ d, info }) {
   );
 }
 
+// v86 — Pazar savaşında biat: biat eden çetenin AYRI hanesi gösterilmez; gücü
+// biat ettiği çetenin toplamına katılır. Sunucu da sonucu aynı şekilde hesaplar
+// (functions/gang/actions/wars.js → foldBiatTotals). war.biatLinks: kabul
+// edilmiş / aktif / bozulan (00:00'a kadar) biatlar. Saf fonksiyon.
+export function foldTradeWar(war) {
+  if (!war || war.type !== 'trade') return war;
+  const links = war.biatLinks;
+  if (!links) return war; // eski savaş belgesi (v84 biçimi)
+  const display = { ...(war.display || {}) };
+  const biatDisplay = { ...(war.biatDisplay || {}) };
+  const sides = { ...(war.sides || {}) };
+  const biatSides = {};
+  for (const [vid, l] of Object.entries(links)) {
+    const own = Number(display[vid] || 0);
+    if (own > 0) {
+      display[l.overlordId] = Number(display[l.overlordId] || 0) + own;
+      biatDisplay[vid] = Number(biatDisplay[vid] || 0) + own;
+    }
+    delete display[vid];
+    delete sides[vid];
+    if (!sides[l.overlordId]) sides[l.overlordId] = { orgType: 'gang', orgId: l.overlordId, name: l.overlordName, logo: l.overlordLogo || null };
+    biatSides[vid] = { name: l.name, logo: l.logo || null, overlordId: l.overlordId, overlordName: l.overlordName, overlordLogo: l.overlordLogo || null };
+  }
+  return { ...war, display, biatDisplay, sides, biatSides };
+}
+
+// Pazar savaşı detayı: sıralamanın ALTINDA "Biat" bölümü — kim kime biat etti,
+// biat edenin gücü ve biat edilenin (biat edenler dahil) toplam gücü.
+export function BiatSection({ war, mineKey }) {
+  const groups = {};
+  for (const [vid, s] of Object.entries(war?.biatSides || {})) {
+    if (!s.overlordId) continue;
+    (groups[s.overlordId] = groups[s.overlordId] || { overlordId: s.overlordId, name: s.overlordName || war.sides?.[s.overlordId]?.name || '', logo: s.overlordLogo || war.sides?.[s.overlordId]?.logo || null, rows: [] }).rows.push({
+      key: vid,
+      name: s.name,
+      logo: s.logo,
+      power: Number(war?.biatDisplay?.[vid] || 0),
+    });
+  }
+  const list = Object.values(groups);
+  if (!list.length) return null;
+  return (
+    <>
+      <div className="gx-section-head">
+        <span>⛓️ Biat</span>
+      </div>
+      {list.map((g) => {
+        const total = Number(war?.display?.[g.overlordId] || 0);
+        const fromVassals = g.rows.reduce((a, r) => a + r.power, 0);
+        return (
+          <div key={g.overlordId} className="gx-biat-group">
+            {g.rows
+              .sort((a, b) => b.power - a.power)
+              .map((r) => (
+                <div key={r.key} className={`gx-biat-line${r.key === mineKey ? ' mine' : ''}`}>
+                  <Logo logo={r.logo} size={22} />
+                  <div className="gx-biat-line-main">
+                    <b>{r.name}</b>
+                    <span className="gx-mini">{r.power > 0 ? `${fmt(r.power)} güç` : 'henüz zar atmadı'}</span>
+                  </div>
+                  <span className="gx-biat-line-arrow" aria-label="biat etti">
+                    ⛓️ →
+                  </span>
+                  <Logo logo={g.logo} size={22} />
+                  <b className="gx-biat-line-to">{g.name}</b>
+                </div>
+              ))}
+            <div className="gx-biat-total">
+              {g.name} toplamı: <b>{fmt(total)}</b>
+              <span className="dim">
+                {' '}
+                = kendi {fmt(Math.max(0, total - fromVassals))} + biat {fmt(fromVassals)}
+              </span>
+            </div>
+          </div>
+        );
+      })}
+      <p className="dim gx-mini">Biat eden çeteler kendi adlarına sıralamaya girmez; güçleri biat ettikleri çetenin toplamına eklenir ve yolu o çete kazanır.</p>
+    </>
+  );
+}
+
 // Pazar savaşı detayında bir tarafın altına: o tarafa biat edenlerin katkısı
 export function biatRowsOf(war, sideKey) {
   return Object.entries(war?.biatSides || {})

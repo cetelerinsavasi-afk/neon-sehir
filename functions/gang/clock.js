@@ -13,6 +13,7 @@
 import { GANG, INTEL, TRADE_PRODUCTS, MS_DAY, productById } from './config.js';
 import { addDays, midnightMsOf, weekdayOfKey, daysBetweenKeys, dateKeyOf, nextWindowStartMs, hhmmOf } from './time.js';
 import { computeGangRanks, computeIntelRanks } from './ranks.js';
+import { readBiatLinks, foldBiatTotals, biatWarPatch } from './actions/wars.js';
 
 const LIVE_GRACE_MS = 45 * 1000; // canlıda 00:00'dan sonra geç kalan zar yazımları için tampon
 const TICK_LEASE_MS = 9 * 60 * 1000;
@@ -315,7 +316,10 @@ export function createClock(core, actions) {
     const warId = `trade_${dayKey}`;
     const pre = await ctx.ref.war(warId).get();
     if (!pre.exists || pre.data().status !== 'active') return { skipped: true };
-    const { totals, via } = await warActions.sumShards(ctx, warId);
+    // v86: biat edenin (kabul edilmiş/aktif biat) kendi hanesindeki gücü biat edilene katılır
+    const links = await readBiatLinks(ctx);
+    const sh = await warActions.sumShards(ctx, warId);
+    const { totals, via } = foldBiatTotals(sh.totals, sh.via, links);
     const entries = Object.entries(totals).filter(([, p]) => p > 0);
     entries.sort((x, y) => y[1] - x[1]);
     let winnerKey = entries[0]?.[0] || null;
@@ -379,14 +383,17 @@ export function createClock(core, actions) {
         intelLog(tx, ctx, '🏆', `Pazar savaşını İstihbarat kazandı! Yol kimseye verilmedi, kasaya +${intelIncome.toLocaleString('tr-TR')}.`);
       }
       // v84: biat edenlerin katkısı — kendi günlüklerine ve biat ettikleri çetenin günlüğüne
-      const biatSides = w.biatSides || {};
+      const biatSides = { ...(w.biatSides || {}) };
+      for (const [vid, l] of Object.entries(links)) biatSides[vid] = { name: l.name, logo: l.logo, overlordId: l.overlordId, overlordName: l.overlordName };
       for (const [vid, p] of Object.entries(via || {})) {
         const sd = biatSides[vid] || {};
         const won = winnerGang && sd.overlordId === winnerGang.id;
         gangLog(tx, ctx, vid, won ? '🏆' : '⛓️', `Pazar savaşında ${sd.overlordName || 'biat ettiğiniz çete'} adına ${p.toLocaleString('tr-TR')} hasar verdiniz${won ? ` — ${war.productLabel} yolunu kazandılar!` : '.'}`);
         if (sd.overlordId) gangLog(tx, ctx, sd.overlordId, '⛓️', `${sd.name || 'Biat eden çete'} Pazar savaşında sizin adınıza ${p.toLocaleString('tr-TR')} hasar verdi.`);
       }
-      tx.update(ctx.ref.war(warId), { status: 'resolved', resolvedAtMs: ctx.now, display: totals, biatDisplay: via || {}, result: { winnerKey, power, intelIncome, totalWarPower, orderLimit: winnerGang ? orderLimit : 0, biatTotals: via || {} } });
+      const sidesPatch = {};
+      for (const l of Object.values(links)) if (totals[l.overlordId] > 0 && !w.sides?.[l.overlordId]) sidesPatch[`sides.${l.overlordId}`] = { orgType: 'gang', orgId: l.overlordId, name: l.overlordName, logo: l.overlordLogo };
+      tx.update(ctx.ref.war(warId), { ...sidesPatch, biatLinks: links, biatSides, status: 'resolved', resolvedAtMs: ctx.now, display: totals, biatDisplay: via || {}, result: { winnerKey, power, intelIncome, totalWarPower, orderLimit: winnerGang ? orderLimit : 0, biatTotals: via || {} } });
       ctx.logs.push({ gang: 'trade_war_resolved', world: ctx.worldId, warId, winnerKey, power });
       return { winnerKey, totals };
     });
@@ -395,7 +402,9 @@ export function createClock(core, actions) {
   // Çeteler listesi "son pazar savaşı gücüne" göre sıralanır → her çetenin
   // ve İstihbaratın son pazar gücü herkese açık belgeye yazılır (idempotent).
   async function recordSundayPowers(ctx, sundayKey) {
-    const { totals, via } = await warActions.sumShards(ctx, `trade_${sundayKey}`);
+    const links = await readBiatLinks(ctx);
+    const sh = await warActions.sumShards(ctx, `trade_${sundayKey}`);
+    const { totals, via } = foldBiatTotals(sh.totals, sh.via, links);
     const gangs = await ctx.ref.gangs().where('status', '==', 'active').get();
     let batch = db.batch();
     let n = 0;
@@ -1323,6 +1332,12 @@ export function createClock(core, actions) {
 
     // 8) bugünün başlangıçları
     await safe(ctx, 'trade-war', () => createTradeWar(ctx, dayKey));
+    // v86: o gün aktif/kabul edilmiş biatlar Pazar savaşı ekranında baştan görünsün
+    await safe(ctx, 'trade-war-biat', async () => {
+      const ws = await ctx.ref.war(`trade_${dayKey}`).get();
+      if (!ws.exists || ws.data().status !== 'active') return;
+      await ws.ref.update(biatWarPatch(ws.data(), await readBiatLinks(ctx)));
+    });
     await safe(ctx, 'trucks-depart', () => departTrucks(ctx));
 
     const ok = !(ctx.errors && ctx.errors.length);
@@ -1513,6 +1528,9 @@ export function createClock(core, actions) {
     }
     // v67: tır kalkışları + saldırı duyuruları (her tırın kendi saati) + bahisli savaş başlangıç/bitişleri
     if (last >= ctx0.dateKey) {
+      // v86.1: Pazar savaşındaki biat bağları her saat turunda (5 dk) yenilenir —
+      // yayından önce kabul edilmiş ya da başka yoldan değişmiş biatlar da hemen birleşir
+      await safe(ctx0, 'trade-biat', () => warActions.refreshTradeBiat(ctx0));
       await safe(ctx0, 'depart-orders', () => departOrders(ctx0));
       await safe(ctx0, 'announce-attacks', () => announceAttacks(ctx0));
       await safe(ctx0, 'bets-live', () => processBets(ctx0));
@@ -1527,12 +1545,16 @@ export function createClock(core, actions) {
     const active = reconcileNow ? await ctx0.ref.wars().where('status', '==', 'active').limit(60).get() : { docs: [] };
     for (const w of active.docs) {
       await safe(ctx0, `reconcile:${w.id}`, async () => {
-        const { totals, via } = await warActions.sumShards(ctx0, w.id);
+        const sh = await warActions.sumShards(ctx0, w.id);
+        // v86: Pazar savaşında biat edenin gücü biat edilene katılır (ekran = sonuç)
+        const links = w.data().type === 'trade' ? await readBiatLinks(ctx0) : null;
+        const { totals, via } = links ? foldBiatTotals(sh.totals, sh.via, links) : sh;
         const disp = w.data().display || {};
         const differs = Object.keys({ ...totals, ...disp }).some((k) => (totals[k] || 0) !== (disp[k] || 0));
         const bd = w.data().biatDisplay || {};
         const biatDiffers = Object.keys({ ...via, ...bd }).some((k) => (via[k] || 0) !== (bd[k] || 0));
-        if (differs || biatDiffers) await w.ref.update({ display: totals, ...(biatDiffers ? { biatDisplay: via } : {}) });
+        const linksDiffer = links && JSON.stringify(links) !== JSON.stringify(w.data().biatLinks || {});
+        if (differs || biatDiffers || linksDiffer) await w.ref.update({ display: totals, ...(biatDiffers ? { biatDisplay: via } : {}), ...(links ? biatWarPatch(w.data(), links) : {}) });
       });
     }
     // dağılmış çeteler

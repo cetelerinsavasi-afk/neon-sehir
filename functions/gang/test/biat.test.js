@@ -167,7 +167,7 @@ test('biat: bahisli savaşa katkı yok; biat edilenin tırını savunabilir; boz
   assert.equal(r.sideKey, A.gangId, 'biat bitince kendi adına savaşır');
 });
 
-test('biat: Pazar günü kabul edilen biat, biat eden yolu kazanırsa 00:00\'da başlamaz; biat edilen dağılırsa işaret kalkar', async () => {
+test('v86: Pazar günü kabul edilen biat o günün savaşında sayılır — biat edenin gücü biat edilene katılır, yolu biat edilen alır; biat edilen dağılırsa işaret kalkar', async () => {
   const h = await createHarness({ dice: [6, 6, 1, 1] });
   const A = await setupRankedGang(h, 'Alfa');
   const B = await setupRankedGang(h, 'Beta');
@@ -179,11 +179,23 @@ test('biat: Pazar günü kabul edilen biat, biat eden yolu kazanırsa 00:00\'da 
   await h.act(B.baba, 'rollDice', { warId });
   const { biatId } = await h.act(A.baba, 'requestBiat', { targetGangId: B.gangId });
   await h.act(B.baba, 'respondBiat', { biatId, accept: true });
+  // ekran: A'nın ayrı hanesi yok, gücü B'nin toplamında; biat bölümü için bağ yazıldı
+  const live = h.get(`wars/${warId}`);
+  assert.equal(live.display[A.gangId], undefined, 'biat eden ayrı sırada görünmez');
+  assert.equal(live.display[B.gangId], 1_200_000 + 200_000);
+  assert.equal(live.biatDisplay[A.gangId], 1_200_000);
+  assert.equal(live.biatLinks[A.gangId].overlordId, B.gangId);
   await h.tickTo('2026-09-28', '00:05');
-  assert.deepEqual(h.get(`gangs/${A.gangId}`).routeProducts, ['yasakliMadde']);
-  assert.equal(h.get(`alliances/${biatId}`).status, 'cancelled');
-  assert.equal(h.get(`gangs/${A.gangId}`).biat, undefined);
-  assert.ok(h.chat(A.gangId).some((m) => /Biat başlamadı/.test(m)));
+  const done = h.get(`wars/${warId}`);
+  assert.equal(done.result.winnerKey, B.gangId, 'birleşik güçle biat edilen kazanır');
+  assert.deepEqual(h.get(`gangs/${B.gangId}`).routeProducts, ['yasakliMadde']);
+  assert.deepEqual(h.get(`gangs/${A.gangId}`).routeProducts || [], []);
+  assert.equal(h.get(`alliances/${biatId}`).status, 'active', 'yolu olmadığı için biat başlar');
+  assert.equal(h.get(`gangs/${A.gangId}`).biat.gangId, B.gangId);
+  assert.equal(h.get(`gangs/${A.gangId}`).lastSundayBiat, true);
+  // temizlik: sonraki senaryo için biatı bitir
+  await h.act(A.baba, 'endBiat', { biatId });
+  await h.tickTo('2026-09-28', '23:59');
 
   // dağılma: C → B biatı aktifken B dağılır
   const C = await setupRankedGang(h, 'Gama');
@@ -282,4 +294,30 @@ test('v85.1: v84\'ten kalma (çift anahtarındaki) biat, ittifak kurulunca kendi
   await h.act(A.ids[0], 'endBiat', { biatId });
   assert.equal(h.get(`alliances/${biatId}`).status, 'ending');
   assert.equal(h.get(`alliances/${pk}`).status, 'requested', 'ittifak teklifi etkilenmez');
+});
+
+test('v86.1: Pazar günü kabul edilen biatta biat edenin sonraki zarları doğrudan biat edilene yazılır; saat turu bağları yeniler', async () => {
+  const h = await createHarness({ dice: [3, 3, 3, 3, 3, 3] });
+  const A = await setupRankedGang(h, 'Alfa');
+  const B = await setupRankedGang(h, 'Beta');
+  await h.setPersona(A.baba, { power: 1000 });
+  await h.tickTo('2026-09-27', '00:10');
+  const warId = 'trade_2026-09-27';
+  const r1 = await h.act(A.baba, 'rollDice', { warId });
+  assert.equal(r1.sideKey, A.gangId, 'biat yokken kendi adına');
+  const { biatId } = await h.act(A.baba, 'requestBiat', { targetGangId: B.gangId });
+  await h.act(B.baba, 'respondBiat', { biatId, accept: true });
+  assert.equal(h.get(`alliances/${biatId}`).status, 'accepted');
+  await h.tickTo('2026-09-27', '03:10'); // sonraki 3 saatlik dilim
+  const r2 = await h.act(A.baba, 'rollDice', { warId });
+  assert.equal(r2.sideKey, B.gangId, 'kabul edilmiş biat: Beta adına');
+  assert.equal(r2.forGangId, B.gangId);
+  const w = h.get(`wars/${warId}`);
+  assert.equal(w.display[A.gangId], undefined);
+  assert.equal(w.display[B.gangId], 12_000);
+  assert.equal(w.biatDisplay[A.gangId], 12_000);
+  // bağ silinse bile saat turu yeniden yazar
+  await h.db.doc(`gangWorlds/test/wars/${warId}`).update({ biatLinks: {} });
+  await h.tickTo('2026-09-27', '03:20');
+  assert.equal(h.get(`wars/${warId}`).biatLinks[A.gangId].overlordId, B.gangId);
 });

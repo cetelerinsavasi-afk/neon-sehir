@@ -18,6 +18,57 @@ export const ALLIANCE_DEFENSIVE = ['active', 'ending'];
 export const BIAT_LIVE = ['requested', 'accepted', 'active', 'ending'];
 export const isBiat = (a) => a?.kind === 'biat';
 
+// v86 — Pazar savaşında biat: kabul edilmiş / aktif / bozulan (00:00'a kadar
+// süren) her biat, o günkü ticaret yolu savaşında biat edenin TÜM gücünü biat
+// edilen çeteye katar. Biat kabulden sonraki 00:00'da "başlasa" da, Pazar günü
+// kabul edilen biat o günün savaşında da sayılır (sonuç ve ekran aynı).
+export const BIAT_TRADE_STATUSES = ['accepted', 'active', 'ending'];
+
+// { biatEdenId: { overlordId, name, logo, overlordName, overlordLogo } }
+export async function readBiatLinks(ctx) {
+  const snap = await ctx.ref.alliances().where('kind', '==', 'biat').get();
+  const links = {};
+  snap.forEach((d) => {
+    const a = d.data();
+    if (!BIAT_TRADE_STATUSES.includes(a.status) || !a.vassalId || !a.overlordId) return;
+    links[a.vassalId] = {
+      overlordId: a.overlordId,
+      name: a.names?.[a.vassalId] || '',
+      logo: a.logos?.[a.vassalId] || null,
+      overlordName: a.names?.[a.overlordId] || '',
+      overlordLogo: a.logos?.[a.overlordId] || null,
+    };
+  });
+  return links;
+}
+
+// Shard toplamları → biat edenin kendi hanesindeki güç biat edilene taşınır.
+// via: biat edenin toplam katkısı (biat edilen adına). Saf fonksiyon.
+export function foldBiatTotals(totals, via, links) {
+  const t = { ...(totals || {}) };
+  const v = { ...(via || {}) };
+  for (const [vid, l] of Object.entries(links || {})) {
+    const own = Number(t[vid] || 0);
+    if (own > 0) {
+      t[l.overlordId] = Number(t[l.overlordId] || 0) + own;
+      v[vid] = Number(v[vid] || 0) + own;
+    }
+    delete t[vid];
+  }
+  return { totals: t, via: v };
+}
+
+// Biat bilgisini savaş belgesine yazar (ekran için): biatLinks + biatSides +
+// biat edilenin tarafı (hiç zar atmamış olsa bile sıralamada görünsün).
+export function biatWarPatch(war, links) {
+  const patch = { biatLinks: links };
+  for (const [vid, l] of Object.entries(links)) {
+    patch[`biatSides.${vid}`] = { name: l.name, logo: l.logo, overlordId: l.overlordId, overlordName: l.overlordName };
+    if (!war?.sides?.[l.overlordId]) patch[`sides.${l.overlordId}`] = { orgType: 'gang', orgId: l.overlordId, name: l.overlordName, logo: l.overlordLogo };
+  }
+  return patch;
+}
+
 export function pairKeyOf(a, b) {
   return [a, b].sort().join('__');
 }
@@ -88,12 +139,17 @@ export function createWarActions(core) {
         if (war.type === 'trade') {
           sideKey = gangId;
           // v84 — biat eden çete Pazar savaşına biat ettiği çete adına katılır
-          const g = (await tx.get(ctx.ref.gang(gangId))).data();
-          if (g?.biat?.gangId) {
-            const [a, og] = await Promise.all([readPairBiat(tx, ctx, gangId, g.biat.gangId), tx.get(ctx.ref.gang(g.biat.gangId))]);
-            if (isBiat(a) && a.vassalId === gangId && ALLIANCE_DEFENSIVE.includes(a.status) && og.data()?.status === 'active') {
-              sideKey = g.biat.gangId;
-              org.via = { gangId, name: g.name || '', logo: g.logo || null, overlordName: og.data().name || '', overlordLogo: og.data().logo || null };
+          // v86.1: sadece başlamış (aktif) biat değil, KABUL EDİLMİŞ biat da sayılır
+          // (Pazar günü kabul edilen biat o günün savaşında geçerli — bkz. BIAT_TRADE_STATUSES)
+          const [gs, mine] = await Promise.all([tx.get(ctx.ref.gang(gangId)), tx.get(ctx.ref.alliances().where('vassalId', '==', gangId))]);
+          const g = gs.data();
+          const a = mine.docs.map((d) => d.data()).find((x) => isBiat(x) && BIAT_TRADE_STATUSES.includes(x.status)) || null;
+          const overlordId = a?.overlordId || null;
+          if (overlordId) {
+            const og = await tx.get(ctx.ref.gang(overlordId));
+            if (og.data()?.status === 'active') {
+              sideKey = overlordId;
+              org.via = { gangId, name: g?.name || '', logo: g?.logo || null, overlordName: og.data().name || '', overlordLogo: og.data().logo || null };
             }
           }
         } else if (war.type === 'bet') {
@@ -521,6 +577,25 @@ export function createWarActions(core) {
   // Zincir yok: biat etmiş çeteye biat edilemez, kendisine biat edilen çete
   // başkasına biat edemez. İstihbarat bu sistemin dışındadır (çete değildir).
   // ---------------------------------------------------------------------------
+  // v86 — biat kabul/bozma sonrası o an süren Pazar savaşının biat bilgisi yenilenir (best-effort)
+  async function refreshTradeBiat(ctx) {
+    try {
+      const wars = await ctx.ref.wars().where('type', '==', 'trade').where('status', '==', 'active').get();
+      const live = wars.docs.filter((d) => ctx.now >= Number(d.data().startsAtMs || 0) && ctx.now < Number(d.data().endsAtMs || 0));
+      if (!live.length) return;
+      const links = await readBiatLinks(ctx);
+      for (const d of live) {
+        const w = d.data();
+        // her zaman shard'lardan (gösterge bozulmuş/eski olsa da doğru toplam)
+        const sh = await sumShards(ctx, d.id);
+        const { totals, via } = foldBiatTotals(sh.totals, sh.via, links);
+        await d.ref.update({ ...biatWarPatch(w, links), display: totals, biatDisplay: via });
+      }
+    } catch (err) {
+      ctx.logs.push({ gang: 'trade_biat_refresh_failed', err: String(err?.message || err) });
+    }
+  }
+
   async function readBiats(tx, ctx, gangId) {
     const snap = await tx.get(ctx.ref.alliances().where('gangIds', 'array-contains', gangId));
     const all = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((a) => isBiat(a) && BIAT_LIVE.includes(a.status));
@@ -577,7 +652,7 @@ export function createWarActions(core) {
   async function respondBiat(ctx, data) {
     const biatId = String(data.biatId || '');
     const accept = Boolean(data.accept);
-    return core.db.runTransaction(async (tx) => {
+    const out = await core.db.runTransaction(async (tx) => {
       const { gangId, me } = await myGangRole(tx, ctx, LEADERS, 'Biat teklifine sadece Mafya Babası ve Sağ Kol cevap verebilir.');
       const al = (await tx.get(ctx.ref.alliance(biatId))).data();
       if (!al || !isBiat(al) || al.overlordId !== gangId) fail('not-found', 'Teklif bulunamadı.');
@@ -602,13 +677,15 @@ export function createWarActions(core) {
       ctx.logs.push({ gang: 'biat_accepted', world: ctx.worldId, vassal: vassalId, overlord: gangId });
       return { accepted: true, startDateKey };
     });
+    await refreshTradeBiat(ctx); // v86: o anki Pazar savaşı ekranı
+    return out;
   }
 
   // v85.1: iki tarafta da Mafya Babası ve Sağ Kol bozabilir. Biat ittifaktan
   // bağımsızdır: biatı bozmak ittifaka dokunmaz (ittifak ayrı belgede).
   async function endBiat(ctx, data) {
     const biatId = String(data.biatId || '');
-    return core.db.runTransaction(async (tx) => {
+    const out = await core.db.runTransaction(async (tx) => {
       const { gangId, me } = await myGangRole(tx, ctx, LEADERS, 'Biatı sadece Mafya Babası ve Sağ Kol bozabilir.');
       const al = (await tx.get(ctx.ref.alliance(biatId))).data();
       if (!al || !isBiat(al) || !al.gangIds.includes(gangId)) fail('not-found', 'Biat bulunamadı.');
@@ -627,6 +704,8 @@ export function createWarActions(core) {
       announce(tx, ctx, gangId, '💔', `${me.name}, ${al.names[other]} ile biatı bozdu — 00:00'da sona erecek.`);
       return { ending: true, endDateKey };
     });
+    await refreshTradeBiat(ctx); // v86: o anki Pazar savaşı ekranı
+    return out;
   }
 
   // ---------------------------------------------------------------------------
@@ -972,6 +1051,7 @@ export function createWarActions(core) {
   return {
     rollDice,
     sumShards,
+    refreshTradeBiat,
     offerBet,
     respondBet,
     withdrawBet,
