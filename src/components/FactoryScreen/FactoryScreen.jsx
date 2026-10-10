@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { factoryTaxRate } from '../../../functions/tax.js';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useMyFactory } from '../../hooks/useMyFactory';
@@ -910,8 +911,9 @@ function DailyReportModal({ factory, onClose }) {
   // salaryPaid - electricityBill). Yine de ayrı bir kalem olarak da
   // gösteriliyor ki sahip kârın neye gittiğini görebilsin.
   const electricityToday = factory.dailyElectricityExpense || 0;
-  // v77 — vergi: günlük brüt kazancın %10'u (net kâra dahil)
+  // v87 — vergi: günlük brüt kazanca göre kademeli (%1 / %10 / %20 / %40; net kâra dahil)
   const taxToday = factory.dailyTaxExpense || 0;
+  const taxRatePct = Math.round(factoryTaxRate(grossToday) * 100);
   // Yeni kalemler — sadece "varsa" (0'dan büyükse) gösterilir: hisse satışı
   // geliri, hisse kâr payı gideri, sponsorluk gideri (bkz. functions/index.js
   // dailyReset — Part A + dividend bloğu + processFutbolSponsorshipsNightly).
@@ -988,7 +990,9 @@ function DailyReportModal({ factory, onClose }) {
             </span>
           </div>
           <div className="factory-report-stat">
-            <span className="factory-report-stat-label">🏛️ Vergi (%10)</span>
+            <span className="factory-report-stat-label" title="Günlük brüt gelire göre: 100.000'e kadar %1 · 1 milyona kadar %10 · 10 milyona kadar %20 · üzeri %40">
+              🏛️ Vergi (%{taxRatePct})
+            </span>
             <span className="factory-report-stat-value expense">
               −{taxToday.toLocaleString('tr-TR')} altın
             </span>

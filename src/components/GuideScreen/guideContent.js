@@ -352,7 +352,7 @@ export const CATS = [
         L('☝️', 'Kişi başı tek fabrika. Satılmaz, devredilmez.'),
         L('🧑‍🏭', 'Bir yerde çalışıyorsan, fabrikanı kurunca o işten otomatik ayrılırsın.'),
         L('🎨', 'Adını ve logonu sen seçersin.'),
-        L('🏛️', 'Her gece günlük kazancının %10’u vergi olarak kesilir; altının yetmezse borç yazılır.'),
+        L('🏛️', 'Her gece günlük brüt kazancına göre vergi kesilir: 100.000’e kadar %1, 1 milyona kadar %10, 10 milyona kadar %20, üzeri %40. Altının yetmezse borç yazılır.'),
       ] },
     { type: 'pick', title: 'Makineler',
       kicker: 'Fabrika makine kadar konuşur.',

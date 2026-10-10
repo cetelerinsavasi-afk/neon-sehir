@@ -2829,7 +2829,8 @@ export const dailyReset = onSchedule(
       // — aşağıdaki batch yazımı senkron kurulduğu için, nakit/borç ayrımı bu
       // okumadan sonra hesaplanmalı (produceAtFactory'deki maaş açığı
       // mantığıyla AYNI desen, sadece transaction yerine toplu okuma).
-      // v77 vergi: fabrikanın günlük brüt üretim kazancının %10'u (functions/tax.js).
+      // v87 vergi: fabrikanın günlük brüt üretim kazancına göre kademeli
+      // (%1 / %10 / %20 / %40 — functions/tax.js FACTORY_TAX_BRACKETS).
       // Elektrik faturasıyla birlikte sahibin altınından düşülür; yetmezse
       // kalanı devlete borç (ceza) yazılır.
       const factoryTaxByFactory = new Map();
