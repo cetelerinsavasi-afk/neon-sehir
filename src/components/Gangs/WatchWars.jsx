@@ -42,7 +42,25 @@ function WarCard({ w }) {
       </div>
       <div className="dim gx-mini">{k.label}{w.type === 'bet' ? ' · bahis tutarı gizli' : w.type === 'truck' ? ' · yük gizli' : ''}</div>
       {sides.map((s) => (
-        <SideRow key={s.key} s={s} top={max > 0 && s.power === max} />
+        <div key={s.key}>
+          <SideRow s={s} top={max > 0 && s.power === max} />
+          {/* v84: bu tarafa biat edenler ve katkıları */}
+          {(w.biat || [])
+            .filter((b) => b.forKey === s.key)
+            .sort((a, b) => b.power - a.power)
+            .map((b) => (
+              <div key={b.key} className="gx-biat-contrib-row">
+                <span className="gx-biat-contrib-arrow" aria-hidden="true">
+                  ↳
+                </span>
+                <Logo logo={b.logo} size={16} />
+                <span className="gx-biat-contrib-name">
+                  ⛓️ {b.name} <em>{b.forName} adına</em>
+                </span>
+                <b>+{fmt(b.power)}</b>
+              </div>
+            ))}
+        </div>
       ))}
     </Card>
   );

@@ -67,7 +67,10 @@ export function useGangData(membership) {
     kasaShown: kasaLive ? state?.kasa : gang?.kasaAtMidnight,
     members,
     wars,
-    alliances: alliances.filter((a) => ['requested', 'accepted', 'active', 'ending'].includes(a.status)),
+    // v84: ittifak ve biat aynı koleksiyonda — ayrı listeler + ikisi birden (saldırmazlık/savunma için)
+    alliances: alliances.filter((a) => a.kind !== 'biat' && ['requested', 'accepted', 'active', 'ending'].includes(a.status)),
+    biats: alliances.filter((a) => a.kind === 'biat' && ['requested', 'accepted', 'active', 'ending'].includes(a.status)),
+    pacts: alliances.filter((a) => ['requested', 'accepted', 'active', 'ending'].includes(a.status)),
     votes,
     pending: myPending.filter((p) => p.status === 'pending'),
     dists,

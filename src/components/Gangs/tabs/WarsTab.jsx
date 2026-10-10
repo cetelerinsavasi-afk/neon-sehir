@@ -17,6 +17,7 @@ import DiceRoller from '../DiceRoller';
 import { IntelDecisionPanel, VoteCard } from '../shared';
 import { GANG_RULES, INTEL_LEADERS, INTEL_LOGO, LEADERS, fmt, productOf } from '../gangConstants';
 import { TRADE_COUNTDOWN_WINDOW_MS, nextTradeSunday } from '../tradeSchedule';
+import { BiatContribRows, BiatSheet, BiatStatus, biatRowsOf, useBiatInfo } from '../Biat';
 
 const GANG_RULES_HARAC_HOUR = 21; // v38: son dilim (21:00) başlayana kadar
 // v37: bahis tutarını sadece rütbeliler (Baba · Sağ Kol · Kıdemli) görür —
@@ -94,7 +95,7 @@ function splitHms(ms) {
   const s = Math.max(0, Math.floor(ms / 1000));
   return [Math.floor(s / 3600), Math.floor((s % 3600) / 60), s % 60];
 }
-function UpcomingTradeWar({ hasActiveTrade }) {
+function UpcomingTradeWar({ hasActiveTrade, fightingFor }) {
   const { path } = useGang();
   const now = useNow(1000);
   const { data: world } = useDocData(path('').replace(/\/$/, ''));
@@ -135,6 +136,11 @@ function UpcomingTradeWar({ hasActiveTrade }) {
         </div>
       ) : (
         <div className="gx-upcoming-cd done">⚔️ Savaş başlıyor…</div>
+      )}
+      {fightingFor && (
+        <div className="gx-biat-banner">
+          ⛓️ Biat ettiniz — bu savaşa <b>{fightingFor.name}</b> adına katılacaksınız
+        </div>
       )}
       <div className="gx-upcoming-foot dim">Pazar 00:00 – 24:00 · kazanan çete yolu {GANG_RULES.ROUTE_DAYS} gün alır</div>
     </Card>
@@ -181,7 +187,7 @@ function warPurpose(w) {
   return '';
 }
 
-function WarDetail({ war, onClose, mySideKey }) {
+function WarDetail({ war, onClose, mySideKey, myGangId }) {
   const { path } = useGang();
   const { docs: rolls } = useQueryData(path(`wars/${war.id}/rolls`), () => [orderBy('contribution', 'desc'), limit(10)], war.id);
   const sides = sidesRanked(war);
@@ -194,27 +200,41 @@ function WarDetail({ war, onClose, mySideKey }) {
       </div>
       {sides.length === 0 && <p className="dim">Henüz kimse katılmadı.</p>}
       {sides.map((s, i) => (
-        <div key={s.key} className={`gx-rank-row${s.key === mySideKey ? ' mine' : ''}`}>
-          <span className="gx-rank-pos">#{i + 1}</span>
-          <Logo logo={s.orgType === 'intel' ? INTEL_LOGO : s.logo} size={26} />
-          <div className="gx-rank-main">
-            <div className="gx-rank-name">
-              {s.name}
-              {s.role === 'defender' ? ' 🛡️' : ''}
+        <div key={s.key}>
+          <div className={`gx-rank-row${s.key === mySideKey ? ' mine' : ''}`}>
+            <span className="gx-rank-pos">#{i + 1}</span>
+            <Logo logo={s.orgType === 'intel' ? INTEL_LOGO : s.logo} size={26} />
+            <div className="gx-rank-main">
+              <div className="gx-rank-name">
+                {s.name}
+                {s.role === 'defender' ? ' 🛡️' : ''}
+              </div>
+              <Bar value={s.power} max={max} color={s.key === mySideKey ? 'var(--neon-yellow)' : 'var(--neon-cyan)'} height={6} />
             </div>
-            <Bar value={s.power} max={max} color={s.key === mySideKey ? 'var(--neon-yellow)' : 'var(--neon-cyan)'} height={6} />
+            <span className="gx-rank-power">{fmt(s.power)}</span>
           </div>
-          <span className="gx-rank-power">{fmt(s.power)}</span>
+          {war.type === 'trade' && <BiatContribRows war={war} sideKey={s.key} mineKey={myGangId} />}
         </div>
       ))}
+      {war.type === 'trade' && Object.keys(war.biatSides || {}).length > 0 && (
+        <p className="dim gx-mini">⛓️ Biat eden çeteler kendi adlarına değil, biat ettikleri çete adına savaşır; katkıları o çetenin gücüne dahildir.</p>
+      )}
       {rolls.length > 0 && (
         <>
           <div className="gx-section-head">
             <span>🔥 En çok katkı</span>
           </div>
           {rolls.map((r) => (
-            <div key={r.id} className="gx-roll-row">
-              <span>{r.name}</span>
+            <div key={r.id} className={`gx-roll-row${r.viaGangId ? ' biat' : ''}`}>
+              <span>
+                {r.name}
+                {r.viaGangId && (
+                  <em className="gx-roll-via">
+                    {' '}
+                    ⛓️ {r.viaName} → {war.sides?.[r.sideKey]?.name || ''}
+                  </em>
+                )}
+              </span>
               <span className="dim">
                 🎲{r.dice?.[0]}+{r.dice?.[1]} × {fmt(r.power)}
               </span>
@@ -547,11 +567,12 @@ function OfferCard({ kind, item, rank }) {
           name: item.names?.[item.requestedBy],
           logo: item.logos?.[item.requestedBy],
         };
+  const isBiatOffer = kind === 'biat';
   const refId = item.id;
   const canSee = kind === 'bet' && BET_RANKED.includes(rank);
   const { stake } = useBetStake(kind === 'bet' ? item : null, canSee);
   return (
-    <Card className={kind === 'bet' ? 'gx-offer gx-betcard waiting' : 'gx-offer'}>
+    <Card className={kind === 'bet' ? 'gx-offer gx-betcard waiting' : isBiatOffer ? 'gx-offer gx-biat-offer' : 'gx-offer'}>
       {kind === 'bet' ? (
         <>
           <div className="gx-betcard-tag">🎲 Bahis teklifi</div>
@@ -566,10 +587,11 @@ function OfferCard({ kind, item, rank }) {
           <Logo logo={other?.logo} size={32} />
           <div>
             <b>{other?.name}</b>
-            <div className="dim gx-mini">🤝 İttifak</div>
+            <div className="dim gx-mini">{isBiatOffer ? '⛓️ Size biat etmek istiyor' : '🤝 İttifak'}</div>
           </div>
         </div>
       )}
+      {isBiatOffer && <div className="gx-biat-card-note">Kabul ederseniz {other?.name} Pazar savaşında sizin adınıza savaşır, gücü sizin gücünüze eklenir; birbirinize saldıramazsınız.</div>}
       {kind === 'bet' && (
         <div className="gx-betcard-row">
           <BetAmount war={item} canSee={canSee} />
@@ -611,10 +633,15 @@ function OfferCard({ kind, item, rank }) {
               ? ask === 'accept'
                 ? `${stake != null ? fmt(stake) : '…'} altınlık bahis kabul edilsin mi?`
                 : 'Bahis reddedilsin mi?'
-              : ask === 'accept'
-                ? 'İttifak kabul edilsin mi?'
-                : 'İttifak reddedilsin mi?'
+              : isBiatOffer
+                ? ask === 'accept'
+                  ? `${other?.name || ''} biatı kabul edilsin mi?`
+                  : 'Biat teklifi reddedilsin mi?'
+                : ask === 'accept'
+                  ? 'İttifak kabul edilsin mi?'
+                  : 'İttifak reddedilsin mi?'
           }
+          lines={isBiatOffer && ask === 'accept' ? ["🕛 00:00'da başlar", '⚔️ Pazar savaşında gücü sizin gücünüze eklenir', '🛡️ Birbirinize saldıramazsınız; tırlarınızı savunabilir'] : []}
           confirmLabel={ask === 'accept' ? 'Kabul' : 'Reddet'}
           busy={Boolean(busy)}
           onCancel={() => setAsk(null)}
@@ -625,6 +652,14 @@ function OfferCard({ kind, item, rank }) {
                 { warId: item.id, accept: ask === 'accept' },
                 {
                   success: ask === 'accept' ? '⚔️ Bahis kabul edildi' : 'Reddedildi',
+                },
+              );
+            else if (isBiatOffer)
+              await run(
+                'respondBiat',
+                { biatId: item.id, accept: ask === 'accept' },
+                {
+                  success: ask === 'accept' ? "⛓️ Biat kabul edildi — 00:00'da başlar" : 'Reddedildi',
                 },
               );
             else
@@ -874,6 +909,7 @@ export default function WarsTab({ org, d }) {
   const gangId = d.gangId;
   const lead = isIntel ? INTEL_LEADERS.includes(d.rank) : LEADERS.includes(d.rank);
   const wars = d.wars;
+  const biat = useBiatInfo(isIntel ? null : d);
 
   const doRoll = useCallback(() => call('rollDice', rolling.payload), [call, rolling]);
   const join = (war, payload, side) => setRolling({ war, payload: { warId: war.id, ...payload }, side });
@@ -896,7 +932,7 @@ export default function WarsTab({ org, d }) {
         attacksOnDef,
       };
     const allyIds = new Set(
-      d.alliances
+      (d.pacts || d.alliances)
         .filter((a) => ['active', 'ending'].includes(a.status))
         .flatMap((a) => a.gangIds)
         .filter((g) => g !== gangId),
@@ -912,10 +948,12 @@ export default function WarsTab({ org, d }) {
       betOffersOut: wars.all.filter((w) => w.type === 'bet' && (w.status === 'offered' || (w.status === 'accepted' && nowMin < w.startsAtMs)) && w.proposerGangId === gangId),
       betsAccepted: wars.all.filter((w) => w.type === 'bet' && w.status === 'accepted' && nowMin < w.startsAtMs && w.targetGangId === gangId),
       allianceIn: d.alliances.filter((a) => a.status === 'requested' && a.requestedBy !== gangId),
+      biatIn: (d.biats || []).filter((a) => a.status === 'requested' && a.overlordId === gangId),
     };
-  }, [wars, isIntel, d.alliances, gangId, nowMin]);
+  }, [wars, isIntel, d.alliances, d.pacts, d.biats, gangId, nowMin]);
 
-  const sideKey = isIntel ? 'intel' : gangId;
+  // v84: biat eden çete Pazar savaşında biat ettiği çetenin hanesine yazılır
+  const sideKey = isIntel ? 'intel' : biat.fightingFor?.gangId || gangId;
   const tradePos = (w) => {
     const s = sidesRanked(w);
     const i = s.findIndex((x) => x.key === sideKey);
@@ -927,14 +965,17 @@ export default function WarsTab({ org, d }) {
   };
 
   // Teklif listesinde görünmeyecek çeteler: müttefikler ve zaten bahis olanlar
-  const allyBlocked = isIntel ? [] : d.alliances.filter((a) => ['requested', 'accepted', 'active', 'ending'].includes(a.status)).flatMap((a) => a.gangIds);
+  const pacts = d.pacts || d.alliances || [];
+  const biatPartners = new Set((d.biats || []).filter((a) => ['active', 'ending'].includes(a.status)).flatMap((a) => a.gangIds));
+  const allyBlocked = isIntel ? [] : pacts.filter((a) => ['requested', 'accepted', 'active', 'ending'].includes(a.status)).flatMap((a) => a.gangIds);
   const betBlocked = isIntel
     ? []
     : [
-        ...d.alliances.filter((a) => ['accepted', 'active', 'ending'].includes(a.status)).flatMap((a) => a.gangIds),
+        ...pacts.filter((a) => ['accepted', 'active', 'ending'].includes(a.status)).flatMap((a) => a.gangIds),
         ...wars.all.filter((w) => w.type === 'bet' && ['offered', 'accepted', 'active'].includes(w.status)).flatMap((w) => w.gangIds || []),
       ];
   const pendingOut = (L.betOffersOut || []).find((w) => w.status === 'offered');
+  const biatBlocked = isIntel ? [] : [...new Set([...allyBlocked, ...wars.all.filter((w) => w.type === 'bet' && ['offered', 'accepted', 'active'].includes(w.status)).flatMap((w) => w.gangIds || [])])];
 
   const hasWar = L.trade.length + (L.bets?.length || 0) + (L.myAttacks?.length || 0) + (L.myDefs?.length || 0) + (L.allyDefs?.length || 0) + (L.ops?.length || 0) > 0;
 
@@ -952,22 +993,38 @@ export default function WarsTab({ org, d }) {
           </Btn>
         </div>
       )}
+      {/* v84: elinde ticaret yolu olmayan çetenin Mafya Babası biat edebilir */}
+      {!isIntel && biat.canBiat && (
+        <Btn block small kind="ghost" onClick={() => setPropose('biat')}>
+          ⛓️ Biat et
+        </Btn>
+      )}
+      {!isIntel && <BiatStatus d={d} info={biat} />}
 
-      <UpcomingTradeWar hasActiveTrade={L.trade.length > 0} />
+      <UpcomingTradeWar hasActiveTrade={L.trade.length > 0} fightingFor={biat.fightingFor} />
 
       {!hasWar && <Empty icon="🕊️" text="Şu an savaş yok." />}
 
       {L.trade.map((w) => {
         const t = tradePos(w);
         const p = productOf(w.product);
+        const ff = biat.fightingFor;
+        const myContrib = ff ? Number(w.biatDisplay?.[gangId] || 0) : 0;
+        const fromVassals = !isIntel && !ff ? biatRowsOf(w, gangId) : [];
         return (
           <WarRow
             key={w.id}
             war={w}
+            tone={ff ? 'biat' : undefined}
             slotUsed={slot.used}
             onOpen={() => setDetail({ war: w, side: sideKey })}
-            onJoin={() => join(w, isIntel ? { side: 'intel' } : {}, isIntel ? 'İstihbarat' : d.gang?.name)}
+            onJoin={() => join(w, isIntel ? { side: 'intel' } : {}, isIntel ? 'İstihbarat' : ff ? `${d.gang?.name} ⛓️ ${ff.name} adına` : d.gang?.name)}
           >
+            {ff && (
+              <div className="gx-biat-banner">
+                ⛓️ BİAT · <b>{ff.name}</b> adına savaşıyorsunuz
+              </div>
+            )}
             <div className="gx-trade-box">
               <span className="gx-trade-pos">{t.pos ? `#${t.pos}` : '#—'}</span>
               <span className="gx-trade-power">{fmt(t.power)} güç</span>
@@ -975,6 +1032,12 @@ export default function WarsTab({ org, d }) {
                 {p.emoji} {p.label} · {t.n} taraf
               </span>
             </div>
+            {ff && <div className="gx-mini gx-biat-mini">Katkınız: <b>{fmt(myContrib)}</b> · {ff.name} toplamına dahil</div>}
+            {fromVassals.length > 0 && (
+              <div className="gx-mini gx-biat-mini">
+                ⛓️ Biat edenlerden +{fmt(fromVassals.reduce((a, r) => a + r.power, 0))} ({fromVassals.map((r) => r.name).join(', ')})
+              </div>
+            )}
           </WarRow>
         );
       })}
@@ -1054,7 +1117,7 @@ export default function WarsTab({ org, d }) {
 
       {(L.allyDefs || []).length > 0 && (
         <div className="gx-section-head">
-          <span>🤝 İttifak çetenin tırı</span>
+          <span>{(L.allyDefs || []).every((w) => biatPartners.has(w.defenderGangId)) ? '⛓️ Biat ortağının tırı' : '🤝 İttifak / biat ortağının tırı'}</span>
         </div>
       )}
       {(L.allyDefs || []).map((w) => {
@@ -1068,7 +1131,9 @@ export default function WarsTab({ org, d }) {
             onJoin={() => join(w, { side: 'defense' }, d.gang?.name)}
             joinLabel="SAVUN"
           >
-            <div className="dim gx-mini">🏴 {w.sides?.[w.defenderGangId]?.name}</div>
+            <div className="dim gx-mini">
+              {biatPartners.has(w.defenderGangId) ? '⛓️' : '🤝'} {w.sides?.[w.defenderGangId]?.name}
+            </div>
             <div className="gx-vs">
               <span>🛡️ {fmt(sum(w.display))}</span>
               <span className="dim">vs</span>
@@ -1103,13 +1168,14 @@ export default function WarsTab({ org, d }) {
       )}
 
       {/* Teklifler */}
-      {!isIntel && (L.betOffersIn.length > 0 || L.allianceIn.length > 0) && (
+      {!isIntel && (L.betOffersIn.length > 0 || L.allianceIn.length > 0 || L.biatIn.length > 0) && (
         <div className="gx-section-head">
           <span>📨 Gelen teklifler</span>
         </div>
       )}
       {!isIntel && L.betOffersIn.map((w) => <OfferCard key={w.id} kind="bet" item={w} rank={d.rank} />)}
       {!isIntel && L.allianceIn.map((a) => <OfferCard key={a.id} kind="alliance" item={a} rank={d.rank} />)}
+      {!isIntel && L.biatIn.map((a) => <OfferCard key={a.id} kind="biat" item={a} rank={d.rank} />)}
       {!isIntel &&
         L.betOffersOut.map((w) => (
           <PendingBetCard key={w.id} war={w} us={gangId} rank={d.rank}>
@@ -1154,7 +1220,7 @@ export default function WarsTab({ org, d }) {
       {/* v68: bize ait olmayan savaşları izle */}
       <WatchWarsButton />
 
-      {detail && <WarDetail war={wars.all.find((w) => w.id === detail.war.id) || detail.war} mySideKey={detail.side} onClose={() => setDetail(null)} />}
+      {detail && <WarDetail war={wars.all.find((w) => w.id === detail.war.id) || detail.war} mySideKey={detail.side} myGangId={isIntel ? null : gangId} onClose={() => setDetail(null)} />}
       {truckDetail &&
         (() => {
           const def = wars.all.find((x) => x.id === truckDetail.defId) || null;
@@ -1174,7 +1240,8 @@ export default function WarsTab({ org, d }) {
       {rolling && (
         <DiceRoller title={`${warIcon(rolling.war)} ${warTitle(rolling.war)}`} subtitle={rolling.side} sideLabel={rolling.side} onRoll={doRoll} onClose={() => setRolling(null)} />
       )}
-      {propose && (
+      {propose === 'biat' && <BiatSheet gangId={gangId} blockedIds={biatBlocked} onClose={() => setPropose(null)} />}
+      {propose && propose !== 'biat' && (
         <ProposeSheet kind={propose} gangId={gangId} out={L.betOffersOut || []} blockedIds={propose === 'bet' ? betBlocked : allyBlocked} onClose={() => setPropose(null)} />
       )}
     </div>

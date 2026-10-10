@@ -417,30 +417,61 @@ export function StreamChatLine({ m, showHost = false, style }) {
 }
 
 // v82 — İzleyenler paneli (👁 sayısına dokununca). Liste sunucudan gelir, açıkken 10 sn'de bir tazelenir.
+// v84: liste bir kez geldiyse geçici hatada eski liste korunur (uyarı çıkmaz);
+// hiç gelmediyse sunucunun mesajı + "Tekrar dene" gösterilir.
+function viewersErrorText(e) {
+  const msg = String(e?.message || '');
+  if (/Geçersiz işlem/i.test(msg)) return 'İzleyici listesi sunucuda henüz açık değil.';
+  if (/internal|unavailable|deadline/i.test(String(e?.code || '')) || !msg) return 'Liste alınamadı — bağlantını kontrol edip tekrar dene.';
+  return `Liste alınamadı: ${msg}`;
+}
 export function StreamViewersSheet({ streamId, isBlocked, onClose }) {
   const [list, setList] = useState(null);
   const [err, setErr] = useState('');
+  const [retry, setRetry] = useState(0);
   useEffect(() => {
     if (!streamId) return undefined;
     let alive = true;
+    let got = false;
     const load = () =>
       streamAction({ op: 'viewers', streamId })
-        .then((r) => alive && (setList(r.viewers || []), setErr('')))
-        .catch(() => alive && setErr('Liste alınamadı.'));
+        .then((r) => {
+          if (!alive) return;
+          got = true;
+          setList(Array.isArray(r?.viewers) ? r.viewers : []);
+          setErr('');
+        })
+        .catch((e) => {
+          console.error('stream viewers', e);
+          if (alive && !got) setErr(viewersErrorText(e));
+        });
     load();
     const iv = setInterval(load, 10_000);
     return () => {
       alive = false;
       clearInterval(iv);
     };
-  }, [streamId]);
+  }, [streamId, retry]);
   const shown = (list || []).filter((v) => !isBlocked?.(v.uid));
   return (
     <div className="st-sheet-bg st-top-layer" onClick={onClose}>
       <div className="st-sheet st-viewers" onClick={(e) => e.stopPropagation()}>
         <p className="st-sheet-title">👁 Şu an izleyenler{list ? ` · ${shown.length}` : ''}</p>
         {!list && !err && <p className="st-chat-empty">Yükleniyor…</p>}
-        {err && <p className="st-host-note bad">{err}</p>}
+        {err && (
+          <>
+            <p className="st-host-note bad">{err}</p>
+            <button
+              className="st-btn ghost"
+              onClick={() => {
+                setErr('');
+                setRetry((n) => n + 1);
+              }}
+            >
+              Tekrar dene
+            </button>
+          </>
+        )}
         {list && shown.length === 0 && <p className="st-chat-empty">Şu an kimse izlemiyor.</p>}
         <div className="st-viewers-list">
           {shown.map((v) => (

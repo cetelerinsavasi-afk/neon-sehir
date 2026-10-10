@@ -315,7 +315,7 @@ export function createClock(core, actions) {
     const warId = `trade_${dayKey}`;
     const pre = await ctx.ref.war(warId).get();
     if (!pre.exists || pre.data().status !== 'active') return { skipped: true };
-    const { totals } = await warActions.sumShards(ctx, warId);
+    const { totals, via } = await warActions.sumShards(ctx, warId);
     const entries = Object.entries(totals).filter(([, p]) => p > 0);
     entries.sort((x, y) => y[1] - x[1]);
     let winnerKey = entries[0]?.[0] || null;
@@ -378,7 +378,15 @@ export function createClock(core, actions) {
         }
         intelLog(tx, ctx, '🏆', `Pazar savaşını İstihbarat kazandı! Yol kimseye verilmedi, kasaya +${intelIncome.toLocaleString('tr-TR')}.`);
       }
-      tx.update(ctx.ref.war(warId), { status: 'resolved', resolvedAtMs: ctx.now, display: totals, result: { winnerKey, power, intelIncome, totalWarPower, orderLimit: winnerGang ? orderLimit : 0 } });
+      // v84: biat edenlerin katkısı — kendi günlüklerine ve biat ettikleri çetenin günlüğüne
+      const biatSides = w.biatSides || {};
+      for (const [vid, p] of Object.entries(via || {})) {
+        const sd = biatSides[vid] || {};
+        const won = winnerGang && sd.overlordId === winnerGang.id;
+        gangLog(tx, ctx, vid, won ? '🏆' : '⛓️', `Pazar savaşında ${sd.overlordName || 'biat ettiğiniz çete'} adına ${p.toLocaleString('tr-TR')} hasar verdiniz${won ? ` — ${war.productLabel} yolunu kazandılar!` : '.'}`);
+        if (sd.overlordId) gangLog(tx, ctx, sd.overlordId, '⛓️', `${sd.name || 'Biat eden çete'} Pazar savaşında sizin adınıza ${p.toLocaleString('tr-TR')} hasar verdi.`);
+      }
+      tx.update(ctx.ref.war(warId), { status: 'resolved', resolvedAtMs: ctx.now, display: totals, biatDisplay: via || {}, result: { winnerKey, power, intelIncome, totalWarPower, orderLimit: winnerGang ? orderLimit : 0, biatTotals: via || {} } });
       ctx.logs.push({ gang: 'trade_war_resolved', world: ctx.worldId, warId, winnerKey, power });
       return { winnerKey, totals };
     });
@@ -387,13 +395,16 @@ export function createClock(core, actions) {
   // Çeteler listesi "son pazar savaşı gücüne" göre sıralanır → her çetenin
   // ve İstihbaratın son pazar gücü herkese açık belgeye yazılır (idempotent).
   async function recordSundayPowers(ctx, sundayKey) {
-    const { totals } = await warActions.sumShards(ctx, `trade_${sundayKey}`);
+    const { totals, via } = await warActions.sumShards(ctx, `trade_${sundayKey}`);
     const gangs = await ctx.ref.gangs().where('status', '==', 'active').get();
     let batch = db.batch();
     let n = 0;
     for (const g of gangs.docs) {
       if (g.data().lastSundayDateKey === sundayKey) continue;
-      batch.update(g.ref, { lastSundayPower: Number(totals[g.id] || 0), lastSundayDateKey: sundayKey });
+      // v84: biat eden çetenin kendi hanesi yok → katkısı (biat ettiği çeteye) yazılır
+      const own = Number(totals[g.id] || 0);
+      const viaP = Number(via?.[g.id] || 0);
+      batch.update(g.ref, { lastSundayPower: own || viaP, lastSundayBiat: !own && viaP > 0, lastSundayDateKey: sundayKey });
       n += 1;
       if (n % 400 === 0) {
         await batch.commit();
@@ -1111,6 +1122,7 @@ export function createClock(core, actions) {
         db.runTransaction(async (tx) => {
           const a = (await tx.get(d.ref)).data();
           if (a?.status !== 'accepted' || a.startDateKey > ctx.dateKey) return;
+          if (a.kind === 'biat') return startBiat(tx, ctx, d.ref, a);
           tx.update(d.ref, { status: 'active', activeSinceDateKey: ctx.dateKey });
           for (const g of a.gangIds) gangLog(tx, ctx, g, '🤝', `İttifak aktif: ${a.names[a.gangIds.find((x) => x !== g)]}`);
         })
@@ -1122,11 +1134,52 @@ export function createClock(core, actions) {
         db.runTransaction(async (tx) => {
           const a = (await tx.get(d.ref)).data();
           if (a?.status !== 'ending' || a.endDateKey > ctx.dateKey) return;
+          if (a.kind === 'biat') return finishBiat(tx, ctx, d.ref, a, 'ended');
           tx.update(d.ref, { status: 'ended', endedAtMs: ctx.now });
           for (const g of a.gangIds) gangLog(tx, ctx, g, '💔', `İttifak sona erdi: ${a.names[a.gangIds.find((x) => x !== g)]}`);
         })
       );
     }
+  }
+
+  // v84 — BİAT başlangıcı (00:00). Kabulden bu yana koşullar bozulduysa
+  // (taraf dağıldı, biat eden Pazar savaşında yol kazandı, zincir oluştu)
+  // biat başlamaz. Başlayınca çete belgelerine herkese açık işaret yazılır:
+  // biat eden → biat: { gangId, name, logo }; biat edilen → vassals.{id}.
+  async function startBiat(tx, ctx, ref, a) {
+    const [vs, os] = await Promise.all([tx.get(ctx.ref.gang(a.vassalId)), tx.get(ctx.ref.gang(a.overlordId))]);
+    const v = vs.data();
+    const o = os.data();
+    const vAlive = v?.status === 'active';
+    const oAlive = o?.status === 'active';
+    let reason = null;
+    if (!vAlive || !oAlive) reason = 'Taraflardan biri dağıldı.';
+    else if ((v.routeProducts || []).length > 0) reason = `${v.name} bir ticaret yolu kazandı — elinde yol olan çete biat edemez.`;
+    else if (v.biat?.gangId && v.biat.gangId !== a.overlordId) reason = `${v.name} zaten başka bir çeteye biat etmiş.`;
+    else if (Object.keys(v.vassals || {}).length > 0) reason = `${v.name} çetesine biat eden çeteler var.`;
+    else if (o.biat?.gangId) reason = `${o.name} başka bir çeteye biat etmiş.`;
+    if (reason) {
+      tx.update(ref, { status: 'cancelled', cancelledAtMs: ctx.now, cancelReason: reason });
+      if (vAlive) core.announce(tx, ctx, a.vassalId, '⛓️', `Biat başlamadı: ${reason}`);
+      if (oAlive) core.announce(tx, ctx, a.overlordId, '⛓️', `${a.names[a.vassalId]} biatı başlamadı: ${reason}`);
+      return;
+    }
+    tx.update(ref, { status: 'active', activeSinceDateKey: ctx.dateKey });
+    tx.update(ctx.ref.gang(a.vassalId), { biat: { gangId: a.overlordId, name: o.name || '', logo: o.logo || null, sinceDateKey: ctx.dateKey } });
+    tx.update(ctx.ref.gang(a.overlordId), { [`vassals.${a.vassalId}`]: { name: v.name || '', logo: v.logo || null, sinceDateKey: ctx.dateKey } });
+    core.announce(tx, ctx, a.vassalId, '⛓️', `${o.name} çetesine biatınız başladı. Pazar savaşında ${o.name} adına savaşacaksınız; tırlarını da savunabilirsiniz.`);
+    core.announce(tx, ctx, a.overlordId, '⛓️', `${v.name} çetesi size biat etti! Pazar savaşında güçleri sizin hanenize yazılacak.`);
+  }
+
+  // v84 — BİAT bitişi (00:00'da ya da taraf dağılınca): işaretler kaldırılır.
+  // Okumalar transaction'ın başında yapılmış olmalı → burada sadece belgeler okunur, sonra yazılır.
+  async function finishBiat(tx, ctx, ref, a, status, extra = {}) {
+    const [vs, os] = await Promise.all([tx.get(ctx.ref.gang(a.vassalId)), tx.get(ctx.ref.gang(a.overlordId))]);
+    tx.update(ref, { status, endedAtMs: ctx.now, ...extra });
+    if (vs.exists && vs.data().biat?.gangId === a.overlordId) tx.update(ctx.ref.gang(a.vassalId), { biat: FV.delete() });
+    if (os.exists && os.data().vassals?.[a.vassalId]) tx.update(ctx.ref.gang(a.overlordId), { [`vassals.${a.vassalId}`]: FV.delete() });
+    if (vs.data()?.status === 'active') gangLog(tx, ctx, a.vassalId, '💔', `Biat sona erdi: ${a.names[a.overlordId]}`);
+    if (os.data()?.status === 'active') gangLog(tx, ctx, a.overlordId, '💔', `Biat sona erdi: ${a.names[a.vassalId]}`);
   }
 
   // Tır kalkışı: önce ömrü dolan boştaki tırlar hurdaya, sonra bekleyen
@@ -1374,7 +1427,18 @@ export function createClock(core, actions) {
     // ittifaklar
     const als = await ctx.ref.alliances().where('gangIds', 'array-contains', gangId).get();
     for (const a of als.docs) {
-      if (['ended', 'declined'].includes(a.data().status)) continue;
+      if (['ended', 'declined', 'cancelled'].includes(a.data().status)) continue;
+      if (a.data().kind === 'biat') {
+        // v84: biat da biter; karşı çetedeki işaret kaldırılır
+        await safe(ctx, `cleanup-biat:${a.id}`, () =>
+          db.runTransaction(async (tx) => {
+            const cur = (await tx.get(a.ref)).data();
+            if (!cur || ['ended', 'declined', 'cancelled'].includes(cur.status)) return;
+            await finishBiat(tx, ctx, a.ref, cur, 'ended', { endedReason: 'dissolved' });
+          })
+        );
+        continue;
+      }
       await safe(ctx, `cleanup-alliance:${a.id}`, () => a.ref.update({ status: 'ended', endedAtMs: ctx.now, endedReason: 'dissolved' }));
     }
     // bekleyen bahis teklifleri (başlamış olanlar tick'te karşı tarafa yazılır)
@@ -1463,10 +1527,12 @@ export function createClock(core, actions) {
     const active = reconcileNow ? await ctx0.ref.wars().where('status', '==', 'active').limit(60).get() : { docs: [] };
     for (const w of active.docs) {
       await safe(ctx0, `reconcile:${w.id}`, async () => {
-        const { totals } = await warActions.sumShards(ctx0, w.id);
+        const { totals, via } = await warActions.sumShards(ctx0, w.id);
         const disp = w.data().display || {};
         const differs = Object.keys({ ...totals, ...disp }).some((k) => (totals[k] || 0) !== (disp[k] || 0));
-        if (differs) await w.ref.update({ display: totals });
+        const bd = w.data().biatDisplay || {};
+        const biatDiffers = Object.keys({ ...via, ...bd }).some((k) => (via[k] || 0) !== (bd[k] || 0));
+        if (differs || biatDiffers) await w.ref.update({ display: totals, ...(biatDiffers ? { biatDisplay: via } : {}) });
       });
     }
     // dağılmış çeteler

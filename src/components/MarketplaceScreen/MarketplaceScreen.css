@@ -576,3 +576,30 @@
 .market-estimate-sub {
   color: var(--text-dim);
 }
+
+/* v84 — paraya yetmeyen ürün: Satın Al butonunda "Yetersiz altın" */
+.market-btn.no-gold,
+.market-btn.no-gold:hover:not(:disabled) {
+  border-color: var(--neon-pink);
+  background: rgba(255, 46, 140, 0.18);
+  color: #ff8fc0;
+  font-weight: 700;
+  animation: market-no-gold-shake 0.35s ease;
+}
+@keyframes market-no-gold-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-3px);
+  }
+  75% {
+    transform: translateX(3px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .market-btn.no-gold {
+    animation: none;
+  }
+}

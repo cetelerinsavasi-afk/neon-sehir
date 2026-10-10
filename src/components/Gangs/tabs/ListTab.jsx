@@ -6,6 +6,7 @@ import { limit, where } from 'firebase/firestore';
 import { istDateKey, useDocData, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
 import { Btn, Card, Confirm, Empty, Gold, Logo, Sheet } from '../ui';
 import { LogoPicker, useMyWallet } from '../shared';
+import { BiatTag } from '../Biat';
 import { GANG_RULES, INTEL_LOGO, fmt, productOf } from '../gangConstants';
 
 function CreateGangSheet({ onClose, membership }) {
@@ -108,7 +109,8 @@ function GangKasa({ gang }) {
   );
 }
 
-function OrgCard({ logo, name, note, kasa, power, members, leader, leaderIcon, routes = [], action, mine, rankNo }) {
+function OrgCard({ logo, name, note, kasa, power, powerNote, members, leader, leaderIcon, routes = [], action, mine, rankNo, biat = null, vassals = null }) {
+  const vassalList = Object.values(vassals || {});
   return (
     <Card className={`gx-gang-card${mine ? ' mine' : ''}`}>
       <div className="gx-gang-card-rank">#{rankNo}</div>
@@ -117,7 +119,10 @@ function OrgCard({ logo, name, note, kasa, power, members, leader, leaderIcon, r
         <div className="gx-gang-card-name">{name}</div>
         <div className="gx-gang-card-meta">
           <span>{kasa}</span>
-          <span title="Son Pazar savaşı gücü">⚔️ {fmt(power)}</span>
+          <span title={powerNote || 'Son Pazar savaşı gücü'}>
+            ⚔️ {fmt(power)}
+            {powerNote ? ' ⛓️' : ''}
+          </span>
           <span>👥 {fmt(members)}</span>
         </div>
         <div className="gx-gang-card-meta">
@@ -130,6 +135,19 @@ function OrgCard({ logo, name, note, kasa, power, members, leader, leaderIcon, r
             </span>
           ))}
         </div>
+        {/* v84: kimin kime biat ettiği herkese görünür */}
+        {biat?.name && (
+          <div className="gx-gang-card-meta">
+            <BiatTag name={biat.name} logo={biat.logo} />
+          </div>
+        )}
+        {vassalList.length > 0 && (
+          <div className="gx-gang-card-meta">
+            <span className="gx-biat-tag overlord" title="Bu çeteye biat eden çeteler">
+              <span aria-hidden="true">⛓️</span> Biat edenler: <b>{vassalList.map((v) => v.name).join(', ')}</b>
+            </span>
+          </div>
+        )}
         {note && <div className="gx-note-quote">“{note}”</div>}
       </div>
       <div className="gx-gang-card-act">{action}</div>
@@ -205,6 +223,9 @@ export default function ListTab({ membership, onOpen }) {
             note={x.g.note}
             kasa={<GangKasa gang={x.g} />}
             power={x.power}
+            powerNote={x.g.lastSundayBiat ? 'Son Pazar savaşında biat ettiği çete adına verdiği hasar' : null}
+            biat={x.g.biat}
+            vassals={x.g.vassals}
             members={x.g.memberCount}
             leader={x.g.babaName}
             leaderIcon="👑"

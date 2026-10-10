@@ -2,6 +2,7 @@ import { resaleTax } from '../../../functions/tax.js';
 import { useEffect, useState } from 'react';
 import { buyGangListing, useGangMarketListings } from '../Gangs/GangMarketSection';
 import { useAuth } from '../../contexts/AuthContext';
+import { usePlayer } from '../../hooks/usePlayer';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useWeapons } from '../../hooks/useWeapons';
 import { useInventory } from '../../hooks/useInventory';
@@ -198,6 +199,18 @@ function EstimateLine({ est }) {
 // listeye giriyor — ekstra bir kod gerekmedi, aynı formülü kullanmak
 // yetiyor.
 const ADVANTAGEOUS_THRESHOLD_RATIO = 0.75;
+
+// v84 — "Yetersiz altın": paraya yetmeyen ürünün Satın Al butonunda gösterilir
+// (eskiden hata en altta kalıyor, fark edilmiyordu). Sunucu yine doğrular.
+const NO_GOLD_TEXT = 'Yetersiz altın';
+const NO_GOLD_MS = 2600;
+const isNoGoldError = (err) => /yetersiz altın|yeterli altın/i.test(String(err?.message || err || ''));
+// Bu ilanı (malzemede: en az 1 adedini) almaya param yetmiyor mu?
+function cannotAfford(listing, gold) {
+  if (gold == null || !Number.isFinite(Number(gold))) return false;
+  const cost = listing.itemType === 'material' ? listing.unitPrice || Math.round(listing.price / (listing.quantity || 1)) : listing.price;
+  return Number(cost || 0) > Number(gold);
+}
 
 function listingCeilingPrice(listing) {
   if (listing.itemType === 'vehicle') {
@@ -645,7 +658,7 @@ function SellForm({ onCreated, onClose, initialItemType }) {
   );
 }
 
-function ListingCard({ listing, isMine, busy, onCancel, onBuy }) {
+function ListingCard({ listing, isMine, busy, onCancel, onBuy, noGold = false }) {
   let media = null;
   if (listing.itemType === 'vehicle') {
     const img = vehicleImage(listing.vehicleCatalogId);
@@ -709,23 +722,34 @@ function ListingCard({ listing, isMine, busy, onCancel, onBuy }) {
           </div>
         )}
       </div>
-      <button className="market-btn small" disabled={busy} onClick={isMine ? onCancel : onBuy}>
-        {isMine ? 'İptal Et' : 'Satın Al'}
+      <button className={`market-btn small${!isMine && noGold ? ' no-gold' : ''}`} disabled={busy} onClick={isMine ? onCancel : onBuy} aria-live="polite">
+        {isMine ? 'İptal Et' : noGold ? NO_GOLD_TEXT : 'Satın Al'}
       </button>
     </div>
   );
 }
 
-function BuyMaterialModal({ listing, onClose, onBought }) {
+function BuyMaterialModal({ listing, onClose, onBought, gold }) {
   const unitPrice = listing.unitPrice || Math.round(listing.price / (listing.quantity || 1));
   const [qty, setQty] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [noGold, setNoGold] = useState(false);
 
   const total = qty * unitPrice;
+  useEffect(() => {
+    if (!noGold) return undefined;
+    const t = setTimeout(() => setNoGold(false), NO_GOLD_MS);
+    return () => clearTimeout(t);
+  }, [noGold]);
 
   const handleBuy = async () => {
     if (!qty || qty <= 0) return;
+    if (gold != null && total > Number(gold)) {
+      setNoGold(true);
+      setError(null);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -734,7 +758,8 @@ function BuyMaterialModal({ listing, onClose, onBought }) {
       onBought?.();
       onClose();
     } catch (err) {
-      setError(err.message || 'Satın alınamadı.');
+      if (isNoGoldError(err)) setNoGold(true);
+      else setError(err.message || 'Satın alınamadı.');
     } finally {
       setBusy(false);
     }
@@ -768,8 +793,8 @@ function BuyMaterialModal({ listing, onClose, onBought }) {
         <p className="market-price-range-hint">
           Toplam: <strong>{total.toLocaleString('tr-TR')} altın</strong>
         </p>
-        <button className="market-btn primary" disabled={busy || !qty || qty <= 0} onClick={handleBuy}>
-          {busy ? '…' : `${total.toLocaleString('tr-TR')} altına Satın Al`}
+        <button className={`market-btn primary${noGold ? ' no-gold' : ''}`} disabled={busy || !qty || qty <= 0} onClick={handleBuy} aria-live="polite">
+          {busy ? '…' : noGold ? `${NO_GOLD_TEXT} (${Number(gold || 0).toLocaleString('tr-TR')} altının var)` : `${total.toLocaleString('tr-TR')} altına Satın Al`}
         </button>
         {error && <p className="market-error">{error}</p>}
       </div>
@@ -815,6 +840,8 @@ function MyListingWithAd({ listing, busy, onCancel, advertising, onStartAdvertis
 
 export default function MarketplaceScreen() {
   const { user } = useAuth();
+  const { player } = usePlayer();
+  const gold = player ? Number(player.gold || 0) : null;
   const { listings: playerListings } = useMarketplaceListings();
   // v70: çete ilanları oyuncu ilanlarıyla aynı listede (aynı kart, avantajlı hesabı dahil)
   const gangListings = useGangMarketListings();
@@ -829,6 +856,12 @@ export default function MarketplaceScreen() {
   const [advertisingId, setAdvertisingId] = useState(null);
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
+  const [noGoldId, setNoGoldId] = useState(null);
+  useEffect(() => {
+    if (!noGoldId) return undefined;
+    const t = setTimeout(() => setNoGoldId(null), NO_GOLD_MS);
+    return () => clearTimeout(t);
+  }, [noGoldId]);
 
   const run = async (key, fn) => {
     setBusy(key);
@@ -836,7 +869,8 @@ export default function MarketplaceScreen() {
     try {
       await fn();
     } catch (err) {
-      setError(err.message || 'İşlem başarısız.');
+      if (isNoGoldError(err)) setNoGoldId(key);
+      else setError(err.message || 'İşlem başarısız.');
     } finally {
       setBusy(null);
     }
@@ -885,8 +919,15 @@ export default function MarketplaceScreen() {
   const advantageousIds = new Set(advantageousListings.map((l) => l.id));
   const otherListings = categoryListings.filter((l) => l.sellerId !== user?.uid && !advantageousIds.has(l.id));
 
-  const buyOrOpenModal = (l) =>
-    l.itemType === 'material' ? setBuyModalListing(l) : run(l.id, () => (l.gang ? buyGangListing(l, 1) : buyListing(l.id)));
+  const buyOrOpenModal = (l) => {
+    if (cannotAfford(l, gold)) {
+      setError(null);
+      setNoGoldId(l.id);
+      return;
+    }
+    if (l.itemType === 'material') setBuyModalListing(l);
+    else run(l.id, () => (l.gang ? buyGangListing(l, 1) : buyListing(l.id)));
+  };
 
   return (
     <div className="market-screen">
@@ -911,6 +952,7 @@ export default function MarketplaceScreen() {
                   listing={l}
                   isMine={l.sellerId === user?.uid}
                   busy={busy === l.id}
+                  noGold={noGoldId === l.id}
                   onCancel={() => run(l.id, () => cancelListing(l.id))}
                   onBuy={() => buyOrOpenModal(l)}
                 />
@@ -976,7 +1018,7 @@ export default function MarketplaceScreen() {
             <div className="market-home-panel">
               <p className="market-section-title">🔥 Avantajlı Ürünler</p>
               {advantageousListings.map((l) => (
-                <ListingCard key={l.id} listing={l} isMine={false} busy={busy === l.id} onBuy={() => buyOrOpenModal(l)} />
+                <ListingCard key={l.id} listing={l} isMine={false} busy={busy === l.id} noGold={noGoldId === l.id} onBuy={() => buyOrOpenModal(l)} />
               ))}
             </div>
           )}
@@ -989,6 +1031,7 @@ export default function MarketplaceScreen() {
               listing={l}
               isMine={false}
               busy={busy === l.id}
+              noGold={noGoldId === l.id}
               onBuy={() => buyOrOpenModal(l)}
             />
           ))}
@@ -1004,7 +1047,7 @@ export default function MarketplaceScreen() {
         />
       )}
       {buyModalListing && (
-        <BuyMaterialModal listing={buyModalListing} onClose={() => setBuyModalListing(null)} />
+        <BuyMaterialModal listing={buyModalListing} gold={gold} onClose={() => setBuyModalListing(null)} />
       )}
     </div>
   );

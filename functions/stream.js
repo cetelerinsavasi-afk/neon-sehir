@@ -427,16 +427,24 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
   }
 
   // v82 — şu an izleyenler (yayıncı ve izleyiciler görür; en fazla 100)
+  // v84: aralık sorgusu herhangi bir nedenle (dizin vb.) reddedilirse tüm
+  // izleyici belgeleri okunup bellekte süzülür; yayın bitmişse boş liste döner
+  // (eskiden istemci "Liste alınamadı" gösteriyordu).
   async function viewers(uid, p) {
     const id = String(p.streamId || '');
     if (!isId(id)) fail('invalid-argument', 'Geçersiz yayın.');
     const t = now();
-    const snap = await watchersRef(id).where('atMs', '>', t - WATCH_TTL_MS).get();
-    const list = snap.docs
-      .map((d) => ({ uid: d.id, name: String(d.data().name || 'Oyuncu').slice(0, 40), atMs: Number(d.data().atMs || 0) }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'tr'))
-      .slice(0, 100);
-    return { ok: true, viewers: list, count: snap.size };
+    const since = t - WATCH_TTL_MS;
+    let docs;
+    try {
+      docs = (await watchersRef(id).where('atMs', '>', since).get()).docs;
+    } catch (err) {
+      console.warn('stream viewers range query failed, falling back', id, String(err?.message || err));
+      docs = (await watchersRef(id).limit(500).get()).docs.filter((d) => Number(d.data()?.atMs || 0) > since);
+    }
+    const all = docs.map((d) => ({ uid: d.id, name: String(d.data()?.name || 'Oyuncu').slice(0, 40), atMs: Number(d.data()?.atMs || 0) }));
+    const list = all.sort((a, b) => a.name.localeCompare(b.name, 'tr')).slice(0, 100);
+    return { ok: true, viewers: list, count: all.length };
   }
 
   async function price(uid, p) {

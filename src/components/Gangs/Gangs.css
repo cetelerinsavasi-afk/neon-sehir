@@ -3220,3 +3220,207 @@ button.gx-msg-avatar.pc-trigger {
 .gx-watch-power {
   font-variant-numeric: tabular-nums;
 }
+
+/* =========================================================================
+   v84 — BİAT (mor zincir aksanı)
+   ========================================================================= */
+.gx-root {
+  --gx-biat: #b98cff;
+  --gx-biat-bg: rgba(185, 140, 255, 0.1);
+  --gx-biat-line: rgba(185, 140, 255, 0.45);
+}
+.gx-biat-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: var(--gx-biat);
+  background: var(--gx-biat-bg);
+  border: 1px solid var(--gx-biat-line);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gx-biat-tag b {
+  color: #e4d4ff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gx-biat-tag.overlord {
+  color: #d9c6ff;
+  background: rgba(185, 140, 255, 0.06);
+}
+.gx-pill.biat {
+  color: var(--gx-biat);
+  border-color: var(--gx-biat-line);
+  background: var(--gx-biat-bg);
+}
+.gx-biat-banner {
+  font-size: 12.5px;
+  font-weight: 800;
+  padding: 6px 10px;
+  border-radius: 10px;
+  color: #e4d4ff;
+  background: linear-gradient(90deg, rgba(185, 140, 255, 0.22), rgba(185, 140, 255, 0.05));
+  border: 1px solid var(--gx-biat-line);
+}
+.gx-biat-banner b {
+  color: #fff;
+}
+.gx-biat-mini {
+  color: #d9c6ff;
+}
+.gx-warrow.biat {
+  border-color: var(--gx-biat);
+  box-shadow: 0 0 14px rgba(185, 140, 255, 0.25);
+}
+.gx-biat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-color: var(--gx-biat-line);
+  background: linear-gradient(180deg, rgba(185, 140, 255, 0.08), transparent 70%);
+}
+.gx-biat-card.waiting {
+  border-style: dashed;
+}
+.gx-biat-card-tag {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: var(--gx-biat);
+}
+.gx-biat-card-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.gx-biat-card-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.gx-biat-card-main b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gx-biat-card-note {
+  font-size: 12px;
+  color: #cfc3e6;
+  line-height: 1.4;
+}
+.gx-biat-offer {
+  border-color: var(--gx-biat-line);
+}
+.gx-biat-explain {
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--gx-biat-bg);
+  border: 1px solid var(--gx-biat-line);
+}
+.gx-biat-explain p {
+  margin: 0;
+}
+.gx-biat-explain p + p {
+  margin-top: 6px;
+  font-size: 12px;
+}
+.gx-biat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 46vh;
+  overflow-y: auto;
+  margin: 10px 0;
+}
+.gx-biat-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid #2a3552;
+  background: #111829;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.gx-biat-pick:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.gx-biat-pick.active {
+  border-color: var(--gx-biat);
+  background: rgba(185, 140, 255, 0.14);
+}
+.gx-biat-pick-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.gx-biat-pick-main b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gx-biat-pick-go {
+  font-size: 16px;
+  color: var(--gx-biat);
+}
+.gx-biat-contrib {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 0 4px 34px;
+}
+.gx-biat-contrib-row {
+  display: grid;
+  grid-template-columns: 12px 16px 1fr auto;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: var(--gx-biat-bg);
+  color: #e4d4ff;
+}
+.gx-watch-card .gx-biat-contrib-row {
+  margin: 2px 0 0 18px;
+}
+.gx-biat-contrib-row.mine {
+  box-shadow: inset 0 0 0 1px var(--gx-biat);
+}
+.gx-biat-contrib-arrow {
+  color: var(--gx-biat);
+}
+.gx-biat-contrib-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gx-biat-contrib-name em {
+  font-style: normal;
+  font-size: 10.5px;
+  color: #a99bc4;
+}
+.gx-biat-contrib-row b {
+  font-variant-numeric: tabular-nums;
+}
+.gx-roll-row.biat .gx-roll-via {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--gx-biat);
+}

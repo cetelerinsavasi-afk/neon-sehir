@@ -417,6 +417,8 @@ function RoadTrucks({ gangId, rank, alliances, wars }) {
   const openFor = (t) => now < truckAttackAt(t);
   const nearest = others.filter(openFor).map(truckAttackAt).sort((a, b) => a - b)[0] || 0;
   const allied = new Set(alliances.filter((a) => ['accepted', 'active', 'ending'].includes(a.status)).flatMap((a) => a.gangIds));
+  // v84: biat (ittifak gibi saldırılamaz) — etikette ayrı gösterilir
+  const biatWith = new Set(alliances.filter((a) => a.kind === 'biat' && ['accepted', 'active', 'ending'].includes(a.status)).flatMap((a) => a.gangIds));
   const attacking = new Set(wars.all.filter((w) => w.type === 'sabotage' && w.attackerGangId === gangId).map((w) => w.truckId));
   const lead = LEADERS.includes(rank);
   const canRequest = rank === 'kidemli' || rank === 'tetikci';
@@ -452,7 +454,7 @@ function RoadTrucks({ gangId, rank, alliances, wars }) {
           </span>
           {!open && !allied.has(t.gangId) && !attacking.has(t.id) && <span className="gx-pill">🔒 {fmtClock(truckAttackAt(t))}</span>}
           {allied.has(t.gangId) ? (
-            <span className="gx-pill ally">🤝 İTTİFAK</span>
+            biatWith.has(t.gangId) ? <span className="gx-pill biat">⛓️ BİAT</span> : <span className="gx-pill ally">🤝 İTTİFAK</span>
           ) : attacking.has(t.id) ? (
             <span className="gx-pill">💣 Hedefte</span>
           ) : open && lead ? (
@@ -627,7 +629,7 @@ export default function TradeTab({ d }) {
 
       <DepotItems depot={depot} lead={lead} listings={listings} />
 
-      <RoadTrucks gangId={gangId} rank={d.rank} alliances={d.alliances} wars={d.wars} />
+      <RoadTrucks gangId={gangId} rank={d.rank} alliances={d.pacts || d.alliances} wars={d.wars} />
 
       {orderOpen && <OrderSheet trucks={trucks} routes={routes} state={d.state} depot={depot} gangId={gangId} orders={orders} onClose={() => setOrderOpen(false)} />}
       {ask && (

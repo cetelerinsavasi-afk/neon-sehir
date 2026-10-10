@@ -17,6 +17,7 @@ import CetemTab from './tabs/CetemTab';
 import OpsTab from './tabs/OpsTab';
 import IntelTab from './tabs/IntelTab';
 import { WatchWarsList } from './WatchWars';
+import { BiatTag } from './Biat';
 
 const GANG_TABS = [
   { id: 'ceteler', icon: '🏴', label: 'Çeteler' },
@@ -148,7 +149,15 @@ function GangViews({ membership, tab, onOpen }) {
   if (d.gang.status !== 'active') return <div className="gx-loading">Bu çete dağıldı.</div>;
   return (
     <div className="gx-page">
-      <OrgHeader logo={d.gang.logo} name={d.gang.name} rank={d.realRank} prestige={d.me?.prestige} kasa={d.kasaShown} kasaMidnight={!d.kasaLive} />
+      <OrgHeader
+        logo={d.gang.logo}
+        name={d.gang.name}
+        rank={d.realRank}
+        prestige={d.me?.prestige}
+        kasa={d.kasaShown}
+        kasaMidnight={!d.kasaLive}
+        sub={d.gang.biat?.name ? <BiatTag name={d.gang.biat.name} logo={d.gang.biat.logo} /> : null}
+      />
       {d.underVote && <UnderVoteBanner until={d.underVoteUntilMs} low="Çömez" />}
       {tab === 'sohbet' && <ChatTab org="gang" d={d} />}
       {tab === 'savas' && <WarsTab org="gang" d={d} />}

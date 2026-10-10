@@ -128,7 +128,9 @@ export function createGangSystem(deps) {
         if (!live(w)) continue;
         if (w.type === 'trade' || w.type === 'bet') {
           const sides = Object.entries(w.sides || {}).map(([k, sd]) => side(k, sd, w.display?.[k]));
-          wars.push({ id: w.id, type: w.type, product: w.type === 'trade' ? w.product || null : null, startsAtMs: w.startsAtMs, endsAtMs: w.endsAtMs, gangIds: Object.keys(w.sides || {}), sides });
+          // v84: biat edenler — kimin adına ne kadar katkı verdi (herkes görür)
+          const biat = w.type === 'trade' ? Object.entries(w.biatSides || {}).map(([k, sd]) => ({ ...side(k, sd, w.biatDisplay?.[k], 'biat'), forKey: sd.overlordId || null, forName: sd.overlordName || '' })) : [];
+          wars.push({ id: w.id, type: w.type, product: w.type === 'trade' ? w.product || null : null, startsAtMs: w.startsAtMs, endsAtMs: w.endsAtMs, gangIds: [...Object.keys(w.sides || {}), ...biat.map((b) => b.key)], sides, ...(biat.length ? { biat } : {}) });
         } else if (w.type === 'defense' && w.announced) {
           const defPower = Object.values(w.display || {}).reduce((a, v) => a + Number(v || 0), 0);
           const defenders = Object.entries(w.sides || {}).map(([k, sd]) => side(k, sd, w.display?.[k], 'defender'));
@@ -193,6 +195,9 @@ export function createGangSystem(deps) {
     respondAlliance: wars.respondAlliance,
     endAlliance: wars.endAlliance,
     sendAllianceNote: wars.sendAllianceNote,
+    requestBiat: wars.requestBiat,
+    respondBiat: wars.respondBiat,
+    endBiat: wars.endBiat,
     startSabotage: wars.startSabotage,
     requestSabotage: wars.requestSabotage,
     payHarac: wars.payHarac,
