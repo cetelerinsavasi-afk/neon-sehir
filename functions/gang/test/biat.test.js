@@ -321,3 +321,26 @@ test('v86.1: Pazar günü kabul edilen biatta biat edenin sonraki zarları doğr
   await h.tickTo('2026-09-27', '03:20');
   assert.equal(h.get(`wars/${warId}`).biatLinks[A.gangId].overlordId, B.gangId);
 });
+
+test('v86.2: işaretleri eksik aktif biat saat turunda onarılır (eski sunucu ittifak gibi başlatmışsa); sahipsiz işaret silinir', async () => {
+  const h = await createHarness({ dice: [3, 3, 3, 3] });
+  const M = await setupRankedGang(h, 'Mesale');
+  const B = await setupRankedGang(h, 'Bozkir');
+  const C = await setupRankedGang(h, 'Gama');
+  const { biatId } = await h.act(M.baba, 'requestBiat', { targetGangId: B.gangId });
+  await h.act(B.baba, 'respondBiat', { biatId, accept: true });
+  // eski sunucunun yaptığını taklit et: belge aktif ama çete işaretleri yok
+  await h.db.doc(`gangWorlds/test/alliances/${biatId}`).update({ status: 'active', activeSinceDateKey: '2026-09-22' });
+  // C'de ise sahipsiz eski işaret var
+  await h.db.doc(`gangWorlds/test/gangs/${C.gangId}`).update({ biat: { gangId: B.gangId, name: 'Beta', logo: null } });
+  assert.equal(h.get(`gangs/${M.gangId}`).biat, undefined);
+  await h.tickTo('2026-09-21', '09:10');
+  assert.equal(h.get(`gangs/${M.gangId}`).biat.gangId, B.gangId, 'biat eden işareti onarıldı');
+  assert.equal(h.get(`gangs/${B.gangId}`).vassals[M.gangId].name, 'Mesale', 'biat edilen işareti onarıldı');
+  assert.equal(h.get(`gangs/${C.gangId}`).biat, undefined, 'sahipsiz işaret silindi');
+  // Pazar savaşında da biat edilen adına
+  await h.setPersona(M.baba, { power: 1000 });
+  await h.tickTo('2026-09-27', '00:10');
+  const r = await h.act(M.baba, 'rollDice', { warId: 'trade_2026-09-27' });
+  assert.equal(r.sideKey, B.gangId);
+});

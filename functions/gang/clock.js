@@ -1131,7 +1131,7 @@ export function createClock(core, actions) {
         db.runTransaction(async (tx) => {
           const a = (await tx.get(d.ref)).data();
           if (a?.status !== 'accepted' || a.startDateKey > ctx.dateKey) return;
-          if (a.kind === 'biat') return startBiat(tx, ctx, d.ref, a);
+          if (a.kind === 'biat' || (a.vassalId && a.overlordId)) return startBiat(tx, ctx, d.ref, a); // v86.2: biat alanları olan belge her zaman biat
           tx.update(d.ref, { status: 'active', activeSinceDateKey: ctx.dateKey });
           for (const g of a.gangIds) gangLog(tx, ctx, g, '🤝', `İttifak aktif: ${a.names[a.gangIds.find((x) => x !== g)]}`);
         })
@@ -1143,7 +1143,7 @@ export function createClock(core, actions) {
         db.runTransaction(async (tx) => {
           const a = (await tx.get(d.ref)).data();
           if (a?.status !== 'ending' || a.endDateKey > ctx.dateKey) return;
-          if (a.kind === 'biat') return finishBiat(tx, ctx, d.ref, a, 'ended');
+          if (a.kind === 'biat' || (a.vassalId && a.overlordId)) return finishBiat(tx, ctx, d.ref, a, 'ended');
           tx.update(d.ref, { status: 'ended', endedAtMs: ctx.now });
           for (const g of a.gangIds) gangLog(tx, ctx, g, '💔', `İttifak sona erdi: ${a.names[a.gangIds.find((x) => x !== g)]}`);
         })
@@ -1178,6 +1178,45 @@ export function createClock(core, actions) {
     tx.update(ctx.ref.gang(a.overlordId), { [`vassals.${a.vassalId}`]: { name: v.name || '', logo: v.logo || null, sinceDateKey: ctx.dateKey } });
     core.announce(tx, ctx, a.vassalId, '⛓️', `${o.name} çetesine biatınız başladı. Pazar savaşında ${o.name} adına savaşacaksınız; tırlarını da savunabilirsiniz.`);
     core.announce(tx, ctx, a.overlordId, '⛓️', `${v.name} çetesi size biat etti! Pazar savaşında güçleri sizin hanenize yazılacak.`);
+  }
+
+  // v86.2 — BİAT İŞARET ONARIMI (her saat turunda). Aktif / bozulan biatın çete
+  // belgelerindeki herkese açık işaretleri (biat eden → biat, biat edilen →
+  // vassals) eksikse yazılır; canlı biatı olmayan eski işaretler silinir.
+  // (Örn. eski bir sunucu sürümü biatı ittifak gibi başlatıp işaret yazmadıysa.)
+  async function repairBiatFlags(ctx) {
+    const snap = await ctx.ref.alliances().where('kind', '==', 'biat').get();
+    const live = snap.docs.map((d) => ({ ref: d.ref, ...d.data() })).filter((a) => ['active', 'ending'].includes(a.status) && a.vassalId && a.overlordId);
+    const wantVassal = new Map(live.map((a) => [a.vassalId, a])); // biat eden → biat
+    const wantOver = new Map(); // biat edilen → { biat edenler }
+    for (const a of live) (wantOver.get(a.overlordId) || wantOver.set(a.overlordId, new Set()).get(a.overlordId)).add(a.vassalId);
+    const gangs = await ctx.ref.gangs().where('status', '==', 'active').get();
+    let fixed = 0;
+    for (const g of gangs.docs) {
+      const d = g.data();
+      const patch = {};
+      const a = wantVassal.get(g.id);
+      if (a) {
+        if (d.biat?.gangId !== a.overlordId) {
+          const o = gangs.docs.find((x) => x.id === a.overlordId)?.data();
+          if (o) patch.biat = { gangId: a.overlordId, name: o.name || '', logo: o.logo || null, sinceDateKey: a.activeSinceDateKey || ctx.dateKey };
+        }
+      } else if (d.biat?.gangId) patch.biat = FV.delete();
+      const want = wantOver.get(g.id) || new Set();
+      for (const vid of want) {
+        if (!d.vassals?.[vid]) {
+          const v = gangs.docs.find((x) => x.id === vid)?.data();
+          if (v) patch[`vassals.${vid}`] = { name: v.name || '', logo: v.logo || null, sinceDateKey: wantVassal.get(vid)?.activeSinceDateKey || ctx.dateKey };
+        }
+      }
+      for (const vid of Object.keys(d.vassals || {})) if (!want.has(vid)) patch[`vassals.${vid}`] = FV.delete();
+      if (Object.keys(patch).length) {
+        await g.ref.update(patch);
+        fixed += 1;
+      }
+    }
+    if (fixed) ctx.logs.push({ gang: 'biat_flags_repaired', world: ctx.worldId, fixed });
+    return { fixed };
   }
 
   // v84 — BİAT bitişi (00:00'da ya da taraf dağılınca): işaretler kaldırılır.
@@ -1530,6 +1569,7 @@ export function createClock(core, actions) {
     if (last >= ctx0.dateKey) {
       // v86.1: Pazar savaşındaki biat bağları her saat turunda (5 dk) yenilenir —
       // yayından önce kabul edilmiş ya da başka yoldan değişmiş biatlar da hemen birleşir
+      await safe(ctx0, 'biat-repair', () => repairBiatFlags(ctx0));
       await safe(ctx0, 'trade-biat', () => warActions.refreshTradeBiat(ctx0));
       await safe(ctx0, 'depart-orders', () => departOrders(ctx0));
       await safe(ctx0, 'announce-attacks', () => announceAttacks(ctx0));
