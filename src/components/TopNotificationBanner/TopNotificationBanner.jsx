@@ -12,7 +12,7 @@ import './TopNotificationBanner.css';
 // ChatsApp: undefined sentinel ile ayırt edilir).
 export default function TopNotificationBanner({ onOpenPhone }) {
   const { user } = useAuth();
-  const { messages } = useMessages();
+  const { messages } = useMessages({ max: 1 }); // v90.1: şerit sadece en yeni SMS'e bakar
   const { messages: chatMessages } = useGlobalChat({ max: 1 });
   const { isBlocked } = useBlocks();
   const [toast, setToast] = useState(null);

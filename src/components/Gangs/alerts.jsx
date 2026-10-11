@@ -170,7 +170,8 @@ export function useGangAlerts(uid) {
 
   // --- operasyon (İstihbarat) ---
   const isLead = ['baskan', 'sef'].includes(irank);
-  const hourKey = Math.floor(now / 3600_000) * 3600_000;
+  // v90.1 maliyet: sorgu her saat değil 6 saatte bir yenilenir (süresi geçenler zaten aşağıda süzülüyor)
+  const hourKey = Math.floor(now / (6 * 3600_000)) * (6 * 3600_000);
   const truckReps = useDocs(base && rid ? `tr_${base}_${today}` : null, () => query(collection(db, `${base}/intelReports`), where('departDateKey', '==', today), limit(100)));
   const betRepsAll = useDocs(base && rid ? `br_${base}_${hourKey}` : null, () => query(collection(db, `${base}/betReports`), where('intelDeadlineMs', '>', hourKey), limit(50)));
   const betReps = betRepsAll.filter((r) => now < r.intelDeadlineMs);

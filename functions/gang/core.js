@@ -290,6 +290,41 @@ export function createCore(deps) {
       members[d.id] = { codeName: r.codeName || '', rank: r.rank || 'muhbir', prestige: Number(r.prestigeAtMidnight ?? r.prestige ?? 0), joinedAtMs: Number(r.joinedAtMs || 0) };
     });
     await ctx.ref.intelRosterView().set({ members, count: snap.size, updatedAtMs: ctx.now });
+    // v88: kasa sınırı üye sayısından hesaplanır → sayaç gerçek sayıyla eşit kalsın
+    const iv = await ctx.ref.intel().get();
+    if (Number(iv.data()?.memberCount) !== snap.size) await ctx.ref.intel().set({ memberCount: snap.size }, { merge: true });
+  }
+
+  // ---------------------------------------------------------------------------
+  // v88 — İSTİHBARAT KASA SINIRI (üye × 100.000)
+  // readIntelKasa: işlem içinde, YAZMADAN ÖNCE çağrılır.
+  // creditIntel: gelen parayı sınıra kadar kasaya yazar, aşanı yakar (ledger'a
+  // 'intel_cap_burn'). Kasa sınırın üstündeyse hiçbir şey silinmez, sadece girmez.
+  // ---------------------------------------------------------------------------
+  async function readIntelKasa(tx, ctx) {
+    const [st, iv] = await Promise.all([tx.get(ctx.ref.intelState()), tx.get(ctx.ref.intel())]);
+    const members = Math.max(0, Number(iv.data()?.memberCount || 0));
+    return { snap: st, exists: st.exists, kasa: Number(st.data()?.kasa || 0), members, cap: members * INTEL.KASA_CAP_PER_MEMBER };
+  }
+  function intelCapRoom(info) {
+    return Math.max(0, info.cap - info.kasa);
+  }
+  function creditIntel(tx, ctx, info, amount, { type, refId = null, from = { kind: 'system' } } = {}) {
+    const amt = Math.max(0, Math.floor(Number(amount) || 0));
+    if (!amt) return { credited: 0, burned: 0 };
+    const credited = Math.min(amt, intelCapRoom(info));
+    const burned = amt - credited;
+    if (credited > 0) {
+      if (info.exists) tx.update(ctx.ref.intelState(), { kasa: FV.increment(credited) });
+      else {
+        tx.set(ctx.ref.intelState(), { kasa: credited, kasaAtMidnight: 0, midnightDateKey: ctx.dateKey, distributableLeft: 0 }, { merge: true });
+        info.exists = true;
+      }
+      info.kasa += credited;
+      ledger(tx, ctx, { type, amount: credited, from, to: { kind: 'intel', id: 'main' }, refId, actorId: 'system' });
+    }
+    if (burned > 0) ledger(tx, ctx, { type: 'intel_cap_burn', amount: burned, from, to: { kind: 'burn' }, refId, actorId: 'system', note: type });
+    return { credited, burned };
   }
 
   // v37: rütbelilere (Baba · Sağ Kol · Kıdemli) özel sistem mesajı — yönetim sohbeti
@@ -589,6 +624,8 @@ export function createCore(deps) {
     effRank,
     withEffRank,
     refreshIntelRoster,
+    readIntelKasa,
+    creditIntel,
     readBetStake,
     announceIntel,
     unitsOfItems,

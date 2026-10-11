@@ -12,7 +12,7 @@ import GuideScreen from '../GuideScreen/GuideScreen';
 import IdeasScreen from '../IdeasScreen/IdeasScreen';
 import AchievementsScreen from '../AchievementsScreen/AchievementsScreen';
 import InstallAppButton from '../InstallAppButton/InstallAppButton';
-import { useMessages } from '../../hooks/useMessages';
+import { useUnreadSmsCount } from '../../hooks/useMessages';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useUnreadNotifications, markSixtagramSeen } from '../../hooks/useUnreadNotifications';
 import { useSocial } from '../../contexts/SocialContext';
@@ -158,9 +158,8 @@ export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }
     if (p !== page) setPage(Math.max(0, Math.min(PAGES - 1, p)));
   };
   const goPage = (p) => pagerRef.current?.scrollTo({ left: pagerRef.current.clientWidth * p, behavior: 'smooth' });
-  const { messages } = useMessages();
+  const unreadCount = useUnreadSmsCount();
   const { player } = usePlayer();
-  const unreadCount = messages.filter((m) => !m.read).length;
   const { chatsAppHasNew, sixtagramHasNew } = useUnreadNotifications();
   const { time, date } = useClock();
 

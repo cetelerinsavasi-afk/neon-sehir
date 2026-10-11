@@ -142,6 +142,11 @@ export const INTEL = {
   // v50: şüpheyle yakalanma cezasının (soygun / yasaklı madde) SADECE yarısı
   // kasaya girer; kalan yarısı yakılır (ekonomiden çıkar). Oyuncunun borcu değişmez.
   SUSPICION_FINE_KASA_RATIO: 1 / 2,
+  // v88: kasa sınırı = üye sayısı × bu tutar. Gelen para sınırı aşan kısmı yanar.
+  // Üye azalırsa fazla SİLİNMEZ; harcandıkça azalır, sınırın altına inene kadar
+  // yeni gelir girmez. (İade edilen kendi parası — dağıtım/operasyon iadesi — sınırdan muaf.)
+  KASA_CAP_PER_MEMBER: 100_000,
+  KASA_RESET_V88: 1_000_000, // tek seferlik: kasa bu tutara indirilir
   KICK_BASKAN_MIN_RATIO_EXCLUSIVE: 0.66, // Başkan'ı atmak: > %66
   KICK_MIN_RATIO: 0.51, // diğerleri: >= %51
   // v61 (istismar önlemi): İstihbaratta en az bu kadar üye yoksa kimse atılamaz,

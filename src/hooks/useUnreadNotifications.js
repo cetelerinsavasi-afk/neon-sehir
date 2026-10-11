@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
+import { collection, doc, getDocs, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../firebase';
-import { useMessages } from './useMessages';
+import { useUnreadSmsCount } from './useMessages';
 import { useGlobalChat } from './useGlobalChat';
 import { useSixtagramNotifications } from './useSixtagramNotifications';
 import { useAuth } from '../contexts/AuthContext';
@@ -38,13 +38,12 @@ export function markSixtagramSeen() {
  */
 export function useUnreadNotifications() {
   const { user } = useAuth();
-  const { messages } = useMessages();
   const { messages: chatMessages } = useGlobalChat({ max: 1 });
-  const { unreadCount: sixtagramUnreadNotifCount } = useSixtagramNotifications();
+  const { unreadCount: sixtagramUnreadNotifCount } = useSixtagramNotifications({ unreadOnly: true });
   const [chatsAppHasNew, setChatsAppHasNew] = useState(false);
   const [sixtagramNewPost, setSixtagramNewPost] = useState(false);
 
-  const smsUnreadCount = messages.filter((m) => !m.read).length;
+  const smsUnreadCount = useUnreadSmsCount();
 
   const [seenTick, setSeenTick] = useState(0);
   useEffect(() => {
@@ -64,19 +63,22 @@ export function useUnreadNotifications() {
     setChatsAppHasNew(latestMs > lastSeen && latest?.uid !== user.uid);
   }, [chatMessages, user, seenTick]);
 
-  // Sixtagram'da "yeni post var mı" — en son postun createdAtMs'ini,
-  // Sixtagram'ın son açılış zamanıyla karşılaştırır (ChatsApp'la aynı
-  // desen). Sadece TEK bir dokümanı dinlediği için hafif.
+  // Sixtagram'da "yeni post var mı" — en son postun zamanını, Sixtagram'ın son
+  // açılış zamanıyla karşılaştırır.
+  // v90.1 maliyet: sunucu her yeni gönderide stats/sixtagram belgesine
+  // { latestMs, latestUid } yazar; burada sadece o TEK belge dinlenir (yeni
+  // gönderi olunca 1 okuma). Belge henüz yoksa (eski sunucu) eski yönteme
+  // döner: 60 sn'de bir en yeni gönderiyi okur.
   useEffect(() => {
     if (!user) {
       setSixtagramNewPost(false);
       return undefined;
     }
-    // v73 — maliyet: canlı dinleyici yerine 60 sn'de bir tek okuma. En yeni
-    // gönderiye gelen HER beğeni/yorum, çevrimiçi TÜM oyunculara okuma
-    // yazdırıyordu; rozet için 1 dakikalık gecikme yeterli.
     let alive = true;
-    const check = async () => {
+    let latest = null; // { ms, uid }
+    const apply = () => alive && latest && setSixtagramNewPost(latest.ms > getLastSeenSixtagram() && latest.uid !== user.uid);
+    let iv = null;
+    const poll = async () => {
       if (document.hidden) return;
       try {
         const snap = await getDocs(query(collection(db, 'sixtagramPosts'), orderBy('createdAtMs', 'desc'), limit(1)));
@@ -85,22 +87,39 @@ export function useUnreadNotifications() {
           setSixtagramNewPost(false);
           return;
         }
-        const latest = snap.docs[0].data();
-        setSixtagramNewPost((latest.createdAtMs || 0) > getLastSeenSixtagram() && latest.uid !== user.uid);
+        const d = snap.docs[0].data();
+        latest = { ms: d.createdAtMs || 0, uid: d.uid };
+        apply();
       } catch (err) {
         console.warn('useUnreadNotifications (sixtagram):', err?.code || err);
       }
     };
-    check();
-    const iv = setInterval(check, 60_000);
+    const startPoll = () => {
+      if (iv) return;
+      poll();
+      iv = setInterval(poll, 60_000);
+    };
+    const stopPoll = () => {
+      if (iv) clearInterval(iv);
+      iv = null;
+    };
+    const unsub = onSnapshot(
+      doc(db, 'stats', 'sixtagram'),
+      (s) => {
+        if (s.exists()) {
+          stopPoll();
+          latest = { ms: Number(s.data().latestMs || 0), uid: s.data().latestUid || null };
+          apply();
+        } else startPoll();
+      },
+      () => startPoll()
+    );
     const onSeen = () => setSixtagramNewPost(false);
     window.addEventListener('neon-sixtagram-seen', onSeen);
-    const onVis = () => !document.hidden && check();
-    document.addEventListener('visibilitychange', onVis);
     return () => {
       alive = false;
-      clearInterval(iv);
-      document.removeEventListener('visibilitychange', onVis);
+      unsub();
+      stopPoll();
       window.removeEventListener('neon-sixtagram-seen', onSeen);
     };
   }, [user]);

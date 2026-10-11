@@ -45,7 +45,7 @@ export default function SixtagramScreen() {
   const { posts: myPosts, loading: myPostsLoading } = useMySixtagramPosts();
   const likedIds = useMySixtagramLikedPostIds();
   const { profile: myProfile } = useSixtagramProfile(user?.uid);
-  const { unreadCount: notifUnreadCount } = useSixtagramNotifications();
+  const { unreadCount: notifUnreadCount } = useSixtagramNotifications({ unreadOnly: true });
 
   const handleTabClick = (id) => {
     setTab(id);

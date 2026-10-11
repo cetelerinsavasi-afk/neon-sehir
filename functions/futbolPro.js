@@ -16,9 +16,14 @@
 //   - Takıma katılınca oyuncu takımın futbolPlayers listesine girer (yaş sabit
 //     24, değer 0 → takım değerine/satışa girmez). Satılamaz, ilana konamaz,
 //     yaşlanmaz, silinmez, gençleştirilmez, minimum kadro sayımına GİRMEZ.
-//   - Süre sınırı yok: bir taraf feshedene kadar sürer. 18:00–18:59 (kadro
-//     kilidi, maç oynanıyor) fesih yok. Fesihten sonra aynı takıma ancak
-//     bir sonraki 19:00'dan sonra dönülebilir.
+//   - Süre sınırı yok: bir taraf feshedene kadar sürer. v90: FESİH ve TRANSFER
+//     her zaman 19:00'da gerçekleşir (o güne kadar oynar, 19:00'da bugünkü maaşı
+//     ödenir, sonra ayrılır/geçer). Ayrıldığı takıma ertesi 19:00'dan önce dönemez.
+//   - v90 İLK MAAŞ: 18:00'den önce imzalayan o gün 19:00'da maaş alır; 18:00 ve
+//     sonrası imzalayan (transferle 19:00'da geçen dahil) ilk maaşını ertesi 19:00'da.
+//   - v90: hesabını silen futbolcu 19:00'a kadar kadroda kalır; 19:00'da maaşı
+//     takımdan düşülür (kimseye geçmez) ve kadrodan çıkar.
+//   - Başkan/menajer kendi takımında da futbolcu olabilir (maaş aralığı güce bağlı: güç×25 – güç×50).
 //   - Gelişim takım kurallarıyla (antrenman 0,1–4, maç 0,1–2); güç
 //     footballers/{uid}'e de yansıtılır.
 //
@@ -39,15 +44,30 @@
 // =============================================================================
 
 export const PRO_MIN_POWER = 200;
-export const PRO_SALARY = { min: 1000, max: 50000 };
+// v90.1: maaş aralığı GÜCE bağlı — oyuncu değerinin (güç × 1.000) 40'ta 1'i ile 20'de 1'i arası.
+//   200 güç → 5.000–10.000, 300 güç → 7.500–15.000. (Sabit tavan yok.)
+export const PRO_SALARY_PER_POWER = { min: 25, max: 50 };
+export const proSalaryBand = (power) => {
+  const pw = Math.max(PRO_MIN_POWER, Number(power) || 0);
+  return { min: Math.ceil(pw * PRO_SALARY_PER_POWER.min), max: Math.floor(pw * PRO_SALARY_PER_POWER.max) };
+};
+// geri uyum: en düşük PRO (200 güç) için aralık
+export const PRO_SALARY = proSalaryBand(200);
 export const OFFER_TTL_MS = 24 * 60 * 60 * 1000;
+export const OFFER_RESEND_MS = 10 * 60 * 1000; // v89: aynı takım aynı futbolcuya 10 dk'da bir teklif (SMS seli olmasın)
+export const RAISE_WAIT_MS = 24 * 60 * 60 * 1000; // v89: zam isteği günde 1
 export const REAL_PLAYER_AGE = 24;
 export const realPlayerDocId = (uid) => `real_${uid}`;
 const POSITIONS = ['GK', 'DEF', 'MID', 'FWD'];
 
 const r1 = (v) => Math.round(Number(v || 0) * 10) / 10;
 const isId = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);
-const validSalary = (v) => Number.isInteger(v) && v >= PRO_SALARY.min && v <= PRO_SALARY.max;
+const validSalary = (v) => Number.isInteger(v) && v > 0;
+// güce göre aralık dışındaysa hata kodu (salary-band:min:max), içindeyse null
+const bandError = (salary, power) => {
+  const b = proSalaryBand(power);
+  return salary < b.min || salary > b.max ? `salary-band:${b.min}:${b.max}` : null;
+};
 
 // ---------------------------------------------------------------------------
 // Gol / asist sahibi (skoru DEĞİŞTİRMEZ; sadece golü kimin attığını belirler)
@@ -190,12 +210,17 @@ export function createFutbolPro({
   futbolDayKey,
   getControlMode,
   controllerUidOf,
-  isLockedHour = () => false,
+  isLockedHour: _isLockedHour = () => false, // v90: artık kullanılmıyor (fesih/transfer 19:00da)
   splitIncomeForDebt = (debt, amount) => ({ goldDelta: amount, debtDelta: 0 }),
 }) {
   const fail = (code, msg) => {
     throw new HttpsError(code, msg);
   };
+  const checkBand = (salary, power) => {
+    const be = bandError(salary, power);
+    if (be) fail('invalid-argument', be);
+  };
+
   const teamRef = (id) => db.collection('futbolTeams').doc(id);
   const userRef = (uid) => db.collection('users').doc(uid);
   const fbRef = (uid) => db.collection('footballers').doc(uid);
@@ -254,7 +279,7 @@ export function createFutbolPro({
     });
   }
   // Sözleşmeyi bitir (YAZMA): borç takıma geçer, oyuncu kadrodan çıkar.
-  function endWrites(tx, { uid, p, team, teamId, reason }) {
+  function endWrites(tx, { uid, p, team, teamId, reason, teamExists = true, userExists = true }) {
     const t = now();
     const debt = Math.max(0, Math.round(Number(p.salaryDebt || 0)));
     const patch = {};
@@ -265,14 +290,21 @@ export function createFutbolPro({
     const id = realPlayerDocId(uid);
     if (Array.isArray(team.lineup) && team.lineup.includes(id)) patch.lineup = team.lineup.filter((x) => x !== id);
     if (Array.isArray(team.trainingPlayerIds) && team.trainingPlayerIds.includes(id)) patch.trainingPlayerIds = team.trainingPlayerIds.filter((x) => x !== id);
-    if (Object.keys(patch).length) tx.update(teamRef(teamId), patch);
+    // v89: takım belgesi silinmişse ona yazılmaz; oyuncu hesabı silinmişse borç da yazılmaz
+    if (!userExists) {
+      delete patch[`playerDebts.${uid}`];
+      delete patch.hasPlayerDebts;
+    }
+    if (teamExists && Object.keys(patch).length) tx.update(teamRef(teamId), patch);
     tx.delete(playerRef(uid));
-    tx.set(
-      fbRef(uid),
-      { teamId: null, teamName: null, playerDocId: null, power: r1(p.power), lastLeft: { teamId, dayKey: futbolDayKey(t), reason, atMs: t } },
-      { merge: true }
-    );
-    return debt;
+    if (userExists)
+      tx.set(
+        fbRef(uid),
+        { teamId: null, teamName: null, playerDocId: null, power: r1(p.power), lastLeft: { teamId, dayKey: futbolDayKey(t), reason, atMs: t } },
+        { merge: true }
+      );
+    else tx.delete(fbRef(uid)); // v90: silinmiş hesabın futbolcu profili de kalkar (listede görünmesin)
+    return teamExists && userExists ? debt : 0;
   }
 
   // Transferde eski takımdan çıkış (YAZMA): borç eski takıma, kadro/antrenmandan düşer.
@@ -302,6 +334,7 @@ export function createFutbolPro({
       if (!fb) fail('failed-precondition', 'not-footballer');
       if (fb.teamId) fail('failed-precondition', 'in-team');
       if (listed && Number(fb.power || 0) < PRO_MIN_POWER) fail('failed-precondition', 'not-pro');
+      if (listed) checkBand(ask, fb.power);
       tx.update(fbRef(uid), listed ? { listed: true, askSalary: ask, listedAtMs: now() } : { listed: false });
     });
     return { ok: true, listed, askSalary: listed ? ask : null };
@@ -316,11 +349,15 @@ export function createFutbolPro({
     if (!validSalary(salary)) fail('invalid-argument', 'salary-band');
     let result = null;
     await db.runTransaction(async (tx) => {
-      const [ts, fs] = await Promise.all([tx.get(teamRef(teamId)), tx.get(fbRef(to))]);
+      const [ts, fs, prevSnap, curSnap] = await Promise.all([tx.get(teamRef(teamId)), tx.get(fbRef(to)), tx.get(offerRef(teamId, to)), tx.get(playerRef(to))]);
       const team = requireController(ts, uid);
       const fb = fs.exists ? fs.data() : null;
       assertJoinable(fb, teamId, { allowInTeam: true });
+      // takımdaysa güncel güç takımdaki kayıtta (antrenman/maç orada artar)
+      checkBand(salary, Math.max(Number(fb.power || 0), curSnap.exists ? Number(curSnap.data().power || 0) : 0));
       const t = now();
+      const prev = prevSnap.exists ? prevSnap.data() : null;
+      if (prev?.status === 'pending' && Number(prev.createdAtMs || 0) > t - OFFER_RESEND_MS) fail('failed-precondition', 'offer-wait');
       tx.set(offerRef(teamId, to), {
         teamId,
         teamName: String(team.name || '').slice(0, 40),
@@ -381,26 +418,30 @@ export function createFutbolPro({
       if (!controllerUidOf(team)) fail('failed-precondition', 'team-bot');
       const fb = fs.exists ? fs.data() : null;
       assertJoinable(fb, o.teamId, { allowInTeam: true });
-      // takımdayken kabul → TRANSFER: eski sözleşme biter (borç eski takıma), yenisi başlar
-      let fromTeam = null;
-      if (fb.teamId) {
-        if (isLockedHour()) fail('failed-precondition', 'locked-hour');
-        const oldTs = await tx.get(teamRef(fb.teamId));
-        fromTeam = { id: fb.teamId, ...(oldTs.exists ? oldTs.data() : {}) };
+      // v90: takımdayken kabul → TRANSFER 19:00'da gerçekleşir. O zamana kadar eski
+      // takımda oynar; 19:00'da eski takım bugünkü maaşını öder, sonra yeni takıma geçer.
+      if (fb.teamId && ops.exists) {
+        const cur = ops.data();
+        if (cur.pendingTransfer) fail('failed-precondition', 'transfer-pending');
+        const t = now();
+        tx.update(ops.ref, { pendingTransfer: { teamId: o.teamId, teamName: String(team.name || '').slice(0, 40), salary: o.salary, offerId: id, atMs: t }, pendingEnd: null });
+        tx.update(os.ref, { status: 'accepted', closedAtMs: t, scheduled: true });
+        pq.docs.forEach((s2) => {
+          if (s2.id !== id && s2.exists && s2.data().status === 'pending') tx.update(s2.ref, { status: 'void', closedAtMs: t });
+        });
+        teamNote(tx, fb.teamId, `🔁 ${fb.name} ${team.name} takımının teklifini kabul etti — bugün 19:00'da transfer olacak.`, 'futbol_pro_left');
+        teamNote(tx, o.teamId, `🤝 ${fb.name} teklifini kabul etti — 19:00'da takıma katılacak · ${fmt(o.salary)}/gün`, 'futbol_pro_joined');
+        result = { ok: true, accepted: true, teamId: o.teamId, transfer: true, at19: true };
+        return;
       }
-      if (fromTeam && ops.exists) {
-        const old = ops.data();
-        transferOutWrites(tx, { uid, p: old, team: fromTeam, teamId: fromTeam.id });
-        teamNote(tx, fromTeam.id, `🔁 ${fb.name} ${team.name} takımına transfer oldu.${Number(old.salaryDebt) > 0 ? ` Borç: ${fmt(old.salaryDebt)}` : ''}`, 'futbol_pro_left');
-      }
-      const carry = fromTeam && ops.exists ? { form: ops.data().form, injuryDaysLeft: ops.data().injuryDaysLeft } : {};
-      joinWrites(tx, { uid, fb: { ...fb, power: ops.exists ? ops.data().power : fb.power }, teamId: o.teamId, team, salary: o.salary, pendingSnaps: pq.docs, carry, lastLeft: fromTeam ? { teamId: fromTeam.id, dayKey: futbolDayKey(now()), reason: 'transfer', atMs: now() } : undefined });
+      joinWrites(tx, { uid, fb, teamId: o.teamId, team, salary: o.salary, pendingSnaps: pq.docs });
       tx.update(os.ref, { status: 'accepted', closedAtMs: now() });
       teamNote(tx, o.teamId, `🤝 ${fb.name} takıma katıldı · ${fmt(o.salary)}/gün`, 'futbol_pro_joined');
-      result = { ok: true, accepted: true, teamId: o.teamId, transfer: Boolean(fromTeam) };
+      result = { ok: true, accepted: true, teamId: o.teamId, transfer: false };
     });
     return result;
   }
+
 
   // ---- yönetici: ilandaki futbolcuyu istediği maaşla imzala -------------------
   async function sign(uid, d) {
@@ -432,7 +473,9 @@ export function createFutbolPro({
       if (!ps.exists) fail('failed-precondition', 'no-contract');
       const p = ps.data();
       if (salary <= Number(p.salary || 0)) fail('failed-precondition', 'raise-low');
-      tx.update(ps.ref, { raiseRequest: { salary, atMs: now() } });
+      checkBand(salary, p.power);
+      if (Number(p.raiseAskedAtMs || 0) > now() - RAISE_WAIT_MS) fail('failed-precondition', 'raise-wait');
+      tx.update(ps.ref, { raiseRequest: { salary, atMs: now() }, raiseAskedAtMs: now() });
       teamNote(tx, p.teamId, `💸 ${p.name} zam istiyor: ${fmt(p.salary)} → ${fmt(salary)}`, 'futbol_pro_raise');
     });
     return { ok: true };
@@ -473,6 +516,7 @@ export function createFutbolPro({
       const ts = await tx.get(teamRef(p.teamId));
       requireController(ts, uid);
       if (salary <= Number(p.salary || 0)) fail('failed-precondition', 'raise-low');
+      checkBand(salary, p.power);
       tx.update(ps.ref, { salary, raiseRequest: null });
       sms(tx, to, `💸 Takımın maaşını artırdı: günlük ${fmt(salary)} altın.`, 'futbol_pro_raise');
     });
@@ -483,7 +527,6 @@ export function createFutbolPro({
   async function terminate(uid, d) {
     const to = d.uid ? String(d.uid) : uid;
     if (!isId(to)) fail('invalid-argument', 'Geçersiz.');
-    if (isLockedHour()) fail('failed-precondition', 'locked-hour');
     let result = null;
     await db.runTransaction(async (tx) => {
       const ps = await tx.get(playerRef(to));
@@ -493,58 +536,115 @@ export function createFutbolPro({
       const team = ts.exists ? ts.data() : {};
       const byPlayer = to === uid;
       if (!byPlayer) requireController(ts, uid);
-      const debt = endWrites(tx, { uid: to, p, team, teamId: p.teamId, reason: byPlayer ? 'player' : 'team' });
+      if (p.pendingEnd || p.pendingTransfer) fail('failed-precondition', 'end-pending');
+      // v90: fesih HER ZAMAN 19:00'da olur — o güne kadar oynar, 19:00'da bugünkü
+      // maaşı ödenir ve sözleşme biter (maaş ödemesi: paySalaries)
+      tx.update(ps.ref, { pendingEnd: { by: byPlayer ? 'player' : 'team', atMs: now() } });
       if (byPlayer) {
-        if (ts.exists) teamNote(tx, p.teamId, `✂️ ${p.name} sözleşmesini feshetti.${debt ? ` Borç: ${fmt(debt)}` : ''}`, 'futbol_pro_left');
+        if (ts.exists) teamNote(tx, p.teamId, `✂️ ${p.name} sözleşmesini feshetti — bugün 19:00'da ayrılacak.`, 'futbol_pro_left');
       } else {
-        sms(tx, to, `✂️ ${team.name || 'Takım'} sözleşmeni feshetti.${debt ? ` Kalan ${fmt(debt)} altın alacağın takımın borcu olarak sana ödenecek.` : ''}`, 'futbol_pro_left');
+        sms(tx, to, `✂️ ${team.name || 'Takım'} sözleşmeni feshetti — bugün 19:00'da bugünkü maaşın ödenip sözleşmen bitecek.`, 'futbol_pro_left');
       }
-      result = { ok: true, debt };
+      result = { ok: true, at19: true };
     });
     return result;
   }
+
 
   // ---- 19:00 maaş ödemesi ------------------------------------------------------
   // Her sözleşme ayrı transaction. BOT takımda son maaş ödenir, sözleşme biter.
   async function paySalaries() {
     const snap = await db.collection('futbolPlayers').where('real', '==', true).get();
-    const out = { paid: 0, debt: 0, ended: 0 };
+    const out = { paid: 0, debt: 0, ended: 0, moved: 0, burned: 0 };
+    // v90: İLK MAAŞ — bugün 18:00'den (maç başlangıcı) ÖNCE imzalayan bugün 19:00'da
+    // maaş alır; 18:00 ve sonrası imzalayan ilk maaşını yarın 19:00'da alır.
+    const t0 = now();
+    const ist = new Date(t0 + 3 * 60 * 60 * 1000);
+    const cutoffMs = Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate(), 15, 0, 0); // 18:00 İstanbul
     for (const doc of snap.docs) {
       const uid = doc.data().realUid;
-      await db.runTransaction(async (tx) => {
-        const ps = await tx.get(doc.ref);
-        if (!ps.exists) return;
-        const p = ps.data();
-        const ts = await tx.get(teamRef(p.teamId));
-        if (!ts.exists) return;
-        const team = ts.data();
-        const mode = getControlMode(team);
-        const fromPresident = mode === 'OWNER_ACTIVE';
-        const [presSnap, plSnap] = await Promise.all([fromPresident ? tx.get(userRef(team.ownerUid)) : null, tx.get(userRef(uid))]);
-        const available = Math.max(0, Math.floor(Number(fromPresident ? presSnap?.data()?.gold : team.treasury) || 0));
-        const salary = Math.max(0, Math.round(Number(p.salary || 0)));
-        const owed = salary + Math.max(0, Math.round(Number(p.salaryDebt || 0)));
-        const paid = Math.min(owed, available);
-        const newDebt = owed - paid;
-        if (paid > 0) {
-          if (fromPresident) tx.update(userRef(team.ownerUid), { gold: FieldValue.increment(-paid) });
-          else tx.update(teamRef(p.teamId), { treasury: FieldValue.increment(-paid) });
-          const { goldDelta, debtDelta } = splitIncomeForDebt(plSnap.data()?.debtToState, paid);
-          tx.update(userRef(uid), { gold: FieldValue.increment(goldDelta), ...(debtDelta ? { debtToState: FieldValue.increment(debtDelta) } : {}) });
-        }
-        tx.update(ps.ref, { salaryDebt: newDebt, lastPaidAtMs: now() });
-        out.paid += paid;
-        out.debt += newDebt;
-        if (mode === 'BOT') {
-          // takım sahipsiz kaldı: son maaş ödendi, sözleşme biter
-          endWrites(tx, { uid, p: { ...p, salaryDebt: newDebt }, team, teamId: p.teamId, reason: 'team_bot' });
-          sms(tx, uid, `⚽ ${team.name} sahipsiz kaldı; son maaşın (${fmt(paid)}) ödendi, sözleşmen bitti.`, 'futbol_pro_left');
-          out.ended += 1;
-          return;
-        }
-        if (newDebt > 0) sms(tx, uid, `💰 Maaş: ${fmt(paid)} ödendi · ${fmt(newDebt)} altın borç birikti (${team.name}).`, 'futbol_salary_debt');
-        else sms(tx, uid, `💰 Maaşın yattı: ${fmt(paid)} altın (${team.name}).`, 'futbol_salary_paid');
-      });
+      try {
+        await db.runTransaction(async (tx) => {
+          const ps = await tx.get(doc.ref);
+          if (!ps.exists) return;
+          const p = ps.data();
+          const ts = await tx.get(teamRef(p.teamId));
+          if (!ts.exists) return; // (takım silinmez; savunma amaçlı)
+          const team = ts.data();
+          const mode = getControlMode(team);
+          const fromPresident = mode === 'OWNER_ACTIVE';
+          const tr = p.pendingTransfer || null;
+          const [presSnap, plSnap, newTs, pq] = await Promise.all([
+            fromPresident ? tx.get(userRef(team.ownerUid)) : null,
+            tx.get(userRef(uid)),
+            tr ? tx.get(teamRef(tr.teamId)) : null,
+            tr ? tx.get(db.collection('futbolOffers').where('uid', '==', uid).where('status', '==', 'pending').limit(50)) : null,
+          ]);
+          const userGone = !plSnap.exists;
+          const available = Math.max(0, Math.floor(Number(fromPresident ? presSnap?.data()?.gold : team.treasury) || 0));
+          const eligible = Number(p.contractSince || 0) < cutoffMs;
+          const salary = eligible ? Math.max(0, Math.round(Number(p.salary || 0))) : 0;
+          const owed = salary + Math.max(0, Math.round(Number(p.salaryDebt || 0)));
+          const paid = Math.min(owed, available);
+          const newDebt = owed - paid;
+          if (paid > 0) {
+            if (fromPresident) tx.update(userRef(team.ownerUid), { gold: FieldValue.increment(-paid) });
+            else tx.update(teamRef(p.teamId), { treasury: FieldValue.increment(-paid) });
+            if (!userGone) {
+              const { goldDelta, debtDelta } = splitIncomeForDebt(plSnap.data()?.debtToState, paid);
+              tx.update(userRef(uid), { gold: FieldValue.increment(goldDelta), ...(debtDelta ? { debtToState: FieldValue.increment(debtDelta) } : {}) });
+            } else out.burned += paid; // v90: hesap silinmiş → ödenen maaş kimseye geçmez (yanar)
+          }
+          out.paid += paid;
+          // v90: hesabı silinmiş futbolcu 19:00'a kadar oynar; maaşı ödenir (yanar) ve takımdan çıkar
+          if (userGone) {
+            endWrites(tx, { uid, p: { ...p, salaryDebt: 0 }, team, teamId: p.teamId, reason: 'player_gone', userExists: false });
+            teamNote(tx, p.teamId, `👋 ${p.name} oyundan ayrıldı; son maaşı ödendi ve kadrodan çıktı.`, 'futbol_pro_left');
+            out.ended += 1;
+            return;
+          }
+          if (mode === 'BOT') {
+            // takım sahipsiz kaldı: son maaş ödendi, sözleşme biter
+            endWrites(tx, { uid, p: { ...p, salaryDebt: newDebt }, team, teamId: p.teamId, reason: 'team_bot' });
+            sms(tx, uid, `⚽ ${team.name} sahipsiz kaldı; son maaşın (${fmt(paid)}) ödendi, sözleşmen bitti.`, 'futbol_pro_left');
+            out.ended += 1;
+            return;
+          }
+          // v90: 19:00 TRANSFERİ — eski takım bugünü ödedi; yeni takıma geçer
+          if (tr) {
+            const nt = newTs?.exists ? newTs.data() : null;
+            if (nt && controllerUidOf(nt)) {
+              transferOutWrites(tx, { uid, p: { ...p, salaryDebt: newDebt }, team, teamId: p.teamId });
+              const fbData = { name: p.name, position: p.position, power: p.power };
+              joinWrites(tx, { uid, fb: fbData, teamId: tr.teamId, team: nt, salary: tr.salary, pendingSnaps: pq?.docs || [], carry: { form: p.form, injuryDaysLeft: p.injuryDaysLeft }, lastLeft: { teamId: p.teamId, dayKey: futbolDayKey(now()), reason: 'transfer', atMs: now() } });
+              teamNote(tx, p.teamId, `🔁 ${p.name} ${nt.name} takımına transfer oldu.${newDebt > 0 ? ` Borç: ${fmt(newDebt)}` : ''}`, 'futbol_pro_left');
+              teamNote(tx, tr.teamId, `🤝 ${p.name} takıma katıldı · ${fmt(tr.salary)}/gün (ilk maaş yarın 19:00)`, 'futbol_pro_joined');
+              sms(tx, uid, `🔁 ${nt.name} takımına transfer oldun! ${paid > 0 ? `Eski takımın son maaşını (${fmt(paid)}) ödedi. ` : ''}İlk maaşın yarın 19:00'da.`, 'futbol_pro_joined');
+              out.moved += 1;
+              return;
+            }
+            // yeni takım artık yöneticisiz → transfer iptal, oyuncu kalır
+            tx.update(ps.ref, { pendingTransfer: null });
+            sms(tx, uid, `⚠️ ${tr.teamName} takımının yöneticisi kalmadığı için transferin iptal oldu; ${team.name} takımında devam ediyorsun.`, 'futbol_pro_left');
+          }
+          // v90: 19:00 FESHİ — bugünkü maaş ödendi, sözleşme biter (kalan borç takımın borcu olur)
+          if (p.pendingEnd) {
+            const debt = endWrites(tx, { uid, p: { ...p, salaryDebt: newDebt }, team, teamId: p.teamId, reason: p.pendingEnd.by === 'team' ? 'team' : 'player' });
+            sms(tx, uid, `✂️ ${team.name} ile sözleşmen bitti.${paid > 0 ? ` Son maaşın: ${fmt(paid)}.` : ''}${debt ? ` Kalan ${fmt(debt)} alacağın takımın borcu olarak sonra ödenecek.` : ''}`, 'futbol_pro_left');
+            teamNote(tx, p.teamId, `✂️ ${p.name} ile sözleşme bitti.`, 'futbol_pro_left');
+            out.ended += 1;
+            return;
+          }
+          tx.update(ps.ref, { salaryDebt: newDebt, lastPaidAtMs: now() });
+          out.debt += newDebt;
+          if (!eligible && !(Number(p.salaryDebt) > 0)) return; // 18:00 sonrası imza: ilk maaş yarın
+          if (newDebt > 0) sms(tx, uid, `💰 Maaş: ${fmt(paid)} ödendi · ${fmt(newDebt)} altın borç birikti (${team.name}).`, 'futbol_salary_debt');
+          else sms(tx, uid, `💰 Maaşın yattı: ${fmt(paid)} altın (${team.name}).`, 'futbol_salary_paid');
+        });
+      } catch (err) {
+        out.errors = (out.errors || 0) + 1;
+        console.error('futbolPro.paySalaries', doc.id, err?.message || err);
+      }
     }
     return out;
   }

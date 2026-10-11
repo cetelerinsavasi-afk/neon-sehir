@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeFirestore, FieldValue } from '../gang/test/fakeFirestore.js';
-import { createFutbolPro, assignGoalCredits, computeMatchRatings, goalCounts, realPlayerDocId, PRO_SALARY } from '../futbolPro.js';
+import { createFutbolPro, assignGoalCredits, computeMatchRatings, goalCounts, realPlayerDocId, proSalaryBand } from '../futbolPro.js';
 import { futbolDayKey } from '../businessCatalogData.js';
 
 class HttpsError extends Error {
@@ -46,8 +46,8 @@ function setup() {
   S('futbolTeams/t1', { name: 'Neon FK', ownerUid: 'baskan', managerUid: 'menajer', treasury: 3_000, tier: 1 });
   S('futbolTeams/t2', { name: 'Gece SK', ownerUid: 'baskan2', treasury: 0, tier: 2 });
   S('users/baskan2', { gold: 50_000 });
-  S('footballers/ali', { uid: 'ali', name: 'Ali', position: 'FWD', power: 214.5, teamId: null });
-  S('footballers/veli', { uid: 'veli', name: 'Veli', position: 'GK', power: 230, teamId: null });
+  S('footballers/ali', { uid: 'ali', name: 'Ali', position: 'FWD', power: 200, teamId: null });
+  S('footballers/veli', { uid: 'veli', name: 'Veli', position: 'GK', power: 200, teamId: null });
   S('footballers/genc', { uid: 'genc', name: 'Genç', position: 'MID', power: 150, teamId: null });
   const act = (uid, data) => pro.action(uid, data);
   return { db, S, G, clock, pro, act };
@@ -103,7 +103,11 @@ test('teklif: yönetici gönderir, futbolcu kabul eder; diğer teklifler düşer
   const h = setup();
   await assert.rejects(h.act('baskan', { op: 'offerSend', teamId: 't1', uid: 'ali', salary: 5000 }), /yetkin yok/); // menajerli takımda başkan değil menajer
   await assert.rejects(h.act('menajer', { op: 'offerSend', teamId: 't1', uid: 'genc', salary: 5000 }), /not-pro/);
-  await assert.rejects(h.act('menajer', { op: 'offerSend', teamId: 't1', uid: 'ali', salary: PRO_SALARY.max + 1 }), /salary-band/);
+  // v90.1: 200 güç → 5.000–10.000 (değerin 40'ta 1'i – 20'de 1'i)
+  assert.deepEqual(proSalaryBand(200), { min: 5000, max: 10000 });
+  assert.deepEqual(proSalaryBand(300), { min: 7500, max: 15000 });
+  await assert.rejects(h.act('menajer', { op: 'offerSend', teamId: 't1', uid: 'ali', salary: 10001 }), /salary-band:5000:10000/);
+  await assert.rejects(h.act('menajer', { op: 'offerSend', teamId: 't1', uid: 'ali', salary: 4999 }), /salary-band/);
   await h.act('menajer', { op: 'offerSend', teamId: 't1', uid: 'ali', salary: 5000 });
   await h.act('baskan2', { op: 'offerSend', teamId: 't2', uid: 'ali', salary: 7000 });
   assert.equal(h.G('futbolOffers/t1_ali').status, 'pending');
@@ -114,94 +118,96 @@ test('teklif: yönetici gönderir, futbolcu kabul eder; diğer teklifler düşer
   const p = h.G(`futbolPlayers/${realPlayerDocId('ali')}`);
   assert.equal(p.real, true);
   assert.equal(p.teamId, 't1');
-  assert.equal(p.power, 214.5);
+  assert.equal(p.power, 200);
   assert.equal(p.value, 0);
   assert.equal(p.salary, 5000);
   assert.equal(h.G('footballers/ali').teamId, 't1');
   assert.equal(h.G('futbolOffers/t2_ali').status, 'void');
   await assert.rejects(h.act('ali', { op: 'offerRespond', offerId: 't2_ali', accept: true }), /offer-closed/);
   // 24 saat sonra teklif düşer
-  await h.act('baskan2', { op: 'offerSend', teamId: 't2', uid: 'veli', salary: 3000 });
+  await h.act('baskan2', { op: 'offerSend', teamId: 't2', uid: 'veli', salary: 6000 });
   h.clock.now += 24 * H + 1;
   await assert.rejects(h.act('veli', { op: 'offerRespond', offerId: 't2_veli', accept: true }), /offer-closed/);
   assert.equal(await h.pro.expireOffers(), 3, 'süresi geçen tüm teklif kayıtları (kabul/düşen dahil) temizlenir');
 });
 
-test('ilan: futbolcu maaşını belirler, takım doğrudan imzalar; fesih → aynı takıma 19:00 sonra', async () => {
+test('ilan: futbolcu maaşını belirler, takım doğrudan imzalar; v90 fesih 19:00da olur → aynı takıma ertesi 19:00 sonra', async () => {
   const h = setup();
-  await assert.rejects(h.act('genc', { op: 'proList', listed: true, askSalary: 4000 }), /not-pro/);
-  await h.act('veli', { op: 'proList', listed: true, askSalary: 4000 });
-  await assert.rejects(h.act('baskan2', { op: 'sign', teamId: 't2', uid: 'veli', expect: 3000 }), /price-changed:4000/);
-  await h.act('baskan2', { op: 'sign', teamId: 't2', uid: 'veli', expect: 4000 });
-  assert.equal(h.G(`futbolPlayers/${realPlayerDocId('veli')}`).salary, 4000);
+  await assert.rejects(h.act('genc', { op: 'proList', listed: true, askSalary: 6000 }), /not-pro/);
+  await assert.rejects(h.act('veli', { op: 'proList', listed: true, askSalary: 11000 }), /salary-band/);
+  await h.act('veli', { op: 'proList', listed: true, askSalary: 6000 });
+  await assert.rejects(h.act('baskan2', { op: 'sign', teamId: 't2', uid: 'veli', expect: 5000 }), /price-changed:6000/);
+  await h.act('baskan2', { op: 'sign', teamId: 't2', uid: 'veli', expect: 6000 });
+  assert.equal(h.G(`futbolPlayers/${realPlayerDocId('veli')}`).salary, 6000);
   assert.equal(h.G('footballers/veli').listed, false);
-  // kadroya alınmışsa diziliş/antrenmandan da düşer
   h.S('futbolTeams/t2', { ...h.G('futbolTeams/t2'), lineup: ['x', realPlayerDocId('veli')], trainingPlayerIds: [realPlayerDocId('veli')] });
-  h.clock.now = at(7, 18, 30);
-  await assert.rejects(h.act('veli', { op: 'terminate' }), /locked-hour/);
-  h.clock.now = at(7, 18, 59);
-  h.clock.now = at(7, 17);
-  await h.act('veli', { op: 'terminate' });
+  h.clock.now = at(7, 18, 30); // maç saatinde de fesih BAŞLATILABİLİR (19:00'da olur)
+  const r = await h.act('veli', { op: 'terminate' });
+  assert.equal(r.at19, true);
+  assert.equal(h.G(`futbolPlayers/${realPlayerDocId('veli')}`).teamId, 't2', '19:00a kadar takımda');
+  await assert.rejects(h.act('baskan2', { op: 'terminate', uid: 'veli' }), /end-pending/);
+  h.clock.now = at(7, 19);
+  await h.pro.paySalaries();
   assert.equal(h.G(`futbolPlayers/${realPlayerDocId('veli')}`), undefined);
   assert.equal(h.G('footballers/veli').teamId, null);
+  assert.equal(h.G('users/veli').gold, 3000, 'bugünkü maaş (6.000) ödendi; devlet borcunun yarısı kesildi');
   assert.deepEqual(h.G('futbolTeams/t2').lineup, ['x']);
   assert.deepEqual(h.G('futbolTeams/t2').trainingPlayerIds, []);
-  await assert.rejects(h.act('baskan2', { op: 'offerSend', teamId: 't2', uid: 'veli', salary: 3000 }), /rejoin-wait/);
-  await h.act('menajer', { op: 'offerSend', teamId: 't1', uid: 'veli', salary: 3000 }); // başka takım olur
-  h.clock.now = at(7, 19, 1); // 19:00 geçti
-  await h.act('baskan2', { op: 'offerSend', teamId: 't2', uid: 'veli', salary: 3000 });
+  h.clock.now = at(7, 19, 5);
+  await assert.rejects(h.act('baskan2', { op: 'offerSend', teamId: 't2', uid: 'veli', salary: 6000 }), /rejoin-wait/);
+  await h.act('menajer', { op: 'offerSend', teamId: 't1', uid: 'veli', salary: 6000 }); // başka takım olur
+  h.clock.now = at(8, 19, 1);
+  await h.act('baskan2', { op: 'offerSend', teamId: 't2', uid: 'veli', salary: 6000 });
 });
 
-test('maaş: 19:00 kasadan/başkandan; yetmezse borç; fesihte borç takıma; para gelince ödenir; BOT → son maaş', async () => {
+test('maaş: 19:00 kasadan/başkandan; yetmezse borç; v90 fesih 19:00da, borç takıma; para gelince ödenir; BOT → son maaş', async () => {
   const h = setup();
   await h.act('menajer', { op: 'offerSend', teamId: 't1', uid: 'ali', salary: 5000 });
   await h.act('ali', { op: 'offerRespond', offerId: 't1_ali', accept: true });
-  await h.act('baskan2', { op: 'offerSend', teamId: 't2', uid: 'veli', salary: 2000 });
+  await h.act('baskan2', { op: 'offerSend', teamId: 't2', uid: 'veli', salary: 5000 });
   await h.act('veli', { op: 'offerRespond', offerId: 't2_veli', accept: true });
   h.clock.now = at(7, 19);
   await h.pro.paySalaries();
-  // ali: menajerli → kasa 3.000 → 3.000 ödendi, 2.000 borç
   assert.equal(h.G('futbolTeams/t1').treasury, 0);
   assert.equal(h.G('users/ali').gold, 3000);
   assert.equal(h.G(`futbolPlayers/${realPlayerDocId('ali')}`).salaryDebt, 2000);
-  // veli: başkan yönetiyor → başkanın altınından; devlet borcu yarısı kesilir
-  assert.equal(h.G('users/baskan2').gold, 48_000);
-  assert.equal(h.G('users/veli').gold, 1000);
-  assert.equal(h.G('users/veli').debtToState, 9000);
-  // ertesi gün: kasa 10.000 → 5.000 + 2.000 borç
+  assert.equal(h.G('users/baskan2').gold, 45_000);
+  assert.equal(h.G('users/veli').gold, 2500);
+  assert.equal(h.G('users/veli').debtToState, 7500);
   h.S('futbolTeams/t1', { ...h.G('futbolTeams/t1'), treasury: 10_000 });
   h.clock.now = at(8, 19);
   await h.pro.paySalaries();
   assert.equal(h.G('futbolTeams/t1').treasury, 3000);
   assert.equal(h.G('users/ali').gold, 10_000);
   assert.equal(h.G(`futbolPlayers/${realPlayerDocId('ali')}`).salaryDebt, 0);
-  // kasa boş, maaş borç olur; takım fesheder → borç takımın borcu
   h.S('futbolTeams/t1', { ...h.G('futbolTeams/t1'), treasury: 0 });
   h.clock.now = at(9, 19);
   await h.pro.paySalaries();
   h.clock.now = at(9, 20);
   const r = await h.act('menajer', { op: 'terminate', uid: 'ali' });
-  assert.equal(r.debt, 5000);
-  assert.equal(h.G('futbolTeams/t1').playerDebts.ali, 5000);
-  assert.equal(h.G('futbolTeams/t1').hasPlayerDebts, true);
+  assert.equal(r.at19, true);
+  assert.ok(h.G(`futbolPlayers/${realPlayerDocId('ali')}`), 'hemen bitmez');
+  h.clock.now = at(10, 19);
+  await h.pro.paySalaries();
+  assert.equal(h.G(`futbolPlayers/${realPlayerDocId('ali')}`), undefined, '19:00da bitti');
+  assert.equal(h.G('futbolTeams/t1').playerDebts.ali, 10_000, 'dünkü borç + bugünkü maaş takımın borcu');
   assert.equal(await h.pro.settleTeamDebts(), 0, 'kasa boş → ödeme yok');
   h.S('futbolTeams/t1', { ...h.G('futbolTeams/t1'), treasury: 3500 });
   assert.equal(await h.pro.settleTeamDebts(), 3500);
-  assert.equal(h.G('futbolTeams/t1').playerDebts.ali, 1500);
+  assert.equal(h.G('futbolTeams/t1').playerDebts.ali, 6500);
   h.S('futbolTeams/t1', { ...h.G('futbolTeams/t1'), treasury: 9000 });
   await h.pro.settleTeamDebts();
-  assert.equal(h.G('futbolTeams/t1').treasury, 7500);
+  assert.equal(h.G('futbolTeams/t1').treasury, 2500);
   assert.equal(h.G('futbolTeams/t1').playerDebts.ali, undefined);
   assert.equal(h.G('futbolTeams/t1').hasPlayerDebts, false);
-  assert.equal(h.G('users/ali').gold, 15_000);
-  // takım bota düştü → 19:00'da son maaş, sözleşme biter
+  assert.equal(h.G('users/ali').gold, 20_000);
   h.S('futbolTeams/t2', { ...h.G('futbolTeams/t2'), ownerUid: null, isBot: true, treasury: 1500 });
-  h.clock.now = at(10, 19);
+  h.clock.now = at(11, 19);
   const out = await h.pro.paySalaries();
   assert.equal(out.ended, 1);
   assert.equal(h.G(`futbolPlayers/${realPlayerDocId('veli')}`), undefined);
   assert.equal(h.G('footballers/veli').teamId, null);
-  assert.equal(h.G('futbolTeams/t2').playerDebts.veli, 500);
+  assert.equal(h.G('futbolTeams/t2').playerDebts.veli, 3500);
 });
 
 test('zam: futbolcu ister → yönetici kabul/ret; yönetici doğrudan artırır, düşüremez', async () => {
@@ -214,10 +220,15 @@ test('zam: futbolcu ister → yönetici kabul/ret; yönetici doğrudan artırır
   await assert.rejects(h.act('ali', { op: 'raiseRespond', uid: 'ali', accept: true }), /yetkin yok/);
   await h.act('menajer', { op: 'raiseRespond', uid: 'ali', accept: false });
   assert.equal(h.G(`futbolPlayers/${realPlayerDocId('ali')}`).salary, 5000);
+  // v89: zam isteği günde 1 (takımı bildirim yağmuruna tutmasın)
+  await assert.rejects(h.act('ali', { op: 'raiseRequest', salary: 8000 }), /raise-wait/);
+  h.clock.now += 24 * H + 1000;
   await h.act('ali', { op: 'raiseRequest', salary: 8000 });
   await h.act('menajer', { op: 'raiseRespond', uid: 'ali', accept: true });
   assert.equal(h.G(`futbolPlayers/${realPlayerDocId('ali')}`).salary, 8000);
   await assert.rejects(h.act('menajer', { op: 'raiseSet', uid: 'ali', salary: 7000 }), /raise-low/);
+  await assert.rejects(h.act('menajer', { op: 'raiseSet', uid: 'ali', salary: 10001 }), /salary-band/);
+  await assert.rejects(h.act('ali', { op: 'raiseRequest', salary: 10001 }), /salary-band/);
   await h.act('menajer', { op: 'raiseSet', uid: 'ali', salary: 9000 });
   assert.equal(h.G(`futbolPlayers/${realPlayerDocId('ali')}`).salary, 9000);
 });
@@ -261,7 +272,7 @@ test('lig maçı: istatistik (gol/asist/puan/yıldız/gol yememe) + gerçek futb
   const card = h.G('footballers/ali').lastDay;
   assert.equal(card.kind, 'match');
   assert.equal(card.goals, 2);
-  assert.equal(card.powerFrom, 214.5);
+  assert.equal(card.powerFrom, 200);
   assert.equal(card.powerTo, 216);
   assert.equal(card.form, 76);
   assert.equal(card.dayKey, '2026-10-06');
@@ -274,23 +285,25 @@ test('lig maçı: istatistik (gol/asist/puan/yıldız/gol yememe) + gerçek futb
   assert.equal(h.G('footballers/ali').lastDay.kind, 'cup');
 });
 
-test('transfer: takımdaki futbolcuya teklif gider; kabul edince eski sözleşme biter (borç eski takıma), takımdayken ilana çıkılamaz', async () => {
+test('transfer: takımdaki futbolcuya teklif gider; v90 kabul edince transfer 19:00da (eski takım bugünü öder, borç eski takıma); takımdayken ilana çıkılamaz', async () => {
   const h = setup();
   await h.act('menajer', { op: 'offerSend', teamId: 't1', uid: 'ali', salary: 5000 });
   await h.act('ali', { op: 'offerRespond', offerId: 't1_ali', accept: true });
   await assert.rejects(h.act('ali', { op: 'proList', listed: true, askSalary: 9000 }), /in-team/);
   await assert.rejects(h.act('menajer', { op: 'offerSend', teamId: 't1', uid: 'ali', salary: 6000 }), /same-team/);
-  // eski takımda borç + kadroda
   const id = realPlayerDocId('ali');
   h.S(`futbolPlayers/${id}`, { ...h.G(`futbolPlayers/${id}`), salaryDebt: 1200, power: 220, form: 64, injuryDaysLeft: 2 });
   h.S('futbolTeams/t1', { ...h.G('futbolTeams/t1'), lineup: [id, 'x'] });
   await h.act('baskan2', { op: 'offerSend', teamId: 't2', uid: 'ali', salary: 9000 });
   assert.equal(h.G('futbolOffers/t2_ali').fromTeamId, 't1');
-  h.clock.now = at(7, 18, 20);
-  await assert.rejects(h.act('ali', { op: 'offerRespond', offerId: 't2_ali', accept: true }), /locked-hour/);
-  h.clock.now = at(7, 19, 30);
+  h.clock.now = at(7, 18, 20); // maç saatinde de kabul edilebilir — transfer 19:00'da
   const r = await h.act('ali', { op: 'offerRespond', offerId: 't2_ali', accept: true });
   assert.equal(r.transfer, true);
+  assert.equal(h.G(`futbolPlayers/${id}`).teamId, 't1', '19:00a kadar eski takımda');
+  assert.equal(h.G(`futbolPlayers/${id}`).pendingTransfer.teamId, 't2');
+  await assert.rejects(h.act('ali', { op: 'terminate' }), /end-pending/);
+  h.clock.now = at(7, 19);
+  await h.pro.paySalaries();
   const p = h.G(`futbolPlayers/${id}`);
   assert.equal(p.teamId, 't2');
   assert.equal(p.salary, 9000);
@@ -298,10 +311,83 @@ test('transfer: takımdaki futbolcuya teklif gider; kabul edince eski sözleşme
   assert.equal(p.power, 220);
   assert.equal(p.form, 64);
   assert.equal(p.injuryDaysLeft, 2);
-  assert.equal(h.G('futbolTeams/t1').playerDebts.ali, 1200);
+  assert.equal(p.pendingTransfer, undefined);
+  // eski takım (kasa 3.000) bugünkü 5.000 + 1.200 borcun 3.000'ini ödedi; kalan 3.200 eski takımın borcu
+  assert.equal(h.G('users/ali').gold, 3000);
+  assert.equal(h.G('futbolTeams/t1').playerDebts.ali, 3200);
   assert.deepEqual(h.G('futbolTeams/t1').lineup, ['x']);
   assert.equal(h.G('footballers/ali').teamId, 't2');
   assert.equal(h.G('footballers/ali').lastLeft.teamId, 't1');
-  // eski takım aynı gün geri alamaz
+  h.clock.now = at(7, 19, 5);
   await assert.rejects(h.act('menajer', { op: 'offerSend', teamId: 't1', uid: 'ali', salary: 9999 }), /rejoin-wait/);
+  // yeni takımda ilk maaş ertesi 19:00 (19:00'da geçti)
+  const g0 = h.G('users/baskan2').gold;
+  h.clock.now = at(8, 19);
+  await h.pro.paySalaries();
+  assert.equal(h.G('users/baskan2').gold, g0 - 9000);
 });
+
+test('v90: başkan ve menajer kendi takımında futbolcu olabilir (güce göre maaş tavanı geçerli)', async () => {
+  const h = setup();
+  h.S('footballers/menajer', { uid: 'menajer', name: 'Menajer', position: 'MID', power: 240, teamId: null });
+  await assert.rejects(h.act('menajer', { op: 'offerSend', teamId: 't1', uid: 'menajer', salary: 12001 }), /salary-band:6000:12000/);
+  await h.act('menajer', { op: 'offerSend', teamId: 't1', uid: 'menajer', salary: 12000 });
+  await h.act('menajer', { op: 'offerRespond', offerId: 't1_menajer', accept: true });
+  assert.equal(h.G(`futbolPlayers/${realPlayerDocId('menajer')}`).teamId, 't1');
+  h.S('futbolTeams/t1', { ...h.G('futbolTeams/t1'), treasury: 60_000 });
+  h.clock.now = at(7, 19);
+  await h.pro.paySalaries();
+  assert.equal(h.G('users/menajer').gold, 12000);
+  assert.ok(h.G(`futbolPlayers/${realPlayerDocId('menajer')}`), 'sözleşme sürer');
+});
+
+test('v89: aynı takım aynı futbolcuya 10 dakikada bir teklif gönderebilir', async () => {
+  const h = setup();
+  await h.act('menajer', { op: 'offerSend', teamId: 't1', uid: 'ali', salary: 5000 });
+  await assert.rejects(h.act('menajer', { op: 'offerSend', teamId: 't1', uid: 'ali', salary: 6000 }), /offer-wait/);
+  h.clock.now += 11 * 60 * 1000;
+  await h.act('menajer', { op: 'offerSend', teamId: 't1', uid: 'ali', salary: 6000 });
+  assert.equal(h.G('futbolOffers/t1_ali').salary, 6000);
+});
+
+test('v90: hesabını silen futbolcu 19:00a kadar kalır; 19:00da maaşı takımdan düşülür (yanar) ve kadrodan çıkar; diğerleri etkilenmez', async () => {
+  const h = setup();
+  await h.act('menajer', { op: 'offerSend', teamId: 't1', uid: 'ali', salary: 5000 });
+  await h.act('ali', { op: 'offerRespond', offerId: 't1_ali', accept: true });
+  await h.act('baskan2', { op: 'offerSend', teamId: 't2', uid: 'veli', salary: 5000 });
+  await h.act('veli', { op: 'offerRespond', offerId: 't2_veli', accept: true });
+  h.clock.now = at(7, 15);
+  h.db._store.delete('users/ali');
+  assert.ok(h.G(`futbolPlayers/${realPlayerDocId('ali')}`), '19:00a kadar kadroda');
+  h.clock.now = at(7, 19);
+  const r = await h.pro.paySalaries();
+  assert.equal(r.ended, 1);
+  assert.equal(r.burned, 3000, 'kasadaki 3.000 ödendi ve yandı (kalan borç yazılmaz)');
+  assert.equal(h.G('futbolTeams/t1').treasury, 0, 'maaş takımdan düşüldü');
+  assert.equal(h.G('users/ali'), undefined, 'silinmiş hesaba yazılmadı');
+  assert.equal(h.G(`futbolPlayers/${realPlayerDocId('ali')}`), undefined);
+  assert.equal(h.G('futbolTeams/t1').playerDebts?.ali, undefined);
+  assert.equal(h.G('footballers/ali'), undefined, 'futbolcu profili de silindi');
+  assert.ok(h.G('users/veli').gold > 0, 'Veli maaşını yine aldı');
+});
+
+test('v90: ilk maaş — 17:59da imzalayan 19:00da alır; 18:00de imzalayan ertesi 19:00da', async () => {
+  const h = setup();
+  h.S('futbolTeams/t1', { ...h.G('futbolTeams/t1'), treasury: 100_000 });
+  h.clock.now = at(7, 17, 59);
+  await h.act('menajer', { op: 'offerSend', teamId: 't1', uid: 'ali', salary: 5000 });
+  await h.act('ali', { op: 'offerRespond', offerId: 't1_ali', accept: true });
+  h.clock.now = at(7, 18, 0);
+  await h.act('menajer', { op: 'offerSend', teamId: 't1', uid: 'veli', salary: 5000 });
+  await h.act('veli', { op: 'offerRespond', offerId: 't1_veli', accept: true });
+  h.clock.now = at(7, 19);
+  await h.pro.paySalaries();
+  assert.equal(h.G('users/ali').gold, 5000, '17:59 imza → bugün maaş');
+  assert.equal(h.G('users/veli').gold, 0, '18:00 imza → bugün maaş yok');
+  assert.equal(h.G(`futbolPlayers/${realPlayerDocId('veli')}`).salaryDebt, 0, 'borç da yazılmaz');
+  h.clock.now = at(8, 19);
+  await h.pro.paySalaries();
+  assert.equal(h.G('users/veli').gold, 2500, 'ertesi gün ilk maaş (devlet borcunun yarısı kesildi)');
+  assert.equal(h.G('users/ali').gold, 10000);
+});
+

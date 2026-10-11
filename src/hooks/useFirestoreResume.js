@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react';
+import { disableNetwork, enableNetwork } from 'firebase/firestore';
+import { db } from '../firebase';
 import { reconnectFirestore } from '../lib/reconnectFirestore';
 
 // Aynı anda birden fazla bileşen bu hook'u kullanabilir (örn. App kökünde +
@@ -18,6 +20,37 @@ const MIN_INTERVAL_MS = 15000;
 // sayfa en az bu kadar arka planda kaldıysa yeniden bağlan (kısa geçişlerde değil)
 const HIDDEN_MIN_MS = 20000;
 let hiddenAt = 0;
+// v90.1 maliyet: uygulama/sekme bu kadar süre ARKA PLANDA kalırsa Firestore ağı
+// duraklatılır. Açık bırakılıp unutulan sekmeler/telefonlar saatlerce her
+// değişikliği (sohbet, savaş, SMS, sayaçlar…) boşuna okumaya devam ediyordu.
+// Öne gelince ağ tekrar açılır; dinleyiciler kaldıkları yerden güncellenir
+// (zaten öne gelince yapılan yeniden bağlanmanın aynısı).
+const PAUSE_AFTER_HIDDEN_MS = 90_000;
+let pauseTimer = null;
+let paused = false;
+function schedulePause() {
+  if (pauseTimer || paused) return;
+  pauseTimer = setTimeout(() => {
+    pauseTimer = null;
+    if (document.visibilityState !== 'hidden') return;
+    paused = true;
+    disableNetwork(db).catch(() => {
+      paused = false;
+    });
+  }, PAUSE_AFTER_HIDDEN_MS);
+}
+// true dönerse ağ duraklatılmıştı ve şimdi açıldı (ayrıca yeniden bağlanmaya gerek yok)
+function resumeIfPaused() {
+  if (pauseTimer) {
+    clearTimeout(pauseTimer);
+    pauseTimer = null;
+  }
+  if (!paused) return false;
+  paused = false;
+  lastTriggeredAt = Date.now();
+  enableNetwork(db).catch(() => {});
+  return true;
+}
 
 function triggerReconnect() {
   const now = Date.now();
@@ -62,6 +95,11 @@ export function useFirestoreResume({ runOnMount = false } = {}) {
     const onVisible = () => {
       if (document.visibilityState === 'hidden') {
         hiddenAt = Date.now();
+        schedulePause();
+        return;
+      }
+      if (resumeIfPaused()) {
+        hiddenAt = 0;
         return;
       }
       if (hiddenAt && Date.now() - hiddenAt >= HIDDEN_MIN_MS) triggerReconnect();
@@ -71,7 +109,7 @@ export function useFirestoreResume({ runOnMount = false } = {}) {
       // e.persisted: sayfa bfcache'den (ör. iOS Safari'de geri/ileri
       // gezinme) geri geldiğinde true olur — bu durumda da bağlantı
       // durağanlaşmış olabilir.
-      if (e.persisted) triggerReconnect();
+      if (e.persisted && !resumeIfPaused()) triggerReconnect();
     };
 
     document.addEventListener('visibilitychange', onVisible);

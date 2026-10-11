@@ -22,6 +22,8 @@ function setup() {
   S('factories/veli', { ownerName: 'Veli' });
   S('factories/veli/machines/m1', { workerId: 'ali', workerName: 'EskiAli' });
   S('sixtagramProfiles/ali', { displayName: 'EskiAli' });
+  S('footballers/ali', { uid: 'ali', name: 'EskiAli', position: 'FWD', power: 210 });
+  S('futbolPlayers/real_ali', { real: true, realUid: 'ali', name: 'EskiAli', teamId: 't1', power: 210 });
   S('friendships/ali', { friends: { veli: { name: 'Veli' } } });
   S('friendships/veli', { friends: { ali: { name: 'EskiAli', sinceMs: 1 } } });
   return { db, S, G, sync: createNameSync({ db, FieldValue }) };
@@ -42,6 +44,9 @@ test('ad değişince tüm kopyalar yeni adı alır, başka alanlara dokunulmaz',
   assert.equal(h.G('factories/ali').ownerName, 'YeniAli');
   assert.equal(h.G('factories/veli/machines/m1').workerName, 'YeniAli');
   assert.equal(h.G('sixtagramProfiles/ali').displayName, 'YeniAli');
+  assert.equal(h.G('footballers/ali').name, 'YeniAli');
+  assert.equal(h.G('futbolPlayers/real_ali').name, 'YeniAli');
+  assert.equal(h.G('futbolPlayers/real_ali').power, 210);
   assert.equal(h.G('friendships/veli').friends.ali.name, 'YeniAli');
   assert.equal(h.G('friendships/veli').friends.ali.sinceMs, 1);
   const again = await h.sync.syncPlayerName('ali');

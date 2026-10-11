@@ -657,15 +657,13 @@ export function createIntelActions(core) {
     const burned = amount - credited;
     return core.db.runTransaction(async (tx) => {
       const markRef = ctx.ref.request(`fine_${String(refId).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100)}`);
-      const [mark, st] = await Promise.all([tx.get(markRef), tx.get(ctx.ref.intelState())]);
+      const [mark, info] = await Promise.all([tx.get(markRef), core.readIntelKasa(tx, ctx)]);
       if (mark.exists) return { skipped: true };
-      tx.set(markRef, { atMs: ctx.now, amount, credited, burned });
-      if (!(credited > 0)) return { credited: 0, burned };
-      if (!st.exists) tx.set(ctx.ref.intelState(), { ...intelStateDefaults(ctx), kasa: credited });
-      else tx.update(ctx.ref.intelState(), { kasa: FV.increment(credited) });
-      core.ledger(tx, ctx, { type: 'intel_fine_income', amount: credited, from: { kind: 'system' }, to: { kind: 'intel', id: 'main' }, refId: String(refId).slice(0, 100), actorId: 'system' });
-      intelLog(tx, ctx, '🚓', `Şüpheyle yakalanan bir suçlunun cezasının yarısı kasaya girdi: +${credited.toLocaleString('tr-TR')}`);
-      return { credited, burned };
+      // v88: kasa sınırı — sınırı aşan kısım da yanar
+      const r = credited > 0 ? core.creditIntel(tx, ctx, info, credited, { type: 'intel_fine_income', refId: String(refId).slice(0, 100) }) : { credited: 0, burned: 0 };
+      tx.set(markRef, { atMs: ctx.now, amount, credited: r.credited, burned: burned + r.burned });
+      if (r.credited > 0) intelLog(tx, ctx, '🚓', `Şüpheyle yakalanan bir suçlunun cezasının yarısı kasaya girdi: +${r.credited.toLocaleString('tr-TR')}`);
+      return { credited: r.credited, burned: burned + r.burned };
     });
   }
 

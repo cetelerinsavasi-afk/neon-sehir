@@ -526,3 +526,25 @@
 .fp-tbtns > button.on {
   border-color: var(--neon-cyan, #19e8ff);
 }
+
+/* v89 — "Nasıl çalışır?" açılır kartı */
+.fp-how > summary {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 13px;
+  list-style: none;
+  padding: 2px 0;
+}
+.fp-how > summary::-webkit-details-marker {
+  display: none;
+}
+.fp-how ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  opacity: 0.9;
+}

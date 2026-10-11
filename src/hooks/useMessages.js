@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { collection, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { IS_ANDROID_APP } from '../lib/platform';
@@ -19,7 +19,11 @@ const isHiddenOnAndroid = (m) => GOLD_STORE_SENDERS.includes(m.from);
  * canlı dinler. Tek alanda orderBy kullanıldığı için composite index
  * gerektirmiyor.
  */
-export function useMessages() {
+// v90.1 maliyet: rozet/şerit gibi her zaman açık yerler 100 SMS'in tamamını okumasın.
+//   useMessages({ max: 1 })  → sadece en yeni SMS (üst bildirim şeridi)
+//   useUnreadSmsCount()      → sadece OKUNMAMIŞ SMS'ler (rozet sayısı)
+//   useMessages()            → SMS ekranı (son 100)
+export function useMessages({ max = MESSAGES_LIMIT } = {}) {
   const { user } = useAuth();
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -35,7 +39,7 @@ export function useMessages() {
       collection(db, 'users', user.uid, 'messages'),
       orderBy('createdAt', 'desc'),
       // v73 — maliyet: eskiden alınan TÜM SMS'ler (hiç silinmiyor) her açılışta okunuyordu
-      limit(MESSAGES_LIMIT)
+      limit(max)
     );
     const unsubscribe = onSnapshot(
       q,
@@ -50,7 +54,30 @@ export function useMessages() {
       }
     );
     return unsubscribe;
-  }, [user]);
+  }, [user, max]);
 
   return { messages, loading };
+}
+
+const UNREAD_MAX = 99;
+export function useUnreadSmsCount() {
+  const { user } = useAuth();
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!user) {
+      setCount(0);
+      return undefined;
+    }
+    // tek alanlı eşitlik sorgusu → otomatik indeks yeterli; okunmamış yoksa ~1 okuma
+    const q = query(collection(db, 'users', user.uid, 'messages'), where('read', '==', false), limit(UNREAD_MAX));
+    return onSnapshot(
+      q,
+      (snap) => {
+        const list = snap.docs.map((d) => d.data());
+        setCount((IS_ANDROID_APP ? list.filter((m) => !isHiddenOnAndroid(m)) : list).length);
+      },
+      (err) => console.error('useUnreadSmsCount dinleme hatası:', err)
+    );
+  }, [user]);
+  return count;
 }

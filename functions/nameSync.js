@@ -1,7 +1,7 @@
 // =============================================================================
 // v86.1 — OYUNCU ADI EŞİTLEME
 // Oyuncunun adı bazı belgelere kopyalanıyor (çete üyeliği, Mafya Babası adı,
-// imam, ev/işletme sahibi, fabrika sahibi/işçisi, Sixtagram profili, arkadaş
+// imam, ev/işletme sahibi, fabrika sahibi/işçisi, futbolcu, Sixtagram profili, arkadaş
 // listeleri). Ad değişince bu kopyalar eski adda kalıyordu.
 //   • syncPlayerName(uid)  — ad değişir değişmez (setDisplayName) çağrılır.
 //   • sweepNames()         — haftalık tarama: kopyaları users/{uid}.displayName ile
@@ -89,6 +89,11 @@ export function createNameSync({ db, FieldValue }) {
       if (mSnap.exists && mSnap.data()?.workerId === uid) add(mRef, 'workerName', mSnap.data().workerName);
     }
 
+    // v89: futbolcu profili + takımdaki gerçek futbolcu kaydı (kadro, maç, istatistik adı)
+    const [fbs, rps] = await Promise.all([db.collection('footballers').doc(uid).get(), db.collection('futbolPlayers').doc(`real_${uid}`).get()]);
+    if (fbs.exists) add(fbs.ref, 'name', fbs.data().name);
+    if (rps.exists) add(rps.ref, 'name', rps.data().name);
+
     // Sixtagram profili
     const prof = await db.collection('sixtagramProfiles').doc(uid).get();
     if (prof.exists) add(prof.ref, 'displayName', prof.data().displayName);
@@ -130,6 +135,11 @@ export function createNameSync({ db, FieldValue }) {
 
     const houses = await db.collection('houses').get();
     houses.forEach((h) => add(h.data().ownerUid, h.ref, 'ownerName', h.data().ownerName));
+
+    const fbsAll = await db.collection('footballers').get();
+    fbsAll.forEach((f) => add(f.id, f.ref, 'name', f.data().name));
+    const realPlayers = await db.collection('futbolPlayers').where('real', '==', true).get();
+    realPlayers.forEach((r) => add(r.data().realUid, r.ref, 'name', r.data().name));
 
     const facs = await db.collection('factories').get();
     facs.forEach((f) => add(f.id, f.ref, 'ownerName', f.data().ownerName));

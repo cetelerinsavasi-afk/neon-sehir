@@ -176,6 +176,7 @@ test('çeteyi İstihbarata teslim et → çete kapanır, üyeler atılır, TÜM 
   assert.equal(ms.intelDecisionGangId, G.gangId);
   assert.equal(h.get(`gangs/${G.gangId}`).babaId, spy);
   const intel0 = h.get('intel/main/private/state').kasa || 0;
+  await h.db.doc('gangWorlds/test/intel/main').set({ memberCount: 50 }, { merge: true }); // v88: kasa sınırı bu testin konusu değil
   await h.act(spy, 'intelDecision', { choice: 'disband' });
   await h.internal.clock.runClock('test');
   const g = h.get(`gangs/${G.gangId}`);
@@ -263,6 +264,7 @@ test('şüpheyle yakalanma cezasının yarısı → İstihbarat kasasına, yarı
   assert.equal(closed.skipped, true);
   await h.admin('openLive', { mode: 'fresh', confirm: 'CANLIYA AÇ' });
   const cfg = h.raw('gangSystem/config');
+  await h.db.doc(`gangWorlds/${cfg.liveWorldId}/intel/main`).set({ memberCount: 50 }, { merge: true }); // v88: kasa sınırı için yer
   await h.system.onSuspicionFine('u1', 40_000, 'heist_a_u1');
   await h.system.onSuspicionFine('u1', 40_000, 'heist_a_u1'); // tekrar → yok sayılır
   await h.system.onSuspicionFine('u2', 10_000, 'contraband_b');

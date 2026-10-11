@@ -64,6 +64,8 @@ test('operasyon: Başkan/Şef, 100k, 00:00 öncesi; savaş 3 taraflı başlar; �
   // çeteler 00:00'a kadar görmez
   assert.equal(h.get(`wars/${S.warId}`).sides.intel, undefined);
   await h.tickTo('2026-09-22', '00:05');
+  // v88: kasa sınırı (üye × 100.000) bu testin konusu değil — geniş tut
+  await h.db.doc('gangWorlds/test/intel/main').set({ memberCount: 50 }, { merge: true });
   const w = h.get(`wars/${S.warId}`);
   assert.equal(w.status, 'active');
   assert.ok(w.sides.intel, '3. taraf');

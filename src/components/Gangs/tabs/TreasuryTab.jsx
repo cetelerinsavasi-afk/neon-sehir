@@ -4,7 +4,7 @@
 // para 24 saat sonra kasaya döner.
 import { useMemo, useState } from 'react';
 import { limit, where } from 'firebase/firestore';
-import { fmtCountdown, istDateKey, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
+import { fmtCountdown, istDateKey, useDocData, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
 import { AmountInput, Bar, Btn, Card, Chips, Confirm, Empty, Gold, Info } from '../ui';
 import { DIST_GROUPS, GANG_RULES, fmt } from '../gangConstants';
 
@@ -103,11 +103,27 @@ export default function TreasuryTab({ org = 'gang', gang, rank, state, membershi
   const allowance = state?.midnightDateKey === istDateKey(now) ? Number(state?.distributableLeft || 0) : 0;
   const sorted = useMemo(() => [...dists].sort((a, b) => a.expiresAtMs - b.expiresAtMs), [dists]);
   const myStint = isIntel ? membership.intelRosterId : membership.gangStint;
+  // v88: İstihbarat kasa sınırı = üye × 100.000 (sunucu: functions/gang/config.js INTEL.KASA_CAP_PER_MEMBER)
+  const { data: intelDoc } = useDocData(isIntel ? path('intel/main') : null);
+  const intelMembers = Number(intelDoc?.memberCount || 0);
+  const intelCap = intelMembers * 100_000;
+  const kasaNow = Number(state?.kasa || 0);
   return (
     <div className="gx-stack">
       <Card className="gx-kasa-card">
         <span className="dim">{isIntel ? '🕵️ İstihbarat Kasası' : '💰 Çete Kasası'}</span>
         <Gold value={state?.kasa} big />
+        {isIntel && intelMembers > 0 && (
+          <>
+            <div style={{ width: '100%', marginTop: 8 }}>
+              <Bar value={Math.min(kasaNow, intelCap)} max={Math.max(1, intelCap)} color={kasaNow >= intelCap ? 'var(--neon-pink)' : 'var(--neon-cyan)'} height={6} />
+            </div>
+            <span className="dim gx-mini" style={{ textAlign: 'center', marginTop: 4 }}>
+              Kasa sınırı: <b>{fmt(intelCap)}</b> ({intelMembers} üye × 100.000)
+              {kasaNow >= intelCap ? ' — kasa dolu: yeni gelirler yanar, harcadıkça yeniden dolar.' : ` — ${fmt(intelCap - kasaNow)} daha girebilir.`}
+            </span>
+          </>
+        )}
       </Card>
       {sorted.map((d) => {
         const rec = d.recipients?.[myKey];

@@ -97,7 +97,7 @@ export function createClock(core, actions) {
       for (const a of attacks.filter((x) => x.type === 'sabotage')) {
         attackerGangAlive[a.attackerGangId] = (await tx.get(ctx.ref.gang(a.attackerGangId))).data()?.status === 'active';
       }
-      const intelStateSnap = attacks.some((a) => a.type === 'intelop') ? await tx.get(ctx.ref.intelState()) : null;
+      const intelK = attacks.some((a) => a.type === 'intelop') ? await core.readIntelKasa(tx, ctx) : null; // v88: kasa sınırı
 
       // --- karar: en güçlü AKTİF saldırı (haraç/rüşvet ödenenler düşer) savunmayla karşılaştırılır ---
       const live = attacks.filter((a) => a.status === 'active');
@@ -124,9 +124,8 @@ export function createClock(core, actions) {
       } else if (attackWon && strongest.type === 'intelop') {
         outcome = 'destroyed';
         const reward = core.instantValueOf(cargo.items || {});
-        if (reward > 0 && intelStateSnap?.exists) {
-          tx.update(ctx.ref.intelState(), { kasa: FV.increment(reward) });
-          ledger(tx, ctx, { type: 'intel_op_reward', amount: reward, from: { kind: 'system' }, to: { kind: 'intel', id: 'main' }, refId: strongest.id, actorId: 'system' });
+        if (reward > 0 && intelK?.exists) {
+          core.creditIntel(tx, ctx, intelK, reward, { type: 'intel_op_reward', refId: strongest.id });
         }
         core.announceIntel(tx, ctx, '🔥', `TIR #${truck.code} operasyonu BAŞARILI — yük imha edildi, ödül ${reward.toLocaleString('tr-TR')}.`);
         if (ownerAlive) core.announce(tx, ctx, truck.gangId, '🚨', `İstihbarat TIR #${truck.code} yükünü imha etti. Tır geri döndü.`);
@@ -219,7 +218,7 @@ export function createClock(core, actions) {
       if (!war || war.status !== 'active' || Number(war.endsAtMs || 0) > ctx.now) return { skipped: true };
       const [a, b] = war.gangIds;
       const hasIntel = Boolean(war.sides?.intel);
-      const [ga, gb, intelSt, stake] = await Promise.all([tx.get(ctx.ref.gang(a)), tx.get(ctx.ref.gang(b)), hasIntel ? tx.get(ctx.ref.intelState()) : null, core.readBetStake(tx, ctx, warId, war)]);
+      const [ga, gb, intelK, stake] = await Promise.all([tx.get(ctx.ref.gang(a)), tx.get(ctx.ref.gang(b)), hasIntel ? core.readIntelKasa(tx, ctx) : null, core.readBetStake(tx, ctx, warId, war)]);
       const aliveA = ga.data()?.status === 'active';
       const aliveB = gb.data()?.status === 'active';
       const pa = totals[a] || 0;
@@ -238,9 +237,7 @@ export function createClock(core, actions) {
         if (tops.length === 1) winner = tops[0][0];
       }
       if (winner === 'intel') {
-        if (intelSt?.exists) tx.update(ctx.ref.intelState(), { kasa: FV.increment(pot) });
-        else tx.set(ctx.ref.intelState(), { kasa: pot, kasaAtMidnight: 0, midnightDateKey: ctx.dateKey, distributableLeft: 0 });
-        ledger(tx, ctx, { type: 'bet_payout_intel', amount: pot, from: { kind: 'escrow', id: warId }, to: { kind: 'intel', id: 'main' }, refId: warId, actorId: 'system' });
+        core.creditIntel(tx, ctx, intelK, pot, { type: 'bet_payout_intel', refId: warId, from: { kind: 'escrow', id: warId } }); // v88: kasa sınırı
       } else if (winner) {
         tx.update(ctx.ref.gangState(winner), { kasa: FV.increment(pot) });
         ledger(tx, ctx, { type: 'bet_payout', amount: pot, from: { kind: 'escrow', id: warId }, to: { kind: 'gang', id: winner }, refId: warId, actorId: 'system' });
@@ -341,7 +338,7 @@ export function createClock(core, actions) {
         const g = (await tx.get(ctx.ref.gang(winnerKey))).data();
         if (g?.status === 'active') winnerGang = { id: winnerKey, ...g };
       }
-      const intelState = winnerKey === 'intel' ? await tx.get(ctx.ref.intelState()) : null;
+      const intelK = winnerKey === 'intel' ? await core.readIntelKasa(tx, ctx) : null; // v88: kasa sınırı
       const prevGang = prev?.holderType === 'gang' ? (await tx.get(ctx.ref.gang(prev.holderId))).data() : null;
       const power = winnerKey ? totals[winnerKey] : 0;
       // v50: savaşa katılan TÜM tarafların (çeteler + İstihbarat) toplam gücü.
@@ -376,11 +373,8 @@ export function createClock(core, actions) {
       let intelIncome = 0;
       if (winnerKey === 'intel') {
         intelIncome = Math.floor(totalWarPower * INTEL.WAR_WIN_KASA_TOTAL_RATIO);
-        if (intelState?.exists && intelIncome > 0) {
-          tx.update(ctx.ref.intelState(), { kasa: FV.increment(intelIncome) });
-          ledger(tx, ctx, { type: 'intel_trade_war_win', amount: intelIncome, from: { kind: 'system' }, to: { kind: 'intel', id: 'main' }, refId: warId, actorId: 'system' });
-        }
-        intelLog(tx, ctx, '🏆', `Pazar savaşını İstihbarat kazandı! Yol kimseye verilmedi, kasaya +${intelIncome.toLocaleString('tr-TR')}.`);
+        const cr = intelK?.exists && intelIncome > 0 ? core.creditIntel(tx, ctx, intelK, intelIncome, { type: 'intel_trade_war_win', refId: warId }) : { credited: 0, burned: 0 };
+        intelLog(tx, ctx, '🏆', `Pazar savaşını İstihbarat kazandı! Yol kimseye verilmedi, kasaya +${cr.credited.toLocaleString('tr-TR')}${cr.burned > 0 ? ` (${cr.burned.toLocaleString('tr-TR')} kasa sınırı yüzünden yandı)` : ''}.`);
       }
       // v84: biat edenlerin katkısı — kendi günlüklerine ve biat ettikleri çetenin günlüğüne
       const biatSides = { ...(w.biatSides || {}) };
@@ -946,6 +940,36 @@ export function createClock(core, actions) {
   }
 
   // v75: sipariş limiti %1 → %0,5 — elde tutulan mevcut yolların limiti BİR KEZ yarıya iner.
+  // v88 — TEK SEFERLİK: İstihbarat kasası en fazla 1.000.000'a indirilir (fazlası
+  // yakılır). Bugünkü dağıtım hakkı da aynı oranda küçülür. Sonrasında kasa
+  // üye sayısı × 100.000 sınırıyla kendiliğinden düzene girer.
+  async function ensureIntelKasaResetV88(ctx) {
+    if (ctx.world?.intelKasaResetV88) return { skipped: true };
+    const out = await db.runTransaction(async (tx) => {
+      const [w, st] = await Promise.all([tx.get(ctx.ref.world()), tx.get(ctx.ref.intelState())]);
+      if (w.data()?.intelKasaResetV88) return { skipped: true };
+      const kasa = Number(st.data()?.kasa || 0);
+      const target = INTEL.KASA_RESET_V88;
+      let burned = 0;
+      if (st.exists && kasa > target) {
+        burned = kasa - target;
+        const dl = Number(st.data()?.distributableLeft || 0);
+        const kam = Number(st.data()?.kasaAtMidnight || 0);
+        tx.update(ctx.ref.intelState(), {
+          kasa: target,
+          distributableLeft: Math.max(0, Math.floor((dl * target) / kasa)),
+          ...(kam > target ? { kasaAtMidnight: target } : {}),
+        });
+        ledger(tx, ctx, { type: 'intel_kasa_reset_v88', amount: burned, before: kasa, from: { kind: 'intel', id: 'main' }, to: { kind: 'burn' }, refId: 'v88', actorId: 'system' });
+        intelLog(tx, ctx, '🏛️', `Yeni kural: İstihbarat kasası üye başına en fazla 100.000 altın. Kasa tek seferlik ${target.toLocaleString('tr-TR')} altına indirildi.`);
+      }
+      tx.set(ctx.ref.world(), { intelKasaResetV88: ctx.now }, { merge: true });
+      return { kasa, burned };
+    });
+    ctx.world = { ...(ctx.world || {}), intelKasaResetV88: true };
+    return out;
+  }
+
   async function ensureRouteLimitV75(ctx) {
     if (ctx.world?.routeLimitV75) return { skipped: true };
     const routes = await ctx.ref.routes().get();
@@ -1431,14 +1455,13 @@ export function createClock(core, actions) {
     // kasa → İstihbarata teslim edildiyse İstihbarat kasasına, değilse yakılır
     await safe(ctx, `cleanup-kasa:${gangId}`, () =>
       db.runTransaction(async (tx) => {
-        const [s, intelSt] = await Promise.all([tx.get(ctx.ref.gangState(gangId)), takedown ? tx.get(ctx.ref.intelState()) : null]);
+        const [s, intelK] = await Promise.all([tx.get(ctx.ref.gangState(gangId)), takedown ? core.readIntelKasa(tx, ctx) : null]);
         const kasa = Number(s.data()?.kasa || 0);
         if (!s.exists || kasa <= 0) return;
         tx.update(ctx.ref.gangState(gangId), { kasa: 0 });
-        if (takedown && intelSt?.exists) {
-          tx.update(ctx.ref.intelState(), { kasa: FV.increment(kasa) });
-          ledger(tx, ctx, { type: 'gang_takedown_to_intel', amount: kasa, from: { kind: 'gang', id: gangId }, to: { kind: 'intel', id: 'main' }, refId: gangId, actorId: 'system' });
-          core.announceIntel(tx, ctx, '💰', `${gang.name} çetesinin kasası (${kasa.toLocaleString('tr-TR')}) İstihbarat kasasına geçti.`);
+        if (takedown && intelK?.exists) {
+          const { credited, burned } = core.creditIntel(tx, ctx, intelK, kasa, { type: 'gang_takedown_to_intel', refId: gangId, from: { kind: 'gang', id: gangId } });
+          core.announceIntel(tx, ctx, '💰', `${gang.name} çetesinin kasası (${kasa.toLocaleString('tr-TR')}) el konuldu — kasaya ${credited.toLocaleString('tr-TR')} girdi${burned > 0 ? `, ${burned.toLocaleString('tr-TR')} kasa sınırı yüzünden yandı` : ''}.`);
         } else {
           ledger(tx, ctx, { type: 'gang_dissolved_burn', amount: kasa, from: { kind: 'gang', id: gangId }, to: { kind: 'burn' }, refId: gangId, actorId: 'system' });
         }
@@ -1554,6 +1577,7 @@ export function createClock(core, actions) {
     await safe(ctx0, 'route-limit-v39', () => ensureRouteLimitV39(ctx0));
     await safe(ctx0, 'route-limit-v67', () => ensureRouteLimitV67(ctx0));
     await safe(ctx0, 'route-limit-v75', () => ensureRouteLimitV75(ctx0));
+    await safe(ctx0, 'intel-kasa-reset-v88', () => ensureIntelKasaResetV88(ctx0));
     const results = [];
     let n = 0;
     while (last < ctx0.dateKey && n < maxDays) {

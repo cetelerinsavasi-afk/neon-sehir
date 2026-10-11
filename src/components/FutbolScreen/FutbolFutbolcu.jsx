@@ -7,7 +7,7 @@ import { futbolDayKey } from '../../../functions/businessCatalogData.js';
 import { bizErrText } from '../../lib/bizErrors';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import HoldButton from '../HoldButton/HoldButton';
-import { POS_META, PRO_SALARY, PRO_MIN_POWER, fmt, pw, hoursLeft, proErrText } from './futbolProMeta';
+import { POS_META, PRO_MIN_POWER, proSalaryBand, fmt, pw, hoursLeft, proErrText } from './futbolProMeta';
 import './FutbolPro.css';
 
 // =============================================================================
@@ -38,8 +38,10 @@ export default function FutbolFutbolcu() {
     try {
       await futbolProAction(payload);
       if (okText) setMsg({ ok: true, text: okText });
+      return true;
     } catch (err) {
       setMsg({ ok: false, text: proErrText(err) });
+      return false;
     } finally {
       setBusy(null);
     }
@@ -55,6 +57,7 @@ export default function FutbolFutbolcu() {
           <p>Sonra spor salonunda antrenman yap. {PRO_MIN_POWER} güçte takımlar seni görür.</p>
         </div>
         <PositionCard fb={fb} />
+        <HowCard pro={false} />
       </div>
     );
   }
@@ -103,6 +106,8 @@ export default function FutbolFutbolcu() {
       {pro && !fb.teamId && <FreeAgentPanel fb={fb} busy={busy} run={run} />}
       {pro && <OffersCard offers={offers} inTeam={Boolean(fb.teamId)} busy={busy} run={run} />}
       {contract && <ContractPanel contract={contract} busy={busy} run={run} />}
+
+      <HowCard pro={pro} inTeam={Boolean(fb.teamId)} />
 
       {stats && (
         <div className="fp-card">
@@ -157,6 +162,33 @@ function PositionCard({ fb, power = 0 }) {
       </p>
       {msg && <p className="fp-msg">{msg}</p>}
     </div>
+  );
+}
+
+// v89 — oyuncu mantığı anlasın: kısa "nasıl çalışır" (açılır kapanır)
+function HowCard({ pro, inTeam = false }) {
+  return (
+    <details className="fp-card fp-how" open={!pro}>
+      <summary>❔ Futbolculuk nasıl çalışır?</summary>
+      <ul>
+        <li>
+          <b>1. Mevki seç</b>, sonra <b>spor salonunda</b> antrenman yap: günde 1 kez, {PRO_MIN_POWER} güce kadar her gün 1–16 güç kazanırsın.
+        </li>
+        <li>
+          <b>2. {PRO_MIN_POWER} güce ulaşınca</b> PRO olursun: mevkin kalıcı olur ve takımların “Maaşlı futbolcular” listesinde görünürsün.
+        </li>
+        <li>
+          <b>3. Takım bul:</b> 📢 ilana çık (maaşını sen belirlersin, takım hemen imzalar) ya da gelen 📨 teklifleri bekle (24 saat geçerli).
+        </li>
+        <li>
+          <b>4. Takımdayken:</b> maaşın her gün 19:00&apos;da yatar; aralığı gücüne bağlıdır (güç × 25 – güç × 50, ör. 200 güç → 5.000–10.000). Takıma girer girmez maaş almazsın: 18:00&apos;den önce imzaladıysan ilk maaşın aynı gün 19:00&apos;da, 18:00 ve sonrası imzaladıysan ertesi gün 19:00&apos;da gelir; takım ödeyemezse borç birikir ve sonra ödenir. Salonda değil, takım antrenmanı ve maçlarla güçlenirsin; maça çıkıp çıkmayacağına takımın yöneticisi karar verir.
+        </li>
+        <li>
+          <b>5. Ayrılmak:</b> feshi istediğin an başlatabilirsin ama fesih (kim başlatırsa başlatsın) 19:00&apos;da olur ve o günün maaşını alırsın. Başka takımın teklifini kabul edersen transferin de 19:00&apos;da gerçekleşir. Feshettiğin takıma ertesi 19:00&apos;dan önce dönemezsin.
+        </li>
+        {inTeam && <li>💸 Zam: günde 1 kez isteyebilirsin; yönetici kabul ya da ret eder.</li>}
+      </ul>
+    </details>
   );
 }
 
@@ -255,7 +287,8 @@ function DayCard({ day, season, playerId }) {
 
 // Takımsız PRO: ilan + teklifler
 function FreeAgentPanel({ fb, busy, run }) {
-  const [ask, setAsk] = useState(Number(fb.askSalary) || 5000);
+  const band = proSalaryBand(fb.power);
+  const [ask, setAsk] = useState(Math.max(band.min, Math.min(band.max, Number(fb.askSalary) || band.min)));
   return (
     <>
       <div className={`fp-card${fb.listed ? ' fp-listed' : ''}`}>
@@ -271,8 +304,10 @@ function FreeAgentPanel({ fb, busy, run }) {
           </div>
         ) : (
           <>
-            <p className="fp-hint">Maaşını sen belirle; takım doğrudan imzalar.</p>
-            <QuantityStepper value={ask} onChange={(v) => setAsk(Math.max(PRO_SALARY.min, Math.min(PRO_SALARY.max, v)))} min={PRO_SALARY.min} max={PRO_SALARY.max} step={100} steps={SALARY_STEPS} />
+            <p className="fp-hint">
+              Maaşını sen belirle ({fmt(band.min)}–{fmt(band.max)}, gücüne göre); takım doğrudan imzalar.
+            </p>
+            <QuantityStepper value={ask} onChange={(v) => setAsk(Math.max(band.min, Math.min(band.max, v)))} min={band.min} max={band.max} step={100} steps={SALARY_STEPS} />
             <button className="futbol-admin-submit fp-wide" disabled={busy === 'list'} onClick={() => run('list', { op: 'proList', listed: true, askSalary: ask }, 'İlana çıktın.')}>
               📢 {fmt(ask)}/gün ile ilana çık
             </button>
@@ -289,7 +324,7 @@ function OffersCard({ offers, inTeam, busy, run }) {
   return (
       <div className="fp-card">
         <p className="fp-title">📨 {inTeam ? 'Transfer teklifleri' : 'Teklifler'} {offers.length > 0 && <em className="fp-count">{offers.length}</em>}</p>
-        {inTeam && <p className="fp-warn">Kabul edersen mevcut sözleşmen biter; birikmiş maaş borcun eski takımın borcu olarak sana ödenir.</p>}
+        {inTeam && <p className="fp-warn">Kabul edersen transferin bugün 19:00&apos;da gerçekleşir: o günün maaşını eski takımın öder, birikmiş borcu da eski takımın borcu olarak sana ödenir.</p>}
         {offers.length === 0 && <p className="fp-hint">Henüz teklif yok.</p>}
         {offers.map((o) => (
           <div key={o.id} className="fp-offer">
@@ -302,7 +337,7 @@ function OffersCard({ offers, inTeam, busy, run }) {
             <button className="futbol-admin-reset" disabled={Boolean(busy)} onClick={() => run(`r_${o.id}`, { op: 'offerRespond', offerId: o.id, accept: false })}>
               ✕
             </button>
-            <HoldButton className="futbol-admin-submit" disabled={Boolean(busy)} onDone={() => run(`a_${o.id}`, { op: 'offerRespond', offerId: o.id, accept: true }, inTeam ? `🔁 ${o.teamName} takımına transfer oldun!` : `🤝 ${o.teamName} ile anlaştın!`)}>
+            <HoldButton className="futbol-admin-submit" disabled={Boolean(busy)} onDone={() => run(`a_${o.id}`, { op: 'offerRespond', offerId: o.id, accept: true }, inTeam ? `🔁 ${o.teamName} ile anlaştın! Transferin bugün 19:00'da.` : `🤝 ${o.teamName} ile anlaştın!`)}>
               ✓ İmzala
             </HoldButton>
           </div>
@@ -313,9 +348,11 @@ function OffersCard({ offers, inTeam, busy, run }) {
 
 // Takımdaki futbolcu: sözleşme, zam, fesih
 function ContractPanel({ contract, busy, run }) {
-  const [raise, setRaise] = useState(Number(contract.salary || 0) + 1000);
+  const band = proSalaryBand(contract.power);
+  const canRaise = Number(contract.salary || 0) < band.max;
+  const [raise, setRaise] = useState(Math.min(band.max, Number(contract.salary || 0) + 1000));
   const [showRaise, setShowRaise] = useState(false);
-  const locked = new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'Europe/Istanbul' }) === '18';
+  const pending = Boolean(contract.pendingEnd || contract.pendingTransfer);
   return (
     <div className="fp-card">
       <p className="fp-title">📝 Sözleşme</p>
@@ -333,13 +370,17 @@ function ContractPanel({ contract, busy, run }) {
           <b>{new Date(contract.contractSince).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}</b>
         </div>
       </div>
-      <p className="fp-hint">Maaş her gün 19:00'da yatar. Ödenmeyen kısım borç olarak birikir.</p>
+      <p className="fp-hint">Maaş her gün 19:00&apos;da yatar. Ödenmeyen kısım borç olarak birikir.</p>
+      {contract.pendingEnd && <p className="fp-pending">⏳ Sözleşmen bugün 19:00&apos;da bitiyor; bugünün maaşını alıp takımdan ayrılacaksın.</p>}
+      {contract.pendingTransfer && <p className="fp-pending">🔁 Bugün 19:00&apos;da {contract.pendingTransfer.teamName} takımına transfer oluyorsun ({fmt(contract.pendingTransfer.salary)}/gün).</p>}
       {contract.raiseRequest ? (
         <p className="fp-pending">⏳ Zam isteğin bekliyor: {fmt(contract.raiseRequest.salary)}/gün</p>
+      ) : !canRaise ? (
+        <p className="fp-hint">Bu güçte maaş tavanındasın ({fmt(band.max)}/gün). Güçlendikçe tavan yükselir.</p>
       ) : showRaise ? (
         <div className="fp-raise">
-          <QuantityStepper value={raise} onChange={(v) => setRaise(Math.max(Number(contract.salary) + 1, Math.min(PRO_SALARY.max, v)))} min={Number(contract.salary) + 1} max={PRO_SALARY.max} step={100} steps={SALARY_STEPS} />
-          <button className="futbol-admin-submit fp-wide" disabled={busy === 'raise'} onClick={() => run('raise', { op: 'raiseRequest', salary: raise }, 'Zam isteğin gönderildi.').then(() => setShowRaise(false))}>
+          <QuantityStepper value={raise} onChange={(v) => setRaise(Math.max(Number(contract.salary) + 1, Math.min(band.max, v)))} min={Number(contract.salary) + 1} max={band.max} step={100} steps={SALARY_STEPS} />
+          <button className="futbol-admin-submit fp-wide" disabled={busy === 'raise'} onClick={() => run('raise', { op: 'raiseRequest', salary: raise }, 'Zam isteğin gönderildi.').then((ok) => ok && setShowRaise(false))}>
             💸 {fmt(raise)}/gün iste
           </button>
         </div>
@@ -348,9 +389,11 @@ function ContractPanel({ contract, busy, run }) {
           💸 Zam iste
         </button>
       )}
-      <HoldButton className={`futbol-admin-reset fp-wide fp-danger${locked ? ' cue-dim cue-lock' : ''}`} disabled={locked || busy === 'term'} ms={1400} onDone={() => run('term', { op: 'terminate' }, 'Sözleşmeni feshettin.')}>
-        ✂️ Sözleşmeyi feshet {locked && '· 18:00–19:00 🔒'}
-      </HoldButton>
+      {!pending && (
+        <HoldButton className="futbol-admin-reset fp-wide fp-danger" disabled={busy === 'term'} ms={1400} onDone={() => run('term', { op: 'terminate' }, 'Sözleşmen bugün 19:00\'da bitecek.')}>
+          ✂️ 19:00&apos;da feshet
+        </HoldButton>
+      )}
     </div>
   );
 }

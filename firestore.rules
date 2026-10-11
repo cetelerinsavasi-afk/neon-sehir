@@ -451,6 +451,11 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if false;
     }
+    // v90.1 — en yeni Sixtagram gönderisinin zamanı (sunucu yazar: createSixtagramPost)
+    match /stats/sixtagram {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
     match /gameVenues/{type} {
       allow read: if isSignedIn();
       allow write: if false;

@@ -21326,6 +21326,9 @@ export const createSixtagramPost = onCall(async (request) => {
     },
     { merge: true }
   );
+  // v90.1 maliyet: "yeni gönderi var" rozeti için istemciler bu TEK belgeyi dinler
+  // (eskiden çevrimiçi herkes 60 sn'de bir en yeni gönderiyi okuyordu)
+  batch.set(db.collection('stats').doc('sixtagram'), { latestMs: nowMs, latestUid: uid });
   await batch.commit();
 
   return { ok: true, postId: postRef.id };

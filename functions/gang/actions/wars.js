@@ -1034,11 +1034,12 @@ export function createWarActions(core) {
       if (!war || war.type !== 'intelop' || war.defenderGangId !== gangId || !war.announced) fail('not-found', 'Operasyon bulunamadı.');
       if (war.status !== 'active' || war.bribePaid) fail('failed-precondition', 'Operasyon artık aktif değil.');
       if (!(war.bribe > 0)) fail('failed-precondition', 'İstihbarat bu operasyon için rüşvet kabul etmiyor.');
-      const [st, intelSt] = await Promise.all([tx.get(ctx.ref.gangState(gangId)), tx.get(ctx.ref.intelState())]);
+      const [st, intelK] = await Promise.all([tx.get(ctx.ref.gangState(gangId)), core.readIntelKasa(tx, ctx)]);
       if (Number(st.data()?.kasa || 0) < war.bribe) fail('failed-precondition', 'Kasada yeterli para yok.');
       const others = await readOtherAttacks(tx, ctx, war, warId);
       tx.update(ctx.ref.gangState(gangId), { kasa: FV.increment(-war.bribe) });
-      if (intelSt.exists) tx.update(ctx.ref.intelState(), { kasa: FV.increment(war.bribe) });
+      // v88: rüşvet İstihbarat kasasına sınıra kadar girer, aşanı yanar (ödeyen yine tam öder)
+      if (intelK.exists) core.creditIntel(tx, ctx, intelK, war.bribe, { type: 'intel_bribe_income', refId: warId, from: { kind: 'gang', id: gangId } });
       tx.update(ctx.ref.war(warId), { status: 'cancelled_bribe', bribePaid: true, activeGangIds: [], resolvedAtMs: ctx.now });
       ledger(tx, ctx, { type: 'bribe_paid', amount: war.bribe, from: { kind: 'gang', id: gangId }, to: { kind: 'intel', id: 'main' }, before: st.data()?.kasa, refId: warId });
       announce(tx, ctx, gangId, '💼', `${me.name}, TIR #${war.truckCode} için İstihbarata ${fmt(war.bribe)} rüşvet ödedi — operasyon durdu.`);
