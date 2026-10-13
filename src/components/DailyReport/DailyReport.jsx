@@ -160,7 +160,7 @@ export default function DailyReport({ onBack }) {
             })}
           </div>
         )}
-        <p className="dr-note">Bugün, dün ve önceki gün tutulur. “Diğer”: kaynağı ayrıca kaydedilmeyen küçük hareketler (iade, ceza, ödül…).</p>
+        <p className="dr-note">Bugün, dün ve önceki gün tutulur. Yatırıma / bankaya para yatırıp çekmek sayılmaz; sadece satışta oluşan kâr / zarar, komisyon ve faiz yazılır. “Diğer”: kaynağı ayrıca kaydedilmeyen küçük hareketler (iade, ceza, ödül…).</p>
       </div>
     </div>
   );

@@ -141,3 +141,14 @@ Testler: 333/333 geçti. Derleme başarılı.
 
 **Yükleme:** `deploy-kalanlar.ps1` (içine `createSixtagramPost` eklendi). "Maç sohbeti şu an kullanılamıyor" uyarısı `streamAction` yüklenince kalkar. Sonra push.
 Testler: 337/337 geçti.
+
+## v92.3
+- **Şarkı Yap ekranı dokununca kapanıyordu — düzeldi.** Ekran, gönderi penceresinin "dışına tıklayınca kapan" katmanının içinde açıldığı için her dokunuş pencereyi kapatıyordu. Artık Resim Çiz gibi ayrı katmanda açılıyor ve dokunuşlar pencereye ulaşmıyor.
+- **Günlük Rapor › yatırımlar:** elmas / hisse / kripto almak-satmak ve bankaya yatırıp çekmek artık giren / çıkan sayılmıyor. Raporda sadece şunlar var:
+  - 💹 Yatırım kâr / zarar: satışta, satılan kısmın alış maliyetine göre (ortalama maliyet) gerçekleşen kâr veya zarar
+  - 🧾 Yatırım satış komisyonu (%1)
+  - 🏦 Banka faizi: çekilen paranın yatırılan anaparanın üstündeki kısmı
+  - Gerçek alış maliyeti yeni `investCost` / `bankPrincipal` alanlarında tutuluyor. Rozetteki kâr/zarar sayacı eskisi gibi çalışıyor. Eski hesaplarda ilk işlemde son işlem değeri esas alınıyor.
+
+**Yükleme:** `firebase deploy --only functions:buyInvestment,functions:sellInvestment,functions:depositToBank,functions:withdrawFromBank,functions:goldLedger`, sonra push.
+Testler: 339/339 geçti.

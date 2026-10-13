@@ -48,7 +48,7 @@ import { sanitizeDrawing } from './drawingData.js';
 import { sanitizeSong } from './songData.js';
 import { isMsgId, nextReaction, replyQuoteOf } from './chatExtras.js';
 import { VENUES } from './venueLayouts.js';
-import { goldTag, recordGoldChange, cleanupMoneyLog } from './moneyLog.js';
+import { goldTag, recordGoldChange, cleanupMoneyLog, realizeSale, realizeBankWithdraw } from './moneyLog.js';
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -4564,8 +4564,11 @@ export const depositToBank = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
     const newBalance = (user.bankBalance || 0) + amt;
+    // v92.3 — anapara: günlük rapora girmez; çekerken üstü faiz sayılır
+    const principal = Number.isFinite(user.bankPrincipal) ? user.bankPrincipal : Number(user.bankCostBasis) || 0;
     tx.update(userRef, {
-      gold: admin.firestore.FieldValue.increment(-amt), goldTag: goldTag('banka'),
+      gold: admin.firestore.FieldValue.increment(-amt), goldTag: goldTag('banka', {}),
+      bankPrincipal: Math.min(newBalance, principal + amt),
       bankBalance: admin.firestore.FieldValue.increment(amt),
       bankCostBasis: newBalance,
     });
@@ -4587,8 +4590,12 @@ export const withdrawFromBank = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Yetersiz banka bakiyesi.');
     }
     const newBalance = (user.bankBalance || 0) - amt;
+    // v92.3 — günlük rapora sadece kazanılan faiz yazılır (anapara değil)
+    const principal = Number.isFinite(user.bankPrincipal) ? user.bankPrincipal : Number(user.bankCostBasis) || 0;
+    const { interest, newPrincipal } = realizeBankWithdraw({ principal, balance: user.bankBalance || 0, amount: amt });
     tx.update(userRef, {
-      gold: admin.firestore.FieldValue.increment(amt), goldTag: goldTag('banka'),
+      gold: admin.firestore.FieldValue.increment(amt), goldTag: goldTag('banka', { faiz: interest }),
+      bankPrincipal: newPrincipal,
       bankBalance: admin.firestore.FieldValue.increment(-amt),
       // Kısmi çekimde de sıfırlanır (kullanıcı isteği) — kalan bakiye
       // "az önce yeniden yatırılmış" gibi davranır. Bakiye tamamen
@@ -4624,6 +4631,13 @@ const INVESTMENT_COST_BASIS_FIELD = {
   crypto: 'cryptoCostBasis',
 };
 
+// Eldeki varlığın gerçek alış maliyeti. Eski hesaplarda (alan yokken) rozetin
+// costBasis'i kullanılır = son işlemdeki değer.
+function investCostOf(user, assetType) {
+  const v = user?.investCost?.[assetType];
+  return Number.isFinite(v) ? v : Number(user?.[INVESTMENT_COST_BASIS_FIELD[assetType]]) || 0;
+}
+
 export const buyInvestment = onCall(async (request) => {
   const uid = requireAuth(request);
   const { assetType } = request.data || {};
@@ -4650,8 +4664,11 @@ export const buyInvestment = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
     const newHoldings = (user[holdingsField] || 0) + units;
+    // v92.3 — gerçek ortalama maliyet (rapordaki kâr/zarar için; rozetin costBasis'i ayrı)
+    const prevCost = (user[holdingsField] || 0) > 1e-9 ? investCostOf(user, assetType) : 0;
     tx.update(userRef, {
-      gold: admin.firestore.FieldValue.increment(-goldAmount), goldTag: goldTag('yatirim'),
+      gold: admin.firestore.FieldValue.increment(-goldAmount), goldTag: goldTag('yatirim', {}),
+      [`investCost.${assetType}`]: prevCost + goldAmount,
       [holdingsField]: admin.firestore.FieldValue.increment(units),
       // costBasis'i BİRİKTİRMİYORUZ — her alımda GÜNCEL fiyattan
       // sıfırdan set ediyoruz ki kâr/zarar rozeti "en son alım/satımdan
@@ -4715,9 +4732,12 @@ export const sellInvestment = onCall(async (request) => {
     commission = Math.round(grossValue * SELL_COMMISSION_RATE);
     totalValue = grossValue - commission;
     const remaining = have - units;
+    // v92.3 — günlük rapor: anapara değil, gerçekleşen kâr/zarar + komisyon
+    const { pnl, newCost } = realizeSale({ cost: investCostOf(user, assetType), have, units, gross: grossValue });
 
     tx.update(userRef, {
-      gold: admin.firestore.FieldValue.increment(totalValue), goldTag: goldTag('yatirim'),
+      gold: admin.firestore.FieldValue.increment(totalValue), goldTag: goldTag('yatirim', { yatirimKz: pnl, komisyon: -commission }),
+      [`investCost.${assetType}`]: remaining > 1e-9 ? newCost : 0,
       [holdingsField]: admin.firestore.FieldValue.increment(-units),
       // Kısmi satışta da sıfırlanır (kullanıcı isteği) — kalan pozisyon
       // "az önce güncel fiyattan yeniden alınmış" gibi davranır.

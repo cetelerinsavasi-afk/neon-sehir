@@ -21,8 +21,11 @@ export const MONEY_SOURCES = {
   silah: { icon: '🔫', label: 'Silah alımı' },
   amazor: { icon: '📦', label: 'Amazor alışverişi' },
   malzeme: { icon: '🔩', label: 'Malzeme satışı' },
-  banka: { icon: '🏦', label: 'Banka (yatır / çek)' },
-  yatirim: { icon: '💹', label: 'Yatırım' },
+  banka: { icon: '🏦', label: 'Banka (yatır / çek)' }, // v92.3 öncesi kayıtlar
+  yatirim: { icon: '💹', label: 'Yatırım' }, // v92.3 öncesi kayıtlar
+  yatirimKz: { icon: '💹', label: 'Yatırım kâr / zarar' },
+  komisyon: { icon: '🧾', label: 'Yatırım satış komisyonu' },
+  faiz: { icon: '🏦', label: 'Banka faizi' },
   kredi: { icon: '💳', label: 'Kredi' },
   devletBorcu: { icon: '🏛️', label: 'Devlet borcu ödemesi' },
   slot: { icon: '🎰', label: 'Slot makinesi' },

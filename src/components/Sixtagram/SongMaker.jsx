@@ -13,6 +13,7 @@ import {
   songHasNotes,
 } from '../../../functions/songData.js';
 import { startSong, previewDrum, previewNote, demoKit, demoNotes, bit, songLength } from '../../lib/songEngine';
+import { createPortal } from 'react-dom';
 import './SongMaker.css';
 
 // =============================================================================
@@ -346,8 +347,11 @@ export default function SongMaker({ initial, onCancel, onDone }) {
     onDone?.(out);
   };
 
-  return (
-    <div className="bm-root" role="dialog" aria-label="Şarkı yap">
+  // v92.3 — Gönderi penceresinin arka planı tıklanınca kapanıyor; React olayları
+  // portal içinden de üst bileşene kabarcıklandığı için burada durduruyoruz.
+  const halt = (e) => e.stopPropagation();
+  return createPortal(
+    <div className="bm-root" role="dialog" aria-label="Şarkı yap" onClick={halt} onPointerDown={halt} onMouseDown={halt} onTouchStart={halt}>
       <div className="bm-top">
         <button
           className="bm-x"
@@ -626,6 +630,7 @@ export default function SongMaker({ initial, onCancel, onDone }) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
