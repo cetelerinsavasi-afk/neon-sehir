@@ -1,0 +1,110 @@
+/* v92 Faz 8 — oyunun 3D mekânları: sol üst menü + alt sayfa */
+.v3-menu {
+  position: absolute;
+  top: calc(70px + var(--hs-safe-t, 0px));
+  left: 8px;
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: 62vw;
+  pointer-events: none;
+}
+.v3-menu > * {
+  pointer-events: auto;
+}
+.v3-btn {
+  padding: 8px 13px;
+  border-radius: 13px;
+  border: 1px solid rgba(212, 175, 55, 0.65);
+  background: rgba(14, 12, 6, 0.82);
+  color: #f3e3b0;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.v3-btn:active {
+  transform: scale(0.97);
+}
+.v3-btn:disabled {
+  opacity: 0.6;
+}
+.v3-btn.primary {
+  border-color: #39ff88;
+  color: #d6ffe6;
+  background: linear-gradient(180deg, rgba(20, 70, 40, 0.92), rgba(8, 36, 20, 0.92));
+}
+.v3-btn.heist {
+  border-color: #ff4fa3;
+  color: #ffc2e0;
+  background: rgba(60, 8, 34, 0.85);
+}
+.v3-badge {
+  padding: 6px 11px;
+  border-radius: 11px;
+  background: rgba(10, 18, 34, 0.88);
+  border: 1px solid rgba(90, 169, 255, 0.6);
+  color: #cfe3ff;
+  font-size: 13px;
+}
+.v3-badge b {
+  color: #3df58a;
+  font-family: ui-monospace, monospace;
+  font-size: 15px;
+}
+.v3-err {
+  font-size: 12px;
+  color: #ff8a9a;
+  background: rgba(30, 6, 10, 0.85);
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+.v3-sheet {
+  color: #e8edf6;
+}
+.v3-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.v3-sheet-head b {
+  font-size: 16px;
+  color: #ffe9a8;
+}
+.v3-sheet .ws-panel-btn {
+  margin-top: 12px;
+}
+.v3-menu-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.v3-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 6px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #e8edf6;
+  font-weight: 700;
+}
+.v3-item em {
+  font-style: normal;
+  font-size: 12px;
+  color: #ffd76a;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.v3-item:disabled {
+  opacity: 0.55;
+}

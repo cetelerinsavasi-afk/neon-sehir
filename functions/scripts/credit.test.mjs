@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { goldTag } from '../moneyLog.js';
 import { FakeFirestore, FieldValue, Timestamp } from '../gang/test/fakeFirestore.js';
 
 const src = fs.readFileSync(fileURLToPath(new URL('../index.js', import.meta.url)), 'utf8');
@@ -24,10 +25,12 @@ function setup() {
   const G = (p) => db._store.get(p)?.data;
   const admin = { firestore: { FieldValue, Timestamp } };
   const fns = new Function(
+    'goldTag', 
     'db', 'admin', 'HttpsError', 'onCall', 'onSchedule', 'requireAuth', 'VEHICLE_CATALOG', 'WEAPON_CATALOG', 'valueRatioOf',
     'AMAZOR_PRICES', 'VEHICLE_WEAPON_INITIAL_LIFE_DAYS', 'computeFactoryValue', 'computeFutbolTeamValue', 'getCurrentPrices', 'advanceOnboardingStep',
     code
   )(
+    goldTag, 
     db, admin, HttpsError, (fn) => fn, (_o, fn) => fn, (r) => r.auth.uid,
     { araba: { price: 100_000 } }, { tabanca: { price: 10_000 } }, () => 1,
     { tamirMalzemesi: 10, yasakliMadde: 2500 }, 20,

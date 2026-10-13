@@ -15,6 +15,7 @@
 // avatara asla yazılamaz (önizleme sadece istemcide).
 // =============================================================================
 import { PET_MAP, ACC_MAP, ACC_SLOTS, LEASH_COLORS, priceOf, cleanEquipped } from './cosmeticsData.js';
+import { goldTag } from './moneyLog.js';
 
 export function createCosmetics({ db, FieldValue, HttpsError, now = () => Date.now() }) {
   const fail = (code, msg) => {
@@ -47,6 +48,7 @@ export function createCosmetics({ db, FieldValue, HttpsError, now = () => Date.n
           if (pr.currency === 'gold') {
             if (Number(user.gold || 0) < pr.amount) fail('failed-precondition', `Yetersiz altın (${pr.amount.toLocaleString('tr-TR')} gerekli).`);
             patch.gold = FieldValue.increment(-pr.amount);
+            patch.goldTag = goldTag('aksesuar');
           } else {
             if (Number(user.emerald || 0) < pr.amount) fail('failed-precondition', `Yetersiz zümrüt (${Number(user.emerald || 0)} / ${pr.amount}).`);
             patch.emerald = FieldValue.increment(-pr.amount);

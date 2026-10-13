@@ -159,13 +159,15 @@ export default function VisitTab({ onVisitVenue, onVisitHouse }) {
       return out;
     }
     // işletme türü: önce kalabalık, eşitlikte dünkü ciro sırası
+    // v91: oyuncu dükkânları yüklenmeden oyunun dükkânı tek başına gösterilmez.
+    if (biz.loading) return [];
     const rank = (r) => (Number.isFinite(r) && r > 0 ? r : 9999);
     const list = biz.list.map((h, i) => ({ ...houseItem(h), sub: `Sahibi: ${h.bizGame ? 'Neon Şehir' : h.ownerName || 'Oyuncu'}`, yv: -rank(h.bizRank) - i * 1e-6 }));
     const gk = GAME_OF_TYPE[filter];
     if (gk) list.push({ ...gameItem(gk), sub: 'Sahibi: Neon Şehir', yv: -rank(biz.gameRank) });
     return list.sort(byPeople);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter, yVisits, venuePeople, liveHouses, biz.list, biz.gameRank, allHouses, showAllHouses]);
+  }, [filter, yVisits, venuePeople, liveHouses, biz.list, biz.gameRank, biz.loading, allHouses, showAllHouses]);
   const hiddenEmpty = filter === 'houses' ? items.hiddenEmpty || 0 : 0;
 
   return (

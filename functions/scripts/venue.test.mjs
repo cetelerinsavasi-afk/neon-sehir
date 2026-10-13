@@ -230,3 +230,120 @@ test('v81: yayın setindeki bilgisayar yayın seti ücretiyle, diğer cihazlar n
   const t = await h.act('ali', { op: 'netTick', houseId: id });
   assert.equal(t.charged, 400);
 });
+
+test('v92 garson: tek garson, sipariş garsona gider, zamanında verilirse %10 maaş, rapora maaş gideri', async () => {
+  const h = setup();
+  const id = await openBiz(h, 'cafe', [it('cakecase')]);
+  h.S('users/veli', { displayName: 'Veli', gold: 1000 });
+  h.present('ali', id);
+  h.present('veli', id);
+  // içeride olmayan garson olamaz
+  h.S('users/ayse', { displayName: 'Ayşe', gold: 0 });
+  await assert.rejects(h.act('ayse', { op: 'waiterJoin', houseId: id }), /not-present/);
+  await h.act('veli', { op: 'waiterJoin', houseId: id });
+  assert.equal(h.G(`venueWaiters/${id}`).uid, 'veli');
+  // ikinci kişi garson olamaz (garson içeride)
+  h.present('ayse', id);
+  await assert.rejects(h.act('ayse', { op: 'waiterJoin', houseId: id }), /waiter-taken:Veli/);
+  // sipariş: ödeme alınır, ürün henüz gelmez, garsona sipariş düşer
+  const sahip0 = h.G('users/sahip').gold;
+  const r = await h.act('ali', { op: 'menuBuy', houseId: id, product: 'pasta', expect: 100 });
+  assert.equal(r.queued, true);
+  assert.equal(h.G('users/ali').gold, 50_000 - 100);
+  assert.equal(h.G('heldItems/ali'), undefined);
+  assert.equal(h.G('users/sahip').gold, sahip0);
+  // başkası teslim edemez
+  await assert.rejects(h.act('ayse', { op: 'orderDeliver', orderId: r.orderId }), /sana gelmedi/);
+  // garson 10 sn sonra teslim eder → 10 vergi, 10 maaş, 80 sahibe
+  h.clock.now += 10_000;
+  const d = await h.act('veli', { op: 'orderDeliver', orderId: r.orderId });
+  assert.equal(d.served, true);
+  assert.equal(h.G('users/veli').gold, 1000 + 10);
+  assert.equal(h.G('users/sahip').gold, sahip0 + 80);
+  assert.equal(h.G('heldItems/ali').itemId, 'pasta');
+  assert.equal(h.G('heldItems/ali').servedBy, 'Veli');
+  assert.equal(h.G('housePresence/ali').holding, 'pasta');
+  const rep = h.G(`businessDaily/${id}_2026-10-07`);
+  assert.equal(rep.salary, 10);
+  assert.equal(rep.tax, 10);
+  assert.equal(rep.byKind.menu, 100);
+  await assert.rejects(h.act('veli', { op: 'orderDeliver', orderId: r.orderId }), /order-done/);
+  // garsonun kendi siparişi garsona gitmez (anında)
+  const own = await h.act('veli', { op: 'menuBuy', houseId: id, product: 'pasta', expect: 100 });
+  assert.equal(own.queued, undefined);
+  assert.equal(h.G('heldItems/veli').itemId, 'pasta');
+});
+
+test('v92 garson: 20 sn geçerse ürün kendiliğinden gelir, maaş yok, garson görevden alınır; garson çıkınca eski sistem', async () => {
+  const h = setup();
+  const id = await openBiz(h, 'cafe', [it('cakecase')]);
+  h.S('users/veli', { displayName: 'Veli', gold: 1000 });
+  h.present('ali', id);
+  h.present('veli', id);
+  await h.act('veli', { op: 'waiterJoin', houseId: id });
+  const sahip0 = h.G('users/sahip').gold;
+  const r = await h.act('ali', { op: 'menuBuy', houseId: id, product: 'kahve', expect: 100 });
+  // süre dolmadan süpürme bir şey yapmaz
+  h.clock.now += 5_000;
+  assert.equal((await h.act('ali', { op: 'orderSweep', houseId: id })).resolved, 0);
+  h.clock.now += 20_000;
+  h.present('ali', id);
+  h.present('veli', id);
+  const s = await h.act('ali', { op: 'orderSweep', houseId: id });
+  assert.equal(s.resolved, 1);
+  assert.equal(s.fired, true);
+  assert.equal(h.G(`venueWaiters/${id}`), undefined);
+  assert.equal(h.G('heldItems/ali').itemId, 'kahve');
+  assert.equal(h.G('heldItems/ali').servedBy, null);
+  assert.equal(h.G('users/veli').gold, 1000);
+  assert.equal(h.G('users/sahip').gold, sahip0 + 90); // sadece vergi
+  assert.equal(h.G(`venueOrders/${r.orderId}`).status, 'auto');
+  // geç teslim denemesi de maaşsız ve görevden alır
+  await h.act('veli', { op: 'waiterJoin', houseId: id }); // hemen tekrar başvurabilir
+  const r2 = await h.act('ali', { op: 'menuBuy', houseId: id, product: 'kahve', expect: 100 });
+  h.clock.now += 25_000;
+  h.present('ali', id);
+  h.present('veli', id);
+  const late = await h.act('veli', { op: 'orderDeliver', orderId: r2.orderId });
+  assert.equal(late.late, true);
+  assert.equal(h.G('users/veli').gold, 1000);
+  assert.equal(h.G(`venueWaiters/${id}`), undefined);
+  // garson mekândan çıktıysa sipariş anında gelir (eski sistem) ve görev düşer
+  await h.act('veli', { op: 'waiterJoin', houseId: id });
+  h.db._store.delete('housePresence/veli');
+  const r3 = await h.act('ali', { op: 'menuBuy', houseId: id, product: 'pasta', expect: 100 });
+  assert.equal(r3.queued, undefined);
+  assert.equal(h.G('heldItems/ali').itemId, 'pasta');
+  assert.equal(h.G(`venueWaiters/${id}`), undefined);
+});
+
+test('v92 garson: mekân sahibi de garson olabilir (aynı kurallar), maaş almaz; başka garson varken olamaz', async () => {
+  const h = setup();
+  const id = await openBiz(h, 'cafe', [it('cakecase')]);
+  h.S('users/veli', { displayName: 'Veli', gold: 1000 });
+  h.present('ali', id);
+  h.present('veli', id);
+  h.present('sahip', id);
+  await h.act('veli', { op: 'waiterJoin', houseId: id });
+  await assert.rejects(h.act('sahip', { op: 'waiterJoin', houseId: id }), /waiter-taken:Veli/);
+  await h.act('veli', { op: 'waiterQuit', houseId: id });
+  await h.act('sahip', { op: 'waiterJoin', houseId: id });
+  assert.equal(h.G(`venueWaiters/${id}`).uid, 'sahip');
+  const sahip0 = h.G('users/sahip').gold;
+  const r = await h.act('ali', { op: 'menuBuy', houseId: id, product: 'pasta', expect: 100 });
+  assert.equal(r.queued, true);
+  const d = await h.act('sahip', { op: 'orderDeliver', orderId: r.orderId });
+  assert.equal(d.served, true);
+  assert.equal(d.salary, 0);
+  assert.equal(h.G('users/sahip').gold, sahip0 + 90); // sadece vergi düşer
+  const rep = h.G(`businessDaily/${id}_2026-10-07`);
+  assert.equal(rep.salary, undefined);
+  // geç kalırsa sahip de görevden alınır
+  const r2 = await h.act('ali', { op: 'menuBuy', houseId: id, product: 'pasta', expect: 100 });
+  h.clock.now += 25_000;
+  h.present('ali', id);
+  h.present('sahip', id);
+  await h.act('ali', { op: 'orderSweep', houseId: id });
+  assert.equal(h.G(`venueWaiters/${id}`), undefined);
+  assert.equal(h.G(`venueOrders/${r2.orderId}`).status, 'auto');
+});

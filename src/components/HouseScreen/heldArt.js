@@ -517,6 +517,137 @@ const ART = {
   },
 };
 
+// v92 — market rafı / simit arabası / mısır makinesi ürünleri
+ART.cikolata = (g) => {
+  g.save();
+  g.translate(64, 64);
+  g.rotate(-0.35);
+  rr(g, -46, -24, 92, 48, 6);
+  fillOut(g, '#5b2a86');
+  rr(g, -46, -24, 30, 48, 6);
+  fillOut(g, '#f2e2c4', 2.5);
+  // açılmış uç: çikolata kareleri
+  g.fillStyle = '#6a3a1c';
+  rr(g, 20, -20, 26, 40, 4);
+  g.fill();
+  g.strokeStyle = 'rgba(30,10,0,0.6)';
+  g.lineWidth = 2;
+  g.beginPath();
+  g.moveTo(33, -20);
+  g.lineTo(33, 20);
+  g.moveTo(20, 0);
+  g.lineTo(46, 0);
+  g.stroke();
+  g.fillStyle = '#ffffff';
+  g.font = 'bold 13px Arial';
+  g.textAlign = 'center';
+  g.fillText('ÇOKO', 2, 5);
+  g.restore();
+};
+ART.cips = (g) => {
+  g.beginPath();
+  g.moveTo(30, 18);
+  g.lineTo(98, 18);
+  g.quadraticCurveTo(110, 64, 98, 112);
+  g.lineTo(30, 112);
+  g.quadraticCurveTo(18, 64, 30, 18);
+  g.closePath();
+  fillOut(g, lin(g, 20, 0, 108, 0, [[0, '#f2b70c'], [0.5, '#ffd84a'], [1, '#e0a200']]));
+  // zikzak ağızlar
+  [[18, 1], [112, -1]].forEach(([y, d]) => {
+    g.beginPath();
+    for (let x = 30; x <= 98; x += 8) g.lineTo(x, y + ((x / 8) % 2 ? 0 : 5 * d));
+    g.lineWidth = 3;
+    g.strokeStyle = '#d8261c';
+    g.stroke();
+  });
+  g.fillStyle = '#d8261c';
+  rr(g, 36, 44, 56, 18, 6);
+  g.fill();
+  g.fillStyle = '#ffffff';
+  g.font = 'bold 14px Arial';
+  g.textAlign = 'center';
+  g.fillText('CİPS', 64, 58);
+  g.beginPath();
+  g.ellipse(64, 86, 16, 10, 0.3, 0, Math.PI * 2);
+  fillOut(g, '#ffe08a', 2);
+};
+ART.biskuvi = (g) => {
+  g.save();
+  g.translate(64, 64);
+  g.rotate(0.3);
+  rr(g, -50, -20, 100, 40, 10);
+  fillOut(g, '#d9a35a');
+  g.fillStyle = '#2a64c4';
+  g.fillRect(-48, -18, 18, 36);
+  g.fillRect(30, -18, 18, 36);
+  for (let i = 0; i < 3; i++) {
+    g.beginPath();
+    g.arc(-14 + i * 14, 0, 9, 0, Math.PI * 2);
+    fillOut(g, '#e8b46a', 2);
+    g.fillStyle = '#8a5a22';
+    g.fillRect(-16 + i * 14, -2, 2, 2);
+    g.fillRect(-12 + i * 14, 2, 2, 2);
+  }
+  g.restore();
+};
+ART.makarna = (g) => {
+  rr(g, 34, 12, 60, 106, 6);
+  fillOut(g, lin(g, 34, 0, 94, 0, [[0, '#173f8a'], [0.5, '#2a5cc4'], [1, '#173f8a']]));
+  rr(g, 44, 36, 40, 44, 6);
+  fillOut(g, '#f6d36b', 2.5);
+  g.strokeStyle = '#d9a52a';
+  g.lineWidth = 3;
+  for (let i = 0; i < 4; i++) {
+    g.beginPath();
+    g.moveTo(48, 44 + i * 9);
+    g.quadraticCurveTo(64, 38 + i * 9, 80, 44 + i * 9);
+    g.stroke();
+  }
+  g.fillStyle = '#ffffff';
+  g.font = 'bold 13px Arial';
+  g.textAlign = 'center';
+  g.fillText('MAKARNA', 64, 100);
+};
+ART.simit = (g) => {
+  g.beginPath();
+  g.arc(64, 64, 46, 0, Math.PI * 2);
+  g.moveTo(82, 64);
+  g.arc(64, 64, 18, 0, Math.PI * 2, true);
+  fillOut(g, lin(g, 20, 20, 108, 108, [[0, '#e0954a'], [0.5, '#c4702c'], [1, '#9a5420']]));
+  g.fillStyle = '#fff3d6';
+  for (let i = 0; i < 40; i++) {
+    const a = (i / 40) * Math.PI * 2 * 3;
+    const rr2 = 24 + (i % 5) * 4.5;
+    g.fillRect(64 + Math.cos(a) * rr2, 64 + Math.sin(a) * rr2, 2.5, 2.5);
+  }
+};
+ART.misir = (g) => {
+  g.beginPath();
+  g.moveTo(32, 46);
+  g.lineTo(96, 46);
+  g.lineTo(86, 120);
+  g.lineTo(42, 120);
+  g.closePath();
+  fillOut(g, '#ffffff');
+  g.fillStyle = '#e3122d';
+  [[38, 46, 48, 120], [58, 46, 62, 120], [78, 46, 76, 120]].forEach(([a, b, c, d]) => {
+    g.beginPath();
+    g.moveTo(a, b);
+    g.lineTo(a + 10, b);
+    g.lineTo(c + 8, d);
+    g.lineTo(c, d);
+    g.closePath();
+    g.fill();
+  });
+  outline(g, 0.1);
+  for (let i = 0; i < 12; i++) {
+    g.beginPath();
+    g.arc(36 + (i % 6) * 11 + (i > 5 ? 5 : 0), 40 - (i > 5 ? 14 : 0) + ((i * 7) % 5), 9, 0, Math.PI * 2);
+    fillOut(g, i % 4 ? '#fff4c2' : '#ffd23f', 2);
+  }
+};
+
 // Silahlar (yatay)
 function gun(g, { body = '#3a3f4a', grip = '#262a31', accent = '#8a93a3', long = 0, pump = false }) {
   const L = 60 + long;
@@ -550,8 +681,130 @@ function gun(g, { body = '#3a3f4a', grip = '#262a31', accent = '#8a93a3', long =
   g.fillRect(x0 + 4, 53, L - 6, 3);
 }
 ART.tabanca = (g) => gun(g, {});
-ART.tufek = (g) => gun(g, { long: 34, body: '#2f3540' });
-ART.pompali = (g) => gun(g, { long: 26, body: '#1d2026', pump: true });
+// v92 — Tüfek ve Pompalı, Camlı Silah Dolabı'ndaki 3D modellerin (AK ve av
+// tüfeği) yan profili: ahşap dipçik, kavisli şarjör / ahşap pompa.
+const WOOD = '#8a4f26';
+const STEEL_D = '#23262b';
+function poly(g, pts, fill, w = 3) {
+  g.beginPath();
+  g.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]);
+  g.closePath();
+  fillOut(g, fill, w);
+}
+ART.tufek = (g) => {
+  // dipçik
+  poly(g, [[4, 58], [34, 54], [36, 68], [8, 80]], WOOD);
+  // gövde
+  rr(g, 32, 50, 46, 16, 3);
+  fillOut(g, STEEL_D);
+  // kabza
+  poly(g, [[46, 64], [56, 64], [52, 86], [42, 84]], WOOD, 2.5);
+  // kavisli şarjör
+  g.beginPath();
+  g.moveTo(60, 64);
+  g.quadraticCurveTo(62, 90, 76, 100);
+  g.lineTo(86, 92);
+  g.quadraticCurveTo(74, 82, 72, 64);
+  g.closePath();
+  fillOut(g, '#3a2c1e', 2.5);
+  // el kundağı
+  rr(g, 76, 52, 22, 12, 3);
+  fillOut(g, WOOD, 2.5);
+  // namlu + gaz borusu
+  rr(g, 96, 54, 28, 5, 2);
+  fillOut(g, STEEL_D, 2);
+  rr(g, 76, 47, 32, 4, 2);
+  fillOut(g, '#4a4f58', 2);
+  poly(g, [[118, 46], [122, 46], [122, 54], [118, 54]], STEEL_D, 2);
+  g.fillStyle = 'rgba(255,255,255,0.25)';
+  g.fillRect(34, 53, 40, 3);
+};
+ART.pompali = (g) => {
+  // dipçik
+  poly(g, [[4, 60], [40, 56], [42, 70], [8, 82]], WOOD);
+  // gövde
+  rr(g, 38, 52, 30, 16, 3);
+  fillOut(g, STEEL_D);
+  // tetik korkuluğu
+  g.beginPath();
+  g.arc(54, 70, 6, 0, Math.PI);
+  g.lineWidth = 3;
+  g.strokeStyle = 'rgba(10,12,20,0.85)';
+  g.stroke();
+  // uzun namlu ve altında şarjör borusu
+  rr(g, 66, 52, 58, 7, 3);
+  fillOut(g, '#2f3338', 2.5);
+  rr(g, 66, 60, 46, 6, 3);
+  fillOut(g, '#3d4249', 2);
+  // ahşap pompa
+  rr(g, 74, 58, 26, 11, 4);
+  fillOut(g, WOOD, 2.5);
+  for (let x = 78; x < 98; x += 4) {
+    g.fillStyle = 'rgba(40,20,8,0.45)';
+    g.fillRect(x, 60, 2, 7);
+  }
+  g.fillStyle = 'rgba(255,255,255,0.25)';
+  g.fillRect(68, 53, 52, 2);
+};
+// v92 Faz 8 — park büfesi (3D park): sosisli, tost, oralet
+ART.sosisli = (g) => {
+  g.save();
+  g.translate(64, 66);
+  g.rotate(-0.3);
+  rr(g, -54, -20, 108, 40, 20);
+  fillOut(g, lin(g, 0, -20, 0, 20, [[0, '#f0c27a'], [1, '#c98a3e']]));
+  rr(g, -50, -9, 100, 18, 9);
+  fillOut(g, '#b2452f', 2.5);
+  g.strokeStyle = '#ffd23f';
+  g.lineWidth = 4;
+  g.beginPath();
+  for (let x = -40; x <= 40; x += 10) g.lineTo(x, x % 20 === 0 ? -4 : 4);
+  g.stroke();
+  g.restore();
+};
+ART.tost = (g) => {
+  g.save();
+  g.translate(64, 66);
+  g.rotate(0.15);
+  g.beginPath();
+  g.moveTo(-46, 40);
+  g.lineTo(46, 40);
+  g.lineTo(0, -46);
+  g.closePath();
+  fillOut(g, lin(g, 0, -46, 0, 40, [[0, '#e9b86a'], [1, '#c98a3e']]));
+  g.strokeStyle = 'rgba(120,70,20,0.75)';
+  g.lineWidth = 3;
+  for (const y of [-10, 10, 28]) {
+    g.beginPath();
+    g.moveTo(-30 + (y + 46) * 0.3, y);
+    g.lineTo(30 - (y + 46) * 0.3, y);
+    g.stroke();
+  }
+  g.fillStyle = '#ffd23f';
+  g.fillRect(-28, 34, 56, 6);
+  g.restore();
+};
+ART.oralet = (g) => {
+  // ince belli çay bardağı, turuncu oralet
+  g.beginPath();
+  g.moveTo(42, 22);
+  g.quadraticCurveTo(54, 66, 44, 104);
+  g.lineTo(84, 104);
+  g.quadraticCurveTo(74, 66, 86, 22);
+  g.closePath();
+  fillOut(g, 'rgba(235,245,255,0.9)');
+  g.beginPath();
+  g.moveTo(46, 40);
+  g.quadraticCurveTo(56, 70, 47, 100);
+  g.lineTo(81, 100);
+  g.quadraticCurveTo(72, 70, 82, 40);
+  g.closePath();
+  fillOut(g, lin(g, 0, 40, 0, 100, [[0, '#ffae3d'], [1, '#e06a12']]), 2);
+  g.beginPath();
+  g.ellipse(64, 112, 34, 8, 0, 0, Math.PI * 2);
+  fillOut(g, '#f3f3f3', 2.5);
+};
 ART.altinTabanca = (g) => gun(g, { body: '#d4a62a', grip: '#8a6a12', accent: '#fff1a8' });
 
 // Ürünün 128×128 tuvali (önbellekli)

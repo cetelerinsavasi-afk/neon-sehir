@@ -1,6 +1,6 @@
 import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
-import { onDocumentCreated, onDocumentDeleted } from 'firebase-functions/v2/firestore';
+import { onDocumentCreated, onDocumentDeleted, onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { setGlobalOptions } from 'firebase-functions/v2';
 import { defineSecret } from 'firebase-functions/params';
 import admin from 'firebase-admin';
@@ -38,6 +38,7 @@ import { createAchievements } from './achievements.js';
 import { trainingBotRun, vehicleRaceLevel, carStats } from './raceSim.js';
 import { createRaceTa } from './raceTa.js';
 import { createCosmetics } from './cosmetics.js';
+import { createPlayBilling, createGooglePlayApi } from './playBilling.js';
 import { createStream } from './stream.js';
 import { createNameSync } from './nameSync.js';
 import { profanityCheck, PROFANITY_WARNING } from './profanity.js';
@@ -45,6 +46,8 @@ import { cleanEquipped } from './cosmeticsData.js';
 import { HOUSE_PRODUCTS } from './houseCatalogData.js';
 import { sanitizeDrawing } from './drawingData.js';
 import { isMsgId, nextReaction, replyQuoteOf } from './chatExtras.js';
+import { VENUES } from './venueLayouts.js';
+import { goldTag, recordGoldChange, cleanupMoneyLog } from './moneyLog.js';
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -241,6 +244,24 @@ export const businessRollover = onSchedule({ schedule: '5 * * * *', timeZone: 'E
   await business.sendShortageSms();
   await venue.cleanup();
   await gym.expireMemberships();
+  await cleanupMoneyLog({ db }).catch((e) => console.error('moneyLog cleanup', e));
+});
+
+// v92 — Profil › Günlük Rapor: oyuncunun altını her değiştiğinde (hangi fonksiyon
+// değiştirirse değiştirsin) fark günlük özete yazılır (functions/moneyLog.js).
+// Kaynak, aynı yazmadaki `goldTag` etiketinden okunur; etiketsizse "diger".
+export const goldLedger = onDocumentUpdated('users/{uid}', async (event) => {
+  const before = event.data?.before?.data();
+  const after = event.data?.after?.data();
+  if (!before || !after || Number(before.gold || 0) === Number(after.gold || 0)) return;
+  await recordGoldChange({
+    db,
+    FieldValue: admin.firestore.FieldValue,
+    uid: event.params.uid,
+    before,
+    after,
+    atMs: Date.parse(event.time) || Date.now(),
+  });
 });
 
 // v67 — Başarılar (bkz. functions/achievements.js)
@@ -934,7 +955,7 @@ export const applyReferralCode = onCall(async (request) => {
     const REFERRAL_REFERRER_BONUS = 10000;
 
     tx.update(userRef, {
-      gold: admin.firestore.FieldValue.increment(REFERRAL_NEW_PLAYER_BONUS),
+      gold: admin.firestore.FieldValue.increment(REFERRAL_NEW_PLAYER_BONUS), goldTag: goldTag('referans'),
       referredBy: referrerUid,
       referralUsed: true,
     });
@@ -944,7 +965,7 @@ export const applyReferralCode = onCall(async (request) => {
       REFERRAL_REFERRER_BONUS
     );
     tx.update(referrerRef, {
-      gold: admin.firestore.FieldValue.increment(goldDelta),
+      gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('referans'),
       debtToState: admin.firestore.FieldValue.increment(debtDelta),
     });
     const smsRef = referrerRef.collection('messages').doc();
@@ -1099,7 +1120,7 @@ export const createFactory = onCall(async (request) => {
         tx.get(oldFactoryRef),
       ]);
     }
-    const userUpdate = { gold: admin.firestore.FieldValue.increment(-cost) };
+    const userUpdate = { gold: admin.firestore.FieldValue.increment(-cost), goldTag: goldTag('fabrika') };
     if (user.employment) userUpdate.employment = admin.firestore.FieldValue.delete();
     if (user.employmentProducedDateKey) userUpdate.employmentProducedDateKey = admin.firestore.FieldValue.delete();
     tx.update(userRef, userUpdate);
@@ -1249,7 +1270,7 @@ export const buyFactoryMachine = onCall(async (request) => {
     if (!user || (user.gold || 0) < price) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
-    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-price) });
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-price), goldTag: goldTag('fabrika') });
     tx.set(machineRef, {
       type: machineType,
       workerId: null,
@@ -1653,12 +1674,12 @@ export const buyFactoryShare = onCall(async (request) => {
     }
 
     // Alıcıdan peşin bedel düşülür.
-    tx.update(buyerRef, { gold: admin.firestore.FieldValue.increment(-share.price) });
+    tx.update(buyerRef, { gold: admin.firestore.FieldValue.increment(-share.price), goldTag: goldTag('fabrikaHisse') });
     // Satıcıya (fabrika sahibi) gelir — 2. el eşya satışıyla (buyListing)
     // BİREBİR AYNI şekilde, borç varsa Bölüm 10 kuralına göre bölüştürülür.
     const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, share.price);
     tx.update(sellerRef, {
-      gold: admin.firestore.FieldValue.increment(goldDelta),
+      gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('fabrikaHisse'),
       debtToState: admin.firestore.FieldValue.increment(debtDelta),
     });
 
@@ -1839,12 +1860,12 @@ export const produceAtFactory = onCall(async (request) => {
       // "bugün üretim yaptın mı" (istifa butonu görünürlüğü) sorusunu
       // makine dokümanına ayrıca bakmadan cevaplayabilmesi için.
       tx.update(userRef, {
-        gold: admin.firestore.FieldValue.increment(salary),
+        gold: admin.firestore.FieldValue.increment(salary), goldTag: goldTag('fabrika'),
         employmentProducedDateKey: dateKey,
       });
       // Patron: elinden çıkabildiği kadarı düşülür, yetmeyen kısım CEZA/borç olur.
       tx.update(ownerRef, {
-        gold: admin.firestore.FieldValue.increment(-ownerPay),
+        gold: admin.firestore.FieldValue.increment(-ownerPay), goldTag: goldTag('fabrika'),
         debtToState: admin.firestore.FieldValue.increment(shortfall),
       });
       // factories/{ownerId}.salaryPaidToday — yeni istek: "hisse satışı
@@ -1964,7 +1985,7 @@ async function retireOneYasakliMachine(ownerUid, machineId) {
     }
     // yazmalar
     const ownerRef = db.collection('users').doc(ownerUid);
-    tx.set(ownerRef, { gold: admin.firestore.FieldValue.increment(YASAKLI_MACHINE_COMPENSATION) }, { merge: true });
+    tx.set(ownerRef, { gold: admin.firestore.FieldValue.increment(YASAKLI_MACHINE_COMPENSATION), goldTag: goldTag('fabrika') }, { merge: true });
     tx.delete(machineRef);
     if (m.workerId) {
       const w = workerSnap?.data();
@@ -1993,7 +2014,7 @@ async function retireOpenYasakliListing(listingId) {
     if (l.sold || l.itemType !== 'machine' || !RETIRED_MACHINE_TYPES.includes(l.machineType)) return false;
     tx.update(ref, { sold: true, cancelled: true, retiredMachine: true });
     if (l.sellerId && l.sellerId !== 'system') {
-      tx.set(db.collection('users').doc(l.sellerId), { gold: admin.firestore.FieldValue.increment(YASAKLI_MACHINE_COMPENSATION) }, { merge: true });
+      tx.set(db.collection('users').doc(l.sellerId), { gold: admin.firestore.FieldValue.increment(YASAKLI_MACHINE_COMPENSATION), goldTag: goldTag('fabrika') }, { merge: true });
       addUserSms(tx, l.sellerId, `🏭 Yasaklı madde makineleri oyundan kaldırıldı. 2. el ilandaki makinen için ${YASAKLI_MACHINE_COMPENSATION.toLocaleString('tr-TR')} altın hesabına yatırıldı.`, 'factory_machine_retired_listing');
     }
     return true;
@@ -2242,7 +2263,7 @@ async function resolveStuckLotteryAndChampionship(dateKey) {
             lottery.jackpot
           );
           await winnerRef.update({
-            gold: admin.firestore.FieldValue.increment(goldDelta),
+            gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('piyango'),
             debtToState: admin.firestore.FieldValue.increment(debtDelta),
           });
           await prevLotteryRef.update({
@@ -2298,7 +2319,7 @@ async function resolveStuckLotteryAndChampionship(dateKey) {
           const winnerSnap = await winnerRef.get();
           const { goldDelta, debtDelta } = splitIncomeForDebt(winnerSnap.data()?.debtToState, reward);
           await winnerRef.update({
-            gold: admin.firestore.FieldValue.increment(goldDelta),
+            gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('sampiyona'),
             debtToState: admin.firestore.FieldValue.increment(debtDelta),
           });
           await winnerRef.collection('messages').add({
@@ -2474,7 +2495,7 @@ export const dailyReset = onSchedule(
         refundJobs.push(
           (async () => {
             const batch = db.batch();
-            batch.update(userDoc.ref, { gold: admin.firestore.FieldValue.increment(refund) });
+            batch.update(userDoc.ref, { gold: admin.firestore.FieldValue.increment(refund), goldTag: goldTag('fabrika') });
             ownedMachines.forEach((m) => batch.delete(m.ref));
             batch.set(userDoc.ref.collection('messages').doc(), {
               text: `Fabrika sistemi tamamen değişti! Eski üretim makinen/makinelerin için ${refund.toLocaleString('tr-TR')} altın iade edildi. Artık kendi fabrikanı kurup makine alabilir, ya da başka oyuncuların fabrikasında çalışabilirsin.`,
@@ -2986,7 +3007,7 @@ export const dailyReset = onSchedule(
             opCount += 1;
           }
           batch.update(db.collection('users').doc(f.id), {
-            gold: admin.firestore.FieldValue.increment(-paidFromGold),
+            gold: admin.firestore.FieldValue.increment(-paidFromGold), goldTag: goldTag('fabrika'),
             debtToState: admin.firestore.FieldValue.increment(shortfall),
           });
           opCount += 1;
@@ -3086,13 +3107,13 @@ export const dailyReset = onSchedule(
 
             // Hisse sahibi (alıcı): temettüsünü TAM alır — produceAtFactory'
             // deki işçi maaşı mantığıyla birebir aynı.
-            tx.update(buyerRef, { gold: admin.firestore.FieldValue.increment(dividend) });
+            tx.update(buyerRef, { gold: admin.firestore.FieldValue.increment(dividend), goldTag: goldTag('fabrikaHisse') });
             // Fabrika sahibi: elinden çıkabildiği kadarı düşülür, yetmeyen
             // kısım CEZA/borç olur (splitIncomeForDebt DEĞİL — bu bir
             // ödeme YÜKÜMLÜLÜĞÜ, gelir değil, tıpkı maaş ödemesinde olduğu
             // gibi).
             tx.update(ownerRef, {
-              gold: admin.firestore.FieldValue.increment(-ownerPay),
+              gold: admin.firestore.FieldValue.increment(-ownerPay), goldTag: goldTag('fabrikaHisse'),
               debtToState: admin.firestore.FieldValue.increment(shortfall),
             });
             if (shortfall > 0) {
@@ -3367,6 +3388,7 @@ export const dailyReset = onSchedule(
             if (bonusPerClaimant > 0) {
               const { goldDelta, debtDelta } = splitIncomeForDebt(officer.debtToState, bonusPerClaimant);
               updates.gold = admin.firestore.FieldValue.increment(goldDelta);
+              updates.goldTag = goldTag('polis');
               updates.debtToState = admin.firestore.FieldValue.increment(debtDelta);
             }
             await officerRef.update(updates);
@@ -4057,7 +4079,7 @@ export const buyVehicle = onCall(async (request) => {
 
     tx.set(
       userRef,
-      { gold: admin.firestore.FieldValue.increment(-catalogEntry.price) },
+      { gold: admin.firestore.FieldValue.increment(-catalogEntry.price), goldTag: goldTag('arac') },
       { merge: true }
     );
     business.recordGameIncomeTx(tx, { type: 'galeri', amount: catalogEntry.price, kind: 'sale', customerUid: uid, products: { [catalogEntry.name]: 1 } });
@@ -4236,7 +4258,7 @@ export const buyFromAmazor = onCall(async (request) => {
     if (!user || (user.gold || 0) < totalCost) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
-    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-totalCost) });
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-totalCost), goldTag: goldTag('amazor') });
     tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(qty) }, { merge: true });
   });
 
@@ -4282,7 +4304,7 @@ export const sellMaterial = onCall(async (request) => {
     tx.set(
       userRef,
       {
-        gold: admin.firestore.FieldValue.increment(goldDelta),
+        gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('malzeme'),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
       },
       { merge: true }
@@ -4316,7 +4338,7 @@ export const buyWeapon = onCall(async (request) => {
     }
     tx.set(
       userRef,
-      { gold: admin.firestore.FieldValue.increment(-catalogEntry.price) },
+      { gold: admin.firestore.FieldValue.increment(-catalogEntry.price), goldTag: goldTag('silah') },
       { merge: true }
     );
     business.recordGameIncomeTx(tx, { type: 'silahci', amount: catalogEntry.price, kind: 'sale', customerUid: uid, products: { [catalogEntry.name]: 1 } });
@@ -4490,7 +4512,7 @@ export const sellSilahMaterial = onCall(async (request) => {
     tx.set(
       userRef,
       {
-        gold: admin.firestore.FieldValue.increment(goldDelta),
+        gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('malzeme'),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
       },
       { merge: true }
@@ -4542,7 +4564,7 @@ export const depositToBank = onCall(async (request) => {
     }
     const newBalance = (user.bankBalance || 0) + amt;
     tx.update(userRef, {
-      gold: admin.firestore.FieldValue.increment(-amt),
+      gold: admin.firestore.FieldValue.increment(-amt), goldTag: goldTag('banka'),
       bankBalance: admin.firestore.FieldValue.increment(amt),
       bankCostBasis: newBalance,
     });
@@ -4565,7 +4587,7 @@ export const withdrawFromBank = onCall(async (request) => {
     }
     const newBalance = (user.bankBalance || 0) - amt;
     tx.update(userRef, {
-      gold: admin.firestore.FieldValue.increment(amt),
+      gold: admin.firestore.FieldValue.increment(amt), goldTag: goldTag('banka'),
       bankBalance: admin.firestore.FieldValue.increment(-amt),
       // Kısmi çekimde de sıfırlanır (kullanıcı isteği) — kalan bakiye
       // "az önce yeniden yatırılmış" gibi davranır. Bakiye tamamen
@@ -4628,7 +4650,7 @@ export const buyInvestment = onCall(async (request) => {
     }
     const newHoldings = (user[holdingsField] || 0) + units;
     tx.update(userRef, {
-      gold: admin.firestore.FieldValue.increment(-goldAmount),
+      gold: admin.firestore.FieldValue.increment(-goldAmount), goldTag: goldTag('yatirim'),
       [holdingsField]: admin.firestore.FieldValue.increment(units),
       // costBasis'i BİRİKTİRMİYORUZ — her alımda GÜNCEL fiyattan
       // sıfırdan set ediyoruz ki kâr/zarar rozeti "en son alım/satımdan
@@ -4694,7 +4716,7 @@ export const sellInvestment = onCall(async (request) => {
     const remaining = have - units;
 
     tx.update(userRef, {
-      gold: admin.firestore.FieldValue.increment(totalValue),
+      gold: admin.firestore.FieldValue.increment(totalValue), goldTag: goldTag('yatirim'),
       [holdingsField]: admin.firestore.FieldValue.increment(-units),
       // Kısmi satışta da sıfırlanır (kullanıcı isteği) — kalan pozisyon
       // "az önce güncel fiyattan yeniden alınmış" gibi davranır.
@@ -4793,7 +4815,7 @@ export const takeVehicleLoan = onCall(async (request) => {
     });
     // Kredi anaparası BORÇLANILAN paradır, "kazanç" değildir — borç
     // bölüştürme (Bölüm 10) kredi kullanımına uygulanmaz.
-    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(principal) });
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(principal), goldTag: goldTag('kredi') });
   });
 
   await db
@@ -4847,7 +4869,7 @@ export const repayVehicleLoan = onCall(async (request) => {
     const newPaid = (vehicle.loanPaid || 0) + applied;
     const fullyPaid = newPaid >= vehicle.loanTotalOwed;
 
-    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-applied) });
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-applied), goldTag: goldTag('kredi') });
     tx.update(vehicleRef, {
       loanPaid: newPaid,
       ...(fullyPaid
@@ -4980,7 +5002,7 @@ export const takeCredit = onCall(async (request) => {
     // v68: devlete borcu olan da kredi çekebilir. Kredi anaparası borçlanılan
     // paradır, kazanç değildir — yarısı otomatik borca GİTMEZ, tamamı hesaba yatar.
     tx.update(userRef, {
-      gold: admin.firestore.FieldValue.increment(amount),
+      gold: admin.firestore.FieldValue.increment(amount), goldTag: goldTag('kredi'),
       credit: { principal: amount, totalOwed, paid: 0, startedAtMs: now, dueAtMs },
     });
     tx.set(userRef.collection('messages').doc(), {
@@ -5013,7 +5035,7 @@ export const repayCredit = onCall(async (request) => {
     const paid = (c.paid || 0) + applied;
     const done = paid >= c.totalOwed;
     tx.update(userRef, {
-      gold: admin.firestore.FieldValue.increment(-applied),
+      gold: admin.firestore.FieldValue.increment(-applied), goldTag: goldTag('kredi'),
       credit: done ? admin.firestore.FieldValue.delete() : { ...c, paid },
     });
     if (done) {
@@ -5088,7 +5110,7 @@ export const repayStateDebt = onCall(async (request) => {
     }
     const applied = Math.min(amt, debt);
     tx.update(userRef, {
-      gold: admin.firestore.FieldValue.increment(-applied),
+      gold: admin.firestore.FieldValue.increment(-applied), goldTag: goldTag('devletBorcu'),
       debtToState: admin.firestore.FieldValue.increment(-applied),
     });
   });
@@ -5130,7 +5152,7 @@ export const buyLotteryTicket = onCall(async (request) => {
     if (!user || (user.gold || 0) < cost) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
-    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-cost) });
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-cost), goldTag: goldTag('piyango') });
     if (!lotterySnap.exists) {
       tx.set(lotteryRef, {
         jackpot: LOTTERY_BASE_JACKPOT + cost,
@@ -5212,7 +5234,7 @@ export const spinSlot = onCall(async (request) => {
     usedFreeSpin = hasFreeSpin;
 
     if (cost > 0) {
-      tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-cost) });
+      tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-cost), goldTag: goldTag('slot') });
     }
     if (hasFreeSpin) {
       tx.set(dailyRef, { slotFreeSpinsUsed: freeSpinsUsed + 1 }, { merge: true });
@@ -5221,7 +5243,7 @@ export const spinSlot = onCall(async (request) => {
 
     if (prizeSymbol === 'altin') {
       // Slot kazancı 10 Numara/Piyango gibi asla otomatik borca gitmez.
-      tx.update(userRef, { gold: admin.firestore.FieldValue.increment(prizeAmount) });
+      tx.update(userRef, { gold: admin.firestore.FieldValue.increment(prizeAmount), goldTag: goldTag('slot') });
     } else if (prizeSymbol) {
       const inventoryRef = userRef.collection('inventory').doc(prizeSymbol);
       tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(prizeAmount) }, { merge: true });
@@ -5547,7 +5569,7 @@ export const claimImamSalary = onCall(async (request) => {
     if (dailySnap.data()?.imamSalaryClaimed) {
       throw new HttpsError('failed-precondition', 'Bugün maaşını zaten aldın.');
     }
-    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(IMAM_SALARY) });
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(IMAM_SALARY), goldTag: goldTag('imam') });
     tx.set(dailyRef, { imamSalaryClaimed: true }, { merge: true });
   });
 
@@ -5634,8 +5656,8 @@ export const donateToBeggar = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
     const newEarned = (beggarEntry.todayEarned || 0) + amount;
-    tx.update(donorRef, { gold: admin.firestore.FieldValue.increment(-amount) });
-    tx.update(beggarUserRef, { gold: admin.firestore.FieldValue.increment(amount) });
+    tx.update(donorRef, { gold: admin.firestore.FieldValue.increment(-amount), goldTag: goldTag('dilenci') });
+    tx.update(beggarUserRef, { gold: admin.firestore.FieldValue.increment(amount), goldTag: goldTag('dilenci') });
     if (newEarned >= BEGGAR_DAILY_EARN_CAP) {
       // Sınıra ulaştı — dilenci listeden kaldırılır, bugün tekrar
       // dilenci olamaz.
@@ -5681,7 +5703,7 @@ export const bribePolice = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
     tx.update(userRef, {
-      gold: admin.firestore.FieldValue.increment(-BRIBE_COST),
+      gold: admin.firestore.FieldValue.increment(-BRIBE_COST), goldTag: goldTag('rusvet'),
       suspicion: clampSuspicion((user.suspicion || 0) - 20),
     });
     tx.set(dailyRef, { bribed: true }, { merge: true });
@@ -5734,7 +5756,7 @@ export const claimPoliceSalary = onCall(async (request) => {
     claimedShare = share;
     const { goldDelta, debtDelta } = splitIncomeForDebt(user.debtToState, share);
     tx.update(userRef, {
-      gold: admin.firestore.FieldValue.increment(goldDelta),
+      gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('polis'),
       debtToState: admin.firestore.FieldValue.increment(debtDelta),
     });
     tx.set(dailyRef, { policeSalaryClaimed: true, policeSalaryShare: share }, { merge: true });
@@ -5789,7 +5811,7 @@ export const buyFromVendor = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
     tx.update(userRef, {
-      gold: admin.firestore.FieldValue.increment(-vendorCostFor(vendorId)),
+      gold: admin.firestore.FieldValue.increment(-vendorCostFor(vendorId)), goldTag: goldTag('seyyar'),
       suspicion: clampSuspicion((user.suspicion || 0) - 5),
       reputation: nextReputationAfterGain(user.reputation),
     });
@@ -5988,6 +6010,7 @@ export const attemptHeist = onCall(async (request) => {
     } else {
       const { goldDelta, debtDelta } = splitIncomeForDebt(user.debtToState, reward);
       updates.gold = admin.firestore.FieldValue.increment(goldDelta);
+      updates.goldTag = goldTag('soygun');
       updates.debtToState = admin.firestore.FieldValue.increment(debtDelta);
       // KULLANICI İSTEĞİ: Sixtagram'da "yaptığımız soygunlar" paylaşılabilsin
       // diye başarılı (yakalanmamış) her soygunda kalıcı bir sayaç/toplam
@@ -6103,7 +6126,7 @@ export const sellContrabandAtPark = onCall(async (request) => {
         CONTRABAND_PARK_SELL_PRICE
       );
       tx.update(userRef, {
-        gold: admin.firestore.FieldValue.increment(goldDelta),
+        gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('kacak'),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
         suspicion: newSuspicion,
       });
@@ -6269,6 +6292,8 @@ export const expireInteriorPresence = onSchedule({ schedule: 'every 5 minutes' }
   await houses.expirePresence(TWO_MIN, admin.firestore.Timestamp).catch((err) => console.error('housePresence süpürme:', err));
   // v80: nabzı kesilen yayınlar kapatılır, bağışları ödenir
   await stream.sweep().catch((err) => console.error('yayın süpürme:', err));
+  // v92 — eski günlerin maç sohbeti (Stadyum › Maçlar)
+  if (new Date().getMinutes() < 10) await stream.cleanupMatchChat().catch((err) => console.error('maç sohbeti temizliği:', err));
 });
 
 // v79 maliyet: "kaç kişi var" sayıları tek belgede (bkz. functions/presenceSummary.js)
@@ -6307,21 +6332,28 @@ const BUFE_PRICES = {
 const HELD_ITEM_MS = 120_000; // istemcideki HOLDING_MS ile aynı (2 dakika)
 const HELD_VENUES = { park: { items: BUFE_PRICES }, gazino: {}, ev: { items: {} } }; // gazino.items aşağıda atanır · v66: ev (3D ev eşyalarından ücretsiz)
 
+// v92 Faz 8 — Gazino ve Park artık 3D (houses/game_*): eldeki ürün 3D konum
+// kaydında (housePresence.holding) da görünsün.
+const VENUE_HOUSE_OF = { gazino: VENUES.gazino.houseId, park: VENUES.park.houseId };
+function venueHouseHolding(tx, venue, snap, itemId) {
+  if (snap?.exists && VENUE_HOUSE_OF[venue] && snap.data().houseId === VENUE_HOUSE_OF[venue]) tx.update(snap.ref, { holding: itemId });
+}
 async function buyVenueItem(uid, venue, itemId, price) {
   const userRef = db.collection('users').doc(uid);
   const heldRef = db.collection('heldItems').doc(uid);
   const t = Date.now();
   await db.runTransaction(async (tx) => {
-    const [userSnap, presSnap] = await Promise.all([tx.get(userRef), tx.get(venuePresenceRef(venue, uid))]);
+    const [userSnap, presSnap, housePres] = await Promise.all([tx.get(userRef), tx.get(venuePresenceRef(venue, uid)), tx.get(db.collection('housePresence').doc(uid))]);
     const user = userSnap.data();
     if (!user || (user.gold || 0) < price) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
-    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-price) });
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-price), goldTag: goldTag('mekan') });
     // Yeni alınan ürün eldekinin yerini alır (eski davranış), süre baştan başlar
     tx.set(heldRef, { itemId, venue, untilMs: t + HELD_ITEM_MS, boughtAtMs: t });
     // Diğerleri de görsün (Gazino istemcisi konum kaydına "holding" yazmıyordu)
     if (presSnap.exists && (venue === 'park' || presSnap.data().locationId === venue)) tx.update(presSnap.ref, { holding: itemId });
+    venueHouseHolding(tx, venue, housePres, itemId);
   });
   return { ok: true, itemId, price, untilMs: t + HELD_ITEM_MS };
 }
@@ -6399,6 +6431,10 @@ export const giftHeldItem = onCall(async (request) => {
       tx.get(venuePresenceRef(venue, targetUid)),
       tx.get(db.collection('users').doc(uid)),
     ]);
+    // v92 Faz 8 — 3D Gazino/Park: elde tutulanı 3D konum kayıtları da göstersin
+    const [myHousePres, theirHousePres] = VENUE_HOUSE_OF[venue]
+      ? await Promise.all([tx.get(db.collection('housePresence').doc(uid)), tx.get(db.collection('housePresence').doc(targetUid))])
+      : [null, null];
     const h = mine.exists ? mine.data() : null;
     if (!h || h.venue !== venue || !(Number(h.untilMs) > t)) throw new HttpsError('failed-precondition', 'Elinde ısmarlayacak bir şey yok.');
     if (!presenceActive(theirPres, venue, t)) throw new HttpsError('failed-precondition', 'Bu oyuncu artık burada değil.');
@@ -6412,6 +6448,8 @@ export const giftHeldItem = onCall(async (request) => {
     // Diğer oyuncular eldeki ürünü hemen görsün (konum kaydındaki "holding")
     tx.update(myPres.ref, { holding: null });
     tx.update(theirPres.ref, { holding: h.itemId });
+    venueHouseHolding(tx, venue, myHousePres, null);
+    venueHouseHolding(tx, venue, theirHousePres, h.itemId);
     result = { ok: true, itemId: h.itemId, label: VENUE_ITEM_LABELS[h.itemId] || 'ikram', untilMs: Number(h.untilMs) };
   });
   return result;
@@ -6459,7 +6497,7 @@ export const placeLimanOrder = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
 
-    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-totalCost) });
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-totalCost), goldTag: goldTag('liman') });
     tx.set(
       orderRef,
       { [bucket]: { [materialType]: admin.firestore.FieldValue.increment(qty) } },
@@ -6495,7 +6533,7 @@ export const cancelLimanOrder = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Bu malzeme için bekleyen siparişin yok.');
     }
     const refund = totalQty * unitPrice;
-    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(refund) });
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(refund), goldTag: goldTag('liman') });
     tx.update(orderRef, {
       [`loaded.${materialType}`]: 0,
       [`pending.${materialType}`]: 0,
@@ -7046,7 +7084,7 @@ export const executeHeistPlan = onCall(async (request) => {
       const currentDebt = userSnaps[i].data()?.debtToState || 0;
       const { goldDelta, debtDelta } = splitIncomeForDebt(currentDebt, perPoliceEarning);
       batch.update(db.collection('users').doc(participants[i].uid), {
-        gold: admin.firestore.FieldValue.increment(goldDelta),
+        gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('soygun'),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
       });
       policeEarningSmsList.push({ uid: participants[i].uid, amount: perPoliceEarning, viaTrap: creatorIsPolice });
@@ -7081,7 +7119,7 @@ export const executeHeistPlan = onCall(async (request) => {
       const { goldDelta, debtDelta } = splitIncomeForDebt(data?.debtToState, perPersonAmount);
       batch.update(db.collection('users').doc(p.uid), {
         suspicion: clampSuspicion(currentSuspicion + config.suspicionCost),
-        gold: admin.firestore.FieldValue.increment(goldDelta),
+        gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('soygun'),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
         // KULLANICI İSTEĞİ: attemptHeist'teki (solo soygun) AYNI kalıcı
         // sayaç — ekip soygunu başarıyla tamamlanan her katılımcı için de
@@ -7233,7 +7271,7 @@ export const expireRaceRooms = onSchedule({ schedule: 'every 5 minutes' }, async
     if (createdAtMs && now - createdAtMs >= FIVE_MIN) {
       refunds.push(
         db.collection('users').doc(room.creatorUid).update({
-          gold: admin.firestore.FieldValue.increment(room.betAmount),
+          gold: admin.firestore.FieldValue.increment(room.betAmount), goldTag: goldTag('yaris'),
         }),
         doc.ref.update({ status: 'cancelled' })
       );
@@ -7763,7 +7801,7 @@ export const expireOldMarketplaceListings = onSchedule({ schedule: 'every 24 hou
             );
           } else if (l.itemType === 'machine' && RETIRED_MACHINE_TYPES.includes(l.machineType)) {
             // v38: kaldırılan makine geri verilmez — satıcıya tazminat ödenir
-            tx.set(db.collection('users').doc(l.sellerId), { gold: admin.firestore.FieldValue.increment(YASAKLI_MACHINE_COMPENSATION) }, { merge: true });
+            tx.set(db.collection('users').doc(l.sellerId), { gold: admin.firestore.FieldValue.increment(YASAKLI_MACHINE_COMPENSATION), goldTag: goldTag('ikinciEl') }, { merge: true });
             addUserSms(tx, l.sellerId, `🏭 Yasaklı madde makineleri oyundan kaldırıldı. İlandaki makinen için ${YASAKLI_MACHINE_COMPENSATION.toLocaleString('tr-TR')} altın hesabına yatırıldı.`, 'factory_machine_retired_listing');
           } else if (l.itemType === 'machine') {
             const sellerMachinesRef = db.collection('factories').doc(l.sellerId).collection('machines');
@@ -8325,7 +8363,7 @@ function finalizeRace({ tx, roomRef, room, winnerUid, players, userRefs, userSna
     if (amount > 0) {
       const { goldDelta, debtDelta } = splitIncomeForDebt(userSnaps[u]?.data()?.debtToState, amount);
       tx.update(userRefs[u], {
-        gold: admin.firestore.FieldValue.increment(goldDelta),
+        gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('yaris'),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
       });
     }
@@ -8385,7 +8423,7 @@ export const createRaceRoom = onCall(async (request) => {
     if (!user || (user.gold || 0) < amount) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
-    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-amount) });
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-amount), goldTag: goldTag('yaris') });
     tx.set(roomRef, {
       status: 'waiting',
       engine: 'ta', // v78 — zamana karşı yarış
@@ -8420,7 +8458,7 @@ export const cancelRaceRoom = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Bu oda iptal edilemez.');
     }
     tx.update(db.collection('users').doc(uid), {
-      gold: admin.firestore.FieldValue.increment(room.betAmount),
+      gold: admin.firestore.FieldValue.increment(room.betAmount), goldTag: goldTag('yaris'),
     });
     tx.update(roomRef, { status: 'cancelled' });
   });
@@ -8449,7 +8487,7 @@ export const joinRaceRoom = onCall(async (request) => {
     if (!user || (user.gold || 0) < room.betAmount) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
-    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-room.betAmount) });
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-room.betAmount), goldTag: goldTag('yaris') });
     tx.update(roomRef, {
       status: 'ready',
       participantUids: admin.firestore.FieldValue.arrayUnion(uid),
@@ -8480,7 +8518,7 @@ export const declineOpponent = onCall(async (request) => {
     const joinerUid = room.participantUids.find((u) => u !== uid);
     if (joinerUid) {
       tx.update(db.collection('users').doc(joinerUid), {
-        gold: admin.firestore.FieldValue.increment(room.betAmount),
+        gold: admin.firestore.FieldValue.increment(room.betAmount), goldTag: goldTag('yaris'),
       });
     }
     tx.update(roomRef, {
@@ -8513,7 +8551,7 @@ export const leaveRaceRoomAsJoiner = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Bu odada değilsin.');
     }
     tx.update(db.collection('users').doc(uid), {
-      gold: admin.firestore.FieldValue.increment(room.betAmount),
+      gold: admin.firestore.FieldValue.increment(room.betAmount), goldTag: goldTag('yaris'),
     });
     tx.update(roomRef, {
       status: 'waiting',
@@ -8880,7 +8918,7 @@ async function processTrainingReward(roomId) {
     if (!alreadyBeaten) {
       const reward = level * TRAINING_REWARD_PER_LEVEL;
       tx.update(db.collection('users').doc(uid), {
-        gold: admin.firestore.FieldValue.increment(reward),
+        gold: admin.firestore.FieldValue.increment(reward), goldTag: goldTag('yaris'),
       });
     }
   });
@@ -9643,7 +9681,7 @@ export const instantSellListing = onCall(async (request) => {
       taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: resaleTax(payout), source: 'ikinciEl', uid, atMs: Date.now() });
       const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, payout - resaleTax(payout));
       tx.update(sellerRef, {
-        gold: admin.firestore.FieldValue.increment(goldDelta),
+        gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('ikinciEl'),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
       });
       tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-qty) }, { merge: true });
@@ -9701,7 +9739,7 @@ export const instantSellListing = onCall(async (request) => {
       taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: resaleTax(minPrice), source: 'ikinciEl', uid, atMs: Date.now() });
       const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, minPrice - resaleTax(minPrice));
       tx.update(sellerRef, {
-        gold: admin.firestore.FieldValue.increment(goldDelta),
+        gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('ikinciEl'),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
       });
       tx.update(vehicleRef, { listed: true });
@@ -9759,7 +9797,7 @@ export const instantSellListing = onCall(async (request) => {
       taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: resaleTax(minPrice), source: 'ikinciEl', uid, atMs: Date.now() });
       const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, minPrice - resaleTax(minPrice));
       tx.update(sellerRef, {
-        gold: admin.firestore.FieldValue.increment(goldDelta),
+        gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('ikinciEl'),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
       });
       tx.update(weaponRef, { listed: true });
@@ -9814,7 +9852,7 @@ export const instantSellListing = onCall(async (request) => {
       taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: resaleTax(minPrice), source: 'ikinciEl', uid, atMs: Date.now() });
       const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, minPrice - resaleTax(minPrice));
       tx.update(sellerRef, {
-        gold: admin.firestore.FieldValue.increment(goldDelta),
+        gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('ikinciEl'),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
       });
       tx.delete(machineRef);
@@ -9885,7 +9923,7 @@ export const cancelListing = onCall(async (request) => {
       );
     } else if (listing.itemType === 'machine' && RETIRED_MACHINE_TYPES.includes(listing.machineType)) {
       // v38: kaldırılan makine geri verilmez — satıcıya tazminat ödenir
-      tx.set(db.collection('users').doc(uid), { gold: admin.firestore.FieldValue.increment(YASAKLI_MACHINE_COMPENSATION) }, { merge: true });
+      tx.set(db.collection('users').doc(uid), { gold: admin.firestore.FieldValue.increment(YASAKLI_MACHINE_COMPENSATION), goldTag: goldTag('ikinciEl') }, { merge: true });
       addUserSms(tx, uid, `🏭 Yasaklı madde makineleri oyundan kaldırıldı. İlandaki makinen için ${YASAKLI_MACHINE_COMPENSATION.toLocaleString('tr-TR')} altın hesabına yatırıldı.`, 'factory_machine_retired_listing');
     } else if (listing.itemType === 'machine') {
       const factoryMachinesRef = db.collection('factories').doc(uid).collection('machines');
@@ -9950,7 +9988,7 @@ export const advertiseListing = onCall(async (request) => {
     if (!user || (user.gold || 0) < AD_PRICE) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
-    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-AD_PRICE) });
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-AD_PRICE), goldTag: goldTag('ikinciEl') });
     tx.update(listingRef, { adExpiresAt, adPurchasedAt: admin.firestore.FieldValue.serverTimestamp() });
   });
 
@@ -10036,7 +10074,7 @@ export const buyListing = onCall(async (request) => {
     }
 
     // Alıcıdan fiyat düşülür (malzemede sadece alınan adedin karşılığı).
-    tx.update(buyerRef, { gold: admin.firestore.FieldValue.increment(-cost) });
+    tx.update(buyerRef, { gold: admin.firestore.FieldValue.increment(-cost), goldTag: goldTag('ikinciEl') });
 
     // Satıcıya gelir — borç varsa Bölüm 10 kuralına göre bölüştürülür.
     // "Sistem" ilanlarında satıcı zaten anında ödemesini almıştı — bu para
@@ -10046,7 +10084,7 @@ export const buyListing = onCall(async (request) => {
     if (!isSystemListing) {
       const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, cost - saleTax);
       tx.update(sellerRef, {
-        gold: admin.firestore.FieldValue.increment(goldDelta),
+        gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('ikinciEl'),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
       });
     }
@@ -10375,7 +10413,7 @@ export const dealOnNumaraCards = onCall(async (request) => {
     // Bahisleri kes.
     eligible.forEach((u) => {
       const ref = db.collection('users').doc(u);
-      tx.update(ref, { gold: admin.firestore.FieldValue.increment(-table.betAmount) });
+      tx.update(ref, { gold: admin.firestore.FieldValue.increment(-table.betAmount), goldTag: goldTag('onNumara') });
     });
 
     // Kartları dağıt.
@@ -10484,7 +10522,7 @@ async function resolveOnNumaraIfDealerPhase(tableId) {
       const refundRefs = participants.map((u) => db.collection('users').doc(u));
       const newSeatsRefund = { ...table.seats };
       participants.forEach((u, i) => {
-        tx.update(refundRefs[i], { gold: admin.firestore.FieldValue.increment(table.betAmount) });
+        tx.update(refundRefs[i], { gold: admin.firestore.FieldValue.increment(table.betAmount), goldTag: goldTag('onNumara') });
         if (newSeatsRefund[u]) {
           const prevNet = typeof newSeatsRefund[u].netChange === 'number' ? newSeatsRefund[u].netChange : 0;
           newSeatsRefund[u] = {
@@ -10542,7 +10580,7 @@ async function resolveOnNumaraIfDealerPhase(tableId) {
       humanWinners.forEach((u, i) => {
         updatedHands[u] = { ...hands[u], status: 'won' };
         // 10 Numara kazancı borca gitmez — direkt altına eklenir.
-        tx.update(winnerRefs[i], { gold: admin.firestore.FieldValue.increment(share) });
+        tx.update(winnerRefs[i], { gold: admin.firestore.FieldValue.increment(share), goldTag: goldTag('onNumara') });
         if (newSeatsWin[u]) {
           const prevNet = typeof newSeatsWin[u].netChange === 'number' ? newSeatsWin[u].netChange : 0;
           newSeatsWin[u] = {
@@ -11463,7 +11501,7 @@ function returnFutbolTeamToPresident(teamRef, team, batch) {
   const treasuryLeft = team.treasury || 0;
   if (treasuryLeft > 0 && team.ownerUid) {
     batch.update(db.collection('users').doc(team.ownerUid), {
-      gold: admin.firestore.FieldValue.increment(treasuryLeft),
+      gold: admin.firestore.FieldValue.increment(treasuryLeft), goldTag: goldTag('futbol'),
     });
   }
   batch.update(teamRef, {
@@ -11617,6 +11655,8 @@ async function departFutbolManager(teamRef, team, reason, batch, options = {}) {
     squad_minimum: 'Takımın kadrosu minimum sınırın altına düştüğü için menajerlikten düştün',
     fired_by_owner: 'Başkan seni menajerlikten kovdu',
     higher_level_takeover: 'Takımı daha üst seviyeli bir menajer devraldığı için menajerlikten düştün',
+    multi_team_cleanup:
+      'Aynı anda birden fazla takımın menajeri olduğun tespit edildi, bu yüzden tüm takımlardan çıkarıldın. Sezon yasağın YOK — istediğin 1 takıma hemen tekrar başvurabilirsin',
   };
   const reasonText = FUTBOL_MANAGER_DEPARTURE_REASON_TEXT[reason] || 'Menajerlikten ayrıldın';
 
@@ -11632,7 +11672,7 @@ async function departFutbolManager(teamRef, team, reason, batch, options = {}) {
     const paid = Math.min(owed, treasury);
     treasury -= paid;
     if (paid > 0) {
-      batch.update(db.collection('users').doc(managerUid), { gold: admin.firestore.FieldValue.increment(paid) });
+      batch.update(db.collection('users').doc(managerUid), { gold: admin.firestore.FieldValue.increment(paid), goldTag: goldTag('futbol') });
     }
     const unpaid = owed - paid;
     sendFutbolSms(
@@ -11750,7 +11790,7 @@ async function departFutbolManager(teamRef, team, reason, batch, options = {}) {
     if (!options.skipTreasuryPayout) {
       if (treasury > 0) {
         batch.update(db.collection('users').doc(team.ownerUid), {
-          gold: admin.firestore.FieldValue.increment(treasury),
+          gold: admin.firestore.FieldValue.increment(treasury), goldTag: goldTag('futbol'),
         });
         sendFutbolSms(
           batch,
@@ -12110,6 +12150,13 @@ async function runFutbolDailyClock() {
       let blockReason = null;
       if (installedManagerUidsToday.has(incomingUid)) {
         blockReason = 'aynı gün içinde zaten başka bir takımın menajeri oldun';
+      } else if (
+        // v91: 1 oyuncu = 1 menajerlik — başka bir takımda FİİLEN menajerse yürütme.
+        (await db.collection('futbolTeams').where('managerUid', '==', incomingUid).limit(3).get()).docs.some(
+          (d) => d.id !== teamDoc.id
+        )
+      ) {
+        blockReason = 'zaten başka bir takımın menajerisin';
       } else {
         const ownsNowSnap = await db.collection('futbolTeams').where('ownerUid', '==', incomingUid).limit(1).get();
         if (!ownsNowSnap.empty) {
@@ -12194,7 +12241,7 @@ async function runFutbolDailyClock() {
         });
         team = { ...team, treasury: treasury - paid, salaryDebt: newDebt, managerFirstSalaryImmediate: false };
         if (paid > 0) {
-          batch.update(db.collection('users').doc(team.managerUid), { gold: admin.firestore.FieldValue.increment(paid) });
+          batch.update(db.collection('users').doc(team.managerUid), { gold: admin.firestore.FieldValue.increment(paid), goldTag: goldTag('futbol') });
         }
         if (newDebt > 0) {
           sendFutbolSms(
@@ -12274,7 +12321,7 @@ async function runFutbolDailyClock() {
             skipTreasuryPayout: true,
           });
         }
-        batch.update(db.collection('users').doc(team.ownerUid), { gold: admin.firestore.FieldValue.increment(payout) });
+        batch.update(db.collection('users').doc(team.ownerUid), { gold: admin.firestore.FieldValue.increment(payout), goldTag: goldTag('futbol') });
         sendFutbolSms(
           batch,
           team.ownerUid,
@@ -12833,7 +12880,7 @@ async function applyFutbolMatchResult(matchId, trainingIdsByTeam) {
     if (homeControlMode === 'OWNER_ACTIVE') {
       fanGoldEarned = ticketRevenue;
       batch.update(db.collection('users').doc(homeOwnerUid), {
-        gold: admin.firestore.FieldValue.increment(ticketRevenue),
+        gold: admin.firestore.FieldValue.increment(ticketRevenue), goldTag: goldTag('futbol'),
       });
     } else if (homeControlMode === 'MANAGED') {
       fanTreasuryEarned = ticketRevenue;
@@ -13104,7 +13151,7 @@ async function futbolCreditTeamIncome(writer, team, amount, leagueCount, opts = 
   const { personalText, panelText, notifType } = opts;
   if (mode === 'OWNER_ACTIVE') {
     writer.update(db.collection('users').doc(team.ownerUid), {
-      gold: admin.firestore.FieldValue.increment(amount),
+      gold: admin.firestore.FieldValue.increment(amount), goldTag: goldTag('futbol'),
     });
     if (personalText) sendFutbolSms(writer, team.ownerUid, personalText, notifType);
     return { destination: 'personal', credited: amount };
@@ -13772,7 +13819,7 @@ async function resolveFutbolCupBetsForRound(season, round) {
     const matchCountNote = picks.length > 1 ? `${picks.length} maçlık kombine kupon — ` : '';
     if (won) {
       const payout = bet.potentialPayout != null ? bet.potentialPayout : Math.round(bet.stake * (bet.odds || 1));
-      batch.update(db.collection('users').doc(bet.uid), { gold: admin.firestore.FieldValue.increment(payout) });
+      batch.update(db.collection('users').doc(bet.uid), { gold: admin.firestore.FieldValue.increment(payout), goldTag: goldTag('iddaa') });
       batch.update(d.ref, { status: 'won', payout });
       sendFutbolSms(
         batch,
@@ -13988,7 +14035,7 @@ async function finishFutbolSeasonPart1(leagueIds) {
       }
       if (controlMode === 'OWNER_ACTIVE') {
         rewardBatch.update(db.collection('users').doc(team.ownerUid), {
-          gold: admin.firestore.FieldValue.increment(reward),
+          gold: admin.firestore.FieldValue.increment(reward), goldTag: goldTag('futbol'),
         });
         sendFutbolSms(rewardBatch, team.ownerUid, personalText, 'futbol_season_end');
       } else if (controlMode === 'MANAGED') {
@@ -14240,7 +14287,7 @@ async function finishFutbolSeasonPart2(state) {
     const oldPlayersSnap = await db.collection('futbolPlayers').where('teamId', '==', teamDoc.id).get();
     const revertBatch = db.batch();
     revertBatch.update(db.collection('users').doc(team.ownerUid), {
-      gold: admin.firestore.FieldValue.increment(payout),
+      gold: admin.firestore.FieldValue.increment(payout), goldTag: goldTag('futbol'),
     });
     // v77 Faz 5: gerçek futbolcular silinmez; takım BOT olunca 19:00'da son maaşla ayrılırlar
     oldPlayersSnap.docs.forEach((d) => {
@@ -14560,7 +14607,7 @@ async function dailySweepFutbolTeamsBeforeMatchday() {
       const payout = Math.round((value * 2) / 3);
       const revertBatch = db.batch();
       revertBatch.update(db.collection('users').doc(team.ownerUid), {
-        gold: admin.firestore.FieldValue.increment(payout),
+        gold: admin.firestore.FieldValue.increment(payout), goldTag: goldTag('futbol'),
       });
       // v77 Faz 5: gerçek futbolcular silinmez (19:00'da son maaşla ayrılırlar)
       players.forEach((p) => {
@@ -15147,10 +15194,10 @@ export const buyFutbolTeam = onCall(async (request) => {
   }
 
   const batch = db.batch();
-  batch.update(userRef, { gold: admin.firestore.FieldValue.increment(-price) });
+  batch.update(userRef, { gold: admin.firestore.FieldValue.increment(-price), goldTag: goldTag('futbol') });
   if (isPlayerListing) {
     batch.update(db.collection('users').doc(team.ownerUid), {
-      gold: admin.firestore.FieldValue.increment(price),
+      gold: admin.firestore.FieldValue.increment(price), goldTag: goldTag('futbol'),
     });
     sendFutbolSms(
       batch,
@@ -15274,7 +15321,7 @@ export const sellFutbolTeam = onCall(async (request) => {
       skipTreasuryPayout: true,
     });
   }
-  batch.update(db.collection('users').doc(uid), { gold: admin.firestore.FieldValue.increment(instantPrice) });
+  batch.update(db.collection('users').doc(uid), { gold: admin.firestore.FieldValue.increment(instantPrice), goldTag: goldTag('futbol') });
   sendFutbolSms(
     batch,
     uid,
@@ -15320,6 +15367,96 @@ export const sellFutbolTeam = onCall(async (request) => {
 // menajerleri daha sonra "bu oyuncu artık uygun değil" hatasıyla
 // karşılaşmaz — istek zaten hiç görünmez olur. `exceptTeamId` verilirse o
 // takım dokunulmadan atlanır (zaten asıl işlemin konusu olan takım).
+// --- v91: "1 oyuncu = 1 menajerlik" kilidi ---------------------------------
+// KULLANICI İSTEĞİ: bir oyuncu AYNI ANDA yalnızca 1 takımın menajeri
+// olabilir. Eski kontroller (where managerUid==uid sorguları) transaction
+// DIŞINDA çalıştığı için iki takıma aynı anda (çift dokunma / iki sekme /
+// ağ gecikmesi) başvurulduğunda ikisi de geçebiliyordu. Artık her
+// menajerlik ataması/bekleyen devralma, transaction İÇİNDE
+// futbolManagerClaims/{uid} belgesini "kilitliyor". Kilit kendi kendini
+// iyileştirir: kilitteki takımda oyuncu artık ne menajer ne de bekleyen
+// devralan ise (istifa, kovulma, red, süre dolması…) kilit bayat sayılır ve
+// üzerine yazılır — bu yüzden ayrılış yollarında ayrıca silmeye gerek yok.
+async function futbolClaimManagerSlotTx(tx, uid, teamId) {
+  const claimRef = db.collection('futbolManagerClaims').doc(uid);
+  const claimSnap = await tx.get(claimRef);
+  const claimedTeamId = claimSnap.exists ? claimSnap.data().teamId : null;
+  if (claimedTeamId && claimedTeamId !== teamId) {
+    const otherSnap = await tx.get(db.collection('futbolTeams').doc(claimedTeamId));
+    const other = otherSnap.exists ? otherSnap.data() : null;
+    if (other && (other.managerUid === uid || other.pendingHandoverUid === uid)) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Aynı anda yalnızca 1 takımın menajeri olabilirsin — zaten bir takımda menajerliğin (ya da bekleyen bir devralman) var.'
+      );
+    }
+  }
+  return () => tx.set(claimRef, { teamId, at: admin.firestore.FieldValue.serverTimestamp() });
+}
+
+// futbolAssertNotManagingElsewhere — transaction DIŞI ön kontrol (eski/legacy
+// veriyi de yakalar): oyuncu exceptTeamId DIŞINDA bir takımda menajer ya da
+// bekleyen devralan mı?
+async function futbolIsManagingElsewhere(uid, exceptTeamId) {
+  const [managingSnap, pendingSnap] = await Promise.all([
+    db.collection('futbolTeams').where('managerUid', '==', uid).limit(3).get(),
+    db.collection('futbolTeams').where('pendingHandoverUid', '==', uid).limit(3).get(),
+  ]);
+  return [...managingSnap.docs, ...pendingSnap.docs].some((d) => d.id !== exceptTeamId);
+}
+
+// runFutbolMultiManagerCleanupV1 — TEK SEFERLİK (migration bayrağıyla).
+// KULLANICI İSTEĞİ: şu an 1'den fazla takımda menajer olan oyuncular TÜM
+// takımlardan çıkarılır; SEZON YASAĞI KONMAZ (departFutbolManager
+// 'multi_team_cleanup' sebebi banReasons'ta değil) — oyuncu istediği 1
+// takıma hemen tekrar başvurabilir. Bayrak create() ile atomik alınır,
+// iki istemci aynı anda tetiklese bile yalnızca biri çalıştırır.
+async function runFutbolMultiManagerCleanupV1() {
+  const migrationRef = db.collection('migrations').doc('futbolMultiManagerCleanupV1');
+  try {
+    await migrationRef.create({ startedAt: admin.firestore.FieldValue.serverTimestamp() });
+  } catch (err) {
+    return; // zaten çalıştı / şu an çalışıyor
+  }
+  try {
+    await runFutbolMultiManagerCleanupWork(migrationRef);
+  } catch (err) {
+    // Yarıda kalırsa bayrağı geri al ki bir sonraki tetiklemede tekrar denensin.
+    await migrationRef.delete().catch(() => {});
+    throw err;
+  }
+}
+async function runFutbolMultiManagerCleanupWork(migrationRef) {
+  const managedSnap = await db.collection('futbolTeams').where('managerUid', '!=', null).get();
+  const byUid = new Map();
+  managedSnap.docs.forEach((d) => {
+    const m = d.data().managerUid;
+    if (!m) return;
+    if (!byUid.has(m)) byUid.set(m, []);
+    byUid.get(m).push(d);
+  });
+  const removed = [];
+  for (const [managerUid, docs] of byUid) {
+    if (docs.length < 2) continue;
+    for (const teamDoc of docs) {
+      const freshSnap = await teamDoc.ref.get();
+      const fresh = freshSnap.data();
+      if (!fresh || fresh.managerUid !== managerUid) continue;
+      const batch = db.batch();
+      await departFutbolManager(teamDoc.ref, { ...fresh, id: teamDoc.id }, 'multi_team_cleanup', batch);
+      await batch.commit();
+      removed.push({ uid: managerUid, teamId: teamDoc.id, teamName: fresh.name || '' });
+    }
+    // Varsa başka takımlardaki bekleyen başvuru/devralmaları da temizle.
+    await cancelFutbolOtherPendingManagerRequests(managerUid, null);
+    await db.collection('futbolManagerClaims').doc(managerUid).delete().catch(() => {});
+  }
+  await migrationRef.set(
+    { ranAt: admin.firestore.FieldValue.serverTimestamp(), removedCount: removed.length, removed },
+    { merge: true }
+  );
+}
+
 async function cancelFutbolOtherPendingManagerRequests(uid, exceptTeamId) {
   const [appsSnap, pendingSnap] = await Promise.all([
     db.collectionGroup('managerApplications').where('applicantUid', '==', uid).get(),
@@ -15440,9 +15577,12 @@ export const applyFutbolManager = onCall(async (request) => {
       const freshSnap = await tx.get(teamRef);
       if (!freshSnap.exists) throw new HttpsError('not-found', 'Takım bulunamadı.');
       const freshTeam = freshSnap.data();
+      // v91: 1 oyuncu = 1 menajerlik kilidi (okumalar yazmalardan önce).
+      const commitClaim = await futbolClaimManagerSlotTx(tx, uid, teamId);
       if (freshTeam.managerUid || freshTeam.pendingHandoverUid) {
         throw new HttpsError('failed-precondition', 'Bu takım artık uygun değil, başka biri seni geçti.');
       }
+      commitClaim();
       if (startImmediately) {
         // Göreve anında başlıyor — pendingHandoverUid'e hiç girmeden
         // doğrudan managerUid/managerSince yazılır. managerFirstSalaryImmediate
@@ -15559,6 +15699,17 @@ export const respondFutbolManagerApplication = onCall(async (request) => {
     );
   }
   const applicant = appSnap.data();
+  // v91: 1 oyuncu = 1 menajerlik kilidi — aynı anda başka bir takımın da
+  // onu kabul etmesi (yarış durumu) engellenir.
+  await db.runTransaction(async (tx) => {
+    const freshSnap = await tx.get(teamRef);
+    const commitClaim = await futbolClaimManagerSlotTx(tx, applicantUid, teamId);
+    const fresh = freshSnap.data() || {};
+    if (fresh.managerUid || fresh.pendingHandoverUid) {
+      throw new HttpsError('failed-precondition', 'Bu takım artık uygun değil.');
+    }
+    commitClaim();
+  });
 
   // KULLANICI REVİZESİ: başkan başvuruyu 18:00-18:59 DIŞINDA onaylarsa yeni
   // menajer göreve HEMEN başlar (sonraki 19:00'ı beklemeye gerek yok); TAM
@@ -15668,13 +15819,24 @@ export const requestFutbolManagerHandover = onCall(async (request) => {
   }
 
   const isBotOrigin = !team.ownerUid;
-  const batch = db.batch();
-  batch.update(teamRef, {
-    pendingHandoverUid: uid,
-    pendingHandoverLevel: requesterLevel,
-    pendingHandoverApproved: isBotOrigin, // bot kökenli — onaylayacak başkan yok, anında onaylı.
-    pendingHandoverAt: admin.firestore.FieldValue.serverTimestamp(),
+  // v91: bekleyen devralma da "menajerlik hakkı" sayılır — transaction
+  // içinde kilitlenir, aynı anda ikinci bir takıma talep gönderilemez.
+  await db.runTransaction(async (tx) => {
+    const freshSnap = await tx.get(teamRef);
+    const commitClaim = await futbolClaimManagerSlotTx(tx, uid, teamId);
+    const fresh = freshSnap.data() || {};
+    if (!fresh.managerUid || fresh.managerUid === uid || fresh.pendingHandoverUid) {
+      throw new HttpsError('failed-precondition', 'Bu takım artık uygun değil.');
+    }
+    commitClaim();
+    tx.update(teamRef, {
+      pendingHandoverUid: uid,
+      pendingHandoverLevel: requesterLevel,
+      pendingHandoverApproved: isBotOrigin, // bot kökenli — onaylayacak başkan yok, anında onaylı.
+      pendingHandoverAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
   });
+  const batch = db.batch();
   if (isBotOrigin) {
     sendFutbolSms(
       batch,
@@ -15881,7 +16043,7 @@ export const withdrawFutbolTreasury20Percent = onCall(async (request) => {
       treasury: admin.firestore.FieldValue.increment(-requested),
       treasuryWithdrawnToday: alreadyWithdrawn + requested,
     });
-    tx.update(db.collection('users').doc(uid), { gold: admin.firestore.FieldValue.increment(requested) });
+    tx.update(db.collection('users').doc(uid), { gold: admin.firestore.FieldValue.increment(requested), goldTag: goldTag('futbol') });
     // Bölüm 11-A: "kasadan para çekme" başkan için bir aktivite sinyalidir.
     futbolHandlePresidentActivity(teamRef, team, tx);
     return requested;
@@ -15968,7 +16130,7 @@ export const respondFutbolTreasuryWithdrawRequest = onCall(async (request) => {
       treasury: admin.firestore.FieldValue.increment(-amount),
       pendingTreasuryWithdrawRequest: admin.firestore.FieldValue.delete(),
     });
-    batch.update(db.collection('users').doc(team.ownerUid), { gold: admin.firestore.FieldValue.increment(amount) });
+    batch.update(db.collection('users').doc(team.ownerUid), { gold: admin.firestore.FieldValue.increment(amount), goldTag: goldTag('futbol') });
     sendFutbolSms(
       batch,
       team.ownerUid,
@@ -16017,7 +16179,7 @@ export const donateFutbolTreasury = onCall(async (request) => {
     if ((userSnap.data()?.gold || 0) < cleanAmount) {
       throw new HttpsError('failed-precondition', 'Yeterli altının yok.');
     }
-    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-cleanAmount) });
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-cleanAmount), goldTag: goldTag('futbol') });
     tx.update(teamRef, { treasury: admin.firestore.FieldValue.increment(cleanAmount) });
     if (uid === team.managerUid) {
       tx.update(teamRef, { managerLastActiveDateKey: istanbulDateKey() });
@@ -16698,6 +16860,8 @@ async function runFutbolPendingManagerPromotionFix() {
       // talep başka bir şekilde temizlenmiş olabilir — o zaman atla.
       if (freshTeam.managerUid || !freshTeam.pendingHandoverUid || !freshTeam.pendingHandoverApproved) return null;
       const incomingUid = freshTeam.pendingHandoverUid;
+      // v91: 1 oyuncu = 1 menajerlik — zaten bu turda/başka yerde menajerse atla.
+      if (results.some((r) => r.uid === incomingUid)) return null;
       tx.update(teamRef, {
         managerUid: incomingUid,
         managerSince: admin.firestore.FieldValue.serverTimestamp(),
@@ -16749,6 +16913,9 @@ export const resetFutbolTransferMarket = onCall(async (request) => {
   // yukarıdaki fonksiyonu kod tabanından temizleyebilirsin — ama gerek yok,
   // kalıcı bir maliyeti/yan etkisi yok.
   await runFutbolPendingManagerPromotionFix();
+  // v91 TEK SEFERLİK: birden fazla takımda menajer olanları tüm takımlardan
+  // çıkarır (sezon yasağı YOK). Kendi bayrağıyla korunur.
+  await runFutbolMultiManagerCleanupV1();
   return { ok: true };
 });
 
@@ -16817,7 +16984,7 @@ export const instantSellFutbolPlayer = onCall(async (request) => {
   if (mode === 'MANAGED') {
     batch.update(teamRef, { treasury: admin.firestore.FieldValue.increment(instantPrice) });
   } else {
-    batch.update(db.collection('users').doc(uid), { gold: admin.firestore.FieldValue.increment(instantPrice) });
+    batch.update(db.collection('users').doc(uid), { gold: admin.firestore.FieldValue.increment(instantPrice), goldTag: goldTag('futbol') });
   }
   futbolMarkControllerActive(teamRef, team, batch);
   sendFutbolSms(
@@ -17011,12 +17178,12 @@ export const buyFutbolPlayer = onCall(async (request) => {
     batch.update(teamRef, { treasury: admin.firestore.FieldValue.increment(-spendPlan.fromTreasury) });
   }
   if (spendPlan.fromPersonal > 0) {
-    batch.update(userRef, { gold: admin.firestore.FieldValue.increment(-spendPlan.fromPersonal) });
+    batch.update(userRef, { gold: admin.firestore.FieldValue.increment(-spendPlan.fromPersonal), goldTag: goldTag('futbol') });
   }
   futbolMarkControllerActive(teamRef, team, batch);
   if (player.saleSource === 'manual' && player.sellerUid) {
     batch.update(db.collection('users').doc(player.sellerUid), {
-      gold: admin.firestore.FieldValue.increment(price),
+      gold: admin.firestore.FieldValue.increment(price), goldTag: goldTag('futbol'),
     });
     sendFutbolSms(
       batch,
@@ -17073,6 +17240,8 @@ export const buyFutbolPlayer = onCall(async (request) => {
 // hesaplanıp paylaşılır — gereksiz tekrar taramayı önler.
 export const futbolTransferMarketHourlyMaintenance = onSchedule({ schedule: 'every 60 minutes' }, async () => {
   await runFutbolDataIntegrityFix();
+  // v91 TEK SEFERLİK: çoklu menajerlik temizliği (bayraklı — sonra ucuz tek okuma).
+  await runFutbolMultiManagerCleanupV1().catch((e) => console.error('runFutbolMultiManagerCleanupV1', e));
   // v77 Faz 5: 24 saati geçen teklifler + kasaya para geldiyse eski maaş borçları
   await futbolPro.expireOffers().catch((e) => console.error('futbolPro.expireOffers', e));
   await futbolPro.settleTeamDebts().catch((e) => console.error('futbolPro.settleTeamDebts', e));
@@ -17264,7 +17433,7 @@ export const payFutbolTrainingSlot = onCall(async (request) => {
       tx.update(teamRef, { treasury: admin.firestore.FieldValue.increment(-price) });
     } else {
       if ((userSnap.data()?.gold || 0) < price) throw new HttpsError('failed-precondition', 'gold');
-      tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-price) });
+      tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-price), goldTag: goldTag('futbol') });
     }
     gym.payGymTx(tx, { gymId, h: g, ownerSnap, amount: price, customerUid: `team_${teamRef.id}`, kind: 'team', atMs: Date.now(), products: { [`takım:${position}`]: 1 } });
     tx.update(teamRef, {
@@ -17353,7 +17522,7 @@ export const assignFutbolDoctor = onCall(async (request) => {
       tx.update(teamRef, { treasury: admin.firestore.FieldValue.increment(-spendPlan.fromTreasury) });
     }
     if (spendPlan.fromPersonal > 0) {
-      tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-spendPlan.fromPersonal) });
+      tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-spendPlan.fromPersonal), goldTag: goldTag('futbol') });
     }
     futbolMarkControllerActive(teamRef, team, tx);
     // cancelFutbolDoctor tam olarak NEREDEN ne kadar düştüğünü (destek/
@@ -17404,7 +17573,7 @@ export const cancelFutbolDoctor = onCall(async (request) => {
     }
     if (plan.fromPersonal > 0) {
       tx.update(db.collection('users').doc(plan.payerUid || uid), {
-        gold: admin.firestore.FieldValue.increment(plan.fromPersonal),
+        gold: admin.firestore.FieldValue.increment(plan.fromPersonal), goldTag: goldTag('futbol'),
       });
     }
     tx.update(teamRef, {
@@ -17737,7 +17906,7 @@ export const placeFutbolBet = onCall(async (request) => {
   const potentialPayout = Math.round(cleanStake * combinedOdds);
   const betRef = db.collection('futbolBets').doc();
   const batch = db.batch();
-  batch.update(userRef, { gold: admin.firestore.FieldValue.increment(-cleanStake) });
+  batch.update(userRef, { gold: admin.firestore.FieldValue.increment(-cleanStake), goldTag: goldTag('iddaa') });
   batch.set(betRef, {
     uid,
     leagueId,
@@ -17794,7 +17963,7 @@ async function resolveFutbolBetsForRound(leagueId, round) {
     if (won) {
       const payout = bet.potentialPayout != null ? bet.potentialPayout : Math.round(bet.stake * (bet.odds || 1));
       batch.update(db.collection('users').doc(bet.uid), {
-        gold: admin.firestore.FieldValue.increment(payout),
+        gold: admin.firestore.FieldValue.increment(payout), goldTag: goldTag('iddaa'),
       });
       batch.update(d.ref, { status: 'won', payout });
       sendFutbolSms(
@@ -17886,7 +18055,7 @@ export const placeFutbolCupBet = onCall(async (request) => {
   const potentialPayout = Math.round(cleanStake * combinedOdds);
   const betRef = db.collection('futbolCupBets').doc();
   const batch = db.batch();
-  batch.update(userRef, { gold: admin.firestore.FieldValue.increment(-cleanStake) });
+  batch.update(userRef, { gold: admin.firestore.FieldValue.increment(-cleanStake), goldTag: goldTag('iddaa') });
   batch.set(betRef, {
     uid,
     season,
@@ -19216,7 +19385,7 @@ async function processFutbolSponsorshipsNightly() {
     payerDebt.set(job.factoryOwnerUid, (payerDebt.get(job.factoryOwnerUid) || 0) + shortfall);
 
     payBatch.update(db.collection('users').doc(job.factoryOwnerUid), {
-      gold: admin.firestore.FieldValue.increment(-paidFromGold),
+      gold: admin.firestore.FieldValue.increment(-paidFromGold), goldTag: goldTag('futbol'),
       debtToState: admin.firestore.FieldValue.increment(shortfall),
     });
     payOpCount += 1;
@@ -19224,7 +19393,7 @@ async function processFutbolSponsorshipsNightly() {
     let treasuryDelta = 0;
     if (job.controlMode === 'OWNER_ACTIVE') {
       payBatch.update(db.collection('users').doc(job.ownerUid), {
-        gold: admin.firestore.FieldValue.increment(job.amount),
+        gold: admin.firestore.FieldValue.increment(job.amount), goldTag: goldTag('futbol'),
       });
       payOpCount += 1;
     } else if (job.controlMode === 'MANAGED') {
@@ -19502,7 +19671,7 @@ export const upgradeFutbolStadium = onCall(async (request) => {
     batch.update(teamRef, { treasury: admin.firestore.FieldValue.increment(-spendPlan.fromTreasury) });
   }
   if (spendPlan.fromPersonal > 0) {
-    batch.update(userRef, { gold: admin.firestore.FieldValue.increment(-spendPlan.fromPersonal) });
+    batch.update(userRef, { gold: admin.firestore.FieldValue.increment(-spendPlan.fromPersonal), goldTag: goldTag('futbol') });
   }
   batch.update(teamRef, { stadiumCapacity: nextStep.capacity });
   futbolMarkControllerActive(teamRef, team, batch);
@@ -19769,6 +19938,39 @@ export const getMyRedemptionCode = onCall(async (request) => {
 
 // v66 — buyEmeraldOffer: zümrüt karşılığı altın paketi. Bakiye transaction
 // içinde kontrol edilir → zümrütü yetmeyen alamaz, çift tıklama iki kez düşmez.
+// v91 — Google Play Faturalandırma: Android uygulaması içinden zümrüt satın
+// alma. Ayrıntı ve Play Console adımları: functions/playBilling.js ve
+// docs/play-store/03-PLAY-FATURALANDIRMA-ZUMRUT.md
+const playBilling = createPlayBilling({
+  db,
+  FieldValue: admin.firestore.FieldValue,
+  HttpsError,
+  writeGoldStorePackage,
+  packages: GOLD_STORE_PACKAGES,
+  playApi: createGooglePlayApi(),
+});
+export const verifyPlayPurchase = onCall(async (request) => {
+  const uid = requireAuth(request);
+  return playBilling.verifyPlayPurchase(uid, request.data || {});
+});
+// v91.1 — İade koruması + teslim güvencesi: 30 dakikada bir Google'ın iade
+// listesi taranır (iade edilen zümrüt geri alınır) ve "teslim edildi"
+// bildirilememiş satın almalar tekrar denenir.
+export const playBillingSweep = onSchedule({ schedule: 'every 30 minutes', timeoutSeconds: 300 }, async () => {
+  try {
+    const v = await playBilling.processVoidedPurchases();
+    if (v.revoked || v.notCredited) console.log('playBilling voided', JSON.stringify(v));
+  } catch (err) {
+    console.error('playBilling voided sweep', err?.response?.status || '', err?.message);
+  }
+  try {
+    const c = await playBilling.retryPendingConsumes();
+    if (c.consumed) console.log('playBilling consume retry', JSON.stringify(c));
+  } catch (err) {
+    console.error('playBilling consume retry', err?.message);
+  }
+});
+
 export const buyEmeraldOffer = onCall(async (request) => {
   const uid = requireAuth(request);
   const offer = EMERALD_SHOP_OFFERS[String(request.data?.offerId || '')];
@@ -19780,7 +19982,7 @@ export const buyEmeraldOffer = onCall(async (request) => {
     if (emerald < offer.cost) throw new HttpsError('failed-precondition', `Yetersiz zümrüt (${emerald}/${offer.cost}).`);
     tx.update(userRef, {
       emerald: admin.firestore.FieldValue.increment(-offer.cost),
-      gold: admin.firestore.FieldValue.increment(offer.gold),
+      gold: admin.firestore.FieldValue.increment(offer.gold), goldTag: goldTag('zumrut'),
     });
     Object.entries(offer.items).forEach(([materialType, qty]) => {
       tx.set(userRef.collection('inventory').doc(materialType), { quantity: admin.firestore.FieldValue.increment(qty) }, { merge: true });
@@ -19803,7 +20005,10 @@ function writeGoldStorePackage(tx, uid, packageId) {
   if (!pack) throw new Error(`Bilinmeyen paket: ${packageId}`);
   const userRef = db.collection('users').doc(uid);
   const inc = {};
-  if (pack.gold) inc.gold = admin.firestore.FieldValue.increment(pack.gold);
+  if (pack.gold) {
+    inc.gold = admin.firestore.FieldValue.increment(pack.gold);
+    inc.goldTag = goldTag('altinMagaza');
+  }
   if (pack.emerald) inc.emerald = admin.firestore.FieldValue.increment(pack.emerald);
   tx.set(userRef, inc, { merge: true });
   Object.entries(pack.items).forEach(([materialType, qty]) => {

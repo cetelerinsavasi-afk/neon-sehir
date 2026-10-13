@@ -845,6 +845,18 @@ export default function WeaponShopWorldScreen({ onExit }) {
     <div className="ws-fullscreen" style={{ '--ws-bg': '#131316', '--ws-panel-bg': '#1c1c24' }}>
       <Hud suspicion={player?.suspicion ?? 0} reputation={player?.reputation ?? 0} gold={player?.gold ?? 0} />
       <button className="ws-exit-btn" onClick={onExit}>✕</button>
+      {/* v91 KULLANICI İSTEĞİ: oyuncu işletmelerindeki gibi üstte hızlı
+          butonlar — tezgâha yürümeden de açılır. */}
+      {ready && !panel && (
+        <div className="ws-topbtns">
+          <button className="ws-topbtn" onClick={() => { setShopTab('buy'); setPanel('weapon'); }}>
+            🔫 Satılık silahlar
+          </button>
+          <button className="ws-topbtn" onClick={() => { setShopTab('workshop'); setPanel('weapon'); }}>
+            🛠️ Tamir / Geliştirme
+          </button>
+        </div>
+      )}
 
       <div className="ws-canvas-wrap">
         {!ready && <div className="ws-loading">Silah mağazasına giriliyor…</div>}
@@ -901,7 +913,7 @@ export default function WeaponShopWorldScreen({ onExit }) {
           <div className="ws-panel" onClick={(e) => e.stopPropagation()}>
             <div className="bz-tabs ws-shop-tabs">
               <button className={shopTab === 'buy' ? 'on' : ''} onClick={() => setShopTab('buy')}>
-                🔫 Silah satın al
+                🔫 Satılık silahlar
               </button>
               <button className={shopTab === 'workshop' ? 'on' : ''} onClick={() => setShopTab('workshop')}>
                 🛠️ Tamir / Geliştirme

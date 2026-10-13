@@ -34,7 +34,8 @@ export function createBusiness({ db, FieldValue, now = () => Date.now() }) {
   // Sadece YAZMA (transaction'ın en sonunda çağrılabilir). Sahibin kendi
   // alışverişi müşteri sayılmaz ve rapora yazılmaz.
   // v77 vergi: `tax` → rapora (günlük `tax`) ve vergi defterine (functions/tax.js)
-  function recordIncomeTx(tx, { houseId, h, amount, kind, customerUid, products, materialsUsed, materialsIn, atMs, tax = 0, taxSource = 'isletme' }) {
+  // v92 — `salary`: garsona ödenen maaş (cafe/bar) → rapordaki gider satırı
+  function recordIncomeTx(tx, { houseId, h, amount, kind, customerUid, products, materialsUsed, materialsIn, atMs, tax = 0, taxSource = 'isletme', salary = 0 }) {
     const type = h?.biz?.type;
     if (!type || !houseId) return null;
     if (customerUid && customerUid === h.ownerUid) return null;
@@ -56,6 +57,11 @@ export function createBusiness({ db, FieldValue, now = () => Date.now() }) {
       patch.tax = FieldValue.increment(tx10);
       patch.taxByKind = { [k]: FieldValue.increment(tx10) };
       taxLedgerWrite(tx, db, FieldValue, { amount: tx10, source: taxSource, uid: h.ownerUid, atMs: atMs ?? now(), ref: houseId });
+    }
+    const sal = Math.max(0, Math.round(Number(salary) || 0));
+    if (sal > 0) {
+      patch.salary = FieldValue.increment(sal);
+      patch.salaryOrders = FieldValue.increment(1);
     }
     const addMap = (field, m) => {
       if (!m) return;

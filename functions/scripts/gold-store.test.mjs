@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { goldTag } from '../moneyLog.js';
 import { FakeFirestore, FieldValue, Timestamp } from '../gang/test/fakeFirestore.js';
 import { createAdminPanel } from '../adminPanel.js';
 
@@ -40,7 +41,9 @@ function setup() {
   const S = (p, d) => db._store.set(p, { data: d, version: 1 });
   const G = (p) => db._store.get(p)?.data;
   const admin = { firestore: { FieldValue }, auth: () => ({ getUserByEmail: async () => { throw new Error('auth/user-not-found'); } }) };
-  const fns = new Function('db', 'admin', 'HttpsError', 'onRequest', 'crypto', 'shopierOsbUsername', 'shopierOsbPassword', 'extractShopierOsbFields', code)(
+  const fns = new Function(
+    'goldTag', 'db', 'admin', 'HttpsError', 'onRequest', 'crypto', 'shopierOsbUsername', 'shopierOsbPassword', 'extractShopierOsbFields', code)(
+    goldTag, 
     db, admin, HttpsError, (_opts, fn) => fn, crypto, { value: () => USER }, { value: () => PASS }, async (req) => req.body
   );
   S('redemptionCodes/ABC234', { uid: 'oyuncu' });

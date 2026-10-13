@@ -13,6 +13,9 @@ const PRESENCE_STALE_MS = 60_000;
 export function useBusinessList(type, { enabled = true, includeGame = false } = {}) {
   const { user } = useAuth();
   const [rows, setRows] = useState([]);
+  // v91: satırlar hangi türe ait? Tür değişince eski türün satırları bir an
+  // bile görünmesin; yeni tür yüklenene kadar "yükleniyor" sayılır.
+  const [rowsType, setRowsType] = useState(null);
   const [loading, setLoading] = useState(true);
   const presence = usePolledPresence('housePresence', { enabled: enabled && Boolean(user) && Boolean(type), max: 400 });
   // oyunun dükkânının sırası (gameVenues/{tür}.bizRank) — o da kazancına göre yer alır
@@ -36,10 +39,12 @@ export function useBusinessList(type, { enabled = true, includeGame = false } = 
       query(collection(db, 'houses'), where('bizType', '==', type), limit(200)),
       (s) => {
         setRows(s.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setRowsType(type);
         setLoading(false);
       },
       (e) => {
         console.error('useBusinessList:', e);
+        setRowsType(type);
         setLoading(false);
       }
     );
@@ -59,6 +64,7 @@ export function useBusinessList(type, { enabled = true, includeGame = false } = 
       .map((h) => ({ ...h, people: counts[h.id] || 0, mine: h.ownerUid === uid }));
     const rank = (h) => (Number.isFinite(h.bizRank) && h.bizRank > 0 ? h.bizRank : Infinity);
     list.sort((a, b) => rank(a) - rank(b) || (a.biz?.openedAtMs || 0) - (b.biz?.openedAtMs || 0));
-    return { loading, list, gameRank, gamePeople: counts[`game_${type}`] || 0 };
-  }, [rows, presence, user?.uid, loading, gameRank, type, includeGame]);
+    const stale = enabled && Boolean(user) && Boolean(type) && rowsType !== type;
+    return { loading: loading || stale, list: stale ? [] : list, gameRank, gamePeople: counts[`game_${type}`] || 0 };
+  }, [rows, rowsType, presence, user, enabled, loading, gameRank, type, includeGame]);
 }

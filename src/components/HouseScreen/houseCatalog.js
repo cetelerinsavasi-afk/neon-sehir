@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { labelTexture, cityTexture } from './houseTextures';
+import { labelTexture, cityTexture, viewTexture, WINDOW_VIEWS } from './houseTextures';
 import { ITEM_PRICES, HOUSE_TAKEABLES } from '../../../functions/houseCatalogData.js';
+import { v92CatalogEntries, V92_CATEGORIES, BOSSTABLE_TINTS, marketShelfV92 } from './houseCatalogV92';
 
 // =============================================================================
 // houseCatalog.js — Ev eşyaları kataloğu.
@@ -161,6 +162,7 @@ export const TINTS = {
   ],
 };
 
+TINTS.bosstable = BOSSTABLE_TINTS; // v92 — Patron Masası renkleri
 const tintHex = (ctx, fallback) => (ctx.tint ? ctx.tint.c : fallback);
 
 export const CATEGORIES = [
@@ -182,6 +184,7 @@ export const CATEGORIES = [
   { key: 'spor', name: 'Spor & Oyun', icon: '🎱' },
   { key: 'dis', name: 'Dış Mekan', icon: '🌳' },
   { key: 'yapi', name: 'Yapı', icon: '🧱' },
+  ...V92_CATEGORIES,
 ];
 
 // =============================================================================
@@ -819,7 +822,9 @@ function djBooth(g) {
 // =============================================================================
 // SİLAHLAR (duvar/vitrin için modeller — x ekseni boyunca yatık, +z'ye bakar)
 // =============================================================================
-function gunModel(type, gold = false) {
+// v92 — silahların gerçek boyu (dolapta ve elde aynı ölçek)
+export const HELD_GUN_SCALE = { pistol: 1.25, deagle: 1.15, uzi: 1.1, ak: 0.95, shotgun: 0.95, sniper: 0.95 };
+export function gunModel(type, gold = false) {
   const g = new THREE.Group();
   const met = gold ? GOLD() : M('#1d1f22', 0.35, 0.8);
   const met2 = gold ? M('#b8862e', 0.3, 1) : M('#2c2f33', 0.4, 0.7);
@@ -904,12 +909,22 @@ function gunCabinet(g, ctx) {
   B(g, 1.3, 1.9, 0.01, 0, 1.08, -0.2, M('#0a0a0c', 0.6));
   B(g, 1.3, 1.9, 0.01, 0, 1.08, 0.251, GLASS());
   [-0.34, 0.34].forEach((x) => B(g, 0.02, 0.06, 0.03, x, 1.1, 0.27, CHROME()));
-  ['ak', 'shotgun', 'sniper', 'ak'].forEach((t, i) => {
+  // v92 — dolapta, dolaptan alınabilen silahların AYNISI durur (Tüfek = AK,
+  // Pompalı = av tüfeği, Tabanca = alt raftaki tabancalar). Eldeki silah da bu
+  // modellerle aynı boyda çizilir (houseEngine → HELD_GUNS).
+  ['ak', 'shotgun', 'ak', 'shotgun'].forEach((t, i) => {
     const gun = gunModel(t, false);
     gun.rotation.z = Math.PI / 2;
-    gun.position.set(-0.48 + i * 0.32, 1.12, -0.05);
-    gun.scale.setScalar(1.3);
+    gun.position.set(-0.48 + i * 0.32, 1.3, -0.05);
+    gun.scale.setScalar(HELD_GUN_SCALE[t]);
     g.add(gun);
+  });
+  B(g, 1.3, 0.025, 0.42, 0, 0.5, 0.02, M('#2a2b30', 0.5, 0.4)); // alt raf
+  [-0.3, 0.3].forEach((x) => {
+    const p = gunModel('pistol', false);
+    p.position.set(x, 0.64, 0.02);
+    p.scale.setScalar(HELD_GUN_SCALE.pistol);
+    g.add(p);
   });
   const led = emissiveMat('#ffffff', 1.4);
   B(g, 1.28, 0.02, 0.05, 0, 2.02, 0.0, led);
@@ -1536,10 +1551,18 @@ function floorLamp(g, ctx) {
 function neonBuild(text, font = 'italic bold 110px Georgia, serif') {
   return (g, ctx) => {
     const col = tintHex(ctx, '#ff2d8a');
-    const tx = labelTexture(`neon_${text}_${col}`, 512, 192, (c, w, h) => {
+    const tx = labelTexture(`neon2_${text}_${col}`, 512, 192, (c, w, h) => {
       c.fillStyle = '#060608';
       c.fillRect(0, 0, w, h);
+      // v92 — yazı tabelaya sığmazsa (ör. "NEON ŞEHİR") yazı boyu küçültülür;
+      // kenarlarda parıltı payı bırakılır.
       c.font = font;
+      const maxW = w * 0.84;
+      const tw = c.measureText(text).width;
+      if (tw > maxW) {
+        const px = Number((font.match(/(\d+(?:\.\d+)?)px/) || [])[1] || 100);
+        c.font = font.replace(/\d+(?:\.\d+)?px/, `${Math.floor((px * maxW) / tw)}px`);
+      }
       c.textAlign = 'center';
       c.textBaseline = 'middle';
       c.shadowColor = col;
@@ -1891,6 +1914,21 @@ function windowCity(g) {
   B(g, 2.0, 0.05, 0.22, 0, 0.88, 0.1, M('#e6e2da', 0.3));
   return { light: { x: 0, y: 1.65, z: 0.6, color: '#8a7aff', intensity: 1.2, distance: 4 }, on: true, setOn() {}, noToggle: true };
 }
+// v92 — farklı manzaralı pencereler (aynı çerçeve, farklı manzara)
+function windowView(kind) {
+  return (g) => {
+    const fr = M('#e9e6df', 0.35, 0.05);
+    RB(g, 1.9, 1.5, 0.08, 0.02, 0, 1.65, 0.03, fr);
+    const cm = own(new THREE.MeshStandardMaterial({ color: '#000', emissive: '#ffffff', emissiveMap: viewTexture(kind), emissiveIntensity: 0.95 }));
+    PLANE(g, 1.76, 1.36, cm, 0, 1.65, 0.075);
+    B(g, 0.03, 1.36, 0.04, 0, 1.65, 0.09, fr);
+    B(g, 1.76, 0.03, 0.04, 0, 1.65, 0.09, fr);
+    // cam yansıması
+    PLANE(g, 1.76, 1.36, M('#ffffff', 0.05, 0, { transparent: true, opacity: 0.06, depthWrite: false }), 0, 1.65, 0.1);
+    B(g, 2.0, 0.05, 0.22, 0, 0.88, 0.1, M('#e6e2da', 0.3));
+    return { light: { x: 0, y: 1.65, z: 0.6, color: WINDOW_VIEWS[kind]?.light || '#ffffff', intensity: 1.2, distance: 4 }, on: true, setOn() {}, noToggle: true };
+  };
+}
 function doorDecor(g) {
   const fr = M('#1b1b1d', 0.4);
   B(g, 1.2, 2.3, 0.1, 0, 1.15, 0.05, fr);
@@ -1946,35 +1984,6 @@ function garageDoor(g, ctx) {
 // v66 — YENİ EŞYALAR (dükkan, kafe, kulüp, spor, ofis, dış mekan, duvar süsleri)
 // =============================================================================
 const PRODUCT_COLS = ['#d23a3a', '#e0a800', '#1f6fb8', '#2d8a4a', '#ff7a1a', '#ececec', '#7a1f8a', '#19a0b8'];
-function productRow(g, x0, x1, y, z, depth, seed = 0) {
-  let x = x0;
-  let i = seed;
-  while (x < x1 - 0.06) {
-    const kind = i % 3;
-    const col = M(PRODUCT_COLS[(i * 5) % PRODUCT_COLS.length], 0.5);
-    if (kind === 0) {
-      B(g, 0.1, 0.16, depth, x + 0.05, y + 0.08, z, col);
-      x += 0.12;
-    } else if (kind === 1) {
-      C(g, 0.035, 0.035, 0.18, x + 0.04, y + 0.09, z, col, null, 10);
-      x += 0.09;
-    } else {
-      B(g, 0.14, 0.09, depth, x + 0.07, y + 0.045, z, col);
-      x += 0.16;
-    }
-    i++;
-  }
-}
-function marketShelf(g, ctx) {
-  const m = M(tintHex(ctx, '#e8e4dc'), 0.4, 0.3);
-  B(g, 1.6, 1.8, 0.05, 0, 0.9, -0.22, m);
-  [-0.8, 0.8].forEach((x) => B(g, 0.04, 1.8, 0.5, x, 0.9, 0, m));
-  [0.1, 0.55, 1.0, 1.45].forEach((y, k) => {
-    B(g, 1.58, 0.03, 0.48, 0, y, 0, m);
-    B(g, 1.58, 0.05, 0.01, 0, y + 0.01, 0.245, M('#d23a3a', 0.4));
-    productRow(g, -0.76, 0.76, y + 0.015, 0.02, 0.3, k * 3);
-  });
-}
 function checkoutCounter(g, ctx) {
   const body = M(tintHex(ctx, '#1b1b1d'), 0.4);
   B(g, 1.8, 0.95, 0.65, 0, 0.475, 0, body);
@@ -2770,6 +2779,15 @@ export const CATALOG = [
   { k: 'neon3', name: 'Neon "NEON ŞEHİR"', cat: 'duvar', icon: '💗', price: E(30), tints: 'neon', build: neonBuild('NEON ŞEHİR', 'italic bold 78px Georgia, serif'), wall: true, nobox: true },
   { k: 'neon4', name: 'Neon Kalp', cat: 'duvar', icon: '❤️', price: E(25), tints: 'neon', build: neonBuild('♥', 'bold 160px sans-serif'), wall: true, nobox: true },
   { k: 'window', name: 'Şehir Manzaralı Pencere', cat: 'duvar', icon: '🪟', price: G(4000), build: windowCity, wall: true, nobox: true },
+  // v92 — yeni manzaralar
+  { k: 'win_yol', name: 'Pencere: Gün Batımında Yol', cat: 'duvar', icon: '🌅', build: windowView('yol'), wall: true, nobox: true },
+  { k: 'win_sehir', name: 'Pencere: Gündüz Şehir', cat: 'duvar', icon: '🏙️', build: windowView('sehir'), wall: true, nobox: true },
+  { k: 'win_deniz', name: 'Pencere: Deniz', cat: 'duvar', icon: '🌊', build: windowView('deniz'), wall: true, nobox: true },
+  { k: 'win_orman', name: 'Pencere: Orman', cat: 'duvar', icon: '🌲', build: windowView('orman'), wall: true, nobox: true },
+  { k: 'win_dag', name: 'Pencere: Karlı Dağlar', cat: 'duvar', icon: '🏔️', build: windowView('dag'), wall: true, nobox: true },
+  { k: 'win_kuzey', name: 'Pencere: Kuzey Işıkları', cat: 'duvar', icon: '🌌', build: windowView('kuzey'), wall: true, nobox: true },
+  { k: 'win_bogaz', name: 'Pencere: Boğaz', cat: 'duvar', icon: '🌉', build: windowView('bogaz'), wall: true, nobox: true },
+  { k: 'win_uzay', name: 'Pencere: Uzay', cat: 'duvar', icon: '🪐', build: windowView('uzay'), wall: true, nobox: true },
   { k: 'fanc', name: 'Tavan Pervanesi', cat: 'dekor', icon: '🌀', price: G(3000), build: ceilingFan, ceil: true, nobox: true },
 
   // LÜKS
@@ -2806,7 +2824,8 @@ export const CATALOG = [
   { k: 'dryer', name: 'Kurutma Makinesi', cat: 'banyo', icon: '🌀', tints: 'appliance', build: washer(true), box: [0.31, 0.3] },
   { k: 'pcstation', name: 'İnternet Kafe İstasyonu', cat: 'elektronik', icon: '🖥️', tints: 'neon', build: pcStation, box: [1.1, 0.38] },
   { k: 'console', name: 'Konsol & TV Seti', cat: 'elektronik', icon: '🎮', tints: 'wood', build: consoleSet, box: [0.8, 0.23] },
-  { k: 'shelf', name: 'Market Rafı', cat: 'dukkan', icon: '🛒', tints: 'appliance', build: marketShelf, box: [0.82, 0.26] },
+  // v92 — rafta 5 çeşit ürün (çikolata, cips, bisküvi, makarna, kola)
+  { k: 'shelf', name: 'Market Rafı', cat: 'dukkan', icon: '🛒', tints: 'appliance', build: marketShelfV92, box: [0.82, 0.26] },
   { k: 'checkout', name: 'Kasa Tezgahı', cat: 'dukkan', icon: '🧾', tints: 'wood', build: checkoutCounter, box: [0.92, 0.35] },
   { k: 'glasscounter', name: 'Cam Tezgah (Vitrin)', cat: 'dukkan', icon: '💍', tints: 'metal', build: glassCounter, box: [0.82, 0.31] },
   { k: 'drinkfridge', name: 'İçecek Dolabı', cat: 'dukkan', icon: '🥤', tints: 'appliance', build: drinkFridge, box: [0.43, 0.36] },
@@ -2852,6 +2871,8 @@ export const CATALOG = [
   { k: 'streetlamp', name: 'Sokak Lambası', cat: 'dis', icon: '🏮', build: streetLamp, box: [0.2, 0.2] },
   { k: 'turf', name: 'Çim Halı', cat: 'dis', icon: '🟩', build: turf, nobox: true, flat: true },
   { k: 'planter', name: 'Çiçeklik', cat: 'dis', icon: '🌷', tints: 'appliance', build: planter, box: [0.6, 0.2] },
+  // v92 — Dekor Atölyesi mobilyaları (houseCatalogV92.js)
+  ...v92CatalogEntries({ neonBuild }),
 ];
 
 // v66: fiyatlar ve eşyadan alınabilen ürünler TEK kaynaktan (sunucuyla ortak dosya)

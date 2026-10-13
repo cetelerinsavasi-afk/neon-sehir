@@ -1,3 +1,4 @@
+import { goldTag } from './moneyLog.js';
 // =============================================================================
 // futbolPro.js — v77 Faz 5: Gerçek futbolcular (oyuncular), sözleşme, maaş,
 // teklifler, maç istatistikleri (gol / asist / maç puanı) ve gün sonu kartı.
@@ -588,11 +589,11 @@ export function createFutbolPro({
           const paid = Math.min(owed, available);
           const newDebt = owed - paid;
           if (paid > 0) {
-            if (fromPresident) tx.update(userRef(team.ownerUid), { gold: FieldValue.increment(-paid) });
+            if (fromPresident) tx.update(userRef(team.ownerUid), { gold: FieldValue.increment(-paid), goldTag: goldTag('futbolcuMaas') });
             else tx.update(teamRef(p.teamId), { treasury: FieldValue.increment(-paid) });
             if (!userGone) {
               const { goldDelta, debtDelta } = splitIncomeForDebt(plSnap.data()?.debtToState, paid);
-              tx.update(userRef(uid), { gold: FieldValue.increment(goldDelta), ...(debtDelta ? { debtToState: FieldValue.increment(debtDelta) } : {}) });
+              tx.update(userRef(uid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('futbolcuMaas'), ...(debtDelta ? { debtToState: FieldValue.increment(debtDelta) } : {}) });
             } else out.burned += paid; // v90: hesap silinmiş → ödenen maaş kimseye geçmez (yanar)
           }
           out.paid += paid;
@@ -676,7 +677,7 @@ export function createFutbolPro({
           spent += pay;
           if (pay > 0) {
             const { goldDelta, debtDelta } = splitIncomeForDebt(reads[i + 1]?.data()?.debtToState, pay);
-            tx.update(userRef(uid), { gold: FieldValue.increment(goldDelta), ...(debtDelta ? { debtToState: FieldValue.increment(debtDelta) } : {}) });
+            tx.update(userRef(uid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('futbolcuMaas'), ...(debtDelta ? { debtToState: FieldValue.increment(debtDelta) } : {}) });
             sms(tx, uid, `💰 ${team.name} eski maaş borcundan ${fmt(pay)} altın ödedi.${owe - pay > 0 ? ` Kalan: ${fmt(owe - pay)}` : ''}`, 'futbol_salary_paid');
           }
           if (owe - pay > 0) {
@@ -685,7 +686,7 @@ export function createFutbolPro({
           } else patch[`playerDebts.${uid}`] = FieldValue.delete();
         });
         if (spent > 0) {
-          if (fromPresident) tx.update(userRef(team.ownerUid), { gold: FieldValue.increment(-spent) });
+          if (fromPresident) tx.update(userRef(team.ownerUid), { gold: FieldValue.increment(-spent), goldTag: goldTag('futbolcuMaas') });
           else patch.treasury = FieldValue.increment(-spent);
         }
         patch.hasPlayerDebts = left > 0;

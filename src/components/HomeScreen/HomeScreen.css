@@ -257,3 +257,10 @@
   background: linear-gradient(90deg, rgba(255, 46, 136, 0.18), rgba(34, 211, 238, 0.14));
   font-weight: 700;
 }
+
+/* v92 — Günlük Rapor butonu */
+.home-btn.home-btn-report {
+  border-color: #22d3ee;
+  background: linear-gradient(90deg, rgba(34, 211, 238, 0.16), rgba(57, 255, 136, 0.12));
+  font-weight: 700;
+}

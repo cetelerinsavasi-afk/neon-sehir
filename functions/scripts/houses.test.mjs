@@ -218,3 +218,87 @@ test('v77: ev fotoğrafında eldeki içecek de görünür (geçersiz ürün yok 
   att = await h.houses.buildPhotoAttachment('zengin', { houseId: id, cam });
   assert.equal(att.people.find((p) => p.uid === 'zengin').holding, undefined);
 });
+
+test('v92 tasarım yetkisi: sadece arkadaşa verilir, yetkili sahibin envanterini kullanır, satın alamaz, işletmeyi kapatamaz', async () => {
+  const h = setup();
+  const id = await withHouse(h);
+  // arkadaş olmayana verilemez, sahibi olmayan veremez
+  await assert.rejects(h.act('zengin', { op: 'editor', houseId: id, uid: 'veli', on: true }), /arkadaşlarına/);
+  await assert.rejects(h.act('ali', { op: 'editor', houseId: id, uid: 'zengin', on: true }), /senin değil/);
+  // yetki yokken kaydedemez
+  await h.act('ali', { op: 'enter', houseId: id });
+  h.S('housePresence/ali', { ...h.G('housePresence/ali'), updatedAt: h.fresh() });
+  await assert.rejects(h.act('ali', { op: 'save', houseId: id, design: { items: [it('a1', 'sofa3')] } }), /senin değil/);
+  await h.act('zengin', { op: 'editor', houseId: id, uid: 'ali', on: true });
+  assert.equal(h.G(`houses/${id}`).editors.ali, true);
+  assert.ok(h.keys('users/ali/messages/').map((k) => h.G(k)).some((m) => /tasarım yetkisi/.test(m.text)));
+  // sahibin envanterinde 1 koltuk var
+  h.S('houseInventories/zengin', { items: { sofa3: 1 }, walls: [], floors: [] });
+  const inv = await h.act('ali', { op: 'editInv', houseId: id });
+  assert.equal(inv.items.sofa3, 1);
+  // yetkili: deneme eşya + envanterden sahip olunan eşya koyar
+  const r = await h.act('ali', { op: 'save', houseId: id, design: { items: [it('a1', 'sofa3', { p: 1 }), it('a2', 'piano')] } });
+  assert.equal(r.inv.items.sofa3, undefined);
+  let house = h.G(`houses/${id}`);
+  assert.equal(house.items.length, 2);
+  assert.equal(house.items.find((x) => x.i === 'a2').p, undefined); // deneme kaldı
+  assert.equal(house.lastEditBy, 'ali');
+  assert.equal(h.G('houseInventories/zengin').items.sofa3, undefined);
+  // envanterde olmayan "satın alınmış" eşya uyduramaz
+  await assert.rejects(h.act('ali', { op: 'save', houseId: id, design: { items: [it('a1', 'sofa3', { p: 1 }), it('a3', 'pool', { p: 1 })] } }), /Envanterinde/);
+  // kaldırınca sahibinin envanterine döner
+  await h.act('ali', { op: 'save', houseId: id, design: { items: [it('a2', 'piano')] } });
+  assert.equal(h.G('houseInventories/zengin').items.sofa3, 1);
+  // satın alamaz
+  await assert.rejects(h.act('ali', { op: 'checkout', houseId: id, design: { items: [it('a2', 'piano')] }, expect: { gold: 0, gem: ITEM_PRICES.piano.v } }), /senin değil/);
+  // evde değilken kaydedemez
+  h.db._store.delete('housePresence/ali');
+  await assert.rejects(h.act('ali', { op: 'save', houseId: id, design: { items: [] } }), /evde olmalısın/);
+  // yetkiyi kaldır
+  await h.act('ali', { op: 'enter', houseId: id });
+  h.S('housePresence/ali', { ...h.G('housePresence/ali'), updatedAt: h.fresh() });
+  await h.act('zengin', { op: 'editor', houseId: id, uid: 'ali', on: false });
+  house = h.G(`houses/${id}`);
+  assert.equal(house.editors.ali, undefined);
+  await assert.rejects(h.act('ali', { op: 'save', houseId: id, design: { items: [] } }), /senin değil/);
+  await assert.rejects(h.act('ali', { op: 'editInv', houseId: id }), /yetkin yok/);
+});
+
+test('v92 Faz 8: oyunun 3D mekânı — venueEnsure kurar/günceller, herkes girer, eşyadan ürün alınmaz, kaydedilemez, fotoğrafta NPC var', async () => {
+  const { VENUES } = await import('../venueLayouts.js');
+  const h = setup();
+  await assert.rejects(h.act('ali', { op: 'venueEnsure', venue: '__proto__' }), /Geçersiz mekân/);
+  const r = await h.act('ali', { op: 'venueEnsure', venue: 'gazino' });
+  assert.equal(r.houseId, 'game_gazino');
+  const doc = h.G('houses/game_gazino');
+  assert.equal(doc.ownerUid, '__game__');
+  assert.equal(doc.venue, 'gazino');
+  assert.equal(doc.privacy, 'venue');
+  assert.equal(doc.items.length, VENUES.gazino.items.length);
+  // yerleşimdeki her eşya kataloğda olmalı (fiyatı olmayanlar sadece mekâna özel olanlar)
+  for (const v of Object.values(VENUES)) for (const x of v.items) assert.ok(ITEM_PRICES[x.k] || ['mihrap', 'minber'].includes(x.k), `${x.k} fiyatsız`);
+  // istasyon / NPC istasyonu yerleşimde var
+  for (const v of Object.values(VENUES)) {
+    const ids = new Set(v.items.map((x) => x.i));
+    assert.equal(ids.size, v.items.length, 'aynı kimlik iki kez');
+    Object.keys(v.stations).forEach((id) => assert.ok(ids.has(id), `${id} istasyonu yok`));
+    v.npcs.forEach((n) => assert.ok(!n.station || ids.has(n.station)));
+    v.items.forEach((x) => assert.ok(Math.abs(x.x) <= 9 && Math.abs(x.z) <= 7));
+  }
+  // sürüm aynıysa yazmaz; değişince günceller
+  h.S('houses/game_gazino', { ...doc, items: [] });
+  await h.act('ali', { op: 'venueEnsure', venue: 'gazino' });
+  assert.equal(h.G('houses/game_gazino').items.length, 0);
+  h.S('houses/game_gazino', { ...doc, venueV: 0, items: [], kicked: { x: 1 } });
+  await h.act('ali', { op: 'venueEnsure', venue: 'gazino' });
+  assert.equal(h.G('houses/game_gazino').items.length, VENUES.gazino.items.length);
+  assert.deepEqual(h.G('houses/game_gazino').kicked, { x: 1 });
+  // herkes girer, ürün alınmaz, kaydedilemez
+  await h.act('veli', { op: 'enter', houseId: 'game_gazino' });
+  h.S('housePresence/veli', { ...h.G('housePresence/veli'), updatedAt: h.fresh() });
+  await assert.rejects(h.act('veli', { op: 'take', houseId: 'game_gazino', itemId: 'gz_bar', product: 'kokteyl' }), /ürün alınmaz/);
+  await assert.rejects(h.act('veli', { op: 'save', houseId: 'game_gazino', design: { items: [] } }));
+  const ph = await h.houses.buildPhotoAttachment('veli', { houseId: 'game_gazino', cam: { px: 0, py: 2, pz: 4, dx: 0, dy: 0, dz: -1, fov: 60 } });
+  assert.ok(ph.people.some((p) => p.uid === 'npc_barmen'));
+  assert.ok(ph.people.some((p) => p.uid === 'veli'));
+});

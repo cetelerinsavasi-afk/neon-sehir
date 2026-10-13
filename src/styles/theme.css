@@ -24,6 +24,12 @@ html {
   background-color: var(--bg);
 }
 
+/* v92 — kenardan kaydırma / lastik efekti sayfayı oynatmasın */
+html,
+body {
+  overscroll-behavior: none;
+}
+
 body {
   background: radial-gradient(ellipse at top, #0c1322 0%, var(--bg) 60%);
   color: var(--text);
@@ -108,4 +114,26 @@ a:focus:not(:focus-visible),
   clip-path: polygon(50% 0, 100% 38%, 82% 100%, 18% 100%, 0 38%);
   filter: drop-shadow(0 0 3px rgba(57, 255, 136, 0.55));
   vertical-align: -2px;
+}
+
+/* v92 — Android: ana sayfada ilk "geri" uyarısı */
+.exit-hint {
+  position: fixed;
+  left: 50%;
+  bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 9999;
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: rgba(10, 14, 24, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #e8edf6;
+  font-size: 13px;
+  font-weight: 700;
+  pointer-events: none;
+  animation: exitHintIn 0.18s ease-out;
+}
+@keyframes exitHintIn {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
 }

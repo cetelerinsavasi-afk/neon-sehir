@@ -1,0 +1,91 @@
+/* v92 — Maç sohbeti (Stadyum › Maçlar) */
+.mc-wrap {
+  position: sticky;
+  bottom: -16px; /* .futbol-fullscreen-body iç boşluğu */
+  z-index: 3;
+  margin: 12px -16px 0;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+  border-radius: 14px 14px 0 0;
+  background: linear-gradient(180deg, rgba(10, 14, 24, 0.9), #0a0e18);
+  border: 1px solid rgba(57, 255, 136, 0.25);
+  border-bottom: 0;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.mc-list {
+  max-height: 104px;
+  overflow: hidden;
+  cursor: pointer;
+}
+.mc-wrap.open .mc-list {
+  max-height: 46vh;
+  overflow-y: auto;
+}
+.mc-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.mc-head b {
+  font-size: 13px;
+  color: #7dffb0;
+}
+.mc-head span {
+  font-size: 11px;
+  color: #8a93a8;
+}
+.mc-list p {
+  margin: 0 0 3px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: #e8edf6;
+  word-break: break-word;
+}
+.mc-list p b {
+  color: #e8c766;
+  margin-right: 4px;
+}
+.mc-list p.me b {
+  color: #19e8ff;
+}
+.mc-empty {
+  opacity: 0.6;
+  font-size: 12px !important;
+}
+.mc-input {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.mc-input input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid #ffffff22;
+  background: #121828;
+  color: #e8edf6;
+  font-size: 14px;
+}
+.mc-input button {
+  padding: 9px 14px;
+  border-radius: 12px;
+  border: 0;
+  background: linear-gradient(180deg, #39ff88, #1fcf68);
+  color: #04140c;
+  font-weight: 900;
+}
+.mc-input button:disabled {
+  opacity: 0.45;
+}
+.mc-ro {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: #8a93a8;
+}
+.mc-err {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: #ff8a98;
+}

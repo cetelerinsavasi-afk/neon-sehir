@@ -30,6 +30,7 @@ import { cafeDevicePrice } from './stream.js';
 import { HOUSE_TAKEABLES, HOUSE_PRODUCTS } from './houseCatalogData.js';
 import { midnightDayKey } from './businessCatalogData.js';
 import { bizTax } from './tax.js';
+import { goldTag } from './moneyLog.js';
 
 export const MENU_TYPES = ['cafe', 'bar'];
 export const MENU_PRICE = { def: 100, min: 10, max: 1000 };
@@ -63,6 +64,11 @@ export function netPriceOf(h) {
 }
 
 const HELD_MS = 120_000;
+// v92 — garson: sipariş başına süre ve maaş oranı (100 altın → 10 vergi, 10 maaş, 80 sahibe)
+export const WAITER_ORDER_MS = 20_000;
+export const WAITER_GRACE_MS = 1_500; // ağ gecikmesi payı
+export const WAITER_SALARY_RATE = 0.1;
+export const waiterSalary = (price) => Math.max(0, Math.round((Number(price) || 0) * WAITER_SALARY_RATE));
 const PRESENCE_ACTIVE_MS = 2 * 60 * 1000;
 export const NET_LOCK_PAD_MS = 5 * 60 * 1000;
 
@@ -91,9 +97,9 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
     if (at && now() - at > PRESENCE_ACTIVE_MS) return null;
     return ref;
   }
-  function payOwnerTx(tx, ownerSnap, ownerUid, amount) {
+  function payOwnerTx(tx, ownerSnap, ownerUid, amount, tag = 'isletme') {
     const { goldDelta, debtDelta } = splitIncomeForDebt(ownerSnap.data()?.debtToState, amount);
-    tx.update(userRef(ownerUid), { gold: FieldValue.increment(goldDelta), debtToState: FieldValue.increment(debtDelta) });
+    tx.update(userRef(ownerUid), { gold: FieldValue.increment(goldDelta), debtToState: FieldValue.increment(debtDelta), goldTag: goldTag(tag) });
   }
 
   // ---- CAFE / BAR ------------------------------------------------------------------------
@@ -133,14 +139,42 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
       if (!isOwner && Number(p.expect) !== price) fail('aborted', `price-changed:${price}`);
       const dayKey = midnightDayKey(t);
       const spendRef = db.collection('bizSpend').doc(`${houseId}_${uid}_${dayKey}`);
+      // v92 — mekânda (içeride olan) bir garson varsa sipariş garsona gider
+      const ws = isOwner ? null : await tx.get(waiterRef(houseId));
+      const waiter = ws?.exists ? ws.data() : null;
+      const waiterHere = waiter && waiter.uid !== uid ? await txPresence(tx, waiter.uid, houseId) : null;
       const [us, os, ss] = await Promise.all([tx.get(userRef(uid)), isOwner ? null : tx.get(userRef(h.ownerUid)), isOwner ? null : tx.get(spendRef)]);
       const spent = Number(ss?.exists ? ss.data().amount || 0 : 0);
       if (!isOwner) {
         if (spent + price > MENU_DAILY_LIMIT) fail('failed-precondition', `limit:${spent}`);
         if (Number(us.data()?.gold || 0) < price) fail('failed-precondition', 'gold');
-        tx.update(userRef(uid), { gold: FieldValue.increment(-price) });
-        payOwnerTx(tx, os, h.ownerUid, price - bizTax(price)); // v77 vergi %10
+        tx.update(userRef(uid), { gold: FieldValue.increment(-price), goldTag: goldTag('menu') });
         tx.set(spendRef, { houseId, uid, dayKey, amount: FieldValue.increment(price), updatedAtMs: t }, { merge: true });
+      }
+      if (waiter && !waiterHere && waiter.uid !== uid) tx.delete(waiterRef(houseId)); // garson mekândan çıkmış → görev düşer
+      if (!isOwner && waiterHere) {
+        // ödeme alındı (emanette); ürün ve gelir dağıtımı garson teslim edince / süre dolunca
+        const orderRef = db.collection('venueOrders').doc();
+        const name = String(us.data()?.displayName || 'Müşteri').slice(0, 40);
+        tx.set(orderRef, {
+          houseId,
+          ownerUid: h.ownerUid,
+          customerUid: uid,
+          customerName: name,
+          customerAvatar: us.data()?.avatar || null,
+          product,
+          price,
+          status: 'pending',
+          waiterUid: waiter.uid,
+          waiterName: waiter.name || 'Garson',
+          createdAtMs: t,
+          deadlineMs: t + WAITER_ORDER_MS,
+        });
+        result = { ok: true, queued: true, orderId: orderRef.id, deadlineMs: t + WAITER_ORDER_MS, waiterName: waiter.name || 'Garson', product, label: HOUSE_PRODUCTS[product].label, price, spent: spent + price, limit: MENU_DAILY_LIMIT };
+        return;
+      }
+      if (!isOwner) {
+        payOwnerTx(tx, os, h.ownerUid, price - bizTax(price), 'isletme'); // v77 vergi %10
         business?.recordIncomeTx(tx, { houseId, h, amount: price, kind: 'menu', customerUid: uid, products: { [product]: 1 }, tax: bizTax(price) });
       }
       tx.set(db.collection('heldItems').doc(uid), { itemId: product, venue: 'ev', houseId, untilMs: t + HELD_MS, boughtAtMs: t });
@@ -148,6 +182,132 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
       result = { ok: true, product, label: HOUSE_PRODUCTS[product].label, price, spent: spent + price, limit: MENU_DAILY_LIMIT, untilMs: t + HELD_MS };
     });
     return result;
+  }
+
+  // ---- v92 GARSON ----------------------------------------------------------------------
+  // venueWaiters/{houseId} = { uid, name, sinceMs } · venueOrders/{id} (sipariş)
+  // Mekânda (içeride olan) tek garson olur. Garson çıkınca görev düşer (bir sonraki
+  // siparişte / başvuruda sunucu da kontrol eder). Sipariş 20 sn içinde teslim
+  // edilmezse müşteriye otomatik gelir, garson görevden alınır (hemen tekrar
+  // başvurabilir) ve maaş ödenmez — sahip sadece vergi öder.
+  const waiterRef = (houseId) => db.collection('venueWaiters').doc(houseId);
+  const ordersQ = (houseId) => db.collection('venueOrders').where('houseId', '==', houseId).where('status', '==', 'pending').limit(50);
+
+  async function waiterJoin(uid, p) {
+    const houseId = String(p.houseId || '');
+    let result = null;
+    await db.runTransaction(async (tx) => {
+      await txHouse(tx, houseId, MENU_TYPES);
+      const presRef = await txPresence(tx, uid, houseId);
+      if (!presRef) fail('failed-precondition', 'not-present');
+      const ws = await tx.get(waiterRef(houseId));
+      const cur = ws.exists ? ws.data() : null;
+      if (cur?.uid === uid) {
+        result = { ok: true, already: true };
+        return;
+      }
+      if (cur && (await txPresence(tx, cur.uid, houseId))) fail('failed-precondition', `waiter-taken:${cur.name || 'Garson'}`);
+      const us = await tx.get(userRef(uid));
+      const name = String(us.data()?.displayName || 'Garson').slice(0, 40);
+      tx.set(waiterRef(houseId), { houseId, uid, name, sinceMs: now() });
+      result = { ok: true, name };
+    });
+    return result;
+  }
+
+  async function waiterQuit(uid, p) {
+    const houseId = String(p.houseId || '');
+    if (!isId(houseId)) fail('invalid-argument', 'Geçersiz mekân.');
+    await db.runTransaction(async (tx) => {
+      const ws = await tx.get(waiterRef(houseId));
+      if (ws.exists && ws.data().uid === uid) tx.delete(waiterRef(houseId));
+    });
+    return { ok: true };
+  }
+
+  // Ürünü müşterinin eline verir + geliri dağıtır. YAZMA (okumalar önceden).
+  // served: garson teslim etti mi (maaş) · auto: süre doldu (maaş yok)
+  function fulfillTx(tx, { o, orderRef, h, os, ws2, custPres, served, t }) {
+    const price = Math.max(0, Math.round(Number(o.price) || 0));
+    const tax = bizTax(price);
+    // v92 — mekân sahibi de garson olabilir; kendine maaş almaz (gider de yazılmaz)
+    const salary = served && o.waiterUid !== o.ownerUid ? waiterSalary(price) : 0;
+    if (h && os?.exists) payOwnerTx(tx, os, o.ownerUid, price - tax - salary, 'isletme');
+    if (salary > 0 && ws2?.exists) {
+      const { goldDelta, debtDelta } = splitIncomeForDebt(ws2.data()?.debtToState, salary);
+      tx.update(userRef(o.waiterUid), { gold: FieldValue.increment(goldDelta), debtToState: FieldValue.increment(debtDelta), goldTag: goldTag('garson') });
+    }
+    if (h) business?.recordIncomeTx(tx, { houseId: o.houseId, h, amount: price, kind: 'menu', customerUid: o.customerUid, products: { [o.product]: 1 }, tax, salary });
+    tx.set(db.collection('heldItems').doc(o.customerUid), {
+      itemId: o.product,
+      venue: 'ev',
+      houseId: o.houseId,
+      untilMs: t + HELD_MS,
+      boughtAtMs: t,
+      // istemci bildirimi: garson getirdi / süre doldu, otomatik geldi
+      servedAtMs: t,
+      servedBy: served ? o.waiterName || 'Garson' : null,
+    });
+    if (custPres) tx.update(custPres, { holding: o.product });
+    tx.update(orderRef, { status: served ? 'delivered' : 'auto', resolvedAtMs: t, salary });
+  }
+
+  async function orderDeliver(uid, p) {
+    const orderId = String(p.orderId || '');
+    if (!isId(orderId)) fail('invalid-argument', 'Geçersiz sipariş.');
+    let result = null;
+    await db.runTransaction(async (tx) => {
+      const orderRef = db.collection('venueOrders').doc(orderId);
+      const os0 = await tx.get(orderRef);
+      if (!os0.exists) fail('not-found', 'Sipariş bulunamadı.');
+      const o = os0.data();
+      if (o.status !== 'pending') fail('failed-precondition', 'order-done');
+      if (o.waiterUid !== uid) fail('permission-denied', 'Bu sipariş sana gelmedi.');
+      const t = now();
+      const late = t > Number(o.deadlineMs || 0) + WAITER_GRACE_MS;
+      const ws = await tx.get(waiterRef(o.houseId));
+      const stillWaiter = ws.exists && ws.data().uid === uid;
+      const here = await txPresence(tx, uid, o.houseId);
+      const hs = await tx.get(houseRef(o.houseId));
+      const h = hs.exists && hs.data().biz?.type && MENU_TYPES.includes(hs.data().biz.type) ? hs.data() : null;
+      const [own, wus, custPres] = await Promise.all([tx.get(userRef(o.ownerUid)), tx.get(userRef(uid)), txPresence(tx, o.customerUid, o.houseId)]);
+      const served = !late && stillWaiter && Boolean(here) && Boolean(h);
+      // geç kaldıysa (ya da artık garson değilse) sipariş otomatik teslim edilir
+      fulfillTx(tx, { o, orderRef, h, os: own, ws2: wus, custPres, served, t });
+      if (!served && stillWaiter) tx.delete(waiterRef(o.houseId));
+      result = served ? { ok: true, served: true, salary: o.waiterUid === o.ownerUid ? 0 : waiterSalary(o.price) } : { ok: false, late: true };
+    });
+    return result;
+  }
+
+  // Süresi dolmuş siparişler: müşteriye otomatik, garson görevden alınır.
+  // Mekândaki herkesin istemcisi süre dolunca çağırabilir (sunucu süreyi kendi kontrol eder).
+  async function orderSweep(uid, p) {
+    const houseId = String(p.houseId || '');
+    if (!isId(houseId)) fail('invalid-argument', 'Geçersiz mekân.');
+    const t = now();
+    const snap = await ordersQ(houseId).get();
+    const due = snap.docs.filter((d) => t > Number(d.data().deadlineMs || 0) + WAITER_GRACE_MS);
+    let n = 0;
+    let fired = false;
+    for (const d of due.slice(0, 20)) {
+      await db.runTransaction(async (tx) => {
+        const s = await tx.get(d.ref);
+        if (!s.exists || s.data().status !== 'pending') return;
+        const o = s.data();
+        const hs = await tx.get(houseRef(o.houseId));
+        const h = hs.exists && hs.data().biz?.type && MENU_TYPES.includes(hs.data().biz.type) ? hs.data() : null;
+        const ws = await tx.get(waiterRef(o.houseId));
+        const [own, custPres] = await Promise.all([tx.get(userRef(o.ownerUid)), txPresence(tx, o.customerUid, o.houseId)]);
+        fulfillTx(tx, { o, orderRef: d.ref, h, os: own, ws2: null, custPres, served: false, t });
+        if (ws.exists && ws.data().uid === o.waiterUid) {
+          tx.delete(waiterRef(o.houseId));
+          fired = true;
+        }
+        n += 1;
+      });
+    }
+    return { ok: true, resolved: n, fired };
   }
 
   // ---- İNTERNET KAFE -------------------------------------------------------------------------
@@ -184,7 +344,7 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
     const from = Math.max(t, Number(sess?.creditUntilMs || 0));
     const creditUntilMs = from + NET_SLOT_MS;
     if (h.ownerUid !== uid && !free) {
-      tx.update(userRef(uid), { gold: FieldValue.increment(-price) });
+      tx.update(userRef(uid), { gold: FieldValue.increment(-price), goldTag: goldTag('internet') });
       payOwnerTx(tx, os, h.ownerUid, price - bizTax(price)); // v77 vergi %10
       business?.recordIncomeTx(tx, { houseId, h, amount: price, kind: 'service', customerUid: uid, products: { dakika: 1 }, tax: bizTax(price) });
     }
@@ -287,13 +447,26 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
     const old = await db.collection('netSessions').where('creditUntilMs', '<', t - 24 * 60 * 60 * 1000).limit(300).get();
     const today = midnightDayKey(t);
     const spend = await db.collection('bizSpend').where('dayKey', '<', today).limit(300).get();
+    // v92 — sonuçlanmış eski siparişler (1 günden eski) silinir
+    const doneOrders = await db.collection('venueOrders').where('createdAtMs', '<', t - 24 * 60 * 60 * 1000).limit(300).get();
     const batch = db.batch();
     old.docs.forEach((d) => batch.delete(d.ref));
     spend.docs.forEach((d) => batch.delete(d.ref));
-    if (old.size || spend.size) await batch.commit();
-    return { sessions: old.size, spend: spend.size };
+    let orders = 0;
+    const stuck = [];
+    doneOrders.docs.forEach((d) => {
+      if (d.data().status === 'pending') stuck.push(d.data().houseId);
+      else {
+        batch.delete(d.ref);
+        orders += 1;
+      }
+    });
+    if (old.size || spend.size || orders) await batch.commit();
+    // kimsenin süpürmediği bekleyen siparişler (mekân boşaldıysa): müşteriye otomatik
+    for (const hid of [...new Set(stuck)].slice(0, 20)) await orderSweep('__system__', { houseId: hid }).catch(() => {});
+    return { sessions: old.size, spend: spend.size, orders };
   }
 
-  const ops = { menuPrices, menuBuy, netPrice, netStart, netTick, netLeave };
+  const ops = { menuPrices, menuBuy, netPrice, netStart, netTick, netLeave, waiterJoin, waiterQuit, orderDeliver, orderSweep };
   return { ops, cleanup };
 }

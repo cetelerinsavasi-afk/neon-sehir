@@ -53,3 +53,23 @@ test('v88: tek seferlik sıfırlama — kasa 1.000.000a iner, dağıtım hakkı 
   await h.internal.clock.runClock('test');
   assert.equal(h.get('intel/main/private/state').kasa, 3_000_000, 'ikinci kez çalışmaz');
 });
+
+test('v91: v88 çalışmış olsa bile kasa 1.000.000 üstündeyse tekrar 1.000.000a iner; altındaysa dokunmaz; tek sefer', async () => {
+  const h = await createHarness();
+  await h.db.doc('gangWorlds/test').set({ intelKasaResetV88: 123, intelKasaResetV91: null }, { merge: true });
+  await h.db.doc('gangWorlds/test/intel/main/private/state').set({ kasa: 2_400_000, distributableLeft: 480_000, kasaAtMidnight: 2_400_000, midnightDateKey: '2026-09-21' }, { merge: true });
+  await h.internal.clock.runClock('test');
+  assert.equal(h.get('intel/main/private/state').kasa, 1_000_000);
+  assert.equal(h.get('intel/main/private/state').distributableLeft, 200_000);
+  await h.db.doc('gangWorlds/test/intel/main/private/state').set({ kasa: 1_500_000 }, { merge: true });
+  await h.internal.clock.runClock('test');
+  assert.equal(h.get('intel/main/private/state').kasa, 1_500_000, 'ikinci kez çalışmaz');
+});
+
+test('v91: kasa 1.000.000 altındaysa sıfırlama dokunmaz', async () => {
+  const h = await createHarness();
+  await h.db.doc('gangWorlds/test').set({ intelKasaResetV91: null }, { merge: true });
+  await h.db.doc('gangWorlds/test/intel/main/private/state').set({ kasa: 700_000 }, { merge: true });
+  await h.internal.clock.runClock('test');
+  assert.equal(h.get('intel/main/private/state').kasa, 700_000);
+});

@@ -884,6 +884,14 @@ export default function TuningGarageWorldScreen({ onExit, onOpenHeist }) {
         <button className="ws-heist-btn" onClick={() => onOpenHeist('modifiye_garaji')}>Soygun</button>
       )}
       <button className="ws-exit-btn" onClick={onExit}>✕</button>
+      {/* v91 KULLANICI İSTEĞİ: oyuncu modifiyecileri gibi üstte hızlı buton. */}
+      {ready && !panel && (
+        <div className="ws-topbtns">
+          <button className="ws-topbtn" onClick={() => setPanel('garage')}>
+            🛠️ Tamir / Geliştirme
+          </button>
+        </div>
+      )}
 
       <div className="ws-canvas-wrap">
         {!ready && <div className="ws-loading">Garaja giriliyor…</div>}

@@ -42,6 +42,7 @@
 
 import { futbolDayKey, prevDayKey, bizOpenAllDay, bizDayStartMs } from './businessCatalogData.js';
 import { bizTax, taxLedgerWrite } from './tax.js';
+import { goldTag } from './moneyLog.js';
 
 export const GAME_GYM_ID = 'game_spor';
 export const GAME_OWNER = '__game__';
@@ -144,7 +145,7 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
       return;
     }
     const { goldDelta, debtDelta } = splitIncomeForDebt(ownerSnap?.data()?.debtToState, amount - tax);
-    tx.update(userRef(h.ownerUid), { gold: FieldValue.increment(goldDelta), debtToState: FieldValue.increment(debtDelta) });
+    tx.update(userRef(h.ownerUid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('spor'), debtToState: FieldValue.increment(debtDelta) });
     business?.recordIncomeTx(tx, { houseId: gymId, h, amount, kind, customerUid, atMs, products, tax });
   }
 
@@ -246,7 +247,7 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
   // Süresi dolmuş bitmemiş üyeliği iade et. YAZMA. (m okunmuş olmalı)
   function refundTx(tx, ref, m) {
     tx.update(ref, { status: 'refunded', refundedAtMs: now() });
-    if (m.price > 0) tx.update(userRef(m.uid), { gold: FieldValue.increment(m.price) });
+    if (m.price > 0) tx.update(userRef(m.uid), { gold: FieldValue.increment(m.price), goldTag: goldTag('spor') });
   }
 
   // ---- üyeliği başlat ----------------------------------------------------------------------
@@ -297,7 +298,7 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
       expired.forEach(([ref, m]) => refundTx(tx, ref, m));
       if (!fs.exists) tx.set(fbRef(uid), fb);
       else if (patch) tx.update(fbRef(uid), patch);
-      if (price > 0) tx.update(userRef(uid), { gold: FieldValue.increment(-price) });
+      if (price > 0) tx.update(userRef(uid), { gold: FieldValue.increment(-price), goldTag: goldTag('spor') });
       const expiresAtMs = gymDeadlineMs(t);
       tx.set(memRef(uid, dayKey), {
         uid,
@@ -382,7 +383,7 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
         // salon kapanmış/sahibi değişmiş olsa da parası ödenmiş hizmet tamamlandı → sahibe (vergi düşülerek)
         taxLedgerWrite(tx, db, FieldValue, { amount: bizTax(m.price), source: 'isletme', uid: m.ownerUid, atMs: t, ref: m.gymId });
         const { goldDelta, debtDelta } = splitIncomeForDebt(os.data()?.debtToState, m.price - bizTax(m.price));
-        tx.update(userRef(m.ownerUid), { gold: FieldValue.increment(goldDelta), debtToState: FieldValue.increment(debtDelta) });
+        tx.update(userRef(m.ownerUid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('spor'), debtToState: FieldValue.increment(debtDelta) });
       }
       tx.update(ref, { step: 3, stepStartedAtMs: null, status: 'done', doneAtMs: t, result: training });
       result = { ok: true, step: 3, done: true, ...training };

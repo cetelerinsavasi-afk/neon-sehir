@@ -30,6 +30,7 @@
 // =============================================================================
 import { midnightDayKey } from './businessCatalogData.js';
 import { bizTax, taxOf, taxLedgerWrite } from './tax.js';
+import { goldTag } from './moneyLog.js';
 
 export const STREAM_CHAIRS = ['gamer'];
 export const STREAM_PCS = ['pc']; // v81: sadece Oyuncu Bilgisayarı (İnternet Kafe İstasyonu yayın seti değil)
@@ -43,13 +44,23 @@ export const DONATION_TAX_RATE = 0.1;
 export const STREAM_TITLE_MAX = 60;
 export const STREAM_NOTE_MAX = 80;
 export const STREAM_CHAT_MAX = 140;
+export const MATCH_CHAT_MAX = 160; // v92 — maç sohbeti
 export const STREAM_ROOM_MAX = 24;
 const CHAT_MIN_MS = 1200;
 export const WATCH_BEAT_MS = 30_000; // izleyici nabzı
 export const WATCH_TTL_MS = 75_000; // bu kadar nabız gelmeyen izleyici sayılmaz
 const PRESENCE_ACTIVE_MS = 2 * 60 * 1000;
 const FX_KEEP = 6;
-export const TOP_DONORS = 3;
+// v92 — en çok bağış yapanlar: 3 kişi görünür; bağış sınırına (10.000) ulaşan her
+// kişi listeyi 1 uzatır (en fazla 10). Belgede 10 kişi tutulur, kaçının
+// gösterileceğini topDonorsShown() söyler (istemci de aynı fonksiyonu kullanır).
+export const TOP_DONORS = 10;
+export const TOP_DONORS_BASE = 3;
+export function topDonorsShown(top) {
+  const list = Array.isArray(top) ? top : [];
+  const capped = list.filter((x) => Number(x?.a || 0) >= DONATION_DAILY_CAP).length;
+  return Math.min(TOP_DONORS, TOP_DONORS_BASE + capped, list.length);
+}
 const LIST_MAX = 30;
 
 export function streamPriceOf(h) {
@@ -135,10 +146,10 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
 
   // dakika ücreti (kafe). YAZMA — okumalar önceden yapılmış olmalı.
   function chargeTx(tx, { houseId, h, uid, os, price }) {
-    tx.update(userRef(uid), { gold: FieldValue.increment(-price) });
+    tx.update(userRef(uid), { gold: FieldValue.increment(-price), goldTag: goldTag('yayin') });
     const tax = bizTax(price);
     const { goldDelta, debtDelta } = splitIncomeForDebt(os.data()?.debtToState, price - tax);
-    tx.update(userRef(h.ownerUid), { gold: FieldValue.increment(goldDelta), debtToState: FieldValue.increment(debtDelta) });
+    tx.update(userRef(h.ownerUid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('yayin'), debtToState: FieldValue.increment(debtDelta) });
     business?.recordIncomeTx?.(tx, { houseId, h, amount: price, kind: 'service', customerUid: uid, products: { yayin: 1 }, tax });
   }
 
@@ -149,7 +160,7 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
     const net = donated - tax;
     if (net > 0) {
       const { goldDelta, debtDelta } = splitIncomeForDebt(us?.data()?.debtToState, net);
-      tx.update(userRef(s.uid), { gold: FieldValue.increment(goldDelta), debtToState: FieldValue.increment(debtDelta) });
+      tx.update(userRef(s.uid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('yayin'), debtToState: FieldValue.increment(debtDelta) });
     }
     if (tax > 0) taxLedgerWrite(tx, db, FieldValue, { amount: tax, source: 'yayin', uid: s.uid, atMs: t, ref: `yayin:${id}` });
     const peak = Math.max(Number(s.peak || 0), Number(viewers) || 0);
@@ -366,7 +377,7 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
       if (used + amount > DONATION_DAILY_CAP) fail('failed-precondition', `cap:${DONATION_DAILY_CAP - used}`);
       if (Number(us.data()?.gold || 0) < amount) fail('failed-precondition', 'gold');
       const fx = [...(Array.isArray(s.fx) ? s.fx : []), { n: nameOf(us.data()), a: amount, m: note, at: t, u: uid }].slice(-FX_KEEP);
-      tx.update(userRef(uid), { gold: FieldValue.increment(-amount) });
+      tx.update(userRef(uid), { gold: FieldValue.increment(-amount), goldTag: goldTag('yayin') });
       tx.set(capRef, { amount: used + amount, donor: uid, streamer: s.uid, dayKey: midnightDayKey(t), updatedAtMs: t }, { merge: true });
       // v81 — en çok bağış yapan 3 kişi (yayının sol üstünde herkes görür)
       const donors = { ...(s.donors && typeof s.donors === 'object' ? s.donors : {}) };
@@ -398,13 +409,15 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
     if (t - Number(u.lastStreamChatMs || 0) < CHAT_MIN_MS) fail('resource-exhausted', 'Biraz yavaş 🙂');
     const batch = db.batch();
     const isHost = ss.data().uid === uid;
-    batch.set(streamRef(id).collection('chat').doc(), { uid, name: nameOf(u), text, createdAtMs: t, host: isHost });
+    // v92 — yayıncı maç izlerken yazdığı mesaj: sohbete düşer ama avatarının üstünde balon çıkmaz
+    const nb = isHost && p.noBubble === true ? { nb: true } : {};
+    batch.set(streamRef(id).collection('chat').doc(), { uid, name: nameOf(u), text, createdAtMs: t, host: isHost, ...nb });
     // v86: yayıncının yazdıkları bulunduğu odada da görünsün (yanındakiyle konuşabilsin):
     // ev sohbetine de yazılır → odadakilerde balon + sohbet listesi. viaStream: izleyiciler
     // bu mesajı zaten yayın balonundan görür (çift balon olmasın diye işaret).
     const hid = ss.data().houseId;
     if (isHost && typeof hid === 'string' && isId(hid)) {
-      batch.set(houseRef(hid).collection('chat').doc(), { uid, name: nameOf(u), text, createdAtMs: t, createdAt: FieldValue.serverTimestamp(), viaStream: true });
+      batch.set(houseRef(hid).collection('chat').doc(), { uid, name: nameOf(u), text, createdAtMs: t, createdAt: FieldValue.serverTimestamp(), viaStream: true, ...nb });
     }
     batch.update(userRef(uid), { lastStreamChatMs: t });
     await batch.commit();
@@ -494,6 +507,39 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
     return { closed: n };
   }
 
+  // ---- v92: günün maç sohbeti (Stadyum › Maçlar) --------------------------------
+  // matchChats/{gün}/msgs/{id} — gün İstanbul 00:00'da değişir (yeni günün maçları
+  // gelince yeni sohbet). Okuma herkese açık, yazma buradan (küfür/susturma kontrolü).
+  async function matchChat(uid, p) {
+    const text = cleanText(p.text, MATCH_CHAT_MAX);
+    if (!text) fail('invalid-argument', 'Boş mesaj.');
+    await assertCanSpeak(uid, text);
+    const t = now();
+    const us = await userRef(uid).get();
+    const u = us.data() || {};
+    if (t - Number(u.lastMatchChatMs || 0) < CHAT_MIN_MS) fail('resource-exhausted', 'Biraz yavaş 🙂');
+    const day = midnightDayKey(t);
+    const batch = db.batch();
+    batch.set(db.collection('matchChats').doc(day).collection('msgs').doc(), { uid, name: nameOf(u), avatar: u.avatar || null, text, createdAtMs: t });
+    batch.update(userRef(uid), { lastMatchChatMs: t });
+    await batch.commit();
+    return { ok: true, day };
+  }
+  // Eski günlerin maç sohbeti silinir (saatlik bakım). Dün ve bugün kalır.
+  async function cleanupMatchChat() {
+    let n = 0;
+    for (let k = 2; k <= 6; k++) {
+      const day = midnightDayKey(now() - k * 24 * 60 * 60 * 1000);
+      const snap = await db.collection('matchChats').doc(day).collection('msgs').limit(400).get();
+      if (!snap.size) continue;
+      const batch = db.batch();
+      snap.docs.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+      n += snap.size;
+    }
+    return n;
+  }
+
   async function action(uid, p = {}) {
     if (!uid) fail('unauthenticated', 'Giriş yapmalısın.');
     switch (String(p.op || '')) {
@@ -507,6 +553,8 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
         return donate(uid, p);
       case 'chat':
         return chat(uid, p);
+      case 'matchChat':
+        return matchChat(uid, p);
       case 'price':
         return price(uid, p);
       case 'watch':
@@ -518,5 +566,5 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
     }
     return null;
   }
-  return { action, sweep };
+  return { action, sweep, cleanupMatchChat };
 }

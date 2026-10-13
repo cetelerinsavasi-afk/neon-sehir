@@ -8,6 +8,7 @@ import { useVehicles } from './useVehicles';
 import { useMyFactory } from './useMyFactory';
 import { useMyFutbolTeam } from './useMyFutbolTeam';
 import { currentPrayerWindow } from './useMosqueAttendance';
+import { useBizReminders } from './useBizReminders';
 
 // Görev listesi/hatırlatıcı paneli — bkz. functions/index.js ONBOARDING
 // bölümü. Sayaç (onboardingStep, 1-20) ve tamamlanma bayrağı
@@ -66,6 +67,7 @@ export function useOnboarding(gangReminders = null) {
   const { vehicles } = useVehicles();
   const { factory, machines } = useMyFactory();
   const { team, role: futbolRole } = useMyFutbolTeam();
+  const bizReminders = useBizReminders(); // v92: galeri / silahçı / spor salonu
 
   // Kullanıcının işveren fabrikasındaki (kendi fabrikası olsun olmasın)
   // ATANDIĞI makinenin lastProducedDateKey'ini dinlemek için ayrı bir
@@ -109,10 +111,18 @@ export function useOnboarding(gangReminders = null) {
       list.push({ id: 'pray', emoji: '🕌', text: 'İbadet et' });
     }
 
-    const hasUnracedVehicleToday = vehicles.some(
+    // v91 KULLANICI HATASI: "arabalarımı 2. elde anında sattım, hiç arabam
+    // yok ama 'Şampiyonaya katıl' hatırlatması geliyor". Anında satılan /
+    // ilana konan araç belge olarak sahibinde kalıyor (listed:true), bu
+    // yüzden hatırlatıcı yalnızca GERÇEKTEN yarışabilecek araçları sayar —
+    // RaceLobby/ChampionshipScreen'deki raceable() ile aynı kural.
+    const raceableVehicles = vehicles.filter(
+      (v) => !v.listed && !v.seizedByBank && (v.lifeDays ?? 20) > 0
+    );
+    const hasUnracedVehicleToday = raceableVehicles.some(
       (v) => !actions[`championship_${v.catalogId}`]
     );
-    if (vehicles.length > 0 && hasUnracedVehicleToday) {
+    if (raceableVehicles.length > 0 && hasUnracedVehicleToday) {
       list.push({ id: 'championship', emoji: '🏁', text: 'Şampiyonaya katıl' });
     }
 
@@ -175,8 +185,10 @@ export function useOnboarding(gangReminders = null) {
     if (gangReminders?.report) list.push({ id: 'gang-report', emoji: '📡', text: 'İhbar et' });
     if (gangReminders?.leak) list.push({ id: 'gang-leak', emoji: '📦', text: 'İçeriği aç' });
 
+    list.push(...bizReminders);
+
     return list;
-  }, [player, actions, vehicles, team, futbolRole, employment, employmentMachine, factory, machines, todayKey, win, gangReminders?.joinWar, gangReminders?.takeMoney, gangReminders?.report, gangReminders?.leak]);
+  }, [player, actions, vehicles, team, futbolRole, employment, employmentMachine, factory, machines, todayKey, win, gangReminders?.joinWar, gangReminders?.takeMoney, gangReminders?.report, gangReminders?.leak, bizReminders]);
 
   return {
     loading: playerLoading || actionsLoading,

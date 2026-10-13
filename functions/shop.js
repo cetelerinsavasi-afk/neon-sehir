@@ -46,6 +46,7 @@ import {
   itemListingBand,
   itemListingFields,
 } from './itemRules.js';
+import { goldTag } from './moneyLog.js';
 
 export const SHOP_MAX_ITEMS = 10;
 export const VITRIN_ITEM_TYPE = { silahci: 'weapon', galeri: 'vehicle' };
@@ -185,7 +186,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       if (!selfService && Number(user.gold || 0) < cost.total) fail('failed-precondition', 'gold');
 
       // --- yazmalar ---
-      if (!selfService && cost.total > 0) tx.update(userRef(uid), { gold: FieldValue.increment(-cost.total) });
+      if (!selfService && cost.total > 0) tx.update(userRef(uid), { gold: FieldValue.increment(-cost.total), goldTag: goldTag('atolye') });
       if (cost.own > 0) tx.set(invDoc(uid, material), { quantity: FieldValue.increment(-cost.own) }, { merge: true });
       if (!isGame) {
         if (cost.shopQty > 0) tx.set(bizInvRef(houseId), { materials: { [material]: FieldValue.increment(-cost.shopQty) }, updatedAtMs: now() }, { merge: true });
@@ -194,7 +195,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
         const taxMat = selfService ? 0 : bizTax(cost.material);
         if (!selfService && cost.total > 0) {
           const { goldDelta, debtDelta } = splitIncomeForDebt(os.data()?.debtToState, cost.total - taxLabor - taxMat);
-          tx.update(userRef(h.ownerUid), { gold: FieldValue.increment(goldDelta), debtToState: FieldValue.increment(debtDelta) });
+          tx.update(userRef(h.ownerUid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('atolye'), debtToState: FieldValue.increment(debtDelta) });
         }
         business?.recordIncomeTx(tx, { houseId, h, amount: cost.labor, kind: 'labor', customerUid: uid, products: { [`${action}:${itemType}`]: 1 }, tax: taxLabor });
         if (cost.material > 0) business?.recordIncomeTx(tx, { houseId, h, amount: cost.material, kind: 'material', customerUid: uid, materialsUsed: { [material]: cost.shopQty }, tax: taxMat });
@@ -366,7 +367,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       const tax = resaleTax(payout);
       taxLedgerWrite(tx, db, FieldValue, { amount: tax, source: 'ikinciEl', uid, atMs: now(), ref: String(p.houseId || '') });
       const { goldDelta, debtDelta } = splitIncomeForDebt(us.data()?.debtToState, payout - tax);
-      tx.update(userRef(uid), { gold: FieldValue.increment(goldDelta), debtToState: FieldValue.increment(debtDelta) });
+      tx.update(userRef(uid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('vitrin'), debtToState: FieldValue.increment(debtDelta) });
       const sysRef = listingsRef.doc();
       tx.set(sysRef, {
         sellerId: 'system',

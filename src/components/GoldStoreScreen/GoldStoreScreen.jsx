@@ -6,6 +6,8 @@ import zumrut50Image from '../../assets/goldStore/zumrut50.jpg';
 import zumrut200Image from '../../assets/goldStore/zumrut200.jpg';
 import altin30kImage from '../../assets/goldStore/altin30k.jpg';
 import altin100kImage from '../../assets/goldStore/altin100k.jpg';
+import { IS_ANDROID_APP, ANDROID_UPDATE_REQUIRED, PLAY_STORE_URL } from '../../lib/platform';
+import { PLAY_PRODUCTS, getPlayBillingService, getPlayPrices, buyWithPlay, restorePlayPurchases } from '../../lib/playBilling';
 import './GoldStoreScreen.css';
 
 // v66 — ZÜMRÜT MAĞAZASI (eski Altın Mağazası).
@@ -51,6 +53,101 @@ export function EmeraldAmount({ value, size = 16 }) {
   );
 }
 
+// v91 — Android uygulamasında (Google Play) zümrüt satın alma bölümü.
+// Shopier bağlantısı ve teslimat kodu Android'de HİÇ gösterilmez (Play kuralı).
+function PlayEmeraldSection({ user, blocked, emerald }) {
+  const [service, setService] = useState(undefined); // undefined: kontrol ediliyor, null: yok
+  const [prices, setPrices] = useState({});
+  const [busyId, setBusyId] = useState(null);
+  const [note, setNote] = useState(null); // { ok, text }
+
+  useEffect(() => {
+    let alive = true;
+    if (ANDROID_UPDATE_REQUIRED) {
+      setService(null); // eski uygulama sürümü — ödeme denenmez, güncelleme istenir
+      return undefined;
+    }
+    (async () => {
+      const svc = await getPlayBillingService();
+      if (!alive) return;
+      setService(svc);
+      if (!svc) return;
+      const pr = await getPlayPrices(svc);
+      if (!alive) return;
+      setPrices(pr);
+
+      if (user) {
+        const restored = await restorePlayPurchases(svc);
+        if (alive && restored > 0) setNote({ ok: true, text: `Yarım kalan satın alman tamamlandı: ${restored} zümrüt hesabına yüklendi 💎` });
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [user]);
+
+  const buy = async (prod) => {
+    if (!service || busyId) return;
+    setBusyId(prod.productId);
+    setNote(null);
+    try {
+      const r = await buyWithPlay(service, prod.productId);
+      if (r.cancelled) return;
+      if (r.pending) {
+        setNote({ ok: true, text: 'Ödemen onay bekliyor. Onaylanınca mağazayı tekrar açtığında zümrütlerin yüklenecek.' });
+      } else if (r.ok) {
+        setNote({ ok: true, text: `${prod.emerald} zümrüt hesabına yüklendi! 💎` });
+      } else {
+        setNote({ ok: false, text: 'Satın alma tamamlanamadı.' });
+      }
+    } catch (err) {
+      setNote({ ok: Boolean(err?.safePending), text: err?.message || 'Satın alma tamamlanamadı.' });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <>
+      <p className="gold-store-section">💳 Zümrüt Satın Al</p>
+      {service === undefined && <p className="gold-store-hint">Google Play'e bağlanılıyor…</p>}
+      {service === null && (
+        <div className="gold-store-hint">
+          <p>Zümrüt satın almak için uygulamanın en yeni sürümü gerekiyor.</p>
+          <a className="gold-store-btn emerald" href={PLAY_STORE_URL} target="_blank" rel="noopener noreferrer">
+            Google Play'de güncelle ↗
+          </a>
+        </div>
+      )}
+      {service && blocked && (
+        <p className="gold-store-error">
+          Hesabında tekrarlanan iadeler olduğu için zümrüt satın alma kısıtlandı. Bir hata olduğunu düşünüyorsan studyohustle@gmail.com adresine yaz.
+        </p>
+      )}
+      {service && emerald < 0 && !blocked && (
+        <p className="gold-store-hint">
+          Zümrüt bakiyen eksi ({emerald}) — iade edilen bir satın alma geri alındı. Yeni aldığın zümrütlerden önce bu borç düşülür.
+        </p>
+      )}
+      {service && !blocked && (
+        <div className="gold-store-grid">
+          {PLAY_PRODUCTS.map((prod, i) => (
+            <div key={prod.productId} className="gold-store-card emerald">
+              {prod.badge && <span className="gold-store-badge">{prod.badge}</span>}
+              <img className="gold-store-card-image" src={BUY_PACKAGES[i]?.image} alt={`${prod.emerald} Zümrüt`} />
+              <p className="gold-store-price">{prices[prod.productId] || prod.price}</p>
+              <button className="gold-store-btn emerald" disabled={!user || Boolean(busyId)} onClick={() => buy(prod)}>
+                {busyId === prod.productId ? 'İşleniyor…' : 'Satın Al'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {note && <p className={note.ok ? 'gold-store-success' : 'gold-store-error'}>{note.text}</p>}
+    </>
+  );
+}
+
 export default function GoldStoreScreen() {
   const { user } = useAuth();
   const { player } = usePlayer();
@@ -64,6 +161,7 @@ export default function GoldStoreScreen() {
   const emerald = Number(player?.emerald || 0);
 
   useEffect(() => {
+    if (IS_ANDROID_APP) return; // Android'de Shopier teslimat kodu kullanılmaz
     if (player?.redemptionCode) {
       setCode(player.redemptionCode);
       return;
@@ -111,6 +209,10 @@ export default function GoldStoreScreen() {
         <EmeraldAmount value={emerald} size={22} />
       </div>
 
+      {IS_ANDROID_APP ? (
+        <PlayEmeraldSection user={user} blocked={Boolean(player?.playPurchaseBlocked)} emerald={emerald} />
+      ) : (
+      <>
       <p className="gold-store-section">💳 Zümrüt Satın Al</p>
       <div className="gold-store-code-box">
         <p className="gold-store-code-title">Senin Teslimat Kodun</p>
@@ -143,6 +245,8 @@ export default function GoldStoreScreen() {
           </div>
         ))}
       </div>
+      </>
+      )}
 
       <p className="gold-store-section">💎 Zümrüt Harca</p>
       <div className="gold-store-list">
@@ -164,8 +268,9 @@ export default function GoldStoreScreen() {
       {result && <p className={result.ok ? 'gold-store-success' : 'gold-store-error'}>{result.text}</p>}
 
       <p className="gold-store-footnote">
-        Ödemeler tamamen Shopier'in kendi güvenli sayfasında yapılır, kart bilgin bize hiçbir
-        zaman ulaşmaz. Satın alma sonrası zümrütlerin hesabına yüklenmesi birkaç dakika sürebilir.
+        {IS_ANDROID_APP
+          ? 'Ödemeler Google Play üzerinden yapılır, kart bilgin bize hiçbir zaman ulaşmaz.'
+          : "Ödemeler tamamen Shopier'in kendi güvenli sayfasında yapılır, kart bilgin bize hiçbir zaman ulaşmaz. Satın alma sonrası zümrütlerin hesabına yüklenmesi birkaç dakika sürebilir."}
       </p>
 
       {confirm && (

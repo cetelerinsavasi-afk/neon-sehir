@@ -48,8 +48,12 @@ const EXTRA_APPS = [
 // yok sayılır ve render satırı da ayrıca korunur. Web'de (IS_ANDROID_APP
 // = false) VISIBLE_EXTRA_APPS birebir EXTRA_APPS'in kendisidir.
 const GOLD_STORE_APP_ID = 'altin-magazasi';
-const isAppBlocked = (id) => IS_ANDROID_APP && id === GOLD_STORE_APP_ID;
-const VISIBLE_EXTRA_APPS = IS_ANDROID_APP
+// v91: Android'de de Zümrüt Mağazası AÇIK — ama içinde Shopier yok, satın
+// alma Google Play Faturalandırma ile yapılıyor (bkz. GoldStoreScreen /
+// lib/playBilling.js). Gerekirse tekrar kapatmak için bu bayrağı false yap.
+const ANDROID_STORE_ENABLED = true;
+const isAppBlocked = (id) => IS_ANDROID_APP && !ANDROID_STORE_ENABLED && id === GOLD_STORE_APP_ID;
+const VISIBLE_EXTRA_APPS = IS_ANDROID_APP && !ANDROID_STORE_ENABLED
   ? EXTRA_APPS.filter((app) => app.id !== GOLD_STORE_APP_ID)
   : EXTRA_APPS;
 const DOCK = [
@@ -206,7 +210,7 @@ export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }
           {openApp === 'gazete' && <NewspaperScreen />}
           {openApp === 'flappy' && <FlappyBirdScreen />}
           {openApp === 'sixtagram' && <SixtagramScreen />}
-          {openApp === GOLD_STORE_APP_ID && !IS_ANDROID_APP && (
+          {openApp === GOLD_STORE_APP_ID && !isAppBlocked(GOLD_STORE_APP_ID) && (
             <Suspense fallback={null}>
               <GoldStoreScreen />
             </Suspense>

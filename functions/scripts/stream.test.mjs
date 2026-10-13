@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeFirestore, FieldValue, Timestamp } from '../gang/test/fakeFirestore.js';
-import { createStream, streamSetOf, DONATION_DAILY_CAP, STREAM_STALE_MS } from '../stream.js';
+import { createStream, streamSetOf, DONATION_DAILY_CAP, STREAM_STALE_MS, topDonorsShown } from '../stream.js';
 
 class HttpsError extends Error {
   constructor(code, message) {
@@ -234,7 +234,7 @@ test('v81: başkasının evindeki/dükkânındaki setle yayın açılamaz; inter
   assert.equal(r2.charged, 0);
 });
 
-test('v81: en çok bağış yapan 3 kişi (toplam, sıralı) yayın belgesinde', async () => {
+test('v81/v92: en çok bağış yapanlar (toplam, sıralı) yayın belgesinde; görünen 3 + tavana ulaşan başına 1', async () => {
   const h = setup();
   h.present('ali', 'ev1');
   const { streamId } = await h.act('ali', { op: 'start', houseId: 'ev1', chairId: 'ch1' });
@@ -245,7 +245,10 @@ test('v81: en çok bağış yapan 3 kişi (toplam, sıralı) yayın belgesinde',
   await h.act('u1', { op: 'donate', streamId, amount: 1000 }); // u1 toplam 1100 → birinci
   await h.act('u4', { op: 'donate', streamId, amount: 100 }); // u3'ü geçer
   const top = h.G(`streams/${streamId}`).top;
-  assert.deepEqual(top.map((x) => [x.n, x.a]), [['U1', 1100], ['U2', 1000], ['U4', 100]]);
+  assert.deepEqual(top.map((x) => [x.n, x.a]), [['U1', 1100], ['U2', 1000], ['U4', 100], ['U3', 10]]);
+  assert.equal(topDonorsShown(top), 3);
+  assert.equal(topDonorsShown([{ a: 10_000 }, { a: 10_000 }, { a: 5 }, { a: 4 }, { a: 3 }, { a: 2 }]), 5);
+  assert.equal(topDonorsShown(Array.from({ length: 12 }, () => ({ a: 10_000 }))), 10);
   const end = await h.act('ali', { op: 'stop', streamId });
   assert.equal(end.summary.top[0].n, 'U1');
 });
@@ -278,4 +281,27 @@ test('v82: bağış sohbete düşer; izleyici listesi isimleriyle gelir', async 
   await h.act('kafeci', { op: 'watch', streamId, on: false });
   const v2 = await h.act('veli', { op: 'viewers', streamId });
   assert.deepEqual(v2.viewers.map((x) => x.name), ['Veli']);
+});
+
+test('v92: maç ekranından yayına yazılan mesaj balonsuz (nb); izleyicinin noBubble isteği yok sayılır', async () => {
+  const h = setup();
+  h.present('ali', 'ev1');
+  const { streamId } = await h.act('ali', { op: 'start', houseId: 'ev1', chairId: 'ch1' });
+  await h.act('ali', { op: 'chat', streamId, text: 'maçtayım', noBubble: true });
+  await h.act('veli', { op: 'watch', streamId, on: true });
+  await h.act('veli', { op: 'chat', streamId, text: 'selam', noBubble: true });
+  const chat = [...h.db._store.entries()].filter(([k]) => k.startsWith(`streams/${streamId}/chat/`)).map(([, v]) => v.data);
+  assert.equal(chat.find((m) => m.text === 'maçtayım').nb, true);
+  assert.equal(chat.find((m) => m.text === 'selam').nb, undefined);
+});
+
+test('v92: günlük maç sohbeti — gün anahtarına yazılır, hız sınırı var, boş mesaj olmaz', async () => {
+  const h = setup();
+  const r = await h.act('veli', { op: 'matchChat', text: 'Hadi Galata!' });
+  assert.match(r.day, /^\d{4}-\d{2}-\d{2}$/);
+  const msgs = [...h.db._store.entries()].filter(([k]) => k.startsWith(`matchChats/${r.day}/msgs/`)).map(([, v]) => v.data);
+  assert.equal(msgs.length, 1);
+  assert.equal(msgs[0].name, 'Veli');
+  await assert.rejects(h.act('veli', { op: 'matchChat', text: 'tekrar' }), /yavaş/);
+  await assert.rejects(h.act('ali', { op: 'matchChat', text: '   ' }), /Boş/);
 });

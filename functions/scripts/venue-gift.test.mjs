@@ -4,8 +4,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { goldTag } from '../moneyLog.js';
 import { FakeFirestore, FieldValue, Timestamp } from '../gang/test/fakeFirestore.js';
 import { HOUSE_PRODUCTS } from '../houseCatalogData.js';
+import { VENUES } from '../venueLayouts.js';
 
 const src = fs.readFileSync(fileURLToPath(new URL('../index.js', import.meta.url)), 'utf8');
 const a = src.indexOf('const BUFE_PRICES = {');
@@ -24,7 +26,9 @@ function setup() {
   const G = (p) => db._store.get(p)?.data;
   const blocks = new Set();
   const moderation = { isBlockedBy: async (o, t) => blocks.has(`${o}>${t}`) };
-  const fns = new Function('db', 'admin', 'HttpsError', 'onCall', 'requireAuth', 'moderation', 'HOUSE_PRODUCTS', code)(
+  const fns = new Function(
+    'goldTag', 'VENUES', 'db', 'admin', 'HttpsError', 'onCall', 'requireAuth', 'moderation', 'HOUSE_PRODUCTS', code)(
+    goldTag, VENUES,
     db, { firestore: { FieldValue } }, HttpsError, (fn) => fn, (r) => r.auth.uid, moderation, HOUSE_PRODUCTS
   );
   const fresh = () => new Timestamp(Date.now());
@@ -103,4 +107,20 @@ test('v66 ev: aynı evdeki oyuncuya ısmarlanır, başka evdekine ısmarlanmaz',
   assert.equal(G('heldItems/veli').itemId, 'kola');
   assert.equal(G('heldItems/veli').untilMs, until);
   assert.equal(G('housePresence/veli').holding, 'kola');
+});
+
+test('v92 Faz 8: 3D gazinoda alınan/ısmarlanan içecek 3D konum kaydında (housePresence) da görünür', async () => {
+  const { S, G, call, fresh } = setup();
+  for (const u of ['ali', 'veli']) {
+    S(`interiorPresence/${u}`, { locationId: 'gazino', updatedAt: fresh() });
+    S(`housePresence/${u}`, { houseId: 'game_gazino', holding: null, updatedAt: fresh() });
+  }
+  S('housePresence/ayse', { houseId: 'baska_ev', holding: null, updatedAt: fresh() });
+  await call('buyFromGazinoBar', 'ali', { itemId: 'kokteyl' });
+  assert.equal(G('housePresence/ali').holding, 'kokteyl');
+  await call('buyFromGazinoBar', 'ayse', { itemId: 'cay' });
+  assert.equal(G('housePresence/ayse').holding, null); // başka evdeyse dokunulmaz
+  await call('giftHeldItem', 'ali', { targetUid: 'veli', venue: 'gazino' });
+  assert.equal(G('housePresence/ali').holding, null);
+  assert.equal(G('housePresence/veli').holding, 'kokteyl');
 });

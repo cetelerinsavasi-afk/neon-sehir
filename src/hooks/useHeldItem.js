@@ -12,6 +12,7 @@ export function useHeldItem(venue) {
   const [, setTick] = useState(0);
   const [gift, setGift] = useState(null);
   const lastGiftRef = useRef(0);
+  const lastServedRef = useRef(0);
 
   useEffect(() => {
     if (!user) {
@@ -27,6 +28,12 @@ export function useHeldItem(venue) {
           const fresh = lastGiftRef.current !== 0 || Date.now() - d.giftedAtMs < 15_000;
           lastGiftRef.current = d.giftedAtMs;
           if (fresh && d.venue === venue) setGift({ from: d.giftedByName || 'Bir oyuncu', itemId: d.itemId, at: d.giftedAtMs });
+        }
+        // v92 — garson siparişi getirdi (ya da süre dolunca kendiliğinden geldi)
+        if (d?.servedAtMs && d.servedAtMs !== lastServedRef.current) {
+          const fresh = lastServedRef.current !== 0 || Date.now() - d.servedAtMs < 15_000;
+          lastServedRef.current = d.servedAtMs;
+          if (fresh && d.venue === venue) setGift({ served: true, from: d.servedBy || null, itemId: d.itemId, at: d.servedAtMs });
         }
       },
       () => setRaw(null)

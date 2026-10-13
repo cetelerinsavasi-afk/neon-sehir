@@ -109,6 +109,7 @@ export default function StreamViewer({ streamId, onClose }) {
   // v81: yayıncının yazdıkları sahnede avatarının üstünde konuşma balonu olur
   useEffect(() => {
     const hostMsgs = chat.filter((m) => m.host);
+    // v92: maç ekranından yazılanlar (nb) balon olmaz
     if (seenHostMsg.current === null) {
       if (chat.length || s) seenHostMsg.current = new Set(hostMsgs.map((m) => m.id));
       return;
@@ -116,7 +117,7 @@ export default function StreamViewer({ streamId, onClose }) {
     const fresh = hostMsgs.filter((m) => !seenHostMsg.current.has(m.id));
     fresh.forEach((m) => seenHostMsg.current.add(m.id));
     const last = fresh[fresh.length - 1];
-    if (last) setBubble({ uid: last.uid, text: last.text, key: last.id });
+    if (last && !last.nb) setBubble({ uid: last.uid, text: last.text, key: last.id });
   }, [chat, s]);
 
   useEffect(() => {
@@ -191,7 +192,16 @@ export default function StreamViewer({ streamId, onClose }) {
         {live && <StreamTopDonors top={s?.top} isBlocked={isBlocked} />}
         <div className="st-alerts">
           {alerts.map((a) => (
-            <div key={a.key} className={`st-alert${a.a >= 1000 ? ' big' : ''}`}>
+            <div
+              key={a.key}
+              className={`st-alert${a.a >= 1000 ? ' big' : ''}`}
+              role="button"
+              title="Kapatmak için dokun"
+              onClick={(e) => {
+                e.stopPropagation();
+                setAlerts((list) => list.filter((x) => x.key !== a.key));
+              }}
+            >
               <b>
                 🎁 {a.n} · {fmtN(a.a)} altın
               </b>

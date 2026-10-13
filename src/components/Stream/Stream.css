@@ -1371,3 +1371,86 @@ body.ns-streaming .onnumara-fullscreen {
 .st-chat-list p.room b {
   color: #7ff0c4;
 }
+
+/* v92 — bağışçı listesi 10 kişiye kadar uzar; sınıra ulaşanlar işaretli */
+.st-top3.long {
+  gap: 2px;
+}
+.st-top3.long p {
+  font-size: 10.5px;
+  padding: 2px 8px 2px 4px;
+}
+.st-top3 p.maxed i {
+  color: #ffb347;
+}
+.st-top3 p.maxed i::after {
+  content: ' MAX';
+  font-size: 8.5px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  margin-left: 2px;
+  color: #ff8a3d;
+}
+/* v92 — bağış bildirimine dokununca kapanır */
+.st-alert {
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+/* v92 — yayında maç izleme */
+.st-matchview {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  flex-direction: column;
+}
+.st-matchview .futbol-fullscreen-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.st-matchview-input {
+  flex: none;
+  padding: 6px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+  background: #0b0d14;
+  border-top: 1px solid rgba(212, 175, 55, 0.3);
+}
+.st-matchview-input > small {
+  display: block;
+  margin: 0 2px 4px;
+  font-size: 11px;
+  color: #e8c766;
+}
+/* yayıncı ekranında sol altta "⚽ Maç" */
+.st-match-btn {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  border: 2px solid rgba(57, 255, 136, 0.85);
+  background: rgba(4, 20, 12, 0.85);
+  color: #b9ffd4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-weight: 800;
+}
+.st-match-btn span {
+  font-size: 24px;
+  line-height: 1;
+}
+.st-match-btn small {
+  font-size: 10px;
+}
+
+.st-mv-head {
+  justify-content: flex-start;
+  gap: 10px;
+}
+.st-mv-back {
+  padding: 7px 12px;
+  font-size: 13px;
+}

@@ -21,9 +21,11 @@ import { useFirestoreResume } from './hooks/useFirestoreResume';
 import { regions } from './data/regions';
 import { BIZ_BY_REGION } from '../functions/businessCatalogData.js';
 import { IS_ANDROID_APP } from './lib/platform';
+import { quietRestorePlayPurchases } from './lib/playBilling';
 import { exitApp, installBackHandler, rearmBack, useBackClose } from './lib/backStack';
 import ConfirmModal from './components/ConfirmModal/ConfirmModal';
 import LiveStreamsButton from './components/Stream/LiveStreamsButton';
+import UpdateAppBanner from './components/UpdateAppBanner/UpdateAppBanner';
 import './styles/theme.css';
 import './styles/cues.css';
 import './App.css';
@@ -50,6 +52,8 @@ const RaceFullScreen = lazyScreen(() => import('./components/RaceTrackScreen/Rac
 const OnNumaraFullScreen = lazyScreen(() => import('./components/OnNumaraScreen/OnNumaraFullScreen'));
 const ProfileFullScreen = lazyScreen(() => import('./components/ProfileFullScreen/ProfileFullScreen'));
 const HouseHub = lazyScreen(() => import('./components/HouseScreen/HouseHub'));
+// v92 Faz 8 — mekânlar 3D (giriş yapmamış oyuncu eski 2D mekânı görür)
+const VenueHouseScreen = lazyScreen(() => import('./components/Venue3D/VenueHouseScreen'));
 const BusinessHub = lazyScreen(() => import('./components/BusinessHub/BusinessHub'));
 const NetCreditRing = lazyScreen(() => import('./components/Venue/NetCreditRing'));
 const FutbolFullScreen = lazyScreen(() => import('./components/FutbolScreen/FutbolFullScreen'));
@@ -113,6 +117,19 @@ function UnreadBridge({ onChange }) {
 
 function GameShell() {
   const { user } = useAuth();
+  // v91.1 — Google Play: ödemesi alınmış ama zümrütü yüklenememiş (ör. internet
+  // kesildi, uygulama kapandı) satın almalar uygulama açılınca ve öne
+  // gelince sessizce tamamlanır. Zümrüt yüklenince oyuncuya SMS de gider.
+  useEffect(() => {
+    if (!IS_ANDROID_APP || !user) return undefined;
+    const t = setTimeout(() => quietRestorePlayPurchases(), 4000);
+    const onVis = () => document.visibilityState === 'visible' && quietRestorePlayPurchases();
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [user]);
   // Çeteler bildirim işaretleri (alt çubuk + çete içi sekmeler)
   // Telefon rozeti + haritadaki ChatsApp kısayolunun "yeni mesaj" noktası (tek dinleyici)
   // v77 performans: bu iki hook'un ~25 canlı dinleyicisi (sohbetler, savaşlar, SMS…)
@@ -185,8 +202,18 @@ function GameShell() {
   // v68 — Android geri tuşu: açık ekran/mekân varsa onu kapatır (mekândan →
   // ana sayfa); ana sayfadayken "Çıkmak istiyor musun?" sorulur.
   const [exitAsk, setExitAsk] = useState(false);
+  const [exitHint, setExitHint] = useState(false);
   useEffect(() => {
-    installBackHandler(() => setExitAsk(true));
+    let t = 0;
+    installBackHandler(
+      () => setExitAsk(true),
+      () => {
+        setExitHint(true);
+        clearTimeout(t);
+        t = setTimeout(() => setExitHint(false), 2500);
+      }
+    );
+    return () => clearTimeout(t);
   }, []);
   const venueClose = (fn) => () => closeVenueMaybeReturnToVisit(fn);
   useBackClose(Boolean(activeRegion), () => setActiveRegion(null));
@@ -398,6 +425,7 @@ function GameShell() {
     <div className="app-shell">
       <GangAlertsBridge uid={user?.uid} onChange={setGangAlerts} />
       <UnreadBridge onChange={setUnread} />
+      {exitHint && !exitAsk && <div className="exit-hint">Çıkmak için bir kez daha geri</div>}
       {exitAsk && (
         <ConfirmModal
           title="Çıkmak istiyor musun?"
@@ -422,6 +450,9 @@ function GameShell() {
           setPhoneOpen(true);
         }}
       />
+
+      {/* v91: eski Android sürümü → "Güncelle" uyarısı */}
+      <UpdateAppBanner />
 
       {/* v77: internet kafe ödenmiş süre halkası — mekân dışında da görünür */}
       {user && <NetCreditRing className="vn-fixed" />}
@@ -551,47 +582,79 @@ function GameShell() {
       />
 
       {parkOpen && (
+        user ? (
+          <VenueHouseScreen venue="park" onExit={() => closeVenueMaybeReturnToVisit(setParkOpen)} fallback={<ParkWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setParkOpen)} />} />
+        ) : (
         <ParkWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setParkOpen)} />
+        )
       )}
 
       {bankOpen && (
+        user ? (
+          <VenueHouseScreen venue="banka" onExit={() => closeVenueMaybeReturnToVisit(setBankOpen)} onOpenHeist={openHeistScreen} fallback={<BankWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setBankOpen)} onOpenHeist={openHeistScreen} />} />
+        ) : (
         <BankWorldScreen
           onExit={() => closeVenueMaybeReturnToVisit(setBankOpen)}
           onOpenHeist={openHeistScreen}
         />
+        )
       )}
 
       {karakolOpen && (
+        user ? (
+          <VenueHouseScreen venue="karakol" onExit={() => closeVenueMaybeReturnToVisit(setKarakolOpen)} fallback={<KarakolWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setKarakolOpen)} />} />
+        ) : (
         <KarakolWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setKarakolOpen)} />
+        )
       )}
 
       {mosqueOpen && (
+        user ? (
+          <VenueHouseScreen venue="camii" onExit={() => closeVenueMaybeReturnToVisit(setMosqueOpen)} fallback={<MosqueWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setMosqueOpen)} />} />
+        ) : (
         <MosqueWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setMosqueOpen)} />
+        )
       )}
 
       {casinoOpen && (
+        user ? (
+          <VenueHouseScreen venue="gazino" onExit={() => closeVenueMaybeReturnToVisit(setCasinoOpen)} onOpenHeist={openHeistScreen} fallback={<CasinoWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setCasinoOpen)} onOpenHeist={openHeistScreen} />} />
+        ) : (
         <CasinoWorldScreen
           onExit={() => closeVenueMaybeReturnToVisit(setCasinoOpen)}
           onOpenHeist={openHeistScreen}
         />
+        )
       )}
 
       {dealershipOpen && (
+        user ? (
+          <VenueHouseScreen venue="araba_galerisi" onExit={() => closeVenueMaybeReturnToVisit(setDealershipOpen)} onOpenHeist={openHeistScreen} fallback={<CarDealershipWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setDealershipOpen)} onOpenHeist={openHeistScreen} />} />
+        ) : (
         <CarDealershipWorldScreen
           onExit={() => closeVenueMaybeReturnToVisit(setDealershipOpen)}
           onOpenHeist={openHeistScreen}
         />
+        )
       )}
 
       {weaponShopOpen && (
+        user ? (
+          <VenueHouseScreen venue="silah_magazasi" onExit={() => closeVenueMaybeReturnToVisit(setWeaponShopOpen)} fallback={<WeaponShopWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setWeaponShopOpen)} />} />
+        ) : (
         <WeaponShopWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setWeaponShopOpen)} />
+        )
       )}
 
       {tuningGarageOpen && (
+        user ? (
+          <VenueHouseScreen venue="modifiye_garaji" onExit={() => closeVenueMaybeReturnToVisit(setTuningGarageOpen)} onOpenHeist={openHeistScreen} fallback={<TuningGarageWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setTuningGarageOpen)} onOpenHeist={openHeistScreen} />} />
+        ) : (
         <TuningGarageWorldScreen
           onExit={() => closeVenueMaybeReturnToVisit(setTuningGarageOpen)}
           onOpenHeist={openHeistScreen}
         />
+        )
       )}
 
       {heistTarget !== undefined && (

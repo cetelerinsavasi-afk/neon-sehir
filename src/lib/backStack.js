@@ -19,7 +19,24 @@ function standalone() {
     return false;
   }
 }
-export const BACK_ENABLED = typeof window !== 'undefined' && (IS_ANDROID_APP || standalone());
+// v92 — iPhone/iPad'de geri TUŞU yoktur; ekranın solundan sağa kaydırma
+// (iOS'un "geri" hareketi) bekçi kaydını tüketip "Çıkmak istiyor musun?"
+// onayını açıyordu. iOS'ta bu sistem tamamen kapalı.
+function isIOS() {
+  try {
+    const ua = navigator.userAgent || '';
+    return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  } catch {
+    return false;
+  }
+}
+export const BACK_ENABLED = typeof window !== 'undefined' && !isIOS() && (IS_ANDROID_APP || standalone());
+// v92 — Android'de kenardan kaydırma da "geri" sayılır. Oyun oynarken yanlışlıkla
+// kaydırınca hemen çıkış sorulmasın: ana sayfada ilk "geri" sadece kısa bir
+// uyarı gösterir, 2,5 sn içinde ikinci "geri" çıkış onayını açar.
+const ROOT_BACK_WINDOW_MS = 2500;
+let lastRootBackAt = 0;
+let onRootHint = null;
 
 const stack = [];
 let installed = false;
@@ -36,8 +53,9 @@ function pushGuard() {
   }
 }
 
-export function installBackHandler(onExitAsk) {
+export function installBackHandler(onExitAsk, onHint) {
   onRootBack = onExitAsk;
+  onRootHint = onHint || null;
   if (!BACK_ENABLED || installed) return;
   installed = true;
   try {
@@ -53,7 +71,12 @@ export function installBackHandler(onExitAsk) {
     if (top) {
       pushGuard();
       top.close();
+    } else if (onRootHint && Date.now() - lastRootBackAt > ROOT_BACK_WINDOW_MS) {
+      lastRootBackAt = Date.now();
+      pushGuard();
+      onRootHint();
     } else {
+      lastRootBackAt = 0;
       onRootBack?.();
     }
   };

@@ -5,6 +5,7 @@
 import crypto from 'crypto';
 import { GANG, INTEL, GANG_RANKS, TRADE_PRODUCTS, RANK_LABELS, INTEL_TO_GANG_EQUIV, productById, rankLevel } from './config.js';
 import { dateKeyOf, hourOf, windowSlotOf, weekdayOfKey, addDays } from './time.js';
+import { goldTag } from '../moneyLog.js';
 
 
 export const TEST_WORLD = 'test';
@@ -153,7 +154,7 @@ export function createCore(deps) {
     if (!Number.isInteger(amount) || amount < 0) fail('invalid-argument', 'Geçersiz miktar.');
     if (wallet.gold < amount) fail('failed-precondition', 'Yeterli altının yok.');
     wallet.gold -= amount;
-    tx.update(walletRef(ctx, actorId), { gold: FV.increment(-amount) });
+    tx.update(walletRef(ctx, actorId), { gold: FV.increment(-amount), goldTag: goldTag('cete') });
   }
 
   // Canlı dünyada mevcut kural: kazanılan her altın borç varsa %50 borca
@@ -161,12 +162,12 @@ export function createCore(deps) {
   function creditGold(tx, ctx, actorId, wallet, amount) {
     if (amount <= 0) return { goldDelta: 0, debtDelta: 0 };
     if (ctx.isTest) {
-      tx.update(walletRef(ctx, actorId), { gold: FV.increment(amount) });
+      tx.update(walletRef(ctx, actorId), { gold: FV.increment(amount), goldTag: goldTag('cete') });
       return { goldDelta: amount, debtDelta: 0 };
     }
     const { goldDelta, debtDelta } = splitIncomeForDebt(wallet.debtToState, amount);
     tx.update(walletRef(ctx, actorId), {
-      gold: FV.increment(goldDelta),
+      gold: FV.increment(goldDelta), goldTag: goldTag('cete'),
       debtToState: FV.increment(debtDelta),
     });
     return { goldDelta, debtDelta };

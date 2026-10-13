@@ -43,6 +43,8 @@ export const ITEM_PRICES = {
   // DEKOR
   plantb: g(12000), plants: g(2000), palm: g(24000), rug: g(40000), rugr: g(20000), lamp: g(15000), painting: g(8000),
   bookshelf: g(32000), neon1: g(40000), neon2: g(50000), neon3: g(30000), neon4: g(20000), window: z(1), fanc: g(10000),
+  // v92 — manzaralı pencereler
+  win_yol: z(1), win_sehir: g(40000), win_deniz: g(40000), win_orman: g(40000), win_dag: g(40000), win_kuzey: z(1), win_bogaz: z(1), win_uzay: z(1),
   rugkilim: g(30000), rugshag: g(25000), rugrunner: g(15000), ruggeo: g(35000),
   painting2: g(12000), painting3: g(10000), triptych: z(1), cityframe: g(18000), graffiti: z(1), goldrecords: z(2),
   clock: g(12000), wallshelf: g(10000), curtain: g(20000), vase: g(9000), trash: g(3000), extinguisher: g(5000),
@@ -59,6 +61,39 @@ export const ITEM_PRICES = {
   stagemic: z(6), discoball: z(3), filecab: g(20000), watercooler: g(15000),
   // DIŞ MEKAN
   fence: g(8000), parkbench: g(20000), streetlamp: g(30000), turf: g(25000),
+  // v92 — DEKOR ATÖLYESİ
+  // Müzik stüdyosu
+  mixer: g(90000), studiospk: g(25000), vocalmic: g(15000), drums: z(3), amp: g(45000), synth: g(60000), booth: z(4), onair: g(12000),
+  neon_acik: g(30000),
+  // Hapishane
+  bars: g(8000), celldoor: g(15000), bunk: g(30000), guarddesk: g(45000), canteen: g(35000), searchlight: g(40000), wire: g(6000), interrog: g(30000),
+  // Helikopter
+  helipad: g(150000), helicopter: z(40), windsock: g(12000), padlight: g(5000),
+  // Havuz & bahçe
+  poolout: z(15), lounger: g(20000), umbrella: g(12000), diveboard: g(30000), lifeguard: g(40000), mangal: g(35000), flamingo: g(10000),
+  // Boks
+  ring: z(10), speedbag: g(18000), cornerstool: g(6000), gong: g(25000), bleacher: g(60000),
+  // Market
+  cart: g(15000), simit: g(30000),
+  // Benzinlik
+  pump: g(50000), canopy: g(120000), airpump: g(20000), cone: g(3000), carwash: z(6), pricesign: g(25000),
+  // Yayın seti
+  cyc: g(50000), softbox: g(15000), ringlight: g(10000), streamcam: g(20000), streamdesk: z(3),
+  // Mafya
+  bosstable: z(4), crates: g(20000), bulb: g(4000),
+  // Sinema
+  cinescreen: z(5), cineseat: g(30000), popcorn: g(40000),
+  // Çiftlik
+  hay: g(5000), scarecrow: g(8000), vegbed: g(15000), tree: g(12000), tractor: z(12),
+  // Kamp
+  tent: g(25000), campfire: g(15000),
+  // v92 Faz 8 — mekân mobilyaları (Mihrap ve Minber satılmaz: sadece oyunun Camii'sinde)
+  seccade: g(8000), camiavize: z(2), rahle: g(6000), ayakkabilik: g(14000), cini: g(12000), minder: g(5000), bagiskutusu: g(8000),
+  vezne: g(85000), numarator: g(25000), siraekran: g(20000), vaultdoor: z(6), stanchion: g(6000), waitseats: g(30000),
+  slotm: z(3), rulet: z(6), kartmasa: g(90000), piyangogise: g(60000),
+  polismasa: g(70000), bayrak: g(12000), aranan: g(8000),
+  carplatform: g(120000), showroom: g(30000), hedef: g(10000), carlift: z(3),
+  fiskiye: z(4), kaydirak: g(45000), salincak: g(40000), bufe: g(90000), copkutusu: g(4000), guvercin: g(6000),
   // YAPI
   wall2: g(10000), wall4: g(20000), walldoor: g(30000), glassdiv: g(50000), column: g(100000), podium: z(5), doordeco: g(20000), garagedoor: g(150000),
 };
@@ -79,11 +114,16 @@ export const SURFACE_KEYS = {
     'boya_beyaz', 'boya_krem', 'boya_gri', 'boya_antrasit', 'boya_lacivert', 'boya_bordo', 'boya_zeytin', 'boya_mor', 'boya_siyah',
     'boya_yesil', 'boya_mavi', 'boya_pembe', 'boya_turuncu', 'boya_sari', 'boya_turkuaz',
     'tugla', 'tugla_beyaz', 'beton_duvar', 'ahsap_panel', 'duvar_kagidi', 'damask', 'mermer_duvar', 'neon_panel',
+    // v92 — manzara ve tema duvarları
+    'gokyuzu', 'gunbatimi', 'gece', 'deniz', 'neon_sehir', 'uzanan_yol', 'tarla_ufku', 'orman', 'daglar', 'col', 'uzay',
+    'grafiti', 'beton_blok', 'kogus', 'sabika', 'akustik', 'yesil_perde',
   ],
   floor: [
     'parke_mese', 'parke_ceviz', 'parke_beyaz', 'mermer_beyaz', 'mermer_siyah', 'mermer_altin', 'beton', 'dama',
     'hali_gri', 'hali_bordo', 'epoksi', 'epoksi_siyah', 'karo_mavi', 'neon_grid',
     'zemin_siyah', 'zemin_beyaz', 'zemin_yesil', 'zemin_mavi', 'zemin_mor', 'zemin_kirmizi', 'zemin_gri',
+    // v92 — otopark + dekor zeminleri
+    'otopark', 'asfalt', 'yol', 'cim', 'tarla', 'kum', 'kaldirim', 'cakil', 'kar', 'havuz_karo', 'spor_zemin', 'metal_izgara', 'dans_pisti', 'su',
   ],
 };
 
@@ -107,6 +147,13 @@ export const HOUSE_PRODUCTS = {
   kokteyl: { label: 'Kokteyl', emoji: '🍹' },
   viski: { label: 'Viski', emoji: '🥃' },
   dondurma: { label: 'Dondurma', emoji: '🍦' },
+  // v92 — market rafı, simit arabası, mısır makinesi
+  cikolata: { label: 'Çikolata', emoji: '🍫' },
+  cips: { label: 'Cips', emoji: '🥔' },
+  biskuvi: { label: 'Bisküvi', emoji: '🍘' },
+  makarna: { label: 'Makarna', emoji: '🍝' },
+  simit: { label: 'Simit', emoji: '🥯' },
+  misir: { label: 'Patlamış Mısır', emoji: '🍿' },
   tabanca: { label: 'Tabanca', emoji: '🔫' },
   tufek: { label: 'Tüfek', emoji: '🔫' },
   pompali: { label: 'Pompalı', emoji: '🔫' },
@@ -128,6 +175,12 @@ export const HOUSE_TAKEABLES = {
   watercooler: ['su'],
   stove: ['kebap', 'pizza'],
   guncab: ['tabanca', 'tufek', 'pompali'],
+  // v92
+  shelf: ['cikolata', 'cips', 'biskuvi', 'makarna', 'kola'],
+  simit: ['simit'],
+  popcorn: ['misir'],
+  mangal: ['kebap'],
+  vegbed: ['meyve'],
   gunrack: ['tabanca', 'tufek', 'pompali'],
   gunrackg: ['altinTabanca'],
 };

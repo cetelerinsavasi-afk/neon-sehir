@@ -9,7 +9,7 @@ import { useBlocks } from '../../contexts/BlocksContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useHeldItem } from '../../hooks/useHeldItem';
 import { houseAction, giftHeldItem, createSixtagramPost } from '../../services/gameActions';
-import { createHouseEngine, EMOTES } from './houseEngine';
+import { createHouseEngine, EMOTES, CART_MAX } from './houseEngine';
 import ItemThumb from './ItemThumb';
 import { CATALOG, CATALOG_MAP, CATEGORIES, TINTS } from './houseCatalog';
 import { FLOORS, WALLS } from './houseTextures';
@@ -26,6 +26,8 @@ import { BIZ_TYPES, checkBizRequirements } from '../../../functions/businessCata
 import Workshop from '../Workshop/Workshop';
 import ShopShowcase from '../Shop/ShopShowcase';
 import MenuPanel from '../Venue/MenuPanel';
+import { WaiterButton, OrdersPanel, NewOrderPop } from '../Venue/WaiterPanel';
+import { useWaiterRole } from '../../hooks/useWaiter';
 import NetCreditRing from '../Venue/NetCreditRing';
 import PianoPanel from '../Piano/PianoPanel';
 import { claimPiano, releasePiano, watchPiano } from '../Piano/pianoNet';
@@ -47,6 +49,9 @@ import '../Workshop/Workshop.css';
 import './HouseScreen.css';
 import { streamAction } from '../../services/gameActions';
 import { StreamStartSheet, StreamHostPanel, StreamSummary, StreamPlaySheet } from '../Stream/StreamHost';
+import StreamMatchView from '../Stream/StreamMatchView';
+import VenueLayer from '../Venue3D/VenueLayer';
+import { VENUE_BY_HOUSE } from '../../../functions/venueLayouts.js';
 import { streamBroadcast, clearGameFrame, closeStreamChannel, streamPose, useLiveStreams, useStreamDoc, watchViewers } from '../Stream/streamShared';
 import { streamPriceOf, cafeDevicePrice, isStreamSetPc } from '../../../functions/stream.js';
 
@@ -104,6 +109,14 @@ function Money({ gold = 0, gem = 0, small }) {
   );
 }
 
+// v92 — iki tasarımı karşılaştırmak için kısa imza (sıra bağımsız)
+const designSig = (d) =>
+  `${d?.wall}|${d?.floor}|` +
+  (d?.items || [])
+    .map((it) => `${it.i}:${it.k}:${it.x}:${it.z}:${it.r || 0}:${it.c || 0}:${it.p === 1 ? 1 : 0}:${it.o === true ? 1 : it.o === false ? 0 : '-'}`)
+    .sort()
+    .join(',');
+
 const ownedCount = (items) => {
   const m = {};
   (items || []).forEach((it) => {
@@ -112,12 +125,18 @@ const ownedCount = (items) => {
   return m;
 };
 
-export default function HouseScreen({ houseId, onExit }) {
+export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   const { user } = useAuth();
   const { player } = usePlayer();
   const social = useSocial();
   const { isBlocked } = useBlocks();
-  const { held, gift, clearGift } = useHeldItem('ev');
+  // v92 Faz 8 — oyunun 3D mekânı (camii, banka, gazino…) ise yapılandırması
+  const venue = VENUE_BY_HOUSE[houseId] || null;
+  // gazino barı / park büfesi eldeki ürünü kendi mekân adıyla yazar
+  const heldVenue = venue?.key === 'gazino' ? 'gazino' : venue?.key === 'park' ? 'park' : 'ev';
+  const { held, gift, clearGift } = useHeldItem(heldVenue);
+  const venueApiRef = useRef(null);
+  const venueNpcsRef = useRef([]);
   const mountRef = useRef(null);
   const seenSelfRef = useRef(false);
   const rejoinRef = useRef(false);
@@ -130,6 +149,8 @@ export default function HouseScreen({ houseId, onExit }) {
   const [entered, setEntered] = useState(false); // sunucu girişi onayladı mı (v77: sahne öncesinden kurulur)
   const [mode, setMode] = useState('walk');
   const [view, setView] = useState('3d');
+  const [freeCam, setFreeCam] = useState(false); // v92 — 2D'de kamera serbest mi
+  const [streamMatch, setStreamMatch] = useState(false); // v92 — yayında maç izleme
   const [sel, setSel] = useState(null);
   const [interact, setInteract] = useState(null);
   const [tab, setTab] = useState('magaza');
@@ -138,6 +159,10 @@ export default function HouseScreen({ houseId, onExit }) {
   const [saveState, setSaveState] = useState('saved');
   const [design, setDesign] = useState(null);
   const [houseDoc, setHouseDoc] = useState(null);
+  // v92 — bu oturumda davet edilenler (butonda ✓ görünsün)
+  const [invitedUids, setInvitedUids] = useState({});
+  // v92 — market arabası (null = yok). Mekândan çıkınca / bırakınca içindekilerle kaybolur.
+  const [myCart, setMyCart] = useState(null);
   const [inv, setInv] = useState({ items: {}, walls: [], floors: [] });
   const [online, setOnline] = useState([]);
   const onlineKeyRef = useRef('');
@@ -151,6 +176,8 @@ export default function HouseScreen({ houseId, onExit }) {
   // v80 — yayın
   const [streamAsk, setStreamAsk] = useState(null); // { chairId, pcId } → "Yayın aç" paneli
   const [myStream, setMyStream] = useState(null); // { id, chairId, pcId }
+  // v92: yayın bitince maç ekranı da kapanır (sonraki yayında kendiliğinden açılmasın)
+  if (!myStream && streamMatch) setStreamMatch(false);
   const [streamBusy, setStreamBusy] = useState(false);
   const [streamSum, setStreamSum] = useState(null); // { summary, reason, cost }
   const [playAsk, setPlayAsk] = useState(false); // v81: yayında "Oyun oyna" seçimi
@@ -187,7 +214,15 @@ export default function HouseScreen({ houseId, onExit }) {
   const leavingRef = useRef(false);
   const enteredRef = useRef(false);
   const lastEmoteRef = useRef({ emote: null, ts: 0 });
+  const waiterLeaveRef = useRef(null); // v92 — çıkarken garsonluğu bırak
   const isOwner = !!info?.isOwner;
+  // v92 — tasarım yetkisi verilmiş arkadaş (sahibin envanteriyle döşer, satın alamaz)
+  const isEditor = !isOwner && Boolean(user?.uid && houseDoc?.editors?.[user.uid] === true);
+  const canDesign = isOwner || isEditor;
+  const canDesignRef = useRef(canDesign);
+  canDesignRef.current = canDesign;
+  const [realLook, setRealLook] = useState(false); // v92 — göz: denemeleri gerçek göster
+  const lastRemoteSurfRef = useRef('');
 
   const flash = useCallback((t) => {
     setToast(t);
@@ -196,6 +231,7 @@ export default function HouseScreen({ houseId, onExit }) {
   const exit = useCallback(
     (note) => {
       leavingRef.current = true;
+      waiterLeaveRef.current?.();
       stopMusic();
       stopStreamRef.current?.('left');
       if (user) deleteDoc(doc(db, 'housePresence', user.uid)).catch(() => {});
@@ -258,7 +294,7 @@ export default function HouseScreen({ houseId, onExit }) {
   const flushSave = useCallback(() => {
     clearTimeout(saveTimerRef.current);
     const dsg = pendingDesignRef.current;
-    if (!dsg || !isOwner) return Promise.resolve();
+    if (!dsg || !canDesignRef.current) return Promise.resolve();
     pendingDesignRef.current = null;
     setSaveState('saving');
     const allowBizClose = allowBizCloseRef.current;
@@ -267,6 +303,8 @@ export default function HouseScreen({ houseId, onExit }) {
         const res = await houseAction({ op: 'save', houseId, design: dsg, ...(allowBizClose ? { allowBizClose: true } : {}) });
         if (allowBizClose) allowBizCloseRef.current = false;
         setSaveState(pendingDesignRef.current ? 'dirty' : 'saved');
+        // v92 — yetkili: sahibinin güncel envanteri
+        if (res?.data?.inv) setInv({ items: res.data.inv.items || {}, walls: res.data.inv.walls || [], floors: res.data.inv.floors || [] });
         const closed = res?.data?.bizClosed;
         if (closed) flash(`${BIZ_TYPES[closed.type]?.icon || '🏪'} ${BIZ_TYPES[closed.type]?.label || 'İşletme'} kapandı; içindekiler envanterine döndü.`);
       } catch (err) {
@@ -296,23 +334,29 @@ export default function HouseScreen({ houseId, onExit }) {
         appliedFirstRef.current = false;
       }
     });
-  }, [enqueue, flash, houseId, isOwner]);
+  }, [enqueue, flash, houseId]);
 
   useEffect(() => {
     if (phase !== 'ready' || !info || !mountRef.current) return undefined;
     const eng = createHouseEngine(mountRef.current, {
-      canEdit: info.isOwner,
+      canEdit: info.isOwner || canDesignRef.current,
       selfUid: user.uid,
       onSelectionChange: setSel,
       onInteractChange: setInteract,
-      onPlayerTap: (uid) => setCardTarget(uid),
+      onPlayerTap: (uid) => {
+        // v92 Faz 8: mekân NPC'si → istasyonuna git / paneli aç
+        if (String(uid).startsWith('npc_') && venueApiRef.current?.npcTap(uid)) return;
+        if (String(uid).startsWith('npc_')) return;
+        setCardTarget(uid);
+      },
+      onFreeCamChange: setFreeCam,
       onContextLost: () => {
         flash('Grafikler yeniden yükleniyor…');
         setTimeout(() => setEngineKey((k) => k + 1), 400);
       },
       onDesignChange: (dsg) => {
         setDesign(dsg);
-        if (!info.isOwner) return;
+        if (!canDesignRef.current) return;
         pendingDesignRef.current = { items: dsg.items, wall: dsg.wall, floor: dsg.floor };
         setSaveState('dirty');
         clearTimeout(saveTimerRef.current);
@@ -321,6 +365,10 @@ export default function HouseScreen({ houseId, onExit }) {
     });
     engineRef.current = eng;
     if (import.meta.env?.DEV) window.__houseEngine = eng; // sadece geliştirme/önizleme
+    if (venue) {
+      eng.setVenueStations(venue.stations);
+      if (venue.outdoor) eng.setOutdoor(true);
+    }
     eng.setMode(mode);
     eng.setView(view);
     appliedFirstRef.current = false;
@@ -350,6 +398,17 @@ export default function HouseScreen({ houseId, onExit }) {
   useEffect(() => {
     engineRef.current?.setSelf({ uid: user?.uid, name: player?.displayName || 'Sen', avatar: player?.avatar || null });
   }, [player?.displayName, player?.avatar, user, phase, engineKey]);
+
+  // v92 — market arabası: motora ve (diğerleri görsün diye) konum kaydına.
+  // Ayrı yazılır: kurallar henüz yüklenmemişse sadece bu yazma reddedilir.
+  useEffect(() => {
+    engineRef.current?.setSelfCart(myCart);
+    if (!user || phase !== 'ready' || !enteredRef.current) return undefined;
+    const t = setTimeout(() => {
+      setDoc(doc(db, 'housePresence', user.uid), { cart: myCart }, { merge: true }).catch(() => {});
+    }, 250);
+    return () => clearTimeout(t);
+  }, [myCart, user, phase, engineKey]);
 
   useEffect(() => {
     engineRef.current?.setSelfHolding(held?.itemId || null);
@@ -383,16 +442,61 @@ export default function HouseScreen({ houseId, onExit }) {
         const eng = engineRef.current;
         if (!eng) return;
         const dsg = { items: data.items || [], wall: data.wall, floor: data.floor };
-        if (!info?.isOwner || !appliedFirstRef.current) {
+        const surf = `${data.wall}|${data.floor}`;
+        const designer = info?.isOwner || data.editors?.[user?.uid] === true;
+        if (!designer || !appliedFirstRef.current) {
           appliedFirstRef.current = true;
+          lastRemoteSurfRef.current = surf;
           eng.setDesign(dsg, { force: true });
           setDesign(eng.getDesign());
+        } else if (!pendingDesignRef.current && !eng.isBusy()) {
+          // v92 — birlikte tasarım: yetkili/sahip başkasının değişikliğini canlı görür.
+          // Kendi bekleyen değişikliğin varsa uygulanmaz (kaydın gidince eşitlenir).
+          // Duvar/zemin sadece uzakta değiştiyse alınır (denediğin kaplama silinmesin).
+          const cur = eng.getDesign();
+          const surfChanged = surf !== lastRemoteSurfRef.current;
+          lastRemoteSurfRef.current = surf;
+          const next = { items: dsg.items, wall: surfChanged ? dsg.wall : cur.wall, floor: surfChanged ? dsg.floor : cur.floor };
+          if (designSig(next) !== designSig(cur)) {
+            eng.setDesign(next);
+            setDesign(eng.getDesign());
+          }
         }
         eng.setMusic(data.music?.itemId || null);
       },
       (err) => console.error('Ev dinleme hatası:', err)
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, houseId, info?.isOwner, exit, engineKey]);
+
+  // v92 — yetki değişince motor da güncellenir; yetkisi alınan Gez'e döner
+  useEffect(() => {
+    engineRef.current?.setCanEdit(canDesign);
+    if (!canDesign && mode === 'build') {
+      setMode('walk');
+      setSel(null);
+      flash('🛠️ Tasarım yetkin kaldırıldı.');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canDesign, engineKey]);
+  useEffect(() => {
+    engineRef.current?.setRealLook(realLook);
+  }, [realLook, engineKey]);
+  // v92 — yetkili: sahibin envanteri (belge sadece sahibine açık → sunucudan)
+  const houseUpdatedAt = houseDoc?.updatedAtMs || 0;
+  useEffect(() => {
+    if (phase !== 'ready' || !isEditor || mode !== 'build') return undefined;
+    let alive = true;
+    const t = setTimeout(() => {
+      houseAction({ op: 'editInv', houseId })
+        .then((r) => alive && setInv({ items: r.data?.items || {}, walls: r.data?.walls || [], floors: r.data?.floors || [] }))
+        .catch(() => {});
+    }, 300);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [phase, isEditor, mode, houseId, houseUpdatedAt]);
 
   // envanter (sadece sahibi)
   useEffect(() => {
@@ -427,8 +531,15 @@ export default function HouseScreen({ houseId, onExit }) {
   const liveMapRef = useRef({});
   const pushOthers = useCallback(() => {
     const merged = fsOthersRef.current.map((p) => mergeLive(p, liveMapRef.current[p.uid], p.updatedAt?.toMillis?.() ?? 0));
-    engineRef.current?.setOthers(merged);
+    engineRef.current?.setOthers(venueNpcsRef.current.length ? [...merged, ...venueNpcsRef.current] : merged);
   }, []);
+  const onVenueNpcs = useCallback(
+    (list) => {
+      venueNpcsRef.current = list || [];
+      pushOthers();
+    },
+    [pushOthers]
+  );
   useEffect(() => {
     if (phase !== 'ready') return undefined;
     return watchLive(`house/${houseId}`, (m) => {
@@ -554,6 +665,7 @@ export default function HouseScreen({ houseId, onExit }) {
           seenMsgRef.current.add(m.id);
           // v86: yayıncının yayından yazdığı (viaStream) kendi mesajı zaten yerelde balon oldu
           if (m.viaStream && m.uid === user?.uid) return;
+          if (m.nb) return; // v92: maç ekranından yayına yazılan — balon yok
           if ((m.createdAtMs || 0) > mountedAtRef.current - 2000 && !isBlocked(m.uid)) engineRef.current?.say(m.uid, m.text);
         });
       },
@@ -601,6 +713,11 @@ export default function HouseScreen({ houseId, onExit }) {
     const seatBefore = engineRef.current?.getSelfState()?.seat || null;
     const r = engineRef.current?.interact(a);
     if (!r) return;
+    // v92 Faz 8 — mekân istasyonu (Mihrap, Vezne, Bar…)
+    if (r.kind === 'panel' && String(r.panel).startsWith('v:')) {
+      venueApiRef.current?.open(r.panel.slice(2), r.itemId);
+      return;
+    }
     // v77: dolu koltuk (ör. piyano) → silüet + sarsılma
     if (a.kind === 'sit' && r.kind === 'sit' && !seatBefore && !engineRef.current?.getSelfState()?.seat) {
       setSeatFull(Date.now());
@@ -625,6 +742,19 @@ export default function HouseScreen({ houseId, onExit }) {
       }
       setPianoLocal(Boolean(c.local));
       setPanel('piano');
+      return;
+    }
+    if (r.kind === 'cart') {
+      setMyCart([]);
+      flash('🛒 Market arabası elinde — raftan aldıkların arabaya girer.');
+      return;
+    }
+    if (r.kind === 'cartadd') {
+      if ((myCart || []).length >= CART_MAX) {
+        flash(`🛒 Araba dolu (${CART_MAX} ürün).`);
+        return;
+      }
+      setMyCart((c) => [...(c || []), r.product].slice(0, CART_MAX));
       return;
     }
     if (r.kind === 'take') {
@@ -660,7 +790,7 @@ export default function HouseScreen({ houseId, onExit }) {
   };
   const giftTo = async (o) => {
     try {
-      const r = await giftHeldItem(o.uid, 'ev');
+      const r = await giftHeldItem(o.uid, heldVenue);
       flash(`🎁 ${o.displayName || 'Oyuncu'} için ${r?.label || 'ikram'} ısmarladın.`);
     } catch (err) {
       flash(err?.message || 'Ismarlanamadı.');
@@ -674,11 +804,33 @@ export default function HouseScreen({ houseId, onExit }) {
       flash(err?.message || 'Çıkarılamadı.');
     }
   };
+  // v92 — arkadaşa tasarım yetkisi ver / kaldır
+  const [editorBusy, setEditorBusy] = useState(null);
+  const setEditor = async (uid, on, name) => {
+    if (editorBusy) return;
+    setEditorBusy(uid);
+    try {
+      await houseAction({ op: 'editor', houseId, uid, on });
+      flash(on ? `🛠️ ${name || 'Oyuncu'} artık burayı düzenleyebilir (SMS gitti).` : `${name || 'Oyuncu'} için yetki kaldırıldı.`);
+    } catch (err) {
+      flash(err?.message || 'Olmadı.');
+    } finally {
+      setEditorBusy(null);
+    }
+  };
   const invite = async (f) => {
+    if (invitedUids[f.uid] === 'busy') return;
+    setInvitedUids((m) => ({ ...m, [f.uid]: 'busy' }));
     try {
       await houseAction({ op: 'invite', houseId, uid: f.uid });
+      setInvitedUids((m) => ({ ...m, [f.uid]: 'ok' }));
       flash(`💌 ${f.name} davet edildi (SMS gitti).`);
     } catch (err) {
+      setInvitedUids((m) => {
+        const n = { ...m };
+        delete n[f.uid];
+        return n;
+      });
       flash(err?.message || 'Davet edilemedi.');
     }
   };
@@ -696,6 +848,7 @@ export default function HouseScreen({ houseId, onExit }) {
     setView(v);
     engineRef.current?.setView(v);
     if (v === 'fp') flash('👁️ Göz görüşü: etrafa bakmak için ekranı kaydır, yürümek için yere dokun.');
+    if (v === '2d') flash('🗺️ 2D: kaydırarak gez, iki parmakla istediğin yere yakınlaş / çevir.');
   };
 
   // --- sepet / envanter ------------------------------------------------------------
@@ -789,6 +942,20 @@ export default function HouseScreen({ houseId, onExit }) {
 
   // --- işletme (v77) ------------------------------------------------------------------
   const bizType = houseDoc?.biz?.type || null;
+  // v92 — garson (cafe/bar)
+  const menuVenue = Boolean(bizType && MENU_TYPES.includes(bizType));
+  const waiterRole = useWaiterRole({ houseId, enabled: phase === 'ready' && menuVenue, user, online, flash });
+  waiterLeaveRef.current = waiterRole.leave;
+  const [orderPopId, setOrderPopId] = useState(null);
+  const orderIdsKey = waiterRole.orders.map((o) => o.id).join(',');
+  const seenOrdersRef = useRef(new Set());
+  useEffect(() => {
+    const fresh = waiterRole.orders.filter((o) => !seenOrdersRef.current.has(o.id));
+    waiterRole.orders.forEach((o) => seenOrdersRef.current.add(o.id));
+    if (fresh.length && panel !== 'orders') setOrderPopId(fresh[fresh.length - 1].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderIdsKey]);
+  const orderPop = waiterRole.orders.find((o) => o.id === orderPopId) || null;
 
   // --- v80 — YAYINCILIK -----------------------------------------------------------------
   const myStreamDoc = useStreamDoc(myStream?.id || null);
@@ -1075,6 +1242,10 @@ export default function HouseScreen({ houseId, onExit }) {
       eng.deleteSelected();
       return;
     }
+    if (!isOwner) {
+      flash('🔒 Bu mobilya işletme için gerekli; sadece işletme sahibi kaldırabilir.');
+      return;
+    }
     setBizRemove({ type: bizType, status: null });
     try {
       const r = await houseAction({ op: 'bizStatus', houseId });
@@ -1181,7 +1352,7 @@ export default function HouseScreen({ houseId, onExit }) {
     }
   };
 
-  const shelfItems = useMemo(() => CATALOG.filter((d) => d.cat === cat), [cat]);
+  const shelfItems = useMemo(() => CATALOG.filter((d) => d.cat === cat && !d.venueOnly), [cat]);
   const invList = useMemo(() => Object.entries(invView).map(([k, n]) => ({ def: CATALOG_MAP[k], n })).filter((x) => x.def), [invView]);
   const others = online.filter((o) => o.uid !== user?.uid);
   const houseName = houseDoc?.name || info?.name || 'Ev';
@@ -1205,7 +1376,7 @@ export default function HouseScreen({ houseId, onExit }) {
       {phase === 'loading' && (
         <div className="hs-loading">
           <div className="hs-spinner" />
-          <p>Eve giriliyor…</p>
+          <p>{venue ? `${venue.name} — giriliyor…` : 'Eve giriliyor…'}</p>
         </div>
       )}
 
@@ -1215,10 +1386,10 @@ export default function HouseScreen({ houseId, onExit }) {
           <div className="hs-top">
             <button className="hs-icon-btn" onClick={() => exit()} title="Evden çık">✕</button>
             <div className="hs-title">
-              <b>{bizType ? BIZ_TYPES[bizType].icon : '🏠'} {houseName}</b>
+              <b>{venue ? venue.icon : bizType ? BIZ_TYPES[bizType].icon : '🏠'} {venue ? venue.name : houseName}</b>
               <span>
-                {online.length} kişi evde
-                {isOwner && mode === 'build' && (
+                {online.length} kişi {venue || bizType ? 'burada' : 'evde'}
+                {canDesign && mode === 'build' && (
                   <em className={`hs-save ${saveState}`}>
                     {saveState === 'saved' ? '✓ Kaydedildi' : saveState === 'saving' ? 'Kaydediliyor…' : saveState === 'error' ? '⚠ Kaydedilemedi' : '• Değişiklik var'}
                   </em>
@@ -1236,7 +1407,12 @@ export default function HouseScreen({ houseId, onExit }) {
                 {view === '3d' ? '3D' : view === '2d' ? '2D' : '👁️ Göz'}
               </button>
             )}
-            {isOwner && (
+            {mode === 'walk' && view === '2d' && freeCam && (
+              <button className="hs-view-btn" onClick={() => engineRef.current?.recenter()} title="Kamerayı bana döndür">
+                🎯
+              </button>
+            )}
+            {canDesign && (
               <div className="hs-seg">
                 <button className={mode === 'build' ? 'on' : ''} onClick={() => switchMode('build')}><i className="hs-ico">🛠️ </i>Tasarla</button>
                 <button className={mode === 'walk' ? 'on' : ''} onClick={() => switchMode('walk')}><i className="hs-ico">🚶 </i>Gez</button>
@@ -1246,15 +1422,86 @@ export default function HouseScreen({ houseId, onExit }) {
               <button className={`hs-icon-btn${intentReady ? ' cue-pulse' : ''}${houseDoc?.bizShortagePending ? ' hb-dot' : ''}`} onClick={openSettings} title="Ayarlar">⚙️</button>
             )}
           </div>
+          {/* v92 — GÖZ: satın alınmamış (deneme) eşyaları gerçek haliyle gör (sadece sen; Tasarla'da) */}
+          {canDesign && mode === 'build' && (
+            <button
+              className={`hs-eye-btn${realLook ? ' on' : ''}${isOwner ? '' : ' solo'}`}
+              onClick={() => {
+                setRealLook((v) => !v);
+                flash(realLook ? '👁️ Deneme eşyalar yine saydam.' : '👁️ Deneme eşyaları gerçek haliyle görüyorsun (ziyaretçiler saydam görür).');
+              }}
+              title="Satın alınmamış eşyaları gerçek haliyle gör"
+              aria-pressed={realLook}
+            >
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                <circle cx="12" cy="12" r="3.2" fill={realLook ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" />
+                {!realLook && <path d="M4 20 20 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />}
+              </svg>
+            </button>
+          )}
 
+          {/* v92 Faz 8 — oyunun 3D mekânı: menü, NPC'ler, istasyon panelleri */}
+          {venue && (
+            <VenueLayer
+              venue={venue}
+              engineRef={engineRef}
+              interact={interact}
+              mode={mode}
+              apiRef={venueApiRef}
+              onNpcs={onVenueNpcs}
+              onOpenHeist={onOpenHeist}
+              flash={flash}
+            />
+          )}
           {/* v77 — MEKÂN ÜST BUTONLARI (işletme türüne göre) */}
           {bizType && mode === 'walk' && BIZ_TOP_BUTTONS[bizType] && (
             <div className="hb-topbtns">
-              {BIZ_TOP_BUTTONS[bizType].map((b) => (
-                <button key={b.panel} className="hb-topbtn" onClick={() => setPanel(b.panel)}>
-                  {b.label}
-                </button>
-              ))}
+              {BIZ_TOP_BUTTONS[bizType].map((b) =>
+                b.panel === 'menu' && waiterRole.isMe ? (
+                  <button key="orders" className={`hb-topbtn${waiterRole.orders.length ? ' vn-orders-hot' : ''}`} onClick={() => setPanel('orders')}>
+                    📋 Siparişler ({waiterRole.orders.length})
+                  </button>
+                ) : (
+                  <button key={b.panel} className="hb-topbtn" onClick={() => setPanel(b.panel)}>
+                    {b.label}
+                  </button>
+                )
+              )}
+            </div>
+          )}
+          {/* v92 — GARSON (sol üst) */}
+          {menuVenue && mode === 'walk' && (
+            <div className="vn-waiter-wrap">
+              <WaiterButton
+                waiter={waiterRole.waiter}
+                present={waiterRole.present}
+                isMe={waiterRole.isMe}
+                busy={waiterRole.busy}
+                onJoin={waiterRole.join}
+                onQuit={waiterRole.quit}
+              />
+            </div>
+          )}
+          {waiterRole.isMe && mode === 'walk' && panel !== 'orders' && orderPop && (
+            <NewOrderPop
+              order={orderPop}
+              busy={waiterRole.busyId === orderPop.id}
+              onOpen={() => {
+                setOrderPopId(null);
+                setPanel('orders');
+              }}
+              onDeliver={async (o) => {
+                await waiterRole.deliver(o);
+                setOrderPopId(null);
+              }}
+            />
+          )}
+          {panel === 'orders' && waiterRole.isMe && (
+            <div className="wk-sheet-bg" onClick={() => setPanel(null)}>
+              <div className="wk-sheet" onClick={(e) => e.stopPropagation()}>
+                <OrdersPanel orders={waiterRole.orders} busyId={waiterRole.busyId} onDeliver={waiterRole.deliver} isOwner={isOwner} onClose={() => setPanel(null)} />
+              </div>
             </div>
           )}
           {panel === 'workshop' && bizType && (
@@ -1276,6 +1523,13 @@ export default function HouseScreen({ houseId, onExit }) {
                   onClose={() => setPanel(null)}
                   onBought={(r) => {
                     setPanel(null);
+                    if (r.queued) {
+                      // v92 — sipariş garsona gitti; süre dolarsa müşteri tarafı da süpürür
+                      flash(`🧑‍🍳 Siparişin garson ${r.waiterName}'a iletildi (${HOUSE_PRODUCTS[r.product]?.emoji || ''} ${r.label}) · en geç 20 sn`);
+                      const wait = Math.max(0, Number(r.deadlineMs || 0) - Date.now()) + 1800;
+                      setTimeout(() => shopAction({ op: 'orderSweep', houseId }).catch(() => {}), wait);
+                      return;
+                    }
                     flash(`${HOUSE_PRODUCTS[r.product]?.emoji || ''} ${r.label}${r.price ? ` −${r.price.toLocaleString('tr-TR')}` : ''}`);
                   }}
                 />
@@ -1344,7 +1598,11 @@ export default function HouseScreen({ houseId, onExit }) {
             </div>
           )}
 
-          {isOwner && mode === 'build' && showHelp && (
+          {isEditor && mode === 'build' && (
+            <div className="hs-editor-note">🛠️ Tasarım yetkin var · eşyaları sahibinin envanterinden koyarsın; mağazadan koyduklarını <b>{houseDoc?.ownerName || 'ev sahibi'}</b> satın alır.</div>
+          )}
+
+          {canDesign && mode === 'build' && showHelp && (
             <div
               className="hs-help"
               onClick={() => {
@@ -1365,11 +1623,11 @@ export default function HouseScreen({ houseId, onExit }) {
           )}
 
           {/* SEÇİLİ EŞYA */}
-          {isOwner && mode === 'build' && sel && (
+          {canDesign && mode === 'build' && sel && (
             <div className="hs-selbar">
               <div className="hs-selbar-head">
                 <b>{sel.def?.name}</b>
-                {sel.p === 1 ? <span className="hs-owned-badge">✓ Senin</span> : <span className="hs-trial-badge">Deneme</span>}
+                {sel.p === 1 ? <span className="hs-owned-badge">{isOwner ? '✓ Senin' : '✓ Satın alınmış'}</span> : <span className="hs-trial-badge">Deneme</span>}
                 {sel.p !== 1 && <PriceTag price={sel.def?.price} small />}
                 <button className="hs-x" onClick={() => engineRef.current?.deselect()}>✕</button>
               </div>
@@ -1390,13 +1648,18 @@ export default function HouseScreen({ houseId, onExit }) {
           )}
 
           {/* TASARIM RAFI: Mağaza / Envanter */}
-          {isOwner && mode === 'build' && (
+          {canDesign && mode === 'build' && (
             <div className={`hs-shelf${shelfOpen ? '' : ' closed'}`}>
               <div className="hs-shelf-main-tabs">
                 <button className={tab === 'magaza' ? 'on' : ''} onClick={() => { setTab('magaza'); setShelfOpen(true); }}>🏬 Mağaza</button>
                 <button className={tab === 'envanter' ? 'on' : ''} onClick={() => { setTab('envanter'); setShelfOpen(true); }}>
-                  📦 Envanter{invList.length > 0 && <i>{invList.reduce((a, x) => a + x.n, 0)}</i>}
+                  📦 {isOwner ? 'Envanter' : 'Sahibin envanteri'}{invList.length > 0 && <i>{invList.reduce((a, x) => a + x.n, 0)}</i>}
                 </button>
+                {isOwner && (
+                  <button className={`hs-undo hs-perm-btn${Object.keys(houseDoc?.editors || {}).length ? ' has' : ''}`} onClick={() => setPanel('editors')} title="Arkadaşlarına tasarım yetkisi ver">
+                    ＋
+                  </button>
+                )}
                 <button className="hs-undo" onClick={() => engineRef.current?.undo()} title="Geri al">↶</button>
                 <button className="hs-shelf-toggle" onClick={() => setShelfOpen((v) => !v)}>{shelfOpen ? '▾' : '▴'}</button>
               </div>
@@ -1454,7 +1717,8 @@ export default function HouseScreen({ houseId, onExit }) {
               )}
               {shelfOpen && tab === 'envanter' && (
                 <div className="hs-shelf-items">
-                  {invList.length === 0 && <p className="hs-dim hs-inv-empty">Envanterin boş. Satın aldığın eşyaları odadan kaldırınca buraya gelir; buradan istediğin evine koyabilirsin.</p>}
+                  {invList.length === 0 && !isOwner && <p className="hs-dim hs-inv-empty">Ev sahibinin envanteri boş. Mağazadan deneme eşya koyabilirsin; satın almayı sahibi yapar.</p>}
+                  {invList.length === 0 && isOwner && <p className="hs-dim hs-inv-empty">Envanterin boş. Satın aldığın eşyaları odadan kaldırınca buraya gelir; buradan istediğin evine koyabilirsin.</p>}
                   {invList.map(({ def, n }) => (
                     <button key={def.k} className="hs-card" onClick={() => engineRef.current?.addItem(def.k, 0, { owned: true })}>
                       <ItemThumb k={def.k} icon={def.icon} />
@@ -1562,8 +1826,14 @@ export default function HouseScreen({ houseId, onExit }) {
             </div>
           )}
 
+          {mode === 'walk' && myCart && (
+            <div className={`hs-holding hs-mcart${menuVenue ? ' low' : ''}`}>
+              🛒 Market arabası · <b>{myCart.length}</b>/{CART_MAX} ürün
+              <button onClick={() => setMyCart(null)}>Arabayı bırak</button>
+            </div>
+          )}
           {mode === 'walk' && myHolding && (
-            <div className="hs-holding">
+            <div className={`hs-holding${menuVenue ? ' low' : ''}`}>
               <HeldIcon product={myHolding} size={22} /> Elinde: <b>{HOUSE_PRODUCTS[myHolding]?.label}</b>
               <em>👥'dan ısmarlayabilirsin</em>
             </div>
@@ -1577,7 +1847,7 @@ export default function HouseScreen({ houseId, onExit }) {
                   <b>{m.name}:</b> {m.text}
                 </div>
               ))}
-              {messages.length === 0 && <div className="hs-msg dim">Evdekilerle sohbet et 👋</div>}
+              {messages.length === 0 && <div className="hs-msg dim">{venue ? 'Buradakilerle' : 'Evdekilerle'} sohbet et 👋</div>}
             </div>
             <div className="hs-chat-row">
               <input value={chatText} maxLength={200} placeholder="Mesaj yaz…" onChange={(e) => setChatText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') sendChat(); }} />
@@ -1591,6 +1861,51 @@ export default function HouseScreen({ houseId, onExit }) {
           )}
 
           {/* ODADAKİLER */}
+          {/* v92 — TASARIM YETKİSİ */}
+          {panel === 'editors' && isOwner && (
+            <div className="hs-modal-bg" onClick={() => setPanel(null)}>
+              <div className="hs-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="hs-modal-head">
+                  <b>🛠️ Tasarım yetkisi</b>
+                  <button className="hs-x" onClick={() => setPanel(null)}>✕</button>
+                </div>
+                <p className="hs-dim hs-perm-info">Yetki verdiğin arkadaşın, içerideyken Tasarla ile mağazadan ve envanterinden eşya koyup kaldırabilir. <b>Satın alamaz</b>; mağazadan koyduğu eşyalar deneme (saydam) kalır, beğenirsen sen satın alırsın.</p>
+                {(social.friends || []).length === 0 && <p className="hs-dim">Arkadaş listen boş. ChatsApp'tan arkadaş ekleyebilirsin.</p>}
+                {(social.friends || []).slice(0, 80).map((f) => {
+                  const on = houseDoc?.editors?.[f.uid] === true;
+                  return (
+                    <div key={f.uid} className="hs-person">
+                      <span className="hs-person-main static">
+                        <AvatarSvg avatar={f.avatar} size={30} rounded />
+                        <span className="hs-person-name">
+                          {f.name}
+                          {on && <em> · 🛠️ yetkili</em>}
+                        </span>
+                      </span>
+                      <button className={on ? 'ghost' : 'hs-perm-give'} disabled={editorBusy === f.uid} onClick={() => setEditor(f.uid, !on, f.name)}>
+                        {editorBusy === f.uid ? '…' : on ? 'Yetkiyi kaldır' : 'Yetki ver'}
+                      </button>
+                    </div>
+                  );
+                })}
+                {Object.keys(houseDoc?.editors || {})
+                  .filter((uid) => !(social.friends || []).some((f) => f.uid === uid))
+                  .map((uid) => (
+                    <div key={uid} className="hs-person">
+                      <span className="hs-person-main static">
+                        <span className="hs-person-name">
+                          Artık arkadaşın değil <em>· 🛠️ yetkili</em>
+                        </span>
+                      </span>
+                      <button className="ghost" disabled={editorBusy === uid} onClick={() => setEditor(uid, false)}>
+                        Yetkiyi kaldır
+                      </button>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+
           {panel === 'people' && (
             <div className="hs-modal-bg" onClick={() => setPanel(null)}>
               <div className="hs-modal" onClick={(e) => e.stopPropagation()}>
@@ -1627,7 +1942,15 @@ export default function HouseScreen({ houseId, onExit }) {
                         <AvatarSvg avatar={f.avatar} size={30} rounded />
                         <span className="hs-person-name">{f.name}</span>
                       </span>
-                      <button onClick={() => invite(f)}>💌 Davet</button>
+                      {invitedUids[f.uid] === 'ok' || Number(houseDoc?.invites?.[f.uid] || 0) > Date.now() ? (
+                        <button className="hs-invited" disabled>
+                          ✓ Davet edildi
+                        </button>
+                      ) : (
+                        <button onClick={() => invite(f)} disabled={invitedUids[f.uid] === 'busy'}>
+                          {invitedUids[f.uid] === 'busy' ? '…' : '💌 Davet'}
+                        </button>
+                      )}
                     </div>
                   ))}
               </div>
@@ -1777,9 +2100,11 @@ export default function HouseScreen({ houseId, onExit }) {
               onStopRequest={stopStream}
               onEnded={endStreamLocal}
               onPlay={() => setPlayAsk(true)}
-              compact={panel === 'arcade' || raceUp}
+              onMatch={() => setStreamMatch(true)}
+              compact={panel === 'arcade' || raceUp || streamMatch}
             />
           )}
+          {myStream && streamMatch && <StreamMatchView streamId={myStream.id} onClose={() => setStreamMatch(false)} />}
           {myStream && playAsk && <StreamPlaySheet onArcade={playArcade} onRace={playRace} onCards={playCards} onClose={() => setPlayAsk(false)} />}
           {panel === 'onnumara' && (
             <div className="st-sheet-bg" onClick={() => setPanel(null)}>
@@ -1866,6 +2191,20 @@ function GiftNote({ gift, onDone }) {
     return () => clearTimeout(t);
   }, [gift, onDone]);
   const p = HOUSE_PRODUCTS[gift.itemId];
+  if (gift.served) {
+    // v92 — garson siparişi getirdi / süre dolunca kendiliğinden geldi
+    return (
+      <div className="hs-toast gift">
+        {gift.from ? (
+          <>
+            🧑‍🍳 Garson <b>{gift.from}</b> siparişini getirdi: {p ? `${p.emoji} ${p.label}` : 'siparişin'}
+          </>
+        ) : (
+          <>⏱️ Siparişin geldi: {p ? `${p.emoji} ${p.label}` : 'ürün'}</>
+        )}
+      </div>
+    );
+  }
   return (
     <div className="hs-toast gift">
       🎁 <b>{gift.from}</b> sana {p ? `${p.emoji} ${p.label}` : 'bir ikram'} ısmarladı!

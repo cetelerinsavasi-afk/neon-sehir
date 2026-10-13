@@ -260,3 +260,32 @@
   font-size: 13px;
   cursor: pointer;
 }
+
+/* v91 — oyunun dükkânlarında (silahçı / modifiye) üstteki hızlı butonlar;
+   oyuncu işletmelerindeki .hb-topbtn ile aynı görünüm. */
+.ws-topbtns {
+  position: fixed;
+  top: calc(114px + env(safe-area-inset-top));
+  right: 12px;
+  left: 12px;
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  z-index: 24;
+  pointer-events: none;
+}
+.ws-topbtn {
+  pointer-events: auto;
+  padding: 9px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--neon-yellow, #ffd23f);
+  background: rgba(20, 16, 4, 0.82);
+  color: var(--neon-yellow, #ffd23f);
+  font-weight: 800;
+  font-size: 14px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}

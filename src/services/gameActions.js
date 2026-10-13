@@ -710,3 +710,8 @@ export const cosmeticsAction = (data) => httpsCallable(functions, 'cosmeticsActi
 
 // v80 — Yayıncılık (functions/stream.js)
 export const streamAction = (payload) => httpsCallable(functions, 'streamAction')(payload).then((r) => r.data);
+
+// v91 — Google Play Faturalandırma: Android uygulamasında alınan zümrüt
+// paketini sunucuda doğrulatıp yükler (bkz. functions/playBilling.js).
+export const verifyPlayPurchase = (productId, purchaseToken) =>
+  httpsCallable(functions, 'verifyPlayPurchase')({ productId, purchaseToken });

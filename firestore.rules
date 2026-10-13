@@ -399,6 +399,26 @@ service cloud.firestore {
     // v77 — İşletmeler (functions/houses.js + business.js). Tüm yazmalar sunucudan.
     // İşletme envanteri müşterilere de görünür (stok/fiyat); günlük rapor
     // (kazanç) sadece sahibine; günlük kapanış özetleri istemciye kapalı.
+    // v92 — Garson (cafe/bar): mekânın garsonu ve siparişler. Yazmalar sunucudan.
+    match /venueWaiters/{houseId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    match /venueOrders/{orderId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    // v92 — Stadyum › Maçlar: günün maç sohbeti (yazma sunucudan: streamAction matchChat)
+    match /matchChats/{day}/msgs/{msgId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    // v92 — Profil › Günlük rapor (sadece kendi kaydı)
+    match /moneyLog/{docId} {
+      // belge kimliği "{uid}_{gün}" → olmayan gün de okunabilir (boş rapor)
+      allow read: if isSignedIn() && docId.matches(request.auth.uid + '_[0-9]{4}-[0-9]{2}-[0-9]{2}');
+      allow write: if false;
+    }
     match /businessInventories/{houseId} {
       allow read: if isSignedIn();
       allow write: if false;
@@ -490,7 +510,7 @@ service cloud.firestore {
       let d = request.resource.data;
       return d.keys().hasOnly([
         'houseId', 'displayName', 'avatar', 'x', 'z', 'left', 'seat', 'holding',
-        'emote', 'emoteTs', 'updatedAt', 'enteredAt', 'lastChatMs', 'noStream'
+        'emote', 'emoteTs', 'updatedAt', 'enteredAt', 'lastChatMs', 'noStream', 'cart'
       ])
         && d.x is number && d.x >= -20 && d.x <= 20
         && d.z is number && d.z >= -20 && d.z <= 20
@@ -498,7 +518,9 @@ service cloud.firestore {
         && (d.seat == null || (d.seat is string && d.seat.size() <= 40))
         && (!('emote' in d) || d.emote == null || (d.emote is string && d.emote.size() <= 12))
         && (!('emoteTs' in d) || d.emoteTs is number)
-        && (!('noStream' in d) || d.noStream is bool);
+        && (!('noStream' in d) || d.noStream is bool)
+        // v92 — market arabası: ürün anahtarları listesi (en fazla 12) ya da null
+        && (!('cart' in d) || d.cart == null || (d.cart is list && d.cart.size() <= 12));
     }
     match /housePresence/{uid} {
       allow read: if isSignedIn();

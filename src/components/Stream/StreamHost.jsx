@@ -3,7 +3,10 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useBlocks } from '../../contexts/BlocksContext';
 import { streamAction, createSixtagramPost } from '../../services/gameActions';
 import { createPortal } from 'react-dom';
-import { fmtDur, fmtN, publishThumb, useStreamChat, useStreamGameHealth, watchViewers } from './streamShared';
+import { fmtDur, fmtN, publishThumb, useStreamChat, useStreamGameHealth, watchViewers, DONATION_DAILY_CAP } from './streamShared';
+import { topDonorsShown } from '../../../functions/stream.js';
+import { useFutbolSeasonState } from '../../hooks/useFutbolSeasonState';
+import { isFutbolLineupLockedIstanbul } from '../../lib/istanbulTime';
 import '../../styles/worldScreenChrome.css';
 import './Stream.css';
 
@@ -62,9 +65,10 @@ const HIDDEN_STOP_MS = 20_000; // v81: uygulama/sekme arka planda bu kadar kalı
 // yayıncıda hem izleyicilerde). Sağ altta 🎮 Oyun oyna (oyun salonu / yarış).
 // compact: oyun açıkken arayüz gizlenir ama nabız/izleyici takibi sürer.
 // =============================================================================
-export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopRequest, stopping, statsRef, onPlay, compact = false, roomChat = [] }) {
+export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopRequest, stopping, statsRef, onPlay, onMatch, compact = false, roomChat = [] }) {
   const { user } = useAuth();
   const { isBlocked } = useBlocks();
+  const { state: seasonState } = useFutbolSeasonState();
   const streamId = stream?.id;
   const chat = useStreamChat(streamId, 60);
   const [viewers, setViewers] = useState(0);
@@ -227,11 +231,12 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
     }
   };
 
-  // izleyici mesajları (kendi yazdıkların balon olarak görünür, listede değil)
+  // izleyici mesajları + v92: kendi yazdıkların da listede (ayrıca balon olarak görünür)
   // v86: odadakilerin (ev sohbeti) yazdıkları da yayıncının listesinde — 🏠 işaretiyle
   const startedAt = Number(stream?.startedAtMs || 0);
   const visibleChat = useMemo(() => {
-    const fromStream = chat.filter((m) => !isBlocked(m.uid) && !(m.host && m.uid === user?.uid));
+    // v92 — yayıncı kendi yazdıklarını da sohbette görür ("Sen" olarak)
+    const fromStream = chat.filter((m) => !isBlocked(m.uid)).map((m) => (m.host && m.uid === user?.uid ? { ...m, me: true } : m));
     const fromRoom = (roomChat || [])
       .filter((m) => !m.viaStream && m.uid !== user?.uid && !isBlocked(m.uid) && Number(m.createdAtMs || 0) >= startedAt)
       .map((m) => ({ ...m, id: `room_${m.id}`, room: true }));
@@ -285,7 +290,16 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
       {viewersOpen && <StreamViewersSheet streamId={streamId} isBlocked={isBlocked} onClose={() => setViewersOpen(false)} />}
       <div className="st-alerts">
         {alerts.map((a) => (
-          <div key={a.key} className={`st-alert${a.a >= 1000 ? ' big' : ''}`}>
+          <div
+            key={a.key}
+            className={`st-alert${a.a >= 1000 ? ' big' : ''}`}
+            role="button"
+            title="Kapatmak için dokun"
+            onClick={(e) => {
+              e.stopPropagation();
+              setAlerts((list) => list.filter((x) => x.key !== a.key));
+            }}
+          >
             <b>
               🎁 {a.n} · {fmtN(a.a)} altın
             </b>
@@ -303,6 +317,13 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
       )}
 
       <div className="st-hostfs-bottom">
+        {/* v92 — maç saatinde (18:00–19:00, kutlama günü hariç) yayındayken maç izle */}
+        {onMatch && isFutbolLineupLockedIstanbul(now) && seasonState.status !== 'CELEBRATION_DAY' && (
+          <button className="st-match-btn" onClick={onMatch} aria-label="Maçları izle">
+            <span>⚽</span>
+            <small>Maç</small>
+          </button>
+        )}
         <div className={`st-hostfs-chat${chatOpen ? ' open' : ''}`} onClick={() => setChatOpen((v) => !v)}>
           {chatOpen && (
             <div className="st-hostfs-chat-head">
@@ -419,8 +440,8 @@ export function StreamChatLine({ m, showHost = false, style }) {
     );
   }
   return (
-    <p className={m.host ? 'host' : m.room ? 'room' : ''} style={style}>
-      <b>{showHost && m.host ? `🎥 ${m.name}` : m.room ? `🏠 ${m.name}` : m.name}</b> {m.text}
+    <p className={m.me ? 'host me' : m.host ? 'host' : m.room ? 'room' : ''} style={style}>
+      <b>{m.me ? '🎥 Sen' : showHost && m.host ? `🎥 ${m.name}` : m.room ? `🏠 ${m.name}` : m.name}</b> {m.text}
     </p>
   );
 }
@@ -501,13 +522,15 @@ export function StreamViewersSheet({ streamId, isBlocked, onClose }) {
 // v81 — En çok bağış yapan 3 kişi (yayının sol üstü; yayıncı ve izleyiciler görür)
 const MEDAL = ['🥇', '🥈', '🥉'];
 export function StreamTopDonors({ top, isBlocked, className = '' }) {
-  const list = (Array.isArray(top) ? top : []).filter((x) => x && !isBlocked?.(x.u)).slice(0, 3);
+  // v92 — sınıra (10.000) ulaşan her bağışçı listeyi bir kişi uzatır (en fazla 10)
+  const all = (Array.isArray(top) ? top : []).filter((x) => x && !isBlocked?.(x.u));
+  const list = all.slice(0, topDonorsShown(all));
   if (!list.length) return null;
   return (
-    <div className={`st-top3 ${className}`}>
+    <div className={`st-top3 ${className}${list.length > 5 ? ' long' : ''}`}>
       {list.map((x, i) => (
-        <p key={x.u}>
-          <span>{MEDAL[i]}</span>
+        <p key={x.u} className={Number(x.a) >= DONATION_DAILY_CAP ? 'maxed' : ''}>
+          <span>{MEDAL[i] || `${i + 1}.`}</span>
           <b>{x.n}</b>
           <i>
             <span className="gold-coin-icon" style={{ width: 10, height: 10 }} /> {fmtN(x.a)}
@@ -627,7 +650,7 @@ export function StreamSummary({ summary, reason, cost = null, streamId = null, o
             {s.top.map((x, i) => (
               <div key={x.u}>
                 <span>
-                  {MEDAL[i]} {x.n}
+                  {MEDAL[i] || `${i + 1}.`} {x.n}
                 </span>
                 <b>{fmtN(x.a)} altın</b>
               </div>

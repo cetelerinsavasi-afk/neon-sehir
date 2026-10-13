@@ -190,14 +190,23 @@ function ReportCard({ label, d, type }) {
         <span>🏛️ Vergi</span>
         <b className="bz-bad">−{fmt(d?.tax)} altın</b>
       </div>
+      {(type === 'cafe' || type === 'bar' || Number(d?.salary) > 0) && (
+        <div className="bz-row">
+          <span>🧑‍🍳 Garson maaşı{Number(d?.salaryOrders) > 0 ? ` (${fmt(d.salaryOrders)} sipariş)` : ''}</span>
+          <b className="bz-bad">−{fmt(d?.salary)} altın</b>
+        </div>
+      )}
       <div className="bz-row total">
         <span>Net kazanç</span>
         <b>
           <span className="gold-coin-icon" style={{ width: 14, height: 14 }} />
-          {fmt((Number(d?.revenue) || 0) - (Number(d?.tax) || 0))} altın
+          {fmt((Number(d?.revenue) || 0) - (Number(d?.tax) || 0) - (Number(d?.salary) || 0))} altın
         </b>
       </div>
-      <p className="bz-hint">Vergi: hizmet ve satışlarda %10, vitrinden satılan silah/arabada %1.</p>
+      <p className="bz-hint">
+        Vergi: hizmet ve satışlarda %10, vitrinden satılan silah/arabada %1.
+        {(type === 'cafe' || type === 'bar') && ' Garson maaşı: garsonun zamanında getirdiği her siparişin %10’u.'}
+      </p>
       <div className="bz-row">
         <span>Müşteri sayısı</span>
         <b>{fmt(customers)}</b>

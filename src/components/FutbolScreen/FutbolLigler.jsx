@@ -26,6 +26,7 @@ import FutbolCupBetting, {
   cupBetSelections,
 } from './FutbolCupBetting';
 import FutbolSeasonCelebration from './FutbolSeasonCelebration';
+import MatchChat from './MatchChat';
 import './FutbolLigler.css';
 
 const SUB_TABS = [
@@ -38,11 +39,12 @@ const SUB_TABS = [
   { id: 'oyuncular', label: 'Oyuncular' },
 ];
 
-export default function FutbolLigler() {
+// v92 — initialTab: yayında maç izlerken doğrudan 'maclar' · chatReadOnly: maç sohbetine yazılamaz
+export default function FutbolLigler({ initialTab = 'puan', chatReadOnly = false }) {
   const { leagues, loading: leaguesLoading } = useFutbolLeagues();
   const { state: seasonState } = useFutbolSeasonState();
   const [selectedLeagueId, setSelectedLeagueId] = useState(null);
-  const [subTab, setSubTab] = useState('puan');
+  const [subTab, setSubTab] = useState(initialTab);
   const [selectedMatch, setSelectedMatch] = useState(null);
   // selectedCupMatch — CupMatchRow'dan (Maçlar/Fikstür sekmelerindeki
   // bugünkü/geçmiş kupa maçları) tıklanan kupa maçının detayını FutbolKupa.jsx
@@ -409,6 +411,9 @@ export default function FutbolLigler() {
           now={now}
         />
       )}
+
+      {/* v92 — günün maç sohbeti (maçtan önce, sırasında ve sonrasında) */}
+      {subTab === 'maclar' && <MatchChat readOnly={chatReadOnly} />}
 
       {subTab === 'fikstur' && (
         <div className="futbol-fixture-list">

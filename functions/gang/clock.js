@@ -970,6 +970,38 @@ export function createClock(core, actions) {
     return out;
   }
 
+  // v91 — TEK SEFERLİK (yeniden): kullanıcı v88 sıfırlamasının canlıda
+  // etkisini görmedi. Ayrı bir bayrakla, kasa 1.000.000'un üstündeyse tekrar
+  // 1.000.000'a indirilir (altındaysa dokunulmaz). v88 zaten çalıştıysa ve
+  // kasa sınırdaysa hiçbir şey değişmez — güvenle tekrar çalışabilir.
+  async function ensureIntelKasaResetV91(ctx) {
+    if (ctx.world?.intelKasaResetV91) return { skipped: true };
+    const out = await db.runTransaction(async (tx) => {
+      const [w, st] = await Promise.all([tx.get(ctx.ref.world()), tx.get(ctx.ref.intelState())]);
+      if (w.data()?.intelKasaResetV91) return { skipped: true };
+      const kasa = Number(st.data()?.kasa || 0);
+      const target = INTEL.KASA_RESET_V88;
+      let burned = 0;
+      if (st.exists && kasa > target) {
+        burned = kasa - target;
+        const dl = Number(st.data()?.distributableLeft || 0);
+        const kam = Number(st.data()?.kasaAtMidnight || 0);
+        tx.update(ctx.ref.intelState(), {
+          kasa: target,
+          distributableLeft: Math.max(0, Math.min(dl, Math.floor((dl * target) / kasa))),
+          ...(kam > target ? { kasaAtMidnight: target } : {}),
+        });
+        ledger(tx, ctx, { type: 'intel_kasa_reset_v91', amount: burned, before: kasa, from: { kind: 'intel', id: 'main' }, to: { kind: 'burn' }, refId: 'v91', actorId: 'system' });
+        intelLog(tx, ctx, '🏛️', `İstihbarat kasası üye başına en fazla 100.000 altın olabilir. Kasa tek seferlik ${target.toLocaleString('tr-TR')} altına indirildi.`);
+      }
+      tx.set(ctx.ref.world(), { intelKasaResetV91: ctx.now, intelKasaResetV88: w.data()?.intelKasaResetV88 || ctx.now }, { merge: true });
+      return { kasa, burned };
+    });
+    ctx.world = { ...(ctx.world || {}), intelKasaResetV91: true, intelKasaResetV88: true };
+    if (out?.burned > 0) console.log('intel kasa reset v91', ctx.worldId, JSON.stringify(out));
+    return out;
+  }
+
   async function ensureRouteLimitV75(ctx) {
     if (ctx.world?.routeLimitV75) return { skipped: true };
     const routes = await ctx.ref.routes().get();
@@ -1100,7 +1132,7 @@ export function createClock(core, actions) {
           const w = (await tx.get(d.ref)).data();
           if (!w || w.status !== 'accepted' || Number(w.startsAtMs || 0) > ctx.now) return;
           const [a, b] = w.gangIds;
-          const [ga, gb, repSnap, stake] = await Promise.all([tx.get(ctx.ref.gang(a)), tx.get(ctx.ref.gang(b)), tx.get(ctx.ref.betReport(d.id)), core.readBetStake(tx, ctx, d.id, w)]);
+          const [ga, gb, repSnap, stake, intelK] = await Promise.all([tx.get(ctx.ref.gang(a)), tx.get(ctx.ref.gang(b)), tx.get(ctx.ref.betReport(d.id)), core.readBetStake(tx, ctx, d.id, w), core.readIntelKasa(tx, ctx)]);
           const aliveA = ga.data()?.status === 'active';
           const aliveB = gb.data()?.status === 'active';
           const op = repSnap.data()?.opStarted ? repSnap.data() : null;
@@ -1111,9 +1143,9 @@ export function createClock(core, actions) {
               ledger(tx, ctx, { type: alive ? 'bet_refund' : 'bet_refund_burn', amount: stake, from: { kind: 'escrow', id: d.id }, to: alive ? { kind: 'gang', id: g } : { kind: 'burn' }, refId: d.id, actorId: 'system' });
             }
             if (op && !op.opRefunded) {
-              tx.update(ctx.ref.intelState(), { kasa: FV.increment(Number(op.opCost || 0)) });
+              // v91: iade de kasa sınırını (üye × 100.000) aşamaz — aşan kısım yanar.
+              core.creditIntel(tx, ctx, intelK, Number(op.opCost || 0), { type: 'intel_bet_op_refund', refId: d.id });
               tx.update(repSnap.ref, { opRefunded: true });
-              ledger(tx, ctx, { type: 'intel_bet_op_refund', amount: Number(op.opCost || 0), from: { kind: 'system' }, to: { kind: 'intel', id: 'main' }, refId: d.id, actorId: 'system' });
             }
             tx.update(d.ref, { status: 'cancelled', activeGangIds: [], resolvedAtMs: ctx.now });
             return;
@@ -1578,6 +1610,7 @@ export function createClock(core, actions) {
     await safe(ctx0, 'route-limit-v67', () => ensureRouteLimitV67(ctx0));
     await safe(ctx0, 'route-limit-v75', () => ensureRouteLimitV75(ctx0));
     await safe(ctx0, 'intel-kasa-reset-v88', () => ensureIntelKasaResetV88(ctx0));
+    await safe(ctx0, 'intel-kasa-reset-v91', () => ensureIntelKasaResetV91(ctx0));
     const results = [];
     let n = 0;
     while (last < ctx0.dateKey && n < maxDays) {

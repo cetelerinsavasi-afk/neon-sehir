@@ -723,6 +723,13 @@
   font-size: 12px;
   font-weight: 700;
 }
+.hs-person button.hs-invited,
+.hs-person button.hs-invited:disabled {
+  border-color: rgba(57, 255, 136, 0.6);
+  background: rgba(57, 255, 136, 0.14);
+  color: #7dffb0;
+  opacity: 1;
+}
 .hs-person button.ghost {
   border-color: rgba(255, 70, 90, 0.5);
   background: transparent;
@@ -1084,6 +1091,23 @@
   z-index: 9;
   display: flex;
   flex-direction: column;
+}
+/* v92 — market arabası çubuğu (eldeki ürün çubuğunun altında) */
+.hs-holding.hs-mcart {
+  top: calc(112px + var(--hs-safe-t));
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  border-color: rgba(255, 210, 63, 0.55);
+}
+.hs-mcart button {
+  padding: 5px 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 90, 110, 0.6);
+  background: rgba(255, 70, 90, 0.16);
+  color: #ffd0d6;
+  font-size: 12px;
+  font-weight: 800;
 }
 .hs-holding em {
   font-style: normal;
@@ -1523,4 +1547,80 @@
   vertical-align: -3px;
   margin-right: 4px;
   object-fit: contain;
+}
+
+/* v92 — Tasarla: göz butonu (ayarların hemen altında) */
+.hs-eye-btn {
+  position: absolute;
+  top: calc(64px + var(--hs-safe-t));
+  right: 14px;
+  z-index: 11;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid var(--hs-line);
+  background: var(--hs-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #c9d3e6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.hs-eye-btn.on {
+  border-color: rgba(25, 232, 255, 0.75);
+  background: rgba(25, 232, 255, 0.18);
+  color: #dff9ff;
+  box-shadow: 0 0 14px rgba(25, 232, 255, 0.35);
+}
+/* bakiye/sepet çubuğu göz butonunun altına taşmasın */
+.hs-cartbar {
+  right: 58px;
+}
+/* yetkili tasarımcı notu */
+.hs-editor-note {
+  position: absolute;
+  top: calc(64px + var(--hs-safe-t));
+  left: 8px;
+  right: 58px;
+  z-index: 9;
+  padding: 7px 10px;
+  border-radius: 12px;
+  background: var(--hs-glass);
+  border: 1px solid rgba(255, 210, 63, 0.45);
+  font-size: 11px;
+  line-height: 1.35;
+  color: #e8edf6;
+}
+/* "+" yetki butonu (geri al'ın solunda) */
+.hs-shelf-main-tabs .hs-perm-btn {
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1;
+}
+.hs-shelf-main-tabs .hs-perm-btn + .hs-undo {
+  margin-left: 0;
+}
+.hs-shelf-main-tabs .hs-perm-btn.has {
+  border-color: rgba(57, 255, 136, 0.6);
+  color: #7dffb0;
+}
+.hs-perm-info {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.hs-person button.hs-perm-give {
+  border-color: rgba(57, 255, 136, 0.6);
+  background: rgba(57, 255, 136, 0.12);
+  color: #b9ffd4;
+}
+
+/* v92 — cafe/bar: sol üstte garson butonu var → eldeki ürün çubukları aşağıda */
+.hs-holding.low {
+  top: calc(118px + var(--hs-safe-t));
+}
+.hs-holding.hs-mcart.low {
+  top: calc(168px + var(--hs-safe-t));
 }

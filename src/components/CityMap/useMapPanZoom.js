@@ -116,7 +116,25 @@ export function useMapPanZoom(viewportRef, wrapRef, onTap) {
   const getDistance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
   const onPointerDown = useCallback((e) => {
-    viewportRef.current?.setPointerCapture(e.pointerId);
+    // v91 iPHONE HATASI ("oyuna ilk girdiğimde tek parmakla sürükleyince
+    // sanki iki parmakla yakınlaştırıyormuşum gibi oluyor, oyunu kapatıp
+    // açınca düzeliyor"): iOS bazen bir dokunuşun pointerup/pointercancel
+    // olayını HİÇ göndermiyor (ör. açılışta harita üstüne bir pencere
+    // açılırken ya da pointer capture kaybolunca). O parmak `pointers`
+    // listesinde "hayalet" olarak kalıyor ve sonraki HER tek parmak
+    // dokunuşu 2. parmak sayılıp pinch-zoom'a dönüyordu. Pointer Events'te
+    // yeni bir dokunma dizisinin ilk parmağı her zaman isPrimary=true gelir
+    // — o anda listede kalan her şey bayattır, temizlenir.
+    if (e.isPrimary && pointers.current.size > 0) {
+      pointers.current.clear();
+      pinchStart.current = null;
+      dragStart.current = null;
+    }
+    try {
+      viewportRef.current?.setPointerCapture(e.pointerId);
+    } catch {
+      /* bazı iOS sürümlerinde capture reddedilebilir — sorun değil */
+    }
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
     if (pointers.current.size === 1) {
@@ -166,6 +184,10 @@ export function useMapPanZoom(viewportRef, wrapRef, onTap) {
       return;
     }
 
+    // v91: 2'den fazla kayıt (hayalet parmak) varsa pinch hesaplanmaz;
+    // tek parmak sürüklemesi bozulmasın.
+    if (pointers.current.size > 2) return;
+
     if (dragStart.current) {
       const { x: startX, y: startY, tx, ty } = dragStart.current;
       const dx = e.clientX - startX;
@@ -186,6 +208,8 @@ export function useMapPanZoom(viewportRef, wrapRef, onTap) {
     // bir dokunuşun "hiçbir şey olmamış gibi" kaybolmasını (ve kullanıcının
     // parmağını basılı tutmak zorunda kalmasını) önlüyor.
     const lastKnown = pointers.current.get(e.pointerId);
+    // v91: listede olmayan (zaten temizlenmiş) bir parmağın bırakılması yok sayılır.
+    if (!lastKnown) return;
     pointers.current.delete(e.pointerId);
 
     // Tek parmak/fare ile, ciddi bir hareket olmadan bırakıldıysa: bu bir
@@ -220,6 +244,51 @@ export function useMapPanZoom(viewportRef, wrapRef, onTap) {
       setIsDragging(false);
     }
   }, [transform, onTap]);
+
+  // v91: iOS'ta capture kaybolursa (pointerup gelmeden) parmağı listeden düşür.
+  const onLostPointerCapture = useCallback((e) => {
+    if (!pointers.current.has(e.pointerId)) return;
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size === 0) {
+      dragStart.current = null;
+      pinchStart.current = null;
+      setIsDragging(false);
+    }
+  }, []);
+
+  // v91: uygulama arka plana gidip gelince / pencere odağı kaybolunca yarım
+  // kalmış dokunuşlar temizlenir (iOS bu durumda pointercancel göndermeyebilir).
+  useEffect(() => {
+    const clearAll = () => {
+      pointers.current.clear();
+      dragStart.current = null;
+      pinchStart.current = null;
+      setIsDragging(false);
+    };
+    const onVis = () => document.visibilityState !== 'visible' && clearAll();
+    window.addEventListener('blur', clearAll);
+    window.addEventListener('pagehide', clearAll);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.removeEventListener('blur', clearAll);
+      window.removeEventListener('pagehide', clearAll);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, []);
+
+  // iOS Safari: sayfa genelindeki yerleşik pinch-zoom hareketi (gesturestart)
+  // harita üzerinde tarayıcıya kaçmasın — zoom'u biz yönetiyoruz.
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return undefined;
+    const stop = (ev) => ev.preventDefault();
+    el.addEventListener('gesturestart', stop, { passive: false });
+    el.addEventListener('gesturechange', stop, { passive: false });
+    return () => {
+      el.removeEventListener('gesturestart', stop);
+      el.removeEventListener('gesturechange', stop);
+    };
+  }, [viewportRef]);
 
   // Fare tekerleği ile zoom (masaüstünde test için). Pasif olmayan native listener gerekiyor.
   useEffect(() => {
@@ -270,6 +339,7 @@ export function useMapPanZoom(viewportRef, wrapRef, onTap) {
       onPointerMove,
       onPointerUp: endPointer,
       onPointerCancel: endPointer,
+      onLostPointerCapture,
       onDoubleClick: reset,
     },
   };

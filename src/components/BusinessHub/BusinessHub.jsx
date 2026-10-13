@@ -227,7 +227,10 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
             <b>Henüz açık {t.label.toLocaleLowerCase('tr-TR')} yok. İlk sen aç!</b>
           </div>
         )}
-        {(() => {
+        {/* v91 KULLANICI İSTEĞİ ("haksız rekabet olmasın"): oyuncu dükkânları
+            yüklenmeden oyunun dükkânı tek başına listede görünmesin — hepsi
+            AYNI ANDA gelir. */}
+        {!(user && loading) && (() => {
           // önce içerideki kişi sayısı, eşitlikte dünkü ciro sırası (bizRank; oyunun dükkânı dahil)
           const rank = (r) => (Number.isFinite(r) && r > 0 ? r : Infinity);
           const rows = list.map((h, i) => ({ kind: 'h', h, people: h.people || 0, r: rank(h.bizRank), i }));

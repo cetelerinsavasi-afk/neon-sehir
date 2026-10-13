@@ -2,10 +2,18 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes';
 import { drawPet, isPerchPet, petCollarAt, PET_ART } from '../../lib/cosmeticsArt';
-import { CATALOG_MAP, buildItem, itemBoxes, disposeObject, TINTS, M } from './houseCatalog';
+import { CATALOG_MAP, buildItem, itemBoxes, disposeObject, TINTS, M, gunModel, HELD_GUN_SCALE } from './houseCatalog';
 import { FLOORS, WALLS, floorDef, wallDef, surfaceTexture } from './houseTextures';
 import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
 import { heldCanvas, heldDataUrl } from './heldArt';
+import { cartModel, fillCart, MARKET_PRODUCTS } from './houseCatalogV92';
+
+// v92 — market arabası: elde itilen araba ve içindeki ürünler (en fazla 12)
+export const CART_MAX = 12;
+export function cleanCart(v) {
+  if (!Array.isArray(v)) return null;
+  return v.filter((k) => MARKET_PRODUCTS.includes(k)).slice(0, CART_MAX);
+}
 
 // =============================================================================
 // houseEngine.js — Ev'in 3D motoru (three.js). React'ten bağımsız; HouseScreen
@@ -153,6 +161,27 @@ function heldTexture(product) {
   t.colorSpace = THREE.SRGBColorSpace;
   heldTexCache.set(product, t);
   return t;
+}
+
+// v92 — elde tutulan silahlar artık düz ikon değil, Camlı Silah Dolabı'ndaki
+// 3D modelin aynısı (aynı boy). type: gunModel tipi, gold: altın kaplama.
+const HELD_GUNS = {
+  tabanca: { type: 'pistol', gold: false },
+  altinTabanca: { type: 'pistol', gold: true },
+  tufek: { type: 'ak', gold: false },
+  pompali: { type: 'shotgun', gold: false },
+};
+function heldGunMesh(product) {
+  const spec = HELD_GUNS[product];
+  if (!spec) return null;
+  const outer = new THREE.Group();
+  const gun = gunModel(spec.type, spec.gold);
+  gun.scale.setScalar(HELD_GUN_SCALE[spec.type] || 1);
+  // uzun silahlar namlusu hafif yukarı, göğüs hizasında tutulur
+  gun.rotation.z = spec.type === 'pistol' ? 0.05 : 0.12;
+  outer.add(gun);
+  outer.userData.long = spec.type !== 'pistol';
+  return outer;
 }
 
 // v78 — evcil hayvan (avatar.pet): sahibinin yanında yürüyen, kameraya dönük
@@ -331,12 +360,39 @@ class AvatarFigure {
   setHolding(product) {
     if (product === this.holding) return;
     this.holding = product || null;
-    if (this.holding) {
+    if (this.heldGun) {
+      this.group.remove(this.heldGun);
+      disposeObject(this.heldGun);
+      this.heldGun = null;
+    }
+    this.heldGun = this.holding ? heldGunMesh(this.holding) : null;
+    if (this.heldGun) this.group.add(this.heldGun);
+    else if (this.holding) {
       this.heldSprite.material.map = heldTexture(this.holding);
       this.heldSprite.material.needsUpdate = true;
     }
-    this.heldSprite.visible = Boolean(this.holding);
+    this.heldSprite.visible = Boolean(this.holding) && !this.heldGun;
     this.renderName();
+  }
+  // v92 — market arabası (null = araba yok, [] = boş araba)
+  setCart(items) {
+    const list = cleanCart(items);
+    const key = list ? list.join(',') : '';
+    if (!list) {
+      if (this.cartG) {
+        this.group.remove(this.cartG);
+        disposeObject(this.cartG);
+        this.cartG = null;
+      }
+      this.cartKey = null;
+      return;
+    }
+    if (!this.cartG) {
+      this.cartG = new THREE.Group();
+      cartModel(this.cartG, list);
+      this.group.add(this.cartG);
+    } else if (key !== this.cartKey) fillCart(this.cartG, list);
+    this.cartKey = key;
   }
   renderName() {
     if (!this.nameEl) return;
@@ -397,7 +453,10 @@ class AvatarFigure {
       if (this.frozenMoving != null) this.moving = this.frozenMoving;
     }
     this.group.position.set(this.x, 0, this.z);
-    const ang = Math.atan2(camera.position.x - this.x, camera.position.z - this.z);
+    // v92 — 2D kuş bakışında figürler kameranın BAKIŞ yönüne döner (kamera
+    // kaydırılınca kenardaki figürler yan yatmış gibi görünmesin)
+    const bbYaw = camera.userData.billboardYaw;
+    const ang = bbYaw != null ? bbYaw : Math.atan2(camera.position.x - this.x, camera.position.z - this.z);
     // hareket animasyonu (dans, el sallama...)
     let tilt = 0;
     let lift = 0;
@@ -422,7 +481,7 @@ class AvatarFigure {
     // kamera yukarıdaysa (2D kuş bakışı) avatar düzlemi kameraya doğru yatırılır,
     // yoksa tepeden bakınca ince bir çizgi gibi görünür.
     const hd = Math.hypot(camera.position.x - this.x, camera.position.z - this.z);
-    const el = Math.atan2(camera.position.y - AV_PLANE_H / 2, hd);
+    const el = bbYaw != null ? camera.userData.billboardEl : Math.atan2(camera.position.y - AV_PLANE_H / 2, hd);
     const back = el > 0.35 ? Math.min(el - 0.35, 1.05) : 0;
     this.plane.rotation.order = 'YXZ';
     this.plane.rotation.set(-back, ang, tilt);
@@ -449,6 +508,14 @@ class AvatarFigure {
       const bob = Math.sin(now / 480) * 0.02;
       const handY = (seatPos && !stand ? seatPos.y + 0.55 : AV_PLANE_H * 0.47 - AV_FEET + (seatPos ? seatPos.y : 0)) + bob;
       this.heldSprite.position.set(rx * 0.3 + Math.sin(ang) * 0.12, handY, rz * 0.3 + Math.cos(ang) * 0.12);
+      if (this.heldGun) {
+        // silah figürün önünde, kameraya yan profilden görünür; namlu baktığı yöne
+        const long = this.heldGun.userData.long;
+        const off = long ? 0.08 : 0.26;
+        this.heldGun.position.set(rx * off + Math.sin(ang) * 0.16, handY + (long ? 0.06 : 0.02), rz * off + Math.cos(ang) * 0.16);
+        this.heldGun.rotation.set(0, ang, 0);
+        this.heldGun.scale.set(side, 1, 1);
+      }
     }
     if (seatPos && stand) {
       this.plane.position.y = AV_PLANE_H / 2 - AV_FEET + seatPos.y + lift;
@@ -469,6 +536,24 @@ class AvatarFigure {
       return true;
     });
     this.pet?.update(Math.max(dt, 0.016), now, this, ang, seatPos && !stand ? seatPos : null);
+    if (this.cartG) {
+      // araba yürünen yönde, oyuncunun önünde; tutma kolu oyuncuya dönük
+      const mdx = this.x - (this.lastCx ?? this.x);
+      const mdz = this.z - (this.lastCz ?? this.z);
+      if (Math.hypot(mdx, mdz) > 0.002) {
+        const want = Math.atan2(mdx, mdz);
+        let d = want - (this.cartYaw ?? want);
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        this.cartYaw = (this.cartYaw ?? want) + d * Math.min(1, dt * 8);
+      }
+      this.lastCx = this.x;
+      this.lastCz = this.z;
+      const h = this.cartYaw ?? ang + Math.PI;
+      this.cartG.position.set(Math.sin(h) * 0.66, 0, Math.cos(h) * 0.66);
+      this.cartG.rotation.y = h;
+      this.cartG.visible = !seatPos;
+    }
   }
   headWorld(v) {
     const top = this.plane.position.y + AV_PLANE_H / 2 - 0.12;
@@ -481,6 +566,8 @@ class AvatarFigure {
     this.shadow.geometry.dispose();
     this.shadow.material.dispose();
     this.heldSprite.material.dispose();
+    if (this.heldGun) disposeObject(this.heldGun);
+    if (this.cartG) disposeObject(this.cartG);
     this.label?.remove();
     this.pet?.dispose();
     this.pet = null;
@@ -560,11 +647,16 @@ function ghostify(obj) {
 // =============================================================================
 export function createHouseEngine(
   container,
-  { canEdit, selfUid, onSelectionChange, onDesignChange, onInteractChange, onPlayerTap, onContextLost, snapshot = false, spectate = false } = {}
+  { canEdit: canEditInit, selfUid, onSelectionChange, onDesignChange, onInteractChange, onPlayerTap, onContextLost, onFreeCamChange, snapshot = false, spectate = false } = {}
 ) {
   // v80 — spectate: yayın izleyicisi. Kendi WebGL bağlamı, giriş dinlemez, kamera
   // sabit pozda (bilgisayarın üstü → koltuk), sürekli çizer.
   const { renderer, env } = getSharedRenderer(snapshot ? 'snap' : spectate ? 'spec' : 'main');
+  // v92 — tasarım yetkisi sonradan verilebilir/alınabilir (setCanEdit)
+  let canEdit = Boolean(canEditInit);
+  // v92 — "göz": Tasarla modunda satın alınmamış eşyaları gerçek haliyle göster
+  // (sadece bu ekranda; ziyaretçiler ve Gez modu saydam görmeye devam eder)
+  let realLook = false;
   renderer.__onLost = snapshot ? null : () => onContextLost?.();
   renderer.setPixelRatio(snapshot ? 1 : Math.min(window.devicePixelRatio || 1, spectate ? 1.5 : 1.75));
   renderer.toneMappingExposure = 1.0;
@@ -601,6 +693,7 @@ export function createHouseEngine(
   const stripMat = new THREE.MeshStandardMaterial({ color: '#000', emissive: '#ffe2b0', emissiveIntensity: 2.4 });
   owned.push(stripMat);
   const ceilLights = [];
+  let outdoor = false; // v92 Faz 8: park gibi açık hava mekânı (tavan yok)
   for (let x = -6; x <= 6; x += 6) {
     for (let z = -4; z <= 4; z += 8) {
       const b = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.05, 0.3), stripMat);
@@ -737,6 +830,49 @@ export function createHouseEngine(
   const orbitCur = { ...orbit };
   const top = { az: 0.0, el: 1.3, dist: 21 }; // 2D kuş bakışı (oyuncuyu takip eder)
   const topCur = { ...top };
+  // v92 — 2D'de serbest kamera: tek parmakla kaydır, iki parmakla istediğin yere
+  // yakınlaş / çevir. Açıkken kamera oyuncuyu takip etmez ("🎯" ile geri döner).
+  const topFree = { on: false, x: 0, z: 0 };
+  function setTopFree(on) {
+    if (topFree.on === on) return;
+    topFree.on = on;
+    onFreeCamChange?.(on);
+  }
+  function topWorldPerPx() {
+    const hgt = Math.max(1, renderer.domElement.clientHeight || 1);
+    return (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * topCur.dist) / hgt;
+  }
+  function topPan(dx, dy) {
+    if (!topFree.on) {
+      topFree.x = camTarget.x;
+      topFree.z = camTarget.z;
+      setTopFree(true);
+    }
+    const wpp = topWorldPerPx();
+    const az = topCur.az;
+    const k = 1 / Math.max(0.5, Math.sin(topCur.el));
+    topFree.x += -Math.cos(az) * dx * wpp - Math.sin(az) * dy * wpp * k;
+    topFree.z += Math.sin(az) * dx * wpp - Math.cos(az) * dy * wpp * k;
+    topFree.x = clamp(topFree.x, -W / 2, W / 2);
+    topFree.z = clamp(topFree.z, -D / 2, D / 2);
+  }
+  // ekrandaki (sx, sy) noktasının altındaki zemin sabit kalacak şekilde yakınlaş
+  function topZoomAt(sx, sy, ratio) {
+    const nd = clamp(top.dist * ratio, 4, 32);
+    if (nd === top.dist) return;
+    const P = floorPoint({ clientX: sx, clientY: sy });
+    if (!topFree.on) {
+      topFree.x = camTarget.x;
+      topFree.z = camTarget.z;
+      setTopFree(true);
+    }
+    if (P) {
+      const f = nd / top.dist;
+      topFree.x = clamp(P.x + (topFree.x - P.x) * f, -W / 2, W / 2);
+      topFree.z = clamp(P.z + (topFree.z - P.z) * f, -D / 2, D / 2);
+    }
+    top.dist = nd;
+  }
   // fpPitch: göz görüşünde yukarı/aşağı bakış (v77)
   const self = { x: SPAWN.x, z: SPAWN.z, camYaw: 0, camPitch: 0.34, camDist: 4.8, fpPitch: -0.12, seat: null, fig: null, target: null, stuckT: 0, lastD: 0 };
   const keys = {};
@@ -756,7 +892,8 @@ export function createHouseEngine(
     const w = wallDef(design.wall);
     [[wallMatLong, W], [wallMatShort, D], [dividerMat, 4]].forEach(([m, len]) => {
       if (m.map) m.map.dispose();
-      m.map = surfaceTexture(w, len / w.rep, H / w.rep);
+      // v92 — manzara duvarı: dokunun tamamı duvar boyunda, yatayda 2×H'de bir tekrar
+      m.map = w.mural ? surfaceTexture(w, len / (H * 2), 1) : surfaceTexture(w, len / w.rep, H / w.rep);
       m.roughness = w.rough;
       m.emissiveMap = w.emissive ? m.map : null;
       m.emissive = new THREE.Color(w.emissive ? '#ffffff' : '#000000');
@@ -862,14 +999,15 @@ export function createHouseEngine(
     obj.rotation.y = (data.r || 0) * (Math.PI / 4);
     obj.updateMatrixWorld(true);
   }
-  const sigOf = (d) => `${d.k}|${d.c || 0}|${d.p === 1 ? 1 : 0}`;
+  const ghostOf = (d) => d.p !== 1 && !(realLook && mode === 'build');
+  const sigOf = (d) => `${d.k}|${d.c || 0}|${d.p === 1 ? 1 : 0}|${ghostOf(d) ? 'g' : 'r'}`;
   function buildEntry(data) {
     const obj = buildItem(data.k, { ti: data.c || 0, live: !snapshot, wallMat: dividerMat, H });
     if (!obj) return null;
     const isOwned = data.p === 1;
     const ctl = obj.userData.ctl;
     if (!isOwned) {
-      ghostify(obj);
+      if (ghostOf(data)) ghostify(obj);
       if (ctl?.setOn) ctl.setOn(false);
     }
     obj.traverse((o) => {
@@ -974,7 +1112,7 @@ export function createHouseEngine(
       const onOuter = Math.abs(e.data.z + D / 2) < 0.05 || Math.abs(e.data.z - D / 2) < 0.05 || Math.abs(e.data.x + W / 2) < 0.05 || Math.abs(e.data.x - W / 2) < 0.05;
       e.obj.visible = !onOuter || !walls[wallIndexForRot(e.data.r)].hidden;
     });
-    const showCeil = !overhead();
+    const showCeil = !overhead() && !outdoor;
     ceiling.visible = showCeil;
     ceilLights.forEach((o) => {
       if (o.isMesh) o.visible = showCeil;
@@ -1130,11 +1268,24 @@ export function createHouseEngine(
   // --- Etkileşim --------------------------------------------------------------------
   let currentInteract = null;
   let gymTask = null;
+  // v92 Faz 8 — oyunun 3D mekânı: eşya kimliği → [{ act, label }] istasyonlar
+  let venueActs = null;
   function actionsFor(e) {
+    if (venueActs) {
+      // mekânda eşyadan ücretsiz ürün / market arabası yok; istasyon butonları var
+      const base = baseActionsFor(e).filter((a) => !['take', 'cart', 'cartadd'].includes(a.kind));
+      (venueActs[e.data.i] || []).forEach((a) => base.unshift({ kind: 'panel', panel: `v:${a.act}`, label: a.label }));
+      return base;
+    }
+    return baseActionsFor(e);
+  }
+  function baseActionsFor(e) {
     const def = CATALOG_MAP[e.data.k];
     const ctl = e.obj.userData.ctl;
     const acts = [];
-    if (def.seats?.length) acts.push({ kind: 'sit', label: def.stand ? '🚿 Duş al' : def.cat === 'araba' ? '🚗 Arabaya bin' : def.cat === 'motor' ? '🏍️ Motora bin' : '🪑 Otur' });
+    if (def.seats?.length) acts.push({ kind: 'sit', label: def.stand ? '🚿 Duş al' : def.seatLabel || (def.cat === 'araba' ? '🚗 Arabaya bin' : def.cat === 'motor' ? '🏍️ Motora bin' : '🪑 Otur') });
+    // v92 — market arabası: al ve it; araba elindeyken raftaki ürünler arabaya gider
+    if (def.panel === 'cart' && !self.cart) acts.push({ kind: 'cart', label: '🛒 Arabayı al' });
     if (def.game) acts.push({ kind: 'panel', panel: 'arcade', label: '🎮 Oyna', deviceId: e.data.i });
     // v77: piyanoya oturunca çal (aynı anda tek kişi — HouseScreen/pianoNet)
     if (e.data.k === 'piano' && self.seat?.id === e.data.i) acts.push({ kind: 'panel', panel: 'piano', label: '🎹 Çal' });
@@ -1143,7 +1294,9 @@ export function createHouseEngine(
     if (!def.panel && ctl?.act && !ctl.noToggle) acts.push({ kind: 'toggle', label: ctl.act });
     (def.takes || []).forEach((product) => {
       const p = HOUSE_PRODUCTS[product];
-      if (p) acts.push({ kind: 'take', product, label: `${p.emoji} ${p.label} al` });
+      if (!p) return;
+      if (self.cart && MARKET_PRODUCTS.includes(product)) acts.push({ kind: 'cartadd', product, label: `${p.emoji} ${p.label} → arabaya` });
+      else acts.push({ kind: 'take', product, label: `${p.emoji} ${p.label} al` });
     });
     // v77: spor salonu — aktif görevin aletinde "⭐ Görev"
     if (gymTask && e.data.k === gymTask && e.data.p === 1) acts.unshift({ kind: 'gym', equipment: gymTask, label: '⭐ Görev' });
@@ -1547,11 +1700,20 @@ export function createHouseEngine(
   }
 
   function onPointerDown(e) {
-    canvas.setPointerCapture(e.pointerId);
+    // v91 (iOS): bırakılışı hiç gelmeyen "hayalet" parmak yeni dokunuşu pinch'e çevirmesin.
+    if (e.isPrimary && pointers.size > 0) {
+      pointers.clear();
+      pinch = null;
+    }
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch {
+      /* iOS capture reddedebilir */
+    }
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.size === 2) {
       const [a, b] = [...pointers.values()];
-      pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+      pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, a: Math.atan2(b.y - a.y, b.x - a.x) };
       if (drag?.type === 'item') emitDesign();
       drag = null;
       return;
@@ -1567,7 +1729,7 @@ export function createHouseEngine(
         else drag = { type: e.button === 2 ? 'pan' : 'orbit', moved: 0, tapEmpty: true };
       }
     } else {
-      drag = { type: 'look', moved: 0, tap: true };
+      drag = { type: 'look', moved: 0, tap: true, rot: e.button === 2 };
     }
   }
   function onPointerMove(e) {
@@ -1586,9 +1748,19 @@ export function createHouseEngine(
       if (mode === 'build') {
         orbit.dist = clamp(orbit.dist * ratio, 5, 38);
         panBy(mx - pinch.mx, my - pinch.my);
-      } else if (view === '2d') top.dist = clamp(top.dist * ratio, 6, 32);
-      else if (view !== 'fp') self.camDist = clamp(self.camDist * ratio, 1.8, 8);
-      pinch = { d, mx, my };
+      } else if (view === '2d') {
+        // v92 — parmakların ortasına yakınlaş, iki parmakla kaydır ve çevir
+        topZoomAt(mx, my, ratio);
+        topPan(mx - pinch.mx, my - pinch.my);
+        const ang = Math.atan2(b.y - a.y, b.x - a.x);
+        let da = ang - (pinch.a ?? ang);
+        if (da > Math.PI) da -= Math.PI * 2;
+        if (da < -Math.PI) da += Math.PI * 2;
+        if (Math.abs(da) < 0.5) top.az -= da;
+        pinch = { d, mx, my, a: ang };
+        return;
+      } else if (view !== 'fp') self.camDist = clamp(self.camDist * ratio, 1.8, 8);
+      pinch = { d, mx, my, a: Math.atan2(b.y - a.y, b.x - a.x) };
       return;
     }
     if (!drag) return;
@@ -1626,8 +1798,11 @@ export function createHouseEngine(
       panBy(dx, dy);
     } else if (drag.type === 'look' && drag.moved > 6) {
       if (view === '2d') {
-        top.az -= dx * 0.006;
-        top.el = clamp(top.el + dy * 0.004, 0.55, 1.45);
+        if (drag.rot) {
+          // fare sağ tuşu: çevir / eğ
+          top.az -= dx * 0.006;
+          top.el = clamp(top.el + dy * 0.004, 0.55, 1.45);
+        } else topPan(dx, dy); // v92 — tek parmak: haritayı kaydır
       } else if (view === 'fp') {
         // göz görüşü: parmak hangi yöne kayarsa o yöne dönülür (sağa kaydır → sağa dön)
         self.camYaw -= dx * 0.005;
@@ -1658,7 +1833,7 @@ export function createHouseEngine(
   function onWheel(e) {
     e.preventDefault();
     if (mode === 'build') orbit.dist = clamp(orbit.dist + e.deltaY * 0.012, 5, 38);
-    else if (view === '2d') top.dist = clamp(top.dist + e.deltaY * 0.01, 6, 32);
+    else if (view === '2d') topZoomAt(e.clientX, e.clientY, 1 + clamp(e.deltaY, -200, 200) * 0.0012);
     else if (view !== 'fp') self.camDist = clamp(self.camDist + e.deltaY * 0.004, 1.8, 8);
   }
   const onKeyDown = (e) => {
@@ -1818,6 +1993,7 @@ export function createHouseEngine(
 
   let fixedPose = null; // v80: yayın kamerası
   function placeCamera(dt) {
+    camera.userData.billboardYaw = null; // sadece 2D kuş bakışında ayarlanır
     if (fixedPose) {
       if (camera.fov !== fixedPose.fov) {
         camera.fov = fixedPose.fov;
@@ -1864,8 +2040,13 @@ export function createHouseEngine(
       // eksen değiştiriyordu → açı değiştirirken görüntü sıçrıyordu)
       const ca = Math.abs(Math.cos(topCur.az));
       const sa = Math.abs(Math.sin(topCur.az));
-      const tx = lim(px, ca * halfW + sa * halfD, W);
-      const tz = lim(pz, sa * halfW + ca * halfD, D);
+      const tx = lim(topFree.on ? topFree.x : px, ca * halfW + sa * halfD, W);
+      const tz = lim(topFree.on ? topFree.z : pz, sa * halfW + ca * halfD, D);
+      if (topFree.on) {
+        // sınıra dayanınca biriken kaydırma geri dönüşte "ölü bölge" yapmasın
+        topFree.x = tx;
+        topFree.z = tz;
+      }
       // hedef yumuşak takip edilir; kamera konumu açıdan DOĞRUDAN hesaplanır
       // (çift yumuşatma döndürürken yakınlaşıp uzaklaşma/titreme yapıyordu)
       const kt = firstFrame ? 1 : 1 - Math.exp(-dt * 10);
@@ -1877,6 +2058,8 @@ export function createHouseEngine(
       );
       camera.position.copy(camPos);
       camera.lookAt(camTarget);
+      camera.userData.billboardYaw = topCur.az;
+      camera.userData.billboardEl = topCur.el;
       focus.set(px, 1, pz);
       return;
     }
@@ -2140,6 +2323,18 @@ export function createHouseEngine(
     get view() {
       return view;
     },
+    setCanEdit(v) {
+      canEdit = Boolean(v);
+      if (!canEdit && mode === 'build') api.setMode('walk');
+    },
+    setRealLook(v) {
+      realLook = Boolean(v);
+      syncFromDesign();
+    },
+    // sürükleme sürerken uzaktan gelen tasarım uygulanmasın
+    isBusy() {
+      return Boolean(drag && (drag.type === 'item' || drag.type === 'itemCandidate'));
+    },
     setMode(m) {
       if (!canEdit && m === 'build') return;
       mode = m;
@@ -2154,10 +2349,16 @@ export function createHouseEngine(
       }
       camera.fov = m === 'build' ? 52 : view === '2d' ? 50 : view === 'fp' ? 72 : 62;
       camera.updateProjectionMatrix();
+      if (realLook) syncFromDesign(); // göz: Tasarla'da gerçek, Gez'de saydam
       updateSelectionVisual();
+    },
+    // v92 — 2D serbest kameradan oyuncuya dön
+    recenter() {
+      setTopFree(false);
     },
     setView(v) {
       view = v === '2d' ? '2d' : v === 'fp' ? 'fp' : '3d';
+      setTopFree(false);
       if (view === 'fp') self.fpPitch = -0.12;
       firstFrame = true;
       if (view === '2d') {
@@ -2304,6 +2505,20 @@ export function createHouseEngine(
       setSurfaces();
       onDesignChange?.(design);
     },
+    // v92 Faz 8: açık hava mekânı (park) — tavan yok, gökyüzü var
+    setOutdoor(on) {
+      outdoor = Boolean(on);
+      ceiling.visible = !on;
+      ceilLights.forEach((o) => {
+        if (o.isMesh) o.visible = !on;
+      });
+      scene.background = new THREE.Color(on ? '#9fd3ff' : '#07080d');
+    },
+    // v92 Faz 8: oyunun mekânı — istasyon eşyaları (null = normal ev)
+    setVenueStations(map) {
+      venueActs = map && typeof map === 'object' ? map : null;
+      lastInteractKey = null;
+    },
     // v77: spor salonunda aktif görev aleti (null = yok)
     setGymTask(k) {
       gymTask = k || null;
@@ -2388,6 +2603,8 @@ export function createHouseEngine(
         return { kind: 'toggle' };
       }
       if (action.kind === 'take') return { kind: 'take', itemId: it.id, product: action.product };
+      if (action.kind === 'cart') return { kind: 'cart', itemId: it.id };
+      if (action.kind === 'cartadd') return { kind: 'cartadd', itemId: it.id, product: action.product };
       if (action.kind === 'panel') return { kind: 'panel', panel: action.panel, itemId: action.deviceId || it.id };
       return null;
     },
@@ -2404,6 +2621,7 @@ export function createHouseEngine(
         self.fig = new AvatarFigure(scene, labelLayer, { uid, name, avatar, isSelf: true });
         self.fig.x = self.x;
         self.fig.z = self.z;
+        if (self.cart) self.fig.setCart(self.cart);
       } else self.fig.setIdentity(name, avatar);
     },
     setSelfPos(x, z) {
@@ -2416,6 +2634,11 @@ export function createHouseEngine(
     },
     setSelfHolding(product) {
       self.fig?.setHolding(product);
+    },
+    // v92 — market arabası (null = yok)
+    setSelfCart(items) {
+      self.cart = cleanCart(items);
+      self.fig?.setCart(self.cart); // eylem listesi (al / arabaya) sonraki karede yenilenir
     },
     emote(kind) {
       self.fig?.playEmote(kind);
@@ -2446,6 +2669,7 @@ export function createHouseEngine(
         o.fig.tz = Number(p.z) || 0;
         o.fig.facingLeft = !!p.left;
         o.fig.setHolding(p.holdingVisible || null);
+        o.fig.setCart(p.cart ?? null);
         const [sid, sidx] = typeof p.seat === 'string' ? p.seat.split(':') : [];
         o.seat = sid ? { id: sid, idx: Number(sidx) || 0 } : null;
         // v85 — paylaşılan fotoğraf: çekim anındaki hareket/yürüme dondurulmuş gelir

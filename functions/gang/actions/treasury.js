@@ -194,6 +194,8 @@ export function createTreasuryActions(core) {
       if (dist.status !== 'open' || ctx.now < dist.expiresAtMs) return { skipped: true };
       const stateRef = dist.orgType === 'intel' ? ctx.ref.intelState() : ctx.ref.gangState(dist.orgId);
       const stateSnap = await tx.get(stateRef);
+      // v91: İstihbarat kasasına dönen iade de kasa sınırını aşamaz.
+      const intelK = dist.orgType === 'intel' ? await core.readIntelKasa(tx, ctx) : null;
       let orgActive = stateSnap.exists;
       if (dist.orgType === 'gang' && orgActive && !refundToDisbanded) {
         const g = await tx.get(ctx.ref.gang(dist.orgId));
@@ -202,7 +204,10 @@ export function createTreasuryActions(core) {
       const refund = Number(dist.total || 0) - Number(dist.claimedTotal || 0);
       tx.update(ctx.ref.distribution(distId), { status: 'expired', refunded: refund, openUntilMs: FV.delete(), expiredAtMs: ctx.now });
       if (refund > 0) {
-        if (orgActive) {
+        if (orgActive && intelK) {
+          const cr = core.creditIntel(tx, ctx, intelK, refund, { type: 'distribution_refund', refId: distId, from: { kind: 'pool', id: distId } });
+          core.intelLog(tx, ctx, '↩️', `Alınmayan ${fmt(cr.credited)} altın kasaya döndü${cr.burned > 0 ? ` (${fmt(cr.burned)} kasa sınırı yüzünden yandı)` : ''}.`);
+        } else if (orgActive) {
           tx.update(stateRef, { kasa: FV.increment(refund) });
           ledger(tx, ctx, { type: 'distribution_refund', amount: refund, from: { kind: 'pool', id: distId }, to: { kind: dist.orgType, id: dist.orgId }, refId: distId, actorId: 'system' });
           if (dist.orgType === 'gang') gangLog(tx, ctx, dist.orgId, '↩️', `Alınmayan ${fmt(refund)} altın kasaya döndü.`);

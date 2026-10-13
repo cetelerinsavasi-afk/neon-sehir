@@ -35,6 +35,8 @@ import {
 } from './houseCatalogData.js';
 import { BIZ_TYPES, BIZ_DEFAULT_NAME, checkBizRequirements } from './businessCatalogData.js';
 import { MENU_TYPES, isMenuProduct } from './venue.js';
+import { goldTag } from './moneyLog.js';
+import { VENUES, VENUE_OWNER } from './venueLayouts.js';
 
 // v77 — Ev → İşletme. houses/{id} üzerine eklenen alanlar:
 //   biz: { type, openedAtMs } | null   — açık işletme (yoksa ev)
@@ -60,6 +62,9 @@ export const HOUSE = {
   SPAWN: { x: 5, z: 14 / 2 - 3.2 },
 };
 export const PRIVACY = ['public', 'friends', 'private'];
+// v92 — ev/işletme tasarımına yetkili arkadaş sayısı sınırı
+export const MAX_EDITORS = 20;
+export const isEditorOf = (h, uid) => Boolean(uid && h?.editors?.[uid] === true && h.ownerUid !== uid);
 
 const isUid = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);
 const isHouseId = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(v);
@@ -174,7 +179,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       const u = await tx.get(userRef(uid));
       const gold = Number(u.data()?.gold || 0);
       if (gold < HOUSE_PRICE) fail('failed-precondition', `Yetersiz altın. Ev ${HOUSE_PRICE.toLocaleString('tr-TR')} altın.`);
-      tx.update(userRef(uid), { gold: FieldValue.increment(-HOUSE_PRICE), houseCount: FieldValue.increment(1) });
+      tx.update(userRef(uid), { gold: FieldValue.increment(-HOUSE_PRICE), goldTag: goldTag('ev'), houseCount: FieldValue.increment(1) });
       tx.set(ref, {
         ownerUid: uid,
         ownerName: nameOf(user),
@@ -215,6 +220,8 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     if (Number(h.invites?.[uid] || 0) > t) return { ok: true };
     // v77: işletmeler her zaman herkese açıktır
     if (h.biz) return { ok: true };
+    // v92 Faz 8: oyunun 3D mekânları (camii, banka, gazino…) herkese açık
+    if (h.venue) return { ok: true };
     const privacy = h.privacy || 'public';
     if (privacy === 'public') return { ok: true };
     if (privacy === 'friends') {
@@ -395,7 +402,10 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       if (Number(user.gold || 0) < gold) fail('failed-precondition', 'gold');
       if (Number(user.emerald || 0) < gem) fail('failed-precondition', 'gem');
       const patch = {};
-      if (gold) patch.gold = FieldValue.increment(-gold);
+      if (gold) {
+        patch.gold = FieldValue.increment(-gold);
+        patch.goldTag = goldTag('mobilya');
+      }
       if (gem) patch.emerald = FieldValue.increment(-gem);
       tx.update(userRef(uid), patch);
       tx.set(invRef(uid), { items: Object.fromEntries(Object.entries(want).map(([k, q]) => [k, FieldValue.increment(q)])), updatedAtMs: now() }, { merge: true });
@@ -447,23 +457,31 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     const houseId = String(p.houseId || '');
     const design = clean(p.design);
     let result = null;
+    // v92 — yetkili arkadaş da kaydedebilir: sahibinin envanterini kullanır, satın
+    // alamaz (deneme eşyalar deneme kalır), işletmeyi kapatamaz. Evde olmalı.
+    const pre = await loadHouse(houseId);
+    const asEditor = pre.ownerUid !== uid && isEditorOf(pre, uid);
+    if (asEditor && !(await presentIn(uid, houseId))) fail('failed-precondition', 'Tasarlamak için evde olmalısın.');
     await db.runTransaction(async (tx) => {
-      const [hs, is] = await Promise.all([tx.get(houseRef(houseId)), tx.get(invRef(uid))]);
+      const hs = await tx.get(houseRef(houseId));
       if (!hs.exists) fail('not-found', 'Ev bulunamadı.');
       const h = hs.data();
-      if (h.ownerUid !== uid) fail('permission-denied', 'Bu ev senin değil.');
+      const editor = h.ownerUid !== uid && isEditorOf(h, uid);
+      if (h.ownerUid !== uid && !editor) fail('permission-denied', 'Bu ev senin değil.');
+      const invUid = h.ownerUid;
+      const is = await tx.get(invRef(invUid));
       const inv = is.exists ? is.data() : {};
-      const closing = await guardBizDesign(tx, { houseId, h, items: design.items, allowBizClose: p.allowBizClose === true });
-      const { items, invItems } = applyDesignTx(tx, { houseId, h, inv, uid, design });
+      const closing = await guardBizDesign(tx, { houseId, h, items: design.items, allowBizClose: !editor && p.allowBizClose === true });
+      const { items, invItems } = applyDesignTx(tx, { houseId, h, inv, uid: invUid, design });
       // Kaplama: sadece sahip olunan uygulanır; değilse eskisi kalır (önizleme istemcide).
       const wall = design.wall && ownsSurface(inv, 'wall', design.wall) ? design.wall : h.wall || FREE_SURFACES.wall[0];
       const floor = design.floor && ownsSurface(inv, 'floor', design.floor) ? design.floor : h.floor || FREE_SURFACES.floor[0];
       let closed = null;
       if (closing) closed = { type: h.biz.type, returned: writeBizClose(tx, { houseId, h, ...closing }) };
-      tx.update(houseRef(houseId), { items, wall, floor, updatedAtMs: now() });
+      tx.update(houseRef(houseId), { items, wall, floor, updatedAtMs: now(), ...(editor ? { lastEditBy: uid } : {}) });
       // Envanter belgesi küçük: tamamı tek yazımla (silinen anahtarlar da gider)
-      tx.set(invRef(uid), { items: invItems, walls: inv.walls || [], floors: inv.floors || [], updatedAtMs: now() });
-      result = { ok: true, count: items.length, wall, floor, ...(closed ? { bizClosed: closed } : {}) };
+      tx.set(invRef(invUid), { items: invItems, walls: inv.walls || [], floors: inv.floors || [], updatedAtMs: now() });
+      result = { ok: true, count: items.length, wall, floor, ...(closed ? { bizClosed: closed } : {}), ...(editor ? { inv: { items: invItems, walls: inv.walls || [], floors: inv.floors || [] } } : {}) };
     });
     return result;
   }
@@ -526,7 +544,10 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       const wall = design.wall || h.wall || FREE_SURFACES.wall[0];
       const floor = design.floor || h.floor || FREE_SURFACES.floor[0];
       const userPatch = {};
-      if (q.gold) userPatch.gold = FieldValue.increment(-q.gold);
+      if (q.gold) {
+        userPatch.gold = FieldValue.increment(-q.gold);
+        userPatch.goldTag = goldTag('mobilya');
+      }
       if (q.gem) userPatch.emerald = FieldValue.increment(-q.gem);
       tx.update(userRef(uid), userPatch);
       tx.update(houseRef(houseId), { items, wall, floor, updatedAtMs: now() });
@@ -679,6 +700,9 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
         /* balonlar olmadan devam */
       }
     }
+    // v92 Faz 8: oyunun mekânında sabit NPC'ler de fotoğrafta (veznedar, barmen…)
+    const vn = h.venue ? VENUES[h.venue] : null;
+    if (vn) (vn.npcs || []).forEach((n) => people.push({ uid: n.id, displayName: n.name, avatar: n.av, x: n.x, z: n.z, left: !!n.left, seat: null }));
     return {
       type: 'housePhoto',
       houseId,
@@ -739,6 +763,8 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     if (!it) fail('not-found', 'Eşya bulunamadı.');
     if (it.p !== 1) fail('failed-precondition', 'Bu eşya henüz satın alınmamış (deneme).');
     if (!(HOUSE_TAKEABLES[it.k] || []).includes(product) || !HOUSE_PRODUCTS[product]) fail('invalid-argument', 'Bu eşyadan bu ürün alınamaz.');
+    // v92 Faz 8: oyunun mekânlarında eşyadan ücretsiz ürün alınmaz (bar/büfe ücretli)
+    if (h.venue) fail('failed-precondition', 'Bu mekânda eşyadan ürün alınmaz.');
     // v77: cafe/bar işletmesinde yiyecek-içecek müşteriye ücretsiz değil → menüden alınır
     if (h.biz?.type && MENU_TYPES.includes(h.biz.type) && isMenuProduct(product) && h.ownerUid !== uid) fail('failed-precondition', 'biz-menu');
     const pres = await presentIn(uid, houseId);
@@ -765,6 +791,77 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     const u = (await userRef(uid).get()).data();
     await houseRef(houseId).update({ music: track === null ? null : { itemId, track, byName: nameOf(u), atMs: now() } });
     return { ok: true };
+  }
+
+  // ---- v92: tasarım yetkisi -------------------------------------------------------
+  // Sahip, arkadaşlarına evini/işletmesini düzenleme yetkisi verir / geri alır.
+  async function setEditor(uid, p) {
+    const houseId = String(p.houseId || '');
+    const target = String(p.uid || '');
+    const on = p.on === true;
+    if (!isUid(target) || target === uid) fail('invalid-argument', 'Geçersiz oyuncu.');
+    const h = await loadOwnedHouse(uid, houseId);
+    const cur = Object.keys(h.editors || {}).filter((k) => h.editors[k] === true);
+    if (on) {
+      if (h.editors?.[target] === true) return { ok: true, on: true };
+      if (cur.length >= MAX_EDITORS) fail('resource-exhausted', `En fazla ${MAX_EDITORS} kişiye yetki verebilirsin.`);
+      if (!(await isFriend(uid, target))) fail('failed-precondition', 'Sadece arkadaşlarına yetki verebilirsin.');
+      const [tSnap, me] = await Promise.all([userRef(target).get(), userRef(uid).get()]);
+      if (!tSnap.exists) fail('not-found', 'Oyuncu bulunamadı.');
+      const batch = db.batch();
+      batch.update(houseRef(houseId), { [`editors.${target}`]: true });
+      batch.set(userRef(target).collection('messages').doc(), {
+        from: nameOf(me.data()),
+        text: `🛠️ "${h.name || 'ev'}" için sana tasarım yetkisi verdim! İçeri girip Tasarla ile mağazadan ve envanterimden eşya koyup kaldırabilirsin (satın alma bende).`,
+        read: false,
+        kind: 'houseEditor',
+        houseId,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      await batch.commit();
+      return { ok: true, on: true };
+    }
+    if (h.editors?.[target] !== undefined) await houseRef(houseId).update({ [`editors.${target}`]: FieldValue.delete() });
+    return { ok: true, on: false };
+  }
+  // Yetkili, sahibinin envanterini görür (envanter belgesi sadece sahibine açık)
+  async function editorInventory(uid, p) {
+    const houseId = String(p.houseId || '');
+    const h = await loadHouse(houseId);
+    if (!isEditorOf(h, uid)) fail('permission-denied', 'Bu evde tasarım yetkin yok.');
+    const s = await invRef(h.ownerUid).get();
+    const d = s.exists ? s.data() : {};
+    return { ok: true, items: d.items || {}, walls: d.walls || [], floors: d.floors || [] };
+  }
+
+  // ---- v92 Faz 8: oyunun 3D mekânları --------------------------------------------------
+  // houses/game_{…} belgesini kurar; yerleşim sürümü (v) değiştiyse günceller.
+  // Herkes çağırabilir (idempotent); belge kodu (venueLayouts.js) izler.
+  async function venueEnsure(p) {
+    const key = String(p.venue || '');
+    const vn = Object.prototype.hasOwnProperty.call(VENUES, key) ? VENUES[key] : null;
+    if (!vn) fail('invalid-argument', 'Geçersiz mekân.');
+    const ref = houseRef(vn.houseId);
+    const snap = await ref.get();
+    if (snap.exists && snap.data().venueV === vn.v && snap.data().venue === key) return { ok: true, houseId: vn.houseId };
+    const t = now();
+    const data = {
+      ownerUid: VENUE_OWNER,
+      ownerName: 'Neon Şehir',
+      ownerAvatar: null,
+      name: vn.name,
+      privacy: 'venue',
+      items: vn.items,
+      wall: vn.wall,
+      floor: vn.floor,
+      music: null,
+      venue: key,
+      venueV: vn.v,
+      updatedAtMs: t,
+    };
+    if (!snap.exists) Object.assign(data, { kicked: {}, invites: {}, createdAtMs: t });
+    await ref.set(data, { merge: true });
+    return { ok: true, houseId: vn.houseId };
   }
 
   const houseAction = onCall(async (request) => {
@@ -803,6 +900,12 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
         return buyItems(uid, p);
       case 'bizIntent':
         return setBizIntent(uid, p);
+      case 'editor':
+        return setEditor(uid, p);
+      case 'editInv':
+        return editorInventory(uid, p);
+      case 'venueEnsure':
+        return venueEnsure(p);
       default:
         return fail('invalid-argument', 'Bilinmeyen işlem.');
     }

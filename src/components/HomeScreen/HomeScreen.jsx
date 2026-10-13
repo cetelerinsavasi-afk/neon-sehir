@@ -11,6 +11,7 @@ import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import AvatarBuilder from '../AvatarBuilder/AvatarBuilder';
 import AccessoryShop from '../AccessoryShop/AccessoryShop';
+import DailyReport from '../DailyReport/DailyReport';
 import DeleteAccountRequest from '../DeleteAccountRequest/DeleteAccountRequest';
 import BlockedPlayersList from '../BlockedPlayersList/BlockedPlayersList';
 import AdminPanelEntry from '../AdminPanel/AdminPanelEntry';
@@ -34,7 +35,7 @@ function weaponImage(catalogId) {
   return weaponCatalog.find((w) => w.id === catalogId)?.image;
 }
 
-function ProfileHeader({ player, onEditAvatar, onAccessories }) {
+function ProfileHeader({ player, onEditAvatar, onAccessories, onReport }) {
   const [editingName, setEditingName] = useState(false);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -100,6 +101,10 @@ function ProfileHeader({ player, onEditAvatar, onAccessories }) {
       <button className="home-btn home-btn-acc" onClick={onAccessories}>
         🐾 Aksesuarlar
       </button>
+      {/* v92 — günlük para raporu */}
+      <button className="home-btn home-btn-report" onClick={onReport}>
+        📊 Günlük Rapor
+      </button>
     </div>
   );
 }
@@ -134,6 +139,7 @@ export default function HomeScreen() {
   const { inventory } = useInventory();
   const [editingAvatar, setEditingAvatar] = useState(false);
   const [accShop, setAccShop] = useState(false);
+  const [report, setReport] = useState(false);
 
   if (!user) {
     return <SignInPrompt message="Evine girmek için giriş yapmalısın." />;
@@ -145,6 +151,9 @@ export default function HomeScreen() {
   if (accShop) {
     return <AccessoryShop onBack={() => setAccShop(false)} />;
   }
+  if (report) {
+    return <DailyReport onBack={() => setReport(false)} />;
+  }
 
   // v77: vitrindeki (dükkândaki) ürünler kilitli — soluk ve 🔒 ile gösterilir
   const myVehicles = vehicles.filter((v) => !v.listed || v.shopHouseId);
@@ -152,7 +161,7 @@ export default function HomeScreen() {
 
   return (
     <div className="home-screen">
-      <ProfileHeader player={player} onEditAvatar={() => setEditingAvatar(true)} onAccessories={() => setAccShop(true)} />
+      <ProfileHeader player={player} onEditAvatar={() => setEditingAvatar(true)} onAccessories={() => setAccShop(true)} onReport={() => setReport(true)} />
 
       {/* UGC D3: yalnızca yetkililere görünür */}
       <AdminPanelEntry uid={user.uid} player={player} />
