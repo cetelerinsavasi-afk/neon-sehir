@@ -18,6 +18,7 @@ import LotteryScreen from '../LotteryScreen/LotteryScreen';
 import OnNumaraScreen from '../OnNumaraScreen/OnNumaraScreen';
 import OnNumaraTable from '../OnNumaraScreen/OnNumaraTable';
 import PoliceStationScreen from '../PoliceStationScreen/PoliceStationScreen';
+import PoliceBooklet from '../PoliceBooklet/PoliceBooklet';
 import VehicleGalleryScreen from '../VehicleGalleryScreen/VehicleGalleryScreen';
 import WeaponShopScreen from '../WeaponShopScreen/WeaponShopScreen';
 import Workshop from '../Workshop/Workshop';
@@ -320,13 +321,48 @@ export function GazinoPart({ panel, setPanel, onOpenHeist, flash, walk }) {
   );
 }
 
-// ── KARAKOL ────────────────────────────────────────────────────────────────────
-export function KarakolPart({ panel, setPanel }) {
-  if (panel !== 'bribe' && panel !== 'commissioner') return null;
+// Oyuncu dükkânlarındaki gibi üstte (sağda) hızlı butonlar — tezgâha yürümeden açılır
+function TopBtns({ show, items, setPanel }) {
+  if (!show) return null;
   return (
-    <Sheet title={panel === 'bribe' ? '👮 Karakol Girişi — Memur' : '🎖️ Komiser Ofisi'} onClose={() => setPanel(null)} closeLabel={panel === 'bribe' ? 'Memurdan Uzaklaş' : 'Ofisten Çık'}>
-      <PoliceStationScreen mode={panel} />
-    </Sheet>
+    <div className="hb-topbtns">
+      {items.map((b) => (
+        <button key={b.panel} className="hb-topbtn" onClick={() => setPanel(b.panel)}>
+          {b.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── KARAKOL ────────────────────────────────────────────────────────────────────
+// Sol üstte (camiideki gibi): Polislik Başvurusu · Polis Kitapçığı · Rüşvet Ver
+export function KarakolPart({ panel, setPanel, walk }) {
+  const [booklet, setBooklet] = useState(false);
+  return (
+    <>
+      <Menu show={walk}>
+        <button className="v3-btn" onClick={() => setPanel('application')}>
+          👮 Polislik Başvurusu
+        </button>
+        <button className="v3-btn" onClick={() => setBooklet(true)}>
+          📘 Polis Kitapçığı
+        </button>
+        <button className="v3-btn" onClick={() => setPanel('bribe')}>
+          🤝 Rüşvet Ver
+        </button>
+      </Menu>
+      {booklet && <PoliceBooklet onClose={() => setBooklet(false)} />}
+      {(panel === 'bribe' || panel === 'application') && (
+        <Sheet
+          title={panel === 'bribe' ? '👮 Karakol Girişi — Memur' : '🎖️ Komiser Ofisi — Polislik Başvurusu'}
+          onClose={() => setPanel(null)}
+          closeLabel={panel === 'bribe' ? 'Memurdan Uzaklaş' : 'Ofisten Çık'}
+        >
+          <PoliceStationScreen mode={panel} />
+        </Sheet>
+      )}
+    </>
   );
 }
 
@@ -337,6 +373,7 @@ export function GaleriPart({ panel, setPanel, onOpenHeist, walk }) {
       <Menu show={walk}>
         <HeistBtn onOpenHeist={onOpenHeist} target="araba_galerisi" />
       </Menu>
+      <TopBtns show={walk && !panel} setPanel={setPanel} items={[{ panel: 'gallery', label: '🚗 Satılık arabalar' }]} />
       {panel === 'gallery' && (
         <Sheet title="🚗 Araba Galerisi — Güncel Fiyat Listesi" onClose={() => setPanel(null)} closeLabel="Galericiden Uzaklaş">
           <VehicleGalleryScreen />
@@ -347,25 +384,32 @@ export function GaleriPart({ panel, setPanel, onOpenHeist, walk }) {
 }
 
 // ── SİLAH MAĞAZASI ─────────────────────────────────────────────────────────────
-export function SilahPart({ panel, setPanel }) {
-  const [tab, setTab] = useState('buy');
-  useEffect(() => {
-    if (panel === 'workshop') setTab('workshop');
-    else if (panel === 'weapon') setTab('buy');
-  }, [panel]);
-  if (panel !== 'weapon' && panel !== 'workshop') return null;
+export function SilahPart({ panel, setPanel, walk }) {
+  const open = panel === 'weapon' || panel === 'workshop';
   return (
-    <Sheet title="🔫 Neon Silah Mağazası" onClose={() => setPanel(null)} closeLabel="Tezgahtan Uzaklaş">
-      <div className="bz-tabs ws-shop-tabs">
-        <button className={tab === 'buy' ? 'on' : ''} onClick={() => setTab('buy')}>
-          🔫 Satılık silahlar
-        </button>
-        <button className={tab === 'workshop' ? 'on' : ''} onClick={() => setTab('workshop')}>
-          🛠️ Tamir / Geliştirme
-        </button>
-      </div>
-      {tab === 'buy' ? <WeaponShopScreen /> : <Workshop shop={{ kind: 'game', type: 'silahci' }} />}
-    </Sheet>
+    <>
+      <TopBtns
+        show={walk && !panel}
+        setPanel={setPanel}
+        items={[
+          { panel: 'weapon', label: '🔫 Satılık silahlar' },
+          { panel: 'workshop', label: '🛠️ Tamir / Geliştirme' },
+        ]}
+      />
+      {open && (
+        <Sheet title="🔫 Neon Silah Mağazası" onClose={() => setPanel(null)} closeLabel="Tezgahtan Uzaklaş">
+          <div className="bz-tabs ws-shop-tabs">
+            <button className={panel === 'weapon' ? 'on' : ''} onClick={() => setPanel('weapon')}>
+              🔫 Satılık silahlar
+            </button>
+            <button className={panel === 'workshop' ? 'on' : ''} onClick={() => setPanel('workshop')}>
+              🛠️ Tamir / Geliştirme
+            </button>
+          </div>
+          {panel === 'weapon' ? <WeaponShopScreen /> : <Workshop shop={{ kind: 'game', type: 'silahci' }} />}
+        </Sheet>
+      )}
+    </>
   );
 }
 
@@ -376,8 +420,9 @@ export function ModifiyePart({ panel, setPanel, onOpenHeist, walk }) {
       <Menu show={walk}>
         <HeistBtn onOpenHeist={onOpenHeist} target="modifiye_garaji" />
       </Menu>
+      <TopBtns show={walk && !panel} setPanel={setPanel} items={[{ panel: 'garage', label: '🛠️ Tamir / Geliştirme' }]} />
       {panel === 'garage' && (
-        <Sheet title="🔧 Modifiye Garajı — Usta" onClose={() => setPanel(null)} closeLabel="Ustadan Uzaklaş">
+        <Sheet title="🔧 Modifiye Garajı — Tamir / Geliştirme" onClose={() => setPanel(null)} closeLabel="Ustadan Uzaklaş">
           <GarageScreen />
         </Sheet>
       )}

@@ -467,6 +467,7 @@ export const CATS = [
         L('➕', 'Tasarla’da “+” ile arkadaşına yetki ver. Senin envanterinden dizer, mağazadan deneme koyar.'),
         L('🛒', 'Satın almak sadece sende. Deneme eşyalar sana saydam görünür.'),
         L('👁️', 'Göz butonu: deneme eşyaları gerçek haliyle gör, karar ver.'),
+        L('🧩', 'Zemin Parçaları ve Duvar Panelleri: evin içi parke, önü çim ya da kum; seçili parçanın ◀ ▲ ▼ ▶ oklarıyla yanına yenisini ekle.'),
       ] },
     { type: 'lines', title: 'Defter ve Sıra',
       kicker: 'Her gece kapanış, her sabah yeni sıra.',

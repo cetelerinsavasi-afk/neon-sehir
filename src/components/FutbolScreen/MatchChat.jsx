@@ -39,7 +39,9 @@ export default function MatchChat({ readOnly = false }) {
       await streamAction({ op: 'matchChat', text: t });
       setText('');
     } catch (e) {
-      setErr(String(e?.message || 'Gönderilemedi.'));
+      const m = String(e?.message || '');
+      // sunucu henüz bu sürüme güncellenmediyse (streamAction eski) anlaşılır bir mesaj
+      setErr(/Geçersiz işlem/i.test(m) ? 'Maç sohbeti şu an kullanılamıyor, biraz sonra tekrar dene.' : m || 'Gönderilemedi.');
     } finally {
       setBusy(false);
     }

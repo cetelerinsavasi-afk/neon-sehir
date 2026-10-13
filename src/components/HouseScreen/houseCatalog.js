@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { labelTexture, cityTexture, viewTexture, WINDOW_VIEWS } from './houseTextures';
-import { ITEM_PRICES, HOUSE_TAKEABLES } from '../../../functions/houseCatalogData.js';
+import { labelTexture, cityTexture, viewTexture, WINDOW_VIEWS, FLOORS as SURF_FLOORS, WALLS as SURF_WALLS, tileBaseTexture } from './houseTextures';
+import { ITEM_PRICES, HOUSE_TAKEABLES, FLOOR_TILE_KEYS, WALL_PANEL_KEYS } from '../../../functions/houseCatalogData.js';
 import { v92CatalogEntries, V92_CATEGORIES, BOSSTABLE_TINTS, marketShelfV92 } from './houseCatalogV92';
 
 // =============================================================================
@@ -176,13 +176,13 @@ export const CATEGORIES = [
   { key: 'silah', name: 'Silahlık', icon: '🔫' },
   { key: 'araba', name: 'Arabalar', icon: '🏎️' },
   { key: 'motor', name: 'Motorlar', icon: '🏍️' },
-  { key: 'garaj', name: 'Garaj', icon: '🔧' },
+  { key: 'garaj', name: 'Garaj & Benzinlik', icon: '🔧' },
   { key: 'dekor', name: 'Dekor', icon: '🪴' },
   { key: 'duvar', name: 'Duvar Süsleri', icon: '🖼️' },
   { key: 'hali', name: 'Halılar', icon: '🟥' },
   { key: 'luks', name: 'Lüks', icon: '💎' },
   { key: 'spor', name: 'Spor & Oyun', icon: '🎱' },
-  { key: 'dis', name: 'Dış Mekan', icon: '🌳' },
+  { key: 'dis', name: 'Dış Mekan & Havuz', icon: '🌳' },
   { key: 'yapi', name: 'Yapı', icon: '🧱' },
   ...V92_CATEGORIES,
 ];
@@ -2679,6 +2679,79 @@ function rugPattern(kind) {
 const G = (v) => ({ t: 'gold', v });
 const E = (v) => ({ t: 'gem', v });
 
+// =============================================================================
+// v92 — PARÇA ZEMİN / DUVAR PANELİ
+// Yeni zeminler (çim, kum, asfalt, otopark…) 1 m × 1 m parça, yeni duvarlar
+// (gökyüzü, orman, deniz…) 1 m genişliğinde tam boy panel olarak satılır; odanın
+// bir bölümüne döşenir (evin içi parke, önü bahçe gibi). Motor parçaları 1 m'lik
+// ızgaraya oturtur ve dokuyu dünya konumundan hesaplar: yan yana parçalar tek
+// parça gibi kesintisiz görünür (houseEngine: tile / updateTileUV).
+// =============================================================================
+const tileMats = new Map();
+function tileMat(def, kind) {
+  const key = `${kind}_${def.key}`;
+  let m = tileMats.get(key);
+  if (!m) {
+    const map = tileBaseTexture(def);
+    m = new THREE.MeshStandardMaterial({ map, roughness: def.rough ?? 0.8, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    if (def.emissive) {
+      m.emissive = new THREE.Color('#ffffff');
+      m.emissiveMap = map;
+      m.emissiveIntensity = kind === 'floor' ? 0.8 : 0.7;
+    }
+    m.userData.shared = true;
+    tileMats.set(key, m);
+  }
+  return m;
+}
+function tileEntries() {
+  const out = [];
+  FLOOR_TILE_KEYS.forEach((key) => {
+    const def = SURF_FLOORS.find((f) => f.key === key);
+    if (!def) return;
+    out.push({
+      k: `zp_${key}`,
+      name: `${def.name} (1 m²)`,
+      cat: 'zemin_parca',
+      icon: '🧩',
+      tile: 'floor',
+      flat: true,
+      nobox: true,
+      build: (g) => {
+        const me = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), tileMat(def, 'floor'));
+        me.rotation.x = -Math.PI / 2;
+        me.position.y = 0.004;
+        me.receiveShadow = true;
+        me.userData.tileUV = { kind: 'floor', rep: def.rep || 4 };
+        g.add(me);
+      },
+    });
+  });
+  WALL_PANEL_KEYS.forEach((key) => {
+    const def = SURF_WALLS.find((w) => w.key === key);
+    if (!def) return;
+    out.push({
+      k: `dp_${key}`,
+      name: `${def.name} (panel)`,
+      cat: 'duvar_parca',
+      icon: '🖼️',
+      tile: 'wall',
+      wall: true,
+      nobox: true,
+      wallW: 0.5,
+      build: (g, ctx) => {
+        const H = ctx?.H || 3.4;
+        const me = new THREE.Mesh(new THREE.PlaneGeometry(1, H - 0.02), tileMat(def, 'wall'));
+        me.position.set(0, H / 2, 0.006);
+        me.receiveShadow = true;
+        me.userData.tileUV = { kind: 'wall', rep: def.rep || 2, mural: Boolean(def.mural), H };
+        g.add(me);
+      },
+    });
+  });
+  return out;
+}
+
 export const CATALOG = [
   // OTURMA
   { k: 'sofa3', name: "3'lü Koltuk", cat: 'oturma', icon: '🛋️', price: G(15000), tints: 'fabric', build: sofaBuild(2.6), box: [1.3, 0.48], seats: sofaSeats(2.6) },
@@ -2873,6 +2946,8 @@ export const CATALOG = [
   { k: 'planter', name: 'Çiçeklik', cat: 'dis', icon: '🌷', tints: 'appliance', build: planter, box: [0.6, 0.2] },
   // v92 — Dekor Atölyesi mobilyaları (houseCatalogV92.js)
   ...v92CatalogEntries({ neonBuild }),
+  // v92 — zemin parçaları ve duvar panelleri (yan yana döşenir)
+  ...tileEntries(),
 ];
 
 // v66: fiyatlar ve eşyadan alınabilen ürünler TEK kaynaktan (sunucuyla ortak dosya)

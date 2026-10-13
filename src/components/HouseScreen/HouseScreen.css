@@ -1624,3 +1624,13 @@
 .hs-holding.hs-mcart.low {
   top: calc(168px + var(--hs-safe-t));
 }
+
+/* v92 — parça zemin / duvar paneli: yön okları */
+.hs-tile-dirs {
+  display: inline-flex;
+  gap: 4px;
+}
+.hs-tile-dirs button {
+  min-width: 38px;
+  font-size: 15px;
+}

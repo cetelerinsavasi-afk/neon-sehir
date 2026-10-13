@@ -13,7 +13,7 @@ import { createHouseEngine, EMOTES, CART_MAX } from './houseEngine';
 import ItemThumb from './ItemThumb';
 import { CATALOG, CATALOG_MAP, CATEGORIES, TINTS } from './houseCatalog';
 import { FLOORS, WALLS } from './houseTextures';
-import { FREE_SURFACES, HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
+import { FREE_SURFACES, HOUSE_PRODUCTS, SURFACE_KEYS } from '../../../functions/houseCatalogData.js';
 import { TRACKS, playTrack, stopMusic, unlockAudio, setVolume, getVolume } from './houseAudio';
 import ArcadeHub from '../Arcade/ArcadeHub';
 import OnNumaraScreen from '../OnNumaraScreen/OnNumaraScreen';
@@ -1639,9 +1639,19 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                 </div>
               )}
               <div className="hs-selbar-actions">
-                {!sel.def?.wall && <button onClick={() => engineRef.current?.rotateSelected(-1)}>↺</button>}
-                {!sel.def?.wall && <button onClick={() => engineRef.current?.rotateSelected(1)}>↻</button>}
-                <button onClick={() => engineRef.current?.duplicateSelected()}>⧉ Bir tane daha</button>
+                {!sel.def?.wall && !sel.def?.tile && <button onClick={() => engineRef.current?.rotateSelected(-1)}>↺</button>}
+                {!sel.def?.wall && !sel.def?.tile && <button onClick={() => engineRef.current?.rotateSelected(1)}>↻</button>}
+                {/* v92 — parça zemin / duvar paneli: yanına bir parça daha (yön okları) */}
+                {sel.def?.tile ? (
+                  <span className="hs-tile-dirs" title="Yanına bir parça daha ekle">
+                    <button onClick={() => engineRef.current?.duplicateSelected('l')} aria-label="Sola ekle">◀</button>
+                    {sel.def.tile === 'floor' && <button onClick={() => engineRef.current?.duplicateSelected('u')} aria-label="İleri ekle">▲</button>}
+                    {sel.def.tile === 'floor' && <button onClick={() => engineRef.current?.duplicateSelected('d')} aria-label="Geri ekle">▼</button>}
+                    <button onClick={() => engineRef.current?.duplicateSelected('r')} aria-label="Sağa ekle">▶</button>
+                  </span>
+                ) : (
+                  <button onClick={() => engineRef.current?.duplicateSelected()}>⧉ Bir tane daha</button>
+                )}
                 <button className={`danger${removalBreaksBiz(houseDoc, design?.items, sel) ? ' cue-lock' : ''}`} onClick={requestDelete}>{sel.p === 1 ? '📦 Envantere' : '🗑 Kaldır'}</button>
               </div>
             </div>
@@ -1681,7 +1691,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                           className="hs-card"
                           onClick={() => {
                             const r = engineRef.current?.addItem(d.k, 0);
-                            if (r === 'limit') flash('Eşya sınırına ulaştın (300).');
+                            if (r === 'limit') flash('Eşya sınırına ulaştın (400).');
                           }}
                         >
                           <ItemThumb k={d.k} icon={d.icon} />
@@ -1698,7 +1708,8 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                       {[['wall', 'Duvar', WALLS], ['floor', 'Zemin', FLOORS]].map(([type, label, list]) => (
                         <div className="hs-surf-row" key={type}>
                           <span className="hs-surf-label">{label}</span>
-                          {list.map((w) => {
+                          {/* v92: yeni zeminler/duvarlar parça olarak satılır (Zemin Parçaları / Duvar Panelleri) */}
+                          {list.filter((w) => SURFACE_KEYS[type].includes(w.key)).map((w) => {
                             const ownedS = ownsSurface(type, w.key);
                             const on = design?.[type] === w.key;
                             return (

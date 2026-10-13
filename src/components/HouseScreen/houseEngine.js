@@ -38,7 +38,7 @@ const { W, D, H } = ROOM;
 const SNAP = 0.25;
 const PLAYER_R = 0.3;
 const WALK_SPEED = 3.0;
-const MAX_ITEMS = 300;
+const MAX_ITEMS = 400; // v92: parça zemin/duvar panelleri için 300 → 400
 const AV_UNIT = 1.75 / 507; // avatar SVG birimi → metre (figür ~507 birim = 1.75 m)
 const AV_PLANE_H = 580 * AV_UNIT;
 const AV_PLANE_W = 320 * AV_UNIT;
@@ -977,18 +977,34 @@ export function createHouseEngine(
       Object.assign(data, { x: w.x, z: w.z, r: (((best.div.r || 0) + (best.side > 0 ? 0 : 4)) % 8 + 8) % 8 });
       return;
     }
-    const m = Math.max(0.9, half);
+    const m = CATALOG_MAP[data.k]?.tile ? 0.5 : Math.max(0.9, half); // v92: panel köşeye kadar
     if (wi === 0) Object.assign(data, { z: -D / 2 + 0.005, r: 0, x: clamp(data.x, -W / 2 + m, W / 2 - m) });
     if (wi === 2) Object.assign(data, { z: D / 2 - 0.005, r: 4, x: clamp(data.x, -W / 2 + m, W / 2 - m) });
     if (wi === 3) Object.assign(data, { x: -W / 2 + 0.005, r: 2, z: clamp(data.z, -D / 2 + m, D / 2 - m) });
     if (wi === 1) Object.assign(data, { x: W / 2 - 0.005, r: 6, z: clamp(data.z, -D / 2 + m, D / 2 - m) });
   }
+  // v92 — 1 m'lik ızgara hücresinin merkezi (oda kenarından itibaren)
+  const cellX = (x) => clamp(Math.floor(x + W / 2), 0, W - 1) + 0.5 - W / 2;
+  const cellZ = (z) => clamp(Math.floor(z + D / 2), 0, D - 1) + 0.5 - D / 2;
   function normalizePlacement(data) {
     const def = CATALOG_MAP[data.k];
+    if (def?.tile === 'floor') {
+      // zemin parçası: döndürülmez, 1 m hücreye oturur
+      data.r = 0;
+      data.x = cellX(data.x);
+      data.z = cellZ(data.z);
+      return;
+    }
     data.x = snap(data.x);
     data.z = snap(data.z);
-    if (def?.wall) snapToWall(data);
-    else {
+    if (def?.wall) {
+      snapToWall(data);
+      // duvar paneli: dış duvar boyunca 1 m'lik dilime oturur
+      if (def.tile === 'wall') {
+        if (Math.abs(Math.abs(data.z) - D / 2) < 0.02) data.x = cellX(data.x);
+        else if (Math.abs(Math.abs(data.x) - W / 2) < 0.02) data.z = cellZ(data.z);
+      }
+    } else {
       data.x = clamp(data.x, -W / 2 + 0.2, W / 2 - 0.2);
       data.z = clamp(data.z, -D / 2 + 0.2, D / 2 - 0.2);
     }
@@ -998,6 +1014,27 @@ export function createHouseEngine(
     obj.position.set(data.x, 0, data.z);
     obj.rotation.y = (data.r || 0) * (Math.PI / 4);
     obj.updateMatrixWorld(true);
+    if (CATALOG_MAP[data.k]?.tile) updateTileUV(obj, data);
+  }
+  // v92 — parça zemin / duvar paneli: doku dünya konumundan → yan yana parçalar kesintisiz
+  function updateTileUV(obj, data) {
+    obj.traverse((m) => {
+      const t = m.userData?.tileUV;
+      if (!t || !m.geometry) return;
+      const pos = m.geometry.attributes.position;
+      const uv = m.geometry.attributes.uv;
+      if (t.kind === 'floor') {
+        // düzlem -90° döndürüldü: yerel (x, y) → dünya (x, -z)
+        for (let i = 0; i < pos.count; i++) uv.setXY(i, (data.x + pos.getX(i)) / t.rep, (-(data.z - pos.getY(i))) / t.rep);
+      } else {
+        const ry = obj.rotation.y;
+        const along = data.x * Math.cos(ry) - data.z * Math.sin(ry);
+        const uw = t.mural ? t.H * 2 : t.rep;
+        const vh = t.mural ? t.H : t.rep;
+        for (let i = 0; i < pos.count; i++) uv.setXY(i, (along + pos.getX(i)) / uw, (pos.getY(i) + t.H / 2) / vh);
+      }
+      uv.needsUpdate = true;
+    });
   }
   const ghostOf = (d) => d.p !== 1 && !(realLook && mode === 'build');
   const sigOf = (d) => `${d.k}|${d.c || 0}|${d.p === 1 ? 1 : 0}|${ghostOf(d) ? 'g' : 'r'}`;
@@ -2454,9 +2491,43 @@ export function createHouseEngine(
       select(data.i);
       emitDesign();
     },
-    duplicateSelected() {
+    duplicateSelected(dir) {
       const e = selectedId && objs.get(selectedId);
       if (!e || !canEdit || objs.size >= MAX_ITEMS) return;
+      // v92 — parça zemin/duvar: seçilenin hemen yanına (boş ilk hücreye) bir parça daha
+      const tdef = CATALOG_MAP[e.data.k];
+      if (tdef?.tile && dir) {
+        let dx = 0;
+        let dz = 0;
+        if (tdef.tile === 'floor') {
+          dx = dir === 'l' ? -1 : dir === 'r' ? 1 : 0;
+          dz = dir === 'u' ? -1 : dir === 'd' ? 1 : 0;
+        } else {
+          const ry = (e.data.r || 0) * (Math.PI / 4);
+          const s = dir === 'l' ? -1 : 1;
+          dx = Math.round(Math.cos(ry)) * s;
+          dz = -Math.round(Math.sin(ry)) * s;
+        }
+        let x = e.data.x;
+        let z = e.data.z;
+        for (let step = 0; step < 20; step++) {
+          x += dx;
+          z += dz;
+          if (Math.abs(x) > W / 2 || Math.abs(z) > D / 2) return;
+          const taken = [...objs.values()].some((o) => CATALOG_MAP[o.data.k]?.tile === tdef.tile && Math.abs(o.data.x - x) < 0.1 && Math.abs(o.data.z - z) < 0.1 && (o.data.r || 0) === (e.data.r || 0));
+          if (!taken) break;
+        }
+        pushUndo();
+        const data = { ...e.data, i: newItemId(), x, z };
+        delete data.p;
+        delete data.o;
+        normalizePlacement(data);
+        const ne = buildEntry(data);
+        objs.set(data.i, ne);
+        select(data.i);
+        emitDesign();
+        return;
+      }
       pushUndo();
       // kopya her zaman "deneme" olarak eklenir (satın alınmadan kullanılamaz)
       const data = { ...e.data, i: newItemId(), x: e.data.x + 0.75, z: e.data.z + 0.75 };

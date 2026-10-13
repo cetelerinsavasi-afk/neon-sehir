@@ -10,7 +10,7 @@
 export const HOUSE_PRICE = 500_000; // altın (v70: 1.000.000 → 500.000)
 // v68: ev sayısı sınırı kaldırıldı (eski istemciler için sabit duruyor, kullanılmıyor)
 export const MAX_HOUSES_PER_PLAYER = Infinity;
-export const MAX_ITEMS_PER_HOUSE = 300;
+export const MAX_ITEMS_PER_HOUSE = 400; // v92: parça zemin/duvar panelleri için 300 → 400
 
 const g = (v) => ({ t: 'gold', v });
 const z = (v) => ({ t: 'gem', v });
@@ -109,21 +109,33 @@ export function surfacePrice(type, key) {
   if (FREE_SURFACES[type]?.includes(key)) return null;
   return SURFACE_SPECIAL[type]?.[key] || SURFACE_DEFAULT;
 }
+// v92 — yeni zeminler ve duvarlar PARÇA PARÇA satılır (eşya gibi): zemin
+// parçası 1 m × 1 m, duvar paneli 1 m genişlik × tam yükseklik. Bahçe, otopark,
+// manzaralı köşe gibi bölgeleri odanın bir kısmına döşemek için.
+export const FLOOR_TILE_KEYS = ['otopark', 'asfalt', 'yol', 'cim', 'tarla', 'kum', 'kaldirim', 'cakil', 'kar', 'havuz_karo', 'spor_zemin', 'metal_izgara', 'dans_pisti', 'su'];
+export const WALL_PANEL_KEYS = [
+  'gokyuzu', 'gunbatimi', 'gece', 'deniz', 'neon_sehir', 'uzanan_yol', 'tarla_ufku', 'orman', 'daglar', 'col', 'uzay',
+  'grafiti', 'beton_blok', 'kogus', 'sabika', 'akustik', 'yesil_perde',
+];
+const TILE_SPECIAL = { dans_pisti: 3000, su: 2500, havuz_karo: 2000, otopark: 2000, yol: 2000 };
+const PANEL_MURAL = ['gokyuzu', 'gunbatimi', 'gece', 'deniz', 'neon_sehir', 'uzanan_yol', 'tarla_ufku', 'orman', 'daglar', 'col', 'uzay'];
+FLOOR_TILE_KEYS.forEach((k) => {
+  ITEM_PRICES[`zp_${k}`] = g(TILE_SPECIAL[k] || 1500);
+});
+WALL_PANEL_KEYS.forEach((k) => {
+  ITEM_PRICES[`dp_${k}`] = g(PANEL_MURAL.includes(k) ? 4000 : 3000);
+});
+
 export const SURFACE_KEYS = {
   wall: [
     'boya_beyaz', 'boya_krem', 'boya_gri', 'boya_antrasit', 'boya_lacivert', 'boya_bordo', 'boya_zeytin', 'boya_mor', 'boya_siyah',
     'boya_yesil', 'boya_mavi', 'boya_pembe', 'boya_turuncu', 'boya_sari', 'boya_turkuaz',
     'tugla', 'tugla_beyaz', 'beton_duvar', 'ahsap_panel', 'duvar_kagidi', 'damask', 'mermer_duvar', 'neon_panel',
-    // v92 — manzara ve tema duvarları
-    'gokyuzu', 'gunbatimi', 'gece', 'deniz', 'neon_sehir', 'uzanan_yol', 'tarla_ufku', 'orman', 'daglar', 'col', 'uzay',
-    'grafiti', 'beton_blok', 'kogus', 'sabika', 'akustik', 'yesil_perde',
   ],
   floor: [
     'parke_mese', 'parke_ceviz', 'parke_beyaz', 'mermer_beyaz', 'mermer_siyah', 'mermer_altin', 'beton', 'dama',
     'hali_gri', 'hali_bordo', 'epoksi', 'epoksi_siyah', 'karo_mavi', 'neon_grid',
     'zemin_siyah', 'zemin_beyaz', 'zemin_yesil', 'zemin_mavi', 'zemin_mor', 'zemin_kirmizi', 'zemin_gri',
-    // v92 — otopark + dekor zeminleri
-    'otopark', 'asfalt', 'yol', 'cim', 'tarla', 'kum', 'kaldirim', 'cakil', 'kar', 'havuz_karo', 'spor_zemin', 'metal_izgara', 'dans_pisti', 'su',
   ],
 };
 

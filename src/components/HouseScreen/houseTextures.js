@@ -996,6 +996,11 @@ export function wallDef(key) {
 
 // Zemin/duvar dokusunu döndürür; her çağrıda klonlanır ki tekrar sayısı
 // (repeat) yüzeyin boyutuna göre ayrı ayarlanabilsin.
+// v92 — zemin parçası / duvar paneli: tekrarsız taban doku (UV'ler dünya
+// konumundan hesaplanır, yan yana parçalar kesintisiz birleşir)
+export function tileBaseTexture(def) {
+  return makeTex(`s_${def.key}`, def.tw || 512, def.th || 512, (g, w, h, r) => def.draw(g, w, h, r));
+}
 export function surfaceTexture(def, repX, repY) {
   const base = makeTex(`s_${def.key}`, def.tw || 512, def.th || 512, (g, w, h, r) => def.draw(g, w, h, r));
   const t = base.clone();

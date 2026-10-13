@@ -707,7 +707,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       type: 'housePhoto',
       houseId,
       houseName: h.name || 'Ev',
-      design: { items: (h.items || []).filter((it) => it.p === 1).slice(0, 300), wall: h.wall || null, floor: h.floor || null },
+      design: { items: (h.items || []).filter((it) => it.p === 1).slice(0, MAX_ITEMS_PER_HOUSE), wall: h.wall || null, floor: h.floor || null },
       people,
       cam: { px, py, pz, dx, dy, dz, fov: Math.max(30, Math.min(80, fov)), a: aspect, cw },
     };

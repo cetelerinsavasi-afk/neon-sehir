@@ -97,3 +97,34 @@
 - `npm run build`: başarılı.
 - Lint: hata yok.
 - Tüm fazlar önizlemede ekran görüntüsüyle denendi.
+
+## v92.1 — düzeltmeler
+- **Oyunun Silah Mağazası, Modifiye Garajı ve Araba Galerisi:** oyuncu dükkânlarındaki gibi üstte (sağda) hızlı butonlar var.
+  - Silah Mağazası: "🔫 Satılık silahlar" ve "🛠️ Tamir / Geliştirme".
+  - Modifiye Garajı: "🛠️ Tamir / Geliştirme".
+  - Araba Galerisi: "🚗 Satılık arabalar".
+- **Karakol:** sol üstte, camiideki gibi 3 buton var: 👮 Polislik Başvurusu, 📘 Polis Kitapçığı, 🤝 Rüşvet Ver.
+  - Komiser masasında açılan panel boş geliyordu; artık polislik başvurusu açılıyor.
+- **Karakol komiser odası:** duvarlardaki boşluklar kapatıldı.
+- **Araba galerisi:** iç içe giren iki araba ayrıldı. Arabalar farklı renklerde.
+- **Parça zemin ve duvar paneli:** v92'de eklenen zeminler ve duvarlar artık tüm odaya döşenmiyor; parça parça satılıyor.
+  - Zeminler (çim, kum, tarla, asfalt, otopark, yol, kaldırım, çakıl, kar, havuz karosu, spor zemini, metal ızgara, dans pisti, su) **1 m²'lik parça** olarak satılıyor.
+  - Duvarlar (gökyüzü, gün batımı, gece, deniz, neon şehir, yol, tarla, orman, dağlar, çöl, uzay, grafiti, beton blok, koğuş, sabıka, akustik, yeşil perde) **1 m genişliğinde tam boy panel** olarak satılıyor.
+  - Yeni kategoriler: **🧩 Zemin Parçaları** ve **🖼️ Duvar Panelleri**. Eski "🎨 Duvar & Zemin" sekmesinde artık sadece eski tam yüzeyler var.
+  - Parçalar 1 m'lik ızgaraya kendiliğinden oturuyor. Yan yana konan parçalar tek parça gibi kesintisiz görünüyor (örnek: evin içi parke, önü çim/kum, bahçe tarafındaki duvar orman manzarası).
+  - Seçili parçanın ◀ ▲ ▼ ▶ okları yanına yeni bir parça ekliyor (duvar panelinde ◀ ▶).
+  - Fiyatlar: zemin parçası 1.500 (otopark, yol, havuz karosu 2.000; su 2.500; dans pisti 3.000). Duvar paneli 3.000, manzaralı panel 4.000.
+  - Eşya sınırı 300'den 400'e çıktı.
+- **Sade kategoriler:**
+  - Kamp → Çiftlik & Kamp
+  - Karakol → Karakol & Hapis
+  - Yayın Seti → Stüdyo & Yayın
+  - Sinema + Gazino → Sinema & Gazino
+  - Boks → Spor & Oyun
+  - Havuz → Dış Mekan & Havuz
+  - Benzinlik → Garaj & Benzinlik
+  - Helikopter → Lüks
+  - Galeri → Arabalar
+- **Maç sohbetinde "Geçersiz işlem" hatası:** sunucudaki `streamAction` fonksiyonu eski kalmış (yeni sürüm yüklenmemiş). Kod doğru; `streamAction` yüklenince düzelir. Sunucu eskiyse oyuncu artık anlaşılır bir mesaj görüyor.
+
+Testler: 333/333 geçti. Derleme başarılı.

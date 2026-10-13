@@ -1976,31 +1976,27 @@ I('guvercin', 'dis', 'Güvercinler', '🐦', (g) => {
 // =============================================================================
 // Kataloğa çevir
 // =============================================================================
+// v92 — sade kategori listesi: küçük konseptler mevcut kategorilere katıldı
+// (Kamp → Çiftlik, Karakol → Hapishane, Yayın → Stüdyo, Boks → Spor, Havuz → Dış
+// Mekan, Benzinlik → Garaj, Helikopter → Lüks, Galeri → Arabalar, Sinema + Gazino).
 export const V92_CATEGORIES = [
-  { key: 'studyo', name: 'Müzik Stüdyosu', icon: '🎛️' },
-  { key: 'yayin', name: 'Yayın Seti', icon: '🎥' },
-  { key: 'sinema', name: 'Sinema', icon: '🎬' },
-  { key: 'havuz', name: 'Havuz & Bahçe', icon: '🏊' },
-  { key: 'boks', name: 'Boks', icon: '🥊' },
+  { key: 'zemin_parca', name: 'Zemin Parçaları', icon: '🧩' },
+  { key: 'duvar_parca', name: 'Duvar Panelleri', icon: '🖼️' },
+  { key: 'studyo', name: 'Stüdyo & Yayın', icon: '🎛️' },
+  { key: 'eglence', name: 'Sinema & Gazino', icon: '🎬' },
   { key: 'mafya', name: 'Mafya', icon: '🕴️' },
-  { key: 'hapis', name: 'Hapishane', icon: '⛓️' },
-  { key: 'benzin', name: 'Benzinlik', icon: '⛽' },
-  { key: 'heli', name: 'Helikopter', icon: '🚁' },
-  { key: 'ciftlik', name: 'Çiftlik', icon: '🚜' },
-  { key: 'kamp', name: 'Kamp', icon: '⛺' },
-  // v92 Faz 8 — mekân mobilyaları
+  { key: 'hapis', name: 'Karakol & Hapis', icon: '⛓️' },
+  { key: 'ciftlik', name: 'Çiftlik & Kamp', icon: '🚜' },
   { key: 'cami', name: 'Camii', icon: '🕌' },
   { key: 'banka', name: 'Banka', icon: '🏦' },
-  { key: 'gazino', name: 'Gazino', icon: '🎰' },
-  { key: 'karakol', name: 'Karakol', icon: '🚓' },
-  { key: 'galeri', name: 'Galeri', icon: '🚘' },
 ];
+const CAT_MERGE = { yayin: 'studyo', sinema: 'eglence', gazino: 'eglence', havuz: 'dis', boks: 'spor', benzin: 'garaj', heli: 'luks', kamp: 'ciftlik', karakol: 'hapis', galeri: 'araba' };
 
 // neonBuild houseCatalog'da; döngüsel import olmasın diye dışarıdan verilir
 export function v92CatalogEntries({ neonBuild }) {
   return DEFS.map((d) => {
     const o = d.opts;
-    const e = { k: d.k, name: d.name, cat: d.cat, icon: d.icon };
+    const e = { k: d.k, name: d.name, cat: CAT_MERGE[d.cat] || d.cat, icon: d.icon };
     if (o.neonText) {
       Object.assign(e, { tints: 'neon', build: neonBuild(o.neonText, 'bold 120px sans-serif'), wall: true, nobox: true });
       return e;

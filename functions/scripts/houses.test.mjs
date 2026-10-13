@@ -302,3 +302,20 @@ test('v92 Faz 8: oyunun 3D mekânı — venueEnsure kurar/günceller, herkes gir
   assert.ok(ph.people.some((p) => p.uid === 'npc_barmen'));
   assert.ok(ph.people.some((p) => p.uid === 'veli'));
 });
+
+test('v92: yeni zemin/duvarlar parça olarak satılır (ucuz), tam yüzey olarak satılmaz', async () => {
+  const { SURFACE_KEYS, FLOOR_TILE_KEYS, WALL_PANEL_KEYS } = await import('../houseCatalogData.js');
+  for (const k of FLOOR_TILE_KEYS) {
+    assert.ok(ITEM_PRICES[`zp_${k}`].v <= 3000);
+    assert.ok(!SURFACE_KEYS.floor.includes(k));
+  }
+  for (const k of WALL_PANEL_KEYS) {
+    assert.ok(ITEM_PRICES[`dp_${k}`].v <= 4000);
+    assert.ok(!SURFACE_KEYS.wall.includes(k));
+  }
+  const h = setup();
+  const id = await withHouse(h);
+  const items = [...Array(40)].map((_, n) => ({ i: `t${n}`, k: 'zp_cim', x: (n % 8) + 0.5, z: Math.floor(n / 8) + 0.5, r: 0, c: 0 }));
+  await h.act('zengin', { op: 'save', houseId: id, design: { items } });
+  assert.equal(h.G(`houses/${id}`).items.length, 40);
+});
