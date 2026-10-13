@@ -8,6 +8,7 @@ import StreamScene from './StreamScene';
 import StreamGameView from './StreamGameView';
 import StreamRaceView from './StreamRaceView';
 import StreamCardsView from './StreamCardsView';
+import StreamMatchMirror from './StreamMatchMirror';
 import { ALERT_MS, StreamTopDonors, StreamChatLine, StreamViewersSheet } from './StreamHost';
 import { DONATION_AMOUNTS, DONATION_DAILY_CAP, STREAM_STALE_MS, fmtDur, fmtN, joinViewers, useStreamChat, useStreamDoc, watchGameFrames, watchViewers } from './streamShared';
 import '../../styles/worldScreenChrome.css';
@@ -79,7 +80,7 @@ export default function StreamViewer({ streamId, onClose }) {
       const fresh = Boolean(f && (!first || Math.abs(Date.now() - Number(f.at || 0)) < 60_000));
       first = false;
       setGameOn(fresh);
-      if (f) setGameKind(f.g === 'race' ? 'race' : f.g === 'onnumara' ? 'cards' : 'arcade');
+      if (f) setGameKind(f.g === 'race' ? 'race' : f.g === 'onnumara' ? 'cards' : f.g === 'match' ? 'match' : 'arcade');
       clearTimeout(timer);
       if (fresh) timer = setTimeout(() => setGameOn(false), 4000);
     });
@@ -166,7 +167,7 @@ export default function StreamViewer({ streamId, onClose }) {
     <div className="st-root" onClick={(e) => e.stopPropagation()}>
       <div className={`st-stage${gameOn ? ' gaming' : ''}`}>
         {s && s.houseId && live && <StreamScene houseId={s.houseId} chairId={s.chairId} pcId={s.pcId} bubble={bubble} className={gameOn ? 'pip' : ''} />}
-        {gameOn && live && (gameKind === 'race' ? <StreamRaceView frameRef={frameRef} /> : gameKind === 'cards' ? <StreamCardsView frameRef={frameRef} hostUid={s?.uid} /> : <StreamGameView frameRef={frameRef} />)}
+        {gameOn && live && (gameKind === 'race' ? <StreamRaceView frameRef={frameRef} /> : gameKind === 'cards' ? <StreamCardsView frameRef={frameRef} hostUid={s?.uid} /> : gameKind === 'match' ? <StreamMatchMirror frameRef={frameRef} /> : <StreamGameView frameRef={frameRef} />)}
         <div className="st-top">
           <div className="st-who">
             <span className="st-ava">{String(s?.name || '?').slice(0, 1).toUpperCase()}</span>

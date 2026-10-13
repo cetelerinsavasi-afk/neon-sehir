@@ -1,0 +1,546 @@
+/* v92 — Sixtagram "Şarkı Yap" (Beat Atölyesi) — prototipin koyu teması */
+.bm-root {
+  --bg: #1f1b3a;
+  --surface: #2b2650;
+  --cell: #3b3568;
+  --cell-now: #524a8c;
+  --play: #4fe3b3;
+  --text: #f4f0ff;
+  --muted: #a9a1d6;
+  --chip-on: #f4f0ff;
+  --chip-on-text: #1f1b3a;
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Fredoka', ui-rounded, 'SF Pro Rounded', 'Segoe UI', system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+.bm-root,
+.bm-root *,
+.bm-root *::before,
+.bm-root *::after {
+  box-sizing: border-box;
+}
+.bm-root button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.bm-root button:focus-visible {
+  outline: 3px solid var(--text);
+  outline-offset: 2px;
+}
+.bm-top {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 8px;
+  max-width: 520px;
+  width: 100%;
+  margin: 0 auto;
+}
+.bm-top-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.bm-top-title b {
+  font-size: 20px;
+  font-weight: 600;
+}
+.bm-top-title small {
+  color: var(--muted);
+  font-size: 13px;
+}
+.bm-root .bm-x {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 16px;
+}
+.bm-root .bm-done {
+  padding: 9px 14px;
+  border-radius: 12px;
+  background: var(--play);
+  color: #10261e;
+  font-weight: 600;
+}
+.bm-app {
+  flex: 1;
+  overflow-y: auto;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 6px 14px calc(176px + env(safe-area-inset-bottom, 0px));
+  -webkit-overflow-scrolling: touch;
+}
+.bm-name {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 0;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.bm-name::placeholder {
+  color: var(--muted);
+}
+.bm-err {
+  margin: -4px 4px 10px;
+  color: #ff8fa3;
+  font-size: 13px;
+}
+.bm-sec {
+  background: var(--surface);
+  border-radius: 22px;
+  padding: 14px 12px 10px;
+  margin-bottom: 16px;
+}
+.bm-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 10px;
+  padding-left: 4px;
+}
+.bm-head h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+}
+.bm-root .bm-mute {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--cell);
+  font-size: 13px;
+  font-weight: 500;
+}
+.bm-root .bm-mute[aria-pressed='true'] {
+  background: var(--chip-on);
+  color: var(--chip-on-text);
+}
+.bm-glabel {
+  margin: 2px 0 6px 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.bm-note {
+  margin: 2px 4px 10px;
+  font-size: 13px;
+  color: var(--muted);
+  min-height: 1.2em;
+}
+.bm-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.bm-root .bm-chip {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: var(--cell);
+  font-size: 14px;
+  font-weight: 500;
+}
+.bm-root .bm-chip.sm {
+  padding: 6px 11px;
+  font-size: 13px;
+}
+.bm-root .bm-chip[aria-checked='true'] {
+  background: var(--chip-on);
+  color: var(--chip-on-text);
+}
+.bm-pchips .bm-chip {
+  padding: 8px 18px !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+}
+.bm-chip.filled::after {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  margin-left: 6px;
+  vertical-align: middle;
+  opacity: 0.8;
+}
+.bm-slots {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 5px;
+  margin-bottom: 10px;
+}
+.bm-root .bm-slot {
+  height: 40px;
+  border-radius: 10px;
+  background: var(--cell);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.bm-root .bm-slot.has {
+  color: #231e45;
+}
+.bm-root .bm-slot.now {
+  box-shadow: 0 0 0 3px var(--text);
+}
+.bm-acts {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.bm-root .bm-mini {
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--cell);
+  font-size: 14px;
+  font-weight: 500;
+}
+.bm-root .bm-mini[aria-pressed='true'] {
+  background: var(--chip-on);
+  color: var(--chip-on-text);
+}
+.bm-root .bm-mini:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.bm-root .bm-mini.inline {
+  padding: 4px 10px;
+  margin-left: 6px;
+  font-size: 13px;
+}
+.bm-dots {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+.bm-dots i {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--cell);
+  transition: background 0.08s;
+}
+.bm-dots i:nth-child(4n) {
+  margin-right: 8px;
+}
+.bm-dots i:last-child {
+  margin-right: 0;
+}
+.bm-dots i.on {
+  background: var(--text);
+}
+.bm-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.bm-root .bm-tab {
+  flex: 1;
+  padding: 10px;
+  border-radius: 14px;
+  background: var(--surface);
+  font-weight: 500;
+  font-size: 15px;
+  color: var(--muted);
+}
+.bm-root .bm-tab[aria-selected='true'] {
+  background: var(--chip-on);
+  color: var(--chip-on-text);
+}
+.bm-ttabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.bm-root .bm-ttab {
+  flex: 1;
+  padding: 7px 4px 6px;
+  border-radius: 14px;
+  background: var(--cell);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+  border-bottom: 4px solid var(--tc);
+  text-align: center;
+}
+.bm-ttab small {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 400;
+}
+.bm-root .bm-ttab[aria-selected='true'] {
+  background: var(--chip-on);
+  color: var(--chip-on-text);
+}
+.bm-ttab[aria-selected='true'] small {
+  color: inherit;
+  opacity: 0.7;
+}
+.bm-ttab.off {
+  opacity: 0.5;
+}
+.bm-key {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -4px 0 12px;
+}
+.bm-key .bm-glabel {
+  margin: 0 4px 0 4px;
+}
+.bm-key b {
+  min-width: 44px;
+  text-align: center;
+  font-size: 16px;
+}
+.bm-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.bm-label {
+  width: 54px;
+  flex: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  line-height: 1.1;
+}
+.bm-cells {
+  flex: 1;
+  display: flex;
+  gap: 10px;
+}
+.bm-grp {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+}
+.bm-root .bm-cell {
+  height: 40px;
+  border-radius: 10px;
+  background: var(--cell);
+  transition:
+    transform 0.06s,
+    background 0.06s;
+  touch-action: pan-y;
+}
+.bm-root .bm-cell.now {
+  background: var(--cell-now);
+}
+.bm-root .bm-cell:active {
+  transform: scale(0.92);
+}
+.bm-root .bm-cell[aria-pressed='true'] {
+  background: var(--on);
+}
+.bm-root .bm-cell[aria-pressed='true'].now {
+  box-shadow: 0 0 0 3px var(--text);
+}
+.bm-sec.muted .bm-cells {
+  opacity: 0.35;
+}
+.bm-vol {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 4px 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.bm-vol input {
+  flex: 1;
+  height: 28px;
+  accent-color: var(--chip-on);
+  margin: 0;
+}
+.bm-vol output {
+  min-width: 26px;
+  text-align: right;
+}
+.bm-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--surface);
+  padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.3);
+}
+.bm-bar-in {
+  max-width: 520px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.bm-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.bm-grow {
+  flex: 1;
+}
+.bm-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.bm-root .bm-play {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--play);
+  color: #10261e;
+  display: grid;
+  place-items: center;
+}
+.bm-play svg {
+  width: 28px;
+  height: 28px;
+  fill: currentColor;
+}
+.bm-tempo {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: var(--cell);
+  border-radius: 18px;
+  padding: 4px;
+}
+.bm-root .bm-tempo button {
+  width: 40px;
+  height: 44px;
+  border-radius: 14px;
+  font-size: 24px;
+  font-weight: 600;
+}
+.bm-tempo output {
+  min-width: 52px;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+}
+.bm-tempo small {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 400;
+  margin-top: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bm-root * {
+    transition: none !important;
+  }
+}
+
+/* --- akıştaki şarkı kartı (SongView) --- */
+.sv-card {
+  --sv-a: #ff6f91;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 18px;
+  background: linear-gradient(160deg, #2b2650, #1f1b3a);
+  color: #f4f0ff;
+  font-family: 'Fredoka', ui-rounded, 'Segoe UI', system-ui, sans-serif;
+}
+.sv-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.sv-play {
+  flex: none;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  border: 0;
+  background: #4fe3b3;
+  color: #10261e;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.sv-play svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}
+.sv-meta {
+  flex: 1;
+  min-width: 0;
+}
+.sv-meta b {
+  display: block;
+  font-size: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sv-meta small {
+  color: #a9a1d6;
+  font-size: 12px;
+}
+.sv-grid {
+  display: grid;
+  grid-template-columns: repeat(16, 1fr);
+  gap: 2px;
+}
+.sv-grid i {
+  height: 6px;
+  border-radius: 2px;
+  background: #3b3568;
+}
+.sv-grid i.on {
+  background: var(--c);
+}
+.sv-grid i.now {
+  outline: 1.5px solid #f4f0ff;
+}
+.sv-prog {
+  height: 4px;
+  border-radius: 2px;
+  background: #3b3568;
+  overflow: hidden;
+}
+.sv-prog > span {
+  display: block;
+  height: 100%;
+  background: #4fe3b3;
+  transition: width 0.15s linear;
+}

@@ -1454,3 +1454,16 @@ body.ns-streaming .onnumara-fullscreen {
   padding: 7px 12px;
   font-size: 13px;
 }
+
+/* v92 — izleyici: yayıncının izlediği maç (Stadyum › Maçlar aynası) */
+.st-match-mirror {
+  background: #0b0d14;
+}
+.st-match-mirror .futbol-match-backdrop {
+  position: absolute;
+  padding: 8px;
+}
+.st-match-mirror .futbol-match-detail {
+  max-height: 100%;
+  overflow-y: auto;
+}

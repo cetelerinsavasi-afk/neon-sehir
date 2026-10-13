@@ -23,6 +23,7 @@ import { createSixtagramPost } from '../../services/gameActions';
 import { INTERVIEW_LOCATIONS } from '../../lib/interviewLocations';
 import PostAttachment from './PostAttachment';
 import DrawingPad from './DrawingPad';
+import SongMaker from './SongMaker';
 import './ComposeModal.css';
 
 const MAX_LEN = 280;
@@ -80,6 +81,8 @@ export default function ComposeModal({ onClose, onPosted }) {
   const [betPreviewLoading, setBetPreviewLoading] = useState(false);
   // v72 — "Resim Çiz" editörü (null = kapalı; {} = yeni tuval; çizim = düzenle)
   const [drawing, setDrawing] = useState(null);
+  // v92 — "Şarkı Yap" (Beat Atölyesi): null = kapalı; {} = yeni şarkı; şarkı = düzenle
+  const [songEdit, setSongEdit] = useState(null);
 
   const { user } = useAuth();
   const { player } = usePlayer();
@@ -210,6 +213,8 @@ export default function ComposeModal({ onClose, onPosted }) {
     // "Röportaj Yap" — KULLANICI İSTEĞİ: görsel ekle seçeneklerinin en
     // üstünde olacak, bu yüzden listenin ilk elemanı (madde 1).
     // v72 — boş tuvale çizip tablo paylaş
+    // v92 — kendi şarkını yap, sesli paylaş (Resim Çiz'in hemen üstünde)
+    { id: 'song', label: 'Şarkı Yap', emoji: '🎵', available: true },
     { id: 'drawing', label: 'Resim Çiz', emoji: '🎨', available: true },
     { id: 'interview', label: 'Röportaj Yap', emoji: '🎤', available: avatarAvailable },
     { id: 'avatar', label: 'Avatarım', emoji: '🧑', available: avatarAvailable },
@@ -239,6 +244,11 @@ export default function ComposeModal({ onClose, onPosted }) {
 
   const chooseType = (typeId) => {
     setError('');
+    if (typeId === 'song') {
+      setSongEdit(attachmentDraft?.type === 'song' ? attachmentDraft : {});
+      setPickerOpen(false);
+      return;
+    }
     if (typeId === 'drawing') {
       setDrawing(attachmentDraft?.type === 'drawing' ? attachmentDraft : {});
       setPickerOpen(false);
@@ -599,6 +609,11 @@ export default function ComposeModal({ onClose, onPosted }) {
                 <X size={14} /> Kaldır
               </button>
             </div>
+            {attachmentPreview.type === 'song' && (
+              <button className="six-compose-remove-btn six-compose-edit-drawing" onClick={() => setSongEdit(attachmentDraft)}>
+                🎵 Şarkıyı düzenle
+              </button>
+            )}
             {attachmentPreview.type === 'drawing' && (
               <button className="six-compose-remove-btn six-compose-edit-drawing" onClick={() => setDrawing(attachmentDraft)}>
                 ✏️ Çizimi düzenle
@@ -810,6 +825,16 @@ export default function ComposeModal({ onClose, onPosted }) {
           </div>
         )}
       </div>
+      {songEdit && (
+        <SongMaker
+          initial={songEdit}
+          onCancel={() => setSongEdit(null)}
+          onDone={(d) => {
+            setSongEdit(null);
+            setAttachment(d, d);
+          }}
+        />
+      )}
       {drawing && (
         <DrawingPad
           initial={drawing}

@@ -40,7 +40,9 @@ const SUB_TABS = [
 ];
 
 // v92 — initialTab: yayında maç izlerken doğrudan 'maclar' · chatReadOnly: maç sohbetine yazılamaz
-export default function FutbolLigler({ initialTab = 'puan', chatReadOnly = false }) {
+// v92 — yayında maç izleme: onView (yayıncı: o an açık lig/sekme/maç/özet)
+// ve mirror (izleyici: yayıncının görünümünü aynen uygular)
+export default function FutbolLigler({ initialTab = 'puan', chatReadOnly = false, onView, mirror }) {
   const { leagues, loading: leaguesLoading } = useFutbolLeagues();
   const { state: seasonState } = useFutbolSeasonState();
   const [selectedLeagueId, setSelectedLeagueId] = useState(null);
@@ -75,6 +77,26 @@ export default function FutbolLigler({ initialTab = 'puan', chatReadOnly = false
   const activeLeagueId = activeLeague?.id || null;
   const { teams } = useFutbolTeams(activeLeagueId);
   const { matches } = useFutbolMatches(activeLeagueId, activeLeague?.season || 1);
+  // v92 — maç özeti (tekrar) başlangıcı; yayında izleyicilere aynı an gösterilir
+  const [replayStart, setReplayStart] = useState(null);
+  useEffect(() => {
+    setReplayStart(null);
+  }, [selectedMatch?.id, selectedCupMatch?.id]);
+  useEffect(() => {
+    onView?.({ lg: activeLeagueId, tab: subTab, m: selectedMatch?.id || null, cm: selectedCupMatch?.id || null, rs: replayStart });
+  }, [onView, activeLeagueId, subTab, selectedMatch?.id, selectedCupMatch?.id, replayStart]);
+  // izleyici: yayıncının görünümü
+  useEffect(() => {
+    if (!mirror) return;
+    if (mirror.lg && mirror.lg !== selectedLeagueId && leagues.some((l) => l.id === mirror.lg)) setSelectedLeagueId(mirror.lg);
+    if (mirror.tab && mirror.tab !== subTab) setSubTab(mirror.tab);
+    const lm = mirror.m ? matches.find((x) => x.id === mirror.m) || null : null;
+    if ((lm?.id || null) !== (selectedMatch?.id || null) && (!mirror.m || lm)) setSelectedMatch(lm);
+    const cmm = mirror.cm ? (cupMatches || []).find((x) => x.id === mirror.cm) || null : null;
+    if ((cmm?.id || null) !== (selectedCupMatch?.id || null) && (!mirror.cm || cmm)) setSelectedCupMatch(cmm);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mirror, matches, cupMatches, leagues]);
+  const detailReplay = mirror ? (mirror.rs ?? null) : replayStart;
   // myBets — KULLANICI İSTEĞİ: "kupa maçlarının kuponları da lig
   // maçlarının kuponlarından bağımsız bi panelde duruyor bu da çok saçma"
   // — lig kuponu geçmişi eskiden FutbolIddaa.jsx İÇİNDE tutuluyordu (kendi
@@ -542,6 +564,8 @@ export default function FutbolLigler({ initialTab = 'puan', chatReadOnly = false
           homeLogo={teamById[selectedMatch.homeTeamId]?.logo}
           awayLogo={teamById[selectedMatch.awayTeamId]?.logo}
           homeSponsorName={teamById[selectedMatch.homeTeamId]?.sponsorFactoryName}
+          replayAt={detailReplay}
+          onReplay={setReplayStart}
           onClose={() => setSelectedMatch(null)}
         />
       )}
@@ -554,6 +578,8 @@ export default function FutbolLigler({ initialTab = 'puan', chatReadOnly = false
           homeLogo={selectedCupMatch.homeLogo}
           awayLogo={selectedCupMatch.awayLogo}
           homeSponsorName={selectedCupMatchHomeSponsor}
+          replayAt={detailReplay}
+          onReplay={setReplayStart}
           onClose={() => setSelectedCupMatch(null)}
         />
       )}

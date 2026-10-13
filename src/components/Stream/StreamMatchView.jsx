@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { publishMatchFrame, clearGameFrame } from './streamShared';
 import { streamAction } from '../../services/gameActions';
 import FutbolLigler from '../FutbolScreen/FutbolLigler';
 import '../FutbolScreen/FutbolFullScreen.css';
@@ -15,6 +16,19 @@ export default function StreamMatchView({ streamId, onClose }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  // v92: izlenen maç yayına yansısın — görünüm ~1 sn'de bir izleyicilere gider
+  const viewRef = useRef(null);
+  const onView = useCallback((v) => {
+    viewRef.current = v;
+    publishMatchFrame(v);
+  }, []);
+  useEffect(() => {
+    const iv = setInterval(() => viewRef.current && publishMatchFrame(viewRef.current), 1000);
+    return () => {
+      clearInterval(iv);
+      clearGameFrame();
+    };
+  }, []);
   const send = async () => {
     const t = text.trim();
     if (!t || busy) return;
@@ -41,7 +55,7 @@ export default function StreamMatchView({ streamId, onClose }) {
         </span>
       </div>
       <div className="futbol-fullscreen-body">
-        <FutbolLigler initialTab="maclar" chatReadOnly />
+        <FutbolLigler initialTab="maclar" chatReadOnly onView={onView} />
       </div>
       <div className="st-matchview-input">
         <small>🔴 Yayın sohbetine yaz (izleyiciler görür)</small>

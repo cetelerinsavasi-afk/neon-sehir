@@ -2,12 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import FutbolCrest from './FutbolCrest';
 import { useNowTick, computeLiveMatchState } from './futbolLiveMatch';
 import FutbolLivePitch from './FutbolLivePitch';
-import { LIVE_SEC_PER_MIN } from './futbolPitchScript';
+import { LIVE_SEC_PER_MIN, buildReplayClock } from './futbolPitchScript';
 import { shotVariant, VARIANT_ICON, MISS_LABEL } from './futbolPitchScript';
 import './FutbolMatchDetail.css';
 
 const toMs = (ts) => (ts?.toMillis ? ts.toMillis() : typeof ts === 'number' ? ts : ts ? Date.parse(ts) : null);
-const REPLAY_SPEED = 6; // özet: saniyede 6 maç dakikası (~15 sn)
 
 function interpolatePossession(checkpoints, minute) {
   if (!checkpoints || checkpoints.length === 0) return { home: 50, away: 50 };
@@ -35,12 +34,21 @@ export default function FutbolMatchDetail({
   awayLogo,
   homeSponsorName,
   onClose,
+  replayAt: replayCtl, // v92: dışarıdan yönetilen özet başlangıcı (yayın) — undefined = kendi durumu
+  onReplay,
 }) {
-  const [replayAt, setReplayAt] = useState(null);
+  const [replayOwn, setReplayOwn] = useState(null);
+  const replayAt = replayCtl !== undefined ? replayCtl : replayOwn;
+  const setReplayAt = (v) => {
+    setReplayOwn(v);
+    onReplay?.(v);
+  };
   const now = useNowTick(replayAt ? 250 : 5000);
+  // v92: özet hızlı akar, pozisyon ve gollerde yavaşlar (futbolPitchScript.buildReplayClock)
+  const clock = useMemo(() => buildReplayClock(match?.timeline || []), [match?.timeline]);
 
   // özet tekrarı (bitmiş maçlarda): skor ve anlatım da tekrar dakikasına göre
-  const replayMin = replayAt ? Math.min(90, ((now - replayAt) / 1000) * REPLAY_SPEED) : null;
+  const replayMin = replayAt ? clock.minuteAt((now - replayAt) / 1000) : null;
   const liveState = computeLiveMatchState(match, now);
   const state =
     replayMin !== null
@@ -61,12 +69,13 @@ export default function FutbolMatchDetail({
       return () => clearTimeout(t);
     }
     return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [replayMin]);
   // saha her karede kendi dakikasını hesaplar (canlıda gerçek zaman, özette hızlı)
   const startMs = toMs(match?.matchStartAt);
   const endMs = toMs(match?.revealAt) || (startMs ? startMs + 3600000 : null);
   const getMinute = () => {
-    if (replayAt) return Math.min(90, ((Date.now() - replayAt) / 1000) * REPLAY_SPEED);
+    if (replayAt) return clock.minuteAt((Date.now() - replayAt) / 1000);
     if (match?.status === 'finished' || !startMs) return 90;
     return Math.min(90, Math.max(0, ((Date.now() - startMs) / (endMs - startMs)) * 90));
   };
@@ -139,7 +148,7 @@ export default function FutbolMatchDetail({
           timeline={match?.timeline || []}
           possessionCheckpoints={possessionCheckpoints}
           getMinute={getMinute}
-          secPerMinute={replayAt ? 1 / REPLAY_SPEED : LIVE_SEC_PER_MIN}
+          secPerMinute={replayAt ? 1 / 6 : LIVE_SEC_PER_MIN}
           homeName={homeName}
           awayName={awayName}
           sponsorName={homeSponsorName}

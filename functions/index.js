@@ -45,6 +45,7 @@ import { profanityCheck, PROFANITY_WARNING } from './profanity.js';
 import { cleanEquipped } from './cosmeticsData.js';
 import { HOUSE_PRODUCTS } from './houseCatalogData.js';
 import { sanitizeDrawing } from './drawingData.js';
+import { sanitizeSong } from './songData.js';
 import { isMsgId, nextReaction, replyQuoteOf } from './chatExtras.js';
 import { VENUES } from './venueLayouts.js';
 import { goldTag, recordGoldChange, cleanupMoneyLog } from './moneyLog.js';
@@ -20853,6 +20854,13 @@ async function buildSixtagramAttachment(uid, attachment) {
       top,
       endedAtMs: Number(s.endedAtMs) || 0,
     };
+  }
+
+  // v92: "Şarkı Yap" — şarkı verisi (bölümler/notalar) doğrulanıp saklanır; ses dosyası yok
+  if (type === 'song') {
+    const r = sanitizeSong(attachment);
+    if (r.error) throw new HttpsError('invalid-argument', r.error);
+    return r.song;
   }
 
   // v72: "Resim Çiz" — fırça darbeleri doğrulanıp olduğu gibi saklanır (görsel yüklenmez)

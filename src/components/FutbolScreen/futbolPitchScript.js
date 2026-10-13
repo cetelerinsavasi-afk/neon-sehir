@@ -198,3 +198,57 @@ export function teamDots(side, ball) {
     return { x: Math.max(2, Math.min(98, bx)), y: Math.max(3, Math.min(61, by)) };
   });
 }
+
+// =============================================================================
+// v92 — Maç özeti: değişken hızlı saat. Top oyun içinde dolaşırken özet hızlı
+// akar (saniyede ~6 maç dakikası); bir atak/şut/gol yaklaşınca yavaşlar
+// (pozisyon: ~1 dk/sn, gol: ~0,45 dk/sn), sonra yeniden hızlanır. Hız geçişleri
+// yumuşak. buildReplayClock(timeline) → { minuteAt(sn), totalSec }.
+// =============================================================================
+export const REPLAY_FAST = 6; // dk/sn — olay yokken
+const REPLAY_SLOW = 1.0; // dk/sn — pozisyon (şut)
+const REPLAY_GOAL = 0.45; // dk/sn — gol
+function replaySpeed(m, events) {
+  let s = REPLAY_FAST;
+  for (const e of events) {
+    const slow = e.type === 'goal' ? REPLAY_GOAL : REPLAY_SLOW;
+    // pozisyon penceresi: atak başlangıcından (≈0,9 dk önce) toparlanma sonuna (≈0,6 dk sonra)
+    const a = e.minute - 0.95;
+    const b = e.minute + (e.type === 'goal' ? 0.7 : 0.5);
+    const ramp = 0.6; // yumuşak giriş/çıkış (dk)
+    let k = 0;
+    if (m >= a && m <= b) k = 1;
+    else if (m > a - ramp && m < a) k = (m - (a - ramp)) / ramp;
+    else if (m > b && m < b + ramp) k = 1 - (m - b) / ramp;
+    if (k > 0) {
+      const v = REPLAY_FAST + (slow - REPLAY_FAST) * (k * k * (3 - 2 * k));
+      if (v < s) s = v;
+    }
+  }
+  return s;
+}
+export function buildReplayClock(timeline) {
+  const events = (timeline || []).filter((e) => Number.isFinite(e?.minute));
+  const DM = 0.02;
+  const times = [0]; // times[i] = i*DM dakikasına varış süresi (sn)
+  let t = 0;
+  for (let m = 0; m < 90; m += DM) {
+    t += DM / replaySpeed(m + DM / 2, events);
+    times.push(t);
+  }
+  const totalSec = t;
+  const minuteAt = (sec) => {
+    if (sec <= 0) return 0;
+    if (sec >= totalSec) return 90;
+    let lo = 0;
+    let hi = times.length - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (times[mid] <= sec) lo = mid;
+      else hi = mid;
+    }
+    const f = (sec - times[lo]) / (times[hi] - times[lo] || 1);
+    return Math.min(90, (lo + f) * DM);
+  };
+  return { minuteAt, totalSec, speedAt: (m) => replaySpeed(m, events) };
+}

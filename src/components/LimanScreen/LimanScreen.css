@@ -119,3 +119,12 @@
   padding: 6px 10px;
   font-size: 10px;
 }
+
+/* v92: sipariş verildi onayı */
+.liman-btn.done,
+.liman-btn.done:disabled {
+  opacity: 1;
+  background: linear-gradient(180deg, #1f7a4a, #145a35);
+  border-color: #39ff88;
+  color: #d6ffe6;
+}

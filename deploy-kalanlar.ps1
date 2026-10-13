@@ -1,10 +1,12 @@
-# Neon Sehir v92 - ilk yuklemede KOTA (CPU quota) yuzunden yuklenemeyen 39 fonksiyon.
+# Neon Sehir v92 - ilk yuklemede KOTA (CPU quota) yuzunden yuklenemeyen 39 fonksiyon
+# + v92.2'de degisen createSixtagramPost (Sarki Yap).
 # Once en onemlileri (streamAction, shopAction...) yuklenir, sonra 5'erli gruplar.
 # Calistirma (proje klasorunde, PowerShell'de):
 #   powershell -ExecutionPolicy Bypass -File .\deploy-kalanlar.ps1
 
 $gruplar = @(
-  @('streamAction', 'shopAction', 'giftHeldItem', 'socialAction', 'sendChatMessage'),
+  @('streamAction', 'shopAction', 'giftHeldItem', 'createSixtagramPost'),
+  @('socialAction', 'sendChatMessage'),
   @('adminAccountDeletion', 'gangClock', 'getMyFutbolTeamFinance', 'getMyRedemptionCode', 'hourlyInvestmentUpdate'),
   @('migrateVehicleWeaponLifeCap', 'reassignEmployee', 'repayStateDebt', 'setAvatar', 'setDisplayName'),
   @('setFactoryLogo', 'setFactorySalary', 'setFutbolLineup', 'setFutbolTeamLogo', 'setFutbolTicketPrice'),

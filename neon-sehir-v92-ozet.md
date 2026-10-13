@@ -128,3 +128,16 @@
 - **Maç sohbetinde "Geçersiz işlem" hatası:** sunucudaki `streamAction` fonksiyonu eski kalmış (yeni sürüm yüklenmemiş). Kod doğru; `streamAction` yüklenince düzelir. Sunucu eskiyse oyuncu artık anlaşılır bir mesaj görüyor.
 
 Testler: 333/333 geçti. Derleme başarılı.
+
+## v92.2
+- **Yayında maç izleme yayına yansıyor:** yayıncı ⚽ Maç ekranında hangi lig/sekme/maçı açarsa izleyiciler de aynısını görüyor. Yayıncı "Maç özetini izle"ye basınca özet izleyicilerde de aynı anda başlıyor. Yayıncının kamerası köşede küçük pencerede kalıyor.
+- **Maç özeti:** top normal oyunda hızlı akıyor, atak/şut/gol yaklaşınca yavaşlıyor (gollerde en yavaş), sonra yeniden hızlanıyor. Özet ~15 sn yerine maçtaki pozisyon sayısına göre ~20–30 sn sürüyor.
+- **Liman:** sipariş verilince butonda "✓ Sipariş verildi (adet)" yazıyor (3,5 sn).
+- **Sixtagram › Görsel Ekle › 🎵 Şarkı Yap** (Resim Çiz'in hemen üstünde): Beat Atölyesi.
+  - Örnekteki her şey var: 4 bölüm (A–D), 16 kutuluk sıra, bölüm kopyala/temizle, sırayı boşalt, geri al bildirimi, 1–8 / 9–16 adım sekmeleri ve nokta göstergesi, çalarken sayfa takibi, davul (7 satır, setler, ses, sessiz), 3 kanal (her biri ayrı enstrüman, ses, sessiz), ölçekler, dokun/sürükle boyama, dokununca ses, geri al / ileri al, Bölüm/Şarkı modu, Swing, tempo 60–180.
+  - Ekler: Darbuka ve Arcade davul setleri; Bağlama, Yaylı, Çan, Pad enstrümanları; Hicaz ve Nihavend ölçekleri; ton seçimi (◀ Do ▶); hazır ritimler (Pop, Hip-hop, Trap, Halay, Dans); şarkı adı.
+  - Şarkı akışta oynatıcı kartıyla görünüyor: ▶ çal / ⏹ durdur, çalan adımı gösteren şerit, süre. Ses dosyası yüklenmiyor; şarkının notaları saklanıp her telefonda aynı şekilde çalınıyor (aynı anda tek şarkı çalar).
+- Sunucu: `createSixtagramPost` "Şarkı Yap" ekini doğruluyor (`functions/songData.js`).
+
+**Yükleme:** `deploy-kalanlar.ps1` (içine `createSixtagramPost` eklendi). "Maç sohbeti şu an kullanılamıyor" uyarısı `streamAction` yüklenince kalkar. Sonra push.
+Testler: 337/337 geçti.

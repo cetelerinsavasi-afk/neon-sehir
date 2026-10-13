@@ -320,6 +320,18 @@ export function publishCardsFrame(tableId) {
   if (!STREAM_RT || !streamBroadcast.uid || !tableId) return;
   sendFrame('onnumara', JSON.stringify({ t: String(tableId).slice(0, 128) }), [], 0);
 }
+// v92 — yayında maç izleme: yayıncının o an açık lig/sekme/maç/özet görünümü
+// (~1/sn). İzleyici aynı ekranı kendi verisiyle çizer (FutbolLigler mirror).
+export function publishMatchFrame(view) {
+  if (!STREAM_RT || !streamBroadcast.uid || !view) return;
+  let json;
+  try {
+    json = JSON.stringify(view);
+  } catch {
+    return;
+  }
+  if (json.length < 1500) sendFrame('match', json, [], 0);
+}
 export function clearGameFrame() {
   const uid = streamBroadcast.uid;
   if (!STREAM_RT || !uid) return;

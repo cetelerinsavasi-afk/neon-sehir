@@ -34,6 +34,7 @@ export default function LimanScreen() {
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
   const [amounts, setAmounts] = useState({});
+  const [placed, setPlaced] = useState({}); // v92: sipariş verilince butonda "✓ Sipariş verildi"
 
   if (!user) {
     return <SignInPrompt message="Liman'ı kullanmak için giriş yapmalısın." />;
@@ -94,11 +95,24 @@ export default function LimanScreen() {
                 quickAmounts={quickAmountsFor(m.id)}
               />
               <button
-                className="liman-btn"
+                className={`liman-btn${placed[m.id] ? ' done' : ''}`}
                 disabled={busy === m.id || !qty}
-                onClick={() => run(m.id, () => placeLimanOrder(m.id, qty))}
+                onClick={() =>
+                  run(m.id, async () => {
+                    await placeLimanOrder(m.id, qty);
+                    setAmount(m.id, 0);
+                    setPlaced((p) => ({ ...p, [m.id]: qty }));
+                    setTimeout(() => setPlaced((p) => ({ ...p, [m.id]: 0 })), 3500);
+                  })
+                }
               >
-                {qty > 0 ? `Sipariş Ver — ${(m.price * qty).toLocaleString('tr-TR')} altın` : 'Sipariş Ver'}
+                {busy === m.id
+                  ? 'Sipariş veriliyor…'
+                  : placed[m.id]
+                    ? `✓ Sipariş verildi (${placed[m.id].toLocaleString('tr-TR')} adet)`
+                    : qty > 0
+                      ? `Sipariş Ver — ${(m.price * qty).toLocaleString('tr-TR')} altın`
+                      : 'Sipariş Ver'}
               </button>
             </div>
           );
