@@ -3,10 +3,11 @@ import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useHouseList } from '../../hooks/useHouseList';
 import { useHomeOfficeList } from '../../hooks/useHomeOfficeList';
+import HomeOfficeOpen from '../HomeOffice/HomeOfficeOpen';
 import { houseAction } from '../../services/gameActions';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import { HOUSE_PRICE } from '../../../functions/houseCatalogData.js';
-import { BIZ_TYPES, HOME_OFFICE_KEYS } from '../../../functions/businessCatalogData.js';
+import { BIZ_TYPES } from '../../../functions/businessCatalogData.js';
 import './HouseScreen.css';
 import { useBackClose } from '../../lib/backStack';
 
@@ -49,6 +50,7 @@ export default function HouseHub({ onClose, initialHouseId = null }) {
   const list = useHouseList({ enabled: Boolean(user) && !houseId });
   // v93 — iki sekme: Evler (sadece evler; dükkânlar/home ofisler burada görünmez) · Home Ofisler
   const [tab, setTab] = useState('evler');
+  const [hoOpen, setHoOpen] = useState(false);
   const hoList = useHomeOfficeList({ enabled: Boolean(user) && !houseId && tab === 'ho' });
   const myHouses = list.mine.filter((h) => !h.bizType);
   const [buyOpen, setBuyOpen] = useState(false);
@@ -106,9 +108,14 @@ export default function HouseHub({ onClose, initialHouseId = null }) {
           <b>🏠 Evler</b>
           <span>Evini döşe, arkadaşlarını ağırla</span>
         </div>
-        {user && (
+        {user && tab === 'evler' && (
           <button className="hh-buy" onClick={() => { setMsg(null); setBuyOpen(true); }}>
             Ev Satın Al <span>+</span>
+          </button>
+        )}
+        {user && tab === 'ho' && (
+          <button className="hh-buy" onClick={() => setHoOpen(true)}>
+            Home Ofis Aç <span>+</span>
           </button>
         )}
       </div>
@@ -152,11 +159,8 @@ export default function HouseHub({ onClose, initialHouseId = null }) {
 
         {user && tab === 'ho' && (
           <>
-            <p className="hs-dim hh-ho-hint">
-              {HOME_OFFICE_KEYS.map((k) => `${BIZ_TYPES[k].icon} ${BIZ_TYPES[k].label}`).join(' · ')} — En kalabalık üstte; boşsa dünün en çok ziyaret edilenleri. Kendi evini ⚙️ Ayarlar › Home Ofisler'den home ofise çevirebilirsin.
-            </p>
             {hoList.loading && <p className="hs-dim">Yükleniyor…</p>}
-            {!hoList.loading && hoList.list.length === 0 && <p className="hs-dim hh-empty">Henüz açık home ofis yok. İlk sen aç!</p>}
+            {!hoList.loading && hoList.list.length === 0 && <p className="hs-dim hh-empty">Henüz açık home ofis yok.</p>}
             {hoList.list.map((h) => (
               <HouseRow key={h.id} h={h} onEnter={setHouseId} mineRow={h.mine} />
             ))}
@@ -164,6 +168,15 @@ export default function HouseHub({ onClose, initialHouseId = null }) {
         )}
       </div>
 
+      {hoOpen && (
+        <HomeOfficeOpen
+          onClose={() => setHoOpen(false)}
+          onEnter={(id) => {
+            setHoOpen(false);
+            setHouseId(id);
+          }}
+        />
+      )}
       {buyOpen && (
         <div className="hs-modal-bg" onClick={() => !busy && setBuyOpen(false)}>
           <div className="hs-modal hh-buy-modal" onClick={(e) => e.stopPropagation()}>

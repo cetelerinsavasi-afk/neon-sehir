@@ -186,3 +186,7 @@ Testler: 339/339 geçti.
 
 **Yükleme:** önce kurallar ve değişen fonksiyonlar (`firebase deploy --only firestore:rules,functions:shopAction,functions:houseAction,functions:createSixtagramPost,functions:businessRollover,functions:raceHubAction,functions:streamAction,functions:dealOnNumaraCards,functions:onNumaraHit,functions:onNumaraStand,functions:onNumaraAutoStand`), sonra push.
 Testler: 348/348 geçti.
+
+## v93.2
+- Evler › Home Ofisler: uzun açıklama kaldırıldı; sağ üstte "Home Ofis Aç +". Mescit / Sinema / Müzik Stüdyosu alt alta; dokununca gerekli mobilyalar ve fiyatları görünür, 🛒 Eksikleri al ile hemen alınır, 🏠 Ev seç / Ev al ile eve girilir.
+- v93'te eklenen uzun açıklamalar kısaltıldı (mescit, stüdyo paylaş/sil, On Numara, home ofis tanıtımları).

@@ -271,7 +271,6 @@ export default function StudioScreen({ houseId, price, isOwner, onClose, flash }
                 {publish.done ? (
                   <>
                     <h3>🎉 Şarkın Sixtagram'da!</h3>
-                    <p className="ho-dim">Dinleyiciler şarkını dinleyip destek olabilir. Kaç kez dinlendiği gönderide yazar.</p>
                     <button className="ho-btn gold" onClick={() => setPublish(null)}>
                       Tamam
                     </button>
@@ -279,7 +278,6 @@ export default function StudioScreen({ houseId, price, isOwner, onClose, flash }
                 ) : (
                   <>
                     <h3>📤 Sixtagram'da paylaş</h3>
-                    <p className="ho-dim">Şarkın gönderi olarak paylaşılır. Paylaştıktan sonra projen kalır; düzenlemeye devam edebilirsin.</p>
                     <textarea className="ho-input" maxLength={280} rows={3} placeholder="Bir şeyler yaz (isteğe bağlı)" value={publish.text} onChange={(e) => setPublish((p) => ({ ...p, text: e.target.value }))} />
                     {publish.err && <p className="ho-err">{publish.err}</p>}
                     <div className="ho-row">
@@ -346,7 +344,6 @@ export default function StudioScreen({ houseId, price, isOwner, onClose, flash }
         <div className="ho-modal-bg" onClick={() => setDelAsk(null)}>
           <div className="ho-modal" onClick={halt}>
             <h3>🗑️ "{delAsk.title || 'İsimsiz şarkı'}" silinsin mi?</h3>
-            <p className="ho-dim">Silinen proje geri gelmez. Sixtagram'da paylaştığın şarkılar silinmez.</p>
             <div className="ho-row">
               <button className="ho-btn ghost" onClick={() => setDelAsk(null)}>
                 Vazgeç

@@ -251,10 +251,10 @@ export default function OnNumaraTable({ tableId, myUid, onLeave, spectate = fals
       {simul && round?.phase === 'playing' && (
         <p className="onn-log">
           {isMyTurn
-            ? '⏱️ Herkes aynı anda oynuyor — kart çek ya da pas geç. Diğerlerinin kartları el bitince açılır.'
+            ? '⏱️ Kart çek ya da pas geç.'
             : myHand
-              ? '✓ Hamleni yaptın. Herkes bitirince kurpiyer oynar ve tüm kartlar açılır.'
-              : 'El oynanıyor; herkes bitirince kartlar açılır.'}
+              ? '✓ Diğer oyuncular bekleniyor…'
+              : 'El oynanıyor…'}
         </p>
       )}
       {round?.phase === 'resolved' && round.result && (

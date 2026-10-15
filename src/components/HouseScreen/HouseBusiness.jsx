@@ -41,9 +41,9 @@ const BIZ_BLURB = {
   bar: 'Menündeki içecekleri sat; sahneye piyano koy.',
   cafe: 'Menündeki yiyecek ve içecekleri sat.',
   // v93 home ofisler
-  mescit: 'Bağış kutusu açılır; ziyaretçiler bağış yapar (kişi başı günde 10.000).',
-  sinema: 'Giriş ücretsiz; içecek ve patlamış mısır ücretli (100–1.000).',
-  studyo: 'Mikser konsolunda dakika ücretiyle müzik yapılır (100–400/dk).',
+  mescit: 'Bağış kabul et.',
+  sinema: 'İçecek ve patlamış mısır sat.',
+  studyo: 'Dakika ücretiyle müzik yaptır.',
 };
 
 export function BizListPanel({ keys = BIZ_TYPE_KEYS, title = '🏪 İşletmeler', items, invItems, houseDoc, busy, gold = 0, gem = 0, onOpenBiz, onCloseBiz, onFillMissing, onClose, flashType }) {
@@ -97,7 +97,7 @@ export function BizListPanel({ keys = BIZ_TYPE_KEYS, title = '🏪 İşletmeler'
                 {isExp && (
                   <div className="hb-row2-body">
                     <BizRequirements type={type} placedItems={items} invItems={invItems} />
-                    {blocked && <p className="bz-note">Önce {BIZ_TYPES[open].label} kapanmalı (bir ev aynı anda tek işletme / home ofis olabilir).</p>}
+                    {blocked && <p className="bz-note">Önce {BIZ_TYPES[open].label} kapanmalı.</p>}
                     {isOpen ? (
                       <HoldButton className="bz-btn danger wide" disabled={busy} ms={1300} onDone={onCloseBiz}>
                         ✋ Basılı tut: işletmeyi kapat
@@ -163,7 +163,7 @@ function MescitInfoSection() {
   return (
     <div className="bz-sec">
       <p className="bz-sec-title">🤲 Bağış kutusu</p>
-      <p className="bz-hint">Ziyaretçiler bağış kutusuna yaklaşıp bağış yapar. Bir oyuncu mescidine günde en fazla {fmt(MESCIT_DAILY_LIMIT)} altın bağışlayabilir. Bağışların %10'u vergi olarak kesilir, kalanı sana gelir. Kendi mescidine bağış yapamazsın.</p>
+      <p className="bz-hint">Kişi başı günde en fazla {fmt(MESCIT_DAILY_LIMIT)} altın · %10 vergi</p>
     </div>
   );
 }

@@ -172,7 +172,7 @@ function DonateSheet({ houseId, houseDoc, isOwner, gold, onClose, flash }) {
         </div>
         <p className="ho-dim">{houseDoc?.name || 'Mescit'} · {houseDoc?.ownerName || ''}</p>
         {isOwner ? (
-          <p className="ho-dim">Burası senin mescidin. Ziyaretçiler bağış kutusuna bağış yapar; bağışların %10'u vergi olarak kesilir, kalanı sana gelir.</p>
+          <p className="ho-dim">Burası senin mescidin.</p>
         ) : (
           <>
             <div className="ho-stat">
