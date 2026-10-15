@@ -100,10 +100,11 @@ export default function ChatTab({ org, d }) {
     if (r) setText('');
   };
 
-  const dot = (id) => (unread[id] && channel !== id ? ' 🔴' : '');
+  // v93: yeni mesaj noktası nabız gibi büyüyüp küçülür (Chips → gx-chip-dot)
+  const dot = (id) => Boolean(unread[id] && channel !== id);
   const channels = isIntel
-    ? [{ id: 'genel', label: `Genel${dot('genel')}`, icon: '💬' }, ...(ranked ? [{ id: 'yonetim', label: `Rütbeliler${dot('yonetim')}`, icon: '🔒' }] : [])]
-    : [{ id: 'genel', label: `Çete${dot('genel')}`, icon: '💬' }, ...(ranked ? [{ id: 'yonetim', label: `Yönetim${dot('yonetim')}`, icon: '🔒' }] : []), { id: 'tum', label: `Tüm Çeteler${dot('tum')}`, icon: '🌐' }];
+    ? [{ id: 'genel', label: 'Genel', icon: '💬', dot: dot('genel') }, ...(ranked ? [{ id: 'yonetim', label: 'Rütbeliler', icon: '🔒', dot: dot('yonetim') }] : [])]
+    : [{ id: 'genel', label: 'Çete', icon: '💬', dot: dot('genel') }, ...(ranked ? [{ id: 'yonetim', label: 'Yönetim', icon: '🔒', dot: dot('yonetim') }] : []), { id: 'tum', label: 'Tüm Çeteler', icon: '🌐', dot: dot('tum') }];
 
   return (
     <div className="gx-chat">

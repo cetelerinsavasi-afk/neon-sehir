@@ -152,9 +152,10 @@ test('internet kafe: yayın seti dakika ücreti kafe sahibine, para bitince yay�
   const own = await h.act('kafeci', { op: 'start', houseId: 'kafe', chairId: 'ch1' });
   assert.equal(own.charged, 0);
   await assert.rejects(h.act('kafeci', { op: 'price', houseId: 'kafe', price: 20 }), /price-band/);
-  await h.act('kafeci', { op: 'price', houseId: 'kafe', price: 500 });
-  assert.equal(h.G('houses/kafe').bizPrices.stream, 500);
-  await assert.rejects(h.act('ali', { op: 'price', houseId: 'ev1', price: 500 }), /internet/);
+  await h.act('kafeci', { op: 'price', houseId: 'kafe', price: 400 });
+  await assert.rejects(h.act('kafeci', { op: 'price', houseId: 'kafe', price: 500 }), /price-band/);
+  assert.equal(h.G('houses/kafe').bizPrices.stream, 400);
+  await assert.rejects(h.act('ali', { op: 'price', houseId: 'ev1', price: 300 }), /internet/);
 });
 
 test('yayıncı odadan çıkarsa nabızda kapanır; nabzı kesilen yayın süpürmede kapanıp bağışları ödenir', async () => {

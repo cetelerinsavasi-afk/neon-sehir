@@ -1,13 +1,15 @@
 import { system, PREVIEW_UID, fakeDb, houses, shop, futbolPro, visits, raceTa, cosmetics, stream } from './backend.js';
 import { FieldValue } from '../../functions/gang/test/fakeFirestore.js';
 import { sanitizeDrawing } from '../../functions/drawingData.js';
+import { buildSongAttachment } from '../../functions/homeOffice.js';
 import { nextReaction, replyQuoteOf } from '../../functions/chatExtras.js';
 export function getFunctions() {
   return {};
 }
 export function httpsCallable(functions, name) {
   return async (data) => {
-    const request = { auth: { uid: PREVIEW_UID }, data };
+    // önizleme: ?uid=… ile ikinci oyuncu (ör. tasarım yetkilisi) olarak çağrı
+    const request = { auth: { uid: new URLSearchParams(location.search).get('uid') || PREVIEW_UID }, data };
     try {
       if (name === 'gangAction') return { data: await system.handleAction(request) };
       if (name === 'cosmeticsAction') return { data: await cosmetics.action(PREVIEW_UID, data) };
@@ -82,8 +84,13 @@ export function httpsCallable(functions, name) {
           if (r.error) throw Object.assign(new Error(r.error), { code: 'invalid-argument' });
           attachment = r.drawing;
         }
+        if (data.attachment?.type === 'song') {
+          const r = await buildSongAttachment(fakeDb, request.auth.uid, data.attachment);
+          if (r.error) throw Object.assign(new Error(r.error), { code: 'invalid-argument' });
+          attachment = r.song;
+        }
         const now = Date.now();
-        await fakeDb.collection('sixtagramPosts').doc().set({ uid: PREVIEW_UID, authorName: 'Önizleme Admin', authorAvatar: null, text: data.text || '', attachment, likeCount: 0, createdAt: FieldValue.serverTimestamp(), createdAtMs: now, expiresAtMs: now + 86400000 });
+        await fakeDb.collection('sixtagramPosts').doc().set({ uid: request.auth.uid, authorName: request.auth.uid === PREVIEW_UID ? 'Önizleme Admin' : 'Misafir Ali', authorAvatar: null, text: data.text || '', attachment, likeCount: 0, createdAt: FieldValue.serverTimestamp(), createdAtMs: now, expiresAtMs: now + 86400000 });
         return { data: { ok: true } };
       }
       return { data: { ok: true } };

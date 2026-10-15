@@ -33,6 +33,8 @@ const MAP = {
   'wrong-equipment': 'Bu alet sıradaki görevin değil.',
   'price-band': 'Fiyat izin verilen aralıkta değil.',
   'biz-required': 'Bu mobilya işletme için gerekli.',
+  // v93 home ofisler / stüdyo
+  'studio-session': 'Stüdyo süren bitti; projeyi kaydetmek için mikser konsolunda yeniden başlat.',
 };
 
 export function bizErrText(err) {
@@ -40,6 +42,8 @@ export function bizErrText(err) {
   if (MAP[m]) return MAP[m];
   if (m.startsWith('price-changed')) return `Fiyat az önce değişti (yeni fiyat: ${fmt(m.split(':')[1])}). Kontrol edip tekrar dene.`;
   if (m.startsWith('limit:')) return `Bir mekânda günde en fazla ${fmt(10000)} altın harcayabilirsin.`;
+  if (m.startsWith('tip-limit:')) return `Bir sanatçıya günde en fazla ${fmt(1000)} altın destek verebilirsin (bugün ${fmt(m.split(':')[1])}).`;
+  if (m.startsWith('project-max:')) return `En fazla ${fmt(m.split(':')[1])} projen olabilir. Eski bir projeni sil.`;
   if (m.startsWith('membership-open')) return 'Bitmemiş bir üyeliğin var; önce onu tamamla (ya da süresi dolsun).';
   if (m.startsWith('position-lock:')) return `Mevkini ${new Date(Number(m.split(':')[1])).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })} tarihine kadar değiştiremezsin.`;
   if (m.startsWith('price-band')) return MAP['price-band'];

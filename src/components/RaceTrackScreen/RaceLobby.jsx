@@ -95,9 +95,9 @@ function TrainingStartModal({ level, vehicles, onClose, onCreated }) {
           <CarThumb catalogId={trainingBot(level).catalogId} />
           <div>
             <p className="race-hint">
-              Rakibin: <strong>{vehicleCatalog.find((c) => c.id === trainingBot(level).catalogId)?.name}</strong> süren bot
+              Rakibin: <strong>{vehicleCatalog.find((c) => c.id === trainingBot(level).catalogId)?.name} · Sv 3</strong> süren bot
             </p>
-            <CarStatBars catalogId={trainingBot(level).catalogId} level={1} compact />
+            <CarStatBars catalogId={trainingBot(level).catalogId} level={trainingBot(level).level} compact />
           </div>
         </div>
         <VehiclePicker vehicles={vehicles} value={myVehicleId} onChange={setMyVehicleId} />

@@ -108,3 +108,17 @@
 .v3-item:disabled {
   opacity: 0.55;
 }
+
+/* v93 — şüphe göstergesi (camii / park) */
+.v3-sus b {
+  color: #3df58a;
+}
+.v3-sus.mid b {
+  color: #ffcf5a;
+}
+.v3-sus.hi {
+  border-color: rgba(255, 90, 110, 0.7);
+}
+.v3-sus.hi b {
+  color: #ff6b7d;
+}

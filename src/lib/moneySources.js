@@ -47,6 +47,12 @@ export const MONEY_SOURCES = {
   zumrut: { icon: '💎', label: 'Zümrüt teklifi' },
   altinMagaza: { icon: '🪙', label: 'Altın mağazası' },
   cete: { icon: '🦂', label: 'Çete' },
+  // v93 home ofisler / müzik
+  mescit: { icon: '🕌', label: 'Mescit bağışı' },
+  sinema: { icon: '🍿', label: 'Sinema büfesi' },
+  studyo: { icon: '🎛️', label: 'Müzik stüdyosu' },
+  sanatci: { icon: '🎵', label: 'Şarkı desteği (gelen)' },
+  sanatciDestek: { icon: '💛', label: 'Şarkı desteği (verilen)' },
   diger: { icon: '•', label: 'Diğer' },
 };
 export const moneySource = (k) => MONEY_SOURCES[k] || { icon: '•', label: k };

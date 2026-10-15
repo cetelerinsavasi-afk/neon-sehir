@@ -165,7 +165,7 @@ function ParkPhotoCanvas({ entities, originX, originY }) {
 // PostAttachment — Sixtagram gönderisine eklenen "görsel"i render eder.
 // Hepsi oyunun kendi verisinden (sunucuda doğrulanmış) üretiliyor — dosya
 // yükleme YOK, bu yüzden her zaman anında ve tutarlı görünür.
-export default function PostAttachment({ attachment }) {
+export default function PostAttachment({ attachment, post = null }) {
   if (!attachment) return null;
 
   if (attachment.type === 'avatar') {
@@ -541,7 +541,7 @@ export default function PostAttachment({ attachment }) {
   // v72 — "Resim Çiz": oyuncunun çizdiği tablo (fotoğraf gibi kare)
   // v92 — Şarkı Yap: oyuncunun yaptığı şarkı (bu cihazda sentezlenerek çalar)
   if (attachment.type === 'song') {
-    return <SongView song={attachment} />;
+    return <SongView song={attachment} post={post} />;
   }
 
   if (attachment.type === 'drawing') {

@@ -26,7 +26,7 @@ export default function NetCreditRing({ houseId = null, className = '' }) {
   const r = 13;
   const c = 2 * Math.PI * r;
   return (
-    <span className={`vn-credit-pill${warn ? ' warn' : ''} ${className}`} title="İnternet kafe: ödenmiş oyun süren">
+    <span className={`vn-credit-pill${warn ? ' warn' : ''} ${className}`} title={s.deviceKey === 'mixer' ? 'Müzik stüdyosu: ödenmiş süren' : 'İnternet kafe: ödenmiş oyun süren'}>
       <span className={`vn-credit${warn ? ' warn' : ''}`}>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
           <circle cx={size / 2} cy={size / 2} r={r} className="bg" />
@@ -35,7 +35,7 @@ export default function NetCreditRing({ houseId = null, className = '' }) {
         <b>{left}</b>
       </span>
       <span className="vn-credit-txt">
-        🖥️ {left} sn kaldı
+        {s.deviceKey === 'mixer' ? '🎛️' : '🖥️'} {left} sn kaldı
         {warn && <small>Altının sonraki dakikaya yetmiyor</small>}
       </span>
     </span>

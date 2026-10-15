@@ -22,7 +22,7 @@ import PlayerCard from '../PlayerCard/PlayerCard';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import { BizListPanel, BizSettings, BizRemovePanel } from './HouseBusiness';
 import { removalBreaksBiz, parseBizError } from './houseBusinessLogic';
-import { BIZ_TYPES, checkBizRequirements } from '../../../functions/businessCatalogData.js';
+import { BIZ_TYPES, BIZ_TYPE_KEYS, HOME_OFFICE_KEYS, isHomeOffice, checkBizRequirements } from '../../../functions/businessCatalogData.js';
 import Workshop from '../Workshop/Workshop';
 import ShopShowcase from '../Shop/ShopShowcase';
 import MenuPanel from '../Venue/MenuPanel';
@@ -54,6 +54,9 @@ import VenueLayer from '../Venue3D/VenueLayer';
 import { VENUE_BY_HOUSE } from '../../../functions/venueLayouts.js';
 import { streamBroadcast, clearGameFrame, closeStreamChannel, streamPose, useLiveStreams, useStreamDoc, watchViewers } from '../Stream/streamShared';
 import { streamPriceOf, cafeDevicePrice, isStreamSetPc } from '../../../functions/stream.js';
+import { attachHScroll } from '../../lib/hscroll';
+import HomeOfficeLayer from '../HomeOffice/HomeOfficeLayer';
+import { HO_ITEM_ACTS } from '../../../functions/homeOfficeData.js';
 
 // =============================================================================
 // HouseScreen — 3D Ev (v66, herkese açık)
@@ -76,6 +79,10 @@ const BIZ_TOP_BUTTONS = {
   cafe: [{ panel: 'menu', label: '🍽️ Menü' }],
   bar: [{ panel: 'menu', label: '🍽️ Menü' }],
   spor: [{ panel: 'gym', label: '🏋️ Spor yap (üyelik)' }],
+  // v93 home ofisler (ho: → HomeOfficeLayer; en yakın eşyaya yürür)
+  sinema: [{ panel: 'menu', label: '🍿 Büfe' }],
+  mescit: [{ panel: 'ho:donate', label: '🤲 Bağış yap' }],
+  studyo: [{ panel: 'ho:studio', label: '🎛️ Müzik yap' }],
 };
 const SAVE_DEBOUNCE_MS = 1200;
 const PRIVACY = [
@@ -136,6 +143,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   const heldVenue = venue?.key === 'gazino' ? 'gazino' : venue?.key === 'park' ? 'park' : 'ev';
   const { held, gift, clearGift } = useHeldItem(heldVenue);
   const venueApiRef = useRef(null);
+  const hoApiRef = useRef(null); // v93 home ofis katmanı
   const venueNpcsRef = useRef([]);
   const mountRef = useRef(null);
   const seenSelfRef = useRef(false);
@@ -186,6 +194,12 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   const [noStream, setNoStream] = useState(false);
   const [streamWarn, setStreamWarn] = useState(false);
   const [cardTarget, setCardTarget] = useState(null);
+  // v93 — PC: mobilya rafı / sekmeler / renkler tekerlek ve fareyle yatay kayar
+  const hsDetachRef = useRef(null);
+  const hsRootRef = useCallback((el) => {
+    hsDetachRef.current?.();
+    hsDetachRef.current = el ? attachHScroll(el, '.hs-shelf-tabs, .hs-shelf-items, .hs-surf-row, .hs-swatches, .hs-tabs-scroll') : null;
+  }, []);
   const [toast, setToast] = useState(null);
   const [busy, setBusy] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState({ name: '', privacy: 'public' });
@@ -344,10 +358,9 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
       onSelectionChange: setSel,
       onInteractChange: setInteract,
       onPlayerTap: (uid) => {
-        // v92 Faz 8: mekân NPC'si → istasyonuna git / paneli aç
-        if (String(uid).startsWith('npc_') && venueApiRef.current?.npcTap(uid)) return;
-        if (String(uid).startsWith('npc_')) return;
-        setCardTarget(uid);
+        // v92 Faz 8: mekân NPC'si → istasyonuna git / paneli aç.
+        // v93: oyuncuya dokununca profil AÇILMAZ (profil: 👥 kişiler listesinden).
+        return Boolean(String(uid).startsWith('npc_') && venueApiRef.current?.npcTap(uid));
       },
       onFreeCamChange: setFreeCam,
       onContextLost: () => {
@@ -690,6 +703,11 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   // --- etkileşimler --------------------------------------------------------------------
   const doAction = async (a) => {
     unlockAudio();
+    // v93 — home ofis eşyası (bağış kutusu, mikser konsolu)
+    if (a.kind === 'ho') {
+      hoApiRef.current?.act(a);
+      return;
+    }
     // v77 Faz 4: spor salonu görevi → mini oyun
     if (a.kind === 'gym') {
       if (a.equipment === gymTaskKey) {
@@ -942,6 +960,10 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
 
   // --- işletme (v77) ------------------------------------------------------------------
   const bizType = houseDoc?.biz?.type || null;
+  // v93 — home ofis eşyalarına eylem (bağış kutusu → bağış, mikser → müzik yap)
+  useEffect(() => {
+    engineRef.current?.setBizActs?.(bizType ? HO_ITEM_ACTS[bizType] || null : null);
+  }, [bizType, phase, engineKey]);
   // v92 — garson (cafe/bar)
   const menuVenue = Boolean(bizType && MENU_TYPES.includes(bizType));
   const waiterRole = useWaiterRole({ houseId, enabled: phase === 'ready' && menuVenue, user, online, flash });
@@ -1295,7 +1317,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     eng.deselect?.();
     setPanel(null);
     if (full) flash('🪑 Odadaki eşya sınırı doldu; kalanlar envanterinde.');
-    else flash(`✓ ${n} mobilya odaya kondu. İstersen yerlerini değiştir, sonra ⚙️ Ayarlar › İşletmeler › "${BIZ_TYPES[type].label} aç".`);
+    else flash(`✓ ${n} mobilya odaya kondu. İstersen yerlerini değiştir, sonra ⚙️ Ayarlar › ${BIZ_TYPES[type].ho ? 'Home Ofisler' : 'İşletmeler'} › "${BIZ_TYPES[type].label} aç".`);
     return true;
   };
   const openBiz = async (type) => {
@@ -1370,7 +1392,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   }
 
   return (
-    <div className={`hs-root${myStream ? ' streaming' : ''}`} onPointerDown={() => unlockAudio()}>
+    <div ref={hsRootRef} className={`hs-root${myStream ? ' streaming' : ''}`} onPointerDown={() => unlockAudio()}>
       <div ref={mountRef} className="hs-stage" key={engineKey} />
 
       {phase === 'loading' && (
@@ -1454,6 +1476,10 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
               flash={flash}
             />
           )}
+          {/* v93 — HOME OFİS katmanı (mescit bağışı / müzik stüdyosu) */}
+          {bizType && HO_ITEM_ACTS[bizType] && (
+            <HomeOfficeLayer apiRef={hoApiRef} houseId={houseId} houseDoc={houseDoc} bizType={bizType} isOwner={isOwner} engineRef={engineRef} engineKey={engineKey} online={online} flash={flash} />
+          )}
           {/* v77 — MEKÂN ÜST BUTONLARI (işletme türüne göre) */}
           {bizType && mode === 'walk' && BIZ_TOP_BUTTONS[bizType] && (
             <div className="hb-topbtns">
@@ -1463,7 +1489,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                     📋 Siparişler ({waiterRole.orders.length})
                   </button>
                 ) : (
-                  <button key={b.panel} className="hb-topbtn" onClick={() => setPanel(b.panel)}>
+                  <button key={b.panel} className="hb-topbtn" onClick={() => (b.panel.startsWith('ho:') ? hoApiRef.current?.open(b.panel.slice(3)) : setPanel(b.panel))}>
                     {b.label}
                   </button>
                 )
@@ -1813,6 +1839,14 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                       </button>
                     );
                   }
+                  // v93 — home ofis eşyası: etiket katmandan (fiyat / doluluk)
+                  if (a.kind === 'ho') {
+                    return (
+                      <button key={a.label} className={`hs-act take${hoApiRef.current?.dim?.(a) ? ' cue-dim' : ''}`} onClick={() => doAction(a)}>
+                        {hoApiRef.current?.label?.(a) || a.label}
+                      </button>
+                    );
+                  }
                   // piyano başkası tarafından çalınıyorsa: soluk + silüet
                   if (a.panel === 'piano' && pianoPlayer && pianoPlayer.uid !== user?.uid) {
                     return (
@@ -1994,16 +2028,22 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                   </>
                 )}
                 <button className="hs-btn gold wide" disabled={busy} onClick={saveSettings}>{busy ? 'Kaydediliyor…' : bizType ? '💾 Adı kaydet' : '💾 Ev ayarlarını kaydet'}</button>
-                <button className={`hs-btn ghost wide hb-open-list${intentReady ? ' cue-pulse' : ''}`} disabled={busy} onClick={() => setPanel('biz')}>
-                  🏪 İşletmeler{bizIntent ? ` · ${BIZ_TYPES[bizIntent].icon}` : ''}
+                <button className={`hs-btn ghost wide hb-open-list${intentReady && !isHomeOffice(bizIntent) ? ' cue-pulse' : ''}`} disabled={busy} onClick={() => setPanel('biz')}>
+                  🏪 İşletmeler{bizIntent && !isHomeOffice(bizIntent) ? ` · ${BIZ_TYPES[bizIntent].icon}` : ''}
+                </button>
+                {/* v93 — Home Ofisler (mescit / sinema / müzik stüdyosu) */}
+                <button className={`hs-btn ghost wide hb-open-list${intentReady && isHomeOffice(bizIntent) ? ' cue-pulse' : ''}`} disabled={busy} onClick={() => setPanel('ho')}>
+                  🏢 Home Ofisler{bizIntent && isHomeOffice(bizIntent) ? ` · ${BIZ_TYPES[bizIntent].icon}` : ''}
                 </button>
               </div>
             </div>
           )}
 
-          {/* v77 — İŞLETMELER */}
-          {panel === 'biz' && (
+          {/* v77 — İŞLETMELER · v93 HOME OFİSLER (aynı panel, farklı türler) */}
+          {(panel === 'biz' || panel === 'ho') && (
             <BizListPanel
+              keys={panel === 'ho' ? HOME_OFFICE_KEYS : BIZ_TYPE_KEYS}
+              title={panel === 'ho' ? '🏢 Home Ofisler' : '🏪 İşletmeler'}
               items={design?.items}
               invItems={inv?.items}
               gold={Number(player?.gold || 0)}

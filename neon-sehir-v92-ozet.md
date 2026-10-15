@@ -152,3 +152,37 @@ Testler: 337/337 geçti.
 
 **Yükleme:** `firebase deploy --only functions:buyInvestment,functions:sellInvestment,functions:depositToBank,functions:withdrawFromBank,functions:goldLedger`, sonra push.
 Testler: 339/339 geçti.
+
+## v93
+**Düzeltmeler**
+- Yarış pisti antrenmanında rakip botların arabaları 3. seviye (aynı arabayı 3. seviyede iyi süren ya da bir üst arabayı süren oyuncu yenebilir).
+- Spor salonu: günlük antrenman bitince hatırlatma artık hemen kalkıyor (bugünün kaydı yokken dinleyici kapanıyordu). Aynı sorun mekân harcama sayacında da düzeltildi.
+- 3D mekânda bir oyuncuya dokununca profil açılmıyor, dokunulan yere yürünüyor. Profil 👥 kişiler listesinden açılır.
+- 2. El Pazarı: kategoriye girince / geri dönünce sayfa en üstten açılıyor.
+- Park ve camide sol üstte 🕵️ şüphe yüzdesi görünüyor (yeşil / sarı / kırmızı).
+- PC: mobilya rafı, kategori sekmeleri, duvar/zemin ve renk şeritleri fare tekerleğiyle ve sürükleyerek kayıyor. Sürükleme yanlışlıkla eşya eklemiyor.
+- Bir işletmeye (silahçı vb.) tıklayınca üstteki işletme türü seçici kaldırıldı.
+- Evler ekranında kendi dükkânların görünmüyor. İki sekme var: 🏠 Evler (varsayılan) · 🏢 Home Ofisler (en kalabalık üstte, sonra dünün en çok ziyaret edilenleri).
+- İnternet kafe: normal dakika en fazla 200; yayın seti dakikası 100–400. Eski yüksek fiyatlar otomatik olarak sınıra iniyor.
+- Stüdyo & Yayın kategorisinden "Yayıncı Masası" kaldırıldı (elinde olanlar çalışmaya devam ediyor).
+- Çeteler › Sohbet: yeni mesaj olan kanaldaki kırmızı nokta büyüyüp küçülüyor.
+
+**On Numara**
+- Kurpiyerin ilk 2 kartı da herkese açık.
+- Toplu masada sıra yok: herkese aynı anda tek bir 10 sn veriliyor (kart çekmek süreyi uzatmıyor). Süresi dolan otomatik pas geçiyor. Diğer oyuncuların sonradan çektiği kartlar ve sonuçları el bitene kadar gizli ("Düşünüyor…" / "✓ Hazır"). Herkes bitirince kurpiyer oynuyor ve tüm kartlar açılıyor.
+
+**Home Ofisler** (Ev › ⚙️ Ayarlar › İşletmeler'in altında 🏢 Home Ofisler; bir ev aynı anda tek işletme/home ofis olabilir; tüm gelirlerden %10 vergi)
+- 🕌 Mescit (4 seccade, cami avizesi, bağış kutusu, ayakkabılık): bağış kutusuna yaklaşınca 🤲 Bağış yap. Bir oyuncu bir mescide günde en fazla 10.000 bağışlıyor; sahip kendi mescidine bağış yapamıyor.
+- 🎬 Sinema (sinema perdesi, 2 sinema koltuğu, patlamış mısır makinesi, içecek dolabı): giriş ücretsiz. İçecek ve patlamış mısır büfeden ücretli (sahip 100–1.000 arası belirliyor, varsayılan 200); kişi başı günde 10.000 sınırı. Üstte 🍿 Büfe butonu var.
+- 🎚️ Müzik Stüdyosu (2 stüdyo hoparlörü, vokal kabini, mikser konsolu, synth klavye): mikser konsoluna yaklaşınca 🎛️ Müzik yap. Dakika ücreti internet kafe gibi (100–400, varsayılan 200). Konsolda aynı anda tek kişi çalışıyor; herkes onun başında "🎵 Müzik yapıyor" görüyor.
+
+**Müzik**
+- Sixtagram'daki "Şarkı Yap" kaldırıldı; şarkı aracı artık sadece stüdyolarda.
+- Projeler: yeni proje ya da kayıtlı projeye devam (herhangi bir stüdyoda). Her değişiklik birkaç saniye içinde otomatik kaydediliyor; stüdyodan çıkınca, altın bitince ya da uygulama kapanınca da kaydediliyor. 7 gün hiç değiştirilmeyen proje siliniyor; oyuncu başı en fazla 5 proje. Projeler listesinde her projenin yanında ⬇️ MP3 ve 🗑️ Sil butonu var; silmeden önce onay isteniyor.
+- Stüdyodan 📤 Sixtagram'da paylaş. Gönderide 🎧 dinlenme sayısı var: en az 3 sn dinlenince sayılıyor, bir hesap en fazla 5 dinlenme kazandırıyor.
+- 💛 Destek ol: 10 / 100 / 1.000. Bir oyuncu bir sanatçıya günde en fazla 1.000 verebiliyor; %10 vergi kesiliyor, sanatçıya SMS gidiyor.
+- MP3 indirme (sadece sanatçı): projeden ya da kendi Sixtagram gönderisinden. Dosya adı "PROJEADI - cetelerinsavasi.com.mp3".
+- Günlük raporda yeni kaynaklar: Mescit bağışı, Sinema büfesi, Müzik stüdyosu, Şarkı desteği.
+
+**Yükleme:** önce kurallar ve değişen fonksiyonlar (`firebase deploy --only firestore:rules,functions:shopAction,functions:houseAction,functions:createSixtagramPost,functions:businessRollover,functions:raceHubAction,functions:streamAction,functions:dealOnNumaraCards,functions:onNumaraHit,functions:onNumaraStand,functions:onNumaraAutoStand`), sonra push.
+Testler: 348/348 geçti.

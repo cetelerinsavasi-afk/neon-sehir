@@ -72,6 +72,7 @@ export function Chips({ options, value, onChange }) {
           {o.icon && <span aria-hidden="true">{o.icon} </span>}
           {o.label}
           {o.count > 0 && <span className="gx-tab-count">{o.count}</span>}
+          {o.dot && <span className="gx-chip-dot" role="img" aria-label="Yeni mesaj" />}
         </button>
       ))}
     </div>

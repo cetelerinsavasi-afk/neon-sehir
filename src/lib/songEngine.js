@@ -65,8 +65,8 @@ function osc(type, freq, t, dur) {
 }
 
 // Bir çalma oturumu: master → kompresör → hoparlör; davul ve 3 kanal ayrı ses
-function createBus() {
-  const c = ac();
+function createBus(c0 = null) {
+  const c = c0 || ac();
   if (!c) return null;
   const comp = c.createDynamicsCompressor();
   const master = c.createGain();
@@ -604,6 +604,53 @@ export function startSong(getSong, { loop = true, onStep, onEnd, onStopped } = {
   active = handle;
   return handle;
 }
+// --- v93: şarkıyı çevrimdışı ses olarak oluştur (MP3 indirme) ------------------------------
+// Akıştaki çalmayla aynı sıra: şarkı modu = sıradaki bölümler bir kez, bölüm modu = 4 tur.
+// Sentez fonksiyonları ortak `ctx`yi kullandığı için zamanlama süresince ctx geçici
+// olarak çevrimdışı bağlama çevrilir (eşzamanlı; arada başka ses çalınmaz).
+export function songSteps(song) {
+  const out = [];
+  if (song.mode === 'song') {
+    const L = songLength(song);
+    for (let bar = 0; bar < L; bar++) for (let s = 0; s < SONG_STEPS; s++) out.push({ s, pi: song.song[bar] });
+  } else {
+    for (let r = 0; r < 4; r++) for (let s = 0; s < SONG_STEPS; s++) out.push({ s, pi: song.cp || 0 });
+  }
+  return out;
+}
+export async function renderSong(song, { sampleRate = 44100 } = {}) {
+  const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if (!OAC) throw new Error('Bu cihaz ses dosyası oluşturamıyor.');
+  stopAllSongs();
+  const spb = 60 / song.bpm / 4;
+  const steps = songSteps(song);
+  const dur = steps.length * spb + 1.6; // son notaların sönmesi için pay
+  const off = new OAC(2, Math.ceil(dur * sampleRate), sampleRate);
+  const saved = { ctx, noiseBuf };
+  try {
+    ctx = off;
+    noiseBuf = off.createBuffer(1, sampleRate, sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const bus = createBus(off);
+    bus.apply(song);
+    steps.forEach(({ s, pi }, i) => {
+      if (pi < 0) return;
+      const t = 0.05 + i * spb + (song.sw && s % 2 === 1 ? spb * 0.3 : 0);
+      const P = song.pats[pi];
+      if (!song.dm) SONG_DRUMS.forEach((dr, r) => bit(P.d[r], s) && playDrum(song.kit, dr.id, t, bus.drumIn));
+      for (let k = 0; k < SONG_TRACKS; k++) {
+        if (song.tr[k].m) continue;
+        for (let r = 0; r < SONG_ROWS; r++) if (bit(P.t[k][r], s)) playNote(song.tr[k].i, noteFreq(song, r), t, bus.trackOut[k]);
+      }
+    });
+  } finally {
+    ctx = saved.ctx;
+    noiseBuf = saved.noiseBuf;
+  }
+  return off.startRendering();
+}
+
 export function stopAllSongs() {
   if (active) active.stop();
 }

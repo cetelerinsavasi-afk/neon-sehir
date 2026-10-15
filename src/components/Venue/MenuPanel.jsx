@@ -47,7 +47,7 @@ export default function MenuPanel({ houseId, houseDoc, onClose, onBought }) {
     <div className="vn-panel bz" onClick={(e) => e.stopPropagation()}>
       <div className="bz-head">
         <div className="bz-head-main">
-          <h3>🍽️ Menü</h3>
+          <h3>{houseDoc?.biz?.type === 'sinema' ? '🍿 Sinema Büfesi' : '🍽️ Menü'}</h3>
           <p>{isOwner ? 'Kendi mekânın: ücretsiz.' : 'Ürüne dokun, satın al.'}</p>
         </div>
         <button className="bz-x" onClick={onClose}>

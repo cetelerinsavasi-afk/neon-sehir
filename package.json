@@ -12,6 +12,7 @@
     "test:gangs": "npm --prefix functions test"
   },
   "dependencies": {
+    "@breezystack/lamejs": "^1.2.7",
     "firebase": "^12.15.0",
     "lucide-react": "^1.28.0",
     "react": "^19.2.7",

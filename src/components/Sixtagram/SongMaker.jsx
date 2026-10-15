@@ -61,10 +61,23 @@ function restoreInto(s, str) {
   return n;
 }
 
-export default function SongMaker({ initial, onCancel, onDone }) {
+// v93 — Müzik stüdyosu modu: onChange(şarkı) her değişiklikte (otomatik kayıt),
+// toolbar (paylaş / indir / projeler), topRight ("Bitti" yerine kayıt durumu), title.
+export default function SongMaker({ initial, onCancel, onDone, onChange, toolbar = null, topRight = null, title = '🎵 Beat Atölyesi', subtitle = 'Bölümleri kur, sıraya diz, şarkına dönüştür.', getSongRef = null }) {
   const [song, setSong] = useState(() => (initial?.pats ? clone(initial) : emptySong()));
   const songRef = useRef(song);
   songRef.current = song;
+  if (getSongRef) getSongRef.current = () => songRef.current;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const firstRef = useRef(true);
+  useEffect(() => {
+    if (firstRef.current) {
+      firstRef.current = false;
+      return;
+    }
+    onChangeRef.current?.(song);
+  }, [song]);
   const [curTrack, setCurTrack] = useState(0);
   const [page, setPage] = useState(0);
   const [copyMode, setCopyMode] = useState(false);
@@ -363,12 +376,14 @@ export default function SongMaker({ initial, onCancel, onDone }) {
           ✕
         </button>
         <div className="bm-top-title">
-          <b>🎵 Beat Atölyesi</b>
-          <small>Bölümleri kur, sıraya diz, şarkına dönüştür.</small>
+          <b>{title}</b>
+          <small>{subtitle}</small>
         </div>
-        <button className="bm-done" onClick={finish}>
-          Bitti ✓
-        </button>
+        {topRight || (
+          <button className="bm-done" onClick={finish}>
+            Bitti ✓
+          </button>
+        )}
       </div>
 
       <main className="bm-app" onPointerDown={onCellDown} onKeyDown={onCellKey}>
@@ -380,6 +395,7 @@ export default function SongMaker({ initial, onCancel, onDone }) {
           onChange={(e) => tweak((n) => (n.title = e.target.value))}
         />
         {err && <p className="bm-err">{err}</p>}
+        {toolbar}
 
         <section className="bm-sec">
           <div className="bm-head">

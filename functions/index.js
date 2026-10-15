@@ -45,7 +45,8 @@ import { profanityCheck, PROFANITY_WARNING } from './profanity.js';
 import { cleanEquipped } from './cosmeticsData.js';
 import { HOUSE_PRODUCTS } from './houseCatalogData.js';
 import { sanitizeDrawing } from './drawingData.js';
-import { sanitizeSong } from './songData.js';
+import { createHomeOffice, buildSongAttachment } from './homeOffice.js';
+import { simulAct, simulAutoStand, simulDeal, simulState } from './onNumara.js';
 import { isMsgId, nextReaction, replyQuoteOf } from './chatExtras.js';
 import { VENUES } from './venueLayouts.js';
 import { goldTag, recordGoldChange, cleanupMoneyLog, realizeSale, realizeBankWithdraw } from './moneyLog.js';
@@ -202,8 +203,16 @@ export const futbolProAction = onCall(async (request) => {
   const uid = requireAuth(request);
   return futbolPro.action(uid, request.data || {});
 });
+// v93 — Home Ofisler (mescit bağışı) + stüdyo şarkı projeleri + Sixtagram şarkı dinlenme/destek
+const homeOffice = createHomeOffice({
+  db,
+  FieldValue: admin.firestore.FieldValue,
+  HttpsError,
+  splitIncomeForDebt: (debt, amount) => splitIncomeForDebt(debt, amount),
+  business,
+});
 const shop = createShop({
-  extraOps: { ...venue.ops, ...gym.ops },
+  extraOps: { ...venue.ops, ...gym.ops, ...homeOffice.ops },
   db,
   FieldValue: admin.firestore.FieldValue,
   HttpsError,
@@ -244,6 +253,7 @@ export const businessRollover = onSchedule({ schedule: '5 * * * *', timeZone: 'E
   await business.rollover();
   await business.sendShortageSms();
   await venue.cleanup();
+  await homeOffice.cleanup().catch((e) => console.error('homeOffice cleanup', e));
   await gym.expireMemberships();
   await cleanupMoneyLog({ db }).catch((e) => console.error('moneyLog cleanup', e));
 });
@@ -10257,8 +10267,12 @@ export const buyListing = onCall(async (request) => {
 //   - Bahis, dağıtım anında herkesten (kurpiyer hariç) tek seferlik kesilir,
 //     ortaya (pot) toplanır. Amaç 10'a en yakın (aşmadan) toplamı yapmak.
 //   - Kart değerleri 1-5. Toplam 10'u geçerse (bust) elenir.
-//   - Her oyuncunun hamlesi (kart çek/pas) için 10 saniyesi var; süre
-//     dolarsa otomatik pas geçilir.
+//   - v93: TÜM oyuncular AYNI ANDA oynar (sıra yok). Herkese aynı anda tek
+//     bir 10 saniye verilir (kart çekmek süreyi uzatmaz); süre dolarsa
+//     otomatik pas geçilir.
+//     Oyuncular birbirinin sonradan çektiği kartları el bitene kadar görmez
+//     (ilk 2 kart ve kurpiyerin ilk 2 kartı herkese açık). Herkes bitirince
+//     kurpiyer oynar ve tüm kartlar açılır.
 //   - Herkes bitince kurpiyer otomatik oynar (8'e kadar çeker). Kazanan(lar)
 //     — kurpiyer dahil en yüksek (elenmemiş) toplamı yapan(lar) — arasında
 //     kurpiyer varsa pot kimseye ödenmez (kasaya gider); sadece insan
@@ -10446,8 +10460,11 @@ export const dealOnNumaraCards = onCall(async (request) => {
     });
     const dealerCards = [drawOnNumaraCard(), drawOnNumaraCard()];
 
-    // İlk sırası "playing" durumunda olan katılımcı.
-    const firstTurnUid = eligible.find((u) => hands[u].status === 'playing') || null;
+    // v93 — eşzamanlı: oynayan herkesin süresi aynı anda başlar (functions/onNumara.js)
+    const startMs = Date.now();
+    Object.assign(hands, simulDeal(hands, eligible, startMs));
+    const deadlineMs = startMs + ON_NUMARA_TURN_SECONDS * 1000;
+    const anyPlaying = eligible.some((u) => hands[u].status === 'playing');
 
     const newSeats = { ...table.seats };
     const newSeatOrder = eligible.slice();
@@ -10467,7 +10484,8 @@ export const dealOnNumaraCards = onCall(async (request) => {
       seatOrder: newSeatOrder,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       round: {
-        phase: firstTurnUid ? 'playing' : 'dealer',
+        phase: anyPlaying ? 'playing' : 'dealer',
+        simul: true, // v93 eşzamanlı tur
         participants: eligible,
         hands,
         dealerCards,
@@ -10476,10 +10494,10 @@ export const dealOnNumaraCards = onCall(async (request) => {
         // revizesi: "kasa hep daha fazla kazanmaya meyilli" olmasın diye).
         // İyi oynayan tek başına da kurpiyerden para kazanabilsin.
         pot: table.betAmount * (eligible.length + 1),
-        currentTurnUid: firstTurnUid,
-        turnDeadline: firstTurnUid
-          ? admin.firestore.Timestamp.fromMillis(Date.now() + ON_NUMARA_TURN_SECONDS * 1000)
-          : null,
+        currentTurnUid: null,
+        startedAtMs: startMs,
+        // en geç biten oyuncunun süresi (izleyici sayacı / otomatik pas tetikleyicisi)
+        turnDeadline: anyPlaying ? admin.firestore.Timestamp.fromMillis(deadlineMs) : null,
         result: null,
       },
     });
@@ -10635,6 +10653,19 @@ async function resolveOnNumaraIfDealerPhase(tableId) {
   });
 }
 
+// v93 — eşzamanlı turda el güncellemesi: oynayan kalmadıysa kurpiyer aşaması,
+// kaldıysa izleyici sayacı için en geç süre.
+function onNumaraSimulPatch(round, hands) {
+  const st = simulState(round, hands);
+  return {
+    ...round,
+    hands,
+    phase: st.phase,
+    currentTurnUid: null,
+    turnDeadline: st.lastDeadlineMs ? admin.firestore.Timestamp.fromMillis(st.lastDeadlineMs) : null,
+  };
+}
+
 // Ortak hamle çözümleme — onNumaraHit / onNumaraStand / autoStand kullanır.
 async function resolveOnNumaraAction({ tableId, uid, action }) {
   const tableRef = db.collection('onNumaraTables').doc(tableId);
@@ -10644,6 +10675,13 @@ async function resolveOnNumaraAction({ tableId, uid, action }) {
     if (!tableSnap.exists) throw new HttpsError('failed-precondition', 'Masa bulunamadı.');
     const table = tableSnap.data();
     const round = table.round;
+    // v93 — eşzamanlı tur: herkes kendi elini bağımsız oynar
+    if (round?.simul) {
+      const r = simulAct(round, uid, action, Date.now(), drawOnNumaraCard);
+      if (r.error) throw new HttpsError('failed-precondition', r.error);
+      tx.update(tableRef, { updatedAt: admin.firestore.FieldValue.serverTimestamp(), round: onNumaraSimulPatch(round, r.hands) });
+      return;
+    }
     if (!round || round.phase !== 'playing' || round.currentTurnUid !== uid) {
       throw new HttpsError('failed-precondition', 'Sıra sende değil.');
     }
@@ -10702,7 +10740,25 @@ export const onNumaraAutoStand = onCall(async (request) => {
   const tableSnap = await db.collection('onNumaraTables').doc(tableId).get();
   if (!tableSnap.exists) return { ok: true, skipped: true };
   const round = tableSnap.data().round;
-  if (!round || round.phase !== 'playing' || !round.turnDeadline) {
+  if (!round || round.phase !== 'playing') {
+    return { ok: true, skipped: true };
+  }
+  // v93 — eşzamanlı tur: süresi dolan herkes pas geçer
+  if (round.simul) {
+    let n = 0;
+    await db.runTransaction(async (tx) => {
+      const ts = await tx.get(db.collection('onNumaraTables').doc(tableId));
+      const r = ts.data()?.round;
+      if (!r?.simul || r.phase !== 'playing') return;
+      const a = simulAutoStand(r, Date.now());
+      n = a.n;
+      const hands = a.hands;
+      if (n) tx.update(ts.ref, { updatedAt: admin.firestore.FieldValue.serverTimestamp(), round: onNumaraSimulPatch(r, hands) });
+    });
+    if (n) await resolveOnNumaraIfDealerPhase(tableId);
+    return { ok: true, stood: n };
+  }
+  if (!round.turnDeadline) {
     return { ok: true, skipped: true };
   }
   if (round.turnDeadline.toMillis() > Date.now()) {
@@ -20877,8 +20933,9 @@ async function buildSixtagramAttachment(uid, attachment) {
   }
 
   // v92: "Şarkı Yap" — şarkı verisi (bölümler/notalar) doğrulanıp saklanır; ses dosyası yok
+  // v93: şarkılar sadece müzik stüdyosunda yapılır → ek, oyuncunun stüdyo projesinden kurulur
   if (type === 'song') {
-    const r = sanitizeSong(attachment);
+    const r = await buildSongAttachment(db, uid, attachment);
     if (r.error) throw new HttpsError('invalid-argument', r.error);
     return r.song;
   }

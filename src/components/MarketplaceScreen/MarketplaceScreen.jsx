@@ -1,5 +1,5 @@
 import { resaleTax } from '../../../functions/tax.js';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { buyGangListing, useGangMarketListings } from '../Gangs/GangMarketSection';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
@@ -859,6 +859,15 @@ export default function MarketplaceScreen() {
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
   const [noGoldId, setNoGoldId] = useState(null);
+  // v93 — kategoriye girince / geri dönünce sayfa en üstten açılsın (avantajlı
+  // ürünler üstte; aşağı kaymış açılınca yeni oyuncu göremiyordu)
+  const rootRef = useRef(null);
+  useEffect(() => {
+    for (let el = rootRef.current; el && el !== document.body; el = el.parentElement) {
+      if (el.scrollTop) el.scrollTop = 0;
+    }
+    if (window.scrollY) window.scrollTo(0, 0);
+  }, [view]);
   useEffect(() => {
     if (!noGoldId) return undefined;
     const t = setTimeout(() => setNoGoldId(null), NO_GOLD_MS);
@@ -932,7 +941,7 @@ export default function MarketplaceScreen() {
   };
 
   return (
-    <div className="market-screen">
+    <div className="market-screen" ref={rootRef}>
       {view === 'home' ? (
         <>
           <div className="market-header-row">

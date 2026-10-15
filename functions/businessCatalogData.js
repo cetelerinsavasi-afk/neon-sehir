@@ -105,6 +105,47 @@ export const BIZ_TYPES = {
       { any: ['menuboard'], n: 1 },
     ],
   },
+  // ── v93 HOME OFİSLER (ho: true) — ev → işletme gibi açılır; Ev › Ayarlar ›
+  // Home Ofisler. Haritada ayrı işletme türü değildir; Evler › Home Ofisler'de listelenir.
+  mescit: {
+    label: 'Mescit',
+    icon: '🕌',
+    region: 'ho_mescit',
+    day: 'midnight',
+    ho: true,
+    groups: [
+      { any: ['seccade'], n: 4 },
+      { any: ['camiavize'], n: 1 },
+      { any: ['bagiskutusu'], n: 1 },
+      { any: ['ayakkabilik'], n: 1 },
+    ],
+  },
+  sinema: {
+    label: 'Sinema',
+    icon: '🎬',
+    region: 'ho_sinema',
+    day: 'midnight',
+    ho: true,
+    groups: [
+      { any: ['cinescreen'], n: 1 },
+      { any: ['cineseat'], n: 2 },
+      { any: ['popcorn'], n: 1 },
+      { any: ['drinkfridge'], n: 1 },
+    ],
+  },
+  studyo: {
+    label: 'Müzik Stüdyosu',
+    icon: '🎚️',
+    region: 'ho_studyo',
+    day: 'midnight',
+    ho: true,
+    groups: [
+      { any: ['studiospk'], n: 2 },
+      { any: ['booth'], n: 1 },
+      { any: ['mixer'], n: 1 },
+      { any: ['synth'], n: 1 },
+    ],
+  },
 };
 
 // Harita/İşletme listesi ekranı için hafif etiketler (three.js'li houseCatalog'u
@@ -149,6 +190,19 @@ export const BIZ_ITEM_LABELS = {
   cafecounter: { name: 'Kafe Bar Tezgahı', icon: '☕' },
   cafetable: { name: 'Kafe Masası', icon: '☕' },
   menuboard: { name: 'Menü Tahtası', icon: '📋' },
+  // v93 home ofisler
+  seccade: { name: 'Seccade', icon: '🟥' },
+  camiavize: { name: 'Cami Avizesi', icon: '🕯️' },
+  bagiskutusu: { name: 'Bağış Kutusu', icon: '🤲' },
+  ayakkabilik: { name: 'Ayakkabılık', icon: '👞' },
+  cinescreen: { name: 'Sinema Perdesi', icon: '🎬' },
+  cineseat: { name: 'Sinema Koltuğu (çift)', icon: '🍿' },
+  popcorn: { name: 'Patlamış Mısır Makinesi', icon: '🍿' },
+  drinkfridge: { name: 'İçecek Dolabı', icon: '🥤' },
+  studiospk: { name: 'Stüdyo Hoparlörü', icon: '🔈' },
+  booth: { name: 'Vokal Kabini', icon: '🚪' },
+  mixer: { name: 'Mikser Konsolu', icon: '🎛️' },
+  synth: { name: 'Synth Klavye', icon: '🎹' },
 };
 
 // İşletme envanterine girebilen malzemeler (Faz 2: silahçı/modifiye atölyesi)
@@ -158,8 +212,12 @@ export const BIZ_MATERIALS = {
   arabaGelistirme: { name: 'Araba Geliştirme Malzemesi', icon: '🚗' },
 };
 
-export const BIZ_TYPE_KEYS = Object.keys(BIZ_TYPES);
-export const BIZ_BY_REGION = Object.fromEntries(Object.entries(BIZ_TYPES).map(([k, v]) => [v.region, k]));
+// İşletmeler (haritadaki türler) · v93 home ofisler ayrı listelenir
+export const BIZ_TYPE_KEYS = Object.keys(BIZ_TYPES).filter((k) => !BIZ_TYPES[k].ho);
+export const HOME_OFFICE_KEYS = Object.keys(BIZ_TYPES).filter((k) => BIZ_TYPES[k].ho);
+export const ALL_BIZ_KEYS = Object.keys(BIZ_TYPES);
+export const isHomeOffice = (type) => Boolean(BIZ_TYPES[type]?.ho);
+export const BIZ_BY_REGION = Object.fromEntries(BIZ_TYPE_KEYS.map((k) => [BIZ_TYPES[k].region, k]));
 
 // Bir şartı karşılayan en ucuz eşya (işletme aç ekranındaki maliyet için).
 // Altın ve zümrüt farklı para birimi → zümrütlü seçenek her zaman "pahalı"

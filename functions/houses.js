@@ -201,7 +201,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       tx.set(userRef(uid).collection('messages').doc(), {
         from: 'Emlak',
         text: bizIntent
-          ? `Hayırlı olsun! "${name}" artık senin. ${BIZ_TYPES[bizIntent].icon} Gerekli mobilyaları yerleştir, ⚙️ Ayarlar › İşletmeler'den aç.`
+          ? `Hayırlı olsun! "${name}" artık senin. ${BIZ_TYPES[bizIntent].icon} Gerekli mobilyaları yerleştir, ⚙️ Ayarlar › ${BIZ_TYPES[bizIntent].ho ? 'Home Ofisler' : 'İşletmeler'}'den aç.`
           : `Hayırlı olsun! "${name}" artık senin. Haritadan Ev'e tıklayıp evine girebilir, Tasarla ile döşeyebilirsin. 🏠`,
         read: false,
         createdAt: FieldValue.serverTimestamp(),

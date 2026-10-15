@@ -2,10 +2,11 @@ import { lazy, Suspense, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useHouseList } from '../../hooks/useHouseList';
+import { useHomeOfficeList } from '../../hooks/useHomeOfficeList';
 import { houseAction } from '../../services/gameActions';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import { HOUSE_PRICE } from '../../../functions/houseCatalogData.js';
-import { BIZ_TYPES } from '../../../functions/businessCatalogData.js';
+import { BIZ_TYPES, HOME_OFFICE_KEYS } from '../../../functions/businessCatalogData.js';
 import './HouseScreen.css';
 import { useBackClose } from '../../lib/backStack';
 
@@ -46,6 +47,10 @@ export default function HouseHub({ onClose, initialHouseId = null }) {
   const [houseId, setHouseId] = useState(initialHouseId);
   // v73 — evin içindeyken ev listesi dinlenmez (maliyet)
   const list = useHouseList({ enabled: Boolean(user) && !houseId });
+  // v93 — iki sekme: Evler (sadece evler; dükkânlar/home ofisler burada görünmez) · Home Ofisler
+  const [tab, setTab] = useState('evler');
+  const hoList = useHomeOfficeList({ enabled: Boolean(user) && !houseId && tab === 'ho' });
+  const myHouses = list.mine.filter((h) => !h.bizType);
   const [buyOpen, setBuyOpen] = useState(false);
   const [buyName, setBuyName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -112,16 +117,27 @@ export default function HouseHub({ onClose, initialHouseId = null }) {
         {!user && <p className="hs-dim hh-empty">Evlere girmek için giriş yapmalısın.</p>}
         {msg && <p className={msg.ok ? 'hs-ok' : 'hs-err'}>{msg.text}</p>}
 
-        {user && list.mine.length > 0 && (
+        {user && (
+          <div className="hh-tabs" role="tablist">
+            <button role="tab" aria-selected={tab === 'evler'} className={tab === 'evler' ? 'on' : ''} onClick={() => setTab('evler')}>
+              🏠 Evler
+            </button>
+            <button role="tab" aria-selected={tab === 'ho'} className={tab === 'ho' ? 'on' : ''} onClick={() => setTab('ho')}>
+              🏢 Home Ofisler
+            </button>
+          </div>
+        )}
+
+        {user && tab === 'evler' && myHouses.length > 0 && (
           <>
             <div className="hs-list-title">Evlerim</div>
-            {list.mine.map((h) => (
+            {myHouses.map((h) => (
               <HouseRow key={h.id} h={h} onEnter={setHouseId} mineRow />
             ))}
           </>
         )}
 
-        {user && (
+        {user && tab === 'evler' && (
           <>
             <div className="hs-list-title">Girebileceğin Evler</div>
             {list.loading && <p className="hs-dim">Yükleniyor…</p>}
@@ -130,6 +146,19 @@ export default function HouseHub({ onClose, initialHouseId = null }) {
             )}
             {list.enterable.map((h) => (
               <HouseRow key={h.id} h={h} onEnter={setHouseId} />
+            ))}
+          </>
+        )}
+
+        {user && tab === 'ho' && (
+          <>
+            <p className="hs-dim hh-ho-hint">
+              {HOME_OFFICE_KEYS.map((k) => `${BIZ_TYPES[k].icon} ${BIZ_TYPES[k].label}`).join(' · ')} — En kalabalık üstte; boşsa dünün en çok ziyaret edilenleri. Kendi evini ⚙️ Ayarlar › Home Ofisler'den home ofise çevirebilirsin.
+            </p>
+            {hoList.loading && <p className="hs-dim">Yükleniyor…</p>}
+            {!hoList.loading && hoList.list.length === 0 && <p className="hs-dim hh-empty">Henüz açık home ofis yok. İlk sen aç!</p>}
+            {hoList.list.map((h) => (
+              <HouseRow key={h.id} h={h} onEnter={setHouseId} mineRow={h.mine} />
             ))}
           </>
         )}

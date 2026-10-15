@@ -487,7 +487,7 @@ service cloud.firestore {
       allow write: if false;
     }
     match /bizSpend/{docId} {
-      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow read: if isSignedIn() && (resource == null || resource.data.uid == request.auth.uid);
       allow write: if false;
     }
     // v77 Faz 4 — futbolcu profili (güç/mevki herkese görünür) ve salon üyeliği (kendisi)
@@ -495,8 +495,21 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if false;
     }
+    // v93 — müzik stüdyosu şarkı projeleri (sadece sahibi okur; yazma Cloud Functions)
+    match /songProjects/{docId} {
+      allow read: if isSignedIn() && (resource == null || resource.data.uid == request.auth.uid);
+      allow write: if false;
+    }
+    // v93 — Sixtagram şarkı desteği günlük sınırı (bağışçı kendi kaydını okur)
+    match /songTips/{docId} {
+      allow read: if isSignedIn() && (resource == null || resource.data.uid == request.auth.uid);
+      allow write: if false;
+    }
+    match /songPlays/{docId} {
+      allow read, write: if false;
+    }
     match /gymMemberships/{docId} {
-      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow read: if isSignedIn() && (resource == null || resource.data.uid == request.auth.uid);
       allow write: if false;
     }
     // eski (v65) davet kayıtları — sadece okunur/silinir

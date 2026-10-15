@@ -1,0 +1,231 @@
+// =============================================================================
+// homeOffice.js — v93 Home Ofisler + stüdyo şarkı projeleri + Sixtagram şarkıları
+// =============================================================================
+// shopAction üzerinden çağrılır (ayrı fonksiyon yayını gerekmez).
+//
+// MESCİT (biz.type 'mescit')
+//   op 'mescitDonate' { houseId, amount } — bağış kutusu. Bir oyuncu bir mescide
+//   günde en fazla 10.000 altın bağışlar (bizSpend/{houseId}_{uid}_{gün}). %10
+//   vergi düşülür, kalanı mescit sahibine. Sahip kendi mescidine bağış yapamaz.
+//
+// SİNEMA → venue.js menüsü (MENU_TYPES), fiyat 100–1.000, günde 10.000 sınır.
+// MÜZİK STÜDYOSU → venue.js dakika ücreti (netStart/netTick/netLeave, mikser
+//   konsolu tek kişi, 100–400). Şarkı aracı SADECE stüdyoda kullanılır.
+//
+// ŞARKI PROJELERİ (songProjects/{id} = { uid, title, song, createdAtMs, updatedAtMs })
+//   op 'songSave'   { projectId?, song } — stüdyoda aktif (ya da az önce biten)
+//                   mikser oturumu gerekir. Oyuncu başı en fazla 5 proje.
+//   op 'songDelete' { projectId }
+//   7 gün hiç değiştirilmeyen proje silinir (cleanup, saatlik).
+//   Proje hangi stüdyoda yapılırsa yapılsın her stüdyoda açılır.
+//
+// SİXTAGRAM ŞARKILARI
+//   Paylaşım: createSixtagramPost ek { type:'song', projectId } → buildSongAttachment
+//   op 'songPlay' { postId } — dinlenme sayısı; bir hesap bir şarkıya en fazla 5
+//                 (songPlays/{postId}_{uid}).
+//   op 'songTip'  { postId, amount } — destek 10/100/1000; bir oyuncu bir sanatçıya
+//                 günde en fazla 1.000 (songTips/{gün}_{bağışçı}_{sanatçı}). %10 vergi.
+// =============================================================================
+
+import { midnightDayKey } from './businessCatalogData.js';
+import { bizTax, taxOf, taxLedgerWrite } from './tax.js';
+import { goldTag } from './moneyLog.js';
+import { sanitizeSong } from './songData.js';
+import {
+  MESCIT_DAILY_LIMIT,
+  MESCIT_MIN,
+  STUDIO_SAVE_GRACE_MS,
+  SONG_PROJECT_TTL_MS,
+  SONG_PROJECT_MAX,
+  SONG_PLAY_MAX_PER_USER,
+  SONG_TIP_AMOUNTS,
+  SONG_TIP_DAILY,
+  SONG_TIP_TAX_RATE,
+} from './homeOfficeData.js';
+
+const PRESENCE_ACTIVE_MS = 2 * 60 * 1000;
+const isId = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);
+
+// Sixtagram ekini projeden kurar (createSixtagramPost içinden). Proje sahibine ait
+// olmalı ve notası olmalı. Döner: { song } | { error }
+export async function buildSongAttachment(db, uid, attachment) {
+  const projectId = String(attachment?.projectId || '');
+  if (!isId(projectId)) return { error: 'Şarkılar artık müzik stüdyolarında yapılıyor. Stüdyoda projeni açıp oradan paylaş.' };
+  const s = await db.collection('songProjects').doc(projectId).get();
+  if (!s.exists || s.data().uid !== uid) return { error: 'Proje bulunamadı (7 gün dokunulmayan projeler silinir).' };
+  const r = sanitizeSong(s.data().song);
+  if (r.error) return r;
+  return { song: { ...r.song, title: String(s.data().title || r.song.title || '').slice(0, 40) } };
+}
+
+export function createHomeOffice({ db, FieldValue, HttpsError, splitIncomeForDebt, business, now = () => Date.now() }) {
+  const fail = (code, msg) => {
+    throw new HttpsError(code, msg);
+  };
+  const houseRef = (id) => db.collection('houses').doc(id);
+  const userRef = (uid) => db.collection('users').doc(uid);
+  const projRef = (id) => db.collection('songProjects').doc(id);
+
+  async function txPresent(tx, uid, houseId) {
+    const p = await tx.get(db.collection('housePresence').doc(uid));
+    const d = p.exists ? p.data() : null;
+    if (!d || d.houseId !== houseId) return false;
+    const at = d.updatedAt?.toMillis?.() ?? Number(d.updatedAt || 0);
+    return !(at && now() - at > PRESENCE_ACTIVE_MS);
+  }
+
+  // ---- MESCİT ----------------------------------------------------------------------
+  async function mescitDonate(uid, p) {
+    const houseId = String(p.houseId || '');
+    const amount = Number(p.amount);
+    if (!isId(houseId)) fail('invalid-argument', 'Geçersiz mekân.');
+    if (!Number.isInteger(amount) || amount < MESCIT_MIN || amount > MESCIT_DAILY_LIMIT) fail('invalid-argument', 'Geçersiz bağış miktarı.');
+    let result = null;
+    await db.runTransaction(async (tx) => {
+      const hs = await tx.get(houseRef(houseId));
+      if (!hs.exists) fail('not-found', 'Mekân bulunamadı.');
+      const h = hs.data();
+      if (h.biz?.type !== 'mescit') fail('failed-precondition', 'biz-closed');
+      if (!(h.items || []).some((it) => it.k === 'bagiskutusu' && it.p === 1)) fail('failed-precondition', 'Bağış kutusu yok.');
+      if (h.ownerUid === uid) fail('failed-precondition', 'Kendi mescidine bağış yapamazsın.');
+      if (!(await txPresent(tx, uid, houseId))) fail('failed-precondition', 'not-present');
+      const t = now();
+      const dayKey = midnightDayKey(t);
+      const spendRef = db.collection('bizSpend').doc(`${houseId}_${uid}_${dayKey}`);
+      const [us, os, ss] = await Promise.all([tx.get(userRef(uid)), tx.get(userRef(h.ownerUid)), tx.get(spendRef)]);
+      const spent = Number(ss.exists ? ss.data().amount || 0 : 0);
+      if (spent + amount > MESCIT_DAILY_LIMIT) fail('failed-precondition', `limit:${spent}`);
+      if (Number(us.data()?.gold || 0) < amount) fail('failed-precondition', 'gold');
+      const tax = bizTax(amount);
+      tx.update(userRef(uid), { gold: FieldValue.increment(-amount), goldTag: goldTag('mescit') });
+      tx.set(spendRef, { houseId, uid, dayKey, amount: FieldValue.increment(amount), updatedAtMs: t }, { merge: true });
+      if (os.exists) {
+        const { goldDelta, debtDelta } = splitIncomeForDebt(os.data()?.debtToState, amount - tax);
+        tx.update(userRef(h.ownerUid), { gold: FieldValue.increment(goldDelta), debtToState: FieldValue.increment(debtDelta), goldTag: goldTag('isletme') });
+      }
+      business?.recordIncomeTx(tx, { houseId, h, amount, kind: 'bagis', customerUid: uid, products: { bagis: 1 }, tax });
+      result = { ok: true, amount, spent: spent + amount, limit: MESCIT_DAILY_LIMIT };
+    });
+    return result;
+  }
+
+  // ---- ŞARKI PROJELERİ ----------------------------------------------------------------
+  // Aktif (ya da az önce biten) mikser oturumu var mı? Stüdyo sahibi kendi stüdyosunda da oturum açar.
+  async function studioSessionOk(uid, houseId) {
+    if (!isId(houseId)) return false;
+    const [ss, hs] = await Promise.all([db.collection('netSessions').doc(`${houseId}_${uid}`).get(), houseRef(houseId).get()]);
+    if (!hs.exists || hs.data().biz?.type !== 'studyo') return false;
+    const s = ss.exists ? ss.data() : null;
+    if (!s || s.deviceKey !== 'mixer') return false;
+    return Number(s.creditUntilMs || 0) + STUDIO_SAVE_GRACE_MS > now();
+  }
+
+  async function songSave(uid, p) {
+    const houseId = String(p.houseId || '');
+    if (!(await studioSessionOk(uid, houseId))) fail('failed-precondition', 'studio-session');
+    const r = sanitizeSong(p.song, true);
+    if (r.error) fail('invalid-argument', r.error);
+    const title = r.song.title || 'İsimsiz şarkı';
+    const t = now();
+    let projectId = String(p.projectId || '');
+    if (projectId) {
+      if (!isId(projectId)) fail('invalid-argument', 'Geçersiz proje.');
+      const s = await projRef(projectId).get();
+      if (!s.exists || s.data().uid !== uid) projectId = ''; // silinmiş (7 gün) → yeni proje olarak kaydet
+    }
+    if (!projectId) {
+      const mine = await db.collection('songProjects').where('uid', '==', uid).limit(SONG_PROJECT_MAX + 1).get();
+      if (mine.size >= SONG_PROJECT_MAX) fail('resource-exhausted', `project-max:${SONG_PROJECT_MAX}`);
+      const ref = db.collection('songProjects').doc();
+      await ref.set({ uid, title, song: r.song, createdAtMs: t, updatedAtMs: t, studioHouseId: houseId });
+      return { ok: true, projectId: ref.id, created: true, updatedAtMs: t };
+    }
+    await projRef(projectId).update({ title, song: r.song, updatedAtMs: t, studioHouseId: houseId });
+    return { ok: true, projectId, updatedAtMs: t };
+  }
+
+  async function songDelete(uid, p) {
+    const projectId = String(p.projectId || '');
+    if (!isId(projectId)) fail('invalid-argument', 'Geçersiz proje.');
+    const s = await projRef(projectId).get();
+    if (s.exists && s.data().uid === uid) await projRef(projectId).delete();
+    return { ok: true };
+  }
+
+  // ---- SİXTAGRAM: DİNLENME / DESTEK ---------------------------------------------------
+  async function songPlay(uid, p) {
+    const postId = String(p.postId || '');
+    if (!isId(postId)) fail('invalid-argument', 'Geçersiz gönderi.');
+    let result = null;
+    await db.runTransaction(async (tx) => {
+      const postRef = db.collection('sixtagramPosts').doc(postId);
+      const playRef = db.collection('songPlays').doc(`${postId}_${uid}`);
+      const [ps, pl] = await Promise.all([tx.get(postRef), tx.get(playRef)]);
+      if (!ps.exists || ps.data().attachment?.type !== 'song') fail('not-found', 'Şarkı bulunamadı.');
+      const n = Number(pl.exists ? pl.data().n || 0 : 0);
+      const plays = Number(ps.data().plays || 0);
+      if (n >= SONG_PLAY_MAX_PER_USER) {
+        result = { ok: true, counted: false, plays };
+        return;
+      }
+      tx.set(playRef, { postId, uid, n: n + 1, expiresAtMs: Number(ps.data().expiresAtMs || 0) || now() + 7 * 864e5, updatedAtMs: now() });
+      tx.update(postRef, { plays: FieldValue.increment(1) });
+      result = { ok: true, counted: true, plays: plays + 1 };
+    });
+    return result;
+  }
+
+  async function songTip(uid, p) {
+    const postId = String(p.postId || '');
+    const amount = Number(p.amount);
+    if (!isId(postId)) fail('invalid-argument', 'Geçersiz gönderi.');
+    if (!SONG_TIP_AMOUNTS.includes(amount)) fail('invalid-argument', 'Geçersiz destek miktarı.');
+    let result = null;
+    await db.runTransaction(async (tx) => {
+      const postRef = db.collection('sixtagramPosts').doc(postId);
+      const ps = await tx.get(postRef);
+      if (!ps.exists || ps.data().attachment?.type !== 'song') fail('not-found', 'Şarkı bulunamadı.');
+      const artist = ps.data().uid;
+      if (!artist || artist === uid) fail('failed-precondition', 'Kendi şarkına destek veremezsin.');
+      const t = now();
+      const dayKey = midnightDayKey(t);
+      const tipRef = db.collection('songTips').doc(`${dayKey}_${uid}_${artist}`);
+      const [us, as, ts] = await Promise.all([tx.get(userRef(uid)), tx.get(userRef(artist)), tx.get(tipRef)]);
+      const given = Number(ts.exists ? ts.data().amount || 0 : 0);
+      if (given + amount > SONG_TIP_DAILY) fail('failed-precondition', `tip-limit:${given}`);
+      if (Number(us.data()?.gold || 0) < amount) fail('failed-precondition', 'gold');
+      if (!as.exists) fail('not-found', 'Sanatçı bulunamadı.');
+      const tax = taxOf(amount, SONG_TIP_TAX_RATE);
+      tx.update(userRef(uid), { gold: FieldValue.increment(-amount), goldTag: goldTag('sanatciDestek') });
+      const { goldDelta, debtDelta } = splitIncomeForDebt(as.data()?.debtToState, amount - tax);
+      tx.update(userRef(artist), { gold: FieldValue.increment(goldDelta), debtToState: FieldValue.increment(debtDelta), goldTag: goldTag('sanatci') });
+      taxLedgerWrite(tx, db, FieldValue, { amount: tax, source: 'sanatci', uid: artist, atMs: t, ref: postId });
+      tx.set(tipRef, { dayKey, uid, artist, amount: FieldValue.increment(amount), updatedAtMs: t }, { merge: true });
+      tx.update(postRef, { tips: FieldValue.increment(amount), tipCount: FieldValue.increment(1) });
+      tx.set(userRef(artist).collection('messages').doc(), {
+        text: `🎵 ${String(us.data()?.displayName || 'Bir dinleyici').slice(0, 30)} "${String(ps.data().attachment?.title || 'şarkın').slice(0, 40)}" şarkına ${amount.toLocaleString('tr-TR')} altın destek verdi.`,
+        createdAt: FieldValue.serverTimestamp(),
+        read: false,
+        type: 'song_tip',
+      });
+      result = { ok: true, amount, given: given + amount, limit: SONG_TIP_DAILY };
+    });
+    return result;
+  }
+
+  // Saatlik bakım: 7 gündür değişmeyen projeler + eski sayaç kayıtları
+  async function cleanup() {
+    const t = now();
+    const old = await db.collection('songProjects').where('updatedAtMs', '<', t - SONG_PROJECT_TTL_MS).limit(300).get();
+    const plays = await db.collection('songPlays').where('expiresAtMs', '<', t).limit(300).get();
+    const today = midnightDayKey(t);
+    const tips = await db.collection('songTips').where('dayKey', '<', today).limit(300).get();
+    const batch = db.batch();
+    [...old.docs, ...plays.docs, ...tips.docs].forEach((d) => batch.delete(d.ref));
+    if (old.size || plays.size || tips.size) await batch.commit();
+    return { projects: old.size, plays: plays.size, tips: tips.size };
+  }
+
+  const ops = { mescitDonate, songSave, songDelete, songPlay, songTip };
+  return { ops, cleanup, studioSessionOk };
+}

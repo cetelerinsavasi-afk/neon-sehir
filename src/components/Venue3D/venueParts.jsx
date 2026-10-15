@@ -7,6 +7,7 @@ import { useMosqueAttendance } from '../../hooks/useMosqueAttendance';
 import { useBeggars } from '../../hooks/useBeggars';
 import { useDailyActions } from '../../hooks/useDailyActions';
 import { useInventory } from '../../hooks/useInventory';
+import { usePlayer } from '../../hooks/usePlayer';
 import { prayAtMosque, buyFromGazinoBar, leaveOnNumaraTable, buyFromBufe, sellContrabandAtPark } from '../../services/gameActions';
 import SimpleActionScreen from '../SimpleActionScreen/SimpleActionScreen';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
@@ -56,6 +57,17 @@ function Sheet({ title, onClose, children, closeLabel = 'Uzaklaş' }) {
 function Menu({ show, children }) {
   if (!show) return null;
   return <div className="v3-menu">{children}</div>;
+}
+
+// v93 — camii ve parkta şüphe göstergesi
+function SuspicionBadge() {
+  const { player } = usePlayer();
+  const v = Math.max(0, Math.round(Number(player?.suspicion) || 0));
+  return (
+    <span className={`v3-badge v3-sus${v >= 50 ? ' hi' : v >= 20 ? ' mid' : ''}`}>
+      🕵️ Şüphe <b>%{v}</b>
+    </span>
+  );
 }
 
 function HeistBtn({ onOpenHeist, target }) {
@@ -134,6 +146,7 @@ export function CamiiPart({ panel, setPanel, setDynNpcs, walk }) {
   return (
     <>
       <Menu show={walk}>
+        <SuspicionBadge />
         <button className="v3-btn" onClick={() => setPanel('imam')}>
           {imam ? `🕌 İmam: ${imam.displayName}` : '🕌 İmamlık Başvurusu'}
         </button>
@@ -441,7 +454,7 @@ const BUFE_MENU = [
   { id: 'latte', label: 'Latte', price: 500 },
 ];
 const PARK_SELL_PRICE = 5000;
-export function ParkPart({ panel, setPanel, flash }) {
+export function ParkPart({ panel, setPanel, flash, walk }) {
   const { inventory } = useInventory();
   const qty = inventory?.yasakliMadde || 0;
   const [busy, setBusy] = useState(null);
@@ -474,6 +487,9 @@ export function ParkPart({ panel, setPanel, flash }) {
   };
   return (
     <>
+      <Menu show={walk}>
+        <SuspicionBadge />
+      </Menu>
       {panel === 'bufe' && (
         <Sheet title="🌭 Büfe" onClose={() => setPanel(null)} closeLabel="Kapat">
           <div className="v3-menu-grid">

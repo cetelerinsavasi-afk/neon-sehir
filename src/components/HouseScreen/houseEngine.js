@@ -1307,6 +1307,8 @@ export function createHouseEngine(
   let gymTask = null;
   // v92 Faz 8 — oyunun 3D mekânı: eşya kimliği → [{ act, label }] istasyonlar
   let venueActs = null;
+  // v93 — home ofis: eşya türüne göre ek eylem ({ anahtar: [{ act, label }] }) — bağış kutusu, mikser…
+  let bizActs = null;
   function actionsFor(e) {
     if (venueActs) {
       // mekânda eşyadan ücretsiz ürün / market arabası yok; istasyon butonları var
@@ -1320,6 +1322,7 @@ export function createHouseEngine(
     const def = CATALOG_MAP[e.data.k];
     const ctl = e.obj.userData.ctl;
     const acts = [];
+    if (bizActs?.[e.data.k] && e.data.p === 1) bizActs[e.data.k].forEach((a) => acts.push({ kind: 'ho', act: a.act, label: a.label, itemId: e.data.i }));
     if (def.seats?.length) acts.push({ kind: 'sit', label: def.stand ? '🚿 Duş al' : def.seatLabel || (def.cat === 'araba' ? '🚗 Arabaya bin' : def.cat === 'motor' ? '🏍️ Motora bin' : '🪑 Otur') });
     // v92 — market arabası: al ve it; araba elindeyken raftaki ürünler arabaya gider
     if (def.panel === 'cart' && !self.cart) acts.push({ kind: 'cart', label: '🛒 Arabayı al' });
@@ -1712,11 +1715,10 @@ export function createHouseEngine(
     if (best) walkTo(best.x, best.z);
   }
   function handleWalkTap(e) {
+    // v93: oyuncuya dokunmak profil açmaz (yürümeyi zorlaştırıyordu) — sadece
+    // onPlayerTap true dönerse (ör. mekân NPC'si) dokunuş tüketilir, yoksa zemine yürünür.
     const pu = pickPlayer(e);
-    if (pu) {
-      onPlayerTap?.(pu);
-      return;
-    }
+    if (pu && onPlayerTap?.(pu)) return;
     const id = pickItem(e);
     if (id && !CATALOG_MAP[objs.get(id)?.data.k]?.flat) {
       // v80: sadece KULLANILABİLEN eşyaya (oturulan, oynanan, alınan…) ya da
@@ -2590,6 +2592,11 @@ export function createHouseEngine(
       venueActs = map && typeof map === 'object' ? map : null;
       lastInteractKey = null;
     },
+    // v93: home ofis eşya eylemleri (null = yok)
+    setBizActs(map) {
+      bizActs = map && typeof map === 'object' ? map : null;
+      lastInteractKey = null;
+    },
     // v77: spor salonunda aktif görev aleti (null = yok)
     setGymTask(k) {
       gymTask = k || null;
@@ -2815,6 +2822,23 @@ export function createHouseEngine(
       }
     },
     // v80 — yayıncının başında "🔴 CANLI · 👁 n" rozeti
+    // v93 — "🎵 Müzik yapıyor" gibi etkinlik etiketi (null = kaldır)
+    setActivityBadge(uid, text) {
+      const fig = uid === selfUid ? self.fig : others.get(uid)?.fig;
+      if (!fig?.label) return;
+      let b = fig.label.querySelector('.hs-act-badge');
+      if (!text) {
+        b?.remove();
+        return;
+      }
+      if (!b) {
+        b = document.createElement('span');
+        b.className = 'hs-act-badge';
+        if (fig.nameEl && fig.nameEl.parentNode === fig.label) fig.label.insertBefore(b, fig.nameEl);
+        else fig.label.prepend(b);
+      }
+      if (b.textContent !== text) b.textContent = text;
+    },
     setLiveBadge(uid, text) {
       const fig = uid === selfUid ? self.fig : others.get(uid)?.fig;
       if (!fig?.label) return;

@@ -544,3 +544,67 @@
   background: #4fe3b3;
   transition: width 0.15s linear;
 }
+
+/* v93 — şarkı kartı: dinlenme · destek · MP3 */
+.sv-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.sv-plays {
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.8;
+}
+.sv-sp {
+  flex: 1;
+}
+.sv-btn {
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font-size: 12px;
+  font-weight: 800;
+}
+.sv-btn.tip {
+  border-color: rgba(255, 207, 90, 0.7);
+  color: #ffe08a;
+}
+.sv-btn.tip.on {
+  background: rgba(255, 207, 90, 0.16);
+}
+.sv-btn:disabled {
+  opacity: 0.6;
+}
+.sv-tips {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.sv-tip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 9px 4px;
+  border-radius: 12px;
+  border: 1px solid rgba(212, 175, 55, 0.6);
+  background: rgba(212, 175, 55, 0.12);
+  color: #ffe9a8;
+  font-weight: 800;
+  font-size: 14px;
+}
+.sv-tip:disabled {
+  opacity: 0.55;
+}
+.sv-msg {
+  margin: 0;
+  font-size: 12px;
+  color: #ff8a9a;
+}
+.sv-msg.ok {
+  color: #3df58a;
+}

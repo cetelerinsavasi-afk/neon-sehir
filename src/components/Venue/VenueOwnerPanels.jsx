@@ -6,7 +6,7 @@ import { BIZ_TAX_RATE } from '../../../functions/tax.js';
 import HeldIcon from '../HouseScreen/HeldIcon';
 import { bizErrText } from '../../lib/bizErrors';
 import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
-import { menuOf, menuPriceOf, MENU_PRICE, NET_MINUTE, NET_DEVICE_CAP, netPriceOf } from '../../../functions/venue.js';
+import { menuOf, menuPriceOf, menuBand, minuteBand, NET_DEVICE_CAP, netPriceOf } from '../../../functions/venue.js';
 import { BIZ_ITEM_LABELS } from '../../../functions/businessCatalogData.js';
 import '../../styles/bizui.css';
 import '../Shop/Shop.css';
@@ -32,9 +32,10 @@ export function MenuPriceSection({ houseId, houseDoc }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [houseDoc?.bizPricesAtMs, products.join(',')]);
   const dirty = products.some((k) => draft[k] !== undefined && draft[k] !== menuPriceOf(houseDoc, k));
+  const MENU_PRICE = menuBand(houseDoc?.biz?.type); // v93: sinema 100–1.000
   return (
     <div className="bz-sec">
-      <p className="bz-sec-title">🍽️ Menü fiyatları</p>
+      <p className="bz-sec-title">{houseDoc?.biz?.type === 'sinema' ? '🍿 Büfe fiyatları' : '🍽️ Menü fiyatları'}</p>
       {!products.length && <p className="bz-note">Menüde ürün yok.</p>}
       {products.map((k) => (
         <PriceField
@@ -108,13 +109,15 @@ export function MenuInvSection({ houseDoc }) {
 // ---- İnternet kafe: dakika ücreti ---------------------------------------------------
 export function NetPriceSection({ houseId, houseDoc }) {
   const cur = netPriceOf(houseDoc);
+  const studio = houseDoc?.biz?.type === 'studyo'; // v93: müzik stüdyosu (mikser konsolu) 100–400
+  const NET_MINUTE = minuteBand(houseDoc?.biz?.type);
   const [v, setV] = useState(cur);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   useEffect(() => setV(cur), [cur]);
   return (
     <div className="bz-sec">
-      <p className="bz-sec-title">🖥️ Dakika ücreti</p>
+      <p className="bz-sec-title">{studio ? '🎛️ Mikser konsolu dakika ücreti' : '🖥️ Dakika ücreti'}</p>
       <PriceField
         label="Dakika ücreti"
         min={NET_MINUTE.min}
@@ -145,7 +148,7 @@ export function NetPriceSection({ houseId, houseDoc }) {
         }}
       />
       {msg && <p className={msg.ok ? 'bz-ok' : 'bz-warn'}>{msg.text}</p>}
-      <StreamSetPriceSection houseId={houseId} houseDoc={houseDoc} />
+      {!studio && <StreamSetPriceSection houseId={houseId} houseDoc={houseDoc} />}
     </div>
   );
 }

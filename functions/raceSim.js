@@ -423,11 +423,11 @@ export function simulateBot(catalogId, level = 1, skill = 0.9, every = 0) {
   return { frames: S.f, ms: framesToMs(S.f), done: S.done, hits: S.hits, samples };
 }
 
-// Antrenman seviyesi N → bot N. galeri aracıyla (seviye 1). İlk seviyelerde
+// Antrenman seviyesi N → bot N. galeri aracıyla (v93: araç seviyesi 3). İlk seviyelerde
 // bot biraz daha yavaş sürer (yeni oyuncu öğrensin), 10. seviyede en iyisi.
 export function trainingBot(level) {
   const lv = Math.max(1, Math.min(10, Math.round(Number(level) || 1)));
-  return { catalogId: lv, level: 1, skill: 0.82 + 0.008 * (lv - 1) };
+  return { catalogId: lv, level: 3, skill: 0.82 + 0.008 * (lv - 1) };
 }
 const botCache = new Map();
 export function trainingBotRun(level, every = 0) {

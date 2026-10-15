@@ -10,6 +10,7 @@ import {
   checkBizRequirements,
   bizMissing,
 } from '../../../functions/businessCatalogData.js';
+import { MESCIT_DAILY_LIMIT } from '../../../functions/homeOfficeData.js';
 import HoldButton from '../HoldButton/HoldButton';
 import BizRequirements, { FillConfirm } from './BizRequirements';
 import { ShopPriceSection, ShopInvSection } from '../Shop/ShopOwnerPanels';
@@ -39,12 +40,16 @@ const BIZ_BLURB = {
   internet: 'Dakika ücretiyle oyun cihazı kirala.',
   bar: 'Menündeki içecekleri sat; sahneye piyano koy.',
   cafe: 'Menündeki yiyecek ve içecekleri sat.',
+  // v93 home ofisler
+  mescit: 'Bağış kutusu açılır; ziyaretçiler bağış yapar (kişi başı günde 10.000).',
+  sinema: 'Giriş ücretsiz; içecek ve patlamış mısır ücretli (100–1.000).',
+  studyo: 'Mikser konsolunda dakika ücretiyle müzik yapılır (100–400/dk).',
 };
 
-export function BizListPanel({ items, invItems, houseDoc, busy, gold = 0, gem = 0, onOpenBiz, onCloseBiz, onFillMissing, onClose, flashType }) {
+export function BizListPanel({ keys = BIZ_TYPE_KEYS, title = '🏪 İşletmeler', items, invItems, houseDoc, busy, gold = 0, gem = 0, onOpenBiz, onCloseBiz, onFillMissing, onClose, flashType }) {
   const open = houseDoc?.biz?.type || null;
   const intent = houseDoc?.bizIntent || null;
-  const order = [...BIZ_TYPE_KEYS].sort((a, b) => {
+  const order = [...keys].sort((a, b) => {
     const w = (k) => (k === open ? 0 : k === intent ? 1 : 2);
     return w(a) - w(b);
   });
@@ -54,7 +59,7 @@ export function BizListPanel({ items, invItems, houseDoc, busy, gold = 0, gem = 
     <div className="hs-modal-bg" onClick={() => !busy && onClose()}>
       <div className="hs-modal hb-list" onClick={(e) => e.stopPropagation()}>
         <div className="hs-modal-head">
-          <b>🏪 İşletmeler</b>
+          <b>{title}</b>
           <button className="hs-x" onClick={onClose}>
             ✕
           </button>
@@ -92,7 +97,7 @@ export function BizListPanel({ items, invItems, houseDoc, busy, gold = 0, gem = 
                 {isExp && (
                   <div className="hb-row2-body">
                     <BizRequirements type={type} placedItems={items} invItems={invItems} />
-                    {blocked && <p className="bz-note">Önce {BIZ_TYPES[open].label} kapanmalı.</p>}
+                    {blocked && <p className="bz-note">Önce {BIZ_TYPES[open].label} kapanmalı (bir ev aynı anda tek işletme / home ofis olabilir).</p>}
                     {isOpen ? (
                       <HoldButton className="bz-btn danger wide" disabled={busy} ms={1300} onDone={onCloseBiz}>
                         ✋ Basılı tut: işletmeyi kapat
@@ -153,6 +158,16 @@ function useBizDaily(houseId, type) {
   return { today, yesterday, todayKey };
 }
 
+// v93 — mescitte fiyat yok: bağış kuralları
+function MescitInfoSection() {
+  return (
+    <div className="bz-sec">
+      <p className="bz-sec-title">🤲 Bağış kutusu</p>
+      <p className="bz-hint">Ziyaretçiler bağış kutusuna yaklaşıp bağış yapar. Bir oyuncu mescidine günde en fazla {fmt(MESCIT_DAILY_LIMIT)} altın bağışlayabilir. Bağışların %10'u vergi olarak kesilir, kalanı sana gelir. Kendi mescidine bağış yapamazsın.</p>
+    </div>
+  );
+}
+
 // Türe göre Fiyatlar / Envanter sekmesi içerikleri (Faz 2: silahçı/modifiye/galeri;
 // Faz 3-4: cafe/bar/internet/spor)
 const BIZ_PRICE_SECTIONS = {
@@ -163,6 +178,10 @@ const BIZ_PRICE_SECTIONS = {
   bar: MenuPriceSection,
   internet: NetPriceSection,
   spor: GymPriceSection,
+  // v93 home ofisler
+  sinema: MenuPriceSection,
+  studyo: NetPriceSection,
+  mescit: MescitInfoSection,
 };
 const BIZ_INV_SECTIONS = {
   silahci: ShopInvSection,
@@ -172,9 +191,10 @@ const BIZ_INV_SECTIONS = {
   bar: MenuInvSection,
   internet: NetInvSection,
   spor: GymInvSection,
+  sinema: MenuInvSection,
 };
 
-const KIND = { service: 'Hizmet / üyelik', sale: 'Ürün satışı', material: 'Malzeme satışı', labor: 'İşçilik', menu: 'Menü satışı', team: 'Takım antrenmanı' };
+const KIND = { service: 'Hizmet / üyelik', sale: 'Ürün satışı', material: 'Malzeme satışı', labor: 'İşçilik', menu: 'Menü satışı', team: 'Takım antrenmanı', bagis: 'Bağış' };
 
 function ReportCard({ label, d, type }) {
   const customers = d ? (Number.isFinite(d.customers) ? d.customers : Object.keys(d.cust || {}).length) : 0;
@@ -274,11 +294,13 @@ export function BizSettings({ houseId, houseDoc }) {
       </div>
       <div className="bz-tabs">
         <button className={tab === 'prices' ? 'on' : ''} onClick={() => setTab('prices')}>
-          💲 Fiyatlar
+          {type === 'mescit' ? '🤲 Bağış' : '💲 Fiyatlar'}
         </button>
-        <button className={tab === 'inv' ? 'on' : ''} onClick={() => setTab('inv')}>
-          📦 Envanter
-        </button>
+        {InvSection && (
+          <button className={tab === 'inv' ? 'on' : ''} onClick={() => setTab('inv')}>
+            📦 Envanter
+          </button>
+        )}
         <button className={tab === 'report' ? 'on' : ''} onClick={() => setTab('report')}>
           📊 Rapor
         </button>

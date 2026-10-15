@@ -95,7 +95,8 @@ export function songHasNotes(s) {
 }
 
 // Gelen şarkıyı doğrular/temizler. Geçersizse { error } döner.
-export function sanitizeSong(raw) {
+// v93: allowEmpty → stüdyo projesi taslağı (henüz notası olmayan proje de kaydedilir)
+export function sanitizeSong(raw, allowEmpty = false) {
   const d = raw && typeof raw === 'object' ? raw : {};
   if (!isInt(d.bpm, SONG_BPM.min, SONG_BPM.max)) return { error: 'Geçersiz tempo.' };
   if (!Object.prototype.hasOwnProperty.call(SONG_KITS, d.kit)) return { error: 'Geçersiz davul seti.' };
@@ -144,7 +145,10 @@ export function sanitizeSong(raw) {
     pats,
     song: [...d.song],
   };
-  if (!songHasNotes(out)) return { error: 'Boş şarkı paylaşılamaz — önce birkaç kutu doldur.' };
+  if (!songHasNotes(out)) {
+    if (allowEmpty) return { song: out };
+    return { error: 'Boş şarkı paylaşılamaz — önce birkaç kutu doldur.' };
+  }
   if (out.mode === 'song' && !out.song.some((v) => v >= 0)) out.mode = 'pattern';
   // bölüm modunda seçili bölüm boşsa ilk dolu bölüm çalar
   const has = (p) => p.d.some(Boolean) || p.t.some((rows) => rows.some(Boolean));

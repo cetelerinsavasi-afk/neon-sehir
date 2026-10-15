@@ -31,9 +31,14 @@ import { HOUSE_TAKEABLES, HOUSE_PRODUCTS } from './houseCatalogData.js';
 import { midnightDayKey } from './businessCatalogData.js';
 import { bizTax } from './tax.js';
 import { goldTag } from './moneyLog.js';
+import { CINEMA_PRICE, STUDIO_MINUTE, STUDIO_DEVICE_CAP } from './homeOfficeData.js';
 
-export const MENU_TYPES = ['cafe', 'bar'];
+// v93: sinema (home ofis) da menülü mekân — içecek dolabı / patlamış mısır ücretli.
+// Garson sadece cafe/bar'da.
+export const MENU_TYPES = ['cafe', 'bar', 'sinema'];
+export const WAITER_TYPES = ['cafe', 'bar'];
 export const MENU_PRICE = { def: 100, min: 10, max: 1000 };
+export const menuBand = (type) => (type === 'sinema' ? CINEMA_PRICE : MENU_PRICE);
 export const MENU_DAILY_LIMIT = 10_000;
 export const WEAPON_PRODUCTS = ['tabanca', 'tufek', 'pompali', 'altinTabanca'];
 export const isMenuProduct = (k) => Boolean(HOUSE_PRODUCTS[k]) && !WEAPON_PRODUCTS.includes(k);
@@ -50,17 +55,24 @@ export function menuOf(items) {
   return out;
 }
 export function menuPriceOf(h, product) {
+  const band = menuBand(h?.biz?.type);
   const v = Number(h?.bizPrices?.menu?.[product]);
-  return Number.isInteger(v) && v >= MENU_PRICE.min && v <= MENU_PRICE.max ? v : MENU_PRICE.def;
+  return Number.isInteger(v) && v >= band.min && v <= band.max ? v : band.def;
 }
 
-export const NET_MINUTE = { def: 100, min: 50, max: 500 };
+export const NET_MINUTE = { def: 100, min: 50, max: 200 }; // v93: tavan 500 → 200
 export const NET_SLOT_MS = 60_000;
 export const NET_DEVICE_CAP = { pcstation: 2, console: 2, pc: 1, arcade: 1 };
 export const NET_SEEN_MS = 45_000; // cihazda oturan sayılmak için son nabız
+// v93: müzik stüdyosu da dakika ücretli (mikser konsolu, tek kişi)
+export const NET_TYPES = ['internet', 'studyo'];
+export const minuteBand = (type) => (type === 'studyo' ? STUDIO_MINUTE : NET_MINUTE);
+export const deviceCapOf = (type, key) => (type === 'studyo' ? STUDIO_DEVICE_CAP[key] : NET_DEVICE_CAP[key]) || 0;
 export function netPriceOf(h) {
+  const band = minuteBand(h?.biz?.type);
   const v = Number(h?.bizPrices?.minute);
-  return Number.isInteger(v) && v >= NET_MINUTE.min && v <= NET_MINUTE.max ? v : NET_MINUTE.def;
+  // v93: eski (yeni tavanın üstündeki) fiyatlar aralığa çekilir
+  return Number.isInteger(v) && v > 0 ? Math.min(band.max, Math.max(band.min, v)) : band.def;
 }
 
 const HELD_MS = 120_000;
@@ -111,10 +123,11 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
       const h = await txHouse(tx, houseId, MENU_TYPES);
       if (h.ownerUid !== uid) fail('permission-denied', 'Bu mekân senin değil.');
       const out = { ...(h.bizPrices?.menu || {}) };
+      const band = menuBand(h.biz.type);
       for (const [k, v] of Object.entries(input)) {
         if (!isMenuProduct(k)) fail('invalid-argument', 'Geçersiz ürün.');
         const n = Number(v);
-        if (!Number.isInteger(n) || n < MENU_PRICE.min || n > MENU_PRICE.max) fail('invalid-argument', `price-band:${k}`);
+        if (!Number.isInteger(n) || n < band.min || n > band.max) fail('invalid-argument', `price-band:${k}`);
         out[k] = n;
       }
       tx.update(houseRef(houseId), { 'bizPrices.menu': out, bizPricesAtMs: now() });
@@ -140,7 +153,7 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
       const dayKey = midnightDayKey(t);
       const spendRef = db.collection('bizSpend').doc(`${houseId}_${uid}_${dayKey}`);
       // v92 — mekânda (içeride olan) bir garson varsa sipariş garsona gider
-      const ws = isOwner ? null : await tx.get(waiterRef(houseId));
+      const ws = isOwner || !WAITER_TYPES.includes(h.biz.type) ? null : await tx.get(waiterRef(houseId));
       const waiter = ws?.exists ? ws.data() : null;
       const waiterHere = waiter && waiter.uid !== uid ? await txPresence(tx, waiter.uid, houseId) : null;
       const [us, os, ss] = await Promise.all([tx.get(userRef(uid)), isOwner ? null : tx.get(userRef(h.ownerUid)), isOwner ? null : tx.get(spendRef)]);
@@ -148,7 +161,7 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
       if (!isOwner) {
         if (spent + price > MENU_DAILY_LIMIT) fail('failed-precondition', `limit:${spent}`);
         if (Number(us.data()?.gold || 0) < price) fail('failed-precondition', 'gold');
-        tx.update(userRef(uid), { gold: FieldValue.increment(-price), goldTag: goldTag('menu') });
+        tx.update(userRef(uid), { gold: FieldValue.increment(-price), goldTag: goldTag(h.biz.type === 'sinema' ? 'sinema' : 'menu') });
         tx.set(spendRef, { houseId, uid, dayKey, amount: FieldValue.increment(price), updatedAtMs: t }, { merge: true });
       }
       if (waiter && !waiterHere && waiter.uid !== uid) tx.delete(waiterRef(houseId)); // garson mekândan çıkmış → görev düşer
@@ -197,7 +210,7 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
     const houseId = String(p.houseId || '');
     let result = null;
     await db.runTransaction(async (tx) => {
-      await txHouse(tx, houseId, MENU_TYPES);
+      await txHouse(tx, houseId, WAITER_TYPES);
       const presRef = await txPresence(tx, uid, houseId);
       if (!presRef) fail('failed-precondition', 'not-present');
       const ws = await tx.get(waiterRef(houseId));
@@ -319,9 +332,10 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
   async function netPrice(uid, p) {
     const houseId = String(p.houseId || '');
     const price = Number(p.price);
-    if (!Number.isInteger(price) || price < NET_MINUTE.min || price > NET_MINUTE.max) fail('invalid-argument', 'price-band:minute');
     await db.runTransaction(async (tx) => {
-      const h = await txHouse(tx, houseId, ['internet']);
+      const h = await txHouse(tx, houseId, NET_TYPES);
+      const band = minuteBand(h.biz.type);
+      if (!Number.isInteger(price) || price < band.min || price > band.max) fail('invalid-argument', 'price-band:minute');
       if (h.ownerUid !== uid) fail('permission-denied', 'Bu mekân senin değil.');
       tx.update(houseRef(houseId), { 'bizPrices.minute': price, bizPricesAtMs: now() });
     });
@@ -344,7 +358,7 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
     const from = Math.max(t, Number(sess?.creditUntilMs || 0));
     const creditUntilMs = from + NET_SLOT_MS;
     if (h.ownerUid !== uid && !free) {
-      tx.update(userRef(uid), { gold: FieldValue.increment(-price), goldTag: goldTag('internet') });
+      tx.update(userRef(uid), { gold: FieldValue.increment(-price), goldTag: goldTag(h.biz?.type === 'studyo' ? 'studyo' : 'internet') });
       payOwnerTx(tx, os, h.ownerUid, price - bizTax(price)); // v77 vergi %10
       business?.recordIncomeTx(tx, { houseId, h, amount: price, kind: 'service', customerUid: uid, products: { dakika: 1 }, tax: bizTax(price) });
     }
@@ -360,18 +374,19 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
     const deviceId = String(p.itemId || '');
     let result = null;
     await db.runTransaction(async (tx) => {
-      const h = await txHouse(tx, houseId, ['internet']);
+      const h = await txHouse(tx, houseId, NET_TYPES);
       const dev = (h.items || []).find((it) => it.i === deviceId && it.p === 1);
-      if (!dev || !NET_DEVICE_CAP[dev.k]) fail('invalid-argument', 'Cihaz bulunamadı.');
+      const cap = dev ? deviceCapOf(h.biz.type, dev.k) : 0;
+      if (!cap) fail('invalid-argument', 'Cihaz bulunamadı.');
       if (!(await txPresence(tx, uid, houseId))) fail('failed-precondition', 'not-present');
       const t = now();
       const occ = await tx.get(db.collection('netSessions').where('houseId', '==', houseId).where('deviceId', '==', deviceId));
       const others = occ.docs.filter((d) => d.data().uid !== uid && t - Number(d.data().lastSeenMs || 0) < NET_SEEN_MS).length;
-      if (others >= NET_DEVICE_CAP[dev.k]) fail('failed-precondition', 'device-full');
+      if (others >= cap) fail('failed-precondition', 'device-full');
       const ref = sessRef(houseId, uid);
       const [ss, us, os] = await Promise.all([tx.get(ref), tx.get(userRef(uid)), tx.get(userRef(h.ownerUid))]);
       const sess = ss.exists ? ss.data() : null;
-      const streaming = h.ownerUid !== uid && (await txStreamingHere(tx, us, houseId, t));
+      const streaming = h.ownerUid !== uid && h.biz.type === 'internet' && (await txStreamingHere(tx, us, houseId, t));
       const isOwner = h.ownerUid === uid || streaming;
       let creditUntilMs = Number(sess?.creditUntilMs || 0);
       let charged = 0;
@@ -396,7 +411,7 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
     const houseId = String(p.houseId || '');
     let result = null;
     await db.runTransaction(async (tx) => {
-      const h = await txHouse(tx, houseId, ['internet']);
+      const h = await txHouse(tx, houseId, NET_TYPES);
       const ref = sessRef(houseId, uid);
       const ss = await tx.get(ref);
       const sess = ss.exists ? ss.data() : null;
@@ -416,7 +431,7 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
       let charged = 0;
       const price = devicePriceOf(h, sess.deviceId);
       if (creditUntilMs - t <= 3000) {
-        const streaming = h.ownerUid !== uid && (await txStreamingHere(tx, us, houseId, t));
+        const streaming = h.ownerUid !== uid && h.biz.type === 'internet' && (await txStreamingHere(tx, us, houseId, t));
         const isOwner = h.ownerUid === uid || streaming;
         if (!isOwner && Number(us.data()?.gold || 0) < price) {
           tx.update(ref, { deviceId: null, lastSeenMs: t, updatedAtMs: t });

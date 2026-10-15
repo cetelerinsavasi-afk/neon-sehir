@@ -131,21 +131,22 @@ test('internet kafe: ilk 60 sn ödenir, kredi mekâna bağlı (cihaz değişince
   const t1 = await h.act('ali', { op: 'netTick', houseId: id });
   assert.equal(t1.charged, 0);
   // sahip fiyatı değiştirir → ödenmiş kredi eski fiyatla biter, sonraki dakika yeni fiyat
-  await h.act('sahip', { op: 'netPrice', houseId: id, price: 300 });
+  await h.act('sahip', { op: 'netPrice', houseId: id, price: 150 });
+  await assert.rejects(h.act('sahip', { op: 'netPrice', houseId: id, price: 250 }), /price-band/);
   h.clock.now += 39_000;
   h.present('ali', id);
   const t2 = await h.act('ali', { op: 'netTick', houseId: id });
-  assert.equal(t2.charged, 300);
-  assert.equal(h.G('users/ali').gold, 49_500);
+  assert.equal(t2.charged, 150);
+  assert.equal(h.G('users/ali').gold, 49_650);
   // kalktı (netLeave) → süre bitince çekilmez; mekândan çıkıp gelince kalan kredi devam
   await h.act('ali', { op: 'netLeave', houseId: id });
   h.clock.now += 120_000;
   h.present('ali', id);
   const t3 = await h.act('ali', { op: 'netTick', houseId: id });
   assert.equal(t3.stopped, 'none');
-  assert.equal(h.G('users/ali').gold, 49_500);
+  assert.equal(h.G('users/ali').gold, 49_650);
   // rapor
-  assert.equal(h.G(`businessDaily/${id}_2026-10-07`).byKind.service, 500);
+  assert.equal(h.G(`businessDaily/${id}_2026-10-07`).byKind.service, 350);
 });
 
 test('internet kafe: kapasite (istasyon 2, bilgisayar 1), altın bitince oturum biter, kredi varken mobilya kilitli', async () => {

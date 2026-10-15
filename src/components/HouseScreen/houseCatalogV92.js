@@ -1213,7 +1213,7 @@ I('streamdesk', 'yayin', 'Yayıncı Masası', '🖥️', (g) => {
   arm.rotation.z = 0.4;
   Sp(g, 0.06, '#2b2d33', 0.62, 1.22, -0.05);
   return { tick(t) { led.emissive.setHSL((t * 0.1) % 1, 1, 0.55); }, light: { x: 0, y: 1.2, z: 0.4, color: '#b45cff', intensity: 1, distance: 3 }, on: true, setOn() {}, noToggle: true };
-}, { box: [0.95, 0.4] });
+}, { box: [0.95, 0.4], venueOnly: true }); // v93: mağazadan kaldırıldı (yayın: Oyuncu Bilgisayarı); eldekiler çalışır
 
 // ── Mafya
 // Patron Masası: renk seçenekleri (masa ahşabı + sandalye döşemesi + lamba)

@@ -104,7 +104,7 @@ export default function PostCard({ post, liked, isOwn }) {
       </div>
 
       {post.text && <p className="six-post-text">{post.text}</p>}
-      <PostAttachment attachment={post.attachment} />
+      <PostAttachment attachment={post.attachment} post={post} />
 
       <div className="six-post-actions">
         {isOwn ? (

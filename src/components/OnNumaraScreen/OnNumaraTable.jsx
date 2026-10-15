@@ -19,26 +19,30 @@ function sumOf(cards) {
   return cards.reduce((a, b) => a + b, 0);
 }
 
+// deadline: Firestore Timestamp ya da ms (v93 eşzamanlı turda elin kendi süresi)
+const msOf = (d) => (typeof d === 'number' ? d : d?.toMillis ? d.toMillis() : null);
 function useCountdown(deadline) {
   const [secondsLeft, setSecondsLeft] = useState(null);
+  const dl = msOf(deadline);
   useEffect(() => {
-    if (!deadline?.toMillis) {
+    if (!dl) {
       setSecondsLeft(null);
       return;
     }
-    const tick = () => setSecondsLeft(Math.max(0, Math.ceil((deadline.toMillis() - Date.now()) / 1000)));
+    const tick = () => setSecondsLeft(Math.max(0, Math.ceil((dl - Date.now()) / 1000)));
     tick();
     const id = setInterval(tick, 250);
     return () => clearInterval(id);
-  }, [deadline]);
+  }, [dl]);
   return secondsLeft;
 }
 
 function useAutoStandWatcher(tableId, deadline, active) {
   const firedFor = useRef(null);
+  const dl = msOf(deadline);
   useEffect(() => {
-    if (!active || !deadline?.toMillis) return;
-    const key = deadline.toMillis();
+    if (!active || !dl) return;
+    const key = dl;
     const check = () => {
       if (key <= Date.now() && firedFor.current !== key) {
         firedFor.current = key;
@@ -48,21 +52,27 @@ function useAutoStandWatcher(tableId, deadline, active) {
     check();
     const id = setInterval(check, 500);
     return () => clearInterval(id);
-  }, [tableId, deadline, active]);
+  }, [tableId, dl, active]);
 }
 
-function statusInfo(status) {
+function statusInfo(status, secret) {
+  // v93: eşzamanlı turda başkasının sonucu el bitene kadar gizli
+  if (secret) return status === 'playing' ? { cls: '', text: 'Düşünüyor…' } : { cls: 'stand', text: '✓ Hazır' };
   if (status === 'bust') return { cls: 'bust', text: 'Elendi' };
   if (status === 'stand') return { cls: 'stand', text: 'Pas' };
   if (status === 'won') return { cls: 'win', text: 'Kazandı' };
   return { cls: '', text: 'Oynuyor' };
 }
 
-function Seat({ name, cards, status, hidden, isActive, isDealer, reaction, secondsLeft, netChange }) {
-  const revealed = !hidden;
-  const total = revealed ? sumOf(cards) : cards.length ? '?' : '–';
-  const pct = revealed ? Math.min(100, (sumOf(cards) / TARGET) * 100) : 0;
-  const { cls, text } = statusInfo(status);
+// hideFrom: bu sıradan sonraki kartlar kapalı (v93: kurpiyerin ve diğer oyuncuların
+// ilk 2 kartı açık, sonradan çekilenler el bitene kadar kapalı)
+function Seat({ name, cards, status, hidden, hideFrom = null, secret = false, isActive, isDealer, reaction, secondsLeft, netChange }) {
+  const cut = hidden ? 0 : hideFrom == null ? cards.length : Math.min(hideFrom, cards.length);
+  const shown = cards.slice(0, cut);
+  const allShown = cut >= cards.length;
+  const total = allShown ? (cards.length ? sumOf(cards) : '–') : `${sumOf(shown)}+?`;
+  const pct = Math.min(100, (sumOf(shown) / TARGET) * 100);
+  const { cls, text } = statusInfo(status, secret);
 
   return (
     <div className={`onn-seat${isDealer ? ' onn-seat-dealer' : ''}${isActive ? ' onn-seat-active' : ''}`}>
@@ -82,8 +92,8 @@ function Seat({ name, cards, status, hidden, isActive, isDealer, reaction, secon
       </div>
       <div className="onn-cards">
         {cards.map((c, i) => (
-          <span key={i} className={`onn-card${hidden ? ' onn-card-back' : ''}`}>
-            {hidden ? '' : c}
+          <span key={i} className={`onn-card${i >= cut ? ' onn-card-back' : ''}`}>
+            {i >= cut ? '' : c}
           </span>
         ))}
       </div>
@@ -115,9 +125,21 @@ export default function OnNumaraTable({ tableId, myUid, onLeave, spectate = fals
   const pendingConfirmRef = useRef(null);
 
   const round = table?.round;
-  const isMyTurn = round?.phase === 'playing' && round.currentTurnUid === myUid;
-  const secondsLeft = useCountdown(round?.turnDeadline);
-  useAutoStandWatcher(tableId, round?.turnDeadline, !spectate && round?.phase === 'playing');
+  // v93 — eşzamanlı tur (round.simul): sıra yok, herkes kendi elini oynar
+  const simul = Boolean(round?.simul);
+  const myHand = round?.hands?.[myUid];
+  const isMyTurn = round?.phase === 'playing' && (simul ? myHand?.status === 'playing' : round.currentTurnUid === myUid);
+  const secondsLeft = useCountdown(simul ? (myHand?.status === 'playing' ? myHand.deadlineMs : null) : round?.turnDeadline);
+  // otomatik pas: süresi en önce dolacak oynayan el (herhangi bir bağlı istemci tetikler)
+  const nextDeadline = simul
+    ? Object.values(round?.hands || {})
+        .filter((h) => h?.status === 'playing' && h.deadlineMs)
+        .reduce((m, h) => (m === null || h.deadlineMs < m ? h.deadlineMs : m), null)
+    : round?.turnDeadline;
+  useAutoStandWatcher(tableId, nextDeadline, !spectate && round?.phase === 'playing');
+  // izleyici: yayıncının elini onun gördüğü gibi görür
+  const viewerUid = spectate ? hostUid : myUid;
+  const secretPhase = simul && round?.phase !== 'resolved';
 
   useEffect(() => {
     const pending = pendingConfirmRef.current;
@@ -126,7 +148,8 @@ export default function OnNumaraTable({ tableId, myUid, onLeave, spectate = fals
     const changed =
       myCardsNow > pending.cardsBefore ||
       round?.currentTurnUid !== pending.turnUidBefore ||
-      round?.phase !== pending.phaseBefore;
+      round?.phase !== pending.phaseBefore ||
+      (round?.hands?.[myUid]?.status || null) !== pending.statusBefore;
     if (changed) {
       pendingConfirmRef.current = null;
       setBusy(false);
@@ -143,6 +166,7 @@ export default function OnNumaraTable({ tableId, myUid, onLeave, spectate = fals
           cardsBefore: round?.hands?.[myUid]?.cards?.length || 0,
           turnUidBefore: round?.currentTurnUid ?? null,
           phaseBefore: round?.phase ?? null,
+          statusBefore: round?.hands?.[myUid]?.status ?? null,
         };
         // Güvenlik: dinleyici 4 saniyede hâlâ güncellenmediyse yine de
         // kilidi aç — oyuncu ekranda sonsuza dek kilitli kalmasın.
@@ -168,7 +192,8 @@ export default function OnNumaraTable({ tableId, myUid, onLeave, spectate = fals
   const isCreator = table.creatorUid === myUid;
   const iAmSeated = table.seatOrder.includes(myUid);
   const canDeal = isCreator && (!round || round.phase === 'resolved');
-  const dealerHidden = round && round.phase !== 'resolved' && round.phase !== 'dealer';
+  // v93: kurpiyerin ilk 2 kartı herkese açık; sonradan çektikleri el bitince açılır
+  const dealerHideFrom = round && round.phase !== 'resolved' && round.phase !== 'dealer' ? 2 : null;
 
   return (
     <div className={`onn-table${spectate ? ' onn-spectate' : ''}`}>
@@ -190,7 +215,8 @@ export default function OnNumaraTable({ tableId, myUid, onLeave, spectate = fals
           name="Kurpiyer"
           cards={round?.dealerCards || []}
           status={round?.dealerStatus || 'playing'}
-          hidden={Boolean(dealerHidden)}
+          hidden={false}
+          hideFrom={dealerHideFrom}
           isDealer
           isActive={false}
           secondsLeft={null}
@@ -200,6 +226,9 @@ export default function OnNumaraTable({ tableId, myUid, onLeave, spectate = fals
           const hand = round?.hands?.[uid];
           const reaction = table.reactions?.[uid];
           const showReaction = reaction && Date.now() - reaction.at < 3000;
+          const other = uid !== viewerUid;
+          const secret = secretPhase && other && Boolean(hand);
+          const mine = !spectate && uid === myUid;
           return (
             <Seat
               key={uid}
@@ -207,16 +236,27 @@ export default function OnNumaraTable({ tableId, myUid, onLeave, spectate = fals
               cards={hand?.cards || []}
               status={hand?.status || (round ? 'playing' : 'idle')}
               hidden={false}
+              hideFrom={secret ? 2 : null}
+              secret={secret}
               isDealer={false}
-              isActive={round?.currentTurnUid === uid}
+              isActive={simul ? round?.phase === 'playing' && hand?.status === 'playing' : round?.currentTurnUid === uid}
               reaction={showReaction ? reaction.emoji : null}
-              secondsLeft={round?.currentTurnUid === uid ? secondsLeft : null}
+              secondsLeft={simul ? (mine && hand?.status === 'playing' ? secondsLeft : null) : round?.currentTurnUid === uid ? secondsLeft : null}
               netChange={typeof seat?.netChange === 'number' ? seat.netChange : 0}
             />
           );
         })}
       </div>
 
+      {simul && round?.phase === 'playing' && (
+        <p className="onn-log">
+          {isMyTurn
+            ? '⏱️ Herkes aynı anda oynuyor — kart çek ya da pas geç. Diğerlerinin kartları el bitince açılır.'
+            : myHand
+              ? '✓ Hamleni yaptın. Herkes bitirince kurpiyer oynar ve tüm kartlar açılır.'
+              : 'El oynanıyor; herkes bitirince kartlar açılır.'}
+        </p>
+      )}
       {round?.phase === 'resolved' && round.result && (
         <p className="onn-log">
           {round.result.draw

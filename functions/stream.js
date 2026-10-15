@@ -35,7 +35,7 @@ import { goldTag } from './moneyLog.js';
 export const STREAM_CHAIRS = ['gamer'];
 export const STREAM_PCS = ['pc']; // v81: sadece Oyuncu Bilgisayarı (İnternet Kafe İstasyonu yayın seti değil)
 export const STREAM_SET_RANGE = 3.2; // bilgisayar koltuğa en fazla bu kadar uzak (m)
-export const STREAM_PRICE = { def: 200, min: 50, max: 1000 }; // kafe: dakika ücreti
+export const STREAM_PRICE = { def: 200, min: 100, max: 400 }; // kafe: dakika ücreti (v93: 100–400)
 export const STREAM_SLOT_MS = 60_000;
 export const STREAM_STALE_MS = 90_000; // nabız gelmezse yayın düşmüş sayılır
 export const DONATION_AMOUNTS = [10, 100, 1000];
@@ -65,7 +65,8 @@ const LIST_MAX = 30;
 
 export function streamPriceOf(h) {
   const v = Number(h?.bizPrices?.stream);
-  return Number.isInteger(v) && v >= STREAM_PRICE.min && v <= STREAM_PRICE.max ? v : STREAM_PRICE.def;
+  // v93: eski (yeni aralığın dışındaki) fiyatlar aralığa çekilir
+  return Number.isInteger(v) && v > 0 ? Math.min(STREAM_PRICE.max, Math.max(STREAM_PRICE.min, v)) : STREAM_PRICE.def;
 }
 // Koltuğa en yakın (menzildeki) yayın bilgisayarı
 export function streamSetOf(items, chairId) {

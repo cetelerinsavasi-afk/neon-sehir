@@ -9,8 +9,7 @@ import { houseAction, shopAction } from '../../services/gameActions';
 import { futbolDayKey } from '../../../functions/businessCatalogData.js';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import { HOUSE_PRICE } from '../../../functions/houseCatalogData.js';
-import { BIZ_TYPES, BIZ_TYPE_KEYS, bizMissing } from '../../../functions/businessCatalogData.js';
-import PlaceTypePicker from '../PlaceTypePicker/PlaceTypePicker';
+import { BIZ_TYPES, bizMissing } from '../../../functions/businessCatalogData.js';
 import BizRequirements, { FillConfirm } from '../HouseScreen/BizRequirements';
 import { bizErrText } from '../../lib/bizErrors';
 import { useBackClose } from '../../lib/backStack';
@@ -47,9 +46,9 @@ function Coin({ gem, v, bad }) {
 // oyunun kendi dükkânı. Bir dükkâna girince 3D ev ekranı açılır.
 // v77: üstte açılır tür seçici — haritadan hangi türe tıklandıysa o seçili gelir,
 // buradan diğer türlere de geçilebilir. Sıra: önce içerideki kişi, eşitlikte dünkü ciro.
-const TYPE_OPTIONS = BIZ_TYPE_KEYS.map((k) => ({ key: k, icon: BIZ_TYPES[k].icon, label: BIZ_TYPES[k].label }));
+// v93: üstteki tür seçici kaldırıldı (kullanıcı isteği) — haritada tıklanan tür gösterilir.
 export default function BusinessHub({ type: initialType, onClose, onOpenGameVenue }) {
-  const [type, setType] = useState(initialType);
+  const type = initialType;
   // v79.3: liste açılır açılmaz gelen (açan dokunuşun) hayalet tıklama bir salona sokmasın
   const openedAtRef = useRef(Date.now());
   const settled = () => Date.now() - openedAtRef.current > 450;
@@ -192,7 +191,9 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
       <div className="hh-head">
         <button className="hs-icon-btn" onClick={onClose} title="Kapat">✕</button>
         <div className="hh-title">
-          <b>🏪 İşletmeler</b>
+          <b>
+            {t.icon} {t.label}
+          </b>
         </div>
         {user && (
           <button
@@ -209,15 +210,6 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
       </div>
 
       <div className="hh-body">
-        <PlaceTypePicker
-          options={TYPE_OPTIONS}
-          value={type}
-          title="İşletme türü"
-          onChange={(k) => {
-            setType(k);
-            setMsg(null);
-          }}
-        />
         {msg && !openAsk && <p className="hs-err">{msg}</p>}
         {!user && <p className="hs-dim hh-empty">İşletmeleri görmek için giriş yap.</p>}
         {user && loading && <p className="hs-dim">Yükleniyor…</p>}

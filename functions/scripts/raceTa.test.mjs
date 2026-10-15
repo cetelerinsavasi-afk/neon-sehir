@@ -103,7 +103,9 @@ test('antrenman: N. seviye bot N. aracı sürer; aynı aracı iyi süren oyuncu 
     const bot = R.trainingBotRun(lvl);
     assert.equal(bot.catalogId, lvl);
     assert.ok(bot.done);
-    const me = playerRun(lvl, 1);
+    // v93: bot aracı 3. seviye — aynı aracı 3. seviyede iyi süren oyuncu yener
+    assert.equal(bot.level, 3);
+    const me = playerRun(lvl, 3);
     assert.ok(me.ms < bot.ms, `seviye ${lvl}: oyuncu ${me.ms} < bot ${bot.ms}`);
   }
   // bot sırası: üst seviye daha hızlı
@@ -113,9 +115,9 @@ test('antrenman: N. seviye bot N. aracı sürer; aynı aracı iyi süren oyuncu 
 test('taFinish antrenman: süre sunucuda hesaplanır, bot süresiyle karşılaştırılır', async () => {
   const h = setup();
   const bot = R.trainingBotRun(2);
-  await h.db.doc('raceRooms/t1').set({ engine: 'ta', status: 'racing', isTraining: true, trainingLevel: 2, creatorUid: 'ali', participantUids: ['ali', 'bot'], players: { ali: pl('ali', 2), bot: { finishMs: bot.ms, catalogId: 2, level: 1 } } });
+  await h.db.doc('raceRooms/t1').set({ engine: 'ta', status: 'racing', isTraining: true, trainingLevel: 2, creatorUid: 'ali', participantUids: ['ali', 'bot'], players: { ali: pl('ali', 2, 3), bot: { finishMs: bot.ms, catalogId: 2, level: 3 } } });
   // başlatılmadan bitirilemez
-  const run = playerRun(2, 1);
+  const run = playerRun(2, 3);
   await assert.rejects(h.call('ali', 'finish', { roomId: 't1', runs: run.runs }), /başlangıcı/);
   await h.call('ali', 'start', { roomId: 't1' });
   await assert.rejects(h.call('ali', 'start', { roomId: 't1' }), (e) => e.code === 'already-exists', 'tek deneme');

@@ -17,10 +17,10 @@
 // Gün sınırı türe göre: spor salonu 19:00 (futbol günü), diğerleri 00:00.
 // =============================================================================
 
-import { BIZ_TYPES, BIZ_TYPE_KEYS, bizDayKey, prevDayKey, bizOpenAllDay } from './businessCatalogData.js';
+import { BIZ_TYPES, ALL_BIZ_KEYS, bizDayKey, prevDayKey, bizOpenAllDay } from './businessCatalogData.js';
 import { taxLedgerWrite } from './tax.js';
 
-export const BIZ_INCOME_KINDS = ['service', 'sale', 'material', 'labor', 'menu', 'team'];
+export const BIZ_INCOME_KINDS = ['service', 'sale', 'material', 'labor', 'menu', 'team', 'bagis'];
 // Oyunun kendi işletmeleri de kazancına göre sıralanır (en üstte durmak zorunda
 // değil). Gelirleri businessDaily/game_{tür}_{gün} altında tutulur; sıra
 // gameVenues/{tür}.bizRank'e yazılır (spor için ayrıca houses/game_spor).
@@ -98,7 +98,7 @@ export function createBusiness({ db, FieldValue, now = () => Date.now() }) {
 
   // Gün kapanışı: türün gün sınırı geçtiyse dünkü kazanca göre sıra yazılır.
   // Saatlik ya da 00:05 / 19:05'te çağrılabilir; aynı gün için tekrar yazmaz.
-  async function rollover(types = BIZ_TYPE_KEYS) {
+  async function rollover(types = ALL_BIZ_KEYS) {
     const t = now();
     const done = [];
     for (const type of types) {

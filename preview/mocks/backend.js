@@ -14,6 +14,7 @@ import { futbolDayKey } from '../../functions/businessCatalogData.js';
 import { createRaceTa } from '../../functions/raceTa.js';
 import { createCosmetics } from '../../functions/cosmetics.js';
 import { createStream } from '../../functions/stream.js';
+import { createHomeOffice } from '../../functions/homeOffice.js';
 
 export const PREVIEW_UID = 'previewAdmin';
 export const PREVIEW_PASSWORD = 'test';
@@ -47,8 +48,9 @@ if (typeof window !== 'undefined') window.__gang = { fakeDb, system };
 export const business = createBusiness({ db: fakeDb, FieldValue });
 export const venue = createVenue({ db: fakeDb, FieldValue, HttpsError: PreviewHttpsError, splitIncomeForDebt: (debt, amount) => ({ goldDelta: amount, debtDelta: 0 }), business });
 export const gym = createGym({ db: fakeDb, FieldValue, HttpsError: PreviewHttpsError, splitIncomeForDebt: (debt, amount) => ({ goldDelta: amount, debtDelta: 0 }), business });
+export const homeOffice = createHomeOffice({ db: fakeDb, FieldValue, HttpsError: PreviewHttpsError, splitIncomeForDebt: (debt, amount) => ({ goldDelta: amount, debtDelta: 0 }), business });
 export const shop = createShop({
-  extraOps: { ...venue.ops, ...gym.ops },
+  extraOps: { ...venue.ops, ...gym.ops, ...homeOffice.ops },
   db: fakeDb,
   FieldValue,
   HttpsError: PreviewHttpsError,

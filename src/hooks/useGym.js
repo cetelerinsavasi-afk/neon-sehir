@@ -31,7 +31,15 @@ export function useMyGymMembership() {
   const { user } = useAuth();
   const [active, setActive] = useState(null);
   const [today, setToday] = useState(null);
-  const dayKey = futbolDayKey(Date.now());
+  // v93 — gün 19:00'da değişir; açık kalan uygulamada da yeni güne geçilsin
+  const [dayKey, setDayKey] = useState(() => futbolDayKey(Date.now()));
+  useEffect(() => {
+    const id = setInterval(() => setDayKey((k) => {
+      const n = futbolDayKey(Date.now());
+      return n === k ? k : n;
+    }), 30_000);
+    return () => clearInterval(id);
+  }, []);
   useEffect(() => {
     if (!user) return undefined;
     const u1 = onSnapshot(
@@ -42,9 +50,15 @@ export function useMyGymMembership() {
       },
       () => setActive(null)
     );
+    // v93 — belge okuma yerine sorgu: bugünün kaydı henüz yokken tek belge
+    // okuması kurallarca reddedilip dinleyiciyi kapatıyordu → antrenman bitse
+    // de hatırlatıcı sayfa yenilenene kadar kalıyordu.
     const u2 = onSnapshot(
-      doc(db, 'gymMemberships', `${user.uid}_${dayKey}`),
-      (s) => setToday(s.exists() ? { id: s.id, ...s.data() } : null),
+      query(collection(db, 'gymMemberships'), where('uid', '==', user.uid), where('dayKey', '==', dayKey), limit(3)),
+      (s) => {
+        const docs = s.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setToday(docs.find((d) => d.id === `${user.uid}_${dayKey}`) || docs[0] || null);
+      },
       () => setToday(null)
     );
     return () => {

@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { collection, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { useMemo, useState } from 'react';
+import { useYesterdayVisits } from '../../hooks/useYesterdayVisits';
 import { usePolledPresence } from '../../hooks/usePolledPresence';
 import { useAuth } from '../../contexts/AuthContext';
 import { regionEmojis, regionLabels } from '../../data/regions';
@@ -8,7 +7,7 @@ import GuestOverlay from '../GuestOverlay/GuestOverlay';
 import { useHouseList } from '../../hooks/useHouseList';
 import { useBusinessList } from '../../hooks/useBusinessList';
 import PlaceTypePicker from '../PlaceTypePicker/PlaceTypePicker';
-import { BIZ_TYPES, BIZ_TYPE_KEYS, midnightDayKey, prevDayKey } from '../../../functions/businessCatalogData.js';
+import { BIZ_TYPES, BIZ_TYPE_KEYS } from '../../../functions/businessCatalogData.js';
 import './VisitTab.css';
 
 // =============================================================================
@@ -41,31 +40,6 @@ const OPTIONS = [
   ...BIZ_TYPE_KEYS.map((k) => ({ key: k, icon: BIZ_TYPES[k].icon, label: BIZ_TYPES[k].label })),
   { key: 'houses', icon: '🏠', label: 'Evler' },
 ];
-
-// Dünün ziyaret sayıları (5 dk'da bir yenilenir)
-function useYesterdayVisits(enabled) {
-  const [rows, setRows] = useState([]);
-  useEffect(() => {
-    if (!enabled) return undefined;
-    let alive = true;
-    const load = async () => {
-      try {
-        const day = prevDayKey(midnightDayKey(Date.now()));
-        const snap = await getDocs(query(collection(db, 'venueVisits'), where('dayKey', '==', day), orderBy('count', 'desc'), limit(60)));
-        if (alive) setRows(snap.docs.map((d) => d.data()));
-      } catch (err) {
-        console.warn('venueVisits:', err?.code || err);
-      }
-    };
-    load();
-    const iv = setInterval(load, 5 * 60_000);
-    return () => {
-      alive = false;
-      clearInterval(iv);
-    };
-  }, [enabled]);
-  return rows;
-}
 
 export default function VisitTab({ onVisitVenue, onVisitHouse }) {
   const { user } = useAuth();
