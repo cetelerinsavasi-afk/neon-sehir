@@ -1094,6 +1094,50 @@ I('bleacher', 'boks', 'Tribün', '🏟️', (g) => {
 
 // ── Market (Market Rafı mevcut eşyanın yeni hali — aşağıda override)
 I('cart', 'dukkan', 'Market Arabası', '🛒', (g) => cartModel(g, []), { box: [0.27, 0.37], panel: 'cart' });
+// v94 — Bantlı Market Kasası: yürüyen bant + yazar kasa + POS + ayırıcı çubuk
+I('beltcheckout', 'dukkan', 'Bantlı Market Kasası', '🛒', (g) => {
+  const body = '#e9edf2';
+  B(g, 2.2, 0.82, 0.62, body, 0, 0, 0); // gövde
+  B(g, 2.24, 0.04, 0.66, '#2b2f36', 0, 0.82, 0); // tezgah kenarı
+  B(g, 2.2, 0.06, 0.04, '#d6182a', 0, 0.6, 0.315); // ön şerit
+  // bant: koyu kauçuk + iki ucunda silindir
+  B(g, 1.45, 0.025, 0.46, '#17191d', -0.33, 0.86, 0);
+  for (const x of [-1.06, 0.4]) CyX(g, 0.03, 0.46, '#8c939c', x, 0.875, 0, { m: 0.8, r: 0.3 });
+  // banttaki kaymalı çizgiler (yürüyen bant)
+  const stripes = [];
+  for (let i = 0; i < 9; i++) {
+    const st = B(g, 0.02, 0.006, 0.44, '#3a3e45', 0, 0.886, 0);
+    stripes.push(st);
+  }
+  // ürünler ve ayırıcı çubuk
+  B(g, 0.03, 0.04, 0.4, '#ffd23f', -0.15, 0.89, 0);
+  B(g, 0.12, 0.16, 0.08, '#ff6f3c', -0.75, 0.89, -0.08);
+  Cy(g, 0.05, 0.18, '#3fa9f5', -0.55, 0.89, 0.08);
+  B(g, 0.14, 0.09, 0.1, '#7ac943', -0.38, 0.89, -0.1);
+  // kasiyer tarafı: yazar kasa ekranı + tarayıcı + POS
+  B(g, 0.62, 0.05, 0.6, '#c9ced6', 0.78, 0.86, 0);
+  B(g, 0.22, 0.12, 0.2, '#2b2f36', 0.82, 0.91, -0.12);
+  const scr = K('#39ff88', { e: '#39ff88', ei: 0.9 });
+  B(g, 0.28, 0.2, 0.03, '#1b1d22', 0.82, 1.03, -0.12);
+  Pl(g, 0.24, 0.15, scr, 0.82, 1.13, -0.104);
+  B(g, 0.2, 0.02, 0.16, K('#c8e6ff', { op: 0.5 }), 0.55, 0.89, 0.02); // barkod camı
+  const laser = K('#ff2e3d', { e: '#ff2e3d', ei: 1.4 });
+  B(g, 0.16, 0.004, 0.004, laser, 0.55, 0.9, 0.02);
+  B(g, 0.08, 0.12, 0.05, '#222', 0.98, 0.89, 0.16); // POS
+  Pl(g, 0.05, 0.03, K('#9fd3ff', { e: '#9fd3ff', ei: 0.6 }), 0.98, 0.99, 0.188);
+  // kasa numarası direği
+  Cy(g, 0.015, 0.9, '#9aa1aa', 1.05, 0.86, -0.27);
+  B(g, 0.22, 0.22, 0.04, '#d6182a', 1.05, 1.72, -0.27);
+  Pl(g, 0.16, 0.16, K('#fff', { e: '#fff', ei: 0.5 }), 1.05, 1.83, -0.248);
+  return {
+    tick(t) {
+      stripes.forEach((st, i) => {
+        st.position.x = -1.03 + (((i / 9) + t * 0.18) % 1) * 1.4;
+      });
+      laser.emissiveIntensity = 0.8 + Math.abs(Math.sin(t * 9)) * 1.2;
+    },
+  };
+}, { box: [1.1, 0.31] });
 I('simit', 'dukkan', 'Simit Arabası', '🥯', (g) => {
   B(g, 0.8, 0.55, 0.5, '#e3122d', 0, 0.3, 0);
   for (const a of [-0.32, 0.32]) CyX(g, 0.14, 0.04, '#222', a, 0.15, 0.26);

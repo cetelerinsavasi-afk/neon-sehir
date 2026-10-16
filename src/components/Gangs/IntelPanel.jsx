@@ -1,6 +1,6 @@
 // İSTİHBARAT paneli. Sabit ad + sabit logo; üyeler birbirini sadece KOD
 // ADIYLA görür. Katılım şartı: 50+ saygınlık (polislik şartı YOK).
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { limit, orderBy, where } from 'firebase/firestore';
 import { fmtDateTime, istDateKey, istHour, useDocData, useGang, useGangAction, useNow, useQueryData } from './GangContext';
 import { Btn, Card, Confirm, Empty, Gold, Info, Logo, RankBadge, Sheet, Stat, Tabs } from './ui';
@@ -78,7 +78,7 @@ function Operations({ roster, state, reports, wars }) {
     <div className="gx-stack">
       <div className="gx-section-head">
         <span>🎯 İhbar edilen tırlar</span>
-        <Info text="Çetelere sızmış ajanlar (Tetikçi+) seferdeki tırları ihbar eder, Kıdemli+ olanlar içeriği sızdırır. Başkan ve Şefler 12:00'ye kadar operasyon başlatır (ücret sabit 100.000 altın). Başarılı operasyonda yük imha edilir, kasaya anlık satış değeri kadar ödül gelir." />
+        <Info text="Çetelere sızmış ajanlar (Tetikçi+) seferdeki tırları ihbar eder, Kıdemli+ olanlar içeriği sızdırır. Başkan ve Şefler 12:00'ye kadar operasyon başlatır (ücret sabit 100.000 altın). Başarılı operasyonda çete, tırdaki malın sipariş tutarını kasasından İstihbarata öder (yük çetede kalır)." />
       </div>
       {lead && free.length > 1 && open && (
         <Btn block kind="danger" onClick={() => setAsk({ all: true })}>
@@ -125,7 +125,7 @@ function Operations({ roster, state, reports, wars }) {
           icon="🎯"
           danger
           title={ask.all ? `${free.length} tıra operasyon` : `TIR #${ask.report.truckCode} operasyonu`}
-          lines={[ask.all ? `💸 Her biri ${fmt(price)} (toplam ${fmt(price * free.length)})` : `💸 ${fmt(price)} (İstihbarat kasasından)`, '⚔️ Saldırı 12:00–24:00 arası, iki pencere.', '🔥 Başarılıysa yük imha, kasaya anlık satış değeri.']}
+          lines={[ask.all ? `💸 Her biri ${fmt(price)} (toplam ${fmt(price * free.length)})` : `💸 ${fmt(price)} (İstihbarat kasasından)`, '⚔️ Saldırı 12:00–24:00 arası, iki pencere.', '🚔 Başarılıysa çete sipariş tutarını öder.']}
           confirmLabel="Başlat"
           busy={busy === 'startOperation'}
           onCancel={() => setAsk(null)}
@@ -139,8 +139,60 @@ function Operations({ roster, state, reports, wars }) {
   );
 }
 
-function Roster({ myRosterId }) {
+// v94 — üye raporu (rütbeliler): bugünden önceki 14 gün
+function MemberReport({ member, onClose }) {
+  const { run } = useGangAction();
+  const [r, setR] = useState(null);
+  const [err, setErr] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    run('intelMemberReport', { rosterId: member.id }, { key: `rep_${member.id}` }).then((res) => {
+      if (!alive) return;
+      if (res) setR(res);
+      else setErr(true);
+    });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [member.id]);
+  const dd = (k) => (k ? k.split('-').reverse().slice(0, 2).join('.') : '');
+  return (
+    <Sheet title={member.codeName} icon={RANK_ICONS[member.rank]} onClose={onClose}>
+      {!r && !err && <p className="dim">Yükleniyor…</p>}
+      {err && <p className="dim">Rapor alınamadı.</p>}
+      {r && (
+        <div className="gx-stack">
+          <p className="dim gx-mini">
+            Son 14 gün ({dd(r.from)}–{dd(r.to)})
+          </p>
+          <Stat icon="📅" label="İstihbarata girişi">
+            {r.joinedDaysAgo == null ? '—' : r.joinedDaysAgo === 0 ? 'Bugün' : `${r.joinedDaysAgo} gün önce`}
+          </Stat>
+          <Stat icon="⚔️" label="Katıldığı savaş">
+            {fmt(r.wars)}
+          </Stat>
+          <Stat icon="💪" label="Savaşlarda kullandığı güç">
+            {fmt(r.power)}
+          </Stat>
+          <Stat icon="📡" label="İhbar (tır · bahisli savaş)">
+            {fmt(r.truckReports)} · {fmt(r.betReports)}
+          </Stat>
+          <Stat icon="📦" label="İçerik açma (tır · bahisli savaş)">
+            {fmt(r.truckLeaks)} · {fmt(r.betLeaks)}
+          </Stat>
+          <Stat icon="💵" label="İstihbarattan aldığı para">
+            <Gold value={r.paid} />
+          </Stat>
+        </div>
+      )}
+    </Sheet>
+  );
+}
+
+function Roster({ myRosterId, ranked = false }) {
   const { path } = useGang();
+  const [view, setView] = useState(null);
   const { docs } = useQueryData(path('intelRoster'), () => [limit(300)], 'roster');
   const sorted = useMemo(() => [...docs].sort((a, b) => INTEL_RANK_ORDER.indexOf(a.rank) - INTEL_RANK_ORDER.indexOf(b.rank) || (b.prestige || 0) - (a.prestige || 0)), [docs]);
   return (
@@ -150,17 +202,21 @@ function Roster({ myRosterId }) {
         <Info text="Rütbeler her gece 00:00'da prestije göre belirlenir: 1 Başkan, 2 Şef, 4 Uzman, kalan 1.000.000+ prestijliler Ajan, altındakiler Çaylak. Gerçek kimlikler gizlidir." />
       </div>
       <div className="gx-members">
-        {sorted.map((m) => (
-          <div key={m.id} className={`gx-member${m.id === myRosterId ? ' me' : ''}`}>
-            <span className="gx-member-icon">{RANK_ICONS[m.rank]}</span>
-            <span className="gx-member-name">
-              {m.codeName}
-              {m.id === myRosterId && <span className="dim"> (sen)</span>}
-            </span>
-            <span className="gx-member-prestige">✦ {fmt(m.prestige)}</span>
-          </div>
-        ))}
+        {sorted.map((m) => {
+          const Tag = ranked ? 'button' : 'div';
+          return (
+            <Tag key={m.id} type={ranked ? 'button' : undefined} className={`gx-member${m.id === myRosterId ? ' me' : ''}${ranked ? ' gx-member-btn' : ''}`} onClick={ranked ? () => setView(m) : undefined}>
+              <span className="gx-member-icon">{RANK_ICONS[m.rank]}</span>
+              <span className="gx-member-name">
+                {m.codeName}
+                {m.id === myRosterId && <span className="dim"> (sen)</span>}
+              </span>
+              <span className="gx-member-prestige">✦ {fmt(m.prestige)}</span>
+            </Tag>
+          );
+        })}
       </div>
+      {view && <MemberReport member={view} onClose={() => setView(null)} />}
     </div>
   );
 }
@@ -285,7 +341,7 @@ export default function IntelPanel({ membership }) {
       <Tabs tabs={tabs} value={tab} onChange={setTab} />
       <div className="gx-tab-body">
         {tab === 'genel' && <IntelOverview intel={intel} roster={roster} />}
-        {tab === 'ajanlar' && <Roster myRosterId={rid} />}
+        {tab === 'ajanlar' && <Roster myRosterId={rid} ranked={ranked} />}
         {tab === 'sohbet' && <ChatTab org="intel" ranked={ranked} joinedAtMs={membership.intelJoinedAtMs} myRosterId={rid} />}
         {tab === 'operasyon' && <Operations roster={roster} state={state} reports={reports} wars={wars.all} />}
         {tab === 'savas' && <WarsTab org="intel" wars={wars} rosterRank={rank} />}

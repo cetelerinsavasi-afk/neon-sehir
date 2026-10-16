@@ -108,7 +108,7 @@ test('ihbar/sızdırma yetkisi: Çömez ihbar edemez; Tetikçi ihbar eder ama s�
   assert.match((await h.fails(c, 'leakTruck', { reportId: `${truckId}_2026-09-22` })).message, /Kıdemli/);
 });
 
-test('operasyon: sadece ihbarlı tıra, 12:00ye kadar, ücret oyun geneli sabotaj fiyatı; başarılıysa yük imha + anlık değer ödülü', async () => {
+test('operasyon: sadece ihbarlı tıra, 12:00ye kadar, ücret oyun geneli sabotaj fiyatı; v94: başarılıysa yük çetede kalır, sipariş tutarı çete kasasından İstihbarata', async () => {
   const h = await createHarness({ dice: [6, 6, 1, 1] });
   const { G, mole, truckId } = await tradeGangWithMole(h);
   await h.act(mole, 'joinIntel', { codeName: 'Köstebek' });
@@ -128,12 +128,17 @@ test('operasyon: sadece ihbarlı tıra, 12:00ye kadar, ücret oyun geneli sabota
   await h.tickTo('2026-09-22', '12:10');
   await h.act(chief, 'rollDice', { warId }); // 12 × 30k = 360k
   await h.act(G.baba, 'rollDice', { warId: `def_${truckId}_2026-09-22` }); // 2 × 60k = 120k
+  const cost = h.get(`trucks/${truckId}/cargo/main`).cost;
+  assert.equal(cost, 100_000, '80 yasaklı madde × 1.250');
+  // çete kasası yetmese bile ceza kesilir (eksiye düşer)
+  await h.db.doc(`gangWorlds/test/gangs/${G.gangId}/private/state`).set({ kasa: 30_000 }, { merge: true });
   await h.tickTo('2026-09-23', '00:05');
-  assert.equal(h.get(`trucks/${truckId}`).lastTrip.outcome, 'destroyed');
+  assert.equal(h.get(`trucks/${truckId}`).lastTrip.outcome, 'seized');
   assert.equal(h.get(`trucks/${truckId}`).gangId, G.gangId);
   const depot = h.get(`gangs/${G.gangId}/private/depot`);
-  assert.equal(depot.items?.yasakliMadde || 0, 0, 'ürün kimseye geçmez');
+  assert.equal(depot.items?.yasakliMadde || 0, 80, 'yük çetede kalır');
   assert.equal(depot.reservedUnits, 0);
+  assert.equal(h.get(`gangs/${G.gangId}/private/state`).kasa, 30_000 - 100_000, 'kasa eksiye düşer');
   assert.equal(h.get('intel/main/private/state').kasa, 100_000 + 100_000);
 });
 
@@ -258,7 +263,7 @@ test('İstihbarat atma: Başkan → Ajan/Muhbir, Şef → Muhbir anında; oylama
   assert.equal(h.get(`intelRoster/${S1.rid}`).rank, 'baskan', 'boşalan yer 00:00da doldu');
 });
 
-test('şüpheyle yakalanma cezasının yarısı → İstihbarat kasasına, yarısı yakılır (canlı dünya, idempotent); canlı kapalıyken etkisiz', async () => {
+test('v94: şüpheyle yakalanma cezasının %25i → İstihbarat kasasına, kalanı yakılır (canlı dünya, idempotent); sınır sadece cezaya; canlı kapalıyken etkisiz', async () => {
   const h = await createHarness();
   const closed = await h.system.onSuspicionFine('u1', 40_000, 'heist_a');
   assert.equal(closed.skipped, true);
@@ -268,12 +273,22 @@ test('şüpheyle yakalanma cezasının yarısı → İstihbarat kasasına, yarı
   await h.system.onSuspicionFine('u1', 40_000, 'heist_a_u1');
   await h.system.onSuspicionFine('u1', 40_000, 'heist_a_u1'); // tekrar → yok sayılır
   await h.system.onSuspicionFine('u2', 10_000, 'contraband_b');
-  // v50: cezanın yarısı kasaya, yarısı yakılır → (40.000 + 10.000) / 2
-  assert.equal(h.raw(`gangWorlds/${cfg.liveWorldId}/intel/main/private/state`).kasa, 25_000);
-  const odd = await h.system.onSuspicionFine('u3', 3, 'odd_c'); // tek sayı: aşağı yuvarlanır, fark yakılır
-  assert.deepEqual(odd, { credited: 1, burned: 2 });
-  assert.equal(h.raw(`gangWorlds/${cfg.liveWorldId}/intel/main/private/state`).kasa, 25_001);
+  // v94: cezanın dörtte biri kasaya, kalanı yakılır → (40.000 + 10.000) / 4
+  const kasaPath = `gangWorlds/${cfg.liveWorldId}/intel/main/private/state`;
+  assert.equal(h.raw(kasaPath).kasa, 12_500);
+  const odd = await h.system.onSuspicionFine('u3', 5, 'odd_c'); // aşağı yuvarlanır, fark yakılır
+  assert.deepEqual(odd, { credited: 1, burned: 4 });
+  assert.equal(h.raw(kasaPath).kasa, 12_501);
   assert.equal(h.get('intel/main/private/state').kasa || 0, 0, 'test dünyasına yazılmaz');
+  // sınır (50 üye × 100.000 = 5.000.000) sadece ceza gelirine: kasa sınıra yakınsa sınıra kadar girer
+  await h.db.doc(kasaPath).set({ kasa: 4_995_000 }, { merge: true });
+  const near = await h.system.onSuspicionFine('u4', 40_000, 'near_d'); // 10.000 pay, 5.000 yer
+  assert.deepEqual(near, { credited: 5_000, burned: 35_000 });
+  // kasa (çökertme / operasyon ile) sınırın üstündeyse cezadan para gelmez, kasa azalmaz
+  await h.db.doc(kasaPath).set({ kasa: 7_000_000 }, { merge: true });
+  const over = await h.system.onSuspicionFine('u5', 40_000, 'over_e');
+  assert.deepEqual(over, { credited: 0, burned: 40_000 });
+  assert.equal(h.raw(kasaPath).kasa, 7_000_000);
 });
 
 test('polis yakalama ödülü → İstihbarat prestiji (canlı dünya, idempotent)', async () => {
@@ -374,4 +389,40 @@ test('v61: İstihbaratta 7 ya da daha az üye varken atma/oylama yok; yeni üye 
   await h.nextDay();
   await h.act(B.id, 'kickIntelMember', { targetRosterId: N.rid });
   assert.equal(h.get(`intelRoster/${N.rid}`), undefined);
+});
+
+test('v94: üye raporu — bugünden önceki 14 gün, sadece rütbeliler; ihbar / içerik / savaş / güç sayılır', async () => {
+  const h = await createHarness({ dice: [6, 6, 1, 1] });
+  const { G, mole, truckId } = await tradeGangWithMole(h);
+  const j = await h.act(mole, 'joinIntel', { codeName: 'Köstebek' });
+  const chief = await intelChief(h, 'Kartal');
+  const chiefRid = h.get(`memberships/${chief}`).intelRosterId;
+  await h.tickTo('2026-09-22', '07:00');
+  await h.db.doc('gangWorlds/test/intel/main/private/state').set({ kasa: 200_000 }, { merge: true });
+  const reportId = `${truckId}_2026-09-22`;
+  await h.act(mole, 'reportTruck', { truckId });
+  await h.act(mole, 'leakTruck', { reportId });
+  const op = await h.act(chief, 'startOperation', { reportId, bribe: 0 });
+  await h.tickTo('2026-09-22', '12:10');
+  await h.act(chief, 'rollDice', { warId: op.started[0].warId }); // 12 × 30k
+  await h.act(G.baba, 'rollDice', { warId: `def_${truckId}_2026-09-22` });
+  // bugün rapora girmez
+  let r = await h.act(chief, 'intelMemberReport', { rosterId: j.rosterId });
+  assert.equal(r.truckReports, 0);
+  assert.equal(r.joinedDaysAgo, 0);
+  // rütbesiz (muhbir) göremez
+  assert.match((await h.fails(mole, 'intelMemberReport', { rosterId: chiefRid })).message, /rütbeli/);
+  await h.tickTo('2026-09-23', '00:05');
+  r = await h.act(chief, 'intelMemberReport', { rosterId: j.rosterId });
+  assert.equal(r.codeName, 'Köstebek');
+  assert.equal(r.truckReports, 1);
+  assert.equal(r.truckLeaks, 1);
+  assert.equal(r.betReports, 0);
+  assert.equal(r.wars, 0);
+  assert.equal(r.joinedDaysAgo, 1);
+  const c = await h.act(chief, 'intelMemberReport', { rosterId: chiefRid });
+  assert.equal(c.wars, 1);
+  assert.equal(c.power, 12 * 30_000);
+  assert.equal(c.from, '2026-09-09');
+  assert.equal(c.to, '2026-09-22');
 });

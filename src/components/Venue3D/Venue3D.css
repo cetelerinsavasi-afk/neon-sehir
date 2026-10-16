@@ -122,3 +122,12 @@
 .v3-sus.hi b {
   color: #ff6b7d;
 }
+/* v94 — sağ üst menü (camii: imam butonları) */
+.v3-menu.right {
+  left: auto;
+  right: 8px;
+  align-items: flex-end;
+}
+.v3-menu.right .v3-btn {
+  text-align: right;
+}

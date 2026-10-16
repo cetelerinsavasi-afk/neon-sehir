@@ -54,9 +54,9 @@ function Sheet({ title, onClose, children, closeLabel = 'Uzaklaş' }) {
   );
 }
 
-function Menu({ show, children }) {
+function Menu({ show, children, right = false }) {
   if (!show) return null;
-  return <div className="v3-menu">{children}</div>;
+  return <div className={`v3-menu${right ? ' right' : ''}`}>{children}</div>;
 }
 
 // v93 — camii ve parkta şüphe göstergesi
@@ -145,14 +145,17 @@ export function CamiiPart({ panel, setPanel, setDynNpcs, walk }) {
 
   return (
     <>
-      <Menu show={walk}>
-        <SuspicionBadge />
+      {/* v94: imam butonları sağ üstte */}
+      <Menu show={walk} right>
         <button className="v3-btn" onClick={() => setPanel('imam')}>
           {imam ? `🕌 İmam: ${imam.displayName}` : '🕌 İmamlık Başvurusu'}
         </button>
         <button className="v3-btn" onClick={() => setBooklet(true)}>
           📖 İmam Kitapçığı
         </button>
+      </Menu>
+      <Menu show={walk}>
+        <SuspicionBadge />
         <button className="v3-btn" onClick={() => setPanel('congregation')}>
           📿 {win}. Vakit Cemaati ({members.length})
         </button>

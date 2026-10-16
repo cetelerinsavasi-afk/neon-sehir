@@ -34,7 +34,7 @@ import { factoryDisplayName, computeFactoryValue, rankFactoriesForList } from '.
 import './FactoryScreen.css';
 
 const FACTORY_CREATE_COST = 100000;
-const MACHINE_PRICES = { tamirMalzemesi: 100000, silahUpgrade: 50000, arabaGelistirme: 50000, yasakliMadde: 100000 };
+const MACHINE_PRICES = { tamirMalzemesi: 50000, silahUpgrade: 50000, arabaGelistirme: 50000, yasakliMadde: 100000 };
 const MACHINE_EMOJI = {
   mining: '⛏️',
   tamirMalzemesi: '🔧',
@@ -63,7 +63,7 @@ function machinePrice(type, cryptoPrice, ownedMiningCount = 0) {
 function machineProductionRangeLabel(type) {
   if (type === 'yasakliMadde') return '1-10';
   if (type === 'silahUpgrade') return '1-200';
-  if (type === 'tamirMalzemesi') return '1-3000';
+  if (type === 'tamirMalzemesi') return '1-2000';
   return '1-40';
 }
 
@@ -662,7 +662,7 @@ function OwnerView({ factory, machines, player, myUid }) {
         <span className="factory-machine-name">{MACHINE_LABELS[m.type]}</span>
         {ownerTriggeredToday && (
           <span className="factory-machine-status">
-            ⏳ İşçi bugün gelmezse 00:00'da senin adına (1/10 verimle) üretilecek.
+            ⏳ İşçi bugün gelmezse 00:00'da senin adına (2/10 verimle) üretilecek.
           </span>
         )}
         {m.workerId === myUid ? (
@@ -774,7 +774,7 @@ function OwnerView({ factory, machines, player, myUid }) {
           {runBusy ? '…' : machinesAlreadyRunToday ? 'Bugün Çalıştırıldı' : 'Makineleri Çalıştır'}
         </button>
         <p className="factory-hint small">
-          Bugün henüz çalışan bir işçisi olmayan makineleri sen çalıştırmış olursun (1/10 verimle);
+          Bugün henüz çalışan bir işçisi olmayan makineleri sen çalıştırmış olursun (2/10 verimle);
           işçi gün içinde gelip üretirse işçinin üretimi geçerli olur.
         </p>
       </div>

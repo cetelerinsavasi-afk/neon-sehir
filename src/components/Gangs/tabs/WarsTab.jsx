@@ -182,7 +182,7 @@ function warPurpose(w) {
     return `🎯 Kazanan ${p.emoji} ${p.label} ticaret yolunu ${GANG_RULES.ROUTE_DAYS} gün yönetir.`;
   if (w.type === 'bet') return '🎯 Kazanan tüm bahsi alır (iki çetenin bahsi toplamı).';
   if (w.type === 'sabotage') return '🎯 En güçlü saldırı savunmayı geçerse tırın yükü saldıranın deposuna gider. Tır her durumda sahibine döner.';
-  if (w.type === 'intelop') return '🎯 Başarılı operasyonda yük imha edilir, İstihbarat anlık satış değerini ödül alır.';
+  if (w.type === 'intelop') return '🎯 Başarılıysa yük çetede kalır; çete kasasından sipariş tutarı İstihbarata ödenir.';
   if (w.type === 'defense') return '🎯 Savunma gücü en güçlü saldırıdan düşük kalırsa yük kaybedilir. Müttefikler savunmaya güç ekler (saldırıda eklenmez).';
   return '';
 }

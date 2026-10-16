@@ -176,6 +176,7 @@ export function createTreasuryActions(core) {
       }
       tx.update(ctx.ref.distribution(distId), upd);
       ledger(tx, ctx, { type: 'distribution_claim', amount: dist.perPerson, from: { kind: 'pool', id: distId }, to: { kind: 'player', id: ctx.actorId }, before, refId: distId });
+      if (isIntel) core.intelStat(tx, ctx, key, { paid: dist.perPerson }); // v94 üye raporu
       const text = `${name} dağıtımdan ${fmt(dist.perPerson)} altın aldı.`;
       if (isIntel) core.systemChat(tx, ctx, ctx.ref.intelChat('genel'), `💵 ${text}`);
       else core.systemChat(tx, ctx, ctx.ref.gangChat(dist.orgId, 'genel'), `💵 ${text}`);

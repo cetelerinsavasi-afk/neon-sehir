@@ -377,7 +377,7 @@ export const CATS = [
       lines: [
         L('💰', 'Maaşı sen koyarsın: 1.000 ile 5.000 arası.'),
         L('🧲', 'Yüksek maaş, kalabalık kuyruk demek.'),
-        L('🙋', 'İşçi gelmezse gece yarısı makineyi sen çalıştırırsın. Ama üretimin yalnızca onda biri kadarını.'),
+        L('🙋', 'İşçi gelmezse gece yarısı makineyi sen çalıştırırsın. Ama 2/10 verimle.'),
         L('🔨', 'İşçiyi kovabilir ya da başka makineye taşıyabilirsin.'),
         L('⛏️', 'Mining makinesi işçi istemez.'),
       ] },

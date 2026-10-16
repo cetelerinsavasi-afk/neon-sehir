@@ -77,6 +77,9 @@ export function createCore(deps) {
         codeName: (key) => d(`intelCodeNames/${key}`),
         intelChat: (ch) => c(`intelChat_${ch}`),
         intelReport: (id) => d(`intelReports/${id}`),
+        // v94 — İstihbarat üye raporu: üye başı günlük icraat (sadece sunucu)
+        intelStat: (rid, day) => d(`intelStats/${rid}_${day}`),
+        intelStats: () => c('intelStats'),
         intelReports: () => c('intelReports'),
         betReport: (id) => d(`betReports/${id}`),
         betReports: () => c('betReports'),
@@ -181,6 +184,22 @@ export function createCore(deps) {
       return Number(snap.data()?.power || 0);
     }
     return Number((await getMaxWeaponPower(actorId)) || 0);
+  }
+
+  // ---------------------------------------------------------------------------
+  // v94 — İstihbarat üyesinin günlük icraatı (rapor: bugünden önceki 14 gün)
+  //   f: { warId, power, truckReports, betReports, truckLeaks, betLeaks, paid }
+  // YAZMA — işlem içinde, okumalardan sonra çağrılır.
+  // ---------------------------------------------------------------------------
+  function intelStat(tx, ctx, rosterId, f = {}) {
+    if (!rosterId) return;
+    const patch = { rosterId, dateKey: ctx.dateKey, updatedAtMs: ctx.now };
+    if (f.warId) patch.wars = { [f.warId]: true };
+    for (const k of ['power', 'truckReports', 'betReports', 'truckLeaks', 'betLeaks', 'paid']) {
+      const v = Math.round(Number(f[k]) || 0);
+      if (v) patch[k] = FV.increment(v);
+    }
+    tx.set(ctx.ref.intelStat(rosterId, ctx.dateKey), patch, { merge: true });
   }
 
   // ---------------------------------------------------------------------------
@@ -299,8 +318,10 @@ export function createCore(deps) {
   // ---------------------------------------------------------------------------
   // v88 — İSTİHBARAT KASA SINIRI (üye × 100.000)
   // readIntelKasa: işlem içinde, YAZMADAN ÖNCE çağrılır.
-  // creditIntel: gelen parayı sınıra kadar kasaya yazar, aşanı yakar (ledger'a
-  // 'intel_cap_burn'). Kasa sınırın üstündeyse hiçbir şey silinmez, sadece girmez.
+  // v94: sınır SADECE cezalardan gelen para için (capped: true). Çete çökertme,
+  // tır operasyonu, savaş vb. gelirler sınırı aşabilir; kasa sınırın üstündeyken
+  // ceza payı girmez (yanar), altındayken sınıra kadar girer.
+  // creditIntel: capped ise sınıra kadar yazar, aşanı yakar (ledger 'intel_cap_burn').
   // ---------------------------------------------------------------------------
   async function readIntelKasa(tx, ctx) {
     const [st, iv] = await Promise.all([tx.get(ctx.ref.intelState()), tx.get(ctx.ref.intel())]);
@@ -310,10 +331,10 @@ export function createCore(deps) {
   function intelCapRoom(info) {
     return Math.max(0, info.cap - info.kasa);
   }
-  function creditIntel(tx, ctx, info, amount, { type, refId = null, from = { kind: 'system' } } = {}) {
+  function creditIntel(tx, ctx, info, amount, { type, refId = null, from = { kind: 'system' }, capped = false } = {}) {
     const amt = Math.max(0, Math.floor(Number(amount) || 0));
     if (!amt) return { credited: 0, burned: 0 };
-    const credited = Math.min(amt, intelCapRoom(info));
+    const credited = capped ? Math.min(amt, intelCapRoom(info)) : amt;
     const burned = amt - credited;
     if (credited > 0) {
       if (info.exists) tx.update(ctx.ref.intelState(), { kasa: FV.increment(credited) });
@@ -627,6 +648,7 @@ export function createCore(deps) {
     refreshIntelRoster,
     readIntelKasa,
     creditIntel,
+    intelStat,
     readBetStake,
     announceIntel,
     unitsOfItems,

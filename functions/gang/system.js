@@ -247,6 +247,7 @@ export function createGangSystem(deps) {
     joinIntel: intel.joinIntel,
     leaveIntel: intel.leaveIntel,
     updateIntelNote: intel.updateIntelNote,
+    intelMemberReport: intel.intelMemberReport, // v94
     sendIntelChat: intel.sendIntelChat,
     changeCodeName: intel.changeCodeName,
     kickIntelMember: intel.kickIntelMember,

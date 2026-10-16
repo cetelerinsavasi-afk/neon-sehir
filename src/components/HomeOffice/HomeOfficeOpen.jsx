@@ -25,7 +25,7 @@ export default function HomeOfficeOpen({ onClose, onEnter }) {
   const { player } = usePlayer();
   const gold = Number(player?.gold || 0);
   const gem = Number(player?.emerald || 0);
-  const [open, setOpen] = useState(HOME_OFFICE_KEYS[0]);
+  const [open, setOpen] = useState(null); // v94: hepsi kapalı başlar
   const [invItems, setInvItems] = useState({});
   const [myHouses, setMyHouses] = useState([]);
   const [busy, setBusy] = useState(false);

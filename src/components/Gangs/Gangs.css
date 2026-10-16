@@ -3528,3 +3528,15 @@ button.gx-msg-avatar.pc-trigger {
     animation: none;
   }
 }
+
+/* v94 — İstihbarat üye raporu: rütbeliler üyeye dokunur */
+button.gx-member.gx-member-btn {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+button.gx-member.gx-member-btn:active {
+  transform: scale(0.99);
+}

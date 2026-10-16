@@ -614,7 +614,8 @@ const FACTORY_MAX_SALARY = 5000;
 // kripto fiyatına bağlı (2 kripto değerinde) — bkz. miningMachinePrice().
 const MACHINE_TYPES = {
   mining: { label: 'Mining Makinesi', needsWorker: false, min: 0.01, max: 0.1, unit: 'crypto' },
-  tamirMalzemesi: { label: 'Tamir Malzemesi Makinesi', needsWorker: true, price: 100000, min: 1, max: 3000 },
+  // v94: tamir makinesi 100.000 → 50.000, işçiyle 1–2000 (eskiden 1–3000)
+  tamirMalzemesi: { label: 'Tamir Malzemesi Makinesi', needsWorker: true, price: 50000, min: 1, max: 2000 },
   silahUpgrade: { label: 'Silah Geliştirme Malzemesi Makinesi', needsWorker: true, price: 50000, min: 1, max: 200 },
   // Depo ve Vites Geliştirme makineleri birleştirildi — ikisi de aynı
   // malzemeyi (arabaGelistirme) üretiyordu, artık TEK makine.
@@ -622,6 +623,8 @@ const MACHINE_TYPES = {
   yasakliMadde: { label: 'Yasaklı Madde Üretim Makinesi', needsWorker: true, price: 100000, min: 1, max: 10 },
 };
 const VALID_MACHINES = Object.keys(MACHINE_TYPES);
+// v94 — işçi gelmezse (sahip çalıştırınca) 2/10 verim: günlük üretim aralığı
+const WORKERLESS_RANGE = { tamirMalzemesi: [1, 400], silahUpgrade: [1, 40], arabaGelistirme: [1, 8] };
 
 // ---------------------------------------------------------------------------
 // ARAÇ/SİLAH ÖMRÜ + TAMİR SİSTEMİ — her araç/silah satın alındığı andan
@@ -2032,6 +2035,61 @@ async function retireOpenYasakliListing(listingId) {
   });
 }
 
+// v94 — TEK SEFERLİK: tamir makinesi fiyatı yarıya indi; mevcut fabrikalardaki tamir
+// makinesi sayısı 2'ye katlanır (her makinenin yanına boş bir kopya). Bayrak:
+// migrations/tamirMachinesDoubledV94 — fabrika başına ayrı işaretle tekrar katlanmaz.
+async function runTamirDoubleV94() {
+  const migrationRef = db.collection('migrations').doc('tamirMachinesDoubledV94');
+  if ((await migrationRef.get()).exists) return { skipped: true };
+  const lockRef = db.collection('migrations').doc('tamirMachinesDoubledV94_lock');
+  const gotLock = await db.runTransaction(async (tx) => {
+    const l = await tx.get(lockRef);
+    if (l.exists && Number(l.data().leaseUntilMs || 0) > Date.now()) return false;
+    tx.set(lockRef, { leaseUntilMs: Date.now() + 8 * 60 * 1000 });
+    return true;
+  });
+  if (!gotLock) return { skipped: 'running' };
+  let factories = 0;
+  let added = 0;
+  let failed = 0;
+  const factoriesSnap = await db.collection('factories').get();
+  for (const f of factoriesSnap.docs) {
+    try {
+      const n = await db.runTransaction(async (tx) => {
+        const fs = await tx.get(f.ref);
+        if (!fs.exists || fs.data()?.tamirDoubledV94) return 0;
+        const mSnap = await tx.get(f.ref.collection('machines').where('type', '==', 'tamirMalzemesi'));
+        mSnap.docs.forEach(() =>
+          tx.set(f.ref.collection('machines').doc(), {
+            type: 'tamirMalzemesi',
+            workerId: null,
+            workerName: null,
+            lastProducedDateKey: null,
+            lastProducedQty: 0,
+            purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
+            giftV94: true,
+          })
+        );
+        tx.update(f.ref, { tamirDoubledV94: true });
+        return mSnap.size;
+      });
+      if (n > 0) {
+        factories += 1;
+        added += n;
+        const sms = db.batch();
+        addUserSms(sms, f.id, `🏭 Tamir malzemesi makinelerinin fiyatı yarıya indi. Fabrikana ${n} tamir makinesi hediye edildi (toplam ${n * 2}).`, 'factory_machine_gift');
+        await sms.commit();
+      }
+    } catch (err) {
+      failed += 1;
+      console.error('tamir double', f.id, err);
+    }
+  }
+  if (failed === 0) await migrationRef.set({ ranAt: admin.firestore.FieldValue.serverTimestamp(), factories, added });
+  await lockRef.set({ leaseUntilMs: 0 }, { merge: true });
+  return { factories, added, failed };
+}
+
 async function runYasakliMachineRetireV38() {
   const migrationRef = db.collection('migrations').doc('yasakliMaddeMachinesRetiredV38');
   if ((await migrationRef.get()).exists) return { skipped: true };
@@ -2086,6 +2144,11 @@ async function runYasakliMachineRetireV38() {
 export const ensureFactoryMigrationsV38 = onCall(async (request) => {
   requireAuth(request);
   const r = await runYasakliMachineRetireV38();
+  try {
+    await runTamirDoubleV94();
+  } catch (err) {
+    console.error('ensureFactoryMigrationsV38 runTamirDoubleV94', err);
+  }
   // v56: 00:00 çalışmadıysa/geciktiyse ayrılan işçilerin makineleri burada da boşalır.
   try {
     await releaseLeftFactoryWorkers();
@@ -2566,6 +2629,8 @@ export const dailyReset = onSchedule(
     // yarısında garanti çalışır) hem de App.jsx açılışında (bkz.
     // migrateOnboardingPoliceRule) tetikleniyor, elle bir aksiyon gerekmez.
     await runOnboardingPoliceRuleMigration();
+    // v94 — tamir makinelerini 2'ye katla (tek seferlik, bayraklı)
+    await runTamirDoubleV94().catch((err) => console.error('dailyReset runTamirDoubleV94', err));
 
     // -0.73) FUTBOL İDDAA — GÜNÜN ORANLARI: kullanıcı revizesiyle gelen
     // yeni İddaa oran sistemi, o günün maçları için (lig ya da kupa günü,
@@ -2701,9 +2766,10 @@ export const dailyReset = onSchedule(
         // miktarın 1/10'u" formülü yerine, işçisiz çalışırken KENDİ
         // (min-max'tan bağımsız) formülleri kullanılıyor.
         let qty;
-        if (machine.type === 'tamirMalzemesi') {
-          // "işçisiz çalışan tamir makinesi günlük 1-400 malzeme üretsin"
-          qty = Math.floor(randomInRange(1, 401));
+        if (WORKERLESS_RANGE[machine.type]) {
+          // v94: işçisiz (2/10 verim) — tamir 1–400, silah 1–40, araba 1–8
+          const [lo, hi] = WORKERLESS_RANGE[machine.type];
+          qty = Math.floor(randomInRange(lo, hi + 1));
         } else if (machine.type === 'yasakliMadde') {
           // "işçisiz çalışan yasaklı madde üretme makinesi %5 ihtimalle 2
           // adet, %50 ihtimalle 1 adet, kalan ihtimallerde 0 üretim yapsın"
@@ -2837,8 +2903,9 @@ export const dailyReset = onSchedule(
       // fiyatındaki altın karşılığının %30'u (bkz. MINING_ELECTRICITY_RATE
       // — kullanıcı revizesi: %10'dan %30'a çıkarıldı).
       const ELECTRICITY_BILL_PER_MACHINE_TYPE = {
-        silahUpgrade: 100,
-        arabaGelistirme: 100,
+        // v94: tamir / silah / araba makinesi günde 200
+        silahUpgrade: 200,
+        arabaGelistirme: 200,
         tamirMalzemesi: 200,
         yasakliMadde: 200,
       };
@@ -3871,7 +3938,7 @@ function computeInvestmentBuyRatios(trades, nowMs) {
 // SAF fonksiyon — rejim seçimi (sırayla):
 //  1) fiyat >= eşik            → TERS (ekranda gösterilir: shownReversed)
 //  2) fiyat <  eşik/2          → NORMAL (koşulsuz taban; v50 öncesi eşik/10)
-//  3) arada: alış oranı > %75  → TERS (GİZLİ — ekranda gösterilmez)
+//  3) arada: alış oranı > %50 (%50,1 bile) → TERS (GİZLİ — ekranda gösterilmez)
 //     aksi halde               → NORMAL
 function pickInvestmentRegime(price, threshold, buyRatio) {
   const p = Number(price) || 0;

@@ -190,3 +190,16 @@ Testler: 348/348 geçti.
 ## v93.2
 - Evler › Home Ofisler: uzun açıklama kaldırıldı; sağ üstte "Home Ofis Aç +". Mescit / Sinema / Müzik Stüdyosu alt alta; dokununca gerekli mobilyalar ve fiyatları görünür, 🛒 Eksikleri al ile hemen alınır, 🏠 Ev seç / Ev al ile eve girilir.
 - v93'te eklenen uzun açıklamalar kısaltıldı (mescit, stüdyo paylaş/sil, On Numara, home ofis tanıtımları).
+
+## v94
+- **Yatırım trendi:** alış oranı %50'yi geçince (%50,1 bile) gizli düşüş trendi zaten başlıyordu; kod içindeki eski "%75" yorumu düzeltildi. (Hesapta en büyük alıcı ve en büyük satıcı sayılmaz.)
+- **İstihbarat kasası:** üye sayısına göre sınır artık sadece ceza gelirine uygulanıyor. Çete çökertme, tır operasyonu, savaş vb. kasayı sınırın üstüne çıkarabilir; kasa sınırın üstündeyken cezalardan para gelmez, altındayken sınıra kadar gelir.
+- **Ceza payı:** şüpheyle yakalanma cezalarının %50'si yerine %25'i İstihbarata gidiyor.
+- **Tır operasyonu:** başarılı operasyonda yük artık imha edilmiyor; malzemeler çetenin deposuna giriyor, çete kasasından tırdaki malın sipariş tutarı İstihbarata ödeniyor (ör. 100 yasaklı madde → 125.000). Kasa yetmezse eksiye düşüyor.
+- **İstihbarat üye raporu:** İstihbarat › Ajanlar'da rütbeliler (Başkan, 2 Şef, 4 Uzman) bir üyeye dokununca son 14 günlük raporu görüyor (bugün dahil değil, 00:00'da yenilenir): istihbarata kaç gün önce girdiği, katıldığı savaş sayısı, kullandığı toplam güç, ihbar ettiği tır / bahisli savaş, içeriğini açtığı tır / bahisli savaş, istihbarattan aldığı para. Kayıtlar v94 yüklendikten sonra birikmeye başlar.
+- **Bantlı Market Kasası** mobilyası (Dükkân kategorisi, 30.000 altın; yürüyen bant animasyonlu).
+- **Fabrika:** tamir malzemesi makinesi 50.000 altın; mevcut fabrikalardaki tamir makinesi sayısı 2'ye katlandı (tek seferlik, SMS ile bildirilir). Tamir / silah / araba makinesinin günlük elektriği 200. Üretim: tamir işçiyle 1–2000, işçisiz 1–400 · silah 1–200 / 1–40 · araba 1–40 / 1–8. Metinler "2/10 verim" oldu.
+- Home Ofis Aç penceresinde üç tür de kapalı geliyor.
+- Camide İmam ve İmam Kitapçığı butonları sağ üstte.
+
+**Yükleme:** `powershell -ExecutionPolicy Bypass -File .\deploy-v94.ps1` (kurallar + v93 ve v94'te değişen tüm fonksiyonlar, 6 grup), sonra push.

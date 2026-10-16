@@ -122,14 +122,23 @@ export function createClock(core, actions) {
         }
         if (ownerAlive) core.announce(tx, ctx, truck.gangId, '💥', `TIR #${truck.code} sabote edildi (${strongest.sides?.attacker?.name || ''}), yük çalındı. Tır geri döndü.`);
       } else if (attackWon && strongest.type === 'intelop') {
-        outcome = 'destroyed';
-        const reward = core.instantValueOf(cargo.items || {});
-        if (reward > 0 && intelK?.exists) {
-          core.creditIntel(tx, ctx, intelK, reward, { type: 'intel_op_reward', refId: strongest.id });
+        // v94: yük imha EDİLMEZ — çeteye ulaşır; çete kasasından tırdaki malın sipariş
+        // tutarı kadar ceza İstihbarat'a ödenir (kasa yetmezse eksiye düşer).
+        outcome = 'seized';
+        const fine = ownerAlive ? Math.max(0, Math.floor(Number(cargo.cost ?? orderSnap?.data()?.cost ?? 0))) : 0;
+        if (ownerAlive) {
+          const upd = { usedUnits: FV.increment(units) };
+          for (const [k, q] of Object.entries(cargo.items || {})) upd[`items.${k}`] = FV.increment(q);
+          tx.update(ctx.ref.depot(truck.gangId), upd);
+          if (fine > 0) {
+            tx.set(ctx.ref.gangState(truck.gangId), { kasa: FV.increment(-fine) }, { merge: true });
+            if (intelK?.exists) core.creditIntel(tx, ctx, intelK, fine, { type: 'intel_op_reward', refId: strongest.id, from: { kind: 'gang', id: truck.gangId } });
+            else ledger(tx, ctx, { type: 'intel_op_fine', amount: fine, from: { kind: 'gang', id: truck.gangId }, to: { kind: 'burn' }, refId: strongest.id, actorId: 'system' });
+          }
+          core.announce(tx, ctx, truck.gangId, '🚨', `İstihbarat TIR #${truck.code} tırını yakaladı — yük depoda, kasadan ${fine.toLocaleString('tr-TR')} altın ceza kesildi.`);
         }
-        core.announceIntel(tx, ctx, '🔥', `TIR #${truck.code} operasyonu BAŞARILI — yük imha edildi, ödül ${reward.toLocaleString('tr-TR')}.`);
-        if (ownerAlive) core.announce(tx, ctx, truck.gangId, '🚨', `İstihbarat TIR #${truck.code} yükünü imha etti. Tır geri döndü.`);
-        strongest.reward = reward;
+        core.announceIntel(tx, ctx, '🚔', `TIR #${truck.code} operasyonu BAŞARILI — çeteden ${fine.toLocaleString('tr-TR')} altın tahsil edildi.`);
+        strongest.reward = fine;
       } else if (ownerAlive) {
         const upd = { usedUnits: FV.increment(units) };
         for (const [k, q] of Object.entries(cargo.items || {})) upd[`items.${k}`] = FV.increment(q);
@@ -1394,6 +1403,14 @@ export function createClock(core, actions) {
       await safe(ctx, `sunday-power:${d.id}`, () => recordSundayPowers(ctx, d.data().dateKey));
     }
     await safe(ctx, 'routes-expire', () => expireRoutes(ctx));
+    // v94 — üye raporu günlük kayıtları: rapor 14 gün geriye bakar, daha eskisi silinir
+    await safe(ctx, 'intel-stats-cleanup', async () => {
+      const old = await ctx.ref.intelStats().where('dateKey', '<', addDays(ctx.dateKey, -15)).limit(400).get();
+      if (!old.size) return;
+      const b = db.batch();
+      old.docs.forEach((d) => b.delete(d.ref));
+      await b.commit();
+    });
     // 4–5) İstihbarat-Baba karar süresi, bahis teklif zaman aşımı, ittifaklar
     await safe(ctx, 'intel-decisions', () => processIntelDecisions(ctx));
     await safe(ctx, 'bet-offers', () => expireBetOffers(ctx));

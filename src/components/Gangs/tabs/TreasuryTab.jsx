@@ -119,8 +119,8 @@ export default function TreasuryTab({ org = 'gang', gang, rank, state, membershi
               <Bar value={Math.min(kasaNow, intelCap)} max={Math.max(1, intelCap)} color={kasaNow >= intelCap ? 'var(--neon-pink)' : 'var(--neon-cyan)'} height={6} />
             </div>
             <span className="dim gx-mini" style={{ textAlign: 'center', marginTop: 4 }}>
-              Kasa sınırı: <b>{fmt(intelCap)}</b> ({intelMembers} üye × 100.000)
-              {kasaNow >= intelCap ? ' — kasa dolu: yeni gelirler yanar, harcadıkça yeniden dolar.' : ` — ${fmt(intelCap - kasaNow)} daha girebilir.`}
+              Ceza geliri sınırı: <b>{fmt(intelCap)}</b> ({intelMembers} üye × 100.000)
+              {kasaNow >= intelCap ? ' — sınır dolu, cezalardan para gelmez.' : ''}
             </span>
           </>
         )}

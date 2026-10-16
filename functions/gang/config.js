@@ -139,12 +139,13 @@ export const INTEL = {
   // v50: pazar savaşını kazanırsa kasaya, savaşa katılan TÜM tarafların
   // (çeteler + İstihbarat) toplam gücünün %5'i girer (eskiden kendi gücünün 1/10'u).
   WAR_WIN_KASA_TOTAL_RATIO: 0.05,
-  // v50: şüpheyle yakalanma cezasının (soygun / yasaklı madde) SADECE yarısı
-  // kasaya girer; kalan yarısı yakılır (ekonomiden çıkar). Oyuncunun borcu değişmez.
-  SUSPICION_FINE_KASA_RATIO: 1 / 2,
-  // v88: kasa sınırı = üye sayısı × bu tutar. Gelen para sınırı aşan kısmı yanar.
-  // Üye azalırsa fazla SİLİNMEZ; harcandıkça azalır, sınırın altına inene kadar
-  // yeni gelir girmez. (İade edilen kendi parası — dağıtım/operasyon iadesi — sınırdan muaf.)
+  // v50: şüpheyle yakalanma cezasının (soygun / yasaklı madde) bir kısmı kasaya
+  // girer (v94: %25); kalanı yakılır (ekonomiden çıkar). Oyuncunun borcu değişmez.
+  SUSPICION_FINE_KASA_RATIO: 1 / 4, // v94: %50 → %25
+  // v88: kasa sınırı = üye sayısı × bu tutar. v94: sınır SADECE ceza gelirine uygulanır (çökertme, tır
+  // operasyonu, savaş vb. kasayı sınırın üstüne çıkarabilir; o zaman ceza payı girmez).
+
+
   KASA_CAP_PER_MEMBER: 100_000,
   KASA_RESET_V88: 1_000_000, // tek seferlik: kasa bu tutara indirilir
   KICK_BASKAN_MIN_RATIO_EXCLUSIVE: 0.66, // Başkan'ı atmak: > %66

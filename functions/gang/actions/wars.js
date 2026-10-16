@@ -186,6 +186,7 @@ export function createWarActions(core) {
       const prestige = Math.floor(contribution * GANG.WAR_PRESTIGE_PER_POWER);
       if (org.type === 'intel') {
         tx.update(ctx.ref.roster(org.rosterId), { prestige: FV.increment(prestige), lastActiveAtMs: ctx.now });
+        core.intelStat(tx, ctx, org.rosterId, { warId, power: contribution }); // v94 üye raporu
       } else {
         tx.update(ctx.ref.member(org.gangId, ctx.actorId), { prestige: FV.increment(prestige), lastActiveAtMs: ctx.now, inactiveWarn: false });
       }

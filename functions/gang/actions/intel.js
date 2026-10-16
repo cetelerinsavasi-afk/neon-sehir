@@ -98,6 +98,44 @@ export function createIntelActions(core) {
     });
   }
 
+  // v94 — ÜYE RAPORU: rütbeliler (Başkan / Şef / Uzman — ilk 7) bir üyenin bugünden
+  // önceki 14 günlük icraatını görür. Bugün dahil değil (00:00'da yenilenir).
+  const INTEL_REPORT_DAYS = 14;
+  async function intelMemberReport(ctx, data) {
+    const targetId = String(data.rosterId || '');
+    if (!targetId) fail('invalid-argument', 'Üye seçilmedi.');
+    const membership = await core.db.runTransaction((tx) => readMembership(tx, ctx, ctx.actorId));
+    const rid = requireIntel(membership);
+    const [meSnap, tSnap] = await Promise.all([ctx.ref.roster(rid).get(), ctx.ref.roster(targetId).get()]);
+    const me = meSnap.data();
+    if (!me || !['baskan', 'sef', 'uzman'].includes(core.effRank(me, ctx, 'muhbir'))) fail('permission-denied', 'Üye raporlarını sadece rütbeliler görebilir.');
+    const t = tSnap.data();
+    if (!t) fail('not-found', 'Üye bulunamadı.');
+    const days = [];
+    for (let i = INTEL_REPORT_DAYS; i >= 1; i--) days.push(addDays(ctx.dateKey, -i));
+    const snaps = await Promise.all(days.map((d) => ctx.ref.intelStat(targetId, d).get()));
+    const wars = new Set();
+    const out = { power: 0, truckReports: 0, betReports: 0, truckLeaks: 0, betLeaks: 0, paid: 0 };
+    snaps.forEach((s) => {
+      const v = s.data();
+      if (!v) return;
+      Object.keys(v.wars || {}).forEach((w) => wars.add(w));
+      for (const k of Object.keys(out)) out[k] += Number(v[k] || 0);
+    });
+    const joinedAtMs = Number(t.joinedAtMs || 0);
+    const joinedDaysAgo = joinedAtMs ? Math.max(0, Math.round((midnightMsOf(ctx.dateKey) - midnightMsOf(dateKeyOf(joinedAtMs))) / 86_400_000)) : null;
+    return {
+      rosterId: targetId,
+      codeName: t.codeName || '',
+      rank: t.rank || 'muhbir',
+      from: days[0],
+      to: days[days.length - 1],
+      joinedDaysAgo,
+      wars: wars.size,
+      ...out,
+    };
+  }
+
   // Kod adı değiştirme (✏️) — benzersiz; eski mesajlarda eski ad kalır.
   async function changeCodeName(ctx, data) {
     const { codeName, key } = parseCodeName(data.codeName);
@@ -182,6 +220,7 @@ export function createIntelActions(core) {
         opWarId: null,
       });
       tx.update(ctx.ref.roster(rid), { prestige: FV.increment(INTEL.REPORT_PRESTIGE) });
+      core.intelStat(tx, ctx, rid, { truckReports: 1 }); // v94 üye raporu
       announceIntel(tx, ctx, '📡', `${rosterSnap.data().codeName}, TIR #${truck.code} (${gang?.name || ''}) tırını ihbar etti.`);
       ctx.logs.push({ gang: 'intel_report', world: ctx.worldId, reportId });
       return { reportId, prestige: INTEL.REPORT_PRESTIGE };
@@ -220,6 +259,7 @@ export function createIntelActions(core) {
       });
       if (opSnap?.exists) tx.update(opSnap.ref, { estReward });
       tx.update(ctx.ref.roster(rid), { prestige: FV.increment(INTEL.LEAK_PRESTIGE) });
+      core.intelStat(tx, ctx, rid, { truckLeaks: 1 });
       announceIntel(tx, ctx, '📦', `${rosterSnap.data().codeName}, TIR #${rep.truckCode} içeriğini sızdırdı — ödül değeri ${estReward.toLocaleString('tr-TR')}.`);
       ctx.logs.push({ gang: 'intel_leak', world: ctx.worldId, reportId });
       return { leaked: true, estReward, prestige: INTEL.LEAK_PRESTIGE };
@@ -280,6 +320,7 @@ export function createIntelActions(core) {
         opStarted: false,
       });
       tx.update(ctx.ref.roster(rid), { prestige: FV.increment(INTEL.BET_REPORT_PRESTIGE) });
+      core.intelStat(tx, ctx, rid, { betReports: 1 });
       announceIntel(tx, ctx, '🎲', `${rosterSnap.data().codeName}, ${war.sides?.[a]?.name} ⚔️ ${war.sides?.[b]?.name} bahisli savaşını ihbar etti.`);
       ctx.logs.push({ gang: 'intel_bet_report', world: ctx.worldId, warId });
       return { reported: true, prestige: INTEL.BET_REPORT_PRESTIGE };
@@ -305,6 +346,7 @@ export function createIntelActions(core) {
       const pot = stake * 2;
       tx.update(ctx.ref.betReport(warId), { leaked: true, pot, leakedByCode: rosterSnap.data().codeName, leakedAtMs: ctx.now });
       tx.update(ctx.ref.roster(rid), { prestige: FV.increment(INTEL.BET_LEAK_PRESTIGE) });
+      core.intelStat(tx, ctx, rid, { betLeaks: 1 });
       announceIntel(tx, ctx, '📦', `${rosterSnap.data().codeName} bahsin içeriğini açtı — toplam bahis ${pot.toLocaleString('tr-TR')}.`);
       return { leaked: true, pot, prestige: INTEL.BET_LEAK_PRESTIGE };
     });
@@ -649,7 +691,7 @@ export function createIntelActions(core) {
   }
 
   // Şüpheyle yakalanma cezası → İstihbarat kasası (idempotent: refId)
-  // v50: cezanın yalnızca INTEL.SUSPICION_FINE_KASA_RATIO kadarı (yarısı)
+  // v50: cezanın yalnızca INTEL.SUSPICION_FINE_KASA_RATIO kadarı (v94: dörtte biri)
   // kasaya girer; kalanı yakılır — hiçbir yere yazılmaz, sadece iz için
   // işaret kaydında (burned) tutulur. amount = oyuncuya yazılan TAM ceza.
   async function creditFineToIntel(ctx, amount, refId) {
@@ -659,10 +701,10 @@ export function createIntelActions(core) {
       const markRef = ctx.ref.request(`fine_${String(refId).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100)}`);
       const [mark, info] = await Promise.all([tx.get(markRef), core.readIntelKasa(tx, ctx)]);
       if (mark.exists) return { skipped: true };
-      // v88: kasa sınırı — sınırı aşan kısım da yanar
-      const r = credited > 0 ? core.creditIntel(tx, ctx, info, credited, { type: 'intel_fine_income', refId: String(refId).slice(0, 100) }) : { credited: 0, burned: 0 };
+      // v88: kasa sınırı — sınırı aşan kısım da yanar (v94: sınır sadece ceza gelirine)
+      const r = credited > 0 ? core.creditIntel(tx, ctx, info, credited, { type: 'intel_fine_income', refId: String(refId).slice(0, 100), capped: true }) : { credited: 0, burned: 0 };
       tx.set(markRef, { atMs: ctx.now, amount, credited: r.credited, burned: burned + r.burned });
-      if (r.credited > 0) intelLog(tx, ctx, '🚓', `Şüpheyle yakalanan bir suçlunun cezasının yarısı kasaya girdi: +${r.credited.toLocaleString('tr-TR')}`);
+      if (r.credited > 0) intelLog(tx, ctx, '🚓', `Şüpheyle yakalanan bir suçlunun cezasından kasaya: +${r.credited.toLocaleString('tr-TR')}`);
       return { credited: r.credited, burned: burned + r.burned };
     });
   }
@@ -681,6 +723,7 @@ export function createIntelActions(core) {
     intelKickVoteAllowed,
     intelVoteOutcome,
     updateIntelNote,
+    intelMemberReport,
     sendIntelChat,
     reportTruck,
     leakTruck,

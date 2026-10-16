@@ -12,7 +12,7 @@ export function factoryDisplayName(f) {
 }
 
 const FACTORY_CREATE_COST = 100000;
-const MACHINE_PRICES = { tamirMalzemesi: 100000, silahUpgrade: 50000, arabaGelistirme: 50000, yasakliMadde: 100000 };
+const MACHINE_PRICES = { tamirMalzemesi: 50000, silahUpgrade: 50000, arabaGelistirme: 50000, yasakliMadde: 100000 };
 
 // miningFleetValue — bir fabrikadaki TÜM mining makinelerinin GÜNCEL
 // (canlı kripto fiyatına göre) toplam değeri. Kademeli fiyatlandırma

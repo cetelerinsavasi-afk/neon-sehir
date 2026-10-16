@@ -74,7 +74,7 @@ export const ITEM_PRICES = {
   // Boks
   ring: z(10), speedbag: g(18000), cornerstool: g(6000), gong: g(25000), bleacher: g(60000),
   // Market
-  cart: g(15000), simit: g(30000),
+  cart: g(15000), simit: g(30000), beltcheckout: g(30000), // v94 bantlı market kasası
   // Benzinlik
   pump: g(50000), canopy: g(120000), airpump: g(20000), cone: g(3000), carwash: z(6), pricesign: g(25000),
   // Yayın seti
