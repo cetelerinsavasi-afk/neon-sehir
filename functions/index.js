@@ -17286,6 +17286,7 @@ export const buyFutbolPlayer = onCall(async (request) => {
 
   let oldTeamRef = null;
   let oldTeamTrainingIds = [];
+  let oldTeam = null;
   if (player.saleSource === 'manual' && player.teamId) {
     const counts = await getFutbolTeamPositionCounts(player.teamId, playerId);
     if (!meetsFutbolMinSquadForPosition(counts, player.position)) {
@@ -17307,7 +17308,8 @@ export const buyFutbolPlayer = onCall(async (request) => {
     oldTeamRef = db.collection('futbolTeams').doc(player.teamId);
     const oldTeamSnap = await oldTeamRef.get();
     if (oldTeamSnap.exists) {
-      oldTeamTrainingIds = oldTeamSnap.data().trainingPlayerIds || [];
+      oldTeam = oldTeamSnap.data();
+      oldTeamTrainingIds = oldTeam.trainingPlayerIds || [];
     }
   }
 
@@ -17326,13 +17328,24 @@ export const buyFutbolPlayer = onCall(async (request) => {
   }
   futbolMarkControllerActive(teamRef, team, batch);
   if (player.saleSource === 'manual' && player.sellerUid) {
-    batch.update(db.collection('users').doc(player.sellerUid), {
-      gold: admin.firestore.FieldValue.increment(price), goldTag: goldTag('futbol'),
-    });
+    // v94.1 BUG DÜZELTMESİ: satış parası ilanı açan kişiye (menajer de olabilir)
+    // DEĞİL, satan TAKIMA gider — anında satışla (instantSellFutbolPlayer) aynı kural:
+    // takım şu an MANAGED (ya da sahipsiz) ise takım kasasına; başkan yönetiyorsa
+    // (OWNER_ACTIVE / OWNER_AUTO) başkanın kişisel altınına. Menajer takım parası almaz.
+    const sellerMode = oldTeam ? getFutbolTeamControlMode(oldTeam) : null;
+    if (oldTeam && (sellerMode === 'OWNER_ACTIVE' || sellerMode === 'OWNER_AUTO') && oldTeam.ownerUid) {
+      batch.update(db.collection('users').doc(oldTeam.ownerUid), {
+        gold: admin.firestore.FieldValue.increment(price), goldTag: goldTag('futbol'),
+      });
+    } else if (oldTeamRef && oldTeam) {
+      batch.update(oldTeamRef, { treasury: admin.firestore.FieldValue.increment(price) });
+    }
     sendFutbolSms(
       batch,
       player.sellerUid,
-      `⚽ ${player.name} oyuncun ${price.toLocaleString('tr-TR')} altına satıldı.`,
+      oldTeam && sellerMode !== 'OWNER_ACTIVE' && sellerMode !== 'OWNER_AUTO'
+        ? `⚽ ${player.name} ${price.toLocaleString('tr-TR')} altına satıldı — para takım kasasına girdi.`
+        : `⚽ ${player.name} oyuncun ${price.toLocaleString('tr-TR')} altına satıldı.`,
       'futbol_player_sold'
     );
   }

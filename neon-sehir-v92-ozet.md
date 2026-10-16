@@ -203,3 +203,8 @@ Testler: 348/348 geçti.
 - Camide İmam ve İmam Kitapçığı butonları sağ üstte.
 
 **Yükleme:** `powershell -ExecutionPolicy Bypass -File .\deploy-v94.ps1` (kurallar + v93 ve v94'te değişen tüm fonksiyonlar, 6 grup), sonra push.
+
+## v94.1
+- **Futbol bug düzeltmesi:** menajer bir oyuncuyu transfer listesine koyup başka bir takıma sattığında para menajerin kendi altınına gidiyordu. Artık satan takıma gidiyor: takım menajerliyse (ya da sahipsizse) takım kasasına, başkan yönetiyorsa başkana. (Anında satış zaten doğruydu.)
+
+**Yükleme:** `firebase deploy --only functions:buyFutbolPlayer`, sonra push.
