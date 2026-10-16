@@ -170,7 +170,7 @@ test('üyelik süresi: sonraki 19:00; son 1 saatte başlarsa +1 saat', () => {
   assert.equal(gymDeadlineMs(at(8, 2)), at(8, 19));
 });
 
-test('mevki: günde 1 kez değişir, 200 güçte kalıcı, takımdayken değişmez', async () => {
+test('v95 mevki: günde 1 kez değişir (200+ güçte de); takımda, ilanda ya da bekleyen teklif varken değişmez', async () => {
   const h = setup();
   await h.act('ali', { op: 'footballerPosition', position: 'GK' });
   assert.equal(h.G('footballers/ali').power, 100);
@@ -179,11 +179,19 @@ test('mevki: günde 1 kez değişir, 200 güçte kalıcı, takımdayken değişm
   await h.act('ali', { op: 'footballerPosition', position: 'FWD' });
   assert.equal(h.G('footballers/ali').position, 'FWD');
   h.clock.now += 24 * H;
-  h.S('footballers/ali', { ...h.G('footballers/ali'), power: 200 });
-  await assert.rejects(h.act('ali', { op: 'footballerPosition', position: 'MID' }), /position-pro/);
-  h.S('footballers/ali', { ...h.G('footballers/ali'), power: 150 });
+  h.S('footballers/ali', { ...h.G('footballers/ali'), power: 240 });
+  // ilandayken değişmez
+  h.S('footballers/ali', { ...h.G('footballers/ali'), listed: true, askSalary: 6000 });
+  await assert.rejects(h.act('ali', { op: 'footballerPosition', position: 'MID' }), /position-listed/);
+  h.S('footballers/ali', { ...h.G('footballers/ali'), listed: false });
+  // bekleyen (süresi geçmemiş) teklif varken değişmez; süresi geçmiş teklif engel değil
+  h.S('futbolOffers/t9_ali', { uid: 'ali', teamId: 't9', status: 'pending', salary: 6000, expiresAtMs: h.clock.now + 3600_000 });
+  await assert.rejects(h.act('ali', { op: 'footballerPosition', position: 'MID' }), /position-offer/);
+  h.S('futbolOffers/t9_ali', { uid: 'ali', teamId: 't9', status: 'pending', salary: 6000, expiresAtMs: h.clock.now - 1 });
+  await h.act('ali', { op: 'footballerPosition', position: 'MID' }); // 200+ güçte de değişir
+  assert.equal(h.G('footballers/ali').position, 'MID');
   h.S('footballers/ali', { ...h.G('footballers/ali'), teamId: 't1', positionChangedAtMs: 0 });
-  await assert.rejects(h.act('ali', { op: 'footballerPosition', position: 'MID' }), /position-team/);
+  await assert.rejects(h.act('ali', { op: 'footballerPosition', position: 'DEF' }), /position-team/);
 });
 
 test('bonus: dünkü kazancı en çok kazananın yarısından az olan bonuslu; yeni salon ilk 19:00 bonussuz; oyunun salonu bonussuz 2.000 ama sıralamada', async () => {

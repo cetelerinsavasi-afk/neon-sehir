@@ -265,7 +265,6 @@ const CRYPTO_REGIME_THRESHOLD = 200000;
 
 function InvestmentsTab({ player, prices, busy, error, run }) {
   const bankBalance = player?.bankBalance ?? 0;
-  const bankCostBasis = player?.bankCostBasis ?? 0;
   const diamondHoldings = player?.diamondHoldings ?? 0;
   const stockHoldings = player?.stockHoldings ?? 0;
   const cryptoHoldings = player?.cryptoHoldings ?? 0;
@@ -300,8 +299,8 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
           <span>Faizdeki Altın</span>
           <strong className="bank-highlight">{bankBalance.toLocaleString('tr-TR')}</strong>
         </div>
-        <p className="bank-hint">Faizdeki altının her gün %1 faiz kazandırır.</p>
-        <PnlBadge currentValue={bankBalance} costBasis={bankCostBasis} />
+        {/* v95: faiz birikmez — her gün 00:00'da cebine yatar */}
+        <p className="bank-hint">Günlük faiz: +{Math.floor(bankBalance * 0.01).toLocaleString('tr-TR')} altın · 00:00&apos;da cebine</p>
         <TradeToggle
           buyLabel="Yatır"
           sellLabel="Çek"

@@ -78,7 +78,7 @@ function PlayEmeraldSection({ user, blocked, emerald }) {
 
       if (user) {
         const restored = await restorePlayPurchases(svc);
-        if (alive && restored > 0) setNote({ ok: true, text: `Yarım kalan satın alman tamamlandı: ${restored} zümrüt hesabına yüklendi 💎` });
+        if (alive && restored > 0) setNote({ ok: true, text: `💎 ${restored} zümrüt hesabına yüklendi.` });
       }
     })();
     return () => {
@@ -94,9 +94,9 @@ function PlayEmeraldSection({ user, blocked, emerald }) {
       const r = await buyWithPlay(service, prod.productId);
       if (r.cancelled) return;
       if (r.pending) {
-        setNote({ ok: true, text: 'Ödemen onay bekliyor. Onaylanınca mağazayı tekrar açtığında zümrütlerin yüklenecek.' });
+        setNote({ ok: true, text: '⏳ Ödemen onay bekliyor. Onaylanınca zümrütlerin yüklenecek.' });
       } else if (r.ok) {
-        setNote({ ok: true, text: `${prod.emerald} zümrüt hesabına yüklendi! 💎` });
+        setNote({ ok: true, text: `💎 ${prod.emerald} zümrüt hesabına yüklendi!` });
       } else {
         setNote({ ok: false, text: 'Satın alma tamamlanamadı.' });
       }

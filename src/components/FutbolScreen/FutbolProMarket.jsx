@@ -55,9 +55,7 @@ export function ProContracts({ team, readOnly }) {
           👤 Sözleşmeli futbolcular <em className="fp-count">{contracts.length}</em>
         </p>
         {/* v89: maaşın kaynağı takımın yönetim durumuna göre (sunucu: futbolPro.paySalaries) */}
-        <p className="fp-hint">
-          Maaş ve fesihler her gün 19:00&apos;da. Maaş {team.managerUid ? 'takım kasasından' : team.autoManaged ? 'takım kasasından (takım otomatik yönetimde)' : 'başkanın altınından'} ödenir. Yetmezse borç birikir.
-        </p>
+        <p className="fp-hint">💰 Maaş {team.managerUid || team.autoManaged ? 'takım kasasından' : 'başkanın altınından'}</p>
         {debtTotal > 0 && <p className="fp-pending">⚠️ Eski futbolculara borç: {fmt(debtTotal)}</p>}
         {contracts.map((c) => {
           const pos = POS_META[c.position] || {};
@@ -73,8 +71,8 @@ export function ProContracts({ team, readOnly }) {
                 <span>
                   ⚡ {pw(c.power)} · 💰 {fmt(c.salary)}/gün{c.salaryDebt > 0 && <em className="fp-debt"> · borç {fmt(c.salaryDebt)}</em>}
                 </span>
-                {c.pendingEnd && <span className="fp-pending">⏳ Bugün 19:00&apos;da ayrılıyor (maaşı 19:00&apos;da ödenir)</span>}
-                {c.pendingTransfer && <span className="fp-pending">⏳ Bugün 19:00&apos;da {c.pendingTransfer.teamName || 'başka takıma'} transfer oluyor</span>}
+                {c.pendingEnd && <span className="fp-pending">⏳ 19:00&apos;da ayrılıyor</span>}
+                {c.pendingTransfer && <span className="fp-pending">⏳ 19:00&apos;da {c.pendingTransfer.teamName || 'başka takıma'}</span>}
                 {c.raiseRequest && (
                   <span className="fp-pending">
                     💸 Zam isteği: {fmt(c.raiseRequest.salary)}
@@ -131,8 +129,9 @@ export function ProPlayersList({ team, readOnly }) {
   const { pros: allPros } = useProList(true);
   // kendi takımımızdakiler hariç; önce ilandakiler, sonra takımsızlar, sonra takımlılar
   // v90: başkan/menajer de kendi takımında oynayabilir
+  // v95: ilana çıkmış takımsız futbolcular transfer listesinde (ListedProRow) görünür
   const pros = allPros
-    .filter((p) => p.teamId !== team.id)
+    .filter((p) => p.teamId !== team.id && !(p.listed && !p.teamId))
     .sort((a, b) => Number(Boolean(a.teamId)) - Number(Boolean(b.teamId)) || Number(Boolean(b.listed && !b.teamId)) - Number(Boolean(a.listed && !a.teamId)) || b.power - a.power);
   const { offers } = useTeamProOffers(team.id);
   const { busy, msg, run } = useProRun();
@@ -146,33 +145,6 @@ export function ProPlayersList({ team, readOnly }) {
         <p className="fp-title">
           💰 Maaşlı futbolcular <em className="fp-count">{pros.length}</em>
         </p>
-        <p className="fp-hint">Gerçek oyuncular · 200+ güç · teklifler 24 saat geçerli</p>
-        <details className="fp-how">
-          <summary>❔ Nasıl çalışır?</summary>
-          <ul>
-            <li>
-              <b>📢 İlandakiler:</b> futbolcu maaşını kendisi belirlemiştir; <b>İmzala</b>'ya basılı tutunca o maaşla hemen takımına katılır.
-            </li>
-            <li>
-              <b>📨 Diğerleri:</b> maaş önerip teklif gönderirsin; futbolcu 24 saat içinde kabul ederse takımına katılır.
-            </li>
-            <li>
-              <b>👕 Başka takımdakiler:</b> teklifini kabul ederse 19:00&apos;da eski takımından ayrılıp sana geçer (bonservis ödenmez; o günün maaşını eski takımı öder).
-            </li>
-            <li>
-              <b>🕖 İlk maaş:</b> 18:00&apos;den önce katılan aynı gün 19:00&apos;da, 18:00 ve sonrası katılan ertesi gün 19:00&apos;da ilk maaşını alır.
-            </li>
-            <li>
-              <b>✂️ Fesih:</b> kim başlatırsa başlatsın 19:00&apos;da olur; o günün maaşı ödenir.
-            </li>
-            <li>
-              <b>💰 Maaş:</b> her gün 19:00&apos;da; aralık futbolcunun gücüne bağlı (güç × 25 – güç × 50, ör. 200 güç → 5.000–10.000); ödenemeyen kısım borç olur, fesihte borç takımda kalır ve para gelince ödenir.
-            </li>
-            <li>
-              <b>⚽ Kadro:</b> gerçek futbolcular satılamaz, yaşlanmaz; maça çıkarmak için onları ilk 11&apos;e sen koyarsın. Antrenman ve maçla güçleri artar.
-            </li>
-          </ul>
-        </details>
         {pros.length === 0 && <p className="fp-hint">Şu an yok.</p>}
         {pros.map((p) => {
           const pos = POS_META[p.position] || {};
@@ -191,7 +163,7 @@ export function ProPlayersList({ team, readOnly }) {
                   {listed ? <em className="fp-ask"> · 📢 {fmt(p.askSalary)}/gün</em> : <em className="fp-ask"> · 💰 {fmt(band.min)}–{fmt(band.max)}</em>}
                   {p.teamId && <em className="fp-inteam"> · 👕 {p.teamName}</em>}
                 </span>
-                {offerFor === p.id && p.teamId && <span className="fp-hint">Kabul ederse 19:00&apos;da {p.teamName} takımından ayrılıp sana geçer.</span>}
+                {offerFor === p.id && p.teamId && <span className="fp-hint">Kabul ederse 19:00&apos;da gelir</span>}
                 {sent && (
                   <span className="fp-pending">
                     📨 {fmt(sent.salary)}/gün · ⏳ {hoursLeft(sent.expiresAtMs)}
@@ -237,5 +209,31 @@ export function ProPlayersList({ team, readOnly }) {
         })}
       </div>
     </fieldset>
+  );
+}
+
+// v95 — ilana çıkmış (takımsız) futbolcu: transfer listesinde, mevkisinin altında.
+// İmzala (basılı tut) → o maaşla takıma katılır.
+export function ListedProRow({ p, team, readOnly }) {
+  const { busy, msg, run } = useProRun();
+  const pos = POS_META[p.position] || {};
+  return (
+    <div className="futbol-transfer-row fp-listed-row">
+      <span className="fp-prow-pos fp-listed-ico" title={pos.name}>
+        {pos.icon}
+      </span>
+      <div className="futbol-transfer-info">
+        <p className="futbol-transfer-name">
+          {p.name} <em className="fp-real-tag">GERÇEK</em>
+        </p>
+        <p className="futbol-buy-meta">
+          {pw(p.power)} güç · 💰 {fmt(p.askSalary)}/gün
+        </p>
+        {msg && <p className={`fp-msg${msg.ok ? ' ok' : ''}`}>{msg.text}</p>}
+      </div>
+      <HoldButton className="futbol-admin-submit" disabled={readOnly || Boolean(busy)} onDone={() => run(`s_${p.id}`, { op: 'sign', teamId: team.id, uid: p.uid, expect: p.askSalary }, `🤝 ${p.name} takımda!`)}>
+        ✍️ İmzala
+      </HoldButton>
+    </div>
   );
 }

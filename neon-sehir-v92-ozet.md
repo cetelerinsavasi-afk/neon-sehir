@@ -208,3 +208,20 @@ Testler: 348/348 geçti.
 - **Futbol bug düzeltmesi:** menajer bir oyuncuyu transfer listesine koyup başka bir takıma sattığında para menajerin kendi altınına gidiyordu. Artık satan takıma gidiyor: takım menajerliyse (ya da sahipsizse) takım kasasına, başkan yönetiyorsa başkana. (Anında satış zaten doğruydu.)
 
 **Yükleme:** `firebase deploy --only functions:buyFutbolPlayer`, sonra push.
+
+## v95
+- **Transfer listesi:** kendini transfer listesine koyan gerçek futbolcu artık "Maaşlı futbolcular"da değil, Transfer listesinde (GERÇEK etiketiyle, istediği maaşla) görünüyor; oradan imzalanabiliyor.
+- **Mevki değişimi:** takımsız futbolcu 200 güçten sonra da mevkisini günde 1 kez değiştirebiliyor. Şartlar: takımda değil, transfer listesinde değil, bekleyen teklifi yok. Değişiklik listede anında görünür.
+- **Spor salonu:** uzun isimlerde isim "…" ile kısalıyor, "🔥 Bonus %10" etiketi hep görünüyor.
+- **Banka faizi:** faiz mevduatta birikmiyor; her gün 00:00'da %1 doğrudan cebe yatıyor ve SMS geliyor.
+- **Ekip soygunu:** ekibin toplam gücü hedefin gereken gücüne ulaşınca kurucuya SMS gidiyor. Güç tekrar düşüp yeniden ulaşırsa yine haber verilir.
+- Futbolcu panellerindeki açıklama metinleri kaldırıldı / kısaltıldı ("Gerçek oyuncular · 200+ güç…", "Nasıl çalışır?", maaş saati açıklamaları vb.).
+
+**Yükleme:** `firebase deploy --only functions:shopAction,functions:dailyReset,functions:joinHeistPlan,functions:leaveHeistPlan,functions:kickFromHeistPlan,functions:refreshHeistPlanParticipants`, sonra push.
+
+## v95.1
+- **Google Play zümrüt güvencesi:** sunucu Google'dan satın almayı doğrulayamazsa (izin / API / ağ hatası) ödeme artık sunucuda bekletiliyor (`playPending`). 30 dakikalık tarama, oyuncu uygulamayı hiç açmasa da tekrar deniyor; Google yanıt verdiği anda zümrüt yükleniyor ve oyuncuya "💎 X zümrüt hesabına yüklendi" SMS'i gidiyor. Çift yükleme yok.
+- **Teşhis:** Firestore › `system/playBillingHealth` belgesi Google doğrulamasının son başarılı zamanını ve son hatanın kodunu / açıklamasını gösteriyor.
+- Satın alma sonrası uzun yazı kısaldı: "✓ Ödemen alındı. Zümrütlerin kısa süre içinde yüklenecek, SMS ile haber vereceğiz." (iade cümlesi kaldırıldı).
+
+**Yükleme:** `firebase deploy --only functions:verifyPlayPurchase,functions:playBillingSweep`, sonra push.

@@ -115,9 +115,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const RETRYABLE = new Set(['functions/unavailable', 'functions/internal', 'functions/deadline-exceeded', 'functions/resource-exhausted', 'unavailable', 'internal']);
 
 // v91.1: ağ / sunucu geçici hatalarında 3 kez dener (0 sn, 2 sn, 6 sn).
-// Yine olmazsa satın alma Play'de "tüketilmemiş" kalır → uygulama bir sonraki
-// açılışta / mağaza açılışında restorePlayPurchases ile tamamlanır. Hiç
-// tamamlanamazsa Google 3 gün içinde parayı kendiliğinden iade eder.
+// Yine olmazsa satın alma sunucuda bekletilir (playPending) ve 30 dakikalık
+// taramayla / uygulama açılışında restorePlayPurchases ile tamamlanır.
 async function verifyWithRetry(productId, purchaseToken) {
   let lastErr = null;
   for (const wait of [0, 2000, 6000]) {
@@ -132,7 +131,7 @@ async function verifyWithRetry(productId, purchaseToken) {
     }
   }
   const e = new Error(
-    'Ödemen güvende ✓ Zümrütlerin birkaç dakika içinde otomatik yüklenecek (uygulamayı kapatıp açman da yeterli). Yüklenmezse Google ödemeni 3 gün içinde kendiliğinden iade eder.'
+    '✓ Ödemen alındı. Zümrütlerin kısa süre içinde yüklenecek, SMS ile haber vereceğiz.'
   );
   e.safePending = true;
   e.cause = lastErr;

@@ -12,7 +12,8 @@ import {
   forceRefreshFutbolTransferMarket,
 } from '../../services/gameActions';
 import FutbolPlayerAvatar from './FutbolPlayerAvatar';
-import { ProPlayersList } from './FutbolProMarket';
+import { ProPlayersList, ListedProRow } from './FutbolProMarket';
+import { useProList } from '../../hooks/useFutbolPro';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import ConfirmModal from '../ConfirmModal/ConfirmModal';
 import { groupFutbolPlayersByPositionOrdered } from './futbolPositionOrder';
@@ -161,8 +162,11 @@ export default function FutbolTransfer({ team, role }) {
     }
   };
 
+  // v95: ilana çıkmış takımsız gerçek futbolcular da transfer listesinde (mevkisinin altında)
+  const { pros } = useProList(true);
+  const listedPros = pros.filter((p) => p.listed && !p.teamId && p.position).map((p) => ({ ...p, __pro: true }));
   const marketGroups = market
-    ? groupFutbolPlayersByPositionOrdered(market.filter((p) => p.teamId !== team.id))
+    ? groupFutbolPlayersByPositionOrdered([...market.filter((p) => p.teamId !== team.id), ...listedPros])
     : [];
   const marketItemsCount = marketGroups.reduce((sum, g) => sum + g.players.length, 0);
 
@@ -307,6 +311,7 @@ export default function FutbolTransfer({ team, role }) {
         <div key={group.position} className="futbol-transfer-position-group">
           <p className="futbol-transfer-group-header">{group.label}</p>
           {group.players.map((p) => {
+            if (p.__pro) return <ListedProRow key={`pro_${p.id}`} p={p} team={team} readOnly={readOnly} />;
             const price = p.salePrice || 0;
             const alreadyBought = boughtIds.has(p.id);
             const canAfford = availableBudget >= price;

@@ -248,9 +248,10 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
               <AvatarSvg avatar={h.ownerAvatar} size={42} rounded />
             </span>
             <span className="hh-info">
-              <b>
-                {h.name || t.label}
-                {type === 'spor' && h.gymBonusDay === today && <em className="bh-bonus">🔥 Bonuslu: +%10 güç</em>}
+              {/* v95: uzun adda isim kısalır (…), bonus etiketi hep görünür */}
+              <b className="bh-name-row">
+                <span className="bh-name">{h.name || t.label}</span>
+                {type === 'spor' && h.gymBonusDay === today && <em className="bh-bonus">🔥 Bonus %10</em>}
               </b>
               <span>Sahibi: {h.ownerName || 'Oyuncu'}{h.mine ? ' (sen)' : ''}</span>
             </span>

@@ -186,3 +186,20 @@
 .bh-root .ptp {
   margin-bottom: 10px;
 }
+
+/* v95 — salon adı uzunsa kısalır, bonus etiketi her zaman görünür */
+.hh-info b.bh-name-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.bh-name-row .bh-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bh-name-row .bh-bonus {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}

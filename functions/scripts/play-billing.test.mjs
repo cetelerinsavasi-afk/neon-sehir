@@ -210,3 +210,55 @@ test('iade listesi sayfalıysa tüm sayfalar işlenir; kontrol noktası ilerler'
   for (let i = 0; i < 5; i++) assert.equal(em(`u${i}`), 0);
   assert.equal(G('system/playVoidedSweep').lastEndMs, now + 100);
 });
+
+// ---------------------------------------------------------------- v95.1 BEKLEYEN ÖDEME
+test('v95.1 Google izni yoksa ödeme sunucuda bekletilir; izin gelince tarama yükler + SMS atar', async () => {
+  const { pb, play, G, em, msgs, db } = setup({ t: { productId: 'zumrut_200', purchaseState: 0 } });
+  play.failGet = 401;
+  await assert.rejects(buy(pb, 'u1', 'zumrut_200', 't'), (e) => e.code === 'unavailable');
+  await assert.rejects(buy(pb, 'u1', 'zumrut_200', 't'), (e) => e.code === 'unavailable');
+  const pend = [...db._store.keys()].filter((k) => k.startsWith('playPending/'));
+  assert.equal(pend.length, 1);
+  assert.equal(G(pend[0]).uid, 'u1');
+  assert.equal(G('system/playBillingHealth').ok, false);
+  assert.equal(G('system/playBillingHealth').lastErrorStatus, 401);
+  // Hâlâ izin yok → tarama dokunmaz
+  let r = await pb.retryPendingVerifies();
+  assert.equal(r.still, 1);
+  assert.equal(em('u1'), 0);
+  // İzin verildi → oyuncu uygulamayı açmasa da yüklenir
+  play.failGet = null;
+  r = await pb.retryPendingVerifies();
+  assert.equal(r.credited, 1);
+  assert.equal(em('u1'), 200);
+  assert.equal(play.purchases.t.consumptionState, 1);
+  assert.equal([...db._store.keys()].filter((k) => k.startsWith('playPending/')).length, 0);
+  assert.ok(msgs('u1').some((m) => m.includes('200 zümrüt')));
+  assert.equal(G('system/playBillingHealth').ok, true);
+  // Tekrar tarama / istemci tekrar göndermesi çift yüklemez
+  await pb.retryPendingVerifies();
+  await buy(pb, 'u1', 'zumrut_200', 't');
+  assert.equal(em('u1'), 200);
+});
+
+test('v95.1 bekleyen sahte token Google tanımayınca silinir; anında yüklenen ödeme SMS atmaz', async () => {
+  const { pb, play, em, msgs, db } = setup({ ok: { productId: 'zumrut_50', purchaseState: 0 } });
+  play.failGet = 503;
+  await assert.rejects(buy(pb, 'u1', 'zumrut_50', 'sahte'), (e) => e.code === 'unavailable');
+  play.failGet = null;
+  const r = await pb.retryPendingVerifies();
+  assert.equal(r.dropped, 1);
+  assert.equal([...db._store.keys()].filter((k) => k.startsWith('playPending/')).length, 0);
+  await buy(pb, 'u2', 'zumrut_50', 'ok');
+  assert.equal(em('u2'), 50);
+  assert.equal(msgs('u2').length, 0);
+});
+
+test('v95.1 4 günden eski bekleyen kayıt bırakılır', async () => {
+  const { pb, play, db } = setup({});
+  play.failGet = 403;
+  await assert.rejects(buy(pb, 'u1', 'zumrut_50', 'x'), (e) => e.code === 'unavailable');
+  const r = await pb.retryPendingVerifies(Date.now() + 5 * 24 * 60 * 60 * 1000);
+  assert.equal(r.dropped, 1);
+  assert.equal([...db._store.keys()].filter((k) => k.startsWith('playPending/')).length, 0);
+});

@@ -135,6 +135,59 @@ export function createPlayBilling({ db, FieldValue, HttpsError, writeGoldStorePa
     return db.collection('playPurchases').doc(tokenHash(purchaseToken));
   }
 
+  // v95.1 — Sağlık kaydı: Google doğrulaması son ne zaman çalıştı / neden
+  // çalışmadı (Firestore › system/playBillingHealth). Kurulum hatası (servis
+  // hesabının Play Console izni, API kapalı) burada açıkça görünür.
+  const healthRef = () => db.collection('system').doc('playBillingHealth');
+  async function noteHealth(ok, err) {
+    try {
+      if (ok) {
+        await healthRef().set({ ok: true, lastOkAt: FieldValue.serverTimestamp(), lastOkAtMs: Date.now() }, { merge: true });
+      } else {
+        const body = err?.response?.data;
+        await healthRef().set(
+          {
+            ok: false,
+            lastErrorAt: FieldValue.serverTimestamp(),
+            lastErrorAtMs: Date.now(),
+            lastErrorStatus: httpStatusOf(err) || null,
+            lastErrorMessage: String(err?.message || '').slice(0, 300),
+            lastErrorBody: body ? JSON.stringify(body).slice(0, 1000) : null,
+          },
+          { merge: true }
+        );
+      }
+    } catch {
+      /* sağlık kaydı yazılamazsa akış bozulmasın */
+    }
+  }
+
+  // v95.1 — Doğrulanamayan (Google'a ulaşılamayan / izin hatası) ödemeler
+  // sunucuda bekletilir; 30 dakikalık tarama oyuncu uygulamayı hiç açmasa da
+  // tekrar dener, yüklenince SMS atar. (Belge yalnızca sunucuya açık.)
+  const pendingRef = (purchaseToken) => db.collection('playPending').doc(tokenHash(purchaseToken));
+  async function notePending(uid, productId, purchaseToken, err) {
+    try {
+      const ref = pendingRef(purchaseToken);
+      const s = await ref.get();
+      if (s.exists && s.data().uid !== uid) return;
+      await ref.set(
+        {
+          uid,
+          productId,
+          purchaseToken,
+          ...(s.exists ? {} : { firstAtMs: Date.now(), firstAt: FieldValue.serverTimestamp() }),
+          lastAtMs: Date.now(),
+          attempts: FieldValue.increment(1),
+          lastStatus: httpStatusOf(err) || null,
+        },
+        { merge: true }
+      );
+    } catch (e) {
+      console.warn('playBilling pending kaydı', e?.message);
+    }
+  }
+
   async function verifyPlayPurchase(uid, data = {}) {
     const productId = String(data.productId || '').trim();
     const purchaseToken = String(data.purchaseToken || '').trim();
@@ -146,6 +199,7 @@ export function createPlayBilling({ db, FieldValue, HttpsError, writeGoldStorePa
     if (!pack) throw new HttpsError('invalid-argument', 'Bilinmeyen ürün.');
 
     const ref = db.collection('playPurchases').doc(tokenHash(purchaseToken));
+    const pRef = pendingRef(purchaseToken);
 
     // Daha önce yüklendiyse (tekrar deneme / uygulama açılışında listPurchases)
     // Google'a sormadan dön; sadece tüketilmemişse tüketmeyi tekrar dene.
@@ -167,17 +221,14 @@ export function createPlayBilling({ db, FieldValue, HttpsError, writeGoldStorePa
     } catch (err) {
       const st = httpStatusOf(err);
       console.error('playBilling verify', productId, st, err?.message, JSON.stringify(err?.response?.data || {}));
+      await noteHealth(false, err);
       if (st === 400 || st === 404 || st === 410) {
         throw new HttpsError('invalid-argument', 'Google Play bu satın almayı tanımadı.');
       }
-      if (st === 401 || st === 403) {
-        throw new HttpsError(
-          'unavailable',
-          'Ödeme alındı ama sunucu Google Play ile doğrulama yapamadı. Merak etme, paran kaybolmaz — biraz sonra mağazayı tekrar açınca otomatik yüklenecek.'
-        );
-      }
-      throw new HttpsError('unavailable', 'Google Play şu an yanıt vermiyor, biraz sonra tekrar dene.');
+      await notePending(uid, productId, purchaseToken, err);
+      throw new HttpsError('unavailable', 'Ödemen alındı, zümrütlerin kısa süre içinde yüklenecek.');
     }
+    await noteHealth(true);
 
     // purchaseState: 0 = ödendi, 1 = iptal, 2 = beklemede (ör. nakit ödeme)
     const state = Number(purchase.purchaseState ?? -1);
@@ -188,11 +239,13 @@ export function createPlayBilling({ db, FieldValue, HttpsError, writeGoldStorePa
     await db.runTransaction(async (tx) => {
       credited = false;
       const s = await tx.get(ref);
+      const ps = await tx.get(pRef);
       if (s.exists && (s.data().revokedAt || s.data().voidedAt)) {
         throw new HttpsError('failed-precondition', 'Bu satın alma iade edilmiş / iptal edilmiş.');
       }
       if (s.exists && s.data().creditedAt) {
         if (s.data().uid !== uid) throw new HttpsError('permission-denied', 'Bu satın alma başka bir hesaba yüklenmiş.');
+        if (ps.exists) tx.delete(pRef);
         return;
       }
       writeGoldStorePackage(tx, uid, packageId);
@@ -214,11 +267,55 @@ export function createPlayBilling({ db, FieldValue, HttpsError, writeGoldStorePa
         creditedAt: FieldValue.serverTimestamp(),
         creditedAtMs: Date.now(),
       });
+      // Gecikmeli yüklemede oyuncu ekranda olmayabilir → SMS ile haber ver.
+      if (ps.exists) {
+        tx.delete(pRef);
+        tx.set(db.collection('users').doc(uid).collection('messages').doc(), {
+          from: 'Zümrüt Mağazası',
+          text: `💎 ${pack.emerald || 0} zümrüt hesabına yüklendi. Teşekkürler!`,
+          type: 'play_purchase',
+          read: false,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      }
       credited = true;
     });
 
     await tryConsume(ref, productId, purchaseToken);
     return { ok: true, credited, alreadyCredited: !credited, emerald: pack.emerald || 0 };
+  }
+
+  // v95.1 — Bekleyen (doğrulanamamış) ödemeleri tekrar dene. Google yanıt
+  // verdiği anda yüklenir; Google'ın tanımadığı / iptal edilmiş olanlar silinir.
+  // 4 günden eski olanlar bırakılır (Google 3 günde onaylanmayanı iade eder).
+  async function retryPendingVerifies(nowMs = Date.now()) {
+    const snap = await db.collection('playPending').limit(100).get();
+    const out = { checked: snap.size, credited: 0, dropped: 0, still: 0 };
+    for (const d of snap.docs) {
+      const r = d.data();
+      if (nowMs - Number(r.firstAtMs || 0) > 4 * 24 * 60 * 60 * 1000) {
+        await d.ref.delete();
+        out.dropped += 1;
+        continue;
+      }
+      try {
+        const res = await verifyPlayPurchase(r.uid, { productId: r.productId, purchaseToken: r.purchaseToken });
+        if (res.ok) {
+          out.credited += res.credited ? 1 : 0;
+          await d.ref.delete().catch(() => {});
+        } else out.still += 1; // Google'da hâlâ "beklemede"
+      } catch (err) {
+        if (err?.code === 'unavailable') {
+          out.still += 1;
+          // Google'a ulaşılamıyor / izin yok — sonraki tarama denesin.
+          break;
+        } else {
+          await d.ref.delete().catch(() => {});
+          out.dropped += 1;
+        }
+      }
+    }
+    return out;
   }
 
   // ---------------------------------------------------------------------------
@@ -333,5 +430,5 @@ export function createPlayBilling({ db, FieldValue, HttpsError, writeGoldStorePa
     return { checked: snap.size, consumed: ok };
   }
 
-  return { verifyPlayPurchase, processVoidedPurchases, revokeVoided, retryPendingConsumes };
+  return { verifyPlayPurchase, processVoidedPurchases, revokeVoided, retryPendingConsumes, retryPendingVerifies };
 }

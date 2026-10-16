@@ -221,12 +221,14 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
     return { uid, name: String(user?.displayName || 'Oyuncu').slice(0, 40), position: null, power: FOOTBALLER_START_POWER, teamId: null, positionChangedAtMs: 0, createdAtMs: now() };
   }
   // Mevki değişikliği uygulanabilir mi? (YAZMAZ)
-  function positionPatch(fb, position) {
+  // v95: güçten bağımsız (200+ da) günde 1 kez değişir; takımda, ilanda ya da bekleyen
+  // teklif varken değişmez (gün 19:00'da döner).
+  function positionPatch(fb, position, { pendingOffers = 0 } = {}) {
     if (!POSITIONS.includes(position)) fail('invalid-argument', 'Geçersiz mevki.');
     if (fb.position === position) return null;
     if (fb.teamId) fail('failed-precondition', 'position-team');
-    // v77: 200 güce ulaşan futbolcunun mevki kalıcıdır; altında günde 1 kez değişir (gün 19:00'da döner)
-    if (fb.position && Number(fb.power || 0) >= PRO_POWER) fail('failed-precondition', 'position-pro');
+    if (fb.listed) fail('failed-precondition', 'position-listed');
+    if (pendingOffers > 0) fail('failed-precondition', 'position-offer');
     const day = futbolDayKey(now());
     if (fb.position && fb.positionDayKey === day) fail('failed-precondition', 'position-today');
     return { position, positionChangedAtMs: now(), positionDayKey: day };
@@ -234,9 +236,15 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
   async function footballerPosition(uid, p) {
     let result = null;
     await db.runTransaction(async (tx) => {
-      const [fs, us] = await Promise.all([tx.get(fbRef(uid)), tx.get(userRef(uid))]);
+      const [fs, us, os] = await Promise.all([
+        tx.get(fbRef(uid)),
+        tx.get(userRef(uid)),
+        tx.get(db.collection('futbolOffers').where('uid', '==', uid).where('status', '==', 'pending').limit(20)),
+      ]);
+      const t = now();
+      const pendingOffers = os.docs.filter((d) => Number(d.data().expiresAtMs || 0) > t).length;
       const fb = fs.exists ? fs.data() : newFootballer(uid, us.data());
-      const patch = positionPatch(fb, String(p.position || ''));
+      const patch = positionPatch(fb, String(p.position || ''), { pendingOffers });
       if (!fs.exists) tx.set(fbRef(uid), { ...fb, ...(patch || {}) });
       else if (patch) tx.update(fbRef(uid), patch);
       result = { ok: true, position: patch?.position || fb.position };
@@ -267,7 +275,11 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
       let fb = fs.exists ? fs.data() : newFootballer(uid, user);
       if (fb.teamId) fail('failed-precondition', 'in-team');
       let patch = null;
-      if (p.position && p.position !== fb.position) patch = positionPatch(fb, String(p.position));
+      if (p.position && p.position !== fb.position) {
+        const os2 = await tx.get(db.collection('futbolOffers').where('uid', '==', uid).where('status', '==', 'pending').limit(20));
+        const pendingOffers = os2.docs.filter((d) => Number(d.data().expiresAtMs || 0) > now()).length;
+        patch = positionPatch(fb, String(p.position), { pendingOffers });
+      }
       if (patch) fb = { ...fb, ...patch };
       if (!fb.position) fail('failed-precondition', 'position-required');
       // bitmemiş üyelik: süresi dolduysa iade, dolmadıysa yeni alınamaz

@@ -3614,18 +3614,31 @@ export const dailyReset = onSchedule(
     }
 
     // 2) Banka mevduat faizi — günlük %1 (Bölüm 13)
+    // v95: faiz bakiyede birikmez; 00:00'da doğrudan oyuncunun altınına girer + SMS.
+    // (Günlük raporda "Banka faizi" olarak görünür.) 200'erli gruplar (batch ≤ 500 yazma).
     const bankSnap = await db.collection('users').where('bankBalance', '>', 0).get();
-    const bankBatch = db.batch();
-    bankSnap.forEach((docSnap) => {
-      const balance = docSnap.data().bankBalance || 0;
-      const interest = Math.floor(balance * 0.01);
-      if (interest > 0) {
+    const bankDocs = bankSnap.docs;
+    for (let i = 0; i < bankDocs.length; i += 200) {
+      const bankBatch = db.batch();
+      let n = 0;
+      bankDocs.slice(i, i + 200).forEach((docSnap) => {
+        const balance = docSnap.data().bankBalance || 0;
+        const interest = Math.floor(balance * 0.01);
+        if (interest <= 0) return;
         bankBatch.update(docSnap.ref, {
-          bankBalance: admin.firestore.FieldValue.increment(interest),
+          gold: admin.firestore.FieldValue.increment(interest),
+          goldTag: goldTag('banka', { faiz: interest }),
         });
-      }
-    });
-    if (!bankSnap.empty) await bankBatch.commit();
+        bankBatch.set(docSnap.ref.collection('messages').doc(), {
+          text: `🏦 Banka faizi: +${interest.toLocaleString('tr-TR')} altın cebine yattı.`,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          read: false,
+          type: 'bank_interest',
+        });
+        n += 1;
+      });
+      if (n) await bankBatch.commit();
+    }
 
     // 3) Yatırım araçları artık günde 1 kez değil, saatte 1 kez ayrı bir
     // Cloud Function (hourlyInvestmentUpdate) tarafından güncelleniyor.
@@ -6854,10 +6867,47 @@ export const refreshHeistPlanParticipants = onCall(async (request) => {
       batch.update(ref, { suspicion, weaponPower: power });
     });
     await batch.commit();
+    await checkHeistReady(planRef).catch(() => {});
   }
 
   return { ok: true };
 });
+
+// v95 — Ekip gücü hedefin gereken gücüne ulaşınca kurucuya tek SMS.
+// Güç tekrar düşerse bayrak sıfırlanır, yeniden ulaşınca yine haber verilir.
+async function checkHeistReady(planRef) {
+  const snap = await planRef.collection('participants').get();
+  const total = snap.docs.reduce((s, d) => s + (Number(d.data().weaponPower) || 0), 0);
+  let notify = null;
+  await db.runTransaction(async (tx) => {
+    const ps = await tx.get(planRef);
+    if (!ps.exists) return;
+    const plan = ps.data();
+    if (plan.status !== 'open') return;
+    const need = HEIST_CONFIG[plan.target]?.requiredPower || 0;
+    if (!need) return;
+    const ready = total >= need;
+    if (ready && !plan.readyNotified) {
+      tx.update(planRef, { readyNotified: true });
+      notify = { creatorUid: plan.creatorUid, need };
+    } else if (!ready && plan.readyNotified) {
+      tx.update(planRef, { readyNotified: false });
+    }
+  });
+  if (notify?.creatorUid) {
+    await db
+      .collection('users')
+      .doc(notify.creatorUid)
+      .collection('messages')
+      .add({
+        text: `🦹 Soygun ekibin hazır: ${total.toLocaleString('tr-TR')}/${notify.need.toLocaleString('tr-TR')} güç.`,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        read: false,
+        type: 'heist_ready',
+        planId: planRef.id,
+      });
+  }
+}
 
 export const joinHeistPlan = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -6985,6 +7035,7 @@ export const joinHeistPlan = onCall(async (request) => {
     await planRef.update({ warnedUids: Array.from(warnedUids) });
   }
 
+  await checkHeistReady(planRef).catch((e) => console.warn('heist ready', e?.message));
   return { ok: true };
 });
 
@@ -6995,6 +7046,7 @@ export const leaveHeistPlan = onCall(async (request) => {
   await planRef.collection('participants').doc(uid).delete();
   // Çıkan oyuncu bu plana bir daha katılamaz.
   await planRef.update({ removedUids: admin.firestore.FieldValue.arrayUnion(uid) });
+  await checkHeistReady(planRef).catch(() => {});
   return { ok: true };
 });
 
@@ -7015,6 +7067,7 @@ export const kickFromHeistPlan = onCall(async (request) => {
   await planRef.collection('participants').doc(targetUid).delete();
   // Atılan oyuncu bu plana bir daha katılamaz.
   await planRef.update({ removedUids: admin.firestore.FieldValue.arrayUnion(targetUid) });
+  await checkHeistReady(planRef).catch(() => {});
   return { ok: true };
 });
 
@@ -20125,6 +20178,12 @@ export const playBillingSweep = onSchedule({ schedule: 'every 30 minutes', timeo
     if (c.consumed) console.log('playBilling consume retry', JSON.stringify(c));
   } catch (err) {
     console.error('playBilling consume retry', err?.message);
+  }
+  try {
+    const r = await playBilling.retryPendingVerifies();
+    if (r.checked) console.log('playBilling pending', JSON.stringify(r));
+  } catch (err) {
+    console.error('playBilling pending retry', err?.message);
   }
 });
 
