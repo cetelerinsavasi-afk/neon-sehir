@@ -256,3 +256,11 @@ Testler: 348/348 geçti.
 - Not: v95.2–v95.4 arayüz değişiklikleri (biat Çetem sekmesinde, Evler + Home Ofisler tek liste) sadece push ile yayına çıkar; son push v95.1'deydi.
 
 **Yükleme:** sadece push (fonksiyon değişikliği yok).
+
+## v96
+- **İstihbarat:** her üye kendi 14 günlük raporunu görür (kendi kartına dokununca). Başkalarınınkini yine sadece Başkan / Şef / Uzman görür.
+- **Şampiyona — ilk 3'e ödül:** her araçta günün en hızlı ilk 3'ü gece 00:00'da ödül alır: galeri fiyatının %25 / %10 / %5'i (ör. 1.000.000'luk araç → 250.000 / 100.000 / 50.000). Sunucu günün ilk 10'unu tutar (`championshipDaily.top`). Ödül SMS'i sırayı yazar. Kartta açılır panel: kapalıyken sadece günün lideri; açılınca bugünün ve dünün ilk 3'ü + ödülleri. Not: 17 Ekim'in v96'dan önce kaydedilen dereceleri listede yok (o gün için sadece lider ödül alabilir).
+- **Başarılar:** Süper Kupa açıklaması "Sahip olduğun takımla süper kupayı kazan."
+- **2. el reklam ücreti** paneldeki reklam sayısına göre: 1.000 × (reklamdaki ürün + 1) → 0 reklam 1.000, 9 reklam 10.000. Süresi dolan / satılan reklam düşer. Oyuncu ilanları ve çete ilanları için aynı; onay penceresi güncel ücreti gösterir, ücret o arada değiştiyse sunucu reddeder.
+
+**Yükleme:** `firebase deploy --only functions:raceHubAction,functions:dailyReset,functions:dailyResetRecovery,functions:resolveStuckRewardsNow,functions:advertiseListing,functions:gangAction`, sonra push.

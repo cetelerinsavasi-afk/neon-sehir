@@ -143,8 +143,8 @@ export const cancelListing = (listingId) =>
 // reklam 1000 altın, kabul edilirse ilan 24 saat "Reklam Verilen
 // Ürünler" panelinde sergilenir; ürün kaldırılırsa (satılır/iptal
 // edilirse) reklam parası geri ödenmez.
-export const advertiseListing = (listingId) =>
-  httpsCallable(functions, 'advertiseListing')({ listingId });
+export const advertiseListing = (listingId, expect) =>
+  httpsCallable(functions, 'advertiseListing')({ listingId, ...(expect != null ? { expect } : {}) });
 
 // --- Telefon: Sixtagram (mini sosyal medya) ---
 

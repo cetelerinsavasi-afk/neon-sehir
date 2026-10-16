@@ -14,6 +14,7 @@ import { AmountInput, Bar, Btn, Card, Chips, Confirm, Deadline, Empty, Logo, She
 import { DIST_GROUPS, GANG_RULES, LEADERS, PRODUCTS, atLeast, fmt, productOf, unitsOf } from '../gangConstants';
 import { itemInfo, itemsFor } from '../itemInfo';
 import { nextTradeSunday } from '../tradeSchedule';
+import { useAdPrice } from '../GangMarketSection';
 
 const GANG_RULES_HARAC_HOUR_LABEL = '21:00'; // v38: haraç/rüşvet son dilim (21:00) başlayana kadar
 
@@ -21,8 +22,21 @@ const GANG_RULES_HARAC_HOUR_LABEL = '21:00'; // v38: haraç/rüşvet son dilim (
 const COMPACT = new Intl.NumberFormat('tr-TR', { notation: 'compact', maximumFractionDigits: 1 });
 const compact = (n) => (Math.abs(Number(n || 0)) < 10_000 ? fmt(n) : COMPACT.format(Number(n || 0)));
 
-// v71 — 2. el çete ilan reklamı (functions/gang/config.js MARKET_AD_PRICE ile aynı)
-const GANG_MARKET_AD_PRICE = 1000;
+// v96 — reklam onayı: ücret paneldeki reklam sayısına göre artar (functions/marketAds.js)
+function AdConfirm({ ad, busy, onCancel, onConfirm }) {
+  const price = useAdPrice();
+  return (
+    <Confirm
+      icon="📢"
+      title={`${ad.label} ilanına reklam verilsin mi?`}
+      lines={[`💰 ${fmt(price)} altın (çete kasasından)`, '⏱️ 24 saat', 'Ücret iade edilmez.']}
+      confirmLabel="Reklam Ver"
+      busy={busy}
+      onCancel={onCancel}
+      onConfirm={() => onConfirm(price)}
+    />
+  );
+}
 const adLeftLabel = (ms) => {
   const h = Math.max(0, Math.ceil((Number(ms || 0) - Date.now()) / 3600_000));
   return h <= 1 ? '1 saatten az' : `${h} saat`;
@@ -350,15 +364,12 @@ function DepotItems({ depot, lead, listings }) {
         </>
       )}
       {adFor && (
-        <Confirm
-          icon="📢"
-          title={`${adFor.label} ilanına reklam verilsin mi?`}
-          lines={[`💰 ${fmt(GANG_MARKET_AD_PRICE)} altın (çete kasasından)`, '⏱️ 24 saat boyunca 2. El Pazarı\'nda "📢 Reklam Verilen Ürünler" bölümünde görünür.', 'Ücret iade edilmez (ilan satılsa/kaldırılsa da).']}
-          confirmLabel="Reklam Ver"
+        <AdConfirm
+          ad={adFor}
           busy={busy === `ad_${adFor.id}`}
           onCancel={() => setAdFor(null)}
-          onConfirm={async () => {
-            const r = await run('advertiseDepotListing', { listingId: adFor.id }, { key: `ad_${adFor.id}`, success: '📢 Reklam verildi', withRequestId: true });
+          onConfirm={async (price) => {
+            const r = await run('advertiseDepotListing', { listingId: adFor.id, expect: price }, { key: `ad_${adFor.id}`, success: '📢 Reklam verildi', withRequestId: true });
             if (r) setAdFor(null);
           }}
         />

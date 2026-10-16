@@ -420,6 +420,9 @@ test('v94: üye raporu — bugünden önceki 14 gün, sadece rütbeliler; ihbar 
   assert.equal(r.betReports, 0);
   assert.equal(r.wars, 0);
   assert.equal(r.joinedDaysAgo, 1);
+  // v96: rütbesiz üye KENDİ raporunu görür
+  const own = await h.act(mole, 'intelMemberReport', { rosterId: j.rosterId });
+  assert.equal(own.truckReports, 1);
   const c = await h.act(chief, 'intelMemberReport', { rosterId: chiefRid });
   assert.equal(c.wars, 1);
   assert.equal(c.power, 12 * 30_000);

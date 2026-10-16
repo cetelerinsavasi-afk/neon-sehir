@@ -14,6 +14,7 @@
 //                                          kazanır, ikisi de bitirmediyse iade
 // =============================================================================
 import { replayRun, trainingBotRun, gradeOf } from './raceSim.js';
+import { mergeChampionshipTop } from './championshipPrizes.js';
 
 export function decideTaWinner(room, players) {
   const [a, b] = room.participantUids;
@@ -131,30 +132,24 @@ export function createRaceTa({ db, FieldValue, HttpsError, requireAuth, finalize
         if (!finishMs) return;
         const champDaily = champDailySnap.exists ? champDailySnap.data() : null;
         const entry = { uid, name: me0.displayName, vehicleModel: me0.vehicleModel, timeMs: finishMs, level: me0.level };
+        // v96: günün ilk 10'u tutulur (ilk 3 ödül alır) — tek yazımda
+        const top = mergeChampionshipTop(champDaily?.top, { ...entry, at: Date.now() });
+        const upd = { catalogId: room0.championshipCatalogId, dateKey: room0.championshipDateKey, mode: 'time', top, updatedAt: FieldValue.serverTimestamp() };
         const best = Number(champDaily?.leaderTimeMs) || 0;
         if (!best || finishMs < best) {
-          tx.set(
-            champDailyRef,
-            {
-              catalogId: room0.championshipCatalogId,
-              dateKey: room0.championshipDateKey,
-              mode: 'time',
-              leaderUid: uid,
-              leaderName: me0.displayName,
-              leaderVehicleModel: me0.vehicleModel,
-              leaderTimeMs: finishMs,
-              leaderTurns: FieldValue.delete(),
-              leaders: [entry],
-              updatedAt: FieldValue.serverTimestamp(),
-            },
-            { merge: true }
-          );
+          Object.assign(upd, {
+            leaderUid: uid,
+            leaderName: me0.displayName,
+            leaderVehicleModel: me0.vehicleModel,
+            leaderTimeMs: finishMs,
+            leaderTurns: FieldValue.delete(),
+            leaders: [entry],
+          });
         } else if (finishMs === best) {
           const existing = Array.isArray(champDaily.leaders) ? champDaily.leaders : [];
-          if (!existing.some((l) => l.uid === uid)) {
-            tx.update(champDailyRef, { leaders: [...existing, entry], updatedAt: FieldValue.serverTimestamp() });
-          }
+          if (!existing.some((l) => l.uid === uid)) upd.leaders = [...existing, entry];
         }
+        tx.set(champDailyRef, upd, { merge: true });
       });
       return { ok: true, finishMs };
     }

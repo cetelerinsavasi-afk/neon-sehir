@@ -115,6 +115,12 @@ test('v71: çete ilanına reklam — sadece Baba/Sağ Kol, kasadan 1000, 24 saat
   const l = h.get(`market/${listingId}`);
   assert.equal(l.adExpiresAtMs - l.adPurchasedAtMs, 24 * 3600_000);
   await h.fails(G.baba, 'advertiseDepotListing', { listingId }); // zaten reklamda
+  // v96: panelde 1 reklam varken ikinci reklam 2.000 (eski fiyatla beklenen reddedilir)
+  const { listingId: l3 } = await h.act(G.baba, 'listDepotItem', { itemKey: 'araba:2', qty: 1, unitPrice: 8500 });
+  await h.fails(G.baba, 'advertiseDepotListing', { listingId: l3, expect: 1000 });
+  const k1 = h.state(G.gangId).kasa;
+  await h.act(G.baba, 'advertiseDepotListing', { listingId: l3, expect: 2000 });
+  assert.equal(h.state(G.gangId).kasa, k1 - 2000);
   // kasa yetersiz
   const { listingId: l2 } = await h.act(G.baba, 'listDepotItem', { itemKey: 'araba:2', qty: 1, unitPrice: 9000 });
   await h.db.doc(`gangWorlds/test/gangs/${G.gangId}/private/state`).set({ kasa: 999 }, { merge: true });

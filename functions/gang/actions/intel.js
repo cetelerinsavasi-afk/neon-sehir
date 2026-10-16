@@ -108,7 +108,8 @@ export function createIntelActions(core) {
     const rid = requireIntel(membership);
     const [meSnap, tSnap] = await Promise.all([ctx.ref.roster(rid).get(), ctx.ref.roster(targetId).get()]);
     const me = meSnap.data();
-    if (!me || !['baskan', 'sef', 'uzman'].includes(core.effRank(me, ctx, 'muhbir'))) fail('permission-denied', 'Üye raporlarını sadece rütbeliler görebilir.');
+    // v96: herkes kendi raporunu görür; başkalarınınkini sadece rütbeliler
+    if (!me || (targetId !== rid && !['baskan', 'sef', 'uzman'].includes(core.effRank(me, ctx, 'muhbir')))) fail('permission-denied', 'Üye raporlarını sadece rütbeliler görebilir.');
     const t = tSnap.data();
     if (!t) fail('not-found', 'Üye bulunamadı.');
     const days = [];

@@ -8,12 +8,36 @@ import { INITIAL_LIFE_DAYS } from '../VehicleCard/VehicleCard';
 import InfoIcon from '../InfoIcon/InfoIcon';
 import { CarStatBars, LevelPips, vehicleRaceLevel } from './CarStats';
 import { fmtRace } from './timeAttackGame';
+import { championshipPodium, championshipPrize } from '../../../functions/championshipPrizes.js';
 import './RaceTrackScreen.css';
 
 const RULES_TEXT =
-  'Sahip olduğun her araçla günde 1 kez şampiyonaya katılabilirsin. Gece pistinde tek başına, kronometreye karşı sürüyorsun. Yarış bitmeden çıkarsan o araçla bugünkü hakkın yanar. O araçla günün EN HIZLI süresini yapan, gece 00:00\'da aracın galeri fiyatının 1/5\'i kadar altın kazanır. Aracını Modifiye Garajı\'nda geliştirirsen (seviye 2-3) hızın, ivmen ve nitron artar.';
+  'Her araçla günde 1 kez katılırsın. Yarış bitmeden çıkarsan o günkü hakkın yanar. Günün en hızlı ilk 3\'ü gece 00:00\'da ödül alır: aracın galeri fiyatının %25\'i, %10\'u ve %5\'i.';
 // v78: eski günlerin kaydı tur sayısıyla, yenileri süreyle tutulur
 const resultText = (ms, turns) => (ms ? fmtRace(ms) : turns ? `${turns} tur` : '');
+const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
+const MEDAL = ['🥇', '🥈', '🥉'];
+
+// v96 — günün / dünün ilk 3'ü (ödülleriyle)
+function PodiumList({ title, rows, note }) {
+  return (
+    <div className="champ-podium">
+      <p className="champ-podium-title">
+        {title}
+        {note && <span className="champ-podium-note"> · {note}</span>}
+      </p>
+      {rows.length === 0 && <p className="champ-podium-empty">Henüz kimse tamamlamadı</p>}
+      {rows.map((r) => (
+        <p key={`${r.place}_${r.uid}`} className="champ-podium-row">
+          <span className="champ-podium-medal">{MEDAL[r.place - 1]}</span>
+          <span className="champ-podium-name">{r.name || 'Oyuncu'}</span>
+          <span className="champ-card-time">{resultText(r.timeMs, r.turns)}</span>
+          <span className="champ-podium-prize">+{fmt(r.reward)}</span>
+        </p>
+      ))}
+    </div>
+  );
+}
 
 export default function ChampionshipScreen({ onEnterRace }) {
   const { vehicles } = useVehicles();
@@ -70,17 +94,15 @@ export default function ChampionshipScreen({ onEnterRace }) {
           const lifeDays = myVehicle?.lifeDays ?? INITIAL_LIFE_DAYS;
           const seized = Boolean(myVehicle?.seizedByBank);
           const usedToday = Boolean(actions[`championship_${catalogVehicle.id}`]);
-          const reward = Math.round(catalogVehicle.price / 5);
+          const prizes = [1, 2, 3].map((pl) => championshipPrize(catalogVehicle.price, pl));
           const daily = byCatalogId[String(catalogVehicle.id)] || {};
           const yesterday = daily.yesterday;
           const today = daily.today;
-          const todayLeaders =
-            today?.leaders && today.leaders.length
-              ? today.leaders
-              : today?.leaderUid
-                ? [{ uid: today.leaderUid, name: today.leaderName, vehicleModel: today.leaderVehicleModel }]
-                : [];
-          const hasTiedLeaders = todayLeaders.length > 1;
+          const todayTop = championshipPodium(today, catalogVehicle.price);
+          // dün: kesinleşmişse ödenen liste, değilse hesaplanan
+          const yesterdayTop = yesterday?.finalized && Array.isArray(yesterday.winners) && yesterday.winners.length
+            ? yesterday.winners.map((w) => ({ ...w, turns: yesterday.winnerTurns }))
+            : championshipPodium(yesterday, catalogVehicle.price);
           const isExpanded = expandedIds.has(catalogVehicle.id);
 
           let statusLabel = 'Şampiyonaya Katıl';
@@ -105,7 +127,7 @@ export default function ChampionshipScreen({ onEnterRace }) {
                   <span className="champ-card-name">
                     {catalogVehicle.name} {owned && <LevelPips level={vehicleRaceLevel(myVehicle)} />}
                   </span>
-                  <span className="champ-card-reward">🏆 Ödül: {reward.toLocaleString('tr-TR')} altın</span>
+                  <span className="champ-card-reward">🏆 {prizes.map((x) => fmt(x)).join(' · ')}</span>
                 </div>
               </div>
               <div className="champ-card-stats-bars">
@@ -113,49 +135,23 @@ export default function ChampionshipScreen({ onEnterRace }) {
               </div>
 
               <div className="champ-card-stats">
-                <p className="champ-card-stat">
-                  Dünün kazananı:{' '}
-                  {yesterday?.winnerUid ? (
-                    <strong>
-                      {yesterday.winnerName} — <span className="champ-card-time">{resultText(yesterday.winnerTimeMs, yesterday.winnerTurns)}</span>
-                    </strong>
-                  ) : yesterday?.leaderUid && !yesterday?.finalized ? (
-                    <strong>
-                      {yesterday.leaderName} — <span className="champ-card-time">{resultText(yesterday.leaderTimeMs, yesterday.leaderTurns)}</span> (hesaplanıyor)
-                    </strong>
-                  ) : (
-                    'Kimse tamamlayamadı'
-                  )}
-                </p>
-                <p className="champ-card-stat">
-                  Günün lideri:{' '}
-                  {today?.leaderUid ? (
-                    <>
+                <button type="button" className="champ-leader-toggle" onClick={() => toggleExpanded(catalogVehicle.id)} aria-expanded={isExpanded}>
+                  <span>
+                    Günün lideri:{' '}
+                    {todayTop[0] ? (
                       <strong>
-                        {today.leaderName} — <span className="champ-card-time">{resultText(today.leaderTimeMs, today.leaderTurns)}</span>
+                        {todayTop[0].name} — <span className="champ-card-time">{resultText(todayTop[0].timeMs, todayTop[0].turns)}</span>
                       </strong>
-                      {hasTiedLeaders && (
-                        <button
-                          type="button"
-                          className="champ-leaders-toggle"
-                          onClick={() => toggleExpanded(catalogVehicle.id)}
-                        >
-                          {isExpanded ? '▲ gizle' : `▼ +${todayLeaders.length - 1} kişi daha aynı sürede`}
-                        </button>
-                      )}
-                    </>
-                  ) : (
-                    'Henüz kimse tamamlamadı'
-                  )}
-                </p>
-                {hasTiedLeaders && isExpanded && (
+                    ) : (
+                      'Henüz kimse tamamlamadı'
+                    )}
+                  </span>
+                  <span className="champ-leader-arrow">{isExpanded ? '▴' : '▾'}</span>
+                </button>
+                {isExpanded && (
                   <div className="champ-leaders-panel">
-                    {todayLeaders.map((leader) => (
-                      <p key={leader.uid} className="champ-leaders-panel-item">
-                        {leader.name}
-                        {leader.vehicleModel ? ` — ${leader.vehicleModel}` : ''}
-                      </p>
-                    ))}
+                    <PodiumList title="Bugün" rows={todayTop} />
+                    <PodiumList title="Dün" rows={yesterdayTop} note={yesterday && !yesterday.finalized && yesterdayTop.length ? 'hesaplanıyor' : null} />
                   </div>
                 )}
               </div>

@@ -5,7 +5,8 @@
 // Fiyatı uygunsa "Avantajlı Ürünler"e de girer. Satın alma çete sistemi
 // üzerinden yapılır (para çete kasasına, ürün alıcıya YENİ olarak).
 import { useEffect, useState } from 'react';
-import { collection, doc, limit, onSnapshot, query, where } from 'firebase/firestore';
+import { Timestamp, collection, doc, limit, onSnapshot, query, where } from 'firebase/firestore';
+import { adPriceFor } from '../../../functions/marketAds.js';
 import { db } from '../../firebase';
 import { callGang, friendlyError, newRequestId } from './gangApi';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
@@ -46,11 +47,11 @@ function toPlayerListing(group) {
   return { ...base, itemType: 'material', materialType: l.materialType, price: l.unitPrice * quantity };
 }
 
-export function useGangMarketListings() {
+export function useGangMarketListings({ enabled = true } = {}) {
   const [cfg, setCfg] = useState(null);
   const [list, setList] = useState([]);
-  useEffect(() => onSnapshot(doc(db, 'gangSystem/config'), (s) => setCfg(s.data() || null), () => setCfg(null)), []);
-  const worldId = cfg?.liveOpen ? cfg.liveWorldId : null;
+  useEffect(() => (enabled ? onSnapshot(doc(db, 'gangSystem/config'), (s) => setCfg(s.data() || null), () => setCfg(null)) : undefined), [enabled]);
+  const worldId = enabled && cfg?.liveOpen ? cfg.liveWorldId : null;
   useEffect(() => {
     if (!worldId) {
       setList([]);
@@ -93,4 +94,24 @@ export async function buyGangListing(listing, qty) {
 // Geriye dönük uyum: eski import'lar kırılmasın (bölüm artık kategorilerin içinde)
 export default function GangMarketSection() {
   return null;
+}
+
+// v96 — güncel reklam ücreti: paneldeki reklam sayısı (oyuncu + çete) → functions/marketAds.js
+// gangGrouped verilmezse çete ilanları burada dinlenir (Ticaret sekmesi).
+export function useAdPrice(gangGrouped) {
+  const own = useGangMarketListings({ enabled: !gangGrouped });
+  const gang = gangGrouped || own;
+  const [playerAds, setPlayerAds] = useState([]);
+  useEffect(() => {
+    const q = query(collection(db, 'marketplaceListings'), where('adExpiresAt', '>', Timestamp.now()), limit(100));
+    return onSnapshot(
+      q,
+      (s) => setPlayerAds(s.docs.map((d) => d.data())),
+      () => setPlayerAds([])
+    );
+  }, []);
+  const now = Date.now();
+  const ms = (t) => (typeof t?.toMillis === 'function' ? t.toMillis() : Number(t || 0));
+  const n = playerAds.filter((l) => !l.sold && ms(l.adExpiresAt) > now).length + gang.filter((l) => ms(l.adExpiresAt) > now).length;
+  return adPriceFor(n);
 }

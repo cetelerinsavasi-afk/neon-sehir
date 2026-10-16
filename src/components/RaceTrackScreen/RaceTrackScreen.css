@@ -1020,3 +1020,79 @@ img.race-room-thumb {
   object-fit: cover;
   background: #c9b9a3;
 }
+
+/* v96 — şampiyona: günün lideri (açılır panel) + ilk 3 ödülleri */
+.champ-leader-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 2px 0;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: left;
+  cursor: pointer;
+}
+.champ-leader-toggle strong {
+  color: var(--text);
+}
+.champ-leader-arrow {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--accent, #4fd1ff);
+}
+.champ-leaders-panel {
+  gap: 8px;
+}
+.champ-podium-title {
+  margin: 0 0 2px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.champ-podium-note {
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.champ-podium-empty {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.champ-podium-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 2px 0;
+  font-size: 11px;
+  color: var(--text);
+}
+.champ-podium-medal {
+  flex: 0 0 auto;
+}
+.champ-podium-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
+.champ-podium-row .champ-card-time {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+}
+.champ-podium-prize {
+  flex: 0 0 auto;
+  font-weight: 800;
+  color: #ffd23f;
+}

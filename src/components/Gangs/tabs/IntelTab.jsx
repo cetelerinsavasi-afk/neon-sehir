@@ -70,12 +70,12 @@ function MemberReport({ member }) {
   );
 }
 
-function MemberSheet({ member, myRank, rosterSize, onClose }) {
+function MemberSheet({ member, myRank, rosterSize, onClose, self = false }) {
   const { run, busy } = useGangAction();
   const [ask, setAsk] = useState(null);
   const now = useNow(30_000);
-  const canKick = (DIRECT[myRank] || []).includes(member.rank);
-  const canVote = voteAllowed(myRank, member.rank);
+  const canKick = !self && (DIRECT[myRank] || []).includes(member.rank);
+  const canVote = !self && voteAllowed(myRank, member.rank);
   const voteOpen = istHour(now) < 12;
   const tooFew = rosterSize < KICK_MIN_MEMBERS;
   const isNew = Number(member.joinedAtMs || 0) > 0 && istDateKey(member.joinedAtMs) === istDateKey(now);
@@ -98,7 +98,7 @@ function MemberSheet({ member, myRank, rosterSize, onClose }) {
           </Btn>
         )}
         {(canKick || canVote) && lockReason && <div className="dim gx-mini">{lockReason}</div>}
-        {['baskan', 'sef', 'uzman'].includes(myRank) && <MemberReport member={member} />}
+        {(self || ['baskan', 'sef', 'uzman'].includes(myRank)) && <MemberReport member={member} />}
       </div>
       {ask && (
         <Confirm
@@ -141,7 +141,7 @@ export default function IntelTab({ d }) {
   // v61: her grup için en az 5 üye şartı (Tüm üyeler = İstihbaratın tamamı)
   const groupCount = (g) => (g === 'hepsi' ? d.roster.length : d.roster.filter((m) => GROUP_OF[m.rank] === g).length);
   const groupOk = groupCount(group) >= DIST_MIN_GROUP_MEMBERS;
-  const card = (m) => <MemberCard key={m.id} secret name={m.codeName} rank={m.rank} prestige={m.prestige} me={m.id === d.rid} big={m.rank === 'baskan'} onClick={() => m.id !== d.rid && setSel(m)} />;
+  const card = (m) => <MemberCard key={m.id} secret name={m.codeName} rank={m.rank} prestige={m.prestige} me={m.id === d.rid} big={m.rank === 'baskan'} onClick={() => setSel(m)} />;
 
   return (
     <div className="gx-stack">
@@ -178,7 +178,7 @@ export default function IntelTab({ d }) {
         🚪 İstihbarattan ayrıl
       </Btn>
 
-      {sel && <MemberSheet member={sel} myRank={d.rank} rosterSize={d.roster.length} onClose={() => setSel(null)} />}
+      {sel && <MemberSheet member={sel} self={sel.id === d.rid} myRank={d.rank} rosterSize={d.roster.length} onClose={() => setSel(null)} />}
       {code != null && (
         <Sheet title="Kod adını değiştir" icon="✏️" onClose={() => setCode(null)}>
           <input className="gx-input" maxLength={GANG_RULES.CODENAME_MAX} value={code} onChange={(e) => setCode(e.target.value)} />

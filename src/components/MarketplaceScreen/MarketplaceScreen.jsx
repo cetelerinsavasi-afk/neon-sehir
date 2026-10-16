@@ -1,6 +1,6 @@
 import { resaleTax } from '../../../functions/tax.js';
 import { useEffect, useRef, useState } from 'react';
-import { buyGangListing, useGangMarketListings } from '../Gangs/GangMarketSection';
+import { buyGangListing, useAdPrice, useGangMarketListings } from '../Gangs/GangMarketSection';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useVehicles } from '../../hooks/useVehicles';
@@ -68,10 +68,8 @@ const CATEGORIES = [
   { id: 'machine', label: 'Makineler', emoji: '⚙️' },
 ];
 
-// AD_PRICE/AD_DURATION_MS — functions/index.js advertiseListing'teki
-// SABİTLERLE BİREBİR AYNI (sadece bilgilendirme/önizleme amaçlı, gerçek
-// doğrulama sunucuda yapılıyor).
-const AD_PRICE = 1000;
+// AD_DURATION_MS — functions/index.js advertiseListing ile aynı. Ücret v96'dan
+// beri değişken (useAdPrice, functions/marketAds.js).
 const AD_DURATION_MS = 24 * 60 * 60 * 1000;
 
 // Fiyat sınırları — hesaplar arası para aklamayı önlemek için backend'de
@@ -809,7 +807,7 @@ function BuyMaterialModal({ listing, onClose, onBought, gold }) {
 // DEĞİŞMEDEN kalıyor (Avantajlı/Reklam panellerinde başkalarının ilanları
 // için de kullanılıyor, orada reklam kontrolü anlamsız), reklam sadece
 // KENDİ ilanlarımızın altında, ayrı bir satır olarak gösteriliyor.
-function MyListingWithAd({ listing, busy, onCancel, advertising, onStartAdvertise, onCancelAdvertise, onConfirmAdvertise }) {
+function MyListingWithAd({ listing, busy, onCancel, advertising, onStartAdvertise, onCancelAdvertise, onConfirmAdvertise, adPrice }) {
   const advertised = isAdvertisedListing(listing);
   return (
     <div className="market-my-listing-wrap">
@@ -820,7 +818,7 @@ function MyListingWithAd({ listing, busy, onCancel, advertising, onStartAdvertis
         <div className="market-ad-confirm">
           <p className="market-hint small">
             {AD_DURATION_MS / (60 * 60 * 1000)} saatlik reklam:{' '}
-            <strong>{AD_PRICE.toLocaleString('tr-TR')} altın</strong>. Kabul ediyor musun?
+            <strong>{adPrice.toLocaleString('tr-TR')} altın</strong>. Kabul ediyor musun?
           </p>
           <div className="market-ad-confirm-row">
             <button className="market-btn" disabled={busy} onClick={onCancelAdvertise}>
@@ -848,6 +846,7 @@ export default function MarketplaceScreen() {
   // v70: çete ilanları oyuncu ilanlarıyla aynı listede (aynı kart, avantajlı hesabı dahil)
   const gangListings = useGangMarketListings();
   const listings = [...playerListings, ...gangListings];
+  const adPrice = useAdPrice(gangListings); // v96: reklamdaki ürün sayısına göre
   // view — 'home' (yeni ana sayfa: avantajlı/reklam panelleri + 4 kategori
   // butonu) ya da CATEGORIES id'lerinden biri (kategori içine girildiğinde).
   // Eski üstteki sekme çubuğu kaldırıldı (kullanıcı revizesi).
@@ -891,7 +890,7 @@ export default function MarketplaceScreen() {
     setBusy(listingId);
     setError(null);
     try {
-      await advertiseListing(listingId);
+      await advertiseListing(listingId, adPrice);
       setAdvertisingId(null);
     } catch (err) {
       setError(err.message || 'Reklam verilemedi.');
@@ -1020,6 +1019,7 @@ export default function MarketplaceScreen() {
                   onStartAdvertise={() => setAdvertisingId(l.id)}
                   onCancelAdvertise={() => setAdvertisingId(null)}
                   onConfirmAdvertise={() => runAdvertise(l.id)}
+                  adPrice={adPrice}
                 />
               ))}
             </>

@@ -10,6 +10,7 @@
 //  - İlanlar çete dünyasında (gangWorlds/{dünya}/market) tutulur; mevcut
 //    marketplaceListings koleksiyonuna ve fonksiyonlarına dokunulmaz.
 import { GANG } from '../config.js';
+import { adPriceFor, countActiveAds } from '../../marketAds.js';
 
 export function createMarketActions(core, trade) {
   const { FV, fail, readWallet, debitGold, ledger, announce, notify, posInt, requestGuard, unitsOfItems } = core;
@@ -94,6 +95,11 @@ export function createMarketActions(core, trade) {
   async function advertiseDepotListing(ctx, data) {
     const listingId = String(data.listingId || '');
     if (!listingId) fail('invalid-argument', 'İlan bulunamadı.');
+    // v96: ücret paneldeki reklam sayısına göre (functions/marketAds.js)
+    const adPrice = adPriceFor(
+      await countActiveAds({ playersCol: core.db.collection('marketplaceListings'), gangMarketCol: ctx.ref.listings(), nowMs: ctx.now })
+    );
+    if (data.expect != null && Number(data.expect) !== adPrice) fail('failed-precondition', `Reklam ücreti değişti: ${fmt(adPrice)} altın. Tekrar dene.`);
     return core.db.runTransaction(async (tx) => {
       const guard = await requestGuard(tx, ctx, data.requestId);
       if (guard.done) return guard.result;
@@ -104,7 +110,7 @@ export function createMarketActions(core, trade) {
       if (l.status !== 'open' || Number(l.quantity || 0) <= 0) fail('failed-precondition', 'Bu ilan artık açık değil.');
       if (Number(l.adExpiresAtMs || 0) > ctx.now) fail('failed-precondition', 'Bu ilan zaten reklamda, süresi dolmadan tekrar reklam verilemez.');
       const kasa = Number(stateSnap.data()?.kasa || 0);
-      const price = GANG.MARKET_AD_PRICE;
+      const price = adPrice;
       if (kasa < price) fail('failed-precondition', 'Kasada yeterli para yok.');
       const adExpiresAtMs = ctx.now + GANG.MARKET_AD_DURATION_MS;
       tx.update(ctx.ref.gangState(gangId), { kasa: FV.increment(-price) });

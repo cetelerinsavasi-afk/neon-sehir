@@ -10,7 +10,7 @@ export const ACHIEVEMENTS = [
   { id: 'polisBanka', emoji: '🚔', title: 'Banka soyguncusunu yakala', desc: 'Polis olarak bir banka soygununda suçluları yakala.', reward: 3 },
   { id: 'mafyaBabasi', emoji: '🕴️', title: 'Mafya Babası ol', desc: 'Bir çetenin Mafya Babası ol.', reward: 4 },
   { id: 'istihbaratBaskani', emoji: '🕵️', title: 'İstihbarat Başkanı ol', desc: "İstihbarat'ın başına geç.", reward: 4 },
-  { id: 'superKupa', emoji: '🏆', title: 'Süper Kupa', desc: 'Sahibi olduğun takımla 1. ya da 2. Lig kupasını kazan.', reward: 5 },
+  { id: 'superKupa', emoji: '🏆', title: 'Süper Kupa', desc: 'Sahip olduğun takımla süper kupayı kazan.', reward: 5 },
   { id: 'ligSampiyonu', emoji: '🥇', title: '1. Lig şampiyonu', desc: 'Sahibi olduğun takımla 1. Lig şampiyonu ol.', reward: 5 },
 ];
 // v74: ödüller artırıldı (toplam 30). Önceden kazanılanlara fark VERİLMEZ;

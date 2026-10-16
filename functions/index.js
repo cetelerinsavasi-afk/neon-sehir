@@ -37,6 +37,8 @@ import {
 import { createAchievements } from './achievements.js';
 import { trainingBotRun, vehicleRaceLevel, carStats } from './raceSim.js';
 import { createRaceTa } from './raceTa.js';
+import { championshipPodium } from './championshipPrizes.js';
+import { adPriceFor, countActiveAds } from './marketAds.js';
 import { createCosmetics } from './cosmetics.js';
 import { createPlayBilling, createGooglePlayApi } from './playBilling.js';
 import { createStream } from './stream.js';
@@ -2377,45 +2379,44 @@ async function resolveStuckLotteryAndChampionship(dateKey) {
         const champSnap = await champRef.get();
         if (!champSnap.exists || champSnap.data().finalized) continue;
         const champ = champSnap.data();
-        if (!champ.leaderUid) {
+        // v96: ilk 3'e ödül (galeri fiyatının %25 / %10 / %5'i) — functions/championshipPrizes.js
+        const price = VEHICLE_CATALOG[catalogId]?.price || 0;
+        const podium = championshipPodium(champ, price);
+        if (!podium.length) {
           await champRef.update({ finalized: true });
           continue;
         }
-        const leaders =
-          champ.leaders && champ.leaders.length
-            ? champ.leaders
-            : [{ uid: champ.leaderUid, name: champ.leaderName, vehicleModel: champ.leaderVehicleModel }];
-        const reward = Math.round(
-          (VEHICLE_CATALOG[catalogId]?.price || 0) * CHAMPIONSHIP_REWARD_RATIO
-        );
-        for (const leader of leaders) {
-          const winnerRef = db.collection('users').doc(leader.uid);
+        const carName = VEHICLE_CATALOG[catalogId]?.name || 'Araç';
+        for (const p of podium) {
+          if (!p.uid || !(p.reward > 0)) continue;
+          const winnerRef = db.collection('users').doc(p.uid);
           const winnerSnap = await winnerRef.get();
-          const { goldDelta, debtDelta } = splitIncomeForDebt(winnerSnap.data()?.debtToState, reward);
+          if (!winnerSnap.exists) continue;
+          const { goldDelta, debtDelta } = splitIncomeForDebt(winnerSnap.data()?.debtToState, p.reward);
           await winnerRef.update({
             gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('sampiyona'),
             debtToState: admin.firestore.FieldValue.increment(debtDelta),
           });
+          const res = p.timeMs ? fmtRaceMs(p.timeMs) : p.turns ? `${p.turns} tur` : '';
           await winnerRef.collection('messages').add({
-            text: champ.leaderTimeMs
-              ? `Tebrikler! ${VEHICLE_CATALOG[catalogId]?.name} şampiyonasını ${fmtRaceMs(champ.leaderTimeMs)} sürede tamamlayarak kazandın. Ödül: ${reward.toLocaleString('tr-TR')} altın.`
-              : `Tebrikler! ${VEHICLE_CATALOG[catalogId]?.name} şampiyonasını ${champ.leaderTurns} turda tamamlayarak kazandın. Ödül: ${reward.toLocaleString('tr-TR')} altın.`,
+            text: `🏆 ${carName} şampiyonasında ${p.place}. oldun${res ? ` (${res})` : ''}. Ödül: ${p.reward.toLocaleString('tr-TR')} altın.`,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             read: false,
             type: 'championship_win',
           });
-          if (String(catalogId) === '10') await achievements.grant(leader.uid, 'cabrioSampiyon'); // v67 — Üstün Cabrio
-          summary.championshipGoldPaid += reward;
+          if (p.place === 1 && String(catalogId) === '10') await achievements.grant(p.uid, 'cabrioSampiyon'); // v67 — Üstün Cabrio
+          summary.championshipGoldPaid += p.reward;
         }
+        const first = podium[0];
         await champRef.update({
           finalized: true,
-          winnerUid: champ.leaderUid,
-          winnerName: champ.leaderName,
-          winnerVehicleModel: champ.leaderVehicleModel,
+          winnerUid: first.uid,
+          winnerName: first.name || null,
+          winnerVehicleModel: first.vehicleModel || null,
           winnerTurns: champ.leaderTurns ?? null,
-          winnerTimeMs: champ.leaderTimeMs ?? null,
-          winners: leaders,
-          rewardAmount: reward,
+          winnerTimeMs: first.timeMs ?? champ.leaderTimeMs ?? null,
+          winners: podium.map((p) => ({ uid: p.uid, name: p.name || null, vehicleModel: p.vehicleModel || null, timeMs: p.timeMs ?? null, place: p.place, reward: p.reward })),
+          rewardAmount: first.reward,
         });
         summary.championshipEntriesResolved += 1;
       }
@@ -8458,8 +8459,7 @@ const RACE_TURN_SECONDS = 10;
 const RACE_STATION_PRICES = { refuel: 10 };
 const RACE_OFFSITE_FUEL_PRICE = 100;
 const RACE_NITRO_PRICE = 50;
-// Şampiyona ödülü, aracın galeri satış fiyatının 1/5'i (2 katına çıkarıldı).
-const CHAMPIONSHIP_REWARD_RATIO = 0.2;
+// v96: şampiyona ödülleri functions/championshipPrizes.js (ilk 3: %25 / %10 / %5).
 
 function rollDie() {
   return Math.floor(Math.random() * 6) + 1;
@@ -10229,16 +10229,26 @@ export const cancelListing = onCall(async (request) => {
 //   - adExpiresAt alanı geçtiğinde reklam paneli istemci tarafında
 //     otomatik filtrelenir (bkz. MarketplaceScreen.jsx) — ayrı bir
 //     temizlik job'ı gerekmiyor, sadece görünürlük süresi doluyor.
-const AD_PRICE = 1000;
 const AD_DURATION_MS = 24 * 60 * 60 * 1000;
+// v96: ücret paneldeki reklam sayısına göre (functions/marketAds.js)
+async function currentAdPrice() {
+  const cfg = (await db.collection('gangSystem').doc('config').get()).data() || {};
+  const gangMarketCol = cfg.liveOpen && cfg.liveWorldId ? db.collection(`gangWorlds/${cfg.liveWorldId}/market`) : null;
+  const n = await countActiveAds({ playersCol: db.collection('marketplaceListings'), gangMarketCol, Timestamp: admin.firestore.Timestamp });
+  return adPriceFor(n);
+}
 
 export const advertiseListing = onCall(async (request) => {
   const uid = requireAuth(request);
-  const { listingId } = request.data || {};
+  const { listingId, expect } = request.data || {};
   const listingRef = db.collection('marketplaceListings').doc(listingId);
   const userRef = db.collection('users').doc(uid);
 
   const adExpiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + AD_DURATION_MS);
+  const AD_PRICE = await currentAdPrice();
+  if (expect != null && Number(expect) !== AD_PRICE) {
+    throw new HttpsError('failed-precondition', `Reklam ücreti değişti: ${AD_PRICE.toLocaleString('tr-TR')} altın. Tekrar dene.`);
+  }
 
   await db.runTransaction(async (tx) => {
     const [listingSnap, userSnap] = await Promise.all([tx.get(listingRef), tx.get(userRef)]);
@@ -10263,7 +10273,7 @@ export const advertiseListing = onCall(async (request) => {
     tx.update(listingRef, { adExpiresAt, adPurchasedAt: admin.firestore.FieldValue.serverTimestamp() });
   });
 
-  return { ok: true };
+  return { ok: true, price: AD_PRICE };
 });
 
 // buyListing — araç/silah/makine ilanları TÜMÜYLE satın alınır. MALZEME
