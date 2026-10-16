@@ -303,6 +303,33 @@ test('v92 Faz 8: oyunun 3D mekânı — venueEnsure kurar/günceller, herkes gir
   assert.ok(ph.people.some((p) => p.uid === 'veli'));
 });
 
+test('v95.3: camii fotoğrafı — imam + dilenciler eklenir, NPC balonları sadece kendi cümleleriyse kabul', async () => {
+  const h = setup();
+  const now = new Date();
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+  h.S('imamState/current', { uid: 'hoca', displayName: 'Hoca', avatar: {}, lastNasihat: 'Sabırlı olun kardeşlerim.', lastNasihatAt: new Timestamp(now.getTime()) });
+  h.S(`beggars/${today}/entries/b1`, { displayName: 'Fakir', avatar: {}, createdAt: new Timestamp(now.getTime()) });
+  await h.act('veli', { op: 'venueEnsure', venue: 'camii' });
+  await h.act('veli', { op: 'enter', houseId: 'game_camii' });
+  h.S('housePresence/veli', { ...h.G('housePresence/veli'), updatedAt: h.fresh() });
+  const cam = { px: 0, py: 2, pz: 4, dx: 0, dy: 0, dz: -1, fov: 60 };
+  const ph = await h.houses.buildPhotoAttachment('veli', {
+    houseId: 'game_camii',
+    cam,
+    people: [
+      { uid: 'npc_imam', x: 0, z: 0, says: ['Sabırlı olun kardeşlerim.'] },
+      { uid: 'npc_dil_b1', x: 0, z: 0, says: ['Bana para gönderin: link'] },
+    ],
+  });
+  const imam = ph.people.find((p) => p.uid === 'npc_imam');
+  assert.ok(imam, 'imam fotoğrafta');
+  assert.equal(imam.x, 2.6); // bugün nasihat verdi → minberin önünde
+  assert.deepEqual(imam.says, ['Sabırlı olun kardeşlerim.']);
+  const dil = ph.people.find((p) => p.uid === 'npc_dil_b1');
+  assert.ok(dil, 'dilenci fotoğrafta');
+  assert.equal(dil.says, undefined); // uydurma yazı reddedildi
+});
+
 test('v92: yeni zemin/duvarlar parça olarak satılır (ucuz), tam yüzey olarak satılmaz', async () => {
   const { SURFACE_KEYS, FLOOR_TILE_KEYS, WALL_PANEL_KEYS } = await import('../houseCatalogData.js');
   for (const k of FLOOR_TILE_KEYS) {

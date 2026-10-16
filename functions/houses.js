@@ -36,7 +36,7 @@ import {
 import { BIZ_TYPES, BIZ_DEFAULT_NAME, checkBizRequirements } from './businessCatalogData.js';
 import { MENU_TYPES, isMenuProduct } from './venue.js';
 import { goldTag } from './moneyLog.js';
-import { VENUES, VENUE_OWNER } from './venueLayouts.js';
+import { VENUES, VENUE_OWNER, camiiDynamicNpcs } from './venueLayouts.js';
 
 // v77 — Ev → İşletme. houses/{id} üzerine eklenen alanlar:
 //   biz: { type, openedAtMs } | null   — açık işletme (yoksa ev)
@@ -621,6 +621,25 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     return { ok: true, name: nameOf(tSnap.data()) };
   }
 
+  // v95.3 — camideki imam + bugünkü dilenciler (venueParts ile aynı liste)
+  async function camiiNpcsNow() {
+    try {
+      const dk = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+      const today = dk(new Date());
+      const [imSnap, bgSnap] = await Promise.all([
+        db.collection('imamState').doc('current').get(),
+        db.collection('beggars').doc(today).collection('entries').orderBy('createdAt', 'desc').limit(3).get(),
+      ]);
+      const imam = imSnap.exists ? imSnap.data() : null;
+      const at = imam?.lastNasihatAt?.toDate?.() || null;
+      const sermon = Boolean(at && dk(at) === today);
+      const beggars = bgSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      return camiiDynamicNpcs({ imam, sermon, beggars });
+    } catch {
+      return [];
+    }
+  }
+
   // Sixtagram "ev fotoğrafı": o anki tasarım + evdekiler dondurulur (istemci
   // görüntü yükleyemez → uygunsuz görsel riski yok; kare telefonlarda yeniden çizilir).
   async function buildPhotoAttachment(uid, a) {
@@ -700,9 +719,26 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
         /* balonlar olmadan devam */
       }
     }
-    // v92 Faz 8: oyunun mekânında sabit NPC'ler de fotoğrafta (veznedar, barmen…)
+    // v92 Faz 8: oyunun mekânında NPC'ler de fotoğrafta (veznedar, barmen…)
+    // v95.3: camide imam + dilenciler (sunucu verisinden, istemciyle aynı liste)
+    // ve çekim anında NPC'lerin ekrandaki balonları — sadece o NPC'nin gerçekten
+    // söyleyebileceği cümleler kabul edilir (istemci serbest metin yazamaz).
     const vn = h.venue ? VENUES[h.venue] : null;
-    if (vn) (vn.npcs || []).forEach((n) => people.push({ uid: n.id, displayName: n.name, avatar: n.av, x: n.x, z: n.z, left: !!n.left, seat: null }));
+    if (vn) {
+      const npcs = [...(vn.npcs || [])];
+      if (h.venue === 'camii') npcs.push(...(await camiiNpcsNow()));
+      const npcSays = new Map();
+      if (Array.isArray(a?.people)) {
+        a.people.slice(0, 40).forEach((q) => {
+          if (q && typeof q.uid === 'string' && /^npc_[A-Za-z0-9_-]{1,60}$/.test(q.uid) && Array.isArray(q.says)) npcSays.set(q.uid, q.says);
+        });
+      }
+      npcs.forEach((n) => {
+        const allowed = new Set((n.lines || []).map((l) => String(l).slice(0, 200)));
+        const says = (npcSays.get(n.id) || []).map((x) => String(x)).filter((x) => allowed.has(x)).slice(-3);
+        people.push({ uid: n.id, displayName: n.name, avatar: n.av, x: n.x, z: n.z, left: !!n.left, seat: n.seat || null, ...(says.length ? { says } : {}) });
+      });
+    }
     return {
       type: 'housePhoto',
       houseId,

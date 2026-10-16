@@ -17,7 +17,7 @@ import DiceRoller from '../DiceRoller';
 import { IntelDecisionPanel, VoteCard } from '../shared';
 import { GANG_RULES, INTEL_LEADERS, INTEL_LOGO, LEADERS, fmt, productOf } from '../gangConstants';
 import { TRADE_COUNTDOWN_WINDOW_MS, nextTradeSunday } from '../tradeSchedule';
-import { BiatSection, BiatSheet, BiatStatus, biatRowsOf, foldTradeWar, useBiatInfo } from '../Biat';
+import { BiatSection, biatRowsOf, foldTradeWar, useBiatInfo } from '../Biat';
 
 const GANG_RULES_HARAC_HOUR = 21; // v38: son dilim (21:00) başlayana kadar
 // v37: bahis tutarını sadece rütbeliler (Baba · Sağ Kol · Kıdemli) görür —
@@ -981,8 +981,6 @@ export default function WarsTab({ org, d }) {
         ...wars.all.filter((w) => w.type === 'bet' && ['offered', 'accepted', 'active'].includes(w.status)).flatMap((w) => w.gangIds || []),
       ];
   const pendingOut = (L.betOffersOut || []).find((w) => w.status === 'offered');
-  // v85: ittifak biata engel değil — sadece aynı ikilideki biat süreci ve bahisler kilitler
-  const biatBlocked = isIntel ? [] : [...new Set([...pacts.filter((a) => a.kind === 'biat' && ['requested', 'accepted', 'active', 'ending'].includes(a.status)).flatMap((a) => a.gangIds), ...wars.all.filter((w) => w.type === 'bet' && ['offered', 'accepted', 'active'].includes(w.status)).flatMap((w) => w.gangIds || [])])];
 
   const hasWar = L.trade.length + (L.bets?.length || 0) + (L.myAttacks?.length || 0) + (L.myDefs?.length || 0) + (L.allyDefs?.length || 0) + (L.ops?.length || 0) > 0;
 
@@ -1000,13 +998,7 @@ export default function WarsTab({ org, d }) {
           </Btn>
         </div>
       )}
-      {/* v84: elinde ticaret yolu olmayan çetenin Mafya Babası biat edebilir */}
-      {!isIntel && biat.canBiat && (
-        <Btn block small kind="ghost" onClick={() => setPropose('biat')}>
-          ⛓️ Biat et
-        </Btn>
-      )}
-      {!isIntel && <BiatStatus d={d} info={biat} />}
+      {/* v95.2: Biat et + biat durumu Çetem sekmesine (İttifakların altı) taşındı */}
 
       <UpcomingTradeWar hasActiveTrade={L.trade.length > 0} fightingFor={biat.fightingFor} />
 
@@ -1250,8 +1242,7 @@ export default function WarsTab({ org, d }) {
       {rolling && (
         <DiceRoller title={`${warIcon(rolling.war)} ${warTitle(rolling.war)}`} subtitle={rolling.side} sideLabel={rolling.side} onRoll={doRoll} onClose={() => setRolling(null)} />
       )}
-      {propose === 'biat' && <BiatSheet gangId={gangId} blockedIds={biatBlocked} onClose={() => setPropose(null)} />}
-      {propose && propose !== 'biat' && (
+      {propose && (
         <ProposeSheet kind={propose} gangId={gangId} out={L.betOffersOut || []} blockedIds={propose === 'bet' ? betBlocked : allyBlocked} onClose={() => setPropose(null)} />
       )}
     </div>

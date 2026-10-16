@@ -404,3 +404,36 @@ export const isVenueHouseId = (id) => Boolean(VENUE_BY_HOUSE[id]);
 export function venueTo2d(x, z) {
   return { x: Math.round(((x + 9) / 18) * 620 + 30), y: Math.round(((z + 7) / 14) * 1120 + 30) };
 }
+
+// v95.3 — Camii'nin "canlı" NPC'leri (imam + bugünkü dilenciler). İstemci
+// (Venue3D/venueParts) ve sunucu (fotoğraf eki, functions/houses.js) AYNI
+// listeyi üretir → paylaşılan fotoğraf çekilen kareyle aynı olur.
+export const CAMII_IMAM_IDLE_LINES = ['Namaza gelin.', 'Cemaatle kılınan namaz daha faziletlidir.'];
+export const CAMII_BEGGAR_LINES = ['Allah rızası için…', 'Hayrınıza bir yardım…', 'Allah razı olsun.'];
+export function camiiDynamicNpcs({ imam = null, sermon = false, beggars = [] } = {}) {
+  const list = [];
+  if (imam) {
+    list.push({
+      id: 'npc_imam',
+      name: `İmam ${imam.displayName || ''}`.trim(),
+      av: imam.avatar || {},
+      x: sermon ? 2.6 : 0,
+      z: sermon ? -4.3 : -5.75,
+      station: 'cm_mih',
+      lines: sermon && imam.lastNasihat ? [String(imam.lastNasihat)] : CAMII_IMAM_IDLE_LINES,
+    });
+  }
+  (beggars || []).slice(0, 3).forEach((b, i) => {
+    list.push({
+      id: `npc_dil_${b.id}`,
+      name: `🤲 ${b.displayName || 'Dilenci'}`,
+      av: b.avatar || {},
+      x: -7.8 + i,
+      z: 5.6,
+      seat: `cm_dm${i + 1}:0`,
+      station: 'cm_bk',
+      lines: CAMII_BEGGAR_LINES,
+    });
+  });
+  return list;
+}

@@ -270,8 +270,8 @@ export function createPlayBilling({ db, FieldValue, HttpsError, writeGoldStorePa
       // Gecikmeli yüklemede oyuncu ekranda olmayabilir → SMS ile haber ver.
       if (ps.exists) {
         tx.delete(pRef);
+        // NOT: from alanı yok — 'Zümrüt Mağazası' gönderenli SMS'ler Android'de gizleniyor (useMessages)
         tx.set(db.collection('users').doc(uid).collection('messages').doc(), {
-          from: 'Zümrüt Mağazası',
           text: `💎 ${pack.emerald || 0} zümrüt hesabına yüklendi. Teşekkürler!`,
           type: 'play_purchase',
           read: false,

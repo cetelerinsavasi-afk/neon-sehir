@@ -15,7 +15,7 @@ import { createSocial } from './social.js';
 import { createDeletionRequests } from './deletionRequests.js';
 import { createHouses } from './houses.js';
 import { createBusiness } from './business.js';
-import { resaleTax, factoryTax, taxLedgerWrite } from './tax.js';
+import { resaleTax, factoryTax, factoryTaxRate, taxLedgerWrite } from './tax.js';
 import { createVisits } from './visits.js';
 import { createShop } from './shop.js';
 import { createVenue } from './venue.js';
@@ -1792,11 +1792,11 @@ async function sendSalaryPenaltySms(uid, penaltyAmount, newTotalDebt) {
 // debtToState'e yazılır — bkz. dailyReset'teki elektrik faturası bloğu.
 // Bölüm 16: artık kişisel SMS DEĞİL, fabrika bildirim paneli.
 // v77: fabrika vergisi (%10) de aynı bildirimde (tax).
-async function sendElectricityBillSms(uid, bill, shortfall, newTotalDebt, tax = 0) {
+async function sendElectricityBillSms(uid, bill, shortfall, newTotalDebt, tax = 0, taxRate = 0.1) {
   const fmtTr = (n) => Math.round(n || 0).toLocaleString('tr-TR');
   const parts = [];
   if (bill > 0) parts.push(`${fmtTr(bill)} altın elektrik faturası`);
-  if (tax > 0) parts.push(`${fmtTr(tax)} altın vergi (günlük kazancın %10'u)`);
+  if (tax > 0) parts.push(`${fmtTr(tax)} altın vergi (%${Math.round(taxRate * 100)} dilimi)`); // v95.3: gerçek vergi dilimi
   const what = parts.join(' ve ');
   const text =
     shortfall > 0
@@ -2466,10 +2466,81 @@ export const resolveStuckRewardsNow = onRequest(async (req, res) => {
 // Faz 2 kapsamı: polis maaşı, banka faizi, yatırım fiyatları, gemi takvimi.
 // (Piyango çekilişi Faz 8'de, yasaklı madde üretimi Faz 7'de eklenecek.)
 // ---------------------------------------------------------------------------
-export const dailyReset = onSchedule(
-  { schedule: '0 0 * * *', timeZone: 'Europe/Istanbul' },
-  async () => {
-    const dateKey = istanbulDateKey();
+// v95.2 — GECE İŞİ KORUMASI: 17 Eki 2026 gecesi dailyReset 256 MB belleği
+// aşıp yarıda kaldı (piyango, faiz, polis havuzu, gemi… hiç çalışmadı).
+//   - Bellek 1 GiB, süre 9 dk.
+//   - Her adım bitince dailyResetRuns/{dateKey}.steps.{adım} işaretlenir;
+//     tekrar çalıştırmada biten adımlar atlanır (çift ödeme olmaz).
+//   - dailyResetRecovery 00:15–03:45 arası yarım kalan geceyi tamamlar.
+const DAILY_RESET_OPTS = { timeZone: 'Europe/Istanbul', memory: '1GiB', timeoutSeconds: 540 };
+async function runDailyResetGuarded(dateKey, source) {
+  const runRef = db.collection('dailyResetRuns').doc(dateKey);
+  const now = Date.now();
+  let run = null;
+  await db.runTransaction(async (tx) => {
+    run = null;
+    const s = await tx.get(runRef);
+    const d = s.exists ? s.data() : {};
+    if (d.doneAt) return;
+    if (Number(d.leaseUntilMs || 0) > now) return;
+    tx.set(
+      runRef,
+      { dateKey, leaseUntilMs: now + 9 * 60 * 1000, attempts: admin.firestore.FieldValue.increment(1), lastSource: source },
+      { merge: true }
+    );
+    run = { steps: {}, ...d };
+  });
+  if (!run) return { skipped: true };
+  const dr = {
+    run,
+    done: (name) => Boolean(run.steps?.[name]),
+    mark: async (name, extra = {}) => {
+      run.steps = { ...(run.steps || {}), [name]: true };
+      await runRef.set({ steps: { [name]: true }, ...extra }, { merge: true });
+    },
+  };
+  try {
+    await runDailyResetBody(dateKey, dr);
+    await runRef.set({ doneAt: admin.firestore.FieldValue.serverTimestamp(), leaseUntilMs: 0 }, { merge: true });
+    console.log(`dailyReset tamamlandı: ${dateKey} (${source})`);
+    return { ok: true };
+  } catch (err) {
+    await runRef.set({ leaseUntilMs: 0, lastError: String(err?.message || err).slice(0, 500) }, { merge: true }).catch(() => {});
+    throw err;
+  }
+}
+
+// v95.2 — 17 Eki gecesi madencilik tamamlanmıştı ama sonucu kaydedilmemişti;
+// fabrika bildirimlerindeki "Mining makinen bu gece X kripto üretti"
+// SMS'lerinden geri okunur (madencilik tekrar çalışmaz → çift kripto yok).
+async function recoverMiningFromNotifications(dateKey) {
+  const startMs = Date.parse(`${dateKey}T00:00:00+03:00`);
+  const qty = new Map();
+  const factories = await db.collection('factories').select().get();
+  for (const f of factories.docs) {
+    const ns = await f.ref.collection('notifications').orderBy('createdAt', 'desc').limit(40).get();
+    for (const n of ns.docs) {
+      const d = n.data();
+      if (d.type !== 'mining_production') continue;
+      const at = d.createdAt?.toMillis?.() || 0;
+      if (at < startMs || at > startMs + 60 * 60 * 1000) continue;
+      const m = /bu gece ([\d.]+) kripto/.exec(String(d.text || ''));
+      if (m) qty.set(f.id, (qty.get(f.id) || 0) + Number(m[1]));
+    }
+  }
+  return qty;
+}
+
+export const dailyReset = onSchedule({ schedule: '0 0 * * *', ...DAILY_RESET_OPTS }, async () => {
+  await runDailyResetGuarded(istanbulDateKey(), 'schedule');
+});
+export const dailyResetRecovery = onSchedule({ schedule: '15,45 0-3 * * *', ...DAILY_RESET_OPTS }, async () => {
+  const r = await runDailyResetGuarded(istanbulDateKey(), 'recovery');
+  if (!r?.skipped) console.log('dailyResetRecovery çalıştı', JSON.stringify(r));
+});
+
+async function runDailyResetBody(dateKey, dr) {
+  {
 
     // FABRİKA HİSSE SİSTEMİ İÇİN GECE BOYU PAYLAŞILAN DEĞİŞKENLER — mining
     // üretim bloğu bunları doldurur, "FABRİKA GÜNLÜK GELİR HESABI" bloğu
@@ -2639,10 +2710,14 @@ export const dailyReset = onSchedule(
     // computeAndStoreFutbolOddsForToday). Kendi içinde tamamen bağımsız
     // ve maç sonucu üretmiyor — hata verse bile günün maç akışını
     // etkilemez.
-    try {
-      await computeAndStoreFutbolOddsForToday();
-    } catch (err) {
-      console.error('Futbol iddaa oran hesaplama hatası:', err);
+    // 17 Eki: oranlar çöküşten önce zaten hesaplanmıştı (madencilikten önce çalışır)
+    if (!dr.done('odds') && dateKey !== '2026-10-17') {
+      try {
+        await computeAndStoreFutbolOddsForToday();
+        await dr.mark('odds');
+      } catch (err) {
+        console.error('Futbol iddaa oran hesaplama hatası:', err);
+      }
     }
 
     // NOT: Futbol sakatlık iyileşmesi ARTIK BURADA DEĞİL — Bölüm 13/7
@@ -2655,7 +2730,17 @@ export const dailyReset = onSchedule(
     // 00:00'ından önceki gün) triggerAllMining ile TETİKLEDİĞİ makineler
     // üretim yapar. Aynı sahibin birden çok tetiklenmiş makinesi varsa
     // hepsi ayrı ayrı üretir, toplamı TEK bir SMS ile bildirilir.
-    {
+    if (dr.done('mining')) {
+      const m = dr.run.mining || {};
+      nightCryptoPrice = Number(m.price || 0);
+      Object.entries(m.qty || {}).forEach(([k, v]) => miningCryptoQtyByOwner.set(k, Number(v) || 0));
+    } else if (dateKey === '2026-10-17') {
+      // v95.2 tek seferlik kurtarma (bkz. recoverMiningFromNotifications)
+      nightCryptoPrice = (await getCurrentPrices()).cryptoPrice || 0;
+      const rec = await recoverMiningFromNotifications(dateKey);
+      rec.forEach((v, k) => miningCryptoQtyByOwner.set(k, v));
+      await dr.mark('mining', { mining: { price: nightCryptoPrice, qty: Object.fromEntries(rec), recovered: true } });
+    } else {
       const prevDateKey = addDaysToDateKey(dateKey, -1);
       const [miningSnap, nightPrices] = await Promise.all([
         db.collectionGroup('machines').where('type', '==', 'mining').get(),
@@ -2724,6 +2809,7 @@ export const dailyReset = onSchedule(
         );
       });
       await Promise.all(smsJobs);
+      await dr.mark('mining', { mining: { price: nightCryptoPrice, qty: Object.fromEntries(miningCryptoQtyByOwner) } });
     }
 
     // -0.4) SAHİP-YERİNE-ÜRETİM (işçi gerektiren 4 makine türü): sahibi dün
@@ -2957,6 +3043,11 @@ export const dailyReset = onSchedule(
       let opCount = 0;
       const batchJobs = [];
       allFactoriesSnap.forEach((f) => {
+        // v95.2: bu gece zaten işlenmiş fabrika (yarıda kalan çalıştırma) tekrar ücretlendirilmez
+        if (f.data().dailyIncomeDateKey === prevDateKey) {
+          factoryDailyIncomeMap.set(f.id, Math.round(f.data().dailyIncome || 0));
+          return;
+        }
         // Yeni istek: "hisse satışı için günlük kazanç hesabında işçiye
         // verilen maaş düşülecek, kâr eksi bile olabilir" — dailyIncome
         // artık BRÜT üretim değeri değil, o günkü (gerçek işçilerle
@@ -3098,6 +3189,7 @@ export const dailyReset = onSchedule(
             ownerId: f.id,
             bill: electricityBill,
             tax: taxAmount,
+            taxRate: factoryTaxRate(Math.round(incomeByFactory.get(f.id) || 0)),
             shortfall,
             newTotalDebt: (electricityOwnerDebt.get(f.id) || 0) + shortfall,
           });
@@ -3110,7 +3202,7 @@ export const dailyReset = onSchedule(
       // gibi, para hareketi kesinleşmeden bildirim gitmesin diye).
       await Promise.all(
         electricitySmsJobs.map((job) =>
-          sendElectricityBillSms(job.ownerId, job.bill, job.shortfall, job.newTotalDebt, job.tax)
+          sendElectricityBillSms(job.ownerId, job.bill, job.shortfall, job.newTotalDebt, job.tax, job.taxRate)
         )
       );
     }
@@ -3129,13 +3221,20 @@ export const dailyReset = onSchedule(
     // AYNI konvansiyon: TAM yükümlülük raporlanır, sadece fiilen ödenen
     // kısım değil) toplam temettü tutarı burada biriktirilir.
     const dividendExpenseByOwner = new Map(); // ownerId -> altın
-    {
+    if (!dr.done('dividends')) {
       const todayDateKey = dateKey;
       const activeSharesSnap = await db.collectionGroup('shares').where('status', '==', 'active').get();
 
       await Promise.all(
         activeSharesSnap.docs.map(async (shareDoc) => {
           const share = shareDoc.data();
+          // v95.2: bu gece zaten ödenmiş hisse tekrar ödenmez
+          if (share.lastPayoutDateKey === todayDateKey) {
+            const ownerIdPaid = shareDoc.ref.parent.parent.id;
+            const paid = Number(share.lastPayoutAmount || 0);
+            if (paid > 0) dividendExpenseByOwner.set(ownerIdPaid, (dividendExpenseByOwner.get(ownerIdPaid) || 0) + paid);
+            return;
+          }
           const ownerId = shareDoc.ref.parent.parent.id;
           const factoryDailyIncome = factoryDailyIncomeMap.get(ownerId) || 0;
           const dividend = Math.round(((share.percent || 0) / 100) * factoryDailyIncome);
@@ -3264,6 +3363,7 @@ export const dailyReset = onSchedule(
         factorySnaps.forEach((fSnap) => {
           if (!fSnap.exists) return;
           const data = fSnap.data();
+          if (data.dailyShareDividendExpenseDateKey === prevDateKeyForDividend) return; // v95.2: zaten yazıldı
           const dividendExpense = dividendExpenseByOwner.get(fSnap.id) || 0;
           const existingHistory = Array.isArray(data.dailyShareDividendExpenseHistory)
             ? data.dailyShareDividendExpenseHistory
@@ -3296,6 +3396,8 @@ export const dailyReset = onSchedule(
       }
     }
 
+    await dr.mark('dividends');
+
     // NOT: Fabrika↔Futbol Kulübü sponsorluk ödemeleri ARTIK BURADA DEĞİL —
     // Bölüm 14/7 (futbol menajerlik sistemi güncellemesi) ile 00:00'dan
     // 19:00'a taşındı, bkz. processFutbolSponsorshipsNightly()'i çağıran
@@ -3307,14 +3409,14 @@ export const dailyReset = onSchedule(
     // -0.3) Araç/silah ömrü — her gün 1 azalır. Ömrü biten VE tamir hakkı
     // (10) tükenen araç/silah hurdaya çıkarılır (silinir + SMS). Listede
     // (2. el satış) ise ilanı da iptal edilir.
-    {
+    if (!dr.done('life')) {
       const collections = [
         { name: 'vehicles', label: 'model' },
         { name: 'weapons', label: 'name' },
       ];
       for (const { name: collName, label: labelField } of collections) {
         const snap = await db.collection(collName).get();
-        const jobs = snap.docs.map(async (docSnap) => {
+        const handleItem = async (docSnap) => {
           const item = docSnap.data();
           // v77: silahçı/galeri vitrinindeki ürünlerin ömrü azalmaz (çete deposu gibi)
           if (item.shopHouseId) return;
@@ -3382,9 +3484,13 @@ export const dailyReset = onSchedule(
               }
             }
           }
-        });
-        await Promise.all(jobs);
+        };
+        // v95.2: binlerce eşzamanlı yazma yerine 100'erli gruplar (bellek)
+        for (let i = 0; i < snap.docs.length; i += 100) {
+          await Promise.all(snap.docs.slice(i, i + 100).map(handleItem));
+        }
       }
+      await dr.mark('life');
     }
 
     // 0) Bekleyen polislik başvurularını işle (Bölüm 7): anlık meslek
@@ -3447,7 +3553,7 @@ export const dailyReset = onSchedule(
       // 1) Dünkü havuzu kapat: bonus dağıt + kaçıranları işaretle/at.
       const yestPoolRef = db.collection('policeClaimPool').doc(yesterdayKeyForPolice);
       const yestPoolSnap = await yestPoolRef.get();
-      if (yestPoolSnap.exists) {
+      if (yestPoolSnap.exists && !yestPoolSnap.data().closedAt) {
         const pool = yestPoolSnap.data();
         const eligibleUids = pool.eligibleUids || [];
         const claimedUids = pool.claimedUids || [];
@@ -3499,6 +3605,7 @@ export const dailyReset = onSchedule(
           }
         });
         await Promise.all(officerJobs);
+        await yestPoolRef.set({ closedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }); // v95.2: tekrar dağıtılmaz
 
         // Kitapçıktaki "günlük ortalama kazanç" istatistiği için: o gün
         // maaş alan bir polisin eline geçen TOPLAM tutar (pay + bonus).
@@ -3525,10 +3632,9 @@ export const dailyReset = onSchedule(
       const policeCount = eligibleUids.length;
       const perOfficerShare = policeCount > 0 ? Math.floor(totalPool / policeCount) : 0;
 
-      await db
-        .collection('policeClaimPool')
-        .doc(dateKey)
-        .set({
+      const todayPoolRef = db.collection('policeClaimPool').doc(dateKey);
+      if (!(await todayPoolRef.get()).exists)
+        await todayPoolRef.set({
           dateKey,
           totalPool,
           bribeCount,
@@ -3616,8 +3722,11 @@ export const dailyReset = onSchedule(
     // 2) Banka mevduat faizi — günlük %1 (Bölüm 13)
     // v95: faiz bakiyede birikmez; 00:00'da doğrudan oyuncunun altınına girer + SMS.
     // (Günlük raporda "Banka faizi" olarak görünür.) 200'erli gruplar (batch ≤ 500 yazma).
-    const bankSnap = await db.collection('users').where('bankBalance', '>', 0).get();
-    const bankDocs = bankSnap.docs;
+    // v95.2: oyuncu başına bankInterestDay işareti → tekrar çalıştırmada çift faiz yok
+    const bankSnap = dr.done('interest')
+      ? { docs: [] }
+      : await db.collection('users').where('bankBalance', '>', 0).select('bankBalance', 'bankInterestDay').get();
+    const bankDocs = bankSnap.docs.filter((d) => d.data().bankInterestDay !== dateKey);
     for (let i = 0; i < bankDocs.length; i += 200) {
       const bankBatch = db.batch();
       let n = 0;
@@ -3628,6 +3737,7 @@ export const dailyReset = onSchedule(
         bankBatch.update(docSnap.ref, {
           gold: admin.firestore.FieldValue.increment(interest),
           goldTag: goldTag('banka', { faiz: interest }),
+          bankInterestDay: dateKey,
         });
         bankBatch.set(docSnap.ref.collection('messages').doc(), {
           text: `🏦 Banka faizi: +${interest.toLocaleString('tr-TR')} altın cebine yattı.`,
@@ -3640,10 +3750,13 @@ export const dailyReset = onSchedule(
       if (n) await bankBatch.commit();
     }
 
+    await dr.mark('interest');
+
     // 3) Yatırım araçları artık günde 1 kez değil, saatte 1 kez ayrı bir
     // Cloud Function (hourlyInvestmentUpdate) tarafından güncelleniyor.
 
     // 4) Gemi takvimi bir gün ilerler — 4 günlük döngü (Bölüm 12)
+    if (!dr.done('ship')) {
     const prevShipSnap = await db
       .collection('shipSchedule')
       .doc(addDaysToDateKey(dateKey, -1))
@@ -3667,7 +3780,7 @@ export const dailyReset = onSchedule(
     // oyunculara bilgilendirme SMS'i gönder — bu, ucuz fiyattan sipariş
     // vermek için son gün (2 gün sonra teslim edilecek).
     if (nextDay === 3) {
-      const allUsersSnap = await db.collection('users').get();
+      const allUsersSnap = await db.collection('users').select().get(); // v95.2: sadece kimlikler (bellek)
       const smsBatches = [];
       let currentBatch = db.batch();
       let opCount = 0;
@@ -3773,6 +3886,9 @@ export const dailyReset = onSchedule(
       );
     }
 
+    await dr.mark('ship');
+    }
+
     // 7) Araç kredileri (Bölüm 8.4, 9.3): vadesi geçmiş & tam ödenmemiş
     // krediler artık aracı EL KOYMUYOR — kalan borç doğrudan devlete CEZA
     // olarak yazılıyor (Banka'dan istediğin an ödenebilir, ya da
@@ -3780,6 +3896,7 @@ export const dailyReset = onSchedule(
     // sahibine iade edilir, kredi tamamen kapanır. Bu, önceki "el koy /
     // borcu öde / aracı geri al" akışının karmaşıklığını kaldırır — tek
     // seferlik, net bir sonuç.
+    if (!dr.done('loans')) {
     const mortgagedSnap = await db.collection('vehicles').where('mortgaged', '==', true).get();
     const loanBatch = db.batch();
     const loanSmsPromises = [];
@@ -3837,10 +3954,13 @@ export const dailyReset = onSchedule(
     });
     if (!mortgagedSnap.empty) await loanBatch.commit();
     await Promise.all(loanSmsPromises);
+    await dr.mark('loans');
+    }
 
     // 8) Devlete borcu olanlara hatırlatma SMS'i (Bölüm 9.3). Tek alanda
     // range sorgusu (debtToState > 0) composite index istemiyor.
-    const debtSnap = await db.collection('users').where('debtToState', '>', 0).get();
+    if (!dr.done('debt')) {
+    const debtSnap = await db.collection('users').where('debtToState', '>', 0).select('debtToState').get();
     const debtSmsPromises = [];
     debtSnap.forEach((docSnap) => {
       const debt = docSnap.data().debtToState || 0;
@@ -3858,6 +3978,8 @@ export const dailyReset = onSchedule(
       );
     });
     await Promise.all(debtSmsPromises);
+    await dr.mark('debt');
+    }
 
     // 9-10) Piyango çekilişi + Şampiyona: ortak mantık artık
     // resolveStuckLotteryAndChampionship() içinde (bkz. yukarısı, dailyReset
@@ -3869,10 +3991,8 @@ export const dailyReset = onSchedule(
     // günün ödüllerinin SONSUZA DEK kimseye ödenmeden askıda kalmasına yol
     // açıyordu.
     await resolveStuckLotteryAndChampionship(dateKey);
-
-    console.log(`dailyReset tamamlandı: ${dateKey}`);
   }
-);
+}
 
 // =============================================================================
 // v40 — YATIRIM ALIŞ/SATIŞ TAKİBİ (elmas · hisse · kripto, üçü de AYNI sistem)

@@ -7,6 +7,7 @@ import { fmtDateTime, istHour, respectedThisWeek, useGang, useGangAction, useNow
 import { AmountInput, Btn, Card, Chips, Confirm, Logo, RankBadge, Sheet } from '../ui';
 import { EditProfileSheet, KasaLine, MemberCard, MidnightLegend, RankTree, useMyWallet } from '../shared';
 import { DIST_GROUPS, GANG_RULES, LEADERS, RANK_ICONS, fmt } from '../gangConstants';
+import { BiatPanel } from '../Biat';
 
 // Üyeye dokununca: saygı / at / çıkarma oylaması (yetkiye göre)
 const KICK_VOTE_TARGETS = { baba: ['sagkol', 'kidemli'], sagkol: ['kidemli', 'tetikci'], kidemli: ['tetikci', 'comez'] };
@@ -347,6 +348,7 @@ export default function CetemTab({ d }) {
       <RankTree rows={[baba ? [baba] : [], byRank('sagkol'), byRank('kidemli')]} rows2={[{ title: 'Tetikçiler', items: byRank('tetikci') }, { title: 'Çömezler', items: byRank('comez') }]} renderCard={card} />
 
       <Alliances d={d} lead={isLead} />
+      <BiatPanel d={d} />
 
       <div className="gx-section-head">
         <span>📜 Son olaylar</span>

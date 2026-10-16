@@ -1710,3 +1710,26 @@
   font-size: 12px;
   margin: 0 2px 10px;
 }
+
+/* v95.3 — Evler listesinde Home Ofisler başlığı + Aç butonu */
+.hh-ho-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 20px;
+}
+.hh-ho-open {
+  padding: 5px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 210, 63, 0.6);
+  background: rgba(255, 210, 63, 0.12);
+  color: #ffd23f;
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.hh-ho-open span {
+  margin-left: 2px;
+}

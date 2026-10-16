@@ -2864,9 +2864,14 @@ export function createHouseEngine(
       const em = (fig) => (fig?.emote && EMOTE_EMOJI[fig.emote.kind] && now - fig.emote.t0 >= 0 && now - fig.emote.t0 <= EMOTE_MS ? { kind: fig.emote.kind, at: Math.round(now - fig.emote.t0) } : null);
       const wp = (fig) => (Math.floor((fig?.walkT || 0) / 0.16) % 2 ? 1 : 0);
       const seatStr = (st) => (st ? `${st.id}:${st.idx}` : null);
+      // v95.3: çekim anında ekranda olan balonlar (sunucu NPC'ler için doğrular)
+      const says = (fig) => {
+        const l = (fig?.bubbles || []).filter((b) => b.text && now <= b.until).map((b) => String(b.text).slice(0, 200));
+        return l.length ? l.slice(-3) : undefined;
+      };
       const list = [];
       if (self.fig && selfUid) list.push({ uid: selfUid, x: r(self.x), z: r(self.z), left: !!self.fig.facingLeft, seat: seatStr(self.seat), moving: !!self.fig.moving, wp: wp(self.fig), emote: em(self.fig) });
-      others.forEach((o, uid) => list.push({ uid, x: r(o.fig.x), z: r(o.fig.z), left: !!o.fig.facingLeft, seat: seatStr(o.seat), moving: !!o.fig.moving, wp: wp(o.fig), emote: em(o.fig) }));
+      others.forEach((o, uid) => list.push({ uid, x: r(o.fig.x), z: r(o.fig.z), left: !!o.fig.facingLeft, seat: seatStr(o.seat), moving: !!o.fig.moving, wp: wp(o.fig), emote: em(o.fig), says: says(o.fig) }));
       return list;
     },
     getCameraPose() {

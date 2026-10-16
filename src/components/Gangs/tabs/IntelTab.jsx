@@ -2,9 +2,9 @@
 // 4 Uzman · Ajanlar/Muhbirler), kod adı ✏️, not, altın dağıt (Başkan/Şef),
 // atma (anında) / çıkarma oylaması, ayrılma. İstihbarata bağış yoktur,
 // maaş yoktur; Başkan kasadan kendine para alamaz.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { istDateKey, istHour, useGangAction, useNow } from '../GangContext';
-import { AmountInput, Btn, Card, Chips, Confirm, RankBadge, Sheet } from '../ui';
+import { AmountInput, Btn, Card, Chips, Confirm, Gold, RankBadge, Sheet, Stat } from '../ui';
 import { KasaLine, MemberCard, MidnightLegend, RankTree } from '../shared';
 import { DIST_GROUPS, GANG_RULES, INTEL_LEADERS, RANK_ICONS, fmt } from '../gangConstants';
 
@@ -18,6 +18,56 @@ function voteAllowed(my, t) {
   if (my === 'baskan' || my === 'sef') return !(DIRECT[my] || []).includes(t);
   if (my === 'uzman') return t !== 'baskan';
   return false;
+}
+
+// v95.5 — üye raporu (Başkan / Şef / Uzman): bugünden önceki 14 gün
+function MemberReport({ member }) {
+  const { run } = useGangAction();
+  const [r, setR] = useState(null);
+  const [err, setErr] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    run('intelMemberReport', { rosterId: member.id }, { key: `rep_${member.id}` }).then((res) => {
+      if (!alive) return;
+      if (res) setR(res);
+      else setErr(true);
+    });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [member.id]);
+  const dd = (k) => (k ? k.split('-').reverse().slice(0, 2).join('.') : '');
+  if (err) return <p className="dim gx-mini">Rapor alınamadı.</p>;
+  if (!r) return <p className="dim gx-mini">Rapor yükleniyor…</p>;
+  return (
+    <div className="gx-stack">
+      <div className="gx-section-head">
+        <span>📋 Son 14 gün</span>
+        <span className="dim gx-mini">
+          {dd(r.from)}–{dd(r.to)}
+        </span>
+      </div>
+      <Stat icon="📅" label="İstihbarata girişi">
+        {r.joinedDaysAgo == null ? '—' : r.joinedDaysAgo === 0 ? 'Bugün' : `${r.joinedDaysAgo} gün önce`}
+      </Stat>
+      <Stat icon="⚔️" label="Katıldığı savaş">
+        {fmt(r.wars)}
+      </Stat>
+      <Stat icon="💪" label="Savaşlarda kullandığı güç">
+        {fmt(r.power)}
+      </Stat>
+      <Stat icon="📡" label="İhbar (tır · bahisli savaş)">
+        {fmt(r.truckReports)} · {fmt(r.betReports)}
+      </Stat>
+      <Stat icon="📦" label="İçerik açma (tır · bahisli savaş)">
+        {fmt(r.truckLeaks)} · {fmt(r.betLeaks)}
+      </Stat>
+      <Stat icon="💵" label="İstihbarattan aldığı para">
+        <Gold value={r.paid} />
+      </Stat>
+    </div>
+  );
 }
 
 function MemberSheet({ member, myRank, rosterSize, onClose }) {
@@ -48,6 +98,7 @@ function MemberSheet({ member, myRank, rosterSize, onClose }) {
           </Btn>
         )}
         {(canKick || canVote) && lockReason && <div className="dim gx-mini">{lockReason}</div>}
+        {['baskan', 'sef', 'uzman'].includes(myRank) && <MemberReport member={member} />}
       </div>
       {ask && (
         <Confirm

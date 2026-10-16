@@ -27,6 +27,7 @@ import GarageScreen from '../GarageScreen/GarageScreen';
 import ResultModal from '../ResultModal/ResultModal';
 import InfoIcon from '../InfoIcon/InfoIcon';
 import HeldIcon from '../HouseScreen/HeldIcon';
+import { camiiDynamicNpcs } from '../../../functions/venueLayouts.js';
 import '../../styles/bizui.css';
 
 // =============================================================================
@@ -103,32 +104,8 @@ export function CamiiPart({ panel, setPanel, setDynNpcs, walk }) {
 
   // imam (varsa) mihrapta — bugün nasihat verdiyse minberin önünde; dilenciler köşede minderlerde
   useEffect(() => {
-    const list = [];
-    if (imam) {
-      const sermon = gaveSermonToday(imam);
-      list.push({
-        id: 'npc_imam',
-        name: `İmam ${imam.displayName || ''}`.trim(),
-        av: imam.avatar || {},
-        x: sermon ? 2.6 : 0,
-        z: sermon ? -4.3 : -5.75,
-        station: 'cm_mih',
-        lines: sermon && imam.lastNasihat ? [imam.lastNasihat] : ['Namaza gelin.', 'Cemaatle kılınan namaz daha faziletlidir.'],
-      });
-    }
-    (beggars || []).slice(0, 3).forEach((b, i) => {
-      list.push({
-        id: `npc_dil_${b.id}`,
-        name: `🤲 ${b.displayName || 'Dilenci'}`,
-        av: b.avatar || {},
-        x: -7.8 + i,
-        z: 5.6,
-        seat: `cm_dm${i + 1}:0`,
-        station: 'cm_bk',
-        lines: ['Allah rızası için…', 'Hayrınıza bir yardım…', 'Allah razı olsun.'],
-      });
-    });
-    setDynNpcs(list);
+    // v95.3: liste sunucuyla ortak (fotoğrafta da aynısı çizilir)
+    setDynNpcs(camiiDynamicNpcs({ imam, sermon: gaveSermonToday(imam), beggars }));
   }, [imam, beggars, setDynNpcs]);
 
   const pray = async () => {

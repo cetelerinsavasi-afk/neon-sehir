@@ -225,3 +225,34 @@ Testler: 348/348 geçti.
 - Satın alma sonrası uzun yazı kısaldı: "✓ Ödemen alındı. Zümrütlerin kısa süre içinde yüklenecek, SMS ile haber vereceğiz." (iade cümlesi kaldırıldı).
 
 **Yükleme:** `firebase deploy --only functions:verifyPlayPurchase,functions:playBillingSweep`, sonra push.
+
+## v95.2 (acil)
+- **Gece işi (dailyReset) çökmesi:** 17 Ekim 00:00'da 256 MB bellek sınırını aşıp 24. saniyede kapandı. Madencilikten sonraki her şey (fabrika gelir/elektrik/vergi, hisse temettüsü, araç/silah ömrü, polis havuzu, faiz, gemi/liman, kredi, borç SMS'i, **piyango**) çalışmadı.
+  - Bellek 1 GiB, süre 9 dk.
+  - Her adım bitince `dailyResetRuns/{gün}` belgesine işaretleniyor; tekrar çalıştırmada biten adım atlanıyor (çift ödeme yok). Faiz oyuncu başına `bankInterestDay`, hisse `lastPayoutDateKey`, fabrika `dailyIncomeDateKey`, polis havuzu `closedAt` ile korunuyor.
+  - **dailyResetRecovery:** 00:15–03:45 arası her yarım saatte yarım kalan geceyi tamamlıyor.
+  - 17 Ekim için madencilik tekrar çalışmaz; sonuçları fabrika bildirimlerinden okunur.
+  - Büyük taramalar (tüm kullanıcılar, faiz, borç) sadece gerekli alanları okuyor; araç/silah ömrü 100'erli gruplar.
+- **Biat paneli** Savaş sekmesinden Çetem sekmesine (İttifakların altı) taşındı.
+- "💎 zümrüt yüklendi" SMS'i Android'de gizleniyordu (gönderen 'Zümrüt Mağazası'), düzeltildi.
+
+**Yükleme:** `firebase deploy --only functions:dailyReset,functions:dailyResetRecovery,functions:verifyPlayPurchase`, sonra push.
+
+## v95.3
+- 17 Ekim gecesi kurtarıldı (00:45, dailyResetRecovery): piyango (Cengo, 413.500), şampiyonalar, fabrika gelir/elektrik/vergi, temettü, araç/silah ömrü, polis havuzu, faiz, gemi, kredi, borç SMS'leri tamamlandı.
+- **Fabrika vergi bildirimi** artık gerçek dilimi yazıyor (%1 / %10 / %20 / %40); önceden hep %10 yazıyordu.
+- **Evler** ekranı tek liste: üstte evler, altta Home Ofisler (+ "Home Ofis Aç" butonu); sekmeler kaldırıldı.
+
+**Yükleme:** `firebase deploy --only functions:dailyReset,functions:dailyResetRecovery`, sonra push.
+
+## v95.4
+- **3D mekân fotoğrafları:** camide imam ve dilenciler artık paylaşılan fotoğrafta da var (sunucu imam/dilenci verisinden, oyundaki yerleriyle — nasihat verdiyse minberin önünde). Çekim anında NPC'lerin ekrandaki konuşma balonları (nasihat dahil) da fotoğrafa giriyor; sunucu sadece o NPC'nin gerçekten söyleyebileceği cümleleri kabul ediyor (sahte yazı eklenemez). Tüm 3D mekânlardaki NPC balonları için geçerli.
+- **Temizlik:** hiçbir yerden kullanılmayan 38 eski dosya silindi (eski AuthGate, GangPanel ve eski çete sekmeleri, Depo/LimanDepo, ParkScreen, HeistScreen, HouseGate vb.). 2D mekân ekranları SİLİNMEDİ: giriş yapmamış oyuncular ve 3D açılamadığında yedek olarak kullanılıyor; eski paylaşılan fotoğraflar da onlarla çiziliyor.
+
+**Yükleme:** `powershell -ExecutionPolicy Bypass -File .\cleanup-v95.4.ps1`, sonra `firebase deploy --only functions:createSixtagramPost`, sonra push.
+
+## v95.5
+- **İstihbarat üye raporu** (v94'te yazılmıştı ama oyunun kullanmadığı eski bir dosyaya — `IntelPanel.jsx` — eklendiği için hiç görünmedi): artık İstihbarat › İstihbarat sekmesinde bir üyeye dokununca açılan pencerede. Başkan, Şef ve Uzmanlar görür; son 14 gün (bugün hariç): giriş tarihi, katıldığı savaş, kullandığı güç, ihbarlar, içerik açmalar, aldığı para. Sunucu tarafı zaten yayında.
+- Not: v95.2–v95.4 arayüz değişiklikleri (biat Çetem sekmesinde, Evler + Home Ofisler tek liste) sadece push ile yayına çıkar; son push v95.1'deydi.
+
+**Yükleme:** sadece push (fonksiyon değişikliği yok).

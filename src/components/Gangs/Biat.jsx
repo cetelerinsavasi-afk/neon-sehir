@@ -193,6 +193,36 @@ export function BiatStatus({ d, info }) {
   );
 }
 
+// v95.2 — Çetem sekmesi › İttifakların altı: "Biat et" + biat durumu (eskiden Savaş sekmesindeydi)
+export function BiatPanel({ d }) {
+  const info = useBiatInfo(d);
+  const [open, setOpen] = useState(false);
+  const pacts = d.pacts || d.alliances || [];
+  const wars = d.wars?.all || [];
+  // ittifak biata engel değil — sadece aynı ikilideki biat süreci ve bahisler kilitler
+  const blocked = [
+    ...new Set([
+      ...pacts.filter((a) => a.kind === 'biat' && ['requested', 'accepted', 'active', 'ending'].includes(a.status)).flatMap((a) => a.gangIds),
+      ...wars.filter((w) => w.type === 'bet' && ['offered', 'accepted', 'active'].includes(w.status)).flatMap((w) => w.gangIds || []),
+    ]),
+  ];
+  if (!info.canBiat && !info.mine && info.vassals.length === 0) return null;
+  return (
+    <>
+      <div className="gx-section-head">
+        <span>⛓️ Biat</span>
+      </div>
+      {info.canBiat && (
+        <Btn block small kind="ghost" onClick={() => setOpen(true)}>
+          ⛓️ Biat et
+        </Btn>
+      )}
+      <BiatStatus d={d} info={info} />
+      {open && <BiatSheet gangId={d.gangId} blockedIds={blocked} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
 // v86 — Pazar savaşında biat: biat eden çetenin AYRI hanesi gösterilmez; gücü
 // biat ettiği çetenin toplamına katılır. Sunucu da sonucu aynı şekilde hesaplar
 // (functions/gang/actions/wars.js → foldBiatTotals). war.biatLinks: kabul
