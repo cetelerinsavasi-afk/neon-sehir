@@ -5,7 +5,7 @@ import { usePlayer } from '../../hooks/usePlayer';
 import { buyListing } from '../../services/gameActions';
 import { weaponCatalog } from '../../data/weaponCatalog';
 import { vehicleImage } from '../VehicleCard/VehicleCard';
-import HoldButton from '../HoldButton/HoldButton';
+import ConfirmButton from '../ConfirmButton/ConfirmButton';
 import { lifeCapOf, VEHICLE_WEAPON_MAX_REPAIRS } from '../../../functions/itemRules.js';
 import '../../styles/bizui.css';
 import './Shop.css';
@@ -88,9 +88,9 @@ export default function ShopShowcase({ houseId, kind, onClose }) {
               ) : poor ? (
                 <span className="bz-tag bad">Altının yetmiyor</span>
               ) : (
-                <HoldButton className="bz-btn gold sm" disabled={busy === l.id} onDone={() => buy(l)}>
-                  {busy === l.id ? 'Alınıyor…' : 'Basılı tut: satın al'}
-                </HoldButton>
+                <ConfirmButton className="bz-btn gold sm" disabled={busy === l.id} title="Satın alınsın mı?" confirmLabel="Satın al" onConfirm={() => buy(l)}>
+                  {busy === l.id ? 'Alınıyor…' : 'Satın al'}
+                </ConfirmButton>
               )}
             </div>
           );

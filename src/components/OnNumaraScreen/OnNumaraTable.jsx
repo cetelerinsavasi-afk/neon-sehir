@@ -37,7 +37,7 @@ function useCountdown(deadline) {
   return secondsLeft;
 }
 
-function useAutoStandWatcher(tableId, deadline, active) {
+function useAutoStandWatcher(tableId, deadline, active, apply) {
   const firedFor = useRef(null);
   const dl = msOf(deadline);
   useEffect(() => {
@@ -46,13 +46,15 @@ function useAutoStandWatcher(tableId, deadline, active) {
     const check = () => {
       if (key <= Date.now() && firedFor.current !== key) {
         firedFor.current = key;
-        onNumaraAutoStand(tableId).catch(() => {});
+        onNumaraAutoStand(tableId)
+          .then((r) => apply?.(r?.data?.table))
+          .catch(() => {});
       }
     };
     check();
     const id = setInterval(check, 500);
     return () => clearInterval(id);
-  }, [tableId, dl, active]);
+  }, [tableId, dl, active, apply]);
 }
 
 function statusInfo(status, secret) {
@@ -112,7 +114,7 @@ function Seat({ name, cards, status, hidden, hideFrom = null, secret = false, is
 
 // spectate (v82.2): yayın izleyicisi — sadece izler, butonlar yok; hostUid = yayıncı
 export default function OnNumaraTable({ tableId, myUid, onLeave, spectate = false, hostUid = null }) {
-  const { table } = useOnNumaraTableById(tableId);
+  const { table, applyServer, lastUpdateMs } = useOnNumaraTableById(tableId);
   const { player } = usePlayer();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -136,7 +138,24 @@ export default function OnNumaraTable({ tableId, myUid, onLeave, spectate = fals
         .filter((h) => h?.status === 'playing' && h.deadlineMs)
         .reduce((m, h) => (m === null || h.deadlineMs < m ? h.deadlineMs : m), null)
     : round?.turnDeadline;
-  useAutoStandWatcher(tableId, nextDeadline, !spectate && round?.phase === 'playing');
+  useAutoStandWatcher(tableId, nextDeadline, !spectate && round?.phase === 'playing', applyServer);
+  // v97 — güvenlik ağı: el sürerken 5 sn güncelleme gelmezse masa sunucudan tazelenir
+  // (canlı bağlantı takılırsa ekran donmasın)
+  const lastRef = useRef(lastUpdateMs);
+  lastRef.current = lastUpdateMs;
+  const liveRound = round && round.phase !== 'resolved';
+  useEffect(() => {
+    if (spectate || !liveRound) return undefined;
+    const id = setInterval(() => {
+      if (document.hidden) return;
+      if (Date.now() - Number(lastRef.current || 0) > 5000) {
+        pingOnNumaraTable(tableId)
+          .then((r) => applyServer(r?.data?.table))
+          .catch(() => {});
+      }
+    }, 2500);
+    return () => clearInterval(id);
+  }, [tableId, liveRound, spectate, applyServer]);
   // izleyici: yayıncının elini onun gördüğü gibi görür
   const viewerUid = spectate ? hostUid : myUid;
   const secretPhase = simul && round?.phase !== 'resolved';
@@ -160,7 +179,8 @@ export default function OnNumaraTable({ tableId, myUid, onLeave, spectate = fals
     setBusy(true);
     setError(null);
     try {
-      await fn();
+      const res = await fn();
+      applyServer(res?.data?.table); // v97: ekran sunucunun cevabıyla hemen güncellenir
       if (waitForConfirm) {
         pendingConfirmRef.current = {
           cardsBefore: round?.hands?.[myUid]?.cards?.length || 0,
@@ -314,7 +334,11 @@ export default function OnNumaraTable({ tableId, myUid, onLeave, spectate = fals
           ))}
           <button
             className="onn-emoji-btn onn-refresh-btn"
-            onClick={() => pingOnNumaraTable(tableId).catch(() => {})}
+            onClick={() =>
+              pingOnNumaraTable(tableId)
+                .then((r) => applyServer(r?.data?.table))
+                .catch(() => {})
+            }
             aria-label="Yenile"
           >
             🔄

@@ -6,7 +6,7 @@ import { useShopListings } from '../../hooks/useShopListings';
 import { shopAction } from '../../services/gameActions';
 import { weaponCatalog } from '../../data/weaponCatalog';
 import { vehicleImage, vehicleDisplayName } from '../VehicleCard/VehicleCard';
-import HoldButton from '../HoldButton/HoldButton';
+import ConfirmButton from '../ConfirmButton/ConfirmButton';
 import PriceField from './PriceField';
 import { BIZ_TAX_RATE, RESALE_TAX_RATE, resaleTax } from '../../../functions/tax.js';
 import { bizErrText } from '../../lib/bizErrors';
@@ -193,12 +193,12 @@ function VitrinManager({ houseId, kind }) {
                     🏷️ İlana koy
                   </button>
                 )}
-                <HoldButton className="bz-btn ghost sm" disabled={!!busy} onDone={() => run(`i${it.id}`, { op: 'vitrinInstantSell', itemId: it.id }, `Hemen satıldı: eline ${fmt(band.instant - resaleTax(band.instant))} altın geçti (vergi %1).`)}>
-                  ⚡ Basılı tut: hemen sat ({fmt(band.instant - resaleTax(band.instant))} eline geçer)
-                </HoldButton>
-                <HoldButton className="bz-btn danger sm" disabled={!!busy} onDone={() => run(`r${it.id}`, { op: 'vitrinRemove', itemId: it.id }, 'Envanterine geri alındı (ömrü 1 gün azaldı).')}>
-                  ↩ Basılı tut: geri al (ömür −1)
-                </HoldButton>
+                <ConfirmButton className="bz-btn ghost sm" disabled={!!busy} title="Hemen satılsın mı?" lines={[`💰 Eline ${fmt(band.instant - resaleTax(band.instant))} altın geçer`]} confirmLabel="Sat" onConfirm={() => run(`i${it.id}`, { op: 'vitrinInstantSell', itemId: it.id }, `Hemen satıldı: eline ${fmt(band.instant - resaleTax(band.instant))} altın geçti (vergi %1).`)}>
+                  ⚡ Hemen sat ({fmt(band.instant - resaleTax(band.instant))})
+                </ConfirmButton>
+                <ConfirmButton className="bz-btn danger sm" disabled={!!busy} danger title="Vitrinden geri alınsın mı?" lines={['Ömrü 1 gün azalır']} confirmLabel="Geri al" onConfirm={() => run(`r${it.id}`, { op: 'vitrinRemove', itemId: it.id }, 'Envanterine geri alındı (ömrü 1 gün azaldı).')}>
+                  ↩ Geri al (ömür −1)
+                </ConfirmButton>
               </div>
               {isOpen && !listing && (
                 <div className="bz-field">

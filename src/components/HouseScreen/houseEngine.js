@@ -1444,6 +1444,41 @@ export function createHouseEngine(
     setNdc(e);
     return ray.ray.intersectPlane(floorPlane, out);
   }
+  // v97: oturulamayan, 2,5 m'den geniş eşya (perde, sahne seti…)
+  function isBigSetPiece(en) {
+    const def = CATALOG_MAP[en.data.k];
+    if (!def || def.seats?.length) return false;
+    const boxes = itemBoxes(def);
+    if (!boxes.length) return false;
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    boxes.forEach(([bx, bz, hx, hz]) => {
+      minX = Math.min(minX, bx - hx);
+      maxX = Math.max(maxX, bx + hx);
+      minZ = Math.min(minZ, bz - hz);
+      maxZ = Math.max(maxZ, bz + hz);
+    });
+    return Math.max(maxX - minX, maxZ - minZ) >= 2.5;
+  }
+  // v97: zemindeki nokta eşyanın kapladığı alanın içinde / hemen yanında mı?
+  function nearFootprint(id, fp, margin) {
+    const en = objs.get(id);
+    const def = en && CATALOG_MAP[en.data.k];
+    const boxes = def ? itemBoxes(def) : [];
+    if (!boxes.length) return true;
+    const ry = en.obj.rotation.y;
+    const c = Math.cos(ry);
+    const sn = Math.sin(ry);
+    const dx = fp.x - en.data.x;
+    const dz = fp.z - en.data.z;
+    return boxes.some(([bx, bz, hx, hz]) => {
+      const lx = dx * c - dz * sn - bx;
+      const lz = dx * sn + dz * c - bz;
+      return Math.abs(lx) <= hx + margin && Math.abs(lz) <= hz + margin;
+    });
+  }
   function pickItem(e) {
     setNdc(e);
     const list = [];
@@ -1727,8 +1762,15 @@ export function createHouseEngine(
       // ve yol bulma engelin etrafından dolaşır (kenar duvarlarındaki gibi).
       const en = objs.get(id);
       if (en.data.p !== 1 || actionsFor(en).length) {
-        approachItem(id);
-        return;
+        // v97: büyük set parçaları (sinema perdesi gibi, oturulamayan ve 2,5 m'den
+        // geniş) önüne geçtiğinde dokunuş arkasındaki boş zemine sayılır; yaklaşınca
+        // işlem butonu zaten çıkar. Oturulan eşyalar dokununca yine eşyaya götürür.
+        const fp0 = floorPoint(e);
+        const aimedPast = en.data.p === 1 && Boolean(fp0) && isBigSetPiece(en) && !nearFootprint(id, fp0, 0.2);
+        if (!aimedPast) {
+          approachItem(id);
+          return;
+        }
       }
     }
     const fp = floorPoint(e);

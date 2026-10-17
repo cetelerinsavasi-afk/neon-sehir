@@ -34,6 +34,7 @@ const ERR = {
   'locked-hour': '18:00–19:00 maç saatinde bu işlem yapılamaz.',
   'transfer-pending': 'Zaten bugün 19:00\'da gerçekleşecek bir transferin var.',
   'end-pending': 'Bu sözleşme zaten bugün 19:00\'da bitecek.',
+  'cancel-late': 'Göreve başladın; artık sadece fesih yapabilirsin.',
   // v89
   'offer-wait': 'Bu futbolcuya az önce teklif gönderdin; 10 dakika sonra güncelleyebilirsin.',
   'raise-wait': 'Günde 1 kez zam isteyebilirsin.',

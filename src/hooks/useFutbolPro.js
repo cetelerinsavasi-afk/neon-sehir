@@ -55,6 +55,11 @@ function useQueryDocs(key, build) {
 }
 
 // Takımdaki sözleşmem (futbolPlayers/real_{uid})
+// v97 — futbolcunun takımı (ilk 11 / yedek bilgisi için)
+export function useFutbolTeamDoc(teamId) {
+  return useDocData(teamId ? `futbolTeams/${teamId}` : null);
+}
+
 export function useRealContract(uid) {
   return useDocData(uid ? `futbolPlayers/real_${uid}` : null);
 }

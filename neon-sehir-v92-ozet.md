@@ -264,3 +264,12 @@ Testler: 348/348 geçti.
 - **2. el reklam ücreti** paneldeki reklam sayısına göre: 1.000 × (reklamdaki ürün + 1) → 0 reklam 1.000, 9 reklam 10.000. Süresi dolan / satılan reklam düşer. Oyuncu ilanları ve çete ilanları için aynı; onay penceresi güncel ücreti gösterir, ücret o arada değiştiyse sunucu reddeder.
 
 **Yükleme:** `firebase deploy --only functions:raceHubAction,functions:dailyReset,functions:dailyResetRecovery,functions:resolveStuckRewardsNow,functions:advertiseListing,functions:gangAction`, sonra push.
+
+## v97
+- **10 Numara donması:** hamleler sunucuda işleniyor ama ekranın canlı bağlantısı güncellemeyi kaçırınca masa donuk görünüyordu (ayrılınca sonuç geliyordu). Artık her hamle (dağıt / kart çek / pas / otomatik pas / 🔄) masanın güncel hâlini döndürüyor ve ekran onu hemen gösteriyor; el sürerken 5 sn güncelleme gelmezse masa kendiliğinden tazeleniyor. 🔄 butonu da artık gerçekten yeniliyor.
+- **Futbolcu ekranı:** üstte durum kartı — hangi takımdasın, ilk 11 / yedek / sakat, maaşın ve sıradaki maaş günü (19:00), maç saati (18:00), takımın borcu; takımsızken ne yapman gerektiği (salonda güçlen / ilana çık / teklifler). Sözleşme kartı sadeleşti.
+- **Basılı tutma kalktı:** futbol (imzala, feshet), dükkân (hemen sat, geri al, satın al) ve işletme (kapat, kaldır) butonlarına dokununca onay penceresi açılıyor.
+- **Anlaşmadan vazgeç:** bir takımla anlaştıysan, ilk maaşından (19:00) önce "Anlaşmadan vazgeç" ile hemen takımsız kalırsın (maaş yok). Takımdayken kabul ettiğin transferi de 19:00'dan önce iptal edebilirsin.
+- **3D mekânlarda yürüme:** sinema perdesi gibi büyük set parçalarına (oturulamayan, 2,5 m'den geniş) dokununca arkasındaki zemine yürünüyor; yaklaşınca işlem butonu çıkıyor. Oturulan eşyalara dokunmak yine eşyaya götürüyor.
+
+**Yükleme:** `firebase deploy --only functions:dealOnNumaraCards,functions:onNumaraHit,functions:onNumaraStand,functions:onNumaraAutoStand,functions:pingRoom,functions:futbolProAction`, sonra push.

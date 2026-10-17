@@ -1,31 +1,48 @@
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFootballer } from '../../hooks/useGym';
-import { useRealContract, useMyProOffers, useCurrentFutbolSeason, usePlayerSeasonStats, useStatBoard } from '../../hooks/useFutbolPro';
+import { useRealContract, useMyProOffers, useCurrentFutbolSeason, usePlayerSeasonStats, useStatBoard, useFutbolTeamDoc } from '../../hooks/useFutbolPro';
 import { futbolProAction, shopAction } from '../../services/gameActions';
 import { futbolDayKey } from '../../../functions/businessCatalogData.js';
 import { bizErrText } from '../../lib/bizErrors';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
-import HoldButton from '../HoldButton/HoldButton';
+import ConfirmButton from '../ConfirmButton/ConfirmButton';
 import { POS_META, PRO_MIN_POWER, proSalaryBand, fmt, pw, hoursLeft, proErrText } from './futbolProMeta';
 import './FutbolPro.css';
 
 // =============================================================================
-// v95: açıklamalar sadeleştirildi (Nasıl çalışır kartı kaldırıldı).
+// v97: üstte DURUM kartı — hangi takımdasın, ilk 11 / yedek, maaş ne zaman,
+//      sıradaki adım. Basılı tutma yok: dokun → onay penceresi.
 // v77 Faz 5 — Futbolcu sekmesi (gerçek oyuncunun kendi futbol kariyeri)
-//   · güç / mevki · 200'e kadar ilerleme
-//   · takımsızsa: ilan (maaşını sen koy) + gelen teklifler (24 sa)
-//   · takımdaysa: sözleşme, zam iste, feshet
-//   · gün sonu kartı: maç/antrenman/yedek, gol-asist, puan, güç ve form
-//   · sezon: gol/asist/yıldız/form sıralamasındaki yerin
 // =============================================================================
 const SALARY_STEPS = [100, 1000, 10000];
+const H = 60 * 60 * 1000;
+
+// İstanbul saatiyle bir günün HH:00'ı (ms)
+function istAt(ms, hour, addDays = 0) {
+  const d = new Date(ms + 3 * H);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + addDays, hour - 3, 0, 0);
+}
+// Sıradaki maaş: her gün 19:00; 18:00 ve sonrası imzalayan ilk maaşını ertesi 19:00'da alır
+function nextPayMs(contractSince, now = Date.now()) {
+  let pay = istAt(now, 19);
+  if (pay <= now) pay = istAt(now, 19, 1);
+  while (Number(contractSince || 0) >= pay - H) pay += 24 * H;
+  return pay;
+}
+function dayWord(ms, now = Date.now()) {
+  const k = (x) => new Date(x + 3 * H).toISOString().slice(0, 10);
+  if (k(ms) === k(now)) return 'bugün';
+  if (k(ms) === k(now + 24 * H)) return 'yarın';
+  return new Date(ms).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+}
 
 export default function FutbolFutbolcu() {
   const { user } = useAuth();
   const uid = user?.uid;
   const { fb, loading } = useFootballer(uid);
   const { data: contract } = useRealContract(uid);
+  const { data: team } = useFutbolTeamDoc(contract?.teamId || null);
   const { offers } = useMyProOffers(fb ? uid : null);
   const season = useCurrentFutbolSeason();
   const playerId = uid ? `real_${uid}` : null;
@@ -65,6 +82,7 @@ export default function FutbolFutbolcu() {
   const power = Number(contract?.power ?? fb.power ?? 100);
   const pro = power >= PRO_MIN_POWER;
   const pos = POS_META[fb.position] || { icon: '⚽', name: fb.position };
+  const inTeam = Boolean(contract);
 
   return (
     <div className="fp-wrap">
@@ -74,10 +92,7 @@ export default function FutbolFutbolcu() {
         </span>
         <div className="fp-hero-main">
           <b className="fp-name">{fb.name}</b>
-          <span className="fp-sub">
-            {pos.name}
-            {fb.teamName ? ` · ${fb.teamName}` : ' · Takımsız'}
-          </span>
+          <span className="fp-sub">{pos.name}</span>
           {!pro && (
             <i className="fp-bar" title={`${pw(power)} / ${PRO_MIN_POWER}`}>
               <i style={{ width: `${Math.min(100, (power / PRO_MIN_POWER) * 100)}%` }} />
@@ -91,22 +106,17 @@ export default function FutbolFutbolcu() {
         </div>
       </div>
 
+      <StatusCard fb={fb} pro={pro} power={power} contract={contract} team={team} uid={uid} offers={offers.length} busy={busy} run={run} />
+
       {msg && <p className={`fp-msg${msg.ok ? ' ok' : ''}`}>{msg.text}</p>}
 
-      <PositionCard fb={fb} offers={offers.length} />
+      {pro && <OffersCard offers={offers} inTeam={inTeam} busy={busy} run={run} />}
+      {pro && !inTeam && <FreeAgentPanel fb={fb} busy={busy} run={run} />}
+      {contract && <ContractPanel contract={contract} busy={busy} run={run} />}
 
       <DayCard day={fb.lastDay} season={season} playerId={playerId} />
 
-      {!pro && (
-        <div className="fp-card fp-dim">
-          🏋️ {PRO_MIN_POWER} güce {pw(Math.max(0, PRO_MIN_POWER - power))} kaldı
-        </div>
-      )}
-
-      {pro && !fb.teamId && <FreeAgentPanel fb={fb} busy={busy} run={run} />}
-      {pro && <OffersCard offers={offers} inTeam={Boolean(fb.teamId)} busy={busy} run={run} />}
-      {contract && <ContractPanel contract={contract} busy={busy} run={run} />}
-
+      {!inTeam && <PositionCard fb={fb} offers={offers.length} />}
 
       {stats && (
         <div className="fp-card">
@@ -120,6 +130,86 @@ export default function FutbolFutbolcu() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// v97 — DURUM: nerede oynuyorsun, maaş ne zaman, sıradaki adım
+function StatusCard({ fb, pro, power, contract, team, uid, offers, busy, run }) {
+  const now = Date.now();
+  const rows = [];
+  let tone = 'free';
+  let icon = '🆓';
+  let title = 'Takımsız';
+  let sub = null;
+  let action = null;
+
+  if (contract) {
+    tone = 'team';
+    icon = '⚽';
+    title = contract.teamName || fb.teamName || team?.name || 'Takım';
+    const lineup = Array.isArray(team?.lineup) ? team.lineup : [];
+    const injured = Number(contract.injuryDaysLeft || 0);
+    sub = injured > 0 ? `🩹 Sakat · ${injured} gün` : lineup.length ? (lineup.includes(`real_${uid}`) ? '✅ İlk 11\'desin' : '🪑 Yedektesin') : null;
+    const pay = nextPayMs(contract.contractSince, now);
+    rows.push(['💰', `${fmt(contract.salary)}/gün`, `Sıradaki maaş ${dayWord(pay, now)} 19:00`]);
+    rows.push(['🏟️', 'Maç her gün 18:00', 'Sonuç ve gelişim 19:00']);
+    if (Number(contract.salaryDebt || 0) > 0) rows.push(['⚠️', `Takım sana ${fmt(contract.salaryDebt)} borçlu`, 'Kasaya para gelince ödenir']);
+    const tr = contract.pendingTransfer;
+    const fresh = futbolDayKey(Number(contract.contractSince || 0)) === futbolDayKey(now) && !contract.lastPaidAtMs && !contract.pendingEnd;
+    if (tr) {
+      tone = 'move';
+      rows.unshift(['🔁', `Bugün 19:00'da ${tr.teamName}`, `${fmt(tr.salary)}/gün`]);
+      action = (
+        <ConfirmButton className="fp-st-btn" disabled={Boolean(busy)} title="Transferden vazgeçilsin mi?" lines={[`${title} takımında kalırsın.`]} confirmLabel="Vazgeç" danger onConfirm={() => run('cancel', { op: 'cancelSign' }, '↩️ Transferden vazgeçtin.')}>
+          ↩️ Transferden vazgeç
+        </ConfirmButton>
+      );
+    } else if (contract.pendingEnd) {
+      tone = 'end';
+      rows.unshift(['✂️', "Bugün 19:00'da ayrılıyorsun", 'Bugünkü maaşın ödenir']);
+    } else if (fresh) {
+      rows.unshift(['🆕', 'Yeni anlaşma', "19:00'a kadar vazgeçebilirsin"]);
+      action = (
+        <ConfirmButton className="fp-st-btn" disabled={Boolean(busy)} title={`${title} ile anlaşmadan vazgeçilsin mi?`} lines={['Hemen takımsız kalırsın, maaş almazsın.']} confirmLabel="Vazgeç" danger onConfirm={() => run('cancel', { op: 'cancelSign' }, '↩️ Anlaşmadan vazgeçtin.')}>
+          ↩️ Anlaşmadan vazgeç
+        </ConfirmButton>
+      );
+    }
+  } else if (!pro) {
+    tone = 'grow';
+    icon = '🏋️';
+    title = 'Gelişim dönemi';
+    rows.push(['⚡', `${PRO_MIN_POWER} güce ${pw(Math.max(0, PRO_MIN_POWER - power))} kaldı`, 'Spor salonunda çalış']);
+    rows.push(['📨', `${PRO_MIN_POWER} güçte`, 'Takımlar teklif gönderebilir']);
+  } else {
+    sub = 'Serbest futbolcu';
+    if (fb.listed) rows.push(['📢', `İlandasın · ${fmt(fb.askSalary)}/gün`, 'Takım imzalarsa hemen kadroya girersin']);
+    else rows.push(['📢', 'İlana çık', 'Ya da takımların teklifini bekle']);
+    if (offers > 0) rows.push(['📨', `${offers} teklif var`, 'Aşağıdan bak']);
+  }
+
+  return (
+    <div className={`fp-status ${tone}`}>
+      <div className="fp-status-head">
+        <span className="fp-status-ico">{icon}</span>
+        <div className="fp-status-main">
+          <b>{title}</b>
+          {sub && <span>{sub}</span>}
+        </div>
+      </div>
+      <div className="fp-status-rows">
+        {rows.map(([ico, a, b], i) => (
+          <div key={i} className="fp-status-row">
+            <span className="fp-status-rico">{ico}</span>
+            <span className="fp-status-txt">
+              <b>{a}</b>
+              {b && <small>{b}</small>}
+            </span>
+          </div>
+        ))}
+      </div>
+      {action}
     </div>
   );
 }
@@ -308,9 +398,9 @@ function OffersCard({ offers, inTeam, busy, run }) {
             <button className="futbol-admin-reset" disabled={Boolean(busy)} onClick={() => run(`r_${o.id}`, { op: 'offerRespond', offerId: o.id, accept: false })}>
               ✕
             </button>
-            <HoldButton className="futbol-admin-submit" disabled={Boolean(busy)} onDone={() => run(`a_${o.id}`, { op: 'offerRespond', offerId: o.id, accept: true }, inTeam ? `🔁 ${o.teamName} ile anlaştın! Transferin bugün 19:00'da.` : `🤝 ${o.teamName} ile anlaştın!`)}>
+            <ConfirmButton className="futbol-admin-submit" disabled={Boolean(busy)} title={`${o.teamName} ile anlaşılsın mı?`} lines={[`💰 ${fmt(o.salary)}/gün`, inTeam ? "🔁 Transfer bugün 19:00'da" : '⚽ Hemen takıma girersin', "↩️ 19:00'a kadar vazgeçebilirsin"]} confirmLabel="İmzala" onConfirm={() => run(`a_${o.id}`, { op: 'offerRespond', offerId: o.id, accept: true }, inTeam ? `🔁 ${o.teamName} ile anlaştın! Transferin bugün 19:00'da.` : `🤝 ${o.teamName} ile anlaştın!`)}>
               ✓ İmzala
-            </HoldButton>
+            </ConfirmButton>
           </div>
         ))}
       </div>
@@ -326,23 +416,10 @@ function ContractPanel({ contract, busy, run }) {
   const pending = Boolean(contract.pendingEnd || contract.pendingTransfer);
   return (
     <div className="fp-card">
-      <p className="fp-title">📝 Sözleşme</p>
-      <div className="fp-contract">
-        <div>
-          <small>Maaş</small>
-          <b>💰 {fmt(contract.salary)}/gün</b>
-        </div>
-        <div>
-          <small>Borç</small>
-          <b className={contract.salaryDebt > 0 ? 'fp-debt' : ''}>{fmt(contract.salaryDebt)}</b>
-        </div>
-        <div>
-          <small>Başlangıç</small>
-          <b>{new Date(contract.contractSince).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}</b>
-        </div>
-      </div>
-      {contract.pendingEnd && <p className="fp-pending">⏳ 19:00&apos;da ayrılıyorsun</p>}
-      {contract.pendingTransfer && <p className="fp-pending">🔁 19:00&apos;da {contract.pendingTransfer.teamName} · {fmt(contract.pendingTransfer.salary)}/gün</p>}
+      <p className="fp-title">
+        📝 Sözleşme
+        <small className="fp-dim fp-small">· {new Date(contract.contractSince).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}&apos;den beri</small>
+      </p>
       {contract.raiseRequest ? (
         <p className="fp-pending">⏳ Zam isteğin bekliyor: {fmt(contract.raiseRequest.salary)}/gün</p>
       ) : !canRaise ? (
@@ -360,9 +437,9 @@ function ContractPanel({ contract, busy, run }) {
         </button>
       )}
       {!pending && (
-        <HoldButton className="futbol-admin-reset fp-wide fp-danger" disabled={busy === 'term'} ms={1400} onDone={() => run('term', { op: 'terminate' }, 'Sözleşmen bugün 19:00\'da bitecek.')}>
-          ✂️ 19:00&apos;da feshet
-        </HoldButton>
+        <ConfirmButton className="futbol-admin-reset fp-wide fp-danger" disabled={busy === 'term'} danger title="Sözleşme feshedilsin mi?" lines={["Bugün 19:00'da maaşın ödenir ve takımdan ayrılırsın."]} confirmLabel="Feshet" onConfirm={() => run('term', { op: 'terminate' }, 'Sözleşmen bugün 19:00\'da bitecek.')}>
+          ✂️ Sözleşmeyi feshet
+        </ConfirmButton>
       )}
     </div>
   );

@@ -552,6 +552,38 @@ export function createFutbolPro({
   }
 
 
+  // ---- v97: anlaşmayı 19:00'dan önce iptal (futbolcu) ----------------------------
+  // · bekleyen transfer → iptal, mevcut takımında devam eder
+  // · bugün (futbol günü, 19:00'a kadar) imzaladığı ve henüz maaş almadığı yeni
+  //   sözleşme → hemen biter, takımsız kalır (maaş yok)
+  async function cancelSign(uid) {
+    let result = null;
+    await db.runTransaction(async (tx) => {
+      const ps = await tx.get(playerRef(uid));
+      if (!ps.exists) fail('failed-precondition', 'no-contract');
+      const p = ps.data();
+      const ts = await tx.get(teamRef(p.teamId));
+      const team = ts.exists ? ts.data() : {};
+      const tr = p.pendingTransfer;
+      if (tr) {
+        const offerSnap = tr.offerId && isId(tr.offerId) ? await tx.get(db.collection('futbolOffers').doc(tr.offerId)) : null;
+        tx.update(ps.ref, { pendingTransfer: null });
+        if (offerSnap?.exists) tx.update(offerSnap.ref, { status: 'cancelled', closedAtMs: now(), cancelledBy: 'player' });
+        teamNote(tx, tr.teamId, `↩️ ${p.name} transferden vazgeçti.`, 'futbol_pro_left');
+        if (ts.exists) teamNote(tx, p.teamId, `↩️ ${p.name} transferden vazgeçti, takımda kalıyor.`, 'futbol_pro_joined');
+        result = { ok: true, cancelled: 'transfer' };
+        return;
+      }
+      const fresh = futbolDayKey(Number(p.contractSince || 0)) === futbolDayKey(now()) && !p.lastPaidAtMs;
+      if (!fresh) fail('failed-precondition', 'cancel-late');
+      if (p.pendingEnd) fail('failed-precondition', 'end-pending');
+      endWrites(tx, { uid, p, team, teamId: p.teamId, reason: 'cancel', teamExists: ts.exists });
+      if (ts.exists) teamNote(tx, p.teamId, `↩️ ${p.name} anlaşmadan vazgeçti (göreve başlamadan).`, 'futbol_pro_left');
+      result = { ok: true, cancelled: 'contract' };
+    });
+    return result;
+  }
+
   // ---- 19:00 maaş ödemesi ------------------------------------------------------
   // Her sözleşme ayrı transaction. BOT takımda son maaş ödenir, sözleşme biter.
   async function paySalaries() {
@@ -822,7 +854,7 @@ export function createFutbolPro({
     }
   }
 
-  const ops = { proList, offerSend, offerCancel, offerRespond, sign, raiseRequest, raiseRespond, raiseSet, terminate };
+  const ops = { proList, offerSend, offerCancel, offerRespond, sign, raiseRequest, raiseRespond, raiseSet, terminate, cancelSign };
   async function action(uid, data) {
     const op = String(data?.op || '');
     if (!ops[op]) fail('invalid-argument', 'Bilinmeyen işlem.');

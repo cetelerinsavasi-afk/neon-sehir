@@ -391,3 +391,39 @@ test('v90: ilk maaş — 17:59da imzalayan 19:00da alır; 18:00de imzalayan erte
   assert.equal(h.G('users/ali').gold, 10000);
 });
 
+
+test('v97: anlaşmayı 19:00 öncesi iptal — yeni imza hemen biter (maaş yok); maaş aldıktan sonra olmaz; bekleyen transfer iptal olur', async () => {
+  const h = setup();
+  const id = realPlayerDocId('ali');
+  await h.act('menajer', { op: 'offerSend', teamId: 't1', uid: 'ali', salary: 5000 });
+  await h.act('ali', { op: 'offerRespond', offerId: 't1_ali', accept: true });
+  h.S('futbolTeams/t1', { ...h.G('futbolTeams/t1'), lineup: [id, 'x'] });
+  h.clock.now = at(7, 18, 30);
+  const r = await h.act('ali', { op: 'cancelSign' });
+  assert.equal(r.cancelled, 'contract');
+  assert.equal(h.G(`futbolPlayers/${id}`), undefined);
+  assert.equal(h.G('footballers/ali').teamId, null);
+  assert.deepEqual(h.G('futbolTeams/t1').lineup, ['x']);
+  h.clock.now = at(7, 19);
+  await h.pro.paySalaries();
+  assert.equal(h.G('users/ali').gold, 0, 'iptal eden maaş almaz');
+  // ertesi gün başka takıma imza → 19:00 maaşı alındıktan sonra iptal yok
+  await h.act('baskan2', { op: 'offerSend', teamId: 't2', uid: 'ali', salary: 6000 });
+  await h.act('ali', { op: 'offerRespond', offerId: 't2_ali', accept: true });
+  h.clock.now = at(8, 19);
+  await h.pro.paySalaries();
+  await assert.rejects(h.act('ali', { op: 'cancelSign' }), /cancel-late/);
+  // takımdayken kabul edilen transfer 19:00 öncesi iptal edilir, takımda kalır
+  await h.act('menajer', { op: 'offerSend', teamId: 't1', uid: 'ali', salary: 7000 });
+  h.clock.now = at(9, 10);
+  await h.act('ali', { op: 'offerRespond', offerId: 't1_ali', accept: true });
+  assert.equal(h.G(`futbolPlayers/${id}`).pendingTransfer.teamId, 't1');
+  const r2 = await h.act('ali', { op: 'cancelSign' });
+  assert.equal(r2.cancelled, 'transfer');
+  assert.equal(h.G(`futbolPlayers/${id}`).pendingTransfer, null);
+  assert.equal(h.G(`futbolPlayers/${id}`).teamId, 't2');
+  assert.equal(h.G('futbolOffers/t1_ali').status, 'cancelled');
+  h.clock.now = at(9, 19);
+  await h.pro.paySalaries();
+  assert.equal(h.G(`futbolPlayers/${id}`).teamId, 't2', '19:00da transfer olmaz');
+});

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useProList, useTeamContracts, useTeamProOffers } from '../../hooks/useFutbolPro';
 import { futbolProAction } from '../../services/gameActions';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
-import HoldButton from '../HoldButton/HoldButton';
+import ConfirmButton from '../ConfirmButton/ConfirmButton';
 import { POS_META, proSalaryBand, fmt, pw, hoursLeft, proErrText } from './futbolProMeta';
 import './FutbolPro.css';
 
@@ -111,9 +111,9 @@ export function ProContracts({ team, readOnly }) {
                 >
                   💸 Zam
                 </button>
-                <HoldButton className="futbol-admin-reset fp-danger" ms={1400} disabled={Boolean(busy) || Boolean(c.pendingEnd || c.pendingTransfer)} onDone={() => run(`t_${c.id}`, { op: 'terminate', uid: c.realUid }, `${c.name} bugün 19:00'da takımdan ayrılacak.`)}>
-                  ✂️ 19:00&apos;da feshet
-                </HoldButton>
+                <ConfirmButton className="futbol-admin-reset fp-danger" danger title={`${c.name} ile sözleşme feshedilsin mi?`} lines={["Bugün 19:00'da maaşı ödenip takımdan ayrılır."]} confirmLabel="Feshet" disabled={Boolean(busy) || Boolean(c.pendingEnd || c.pendingTransfer)} onConfirm={() => run(`t_${c.id}`, { op: 'terminate', uid: c.realUid }, `${c.name} bugün 19:00'da takımdan ayrılacak.`)}>
+                  ✂️ Feshet
+                </ConfirmButton>
               </div>
             </div>
           );
@@ -189,9 +189,9 @@ export function ProPlayersList({ team, readOnly }) {
               </div>
               <div className="fp-prow-acts">
                 {listed ? (
-                  <HoldButton className="futbol-admin-submit" disabled={Boolean(busy)} onDone={() => run(`s_${p.id}`, { op: 'sign', teamId: team.id, uid: p.uid, expect: p.askSalary }, `🤝 ${p.name} takımda!`)}>
+                  <ConfirmButton className="futbol-admin-submit" disabled={Boolean(busy)} title={`${p.name} imzalansın mı?`} lines={[`💰 ${fmt(p.askSalary)} altın/gün`]} confirmLabel="İmzala" onConfirm={() => run(`s_${p.id}`, { op: 'sign', teamId: team.id, uid: p.uid, expect: p.askSalary }, `🤝 ${p.name} takımda!`)}>
                     ✍️ İmzala
-                  </HoldButton>
+                  </ConfirmButton>
                 ) : (
                   <button
                     className="futbol-admin-submit"
@@ -231,9 +231,9 @@ export function ListedProRow({ p, team, readOnly }) {
         </p>
         {msg && <p className={`fp-msg${msg.ok ? ' ok' : ''}`}>{msg.text}</p>}
       </div>
-      <HoldButton className="futbol-admin-submit" disabled={readOnly || Boolean(busy)} onDone={() => run(`s_${p.id}`, { op: 'sign', teamId: team.id, uid: p.uid, expect: p.askSalary }, `🤝 ${p.name} takımda!`)}>
+      <ConfirmButton className="futbol-admin-submit" disabled={readOnly || Boolean(busy)} title={`${p.name} imzalansın mı?`} lines={[`💰 ${fmt(p.askSalary)} altın/gün`]} confirmLabel="İmzala" onConfirm={() => run(`s_${p.id}`, { op: 'sign', teamId: team.id, uid: p.uid, expect: p.askSalary }, `🤝 ${p.name} takımda!`)}>
         ✍️ İmzala
-      </HoldButton>
+      </ConfirmButton>
     </div>
   );
 }

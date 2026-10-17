@@ -11,7 +11,7 @@ import {
   bizMissing,
 } from '../../../functions/businessCatalogData.js';
 import { MESCIT_DAILY_LIMIT } from '../../../functions/homeOfficeData.js';
-import HoldButton from '../HoldButton/HoldButton';
+import ConfirmButton from '../ConfirmButton/ConfirmButton';
 import BizRequirements, { FillConfirm } from './BizRequirements';
 import { ShopPriceSection, ShopInvSection } from '../Shop/ShopOwnerPanels';
 import { MenuPriceSection, MenuInvSection, NetPriceSection, NetInvSection } from '../Venue/VenueOwnerPanels';
@@ -99,9 +99,9 @@ export function BizListPanel({ keys = BIZ_TYPE_KEYS, title = '🏪 İşletmeler'
                     <BizRequirements type={type} placedItems={items} invItems={invItems} />
                     {blocked && <p className="bz-note">Önce {BIZ_TYPES[open].label} kapanmalı.</p>}
                     {isOpen ? (
-                      <HoldButton className="bz-btn danger wide" disabled={busy} ms={1300} onDone={onCloseBiz}>
-                        ✋ Basılı tut: işletmeyi kapat
-                      </HoldButton>
+                      <ConfirmButton className="bz-btn danger wide" disabled={busy} danger title="İşletme kapatılsın mı?" confirmLabel="Kapat" onConfirm={onCloseBiz}>
+                        İşletmeyi kapat
+                      </ConfirmButton>
                     ) : (
                       !blocked && (
                         <div className="bz-btns">
@@ -388,9 +388,9 @@ export function BizRemovePanel({ type, status, busy, onConfirm, onCancel }) {
               <button className="bz-btn ghost" disabled={busy} onClick={onCancel}>
                 Vazgeç
               </button>
-              <HoldButton className="bz-btn danger" disabled={busy} onDone={onConfirm}>
-                Basılı tut: kaldır ve kapat
-              </HoldButton>
+              <ConfirmButton className="bz-btn danger" disabled={busy} danger title="Kaldırılıp kapatılsın mı?" confirmLabel="Kaldır ve kapat" onConfirm={onConfirm}>
+                Kaldır ve kapat
+              </ConfirmButton>
             </div>
           </>
         )}

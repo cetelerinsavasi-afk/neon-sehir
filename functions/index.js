@@ -10663,6 +10663,28 @@ export const leaveOnNumaraTable = onCall(async (request) => {
   return { ok: true };
 });
 
+// v97 — masanın güncel hâli (hamle cevabıyla döner): istemci canlı dinleyici
+// takılsa da ekranı bununla günceller. Zaman damgaları ms'e çevrilir.
+async function onNumaraState(tableId) {
+  const snap = await db.collection('onNumaraTables').doc(String(tableId || '')).get();
+  if (!snap.exists) return null;
+  const ms = (v) => (v && typeof v.toMillis === 'function' ? v.toMillis() : v ?? null);
+  const d = snap.data();
+  const round = d.round ? { ...d.round, turnDeadline: ms(d.round.turnDeadline) } : null;
+  return {
+    id: snap.id,
+    status: d.status,
+    capacity: d.capacity,
+    betAmount: d.betAmount,
+    creatorUid: d.creatorUid,
+    seatOrder: d.seatOrder || [],
+    seats: d.seats || {},
+    reactions: d.reactions || {},
+    round,
+    updatedAtMs: ms(d.updatedAt) || 0,
+  };
+}
+
 // dealCards — masayı kuran, oturan herkesle yeni bir el başlatır.
 export const dealOnNumaraCards = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -10757,7 +10779,7 @@ export const dealOnNumaraCards = onCall(async (request) => {
   // kurpiyer aşamasına geç.
   await resolveOnNumaraIfDealerPhase(tableId);
 
-  return { ok: true };
+  return { ok: true, table: await onNumaraState(tableId) };
 });
 
 // Sıradaki "playing" katılımcıyı bulur; yoksa null (kurpiyer sırası demek).
@@ -10972,14 +10994,14 @@ export const onNumaraHit = onCall(async (request) => {
   const uid = requireAuth(request);
   const { tableId } = request.data || {};
   await resolveOnNumaraAction({ tableId, uid, action: 'hit' });
-  return { ok: true };
+  return { ok: true, table: await onNumaraState(tableId) };
 });
 
 export const onNumaraStand = onCall(async (request) => {
   const uid = requireAuth(request);
   const { tableId } = request.data || {};
   await resolveOnNumaraAction({ tableId, uid, action: 'stand' });
-  return { ok: true };
+  return { ok: true, table: await onNumaraState(tableId) };
 });
 
 // onNumaraAutoStand — 10 saniye dolunca herhangi bir bağlı istemci
@@ -11006,7 +11028,7 @@ export const onNumaraAutoStand = onCall(async (request) => {
       if (n) tx.update(ts.ref, { updatedAt: admin.firestore.FieldValue.serverTimestamp(), round: onNumaraSimulPatch(r, hands) });
     });
     if (n) await resolveOnNumaraIfDealerPhase(tableId);
-    return { ok: true, stood: n };
+    return { ok: true, stood: n, table: await onNumaraState(tableId) };
   }
   if (!round.turnDeadline) {
     return { ok: true, skipped: true };
@@ -11055,6 +11077,8 @@ export const pingRoom = onCall(async (request) => {
     patch.updatedAt = admin.firestore.FieldValue.serverTimestamp();
   }
   await db.collection(collectionName).doc(docId).update(patch);
+  // v97: 10 Numara — güncel masa da döner (dinleyici takıldıysa ekran bununla yenilenir)
+  if (collectionName === 'onNumaraTables') return { ok: true, table: await onNumaraState(docId) };
   return { ok: true };
 });
 
