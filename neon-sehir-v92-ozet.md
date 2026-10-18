@@ -306,3 +306,7 @@ Testler: 348/348 geçti.
 - Davul Seti: tabure öne alındı (önde trampet/tomlar, zillar arkada); oturunca "🥁 Çal" — 6 ped (Bas, Trampet, Hi-hat, Tom, Zil, Ride), piyano gibi tek kişi çalar, mekândaki herkes duyar (RTDB `piano/{houseId}_d`, kural değişikliği yok; sessize al piyanoyla ortak).
 - Şarkı desteği: önce miktar seçilir (vurgulu), not kutusu ve "💛 X altın gönder" butonu açılır; notlu ya da notsuz gönderilir.
 - Yükleme: sadece git push (sunucu değişikliği yok).
+
+## v99.5 — Takım satın alma "satılık değil" hatası
+- Neden: satın alma listesi, menajerin yönettiği sahipsiz takımları da gösteriyordu; satın alma bunlara izin vermiyor. Liste artık aynı kuralı kullanıyor (sadece menajersiz bot takımlar + sahibinin ilan ettiği takımlar). Menajerli takım için hata metni açık; hata sonrası liste tazelenir.
+- Yükleme: `firebase deploy --only functions:listFutbolBuyableTeams,functions:buyFutbolTeam` + git push.

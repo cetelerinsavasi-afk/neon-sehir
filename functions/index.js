@@ -15309,8 +15309,11 @@ export const listFutbolBuyableTeams = onCall(async (request) => {
     db.collection('futbolTeams').where('ownerUid', '==', null).get(),
     db.collection('futbolTeams').where('forSale', '==', true).get(),
   ]);
+  // v99.5 — liste, buyFutbolTeam ile AYNI kuralı kullanır: menajerin yönettiği
+  // sahipsiz takım ve sahibi olmayan "satılık" kaydı listelenmez (yoksa satın
+  // alırken "Bu takım satılık değil" hatası çıkıyordu).
   const botTeams = await Promise.all(
-    botSnap.docs.map(async (d) => {
+    botSnap.docs.filter((d) => getFutbolTeamControlMode(d.data()) === 'BOT').map(async (d) => {
       const data = d.data();
       // KULLANICI İSTEĞİ: bot takımın kasasındaki para da (varsa) takımın
       // değerine/fiyatına eklensin — satın alan oyuncu takımı kasasıyla
@@ -15332,7 +15335,7 @@ export const listFutbolBuyableTeams = onCall(async (request) => {
     })
   );
   const listedTeams = await Promise.all(
-    listedSnap.docs.map(async (d) => {
+    listedSnap.docs.filter((d) => Boolean(d.data().ownerUid)).map(async (d) => {
       const data = d.data();
       // KULLANICI İSTEĞİ: menajerli sahipli bir takımın kasası da (varsa)
       // değere dahil — menajersiz sahipli takımlarda zaten hiç kasa
@@ -15533,6 +15536,7 @@ export const buyFutbolTeam = onCall(async (request) => {
   const isBotTeam = mode === 'BOT';
   const isPlayerListing = Boolean(team.ownerUid) && team.forSale;
   if (!isBotTeam && !isPlayerListing) {
+    if (!team.ownerUid && team.managerUid) throw new HttpsError('failed-precondition', 'Bu takımı bir menajer yönetiyor, satın alınamaz.');
     throw new HttpsError('failed-precondition', 'Bu takım satılık değil.');
   }
 

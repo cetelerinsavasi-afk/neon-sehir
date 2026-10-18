@@ -154,6 +154,7 @@ function BuyTeamPanel() {
       await load();
     } catch (err) {
       setError(err?.message || 'Satın alma başarısız.');
+      load(); // v99.5: liste eskiyse (takım satıldı / menajer geldi) tazele
     } finally {
       setBusyId(null);
     }
