@@ -162,6 +162,7 @@ export function createAdminPanel({ db, auth, FieldValue, HttpsError, requireAuth
       g.reporterCount += 1;
       if (r.eligible) g.eligibleCount += 1;
       g.reasons[r.reason] = (g.reasons[r.reason] || 0) + 1;
+      if (r.reporterUid && (g.reporterUids ||= []).length < 20 && !g.reporterUids.includes(r.reporterUid)) g.reporterUids.push(r.reporterUid);
       g.platforms[r.platform || 'web'] = true;
       if (r.note && g.notes.length < 5) g.notes.push(r.note);
       if (r.createdAtMs < g.firstAtMs) g.firstAtMs = r.createdAtMs;
@@ -170,7 +171,8 @@ export function createAdminPanel({ db, auth, FieldValue, HttpsError, requireAuth
         g.textSnapshot = r.textSnapshot || g.textSnapshot;
       }
     }
-    const sortKey = status === 'open' ? (g) => g.reporterCount * 1e13 + g.lastAtMs : (g) => g.resolvedAtMs || g.lastAtMs;
+    // v99.3 — en yeni şikâyet en üstte (bekleyenlerde son şikâyet anı, kapananlarda karar anı)
+    const sortKey = status === 'open' ? (g) => g.lastAtMs : (g) => g.resolvedAtMs || g.lastAtMs;
     const list = [...groups.values()].sort((a, b) => sortKey(b) - sortKey(a)).slice(0, ADMIN_LIMITS.QUEUE_GROUPS);
     await Promise.all(
       list.map(async (g) => {
@@ -183,6 +185,60 @@ export function createAdminPanel({ db, auth, FieldValue, HttpsError, requireAuth
       })
     );
     return { status, groups: list, total: groups.size };
+  }
+
+  // v99.3 — İncele: şikâyet edilen mesajın öncesi/sonrası (aynı sohbetten ±N mesaj).
+  // Kışkırtan tarafı görmek için şikâyetçilerin ve şikâyet edilenin mesajları işaretlenir.
+  const CONTEXT_TYPES = ['globalChat', 'gangChat', 'gangGlobalChat', 'intelChat', 'dmMessage', 'sixtagramComment'];
+  const CONTEXT_EACH = 12;
+  async function reportContext(actor, p) {
+    const type = String(p.targetType || '');
+    if (!CONTEXT_TYPES.includes(type)) fail('invalid-argument', 'Bu tür için konuşma görüntülenemez.');
+    const path = String(p.targetPath || '');
+    validatedMatch(type, path);
+    const ref = db.doc(path);
+    const snap = await ref.get();
+    if (!snap.exists) return { messages: [], missing: true };
+    const d = snap.data() || {};
+    const field = d.createdAtMs != null ? 'createdAtMs' : d.createdAt != null ? 'createdAt' : null;
+    if (!field) return { messages: [shape(snap, true)] };
+    const coll = ref.parent;
+    const [before, after] = await Promise.all([
+      coll.where(field, '<', d[field]).orderBy(field, 'desc').limit(CONTEXT_EACH).get(),
+      coll.where(field, '>', d[field]).orderBy(field, 'asc').limit(CONTEXT_EACH).get(),
+    ]);
+    const messages = [...before.docs.reverse().map((x) => shape(x)), shape(snap, true), ...after.docs.map((x) => shape(x))];
+    // ad çözümü: mesajda ad yoksa kullanıcı belgesinden (en fazla 30)
+    const need = [...new Set(messages.filter((m) => m.uid && !m.name).map((m) => m.uid))].slice(0, 30);
+    const users = await Promise.all(need.map((u) => userRef(u).get()));
+    const names = Object.fromEntries(users.map((u, i) => [need[i], u.data()?.displayName || DEFAULT_PLAYER_NAME]));
+    messages.forEach((m) => {
+      if (!m.name) m.name = m.uid ? names[m.uid] || DEFAULT_PLAYER_NAME : m.system ? 'Sistem' : 'Oyuncu';
+    });
+    // sohbetin bağlamı: Sixtagram yorumunda gönderinin kendisi en başta
+    let post = null;
+    if (type === 'sixtagramComment') {
+      const ps = await coll.parent.get();
+      if (ps.exists) post = { uid: ps.data().uid || null, name: ps.data().authorName || null, text: String(ps.data().text || '').slice(0, 500), atMs: ps.data().createdAtMs || null };
+    }
+    return { messages, post };
+
+    function shape(x, target = false) {
+      const v = x.data() || {};
+      const at = v.createdAtMs != null ? Number(v.createdAtMs) : v.createdAt?.toMillis?.() ?? null;
+      return {
+        id: x.id,
+        uid: v.uid || v.authorId || null,
+        rosterId: v.rosterId || null,
+        name: v.displayName || v.authorName || v.codeName || null,
+        text: String(v.text || '').slice(0, 1000),
+        atMs: at,
+        system: v.system === true,
+        hidden: v.hidden === true,
+        tip: Number(v.tip) || 0,
+        target,
+      };
+    }
   }
 
   async function openReportsFor(path) {
@@ -639,6 +695,7 @@ export function createAdminPanel({ db, auth, FieldValue, HttpsError, requireAuth
   const ACTIONS = {
     me: { minRole: 'moderator', run: async (actor) => ({ uid: actor.uid, role: actor.role, name: actor.name }) },
     listReports: { minRole: 'moderator', run: listReports },
+    reportContext: { minRole: 'moderator', run: reportContext },
     resolveReport: { minRole: 'moderator', run: resolveReport },
     restoreContent: { minRole: 'moderator', run: restoreContent },
     searchUsers: { minRole: 'moderator', run: searchUsers },

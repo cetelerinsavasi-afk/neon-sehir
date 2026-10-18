@@ -608,3 +608,21 @@
 .sv-msg.ok {
   color: #3df58a;
 }
+
+/* v99.2 — destek notu */
+.sv-tip-note {
+  grid-column: 1 / -1;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 196, 60, 0.45);
+  background: rgba(0, 0, 0, 0.28);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+.sv-tip-note:focus {
+  border-color: rgba(255, 196, 60, 0.9);
+}

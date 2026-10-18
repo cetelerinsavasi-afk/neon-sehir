@@ -5,6 +5,11 @@ import { REASON_LABELS, TYPE_LABELS, effectLabel, errText, fmtDate } from './adm
 // Şikâyet kuyruğu — içerik başına gruplanmış şikâyetler.
 // Açık: Reddet (şikâyet yersiz) · İçeriği kaldır (+ isteğe bağlı uyarı SMS'i)
 // Kapanmış: sonuç + (gizlenebilir türde) Geri aç
+// v99.3 — "İncele": şikâyet edilen mesajın öncesi/sonrası
+const CONTEXT_TYPES = ['globalChat', 'gangChat', 'gangGlobalChat', 'intelChat', 'dmMessage', 'sixtagramComment'];
+const TIME = new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', hour: '2-digit', minute: '2-digit' });
+const DAY = new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', day: '2-digit', month: '2-digit' });
+
 const STATUS_TABS = [
   { id: 'open', label: 'Bekleyen' },
   { id: 'actioned', label: 'Kaldırılan' },
@@ -71,6 +76,17 @@ function ReportCard({ g, status, onOpenUser, onDone }) {
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [ctx, setCtx] = useState(null); // null | 'loading' | { messages, post } | { error }
+  const canContext = CONTEXT_TYPES.includes(g.targetType) && g.exists;
+  const toggleCtx = async () => {
+    if (ctx) return setCtx(null);
+    setCtx('loading');
+    try {
+      setCtx(await adminAction('reportContext', { targetPath: g.targetPath, targetType: g.targetType }));
+    } catch (err) {
+      setCtx({ error: errText(err) });
+    }
+  };
 
   const run = async (fn, text) => {
     setBusy(true);
@@ -132,6 +148,12 @@ function ReportCard({ g, status, onOpenUser, onDone }) {
       <p className="adm-path" title="Firestore yolu">
         {g.targetPath}
       </p>
+      {canContext && (
+        <button className={`adm-btn ghost small adm-ctx-btn${ctx ? ' on' : ''}`} onClick={toggleCtx}>
+          {ctx ? '▲ Konuşmayı gizle' : '🔍 İncele — öncesi / sonrası'}
+        </button>
+      )}
+      {ctx && <ContextView ctx={ctx} g={g} />}
 
       {status !== 'open' && (
         <div className="adm-resolved">
@@ -195,5 +217,51 @@ function ReportCard({ g, status, onOpenUser, onDone }) {
       )}
       {status !== 'open' && error && <p className="adm-error">{error}</p>}
     </article>
+  );
+}
+
+function ContextView({ ctx, g }) {
+  if (ctx === 'loading') return <p className="adm-dim">Konuşma yükleniyor…</p>;
+  if (ctx.error) return <p className="adm-error">{ctx.error}</p>;
+  if (ctx.missing) return <p className="adm-dim">Mesaj artık yok.</p>;
+  const reporters = new Set(g.reporterUids || []);
+  const target = ctx.messages.find((m) => m.target);
+  const sameAuthor = (m) => (target?.uid ? m.uid === target.uid : target?.rosterId ? m.rosterId === target.rosterId : false);
+  let lastDay = '';
+  return (
+    <div className="adm-ctx">
+      {ctx.post && (
+        <div className="adm-ctx-post">
+          <b>📸 Gönderi · {ctx.post.name || 'Oyuncu'}</b>
+          {ctx.post.text ? <span>{ctx.post.text}</span> : <em className="adm-dim">(yazısız gönderi)</em>}
+        </div>
+      )}
+      {ctx.messages.length <= 1 && <p className="adm-dim">Öncesinde/sonrasında mesaj yok.</p>}
+      {ctx.messages.map((m) => {
+        const day = m.atMs ? DAY.format(new Date(m.atMs)) : '';
+        const showDay = day && day !== lastDay;
+        lastDay = day || lastDay;
+        const accused = !m.system && sameAuthor(m);
+        const reporter = !m.system && m.uid && reporters.has(m.uid);
+        return (
+          <div key={m.id}>
+            {showDay && <p className="adm-ctx-day">{day}</p>}
+            <div className={`adm-ctx-msg${m.target ? ' target' : ''}${accused ? ' accused' : ''}${reporter ? ' reporter' : ''}${m.system ? ' system' : ''}`}>
+              <span className="adm-ctx-time">{m.atMs ? TIME.format(new Date(m.atMs)) : ''}</span>
+              <div className="adm-ctx-body">
+                <span className="adm-ctx-name">
+                  {m.name}
+                  {accused && <i className="adm-ctx-tag acc">şikâyet edilen</i>}
+                  {reporter && <i className="adm-ctx-tag rep">şikâyetçi</i>}
+                  {m.hidden && <i className="adm-ctx-tag">gizli</i>}
+                  {m.tip ? <i className="adm-ctx-tag">💛 {m.tip}</i> : null}
+                </span>
+                <span className="adm-ctx-text">{m.text || <em className="adm-dim">(boş)</em>}</span>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }

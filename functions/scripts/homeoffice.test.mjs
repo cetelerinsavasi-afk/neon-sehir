@@ -221,7 +221,11 @@ test('sixtagram: şarkı projeden paylaşılır; dinlenme hesap başı 5; destek
   await assert.rejects(h.act('veli', { op: 'songTip', postId: 'p1', amount: 10 }), /tip-limit:1000/);
   // ertesi gün yeniden destek verilebilir; eski sayaç temizlenir
   h.clock.now += 24 * 60 * 60 * 1000;
-  await h.act('veli', { op: 'songTip', postId: 'p1', amount: 100 });
+  await h.act('veli', { op: 'songTip', postId: 'p1', amount: 100, text: '  Harika parça!\n ' });
+  // v99.2 — her destek yorum olur (notlu/notsuz), destek miktarıyla
+  const tipComments = [...h.db._store.entries()].filter(([k]) => k.startsWith('sixtagramPosts/p1/comments/')).map(([, v]) => v.data).sort((x, y) => x.tip - y.tip);
+  assert.deepEqual(tipComments.map((x) => [x.tip, x.text, x.authorName]), [[100, 'Harika parça!', 'Veli'], [1000, '', 'Veli']]);
+  assert.equal(h.G('sixtagramPosts/p1').commentCount, 2);
   const c = await h.ho.cleanup();
   assert.equal(c.tips, 1);
 });

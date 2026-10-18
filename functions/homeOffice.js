@@ -41,6 +41,7 @@ import {
   SONG_TIP_AMOUNTS,
   SONG_TIP_DAILY,
   SONG_TIP_TAX_RATE,
+  SONG_TIP_NOTE_MAX,
 } from './homeOfficeData.js';
 
 const PRESENCE_ACTIVE_MS = 2 * 60 * 1000;
@@ -83,7 +84,7 @@ export async function buildSongAttachment(db, uid, attachment, now = Date.now())
   return { song: songToDoc({ ...song, title }), deleteProjectId: proj ? projectId : null };
 }
 
-export function createHomeOffice({ db, FieldValue, HttpsError, splitIncomeForDebt, business, now = () => Date.now() }) {
+export function createHomeOffice({ db, FieldValue, HttpsError, splitIncomeForDebt, business, assertCanSpeak = null, now = () => Date.now() }) {
   const fail = (code, msg) => {
     throw new HttpsError(code, msg);
   };
@@ -205,6 +206,12 @@ export function createHomeOffice({ db, FieldValue, HttpsError, splitIncomeForDeb
     const amount = Number(p.amount);
     if (!isId(postId)) fail('invalid-argument', 'Geçersiz gönderi.');
     if (!SONG_TIP_AMOUNTS.includes(amount)) fail('invalid-argument', 'Geçersiz destek miktarı.');
+    // v99.2 — destek notu: yorum olarak (destek rozetiyle) gönderiye eklenir
+    const note = String(typeof p.text === 'string' ? p.text : '')
+      .replace(/[\u0000-\u001f]/g, ' ')
+      .trim()
+      .slice(0, SONG_TIP_NOTE_MAX);
+    if (note && assertCanSpeak) await assertCanSpeak(uid, note);
     let result = null;
     await db.runTransaction(async (tx) => {
       const postRef = db.collection('sixtagramPosts').doc(postId);
@@ -226,9 +233,19 @@ export function createHomeOffice({ db, FieldValue, HttpsError, splitIncomeForDeb
       tx.update(userRef(artist), { gold: FieldValue.increment(goldDelta), debtToState: FieldValue.increment(debtDelta), goldTag: goldTag('sanatci') });
       taxLedgerWrite(tx, db, FieldValue, { amount: tax, source: 'sanatci', uid: artist, atMs: t, ref: postId });
       tx.set(tipRef, { dayKey, uid, artist, amount: FieldValue.increment(amount), updatedAtMs: t }, { merge: true });
-      tx.update(postRef, { tips: FieldValue.increment(amount), tipCount: FieldValue.increment(1) });
+      tx.update(postRef, { tips: FieldValue.increment(amount), tipCount: FieldValue.increment(1), commentCount: FieldValue.increment(1) });
+      tx.set(postRef.collection('comments').doc(), {
+        uid,
+        authorName: String(us.data()?.displayName || 'Oyuncu').slice(0, 30),
+        authorAvatar: us.data()?.avatar || null,
+        text: note,
+        tip: amount,
+        parentCommentId: null,
+        createdAt: FieldValue.serverTimestamp(),
+        createdAtMs: t,
+      });
       tx.set(userRef(artist).collection('messages').doc(), {
-        text: `🎵 ${String(us.data()?.displayName || 'Bir dinleyici').slice(0, 30)} "${String(ps.data().attachment?.title || 'şarkın').slice(0, 40)}" şarkına ${amount.toLocaleString('tr-TR')} altın destek verdi.`,
+        text: `🎵 ${String(us.data()?.displayName || 'Bir dinleyici').slice(0, 30)} "${String(ps.data().attachment?.title || 'şarkın').slice(0, 40)}" şarkına ${amount.toLocaleString('tr-TR')} altın destek verdi.${note ? ` “${note.slice(0, 80)}”` : ''}`,
         createdAt: FieldValue.serverTimestamp(),
         read: false,
         type: 'song_tip',

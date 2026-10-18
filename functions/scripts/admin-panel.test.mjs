@@ -94,8 +94,7 @@ test('kuyruk: şikâyetler içerik başına gruplanır; kaldır → kalıcı giz
   await h.report('victim', 'globalChat', 'globalChat/m2');
   const q = await h.call('mod1', 'listReports');
   assert.equal(q.groups.length, 2);
-  const g = q.groups[0];
-  assert.equal(g.targetPath, 'globalChat/m1', 'en çok şikâyet alan üstte');
+  const g = q.groups.find((x) => x.targetPath === 'globalChat/m1');
   assert.equal(g.reporterCount, 2);
   assert.deepEqual(g.reasons, { hakaret: 1, taciz: 1 });
   assert.equal(g.targetName, 'BAD');
@@ -345,4 +344,26 @@ test('D5: sonuçlanmış bildirimler 12 ay sonra silinir; açık ve yeni olanlar
   assert.ok(h.G('reports/recent_closed'));
   assert.ok(h.G('reports/old_open'), 'açık bildirim sonuçlanmadan silinmez');
   assert.deepEqual(await h.panel.purgeOldReports(), { purged: 0 });
+});
+
+test('v99.3 kuyruk en yeni şikâyet üstte; İncele öncesi/sonrası mesajları getirir', async () => {
+  const h = setup();
+  await h.report('old1', 'globalChat', 'globalChat/m1');
+  h.clock.now += 60_000;
+  await h.report('victim', 'globalChat', 'globalChat/m2');
+  h.clock.now += 60_000;
+  await h.report('old2', 'globalChat', 'globalChat/m1');
+  assert.deepEqual((await h.call('mod1', 'listReports')).groups.map((x) => x.targetPath), ['globalChat/m1', 'globalChat/m2']);
+  const base = 1_000_000;
+  for (let i = 0; i < 30; i++) h.S(`dmChats/c1/dmMessages/x${i}`, { uid: i % 2 ? 'bad' : 'old1', text: `mesaj ${i}`, createdAtMs: base + i * 1000 });
+  await h.report('old1', 'dmMessage', 'dmChats/c1/dmMessages/x15').catch(() => {});
+  const c = await h.call('mod1', 'reportContext', { targetType: 'dmMessage', targetPath: 'dmChats/c1/dmMessages/x15' });
+  assert.equal(c.messages.length, 25);
+  assert.equal(c.messages[12].id, 'x15');
+  assert.equal(c.messages[12].target, true);
+  assert.equal(c.messages[0].id, 'x3');
+  assert.equal(c.messages[24].id, 'x27');
+  assert.equal(c.messages[0].name, 'BAD');
+  await rejects(h.call('mod1', 'reportContext', { targetType: 'user', targetPath: 'users/bad' }), /görüntülenemez/);
+  await rejects(h.call('mod1', 'reportContext', { targetType: 'dmMessage', targetPath: 'users/bad' }), /Geçersiz/);
 });

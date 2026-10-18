@@ -52,14 +52,19 @@ function CommentRow({ comment, onReply, onProfile, onMenu }) {
         <AvatarSvg avatar={comment.authorAvatar} size={28} rounded />
       </button>
       <div className="six-comment-body">
-        <div {...press}>
+        <div {...press} className={comment.tip ? `six-tipcard${comment.tip >= 1000 ? ' big' : ''}` : undefined}>
           <p className="six-comment-head">
             <button type="button" className="six-comment-author pc-trigger" onClick={() => onProfile(comment)}>
               {comment.authorName}
             </button>
+            {comment.tip ? (
+              <span className="six-tip-amt">
+                💛 {Number(comment.tip).toLocaleString('tr-TR')} <span className="gold-coin-icon" style={{ width: 11, height: 11 }} />
+              </span>
+            ) : null}
             <span className="six-comment-time">{timeAgo(comment.createdAtMs)}</span>
           </p>
-          <p className="six-comment-text">{comment.text}</p>
+          {comment.text ? <p className="six-comment-text">{comment.text}</p> : comment.tip ? <p className="six-comment-text six-tip-plain">destek oldu</p> : null}
         </div>
         <button className="six-comment-reply-btn" onClick={() => onReply(comment)}>
           Yanıtla

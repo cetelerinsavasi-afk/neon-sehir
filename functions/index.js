@@ -212,6 +212,7 @@ const homeOffice = createHomeOffice({
   HttpsError,
   splitIncomeForDebt: (debt, amount) => splitIncomeForDebt(debt, amount),
   business,
+  assertCanSpeak: (uid, content) => moderation.assertCanSpeak(uid, content),
 });
 const shop = createShop({
   extraOps: { ...venue.ops, ...gym.ops, ...homeOffice.ops },

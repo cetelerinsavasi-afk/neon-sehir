@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { shopAction } from '../../services/gameActions';
 import { bizErrText } from '../../lib/bizErrors';
-import { SONG_PLAY_MIN_SEC, SONG_TIP_AMOUNTS, SONG_TIP_DAILY } from '../../../functions/homeOfficeData.js';
+import { SONG_PLAY_MIN_SEC, SONG_TIP_AMOUNTS, SONG_TIP_DAILY, SONG_TIP_NOTE_MAX } from '../../../functions/homeOfficeData.js';
 import './SongMaker.css';
 
 // =============================================================================
@@ -31,6 +31,7 @@ export default function SongView({ song, post = null }) {
   const [tipOpen, setTipOpen] = useState(false);
   const [tipBusy, setTipBusy] = useState(null);
   const [tipMsg, setTipMsg] = useState(null);
+  const [tipNote, setTipNote] = useState('');
   const [dlBusy, setDlBusy] = useState(false);
   const reportPlay = () => {
     if (!post?.id || countedRef.current) return;
@@ -47,8 +48,11 @@ export default function SongView({ song, post = null }) {
     setTipBusy(amount);
     setTipMsg(null);
     try {
-      const r = await shopAction({ op: 'songTip', postId: post.id, amount });
+      const note = tipNote.trim();
+      const r = await shopAction({ op: 'songTip', postId: post.id, amount, ...(note ? { text: note } : {}) });
       setTips((t) => t + amount);
+      setTipNote('');
+      setTipOpen(false);
       setTipMsg({ ok: true, text: `💛 ${amount.toLocaleString('tr-TR')} altın destek verdin (bugün ${r.given.toLocaleString('tr-TR')}/${SONG_TIP_DAILY.toLocaleString('tr-TR')}).` });
     } catch (e) {
       setTipMsg({ ok: false, text: bizErrText(e) });
@@ -170,6 +174,14 @@ export default function SongView({ song, post = null }) {
       )}
       {post && !isArtist && tipOpen && (
         <div className="sv-tips">
+          <input
+            className="sv-tip-note"
+            value={tipNote}
+            maxLength={SONG_TIP_NOTE_MAX}
+            placeholder="Sanatçıya bir not yaz (isteğe bağlı)"
+            onChange={(e) => setTipNote(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+          />
           {SONG_TIP_AMOUNTS.map((a) => (
             <button key={a} className="sv-tip" disabled={tipBusy !== null} onClick={() => tip(a)}>
               {tipBusy === a ? '…' : a.toLocaleString('tr-TR')} <span className="gold-coin-icon" style={{ width: 11, height: 11 }} />

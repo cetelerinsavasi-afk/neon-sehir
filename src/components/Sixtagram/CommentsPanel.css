@@ -188,3 +188,60 @@
   opacity: 0.5;
   cursor: default;
 }
+
+/* v99.2 — şarkı desteği yorumu (canlı yayındaki bağış satırı gibi) */
+.six-tipcard {
+  position: relative;
+  padding: 7px 11px 8px;
+  border-radius: 14px;
+  background: linear-gradient(120deg, rgba(212, 175, 55, 0.92), rgba(255, 120, 40, 0.88) 55%, rgba(255, 46, 140, 0.85));
+  color: #1a1206;
+  box-shadow: 0 2px 12px rgba(255, 140, 40, 0.35);
+  animation: six-tip-pop 0.35s ease-out;
+}
+.six-tipcard.big {
+  background: linear-gradient(120deg, #ff2e8c, #ffb21e 50%, #7b2cff);
+  color: #fff;
+  box-shadow: 0 0 16px rgba(255, 46, 140, 0.55);
+}
+.six-tipcard .six-comment-author,
+.six-tipcard .six-comment-time,
+.six-tipcard .six-comment-text {
+  color: inherit;
+}
+.six-tipcard .six-comment-author {
+  font-weight: 900;
+}
+.six-tipcard .six-comment-time {
+  opacity: 0.7;
+}
+.six-tip-amt {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin: 0 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.22);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  font-style: normal;
+}
+.six-tipcard .six-comment-text {
+  font-weight: 600;
+}
+.six-tip-plain {
+  opacity: 0.8;
+  font-style: italic;
+}
+@keyframes six-tip-pop {
+  from {
+    transform: scale(0.96);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}

@@ -292,3 +292,12 @@ Testler: 348/348 geçti.
 - Kök neden: şarkı verisi iç içe dizi içeriyordu (`pats[].t`), Firestore reddediyordu → hem proje kaydı hem paylaşım başarısızdı. Artık satırlar `{ r: [...] }` olarak yazılıyor (`songToDoc`), okurken açılıyor (`songFromDoc`; `sanitizeSong` iki biçimi de alır).
 - Mikser konsoluna ≤3,2 m koltukta otururken de "🎛️ Müzik yap" çıkar.
 - Yükleme: `firebase deploy --only functions:createSixtagramPost,functions:shopAction` + git push.
+
+## v99.2 — Şarkı desteği yorum olarak
+- "Destek ol" panelinde isteğe bağlı not (≤120). Her destek, notlu ya da notsuz, gönderiye yorum olarak düşer (`comments` dokümanında `tip` alanı); canlı yayındaki bağış satırı gibi renkli kart, 1.000'de daha parlak. Not küfür/susturma kontrolünden geçer; sanatçıya giden mesajda da not görünür.
+- Yükleme: `firebase deploy --only functions:shopAction` + git push.
+
+## v99.3 — Admin şikâyetleri: en yeni üstte + İncele
+- Bekleyen şikâyetler son şikâyet anına göre (en yeni üstte); kapananlar karar anına göre.
+- Sohbet türlerinde (genel sohbet, çete/istihbarat, özel mesaj, Sixtagram yorumu) "🔍 İncele": şikâyet edilen mesajın 12 öncesi + 12 sonrası; şikâyet edilen mesaj pembe, aynı kişinin diğer mesajları "şikâyet edilen", şikâyetçilerin mesajları mavi "şikâyetçi" etiketli. Sixtagram yorumunda gönderi de en üstte. (`adminAction reportContext`, moderatör+)
+- Yükleme: `firebase deploy --only functions:adminAction` + git push.

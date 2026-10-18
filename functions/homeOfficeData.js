@@ -33,6 +33,8 @@ export const SONG_PLAY_MIN_SEC = 3; // en az bu kadar dinlenince sayılır (iste
 export const SONG_TIP_AMOUNTS = [10, 100, 1000];
 export const SONG_TIP_DAILY = 1000;
 export const SONG_TIP_TAX_RATE = 0.1;
+// v99.2 — destekle birlikte yazılan not (yorum olarak görünür)
+export const SONG_TIP_NOTE_MAX = 120;
 
 // İndirilen ses dosyasının adı: "PROJEADI - cetelerinsavasi.com.mp3"
 export function songFileName(title) {
