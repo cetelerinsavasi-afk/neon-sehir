@@ -94,9 +94,10 @@ function sub(g, x = 0, y = 0, z = 0, ry = 0) {
 function tripod(g, h, c = '#202330') {
   for (let k = 0; k < 3; k++) {
     const a = (k * 2 * PI) / 3;
+    // v99.6 — ayaklar aşağıda açılır (eskiden ters: tepede açılıp yerde birleşiyordu)
     const l = B(g, 0.03, 0.62, 0.03, c, Math.sin(a) * 0.16, 0, Math.cos(a) * 0.16);
-    l.rotation.x = Math.cos(a) * 0.42;
-    l.rotation.z = -Math.sin(a) * 0.42;
+    l.rotation.x = -Math.cos(a) * 0.42;
+    l.rotation.z = Math.sin(a) * 0.42;
   }
   Cy(g, 0.022, h - 0.5, c, 0, 0.5, 0);
 }
@@ -1692,17 +1693,26 @@ I('mihrap', 'cami', 'Mihrap', '🕌', (g) => {
   B(g, 1.0, 0.12, 0.35, '#c9a24a', 0, 0, 0.2, { m: 0.5, r: 0.4 });
 }, { box: [1.25, 0.32], venueOnly: true });
 I('minber', 'cami', 'Minber', '🪜', (g) => {
+  // v99.6 — merdiven önde (+z) yükselir, korkuluklar merdivenle aynı yönde iner;
+  // üstteki köşkün altında durulabilir (tavan 3,4 m'ye sığar)
   const wood = '#6b3f1f';
-  for (let i = 0; i < 7; i++) B(g, 0.9, 0.22, 0.42, wood, 0, i * 0.22, 1.2 - i * 0.36);
+  const gold = '#c9a24a';
+  for (let i = 0; i < 5; i++) B(g, 0.9, (i + 1) * 0.2, 0.34, wood, 0, 0, 1.0 - i * 0.34);
+  B(g, 1.0, 1.0, 0.9, wood, 0, 0, -0.95);
   for (const s of [-1, 1]) {
-    const rail = B(g, 0.06, 0.06, 2.9, '#c9a24a', s * 0.46, 1.45, -0.05, { m: 0.6 });
-    rail.rotation.x = -0.57;
+    // (z=1.15, y=1.0) → (z=-0.5, y=1.8)
+    const rail = B(g, 0.06, 0.06, 1.84, gold, s * 0.47, 1.37, 0.32, { m: 0.6 });
+    rail.rotation.x = Math.atan2(0.8, 1.65);
+    for (let t = 0; t < 5; t++) {
+      const z = 1.1 - t * 0.38;
+      Cy(g, 0.022, 1.0 + (1.15 - z) * 0.485, gold, s * 0.47, 0, z, { m: 0.6 }, 8);
+    }
+    B(g, 0.06, 0.06, 0.9, gold, s * 0.47, 1.8, -0.95, { m: 0.6 });
   }
-  B(g, 1.0, 1.6, 0.9, wood, 0, 0, -1.25);
-  for (const s of [-1, 1]) Cy(g, 0.05, 0.6, '#c9a24a', s * 0.45, 1.6, -1.25, { m: 0.6 });
-  Co(g, 0.62, 0.7, '#2e6b4a', 0, 2.2, -1.25, null, 8);
-  Sp(g, 0.06, '#e8c766', 0, 2.95, -1.25, { m: 0.7 });
-}, { box: [0.5, 1.65], venueOnly: true });
+  for (const [x, z] of [[-0.45, -0.55], [0.45, -0.55], [-0.45, -1.35], [0.45, -1.35]]) Cy(g, 0.04, 1.9, gold, x, 1.0, z, { m: 0.6 }, 10);
+  Co(g, 0.64, 0.42, '#2e6b4a', 0, 2.9, -0.95, null, 8);
+  Sp(g, 0.05, '#e8c766', 0, 3.34, -0.95, { m: 0.7 });
+}, { box: [0.5, 1.45], venueOnly: true, seats: [[0, 1.0, -1.0]], stand: true, seatLabel: '🪜 Minbere çık', exitLabel: '⬇️ Minberden in' });
 I('seccade', 'cami', 'Seccade', '🟥', (g) => {
   Pl(g, 0.9, 1.6, K('#fff', { map: T('seccade') }), 0, 0.006, 0).rotation.x = -PI / 2;
 }, { nobox: true, flat: true });
@@ -2054,6 +2064,8 @@ export function v92CatalogEntries({ neonBuild }) {
     if (o.ceil) e.ceil = true;
     if (o.seats) e.seats = o.seats;
     if (o.seatLabel) e.seatLabel = o.seatLabel;
+    if (o.stand) e.stand = true;
+    if (o.exitLabel) e.exitLabel = o.exitLabel;
     if (o.tints) e.tints = o.tints;
     if (o.panel) e.panel = o.panel;
     if (o.wall) Object.assign(e, { wall: true, nobox: true });

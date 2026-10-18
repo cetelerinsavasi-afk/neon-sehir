@@ -1323,7 +1323,7 @@ export function createHouseEngine(
     const ctl = e.obj.userData.ctl;
     const acts = [];
     if (bizActs?.[e.data.k] && e.data.p === 1) bizActs[e.data.k].forEach((a) => acts.push({ kind: 'ho', act: a.act, label: a.label, itemId: e.data.i }));
-    if (def.seats?.length) acts.push({ kind: 'sit', label: def.stand ? '🚿 Duş al' : def.seatLabel || (def.cat === 'araba' ? '🚗 Arabaya bin' : def.cat === 'motor' ? '🏍️ Motora bin' : '🪑 Otur') });
+    if (def.seats?.length) acts.push({ kind: 'sit', label: def.stand ? def.seatLabel || '🚿 Duş al' : def.seatLabel || (def.cat === 'araba' ? '🚗 Arabaya bin' : def.cat === 'motor' ? '🏍️ Motora bin' : '🪑 Otur') });
     // v92 — market arabası: al ve it; araba elindeyken raftaki ürünler arabaya gider
     if (def.panel === 'cart' && !self.cart) acts.push({ kind: 'cart', label: '🛒 Arabayı al' });
     if (def.game) acts.push({ kind: 'panel', panel: 'arcade', label: '🎮 Oyna', deviceId: e.data.i });
@@ -1351,7 +1351,7 @@ export function createHouseEngine(
     if (self.seat) {
       const e = objs.get(self.seat.id);
       if (!e) return null;
-      const acts = [{ kind: 'sit', label: CATALOG_MAP[e.data.k].stand ? '🚪 Duştan çık' : '⬆️ Kalk' }, ...actionsFor(e).filter((a) => a.kind !== 'sit')];
+      const acts = [{ kind: 'sit', label: CATALOG_MAP[e.data.k].exitLabel || (CATALOG_MAP[e.data.k].stand ? '🚪 Duştan çık' : '⬆️ Kalk') }, ...actionsFor(e).filter((a) => a.kind !== 'sit')];
       // v75 — konsolun/bilgisayarın karşısındaki koltukta oturuyorsan oradan da oyna
       if (!acts.some((a) => a.panel === 'arcade')) {
         const sp = seatWorld(self.seat, new THREE.Vector3());

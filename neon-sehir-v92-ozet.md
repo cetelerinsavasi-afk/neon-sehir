@@ -310,3 +310,8 @@ Testler: 348/348 geçti.
 ## v99.5 — Takım satın alma "satılık değil" hatası
 - Neden: satın alma listesi, menajerin yönettiği sahipsiz takımları da gösteriyordu; satın alma bunlara izin vermiyor. Liste artık aynı kuralı kullanıyor (sadece menajersiz bot takımlar + sahibinin ilan ettiği takımlar). Menajerli takım için hata metni açık; hata sonrası liste tazelenir.
 - Yükleme: `firebase deploy --only functions:listFutbolBuyableTeams,functions:buyFutbolTeam` + git push.
+
+## v99.6 — Tripod ayakları + minber
+- Yayın kamerası / halka ışık / stüdyo ışığı: tripod ayakları ters (tepede açık) idi → artık yerde açılıyor.
+- Minber yeniden: merdiven önde yükselir, korkuluklar merdivenle aynı eğimde (eskiden ters), köşk tavana sığar; "🪜 Minbere çık" ile üst sahanlıkta ayakta durulur, "⬇️ Minberden in".
+- Yükleme: sadece git push.
