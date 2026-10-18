@@ -48,14 +48,39 @@ const isId = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);
 
 // Sixtagram ekini projeden kurar (createSixtagramPost içinden). Proje sahibine ait
 // olmalı ve notası olmalı. Döner: { song } | { error }
-export async function buildSongAttachment(db, uid, attachment) {
+// v99 — şarkı paylaşımı kayıtlı projeye bağlı değil: stüdyodaki son hâl doğrudan
+// (attachment.song) gönderilir; sadece o stüdyoda yakın zamanda oturum olması
+// gerekir. Proje kimliği de gelirse paylaşımdan sonra proje silinir (_deleteProjectId).
+export const SONG_PUBLISH_GRACE_MS = 30 * 60 * 1000;
+export async function buildSongAttachment(db, uid, attachment, now = Date.now()) {
   const projectId = String(attachment?.projectId || '');
-  if (!isId(projectId)) return { error: 'Şarkılar artık müzik stüdyolarında yapılıyor. Stüdyoda projeni açıp oradan paylaş.' };
-  const s = await db.collection('songProjects').doc(projectId).get();
-  if (!s.exists || s.data().uid !== uid) return { error: 'Proje bulunamadı (7 gün dokunulmayan projeler silinir).' };
-  const r = sanitizeSong(s.data().song);
-  if (r.error) return r;
-  return { song: { ...r.song, title: String(s.data().title || r.song.title || '').slice(0, 40) } };
+  const houseId = String(attachment?.houseId || '');
+  let proj = null;
+  if (isId(projectId)) {
+    const s = await db.collection('songProjects').doc(projectId).get();
+    if (s.exists && s.data().uid === uid) proj = s.data();
+  }
+  let song = null;
+  if (attachment?.song && typeof attachment.song === 'object') {
+    if (!isId(houseId)) return { error: 'Şarkılar müzik stüdyolarında yapılıyor.' };
+    const ss = await db.collection('netSessions').doc(`${houseId}_${uid}`).get();
+    const sd = ss.exists ? ss.data() : null;
+    const recent = sd && sd.deviceKey === 'mixer' && Number(sd.creditUntilMs || 0) + SONG_PUBLISH_GRACE_MS > now;
+    if (!recent && !proj) return { error: 'Şarkılar müzik stüdyolarında yapılıyor. Stüdyoda projeni açıp oradan paylaş.' };
+    const r = sanitizeSong(attachment.song);
+    if (r.error) return r;
+    song = r.song;
+  } else if (proj) {
+    const r = sanitizeSong(proj.song);
+    if (r.error) return r;
+    song = r.song;
+  } else if (isId(projectId)) {
+    return { error: 'Proje bulunamadı (7 gün dokunulmayan projeler silinir).' };
+  } else {
+    return { error: 'Şarkılar müzik stüdyolarında yapılıyor. Stüdyoda projeni açıp oradan paylaş.' };
+  }
+  const title = String(song.title || proj?.title || '').slice(0, 40);
+  return { song: { ...song, title }, deleteProjectId: proj ? projectId : null };
 }
 
 export function createHomeOffice({ db, FieldValue, HttpsError, splitIncomeForDebt, business, now = () => Date.now() }) {

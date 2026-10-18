@@ -21192,6 +21192,7 @@ export const captureCameraSnapshot = onCall(async (request) => {
   return { ok: true };
 });
 
+const songProjectToDelete = new WeakMap();
 async function buildSixtagramAttachment(uid, attachment) {
   if (!attachment || !attachment.type) return null;
   const { type } = attachment;
@@ -21230,6 +21231,8 @@ async function buildSixtagramAttachment(uid, attachment) {
   if (type === 'song') {
     const r = await buildSongAttachment(db, uid, attachment);
     if (r.error) throw new HttpsError('invalid-argument', r.error);
+    // v99: paylaşılan şarkının projesi gönderi yazıldıktan sonra silinir
+    if (r.deleteProjectId) songProjectToDelete.set(r.song, r.deleteProjectId);
     return r.song;
   }
 
@@ -21912,9 +21915,12 @@ export const createSixtagramPost = onCall(async (request) => {
   // v90.1 maliyet: "yeni gönderi var" rozeti için istemciler bu TEK belgeyi dinler
   // (eskiden çevrimiçi herkes 60 sn'de bir en yeni gönderiyi okuyordu)
   batch.set(db.collection('stats').doc('sixtagram'), { latestMs: nowMs, latestUid: uid });
+  // v99: paylaşılan şarkının projesi de gider (aynı yazımda)
+  const songProjectId = builtAttachment && typeof builtAttachment === 'object' ? songProjectToDelete.get(builtAttachment) : null;
+  if (songProjectId) batch.delete(db.collection('songProjects').doc(songProjectId));
   await batch.commit();
 
-  return { ok: true, postId: postRef.id };
+  return { ok: true, postId: postRef.id, ...(songProjectId ? { projectDeleted: true } : {}) };
 });
 
 // toggleSixtagramLike — beğen/beğeniyi geri çek. Kendi postunu da

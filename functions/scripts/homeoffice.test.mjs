@@ -225,3 +225,30 @@ test('sixtagram: şarkı projeden paylaşılır; dinlenme hesap başı 5; destek
   const c = await h.ho.cleanup();
   assert.equal(c.tips, 1);
 });
+
+test('v99 sixtagram: şarkı kayıt olmadan doğrudan paylaşılır; projesi silinmek üzere döner', async () => {
+  const h = setup();
+  const id = await openBiz(h, 'studyo');
+  const mixer = h.G(`houses/${id}`).items.find((x) => x.k === 'mixer').i;
+  h.present('ali', id);
+  await h.act('ali', { op: 'netStart', houseId: id, itemId: mixer, expect: 200 });
+  const first = await h.act('ali', { op: 'songSave', houseId: id, song: songWith('P0') });
+  for (let n = 1; n < SONG_PROJECT_MAX; n++) await h.act('ali', { op: 'songSave', houseId: id, song: songWith(`P${n}`) });
+  // sınır dolu, proje yok → yine de paylaşılır
+  const inl = await buildSongAttachment(h.db, 'ali', { type: 'song', houseId: id, song: songWith('Kayıtsız') }, h.clock.now);
+  assert.equal(inl.error, undefined);
+  assert.equal(inl.song.title, 'Kayıtsız');
+  assert.equal(inl.deleteProjectId, null);
+  // boş şarkı / stüdyoda olmayan / başka ev reddedilir
+  assert.match((await buildSongAttachment(h.db, 'ali', { type: 'song', houseId: id, song: { ...emptySong(), title: 'x' } }, h.clock.now)).error, /Boş şarkı/);
+  assert.match((await buildSongAttachment(h.db, 'veli', { type: 'song', houseId: id, song: songWith('x') }, h.clock.now)).error, /stüdyolarında/);
+  // proje kimliği verilirse silinmek üzere döner (ekrandaki hâl kullanılır)
+  const wp = await buildSongAttachment(h.db, 'ali', { type: 'song', houseId: id, projectId: first.projectId, song: songWith('Son Hâl') }, h.clock.now);
+  assert.equal(wp.song.title, 'Son Hâl');
+  assert.equal(wp.deleteProjectId, first.projectId);
+  // başkasının projesi silinmek üzere dönmez
+  assert.equal((await buildSongAttachment(h.db, 'ali', { type: 'song', houseId: id, projectId: 'yok123', song: songWith('a') }, h.clock.now)).deleteProjectId, null);
+  // oturum bitti + 31 dk → reddedilir
+  const late = h.clock.now + 31 * 60 * 1000 + 60 * 1000;
+  assert.match((await buildSongAttachment(h.db, 'ali', { type: 'song', houseId: id, song: songWith('Geç') }, late)).error, /stüdyolarında/);
+});

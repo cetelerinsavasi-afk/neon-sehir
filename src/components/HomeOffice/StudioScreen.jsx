@@ -46,6 +46,25 @@ function useMyProjects(enabled) {
   return rows;
 }
 
+// v99 — telefonda yedek taslak: kayıt başarısız olsa da çalışma kaybolmaz
+const DRAFT_KEY = 'studioDraft_v1';
+const readDraft = () => {
+  try {
+    const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
+    return d && d.song && typeof d.song === 'object' ? d : null;
+  } catch {
+    return null;
+  }
+};
+const writeDraft = (d) => {
+  try {
+    if (d) localStorage.setItem(DRAFT_KEY, JSON.stringify(d));
+    else localStorage.removeItem(DRAFT_KEY);
+  } catch {
+    /* depolama kapalı */
+  }
+};
+
 export default function StudioScreen({ houseId, price, isOwner, onClose, flash }) {
   const [phase, setPhase] = useState('pick'); // 'pick' | 'edit'
   const projects = useMyProjects(true);
@@ -56,6 +75,7 @@ export default function StudioScreen({ houseId, price, isOwner, onClose, flash }
   const [dl, setDl] = useState(null); // indirilen proje kimliği / 'cur'
   const [delAsk, setDelAsk] = useState(null);
   const [stopped, setStopped] = useState(null);
+  const [draft, setDraft] = useState(readDraft);
 
   const projectIdRef = useRef(null);
   const latestRef = useRef(null);
@@ -84,6 +104,7 @@ export default function StudioScreen({ houseId, price, isOwner, onClose, flash }
     try {
       const r = await p;
       projectIdRef.current = r.projectId;
+      if (!dirtyRef.current) writeDraft(null);
       setSave(dirtyRef.current ? 'dirty' : 'saved');
       setSaveErr('');
       return true;
@@ -100,6 +121,7 @@ export default function StudioScreen({ houseId, price, isOwner, onClose, flash }
     (song) => {
       latestRef.current = song;
       dirtyRef.current = true;
+      writeDraft({ song, projectId: projectIdRef.current, ts: Date.now() });
       setSave('dirty');
       clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => doSave(), AUTOSAVE_MS);
@@ -167,10 +189,21 @@ export default function StudioScreen({ houseId, price, isOwner, onClose, flash }
     [houseId]
   );
 
-  const openProject = (p) => {
+  const openProject = (p, draftSong = null) => {
     projectIdRef.current = p?.id || null;
     latestRef.current = null;
     dirtyRef.current = false;
+    if (draftSong) {
+      // yedek taslaktan devam: ekrandaki hâl taslak, kayıt arka planda denenir
+      const song = sanitizeSong(draftSong, true).song || emptySong();
+      setEditing({ song, key: `draft_${Date.now()}` });
+      setPhase('edit');
+      latestRef.current = song;
+      dirtyRef.current = true;
+      setSave('dirty');
+      doSave();
+      return;
+    }
     const song = p ? sanitizeSong(p.song, true).song || emptySong() : { ...emptySong(), title: '' };
     if (p && !song.title) song.title = p.title || '';
     setEditing({ song, key: `${p?.id || 'new'}_${Date.now()}` });
@@ -208,14 +241,24 @@ export default function StudioScreen({ houseId, price, isOwner, onClose, flash }
     }
     setPublish((p) => ({ ...p, busy: true, err: '' }));
     latestRef.current = song;
-    dirtyRef.current = true;
-    const ok = await doSave();
-    if (!ok || !projectIdRef.current) {
-      setPublish((p) => ({ ...p, busy: false, err: 'Proje kaydedilemedi, tekrar dene.' }));
-      return;
-    }
+    // v99 — paylaşım kayda bağlı değil: ekrandaki son hâl doğrudan gönderilir,
+    // paylaşılan şarkının projesi sunucuda silinir.
+    clearTimeout(timerRef.current);
+    if (savingRef.current) await savingRef.current.catch(() => {});
     try {
-      await createSixtagramPost(String(publish?.text || '').trim(), { type: 'song', projectId: projectIdRef.current });
+      await createSixtagramPost(String(publish?.text || '').trim(), {
+        type: 'song',
+        houseId,
+        song: { ...song, type: 'song', v: 1 },
+        ...(projectIdRef.current ? { projectId: projectIdRef.current } : {}),
+      });
+      clearTimeout(timerRef.current);
+      projectIdRef.current = null;
+      dirtyRef.current = false;
+      latestRef.current = null;
+      writeDraft(null);
+      setDraft(null);
+      setSave('saved');
       setPublish((p) => ({ ...p, busy: false, done: true }));
     } catch (e) {
       setPublish((p) => ({ ...p, busy: false, err: e?.message || 'Paylaşılamadı.' }));
@@ -254,6 +297,7 @@ export default function StudioScreen({ houseId, price, isOwner, onClose, flash }
                 className="ho-sbtn"
                 onClick={async () => {
                   await flush();
+                  setDraft(readDraft());
                   setPhase('pick');
                   setEditing(null);
                 }}
@@ -271,7 +315,14 @@ export default function StudioScreen({ houseId, price, isOwner, onClose, flash }
                 {publish.done ? (
                   <>
                     <h3>🎉 Şarkın Sixtagram'da!</h3>
-                    <button className="ho-btn gold" onClick={() => setPublish(null)}>
+                    <button
+                      className="ho-btn gold"
+                      onClick={() => {
+                        setPublish(null);
+                        setEditing(null);
+                        setPhase('pick');
+                      }}
+                    >
                       Tamam
                     </button>
                   </>
@@ -311,6 +362,20 @@ export default function StudioScreen({ houseId, price, isOwner, onClose, flash }
         </div>
       </div>
       <div className="ho-studio-body">
+        {draft && (
+          <button
+            className="ho-new ho-draft"
+            onClick={() => {
+              const p = projects?.find((x) => x.id === draft.projectId) || null;
+              setDraft(null);
+              openProject(p, draft.song);
+            }}
+          >
+            <span>↺</span>
+            <b>Kaydedilmemiş çalışman</b>
+            <small>Kaldığın yerden devam et</small>
+          </button>
+        )}
         <button className="ho-new" onClick={() => openProject(null)} disabled={projects !== null && projects.length >= SONG_PROJECT_MAX}>
           <span>＋</span>
           <b>Yeni proje</b>

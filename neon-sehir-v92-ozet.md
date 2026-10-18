@@ -280,3 +280,10 @@ Testler: 348/348 geçti.
 - **Yanlış yükleme düzeltmesi:** futbolcu ekranı, sözleşme kaydı gelmeden çiziliyordu; takımdaki oyuncu bir an (bağlantı yavaşsa uzun süre) "takımsız" görünüp ilana çık paneli çıkıyordu. Artık futbolcu + sözleşme kaydı gelene kadar "Yükleniyor…" görünür; telefon önbelleğinden gelen "kayıt yok" cevabı kesin sayılmaz, sunucu beklenir.
 
 **Yükleme:** sadece push (fonksiyon değişikliği yok).
+
+## v99 — Stüdyo: şarkı paylaşımı kayda bağlı değil
+- Paylaş, ekrandaki son hâli doğrudan gönderir; proje kaydı gerekmez (o stüdyoda oturum bittikten sonra 30 dk'ya kadar geçerli). Proje sınırı dolu olsa da paylaşılır.
+- Paylaşılan şarkının projesi gönderiyle aynı yazımda silinir.
+- Telefonda yedek taslak: kayıt başarısız olsa da proje listesinin üstünde "Kaydedilmemiş çalışman" çıkar.
+- Not: 2 mikser = aynı anda 2 kişi (kapasite cihaz başına 1).
+- Yükleme: `firebase deploy --only functions:createSixtagramPost` + git push.
