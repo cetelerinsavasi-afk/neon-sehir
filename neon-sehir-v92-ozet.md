@@ -315,3 +315,7 @@ Testler: 348/348 geçti.
 - Yayın kamerası / halka ışık / stüdyo ışığı: tripod ayakları ters (tepede açık) idi → artık yerde açılıyor.
 - Minber yeniden: merdiven önde yükselir, korkuluklar merdivenle aynı eğimde (eskiden ters), köşk tavana sığar; "🪜 Minbere çık" ile üst sahanlıkta ayakta durulur, "⬇️ Minberden in".
 - Yükleme: sadece git push.
+
+## v99.7 — Menajerli sahipsiz takımlar yeniden satın alınabilir
+- Kullanıcı kararı: menajer sahip değildir. Sahipsiz her takım (menajerli olsa da) piyasa değeriyle satın alınabilir; menajer yönetmeye devam eder (SMS gider), başkan isterse Menajer sekmesinden sözleşmeyi fesheder. Listede "👔 Menajerli" rozeti. (v99.5'teki liste filtresi geri alındı.)
+- Yükleme: `firebase deploy --only functions:listFutbolBuyableTeams,functions:buyFutbolTeam` + git push.

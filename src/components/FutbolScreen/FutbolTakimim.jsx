@@ -172,6 +172,7 @@ function BuyTeamPanel() {
           <div className="futbol-buy-info">
             <p className="futbol-buy-name">
               {t.name} {t.listedByPlayer && <span className="futbol-buy-badge">Oyuncu İlanı</span>}
+              {t.managed && <span className="futbol-buy-badge">👔 Menajerli</span>}
             </p>
             <p className="futbol-buy-meta">
               {t.tier}. Lig · {t.fans.toLocaleString('tr-TR')} taraftar
