@@ -32,6 +32,7 @@ export default function SongView({ song, post = null }) {
   const [tipBusy, setTipBusy] = useState(null);
   const [tipMsg, setTipMsg] = useState(null);
   const [tipNote, setTipNote] = useState('');
+  const [tipSel, setTipSel] = useState(null); // v99.4: önce miktar seçilir, sonra Gönder
   const [dlBusy, setDlBusy] = useState(false);
   const reportPlay = () => {
     if (!post?.id || countedRef.current) return;
@@ -52,6 +53,7 @@ export default function SongView({ song, post = null }) {
       const r = await shopAction({ op: 'songTip', postId: post.id, amount, ...(note ? { text: note } : {}) });
       setTips((t) => t + amount);
       setTipNote('');
+      setTipSel(null);
       setTipOpen(false);
       setTipMsg({ ok: true, text: `💛 ${amount.toLocaleString('tr-TR')} altın destek verdin (bugün ${r.given.toLocaleString('tr-TR')}/${SONG_TIP_DAILY.toLocaleString('tr-TR')}).` });
     } catch (e) {
@@ -174,19 +176,34 @@ export default function SongView({ song, post = null }) {
       )}
       {post && !isArtist && tipOpen && (
         <div className="sv-tips">
-          <input
-            className="sv-tip-note"
-            value={tipNote}
-            maxLength={SONG_TIP_NOTE_MAX}
-            placeholder="Sanatçıya bir not yaz (isteğe bağlı)"
-            onChange={(e) => setTipNote(e.target.value)}
-            onClick={(e) => e.stopPropagation()}
-          />
           {SONG_TIP_AMOUNTS.map((a) => (
-            <button key={a} className="sv-tip" disabled={tipBusy !== null} onClick={() => tip(a)}>
-              {tipBusy === a ? '…' : a.toLocaleString('tr-TR')} <span className="gold-coin-icon" style={{ width: 11, height: 11 }} />
+            <button
+              key={a}
+              className={`sv-tip${tipSel === a ? ' on' : ''}`}
+              disabled={tipBusy !== null}
+              onClick={() => {
+                setTipMsg(null);
+                setTipSel((c) => (c === a ? null : a));
+              }}
+            >
+              {a.toLocaleString('tr-TR')} <span className="gold-coin-icon" style={{ width: 11, height: 11 }} />
             </button>
           ))}
+          {tipSel !== null && (
+            <>
+              <input
+                className="sv-tip-note"
+                value={tipNote}
+                maxLength={SONG_TIP_NOTE_MAX}
+                placeholder="Sanatçıya bir not yaz (isteğe bağlı)"
+                onChange={(e) => setTipNote(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+              />
+              <button className="sv-tip-send" disabled={tipBusy !== null} onClick={() => tip(tipSel)}>
+                {tipBusy !== null ? 'Gönderiliyor…' : `💛 ${tipSel.toLocaleString('tr-TR')} altın gönder`}
+              </button>
+            </>
+          )}
         </div>
       )}
       {tipMsg && <p className={`sv-msg${tipMsg.ok ? ' ok' : ''}`}>{tipMsg.text}</p>}

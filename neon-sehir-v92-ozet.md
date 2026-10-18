@@ -301,3 +301,8 @@ Testler: 348/348 geçti.
 - Bekleyen şikâyetler son şikâyet anına göre (en yeni üstte); kapananlar karar anına göre.
 - Sohbet türlerinde (genel sohbet, çete/istihbarat, özel mesaj, Sixtagram yorumu) "🔍 İncele": şikâyet edilen mesajın 12 öncesi + 12 sonrası; şikâyet edilen mesaj pembe, aynı kişinin diğer mesajları "şikâyet edilen", şikâyetçilerin mesajları mavi "şikâyetçi" etiketli. Sixtagram yorumunda gönderi de en üstte. (`adminAction reportContext`, moderatör+)
 - Yükleme: `firebase deploy --only functions:adminAction` + git push.
+
+## v99.4 — Davul seti + destek akışı
+- Davul Seti: tabure öne alındı (önde trampet/tomlar, zillar arkada); oturunca "🥁 Çal" — 6 ped (Bas, Trampet, Hi-hat, Tom, Zil, Ride), piyano gibi tek kişi çalar, mekândaki herkes duyar (RTDB `piano/{houseId}_d`, kural değişikliği yok; sessize al piyanoyla ortak).
+- Şarkı desteği: önce miktar seçilir (vurgulu), not kutusu ve "💛 X altın gönder" butonu açılır; notlu ya da notsuz gönderilir.
+- Yükleme: sadece git push (sunucu değişikliği yok).

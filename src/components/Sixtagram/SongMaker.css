@@ -626,3 +626,25 @@
 .sv-tip-note:focus {
   border-color: rgba(255, 196, 60, 0.9);
 }
+
+/* v99.4 — seçili miktar + Gönder */
+.sv-tip.on {
+  border-color: #ffd23f;
+  background: linear-gradient(135deg, #ffd23f, #ff9d3c);
+  color: #2a1a00;
+  box-shadow: 0 0 12px rgba(255, 196, 60, 0.55);
+}
+.sv-tip-send {
+  grid-column: 1 / -1;
+  padding: 11px;
+  border: 0;
+  border-radius: 12px;
+  background: linear-gradient(120deg, #d4af37, #ff7828 55%, #ff2e8c);
+  color: #fff;
+  font-weight: 900;
+  font-size: 14px;
+  box-shadow: 0 3px 14px rgba(255, 120, 40, 0.4);
+}
+.sv-tip-send:disabled {
+  opacity: 0.6;
+}

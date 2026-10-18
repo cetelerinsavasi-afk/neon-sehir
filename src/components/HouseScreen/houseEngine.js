@@ -1329,6 +1329,8 @@ export function createHouseEngine(
     if (def.game) acts.push({ kind: 'panel', panel: 'arcade', label: '🎮 Oyna', deviceId: e.data.i });
     // v77: piyanoya oturunca çal (aynı anda tek kişi — HouseScreen/pianoNet)
     if (e.data.k === 'piano' && self.seat?.id === e.data.i) acts.push({ kind: 'panel', panel: 'piano', label: '🎹 Çal' });
+    // v99.4: davul setine oturunca çal (piyano gibi)
+    if (e.data.k === 'drums' && self.seat?.id === e.data.i) acts.push({ kind: 'panel', panel: 'drums', label: '🥁 Çal' });
     if (def.panel === 'jukebox') acts.push({ kind: 'panel', panel: 'jukebox', label: '🎵 Müzik' });
     if (def.panel === 'atm') acts.push({ kind: 'panel', panel: 'atm', label: '🏧 Parara Bank' });
     if (!def.panel && ctl?.act && !ctl.noToggle) acts.push({ kind: 'toggle', label: ctl.act });

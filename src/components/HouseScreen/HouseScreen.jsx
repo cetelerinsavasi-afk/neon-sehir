@@ -30,6 +30,8 @@ import { WaiterButton, OrdersPanel, NewOrderPop } from '../Venue/WaiterPanel';
 import { useWaiterRole } from '../../hooks/useWaiter';
 import NetCreditRing from '../Venue/NetCreditRing';
 import PianoPanel from '../Piano/PianoPanel';
+import DrumPanel, { drumKey } from '../Piano/DrumPanel';
+import { hitDrum } from '../../lib/songEngine';
 import { claimPiano, releasePiano, watchPiano } from '../Piano/pianoNet';
 import { playPianoKey } from '../Piano/pianoSynth';
 import { useNetCredits, useNetOccupancy } from '../../hooks/useVenueData';
@@ -762,6 +764,17 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
       setPanel('piano');
       return;
     }
+    if (r.kind === 'panel' && r.panel === 'drums') {
+      const c = await claimPiano(drumKey(houseId), { uid: user.uid, name: player?.displayName });
+      if (!c.ok) {
+        setSeatFull(Date.now());
+        flash(`🥁 Davul dolu — şu an ${c.holder?.name || 'başka biri'} çalıyor.`);
+        return;
+      }
+      setDrumLocal(Boolean(c.local));
+      setPanel('drums');
+      return;
+    }
     if (r.kind === 'cart') {
       setMyCart([]);
       flash('🛒 Market arabası elinde — raftan aldıkların arabaya girer.');
@@ -1246,6 +1259,23 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     return undefined;
   }, [panel, pianoPlayer?.uid, houseId, user]);
   useEffect(() => () => user && releasePiano(houseId, user.uid).catch(() => {}), [houseId, user]);
+  // v99.4 — davul seti (piyano altyapısı, ayrı anahtar)
+  const hasDrums = (houseDoc?.items || []).some((it) => it.k === 'drums' && it.p === 1);
+  const [drumPlayer, setDrumPlayer] = useState(null);
+  const [drumLocal, setDrumLocal] = useState(false);
+  useEffect(() => {
+    if (phase !== 'ready' || !hasDrums || !user) return undefined;
+    return watchPiano(drumKey(houseId), ({ player: pl, note }) => {
+      setDrumPlayer(pl);
+      if (note && note.uid !== user.uid && !pianoMutedRef.current) hitDrum(Number(note.k), 0.5 * (getVolume() || 0.6));
+    });
+  }, [phase, hasDrums, houseId, user]);
+  useEffect(() => {
+    if (panel === 'drums' || !user) return undefined;
+    if (drumPlayer?.uid === user.uid) releasePiano(drumKey(houseId), user.uid).catch(() => {});
+    return undefined;
+  }, [panel, drumPlayer?.uid, houseId, user]);
+  useEffect(() => () => user && releasePiano(drumKey(houseId), user.uid).catch(() => {}), [houseId, user]);
   const toggleMute = () => {
     setPianoMuted((m) => {
       try {
@@ -1581,6 +1611,16 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
           )}
           {gymResult && <GymResult result={gymResult} onClose={() => setGymResult(null)} />}
           {panel === 'piano' && user && <PianoPanel houseId={houseId} local={pianoLocal} me={{ uid: user.uid, name: player?.displayName }} onClose={() => setPanel(null)} />}
+          {panel === 'drums' && user && <DrumPanel houseId={houseId} local={drumLocal} me={{ uid: user.uid, name: player?.displayName }} onClose={() => setPanel(null)} />}
+          {hasDrums && drumPlayer && drumPlayer.uid !== user?.uid && mode === 'walk' && !(hasPiano && pianoPlayer && pianoPlayer.uid !== user?.uid) && (
+            <div className="pn-listen">
+              <span className="pn-notes">🥁 ♪</span>
+              <b>{drumPlayer.name} davul çalıyor</b>
+              <button onClick={toggleMute} title={pianoMuted ? 'Sesi aç' : 'Sessize al'}>
+                {pianoMuted ? '🔇 Sesi aç' : '🔊 Sessize al'}
+              </button>
+            </div>
+          )}
           {hasPiano && pianoPlayer && pianoPlayer.uid !== user?.uid && mode === 'walk' && (
             <div className="pn-listen">
               <span className="pn-notes">🎹 ♪</span>
@@ -1848,6 +1888,13 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                     );
                   }
                   // piyano başkası tarafından çalınıyorsa: soluk + silüet
+                  if (a.panel === 'drums' && drumPlayer && drumPlayer.uid !== user?.uid) {
+                    return (
+                      <button key={a.label} className="hs-act cue-dim" onClick={() => doAction(a)}>
+                        🥁 Dolu — {drumPlayer.name} çalıyor
+                      </button>
+                    );
+                  }
                   if (a.panel === 'piano' && pianoPlayer && pianoPlayer.uid !== user?.uid) {
                     return (
                       <button key={a.label} className="hs-act cue-dim" onClick={() => doAction(a)}>

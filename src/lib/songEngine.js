@@ -657,3 +657,14 @@ export function stopAllSongs() {
 export function audioNow() {
   return ctx ? ctx.currentTime : 0;
 }
+
+// v99.4 — Davul Seti eşyası: tek vuruş (ped). row = SONG_DRUMS sırası.
+let hitBus = null;
+export function hitDrum(row, volume = 0.6) {
+  const d = SONG_DRUMS[row];
+  if (!d || volume <= 0 || !ac()) return;
+  if (!hitBus) hitBus = createBus();
+  if (!hitBus) return;
+  hitBus.drumOut.gain.value = Math.min(1.2, volume * 1.25);
+  playDrum('rock', d.id, ctx.currentTime + 0.005, hitBus.drumIn);
+}
