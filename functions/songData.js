@@ -96,8 +96,19 @@ export function songHasNotes(s) {
 
 // Gelen şarkıyı doğrular/temizler. Geçersizse { error } döner.
 // v93: allowEmpty → stüdyo projesi taslağı (henüz notası olmayan proje de kaydedilir)
+// v99.1 — Firestore iç içe dizi kabul etmez (pats[].t = satır dizilerinin dizisi).
+// Yazarken her satır { r: [...] } olur; okurken geri açılır. sanitizeSong iki biçimi de alır.
+export function songToDoc(s) {
+  if (!s || !Array.isArray(s.pats)) return s;
+  return { ...s, pats: s.pats.map((p) => ({ d: [...(p.d || [])], t: (p.t || []).map((rows) => ({ r: Array.isArray(rows) ? [...rows] : rows?.r || [] })) })) };
+}
+export function songFromDoc(s) {
+  if (!s || typeof s !== 'object' || !Array.isArray(s.pats)) return s;
+  return { ...s, pats: s.pats.map((p) => (p && Array.isArray(p.t) ? { ...p, t: p.t.map((rows) => (Array.isArray(rows) ? rows : rows && Array.isArray(rows.r) ? rows.r : rows)) } : p)) };
+}
+
 export function sanitizeSong(raw, allowEmpty = false) {
-  const d = raw && typeof raw === 'object' ? raw : {};
+  const d = raw && typeof raw === 'object' ? songFromDoc(raw) : {};
   if (!isInt(d.bpm, SONG_BPM.min, SONG_BPM.max)) return { error: 'Geçersiz tempo.' };
   if (!Object.prototype.hasOwnProperty.call(SONG_KITS, d.kit)) return { error: 'Geçersiz davul seti.' };
   if (!Object.prototype.hasOwnProperty.call(SONG_SCALES, d.scale)) return { error: 'Geçersiz ölçek.' };

@@ -287,3 +287,8 @@ Testler: 348/348 geçti.
 - Telefonda yedek taslak: kayıt başarısız olsa da proje listesinin üstünde "Kaydedilmemiş çalışman" çıkar.
 - Not: 2 mikser = aynı anda 2 kişi (kapasite cihaz başına 1).
 - Yükleme: `firebase deploy --only functions:createSixtagramPost` + git push.
+
+## v99.1 — Şarkı kaydı/paylaşımı "internal" hatası + koltuktan müzik
+- Kök neden: şarkı verisi iç içe dizi içeriyordu (`pats[].t`), Firestore reddediyordu → hem proje kaydı hem paylaşım başarısızdı. Artık satırlar `{ r: [...] }` olarak yazılıyor (`songToDoc`), okurken açılıyor (`songFromDoc`; `sanitizeSong` iki biçimi de alır).
+- Mikser konsoluna ≤3,2 m koltukta otururken de "🎛️ Müzik yap" çıkar.
+- Yükleme: `firebase deploy --only functions:createSixtagramPost,functions:shopAction` + git push.

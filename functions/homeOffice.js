@@ -30,7 +30,7 @@
 import { midnightDayKey } from './businessCatalogData.js';
 import { bizTax, taxOf, taxLedgerWrite } from './tax.js';
 import { goldTag } from './moneyLog.js';
-import { sanitizeSong } from './songData.js';
+import { sanitizeSong, songToDoc } from './songData.js';
 import {
   MESCIT_DAILY_LIMIT,
   MESCIT_MIN,
@@ -80,7 +80,7 @@ export async function buildSongAttachment(db, uid, attachment, now = Date.now())
     return { error: 'Şarkılar müzik stüdyolarında yapılıyor. Stüdyoda projeni açıp oradan paylaş.' };
   }
   const title = String(song.title || proj?.title || '').slice(0, 40);
-  return { song: { ...song, title }, deleteProjectId: proj ? projectId : null };
+  return { song: songToDoc({ ...song, title }), deleteProjectId: proj ? projectId : null };
 }
 
 export function createHomeOffice({ db, FieldValue, HttpsError, splitIncomeForDebt, business, now = () => Date.now() }) {
@@ -162,10 +162,10 @@ export function createHomeOffice({ db, FieldValue, HttpsError, splitIncomeForDeb
       const mine = await db.collection('songProjects').where('uid', '==', uid).limit(SONG_PROJECT_MAX + 1).get();
       if (mine.size >= SONG_PROJECT_MAX) fail('resource-exhausted', `project-max:${SONG_PROJECT_MAX}`);
       const ref = db.collection('songProjects').doc();
-      await ref.set({ uid, title, song: r.song, createdAtMs: t, updatedAtMs: t, studioHouseId: houseId });
+      await ref.set({ uid, title, song: songToDoc(r.song), createdAtMs: t, updatedAtMs: t, studioHouseId: houseId });
       return { ok: true, projectId: ref.id, created: true, updatedAtMs: t };
     }
-    await projRef(projectId).update({ title, song: r.song, updatedAtMs: t, studioHouseId: houseId });
+    await projRef(projectId).update({ title, song: songToDoc(r.song), updatedAtMs: t, studioHouseId: houseId });
     return { ok: true, projectId, updatedAtMs: t };
   }
 

@@ -19,6 +19,7 @@ import { drawGarageSceneBackground } from '../TuningGarageWorldScreen/TuningGara
 import InterviewPlayer from '../Broadcast/InterviewPlayer';
 import DrawingView from './DrawingView';
 import SongView from './SongView';
+import { songFromDoc } from '../../../functions/songData.js';
 import './PostAttachment.css';
 import { vehicleRaceLine } from '../RaceTrackScreen/CarStats';
 
@@ -541,7 +542,7 @@ export default function PostAttachment({ attachment, post = null }) {
   // v72 — "Resim Çiz": oyuncunun çizdiği tablo (fotoğraf gibi kare)
   // v92 — Şarkı Yap: oyuncunun yaptığı şarkı (bu cihazda sentezlenerek çalar)
   if (attachment.type === 'song') {
-    return <SongView song={attachment} post={post} />;
+    return <SongView song={songFromDoc(attachment)} post={post} />;
   }
 
   if (attachment.type === 'drawing') {

@@ -1383,6 +1383,23 @@ export function createHouseEngine(
         });
         if (pc) acts.push({ kind: 'stream', label: '🔴 Yayın aç', chairId: e.data.i, pcId: pc.data.i });
       }
+      // v99.1 — home ofis: mikser konsolunun yakınındaki (≤3,2 m) koltuktan da müzik yap
+      if (bizActs && !acts.some((a) => a.kind === 'ho')) {
+        const sp = seatWorld(self.seat, new THREE.Vector3());
+        let dev = null;
+        let dd = 3.2;
+        if (sp) {
+          objs.forEach((o) => {
+            if (!bizActs[o.data.k] || o.data.p !== 1) return;
+            const d = Math.hypot(o.data.x - sp.x, o.data.z - sp.z);
+            if (d < dd) {
+              dd = d;
+              dev = o;
+            }
+          });
+        }
+        if (dev) bizActs[dev.data.k].forEach((a) => acts.push({ kind: 'ho', act: a.act, label: a.label, itemId: dev.data.i }));
+      }
       return { id: self.seat.id, name: CATALOG_MAP[e.data.k].name, actions: acts };
     }
     if (self.target) return null;

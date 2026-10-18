@@ -10,7 +10,7 @@ import { createVenue, menuOf } from '../venue.js';
 import { createHomeOffice, buildSongAttachment } from '../homeOffice.js';
 import { BIZ_TYPES, BIZ_TYPE_KEYS, HOME_OFFICE_KEYS, BIZ_BY_REGION } from '../businessCatalogData.js';
 import { MESCIT_DAILY_LIMIT, SONG_PROJECT_MAX, songFileName } from '../homeOfficeData.js';
-import { emptySong } from '../songData.js';
+import { emptySong, sanitizeSong } from '../songData.js';
 
 class HttpsError extends Error {
   constructor(code, message) {
@@ -251,4 +251,23 @@ test('v99 sixtagram: şarkı kayıt olmadan doğrudan paylaşılır; projesi sil
   // oturum bitti + 31 dk → reddedilir
   const late = h.clock.now + 31 * 60 * 1000 + 60 * 1000;
   assert.match((await buildSongAttachment(h.db, 'ali', { type: 'song', houseId: id, song: songWith('Geç') }, late)).error, /stüdyolarında/);
+});
+
+test('v99.1 şarkı Firestore\'a iç içe dizisiz yazılır (proje + paylaşım eki)', async () => {
+  const nested = (v) => (Array.isArray(v) ? v.some((x) => Array.isArray(x) || nested(x)) : v && typeof v === 'object' ? Object.values(v).some(nested) : false);
+  const h = setup();
+  const id = await openBiz(h, 'studyo');
+  const mixer = h.G(`houses/${id}`).items.find((x) => x.k === 'mixer').i;
+  h.present('ali', id);
+  await h.act('ali', { op: 'netStart', houseId: id, itemId: mixer, expect: 200 });
+  const p = await h.act('ali', { op: 'songSave', houseId: id, song: songWith('Düz') });
+  assert.equal(nested(h.G(`songProjects/${p.projectId}`)), false);
+  // kayıtlı projeden tekrar yükleme + güncelleme çalışır
+  await h.act('ali', { op: 'songSave', houseId: id, projectId: p.projectId, song: songWith('Düz 2') });
+  const att = await buildSongAttachment(h.db, 'ali', { type: 'song', projectId: p.projectId }, h.clock.now);
+  assert.equal(att.song.title, 'Düz 2');
+  assert.equal(nested(att.song), false);
+  const inl = await buildSongAttachment(h.db, 'ali', { type: 'song', houseId: id, song: songWith('Satır') }, h.clock.now);
+  assert.equal(nested(inl.song), false);
+  assert.equal(sanitizeSong(inl.song).error, undefined);
 });
