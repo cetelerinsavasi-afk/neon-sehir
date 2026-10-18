@@ -157,8 +157,28 @@ function TrainingSection({ teamId, players, allPlayers, trainingPlayerIds, train
   useEffect(() => {
     shopAction({ op: 'gymEnsureGame' }).catch(() => {});
   }, []);
-  const gyms = useMemo(() => [...gymRows].sort((a, b) => gymPriceOf(a) - gymPriceOf(b) || Number(Boolean(a.bizGame)) - Number(Boolean(b.bizGame))), [gymRows]);
-  const [gymId, setGymId] = useState(null);
+  // v98: eşit fiyatta sıra sabit (id) — liste her açılışta değişmesin
+  const gyms = useMemo(
+    () => [...gymRows].sort((a, b) => gymPriceOf(a) - gymPriceOf(b) || Number(Boolean(a.bizGame)) - Number(Boolean(b.bizGame)) || String(a.id).localeCompare(String(b.id))),
+    [gymRows]
+  );
+  // v98: son seçilen salon hatırlanır (takım başına, bu cihazda); kapandıysa en ucuza düşer
+  const gymKey = `futbolGym_${teamId}`;
+  const [gymId, setGymIdRaw] = useState(() => {
+    try {
+      return localStorage.getItem(gymKey);
+    } catch {
+      return null;
+    }
+  });
+  const setGymId = (id) => {
+    setGymIdRaw(id);
+    try {
+      localStorage.setItem(gymKey, id);
+    } catch {
+      /* depolama kapalı — sadece bu oturumda hatırlanır */
+    }
+  };
   const gymSel = gyms.find((g) => g.id === gymId) || gyms[0] || null;
   const today = futbolDayKey(Date.now());
   const slotPaid = (pos) => trainingSlots?.[pos]?.dayKey === today;

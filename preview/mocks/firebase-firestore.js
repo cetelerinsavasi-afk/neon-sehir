@@ -50,7 +50,9 @@ function build(target) {
   }
   return q;
 }
-export function onSnapshot(target, next, onError) {
+export function onSnapshot(target, a, b, c) {
+  // gerçek SDK gibi: onSnapshot(ref, [options,] next, error)
+  const [next, onError] = typeof a === 'function' ? [a, b] : [b, c];
   let alive = true;
   let scheduled = false;
   const run = async () => {
@@ -58,7 +60,7 @@ export function onSnapshot(target, next, onError) {
     try {
       if (target.type === 'doc') {
         const s = await fakeDb.doc(target.path).get();
-        if (alive) next({ id: s.id, exists: () => s.exists, data: () => s.data() });
+        if (alive) next({ id: s.id, exists: () => s.exists, data: () => s.data(), metadata: { fromCache: false } });
       } else {
         const s = await build(target).get();
         const docs = s.docs.map((d) => ({ id: d.id, data: () => d.data() }));

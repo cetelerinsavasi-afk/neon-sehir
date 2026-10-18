@@ -41,7 +41,7 @@ export default function FutbolFutbolcu() {
   const { user } = useAuth();
   const uid = user?.uid;
   const { fb, loading } = useFootballer(uid);
-  const { data: contract } = useRealContract(uid);
+  const { data: contract, loading: contractLoading } = useRealContract(uid);
   const { data: team } = useFutbolTeamDoc(contract?.teamId || null);
   const { offers } = useMyProOffers(fb ? uid : null);
   const season = useCurrentFutbolSeason();
@@ -65,7 +65,9 @@ export default function FutbolFutbolcu() {
     }
   };
 
-  if (loading) return <p className="futbol-placeholder">Yükleniyor…</p>;
+  // v98: futbolcu ve sözleşme kaydı gelmeden (ya da ikisi henüz uyuşmuyorsa)
+  // ekran çizilmez — yoksa takımdaki oyuncu bir an "takımsız" görünüp yanlış karar verebiliyordu
+  if (loading || contractLoading || (fb?.teamId && !contract)) return <p className="futbol-placeholder">Yükleniyor…</p>;
   if (!fb || !fb.position) {
     return (
       <div className="fp-wrap">
@@ -106,17 +108,12 @@ export default function FutbolFutbolcu() {
         </div>
       </div>
 
+      {/* v98 sıra: lig maçı → günlük durum → sezon → sözleşme / ilan → teklifler */}
+      <DayCard day={fb.lastDay} season={season} playerId={playerId} />
+
       <StatusCard fb={fb} pro={pro} power={power} contract={contract} team={team} uid={uid} offers={offers.length} busy={busy} run={run} />
 
       {msg && <p className={`fp-msg${msg.ok ? ' ok' : ''}`}>{msg.text}</p>}
-
-      {pro && <OffersCard offers={offers} inTeam={inTeam} busy={busy} run={run} />}
-      {pro && !inTeam && <FreeAgentPanel fb={fb} busy={busy} run={run} />}
-      {contract && <ContractPanel contract={contract} busy={busy} run={run} />}
-
-      <DayCard day={fb.lastDay} season={season} playerId={playerId} />
-
-      {!inTeam && <PositionCard fb={fb} offers={offers.length} />}
 
       {stats && (
         <div className="fp-card">
@@ -130,6 +127,12 @@ export default function FutbolFutbolcu() {
           </div>
         </div>
       )}
+
+      {contract && <ContractPanel contract={contract} busy={busy} run={run} />}
+      {pro && !inTeam && <FreeAgentPanel fb={fb} busy={busy} run={run} />}
+      {!inTeam && <PositionCard fb={fb} offers={offers.length} />}
+
+      {pro && <OffersCard offers={offers} inTeam={inTeam} busy={busy} run={run} />}
     </div>
   );
 }

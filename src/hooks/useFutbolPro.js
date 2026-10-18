@@ -8,24 +8,28 @@ export const PRO_MIN_POWER = 200;
 
 function useDocData(path) {
   const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(Boolean(path));
+  const [loadedPath, setLoadedPath] = useState(null);
   useEffect(() => {
     if (!path) {
       setData(null);
-      setLoading(false);
+      setLoadedPath(null);
       return undefined;
     }
-    setLoading(true);
     return onSnapshot(
       doc(db, path),
+      { includeMetadataChanges: true },
       (s) => {
+        // v98: önbellekten gelen "kayıt yok" kesin değildir — sunucu cevabını bekle
+        if (!s.exists() && s.metadata.fromCache) return;
         setData(s.exists() ? { id: s.id, ...s.data() } : null);
-        setLoading(false);
+        setLoadedPath(path);
       },
-      () => setLoading(false)
+      () => setLoadedPath(path)
     );
   }, [path]);
-  return { data, loading };
+  // v98: yol değiştiği ilk anda da "yükleniyor" sayılır (eski / boş veri gösterilmez)
+  const loading = Boolean(path) && loadedPath !== path;
+  return { data: loading ? null : data, loading };
 }
 
 function useQueryDocs(key, build) {

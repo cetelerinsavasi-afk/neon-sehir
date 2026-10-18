@@ -14,9 +14,13 @@ export function useFootballer(uid) {
       setLoading(false);
       return undefined;
     }
+    setLoading(true);
     return onSnapshot(
       doc(db, 'footballers', uid),
+      { includeMetadataChanges: true },
       (s) => {
+        // v98: önbellekten gelen "kayıt yok" kesin değildir — sunucu cevabını bekle
+        if (!s.exists() && s.metadata.fromCache) return;
         setFb(s.exists() ? { id: s.id, ...s.data() } : null);
         setLoading(false);
       },

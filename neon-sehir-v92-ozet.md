@@ -273,3 +273,10 @@ Testler: 348/348 geçti.
 - **3D mekânlarda yürüme:** sinema perdesi gibi büyük set parçalarına (oturulamayan, 2,5 m'den geniş) dokununca arkasındaki zemine yürünüyor; yaklaşınca işlem butonu çıkıyor. Oturulan eşyalara dokunmak yine eşyaya götürüyor.
 
 **Yükleme:** `firebase deploy --only functions:dealOnNumaraCards,functions:onNumaraHit,functions:onNumaraStand,functions:onNumaraAutoStand,functions:pingRoom,functions:futbolProAction`, sonra push.
+
+## v98
+- **Antrenman salonu:** Takımım › Antrenman'da son seçilen salon hatırlanıyor (takım başına, bu cihazda). Eşit fiyatlı salonların sırası artık sabit.
+- **Futbolcu paneli sırası:** ad + güç → lig maçı / gün sonu → günlük durum (takım, maaş) → sezon → sözleşme (takımsızken ilan + mevki) → teklifler en altta.
+- **Yanlış yükleme düzeltmesi:** futbolcu ekranı, sözleşme kaydı gelmeden çiziliyordu; takımdaki oyuncu bir an (bağlantı yavaşsa uzun süre) "takımsız" görünüp ilana çık paneli çıkıyordu. Artık futbolcu + sözleşme kaydı gelene kadar "Yükleniyor…" görünür; telefon önbelleğinden gelen "kayıt yok" cevabı kesin sayılmaz, sunucu beklenir.
+
+**Yükleme:** sadece push (fonksiyon değişikliği yok).
