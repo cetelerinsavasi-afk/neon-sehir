@@ -2,12 +2,12 @@ import { lazy, Suspense, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useHouseList } from '../../hooks/useHouseList';
-import { useHomeOfficeList } from '../../hooks/useHomeOfficeList';
-import HomeOfficeOpen from '../HomeOffice/HomeOfficeOpen';
+import { useOfficeList } from '../../hooks/useOfficeList';
 import { houseAction } from '../../services/gameActions';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import { HOUSE_PRICE } from '../../../functions/houseCatalogData.js';
 import { BIZ_TYPES } from '../../../functions/businessCatalogData.js';
+import { houseKind, HOUSE_MIN_ITEMS, LEGACY_EMOJI } from '../../../functions/officeData.js';
 import './HouseScreen.css';
 import { useBackClose } from '../../lib/backStack';
 
@@ -17,18 +17,21 @@ const HouseScreen = lazy(() => import('./HouseScreen'));
 const PRIVACY_LABEL = { public: '🌐 Herkese açık', friends: '👥 Arkadaşlar', private: '🔒 Gizli' };
 
 export function HouseRow({ h, onEnter, mineRow }) {
+  const kind = houseKind(h);
+  const isOffice = kind === 'ofis';
+  const icon = isOffice ? h.office?.emoji || LEGACY_EMOJI[h.bizType] || '🏢' : h.bizType && BIZ_TYPES[h.bizType] ? BIZ_TYPES[h.bizType].icon : '';
   return (
-    <button className={`hh-row${mineRow ? ' mine' : ''}`} onClick={() => onEnter(h.id)}>
+    <button className={`hh-row${mineRow ? ' mine' : ''}${isOffice ? ' office' : ''}`} onClick={() => onEnter(h.id)}>
       <span className="hh-avatar">
         <AvatarSvg avatar={h.ownerAvatar} size={42} rounded />
       </span>
       <span className="hh-info">
         <b>
-          {h.bizType && BIZ_TYPES[h.bizType] ? `${BIZ_TYPES[h.bizType].icon} ` : ''}
+          {icon ? `${icon} ` : ''}
           {h.name || `${h.ownerName || 'Oyuncu'}'in Evi`}
         </b>
         <span>
-          {h.ownerName || 'Oyuncu'} · {h.bizType && BIZ_TYPES[h.bizType] ? BIZ_TYPES[h.bizType].label : PRIVACY_LABEL[h.privacy || 'public']}
+          {h.ownerName || 'Oyuncu'} · {isOffice ? 'Ofis' : h.bizType && BIZ_TYPES[h.bizType] ? BIZ_TYPES[h.bizType].label : PRIVACY_LABEL[h.privacy || 'public']}
           {h.invited && <em className="hh-invited"> · 💌 davetlisin</em>}
         </span>
       </span>
@@ -48,10 +51,26 @@ export default function HouseHub({ onClose, initialHouseId = null }) {
   const [houseId, setHouseId] = useState(initialHouseId);
   // v73 — evin içindeyken ev listesi dinlenmez (maliyet)
   const list = useHouseList({ enabled: Boolean(user) && !houseId });
-  // v95.3 — tek liste: üstte evler, altta home ofisler (sekme yok)
-  const [hoOpen, setHoOpen] = useState(false);
-  const hoList = useHomeOfficeList({ enabled: Boolean(user) && !houseId });
-  const myHouses = list.mine.filter((h) => !h.bizType);
+  // v100 — üç sekme: Ofisler (ücretli mobilyası olan) · Evler (10+ mobilya) · Depolar
+  const [tab, setTabState] = useState(() => {
+    try {
+      return localStorage.getItem('ns_househub_tab') || 'ofis';
+    } catch {
+      return 'ofis';
+    }
+  });
+  const setTab = (t) => {
+    setTabState(t);
+    try {
+      localStorage.setItem('ns_househub_tab', t);
+    } catch {
+      /* depolama kapalı */
+    }
+  };
+  const offices = useOfficeList({ enabled: Boolean(user) && !houseId && tab === 'ofis' });
+  const myHouses = list.mine.filter((h) => !h.bizType || houseKind(h) === 'ofis');
+  const mineOf = (k) => myHouses.filter((h) => houseKind(h) === k);
+  const enterableOf = (k) => list.enterable.filter((h) => houseKind(h) === k);
   const [buyOpen, setBuyOpen] = useState(false);
   const [buyName, setBuyName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -118,54 +137,53 @@ export default function HouseHub({ onClose, initialHouseId = null }) {
         {!user && <p className="hs-dim hh-empty">Evlere girmek için giriş yapmalısın.</p>}
         {msg && <p className={msg.ok ? 'hs-ok' : 'hs-err'}>{msg.text}</p>}
 
-        {user && myHouses.length > 0 && (
-          <>
-            <div className="hs-list-title">Evlerim</div>
-            {myHouses.map((h) => (
-              <HouseRow key={h.id} h={h} onEnter={setHouseId} mineRow />
-            ))}
-          </>
-        )}
-
         {user && (
-          <>
-            <div className="hs-list-title">Girebileceğin Evler</div>
-            {list.loading && <p className="hs-dim">Yükleniyor…</p>}
-            {!list.loading && list.enterable.length === 0 && (
-              <p className="hs-dim hh-empty">Şu an girebileceğin bir ev yok. Arkadaşlarının evlerine davet bekleyebilir ya da kendi evini alabilirsin.</p>
-            )}
-            {list.enterable.map((h) => (
-              <HouseRow key={h.id} h={h} onEnter={setHouseId} />
-            ))}
-          </>
-        )}
-
-        {user && (
-          <>
-            <div className="hs-list-title hh-ho-title">
-              <span>🏢 Home Ofisler</span>
-              <button className="hh-ho-open" onClick={() => setHoOpen(true)}>
-                Home Ofis Aç <span>+</span>
+          <div className="hh-tabs" role="tablist">
+            {[
+              ['ofis', '🏢 Ofisler'],
+              ['ev', '🏠 Evler'],
+              ['depo', '📦 Depolar'],
+            ].map(([k, label]) => (
+              <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
+                {label}
               </button>
-            </div>
-            {hoList.loading && <p className="hs-dim">Yükleniyor…</p>}
-            {!hoList.loading && hoList.list.length === 0 && <p className="hs-dim hh-empty">Henüz açık home ofis yok.</p>}
-            {hoList.list.map((h) => (
+            ))}
+          </div>
+        )}
+
+        {user && tab === 'ofis' && (
+          <>
+            {offices.loading && <p className="hs-dim">Yükleniyor…</p>}
+            {!offices.loading && offices.list.length === 0 && <p className="hs-dim hh-empty">Henüz ofis yok. Evine para kazandıran bir mobilya koyup ⚙️ Ayarlar › Ücretli Ürünler'den ücretli yaparsan burada görünür.</p>}
+            {offices.list.map((h) => (
               <HouseRow key={h.id} h={h} onEnter={setHouseId} mineRow={h.mine} />
             ))}
           </>
         )}
+
+        {user && tab !== 'ofis' && (
+          <>
+            {mineOf(tab).length > 0 && (
+              <>
+                <div className="hs-list-title">{tab === 'ev' ? 'Evlerim' : 'Depolarım'}</div>
+                {mineOf(tab).map((h) => (
+                  <HouseRow key={h.id} h={h} onEnter={setHouseId} mineRow />
+                ))}
+              </>
+            )}
+            <div className="hs-list-title">{tab === 'ev' ? 'Girebileceğin Evler' : 'Girebileceğin Depolar'}</div>
+            {list.loading && <p className="hs-dim">Yükleniyor…</p>}
+            {!list.loading && enterableOf(tab).length === 0 && (
+              <p className="hs-dim hh-empty">{tab === 'ev' ? 'Şu an girebileceğin bir ev yok.' : 'Şu an girebileceğin bir depo yok.'}</p>
+            )}
+            {enterableOf(tab).map((h) => (
+              <HouseRow key={h.id} h={h} onEnter={setHouseId} />
+            ))}
+            {tab === 'depo' && <p className="hs-dim hh-hint">📦 {HOUSE_MIN_ITEMS} mobilyadan azı olan evler depodur; {HOUSE_MIN_ITEMS}. mobilyada ev olur.</p>}
+          </>
+        )}
       </div>
 
-      {hoOpen && (
-        <HomeOfficeOpen
-          onClose={() => setHoOpen(false)}
-          onEnter={(id) => {
-            setHoOpen(false);
-            setHouseId(id);
-          }}
-        />
-      )}
       {buyOpen && (
         <div className="hs-modal-bg" onClick={() => !busy && setBuyOpen(false)}>
           <div className="hs-modal hh-buy-modal" onClick={(e) => e.stopPropagation()}>

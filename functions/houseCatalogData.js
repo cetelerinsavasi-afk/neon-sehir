@@ -44,7 +44,7 @@ export const ITEM_PRICES = {
   plantb: g(12000), plants: g(2000), palm: g(24000), rug: g(40000), rugr: g(20000), lamp: g(15000), painting: g(8000),
   bookshelf: g(32000), neon1: g(40000), neon2: g(50000), neon3: g(30000), neon4: g(20000), window: z(1), fanc: g(10000),
   // v92 — manzaralı pencereler
-  win_yol: z(1), win_sehir: g(40000), win_deniz: g(40000), win_orman: g(40000), win_dag: g(40000), win_kuzey: z(1), win_bogaz: z(1), win_uzay: z(1),
+  win_yol: z(1), win_sehir: g(40000), win_deniz: g(40000), win_orman: g(40000), win_dag: g(40000), win_kuzey: z(1), win_bogaz: z(1), win_uzay: z(1), win_kafe: g(40000),
   rugkilim: g(30000), rugshag: g(25000), rugrunner: g(15000), ruggeo: g(35000),
   painting2: g(12000), painting3: g(10000), triptych: z(1), cityframe: g(18000), graffiti: z(1), goldrecords: z(2),
   clock: g(12000), wallshelf: g(10000), curtain: g(20000), vase: g(9000), trash: g(3000), extinguisher: g(5000),
@@ -63,7 +63,7 @@ export const ITEM_PRICES = {
   fence: g(8000), parkbench: g(20000), streetlamp: g(30000), turf: g(25000),
   // v92 — DEKOR ATÖLYESİ
   // Müzik stüdyosu
-  mixer: g(90000), studiospk: g(25000), vocalmic: g(15000), drums: z(3), amp: g(45000), synth: g(60000), booth: z(4), onair: g(12000),
+  mixer: z(7), studiospk: g(25000), vocalmic: g(15000), drums: z(3), amp: g(45000), synth: g(60000), booth: g(90000), onair: g(12000),
   neon_acik: g(30000),
   // Hapishane
   bars: g(8000), celldoor: g(15000), bunk: g(30000), guarddesk: g(45000), canteen: g(35000), searchlight: g(40000), wire: g(6000), interrog: g(30000),
@@ -115,15 +115,21 @@ export function surfacePrice(type, key) {
 export const FLOOR_TILE_KEYS = ['otopark', 'asfalt', 'yol', 'cim', 'tarla', 'kum', 'kaldirim', 'cakil', 'kar', 'havuz_karo', 'spor_zemin', 'metal_izgara', 'dans_pisti', 'su'];
 export const WALL_PANEL_KEYS = [
   'gokyuzu', 'gunbatimi', 'gece', 'deniz', 'neon_sehir', 'uzanan_yol', 'tarla_ufku', 'orman', 'daglar', 'col', 'uzay',
-  'grafiti', 'beton_blok', 'kogus', 'sabika', 'akustik', 'yesil_perde',
+  'grafiti', 'beton_blok', 'kogus', 'sabika', 'akustik', 'yesil_perde', 'kumsal',
 ];
 const TILE_SPECIAL = { dans_pisti: 3000, su: 2500, havuz_karo: 2000, otopark: 2000, yol: 2000 };
-const PANEL_MURAL = ['gokyuzu', 'gunbatimi', 'gece', 'deniz', 'neon_sehir', 'uzanan_yol', 'tarla_ufku', 'orman', 'daglar', 'col', 'uzay'];
+const PANEL_MURAL = ['gokyuzu', 'gunbatimi', 'gece', 'deniz', 'neon_sehir', 'uzanan_yol', 'tarla_ufku', 'orman', 'daglar', 'col', 'uzay', 'kumsal'];
 FLOOR_TILE_KEYS.forEach((k) => {
   ITEM_PRICES[`zp_${k}`] = g(TILE_SPECIAL[k] || 1500);
 });
 WALL_PANEL_KEYS.forEach((k) => {
   ITEM_PRICES[`dp_${k}`] = g(PANEL_MURAL.includes(k) ? 4000 : 3000);
+});
+// v100 — gökyüzü tavan parçaları (2 m × 2 m)
+export const CEIL_TILE = 2;
+export const CEIL_TILE_KEYS = ['gunesli', 'bulutlu', 'gunbatimi', 'gece', 'yildizli', 'kuzey'];
+CEIL_TILE_KEYS.forEach((k) => {
+  ITEM_PRICES[`tv_${k}`] = g(8000);
 });
 
 export const SURFACE_KEYS = {
@@ -166,6 +172,9 @@ export const HOUSE_PRODUCTS = {
   makarna: { label: 'Makarna', emoji: '🍝' },
   simit: { label: 'Simit', emoji: '🥯' },
   misir: { label: 'Patlamış Mısır', emoji: '🍿' },
+  // v100 — büfe kulübesi
+  tost: { label: 'Tost', emoji: '🥪' },
+  sosisli: { label: 'Sosisli', emoji: '🌭' },
   tabanca: { label: 'Tabanca', emoji: '🔫' },
   tufek: { label: 'Tüfek', emoji: '🔫' },
   pompali: { label: 'Pompalı', emoji: '🔫' },
@@ -195,6 +204,7 @@ export const HOUSE_TAKEABLES = {
   vegbed: ['meyve'],
   gunrack: ['tabanca', 'tufek', 'pompali'],
   gunrackg: ['altinTabanca'],
+  bufe: ['tost', 'sosisli', 'ayran', 'cay'],
 };
 
 export function priceOf(k) {

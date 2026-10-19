@@ -50,6 +50,7 @@ export const TAX_SOURCES = {
   fabrika: 'Fabrika üretimi (%1–%40, kademeli)',
   yayin: 'Yayın bağışı (%10)',
   sanatci: 'Şarkı desteği (%10)', // v93
+  ofis: 'Ofis geliri — ücretli mobilyalar (%10)', // v100
 };
 
 // Vergi kaydı. YAZMA (transaction ya da batch). amount ≤ 0 ise yazmaz.

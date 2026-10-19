@@ -40,6 +40,7 @@ import {
   SONG_PLAY_MAX_PER_USER,
   SONG_TIP_AMOUNTS,
   SONG_TIP_DAILY,
+  SONG_TIP_PER_SONG,
   SONG_TIP_TAX_RATE,
   SONG_TIP_NOTE_MAX,
 } from './homeOfficeData.js';
@@ -140,7 +141,8 @@ export function createHomeOffice({ db, FieldValue, HttpsError, splitIncomeForDeb
   async function studioSessionOk(uid, houseId) {
     if (!isId(houseId)) return false;
     const [ss, hs] = await Promise.all([db.collection('netSessions').doc(`${houseId}_${uid}`).get(), houseRef(houseId).get()]);
-    if (!hs.exists || hs.data().biz?.type !== 'studyo') return false;
+    // v100: stüdyo artık işletme türü değil — mikser konsolu olan her ev
+    if (!hs.exists || !(hs.data().items || []).some((it) => it.k === 'mixer' && it.p === 1)) return false;
     const s = ss.exists ? ss.data() : null;
     if (!s || s.deviceKey !== 'mixer') return false;
     return Number(s.creditUntilMs || 0) + STUDIO_SAVE_GRACE_MS > now();
@@ -222,8 +224,11 @@ export function createHomeOffice({ db, FieldValue, HttpsError, splitIncomeForDeb
       const t = now();
       const dayKey = midnightDayKey(t);
       const tipRef = db.collection('songTips').doc(`${dayKey}_${uid}_${artist}`);
-      const [us, as, ts] = await Promise.all([tx.get(userRef(uid)), tx.get(userRef(artist)), tx.get(tipRef)]);
+      const songRef = db.collection('songTipPosts').doc(`${postId}_${uid}`);
+      const [us, as, ts, ss] = await Promise.all([tx.get(userRef(uid)), tx.get(userRef(artist)), tx.get(tipRef), tx.get(songRef)]);
       const given = Number(ts.exists ? ts.data().amount || 0 : 0);
+      const onSong = Number(ss.exists ? ss.data().amount || 0 : 0);
+      if (onSong + amount > SONG_TIP_PER_SONG) fail('failed-precondition', `tip-song-limit:${onSong}`);
       if (given + amount > SONG_TIP_DAILY) fail('failed-precondition', `tip-limit:${given}`);
       if (Number(us.data()?.gold || 0) < amount) fail('failed-precondition', 'gold');
       if (!as.exists) fail('not-found', 'Sanatçı bulunamadı.');
@@ -233,6 +238,7 @@ export function createHomeOffice({ db, FieldValue, HttpsError, splitIncomeForDeb
       tx.update(userRef(artist), { gold: FieldValue.increment(goldDelta), debtToState: FieldValue.increment(debtDelta), goldTag: goldTag('sanatci') });
       taxLedgerWrite(tx, db, FieldValue, { amount: tax, source: 'sanatci', uid: artist, atMs: t, ref: postId });
       tx.set(tipRef, { dayKey, uid, artist, amount: FieldValue.increment(amount), updatedAtMs: t }, { merge: true });
+      tx.set(songRef, { postId, uid, amount: FieldValue.increment(amount), expiresAtMs: Number(ps.data().expiresAtMs || 0) || t + 30 * 864e5, updatedAtMs: t }, { merge: true });
       tx.update(postRef, { tips: FieldValue.increment(amount), tipCount: FieldValue.increment(1), commentCount: FieldValue.increment(1) });
       tx.set(postRef.collection('comments').doc(), {
         uid,
@@ -250,7 +256,7 @@ export function createHomeOffice({ db, FieldValue, HttpsError, splitIncomeForDeb
         read: false,
         type: 'song_tip',
       });
-      result = { ok: true, amount, given: given + amount, limit: SONG_TIP_DAILY };
+      result = { ok: true, amount, given: given + amount, limit: SONG_TIP_DAILY, onSong: onSong + amount, songLimit: SONG_TIP_PER_SONG };
     });
     return result;
   }
@@ -262,9 +268,10 @@ export function createHomeOffice({ db, FieldValue, HttpsError, splitIncomeForDeb
     const plays = await db.collection('songPlays').where('expiresAtMs', '<', t).limit(300).get();
     const today = midnightDayKey(t);
     const tips = await db.collection('songTips').where('dayKey', '<', today).limit(300).get();
+    const songTips = await db.collection('songTipPosts').where('expiresAtMs', '<', t).limit(300).get();
     const batch = db.batch();
-    [...old.docs, ...plays.docs, ...tips.docs].forEach((d) => batch.delete(d.ref));
-    if (old.size || plays.size || tips.size) await batch.commit();
+    [...old.docs, ...plays.docs, ...tips.docs, ...songTips.docs].forEach((d) => batch.delete(d.ref));
+    if (old.size || plays.size || tips.size || songTips.size) await batch.commit();
     return { projects: old.size, plays: plays.size, tips: tips.size };
   }
 

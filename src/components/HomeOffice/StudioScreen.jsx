@@ -170,7 +170,15 @@ export default function StudioScreen({ houseId, price, isOwner, onClose, flash }
         const r = await shopAction({ op: 'netTick', houseId });
         if (r.stopped && r.stopped !== 'none') {
           setStopped(r.stopped);
-          await closeWith(r.stopped === 'gold' ? '💰 Altının bitti — projen kaydedildi, stüdyo kapandı.' : '🎛️ Stüdyo süren bitti — projen kaydedildi.');
+          await closeWith(
+            r.stopped === 'gold'
+              ? '💰 Altının bitti — projen kaydedildi, stüdyo kapandı.'
+              : r.stopped === 'limit'
+                ? '🎛️ Bugün burada harcama sınırına (10.000) ulaştın — projen kaydedildi.'
+                : r.stopped === 'closed'
+                  ? '🎛️ Sahip mikseri kapattı — projen kaydedildi.'
+                  : '🎛️ Stüdyo süren bitti — projen kaydedildi.'
+          );
         } else if (r.charged) flash?.(`🎛️ Yeni dakika: −${fmt(r.charged)} altın`);
       } catch {
         /* bir sonraki nabızda */

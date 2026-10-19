@@ -30,8 +30,10 @@ export const SONG_PROJECT_MAX = 5;
 export const SONG_PLAY_MAX_PER_USER = 5;
 export const SONG_PLAY_MIN_SEC = 3; // en az bu kadar dinlenince sayılır (istemci)
 // Destek (bağış): 10 / 100 / 1000 · bir oyuncu bir sanatçıya günde en fazla 1.000
-export const SONG_TIP_AMOUNTS = [10, 100, 1000];
-export const SONG_TIP_DAILY = 1000;
+// v100 — destek: bir şarkıya oyuncu başı en fazla 5.000; bir sanatçının tüm şarkılarına günde 10.000
+export const SONG_TIP_AMOUNTS = [100, 500, 1000, 5000];
+export const SONG_TIP_DAILY = 10_000;
+export const SONG_TIP_PER_SONG = 5_000;
 export const SONG_TIP_TAX_RATE = 0.1;
 // v99.2 — destekle birlikte yazılan not (yorum olarak görünür)
 export const SONG_TIP_NOTE_MAX = 120;

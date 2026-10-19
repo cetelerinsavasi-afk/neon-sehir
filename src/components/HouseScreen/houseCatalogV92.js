@@ -719,7 +719,7 @@ function I(k, cat, name, icon, build, opts = {}) {
 I('mixer', 'studyo', 'Mikser Konsolu', '🎛️', (g) => {
   B(g, 1.9, 0.74, 0.85, '#2b2f3a');
   const p = sub(g, 0, 0.78, 0.04);
-  p.rotation.x = -0.28;
+  p.rotation.x = 0.28; // v100: konsol bize doğru eğik (uzak kenar yukarıda)
   B(p, 1.84, 0.06, 0.72, '#3a3f4d');
   for (let i = 0; i < 14; i++) {
     B(p, 0.05, 0.05, 0.22, '#dfe6ee', -0.8 + i * 0.123, 0.06, 0.12);
@@ -797,13 +797,16 @@ I('booth', 'studyo', 'Vokal Kabini', '🚪', (g) => {
   B(g, 1.9, 2.2, 0.06, f, 0, 0.05, -0.93);
   B(g, 0.06, 2.2, 1.9, f, -0.93, 0.05, 0);
   B(g, 0.04, 2.2, 1.9, K('#9fe7ff', { op: 0.22 }), 0.95, 0.05, 0);
-  B(g, 1.2, 2.2, 0.04, K('#9fe7ff', { op: 0.22 }), 0.35, 0.05, 0.95);
-  B(g, 1.95, 0.08, 1.95, '#1b1c20', 0, 2.25, 0);
+  // v100: kabine girilebilir — önde geniş kapı aralığı, tavan cam
+  B(g, 0.9, 2.2, 0.04, K('#9fe7ff', { op: 0.22 }), 0.5, 0.05, 0.95);
+  B(g, 1.95, 0.05, 1.95, K('#9fe7ff', { op: 0.18 }), 0, 2.25, 0);
+  for (const [a, b] of [[0, -0.95], [0, 0.95]]) B(g, 1.95, 0.08, 0.08, '#1b1c20', a, 2.25, b);
+  for (const a of [-0.95, 0.95]) B(g, 0.08, 0.08, 1.95, '#1b1c20', a, 2.25, 0);
   Cy(g, 0.18, 0.03, '#222', 0, 0.06, -0.2);
   Cy(g, 0.02, 1.3, '#aaa', 0, 0.06, -0.2);
   Sp(g, 0.07, '#c0c6d0', 0, 1.42, -0.12);
   B(g, 0.3, 0.12, 0.06, '#ff2e5a', -0.6, 1.9, 0.97, { e: '#ff2e5a', ei: 0.8 });
-}, { boxes: [[0, -0.95, 1.0, 0.06], [-0.95, 0, 0.06, 1.0], [0.95, 0, 0.06, 1.0], [0.35, 0.95, 0.6, 0.05]] });
+}, { boxes: [[0, -0.95, 1.0, 0.06], [-0.95, 0, 0.06, 1.0], [0.95, 0, 0.06, 1.0], [0.5, 0.95, 0.45, 0.05]] });
 I('onair', 'studyo', 'ON AIR Lambası', '🔴', (g) => {
   Cy(g, 0.18, 0.04, '#222');
   Cy(g, 0.03, 1.5, '#333', 0, 0.04, 0);
@@ -991,20 +994,29 @@ I('poolout', 'havuz', 'Açık Yüzme Havuzu', '🏊', (g) => {
   }
   return { tick(t) { wm.material.map.offset.set(t * 0.03, t * 0.02); } };
 }, { flat: true, nobox: true });
-I('lounger', 'havuz', 'Şezlong', '🏖️', (g) => {
+I('lounger', 'havuz', 'Şezlong', '🏖️', (g, ctx) => {
+  const cu = ctx.tint ? ctx.tint.c : '#2ec4b6';
   for (const a of [-0.25, 0.25]) for (const b of [-0.8, 0.6]) B(g, 0.04, 0.25, 0.04, '#e5e7eb', a, 0, b);
   B(g, 0.56, 0.06, 1.3, '#e5e7eb', 0, 0.25, 0.12);
-  B(g, 0.52, 0.08, 1.22, '#2ec4b6', 0, 0.31, 0.12);
-  const bk = sub(g, 0, 0.3, -0.55);
-  bk.rotation.x = -0.9;
-  B(bk, 0.52, 0.08, 0.6, '#2ec4b6', 0, 0, -0.3);
-}, { box: [0.3, 0.75], seats: [[0, 0.42, 0.2]] });
-I('umbrella', 'havuz', 'Plaj Şemsiyesi', '⛱️', (g) => {
+  B(g, 0.52, 0.08, 1.22, cu, 0, 0.31, 0.12);
+  // v100: baş dayama yukarı kalkık (eskiden yere doğru iniyordu)
+  const bk = sub(g, 0, 0.33, -0.5);
+  bk.rotation.x = 0.85;
+  B(bk, 0.56, 0.05, 0.66, '#e5e7eb', 0, -0.04, -0.33);
+  B(bk, 0.52, 0.08, 0.62, cu, 0, 0, -0.31);
+}, { box: [0.3, 0.75], seats: [[0, 0.42, 0.2]], tints: 'lounger' });
+I('umbrella', 'havuz', 'Plaj Şemsiyesi', '⛱️', (g, ctx) => {
   Cy(g, 0.18, 0.06, '#e5e7eb');
   Cy(g, 0.025, 2.1, '#ddd');
-  const tx = T('umbrella');
+  const uc = ctx.tint ? ctx.tint.c : '#ff4d5e';
+  const tx = uc === '#ff4d5e' ? T('umbrella') : labelTexture(`v100_umb_${uc}`, 256, 32, (x) => {
+    for (let i = 0; i < 8; i++) {
+      x.fillStyle = i % 2 ? '#fff' : uc;
+      x.fillRect(i * 32, 0, 32, 32);
+    }
+  });
   add(g, new THREE.ConeGeometry(0.95, 0.4, 16, 1, true), K('#fff', { map: tx, side: 1 }), 0, 2.1, 0);
-}, { box: [0.1, 0.1] });
+}, { box: [0.1, 0.1], tints: 'umbrella' });
 I('diveboard', 'havuz', 'Tramplen', '🤸', (g) => {
   B(g, 0.5, 0.5, 0.4, '#cbd5e1', 0, 0, -0.75);
   const b = B(g, 0.42, 0.06, 1.6, '#3fb2ea', 0, 0.5, 0.1);
@@ -1263,6 +1275,21 @@ I('streamdesk', 'yayin', 'Yayıncı Masası', '🖥️', (g) => {
 
 // ── Mafya
 // Patron Masası: renk seçenekleri (masa ahşabı + sandalye döşemesi + lamba)
+// v100 — renk seçenekleri (her listenin ilki eşyanın eski görünümü)
+const BRIGHT = [
+  ['Turkuaz', '#2ec4b6'], ['Kırmızı', '#e3122d'], ['Mavi', '#2f7fe0'], ['Sarı', '#ffc23d'], ['Turuncu', '#ff7a2e'], ['Pembe', '#ff5fa2'],
+  ['Yeşil', '#3cb371'], ['Koyu Yeşil', '#2e5e3a'], ['Mor', '#8a4fd0'], ['Lacivert', '#1f2a48'], ['Beyaz', '#f2f2ee'], ['Siyah', '#1b1b1d'], ['Gri', '#7c7f86'],
+];
+const palette = (first) => {
+  const f = BRIGHT.find(([, c]) => c === first);
+  return [f, ...BRIGHT.filter((x) => x !== f)].map(([n, c]) => ({ n, c }));
+};
+export const V92_TINTS = {
+  lounger: palette('#2ec4b6'),
+  umbrella: [{ n: 'Kırmızı', c: '#ff4d5e' }, ...palette('#2ec4b6').filter((t) => !['#f2f2ee', '#e3122d'].includes(t.c))],
+  trashbin: palette('#2e5e3a'),
+};
+
 export const BOSSTABLE_TINTS = [
   { n: 'Ceviz & Bordo', c: '#3d1d07', s: '#5a0a1a', l: '#1f5a3a' },
   { n: 'Siyah & Altın', c: '#141416', s: '#c9a227', l: '#141416' },
@@ -2000,21 +2027,50 @@ I('salincak', 'dis', 'Salıncak', '🎠', (g) => {
   return { tick(t) { seats.forEach((s, i) => (s.rotation.x = Math.sin(t * 1.8 + i) * 0.08)); }, on: true, setOn() {}, noToggle: true };
 }, { boxes: [[-1.1, 0, 0.08, 0.45], [1.1, 0, 0.08, 0.45]], seats: [[-0.5, 0.58, 0.05], [0.5, 0.58, 0.05]] });
 I('bufe', 'dis', 'Büfe Kulübesi', '🌭', (g) => {
-  B(g, 2.2, 2.3, 1.4, '#f4f1e8', 0, 0, -0.1);
-  B(g, 2.0, 0.9, 0.05, '#1a1a1a', 0, 1.05, 0.62, { op: 0.35 });
+  // v100: içi boş kulübe — açık satış penceresi, içeride büfeci (HouseScreen) ve raflar
+  const wall = '#f4f1e8';
+  B(g, 2.2, 2.3, 0.06, wall, 0, 0, -0.77);
+  for (const s of [-1, 1]) B(g, 0.06, 2.3, 1.4, wall, s * 1.07, 0, -0.1);
+  B(g, 2.2, 0.08, 1.4, '#e3ddd0', 0, 2.3, -0.1);
+  B(g, 2.08, 0.02, 1.28, '#8a7a66', 0, 0.01, -0.1);
+  B(g, 2.2, 1.0, 0.06, wall, 0, 0, 0.57);
+  B(g, 2.2, 0.28, 0.06, wall, 0, 2.02, 0.57);
+  // arka raf: çay ocağı, ayran, tost makinesi
+  B(g, 1.9, 0.04, 0.3, '#b9925e', 0, 1.15, -0.6);
+  B(g, 1.9, 0.04, 0.3, '#b9925e', 0, 1.55, -0.6);
+  Cy(g, 0.11, 0.3, '#c0c6d0', -0.6, 1.19, -0.6, { m: 0.8, r: 0.25 }, 14);
+  Cy(g, 0.08, 0.22, '#c0c6d0', -0.6, 1.49, -0.6, { m: 0.8, r: 0.25 }, 12);
+  for (let i = 0; i < 5; i++) Cy(g, 0.035, 0.12, '#f7f7f2', 0.1 + i * 0.1, 1.59, -0.6, null, 10);
+  B(g, 0.36, 0.14, 0.26, '#2b2d33', 0.65, 1.19, -0.6, { m: 0.5 });
+  B(g, 0.32, 0.03, 0.22, '#555', 0.65, 1.33, -0.6, { m: 0.6 });
   B(g, 2.3, 0.08, 0.5, '#d6dde6', 0, 1.0, 0.75);
   const aw = sub(g, 0, 2.15, 0.65);
   aw.rotation.x = 0.35;
   for (let i = 0; i < 8; i++) B(aw, 0.29, 0.03, 0.7, i % 2 ? '#fff' : '#e3122d', -1.0 + i * 0.29, 0, 0.3);
   B(g, 2.2, 0.36, 0.06, '#ffcf33', 0, 2.38, 0.55);
   Pl(g, 2.1, 0.3, K('#fff', { map: T('bufe'), e: '#fff', ei: 0.5 }), 0, 2.56, 0.585);
-  for (let i = 0; i < 4; i++) B(g, 0.14, 0.24, 0.14, ['#c4161c', '#2b6cb0', '#ffd23f', '#2e8b57'][i], -0.6 + i * 0.4, 1.08, 0.75);
+  // tezgâhta: tost, sosisli, ayran, çay
+  const tost = sub(g, -0.75, 1.08, 0.78, 0.4);
+  B(tost, 0.2, 0.025, 0.2, '#e8b45a');
+  B(tost, 0.19, 0.02, 0.19, '#ffd25a', 0, 0.025, 0);
+  B(tost, 0.2, 0.025, 0.2, '#d99a42', 0, 0.045, 0);
+  const sos = sub(g, -0.3, 1.08, 0.78, -0.3);
+  Cy(sos, 0.05, 0.22, '#e8b45a', 0, -0.06, 0, null, 10).rotation.z = PI / 2;
+  Cy(sos, 0.03, 0.26, '#b5452a', 0, -0.05, 0, null, 10).rotation.z = PI / 2;
+  B(sos, 0.2, 0.012, 0.02, '#ffd23f', 0, 0.105, 0);
+  Cy(g, 0.045, 0.13, '#f7f7f2', 0.2, 1.08, 0.78, null, 12, 0.055);
+  Cy(g, 0.046, 0.025, '#2b6cb0', 0.2, 1.17, 0.78, null, 12);
+  Cy(g, 0.06, 0.012, '#f7f7f2', 0.62, 1.08, 0.78, null, 14);
+  Cy(g, 0.028, 0.1, K('#b8461c', { op: 0.85 }), 0.62, 1.092, 0.78, null, 10, 0.038);
+  return { light: { x: 0, y: 2.0, z: -0.1, color: '#ffe2a8', intensity: 1, distance: 3 }, on: true, setOn() {}, noToggle: true };
 }, { box: [1.15, 1.0] });
-I('copkutusu', 'dis', 'Park Çöp Kutusu', '🗑️', (g) => {
-  Cy(g, 0.25, 0.85, '#2e5e3a', 0, 0, 0, { m: 0.3 }, 16);
-  Cy(g, 0.27, 0.06, '#1d3d26', 0, 0.85, 0, { m: 0.3 }, 16);
+I('copkutusu', 'dis', 'Park Çöp Kutusu', '🗑️', (g, ctx) => {
+  const bc = ctx.tint ? ctx.tint.c : '#2e5e3a';
+  const lid = ctx.tint ? `#${new THREE.Color(bc).multiplyScalar(0.65).getHexString()}` : '#1d3d26';
+  Cy(g, 0.25, 0.85, bc, 0, 0, 0, { m: 0.3 }, 16);
+  Cy(g, 0.27, 0.06, lid, 0, 0.85, 0, { m: 0.3 }, 16);
   Cy(g, 0.03, 0.06, '#888', 0, 0.91, 0);
-}, { box: [0.25, 0.25] });
+}, { box: [0.25, 0.25], tints: 'trashbin' });
 I('guvercin', 'dis', 'Güvercinler', '🐦', (g) => {
   const r = rng('guv');
   const birds = [];

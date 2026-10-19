@@ -37,6 +37,7 @@ export const ROOM = { W: 18, D: 14, H: 3.4 };
 const { W, D, H } = ROOM;
 const SNAP = 0.25;
 const PLAYER_R = 0.3;
+const WATER_SINK = 0.5; // v100: suya girince figür bu kadar aşağı iner
 const WALK_SPEED = 3.0;
 const MAX_ITEMS = 400; // v92: parça zemin/duvar panelleri için 300 → 400
 const AV_UNIT = 1.75 / 507; // avatar SVG birimi → metre (figür ~507 birim = 1.75 m)
@@ -457,6 +458,8 @@ class AvatarFigure {
     // kaydırılınca kenardaki figürler yan yatmış gibi görünmesin)
     const bbYaw = camera.userData.billboardYaw;
     const ang = bbYaw != null ? bbYaw : Math.atan2(camera.position.x - this.x, camera.position.z - this.z);
+    // v100 — su zemin parçasında yürürken bel hizasına kadar suya gömülür
+    this.sinkCur = (this.sinkCur || 0) + ((seatPos ? 0 : this.sink || 0) - (this.sinkCur || 0)) * Math.min(1, dt * 5);
     // hareket animasyonu (dans, el sallama...)
     let tilt = 0;
     let lift = 0;
@@ -525,8 +528,8 @@ class AvatarFigure {
       this.plane.position.y = topY - AV_PLANE_H / 2 + lift;
       this.shadow.visible = false;
     } else {
-      this.plane.position.y = AV_PLANE_H / 2 - AV_FEET + lift;
-      this.shadow.visible = true;
+      this.plane.position.y = AV_PLANE_H / 2 - AV_FEET + lift - (this.sinkCur || 0);
+      this.shadow.visible = (this.sinkCur || 0) < 0.05;
     }
     this.bubbles = this.bubbles.filter((b) => {
       if (now > b.until) {
@@ -694,6 +697,7 @@ export function createHouseEngine(
   owned.push(stripMat);
   const ceilLights = [];
   let outdoor = false; // v92 Faz 8: park gibi açık hava mekânı (tavan yok)
+  let lastCeilView; // v100 — tavan parçaları için son görünüm
   for (let x = -6; x <= 6; x += 6) {
     for (let z = -4; z <= 4; z += 8) {
       const b = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.05, 0.3), stripMat);
@@ -988,6 +992,13 @@ export function createHouseEngine(
   const cellZ = (z) => clamp(Math.floor(z + D / 2), 0, D - 1) + 0.5 - D / 2;
   function normalizePlacement(data) {
     const def = CATALOG_MAP[data.k];
+    if (def?.tile === 'ceil') {
+      // v100 — gökyüzü tavan parçası: 2 m'lik ızgaraya oturur
+      data.r = 0;
+      data.x = clamp(Math.floor((data.x + W / 2) / 2), 0, Math.floor(W / 2) - 1) * 2 + 1 - W / 2;
+      data.z = clamp(Math.floor((data.z + D / 2) / 2), 0, Math.floor(D / 2) - 1) * 2 + 1 - D / 2;
+      return;
+    }
     if (def?.tile === 'floor') {
       // zemin parçası: döndürülmez, 1 m hücreye oturur
       data.r = 0;
@@ -1048,9 +1059,10 @@ export function createHouseEngine(
       if (ctl?.setOn) ctl.setOn(false);
     }
     obj.traverse((o) => {
-      o.userData.itemId = data.i;
+      if (!o.userData.noPick) o.userData.itemId = data.i; // v100: tavandaki gök seçimi engellemesin
     });
     obj.userData.itemId = data.i;
+    if (CATALOG_MAP[data.k]?.tile === 'ceil') ctl?.setCeil?.(ceilView());
     scene.add(obj);
     const entry = { obj, data: { ...data }, sig: sigOf(data) };
     applyTransform(entry);
@@ -1125,6 +1137,10 @@ export function createHouseEngine(
   }
 
   const overhead = () => mode === 'build' || view === '2d';
+  // v100 — tavan parçası görünümü: true = tavanda gök, false = yerde iz, null = hiç (açık hava)
+  function ceilView() {
+    return outdoor ? null : !(mode === 'build' || view === '2d');
+  }
   function updateWalls() {
     const p = camera.position;
     walls.forEach((w) => {
@@ -1151,6 +1167,13 @@ export function createHouseEngine(
     });
     const showCeil = !overhead() && !outdoor;
     ceiling.visible = showCeil;
+    const cv = ceilView();
+    if (cv !== lastCeilView) {
+      lastCeilView = cv;
+      objs.forEach((e) => {
+        if (CATALOG_MAP[e.data.k]?.tile === 'ceil') e.obj.userData.ctl?.setCeil?.(cv);
+      });
+    }
     ceilLights.forEach((o) => {
       if (o.isMesh) o.visible = showCeil;
     });
@@ -1898,11 +1921,13 @@ export function createHouseEngine(
       panBy(dx, dy);
     } else if (drag.type === 'look' && drag.moved > 6) {
       if (view === '2d') {
-        if (drag.rot) {
-          // fare sağ tuşu: çevir / eğ
+        // v100 — tasarla modundaki gibi: tek parmak/sol tık kamerayı çevirir ve eğer;
+        // iki parmak (ya da fare sağ tuşu) kaydırır, parmak açıp kapatmak yakınlaştırır.
+        if (drag.rot) topPan(dx, dy);
+        else {
           top.az -= dx * 0.006;
           top.el = clamp(top.el + dy * 0.004, 0.55, 1.45);
-        } else topPan(dx, dy); // v92 — tek parmak: haritayı kaydır
+        }
       } else if (view === 'fp') {
         // göz görüşü: parmak hangi yöne kayarsa o yöne dönülür (sağa kaydır → sağa dön)
         self.camYaw -= dx * 0.005;
@@ -2140,8 +2165,11 @@ export function createHouseEngine(
       // eksen değiştiriyordu → açı değiştirirken görüntü sıçrıyordu)
       const ca = Math.abs(Math.cos(topCur.az));
       const sa = Math.abs(Math.sin(topCur.az));
-      const tx = lim(topFree.on ? topFree.x : px, ca * halfW + sa * halfD, W);
-      const tz = lim(topFree.on ? topFree.z : pz, sa * halfW + ca * halfD, D);
+      // v100 — serbest kamerada (kaydırınca) tasarla modundaki gibi odanın her yerine
+      // bakılabilir; görüş alanı odadan büyük olsa da kilitlenmez (eskiden geniş ekranda
+      // ve mekânlarda kamera hiç kaymıyordu). Oyuncuyu takipte eski sınır geçerli.
+      const tx = topFree.on ? clamp(topFree.x, -W / 2, W / 2) : lim(px, ca * halfW + sa * halfD, W);
+      const tz = topFree.on ? clamp(topFree.z, -D / 2, D / 2) : lim(pz, sa * halfW + ca * halfD, D);
       if (topFree.on) {
         // sınıra dayanınca biriken kaydırma geri dönüşte "ölü bölge" yapmasın
         topFree.x = tx;
@@ -2190,6 +2218,8 @@ export function createHouseEngine(
     focus.set(px, 1, pz);
   }
 
+  let waterTimer = 0;
+  let waterTiles = [];
   function frame(dt) {
     const t = clock.elapsedTime;
     const now = performance.now();
@@ -2204,6 +2234,20 @@ export function createHouseEngine(
     updateWalls();
     if (targetRing.visible) targetRing.scale.setScalar(1 + Math.sin(t * 6) * 0.12);
 
+    // v100 — su parçaları (0,5 sn'de bir tazelenir)
+    waterTimer -= dt;
+    if (waterTimer <= 0) {
+      waterTimer = 0.5;
+      waterTiles = [];
+      objs.forEach((e) => {
+        if (e.data.k === 'zp_su') waterTiles.push(e.data);
+      });
+    }
+    const inWater = (x, z) => waterTiles.some((w) => Math.abs(w.x - x) <= 0.5 && Math.abs(w.z - z) <= 0.5);
+    if (self.fig) self.fig.sink = !self.seat && inWater(self.x, self.z) ? WATER_SINK : 0;
+    others.forEach((o) => {
+      o.fig.sink = !o.seat && inWater(o.fig.x, o.fig.z) ? WATER_SINK : 0;
+    });
     if (self.fig) {
       const sw = self.seat ? seatWorld(self.seat, seatV) : null;
       self.fig.update(dt, camera, now, sw ? sw.clone() : null, seatStand(self.seat));
@@ -2562,9 +2606,10 @@ export function createHouseEngine(
       if (tdef?.tile && dir) {
         let dx = 0;
         let dz = 0;
-        if (tdef.tile === 'floor') {
-          dx = dir === 'l' ? -1 : dir === 'r' ? 1 : 0;
-          dz = dir === 'u' ? -1 : dir === 'd' ? 1 : 0;
+        if (tdef.tile === 'floor' || tdef.tile === 'ceil') {
+          const st = tdef.tile === 'ceil' ? 2 : 1;
+          dx = dir === 'l' ? -st : dir === 'r' ? st : 0;
+          dz = dir === 'u' ? -st : dir === 'd' ? st : 0;
         } else {
           const ry = (e.data.r || 0) * (Math.PI / 4);
           const s = dir === 'l' ? -1 : 1;

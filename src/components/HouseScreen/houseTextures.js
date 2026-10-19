@@ -829,6 +829,35 @@ WALLS.push(
       g.fillStyle = '#4a9643';
       g.fillRect(0, h * 0.86, w, h * 0.14);
     } },
+  // v100 — kumsal: sadece kum ve gökyüzü (deniz yok)
+  { key: 'kumsal', name: 'Kumsal', swatch: '#f0d9a6', ...MURAL,
+    draw: (g, w, h, r) => {
+      g.fillStyle = skyG(g, h * 0.66, '#49a8f0', '#d8f0ff');
+      g.fillRect(0, 0, w, h * 0.66);
+      cloudsW(g, w, h * 0.36, r, 7);
+      wrapX(w, (ox) => {
+        g.fillStyle = 'rgba(255,248,200,0.95)';
+        g.beginPath(); g.arc(ox + w * 0.18, 120, 46, 0, PI2); g.fill();
+      });
+      const sand = g.createLinearGradient(0, h * 0.62, 0, h);
+      sand.addColorStop(0, '#f6e3b4');
+      sand.addColorStop(1, '#e2c085');
+      g.fillStyle = sand;
+      ridgeW(g, w, h, h * 0.64, 10, 3, sand, 0.6);
+      const dots = [];
+      for (let i = 0; i < 900; i++) dots.push([r() * w, h * 0.66 + r() * h * 0.34, r()]);
+      wrapX(w, (ox) => {
+        dots.forEach(([x, y, k]) => {
+          g.fillStyle = k > 0.5 ? 'rgba(160,120,60,0.18)' : 'rgba(255,255,255,0.25)';
+          g.fillRect(ox + x, y, 2, 2);
+        });
+        // birkaç deniz kabuğu ve yıldız
+        [[0.3, 0.86], [0.55, 0.92], [0.78, 0.82]].forEach(([fx, fy], i) => {
+          g.fillStyle = i === 1 ? '#ff9a5a' : '#fff1e0';
+          g.beginPath(); g.arc(ox + w * fx, h * fy, 7, Math.PI, 0); g.fill();
+        });
+      });
+    } },
   { key: 'col', name: 'Çöl', swatch: '#dda05a', ...MURAL,
     draw: (g, w, h) => {
       g.fillStyle = skyG(g, h * 0.55, '#ffcf7a', '#fff1d1');
@@ -1401,7 +1430,113 @@ const VIEW_DRAW = {
   },
 };
 
+// v100 — dışarıdan kafeye bakış: sıcak ışıklı iç mekân, tezgâh, masalar, sarkıt lambalar
+VIEW_DRAW.kafe = (g, w, h, r) => {
+  const wallG = g.createLinearGradient(0, 0, 0, h);
+  wallG.addColorStop(0, '#5a3a24');
+  wallG.addColorStop(0.62, '#8a5a34');
+  g.fillStyle = wallG;
+  g.fillRect(0, 0, w, h);
+  // tuğla doku
+  g.fillStyle = 'rgba(0,0,0,0.08)';
+  for (let y = 0; y < h * 0.62; y += 14) for (let x = (y / 14) % 2 ? 0 : 18; x < w; x += 36) g.fillRect(x, y, 34, 12);
+  // zemin
+  g.fillStyle = '#3a2416';
+  g.fillRect(0, h * 0.78, w, h * 0.22);
+  g.fillStyle = 'rgba(255,255,255,0.05)';
+  for (let x = 0; x < w; x += 40) g.fillRect(x, h * 0.78, 2, h * 0.22);
+  // kara tahta menü
+  g.fillStyle = '#1b2a22';
+  g.fillRect(40, 40, 120, 80);
+  g.strokeStyle = '#a3764a';
+  g.lineWidth = 5;
+  g.strokeRect(40, 40, 120, 80);
+  g.fillStyle = '#f4f0e6';
+  g.font = 'bold 15px Georgia, serif';
+  g.textAlign = 'center';
+  g.fillText('MENÜ', 100, 60);
+  g.font = '11px Georgia, serif';
+  ['Çay ........ 20', 'Latte ...... 90', 'Pasta ..... 120'].forEach((t, i) => g.fillText(t, 100, 80 + i * 14));
+  // raflar + kavanozlar
+  g.fillStyle = '#a3764a';
+  g.fillRect(330, 70, 150, 6);
+  g.fillRect(330, 120, 150, 6);
+  for (let i = 0; i < 7; i++) {
+    g.fillStyle = ['#d9a35a', '#7a4a2a', '#f2e2c4', '#3e8a4a'][i % 4];
+    g.fillRect(338 + i * 20, 50, 14, 20);
+    g.fillRect(338 + i * 20, 100, 14, 20);
+  }
+  // tezgâh + espresso makinesi
+  g.fillStyle = '#2b1a12';
+  g.fillRect(300, h * 0.55, 212, h * 0.25);
+  g.fillStyle = '#d9d6cf';
+  g.fillRect(296, h * 0.55 - 8, 216, 10);
+  g.fillStyle = '#c0c6d0';
+  g.fillRect(360, h * 0.55 - 52, 70, 44);
+  g.fillStyle = '#1b1b1d';
+  g.fillRect(372, h * 0.55 - 40, 46, 18);
+  g.fillStyle = '#e8b45a';
+  g.fillRect(450, h * 0.55 - 30, 40, 22);
+  // sarkıt lambalar
+  [90, 210, 330, 450].forEach((x) => {
+    g.strokeStyle = '#222';
+    g.lineWidth = 2;
+    g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 34); g.stroke();
+    const glow = g.createRadialGradient(x, 40, 2, x, 40, 70);
+    glow.addColorStop(0, 'rgba(255,214,140,0.85)');
+    glow.addColorStop(1, 'rgba(255,214,140,0)');
+    g.fillStyle = glow;
+    g.fillRect(x - 70, 0, 140, 110);
+    g.fillStyle = '#1b1b1d';
+    g.beginPath(); g.moveTo(x - 14, 44); g.lineTo(x + 14, 44); g.lineTo(x + 7, 32); g.lineTo(x - 7, 32); g.closePath(); g.fill();
+    g.fillStyle = '#ffe2a8';
+    g.beginPath(); g.arc(x, 45, 5, 0, Math.PI * 2); g.fill();
+  });
+  // masalar, sandalyeler, oturan siluetler
+  const table = (x, y, s) => {
+    g.fillStyle = '#1b1b1d';
+    g.fillRect(x - 2 * s, y, 4 * s, 34 * s);
+    g.fillRect(x - 12 * s, y + 32 * s, 24 * s, 3 * s);
+    g.fillStyle = '#a3764a';
+    g.fillRect(x - 26 * s, y - 4 * s, 52 * s, 6 * s);
+    g.fillStyle = '#f7f7f2';
+    g.fillRect(x - 6 * s, y - 12 * s, 8 * s, 8 * s);
+  };
+  const person = (x, y, s, col) => {
+    g.fillStyle = col;
+    g.beginPath(); g.arc(x, y - 30 * s, 9 * s, 0, Math.PI * 2); g.fill();
+    g.fillRect(x - 11 * s, y - 20 * s, 22 * s, 28 * s);
+    g.fillStyle = '#5a3a24';
+    g.fillRect(x - 13 * s, y + 8 * s, 26 * s, 4 * s);
+    g.fillRect(x - 11 * s, y + 12 * s, 3 * s, 20 * s);
+  };
+  person(118, h * 0.62, 1.1, '#3a2a4a');
+  table(160, h * 0.62, 1.1);
+  person(205, h * 0.62, 1.1, '#6b1a22');
+  table(268, h * 0.72, 0.8);
+  person(240, h * 0.72, 0.8, '#1f4f8a');
+  // bitki
+  g.fillStyle = '#7a4a2a';
+  g.fillRect(16, h * 0.7, 26, 30);
+  g.fillStyle = '#3e8a4a';
+  for (let i = 0; i < 9; i++) {
+    g.beginPath(); g.ellipse(29 + (r() - 0.5) * 30, h * 0.66 - r() * 40, 7, 14, (r() - 0.5) * 1.4, 0, Math.PI * 2); g.fill();
+  }
+  // camdaki yazı + hafif yansıma
+  g.fillStyle = 'rgba(255,255,255,0.85)';
+  g.font = 'bold 30px Georgia, serif';
+  g.textAlign = 'center';
+  g.fillText('☕ KAFE', w * 0.5, h * 0.42);
+  const refl = g.createLinearGradient(0, 0, w, h);
+  refl.addColorStop(0, 'rgba(255,255,255,0.10)');
+  refl.addColorStop(0.5, 'rgba(255,255,255,0)');
+  refl.addColorStop(1, 'rgba(255,255,255,0.06)');
+  g.fillStyle = refl;
+  g.fillRect(0, 0, w, h);
+};
+
 export const WINDOW_VIEWS = {
+  kafe: { light: '#ffcf8a' },
   yol: { light: '#ff8a5a' },
   sehir: { light: '#bfe3ff' },
   deniz: { light: '#9fd6ff' },
@@ -1413,4 +1548,132 @@ export const WINDOW_VIEWS = {
 };
 export function viewTexture(kind) {
   return makeTex(`view_${kind}`, 512, 320, (g, w, h, r) => (VIEW_DRAW[kind] || VIEW_DRAW.sehir)(g, w, h, r));
+}
+
+// ---------------------------------------------------------------------------
+// v100 — Gökyüzü tavan parçaları (2 m × 2 m). Doku dünya konumundan eşlenir (8 m'de
+// bir tekrar) ve dört kenardan sarmalı çizilir → yan yana parçalar kesintisiz.
+// ---------------------------------------------------------------------------
+function wrap2(w, h, fn) {
+  for (const ox of [-w, 0, w]) for (const oy of [-h, 0, h]) fn(ox, oy);
+}
+function softBlob(g, x, y, rad, col) {
+  const gr = g.createRadialGradient(x, y, 0, x, y, rad);
+  gr.addColorStop(0, col);
+  gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr;
+  g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+}
+function cloudPuff(g, x, y, s, col) {
+  g.fillStyle = col;
+  [[0, 0, 1], [0.8, 0.15, 0.75], [-0.8, 0.2, 0.7], [0.35, -0.4, 0.8], [-0.35, -0.3, 0.65], [0.1, 0.45, 0.7]].forEach(([dx, dy, k]) => {
+    g.beginPath();
+    g.arc(x + dx * s, y + dy * s, k * s, 0, Math.PI * 2);
+    g.fill();
+  });
+}
+export const SKY_CEILINGS = {
+  gunesli: { name: 'Güneşli Gökyüzü', icon: '☀️', light: '#fff4d6' },
+  bulutlu: { name: 'Bulutlu Gökyüzü', icon: '☁️', light: '#e6eef8' },
+  gunbatimi: { name: 'Gün Batımı', icon: '🌇', light: '#ffb07a' },
+  gece: { name: 'Aylı Gece', icon: '🌙', light: '#9fb4ff' },
+  yildizli: { name: 'Samanyolu', icon: '🌌', light: '#b9a8ff' },
+  kuzey: { name: 'Kuzey Işıkları', icon: '🟢', light: '#7affc8' },
+};
+const SKY_DRAW = {
+  gunesli(g, w, h, r) {
+    g.fillStyle = '#5db3ff';
+    g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 6; i++) wrap2(w, h, (ox, oy) => softBlob(g, ox + r() * w, oy + r() * h, 260, 'rgba(160,215,255,0.45)'));
+    const puffs = [];
+    for (let i = 0; i < 9; i++) puffs.push([r() * w, r() * h, 28 + r() * 30]);
+    wrap2(w, h, (ox, oy) => puffs.forEach(([x, y, s]) => cloudPuff(g, ox + x, oy + y, s, 'rgba(255,255,255,0.92)')));
+    wrap2(w, h, (ox, oy) => {
+      softBlob(g, ox + w * 0.3, oy + h * 0.3, 170, 'rgba(255,250,210,0.95)');
+      g.fillStyle = '#fffbe6';
+      g.beginPath(); g.arc(ox + w * 0.3, oy + h * 0.3, 58, 0, Math.PI * 2); g.fill();
+    });
+  },
+  bulutlu(g, w, h, r) {
+    g.fillStyle = '#8fb2d6';
+    g.fillRect(0, 0, w, h);
+    const puffs = [];
+    for (let i = 0; i < 26; i++) puffs.push([r() * w, r() * h, 40 + r() * 60, 0.75 + r() * 0.25]);
+    wrap2(w, h, (ox, oy) => puffs.forEach(([x, y, s, a]) => {
+      cloudPuff(g, ox + x + 6, oy + y + 8, s, `rgba(120,135,160,${a * 0.5})`);
+      cloudPuff(g, ox + x, oy + y, s, `rgba(245,248,252,${a})`);
+    }));
+  },
+  gunbatimi(g, w, h, r) {
+    g.fillStyle = '#e8743c';
+    g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 8; i++) wrap2(w, h, (ox, oy) => softBlob(g, ox + r() * w, oy + r() * h, 300, i % 2 ? 'rgba(214,58,157,0.55)' : 'rgba(255,190,90,0.55)'));
+    const puffs = [];
+    for (let i = 0; i < 10; i++) puffs.push([r() * w, r() * h, 30 + r() * 34]);
+    wrap2(w, h, (ox, oy) => puffs.forEach(([x, y, s]) => cloudPuff(g, ox + x, oy + y, s, 'rgba(120,40,110,0.55)')));
+  },
+  gece(g, w, h, r) {
+    g.fillStyle = '#0b1336';
+    g.fillRect(0, 0, w, h);
+    const stars = [];
+    for (let i = 0; i < 700; i++) stars.push([r() * w, r() * h, r() * 1.8 + 0.4, 0.4 + r() * 0.6]);
+    wrap2(w, h, (ox, oy) => {
+      stars.forEach(([x, y, s, a]) => {
+        g.fillStyle = `rgba(255,255,255,${a})`;
+        g.beginPath(); g.arc(ox + x, oy + y, s, 0, Math.PI * 2); g.fill();
+      });
+      softBlob(g, ox + w * 0.7, oy + h * 0.6, 150, 'rgba(255,244,207,0.35)');
+      g.fillStyle = '#fff4cf';
+      g.beginPath(); g.arc(ox + w * 0.7, oy + h * 0.6, 50, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#0b1336';
+      g.beginPath(); g.arc(ox + w * 0.7 + 20, oy + h * 0.6 - 12, 46, 0, Math.PI * 2); g.fill();
+    });
+  },
+  yildizli(g, w, h, r) {
+    g.fillStyle = '#070720';
+    g.fillRect(0, 0, w, h);
+    // samanyolu: köşegen parlak şerit
+    wrap2(w, h, (ox, oy) => {
+      for (let i = 0; i < 30; i++) {
+        const t = i / 30;
+        softBlob(g, ox + t * w, oy + t * h, 120, 'rgba(150,120,255,0.12)');
+      }
+    });
+    const stars = [];
+    for (let i = 0; i < 1400; i++) {
+      const t = r();
+      const off = (r() - 0.5) * (r() < 0.6 ? 180 : w);
+      stars.push([t * w + off * 0.7, t * h - off * 0.7, r() * 1.6 + 0.3, 0.3 + r() * 0.7]);
+    }
+    wrap2(w, h, (ox, oy) => stars.forEach(([x, y, s, a]) => {
+      g.fillStyle = `rgba(255,255,255,${a})`;
+      g.fillRect(ox + x, oy + y, s, s);
+    }));
+  },
+  kuzey(g, w, h, r) {
+    g.fillStyle = '#04121e';
+    g.fillRect(0, 0, w, h);
+    const stars = [];
+    for (let i = 0; i < 500; i++) stars.push([r() * w, r() * h, r() * 1.5 + 0.3]);
+    wrap2(w, h, (ox, oy) => {
+      stars.forEach(([x, y, s]) => {
+        g.fillStyle = 'rgba(255,255,255,0.8)';
+        g.fillRect(ox + x, oy + y, s, s);
+      });
+      for (let b = 0; b < 3; b++) {
+        g.lineWidth = 70 - b * 18;
+        g.strokeStyle = ['rgba(60,255,170,0.22)', 'rgba(120,255,210,0.18)', 'rgba(170,110,255,0.16)'][b];
+        g.beginPath();
+        for (let x = 0; x <= w; x += 16) {
+          const y = h * (0.3 + b * 0.18) + Math.sin((x / w) * Math.PI * 4 + b) * 70;
+          if (x === 0) g.moveTo(ox + x, oy + y);
+          else g.lineTo(ox + x, oy + y);
+        }
+        g.stroke();
+      }
+    });
+  },
+};
+export function skyCeilTexture(kind) {
+  return makeTex(`skyceil_${kind}`, 1024, 1024, (g, w, h, r) => (SKY_DRAW[kind] || SKY_DRAW.gunesli)(g, w, h, r));
 }

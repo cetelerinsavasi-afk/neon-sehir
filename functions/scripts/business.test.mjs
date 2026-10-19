@@ -69,7 +69,7 @@ test('katalog: prompttaki en düşük maliyetler ve şart kontrolü', () => {
   // v93 home ofisler: mescit 4×8.000 + 14.000 + 8.000 + 2💎 · sinema 2💎+5💎, 2×30.000 + 40.000 · stüdyo 4💎, 2×25.000 + 90.000 + 60.000
   assert.deepEqual(sum('mescit'), [2, 54_000]);
   assert.deepEqual(sum('sinema'), [7, 100_000]);
-  assert.deepEqual(sum('studyo'), [4, 200_000]);
+  assert.deepEqual(sum('studyo'), [7, 200_000]); // v100: mikser 7💎, vokal kabini 90.000
   // deneme (p yok) eşya sayılmaz; aynı eşya iki şartı karşılamaz
   const items = GYM();
   assert.equal(checkBizRequirements('spor', items).ok, true);

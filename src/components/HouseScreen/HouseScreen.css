@@ -1733,3 +1733,53 @@
 .hh-ho-open span {
   margin-left: 2px;
 }
+
+/* v100 — para kazandırabilen (ücretli yapılabilir) mobilyalar yeşil yazılır */
+.hs-card-name.paid {
+  color: #3df58a;
+  font-weight: 800;
+}
+.hs-act-price {
+  font-weight: 800;
+  color: #ffd76a;
+  white-space: nowrap;
+}
+.hs-paid-btn {
+  border-color: rgba(61, 245, 138, 0.55) !important;
+  color: #3df58a !important;
+}
+.hs-office-note {
+  margin: 4px 0 8px;
+  font-size: 13px;
+}
+
+/* v100 — Evler ekranı: Ofisler / Evler / Depolar */
+.hh-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 2px 0 12px;
+}
+.hh-tabs button {
+  padding: 10px 4px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font-weight: 800;
+  font-size: 13.5px;
+}
+.hh-tabs button.on {
+  background: linear-gradient(135deg, rgba(25, 232, 255, 0.22), rgba(176, 107, 255, 0.22));
+  border-color: rgba(25, 232, 255, 0.65);
+}
+.hh-row.office {
+  border-color: rgba(61, 245, 138, 0.35);
+}
+.hh-row.office.mine {
+  border-color: rgba(255, 210, 63, 0.55);
+}
+.hh-hint {
+  font-size: 12px;
+  margin-top: 10px;
+}

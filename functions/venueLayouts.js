@@ -36,7 +36,8 @@ const AV = {
   usta: { gender: 'erkek', build: 'iri', skin: '#c68642', hairStyle: 'short', hairColor: '#241813', facialHair: 'mustache', clothing: 'jumpsuit', clothColor: '#3a4048', neckAcc: 'none', pantsColor: '#22262f', hat: 'cap', hatColor: '#c0392b' },
   supheli: { gender: 'erkek', build: 'iri', skin: '#a86b3c', hairStyle: 'short', hairColor: '#0d0a08', clothing: 'trenchcoat', clothColor: '#22262f', pantsColor: '#0d0d0d', shoeColor: '#0d0d0d', faceAcc: 'sunglasses', hat: 'fedora', hatColor: '#0d0d0d' },
   bufeci: { gender: 'erkek', build: 'standart', skin: '#d9a066', hairStyle: 'short', hairColor: '#3b2a1a', facialHair: 'mustache', clothing: 'tanktop', clothColor: '#ffcf33', neckAcc: 'none', pantsColor: '#2b3550', hat: 'cap', hatColor: '#c4161c' },
-};
+};export const NPC_AVATARS = AV; // v100 — evlerdeki eşya NPC'leri (büfeci) de kullanır
+
 
 // npc: { id, name, x, z, left, lines, station (yakınındaki istasyon eşyası), av }
 export const VENUES = {

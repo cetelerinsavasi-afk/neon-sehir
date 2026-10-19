@@ -37,6 +37,11 @@ const MAP = {
   'biz-required': 'Bu mobilya işletme için gerekli.',
   // v93 home ofisler / stüdyo
   'studio-session': 'Stüdyo süren bitti; projeyi kaydetmek için mikser konsolunda yeniden başlat.',
+  // v100 ofisler
+  'office-free': 'Bu ürün artık ücretsiz, tekrar dene.',
+  'office-owner': 'Kendi ofisinde ürünler sana ücretsiz.',
+  'office-donate-off': 'Bu bağış kutusu kapalı.',
+  'mixer-private': 'Bu mikseri sadece sahibi kullanabilir.',
 };
 
 export function bizErrText(err) {
@@ -44,10 +49,14 @@ export function bizErrText(err) {
   if (MAP[m]) return MAP[m];
   if (m.startsWith('price-changed')) return `Fiyat az önce değişti (yeni fiyat: ${fmt(m.split(':')[1])}). Kontrol edip tekrar dene.`;
   if (m.startsWith('limit:')) return `Bir mekânda günde en fazla ${fmt(10000)} altın harcayabilirsin.`;
-  if (m.startsWith('tip-limit:')) return `Bir sanatçıya günde en fazla ${fmt(1000)} altın destek verebilirsin (bugün ${fmt(m.split(':')[1])}).`;
+  if (m.startsWith('tip-limit:')) return `Bir sanatçıya günde en fazla ${fmt(10000)} altın destek verebilirsin (bugün ${fmt(m.split(':')[1])}).`;
+  if (m.startsWith('tip-song-limit:')) return `Bir şarkıya en fazla ${fmt(5000)} altın destek verebilirsin (bu şarkıya ${fmt(m.split(':')[1])}).`;
   if (m.startsWith('project-max:')) return `En fazla ${fmt(m.split(':')[1])} projen olabilir. Eski bir projeni sil.`;
   if (m.startsWith('membership-open')) return 'Bitmemiş bir üyeliğin var; önce onu tamamla (ya da süresi dolsun).';
   if (m.startsWith('position-lock:')) return `Mevkini ${new Date(Number(m.split(':')[1])).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })} tarihine kadar değiştiremezsin.`;
+  if (m.startsWith('office-limit:')) return `Bir mekânın ücretli ürünlerine günde en fazla ${fmt(10000)} altın harcayabilirsin (bugün ${fmt(m.split(':')[1])}).`;
+  if (m.startsWith('office-paid:')) return `Bu ürün ücretli (${fmt(m.split(':')[1])} altın).`;
+  if (m.startsWith('price-band:') && m.split(':').length === 3) return `Fiyat ${fmt(m.split(':')[1])}–${fmt(m.split(':')[2])} arasında olmalı.`;
   if (m.startsWith('price-band')) return MAP['price-band'];
   if (m.startsWith('job-')) return 'Bu işlem bu ürün için yapılamaz.';
   return m || 'İşlem yapılamadı.';

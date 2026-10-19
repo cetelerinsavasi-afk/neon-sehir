@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { labelTexture, cityTexture, viewTexture, WINDOW_VIEWS, FLOORS as SURF_FLOORS, WALLS as SURF_WALLS, tileBaseTexture } from './houseTextures';
-import { ITEM_PRICES, HOUSE_TAKEABLES, FLOOR_TILE_KEYS, WALL_PANEL_KEYS } from '../../../functions/houseCatalogData.js';
-import { v92CatalogEntries, V92_CATEGORIES, BOSSTABLE_TINTS, marketShelfV92 } from './houseCatalogV92';
+import { labelTexture, cityTexture, viewTexture, WINDOW_VIEWS, FLOORS as SURF_FLOORS, WALLS as SURF_WALLS, tileBaseTexture, skyCeilTexture, SKY_CEILINGS } from './houseTextures';
+import { ITEM_PRICES, HOUSE_TAKEABLES, FLOOR_TILE_KEYS, WALL_PANEL_KEYS, CEIL_TILE_KEYS, CEIL_TILE } from '../../../functions/houseCatalogData.js';
+import { v92CatalogEntries, V92_CATEGORIES, BOSSTABLE_TINTS, V92_TINTS, marketShelfV92 } from './houseCatalogV92';
 
 // =============================================================================
 // houseCatalog.js — Ev eşyaları kataloğu.
@@ -163,6 +163,26 @@ export const TINTS = {
 };
 
 TINTS.bosstable = BOSSTABLE_TINTS; // v92 — Patron Masası renkleri
+Object.assign(TINTS, V92_TINTS); // v100 — şezlong, şemsiye, park çöp kutusu…
+// v100 — Kafe masası: masa (c) + sandalyeler (s). İlk 6 = eski görünüm (ahşap masa, siyah sandalye)
+const CAFE_CHAIRS = [
+  ['Kırmızı', '#b8141e'], ['Beyaz', '#eeeeee'], ['Hardal', '#b8862e'], ['Zümrüt', '#1d4d3c'], ['Lacivert', '#1f2a48'], ['Pudra', '#cf9a98'], ['Turkuaz', '#1f9fa8'], ['Taba', '#7a4a2a'],
+];
+TINTS.cafeset = [
+  ...TINTS.wood.map((w) => ({ n: `${w.n} · Siyah sandalye`, c: w.c, s: '#1b1b1d' })),
+  ...CAFE_CHAIRS.flatMap(([n, s]) => [
+    { n: `Beyaz · ${n} sandalye`, c: '#e8e4dc', s },
+    { n: `Meşe · ${n} sandalye`, c: '#a3764a', s },
+  ]),
+].map((t) => ({ ...t, sw: `linear-gradient(135deg, ${t.c} 50%, ${t.s} 50%)` }));
+// v100 — pencere çerçevesi (ilk seçenek eski görünüm)
+const FRAME_COLORS = [
+  { n: 'Beyaz', c: '#e9e6df' }, { n: 'Siyah', c: '#15151a' }, { n: 'Antrasit', c: '#3a3d44' }, { n: 'Meşe', c: '#a3764a' },
+  { n: 'Ceviz', c: '#5a3a24' }, { n: 'Altın', c: '#d4a53a', m: 0.8 }, { n: 'Bakır', c: '#b0643a', m: 0.8 }, { n: 'Kırmızı', c: '#a10d18' },
+  { n: 'Yeşil', c: '#1d4d3c' }, { n: 'Mavi', c: '#1f4f8a' },
+];
+TINTS.frameLight = FRAME_COLORS;
+TINTS.frameDark = [FRAME_COLORS[1], FRAME_COLORS[0], ...FRAME_COLORS.slice(2)];
 const tintHex = (ctx, fallback) => (ctx.tint ? ctx.tint.c : fallback);
 
 export const CATEGORIES = [
@@ -180,6 +200,7 @@ export const CATEGORIES = [
   { key: 'dekor', name: 'Dekor', icon: '🪴' },
   { key: 'duvar', name: 'Duvar Süsleri', icon: '🖼️' },
   { key: 'hali', name: 'Halılar', icon: '🟥' },
+  { key: 'tavan', name: 'Tavanlar', icon: '☁️' },
   { key: 'luks', name: 'Lüks', icon: '💎' },
   { key: 'spor', name: 'Spor & Oyun', icon: '🎱' },
   { key: 'dis', name: 'Dış Mekan & Havuz', icon: '🌳' },
@@ -1904,8 +1925,8 @@ function podium(g, ctx) {
   B(g, 0.02, 0.02, 2.0, -1.5, 0.29, 0, led);
   return { light: { x: 0, y: 0.6, z: 1.3, color: col, intensity: 2, distance: 3.5 }, on: true, setOn() {}, noToggle: true };
 }
-function windowCity(g) {
-  const fr = M('#15151a', 0.4, 0.5);
+function windowCity(g, ctx) {
+  const fr = M(tintHex(ctx, '#15151a'), 0.4, ctx?.tint?.m ?? 0.5);
   RB(g, 1.9, 1.5, 0.08, 0.02, 0, 1.65, 0.03, fr);
   const cm = own(new THREE.MeshStandardMaterial({ color: '#000', emissive: '#ffffff', emissiveMap: cityTexture(), emissiveIntensity: 0.9 }));
   PLANE(g, 1.76, 1.36, cm, 0, 1.65, 0.075);
@@ -1916,8 +1937,8 @@ function windowCity(g) {
 }
 // v92 — farklı manzaralı pencereler (aynı çerçeve, farklı manzara)
 function windowView(kind) {
-  return (g) => {
-    const fr = M('#e9e6df', 0.35, 0.05);
+  return (g, ctx) => {
+    const fr = M(tintHex(ctx, '#e9e6df'), 0.35, ctx?.tint?.m ?? 0.05);
     RB(g, 1.9, 1.5, 0.08, 0.02, 0, 1.65, 0.03, fr);
     const cm = own(new THREE.MeshStandardMaterial({ color: '#000', emissive: '#ffffff', emissiveMap: viewTexture(kind), emissiveIntensity: 0.95 }));
     PLANE(g, 1.76, 1.36, cm, 0, 1.65, 0.075);
@@ -2097,7 +2118,7 @@ function cafeTable(g, ctx) {
     ch.position.set(s * 0.62, 0, 0);
     ch.rotation.y = s * Math.PI / 2 * -1;
     g.add(ch);
-    chairModern(ch, { tint: { c: '#1b1b1d' } });
+    chairModern(ch, { tint: { c: ctx?.tint?.s || '#1b1b1d' } });
   });
   C(g, 0.04, 0.03, 0.06, 0.1, 0.79, 0.05, WHITE_CER());
   C(g, 0.02, 0.02, 0.08, -0.12, 0.8, -0.05, M('#c8141e', 0.3), null, 8);
@@ -2749,6 +2770,44 @@ function tileEntries() {
       },
     });
   });
+  // v100 — gökyüzü tavan parçaları (2 m × 2 m). Tavanda görünür (3D gezide); tasarla/2D
+  // görünümünde tavan gizli olduğu için yerde yarı saydam bir "iz" gösterilir.
+  CEIL_TILE_KEYS.forEach((key) => {
+    const sk = SKY_CEILINGS[key];
+    if (!sk) return;
+    out.push({
+      k: `tv_${key}`,
+      name: `Tavan: ${sk.name}`,
+      cat: 'tavan',
+      icon: sk.icon,
+      tile: 'ceil',
+      flat: true,
+      nobox: true,
+      build: (g, ctx) => {
+        const H = ctx?.H || 3.4;
+        const map = skyCeilTexture(key);
+        const skyM = own(new THREE.MeshStandardMaterial({ map, color: '#000', emissive: '#ffffff', emissiveMap: map, emissiveIntensity: 0.95, side: THREE.BackSide }));
+        const sky = new THREE.Mesh(new THREE.PlaneGeometry(CEIL_TILE, CEIL_TILE), skyM);
+        sky.rotation.x = -Math.PI / 2;
+        sky.position.y = H - 0.03;
+        sky.userData.tileUV = { kind: 'floor', rep: 8 };
+        sky.userData.noPick = true;
+        g.add(sky);
+        const markM = own(new THREE.MeshBasicMaterial({ map, transparent: true, opacity: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 }));
+        const mark = new THREE.Mesh(new THREE.PlaneGeometry(CEIL_TILE - 0.06, CEIL_TILE - 0.06), markM);
+        mark.rotation.x = -Math.PI / 2;
+        mark.position.y = 0.02;
+        mark.userData.tileUV = { kind: 'floor', rep: 8 };
+        g.add(mark);
+        const show = (ceil) => {
+          sky.visible = ceil === true;
+          mark.visible = ceil === false;
+        };
+        show(false);
+        return { setCeil: show, on: true, setOn() {}, noToggle: true };
+      },
+    });
+  });
   return out;
 }
 
@@ -2851,16 +2910,17 @@ export const CATALOG = [
   { k: 'neon2', name: 'Neon "BOSS"', cat: 'duvar', icon: '💗', price: E(30), tints: 'neon', build: neonBuild('BOSS', 'bold 130px sans-serif'), wall: true, nobox: true },
   { k: 'neon3', name: 'Neon "NEON ŞEHİR"', cat: 'duvar', icon: '💗', price: E(30), tints: 'neon', build: neonBuild('NEON ŞEHİR', 'italic bold 78px Georgia, serif'), wall: true, nobox: true },
   { k: 'neon4', name: 'Neon Kalp', cat: 'duvar', icon: '❤️', price: E(25), tints: 'neon', build: neonBuild('♥', 'bold 160px sans-serif'), wall: true, nobox: true },
-  { k: 'window', name: 'Şehir Manzaralı Pencere', cat: 'duvar', icon: '🪟', price: G(4000), build: windowCity, wall: true, nobox: true },
+  { k: 'window', name: 'Şehir Manzaralı Pencere', cat: 'duvar', icon: '🪟', price: G(4000), tints: 'frameDark', build: windowCity, wall: true, nobox: true },
   // v92 — yeni manzaralar
-  { k: 'win_yol', name: 'Pencere: Gün Batımında Yol', cat: 'duvar', icon: '🌅', build: windowView('yol'), wall: true, nobox: true },
-  { k: 'win_sehir', name: 'Pencere: Gündüz Şehir', cat: 'duvar', icon: '🏙️', build: windowView('sehir'), wall: true, nobox: true },
-  { k: 'win_deniz', name: 'Pencere: Deniz', cat: 'duvar', icon: '🌊', build: windowView('deniz'), wall: true, nobox: true },
-  { k: 'win_orman', name: 'Pencere: Orman', cat: 'duvar', icon: '🌲', build: windowView('orman'), wall: true, nobox: true },
-  { k: 'win_dag', name: 'Pencere: Karlı Dağlar', cat: 'duvar', icon: '🏔️', build: windowView('dag'), wall: true, nobox: true },
-  { k: 'win_kuzey', name: 'Pencere: Kuzey Işıkları', cat: 'duvar', icon: '🌌', build: windowView('kuzey'), wall: true, nobox: true },
-  { k: 'win_bogaz', name: 'Pencere: Boğaz', cat: 'duvar', icon: '🌉', build: windowView('bogaz'), wall: true, nobox: true },
-  { k: 'win_uzay', name: 'Pencere: Uzay', cat: 'duvar', icon: '🪐', build: windowView('uzay'), wall: true, nobox: true },
+  { k: 'win_yol', name: 'Pencere: Gün Batımında Yol', cat: 'duvar', icon: '🌅', tints: 'frameLight', build: windowView('yol'), wall: true, nobox: true },
+  { k: 'win_sehir', name: 'Pencere: Gündüz Şehir', cat: 'duvar', icon: '🏙️', tints: 'frameLight', build: windowView('sehir'), wall: true, nobox: true },
+  { k: 'win_deniz', name: 'Pencere: Deniz', cat: 'duvar', icon: '🌊', tints: 'frameLight', build: windowView('deniz'), wall: true, nobox: true },
+  { k: 'win_orman', name: 'Pencere: Orman', cat: 'duvar', icon: '🌲', tints: 'frameLight', build: windowView('orman'), wall: true, nobox: true },
+  { k: 'win_dag', name: 'Pencere: Karlı Dağlar', cat: 'duvar', icon: '🏔️', tints: 'frameLight', build: windowView('dag'), wall: true, nobox: true },
+  { k: 'win_kuzey', name: 'Pencere: Kuzey Işıkları', cat: 'duvar', icon: '🌌', tints: 'frameLight', build: windowView('kuzey'), wall: true, nobox: true },
+  { k: 'win_bogaz', name: 'Pencere: Boğaz', cat: 'duvar', icon: '🌉', tints: 'frameLight', build: windowView('bogaz'), wall: true, nobox: true },
+  { k: 'win_uzay', name: 'Pencere: Uzay', cat: 'duvar', icon: '🪐', tints: 'frameLight', build: windowView('uzay'), wall: true, nobox: true },
+  { k: 'win_kafe', name: 'Pencere: Kafe Vitrini', cat: 'duvar', icon: '☕', tints: 'frameLight', build: windowView('kafe'), wall: true, nobox: true },
   { k: 'fanc', name: 'Tavan Pervanesi', cat: 'dekor', icon: '🌀', price: G(3000), build: ceilingFan, ceil: true, nobox: true },
 
   // LÜKS
@@ -2890,7 +2950,7 @@ export const CATALOG = [
   { k: 'garagedoor', name: 'Garaj Kapısı', cat: 'yapi', icon: '🚘', price: G(150000), tints: 'metal', build: garageDoor, wall: true, nobox: true, wallW: 1.4 },
 
   // v66 — YENİ EŞYALAR
-  { k: 'cafetable', name: 'Kafe Masası (2 Sandalye)', cat: 'masa', icon: '☕', tints: 'wood', build: cafeTable, box: [0.95, 0.4], seats: [[-0.62, 0.52, -0.06], [0.62, 0.52, -0.06]] },
+  { k: 'cafetable', name: 'Kafe Masası (2 Sandalye)', cat: 'masa', icon: '☕', tints: 'cafeset', build: cafeTable, box: [0.95, 0.4], seats: [[-0.62, 0.52, -0.06], [0.62, 0.52, -0.06]] },
   { k: 'bartable', name: 'Bar Masası', cat: 'masa', icon: '🍸', tints: 'wood', build: barTable, box: [0.35, 0.35] },
   { k: 'officedesk', name: 'Makam Masası', cat: 'masa', icon: '💼', tints: 'wood', build: officeDesk, boxes: [[0, 0, 1.0, 0.45], [0, 0.95, 0.3, 0.3]], seats: [[0, 0.55, 0.97]] },
   { k: 'washer', name: 'Çamaşır Makinesi', cat: 'banyo', icon: '🫧', tints: 'appliance', build: washer(false), box: [0.31, 0.3] },
@@ -2991,6 +3051,15 @@ export function buildItem(k, { ti = 0, live = true, wallMat = null, H = 3.4 } = 
     proxy.castShadow = false;
     proxy.userData.pickOnly = true;
     g.add(proxy);
+  }
+  // v100 — halılar zemin parçalarının (polygonOffset -2) ÜSTÜNDE görünsün
+  if (def.cat === 'hali' || def.k === 'turf') {
+    g.traverse((o) => {
+      if (!o.isMesh || !o.material || o.material.userData?.shared) return;
+      o.material.polygonOffset = true;
+      o.material.polygonOffsetFactor = -4;
+      o.material.polygonOffsetUnits = -4;
+    });
   }
   g.userData.def = def;
   g.userData.ctl = ret;

@@ -2,40 +2,54 @@ import { useEffect, useImperativeHandle, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
-import { useBizSpend, useNetOccupancy } from '../../hooks/useVenueData';
+import { useOfficeSpend, useNetOccupancy } from '../../hooks/useVenueData';
 import { shopAction } from '../../services/gameActions';
 import { bizErrText } from '../../lib/bizErrors';
-import { netPriceOf, NET_SEEN_MS } from '../../../functions/venue.js';
-import { MESCIT_DAILY_LIMIT, MESCIT_PRESETS, MESCIT_MIN, HO_ITEM_ACTS } from '../../../functions/homeOfficeData.js';
+import { NET_SEEN_MS } from '../../../functions/venue.js';
+import { OFFICE_DAILY_LIMIT, OFFICE_DONATE_AMOUNTS, activeOfficeKeys, ownedOfficeKeys, officeMinuteOf } from '../../../functions/officeData.js';
 import StudioScreen from './StudioScreen';
 import './HomeOffice.css';
 
 // =============================================================================
-// v93 — Home ofislerin ev ekranındaki katmanı (HouseScreen içinde, bizType ho iken)
-//   • Mescit: bağış kutusuna yaklaşınca "🤲 Bağış yap" → bağış penceresi
-//   • Müzik stüdyosu: mikser konsoluna yaklaşınca "🎛️ Müzik yap · X/dk" → süre
-//     başlar, stüdyo (proje + Beat Atölyesi) açılır. Konsolda tek kişi çalışır;
-//     çalışanın başında herkes "🎵 Müzik yapıyor" görür.
-//   • Sinema: menü sistemi (MenuPanel) — HouseScreen'de cafe/bar gibi.
-// apiRef: { acts, label(a), act(a), open(kind), busy }
+// v100 — Ofis katmanı (her evde / işletmede; oyunun mekânlarında değil)
+//   • Bağış kutusu: sahip açtıysa yaklaşınca "🤲 Bağış yap" → 100/250/500/1000
+//   • Mikser konsolu: sahip her zaman ücretsiz; sahip ücretli yaptıysa herkes
+//     "🎛️ Müzik yap · X/dk" ile kullanır. Konsolda tek kişi çalışır; çalışanın
+//     başında herkes "🎵 Müzik yapıyor" görür.
+//   • Diğer ücretli ürünler (raf, dolap…): HouseScreen eşya butonları (officeBuy).
+// apiRef: { label(a), act(a), dim(a), open(kind) }
 // =============================================================================
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
 
-export default function HomeOfficeLayer({ apiRef, houseId, houseDoc, bizType, isOwner, engineRef, engineKey, online, flash }) {
+export default function HomeOfficeLayer({ apiRef, houseId, houseDoc, isOwner, engineRef, engineKey, online, flash }) {
   const { user } = useAuth();
   const { player } = usePlayer();
   const [donate, setDonate] = useState(false);
   const [studio, setStudio] = useState(false);
   const [busy, setBusy] = useState(false);
-  const studioOn = bizType === 'studyo';
-  const occ = useNetOccupancy(houseId, studioOn);
-  const price = netPriceOf(houseDoc);
+  const active = activeOfficeKeys(houseDoc);
+  const owned = ownedOfficeKeys(houseDoc);
+  const donateOn = active.includes('bagiskutusu');
+  const mixerPaid = active.includes('mixer');
+  const mixerHere = owned.includes('mixer');
+  const studioOn = mixerHere && (isOwner || mixerPaid);
+  const occ = useNetOccupancy(houseId, owned.includes('mixer'));
+  const price = isOwner ? 0 : officeMinuteOf(houseDoc);
+  // eşyalara eylem: bağış kutusu (açıksa), mikser (sahipse ya da ücretliyse)
+  const actsKey = `${donateOn ? 'd' : ''}${studioOn ? 's' : ''}`;
+  useEffect(() => {
+    const map = {};
+    if (actsKey.includes('d')) map.bagiskutusu = [{ act: 'donate', label: '🤲 Bağış yap' }];
+    if (actsKey.includes('s')) map.mixer = [{ act: 'studio', label: '🎛️ Müzik yap' }];
+    engineRef.current?.setBizActs?.(Object.keys(map).length ? map : null);
+  }, [actsKey, engineRef, engineKey]);
+  useEffect(() => () => engineRef.current?.setBizActs?.(null), [engineRef]);
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    if (!studioOn) return undefined;
+    if (!mixerHere) return undefined;
     const iv = setInterval(() => setTick((n) => n + 1), 5000);
     return () => clearInterval(iv);
-  }, [studioOn]);
+  }, [mixerHere]);
 
   // mikserde çalışanlar (taze nabız)
   const working = (() => {
@@ -50,7 +64,7 @@ export default function HomeOfficeLayer({ apiRef, houseId, houseDoc, bizType, is
   const workKey = working.map((s) => s.uid).sort().join(',');
   useEffect(() => {
     const eng = engineRef.current;
-    if (!eng?.setActivityBadge || !studioOn) return undefined;
+    if (!eng?.setActivityBadge || !mixerHere) return undefined;
     const uids = workKey ? workKey.split(',') : [];
     const apply = () => uids.forEach((uid) => eng.setActivityBadge(uid, '🎵 Müzik yapıyor'));
     apply();
@@ -59,21 +73,22 @@ export default function HomeOfficeLayer({ apiRef, houseId, houseDoc, bizType, is
       clearInterval(iv);
       uids.forEach((uid) => eng.setActivityBadge(uid, null));
     };
-  }, [workKey, studioOn, engineRef, engineKey]);
+  }, [workKey, mixerHere, engineRef, engineKey]);
 
   const startStudio = async (deviceId) => {
     const mixer = deviceId || (houseDoc?.items || []).find((it) => it.k === 'mixer' && it.p === 1)?.i;
-    if (!mixer) return flash?.('🎛️ Bu stüdyoda mikser konsolu yok.');
+    if (!mixer) return flash?.('🎛️ Burada mikser konsolu yok.');
     const o = occupantOf(mixer);
     if (o) return flash?.(`🎛️ Konsol dolu — şu an ${nameOf(o.uid)} müzik yapıyor.`);
     setBusy(true);
     try {
-      const r = await shopAction({ op: 'netStart', houseId, itemId: mixer, expect: isOwner ? 0 : price });
+      const r = await shopAction({ op: 'netStart', houseId, itemId: mixer, expect: price });
       if (r.charged) flash?.(`🎛️ Stüdyo süren başladı: −${fmt(r.charged)} altın / dakika`);
       setStudio(true);
     } catch (err) {
       const m = String(err?.message || '');
       if (m === 'device-full') flash?.('🎛️ Konsol dolu, biraz sonra tekrar dene.');
+      else if (m === 'mixer-private') flash?.('🎛️ Bu mikseri sadece sahibi kullanabilir.');
       else if (m.startsWith('price-changed')) flash?.(`💲 Dakika ücreti değişti: ${fmt(m.split(':')[1])} altın. Tekrar dene.`);
       else flash?.(bizErrText(err));
     } finally {
@@ -84,7 +99,6 @@ export default function HomeOfficeLayer({ apiRef, houseId, houseDoc, bizType, is
   useImperativeHandle(
     apiRef,
     () => ({
-      acts: HO_ITEM_ACTS[bizType] || null,
       label(a) {
         if (a.act === 'studio') {
           const o = occupantOf(a.itemId);
@@ -111,7 +125,7 @@ export default function HomeOfficeLayer({ apiRef, houseId, houseDoc, bizType, is
       },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [bizType, isOwner, price, workKey, online, houseDoc]
+    [isOwner, price, workKey, online, houseDoc]
   );
 
   return (
@@ -135,25 +149,20 @@ export default function HomeOfficeLayer({ apiRef, houseId, houseDoc, bizType, is
 }
 
 function DonateSheet({ houseId, houseDoc, isOwner, gold, onClose, flash }) {
-  const spent = useBizSpend(houseId, !isOwner);
-  const left = Math.max(0, MESCIT_DAILY_LIMIT - spent);
-  const [amount, setAmount] = useState('');
+  const spent = useOfficeSpend(houseId, !isOwner);
+  const left = Math.max(0, OFFICE_DAILY_LIMIT - spent);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [done, setDone] = useState(null);
-  const n = Math.floor(Number(amount) || 0);
-  const give = async (v) => {
-    const a = Math.floor(Number(v) || 0);
+  const give = async (a) => {
     setErr('');
-    if (a < MESCIT_MIN) return setErr(`En az ${fmt(MESCIT_MIN)} altın bağışlayabilirsin.`);
-    if (a > left) return setErr(left > 0 ? `Bugün bu mescide en fazla ${fmt(left)} altın daha bağışlayabilirsin.` : 'Bugünkü bağış sınırına ulaştın (10.000).');
+    if (a > left) return setErr(left > 0 ? `Bugün burada en fazla ${fmt(left)} altın daha harcayabilirsin.` : `Bugünkü sınıra ulaştın (${fmt(OFFICE_DAILY_LIMIT)}).`);
     if (a > gold) return setErr('Altının yetmiyor.');
     setBusy(true);
     try {
-      const r = await shopAction({ op: 'mescitDonate', houseId, amount: a });
+      const r = await shopAction({ op: 'officeDonate', houseId, amount: a });
       setDone(r.amount);
-      setAmount('');
-      flash?.(`🤲 ${fmt(r.amount)} altın bağışladın. Allah kabul etsin.`);
+      flash?.(`🤲 ${fmt(r.amount)} altın bağışladın.`);
     } catch (e) {
       setErr(bizErrText(e));
     } finally {
@@ -170,9 +179,12 @@ function DonateSheet({ houseId, houseDoc, isOwner, gold, onClose, flash }) {
             ✕
           </button>
         </div>
-        <p className="ho-dim">{houseDoc?.name || 'Mescit'} · {houseDoc?.ownerName || ''}</p>
+        <p className="ho-dim">
+          {houseDoc?.office?.emoji ? `${houseDoc.office.emoji} ` : ''}
+          {houseDoc?.name || 'Ofis'} · {houseDoc?.ownerName || ''}
+        </p>
         {isOwner ? (
-          <p className="ho-dim">Burası senin mescidin.</p>
+          <p className="ho-dim">Bu bağış kutusu senin.</p>
         ) : (
           <>
             <div className="ho-stat">
@@ -182,23 +194,17 @@ function DonateSheet({ houseId, houseDoc, isOwner, gold, onClose, flash }) {
               </b>
             </div>
             <div className="ho-stat">
-              <span>Bugün bu mescide</span>
+              <span>Bugün burada</span>
               <b>
-                {fmt(spent)} / {fmt(MESCIT_DAILY_LIMIT)}
+                {fmt(spent)} / {fmt(OFFICE_DAILY_LIMIT)}
               </b>
             </div>
             <div className="ho-presets">
-              {MESCIT_PRESETS.map((v) => (
+              {OFFICE_DONATE_AMOUNTS.map((v) => (
                 <button key={v} className="ho-preset" disabled={busy || v > left} onClick={() => give(v)}>
                   {fmt(v)}
                 </button>
               ))}
-            </div>
-            <div className="ho-row">
-              <input className="ho-input" inputMode="numeric" placeholder="Başka miktar" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, '').slice(0, 5))} />
-              <button className="ho-btn gold" disabled={busy || !n} onClick={() => give(n)}>
-                {busy ? '…' : 'Bağışla'}
-              </button>
             </div>
             {done && !err && <p className="ho-ok">✓ {fmt(done)} altın bağışladın.</p>}
             {err && <p className="ho-err">{err}</p>}

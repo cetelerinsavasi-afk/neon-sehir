@@ -319,3 +319,27 @@ Testler: 348/348 geçti.
 ## v99.7 — Menajerli sahipsiz takımlar yeniden satın alınabilir
 - Kullanıcı kararı: menajer sahip değildir. Sahipsiz her takım (menajerli olsa da) piyasa değeriyle satın alınabilir; menajer yönetmeye devam eder (SMS gider), başkan isterse Menajer sekmesinden sözleşmeyi fesheder. Listede "👔 Menajerli" rozeti. (v99.5'teki liste filtresi geri alındı.)
 - Yükleme: `firebase deploy --only functions:listFutbolBuyableTeams,functions:buyFutbolTeam` + git push.
+
+## v100 Faz 1 — Görsel düzeltmeler ve küçük özellikler
+- Mikser konsolu: panel bize doğru eğik (uzak kenar yukarıda). Fiyat 7💎. Vokal kabini 90.000 altın; kabine girilebilir (geniş kapı aralığı, cam tavan).
+- Şezlong: baş dayama yukarı kalkık; minder rengi seçilebilir. Plaj şemsiyesi ve park çöp kutusu renk seçenekli.
+- Kafe masası: masa + sandalye rengi birlikte (ilk 6 seçenek eski görünüm). Tüm manzaralı pencerelerde çerçeve rengi.
+- Yeni pencere: "Kafe Vitrini" (dışarıdan kafeye bakış). Yeni duvar paneli: Kumsal (kum + gökyüzü).
+- Büfe kulübesi: içi boş kulübe, raflar, tezgâhta tost/sosisli/ayran/çay (alınabilir); evlerde içinde büfeci NPC'si.
+- Su zemin parçasına giren figür bel hizasına kadar suya gömülür. Halılar zemin parçalarının üstünde.
+- Gökyüzü tavanları (2 m × 2 m parça): güneşli, bulutlu, gün batımı, aylı gece, samanyolu, kuzey ışıkları. 3D gezide tavanda; tasarla/2D'de yerde yarı saydam iz.
+- 2D kamera: tek parmak çevirir/eğer, iki parmak kaydırır/yakınlaştırır; kaydırınca odanın her yerine bakılır (geniş ekranda ve mekânlarda kilitlenmiyor).
+- Mağazadan eklenen eşya envanterde varsa envanterden (satın alınmış) konur.
+
+## v100 Faz 2 — Şarkı destek limitleri
+- Destek miktarları 100 / 500 / 1.000 / 5.000. Bir oyuncu bir şarkıya toplam en fazla 5.000 (songTipPosts/{post}_{uid}); bir sanatçının tüm şarkılarına günde en fazla 10.000 (songTips/{gün}_{uid}_{sanatçı}).
+
+## v100 Faz 3 — Ofis sistemi (ücretli mobilyalar)
+- Evler ekranı 3 sekme: 🏢 Ofisler · 🏠 Evler · 📦 Depolar. Depo: 10'dan az satın alınmış mobilya; 10. mobilyada ev. Herhangi bir mobilyası ücretli olan ev ofistir (`houses.kind`: ofis/ev/depo/isletme, sunucu kaydederken hesaplar).
+- Para kazandıran mobilyalar (functions/officeData.js): market rafı, pasta vitrini, manav tezgâhı, içecek dolabı, dondurma dolabı, simit arabası, bar tezgâhı, büfe kulübesi, patlamış mısır makinesi, bağış kutusu, mikser konsolu. Mağaza ve envanterde yeşil yazılır.
+- Varsayılan: ürünler ücretsiz; bağış kutusu kapalı; mikseri sadece sahip kullanır. ⚙️ Ayarlar › 💰 Ücretli Ürünler: ücretli yap + fiyat (ürünler 10–200, bar tezgâhı 100–500, mikser 100–500/dk), bağış 100/250/500/1000, ofis emojisi (220 emoji), günlük rapor.
+- Ücretli ürün odadaki başka eşyada da varsa orada da aynı fiyattan ücretli. Market arabasına eklerken de ödenir.
+- Oyuncu başı mekân başı günde 10.000 (officeSpend). İşletmelerde ücretli mobilya kazancı işletme kasasından ayrı (officeDaily); normal işletme kazancı sınırsız. Cafe/bar'da yiyecek-içecek menüde kalır (orada sadece bağış kutusu ve mikser ücretli yapılabilir). %10 vergi ("ofis").
+- Göç: eski home ofisler (mescit/sinema/stüdyo) ofis olur — stüdyo dakika ücreti korunur (100–500'e çekilir), sinema mısır/içecek fiyatları 10–200'e çekilir, mescit bağış kutusu açık kalır. Saatlik iş + eve ilk girişte. Home ofis artık işletme olarak açılamaz.
+- Shop ops: officeSet, officeBuy, officeDonate · mikser: netStart/netTick (her evde) · kurallar: officeSpend, officeDaily.
+- Yükleme: `firebase deploy --only functions,firestore:rules` + git push.

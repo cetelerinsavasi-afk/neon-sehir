@@ -22,7 +22,10 @@ import PlayerCard from '../PlayerCard/PlayerCard';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import { BizListPanel, BizSettings, BizRemovePanel } from './HouseBusiness';
 import { removalBreaksBiz, parseBizError } from './houseBusinessLogic';
-import { BIZ_TYPES, BIZ_TYPE_KEYS, HOME_OFFICE_KEYS, isHomeOffice, checkBizRequirements } from '../../../functions/businessCatalogData.js';
+import { BIZ_TYPES, BIZ_TYPE_KEYS, isHomeOffice, checkBizRequirements } from '../../../functions/businessCatalogData.js';
+import { houseKind, officePriceOf, ownedOfficeKeys, isOfficeFurn } from '../../../functions/officeData.js';
+import OfficePanel from '../HomeOffice/OfficePanel';
+import { bizErrText } from '../../lib/bizErrors';
 import Workshop from '../Workshop/Workshop';
 import ShopShowcase from '../Shop/ShopShowcase';
 import MenuPanel from '../Venue/MenuPanel';
@@ -53,12 +56,11 @@ import { streamAction } from '../../services/gameActions';
 import { StreamStartSheet, StreamHostPanel, StreamSummary, StreamPlaySheet } from '../Stream/StreamHost';
 import StreamMatchView from '../Stream/StreamMatchView';
 import VenueLayer from '../Venue3D/VenueLayer';
-import { VENUE_BY_HOUSE } from '../../../functions/venueLayouts.js';
+import { VENUE_BY_HOUSE, NPC_AVATARS } from '../../../functions/venueLayouts.js';
 import { streamBroadcast, clearGameFrame, closeStreamChannel, streamPose, useLiveStreams, useStreamDoc, watchViewers } from '../Stream/streamShared';
 import { streamPriceOf, cafeDevicePrice, isStreamSetPc } from '../../../functions/stream.js';
 import { attachHScroll } from '../../lib/hscroll';
 import HomeOfficeLayer from '../HomeOffice/HomeOfficeLayer';
-import { HO_ITEM_ACTS } from '../../../functions/homeOfficeData.js';
 
 // =============================================================================
 // HouseScreen — 3D Ev (v66, herkese açık)
@@ -81,10 +83,6 @@ const BIZ_TOP_BUTTONS = {
   cafe: [{ panel: 'menu', label: '🍽️ Menü' }],
   bar: [{ panel: 'menu', label: '🍽️ Menü' }],
   spor: [{ panel: 'gym', label: '🏋️ Spor yap (üyelik)' }],
-  // v93 home ofisler (ho: → HomeOfficeLayer; en yakın eşyaya yürür)
-  sinema: [{ panel: 'menu', label: '🍿 Büfe' }],
-  mescit: [{ panel: 'ho:donate', label: '🤲 Bağış yap' }],
-  studyo: [{ panel: 'ho:studio', label: '🎛️ Müzik yap' }],
 };
 const SAVE_DEBOUNCE_MS = 1200;
 const PRIVACY = [
@@ -147,6 +145,8 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   const venueApiRef = useRef(null);
   const hoApiRef = useRef(null); // v93 home ofis katmanı
   const venueNpcsRef = useRef([]);
+  const itemNpcsRef = useRef([]); // v100: büfe kulübesinin içindeki büfeci (evlerde)
+  const itemNpcKeyRef = useRef('');
   const mountRef = useRef(null);
   const seenSelfRef = useRef(false);
   const rejoinRef = useRef(false);
@@ -546,8 +546,25 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   const liveMapRef = useRef({});
   const pushOthers = useCallback(() => {
     const merged = fsOthersRef.current.map((p) => mergeLive(p, liveMapRef.current[p.uid], p.updatedAt?.toMillis?.() ?? 0));
-    engineRef.current?.setOthers(venueNpcsRef.current.length ? [...merged, ...venueNpcsRef.current] : merged);
+    const extra = [...venueNpcsRef.current, ...itemNpcsRef.current];
+    engineRef.current?.setOthers(extra.length ? [...merged, ...extra] : merged);
   }, []);
+  // v100 — eşya NPC'leri: satın alınmış her büfe kulübesinin içinde bir büfeci durur
+  useEffect(() => {
+    if (venue) return;
+    const list = [];
+    (houseDoc?.items || []).forEach((it) => {
+      if (it.k !== 'bufe' || it.p !== 1) return;
+      const ry = (it.r || 0) * (Math.PI / 4);
+      const lz = -0.22;
+      list.push({ uid: `npc_bufe_${it.i}`, displayName: 'Büfeci', avatar: NPC_AVATARS.bufeci, x: it.x + lz * Math.sin(ry), z: it.z + lz * Math.cos(ry), left: false, seat: null, holdingVisible: null });
+    });
+    const key = list.map((n) => `${n.uid}:${n.x.toFixed(2)}:${n.z.toFixed(2)}`).join('|');
+    if (key === itemNpcKeyRef.current) return;
+    itemNpcKeyRef.current = key;
+    itemNpcsRef.current = list;
+    pushOthers();
+  }, [houseDoc?.items, venue, pushOthers]);
   const onVenueNpcs = useCallback(
     (list) => {
       venueNpcsRef.current = list || [];
@@ -785,7 +802,28 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
         flash(`🛒 Araba dolu (${CART_MAX} ürün).`);
         return;
       }
+      // v100: ücretli ürün arabaya eklenirken ödenir
+      const cost = paidPriceOf(r.product);
+      if (cost > 0) {
+        try {
+          await shopAction({ op: 'officeBuy', houseId, itemId: r.itemId, product: r.product, expect: cost, cart: true });
+          flash(`🛒 ${HOUSE_PRODUCTS[r.product]?.label || 'Ürün'} arabada · −${cost.toLocaleString('tr-TR')} altın`);
+        } catch (err) {
+          flash(bizErrText(err));
+          return;
+        }
+      }
       setMyCart((c) => [...(c || []), r.product].slice(0, CART_MAX));
+      return;
+    }
+    if (r.kind === 'take' && paidPriceOf(r.product) > 0) {
+      const cost = paidPriceOf(r.product);
+      try {
+        const res = await shopAction({ op: 'officeBuy', houseId, itemId: r.itemId, product: r.product, expect: cost });
+        flash(`${HOUSE_PRODUCTS[r.product]?.emoji || ''} ${res.label || 'Ürün'} elinde (2 dk) · −${cost.toLocaleString('tr-TR')} altın`);
+      } catch (err) {
+        flash(bizErrText(err));
+      }
       return;
     }
     if (r.kind === 'take') {
@@ -973,10 +1011,10 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
 
   // --- işletme (v77) ------------------------------------------------------------------
   const bizType = houseDoc?.biz?.type || null;
-  // v93 — home ofis eşyalarına eylem (bağış kutusu → bağış, mikser → müzik yap)
-  useEffect(() => {
-    engineRef.current?.setBizActs?.(bizType ? HO_ITEM_ACTS[bizType] || null : null);
-  }, [bizType, phase, engineKey]);
+  // v100 — ofis: ücretli mobilyalar (bağış kutusu / mikser eylemleri HomeOfficeLayer'da)
+  const kind = houseKind(houseDoc);
+  const officeOwnedKeys = ownedOfficeKeys(houseDoc);
+  const paidPriceOf = (product) => (!isOwner && !venue && houseDoc ? officePriceOf(houseDoc, product) : 0);
   // v92 — garson (cafe/bar)
   const menuVenue = Boolean(bizType && MENU_TYPES.includes(bizType));
   const waiterRole = useWaiterRole({ houseId, enabled: phase === 'ready' && menuVenue, user, online, flash });
@@ -1438,7 +1476,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
           <div className="hs-top">
             <button className="hs-icon-btn" onClick={() => exit()} title="Evden çık">✕</button>
             <div className="hs-title">
-              <b>{venue ? venue.icon : bizType ? BIZ_TYPES[bizType].icon : '🏠'} {venue ? venue.name : houseName}</b>
+              <b>{venue ? venue.icon : bizType ? BIZ_TYPES[bizType].icon : kind === 'ofis' ? houseDoc?.office?.emoji || '🏢' : kind === 'depo' ? '📦' : '🏠'} {venue ? venue.name : houseName}</b>
               <span>
                 {online.length} kişi {venue || bizType ? 'burada' : 'evde'}
                 {canDesign && mode === 'build' && (
@@ -1506,9 +1544,9 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
               flash={flash}
             />
           )}
-          {/* v93 — HOME OFİS katmanı (mescit bağışı / müzik stüdyosu) */}
-          {bizType && HO_ITEM_ACTS[bizType] && (
-            <HomeOfficeLayer apiRef={hoApiRef} houseId={houseId} houseDoc={houseDoc} bizType={bizType} isOwner={isOwner} engineRef={engineRef} engineKey={engineKey} online={online} flash={flash} />
+          {/* v100 — OFİS katmanı (bağış kutusu / mikser konsolu) — her evde */}
+          {!venue && houseDoc && (
+            <HomeOfficeLayer apiRef={hoApiRef} houseId={houseId} houseDoc={houseDoc} isOwner={isOwner} engineRef={engineRef} engineKey={engineKey} online={online} flash={flash} />
           )}
           {/* v77 — MEKÂN ÜST BUTONLARI (işletme türüne göre) */}
           {bizType && mode === 'walk' && BIZ_TOP_BUTTONS[bizType] && (
@@ -1700,7 +1738,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
               {sel.def?.tints && (
                 <div className="hs-swatches">
                   {TINTS[sel.def.tints].map((t, i) => (
-                    <button key={t.n} className={`hs-sw${(sel.c || 0) === i ? ' on' : ''}`} style={{ background: t.c }} title={t.n} onClick={() => engineRef.current?.tintSelected(i)} />
+                    <button key={t.n} className={`hs-sw${(sel.c || 0) === i ? ' on' : ''}`} style={{ background: t.sw || t.c }} title={t.n} onClick={() => engineRef.current?.tintSelected(i)} />
                   ))}
                 </div>
               )}
@@ -1711,8 +1749,8 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                 {sel.def?.tile ? (
                   <span className="hs-tile-dirs" title="Yanına bir parça daha ekle">
                     <button onClick={() => engineRef.current?.duplicateSelected('l')} aria-label="Sola ekle">◀</button>
-                    {sel.def.tile === 'floor' && <button onClick={() => engineRef.current?.duplicateSelected('u')} aria-label="İleri ekle">▲</button>}
-                    {sel.def.tile === 'floor' && <button onClick={() => engineRef.current?.duplicateSelected('d')} aria-label="Geri ekle">▼</button>}
+                    {sel.def.tile !== 'wall' && <button onClick={() => engineRef.current?.duplicateSelected('u')} aria-label="İleri ekle">▲</button>}
+                    {sel.def.tile !== 'wall' && <button onClick={() => engineRef.current?.duplicateSelected('d')} aria-label="Geri ekle">▼</button>}
                     <button onClick={() => engineRef.current?.duplicateSelected('r')} aria-label="Sağa ekle">▶</button>
                   </span>
                 ) : (
@@ -1756,12 +1794,15 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                           key={d.k}
                           className="hs-card"
                           onClick={() => {
-                            const r = engineRef.current?.addItem(d.k, 0);
+                            // v100: envanterde bu eşyadan varsa satın alınmış olarak (envanterden) konur
+                            const fromInv = invView[d.k] > 0;
+                            const r = engineRef.current?.addItem(d.k, 0, { owned: fromInv });
                             if (r === 'limit') flash('Eşya sınırına ulaştın (400).');
+                            else if (r && fromInv) flash(`📦 Envanterindeki ${d.name} kondu.`);
                           }}
                         >
                           <ItemThumb k={d.k} icon={d.icon} />
-                          <span className="hs-card-name">{d.name}</span>
+                          <span className={`hs-card-name${isOfficeFurn(d.k) ? ' paid' : ''}`} title={isOfficeFurn(d.k) ? 'Para kazandırabilir: ⚙️ Ayarlar › Ücretli Ürünler' : undefined}>{d.name}</span>
                           <PriceTag price={d.price} small />
                           {d.tints && <span className="hs-card-tints">{TINTS[d.tints].length} renk</span>}
                           {invView[d.k] > 0 && <span className="hs-card-own">📦 {invView[d.k]}</span>}
@@ -1799,7 +1840,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                   {invList.map(({ def, n }) => (
                     <button key={def.k} className="hs-card" onClick={() => engineRef.current?.addItem(def.k, 0, { owned: true })}>
                       <ItemThumb k={def.k} icon={def.icon} />
-                      <span className="hs-card-name">{def.name}</span>
+                      <span className={`hs-card-name${isOfficeFurn(def.k) ? ' paid' : ''}`}>{def.name}</span>
                       <span className="hs-card-own big">× {n}</span>
                     </button>
                   ))}
@@ -1902,14 +1943,25 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                       </button>
                     );
                   }
+                  // v100 — ofiste ücretli ürün: fiyatıyla
+                  const cost = (a.kind === 'take' || a.kind === 'cartadd') && !(bizType && MENU_TYPES.includes(bizType)) ? paidPriceOf(a.product) : 0;
+                  const costTag = cost > 0 && (
+                    <span className="hs-act-price">
+                      {' '}
+                      · <span className="gold-coin-icon" style={{ width: 11, height: 11 }} /> {cost.toLocaleString('tr-TR')}
+                    </span>
+                  );
                   return (
                     <button key={a.label} className={`hs-act${a.kind === 'take' ? ' take' : ''}`} onClick={() => doAction(a)}>
                       {a.kind === 'take' ? (
                         <>
-                          <HeldIcon product={a.product} size={20} /> {HOUSE_PRODUCTS[a.product]?.label} al
+                          <HeldIcon product={a.product} size={20} /> {HOUSE_PRODUCTS[a.product]?.label} al{costTag}
                         </>
                       ) : (
-                        a.label
+                        <>
+                          {a.label}
+                          {costTag}
+                        </>
                       )}
                     </button>
                   );
@@ -2054,13 +2106,15 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
             <div className="hs-modal-bg" onClick={() => !busy && setPanel(null)}>
               <div className="hs-modal" onClick={(e) => e.stopPropagation()}>
                 <div className="hs-modal-head">
-                  <b>⚙️ {bizType ? `${BIZ_TYPES[bizType].icon} ${BIZ_TYPES[bizType].label}` : 'Ev Ayarları'}</b>
+                  <b>⚙️ {bizType ? `${BIZ_TYPES[bizType].icon} ${BIZ_TYPES[bizType].label}` : kind === 'ofis' ? `${houseDoc?.office?.emoji || '🏢'} Ofis Ayarları` : kind === 'depo' ? '📦 Depo Ayarları' : 'Ev Ayarları'}</b>
                   <button className="hs-x" onClick={() => setPanel(null)}>✕</button>
                 </div>
                 <label className="hs-field-label">{bizType ? 'Adı' : 'Evin adı'}</label>
                 <input className="hh-input" value={settingsDraft.name} maxLength={30} onChange={(e) => setSettingsDraft((d) => ({ ...d, name: e.target.value }))} placeholder="örn. Neon Kafe, Garaj 34, Çete Mekanı" />
                 {bizType ? (
                   <BizSettings houseId={houseId} houseDoc={houseDoc} />
+                ) : kind === 'ofis' ? (
+                  <p className="hs-dim hs-office-note">🏢 Ofisler her zaman herkese açıktır.</p>
                 ) : (
                   <>
                     <label className="hs-field-label">Evin türü</label>
@@ -2078,19 +2132,22 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                 <button className={`hs-btn ghost wide hb-open-list${intentReady && !isHomeOffice(bizIntent) ? ' cue-pulse' : ''}`} disabled={busy} onClick={() => setPanel('biz')}>
                   🏪 İşletmeler{bizIntent && !isHomeOffice(bizIntent) ? ` · ${BIZ_TYPES[bizIntent].icon}` : ''}
                 </button>
-                {/* v93 — Home Ofisler (mescit / sinema / müzik stüdyosu) */}
-                <button className={`hs-btn ghost wide hb-open-list${intentReady && isHomeOffice(bizIntent) ? ' cue-pulse' : ''}`} disabled={busy} onClick={() => setPanel('ho')}>
-                  🏢 Home Ofisler{bizIntent && isHomeOffice(bizIntent) ? ` · ${BIZ_TYPES[bizIntent].icon}` : ''}
-                </button>
+                {/* v100 — Ücretli Ürünler (eski Home Ofisler): odada ücretli yapılabilir mobilya varsa */}
+                {isOwner && officeOwnedKeys.length > 0 && (
+                  <button className="hs-btn ghost wide hb-open-list hs-paid-btn" disabled={busy} onClick={() => setPanel('office')}>
+                    💰 Ücretli Ürünler{kind === 'ofis' ? ` · ${houseDoc?.office?.emoji || '🏢'} ofis` : ''}
+                  </button>
+                )}
               </div>
             </div>
           )}
 
           {/* v77 — İŞLETMELER · v93 HOME OFİSLER (aynı panel, farklı türler) */}
-          {(panel === 'biz' || panel === 'ho') && (
+          {panel === 'office' && isOwner && <OfficePanel houseId={houseId} houseDoc={houseDoc} onClose={() => setPanel(null)} flash={flash} />}
+          {panel === 'biz' && (
             <BizListPanel
-              keys={panel === 'ho' ? HOME_OFFICE_KEYS : BIZ_TYPE_KEYS}
-              title={panel === 'ho' ? '🏢 Home Ofisler' : '🏪 İşletmeler'}
+              keys={BIZ_TYPE_KEYS}
+              title="🏪 İşletmeler"
               items={design?.items}
               invItems={inv?.items}
               gold={Number(player?.gold || 0)}

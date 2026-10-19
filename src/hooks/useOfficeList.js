@@ -4,16 +4,17 @@ import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { usePolledPresence } from './usePolledPresence';
 import { useYesterdayVisits } from './useYesterdayVisits';
-import { HOME_OFFICE_KEYS } from '../../functions/businessCatalogData.js';
 
-// v93 — Evler › Home Ofisler: açık home ofisler (mescit / sinema / müzik stüdyosu).
-// Sıra Mekanlar › Ziyaret › Popüler ile aynı: önce içerideki kişi sayısı, eşitlikte
-// dünün ziyaret sayısı, sonra önce açılan.
+// v100 — Evler › Ofisler: ücretli mobilyası olan evler (kind 'ofis'). Göç bitene
+// kadar eski home ofisler (bizType mescit/sinema/stüdyo) da listelenir.
+// Sıra: içerideki kişi sayısı, eşitlikte dünün ziyaret sayısı, sonra önce açılan.
 const PRESENCE_STALE_MS = 60_000;
+const LEGACY = ['mescit', 'sinema', 'studyo'];
 
-export function useHomeOfficeList({ enabled = true } = {}) {
+export function useOfficeList({ enabled = true } = {}) {
   const { user } = useAuth();
   const [rows, setRows] = useState([]);
+  const [legacy, setLegacy] = useState([]);
   const [loading, setLoading] = useState(true);
   const on = enabled && Boolean(user);
   const presence = usePolledPresence('housePresence', { enabled: on, max: 400 });
@@ -25,17 +26,23 @@ export function useHomeOfficeList({ enabled = true } = {}) {
       return undefined;
     }
     setLoading(true);
-    return onSnapshot(
-      query(collection(db, 'houses'), where('bizType', 'in', HOME_OFFICE_KEYS), limit(200)),
+    const err = (e) => {
+      console.error('useOfficeList:', e);
+      setLoading(false);
+    };
+    const u1 = onSnapshot(
+      query(collection(db, 'houses'), where('kind', '==', 'ofis'), limit(200)),
       (s) => {
         setRows(s.docs.map((d) => ({ id: d.id, ...d.data() })));
         setLoading(false);
       },
-      (e) => {
-        console.error('useHomeOfficeList:', e);
-        setLoading(false);
-      }
+      err
     );
+    const u2 = onSnapshot(query(collection(db, 'houses'), where('bizType', 'in', LEGACY), limit(100)), (s) => setLegacy(s.docs.map((d) => ({ id: d.id, ...d.data() }))), err);
+    return () => {
+      u1();
+      u2();
+    };
   }, [on]);
 
   return useMemo(() => {
@@ -51,10 +58,15 @@ export function useHomeOfficeList({ enabled = true } = {}) {
       if (r.houseId) yv[r.houseId] = Number(r.count || 0);
     });
     const uid = user?.uid;
-    const list = rows
-      .filter((h) => !(Number(h.kicked?.[uid] || 0) > now))
+    const seen = new Set();
+    const list = [...rows, ...legacy]
+      .filter((h) => {
+        if (seen.has(h.id)) return false;
+        seen.add(h.id);
+        return !(Number(h.kicked?.[uid] || 0) > now);
+      })
       .map((h) => ({ ...h, people: counts[h.id] || 0, yv: yv[h.id] || 0, mine: h.ownerUid === uid }))
-      .sort((a, b) => b.people - a.people || b.yv - a.yv || (a.biz?.openedAtMs || 0) - (b.biz?.openedAtMs || 0));
+      .sort((a, b) => b.people - a.people || b.yv - a.yv || (a.office?.sinceMs || a.biz?.openedAtMs || 0) - (b.office?.sinceMs || b.biz?.openedAtMs || 0));
     return { loading, list };
-  }, [rows, presence, yVisits, user?.uid, loading]);
+  }, [rows, legacy, presence, yVisits, user?.uid, loading]);
 }

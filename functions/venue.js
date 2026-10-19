@@ -32,6 +32,7 @@ import { midnightDayKey } from './businessCatalogData.js';
 import { bizTax } from './tax.js';
 import { goldTag } from './moneyLog.js';
 import { CINEMA_PRICE, STUDIO_MINUTE, STUDIO_DEVICE_CAP } from './homeOfficeData.js';
+import { activeOfficeKeys, officeMinuteOf } from './officeData.js';
 
 // v93: sinema (home ofis) da menülü mekân — içecek dolabı / patlamış mısır ücretli.
 // Garson sadece cafe/bar'da.
@@ -84,7 +85,7 @@ export const waiterSalary = (price) => Math.max(0, Math.round((Number(price) || 
 const PRESENCE_ACTIVE_MS = 2 * 60 * 1000;
 export const NET_LOCK_PAD_MS = 5 * 60 * 1000;
 
-export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, business, now = () => Date.now() }) {
+export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, business, office = null, now = () => Date.now() }) {
   const fail = (code, msg) => {
     throw new HttpsError(code, msg);
   };
@@ -369,13 +370,57 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
     return creditUntilMs;
   }
 
+  // v100 — mikser konsolu (ofis): her evde. Sahip ücretsiz kullanır; başkaları sadece
+  // sahip mikseri ücretli yaptıysa (dakika ücreti ofis kazancına, günde 10.000 sınırı).
+  async function txNetHouse(tx, houseId, deviceId) {
+    if (!isId(houseId)) fail('invalid-argument', 'Geçersiz mekân.');
+    const s = await tx.get(houseRef(houseId));
+    if (!s.exists) fail('not-found', 'Mekân bulunamadı.');
+    const h = s.data();
+    const dev = deviceId ? (h.items || []).find((it) => it.i === deviceId && it.p === 1) : null;
+    const mix = dev?.k === 'mixer' && h.biz?.type !== 'studyo' && !h.venue;
+    if (!mix && (!h.biz?.type || !NET_TYPES.includes(h.biz.type))) fail('failed-precondition', 'biz-closed');
+    return { h, mix };
+  }
+  async function mixStart(tx, { uid, houseId, h, dev, deviceId, p }) {
+    const isOwner = h.ownerUid === uid;
+    if (!isOwner && !activeOfficeKeys(h).includes('mixer')) fail('failed-precondition', 'mixer-private');
+    if (!(await txPresence(tx, uid, houseId))) fail('failed-precondition', 'not-present');
+    const t = now();
+    const occ = await tx.get(db.collection('netSessions').where('houseId', '==', houseId).where('deviceId', '==', deviceId));
+    const others = occ.docs.filter((d) => d.data().uid !== uid && t - Number(d.data().lastSeenMs || 0) < NET_SEEN_MS).length;
+    if (others >= (STUDIO_DEVICE_CAP.mixer || 1)) fail('failed-precondition', 'device-full');
+    const ref = sessRef(houseId, uid);
+    const [ss, us, os] = await Promise.all([tx.get(ref), tx.get(userRef(uid)), tx.get(userRef(h.ownerUid))]);
+    const sess = ss.exists ? ss.data() : null;
+    let creditUntilMs = Number(sess?.creditUntilMs || 0);
+    let charged = 0;
+    const price = isOwner ? 0 : officeMinuteOf(h);
+    if (creditUntilMs <= t) {
+      if (!isOwner) {
+        if (Number(p.expect) !== price) fail('aborted', `price-changed:${price}`);
+        if (Number(us.data()?.gold || 0) < price) fail('failed-precondition', 'gold');
+        const c = await office.chargeMinuteTx(tx, { houseId, h, uid, us, os, price, t });
+        if (c.limit) fail('failed-precondition', `office-limit:${c.spent}`);
+        charged = price;
+      }
+      creditUntilMs = Math.max(t, creditUntilMs) + NET_SLOT_MS;
+    }
+    tx.set(ref, { houseId, uid, deviceId, deviceKey: dev.k, creditUntilMs, lastPrice: charged ? price : Number(sess?.lastPrice || price), lastSeenMs: t, updatedAtMs: t });
+    return { ok: true, creditUntilMs, charged, price };
+  }
+
   async function netStart(uid, p) {
     const houseId = String(p.houseId || '');
     const deviceId = String(p.itemId || '');
     let result = null;
     await db.runTransaction(async (tx) => {
-      const h = await txHouse(tx, houseId, NET_TYPES);
+      const { h, mix } = await txNetHouse(tx, houseId, deviceId);
       const dev = (h.items || []).find((it) => it.i === deviceId && it.p === 1);
+      if (mix) {
+        result = await mixStart(tx, { uid, houseId, h, dev, deviceId, p });
+        return;
+      }
       const cap = dev ? deviceCapOf(h.biz.type, dev.k) : 0;
       if (!cap) fail('invalid-argument', 'Cihaz bulunamadı.');
       if (!(await txPresence(tx, uid, houseId))) fail('failed-precondition', 'not-present');
@@ -411,7 +456,6 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
     const houseId = String(p.houseId || '');
     let result = null;
     await db.runTransaction(async (tx) => {
-      const h = await txHouse(tx, houseId, NET_TYPES);
       const ref = sessRef(houseId, uid);
       const ss = await tx.get(ref);
       const sess = ss.exists ? ss.data() : null;
@@ -419,11 +463,37 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
         result = { ok: true, stopped: 'none' };
         return;
       }
+      const { h, mix } = await txNetHouse(tx, houseId, sess.deviceId);
       const t = now();
       const present = await txPresence(tx, uid, houseId);
       if (!present) {
         tx.update(ref, { deviceId: null, updatedAtMs: t });
         result = { ok: true, stopped: 'left', creditUntilMs: Number(sess.creditUntilMs || 0) };
+        return;
+      }
+      if (mix) {
+        // v100 — ofis mikseri: sahip ücretsiz; mikser kapatıldıysa / sınır dolduysa biter
+        const isOwner = h.ownerUid === uid;
+        let creditUntilMs = Number(sess.creditUntilMs || 0);
+        let charged = 0;
+        const price = isOwner ? 0 : officeMinuteOf(h);
+        if (creditUntilMs - t <= 3000) {
+          if (!isOwner) {
+            const [us, os] = await Promise.all([tx.get(userRef(uid)), tx.get(userRef(h.ownerUid))]);
+            const stop = (why) => {
+              tx.update(ref, { deviceId: null, lastSeenMs: t, updatedAtMs: t });
+              result = { ok: true, stopped: why, creditUntilMs };
+            };
+            if (!activeOfficeKeys(h).includes('mixer')) return stop('closed');
+            if (Number(us.data()?.gold || 0) < price) return stop('gold');
+            const c = await office.chargeMinuteTx(tx, { houseId, h, uid, us, os, price, t });
+            if (c.limit) return stop('limit');
+            charged = price;
+          }
+          creditUntilMs = Math.max(t, creditUntilMs) + NET_SLOT_MS;
+        }
+        tx.update(ref, { creditUntilMs, lastSeenMs: t, updatedAtMs: t, ...(charged ? { lastPrice: price } : {}) });
+        result = { ok: true, creditUntilMs, charged, price };
         return;
       }
       const [us, os] = await Promise.all([tx.get(userRef(uid)), tx.get(userRef(h.ownerUid))]);

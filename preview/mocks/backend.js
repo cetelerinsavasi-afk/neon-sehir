@@ -15,6 +15,7 @@ import { createRaceTa } from '../../functions/raceTa.js';
 import { createCosmetics } from '../../functions/cosmetics.js';
 import { createStream } from '../../functions/stream.js';
 import { createHomeOffice } from '../../functions/homeOffice.js';
+import { createOffice } from '../../functions/office.js';
 
 export const PREVIEW_UID = 'previewAdmin';
 export const PREVIEW_PASSWORD = 'test';
@@ -46,11 +47,12 @@ if (typeof window !== 'undefined') window.__gang = { fakeDb, system };
 
 // v77 İşletmeler önizlemesi (gerçek sunucu kodu)
 export const business = createBusiness({ db: fakeDb, FieldValue });
-export const venue = createVenue({ db: fakeDb, FieldValue, HttpsError: PreviewHttpsError, splitIncomeForDebt: (debt, amount) => ({ goldDelta: amount, debtDelta: 0 }), business });
+export const office = createOffice({ db: fakeDb, FieldValue, HttpsError: PreviewHttpsError, splitIncomeForDebt: (debt, amount) => ({ goldDelta: amount, debtDelta: 0 }) });
+export const venue = createVenue({ db: fakeDb, FieldValue, HttpsError: PreviewHttpsError, splitIncomeForDebt: (debt, amount) => ({ goldDelta: amount, debtDelta: 0 }), business, office });
 export const gym = createGym({ db: fakeDb, FieldValue, HttpsError: PreviewHttpsError, splitIncomeForDebt: (debt, amount) => ({ goldDelta: amount, debtDelta: 0 }), business });
 export const homeOffice = createHomeOffice({ db: fakeDb, FieldValue, HttpsError: PreviewHttpsError, splitIncomeForDebt: (debt, amount) => ({ goldDelta: amount, debtDelta: 0 }), business });
 export const shop = createShop({
-  extraOps: { ...venue.ops, ...gym.ops, ...homeOffice.ops },
+  extraOps: { ...venue.ops, ...gym.ops, ...homeOffice.ops, ...office.ops },
   db: fakeDb,
   FieldValue,
   HttpsError: PreviewHttpsError,
@@ -69,6 +71,7 @@ export const visits = createVisits({ db: fakeDb, FieldValue });
 // v65 3D Ev önizlemesi
 export const houses = createHouses({
   visits,
+  officeMigrate: (id) => office.migrateOne(id),
   bizHooks: shop.bizHooks,
   db: fakeDb,
   FieldValue,

@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { shopAction } from '../../services/gameActions';
 import { bizErrText } from '../../lib/bizErrors';
-import { SONG_PLAY_MIN_SEC, SONG_TIP_AMOUNTS, SONG_TIP_DAILY, SONG_TIP_NOTE_MAX } from '../../../functions/homeOfficeData.js';
+import { SONG_PLAY_MIN_SEC, SONG_TIP_AMOUNTS, SONG_TIP_DAILY, SONG_TIP_NOTE_MAX, SONG_TIP_PER_SONG } from '../../../functions/homeOfficeData.js';
 import './SongMaker.css';
 
 // =============================================================================
@@ -17,7 +17,7 @@ const PAT_COLORS = ['#ff6f91', '#6aaeff', '#4fe3b3', '#ffd447'];
 const fmtSec = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 // v93 — post verilirse: dinlenme sayısı (en az 3 sn dinlenince sayılır; hesap başı en
-// fazla 5), destek butonu (10/100/1000; sanatçıya günde en fazla 1.000) ve
+// fazla 5), destek butonu (v100: 100/500/1000/5000; şarkı başı 5.000, sanatçıya günde 10.000) ve
 // sanatçının kendisine MP3 indirme.
 export default function SongView({ song, post = null }) {
   const { user } = useAuth();
@@ -55,7 +55,7 @@ export default function SongView({ song, post = null }) {
       setTipNote('');
       setTipSel(null);
       setTipOpen(false);
-      setTipMsg({ ok: true, text: `💛 ${amount.toLocaleString('tr-TR')} altın destek verdin (bugün ${r.given.toLocaleString('tr-TR')}/${SONG_TIP_DAILY.toLocaleString('tr-TR')}).` });
+      setTipMsg({ ok: true, text: `💛 ${amount.toLocaleString('tr-TR')} altın destek verdin (bu şarkıya ${Number(r.onSong || amount).toLocaleString('tr-TR')}/${SONG_TIP_PER_SONG.toLocaleString('tr-TR')} · bugün sanatçıya ${r.given.toLocaleString('tr-TR')}/${SONG_TIP_DAILY.toLocaleString('tr-TR')}).` });
     } catch (e) {
       setTipMsg({ ok: false, text: bizErrText(e) });
     } finally {

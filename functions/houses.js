@@ -36,6 +36,7 @@ import {
 import { BIZ_TYPES, BIZ_DEFAULT_NAME, checkBizRequirements } from './businessCatalogData.js';
 import { MENU_TYPES, isMenuProduct } from './venue.js';
 import { goldTag } from './moneyLog.js';
+import { houseKind, officePriceOf, isLegacyHomeOffice } from './officeData.js';
 import { VENUES, VENUE_OWNER, camiiDynamicNpcs } from './venueLayouts.js';
 
 // v77 — Ev → İşletme. houses/{id} üzerine eklenen alanlar:
@@ -125,7 +126,7 @@ const countOwned = (items) => {
 const ownsSurface = (inv, type, key) => FREE_SURFACES[type].includes(key) || (inv?.[type === 'wall' ? 'walls' : 'floors'] || []).includes(key);
 
 // deps: { db, FieldValue, HttpsError, requireAuth, onCall, isAdmin, assertCanSpeak, isFriend, now? }
-export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, isAdmin, assertCanSpeak, isFriend, now = () => Date.now(), bizHooks = {}, visits = null }) {
+export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, isAdmin, assertCanSpeak, isFriend, now = () => Date.now(), bizHooks = {}, visits = null, officeMigrate = null }) {
   const fail = (code, msg) => {
     throw new HttpsError(code, msg);
   };
@@ -195,6 +196,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
         biz: null,
         bizType: null,
         bizIntent,
+        kind: 'depo', // v100: 10 mobilyaya kadar depo
         createdAtMs: now(),
         updatedAtMs: now(),
       });
@@ -233,7 +235,12 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
 
   async function enter(uid, p) {
     const houseId = String(p.houseId || '');
-    const h = await loadHouse(houseId);
+    let h = await loadHouse(houseId);
+    // v100 — eski home ofis (mescit/sinema/stüdyo) ilk girişte ofise taşınır
+    if (officeMigrate && isLegacyHomeOffice(h)) {
+      await officeMigrate(houseId).catch((e) => console.error('office migrate (enter)', houseId, e));
+      h = await loadHouse(houseId);
+    }
     // Gizliye çekilse bile o an içeride olan atılmaz (yeniden bağlanma dahil).
     const already = await presentIn(uid, houseId);
     if (!already) {
@@ -326,7 +333,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     // merge YOK: eski malzeme anahtarları tamamen silinmeli (yoksa iki kez iade edilir)
     if (bizInv) tx.set(bizInvRef(houseId), { ownerUid: h.ownerUid, type: null, materials: {}, updatedAtMs: now() });
     if (bizHooks.onCloseWrite) Object.assign(returned, bizHooks.onCloseWrite(tx, { houseId, h, state: hookState }) || {});
-    tx.update(houseRef(houseId), { biz: null, bizType: null, bizRank: FieldValue.delete(), updatedAtMs: now() });
+    tx.update(houseRef(houseId), { biz: null, bizType: null, bizRank: FieldValue.delete(), kind: houseKind({ ...h, biz: null, bizType: null }), updatedAtMs: now() });
     return returned;
   }
   async function readBizCloseState(tx, houseId, h) {
@@ -351,6 +358,8 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     const houseId = String(p.houseId || '');
     const type = String(p.type || '');
     if (!BIZ_TYPES[type]) fail('invalid-argument', 'Geçersiz işletme türü.');
+    // v100: home ofisler kalktı — mescit/sinema/stüdyo yerine ücretli mobilyalar (ofis)
+    if (BIZ_TYPES[type].ho) fail('failed-precondition', 'Home ofisler artık ofis: ücretli mobilyalarını Ayarlar › Ücretli Ürünler\'den aç.');
     let result = null;
     await db.runTransaction(async (tx) => {
       const hs = await tx.get(houseRef(houseId));
@@ -364,6 +373,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
         biz: { type, openedAtMs: now() },
         bizType: type,
         bizIntent: null,
+        kind: 'isletme',
         privacy: 'public',
         // v77: yeni açılan spor salonu bonussuz başlar (ilk 19:00 da sayılmaz)
         ...(type === 'spor' ? { gymBonusDay: null } : {}),
@@ -478,7 +488,8 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       const floor = design.floor && ownsSurface(inv, 'floor', design.floor) ? design.floor : h.floor || FREE_SURFACES.floor[0];
       let closed = null;
       if (closing) closed = { type: h.biz.type, returned: writeBizClose(tx, { houseId, h, ...closing }) };
-      tx.update(houseRef(houseId), { items, wall, floor, updatedAtMs: now(), ...(editor ? { lastEditBy: uid } : {}) });
+      const kind = houseKind({ ...h, items, ...(closed ? { biz: null, bizType: null } : {}) });
+      tx.update(houseRef(houseId), { items, wall, floor, kind, updatedAtMs: now(), ...(editor ? { lastEditBy: uid } : {}) });
       // Envanter belgesi küçük: tamamı tek yazımla (silinen anahtarlar da gider)
       tx.set(invRef(invUid), { items: invItems, walls: inv.walls || [], floors: inv.floors || [], updatedAtMs: now() });
       result = { ok: true, count: items.length, wall, floor, ...(closed ? { bizClosed: closed } : {}), ...(editor ? { inv: { items: invItems, walls: inv.walls || [], floors: inv.floors || [] } } : {}) };
@@ -550,7 +561,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       }
       if (q.gem) userPatch.emerald = FieldValue.increment(-q.gem);
       tx.update(userRef(uid), userPatch);
-      tx.update(houseRef(houseId), { items, wall, floor, updatedAtMs: now() });
+      tx.update(houseRef(houseId), { items, wall, floor, kind: houseKind({ ...h, items, ...(closing ? { biz: null, bizType: null } : {}) }), updatedAtMs: now() });
       tx.set(invRef(uid), { items: invItems, walls, floors, updatedAtMs: now() });
       const cnt = Object.values(q.lines).reduce((a, b) => a + b, 0);
       result = { ok: true, gold: q.gold, gem: q.gem, count: cnt, wall, floor };
@@ -582,6 +593,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       if (!PRIVACY.includes(p.privacy)) fail('invalid-argument', 'Geçersiz tür.');
       // v77: işletme her zaman herkese açık
       if (h.biz && p.privacy !== 'public') fail('failed-precondition', 'İşletmeler her zaman herkese açıktır.');
+      if (houseKind(h) === 'ofis' && p.privacy !== 'public') fail('failed-precondition', 'Ofisler her zaman herkese açıktır.');
       patch.privacy = p.privacy;
     }
     if (Object.keys(patch).length) await houseRef(houseId).update({ ...patch, updatedAtMs: now() });
@@ -803,6 +815,9 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     if (h.venue) fail('failed-precondition', 'Bu mekânda eşyadan ürün alınmaz.');
     // v77: cafe/bar işletmesinde yiyecek-içecek müşteriye ücretsiz değil → menüden alınır
     if (h.biz?.type && MENU_TYPES.includes(h.biz.type) && isMenuProduct(product) && h.ownerUid !== uid) fail('failed-precondition', 'biz-menu');
+    // v100: ofiste ücretli ürün → shopAction officeBuy ile alınır
+    const paid = h.ownerUid !== uid ? officePriceOf(h, product) : 0;
+    if (paid > 0) fail('failed-precondition', `office-paid:${paid}`);
     const pres = await presentIn(uid, houseId);
     if (!pres) fail('failed-precondition', 'Bu evde değilsin.');
     const t = now();

@@ -19,6 +19,7 @@ import { resaleTax, factoryTax, factoryTaxRate, taxLedgerWrite } from './tax.js'
 import { createVisits } from './visits.js';
 import { createShop } from './shop.js';
 import { createVenue } from './venue.js';
+import { createOffice } from './office.js';
 import { createPresenceSummary } from './presenceSummary.js';
 import { createGym, gymPriceOf, withBonus, botGymPool } from './gym.js';
 import { createFutbolPro, assignGoalCredits, computeMatchRatings } from './futbolPro.js';
@@ -176,12 +177,20 @@ export const socialAction = social.socialAction;
 // v77 — İşletmeler: günlük rapor/sıralama (business) + silahçı/modifiye/galeri
 // (shop: atölye + vitrin). shop'un kapanış kancaları houses'a verilir.
 const business = createBusiness({ db, FieldValue: admin.firestore.FieldValue });
+// v100 — Ofisler: ücretli mobilyalar (functions/office.js)
+const office = createOffice({
+  db,
+  FieldValue: admin.firestore.FieldValue,
+  HttpsError,
+  splitIncomeForDebt: (debt, amount) => splitIncomeForDebt(debt, amount),
+});
 const venue = createVenue({
   db,
   FieldValue: admin.firestore.FieldValue,
   HttpsError,
   splitIncomeForDebt: (debt, amount) => splitIncomeForDebt(debt, amount),
   business,
+  office,
 });
 const gym = createGym({
   db,
@@ -215,7 +224,7 @@ const homeOffice = createHomeOffice({
   assertCanSpeak: (uid, content) => moderation.assertCanSpeak(uid, content),
 });
 const shop = createShop({
-  extraOps: { ...venue.ops, ...gym.ops, ...homeOffice.ops },
+  extraOps: { ...venue.ops, ...gym.ops, ...homeOffice.ops, ...office.ops },
   db,
   FieldValue: admin.firestore.FieldValue,
   HttpsError,
@@ -234,6 +243,7 @@ export const recordVenueVisit = onCall(async (request) => {
 });
 const houses = createHouses({
   visits,
+  officeMigrate: (houseId) => office.migrateOne(houseId),
   bizHooks: shop.bizHooks,
   db,
   FieldValue: admin.firestore.FieldValue,
@@ -257,6 +267,7 @@ export const businessRollover = onSchedule({ schedule: '5 * * * *', timeZone: 'E
   await business.sendShortageSms();
   await venue.cleanup();
   await homeOffice.cleanup().catch((e) => console.error('homeOffice cleanup', e));
+  await office.cleanup().catch((e) => console.error('office cleanup', e));
   await gym.expireMemberships();
   await cleanupMoneyLog({ db }).catch((e) => console.error('moneyLog cleanup', e));
 });

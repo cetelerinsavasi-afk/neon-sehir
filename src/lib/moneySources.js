@@ -53,6 +53,10 @@ export const MONEY_SOURCES = {
   studyo: { icon: '🎛️', label: 'Müzik stüdyosu' },
   sanatci: { icon: '🎵', label: 'Şarkı desteği (gelen)' },
   sanatciDestek: { icon: '💛', label: 'Şarkı desteği (verilen)' },
+  // v100 ofisler
+  ofis: { icon: '🏢', label: 'Ofis geliri' },
+  ofisAlis: { icon: '🛍️', label: 'Ofis alışverişi' },
+  ofisBagis: { icon: '🤲', label: 'Bağış kutusu' },
   diger: { icon: '•', label: 'Diğer' },
 };
 export const moneySource = (k) => MONEY_SOURCES[k] || { icon: '•', label: k };
