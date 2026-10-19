@@ -61,6 +61,7 @@ import { streamBroadcast, clearGameFrame, closeStreamChannel, streamPose, useLiv
 import { streamPriceOf, cafeDevicePrice, isStreamSetPc } from '../../../functions/stream.js';
 import { attachHScroll } from '../../lib/hscroll';
 import HomeOfficeLayer from '../HomeOffice/HomeOfficeLayer';
+import EntranceDoorPicker from './EntranceDoorPicker';
 
 // =============================================================================
 // HouseScreen — 3D Ev (v66, herkese açık)
@@ -118,7 +119,7 @@ function Money({ gold = 0, gem = 0, small }) {
 
 // v92 — iki tasarımı karşılaştırmak için kısa imza (sıra bağımsız)
 const designSig = (d) =>
-  `${d?.wall}|${d?.floor}|` +
+  `${d?.wall}|${d?.floor}|${d?.door ? `${d.door.w}:${d.door.x}:${d.door.t}` : '-'}|` +
   (d?.items || [])
     .map((it) => `${it.i}:${it.k}:${it.x}:${it.z}:${it.r || 0}:${it.c || 0}:${it.p === 1 ? 1 : 0}:${it.o === true ? 1 : it.o === false ? 0 : '-'}`)
     .sort()
@@ -333,7 +334,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
           pendingDesignRef.current = null;
           const hd = houseDocRef.current;
           if (hd && engineRef.current) {
-            engineRef.current.setDesign({ items: hd.items || [], wall: hd.wall, floor: hd.floor }, { force: true });
+            engineRef.current.setDesign({ items: hd.items || [], wall: hd.wall, floor: hd.floor, door: hd.door || null }, { force: true });
             setDesign(engineRef.current.getDesign());
           }
           flash(
@@ -372,7 +373,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
       onDesignChange: (dsg) => {
         setDesign(dsg);
         if (!canDesignRef.current) return;
-        pendingDesignRef.current = { items: dsg.items, wall: dsg.wall, floor: dsg.floor };
+        pendingDesignRef.current = { items: dsg.items, wall: dsg.wall, floor: dsg.floor, door: dsg.door };
         setSaveState('dirty');
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = setTimeout(() => flushSave(), SAVE_DEBOUNCE_MS);
@@ -456,8 +457,8 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
         houseDocRef.current = data;
         const eng = engineRef.current;
         if (!eng) return;
-        const dsg = { items: data.items || [], wall: data.wall, floor: data.floor };
-        const surf = `${data.wall}|${data.floor}`;
+        const dsg = { items: data.items || [], wall: data.wall, floor: data.floor, door: data.door || null };
+        const surf = `${data.wall}|${data.floor}|${JSON.stringify(data.door || null)}`;
         const designer = info?.isOwner || data.editors?.[user?.uid] === true;
         if (!designer || !appliedFirstRef.current) {
           appliedFirstRef.current = true;
@@ -471,7 +472,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
           const cur = eng.getDesign();
           const surfChanged = surf !== lastRemoteSurfRef.current;
           lastRemoteSurfRef.current = surf;
-          const next = { items: dsg.items, wall: surfChanged ? dsg.wall : cur.wall, floor: surfChanged ? dsg.floor : cur.floor };
+          const next = { items: dsg.items, wall: surfChanged ? dsg.wall : cur.wall, floor: surfChanged ? dsg.floor : cur.floor, door: surfChanged ? dsg.door : cur.door };
           if (designSig(next) !== designSig(cur)) {
             eng.setDesign(next);
             setDesign(eng.getDesign());
@@ -967,7 +968,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     pendingDesignRef.current = null;
     const dsg = eng.getDesign();
     try {
-      const res = await enqueue(() => houseAction({ op: 'checkout', houseId, design: { items: dsg.items, wall: dsg.wall, floor: dsg.floor }, expect: { gold: cart.gold, gem: cart.gem } }));
+      const res = await enqueue(() => houseAction({ op: 'checkout', houseId, design: { items: dsg.items, wall: dsg.wall, floor: dsg.floor, door: dsg.door }, expect: { gold: cart.gold, gem: cart.gem } }));
       const owned = { ...dsg, items: dsg.items.map((it) => ({ ...it, p: 1 })) };
       eng.deselect();
       eng.setDesign(owned);
@@ -1785,7 +1786,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                         {c.icon} {c.name}
                       </button>
                     ))}
-                    <button className={cat === 'yuzey' ? 'on' : ''} onClick={() => setCat('yuzey')}>🎨 Duvar & Zemin</button>
+                    <button className={cat === 'yuzey' ? 'on' : ''} onClick={() => setCat('yuzey')}>🎨 Duvar, Zemin & Kapı</button>
                   </div>
                   {cat !== 'yuzey' && (
                     <div className="hs-shelf-items">
@@ -1829,6 +1830,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                           })}
                         </div>
                       ))}
+                      {!venue && <EntranceDoorPicker door={design?.door} onChange={(d) => engineRef.current?.setDoor(d)} />}
                     </div>
                   )}
                 </>

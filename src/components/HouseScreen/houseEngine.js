@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes';
 import { drawPet, isPerchPet, petCollarAt, PET_ART } from '../../lib/cosmeticsArt';
-import { CATALOG_MAP, buildItem, itemBoxes, disposeObject, TINTS, M, gunModel, HELD_GUN_SCALE } from './houseCatalog';
+import { CATALOG_MAP, buildItem, itemBoxes, disposeObject, TINTS, M, gunModel, HELD_GUN_SCALE, DOOR_BUILDERS } from './houseCatalog';
+import { DEFAULT_DOOR, sanitizeDoor, sameDoor, doorSpawn, doorLocalToWorld } from '../../../functions/houseDoor.js';
 import { FLOORS, WALLS, floorDef, wallDef, surfaceTexture } from './houseTextures';
 import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
 import { heldCanvas, heldDataUrl } from './heldArt';
@@ -776,27 +777,37 @@ export function createHouseEngine(
     scene.add(grp);
     return { ...w, i, grp, full, stub, hidden: false };
   });
-  {
-    const door = new THREE.Group();
-    const fr = new THREE.Mesh(new THREE.BoxGeometry(1.3, 2.4, 0.12), new THREE.MeshStandardMaterial({ color: '#15151a', roughness: 0.4 }));
-    fr.position.set(0, 1.2, 0.06);
-    const pn = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2.25, 0.08), new THREE.MeshStandardMaterial({ color: '#3a2216', roughness: 0.45 }));
-    pn.position.set(0, 1.13, 0.1);
-    const hd = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.25, 0.06), new THREE.MeshStandardMaterial({ color: '#d9a93c', roughness: 0.25, metalness: 1 }));
-    hd.position.set(0.42, 1.05, 0.16);
-    const mat = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.8), new THREE.MeshStandardMaterial({ color: '#2a1e18', roughness: 1 }));
-    mat.rotation.x = -Math.PI / 2;
-    mat.position.set(0, 0.012, 0.6);
-    door.add(fr, pn, hd, mat);
-    door.traverse((o) => {
+  // v101 — giriş kapısı: yeri (duvar + konum) ve tipi değiştirilebilir (design.door)
+  let entrance = null; // { obj, ctl, door, wx, wz }
+  const doorMatMat = new THREE.MeshStandardMaterial({ color: '#2a1e18', roughness: 1 });
+  owned.push(doorMatMat);
+  function buildEntrance(door) {
+    if (entrance) {
+      entrance.obj.parent?.remove(entrance.obj);
+      disposeObject(entrance.obj);
+      entrance = null;
+    }
+    const d = sanitizeDoor(door) || { ...DEFAULT_DOOR };
+    const g = new THREE.Group();
+    const ctl = (DOOR_BUILDERS[d.t] || DOOR_BUILDERS.ahsap)(g, { H }) || null;
+    if (d.t !== 'market') {
+      const mat = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.8), doorMatMat);
+      mat.rotation.x = -Math.PI / 2;
+      mat.position.set(0, 0.012, 0.6);
+      g.add(mat);
+    }
+    g.traverse((o) => {
       if (o.isMesh) {
         o.receiveShadow = true;
-        owned.push(o.material);
+        o.userData.noPick = true;
       }
     });
-    door.position.set(-SPAWN.x, 0, 0);
-    walls[2].full.add(door);
+    g.position.set(d.x, 0, 0);
+    walls[d.w].full.add(g);
+    const wp = doorLocalToWorld(d.w, d.x, 0.3);
+    entrance = { obj: g, ctl, door: d, wx: wp.x, wz: wp.z };
   }
+  buildEntrance(DEFAULT_DOOR);
   const grid = new THREE.GridHelper(Math.max(W, D), Math.max(W, D) * 2, '#19e8ff', '#3a4250');
   grid.scale.set(W / Math.max(W, D), 1, D / Math.max(W, D));
   grid.position.y = 0.006;
@@ -824,7 +835,8 @@ export function createHouseEngine(
   owned.push(selMat, selRing.material, targetRing.material, grid.material);
 
   // --- Durum ---------------------------------------------------------------------
-  let design = { items: [], wall: WALLS[0].key, floor: FLOORS[0].key };
+  let design = { items: [], wall: WALLS[0].key, floor: FLOORS[0].key, door: { ...DEFAULT_DOOR } };
+  let spawnedAtDoor = false; // v101: ilk tasarım gelince kapının önüne konulur
   const objs = new Map(); // id -> { obj, data, sig }
   let selectedId = null;
   let mode = 'walk';
@@ -2220,13 +2232,26 @@ export function createHouseEngine(
 
   let waterTimer = 0;
   let waterTiles = [];
+  function nearestPerson(x, z) {
+    let best = Math.hypot(self.x - x, self.z - z);
+    others.forEach((o) => {
+      const d = Math.hypot(o.fig.x - x, o.fig.z - z);
+      if (d < best) best = d;
+    });
+    return best;
+  }
   function frame(dt) {
     const t = clock.elapsedTime;
     const now = performance.now();
     updateShowers();
     objs.forEach((e) => {
-      if (e.data.p === 1) e.obj.userData.ctl?.tick?.(t, dt);
+      if (e.data.p !== 1) return;
+      const ctl = e.obj.userData.ctl;
+      if (!ctl?.tick) return;
+      // v101 — kapılar: en yakın kişinin uzaklığı (yaklaşınca açılır)
+      ctl.tick(t, dt, ctl.near ? nearestPerson(e.data.x, e.data.z) : undefined);
     });
+    if (entrance?.ctl?.tick) entrance.ctl.tick(t, dt, nearestPerson(entrance.wx, entrance.wz));
     if (mode === 'walk') stepWalk(dt);
     placeCamera(dt);
     updateOccluders(dt);
@@ -2517,11 +2542,24 @@ export function createHouseEngine(
     setDesign(next, { force = false } = {}) {
       if (!next) return;
       const wallChanged = next.wall !== design.wall || next.floor !== design.floor || force;
+      // v101: tasarımda kapı yoksa (eski kayıt) mevcut kapı kalır; null = varsayılan
+      const door = 'door' in next ? sanitizeDoor(next.door) || { ...DEFAULT_DOOR } : design.door;
       design = {
         items: Array.isArray(next.items) ? next.items.filter((d) => CATALOG_MAP[d.k]) : [],
         wall: next.wall || WALLS[0].key,
         floor: next.floor || FLOORS[0].key,
+        door,
       };
+      if (!sameDoor(door, entrance?.door)) buildEntrance(door);
+      if (!spawnedAtDoor) {
+        spawnedAtDoor = true;
+        if (!self.seat) {
+          const sp = doorSpawn(door);
+          self.x = sp.x;
+          self.z = sp.z;
+          self.target = null;
+        }
+      }
       if (wallChanged) setSurfaces();
       syncFromDesign();
     },
@@ -2676,6 +2714,15 @@ export function createHouseEngine(
       if (!canEdit) return;
       design = { ...design, wall: key };
       setSurfaces();
+      onDesignChange?.(design);
+    },
+    // v101 — giriş kapısının yeri ve tipi
+    setDoor(next) {
+      if (!canEdit) return;
+      const door = sanitizeDoor({ ...design.door, ...(next || {}) });
+      if (!door || sameDoor(door, design.door)) return;
+      design = { ...design, door };
+      buildEntrance(door);
       onDesignChange?.(design);
     },
     setFloor(key) {
@@ -3057,6 +3104,7 @@ export function createHouseEngine(
         window.removeEventListener('keyup', onKeyUp);
       }
       [...objs.keys()].forEach(removeEntry);
+      if (entrance) disposeObject(entrance.obj);
       others.forEach((o) => o.fig.dispose(scene));
       self.fig?.dispose(scene);
       // sahneye ait geometri/malzemeler (renderer ORTAK — dispose edilmez)

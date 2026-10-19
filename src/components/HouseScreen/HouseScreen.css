@@ -454,6 +454,38 @@
   background: rgba(25, 232, 255, 0.14);
 }
 
+.hs-surf i.hs-door-ico {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-style: normal;
+  font-size: 18px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.hs-door-pos {
+  align-items: center;
+}
+.hs-door-wall,
+.hs-door-step {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--hs-line);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.hs-door-wall.on {
+  border-color: var(--neon-cyan, #19e8ff);
+  background: rgba(25, 232, 255, 0.14);
+}
+.hs-door-pos input[type='range'] {
+  flex: 1 0 120px;
+  min-width: 120px;
+  accent-color: var(--neon-cyan, #19e8ff);
+}
+
 /* --- seçili eşya --- */
 .hs-selbar {
   position: absolute;

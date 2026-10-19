@@ -346,3 +346,24 @@ test('v92: yeni zemin/duvarlar parça olarak satılır (ucuz), tam yüzey olarak
   await h.act('zengin', { op: 'save', houseId: id, design: { items } });
   assert.equal(h.G(`houses/${id}`).items.length, 40);
 });
+
+test('v101: giriş kapısı — yer/tip kaydedilir (ücretsiz), geçersiz değer düzeltilir, girenler kapının önünde doğar', async () => {
+  const h = setup();
+  const id = await withHouse(h);
+  await h.act('zengin', { op: 'enter', houseId: id });
+  let pr = h.G('housePresence/zengin');
+  assert.deepEqual([pr.x, pr.z], [5, 3.8]); // varsayılan kapı (arka duvar) — eskisiyle aynı
+  const gold0 = h.G('users/zengin').gold;
+  await h.act('zengin', { op: 'save', houseId: id, design: { items: [], door: { w: 0, x: 2, t: 'market' } } });
+  assert.deepEqual(h.G(`houses/${id}`).door, { w: 0, x: 2, t: 'market' });
+  assert.equal(h.G('users/zengin').gold, gold0);
+  // kapı içermeyen kayıt kapıyı değiştirmez
+  await h.act('zengin', { op: 'save', houseId: id, design: { items: [] } });
+  assert.deepEqual(h.G(`houses/${id}`).door, { w: 0, x: 2, t: 'market' });
+  // geçersiz tip/duvar/yer düzeltilir
+  await h.act('zengin', { op: 'save', houseId: id, design: { items: [], door: { w: 1, x: 999, t: 'yok' } } });
+  assert.deepEqual(h.G(`houses/${id}`).door, { w: 1, x: 6, t: 'ahsap' });
+  await h.act('ali', { op: 'enter', houseId: id });
+  pr = h.G('housePresence/ali');
+  assert.deepEqual([pr.x, pr.z], [5.8, 6]);
+});

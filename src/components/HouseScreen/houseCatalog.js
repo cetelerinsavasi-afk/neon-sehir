@@ -205,6 +205,7 @@ export const CATEGORIES = [
   { key: 'spor', name: 'Spor & Oyun', icon: '🎱' },
   { key: 'dis', name: 'Dış Mekan & Havuz', icon: '🌳' },
   { key: 'yapi', name: 'Yapı', icon: '🧱' },
+  { key: 'kapi', name: 'Kapılar', icon: '🚪' },
   ...V92_CATEGORIES,
 ];
 
@@ -1958,6 +1959,283 @@ function doorDecor(g) {
   B(g, 0.03, 0.2, 0.05, 0.38, 1.05, 0.13, GOLD());
 }
 
+// =============================================================================
+// v101 — KAPILAR: RP mekânlarına uygun kapılar. Hepsi duvara takılır; biri
+// yaklaşınca kendiliğinden açılır (motor tick'e en yakın kişinin uzaklığını verir).
+// Aynı görünümler evin giriş kapısı için de kullanılır (DOOR_BUILDERS).
+// =============================================================================
+const smooth = (k) => k * k * (3 - 2 * k);
+function doorVoid(g, w, h) {
+  B(g, w, h, 0.01, 0, h / 2, 0.006, M('#07080b', 0.95));
+}
+function doorFrame(g, w, h, m, t = 0.08, d = 0.14) {
+  [-1, 1].forEach((s) => B(g, t, h + t, d, s * (w / 2 + t / 2), (h + t) / 2, d / 2, m));
+  B(g, w + t * 2, t, d, 0, h + t / 2, d / 2, m);
+}
+function pivot(g, x, z = 0.07) {
+  const p = new THREE.Group();
+  p.position.set(x, 0, z);
+  g.add(p);
+  return p;
+}
+// near: açılma mesafesi · apply(k 0..1, t) görünümü uygular
+function autoDoor(apply, { near = 1.7, speed = 2.4, always = false } = {}) {
+  let k = 0;
+  apply(0, 0);
+  return {
+    near,
+    noToggle: true,
+    tick(t, dt = 0.016, dist = 99) {
+      const target = dist < near ? 1 : 0;
+      if (!always && Math.abs(k - target) < 0.001) return;
+      k += Math.sign(target - k) * Math.min(Math.abs(target - k), (dt || 0.016) * speed);
+      apply(smooth(k), t, dt || 0.016);
+    },
+  };
+}
+function signMat(key, text, bg, fg, w = 256, h = 64, font = 'bold 34px sans-serif') {
+  const tex = labelTexture(key, w, h, (c, ww, hh) => {
+    c.fillStyle = bg;
+    c.fillRect(0, 0, ww, hh);
+    c.fillStyle = fg;
+    c.font = font;
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(text, ww / 2, hh / 2 + 2);
+  });
+  return own(new THREE.MeshStandardMaterial({ color: '#000', emissive: '#ffffff', emissiveMap: tex, emissiveIntensity: 1.1, roughness: 0.5 }));
+}
+
+// Ahşap giriş kapısı (eski varsayılan ev kapısı; açılır)
+function doorAhsap(g) {
+  const W2 = 1.1;
+  const H2 = 2.25;
+  B(g, 1.3, 2.4, 0.12, 0, 1.2, 0.06, M('#15151a', 0.4));
+  doorVoid(g, W2, H2);
+  g.children[g.children.length - 1].position.z = 0.122;
+  const p = pivot(g, -W2 / 2, 0.14);
+  B(p, W2, H2, 0.06, W2 / 2, H2 / 2, 0, M('#3a2216', 0.45));
+  for (let i = 0; i < 3; i++) B(p, 0.8, 0.5, 0.01, W2 / 2, 0.4 + i * 0.66, 0.035, M('#2e1a10', 0.45));
+  B(p, 0.04, 0.25, 0.06, W2 - 0.13, 1.05, 0.06, GOLD());
+  return autoDoor((k) => {
+    p.rotation.y = -k * 1.35;
+  });
+}
+function doorWhite(g) {
+  const W2 = 1.0;
+  const H2 = 2.15;
+  const fr = M('#f2f0ea', 0.35);
+  doorVoid(g, W2, H2);
+  doorFrame(g, W2, H2, fr, 0.09);
+  const p = pivot(g, -W2 / 2);
+  const leaf = M('#f7f6f2', 0.3);
+  B(p, W2, H2, 0.05, W2 / 2, H2 / 2, 0, leaf);
+  [[0.25, 1.62], [0.75, 1.62], [0.25, 0.98], [0.75, 0.98], [0.25, 0.35], [0.75, 0.35]].forEach(([x, y]) => B(p, 0.36, y > 1.5 ? 0.62 : 0.5, 0.012, x * W2, y, 0.03, M('#e9e7e0', 0.3)));
+  B(p, 0.03, 0.12, 0.05, W2 - 0.1, 1.0, 0.05, CHROME());
+  B(p, 0.14, 0.025, 0.025, W2 - 0.15, 1.04, 0.08, CHROME());
+  return autoDoor((k) => {
+    p.rotation.y = -k * 1.35;
+  });
+}
+function doorGlass(g) {
+  const W2 = 1.1;
+  const H2 = 2.25;
+  const al = M('#3a3d42', 0.3, 0.8);
+  doorVoid(g, W2, H2);
+  doorFrame(g, W2, H2, al, 0.07);
+  const p = pivot(g, -W2 / 2);
+  B(p, W2, H2, 0.02, W2 / 2, H2 / 2, 0, GLASS());
+  [0.04, W2 - 0.04].forEach((x) => B(p, 0.08, H2, 0.05, x, H2 / 2, 0, al));
+  B(p, W2, 0.18, 0.05, W2 / 2, 0.09, 0, al);
+  B(p, W2, 0.08, 0.05, W2 / 2, H2 - 0.04, 0, al);
+  B(p, W2 - 0.25, 0.04, 0.04, W2 / 2, 1.05, 0.07, CHROME());
+  [0.2, W2 - 0.2].forEach((x) => B(p, 0.03, 0.03, 0.06, x, 1.05, 0.04, CHROME()));
+  PLANE(p, 0.42, 0.14, signMat('door_acik', 'AÇIK', '#0b0b0f', '#ff3355'), W2 / 2, 1.6, 0.02);
+  return autoDoor((k) => {
+    p.rotation.y = -k * 1.4;
+  });
+}
+function doorMarket(g) {
+  const OW = 1.9; // açıklık
+  const SW = 0.5; // yan sabit camlar
+  const H2 = 2.3;
+  const al = M('#9aa0a6', 0.3, 0.85);
+  doorVoid(g, OW + SW * 2, H2);
+  doorFrame(g, OW + SW * 2, H2, al, 0.08);
+  [-1, 1].forEach((s) => {
+    const cx = s * (OW / 2 + SW / 2);
+    B(g, SW, H2, 0.02, cx, H2 / 2, 0.04, GLASS());
+    B(g, 0.05, H2, 0.05, s * (OW / 2), H2 / 2, 0.04, al);
+  });
+  const leaves = [-1, 1].map((s) => {
+    const lg = new THREE.Group();
+    g.add(lg);
+    const lw = OW / 2;
+    B(lg, lw, H2 - 0.05, 0.02, 0, (H2 - 0.05) / 2, 0.1, GLASS());
+    [-1, 1].forEach((e) => B(lg, 0.05, H2 - 0.05, 0.04, e * (lw / 2 - 0.025), (H2 - 0.05) / 2, 0.1, al));
+    B(lg, lw, 0.1, 0.04, 0, 0.05, 0.1, al);
+    B(lg, lw, 0.06, 0.04, 0, H2 - 0.08, 0.1, al);
+    B(lg, lw - 0.1, 0.06, 0.005, 0, 1.2, 0.112, M('#2d8a4a', 0.5)); // çarpmasın diye renkli şerit
+    return { lg, s, lw };
+  });
+  // üst kasa + sensör + tabela
+  B(g, OW + SW * 2 + 0.2, 0.34, 0.26, 0, H2 + 0.25, 0.13, al);
+  PLANE(g, 1.8, 0.24, signMat('door_market', 'HOŞ GELDİNİZ', '#08140c', '#39ff88', 512, 64, 'bold 40px sans-serif'), 0, H2 + 0.25, 0.262);
+  B(g, 0.16, 0.06, 0.08, 0, H2 + 0.05, 0.22, M('#141416', 0.4));
+  const led = B(g, 0.03, 0.03, 0.01, 0.05, H2 + 0.05, 0.265, emissiveMat('#ff2a2a', 1.5));
+  // paspas
+  const mat = PLANE(g, OW + 0.4, 1.0, M('#26282d', 0.95), 0, 0.012, 0.6, [-Math.PI / 2, 0, 0]);
+  mat.castShadow = false;
+  return autoDoor(
+    (k) => {
+      leaves.forEach(({ lg, s, lw }) => {
+        lg.position.x = s * (lw / 2 + k * (lw - 0.05));
+      });
+      led.material.emissive.set(k > 0.05 ? '#39ff88' : '#ff2a2a');
+    },
+    { near: 2.2, speed: 1.8 }
+  );
+}
+function doorDouble(g, ctx) {
+  const OW = 1.9;
+  const H2 = 2.3;
+  const wood = M(tintHex(ctx, '#5a3a24'), 0.45);
+  const dark = M('#1b1b1d', 0.4);
+  doorVoid(g, OW, H2);
+  doorFrame(g, OW, H2, dark, 0.1);
+  B(g, OW, 0.42, 0.02, 0, H2 + 0.31, 0.04, GLASS()); // vasistas
+  B(g, OW + 0.2, 0.06, 0.14, 0, H2 + 0.55, 0.07, dark);
+  [-1, 0, 1].forEach((s) => B(g, 0.04, 0.42, 0.06, s * (OW / 2 - 0.02), H2 + 0.31, 0.04, dark));
+  const lw = OW / 2;
+  const leaves = [-1, 1].map((s) => {
+    const p = pivot(g, s * (OW / 2));
+    const cx = -s * lw / 2;
+    B(p, lw - 0.01, H2, 0.06, cx, H2 / 2, 0, wood);
+    B(p, lw - 0.3, 0.9, 0.02, cx, 1.55, 0.02, GLASS());
+    B(p, lw - 0.3, 0.7, 0.012, cx, 0.5, 0.034, M('#000000', 0.5, 0, { transparent: true, opacity: 0.18 }));
+    B(p, 0.03, 0.6, 0.03, -s * (lw - 0.12), 1.15, 0.07, GOLD());
+    return { p, s };
+  });
+  return autoDoor((k) => {
+    leaves.forEach(({ p, s }) => {
+      p.rotation.y = s * k * 1.3;
+    });
+  });
+}
+function doorMetal(g) {
+  const W2 = 1.05;
+  const H2 = 2.2;
+  const steel = M('#6b7078', 0.4, 0.7);
+  doorVoid(g, W2, H2);
+  doorFrame(g, W2, H2, M('#3a3d42', 0.35, 0.85), 0.08);
+  const p = pivot(g, -W2 / 2);
+  B(p, W2, H2, 0.06, W2 / 2, H2 / 2, 0, steel);
+  B(p, 0.32, 0.42, 0.02, W2 / 2, 1.7, 0.025, GLASS());
+  B(p, W2 - 0.2, 0.06, 0.07, W2 / 2, 1.0, 0.07, M('#1b1b1d', 0.4, 0.4));
+  B(p, 0.1, 0.08, 0.08, W2 - 0.12, 1.0, 0.075, M('#c8141e', 0.4, 0.3));
+  B(p, W2, 0.25, 0.01, W2 / 2, 0.15, 0.032, M('#9aa0a6', 0.3, 0.9));
+  // ÇIKIŞ tabelası
+  B(g, 0.5, 0.2, 0.08, 0, H2 + 0.32, 0.04, M('#eeeeee', 0.4));
+  PLANE(g, 0.46, 0.16, signMat('door_cikis', '🏃 ÇIKIŞ', '#0b5d2a', '#ffffff', 256, 80, 'bold 40px sans-serif'), 0, H2 + 0.32, 0.081);
+  return autoDoor((k) => {
+    p.rotation.y = -k * 1.4;
+  });
+}
+function doorSaloon(g) {
+  const OW = 1.4;
+  const H2 = 2.3;
+  const wood = M('#7a4a26', 0.55);
+  const dark = M('#2b1a12', 0.5);
+  doorVoid(g, OW, H2);
+  doorFrame(g, OW, H2, dark, 0.1);
+  const lw = OW / 2;
+  const leaves = [-1, 1].map((s) => {
+    const p = pivot(g, s * (OW / 2), 0.09);
+    const cx = -s * lw / 2;
+    B(p, lw - 0.02, 0.08, 0.04, cx, 0.55, 0, wood);
+    B(p, lw - 0.02, 0.12, 0.04, cx, 1.55, 0, wood);
+    [-1, 1].forEach((e) => B(p, 0.06, 1.1, 0.045, cx + e * (lw / 2 - 0.04), 1.05, 0, wood));
+    for (let i = 0; i < 8; i++) B(p, lw - 0.1, 0.05, 0.015, cx, 0.65 + i * 0.105, 0, dark, [0.5, 0, 0]);
+    SP(p, 0.03, -s * (lw - 0.12), 1.05, 0.04, GOLD());
+    return { p, s };
+  });
+  return autoDoor(
+    (k, t) => {
+      const wob = k > 0.98 ? Math.sin(t * 7) * 0.05 : 0;
+      leaves.forEach(({ p, s }) => {
+        p.rotation.y = s * (k * 1.5 + wob);
+      });
+    },
+    { near: 1.4, speed: 4 }
+  );
+}
+function doorHospital(g) {
+  const OW = 1.9;
+  const H2 = 2.3;
+  const white = M('#e9edf0', 0.35);
+  doorVoid(g, OW, H2);
+  doorFrame(g, OW, H2, M('#b9c2c9', 0.3, 0.4), 0.08);
+  B(g, OW + 0.16, 0.05, 0.03, 0, H2 + 0.25, 0.015, M('#1f6fb8', 0.4));
+  const lw = OW / 2;
+  const leaves = [-1, 1].map((s) => {
+    const p = pivot(g, s * (OW / 2));
+    const cx = -s * lw / 2;
+    B(p, lw - 0.01, H2, 0.06, cx, H2 / 2, 0, white);
+    add(p, new THREE.CylinderGeometry(0.17, 0.17, 0.02, 28), GLASS(), cx, 1.6, 0.0, [Math.PI / 2, 0, 0]);
+    add(p, new THREE.TorusGeometry(0.17, 0.02, 8, 28), STEEL(), cx, 1.6, 0.032);
+    B(p, lw - 0.06, 0.3, 0.01, cx, 0.17, 0.032, STEEL());
+    B(p, 0.12, 0.3, 0.01, -s * (lw - 0.14), 1.15, 0.032, STEEL());
+    B(p, lw - 0.06, 0.04, 0.005, cx, 1.0, 0.032, M('#1f6fb8', 0.4));
+    return { p, s };
+  });
+  return autoDoor((k) => {
+    leaves.forEach(({ p, s }) => {
+      p.rotation.y = s * k * 1.35;
+    });
+  });
+}
+function doorRevolving(g) {
+  const R = 1.15;
+  const H2 = 2.35;
+  const al = M('#c9cdd3', 0.25, 0.9);
+  doorVoid(g, R * 2, H2);
+  doorFrame(g, R * 2, H2, al, 0.1);
+  // yarım tavan ve zemin (duvarın önünde kalan yarı)
+  add(g, new THREE.CylinderGeometry(R + 0.05, R + 0.05, 0.22, 40, 1, false, -Math.PI / 2, Math.PI), al, 0, H2 + 0.11, 0);
+  const fl = add(g, new THREE.CylinderGeometry(R, R, 0.02, 40, 1, false, -Math.PI / 2, Math.PI), M('#2a2c31', 0.6, 0.4), 0, 0.01, 0);
+  fl.castShadow = false;
+  // yan kavisli camlar (önü açık)
+  [-Math.PI / 2, Math.PI / 2 - 0.85].forEach((a) => {
+    add(g, new THREE.CylinderGeometry(R, R, H2, 16, 1, true, a, 0.85), GLASS(), 0, H2 / 2, 0);
+    const e = a < 0 ? a + 0.85 : a;
+    B(g, 0.05, H2, 0.05, Math.sin(e) * R, H2 / 2, Math.cos(e) * R, al);
+  });
+  PLANE(g, 1.2, 0.16, signMat('door_doner', 'GİRİŞ', '#101216', '#ffd23f', 256, 48, 'bold 32px sans-serif'), 0, H2 + 0.11, R + 0.055);
+  // dönen kanatlar
+  const rot = new THREE.Group();
+  g.add(rot);
+  C(rot, 0.05, 0.05, H2, 0, H2 / 2, 0, al);
+  for (let i = 0; i < 4; i++) {
+    const w = new THREE.Group();
+    w.rotation.y = (i * Math.PI) / 2;
+    rot.add(w);
+    B(w, R - 0.08, H2 - 0.1, 0.02, (R - 0.08) / 2 + 0.04, H2 / 2, 0, GLASS());
+    B(w, 0.04, H2 - 0.1, 0.05, R - 0.06, H2 / 2, 0, al);
+    B(w, R - 0.08, 0.06, 0.05, (R - 0.08) / 2 + 0.04, 0.05, 0, al);
+    B(w, R - 0.3, 0.03, 0.06, (R - 0.08) / 2 + 0.04, 1.05, 0, CHROME());
+  }
+  let spin = 0.6;
+  return autoDoor(
+    (k, t, dt) => {
+      spin += ((k > 0.5 ? 1.6 : 0.5) - spin) * Math.min(1, (dt || 0.016) * 2);
+      rot.rotation.y += spin * (dt || 0.016);
+    },
+    { near: 2.4, speed: 3, always: true }
+  );
+}
+// Evin giriş kapısı tipleri (functions/houseDoor.js DOOR_TYPES ile aynı anahtarlar)
+export const DOOR_BUILDERS = { ahsap: doorAhsap, beyaz: doorWhite, cam: doorGlass, market: doorMarket, cift: doorDouble, metal: doorMetal, salon: doorSaloon, hastane: doorHospital, doner: doorRevolving };
+
 // v77 — Garaj kapısı (duvara takılır): katlanır panjur; aç/kapat ile yukarı
 // sarılır, arkası karanlık garaj boşluğu gibi görünür.
 function garageDoor(g, ctx) {
@@ -2075,8 +2353,9 @@ function fruitStand(g) {
   const wood = M('#8a6a42', 0.8);
   B(g, 1.4, 0.7, 0.8, 0, 0.35, 0, wood);
   [-0.35, 0, 0.35].forEach((z, r) => {
-    B(g, 1.3, 0.1, 0.25, 0, 0.78 + r * 0.12, z * 0.8, wood, [-0.25, 0, 0]);
-    for (let i = 0; i < 9; i++) SP(g, 0.055, -0.55 + i * 0.14, 0.88 + r * 0.12, z * 0.8, M(['#d23a3a', '#ff9a1a', '#e0d000', '#3a9a3a'][(i + r) % 4], 0.5));
+    // v101: bize yakın sıra altta, uzak sıra üstte; raflar müşteriye doğru eğik
+    B(g, 1.3, 0.1, 0.25, 0, 0.78 + (2 - r) * 0.12, z * 0.8, wood, [0.25, 0, 0]);
+    for (let i = 0; i < 9; i++) SP(g, 0.055, -0.55 + i * 0.14, 0.88 + (2 - r) * 0.12, z * 0.8, M(['#d23a3a', '#ff9a1a', '#e0d000', '#3a9a3a'][(i + r) % 4], 0.5));
   });
   [-0.68, 0.68].forEach((x) => B(g, 0.04, 1.8, 0.04, x, 0.9, -0.38, wood));
   B(g, 1.5, 0.04, 0.9, 0, 1.8, 0, M('#d23a3a', 0.8), [0.15, 0, 0]);
@@ -2946,8 +3225,17 @@ export const CATALOG = [
   { k: 'glassdiv', name: 'Cam Bölme', cat: 'yapi', icon: '🔳', price: G(3000), build: glassDivider, box: [1.02, 0.05] },
   { k: 'column', name: 'Kolon', cat: 'yapi', icon: '🏛️', price: G(2000), tints: 'wood', build: column, box: [0.3, 0.3] },
   { k: 'podium', name: 'LED Sahne', cat: 'yapi', icon: '🎤', price: E(50), tints: 'neon', build: podium, nobox: true, flat: true },
-  { k: 'doordeco', name: 'Ahşap Kapı', cat: 'yapi', icon: '🚪', price: G(2500), build: doorDecor, wall: true, nobox: true },
-  { k: 'garagedoor', name: 'Garaj Kapısı', cat: 'yapi', icon: '🚘', price: G(150000), tints: 'metal', build: garageDoor, wall: true, nobox: true, wallW: 1.4 },
+  { k: 'doordeco', name: 'Ahşap Kapı', cat: 'kapi', icon: '🚪', price: G(2500), build: doorDecor, wall: true, nobox: true },
+  { k: 'garagedoor', name: 'Garaj Kapısı', cat: 'kapi', icon: '🚘', price: G(150000), tints: 'metal', build: garageDoor, wall: true, nobox: true, wallW: 1.4 },
+  // v101 — RP mekân kapıları (yaklaşınca açılır)
+  { k: 'door_beyaz', name: 'Beyaz Panel Kapı', cat: 'kapi', icon: '🚪', build: doorWhite, wall: true, nobox: true, wallW: 0.65 },
+  { k: 'door_cam', name: 'Cam Kapı (Kafe/Ofis)', cat: 'kapi', icon: '🔲', build: doorGlass, wall: true, nobox: true, wallW: 0.7 },
+  { k: 'door_market', name: 'Otomatik Market Kapısı', cat: 'kapi', icon: '🛒', build: doorMarket, wall: true, nobox: true, wallW: 1.5 },
+  { k: 'door_cift', name: 'Çift Kanatlı Kapı (Otel/Restoran)', cat: 'kapi', icon: '🏨', tints: 'wood', build: doorDouble, wall: true, nobox: true, wallW: 1.05 },
+  { k: 'door_metal', name: 'Metal Servis Kapısı', cat: 'kapi', icon: '🔩', build: doorMetal, wall: true, nobox: true, wallW: 0.7 },
+  { k: 'door_salon', name: 'Salon Kapısı (Bar)', cat: 'kapi', icon: '🤠', build: doorSaloon, wall: true, nobox: true, wallW: 0.8 },
+  { k: 'door_hastane', name: 'Hastane Kapısı', cat: 'kapi', icon: '🏥', build: doorHospital, wall: true, nobox: true, wallW: 1.05 },
+  { k: 'door_doner', name: 'Döner Kapı (Otel/AVM)', cat: 'kapi', icon: '🌀', build: doorRevolving, wall: true, nobox: true, wallW: 1.3 },
 
   // v66 — YENİ EŞYALAR
   { k: 'cafetable', name: 'Kafe Masası (2 Sandalye)', cat: 'masa', icon: '☕', tints: 'cafeset', build: cafeTable, box: [0.95, 0.4], seats: [[-0.62, 0.52, -0.06], [0.62, 0.52, -0.06]] },

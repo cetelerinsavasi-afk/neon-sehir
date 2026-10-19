@@ -348,3 +348,9 @@ Testler: 348/348 geçti.
 - Evler ekranı yeniden tek liste: 🏢 Ofisler · 🏠 Evler · 📦 Depolar alt alta.
 - "internal" hatası koddan değil: tüm fonksiyonlar birden yüklenince europe-west1 Cloud Run CPU kotası (200 vCPU) doldu, 26 fonksiyon (shopAction dahil) açılamadı. Çözüm: boşta kalan kopyaların kapanmasını bekleyip küçük gruplar halinde yüklemek; kalıcı olarak kota artışı. Bundan sonra `firebase deploy --only functions` (hepsi) KULLANILMAYACAK.
 - Yükleme: git push (istemci) + açılamayan fonksiyonlar gruplar halinde.
+
+## v101 — Kapılar + giriş kapısı
+- Yeni mağaza kategorisi 🚪 Kapılar: Beyaz Panel Kapı, Cam Kapı (Kafe/Ofis), Otomatik Market Kapısı, Çift Kanatlı Kapı (Otel/Restoran, ahşap rengi seçilir), Metal Servis Kapısı (ÇIKIŞ tabelalı), Salon Kapısı (Bar), Hastane Kapısı, Döner Kapı (Otel/AVM). Ahşap Kapı ve Garaj Kapısı da buraya taşındı. Duvara takılır; biri yaklaşınca kendiliğinden açılır (market kapısı kayar, döner kapı hızlanır).
+- Evin giriş kapısı: Mağaza › 🎨 Duvar, Zemin & Kapı › kapı tipi (ücretsiz, 9 çeşit) + duvar (Arka/Karşı/Sol/Sağ) + duvardaki yer. `houses.door = { w, x, t }` (functions/houseDoor.js); eve girenler kapının önünde doğar. Kapısı ayarlanmamış evler eskisi gibi.
+- Manav tezgâhı: yakın sıra altta, uzak sıra üstte; raflar müşteriye eğik.
+- Yükleme: `firebase deploy --only functions:houseAction` + git push.
