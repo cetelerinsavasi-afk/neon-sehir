@@ -355,15 +355,44 @@ test('v101: giriş kapısı — yer/tip kaydedilir (ücretsiz), geçersiz değer
   assert.deepEqual([pr.x, pr.z], [5, 3.8]); // varsayılan kapı (arka duvar) — eskisiyle aynı
   const gold0 = h.G('users/zengin').gold;
   await h.act('zengin', { op: 'save', houseId: id, design: { items: [], door: { w: 0, x: 2, t: 'market' } } });
-  assert.deepEqual(h.G(`houses/${id}`).door, { w: 0, x: 2, t: 'market' });
+  assert.deepEqual(h.G(`houses/${id}`).door, { w: 0, x: 2, t: 'market', def: true, main: null });
   assert.equal(h.G('users/zengin').gold, gold0);
   // kapı içermeyen kayıt kapıyı değiştirmez
   await h.act('zengin', { op: 'save', houseId: id, design: { items: [] } });
-  assert.deepEqual(h.G(`houses/${id}`).door, { w: 0, x: 2, t: 'market' });
+  assert.deepEqual(h.G(`houses/${id}`).door, { w: 0, x: 2, t: 'market', def: true, main: null });
   // geçersiz tip/duvar/yer düzeltilir
   await h.act('zengin', { op: 'save', houseId: id, design: { items: [], door: { w: 1, x: 999, t: 'yok' } } });
-  assert.deepEqual(h.G(`houses/${id}`).door, { w: 1, x: 6, t: 'ahsap' });
+  assert.deepEqual(h.G(`houses/${id}`).door, { w: 1, x: 6, t: 'ahsap', def: true, main: null });
   await h.act('ali', { op: 'enter', houseId: id });
   pr = h.G('housePresence/ali');
   assert.deepEqual([pr.x, pr.z], [5.8, 6]);
+});
+
+test('v102: varsayılan kapı ancak başka kapı varken kalkar; ana kapı seçilir; ana kapı kalkınca kalanlardan biri olur', async () => {
+  const h = setup();
+  const id = await withHouse(h);
+  const doorA = it('da', 'door_market', { p: 1, x: 2, z: -6.995, r: 0 });
+  const doorB = it('db', 'door_cam', { p: 1, x: -8.995, z: 1, r: 2 });
+  // kapı yokken varsayılan kaldırılamaz
+  await h.act('zengin', { op: 'save', houseId: id, design: { items: [], door: { def: false } } });
+  assert.equal(h.G(`houses/${id}`).door.def, true);
+  // iki kapı satın al
+  const g0 = h.G('users/zengin').gold;
+  await h.act('zengin', { op: 'checkout', houseId: id, design: { items: [{ ...doorA, p: 0 }, { ...doorB, p: 0 }] }, expect: { gold: ITEM_PRICES.door_market.v + ITEM_PRICES.door_cam.v, gem: 0 } });
+  assert.equal(h.G('users/zengin').gold, g0 - ITEM_PRICES.door_market.v - ITEM_PRICES.door_cam.v);
+  // varsayılanı kaldır + ana kapı B
+  await h.act('zengin', { op: 'save', houseId: id, design: { items: [doorA, doorB], door: { def: false, main: 'db' } } });
+  assert.deepEqual(h.G(`houses/${id}`).door, { w: 2, x: -5, t: 'ahsap', def: false, main: 'db' });
+  await h.act('ali', { op: 'enter', houseId: id });
+  let pr = h.G('housePresence/ali');
+  assert.deepEqual([pr.x, pr.z], [-7.39, 1]); // batı duvarındaki cam kapının önü
+  // ana kapı kaldırılınca kalan kapı ana olur
+  await h.act('zengin', { op: 'save', houseId: id, design: { items: [doorA], door: { def: false, main: 'db' } } });
+  assert.deepEqual(h.G(`houses/${id}`).door, { w: 2, x: -5, t: 'ahsap', def: false, main: 'da' });
+  // son kapı da kalkınca varsayılan kapı geri gelir
+  await h.act('zengin', { op: 'save', houseId: id, design: { items: [], door: { def: false, main: 'da' } } });
+  assert.deepEqual(h.G(`houses/${id}`).door, { w: 2, x: -5, t: 'ahsap', def: true, main: null });
+  await h.act('veli', { op: 'enter', houseId: id });
+  pr = h.G('housePresence/veli');
+  assert.deepEqual([pr.x, pr.z], [5, 3.8]);
 });

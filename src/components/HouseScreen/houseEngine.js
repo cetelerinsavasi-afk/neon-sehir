@@ -3,7 +3,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes';
 import { drawPet, isPerchPet, petCollarAt, PET_ART } from '../../lib/cosmeticsArt';
 import { CATALOG_MAP, buildItem, itemBoxes, disposeObject, TINTS, M, gunModel, HELD_GUN_SCALE, DOOR_BUILDERS } from './houseCatalog';
-import { DEFAULT_DOOR, sanitizeDoor, sameDoor, doorSpawn, doorLocalToWorld } from '../../../functions/houseDoor.js';
+import { DEFAULT_DOOR, sanitizeDoor, doorSpawn, doorLocalToWorld, resolveEntrance } from '../../../functions/houseDoor.js';
 import { FLOORS, WALLS, floorDef, wallDef, surfaceTexture } from './houseTextures';
 import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
 import { heldCanvas, heldDataUrl } from './heldArt';
@@ -781,13 +781,19 @@ export function createHouseEngine(
   let entrance = null; // { obj, ctl, door, wx, wz }
   const doorMatMat = new THREE.MeshStandardMaterial({ color: '#2a1e18', roughness: 1 });
   owned.push(doorMatMat);
-  function buildEntrance(door) {
+  let entranceSig = '';
+  // v102: show=false → varsayılan kapı odadan kaldırıldı (giriş bir kapı eşyası)
+  function buildEntrance(door, show = true) {
+    const d = sanitizeDoor(door) || { ...DEFAULT_DOOR };
+    const sig = show ? `${d.w}:${d.x}:${d.t}` : 'none';
+    if (sig === entranceSig) return;
+    entranceSig = sig;
     if (entrance) {
       entrance.obj.parent?.remove(entrance.obj);
       disposeObject(entrance.obj);
       entrance = null;
     }
-    const d = sanitizeDoor(door) || { ...DEFAULT_DOOR };
+    if (!show) return;
     const g = new THREE.Group();
     const ctl = (DOOR_BUILDERS[d.t] || DOOR_BUILDERS.ahsap)(g, { H }) || null;
     if (d.t !== 'market') {
@@ -1112,8 +1118,12 @@ export function createHouseEngine(
     if (self.seat && !isUsable(self.seat.id)) self.seat = null;
     updateSelectionVisual();
   }
+  function refreshEntrance() {
+    buildEntrance(design.door, resolveEntrance(design.door, design.items).showDef);
+  }
   function emitDesign() {
     design = { ...design, items: [...objs.values()].map((e) => ({ ...e.data })) };
+    refreshEntrance();
     onDesignChange?.(design);
   }
   function pushUndo() {
@@ -2550,11 +2560,11 @@ export function createHouseEngine(
         floor: next.floor || FLOORS[0].key,
         door,
       };
-      if (!sameDoor(door, entrance?.door)) buildEntrance(door);
+      refreshEntrance();
       if (!spawnedAtDoor) {
         spawnedAtDoor = true;
         if (!self.seat) {
-          const sp = doorSpawn(door);
+          const sp = doorSpawn(door, design.items);
           self.x = sp.x;
           self.z = sp.z;
           self.target = null;
@@ -2720,9 +2730,10 @@ export function createHouseEngine(
     setDoor(next) {
       if (!canEdit) return;
       const door = sanitizeDoor({ ...design.door, ...(next || {}) });
-      if (!door || sameDoor(door, design.door)) return;
+      if (!door || JSON.stringify(door) === JSON.stringify(design.door)) return;
+      pushUndo();
       design = { ...design, door };
-      buildEntrance(door);
+      refreshEntrance();
       onDesignChange?.(design);
     },
     setFloor(key) {

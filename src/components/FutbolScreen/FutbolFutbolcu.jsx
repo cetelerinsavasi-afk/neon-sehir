@@ -109,7 +109,7 @@ export default function FutbolFutbolcu() {
       </div>
 
       {/* v98 sıra: lig maçı → günlük durum → sezon → sözleşme / ilan → teklifler */}
-      <DayCard day={fb.lastDay} season={season} playerId={playerId} />
+      <DayCard day={fb.lastDay} season={season} playerId={playerId} currentForm={contract ? contract.form : undefined} />
 
       <StatusCard fb={fb} pro={pro} power={power} contract={contract} team={team} uid={uid} offers={offers.length} busy={busy} run={run} />
 
@@ -153,7 +153,18 @@ function StatusCard({ fb, pro, power, contract, team, uid, offers, busy, run }) 
     title = contract.teamName || fb.teamName || team?.name || 'Takım';
     const lineup = Array.isArray(team?.lineup) ? team.lineup : [];
     const injured = Number(contract.injuryDaysLeft || 0);
-    sub = injured > 0 ? `🩹 Sakat · ${injured} gün` : lineup.length ? (lineup.includes(`real_${uid}`) ? '✅ İlk 11\'desin' : '🪑 Yedektesin') : null;
+    // v102: antrenman kadrosundaysa "Antrenmandasın"
+    const training = Array.isArray(team?.trainingPlayerIds) && team.trainingPlayerIds.includes(`real_${uid}`);
+    sub =
+      injured > 0
+        ? `🩹 Sakat · ${injured} gün`
+        : lineup.includes(`real_${uid}`)
+          ? '✅ İlk 11\'desin'
+          : training
+            ? '🏋️ Antrenmandasın'
+            : lineup.length
+              ? '🪑 Yedektesin'
+              : null;
     const pay = nextPayMs(contract.contractSince, now);
     rows.push(['💰', `${fmt(contract.salary)}/gün`, `Sıradaki maaş ${dayWord(pay, now)} 19:00`]);
     rows.push(['🏟️', 'Maç her gün 18:00', 'Sonuç ve gelişim 19:00']);
@@ -267,7 +278,8 @@ function Stat({ icon, v, label }) {
 }
 
 // Gün sonu kartı (19:00'da yazılır)
-function DayCard({ day, season, playerId }) {
+// v102: form = güncel form (her 19:00'da güncellenen sözleşme kaydı), son maçtaki değil
+function DayCard({ day, season, playerId, currentForm }) {
   const goals = useStatBoard(day ? season : null, 'goals');
   const assists = useStatBoard(day ? season : null, 'assists');
   const stars = useStatBoard(day ? season : null, 'motm');
@@ -333,7 +345,7 @@ function DayCard({ day, season, playerId }) {
           <span>
             ⚡ {pw(day.powerFrom)} → <b>{pw(day.powerTo)}</b> {diff > 0 && <em className="fp-up">+{pw(diff)}</em>}
           </span>
-          <span>💪 Form %{day.form ?? 100}</span>
+          <span>💪 Form %{Math.round(Number.isFinite(Number(currentForm)) && currentForm !== null ? Number(currentForm) : (day.form ?? 100))}</span>
         </div>
       </div>
       {ranks.length > 0 && (
@@ -416,6 +428,7 @@ function ContractPanel({ contract, busy, run }) {
   const canRaise = Number(contract.salary || 0) < band.max;
   const [raise, setRaise] = useState(Math.min(band.max, Number(contract.salary || 0) + 1000));
   const [showRaise, setShowRaise] = useState(false);
+  const [noteText, setNoteText] = useState('');
   const pending = Boolean(contract.pendingEnd || contract.pendingTransfer);
   return (
     <div className="fp-card">
@@ -439,6 +452,21 @@ function ContractPanel({ contract, busy, run }) {
           💸 Zam iste
         </button>
       )}
+      {/* v102 — takımla kısa notlaşma */}
+      <div className="fp-notes">
+        {contract.noteFromTeam?.text && <span className="fp-note in">✉️ Takım: {contract.noteFromTeam.text}</span>}
+        {contract.noteFromPlayer?.text && <span className="fp-note out">↩ Sen: {contract.noteFromPlayer.text}</span>}
+        <div className="fp-note-form">
+          <input value={noteText} maxLength={140} placeholder="Takımına kısa not…" onChange={(e) => setNoteText(e.target.value)} aria-label="Takımına not" />
+          <button
+            className="futbol-admin-submit"
+            disabled={busy === 'note' || !noteText.trim()}
+            onClick={() => run('note', { op: 'note', text: noteText }, '✉️ Notun takımına gitti.').then((ok) => ok && setNoteText(''))}
+          >
+            Gönder
+          </button>
+        </div>
+      </div>
       {!pending && (
         <ConfirmButton className="futbol-admin-reset fp-wide fp-danger" disabled={busy === 'term'} danger title="Sözleşme feshedilsin mi?" lines={["Bugün 19:00'da maaşın ödenir ve takımdan ayrılırsın."]} confirmLabel="Feshet" onConfirm={() => run('term', { op: 'terminate' }, 'Sözleşmen bugün 19:00\'da bitecek.')}>
           ✂️ Sözleşmeyi feshet

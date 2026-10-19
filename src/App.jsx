@@ -26,6 +26,7 @@ import { exitApp, installBackHandler, rearmBack, useBackClose } from './lib/back
 import ConfirmModal from './components/ConfirmModal/ConfirmModal';
 import LiveStreamsButton from './components/Stream/LiveStreamsButton';
 import UpdateAppBanner from './components/UpdateAppBanner/UpdateAppBanner';
+import { retryImport, ChunkBoundary } from './lib/lazyRetry';
 import './styles/theme.css';
 import './styles/cues.css';
 import './App.css';
@@ -38,11 +39,13 @@ import './App.css';
 const LAZY_LOADERS = [];
 function lazyScreen(loader) {
   LAZY_LOADERS.push(loader);
-  const C = lazy(loader);
+  const C = lazy(retryImport(loader)); // v102: güncelleme sonrası eski parça → yeniden dene / yenile
   const Wrapped = (props) => (
-    <Suspense fallback={<div className="app-lazy-fallback" aria-busy="true"><span /></div>}>
-      <C {...props} />
-    </Suspense>
+    <ChunkBoundary onClose={props.onClose || props.onExit}>
+      <Suspense fallback={<div className="app-lazy-fallback" aria-busy="true"><span /></div>}>
+        <C {...props} />
+      </Suspense>
+    </ChunkBoundary>
   );
   return Wrapped;
 }

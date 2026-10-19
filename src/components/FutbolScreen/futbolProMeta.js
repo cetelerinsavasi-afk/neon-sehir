@@ -39,6 +39,9 @@ const ERR = {
   'offer-wait': 'Bu futbolcuya az önce teklif gönderdin; 10 dakika sonra güncelleyebilirsin.',
   'raise-wait': 'Günde 1 kez zam isteyebilirsin.',
   'team-gone': 'Takım bulunamadı.',
+  // v102
+  'note-empty': 'Not boş olamaz.',
+  'note-wait': 'Biraz bekle, sonra yeni not gönderebilirsin.',
 };
 export function proErrText(err) {
   const m = String(err?.message || err || '');

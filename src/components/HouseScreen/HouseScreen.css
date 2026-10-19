@@ -454,36 +454,40 @@
   background: rgba(25, 232, 255, 0.14);
 }
 
-.hs-surf i.hs-door-ico {
+.hs-door-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
-  font-style: normal;
-  font-size: 18px;
-  background: rgba(255, 255, 255, 0.06);
+  gap: 6px;
+  padding: 0 8px 8px;
+  font-size: 12px;
 }
-.hs-door-pos {
-  align-items: center;
+.hs-door-main {
+  margin-right: auto;
 }
-.hs-door-wall,
-.hs-door-step {
-  flex: 0 0 auto;
-  padding: 7px 10px;
+.hs-door-btn,
+.hs-main-door {
+  padding: 6px 10px;
   border-radius: 10px;
   border: 1px solid var(--hs-line);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.05);
   font-size: 12px;
   font-weight: 700;
-  white-space: nowrap;
 }
-.hs-door-wall.on {
-  border-color: var(--neon-cyan, #19e8ff);
-  background: rgba(25, 232, 255, 0.14);
+.hs-door-btn.danger {
+  border-color: rgba(255, 80, 100, 0.5);
 }
-.hs-door-pos input[type='range'] {
-  flex: 1 0 120px;
-  min-width: 120px;
-  accent-color: var(--neon-cyan, #19e8ff);
+.hs-door-btn:disabled {
+  opacity: 0.4;
+}
+.hs-door-hint {
+  width: 100%;
+  color: var(--text-dim, #8a93a8);
+  font-size: 11px;
+}
+.hs-main-door.on {
+  border-color: #ffd23f;
+  color: #ffd23f;
 }
 
 /* --- seçili eşya --- */

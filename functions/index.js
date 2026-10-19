@@ -209,6 +209,7 @@ const futbolPro = createFutbolPro({
   controllerUidOf: (t) => futbolTeamControllerUid(t),
   isLockedHour: () => futbolIsLineupLockedIstanbul(),
   splitIncomeForDebt: (debt, amount) => splitIncomeForDebt(debt, amount),
+  assertCanSpeak: (uid, content) => moderation.assertCanSpeak(uid, content), // v102: notlar
 });
 export const futbolProAction = onCall(async (request) => {
   const uid = requireAuth(request);

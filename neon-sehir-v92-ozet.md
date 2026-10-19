@@ -359,3 +359,10 @@ Testler: 348/348 geçti.
 - Tasarlarken seçilen (henüz alınmamış) duvar/zemin, kayıttan sonra kendiliğinden eskiye dönüyordu: v101'de kapı bilgisi ilk kez kaydedilince istemci bunu "duvar/zemin uzakta değişti" sanıyordu. Artık duvar, zemin ve kapı ayrı ayrı karşılaştırılıyor (kapı kanonik anahtarla); grafikler yeniden yüklense de denenen kaplamalar korunuyor.
 - Sunucu aynı duvarı/zemini ve satın alınmış mobilyayı asla iki kez ücretlendirmez (önizlemede doğrulandı).
 - Yükleme: sadece git push.
+
+## v102 — Ofis ayarları, kapı düzeni, yükleme koruması, futbol notları
+- Ofis: kendi ofisinde ⚙️ doğrudan "Ofis Ayarları" açılır (simge + ad düzenleme, Fiyatlar/Rapor, en altta 🏪 İşletmeler). Tür her açılışta yeniden hesaplanır (ev → ofis olunca bir sonraki açılışta). "Burası ofis…" ve günlük limit yazıları kaldırıldı.
+- Kapılar: Duvar & Zemin sekmesinden kapılar kalktı. Kapılar sekmesinin üstünde "⭐ Giriş" + varsayılan kapıyı kaldır/geri koy (odada satın alınmış başka kapı yoksa kaldırılamaz). Satın alınmış kapıyı seçip "⭐ Ana kapı yap". Ana kapı kaldırılınca kalan kapılardan rastgele biri; son kapı da kalkınca varsayılan kapı geri gelir (`houses.door.def/main`, functions/houseDoor.js settleDoor). Girenler ana kapının önünde doğar.
+- Yükleme: ekran parçası (ev, mekânlar, tüm tam ekranlar) güncelleme sonrası bulunamazsa önce yeniden denenir, olmazsa sayfa bir kez sessizce yenilenir, o da olmazsa "Yenile" düğmesi (src/lib/lazyRetry.jsx). Ev listesi açılınca ev ekranı arka planda indirilir. Ev verisi / yatırım fiyatları ve grafikleri birkaç saniyede gelmezse Firestore bağlantısı tazelenir (armStallWatchdog). Eve girişte geçici sunucu hatası 2 kez yeniden denenir.
+- Futbol: Takımın › sözleşmeliler: Zam'a basınca tavandaysa "daha fazla zam yapılamaz", menajer yönetiyorsa bunu söyler. Futbolcu ↔ takım kısa not (140 harf, 20 sn'de bir; `futbolProAction op:'note'`, sözleşmede noteFromPlayer/noteFromTeam, karşı tarafa bildirim). Futbolcu panelinde form güncel değer (her 19:00), antrenman kadrosundaysa "🏋️ Antrenmandasın".
+- Yükleme: `firebase deploy --only functions:houseAction,functions:futbolProAction` + git push.

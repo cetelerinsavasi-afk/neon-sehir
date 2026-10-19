@@ -1,40 +1,35 @@
-import { DOOR_TYPES, DOOR_TYPE_KEYS, DEFAULT_DOOR, doorRange } from '../../../functions/houseDoor.js';
+import { resolveEntrance, isEntranceItem } from '../../../functions/houseDoor.js';
+import { CATALOG_MAP } from './houseCatalog';
 
-// v101 — evin giriş kapısı: tip + duvar + duvardaki yer (ücretsiz)
-const WALL_BTNS = [
-  { w: 2, label: '⬇ Arka' },
-  { w: 0, label: '⬆ Karşı' },
-  { w: 3, label: '⬅ Sol' },
-  { w: 1, label: '➡ Sağ' },
-];
-
-export default function EntranceDoorPicker({ door, onChange }) {
-  const d = door || DEFAULT_DOOR;
-  const lim = doorRange(d.w, d.t);
-  const move = (dx) => onChange({ x: Math.max(-lim, Math.min(lim, d.x + dx)) });
+// v102 — Kapılar sekmesinin üstü: giriş (ana) kapı ve varsayılan kapı.
+// Kapı eşyasını seçip "⭐ Ana kapı yap" ile de ana kapı belirlenir.
+export default function EntranceDoorBar({ design, onChange }) {
+  const items = design?.items || [];
+  const door = design?.door;
+  const ent = resolveEntrance(door, items);
+  const doors = items.filter(isEntranceItem);
+  const defOn = ent.showDef;
+  const mainName = ent.kind === 'item' ? CATALOG_MAP[ent.item.k]?.name || 'Kapı' : 'Varsayılan kapı';
   return (
-    <>
-      <div className="hs-surf-row">
-        <span className="hs-surf-label">Kapı</span>
-        {DOOR_TYPE_KEYS.map((t) => (
-          <button key={t} className={`hs-surf${d.t === t ? ' on' : ''}`} onClick={() => onChange({ t })}>
-            <i className="hs-door-ico">{DOOR_TYPES[t].icon}</i>
-            <span>{DOOR_TYPES[t].name}</span>
-            <span className="hs-price free sm">Ücretsiz</span>
-          </button>
-        ))}
-      </div>
-      <div className="hs-surf-row hs-door-pos">
-        <span className="hs-surf-label">Yer</span>
-        {WALL_BTNS.map((b) => (
-          <button key={b.w} className={`hs-door-wall${d.w === b.w ? ' on' : ''}`} onClick={() => onChange({ w: b.w, x: 0 })}>
-            {b.label}
-          </button>
-        ))}
-        <button className="hs-door-step" onClick={() => move(-0.5)} aria-label="Sola kaydır">◀</button>
-        <input type="range" min={-lim} max={lim} step={0.25} value={d.x} onChange={(e) => onChange({ x: Number(e.target.value) })} aria-label="Kapının yeri" />
-        <button className="hs-door-step" onClick={() => move(0.5)} aria-label="Sağa kaydır">▶</button>
-      </div>
-    </>
+    <div className="hs-door-bar">
+      <span className="hs-door-main">
+        ⭐ Giriş: <b>{mainName}</b>
+      </span>
+      {defOn && ent.kind === 'item' && (
+        <button className="hs-door-btn" onClick={() => onChange({ main: null })}>
+          Varsayılanı ana kapı yap
+        </button>
+      )}
+      {defOn ? (
+        <button className="hs-door-btn danger" disabled={!doors.length} onClick={() => onChange({ def: false })} title={doors.length ? '' : 'Önce odaya bir kapı koyup satın al'}>
+          🗑 Varsayılan kapıyı kaldır
+        </button>
+      ) : (
+        <button className="hs-door-btn" onClick={() => onChange({ def: true })}>
+          ↩ Varsayılan kapıyı geri koy
+        </button>
+      )}
+      {!doors.length && <span className="hs-door-hint">Kaldırmak için önce bir kapı al.</span>}
+    </div>
   );
 }

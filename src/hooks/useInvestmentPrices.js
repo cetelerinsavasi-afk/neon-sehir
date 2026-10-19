@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
+import { armStallWatchdog } from './useFirestoreResume';
 
 const DEFAULT_PRICES = { diamondPrice: 1000, stockPrice: 10000, cryptoPrice: 100000 };
 
@@ -16,18 +17,24 @@ export function useInvestmentPrices() {
 
   useEffect(() => {
     const ref = doc(db, 'investments', 'current');
+    const done = armStallWatchdog(); // v102: veri gelmezse bağlantıyı tazele
     const unsubscribe = onSnapshot(
       ref,
       (snap) => {
+        done();
         setPrices(snap.exists() ? snap.data() : DEFAULT_PRICES);
         setLoading(false);
       },
       (err) => {
+        done();
         console.error('useInvestmentPrices dinleme hatası:', err);
         setLoading(false);
       }
     );
-    return unsubscribe;
+    return () => {
+      done();
+      unsubscribe();
+    };
   }, []);
 
   return { prices, loading };

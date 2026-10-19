@@ -52,6 +52,36 @@ function resumeIfPaused() {
   return true;
 }
 
+// v102 — "veri gelmiyor" koruması: bir ekranın ilk verisi birkaç saniyede gelmezse
+// (bağlantı durağanlaştı ya da arka plan duraklatması açılmadı) ağı yeniden aç/kur.
+// Ekranlar armStallWatchdog ile kullanır; kendi 8 sn'lik koruması var.
+let lastKickAt = 0;
+export function kickFirestore() {
+  if (paused || pauseTimer) {
+    resumeIfPaused();
+    return;
+  }
+  const now = Date.now();
+  if (now - lastKickAt < 8000) return;
+  lastKickAt = now;
+  lastTriggeredAt = now;
+  reconnectFirestore();
+}
+// ms içinde done() çağrılmazsa kickFirestore; ikinci kez de gelmezse bir daha dener.
+export function armStallWatchdog(ms = 6000) {
+  let t = null;
+  let tries = 0;
+  const arm = () => {
+    t = setTimeout(() => {
+      if (document.visibilityState === 'hidden') return arm();
+      kickFirestore();
+      if (++tries < 2) arm();
+    }, ms);
+  };
+  arm();
+  return () => clearTimeout(t);
+}
+
 function triggerReconnect() {
   const now = Date.now();
   if (now - lastTriggeredAt < MIN_INTERVAL_MS) return;

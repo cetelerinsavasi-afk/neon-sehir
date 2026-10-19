@@ -44,13 +44,19 @@ export function ProContracts({ team, readOnly }) {
   const { busy, msg, run } = useProRun();
   const [raiseFor, setRaiseFor] = useState(null);
   const [raise, setRaise] = useState(0);
+  // v102: satır içi uyarı (zam tavanı / menajer yönetimi) ve not yazma
+  const [rowMsg, setRowMsg] = useState(null);
+  const [noteFor, setNoteFor] = useState(null);
+  const [noteText, setNoteText] = useState('');
+  const MANAGED_TXT = '👔 Takımı menajerin yönetiyor; maaş, zam, fesih ve notlar menajerde.';
   const debts = Object.entries(team.playerDebts || {}).filter(([, v]) => Number(v) > 0);
   const debtTotal = debts.reduce((a, [, v]) => a + Number(v), 0);
   if (!contracts.length) return null;
   return (
-    <fieldset className="fp-market" disabled={readOnly}>
+    <fieldset className="fp-market">
       {msg && <p className={`fp-msg${msg.ok ? ' ok' : ''}`}>{msg.text}</p>}
       <div className="fp-card">
+        {readOnly && <p className="fp-hint">{MANAGED_TXT}</p>}
         <p className="fp-title">
           👤 Sözleşmeli futbolcular <em className="fp-count">{contracts.length}</em>
         </p>
@@ -73,7 +79,27 @@ export function ProContracts({ team, readOnly }) {
                 </span>
                 {c.pendingEnd && <span className="fp-pending">⏳ 19:00&apos;da ayrılıyor</span>}
                 {c.pendingTransfer && <span className="fp-pending">⏳ 19:00&apos;da {c.pendingTransfer.teamName || 'başka takıma'}</span>}
-                {c.raiseRequest && (
+                {c.noteFromPlayer?.text && <span className="fp-note in">✉️ {c.noteFromPlayer.text}</span>}
+                {c.noteFromTeam?.text && <span className="fp-note out">↩ Sen: {c.noteFromTeam.text}</span>}
+                {rowMsg?.id === c.id && <span className={`fp-msg${rowMsg.ok ? ' ok' : ''}`}>{rowMsg.text}</span>}
+                {noteFor === c.id && (
+                  <div className="fp-note-form">
+                    <input value={noteText} maxLength={140} placeholder="Kısa not…" onChange={(e) => setNoteText(e.target.value)} aria-label="Not" />
+                    <button
+                      className="futbol-admin-submit"
+                      disabled={Boolean(busy) || !noteText.trim()}
+                      onClick={async () => {
+                        if (await run(`n_${c.id}`, { op: 'note', uid: c.realUid, text: noteText }, `✉️ Not ${c.name} oyuncusuna gitti.`)) {
+                          setNoteFor(null);
+                          setNoteText('');
+                        }
+                      }}
+                    >
+                      Gönder
+                    </button>
+                  </div>
+                )}
+                {c.raiseRequest && !readOnly && (
                   <span className="fp-pending">
                     💸 Zam isteği: {fmt(c.raiseRequest.salary)}
                     <button className="fp-mini" disabled={Boolean(busy)} onClick={() => run(`rr_${c.id}`, { op: 'raiseRespond', uid: c.realUid, accept: false })}>
@@ -101,17 +127,30 @@ export function ProContracts({ team, readOnly }) {
               </div>
               <div className="fp-prow-acts">
                 <button
-                  className="futbol-admin-reset"
-                  disabled={!canRaise}
-                  title={canRaise ? undefined : `Bu güçte tavan ${fmt(band.max)}/gün`}
+                  className={`futbol-admin-reset${canRaise && !readOnly ? '' : ' fp-dimbtn'}`}
                   onClick={() => {
+                    // v102: basınca neden olmadığı söylenir (tavan / menajer)
+                    if (readOnly) return setRowMsg({ id: c.id, text: MANAGED_TXT });
+                    if (!canRaise) return setRowMsg({ id: c.id, text: `Maaş bu güçteki tavanda (${fmt(band.max)}/gün); daha fazla zam yapılamaz.` });
+                    setRowMsg(null);
                     setRaiseFor(raiseFor === c.id ? null : c.id);
                     setRaise(Math.min(band.max, Number(c.salary) + 1000));
                   }}
                 >
                   💸 Zam
                 </button>
-                <ConfirmButton className="futbol-admin-reset fp-danger" danger title={`${c.name} ile sözleşme feshedilsin mi?`} lines={["Bugün 19:00'da maaşı ödenip takımdan ayrılır."]} confirmLabel="Feshet" disabled={Boolean(busy) || Boolean(c.pendingEnd || c.pendingTransfer)} onConfirm={() => run(`t_${c.id}`, { op: 'terminate', uid: c.realUid }, `${c.name} bugün 19:00'da takımdan ayrılacak.`)}>
+                <button
+                  className={`futbol-admin-reset${readOnly ? ' fp-dimbtn' : ''}`}
+                  onClick={() => {
+                    if (readOnly) return setRowMsg({ id: c.id, text: MANAGED_TXT });
+                    setRowMsg(null);
+                    setNoteFor(noteFor === c.id ? null : c.id);
+                    setNoteText('');
+                  }}
+                >
+                  ✉️ Not
+                </button>
+                <ConfirmButton className="futbol-admin-reset fp-danger" danger title={`${c.name} ile sözleşme feshedilsin mi?`} lines={["Bugün 19:00'da maaşı ödenip takımdan ayrılır."]} confirmLabel="Feshet" disabled={readOnly || Boolean(busy) || Boolean(c.pendingEnd || c.pendingTransfer)} onConfirm={() => run(`t_${c.id}`, { op: 'terminate', uid: c.realUid }, `${c.name} bugün 19:00'da takımdan ayrılacak.`)}>
                   ✂️ Feshet
                 </ConfirmButton>
               </div>

@@ -61,8 +61,9 @@ import { streamBroadcast, clearGameFrame, closeStreamChannel, streamPose, useLiv
 import { streamPriceOf, cafeDevicePrice, isStreamSetPc } from '../../../functions/stream.js';
 import { attachHScroll } from '../../lib/hscroll';
 import HomeOfficeLayer from '../HomeOffice/HomeOfficeLayer';
-import EntranceDoorPicker from './EntranceDoorPicker';
-import { sanitizeDoor, DEFAULT_DOOR } from '../../../functions/houseDoor.js';
+import EntranceDoorBar from './EntranceDoorPicker';
+import { armStallWatchdog } from '../../hooks/useFirestoreResume';
+import { doorKey, isDoorItemKey, resolveEntrance } from '../../../functions/houseDoor.js';
 
 // =============================================================================
 // HouseScreen — 3D Ev (v66, herkese açık)
@@ -119,10 +120,6 @@ function Money({ gold = 0, gem = 0, small }) {
 }
 
 // v92 — iki tasarımı karşılaştırmak için kısa imza (sıra bağımsız)
-const doorKey = (d) => {
-  const x = sanitizeDoor(d) || DEFAULT_DOOR;
-  return `${x.w}:${x.x}:${x.t}`;
-};
 const designSig = (d) =>
   `${d?.wall}|${d?.floor}|${doorKey(d?.door)}|` +
   (d?.items || [])
@@ -296,7 +293,14 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
         setPhase((ph) => (ph === 'loading' ? 'ready' : ph));
       })
       .catch(() => {});
-    houseAction({ op: 'enter', houseId })
+    // v102: geçici hatada (soğuk başlangıç, ağ) 2 kez daha dener; hemen çıkarmaz
+    const TRANSIENT = ['functions/unavailable', 'functions/deadline-exceeded', 'functions/internal', 'functions/aborted', 'functions/unknown', 'unavailable', 'deadline-exceeded', 'internal', 'aborted', 'unknown'];
+    const enterTry = (n) =>
+      houseAction({ op: 'enter', houseId }).catch((err) => {
+        if (cancelled || n >= 2 || !TRANSIENT.includes(err?.code)) throw err;
+        return new Promise((r) => setTimeout(r, 1200 * (n + 1))).then(() => enterTry(n + 1));
+      });
+    enterTry(0)
       .then((res) => {
         if (cancelled) return;
         const d = res.data || {};
@@ -454,9 +458,11 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   // --- 3) ev belgesi ---------------------------------------------------------------
   useEffect(() => {
     if (phase !== 'ready') return undefined;
-    return onSnapshot(
+    const done = armStallWatchdog(); // v102: ev verisi gelmezse bağlantıyı tazele
+    const unsub = onSnapshot(
       doc(db, 'houses', houseId),
       (snap) => {
+        done();
         if (!snap.exists()) {
           if (!leavingRef.current) exit('Bu ev artık yok.');
           return;
@@ -498,8 +504,15 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
         }
         eng.setMusic(data.music?.itemId || null);
       },
-      (err) => console.error('Ev dinleme hatası:', err)
+      (err) => {
+        done();
+        console.error('Ev dinleme hatası:', err);
+      }
     );
+    return () => {
+      done();
+      unsub();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, houseId, info?.isOwner, exit, engineKey]);
 
@@ -1013,7 +1026,18 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   // --- ayarlar -------------------------------------------------------------------------
   const openSettings = () => {
     setSettingsDraft({ name: houseDoc?.name || info?.name || '', privacy: houseDoc?.privacy || 'public' });
-    setPanel('settings');
+    // v102 — kendi ofisinde ⚙️ doğrudan ofis panelini (ad/simge, fiyatlar, rapor) açar.
+    // Tür her açılışta yeniden hesaplanır: ev → ofis olunca bir sonraki açılışta değişir.
+    if (isOwner && !houseDoc?.biz?.type && houseKind(houseDoc) === 'ofis') setPanel('office');
+    else setPanel('settings');
+  };
+  const renameOffice = async (name) => {
+    try {
+      await houseAction({ op: 'settings', houseId, name });
+      flash('Ad kaydedildi.');
+    } catch (err) {
+      flash(err?.message || 'Kaydedilemedi.');
+    }
   };
   const saveSettings = async () => {
     setBusy(true);
@@ -1775,6 +1799,13 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                 ) : (
                   <button onClick={() => engineRef.current?.duplicateSelected()}>⧉ Bir tane daha</button>
                 )}
+                {/* v102 — satın alınmış kapı: ana (giriş) kapı yap */}
+                {!venue && sel.p === 1 && isDoorItemKey(sel.k) &&
+                  (resolveEntrance(design?.door, design?.items).item?.i === sel.i ? (
+                    <button className="hs-main-door on" disabled>⭐ Ana kapı</button>
+                  ) : (
+                    <button className="hs-main-door" onClick={() => engineRef.current?.setDoor({ main: sel.i })}>⭐ Ana kapı yap</button>
+                  ))}
                 <button className={`danger${removalBreaksBiz(houseDoc, design?.items, sel) ? ' cue-lock' : ''}`} onClick={requestDelete}>{sel.p === 1 ? '📦 Envantere' : '🗑 Kaldır'}</button>
               </div>
             </div>
@@ -1804,8 +1835,9 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                         {c.icon} {c.name}
                       </button>
                     ))}
-                    <button className={cat === 'yuzey' ? 'on' : ''} onClick={() => setCat('yuzey')}>🎨 Duvar, Zemin & Kapı</button>
+                    <button className={cat === 'yuzey' ? 'on' : ''} onClick={() => setCat('yuzey')}>🎨 Duvar & Zemin</button>
                   </div>
+                  {cat === 'kapi' && !venue && <EntranceDoorBar design={design} onChange={(d) => engineRef.current?.setDoor(d)} />}
                   {cat !== 'yuzey' && (
                     <div className="hs-shelf-items">
                       {shelfItems.map((d) => (
@@ -1848,7 +1880,6 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                           })}
                         </div>
                       ))}
-                      {!venue && <EntranceDoorPicker door={design?.door} onChange={(d) => engineRef.current?.setDoor(d)} />}
                     </div>
                   )}
                 </>
@@ -2163,7 +2194,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
           )}
 
           {/* v77 — İŞLETMELER · v93 HOME OFİSLER (aynı panel, farklı türler) */}
-          {panel === 'office' && isOwner && <OfficePanel houseId={houseId} houseDoc={houseDoc} onClose={() => setPanel(null)} flash={flash} />}
+          {panel === 'office' && isOwner && <OfficePanel houseId={houseId} houseDoc={houseDoc} onClose={() => setPanel(null)} flash={flash} onRename={renameOffice} onOpenBiz={() => setPanel('biz')} />}
           {panel === 'biz' && (
             <BizListPanel
               keys={BIZ_TYPE_KEYS}

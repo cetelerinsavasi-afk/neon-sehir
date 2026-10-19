@@ -38,7 +38,7 @@ import { MENU_TYPES, isMenuProduct } from './venue.js';
 import { goldTag } from './moneyLog.js';
 import { houseKind, officePriceOf, isLegacyHomeOffice } from './officeData.js';
 import { VENUES, VENUE_OWNER, camiiDynamicNpcs } from './venueLayouts.js';
-import { sanitizeDoor, doorSpawn } from './houseDoor.js';
+import { doorOf, doorSpawn, settleDoor } from './houseDoor.js';
 
 // v77 — Ev → İşletme. houses/{id} üzerine eklenen alanlar:
 //   biz: { type, openedAtMs } | null   — açık işletme (yoksa ev)
@@ -115,9 +115,19 @@ export function cleanDesign(raw) {
   const wall = KEY_RE.test(String(d.wall || '')) && SURFACE_KEYS.wall.includes(d.wall) ? d.wall : null;
   const floor = KEY_RE.test(String(d.floor || '')) && SURFACE_KEYS.floor.includes(d.floor) ? d.floor : null;
   // v101 — giriş kapısı (ücretsiz; null = değişmedi)
-  const door = sanitizeDoor(d.door);
+  const door = d.door && typeof d.door === 'object' && !Array.isArray(d.door) ? pickDoor(d.door) : null;
   return { items: out, wall, floor, door };
 }
+
+// v102 — istemcinin gönderdiği kapı alanları (eksik alanlar evdeki kapıdan gelir)
+function pickDoor(v) {
+  const out = {};
+  ['w', 'x', 't', 'def', 'main'].forEach((k) => {
+    if (v[k] !== undefined) out[k] = v[k];
+  });
+  return out;
+}
+const mergeDoor = (h, d) => ({ ...doorOf(h), ...(d || {}) });
 
 const countOwned = (items) => {
   const m = {};
@@ -251,7 +261,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       if (!c.ok) fail('permission-denied', c.msg);
     }
     const user = (await userRef(uid).get()).data() || {};
-    const spawn = doorSpawn(h.door); // v101: giriş kapısının önünde doğ
+    const spawn = doorSpawn(h.door, h.items); // v102: ana kapının önünde doğ
     await presenceRef(uid).set({
       houseId,
       displayName: nameOf(user),
@@ -493,7 +503,8 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       let closed = null;
       if (closing) closed = { type: h.biz.type, returned: writeBizClose(tx, { houseId, h, ...closing }) };
       const kind = houseKind({ ...h, items, ...(closed ? { biz: null, bizType: null } : {}) });
-      tx.update(houseRef(houseId), { items, wall, floor, kind, ...(design.door ? { door: design.door } : {}), updatedAtMs: now(), ...(editor ? { lastEditBy: uid } : {}) });
+      const door = settleDoor(mergeDoor(h, design.door), items); // v102: ana kapı kuralları
+      tx.update(houseRef(houseId), { items, wall, floor, kind, door, updatedAtMs: now(), ...(editor ? { lastEditBy: uid } : {}) });
       // Envanter belgesi küçük: tamamı tek yazımla (silinen anahtarlar da gider)
       tx.set(invRef(invUid), { items: invItems, walls: inv.walls || [], floors: inv.floors || [], updatedAtMs: now() });
       result = { ok: true, count: items.length, wall, floor, ...(closed ? { bizClosed: closed } : {}), ...(editor ? { inv: { items: invItems, walls: inv.walls || [], floors: inv.floors || [] } } : {}) };
@@ -565,7 +576,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       }
       if (q.gem) userPatch.emerald = FieldValue.increment(-q.gem);
       tx.update(userRef(uid), userPatch);
-      tx.update(houseRef(houseId), { items, wall, floor, kind: houseKind({ ...h, items, ...(closing ? { biz: null, bizType: null } : {}) }), ...(design.door ? { door: design.door } : {}), updatedAtMs: now() });
+      tx.update(houseRef(houseId), { items, wall, floor, kind: houseKind({ ...h, items, ...(closing ? { biz: null, bizType: null } : {}) }), door: settleDoor(mergeDoor(h, design.door), items), updatedAtMs: now() });
       tx.set(invRef(uid), { items: invItems, walls, floors, updatedAtMs: now() });
       const cnt = Object.values(q.lines).reduce((a, b) => a + b, 0);
       result = { ok: true, gold: q.gold, gem: q.gem, count: cnt, wall, floor };

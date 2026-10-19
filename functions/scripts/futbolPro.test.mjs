@@ -427,3 +427,20 @@ test('v97: anlaşmayı 19:00 öncesi iptal — yeni imza hemen biter (maaş yok)
   await h.pro.paySalaries();
   assert.equal(h.G(`futbolPlayers/${id}`).teamId, 't2', '19:00da transfer olmaz');
 });
+
+test('v102: futbolcu ↔ takım kısa not: sözleşmede durur, karşı tarafa bildirim; sadece yönetici yazar; sık yazılamaz', async () => {
+  const { G, clock, act } = setup();
+  await act('ali', { op: 'proList', listed: true, askSalary: proSalaryBand(200).min });
+  await act('menajer', { op: 'sign', teamId: 't1', uid: 'ali', expect: proSalaryBand(200).min });
+  await act('ali', { op: 'note', text: '  Yarın   ilk 11 olabilir miyim?  ' });
+  assert.equal(G(`futbolPlayers/${realPlayerDocId('ali')}`).noteFromPlayer.text, 'Yarın ilk 11 olabilir miyim?');
+  await assert.rejects(act('ali', { op: 'note', text: 'tekrar' }), /note-wait/);
+  await assert.rejects(act('baskan', { op: 'note', uid: 'ali', text: 'selam' }), /yetkin yok/); // menajerli takım: başkan yazamaz
+  await act('menajer', { op: 'note', uid: 'ali', text: 'Tamam, formunu koru.' });
+  assert.equal(G(`futbolPlayers/${realPlayerDocId('ali')}`).noteFromTeam.text, 'Tamam, formunu koru.');
+  await assert.rejects(act('menajer', { op: 'note', uid: 'ali', text: '   ' }), /note-empty/);
+  clock.now += 30_000;
+  await act('ali', { op: 'note', text: 'x'.repeat(300) });
+  assert.equal(G(`futbolPlayers/${realPlayerDocId('ali')}`).noteFromPlayer.text.length, 140);
+  await assert.rejects(act('veli', { op: 'note', text: 'takımım yok' }), /no-contract/);
+});

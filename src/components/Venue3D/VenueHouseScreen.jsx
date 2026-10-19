@@ -2,8 +2,9 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { houseAction } from '../../services/gameActions';
 import { VENUES } from '../../../functions/venueLayouts.js';
 import '../HouseScreen/HouseScreen.css';
+import { retryImport } from '../../lib/lazyRetry';
 
-const HouseScreen = lazy(() => import('../HouseScreen/HouseScreen'));
+const HouseScreen = lazy(retryImport(() => import('../HouseScreen/HouseScreen'))); // v102: eski parça → yeniden dene/yenile
 
 // =============================================================================
 // v92 Faz 8 — oyunun mekânına 3D giriş. Mekânın oyun evini (houses/game_*)

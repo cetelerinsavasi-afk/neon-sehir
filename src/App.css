@@ -37,6 +37,22 @@
   }
 }
 
+/* v102 — ekran parçası yüklenemedi */
+.app-lazy-error {
+  flex-direction: column;
+  gap: 12px;
+  color: #fff;
+  font-size: 15px;
+}
+.app-lazy-error button {
+  padding: 10px 22px;
+  border-radius: 12px;
+  border: 1px solid rgba(25, 232, 255, 0.5);
+  background: rgba(25, 232, 255, 0.12);
+  color: #fff;
+  font-weight: 800;
+}
+
 /* "Çok yakında" mesajı (yapılmamış mekanlara tıklayınca) */
 .coming-soon-toast {
   position: fixed;

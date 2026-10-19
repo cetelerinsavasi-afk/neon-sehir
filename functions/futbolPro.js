@@ -57,6 +57,8 @@ export const PRO_SALARY = proSalaryBand(200);
 export const OFFER_TTL_MS = 24 * 60 * 60 * 1000;
 export const OFFER_RESEND_MS = 10 * 60 * 1000; // v89: aynı takım aynı futbolcuya 10 dk'da bir teklif (SMS seli olmasın)
 export const RAISE_WAIT_MS = 24 * 60 * 60 * 1000; // v89: zam isteği günde 1
+export const PRO_NOTE_MAX = 140; // v102: futbolcu ↔ takım kısa not
+export const PRO_NOTE_WAIT_MS = 20_000;
 export const REAL_PLAYER_AGE = 24;
 export const realPlayerDocId = (uid) => `real_${uid}`;
 const POSITIONS = ['GK', 'DEF', 'MID', 'FWD'];
@@ -213,6 +215,7 @@ export function createFutbolPro({
   controllerUidOf,
   isLockedHour: _isLockedHour = () => false, // v90: artık kullanılmıyor (fesih/transfer 19:00da)
   splitIncomeForDebt = (debt, amount) => ({ goldDelta: amount, debtDelta: 0 }),
+  assertCanSpeak = async () => {},
 }) {
   const fail = (code, msg) => {
     throw new HttpsError(code, msg);
@@ -522,6 +525,32 @@ export function createFutbolPro({
       sms(tx, to, `💸 Takımın maaşını artırdı: günlük ${fmt(salary)} altın.`, 'futbol_pro_raise');
     });
     return { ok: true, salary };
+  }
+
+  // ---- v102: kısa not (futbolcu → takım, takım yöneticisi → futbolcu) -------------
+  // Son not sözleşmede durur (noteFromPlayer / noteFromTeam); karşı tarafa bildirim gider.
+  async function note(uid, d) {
+    const text = String(d.text || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, PRO_NOTE_MAX);
+    if (!text) fail('invalid-argument', 'note-empty');
+    const to = d.uid ? String(d.uid) : uid;
+    if (!isId(to)) fail('invalid-argument', 'Geçersiz.');
+    await assertCanSpeak(uid, { text });
+    await db.runTransaction(async (tx) => {
+      const ps = await tx.get(playerRef(to));
+      if (!ps.exists) fail('failed-precondition', 'no-contract');
+      const p = ps.data();
+      const fromPlayer = to === uid;
+      if (!fromPlayer) requireController(await tx.get(teamRef(p.teamId)), uid);
+      const field = fromPlayer ? 'noteFromPlayer' : 'noteFromTeam';
+      if (Number(p[field]?.atMs || 0) > now() - PRO_NOTE_WAIT_MS) fail('failed-precondition', 'note-wait');
+      tx.update(ps.ref, { [field]: { text, atMs: now() } });
+      if (fromPlayer) teamNote(tx, p.teamId, `✉️ ${p.name}: ${text}`, 'futbol_pro_note');
+      else sms(tx, to, `✉️ Takımından not: ${text}`, 'futbol_pro_note');
+    });
+    return { ok: true };
   }
 
   // ---- fesih (futbolcu ya da yönetici) -----------------------------------------
@@ -854,7 +883,7 @@ export function createFutbolPro({
     }
   }
 
-  const ops = { proList, offerSend, offerCancel, offerRespond, sign, raiseRequest, raiseRespond, raiseSet, terminate, cancelSign };
+  const ops = { proList, offerSend, offerCancel, offerRespond, sign, raiseRequest, raiseRespond, raiseSet, terminate, cancelSign, note };
   async function action(uid, data) {
     const op = String(data?.op || '');
     if (!ops[op]) fail('invalid-argument', 'Bilinmeyen işlem.');

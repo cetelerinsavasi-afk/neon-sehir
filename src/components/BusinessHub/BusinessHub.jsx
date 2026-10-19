@@ -16,8 +16,9 @@ import { useBackClose } from '../../lib/backStack';
 import '../HouseScreen/HouseScreen.css';
 import '../../styles/bizui.css';
 import './BusinessHub.css';
+import { retryImport } from '../../lib/lazyRetry';
 
-const HouseScreen = lazy(() => import('../HouseScreen/HouseScreen'));
+const HouseScreen = lazy(retryImport(() => import('../HouseScreen/HouseScreen'))); // v102: eski parça → yeniden dene/yenile
 
 // Oyunun kendi dükkânı (her zaman açık) — oyuncu dükkânları gibi dünkü kazancına
 // göre sıralanır (gameVenues/{tür}.bizRank); sırası yoksa sıralılardan sonra.

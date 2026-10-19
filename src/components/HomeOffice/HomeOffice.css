@@ -376,6 +376,32 @@ textarea.ho-input {
   font-size: 24px;
   line-height: 1;
 }
+.of-name-input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.3);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+}
+.of-name-save {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(61, 245, 138, 0.5);
+  background: rgba(61, 245, 138, 0.16);
+  font-size: 20px;
+}
+.of-name-save:disabled {
+  opacity: 0.35;
+}
+.of-biz-btn {
+  margin-top: 10px;
+}
 .of-tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;

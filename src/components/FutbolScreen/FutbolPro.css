@@ -670,3 +670,41 @@
   font-size: 13px;
   cursor: pointer;
 }
+
+/* v102 — futbolcu ↔ takım kısa notları */
+.fp-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+.fp-note {
+  display: block;
+  font-size: 12px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: rgba(25, 232, 255, 0.08);
+  word-break: break-word;
+}
+.fp-note.out {
+  background: rgba(255, 255, 255, 0.05);
+  opacity: 0.8;
+}
+.fp-note-form {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+.fp-note-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 9px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.3);
+  color: #fff;
+  font-size: 13px;
+}
+.fp-dimbtn {
+  opacity: 0.5;
+}

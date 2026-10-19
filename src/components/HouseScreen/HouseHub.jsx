@@ -1,4 +1,5 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { retryImport, ChunkBoundary } from '../../lib/lazyRetry';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useHouseList } from '../../hooks/useHouseList';
@@ -12,7 +13,10 @@ import './HouseScreen.css';
 import { useBackClose } from '../../lib/backStack';
 
 // three.js ağır bir kütüphane — sadece bir eve GİRİLDİĞİNDE yüklenir.
-const HouseScreen = lazy(() => import('./HouseScreen'));
+// v102: güncelleme sonrası eski parça bulunamazsa yeniden dene / sayfayı yenile;
+// liste açılır açılmaz ev ekranı arka planda indirilir (tıklayınca beklenmez)
+const loadHouseScreen = retryImport(() => import('./HouseScreen'));
+const HouseScreen = lazy(loadHouseScreen);
 
 const PRIVACY_LABEL = { public: '🌐 Herkese açık', friends: '👥 Arkadaşlar', private: '🔒 Gizli' };
 
@@ -63,6 +67,9 @@ export default function HouseHub({ onClose, initialHouseId = null }) {
   const gold = Number(player?.gold || 0);
   // v68 — Android geri tuşu: satın alma penceresi açıksa onu, değilse ev listesini kapatır
   useBackClose(!houseId, () => (buyOpen ? setBuyOpen(false) : onClose()));
+  useEffect(() => {
+    loadHouseScreen().catch(() => {});
+  }, []);
 
   if (houseId) {
     const loader = (
@@ -74,6 +81,7 @@ export default function HouseHub({ onClose, initialHouseId = null }) {
       </div>
     );
     return (
+      <ChunkBoundary onClose={() => setHouseId(null)}>
       <Suspense fallback={loader}>
         <HouseScreen
           key={houseId}
@@ -85,6 +93,7 @@ export default function HouseHub({ onClose, initialHouseId = null }) {
           }}
         />
       </Suspense>
+      </ChunkBoundary>
     );
   }
 

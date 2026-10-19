@@ -7,7 +7,6 @@ import {
   OFFICE_FURN,
   OFFICE_BANDS,
   OFFICE_DONATE_AMOUNTS,
-  OFFICE_DAILY_LIMIT,
   OFFICE_EMOJIS,
   ownedOfficeKeys,
   activeOfficeKeys,
@@ -26,7 +25,9 @@ import './HomeOffice.css';
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
 const KIND_LABEL = { urun: '🛍️ Ürün satışı', bagis: '🤲 Bağış', dakika: '🎛️ Mikser (dakika)' };
 
-export default function OfficePanel({ houseId, houseDoc, onClose, flash }) {
+// v102 — ofiste ⚙️ Ayarlar doğrudan bu paneli açar: ad + simge, fiyatlar, rapor,
+// en altta İşletmeler (ofisi işletmeye dönüştürmek için).
+export default function OfficePanel({ houseId, houseDoc, onClose, flash, onRename, onOpenBiz }) {
   const [tab, setTab] = useState('items');
   const [open, setOpen] = useState(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -38,6 +39,18 @@ export default function OfficePanel({ houseId, houseDoc, onClose, flash }) {
   const emoji = houseDoc?.office?.emoji || '🏢';
   const { today, yesterday } = useOfficeDaily(houseId, tab === 'report');
   const halt = (e) => e.stopPropagation();
+  const [name, setName] = useState(houseDoc?.name || '');
+  const [nameBusy, setNameBusy] = useState(false);
+  const nameDirty = name.trim() && name.trim() !== (houseDoc?.name || '');
+  const saveName = async () => {
+    if (!onRename || !nameDirty) return;
+    setNameBusy(true);
+    try {
+      await onRename(name.trim());
+    } finally {
+      setNameBusy(false);
+    }
+  };
 
   const setEmoji = async (e) => {
     try {
@@ -53,7 +66,7 @@ export default function OfficePanel({ houseId, houseDoc, onClose, flash }) {
     <div className="hs-modal-bg" onClick={onClose} onPointerDown={halt}>
       <div className="hs-modal of-panel" onClick={halt}>
         <div className="hs-modal-head">
-          <b>💰 Ücretli Ürünler</b>
+          <b>{kind === 'ofis' && !isBiz ? `${emoji} Ofis Ayarları` : '💰 Ücretli Ürünler'}</b>
           <button className="hs-x" onClick={onClose}>
             ✕
           </button>
@@ -66,9 +79,12 @@ export default function OfficePanel({ houseId, houseDoc, onClose, flash }) {
               <button className="of-emoji-btn" onClick={() => setEmojiOpen(true)} title="Ofis simgesini değiştir">
                 {emoji}
               </button>
-              <span>
-                <b>Burası ofis.</b> Evler › Ofisler'de görünür.
-              </span>
+              <input className="of-name-input" value={name} maxLength={30} onChange={(e) => setName(e.target.value)} placeholder="Ofisin adı" aria-label="Ofisin adı" />
+              {onRename && (
+                <button className="of-name-save" disabled={!nameDirty || nameBusy} onClick={saveName}>
+                  {nameBusy ? '…' : '💾'}
+                </button>
+              )}
             </>
           ) : (
             <span>Bir mobilyayı ücretli yapınca burası ofis olur.</span>
@@ -87,7 +103,6 @@ export default function OfficePanel({ houseId, houseDoc, onClose, flash }) {
             {keys.map((k) => (
               <OfficeRow key={k} k={k} houseId={houseId} houseDoc={houseDoc} on={active.includes(k)} open={open === k} onToggle={() => setOpen((o) => (o === k ? null : k))} flash={flash} />
             ))}
-            <p className="of-hint">Bir oyuncu buradaki ücretli ürünlere günde en fazla {fmt(OFFICE_DAILY_LIMIT)} altın harcayabilir. Kazancın %10'u vergidir.</p>
           </div>
         )}
         {tab === 'report' && (
@@ -96,6 +111,11 @@ export default function OfficePanel({ houseId, houseDoc, onClose, flash }) {
             <ReportCard label="Dün" d={yesterday} />
             <p className="of-hint">Gün 00:00'da kapanır.</p>
           </div>
+        )}
+        {!isBiz && onOpenBiz && (
+          <button className="hs-btn ghost wide hb-open-list of-biz-btn" onClick={onOpenBiz}>
+            🏪 İşletmeler
+          </button>
         )}
         {emojiOpen && (
           <div className="of-emoji-bg" onClick={() => setEmojiOpen(false)}>
