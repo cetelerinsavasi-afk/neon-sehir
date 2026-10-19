@@ -343,3 +343,8 @@ Testler: 348/348 geçti.
 - Göç: eski home ofisler (mescit/sinema/stüdyo) ofis olur — stüdyo dakika ücreti korunur (100–500'e çekilir), sinema mısır/içecek fiyatları 10–200'e çekilir, mescit bağış kutusu açık kalır. Saatlik iş + eve ilk girişte. Home ofis artık işletme olarak açılamaz.
 - Shop ops: officeSet, officeBuy, officeDonate · mikser: netStart/netTick (her evde) · kurallar: officeSpend, officeDaily.
 - Yükleme: `firebase deploy --only functions,firestore:rules` + git push.
+
+## v100.1 — Tek liste + yükleme kotası
+- Evler ekranı yeniden tek liste: 🏢 Ofisler · 🏠 Evler · 📦 Depolar alt alta.
+- "internal" hatası koddan değil: tüm fonksiyonlar birden yüklenince europe-west1 Cloud Run CPU kotası (200 vCPU) doldu, 26 fonksiyon (shopAction dahil) açılamadı. Çözüm: boşta kalan kopyaların kapanmasını bekleyip küçük gruplar halinde yüklemek; kalıcı olarak kota artışı. Bundan sonra `firebase deploy --only functions` (hepsi) KULLANILMAYACAK.
+- Yükleme: git push (istemci) + açılamayan fonksiyonlar gruplar halinde.

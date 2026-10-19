@@ -385,3 +385,16 @@ test('v99.1 şarkı Firestore\'a iç içe dizisiz yazılır (proje + paylaşım 
   assert.equal(nested(inl.song), false);
   assert.equal(sanitizeSong(inl.song).error, undefined);
 });
+
+test('v100.1 internet kafe: içecek dolabı ücretli yapılır, kazanç işletme kasasından ayrı', async () => {
+  const h = setup();
+  const fr = it('drinkfridge');
+  const id = await openBiz(h, 'internet', [fr]);
+  const r = await h.act('sahip', { op: 'officeSet', houseId: id, keys: { drinkfridge: true }, prices: { kola: 150 } });
+  assert.equal(r.kind, 'isletme');
+  h.present('ali', id);
+  await assert.rejects(h.hact('ali', { op: 'take', houseId: id, itemId: fr.i, product: 'kola' }), /office-paid:150/);
+  await h.act('ali', { op: 'officeBuy', houseId: id, itemId: fr.i, product: 'kola', expect: 150 });
+  assert.equal(h.G(`officeDaily/${id}_2026-10-07`).revenue, 150);
+  assert.equal(h.G(`businessDaily/${id}_2026-10-07`), undefined);
+});

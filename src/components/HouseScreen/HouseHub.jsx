@@ -7,7 +7,7 @@ import { houseAction } from '../../services/gameActions';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import { HOUSE_PRICE } from '../../../functions/houseCatalogData.js';
 import { BIZ_TYPES } from '../../../functions/businessCatalogData.js';
-import { houseKind, HOUSE_MIN_ITEMS, LEGACY_EMOJI } from '../../../functions/officeData.js';
+import { houseKind, LEGACY_EMOJI } from '../../../functions/officeData.js';
 import './HouseScreen.css';
 import { useBackClose } from '../../lib/backStack';
 
@@ -51,23 +51,8 @@ export default function HouseHub({ onClose, initialHouseId = null }) {
   const [houseId, setHouseId] = useState(initialHouseId);
   // v73 — evin içindeyken ev listesi dinlenmez (maliyet)
   const list = useHouseList({ enabled: Boolean(user) && !houseId });
-  // v100 — üç sekme: Ofisler (ücretli mobilyası olan) · Evler (10+ mobilya) · Depolar
-  const [tab, setTabState] = useState(() => {
-    try {
-      return localStorage.getItem('ns_househub_tab') || 'ofis';
-    } catch {
-      return 'ofis';
-    }
-  });
-  const setTab = (t) => {
-    setTabState(t);
-    try {
-      localStorage.setItem('ns_househub_tab', t);
-    } catch {
-      /* depolama kapalı */
-    }
-  };
-  const offices = useOfficeList({ enabled: Boolean(user) && !houseId && tab === 'ofis' });
+  // v100.1 — tek liste, alt alta: Ofisler · Evler · Depolar
+  const offices = useOfficeList({ enabled: Boolean(user) && !houseId });
   const myHouses = list.mine.filter((h) => !h.bizType || houseKind(h) === 'ofis');
   const mineOf = (k) => myHouses.filter((h) => houseKind(h) === k);
   const enterableOf = (k) => list.enterable.filter((h) => houseKind(h) === k);
@@ -138,48 +123,32 @@ export default function HouseHub({ onClose, initialHouseId = null }) {
         {msg && <p className={msg.ok ? 'hs-ok' : 'hs-err'}>{msg.text}</p>}
 
         {user && (
-          <div className="hh-tabs" role="tablist">
-            {[
-              ['ofis', '🏢 Ofisler'],
-              ['ev', '🏠 Evler'],
-              ['depo', '📦 Depolar'],
-            ].map(([k, label]) => (
-              <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
-                {label}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {user && tab === 'ofis' && (
           <>
+            <div className="hs-list-title hh-sec">🏢 Ofisler</div>
             {offices.loading && <p className="hs-dim">Yükleniyor…</p>}
-            {!offices.loading && offices.list.length === 0 && <p className="hs-dim hh-empty">Henüz ofis yok. Evine para kazandıran bir mobilya koyup ⚙️ Ayarlar › Ücretli Ürünler'den ücretli yaparsan burada görünür.</p>}
+            {!offices.loading && offices.list.length === 0 && <p className="hs-dim hh-empty">Henüz ofis yok.</p>}
             {offices.list.map((h) => (
               <HouseRow key={h.id} h={h} onEnter={setHouseId} mineRow={h.mine} />
             ))}
-          </>
-        )}
 
-        {user && tab !== 'ofis' && (
-          <>
-            {mineOf(tab).length > 0 && (
-              <>
-                <div className="hs-list-title">{tab === 'ev' ? 'Evlerim' : 'Depolarım'}</div>
-                {mineOf(tab).map((h) => (
-                  <HouseRow key={h.id} h={h} onEnter={setHouseId} mineRow />
-                ))}
-              </>
-            )}
-            <div className="hs-list-title">{tab === 'ev' ? 'Girebileceğin Evler' : 'Girebileceğin Depolar'}</div>
+            <div className="hs-list-title hh-sec">🏠 Evler</div>
+            {mineOf('ev').map((h) => (
+              <HouseRow key={h.id} h={h} onEnter={setHouseId} mineRow />
+            ))}
             {list.loading && <p className="hs-dim">Yükleniyor…</p>}
-            {!list.loading && enterableOf(tab).length === 0 && (
-              <p className="hs-dim hh-empty">{tab === 'ev' ? 'Şu an girebileceğin bir ev yok.' : 'Şu an girebileceğin bir depo yok.'}</p>
-            )}
-            {enterableOf(tab).map((h) => (
+            {!list.loading && mineOf('ev').length + enterableOf('ev').length === 0 && <p className="hs-dim hh-empty">Şu an girebileceğin bir ev yok.</p>}
+            {enterableOf('ev').map((h) => (
               <HouseRow key={h.id} h={h} onEnter={setHouseId} />
             ))}
-            {tab === 'depo' && <p className="hs-dim hh-hint">📦 {HOUSE_MIN_ITEMS} mobilyadan azı olan evler depodur; {HOUSE_MIN_ITEMS}. mobilyada ev olur.</p>}
+
+            <div className="hs-list-title hh-sec">📦 Depolar</div>
+            {mineOf('depo').map((h) => (
+              <HouseRow key={h.id} h={h} onEnter={setHouseId} mineRow />
+            ))}
+            {!list.loading && mineOf('depo').length + enterableOf('depo').length === 0 && <p className="hs-dim hh-empty">Depo yok.</p>}
+            {enterableOf('depo').map((h) => (
+              <HouseRow key={h.id} h={h} onEnter={setHouseId} />
+            ))}
           </>
         )}
       </div>
