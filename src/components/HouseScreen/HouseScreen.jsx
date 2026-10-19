@@ -62,6 +62,7 @@ import { streamPriceOf, cafeDevicePrice, isStreamSetPc } from '../../../function
 import { attachHScroll } from '../../lib/hscroll';
 import HomeOfficeLayer from '../HomeOffice/HomeOfficeLayer';
 import EntranceDoorPicker from './EntranceDoorPicker';
+import { sanitizeDoor, DEFAULT_DOOR } from '../../../functions/houseDoor.js';
 
 // =============================================================================
 // HouseScreen — 3D Ev (v66, herkese açık)
@@ -118,8 +119,12 @@ function Money({ gold = 0, gem = 0, small }) {
 }
 
 // v92 — iki tasarımı karşılaştırmak için kısa imza (sıra bağımsız)
+const doorKey = (d) => {
+  const x = sanitizeDoor(d) || DEFAULT_DOOR;
+  return `${x.w}:${x.x}:${x.t}`;
+};
 const designSig = (d) =>
-  `${d?.wall}|${d?.floor}|${d?.door ? `${d.door.w}:${d.door.x}:${d.door.t}` : '-'}|` +
+  `${d?.wall}|${d?.floor}|${doorKey(d?.door)}|` +
   (d?.items || [])
     .map((it) => `${it.i}:${it.k}:${it.x}:${it.z}:${it.r || 0}:${it.c || 0}:${it.p === 1 ? 1 : 0}:${it.o === true ? 1 : it.o === false ? 0 : '-'}`)
     .sort()
@@ -239,7 +244,10 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   const canDesignRef = useRef(canDesign);
   canDesignRef.current = canDesign;
   const [realLook, setRealLook] = useState(false); // v92 — göz: denemeleri gerçek göster
-  const lastRemoteSurfRef = useRef('');
+  // v101.1 — sunucudaki son duvar/zemin/kapı (her biri AYRI karşılaştırılır) ve
+  // bu evde senin en son denediğin kaplamalar (motor yeniden kurulsa da kaybolmasın)
+  const lastRemoteSurfRef = useRef(null);
+  const localSurfRef = useRef(null);
 
   const flash = useCallback((t) => {
     setToast(t);
@@ -374,6 +382,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
         setDesign(dsg);
         if (!canDesignRef.current) return;
         pendingDesignRef.current = { items: dsg.items, wall: dsg.wall, floor: dsg.floor, door: dsg.door };
+        localSurfRef.current = { houseId, wall: dsg.wall, floor: dsg.floor, door: dsg.door };
         setSaveState('dirty');
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = setTimeout(() => flushSave(), SAVE_DEBOUNCE_MS);
@@ -458,21 +467,30 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
         const eng = engineRef.current;
         if (!eng) return;
         const dsg = { items: data.items || [], wall: data.wall, floor: data.floor, door: data.door || null };
-        const surf = `${data.wall}|${data.floor}|${JSON.stringify(data.door || null)}`;
+        // v101.1: kapı sırası/varsayılanı fark yaratmasın diye kanonik anahtar
+        const remote = { wall: data.wall || null, floor: data.floor || null, door: doorKey(data.door) };
         const designer = info?.isOwner || data.editors?.[user?.uid] === true;
         if (!designer || !appliedFirstRef.current) {
           appliedFirstRef.current = true;
-          lastRemoteSurfRef.current = surf;
-          eng.setDesign(dsg, { force: true });
+          lastRemoteSurfRef.current = remote;
+          const loc = designer && localSurfRef.current?.houseId === houseId ? localSurfRef.current : null;
+          // tasarımcı: denediğin (henüz alınmamış) kaplamalar yeniden kurulumda korunur
+          eng.setDesign(loc ? { ...dsg, wall: loc.wall || dsg.wall, floor: loc.floor || dsg.floor, door: loc.door || dsg.door } : dsg, { force: true });
           setDesign(eng.getDesign());
         } else if (!pendingDesignRef.current && !eng.isBusy()) {
           // v92 — birlikte tasarım: yetkili/sahip başkasının değişikliğini canlı görür.
           // Kendi bekleyen değişikliğin varsa uygulanmaz (kaydın gidince eşitlenir).
-          // Duvar/zemin sadece uzakta değiştiyse alınır (denediğin kaplama silinmesin).
+          // v101.1: duvar, zemin ve kapı AYRI AYRI — sadece sunucuda gerçekten değişen
+          // alınır; denediğin kaplama başka bir alanın değişmesiyle silinmez.
           const cur = eng.getDesign();
-          const surfChanged = surf !== lastRemoteSurfRef.current;
-          lastRemoteSurfRef.current = surf;
-          const next = { items: dsg.items, wall: surfChanged ? dsg.wall : cur.wall, floor: surfChanged ? dsg.floor : cur.floor, door: surfChanged ? dsg.door : cur.door };
+          const last = lastRemoteSurfRef.current || remote;
+          lastRemoteSurfRef.current = remote;
+          const next = {
+            items: dsg.items,
+            wall: remote.wall !== last.wall ? dsg.wall : cur.wall,
+            floor: remote.floor !== last.floor ? dsg.floor : cur.floor,
+            door: remote.door !== last.door ? dsg.door : cur.door,
+          };
           if (designSig(next) !== designSig(cur)) {
             eng.setDesign(next);
             setDesign(eng.getDesign());

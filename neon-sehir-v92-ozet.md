@@ -354,3 +354,8 @@ Testler: 348/348 geçti.
 - Evin giriş kapısı: Mağaza › 🎨 Duvar, Zemin & Kapı › kapı tipi (ücretsiz, 9 çeşit) + duvar (Arka/Karşı/Sol/Sağ) + duvardaki yer. `houses.door = { w, x, t }` (functions/houseDoor.js); eve girenler kapının önünde doğar. Kapısı ayarlanmamış evler eskisi gibi.
 - Manav tezgâhı: yakın sıra altta, uzak sıra üstte; raflar müşteriye eğik.
 - Yükleme: `firebase deploy --only functions:houseAction` + git push.
+
+## v101.1 — Denenen duvar/zemin geri dönme hatası
+- Tasarlarken seçilen (henüz alınmamış) duvar/zemin, kayıttan sonra kendiliğinden eskiye dönüyordu: v101'de kapı bilgisi ilk kez kaydedilince istemci bunu "duvar/zemin uzakta değişti" sanıyordu. Artık duvar, zemin ve kapı ayrı ayrı karşılaştırılıyor (kapı kanonik anahtarla); grafikler yeniden yüklense de denenen kaplamalar korunuyor.
+- Sunucu aynı duvarı/zemini ve satın alınmış mobilyayı asla iki kez ücretlendirmez (önizlemede doğrulandı).
+- Yükleme: sadece git push.
