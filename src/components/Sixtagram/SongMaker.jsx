@@ -11,9 +11,11 @@ import {
   SONG_TITLE_MAX,
   emptySong,
   songHasNotes,
+  shareModeOf,
 } from '../../../functions/songData.js';
 import { startSong, previewDrum, previewNote, demoKit, demoNotes, bit, songLength } from '../../lib/songEngine';
 import { createPortal } from 'react-dom';
+import { songShareInfo } from '../../lib/songShare';
 import './SongMaker.css';
 
 // =============================================================================
@@ -189,6 +191,7 @@ export default function SongMaker({ initial, onCancel, onDone, onChange, toolbar
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cur]);
   const showHead = cur.s >= 0 && (song.mode === 'pattern' || cur.pi === curPat);
+  const shareInfo = useMemo(() => songShareInfo(song), [song]);
 
   // --- klavye: Ctrl+Z / Ctrl+Shift+Z ---
   useEffect(() => {
@@ -355,8 +358,10 @@ export default function SongMaker({ initial, onCancel, onDone, onChange, toolbar
     }
     stop();
     const out = { ...clone(songRef.current), type: 'song', v: 1 };
-    // bölüm modunda seçili bölüm boşsa ilk dolu bölüm çalsın
-    if (!patHas(out.pats[out.cp || 0])) out.cp = Math.max(0, out.pats.findIndex(patHas));
+    // v105: paylaşım modu aranjeye göre (songData.shareModeOf)
+    const sm = shareModeOf(out);
+    out.mode = sm.mode;
+    out.cp = sm.cp;
     onDone?.(out);
   };
 
@@ -414,7 +419,7 @@ export default function SongMaker({ initial, onCancel, onDone, onChange, toolbar
             {song.song.map((v, i) => (
               <button
                 key={i}
-                className={`bm-slot${v >= 0 ? ' has' : ''}${playing && song.mode === 'song' && i === cur.bar ? ' now' : ''}`}
+                className={`bm-slot${v >= 0 ? ' has' : ''}${v >= 0 && !patHas(song.pats[v]) ? ' empty-pat' : ''}${playing && song.mode === 'song' && i === cur.bar ? ' now' : ''}`}
                 style={v >= 0 ? { background: PAT_COLORS[v] } : undefined}
                 aria-label={`Sıra ${i + 1}: ${v >= 0 ? `Bölüm ${LETTERS[v]}` : 'boş'}`}
                 onClick={() => tapSlot(i)}
@@ -442,6 +447,16 @@ export default function SongMaker({ initial, onCancel, onDone, onChange, toolbar
               Sırayı boşalt
             </button>
           </div>
+          {/* v105: paylaşınca nasıl çalacağı — mod düğmesinden bağımsız, aranjeye göre */}
+          {songHasNotes(song) && (
+            <div className={`bm-shareinfo ${shareInfo.mode}`}>
+              <span className="bm-shareinfo-ic">{shareInfo.icon}</span>
+              <span>
+                <b>{shareInfo.title}</b>
+                <small>{shareInfo.detail}</small>
+              </span>
+            </div>
+          )}
           <div className="bm-note" aria-live="polite">
             {hint.text}
             {hint.undo && (

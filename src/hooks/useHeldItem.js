@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -50,5 +50,7 @@ export function useHeldItem(venue) {
   }, [untilMs]);
 
   const live = raw && raw.venue === venue && untilMs > Date.now() ? raw : null;
-  return { held: live ? { itemId: live.itemId, untilMs } : null, gift, clearGift: () => setGift(null) };
+  // v105: sabit fonksiyon — her çizimde yenisi gelince bildirim sayacı sıfırlanıp yazı hiç kaybolmuyordu
+  const clearGift = useCallback(() => setGift(null), []);
+  return { held: live ? { itemId: live.itemId, untilMs } : null, gift, clearGift };
 }

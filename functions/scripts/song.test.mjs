@@ -51,3 +51,27 @@ test('bölüm modunda seçili bölüm boşsa ilk dolu bölüme geçilir', () => 
   s.cp = 1;
   assert.equal(sanitizeSong(s).song.cp, 2);
 });
+
+test('v105: paylaşım modu aranjeye göre; boş bölümlü sıra → bölüm modu; varsayılan ölçek minör', async () => {
+  const { emptySong: es, sanitizeSong: san, shareModeOf: smo } = await import('../songData.js');
+  const s = es();
+  assert.equal(s.scale, 'minor');
+  s.pats[0].d[0] = 1; // A dolu
+  s.pats[1].d[0] = 4; // B dolu
+  // sıra yok → bölüm (mod düğmesi 'song' olsa bile)
+  s.mode = 'song';
+  assert.equal(san(s).song.mode, 'pattern');
+  // A B A → şarkı (mod düğmesi 'pattern' olsa bile)
+  s.mode = 'pattern';
+  s.song[0] = 0; s.song[1] = 1; s.song[2] = 0;
+  assert.equal(san(s).song.mode, 'song');
+  // sırada boş C → bölüm modu
+  s.song[3] = 2;
+  const r = smo(s);
+  assert.equal(r.mode, 'pattern');
+  assert.deepEqual(r.emptyLetters, ['C']);
+  assert.equal(san(s).song.mode, 'pattern');
+  // proje taslağı (allowEmpty) seçilen modu korur
+  s.mode = 'song';
+  assert.equal(san(s, true).song.mode, 'song');
+});

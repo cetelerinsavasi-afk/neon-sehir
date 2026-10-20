@@ -76,7 +76,7 @@ export function emptySong() {
     mode: 'pattern',
     cp: 0, // bölüm modunda çalan bölüm (A–D)
     kit: 'klasik',
-    scale: 'pent',
+    scale: 'minor', // v105: varsayılan ölçek Minör
     key: 0,
     dv: 80,
     dm: false,
@@ -92,6 +92,23 @@ export function emptySong() {
 
 export function songHasNotes(s) {
   return (s?.pats || []).some((p) => (p.d || []).some(Boolean) || (p.t || []).some((t) => (t || []).some(Boolean)));
+}
+
+// v105 — PAYLAŞIM MODU ekrandaki "Şarkı/Bölüm modu" düğmesinden bağımsız:
+//   • sırada (aranje) en az bir bölüm varsa ve sıradaki HER bölüm doluysa → şarkı (aranje) olarak
+//   • sıra boşsa ya da sırada boş bir bölüm varsa (ör. C sırada ama C bomboş) → bölüm modu
+// Bölüm modunda seçili bölüm boşsa ilk dolu bölüm çalar.
+// Döner: { mode, cp, reason: 'arranged' | 'no_arrangement' | 'empty_section', emptyLetters }
+const patternHasNotes = (p) => Boolean(p) && ((p.d || []).some(Boolean) || (p.t || []).some((rows) => (rows || []).some(Boolean)));
+export function shareModeOf(s) {
+  const pats = s?.pats || [];
+  const used = (s?.song || []).filter((v) => Number.isInteger(v) && v >= 0);
+  const firstFull = Math.max(0, pats.findIndex(patternHasNotes));
+  const cp = patternHasNotes(pats[s?.cp || 0]) ? s?.cp || 0 : firstFull;
+  if (!used.length) return { mode: 'pattern', cp, reason: 'no_arrangement', emptyLetters: [] };
+  const empty = [...new Set(used.filter((v) => !patternHasNotes(pats[v])))].sort();
+  if (empty.length) return { mode: 'pattern', cp, reason: 'empty_section', emptyLetters: empty.map((v) => 'ABCD'[v] || '?') };
+  return { mode: 'song', cp: s?.cp || 0, reason: 'arranged', emptyLetters: [] };
 }
 
 // Gelen şarkıyı doğrular/temizler. Geçersizse { error } döner.
@@ -160,10 +177,16 @@ export function sanitizeSong(raw, allowEmpty = false) {
     if (allowEmpty) return { song: out };
     return { error: 'Boş şarkı paylaşılamaz — önce birkaç kutu doldur.' };
   }
-  if (out.mode === 'song' && !out.song.some((v) => v >= 0)) out.mode = 'pattern';
-  // bölüm modunda seçili bölüm boşsa ilk dolu bölüm çalar
-  const has = (p) => p.d.some(Boolean) || p.t.some((rows) => rows.some(Boolean));
-  if (!has(out.pats[out.cp])) out.cp = Math.max(0, out.pats.findIndex(has));
+  if (allowEmpty) {
+    // proje taslağı: oyuncunun seçtiği mod korunur
+    if (out.mode === 'song' && !out.song.some((v) => v >= 0)) out.mode = 'pattern';
+    if (!patternHasNotes(out.pats[out.cp])) out.cp = Math.max(0, out.pats.findIndex(patternHasNotes));
+    return { song: out };
+  }
+  // v105: paylaşım — mod aranjeye göre otomatik (bkz. shareModeOf)
+  const sm = shareModeOf(out);
+  out.mode = sm.mode;
+  out.cp = sm.cp;
   return { song: out };
 }
 

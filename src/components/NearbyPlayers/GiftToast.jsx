@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import './NearbyPlayersButton.css';
 import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
 
@@ -8,13 +8,16 @@ const LABELS = {
   sosisli: 'Sosisli', tost: 'Tost', cay: 'Çay', kahve: 'Kahve', oralet: 'Oralet', latte: 'Latte', kokteyl: 'Kokteyl',
 };
 
+// v105: 4,5 sn sonra kendiliğinden kaybolur, dokununca hemen kapanır
 export default function GiftToast({ gift, onDone }) {
+  const doneRef = useRef(onDone);
+  doneRef.current = onDone;
   useEffect(() => {
-    const t = setTimeout(onDone, 4500);
+    const t = setTimeout(() => doneRef.current?.(), 4500);
     return () => clearTimeout(t);
-  }, [gift, onDone]);
+  }, [gift]);
   return (
-    <div className="gift-toast" role="status">
+    <div className="gift-toast" role="status" onClick={(e) => { e.stopPropagation(); doneRef.current?.(); }} onPointerDown={(e) => e.stopPropagation()}>
       🎁 <b>{gift.from}</b> sana {LABELS[gift.itemId] || 'bir ikram'} ısmarladı!
     </div>
   );

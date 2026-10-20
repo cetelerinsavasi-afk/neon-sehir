@@ -7,7 +7,8 @@ import { shopAction, createSixtagramPost } from '../../services/gameActions';
 import { bizErrText } from '../../lib/bizErrors';
 import { useNetCredits } from '../../hooks/useVenueData';
 import { downloadSongMp3 } from '../../lib/songExport';
-import { emptySong, songHasNotes, sanitizeSong } from '../../../functions/songData.js';
+import { emptySong, songHasNotes, sanitizeSong, shareModeOf } from '../../../functions/songData.js';
+import { songShareInfo } from '../../lib/songShare';
 import { SONG_PROJECT_TTL_MS, SONG_PROJECT_MAX } from '../../../functions/homeOfficeData.js';
 import SongMaker from '../Sixtagram/SongMaker';
 import './HomeOffice.css';
@@ -254,10 +255,12 @@ export default function StudioScreen({ houseId, price, isOwner, onClose, flash }
     clearTimeout(timerRef.current);
     if (savingRef.current) await savingRef.current.catch(() => {});
     try {
+      // v105: mod aranjeye göre (sunucu da aynı kuralı uygular — songData.shareModeOf)
+      const sm = shareModeOf(song);
       await createSixtagramPost(String(publish?.text || '').trim(), {
         type: 'song',
         houseId,
-        song: { ...song, type: 'song', v: 1 },
+        song: { ...song, mode: sm.mode, cp: sm.cp, type: 'song', v: 1 },
         ...(projectIdRef.current ? { projectId: projectIdRef.current } : {}),
       });
       clearTimeout(timerRef.current);
@@ -337,6 +340,18 @@ export default function StudioScreen({ houseId, price, isOwner, onClose, flash }
                 ) : (
                   <>
                     <h3>📤 Sixtagram'da paylaş</h3>
+                    {(() => {
+                      const s = getSongRef.current?.() || latestRef.current;
+                      if (!s || !songHasNotes(s)) return null;
+                      const info = songShareInfo(s);
+                      return (
+                        <p className={`ho-share-mode ${info.mode}`}>
+                          {info.icon} <b>{info.title}</b>
+                          <br />
+                          <small>{info.detail}</small>
+                        </p>
+                      );
+                    })()}
                     <textarea className="ho-input" maxLength={280} rows={3} placeholder="Bir şeyler yaz (isteğe bağlı)" value={publish.text} onChange={(e) => setPublish((p) => ({ ...p, text: e.target.value }))} />
                     {publish.err && <p className="ho-err">{publish.err}</p>}
                     <div className="ho-row">

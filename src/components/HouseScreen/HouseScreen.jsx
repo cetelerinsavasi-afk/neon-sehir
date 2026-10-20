@@ -2391,16 +2391,23 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   );
 }
 
+// v105: kendiliğinden kaybolur (onDone değişse bile sayaç sıfırlanmaz), dokununca hemen kapanır
 function GiftNote({ gift, onDone }) {
+  const doneRef = useRef(onDone);
+  doneRef.current = onDone;
   useEffect(() => {
-    const t = setTimeout(onDone, 4500);
+    const t = setTimeout(() => doneRef.current?.(), 4500);
     return () => clearTimeout(t);
-  }, [gift, onDone]);
+  }, [gift]);
+  const close = (e) => {
+    e.stopPropagation();
+    doneRef.current?.();
+  };
   const p = HOUSE_PRODUCTS[gift.itemId];
   if (gift.served) {
     // v92 — garson siparişi getirdi / süre dolunca kendiliğinden geldi
     return (
-      <div className="hs-toast gift">
+      <div className="hs-toast gift tappable" onClick={close} onPointerDown={(e) => e.stopPropagation()}>
         {gift.from ? (
           <>
             🧑‍🍳 Garson <b>{gift.from}</b> siparişini getirdi: {p ? `${p.emoji} ${p.label}` : 'siparişin'}
@@ -2412,7 +2419,7 @@ function GiftNote({ gift, onDone }) {
     );
   }
   return (
-    <div className="hs-toast gift">
+    <div className="hs-toast gift tappable" onClick={close} onPointerDown={(e) => e.stopPropagation()}>
       🎁 <b>{gift.from}</b> sana {p ? `${p.emoji} ${p.label}` : 'bir ikram'} ısmarladı!
     </div>
   );

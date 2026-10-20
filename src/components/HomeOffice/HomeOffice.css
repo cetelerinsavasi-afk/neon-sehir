@@ -629,3 +629,22 @@ textarea.ho-input {
   border-color: #3df58a;
   background: rgba(61, 245, 138, 0.18);
 }
+
+/* v105 — paylaşınca nasıl çalacak */
+.ho-share-mode {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 13px;
+  line-height: 1.35;
+}
+.ho-share-mode.song {
+  border: 1px solid rgba(110, 231, 160, 0.5);
+}
+.ho-share-mode.pattern {
+  border: 1px solid rgba(255, 200, 90, 0.5);
+}
+.ho-share-mode small {
+  opacity: 0.75;
+}

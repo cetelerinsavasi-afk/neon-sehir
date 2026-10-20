@@ -178,3 +178,9 @@ button.nearby-row {
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
   pointer-events: none;
 }
+
+/* v105 — ısmarlama bildirimi dokununca kapanır */
+.gift-toast {
+  pointer-events: auto;
+  cursor: pointer;
+}

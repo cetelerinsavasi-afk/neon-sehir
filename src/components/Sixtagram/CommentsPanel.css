@@ -249,6 +249,33 @@
 /* v103 — bildirimden açılan gönderi: gönderi + yorumlar aynı kaydırmada */
 .six-comments-panel.with-post {
   height: 92vh;
+  height: 92dvh;
+}
+/* v105: iPhone'da panel sağa sola kaymasın — yatay taşma kesilir, sadece dikey kaydırma */
+.six-comments-panel {
+  max-width: min(420px, 100vw);
+  overflow: hidden;
+}
+.six-comments-list {
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  min-width: 0;
+}
+.six-comments-list > * {
+  min-width: 0;
+  max-width: 100%;
+}
+.six-comments-list .six-post img,
+.six-comments-list .six-post canvas,
+.six-comments-list .six-post svg,
+.six-comments-list .six-post video {
+  max-width: 100%;
+}
+.six-comment-body,
+.six-comment-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .six-comments-panel.with-post .six-post {
   flex-shrink: 0;
@@ -262,7 +289,6 @@
   color: var(--text-dim);
 }
 .six-comment-row.focused {
-  margin: -6px;
   padding: 6px;
   border-radius: 10px;
   background: rgba(25, 232, 255, 0.1);

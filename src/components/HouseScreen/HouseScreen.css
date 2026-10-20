@@ -1823,3 +1823,9 @@
 .hh-sec {
   margin-top: 16px;
 }
+
+/* v105 — ısmarlama / sipariş bildirimi dokununca kapanır */
+.hs-toast.tappable {
+  pointer-events: auto;
+  cursor: pointer;
+}

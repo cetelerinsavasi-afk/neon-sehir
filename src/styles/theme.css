@@ -137,3 +137,15 @@ a:focus:not(:focus-visible),
   from { opacity: 0; transform: translate(-50%, 8px); }
   to { opacity: 1; transform: translate(-50%, 0); }
 }
+
+/* v105 — iPhone: aynı yere iki kez dokununca büyüteç / yakınlaştırma çıkmasın.
+   :where() → özgüllük 0, bileşenlerin kendi touch-action değerleri (ör. 3D
+   sahnede none) aynen geçerli kalır. Kaydırma ve iki parmak hareketleri çalışır. */
+:where(html, body, #root, #root *) {
+  touch-action: manipulation;
+}
+:where(canvas, svg, img) {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}

@@ -127,6 +127,8 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
     let avgIv = SEND_MS * 1.5; // paket geliş aralığı (ortalama)
     let jit = 15; // titreme
     let interpMs = INTERP_START;
+    let lastSeq = -1; // v105: konuk — en son işlenen durum sırası
+    let seq = 0; // v105: ev sahibi — durum sırası (_q)
     const predVis = {}; // v81: game.predictKeys (ör. kafa topunda top) — yerel tahmin, yumuşak düzeltme
     // v86 — konuğun girdi geçmişi (zaman, bitler): ev sahibinin "şu ana kadar aldım"
     // dediği andan (state._e) sonraki girdiler yetkili durumun üstünde yeniden oynatılır
@@ -154,8 +156,11 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
           onInputs: (obj) => {
             Object.entries(obj).forEach(([uid, v]) => {
               const num = Number(v) || 0;
+              const at = Math.floor(num / 64);
+              // v105: girdi iki yoldan gelebilir (doğrudan + RTDB yedeği) → sadece daha yenisi
+              if (at < (guestEcho[uid] || 0)) return;
               guestIn[uid] = num % 64;
-              guestEcho[uid] = Math.floor(num / 64);
+              guestEcho[uid] = at;
             });
           },
           onPlayers: (p) => {
@@ -169,6 +174,11 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
           onState: (json) => {
             try {
               const s = JSON.parse(json);
+              // v105: durum iki yoldan gelebilir (doğrudan + RTDB yedeği) → eski/tekrar paketi at
+              if (typeof s._q === 'number') {
+                if (s._q <= lastSeq && !s.over) return;
+                lastSeq = Math.max(lastSeq, s._q);
+              }
               const now = performance.now();
               if (lastSnapAt) {
                 const iv = Math.min(1000, now - lastSnapAt);
@@ -226,6 +236,7 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
           return;
         }
         conn = c;
+        if (import.meta.env?.DEV) window.__gsConn = c; // önizleme testi: doğrudan bağlantı durumu
       });
     }
 
@@ -341,13 +352,15 @@ export default function GameRunner({ game, mode, names, onExit, onAgain }) {
       if (mode.kind === 'host' && conn && now - lastSend > SEND_MS) {
         lastSend = now;
         const { _lastIn, ...pub } = state;
-        conn.sendState(JSON.stringify({ ...pub, _in: _lastIn || [], _e: guestEcho }));
+        seq += 1;
+        conn.sendState(JSON.stringify({ ...pub, _in: _lastIn || [], _e: guestEcho, _q: seq }));
       }
       const res = game.result(state);
       if (res) {
         if (mode.kind === 'host' && conn) {
           const { _lastIn, ...pub } = state;
-          conn.sendState(JSON.stringify({ ...pub, _in: _lastIn || [] }), true); // maç sonu: her zaman gönder
+          seq += 1;
+          conn.sendState(JSON.stringify({ ...pub, _in: _lastIn || [], _q: seq }), true); // maç sonu: her zaman gönder (RTDB dahil)
           conn.setStatus('done');
         }
         finish(res);

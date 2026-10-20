@@ -66,6 +66,20 @@
               ".write": "auth != null && auth.uid === $uid",
               ".validate": "newData.isNumber()"
             }
+          },
+          "rtc": {
+            "$uid": {
+              ".write": "auth != null && $uid.matches(/^[A-Za-z0-9_-]{1,128}$/) && (auth.uid === $uid || data.parent().parent().child('meta/hostUid').val() === auth.uid)",
+              "o": {
+                ".validate": "newData.isString() && newData.val().length < 12000"
+              },
+              "a": {
+                ".validate": "newData.isString() && newData.val().length < 12000"
+              },
+              "$other": {
+                ".validate": false
+              }
+            }
           }
         }
       }

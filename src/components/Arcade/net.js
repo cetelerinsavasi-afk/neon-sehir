@@ -9,11 +9,15 @@
 //   arcade/{oyun}/{oda}/p/{1..3} = { uid, name, left? }   — katılan oyuncular (koltuk)
 //   arcade/{oyun}/{oda}/i/{uid}  = zaman(ms)·64 + girdi bitleri (konuklar yazar)
 //   arcade/{oyun}/{oda}/state    = ev sahibinin yetkili oyun durumu (JSON metin)
+//   arcade/{oyun}/{oda}/rtc/{uid} = v105 doğrudan bağlantı tanışması (bkz. p2p.js)
+// v105: doğrudan bağlantı (WebRTC) açılınca durum/girdi oradan akar; RTDB'ye
+// sadece saniyede 1 yedek yazılır (bağlantı koparsa oyun RTDB'de sürer).
 // Kurallar: database.rules.json. VITE_FIREBASE_DATABASE_URL tanımlı değilse
 // online mod kapalıdır (sadece bota karşı).
 // =============================================================================
 import { app } from '../../firebase';
 import { IN_MASK } from './games/common.js';
+import { P2P_SUPPORTED, hostPeer, guestPeer } from './p2p.js';
 
 const DB_URL = import.meta.env.VITE_FIREBASE_DATABASE_URL;
 export const ONLINE_ENABLED = Boolean(DB_URL);
@@ -224,6 +228,10 @@ export async function startRoom(gameId, roomId, roster) {
 }
 
 const INPUT_REFRESH_MS = 33;
+const RTDB_BACKUP_MS = 1000; // v105: doğrudan bağlantı açıkken RTDB'ye yedek yazma aralığı
+const MAX_INFLIGHT = 4; // v105: RTDB yolunda yolda en fazla 4 durum (eskiden 2 → yavaş ağda 7–10 kare/sn)
+const P2P_RETRY_MS = 4000;
+const P2P_MAX_TRIES = 3;
 
 // Maç bağlantısı: role 'host' | 'guest'
 export async function connectRoom(gameId, roomId, role, handlers, myUid, mySlot) {
@@ -232,6 +240,47 @@ export async function connectRoom(gameId, roomId, role, handlers, myUid, mySlot)
   const offs = [];
   const on = (path, fn) => offs.push(m.onValue(m.ref(db, `${base}/${path}`), (s) => fn(s.val()), () => {}));
   on('meta', (v) => handlers.onMeta?.(v));
+  // v105 — doğrudan bağlantılar
+  const peers = {}; // ev sahibi: konukUid → bağlantı
+  const tries = {};
+  const retryAt = {};
+  let activeGuests = [];
+  let guestLink = null; // konuk: ev sahibine bağlantı
+  let closedAll = false;
+  const notifyLink = () => handlers.onLink?.(role === 'host' ? Object.values(peers).filter((x) => x.isOpen()).length : guestLink?.isOpen() ? 1 : 0);
+  const ensurePeers = () => {
+    if (!P2P_SUPPORTED || closedAll || role !== 'host') return;
+    const now = Date.now();
+    for (const uid of activeGuests) {
+      if (peers[uid] || (tries[uid] || 0) >= P2P_MAX_TRIES || now < (retryAt[uid] || 0)) continue;
+      tries[uid] = (tries[uid] || 0) + 1;
+      const peer = hostPeer({
+        m,
+        db,
+        base,
+        guestUid: uid,
+        onMessage: (text) => {
+          const v = Number(text);
+          if (Number.isFinite(v)) handlers.onInputs?.({ [uid]: v });
+        },
+        onOpen: notifyLink,
+        onClose: () => {
+          if (peers[uid] === peer) delete peers[uid];
+          retryAt[uid] = Date.now() + P2P_RETRY_MS;
+          notifyLink();
+        },
+      });
+      peers[uid] = peer;
+      // kurulamazsa (zaman aşımı) kapanır → onClose yukarıda yeniden denemeyi ayarlar
+    }
+    for (const uid of Object.keys(peers)) {
+      if (!activeGuests.includes(uid)) {
+        peers[uid].close();
+        delete peers[uid];
+      }
+    }
+  };
+  const retryTimer = role === 'host' ? setInterval(ensurePeers, P2P_RETRY_MS) : 0;
   if (role === 'host') {
     let legacyUid = '';
     const sideUid = {};
@@ -262,9 +311,20 @@ export async function connectRoom(gameId, roomId, role, handlers, myUid, mySlot)
           }
         });
         handlers.onPlayers?.(all);
+        activeGuests = Object.values(all)
+          .filter((v) => v && v.uid && !v.left && v.uid !== myUid)
+          .map((v) => v.uid);
+        ensurePeers();
       })
     );
-  } else on('state', (v) => v && handlers.onState?.(v));
+  } else {
+    on('state', (v) => v && handlers.onState?.(v));
+    if (P2P_SUPPORTED && myUid) {
+      guestLink = guestPeer({ m, db, base, myUid, onMessage: (text) => handlers.onState?.(text), onOpen: notifyLink, onClose: notifyLink });
+    }
+  }
+  let lastRtdbState = 0;
+  let lastRtdbIn = 0;
   let lastIn = -1;
   let lastInAt = 0;
   // v81: yolda en fazla 2 durum paketi — yavaş bağlantıda paketler kuyrukta birikip
@@ -273,7 +333,13 @@ export async function connectRoom(gameId, roomId, role, handlers, myUid, mySlot)
   let legacyIn = mySlot === LEGACY_SLOT;
   return {
     sendState: (json, force = false) => {
-      if (!force && inflight >= 2) return;
+      // v105: önce doğrudan bağlantılar; her konuk doğrudan bağlıysa RTDB'ye saniyede 1 yedek
+      let allDirect = activeGuests.length > 0;
+      for (const uid of activeGuests) if (!peers[uid]?.send(json)) allDirect = false;
+      const nowMs = Date.now();
+      if (!force && allDirect && nowMs - lastRtdbState < RTDB_BACKUP_MS) return;
+      if (!force && inflight >= MAX_INFLIGHT) return;
+      lastRtdbState = nowMs;
       inflight += 1;
       m.set(m.ref(db, `${base}/state`), json)
         .catch(() => {})
@@ -292,6 +358,11 @@ export async function connectRoom(gameId, roomId, role, handlers, myUid, mySlot)
       lastIn = bits;
       lastInAt = now;
       const v = Math.round(now) * 64 + (bits & IN_MASK);
+      // v105: doğrudan bağlantı açıksa girdi oradan; RTDB'ye saniyede 1 yedek
+      if (guestLink?.send(String(v))) {
+        if (now - lastRtdbIn < RTDB_BACKUP_MS) return;
+      }
+      lastRtdbIn = now;
       if (isSideSlot(mySlot)) m.set(m.ref(db, `arcade/${gameId}/${sideKey(roomId, sideNum(mySlot))}/state`), String(v)).catch(() => {});
       else if (legacyIn) m.set(m.ref(db, `${base}/inG`), v).catch(() => {});
       else
@@ -301,6 +372,10 @@ export async function connectRoom(gameId, roomId, role, handlers, myUid, mySlot)
     },
     setStatus: (status, extra = {}) => m.update(m.ref(db, `${base}/meta`), { status, ...extra }).catch(() => {}),
     leave: async (slot) => {
+      closedAll = true;
+      clearInterval(retryTimer);
+      Object.values(peers).forEach((p) => p.close());
+      guestLink?.close();
       offs.forEach((f) => f());
       try {
         if (role === 'host') await m.remove(m.ref(db, base));
@@ -316,7 +391,14 @@ export async function connectRoom(gameId, roomId, role, handlers, myUid, mySlot)
         /* yoksay */
       }
     },
-    close: () => offs.forEach((f) => f()),
+    close: () => {
+      closedAll = true;
+      clearInterval(retryTimer);
+      Object.values(peers).forEach((p) => p.close());
+      guestLink?.close();
+      offs.forEach((f) => f());
+    },
+    direct: () => (role === 'host' ? activeGuests.length > 0 && activeGuests.every((u) => peers[u]?.isOpen()) : Boolean(guestLink?.isOpen())),
   };
 }
 
