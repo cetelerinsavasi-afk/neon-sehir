@@ -398,3 +398,11 @@ Testler: 348/348 geçti.
 ## v106.1 — Sohbet: gönderince klavye kapanır
 - Mekân sohbetinde "Gönder"e ya da klavyedeki gönder tuşuna basınca klavye kapanır (ChatBox blur).
 - Yükleme: sadece git push.
+
+## v107 — iPhone büyüteç, açılış sahnesi, netlik öncelikli kalite
+- iPhone büyüteç: 3D sahnede (.hs-stage/.hs-gl) dokunmanın varsayılanı iptal (sahne sadece pointer olaylarıyla çalışır; oyun salonundaki v86 çözümüyle aynı). Mekân ekranlarında düğme/yazı alanı olmayan yere 380 ms içinde ikinci dokunuşun varsayılanı iptal (src/main.jsx).
+- Açılış sahnesi: index.html içinde (harici dosya yok, anında görünür) gece şehri + neon "NEON ŞEHİR" + yükleme çubuğu. Oyun ilk kez çizilip oturum belli olunca kaybolur (en az 0,7 sn, en geç 6 sn; AuthContext 'ns-auth-ready' olayı).
+- Play Store ilk açılışta görünen adres çubuğu: Chrome'un alan adı doğrulaması (Digital Asset Links). assetlinks.json ve Google doğrulaması kontrol edildi, ikisi de doğru (iki imza parmak izi). Çubuk sadece kurulumdan sonraki ilk açılışta, doğrulama bitene kadar görünür; web tarafından gizlenemez.
+- Kalite seviyeleri yeniden dengelendi: netlik en son kısılır (en düşükte 1,2×, eskiden 0,9×). Önce gölgeler, ek ışıklar, ortam yansıması (en düşükte kapalı, ışık telafili), tavan ışıkları (en düşükte 2) ve kare sınırı (en düşükte 30) düşer.
+- Kalite geri yükselir: telefon hem hedef kareyi tutuyor hem ekran yenilemeleri arasında boş zaman kalıyorsa (~15 sn sonra) bir üst seviye denenir; aynı seviye 1 gün içinde 2 kez ağır gelirse bir daha denenmez (localStorage `hs-perf-fail-v1`).
+- Yükleme: sadece git push.

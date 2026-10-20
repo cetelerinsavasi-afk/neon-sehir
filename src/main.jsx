@@ -37,12 +37,39 @@ if (typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').ma
   // zaman durdurmuyor. Oyun kontrollerinde dokunmanın varsayılan davranışı
   // iptal edilir (seçim/büyüteç/menü hiç başlamaz). Bu alanlar sadece pointer
   // olaylarıyla çalışır (onClick yok) → tuşlar etkilenmez.
-  const HOLD_AREAS = '.gs-pad, .gs-canvas, .gs-stick, .gs-btn, .ta-ctl, .cue-hold, [data-hold]';
+  // v107: 3D mekân/ev sahnesi (.hs-stage: tuval + isim etiketleri) — sahne sadece
+  // pointer olaylarıyla çalışır, iPhone'da çift dokununca çıkan büyüteç burada başlıyordu
+  const HOLD_AREAS = '.gs-pad, .gs-canvas, .gs-stick, .gs-btn, .ta-ctl, .cue-hold, [data-hold], .hs-stage, .hs-gl';
   document.addEventListener(
     'touchstart',
     (e) => {
       const el = e.target instanceof Element ? e.target : e.target?.parentElement;
       if (el?.closest?.(HOLD_AREAS) && !textOk(el)) e.preventDefault();
+    },
+    { passive: false, capture: true },
+  );
+  // v107 — iPhone: mekân ekranlarında yazı/panel olmayan bir yere hızlıca iki kez
+  // dokununca çıkan büyüteç/yakınlaştırma. İkinci dokunuşun varsayılanı iptal edilir;
+  // düğmeler, yazı alanları ve kaydırılan listeler hariç (onların tıklaması bozulmaz).
+  const DOUBLE_ZONE = '.hs-root, .ws-fullscreen, .pw-fullscreen';
+  const INTERACTIVE = 'button, a, input, textarea, select, label, [role="button"], [contenteditable="true"], .selectable';
+  let lastTap = { t: 0, x: 0, y: 0 };
+  document.addEventListener(
+    'touchend',
+    (e) => {
+      const el = e.target instanceof Element ? e.target : e.target?.parentElement;
+      const tp = e.changedTouches?.[0];
+      if (!el || !tp || !el.closest?.(DOUBLE_ZONE) || el.closest(INTERACTIVE)) {
+        lastTap = { t: 0, x: 0, y: 0 };
+        return;
+      }
+      const now = e.timeStamp || Date.now();
+      if (now - lastTap.t < 380 && Math.hypot(tp.clientX - lastTap.x, tp.clientY - lastTap.y) < 45) {
+        e.preventDefault();
+        lastTap = { t: 0, x: 0, y: 0 };
+        return;
+      }
+      lastTap = { t: now, x: tp.clientX, y: tp.clientY };
     },
     { passive: false, capture: true },
   );
@@ -57,3 +84,33 @@ createRoot(document.getElementById('root')).render(
     <App />
   </StrictMode>,
 )
+
+// v107 — açılış sahnesi (index.html #boot): oyun ilk kez çizildikten ve oturum
+// durumu belli olduktan sonra yumuşakça kaybolur (en geç 6 sn, en az 0,7 sn görünür).
+;(() => {
+  const boot = document.getElementById('boot')
+  if (!boot) return
+  const shownAt = performance.now()
+  let done = false
+  const hide = () => {
+    if (done) return
+    done = true
+    const wait = Math.max(0, 700 - (performance.now() - shownAt))
+    setTimeout(() => {
+      boot.classList.add('out')
+      setTimeout(() => boot.remove(), 400)
+    }, wait)
+  }
+  let painted = false
+  let authed = false
+  const check = () => painted && authed && hide()
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    painted = true
+    check()
+  }))
+  window.addEventListener('ns-auth-ready', () => {
+    authed = true
+    check()
+  }, { once: true })
+  setTimeout(hide, 6000)
+})()

@@ -70,11 +70,13 @@ export const newItemId = () => `${Date.now().toString(36).slice(-5)}${(idSeq++ %
 // hiçbir şey yazılmaz. Seviyeler: çözünürlük, gölge sıklığı, ek ışıklar, kare sınırı.
 const IS_ANDROID = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
 const PERF_KEY = 'hs-perf-tier-v1';
+// v107: netlik (çözünürlük) en son kısılır — önce gölge, ek ışıklar, yansıma ve kare
+// sayısı düşer. En düşük seviyede bile çözünürlük 1,2× (eskiden 0,9× → "pikselli").
 export const PERF_TIERS = [
-  { name: 'yüksek', dpr: 1.75, shadows: true, shadowEvery: 1, pool: 6, fps: 60 },
-  { name: 'orta', dpr: 1.4, shadows: true, shadowEvery: 2, pool: 4, fps: 60 },
-  { name: 'düşük', dpr: 1.1, shadows: true, shadowEvery: 4, pool: 2, fps: 45 },
-  { name: 'en düşük', dpr: 0.9, shadows: false, shadowEvery: 0, pool: 0, fps: 30 },
+  { name: 'yüksek', dpr: 1.75, shadows: true, shadowEvery: 1, pool: 6, ceil: 6, env: true, fps: 60 },
+  { name: 'orta', dpr: 1.5, shadows: true, shadowEvery: 2, pool: 4, ceil: 6, env: true, fps: 60 },
+  { name: 'düşük', dpr: 1.35, shadows: false, shadowEvery: 0, pool: 2, ceil: 6, env: true, fps: 60 },
+  { name: 'en düşük', dpr: 1.2, shadows: false, shadowEvery: 0, pool: 0, ceil: 2, env: false, fps: 30 },
 ];
 const PERF_DEFAULT = IS_ANDROID ? 1 : 0;
 function readPerfTier() {
@@ -86,6 +88,25 @@ function readPerfTier() {
     /* gizli sekme vb. */
   }
   return PERF_DEFAULT;
+}
+// v107: "bu seviye ağır geldi" bilgisi 1 gün hatırlanır → her mekân girişinde aynı
+// üst seviye tekrar tekrar denenip kısa takılma yaşanmaz
+const PERF_FAIL_KEY = 'hs-perf-fail-v1';
+function readPerfFails() {
+  try {
+    const o = JSON.parse(localStorage.getItem(PERF_FAIL_KEY) || 'null');
+    if (o && Date.now() - Number(o.at || 0) < 24 * 3600_000 && o.f && typeof o.f === 'object') return { ...o.f };
+  } catch {
+    /* yoksay */
+  }
+  return {};
+}
+function savePerfFails(f) {
+  try {
+    localStorage.setItem(PERF_FAIL_KEY, JSON.stringify({ at: Date.now(), f }));
+  } catch {
+    /* yoksay */
+  }
 }
 function savePerfTier(v) {
   try {
@@ -718,7 +739,8 @@ export function createHouseEngine(
   camera.rotation.order = 'YXZ';
 
   // --- Işıklar ---------------------------------------------------------------
-  scene.add(new THREE.HemisphereLight('#c9d4ff', '#2a211c', 0.9));
+  const hemiLight = new THREE.HemisphereLight('#c9d4ff', '#2a211c', 0.9);
+  scene.add(hemiLight);
   const sun = new THREE.DirectionalLight('#ffe8cc', 1.5);
   sun.position.set(5, 14, 7);
   sun.castShadow = true;
@@ -774,6 +796,28 @@ export function createHouseEngine(
         recompile = true;
       }
     });
+    // v107: tavan ışıkları — en düşükte ortadaki 2'si kalır, parlaklık telafi edilir
+    const ceilN = snapshot || spectate ? 6 : t.ceil;
+    const lamps = ceilLights.filter((o) => o.isLight);
+    lamps.forEach((l, i) => {
+      const keep = ceilN >= lamps.length || (ceilN === 2 && (i === 2 || i === 3));
+      if (l.visible !== keep) {
+        l.visible = keep;
+        recompile = true;
+      }
+      l.intensity = ceilN >= lamps.length ? 9 : 9 * 2.4;
+      if (ceilN < lamps.length) l.distance = 18;
+      else l.distance = 11;
+    });
+    // v107: ortam yansıması (her pikselde ek doku okuması) en düşükte kapalı
+    const wantEnv = snapshot || spectate ? true : t.env;
+    if (Boolean(scene.environment) !== wantEnv) {
+      scene.environment = wantEnv ? env : null;
+      scene.environmentIntensity = 0.32;
+      if (!wantEnv) hemiLight.intensity = 1.15;
+      else hemiLight.intensity = 0.9;
+      recompile = true;
+    }
     if (recompile) {
       scene.traverse((o) => {
         const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
@@ -2406,12 +2450,37 @@ export function createHouseEngine(
   // v106 — kare sınırı + otomatik kalite: çizilen karelerin aralığı hedefin çok
   // üstündeyse (telefon yetişemiyor) bir alt seviyeye inilir. Yazarken ölçülmez.
   let lastRenderAt = 0;
+  let lastRafAt = 0;
   let perfStartAt = performance.now();
   let perfAcc = 0;
   let perfN = 0;
   let slowWins = 0;
   let fastWins = 0;
-  let downgraded = false;
+  let rawAcc = 0; // v107: tüm rAF aralıkları (kare sınırı varken boş kalan zamanı da görür)
+  let rawN = 0;
+  const failedAt = snapshot || spectate ? {} : readPerfFails(); // kaç kez "ağır geldi" diye inilen seviye (1 gün)
+  let lastPerfWin = null; // son ölçüm penceresi (getPerf ile görülür)
+  let lastChangeAt = 0;
+  function setTier(t, now) {
+    perfTier = t;
+    savePerfTier(perfTier);
+    applyPerfTier();
+    resize();
+    lastChangeAt = now;
+    perfStartAt = now - 1000; // yeni seviyede 2 sn bekle
+    perfAcc = 0;
+    perfN = 0;
+    rawAcc = 0;
+    rawN = 0;
+    slowWins = 0;
+    fastWins = 0;
+  }
+  function perfRaw(iv) {
+    if (iv > 0 && iv < 1000) {
+      rawAcc += iv;
+      rawN += 1;
+    }
+  }
   function perfSample(iv, cap) {
     if (snapshot || spectate || typing) return;
     const now = performance.now();
@@ -2421,13 +2490,18 @@ export function createHouseEngine(
     // pencere: 90 kare ya da (çok yavaş cihazda) en az 10 kare + 2,5 sn
     if (perfN < 90 && !(perfN >= 10 && perfAcc >= 2500)) return;
     const avg = perfAcc / perfN;
+    const rawAvg = rawN ? rawAcc / rawN : avg;
+    lastPerfWin = { avg: Math.round(avg * 10) / 10, raw: Math.round(rawAvg * 10) / 10 };
     perfAcc = 0;
     perfN = 0;
+    rawAcc = 0;
+    rawN = 0;
     const expected = Math.max(1000 / 60, 1000 / cap);
     if (avg > expected * 1.4) {
       slowWins += 1;
       fastWins = 0;
-    } else if (avg < expected * 1.08) {
+    } else if (avg < Math.max(expected, Math.ceil((1000 / cap - 3) / rawAvg) * rawAvg) * 1.1 && rawAvg < 20) {
+      // hem hedef kare tutuyor hem ekran yenilemeleri arasında boş zaman var → güç fazlası
       fastWins += 1;
       slowWins = 0;
     } else {
@@ -2435,30 +2509,24 @@ export function createHouseEngine(
       fastWins = 0;
     }
     if (slowWins >= 2 && perfTier < PERF_TIERS.length - 1) {
-      perfTier += 1;
-      downgraded = true;
-      slowWins = 0;
-      savePerfTier(perfTier);
-      applyPerfTier();
-      resize();
-      perfStartAt = now - 1000; // yeni seviyede 2 sn bekle
-    } else if (fastWins >= 10 && !downgraded && perfTier > 0) {
-      // uzun süre rahat → bir üst seviyeyi dene (bu oturumda düşürülmediyse)
-      perfTier -= 1;
-      fastWins = 0;
-      savePerfTier(perfTier);
-      applyPerfTier();
-      resize();
-      perfStartAt = now - 1000;
+      failedAt[perfTier] = (failedAt[perfTier] || 0) + 1;
+      savePerfFails(failedAt);
+      setTier(perfTier + 1, now);
+    } else if (fastWins >= 6 && perfTier > 0 && (failedAt[perfTier - 1] || 0) < 2 && now - lastChangeAt > 15000) {
+      // v107: telefon rahatsa kalite tekrar yükselir (aynı seviye son 1 günde 2 kez ağır geldiyse denenmez)
+      setTier(perfTier - 1, now);
     }
   }
   function loop() {
     raf = requestAnimationFrame(loop);
     if (document.hidden || paused || renderer.__lost) {
       clock.getDelta();
+      lastRafAt = 0;
       return;
     }
     const nowMs = performance.now();
+    if (lastRafAt && !typing) perfRaw(nowMs - lastRafAt);
+    lastRafAt = nowMs;
     const cap = typing ? Math.min(30, PERF_TIERS[perfTier].fps) : PERF_TIERS[perfTier].fps;
     if (cap < 58 && nowMs - lastRenderAt < 1000 / cap - 3) return;
     const dt = Math.min(clock.getDelta(), 0.1);
@@ -2890,15 +2958,11 @@ export function createHouseEngine(
       }
     },
     getPerf() {
-      return { tier: perfTier, name: PERF_TIERS[perfTier].name, dpr: renderer.getPixelRatio() };
+      return { tier: perfTier, name: PERF_TIERS[perfTier].name, dpr: renderer.getPixelRatio(), win: lastPerfWin, fast: fastWins, slow: slowWins };
     },
     setPerfTier(v) {
       if (snapshot || spectate) return;
-      perfTier = Math.max(0, Math.min(PERF_TIERS.length - 1, Math.round(v)));
-      downgraded = true;
-      savePerfTier(perfTier);
-      applyPerfTier();
-      resize();
+      setTier(Math.max(0, Math.min(PERF_TIERS.length - 1, Math.round(v))), performance.now());
     },
     setOutdoor(on) {
       outdoor = Boolean(on);

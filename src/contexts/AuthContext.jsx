@@ -28,6 +28,7 @@ export function AuthProvider({ children }) {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
       setLoading(false);
+      window.dispatchEvent(new Event('ns-auth-ready')); // v107: açılış sahnesi kapanabilir
       if (firebaseUser) {
         try {
           const res = await initializePlayer();
