@@ -2392,6 +2392,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
 
 // v106 — sohbet yazı kutusu: kendi durumunu tutar (harf başına sadece bu küçük
 // parça yeniden çizilir). Odaktayken 3D sahne klavye yüzünden yeniden boyutlanmaz.
+// v106.1: Gönder'e (ya da klavyedeki gönder tuşuna) basınca klavye kapanır.
 const ChatBox = memo(function ChatBox({ busy, onSend, onTyping }) {
   const [text, setText] = useState('');
   const sendRef = useRef(onSend);
@@ -2399,14 +2400,17 @@ const ChatBox = memo(function ChatBox({ busy, onSend, onTyping }) {
   const typingRef = useRef(onTyping);
   typingRef.current = onTyping;
   useEffect(() => () => typingRef.current?.(false), []);
+  const inputRef = useRef(null);
   const send = async () => {
     const t = text.trim();
     if (!t || busy) return;
+    inputRef.current?.blur(); // v106.1: gönderince klavye kapanır
     if (await sendRef.current(t)) setText('');
   };
   return (
     <div className="hs-chat-row">
       <input
+        ref={inputRef}
         value={text}
         maxLength={200}
         placeholder="Mesaj yaz…"
@@ -2418,7 +2422,7 @@ const ChatBox = memo(function ChatBox({ busy, onSend, onTyping }) {
           if (e.key === 'Enter') send();
         }}
       />
-      <button onPointerDown={(e) => e.preventDefault()} onClick={send} disabled={busy || !text.trim()}>
+      <button onClick={send} disabled={busy || !text.trim()}>
         Gönder
       </button>
     </div>

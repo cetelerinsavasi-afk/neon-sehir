@@ -394,3 +394,7 @@ Testler: 348/348 geçti.
 - Sohbet kutusu ayrı bileşen (ChatBox): her harfte sadece kutu çizilir (önizlemede 20 harf: önce 20+ tam ekran çizimi → 0). Yazarken sahne boyutu sabit kalır ve 30 kareyle sınırlanır; "Gönder" klavyeyi kapatmaz.
 - Önizleme: preview/venue.html (3D mekân + sahte oyuncular, performans ölçümü).
 - Yükleme: sadece git push (sunucu değişikliği yok).
+
+## v106.1 — Sohbet: gönderince klavye kapanır
+- Mekân sohbetinde "Gönder"e ya da klavyedeki gönder tuşuna basınca klavye kapanır (ChatBox blur).
+- Yükleme: sadece git push.
