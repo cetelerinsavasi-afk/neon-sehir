@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useBackClose } from '../../lib/backStack';
 import { collection, doc, getDoc, limit, onSnapshot, orderBy, query, setDoc, deleteDoc, serverTimestamp, where } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -136,6 +136,7 @@ const ownedCount = (items) => {
 };
 
 export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
+  if (import.meta.env?.DEV) window.__hsRenders = (window.__hsRenders || 0) + 1; // önizleme: çizim sayacı
   const { user } = useAuth();
   const { player } = usePlayer();
   const social = useSocial();
@@ -180,7 +181,6 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   const [online, setOnline] = useState([]);
   const onlineKeyRef = useRef('');
   const [messages, setMessages] = useState([]);
-  const [chatText, setChatText] = useState('');
   const [chatBusy, setChatBusy] = useState(false);
   const [chatExpanded, setChatExpanded] = useState(false);
   const [panel, setPanel] = useState(null); // people | settings | checkout | arcade | jukebox | camera | phone | emotes
@@ -737,15 +737,17 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     );
   }, [phase, houseId, isBlocked, entered, user?.uid]);
 
-  const sendChat = async () => {
-    const text = chatText.trim();
-    if (!text || chatBusy) return;
+  // v106: yazı kutusunun durumu ChatBox içinde — her harfte bütün mekân ekranı yeniden çizilmez
+  const sendChat = async (raw) => {
+    const text = String(raw || '').trim();
+    if (!text || chatBusy) return false;
     setChatBusy(true);
     try {
       await houseAction({ op: 'chat', houseId, text });
-      setChatText('');
+      return true;
     } catch (err) {
       flash(err?.message || 'Mesaj gönderilemedi.');
+      return false;
     } finally {
       setChatBusy(false);
     }
@@ -2044,10 +2046,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
               ))}
               {messages.length === 0 && <div className="hs-msg dim">{venue ? 'Buradakilerle' : 'Evdekilerle'} sohbet et 👋</div>}
             </div>
-            <div className="hs-chat-row">
-              <input value={chatText} maxLength={200} placeholder="Mesaj yaz…" onChange={(e) => setChatText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') sendChat(); }} />
-              <button onClick={sendChat} disabled={chatBusy || !chatText.trim()}>Gönder</button>
-            </div>
+            <ChatBox busy={chatBusy} onSend={sendChat} onTyping={(on) => engineRef.current?.setTyping?.(on)} />
           </div>
 
           {toast && <div className="hs-toast">{toast}</div>}
@@ -2390,6 +2389,41 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     </div>
   );
 }
+
+// v106 — sohbet yazı kutusu: kendi durumunu tutar (harf başına sadece bu küçük
+// parça yeniden çizilir). Odaktayken 3D sahne klavye yüzünden yeniden boyutlanmaz.
+const ChatBox = memo(function ChatBox({ busy, onSend, onTyping }) {
+  const [text, setText] = useState('');
+  const sendRef = useRef(onSend);
+  sendRef.current = onSend;
+  const typingRef = useRef(onTyping);
+  typingRef.current = onTyping;
+  useEffect(() => () => typingRef.current?.(false), []);
+  const send = async () => {
+    const t = text.trim();
+    if (!t || busy) return;
+    if (await sendRef.current(t)) setText('');
+  };
+  return (
+    <div className="hs-chat-row">
+      <input
+        value={text}
+        maxLength={200}
+        placeholder="Mesaj yaz…"
+        enterKeyHint="send"
+        onChange={(e) => setText(e.target.value)}
+        onFocus={() => typingRef.current?.(true)}
+        onBlur={() => typingRef.current?.(false)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') send();
+        }}
+      />
+      <button onPointerDown={(e) => e.preventDefault()} onClick={send} disabled={busy || !text.trim()}>
+        Gönder
+      </button>
+    </div>
+  );
+});
 
 // v105: kendiliğinden kaybolur (onDone değişse bile sayaç sıfırlanmaz), dokununca hemen kapanır
 function GiftNote({ gift, onDone }) {

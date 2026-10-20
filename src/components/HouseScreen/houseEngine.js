@@ -64,9 +64,41 @@ const snap = (v) => Math.round(v / SNAP) * SNAP;
 let idSeq = 0;
 export const newItemId = () => `${Date.now().toString(36).slice(-5)}${(idSeq++ % 1296).toString(36).padStart(2, '0')}`;
 
+// --- v106 — AKICILIK: cihaza göre kendiliğinden ayarlanan görüntü kalitesi ------
+// Telefon kare yetiştiremezse (ör. düşük/orta Android) bir alt seviyeye iner;
+// seçilen seviye cihazda hatırlanır (sonraki girişte oradan başlar). Firebase'e
+// hiçbir şey yazılmaz. Seviyeler: çözünürlük, gölge sıklığı, ek ışıklar, kare sınırı.
+const IS_ANDROID = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
+const PERF_KEY = 'hs-perf-tier-v1';
+export const PERF_TIERS = [
+  { name: 'yüksek', dpr: 1.75, shadows: true, shadowEvery: 1, pool: 6, fps: 60 },
+  { name: 'orta', dpr: 1.4, shadows: true, shadowEvery: 2, pool: 4, fps: 60 },
+  { name: 'düşük', dpr: 1.1, shadows: true, shadowEvery: 4, pool: 2, fps: 45 },
+  { name: 'en düşük', dpr: 0.9, shadows: false, shadowEvery: 0, pool: 0, fps: 30 },
+];
+const PERF_DEFAULT = IS_ANDROID ? 1 : 0;
+function readPerfTier() {
+  try {
+    const raw = localStorage.getItem(PERF_KEY);
+    const v = raw == null || raw === '' ? NaN : Number(raw);
+    if (Number.isInteger(v) && v >= 0 && v < PERF_TIERS.length) return v;
+  } catch {
+    /* gizli sekme vb. */
+  }
+  return PERF_DEFAULT;
+}
+function savePerfTier(v) {
+  try {
+    localStorage.setItem(PERF_KEY, String(v));
+  } catch {
+    /* yoksay */
+  }
+}
+
 // --- Ortak renderer'lar ------------------------------------------------------
 function makeRenderer(opts) {
-  const r = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', ...opts });
+  // v106: Android'de kenar yumuşatma (MSAA) kapalı — yüksek çözünürlükte farkı az, maliyeti büyük
+  const r = new THREE.WebGLRenderer({ antialias: !IS_ANDROID, powerPreference: 'high-performance', ...opts });
   r.toneMapping = THREE.ACESFilmicToneMapping;
   r.outputColorSpace = THREE.SRGBColorSpace;
   r.shadowMap.enabled = true;
@@ -662,7 +694,9 @@ export function createHouseEngine(
   // (sadece bu ekranda; ziyaretçiler ve Gez modu saydam görmeye devam eder)
   let realLook = false;
   renderer.__onLost = snapshot ? null : () => onContextLost?.();
-  renderer.setPixelRatio(snapshot ? 1 : Math.min(window.devicePixelRatio || 1, spectate ? 1.5 : 1.75));
+  let perfTier = snapshot || spectate ? 0 : readPerfTier();
+  const tierDpr = () => (snapshot ? 1 : Math.min(window.devicePixelRatio || 1, spectate ? 1.5 : PERF_TIERS[perfTier].dpr));
+  renderer.setPixelRatio(tierDpr());
   renderer.toneMappingExposure = 1.0;
   const canvas = renderer.domElement;
   canvas.className = 'hs-gl';
@@ -716,6 +750,36 @@ export function createHouseEngine(
     const l = new THREE.PointLight('#ffffff', 0, 5, 2);
     scene.add(l);
     pool.push(l);
+  }
+
+  // v106 — kalite seviyesini uygula (görünmez ışık gölgelendiriciden çıkar → her
+  // pikselde daha az ışık hesabı; gölge haritası her N karede bir yenilenir)
+  let frameNo = 0;
+  function applyPerfTier() {
+    const t = PERF_TIERS[snapshot || spectate ? 0 : perfTier];
+    renderer.setPixelRatio(tierDpr());
+    const wantShadows = snapshot || spectate ? true : t.shadows;
+    let recompile = false;
+    if (renderer.shadowMap.enabled !== wantShadows) {
+      renderer.shadowMap.enabled = wantShadows;
+      recompile = true;
+    }
+    sun.castShadow = wantShadows;
+    renderer.shadowMap.autoUpdate = !(t.shadowEvery > 1) || snapshot;
+    renderer.shadowMap.needsUpdate = true;
+    pool.forEach((l, i) => {
+      const vis = i < (snapshot || spectate ? LIGHT_POOL : t.pool);
+      if (l.visible !== vis) {
+        l.visible = vis;
+        recompile = true;
+      }
+    });
+    if (recompile) {
+      scene.traverse((o) => {
+        const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+        mats.forEach((m) => (m.needsUpdate = true));
+      });
+    }
   }
 
   // --- Oda ---------------------------------------------------------------------
@@ -1283,6 +1347,7 @@ export function createHouseEngine(
     });
     list.sort((a, b) => a.d - b.d);
     pool.forEach((l, i) => {
+      if (!l.visible) return; // v106: kalite seviyesi kapattı
       const it = list[i];
       if (!it) {
         l.intensity = 0;
@@ -2009,7 +2074,11 @@ export function createHouseEngine(
 
   // --- Boyut --------------------------------------------------------------------
   let sized = false;
+  // v106 — klavye açıkken (sohbete yazarken) sahne yeniden boyutlanmaz: telefon
+  // klavyesi açılıp kapanırken tuvalin defalarca yeniden kurulması donmaya yol açıyordu.
+  let typing = false;
   function resize() {
+    if (typing) return;
     const w = container.clientWidth || 1;
     const h = container.clientHeight || 1;
     renderer.setSize(w, h, false);
@@ -2310,6 +2379,11 @@ export function createHouseEngine(
       onInteractChange?.(it);
     }
 
+    frameNo += 1;
+    if (!renderer.shadowMap.autoUpdate) {
+      const every = PERF_TIERS[perfTier].shadowEvery || 1;
+      if (frameNo % every === 0) renderer.shadowMap.needsUpdate = true;
+    }
     renderer.render(scene, camera);
 
     if (labelLayer) {
@@ -2329,10 +2403,67 @@ export function createHouseEngine(
     }
   }
 
+  // v106 — kare sınırı + otomatik kalite: çizilen karelerin aralığı hedefin çok
+  // üstündeyse (telefon yetişemiyor) bir alt seviyeye inilir. Yazarken ölçülmez.
+  let lastRenderAt = 0;
+  let perfStartAt = performance.now();
+  let perfAcc = 0;
+  let perfN = 0;
+  let slowWins = 0;
+  let fastWins = 0;
+  let downgraded = false;
+  function perfSample(iv, cap) {
+    if (snapshot || spectate || typing) return;
+    const now = performance.now();
+    if (now - perfStartAt < 3000 || iv > 1000) return; // ısınma / sekme değişimi
+    perfAcc += iv;
+    perfN += 1;
+    // pencere: 90 kare ya da (çok yavaş cihazda) en az 10 kare + 2,5 sn
+    if (perfN < 90 && !(perfN >= 10 && perfAcc >= 2500)) return;
+    const avg = perfAcc / perfN;
+    perfAcc = 0;
+    perfN = 0;
+    const expected = Math.max(1000 / 60, 1000 / cap);
+    if (avg > expected * 1.4) {
+      slowWins += 1;
+      fastWins = 0;
+    } else if (avg < expected * 1.08) {
+      fastWins += 1;
+      slowWins = 0;
+    } else {
+      slowWins = 0;
+      fastWins = 0;
+    }
+    if (slowWins >= 2 && perfTier < PERF_TIERS.length - 1) {
+      perfTier += 1;
+      downgraded = true;
+      slowWins = 0;
+      savePerfTier(perfTier);
+      applyPerfTier();
+      resize();
+      perfStartAt = now - 1000; // yeni seviyede 2 sn bekle
+    } else if (fastWins >= 10 && !downgraded && perfTier > 0) {
+      // uzun süre rahat → bir üst seviyeyi dene (bu oturumda düşürülmediyse)
+      perfTier -= 1;
+      fastWins = 0;
+      savePerfTier(perfTier);
+      applyPerfTier();
+      resize();
+      perfStartAt = now - 1000;
+    }
+  }
   function loop() {
     raf = requestAnimationFrame(loop);
+    if (document.hidden || paused || renderer.__lost) {
+      clock.getDelta();
+      return;
+    }
+    const nowMs = performance.now();
+    const cap = typing ? Math.min(30, PERF_TIERS[perfTier].fps) : PERF_TIERS[perfTier].fps;
+    if (cap < 58 && nowMs - lastRenderAt < 1000 / cap - 3) return;
     const dt = Math.min(clock.getDelta(), 0.1);
-    if (document.hidden || paused || renderer.__lost) return;
+    if (lastRenderAt) perfSample(nowMs - lastRenderAt, cap);
+    lastRenderAt = nowMs;
     frame(dt);
   }
 
@@ -2743,6 +2874,32 @@ export function createHouseEngine(
       onDesignChange?.(design);
     },
     // v92 Faz 8: açık hava mekânı (park) — tavan yok, gökyüzü var
+    // v106 — sohbet kutusu odaktayken: sahne boyutu sabit, kare 30'la sınırlı
+    setTyping(on) {
+      const v = Boolean(on);
+      if (v === typing || snapshot) return;
+      if (v) {
+        container.style.height = `${container.clientHeight}px`;
+        container.style.bottom = 'auto';
+        typing = true;
+      } else {
+        typing = false;
+        container.style.height = '';
+        container.style.bottom = '';
+        resize();
+      }
+    },
+    getPerf() {
+      return { tier: perfTier, name: PERF_TIERS[perfTier].name, dpr: renderer.getPixelRatio() };
+    },
+    setPerfTier(v) {
+      if (snapshot || spectate) return;
+      perfTier = Math.max(0, Math.min(PERF_TIERS.length - 1, Math.round(v)));
+      downgraded = true;
+      savePerfTier(perfTier);
+      applyPerfTier();
+      resize();
+    },
     setOutdoor(on) {
       outdoor = Boolean(on);
       ceiling.visible = !on;
@@ -3134,6 +3291,7 @@ export function createHouseEngine(
   };
 
   setSurfaces();
+  applyPerfTier();
   api.setMode('walk');
   if (!snapshot) loop();
   return api;

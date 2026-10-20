@@ -387,3 +387,10 @@ Testler: 348/348 geçti.
 - "X sana … ısmarladı" ve garson bildirimleri 4,5 sn'de kendiliğinden kaybolur, dokununca hemen kapanır (eskiden her yeniden çizimde sayaç sıfırlandığı için hiç kaybolmuyordu — useHeldItem.clearGift sabitlendi).
 - Oyun salonu (tüm çok oyunculu oyunlar, kafa topu dahil): cihazlar birbirine doğrudan bağlanır (WebRTC veri kanalı, src/components/Arcade/p2p.js). RTDB sadece tanışma (konuk başına 2 küçük yazma) + saniyede 1 yedek; maç trafiği Firebase'den geçmez → katılan oyuncu için gecikme ve kasma azalır, RTDB indirme ~30 kat düşer. Bağlantı kurulamazsa eski RTDB yoluna kendiliğinden döner; o yolda da ev sahibi artık 2 yerine 4 paketi yolda tutabilir (yavaş ağda konuğa düşen kare sayısı artar). Durumlara sıra numarası (_q), girdilere zaman karşılaştırması: iki yoldan gelen eski paket atılır.
 - Yükleme: `firebase deploy --only database,functions:createSixtagramPost` + git push. (database kuralları: arcade/…/rtc — yüklenmezse oyunlar eskisi gibi RTDB'den çalışır.)
+
+## v106 — Mekânlarda akıcılık (özellikle Android)
+- Ölçüm: donmanın kaynağı Firebase değil, telefonun kendisi — 3D sahne her karede en ağır ayarlarla çiziliyordu (yumuşak gölge, kenar yumuşatma, 1,75× çözünürlük, 12 nokta ışık) ve sohbete her harf yazışta bütün mekân ekranı yeniden hesaplanıyordu; klavye açılıp kapanırken 3D tuval defalarca yeniden kuruluyordu.
+- Otomatik kalite (houseEngine.js PERF_TIERS: yüksek / orta / düşük / en düşük): telefon kare yetiştiremezse bir alt seviyeye iner (çözünürlük, gölge sıklığı, ek ışıklar, kare sınırı); seviye cihazda hatırlanır (localStorage `hs-perf-tier-v1`), uzun süre rahatsa bir üst seviyeyi dener. Android "orta"dan başlar, kenar yumuşatma Android'de kapalı.
+- Sohbet kutusu ayrı bileşen (ChatBox): her harfte sadece kutu çizilir (önizlemede 20 harf: önce 20+ tam ekran çizimi → 0). Yazarken sahne boyutu sabit kalır ve 30 kareyle sınırlanır; "Gönder" klavyeyi kapatmaz.
+- Önizleme: preview/venue.html (3D mekân + sahte oyuncular, performans ölçümü).
+- Yükleme: sadece git push (sunucu değişikliği yok).
