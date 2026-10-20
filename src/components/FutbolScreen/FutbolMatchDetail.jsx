@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import FutbolCrest from './FutbolCrest';
-import { useNowTick, computeLiveMatchState } from './futbolLiveMatch';
+import { useNowTick, computeLiveMatchState, computePenaltyState } from './futbolLiveMatch';
 import FutbolLivePitch from './FutbolLivePitch';
 import { LIVE_SEC_PER_MIN, buildReplayClock } from './futbolPitchScript';
 import { shotVariant, VARIANT_ICON, MISS_LABEL } from './futbolPitchScript';
@@ -21,6 +21,44 @@ function interpolatePossession(checkpoints, minute) {
 }
 
 const EVENT_ICON = { goal: '⚽', shot_on: '🎯', shot_off: '🚫' };
+
+// v104 — penaltı atışları: atış atış açılır, kazanan en sonda
+function PenaltyShootout({ pen, homeName, awayName }) {
+  const row = (team, name) => {
+    const list = pen.attempts.filter((a) => a.team === team);
+    const slots = Math.max(5, list.length + (pen.current?.team === team ? 1 : 0));
+    return (
+      <div className="fmd-pen-row">
+        <span className="fmd-pen-team">{name}</span>
+        <span className="fmd-pen-dots">
+          {Array.from({ length: slots }, (_, i) => {
+            const a = list[i];
+            const isNow = !a && pen.current?.team === team && i === list.length;
+            return <i key={i} className={a ? (a.scored ? 'goal' : 'miss') : isNow ? 'now' : ''}>{a ? (a.scored ? '✓' : '✕') : ''}</i>;
+          })}
+        </span>
+      </div>
+    );
+  };
+  return (
+    <div className={`fmd-pen${pen.done ? ' done' : ''}`}>
+      <div className="fmd-pen-head">
+        <span>{pen.done ? 'PENALTILAR' : '🔴 PENALTILAR'}</span>
+        <b>
+          {pen.homeGoals} - {pen.awayGoals}
+        </b>
+      </div>
+      {row('home', homeName)}
+      {row('away', awayName)}
+      {pen.current && (
+        <p className="fmd-pen-now">
+          🎯 <b>{pen.current.shooterName}</b> topun başında…
+        </p>
+      )}
+      {pen.done && <p className="fmd-pen-winner">🏆 Kazanan: {pen.winner === 'home' ? homeName : awayName}</p>}
+    </div>
+  );
+}
 
 // Bir maç GERÇEKTEN 18:00'de başlayıp 19:00'da biter (tam 1 saat). Bu
 // ekran, o gerçek zamana göre ilerler — hızlandırma YOK. Zaten bitmiş
@@ -43,7 +81,9 @@ export default function FutbolMatchDetail({
     setReplayOwn(v);
     onReplay?.(v);
   };
-  const now = useNowTick(replayAt ? 250 : 5000);
+  // v104: penaltı sırasında 1 sn'de bir (atışlar kaçmasın)
+  const penaltyWindow = match?.status === 'live' && match?.penalty && toMs(match?.playEndAt) && Date.now() >= toMs(match.playEndAt) - 60000;
+  const now = useNowTick(replayAt ? 250 : penaltyWindow ? 1000 : 5000);
   // v92: özet hızlı akar, pozisyon ve gollerde yavaşlar (futbolPitchScript.buildReplayClock)
   const clock = useMemo(() => buildReplayClock(match?.timeline || []), [match?.timeline]);
 
@@ -73,7 +113,8 @@ export default function FutbolMatchDetail({
   }, [replayMin]);
   // saha her karede kendi dakikasını hesaplar (canlıda gerçek zaman, özette hızlı)
   const startMs = toMs(match?.matchStartAt);
-  const endMs = toMs(match?.revealAt) || (startMs ? startMs + 3600000 : null);
+  const endMs = toMs(match?.playEndAt) || toMs(match?.revealAt) || (startMs ? startMs + 3600000 : null);
+  const liveSecPerMin = startMs && endMs ? (endMs - startMs) / 90000 : LIVE_SEC_PER_MIN;
   const getMinute = () => {
     if (replayAt) return clock.minuteAt((Date.now() - replayAt) / 1000);
     if (match?.status === 'finished' || !startMs) return 90;
@@ -109,6 +150,7 @@ export default function FutbolMatchDetail({
 
   const elapsedMinute = state.elapsedMinute ?? 0;
   const matchOver = state.phase === 'finished' || elapsedMinute >= 90;
+  const pen = replayMin === null ? computePenaltyState(match, now) : null;
   const possession = interpolatePossession(possessionCheckpoints, elapsedMinute);
 
   return (
@@ -130,25 +172,16 @@ export default function FutbolMatchDetail({
           </span>
         </div>
         <p className="futbol-match-minute">
-          {matchOver ? 'MAÇ SONU' : `${Math.floor(elapsedMinute)}'`}
+          {pen && !pen.done ? 'PENALTILAR' : matchOver ? 'MAÇ SONU' : `${Math.floor(elapsedMinute)}'`}
         </p>
 
-        {matchOver && match?.penalty && (
-          <p className="futbol-match-penalty-result">
-            Penaltılar: {match.penalty.homeScore} - {match.penalty.awayScore}
-            {match.winnerTeamId && (
-              <>
-                {' '}— Kazanan: {match.winnerTeamId === match.homeTeamId ? homeName : awayName}
-              </>
-            )}
-          </p>
-        )}
+        {matchOver && pen && <PenaltyShootout pen={pen} homeName={homeName} awayName={awayName} />}
 
         <FutbolLivePitch
           timeline={match?.timeline || []}
           possessionCheckpoints={possessionCheckpoints}
           getMinute={getMinute}
-          secPerMinute={replayAt ? 1 / 6 : LIVE_SEC_PER_MIN}
+          secPerMinute={replayAt ? 1 / 6 : liveSecPerMin}
           homeName={homeName}
           awayName={awayName}
           sponsorName={homeSponsorName}

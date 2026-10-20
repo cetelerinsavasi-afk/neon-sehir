@@ -375,3 +375,8 @@ Testler: 348/348 geçti.
 - Sixtagram: bildirime dokununca gönderinin kendisi + yorumları açılır, ilgili yorum vurgulanır, yanıt kutusu o yoruma hazır gelir (PostDetailPanel).
 - Seyyar satıcı açıklamasındaki parantez kaldırıldı. Kredi puanı = %20 × varlık − devlete borç (eksiye inmez; Krediler ekranında kırmızı satır). Saygınlık uyarı ihtimali saygınlığın yarısı (100 → %50). Uyarı SMS'i: "Esnaflar seni uyarıyor…". HUD (i) yazıları yenilendi.
 - Yükleme: `firebase deploy --only functions:createListing,functions:buyListing,functions:cancelListing,functions:expireOldMarketplaceListings,functions:settleMaterialListingBatches,functions:sellContrabandAtPark,functions:joinHeistPlan,functions:getCreditInfo,functions:takeCredit,functions:gangAction,functions:gangClock` + git push.
+
+## v104 — Kupa penaltıları canlı, satış bildirimi
+- Kupa maçı: normal süre 18:00–18:55 akar (`playEndAt`), berabere biterse 18:55–19:00 penaltılar atış atış açılır (`penaltyEndAt`, istemcide computePenaltyState): sıradaki atıcı "topun başında", ✓/✕ noktaları, kazanan son atışta. Eskiden penaltı skoru maç başından itibaren satırın altında görünüyordu. Penaltısız kupa maçları da 18:55'te biter (penaltı olacağı önceden belli olmasın). Eski (playEndAt'siz) maçlarda penaltı sadece maç bitince görünür.
+- Şüpheli Adam satış sonucu artık "Tamam"lı pencere değil: üstte geçici bildirim (3 sn, dokununca kapanır), panel açık kalır — art arda satış kolay (src/components/ShadyDeal/SaleToast.jsx).
+- Yükleme: `firebase deploy --only functions:resolveFutbolMatchdayStart` + git push (v103 yüklenmediyse onun fonksiyonları da).

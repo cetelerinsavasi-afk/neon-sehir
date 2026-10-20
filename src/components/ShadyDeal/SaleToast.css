@@ -1,0 +1,46 @@
+/* v104 — satış sonucu geçici bildirimi (dokununca kapanır) */
+.sale-toast {
+  position: fixed;
+  left: 50%;
+  top: calc(14px + env(safe-area-inset-top));
+  transform: translateX(-50%);
+  z-index: 3000;
+  width: max-content;
+  max-width: min(92vw, 380px);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 16px;
+  border-radius: 12px;
+  background: rgba(8, 10, 16, 0.92);
+  border: 1px solid #3ee88f;
+  color: #f2f2f2;
+  font: inherit;
+  font-size: 13px;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  animation: sale-toast-in 0.22s ease-out;
+}
+.sale-toast b {
+  font-size: 14px;
+}
+.sale-toast.success b {
+  color: #7dffb8;
+}
+.sale-toast.fail {
+  border-color: #ff5a72;
+}
+.sale-toast.fail b {
+  color: #ff9aa8;
+}
+@keyframes sale-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -10px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}

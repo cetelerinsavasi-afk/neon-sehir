@@ -289,3 +289,93 @@
 .futbol-commentary-row.post .futbol-commentary-text {
   color: #ffd34d;
 }
+
+/* v104 — penaltı atışları */
+.fmd-pen {
+  margin: 8px 0 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 60, 90, 0.08);
+  border: 1px solid rgba(255, 90, 110, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.fmd-pen.done {
+  background: rgba(255, 210, 63, 0.08);
+  border-color: rgba(255, 210, 63, 0.45);
+}
+.fmd-pen-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.fmd-pen-head b {
+  font-size: 20px;
+  color: #ffe17a;
+  font-variant-numeric: tabular-nums;
+}
+.fmd-pen-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.fmd-pen-team {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fmd-pen-dots {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.fmd-pen-dots i {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 900;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+.fmd-pen-dots i.goal {
+  background: #2fd27a;
+  border-color: #2fd27a;
+  color: #04220f;
+}
+.fmd-pen-dots i.miss {
+  background: #ff4d63;
+  border-color: #ff4d63;
+  color: #fff;
+}
+.fmd-pen-dots i.now {
+  border-color: #ffe17a;
+  animation: fmd-pen-pulse 0.9s ease-in-out infinite;
+}
+@keyframes fmd-pen-pulse {
+  50% { box-shadow: 0 0 0 4px rgba(255, 225, 122, 0.25); }
+}
+.fmd-pen-now {
+  margin: 0;
+  font-size: 12px;
+  text-align: center;
+  opacity: 0.9;
+}
+.fmd-pen-winner {
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 800;
+  color: #ffe17a;
+}

@@ -13793,6 +13793,8 @@ async function claimFutbolRevealForToday() {
   });
 }
 
+const FUTBOL_CUP_PLAY_MINUTES = 55; // v104: normal süre 18:00–18:55, penaltılar 18:55–19:00
+
 // --- Kupa Modülü: penaltı sistemi (kullanıcı promptu madde 5-7) ---
 // Normal maç taktikleri (ev sahibi avantajı, ofansif/defansif çarpanları)
 // BİLEREK kullanılmıyor — sadece Güç×Form. Bu yüzden simulateFutbolMatch/
@@ -14095,6 +14097,12 @@ async function computeFutbolCupMatchLive(match) {
   const matchStartAt = new Date();
   const revealAt = new Date(matchStartAt.getTime());
   revealAt.setUTCHours(revealAt.getUTCHours() + 1);
+  // v104: kupa maçında normal süre 18:00–18:55 akar; 18:55–19:00 penaltı
+  // atışları (varsa) istemcide tek tek açılır, kazanan sona kadar görünmez.
+  // Penaltısız maçta da aynı saat (penaltı olup olmayacağı önceden belli olmasın).
+  const hourStartMs = matchStartAt.getTime() - (matchStartAt.getTime() % 3_600_000);
+  const playEndMs = Math.max(matchStartAt.getTime() + 10 * 60_000, hourStartMs + FUTBOL_CUP_PLAY_MINUTES * 60_000);
+  const penaltyEndMs = Math.max(playEndMs + 60_000, hourStartMs + 60 * 60_000);
 
   const updateData = {
     homeScore,
@@ -14102,6 +14110,8 @@ async function computeFutbolCupMatchLive(match) {
     status: 'live',
     matchStartAt: admin.firestore.Timestamp.fromDate(matchStartAt),
     revealAt: admin.firestore.Timestamp.fromDate(revealAt),
+    playEndAt: admin.firestore.Timestamp.fromMillis(playEndMs),
+    penaltyEndAt: admin.firestore.Timestamp.fromMillis(penaltyEndMs),
     timeline,
     possessionCheckpoints,
     ratings,

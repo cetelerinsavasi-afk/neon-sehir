@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { blockProfanity } from '../../lib/profanityGuard';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useInventory } from '../../hooks/useInventory';
 import { useParkPresence } from '../../hooks/useParkPresence';
 import ShadyDealPanel from '../ShadyDeal/ShadyDealPanel';
-import { shadyResultView } from '../ShadyDeal/shadyDeal';
+import SaleToast from '../ShadyDeal/SaleToast';
 import { enterPark, sellContrabandAtPark, buyFromBufe, createSixtagramPost, captureCameraSnapshot } from '../../services/gameActions';
 import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR, AVATAR_FULL_VIEWBOX_H, AVATAR_WAIST_Y } from '../../lib/avatarShapes';
 import {
@@ -16,7 +16,6 @@ import { createRemoteSmoother, remotePose } from '../../lib/canvasWorldKit';
 import { INTERIOR_AVATAR_SCALE } from '../../lib/canvasWorldKit';
 import Hud from '../Hud/Hud';
 import PhoneScreen from '../Phone/PhoneScreen';
-import ResultModal from '../ResultModal/ResultModal';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import './ParkWorldScreen.css';
 import NearbyPlayersButton from '../NearbyPlayers/NearbyPlayersButton';
@@ -209,6 +208,7 @@ export default function ParkWorldScreen({ onExit }) {
   const [myBubbles, setMyBubbles] = useState([]);
   const [sellBusy, setSellBusy] = useState(null); // v103: 'risky' | 'safe' | null
   const [sellResult, setSellResult] = useState(null);
+  const closeSellToast = useCallback(() => setSellResult(null), []);
   const [bufeBusy, setBufeBusy] = useState(null);
   const [error, setError] = useState(null);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -756,7 +756,7 @@ export default function ParkWorldScreen({ onExit }) {
     setError(null);
     try {
       const res = await sellContrabandAtPark(mode);
-      setSellResult(res.data);
+      setSellResult({ ...res.data, _k: Date.now() }); // v104: geçici bildirim
     } catch (err) {
       setError(err.message || 'Satış başarısız.');
     } finally {
@@ -1060,9 +1060,7 @@ export default function ParkWorldScreen({ onExit }) {
         </div>
       )}
 
-      {sellResult && (
-        <ResultModal {...shadyResultView(sellResult)} onClose={() => setSellResult(null)} />
-      )}
+      <SaleToast result={sellResult} onClose={closeSellToast} />
     </div>
   );
 }

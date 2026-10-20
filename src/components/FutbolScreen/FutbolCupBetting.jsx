@@ -3,7 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { placeFutbolCupBet } from '../../services/gameActions';
 import FutbolCrest from './FutbolCrest';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
-import { computeLiveMatchState } from './futbolLiveMatch';
+import { computeLiveMatchState, computePenaltyState } from './futbolLiveMatch';
 import './FutbolIddaa.css';
 
 // FutbolCupBetting.jsx — KULLANICI İSTEĞİ: "kupa maçları sadece kupa
@@ -82,6 +82,8 @@ export function cupBetSelections(bet) {
 // (bkz. useNowTick) parent'tan geliyor, skor canlı ilerliyor.
 export function CupMatchRow({ match, onSelect, now }) {
   const state = computeLiveMatchState(match, now);
+  // v104: penaltılar sadece 18:55'ten sonra, atış atış (bkz. computePenaltyState)
+  const pen = computePenaltyState(match, now);
   const played = state.phase === 'finished';
   const isLive = state.phase === 'live';
   const winnerIsHome = match.winnerTeamId === match.homeTeamId;
@@ -117,9 +119,9 @@ export function CupMatchRow({ match, onSelect, now }) {
           {isLive ? '🔴 İzle' : 'İzle'}
         </button>
       </div>
-      {match.penalty && (
-        <p className="futbol-cup-penalty-note">
-          Penaltılar: {match.penalty.homeScore}-{match.penalty.awayScore}
+      {pen && (
+        <p className={`futbol-cup-penalty-note${pen.done ? '' : ' live'}`}>
+          {pen.done ? 'Penaltılar' : '🔴 Penaltılar'}: {pen.homeGoals}-{pen.awayGoals}
         </p>
       )}
     </div>

@@ -43,7 +43,8 @@ export function computeLiveMatchState(match, now = Date.now()) {
 
   // status === 'live'
   const start = toMillis(match.matchStartAt);
-  const end = toMillis(match.revealAt) || (start ? start + 60 * 60 * 1000 : null);
+  // v104: kupa maçında normal süre playEndAt'te (18:55) biter, sonra penaltılar
+  const end = toMillis(match.playEndAt) || toMillis(match.revealAt) || (start ? start + 60 * 60 * 1000 : null);
   if (!start || !end) {
     return { phase: 'live', elapsedMinute: 0, homeScore: 0, awayScore: 0, events: [] };
   }
@@ -80,4 +81,45 @@ export function pickFutbolDisplayRound(matches, currentRound, now = Date.now()) 
   if (todayFinished) return { round: todayFinished.round, mode: 'finished' };
 
   return { round: currentRound, mode: 'upcoming' };
+}
+
+// v104 — PENALTI ATIŞLARI zaman içinde açılır. Kupa maçı normal sürede
+// berabere biterse 18:55–19:00 (playEndAt → penaltyEndAt) arasında atışlar
+// sırayla gelir; her atışın bir "hazırlanıyor" anı vardır, sonucu o dilimin
+// sonunda görünür. Kazanan ancak son atış açılınca (ya da maç resmen bitince)
+// belli olur. Eski maçlarda (playEndAt yok) sonuç sadece maç bitince görünür.
+// Döner: null (penaltı yok / henüz başlamadı) ya da
+// { attempts (açılanlar), current ({ team, shooterName } | null), homeGoals, awayGoals, done, winner }
+export function computePenaltyState(match, now = Date.now()) {
+  const pen = match?.penalty;
+  if (!pen || !Array.isArray(pen.attempts)) return null;
+  const all = pen.attempts;
+  const finalState = () => ({
+    attempts: all,
+    current: null,
+    homeGoals: pen.homeScore,
+    awayGoals: pen.awayScore,
+    done: true,
+    winner: match.winnerTeamId === match.homeTeamId ? 'home' : 'away',
+  });
+  if (match.status === 'finished') return finalState();
+  if (match.status !== 'live') return null;
+  const start = toMillis(match.playEndAt);
+  const end = toMillis(match.penaltyEndAt) || (start ? start + 5 * 60 * 1000 : null);
+  if (!start || !end || now < start) return null;
+  if (!all.length) return finalState();
+  // son atıştan sonra kısa bir "sonuç" payı bırak (dilimler pencerenin %92'sinde biter)
+  const slot = ((end - start) * 0.92) / all.length;
+  const shown = Math.min(all.length, Math.floor((now - start) / slot));
+  if (shown >= all.length) return finalState();
+  const attempts = all.slice(0, shown);
+  const next = all[shown];
+  return {
+    attempts,
+    current: next ? { team: next.team, shooterName: next.shooterName } : null,
+    homeGoals: attempts.filter((a) => a.team === 'home' && a.scored).length,
+    awayGoals: attempts.filter((a) => a.team === 'away' && a.scored).length,
+    done: false,
+    winner: null,
+  };
 }

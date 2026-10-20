@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -24,9 +24,8 @@ import VehicleGalleryScreen from '../VehicleGalleryScreen/VehicleGalleryScreen';
 import WeaponShopScreen from '../WeaponShopScreen/WeaponShopScreen';
 import Workshop from '../Workshop/Workshop';
 import GarageScreen from '../GarageScreen/GarageScreen';
-import ResultModal from '../ResultModal/ResultModal';
 import ShadyDealPanel from '../ShadyDeal/ShadyDealPanel';
-import { shadyResultView } from '../ShadyDeal/shadyDeal';
+import SaleToast from '../ShadyDeal/SaleToast';
 import HeldIcon from '../HouseScreen/HeldIcon';
 import { camiiDynamicNpcs } from '../../../functions/venueLayouts.js';
 import '../../styles/bizui.css';
@@ -440,6 +439,7 @@ export function ParkPart({ panel, setPanel, flash, walk }) {
   const [busy, setBusy] = useState(null);
   const [err, setErr] = useState(null);
   const [sellResult, setSellResult] = useState(null);
+  const closeSellToast = useCallback(() => setSellResult(null), []);
   const buy = async (item) => {
     setBusy(item.id);
     setErr(null);
@@ -458,7 +458,7 @@ export function ParkPart({ panel, setPanel, flash, walk }) {
     setErr(null);
     try {
       const r = await sellContrabandAtPark(mode);
-      setSellResult(r.data);
+      setSellResult({ ...r.data, _k: Date.now() }); // v104: geçici bildirim
     } catch (e) {
       setErr(e?.message || 'Satış başarısız.');
     } finally {
@@ -492,7 +492,7 @@ export function ParkPart({ panel, setPanel, flash, walk }) {
           {err && <p className="ws-error">{err}</p>}
         </Sheet>
       )}
-      {sellResult && <ResultModal {...shadyResultView(sellResult)} onClose={() => setSellResult(null)} />}
+      <SaleToast result={sellResult} onClose={closeSellToast} />
     </>
   );
 }
