@@ -82,3 +82,8 @@ export function nextSponsorshipSettleLabel(now = Date.now()) {
   const { hour } = istanbulHMS(new Date(now));
   return hour % 24 < SPONSORSHIP_SETTLE_HOUR ? 'bugün 19:00' : 'yarın 19:00';
 }
+
+// v103 — İstanbul günü anahtarı ("YYYY-MM-DD"), sunucudaki istanbulDateKey ile aynı.
+export function istanbulDateKey(date = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+}

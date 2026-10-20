@@ -31,7 +31,7 @@ function notifEmoji(type) {
   return '🔔';
 }
 
-export default function NotificationsPanel({ onClose, onOpenComments }) {
+export default function NotificationsPanel({ onClose, onOpenPost }) {
   const { notifications: allNotifications } = useSixtagramNotifications();
   const { isBlocked } = useBlocks();
   // UGC D2: engellediğin oyuncudan gelen (engellemeden önceki) bildirimler de gizlenir
@@ -43,12 +43,13 @@ export default function NotificationsPanel({ onClose, onOpenComments }) {
     );
   }, []);
 
+  // v103: her bildirim (beğeni dahil) ilgili gönderiyi açar; yorum/yanıtta
+  // o yorum vurgulanır ve doğrudan yanıt verilebilir.
   const handleClick = (n) => {
-    if ((n.type === 'comment' || n.type === 'reply') && n.postId) {
-      onOpenComments?.(n.postId);
+    if (n.postId) {
+      onOpenPost?.(n.postId, n.type === 'like' ? null : n.commentId || null);
       return;
     }
-    // 'like' bildiriminde açılacak bir yorum paneli yok, sadece kapat.
     onClose();
   };
 

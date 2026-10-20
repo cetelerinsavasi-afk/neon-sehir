@@ -23,6 +23,7 @@ import { MAX_REPAIRS, vehicleDisplayName, lifeCapOf, repairBonusOf } from '../Ve
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './MarketplaceScreen.css';
 import { ListingCarStats } from '../RaceTrackScreen/CarStats';
+import { autoSellsAt, AUTO_SELL_HINT } from '../../lib/autoSell';
 
 // Bu oturumda eski (deterministik ID sisteminden önce açılmış) malzeme
 // ilanlarını birleştirme işlemi zaten tetiklendi mi? (Gereksiz tekrar
@@ -595,6 +596,9 @@ function SellForm({ onCreated, onClose, initialItemType }) {
                 <strong>{price.toLocaleString('tr-TR')} altına</strong>
                 {itemType === 'material' ? ' adedi satılacak' : ' satılacak'}
               </p>
+              {itemType === 'material' && priceRange && autoSellsAt(price, priceRange.min, priceRange.max) && (
+                <p className="market-autosell-hint">{AUTO_SELL_HINT}</p>
+              )}
               {itemType === 'material' && quantity > 0 && price > 0 && (
                 <p className="market-price-range-hint">
                   Toplam: {(price * quantity).toLocaleString('tr-TR')} altın ({quantity} adet)

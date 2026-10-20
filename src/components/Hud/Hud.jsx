@@ -26,7 +26,7 @@ export default function Hud({ suspicion = 0, reputation = 0, gold = 0, onGoldCli
         <div className="hud-stat-label">
           <span>
             Şüphe
-            <InfoIcon text="Şüphe arttıkça, suç işlerken yakalanma riskin artar." />
+            <InfoIcon text="Şüphen arttıkça yakalanma riskin de artar" />
           </span>
           <span>{suspicion}%</span>
         </div>
@@ -42,7 +42,7 @@ export default function Hud({ suspicion = 0, reputation = 0, gold = 0, onGoldCli
         <div className="hud-stat-label">
           <span>
             Saygınlık
-            <InfoIcon text="Saygınlığın yükseldikçe, ekip soygunlarına polis sızdığında esnaflar sizi uyarır." />
+            <InfoIcon text="Ekip soygunlarına polis sızarsa esnaflar seni uyarabilir" />
           </span>
           <span>{reputation}%</span>
         </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import { useSixtagramComments } from '../../hooks/useSixtagramComments';
@@ -24,10 +24,10 @@ function timeAgo(createdAtMs) {
 }
 
 // v53: avatar/ada dokununca Oyuncu Kartı; yoruma uzun basınca menü
-function ReplyRow({ r, onProfile, onMenu }) {
+function ReplyRow({ r, onProfile, onMenu, focusId }) {
   const press = useLongPress(() => onMenu(r));
   return (
-    <div className="six-comment-row six-comment-reply-row">
+    <div className={`six-comment-row six-comment-reply-row${focusId === r.id ? ' focused' : ''}`} data-comment-id={r.id}>
       <button type="button" className="six-comment-avatar pc-trigger" onClick={() => onProfile(r)} aria-label={`${r.authorName || 'Oyuncu'} profilini gör`}>
         <AvatarSvg avatar={r.authorAvatar} size={24} rounded />
       </button>
@@ -44,10 +44,10 @@ function ReplyRow({ r, onProfile, onMenu }) {
   );
 }
 
-function CommentRow({ comment, onReply, onProfile, onMenu }) {
+function CommentRow({ comment, onReply, onProfile, onMenu, focusId }) {
   const press = useLongPress(() => onMenu(comment));
   return (
-    <div className="six-comment-row">
+    <div className={`six-comment-row${focusId === comment.id ? ' focused' : ''}`} data-comment-id={comment.id}>
       <button type="button" className="six-comment-avatar pc-trigger" onClick={() => onProfile(comment)} aria-label={`${comment.authorName || 'Oyuncu'} profilini gör`}>
         <AvatarSvg avatar={comment.authorAvatar} size={28} rounded />
       </button>
@@ -73,7 +73,7 @@ function CommentRow({ comment, onReply, onProfile, onMenu }) {
         {comment.replies?.length > 0 && (
           <div className="six-comment-replies">
             {comment.replies.map((r) => (
-              <ReplyRow key={r.id} r={r} onProfile={onProfile} onMenu={onMenu} />
+              <ReplyRow key={r.id} r={r} onProfile={onProfile} onMenu={onMenu} focusId={focusId} />
             ))}
           </div>
         )}
@@ -82,7 +82,10 @@ function CommentRow({ comment, onReply, onProfile, onMenu }) {
   );
 }
 
-export default function CommentsPanel({ postId, onClose }) {
+// v103: `header` verilirse (bildirimden açılan gönderi) gönderi yorumların
+// üstünde aynı kaydırmada gösterilir; `focusCommentId` o yorumu vurgular,
+// ekrana kaydırır ve yanıt kutusunu o yorumun dizisine hazırlar.
+export default function CommentsPanel({ postId, onClose, header = null, title = 'Yorumlar', focusCommentId = null }) {
   const { comments: allComments, loading } = useSixtagramComments(postId);
   const { user } = useAuth();
   const { isBlocked } = useBlocks();
@@ -97,6 +100,21 @@ export default function CommentsPanel({ postId, onClose }) {
   const [replyTo, setReplyTo] = useState(null); // { id, authorName } | null
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState('');
+  const listRef = useRef(null);
+  const inputRef = useRef(null);
+  const focusedOnceRef = useRef(false);
+
+  useEffect(() => {
+    if (!focusCommentId || loading || focusedOnceRef.current) return;
+    const top = comments.find((c) => c.id === focusCommentId || c.replies.some((r) => r.id === focusCommentId));
+    if (!top) return;
+    focusedOnceRef.current = true;
+    setReplyTo(top);
+    requestAnimationFrame(() => {
+      const el = listRef.current?.querySelector(`[data-comment-id="${focusCommentId}"]`);
+      el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+  }, [focusCommentId, loading, comments]);
 
   const handleSubmit = async () => {
     if (!text.trim()) return;
@@ -116,21 +134,33 @@ export default function CommentsPanel({ postId, onClose }) {
 
   return (
     <div className="six-comments-backdrop" onClick={onClose}>
-      <div className="six-comments-panel" onClick={(e) => e.stopPropagation()}>
+      <div className={`six-comments-panel${header ? ' with-post' : ''}`} onClick={(e) => e.stopPropagation()}>
         <div className="six-comments-head">
-          <p className="six-comments-title">Yorumlar</p>
+          <p className="six-comments-title">{title}</p>
           <button className="six-comments-close" onClick={onClose}>
             <X size={18} />
           </button>
         </div>
 
-        <div className="six-comments-list">
+        <div className="six-comments-list" ref={listRef}>
+          {header}
+          {header && <p className="six-comments-subtitle">💬 Yorumlar</p>}
           {loading && <p className="six-comments-hint">Yükleniyor…</p>}
           {!loading && comments.length === 0 && (
             <p className="six-comments-hint">Henüz yorum yok — ilk yorumu sen yaz!</p>
           )}
           {comments.map((c) => (
-            <CommentRow key={c.id} comment={c} onReply={(cm) => setReplyTo(cm)} onProfile={setProfileOf} onMenu={setMenuFor} />
+            <CommentRow
+              key={c.id}
+              comment={c}
+              focusId={focusCommentId}
+              onReply={(cm) => {
+                setReplyTo(cm);
+                inputRef.current?.focus();
+              }}
+              onProfile={setProfileOf}
+              onMenu={setMenuFor}
+            />
           ))}
         </div>
 
@@ -147,6 +177,7 @@ export default function CommentsPanel({ postId, onClose }) {
 
         <div className="six-comments-compose">
           <input
+            ref={inputRef}
             className="six-comments-input"
             placeholder={replyTo ? 'Yanıt yaz…' : 'Yorum yaz…'}
             value={text}

@@ -15,6 +15,7 @@ import { DIST_GROUPS, GANG_RULES, LEADERS, PRODUCTS, atLeast, fmt, productOf, un
 import { itemInfo, itemsFor } from '../itemInfo';
 import { nextTradeSunday } from '../tradeSchedule';
 import { useAdPrice } from '../GangMarketSection';
+import { autoSellsAt, AUTO_SELL_HINT } from '../../../lib/autoSell';
 
 const GANG_RULES_HARAC_HOUR_LABEL = '21:00'; // v38: haraç/rüşvet son dilim (21:00) başlayana kadar
 
@@ -403,6 +404,10 @@ function DepotItems({ depot, lead, listings }) {
             <>
               <span className="dim gx-mini">💰 Adet fiyatı</span>
               <AmountInput value={price} onChange={setPrice} max={act.it.storePrice} min={Math.floor(act.it.storePrice / 2)} quick={[100, 1000, 10_000, 100_000]} />
+              {/* v103: ucuz malzeme ilanı 7 gün içinde satılmazsa oyuna satılır (para kasaya) */}
+              {!/^(silah|araba):/.test(act.key) && autoSellsAt(price, Math.floor(act.it.storePrice / 2), act.it.storePrice) && (
+                <span className="gx-autosell-hint">{AUTO_SELL_HINT}</span>
+              )}
             </>
           )}
         </Confirm>

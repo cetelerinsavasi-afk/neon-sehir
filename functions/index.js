@@ -40,6 +40,7 @@ import { trainingBotRun, vehicleRaceLevel, carStats } from './raceSim.js';
 import { createRaceTa } from './raceTa.js';
 import { championshipPodium } from './championshipPrizes.js';
 import { adPriceFor, countActiveAds } from './marketAds.js';
+import { LISTING_TTL_MS, autoSellsAt, materialRange, batchesOf, addBatch, consumeBatches, splitDue, nextExpireAtMs } from './listingBatches.js';
 import { createCosmetics } from './cosmetics.js';
 import { createPlayBilling, createGooglePlayApi } from './playBilling.js';
 import { createStream } from './stream.js';
@@ -5133,6 +5134,7 @@ export const repayVehicleLoan = onCall(async (request) => {
 //   %20 × ( araçların + silahların + malzemelerin ANINDA SATIŞ değeri
 //          + fabrikanın değeri (sende kalan hisse oranıyla)
 //          + sahibi olduğun futbol takım(lar)ının değeri )
+//   − devlete borç (v103)
 // Aynı anda TEK aktif kredi. Vade 10 gün, faiz %20 (anaparaya eklenir).
 // Dilim dilim ya da tek seferde ödenir. Vade dolunca ödenmeyen kısım
 // devlete borca (debtToState) aktarılır — borç bitene kadar kazancın
@@ -5147,13 +5149,14 @@ const CREDIT_INTEREST = 0.2;
 const CREDIT_MIN_AMOUNT = 10; // alt limit: 10 altın
 
 async function computeCreditScore(uid) {
-  const [vehiclesSnap, weaponsSnap, invSnap, factorySnap, teamsSnap, prices] = await Promise.all([
+  const [vehiclesSnap, weaponsSnap, invSnap, factorySnap, teamsSnap, prices, userSnap] = await Promise.all([
     db.collection('vehicles').where('ownerId', '==', uid).get(),
     db.collection('weapons').where('ownerId', '==', uid).get(),
     db.collection('users').doc(uid).collection('inventory').get(),
     db.collection('factories').doc(uid).get(),
     db.collection('futbolTeams').where('ownerUid', '==', uid).get(),
     getCurrentPrices(),
+    db.collection('users').doc(uid).get(),
   ]);
   let vehicles = 0;
   vehiclesSnap.forEach((d) => {
@@ -5198,7 +5201,11 @@ async function computeCreditScore(uid) {
   let team = 0;
   for (const d of teamsSnap.docs) team += await computeFutbolTeamValue(d.id);
   const total = vehicles + weapons + materials + factory + team;
-  return { vehicles, weapons, materials, factory, team, total, limit: Math.floor(total * CREDIT_SCORE_RATIO) };
+  // v103: devlete borç (Banka › Cezalar) kredi puanından düşülür —
+  // 1.000.000 puan + 500.000 borç → 500.000 puan (eksiye inmez).
+  const gross = Math.floor(total * CREDIT_SCORE_RATIO);
+  const debt = Math.max(0, Math.floor(Number(userSnap.data()?.debtToState || 0)));
+  return { vehicles, weapons, materials, factory, team, total, gross, debt, limit: Math.max(0, gross - debt) };
 }
 
 export const getCreditInfo = onCall(async (request) => {
@@ -6297,6 +6304,7 @@ export const attemptHeist = onCall(async (request) => {
 // FAZ 6 — DEPO, PARK VE LİMAN (KAÇAKÇILIK) SİSTEMİ
 // =============================================================================
 
+const HEIST_WARN_REPUTATION_RATIO = 0.5; // v103: saygınlık 100 → %50 uyarı ihtimali
 const CONTRABAND_PARK_SELL_PRICE = 5000; // Park'ta satış — şüphe +5 (kaynağı fark etmez)
 const PARK_SUSPICION_COST = 5;
 
@@ -6328,8 +6336,68 @@ export const sellContrabandToDepo = onCall(async () => {
 // miktar (5000) devlete borç yazılır — hiç cepten kesilmez, tamamı borca
 // gider (Bölüm 10 kuralı). Yakalanmazsan normal şekilde kazanırsın.
 // Polisler de satabilir; yakalanırlarsa ceza 2 katı (10.000).
+// v103 — İKİ SATIŞ ŞEKLİ (request.data.mode):
+//   'risky' (varsayılan, eski istemciler): yukarıdaki gibi 5.000, yakalanma
+//     riski, +5 şüphe.
+//   'safe': yakalanma yok, şüphe artmaz; oyuncuya 2.000, çetesine 500 haraç
+//     (toplam 2.500). Oyuncu başı günde en fazla 10 (İstanbul günü,
+//     users.parkSafeSales = { day, count }). Çetesi yoksa / sadece
+//     İstihbarattaysa 500 kimseye gitmez. Çeteye satış başına mesaj gitmez;
+//     gece 00:00'da çete sohbetine günlük özet yazılır (gang/clock.js).
+const PARK_SAFE_SELL_PRICE = 2000;
+const PARK_SAFE_GANG_CUT = 500;
+const PARK_SAFE_DAILY_LIMIT = 10;
+
+async function sellContrabandSafe(uid) {
+  const userRef = db.collection('users').doc(uid);
+  const inventoryRef = userRef.collection('inventory').doc('yasakliMadde');
+  const day = istanbulDateKey();
+  const refId = `park_safe_${uid}_${Date.now()}_${Math.floor(Math.random() * 1e9)}`;
+  let outcome = null;
+  await db.runTransaction(async (tx) => {
+    const [invSnap, userSnap] = await Promise.all([tx.get(inventoryRef), tx.get(userRef)]);
+    const have = invSnap.exists ? invSnap.data().quantity || 0 : 0;
+    if (have < 1) throw new HttpsError('failed-precondition', 'Yeterli malınız yok.');
+    const user = userSnap.data() || {};
+    const used = user.parkSafeSales?.day === day ? Number(user.parkSafeSales.count || 0) : 0;
+    if (used >= PARK_SAFE_DAILY_LIMIT) {
+      throw new HttpsError('resource-exhausted', `Güvenli satış hakkın bugünlük bitti (${PARK_SAFE_DAILY_LIMIT}/${PARK_SAFE_DAILY_LIMIT}). Yarın yenilenir.`);
+    }
+    tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-1) }, { merge: true });
+    const { goldDelta, debtDelta } = splitIncomeForDebt(user.debtToState, PARK_SAFE_SELL_PRICE);
+    tx.update(userRef, {
+      gold: admin.firestore.FieldValue.increment(goldDelta),
+      goldTag: goldTag('kacak'),
+      debtToState: admin.firestore.FieldValue.increment(debtDelta),
+      parkSafeSales: { day, count: used + 1 },
+    });
+    outcome = {
+      mode: 'safe',
+      caught: false,
+      earned: PARK_SAFE_SELL_PRICE,
+      toWallet: goldDelta,
+      debtRepaid: -debtDelta,
+      safeUsed: used + 1,
+      safeLimit: PARK_SAFE_DAILY_LIMIT,
+    };
+  });
+  // Çete haracı (best-effort, idempotent refId). Çete yoksa 500 yanar.
+  const gangRes = await gangFunctions.system
+    .onContrabandHarac(uid, PARK_SAFE_GANG_CUT, refId)
+    .catch((err) => {
+      console.error('gang harac hook hata:', err);
+      return { skipped: 'error' };
+    });
+  outcome.gangCut = PARK_SAFE_GANG_CUT;
+  outcome.gangCredited = Boolean(gangRes?.credited);
+  outcome.gangName = gangRes?.gangName || null;
+  await advanceOnboardingStep(uid, 3);
+  return { ok: true, ...outcome };
+}
+
 export const sellContrabandAtPark = onCall(async (request) => {
   const uid = requireAuth(request);
+  if (request.data?.mode === 'safe') return sellContrabandSafe(uid);
   const userRef = db.collection('users').doc(uid);
   const inventoryRef = userRef.collection('inventory').doc('yasakliMadde');
   let outcome = null;
@@ -7105,7 +7173,7 @@ export const joinHeistPlan = onCall(async (request) => {
   });
 
   // Şüphe uyarı sistemi (Bölüm 7 kullanıcı revizesi): saygınlık oranımıza
-  // göre (örn %50 saygınlık = %50 ihtimal), KATILDIĞIMIZ ya da
+  // göre (v103: saygınlığın yarısı — 100 saygınlık = %50, 50 = %25), KATILDIĞIMIZ ya da
   // KURDUĞUMUZ ekibe hâlihazırda bir polis sızmışsa YA DA az önce
   // sızdıysa, bunu (belli belirsiz) bir SMS ile öğrenebiliriz. Her
   // sivil kendi saygınlığına göre BAĞIMSIZ olarak "sezip sezmediğini"
@@ -7125,14 +7193,15 @@ export const joinHeistPlan = onCall(async (request) => {
     }
     if (targetUser.profession === 'polis') return; // polisi uyarmayız
     const reputation = targetUser.reputation || 0;
-    if (Math.random() * 100 < reputation) {
+    // v103: uyarı ihtimali saygınlığın YARISI (100 saygınlık = %50, 50 = %25)
+    if (Math.random() * 100 < reputation * HEIST_WARN_REPUTATION_RATIO) {
       warnedUids.add(targetUid);
       await db
         .collection('users')
         .doc(targetUid)
         .collection('messages')
         .add({
-          text: 'İçgüdülerin seni uyarıyor: bu ekipte tanımadığın/güvenmediğin biri olabilir. Dikkatli ol.',
+          text: '🏪 Esnaflar seni uyarıyor: bu ekipte güvenmemen gereken biri olabilir. Dikkatli ol.',
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           read: false,
           type: 'heist_warning',
@@ -8025,6 +8094,104 @@ export const migrateWeaponLifeCap10 = onCall(async (request) => {
 });
 
 
+// v103 — MALZEME İLANI PARTİ SÜRESİ (functions/listingBatches.js)
+// Süresi dolan parti: adet fiyatı aralığın %50'sinin altındaysa oyun satın
+// alır (satıcıya ödeme, %1 vergi, borç varsa yarısı borca), değilse ürün
+// envantere iade edilir. Kalan partiler ilanda kendi süreleriyle kalır.
+// (etiketler: MATERIAL_SMS_LABELS, dosyanın başında)
+async function settleMaterialListing(listingRef, nowMs = Date.now()) {
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(listingRef);
+    if (!snap.exists) return { skipped: 'missing' };
+    const l = snap.data();
+    if (l.sold || l.itemType !== 'material' || l.sellerId === 'system') {
+      if (l.expireAtMs != null) tx.update(listingRef, { expireAtMs: admin.firestore.FieldValue.delete() });
+      return { skipped: 'closed' };
+    }
+    const batches = batchesOf(l, l.createdAt?.toMillis?.() ?? 0);
+    const { dueQty: rawDue, keep } = splitDue(batches, nowMs);
+    const dueQty = Math.min(rawDue, Math.max(0, Math.floor(Number(l.quantity || 0))));
+    if (dueQty <= 0) {
+      tx.update(listingRef, { batches: keep, expireAtMs: nextExpireAtMs(keep) ?? admin.firestore.FieldValue.delete() });
+      return { skipped: 'not_due' };
+    }
+    const unitPrice = l.unitPrice || Math.round((l.price || 0) / (l.quantity || 1));
+    const { min, max } = materialRange(AMAZOR_PRICES[l.materialType]);
+    const auto = autoSellsAt(unitPrice, min, max);
+    const sellerRef = db.collection('users').doc(l.sellerId);
+    const sellerSnap = auto ? await tx.get(sellerRef) : null;
+    const label = MATERIAL_SMS_LABELS[l.materialType] || 'malzeme';
+    const qtyTxt = dueQty.toLocaleString('tr-TR');
+    let payout = 0;
+    if (auto && !sellerSnap.exists) {
+      // hesabı silinmiş satıcı: ödenecek kimse yok, ilan kapanır
+    } else if (auto) {
+      payout = unitPrice * dueQty;
+      const tax = resaleTax(payout);
+      taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: tax, source: 'ikinciEl', uid: l.sellerId, atMs: nowMs, ref: listingRef.id });
+      const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, payout - tax);
+      tx.set(
+        sellerRef,
+        {
+          gold: admin.firestore.FieldValue.increment(goldDelta),
+          goldTag: goldTag('ikinciEl'),
+          debtToState: admin.firestore.FieldValue.increment(debtDelta),
+        },
+        { merge: true }
+      );
+      addUserSms(
+        tx,
+        l.sellerId,
+        `✅ İlandaki ${qtyTxt} adet ${label} 7 gün içinde satılmadığı için otomatik satıldı: +${(payout - tax).toLocaleString('tr-TR')} altın (adet ${unitPrice.toLocaleString('tr-TR')}).`,
+        'listing_auto_sold'
+      );
+    } else {
+      tx.set(
+        sellerRef.collection('inventory').doc(l.materialType),
+        { quantity: admin.firestore.FieldValue.increment(dueQty) },
+        { merge: true }
+      );
+      addUserSms(
+        tx,
+        l.sellerId,
+        `📦 İlandaki ${qtyTxt} adet ${label} 7 gündür satılmadığı için ilandan kaldırıldı, envanterine iade edildi.`,
+        'listing_expired'
+      );
+    }
+    const remaining = Math.max(0, Math.floor(Number(l.quantity || 0)) - dueQty);
+    if (remaining <= 0) {
+      tx.update(listingRef, {
+        quantity: 0,
+        price: 0,
+        sold: true,
+        ...(auto ? { autoSold: true, soldAt: admin.firestore.FieldValue.serverTimestamp() } : { cancelled: true }),
+        expiredAutomatically: true,
+        batches: [],
+        expireAtMs: admin.firestore.FieldValue.delete(),
+      });
+    } else {
+      tx.update(listingRef, {
+        quantity: remaining,
+        price: unitPrice * remaining,
+        batches: keep,
+        expireAtMs: nextExpireAtMs(keep),
+      });
+    }
+    return { auto, qty: dueQty, payout };
+  });
+}
+
+// settleMaterialListingBatches — saatte bir: süresi dolan malzeme partileri.
+// Sorgu tek alanlı (expireAtMs) — bileşik dizin gerekmez; satılmış/iptal
+// ilanlarda alan silinir.
+export const settleMaterialListingBatches = onSchedule({ schedule: 'every 60 minutes' }, async () => {
+  const nowMs = Date.now();
+  const snap = await db.collection('marketplaceListings').where('expireAtMs', '<=', nowMs).limit(500).get();
+  for (const d of snap.docs) {
+    await settleMaterialListing(d.ref, nowMs).catch((err) => console.error('settleMaterialListing', d.id, err));
+  }
+});
+
 // expireOldMarketplaceListings — 7 gündür satılmayan 2. el ilanlarını
 // otomatik kaldırır, ürünü/malzemeyi/makineyi sahibine iade eder
 // (cancelListing ile birebir aynı iade mantığı), satıcıya SMS atar.
@@ -8032,13 +8199,23 @@ export const migrateWeaponLifeCap10 = onCall(async (request) => {
 export const expireOldMarketplaceListings = onSchedule({ schedule: 'every 24 hours' }, async () => {
   await mergeLegacyMaterialListings();
 
-  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const SEVEN_DAYS_MS = LISTING_TTL_MS;
   const now = Date.now();
   const openSnap = await db.collection('marketplaceListings').where('sold', '==', false).get();
 
   const jobs = [];
   openSnap.forEach((doc) => {
     const listing = doc.data();
+    // v103: oyuncu malzeme ilanları parti bazlı (settleMaterialListingBatches);
+    // eski partisiz ilan da aynı kurala (otomatik satış / iade) girer.
+    if (listing.itemType === 'material' && listing.sellerId !== 'system') {
+      if (Array.isArray(listing.batches) || listing.expireAtMs != null) return;
+      const legacyAt = listing.createdAt?.toMillis?.() ?? 0;
+      if (legacyAt && now - legacyAt >= SEVEN_DAYS_MS) {
+        jobs.push(settleMaterialListing(doc.ref, now).catch((err) => console.error('legacy settle', doc.id, err)));
+      }
+      return;
+    }
     const createdAtMs = listing.createdAt?.toMillis?.() ?? 0;
     if (!createdAtMs || now - createdAtMs < SEVEN_DAYS_MS) return;
 
@@ -9707,6 +9884,9 @@ export const createListing = onCall(async (request) => {
     const mergedListingRef = db
       .collection('marketplaceListings')
       .doc(`mat_${uid}_${materialType}_${unitPriceNum}`);
+    // v103: her ekleme kendi 7 gününü taşır (functions/listingBatches.js) —
+    // birleşen ilanda süre sıfırlanmaz, eski partiler zamanı gelince düşer.
+    const nowMs = Date.now();
     await db.runTransaction(async (tx) => {
       const [invSnap, listingSnap] = await Promise.all([tx.get(inventoryRef), tx.get(mergedListingRef)]);
       const have = invSnap.exists ? invSnap.data().quantity || 0 : 0;
@@ -9715,12 +9895,18 @@ export const createListing = onCall(async (request) => {
       }
       tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-qty) }, { merge: true });
       if (listingSnap.exists && !listingSnap.data().sold) {
+        const cur = listingSnap.data();
+        const batches = addBatch(batchesOf(cur, cur.createdAt?.toMillis?.() ?? nowMs), qty, nowMs);
+        const quantityAfter = (cur.quantity || 0) + qty;
         tx.update(mergedListingRef, {
-          quantity: admin.firestore.FieldValue.increment(qty),
-          price: admin.firestore.FieldValue.increment(unitPriceNum * qty),
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          quantity: quantityAfter,
+          price: unitPriceNum * quantityAfter,
+          batches,
+          expireAtMs: nextExpireAtMs(batches),
+          lastAddedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
       } else {
+        const batches = [{ q: qty, at: nowMs }];
         tx.set(mergedListingRef, {
           sellerId: uid,
           sellerName,
@@ -9729,6 +9915,8 @@ export const createListing = onCall(async (request) => {
           quantity: qty,
           unitPrice: unitPriceNum,
           price: unitPriceNum * qty,
+          batches,
+          expireAtMs: nextExpireAtMs(batches),
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           sold: false,
         });
@@ -10221,7 +10409,7 @@ export const cancelListing = onCall(async (request) => {
       });
     }
 
-    tx.update(listingRef, { sold: true, cancelled: true });
+    tx.update(listingRef, { sold: true, cancelled: true, ...(listing.expireAtMs != null ? { expireAtMs: admin.firestore.FieldValue.delete() } : {}) });
   });
 
   return { ok: true };
@@ -10436,6 +10624,8 @@ export const buyListing = onCall(async (request) => {
         { merge: true }
       );
       const remaining = (listing.quantity || 0) - qty;
+      // v103: partili ilanda satış en eski partiden düşer (FIFO)
+      const hasBatches = Array.isArray(listing.batches);
       if (remaining <= 0) {
         tx.update(listingRef, {
           quantity: 0,
@@ -10443,7 +10633,11 @@ export const buyListing = onCall(async (request) => {
           sold: true,
           buyerId: uid,
           soldAt: admin.firestore.FieldValue.serverTimestamp(),
+          ...(hasBatches ? { batches: [], expireAtMs: admin.firestore.FieldValue.delete() } : {}),
         });
+      } else if (hasBatches) {
+        const batches = consumeBatches(batchesOf(listing), qty);
+        tx.update(listingRef, { quantity: remaining, price: unitPrice * remaining, batches, expireAtMs: nextExpireAtMs(batches) });
       } else {
         tx.update(listingRef, { quantity: remaining, price: unitPrice * remaining });
       }

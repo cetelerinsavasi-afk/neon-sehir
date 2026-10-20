@@ -21,7 +21,9 @@ function timeAgo(createdAtMs) {
   return `${Math.floor(hours / 24)} gün`;
 }
 
-export default function PostCard({ post, liked, isOwn }) {
+// v103: commentsInline — gönderi, yorumları zaten altında açık bir görünümde
+// (bildirimden açılan gönderi) gösteriliyorsa yorum düğmesi ikinci bir panel açmaz.
+export default function PostCard({ post, liked, isOwn, commentsInline = false }) {
   const [busy, setBusy] = useState(false);
   const [optimisticLiked, setOptimisticLiked] = useState(null);
   const [optimisticCount, setOptimisticCount] = useState(null);
@@ -123,7 +125,7 @@ export default function PostCard({ post, liked, isOwn }) {
           </button>
         )}
 
-        <button className="six-comment-btn" onClick={() => setCommentsOpen(true)}>
+        <button className="six-comment-btn" onClick={() => !commentsInline && setCommentsOpen(true)}>
           <MessageCircle size={16} />
           <span>{post.commentCount || 0}</span>
         </button>
@@ -136,7 +138,7 @@ export default function PostCard({ post, liked, isOwn }) {
           onClose={() => setMenuOpen(false)}
           actions={[
             { key: 'profile', icon: '👤', label: 'Profili gör', onClick: () => setPanelOpen(true) },
-            { key: 'comments', icon: '💬', label: 'Yorumlar', onClick: () => setCommentsOpen(true) },
+            ...(commentsInline ? [] : [{ key: 'comments', icon: '💬', label: 'Yorumlar', onClick: () => setCommentsOpen(true) }]),
             { key: 'report', icon: '⚑', label: 'Bildir', subtle: true, onClick: () => setReportOpen(true) },
           ]}
         />

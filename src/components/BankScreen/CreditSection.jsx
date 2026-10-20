@@ -8,7 +8,7 @@ import './CreditSection.css';
 
 // v67 — Banka › Krediler: kredi puanı sistemi.
 // Kredi puanın = %20 × (araç + silah + malzeme anında satış değeri + fabrika
-// değeri + futbol takımının değeri). Aynı anda tek kredi; 10 gün, %20 faiz.
+// değeri + futbol takımının değeri) − devlete borç (v103). Aynı anda tek kredi; 10 gün, %20 faiz.
 // Asıl hesap sunucuda (functions/index.js computeCreditScore).
 const fmt = (n) => Math.floor(Number(n) || 0).toLocaleString('tr-TR');
 // v70: kredi tutarları büyük — 100.000 ve 1M butonları her zaman görünsün
@@ -111,13 +111,23 @@ export default function CreditSection() {
                 </div>
               );
             })}
+            {info.debt > 0 && (
+              <div className="cr-part debt">
+                <span className="cr-part-name">⚖️ Borç (Cezalar)</span>
+                <span className="cr-part-bar">
+                  <i style={{ width: `${Math.min(100, Math.max(2, Math.round((info.debt / Math.max(1, info.gross || 0)) * 100)))}%` }} />
+                </span>
+                <span className="cr-part-val">−{fmt(info.debt)}</span>
+              </div>
+            )}
             <div className="cr-formula">
-              Toplam varlık {fmt(info.total)} × %{Math.round((info.ratio || 0.2) * 100)} = <b>{fmt(limit)}</b>
+              Toplam varlık {fmt(info.total)} × %{Math.round((info.ratio || 0.2) * 100)}
+              {info.debt > 0 ? <> − borç {fmt(info.debt)}</> : null} = <b>{fmt(limit)}</b>
             </div>
           </div>
         )}
         {loadErr && <p className="cr-err">{loadErr}</p>}
-        <p className="cr-tip">💡 Kredi puanını yükselterek daha fazla kredi çekebilirsin: araç, silah, malzeme, fabrika ve futbol takımı puanını artırır.</p>
+        <p className="cr-tip">💡 Kredi puanını yükselterek daha fazla kredi çekebilirsin: araç, silah, malzeme, fabrika ve futbol takımı puanını artırır; cezalardaki borcun puanından düşülür.</p>
       </div>
 
       {/* Aktif kredi */}

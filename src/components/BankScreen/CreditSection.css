@@ -73,6 +73,13 @@
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
+/* v103: devlete borç puandan düşer */
+.cr-part.debt .cr-part-bar i {
+  background: linear-gradient(90deg, #ff5a7a, #ff9a4d);
+}
+.cr-part.debt .cr-part-val {
+  color: #ff7a8f;
+}
 .cr-formula {
   margin-top: 4px;
   padding-top: 8px;

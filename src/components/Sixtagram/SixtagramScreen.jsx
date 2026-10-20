@@ -13,7 +13,7 @@ import { useBlocks } from '../../contexts/BlocksContext';
 import { isHiddenForMe } from '../../lib/ugcVisibility';
 import ComposeModal from './ComposeModal';
 import NotificationsPanel from './NotificationsPanel';
-import CommentsPanel from './CommentsPanel';
+import PostDetailPanel from './PostDetailPanel';
 import './SixtagramScreen.css';
 
 const TABS = [
@@ -31,7 +31,8 @@ export default function SixtagramScreen() {
   // BURADA (SixtagramScreen seviyesinde) açılır — çünkü o post o an
   // Anasayfa/Profil listesinde görünür olmayabilir (feed'de aşağıda
   // kalmış, hatta hiç yüklenmemiş olabilir).
-  const [openCommentsPostId, setOpenCommentsPostId] = useState(null);
+  // v103: { postId, commentId } — gönderi + yorumlar birlikte açılır.
+  const [openPost, setOpenPost] = useState(null);
   // Anasayfa sekmesine her giriş, akışı en güncel beğeni sırasına göre
   // baştan çeker (bkz. useSixtagramFeed'in üstündeki not — gezinirken
   // sıralamanın kendiliğinden zıplamasını istemediğimiz için canlı
@@ -145,17 +146,20 @@ export default function SixtagramScreen() {
       {notifOpen && (
         <NotificationsPanel
           onClose={() => setNotifOpen(false)}
-          onOpenComments={(postId) => {
-            setOpenCommentsPostId(postId);
+          onOpenPost={(postId, commentId) => {
+            setOpenPost({ postId, commentId });
             setNotifOpen(false);
           }}
         />
       )}
 
-      {openCommentsPostId && (
-        <CommentsPanel
-          postId={openCommentsPostId}
-          onClose={() => setOpenCommentsPostId(null)}
+      {openPost && (
+        <PostDetailPanel
+          key={`${openPost.postId}_${openPost.commentId || ''}`}
+          postId={openPost.postId}
+          focusCommentId={openPost.commentId}
+          likedIds={likedIds}
+          onClose={() => setOpenPost(null)}
         />
       )}
     </div>

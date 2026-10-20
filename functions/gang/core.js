@@ -63,6 +63,8 @@ export function createCore(deps) {
         gangState: (g) => d(`gangs/${g}/private/state`),
         depot: (g) => d(`gangs/${g}/private/depot`),
         gangLog: (g) => c(`gangs/${g}/log`),
+        // v103: güvenli yasaklı madde satışından günlük haraç toplamı (sadece sunucu)
+        harac: (g, day) => d(`gangs/${g}/harac/${day}`),
         gangChat: (g, ch) => c(`gangs/${g}/chat_${ch}`),
         pending: (g) => c(`gangs/${g}/pending`),
         votes: (g) => c(`gangs/${g}/votes`),

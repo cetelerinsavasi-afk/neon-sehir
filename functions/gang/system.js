@@ -27,7 +27,7 @@ export function createGangSystem(deps) {
   const market = createMarketActions(core, trade);
   const wars = createWarActions(core);
   const votes = createVoteActions(core);
-  const clock = createClock(core, { wars, votes, treasury, intel });
+  const clock = createClock(core, { wars, votes, treasury, intel, market });
   core.cleanupGang = clock.cleanupGang;
 
   const adminUids = deps.adminUids || [];
@@ -636,6 +636,52 @@ export function createGangSystem(deps) {
     return res;
   }
 
+  // v103 — Parkta GÜVENLİ yasaklı madde satışı → oyuncunun çetesine haraç
+  // (sadece canlı dünya). Çetesi yoksa / sadece İstihbarattaysa para kimseye
+  // gitmez. Satış başına sohbet mesajı YOK — gün içindeki adet ve tutar
+  // gangs/{g}/harac/{gün} belgesinde birikir, 00:00 turunda tek mesaj olur.
+  // İdempotent: refId.
+  async function onContrabandHarac(uid, amount, refId) {
+    const amt = Math.floor(Number(amount) || 0);
+    if (!(amt > 0) || !uid) return { skipped: true };
+    const cfg = await getConfig();
+    if (!cfg.liveOpen || !cfg.liveWorldId) return { skipped: 'no_live' };
+    const world = await core.loadWorld(cfg.liveWorldId);
+    if (!world) return { skipped: 'no_world' };
+    const ctx = core.makeCtx(cfg.liveWorldId, world, { actorId: 'system' });
+    const res = await db.runTransaction(async (tx) => {
+      const markRef = ctx.ref.request(`harac_${String(refId).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100)}`);
+      const [mark, msSnap] = await Promise.all([tx.get(markRef), tx.get(db.doc(`gangWorlds/${ctx.worldId}/memberships/${uid}`))]);
+      if (mark.exists) return mark.data().result || { skipped: 'dup' };
+      const gangId = msSnap.data()?.gangId || null;
+      let result;
+      if (!gangId) {
+        result = { credited: 0, burned: amt, reason: 'no_gang' };
+      } else {
+        const [gangSnap, memberSnap, haracSnap] = await Promise.all([
+          tx.get(ctx.ref.gang(gangId)),
+          tx.get(ctx.ref.member(gangId, uid)),
+          tx.get(ctx.ref.harac(gangId, ctx.dateKey)),
+        ]);
+        if (gangSnap.data()?.status !== 'active' || !memberSnap.exists) {
+          result = { credited: 0, burned: amt, reason: 'no_gang' };
+        } else {
+          tx.update(ctx.ref.gangState(gangId), { kasa: core.FV.increment(amt) });
+          const h = haracSnap.data();
+          if (h) tx.update(haracSnap.ref, { count: core.FV.increment(1), amount: core.FV.increment(amt), updatedAtMs: ctx.now });
+          else tx.set(haracSnap.ref, { dateKey: ctx.dateKey, count: 1, amount: amt, announced: false, updatedAtMs: ctx.now });
+          core.ledger(tx, ctx, { type: 'gang_contraband_harac', amount: amt, from: { kind: 'player', id: uid }, to: { kind: 'gang', id: gangId }, refId: String(refId).slice(0, 100), actorId: uid });
+          result = { credited: amt, burned: 0, gangId, gangName: gangSnap.data()?.name || null };
+        }
+      }
+      if (result.burned) core.ledger(tx, ctx, { type: 'contraband_harac_burn', amount: amt, from: { kind: 'player', id: uid }, to: { kind: 'burn' }, refId: String(refId).slice(0, 100), actorId: uid });
+      tx.set(markRef, { atMs: ctx.now, result });
+      return result;
+    });
+    core.flushLogs(ctx);
+    return res;
+  }
+
   // ---------------------------------------------------------------------------
   // v38 — AKTİFLİK: 30 gün boyunca savaşa katılmayan, HİÇBİR sohbete mesaj
   // yazmayan ve ibadet etmeyen üye atılır (üçünden biri aktiflik sayılır).
@@ -687,5 +733,5 @@ export function createGangSystem(deps) {
   // Testler için iç erişim (production'da kullanılmaz)
   const _internal = { core, membership, treasury, trade, market, wars, votes, intel, clock, HANDLERS };
 
-  return { handleAction, handleAdmin, runAllClocks, onPoliceBustReward, onSuspicionFine, isInLiveGang, ensureLiveWorld, onPlayerActivity, touchSocialActivity, _internal };
+  return { handleAction, handleAdmin, runAllClocks, onPoliceBustReward, onSuspicionFine, onContrabandHarac, isInLiveGang, ensureLiveWorld, onPlayerActivity, touchSocialActivity, _internal };
 }

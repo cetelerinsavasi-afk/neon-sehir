@@ -4,6 +4,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useInventory } from '../../hooks/useInventory';
 import { useParkPresence } from '../../hooks/useParkPresence';
+import ShadyDealPanel from '../ShadyDeal/ShadyDealPanel';
+import { shadyResultView } from '../ShadyDeal/shadyDeal';
 import { enterPark, sellContrabandAtPark, buyFromBufe, createSixtagramPost, captureCameraSnapshot } from '../../services/gameActions';
 import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR, AVATAR_FULL_VIEWBOX_H, AVATAR_WAIST_Y } from '../../lib/avatarShapes';
 import {
@@ -15,7 +17,6 @@ import { INTERIOR_AVATAR_SCALE } from '../../lib/canvasWorldKit';
 import Hud from '../Hud/Hud';
 import PhoneScreen from '../Phone/PhoneScreen';
 import ResultModal from '../ResultModal/ResultModal';
-import InfoIcon from '../InfoIcon/InfoIcon';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import './ParkWorldScreen.css';
 import NearbyPlayersButton from '../NearbyPlayers/NearbyPlayersButton';
@@ -42,7 +43,6 @@ const CHAT_BUBBLE_MS = 13000; // yeni istek: "bi tık daha uzun dursun" (eskisi 
 // bu yüzden gözle görülür şekilde daha küçük kalıyordu. Artık Park da AYNI
 // değeri kullanıyor (hem canlı sahnede hem kamera karesinde, bkz. aşağı).
 const AVATAR_SCALE = INTERIOR_AVATAR_SCALE;
-const PARK_SELL_PRICE = 5000;
 const CAMERA_RADIUS = 170;
 
 // --- Firebase maliyet ayarları (bkz. önceki not) -------------------------
@@ -207,7 +207,7 @@ export default function ParkWorldScreen({ onExit }) {
   // bitene kadar var olmaya devam etsin" — tek bir mesaj yerine, HENÜZ
   // süresi dolmamış mesajların dizisi tutuluyor (bkz. sendChat/renderFrame).
   const [myBubbles, setMyBubbles] = useState([]);
-  const [sellBusy, setSellBusy] = useState(false);
+  const [sellBusy, setSellBusy] = useState(null); // v103: 'risky' | 'safe' | null
   const [sellResult, setSellResult] = useState(null);
   const [bufeBusy, setBufeBusy] = useState(null);
   const [error, setError] = useState(null);
@@ -747,20 +747,20 @@ export default function ParkWorldScreen({ onExit }) {
     targetRef.current = { x: Math.max(30, Math.min(W - 30, p.x)), y: Math.max(30, Math.min(H - 30, p.y)) };
   }
 
-  const handleSell = async () => {
+  const handleSell = async (mode) => {
     if (!user) {
       setShowGuestPrompt(true);
       return;
     }
-    setSellBusy(true);
+    setSellBusy(mode);
     setError(null);
     try {
-      const res = await sellContrabandAtPark();
+      const res = await sellContrabandAtPark(mode);
       setSellResult(res.data);
     } catch (err) {
       setError(err.message || 'Satış başarısız.');
     } finally {
-      setSellBusy(false);
+      setSellBusy(null);
     }
   };
 
@@ -1034,15 +1034,9 @@ export default function ParkWorldScreen({ onExit }) {
       {panel === 'npc' && (
         <div className="pw-panel-backdrop" onClick={() => setPanel(null)}>
           <div className="pw-panel" onClick={(e) => e.stopPropagation()}>
-            <p className="pw-panel-title">Şüpheli Adam</p>
-            <p className="pw-hint">
-              Sahip olduğun kaçak mal: <strong>{contrabandQty} adet</strong> · Satış fiyatı{' '}
-              {PARK_SELL_PRICE.toLocaleString('tr-TR')} altın/adet
-              <InfoIcon text="Her satışta o anki şüphe yüzden kadar ihtimalle polis seni yakalayabilir. Yakalanırsan kazanacağın altın yerine aynı miktar devlete borç yazılır. Her satış şüpheni +5 artırır. Polisen, yakalanırsan ceza 2 katı olur." />
-            </p>
-            <button className="pw-panel-btn primary" disabled={sellBusy || contrabandQty < 1} onClick={handleSell}>
-              {sellBusy ? 'Satılıyor…' : contrabandQty < 1 ? 'Malın yok' : 'Sat (1 adet)'}
-            </button>
+            <p className="pw-panel-title">🕶️ Şüpheli Adam</p>
+            <ShadyDealPanel qty={contrabandQty} busy={sellBusy} onSell={handleSell} />
+            {error && <p className="pw-error">{error}</p>}
             <button className="pw-panel-btn" onClick={() => setPanel(null)}>Uzaklaş</button>
           </div>
         </div>
@@ -1067,18 +1061,7 @@ export default function ParkWorldScreen({ onExit }) {
       )}
 
       {sellResult && (
-        <ResultModal
-          title={sellResult.caught ? 'Yakalandın!' : 'Satış Başarılı! 🎉'}
-          message={
-            sellResult.caught
-              ? `${sellResult.penalty.toLocaleString('tr-TR')} altın devlete borç yazıldı.`
-              : (sellResult.debtRepaid > 0
-                ? `${sellResult.earned.toLocaleString('tr-TR')} altına sattın. ${sellResult.debtRepaid.toLocaleString('tr-TR')} altın borçlarına gitti.`
-                : `+${sellResult.earned.toLocaleString('tr-TR')} altın kazandın.`)
-          }
-          tone={sellResult.caught ? 'fail' : 'success'}
-          onClose={() => setSellResult(null)}
-        />
+        <ResultModal {...shadyResultView(sellResult)} onClose={() => setSellResult(null)} />
       )}
     </div>
   );

@@ -98,3 +98,14 @@ test('araç kredisi varken yeni kredi yok; vadesi dolan kredi devlete borç olur
   assert.equal(G('users/u1').credit, undefined);
   assert.equal(G('users/u1').debtToState, 10_000);
 });
+
+test('v103: devlete borç kredi puanından düşer (eksiye inmez)', async () => {
+  const { fns, S, G } = setup();
+  S('users/u1', { ...G('users/u1'), debtToState: 3_000 });
+  const s = await fns.computeCreditScore('u1');
+  assert.equal(s.gross, 103_000);
+  assert.equal(s.debt, 3_000);
+  assert.equal(s.limit, 100_000);
+  S('users/u1', { ...G('users/u1'), debtToState: 500_000 });
+  assert.equal((await fns.computeCreditScore('u1')).limit, 0);
+});

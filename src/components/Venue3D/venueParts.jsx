@@ -25,7 +25,8 @@ import WeaponShopScreen from '../WeaponShopScreen/WeaponShopScreen';
 import Workshop from '../Workshop/Workshop';
 import GarageScreen from '../GarageScreen/GarageScreen';
 import ResultModal from '../ResultModal/ResultModal';
-import InfoIcon from '../InfoIcon/InfoIcon';
+import ShadyDealPanel from '../ShadyDeal/ShadyDealPanel';
+import { shadyResultView } from '../ShadyDeal/shadyDeal';
 import HeldIcon from '../HouseScreen/HeldIcon';
 import { camiiDynamicNpcs } from '../../../functions/venueLayouts.js';
 import '../../styles/bizui.css';
@@ -433,7 +434,6 @@ const BUFE_MENU = [
   { id: 'oralet', label: 'Oralet', price: 40 },
   { id: 'latte', label: 'Latte', price: 500 },
 ];
-const PARK_SELL_PRICE = 5000;
 export function ParkPart({ panel, setPanel, flash, walk }) {
   const { inventory } = useInventory();
   const qty = inventory?.yasakliMadde || 0;
@@ -453,11 +453,11 @@ export function ParkPart({ panel, setPanel, flash, walk }) {
       setBusy(null);
     }
   };
-  const sell = async () => {
-    setBusy('sell');
+  const sell = async (mode) => {
+    setBusy(mode);
     setErr(null);
     try {
-      const r = await sellContrabandAtPark();
+      const r = await sellContrabandAtPark(mode);
       setSellResult(r.data);
     } catch (e) {
       setErr(e?.message || 'Satış başarısız.');
@@ -488,30 +488,11 @@ export function ParkPart({ panel, setPanel, flash, walk }) {
       )}
       {panel === 'npc' && (
         <Sheet title="🕶️ Şüpheli Adam" onClose={() => setPanel(null)}>
-          <p className="ws-hint">
-            Sahip olduğun kaçak mal: <strong>{qty} adet</strong> · Satış fiyatı {fmt(PARK_SELL_PRICE)} altın/adet
-            <InfoIcon text="Her satışta o anki şüphe yüzden kadar ihtimalle polis seni yakalayabilir. Yakalanırsan kazanacağın altın yerine aynı miktar devlete borç yazılır. Her satış şüpheni +5 artırır. Polisen, yakalanırsan ceza 2 katı olur." />
-          </p>
-          <button className="ws-panel-btn primary" disabled={busy === 'sell' || qty < 1} onClick={sell}>
-            {busy === 'sell' ? 'Satılıyor…' : qty < 1 ? 'Malın yok' : 'Sat (1 adet)'}
-          </button>
+          <ShadyDealPanel qty={qty} busy={busy === 'risky' || busy === 'safe' ? busy : null} onSell={sell} />
           {err && <p className="ws-error">{err}</p>}
         </Sheet>
       )}
-      {sellResult && (
-        <ResultModal
-          title={sellResult.caught ? 'Yakalandın!' : 'Satış Başarılı! 🎉'}
-          message={
-            sellResult.caught
-              ? `${fmt(sellResult.penalty)} altın devlete borç yazıldı.`
-              : sellResult.debtRepaid > 0
-                ? `${fmt(sellResult.earned)} altına sattın. ${fmt(sellResult.debtRepaid)} altın borçlarına gitti.`
-                : `+${fmt(sellResult.earned)} altın kazandın.`
-          }
-          tone={sellResult.caught ? 'fail' : 'success'}
-          onClose={() => setSellResult(null)}
-        />
-      )}
+      {sellResult && <ResultModal {...shadyResultView(sellResult)} onClose={() => setSellResult(null)} />}
     </>
   );
 }

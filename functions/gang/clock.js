@@ -21,7 +21,7 @@ const MAX_CATCHUP_DAYS = 40;
 
 export function createClock(core, actions) {
   const { db, FV, ledger, gangLog, intelLog, notify } = core;
-  const { wars: warActions, votes: voteActions, treasury, intel: intelActions } = actions;
+  const { wars: warActions, votes: voteActions, treasury, intel: intelActions, market: marketActions } = actions;
 
   function tickCtx(worldId, world, dayKey) {
     const ctx = core.makeCtx(worldId, world, { actorId: 'system' });
@@ -806,6 +806,21 @@ export function createClock(core, actions) {
     });
   }
 
+  // v103 — Parktaki güvenli satışlardan gelen haraç: gün içinde mesaj yok,
+  // 00:00'da çete sohbetine tek özet. İdempotent (announced bayrağı).
+  async function announceHarac(ctx, gangId, dayKey) {
+    const ref = ctx.ref.harac(gangId, dayKey);
+    return db.runTransaction(async (tx) => {
+      const h = (await tx.get(ref)).data();
+      if (!h || h.announced || !(Number(h.count) > 0)) return null;
+      const n = Number(h.count).toLocaleString('tr-TR');
+      const amt = Number(h.amount || 0).toLocaleString('tr-TR');
+      core.announce(tx, ctx, gangId, '💊', `Üyeler bugün ${n} adet yasaklı madde sattı, ${amt} haraç toplandı.`);
+      tx.update(ref, { announced: true, announcedAtMs: ctx.now });
+      return { count: h.count, amount: h.amount };
+    });
+  }
+
   async function snapshotKasa(ctx, stateRef, gangRef = null) {
     return db.runTransaction(async (tx) => {
       const s = await tx.get(stateRef);
@@ -1431,6 +1446,8 @@ export function createClock(core, actions) {
       await safe(ctx, `handover:${gangId}`, () => processHandover(ctx, gangId));
       await safe(ctx, `ranks:${gangId}`, () => recomputeGangRanks(ctx, gangId));
       await safe(ctx, `pending-votes:${gangId}`, () => startPendingVotes(ctx, gangId));
+      // v103: dünkü güvenli yasaklı madde satışlarının haraç özeti (tek mesaj)
+      await safe(ctx, `harac:${gangId}`, () => announceHarac(ctx, gangId, prev));
       await safe(ctx, `kasa:${gangId}`, () => snapshotKasa(ctx, ctx.ref.gangState(gangId), ctx.ref.gang(gangId)));
       await safe(ctx, `roster:${gangId}`, () => core.refreshGangRoster(ctx, gangId));
     }
@@ -1649,6 +1666,8 @@ export function createClock(core, actions) {
       await safe(ctx0, 'announce-attacks', () => announceAttacks(ctx0));
       await safe(ctx0, 'bets-live', () => processBets(ctx0));
     }
+    // v103: 7 günü dolan ucuz malzeme ilan partileri oyuna satılır (bkz. actions/market.js)
+    if (marketActions?.settleDepotAutoSales) await safe(ctx0, 'market-autosale', () => marketActions.settleDepotAutoSales(ctx0));
     // süresi dolan dağıtımlar
     const dists = await ctx0.ref.distributions().where('openUntilMs', '<=', ctx0.now).limit(200).get();
     for (const d of dists.docs) await safe(ctx0, `dist:${d.id}`, () => treasury.expireDistribution(ctx0, d.id));
