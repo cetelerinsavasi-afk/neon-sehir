@@ -21,7 +21,7 @@ const MAX_CATCHUP_DAYS = 40;
 
 export function createClock(core, actions) {
   const { db, FV, ledger, gangLog, intelLog, notify } = core;
-  const { wars: warActions, votes: voteActions, treasury, intel: intelActions, market: marketActions } = actions;
+  const { wars: warActions, votes: voteActions, treasury, intel: intelActions, market: marketActions, roles: roleActions } = actions;
 
   function tickCtx(worldId, world, dayKey) {
     const ctx = core.makeCtx(worldId, world, { actorId: 'system' });
@@ -135,9 +135,9 @@ export function createClock(core, actions) {
             if (intelK?.exists) core.creditIntel(tx, ctx, intelK, fine, { type: 'intel_op_reward', refId: strongest.id, from: { kind: 'gang', id: truck.gangId } });
             else ledger(tx, ctx, { type: 'intel_op_fine', amount: fine, from: { kind: 'gang', id: truck.gangId }, to: { kind: 'burn' }, refId: strongest.id, actorId: 'system' });
           }
-          core.announce(tx, ctx, truck.gangId, '🚨', `İstihbarat TIR #${truck.code} tırını yakaladı — yük depoda, kasadan ${fine.toLocaleString('tr-TR')} altın ceza kesildi.`);
+          core.announce(tx, ctx, truck.gangId, '🚨', `Polis TIR #${truck.code} tırını yakaladı — yük depoda, kasadan ${fine.toLocaleString('tr-TR')} altın ceza kesildi.`);
         }
-        core.announceIntel(tx, ctx, '🚔', `TIR #${truck.code} operasyonu BAŞARILI — çeteden ${fine.toLocaleString('tr-TR')} altın tahsil edildi.`);
+        core.announceIntel(tx, ctx, '🚔', `TIR #${truck.code} operasyonu BAŞARILI — çeteden ${fine.toLocaleString('tr-TR')} altın tahsil edildi (devlet kasasına).`);
         strongest.reward = fine;
       } else if (ownerAlive) {
         const upd = { usedUnits: FV.increment(units) };
@@ -207,7 +207,7 @@ export function createClock(core, actions) {
           const active = attacks.filter((a) => a.status === 'active');
           for (const a of active) tx.update(ctx.ref.war(a.id), { announced: true, gangIds: FV.arrayUnion(...add), activeGangIds: FV.arrayUnion(...add) });
           if (active.length === 0) return;
-          const names = active.map((a) => (a.type === 'intelop' ? `🕵️ İstihbarat${a.bribe > 0 ? ` (rüşvet ${a.bribe.toLocaleString('tr-TR')})` : ''}` : `${a.sides?.attacker?.name || ''}${a.harac > 0 ? ` (haraç ${a.harac.toLocaleString('tr-TR')})` : ''}`));
+          const names = active.map((a) => (a.type === 'intelop' ? `🚓 Polis${a.bribe > 0 ? ` (rüşvet ${a.bribe.toLocaleString('tr-TR')})` : ''}` : `${a.sides?.attacker?.name || ''}${a.harac > 0 ? ` (haraç ${a.harac.toLocaleString('tr-TR')})` : ''}`));
           core.announce(tx, ctx, def.defenderGangId, '⚠️', `TIR #${def.truckCode} saldırı altında! ${names.join(', ')}. Savunma ${hhmmOf(def.startsAtMs)}–24:00; haraç/rüşvet ${GANG.HARAC_PAY_DEADLINE_HOUR}:00'e kadar.`);
           if (defGang?.babaId) notify(tx, ctx, defGang.babaId, `⚠️ TIR #${def.truckCode} saldırı altında! Savunmaya katıl.`, 'sabotage');
           const defName = def.sides?.[def.defenderGangId]?.name || '';
@@ -266,14 +266,14 @@ export function createClock(core, actions) {
           winner === g
             ? '🏆 Bahisli savaşı kazandınız! Tüm bahis kasaya.'
             : winner === 'intel'
-              ? '🕵️ Bahisli savaşı İstihbarat kazandı — tüm bahsi aldı.'
+              ? '🚓 Bahisli savaşı Polis kazandı — tüm bahsi aldı.'
               : winner
                 ? '☠️ Bahisli savaşı kaybettiniz.'
                 : '🤝 Bahisli savaş berabere — bahisler iade edildi.';
         gangLog(tx, ctx, g, winner === g ? '🏆' : winner ? '☠️' : '🤝', txt);
         core.announceMgmt(tx, ctx, g, '💰', winner === g ? `Bahis: +${pot.toLocaleString('tr-TR')} kasaya.` : winner ? `Bahis: ${stake.toLocaleString('tr-TR')} kaybedildi.` : `Bahis: ${stake.toLocaleString('tr-TR')} iade edildi.`);
       }
-      if (hasIntel) core.announceIntel(tx, ctx, winner === 'intel' ? '🏆' : '☠️', winner === 'intel' ? `Bahisli savaşı kazandık! +${pot.toLocaleString('tr-TR')} İstihbarat kasasına.` : 'Bahisli savaşı kaybettik.');
+      if (hasIntel) core.announceIntel(tx, ctx, winner === 'intel' ? '🏆' : '☠️', winner === 'intel' ? `Bahisli savaşı kazandık! +${pot.toLocaleString('tr-TR')} devlet kasasına.` : 'Bahisli savaşı kaybettik.');
       ctx.logs.push({ gang: 'bet_resolved', world: ctx.worldId, warId, winner });
       return { winner };
     });
@@ -383,7 +383,7 @@ export function createClock(core, actions) {
       if (winnerKey === 'intel') {
         intelIncome = Math.floor(totalWarPower * INTEL.WAR_WIN_KASA_TOTAL_RATIO);
         const cr = intelK?.exists && intelIncome > 0 ? core.creditIntel(tx, ctx, intelK, intelIncome, { type: 'intel_trade_war_win', refId: warId }) : { credited: 0, burned: 0 };
-        intelLog(tx, ctx, '🏆', `Pazar savaşını İstihbarat kazandı! Yol kimseye verilmedi, kasaya +${cr.credited.toLocaleString('tr-TR')}${cr.burned > 0 ? ` (${cr.burned.toLocaleString('tr-TR')} kasa sınırı yüzünden yandı)` : ''}.`);
+        intelLog(tx, ctx, '🏆', `Pazar savaşını Polis Teşkilatı kazandı! Yol kimseye verilmedi, devlet kasasına +${cr.credited.toLocaleString('tr-TR')}.`);
       }
       // v84: biat edenlerin katkısı — kendi günlüklerine ve biat ettikleri çetenin günlüğüne
       const biatSides = { ...(w.biatSides || {}) };
@@ -859,7 +859,7 @@ export function createClock(core, actions) {
           const actorId = link.data()?.actorId;
           if (actorId) {
             tx.set(ctx.ref.membership(actorId), { intelRank: ranks[r.id] }, { merge: true });
-            notify(tx, ctx, actorId, `🕵️ İstihbarat rütben: ${core.constants?.RANK_LABELS?.[ranks[r.id]] || ranks[r.id]}.`, 'rank');
+            notify(tx, ctx, actorId, `🚓 Polis rütben: ${core.constants?.RANK_LABELS?.[ranks[r.id]] || ranks[r.id]}.`, 'rank');
           }
         })
       );
@@ -1039,6 +1039,53 @@ export function createClock(core, actions) {
     return { routes: routes.size };
   }
 
+  // v108 — TEK SEFERLİK: İstihbarat kasası kapandı. İçindeki para DEVLET kasasına
+  // devredilir (gelir: 'İstihbarat kasasının devri'), kasa sıfırlanır.
+  async function ensureIntelKasaClosedV108(ctx) {
+    if (ctx.world?.intelKasaClosedV108) return { skipped: true };
+    const out = await db.runTransaction(async (tx) => {
+      const [w, st] = await Promise.all([tx.get(ctx.ref.world()), tx.get(ctx.ref.intelState())]);
+      if (w.data()?.intelKasaClosedV108) return { skipped: true };
+      const kasa = Math.max(0, Math.floor(Number(st.data()?.kasa || 0)));
+      if (st.exists) tx.update(ctx.ref.intelState(), { kasa: 0, kasaAtMidnight: 0, distributableLeft: 0, closedV108: true });
+      if (kasa > 0) {
+        core.stateTx(tx, ctx, 'in', 'ist_kasa_devri', kasa);
+        ledger(tx, ctx, { type: 'intel_kasa_to_state_v108', amount: kasa, from: { kind: 'intel', id: 'main' }, to: { kind: 'state', id: 'main' }, refId: 'v108', actorId: 'system' });
+      }
+      intelLog(tx, ctx, '🏛️', `Yeni düzen: İstihbarat kasası kapandı${kasa > 0 ? ` (${kasa.toLocaleString('tr-TR')} altın devlet kasasına devredildi)` : ''}. Operasyon masraflarını devlet öder, kazançlar devlete gider; maaşlar her gece 00:00'da yatar.`);
+      tx.set(ctx.ref.world(), { intelKasaClosedV108: ctx.now }, { merge: true });
+      return { kasa };
+    });
+    ctx.world = { ...(ctx.world || {}), intelKasaClosedV108: true };
+    return out;
+  }
+
+  // v108 — TEK SEFERLİK: süresiz sicil. Eski günlük kayıtlar (son ~15 gün)
+  // üye başına toplanır; sicil belgesi zaten varsa dokunulmaz.
+  async function ensureIntelRecordsV108(ctx) {
+    if (ctx.world?.intelRecordsV108) return { skipped: true };
+    const [roster, stats] = await Promise.all([ctx.ref.rosterCol().get(), ctx.ref.intelStats().get()]);
+    const agg = new Map();
+    stats.docs.forEach((d) => {
+      const v = d.data();
+      if (!v.rosterId) return;
+      const a = agg.get(v.rosterId) || { wars: {}, power: 0, truckReports: 0, betReports: 0, truckLeaks: 0, betLeaks: 0 };
+      Object.keys(v.wars || {}).forEach((w) => (a.wars[w] = true));
+      for (const k of ['power', 'truckReports', 'betReports', 'truckLeaks', 'betLeaks']) a[k] += Number(v[k] || 0);
+      agg.set(v.rosterId, a);
+    });
+    for (const r of roster.docs) {
+      await db.runTransaction(async (tx) => {
+        const rec = await tx.get(ctx.ref.intelRecord(r.id));
+        if (rec.exists) return;
+        tx.set(ctx.ref.intelRecord(r.id), { rosterId: r.id, joinedAtMs: Number(r.data().joinedAtMs || 0), ...(agg.get(r.id) || {}), seededV108: true });
+      });
+    }
+    await ctx.ref.world().set({ intelRecordsV108: true }, { merge: true });
+    ctx.world = { ...(ctx.world || {}), intelRecordsV108: true };
+    return { members: roster.size };
+  }
+
   // İstihbarat üyesi Baba karar süresi doldu → sessizce İstihbarattan çıkar.
   async function processIntelDecisions(ctx) {
     const snap = await ctx.ref.memberships().where('intelDecisionDeadline', '<=', ctx.dateKey).get();
@@ -1051,8 +1098,8 @@ export function createClock(core, actions) {
             tx.set(ctx.ref.membership(d.id), { intelDecisionGangId: null, intelDecisionDeadline: null }, { merge: true });
             return;
           }
-          const plan = await intelActions.planIntelLeave(tx, { ...ctx, actorId: d.id }, m);
-          intelActions.applyIntelLeave(tx, ctx, plan, { actorId: d.id });
+          const plan = await intelActions.planIntelLeave(tx, ctx, m, d.id);
+          intelActions.applyIntelLeave(tx, ctx, plan, { actorId: d.id, notifyText: '🚪 Karar vermediğin için çetenin başında kaldın — polislikten ayrıldın.' });
         })
       );
     }
@@ -1183,8 +1230,8 @@ export function createClock(core, actions) {
           }
           tx.update(d.ref, upd);
           if (addIntel) {
-            for (const g of [a, b]) core.announce(tx, ctx, g, '🕵️', `İstihbarat ${w.sides[a]?.name} ⚔️ ${w.sides[b]?.name} bahisli savaşına dahil oldu! Artık 3 taraf var — en güçlü taraf tüm bahsi alır.`);
-            core.announceIntel(tx, ctx, '⚔️', `Bahisli savaş başladı: ${w.sides[a]?.name} ⚔️ ${w.sides[b]?.name} — İstihbarat 3. taraf. Kazanan tüm bahsi alır.`);
+            for (const g of [a, b]) core.announce(tx, ctx, g, '🚓', `Polis ${w.sides[a]?.name} ⚔️ ${w.sides[b]?.name} bahisli savaşına dahil oldu! Artık 3 taraf var — en güçlü taraf tüm bahsi alır.`);
+            core.announceIntel(tx, ctx, '⚔️', `Bahisli savaş başladı: ${w.sides[a]?.name} ⚔️ ${w.sides[b]?.name} — Polis 3. taraf. Kazanan tüm bahsi alır.`);
           } else {
             gangLog(tx, ctx, a, '⚔️', `Bahisli savaş başladı: ${w.sides[b]?.name}`);
             gangLog(tx, ctx, b, '⚔️', `Bahisli savaş başladı: ${w.sides[a]?.name}`);
@@ -1451,6 +1498,16 @@ export function createClock(core, actions) {
       await safe(ctx, `kasa:${gangId}`, () => snapshotKasa(ctx, ctx.ref.gangState(gangId), ctx.ref.gang(gangId)));
       await safe(ctx, `roster:${gangId}`, () => core.refreshGangRoster(ctx, gangId));
     }
+    // 6.5) v108 / v109 — Polis Teşkilatı: polis ↔ teşkilat uzlaştırma (geçiş
+    //       bittiyse), 10 gün pasiflik, maaşlar + rüşvet payı (biten günün
+    //       rütbesiyle — rütbeler aşağıda yeniden hesaplanır)
+    if (roleActions) {
+      if (!ctx.isTest && (await db.doc('migrations/rolesV109').get()).data()?.done) {
+        await safe(ctx, 'police-reconcile', () => roleActions.reconcilePolice(ctx, safe));
+      }
+      await safe(ctx, 'role-inactivity', () => roleActions.processRoleInactivity(ctx, safe));
+      await safe(ctx, 'salaries', () => roleActions.paySalaries(ctx, safe));
+    }
     // 7) İstihbarat: rütbe + kasa
     await safe(ctx, 'intel-votes', () => intelActions.resolveIntelVotes(ctx, safe));
     await safe(ctx, 'intel-ranks', () => recomputeIntelRanks(ctx));
@@ -1458,6 +1515,10 @@ export function createClock(core, actions) {
     await safe(ctx, 'intel-kasa', () => snapshotKasa(ctx, ctx.ref.intelState()));
     await safe(ctx, 'intel-prestige-snapshot', () => snapshotIntelPrestige(ctx));
     await safe(ctx, 'intel-roster', () => core.refreshIntelRoster(ctx));
+    // v108 — bekleyen başvurular: Başkan/Şef yoksa ya da 12 saatte yanıt
+    // gelmediyse otomatik onay (gün içinde de her turda — bkz. runClock)
+    await safe(ctx, 'intel-apps', () => intelActions.settleIntelApplications(ctx, safe));
+    await safe(ctx, 'intel-roster-after-apps', () => core.refreshIntelRoster(ctx));
 
     // 8) bugünün başlangıçları
     await safe(ctx, 'trade-war', () => createTradeWar(ctx, dayKey));
@@ -1505,7 +1566,7 @@ export function createClock(core, actions) {
           if (ms.gangId === gangId) {
             tx.set(ctx.ref.membership(m.id), { gangId: null, gangRank: null, gangJoinedAtMs: null, ...(ms.intelDecisionGangId === gangId ? { intelDecisionGangId: null, intelDecisionDeadline: null } : {}) }, { merge: true });
           }
-          notify(tx, ctx, m.id, takedown ? `🕵️ Çeteniz (${gang.name}) İstihbarat tarafından ele geçirildi ve dağıtıldı.` : `🏚️ ${gang.name} çetesi dağıldı.`, 'dissolved');
+          notify(tx, ctx, m.id, takedown ? `🚓 Çeteniz (${gang.name}) polis tarafından çökertildi ve dağıtıldı.` : `🏚️ ${gang.name} çetesi dağıldı.`, 'dissolved');
         })
       );
     }
@@ -1518,7 +1579,7 @@ export function createClock(core, actions) {
         await treasury.expireDistribution(ctx, d.id, { refundToDisbanded: true });
       });
     }
-    // kasa → İstihbarata teslim edildiyse İstihbarat kasasına, değilse yakılır
+    // kasa → İstihbarata teslim edildiyse DEVLET kasasına (v108), değilse yakılır
     await safe(ctx, `cleanup-kasa:${gangId}`, () =>
       db.runTransaction(async (tx) => {
         const [s, intelK] = await Promise.all([tx.get(ctx.ref.gangState(gangId)), takedown ? core.readIntelKasa(tx, ctx) : null]);
@@ -1527,7 +1588,7 @@ export function createClock(core, actions) {
         tx.update(ctx.ref.gangState(gangId), { kasa: 0 });
         if (takedown && intelK?.exists) {
           const { credited, burned } = core.creditIntel(tx, ctx, intelK, kasa, { type: 'gang_takedown_to_intel', refId: gangId, from: { kind: 'gang', id: gangId } });
-          core.announceIntel(tx, ctx, '💰', `${gang.name} çetesinin kasası (${kasa.toLocaleString('tr-TR')}) el konuldu — kasaya ${credited.toLocaleString('tr-TR')} girdi${burned > 0 ? `, ${burned.toLocaleString('tr-TR')} kasa sınırı yüzünden yandı` : ''}.`);
+          core.announceIntel(tx, ctx, '💰', `${gang.name} çetesinin kasasına (${kasa.toLocaleString('tr-TR')}) el konuldu — ${credited.toLocaleString('tr-TR')} altın devlet kasasına geçti${burned > 0 ? `, ${burned.toLocaleString('tr-TR')} yandı` : ''}.`);
         } else {
           ledger(tx, ctx, { type: 'gang_dissolved_burn', amount: kasa, from: { kind: 'gang', id: gangId }, to: { kind: 'burn' }, refId: gangId, actorId: 'system' });
         }
@@ -1645,6 +1706,8 @@ export function createClock(core, actions) {
     await safe(ctx0, 'route-limit-v75', () => ensureRouteLimitV75(ctx0));
     await safe(ctx0, 'intel-kasa-reset-v88', () => ensureIntelKasaResetV88(ctx0));
     await safe(ctx0, 'intel-kasa-reset-v91', () => ensureIntelKasaResetV91(ctx0));
+    await safe(ctx0, 'intel-kasa-closed-v108', () => ensureIntelKasaClosedV108(ctx0));
+    await safe(ctx0, 'intel-records-v108', () => ensureIntelRecordsV108(ctx0));
     const results = [];
     let n = 0;
     while (last < ctx0.dateKey && n < maxDays) {
@@ -1665,6 +1728,11 @@ export function createClock(core, actions) {
       await safe(ctx0, 'depart-orders', () => departOrders(ctx0));
       await safe(ctx0, 'announce-attacks', () => announceAttacks(ctx0));
       await safe(ctx0, 'bets-live', () => processBets(ctx0));
+    }
+    // v108: 12 saatte yanıtlanmayan (ya da Başkan/Şef olmayan) İstihbarat başvuruları otomatik onaylanır
+    if (last >= ctx0.dateKey) {
+      const apps = await safe(ctx0, 'intel-apps-live', () => intelActions.settleIntelApplications(ctx0, safe));
+      if (apps?.accepted) await safe(ctx0, 'intel-roster-live', () => core.refreshIntelRoster(ctx0));
     }
     // v103: 7 günü dolan ucuz malzeme ilan partileri oyuna satılır (bkz. actions/market.js)
     if (marketActions?.settleDepotAutoSales) await safe(ctx0, 'market-autosale', () => marketActions.settleDepotAutoSales(ctx0));
@@ -1697,5 +1765,5 @@ export function createClock(core, actions) {
     return { ticks: results, errors: ctx0.errors || [] };
   }
 
-  return { runClock, runDailyTick, cleanupGang, resolveTruckTrip, productForSunday, dateKeyOf, processBets, resolveVoteEarly };
+  return { runClock, runDailyTick, cleanupGang, resolveTruckTrip, productForSunday, dateKeyOf, processBets, resolveVoteEarly, safe };
 }

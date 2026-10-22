@@ -1,14 +1,15 @@
 // Çeteler ekranının iskeleti: altta 5 iç sekme.
 //   Çete:        Çeteler · Sohbet · Savaş · Ticaret · Çetem
-//   İstihbarat:  Çeteler · Sohbet · Savaş · Operasyon · İstihbarat
-// Çetesi/İstihbaratı olmayan sadece "Çeteler" listesini görür (diğerleri
-// kilitli). Üye açınca Savaş sekmesine düşer; hem çetede hem İstihbarattaysa
-// önce İstihbarat gösterilir. Çete ↔ İstihbarat geçişi "Çeteler" sekmesinden.
+//   Polis Teşkilatı (v109; kodda "intel" — eski İstihbarat):
+//                Çeteler · Sohbet · Savaş · Operasyon · Teşkilat
+// Çetesi/teşkilatı olmayan sadece "Çeteler" listesini görür (diğerleri
+// kilitli). Üye açınca Savaş sekmesine düşer. Çete ↔ Polis Teşkilatı geçişi
+// "Çeteler" sekmesinden.
 import { useEffect, useRef, useState } from 'react';
 import { useGangAlertsCtx } from './alerts';
 import { useGangData, useIntelData } from './data';
 import { Deadline, Gold, Logo, RankBadge } from './ui';
-import { INTEL_LOGO, fmt } from './gangConstants';
+import { INTEL_LOGO, INTEL_NAME, SALARIES, fmt } from './gangConstants';
 import ListTab from './tabs/ListTab';
 import ChatTab from './tabs/ChatTab';
 import WarsTab from './tabs/WarsTab';
@@ -31,7 +32,7 @@ const INTEL_TABS = [
   { id: 'sohbet', icon: '💬', label: 'Sohbet' },
   { id: 'savas', icon: '⚔️', label: 'Savaş' },
   { id: 'operasyon', icon: '🎯', label: 'Operasyon' },
-  { id: 'istihbarat', icon: '🕵️', label: 'İstihbarat' },
+  { id: 'istihbarat', icon: '🚓', label: 'Teşkilat' },
 ];
 
 export default function GangShell({ membership }) {
@@ -122,7 +123,7 @@ function UnderVoteBanner({ until, low }) {
   );
 }
 
-function OrgHeader({ logo, name, rank, prestige, kasa, kasaMidnight = false, intel = false, sub }) {
+function OrgHeader({ logo, name, rank, prestige, kasa, kasaMidnight = false, intel = false, sub, salary = null }) {
   return (
     <div className={`gx-header${intel ? ' intel' : ''}`} style={{ '--gx-accent': logo?.color || '#19e8ff' }}>
       <Logo logo={logo} size={46} />
@@ -134,10 +135,18 @@ function OrgHeader({ logo, name, rank, prestige, kasa, kasaMidnight = false, int
           {sub}
         </div>
       </div>
-      <div className="gx-header-kasa">
-        <span className="dim">Kasa{kasaMidnight && <span className="gx-midnight-chip">🕛 00:00</span>}</span>
-        <Gold value={kasa} />
-      </div>
+      {salary != null ? (
+        // v108: Polis Teşkilatının kasası yok — maaşı devlet öder (her gece 00:00)
+        <div className="gx-header-kasa">
+          <span className="dim">Maaş · 00:00</span>
+          <Gold value={salary} />
+        </div>
+      ) : (
+        <div className="gx-header-kasa">
+          <span className="dim">Kasa{kasaMidnight && <span className="gx-midnight-chip">🕛 00:00</span>}</span>
+          <Gold value={kasa} />
+        </div>
+      )}
     </div>
   );
 }
@@ -172,8 +181,8 @@ function IntelViews({ membership, tab, onOpen }) {
   if (tab === 'ceteler') return <ListTab membership={membership} onOpen={onOpen} />;
   return (
     <div className="gx-page">
-      {d.underVote && <UnderVoteBanner until={d.underVoteUntilMs} low="Muhbir" />}
-      <OrgHeader intel logo={INTEL_LOGO} name="İstihbarat Teşkilatı" rank={d.rank} prestige={d.me?.prestige} kasa={d.state?.kasa} sub={<span className="gx-codename">🕶️ {d.me?.codeName || membership.intelCodeName}</span>} />
+      {d.underVote && <UnderVoteBanner until={d.underVoteUntilMs} low="Polis Memuru" />}
+      <OrgHeader intel logo={INTEL_LOGO} name={INTEL_NAME} rank={d.rank} prestige={d.me?.prestige} salary={SALARIES[d.realRank || 'muhbir'] || 0} sub={<span className="gx-codename">🪪 {d.me?.codeName || membership.intelCodeName}</span>} />
       {tab === 'sohbet' && <ChatTab org="intel" d={d} />}
       {tab === 'savas' && <WarsTab org="intel" d={d} />}
       {tab === 'operasyon' && <OpsTab d={d} />}

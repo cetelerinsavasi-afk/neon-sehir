@@ -151,6 +151,11 @@ export function useGangAlerts(uid) {
   // v77: "Tüm Çeteler" ortak sohbeti de (sadece çete üyeleri görür)
   const gTum = useDocs(base && gangId ? `gt_${base}_${gJoined}` : null, last(`${base}/globalChat`, gJoined))[0];
   const iYon = useDocs(base && rid && ['baskan', 'sef', 'uzman'].includes(irank) ? `iy_${base}_${rid}_${iJoined}` : null, last(`${base}/intelChat_yonetim`, iJoined))[0];
+  // v108/v109 — bekleyen polislik başvuruları (sadece inceleyebilen rütbeler: EGM + Emniyet Amiri)
+  const intelDoc = useDoc(base && rid ? `${base}/intel/main` : null);
+  const reviewRanks = Array.isArray(intelDoc?.reviewRanks) && intelDoc.reviewRanks.length ? intelDoc.reviewRanks : ['baskan', 'sef'];
+  const canReviewApps = Boolean(rid) && reviewRanks.includes(irank);
+  const intelApps = useDocs(base && canReviewApps ? `ia_${base}_${rid}_${irank}` : null, () => query(collection(db, `${base}/intel/main/applications`), where('status', '==', 'pending'), limit(1)));
 
   // --- savaşlar ---
   const pub = useDocs(base ? `pub_${base}` : null, () => query(collection(db, `${base}/wars`), where('visibility', '==', 'public'), where('status', '==', 'active'), limit(20)));
@@ -223,7 +228,7 @@ export function useGangAlerts(uid) {
 
     const handoverForMe = Boolean(handover && handover.toId === uid && handover.status === 'pending' && handover.dateKey === today);
     const gang = { sohbet: gangChat || tumChat, savas: gangWar || offersIn || gUnvoted > 0 || gClaim || handoverForMe };
-    const intel = { sohbet: intelChat, savas: intelWar || iUnvoted > 0 || iClaim, operasyon: ops };
+    const intel = { sohbet: intelChat, savas: intelWar || iUnvoted > 0 || iClaim || intelApps.length > 0, operasyon: ops };
     // v38: anasayfa hatırlatıcıları (📋 paneli)
     const canLeak = Boolean(rid && gangId && atLeast(rank, 'kidemli'));
     const leakTruck = truckReps.some((r) => r.gangId === gangId && !r.leaked && openRep(r));
@@ -237,5 +242,5 @@ export function useGangAlerts(uid) {
     // alt çubuktaki "Çeteler" noktası: "Tüm Çeteler" sohbeti de yakar (kullanıcı isteği)
     return { worldId: w, uid, gang, intel, chans, reminders, any: Object.values(gang).some(Boolean) || Object.values(intel).some(Boolean) };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [now, seenTick, handover, w, uid, gangId, rid, rank, irank, gGen, gYon, gTum, iGen, iYon, pub, mine, intelWars, slot, gVotes, iVotes, gDists, iDists, allianceIn, gUnvoted, iUnvoted, truckReps, betRepsAll, myTrucks, today, hourKey, gJoined, iJoined, canReport, isLead]);
+  }, [now, seenTick, handover, w, uid, gangId, rid, rank, irank, gGen, gYon, gTum, iGen, iYon, pub, mine, intelWars, slot, gVotes, iVotes, gDists, iDists, allianceIn, gUnvoted, iUnvoted, truckReps, betRepsAll, myTrucks, today, hourKey, gJoined, iJoined, canReport, isLead, intelApps]);
 }

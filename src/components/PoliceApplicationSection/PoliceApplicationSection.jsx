@@ -1,64 +1,30 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
-import { useDailyActions } from '../../hooks/useDailyActions';
-import { usePoliceClaimPool } from '../../hooks/usePoliceClaimPool';
-import {
-  applyForPolice,
-  resignFromPolice,
-  cancelPendingPoliceChange,
-  claimPoliceSalary,
-} from '../../services/gameActions';
+import { resignFromPolice } from '../../services/gameActions';
 import InfoIcon from '../InfoIcon/InfoIcon';
 import PoliceBooklet from '../PoliceBooklet/PoliceBooklet';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
+import { GangProvider, useDocData, useGang, useGangAction, useNow } from '../Gangs/GangContext';
+import PoliceApplySheet, { cooldownHoursLeft } from '../Gangs/PoliceApplySheet';
+import { Confirm } from '../Gangs/ui';
+import { RANK_LABELS, SALARIES, fmt } from '../Gangs/gangConstants';
+import '../Gangs/Gangs.css';
 import './PoliceApplicationSection.css';
 
-// Karakol'da polislik başvurusu/istifası — hem BAŞVURU hem İSTİFA bir
-// sonraki 00:00'da işleme alınır (havuz/kadro sayımlarının gün içinde
-// tutarlı kalması için, bkz. functions/index.js dailyReset).
+// Karakol › Komiser Ofisi — POLİSLİK BAŞVURUSU (v109).
+// İstihbarat ile Polis birleşti: polis olmak = Polis Teşkilatına girmek.
+// Başvuru formu Çeteler › Polis Teşkilatı'ndakiyle aynı (Gangs/PoliceApplySheet);
+// onay teşkilatın en üst iki rütbesinden ya da 12 saat sonra kendiliğinden.
+// İstifa anında (24 saat yeniden başvurulamaz). Teşkilat çete sisteminin canlı
+// dünyasında yaşadığı için bu bölüm o dünyanın bağlamını (GangProvider) kurar.
 export default function PoliceApplicationSection() {
   const { user } = useAuth();
-  const { player } = usePlayer();
-  const { actions } = useDailyActions();
-  const { pool } = usePoliceClaimPool();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
+  const { data: config, loading } = useDocData(user ? 'gangSystem/config' : null);
   const [showBooklet, setShowBooklet] = useState(false);
-  const [confirmingResign, setConfirmingResign] = useState(false);
-  const [salarySuccess, setSalarySuccess] = useState(null);
-
-  const run = async (fn) => {
-    setBusy(true);
-    setError(null);
-    try {
-      await fn();
-    } catch (err) {
-      setError(err.message || 'İşlem başarısız.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleClaimSalary = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await claimPoliceSalary();
-      setSalarySuccess(res.data?.share ?? pool?.perOfficerShare ?? 0);
-    } catch (err) {
-      setError(err.message || 'İşlem başarısız.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const isPolice = player?.profession === 'polis';
-  const pending = player?.pendingPoliceChange;
-  const salaryClaimed = Boolean(actions.policeSalaryClaimed);
-  // KULLANICI REVİZESİ (polis suç sistemi): şüphe sadece başvuru anında aranır,
-  // maaş için artık şüphe şartı yok.
-  const canClaimSalary = isPolice && Boolean(pool);
+  const worldId = config?.liveOpen ? config.liveWorldId : null;
+  const mode = useMemo(() => ({ world: 'live', worldId, actorId: user?.uid }), [worldId, user?.uid]);
 
   if (!user) {
     return <SignInPrompt message="Polislik başvurusu yapmak için giriş yapmalısın." />;
@@ -69,107 +35,149 @@ export default function PoliceApplicationSection() {
       <div className="police-app-header">
         <p className="police-app-title">
           Polislik Başvurusu
-          <InfoIcon text="Başvuru ve istifa anlık değil — bir sonraki gece yarısı (00:00) işleme alınır. Başvurmak için şüphen %0 olmalı ve bir silahın olmalı (şüphe sadece başvuru anında aranır)." />
+          <InfoIcon text="Polis olmak için Polis Teşkilatına başvurursun. Şartlar: başlangıç görevleri, 50 saygınlık, %0 şüphe ve en az 1 silah; imam ve Mafya Babası olamaz. Başvurunu Emniyet Genel Müdürü ve Emniyet Amirleri inceler, 12 saat içinde yanıt gelmezse kendiliğinden onaylanır. İstifa edersen ya da atılırsan 24 saat yeniden başvuramazsın." />
         </p>
         <button className="police-app-booklet-btn" onClick={() => setShowBooklet(true)}>
           📖 Kitapçık
         </button>
       </div>
+      {loading ? (
+        <p className="police-app-hint">Yükleniyor…</p>
+      ) : worldId ? (
+        <GangProvider mode={mode}>
+          <PoliceStatus />
+        </GangProvider>
+      ) : (
+        <p className="police-app-hint">🚧 Polis Teşkilatı şu an bakımda — biraz sonra tekrar dene.</p>
+      )}
+      {showBooklet && <PoliceBooklet onClose={() => setShowBooklet(false)} />}
+    </div>
+  );
+}
+
+function PoliceStatus() {
+  const { path, actorId } = useGang();
+  const { player } = usePlayer();
+  const { data: membership, loading } = useDocData(path(`memberships/${actorId}`));
+  const { data: me } = useDocData(membership?.intelRosterId ? path(`intelRoster/${membership.intelRosterId}`) : null);
+  const { run, busy } = useGangAction();
+  const now = useNow(60_000);
+  const [applying, setApplying] = useState(false);
+  const [confirmResign, setConfirmResign] = useState(false);
+  const [cancelApp, setCancelApp] = useState(false);
+  const [resignBusy, setResignBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [done, setDone] = useState(null);
+
+  if (loading) return <p className="police-app-hint">Yükleniyor…</p>;
+  const ms = membership || {};
+  const isPolice = Boolean(ms.intelRosterId) || player?.profession === 'polis';
+  const rank = me?.rank || ms.intelRank || 'muhbir';
+  const codeName = me?.codeName || ms.intelCodeName;
+  const pendingApp = !isPolice && ms.intelAppId;
+  const cd = cooldownHoursLeft(ms, now);
+
+  const resign = async () => {
+    setResignBusy(true);
+    setError(null);
+    try {
+      await resignFromPolice();
+      setConfirmResign(false);
+      setDone('🚪 Polislikten istifa ettin.');
+    } catch (err) {
+      setError(err?.message || 'İşlem başarısız.');
+    } finally {
+      setResignBusy(false);
+    }
+  };
+
+  return (
+    <>
       <p className="police-app-hint">
-        Şu an: <strong>{isPolice ? 'Polissin' : 'Sivilsin'}</strong>
-        {pending === 'apply' && ' · Başvurun bu gece işlenecek'}
-        {pending === 'resign' && ' · İstifan bu gece işlenecek'}
+        Şu an:{' '}
+        <strong>
+          {isPolice
+            ? `Polissin${codeName ? ` · ${codeName}` : ''}${ms.intelRosterId ? ` · ${RANK_LABELS[rank] || 'Polis Memuru'}` : ''}`
+            : pendingApp
+              ? `Başvurun inceleniyor (${ms.intelAppCode || 'kod adın'})`
+              : 'Sivilsin'}
+        </strong>
       </p>
 
-      {isPolice && pending !== 'resign' && (
+      {isPolice && (
         <div className="police-salary-box">
           <span className="police-salary-emoji">💰</span>
           <div className="police-salary-info">
-            <span className="police-salary-title">Bugünkü Rüşvet Havuzu</span>
-            {pool ? (
-              <>
-                <span className="police-salary-amount">
-                  {(pool.totalPool || 0).toLocaleString('tr-TR')} altın havuz ·{' '}
-                  {(pool.policeCount || 0)} polis
-                </span>
-                <span className="police-salary-share">
-                  Payına düşen: <strong>{(pool.perOfficerShare || 0).toLocaleString('tr-TR')} altın</strong>
-                </span>
-              </>
-            ) : (
-              <span className="police-salary-amount">Havuz henüz oluşmadı</span>
-            )}
-          </div>
-          <button
-            className="police-app-btn primary"
-            disabled={busy || salaryClaimed || !canClaimSalary}
-            onClick={handleClaimSalary}
-          >
-            {salaryClaimed
-              ? 'Bugün Alındı'
-              : !pool
-                ? 'Havuz Bekleniyor'
-                : 'Maaşı Al'}
-          </button>
-        </div>
-      )}
-      {salarySuccess != null && (
-        <p className="police-salary-success">
-          +{salarySuccess.toLocaleString('tr-TR')} altın hesabına eklendi! Havuzdan artan kısım varsa, bu
-          gece 00:00'da bugün maaş alan polislere bonus olarak otomatik dağıtılacak.
-        </p>
-      )}
-
-      {confirmingResign ? (
-        <div className="police-app-confirm">
-          <p className="police-app-hint">
-            İstifa etmek istediğine emin misin? İstifan ANINDA gerçekleşmez — bu gece 00:00'da işleme
-            alınır, o zamana kadar polis olarak kalır, görevlerini sürdürürsün.
-          </p>
-          <div className="police-app-controls">
-            <button
-              className="police-app-btn danger"
-              disabled={busy}
-              onClick={() =>
-                run(async () => {
-                  await resignFromPolice();
-                  setConfirmingResign(false);
-                })
-              }
-            >
-              Evet, İstifa Talebi Gönder
-            </button>
-            <button className="police-app-btn" disabled={busy} onClick={() => setConfirmingResign(false)}>
-              Vazgeç
-            </button>
+            <span className="police-salary-title">Maaş + Rüşvet Payı · {fmt(SALARIES[rank] || 0)} altın</span>
+            <span className="police-salary-share">Her gece 00:00'da maaşın ve dün Karakol'a bırakılan rüşvetlerden payın birlikte hesabına yatar. Teşkilat: Çeteler › Polis Teşkilatı.</span>
           </div>
         </div>
-      ) : (
-        <div className="police-app-controls">
-          {!isPolice && !pending && (
-            <button className="police-app-btn" disabled={busy} onClick={() => run(applyForPolice)}>
-              Polislik Başvurusu Yap
-            </button>
-          )}
-          {isPolice && !pending && (
-            <button className="police-app-btn" disabled={busy} onClick={() => setConfirmingResign(true)}>
-              İstifa Et
-            </button>
-          )}
-          {(pending === 'apply' || pending === 'resign') && (
-            <button
-              className="police-app-btn"
-              disabled={busy}
-              onClick={() => run(cancelPendingPoliceChange)}
-            >
-              {pending === 'apply' ? 'Başvuruyu İptal Et' : 'İstifa Talebini İptal Et'}
-            </button>
-          )}
-        </div>
       )}
-
+      {pendingApp && <p className="police-app-hint">⏳ Emniyet Genel Müdürü ve Emniyet Amirleri inceliyor — en geç 12 saat içinde sonuçlanır.</p>}
+      {!isPolice && !pendingApp && cd > 0 && <p className="police-app-hint">⏳ Polislikten yeni ayrıldın — {cd} saat sonra yeniden başvurabilirsin.</p>}
+      {done && <p className="police-salary-success">{done}</p>}
       {error && <p className="police-app-error">{error}</p>}
-      {showBooklet && <PoliceBooklet onClose={() => setShowBooklet(false)} />}
-    </div>
+
+      <div className="police-app-controls">
+        {!isPolice && !pendingApp && (
+          <button className="police-app-btn primary" disabled={cd > 0} onClick={() => setApplying(true)}>
+            Polislik Başvurusu Yap
+          </button>
+        )}
+        {pendingApp && (
+          <button className="police-app-btn" disabled={busy === 'cancelIntelApplication'} onClick={() => setCancelApp(true)}>
+            Başvuruyu Geri Çek
+          </button>
+        )}
+        {isPolice && (
+          <button className="police-app-btn" disabled={resignBusy} onClick={() => setConfirmResign(true)}>
+            İstifa Et
+          </button>
+        )}
+      </div>
+
+      {applying &&
+        createPortal(
+          <div className="gx-root gx-portal">
+            <PoliceApplySheet membership={ms} onClose={() => setApplying(false)} onDone={(r) => setDone(r?.accepted ? '🚓 Başvurun onaylandı — artık polissin!' : '📝 Başvurun gönderildi.')} />
+          </div>,
+          document.body
+        )}
+      {confirmResign &&
+        createPortal(
+          <div className="gx-root gx-portal">
+            <Confirm
+              icon="🚪"
+              danger
+              title="Polislikten istifa etmek istediğine emin misin?"
+              lines={['Polis Teşkilatından çıkarsın; prestijin, rütben ve sicilin silinir.', 'Bu gece maaş almazsın.', '24 saat yeniden başvuramazsın.']}
+              confirmLabel="İstifa et"
+              busy={resignBusy}
+              onCancel={() => setConfirmResign(false)}
+              onConfirm={resign}
+            />
+          </div>,
+          document.body
+        )}
+      {cancelApp &&
+        createPortal(
+          <div className="gx-root gx-portal">
+            <Confirm
+              icon="🚓"
+              danger
+              title="Başvurunu geri çekmek istiyor musun?"
+              lines={['Kod adın serbest kalır.', 'İstediğin zaman yeniden başvurabilirsin.']}
+              confirmLabel="Geri çek"
+              busy={busy === 'cancelIntelApplication'}
+              onCancel={() => setCancelApp(false)}
+              onConfirm={async () => {
+                await run('cancelIntelApplication', {}, { success: 'Başvuru geri çekildi' });
+                setCancelApp(false);
+              }}
+            />
+          </div>,
+          document.body
+        )}
+    </>
   );
 }

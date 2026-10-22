@@ -28,26 +28,43 @@ async function intelChief(h, name = 'Şef') {
   return id;
 }
 
-test('katılım: 50 saygınlık yeter (polislik şartı yok); kod adı benzersiz; Baba katılamaz', async () => {
+test('katılım (v109): 50 saygınlık + %0 şüphe + silah + başlangıç görevleri; imam katılamaz; katılan polis olur, ayrılan polislikten çıkar + 24 saat yasak; kod adı benzersiz; Baba katılamaz', async () => {
   const h = await createHarness();
   const low = await h.persona({ displayName: 'Düşük', gold: 1, power: 1, reputation: 49 });
   const civ = await h.persona({ displayName: 'Sivil', gold: 1, power: 1, reputation: 50, isPolice: false });
   const cop = await h.persona({ displayName: 'Polis', gold: 1, power: 1, reputation: 80, isPolice: true });
+  const civ2 = await h.persona({ displayName: 'Sivil2', gold: 1, power: 1, reputation: 80 });
+  const noGun = await h.persona({ displayName: 'Silahsız', gold: 1, power: 0, reputation: 80 });
   assert.match((await h.fails(low, 'joinIntel', { codeName: 'Kurt' })).message, /50/);
+  assert.match((await h.fails(noGun, 'joinIntel', { codeName: 'Kurt' })).message, /silah/);
+  await h.db.doc(`gangWorlds/test/players/${civ2}`).update({ onboarded: false });
+  assert.match((await h.fails(civ2, 'joinIntel', { codeName: 'Kurt' })).message, /başlangıç görevleri/);
+  await h.db.doc(`gangWorlds/test/players/${civ2}`).update({ onboarded: true, isImam: true });
+  assert.match((await h.fails(civ2, 'joinIntel', { codeName: 'Kurt' })).message, /İmam/);
+  assert.match((await h.fails(cop, 'joinIntel', { codeName: 'Tilki' })).message, /Zaten polissin/);
+  await h.db.doc(`gangWorlds/test/players/${civ}`).update({ suspicion: 5 });
+  assert.match((await h.fails(civ, 'joinIntel', { codeName: 'Kurt' })).message, /şüphen %0/);
+  await h.db.doc(`gangWorlds/test/players/${civ}`).update({ suspicion: 0 });
   await h.act(civ, 'joinIntel', { codeName: 'Kurt' });
-  assert.match((await h.fails(cop, 'joinIntel', { codeName: 'kurt' })).message, /kod adı/i);
-  await h.act(cop, 'joinIntel', { codeName: 'Tilki' });
+  assert.equal(h.raw(`gangWorlds/test/players/${civ}`).isPolice, true, 'v109: teşkilata giren polis olur');
+  await h.db.doc(`gangWorlds/test/players/${civ2}`).update({ isImam: false });
+  assert.match((await h.fails(civ2, 'joinIntel', { codeName: 'kurt' })).message, /kod adı/i);
+  await h.act(civ2, 'joinIntel', { codeName: 'Tilki' });
   const G = await setupGang(h, { members: 0 });
   assert.match((await h.fails(G.baba, 'joinIntel', { codeName: 'Baba' })).message, /Mafya Babası/);
   // roster UID içermez; sohbet kod adı kullanır
   const roster = h.db._dump('gangWorlds/test/intelRoster/');
   assert.ok(!JSON.stringify(roster).includes(civ));
   const chat = Object.values(h.db._dump('gangWorlds/test/intelChat_genel/'));
-  assert.ok(chat.some((m) => m.text.includes('Kurt İstihbarata katıldı')));
+  assert.ok(chat.some((m) => m.text.includes('Kurt teşkilata katıldı')));
   // ayrılınca prestij sıfırlanır, kod adı serbest
   const rid = (await h.membership(civ)).intelRosterId;
   await h.db.doc(`gangWorlds/test/intelRoster/${rid}`).update({ prestige: 999 });
   await h.act(civ, 'leaveIntel');
+  assert.equal(h.raw(`gangWorlds/test/players/${civ}`).isPolice, false, 'v109: ayrılan polislikten çıkar');
+  assert.ok(h.inbox(civ).some((t) => /istifa ettin/.test(t)));
+  assert.match((await h.fails(civ, 'joinIntel', { codeName: 'Kurt' })).message, /saat daha başvuru yapamazsın/);
+  h.setTime(h.clock.now + 24 * 3600_000 + 60_000);
   await h.act(civ, 'joinIntel', { codeName: 'Kurt' });
   const rid2 = (await h.membership(civ)).intelRosterId;
   assert.notEqual(rid, rid2);
@@ -57,14 +74,14 @@ test('katılım: 50 saygınlık yeter (polislik şartı yok); kod adı benzersiz
   await h.act(civ, 'changeCodeName', { codeName: 'Gölge' });
   assert.equal(h.get(`intelRoster/${rid2}`).codeName, 'Gölge');
   assert.equal((await h.membership(civ)).intelCodeName, 'Gölge');
-  await h.act(cop, 'changeCodeName', { codeName: 'Kurt' }); // eski ad serbest kaldı
+  await h.act(civ2, 'changeCodeName', { codeName: 'Kurt' }); // eski ad serbest kaldı
   // İstihbarat sohbeti: 2 kanal (genel + rütbeli)
   await h.fails(civ, 'sendIntelChat', { channel: 'duyuru', text: 'x' });
   await h.fails(civ, 'sendIntelChat', { channel: 'yonetim', text: 'x' }); // Muhbir
   await h.act(civ, 'sendIntelChat', { channel: 'genel', text: 'selam' });
 });
 
-test('ihbar: Tetikçi+ ve seferdeki tır; bir kez (1M prestij); sızdırma: Kıdemli+, bir kez (1M); sadece ödül değeri; sohbete düşer', async () => {
+test('ihbar: Tetikçi+ ve seferdeki tır; bir kez (500k prestij); sızdırma: Kıdemli+, bir kez (500k); sadece ödül değeri; sohbete düşer', async () => {
   const h = await createHarness();
   const { G, mole, truckId, code } = await tradeGangWithMole(h, { moleRank: 'kidemli' });
   await h.act(mole, 'joinIntel', { codeName: 'Köstebek' });
@@ -83,7 +100,7 @@ test('ihbar: Tetikçi+ ve seferdeki tır; bir kez (1M prestij); sızdırma: Kıd
   assert.equal(rep2.cargo, undefined, 'içerik adetleri İstihbarata gösterilmez');
   assert.equal(rep2.estReward, 100_000); // anlık satış = 1.250 × 80
   const rid = (await h.membership(mole)).intelRosterId;
-  assert.equal(h.get(`intelRoster/${rid}`).prestige, 1_000_000 + 1_000_000);
+  assert.equal(h.get(`intelRoster/${rid}`).prestige, 500_000 + 500_000, 'v109: ihbar + sızdırma 500.000\'er');
   assert.ok(h.intelChat().some((m) => /Köstebek, TIR #\d{4} \(Hedef\) tırını ihbar etti/.test(m)));
   assert.ok(h.intelChat().some((m) => /içeriğini sızdırdı — ödül değeri 100\.000/.test(m)));
   assert.ok(G);
@@ -108,20 +125,20 @@ test('ihbar/sızdırma yetkisi: Çömez ihbar edemez; Tetikçi ihbar eder ama s�
   assert.match((await h.fails(c, 'leakTruck', { reportId: `${truckId}_2026-09-22` })).message, /Kıdemli/);
 });
 
-test('operasyon: sadece ihbarlı tıra, 12:00ye kadar, ücret oyun geneli sabotaj fiyatı; v94: başarılıysa yük çetede kalır, sipariş tutarı çete kasasından İstihbarata', async () => {
+test('operasyon: sadece ihbarlı tıra, 12:00ye kadar, ücret sabit (v108: devlet öder); v94: başarılıysa yük çetede kalır, sipariş tutarı çete kasasından (v108) devlete', async () => {
   const h = await createHarness({ dice: [6, 6, 1, 1] });
   const { G, mole, truckId } = await tradeGangWithMole(h);
   await h.act(mole, 'joinIntel', { codeName: 'Köstebek' });
   const chief = await intelChief(h, 'Kartal');
   await h.tickTo('2026-09-22', '07:00');
-  await h.db.doc('gangWorlds/test/intel/main/private/state').set({ kasa: 200_000 }, { merge: true });
   const reportId = `${truckId}_2026-09-22`;
   assert.match((await h.fails(chief, 'startOperation', { reportId })).message, /bulunamadı/);
   await h.act(mole, 'reportTruck', { truckId });
   await h.fails(mole, 'startOperation', { reportId }); // Muhbir başlatamaz
   const op = await h.act(chief, 'startOperation', { reportId, bribe: 0 });
   assert.equal(op.started[0].price, 100_000, 'İstihbarat operasyonu sabit 100.000');
-  assert.equal(h.get('intel/main/private/state').kasa, 100_000);
+  assert.equal(h.treasury().out.ist_operasyon, 100_000, 'v108: ücreti devlet öder (kasa kontrolü yok)');
+  assert.equal(h.get('intel/main/private/state').kasa || 0, 0, 'İstihbarat kasası kapalı');
   assert.equal(h.get('sabotageDays/2026-09-22').count, 1, 'operasyon oyun geneli sayacı artırır');
   await h.fails(chief, 'startOperation', { reportId });
   const warId = op.started[0].warId;
@@ -139,23 +156,22 @@ test('operasyon: sadece ihbarlı tıra, 12:00ye kadar, ücret oyun geneli sabota
   assert.equal(depot.items?.yasakliMadde || 0, 80, 'yük çetede kalır');
   assert.equal(depot.reservedUnits, 0);
   assert.equal(h.get(`gangs/${G.gangId}/private/state`).kasa, 30_000 - 100_000, 'kasa eksiye düşer');
-  assert.equal(h.get('intel/main/private/state').kasa, 100_000 + 100_000);
+  assert.equal(h.treasury().in.ist_operasyon, 100_000, 'v108: tahsilat devlet kasasına');
 });
 
-test('rüşvet: tutarı İstihbarat operasyonda belirler; savunan 12:00 duyurusundan sonra 18:00e kadar öder → operasyon durur, para İstihbarata', async () => {
+test('rüşvet: tutarı İstihbarat operasyonda belirler; savunan 12:00 duyurusundan sonra 18:00e kadar öder → operasyon durur, para (v108) devlete', async () => {
   const h = await createHarness();
   const { G, mole, truckId } = await tradeGangWithMole(h);
   await h.act(mole, 'joinIntel', { codeName: 'Köstebek' });
   const chief = await intelChief(h, 'Kartal');
   await h.tickTo('2026-09-22', '07:00');
-  await h.db.doc('gangWorlds/test/intel/main/private/state').set({ kasa: 200_000 }, { merge: true });
   await h.act(mole, 'reportTruck', { truckId });
   const op = await h.act(chief, 'startOperation', { reportId: `${truckId}_2026-09-22`, bribe: 75_000 });
   const warId = op.started[0].warId;
   assert.equal(h.get(`wars/${warId}`).bribe, 75_000);
   await h.fails(G.baba, 'payBribe', { warId }); // henüz duyurulmadı
   await h.tickTo('2026-09-22', '12:05');
-  assert.ok(h.chat(G.gangId).some((m) => /İstihbarat \(rüşvet 75\.000\)/.test(m)));
+  assert.ok(h.chat(G.gangId).some((m) => /Polis \(rüşvet 75\.000\)/.test(m)));
   const kasa = h.state(G.gangId).kasa;
   await h.fails(mole, 'payBribe', { warId }); // Kıdemli ödeyemez
   const rs = await Promise.allSettled([h.act(G.baba, 'payBribe', { warId }), h.act(G.ids[0], 'payBribe', { warId })]);
@@ -163,12 +179,12 @@ test('rüşvet: tutarı İstihbarat operasyonda belirler; savunan 12:00 duyurusu
   assert.equal(h.get(`wars/${warId}`).status, 'cancelled_bribe');
   assert.equal(h.get(`wars/def_${truckId}_2026-09-22`).status, 'ended_paid', 'v74: tek saldırgan → savunma da biter');
   assert.equal(h.state(G.gangId).kasa, kasa - 75_000);
-  assert.equal(h.get('intel/main/private/state').kasa, 100_000 + 75_000);
+  assert.equal(h.treasury().in.ist_rusvet, 75_000, 'v108: rüşvet devlet kasasına');
   await h.tickTo('2026-09-23', '00:05');
   assert.equal(h.get(`trucks/${truckId}`).lastTrip.outcome, 'delivered');
 });
 
-test('çeteyi İstihbarata teslim et → çete kapanır, üyeler atılır, TÜM kasa İstihbarat kasasına; karar yoksa 00:00da İstihbarattan çıkar', async () => {
+test('çeteyi İstihbarata teslim et → çete kapanır, üyeler atılır, TÜM kasa (v108) devlet kasasına; karar yoksa 00:00da İstihbarattan çıkar', async () => {
   const h = await createHarness();
   const G = await setupGang(h, { members: 3, name: 'Kurban' });
   await h.fundKasa(G.gangId, 300_000);
@@ -180,8 +196,7 @@ test('çeteyi İstihbarata teslim et → çete kapanır, üyeler atılır, TÜM 
   const ms = await h.membership(spy);
   assert.equal(ms.intelDecisionGangId, G.gangId);
   assert.equal(h.get(`gangs/${G.gangId}`).babaId, spy);
-  const intel0 = h.get('intel/main/private/state').kasa || 0;
-  await h.db.doc('gangWorlds/test/intel/main').set({ memberCount: 50 }, { merge: true }); // v88: kasa sınırı bu testin konusu değil
+  const st0 = h.treasury().in.ist_cokertme || 0;
   await h.act(spy, 'intelDecision', { choice: 'disband' });
   await h.internal.clock.runClock('test');
   const g = h.get(`gangs/${G.gangId}`);
@@ -189,9 +204,9 @@ test('çeteyi İstihbarata teslim et → çete kapanır, üyeler atılır, TÜM 
   assert.equal(g.cleanupDone, true);
   for (const id of G.ids) assert.equal(h.gangOf(id), null);
   assert.equal(h.state(G.gangId).kasa, 0);
-  assert.equal(h.get('intel/main/private/state').kasa, intel0 + 300_000, 'çetenin tüm parası İstihbarat kasasına');
+  assert.equal(h.treasury().in.ist_cokertme, st0 + 300_000, 'çetenin tüm parası devlet kasasına');
   const msgs = Object.values(h.db._dump('gangWorlds/test/inbox/')).filter((m) => m.to === G.ids[1]);
-  assert.ok(msgs.some((m) => m.text.includes('İstihbarat tarafından ele geçirildi ve dağıtıldı')));
+  assert.ok(msgs.some((m) => m.text.includes('polis tarafından çökertildi ve dağıtıldı')));
   const rid = (await h.membership(spy)).intelRosterId;
   assert.equal(h.get(`intelRoster/${rid}`).prestige, 10_000_000);
 
@@ -235,7 +250,7 @@ test('İstihbarat atma: Başkan → Ajan/Muhbir, Şef → Muhbir anında; oylama
   await h.act(B.id, 'kickIntelMember', { targetRosterId: A.rid });
   assert.equal(h.get(`intelRoster/${A.rid}`), undefined);
   assert.equal((await h.membership(A.id)).intelRosterId, null);
-  assert.ok(h.intelChat().some((m) => /Ajan, Baskan tarafından İstihbarattan çıkarıldı/.test(m)));
+  assert.ok(h.intelChat().some((m) => /Ajan, Baskan tarafından teşkilattan atıldı/.test(m)));
   // oylamalar
   await h.fails(U.id, 'requestIntelKickVote', { targetRosterId: B.rid }); // Uzman Başkanı oylatamaz
   await h.fails(M2.id, 'requestIntelKickVote', { targetRosterId: U.rid }); // Muhbir yetkisiz
@@ -261,49 +276,6 @@ test('İstihbarat atma: Başkan → Ajan/Muhbir, Şef → Muhbir anında; oylama
   assert.equal(h.get(`intelRoster/${B.rid}`), undefined, 'Başkan atıldı');
   assert.ok(h.get(`intelRoster/${S2.rid}`), 'başarısız oylama: değişiklik yok');
   assert.equal(h.get(`intelRoster/${S1.rid}`).rank, 'baskan', 'boşalan yer 00:00da doldu');
-});
-
-test('v94: şüpheyle yakalanma cezasının %25i → İstihbarat kasasına, kalanı yakılır (canlı dünya, idempotent); sınır sadece cezaya; canlı kapalıyken etkisiz', async () => {
-  const h = await createHarness();
-  const closed = await h.system.onSuspicionFine('u1', 40_000, 'heist_a');
-  assert.equal(closed.skipped, true);
-  await h.admin('openLive', { mode: 'fresh', confirm: 'CANLIYA AÇ' });
-  const cfg = h.raw('gangSystem/config');
-  await h.db.doc(`gangWorlds/${cfg.liveWorldId}/intel/main`).set({ memberCount: 50 }, { merge: true }); // v88: kasa sınırı için yer
-  await h.system.onSuspicionFine('u1', 40_000, 'heist_a_u1');
-  await h.system.onSuspicionFine('u1', 40_000, 'heist_a_u1'); // tekrar → yok sayılır
-  await h.system.onSuspicionFine('u2', 10_000, 'contraband_b');
-  // v94: cezanın dörtte biri kasaya, kalanı yakılır → (40.000 + 10.000) / 4
-  const kasaPath = `gangWorlds/${cfg.liveWorldId}/intel/main/private/state`;
-  assert.equal(h.raw(kasaPath).kasa, 12_500);
-  const odd = await h.system.onSuspicionFine('u3', 5, 'odd_c'); // aşağı yuvarlanır, fark yakılır
-  assert.deepEqual(odd, { credited: 1, burned: 4 });
-  assert.equal(h.raw(kasaPath).kasa, 12_501);
-  assert.equal(h.get('intel/main/private/state').kasa || 0, 0, 'test dünyasına yazılmaz');
-  // sınır (50 üye × 100.000 = 5.000.000) sadece ceza gelirine: kasa sınıra yakınsa sınıra kadar girer
-  await h.db.doc(kasaPath).set({ kasa: 4_995_000 }, { merge: true });
-  const near = await h.system.onSuspicionFine('u4', 40_000, 'near_d'); // 10.000 pay, 5.000 yer
-  assert.deepEqual(near, { credited: 5_000, burned: 35_000 });
-  // kasa (çökertme / operasyon ile) sınırın üstündeyse cezadan para gelmez, kasa azalmaz
-  await h.db.doc(kasaPath).set({ kasa: 7_000_000 }, { merge: true });
-  const over = await h.system.onSuspicionFine('u5', 40_000, 'over_e');
-  assert.deepEqual(over, { credited: 0, burned: 40_000 });
-  assert.equal(h.raw(kasaPath).kasa, 7_000_000);
-});
-
-test('polis yakalama ödülü → İstihbarat prestiji (canlı dünya, idempotent)', async () => {
-  const h = await createHarness();
-  await h.admin('openLive', { mode: 'fresh', confirm: 'CANLIYA AÇ' });
-  const cfg = h.raw('gangSystem/config');
-  const uid = 'realPlayer01';
-  await h.db.doc(`users/${uid}`).set({ displayName: 'Komiser', gold: 0, reputation: 70, profession: 'polis' });
-  await h.system.handleAction({ auth: { uid }, data: { action: 'joinIntel', payload: { codeName: 'Rozet' } } });
-  await h.system.onPoliceBustReward(uid, 500_000, 'plan123');
-  await h.system.onPoliceBustReward(uid, 500_000, 'plan123'); // tekrar → yok sayılır
-  const rid = h.raw(`gangWorlds/${cfg.liveWorldId}/memberships/${uid}`).intelRosterId;
-  assert.equal(h.raw(`gangWorlds/${cfg.liveWorldId}/intelRoster/${rid}`).prestige, 500_000);
-  const res = await h.system.onPoliceBustReward('someoneElse', 100, 'p2');
-  assert.equal(res.skipped, true);
 });
 
 test('v67: tır ihbarı ve içerik sızdırma tır yola çıktıktan sonraki 6 saat içinde', async () => {
@@ -372,7 +344,7 @@ test('v61: İstihbaratta 7 ya da daha az üye varken atma/oylama yok; yeni üye 
   assert.match((await h.fails(S1.id, 'requestIntelKickVote', { targetRosterId: S2.rid })).message, /7 ya da daha az/);
   // 8. üye bugün katıldı → 8 üye var ama yeni üye atılamaz; eski üye atılabilir
   const N = await mk('Yeni', 0, 'muhbir', false);
-  assert.match((await h.fails(B.id, 'kickIntelMember', { targetRosterId: N.rid })).message, /Yeni katılan üye 00:00/);
+  assert.match((await h.fails(B.id, 'kickIntelMember', { targetRosterId: N.rid })).message, /Yeni katılan polis 00:00/);
   // oylama başlat (8 üye), sonra biri kendi isteğiyle ayrılır → 7 → oylama geçse de uygulanmaz
   const { voteId } = await h.act(S1.id, 'requestIntelKickVote', { targetRosterId: S2.rid });
   await h.act(fill[1].id, 'leaveIntel'); // kendi çıkmak serbest
@@ -391,14 +363,13 @@ test('v61: İstihbaratta 7 ya da daha az üye varken atma/oylama yok; yeni üye 
   assert.equal(h.get(`intelRoster/${N.rid}`), undefined);
 });
 
-test('v94: üye raporu — bugünden önceki 14 gün, sadece rütbeliler; ihbar / içerik / savaş / güç sayılır', async () => {
+test('v108: üye sicili — süresiz (bugün dahil), sadece rütbeliler başkasınınkini görür; ihbar / içerik / savaş / güç / maaş / form', async () => {
   const h = await createHarness({ dice: [6, 6, 1, 1] });
   const { G, mole, truckId } = await tradeGangWithMole(h);
   const j = await h.act(mole, 'joinIntel', { codeName: 'Köstebek' });
   const chief = await intelChief(h, 'Kartal');
   const chiefRid = h.get(`memberships/${chief}`).intelRosterId;
   await h.tickTo('2026-09-22', '07:00');
-  await h.db.doc('gangWorlds/test/intel/main/private/state').set({ kasa: 200_000 }, { merge: true });
   const reportId = `${truckId}_2026-09-22`;
   await h.act(mole, 'reportTruck', { truckId });
   await h.act(mole, 'leakTruck', { reportId });
@@ -406,26 +377,56 @@ test('v94: üye raporu — bugünden önceki 14 gün, sadece rütbeliler; ihbar 
   await h.tickTo('2026-09-22', '12:10');
   await h.act(chief, 'rollDice', { warId: op.started[0].warId }); // 12 × 30k
   await h.act(G.baba, 'rollDice', { warId: `def_${truckId}_2026-09-22` });
-  // bugün rapora girmez
+  // v108: bugün de sicile girer (süresiz)
   let r = await h.act(chief, 'intelMemberReport', { rosterId: j.rosterId });
-  assert.equal(r.truckReports, 0);
+  assert.equal(r.truckReports, 1);
   assert.equal(r.joinedDaysAgo, 0);
-  // rütbesiz (muhbir) göremez
+  assert.equal(r.salary, 5_000, 'v109: Polis Memuru (muhbir) maaşı');
+  assert.equal(r.paid, undefined, 'istihbarattan alınan para sicilden kalktı');
+  // rütbesiz (muhbir) başkasınınkini göremez
   assert.match((await h.fails(mole, 'intelMemberReport', { rosterId: chiefRid })).message, /rütbeli/);
-  await h.tickTo('2026-09-23', '00:05');
+  // 20 gün sonra da kayıtlar durur (14 gün sınırı yok)
+  for (let i = 0; i < 20; i++) {
+    // oyuna girmeye devam ediyorlar (v108: 10 gün girmeyen görevden alınır)
+    for (const id of [mole, chief]) await h.db.doc(`gangWorlds/test/players/${id}`).update({ lastSeenAtMs: h.clock.now });
+    await h.nextDay();
+  }
   r = await h.act(chief, 'intelMemberReport', { rosterId: j.rosterId });
   assert.equal(r.codeName, 'Köstebek');
   assert.equal(r.truckReports, 1);
   assert.equal(r.truckLeaks, 1);
   assert.equal(r.betReports, 0);
   assert.equal(r.wars, 0);
-  assert.equal(r.joinedDaysAgo, 1);
-  // v96: rütbesiz üye KENDİ raporunu görür
+  assert.ok(h.get(`intelRecords/${j.rosterId}`).salaryTotal >= 5_000 * 20, 'maaşlar kayda işlenir (sicilde gösterilmez)');
+  // rütbesiz üye KENDİ sicilini görür ve formunu doldurur/düzenler
+  await h.act(mole, 'updateIntelForm', { gangName: 'Hedef', gangRank: 'kidemli', reason: 'Çeteyi içeriden izliyorum.' });
   const own = await h.act(mole, 'intelMemberReport', { rosterId: j.rosterId });
-  assert.equal(own.truckReports, 1);
+  assert.equal(own.form.gangName, 'Hedef');
+  assert.equal(own.form.gangRank, 'kidemli');
   const c = await h.act(chief, 'intelMemberReport', { rosterId: chiefRid });
   assert.equal(c.wars, 1);
   assert.equal(c.power, 12 * 30_000);
-  assert.equal(c.from, '2026-09-09');
-  assert.equal(c.to, '2026-09-22');
+  assert.equal(c.salary, 25_000, 'v109: Emniyet Genel Müdürü (baskan) maaşı');
+  // ayrılınca sicil silinir
+  await h.act(mole, 'leaveIntel');
+  assert.equal(h.get(`intelRecords/${j.rosterId}`), undefined);
+});
+
+test('v109: soygun durdurma prestiji Polis Teşkilatına (eski İstihbarat) + sicile; idempotent; üye değilse yazılmaz', async () => {
+  const h = await createHarness();
+  const cop = await h.persona({ displayName: 'Devriye', gold: 0, power: 40_000, reputation: 80 });
+  const civ = await h.persona({ displayName: 'Sivil', gold: 0, power: 40_000, reputation: 80 });
+  const { rosterId } = await h.act(cop, 'joinIntel', { codeName: 'Devriye' });
+  const ctx = h.internal.core.makeCtx('test', h.raw('gangWorlds/test'), { actorId: 'system' });
+  const info = { recovered: 500_000, earned: 62_500, prestige: 1_000_000, refId: 'heist_plan1' };
+  assert.deepEqual(await h.internal.intel.awardPoliceBust(ctx, cop, info), { prestige: 1_000_000 });
+  assert.equal((await h.internal.intel.awardPoliceBust(ctx, cop, info)).skipped, 'dup', 'aynı soygun iki kez yazılmaz');
+  assert.equal((await h.internal.intel.awardPoliceBust(ctx, civ, info)).skipped, 'not_member');
+  assert.equal(h.get(`intelRoster/${rosterId}`).prestige, 1_000_000);
+  const rep = await h.act(cop, 'intelMemberReport', { rosterId });
+  assert.equal(rep.heistsStopped, 1);
+  assert.equal(rep.goldRecovered, 500_000);
+  assert.equal(rep.goldEarned, 62_500);
+  assert.equal(rep.bustPrestige, 1_000_000);
+  assert.ok(h.intelChat().some((m) => /Devriye bir soygunu durdurdu — 500\.000 altın kurtarıldı/.test(m)));
 });

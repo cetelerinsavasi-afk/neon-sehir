@@ -20,11 +20,15 @@ test('AMAZOR fiyatları index.js ile aynı (ticaret yolu yarı fiyat / anlık de
   assert.deepEqual(SHARED_AMAZOR_PRICES, AMAZOR_PRICES);
 });
 
-test('index.js: dailyReset içine çete kodu eklenmedi; çete fonksiyonları export ediliyor', () => {
+test('index.js: dailyReset içinde sadece v109 polis kancaları (best-effort) var; çete fonksiyonları export ediliyor', () => {
   const start = indexSrc.indexOf('export const dailyReset');
   const end = indexSrc.indexOf('export const hourlyInvestmentUpdate');
   const body = indexSrc.slice(start, end);
-  assert.ok(!/gang/i.test(body), 'dailyReset gövdesinde çete kodu olmamalı');
+  // v109: eski usul bekleyen istifa → teşkilattan ayrılma; geçiş gecesi imam kontrolü
+  const calls = [...body.matchAll(/gangFunctions\.system\.(\w+)\(/g)].map((m) => m[1]);
+  assert.deepEqual([...new Set(calls)].sort(), ['getRoleStatus', 'resignPolice']);
+  for (const m of body.matchAll(/gangFunctions\.system\.\w+\([^)]*\)/g)) assert.ok(body.slice(m.index, m.index + 200).includes('.catch('), 'kanca hatası gece işini durdurmamalı');
+  assert.ok(!/gangWorlds|createGangSystem/.test(body), 'dailyReset çete dünyasına doğrudan dokunmaz');
   for (const f of ['gangAction', 'gangClock']) assert.ok(indexSrc.includes(`export const ${f}`));
   // v32: admin paneli / test şifresi canlıda yok
   assert.ok(!indexSrc.includes('export const gangAdmin'), 'gangAdmin export edilmemeli');
@@ -60,11 +64,17 @@ test('rütbe hesabı saf fonksiyon: sınır değerleri', () => {
   assert.equal(computeIntelRanks([mk('z', 5)]).z, 'muhbir');
 });
 
-test('index.js: şüpheyle yakalanma cezası kancaları best-effort ve polis yakalamasında çağrılmaz', () => {
-  const idx = [...indexSrc.matchAll(/\.onSuspicionFine\(/g)].map((m) => m.index);
-  assert.equal(idx.length, 3, 'attemptHeist + sellContrabandAtPark + executeHeistPlan');
-  for (const i of idx) assert.ok(indexSrc.slice(i, i + 220).includes('.catch('), 'hata soygunu etkilememeli');
-  const plan = indexSrc.slice(indexSrc.indexOf('export const executeHeistPlan'));
-  const i = plan.indexOf('onSuspicionFine');
-  assert.ok(/if \(caughtBySuspicion\) \{\s*await Promise\.all\(\s*captureSmsList/.test(plan.slice(i - 400, i)), 'sadece caughtBySuspicion dalında');
+test('index.js (v108): soygun/kaçak cezaları ve soygun ödemeleri devlet kasasına AYNI işlemde yazılır; polis kancası best-effort', () => {
+  assert.ok(!indexSrc.includes('onSuspicionFine'), 'İstihbarat ceza kancası kaldırıldı');
+  assert.ok(!indexSrc.includes('onPoliceBustReward'), 'İstihbarat polis prestiji kaldırıldı');
+  const heist = indexSrc.slice(indexSrc.indexOf('export const attemptHeist'), indexSrc.indexOf('export const sellContrabandToDepo'));
+  assert.ok(/heistStateEntries\(caught \? \{ fines: penalty \} : \{ paidToCriminals: reward \}\)/.test(heist), 'tek başına soygun: ceza ya da ödeme');
+  assert.ok(heist.indexOf('stateWrite(tx') < heist.indexOf('result = {'), 'transaction içinde');
+  const park = indexSrc.slice(indexSrc.indexOf('export const sellContrabandAtPark'));
+  assert.ok(/fines: penaltyAmount, contraband: true/.test(park.slice(0, 4000)));
+  const plan = indexSrc.slice(indexSrc.indexOf('export const executeHeistPlan'), indexSrc.indexOf('export const expireHeistPlans'));
+  assert.ok(plan.includes('policeBustSplit(totalReward, policeIdx.length)'));
+  assert.ok(plan.indexOf('stateWrite(batch') < plan.indexOf('await batch.commit()'), 'aynı batch');
+  const hook = plan.indexOf('.onPoliceBust(');
+  assert.ok(hook > 0 && plan.slice(hook, hook + 260).includes('.catch('), 'polis kancası hata verse de soygun etkilenmez');
 });

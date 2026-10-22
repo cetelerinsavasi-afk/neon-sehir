@@ -91,7 +91,7 @@ export const GANG = {
 
   // --- Tır (ONAYLI) ---
   TRUCK_PRICE: 100_000,
-  TRUCK_LIFE_DAYS: 21, // gün (sefer değil); son 1 gün sipariş verilemez
+  TRUCK_LIFE_DAYS: 21, // gün (sefer değil); v108: son gününde de sipariş verilebilir (ömrü 0 olunca verilemez)
   TRUCK_CAPACITY: { araba: 10, silah: 10, yasakliMadde: 100 }, // tek tür ürün
 
   // --- Depo (ONAYLI) --- her alım +100 kapasite, ömürsüz, satılamaz
@@ -124,18 +124,25 @@ export const GANG = {
   CHAT_MIN_INTERVAL_MS: 1500,
 };
 
+// v109 — İSTİHBARAT ve POLİS BİRLEŞTİ: bu teşkilatın oyuncuya görünen adı artık
+// "Polis Teşkilatı". Kod içindeki kimlikler (intel, baskan, sef, …) aynı kaldı —
+// mevcut üyelerin verisine dokunulmadı. Teşkilat üyesi = polis
+// (users.profession === 'polis'); katılım/ayrılık mesleği de birlikte değiştirir.
 export const INTEL = {
-  JOIN_MIN_REPUTATION: 50, // ONAYLI (polislik şartı YOK)
+  JOIN_MIN_REPUTATION: 50, // ONAYLI
+  JOIN_MAX_SUSPICION: 0, // v109: polis olmak için şüphe %0 olmalı
+  // v109: istifa eden / atılan / oylamayla çıkarılan / pasiflikten görevden alınan
+  // 24 saat yeniden başvuramaz (memberships/{uid}.intelCooldownUntilMs)
+  REJOIN_COOLDOWN_MS: 24 * MS_HOUR,
   CODENAME_MIN: 3,
   CODENAME_MAX: 16,
-  REPORT_PRESTIGE: 1_000_000, // ONAYLI: tır ihbarı
-  LEAK_PRESTIGE: 1_000_000, // ONAYLI: tır içeriği sızdırma
+  REPORT_PRESTIGE: 500_000, // v109: tır ihbarı (1.000.000 → 500.000)
+  LEAK_PRESTIGE: 500_000, // v109: tır içeriği sızdırma (1.000.000 → 500.000)
   // v33: bahisli savaşa müdahale — ihbar/açma ödülü tırlarla aynı; operasyon sabit ücret
-  BET_REPORT_PRESTIGE: 1_000_000,
-  BET_LEAK_PRESTIGE: 1_000_000,
+  BET_REPORT_PRESTIGE: 500_000, // v109
+  BET_LEAK_PRESTIGE: 500_000, // v109
   BET_OP_PRICE: 100_000,
   TAKEDOWN_PRESTIGE: 10_000_000, // ONAYLI: çete çökertme
-  POLICE_REWARD_PRESTIGE_PER_GOLD: 1, // ONAYLI: yakalama ödülü = prestij (1:1)
   // v50: pazar savaşını kazanırsa kasaya, savaşa katılan TÜM tarafların
   // (çeteler + İstihbarat) toplam gücünün %5'i girer (eskiden kendi gücünün 1/10'u).
   WAR_WIN_KASA_TOTAL_RATIO: 0.05,
@@ -156,9 +163,46 @@ export const INTEL = {
   // v61: dağıtım yapılabilmesi için hedef grupta en az bu kadar üye olmalı
   // (Rütbeliler / Ajanlar / Muhbirler / Tüm üyeler — her biri ayrı sayılır).
   DIST_MIN_GROUP_MEMBERS: 5,
-  NAME: 'İstihbarat',
-  LOGO: { emoji: '🕵️', color: '#19e8ff', bg: '#06222b' },
+  NAME: 'Polis Teşkilatı', // v109 (eski adı: İstihbarat)
+  LOGO: { emoji: '🚓', color: '#5b9bff', bg: '#071a3a' },
+  // v108 — başvuru formu (kod adı + beyan edilen çete/rütbe + neden). Başkan ve
+  // Şefler inceler; 12 saat içinde yanıt gelmezse otomatik onaylanır. Teşkilatta
+  // Başkan ya da Şef yoksa başvuru anında otomatik onaylanır.
+  // v109: "Hangi çetedesin?" — aktif çetelerden biri ya da bu seçenek (o zaman rütbe sorulmaz)
+  APP_NO_GANG: 'Hiçbir çetede değilim',
+  APP_REASON_MIN: 10,
+  APP_REASON_MAX: 300,
+  APP_GANG_MAX: 24,
+  APP_AUTO_APPROVE_HOURS: 12,
+  JOIN_REQUIRES_WEAPON: true,
+  JOIN_REQUIRES_ONBOARDING: true,
 };
+
+// v109 — Soygun durdurma (functions/policeRules.js): kurtarılan paranın %25'i
+// polislere (eşit), kalanı devlete; her polis (kurtarılan × 4) / polis sayısı
+// prestij kazanır (Polis Teşkilatı prestiji).
+//   ör. 2 polis 500.000 kurtardı → kişi başı 62.500 altın + 1.000.000 prestij
+export const POLICE = {
+  BUST_EARN_RATIO: 0.25,
+  BUST_PRESTIGE_PER_GOLD: 4,
+};
+
+// v109 — Rütbe maaşları (devlet öder, her gece 00:00'da otomatik + SMS).
+// Rütbe kimlikleri eski İstihbarat kimlikleri; adları polis rütbeleri (RANK_LABELS).
+// İmam maaşı functions/index.js (IMAM_SALARY).
+export const SALARIES = {
+  baskan: 25_000, // Emniyet Genel Müdürü
+  sef: 20_000, // Emniyet Amiri
+  uzman: 15_000, // Başkomiser
+  ajan: 10_000, // Komiser
+  muhbir: 5_000, // Polis Memuru
+};
+// v108.1 — Karakol rüşveti (functions/index.js bribePolice ile aynı). Bir günün
+// rüşvetleri o gecenin 00:00'ında o an polis olanlara eşit bölünüp maaşla
+// birlikte otomatik yatar. O gün hiç polis yoksa devlet kasasına gelir yazılır.
+export const BRIBE_COST = 3000;
+// v108 — 10 gün oyuna girmeyen polisler görevden alınır.
+export const ROLE_INACTIVE_DAYS = 10;
 
 // Çete rütbeleri (sıra = yetki sırası, küçük = daha yetkili)
 export const GANG_RANKS = ['baba', 'sagkol', 'kidemli', 'tetikci', 'comez'];
@@ -169,11 +213,12 @@ export const RANK_LABELS = {
   kidemli: 'Kıdemli',
   tetikci: 'Tetikçi',
   comez: 'Çömez',
-  baskan: 'Başkan',
-  sef: 'Şef',
-  uzman: 'Uzman',
-  ajan: 'Ajan',
-  muhbir: 'Muhbir',
+  // v109 — teşkilat rütbeleri (kimlikler eski İstihbarat adları)
+  baskan: 'Emniyet Genel Müdürü',
+  sef: 'Emniyet Amiri',
+  uzman: 'Başkomiser',
+  ajan: 'Komiser',
+  muhbir: 'Polis Memuru',
 };
 // İstihbarat rütbesinin çete eşdeğeri (yetki kontrolünü tek fonksiyonla yapmak için)
 export const INTEL_TO_GANG_EQUIV = { baskan: 'baba', sef: 'sagkol', uzman: 'kidemli', ajan: 'tetikci', muhbir: 'comez' };

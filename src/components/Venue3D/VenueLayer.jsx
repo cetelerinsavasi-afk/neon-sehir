@@ -4,7 +4,7 @@ import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { enterInterior, enterPark, recordVenueVisit } from '../../services/gameActions';
 import { venueTo2d } from '../../../functions/venueLayouts.js';
-import { CamiiPart, BankaPart, GazinoPart, KarakolPart, GaleriPart, SilahPart, ModifiyePart, ParkPart } from './venueParts';
+import { CamiiPart, BankaPart, GazinoPart, KarakolPart, GaleriPart, SilahPart, ModifiyePart, ParkPart, BelediyePart } from './venueParts';
 import '../../styles/worldScreenChrome.css';
 import './Venue3D.css';
 
@@ -29,6 +29,7 @@ const PARTS = {
   silah_magazasi: SilahPart,
   modifiye_garaji: ModifiyePart,
   park: ParkPart,
+  belediye: BelediyePart,
 };
 
 const npcToOther = (n) => ({

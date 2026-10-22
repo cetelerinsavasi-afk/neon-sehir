@@ -124,7 +124,7 @@ function OrderSheet({ trucks, routes, state, depot, gangId, orders, onClose }) {
   const now = useNow(60_000);
   const today = istDateKey(now);
   const pendingTruck = new Set(orders.filter((o) => o.status === 'pending').map((o) => o.truckId));
-  const eligible = trucks.filter((t) => t.status !== 'retired' && daysBetween(today, t.expiresDateKey) >= 2 && !pendingTruck.has(t.id) && !(t.status === 'in_transit' && t.departDateKey === today));
+  const eligible = trucks.filter((t) => t.status !== 'retired' && daysBetween(today, t.expiresDateKey) >= 1 && !pendingTruck.has(t.id) && !(t.status === 'in_transit' && t.departDateKey === today));
   const departAt = nextWindowStart(now);
   const myRoutes = routes.filter((r) => r.holderType === 'gang' && r.holderId === gangId && (!r.untilDateKey || today < r.untilDateKey));
   const [truckId, setTruckId] = useState(eligible[0]?.id || null);

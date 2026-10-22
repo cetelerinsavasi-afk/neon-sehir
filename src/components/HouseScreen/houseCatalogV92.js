@@ -1944,6 +1944,175 @@ I('aranan', 'karakol', 'Arananlar Panosu', '📌', (g) => {
   Pl(g, 1.2, 0.9, K('#fff', { map: T('wanted') }), 0, 1.6, 0.045);
 }, { wall: true, wallW: 0.65 });
 
+// ── v108 Belediye — Başkanlık makam odası (sadece oyunun Belediye Binası'nda)
+Object.assign(TEX, {
+  amblem: [512, 512, (x) => {
+    x.fillStyle = 'rgba(0,0,0,0)';
+    x.clearRect(0, 0, 512, 512);
+    circle(x, 256, 256, 246, '#c9a24a');
+    circle(x, 256, 256, 228, '#0d2a52');
+    circle(x, 256, 256, 170, '#123a7a');
+    x.strokeStyle = '#e8c766';
+    x.lineWidth = 6;
+    x.beginPath();
+    x.arc(256, 256, 170, 0, PI * 2);
+    x.stroke();
+    // şehir silüeti
+    x.fillStyle = '#e8c766';
+    [[150, 90], [182, 140], [214, 110], [246, 170], [278, 120], [310, 150], [342, 95]].forEach(([bx, bh]) => x.fillRect(bx, 330 - bh, 26, bh));
+    x.fillRect(140, 330, 232, 10);
+    x.fillStyle = '#3df5c4';
+    for (let i = 0; i < 18; i++) x.fillRect(156 + (i % 7) * 32, 250 + Math.floor(i / 7) * 22, 6, 8);
+    // halka yazısı
+    x.fillStyle = '#e8c766';
+    x.font = '900 34px Arial Black,Arial';
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
+    const top = 'NEON ŞEHİR BELEDİYESİ';
+    for (let i = 0; i < top.length; i++) {
+      const a = -PI / 2 + ((i - (top.length - 1) / 2) * PI * 0.9) / top.length;
+      x.save();
+      x.translate(256 + Math.cos(a) * 199, 256 + Math.sin(a) * 199);
+      x.rotate(a + PI / 2);
+      x.fillText(top[i], 0, 0);
+      x.restore();
+    }
+    txt(x, '★ 2026 ★', 256, 400, '900 30px Arial Black,Arial', '#e8c766');
+  }],
+  baskanplaka: [256, 64, (x) => {
+    x.fillStyle = '#1a1208';
+    x.fillRect(0, 0, 256, 64);
+    x.strokeStyle = '#c9a24a';
+    x.lineWidth = 4;
+    x.strokeRect(4, 4, 248, 56);
+    txt(x, 'BELEDİYE BAŞKANI', 128, 33, '900 24px Arial Black,Arial', '#e8c766');
+  }],
+  meclispano: [384, 256, (x) => {
+    x.fillStyle = '#f4efe2';
+    x.fillRect(0, 0, 384, 256);
+    x.fillStyle = '#123a7a';
+    x.fillRect(0, 0, 384, 44);
+    txt(x, 'MECLİS KARARLARI', 192, 23, '900 24px Arial Black,Arial', '#fff');
+    const rows = ['Karar 1 · Park yenileme', 'Karar 2 · Yol bakım bütçesi', 'Karar 3 · Gece aydınlatması', 'Karar 4 · Kültür festivali', 'Karar 5 · Seçim takvimi'];
+    rows.forEach((r, i) => {
+      x.fillStyle = i % 2 ? '#e8e0cc' : '#f4efe2';
+      x.fillRect(12, 56 + i * 38, 360, 34);
+      x.fillStyle = '#2b2b2b';
+      x.font = 'bold 18px Arial';
+      x.textAlign = 'left';
+      x.textBaseline = 'middle';
+      x.fillText(r, 24, 73 + i * 38);
+      circle(x, 352, 73 + i * 38, 9, i === 4 ? '#ffd23f' : '#2ecc71');
+    });
+  }],
+  sehirzemin: [256, 256, (x) => {
+    x.fillStyle = '#5c8a4a';
+    x.fillRect(0, 0, 256, 256);
+    x.fillStyle = '#3a3f4d';
+    for (let i = 0; i < 4; i++) {
+      x.fillRect(0, 30 + i * 64, 256, 12);
+      x.fillRect(30 + i * 64, 0, 12, 256);
+    }
+    x.fillStyle = '#4aa3df';
+    x.beginPath();
+    x.moveTo(0, 200);
+    x.quadraticCurveTo(128, 170, 256, 230);
+    x.lineTo(256, 256);
+    x.lineTo(0, 256);
+    x.fill();
+  }],
+});
+I('belediyeamblem', 'banka', 'Belediye Amblemi', '🏛️', (g) => {
+  Cy(g, 0.78, 0.06, '#8a6a2a', 0, 1.6, 0.03, { m: 0.6, r: 0.35 }, 40).rotation.x = PI / 2;
+  const p = Pl(g, 1.5, 1.5, K('#fff', { map: T('amblem'), op: 1, e: '#fff', ei: 0.25 }), 0, 1.6, 0.07);
+  p.material.transparent = true;
+}, { wall: true, wallW: 0.8, venueOnly: true });
+I('meclispano', 'banka', 'Meclis Kararları Panosu', '📜', (g) => {
+  B(g, 1.6, 1.1, 0.05, '#5e3a1a', 0, 1.05, 0.025);
+  Pl(g, 1.48, 0.98, K('#fff', { map: T('meclispano') }), 0, 1.6, 0.055);
+}, { wall: true, wallW: 0.8, venueOnly: true });
+I('baskanmasa', 'banka', 'Başkanlık Makam Masası', '🏛️', (g) => {
+  const wood = '#4a2a14';
+  const dark = '#2e1a0c';
+  // L masanın gövdesi + yan dönüş
+  B(g, 2.6, 0.76, 1.0, wood, 0, 0, 0, { r: 0.35 });
+  B(g, 2.72, 0.05, 1.12, dark, 0, 0.76, 0, { r: 0.25 });
+  B(g, 2.4, 0.5, 0.02, '#6b3f1f', 0, 0.12, 0.51);
+  B(g, 0.9, 0.7, 0.7, wood, 1.75, 0, -0.15);
+  B(g, 0.96, 0.04, 0.76, dark, 1.75, 0.7, -0.15);
+  // deri sümen, evrak, kalemlik, telefon
+  B(g, 1.0, 0.012, 0.6, '#1c3a2a', 0, 0.81, -0.05);
+  B(g, 0.28, 0.03, 0.36, '#f4f1e8', 0.25, 0.82, -0.05);
+  B(g, 0.28, 0.03, 0.36, '#eae3d0', 0.3, 0.85, -0.02);
+  Cy(g, 0.05, 0.12, '#c9a24a', -0.85, 0.81, -0.2, { m: 0.7 }, 12);
+  for (let i = 0; i < 3; i++) Cy(g, 0.008, 0.16, ['#111', '#123a7a', '#7a1010'][i], -0.86 + i * 0.02, 0.86, -0.2, null, 6);
+  B(g, 0.22, 0.07, 0.18, '#1a1a1a', -0.55, 0.81, -0.25);
+  B(g, 0.2, 0.03, 0.06, '#2a2a2a', -0.55, 0.88, -0.29);
+  // masa bayrakları
+  const fl = sub(g, 0.95, 0.81, -0.3);
+  Cy(fl, 0.06, 0.03, '#c9a24a', 0, 0, 0, { m: 0.7 });
+  Cy(fl, 0.008, 0.36, '#d9dde3', 0, 0.03, 0, { m: 0.7 });
+  Pl(fl, 0.24, 0.16, K('#fff', { map: T('flag'), side: 1, u: 1 }), 0.12, 0.3, 0);
+  // isimlik (öne bakar)
+  const np = sub(g, 0, 0.81, 0.36);
+  B(np, 0.56, 0.12, 0.05, '#1a1208');
+  Pl(np, 0.52, 0.11, K('#fff', { map: T('baskanplaka'), e: '#fff', ei: 0.3 }), 0, 0.06, 0.027);
+  // yüksek sırtlı makam koltuğu (arkada)
+  const c = sub(g, 0, 0, -0.95);
+  Cy(c, 0.3, 0.05, '#222', 0, 0, 0, { m: 0.6 }, 5);
+  Cy(c, 0.04, 0.4, '#555', 0, 0.05, 0, { m: 0.8 });
+  B(c, 0.66, 0.14, 0.62, '#3a1410', 0, 0.45, 0, { r: 0.4 });
+  B(c, 0.66, 1.0, 0.14, '#3a1410', 0, 0.55, -0.27, { r: 0.4 });
+  B(c, 0.7, 0.16, 0.18, '#3a1410', 0, 1.5, -0.27, { r: 0.4 });
+  for (const s of [-1, 1]) B(c, 0.08, 0.26, 0.5, '#2a0e0b', s * 0.36, 0.55, 0);
+  for (let i = 0; i < 3; i++) for (const s of [-1, 0, 1]) Sp(c, 0.018, '#c9a24a', s * 0.2, 0.75 + i * 0.25, -0.195, { m: 0.8 }, 8);
+}, { venueOnly: true, boxes: [[0, 0, 1.36, 0.56], [1.75, -0.15, 0.48, 0.38], [0, -0.95, 0.36, 0.34]] });
+I('toplantimasa', 'banka', 'Meclis Toplantı Masası', '🤝', (g) => {
+  const wood = '#5a3417';
+  B(g, 1.3, 0.05, 3.8, wood, 0, 0.74, 0, { r: 0.3 });
+  B(g, 1.1, 0.02, 3.5, '#2a4a3a', 0, 0.79, 0);
+  for (const z of [-1.5, 0, 1.5]) B(g, 0.5, 0.74, 0.22, '#3e230f', 0, 0, z);
+  for (let i = 0; i < 4; i++) {
+    const z = -1.35 + i * 0.9;
+    chair(g, -0.95, z, PI / 2, '#2e1a0c', '#7a1f2b');
+    chair(g, 0.95, z, -PI / 2, '#2e1a0c', '#7a1f2b');
+    B(g, 0.22, 0.01, 0.3, '#f4f1e8', -0.4, 0.8, z);
+    B(g, 0.22, 0.01, 0.3, '#f4f1e8', 0.4, 0.8, z);
+    Cy(g, 0.03, 0.12, '#cfefff', 0.25, 0.8, z + 0.18, { op: 0.6 }, 8);
+  }
+  chair(g, 0, -2.25, 0, '#2e1a0c', '#123a7a');
+}, { venueOnly: true, boxes: [[0, 0, 1.2, 2.05], [0, -2.25, 0.25, 0.25]] });
+I('sehirmaketi', 'banka', 'Neon Şehir Maketi', '🏙️', (g) => {
+  B(g, 2.2, 0.8, 1.5, '#2b2f3a', 0, 0, 0, { r: 0.4 });
+  B(g, 2.3, 0.05, 1.6, '#c9a24a', 0, 0.8, 0, { m: 0.6 });
+  const base = Pl(g, 2.1, 1.4, K('#fff', { map: T('sehirzemin') }), 0, 0.86, 0);
+  base.rotation.x = -PI / 2;
+  const r = rng('belediye_maket');
+  const cols = ['#d6dde6', '#9aa4b2', '#5aa9ff', '#ff2e5a', '#ffd23f', '#3df5c4'];
+  for (let i = 0; i < 26; i++) {
+    const x = -0.9 + r() * 1.8;
+    const z = -0.55 + r() * 1.05;
+    const h = 0.08 + r() * (Math.abs(x) < 0.4 && Math.abs(z) < 0.3 ? 0.55 : 0.28);
+    const c = cols[i % cols.length];
+    B(g, 0.1 + r() * 0.06, h, 0.1 + r() * 0.06, c, x, 0.86, z, i % 5 === 0 ? { e: c, ei: 0.5 } : { r: 0.5 });
+  }
+  // belediye binası (kubbeli, ortada)
+  B(g, 0.3, 0.16, 0.2, '#f4efe2', 0.55, 0.86, 0.35);
+  Sp(g, 0.08, '#c9a24a', 0.55, 1.03, 0.35, { m: 0.6 }, 12);
+  // cam fanus
+  B(g, 2.12, 0.9, 1.42, K('#cfefff', { op: 0.18, r: 0.05, m: 0.1 }), 0, 0.86, 0);
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) B(g, 0.03, 0.9, 0.03, '#c9a24a', sx * 1.05, 0.86, sz * 0.7, { m: 0.7 });
+  return { light: { x: 0, y: 2.2, z: 0, color: '#fff2d0', intensity: 0.7, distance: 3 }, on: true, setOn() {}, noToggle: true };
+}, { venueOnly: true, box: [1.15, 0.8] });
+I('kursu', 'banka', 'Konuşma Kürsüsü', '🎤', (g) => {
+  B(g, 0.7, 1.1, 0.5, '#4a2a14', 0, 0, 0, { r: 0.35 });
+  const top = B(g, 0.78, 0.05, 0.58, '#2e1a0c', 0, 1.1, -0.02);
+  top.rotation.x = 0.2;
+  Pl(g, 0.5, 0.5, K('#fff', { map: T('amblem'), op: 1 }), 0, 0.6, 0.252).material.transparent = true;
+  Cy(g, 0.008, 0.3, '#222', 0.2, 1.15, -0.1, null, 6);
+  Sp(g, 0.03, '#333', 0.2, 1.46, -0.08, null, 8);
+}, { venueOnly: true, box: [0.38, 0.28] });
+
 // ── Galeri
 I('carplatform', 'galeri', 'Döner Sergi Platformu', '💿', (g) => {
   Cy(g, 2.2, 0.12, '#1b1f27', 0, 0, 0, { m: 0.6, r: 0.3 }, 48);

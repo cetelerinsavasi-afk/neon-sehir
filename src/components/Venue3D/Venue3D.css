@@ -131,3 +131,183 @@
 .v3-menu.right .v3-btn {
   text-align: right;
 }
+
+/* v108 — Belediye Raporu (sadece admin) */
+.bl-report {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 64vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  font-size: 13px;
+}
+.bl-empty {
+  color: #9aa6b8;
+  font-size: 12px;
+  padding: 6px 2px;
+}
+.bl-balance {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 12px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(18, 58, 122, 0.55), rgba(201, 162, 74, 0.25));
+  border: 1px solid rgba(232, 199, 102, 0.5);
+}
+.bl-balance span {
+  color: #cdd6e4;
+  font-size: 12px;
+}
+.bl-balance b {
+  font-size: 22px;
+  color: #ffe9a8;
+}
+.bl-balance.neg b,
+.bl-net.neg b,
+.bl-row b.neg {
+  color: #ff7a8a;
+}
+.bl-balance small {
+  color: #ffb3bd;
+  font-size: 11px;
+}
+.bl-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+}
+.bl-tabs button {
+  padding: 6px 2px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: #cdd6e4;
+  font-size: 12px;
+}
+.bl-tabs button.on {
+  background: rgba(232, 199, 102, 0.22);
+  border-color: rgba(232, 199, 102, 0.7);
+  color: #ffe9a8;
+  font-weight: 700;
+}
+.bl-net {
+  text-align: center;
+  color: #cdd6e4;
+}
+.bl-net b {
+  color: #7dffb0;
+  margin-left: 6px;
+}
+.bl-block {
+  border-radius: 12px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.bl-block.in {
+  border-left: 3px solid #3df58a;
+}
+.bl-block.out {
+  border-left: 3px solid #ff5a6e;
+}
+.bl-block-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  color: #e8edf6;
+  margin-bottom: 4px;
+}
+.bl-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  color: #cdd6e4;
+  font-size: 12px;
+}
+.bl-row span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.bl-row b {
+  white-space: nowrap;
+  color: #fff;
+}
+.bl-row .dim {
+  color: #8592a6;
+  white-space: nowrap;
+}
+.bl-legend {
+  font-weight: 400;
+  font-size: 11px;
+  color: #9aa6b8;
+}
+.bl-legend i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin: 0 2px 0 6px;
+}
+.bl-legend i.in,
+.bl-bars .in {
+  background: #3df58a;
+}
+.bl-legend i.out,
+.bl-bars .out {
+  background: #ff5a6e;
+}
+.bl-days {
+  display: grid;
+  grid-template-columns: repeat(14, minmax(0, 1fr));
+  gap: 3px;
+  align-items: end;
+  margin: 6px 0;
+}
+.bl-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.bl-bars {
+  height: 64px;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 1px;
+}
+.bl-bars span {
+  width: 40%;
+  min-height: 1px;
+  border-radius: 2px 2px 0 0;
+}
+.bl-day small {
+  font-size: 8px;
+  color: #8592a6;
+  white-space: nowrap;
+}
+.bl-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  color: #8592a6;
+  font-size: 11px;
+}
+.bl-refresh {
+  border: 1px solid rgba(232, 199, 102, 0.5);
+  background: transparent;
+  color: #ffe9a8;
+  border-radius: 10px;
+  padding: 4px 10px;
+  font-size: 12px;
+}

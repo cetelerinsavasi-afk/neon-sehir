@@ -20,7 +20,7 @@ export const regions = [
   { id: 'karakol', name: 'Karakol', screen: 'rüşvet', emoji: '🚔', left: 17, top: 16, width: 12, height: 10 },
   { id: 'banka', name: 'Banka', screen: 'banka', emoji: '🏦', left: 35.7, top: 10, width: 12, height: 20 },
   { id: 'spor_salonu', name: 'Spor Salonu', screen: 'yakinda', emoji: '🏋️', left: 54.5, top: 15, width: 21, height: 16 },
-  { id: 'belediye', name: 'Belediye Binası', screen: 'yakinda', emoji: '🏛️', left: 74.5, top: 21.5, width: 21, height: 19 },
+  { id: 'belediye', name: 'Belediye Binası', screen: 'belediye', emoji: '🏛️', left: 74.5, top: 21.5, width: 21, height: 19 },
   { id: 'silah_magazasi', name: 'Silah Mağazası', screen: 'silah-magazasi', emoji: '🔫', left: 0.5, top: 29, width: 10, height: 10 },
   { id: 'araba_galerisi', name: 'Araba Galerisi', screen: 'araba-galerisi', emoji: '🚗', left: 28.5, top: 24.5, width: 13, height: 11 },
   { id: 'fabrika', name: 'Fabrika', screen: 'fabrika', emoji: '🏭', left: 43, top: 27, width: 14, height: 14 },

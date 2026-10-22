@@ -154,6 +154,21 @@ export async function createHarness({ start = ist('2026-09-21', '09:00'), dice =
     async giveDepot(gangId, capacity = 1000) {
       await db.doc(`gangWorlds/test/gangs/${gangId}/private/depot`).set({ capacity }, { merge: true });
     },
+    // v108 — devlet kasası (test dünyası defteri): { in: {kalem}, out: {kalem}, inTotal, outTotal }
+    treasury(base = 'gangWorlds/test/') {
+      const docs = Object.values(db._dump(`${base}stateLedger/`));
+      const out = { in: {}, out: {}, inTotal: 0, outTotal: 0 };
+      for (const d of docs) {
+        for (const [k, v] of Object.entries(d.in || {})) out.in[k] = (out.in[k] || 0) + v;
+        for (const [k, v] of Object.entries(d.out || {})) out.out[k] = (out.out[k] || 0) + v;
+        out.inTotal += d.inTotal || 0;
+        out.outTotal += d.outTotal || 0;
+      }
+      return out;
+    },
+    inbox(id) {
+      return Object.values(db._dump('gangWorlds/test/inbox/')).filter((m) => m.to === id).map((m) => m.text);
+    },
     chat(gangId, channel = 'genel') {
       return Object.values(db._dump(`gangWorlds/test/gangs/${gangId}/chat_${channel}/`)).map((m) => m.text);
     },

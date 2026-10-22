@@ -2,74 +2,49 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHarness } from './harness.js';
 
-// v88 — İstihbarat kasa sınırı: üye × 100.000; aşan gelir yanar; üye azalınca fazlası silinmez.
-async function live(h) {
-  await h.admin('openLive', { mode: 'fresh', confirm: 'CANLIYA AÇ' });
-  const w = h.raw('gangSystem/config').liveWorldId;
-  const set = (path, data) => h.db.doc(`gangWorlds/${w}/${path}`).set(data, { merge: true });
-  const kasa = () => h.raw(`gangWorlds/${w}/intel/main/private/state`)?.kasa || 0;
-  return { w, set, kasa };
-}
+// v108 — İstihbarat kasası KAPANDI (v88/v91 kasa sınırı testlerinin yerine):
+//  - mevcut kasa tek seferlik devlet kasasına devredilir (bir kez)
+//  - yeni altın dağıtımı açılamaz; açık kalmış eski dağıtımın kalanı devlete döner
+//  - İstihbaratın kazandığı her şey devlete gelir yazılır (savaş, bahis, rüşvet…)
 
-test('v88: gelir sınıra kadar girer, aşanı yanar; sınırdayken hiç girmez', async () => {
+test('v108: İstihbarat kasası tek seferlik devlet kasasına devredilir, bir daha çalışmaz', async () => {
   const h = await createHarness();
-  const L = await live(h);
-  await L.set('intel/main', { memberCount: 10 }); // sınır 1.000.000
-  await L.set('intel/main/private/state', { kasa: 900_000 });
-  // ceza 400.000 → yarısı (200.000) kasaya gidecekti; sadece 100.000 girer, 100.000 yanar
-  const r = await h.system.onSuspicionFine('u1', 400_000, 'f1');
-  assert.deepEqual(r, { credited: 100_000, burned: 300_000 });
-  assert.equal(L.kasa(), 1_000_000);
-  const r2 = await h.system.onSuspicionFine('u2', 50_000, 'f2');
-  assert.equal(r2.credited, 0, 'sınırdayken girmez');
-  assert.equal(L.kasa(), 1_000_000);
-});
-
-test('v88: üye azalınca fazla silinmez; harcanıp sınırın altına inince gelir yeniden girer', async () => {
-  const h = await createHarness();
-  const L = await live(h);
-  await L.set('intel/main', { memberCount: 11 });
-  await L.set('intel/main/private/state', { kasa: 1_100_000 });
-  await L.set('intel/main', { memberCount: 10 }); // sınır 1.000.000'a indi
-  const r = await h.system.onSuspicionFine('u1', 100_000, 'f1');
-  assert.equal(r.credited, 0);
-  assert.equal(L.kasa(), 1_100_000, 'fazlası silinmedi');
-  await L.set('intel/main/private/state', { kasa: 950_000 }); // harcandı
-  const r2 = await h.system.onSuspicionFine('u2', 200_000, 'f2'); // 100.000 kasaya gidecekti
-  assert.equal(r2.credited, 50_000, 'sadece sınıra kadar');
-  assert.equal(L.kasa(), 1_000_000);
-});
-
-test('v88: tek seferlik sıfırlama — kasa 1.000.000a iner, dağıtım hakkı orantılı küçülür, bir daha çalışmaz', async () => {
-  const h = await createHarness();
-  await h.db.doc('gangWorlds/test').set({ intelKasaResetV88: null }, { merge: true });
-  await h.db.doc('gangWorlds/test/intel/main/private/state').set({ kasa: 4_500_000, distributableLeft: 900_000, kasaAtMidnight: 4_500_000, midnightDateKey: '2026-09-21' }, { merge: true });
+  // yeni dünyada ilk saat turunda kasa zaten boş kapanır; eski bir dünyayı taklit et
+  await h.db.doc('gangWorlds/test').set({ intelKasaClosedV108: null, intelKasaResetV88: 1, intelKasaResetV91: 1 }, { merge: true });
+  await h.db.doc('gangWorlds/test/intel/main/private/state').set({ kasa: 2_345_678, kasaAtMidnight: 2_000_000, distributableLeft: 400_000 }, { merge: true });
   await h.internal.clock.runClock('test');
   const st = h.get('intel/main/private/state');
-  assert.equal(st.kasa, 1_000_000);
-  assert.equal(st.distributableLeft, 200_000);
-  assert.equal(st.kasaAtMidnight, 1_000_000);
-  await h.db.doc('gangWorlds/test/intel/main/private/state').set({ kasa: 3_000_000 }, { merge: true });
+  assert.equal(st.kasa, 0);
+  assert.equal(st.distributableLeft, 0);
+  assert.equal(h.treasury().in.ist_kasa_devri, 2_345_678);
+  // ikinci tur: tekrar devretmez
+  await h.db.doc('gangWorlds/test/intel/main/private/state').set({ kasa: 500 }, { merge: true });
   await h.internal.clock.runClock('test');
-  assert.equal(h.get('intel/main/private/state').kasa, 3_000_000, 'ikinci kez çalışmaz');
+  assert.equal(h.get('intel/main/private/state').kasa, 500, 'ikinci kez çalışmaz');
+  assert.equal(h.treasury().in.ist_kasa_devri, 2_345_678);
+  assert.ok(Object.values(h.db._dump('gangWorlds/test/intel/main/log/')).some((l) => /kasası kapandı/.test(l.text)));
 });
 
-test('v91: v88 çalışmış olsa bile kasa 1.000.000 üstündeyse tekrar 1.000.000a iner; altındaysa dokunmaz; tek sefer', async () => {
+test('v108: İstihbarat altın dağıtamaz; açık kalmış eski dağıtımın kalanı süre dolunca devlete döner', async () => {
   const h = await createHarness();
-  await h.db.doc('gangWorlds/test').set({ intelKasaResetV88: 123, intelKasaResetV91: null }, { merge: true });
-  await h.db.doc('gangWorlds/test/intel/main/private/state').set({ kasa: 2_400_000, distributableLeft: 480_000, kasaAtMidnight: 2_400_000, midnightDateKey: '2026-09-21' }, { merge: true });
+  const ids = [];
+  for (let i = 0; i < 6; i++) {
+    const id = await h.persona({ displayName: `Ajan${i}`, gold: 0, power: 1000, reputation: 80 });
+    await h.act(id, 'joinIntel', { codeName: `Ajan${i}` });
+    ids.push(id);
+  }
+  const rid0 = (await h.membership(ids[0])).intelRosterId;
+  await h.db.doc(`gangWorlds/test/intelRoster/${rid0}`).update({ rank: 'baskan', prestige: 9_000_000 });
+  await h.db.doc(`gangWorlds/test/memberships/${ids[0]}`).set({ intelRank: 'baskan' }, { merge: true });
+  assert.match((await h.fails(ids[0], 'createDistribution', { org: 'intel', group: 'hepsi', perPerson: 100, slots: 7 })).message, /kasası yok/);
+  // v108 öncesinden kalma açık dağıtım (havuzda 7 × 1.000)
+  const now = h.clock.now;
+  await h.db.doc('gangWorlds/test/distributions/eski').set({ orgType: 'intel', orgId: 'main', group: 'hepsi', groupLabel: 'Tüm üyeler', createdByName: 'X', creatorKey: 'yok', perPerson: 1000, slots: 7, total: 7000, claims: {}, claimedCount: 0, claimedTotal: 0, status: 'open', createdAtMs: now, expiresAtMs: now + 3600_000, openUntilMs: now + 3600_000 });
+  await h.act(ids[1], 'claimDistribution', { distributionId: 'eski' });
+  assert.equal(h.gold(ids[1]), 1000, 'eski dağıtımdan pay alınabilir');
+  h.clock.now += 2 * 3600_000;
   await h.internal.clock.runClock('test');
-  assert.equal(h.get('intel/main/private/state').kasa, 1_000_000);
-  assert.equal(h.get('intel/main/private/state').distributableLeft, 200_000);
-  await h.db.doc('gangWorlds/test/intel/main/private/state').set({ kasa: 1_500_000 }, { merge: true });
-  await h.internal.clock.runClock('test');
-  assert.equal(h.get('intel/main/private/state').kasa, 1_500_000, 'ikinci kez çalışmaz');
-});
-
-test('v91: kasa 1.000.000 altındaysa sıfırlama dokunmaz', async () => {
-  const h = await createHarness();
-  await h.db.doc('gangWorlds/test').set({ intelKasaResetV91: null }, { merge: true });
-  await h.db.doc('gangWorlds/test/intel/main/private/state').set({ kasa: 700_000 }, { merge: true });
-  await h.internal.clock.runClock('test');
-  assert.equal(h.get('intel/main/private/state').kasa, 700_000);
+  assert.equal(h.get('distributions/eski').status, 'expired');
+  assert.equal(h.treasury().in.ist_iade, 6000, 'kalan devlete');
+  assert.equal(h.get('intel/main/private/state').kasa || 0, 0, 'İstihbarat kasasına bir şey girmez');
 });

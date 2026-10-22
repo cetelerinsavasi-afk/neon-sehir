@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
-import { useDailyActions } from '../../hooks/useDailyActions';
 import SimpleActionScreen from '../SimpleActionScreen/SimpleActionScreen';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
@@ -15,8 +14,8 @@ import {
   becomeBeggar,
   donateToBeggar,
   applyForImam,
+  resignImam,
   giveNasihat,
-  claimImamSalary,
 } from '../../services/gameActions';
 import './MosqueScreen.css';
 
@@ -41,7 +40,6 @@ const BEGGAR_DAILY_EARN_CAP = 10000; // bir dilenciye günde toplam bağış sı
 export function ImamPanel() {
   const { user } = useAuth();
   const { player } = usePlayer();
-  const { actions } = useDailyActions();
   const { imam } = useImamState();
   const [showBooklet, setShowBooklet] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -49,9 +47,10 @@ export function ImamPanel() {
   const [nasihatText, setNasihatText] = useState('');
   const [nasihatBusy, setNasihatBusy] = useState(false);
   const [nasihatError, setNasihatError] = useState(null);
-  const [salaryBusy, setSalaryBusy] = useState(false);
-  const [salaryError, setSalaryError] = useState(null);
-  const [salarySuccess, setSalarySuccess] = useState(false);
+  // v108.1 — imamlıktan istifa (anında; 24 saat yeniden başvurulamaz)
+  const [resignAsk, setResignAsk] = useState(false);
+  const [resignBusy, setResignBusy] = useState(false);
+  const [resignError, setResignError] = useState(null);
 
   if (!user) return <SignInPrompt message="İmamlık işlemleri için giriş yapmalısın." />;
 
@@ -69,6 +68,19 @@ export function ImamPanel() {
     }
   };
 
+  const handleResign = async () => {
+    setResignBusy(true);
+    setResignError(null);
+    try {
+      await resignImam();
+      setResignAsk(false);
+    } catch (err) {
+      setResignError(err.message || 'İstifa edilemedi.');
+    } finally {
+      setResignBusy(false);
+    }
+  };
+
   const handleNasihat = async () => {
     if (!nasihatText.trim()) return;
     setNasihatBusy(true);
@@ -80,19 +92,6 @@ export function ImamPanel() {
       setNasihatError(err.message || 'Nasihat gönderilemedi.');
     } finally {
       setNasihatBusy(false);
-    }
-  };
-
-  const handleSalary = async () => {
-    setSalaryBusy(true);
-    setSalaryError(null);
-    try {
-      await claimImamSalary();
-      setSalarySuccess(true);
-    } catch (err) {
-      setSalaryError(err.message || 'Maaş alınamadı.');
-    } finally {
-      setSalaryBusy(false);
     }
   };
 
@@ -108,8 +107,9 @@ export function ImamPanel() {
       {!imam && (
         <div className="imam-apply-box">
           <p className="mosque-hint">
-            Şu an imam yok. İmam olmak için 50 saygınlık ve %0 şüphe gerekir (detaylar için 📖'ye
-            bak).
+            Şu an imam yok — başvurursan şartları sağlıyorsan hemen imam olursun. Şartlar: başlangıç görevleri,
+            50 saygınlık ve %0 şüphe. Polisler ve polislik başvurusu bekleyenler imam olamaz
+            (detaylar için 📖'ye bak).
           </p>
           <button className="imam-apply-btn" disabled={applying} onClick={handleApply}>
             {applying ? '…' : 'İmamlık Başvurusu'}
@@ -153,19 +153,29 @@ export function ImamPanel() {
           </button>
           {nasihatError && <p className="beggar-error">{nasihatError}</p>}
 
-          <button
-            className="beggar-btn"
-            disabled={salaryBusy || actions.imamSalaryClaimed}
-            onClick={handleSalary}
-          >
-            {actions.imamSalaryClaimed
-              ? 'Bugün maaşını aldın'
-              : salaryBusy
-                ? '…'
-                : 'Maaşı Al (10.000 altın)'}
-          </button>
-          {salarySuccess && <p className="beggar-success">+10.000 altın hesabına eklendi!</p>}
-          {salaryError && <p className="beggar-error">{salaryError}</p>}
+          <p className="mosque-hint">💼 Maaşın (10.000 altın) her gece 00:00'da devletten otomatik yatar — görevlerini (5 vakit + nasihat) yaptığın sürece.</p>
+
+          {!resignAsk ? (
+            <button className="beggar-btn imam-resign-btn" onClick={() => setResignAsk(true)}>
+              🚪 İmamlıktan İstifa Et
+            </button>
+          ) : (
+            <div className="imam-resign-confirm">
+              <p className="mosque-hint">
+                İmamlıktan istifa etmek istediğine emin misin? İstifan hemen onaylanır, bu gece imam maaşı almazsın ve
+                24 saat boyunca yeniden imamlık başvurusu yapamazsın.
+              </p>
+              <div className="imam-resign-actions">
+                <button className="beggar-btn imam-resign-btn" disabled={resignBusy} onClick={handleResign}>
+                  {resignBusy ? '…' : 'Evet, İstifa Et'}
+                </button>
+                <button className="beggar-btn" disabled={resignBusy} onClick={() => setResignAsk(false)}>
+                  Vazgeç
+                </button>
+              </div>
+            </div>
+          )}
+          {resignError && <p className="beggar-error">{resignError}</p>}
         </div>
       )}
 

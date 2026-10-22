@@ -171,13 +171,8 @@ export function useOnboarding(gangReminders = null) {
       }
     }
 
-    if (player.profession === 'polis' && !actions.policeSalaryClaimed) {
-      list.push({ id: 'police-salary', emoji: '👮', text: 'Karakoldan maaşını al' });
-    }
-
-    if (player.isImam && !actions.imamSalaryClaimed) {
-      list.push({ id: 'imam-salary', emoji: '🕌', text: 'Camiiden maaşını al' });
-    }
+    // v108.1: polis rüşvet payı da her gece 00:00'da maaşla otomatik yatar (hatırlatıcı yok)
+    // v108: imam maaşı her gece 00:00'da otomatik yatar (hatırlatıcı yok)
 
     // v38: çete hatırlatıcıları (bkz. components/Gangs/alerts.jsx)
     if (gangReminders?.joinWar) list.push({ id: 'gang-war', emoji: '⚔️', text: 'Savaşa katıl' });

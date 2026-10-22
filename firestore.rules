@@ -333,7 +333,7 @@ service cloud.firestore {
         'locationId', 'displayName', 'avatar', 'x', 'y', 'facing', 'pose', 'holding', 'seat',
         'chatText', 'chatTs', 'updatedAt', 'enteredAt', 'activity', 'emote', 'emoteTs'
       ])
-        && d.locationId in ['banka', 'karakol', 'camii', 'gazino', 'araba_galerisi', 'silah_magazasi', 'modifiye_garaji']
+        && d.locationId in ['banka', 'karakol', 'camii', 'gazino', 'araba_galerisi', 'silah_magazasi', 'modifiye_garaji', 'belediye']
         && d.x is number && d.x >= 0 && d.x <= 2000
         && d.y is number && d.y >= 0 && d.y <= 2000
         && (d.chatText == null || (d.chatText is string && d.chatText.size() <= 140))
@@ -772,10 +772,10 @@ service cloud.firestore {
       return liveGangWorld(w) && hasGmem(w) && gmem(w).gangId != null && gmem(w).gangId in list;
     }
     function inIntel(w) {
-      return liveGangWorld(w) && hasGmem(w) && gmem(w).intelRosterId != null;
+      return liveGangWorld(w) && hasGmem(w) && gmem(w).get('intelRosterId', null) != null;
     }
     function intelRankIn(w, ranks) {
-      return inIntel(w) && gmem(w).intelRank in ranks;
+      return inIntel(w) && gmem(w).get('intelRank', '') in ranks;
     }
     function warReadable(w, war) {
       return liveGangWorld(w) && (
@@ -873,6 +873,13 @@ service cloud.firestore {
           match /ballots/{b} {
             allow read: if inIntel(w) && b == gmem(w).intelRosterId;
           }
+        }
+        // v108 — başvuru formları (gerçek kimlik içermez): inceleme yetkisi olan
+        // rütbe (v109: Emniyet Genel Müdürü + Emniyet Amiri = baskan + sef —
+        // intel/main.reviewRanks; ikisi de yoksa başvuru anında onaylanır)
+        match /applications/{a} {
+          allow read: if inIntel(w)
+            && gmem(w).get('intelRank', '') in get(/databases/$(database)/documents/gangWorlds/$(w)/intel/main).data.get('reviewRanks', ['baskan', 'sef']);
         }
       }
       // Roster gerçek UID içermez (kod adı + rütbe + prestij).

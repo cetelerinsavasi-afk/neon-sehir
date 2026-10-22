@@ -6,9 +6,13 @@ import crypto from 'crypto';
 import { GANG, INTEL, GANG_RANKS, TRADE_PRODUCTS, RANK_LABELS, INTEL_TO_GANG_EQUIV, productById, rankLevel } from './config.js';
 import { dateKeyOf, hourOf, windowSlotOf, weekdayOfKey, addDays } from './time.js';
 import { goldTag } from '../moneyLog.js';
+import { stateWrite } from '../stateTreasury.js';
+import { intelReviewRanks } from './ranks.js';
 
 
 export const TEST_WORLD = 'test';
+// v109 — teşkilat sicilindeki sayaçlar (istihbarat + polis icraatı tek sicilde)
+export const INTEL_RECORD_COUNTERS = ['power', 'truckReports', 'betReports', 'truckLeaks', 'betLeaks', 'paid', 'heistsStopped', 'goldRecovered', 'goldEarned', 'bustPrestige'];
 
 export function createCore(deps) {
   const {
@@ -124,6 +128,17 @@ export function createCore(deps) {
         player: (id) => d(`players/${id}`),
         players: () => c('players'),
         inbox: () => c('inbox'),
+        // v108 — İstihbarat sicili (süresiz; üye ayrılınca silinir) + başvurular
+        intelRecord: (r) => d(`intelRecords/${r}`),
+        intelApp: (id) => d(`intel/main/applications/${id}`),
+        intelApps: () => c('intel/main/applications'),
+        intelAppLink: (id) => d(`intelAppLinks/${id}`),
+        // v108.1 — gece maaşı: oyuncu başına günde TEK maaş (imam / polis —
+        // rol değiştirse de) + polis rüşvet havuzu. Canlıda kök
+        // koleksiyonlar (imam maaşı functions/index.js'de aynı işareti kullanır).
+        roleSalaryMark: (actorId, day) => (isTest ? d(`roleSalaryMarks/${day}_${actorId}`) : db.doc(`roleSalaryMarks/${day}_${actorId}`)),
+        bribePool: (day) => (isTest ? d(`policeBribePool/${day}`) : db.doc(`policeBribePool/${day}`)),
+        bribePayout: (day) => (isTest ? d(`policeBribePayouts/${day}`) : db.doc(`policeBribePayouts/${day}`)),
       },
     };
   }
@@ -152,6 +167,11 @@ export function createCore(deps) {
       debtToState: Number(u.debtToState || 0),
       isPolice: ctx.isTest ? Boolean(u.isPolice) : u.profession === 'polis',
       testPower: ctx.isTest ? Number(u.power || 0) : null,
+      // v108 — görev şartları ve rol tekliği (imam / istihbarat / polis)
+      onboarded: ctx.isTest ? u.onboarded !== false : Boolean(u.onboardingRewardClaimed),
+      policePending: ctx.isTest ? Boolean(u.policePending) : u.pendingPoliceChange === 'apply',
+      isImam: Boolean(u.isImam),
+      suspicion: Number(u.suspicion || 0), // v109: polislik şartı (%0)
     };
   }
 
@@ -189,19 +209,29 @@ export function createCore(deps) {
   }
 
   // ---------------------------------------------------------------------------
-  // v94 — İstihbarat üyesinin günlük icraatı (rapor: bugünden önceki 14 gün)
-  //   f: { warId, power, truckReports, betReports, truckLeaks, betLeaks, paid }
+  // v94 → v108 — İstihbarat SİCİLİ: üyenin TÜM icraatı (süresiz; üye
+  // İstihbarattan çıkınca silinir). Eskiden günlük belgeler + son 14 gün.
+  //   f: { warId, power, truckReports, betReports, truckLeaks, betLeaks, paid,
+  //        v109 polis: heistsStopped, goldRecovered, goldEarned, bustPrestige }
   // YAZMA — işlem içinde, okumalardan sonra çağrılır.
   // ---------------------------------------------------------------------------
   function intelStat(tx, ctx, rosterId, f = {}) {
     if (!rosterId) return;
-    const patch = { rosterId, dateKey: ctx.dateKey, updatedAtMs: ctx.now };
+    const patch = { rosterId, updatedAtMs: ctx.now };
     if (f.warId) patch.wars = { [f.warId]: true };
-    for (const k of ['power', 'truckReports', 'betReports', 'truckLeaks', 'betLeaks', 'paid']) {
+    for (const k of INTEL_RECORD_COUNTERS) {
       const v = Math.round(Number(f[k]) || 0);
       if (v) patch[k] = FV.increment(v);
     }
-    tx.set(ctx.ref.intelStat(rosterId, ctx.dateKey), patch, { merge: true });
+    tx.set(ctx.ref.intelRecord(rosterId), patch, { merge: true });
+  }
+  // ---------------------------------------------------------------------------
+  // v108 — DEVLET KASASI (functions/stateTreasury.js). Test dünyası kendi
+  // altına yazar (gangWorlds/test/stateLedger) — canlı defter kirlenmez.
+  // YAZMA — işlem içinde, okumalardan sonra. Kasa eksiye inebilir (okuma yok).
+  // ---------------------------------------------------------------------------
+  function stateTx(tx, ctx, kind, cat, amount) {
+    return stateWrite(tx, db, FV, { kind, cat, amount, atMs: ctx.now, dayKey: ctx.dateKey, base: ctx.isTest ? `gangWorlds/${ctx.worldId}/` : '' });
   }
 
   // ---------------------------------------------------------------------------
@@ -312,43 +342,41 @@ export function createCore(deps) {
       members[d.id] = { codeName: r.codeName || '', rank: r.rank || 'muhbir', prestige: Number(r.prestigeAtMidnight ?? r.prestige ?? 0), joinedAtMs: Number(r.joinedAtMs || 0) };
     });
     await ctx.ref.intelRosterView().set({ members, count: snap.size, updatedAtMs: ctx.now });
-    // v88: kasa sınırı üye sayısından hesaplanır → sayaç gerçek sayıyla eşit kalsın
+    // üye sayacı gerçek sayıyla eşit kalsın; v108: başvuruları kim inceler
     const iv = await ctx.ref.intel().get();
-    if (Number(iv.data()?.memberCount) !== snap.size) await ctx.ref.intel().set({ memberCount: snap.size }, { merge: true });
+    const review = intelReviewRanks(snap.docs.map((d) => d.data().rank));
+    const patch = {};
+    if (Number(iv.data()?.memberCount) !== snap.size) patch.memberCount = snap.size;
+    if (JSON.stringify(iv.data()?.reviewRanks || []) !== JSON.stringify(review)) patch.reviewRanks = review;
+    if (Object.keys(patch).length) await ctx.ref.intel().set(patch, { merge: true });
   }
 
   // ---------------------------------------------------------------------------
-  // v88 — İSTİHBARAT KASA SINIRI (üye × 100.000)
-  // readIntelKasa: işlem içinde, YAZMADAN ÖNCE çağrılır.
-  // v94: sınır SADECE cezalardan gelen para için (capped: true). Çete çökertme,
-  // tır operasyonu, savaş vb. gelirler sınırı aşabilir; kasa sınırın üstündeyken
-  // ceza payı girmez (yanar), altındayken sınıra kadar girer.
-  // creditIntel: capped ise sınıra kadar yazar, aşanı yakar (ledger 'intel_cap_burn').
+  // v108 — İSTİHBARAT KASASI KAPANDI. İstihbaratın kazandığı her şey (savaş,
+  // bahis, operasyon tahsilatı, rüşvet, çökertilen çetenin kasası, iadeler)
+  // DEVLET kasasına gelir yazılır; operasyon masrafları devletten ödenir.
+  // readIntelKasa / creditIntel imzaları eski çağıranlar için korunur:
+  // readIntelKasa artık OKUMA YAPMAZ (işlemlere yük eklemez).
   // ---------------------------------------------------------------------------
-  async function readIntelKasa(tx, ctx) {
-    const [st, iv] = await Promise.all([tx.get(ctx.ref.intelState()), tx.get(ctx.ref.intel())]);
-    const members = Math.max(0, Number(iv.data()?.memberCount || 0));
-    return { snap: st, exists: st.exists, kasa: Number(st.data()?.kasa || 0), members, cap: members * INTEL.KASA_CAP_PER_MEMBER };
+  const INTEL_INCOME_CAT = {
+    intel_trade_war_win: 'ist_savas',
+    bet_payout_intel: 'ist_bahis',
+    intel_op_reward: 'ist_operasyon',
+    intel_bribe_income: 'ist_rusvet',
+    gang_takedown_to_intel: 'ist_cokertme',
+    distribution_refund: 'ist_iade',
+    intel_bet_op_refund: 'ist_iade',
+    intel_fine_income: 'soygun_ceza',
+  };
+  async function readIntelKasa() {
+    return { exists: true, kasa: 0, members: 0, cap: Infinity, state: true };
   }
-  function intelCapRoom(info) {
-    return Math.max(0, info.cap - info.kasa);
-  }
-  function creditIntel(tx, ctx, info, amount, { type, refId = null, from = { kind: 'system' }, capped = false } = {}) {
+  function creditIntel(tx, ctx, info, amount, { type, refId = null, from = { kind: 'system' } } = {}) {
     const amt = Math.max(0, Math.floor(Number(amount) || 0));
     if (!amt) return { credited: 0, burned: 0 };
-    const credited = capped ? Math.min(amt, intelCapRoom(info)) : amt;
-    const burned = amt - credited;
-    if (credited > 0) {
-      if (info.exists) tx.update(ctx.ref.intelState(), { kasa: FV.increment(credited) });
-      else {
-        tx.set(ctx.ref.intelState(), { kasa: credited, kasaAtMidnight: 0, midnightDateKey: ctx.dateKey, distributableLeft: 0 }, { merge: true });
-        info.exists = true;
-      }
-      info.kasa += credited;
-      ledger(tx, ctx, { type, amount: credited, from, to: { kind: 'intel', id: 'main' }, refId, actorId: 'system' });
-    }
-    if (burned > 0) ledger(tx, ctx, { type: 'intel_cap_burn', amount: burned, from, to: { kind: 'burn' }, refId, actorId: 'system', note: type });
-    return { credited, burned };
+    stateTx(tx, ctx, 'in', INTEL_INCOME_CAT[type] || 'diger', amt);
+    ledger(tx, ctx, { type, amount: amt, from, to: { kind: 'state', id: 'main' }, refId, actorId: 'system' });
+    return { credited: amt, burned: 0 };
   }
 
   // v37: rütbelilere (Baba · Sağ Kol · Kıdemli) özel sistem mesajı — yönetim sohbeti
@@ -368,7 +396,6 @@ export function createCore(deps) {
     intelLog(tx, ctx, icon, text);
     systemChat(tx, ctx, ctx.ref.intelChat('genel'), `${icon} ${text}`);
   }
-
   function flushLogs(ctx) {
     for (const l of ctx.logs) log(l);
     ctx.logs.length = 0;
@@ -403,6 +430,8 @@ export function createCore(deps) {
     intelJoinedAtMs: null,
     intelDecisionGangId: null,
     intelDecisionDeadline: null,
+    intelAppId: null, // v108: bekleyen teşkilat başvurusu
+    intelCooldownUntilMs: null, // v109: ayrılan / atılan 24 saat yeniden başvuramaz
   };
 
   async function readMembership(tx, ctx, actorId) {
@@ -615,9 +644,10 @@ export function createCore(deps) {
   }
 
   function requireIntel(membership) {
-    if (!membership.intelRosterId) fail('failed-precondition', 'İstihbarat üyesi değilsin.');
+    if (!membership.intelRosterId) fail('failed-precondition', 'Polis Teşkilatı üyesi değilsin.');
     return membership.intelRosterId;
   }
+
 
   function intelRankEquiv(rank) {
     return INTEL_TO_GANG_EQUIV[rank] || 'comez';
@@ -650,6 +680,7 @@ export function createCore(deps) {
     refreshIntelRoster,
     readIntelKasa,
     creditIntel,
+    stateTx,
     intelStat,
     readBetStake,
     announceIntel,

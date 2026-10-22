@@ -51,6 +51,9 @@ export function createTreasuryActions(core) {
   async function createDistribution(ctx, data) {
     const org = data.org === 'intel' ? 'intel' : 'gang';
     const isIntel = org === 'intel';
+    // v108: İstihbarat kasası kapandı — altın dağıtımı yok (maaşları devlet öder).
+    // Önceden açılmış dağıtımlar süresi dolana kadar alınabilir; kalan devlete döner.
+    if (isIntel) fail('failed-precondition', 'Polis Teşkilatının kasası yok — altın dağıtımı yapılmaz. Maaşlar her gece 00:00\'da devletten yatar.');
     const group = String(data.group || '');
     if (!DIST_GROUPS.includes(group)) fail('invalid-argument', 'Geçersiz grup.');
     const perPerson = posInt(data.perPerson, 'Kişi başı tutar');
@@ -81,7 +84,7 @@ export function createTreasuryActions(core) {
         const inTarget = rosterSnap.docs.filter((d) => inGroup(core.effRank(d.data(), ctx, 'muhbir'), group, true)).length;
         if (inTarget < INTEL.DIST_MIN_GROUP_MEMBERS) {
           const noun = { rutbeli: 'rütbeli', tetikci: 'ajan', comez: 'muhbir', hepsi: 'üye' }[group];
-          fail('failed-precondition', `${INTEL_GROUP_LABEL[group]} grubuna dağıtım için İstihbaratta en az ${INTEL.DIST_MIN_GROUP_MEMBERS} ${noun} olmalı (şu an ${inTarget}).`);
+          fail('failed-precondition', `${INTEL_GROUP_LABEL[group]} grubuna dağıtım için teşkilatta en az ${INTEL.DIST_MIN_GROUP_MEMBERS} ${noun} olmalı (şu an ${inTarget}).`);
         }
         orgId = 'main';
         stateRef = ctx.ref.intelState();
@@ -147,8 +150,8 @@ export function createTreasuryActions(core) {
       if (isIntel) {
         key = membership.intelRosterId;
         who = key ? (await tx.get(ctx.ref.roster(key))).data() : null;
-        if (!who) fail('permission-denied', 'Artık İstihbaratta değilsin.');
-        if (who.rank === 'baskan') fail('permission-denied', 'Başkan İstihbarat kasasından kendine para alamaz.');
+        if (!who) fail('permission-denied', 'Artık Polis Teşkilatında değilsin.');
+        if (who.rank === 'baskan') fail('permission-denied', 'Emniyet Genel Müdürü teşkilat kasasından kendine para alamaz.');
         if (key === dist.creatorKey) fail('permission-denied', 'Kendi açtığın dağıtımdan alamazsın.');
       } else {
         key = ctx.actorId;

@@ -263,7 +263,7 @@ test('v75: sipariş limiti = İstihbarat dahil tüm tarafların toplam gücünü
   assert.equal(route.dailyOrderLimit, 10_000);
 });
 
-test('İstihbarat pazar savaşını kazanırsa yol kimseye verilmez, kasaya toplam gücün %5i (v50)', async () => {
+test('İstihbarat pazar savaşını kazanırsa yol kimseye verilmez, (v108) devlet kasasına toplam gücün %5i (v50)', async () => {
   const h = await createHarness({ dice: [6, 6, 1, 1] });
   const A = await setupGang(h, { members: 0, name: 'Alfa' });
   const spy = await h.persona({ displayName: 'Casus', gold: 10, power: 100_000, reputation: 50 });
@@ -279,7 +279,8 @@ test('İstihbarat pazar savaşını kazanırsa yol kimseye verilmez, kasaya topl
   const res = h.get(`wars/${warId}`).result;
   assert.ok(res.totalWarPower > 1_200_000, 'çetenin gücü de toplamda');
   assert.equal(res.intelIncome, Math.floor(res.totalWarPower * 0.05));
-  assert.equal(h.get('intel/main/private/state').kasa, res.intelIncome, 'v50: toplam gücün %5i');
+  assert.equal(h.treasury().in.ist_savas, res.intelIncome, 'v50: toplam gücün %5i — v108: devlete');
+  assert.equal(h.get('intel/main/private/state').kasa || 0, 0);
   assert.equal(h.get('intel/main').lastSundayPower, 1_200_000);
   assert.deepEqual(h.get(`gangs/${A.gangId}`).routeProducts, []);
 });

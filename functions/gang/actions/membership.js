@@ -52,7 +52,8 @@ export function createMembershipActions(core, intelHelpers) {
         ledger(tx, ctx, { type: 'gang_create_fee', amount: GANG.CREATE_FEE, from: { kind: 'player', id: ctx.actorId }, to: { kind: 'burn' }, before });
       }
       if (removalPlan) applyRemoval(tx, ctx, removalPlan, 'left_for_new_gang');
-      if (intelPlan) intelHelpers.applyIntelLeave(tx, ctx, intelPlan, { silent: true });
+      // v109: teşkilattan ayrılmak polislikten de ayrılmak demek (24 saat yeniden başvurulamaz)
+      if (intelPlan) intelHelpers.applyIntelLeave(tx, ctx, intelPlan, { notifyText: '🚪 Çete kurduğun için polislikten ayrıldın (Mafya Babası polis olamaz).' });
 
       const gangRef = ctx.ref.gangs().doc();
       const gangId = gangRef.id;

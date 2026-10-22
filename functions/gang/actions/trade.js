@@ -153,7 +153,9 @@ export function createTradeActions(core, treasury) {
       if (route.untilDateKey && ctx.dateKey >= route.untilDateKey) fail('failed-precondition', 'Bu ticaret yolunun süresi doldu.');
       const truck = truckSnap.data();
       if (!truck || truck.gangId !== gangId || truck.status === 'retired') fail('failed-precondition', 'Tır bulunamadı.');
-      if (truckLifeLeft(truck, ctx.dateKey) < 2) fail('failed-precondition', 'Tırın ömrü bitmek üzere — sipariş verilemez.');
+      // v108: son günündeki (1 gün ömrü kalan) tır da sipariş alır — sefer aynı gece 00:00'da
+      // depoya varır, tır ancak ondan SONRA hurdaya çıkar (bkz. clock: önce seferler, sonra departTrucks).
+      if (truckLifeLeft(truck, ctx.dateKey) < 1) fail('failed-precondition', 'Tırın ömrü doldu — sipariş verilemez.');
       if (truck.status === 'in_transit' && truck.departDateKey === ctx.dateKey) fail('failed-precondition', 'Bu tır bugün zaten yola çıktı — yarın tekrar sipariş verebilirsin.');
       if ((orderSnap.exists && orderSnap.data().status !== 'cancelled') || pendingSnap.docs.some((d) => d.data().status === 'pending')) fail('already-exists', 'Bu tırın bekleyen bir siparişi var.');
       const state = stateSnap.data() || {};

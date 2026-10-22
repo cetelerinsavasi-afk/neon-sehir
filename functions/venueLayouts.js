@@ -2,7 +2,7 @@
 // venueLayouts.js — v92 Faz 8: Oyunun mekânları 3D (spor salonu gibi)
 // =============================================================================
 // Camii, Banka, Gazino, Karakol, Araba Galerisi, Silah Mağazası, Modifiye
-// Garajı ve Park artık 3D ev motoruyla gezilen birer "oyun evi"
+// Garajı, Park ve (v108) Belediye artık 3D ev motoruyla gezilen birer "oyun evi"
 // (houses/game_{anahtar}, ownerUid '__game__', venue alanı dolu).
 //   • Yerleşim (eşyalar, duvar, zemin) BURADA tanımlanır; sunucu venueEnsure
 //     ile belgeyi kurar ve sürüm (v) değişince günceller.
@@ -35,6 +35,8 @@ const AV = {
   dealer: { gender: 'erkek', build: 'zayif', skin: '#caa07a', hairStyle: 'short', hairColor: '#171310', facialHair: 'goatee', clothing: 'tuxedo', clothColor: '#14151a', neckAcc: 'bow', pantsColor: '#101114' },
   usta: { gender: 'erkek', build: 'iri', skin: '#c68642', hairStyle: 'short', hairColor: '#241813', facialHair: 'mustache', clothing: 'jumpsuit', clothColor: '#3a4048', neckAcc: 'none', pantsColor: '#22262f', hat: 'cap', hatColor: '#c0392b' },
   supheli: { gender: 'erkek', build: 'iri', skin: '#a86b3c', hairStyle: 'short', hairColor: '#0d0a08', clothing: 'trenchcoat', clothColor: '#22262f', pantsColor: '#0d0d0d', shoeColor: '#0d0d0d', faceAcc: 'sunglasses', hat: 'fedora', hatColor: '#0d0d0d' },
+  sekreter: { gender: 'kadin', build: 'zayif', skin: '#e0ac69', hairStyle: 'bun', hairColor: '#3b2a1a', clothing: 'suit', clothColor: '#2b3550', neckAcc: 'none', pantsColor: '#22262f' },
+  zabita: { gender: 'erkek', build: 'iri', skin: '#c68863', hairStyle: 'short', hairColor: '#0d0a08', facialHair: 'mustache', clothing: 'police', clothColor: '#24445c', hat: 'policecap', hatColor: '#1b3347', pantsColor: '#1b3347' },
   bufeci: { gender: 'erkek', build: 'standart', skin: '#d9a066', hairStyle: 'short', hairColor: '#3b2a1a', facialHair: 'mustache', clothing: 'tanktop', clothColor: '#ffcf33', neckAcc: 'none', pantsColor: '#2b3550', hat: 'cap', hatColor: '#c4161c' },
 };export const NPC_AVATARS = AV; // v100 — evlerdeki eşya NPC'leri (büfeci) de kullanır
 
@@ -227,6 +229,61 @@ export const VENUES = {
     npcs: [
       { id: 'npc_memur', name: 'Memur Kemal', x: -2.6, z: -2.6, av: AV.officer, station: 'kr_pm', lines: ['Buyurun, nasıl yardımcı olabilirim?', 'Evrak için sırayı bekleyin lütfen.', 'Şüphen çoksa rüşvet işini hallederiz.', 'İyi günler.'] },
       { id: 'npc_komiser', name: 'Komiser Yusuf', x: 5.8, z: -6.75, av: AV.komiser, station: 'kr_od', lines: ['Rapor ne durumda?', 'Başvurunu değerlendiririm.', 'Kitapçığı okumadan imza atma.', 'Nöbet listesini kontrol edin.'] },
+    ],
+  },
+
+  // v108 — BELEDİYE BAŞKANLIĞI MAKAM ODASI. Şimdilik işlevi yok: gezilir.
+  // Admin'e sol üstte "Belediye Raporu" (devlet kasası gelir/gideri) çıkar.
+  // Seçimlerle başkan koltuğu dolacak.
+  belediye: {
+    houseId: 'game_belediye',
+    name: 'Neon Şehir Belediyesi',
+    icon: '🏛️',
+    loc: 'belediye',
+    v: 1,
+    wall: 'ahsap_panel',
+    floor: 'parke_ceviz',
+    items: [
+      // makam (arka orta)
+      it('bl_amb', 'belediyeamblem', 0, -7),
+      it('bl_by1', 'bayrak', -2.7, -6.4),
+      it('bl_by2', 'bayrak', 2.9, -6.4),
+      it('bl_bm', 'baskanmasa', 0, -4.9),
+      it('bl_rug', 'rugkilim', 0, -2.3),
+      it('bl_ch1', 'chester', -2.5, -2.2, 2),
+      it('bl_ch2', 'chester', 2.5, -2.2, 6),
+      it('bl_tc', 'tcoffee', 0, -2.2),
+      it('bl_av1', 'chandelier', 0, -2.4),
+      it('bl_av2', 'chandelier', -5.6, 1.2),
+      it('bl_av3', 'chandelier', 5.6, 1.6),
+      // meclis toplantı köşesi (sol)
+      it('bl_tm', 'toplantimasa', -5.6, 1.4),
+      it('bl_kr', 'kursu', -5.6, -3.2),
+      it('bl_mp', 'meclispano', -9, 1.4, 2),
+      it('bl_bk1', 'bookshelf', -8.3, -6.6),
+      it('bl_bk2', 'bookshelf', -7.0, -6.6),
+      it('bl_fc', 'filecab', -5.8, -6.6),
+      it('bl_clk', 'clock', -4.3, -7),
+      // şehir maketi (sağ)
+      it('bl_mk', 'sehirmaketi', 5.6, -1.6),
+      it('bl_map', 'cityframe', 5.6, -7),
+      it('bl_wn1', 'win_bogaz', 9, -3.8, 6),
+      it('bl_wn2', 'win_bogaz', 9, 1.6, 6),
+      it('bl_wn3', 'win_bogaz', -9, -3.8, 2),
+      // özel kalem (giriş)
+      it('bl_od', 'officedesk', -2.8, 5.0),
+      it('bl_fc2', 'filecab', -4.6, 6.6, 4),
+      it('bl_wc', 'watercooler', 8.3, 5.8, 6),
+      it('bl_pl1', 'plantb', 3.6, 6.4),
+      it('bl_pl2', 'plantb', 8.3, -6.3),
+      it('bl_pl3', 'plantb', -8.3, 6.3),
+      it('bl_pl4', 'plantb', -8.3, -1.4),
+      it('bl_dr', 'doordeco', 5, 7, 4),
+    ],
+    stations: {},
+    npcs: [
+      { id: 'npc_ozelkalem', name: 'Özel Kalem Nur Hanım', x: -1.4, z: 5.9, av: AV.sekreter, lines: ['Başkanlık makamına hoş geldiniz.', 'Başkanımız henüz seçilmedi; seçimler çok yakında.', 'Randevu defteri şimdilik kapalı.', 'Meclis kararları panoda asılı.'] },
+      { id: 'npc_zabita', name: 'Zabıta Rıza', x: 6.7, z: 5.6, av: AV.zabita, lines: ['Makamda sessiz olalım lütfen.', 'Maket camına dokunmayın!', 'Belediye hizmetinizde.', 'İyi günler.'] },
     ],
   },
 

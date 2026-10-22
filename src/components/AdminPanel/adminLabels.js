@@ -8,7 +8,7 @@ export const TYPE_LABELS = {
   sixtagramComment: '💭 Sixtagram yorumu',
   gangChat: '🏴 Çete sohbeti',
   gangGlobalChat: '🌐 Çeteler genel sohbeti',
-  intelChat: '🕵️ İstihbarat sohbeti',
+  intelChat: '🚓 Polis Teşkilatı sohbeti',
   feedback: '💡 Fikir / öneri',
   bubble: '🗨️ Konuşma balonu',
   user: '👤 Oyuncu adı',

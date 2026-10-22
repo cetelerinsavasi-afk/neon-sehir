@@ -6,8 +6,8 @@ import { functions } from '../firebase';
  * Hepsi Cloud Functions üzerinden çalışır; istemci asla gold/suspicion
  * gibi alanları doğrudan Firestore'a yazmaz (Bölüm 15).
  */
-export const applyForPolice = () => httpsCallable(functions, 'applyForPolice')();
-
+// v109: polislik başvurusu Polis Teşkilatının başvuru formuyla (gangAction
+// 'applyIntel' — components/Gangs/PoliceApplySheet). İstifa: anında.
 export const resignFromPolice = () => httpsCallable(functions, 'resignFromPolice')();
 
 export const cancelPendingPoliceChange = () =>
@@ -216,10 +216,15 @@ export const donateToBeggar = (beggarUid, amount) =>
   httpsCallable(functions, 'donateToBeggar')({ beggarUid, amount });
 
 export const applyForImam = () => httpsCallable(functions, 'applyForImam')();
+// v108.1 — imamlıktan istifa (anında; 24 saat yeniden başvurulamaz)
+export const resignImam = () => httpsCallable(functions, 'resignImam')();
 
 export const giveNasihat = (text) => httpsCallable(functions, 'giveNasihat')({ text });
 
+// v108: imam maaşı her gece 00:00'da otomatik yatar (sunucu artık elle almayı reddeder)
 export const claimImamSalary = () => httpsCallable(functions, 'claimImamSalary')();
+// v108 — Belediye raporu (sadece admin)
+export const getStateReport = () => httpsCallable(functions, 'getStateReport')();
 
 export const bribePolice = () => httpsCallable(functions, 'bribePolice')();
 

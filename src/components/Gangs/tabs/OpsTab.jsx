@@ -40,9 +40,9 @@ function BetOps({ d }) {
   const pairOf = (w) => ({ gangIds: w.gangIds, names: Object.fromEntries(w.gangIds.map((g) => [g, w.names?.[g] || w.sides?.[g]?.name])), logos: Object.fromEntries(w.gangIds.map((g) => [g, w.logos?.[g] || w.sides?.[g]?.logo])) });
 
   const CONFIRM = {
-    reportBet: { icon: '📡', title: 'Bahsi ihbar et', label: 'İhbar et', lines: ['✦ +1.000.000 İstihbarat prestiji', '🕵️ İstihbarat bu bahsi görür, tutarı göremez'] },
-    leakBet: { icon: '📦', title: 'Bahsin içeriğini aç', label: 'Aç', lines: ['✦ +1.000.000 İstihbarat prestiji', '💰 İstihbarat toplam bahsi görür'] },
-    startBetOperation: { icon: '🎯', title: 'Bahse operasyon', label: 'Başlat', danger: true, lines: [`💸 ${fmt(BET_OP_PRICE)} İstihbarat kasasından`, '⚔️ Savaş 3 taraflı olur', '🏆 En güçlü taraf tüm bahsi alır'] },
+    reportBet: { icon: '📡', title: 'Bahsi ihbar et', label: 'İhbar et', lines: ['✦ +500.000 prestij', '🚓 Teşkilat bu bahsi görür, tutarı göremez'] },
+    leakBet: { icon: '📦', title: 'Bahsin içeriğini aç', label: 'Aç', lines: ['✦ +500.000 prestij', '💰 Teşkilat toplam bahsi görür'] },
+    startBetOperation: { icon: '🎯', title: 'Bahse operasyon', label: 'Başlat', danger: true, lines: [`💸 ${fmt(BET_OP_PRICE)} — devlet öder`, '⚔️ Savaş 3 taraflı olur', '🏆 En güçlü taraf tüm bahsi alır'] },
   };
   const c = ask ? CONFIRM[ask.type] : null;
 
@@ -67,7 +67,7 @@ function BetOps({ d }) {
             <div className="gx-betrep-actions">
               {canReport ? (
                 <Btn small onClick={() => setAsk({ type: 'reportBet', id: w.id, p, until: w.startsAtMs + INTEL_WINDOW_MS })}>
-                  📡 İhbar et · ✦ +1M
+                  📡 İhbar et · ✦ +500K
                 </Btn>
               ) : (
                 <Btn small kind="ghost" disabled>
@@ -102,7 +102,7 @@ function BetOps({ d }) {
             <div className="gx-betrep-actions">
               {!r.leaked && mine && canLeak && (
                 <Btn small kind="ghost" onClick={() => setAsk({ type: 'leakBet', id: r.id, p, until: r.intelDeadlineMs })}>
-                  📦 İçeriği aç · ✦ +1M
+                  📦 İçeriği aç · ✦ +500K
                 </Btn>
               )}
               {r.opStarted ? (
@@ -126,7 +126,7 @@ function BetOps({ d }) {
           busy={Boolean(busy)}
           onCancel={() => setAsk(null)}
           onConfirm={async () => {
-            await run(ask.type, { warId: ask.id }, { success: ask.type === 'startBetOperation' ? '🎯 Operasyon başladı' : '🕵️ İstihbarata iletildi', withRequestId: ask.type === 'startBetOperation' });
+            await run(ask.type, { warId: ask.id }, { success: ask.type === 'startBetOperation' ? '🎯 Operasyon başladı' : '🚓 Teşkilata iletildi', withRequestId: ask.type === 'startBetOperation' });
             setAsk(null);
           }}
         >
@@ -248,7 +248,7 @@ export default function OpsTab({ d }) {
           danger
           title={op.all ? `${freeReports.length} tıra operasyon` : `TIR #${op.r.truckCode} (${op.r.gangName}) operasyonu`}
           lines={[
-            `💸 ${fmt(price)}${op.all ? '+' : ''} İstihbarat kasasından`,
+            `💸 ${fmt(price)}${op.all ? '+' : ''} — devlet öder`,
             op.all ? '⚔️ Saldırı her tırın kendi saatinde başlar (yola çıkış + 6 saat) ve 24:00\'te biter' : `⚔️ Saldırı ${fmtClock(truckAttackAt(op.r))}–24:00`,
             '💼 Tır sahibi rüşveti 21:00\'e kadar ödeyebilir',
           ]}
@@ -271,12 +271,12 @@ export default function OpsTab({ d }) {
         <Confirm
           icon={ask.type === 'report' ? '📡' : '📦'}
           title={ask.type === 'report' ? `TIR #${ask.t.code} ihbar edilsin mi?` : `TIR #${ask.r.truckCode} içeriği sızdırılsın mı?`}
-          lines={ask.type === 'report' ? ['✦ +1.000.000 İstihbarat prestiji', '🕵️ İstihbarat bu tırı görür, yükünü göremez'] : ['✦ +1.000.000 İstihbarat prestiji', '💰 İstihbarat yükün değerini görür']}
+          lines={ask.type === 'report' ? ['✦ +500.000 prestij', '🚓 Teşkilat bu tırı görür, yükünü göremez'] : ['✦ +500.000 prestij', '💰 Teşkilat yükün değerini görür']}
           confirmLabel={ask.type === 'report' ? 'İhbar et' : 'Sızdır'}
           busy={Boolean(busy)}
           onCancel={() => setAsk(null)}
           onConfirm={async () => {
-            await run(ask.type === 'report' ? 'reportTruck' : 'leakTruck', ask.type === 'report' ? { truckId: ask.t.id } : { reportId: ask.r.id }, { success: '🕵️ İstihbarata iletildi' });
+            await run(ask.type === 'report' ? 'reportTruck' : 'leakTruck', ask.type === 'report' ? { truckId: ask.t.id } : { reportId: ask.r.id }, { success: '🚓 Teşkilata iletildi' });
             setAsk(null);
           }}
         >

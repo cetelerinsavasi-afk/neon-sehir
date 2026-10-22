@@ -27,7 +27,6 @@ async function setup(h, dice) {
   const basR = await mkIntel(bas, 'Başkan', 'baskan', 5_000_000);
   const outsider = await h.persona({ displayName: 'Dis', gold: 1, power: 1000, reputation: 90 });
   await mkIntel(outsider, 'Dışarı', 'sef', 2_000_000);
-  await h.db.doc('gangWorlds/test/intel/main/private/state').set({ kasa: 150_000 }, { merge: true });
   const { warId } = await h.act(A.baba, 'offerBet', { targetGangId: B.gangId, stake: 200_000 });
   return { A, B, kid, tet, bas, basR, outsider, warId };
 }
@@ -41,7 +40,7 @@ test('bahis ihbarı: sadece kabul edilmiş bahis, iki çeteden birinde Tetikçi+
   await h.fails(S.outsider, 'reportBet', { warId: S.warId }); // bahisli çetelerde değil
   await h.fails(S.A.ids[1], 'leakBet', { warId: S.warId }); // önce ihbar
   const r = await h.act(S.A.ids[1], 'reportBet', { warId: S.warId }); // Tetikçi
-  assert.equal(r.prestige, 1_000_000);
+  assert.equal(r.prestige, 500_000); // v109: 1M → 500k
   await h.fails(S.A.ids[0], 'reportBet', { warId: S.warId }); // ikinci ihbar yok
   const rep = h.get(`betReports/${S.warId}`);
   assert.equal(rep.pot, null, 'tutar görünmez');
@@ -60,16 +59,14 @@ test('operasyon: Başkan/Şef, 100k, 00:00 öncesi; savaş 3 taraflı başlar; �
   await h.fails(S.A.ids[1], 'startBetOperation', { warId: S.warId }); // Muhbir başlatamaz
   await h.act(S.bas, 'startBetOperation', { warId: S.warId }); // tutar görülmeden de olur
   await h.fails(S.outsider, 'startBetOperation', { warId: S.warId }); // ikinci operasyon yok
-  assert.equal(h.get('intel/main/private/state').kasa, 50_000);
+  assert.equal(h.treasury().out.ist_operasyon, 100_000, 'v108: operasyon ücretini devlet öder');
   // çeteler 00:00'a kadar görmez
   assert.equal(h.get(`wars/${S.warId}`).sides.intel, undefined);
   await h.tickTo('2026-09-22', '00:05');
-  // v88: kasa sınırı (üye × 100.000) bu testin konusu değil — geniş tut
-  await h.db.doc('gangWorlds/test/intel/main').set({ memberCount: 50 }, { merge: true });
   const w = h.get(`wars/${S.warId}`);
   assert.equal(w.status, 'active');
   assert.ok(w.sides.intel, '3. taraf');
-  assert.ok(h.chat(S.A.gangId).some((m) => /İstihbarat .* dahil oldu/.test(m)));
+  assert.ok(h.chat(S.A.gangId).some((m) => /Polis .* dahil oldu/.test(m)));
   // 00:00 sonrası müdahale yok
   await h.fails(S.A.ids[0], 'leakBet', { warId: S.warId });
   // İstihbarat 12 × 40k = 480k; A: 2 × 60k; B: 2 × 60k
@@ -81,7 +78,7 @@ test('operasyon: Başkan/Şef, 100k, 00:00 öncesi; savaş 3 taraflı başlar; �
   const kA = h.state(S.A.gangId).kasa;
   await h.tickTo('2026-09-23', '00:05');
   assert.equal(h.get(`wars/${S.warId}`).result.winner, 'intel');
-  assert.equal(h.get('intel/main/private/state').kasa, 50_000 + 400_000);
+  assert.equal(h.treasury().in.ist_bahis, 400_000, 'v108: havuz devlet kasasına');
   assert.equal(h.state(S.A.gangId).kasa, kA, 'çetelere bir şey dönmez');
 });
 
@@ -102,7 +99,7 @@ test('İstihbarat müdahalesinde de en güçlü çete kazanırsa tüm bahsi alı
   assert.equal(h.state(S.A.gangId).kasa, kA + 400_000);
 });
 
-test('bahis başlayamazsa (çete dağıldı) operasyon ücreti İstihbarata iade edilir', async () => {
+test('bahis başlayamazsa (çete dağıldı) operasyon ücreti (v108) devlete iade edilir', async () => {
   const h = await createHarness();
   const S = await setup(h);
   await h.act(S.B.baba, 'respondBet', { warId: S.warId, accept: true });
@@ -112,7 +109,9 @@ test('bahis başlayamazsa (çete dağıldı) operasyon ücreti İstihbarata iade
   await h.act(S.B.baba, 'leaveGang'); // Beta dağıldı
   await h.tickTo('2026-09-22', '00:05');
   assert.equal(h.get(`wars/${S.warId}`).status, 'cancelled');
-  assert.equal(h.get('intel/main/private/state').kasa, 150_000);
+  const t = h.treasury();
+  assert.equal(t.out.ist_operasyon, 100_000);
+  assert.equal(t.in.ist_iade, 100_000, 'iade: devlete net maliyet 0');
 });
 
 test('v35: ihbar/operasyon ilk saldırı diliminin sonuna kadar; savaş başladıktan sonra başlatılan operasyonla İstihbarat hemen 3. taraf olur', async () => {

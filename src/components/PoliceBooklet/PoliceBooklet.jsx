@@ -2,50 +2,59 @@ import { useState } from 'react';
 import { usePoliceSalaryStats } from '../../hooks/usePoliceSalaryStats';
 import './PoliceBooklet.css';
 
-// Polis kitapçığı — KULLANICI İSTEĞİ: "baştan yazalım, gereksiz bilgileri
-// kaldıralım, olabildiğince net basit anlaşılır olsun". Polisler artık suç da
-// işleyebiliyor (yasaklı madde satışı, soygun) — tek fark yakalanınca ceza 2
-// katı. Her sayfa tek bir konuyu, kısa cümlelerle anlatır.
+// Polis kitapçığı — v109: İstihbarat ile Polis birleşti (Polis Teşkilatı).
+// KULLANICI İSTEĞİ: RP'ye uygun, basit, detaya boğmadan havalı anlatım.
+// Her sayfa tek konu, kısa cümleler. Sayılar sunucuyla aynı olmalı
+// (functions/gang/config.js INTEL / SALARIES / POLICE).
 const PAGES_BEFORE_SALARY = [
   {
-    title: 'Polis Olmak İçin',
+    title: 'Rozeti Takmak',
     body: [
-      'Başvuru anında şüphen %0 olmalı.',
-      'Bir silahın olmalı. Polisken de en az 1 silahın kalmalı.',
-      'Ana ekrandaki 📋 butonundaki temel görevleri bitirmiş olmalısın.',
-      'Başvuru gece 00:00\'da onaylanır.',
-      'Şüphe sadece başvuruda aranır. Polis olduktan sonra şüphenin önemi yoktur.',
-      'Polis fabrikada çalışabilir.',
+      'Şehrin karanlığına karşı duran tek güç: Polis Teşkilatı.',
+      'Aranan: 50 saygınlık, temiz bir sicil (%0 şüphe), en az 1 silah ve 📋 temel görevlerin tamamı.',
+      'İmamlar ve Mafya Babaları rozet takamaz.',
+      'Başvuruyu Karakol\'dan ya da Çeteler › Polis Teşkilatı\'ndan yaparsın: kod adını seç, hangi çetede olduğunu ve neden polis olmak istediğini yaz.',
+      'Teşkilatın başındakiler başvurunu inceler. 12 saat içinde ses çıkmazsa rozet senindir.',
+    ],
+  },
+  {
+    title: 'Gölgedeki Teşkilat',
+    body: [
+      'Teşkilatta herkes kod adıyla tanınır. Gerçek kimliğin gizli kalır.',
+      'Çeteden ayrılmak zorunda değilsin — içeriden çalışan bir köstebek olabilirsin.',
+      'Çetenin tırını ihbar et ya da yükünü sızdır: her biri +500.000 prestij.',
+      'Pazar savaşlarına ve operasyonlara teşkilat adına katıl, güç göster, prestij topla.',
+      'Prestij rütbeni belirler: Emniyet Genel Müdürü, Emniyet Amiri, Başkomiser, Komiser, Polis Memuru.',
     ],
   },
 ];
 
 const PAGES_AFTER_SALARY = [
   {
-    title: 'Polis Suç İşleyebilir',
+    title: 'Soygun Durdurmak',
     body: [
-      'Polisler de yasaklı madde satabilir ve soygun yapabilir.',
-      'Kurallar sivillerle aynıdır: şüphen artar, yakalanırsan saygınlığın düşer.',
-      'Tek fark: yakalanırsan ceza 2 katıdır.',
-      'Örnek: Parkta yasaklı madde satarken yakalanırsan 5.000 değil 10.000 altın borç yazılır.',
+      'Bir soygun ekibine sız ya da kendi ekibini kurup tuzak hazırla.',
+      'Ekipte sivil varsa soygun patlar: suçlular yakalanır, cezası anında kesilir.',
+      'Kurtarılan paranın %25\'i senin, gerisi devlete. Ekipte birden fazla polis varsa pay bölünür.',
+      'Üstüne kurtarılan paranın 4 katı prestij (polis sayısına bölünür). Örnek: 2 polis 500.000 kurtarırsa kişi başı 62.500 altın + 1.000.000 prestij.',
+      'Ama dikkat: ekipten biri kendi şüphesi yüzünden yakalanırsa operasyon boşa gider, ödül yok.',
+      'Ekipte kimin polis olduğunu kimse bilmez.',
     ],
   },
   {
-    title: 'Soygun Yapmak',
+    title: 'Kirli Rozet',
     body: [
-      'Gücün yetiyorsa yeri tek başına soyabilirsin.',
-      'Gücün yetmiyorsa ekip kur (en fazla 4 kişi).',
-      'Ekipte sadece polisler varsa soygun normal soygundur: ödül eşit bölüşülür, yakalanırsanız herkes 2 kat ceza yer.',
+      'Rozetin olması suç işleyemeyeceğin anlamına gelmez.',
+      'Yasaklı madde satabilir, soygun yapabilirsin. Sadece ekipte hiç sivil yoksa soygun gerçek soygundur.',
+      'Yakalanırsan ceza 2 katı. Şehir, kirli polisi affetmez.',
     ],
   },
   {
-    title: 'Suçluyu Yakalamak',
+    title: 'Rozeti Bırakmak',
     body: [
-      'Ekipte polis olmayan biri varsa, sen suçluyu yakalamış olursun. Ceza yemezsin.',
-      'Ödülün tamamını alırsın. Ekipte birden fazla polis varsa aranızda eşit bölüşülür.',
-      'Suçlulara ödül kadar ceza yazılır. Ceza, suçlu sayısına bölünür.',
-      'İstisna: ekipteki biri (sen dahil) kendi şüphesi yüzünden yakalanırsa bu turda ödül yok, ceza sadece suçlulara yazılır. Bu yüzden şüphesi yüksek bir polis tuzağı bozabilir.',
-      'Ekipte kimin polis olduğu gizlidir.',
+      'İstediğin an istifa edebilirsin.',
+      'İstifa edersen ya da teşkilattan atılırsan prestijin, rütben ve sicilin silinir; 24 saat yeniden başvuramazsın.',
+      '10 gün şehre uğramayan polis görevden alınır.',
     ],
   },
 ];
@@ -54,21 +63,14 @@ export default function PoliceBooklet({ onClose }) {
   const [page, setPage] = useState(0);
   const { avgDailyPayout } = usePoliceSalaryStats();
 
-  const salaryBody =
-    avgDailyPayout != null
-      ? [
-          'Verilen rüşvetler bir havuzda toplanır, polisler aralarında bölüşür.',
-          'Maaşını Karakol\'dan günde 1 kez alırsın.',
-          `Son 10 günde günlük ortalama ${avgDailyPayout.toLocaleString('tr-TR')} altın kazandılar.`,
-          'Maaşını 3 gün üst üste almazsan polislikten atılırsın.',
-        ]
-      : [
-          'Verilen rüşvetler bir havuzda toplanır, polisler aralarında bölüşür.',
-          'Maaşını Karakol\'dan günde 1 kez alırsın.',
-          'Maaşını 3 gün üst üste almazsan polislikten atılırsın.',
-        ];
+  const salaryBody = [
+    'Maaşını devlet öder, her gece 00:00\'da hesabına yatar.',
+    'Polis Memuru 5.000 · Komiser 10.000 · Başkomiser 15.000 · Emniyet Amiri 20.000 · Emniyet Genel Müdürü 25.000.',
+    'Gün boyu Karakol\'a bırakılan rüşvetler o gece teşkilattaki polislere eşit bölünür ve maaşınla birlikte gelir.',
+    ...(avgDailyPayout != null ? [`Son 10 günde rüşvet payı günlük ortalama ${avgDailyPayout.toLocaleString('tr-TR')} altın.`] : []),
+  ];
 
-  const pages = [...PAGES_BEFORE_SALARY, { title: 'Maaş', body: salaryBody }, ...PAGES_AFTER_SALARY];
+  const pages = [...PAGES_BEFORE_SALARY, { title: 'Maaş ve Rüşvet', body: salaryBody }, ...PAGES_AFTER_SALARY];
   const current = pages[page];
 
   return (

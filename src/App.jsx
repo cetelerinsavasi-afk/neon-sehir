@@ -118,6 +118,16 @@ function UnreadBridge({ onChange }) {
   return null;
 }
 
+// v108 — 3D mekân hazırlanamazsa (eski 2D'si olmayan Belediye): kapat + bildir
+function VenueFallbackNotice({ onDone }) {
+  const ref = useRef(onDone);
+  ref.current = onDone;
+  useEffect(() => {
+    ref.current?.();
+  }, []);
+  return null;
+}
+
 function GameShell() {
   const { user } = useAuth();
   // v91.1 — Google Play: ödemesi alınmış ama zümrütü yüklenememiş (ör. internet
@@ -198,6 +208,7 @@ function GameShell() {
   const [dealershipOpen, setDealershipOpen] = useState(false);
   const [weaponShopOpen, setWeaponShopOpen] = useState(false);
   const [tuningGarageOpen, setTuningGarageOpen] = useState(false);
+  const [belediyeOpen, setBelediyeOpen] = useState(false); // v108 — başkanlık makam odası
   // v77 performans: kök bileşen sadece HUD alanları değişince yeniden çizilir
   const hudKey = usePlayerSelect(selectHud);
   const [hudSusp, hudRep, hudGold] = hudKey.split('|').map(Number);
@@ -232,6 +243,7 @@ function GameShell() {
   useBackClose(dealershipOpen, venueClose(setDealershipOpen));
   useBackClose(weaponShopOpen, venueClose(setWeaponShopOpen));
   useBackClose(tuningGarageOpen, venueClose(setTuningGarageOpen));
+  useBackClose(belediyeOpen, venueClose(setBelediyeOpen));
   useBackClose(raceExpanded, () => setRaceExpanded(false));
   useBackClose(Boolean(activeTableId), () => setActiveTableId(null));
 
@@ -293,6 +305,12 @@ function GameShell() {
     // Henüz yapılmamış mekanlar (Belediye): kısa bir "Çok yakında" mesajı.
     if (regionMeta?.screen === 'yakinda') {
       showComingSoon(regionMeta.name);
+      return;
+    }
+    // v108 — Belediye Binası: başkanlık makam odası (3D, şimdilik sadece gezilir)
+    if (regionMeta?.screen === 'belediye') {
+      if (user) setBelediyeOpen(true);
+      else showComingSoon(regionMeta.name);
       return;
     }
     if (regionMeta?.screen === 'park') {
@@ -421,7 +439,7 @@ function GameShell() {
   regionClickRef.current = handleRegionClick;
   const onRegionClickStable = useCallback((...a) => regionClickRef.current(...a), []);
   const mapCovered = Boolean(
-    watchStreamId || phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || weaponShopOpen || tuningGarageOpen || heistTarget !== undefined || (effectiveRaceRoomId && raceExpanded)
+    watchStreamId || phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || weaponShopOpen || tuningGarageOpen || belediyeOpen || heistTarget !== undefined || (effectiveRaceRoomId && raceExpanded)
   );
 
   return (
@@ -609,6 +627,14 @@ function GameShell() {
         ) : (
         <KarakolWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setKarakolOpen)} />
         )
+      )}
+
+      {belediyeOpen && user && (
+        <VenueHouseScreen
+          venue="belediye"
+          onExit={() => closeVenueMaybeReturnToVisit(setBelediyeOpen)}
+          fallback={<VenueFallbackNotice onDone={() => { setBelediyeOpen(false); showComingSoon('Belediye Binası'); }} />}
+        />
       )}
 
       {mosqueOpen && (

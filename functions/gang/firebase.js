@@ -6,12 +6,13 @@
 // (bkz. system.js ensureLiveWorld). Secret gerekmez.
 import { createGangSystem } from './system.js';
 
-export function createGangFunctions({ onCall, onSchedule, HttpsError, db, FieldValue, getMaxWeaponPower, splitIncomeForDebt, catalogs, lifeDays, weaponLifeDays, onGangJoined, onGangMarketBought, assertCanSpeak }) {
+export function createGangFunctions({ onCall, onSchedule, HttpsError, db, FieldValue, getMaxWeaponPower, hasWeapon, splitIncomeForDebt, catalogs, lifeDays, weaponLifeDays, onGangJoined, onGangMarketBought, assertCanSpeak }) {
   const system = createGangSystem({
     db,
     FieldValue,
     HttpsError,
     getMaxWeaponPower,
+    hasWeapon, // v108: İstihbarat başvurusu — en az 1 silah
     splitIncomeForDebt,
     catalogs,
     lifeDays,

@@ -14,12 +14,12 @@
 //     altın yetmezse kalanı devlete borç yazılır — elektrik faturası gibi).
 //   · Oyunun kendi mekânları da vergi öder (kayıt amaçlı).
 //
-// Toplanan vergi şimdilik HİÇBİR YERE AKTARILMAZ (oyundan çıkar). Her ödeyen
-// için günlük bir kayıt tutulur: taxLedger/{gün}_{uid}. Belediye sistemi
-// geldiğinde bu kayıtlar (ve buradaki tek yazma noktası) belediye kasasına
-// yönlendirilecek.
+// v108: Toplanan TÜM vergiler devlet (belediye) kasasına gelir yazılır
+// (functions/stateTreasury.js — kaynak başına ayrı kalem). Her ödeyen için
+// günlük kayıt da sürer: taxLedger/{gün}_{uid}. Tek yazma noktası burası.
 // =============================================================================
 import { midnightDayKey } from './businessCatalogData.js';
+import { stateWrite } from './stateTreasury.js';
 
 export const BIZ_TAX_RATE = 0.1;
 export const RESALE_TAX_RATE = 0.01;
@@ -69,5 +69,8 @@ export function taxLedgerWrite(writer, db, FieldValue, { amount, source, uid, at
   };
   if (ref) patch.refs = { [String(ref).slice(0, 80)]: FieldValue.increment(amt) };
   writer.set(db.collection('taxLedger').doc(`${day}_${uid}`), patch, { merge: true });
+  // v108 — devlet kasasına gelir (oyunun kendi mekânları ayrı kalemde)
+  const src = TAX_SOURCES[source] ? source : 'isletme';
+  stateWrite(writer, db, FieldValue, { kind: 'in', cat: uid === '__game__' ? 'vergi_oyun' : `vergi_${src}`, amount: amt, atMs, dayKey: day });
   return amt;
 }

@@ -59,7 +59,7 @@ const CONTENT_NOUNS = {
   sixtagramComment: 'Sixtagram yorumun',
   gangChat: 'çete sohbetindeki mesajın',
   gangGlobalChat: 'Tüm Çeteler sohbetindeki mesajın',
-  intelChat: 'İstihbarat sohbetindeki mesajın',
+  intelChat: 'Polis Teşkilatı sohbetindeki mesajın',
   feedback: 'önerin',
   dmMessage: 'özel mesajın',
   bubble: 'konuşma balonun',

@@ -148,7 +148,7 @@ export default function ChatTab({ org, d }) {
       </div>
       {menuFor && (
         <ActionMenu
-          title={`${isIntel ? menuFor.codeName || 'Ajan' : menuFor.authorName || 'Oyuncu'}: “${String(menuFor.text || '').slice(0, 60)}”`}
+          title={`${isIntel ? menuFor.codeName || 'Polis' : menuFor.authorName || 'Oyuncu'}: “${String(menuFor.text || '').slice(0, 60)}”`}
           onClose={() => setMenuFor(null)}
           actions={[
             { key: 'copy', icon: '📋', label: 'Kopyala', onClick: () => copyText(menuFor.text || '') },
@@ -169,7 +169,7 @@ export default function ChatTab({ org, d }) {
       {reportTarget && (
         <ReportBlockSheet
           targetUid={isIntel ? null : reportTarget.authorId}
-          targetName={isIntel ? reportTarget.codeName || 'Ajan' : reportTarget.authorName || 'Oyuncu'}
+          targetName={isIntel ? reportTarget.codeName || 'Polis' : reportTarget.authorName || 'Oyuncu'}
           canBlock={false}
           items={[{ label: 'Mesajı bildir', targetType: isIntel ? 'intelChat' : channel === 'tum' ? 'gangGlobalChat' : 'gangChat', targetPath: `${coll}/${reportTarget.id}`, preview: reportTarget.text }]}
           onClose={() => setReportTarget(null)}

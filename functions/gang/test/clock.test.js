@@ -5,7 +5,8 @@ import { createHarness, setupGang, ADMIN_UID, PASSWORD } from './harness.js';
 test('çeteler oyunculara açık: canlı dünya ilk işlemde bir kez kurulur; bakım (liveOpen:false) korunur; test dünyası kapalı', async () => {
   const h = await createHarness();
   const player = 'normalUid';
-  await h.db.doc(`users/${player}`).set({ displayName: 'Normal', gold: 5_000_000, reputation: 100 });
+  await h.db.doc(`users/${player}`).set({ displayName: 'Normal', gold: 5_000_000, reputation: 100, onboardingRewardClaimed: true });
+  h.weaponsByOwner.set(player, 5_000);
   // ilk işlem: dünya + config tek seferde oluşur
   const hello = await h.system.handleAction({ auth: { uid: player }, data: { action: 'hello' } });
   assert.equal(hello.liveOpen, true);
@@ -15,10 +16,12 @@ test('çeteler oyunculara açık: canlı dünya ilk işlemde bir kez kurulur; ba
   // tekrar çağrı yeni dünya kurmaz
   const again = await h.system.handleAction({ auth: { uid: player }, data: { action: 'hello' } });
   assert.equal(again.liveWorldId, cfg.liveWorldId);
-  await h.system.handleAction({ auth: { uid: player }, data: { action: 'joinIntel', payload: { codeName: 'Baykuş' } } });
+  // v108: canlıda doğrudan katılım yok — başvuru formu
+  await assert.rejects(h.system.handleAction({ auth: { uid: player }, data: { action: 'joinIntel', payload: { codeName: 'Baykuş' } } }), /başvuru formu/);
+  await h.system.handleAction({ auth: { uid: player }, data: { action: 'applyIntel', payload: { codeName: 'Baykuş', gangName: 'Çetem yok', gangRank: 'yok', reason: 'Şehri temizlemek istiyorum.' } } });
   // konsoldan bakım: liveOpen:false → işlem yapılamaz, otomatik tekrar açılmaz
   await h.db.doc('gangSystem/config').set({ liveOpen: false }, { merge: true });
-  await assert.rejects(h.system.handleAction({ auth: { uid: player }, data: { action: 'leaveIntel' } }), /tadilatta/);
+  await assert.rejects(h.system.handleAction({ auth: { uid: player }, data: { action: 'cancelIntelApplication' } }), /tadilatta/);
   await h.system.runAllClocks();
   assert.equal(h.raw('gangSystem/config').liveOpen, false);
   // mevcut veri korunur

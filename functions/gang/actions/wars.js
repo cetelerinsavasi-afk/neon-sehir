@@ -119,18 +119,18 @@ export function createWarActions(core) {
       const wallet = ctx.isTest ? await readWallet(tx, ctx, ctx.actorId) : null;
       let sideKey;
       let org; // { type:'gang', gangId, member } | { type:'intel', rosterId, roster }
+      const intelOrg = async () => {
+        const rid = requireIntel(membership);
+        const r = (await tx.get(ctx.ref.roster(rid))).data();
+        if (!r) fail('failed-precondition', 'Polis Teşkilatı üyesi değilsin.');
+        return { type: 'intel', rosterId: rid, roster: r };
+      };
       if ((war.type === 'trade' || (war.type === 'bet' && betIntel)) && wantIntel) {
-        const rid = requireIntel(membership);
-        const r = (await tx.get(ctx.ref.roster(rid))).data();
-        if (!r) fail('failed-precondition', 'İstihbarat üyesi değilsin.');
         sideKey = 'intel';
-        org = { type: 'intel', rosterId: rid, roster: r };
+        org = await intelOrg();
       } else if (war.type === 'intelop' && data.side !== 'defense') {
-        const rid = requireIntel(membership);
-        const r = (await tx.get(ctx.ref.roster(rid))).data();
-        if (!r) fail('failed-precondition', 'İstihbarat üyesi değilsin.');
         sideKey = 'attacker';
-        org = { type: 'intel', rosterId: rid, roster: r };
+        org = await intelOrg();
       } else {
         const gangId = requireGangMember(membership);
         const m = (await tx.get(ctx.ref.member(gangId, ctx.actorId))).data();
@@ -175,7 +175,7 @@ export function createWarActions(core) {
       const d1 = core.randomInt(1, 7);
       const d2 = core.randomInt(1, 7);
       const contribution = (d1 + d2) * power;
-      const name = org.type === 'intel' ? org.roster.codeName : org.member.name;
+      const name = org.type === 'gang' ? org.member.name : org.roster.codeName;
       const via = org.via || null;
       // v84: biat katkısı ayrı shard'larda (sideKey = biat edilen çete → toplam ona yazılır; viaGangId → kimin katkısı)
       const shardKey = via ? `${sideKey}__v_${via.gangId}__${core.randomInt(0, WAR_SHARDS)}` : `${sideKey}__${core.randomInt(0, WAR_SHARDS)}`;
@@ -943,7 +943,7 @@ export function createWarActions(core) {
       } catch (err) {
         if (!data.all) throw err;
         errors.push({ reportId, message: err.message });
-        if (/kasa/i.test(err.message)) break;
+        if (/kasa/i.test(err.message)) break; // (v108'den beri kasa hatası olmaz — eski davranış)
       }
     }
     return { started, errors };
@@ -953,10 +953,9 @@ export function createWarActions(core) {
     return core.db.runTransaction(async (tx) => {
       const membership = await readMembership(tx, ctx, ctx.actorId);
       const rid = requireIntel(membership);
-      const [me, repSnap, stSnap, daySnap] = await Promise.all([
+      const [me, repSnap, daySnap] = await Promise.all([
         tx.get(ctx.ref.roster(rid)),
         tx.get(ctx.ref.intelReport(reportId)),
-        tx.get(ctx.ref.intelState()),
         tx.get(ctx.ref.sabotageDay(ctx.dateKey)),
       ]);
       if (!['baskan', 'sef'].includes(core.effRank(me.data(), ctx, 'muhbir'))) fail('permission-denied', 'Operasyonu sadece Başkan ve Şefler başlatabilir.');
@@ -974,11 +973,10 @@ export function createWarActions(core) {
       const [defSnap, defGang] = await Promise.all([tx.get(ctx.ref.war(defId)), tx.get(ctx.ref.gang(truck.gangId))]);
       const def = defSnap.data() || null;
       const allies = def?.announced ? await readActiveAllies(tx, ctx, truck.gangId) : [];
-      const state = stSnap.data() || {};
       const { price, count } = sabotagePrice(daySnap.data(), 'intel');
-      if (Number(state.kasa || 0) < price) fail('failed-precondition', `Operasyon ücreti ${fmt(price)} — İstihbarat kasasında yeterli para yok.`);
       const dg = defGang.data();
-      tx.update(ctx.ref.intelState(), { kasa: FV.increment(-price) });
+      // v108: operasyon ücretini DEVLET öder (İstihbarat kasası kapandı; kasa eksiye inebilir)
+      core.stateTx(tx, ctx, 'out', 'ist_operasyon', price);
       tx.set(ctx.ref.sabotageDay(ctx.dateKey), { count: count + 1 }, { merge: true });
       if (!def) {
         const doc = defenseWarDoc(ctx, truck, dg);
@@ -1018,8 +1016,8 @@ export function createWarActions(core) {
         createdAtMs: ctx.now,
       });
       tx.update(ctx.ref.intelReport(reportId), { opWarId: warId });
-      ledger(tx, ctx, { type: 'intel_op_cost', amount: price, from: { kind: 'intel', id: 'main' }, to: { kind: 'burn' }, before: state.kasa, refId: warId });
-      core.announceIntel(tx, ctx, '🎯', `${me.data().codeName}, TIR #${truck.code} (${dg.name}) için operasyon başlattı (${fmt(price)})${bribe > 0 ? ` — rüşvet: ${fmt(bribe)}` : ''}. Saldırı ${hhmmOf(attackAtMs)}'de başlar.`);
+      ledger(tx, ctx, { type: 'intel_op_cost', amount: price, from: { kind: 'state', id: 'main' }, to: { kind: 'burn' }, refId: warId });
+      core.announceIntel(tx, ctx, '🎯', `${me.data().codeName}, TIR #${truck.code} (${dg.name}) için operasyon başlattı (${fmt(price)} — devlet öder)${bribe > 0 ? ` — rüşvet: ${fmt(bribe)}` : ''}. Saldırı ${hhmmOf(attackAtMs)}'de başlar.`);
       ctx.logs.push({ gang: 'intel_operation', world: ctx.worldId, warId, price });
       return { warId, price };
     });
@@ -1034,17 +1032,17 @@ export function createWarActions(core) {
       const war = (await tx.get(ctx.ref.war(warId))).data();
       if (!war || war.type !== 'intelop' || war.defenderGangId !== gangId || !war.announced) fail('not-found', 'Operasyon bulunamadı.');
       if (war.status !== 'active' || war.bribePaid) fail('failed-precondition', 'Operasyon artık aktif değil.');
-      if (!(war.bribe > 0)) fail('failed-precondition', 'İstihbarat bu operasyon için rüşvet kabul etmiyor.');
+      if (!(war.bribe > 0)) fail('failed-precondition', 'Polis bu operasyon için rüşvet kabul etmiyor.');
       const [st, intelK] = await Promise.all([tx.get(ctx.ref.gangState(gangId)), core.readIntelKasa(tx, ctx)]);
       if (Number(st.data()?.kasa || 0) < war.bribe) fail('failed-precondition', 'Kasada yeterli para yok.');
       const others = await readOtherAttacks(tx, ctx, war, warId);
       tx.update(ctx.ref.gangState(gangId), { kasa: FV.increment(-war.bribe) });
-      // v88: rüşvet İstihbarat kasasına sınıra kadar girer, aşanı yanar (ödeyen yine tam öder)
+      // v108: rüşvet DEVLET kasasına gelir yazılır
       if (intelK.exists) core.creditIntel(tx, ctx, intelK, war.bribe, { type: 'intel_bribe_income', refId: warId, from: { kind: 'gang', id: gangId } });
       tx.update(ctx.ref.war(warId), { status: 'cancelled_bribe', bribePaid: true, activeGangIds: [], resolvedAtMs: ctx.now });
-      ledger(tx, ctx, { type: 'bribe_paid', amount: war.bribe, from: { kind: 'gang', id: gangId }, to: { kind: 'intel', id: 'main' }, before: st.data()?.kasa, refId: warId });
-      announce(tx, ctx, gangId, '💼', `${me.name}, TIR #${war.truckCode} için İstihbarata ${fmt(war.bribe)} rüşvet ödedi — operasyon durdu.`);
-      core.announceIntel(tx, ctx, '💼', `TIR #${war.truckCode} sahibi ${fmt(war.bribe)} rüşvet ödedi — operasyon durdu, para kasada.`);
+      ledger(tx, ctx, { type: 'bribe_paid', amount: war.bribe, from: { kind: 'gang', id: gangId }, to: { kind: 'state', id: 'main' }, before: st.data()?.kasa, refId: warId });
+      announce(tx, ctx, gangId, '💼', `${me.name}, TIR #${war.truckCode} için polise ${fmt(war.bribe)} rüşvet ödedi — operasyon durdu.`);
+      core.announceIntel(tx, ctx, '💼', `TIR #${war.truckCode} sahibi ${fmt(war.bribe)} rüşvet ödedi — operasyon durdu, para devlet kasasına geçti.`);
       const defenseEnded = endDefenseIfClear(tx, ctx, others, gangId, war.truckCode);
       return { paid: war.bribe, defenseEnded };
     });

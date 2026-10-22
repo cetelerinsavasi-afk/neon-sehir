@@ -11,11 +11,11 @@
 import { WatchWarsButton } from '../WatchWars';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { limit, orderBy } from 'firebase/firestore';
-import { fmtClock, fmtCountdown, istDateKey, istHour, istMidnight, nextWindowStart, useDocData, useGang, useGangAction, useNow, slotIdOf, useQueryData } from '../GangContext';
-import { AmountInput, Bar, BetPair, Btn, Card, Confirm, Deadline, Empty, Logo, Sheet, fmtTimer } from '../ui';
+import { fmtClock, fmtCountdown, fmtDateTime, istDateKey, istHour, istMidnight, nextWindowStart, useDocData, useGang, useGangAction, useNow, slotIdOf, useQueryData } from '../GangContext';
+import { AmountInput, Bar, BetPair, Btn, Card, Confirm, Deadline, Empty, Logo, Sheet, Stat, fmtTimer } from '../ui';
 import DiceRoller from '../DiceRoller';
 import { IntelDecisionPanel, VoteCard } from '../shared';
-import { GANG_RULES, INTEL_LEADERS, INTEL_LOGO, LEADERS, fmt, productOf } from '../gangConstants';
+import { GANG_RULES, INTEL_LEADERS, INTEL_LOGO, INTEL_NAME, LEADERS, appRankLabel, fmt, productOf } from '../gangConstants';
 import { TRADE_COUNTDOWN_WINDOW_MS, nextTradeSunday } from '../tradeSchedule';
 import { BiatSection, biatRowsOf, foldTradeWar, useBiatInfo } from '../Biat';
 
@@ -182,7 +182,7 @@ function warPurpose(w) {
     return `🎯 Kazanan ${p.emoji} ${p.label} ticaret yolunu ${GANG_RULES.ROUTE_DAYS} gün yönetir.`;
   if (w.type === 'bet') return '🎯 Kazanan tüm bahsi alır (iki çetenin bahsi toplamı).';
   if (w.type === 'sabotage') return '🎯 En güçlü saldırı savunmayı geçerse tırın yükü saldıranın deposuna gider. Tır her durumda sahibine döner.';
-  if (w.type === 'intelop') return '🎯 Başarılıysa yük çetede kalır; çete kasasından sipariş tutarı İstihbarata ödenir.';
+  if (w.type === 'intelop') return '🎯 Başarılıysa yük çetede kalır; çete kasasından sipariş tutarı devlete ödenir.';
   if (w.type === 'defense') return '🎯 Savunma gücü en güçlü saldırıdan düşük kalırsa yük kaybedilir. Müttefikler savunmaya güç ekler (saldırıda eklenmez).';
   return '';
 }
@@ -270,7 +270,7 @@ function TruckWarBody({ def, attacks, mySideKey }) {
     ...(def ? sidesRanked(def).map((x) => ({ ...x, role: 'defender' })) : []),
     ...attacks.map((a) => ({
       key: a.id,
-      name: a.type === 'intelop' ? 'İstihbarat' : a.sides?.attacker?.name || '',
+      name: a.type === 'intelop' ? 'Polis' : a.sides?.attacker?.name || '',
       logo: a.type === 'intelop' ? INTEL_LOGO : a.sides?.attacker?.logo,
       orgType: a.type === 'intelop' ? 'intel' : 'gang',
       role: 'attacker',
@@ -476,7 +476,7 @@ function AttackersSheet({ def, attackers, lead, onClose }) {
           <div key={a.id} className={`gx-attacker-row${i === 0 ? ' top' : ''}`}>
             <span className="gx-attacker-name">
               {i === 0 ? '👑 ' : ''}
-              {isOp ? '🕵️ İstihbarat' : `🏴 ${a.sides?.attacker?.name}`}
+              {isOp ? '🚓 Polis' : `🏴 ${a.sides?.attacker?.name}`}
             </span>
             <span className={p > defTotal ? 'bad' : 'good'}>⚔️ {fmt(p)}</span>
             <span className="dim">{price > 0 ? `${isOp ? '💼' : '🤑'} ${fmt(price)}` : '—'}</span>
@@ -492,10 +492,10 @@ function AttackersSheet({ def, attackers, lead, onClose }) {
       {ask && (
         <Confirm
           icon={ask.type === 'intelop' ? '💼' : '🤑'}
-          title={ask.type === 'intelop' ? `İstihbarata ${fmt(ask.bribe)} rüşvet ödensin mi?` : `${ask.sides?.attacker?.name} çetesine ${fmt(ask.harac)} haraç ödensin mi?`}
+          title={ask.type === 'intelop' ? `Polise ${fmt(ask.bribe)} rüşvet ödensin mi?` : `${ask.sides?.attacker?.name} çetesine ${fmt(ask.harac)} haraç ödensin mi?`}
           lines={[
             `💸 ${fmt(ask.type === 'intelop' ? ask.bribe : ask.harac)} çete kasasından`,
-            ask.type === 'intelop' ? '🕵️ Para İstihbarat kasasına gider' : `🏴 Para ${ask.sides?.attacker?.name || 'saldıran'} kasasına gider`,
+            ask.type === 'intelop' ? '🏛️ Para devlet kasasına gider' : `🏴 Para ${ask.sides?.attacker?.name || 'saldıran'} kasasına gider`,
             ask.type === 'intelop' ? '⚔️ Operasyon durur, tır güvende' : '⚔️ Bu saldırı durur, diğerleri sürer',
           ]}
           confirmLabel="Öde"
@@ -900,6 +900,69 @@ function ClaimList({ dists, rank, isIntel, myKey, joinedAtMs }) {
 }
 
 // ----------------------------------------------------------------------------
+// v108/v109 — polislik başvuruları: 👁️ ile tek tek incele, kabul / reddet.
+function IntelApplications({ apps }) {
+  const { run, busy } = useGangAction();
+  const [open, setOpen] = useState(null);
+  const [ask, setAsk] = useState(null);
+  return (
+    <>
+      <div className="gx-section-head">
+        <span>📝 Polislik başvuruları ({apps.length})</span>
+      </div>
+      {apps.length === 0 && <p className="dim gx-mini">Bekleyen başvuru yok.</p>}
+      {apps.map((a) => (
+        <Card key={a.id} className="gx-pending gx-app-row">
+          <span>
+            🕶️ <b>{a.codeName}</b> · <span className="dim">{fmtDateTime(a.createdAtMs)}</span>
+          </span>
+          <Btn small kind="ghost" onClick={() => setOpen(a)} title="İncele">
+            👁️
+          </Btn>
+        </Card>
+      ))}
+      {open && (
+        <Sheet title={`Başvuru: ${open.codeName}`} icon="📝" onClose={() => setOpen(null)}>
+          <div className="gx-stack">
+            <Stat icon="🏴" label="Bulunduğu çete (beyan)">
+              {open.gangName}
+            </Stat>
+            {open.gangRank !== 'yok' && (
+              <Stat icon="🎖️" label="Çetedeki rütbesi (beyan)">
+                {appRankLabel(open.gangRank)}
+              </Stat>
+            )}
+            <div className="gx-note-quote">“{open.reason}”</div>
+            <div className="dim gx-mini">⏱ Başvuru {fmtDateTime(open.createdAtMs)} · {fmtDateTime(Number(open.createdAtMs || 0) + 12 * 3_600_000)}'e kadar yanıt verilmezse otomatik onaylanır. Beyanlar doğrulanmaz.</div>
+            <div className="gx-row-2">
+              <Btn kind="danger" onClick={() => setAsk({ app: open, accept: false })}>
+                ❌ Reddet
+              </Btn>
+              <Btn onClick={() => setAsk({ app: open, accept: true })}>✅ Kabul et</Btn>
+            </div>
+          </div>
+        </Sheet>
+      )}
+      {ask && (
+        <Confirm
+          icon={ask.accept ? '✅' : '❌'}
+          danger={!ask.accept}
+          title={ask.accept ? `${ask.app.codeName} teşkilata alınsın mı?` : `${ask.app.codeName} başvurusu reddedilsin mi?`}
+          lines={ask.accept ? ['👮 Polis Memuru olarak katılır, hemen polis olur', '💼 Maaşı devlet öder'] : ['Kod adı serbest kalır']}
+          confirmLabel={ask.accept ? 'Kabul et' : 'Reddet'}
+          busy={busy === 'reviewIntelApplication'}
+          onCancel={() => setAsk(null)}
+          onConfirm={async () => {
+            const r = await run('reviewIntelApplication', { appId: ask.app.id, accept: ask.accept }, { success: (res) => (res?.void ? `⚠️ Başvuru geçersiz: ${res.reason}` : ask.accept ? '✅ Başvuru kabul edildi' : '❌ Başvuru reddedildi') });
+            setAsk(null);
+            if (r) setOpen(null);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
 export default function WarsTab({ org, d }) {
   const { call, path, actorId } = useGang();
   const { run, busy } = useGangAction();
@@ -909,7 +972,8 @@ export default function WarsTab({ org, d }) {
   const [attackersOf, setAttackersOf] = useState(null);
   const [truckDetail, setTruckDetail] = useState(null); // v74
   const [propose, setPropose] = useState(null);
-  const isIntel = org === 'intel';
+  const isIntel = org === 'intel'; // v109: Polis Teşkilatı (eski İstihbarat)
+  const sideName = INTEL_NAME;
   const gangId = d.gangId;
   const lead = isIntel ? INTEL_LEADERS.includes(d.rank) : LEADERS.includes(d.rank);
   const wars = d.wars;
@@ -1020,7 +1084,7 @@ export default function WarsTab({ org, d }) {
             tone={ff ? 'biat' : undefined}
             slotUsed={slot.used}
             onOpen={() => setDetail({ war: w, side: myKey })}
-            onJoin={() => join(w, isIntel ? { side: 'intel' } : {}, isIntel ? 'İstihbarat' : ff ? `${d.gang?.name} ⛓️ ${ff.name} adına` : d.gang?.name)}
+            onJoin={() => join(w, isIntel ? { side: 'intel' } : {}, isIntel ? sideName : ff ? `${d.gang?.name} ⛓️ ${ff.name} adına` : d.gang?.name)}
           >
             {ff && (
               <div className="gx-biat-banner">
@@ -1053,7 +1117,7 @@ export default function WarsTab({ org, d }) {
             war={w}
             slotUsed={slot.used}
             onOpen={() => setDetail({ war: w, side: mine })}
-            onJoin={() => join(w, isIntel ? { side: 'intel' } : {}, isIntel ? 'İstihbarat' : d.gang?.name)}
+            onJoin={() => join(w, isIntel ? { side: 'intel' } : {}, isIntel ? sideName : d.gang?.name)}
           >
             {w.sides?.intel ? (
               <ThreeWay war={w} mine={mine} />
@@ -1081,7 +1145,7 @@ export default function WarsTab({ org, d }) {
           <WarRow key={w.id} war={w} tone="alert" slotUsed={slot.used} onOpen={() => setAttackersOf(w)} onJoin={() => join(w, { side: 'defense' }, d.gang?.name)} joinLabel="SAVUN">
             {top ? (
               <div className="gx-top-attacker">
-                En güçlü: <b>{top.type === 'intelop' ? '🕵️ İstihbarat' : top.sides?.attacker?.name}</b> ⚔️ {fmt(topPower)}
+                En güçlü: <b>{top.type === 'intelop' ? '🚓 Polis' : top.sides?.attacker?.name}</b> ⚔️ {fmt(topPower)}
                 {atk.length > 1 && <span className="dim"> · +{atk.length - 1} saldırgan</span>}
               </div>
             ) : (
@@ -1148,7 +1212,7 @@ export default function WarsTab({ org, d }) {
       {(L.ops || []).map((w) => {
         const def = wars.all.find((x) => x.id === w.defenseWarId);
         return (
-          <WarRow key={w.id} war={w} slotUsed={slot.used} onOpen={() => setDetail({ war: w, side: 'attacker' })} onJoin={() => join(w, {}, 'İstihbarat')} joinLabel="SALDIR">
+          <WarRow key={w.id} war={w} slotUsed={slot.used} onOpen={() => setDetail({ war: w, side: 'attacker' })} onJoin={() => join(w, {}, sideName)} joinLabel="SALDIR">
             <div className="dim gx-mini">🏴 {w.sides?.defender?.name}</div>
             <div className="gx-vs">
               <span>⚔️ {fmt(w.display?.attacker)}</span>
@@ -1221,6 +1285,9 @@ export default function WarsTab({ org, d }) {
 
       {/* v68: bize ait olmayan savaşları izle */}
       <WatchWarsButton />
+
+      {/* v108/v109: polislik başvuruları — en altta, sadece inceleme yetkisi olanlar (Emniyet Genel Müdürü + Emniyet Amirleri) */}
+      {org === 'intel' && d.canReview && <IntelApplications apps={d.apps || []} />}
 
       {detail && <WarDetail war={foldTradeWar(wars.all.find((w) => w.id === detail.war.id) || detail.war)} mySideKey={detail.side} myGangId={isIntel ? null : gangId} onClose={() => setDetail(null)} />}
       {truckDetail &&

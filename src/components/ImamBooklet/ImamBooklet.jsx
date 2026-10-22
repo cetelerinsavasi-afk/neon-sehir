@@ -1,33 +1,33 @@
 import { useState } from 'react';
 import '../PoliceBooklet/PoliceBooklet.css';
 
-// İmam kitapçığı — KULLANICI İSTEĞİ: "baştan yazalım, gereksiz bilgileri
-// kaldıralım, olabildiğince net basit anlaşılır olsun". Her sayfa tek bir
-// konuyu, kısa cümlelerle anlatır.
+// İmam kitapçığı — KULLANICI İSTEĞİ (v109): RP'ye uygun, basit, detaya
+// boğmadan havalı anlatım. Her sayfa tek konu, kısa cümleler.
 const PAGES = [
   {
-    title: 'İmam Kimdir',
+    title: 'Şehrin İmamı',
     body: [
-      'Oyunda tek bir imam vardır.',
-      'İmamlık bir meslek değil, bir statüdür: fabrikada çalışmaya ve suç işlemeye devam edebilirsin.',
-      'Polisler de imam olabilir; imamlık ile polislik birbirine engel değildir.',
-      'İmam maaşı günde 10.000 altındır. Camiden günde 1 kez alırsın.',
+      'Neon Şehir\'in tek bir imamı vardır. Cami onun emanetidir.',
+      'İmamlık bir statüdür: işine gücüne devam edersin.',
+      'Polisler imam olamaz. Bir oyuncu ya imam ya polis olabilir.',
+      'Maaşın 10.000 altın, her gece 00:00\'da devletten yatar.',
     ],
   },
   {
-    title: 'İmam Olmak İçin',
+    title: 'Kürsüye Çıkmak',
     body: [
-      'Saygınlığın en az 50 olmalı.',
-      'Şüphen %0 olmalı.',
-      'Bu iki şart sadece başvururken aranır. İmam olduktan sonra şüphen artsa ya da saygınlığın düşse de imamlığın gitmez.',
+      'Aranan: 📋 temel görevlerin tamamı, 50 saygınlık ve %0 şüphe.',
+      'Bu şartlar sadece başvururken aranır.',
+      'Kürsü boşsa başvurduğun an imam olursun.',
+      'Bekleyen bir polislik başvurun varsa önce onun sonuçlanmasını beklemelisin.',
     ],
   },
   {
-    title: 'İmamın Görevleri',
+    title: 'İmamın Yükü',
     body: [
-      'Her gün 5 vakit ibadet et. (Göreve başladığın andan önceki vakitler sayılmaz.)',
-      'Her gün en az 1 nasihat ver.',
-      'Bu görevlerden birini aksatırsan imamlıktan alınırsın. Alındıktan 24 saat sonra tekrar başvurabilirsin.',
+      'Her gün 5 vakit ibadet ve en az 1 nasihat.',
+      'Görevini aksatan imam kürsüden indirilir ve 24 saat geri dönemez.',
+      'İstersen Camii\'den istifa edebilirsin; 24 saat yeniden başvuramazsın.',
     ],
   },
 ];

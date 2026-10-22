@@ -1,13 +1,16 @@
-// ÇETELER — tüm çeteler + İstihbarat, son Pazar savaşı gücüne göre sıralı.
-// Kart: logo, ad, kasa, son savaş gücü, üye sayısı, Mafya Babası, kısa not.
-// Sağ üstte "Çete kur +". Kendi çetende/İstihbaratta isen kartta "Aç".
+// ÇETELER — tüm çeteler + Polis Teşkilatı (v109; eski İstihbarat), son Pazar
+// savaşı gücüne göre sıralı. Kart: logo, ad, kasa (Polis Teşkilatında maaş
+// aralığı), son savaş gücü, üye sayısı, lider, kısa not.
+// Sağ üstte "Çete kur +". Kendi çetende/teşkilatta isen kartta "Aç";
+// teşkilatta değilsen "Başvur" (başvuru formu — Karakol'dakiyle aynı).
 import { useMemo, useState } from 'react';
 import { limit, where } from 'firebase/firestore';
 import { istDateKey, useDocData, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
 import { Btn, Card, Confirm, Empty, Gold, Logo, Sheet } from '../ui';
 import { LogoPicker, useMyWallet } from '../shared';
 import { BiatTag } from '../Biat';
-import { GANG_RULES, INTEL_LOGO, fmt, productOf } from '../gangConstants';
+import { GANG_RULES, INTEL_LOGO, INTEL_NAME, fmt, productOf } from '../gangConstants';
+import PoliceApplySheet from '../PoliceApplySheet';
 
 function CreateGangSheet({ onClose, membership }) {
   const { run, busy } = useGangAction();
@@ -55,7 +58,7 @@ function CreateGangSheet({ onClose, membership }) {
           lines={[
             `🪙 −${fmt(GANG_RULES.CREATE_FEE)}`,
             ...(membership?.gangId ? ['🚪 Şu anki çetenden çıkarsın, prestijin silinir.'] : []),
-            ...(membership?.intelRosterId ? ['🕵️ İstihbarattan çıkarsın, prestijin silinir.'] : []),
+            ...(membership?.intelRosterId ? [`🚓 Polislikten ayrılırsın, prestijin silinir (${GANG_RULES.REJOIN_COOLDOWN_HOURS} saat yeniden başvuramazsın).`] : []),
           ]}
           confirmLabel="Kur"
           busy={busy === 'createGang'}
@@ -63,38 +66,6 @@ function CreateGangSheet({ onClose, membership }) {
           onConfirm={submit}
         />
       )}
-    </Sheet>
-  );
-}
-
-function JoinIntelSheet({ onClose }) {
-  const { run, busy } = useGangAction();
-  const wallet = useMyWallet();
-  const [code, setCode] = useState('');
-  const ok = wallet.reputation == null || wallet.reputation >= GANG_RULES.INTEL_MIN_REPUTATION;
-  return (
-    <Sheet title="İstihbarata katıl" icon="🕵️" onClose={onClose}>
-      <div className="gx-req">
-        <span className={`gx-req-item ${wallet.reputation == null ? '' : ok ? 'yes' : 'no'}`}>
-          {wallet.reputation == null ? '•' : ok ? '✓' : '✗'} ⭐ {GANG_RULES.INTEL_MIN_REPUTATION} saygınlık gerekir
-        </span>
-      </div>
-      <label className="gx-field">
-        Kod adın
-        <input className="gx-input" maxLength={GANG_RULES.CODENAME_MAX} value={code} onChange={(e) => setCode(e.target.value)} placeholder="ör. Baykuş" />
-      </label>
-      <div className="gx-hide-warn">🤫 İyi gizlendiğinden emin ol</div>
-      <Btn
-        block
-        disabled={!ok || code.trim().length < GANG_RULES.CODENAME_MIN}
-        busy={busy === 'joinIntel'}
-        onClick={async () => {
-          const r = await run('joinIntel', { codeName: code }, { success: '🕵️ İstihbarata hoş geldin.' });
-          if (r) onClose();
-        }}
-      >
-        {ok ? 'Katıl' : '🔒'}
-      </Btn>
     </Sheet>
   );
 }
@@ -118,7 +89,7 @@ function OrgCard({ logo, name, note, kasa, power, powerNote, members, leader, le
       <div className="gx-gang-card-main">
         <div className="gx-gang-card-name">{name}</div>
         <div className="gx-gang-card-meta">
-          <span>{kasa}</span>
+          {kasa != null && <span>{kasa}</span>}
           <span title={powerNote || 'Son Pazar savaşı gücü'}>
             ⚔️ {fmt(power)}
             {powerNote ? ' ⛓️' : ''}
@@ -162,10 +133,10 @@ export default function ListTab({ membership, onOpen }) {
   const today = istDateKey(useNow(60_000));
   const { docs: gangs, loading } = useQueryData(path('gangs'), () => [where('status', '==', 'active'), limit(100)], 'active');
   const { data: intel } = useDocData(path('intel/main'));
-  const { data: intelState } = useDocData(path('intel/main/private/state'));
   const [create, setCreate] = useState(false);
   const [join, setJoin] = useState(null);
   const [joinIntel, setJoinIntel] = useState(false);
+  const [cancelApp, setCancelApp] = useState(false);
   const [q, setQ] = useState('');
 
   const list = useMemo(() => {
@@ -194,22 +165,26 @@ export default function ListTab({ membership, onOpen }) {
             key="intel"
             rankNo={i + 1}
             logo={INTEL_LOGO}
-            name="İstihbarat Teşkilatı"
+            name={INTEL_NAME}
             note={intel?.note}
-            kasa={<Gold value={intelState?.kasa} />}
+            kasa={null}
             power={x.power}
             members={intel?.memberCount || 0}
             leader={intel?.baskanCode}
-            leaderIcon="🦅"
+            leaderIcon="⭐"
             mine={Boolean(ms.intelRosterId)}
             action={
               ms.intelRosterId ? (
                 <Btn small onClick={() => onOpen('intel')}>
                   Aç
                 </Btn>
+              ) : ms.intelAppId ? (
+                <Btn small kind="ghost" onClick={() => setCancelApp(true)}>
+                  ⏳ İnceleniyor
+                </Btn>
               ) : (
                 <Btn small kind="ghost" onClick={() => setJoinIntel(true)}>
-                  Katıl
+                  Başvur
                 </Btn>
               )
             }
@@ -246,7 +221,22 @@ export default function ListTab({ membership, onOpen }) {
         )
       )}
       {create && <CreateGangSheet onClose={() => setCreate(false)} membership={ms} />}
-      {joinIntel && <JoinIntelSheet onClose={() => setJoinIntel(false)} />}
+      {joinIntel && <PoliceApplySheet membership={ms} onClose={() => setJoinIntel(false)} />}
+      {cancelApp && (
+        <Confirm
+          icon="🚓"
+          title={`Polislik başvurun (${ms.intelAppCode || ''}) inceleniyor`}
+          lines={['En geç 12 saat içinde sonuçlanır.', 'Başvurunu geri çekmek ister misin?']}
+          danger
+          confirmLabel="Geri çek"
+          busy={busy === 'cancelIntelApplication'}
+          onCancel={() => setCancelApp(false)}
+          onConfirm={async () => {
+            await run('cancelIntelApplication', {}, { success: 'Başvuru geri çekildi' });
+            setCancelApp(false);
+          }}
+        />
+      )}
       {join && (
         <Confirm
           icon={join.logo?.emoji || '🏴'}

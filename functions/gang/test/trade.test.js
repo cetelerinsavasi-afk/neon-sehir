@@ -165,21 +165,27 @@ test('v67: sipariş verilen gün sonraki dilimde yola çıkar, gece 00:00 depoya
   assert.equal(h.get(`trucks/${truckId}`).status, 'idle');
 });
 
-test('tır ömrü: son gün sipariş yok; ömrü dolunca hurdaya çıkar, kimlik serbest', async () => {
+test('tır ömrü (v108): son gününde de sipariş verilir, sefer teslim edilir; sonra hurdaya çıkar, kimlik serbest', async () => {
   const h = await createHarness();
   const G = await setupTradeGang(h);
   await h.giveRoute(G.gangId, 'yasakliMadde', 1_000_000);
   const { truckId, code } = await h.act(G.baba, 'buyTruck');
   await h.db.doc(`gangWorlds/test/trucks/${truckId}`).update({ expiresDateKey: '2026-09-23' });
   await h.act(G.baba, 'placeOrder', { truckId, product: 'yasakliMadde', items: { yasakliMadde: 5 } }); // 2 gün kaldı: olur
+  await h.tickTo('2026-09-21', '12:05'); // yola çıktı
+  await h.tickTo('2026-09-22', '00:05'); // teslim
   await h.tickTo('2026-09-22', '09:00');
-  const e = await h.fails(G.baba, 'placeOrder', { truckId, product: 'yasakliMadde', items: { yasakliMadde: 5 } });
-  assert.match(e.message, /ömrü/);
+  // v108: 1 gün ömrü kalan tırla da sipariş verilebilir (tır gün içinde getiriyor)
+  await h.act(G.baba, 'placeOrder', { truckId, product: 'yasakliMadde', items: { yasakliMadde: 5 } });
+  await h.tickTo('2026-09-22', '12:05');
+  assert.equal(h.get(`trucks/${truckId}`).status, 'in_transit');
   await h.tickTo('2026-09-23', '00:05');
-  assert.equal(depotOf(h, G.gangId).items.yasakliMadde, 5, 'son sefer teslim edildi');
+  assert.equal(depotOf(h, G.gangId).items.yasakliMadde, 10, 'son günün seferi de teslim edildi');
   const t = h.get(`trucks/${truckId}`);
   assert.equal(t.status, 'retired');
   assert.equal(h.get(`truckCodes/${code}`), undefined);
+  const e = await h.fails(G.baba, 'placeOrder', { truckId, product: 'yasakliMadde', items: { yasakliMadde: 5 } });
+  assert.match(e.message, /Tır bulunamadı|ömrü/);
 });
 
 test('v67: çete depo ürünleri anında satılamaz ve dağıtılamaz (sadece 2. el)', async () => {

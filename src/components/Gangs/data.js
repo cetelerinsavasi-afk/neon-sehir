@@ -101,9 +101,15 @@ export function useIntelData(membership) {
   const { docs: votes } = useQueryData(rid && canSeeVotes ? path('intel/main/votes') : null, () => [where('status', '==', 'active'), limit(20)], `iv_${rid}_${canSeeVotes}`);
   const { docs: myPending } = useQueryData(rid ? path('intel/main/pending') : null, () => [where('initiatorRosterId', '==', rid), limit(10)], `ip_${rid}`);
   const { docs: dists } = useQueryData(rid ? path('distributions') : null, () => [where('orgType', '==', 'intel'), where('status', '==', 'open'), limit(30)], `idist_${rid}`);
+  // v108 — başvurular: inceleme yetkisi olan rütbeler (Emniyet Genel Müdürü + Emniyet Amiri)
+  const reviewRanks = Array.isArray(intel?.reviewRanks) && intel.reviewRanks.length ? intel.reviewRanks : ['baskan', 'sef'];
+  const canReview = Boolean(rid) && reviewRanks.includes(realRank) && !underVote;
+  const { docs: apps } = useQueryData(canReview ? path('intel/main/applications') : null, () => [where('status', '==', 'pending'), limit(50)], `iapps_${rid}_${canReview}`);
   const today = istDateKey(now);
   return {
     rid,
+    canReview,
+    apps: [...apps].sort((a, b) => (a.createdAtMs || 0) - (b.createdAtMs || 0)),
     intel,
     state,
     stateToday: state?.midnightDateKey === today,

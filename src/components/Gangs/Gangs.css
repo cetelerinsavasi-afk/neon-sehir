@@ -3552,3 +3552,18 @@ button.gx-member.gx-member-btn:active {
   font-size: 11px;
   font-weight: 700;
 }
+
+/* v108/v109 — polislik başvuru formu (sicilde görünüm) */
+.gx-app-form-view {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.gx-app-row b {
+  overflow-wrap: anywhere;
+}
+/* v109 — Karakol'dan açılan başvuru penceresi (document.body'ye taşınır) */
+.gx-root.gx-portal {
+  min-height: 0;
+  padding: 0;
+}

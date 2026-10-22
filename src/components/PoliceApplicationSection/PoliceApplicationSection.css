@@ -144,3 +144,15 @@
   color: var(--neon-cyan);
   text-align: center;
 }
+
+/* v108 — kod adı girişi */
+.police-app-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 14px;
+}

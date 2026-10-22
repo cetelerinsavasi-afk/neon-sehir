@@ -103,17 +103,17 @@ export function IntelDecisionPanel() {
   const [ask, setAsk] = useState(null);
   return (
     <div className="gx-decision">
-      <div className="gx-decision-title">🕵️ İstihbarat mı, Mafya Babalığı mı?</div>
+      <div className="gx-decision-title">🚓 Polislik mi, Mafya Babalığı mı?</div>
       <div className="gx-decision-timer">⏱ {fmtCountdown(nextMidnight(now) - now)}</div>
       <div className="gx-decision-actions">
         <button className="gx-decision-btn intel" onClick={() => setAsk('disband')}>
           <span className="big">💥</span>
-          <b>Çeteyi İstihbarata teslim et</b>
-          <span className="dim">💥 Üyeler dağılır · 💰 altın İstihbarata · +10M ✦</span>
+          <b>Çeteyi polise teslim et</b>
+          <span className="dim">💥 Üyeler dağılır · 💰 altın devlete · +10M ✦</span>
         </button>
         <button className="gx-decision-btn baba" onClick={() => setAsk('stay')}>
           <span className="big">👑</span>
-          <b>İstihbarattan ayrıl</b>
+          <b>Polislikten ayrıl</b>
           <span className="dim">👑 Mafya Babası olarak devam et</span>
         </button>
       </div>
@@ -121,17 +121,17 @@ export function IntelDecisionPanel() {
         <Confirm
           icon={ask === 'disband' ? '💥' : '👑'}
           danger={ask === 'disband'}
-          title={ask === 'disband' ? 'Çete İstihbarata teslim edilsin mi?' : 'İstihbarattan ayrıl?'}
+          title={ask === 'disband' ? 'Çete polise teslim edilsin mi?' : 'Polislikten ayrıl?'}
           lines={
             ask === 'disband'
-              ? ['💥 Çetedeki tüm üyeler dağılır', '💰 Çetedeki tüm altın İstihbarata geçer', '✦ +10.000.000 İstihbarat prestiji', '🕶️ Kimin teslim ettiği kimseye söylenmez']
-              : ['👑 Mafya Babası olarak devam edersin', '🕵️ İstihbarattan ayrılırsın, İstihbarat prestijin silinir']
+              ? ['💥 Çetedeki tüm üyeler dağılır', '💰 Çetedeki tüm altına devlet adına el konur', '✦ +10.000.000 polis prestiji', '🕶️ Kimin teslim ettiği kimseye söylenmez']
+              : ['👑 Mafya Babası olarak devam edersin', '🚓 Polislikten ayrılırsın, prestijin silinir']
           }
           confirmLabel={ask === 'disband' ? 'Teslim et' : 'Ayrıl, Baba kal'}
           busy={busy === 'intelDecision'}
           onCancel={() => setAsk(null)}
           onConfirm={async () => {
-            await run('intelDecision', { choice: ask }, { success: ask === 'disband' ? '💥 Çete İstihbarata teslim edildi.' : '👑 Artık sadece Mafya Babasısın.' });
+            await run('intelDecision', { choice: ask }, { success: ask === 'disband' ? '💥 Çete polise teslim edildi.' : '👑 Artık sadece Mafya Babasısın.' });
             setAsk(null);
           }}
         />
@@ -179,8 +179,8 @@ const VOTE_RULE = {
   devirme: { icon: '🗡️', label: 'Devirme', need: '%51 evet', yes: 'Aday Mafya Babası olur, eski Baba çeteden çıkar', no: 'Aday çeteden atılır' },
   ayaklanma: { icon: '🔥', label: 'Ayaklanma', need: "%66'dan fazla evet", yes: 'Baba görevden alınır, başlatan Baba olur', no: 'Başlatan çeteden atılır' },
   kick: { icon: '🚫', label: 'Çıkarma', need: "%51'den fazla evet", yes: 'Üye çeteden çıkarılır', no: 'Üye kalır' },
-  intelKick: { icon: '🚫', label: 'Çıkarma', need: '%51 evet', yes: 'Üye İstihbarattan çıkarılır', no: 'Hiçbir şey değişmez' },
-  intelKickBaskan: { icon: '🦅', label: 'Başkanı çıkarma', need: "%66'dan fazla evet", yes: 'Başkan İstihbarattan çıkarılır', no: 'Hiçbir şey değişmez' },
+  intelKick: { icon: '🚫', label: 'Çıkarma', need: '%51 evet', yes: 'Polis teşkilattan ve polislikten çıkarılır', no: 'Hiçbir şey değişmez' },
+  intelKickBaskan: { icon: '⭐', label: 'Emniyet Genel Müdürünü çıkarma', need: "%66'dan fazla evet", yes: 'Emniyet Genel Müdürü teşkilattan ve polislikten çıkarılır', no: 'Hiçbir şey değişmez' },
 };
 
 export function VoteCard({ vote, ballotPath, voterKey, action }) {

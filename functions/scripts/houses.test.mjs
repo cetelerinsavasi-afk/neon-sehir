@@ -276,7 +276,7 @@ test('v92 Faz 8: oyunun 3D mekânı — venueEnsure kurar/günceller, herkes gir
   assert.equal(doc.privacy, 'venue');
   assert.equal(doc.items.length, VENUES.gazino.items.length);
   // yerleşimdeki her eşya kataloğda olmalı (fiyatı olmayanlar sadece mekâna özel olanlar)
-  for (const v of Object.values(VENUES)) for (const x of v.items) assert.ok(ITEM_PRICES[x.k] || ['mihrap', 'minber'].includes(x.k), `${x.k} fiyatsız`);
+  for (const v of Object.values(VENUES)) for (const x of v.items) assert.ok(ITEM_PRICES[x.k] || ['mihrap', 'minber', 'belediyeamblem', 'meclispano', 'baskanmasa', 'toplantimasa', 'sehirmaketi', 'kursu'].includes(x.k), `${x.k} fiyatsız`);
   // istasyon / NPC istasyonu yerleşimde var
   for (const v of Object.values(VENUES)) {
     const ids = new Set(v.items.map((x) => x.i));

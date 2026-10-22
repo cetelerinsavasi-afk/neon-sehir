@@ -8,6 +8,7 @@ import { createWarActions, foldBiatTotals } from './actions/wars.js';
 import { createVoteActions } from './actions/votes.js';
 import { createIntelActions } from './actions/intel.js';
 import { createMarketActions } from './actions/market.js';
+import { createRoleActions } from './actions/roles.js';
 import { createClock } from './clock.js';
 import { GANG, MS_HOUR, MS_DAY } from './config.js';
 import { nextMidnightMs as nextMidnightMsOf, dateKeyOf as dateKeyOfMs, truckTimes } from './time.js';
@@ -27,7 +28,8 @@ export function createGangSystem(deps) {
   const market = createMarketActions(core, trade);
   const wars = createWarActions(core);
   const votes = createVoteActions(core);
-  const clock = createClock(core, { wars, votes, treasury, intel, market });
+  const roles = createRoleActions(core, { intel }); // v108 / v109 (maaş, pasiflik, polis ↔ teşkilat)
+  const clock = createClock(core, { wars, votes, treasury, intel, market, roles });
   core.cleanupGang = clock.cleanupGang;
 
   const adminUids = deps.adminUids || [];
@@ -123,7 +125,7 @@ export function createGangSystem(deps) {
       const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       const byId = new Map(docs.map((w) => [w.id, w]));
       const live = (w) => ctx.now >= Number(w.startsAtMs || 0) && ctx.now < Number(w.endsAtMs || 0);
-      const side = (k, sd, power, role) => ({ key: k, name: sd?.name || (sd?.orgType === 'intel' ? 'İstihbarat' : ''), logo: sd?.logo || null, role: role || sd?.role || null, power: Math.max(0, Math.round(Number(power || 0))) });
+      const side = (k, sd, power, role) => ({ key: k, name: sd?.name || (sd?.orgType === 'intel' ? 'Polis Teşkilatı' : ''), logo: sd?.logo || null, role: role || sd?.role || null, power: Math.max(0, Math.round(Number(power || 0))) });
       wars = [];
       for (const w of docs) {
         if (!live(w)) continue;
@@ -266,6 +268,11 @@ export function createGangSystem(deps) {
       }
       return { voted: true, ended };
     },
+    // v108 — İstihbarat başvuru formu + sicil formu
+    applyIntel: intel.applyIntel,
+    cancelIntelApplication: intel.cancelIntelApplication,
+    reviewIntelApplication: intel.reviewIntelApplication,
+    updateIntelForm: intel.updateIntelForm,
     reportTruck: intel.reportTruck,
     leakTruck: intel.leakTruck,
     reportBet: intel.reportBet,
@@ -432,11 +439,11 @@ export function createGangSystem(deps) {
     { displayName: 'Test Baba', gold: 5_000_000, power: 60_000, reputation: 100, isPolice: false },
     { displayName: 'Test Sağkol', gold: 3_000_000, power: 45_000, reputation: 100, isPolice: false },
     { displayName: 'Test Kıdemli', gold: 800_000, power: 30_000, reputation: 70, isPolice: false },
-    { displayName: 'Test Tetikçi', gold: 300_000, power: 20_000, reputation: 55, isPolice: true },
+    { displayName: 'Test Tetikçi', gold: 300_000, power: 20_000, reputation: 55, isPolice: false },
     { displayName: 'Test Çömez', gold: 50_000, power: 8_000, reputation: 30, isPolice: false },
     { displayName: 'Rakip Baba', gold: 5_000_000, power: 55_000, reputation: 100, isPolice: false },
     { displayName: 'Rakip Üye', gold: 400_000, power: 25_000, reputation: 60, isPolice: false },
-    { displayName: 'Ajan Polis', gold: 200_000, power: 15_000, reputation: 80, isPolice: true },
+    { displayName: 'Ajan Polis', gold: 200_000, power: 15_000, reputation: 80, isPolice: false }, // v109: polis = teşkilat üyesi (başvurunca olur)
   ];
 
   function personaData(input, base = {}) {
@@ -596,6 +603,20 @@ export function createGangSystem(deps) {
     const out = {};
     const worlds = [TEST_WORLD];
     if (cfg.liveWorldId) worlds.push(cfg.liveWorldId);
+    // v109 — tek seferlik birleşme geçişi (canlı; bayraklı). Saat turlarından
+    // ÖNCE: 00:00 turundaki maaş / uzlaştırma yeni düzene göre çalışsın.
+    if (cfg.liveWorldId) {
+      try {
+        const world = await core.loadWorld(cfg.liveWorldId);
+        if (world) {
+          const ctx = core.makeCtx(cfg.liveWorldId, world, { actorId: 'system' });
+          out.rolesV109 = await roles.ensureRolesV109(ctx, clock.safe);
+          core.flushLogs(ctx);
+        }
+      } catch (err) {
+        console.error('rolesV109 hata', err);
+      }
+    }
     for (const w of worlds) {
       try {
         out[w] = summarizeClock(await clock.runClock(w));
@@ -607,33 +628,50 @@ export function createGangSystem(deps) {
     return out;
   }
 
-  // Polis yakalama ödülü → İstihbarat prestiji (sadece canlı dünya).
-  async function onPoliceBustReward(uid, amount, refId) {
+  // ---------------------------------------------------------------------------
+  // v108 — functions/index.js kancaları (sadece canlı dünya; best-effort)
+  // ---------------------------------------------------------------------------
+  async function liveCtx(actorId = 'system') {
     const cfg = await getConfig();
-    if (!cfg.liveOpen || !cfg.liveWorldId) return { skipped: true };
+    if (!cfg.liveOpen || !cfg.liveWorldId) return null;
     const world = await core.loadWorld(cfg.liveWorldId);
-    if (!world) return { skipped: true };
-    const ctx = core.makeCtx(cfg.liveWorldId, world, { actorId: uid });
-    const res = await intel.awardPoliceReward(ctx, uid, Math.floor(Number(amount) || 0), refId);
+    if (!world) return null;
+    return core.makeCtx(cfg.liveWorldId, world, { actorId });
+  }
+  // v109 — Polis soygunu durdurdu → Polis Teşkilatı (eski İstihbarat) prestiji + sicil
+  async function onPoliceBust(uid, info) {
+    const ctx = await liveCtx(uid);
+    if (!ctx) return { skipped: 'no_live' };
+    const res = await intel.awardPoliceBust(ctx, uid, info || {});
     core.flushLogs(ctx);
     return res;
   }
-
-  // Şüpheyle yakalanma cezası → İstihbarat kasası (sadece canlı dünya).
-  // Soygunda / yasaklı madde satışında şüpheyle yakalanıp borç (ceza)
-  // yazıldığı ANDA çağrılır. Kredi/maaş borcu cezaları ve polisin yakaladığı
-  // durumlar (ödül polise gider) bu kancayı ÇAĞIRMAZ. İdempotent: refId.
-  async function onSuspicionFine(uid, amount, refId) {
-    const amt = Math.floor(Number(amount) || 0);
-    if (!(amt > 0)) return { skipped: true };
-    const cfg = await getConfig();
-    if (!cfg.liveOpen || !cfg.liveWorldId) return { skipped: true };
-    const world = await core.loadWorld(cfg.liveWorldId);
-    if (!world) return { skipped: true };
-    const ctx = core.makeCtx(cfg.liveWorldId, world, { actorId: 'system' });
-    const res = await intel.creditFineToIntel(ctx, amt, refId);
+  // v109 — polislikten istifa (functions/index.js resignFromPolice; Karakol):
+  // teşkilattan ayrılmakla aynı (prestij + sicil silinir, 24 saat başvuru yasağı).
+  // Canlı dünya kapalıysa { skipped }.
+  async function resignPolice(uid) {
+    const ctx = await liveCtx(uid);
+    if (!ctx) return { skipped: 'no_live' };
+    const m = await core.readMembership(null, ctx, uid);
+    if (!m.intelRosterId) return { notMember: true };
+    const res = await intel.leaveIntel(ctx);
+    await core.refreshIntelRoster(ctx).catch(() => {});
     core.flushLogs(ctx);
     return res;
+  }
+  // Rol tekliği için: imam işlemi canlı üyelik belgesini KENDİ işleminde okur
+  // (teşkilat başvurusu / üyeliğiyle yarışmasın). Canlı dünya yoksa null.
+  async function liveMembershipRef(uid) {
+    const cfg = await getConfig();
+    if (!cfg.liveWorldId) return null;
+    return db.doc(`gangWorlds/${cfg.liveWorldId}/memberships/${uid}`);
+  }
+  // Rol tekliği (imam / polis): oyuncu teşkilatta mı, başvurusu var mı
+  async function getRoleStatus(uid) {
+    const ctx = await liveCtx(uid);
+    if (!ctx) return { intel: false, intelApp: false };
+    const m = await core.readMembership(null, ctx, uid);
+    return { intel: Boolean(m.intelRosterId), intelApp: Boolean(m.intelAppId) };
   }
 
   // v103 — Parkta GÜVENLİ yasaklı madde satışı → oyuncunun çetesine haraç
@@ -692,9 +730,9 @@ export function createGangSystem(deps) {
   const SOCIAL_ACTIONS = new Set(['sendGangChat', 'sendGlobalChat', 'sendIntelChat']);
   // v38: üye listesi (00:00 prestijli herkese açık görünüm) değiştiren işlemler
   // UGC D1: oyuncunun serbest metin yazdığı eylemler (sohbet, ad, not, kod adı)
-  const TEXT_ACTIONS = new Set(['sendGangChat', 'sendGlobalChat', 'sendIntelChat', 'createGang', 'updateGangProfile', 'sendAllianceNote', 'joinIntel', 'updateIntelNote', 'changeCodeName']);
-  const ROSTER_ACTIONS = new Set(['createGang', 'joinGang', 'leaveGang', 'kickMember', 'giveRespect', 'joinIntel', 'leaveIntel', 'kickIntelMember', 'changeCodeName', 'intelDecision']);
-  const INTEL_ROSTER_ACTIONS = new Set(['joinIntel', 'leaveIntel', 'kickIntelMember', 'changeCodeName', 'intelDecision']);
+  const TEXT_ACTIONS = new Set(['sendGangChat', 'sendGlobalChat', 'sendIntelChat', 'createGang', 'updateGangProfile', 'sendAllianceNote', 'joinIntel', 'updateIntelNote', 'changeCodeName', 'applyIntel', 'updateIntelForm']);
+  const ROSTER_ACTIONS = new Set(['createGang', 'joinGang', 'leaveGang', 'kickMember', 'giveRespect', 'joinIntel', 'leaveIntel', 'kickIntelMember', 'changeCodeName', 'intelDecision', 'reviewIntelApplication']);
+  const INTEL_ROSTER_ACTIONS = new Set(['joinIntel', 'leaveIntel', 'kickIntelMember', 'changeCodeName', 'intelDecision', 'reviewIntelApplication']);
   async function refreshRostersAfter(ctx, action, before) {
     const after = (await db.doc(`gangWorlds/${ctx.worldId}/memberships/${ctx.actorId}`).get()).data() || {};
     const gangIds = new Set([before?.gangId, after.gangId].filter(Boolean));
@@ -731,7 +769,7 @@ export function createGangSystem(deps) {
   }
 
   // Testler için iç erişim (production'da kullanılmaz)
-  const _internal = { core, membership, treasury, trade, market, wars, votes, intel, clock, HANDLERS };
+  const _internal = { core, membership, treasury, trade, market, wars, votes, intel, roles, clock, HANDLERS };
 
-  return { handleAction, handleAdmin, runAllClocks, onPoliceBustReward, onSuspicionFine, onContrabandHarac, isInLiveGang, ensureLiveWorld, onPlayerActivity, touchSocialActivity, _internal };
+  return { handleAction, handleAdmin, runAllClocks, onPoliceBust, resignPolice, liveMembershipRef, getRoleStatus, onContrabandHarac, isInLiveGang, ensureLiveWorld, onPlayerActivity, touchSocialActivity, _internal };
 }

@@ -54,6 +54,8 @@ import { simulAct, simulAutoStand, simulDeal, simulState } from './onNumara.js';
 import { isMsgId, nextReaction, replyQuoteOf } from './chatExtras.js';
 import { VENUES } from './venueLayouts.js';
 import { goldTag, recordGoldChange, cleanupMoneyLog, realizeSale, realizeBankWithdraw } from './moneyLog.js';
+import { stateWrite, closeStateDays, readStateReport } from './stateTreasury.js';
+import { policeBustSplit, heistStateEntries } from './policeRules.js';
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -936,6 +938,15 @@ export const initializePlayer = onCall(async (request) => {
     tx.set(privateRef, { isPolice: false });
   });
 
+  // v108 — "oyuna giriş" kaydı (10 gün girmeyen polis/istihbaratçı görevden
+  // alınır — functions/gang/actions/roles.js). Uygulama her açılışta bu
+  // fonksiyonu çağırır; gizli alt belgeye yazılır (users/{uid} tetikleyicisi çalışmaz).
+  try {
+    await privateRef.set({ lastSeenAtMs: Date.now(), lastSeenDay: istanbulDateKey() }, { merge: true });
+  } catch (err) {
+    console.error('lastSeen yazılamadı', err?.message || err);
+  }
+
   return { ok: true, isNewPlayer };
 });
 
@@ -1015,72 +1026,38 @@ export const applyReferralCode = onCall(async (request) => {
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // applyForPolice / resignFromPolice / cancelPendingPoliceChange
-// Meslek seçimi kaldırıldı — işçilik ve üreticilik artık herkese açık
-// (Bölüm 7 sadeleştirmesi). SADECE polislik özel: anlık meslek değişimiyle
-// oyuncular soygun anında polis olup parayı cebe atamasın diye, başvuru/
-// istifa hemen değil, bir SONRAKİ 00:00 sıfırlamasında işleniyor.
+// v109 — İstihbarat ve Polis birleşti: POLİS = POLİS TEŞKİLATI ÜYESİ.
+// Başvuru, teşkilatın başvuru formuyla yapılır (gangAction 'applyIntel' —
+// Karakol'dan ve Çeteler › Polis Teşkilatı'ndan; onay: en üst iki rütbe ya da
+// 12 saat sonra otomatik). Katılım / ayrılık mesleği (users.profession) aynı
+// işlemde değiştirir — bkz. functions/gang/actions/intel.js.
+// Açık bir ekip soygunundayken de başvuru ve istifa serbest (kullanıcı kararı).
 // ---------------------------------------------------------------------------
+// Eski istemciler (kod adlı anında başvuru) — yeni forma yönlendirilir.
 export const applyForPolice = onCall(async (request) => {
-  const uid = requireAuth(request);
-  const userRef = db.collection('users').doc(uid);
-  const userSnap = await userRef.get();
-  const user = userSnap.data();
-
-  if (!user) {
-    throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
-  }
-  if (user.profession === 'polis') {
-    throw new HttpsError('failed-precondition', 'Zaten polissin.');
-  }
-  // v67 — meslekler bağımsız: imam da polis olabilir (görevlerini yapmak şartıyla).
-  if (user.pendingPoliceChange) {
-    throw new HttpsError('failed-precondition', 'Bekleyen bir başvurun zaten var.');
-  }
-  if ((user.suspicion || 0) !== 0) {
-    throw new HttpsError('failed-precondition', 'Polis olmak için şüphe puanın %0 olmalı.');
-  }
-  const weaponsSnap = await db.collection('weapons').where('ownerId', '==', uid).limit(1).get();
-  if (weaponsSnap.empty) {
-    throw new HttpsError('failed-precondition', 'Polis olmak için bir silaha sahip olmalısın.');
-  }
-  // Kullanıcı revizesi: artık polis olabilmek için onboarding görev
-  // listesini (📋 butonu) bitirip "Tamam" ile tamamlamış olmak da
-  // gerekiyor — bkz. completeOnboardingChecklist. Mevcut polisler bu kural
-  // getirildiğinde tek seferlik olarak görevden alındı (bkz.
-  // migrateOnboardingPoliceRule).
-  if (!user.onboardingRewardClaimed) {
-    throw new HttpsError(
-      'failed-precondition',
-      'Polis olmak için önce temel görevleri (📋 butonu) tamamlamış olmalısın.'
-    );
-  }
-
-  await userRef.update({ pendingPoliceChange: 'apply' });
-  return { ok: true };
+  requireAuth(request);
+  throw new HttpsError('failed-precondition', 'Polislik başvurusu artık başvuru formuyla yapılıyor. Uygulamayı yenileyip Karakol ya da Çeteler › Polis Teşkilatı › Başvur.');
 });
 
-// İstifa artık ANLIK DEĞİL — yeni polis maaş havuzu sistemi (Bölüm 7
-// revizyonu) günlük havuz/işçi sayısı hesaplarının tutarlı kalması için
-// istifa talebini bir sonraki 00:00'a erteliyor. O ana kadar oyuncu polis
-// olarak kalır (görevlerini/haklarını korur), istifa talebini iptal
-// edebilir (bkz. cancelPendingPoliceChange).
+// İstifa ANINDA: teşkilattan ayrılmakla aynı (prestij, rütbe, sicil silinir;
+// 24 saat yeniden başvurulamaz). O gecenin maaşı alınmaz.
 export const resignFromPolice = onCall(async (request) => {
   const uid = requireAuth(request);
   const userRef = db.collection('users').doc(uid);
-  const userSnap = await userRef.get();
-  const user = userSnap.data();
-
-  if (!user || user.profession !== 'polis') {
-    throw new HttpsError('failed-precondition', 'Polis değilsin.');
+  const user = (await userRef.get()).data();
+  if (!user) throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
+  const res = await gangFunctions.system.resignPolice(uid);
+  if (res?.skipped) throw new HttpsError('unavailable', 'Polis Teşkilatı şu an bakımda — biraz sonra tekrar dene.');
+  if (res?.notMember) {
+    if (user.profession !== 'polis') throw new HttpsError('failed-precondition', 'Polis değilsin.');
+    // teşkilat kaydı olmayan (geçiş öncesinden kalmış) polis: yalnız meslek alınır
+    await userRef.update({ profession: null, pendingPoliceChange: null, policeSinceMs: null });
+    await userRef.collection('private').doc('meta').set({ isPolice: false }, { merge: true });
   }
-  if (user.pendingPoliceChange === 'resign') {
-    throw new HttpsError('failed-precondition', 'İstifa talebin zaten bekliyor.');
-  }
-
-  await userRef.update({ pendingPoliceChange: 'resign' });
-  return { ok: true };
+  return { ok: true, resigned: true };
 });
 
+// Eski istemciler için (bekleyen başvuru/istifa kavramı kalmadı) — artıkları temizler
 export const cancelPendingPoliceChange = onCall(async (request) => {
   const uid = requireAuth(request);
   await db.collection('users').doc(uid).update({ pendingPoliceChange: null });
@@ -3508,158 +3485,130 @@ async function runDailyResetBody(dateKey, dr) {
       await dr.mark('life');
     }
 
-    // 0) Bekleyen polislik başvurularını işle (Bölüm 7): anlık meslek
-    // değişimiyle istismarı önlemek için başvuru bir sonraki 00:00'da
-    // gerçekleşir.
-    const pendingApplySnap = await db
-      .collection('users')
-      .where('pendingPoliceChange', '==', 'apply')
-      .get();
-    const pendingBatch = db.batch();
-    const policeApprovedSmsList = [];
-    pendingApplySnap.forEach((docSnap) => {
-      pendingBatch.update(docSnap.ref, { profession: 'polis', pendingPoliceChange: null });
-      pendingBatch.set(docSnap.ref.collection('private').doc('meta'), { isPolice: true }, { merge: true });
-      policeApprovedSmsList.push(docSnap.id);
-    });
-    if (!pendingApplySnap.empty) await pendingBatch.commit();
-    await Promise.all(
-      policeApprovedSmsList.map((uidTarget) =>
-        db
-          .collection('users')
-          .doc(uidTarget)
-          .collection('messages')
-          .add({
-            text: 'Polislik başvurun onaylandı! Artık polissin. Günlük maaşın, polislerin aralarında bölüştüğü rüşvet havuzundan Karakol üzerinden alınıyor. Polis olarak suç da işleyebilirsin ama yakalanırsan ceza 2 katı olur.',
+    // 0) v109 — ESKİ USUL bekleyen polislik başvurusu / istifası kalmadı
+    // (polislik artık Polis Teşkilatı başvuru formuyla — functions/gang/actions/
+    // intel.js). Tek seferlik geçiş (gang/actions/roles.js ensureRolesV109)
+    // bunları zaten işler; yeni sürüme geçmemiş bir istemciden/fonksiyondan
+    // sonradan kalan olursa: başvuru iptal + SMS, istifa teşkilattan ayrılma
+    // olarak işlenir.
+    {
+      const staleApply = await db.collection('users').where('pendingPoliceChange', '==', 'apply').get();
+      for (const docSnap of staleApply.docs) {
+        try {
+          await docSnap.ref.update({ pendingPoliceChange: null });
+          await docSnap.ref.collection('messages').add({
+            text: 'Polislik başvurun yeni sisteme taşınamadığı için iptal edildi. Karakol ya da Çeteler › Polis Teşkilatı üzerinden başvuru formunu doldurarak yeniden başvurabilirsin.',
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             read: false,
-            type: 'police_approved',
-          })
-      )
-    );
+            type: 'police_application_cancelled',
+          });
+        } catch (err) {
+          console.error('eski polislik başvurusu', docSnap.id, err?.message || err);
+        }
+      }
+      const staleResign = await db.collection('users').where('pendingPoliceChange', '==', 'resign').get();
+      for (const docSnap of staleResign.docs) {
+        try {
+          // teşkilat üyesi bu eski bayrak yüzünden teşkilattan ATILMAZ (polisliği üyelikten gelir)
+          const role = await gangFunctions.system.getRoleStatus(docSnap.id).catch(() => null);
+          if (!role) continue;
+          if (role.intel) {
+            await docSnap.ref.update({ pendingPoliceChange: null });
+            continue;
+          }
+          const res = await gangFunctions.system.resignPolice(docSnap.id).catch((err) => ({ error: String(err?.message || err) }));
+          if (res?.skipped || res?.error) continue; // çete sistemi kapalı / hata — bir sonraki gece
+          await docSnap.ref.update({ pendingPoliceChange: null });
+          if (res?.notMember && docSnap.data()?.profession === 'polis') {
+            await docSnap.ref.update({ profession: null });
+            await docSnap.ref.collection('private').doc('meta').set({ isPolice: false }, { merge: true });
+          }
+        } catch (err) {
+          console.error('eski polislik istifası', docSnap.id, err?.message || err);
+        }
+      }
+    }
 
-    // 0.5) Bekleyen polislik istifalarını işle — istifa artık ANLIK değil,
-    // bir sonraki 00:00'da işlenir (havuz/kadro sayımlarının gün içinde
-    // tutarlı kalması için, bkz. resignFromPolice).
-    const pendingResignSnap = await db
-      .collection('users')
-      .where('pendingPoliceChange', '==', 'resign')
-      .get();
-    const resignBatch = db.batch();
-    pendingResignSnap.forEach((docSnap) => {
-      resignBatch.update(docSnap.ref, { profession: null, pendingPoliceChange: null });
-      resignBatch.set(docSnap.ref.collection('private').doc('meta'), { isPolice: false }, { merge: true });
-    });
-    if (!pendingResignSnap.empty) await resignBatch.commit();
-
-    // 0.7) POLİS MAAŞ HAVUZU — Bölüm 7 revizyonu. Polislerin sabit maaşı
-    // kaldırıldı; artık gün içinde verilen rüşvetler (bkz. bribePolice) bir
-    // havuzda toplanıyor. Bir SONRAKİ gün, o havuz o günkü aktif polis
-    // sayısına eşit bölünüyor ve polisler "Maaşı Al" ile kendi paylarını
-    // talep edebiliyor (bkz. claimPoliceSalary). O günün sonunda (bu blok
-    // tekrar çalıştığında): 1) dünün havuzundan artan kısım (maaş
-    // ALMAYANLARIN payı), dün maaşını ALAN polislere eşit şekilde bonus
-    // olarak otomatik dağıtılır + SMS gönderilir, 2) 3 gün üst üste
-    // maaşını almayan polis otomatik olarak polislikten atılır, 3) BUGÜN
-    // (dünkü rüşvetlerden oluşan) yeni havuz oluşturulur.
+    // 0.7) POLİS RÜŞVET HAVUZU — v108.1: rüşvet payı artık Karakol'dan elle
+    // alınmaz; dünün rüşvetleri her gece 00:00'da maaşla birlikte otomatik
+    // yatar (functions/gang/actions/roles.js paySalaries, tek SMS: "maaş +
+    // rüşvet"). Burada sadece GEÇİŞ: eski sistemde açılmış son havuzda payını
+    // ALMAMIŞ polislerin payı (hâlâ polislerse) otomatik yatırılır, havuz kapanır.
+    // Yeni havuz (policeClaimPool) artık oluşturulmaz.
     {
       const yesterdayKeyForPolice = addDaysToDateKey(dateKey, -1);
-
-      // 1) Dünkü havuzu kapat: bonus dağıt + kaçıranları işaretle/at.
       const yestPoolRef = db.collection('policeClaimPool').doc(yesterdayKeyForPolice);
       const yestPoolSnap = await yestPoolRef.get();
       if (yestPoolSnap.exists && !yestPoolSnap.data().closedAt) {
         const pool = yestPoolSnap.data();
-        const eligibleUids = pool.eligibleUids || [];
-        const claimedUids = pool.claimedUids || [];
-        const perOfficerShare = pool.perOfficerShare || 0;
-        const leftover = Math.max(0, (pool.totalPool || 0) - (pool.claimedTotal || 0));
-        const bonusPerClaimant = claimedUids.length > 0 ? Math.floor(leftover / claimedUids.length) : 0;
-
-        const officerJobs = eligibleUids.map(async (officerUid) => {
-          const officerRef = db.collection('users').doc(officerUid);
-          const officerSnap = await officerRef.get();
-          const officer = officerSnap.data();
-          if (!officer || officer.profession !== 'polis') return; // zaten ayrılmış/atılmış
-
-          if (claimedUids.includes(officerUid)) {
-            const updates = { policeSalaryMissedStreak: 0 };
-            if (bonusPerClaimant > 0) {
-              const { goldDelta, debtDelta } = splitIncomeForDebt(officer.debtToState, bonusPerClaimant);
-              updates.gold = admin.firestore.FieldValue.increment(goldDelta);
-              updates.goldTag = goldTag('polis');
-              updates.debtToState = admin.firestore.FieldValue.increment(debtDelta);
-            }
-            await officerRef.update(updates);
-            if (bonusPerClaimant > 0) {
-              await officerRef.collection('messages').add({
-                text: `Dünkü rüşvet havuzundan artan pay eşit şekilde bölüştürüldü — ${bonusPerClaimant.toLocaleString('tr-TR')} altın ekstra hesabına yatırıldı.`,
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                read: false,
-                type: 'police_pool_bonus',
-              });
-            }
-          } else {
-            const newStreak = (officer.policeSalaryMissedStreak || 0) + 1;
-            if (newStreak >= 3) {
-              await officerRef.update({
-                profession: null,
-                pendingPoliceChange: null,
+        const claimed = new Set(pool.claimedUids || []);
+        const share = Math.max(0, Math.floor(pool.perOfficerShare || 0));
+        for (const officerUid of pool.eligibleUids || []) {
+          if (claimed.has(officerUid) || share <= 0) continue;
+          try {
+            await db.runTransaction(async (tx) => {
+              const officerRef = db.collection('users').doc(officerUid);
+              const dRef = db.collection('dailyActions').doc(`${officerUid}_${yesterdayKeyForPolice}`);
+              const [oSnap, dSnap] = await Promise.all([tx.get(officerRef), tx.get(dRef)]);
+              const officer = oSnap.data();
+              if (!officer || officer.profession !== 'polis' || dSnap.data()?.policeSalaryClaimed) return;
+              const { goldDelta, debtDelta } = splitIncomeForDebt(officer.debtToState, share);
+              tx.update(officerRef, {
+                gold: admin.firestore.FieldValue.increment(goldDelta),
+                goldTag: goldTag('polis'),
+                debtToState: admin.firestore.FieldValue.increment(debtDelta),
                 policeSalaryMissedStreak: 0,
               });
-              await officerRef.collection('private').doc('meta').set({ isPolice: false }, { merge: true });
-              await officerRef.collection('messages').add({
-                text: '3 gün üst üste maaşını almadığın için polislikten otomatik olarak atıldın. İstersen tekrar başvurabilirsin.',
+              tx.set(dRef, { policeSalaryClaimed: true, policeSalaryShare: share, policeSalaryAuto: true }, { merge: true });
+              tx.set(officerRef.collection('messages').doc(), {
+                text: `🤝 Almadığın rüşvet payı hesabına aktarıldı: ${share.toLocaleString('tr-TR')} altın. Artık rüşvet payın her gece 00:00'da maaşınla birlikte otomatik yatıyor.`,
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
                 read: false,
-                type: 'police_auto_fired',
+                type: 'police_pool_auto',
               });
-            } else {
-              await officerRef.update({ policeSalaryMissedStreak: newStreak });
-            }
+            });
+          } catch (err) {
+            console.error('police pool auto-pay', officerUid, err?.message || err);
           }
-        });
-        await Promise.all(officerJobs);
-        await yestPoolRef.set({ closedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }); // v95.2: tekrar dağıtılmaz
-
-        // Kitapçıktaki "günlük ortalama kazanç" istatistiği için: o gün
-        // maaş alan bir polisin eline geçen TOPLAM tutar (pay + bonus).
-        if (claimedUids.length > 0) {
-          const payoutThatDay = perOfficerShare + bonusPerClaimant;
-          const statsRef = db.collection('gameStats').doc('policeSalaryAvg');
-          const statsSnap = await statsRef.get();
-          const prevList = statsSnap.exists ? statsSnap.data().last10Payouts || [] : [];
-          const nextList = [...prevList, payoutThatDay].slice(-10);
-          const avg = Math.round(nextList.reduce((a, b) => a + b, 0) / nextList.length);
-          await statsRef.set({ last10Payouts: nextList, avgDailyPayout: avg }, { merge: true });
         }
+        await yestPoolRef.set({ closedAt: admin.firestore.FieldValue.serverTimestamp(), autoPaid: true }, { merge: true });
       }
+    }
 
-      // 2) Bugünün havuzunu oluştur — DÜN verilen rüşvetlerden oluşur,
-      // BUGÜNKÜ aktif polis kadrosuna (az önce işlenen başvuru/istifalar
-      // dahil) eşit bölünür.
-      const bribePoolSnap = await db.collection('policeBribePool').doc(yesterdayKeyForPolice).get();
-      const bribeCount = bribePoolSnap.exists ? bribePoolSnap.data().bribeCount || 0 : 0;
-      const totalPool = bribeCount * BRIBE_COST;
-
-      const currentPoliceSnap = await db.collection('users').where('profession', '==', 'polis').get();
-      const eligibleUids = currentPoliceSnap.docs.map((d) => d.id);
-      const policeCount = eligibleUids.length;
-      const perOfficerShare = policeCount > 0 ? Math.floor(totalPool / policeCount) : 0;
-
-      const todayPoolRef = db.collection('policeClaimPool').doc(dateKey);
-      if (!(await todayPoolRef.get()).exists)
-        await todayPoolRef.set({
-          dateKey,
-          totalPool,
-          bribeCount,
-          policeCount,
-          perOfficerShare,
-          eligibleUids,
-          claimedUids: [],
-          claimedTotal: 0,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
+    // 1a) v109 — TEK SEFERLİK: İstihbarat + Polis birleşmesinden sonraki ilk
+    // 00:00'da imam polisse (teşkilat üyesiyse) imamlıktan alınır + SMS. Bir
+    // oyuncu ya imam ya polis olabilir; bundan sonrası başvurularda engellenir.
+    // Geçiş (migrations/rolesV109) bitmeden çalışmaz; bayrak: migrations/imamRoleV109.
+    try {
+      const flagRef = db.collection('migrations').doc('imamRoleV109');
+      const rolesDone = (await db.collection('migrations').doc('rolesV109').get()).data()?.done;
+      if (rolesDone && !(await flagRef.get()).exists) {
+        const cur = (await db.collection('imamState').doc('current').get()).data();
+        let firedUid = null;
+        if (cur?.uid) {
+          const role = await gangFunctions.system.getRoleStatus(cur.uid).catch(() => ({}));
+          const u = (await db.collection('users').doc(cur.uid).get()).data() || {};
+          if (u.profession === 'polis' || role.intel) {
+            await db.runTransaction(async (tx) => {
+              const curRef = db.collection('imamState').doc('current');
+              const live = (await tx.get(curRef)).data();
+              if (live?.uid !== cur.uid) return;
+              tx.delete(curRef);
+              tx.update(db.collection('users').doc(cur.uid), { isImam: false });
+              tx.set(db.collection('users').doc(cur.uid).collection('messages').doc(), {
+                text: '🕌 İstihbarat ve Polis birleşti: artık bir oyuncu ya imam ya da polis olabilir. Polis Teşkilatında olduğun için imamlık görevin sona erdi. Emeğin için teşekkürler! İmam olmak istersen polislikten istifa edip yeniden başvurabilirsin.',
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                read: false,
+                type: 'imam_role_v109',
+              });
+            });
+            firedUid = cur.uid;
+          }
+        }
+        await flagRef.set({ ranAt: admin.firestore.FieldValue.serverTimestamp(), firedUid });
+      }
+    } catch (err) {
+      console.error('dailyReset imam v109', err);
     }
 
     // 1b) İmam görev kontrolü: DÜN (biten gün) sorumlu olduğu TÜM vakit
@@ -3716,7 +3665,7 @@ async function runDailyResetBody(dateKey, dr) {
               { lastFiredUid: imam.uid, lastFiredAt: admin.firestore.FieldValue.serverTimestamp() },
               { merge: true }
             );
-          await db.collection('users').doc(imam.uid).update({ isImam: false });
+          await db.collection('users').doc(imam.uid).update({ isImam: false, imamCooldownUntilMs: Date.now() + IMAM_REAPPLY_COOLDOWN_MS });
           await db
             .collection('users')
             .doc(imam.uid)
@@ -3732,6 +3681,57 @@ async function runDailyResetBody(dateKey, dr) {
       // else: becameDateKey > yesterdayKey — imam DÜN'e ait hiçbir vakitten
       // sorumlu değil (göreve ancak bugün başlamış olabilir), bu döngüde
       // hiç kontrol edilmez.
+    }
+
+    // 1c) v108 — İMAM MAAŞI: görevini yapıp imamlıkta kalan imama her gece
+    // 00:00'da DEVLET kasasından otomatik + SMS (eskiden Camii'den elle alınırdı).
+    // Dün (gün içinde) imam olan da bu gece maaşını alır. İdempotent:
+    // imamState/meta.salaryPaidDay. v108.1: 00:00'da imam olan alır (00:00'dan
+    // SONRA imam olan bu gece almaz) ve oyuncu başına gecede TEK maaş
+    // (roleSalaryMarks — polis/istihbarat maaşıyla ortak işaret).
+    if (!dr.done('imamSalary')) {
+      try {
+        const midnightMs = Date.parse(`${dateKey}T00:00:00+03:00`);
+        await db.runTransaction(async (tx) => {
+          const curRef = db.collection('imamState').doc('current');
+          const metaRef = db.collection('imamState').doc('meta');
+          const [cur, meta] = await Promise.all([tx.get(curRef), tx.get(metaRef)]);
+          const im = cur.data();
+          if (!im?.uid || meta.data()?.salaryPaidDay === dateKey) return;
+          const becameMs = im.becameImamAt?.toMillis?.() ?? 0;
+          if (becameMs >= midnightMs) return; // 00:00'dan sonra imam oldu
+          const uRef = db.collection('users').doc(im.uid);
+          const markRef = db.collection('roleSalaryMarks').doc(`${dateKey}_${im.uid}`);
+          const [uSnap, markSnap] = await Promise.all([tx.get(uRef), tx.get(markRef)]);
+          const u = uSnap.data();
+          if (!u || markSnap.exists) return;
+          tx.set(markRef, { role: 'imam', amount: IMAM_SALARY, atMs: Date.now() });
+          const { goldDelta, debtDelta } = splitIncomeForDebt(u.debtToState, IMAM_SALARY);
+          tx.update(uRef, {
+            gold: admin.firestore.FieldValue.increment(goldDelta),
+            goldTag: goldTag('imam'),
+            debtToState: admin.firestore.FieldValue.increment(debtDelta),
+          });
+          stateWrite(tx, db, admin.firestore.FieldValue, { kind: 'out', cat: 'maas_imam', amount: IMAM_SALARY, dayKey: dateKey });
+          tx.set(metaRef, { salaryPaidDay: dateKey }, { merge: true });
+          tx.set(uRef.collection('messages').doc(), {
+            text: `💼 İmam maaşın yattı: ${IMAM_SALARY.toLocaleString('tr-TR')} altın.${debtDelta < 0 ? ` (${(-debtDelta).toLocaleString('tr-TR')} altını devlete olan borcuna gitti)` : ''}`,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            read: false,
+            type: 'imam_salary',
+          });
+        });
+        await dr.mark('imamSalary');
+      } catch (err) {
+        console.error('dailyReset imam maaşı', err);
+      }
+    }
+
+    // 1d) v108 — DEVLET KASASI: biten günlerin defteri kapanır (bakiye + özet)
+    try {
+      await closeStateDays(db, admin.firestore.FieldValue, { todayKey: dateKey });
+    } catch (err) {
+      console.error('dailyReset devlet kasası kapanışı', err);
     }
 
     // 2) Banka mevduat faizi — günlük %1 (Bölüm 13)
@@ -5709,7 +5709,7 @@ async function computeTotalWealth(uid, userData, prices) {
 // attemptHeist/createHeistPlan/joinHeistPlan/sellContrabandAtPark —
 // hiçbirinde artık imam kontrolü yok). v67: polis de imam olabilir (eskiden
 // tek istisna buydu) — imamın görevleri (5 vakit + nasihat) yine geçerli.
-// İmam maaşı günde 10.000 altın (manuel alınır, polis maaşı gibi).
+// İmam maaşı günde 10.000 altın — v108: her gece 00:00'da devletten otomatik.
 // Görevler: imamlığa başladığı andan itibaren günde 5 vakit ibadet +
 // takvim günü (00:00-00:00) başına en az 1 nasihat — bunlardan biri
 // eksikse dailyReset tarafından imamlıktan atılır (bkz. dailyReset).
@@ -5723,39 +5723,50 @@ const IMAM_REAPPLY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 export const applyForImam = onCall(async (request) => {
   const uid = requireAuth(request);
+  // v108.1 — rol tekliği yarışa kapalı: canlı çete üyeliği (İstihbarat üyeliği /
+  // bekleyen başvuru, Polis Teşkilatı) bu işlemin İÇİNDE okunur
+  const membershipRef = await gangFunctions.system.liveMembershipRef(uid).catch(() => null);
   const userRef = db.collection('users').doc(uid);
   const imamRef = db.collection('imamState').doc('current');
   const imamMetaRef = db.collection('imamState').doc('meta');
 
   await db.runTransaction(async (tx) => {
-    const [userSnap, imamSnap, metaSnap] = await Promise.all([
+    const [userSnap, imamSnap, metaSnap, msSnap] = await Promise.all([
       tx.get(userRef),
       tx.get(imamRef),
       tx.get(imamMetaRef),
+      membershipRef ? tx.get(membershipRef) : Promise.resolve(null),
     ]);
     const user = userSnap.data();
     if (!user) {
       throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
     }
     if (imamSnap.exists) {
-      throw new HttpsError('failed-precondition', 'Zaten bir imam var.');
+      throw new HttpsError('failed-precondition', imamSnap.data()?.uid === uid ? 'Zaten imamsın.' : 'Zaten bir imam var.');
+    }
+    // v108.1 — imamlıktan ayrılan (istifa) ya da azledilen 24 saat imam olamaz
+    const cooldownUntil = Number(user.imamCooldownUntilMs || 0);
+    if (cooldownUntil > Date.now()) {
+      const hrs = Math.max(1, Math.ceil((cooldownUntil - Date.now()) / 3_600_000));
+      throw new HttpsError('failed-precondition', `İmamlıktan yeni ayrıldığın için ${hrs} saat daha imam olamazsın.`);
     }
     const meta = metaSnap.data();
     if (meta?.lastFiredUid === uid) {
       const lastFiredAtMs = meta.lastFiredAt?.toMillis?.() ?? null;
-      // BUG DÜZELTMESİ (kullanıcı revizesi): eski (bu 24 saatlik kural
-      // devreye girmeden ÖNCE atılmış) kayıtlarda lastFiredAt hiç yok —
-      // önceki sürüm bunu "güvenli tarafta kal, hâlâ yasaklı say" olarak
-      // yorumluyordu, ama bu, o tarihten önce atılmış biri için SÜRESİZ
-      // (sonsuza kadar) engele dönüşüyordu çünkü bir daha asla
-      // güncellenmeyen bu eski kayıt üzerinden hep "az önce atıldın"
-      // sanılıyordu. Artık zaman damgası YOKSA kural hiç uygulanamıyor
-      // demektir — bu durumda engel YOK sayılır (yasak yok).
+      // Eski kayıtlarda lastFiredAt yoksa engel YOK sayılır (süresiz yasak olmasın).
       if (lastFiredAtMs !== null && Date.now() - lastFiredAtMs < IMAM_REAPPLY_COOLDOWN_MS) {
         throw new HttpsError('failed-precondition', 'İmamlıktan yeni atıldığın için imam olamazsın.');
       }
     }
-    // v67 — polis de imam olabilir (meslekler birbirinden bağımsız).
+    // v109 — bir oyuncu ya imam ya polis (Polis Teşkilatı üyesi) olabilir
+    const ms = msSnap?.data() || {};
+    if (user.profession === 'polis' || ms.intelRosterId) {
+      throw new HttpsError('failed-precondition', 'Polisler imam olamaz. Önce polislikten istifa etmelisin.');
+    }
+    if (ms.intelAppId) throw new HttpsError('failed-precondition', 'Bekleyen bir polislik başvurun var — yanıtlanana ya da sen geri çekene kadar imam olamazsın.');
+    if (!user.onboardingRewardClaimed) {
+      throw new HttpsError('failed-precondition', 'İmam olmak için önce temel görevleri (📋 butonu) tamamlamış olmalısın.');
+    }
     if ((user.reputation || 0) < IMAM_REPUTATION_REQUIRED) {
       throw new HttpsError(
         'failed-precondition',
@@ -5777,10 +5788,37 @@ export const applyForImam = onCall(async (request) => {
     // İmamlık bir STATÜ — profession alanına DOKUNULMAZ, oyuncu kendi
     // mevcut mesleğinde/işinde kalır.
     tx.update(userRef, { isImam: true });
+    tx.set(userRef.collection('messages').doc(), {
+      text: `🕌 Artık Neon Camii'nin imamısın! Görevlerin: her gün 5 vakit ibadet + en az 1 nasihat. Maaşın (${IMAM_SALARY.toLocaleString('tr-TR')} altın) her gece 00:00'da otomatik yatar.`,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      read: false,
+      type: 'imam_started',
+    });
   });
 
   await achievements.grant(uid, 'imam'); // v67 — Başarılar
   return { ok: true };
+});
+
+// v108.1 — İMAMLIKTAN İSTİFA (Camii › İmam: … › İstifa Et). Anında; 24 saat
+// yeniden imam olunamaz. O gecenin imam maaşı alınmaz.
+export const resignImam = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const userRef = db.collection('users').doc(uid);
+  const imamRef = db.collection('imamState').doc('current');
+  await db.runTransaction(async (tx) => {
+    const [imamSnap, userSnap] = await Promise.all([tx.get(imamRef), tx.get(userRef)]);
+    if (!imamSnap.exists || imamSnap.data()?.uid !== uid) throw new HttpsError('failed-precondition', 'İmam değilsin.');
+    tx.delete(imamRef);
+    if (userSnap.exists) tx.update(userRef, { isImam: false, imamCooldownUntilMs: Date.now() + IMAM_REAPPLY_COOLDOWN_MS });
+    tx.set(userRef.collection('messages').doc(), {
+      text: '🕌 İmamlıktan istifa ettin. 24 saat boyunca yeniden imamlık başvurusu yapamazsın.',
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      read: false,
+      type: 'imam_resigned',
+    });
+  });
+  return { ok: true, resigned: true };
 });
 
 export const giveNasihat = onCall(async (request) => {
@@ -5806,26 +5844,11 @@ export const giveNasihat = onCall(async (request) => {
   return { ok: true };
 });
 
+// v108 — imam maaşı artık her gece 00:00'da DEVLET kasasından otomatik yatar
+// (dailyReset › imamSalary) + SMS. Eski istemciler için çağrı kibarca reddedilir.
 export const claimImamSalary = onCall(async (request) => {
-  const uid = requireAuth(request);
-  const dateKey = istanbulDateKey();
-  const userRef = db.collection('users').doc(uid);
-  const dailyRef = db.collection('dailyActions').doc(`${uid}_${dateKey}`);
-  const imamRef = db.collection('imamState').doc('current');
-
-  await db.runTransaction(async (tx) => {
-    const [dailySnap, imamSnap] = await Promise.all([tx.get(dailyRef), tx.get(imamRef)]);
-    if (!imamSnap.exists || imamSnap.data().uid !== uid) {
-      throw new HttpsError('permission-denied', 'İmam değilsin.');
-    }
-    if (dailySnap.data()?.imamSalaryClaimed) {
-      throw new HttpsError('failed-precondition', 'Bugün maaşını zaten aldın.');
-    }
-    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(IMAM_SALARY), goldTag: goldTag('imam') });
-    tx.set(dailyRef, { imamSalaryClaimed: true }, { merge: true });
-  });
-
-  return { ok: true };
+  requireAuth(request);
+  throw new HttpsError('failed-precondition', "İmam maaşı artık her gece 00:00'da otomatik yatıyor.");
 });
 
 export const becomeBeggar = onCall(async (request) => {
@@ -5997,8 +6020,9 @@ export const claimPoliceSalary = onCall(async (request) => {
     if (dailySnap.exists && dailySnap.data().policeSalaryClaimed) {
       throw new HttpsError('failed-precondition', 'Bugün zaten maaşını aldın.');
     }
-    if (!poolSnap.exists) {
-      throw new HttpsError('failed-precondition', 'Bugün için henüz maaş havuzu oluşmadı.');
+    if (!poolSnap.exists || poolSnap.data().closedAt) {
+      // v108.1 — havuz artık oluşturulmuyor: pay her gece 00:00'da maaşla otomatik yatar
+      throw new HttpsError('failed-precondition', "Rüşvet payın artık her gece 00:00'da maaşınla birlikte otomatik yatıyor.");
     }
     const pool = poolSnap.data();
     if (!(pool.eligibleUids || []).includes(uid)) {
@@ -6273,18 +6297,17 @@ export const attemptHeist = onCall(async (request) => {
 
     tx.update(userRef, updates);
     tx.set(dailyRef, { heist: { [target]: true } }, { merge: true });
+    // v108 — DEVLET KASASI: başarılı soygunun parasını devlet öder (mekânı
+    // koruyamadığı için); yakalanınca ceza devlete gelir yazılır.
+    for (const e of heistStateEntries(caught ? { fines: penalty } : { paidToCriminals: reward })) {
+      stateWrite(tx, db, admin.firestore.FieldValue, { ...e, dayKey: dateKey });
+    }
 
     result = { started: true, success: !caught, caught, reward, penalty, policeDoubled: penaltyMultiplier > 1, newTotalDebt };
   });
 
   if (result.caught) {
     await sendCaptureSms(uid, result.penalty, result.newTotalDebt, { policeDoubled: result.policeDoubled });
-    // ÇETE & İSTİHBARAT: şüpheyle yakalanma cezası borç yazıldığı anda
-    // İstihbarat kasasına da eklenir. Best-effort — soygun sonucunu ASLA
-    // etkilemez; hedef+gün ile idempotent (günde bir deneme hakkı var).
-    await gangFunctions.system
-      .onSuspicionFine(uid, result.penalty, `heist_${uid}_${target}_${dateKey}`)
-      .catch((err) => console.error('gang suspicion fine hook hata:', err));
     await logNewsEvent('arrest', { count: 1, totalFine: result.penalty });
   } else {
     await logNewsEvent('heist_success', { target, amount: result.reward });
@@ -6432,6 +6455,8 @@ export const sellContrabandAtPark = onCall(async (request) => {
         suspicion: newSuspicion,
         reputation: clampSuspicion(currentReputation - PARK_SUSPICION_COST),
       });
+      // v108 — ceza devlet kasasına (eskiden %25'i İstihbarata)
+      for (const e of heistStateEntries({ fines: penaltyAmount, contraband: true })) stateWrite(tx, db, admin.firestore.FieldValue, e);
       outcome = { caught: true, penalty: penaltyAmount, policeDoubled: penaltyMultiplier > 1, newTotalDebt };
     } else {
       const { goldDelta, debtDelta } = splitIncomeForDebt(
@@ -6457,10 +6482,6 @@ export const sellContrabandAtPark = onCall(async (request) => {
 
   if (outcome.caught) {
     await sendCaptureSms(uid, outcome.penalty, outcome.newTotalDebt, { policeDoubled: outcome.policeDoubled });
-    // ÇETE & İSTİHBARAT: şüpheyle yakalanma cezası → İstihbarat kasası (best-effort).
-    await gangFunctions.system
-      .onSuspicionFine(uid, outcome.penalty, `park_${uid}_${Date.now()}_${Math.floor(Math.random() * 1e9)}`)
-      .catch((err) => console.error('gang suspicion fine hook hata:', err));
   }
 
   // Onboarding görev 3 — "parktaki gizemli adama 1 adet yasaklı madde sat"
@@ -6554,6 +6575,8 @@ const INTERIOR_START_POS = {
   araba_galerisi: { x: 340, y: 990 },
   silah_magazasi: { x: 340, y: 990 },
   modifiye_garaji: { x: 340, y: 990 },
+  // v108 — Belediye makam odası (yalnızca 3D; konum kaydı "kaç kişi var" için)
+  belediye: { x: 340, y: 990 },
 };
 
 // enterInterior — bir girilebilir mekana girişte bir kere çağrılır (bkz.
@@ -7359,6 +7382,7 @@ export const executeHeistPlan = onCall(async (request) => {
   const captureSmsList = []; // { uid, penaltyAmount, newTotalDebt }
   const policeEarningSmsList = []; // { uid, amount }
   const successSmsList = []; // { uid, amount }
+  const stateEntries = []; // v108 — devlet kasası defteri (aynı batch'te yazılır)
 
   // ADIM 1 — ÖNCE, polis hiç yokmuş GİBİ, her katılımcının KENDİ
   // şüphesine göre bağımsız bir yakalanma riski test edilir (yakalanma
@@ -7402,6 +7426,7 @@ export const executeHeistPlan = onCall(async (request) => {
         policeDoubled: true,
       });
     });
+    stateEntries.push(...heistStateEntries({ fines: perPolicePenalty * participants.length })); // v108
   } else if (caughtBySuspicion) {
     // Şüpheden yakalandılar. Ceza sadece SİVİLLERE uygulanır (varsa
     // sızmış polis bu turda ne ödül alır ne cezalandırılır — kimliği
@@ -7424,15 +7449,20 @@ export const executeHeistPlan = onCall(async (request) => {
         newTotalDebt: (data?.debtToState || 0) + debtAdded,
       });
     });
+    stateEntries.push(...heistStateEntries({ fines: perCivilianPenalty * civilianIdx.length })); // v108
   } else if (busted) {
     // ADIM 2 — Şüpheden yakalanmadılar AMA ekipte sızmış polis varsa,
-    // polis artık YÜZDE YÜZ yakalar (kendi başarısı sayesinde), ödülü
-    // tam alır; soyguncular aynı miktarı devlete BORÇ olarak öder (önce
-    // mevcut altınlarından kesilir, yetmeyen kısım borca yazılır —
-    // Bölüm 10).
-    const perPoliceEarning = Math.floor(totalReward / policeIdx.length);
+    // polis artık YÜZDE YÜZ yakalar (kendi başarısı sayesinde); soyguncular
+    // aynı miktarı devlete BORÇ olarak öder (Bölüm 10).
+    // v109: polisler kurtarılan paranın %25'ini (eşit) alır, kalanı devlete
+    // gider; her polis (kurtarılan × 4) / polis sayısı prestij kazanır (Polis
+    // Teşkilatı). Soyguncuların cezaları da ANINDA devlete gelir yazılır —
+    // suçlunun borcunu ödemesi beklenmez (polisin payı da anında yatar).
+    const bust = policeBustSplit(totalReward, policeIdx.length);
+    const perPoliceEarning = bust.perEarning;
     const perCivilianPenalty =
       civilianIdx.length > 0 ? Math.floor(totalReward / civilianIdx.length) : 0;
+    stateEntries.push(...heistStateEntries({ fines: perCivilianPenalty * civilianIdx.length, recoveredToState: bust.stateShare }));
 
     policeIdx.forEach((i) => {
       const currentDebt = userSnaps[i].data()?.debtToState || 0;
@@ -7441,7 +7471,7 @@ export const executeHeistPlan = onCall(async (request) => {
         gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('soygun'),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
       });
-      policeEarningSmsList.push({ uid: participants[i].uid, amount: perPoliceEarning, viaTrap: creatorIsPolice });
+      policeEarningSmsList.push({ uid: participants[i].uid, amount: perPoliceEarning, viaTrap: creatorIsPolice, recovered: totalReward, prestige: bust.prestigeEach });
     });
     civilianIdx.forEach((i) => {
       const data = userSnaps[i].data();
@@ -7483,7 +7513,10 @@ export const executeHeistPlan = onCall(async (request) => {
       });
       successSmsList.push({ uid: p.uid, amount: perPersonAmount });
     });
+    // v108: başarılı soygunun parasını devlet öder
+    stateEntries.push(...heistStateEntries({ paidToCriminals: perPersonAmount * participants.length }));
   }
+  for (const e of stateEntries) stateWrite(batch, db, admin.firestore.FieldValue, { ...e, dayKey: dateKey });
 
   // Herkesin (polis dahil) o hedef için günlük hakkı bugün için tükenir.
   participants.forEach((p) => {
@@ -7508,18 +7541,6 @@ export const executeHeistPlan = onCall(async (request) => {
       sendCaptureSms(c.uid, c.penaltyAmount, c.newTotalDebt, { policeDoubled: Boolean(c.policeDoubled) })
     )
   );
-  // ÇETE & İSTİHBARAT: SADECE şüpheyle yakalanmada cezalar İstihbarat
-  // kasasına (polisin yakaladığı durumda ödül polise gider — dahil değil).
-  // Best-effort; planId+uid ile idempotent.
-  if (caughtBySuspicion) {
-    await Promise.all(
-      captureSmsList.map((c) =>
-        gangFunctions.system
-          .onSuspicionFine(c.uid, c.penaltyAmount, `heistplan_${planId}_${c.uid}`)
-          .catch((err) => console.error('gang suspicion fine hook hata:', err))
-      )
-    );
-  }
   await Promise.all(
     policeEarningSmsList.map((p) =>
       db
@@ -7527,23 +7548,21 @@ export const executeHeistPlan = onCall(async (request) => {
         .doc(p.uid)
         .collection('messages')
         .add({
-          text: p.viaTrap
-            ? `Kurduğun tuzak işe yaradı! Ekibe katılan suçlu(lar)ı yakaladın, ${p.amount.toLocaleString('tr-TR')} altın ödül kazandın.`
-            : `Sızdığın soygunu çökerttin! ${p.amount.toLocaleString('tr-TR')} altın ödül kazandın.`,
+          text: `${p.viaTrap ? 'Kurduğun tuzak işe yaradı! Ekibe katılan suçlu(lar)ı yakaladın' : 'Sızdığın soygunu çökerttin'} — ${p.recovered.toLocaleString('tr-TR')} altın kurtarıldı. Payın: ${p.amount.toLocaleString('tr-TR')} altın + ${p.prestige.toLocaleString('tr-TR')} prestij (kalanı devlete).`,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           read: false,
           type: 'police_bust_reward',
         })
     )
   );
-  // ÇETE & İSTİHBARAT (bkz. functions/gang): İstihbarat üyesi polisin
-  // yakalama ödülü kadar İstihbarat prestiji kazanması. Best-effort — hata
-  // olursa soygun sonucunu ASLA etkilemez; planId+uid ile idempotent.
+  // v109 — POLİS TEŞKİLATI (eski İstihbarat): soygun durdurma prestiji + sicil
+  // (kaç soygun, kaç altın kurtarıldı, soygun payı). Best-effort — hata soygun
+  // sonucunu ASLA etkilemez; planId+uid ile idempotent.
   await Promise.all(
     policeEarningSmsList.map((p) =>
       gangFunctions.system
-        .onPoliceBustReward(p.uid, p.amount, `heist_${planId}`)
-        .catch((err) => console.error('gang police prestige hook hata:', err))
+        .onPoliceBust(p.uid, { recovered: p.recovered, earned: p.amount, prestige: p.prestige, refId: `heist_${planId}` })
+        .catch((err) => console.error('gang police bust hook hata:', err))
     )
   );
   await Promise.all(
@@ -22405,6 +22424,8 @@ const gangFunctions = createGangFunctions({
   db,
   FieldValue: admin.firestore.FieldValue,
   getMaxWeaponPower,
+  // v108 — İstihbarat başvurusu: en az 1 silah (polislikteki kontrolle aynı)
+  hasWeapon: async (uid) => !(await db.collection('weapons').where('ownerId', '==', uid).limit(1).get()).empty,
   splitIncomeForDebt,
   catalogs: { VEHICLE_CATALOG, WEAPON_CATALOG, AMAZOR_PRICES },
   lifeDays: VEHICLE_WEAPON_INITIAL_LIFE_DAYS,
@@ -22498,4 +22519,19 @@ export const submitFeedback = onCall(async (request) => {
     });
   });
   return { ok: true, id: fbRef.id };
+});
+
+// =============================================================================
+// v108 — BELEDİYE RAPORU (sadece admin): devlet kasasının gelir/gider dökümü.
+// Belediye binası › sol üst "📊 Belediye Raporu". Kalemler functions/stateTreasury.js.
+// =============================================================================
+export const getStateReport = onCall(async (request) => {
+  const uid = requireAuth(request);
+  if (!ADMIN_UIDS.includes(uid)) {
+    const u = (await db.collection('users').doc(uid).get()).data();
+    if (u?.role !== 'admin') throw new HttpsError('permission-denied', 'Belediye raporunu sadece yönetici görebilir.');
+  }
+  // açık kalmış (kapanmamış) günler varsa rapordan önce kapat — bakiye tutarlı kalsın
+  await closeStateDays(db, admin.firestore.FieldValue, { todayKey: istanbulDateKey() }).catch((err) => console.error('closeStateDays', err?.message || err));
+  return readStateReport(db, { todayKey: istanbulDateKey() });
 });

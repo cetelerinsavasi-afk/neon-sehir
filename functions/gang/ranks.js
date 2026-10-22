@@ -3,8 +3,9 @@
 // çeteye daha önce katılan önde, sonra kimlik). Rütbe için en az
 // 1.000.000 prestij gerekir; altındakiler Çömez.
 //   ilk 2 uygun → Sağ Kol, sonraki 4 → Kıdemli, kalan uygunlar → Tetikçi
-// İstihbarat: kurucusu olmadığı için Başkan da prestijle belirlenir:
-//   1 Başkan, 2 Şef, 4 Uzman, kalan uygunlar Ajan, altı Muhbir.
+// Polis Teşkilatı (v109; eski İstihbarat): kurucusu olmadığı için en üst rütbe de
+// prestijle belirlenir: 1 Emniyet Genel Müdürü (baskan), 2 Emniyet Amiri (sef),
+// 4 Başkomiser (uzman), kalan uygunlar Komiser (ajan), altı Polis Memuru (muhbir).
 import { GANG } from './config.js';
 
 function sortByPrestige(list) {
@@ -32,17 +33,34 @@ export function computeGangRanks(members, babaId) {
   return out;
 }
 
-export function computeIntelRanks(roster) {
+// Kurucusu olmayan teşkilat (Polis Teşkilatı — eski İstihbarat): 1 · 2 · 4 · kalan uygunlar · altı.
+// names: [1., 2., 3., 4. kademe, en alt]
+function computeOrgRanks(roster, [top, second, third, fourth, low]) {
   const out = {};
   let i = 0;
   for (const r of sortByPrestige(roster)) {
     const eligible = (Number(r.prestige) || 0) >= GANG.RANK_THRESHOLD;
-    if (!eligible) out[r.id] = 'muhbir';
-    else if (i < 1) out[r.id] = 'baskan';
-    else if (i < 1 + GANG.SAG_KOL_SLOTS) out[r.id] = 'sef';
-    else if (i < 1 + GANG.SAG_KOL_SLOTS + GANG.KIDEMLI_SLOTS) out[r.id] = 'uzman';
-    else out[r.id] = 'ajan';
+    if (!eligible) out[r.id] = low;
+    else if (i < 1) out[r.id] = top;
+    else if (i < 1 + GANG.SAG_KOL_SLOTS) out[r.id] = second;
+    else if (i < 1 + GANG.SAG_KOL_SLOTS + GANG.KIDEMLI_SLOTS) out[r.id] = third;
+    else out[r.id] = fourth;
     if (eligible) i += 1;
   }
   return out;
+}
+
+export function computeIntelRanks(roster) {
+  return computeOrgRanks(roster, ['baskan', 'sef', 'uzman', 'ajan', 'muhbir']);
+}
+
+// v108 — İstihbarat başvurularını SADECE Başkan + Şefler inceler. İkisi de
+// yoksa başvuru anında otomatik onaylanır; varsa ve 12 saat içinde yanıt
+// gelmezse otomatik onaylanır (bkz. intel.applyIntel / settleIntelApplications).
+export const INTEL_REVIEW_RANKS = ['baskan', 'sef'];
+export function intelReviewRanks() {
+  return INTEL_REVIEW_RANKS;
+}
+export function hasIntelReviewers(ranks) {
+  return (ranks || []).some((r) => INTEL_REVIEW_RANKS.includes(r));
 }

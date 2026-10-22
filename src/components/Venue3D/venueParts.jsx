@@ -8,7 +8,8 @@ import { useBeggars } from '../../hooks/useBeggars';
 import { useDailyActions } from '../../hooks/useDailyActions';
 import { useInventory } from '../../hooks/useInventory';
 import { usePlayer } from '../../hooks/usePlayer';
-import { prayAtMosque, buyFromGazinoBar, leaveOnNumaraTable, buyFromBufe, sellContrabandAtPark } from '../../services/gameActions';
+import { prayAtMosque, buyFromGazinoBar, leaveOnNumaraTable, buyFromBufe, sellContrabandAtPark, getStateReport } from '../../services/gameActions';
+import { isAdminUid } from '../../config/admin';
 import SimpleActionScreen from '../SimpleActionScreen/SimpleActionScreen';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import ImamBooklet from '../ImamBooklet/ImamBooklet';
@@ -493,6 +494,154 @@ export function ParkPart({ panel, setPanel, flash, walk }) {
         </Sheet>
       )}
       <SaleToast result={sellResult} onClose={closeSellToast} />
+    </>
+  );
+}
+
+// ── BELEDİYE (v108) ────────────────────────────────────────────────────────────
+// Başkanlık makam odası: şimdilik işlevi yok, gezilir. Sadece admin sol üstte
+// "Belediye Raporu"nu görür: devlet kasasının gelir ve giderleri kalem kalem
+// (vergiler, cezalar, maaşlar, soygun ödemeleri…). Kasa eksiye inebilir.
+const STATE_PERIODS = [
+  ['today', 'Bugün'],
+  ['yesterday', 'Dün'],
+  ['last7', '7 gün'],
+  ['last30', '30 gün'],
+  ['allTime', 'Tümü'],
+];
+const nf = (v) => Math.round(Number(v) || 0).toLocaleString('tr-TR');
+const signed = (v) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${nf(Math.abs(v))}`;
+const dayLabel = (k) => (k ? `${k.slice(8, 10)}.${k.slice(5, 7)}` : '');
+
+function StateLines({ title, rows, labels, total, kind }) {
+  const list = Object.entries(rows || {})
+    .filter(([, v]) => Number(v) > 0)
+    .sort((a, b) => b[1] - a[1]);
+  return (
+    <div className={`bl-block ${kind}`}>
+      <div className="bl-block-head">
+        <span>{title}</span>
+        <b>{nf(total)} 🪙</b>
+      </div>
+      {list.length === 0 ? (
+        <div className="bl-empty">Kayıt yok</div>
+      ) : (
+        list.map(([k, v]) => (
+          <div key={k} className="bl-row">
+            <span>{labels?.[k] || k}</span>
+            <b>{nf(v)}</b>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+function StateReport() {
+  const [r, setR] = useState(null);
+  const [err, setErr] = useState(null);
+  const [period, setPeriod] = useState('today');
+  const [loading, setLoading] = useState(false);
+  const load = useCallback(() => {
+    setLoading(true);
+    setErr(null);
+    getStateReport()
+      .then((res) => setR(res?.data || null))
+      .catch((e) => setErr(e?.message || 'Rapor alınamadı.'))
+      .finally(() => setLoading(false));
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  if (err)
+    return (
+      <div className="bl-report">
+        <div className="bl-empty">⚠️ {err}</div>
+        <button className="ws-panel-btn" onClick={load}>
+          Tekrar dene
+        </button>
+      </div>
+    );
+  if (!r) return <div className="bl-report bl-empty">Rapor hazırlanıyor…</div>;
+  const p = r[period] || { in: {}, out: {}, inTotal: 0, outTotal: 0 };
+  const net = Number(p.inTotal || 0) - Number(p.outTotal || 0);
+  const maxBar = Math.max(1, ...r.daily.map((d) => Math.max(d.inTotal, d.outTotal)));
+  return (
+    <div className="bl-report">
+      <div className={`bl-balance${r.balance < 0 ? ' neg' : ''}`}>
+        <span>🏛️ Devlet kasası</span>
+        <b>{signed(r.balance)} 🪙</b>
+        {r.balance < 0 && <small>Kasa ekside — gider gelirden fazla</small>}
+      </div>
+      <div className="bl-tabs" role="tablist">
+        {STATE_PERIODS.map(([k, label]) => (
+          <button key={k} role="tab" aria-selected={period === k} className={period === k ? 'on' : ''} onClick={() => setPeriod(k)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className={`bl-net${net < 0 ? ' neg' : ''}`}>
+        Dönem neti <b>{signed(net)} 🪙</b>
+      </div>
+      <StateLines title="💰 Gelirler" kind="in" rows={p.in} labels={r.labels?.in} total={p.inTotal} />
+      <StateLines title="💸 Giderler" kind="out" rows={p.out} labels={r.labels?.out} total={p.outTotal} />
+      <div className="bl-block">
+        <div className="bl-block-head">
+          <span>📅 Son 14 gün</span>
+          <span className="bl-legend">
+            <i className="in" /> gelir <i className="out" /> gider
+          </span>
+        </div>
+        <div className="bl-days">
+          {r.daily.map((d) => (
+            <div key={d.dayKey} className="bl-day" title={`${dayLabel(d.dayKey)} · gelir ${nf(d.inTotal)} · gider ${nf(d.outTotal)} · net ${signed(d.inTotal - d.outTotal)}`}>
+              <div className="bl-bars">
+                <span className="in" style={{ height: `${(d.inTotal / maxBar) * 100}%` }} />
+                <span className="out" style={{ height: `${(d.outTotal / maxBar) * 100}%` }} />
+              </div>
+              <small>{dayLabel(d.dayKey)}</small>
+            </div>
+          ))}
+        </div>
+        <div className="bl-daylist">
+          {[...r.daily].reverse().filter((d) => d.inTotal || d.outTotal).map((d) => (
+            <div key={d.dayKey} className="bl-row">
+              <span>{dayLabel(d.dayKey)}</span>
+              <span className="dim">
+                +{nf(d.inTotal)} / −{nf(d.outTotal)}
+              </span>
+              <b className={d.inTotal - d.outTotal < 0 ? 'neg' : ''}>{signed(d.inTotal - d.outTotal)}</b>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="bl-foot">
+        Günler her gece 00:00'da kapanır · ilk kayıt {r.firstDayKey ? r.firstDayKey.split('-').reverse().join('.') : '—'}
+        <button className="bl-refresh" onClick={load} disabled={loading}>
+          {loading ? '…' : '↻ Yenile'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function BelediyePart({ panel, setPanel, walk }) {
+  const { user } = useAuth();
+  const { player } = usePlayer();
+  const isAdmin = isAdminUid(user?.uid) || player?.role === 'admin';
+  if (!isAdmin) return null;
+  return (
+    <>
+      <Menu show={walk}>
+        <button className="v3-btn" onClick={() => setPanel('report')}>
+          📊 Belediye Raporu
+        </button>
+      </Menu>
+      {panel === 'report' && (
+        <Sheet title="📊 Belediye Raporu — Devlet Kasası" onClose={() => setPanel(null)} closeLabel="Kapat">
+          <StateReport />
+        </Sheet>
+      )}
     </>
   );
 }
