@@ -453,3 +453,11 @@ Testler: 348/348 geçti.
 - Belediye: Özel Kalem Nur Hanım kaldırıldı; Meclis Toplantı Masasının 9 sandalyesine ve Başkanlık Makam Masasının koltuğuna oturulur (kalkınca masanın arkasında, koltuğun yanında durulur — `standAt`).
 - Park: Büfeci Hasan büfe kulübesinin içinde.
 - Yükleme: `firebase deploy --only functions:gangClock,functions:gangAction` + git push.
+
+## v111 — Gizlilik, sicil maaşı, Çeteler listesinde biat, imam kitapçığı, Nur Hanım
+- Polis Teşkilatı sohbetine/günlüğüne "X bir soygunu durdurdu" yazılmaz (polisin kimliğini ele verebilir); prestij ve sicil aynen işlenir.
+- Sicilde rütbe maaşı (her gece 00:00) görünür; alınan toplam maaş / rüşvet yine görünmez.
+- Çeteler listesi: çetenin kime biat ettiği görünür, ona biat edenler görünmez. Listedeki Pazar savaşı gücü çetenin KENDİ gücüdür (biatçıların katkısı eklenmez); biat eden çetede kendi verdiği hasar. Son pazarın değerleri tek seferlik yeniden hesaplanır (`world.sundayPowerOwnV111`).
+- İmam kitapçığından "İmamlık bir statüdür" kaldırıldı (rehberde de).
+- Özel Kalem Nur Hanım fotoğraflardan da kaldırıldı: yeni fotoğraflar sunucudaki mekân listesinden üretilir (createSixtagramPost yeniden yüklenir); önceden paylaşılmış Belediye fotoğraflarından ilk 00:00'da tek seferlik silinir (`migrations/belediyeNpcPhotosV111`).
+- Yükleme: `firebase deploy --only functions:gangClock,functions:gangAction,functions:dailyReset,functions:createSixtagramPost,functions:houseAction` + git push.

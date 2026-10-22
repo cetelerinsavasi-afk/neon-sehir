@@ -404,18 +404,28 @@ export function createClock(core, actions) {
 
   // Çeteler listesi "son pazar savaşı gücüne" göre sıralanır → her çetenin
   // ve İstihbaratın son pazar gücü herkese açık belgeye yazılır (idempotent).
-  async function recordSundayPowers(ctx, sundayKey) {
+  // v111: listedeki güç ÇETENİN KENDİ gücüdür — biat edenlerin katkısı eklenmez.
+  //   biat EDEN çete: kendi verdiği hasar (biat ettiği çete adına) — lastSundayBiat
+  //   biat EDİLEN çete: sadece kendi üyelerinin zarları (biatçı shard'ları hariç)
+  // force: tek seferlik yeniden hesap (aynı pazar daha önce yazıldıysa da)
+  async function recordSundayPowers(ctx, sundayKey, { force = false } = {}) {
     const links = await readBiatLinks(ctx);
-    const sh = await warActions.sumShards(ctx, `trade_${sundayKey}`);
+    const warId = `trade_${sundayKey}`;
+    const sh = await warActions.sumShards(ctx, warId);
     const { totals, via } = foldBiatTotals(sh.totals, sh.via, links);
+    const ownRaw = {};
+    (await ctx.ref.shards(warId).get()).forEach((d) => {
+      const x = d.data();
+      if (!x.viaGangId) ownRaw[x.sideKey] = (ownRaw[x.sideKey] || 0) + Number(x.power || 0);
+    });
+    if (force && !Object.keys(ownRaw).length && !Object.keys(sh.via || {}).length) return { skipped: 'no_shards' };
     const gangs = await ctx.ref.gangs().where('status', '==', 'active').get();
     let batch = db.batch();
     let n = 0;
     for (const g of gangs.docs) {
-      if (g.data().lastSundayDateKey === sundayKey) continue;
-      // v84: biat eden çetenin kendi hanesi yok → katkısı (biat ettiği çeteye) yazılır
-      const own = Number(totals[g.id] || 0);
+      if (force ? g.data().lastSundayDateKey !== sundayKey : g.data().lastSundayDateKey === sundayKey) continue;
       const viaP = Number(via?.[g.id] || 0);
+      const own = viaP > 0 ? 0 : Number(ownRaw[g.id] || 0);
       batch.update(g.ref, { lastSundayPower: own || viaP, lastSundayBiat: !own && viaP > 0, lastSundayDateKey: sundayKey });
       n += 1;
       if (n % 400 === 0) {
@@ -425,6 +435,17 @@ export function createClock(core, actions) {
     }
     if (n % 400 !== 0) await batch.commit();
     await ctx.ref.intel().set({ lastSundayPower: Number(totals.intel || 0), lastSundayDateKey: sundayKey }, { merge: true });
+    return { updated: n };
+  }
+  // v111 — TEK SEFERLİK: son pazarın listedeki güçleri biatçılar hariç yeniden yazılır
+  async function ensureSundayPowerOwnV111(ctx) {
+    if (ctx.world?.sundayPowerOwnV111) return { skipped: true };
+    const snap = await ctx.ref.wars().where('type', '==', 'trade').where('status', '==', 'resolved').get();
+    const last = snap.docs.map((d) => d.data().dateKey).filter(Boolean).sort().pop();
+    const out = last ? await recordSundayPowers(ctx, last, { force: true }) : { skipped: 'no_war' };
+    await ctx.ref.world().set({ sundayPowerOwnV111: ctx.now }, { merge: true });
+    ctx.world = { ...(ctx.world || {}), sundayPowerOwnV111: ctx.now };
+    return out;
   }
 
   // ---------------------------------------------------------------------------
@@ -1708,6 +1729,7 @@ export function createClock(core, actions) {
     await safe(ctx0, 'intel-kasa-reset-v91', () => ensureIntelKasaResetV91(ctx0));
     await safe(ctx0, 'intel-kasa-closed-v108', () => ensureIntelKasaClosedV108(ctx0));
     await safe(ctx0, 'intel-records-v108', () => ensureIntelRecordsV108(ctx0));
+    await safe(ctx0, 'sunday-power-own-v111', () => ensureSundayPowerOwnV111(ctx0));
     const results = [];
     let n = 0;
     while (last < ctx0.dateKey && n < maxDays) {
@@ -1765,5 +1787,5 @@ export function createClock(core, actions) {
     return { ticks: results, errors: ctx0.errors || [] };
   }
 
-  return { runClock, runDailyTick, cleanupGang, resolveTruckTrip, productForSunday, dateKeyOf, processBets, resolveVoteEarly, safe };
+  return { runClock, runDailyTick, cleanupGang, resolveTruckTrip, productForSunday, dateKeyOf, processBets, resolveVoteEarly, safe, ensureSundayPowerOwnV111 };
 }

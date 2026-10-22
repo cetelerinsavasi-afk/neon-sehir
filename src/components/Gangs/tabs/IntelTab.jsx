@@ -50,6 +50,9 @@ function MemberReport({ member, self, onEditForm }) {
       <Stat icon="📅" label="Teşkilata girişi">
         {fmtDay(r.joinedAtMs)} {r.joinedDaysAgo == null ? '' : r.joinedDaysAgo === 0 ? '(bugün)' : `(${r.joinedDaysAgo} gün önce)`}
       </Stat>
+      <Stat icon="💼" label="Maaşı (her gece 00:00)">
+        <Gold value={r.salary} />
+      </Stat>
       <Stat icon="🚨" label="Durdurduğu soygun">
         {fmt(r.heistsStopped)}
       </Stat>

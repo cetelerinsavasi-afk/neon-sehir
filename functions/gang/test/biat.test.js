@@ -117,7 +117,17 @@ test('biat: Pazar savaşında biat eden çete biat ettiği çete adına savaşı
   assert.equal(h.get(`wars/${warId}`).result.biatTotals[A.gangId], war.biatDisplay[A.gangId]);
   assert.equal(h.get(`gangs/${A.gangId}`).lastSundayPower, war.biatDisplay[A.gangId]);
   assert.equal(h.get(`gangs/${A.gangId}`).lastSundayBiat, true);
-  assert.equal(h.get(`gangs/${B.gangId}`).lastSundayPower, totalB);
+  // v111: listedeki güç çetenin KENDİ gücü — biat edenin katkısı eklenmez
+  assert.equal(h.get(`gangs/${B.gangId}`).lastSundayPower, totalB - war.biatDisplay[A.gangId]);
+  assert.equal(h.get(`gangs/${B.gangId}`).lastSundayPower, 600_000);
+  // v111 tek seferlik: eski (biatçı dahil) değer yeniden hesaplanır, A'ya dokunulmaz
+  await h.db.doc(`gangWorlds/test/gangs/${B.gangId}`).update({ lastSundayPower: totalB });
+  await h.db.doc('gangWorlds/test').update({ sundayPowerOwnV111: null });
+  const ctxV = h.internal.core.makeCtx('test', h.raw('gangWorlds/test'), { actorId: 'system' });
+  await h.internal.clock.ensureSundayPowerOwnV111(ctxV);
+  assert.equal(h.get(`gangs/${B.gangId}`).lastSundayPower, 600_000);
+  assert.equal(h.get(`gangs/${A.gangId}`).lastSundayPower, war.biatDisplay[A.gangId]);
+  assert.ok(h.raw('gangWorlds/test').sundayPowerOwnV111);
   const logA = Object.values(h.db._dump(`gangWorlds/test/gangs/${A.gangId}/log/`)).map((x) => x.text);
   assert.ok(logA.some((t) => /Beta adına .* hasar verdiniz — Yasaklı Madde yolunu kazandılar/.test(t)));
 });

@@ -86,7 +86,7 @@ export const CATS = [
         L('📿', 'Her gün 5 vakit ibadet et. Bir de nasihat ver.'),
         L('💰', 'Karşılığı günde 10.000 altın.'),
         L('🕳️', 'Bir gün aksatırsan imamlığın biter. 24 saat sonra yeniden başvurabilirsin.'),
-        L('🃏', 'İmamlık bir kimliktir, kafes değil. Fabrikada çalışmaya devam edebilirsin. Ama rozet ile cübbe aynı omuzda durmaz: polisler imam olamaz.'),
+        L('🃏', 'Rozet ile cübbe aynı omuzda durmaz: polisler imam olamaz.'),
       ] },
     { type: 'lines', title: 'Dilenci',
       kicker: 'Her şeyi kaybettin. Geriye bir köşe kaldı.',

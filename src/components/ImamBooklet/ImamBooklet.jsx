@@ -8,7 +8,6 @@ const PAGES = [
     title: 'Şehrin İmamı',
     body: [
       'Neon Şehir\'in tek bir imamı vardır. Cami onun emanetidir.',
-      'İmamlık bir statüdür: işine gücüne devam edersin.',
       'Polisler imam olamaz. Bir oyuncu ya imam ya polis olabilir.',
       'Maaşın 10.000 altın, her gece 00:00\'da devletten yatar.',
     ],

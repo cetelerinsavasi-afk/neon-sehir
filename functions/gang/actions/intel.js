@@ -697,7 +697,7 @@ export function createIntelActions(core) {
       tx.update(ctx.ref.roster(rid), { prestige: FV.increment(p), lastActiveAtMs: ctx.now });
       core.intelStat(tx, ctx, rid, { heistsStopped: 1, goldRecovered: recovered, goldEarned: earned, bustPrestige: p });
       tx.set(markRef, { atMs: ctx.now, prestige: p });
-      announceIntel(tx, ctx, '🚨', `${roster.data().codeName} bir soygunu durdurdu — ${Number(recovered || 0).toLocaleString('tr-TR')} altın kurtarıldı.`);
+      // v111: teşkilat sohbetine "X bir soygunu durdurdu" yazılmaz — polisin kimliğini ele verebilir
       ctx.logs.push({ gang: 'prestige', world: ctx.worldId, event: 'police_bust', amount: p });
       return { prestige: p };
     });

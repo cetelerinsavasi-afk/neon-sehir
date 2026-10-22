@@ -428,5 +428,5 @@ test('v109: soygun durdurma prestiji Polis Teşkilatına (eski İstihbarat) + si
   assert.equal(rep.goldRecovered, 500_000);
   assert.equal(rep.goldEarned, 62_500);
   assert.equal(rep.bustPrestige, 1_000_000);
-  assert.ok(h.intelChat().some((m) => /Devriye bir soygunu durdurdu — 500\.000 altın kurtarıldı/.test(m)));
+  assert.ok(!h.intelChat().some((m) => /soygunu durdurdu/.test(m)), 'v111: soygun durdurma teşkilata duyurulmaz (kimlik gizliliği)');
 });

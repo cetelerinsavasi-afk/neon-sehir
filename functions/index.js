@@ -3611,6 +3611,25 @@ async function runDailyResetBody(dateKey, dr) {
       console.error('dailyReset imam v109', err);
     }
 
+    // 1a.2) v111 — TEK SEFERLİK: Belediye binasından kaldırılan "Özel Kalem Nur
+    // Hanım" NPC'si, daha önce paylaşılmış Belediye fotoğraflarından da silinir.
+    try {
+      const flagRef = db.collection('migrations').doc('belediyeNpcPhotosV111');
+      if (!(await flagRef.get()).exists) {
+        const posts = await db.collection('sixtagramPosts').where('attachment.houseId', '==', 'game_belediye').get();
+        let fixed = 0;
+        for (const d of posts.docs) {
+          const people = d.data()?.attachment?.people;
+          if (!Array.isArray(people) || !people.some((p) => p?.uid === 'npc_ozelkalem')) continue;
+          await d.ref.update({ 'attachment.people': people.filter((p) => p?.uid !== 'npc_ozelkalem') });
+          fixed += 1;
+        }
+        await flagRef.set({ ranAt: admin.firestore.FieldValue.serverTimestamp(), fixed });
+      }
+    } catch (err) {
+      console.error('dailyReset belediye foto v111', err);
+    }
+
     // 1b) İmam görev kontrolü: DÜN (biten gün) sorumlu olduğu TÜM vakit
     // ibadetlerini yapmadıysa YA DA hiç nasihat vermediyse, imamlıktan
     // atılır. Yeni gün için başvurular açılır. KULLANICI REVİZESİ: eskiden
