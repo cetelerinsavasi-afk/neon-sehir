@@ -2066,7 +2066,8 @@ I('baskanmasa', 'banka', 'Başkanlık Makam Masası', '🏛️', (g) => {
   B(c, 0.7, 0.16, 0.18, '#3a1410', 0, 1.5, -0.27, { r: 0.4 });
   for (const s of [-1, 1]) B(c, 0.08, 0.26, 0.5, '#2a0e0b', s * 0.36, 0.55, 0);
   for (let i = 0; i < 3; i++) for (const s of [-1, 0, 1]) Sp(c, 0.018, '#c9a24a', s * 0.2, 0.75 + i * 0.25, -0.195, { m: 0.8 }, 8);
-}, { venueOnly: true, boxes: [[0, 0, 1.36, 0.56], [1.75, -0.15, 0.48, 0.38], [0, -0.95, 0.36, 0.34]] });
+  // v110: makam koltuğuna oturulur
+}, { venueOnly: true, boxes: [[0, 0, 1.36, 0.56], [1.75, -0.15, 0.48, 0.38], [0, -0.95, 0.36, 0.34]], seats: [[0, 0.58, -0.95]], standAt: [0.95, -1.05], seatLabel: '🏛️ Makam koltuğuna otur' });
 I('toplantimasa', 'banka', 'Meclis Toplantı Masası', '🤝', (g) => {
   const wood = '#5a3417';
   B(g, 1.3, 0.05, 3.8, wood, 0, 0.74, 0, { r: 0.3 });
@@ -2081,7 +2082,12 @@ I('toplantimasa', 'banka', 'Meclis Toplantı Masası', '🤝', (g) => {
     Cy(g, 0.03, 0.12, '#cfefff', 0.25, 0.8, z + 0.18, { op: 0.6 }, 8);
   }
   chair(g, 0, -2.25, 0, '#2e1a0c', '#123a7a');
-}, { venueOnly: true, boxes: [[0, 0, 1.2, 2.05], [0, -2.25, 0.25, 0.25]] });
+  // v110: sandalyelere oturulur (8 yan + 1 baş)
+}, {
+  venueOnly: true,
+  boxes: [[0, 0, 1.2, 2.05], [0, -2.25, 0.25, 0.25]],
+  seats: [...[-1.35, -0.45, 0.45, 1.35].flatMap((z) => [[-0.95, 0.5, z], [0.95, 0.5, z]]), [0, 0.5, -2.25]],
+});
 I('sehirmaketi', 'banka', 'Neon Şehir Maketi', '🏙️', (g) => {
   B(g, 2.2, 0.8, 1.5, '#2b2f3a', 0, 0, 0, { r: 0.4 });
   B(g, 2.3, 0.05, 1.6, '#c9a24a', 0, 0.8, 0, { m: 0.6 });
@@ -2289,6 +2295,7 @@ export function v92CatalogEntries({ neonBuild }) {
     if (o.ceil) e.ceil = true;
     if (o.seats) e.seats = o.seats;
     if (o.seatLabel) e.seatLabel = o.seatLabel;
+    if (o.standAt) e.standAt = o.standAt; // v110: kalkış noktası (yerel x, z)
     if (o.stand) e.stand = true;
     if (o.exitLabel) e.exitLabel = o.exitLabel;
     if (o.tints) e.tints = o.tints;

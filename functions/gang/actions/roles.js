@@ -47,17 +47,22 @@ export function createRoleActions(core, { intel }) {
   // İdempotent: requests/salary_intel_{rosterId}_{gün} + oyuncu işareti.
   // ---------------------------------------------------------------------------
   // Gecenin rüşvet dağıtımı — bir kez hesaplanır, tekrar çalışmada aynı rakamlar
-  async function bribePayoutFor(ctx, eligibleCount) {
+  // eligibleIds: o gece maaş alacak polisler (sıralı). Rüşvetin TAMAMI bunlara
+  // bölünür; bölme artığı (birkaç altın) ilk polislere 1'er altın eklenir.
+  // Devlete sadece o gece hiç polis yoksa gider.
+  async function bribePayoutFor(ctx, eligibleIds) {
     const day = addDays(ctx.dateKey, -1); // biten gün
     const ref = ctx.ref.bribePayout(ctx.dateKey);
+    const n = eligibleIds.length;
     return db.runTransaction(async (tx) => {
       const [cur, pool] = await Promise.all([tx.get(ref), tx.get(ctx.ref.bribePool(day))]);
       if (cur.exists) return cur.data();
       const bribeCount = Math.max(0, Math.floor(Number(pool.data()?.bribeCount || 0)));
       const total = bribeCount * BRIBE_COST;
-      const perShare = eligibleCount > 0 ? Math.floor(total / eligibleCount) : 0;
-      const toState = eligibleCount > 0 ? 0 : total; // hiç polis yoksa rüşvet devlete
-      const out = { day, bribeCount, total, policeCount: eligibleCount, perShare, toState, atMs: ctx.now };
+      const perShare = n > 0 ? Math.floor(total / n) : 0;
+      const extraIds = n > 0 ? eligibleIds.slice(0, total - perShare * n) : [];
+      const toState = n > 0 ? 0 : total; // hiç polis yoksa rüşvet devlete
+      const out = { day, bribeCount, total, policeCount: n, perShare, shareIds: eligibleIds, extraIds, toState, atMs: ctx.now };
       if (toState > 0) core.stateTx(tx, ctx, 'in', 'rusvet_sahipsiz', toState);
       tx.set(ref, out);
       return out;
@@ -102,8 +107,23 @@ export function createRoleActions(core, { intel }) {
     const out = { intel: 0, bribe: 0 };
     const midnight = midnightMsOf(ctx.dateKey);
     const roster = await ctx.ref.rosterCol().get();
-    const eligible = roster.docs.filter((d) => Number(d.data().joinedAtMs || 0) < midnight);
-    const payout = (await safe(ctx, 'bribe-payout', () => bribePayoutFor(ctx, eligible.length))) || { perShare: 0 };
+    // rüşvet payı alacaklar: 00:00'dan önce katılmış, bağlantısı olan ve bu gece
+    // başka görevden (ör. imam) maaş almamış polisler
+    const eligible = [];
+    for (const d of roster.docs) {
+      if (Number(d.data().joinedAtMs || 0) >= midnight) continue;
+      const actorId = (await intel.linkRef(ctx, d.id).get()).data()?.actorId;
+      if (!actorId) continue;
+      const mark = (await ctx.ref.roleSalaryMark(actorId, ctx.dateKey).get()).data();
+      if (mark && !(mark.role === 'intel' && mark.rosterId === d.id)) continue;
+      eligible.push(d);
+    }
+    eligible.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const payout = (await safe(ctx, 'bribe-payout', () => bribePayoutFor(ctx, eligible.map((d) => d.id)))) || { perShare: 0 };
+    const shareOf = (rid) => {
+      if (Array.isArray(payout.shareIds) && !payout.shareIds.includes(rid)) return 0;
+      return Number(payout.perShare || 0) + ((payout.extraIds || []).includes(rid) ? 1 : 0);
+    };
     if (!ctx.isTest && payout.perShare > 0) {
       // Polis Kitapçığı: son 10 günün ortalama rüşvet payı
       await safe(ctx, 'bribe-stats', async () => {
@@ -115,15 +135,15 @@ export function createRoleActions(core, { intel }) {
     }
     for (const d of roster.docs) {
       await safe(ctx, `salary-intel:${d.id}`, async () => {
-        const r = await payOneSalary(ctx, d.id, { bribeShare: payout.perShare || 0 });
+        const r = await payOneSalary(ctx, d.id, { bribeShare: shareOf(d.id) });
         if (r?.paid) {
           out.intel += r.salary;
           out.bribe += r.bribe || 0;
         }
       });
     }
-    // Dağıtılamayan rüşvet payları (ör. o gece başka görevden maaş almış, hesabı
-    // silinmiş) + bölme artığı devlet kasasına — bir kez (bribePayouts.leftoverAtMs)
+    // Ödeme anında yatırılamayan pay (ör. hesabı silinmiş polis — çok nadir)
+    // devlet kasasına — bir kez (bribePayouts.leftoverAtMs)
     if (payout.total > 0 && payout.policeCount > 0) {
       await safe(ctx, 'bribe-leftover', async () => {
         const paidIds = [];
@@ -135,7 +155,8 @@ export function createRoleActions(core, { intel }) {
           const ref = ctx.ref.bribePayout(ctx.dateKey);
           const cur = (await tx.get(ref)).data();
           if (!cur || cur.leftoverAtMs) return;
-          const leftover = Math.max(0, Number(cur.total || 0) - Number(cur.perShare || 0) * paidIds.length);
+          const paidSum = paidIds.reduce((a, id) => a + Number(cur.perShare || 0) + ((cur.extraIds || []).includes(id) ? 1 : 0), 0);
+          const leftover = Math.max(0, Number(cur.total || 0) - paidSum);
           if (leftover > 0) core.stateTx(tx, ctx, 'in', 'rusvet_sahipsiz', leftover);
           tx.update(ref, { leftoverAtMs: ctx.now, leftover, paidCount: paidIds.length });
         });

@@ -35,7 +35,7 @@ export default function PoliceApplicationSection() {
       <div className="police-app-header">
         <p className="police-app-title">
           Polislik Başvurusu
-          <InfoIcon text="Polis olmak için Polis Teşkilatına başvurursun. Şartlar: başlangıç görevleri, 50 saygınlık, %0 şüphe ve en az 1 silah; imam ve Mafya Babası olamaz. Başvurunu Emniyet Genel Müdürü ve Emniyet Amirleri inceler, 12 saat içinde yanıt gelmezse kendiliğinden onaylanır. İstifa edersen ya da atılırsan 24 saat yeniden başvuramazsın." />
+          <InfoIcon text="Polis olmak için Polis Teşkilatına başvurursun. Şartlar: başlangıç görevleri, 50 saygınlık, %0 şüphe ve en az 1 silah; imam ve Mafya Babası olamaz. Başvurun 12 saat içinde incelenir. İstifa edersen ya da atılırsan 24 saat yeniden başvuramazsın." />
         </p>
         <button className="police-app-booklet-btn" onClick={() => setShowBooklet(true)}>
           📖 Kitapçık
@@ -113,7 +113,7 @@ function PoliceStatus() {
           </div>
         </div>
       )}
-      {pendingApp && <p className="police-app-hint">⏳ Emniyet Genel Müdürü ve Emniyet Amirleri inceliyor — en geç 12 saat içinde sonuçlanır.</p>}
+      {pendingApp && <p className="police-app-hint">⏳ Başvurun 12 saat içinde incelenir.</p>}
       {!isPolice && !pendingApp && cd > 0 && <p className="police-app-hint">⏳ Polislikten yeni ayrıldın — {cd} saat sonra yeniden başvurabilirsin.</p>}
       {done && <p className="police-salary-success">{done}</p>}
       {error && <p className="police-app-error">{error}</p>}
@@ -139,7 +139,7 @@ function PoliceStatus() {
       {applying &&
         createPortal(
           <div className="gx-root gx-portal">
-            <PoliceApplySheet membership={ms} onClose={() => setApplying(false)} onDone={(r) => setDone(r?.accepted ? '🚓 Başvurun onaylandı — artık polissin!' : '📝 Başvurun gönderildi.')} />
+            <PoliceApplySheet membership={ms} onClose={() => setApplying(false)} onDone={(r) => setDone(r?.accepted ? '🚓 Polis Teşkilatına kabul edildin — artık polissin!' : '📝 Başvurun gönderildi.')} />
           </div>,
           document.body
         )}

@@ -210,7 +210,7 @@ export function createIntelActions(core) {
       if (!reviewersIn(rosterSnap.docs)) {
         const rosterId = enrollIntelTx(tx, ctx, { actorId: ctx.actorId, codeName, key, intelExists: intelSnap.exists, stateExists: stateSnap.exists, form, user });
         tx.set(appRef, { codeName, codeKey: key, ...form, status: 'accepted', createdAtMs: ctx.now, resolvedAtMs: ctx.now, reviewedByCode: 'otomatik', autoReason: 'no_reviewers' });
-        notify(tx, ctx, ctx.actorId, `🚓 Başvurun onaylandı — artık polissin! Kod adın: ${codeName}. Maaşın her gece 00:00'da yatar.`, 'intel');
+        notify(tx, ctx, ctx.actorId, `🚓 Polis Teşkilatına kabul edildin — artık polissin! Kod adın: ${codeName}. Maaşın her gece 00:00'da yatar.`, 'intel');
         ctx.logs.push({ gang: 'intel_application', world: ctx.worldId, event: 'auto_accept_no_reviewers' });
         const res = { appId: appRef.id, codeName, accepted: true, auto: true, rosterId };
         guard.save(res);
@@ -302,7 +302,7 @@ export function createIntelActions(core) {
       if (codeSnap.exists && !reserved) fail('already-exists', 'Bu kod adı artık kullanılıyor — başvuruyu reddet.');
       const rosterId = enrollIntelTx(tx, ctx, { actorId, codeName: app.codeName, key: app.codeKey, intelExists: intelSnap.exists, stateExists: stateSnap.exists, form: { gangName: app.gangName, gangRank: app.gangRank, reason: app.reason }, user: applicantUser });
       closeApp(tx, ctx, app, appId, null, 'accepted', { reviewedByCode: me.codeName });
-      notify(tx, ctx, actorId, `🚓 Polislik başvurun kabul edildi — artık polissin! Kod adın: ${app.codeName}. Maaşın her gece 00:00'da yatar.`, 'intel');
+      notify(tx, ctx, actorId, `🚓 Polis Teşkilatına kabul edildin — artık polissin! Kod adın: ${app.codeName}. Maaşın her gece 00:00'da yatar.`, 'intel');
       announceIntel(tx, ctx, '✅', `${me.codeName}, ${app.codeName} başvurusunu onayladı.`);
       return { accepted: true, rosterId };
     });
@@ -356,8 +356,10 @@ export function createIntelActions(core) {
           const why = noReviewers ? 'teşkilatta Emniyet Genel Müdürü ya da Emniyet Amiri yok' : `${INTEL.APP_AUTO_APPROVE_HOURS} saat içinde yanıt verilmedi`;
           enrollIntelTx(tx, ctx, { actorId, codeName: cur.codeName, key: cur.codeKey, intelExists: intelSnap.exists, stateExists: stateSnap.exists, form: { gangName: cur.gangName, gangRank: cur.gangRank, reason: cur.reason }, user });
           closeApp(tx, ctx, cur, app.id, null, 'accepted', { reviewedByCode: 'otomatik', autoReason: noReviewers ? 'no_reviewers' : 'timeout' });
-          notify(tx, ctx, actorId, `🚓 Polislik başvurun otomatik onaylandı (${why}) — artık polissin! Kod adın: ${cur.codeName}. Maaşın her gece 00:00'da yatar.`, 'intel');
-          announceIntel(tx, ctx, '✅', `${cur.codeName} başvurusu otomatik onaylandı (${why}).`);
+          // v110: oyuncuya neden otomatik onaylandığı söylenmez — sadece kabul edildiği
+          notify(tx, ctx, actorId, `🚓 Polis Teşkilatına kabul edildin — artık polissin! Kod adın: ${cur.codeName}. Maaşın her gece 00:00'da yatar.`, 'intel');
+          announceIntel(tx, ctx, '✅', `${cur.codeName} teşkilata kabul edildi.`);
+          ctx.logs.push({ gang: 'intel_application', world: ctx.worldId, event: 'auto_accept', why });
           return true;
         });
         if (ok) accepted += 1;

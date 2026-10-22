@@ -14,7 +14,7 @@ const PAGES_BEFORE_SALARY = [
       'Aranan: 50 saygınlık, temiz bir sicil (%0 şüphe), en az 1 silah ve 📋 temel görevlerin tamamı.',
       'İmamlar ve Mafya Babaları rozet takamaz.',
       'Başvuruyu Karakol\'dan ya da Çeteler › Polis Teşkilatı\'ndan yaparsın: kod adını seç, hangi çetede olduğunu ve neden polis olmak istediğini yaz.',
-      'Teşkilatın başındakiler başvurunu inceler. 12 saat içinde ses çıkmazsa rozet senindir.',
+      'Başvurun 12 saat içinde incelenir.',
     ],
   },
   {

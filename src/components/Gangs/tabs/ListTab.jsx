@@ -226,7 +226,7 @@ export default function ListTab({ membership, onOpen }) {
         <Confirm
           icon="🚓"
           title={`Polislik başvurun (${ms.intelAppCode || ''}) inceleniyor`}
-          lines={['En geç 12 saat içinde sonuçlanır.', 'Başvurunu geri çekmek ister misin?']}
+          lines={['Başvurun 12 saat içinde incelenir.', 'Başvurunu geri çekmek ister misin?']}
           danger
           confirmLabel="Geri çek"
           busy={busy === 'cancelIntelApplication'}

@@ -117,7 +117,7 @@ test('başvuru: EGM/Amir yoksa anında onay; varsa 12 saatte yanıt yoksa otomat
   const ra = await h.act(a, 'applyIntel', { codeName: 'Öncü', ...FORM });
   assert.equal(ra.accepted, true);
   assert.equal(h.raw(`gangWorlds/test/players/${a}`).isPolice, true);
-  assert.ok(h.inbox(a).some((t) => /Başvurun onaylandı — artık polissin/.test(t)));
+  assert.ok(h.inbox(a).some((t) => /Polis Teşkilatına kabul edildin — artık polissin/.test(t)));
   const aRid = (await h.membership(a)).intelRosterId;
   await h.db.doc(`gangWorlds/test/intelRoster/${aRid}`).update({ rank: 'baskan', prestige: 5_000_000 });
   await h.db.doc(`gangWorlds/test/memberships/${a}`).set({ intelRank: 'baskan' }, { merge: true });
@@ -131,14 +131,15 @@ test('başvuru: EGM/Amir yoksa anında onay; varsa 12 saatte yanıt yoksa otomat
   await h.tickTo('2026-09-21', '21:00');
   assert.equal(h.get(`intel/main/applications/${rc.appId}`).status, 'accepted');
   assert.equal(h.raw(`gangWorlds/test/players/${c}`).isPolice, true);
-  assert.ok(h.inbox(c).some((t) => /12 saat içinde yanıt verilmedi/.test(t)));
+  assert.ok(h.inbox(c).some((t) => /Polis Teşkilatına kabul edildin/.test(t)));
+  assert.ok(!h.inbox(c).some((t) => /yanıt verilmedi|otomatik/.test(t)), 'neden otomatik onaylandığı söylenmez');
   // EGM rütbesini kaybederse bekleyen başvuru bir sonraki turda onaylanır
   const f = await h.persona({ displayName: 'Altıncı', gold: 0, power: 5_000, reputation: 60 });
   const rf = await h.act(f, 'applyIntel', { codeName: 'Duman', ...NO_GANG });
   await h.db.doc(`gangWorlds/test/intelRoster/${aRid}`).update({ rank: 'muhbir' });
   await h.tickTo('2026-09-21', '21:10');
   assert.equal(h.get(`intel/main/applications/${rf.appId}`).status, 'accepted');
-  assert.ok(h.inbox(f).some((t) => /Emniyet Genel Müdürü ya da Emniyet Amiri yok/.test(t)));
+  assert.ok(h.inbox(f).some((t) => /Polis Teşkilatına kabul edildin/.test(t)));
 });
 
 test('24 saat yasak: istifa, atılma, oylamayla çıkarılma ve pasiflikten sonra; her ayrılış polisliği de alır', async () => {
@@ -218,30 +219,44 @@ test('00:00 maaşı (polis rütbe maaşları) + dünkü rüşvetler teşkilattak
   const m2 = await member(h, 'İki');
   const m3 = await member(h, 'Üçüncü');
   for (const c of [egm, m2, m3]) await h.db.doc(`gangWorlds/test/players/${c.id}`).update({ lastSeenAtMs: h.clock.now });
-  await h.db.doc('gangWorlds/test/policeBribePool/2026-09-21').set({ dateKey: '2026-09-21', bribeCount: 7 }); // 21.000 → 3 × 7.000
+  await h.db.doc('gangWorlds/test/policeBribePool/2026-09-21').set({ dateKey: '2026-09-21', bribeCount: 7 }); // 21.000 → bu gece maaş alacak 2 polise 10.500'er (Üçüncü başka görevden maaş aldı)
   await h.db.doc(`gangWorlds/test/roleSalaryMarks/2026-09-22_${m3.id}`).set({ role: 'imam' });
   await h.tickTo('2026-09-21', '23:50');
   const g0 = { egm: h.gold(egm.id), m2: h.gold(m2.id), m3: h.gold(m3.id) };
   h.clock.now = ist('2026-09-22', '00:00') + 20_000;
   const late = await member(h, 'Geç');
   await h.tickTo('2026-09-22', '00:05');
-  assert.equal(h.gold(egm.id) - g0.egm, 25_000 + 7_000, 'Emniyet Genel Müdürü maaşı + rüşvet');
-  assert.equal(h.gold(m2.id) - g0.m2, 5_000 + 7_000, 'Polis Memuru maaşı + rüşvet');
+  assert.equal(h.gold(egm.id) - g0.egm, 25_000 + 10_500, 'Emniyet Genel Müdürü maaşı + rüşvet');
+  assert.equal(h.gold(m2.id) - g0.m2, 5_000 + 10_500, 'Polis Memuru maaşı + rüşvet');
   assert.equal(h.gold(m3.id), g0.m3, 'oyuncu başına gecede tek maaş');
   assert.equal(h.gold(late.id), 0, '00:00 sonrası katılan bu gece almaz');
-  assert.ok(h.inbox(m2.id).some((t) => /5\.000 maaş \+ 7\.000 rüşvet = 12\.000 altın hesabına aktarıldı — Polis · Polis Memuru/.test(t)));
+  assert.ok(h.inbox(m2.id).some((t) => /5\.000 maaş \+ 10\.500 rüşvet = 15\.500 altın hesabına aktarıldı — Polis · Polis Memuru/.test(t)));
   const t = h.treasury();
   assert.equal(t.out.maas_polis, 30_000);
   assert.equal(t.out.maas_istihbarat, undefined, 'ayrı istihbarat maaşı yok');
-  assert.equal(t.in.rusvet_sahipsiz, 7_000, 'o gece başka maaş almış polisin rüşvet payı devlete');
+  assert.equal(t.in.rusvet_sahipsiz, undefined, 'polis varken rüşvetin hiçbiri devlete gitmez');
   const rep = await h.act(m2.id, 'intelMemberReport', { rosterId: m2.rid });
   assert.equal(rep.bribeTotal, undefined, 'sicilde alınan rüşvet gösterilmez');
   assert.equal(rep.salaryTotal, undefined, 'sicilde alınan maaş gösterilmez');
   const rec = h.get(`intelRecords/${m2.rid}`);
-  assert.equal(rec.bribeTotal, 7_000, 'kayıtta tutulur');
+  assert.equal(rec.bribeTotal, 10_500, 'kayıtta tutulur');
   assert.equal(rec.salaryTotal, 5_000);
   await h.internal.roles.paySalaries(ctxOf(h), h.internal.clock.safe);
-  assert.equal(h.gold(m2.id) - g0.m2, 12_000, 'tekrar çalıştırma çift ödeme yapmaz');
+  assert.equal(h.gold(m2.id) - g0.m2, 15_500, 'tekrar çalıştırma çift ödeme yapmaz');
+});
+
+test('rüşvetin tamamı polislere: bölme artığı da dağıtılır (7 polis, 3.000 altın)', async () => {
+  const h = await createHarness({ start: ist('2026-09-21', '09:00') });
+  const ms = [];
+  for (let i = 0; i < 7; i++) ms.push(await member(h, `Polis${i}`));
+  for (const m of ms) await h.db.doc(`gangWorlds/test/players/${m.id}`).update({ lastSeenAtMs: h.clock.now });
+  await h.db.doc('gangWorlds/test/policeBribePool/2026-09-21').set({ dateKey: '2026-09-21', bribeCount: 1 });
+  const g0 = ms.map((m) => h.gold(m.id));
+  await h.tickTo('2026-09-22', '00:05');
+  const bribes = ms.map((m, i) => h.gold(m.id) - g0[i] - 5_000);
+  assert.equal(bribes.reduce((a, b) => a + b, 0), 3_000, 'tamamı dağıtıldı');
+  assert.ok(bribes.every((b) => b === 428 || b === 429));
+  assert.equal(h.treasury().in.rusvet_sahipsiz, undefined);
 });
 
 test('o gece hiç polis yoksa günün rüşvetleri devlet kasasına', async () => {

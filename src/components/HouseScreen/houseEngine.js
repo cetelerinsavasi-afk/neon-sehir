@@ -2244,6 +2244,8 @@ export function createHouseEngine(
     if (e && sp) {
       const v = new THREE.Vector3(sp[0], 0, sp[2] + 0.75);
       if (def.cat === 'araba' || def.cat === 'motor') v.set((def.box?.[0] ?? 0.5) + 0.6, 0, sp[2]);
+      // v110: koltuğun önü masaysa (makam masası) kalkış noktası eşyada tanımlı (yerel x, z)
+      if (def.standAt) v.set(def.standAt[0], 0, def.standAt[1]);
       e.obj.localToWorld(v);
       self.x = v.x;
       self.z = v.z;

@@ -122,7 +122,7 @@ export default function PoliceApplySheet({ onClose, onDone, membership }) {
       <div className="gx-hide-warn">🤫 Teşkilatta herkes seni bu adla tanır — gerçek kimliğin gizli kalır.</div>
       <IntelFormFields form={form} setForm={setForm} />
       <div className="dim gx-mini">
-        📝 Başvurunu Emniyet Genel Müdürü ve Emniyet Amirleri inceler; 12 saat içinde yanıt gelmezse kendiliğinden onaylanır. Onaylandığın an polissin. 💼 Maaş: Polis Memuru {fmt(SALARIES.muhbir)} … Emniyet Genel Müdürü {fmt(SALARIES.baskan)} + rüşvet payı (her gece 00:00).
+        📝 Başvurun 12 saat içinde incelenir. Kabul edildiğin an polissin. 💼 Maaş: Polis Memuru {fmt(SALARIES.muhbir)} … Emniyet Genel Müdürü {fmt(SALARIES.baskan)} + rüşvet payı (her gece 00:00).
       </div>
       <Btn
         block
@@ -133,7 +133,7 @@ export default function PoliceApplySheet({ onClose, onDone, membership }) {
             'applyIntel',
             { codeName: code.trim(), ...formPayload(form) },
             {
-              success: (res) => (res?.accepted ? `🚓 Başvurun onaylandı — artık polissin, ${res.codeName}!` : '📝 Başvurun gönderildi — en geç 12 saat içinde sonuçlanır.'),
+              success: (res) => (res?.accepted ? `🚓 Polis Teşkilatına kabul edildin — artık polissin, ${res.codeName}!` : '📝 Başvurun gönderildi — 12 saat içinde incelenir.'),
               withRequestId: true,
             }
           );

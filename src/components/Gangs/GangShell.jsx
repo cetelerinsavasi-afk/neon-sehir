@@ -3,7 +3,8 @@
 //   Polis Teşkilatı (v109; kodda "intel" — eski İstihbarat):
 //                Çeteler · Sohbet · Savaş · Operasyon · Teşkilat
 // Çetesi/teşkilatı olmayan sadece "Çeteler" listesini görür (diğerleri
-// kilitli). Üye açınca Savaş sekmesine düşer. Çete ↔ Polis Teşkilatı geçişi
+// kilitli). Ekran her zaman "Çeteler" sekmesiyle açılır (v110); listede "Aç"a
+// basınca Savaş sekmesine geçer. Çete ↔ Polis Teşkilatı geçişi
 // "Çeteler" sekmesinden.
 import { useEffect, useRef, useState } from 'react';
 import { useGangAlertsCtx } from './alerts';
@@ -40,7 +41,8 @@ export default function GangShell({ membership }) {
   const inGang = Boolean(ms.gangId);
   const inIntel = Boolean(ms.intelRosterId);
   const [org, setOrg] = useState(inGang || !inIntel ? 'gang' : 'intel');
-  const [tab, setTab] = useState(inIntel || inGang ? 'savas' : 'ceteler');
+  // v110: Çeteler butonuna basınca her zaman 'Çeteler' sekmesi açık gelir
+  const [tab, setTab] = useState('ceteler');
 
   // Oyuncu henüz kendisi bir sekme seçmediyse üyelik bilgisi gelince varsayılana
   // geç (önce çete, çete yoksa İstihbarat; sekme Savaş). Üyelik değişince (katıl/ayrıl/kur)
@@ -49,7 +51,6 @@ export default function GangShell({ membership }) {
   useEffect(() => {
     if (!picked.current) {
       setOrg(inGang || !inIntel ? 'gang' : 'intel');
-      setTab(inIntel || inGang ? 'savas' : 'ceteler');
       return;
     }
     setOrg((o) => (o === 'intel' && !inIntel ? 'gang' : o === 'gang' && !inGang && inIntel ? 'intel' : o));

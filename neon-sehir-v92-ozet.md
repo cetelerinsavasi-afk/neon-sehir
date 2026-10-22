@@ -439,8 +439,17 @@ Testler: 348/348 geçti.
 - **Başvuru** (Karakol › Komiser Ofisi ve Çeteler › Polis Teşkilatı › Başvur — aynı form `Gangs/PoliceApplySheet.jsx`): kod adı · hangi çetedesin (aktif çeteler ya da "Hiçbir çetede değilim" — o zaman rütbe sorulmaz) · çetedeki rütben · neden polis olmak istiyorsun. Şartlar: başlangıç görevleri, 50 saygınlık, %0 şüphe, 1 silah; imam ve Mafya Babası olamaz. Onay: EGM / Emniyet Amiri; 12 saatte yanıt yoksa (ya da ikisi de yoksa hemen) otomatik; onay anında şartlar yeniden bakılır. Açık soygun ekibindeyken başvuru ve istifa serbest. `applyForPolice` (eski kod adlı anında başvuru) artık yeni forma yönlendirir; `resignFromPolice` teşkilattan ayrılır.
 - **Soygun durdurma:** kurtarılanın **%25'i** polislere (eşit), kalanı devlete; prestij (kurtarılan × 4) / polis sayısı → Polis Teşkilatı prestiji + sicil (durdurduğu soygun, kurtarılan altın, soygun payı). Cezalar ve polis payı anında (suçlunun borcunu ödemesi beklenmez).
 - **İhbar / içerik sızdırma** (tır ve bahisli savaş): 1.000.000 → **500.000** prestij.
-- **Rüşvet:** günün Karakol rüşvetleri o gece teşkilattaki polislere eşit bölünür, maaşla tek SMS. Sicilde alınan maaş / rüşvet gösterilmez (kayıtta tutulur).
+- **Rüşvet:** günün Karakol rüşvetlerinin TAMAMI o gece maaş alan polislere eşit bölünür (bölme artığı da ilk polislere 1'er altın), maaşla tek SMS. Devlete sadece o gece hiç polis yoksa (ya da ödeme anında hesabı silinmiş polisin payı) gider. Sicilde alınan maaş / rüşvet gösterilmez (kayıtta tutulur).
 - **Tek seferlik geçiş** (`migrations/rolesV109`, gangClock'un ilk turunda — deploy anında): eski usul bekleyen polislik başvuruları iptal + SMS, bekleyen istifalar işlenir; teşkilatta olmayan tüm polisler otomatik kod adıyla 0 prestijle teşkilata (Mafya Babası olan polisin polisliği alınır + SMS); tüm istihbaratçılar polis olur + SMS. Geçiş yarıda kalırsa bir sonraki turda devam eder.
 - **İmam:** geçişten sonraki ilk 00:00'da imam polisse (teşkilat üyesiyse) imamlıktan alınır + SMS (`migrations/imamRoleV109`). Bundan sonra polis imam olamaz, imam polis olamaz.
 - Kitapçıklar (Polis, İmam) ve telefondaki Neon Şehir rehberi (Meslekler › Polis/İmam, Çeteler › Polis Teşkilatı) RP diliyle yeniden yazıldı.
-- Testler: `functions/gang/test/v109.test.js` (geçiş ve uzlaştırma dahil) + güncellenen çete testleri — toplam 388 test geçti. Yükleme: `deploy-v109.ps1` (v108 + v109 birlikte) + hemen ardından git push.
+- Testler: `functions/gang/test/v109.test.js` (geçiş ve uzlaştırma dahil) + güncellenen çete testleri — toplam 389 test geçti. Yükleme: `deploy-v109.ps1` (v108 + v109 birlikte) + hemen ardından git push.
+
+## v110 — Rüşvetin tamamı polislere, kabul mesajı, Belediye oturma yerleri, büfeci, Çeteler varsayılan sekmesi
+- Karakol rüşvetlerinin TAMAMI o gece maaş alan polislere bölünür (bölme artığı ilk polislere 1'er altın); devlete sadece o gece hiç polis yoksa gider.
+- Teşkilata alınan oyuncuya nedeni yazılmaz (12 saat yanıt yok / EGM-Amir yok): "🚓 Polis Teşkilatına kabul edildin — artık polissin!". Kitapçık ve formda: "Başvurun 12 saat içinde incelenir."
+- Teşkilat sekmesinden "🏛️ Devlet öder" ve "📋 Sicilin ve başvuru formun…" satırları kaldırıldı.
+- Çeteler butonu her zaman "Çeteler" sekmesiyle açılır.
+- Belediye: Özel Kalem Nur Hanım kaldırıldı; Meclis Toplantı Masasının 9 sandalyesine ve Başkanlık Makam Masasının koltuğuna oturulur (kalkınca masanın arkasında, koltuğun yanında durulur — `standAt`).
+- Park: Büfeci Hasan büfe kulübesinin içinde.
+- Yükleme: `firebase deploy --only functions:gangClock,functions:gangAction` + git push.

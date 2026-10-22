@@ -282,7 +282,6 @@ export const VENUES = {
     ],
     stations: {},
     npcs: [
-      { id: 'npc_ozelkalem', name: 'Özel Kalem Nur Hanım', x: -1.4, z: 5.9, av: AV.sekreter, lines: ['Başkanlık makamına hoş geldiniz.', 'Başkanımız henüz seçilmedi; seçimler çok yakında.', 'Randevu defteri şimdilik kapalı.', 'Meclis kararları panoda asılı.'] },
       { id: 'npc_zabita', name: 'Zabıta Rıza', x: 6.7, z: 5.6, av: AV.zabita, lines: ['Makamda sessiz olalım lütfen.', 'Maket camına dokunmayın!', 'Belediye hizmetinizde.', 'İyi günler.'] },
     ],
   },
@@ -449,7 +448,8 @@ export const VENUES = {
     },
     npcs: [
       { id: 'npc_supheli', name: 'Şüpheli Adam', x: -7.7, z: -4.2, av: AV.supheli, station: 'pk_cp1', lines: ['Psst… bakar mısın?', 'Malın varsa alırım.', 'Polise görünmeden…'] },
-      { id: 'npc_bufeci', name: 'Büfeci Hasan', x: 8.0, z: -4.3, left: true, av: AV.bufeci, station: 'pk_bf', lines: ['Sıcak sosisli, tost var!', 'Çay taze demlendi.', 'Buyur abi, ne vereyim?'] },
+      // v110: büfeci kulübenin İÇİNDE (evlerdeki büfeyle aynı yer: kulübe merkezinin 0,22 m gerisi)
+      { id: 'npc_bufeci', name: 'Büfeci Hasan', x: 6.6, z: -5.92, av: AV.bufeci, station: 'pk_bf', lines: ['Sıcak sosisli, tost var!', 'Çay taze demlendi.', 'Buyur abi, ne vereyim?'] },
     ],
   },
 };

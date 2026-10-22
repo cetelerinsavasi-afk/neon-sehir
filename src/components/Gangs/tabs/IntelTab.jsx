@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react';
 import { istDateKey, istHour, useGangAction, useNow } from '../GangContext';
 import { Btn, Card, Confirm, Gold, RankBadge, Sheet, Stat } from '../ui';
 import { MemberCard, MidnightLegend, RankTree } from '../shared';
-import { GANG_RULES, INTEL_LEADERS, RANK_ICONS, ROLE_INACTIVE_DAYS, SALARIES, appRankLabel, fmt } from '../gangConstants';
+import { GANG_RULES, INTEL_LEADERS, RANK_ICONS, SALARIES, appRankLabel, fmt } from '../gangConstants';
 import { IntelFormFields, formPayload, formValid } from '../PoliceApplySheet';
 
 const DIRECT = { baskan: ['ajan', 'muhbir'], sef: ['muhbir'] };
@@ -174,16 +174,12 @@ export default function IntelTab({ d }) {
           <span>
             💼 Maaşın <b>{fmt(salary)}</b> · her gece 00:00
           </span>
-          <span className="dim">🏛️ Devlet öder</span>
         </div>
         <div className="gx-codename-row">
           🪪 Kod adın: <b>{d.me?.codeName}</b>
           <button className="gx-link" onClick={() => setCode(d.me?.codeName || '')} aria-label="Kod adını değiştir">
             ✏️
           </button>
-        </div>
-        <div className="dim gx-mini">
-          📋 Sicilin ve başvuru formun: kendi kartına dokun · ⏰ {ROLE_INACTIVE_DAYS} gün oyuna girmeyen görevden alınır
         </div>
       </Card>
 
