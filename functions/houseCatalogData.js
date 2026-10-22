@@ -10,7 +10,7 @@
 export const HOUSE_PRICE = 500_000; // altın (v70: 1.000.000 → 500.000)
 // v68: ev sayısı sınırı kaldırıldı (eski istemciler için sabit duruyor, kullanılmıyor)
 export const MAX_HOUSES_PER_PLAYER = Infinity;
-export const MAX_ITEMS_PER_HOUSE = 400; // v92: parça zemin/duvar panelleri için 300 → 400
+export const MAX_ITEMS_PER_HOUSE = 500; // v92: 300 → 400 · v113: 400 → 500
 
 const g = (v) => ({ t: 'gold', v });
 const z = (v) => ({ t: 'gem', v });

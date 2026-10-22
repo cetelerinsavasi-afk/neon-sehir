@@ -1850,7 +1850,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                             // v100: envanterde bu eşyadan varsa satın alınmış olarak (envanterden) konur
                             const fromInv = invView[d.k] > 0;
                             const r = engineRef.current?.addItem(d.k, 0, { owned: fromInv });
-                            if (r === 'limit') flash('Eşya sınırına ulaştın (400).');
+                            if (r === 'limit') flash('Eşya sınırına ulaştın (500).');
                             else if (r && fromInv) flash(`📦 Envanterindeki ${d.name} kondu.`);
                           }}
                         >

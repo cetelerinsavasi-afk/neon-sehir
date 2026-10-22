@@ -461,3 +461,15 @@ Testler: 348/348 geçti.
 - İmam kitapçığından "İmamlık bir statüdür" kaldırıldı (rehberde de).
 - Özel Kalem Nur Hanım fotoğraflardan da kaldırıldı: yeni fotoğraflar sunucudaki mekân listesinden üretilir (createSixtagramPost yeniden yüklenir); önceden paylaşılmış Belediye fotoğraflarından ilk 00:00'da tek seferlik silinir (`migrations/belediyeNpcPhotosV111`).
 - Yükleme: `firebase deploy --only functions:gangClock,functions:gangAction,functions:dailyReset,functions:createSixtagramPost,functions:houseAction` + git push.
+
+## v112 — Soygun durdurma duyurusu (eksik yükleme) + polis tespiti
+- "X bir soygunu durdurdu" duyurusu v111'de kaldırılmıştı ama bu kod `executeHeistPlan` fonksiyonunun içinde çalışıyor; v111'de o fonksiyon yüklenmediği için duyuru sürüyordu. Artık executeHeistPlan da yükleniyor.
+- Ekip soygununda polis = mesleği 'polis' YA DA Polis Teşkilatı üyesi. Sadece polislerden oluşan ekip ASLA "soygun durdurma" sayılmaz (normal soygun: ödül bölüşülür, şüpheden yakalanırlarsa 2 kat ceza).
+- Yükleme: `firebase deploy --only functions:executeHeistPlan` + git push.
+
+## v113 — Soygun yakalanma metinleri (RP) + mobilya sınırı 500
+- Soygun sonuç ekranı, yakalanma SMS'i, polis payı SMS'i ve ekip payı SMS'i kısa, RP diliyle yeniden yazıldı (🚨 Yakalandın! / 🚔 Tuzak işe yaradı! / 💰 İş tamam!).
+- Soygun kuralları metni düzeltildi: polis tuzağında kurtarılan paranın %25'i polislere, gerisi devlete (eski metin "ödülün tamamı" diyordu); sadece polislerden oluşan ekip gerçek soygundur.
+- Tuzak başarılı ekranı artık toplam ödülü değil, polisin kendi payını gösterir (`executeHeistPlan` cevabına `policeShare` eklendi).
+- Ev/mekan eşya sınırı 400 → 500 (sunucu `MAX_ITEMS_PER_HOUSE`, istemci `MAX_ITEMS`).
+- Yükleme: `firebase deploy --only functions:executeHeistPlan,functions:attemptHeist,functions:sellContrabandAtPark,functions:houseAction` + git push.

@@ -6187,7 +6187,8 @@ async function sendCaptureSms(uid, penaltyAmount, newTotalDebt, { policeDoubled 
     .doc(uid)
     .collection('messages')
     .add({
-      text: `Yakalandın! ${policeDoubled ? 'Polis olduğun için ceza 2 katı uygulandı: ' : ''}${penaltyAmount.toLocaleString('tr-TR')} altın devlete borç yazıldı. Toplam borcun: ${newTotalDebt.toLocaleString('tr-TR')} altın. Banka'dan istediğin an ödeyebilirsin; ödemesen bile borç bitene kadar kazandığın her paranın yarısına otomatik el konulacak.`,
+      // v113: RP diliyle, kısa ve net
+      text: `🚨 Yakalandın! ${policeDoubled ? 'Rozet seni kurtarmadı, ceza 2 katı: ' : ''}${penaltyAmount.toLocaleString('tr-TR')} altın ceza borcuna yazıldı. Toplam borcun: ${newTotalDebt.toLocaleString('tr-TR')} altın. Banka'dan ödeyebilirsin; ödemezsen kazandığın her paranın yarısı borca gider.`,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       read: false,
       type: 'capture_penalty',
@@ -7363,10 +7364,19 @@ export const executeHeistPlan = onCall(async (request) => {
   const userSnaps = await Promise.all(
     participants.map((p) => db.collection('users').doc(p.uid).get())
   );
+  // v112: polis = mesleği 'polis' YA DA Polis Teşkilatı üyesi (ikisi normalde
+  // hep birlikte değişir; biri bir an geride kalsa bile bir polis, ekibindeki
+  // başka bir polisi "suçlu" sanıp yakalamasın).
+  const memberSnaps = await Promise.all(
+    participants.map(async (p) => {
+      const ref = await gangFunctions.system.liveMembershipRef(p.uid).catch(() => null);
+      return ref ? ref.get().catch(() => null) : null;
+    })
+  );
   const policeIdx = [];
   const civilianIdx = [];
   userSnaps.forEach((snap, i) => {
-    if (snap.data()?.profession === 'polis') policeIdx.push(i);
+    if (snap.data()?.profession === 'polis' || Boolean(memberSnaps[i]?.data()?.intelRosterId)) policeIdx.push(i);
     else civilianIdx.push(i);
   });
   const creatorIdx = participants.findIndex((p) => p.uid === plan.creatorUid);
@@ -7567,7 +7577,7 @@ export const executeHeistPlan = onCall(async (request) => {
         .doc(p.uid)
         .collection('messages')
         .add({
-          text: `${p.viaTrap ? 'Kurduğun tuzak işe yaradı! Ekibe katılan suçlu(lar)ı yakaladın' : 'Sızdığın soygunu çökerttin'} — ${p.recovered.toLocaleString('tr-TR')} altın kurtarıldı. Payın: ${p.amount.toLocaleString('tr-TR')} altın + ${p.prestige.toLocaleString('tr-TR')} prestij (kalanı devlete).`,
+          text: `🚔 ${p.viaTrap ? 'Tuzak işe yaradı, suçlular yakalandı' : 'Sızdığın soygunu çökerttin'}! ${p.recovered.toLocaleString('tr-TR')} altın kurtarıldı. Payın: ${p.amount.toLocaleString('tr-TR')} altın + ${p.prestige.toLocaleString('tr-TR')} prestij.`,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           read: false,
           type: 'police_bust_reward',
@@ -7591,7 +7601,7 @@ export const executeHeistPlan = onCall(async (request) => {
         .doc(s.uid)
         .collection('messages')
         .add({
-          text: `Katıldığın ekip soygunu başarılı oldu! Payına düşen ${s.amount.toLocaleString('tr-TR')} altın hesabına eklendi.`,
+          text: `💰 İş tamam! Ekip soygunundan payına düşen ${s.amount.toLocaleString('tr-TR')} altın cebinde.`,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           read: false,
           type: 'heist_success',
@@ -7618,6 +7628,8 @@ export const executeHeistPlan = onCall(async (request) => {
     // viaPoliceTrap — tuzak SADECE ekipte suçlu varsa anlamlı; sadece
     // polislerden oluşan ekip (policeOnly) gerçek bir soygundur.
     viaPoliceTrap: creatorIsPolice && !policeOnly,
+    // v113: tuzağı kuran polisin payı (ekranda gösterilir)
+    policeShare: busted && creatorIsPolice ? policeEarningSmsList.find((x) => x.uid === uid)?.amount ?? null : null,
     policeOnly,
     // policePenalty — sadece polislerden oluşan ekip yakalandıysa, çağıranın
     // (plan kurucusu) kendi payına yazılan (2 katı) ceza.

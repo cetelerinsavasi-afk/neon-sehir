@@ -40,7 +40,7 @@ const SNAP = 0.25;
 const PLAYER_R = 0.3;
 const WATER_SINK = 0.5; // v100: suya girince figür bu kadar aşağı iner
 const WALK_SPEED = 3.0;
-const MAX_ITEMS = 400; // v92: parça zemin/duvar panelleri için 300 → 400
+const MAX_ITEMS = 500; // v92: 300 → 400 · v113: 400 → 500 (sunucu: functions/houseCatalogData.js MAX_ITEMS_PER_HOUSE)
 const AV_UNIT = 1.75 / 507; // avatar SVG birimi → metre (figür ~507 birim = 1.75 m)
 const AV_PLANE_H = 580 * AV_UNIT;
 const AV_PLANE_W = 320 * AV_UNIT;

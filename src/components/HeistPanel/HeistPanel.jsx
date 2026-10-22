@@ -51,50 +51,54 @@ export const HEIST_LABELS = {
   seyyar_satici_4: { title: 'Köfteciye Haraç', emoji: regionEmojis.seyyar_satici_4, requiredPower: 1000, reward: 1000, suspicionCost: 5 },
 };
 
+// v113: RP diliyle, kısa ve net (sayılar sunucuyla aynı: functions/policeRules.js)
 const RULES_TEXT =
-  'Tek başına: yakalanma ihtimalin = mevcut şüphen. Ekip: en fazla 4 kişi, plan 24 saat açık kalır. Ekipte biri yakalanırsa ya da sızan bir polis varsa TÜM ekip yakalanır. Ceza cepten kesilmez, devlete borç yazılır — Banka\'dan istediğin zaman öde, ya da kazandığın paranın yarısı otomatik borcu kapatsın.';
+  'Tek başına girersen yakalanma ihtimalin şüphen kadardır. Ekip en fazla 4 kişi, plan 24 saat açık kalır. Ekipten biri dikkat çekerse ya da aranızda gizli bir polis varsa hepiniz yakalanırsınız. Ceza cebinden kesilmez, devlete borç yazılır: Banka\'dan ödeyebilirsin, ödemezsen kazandığın her paranın yarısı borca gider.';
 
-// POLICE_RULES_TEXT — KULLANICI İSTEĞİ (polis suç sistemi): polisler de artık
-// soygun yapabilir. Kurallar sivillerle aynı, tek fark yakalanırsa ceza 2 katı.
+// POLICE_RULES_TEXT — polisler de soygun yapabilir; yakalanırsa ceza 2 katı.
+// Ekipte sivil varsa polis onları yakalar: kurtarılan paranın %25'i polislere.
 const POLICE_RULES_TEXT =
-  'Polis olarak da soygun yapabilirsin: gücün yetiyorsa tek başına, yetmiyorsa ekiple. Şüphe artar, yakalanırsan saygınlık düşer. Tek fark: yakalanırsan ceza 2 KATI (devlete borç). Ekibin tamamı polisse ödül eşit bölüşülür, yakalanırsanız herkes 2 kat ceza yer. Ekipte polis olmayan biri de varsa polis olarak onları yakalamış olursun: sen yakalanmazsın, ödülün tamamını alırsın, suçlulara ceza yazılır. (Ama önce şüphe konuşur: suçlulardan biri kendi şüphesinden yakalanırsa ödül alamazsın.)';
+  'Rozetin olması soygun yapamayacağın anlamına gelmez — ama yakalanırsan ceza 2 katı. Ekipte sadece polisler varsa bu gerçek bir soygundur: ganimet bölüşülür, yakalanırsanız herkes 2 kat ceza yer. Ekipte bir sivil bile varsa sen suçluları yakalarsın: kurtarılan paranın %25\'i polislere bölünür, gerisi devlete gider. Ama önce şüphe konuşur: suçlulardan biri kendi dikkatsizliğinden yakalanırsa ödül yok.';
+
+const fmtGold = (n) => Number(n || 0).toLocaleString('tr-TR');
 
 function resultMessage(res) {
   if (!res.started) {
     if (res.reason === 'insufficient_power') {
-      return `Güç yetersiz (gerekli: ${res.requiredPower.toLocaleString('tr-TR')}). Şüphe artmadı — aşağıdan ekip kurabilirsin.`;
+      return `Bu iş için gücün yetmiyor (gereken: ${fmtGold(res.requiredPower)}). Kimse seni fark etmedi — aşağıdan bir ekip kurabilirsin.`;
     }
     return 'Soygun başlamadı.';
   }
+  // tek başına soygun
   if (res.reward !== undefined) {
     if (res.caught) {
-      const fine = (res.penalty ?? res.reward).toLocaleString('tr-TR');
+      const fine = fmtGold(res.penalty ?? res.reward);
       return res.policeDoubled
-        ? `Yakalandın! Polis olduğun için ceza 2 katı: ${fine} altın devlete borç yazıldı.`
-        : `Yakalandın! ${fine} altın devlete borç yazıldı.`;
+        ? `🚨 Yakalandın! Rozet seni kurtarmadı, ceza 2 katı: ${fine} altın borcuna yazıldı.`
+        : `🚨 Yakalandın! ${fine} altın ceza borcuna yazıldı.`;
     }
-    return `Başarılı! ${res.reward.toLocaleString('tr-TR')} altın kazandın.`;
+    return `💰 İş tamam! ${fmtGold(res.reward)} altın cebinde.`;
   }
-  // viaPoliceTrap — bu sonucu SADECE tuzağı kuran polis kendisi görür
-  // (executeHeistPlan'ı sadece plan kurucusu çağırabilir). Onun için
-  // "sızma" diliyle değil, kurduğu tuzağın işe yaradığı diliyle anlatılır.
-  // policeOnly — ekibin tamamı polisti: tuzak değil, gerçek soygun.
+  // viaPoliceTrap — bu sonucu SADECE tuzağı kuran polis görür (executeHeistPlan'ı
+  // sadece plan kurucusu çağırır). policeOnly — ekibin tamamı polisti: gerçek soygun.
   if (res.policeOnly && res.caughtBySuspicion) {
-    return `Yakalandınız! Polis olduğunuz için ceza 2 katı: kişi başı ${(res.policePenalty || 0).toLocaleString('tr-TR')} altın devlete borç yazıldı.`;
+    return `🚨 Yakalandınız! Rozetiniz sizi kurtarmadı, ceza 2 katı: kişi başı ${fmtGold(res.policePenalty)} altın borcunuza yazıldı.`;
   }
   if (res.busted && res.viaPoliceTrap) {
-    return `Tuzağın işe yaradı! Ekibe katılan suçlu(lar)ı yakaladın, ${res.totalReward.toLocaleString('tr-TR')} altın ödül kazandın.`;
+    return res.policeShare != null
+      ? `🚔 Tuzak işe yaradı! Suçlular yakalandı, ${fmtGold(res.totalReward)} altın kurtarıldı. Payın: ${fmtGold(res.policeShare)} altın.`
+      : `🚔 Tuzak işe yaradı! Suçlular yakalandı, ${fmtGold(res.totalReward)} altın kurtarıldı. Payın SMS ile geldi.`;
   }
   if (res.busted) {
-    return 'Ekibe polis sızmıştı! Payınız borç olarak yazıldı.';
+    return '🚔 Ekipte gizli bir polis varmış! Hepiniz yakalandınız, payına düşen ceza borcuna yazıldı.';
   }
   if (res.caughtBySuspicion && res.viaPoliceTrap) {
-    return 'Suçlular şüphesi yüksek olduğu için sen yakalayamadan yakalandılar. Bu turda ödül alamadın, sadece suçlular kendi cezasını ödedi.';
+    return 'Suçlular sen harekete geçemeden kendi dikkatsizliklerinden yakalandı. Bu sefer ödül yok.';
   }
   if (res.caughtBySuspicion) {
-    return 'Ekipteki suçlulardan biri kendi şüphesinden yakalandı, suçluların payına düşen ceza borç olarak yazıldı.';
+    return '🚨 Ekipten biri fazla dikkat çekti, polis hepinizi yakaladı. Payına düşen ceza borcuna yazıldı.';
   }
-  return `Ekip başarılı! ${res.totalReward.toLocaleString('tr-TR')} altın katılımcılara bölündü.`;
+  return `💰 İş tamam! ${fmtGold(res.totalReward)} altın ekip arasında bölüşüldü.`;
 }
 
 function isResultSuccess(res) {
@@ -110,7 +114,7 @@ function resultTitle(res) {
   if (res.busted && res.viaPoliceTrap) return 'Tuzak Başarılı! 🚔';
   if (res.caughtBySuspicion && res.viaPoliceTrap) return 'Tuzak Boşa Çıktı';
   if (success === true) return 'Soygun Başarılı! 🎉';
-  if (success === false) return 'Yakalandın!';
+  if (success === false) return 'Yakalandın! 🚨';
   return 'Soygun Başlamadı';
 }
 
