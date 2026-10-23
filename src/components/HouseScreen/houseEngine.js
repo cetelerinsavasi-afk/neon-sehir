@@ -36,9 +36,50 @@ export function cleanCart(v) {
 
 export const ROOM = { W: 18, D: 14, H: 3.4 };
 const { W, D, H } = ROOM;
+
+// v119 — su hücreleri (1 m ızgara) ve bir noktadaki batma derinliği
+function waterCells(objs) {
+  const set = new Set();
+  objs.forEach((e) => {
+    if (e.data.k === WATER_TILE_KEY) set.add(`${Math.floor(e.data.x + W / 2)},${Math.floor(e.data.z + D / 2)}`);
+  });
+  return set;
+}
+export function waterSinkAt(x, z, cells) {
+  if (!cells || cells.size === 0) return 0;
+  const ix = Math.floor(x + W / 2);
+  const iz = Math.floor(z + D / 2);
+  if (!cells.has(`${ix},${iz}`)) return 0;
+  // en yakın kara (su olmayan ya da oda dışı) hücresine uzaklık
+  let best = WATER_SEARCH;
+  for (let dx = -WATER_SEARCH; dx <= WATER_SEARCH; dx++) {
+    for (let dz = -WATER_SEARCH; dz <= WATER_SEARCH; dz++) {
+      const cx = ix + dx;
+      const cz = iz + dz;
+      const outside = cx < 0 || cz < 0 || cx >= W || cz >= D;
+      if (!outside && cells.has(`${cx},${cz}`)) continue;
+      const x0 = cx - W / 2;
+      const z0 = cz - D / 2;
+      const ddx = Math.max(x0 - x, 0, x - (x0 + 1));
+      const ddz = Math.max(z0 - z, 0, z - (z0 + 1));
+      const d = Math.hypot(ddx, ddz);
+      if (d < best) best = d;
+    }
+  }
+  const t = Math.min(1, Math.max(0, (best - WATER_SHORE_AT) / (WATER_DEEP_AT - WATER_SHORE_AT)));
+  return WATER_SINK_SHORE + (WATER_SINK_DEEP - WATER_SINK_SHORE) * t;
+}
 const SNAP = 0.25;
 const PLAYER_R = 0.3;
-const WATER_SINK = 0.5; // v100: suya girince figür bu kadar aşağı iner
+// v119 — suya batma derinliği kıyıya uzaklığa göre: kıyı kenarında WATER_SINK_SHORE,
+// karadan (sudan başka zemin) WATER_DEEP_AT metre uzakta WATER_SINK_DEEP (baş-omuz kalır).
+// Figür ~1,75 m. Oda dışı da kıyı sayılır (havuz kenarı).
+const WATER_SINK_SHORE = 0.55;
+const WATER_SINK_DEEP = 1.2;
+const WATER_SHORE_AT = 0.3; // kıyıya bu kadar yakınken en sığ
+const WATER_DEEP_AT = 2.5; // kıyıdan bu kadar uzakta en derin
+const WATER_SEARCH = 3; // kıyı araması (hücre)
+const WATER_TILE_KEY = 'zp_su';
 const WALK_SPEED = 3.0;
 const MAX_ITEMS = 500; // v92: 300 → 400 · v113: 400 → 500 (sunucu: functions/houseCatalogData.js MAX_ITEMS_PER_HOUSE)
 const AV_UNIT = 1.75 / 507; // avatar SVG birimi → metre (figür ~507 birim = 1.75 m)
@@ -2363,7 +2404,7 @@ export function createHouseEngine(
   }
 
   let waterTimer = 0;
-  let waterTiles = [];
+  let waterSet = new Set();
   function nearestPerson(x, z) {
     let best = Math.hypot(self.x - x, self.z - z);
     others.forEach((o) => {
@@ -2395,15 +2436,12 @@ export function createHouseEngine(
     waterTimer -= dt;
     if (waterTimer <= 0) {
       waterTimer = 0.5;
-      waterTiles = [];
-      objs.forEach((e) => {
-        if (e.data.k === 'zp_su') waterTiles.push(e.data);
-      });
+      waterSet = waterCells(objs);
     }
-    const inWater = (x, z) => waterTiles.some((w) => Math.abs(w.x - x) <= 0.5 && Math.abs(w.z - z) <= 0.5);
-    if (self.fig) self.fig.sink = !self.seat && inWater(self.x, self.z) ? WATER_SINK : 0;
+    // v119: kıyıdan uzaklaştıkça daha derine batılır
+    if (self.fig) self.fig.sink = self.seat ? 0 : waterSinkAt(self.x, self.z, waterSet);
     others.forEach((o) => {
-      o.fig.sink = !o.seat && inWater(o.fig.x, o.fig.z) ? WATER_SINK : 0;
+      o.fig.sink = o.seat ? 0 : waterSinkAt(o.fig.x, o.fig.z, waterSet);
     });
     if (self.fig) {
       const sw = self.seat ? seatWorld(self.seat, seatV) : null;
@@ -3314,9 +3352,14 @@ export function createHouseEngine(
       updateWalls();
       updateLightPool(new THREE.Vector3(pose.px, 1, pose.pz));
       const now = performance.now();
+      // v118 — suya batmış görünüm: kare tek seferde çizildiği için (dt = 0)
+      // batma geçişi beklenmez; su parçasındaki (oturmayan) kişi doğrudan batık çizilir
+      const water = waterCells(objs);
       others.forEach((o) => {
         o.fig.x = o.fig.tx;
         o.fig.z = o.fig.tz;
+        o.fig.sink = o.seat ? 0 : waterSinkAt(o.fig.x, o.fig.z, water);
+        o.fig.sinkCur = o.fig.sink;
         // v85 — çekim anındaki hareket (dans...) ve yürüme adımı
         if (o.frozen) {
           o.fig.frozenMoving = Boolean(o.frozen.moving);
