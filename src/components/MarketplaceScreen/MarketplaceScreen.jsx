@@ -23,7 +23,7 @@ import { MAX_REPAIRS, vehicleDisplayName, lifeCapOf, repairBonusOf } from '../Ve
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './MarketplaceScreen.css';
 import { ListingCarStats } from '../RaceTrackScreen/CarStats';
-import { autoSellsAt, AUTO_SELL_HINT, itemCancelPenalty, ITEM_CANCEL_PENALTY_TEXT, ITEM_EXPIRE_HINT, ITEM_LISTING_RULES } from '../../lib/autoSell';
+import { autoSellsAt, AUTO_SELL_HINT, itemCancelPenalty, ITEM_CANCEL_PENALTY_TEXT } from '../../lib/autoSell';
 import ConfirmModal from '../ConfirmModal/ConfirmModal';
 
 // Bu oturumda eski (deterministik ID sisteminden önce açılmış) malzeme
@@ -600,14 +600,9 @@ function SellForm({ onCreated, onClose, initialItemType }) {
               {itemType === 'material' && priceRange && autoSellsAt(price, priceRange.min, priceRange.max) && (
                 <p className="market-autosell-hint">{AUTO_SELL_HINT}</p>
               )}
-              {/* v115 — araç/silah: malzemelerdeki gibi 7. gün kuralı + iptal kuralı */}
-              {(itemType === 'vehicle' || itemType === 'weapon') && priceRange && (
-                <>
-                  <p className="market-autosell-hint">
-                    {autoSellsAt(price, priceRange.min, priceRange.max) ? AUTO_SELL_HINT : ITEM_EXPIRE_HINT}
-                  </p>
-                  <p className="market-price-range-hint">{ITEM_LISTING_RULES}</p>
-                </>
+              {/* v115 — araç/silah: malzemelerdeki gibi, sadece ucuzken "7 gün içinde otomatik satılır" */}
+              {(itemType === 'vehicle' || itemType === 'weapon') && priceRange && autoSellsAt(price, priceRange.min, priceRange.max) && (
+                <p className="market-autosell-hint">{AUTO_SELL_HINT}</p>
               )}
               {itemType === 'material' && quantity > 0 && price > 0 && (
                 <p className="market-price-range-hint">

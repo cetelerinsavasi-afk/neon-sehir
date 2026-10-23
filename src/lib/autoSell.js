@@ -25,5 +25,3 @@ export function itemCancelPenalty(listing, nowMs = Date.now()) {
   return istanbulDayKeyOf(nowMs) !== startKey;
 }
 export const ITEM_CANCEL_PENALTY_TEXT = 'İlanı iptal edersen ömrü 1 gün kısalır.';
-export const ITEM_EXPIRE_HINT = '⏱️ 7 gün içinde satılmazsa ilandan kaldırılır (ömrü azalmaz)';
-export const ITEM_LISTING_RULES = 'İlandayken ömrü azalmaz · 00:00\'dan önce bedelsiz iptal edebilirsin, sonrasında iptal ömrü 1 gün kısaltır.';

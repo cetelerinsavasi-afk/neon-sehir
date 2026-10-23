@@ -246,7 +246,7 @@ export const attemptHeist = (target) =>
 export const sellContrabandToDepo = (quantity) =>
   httpsCallable(functions, 'sellContrabandToDepo')({ quantity });
 
-// v103: mode 'risky' (5.000, yakalanma riski, +5 şüphe) | 'safe' (2.000 + çeteye 500, risksiz, günde 10)
+// v103: mode 'risky' (5.000, yakalanma riski, +5 şüphe) | 'safe' (2.500 + çeteye 500, risksiz, günde 10)
 export const sellContrabandAtPark = (mode = 'risky') => httpsCallable(functions, 'sellContrabandAtPark')({ mode });
 
 // --- Park Dünyası ---

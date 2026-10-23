@@ -4,7 +4,7 @@ import { RISKY_PRICE, SAFE_PRICE, SAFE_GANG_CUT, SAFE_DAILY_LIMIT } from './shad
 import './ShadyDealPanel.css';
 
 // v103 — Şüpheli Adam: iki satış şekli yan yana. Az yazı, çok görsel:
-// solda riskli (5.000, yakalanma + şüphe), sağda güvenli (2.000 + çetene 500,
+// solda riskli (5.000, yakalanma + şüphe), sağda güvenli (2.500 + çetene 500,
 // risk yok, günde 10). Park (2D) ve Park (3D) aynı paneli kullanır.
 // Sunucu: functions/index.js sellContrabandAtPark (mode: 'risky' | 'safe').
 const fmt = (n) => Number(n || 0).toLocaleString('tr-TR');

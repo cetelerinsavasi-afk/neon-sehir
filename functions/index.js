@@ -6389,12 +6389,12 @@ export const sellContrabandToDepo = onCall(async () => {
 // v103 — İKİ SATIŞ ŞEKLİ (request.data.mode):
 //   'risky' (varsayılan, eski istemciler): yukarıdaki gibi 5.000, yakalanma
 //     riski, +5 şüphe.
-//   'safe': yakalanma yok, şüphe artmaz; oyuncuya 2.000, çetesine 500 haraç
+//   'safe': yakalanma yok, şüphe artmaz; oyuncuya 2.500 (v117, eskiden 2.000), çetesine 500 haraç
 //     (toplam 2.500). Oyuncu başı günde en fazla 10 (İstanbul günü,
 //     users.parkSafeSales = { day, count }). Çetesi yoksa / sadece
 //     İstihbarattaysa 500 kimseye gitmez. Çeteye satış başına mesaj gitmez;
 //     gece 00:00'da çete sohbetine günlük özet yazılır (gang/clock.js).
-const PARK_SAFE_SELL_PRICE = 2000;
+const PARK_SAFE_SELL_PRICE = 2500;
 const PARK_SAFE_GANG_CUT = 500;
 const PARK_SAFE_DAILY_LIMIT = 10;
 

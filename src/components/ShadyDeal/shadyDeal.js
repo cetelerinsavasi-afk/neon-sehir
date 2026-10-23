@@ -1,6 +1,6 @@
 // v103 — Şüpheli Adam satış şekilleri (sunucu: functions/index.js sellContrabandAtPark)
 export const RISKY_PRICE = 5000;
-export const SAFE_PRICE = 2000;
+export const SAFE_PRICE = 2500; // v117 (eskiden 2.000)
 export const SAFE_GANG_CUT = 500;
 export const SAFE_DAILY_LIMIT = 10;
 

@@ -15,16 +15,11 @@ import { BIZ_MATERIALS, midnightDayKey } from '../../../functions/businessCatalo
 import '../../styles/bizui.css';
 import './Shop.css';
 import { vehicleRaceLine } from '../RaceTrackScreen/CarStats';
-import { autoSellsAt, AUTO_SELL_HINT, ITEM_EXPIRE_HINT, ITEM_CANCEL_PENALTY_TEXT } from '../../lib/autoSell';
+import { autoSellsAt, AUTO_SELL_HINT, ITEM_CANCEL_PENALTY_TEXT } from '../../lib/autoSell';
 
-// v115 — vitrin ilanı 7. gün: bandın ortasının altı otomatik satılır, değilse ilan düşer
+// v115 — vitrin ilanı: malzemelerdeki gibi, sadece ucuzken "7 gün içinde otomatik satılır"
 function VitrinRuleHint({ price, band }) {
-  return (
-    <>
-      <p className="bz-hint">{autoSellsAt(price, band.min, band.max) ? AUTO_SELL_HINT : ITEM_EXPIRE_HINT}</p>
-      <p className="bz-hint">Vitrindeyken ömrü azalmaz · konduğu gün (00:00'dan önce) bedelsiz geri alırsın, sonrasında geri almak ömrü 1 gün kısaltır.</p>
-    </>
-  );
+  return autoSellsAt(price, band.min, band.max) ? <p className="bz-hint">{AUTO_SELL_HINT}</p> : null;
 }
 
 // =============================================================================

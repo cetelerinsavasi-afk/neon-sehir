@@ -37,10 +37,10 @@ function setup({ inGang = true, day = '2026-10-20' } = {}) {
   return { S, G, fns, calls };
 }
 
-test('güvenli satış: +2.000, şüphe değişmez, çeteye 500; günde en fazla 10', async () => {
+test('güvenli satış: +2.500, şüphe değişmez, çeteye 500; günde en fazla 10', async () => {
   const { G, fns, calls } = setup();
   for (let i = 0; i < 10; i++) await fns.sellContrabandSafe('u1');
-  assert.equal(G('users/u1').gold, 20_000);
+  assert.equal(G('users/u1').gold, 25_000);
   assert.equal(G('users/u1').suspicion, 30);
   assert.equal(G('users/u1/inventory/yasakliMadde').quantity, 2);
   assert.deepEqual(G('users/u1').parkSafeSales, { day: '2026-10-20', count: 10 });
@@ -58,5 +58,5 @@ test('yeni gün hakkı yeniler; çetesizde 500 gitmez; malı olmayan satamaz', a
   assert.equal(r.gangCredited, false);
   S('users/u1/inventory/yasakliMadde', { quantity: 0 });
   await assert.rejects(fns.sellContrabandSafe('u1'), /Yeterli malınız yok/);
-  assert.equal(G('users/u1').gold, 2000);
+  assert.equal(G('users/u1').gold, 2500);
 });
