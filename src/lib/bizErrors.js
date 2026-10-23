@@ -6,6 +6,7 @@ const MAP = {
   gem: 'Zümrütün yetmiyor.',
   'already-listed': 'Bu ürün zaten ilanda.',
   'ban-today': 'Bugün vitrinden geri aldığın ürünü yarına kadar tekrar vitrine koyamazsın.',
+  'remove-penalty': 'Saat 00:00 geçti — vitrinden geri alırsan ömrü 1 gün kısalır. Tekrar dene ve onayla.',
   'biz-closed': 'Bu işletme kapalı.',
   'device-full': 'Bu cihaz dolu, başka bir cihaz dene.',
   'gym-equipment': 'Salonda yeterli alet yok (en az 3 farklı alet gerekli).',

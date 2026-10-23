@@ -8,7 +8,7 @@
 //   houses/{id}.bizPricesAtMs                           — son fiyat değişimi
 //   houses/{id}.bizShortage = { items:{k:true}, smsDay } + bizShortagePending
 //   businessInventories/{houseId}.materials[k]          — dükkânın malzemesi
-//   weapons|vehicles/{id}: shopHouseId, shopListingId, shopBanDayKey
+//   weapons|vehicles/{id}: shopHouseId, shopListingId, shopAddedDayKey
 //     Vitrindeki ürün her zaman listed:true kalır (oyunun her yerinde "ilanda
 //     = kullanılamaz" kontrolü zaten var). shopListingId doluysa aktif 2. el
 //     ilanı vardır; ilan 7 günde düşse de ürün dükkânda kalır (shopListingId
@@ -23,8 +23,12 @@
 //     dükkânın malzemesi işletme envanterinden düşer. Fiyat onay anında
 //     değiştiyse işlem reddedilir (istemci yeniden onay ister).
 //   - Vitrin: silahçıda en fazla 10 silah, galeride en fazla 10 araç; fiyat
-//     bandı 2. el ile AYNI (itemRules.itemListingBand). Vitrinden geri çekmek
-//     ömrü 1 düşürür ve ürün 00:00'a kadar tekrar konamaz. Ömrü 0 ürün konamaz.
+//     bandı 2. el ile AYNI (itemRules.itemListingBand). v115: vitrine konduğu
+//     gün (00:00'dan önce) geri çekmek bedelsiz; 00:00 geçtiyse ömür −1 (onay
+//     ister). Geri alınan ürün hemen tekrar vitrine konabilir (bedeli ömürle
+//     ödendi; eski "00:00'a kadar konamaz" yasağı v115'te kalktı). Ömrü 0 ürün konamaz.
+//     Vitrin ilanı 7. gün: fiyat bandın ortasının altındaysa oyun satın alır,
+//     değilse ilan düşer (ürün vitrinde kalır) — 2. el ile aynı kural.
 //     Satış alıcıya giden ürünün ömrünü düşürmez.
 // =============================================================================
 
@@ -47,6 +51,7 @@ import {
   itemListingFields,
 } from './itemRules.js';
 import { goldTag } from './moneyLog.js';
+import { itemListingTimeFields } from './listingBatches.js';
 
 export const SHOP_MAX_ITEMS = 10;
 export const VITRIN_ITEM_TYPE = { silahci: 'weapon', galeri: 'vehicle' };
@@ -243,6 +248,8 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       sellerName: sellerNameOf(user),
       ...itemListingFields(itemType, itemId, item),
       price,
+      // v115: 7. gün otomatik sat / ilandan kaldır (index.js settleItemListing)
+      ...itemListingTimeFields(now(), itemListingBand(itemType, item)),
       shopHouseId: houseId,
       shopName: String(h.name || BIZ_TYPES[h.biz.type].label).slice(0, 40),
       createdAt: FieldValue.serverTimestamp(),
@@ -275,7 +282,6 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       if (item.listed) fail('failed-precondition', 'listed');
       if (itemType === 'vehicle' && (item.mortgaged || item.seizedByBank)) fail('failed-precondition', 'mortgaged');
       if ((item.lifeDays ?? lifeCapOf(itemType)) <= 0) fail('failed-precondition', 'life0');
-      if (item.shopBanDayKey && item.shopBanDayKey === midnightDayKey(now())) fail('failed-precondition', 'ban-today');
       if (itemType === 'weapon' && pre.data()?.profession === 'polis') {
         const mine = await tx.get(db.collection('weapons').where('ownerId', '==', uid));
         const usable = mine.docs.filter((d) => !d.data().listed).length;
@@ -284,7 +290,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       if ((await txVitrinCount(tx, houseId, itemType)) >= SHOP_MAX_ITEMS) fail('failed-precondition', 'vitrin-full');
       checkPrice(itemType, item, price);
       const listingId = newListing(tx, { uid, user: us.data(), h, houseId, itemType, itemId, item, price });
-      tx.update(itemRef, { listed: true, shopHouseId: houseId, shopListingId: listingId });
+      tx.update(itemRef, { listed: true, shopHouseId: houseId, shopListingId: listingId, shopAddedDayKey: midnightDayKey(now()) });
       result = { ok: true, listingId };
     });
     return result;
@@ -336,21 +342,33 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
   async function vitrinUnlist(uid, p) {
     await db.runTransaction(async (tx) => {
       const { itemRef, listing } = await txShopItem(tx, uid, String(p.houseId || ''), p.itemId);
-      if (listing) tx.update(listing.ref, { sold: true, cancelled: true });
+      if (listing) tx.update(listing.ref, { sold: true, cancelled: true, expireAtMs: FieldValue.delete() });
       tx.update(itemRef, { shopListingId: null });
     });
     return { ok: true };
   }
 
-  // Vitrinden geri çek: ömür −1, 00:00'a kadar tekrar konamaz
+  // v115 — vitrine konduğu gün (00:00'dan önce) geri çekmek bedelsiz; 00:00
+  // geçtiyse ömür −1 (istemci onay ister → p.confirmPenalty) ve ürün 00:00'a
+  // kadar tekrar vitrine konamaz. Eski kayıtta (gün yok) ceza uygulanır.
+  const removePenalty = (item) => !item.shopAddedDayKey || item.shopAddedDayKey !== midnightDayKey(now());
   async function vitrinRemove(uid, p) {
     let result = null;
     await db.runTransaction(async (tx) => {
       const { itemType, itemRef, item, listing } = await txShopItem(tx, uid, String(p.houseId || ''), p.itemId);
-      if (listing) tx.update(listing.ref, { sold: true, cancelled: true });
-      const life = Math.max(0, (item.lifeDays ?? lifeCapOf(itemType)) - 1);
-      tx.update(itemRef, { listed: false, shopHouseId: FieldValue.delete(), shopListingId: FieldValue.delete(), lifeDays: life, shopBanDayKey: midnightDayKey(now()) });
-      result = { ok: true, lifeDays: life };
+      const penalty = removePenalty(item);
+      if (penalty && !p.confirmPenalty) fail('failed-precondition', 'remove-penalty');
+      if (listing) tx.update(listing.ref, { sold: true, cancelled: true, expireAtMs: FieldValue.delete() });
+      const cur = item.lifeDays ?? lifeCapOf(itemType);
+      const life = penalty ? Math.max(0, cur - 1) : cur;
+      tx.update(itemRef, {
+        listed: false,
+        shopHouseId: FieldValue.delete(),
+        shopListingId: FieldValue.delete(),
+        shopAddedDayKey: FieldValue.delete(),
+        lifeDays: life,
+      });
+      result = { ok: true, lifeDays: life, penalized: penalty };
     });
     return result;
   }
@@ -362,7 +380,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       const { itemType, itemRef, item, listing } = await txShopItem(tx, uid, String(p.houseId || ''), p.itemId);
       const us = await tx.get(userRef(uid));
       const payout = itemListingBand(itemType, item).instant;
-      if (listing) tx.update(listing.ref, { sold: true, cancelled: true });
+      if (listing) tx.update(listing.ref, { sold: true, cancelled: true, expireAtMs: FieldValue.delete() });
       // v77 vergi: 2. el / vitrin satışı %1
       const tax = resaleTax(payout);
       taxLedgerWrite(tx, db, FieldValue, { amount: tax, source: 'ikinciEl', uid, atMs: now(), ref: String(p.houseId || '') });
@@ -377,7 +395,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
         createdAt: FieldValue.serverTimestamp(),
         sold: false,
       });
-      tx.update(itemRef, { listed: true, shopHouseId: FieldValue.delete(), shopListingId: FieldValue.delete() });
+      tx.update(itemRef, { listed: true, shopHouseId: FieldValue.delete(), shopListingId: FieldValue.delete(), shopAddedDayKey: FieldValue.delete() });
       result = { ok: true, payout, tax, net: payout - tax };
     });
     return result;
@@ -394,16 +412,22 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       tx.get(db.collection('vehicles').where('shopHouseId', '==', houseId)),
       tx.get(listingsRef.where('shopHouseId', '==', houseId).where('sold', '==', false)),
     ]);
-    const pack = (snap, kind) => snap.docs.map((d) => ({ ref: d.ref, life: d.data().lifeDays ?? lifeCapOf(kind) }));
+    const pack = (snap, kind) => snap.docs.map((d) => ({ ref: d.ref, life: d.data().lifeDays ?? lifeCapOf(kind), penalty: removePenalty(d.data()) }));
     return { weapons: pack(ws, 'weapon'), vehicles: pack(vs, 'vehicle'), listings: ls.docs.map((d) => d.ref) };
   }
   function onCloseWrite(tx, { state }) {
     if (!state) return {};
-    const ban = midnightDayKey(now());
-    [...state.weapons, ...state.vehicles].forEach(({ ref, life }) =>
-      tx.update(ref, { listed: false, shopHouseId: FieldValue.delete(), shopListingId: FieldValue.delete(), lifeDays: Math.max(0, life - 1), shopBanDayKey: ban })
+    // v115: bugün konan ürün bedelsiz döner (vitrinden çekmekle aynı kural)
+    [...state.weapons, ...state.vehicles].forEach(({ ref, life, penalty = true }) =>
+      tx.update(ref, {
+        listed: false,
+        shopHouseId: FieldValue.delete(),
+        shopListingId: FieldValue.delete(),
+        shopAddedDayKey: FieldValue.delete(),
+        lifeDays: penalty ? Math.max(0, life - 1) : life,
+      })
     );
-    state.listings.forEach((ref) => tx.update(ref, { sold: true, cancelled: true }));
+    state.listings.forEach((ref) => tx.update(ref, { sold: true, cancelled: true, expireAtMs: FieldValue.delete() }));
     return { weapons: state.weapons.length, vehicles: state.vehicles.length };
   }
   async function statusExtra({ houseId }) {

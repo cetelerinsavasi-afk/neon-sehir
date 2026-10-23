@@ -124,3 +124,11 @@ export const APP_GANG_RANKS = [
   { id: 'comez', label: 'Çömez' },
 ];
 export const appRankLabel = (id) => (id === 'yok' ? 'Çetesi yok' : APP_GANG_RANKS.find((r) => r.id === id)?.label || '—');
+
+// v116 — çeteden ayrılan / atılan 24 saat çeteye, polisliğe, imamlığa giremez
+// (sunucu: functions/gang/config.js gangExitBlockText). Kalan saat (0 = serbest).
+export function gangExitHoursLeft(membership, now = Date.now()) {
+  const until = Number(membership?.gangCooldownUntilMs || 0);
+  return until > now ? Math.max(1, Math.ceil((until - now) / 3_600_000)) : 0;
+}
+export const gangExitText = (h) => `🔒 Çeteden ayrıldıktan ya da atıldıktan sonra 24 saat geçmeden tekrar giremezsin (${h} saat kaldı).`;

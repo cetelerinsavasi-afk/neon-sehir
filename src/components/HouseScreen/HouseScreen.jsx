@@ -241,6 +241,17 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   const canDesignRef = useRef(canDesign);
   canDesignRef.current = canDesign;
   const [realLook, setRealLook] = useState(false); // v92 — göz: denemeleri gerçek göster
+  // v114 — tavan modu (Tasarla): açıkken sadece tavan eşyalarına dokunulur
+  const [ceilMode, setCeilModeState] = useState(false);
+  const [ceilNote, setCeilNote] = useState(0); // "Tavan modu açıldı" yazısı (anahtar)
+  const ceilModeRef = useRef(false);
+  const setCeil = useCallback((on) => {
+    const v = Boolean(on);
+    if (v && !ceilModeRef.current) setCeilNote(Date.now());
+    if (!v) setCeilNote(0);
+    ceilModeRef.current = v;
+    setCeilModeState(v);
+  }, []);
   // v101.1 — sunucudaki son duvar/zemin/kapı (her biri AYRI karşılaştırılır) ve
   // bu evde senin en son denediğin kaplamalar (motor yeniden kurulsa da kaybolmasın)
   const lastRemoteSurfRef = useRef(null);
@@ -529,6 +540,9 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   useEffect(() => {
     engineRef.current?.setRealLook(realLook);
   }, [realLook, engineKey]);
+  useEffect(() => {
+    engineRef.current?.setCeilMode?.(ceilMode && mode === 'build');
+  }, [ceilMode, mode, engineKey]);
   // v92 — yetkili: sahibin envanteri (belge sadece sahibine açık → sunucudan)
   const houseUpdatedAt = houseDoc?.updatedAtMs || 0;
   useEffect(() => {
@@ -944,6 +958,13 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     engineRef.current?.setMode(m);
     if (m === 'walk') setSel(null);
     if (m === 'build') setPanel(null);
+    // v114 — tavan modu sadece Tasarla'da; geri dönünce Tavanlar açıksa yine açık
+    setCeil(m === 'build' && tab === 'magaza' && cat === 'tavan');
+  };
+  // v114 — kategori değişince: Tavanlar → tavan modu açık, diğerleri → kapalı
+  const pickCat = (k) => {
+    setCat(k);
+    setCeil(k === 'tavan');
   };
   // v77: 3 görünüm sırayla — 3D (varsayılan) → 2D (kuş bakışı) → Göz (karakterin gözünden)
   const toggleView = () => {
@@ -1575,6 +1596,22 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
               </svg>
             </button>
           )}
+          {/* v114 — TAVAN MODU: tavan eşyalarını seç/taşı (göz butonunun yanında) */}
+          {canDesign && mode === 'build' && (
+            <button
+              className={`hs-eye-btn hs-ceil-btn${ceilMode ? ' on' : ''}`}
+              onClick={() => setCeil(!ceilMode)}
+              title="Tavan modu: tavan eşyalarını düzenle"
+              aria-pressed={ceilMode}
+            >
+              <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true">
+                <path d="M12 2.8 20.5 7.4v9.2L12 21.2 3.5 16.6V7.4z" fill="currentColor" fillOpacity={ceilMode ? 0.22 : 0.08} stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+                <path d="M3.5 7.4 12 12l8.5-4.6M12 12v9.2" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+                <path d="M3.5 16.6 12 12M20.5 16.6 12 12M12 2.8V12" fill="none" stroke="currentColor" strokeWidth="1" strokeOpacity="0.45" strokeDasharray="1.6 1.6" />
+              </svg>
+            </button>
+          )}
+          {ceilNote > 0 && ceilMode && mode === 'build' && <CeilNote key={ceilNote} onDone={() => setCeilNote(0)} />}
 
           {/* v92 Faz 8 — oyunun 3D mekânı: menü, NPC'ler, istasyon panelleri */}
           {venue && (
@@ -1833,11 +1870,11 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                 <>
                   <div className="hs-shelf-tabs">
                     {CATEGORIES.map((c) => (
-                      <button key={c.key} className={cat === c.key ? 'on' : ''} onClick={() => setCat(c.key)}>
+                      <button key={c.key} className={cat === c.key ? 'on' : ''} onClick={() => pickCat(c.key)}>
                         {c.icon} {c.name}
                       </button>
                     ))}
-                    <button className={cat === 'yuzey' ? 'on' : ''} onClick={() => setCat('yuzey')}>🎨 Duvar & Zemin</button>
+                    <button className={cat === 'yuzey' ? 'on' : ''} onClick={() => pickCat('yuzey')}>🎨 Duvar & Zemin</button>
                   </div>
                   {cat === 'kapi' && !venue && <EntranceDoorBar design={design} onChange={(d) => engineRef.current?.setDoor(d)} />}
                   {cat !== 'yuzey' && (
@@ -1891,7 +1928,15 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                   {invList.length === 0 && !isOwner && <p className="hs-dim hs-inv-empty">Ev sahibinin envanteri boş. Mağazadan deneme eşya koyabilirsin; satın almayı sahibi yapar.</p>}
                   {invList.length === 0 && isOwner && <p className="hs-dim hs-inv-empty">Envanterin boş. Satın aldığın eşyaları odadan kaldırınca buraya gelir; buradan istediğin evine koyabilirsin.</p>}
                   {invList.map(({ def, n }) => (
-                    <button key={def.k} className="hs-card" onClick={() => engineRef.current?.addItem(def.k, 0, { owned: true })}>
+                    <button
+                      key={def.k}
+                      className="hs-card"
+                      onClick={() => {
+                        // v114: envanterden tavan eşyası konunca tavan modu açılır, diğerlerinde kapanır
+                        setCeil(def.cat === 'tavan');
+                        engineRef.current?.addItem(def.k, 0, { owned: true });
+                      }}
+                    >
                       <ItemThumb k={def.k} icon={def.icon} />
                       <span className={`hs-card-name${isOfficeFurn(def.k) ? ' paid' : ''}`}>{def.name}</span>
                       <span className="hs-card-own big">× {n}</span>
@@ -2428,6 +2473,25 @@ const ChatBox = memo(function ChatBox({ busy, onSend, onTyping }) {
     </div>
   );
 });
+
+// v114 — "Tavan modu açıldı": dokununca ya da 3 sn sonra kendiliğinden kaybolur
+function CeilNote({ onDone }) {
+  const doneRef = useRef(onDone);
+  doneRef.current = onDone;
+  useEffect(() => {
+    const t = setTimeout(() => doneRef.current?.(), 3000);
+    return () => clearTimeout(t);
+  }, []);
+  const close = (e) => {
+    e.stopPropagation();
+    doneRef.current?.();
+  };
+  return (
+    <div className="hs-toast ceilnote tappable" onClick={close} onPointerDown={(e) => e.stopPropagation()}>
+      🧊 Tavan modu açıldı
+    </div>
+  );
+}
 
 // v105: kendiliğinden kaybolur (onDone değişse bile sayaç sıfırlanmaz), dokununca hemen kapanır
 function GiftNote({ gift, onDone }) {

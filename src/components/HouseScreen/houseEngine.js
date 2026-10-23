@@ -714,6 +714,9 @@ export function createHouseEngine(
   // v92 — "göz": Tasarla modunda satın alınmamış eşyaları gerçek haliyle göster
   // (sadece bu ekranda; ziyaretçiler ve Gez modu saydam görmeye devam eder)
   let realLook = false;
+  // v114 — tavan modu (Tasarla): açıkken sadece tavan eşyaları seçilir ve yerde izleri
+  // görünür; kapalıyken tavan eşyaları yerde görünmez, dokunulamaz (sadece tavanda)
+  let ceilMode = false;
   renderer.__onLost = snapshot ? null : () => onContextLost?.();
   let perfTier = snapshot || spectate ? 0 : readPerfTier();
   const tierDpr = () => (snapshot ? 1 : Math.min(window.devicePixelRatio || 1, spectate ? 1.5 : PERF_TIERS[perfTier].dpr));
@@ -1268,9 +1271,11 @@ export function createHouseEngine(
 
   const overhead = () => mode === 'build' || view === '2d';
   // v100 — tavan parçası görünümü: true = tavanda gök, false = yerde iz, null = hiç (açık hava)
+  // v114: yerdeki iz sadece Tasarla + tavan modu açıkken görünür
   function ceilView() {
-    return outdoor ? null : !(mode === 'build' || view === '2d');
+    return outdoor ? null : !(mode === 'build' && ceilMode);
   }
+  const isCeilItem = (id) => CATALOG_MAP[objs.get(id)?.data.k]?.tile === 'ceil';
   function updateWalls() {
     const p = camera.position;
     walls.forEach((w) => {
@@ -1663,6 +1668,8 @@ export function createHouseEngine(
     for (const h of hits) {
       const id = h.object.userData.itemId;
       if (!id) continue;
+      // v114 — tavan modu açıkken sadece tavan eşyaları, kapalıyken sadece diğerleri
+      if (mode === 'build' && isCeilItem(id) !== ceilMode) continue;
       const def = CATALOG_MAP[objs.get(id)?.data.k];
       if (def?.flat) {
         flatHit = flatHit || id;
@@ -2706,6 +2713,10 @@ export function createHouseEngine(
     setCanEdit(v) {
       canEdit = Boolean(v);
       if (!canEdit && mode === 'build') api.setMode('walk');
+    },
+    setCeilMode(v) {
+      ceilMode = Boolean(v);
+      if (selectedId && objs.has(selectedId) && isCeilItem(selectedId) !== ceilMode) select(null);
     },
     setRealLook(v) {
       realLook = Boolean(v);

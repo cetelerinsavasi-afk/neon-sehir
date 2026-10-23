@@ -8,6 +8,7 @@ import PoliceBooklet from '../PoliceBooklet/PoliceBooklet';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import { GangProvider, useDocData, useGang, useGangAction, useNow } from '../Gangs/GangContext';
 import PoliceApplySheet, { cooldownHoursLeft } from '../Gangs/PoliceApplySheet';
+import { gangExitHoursLeft, gangExitText } from '../Gangs/gangConstants';
 import { Confirm } from '../Gangs/ui';
 import { RANK_LABELS, SALARIES, fmt } from '../Gangs/gangConstants';
 import '../Gangs/Gangs.css';
@@ -76,6 +77,7 @@ function PoliceStatus() {
   const codeName = me?.codeName || ms.intelCodeName;
   const pendingApp = !isPolice && ms.intelAppId;
   const cd = cooldownHoursLeft(ms, now);
+  const exitH = gangExitHoursLeft(ms, now); // v116: çeteden ayrılan / atılan 24 saat
 
   const resign = async () => {
     setResignBusy(true);
@@ -115,12 +117,13 @@ function PoliceStatus() {
       )}
       {pendingApp && <p className="police-app-hint">⏳ Başvurun 12 saat içinde incelenir.</p>}
       {!isPolice && !pendingApp && cd > 0 && <p className="police-app-hint">⏳ Polislikten yeni ayrıldın — {cd} saat sonra yeniden başvurabilirsin.</p>}
+      {!isPolice && !pendingApp && !cd && exitH > 0 && <p className="police-app-hint">{gangExitText(exitH)}</p>}
       {done && <p className="police-salary-success">{done}</p>}
       {error && <p className="police-app-error">{error}</p>}
 
       <div className="police-app-controls">
         {!isPolice && !pendingApp && (
-          <button className="police-app-btn primary" disabled={cd > 0} onClick={() => setApplying(true)}>
+          <button className="police-app-btn primary" disabled={cd > 0 || exitH > 0} onClick={() => setApplying(true)}>
             Polislik Başvurusu Yap
           </button>
         )}

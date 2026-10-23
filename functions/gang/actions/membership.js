@@ -1,5 +1,5 @@
 // Çete kurma / katılma / ayrılma / atma / saygı / profil / bağış / sohbet
-import { GANG, LOGO_EMOJIS, LOGO_COLORS, LOGO_BGS, RANK_LABELS, isRanked, rankLevel } from '../config.js';
+import { GANG, LOGO_EMOJIS, LOGO_COLORS, LOGO_BGS, RANK_LABELS, isRanked, rankLevel, gangExitBlockText } from '../config.js';
 import { addDays, midnightMsOf, weekKeyOf } from '../time.js';
 
 export function createMembershipActions(core, intelHelpers) {
@@ -32,6 +32,8 @@ export function createMembershipActions(core, intelHelpers) {
       const wallet = await readWallet(tx, ctx, ctx.actorId);
       const membership = await readMembership(tx, ctx, ctx.actorId);
       const nameSnap = await tx.get(ctx.ref.gangName(nameKey));
+      const exitBlock = gangExitBlockText(membership, ctx.now); // v116
+      if (exitBlock) fail('failed-precondition', exitBlock);
       let removalPlan = null;
       if (membership.gangId) {
         if (!data.confirmLeave) fail('failed-precondition', 'CONFIRM_LEAVE_REQUIRED');
@@ -117,6 +119,8 @@ export function createMembershipActions(core, intelHelpers) {
       const gangSnap = await tx.get(ctx.ref.gang(gangId));
       if (!gangSnap.exists || gangSnap.data().status !== 'active') fail('failed-precondition', 'Bu çete artık yok.');
       if (membership.gangId === gangId) fail('failed-precondition', 'Zaten bu çetedesin.');
+      const exitBlock = gangExitBlockText(membership, ctx.now); // v116
+      if (exitBlock) fail('failed-precondition', exitBlock);
       if (membership.gangExitDay?.[gangId] === ctx.dateKey) fail('failed-precondition', "Bugün ayrıldığın ya da atıldığın çeteye 00:00'a kadar giremezsin.");
       let removalPlan = null;
       if (membership.gangId) {

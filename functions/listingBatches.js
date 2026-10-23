@@ -94,3 +94,36 @@ export function nextExpireAtMs(batches, ttlMs = LISTING_TTL_MS) {
   if (!batches.length) return null;
   return Math.min(...batches.map((b) => b.at)) + ttlMs;
 }
+
+// -----------------------------------------------------------------------------
+// v115 — ARAÇ / SİLAH İLANLARI (2. el + galerici/silahçı vitrin ilanı)
+// -----------------------------------------------------------------------------
+// - İlandayken ömür azalmaz (dailyReset).
+// - İlan konduğu İstanbul gününde (00:00'dan önce) iptal bedelsiz; 00:00
+//   geçtikten sonra iptal edilirse ürünün ömrü 1 gün kısalır.
+// - 7. gün: fiyat, ilan konduğu andaki bandın tam ortasının ALTINDAYSA oyun
+//   satın alır; %50 ve üstündeyse ilan kalkar, ömür azalmaz.
+// İstemci kopyası: src/lib/autoSell.js (aynı kurallar — birlikte değişmeli).
+const ISTANBUL_OFFSET_MS = 3 * 60 * 60 * 1000;
+export function istanbulDayKeyOf(ms) {
+  return new Date(Number(ms) + ISTANBUL_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+// İlan belgesine yazılan zaman + bant alanları
+export function itemListingTimeFields(nowMs, band) {
+  return {
+    listedAtMs: nowMs,
+    listedDayKey: istanbulDayKeyOf(nowMs),
+    expireAtMs: nowMs + LISTING_TTL_MS,
+    bandMin: Math.floor(Number(band?.min) || 0),
+    bandMax: Math.floor(Number(band?.max) || 0),
+  };
+}
+
+// İlan konduğundan beri 00:00 geçti mi? (eski ilanda createdAt'ten)
+export function itemCancelPenalty(listing, nowMs) {
+  const startMs = Number(listing?.listedAtMs) || listing?.createdAt?.toMillis?.() || 0;
+  const startKey = listing?.listedDayKey || (startMs ? istanbulDayKeyOf(startMs) : null);
+  if (!startKey) return true;
+  return istanbulDayKeyOf(nowMs) !== startKey;
+}

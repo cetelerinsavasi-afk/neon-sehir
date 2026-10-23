@@ -141,3 +141,74 @@ test('süresi dolmamış parti dokunulmaz; sistem ilanı atlanır', async () => 
   assert.equal(r2.skipped, 'closed');
   assert.equal(G('marketplaceListings/sys').sold, false);
 });
+
+test('v115 araç/silah ilanı: 00:00 öncesi iptal bedelsiz, sonrası ceza; zaman/bant alanları', async () => {
+  const { itemListingTimeFields, itemCancelPenalty, istanbulDayKeyOf, LISTING_TTL_MS: TTL, autoSellsAt: auto } = await import('../listingBatches.js');
+  const t = Date.UTC(2026, 9, 23, 20, 59); // 23:59 İstanbul
+  const f = itemListingTimeFields(t, { min: 5000, max: 10000 });
+  assert.equal(f.listedDayKey, '2026-10-23');
+  assert.equal(f.expireAtMs, t + TTL);
+  assert.equal(f.bandMin, 5000);
+  assert.equal(f.bandMax, 10000);
+  assert.equal(itemCancelPenalty(f, t + 30 * 1000), false, '23:59:30 bedelsiz');
+  assert.equal(itemCancelPenalty(f, t + 2 * 60 * 1000), true, '00:01 ceza');
+  // eski ilan: listedDayKey yok → createdAt'ten
+  const legacy = { createdAt: { toMillis: () => Date.UTC(2026, 9, 23, 6) } };
+  assert.equal(itemCancelPenalty(legacy, Date.UTC(2026, 9, 23, 18)), false);
+  assert.equal(itemCancelPenalty(legacy, Date.UTC(2026, 9, 23, 22)), true);
+  assert.equal(istanbulDayKeyOf(Date.UTC(2026, 9, 23, 21)), '2026-10-24');
+  // 7. gün: 7.499 otomatik satılır, 7.500 kaldırılır
+  assert.equal(auto(7499, 5000, 10000), true);
+  assert.equal(auto(7500, 5000, 10000), false);
+});
+
+// --- v115: settleItemListing (index.js'ten, gerçek kod) ---
+function setupItems() {
+  const db = new FakeFirestore({ yieldEvery: false });
+  const S = (p, d) => db._store.set(p, { data: d, version: 1 });
+  const G = (p) => db._store.get(p)?.data;
+  const admin = { firestore: { FieldValue, Timestamp } };
+  const splitIncomeForDebt = (debt, amount) => ({ goldDelta: amount, debtDelta: 0 });
+  const code2 = src.slice(a, b) + '\nreturn { settleItemListing };';
+  const fns = new Function(
+    'db', 'admin', 'AMAZOR_PRICES', 'resaleTax', 'taxLedgerWrite', 'splitIncomeForDebt', 'goldTag', 'addUserSms',
+    'autoSellsAt', 'materialRange', 'batchesOf', 'splitDue', 'nextExpireAtMs', 'LISTING_TTL_MS', 'itemListingBand',
+    code2
+  )(db, admin, {}, resaleTax, taxLedgerWrite, splitIncomeForDebt, goldTag, () => {},
+    LB.autoSellsAt, LB.materialRange, LB.batchesOf, LB.splitDue, LB.nextExpireAtMs, LB.LISTING_TTL_MS, () => ({ min: 5000, max: 10000 }));
+  return { db, S, G, fns };
+}
+
+test('v115 araç/silah ilanı 7. gün: ortanın altı oyuna satılır (ürün silinir), %50 ve üstü kaldırılır (ömür aynı); süresi dolmamış dokunulmaz', async () => {
+  const { S, G, fns, db } = setupItems();
+  const t0 = Date.UTC(2026, 9, 1, 9);
+  S('users/u1', { gold: 0 });
+  S('vehicles/v1', { ownerId: 'u1', listed: true, lifeDays: 9 });
+  S('vehicles/v2', { ownerId: 'u1', listed: true, lifeDays: 9 });
+  S('weapons/w1', { ownerId: 'u1', listed: true, lifeDays: 4, shopHouseId: 'h1', shopListingId: 'L3' });
+  S('marketplaceListings/L1', { sellerId: 'u1', itemType: 'vehicle', vehicleId: 'v1', vehicleModel: 'Şahin', price: 7000, ...LB.itemListingTimeFields(t0, { min: 5000, max: 10000 }), sold: false });
+  S('marketplaceListings/L2', { sellerId: 'u1', itemType: 'vehicle', vehicleId: 'v2', price: 7500, ...LB.itemListingTimeFields(t0, { min: 5000, max: 10000 }), sold: false });
+  S('marketplaceListings/L3', { sellerId: 'u1', itemType: 'weapon', weaponId: 'w1', price: 9000, shopHouseId: 'h1', ...LB.itemListingTimeFields(t0, { min: 5000, max: 10000 }), sold: false });
+
+  // 6. gün: dokunulmaz
+  assert.equal((await fns.settleItemListing(db.collection('marketplaceListings').doc('L1'), t0 + 6 * DAY)).skipped, 'not_due');
+  assert.equal(G('marketplaceListings/L1').sold, false);
+
+  const now = t0 + 7 * DAY;
+  await fns.settleItemListing(db.collection('marketplaceListings').doc('L1'), now);
+  await fns.settleItemListing(db.collection('marketplaceListings').doc('L2'), now);
+  await fns.settleItemListing(db.collection('marketplaceListings').doc('L3'), now);
+
+  assert.equal(G('marketplaceListings/L1').autoSold, true);
+  assert.equal(G('vehicles/v1'), undefined, 'oyuna satılan araç oyundan çıkar');
+  assert.equal(G('users/u1').gold, 7000 - resaleTax(7000));
+
+  assert.equal(G('marketplaceListings/L2').cancelled, true);
+  assert.equal(G('vehicles/v2').listed, false);
+  assert.equal(G('vehicles/v2').lifeDays, 9, 'ömür azalmaz');
+
+  assert.equal(G('marketplaceListings/L3').cancelled, true);
+  assert.equal(G('weapons/w1').listed, true, 'vitrin ilanı düşer, ürün vitrinde kalır');
+  assert.equal(G('weapons/w1').shopListingId, null);
+  assert.equal(G('marketplaceListings/L3').expireAtMs, undefined);
+});

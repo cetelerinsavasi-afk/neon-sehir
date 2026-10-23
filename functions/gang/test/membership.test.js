@@ -127,7 +127,7 @@ test('v64 Mafya Babası saygısı: +1M, her oyuncuya HAFTADA bir kez; çete değ
   assert.match((await h.fails(A.baba, 'giveRespect', { targetId: u })).message, /bu hafta zaten/);
   // ayrılıp ertesi gün geri gelse de aynı hafta → saygı yok
   await h.act(u, 'leaveGang');
-  await h.nextDay();
+  await h.nextDay('10:00'); // v116: 24 saat sonra geri girebilir
   await h.act(u, 'joinGang', { gangId: A.gangId });
   assert.match((await h.fails(A.baba, 'giveRespect', { targetId: u })).message, /bu hafta zaten/);
   // Pazar 23:59 hâlâ aynı hafta

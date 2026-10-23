@@ -23,7 +23,7 @@ import { createOffice } from './office.js';
 import { createPresenceSummary } from './presenceSummary.js';
 import { createGym, gymPriceOf, withBonus, botGymPool } from './gym.js';
 import { createFutbolPro, assignGoalCredits, computeMatchRatings } from './futbolPro.js';
-import { futbolDayKey, prevDayKey, bizDayStartMs } from './businessCatalogData.js';
+import { futbolDayKey, prevDayKey, bizDayStartMs, midnightDayKey } from './businessCatalogData.js';
 import {
   VEHICLE_WEAPON_INITIAL_LIFE_DAYS,
   VEHICLE_WEAPON_MAX_REPAIRS,
@@ -40,7 +40,8 @@ import { trainingBotRun, vehicleRaceLevel, carStats } from './raceSim.js';
 import { createRaceTa } from './raceTa.js';
 import { championshipPodium } from './championshipPrizes.js';
 import { adPriceFor, countActiveAds } from './marketAds.js';
-import { LISTING_TTL_MS, autoSellsAt, materialRange, batchesOf, addBatch, consumeBatches, splitDue, nextExpireAtMs } from './listingBatches.js';
+import { gangExitBlockText } from './gang/config.js';
+import { LISTING_TTL_MS, autoSellsAt, materialRange, batchesOf, addBatch, consumeBatches, splitDue, nextExpireAtMs, itemListingTimeFields, itemCancelPenalty } from './listingBatches.js';
 import { createCosmetics } from './cosmetics.js';
 import { createPlayBilling, createGooglePlayApi } from './playBilling.js';
 import { createStream } from './stream.js';
@@ -3412,6 +3413,9 @@ async function runDailyResetBody(dateKey, dr) {
           const item = docSnap.data();
           // v77: silahçı/galeri vitrinindeki ürünlerin ömrü azalmaz (çete deposu gibi)
           if (item.shopHouseId) return;
+          // v115: 2. elde satılıktayken (oyuncu ilanı ya da anında satış sonrası
+          // sistem ilanı) ömür azalmaz — ilan kalkınca kaldığı yerden devam eder.
+          if (item.listed) return;
           const currentLife = item.lifeDays ?? lifeCapOf(collName === 'weapons' ? 'weapon' : 'vehicle');
           const newLife = Math.max(0, currentLife - 1);
           const repairsUsed = item.repairsUsed || 0;
@@ -3441,7 +3445,7 @@ async function runDailyResetBody(dateKey, dr) {
                 .get();
               if (!listingSnap.empty) {
                 isSystemListing = listingSnap.docs[0].data().sellerId === 'system';
-                await listingSnap.docs[0].ref.update({ sold: true, cancelled: true });
+                await listingSnap.docs[0].ref.update({ sold: true, cancelled: true, expireAtMs: admin.firestore.FieldValue.delete() });
               }
             }
             await docSnap.ref.delete();
@@ -5783,6 +5787,9 @@ export const applyForImam = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Polisler imam olamaz. Önce polislikten istifa etmelisin.');
     }
     if (ms.intelAppId) throw new HttpsError('failed-precondition', 'Bekleyen bir polislik başvurun var — yanıtlanana ya da sen geri çekene kadar imam olamazsın.');
+    // v116 — çeteden ayrılan / atılan 24 saat imam olamaz
+    const gangExitBlock = gangExitBlockText(ms, Date.now());
+    if (gangExitBlock) throw new HttpsError('failed-precondition', gangExitBlock);
     if (!user.onboardingRewardClaimed) {
       throw new HttpsError('failed-precondition', 'İmam olmak için önce temel görevleri (📋 butonu) tamamlamış olmalısın.');
     }
@@ -8231,6 +8238,84 @@ async function settleMaterialListing(listingRef, nowMs = Date.now()) {
   });
 }
 
+// v115 — settleItemListing: 7 günü dolan ARAÇ / SİLAH ilanı (2. el ve
+// galerici/silahçı vitrin ilanı). Fiyat, ilan konduğu andaki fiyat bandının
+// tam ortasının ALTINDAYSA oyun satın alır (satıcıya fiyat − %1 vergi, ürün
+// oyundan çıkar); %50 ve üstündeyse ilan kalkar, ürün sahibine (vitrindeyse
+// vitrinde) kalır, ömrü azalmaz. Malzeme kuralıyla aynı (autoSellsAt).
+async function settleItemListing(listingRef, nowMs = Date.now()) {
+  let sms = null;
+  const res = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(listingRef);
+    if (!snap.exists) return { skipped: 'missing' };
+    const l = snap.data();
+    const isItem = l.itemType === 'vehicle' || l.itemType === 'weapon';
+    if (l.sold || !isItem || l.sellerId === 'system') {
+      if (l.expireAtMs != null) tx.update(listingRef, { expireAtMs: admin.firestore.FieldValue.delete() });
+      return { skipped: 'closed' };
+    }
+    const startMs = Number(l.listedAtMs) || l.createdAt?.toMillis?.() || 0;
+    if (!startMs) return { skipped: 'no_time' };
+    const dueAt = startMs + LISTING_TTL_MS;
+    if (dueAt > nowMs) {
+      if (l.expireAtMs !== dueAt) tx.update(listingRef, { expireAtMs: dueAt });
+      return { skipped: 'not_due' };
+    }
+    const isVehicle = l.itemType === 'vehicle';
+    const itemRef = db.collection(isVehicle ? 'vehicles' : 'weapons').doc(isVehicle ? l.vehicleId : l.weaponId);
+    const sellerRef = db.collection('users').doc(l.sellerId);
+    const [itemSnap, sellerSnap] = await Promise.all([tx.get(itemRef), tx.get(sellerRef)]);
+    const close = { sold: true, expiredAutomatically: true, expireAtMs: admin.firestore.FieldValue.delete() };
+    if (!itemSnap.exists || itemSnap.data().ownerId !== l.sellerId) {
+      tx.update(listingRef, { ...close, cancelled: true });
+      return { skipped: 'item_gone' };
+    }
+    const item = itemSnap.data();
+    const band = Number(l.bandMax) > 0 ? { min: Number(l.bandMin) || 0, max: Number(l.bandMax) } : itemListingBand(l.itemType, item);
+    const auto = autoSellsAt(l.price, band.min, band.max) && sellerSnap.exists;
+    const label = (isVehicle ? l.vehicleModel : l.weaponName) || (isVehicle ? 'aracın' : 'silahın');
+    if (auto) {
+      const payout = Math.max(0, Math.floor(Number(l.price) || 0));
+      const tax = resaleTax(payout);
+      taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: tax, source: 'ikinciEl', uid: l.sellerId, atMs: nowMs, ref: listingRef.id });
+      const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, payout - tax);
+      tx.set(
+        sellerRef,
+        { gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('ikinciEl'), debtToState: admin.firestore.FieldValue.increment(debtDelta) },
+        { merge: true }
+      );
+      tx.delete(itemRef);
+      tx.update(listingRef, { ...close, autoSold: true, soldAt: admin.firestore.FieldValue.serverTimestamp() });
+      sms = { uid: l.sellerId, text: `✅ İlandaki ${label} 7 gün içinde satılmadığı için otomatik satıldı: +${(payout - tax).toLocaleString('tr-TR')} altın.`, type: 'listing_auto_sold' };
+      return { auto: true, payout };
+    }
+    if (l.shopHouseId) {
+      // vitrin ilanı düşer, ürün vitrinde kalır (ömrü zaten donuk)
+      tx.update(itemRef, { shopListingId: null });
+    } else {
+      tx.update(itemRef, { listed: false });
+    }
+    tx.update(listingRef, { ...close, cancelled: true });
+    sms = {
+      uid: l.sellerId,
+      text: l.shopHouseId
+        ? `📦 Vitrindeki ${label} 7 gündür satılmadığı için ilandan kaldırıldı (vitrinde duruyor, ömrü azalmadı).`
+        : `📦 İlandaki ${label} 7 gündür satılmadığı için ilandan kaldırıldı, sana iade edildi (ömrü azalmadı).`,
+      type: 'listing_expired',
+    };
+    return { auto: false };
+  });
+  if (sms) {
+    await db.collection('users').doc(sms.uid).collection('messages').add({
+      text: sms.text,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      read: false,
+      type: sms.type,
+    }).catch(() => {});
+  }
+  return res;
+}
+
 // settleMaterialListingBatches — saatte bir: süresi dolan malzeme partileri.
 // Sorgu tek alanlı (expireAtMs) — bileşik dizin gerekmez; satılmış/iptal
 // ilanlarda alan silinir.
@@ -8238,7 +8323,13 @@ export const settleMaterialListingBatches = onSchedule({ schedule: 'every 60 min
   const nowMs = Date.now();
   const snap = await db.collection('marketplaceListings').where('expireAtMs', '<=', nowMs).limit(500).get();
   for (const d of snap.docs) {
-    await settleMaterialListing(d.ref, nowMs).catch((err) => console.error('settleMaterialListing', d.id, err));
+    const t = d.data().itemType;
+    // v115: araç/silah ilanları da 7. gün aynı kurala girer
+    if (t === 'vehicle' || t === 'weapon') {
+      await settleItemListing(d.ref, nowMs).catch((err) => console.error('settleItemListing', d.id, err));
+    } else {
+      await settleMaterialListing(d.ref, nowMs).catch((err) => console.error('settleMaterialListing', d.id, err));
+    }
   }
 });
 
@@ -8264,6 +8355,12 @@ export const expireOldMarketplaceListings = onSchedule({ schedule: 'every 24 hou
       if (legacyAt && now - legacyAt >= SEVEN_DAYS_MS) {
         jobs.push(settleMaterialListing(doc.ref, now).catch((err) => console.error('legacy settle', doc.id, err)));
       }
+      return;
+    }
+    // v115: oyuncu / vitrin araç-silah ilanları — otomatik sat ya da kaldır
+    // (eski, expireAtMs alanı olmayan ilanlar da buradan yakalanır)
+    if ((listing.itemType === 'vehicle' || listing.itemType === 'weapon') && listing.sellerId !== 'system') {
+      jobs.push(settleItemListing(doc.ref, now).catch((err) => console.error('legacy item settle', doc.id, err)));
       return;
     }
     const createdAtMs = listing.createdAt?.toMillis?.() ?? 0;
@@ -10030,6 +10127,8 @@ export const createListing = onCall(async (request) => {
         vehicleLifeDays,
         vehicleRepairsUsed: v.repairsUsed || 0,
         price: priceNum,
+        // v115: 00:00'dan önce iptal bedelsiz · 7. gün otomatik sat / kaldır
+        ...itemListingTimeFields(Date.now(), { min: vehicleMin, max: vehicleMax }),
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         sold: false,
       });
@@ -10086,6 +10185,8 @@ export const createListing = onCall(async (request) => {
         weaponLifeDays,
         weaponRepairsUsed: w.repairsUsed || 0,
         price: priceNum,
+        // v115: 00:00'dan önce iptal bedelsiz · 7. gün otomatik sat / kaldır
+        ...itemListingTimeFields(Date.now(), { min: weaponMin, max: weaponMax }),
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         sold: false,
       });
@@ -10408,8 +10509,9 @@ export const instantSellListing = onCall(async (request) => {
 
 export const cancelListing = onCall(async (request) => {
   const uid = requireAuth(request);
-  const { listingId } = request.data || {};
+  const { listingId, confirmPenalty } = request.data || {};
   const listingRef = db.collection('marketplaceListings').doc(listingId);
+  let penalized = false;
 
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(listingRef);
@@ -10428,10 +10530,26 @@ export const cancelListing = onCall(async (request) => {
       // v77: dükkân ilanı kaldırılınca ürün vitrinde kalır (cezasız). Vitrinden
       // çıkarmak (ömür −1) sadece dükkândan yapılır (shopAction vitrinRemove).
       tx.update(db.collection(listing.itemType === 'vehicle' ? 'vehicles' : 'weapons').doc(listing.itemType === 'vehicle' ? listing.vehicleId : listing.weaponId), { shopListingId: null });
-    } else if (listing.itemType === 'vehicle') {
-      tx.update(db.collection('vehicles').doc(listing.vehicleId), { listed: false });
-    } else if (listing.itemType === 'weapon') {
-      tx.update(db.collection('weapons').doc(listing.weaponId), { listed: false });
+    } else if (listing.itemType === 'vehicle' || listing.itemType === 'weapon') {
+      // v115: ilan konduğu gün (00:00'dan önce) iptal bedelsiz; 00:00 geçtiyse
+      // ürünün ömrü 1 gün kısalır — istemci onay penceresi gösterip
+      // confirmPenalty ile tekrar çağırır.
+      const isVehicle = listing.itemType === 'vehicle';
+      const itemRef = db.collection(isVehicle ? 'vehicles' : 'weapons').doc(isVehicle ? listing.vehicleId : listing.weaponId);
+      const itemSnap = await tx.get(itemRef);
+      const penalty = itemCancelPenalty(listing, Date.now());
+      if (penalty && !confirmPenalty) {
+        throw new HttpsError('failed-precondition', 'cancel-penalty: Saat 00:00 geçti — ilanı iptal edersen ürünün ömrü 1 gün kısalır.');
+      }
+      if (itemSnap.exists) {
+        const patch = { listed: false };
+        if (penalty) {
+          const cap = lifeCapOf(listing.itemType);
+          patch.lifeDays = Math.max(0, (itemSnap.data().lifeDays ?? cap) - 1);
+          penalized = true;
+        }
+        tx.update(itemRef, patch);
+      }
     } else if (listing.itemType === 'material') {
       const inventoryRef = db
         .collection('users')
@@ -10462,7 +10580,7 @@ export const cancelListing = onCall(async (request) => {
     tx.update(listingRef, { sold: true, cancelled: true, ...(listing.expireAtMs != null ? { expireAtMs: admin.firestore.FieldValue.delete() } : {}) });
   });
 
-  return { ok: true };
+  return { ok: true, penalized };
 });
 
 // =============================================================================
@@ -10626,7 +10744,7 @@ export const buyListing = onCall(async (request) => {
 
     // Ürünü transfer et.
     const shopClear = listing.shopHouseId
-      ? { shopHouseId: admin.firestore.FieldValue.delete(), shopListingId: admin.firestore.FieldValue.delete() }
+      ? { shopHouseId: admin.firestore.FieldValue.delete(), shopListingId: admin.firestore.FieldValue.delete(), shopAddedDayKey: admin.firestore.FieldValue.delete() }
       : {};
     if (isShopSale) {
       business.recordIncomeTx(tx, {
@@ -10650,6 +10768,7 @@ export const buyListing = onCall(async (request) => {
         sold: true,
         buyerId: uid,
         soldAt: admin.firestore.FieldValue.serverTimestamp(),
+        ...(listing.expireAtMs != null ? { expireAtMs: admin.firestore.FieldValue.delete() } : {}),
       });
     } else if (listing.itemType === 'weapon') {
       tx.update(db.collection('weapons').doc(listing.weaponId), {
@@ -10661,6 +10780,7 @@ export const buyListing = onCall(async (request) => {
         sold: true,
         buyerId: uid,
         soldAt: admin.firestore.FieldValue.serverTimestamp(),
+        ...(listing.expireAtMs != null ? { expireAtMs: admin.firestore.FieldValue.delete() } : {}),
       });
     } else if (isMaterial) {
       const inventoryRef = db

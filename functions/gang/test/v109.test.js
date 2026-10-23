@@ -389,3 +389,18 @@ test('kod: setupGang ile çete üyesi polis başvurabilir (çifte ajan); polis o
   assert.equal(h.gangOf(id), G.gangId, 'çetede kalır');
   assert.equal(h.raw(`gangWorlds/test/players/${id}`).isPolice, true);
 });
+
+test('v116: çeteden ayrılan / atılan 24 saat polisliğe başvuramaz; süre dolunca başvurur', async () => {
+  const h = await createHarness();
+  const G = await setupGang(h, { members: 2 });
+  const [leaver, kicked] = G.ids;
+  await h.act(leaver, 'leaveGang');
+  await h.act(G.baba, 'kickMember', { targetId: kicked });
+  for (const id of [leaver, kicked]) {
+    assert.equal((await h.membership(id)).gangCooldownUntilMs, h.clock.now + 24 * 3600_000);
+    assert.match((await h.fails(id, 'applyIntel', { codeName: `P${id.slice(-4)}`, ...NO_GANG })).message, /24 saat geçmeden tekrar giremezsin/);
+  }
+  h.setTime(h.clock.now + 24 * 3600_000 + 1);
+  const r = await h.act(leaver, 'applyIntel', { codeName: 'Donus', ...NO_GANG });
+  assert.ok(r.accepted || r.appId, 'süre dolunca başvurabilir');
+});

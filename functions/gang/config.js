@@ -260,3 +260,15 @@ export const WINDOW_HOURS = 3;
 // v38 öncesi 6 saatlik dilim (geçiş günü çift saldırı koruması için)
 export const LEGACY_WINDOW_HOURS = 6;
 export const WAR_SHARDS = 8;
+
+// v116 — çeteden AYRILAN (kendi isteğiyle) ya da ATILAN oyuncu 24 saat boyunca
+// hiçbir çeteye giremez, çete kuramaz, polisliğe başvuramaz, imam olamaz.
+// memberships/{uid}.gangCooldownUntilMs. Başka çeteye doğrudan geçiş / yeni
+// çete kurarken eski çeteden çıkmak ve aktiflik temizliği bu yasağı koymaz.
+export const GANG_EXIT_COOLDOWN_MS = 24 * MS_HOUR;
+export function gangExitBlockText(membership, now = Date.now()) {
+  const until = Number(membership?.gangCooldownUntilMs || 0);
+  if (!(until > now)) return null;
+  const hrs = Math.max(1, Math.ceil((until - now) / MS_HOUR));
+  return `Çeteden ayrıldıktan ya da atıldıktan sonra 24 saat geçmeden tekrar giremezsin (${hrs} saat kaldı). Bu sürede çeteye, polisliğe ya da imamlığa giremezsin.`;
+}

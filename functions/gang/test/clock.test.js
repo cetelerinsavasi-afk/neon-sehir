@@ -146,19 +146,23 @@ test('v38 geçiş: aktiflik kuralı devreye girdiği an herkes için taze başla
   assert.ok(Number(h.raw('gangWorlds/test').activityV38StartMs) > 0);
 });
 
-test('v56: ayrılan da atılan da o çeteye 00:00a kadar giremez; başka çeteye girebilir; ertesi gün girer', async () => {
+test('v116: ayrılan da atılan da 24 saat HİÇBİR çeteye giremez, çete kuramaz; 00:00 yetmez, 24 saat sonra girer', async () => {
   const h = await createHarness();
   const G = await setupGang(h, { members: 2 });
   const O = await setupGang(h, { members: 0, name: 'Öteki' });
   const [leaver, kicked] = G.ids;
   await h.act(leaver, 'leaveGang');
-  assert.match((await h.fails(leaver, 'joinGang', { gangId: G.gangId })).message, /00:00/);
+  assert.match((await h.fails(leaver, 'joinGang', { gangId: G.gangId })).message, /24 saat geçmeden tekrar giremezsin/);
   await h.act(G.baba, 'kickMember', { targetId: kicked });
-  assert.match((await h.fails(kicked, 'joinGang', { gangId: G.gangId })).message, /atıldığın çeteye 00:00/);
-  await h.act(kicked, 'joinGang', { gangId: O.gangId }); // başka çete serbest
-  await h.nextDay();
-  await h.act(kicked, 'joinGang', { gangId: G.gangId, confirmLeave: true });
+  assert.match((await h.fails(kicked, 'joinGang', { gangId: G.gangId })).message, /24 saat geçmeden/);
+  assert.match((await h.fails(kicked, 'joinGang', { gangId: O.gangId })).message, /24 saat geçmeden/, 'başka çete de yasak');
+  assert.match((await h.fails(kicked, 'createGang', { name: 'Yenisi', logo: { emoji: '💀', color: '#ff2e8c', bg: '#1a0610' } })).message, /24 saat geçmeden/);
+  await h.nextDay(); // 00:05 — 24 saat dolmadı
+  assert.match((await h.fails(kicked, 'joinGang', { gangId: O.gangId })).message, /saat kaldı/);
+  await h.nextDay('09:30'); // 24 saati geçti
+  await h.act(kicked, 'joinGang', { gangId: G.gangId });
   assert.equal(h.member(G.gangId, kicked).prestige, 0);
+  await h.act(leaver, 'joinGang', { gangId: O.gangId });
 });
 
 test('dağılan çete: kasa yakılır, tırlar emekli, ticaret yolu boşa çıkar, bekleyen bahis iade', async () => {

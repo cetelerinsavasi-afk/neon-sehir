@@ -9,6 +9,7 @@ import { useMyFactory } from './useMyFactory';
 import { useMyFutbolTeam } from './useMyFutbolTeam';
 import { currentPrayerWindow } from './useMosqueAttendance';
 import { useBizReminders } from './useBizReminders';
+import { SAFE_DAILY_LIMIT } from '../components/ShadyDeal/shadyDeal';
 
 // Görev listesi/hatırlatıcı paneli — bkz. functions/index.js ONBOARDING
 // bölümü. Sayaç (onboardingStep, 1-20) ve tamamlanma bayrağı
@@ -169,6 +170,14 @@ export function useOnboarding(gangReminders = null) {
       if (hasUntriggeredMining || hasUntriggeredWorkerMachine) {
         list.push({ id: 'machines', emoji: '⚙️', text: 'Makineleri çalıştır' });
       }
+    }
+
+    // v115: Park'taki gizemli adama günlük 10 risksiz satış hakkı — her
+    // satışta sayı 1 azalır (sunucu: users.parkSafeSales = { day, count }).
+    const safeUsed = player.parkSafeSales?.day === todayKey ? Number(player.parkSafeSales.count || 0) : 0;
+    const safeLeft = Math.max(0, SAFE_DAILY_LIMIT - safeUsed);
+    if (safeLeft > 0) {
+      list.push({ id: 'park-safe', emoji: '💊', text: `Risksiz şekilde ${safeLeft} adet yasaklı madde sat` });
     }
 
     // v108.1: polis rüşvet payı da her gece 00:00'da maaşla otomatik yatar (hatırlatıcı yok)

@@ -120,6 +120,7 @@ test('dağıtım açıldıktan sonra katılan (ya da ayrılıp dönen) oyuncu o 
   h.clock.now += 1000;
   await h.act(u, 'leaveGang');
   await h.tickTo('2026-09-22', '00:05'); // aynı gün geri giremez
+  await h.db.doc(`gangWorlds/test/memberships/${u}`).update({ gangCooldownUntilMs: null }); // v116 24 saat yasağı bu testin konusu değil
   await h.act(u, 'joinGang', { gangId: A.gangId });
   const err = await h.fails(u, 'claimDistribution', { distributionId });
   assert.match(err.message, /katılmadan önce/);

@@ -23,7 +23,8 @@ import { MAX_REPAIRS, vehicleDisplayName, lifeCapOf, repairBonusOf } from '../Ve
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import './MarketplaceScreen.css';
 import { ListingCarStats } from '../RaceTrackScreen/CarStats';
-import { autoSellsAt, AUTO_SELL_HINT } from '../../lib/autoSell';
+import { autoSellsAt, AUTO_SELL_HINT, itemCancelPenalty, ITEM_CANCEL_PENALTY_TEXT, ITEM_EXPIRE_HINT, ITEM_LISTING_RULES } from '../../lib/autoSell';
+import ConfirmModal from '../ConfirmModal/ConfirmModal';
 
 // Bu oturumda eski (deterministik ID sisteminden önce açılmış) malzeme
 // ilanlarını birleştirme işlemi zaten tetiklendi mi? (Gereksiz tekrar
@@ -599,6 +600,15 @@ function SellForm({ onCreated, onClose, initialItemType }) {
               {itemType === 'material' && priceRange && autoSellsAt(price, priceRange.min, priceRange.max) && (
                 <p className="market-autosell-hint">{AUTO_SELL_HINT}</p>
               )}
+              {/* v115 — araç/silah: malzemelerdeki gibi 7. gün kuralı + iptal kuralı */}
+              {(itemType === 'vehicle' || itemType === 'weapon') && priceRange && (
+                <>
+                  <p className="market-autosell-hint">
+                    {autoSellsAt(price, priceRange.min, priceRange.max) ? AUTO_SELL_HINT : ITEM_EXPIRE_HINT}
+                  </p>
+                  <p className="market-price-range-hint">{ITEM_LISTING_RULES}</p>
+                </>
+              )}
               {itemType === 'material' && quantity > 0 && price > 0 && (
                 <p className="market-price-range-hint">
                   Toplam: {(price * quantity).toLocaleString('tr-TR')} altın ({quantity} adet)
@@ -890,6 +900,30 @@ export default function MarketplaceScreen() {
     }
   };
 
+  // v115 — araç/silah ilanı: 00:00'dan önce direkt iptal; sonra onay penceresi
+  const [cancelAsk, setCancelAsk] = useState(null);
+  const requestCancel = (l) => {
+    const isItem = (l.itemType === 'vehicle' || l.itemType === 'weapon') && !l.shopHouseId && !l.gang;
+    if (isItem && itemCancelPenalty(l)) {
+      setCancelAsk(l);
+      return;
+    }
+    run(l.id, async () => {
+      try {
+        await cancelListing(l.id);
+      } catch (err) {
+        // gece yarısı geçtiyse sunucu onay ister
+        if (String(err?.message || '').includes('cancel-penalty')) setCancelAsk(l);
+        else throw err;
+      }
+    });
+  };
+  const confirmCancel = () => {
+    const l = cancelAsk;
+    setCancelAsk(null);
+    if (l) run(l.id, () => cancelListing(l.id, { confirmPenalty: true }));
+  };
+
   const runAdvertise = async (listingId) => {
     setBusy(listingId);
     setError(null);
@@ -945,6 +979,15 @@ export default function MarketplaceScreen() {
 
   return (
     <div className="market-screen" ref={rootRef}>
+      {cancelAsk && (
+        <ConfirmModal
+          title="İlan iptal edilsin mi?"
+          message={ITEM_CANCEL_PENALTY_TEXT}
+          confirmLabel="İlanı İptal Et"
+          onConfirm={confirmCancel}
+          onCancel={() => setCancelAsk(null)}
+        />
+      )}
       {view === 'home' ? (
         <>
           <div className="market-header-row">
@@ -967,7 +1010,7 @@ export default function MarketplaceScreen() {
                   isMine={l.sellerId === user?.uid}
                   busy={busy === l.id}
                   noGold={noGoldId === l.id}
-                  onCancel={() => run(l.id, () => cancelListing(l.id))}
+                  onCancel={() => requestCancel(l)}
                   onBuy={() => buyOrOpenModal(l)}
                 />
               ))}
@@ -1018,7 +1061,7 @@ export default function MarketplaceScreen() {
                   key={l.id}
                   listing={l}
                   busy={busy === l.id}
-                  onCancel={() => run(l.id, () => cancelListing(l.id))}
+                  onCancel={() => requestCancel(l)}
                   advertising={advertisingId === l.id}
                   onStartAdvertise={() => setAdvertisingId(l.id)}
                   onCancelAdvertise={() => setAdvertisingId(null)}

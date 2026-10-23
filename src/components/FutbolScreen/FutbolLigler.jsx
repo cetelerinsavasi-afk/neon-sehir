@@ -24,6 +24,8 @@ import FutbolCupBetting, {
   FUTBOL_CUP_ROUND_MATCH_COUNTS,
   FUTBOL_CUP_TRIGGER_AFTER_ROUND,
   cupBetSelections,
+  FUTBOL_CUP_ROUND_PRIZE,
+  cupRewardMultForTier,
 } from './FutbolCupBetting';
 import FutbolSeasonCelebration from './FutbolSeasonCelebration';
 import MatchChat from './MatchChat';
@@ -241,6 +243,8 @@ export default function FutbolLigler({ initialTab = 'puan', chatReadOnly = false
   // kupa maçları ise sezon durumunun (futbolSeasonState) bekleyen turu
   // (pendingCupRound) İLE, sadece kupa günü GERÇEKTEN bugünse belirlenir
   // (bkz. isActualCupDayToday).
+  // v114 — fikstürdeki kupa turu ödülü: aktif ligin kupa grubunun katsayısı
+  const cupPrizeMult = cupRewardMultForTier(activeLeague?.tier || 1, cup?.rewardMult);
   const cupRoundsGrouped = useMemo(() => {
     const map = {};
     cupMatches.forEach((m) => {
@@ -474,7 +478,13 @@ export default function FutbolLigler({ initialTab = 'puan', chatReadOnly = false
                   {cup && cupRoundAfterThis && (
                     <div className="futbol-match-round compact futbol-cup-fixture-round">
                       <p className="futbol-match-round-title futbol-cup-fixture-title">
-                        🏆 {ROUND_LABELS[cupRoundAfterThis]}
+                        <span>🏆 {ROUND_LABELS[cupRoundAfterThis]}</span>
+                        {/* v114 — turun ödülü satırın en sağında */}
+                        {FUTBOL_CUP_ROUND_PRIZE[cupRoundAfterThis] > 0 && (
+                          <span className="futbol-cup-fixture-prize">
+                            Ödül: {(FUTBOL_CUP_ROUND_PRIZE[cupRoundAfterThis] * cupPrizeMult).toLocaleString('tr-TR')}
+                          </span>
+                        )}
                       </p>
                       {cupRoundMatches.length > 0
                         ? cupRoundMatches.map((m) => (

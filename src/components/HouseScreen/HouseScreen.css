@@ -1829,3 +1829,13 @@
   pointer-events: auto;
   cursor: pointer;
 }
+
+/* v114 — tavan modu butonu (göz butonunun hemen altında) + açıldı yazısı */
+.hs-ceil-btn {
+  top: calc(108px + var(--hs-safe-t));
+}
+.hs-toast.ceilnote {
+  top: calc(110px + var(--hs-safe-t));
+  border-color: rgba(25, 232, 255, 0.8);
+  box-shadow: 0 0 16px rgba(25, 232, 255, 0.3);
+}

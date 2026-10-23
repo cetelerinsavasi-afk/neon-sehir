@@ -3,7 +3,7 @@
 // Firebase'e doğrudan bağımlı DEĞİL — tüm bağımlılıklar `deps` ile gelir,
 // böylece aynı kod hem Cloud Functions'ta hem bellek içi testlerde çalışır.
 import crypto from 'crypto';
-import { GANG, INTEL, GANG_RANKS, TRADE_PRODUCTS, RANK_LABELS, INTEL_TO_GANG_EQUIV, productById, rankLevel } from './config.js';
+import { GANG, INTEL, GANG_RANKS, TRADE_PRODUCTS, RANK_LABELS, INTEL_TO_GANG_EQUIV, productById, rankLevel, GANG_EXIT_COOLDOWN_MS } from './config.js';
 import { dateKeyOf, hourOf, windowSlotOf, weekdayOfKey, addDays } from './time.js';
 import { goldTag } from '../moneyLog.js';
 import { stateWrite } from '../stateTreasury.js';
@@ -432,6 +432,7 @@ export function createCore(deps) {
     intelDecisionDeadline: null,
     intelAppId: null, // v108: bekleyen teşkilat başvurusu
     intelCooldownUntilMs: null, // v109: ayrılan / atılan 24 saat yeniden başvuramaz
+    gangCooldownUntilMs: null, // v116: çeteden ayrılan / atılan 24 saat çete-polis-imam olamaz
   };
 
   async function readMembership(tx, ctx, actorId) {
@@ -489,6 +490,9 @@ export function createCore(deps) {
     const voluntary = String(reason || '').startsWith('left');
     const lockOut = voluntary || (isKickReason(reason) && !ctx.nightly);
     const msUpdate = { gangId: null, gangRank: null, gangJoinedAtMs: null, gangStint: null, ...(lockOut ? { gangExitDay: { [gangId]: ctx.dateKey } } : {}) };
+    // v116: kendi isteğiyle ayrılan ('left') ya da atılan (gece sonuçlanan oylama
+    // dahil) 24 saat çeteye / polisliğe / imamlığa giremez.
+    if (reason === 'left' || isKickReason(reason)) msUpdate.gangCooldownUntilMs = ctx.now + GANG_EXIT_COOLDOWN_MS;
     if (plan.membership.intelDecisionGangId === gangId) {
       msUpdate.intelDecisionGangId = null;
       msUpdate.intelDecisionDeadline = null;

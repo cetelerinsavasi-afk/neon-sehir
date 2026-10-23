@@ -9,7 +9,7 @@ import { istDateKey, useDocData, useGang, useGangAction, useNow, useQueryData } 
 import { Btn, Card, Confirm, Empty, Gold, Logo, Sheet } from '../ui';
 import { LogoPicker, useMyWallet } from '../shared';
 import { BiatTag } from '../Biat';
-import { GANG_RULES, INTEL_LOGO, INTEL_NAME, fmt, productOf } from '../gangConstants';
+import { GANG_RULES, INTEL_LOGO, INTEL_NAME, fmt, productOf, gangExitHoursLeft, gangExitText } from '../gangConstants';
 import PoliceApplySheet from '../PoliceApplySheet';
 
 function CreateGangSheet({ onClose, membership }) {
@@ -19,6 +19,7 @@ function CreateGangSheet({ onClose, membership }) {
   const [note, setNote] = useState('');
   const [logo, setLogo] = useState({ emoji: '💀', color: '#ff2e8c', bg: '#1a0610' });
   const [confirm, setConfirm] = useState(false);
+  const exitH = gangExitHoursLeft(membership, useNow(60_000)); // v116
   const req = [
     { icon: '🪙', label: `${fmt(GANG_RULES.CREATE_MIN_GOLD)} altın`, ok: wallet.gold == null ? null : wallet.gold >= GANG_RULES.CREATE_MIN_GOLD },
     { icon: '⭐', label: `${GANG_RULES.CREATE_MIN_REPUTATION} saygınlık`, ok: wallet.reputation == null ? null : wallet.reputation >= GANG_RULES.CREATE_MIN_REPUTATION },
@@ -48,7 +49,8 @@ function CreateGangSheet({ onClose, membership }) {
         Kısa not
         <input className="gx-input" maxLength={GANG_RULES.NOTE_MAX} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Slogan, tehdit, davet…" />
       </label>
-      <Btn block disabled={!valid} onClick={() => setConfirm(true)}>
+      {exitH > 0 && <p className="gx-warn">{gangExitText(exitH)}</p>}
+      <Btn block disabled={!valid || exitH > 0} onClick={() => setConfirm(true)}>
         Kur — {fmt(GANG_RULES.CREATE_FEE)} altın
       </Btn>
       {confirm && (
@@ -123,7 +125,9 @@ export default function ListTab({ membership, onOpen }) {
   const { path } = useGang();
   const { run, busy } = useGangAction();
   const ms = membership || {};
-  const today = istDateKey(useNow(60_000));
+  const nowMs = useNow(60_000);
+  const today = istDateKey(nowMs);
+  const exitH = gangExitHoursLeft(ms, nowMs); // v116: 24 saat hiçbir çeteye giremez
   const { docs: gangs, loading } = useQueryData(path('gangs'), () => [where('status', '==', 'active'), limit(100)], 'active');
   const { data: intel } = useDocData(path('intel/main'));
   const [create, setCreate] = useState(false);
@@ -149,6 +153,7 @@ export default function ListTab({ membership, onOpen }) {
           Çete kur +
         </Btn>
       </div>
+      {exitH > 0 && <p className="gx-warn">{gangExitText(exitH)}</p>}
       {gangs.length > 6 && <input className="gx-input gx-search" placeholder="Çete ara…" value={q} onChange={(e) => setQ(e.target.value)} />}
       {loading && <div className="gx-loading">Yükleniyor…</div>}
       {!loading && gangs.length === 0 && <Empty icon="🌃" text="Henüz çete yok. İlk çeteyi sen kur!" />}
@@ -204,8 +209,8 @@ export default function ListTab({ membership, onOpen }) {
                   Aç
                 </Btn>
               ) : (
-                <Btn small kind="ghost" disabled={ms.gangExitDay?.[x.id] === today} onClick={() => setJoin(x.g)}>
-                  {ms.gangExitDay?.[x.id] === today ? '🔒 00:00' : 'Çeteye gir'}
+                <Btn small kind="ghost" disabled={exitH > 0 || ms.gangExitDay?.[x.id] === today} onClick={() => setJoin(x.g)}>
+                  {exitH > 0 ? `🔒 ${exitH} sa` : ms.gangExitDay?.[x.id] === today ? '🔒 00:00' : 'Çeteye gir'}
                 </Btn>
               )
             }

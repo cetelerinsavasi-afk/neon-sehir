@@ -48,6 +48,25 @@ export const FUTBOL_CUP_TRIGGER_AFTER_ROUND = {
   12: 'FINAL',
 };
 
+// v114 — FUTBOL_CUP_ROUND_PRIZE — functions/index.js'teki
+// FUTBOL_CUP_ROUND_CLEAR_REWARD (+ Final için FUTBOL_CUP_CHAMPION_REWARD)
+// sabitlerinin istemci ikizi: turu atlatan takıma verilen ödül (grubun
+// rewardMult katsayısıyla çarpılır). "Maç Fikstürü"nde her kupa turunun
+// satırının sağında gösterilir. Sunucudaki değerler değişirse burası da güncellenmeli.
+export const FUTBOL_CUP_ROUND_PRIZE = {
+  ROUND_OF_16: 25000,
+  QUARTER_FINAL: 50000,
+  SEMI_FINAL: 75000,
+  FINAL: 100000,
+};
+// cupRewardMultForTier — sunucu: grup = ceil(tier/2), rewardMult = grupSayısı - grup + 1.
+// 1. grubun (1.-2. Lig) kupa belgesindeki rewardMult = grup sayısı.
+export function cupRewardMultForTier(tier, topGroupMult) {
+  const groups = Math.max(1, Number(topGroupMult) || 1);
+  const group = Math.max(1, Math.ceil((Number(tier) || 1) / 2));
+  return Math.max(1, groups - group + 1);
+}
+
 const STAKE_QUICK_AMOUNTS = [10, 100, 1000, 10000];
 export const PICK_LABELS = { home: 'Ev Sahibi', away: 'Deplasman' };
 

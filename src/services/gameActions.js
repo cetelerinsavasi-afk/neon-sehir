@@ -136,8 +136,9 @@ export const createListing = (payload) => httpsCallable(functions, 'createListin
 export const instantSellListing = (payload) =>
   httpsCallable(functions, 'instantSellListing')(payload);
 
-export const cancelListing = (listingId) =>
-  httpsCallable(functions, 'cancelListing')({ listingId });
+// v115: confirmPenalty — 00:00 geçtikten sonra araç/silah ilanı iptali (ömür −1) onayı
+export const cancelListing = (listingId, { confirmPenalty = false } = {}) =>
+  httpsCallable(functions, 'cancelListing')({ listingId, ...(confirmPenalty ? { confirmPenalty: true } : {}) });
 
 // advertiseListing — kullanıcı revizesi: "Reklam Ver" butonu, 24 saatlik
 // reklam 1000 altın, kabul edilirse ilan 24 saat "Reklam Verilen

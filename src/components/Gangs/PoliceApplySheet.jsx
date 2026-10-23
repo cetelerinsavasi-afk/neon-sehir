@@ -14,7 +14,7 @@ import { limit, where } from 'firebase/firestore';
 import { useGang, useGangAction, useNow, useQueryData } from './GangContext';
 import { Btn, Sheet } from './ui';
 import { useMyWallet } from './shared';
-import { APP_GANG_RANKS, GANG_RULES, SALARIES, fmt } from './gangConstants';
+import { APP_GANG_RANKS, GANG_RULES, SALARIES, fmt, gangExitHoursLeft, gangExitText } from './gangConstants';
 import { usePlayer } from '../../hooks/usePlayer';
 
 const NO_GANG = GANG_RULES.APP_NO_GANG;
@@ -103,7 +103,8 @@ export default function PoliceApplySheet({ onClose, onDone, membership }) {
     { label: '🔫 En az 1 silah', ok: null },
   ];
   const cd = cooldownHoursLeft(membership, now);
-  const block = live && player.isImam ? 'İmam polis olamaz — önce imamlıktan istifa etmelisin.' : membership?.gangRank === 'baba' ? 'Mafya Babası polis olamaz.' : cd ? `Polislikten yeni ayrıldın — ${cd} saat daha başvuru yapamazsın.` : null;
+  const exitH = gangExitHoursLeft(membership, now); // v116
+  const block = live && player.isImam ? 'İmam polis olamaz — önce imamlıktan istifa etmelisin.' : membership?.gangRank === 'baba' ? 'Mafya Babası polis olamaz.' : cd ? `Polislikten yeni ayrıldın — ${cd} saat daha başvuru yapamazsın.` : exitH ? gangExitText(exitH) : null;
   const ok = !block && req.every((r) => r.ok !== false);
   return (
     <Sheet title="Polislik başvurusu" icon="🚓" onClose={onClose}>

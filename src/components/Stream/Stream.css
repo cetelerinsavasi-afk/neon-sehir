@@ -1459,11 +1459,45 @@ body.ns-streaming .onnumara-fullscreen {
 .st-match-mirror {
   background: #0b0d14;
 }
-.st-match-mirror .futbol-match-backdrop {
+/* v114 — izleyicide maç ekranı yayın alanının (sahne) DIŞINA taşmaz: içindeki
+   "position: fixed" pencereler (maç detayı, takım detayı…) bu kutuya göre konur,
+   sohbet ve yazı alanının üstüne çıkamaz. Kaydırma iç kutuda. */
+.st-game.st-match-mirror {
+  padding: 0;
+  overflow: hidden;
+  contain: layout paint;
+  isolation: isolate;
+  z-index: 1;
+}
+.st-match-scroll {
   position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 6px 8px 12px;
+}
+.st-match-mirror .futbol-match-backdrop,
+.st-match-mirror .futbol-picker-backdrop {
   padding: 8px;
 }
 .st-match-mirror .futbol-match-detail {
   max-height: 100%;
   overflow-y: auto;
+}
+.st-match-mirror button,
+.st-match-mirror [role='button'],
+.st-match-mirror a {
+  cursor: default;
+}
+/* v114 — sahnedeki hiçbir şey (maç ekranı dahil) sohbetin / yazı alanının üstüne çıkmasın */
+.st-root > .st-stage {
+  isolation: isolate;
+  z-index: 0;
+}
+.st-root > .st-chat {
+  position: relative;
+  z-index: 8;
+}
+.st-root > .st-chat.open {
+  position: fixed;
 }

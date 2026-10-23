@@ -42,11 +42,43 @@ export default function StreamMatchMirror({ frameRef }) {
     }, 300);
     return () => clearInterval(iv);
   }, [frameRef]);
+  // v114 — izleyici sadece izler: maça/sekmeye/lige dokunamaz (yayıncı neye bakıyorsa o).
+  // Olaylar yakalama aşamasında durdurulur; kaydırma (dokunup sürükleme) çalışmaya devam eder.
+  const block = (e) => {
+    e.stopPropagation();
+  };
+  const blockDown = (e) => {
+    e.stopPropagation();
+    if (e.type === 'mousedown') e.preventDefault(); // odak/seçim/açılır liste olmasın
+  };
+  const blockClick = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+  };
+  const blockFocus = (e) => {
+    const t = e.target;
+    if (t && /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(t.tagName)) t.blur?.();
+  };
   return (
-    <div className="st-game st-cards st-match-mirror">
-      <div className="st-cards-inner">
-        <p className="st-cards-title">⚽ Yayıncı maç izliyor</p>
-        {mirror && <FutbolLigler initialTab={mirror.tab} chatReadOnly mirror={mirror} />}
+    <div
+      className="st-game st-cards st-match-mirror"
+      onClickCapture={blockClick}
+      onDoubleClickCapture={blockClick}
+      onPointerDownCapture={block}
+      onPointerUpCapture={block}
+      onMouseDownCapture={blockDown}
+      onTouchStartCapture={block}
+      onTouchEndCapture={block}
+      onKeyDownCapture={blockClick}
+      onChangeCapture={block}
+      onFocusCapture={blockFocus}
+      onContextMenu={blockClick}
+    >
+      <div className="st-match-scroll">
+        <div className="st-cards-inner">
+          <p className="st-cards-title">⚽ Yayıncı maç izliyor · sadece izleme</p>
+          {mirror && <FutbolLigler initialTab={mirror.tab} chatReadOnly mirror={mirror} />}
+        </div>
       </div>
     </div>
   );

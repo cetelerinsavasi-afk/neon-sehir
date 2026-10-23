@@ -15,6 +15,17 @@ import { BIZ_MATERIALS, midnightDayKey } from '../../../functions/businessCatalo
 import '../../styles/bizui.css';
 import './Shop.css';
 import { vehicleRaceLine } from '../RaceTrackScreen/CarStats';
+import { autoSellsAt, AUTO_SELL_HINT, ITEM_EXPIRE_HINT, ITEM_CANCEL_PENALTY_TEXT } from '../../lib/autoSell';
+
+// v115 — vitrin ilanı 7. gün: bandın ortasının altı otomatik satılır, değilse ilan düşer
+function VitrinRuleHint({ price, band }) {
+  return (
+    <>
+      <p className="bz-hint">{autoSellsAt(price, band.min, band.max) ? AUTO_SELL_HINT : ITEM_EXPIRE_HINT}</p>
+      <p className="bz-hint">Vitrindeyken ömrü azalmaz · konduğu gün (00:00'dan önce) bedelsiz geri alırsın, sonrasında geri almak ömrü 1 gün kısaltır.</p>
+    </>
+  );
+}
 
 // =============================================================================
 // v77 — Silahçı / Modifiye Garajı / Araba Galerisi: SAHİP ekranları
@@ -196,13 +207,21 @@ function VitrinManager({ houseId, kind }) {
                 <ConfirmButton className="bz-btn ghost sm" disabled={!!busy} title="Hemen satılsın mı?" lines={[`💰 Eline ${fmt(band.instant - resaleTax(band.instant))} altın geçer`]} confirmLabel="Sat" onConfirm={() => run(`i${it.id}`, { op: 'vitrinInstantSell', itemId: it.id }, `Hemen satıldı: eline ${fmt(band.instant - resaleTax(band.instant))} altın geçti (vergi %1).`)}>
                   ⚡ Hemen sat ({fmt(band.instant - resaleTax(band.instant))})
                 </ConfirmButton>
-                <ConfirmButton className="bz-btn danger sm" disabled={!!busy} danger title="Vitrinden geri alınsın mı?" lines={['Ömrü 1 gün azalır']} confirmLabel="Geri al" onConfirm={() => run(`r${it.id}`, { op: 'vitrinRemove', itemId: it.id }, 'Envanterine geri alındı (ömrü 1 gün azaldı).')}>
-                  ↩ Geri al (ömür −1)
-                </ConfirmButton>
+                {/* v115 — konduğu gün (00:00'dan önce) bedelsiz; sonrasında onaylı, ömür −1 */}
+                {it.shopAddedDayKey === midnightDayKey(Date.now()) ? (
+                  <button className="bz-btn danger sm" disabled={!!busy} onClick={() => run(`r${it.id}`, { op: 'vitrinRemove', itemId: it.id }, 'Envanterine geri alındı (bedelsiz).')}>
+                    ↩ Geri al
+                  </button>
+                ) : (
+                  <ConfirmButton className="bz-btn danger sm" disabled={!!busy} danger title="Vitrinden geri alınsın mı?" lines={[ITEM_CANCEL_PENALTY_TEXT]} confirmLabel="Geri al" onConfirm={() => run(`r${it.id}`, { op: 'vitrinRemove', itemId: it.id, confirmPenalty: true }, 'Envanterine geri alındı (ömrü 1 gün azaldı).')}>
+                    ↩ Geri al (ömür −1)
+                  </ConfirmButton>
+                )}
               </div>
               {isOpen && !listing && (
                 <div className="bz-field">
                   <PriceField label="Satış fiyatı" min={band.min} max={band.max} value={price} onChange={setPrice} refPrice={band.max} refLabel="Önerilen" taxRate={RESALE_TAX_RATE} />
+                  <VitrinRuleHint price={price} band={band} />
                   <button className="bz-btn gold wide" disabled={!!busy} onClick={() => run(`l${it.id}`, { op: 'vitrinList', itemId: it.id, price }, 'İlana kondu!')}>
                     🏷️ {fmt(price)} altına ilana koy
                   </button>
@@ -224,7 +243,6 @@ function VitrinAdd({ houseId, kind }) {
   const all = kind === 'weapon' ? weapons : vehicles;
   const K = KIND_TXT[kind];
   const inShop = all.filter((x) => x.shopHouseId === houseId).length;
-  const today = midnightDayKey(Date.now());
   const mine = all.filter((x) => !x.listed);
   const [pick, setPick] = useState(null);
   const [price, setPrice] = useState(0);
@@ -257,9 +275,7 @@ function VitrinAdd({ houseId, kind }) {
         {mine.map((it) => {
           const v = itemView(kind, it);
           const reason =
-            it.shopBanDayKey === today
-              ? 'Bugün vitrinden geri alındı, yarın koyabilirsin'
-              : v.life <= 0
+            v.life <= 0
                 ? 'Ömrü bitmiş'
                 : it.mortgaged || it.seizedByBank
                   ? 'İpotekli'
@@ -286,6 +302,7 @@ function VitrinAdd({ houseId, kind }) {
       {sel && band && (
         <div className="bz-field">
           <PriceField label={`${sel.name || 'Ürün'} — satış fiyatı`} min={band.min} max={band.max} value={price} onChange={setPrice} refPrice={band.max} refLabel="Önerilen" taxRate={RESALE_TAX_RATE} />
+          <VitrinRuleHint price={price} band={band} />
           <button className="bz-btn gold wide" disabled={busy} onClick={add}>
             {busy ? 'Ekleniyor…' : `➕ Vitrine koy · ${fmt(price)} altına sat`}
           </button>

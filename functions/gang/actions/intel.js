@@ -11,7 +11,7 @@
 //     (memberships.intelCooldownUntilMs).
 //   Şartlar: başlangıç görevleri + 50 saygınlık + %0 şüphe + 1 silah; imam ve
 //   Mafya Babası katılamaz. Soygun durdurma prestiji de bu teşkilata yazılır.
-import { GANG, INTEL, SALARIES, atLeast } from '../config.js';
+import { GANG, INTEL, SALARIES, atLeast, gangExitBlockText } from '../config.js';
 import { addDays, midnightMsOf, dateKeyOf, truckTimes } from '../time.js';
 import { decidedOutcome } from './votes.js';
 import { intelReviewRanks, hasIntelReviewers } from '../ranks.js';
@@ -103,6 +103,9 @@ export function createIntelActions(core) {
     if (wallet.isImam) return forApplicant ? 'İmam polis olamaz (önce imamlıktan istifa etmelisin).' : 'Başvuran artık imam — teşkilata alınamaz.';
     const cd = Number(membership.intelCooldownUntilMs || 0);
     if (forApplicant && cd > now) return `Polislikten yeni ayrıldığın için ${Math.max(1, Math.ceil((cd - now) / 3_600_000))} saat daha başvuru yapamazsın.`;
+    // v116: çeteden ayrılan / atılan 24 saat polisliğe başvuramaz
+    const exitBlock = forApplicant ? gangExitBlockText(membership, now) : null;
+    if (exitBlock) return exitBlock;
     if (INTEL.JOIN_REQUIRES_ONBOARDING && !wallet.onboarded) return forApplicant ? 'Polis olmak için önce başlangıç görevlerini (📋) tamamlamalısın.' : 'Başvuranın başlangıç görevleri eksik.';
     if (wallet.reputation < INTEL.JOIN_MIN_REPUTATION) return forApplicant ? `Polis olmak için en az ${INTEL.JOIN_MIN_REPUTATION} saygınlık gerekli.` : `Başvuranın saygınlığı ${INTEL.JOIN_MIN_REPUTATION}'nin altına düştü.`;
     if (Number(wallet.suspicion || 0) > INTEL.JOIN_MAX_SUSPICION) return forApplicant ? 'Polis olmak için şüphen %0 olmalı.' : 'Başvuranın şüphesi artık %0 değil.';
