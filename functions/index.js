@@ -15798,18 +15798,21 @@ function randomFutbolNewTierPlayer(position) {
   return { name, position, age, power, form: 100, value, forSale: false, listedAt: null };
 }
 
-// maybeCreateNextFutbolTierByOwnershipRatio — SEZON SONUNDA çağrılır
-// (bkz. finishFutbolSeason). Mevcut toplam takımların yarısı (ya da
-// fazlası) oyunculara aitse, mevcut lig büyüklüğünde (8 takım) yeni bir
-// lig açar — ör. 16 takımdan 8'i oyuncularda ise 3. lig (toplam 24
-// takım), sonraki sezon sonunda 24 takımdan 12'si oyunculardaysa 4. lig
-// (toplam 32 takım), ve bu şekilde devam eder.
+// maybeCreateNextFutbolTierByOwnershipRatio — SEZON SONUNDA / yeni sezon
+// başında çağrılır (bkz. finishFutbolSeason). v122: boştaki (oyuncuya ait
+// olmayan) takım sayısı 8 ve altına indiyse mevcut lig büyüklüğünde (8 takım)
+// yeni bir lig açar — ör. 16 takımın 8'i ya da daha azı boşta kaldıysa 3. lig
+// (toplam 24 takım). (Eskiden: takımların en az yarısı oyunculardaysa.)
+const FUTBOL_NEW_LEAGUE_MAX_FREE_TEAMS = 8; // v122: boştaki takım ≤ 8 → yeni lig
 async function maybeCreateNextFutbolTierByOwnershipRatio() {
   const allTeamsSnap = await db.collection('futbolTeams').get();
   const totalCount = allTeamsSnap.size;
   if (totalCount === 0) return;
   const ownedCount = allTeamsSnap.docs.filter((d) => d.data().ownerUid).length;
-  if (ownedCount * 2 < totalCount) return; // yarısından azı oyunculardaysa yeni lig yok
+  // v122 — tetik: boştaki (sahipsiz) takım sayısı 8 ve altına indiyse yeni lig
+  // açılır (eskiden: takımların en az yarısı oyunculardaysa)
+  const freeCount = totalCount - ownedCount;
+  if (freeCount > FUTBOL_NEW_LEAGUE_MAX_FREE_TEAMS) return;
 
   const leaguesSnap = await db.collection('futbolLeagues').get();
   const leagues = leaguesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
