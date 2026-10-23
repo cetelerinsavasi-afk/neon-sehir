@@ -38,47 +38,84 @@ export const ROOM = { W: 18, D: 14, H: 3.4 };
 const { W, D, H } = ROOM;
 
 // v119 — su hücreleri (1 m ızgara) ve bir noktadaki batma derinliği
-function waterCells(objs) {
-  const set = new Set();
-  objs.forEach((e) => {
-    if (e.data.k === WATER_TILE_KEY) set.add(`${Math.floor(e.data.x + W / 2)},${Math.floor(e.data.z + D / 2)}`);
-  });
-  return set;
-}
-export function waterSinkAt(x, z, cells) {
-  if (!cells || cells.size === 0) return 0;
+const cellKey = (cx, cz) => `${cx},${cz}`;
+// Noktadan en yakın KARA hücresine (oda içinde, su olmayan) uzaklık; duvar kıyı değil.
+// Yakında kara yoksa WATER_SEARCH döner.
+function shoreDistance(x, z, set) {
   const ix = Math.floor(x + W / 2);
   const iz = Math.floor(z + D / 2);
-  if (!cells.has(`${ix},${iz}`)) return 0;
-  // en yakın kara (su olmayan ya da oda dışı) hücresine uzaklık
   let best = WATER_SEARCH;
   for (let dx = -WATER_SEARCH; dx <= WATER_SEARCH; dx++) {
     for (let dz = -WATER_SEARCH; dz <= WATER_SEARCH; dz++) {
       const cx = ix + dx;
       const cz = iz + dz;
-      const outside = cx < 0 || cz < 0 || cx >= W || cz >= D;
-      if (!outside && cells.has(`${cx},${cz}`)) continue;
+      if (cx < 0 || cz < 0 || cx >= W || cz >= D) continue; // duvarın ötesi kıyı değil
+      if (set.has(cellKey(cx, cz))) continue;
       const x0 = cx - W / 2;
       const z0 = cz - D / 2;
-      const ddx = Math.max(x0 - x, 0, x - (x0 + 1));
-      const ddz = Math.max(z0 - z, 0, z - (z0 + 1));
-      const d = Math.hypot(ddx, ddz);
+      const d = Math.hypot(Math.max(x0 - x, 0, x - (x0 + 1)), Math.max(z0 - z, 0, z - (z0 + 1)));
       if (d < best) best = d;
     }
   }
-  const t = Math.min(1, Math.max(0, (best - WATER_SHORE_AT) / (WATER_DEEP_AT - WATER_SHORE_AT)));
+  return best;
+}
+// Su hücreleri + her hücrenin ait olduğu su kütlesinde karaya en uzak mesafe
+function waterCells(objs) {
+  const set = new Set();
+  objs.forEach((e) => {
+    if (e.data.k === WATER_TILE_KEY) set.add(cellKey(Math.floor(e.data.x + W / 2), Math.floor(e.data.z + D / 2)));
+  });
+  const bodyMax = new Map();
+  const seen = new Set();
+  for (const start of set) {
+    if (seen.has(start)) continue;
+    // bitişik (4 yön) su hücreleri = bir su kütlesi
+    const body = [];
+    const stack = [start];
+    seen.add(start);
+    while (stack.length) {
+      const k = stack.pop();
+      body.push(k);
+      const [cx, cz] = k.split(',').map(Number);
+      for (const [ax, az] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nk = cellKey(cx + ax, cz + az);
+        if (set.has(nk) && !seen.has(nk)) {
+          seen.add(nk);
+          stack.push(nk);
+        }
+      }
+    }
+    let max = 0;
+    for (const k of body) {
+      const [cx, cz] = k.split(',').map(Number);
+      max = Math.max(max, shoreDistance(cx + 0.5 - W / 2, cz + 0.5 - D / 2, set));
+    }
+    for (const k of body) bodyMax.set(k, max);
+  }
+  return { set, bodyMax, size: set.size };
+}
+export function waterSinkAt(x, z, cells) {
+  if (!cells || !cells.size) return 0;
+  const key = cellKey(Math.floor(x + W / 2), Math.floor(z + D / 2));
+  if (!cells.set.has(key)) return 0;
+  const d = shoreDistance(x, z, cells.set);
+  // bu su kütlesinde karaya en uzak nokta en derin olsun (ama eğim en fazla bu kadar dik değil)
+  const far = Math.min(WATER_DEEP_AT, cells.bodyMax.get(key) ?? WATER_DEEP_AT);
+  const span = Math.max(0.2, far - WATER_SHORE_AT);
+  const t = Math.min(1, Math.max(0, (d - WATER_SHORE_AT) / span));
   return WATER_SINK_SHORE + (WATER_SINK_DEEP - WATER_SINK_SHORE) * t;
 }
 const SNAP = 0.25;
 const PLAYER_R = 0.3;
-// v119 — suya batma derinliği kıyıya uzaklığa göre: kıyı kenarında WATER_SINK_SHORE,
-// karadan (sudan başka zemin) WATER_DEEP_AT metre uzakta WATER_SINK_DEEP (baş-omuz kalır).
-// Figür ~1,75 m. Oda dışı da kıyı sayılır (havuz kenarı).
+// v119 — suya batma derinliği kıyıya (sudan başka zemin) uzaklığa göre. Duvar /
+// oda kenarı hiç hesaba katılmaz. v120: 1,5 kat daha yavaş derinleşir ve her su
+// kütlesinde karaya EN UZAK nokta her zaman en derindir (küçük havuzda da).
+// Figür ~1,75 m: en derinde baş-omuz kalır.
 const WATER_SINK_SHORE = 0.55;
 const WATER_SINK_DEEP = 1.2;
 const WATER_SHORE_AT = 0.3; // kıyıya bu kadar yakınken en sığ
-const WATER_DEEP_AT = 2.5; // kıyıdan bu kadar uzakta en derin
-const WATER_SEARCH = 3; // kıyı araması (hücre)
+const WATER_DEEP_AT = 0.3 + (2.5 - 0.3) * 1.5; // 3,6 m — v120: 1,5 kat yavaş
+const WATER_SEARCH = 4; // kıyı araması (hücre) ≥ WATER_DEEP_AT
 const WATER_TILE_KEY = 'zp_su';
 const WALK_SPEED = 3.0;
 const MAX_ITEMS = 500; // v92: 300 → 400 · v113: 400 → 500 (sunucu: functions/houseCatalogData.js MAX_ITEMS_PER_HOUSE)
@@ -2404,7 +2441,7 @@ export function createHouseEngine(
   }
 
   let waterTimer = 0;
-  let waterSet = new Set();
+  let waterSet = null;
   function nearestPerson(x, z) {
     let best = Math.hypot(self.x - x, self.z - z);
     others.forEach((o) => {

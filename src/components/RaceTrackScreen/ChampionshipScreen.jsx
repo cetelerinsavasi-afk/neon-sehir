@@ -61,7 +61,7 @@ export default function ChampionshipScreen({ onEnterRace }) {
     setError(null);
     try {
       const res = await createChampionshipRace(vehicle.id);
-      if (res?.data?.roomId) onEnterRace(res.data.roomId);
+      if (res?.data?.roomId) onEnterRace(res.data.roomId, { expand: true }); // v121: yarış ekranı hemen açılır
     } catch (err) {
       setError(err.message || 'Şampiyonaya katılamadın.');
     } finally {

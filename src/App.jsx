@@ -422,10 +422,13 @@ function GameShell() {
     };
   }, []);
 
-  const openRace = (roomId) => {
+  // v121: expand — şampiyona yarışı hemen başladığı için ekran doğrudan açılır.
+  // (Eskiden "racing" durumu bu çağrıdan ÖNCE gelirse ekran açıldıktan hemen sonra
+  // burada kapanıyordu → "katıldın" yazıyor ama yarış açılmıyordu.)
+  const openRace = (roomId, { expand = false } = {}) => {
     setActiveRegion(null);
     setActiveRaceRoomId(roomId);
-    setRaceExpanded(false);
+    setRaceExpanded(Boolean(expand));
   };
 
   const openTable = (tableId) => {
