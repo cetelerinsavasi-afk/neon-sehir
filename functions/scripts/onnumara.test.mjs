@@ -78,9 +78,13 @@ test('v125 akıllı kurpiyer: zaten kazanıyorsa durur, kaybediyorsa çeker; ber
   // 7'de, oyuncu 6: önde → dur
   assert.equal(dealerBestMove(7, [6], 1), 'stand');
 });
-test('v125 akıllı kurpiyer: index.js el sonucunda dealerBestMove kullanılır, sabit 8 kuralı kalktı', async () => {
-  const fs = await import('node:fs');
-  const src = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
-  assert.match(src, /dealerBestMove\(total, openTotals, participants\.length\) === 'stand'/);
-  assert.doesNotMatch(src, /ON_NUMARA_DEALER_STAND_AT/);
+test('v127 sabit kurpiyer: 9 altında çeker, 9 ve 10’da durur; index.js dealerMove kullanır', async () => {
+  const { dealerMove } = await import('../onNumara.js');
+  assert.equal(dealerMove(8), 'hit');
+  assert.equal(dealerMove(2), 'hit');
+  assert.equal(dealerMove(9), 'stand');
+  assert.equal(dealerMove(10), 'stand');
+  const src = (await import('node:fs')).readFileSync(new URL('../index.js', import.meta.url), 'utf8');
+  assert.match(src, /dealerMove\(total\) === 'stand'/);
+  assert.doesNotMatch(src, /dealerBestMove\(/);
 });

@@ -60,7 +60,7 @@ import { cleanEquipped } from './cosmeticsData.js';
 import { HOUSE_PRODUCTS } from './houseCatalogData.js';
 import { sanitizeDrawing } from './drawingData.js';
 import { createHomeOffice, buildSongAttachment } from './homeOffice.js';
-import { simulAct, simulAutoStand, simulDeal, simulState, dealerBestMove } from './onNumara.js';
+import { simulAct, simulAutoStand, simulDeal, simulState, dealerMove } from './onNumara.js';
 import { isMsgId, nextReaction, replyQuoteOf } from './chatExtras.js';
 import { VENUES } from './venueLayouts.js';
 import { goldTag, recordGoldChange, cleanupMoneyLog, realizeSale, realizeBankWithdraw } from './moneyLog.js';
@@ -11044,10 +11044,8 @@ async function resolveOnNumaraIfDealerPhase(tableId) {
 
     const participants = round.participants;
     const hands = round.hands;
-    // v125 — akıllı kurpiyer (hilesiz): kartlar rastgele; kurpiyer bu aşamada AÇILAN
-    // oyuncu ellerine bakıp her adımda "dur / çek"in beklenen kazancını hesaplar
-    // (functions/onNumara.js dealerBestMove). Beraberlik kuralı aynı (pot paylaşılır).
-    const openTotals = participants.filter((u) => hands[u].status !== 'bust').map((u) => sumCards(hands[u].cards));
+    // v127 — sabit kurallı kurpiyer: 9'un altında çeker, 9 ve 10'da durur (oyunculara
+    // bakmaz; functions/onNumara.js dealerMove). Beraberlik kuralı aynı (pot paylaşılır).
     let dealerCards = [...round.dealerCards];
     let dealerStatus = 'playing';
     while (true) {
@@ -11056,7 +11054,7 @@ async function resolveOnNumaraIfDealerPhase(tableId) {
         dealerStatus = 'bust';
         break;
       }
-      if (dealerBestMove(total, openTotals, participants.length) === 'stand') {
+      if (dealerMove(total) === 'stand') {
         dealerStatus = 'stand';
         break;
       }

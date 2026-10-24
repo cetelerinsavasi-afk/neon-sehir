@@ -85,6 +85,14 @@ export function onnHouseNet(dealer, contenders, n) {
   const paid = hw > 0 ? (pot / (hw + (dw ? 1 : 0))) * hw : 0;
   return pot - paid - 1; // pot kasaya döner, oyunculara ödenen düşer, kasanın kendi payı (1) çıkar
 }
+// v127 — SABİT KURALLI KURPİYER (kullanıcı kararı): akıllı kurpiyer (açık ellere
+// bakan) fazla güçlüydü — en iyi oynayan oyuncu bile bahis başına ~%8–12 kaybediyordu.
+// Artık kurpiyer oyunculara BAKMAZ: toplamı 9'un altındaysa çeker, 9 ve 10'da durur.
+// Simülasyon: en iyi oynayan ≈ %0, 7'de duran oyuncu ≈ −%5…−%15 (kasa yine kazançlı).
+export const ONN_DEALER_STAND = 9;
+export const dealerMove = (dealerTotal) => (dealerTotal < ONN_DEALER_STAND ? 'hit' : 'stand');
+
+// (v125 akıllı kurpiyer — artık kullanılmıyor; analiz/test için duruyor)
 // 'hit' | 'stand' — beklenen kazancı en yüksek hamle
 export function dealerBestMove(dealerTotal, contenders, n) {
   const memo = new Map();
