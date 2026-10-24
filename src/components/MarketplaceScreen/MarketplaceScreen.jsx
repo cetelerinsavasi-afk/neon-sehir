@@ -8,6 +8,7 @@ import { useWeapons } from '../../hooks/useWeapons';
 import { useInventory } from '../../hooks/useInventory';
 import { useMaterialHoldings } from '../../hooks/useMaterialHoldings';
 import { useMarketplaceListings } from '../../hooks/useMarketplaceListings';
+import { useSellerShopNames } from '../../hooks/useSellerShopNames';
 import {
   createListing,
   instantSellListing,
@@ -512,7 +513,8 @@ function SellForm({ onCreated, onClose, initialItemType }) {
   );
 }
 
-function ListingCard({ listing, isMine, busy, onCancel, onBuy, noGold = false }) {
+// sellerLabel: v125 — Mağaza'da satıcı adı yerine fabrika / işletme adı
+function ListingCard({ listing, isMine, busy, onCancel, onBuy, noGold = false, sellerLabel = null }) {
   let media = null;
   if (listing.itemType === 'vehicle') {
     const img = vehicleImage(listing.vehicleCatalogId);
@@ -558,7 +560,7 @@ function ListingCard({ listing, isMine, busy, onCancel, onBuy, noGold = false })
           ) : (
             <>{listing.price.toLocaleString('tr-TR')} altın</>
           )}
-          {!isMine && <span className="market-seller"> · {listing.sellerName}</span>}
+          {!isMine && <span className="market-seller"> · {sellerLabel || listing.sellerName}</span>}
         </span>
         {isLifeItem && <EstimateLine est={estimateOfListing(listing)} />}
         {lifeDays != null && (
@@ -583,7 +585,7 @@ function ListingCard({ listing, isMine, busy, onCancel, onBuy, noGold = false })
   );
 }
 
-function BuyMaterialModal({ listing, onClose, onBought, gold }) {
+function BuyMaterialModal({ listing, onClose, onBought, gold, sellerLabel = null }) {
   const unitPrice = listing.unitPrice || Math.round(listing.price / (listing.quantity || 1));
   const [qty, setQty] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -631,7 +633,7 @@ function BuyMaterialModal({ listing, onClose, onBought, gold }) {
           </button>
         </div>
         <p className="market-hint">
-          {listing.sellerName} · {unitPrice.toLocaleString('tr-TR')} altın / adet ·{' '}
+          {sellerLabel || listing.sellerName} · {unitPrice.toLocaleString('tr-TR')} altın / adet ·{' '}
           {listing.quantity} adet mevcut
         </p>
         <p className="market-step-label">Kaç Adet Alacaksın?</p>
@@ -1092,6 +1094,9 @@ export function MagazaScreen({ onClose }) {
     .filter(isAdvantageousListing)
     .sort((a, b) => listingComparablePrice(a) / listingCeilingPrice(a) - listingComparablePrice(b) / listingCeilingPrice(b));
   const allSorted = [...others].sort((a, b) => listingComparablePrice(a) - listingComparablePrice(b));
+  // v125: satıcı adı yerine fabrika (yoksa silahçı / modifiye) adı
+  const shopName = useSellerShopNames(others.map((l) => l.sellerId));
+  const labelOf = (l) => shopName(l.sellerId, l.sellerName);
 
   const cancel = async (l) => {
     setBusy(l.id);
@@ -1156,7 +1161,7 @@ export function MagazaScreen({ onClose }) {
         <div className="market-home-panel">
           <p className="market-section-title">🔥 Avantajlı Ürünler</p>
           {advantageous.map((l) => (
-            <ListingCard key={l.id} listing={l} isMine={false} busy={busy === l.id} noGold={noGoldId === l.id} onBuy={() => openBuy(l)} />
+            <ListingCard key={l.id} listing={l} isMine={false} busy={busy === l.id} noGold={noGoldId === l.id} onBuy={() => openBuy(l)} sellerLabel={labelOf(l)} />
           ))}
         </div>
       )}
@@ -1166,14 +1171,14 @@ export function MagazaScreen({ onClose }) {
           <p className="market-section-title">Tüm Ürünler</p>
           {allSorted.length === 0 && <p className="market-hint">Şu an satışta malzeme yok.</p>}
           {allSorted.map((l) => (
-            <ListingCard key={l.id} listing={l} isMine={false} busy={busy === l.id} noGold={noGoldId === l.id} onBuy={() => openBuy(l)} />
+            <ListingCard key={l.id} listing={l} isMine={false} busy={busy === l.id} noGold={noGoldId === l.id} onBuy={() => openBuy(l)} sellerLabel={labelOf(l)} />
           ))}
         </>
       )}
 
       {error && <p className="market-error">{error}</p>}
       {showSell && <MagazaSellForm usable={usable} initialMaterial={filter} onClose={() => setShowSell(false)} />}
-      {buyModalListing && <BuyMaterialModal listing={buyModalListing} gold={gold} onClose={() => setBuyModalListing(null)} />}
+      {buyModalListing && <BuyMaterialModal listing={buyModalListing} gold={gold} sellerLabel={labelOf(buyModalListing)} onClose={() => setBuyModalListing(null)} />}
     </div>
   );
 }
