@@ -13,6 +13,9 @@
 //     Oran o günün brüt gelirinin TAMAMINA uygulanır (gece 00:00'da kesilir;
 //     altın yetmezse kalanı devlete borç yazılır — elektrik faturası gibi).
 //   · Oyunun kendi mekânları da vergi öder (kayıt amaçlı).
+//   · v123 — Maaşlar: futbolcu, menajer ve fabrika işçisi maaşlarından %10
+//     (işveren tam maaşı öder, çalışana %90'ı yatar, %10 devlete).
+//   · v123 — Piyango kazançları: %10 (kazanana %90'ı yatar).
 //
 // v108: Toplanan TÜM vergiler devlet (belediye) kasasına gelir yazılır
 // (functions/stateTreasury.js — kaynak başına ayrı kalem). Her ödeyen için
@@ -23,6 +26,8 @@ import { stateWrite } from './stateTreasury.js';
 
 export const BIZ_TAX_RATE = 0.1;
 export const RESALE_TAX_RATE = 0.01;
+export const SALARY_TAX_RATE = 0.1; // v123 — futbolcu / menajer / fabrika işçisi maaşı
+export const LOTTERY_TAX_RATE = 0.1; // v123 — piyango kazancı
 export const FACTORY_TAX_RATE = 0.1; // eski sabit oran (geriye uyum; artık FACTORY_TAX_BRACKETS)
 // v87 — fabrika vergi dilimleri: { from: brüt gelir alt sınırı (dahil), rate }
 export const FACTORY_TAX_BRACKETS = [
@@ -42,6 +47,17 @@ export const taxOf = (amount, rate) => Math.max(0, Math.round((Number(amount) ||
 export const bizTax = (amount) => taxOf(amount, BIZ_TAX_RATE);
 export const resaleTax = (amount) => taxOf(amount, RESALE_TAX_RATE);
 export const factoryTax = (amount) => taxOf(amount, factoryTaxRate(amount));
+// v123: brüt → { tax, net } (net + tax = brüt; yuvarlama vergiden yana değil)
+export function splitSalaryTax(gross) {
+  const g = Math.max(0, Math.round(Number(gross) || 0));
+  const tax = Math.min(g, Math.floor(g * SALARY_TAX_RATE));
+  return { gross: g, tax, net: g - tax };
+}
+export function splitLotteryTax(gross) {
+  const g = Math.max(0, Math.round(Number(gross) || 0));
+  const tax = Math.min(g, Math.floor(g * LOTTERY_TAX_RATE));
+  return { gross: g, tax, net: g - tax };
+}
 
 // Kaynak anahtarları (rapor/ileride belediye ekranı için)
 export const TAX_SOURCES = {
@@ -51,6 +67,8 @@ export const TAX_SOURCES = {
   yayin: 'Yayın bağışı (%10)',
   sanatci: 'Şarkı desteği (%10)', // v93
   ofis: 'Ofis geliri — ücretli mobilyalar (%10)', // v100
+  maas: 'Maaş — futbolcu / menajer / fabrika işçisi (%10)', // v123
+  piyango: 'Piyango kazancı (%10)', // v123
 };
 
 // Vergi kaydı. YAZMA (transaction ya da batch). amount ≤ 0 ise yazmaz.

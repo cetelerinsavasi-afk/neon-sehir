@@ -2,7 +2,7 @@
 // savaşı gücüne göre sıralı. Kart: logo, ad, kasa (Polis Teşkilatında maaş
 // aralığı), son savaş gücü, üye sayısı, lider, kısa not.
 // Sağ üstte "Çete kur +". Kendi çetende/teşkilatta isen kartta "Aç";
-// teşkilatta değilsen "Başvur" (başvuru formu — Karakol'dakiyle aynı).
+// teşkilatta değilsen "Katıl" (v123: sadece kod adı — Karakol'dakiyle aynı).
 import { useMemo, useState } from 'react';
 import { limit, where } from 'firebase/firestore';
 import { istDateKey, useDocData, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
@@ -182,7 +182,7 @@ export default function ListTab({ membership, onOpen }) {
                 </Btn>
               ) : (
                 <Btn small kind="ghost" onClick={() => setJoinIntel(true)}>
-                  Başvur
+                  Katıl
                 </Btn>
               )
             }
@@ -222,8 +222,8 @@ export default function ListTab({ membership, onOpen }) {
       {cancelApp && (
         <Confirm
           icon="🚓"
-          title={`Polislik başvurun (${ms.intelAppCode || ''}) inceleniyor`}
-          lines={['Başvurun 12 saat içinde incelenir.', 'Başvurunu geri çekmek ister misin?']}
+          title={`Polislik başvurun (${ms.intelAppCode || ''}) sonuçlanıyor`}
+          lines={['Eski başvurun birkaç dakika içinde otomatik sonuçlanır.', 'Başvurunu geri çekmek ister misin?']}
           danger
           confirmLabel="Geri çek"
           busy={busy === 'cancelIntelApplication'}

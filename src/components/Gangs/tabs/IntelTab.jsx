@@ -2,17 +2,18 @@
 // avatarlarla rütbe ağacı (Emniyet Genel Müdürü · 2 Emniyet Amiri · 4 Başkomiser ·
 // Komiserler / Polis Memurları), kod adı ✏️, not, atma (anında) / çıkarma
 // oylaması, istifa. Kasa yok — maaşı devlet öder (her gece 00:00). Sicil
-// süresiz; başvuru formu sicilde durur ve düzenlenebilir.
+// süresiz. v123: başvuru formu kaldırıldı — sicilde form bilgisi yok.
 import { useEffect, useState } from 'react';
-import { istDateKey, istHour, useGangAction, useNow } from '../GangContext';
+import { istHour, useGangAction, useNow } from '../GangContext';
 import { Btn, Card, Confirm, Gold, RankBadge, Sheet, Stat } from '../ui';
 import { MemberCard, MidnightLegend, RankTree } from '../shared';
-import { GANG_RULES, INTEL_LEADERS, RANK_ICONS, SALARIES, appRankLabel, fmt } from '../gangConstants';
-import { IntelFormFields, formPayload, formValid } from '../PoliceApplySheet';
+import { GANG_RULES, INTEL_LEADERS, RANK_ICONS, SALARIES, fmt } from '../gangConstants';
 
 const DIRECT = { baskan: ['ajan', 'muhbir'], sef: ['muhbir'] };
 // v61 — istismar önlemi (sunucuyla aynı: functions/gang/config.js INTEL)
 const KICK_MIN_MEMBERS = 8;
+// v123: yeni katılan polis katıldığı andan 24 saat atılamaz (sunucu: INTEL.NEW_MEMBER_KICK_GUARD_MS)
+const NEW_MEMBER_GUARD_MS = 24 * 3600_000;
 const fmtDay = (ms) => (ms ? new Date(ms + 3 * 3600_000).toISOString().slice(0, 10).split('-').reverse().join('.') : '—');
 function voteAllowed(my, t) {
   if (my === 'baskan' || my === 'sef') return !(DIRECT[my] || []).includes(t);
@@ -21,9 +22,9 @@ function voteAllowed(my, t) {
 }
 
 // v108/v109 — polis SİCİLİ (süresiz): teşkilata girdiği günden bu yana tüm
-// icraatı (istihbarat + polislik), maaşı ve başvuru formundaki beyanı.
+// icraatı (istihbarat + polislik) ve maaşı (v123: form bilgisi yok).
 // Rütbeliler herkesinkini, herkes kendisininkini görür.
-function MemberReport({ member, self, onEditForm }) {
+function MemberReport({ member }) {
   const { run } = useGangAction();
   const [r, setR] = useState(null);
   const [err, setErr] = useState(false);
@@ -71,32 +72,11 @@ function MemberReport({ member, self, onEditForm }) {
       <Stat icon="📦" label="İçerik açma (tır · bahisli savaş)">
         {fmt(r.truckLeaks)} · {fmt(r.betLeaks)}
       </Stat>
-      <div className="gx-section-head">
-        <span>📝 Başvuru formu</span>
-        {self && (
-          <button className="gx-link" onClick={() => onEditForm?.(r.form)}>
-            ✏️ {r.form ? 'Düzenle' : 'Doldur'}
-          </button>
-        )}
-      </div>
-      {r.form ? (
-        <div className="gx-app-form-view">
-          <Stat icon="🏴" label="Bulunduğu çete">
-            {r.form.gangName}
-          </Stat>
-          <Stat icon="🎖️" label="Çetedeki rütbesi">
-            {appRankLabel(r.form.gangRank)}
-          </Stat>
-          <div className="gx-note-quote">“{r.form.reason}”</div>
-        </div>
-      ) : (
-        <p className="dim gx-mini">{self ? 'Formu henüz doldurmadın — istediğin zaman doldurabilirsin.' : 'Form doldurulmamış.'}</p>
-      )}
     </div>
   );
 }
 
-function MemberSheet({ member, myRank, rosterSize, onClose, self = false, onEditForm }) {
+function MemberSheet({ member, myRank, rosterSize, onClose, self = false }) {
   const { run, busy } = useGangAction();
   const [ask, setAsk] = useState(null);
   const now = useNow(30_000);
@@ -104,8 +84,9 @@ function MemberSheet({ member, myRank, rosterSize, onClose, self = false, onEdit
   const canVote = !self && voteAllowed(myRank, member.rank);
   const voteOpen = istHour(now) < 12;
   const tooFew = rosterSize < KICK_MIN_MEMBERS;
-  const isNew = Number(member.joinedAtMs || 0) > 0 && istDateKey(member.joinedAtMs) === istDateKey(now);
-  const lockReason = tooFew ? `🔒 ${KICK_MIN_MEMBERS - 1} ya da daha az polis varken kimse çıkarılamaz` : isNew ? "🔒 Yeni katılan polis 00:00'a kadar çıkarılamaz" : null;
+  const newLeftMs = Number(member.joinedAtMs || 0) > 0 ? Number(member.joinedAtMs) + NEW_MEMBER_GUARD_MS - now : 0;
+  const newLeftH = newLeftMs > 0 ? Math.max(1, Math.ceil(newLeftMs / 3_600_000)) : 0;
+  const lockReason = tooFew ? `🔒 ${KICK_MIN_MEMBERS - 1} ya da daha az polis varken kimse çıkarılamaz` : newLeftH ? `🔒 Yeni katılan polis 24 saat boyunca çıkarılamaz (${newLeftH} saat kaldı)` : null;
   return (
     <Sheet title={member.codeName} icon={RANK_ICONS[member.rank]} onClose={onClose}>
       <div className="gx-member-detail">
@@ -124,7 +105,7 @@ function MemberSheet({ member, myRank, rosterSize, onClose, self = false, onEdit
           </Btn>
         )}
         {(canKick || canVote) && lockReason && <div className="dim gx-mini">{lockReason}</div>}
-        {(self || ['baskan', 'sef', 'uzman'].includes(myRank)) && <MemberReport member={member} self={self} onEditForm={onEditForm} />}
+        {(self || ['baskan', 'sef', 'uzman'].includes(myRank)) && <MemberReport member={member} />}
       </div>
       {ask && (
         <Confirm
@@ -155,7 +136,6 @@ export default function IntelTab({ d }) {
   const [sel, setSel] = useState(null);
   const [code, setCode] = useState(null);
   const [note, setNote] = useState(null);
-  const [form, setForm] = useState(null);
   const [leave, setLeave] = useState(false);
   const lead = INTEL_LEADERS.includes(d.rank);
   const byRank = (r) => d.roster.filter((m) => m.rank === r).sort((a, b) => (b.prestige || 0) - (a.prestige || 0));
@@ -203,27 +183,7 @@ export default function IntelTab({ d }) {
           myRank={d.rank}
           rosterSize={d.roster.length}
           onClose={() => setSel(null)}
-          onEditForm={(f) => {
-            setSel(null);
-            setForm({ gangName: f?.gangName === 'Çetem yok' ? GANG_RULES.APP_NO_GANG : f?.gangName || '', gangRank: f?.gangRank || '', reason: f?.reason || '' });
-          }}
         />
-      )}
-      {form && (
-        <Sheet title="Başvuru formun" icon="📝" onClose={() => setForm(null)}>
-          <IntelFormFields form={form} setForm={setForm} />
-          <Btn
-            block
-            busy={busy === 'updateIntelForm'}
-            disabled={!formValid(form)}
-            onClick={async () => {
-              const r = await run('updateIntelForm', formPayload(form), { success: '📝 Formun güncellendi' });
-              if (r) setForm(null);
-            }}
-          >
-            Kaydet
-          </Btn>
-        </Sheet>
       )}
       {code != null && (
         <Sheet title="Kod adını değiştir" icon="✏️" onClose={() => setCode(null)}>

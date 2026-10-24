@@ -84,6 +84,7 @@ export default function LotteryScreen() {
         </button>
       </div>
       {error && <p className="lottery-error">{error}</p>}
+      <p className="lottery-hint">🏛️ Piyango kazancından %10 vergi kesilir ve belediye kasasına gider.</p>
 
       {yesterday?.winnerAmount && (
         <div className="lottery-winner-card">
@@ -91,6 +92,7 @@ export default function LotteryScreen() {
           <p className="lottery-hint">
             Dünün kazananı: <strong>{yesterday.winnerName || 'Bir oyuncu'}</strong> —{' '}
             {yesterday.winnerAmount.toLocaleString('tr-TR')} altın
+            {yesterday.winnerTax ? ` (%10 vergi sonrası ${(yesterday.winnerNet || 0).toLocaleString('tr-TR')})` : ''}
           </p>
         </div>
       )}

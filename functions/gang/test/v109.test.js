@@ -37,9 +37,10 @@ test('v109 sabitleri: ad Polis Teşkilatı; rütbe adları ve maaşları poliste
   assert.deepEqual(policeBustSplit(500_000, 2), { perEarning: 62_500, prestigeEach: 1_000_000, stateShare: 375_000 });
   assert.deepEqual(policeBustSplit(10_001, 3), { perEarning: 833, prestigeEach: 13_334, stateShare: 10_001 - 833 * 3 });
   assert.deepEqual(policeBustSplit(0, 2), { perEarning: 0, prestigeEach: 0, stateShare: 0 });
-  assert.deepEqual(heistStateEntries({ fines: 500_000, recoveredToState: 375_000 }), [
+  // v123: polis yakaladı → +ceza (in) − polis payı (out); "kurtarma" geliri yok (çift sayım düzeltildi)
+  assert.deepEqual(heistStateEntries({ fines: 500_000, policeShare: 125_000 }), [
     { kind: 'in', cat: 'soygun_ceza', amount: 500_000 },
-    { kind: 'in', cat: 'soygun_kurtarma', amount: 375_000 },
+    { kind: 'out', cat: 'soygun_polis_payi', amount: 125_000 },
   ]);
   // rütbe yapısı: 1 · 2 · 4 · kalan · 1M altı
   const many = Array.from({ length: 9 }, (_, i) => ({ id: `p${i}`, prestige: 10_000_000 - i, joinedAtMs: i }));
@@ -49,7 +50,7 @@ test('v109 sabitleri: ad Polis Teşkilatı; rütbe adları ve maaşları poliste
   assert.equal(r.low, 'muhbir');
 });
 
-test('başvuru formu: çete listesinden ya da "Hiçbir çetede değilim" (rütbe sorulmaz); neden zorunlu; şartlar; onayda polis olur', async () => {
+test('v123 katılım: form yok — sadece kod adı; şartlar tutuyorsa ANINDA polis; sicilde form yok', async () => {
   const h = await createHarness();
   const chief = await member(h, 'Müdür', { rank: 'baskan', prestige: 5_000_000 });
   const memur = await member(h, 'Kulak');
@@ -61,85 +62,85 @@ test('başvuru formu: çete listesinden ya da "Hiçbir çetede değilim" (rütbe
   const imam = await h.persona({ displayName: 'Hoca', gold: 0, power: 5_000, reputation: 90 });
   await h.db.doc(`gangWorlds/test/players/${imam}`).update({ isImam: true });
   const unarmed = await h.persona({ displayName: 'Silahsız', gold: 0, power: 0, reputation: 90 });
-  assert.match((await h.fails(weak, 'applyIntel', { codeName: 'Mavi', ...FORM })).message, /50 saygınlık/);
-  assert.match((await h.fails(sus, 'applyIntel', { codeName: 'Mavi', ...FORM })).message, /şüphen %0/);
-  assert.match((await h.fails(imam, 'applyIntel', { codeName: 'Mavi', ...FORM })).message, /İmam polis olamaz/);
-  assert.match((await h.fails(unarmed, 'applyIntel', { codeName: 'Mavi', ...FORM })).message, /silah/);
-  assert.match((await h.fails(a, 'applyIntel', { codeName: 'Mavi', ...FORM, reason: 'kısa' })).message, /Neden/);
-  assert.match((await h.fails(a, 'applyIntel', { codeName: 'Mavi', ...FORM, gangRank: '' })).message, /rütbeni seç/);
-  assert.match((await h.fails(memur.id, 'applyIntel', { codeName: 'Mavi', ...FORM })).message, /Zaten polissin/);
-  // çetesi yok → rütbe sorulmaz (gönderilse bile 'yok' yazılır)
-  const r1 = await h.act(a, 'applyIntel', { codeName: 'Mavi', ...NO_GANG, gangRank: 'baba' });
-  const app = h.get(`intel/main/applications/${r1.appId}`);
-  assert.equal(app.gangName, 'Hiçbir çetede değilim');
-  assert.equal(app.gangRank, 'yok');
-  assert.ok(!JSON.stringify(app).includes(a), 'başvuru belgesi gerçek kimlik içermez');
-  assert.match((await h.fails(a, 'applyIntel', { codeName: 'Yeşil', ...FORM })).message, /Bekleyen bir polislik başvurun/);
-  assert.match((await h.fails(b, 'applyIntel', { codeName: 'mavi', ...FORM })).message, /kod adı/, 'başvurudaki kod adı ayrılmış');
-  assert.equal(h.raw(`gangWorlds/test/players/${a}`).isPolice, false, 'onaydan önce polis değil');
-  // Polis Memuru inceleyemez; EGM kabul eder → POLİS olur
-  assert.match((await h.fails(memur.id, 'reviewIntelApplication', { appId: r1.appId, accept: true })).message, /Emniyet Genel Müdürü ve Emniyet Amirleri/);
-  const ok = await h.act(chief.id, 'reviewIntelApplication', { appId: r1.appId, accept: true });
-  assert.equal((await h.membership(a)).intelRosterId, ok.rosterId);
-  assert.equal(h.raw(`gangWorlds/test/players/${a}`).isPolice, true, 'onaylanan polis olur');
-  assert.equal(h.get(`intelRecords/${ok.rosterId}`).form.gangRank, 'yok');
+  assert.match((await h.fails(weak, 'applyIntel', { codeName: 'Mavi' })).message, /50 saygınlık/);
+  assert.match((await h.fails(sus, 'applyIntel', { codeName: 'Mavi' })).message, /şüphen %0/);
+  assert.match((await h.fails(imam, 'applyIntel', { codeName: 'Mavi' })).message, /İmam polis olamaz/);
+  assert.match((await h.fails(unarmed, 'applyIntel', { codeName: 'Mavi' })).message, /silah/);
+  assert.match((await h.fails(memur.id, 'applyIntel', { codeName: 'Mavi' })).message, /Zaten polissin/);
+  assert.match((await h.fails(a, 'applyIntel', { codeName: 'ab' })).message, /Kod adı/);
+  // EGM olsa bile inceleme yok → anında polis (form gönderilmez)
+  const r1 = await h.act(a, 'applyIntel', { codeName: 'Mavi' });
+  assert.equal(r1.accepted, true);
+  assert.equal(r1.appId, undefined, 'başvuru belgesi oluşmaz');
+  assert.equal((await h.membership(a)).intelRosterId, r1.rosterId);
+  assert.equal(h.raw(`gangWorlds/test/players/${a}`).isPolice, true);
   assert.ok(h.inbox(a).some((t) => /artık polissin/.test(t)));
-  // çeteli başvuru + ret → kod adı serbest
+  const rec = h.get(`intelRecords/${r1.rosterId}`);
+  assert.equal(rec.form, undefined, 'sicile form yazılmaz');
+  const rep = await h.act(chief.id, 'intelMemberReport', { rosterId: r1.rosterId });
+  assert.ok(!('form' in rep), 'sicil raporunda form alanı yok');
+  // eski istemci form alanları gönderse bile yok sayılır
   const r2 = await h.act(b, 'applyIntel', { codeName: 'Yeşil', ...FORM });
-  assert.equal(h.get(`intel/main/applications/${r2.appId}`).gangRank, 'tetikci');
-  await h.act(chief.id, 'reviewIntelApplication', { appId: r2.appId, accept: false });
-  assert.ok(h.inbox(b).some((t) => /Polislik başvurun reddedildi/.test(t)));
-  assert.equal(h.raw(`gangWorlds/test/players/${b}`).isPolice, false);
-  // onay anında şart yeniden bakılır: bu arada imam olduysa geçersiz
-  const r3 = await h.act(b, 'applyIntel', { codeName: 'Yeşil', ...FORM });
-  await h.db.doc(`gangWorlds/test/players/${b}`).update({ isImam: true });
-  const v = await h.act(chief.id, 'reviewIntelApplication', { appId: r3.appId, accept: true });
-  assert.equal(v.void, true);
-  assert.equal(h.raw(`gangWorlds/test/players/${b}`).isPolice, false);
-  // şüphe sonradan artarsa da geçersiz (0 şüphe şartı)
-  await h.db.doc(`gangWorlds/test/players/${b}`).update({ isImam: false });
-  const r4 = await h.act(b, 'applyIntel', { codeName: 'Mor', ...FORM });
-  await h.db.doc(`gangWorlds/test/players/${b}`).update({ suspicion: 10 });
-  const v4 = await h.act(chief.id, 'reviewIntelApplication', { appId: r4.appId, accept: true });
-  assert.equal(v4.void, true);
-  assert.match(v4.reason, /şüphe/);
-  // geri çekme
-  await h.db.doc(`gangWorlds/test/players/${b}`).update({ suspicion: 0 });
-  await h.act(b, 'applyIntel', { codeName: 'Mor', ...FORM });
-  await h.act(b, 'cancelIntelApplication');
-  assert.equal((await h.membership(b)).intelAppId, null);
-  assert.equal(h.get('intelCodeNames/mor'), undefined);
+  assert.equal(r2.accepted, true);
+  assert.equal(h.get(`intelRecords/${r2.rosterId}`).form, undefined);
+  assert.ok(!JSON.stringify(h.get(`intelRecords/${r2.rosterId}`)).includes('Kara Kartallar'));
+  // kod adı benzersiz
+  const c = await h.persona({ displayName: 'Aday3', gold: 0, power: 5_000, reputation: 60 });
+  assert.match((await h.fails(c, 'applyIntel', { codeName: 'mavi' })).message, /kod adı/);
+  // form düzenleme işlemi kaldırıldı
+  await assert.rejects(h.act(a, 'updateIntelForm', FORM));
 });
 
-test('başvuru: EGM/Amir yoksa anında onay; varsa 12 saatte yanıt yoksa otomatik onay; onayda polis olur', async () => {
+test('v123: eski (v108–v122) bekleyen başvuru ilk saat turunda otomatik onaylanır; şart tutmuyorsa geçersiz', async () => {
   const h = await createHarness({ start: ist('2026-09-21', '09:00') });
-  const a = await h.persona({ displayName: 'İlk', gold: 0, power: 5_000, reputation: 60 });
-  const ra = await h.act(a, 'applyIntel', { codeName: 'Öncü', ...FORM });
-  assert.equal(ra.accepted, true);
+  await member(h, 'Müdür', { rank: 'baskan', prestige: 5_000_000 });
+  const a = await h.persona({ displayName: 'Eski', gold: 0, power: 5_000, reputation: 60 });
+  const b = await h.persona({ displayName: 'Eski2', gold: 0, power: 5_000, reputation: 60 });
+  // eski sistemin bıraktığı bekleyen başvuruları elle kur
+  const mkApp = async (id, appId, codeName) => {
+    const key = codeName.toLocaleLowerCase('tr');
+    await h.db.doc(`gangWorlds/test/intel/main/applications/${appId}`).set({ codeName, codeKey: key, ...NO_GANG, gangRank: 'yok', status: 'pending', createdAtMs: h.clock.now, autoApproveAtMs: h.clock.now + 12 * 3600_000 });
+    await h.db.doc(`gangWorlds/test/intelAppLinks/${appId}`).set({ actorId: id, createdAtMs: h.clock.now });
+    await h.db.doc(`gangWorlds/test/intelCodeNames/${key}`).set({ appId, reservedAtMs: h.clock.now });
+    await h.db.doc(`gangWorlds/test/memberships/${id}`).set({ intelAppId: appId, intelAppCode: codeName, intelAppAtMs: h.clock.now }, { merge: true });
+  };
+  await mkApp(a, 'oldA', 'Gece');
+  await mkApp(b, 'oldB', 'Sabah');
+  await h.db.doc(`gangWorlds/test/players/${b}`).update({ suspicion: 20 });
+  assert.match((await h.fails(a, 'applyIntel', { codeName: 'Başka' })).message, /Eski bir polislik başvurun/);
+  await h.tickTo('2026-09-21', '09:05');
+  assert.equal(h.get('intel/main/applications/oldA').status, 'accepted');
   assert.equal(h.raw(`gangWorlds/test/players/${a}`).isPolice, true);
-  assert.ok(h.inbox(a).some((t) => /Polis Teşkilatına kabul edildin — artık polissin/.test(t)));
-  const aRid = (await h.membership(a)).intelRosterId;
-  await h.db.doc(`gangWorlds/test/intelRoster/${aRid}`).update({ rank: 'baskan', prestige: 5_000_000 });
-  await h.db.doc(`gangWorlds/test/memberships/${a}`).set({ intelRank: 'baskan' }, { merge: true });
-  const c = await h.persona({ displayName: 'Üçüncü', gold: 0, power: 5_000, reputation: 60 });
-  const rc = await h.act(c, 'applyIntel', { codeName: 'Bekçi', ...FORM });
-  assert.ok(!rc.accepted);
-  assert.equal(rc.autoApproveAtMs, ist('2026-09-21', '21:00'));
-  await h.tickTo('2026-09-21', '20:55');
-  assert.equal(h.get(`intel/main/applications/${rc.appId}`).status, 'pending');
-  assert.equal(h.raw(`gangWorlds/test/players/${c}`).isPolice, false);
-  await h.tickTo('2026-09-21', '21:00');
-  assert.equal(h.get(`intel/main/applications/${rc.appId}`).status, 'accepted');
-  assert.equal(h.raw(`gangWorlds/test/players/${c}`).isPolice, true);
-  assert.ok(h.inbox(c).some((t) => /Polis Teşkilatına kabul edildin/.test(t)));
-  assert.ok(!h.inbox(c).some((t) => /yanıt verilmedi|otomatik/.test(t)), 'neden otomatik onaylandığı söylenmez');
-  // EGM rütbesini kaybederse bekleyen başvuru bir sonraki turda onaylanır
-  const f = await h.persona({ displayName: 'Altıncı', gold: 0, power: 5_000, reputation: 60 });
-  const rf = await h.act(f, 'applyIntel', { codeName: 'Duman', ...NO_GANG });
-  await h.db.doc(`gangWorlds/test/intelRoster/${aRid}`).update({ rank: 'muhbir' });
-  await h.tickTo('2026-09-21', '21:10');
-  assert.equal(h.get(`intel/main/applications/${rf.appId}`).status, 'accepted');
-  assert.ok(h.inbox(f).some((t) => /Polis Teşkilatına kabul edildin/.test(t)));
+  assert.equal(h.get(`intelRecords/${(await h.membership(a)).intelRosterId}`).form, undefined);
+  assert.equal(h.get('intel/main/applications/oldB').status, 'void');
+  assert.equal((await h.membership(b)).intelAppId, null);
+  assert.equal(h.raw(`gangWorlds/test/players/${b}`).isPolice, false);
+});
+
+test('v123: yeni katılan polis 24 saat boyunca atılamaz (doğrudan ya da oylamayla); 24 saat sonra atılabilir', async () => {
+  const h = await createHarness({ start: ist('2026-09-21', '09:00') });
+  const all = [];
+  for (let i = 0; i < 8; i++) all.push(await member(h, `Eski${i}`));
+  await h.nextDay('09:00');
+  for (const m of all) await h.db.doc(`gangWorlds/test/players/${m.id}`).update({ lastSeenAtMs: h.clock.now });
+  await h.db.doc(`gangWorlds/test/intelRoster/${all[0].rid}`).update({ rank: 'baskan', prestige: 9_000_000 });
+  await h.db.doc(`gangWorlds/test/memberships/${all[0].id}`).set({ intelRank: 'baskan' }, { merge: true });
+  await h.db.doc(`gangWorlds/test/intelRoster/${all[2].rid}`).update({ rank: 'uzman', prestige: 7_000_000 });
+  await h.db.doc(`gangWorlds/test/memberships/${all[2].id}`).set({ intelRank: 'uzman' }, { merge: true });
+  h.setTime(ist('2026-09-22', '22:00'));
+  const yeni = await member(h, 'Yeni');
+  // ertesi gün 00:00 geçti ama 24 saat dolmadı → atılamaz
+  h.setTime(ist('2026-09-23', '09:00'));
+  assert.match((await h.fails(all[0].id, 'kickIntelMember', { targetRosterId: yeni.rid })).message, /24 saat boyunca çıkarılamaz \(13 saat kaldı\)/);
+  assert.match((await h.fails(all[2].id, 'requestIntelKickVote', { targetRosterId: yeni.rid })).message, /24 saat boyunca çıkarılamaz/);
+  assert.equal(h.raw(`gangWorlds/test/players/${yeni.id}`).isPolice, true);
+  // 24 saat dolunca atılabilir ve 24 saat geri giremez
+  h.setTime(ist('2026-09-23', '22:00') + 1);
+  await h.act(all[0].id, 'kickIntelMember', { targetRosterId: yeni.rid });
+  assert.equal((await h.membership(yeni.id)).intelRosterId, null);
+  assert.match((await h.fails(yeni.id, 'applyIntel', { codeName: 'Dönüş' })).message, /24 saat daha başvuru yapamazsın/);
+  h.setTime(h.clock.now + 24 * 3600_000 + 1);
+  assert.equal((await h.act(yeni.id, 'applyIntel', { codeName: 'Dönüş' })).accepted, true);
 });
 
 test('24 saat yasak: istifa, atılma, oylamayla çıkarılma ve pasiflikten sonra; her ayrılış polisliği de alır', async () => {
@@ -157,7 +158,7 @@ test('24 saat yasak: istifa, atılma, oylamayla çıkarılma ve pasiflikten sonr
   assert.match((await h.fails(q.id, 'applyIntel', { codeName: 'Geri', ...FORM })).message, /1 saat daha/);
   h.setTime(h.clock.now + 3600_000 + 1);
   const back = await h.act(q.id, 'applyIntel', { codeName: 'Geri', ...FORM });
-  assert.equal(back.accepted, true, 'süre dolunca başvurabilir (EGM yok → anında)');
+  assert.equal(back.accepted, true, 'süre dolunca anında yeniden girer');
 
   // atılma (EGM → Polis Memuru) + oylama
   const h2 = await createHarness();
@@ -402,5 +403,5 @@ test('v116: çeteden ayrılan / atılan 24 saat polisliğe başvuramaz; süre do
   }
   h.setTime(h.clock.now + 24 * 3600_000 + 1);
   const r = await h.act(leaver, 'applyIntel', { codeName: 'Donus', ...NO_GANG });
-  assert.ok(r.accepted || r.appId, 'süre dolunca başvurabilir');
+  assert.equal(r.accepted, true, 'süre dolunca anında girer');
 });

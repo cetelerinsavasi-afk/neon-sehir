@@ -71,7 +71,7 @@ export const CATS = [
       kicker: 'Rozet takarsın. Şehir seni başka türlü görür.',
       lines: [
         L('🧼', 'Temiz sicil (%0 şüphe), 50 saygınlık ve belinde bir silah.'),
-        L('📝', 'Karakol’dan başvur: kod adını seç, neden rozet istediğini yaz. Teşkilatın başı 12 saat içinde karar verir.'),
+        L('📝', 'Karakol’dan kod adını yaz, şartları sağlıyorsan rozet anında senin. İlk 24 saat seni kimse atamaz.'),
         L('🕶️', 'Teşkilatta herkes kod adıyla bilinir. Gerçek yüzün gizli kalır.'),
         L('💼', 'Rütbene göre maaş + günün rüşvet payı, her gece 00:00’da cebinde.'),
         L('🚨', 'Bir soygun ekibine sız. Ekipte sivil varsa suçluyu sen yakalarsın, ganimetin dörtte biri senin.'),

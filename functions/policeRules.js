@@ -6,6 +6,18 @@
 // =============================================================================
 import { POLICE } from './gang/config.js';
 
+// v123 — ŞÜPHE KİLİDİ: şüphesi 50 ve üstü olan oyuncu suç işleyemez —
+// tek başına soygun / haraç (attemptHeist), ekip soygunu kurma / katılma /
+// başlatma (ekipte biri 50+ ise plan başlatılamaz; v124: ekip kurmak ve
+// katılmak serbest, başlatmada şüphesi 50+ olanların adı söylenir), parkta yasaklı madde
+// satışı (riskli ve güvenli). Şüphe gece düştükçe kilit kendiliğinden kalkar.
+export const CRIME_SUSPICION_LOCK = 50;
+export const CRIME_LOCK_TEXT = 'Şüphen 50+ iken suç işleyemezsin.';
+export const CRIME_LOCK_TEAM_TEXT = 'Ekipte şüphesi 50+ olan var ({names}) — şüphesi 50+ olan oyuncu suç işleyemez, soygun başlatılamaz.';
+export function crimeLockedBySuspicion(suspicion) {
+  return Number(suspicion || 0) >= CRIME_SUSPICION_LOCK;
+}
+
 // Polis(ler) ekip soygununu durdurdu: v109 — kurtarılan paranın %25'i polislere
 // eşit bölünür, kalanı (yuvarlama artığı dahil) devlete; her polis
 // (kurtarılan × 4) / polis sayısı prestij kazanır (Polis Teşkilatı prestiji).
@@ -21,13 +33,18 @@ export function policeBustSplit(recovered, policeCount) {
 }
 
 // Bir soygun sonucunun devlet defterine yansıması.
-//   paidToCriminals: başarılı soygunda suçlulara ödenen toplam (devlet öder)
+//   paidToCriminals: başarılı soygunda suçlulara ödenen toplam (devlet öder → gider)
 //   fines: yakalanan suçlulara yazılan cezaların toplamı (devlete gelir)
-//   recoveredToState: polisin kurtardığı paranın devlete kalan kısmı
-export function heistStateEntries({ paidToCriminals = 0, fines = 0, recoveredToState = 0, contraband = false } = {}) {
+//   policeShare: v123 — polis ekibi yakaladığında polislere ödenen %25 pay
+//                (cezanın içinden çıkan komisyon → devlete GİDER)
+// v123: eski `recoveredToState` (soygun_kurtarma geliri) KALDIRILDI. Polis ekibi
+// yakaladığında devlet suçlulara hiç ödeme yapmamıştır; "kurtarılan para" diye
+// ayrı bir nakit yoktur — tek gelir sivillerin cezasıdır. Eskiden ceza + %75
+// kurtarma ikisi birden gelir yazılıyordu (çift sayım).
+export function heistStateEntries({ paidToCriminals = 0, fines = 0, policeShare = 0, contraband = false } = {}) {
   const out = [];
   if (paidToCriminals > 0) out.push({ kind: 'out', cat: 'soygun_odeme', amount: Math.floor(paidToCriminals) });
   if (fines > 0) out.push({ kind: 'in', cat: contraband ? 'kacak_ceza' : 'soygun_ceza', amount: Math.floor(fines) });
-  if (recoveredToState > 0) out.push({ kind: 'in', cat: 'soygun_kurtarma', amount: Math.floor(recoveredToState) });
+  if (policeShare > 0) out.push({ kind: 'out', cat: 'soygun_polis_payi', amount: Math.floor(policeShare) });
   return out;
 }

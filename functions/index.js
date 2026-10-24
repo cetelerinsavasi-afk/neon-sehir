@@ -15,7 +15,7 @@ import { createSocial } from './social.js';
 import { createDeletionRequests } from './deletionRequests.js';
 import { createHouses } from './houses.js';
 import { createBusiness } from './business.js';
-import { resaleTax, factoryTax, factoryTaxRate, taxLedgerWrite } from './tax.js';
+import { resaleTax, factoryTax, factoryTaxRate, taxLedgerWrite, splitSalaryTax, splitLotteryTax } from './tax.js';
 import { createVisits } from './visits.js';
 import { createShop } from './shop.js';
 import { createVenue } from './venue.js';
@@ -56,7 +56,7 @@ import { isMsgId, nextReaction, replyQuoteOf } from './chatExtras.js';
 import { VENUES } from './venueLayouts.js';
 import { goldTag, recordGoldChange, cleanupMoneyLog, realizeSale, realizeBankWithdraw } from './moneyLog.js';
 import { stateWrite, closeStateDays, readStateReport } from './stateTreasury.js';
-import { policeBustSplit, heistStateEntries } from './policeRules.js';
+import { policeBustSplit, heistStateEntries, crimeLockedBySuspicion, CRIME_LOCK_TEXT, CRIME_LOCK_TEAM_TEXT } from './policeRules.js';
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -1854,6 +1854,7 @@ export const produceAtFactory = onCall(async (request) => {
 
     let shortfall = 0;
     let newOwnerDebt = null;
+    let workerTax = { tax: 0, net: 0 };
 
     if (isSelfEmployed) {
       // Kendi fabrikanda kendin çalışıyorsan kendine maaş ödemezsin.
@@ -1867,10 +1868,14 @@ export const produceAtFactory = onCall(async (request) => {
       // İşçi: maaşını TAM alır. employmentProducedDateKey, frontend'in
       // "bugün üretim yaptın mı" (istifa butonu görünürlüğü) sorusunu
       // makine dokümanına ayrıca bakmadan cevaplayabilmesi için.
+      // v123: maaştan %10 vergi — patron tam maaşı öder, işçiye %90'ı yatar,
+      // %10 devlet kasasına (vergi_maas).
+      workerTax = splitSalaryTax(salary);
       tx.update(userRef, {
-        gold: admin.firestore.FieldValue.increment(salary), goldTag: goldTag('fabrika'),
+        gold: admin.firestore.FieldValue.increment(workerTax.net), goldTag: goldTag('fabrika'),
         employmentProducedDateKey: dateKey,
       });
+      taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: workerTax.tax, source: 'maas', uid, atMs: Date.now(), ref: 'fabrika' });
       // Patron: elinden çıkabildiği kadarı düşülür, yetmeyen kısım CEZA/borç olur.
       tx.update(ownerRef, {
         gold: admin.firestore.FieldValue.increment(-ownerPay), goldTag: goldTag('fabrika'),
@@ -1898,6 +1903,8 @@ export const produceAtFactory = onCall(async (request) => {
 
     outcome = {
       salary: isSelfEmployed ? 0 : salary,
+      salaryTax: isSelfEmployed ? 0 : workerTax.tax, // v123
+      netSalary: isSelfEmployed ? 0 : workerTax.net, // v123
       qty,
       shortfall,
       isSelfEmployed,
@@ -2326,26 +2333,39 @@ async function resolveStuckLotteryAndChampionship(dateKey) {
         if (winnerUid) {
           const winnerRef = db.collection('users').doc(winnerUid);
           const winnerSnap = await winnerRef.get();
+          // v123 — piyango kazancından %10 vergi: kazanana %90'ı yatar, %10
+          // belediye (devlet) kasasına gelir yazılır (vergi_piyango). Kazanç,
+          // çekiliş işaretlemesi, vergi kaydı ve SMS tek batch'te (yarım kalmaz).
+          const lotTax = splitLotteryTax(lottery.jackpot);
           const { goldDelta, debtDelta } = splitIncomeForDebt(
             winnerSnap.data()?.debtToState,
-            lottery.jackpot
+            lotTax.net
           );
-          await winnerRef.update({
+          const fmtTr = (n) => Number(n || 0).toLocaleString('tr-TR');
+          const lotBatch = db.batch();
+          lotBatch.update(winnerRef, {
             gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('piyango'),
             debtToState: admin.firestore.FieldValue.increment(debtDelta),
           });
-          await prevLotteryRef.update({
+          lotBatch.update(prevLotteryRef, {
             winnerUid,
             winnerName,
             winnerAmount: lottery.jackpot,
+            winnerTax: lotTax.tax,
+            winnerNet: lotTax.net,
             drawnAt: admin.firestore.FieldValue.serverTimestamp(),
           });
-          await winnerRef.collection('messages').add({
-            text: `Tebrikler! Piyangodan ${lottery.jackpot.toLocaleString('tr-TR')} altın kazandın.`,
+          taxLedgerWrite(lotBatch, db, admin.firestore.FieldValue, { amount: lotTax.tax, source: 'piyango', uid: winnerUid, atMs: Date.now(), ref: `piyango_${prevLotterySnap.id}` });
+          lotBatch.set(winnerRef.collection('messages').doc(), {
+            text: `Tebrikler! Piyangodan ${fmtTr(lottery.jackpot)} altın kazandın. %10 piyango vergisi (${fmtTr(lotTax.tax)} altın) belediyeye ödendi, hesabına ${fmtTr(lotTax.net)} altın yattı.`,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             read: false,
             type: 'lottery_win',
+            jackpot: lottery.jackpot,
+            tax: lotTax.tax,
+            net: lotTax.net,
           });
+          await lotBatch.commit();
           await achievements.grant(winnerUid, 'piyango'); // v67 — Başarılar
           summary.lotteryGoldPaid += lottery.jackpot;
         }
@@ -5401,7 +5421,8 @@ export const repayStateDebt = onCall(async (request) => {
 //   biletin tam bedeli (100 altın × adet) jackpot'a eklenir.
 // - Kazanma şansı = oyuncunun bilet sayısı / o güne ait toplam bilet sayısı
 //   (ağırlıklı rastgele) — dailyReset içinde (00:00) bir önceki günün
-//   çekilişi yapılır, jackpot'un tamamı kazanana verilir.
+//   çekilişi yapılır, jackpot kazanana verilir (v123: %10 piyango vergisi
+//   kesilir → belediye kasası 'vergi_piyango'; kazanana %90'ı yatar).
 // - lottery/{dateKey}: jackpot, totalTickets, winnerUid, winnerAmount, drawnAt
 // - lottery/{dateKey}/tickets/{uid}: uid, displayName, count
 // =============================================================================
@@ -6269,6 +6290,11 @@ export const attemptHeist = onCall(async (request) => {
     );
   }
 
+  // v123: şüphe 50+ iken tek başına soygun / haraç yok
+  if (crimeLockedBySuspicion((await userRef.get()).data()?.suspicion)) {
+    throw new HttpsError('failed-precondition', CRIME_LOCK_TEXT);
+  }
+
   const maxPower = await getMaxWeaponPower(uid);
   if (maxPower < config.requiredPower) {
     // Soygun hiç başlamadı — şüphe kesinlikle artmaz.
@@ -6290,6 +6316,7 @@ export const attemptHeist = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
     }
     const suspicion = user.suspicion || 0;
+    if (crimeLockedBySuspicion(suspicion)) throw new HttpsError('failed-precondition', CRIME_LOCK_TEXT); // v123 (yarış)
     const caught = Math.random() < captureRiskPercent(suspicion) / 100;
     const reward = config.reward;
     // Yakalanırsa ödenecek ceza — polisse 2 KATI (bkz. crimePenaltyMultiplier).
@@ -6409,6 +6436,7 @@ async function sellContrabandSafe(uid) {
     const have = invSnap.exists ? invSnap.data().quantity || 0 : 0;
     if (have < 1) throw new HttpsError('failed-precondition', 'Yeterli malınız yok.');
     const user = userSnap.data() || {};
+    if (crimeLockedBySuspicion(user.suspicion)) throw new HttpsError('failed-precondition', CRIME_LOCK_TEXT); // v123
     const used = user.parkSafeSales?.day === day ? Number(user.parkSafeSales.count || 0) : 0;
     if (used >= PARK_SAFE_DAILY_LIMIT) {
       throw new HttpsError('resource-exhausted', `Güvenli satış hakkın bugünlük bitti (${PARK_SAFE_DAILY_LIMIT}/${PARK_SAFE_DAILY_LIMIT}). Yarın yenilenir.`);
@@ -6459,6 +6487,7 @@ export const sellContrabandAtPark = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Yeterli malınız yok.');
     }
     const user = userSnap.data();
+    if (crimeLockedBySuspicion(user?.suspicion)) throw new HttpsError('failed-precondition', CRIME_LOCK_TEXT); // v123
     // KULLANICI REVİZESİ (polis suç sistemi): polisler de yasaklı madde
     // satabilir — yakalanırlarsa ceza 2 KATI (5.000 yerine 10.000).
     const penaltyMultiplier = crimePenaltyMultiplier(user);
@@ -6988,6 +7017,8 @@ export const createHeistPlan = onCall(async (request) => {
 
   const userSnap = await db.collection('users').doc(uid).get();
   const user = userSnap.data();
+  // v124: şüphesi 50+ olan da ekip KURABİLİR / katılabilir — sadece soygun
+  // başlatılamaz (bkz. executeHeistPlan şüphe kilidi).
   // KULLANICI REVİZESİ (polis suç sistemi): polisler de plan kurabilir
   // (ekibin tamamı polisse normal soygun, içinde suçlu varsa tuzak — bkz.
   // dosya başındaki not ve executeHeistPlan). Polislik başvurusu bekleyenler
@@ -7210,6 +7241,7 @@ export const joinHeistPlan = onCall(async (request) => {
 
   const userSnap = await db.collection('users').doc(uid).get();
   const user = userSnap.data();
+  // v124: şüphesi 50+ olan da ekibe katılabilir (soygun başlatılamaz)
   const myPower = await getMaxWeaponPower(uid);
   const iAmPolice = user?.profession === 'polis';
 
@@ -7371,6 +7403,19 @@ export const executeHeistPlan = onCall(async (request) => {
   const userSnaps = await Promise.all(
     participants.map((p) => db.collection('users').doc(p.uid).get())
   );
+  // v123: ekipte şüphesi 50+ olan biri varsa soygun BAŞLATILAMAZ (plan açık
+  // kalır; kimsenin şüphesi / günlük hakkı değişmez).
+  // v124: kim olduğu söylenir (herkesin şüphesi zaten soygun ekranında yazıyor).
+  {
+    const locked = userSnaps
+      .map((s, i) => (crimeLockedBySuspicion(s.data()?.suspicion) ? participants[i] : null))
+      .filter(Boolean);
+    if (locked.length) {
+      if (locked.length === 1 && locked[0].uid === uid) throw new HttpsError('failed-precondition', `${CRIME_LOCK_TEXT} Şüphen düşene kadar soygun başlatılamaz.`);
+      const names = locked.map((p) => (p.uid === uid ? 'sen' : String(p.displayName || 'Oyuncu').slice(0, 30))).join(', ');
+      throw new HttpsError('failed-precondition', CRIME_LOCK_TEAM_TEXT.replace('{names}', names));
+    }
+  }
   // v112: polis = mesleği 'polis' YA DA Polis Teşkilatı üyesi (ikisi normalde
   // hep birlikte değişir; biri bir an geride kalsa bile bir polis, ekibindeki
   // başka bir polisi "suçlu" sanıp yakalamasın).
@@ -7490,15 +7535,18 @@ export const executeHeistPlan = onCall(async (request) => {
     // ADIM 2 — Şüpheden yakalanmadılar AMA ekipte sızmış polis varsa,
     // polis artık YÜZDE YÜZ yakalar (kendi başarısı sayesinde); soyguncular
     // aynı miktarı devlete BORÇ olarak öder (Bölüm 10).
-    // v109: polisler kurtarılan paranın %25'ini (eşit) alır, kalanı devlete
-    // gider; her polis (kurtarılan × 4) / polis sayısı prestij kazanır (Polis
+    // v109: polisler kurtarılan paranın %25'ini (eşit) alır (v123: bu pay
+    // devlet defterine GİDER yazılır, net devlete %75 kalır); her polis (kurtarılan × 4) / polis sayısı prestij kazanır (Polis
     // Teşkilatı). Soyguncuların cezaları da ANINDA devlete gelir yazılır —
     // suçlunun borcunu ödemesi beklenmez (polisin payı da anında yatar).
     const bust = policeBustSplit(totalReward, policeIdx.length);
     const perPoliceEarning = bust.perEarning;
     const perCivilianPenalty =
       civilianIdx.length > 0 ? Math.floor(totalReward / civilianIdx.length) : 0;
-    stateEntries.push(...heistStateEntries({ fines: perCivilianPenalty * civilianIdx.length, recoveredToState: bust.stateShare }));
+    // v123: devlet suçlulara ödeme yapmadı → tek gelir cezalar; polisin %25
+    // payı cezanın içinden çıkan komisyondur ve GİDER yazılır (eskiden ceza +
+    // "kurtarılan %75" ikisi birden gelir yazılıyordu — çift sayım).
+    stateEntries.push(...heistStateEntries({ fines: perCivilianPenalty * civilianIdx.length, policeShare: perPoliceEarning * policeIdx.length }));
 
     policeIdx.forEach((i) => {
       const currentDebt = userSnaps[i].data()?.debtToState || 0;
@@ -12968,14 +13016,18 @@ async function runFutbolDailyClock() {
           ...(firstSalaryImmediate ? { managerFirstSalaryImmediate: admin.firestore.FieldValue.delete() } : {}),
         });
         team = { ...team, treasury: treasury - paid, salaryDebt: newDebt, managerFirstSalaryImmediate: false };
+        // v123: menajer maaşından %10 vergi (kasa tam öder, menajere %90 yatar)
+        const mTax = splitSalaryTax(paid);
         if (paid > 0) {
-          batch.update(db.collection('users').doc(team.managerUid), { gold: admin.firestore.FieldValue.increment(paid), goldTag: goldTag('futbol') });
+          batch.update(db.collection('users').doc(team.managerUid), { gold: admin.firestore.FieldValue.increment(mTax.net), goldTag: goldTag('futbol') });
+          taxLedgerWrite(batch, db, admin.firestore.FieldValue, { amount: mTax.tax, source: 'maas', uid: team.managerUid, atMs: Date.now(), ref: 'menajer' });
         }
+        const mTaxNote = mTax.tax > 0 ? ` (%10 vergi: ${mTax.tax.toLocaleString('tr-TR')} · eline geçen: ${mTax.net.toLocaleString('tr-TR')} altın)` : '';
         if (newDebt > 0) {
           sendFutbolSms(
             batch,
             team.managerUid,
-            `⚠️ Menajer maaşının tamamı ödenemedi, ${newDebt.toLocaleString('tr-TR')} altın borç oluştu.`,
+            `⚠️ Menajer maaşının tamamı ödenemedi, ${newDebt.toLocaleString('tr-TR')} altın borç oluştu.${paid > 0 ? ` Ödenen: ${paid.toLocaleString('tr-TR')} altın${mTaxNote}.` : ''}`,
             'futbol_salary_debt'
           );
           if (team.ownerUid) {
@@ -12990,11 +13042,11 @@ async function runFutbolDailyClock() {
           sendFutbolSms(
             batch,
             team.managerUid,
-            `💵 ${team.name} menajerlik maaşın (${salary.toLocaleString('tr-TR')} altın) hesabına yatırıldı.`,
+            `💵 ${team.name} menajerlik maaşın (${paid.toLocaleString('tr-TR')} altın${mTaxNote}) hesabına yatırıldı.`,
             'futbol_salary_paid'
           );
         }
-        await bump(2);
+        await bump(4); // v123: +2 (vergi defteri + devlet kasası)
       }
 
       // --- Bölüm 10: %20 çekim tabanı, o günkü (19:00) kasa bakiyesi. Her

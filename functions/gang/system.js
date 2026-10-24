@@ -272,7 +272,6 @@ export function createGangSystem(deps) {
     applyIntel: intel.applyIntel,
     cancelIntelApplication: intel.cancelIntelApplication,
     reviewIntelApplication: intel.reviewIntelApplication,
-    updateIntelForm: intel.updateIntelForm,
     reportTruck: intel.reportTruck,
     leakTruck: intel.leakTruck,
     reportBet: intel.reportBet,
@@ -730,7 +729,7 @@ export function createGangSystem(deps) {
   const SOCIAL_ACTIONS = new Set(['sendGangChat', 'sendGlobalChat', 'sendIntelChat']);
   // v38: üye listesi (00:00 prestijli herkese açık görünüm) değiştiren işlemler
   // UGC D1: oyuncunun serbest metin yazdığı eylemler (sohbet, ad, not, kod adı)
-  const TEXT_ACTIONS = new Set(['sendGangChat', 'sendGlobalChat', 'sendIntelChat', 'createGang', 'updateGangProfile', 'sendAllianceNote', 'joinIntel', 'updateIntelNote', 'changeCodeName', 'applyIntel', 'updateIntelForm']);
+  const TEXT_ACTIONS = new Set(['sendGangChat', 'sendGlobalChat', 'sendIntelChat', 'createGang', 'updateGangProfile', 'sendAllianceNote', 'joinIntel', 'updateIntelNote', 'changeCodeName', 'applyIntel']);
   const ROSTER_ACTIONS = new Set(['createGang', 'joinGang', 'leaveGang', 'kickMember', 'giveRespect', 'joinIntel', 'leaveIntel', 'kickIntelMember', 'changeCodeName', 'intelDecision', 'reviewIntelApplication']);
   const INTEL_ROSTER_ACTIONS = new Set(['joinIntel', 'leaveIntel', 'kickIntelMember', 'changeCodeName', 'intelDecision', 'reviewIntelApplication']);
   async function refreshRostersAfter(ctx, action, before) {

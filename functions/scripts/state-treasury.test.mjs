@@ -63,3 +63,43 @@ test('kasa eksiye inebilir; günler 00:00 kapanışında özetlenir, bakiye ve t
   assert.ok(r.labels.out.soygun_odeme && STATE_OUT.maas_imam);
   assert.equal(stateDayKey(ms('2026-10-20', 1)), '2026-10-20');
 });
+
+// v123 — maaş (futbolcu / menajer / fabrika işçisi) ve piyango vergisi %10
+import { splitSalaryTax, splitLotteryTax, SALARY_TAX_RATE, LOTTERY_TAX_RATE } from '../tax.js';
+import fsV123 from 'node:fs';
+
+test('v123: maaş ve piyango vergisi %10 — net + vergi = brüt; devlet kasasında ayrı kalemler', async () => {
+  assert.equal(SALARY_TAX_RATE, 0.1);
+  assert.equal(LOTTERY_TAX_RATE, 0.1);
+  assert.deepEqual(splitSalaryTax(5000), { gross: 5000, tax: 500, net: 4500 });
+  assert.deepEqual(splitSalaryTax(1005), { gross: 1005, tax: 100, net: 905 });
+  assert.deepEqual(splitSalaryTax(9), { gross: 9, tax: 0, net: 9 });
+  assert.deepEqual(splitSalaryTax(0), { gross: 0, tax: 0, net: 0 });
+  assert.deepEqual(splitLotteryTax(123_456), { gross: 123_456, tax: 12_345, net: 111_111 });
+  assert.ok(STATE_IN.vergi_maas && STATE_IN.vergi_piyango);
+  const clock = { now: ms('2026-10-22') };
+  const db = new FakeFirestore({ clock: () => clock.now });
+  const b = db.batch();
+  taxLedgerWrite(b, db, FieldValue, { amount: 500, source: 'maas', uid: 'isci', atMs: clock.now });
+  taxLedgerWrite(b, db, FieldValue, { amount: 12_345, source: 'piyango', uid: 'talihli', atMs: clock.now });
+  await b.commit();
+  const r = await readStateReport(db, { todayKey: '2026-10-22' });
+  assert.equal(r.today.in.vergi_maas, 500);
+  assert.equal(r.today.in.vergi_piyango, 12_345);
+});
+
+test('v123 index.js: fabrika işçisi, menajer maaşı ve piyango kazancı vergilendirilir; SMS vergiyi söyler', () => {
+  const src = fsV123.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
+  const fab = src.slice(src.indexOf('export const produceAtFactory'), src.indexOf('export const resignFromFactory'));
+  assert.ok(fab.includes('workerTax = splitSalaryTax(salary)'));
+  assert.ok(fab.includes('increment(workerTax.net)'), 'işçiye net');
+  assert.ok(fab.includes("source: 'maas'"));
+  assert.ok(fab.includes('increment(-ownerPay)'), 'patron yine tam maaşı öder');
+  const man = src.slice(src.indexOf('menajer maaşından %10 vergi'), src.indexOf('menajer maaşından %10 vergi') + 2500);
+  assert.ok(man.includes('increment(mTax.net)') && man.includes("source: 'maas'") && man.includes('mTaxNote'));
+  const lot = src.slice(src.indexOf('async function resolveStuckLotteryAndChampionship'), src.indexOf('async function resolveStuckLotteryAndChampionship') + 6000);
+  assert.ok(lot.includes('splitLotteryTax(lottery.jackpot)'));
+  assert.ok(lot.includes("source: 'piyango'"));
+  assert.ok(/%10 piyango vergisi/.test(lot), 'SMS bilgilendirir');
+  assert.ok(lot.includes('splitIncomeForDebt(\n            winnerSnap.data()?.debtToState,\n            lotTax.net'), 'borç kesintisi net üzerinden');
+});

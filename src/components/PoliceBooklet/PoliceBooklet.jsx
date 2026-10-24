@@ -13,8 +13,8 @@ const PAGES_BEFORE_SALARY = [
       'Şehrin karanlığına karşı duran tek güç: Polis Teşkilatı.',
       'Aranan: 50 saygınlık, temiz bir sicil (%0 şüphe), en az 1 silah ve 📋 temel görevlerin tamamı.',
       'İmamlar ve Mafya Babaları rozet takamaz.',
-      'Başvuruyu Karakol\'dan ya da Çeteler › Polis Teşkilatı\'ndan yaparsın: kod adını seç, hangi çetede olduğunu ve neden polis olmak istediğini yaz.',
-      'Başvurun 12 saat içinde incelenir.',
+      'Karakol\'dan ya da Çeteler › Polis Teşkilatı\'ndan kod adını yazman yeterli — şartları sağlıyorsan rozet anında senin.',
+      'Yeni rozetli 24 saat boyunca teşkilattan atılamaz.',
     ],
   },
   {

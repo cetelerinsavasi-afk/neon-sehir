@@ -337,7 +337,7 @@ export function KarakolPart({ panel, setPanel, walk }) {
     <>
       <Menu show={walk}>
         <button className="v3-btn" onClick={() => setPanel('application')}>
-          👮 Polislik Başvurusu
+          👮 Polis Teşkilatına Katıl
         </button>
         <button className="v3-btn" onClick={() => setBooklet(true)}>
           📘 Polis Kitapçığı
@@ -349,7 +349,7 @@ export function KarakolPart({ panel, setPanel, walk }) {
       {booklet && <PoliceBooklet onClose={() => setBooklet(false)} />}
       {(panel === 'bribe' || panel === 'application') && (
         <Sheet
-          title={panel === 'bribe' ? '👮 Karakol Girişi — Memur' : '🎖️ Komiser Ofisi — Polislik Başvurusu'}
+          title={panel === 'bribe' ? '👮 Karakol Girişi — Memur' : '🎖️ Komiser Ofisi — Polis Teşkilatı'}
           onClose={() => setPanel(null)}
           closeLabel={panel === 'bribe' ? 'Memurdan Uzaklaş' : 'Ofisten Çık'}
         >

@@ -134,6 +134,9 @@ export const INTEL = {
   // v109: istifa eden / atılan / oylamayla çıkarılan / pasiflikten görevden alınan
   // 24 saat yeniden başvuramaz (memberships/{uid}.intelCooldownUntilMs)
   REJOIN_COOLDOWN_MS: 24 * MS_HOUR,
+  // v123: başvuru formu yok — şartları sağlayan anında polis olur; yeni katılan
+  // polis katıldığı andan itibaren 24 saat atılamaz (doğrudan ya da oylamayla).
+  NEW_MEMBER_KICK_GUARD_MS: 24 * MS_HOUR,
   CODENAME_MIN: 3,
   CODENAME_MAX: 16,
   REPORT_PRESTIGE: 500_000, // v109: tır ihbarı (1.000.000 → 500.000)

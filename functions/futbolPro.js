@@ -1,4 +1,5 @@
 import { goldTag } from './moneyLog.js';
+import { splitSalaryTax, taxLedgerWrite } from './tax.js';
 // =============================================================================
 // futbolPro.js — v77 Faz 5: Gerçek futbolcular (oyuncular), sözleşme, maaş,
 // teklifler, maç istatistikleri (gol / asist / maç puanı) ve gün sonu kartı.
@@ -29,6 +30,8 @@ import { goldTag } from './moneyLog.js';
 //     footballers/{uid}'e de yansıtılır.
 //
 // MAAŞ (her 19:00, menajer maaşıyla aynı mantık)
+//   - v123: maaştan %10 vergi kesilir (tax.js splitSalaryTax → devlet kasası
+//     'vergi_maas'); takım tam maaşı öder, futbolcuya %90'ı yatar.
 //   - MANAGED → takım kasası · OWNER_ACTIVE → başkanın altını ·
 //     OWNER_AUTO → kasa · BOT (takım sahipsiz kaldı) → kasadan SON maaş ve
 //     sözleşme biter. Transfer desteğinden ÖDENMEZ.
@@ -649,12 +652,19 @@ export function createFutbolPro({
           const owed = salary + Math.max(0, Math.round(Number(p.salaryDebt || 0)));
           const paid = Math.min(owed, available);
           const newDebt = owed - paid;
+          let salaryTax = 0;
+          const taxNote = () => (salaryTax > 0 ? ` (%10 vergi: ${fmt(salaryTax)} · eline geçen: ${fmt(paid - salaryTax)})` : '');
           if (paid > 0) {
             if (fromPresident) tx.update(userRef(team.ownerUid), { gold: FieldValue.increment(-paid), goldTag: goldTag('futbolcuMaas') });
             else tx.update(teamRef(p.teamId), { treasury: FieldValue.increment(-paid) });
             if (!userGone) {
-              const { goldDelta, debtDelta } = splitIncomeForDebt(plSnap.data()?.debtToState, paid);
+              // v123: maaştan %10 vergi (takım tam öder, futbolcuya %90 yatar)
+              const { tax, net } = splitSalaryTax(paid);
+              salaryTax = tax;
+              taxLedgerWrite(tx, db, FieldValue, { amount: tax, source: 'maas', uid, atMs: now(), ref: 'futbolcu' });
+              const { goldDelta, debtDelta } = splitIncomeForDebt(plSnap.data()?.debtToState, net);
               tx.update(userRef(uid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('futbolcuMaas'), ...(debtDelta ? { debtToState: FieldValue.increment(debtDelta) } : {}) });
+              out.tax = (out.tax || 0) + tax;
             } else out.burned += paid; // v90: hesap silinmiş → ödenen maaş kimseye geçmez (yanar)
           }
           out.paid += paid;
@@ -668,7 +678,7 @@ export function createFutbolPro({
           if (mode === 'BOT') {
             // takım sahipsiz kaldı: son maaş ödendi, sözleşme biter
             endWrites(tx, { uid, p: { ...p, salaryDebt: newDebt }, team, teamId: p.teamId, reason: 'team_bot' });
-            sms(tx, uid, `⚽ ${team.name} sahipsiz kaldı; son maaşın (${fmt(paid)}) ödendi, sözleşmen bitti.`, 'futbol_pro_left');
+            sms(tx, uid, `⚽ ${team.name} sahipsiz kaldı; son maaşın (${fmt(paid)}${taxNote()}) ödendi, sözleşmen bitti.`, 'futbol_pro_left');
             out.ended += 1;
             return;
           }
@@ -681,7 +691,7 @@ export function createFutbolPro({
               joinWrites(tx, { uid, fb: fbData, teamId: tr.teamId, team: nt, salary: tr.salary, pendingSnaps: pq?.docs || [], carry: { form: p.form, injuryDaysLeft: p.injuryDaysLeft }, lastLeft: { teamId: p.teamId, dayKey: futbolDayKey(now()), reason: 'transfer', atMs: now() } });
               teamNote(tx, p.teamId, `🔁 ${p.name} ${nt.name} takımına transfer oldu.${newDebt > 0 ? ` Borç: ${fmt(newDebt)}` : ''}`, 'futbol_pro_left');
               teamNote(tx, tr.teamId, `🤝 ${p.name} takıma katıldı · ${fmt(tr.salary)}/gün (ilk maaş yarın 19:00)`, 'futbol_pro_joined');
-              sms(tx, uid, `🔁 ${nt.name} takımına transfer oldun! ${paid > 0 ? `Eski takımın son maaşını (${fmt(paid)}) ödedi. ` : ''}İlk maaşın yarın 19:00'da.`, 'futbol_pro_joined');
+              sms(tx, uid, `🔁 ${nt.name} takımına transfer oldun! ${paid > 0 ? `Eski takımın son maaşını (${fmt(paid)}${taxNote()}) ödedi. ` : ''}İlk maaşın yarın 19:00'da.`, 'futbol_pro_joined');
               out.moved += 1;
               return;
             }
@@ -692,7 +702,7 @@ export function createFutbolPro({
           // v90: 19:00 FESHİ — bugünkü maaş ödendi, sözleşme biter (kalan borç takımın borcu olur)
           if (p.pendingEnd) {
             const debt = endWrites(tx, { uid, p: { ...p, salaryDebt: newDebt }, team, teamId: p.teamId, reason: p.pendingEnd.by === 'team' ? 'team' : 'player' });
-            sms(tx, uid, `✂️ ${team.name} ile sözleşmen bitti.${paid > 0 ? ` Son maaşın: ${fmt(paid)}.` : ''}${debt ? ` Kalan ${fmt(debt)} alacağın takımın borcu olarak sonra ödenecek.` : ''}`, 'futbol_pro_left');
+            sms(tx, uid, `✂️ ${team.name} ile sözleşmen bitti.${paid > 0 ? ` Son maaşın: ${fmt(paid)}${taxNote()}.` : ''}${debt ? ` Kalan ${fmt(debt)} alacağın takımın borcu olarak sonra ödenecek.` : ''}`, 'futbol_pro_left');
             teamNote(tx, p.teamId, `✂️ ${p.name} ile sözleşme bitti.`, 'futbol_pro_left');
             out.ended += 1;
             return;
@@ -700,8 +710,8 @@ export function createFutbolPro({
           tx.update(ps.ref, { salaryDebt: newDebt, lastPaidAtMs: now() });
           out.debt += newDebt;
           if (!eligible && !(Number(p.salaryDebt) > 0)) return; // 18:00 sonrası imza: ilk maaş yarın
-          if (newDebt > 0) sms(tx, uid, `💰 Maaş: ${fmt(paid)} ödendi · ${fmt(newDebt)} altın borç birikti (${team.name}).`, 'futbol_salary_debt');
-          else sms(tx, uid, `💰 Maaşın yattı: ${fmt(paid)} altın (${team.name}).`, 'futbol_salary_paid');
+          if (newDebt > 0) sms(tx, uid, `💰 Maaş: ${fmt(paid)} ödendi${taxNote()} · ${fmt(newDebt)} altın borç birikti (${team.name}).`, 'futbol_salary_debt');
+          else sms(tx, uid, `💰 Maaşın yattı: ${fmt(paid)} altın${taxNote()} (${team.name}).`, 'futbol_salary_paid');
         });
       } catch (err) {
         out.errors = (out.errors || 0) + 1;
@@ -737,9 +747,12 @@ export function createFutbolPro({
           available -= pay;
           spent += pay;
           if (pay > 0) {
-            const { goldDelta, debtDelta } = splitIncomeForDebt(reads[i + 1]?.data()?.debtToState, pay);
+            // v123: geriye dönük maaş da maaştır → %10 vergi
+            const { tax, net } = splitSalaryTax(pay);
+            taxLedgerWrite(tx, db, FieldValue, { amount: tax, source: 'maas', uid, atMs: now(), ref: 'futbolcu' });
+            const { goldDelta, debtDelta } = splitIncomeForDebt(reads[i + 1]?.data()?.debtToState, net);
             tx.update(userRef(uid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('futbolcuMaas'), ...(debtDelta ? { debtToState: FieldValue.increment(debtDelta) } : {}) });
-            sms(tx, uid, `💰 ${team.name} eski maaş borcundan ${fmt(pay)} altın ödedi.${owe - pay > 0 ? ` Kalan: ${fmt(owe - pay)}` : ''}`, 'futbol_salary_paid');
+            sms(tx, uid, `💰 ${team.name} eski maaş borcundan ${fmt(pay)} altın ödedi${tax > 0 ? ` (%10 vergi: ${fmt(tax)} · eline geçen: ${fmt(net)})` : ''}.${owe - pay > 0 ? ` Kalan: ${fmt(owe - pay)}` : ''}`, 'futbol_salary_paid');
           }
           if (owe - pay > 0) {
             patch[`playerDebts.${uid}`] = owe - pay;

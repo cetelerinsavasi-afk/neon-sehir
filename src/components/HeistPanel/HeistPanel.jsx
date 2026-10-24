@@ -327,6 +327,9 @@ export default function HeistPanel({ target }) {
   // KULLANICI İSTEĞİ (polis suç sistemi): polisler de artık gücü yeten yeri
   // tek başına soyabilir — herkes için aynı kural: güç yetmiyorsa ekip.
   const isPolice = player?.profession === 'polis';
+  // v123: şüphe 50+ iken suç yok (sunucu: functions/policeRules.js CRIME_SUSPICION_LOCK)
+  // v124: ekip kurmak / katılmak serbest; tek başına soygun ve ekip soygununu başlatmak yasak
+  const crimeLocked = Number(player?.suspicion || 0) >= 50;
   const needsTeam = myPower < meta.requiredPower;
   // Kısıtlama HEDEFE ÖZEL: bu hedefte zaten bir ekibim varsa yeni bir
   // tane kuramam, ama başka hedeflerdeki ekiplerim bunu etkilemez.
@@ -380,7 +383,7 @@ export default function HeistPanel({ target }) {
           </button>
         )
       ) : (
-        <button className="heist-panel-btn primary" disabled={done || busy} onClick={handleAttempt}>
+        <button className="heist-panel-btn primary" disabled={done || busy || crimeLocked} onClick={handleAttempt}>
           {done
             ? actions.vendorPurchases?.[target]
               ? 'Bugün buradan alışveriş yaptın'
@@ -405,6 +408,7 @@ export default function HeistPanel({ target }) {
           {resultMessage(result)}
         </p>
       )}
+      {crimeLocked && !error && <p className="heist-panel-error">⛔ Şüphen 50+ iken suç işleyemezsin (ekip kurabilir, ekibe katılabilirsin ama soygun başlatılamaz).</p>}
       {error && <p className="heist-panel-error">{error}</p>}
 
       {result && result.started && (

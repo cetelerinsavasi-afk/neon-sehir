@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { FakeFirestore, FieldValue, Timestamp } from '../gang/test/fakeFirestore.js';
 import { goldTag } from '../moneyLog.js';
+import { crimeLockedBySuspicion, CRIME_LOCK_TEXT } from '../policeRules.js';
 
 const src = fs.readFileSync(fileURLToPath(new URL('../index.js', import.meta.url)), 'utf8');
 const a = src.indexOf('const PARK_SAFE_SELL_PRICE');
@@ -29,8 +30,8 @@ function setup({ inGang = true, day = '2026-10-20' } = {}) {
     const repay = Math.min(Math.floor(amount / 2), debt);
     return { goldDelta: amount - repay, debtDelta: -repay };
   };
-  const fns = new Function('db', 'admin', 'HttpsError', 'istanbulDateKey', 'splitIncomeForDebt', 'goldTag', 'gangFunctions', 'advanceOnboardingStep', code)(
-    db, { firestore: { FieldValue, Timestamp } }, HttpsError, () => day, splitIncomeForDebt, goldTag, gangFunctions, async () => {}
+  const fns = new Function('db', 'admin', 'HttpsError', 'istanbulDateKey', 'splitIncomeForDebt', 'goldTag', 'gangFunctions', 'advanceOnboardingStep', 'crimeLockedBySuspicion', 'CRIME_LOCK_TEXT', code)(
+    db, { firestore: { FieldValue, Timestamp } }, HttpsError, () => day, splitIncomeForDebt, goldTag, gangFunctions, async () => {}, crimeLockedBySuspicion, CRIME_LOCK_TEXT
   );
   S('users/u1', { gold: 0, suspicion: 30 });
   S('users/u1/inventory/yasakliMadde', { quantity: 12 });
@@ -59,4 +60,16 @@ test('yeni gün hakkı yeniler; çetesizde 500 gitmez; malı olmayan satamaz', a
   S('users/u1/inventory/yasakliMadde', { quantity: 0 });
   await assert.rejects(fns.sellContrabandSafe('u1'), /Yeterli malınız yok/);
   assert.equal(G('users/u1').gold, 2500);
+});
+
+test('v123: şüphe 50+ iken güvenli satış da yapılamaz (mal ve hak yerinde kalır); 49 satabilir', async () => {
+  const { S, G, fns, calls } = setup();
+  S('users/u1', { gold: 0, suspicion: 50 });
+  await assert.rejects(fns.sellContrabandSafe('u1'), /Şüphen 50\+ iken suç işleyemezsin/);
+  assert.equal(G('users/u1/inventory/yasakliMadde').quantity, 12);
+  assert.equal(G('users/u1').parkSafeSales, undefined);
+  assert.equal(calls.length, 0);
+  S('users/u1', { gold: 0, suspicion: 49 });
+  await fns.sellContrabandSafe('u1');
+  assert.equal(G('users/u1/inventory/yasakliMadde').quantity, 11);
 });

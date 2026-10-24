@@ -13,9 +13,16 @@
 //                  cezaları (şüphe + polis)     soygun_odeme    — başarılı soygunlarda
 //   kacak_ceza   — parkta yasaklı maddeyle                         suçlulara ödenen para
 //                  yakalanma cezaları           ist_operasyon   — istihbarat operasyon ücretleri
-//   soygun_kurtarma — polisin kurtardığı
-//                  paranın devlete kalan kısmı (v109: %75)
-//   ist_*        — istihbaratın kazandığı her şey (savaş, bahis, rüşvet, çökertme…)
+//   soygun_kurtarma — (ESKİ, v123'ten beri       soygun_polis_payi — v123: polis
+//                  yazılmıyor; eski günlerin                      ekibi yakaladığında
+//                  kayıtları için etiket duruyor)                 polislere ödenen %25
+//                                                                 pay (cezanın komisyonu)
+//   v123 düzeltmesi: polis ekibi yakaladığında devlet suçlulara hiç ödeme yapmaz,
+//   ayrı bir "kurtarılan para" nakdi yoktur → defter: +ceza (in) − polis payı (out).
+//   ör. banka 500.000, 2 polis, 1 suçlu → +500.000 soygun_ceza, −125.000 polis payı = net +375.000
+//   vergi_maas   — v123: futbolcu / menajer / fabrika işçisi maaşları (%10)
+//   vergi_piyango — v123: piyango kazançları (%10)
+//   ist_*      — istihbaratın kazandığı her şey (savaş, bahis, rüşvet, çökertme…)
 //
 // YAZMA: gün + parça (shard) belgelerine artırma — stateLedger/{gün}_s{0..N}.
 // Aynı belgeye çok oyuncu aynı anda yazmasın diye 16 parça; okuma tarafı
@@ -33,10 +40,12 @@ export const STATE_IN = {
   vergi_yayin: 'Vergi · Yayın bağışları (%10)',
   vergi_sanatci: 'Vergi · Şarkı desteği (%10)',
   vergi_ofis: 'Vergi · Ofis gelirleri (%10)',
+  vergi_maas: 'Vergi · Maaşlar — futbolcu / menajer / fabrika işçisi (%10)',
+  vergi_piyango: 'Vergi · Piyango kazançları (%10)',
   vergi_oyun: 'Vergi · Oyunun kendi mekânları',
   soygun_ceza: 'Soygun cezaları (yakalanan suçlular)',
   kacak_ceza: 'Yasaklı madde cezaları (park)',
-  soygun_kurtarma: 'Polisin kurtardığı paranın devlet payı (%75)',
+  soygun_kurtarma: 'Polisin kurtardığı paranın devlet payı (%75) (eski, artık yazılmıyor)',
   ist_savas: 'Polis Teşkilatı · Pazar savaşı zaferi',
   ist_bahis: 'Polis Teşkilatı · Bahisli savaş kazancı',
   ist_operasyon: 'Polis Teşkilatı · Tır operasyonu tahsilatı',
@@ -52,6 +61,7 @@ export const STATE_OUT = {
   maas_istihbarat: 'İstihbarat maaşları (kullanılmıyor — v109 tek teşkilat)',
   maas_imam: 'İmam maaşı',
   soygun_odeme: 'Soygun giderleri (suçlulara ödenen)',
+  soygun_polis_payi: 'Polis payı (soygun kurtarma, %25)',
   ist_operasyon: 'Polis Teşkilatı operasyon giderleri',
   diger: 'Diğer giderler',
 };

@@ -150,7 +150,7 @@ test('ilan: futbolcu maaşını belirler, takım doğrudan imzalar; v90 fesih 19
   await h.pro.paySalaries();
   assert.equal(h.G(`futbolPlayers/${realPlayerDocId('veli')}`), undefined);
   assert.equal(h.G('footballers/veli').teamId, null);
-  assert.equal(h.G('users/veli').gold, 3000, 'bugünkü maaş (6.000) ödendi; devlet borcunun yarısı kesildi');
+  assert.equal(h.G('users/veli').gold, 2700, 'bugünkü maaş (6.000) ödendi; v123 %10 vergi (5.400 net); devlet borcunun yarısı kesildi');
   assert.deepEqual(h.G('futbolTeams/t2').lineup, ['x']);
   assert.deepEqual(h.G('futbolTeams/t2').trainingPlayerIds, []);
   h.clock.now = at(7, 19, 5);
@@ -169,16 +169,16 @@ test('maaş: 19:00 kasadan/başkandan; yetmezse borç; v90 fesih 19:00da, borç 
   h.clock.now = at(7, 19);
   await h.pro.paySalaries();
   assert.equal(h.G('futbolTeams/t1').treasury, 0);
-  assert.equal(h.G('users/ali').gold, 3000);
+  assert.equal(h.G('users/ali').gold, 2700, 'v123: 3.000 maaştan %10 vergi');
   assert.equal(h.G(`futbolPlayers/${realPlayerDocId('ali')}`).salaryDebt, 2000);
   assert.equal(h.G('users/baskan2').gold, 45_000);
-  assert.equal(h.G('users/veli').gold, 2500);
-  assert.equal(h.G('users/veli').debtToState, 7500);
+  assert.equal(h.G('users/veli').gold, 2250);
+  assert.equal(h.G('users/veli').debtToState, 7750);
   h.S('futbolTeams/t1', { ...h.G('futbolTeams/t1'), treasury: 10_000 });
   h.clock.now = at(8, 19);
   await h.pro.paySalaries();
   assert.equal(h.G('futbolTeams/t1').treasury, 3000);
-  assert.equal(h.G('users/ali').gold, 10_000);
+  assert.equal(h.G('users/ali').gold, 9000, '2.700 + 7.000×0,9');
   assert.equal(h.G(`futbolPlayers/${realPlayerDocId('ali')}`).salaryDebt, 0);
   h.S('futbolTeams/t1', { ...h.G('futbolTeams/t1'), treasury: 0 });
   h.clock.now = at(9, 19);
@@ -200,7 +200,7 @@ test('maaş: 19:00 kasadan/başkandan; yetmezse borç; v90 fesih 19:00da, borç 
   assert.equal(h.G('futbolTeams/t1').treasury, 2500);
   assert.equal(h.G('futbolTeams/t1').playerDebts.ali, undefined);
   assert.equal(h.G('futbolTeams/t1').hasPlayerDebts, false);
-  assert.equal(h.G('users/ali').gold, 20_000);
+  assert.equal(h.G('users/ali').gold, 18_000, 'eski maaş borcu ödemeleri de %10 vergili');
   h.S('futbolTeams/t2', { ...h.G('futbolTeams/t2'), ownerUid: null, isBot: true, treasury: 1500 });
   h.clock.now = at(11, 19);
   const out = await h.pro.paySalaries();
@@ -313,7 +313,7 @@ test('transfer: takımdaki futbolcuya teklif gider; v90 kabul edince transfer 19
   assert.equal(p.injuryDaysLeft, 2);
   assert.equal(p.pendingTransfer, undefined);
   // eski takım (kasa 3.000) bugünkü 5.000 + 1.200 borcun 3.000'ini ödedi; kalan 3.200 eski takımın borcu
-  assert.equal(h.G('users/ali').gold, 3000);
+  assert.equal(h.G('users/ali').gold, 2700);
   assert.equal(h.G('futbolTeams/t1').playerDebts.ali, 3200);
   assert.deepEqual(h.G('futbolTeams/t1').lineup, ['x']);
   assert.equal(h.G('footballers/ali').teamId, 't2');
@@ -337,7 +337,7 @@ test('v90: başkan ve menajer kendi takımında futbolcu olabilir (güce göre m
   h.S('futbolTeams/t1', { ...h.G('futbolTeams/t1'), treasury: 60_000 });
   h.clock.now = at(7, 19);
   await h.pro.paySalaries();
-  assert.equal(h.G('users/menajer').gold, 12000);
+  assert.equal(h.G('users/menajer').gold, 10800, 'v123: %10 vergi');
   assert.ok(h.G(`futbolPlayers/${realPlayerDocId('menajer')}`), 'sözleşme sürer');
 });
 
@@ -382,13 +382,13 @@ test('v90: ilk maaş — 17:59da imzalayan 19:00da alır; 18:00de imzalayan erte
   await h.act('veli', { op: 'offerRespond', offerId: 't1_veli', accept: true });
   h.clock.now = at(7, 19);
   await h.pro.paySalaries();
-  assert.equal(h.G('users/ali').gold, 5000, '17:59 imza → bugün maaş');
+  assert.equal(h.G('users/ali').gold, 4500, '17:59 imza → bugün maaş (%10 vergi)');
   assert.equal(h.G('users/veli').gold, 0, '18:00 imza → bugün maaş yok');
   assert.equal(h.G(`futbolPlayers/${realPlayerDocId('veli')}`).salaryDebt, 0, 'borç da yazılmaz');
   h.clock.now = at(8, 19);
   await h.pro.paySalaries();
-  assert.equal(h.G('users/veli').gold, 2500, 'ertesi gün ilk maaş (devlet borcunun yarısı kesildi)');
-  assert.equal(h.G('users/ali').gold, 10000);
+  assert.equal(h.G('users/veli').gold, 2250, 'ertesi gün ilk maaş (%10 vergi, devlet borcunun yarısı kesildi)');
+  assert.equal(h.G('users/ali').gold, 9000);
 });
 
 
@@ -443,4 +443,24 @@ test('v102: futbolcu ↔ takım kısa not: sözleşmede durur, karşı tarafa bi
   await act('ali', { op: 'note', text: 'x'.repeat(300) });
   assert.equal(G(`futbolPlayers/${realPlayerDocId('ali')}`).noteFromPlayer.text.length, 140);
   await assert.rejects(act('veli', { op: 'note', text: 'takımım yok' }), /no-contract/);
+});
+
+test('v123: futbolcu maaşından %10 vergi — takım tam öder, futbolcuya %90, vergi defteri + devlet kasası; SMS bilgilendirir', async () => {
+  const h = setup();
+  h.S('futbolTeams/t1', { ...h.G('futbolTeams/t1'), treasury: 100_000 });
+  await h.act('menajer', { op: 'offerSend', teamId: 't1', uid: 'ali', salary: 5005 });
+  await h.act('ali', { op: 'offerRespond', offerId: 't1_ali', accept: true });
+  h.clock.now = at(7, 19);
+  const out = await h.pro.paySalaries();
+  assert.equal(h.G('futbolTeams/t1').treasury, 100_000 - 5005, 'takım brüt maaşı öder');
+  assert.equal(h.G('users/ali').gold, 4505, '5.005 − 500 vergi');
+  assert.equal(out.tax, 500);
+  const tl = [...h.db._store.entries()].filter(([k]) => k.startsWith('taxLedger/') && k.endsWith('_ali')).map(([, v]) => v.data);
+  assert.equal(tl.length, 1);
+  assert.equal(tl[0].total, 500);
+  assert.equal(tl[0].bySource.maas, 500);
+  const st = [...h.db._store.entries()].filter(([k]) => k.startsWith('stateLedger/')).map(([, v]) => v.data);
+  assert.equal(st.reduce((s, d) => s + Number(d.in?.vergi_maas || 0), 0), 500, 'devlet kasasına vergi_maas geliri');
+  const sms = [...h.db._store.entries()].filter(([k]) => k.startsWith('users/ali/messages/')).map(([, v]) => JSON.stringify(v.data));
+  assert.ok(sms.some((t) => /%10 vergi: 500/.test(t)), 'maaş SMSinde vergi yazar');
 });

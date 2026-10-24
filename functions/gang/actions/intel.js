@@ -11,10 +11,15 @@
 //     (memberships.intelCooldownUntilMs).
 //   Şartlar: başlangıç görevleri + 50 saygınlık + %0 şüphe + 1 silah; imam ve
 //   Mafya Babası katılamaz. Soygun durdurma prestiji de bu teşkilata yazılır.
+// v123: BAŞVURU FORMU KALDIRILDI. Oyuncu sadece kod adını yazar; şartları
+//   sağlıyorsa ANINDA teşkilata alınır (inceleme / onay yok). Yeni katılan
+//   polis katıldığı andan itibaren 24 saat boyunca atılamaz. Sicilde form
+//   bilgisi tutulmaz / gösterilmez. Eski bekleyen başvurular ilk saat turunda
+//   (settleIntelApplications) şartlar tutuyorsa otomatik onaylanır.
 import { GANG, INTEL, SALARIES, atLeast, gangExitBlockText } from '../config.js';
 import { addDays, midnightMsOf, dateKeyOf, truckTimes } from '../time.js';
 import { decidedOutcome } from './votes.js';
-import { intelReviewRanks, hasIntelReviewers } from '../ranks.js';
+import { intelReviewRanks } from '../ranks.js';
 
 const CODENAME_RE = /^[\p{L}\p{N}_\-. ]+$/u;
 
@@ -118,16 +123,17 @@ export function createIntelActions(core) {
     return Number((await core.readPower(ctx, actorId)) || 0) > 0;
   }
 
-  // Ortak üye kaydı (YAZMA — okumalardan sonra). form: başvuru formu (sicile yazılır)
+  // Ortak üye kaydı (YAZMA — okumalardan sonra).
   // v109: user = readPoliceUser sonucu → oyuncu aynı işlemde POLİS olur.
-  function enrollIntelTx(tx, ctx, { actorId, codeName, key, intelExists, stateExists, form = null, user = null, prestige = 0 }) {
+  // v123: başvuru formu yok → sicile form yazılmaz.
+  function enrollIntelTx(tx, ctx, { actorId, codeName, key, intelExists, stateExists, user = null, prestige = 0 }) {
     if (!intelExists) tx.set(ctx.ref.intel(), intelDefaults());
     if (!stateExists) tx.set(ctx.ref.intelState(), intelStateDefaults(ctx));
     const rosterRef = ctx.ref.rosterCol().doc();
     tx.set(rosterRef, { codeName, rank: 'muhbir', prestige, prestigeAtMidnight: prestige, joinedAtMs: ctx.now, lastActiveAtMs: ctx.now });
     tx.set(linkRef(ctx, rosterRef.id), { actorId });
     tx.set(ctx.ref.codeName(key), { rosterId: rosterRef.id });
-    tx.set(ctx.ref.intelRecord(rosterRef.id), { rosterId: rosterRef.id, joinedAtMs: ctx.now, ...(form ? { form: { ...form, updatedAtMs: ctx.now } } : {}) }, { merge: true });
+    tx.set(ctx.ref.intelRecord(rosterRef.id), { rosterId: rosterRef.id, joinedAtMs: ctx.now }, { merge: true });
     tx.set(
       ctx.ref.membership(actorId),
       { intelRosterId: rosterRef.id, intelRank: 'muhbir', intelCodeName: codeName, intelJoinedAtMs: ctx.now, intelAppId: null, intelAppCode: null, intelAppAtMs: null },
@@ -143,7 +149,7 @@ export function createIntelActions(core) {
   // Doğrudan katılım SADECE test dünyasında (admin test düzeneği). Canlıda
   // katılım başvuru formuyla (applyIntel) — eski istemciler buraya düşer.
   async function joinIntel(ctx, data) {
-    if (!ctx.isTest) fail('failed-precondition', 'Polis olmak için başvuru formu doldurman gerekiyor. Uygulamayı yenileyip Çeteler › Polis Teşkilatı › Başvur ya da Karakol › Polislik Başvurusu.');
+    if (!ctx.isTest) fail('failed-precondition', 'Polis olmak için uygulamayı yenileyip Çeteler › Polis Teşkilatı › Katıl ya da Karakol › Polis Teşkilatına Katıl bölümünden kod adını yazman yeterli (başvuru formu kaldırıldı).');
     const { codeName, key } = parseCodeName(data.codeName);
     const weapon = await hasWeaponOf(ctx, ctx.actorId);
     return core.db.runTransaction(async (tx) => {
@@ -160,76 +166,47 @@ export function createIntelActions(core) {
   }
 
   // ---------------------------------------------------------------------------
-  // v108 — BAŞVURU FORMU
-  //  - kod adı (benzersiz; başvuru süresince ayrılır)
-  //  - bulunduğu çete + çetedeki rütbesi (beyan — doğru olması gerekmez)
-  //    v109: listeden bir çete ya da "Hiçbir çetede değilim" (o zaman rütbe yok)
-  //  - neden polis olmak istiyor (oyuncu kendisi yazar)
-  // Başvuru gerçek kimlik İÇERMEZ (intelAppLinks/{id} sadece sunucuda).
-  // Başkan ve Şefler inceler. Başkan/Şef yoksa anında, varsa ve 12 saat içinde
-  // yanıt gelmezse otomatik onaylanır. Onaylanınca form üyenin siciline yazılır
-  // ve üye sonradan düzenleyebilir.
+  // v123 — KATILIM (eskiden v108 başvuru formu)
+  //  - oyuncu sadece kod adını yazar (benzersiz)
+  //  - şartlar (joinBlockReason + silah) tutuyorsa ANINDA teşkilata alınır
+  //  - form alanları (çete / rütbe / neden) artık sorulmaz; eski istemci
+  //    gönderse bile yok sayılır ve hiçbir yere yazılmaz
+  // Eski (v108–v122) bekleyen başvurular: intelApps belgeleri kalabilir —
+  // settleIntelApplications onları ilk turda otomatik sonuçlandırır;
+  // cancelIntelApplication / reviewIntelApplication bu eski kayıtlar için durur.
   // ---------------------------------------------------------------------------
-  const APP_RANKS = ['baba', 'sagkol', 'kidemli', 'tetikci', 'comez'];
-  const NO_GANG_NAMES = [INTEL.APP_NO_GANG, 'Çetem yok']; // 'Çetem yok': v108 istemcisi
-  function parseForm(data) {
-    const gangName = cleanText(data.gangName, { min: 1, max: INTEL.APP_GANG_MAX, field: 'Çete adı' });
-    const reason = cleanText(data.reason, { min: INTEL.APP_REASON_MIN, max: INTEL.APP_REASON_MAX, field: 'Neden' });
-    if (NO_GANG_NAMES.includes(gangName) || data.gangRank === 'yok') return { gangName: INTEL.APP_NO_GANG, gangRank: 'yok', reason };
-    const gangRank = APP_RANKS.includes(data.gangRank) ? data.gangRank : null;
-    if (!gangRank) fail('invalid-argument', 'Çetendeki rütbeni seç.');
-    return { gangName, gangRank, reason };
-  }
-  // İnceleyebilecek rütbeler (Başkan + Şef) ve teşkilatta inceleyen var mı
+  // İnceleyebilecek rütbeler (Başkan + Şef) — sadece eski bekleyen başvurular için
   function reviewRanksOf() {
     return intelReviewRanks();
   }
-  const reviewersIn = (rosterDocs) => hasIntelReviewers(rosterDocs.map((d) => d.data().rank));
-  const autoApproveAtOf = (createdAtMs) => Number(createdAtMs || 0) + INTEL.APP_AUTO_APPROVE_HOURS * 3_600_000;
 
   async function applyIntel(ctx, data) {
     const { codeName, key } = parseCodeName(data.codeName);
-    const form = parseForm(data);
     const weapon = await hasWeaponOf(ctx, ctx.actorId);
     const res = await core.db.runTransaction(async (tx) => {
       const guard = await core.requestGuard(tx, ctx, data.requestId);
       if (guard.done) return guard.result;
       const wallet = await readWallet(tx, ctx, ctx.actorId);
       const membership = await readMembership(tx, ctx, ctx.actorId);
-      const [codeSnap, rosterSnap, intelSnap, stateSnap, user] = await Promise.all([
+      const [codeSnap, intelSnap, stateSnap, user] = await Promise.all([
         tx.get(ctx.ref.codeName(key)),
-        tx.get(ctx.ref.rosterCol()),
         tx.get(ctx.ref.intel()),
         tx.get(ctx.ref.intelState()),
         readPoliceUser(tx, ctx, ctx.actorId),
       ]);
-      if (membership.intelAppId) fail('already-exists', 'Bekleyen bir polislik başvurun zaten var.');
+      if (membership.intelAppId) fail('already-exists', 'Eski bir polislik başvurun sonuçlanıyor — birkaç dakika içinde teşkilata alınırsın.');
       const block = joinBlockReason(wallet, membership, { now: ctx.now });
       if (block) fail('failed-precondition', block);
       if (!weapon) fail('failed-precondition', 'Polis olmak için en az 1 silahın olmalı.');
       if (codeSnap.exists) fail('already-exists', 'Bu kod adı kullanılıyor.');
-      const appRef = ctx.ref.intelApps().doc();
-      // Emniyet Genel Müdürü ya da Emniyet Amiri yoksa inceleyecek kimse yok → anında otomatik onay
-      if (!reviewersIn(rosterSnap.docs)) {
-        const rosterId = enrollIntelTx(tx, ctx, { actorId: ctx.actorId, codeName, key, intelExists: intelSnap.exists, stateExists: stateSnap.exists, form, user });
-        tx.set(appRef, { codeName, codeKey: key, ...form, status: 'accepted', createdAtMs: ctx.now, resolvedAtMs: ctx.now, reviewedByCode: 'otomatik', autoReason: 'no_reviewers' });
-        notify(tx, ctx, ctx.actorId, `🚓 Polis Teşkilatına kabul edildin — artık polissin! Kod adın: ${codeName}. Maaşın her gece 00:00'da yatar.`, 'intel');
-        ctx.logs.push({ gang: 'intel_application', world: ctx.worldId, event: 'auto_accept_no_reviewers' });
-        const res = { appId: appRef.id, codeName, accepted: true, auto: true, rosterId };
-        guard.save(res);
-        return res;
-      }
-      tx.set(appRef, { codeName, codeKey: key, ...form, status: 'pending', createdAtMs: ctx.now, autoApproveAtMs: autoApproveAtOf(ctx.now) });
-      tx.set(ctx.ref.intelAppLink(appRef.id), { actorId: ctx.actorId, createdAtMs: ctx.now });
-      tx.set(ctx.ref.codeName(key), { appId: appRef.id, reservedAtMs: ctx.now });
-      tx.set(ctx.ref.membership(ctx.actorId), { intelAppId: appRef.id, intelAppCode: codeName, intelAppAtMs: ctx.now }, { merge: true });
-      systemChat(tx, ctx, ctx.ref.intelChat('yonetim'), `📝 Yeni polislik başvurusu: ${codeName} — Savaş sekmesinin en altında incelenmeyi bekliyor. ${INTEL.APP_AUTO_APPROVE_HOURS} saat içinde yanıt verilmezse otomatik onaylanır.`);
-      ctx.logs.push({ gang: 'intel_application', world: ctx.worldId, event: 'apply' });
-      const out = { appId: appRef.id, codeName, autoApproveAtMs: autoApproveAtOf(ctx.now) };
+      const rosterId = enrollIntelTx(tx, ctx, { actorId: ctx.actorId, codeName, key, intelExists: intelSnap.exists, stateExists: stateSnap.exists, user });
+      notify(tx, ctx, ctx.actorId, `🚓 Polis Teşkilatına katıldın — artık polissin! Kod adın: ${codeName}. Maaşın her gece 00:00'da yatar.`, 'intel');
+      ctx.logs.push({ gang: 'intel_application', world: ctx.worldId, event: 'join_direct' });
+      const out = { codeName, accepted: true, auto: true, rosterId };
       guard.save(out);
       return out;
     });
-    // anında onaylandıysa kod adı listesi hemen güncellensin (best-effort)
+    // kod adı listesi hemen güncellensin (best-effort)
     if (res?.accepted) await core.refreshIntelRoster(ctx).catch(() => {});
     return res;
   }
@@ -303,7 +280,7 @@ export function createIntelActions(core) {
         return { void: true, reason: block };
       }
       if (codeSnap.exists && !reserved) fail('already-exists', 'Bu kod adı artık kullanılıyor — başvuruyu reddet.');
-      const rosterId = enrollIntelTx(tx, ctx, { actorId, codeName: app.codeName, key: app.codeKey, intelExists: intelSnap.exists, stateExists: stateSnap.exists, form: { gangName: app.gangName, gangRank: app.gangRank, reason: app.reason }, user: applicantUser });
+      const rosterId = enrollIntelTx(tx, ctx, { actorId, codeName: app.codeName, key: app.codeKey, intelExists: intelSnap.exists, stateExists: stateSnap.exists, user: applicantUser });
       closeApp(tx, ctx, app, appId, null, 'accepted', { reviewedByCode: me.codeName });
       notify(tx, ctx, actorId, `🚓 Polis Teşkilatına kabul edildin — artık polissin! Kod adın: ${app.codeName}. Maaşın her gece 00:00'da yatar.`, 'intel');
       announceIntel(tx, ctx, '✅', `${me.codeName}, ${app.codeName} başvurusunu onayladı.`);
@@ -311,31 +288,17 @@ export function createIntelActions(core) {
     });
   }
 
-  // Üye kendi başvuru formunu (sicildeki beyanını) günceller / ilk kez doldurur.
-  async function updateIntelForm(ctx, data) {
-    const form = parseForm(data);
-    return core.db.runTransaction(async (tx) => {
-      const membership = await readMembership(tx, ctx, ctx.actorId);
-      const rid = requireIntel(membership);
-      tx.set(ctx.ref.intelRecord(rid), { rosterId: rid, form: { ...form, updatedAtMs: ctx.now } }, { merge: true });
-      return { updated: true };
-    });
-  }
-
-  // Bekleyen başvurular (gangClock her turda — 5 dk — ve gece): 12 saat içinde
-  // Başkan/Şeften yanıt gelmediyse ya da teşkilatta artık Başkan/Şef yoksa
-  // otomatik onaylanır. Şartlar onay anında yeniden kontrol edilir (arada polis/
+  // Bekleyen başvurular (gangClock her turda — 5 dk — ve gece).
+  // v123: başvuru sistemi kalktı → kalan ESKİ bekleyen başvuruların hepsi ilk
+  // turda otomatik onaylanır (eskiden: 12 saat yanıt yoksa / Başkan-Şef yoksa). Şartlar onay anında yeniden kontrol edilir (arada polis/
   // imam olmuş, silahını satmış olabilir) — tutmuyorsa başvuru geçersiz sayılır.
   async function settleIntelApplications(ctx, safe) {
     const snap = await ctx.ref.intelApps().where('status', '==', 'pending').get();
     if (snap.empty) return { pending: 0, accepted: 0 };
-    const roster = await ctx.ref.rosterCol().get();
-    const noReviewers = !reviewersIn(roster.docs);
+    const noReviewers = true; // v123: inceleme yok
     const apps = snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (a.createdAtMs || 0) - (b.createdAtMs || 0));
     let accepted = 0;
     for (const app of apps) {
-      const due = noReviewers || ctx.now >= autoApproveAtOf(app.createdAtMs);
-      if (!due) continue;
       await safe(ctx, `intel-app:${app.id}`, async () => {
         const link = (await ctx.ref.intelAppLink(app.id).get()).data();
         const weapon = link?.actorId ? await hasWeaponOf(ctx, link.actorId) : false;
@@ -356,9 +319,9 @@ export function createIntelActions(core) {
             if (actorId) notify(tx, ctx, actorId, `🚓 Polislik başvurun geçersiz sayıldı: ${block}`, 'intel');
             return false;
           }
-          const why = noReviewers ? 'teşkilatta Emniyet Genel Müdürü ya da Emniyet Amiri yok' : `${INTEL.APP_AUTO_APPROVE_HOURS} saat içinde yanıt verilmedi`;
-          enrollIntelTx(tx, ctx, { actorId, codeName: cur.codeName, key: cur.codeKey, intelExists: intelSnap.exists, stateExists: stateSnap.exists, form: { gangName: cur.gangName, gangRank: cur.gangRank, reason: cur.reason }, user });
-          closeApp(tx, ctx, cur, app.id, null, 'accepted', { reviewedByCode: 'otomatik', autoReason: noReviewers ? 'no_reviewers' : 'timeout' });
+          const why = 'v123_no_application';
+          enrollIntelTx(tx, ctx, { actorId, codeName: cur.codeName, key: cur.codeKey, intelExists: intelSnap.exists, stateExists: stateSnap.exists, user });
+          closeApp(tx, ctx, cur, app.id, null, 'accepted', { reviewedByCode: 'otomatik', autoReason: 'v123_direct' });
           // v110: oyuncuya neden otomatik onaylandığı söylenmez — sadece kabul edildiği
           notify(tx, ctx, actorId, `🚓 Polis Teşkilatına kabul edildin — artık polissin! Kod adın: ${cur.codeName}. Maaşın her gece 00:00'da yatar.`, 'intel');
           announceIntel(tx, ctx, '✅', `${cur.codeName} teşkilata kabul edildi.`);
@@ -395,7 +358,8 @@ export function createIntelActions(core) {
 
   // v94 → v108 — ÜYE SİCİLİ: rütbeliler (ilk 7: EGM / Amir / Başkomiser)
   // herkesinkini, herkes kendisininkini görür. Süresiz (teşkilata girdiği günden
-  // bu yana), maaş (rütbeye göre) ve başvuru formundaki beyanlar dahil.
+  // bu yana) ve maaş (rütbeye göre). v123: başvuru formu kalktı — sicilde form
+  // bilgisi YOK (eski üyelerin kayıtlı formu da gösterilmez).
   // v109: istihbarat + polis icraatı tek sicilde (soygun durdurma, kurtarılan
   // altın, soygun payı, rüşvet payı).
   async function intelMemberReport(ctx, data) {
@@ -430,7 +394,6 @@ export function createIntelActions(core) {
       bustPrestige: Number(rec.bustPrestige || 0),
       // v109: alınan maaş / rüşvet toplamları sicilde gösterilmez (kayıtta tutulur)
       salary: SALARIES[rank] || 0,
-      form: rec.form || null,
     };
   }
 
@@ -785,11 +748,19 @@ export function createIntelActions(core) {
     };
   }
 
-  // v61 — istismar önlemi: az üyeyle (≤7) kimse atılamaz; yeni katılan üye
-  // katıldığı günün 00:00'ına kadar atılamaz (ör. 23:00'te giren 00:00'dan sonra).
+  // v61 — istismar önlemi: az üyeyle (≤7) kimse atılamaz.
+  // v123: yeni katılan polis katıldığı andan itibaren 24 SAAT atılamaz
+  // (eskiden: katıldığı günün 00:00'ına kadar).
+  function newMemberGuardHoursLeft(ctx, target) {
+    const joined = Number(target?.joinedAtMs || 0);
+    if (!joined) return 0;
+    const left = joined + INTEL.NEW_MEMBER_KICK_GUARD_MS - ctx.now;
+    return left > 0 ? Math.max(1, Math.ceil(left / 3_600_000)) : 0;
+  }
   function kickBlockReason(ctx, rosterSize, target) {
     if (rosterSize < INTEL.KICK_MIN_MEMBERS) return `Teşkilatta ${INTEL.KICK_MIN_MEMBERS - 1} ya da daha az polis varken kimse çıkarılamaz.`;
-    if (target && Number(target.joinedAtMs || 0) > 0 && dateKeyOf(Number(target.joinedAtMs)) === ctx.dateKey) return "Yeni katılan polis 00:00'a kadar çıkarılamaz.";
+    const h = newMemberGuardHoursLeft(ctx, target);
+    if (h) return `Yeni katılan polis ${INTEL.NEW_MEMBER_KICK_GUARD_MS / 3_600_000} saat boyunca çıkarılamaz (${h} saat kaldı).`;
     return null;
   }
 
@@ -1019,7 +990,6 @@ export function createIntelActions(core) {
     applyIntel,
     cancelIntelApplication,
     reviewIntelApplication,
-    updateIntelForm,
     settleIntelApplications,
     reviewRanksOf,
     joinBlockReason,

@@ -16,8 +16,9 @@ import './PoliceApplicationSection.css';
 
 // Karakol › Komiser Ofisi — POLİSLİK BAŞVURUSU (v109).
 // İstihbarat ile Polis birleşti: polis olmak = Polis Teşkilatına girmek.
-// Başvuru formu Çeteler › Polis Teşkilatı'ndakiyle aynı (Gangs/PoliceApplySheet);
-// onay teşkilatın en üst iki rütbesinden ya da 12 saat sonra kendiliğinden.
+// v123: başvuru formu yok — kod adını yazan ve şartları sağlayan oyuncu anında
+// teşkilata girer (Gangs/PoliceApplySheet; Çeteler › Polis Teşkilatı ile aynı).
+// Yeni katılan 24 saat atılamaz.
 // İstifa anında (24 saat yeniden başvurulamaz). Teşkilat çete sisteminin canlı
 // dünyasında yaşadığı için bu bölüm o dünyanın bağlamını (GangProvider) kurar.
 export default function PoliceApplicationSection() {
@@ -28,15 +29,15 @@ export default function PoliceApplicationSection() {
   const mode = useMemo(() => ({ world: 'live', worldId, actorId: user?.uid }), [worldId, user?.uid]);
 
   if (!user) {
-    return <SignInPrompt message="Polislik başvurusu yapmak için giriş yapmalısın." />;
+    return <SignInPrompt message="Polis Teşkilatına katılmak için giriş yapmalısın." />;
   }
 
   return (
     <div className="police-app-section">
       <div className="police-app-header">
         <p className="police-app-title">
-          Polislik Başvurusu
-          <InfoIcon text="Polis olmak için Polis Teşkilatına başvurursun. Şartlar: başlangıç görevleri, 50 saygınlık, %0 şüphe ve en az 1 silah; imam ve Mafya Babası olamaz. Başvurun 12 saat içinde incelenir. İstifa edersen ya da atılırsan 24 saat yeniden başvuramazsın." />
+          Polis Teşkilatına Katıl
+          <InfoIcon text="Polis olmak için kod adını yazman yeterli — form ya da onay yok. Şartlar: başlangıç görevleri, 50 saygınlık, %0 şüphe ve en az 1 silah; imam ve Mafya Babası olamaz. Şartları sağlıyorsan anında teşkilata girersin ve ilk 24 saat atılamazsın. İstifa edersen ya da atılırsan 24 saat tekrar giremezsin." />
         </p>
         <button className="police-app-booklet-btn" onClick={() => setShowBooklet(true)}>
           📖 Kitapçık
@@ -101,7 +102,7 @@ function PoliceStatus() {
           {isPolice
             ? `Polissin${codeName ? ` · ${codeName}` : ''}${ms.intelRosterId ? ` · ${RANK_LABELS[rank] || 'Polis Memuru'}` : ''}`
             : pendingApp
-              ? `Başvurun inceleniyor (${ms.intelAppCode || 'kod adın'})`
+              ? `Eski başvurun sonuçlanıyor (${ms.intelAppCode || 'kod adın'})`
               : 'Sivilsin'}
         </strong>
       </p>
@@ -115,8 +116,8 @@ function PoliceStatus() {
           </div>
         </div>
       )}
-      {pendingApp && <p className="police-app-hint">⏳ Başvurun 12 saat içinde incelenir.</p>}
-      {!isPolice && !pendingApp && cd > 0 && <p className="police-app-hint">⏳ Polislikten yeni ayrıldın — {cd} saat sonra yeniden başvurabilirsin.</p>}
+      {pendingApp && <p className="police-app-hint">⏳ Eski başvurun birkaç dakika içinde otomatik sonuçlanır.</p>}
+      {!isPolice && !pendingApp && cd > 0 && <p className="police-app-hint">⏳ Polislikten yeni ayrıldın — {cd} saat sonra tekrar teşkilata girebilirsin.</p>}
       {!isPolice && !pendingApp && !cd && exitH > 0 && <p className="police-app-hint">{gangExitText(exitH)}</p>}
       {done && <p className="police-salary-success">{done}</p>}
       {error && <p className="police-app-error">{error}</p>}
@@ -124,7 +125,7 @@ function PoliceStatus() {
       <div className="police-app-controls">
         {!isPolice && !pendingApp && (
           <button className="police-app-btn primary" disabled={cd > 0 || exitH > 0} onClick={() => setApplying(true)}>
-            Polislik Başvurusu Yap
+            Polis Teşkilatına Katıl
           </button>
         )}
         {pendingApp && (
@@ -142,7 +143,7 @@ function PoliceStatus() {
       {applying &&
         createPortal(
           <div className="gx-root gx-portal">
-            <PoliceApplySheet membership={ms} onClose={() => setApplying(false)} onDone={(r) => setDone(r?.accepted ? '🚓 Polis Teşkilatına kabul edildin — artık polissin!' : '📝 Başvurun gönderildi.')} />
+            <PoliceApplySheet membership={ms} onClose={() => setApplying(false)} onDone={() => setDone('🚓 Polis Teşkilatına katıldın — artık polissin!')} />
           </div>,
           document.body
         )}
@@ -153,7 +154,7 @@ function PoliceStatus() {
               icon="🚪"
               danger
               title="Polislikten istifa etmek istediğine emin misin?"
-              lines={['Polis Teşkilatından çıkarsın; prestijin, rütben ve sicilin silinir.', 'Bu gece maaş almazsın.', '24 saat yeniden başvuramazsın.']}
+              lines={['Polis Teşkilatından çıkarsın; prestijin, rütben ve sicilin silinir.', 'Bu gece maaş almazsın.', '24 saat tekrar teşkilata giremezsin.']}
               confirmLabel="İstifa et"
               busy={resignBusy}
               onCancel={() => setConfirmResign(false)}

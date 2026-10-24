@@ -848,7 +848,7 @@ function OwnerView({ factory, machines, player, myUid }) {
         <p className="factory-result">
           {produceResult.isSelfEmployed
             ? `Üretim yapıldı: ${produceResult.qty.toLocaleString('tr-TR')} adet ürün stoğuna eklendi.`
-            : `+${produceResult.salary.toLocaleString('tr-TR')} altın maaş kazandın`}
+            : `+${(produceResult.netSalary ?? produceResult.salary).toLocaleString('tr-TR')} altın maaş kazandın${produceResult.salaryTax ? ` (%10 vergi: ${produceResult.salaryTax.toLocaleString('tr-TR')})` : ''}`}
         </p>
       )}
       {selfError && <p className="factory-error">{selfError}</p>}
@@ -1152,7 +1152,7 @@ function WorkerView({ player, myUid }) {
         )}
         {result && (
           <p className="factory-result">
-            +{result.salary.toLocaleString('tr-TR')} altın maaş kazandın
+            +{(result.netSalary ?? result.salary).toLocaleString('tr-TR')} altın maaş kazandın{result.salaryTax ? ` (%10 vergi: ${result.salaryTax.toLocaleString('tr-TR')})` : ''}
           </p>
         )}
         {error && <p className="factory-error">{error}</p>}
