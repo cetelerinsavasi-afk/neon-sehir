@@ -396,6 +396,13 @@ service cloud.firestore {
       allow read: if isSelf(uid);
       allow write: if false;
     }
+    // v127 — mobilya kasası: sahibi ve o mekânda tasarım yetkisi olanlar görür
+    match /houseFunds/{houseId} {
+      allow read: if isSignedIn() && (resource == null
+        || resource.data.ownerUid == request.auth.uid
+        || get(/databases/$(database)/documents/houses/$(houseId)).data.get('editors', {}).get(request.auth.uid, false) == true);
+      allow write: if false;
+    }
     // v77 — İşletmeler (functions/houses.js + business.js). Tüm yazmalar sunucudan.
     // İşletme envanteri müşterilere de görünür (stok/fiyat); günlük rapor
     // (kazanç) sadece sahibine; günlük kapanış özetleri istemciye kapalı.

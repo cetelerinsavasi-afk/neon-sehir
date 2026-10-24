@@ -1839,3 +1839,39 @@
   border-color: rgba(25, 232, 255, 0.8);
   box-shadow: 0 0 16px rgba(25, 232, 255, 0.3);
 }
+
+/* v127 — mobilya kasası */
+.hs-fund {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  margin-bottom: 8px;
+  border-radius: 12px;
+  background: rgba(255, 210, 63, 0.06);
+  border: 1px solid rgba(255, 210, 63, 0.35);
+}
+.hs-fund-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.hs-fund-tabs {
+  display: flex;
+  gap: 6px;
+}
+.hs-fund-tabs button {
+  flex: 1;
+  padding: 6px 8px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: transparent;
+  color: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.hs-fund-tabs button.on {
+  border-color: rgba(255, 210, 63, 0.7);
+  background: rgba(255, 210, 63, 0.15);
+}

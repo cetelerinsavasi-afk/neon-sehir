@@ -12,6 +12,7 @@ import BorclarTab from './BorclarTab';
 import BaskanlikTab from './BaskanlikTab';
 import BelediyeChat from './BelediyeChat';
 import Sikayet from './Sikayet';
+import { useBelediyeChatUnread } from '../../hooks/useBelediyeChatUnread';
 import { SEATS } from '../../../functions/belediye.js';
 import '../Gangs/Gangs.css';
 import './Belediye.css';
@@ -24,15 +25,23 @@ const TABS = [
   { id: 'baskan', icon: '👑', label: 'Başkanlık' },
 ];
 
-function ChatView() {
+const mineOf = (uid) => (m) => Boolean(uid) && m.uid === uid;
+function useChatDots() {
+  const { uid, seat } = useBelediye();
+  const genel = useBelediyeChatUnread(uid, 'genel', Boolean(seat), mineOf(uid));
+  const koord = useBelediyeChatUnread(uid, 'koord', Boolean(seat), mineOf(uid));
+  return { genel, koord };
+}
+
+function ChatView({ dots }) {
   const { uid } = useBelediye();
   const [ch, setCh] = useState('genel');
   return (
     <div className="gx-page">
       <Chips
         options={[
-          { id: 'genel', label: 'Belediye', icon: '🏛️' },
-          { id: 'koord', label: 'Teşkilat', icon: '🚓' },
+          { id: 'genel', label: 'Belediye', icon: '🏛️', dot: dots.genel && ch !== 'genel' },
+          { id: 'koord', label: 'Teşkilat', icon: '🚓', dot: dots.koord && ch !== 'koord' },
         ]}
         value={ch}
         onChange={setCh}
@@ -45,6 +54,7 @@ function ChatView() {
 function Shell() {
   const { seat, mainLoading } = useBelediye();
   const [tab, setTab] = useState('rapor');
+  const dots = useChatDots();
   const active = seat ? tab : 'rapor';
   return (
     <div className="gx-shell">
@@ -59,7 +69,7 @@ function Shell() {
         ) : active === 'rapor' ? (
           <RaporTab />
         ) : active === 'sohbet' ? (
-          <ChatView />
+          <ChatView dots={dots} />
         ) : active === 'bakanlik' ? (
           <BakanliklarTab />
         ) : active === 'borc' ? (
@@ -75,6 +85,7 @@ function Shell() {
             <button key={t.id} role="tab" aria-selected={active === t.id} className={`gx-subnav-btn${active === t.id ? ' active' : ''}${locked ? ' locked' : ''}`} disabled={locked} onClick={() => setTab(t.id)}>
               <span className="gx-subnav-icon" aria-hidden="true">
                 {locked ? '🔒' : t.icon}
+                {t.id === 'sohbet' && !locked && active !== 'sohbet' && (dots.genel || dots.koord) && <span className="gx-subnav-dot" />}
               </span>
               <span className="gx-subnav-label">{t.label}</span>
             </button>

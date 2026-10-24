@@ -6196,7 +6196,9 @@ export const attemptHeist = onCall(async (request) => {
 // FAZ 6 — DEPO, PARK VE LİMAN (KAÇAKÇILIK) SİSTEMİ
 // =============================================================================
 
-const HEIST_WARN_REPUTATION_RATIO = 0.5; // v103: saygınlık 100 → %50 uyarı ihtimali
+// v127: sızma uyarısı ihtimali = sivilin saygınlığı − polisin saygınlığı (0–100 arası).
+// Polis 0 / sivil 100 → kesin; polis 100 / sivil 100 → hiç.
+const heistWarnChance = (civRep, policeRep) => Math.max(0, Math.min(100, (Number(civRep) || 0) - (Number(policeRep) || 0)));
 const CONTRABAND_PARK_SELL_PRICE = 5000; // Park'ta satış — şüphe +5 (kaynağı fark etmez)
 const PARK_SUSPICION_COST = 5;
 
@@ -6851,7 +6853,7 @@ export const createHeistPlan = onCall(async (request) => {
 //
 // Sızma uyarısı: bir polis plana katıldığında, plan SAHİBİNİN saygınlığına
 // bağlı bir ihtimalle "içeride polis olabilir" diye esnaftan SMS gelir.
-// İhtimal = saygınlık yüzdesi birebir (saygınlık 40 ise %40, 100 ise kesin).
+// v127: İhtimal = sivilin saygınlığı − polisin saygınlığı (heistWarnChance).
 // Bir kez başarılı uyarı gönderildiyse plan için tekrar gönderilmez.
 // refreshHeistPlanParticipants — plan katılımcı listesindeki güç/şüphe
 // alanları JOIN ANINDAKİ değerlerin donmuş (statik) bir kopyasıydı.
@@ -7034,8 +7036,8 @@ export const joinHeistPlan = onCall(async (request) => {
     joinedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
-  // Şüphe uyarı sistemi (Bölüm 7 kullanıcı revizesi): saygınlık oranımıza
-  // göre (v103: saygınlığın yarısı — 100 saygınlık = %50, 50 = %25), KATILDIĞIMIZ ya da
+  // Şüphe uyarı sistemi (Bölüm 7 kullanıcı revizesi): v127 — ihtimal = bizim
+  // saygınlığımız − polisin saygınlığı (heistWarnChance), KATILDIĞIMIZ ya da
   // KURDUĞUMUZ ekibe hâlihazırda bir polis sızmışsa YA DA az önce
   // sızdıysa, bunu (belli belirsiz) bir SMS ile öğrenebiliriz. Her
   // sivil kendi saygınlığına göre BAĞIMSIZ olarak "sezip sezmediğini"
@@ -7044,7 +7046,7 @@ export const joinHeistPlan = onCall(async (request) => {
   const warnedUids = new Set(plan.warnedUids || []);
   const existingProfessions = {}; // uid -> user verisi (sadece gerektiğinde çekilir)
 
-  async function maybeWarn(targetUid) {
+  async function maybeWarn(targetUid, policeRep) {
     if (targetUid === uid && iAmPolice) return; // polisin kendisini uyarmayız
     if (warnedUids.has(targetUid)) return;
     let targetUser = existingProfessions[targetUid];
@@ -7054,9 +7056,8 @@ export const joinHeistPlan = onCall(async (request) => {
       existingProfessions[targetUid] = targetUser;
     }
     if (targetUser.profession === 'polis') return; // polisi uyarmayız
-    const reputation = targetUser.reputation || 0;
-    // v103: uyarı ihtimali saygınlığın YARISI (100 saygınlık = %50, 50 = %25)
-    if (Math.random() * 100 < reputation * HEIST_WARN_REPUTATION_RATIO) {
+    // v127: ihtimal = sivilin saygınlığı − sızan polisin saygınlığı
+    if (Math.random() * 100 < heistWarnChance(targetUser.reputation, policeRep)) {
       warnedUids.add(targetUid);
       await db
         .collection('users')
@@ -7077,23 +7078,21 @@ export const joinHeistPlan = onCall(async (request) => {
     // kendi saygınlığına göre bunu sezebilir.
     for (const doc of participantsSnap.docs) {
       if (doc.id === uid) continue;
-      await maybeWarn(doc.id);
+      await maybeWarn(doc.id, user?.reputation || 0);
     }
   } else {
     // Ben sivilim — plana daha önce sızmış bir polis varsa, KENDİ
     // saygınlığıma göre bunu sezip sezemeyeceğimi dene.
-    let alreadyHasPolice = false;
+    // v127: birden fazla polis varsa saygınlığı en yüksek olan esas alınır
+    let policeRep = null;
     for (const doc of participantsSnap.docs) {
       if (doc.id === uid) continue;
       const s = await db.collection('users').doc(doc.id).get();
       const u = s.data() || {};
       existingProfessions[doc.id] = u;
-      if (u.profession === 'polis') {
-        alreadyHasPolice = true;
-        break;
-      }
+      if (u.profession === 'polis') policeRep = Math.max(policeRep ?? 0, Number(u.reputation) || 0);
     }
-    if (alreadyHasPolice) await maybeWarn(uid);
+    if (policeRep !== null) await maybeWarn(uid, policeRep);
   }
 
   if (warnedUids.size > (plan.warnedUids || []).length) {

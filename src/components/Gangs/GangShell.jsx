@@ -8,6 +8,7 @@
 // "Çeteler" sekmesinden.
 import { useEffect, useRef, useState } from 'react';
 import { useGangAlertsCtx } from './alerts';
+import { useGang } from './GangContext';
 import { useGangData, useIntelData } from './data';
 import { Deadline, Gold, Logo, RankBadge } from './ui';
 import { INTEL_LOGO, INTEL_NAME, fmt } from './gangConstants';
@@ -22,6 +23,7 @@ import OpsTab from './tabs/OpsTab';
 import IntelTab from './tabs/IntelTab';
 import { WatchWarsList } from './WatchWars';
 import { BiatTag } from './Biat';
+import { useBelediyeChatUnread } from '../../hooks/useBelediyeChatUnread';
 
 const GANG_TABS = [
   { id: 'ceteler', icon: '🏴', label: 'Çeteler' },
@@ -63,7 +65,14 @@ export default function GangShell({ membership }) {
   const alerts = useGangAlertsCtx();
   const cur = alerts ? (org === 'intel' ? alerts.intel : alerts.gang) : {};
   const other = alerts ? (org === 'intel' ? alerts.gang : alerts.intel) : {};
-  const dotOf = (id) => (id === 'ceteler' ? Object.values(other || {}).some(Boolean) && (org === 'intel' ? inGang : inIntel) : Boolean(cur?.[id]));
+  // v127: rütbeli polis — Belediye koordinasyon sohbetinde yeni mesaj → Sohbet noktası
+  const { actorId } = useGang();
+  const policeRanked = inIntel && ['baskan', 'sef', 'uzman'].includes(ms.intelRank);
+  const bdUnread = useBelediyeChatUnread(actorId, 'koord', policeRanked, (m) => m.authorKind === 'polis' && m.rosterId === ms.intelRosterId);
+  const dotOf = (id) =>
+    id === 'ceteler'
+      ? Object.values(other || {}).some(Boolean) && (org === 'intel' ? inGang : inIntel)
+      : Boolean(cur?.[id]) || (id === 'sohbet' && org === 'intel' && bdUnread);
   const activeTab = member ? tab : tab === 'savas' ? 'savas' : 'ceteler';
 
   const open = (o) => {

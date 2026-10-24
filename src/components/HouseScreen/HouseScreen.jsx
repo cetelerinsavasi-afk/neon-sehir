@@ -28,6 +28,7 @@ import { bizErrText, materialBlockText } from '../../lib/bizErrors';
 import Workshop from '../Workshop/Workshop';
 import { DepoTradeSheet } from '../Depo/DepoPanels';
 import { CasinoGamesSheet } from '../Casino/PlayerCasino';
+import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import { StreamCasinoSheet } from '../Casino/StreamCasino';
 import ShopShowcase from '../Shop/ShopShowcase';
 import MenuPanel from '../Venue/MenuPanel';
@@ -103,6 +104,47 @@ const PRIVACY = [
   { key: 'friends', label: '👥 Arkadaşlar', hint: 'Sadece arkadaşların girebilir.' },
   { key: 'private', label: '🔒 Gizli', hint: 'Kimse giremez (içeridekiler atılmaz, davet ettiklerin girebilir).' },
 ];
+
+// v127 — MOBİLYA KASASI (Tasarım yetkisi panelinin en üstü): sahip bu mekân için
+// altın / zümrüt koyar; yetkili tasarımcılar mobilya alırken buradan harcar.
+// İstediği zaman bedelsiz geri alır (functions/houses.js fundMove).
+function FundBox({ houseId, fund, player, flash }) {
+  const [asset, setAsset] = useState('gold');
+  const [amt, setAmt] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const mine = asset === 'gold' ? Number(player?.gold || 0) : Number(player?.emerald || 0);
+  const inFund = asset === 'gold' ? fund.gold : fund.gem;
+  const move = async (dir) => {
+    if (!amt || busy) return;
+    setBusy(true);
+    try {
+      await houseAction({ op: 'fund', houseId, dir, [asset === 'gold' ? 'gold' : 'gem']: amt });
+      flash(dir === 'in' ? '🏦 Mobilya kasasına eklendi.' : '🏦 Kasadan geri alındı.');
+      setAmt(0);
+    } catch (err) {
+      flash(err?.message || 'Olmadı.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="hs-fund">
+      <div className="hs-fund-head">
+        <b>🏦 Mobilya kasası</b>
+        <Money gold={fund.gold} gem={fund.gem} small />
+      </div>
+      <div className="hs-fund-tabs">
+        <button className={asset === 'gold' ? 'on' : ''} onClick={() => { setAsset('gold'); setAmt(0); }}>Altın</button>
+        <button className={asset === 'gem' ? 'on' : ''} onClick={() => { setAsset('gem'); setAmt(0); }}>Zümrüt</button>
+      </div>
+      <QuantityStepper value={amt} onChange={(v) => setAmt(Math.floor(v))} min={0} max={Math.max(mine, inFund)} quickAmounts={asset === 'gold' ? [1000, 10000, 100000, 1000000] : [1, 10, 100]} />
+      <div className="hh-modal-row">
+        <button className="hs-btn ghost" disabled={busy || !amt || amt > inFund} onClick={() => move('out')}>Geri al</button>
+        <button className="hs-btn gold" disabled={busy || !amt || amt > mine} onClick={() => move('in')}>Kasaya ekle</button>
+      </div>
+    </div>
+  );
+}
 
 export function PriceTag({ price, small }) {
   if (!price) return <span className={`hs-price free${small ? ' sm' : ''}`}>Ücretsiz</span>;
@@ -571,6 +613,17 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     };
   }, [phase, isEditor, mode, houseId, houseUpdatedAt]);
 
+  // v127 — mobilya kasası (sahip koyar, yetkili tasarımcı harcar): sahip + yetkili okur
+  const [fund, setFund] = useState({ gold: 0, gem: 0 });
+  useEffect(() => {
+    if (phase !== 'ready' || !canDesign || houseDoc?.venue) return undefined;
+    return onSnapshot(
+      doc(db, 'houseFunds', houseId),
+      (s) => setFund({ gold: Number(s.data()?.gold || 0), gem: Number(s.data()?.gem || 0) }),
+      () => {}
+    );
+  }, [phase, canDesign, houseId, houseDoc?.venue]);
+
   // envanter (sadece sahibi)
   useEffect(() => {
     if (phase !== 'ready' || !isOwner) return undefined;
@@ -1032,6 +1085,9 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [design, inv.walls, inv.floors]);
 
+  // satın alırken kullanılacak bakiye: sahip → kendi cebi · yetkili → mobilya kasası
+  const payGold = isEditor ? fund.gold : Number(player?.gold || 0);
+  const payGem = isEditor ? fund.gem : Number(player?.emerald || 0);
   const doCheckout = async () => {
     const eng = engineRef.current;
     if (!eng || busy) return;
@@ -1041,13 +1097,14 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     const dsg = eng.getDesign();
     try {
       const res = await enqueue(() => houseAction({ op: 'checkout', houseId, design: { items: dsg.items, wall: dsg.wall, floor: dsg.floor, door: dsg.door }, expect: { gold: cart.gold, gem: cart.gem } }));
+      if (res.data?.inv) setInv(res.data.inv); // v127: yetkili — sahibin güncel envanteri
       const owned = { ...dsg, items: dsg.items.map((it) => ({ ...it, p: 1 })) };
       eng.deselect();
       eng.setDesign(owned);
       setDesign(eng.getDesign());
       setSaveState('saved');
       setPanel(null);
-      flash(`🎉 ${res.data?.count || ''} ürün senin! Güle güle kullan.`);
+      flash(res.data?.fromFund ? `🎉 ${res.data?.count || ''} ürün mobilya kasasından alındı (${houseDoc?.ownerName || 'sahibine'} ait).` : `🎉 ${res.data?.count || ''} ürün senin! Güle güle kullan.`);
     } catch (err) {
       // v77: sepette gerekli bir işletme mobilyası eksikse (ör. geri alma ile kaldırıldı)
       flash(parseBizError(err) ? '🔒 🏪' : err?.message || 'Satın alınamadı.');
@@ -1802,12 +1859,12 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
           )}
 
           {/* TASARIM: bakiye + sepet */}
-          {isOwner && mode === 'build' && (
+          {canDesign && mode === 'build' && !houseDoc?.venue && (
             <div className="hs-cartbar">
               <div className="hs-balance">
-                <span>Bakiye</span>
-                <Money gold={Number(player?.gold || 0)} gem={Number(player?.emerald || 0)} small />
-                {Number(player?.emerald || 0) === 0 && <PriceTag price={{ t: 'gem', v: 0 }} small />}
+                <span>{isEditor ? '🏦 Mobilya kasası' : 'Bakiye'}</span>
+                <Money gold={payGold} gem={payGem} small />
+                {payGem === 0 && <PriceTag price={{ t: 'gem', v: 0 }} small />}
               </div>
               {cart.count > 0 && (
                 <div className="hs-cart">
@@ -1823,7 +1880,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
           )}
 
           {isEditor && mode === 'build' && (
-            <div className="hs-editor-note">🛠️ Tasarım yetkin var · eşyaları sahibinin envanterinden koyarsın; mağazadan koyduklarını <b>{houseDoc?.ownerName || 'ev sahibi'}</b> satın alır.</div>
+            <div className="hs-editor-note">🛠️ Tasarım yetkin var · alışveriş <b>{houseDoc?.ownerName || 'ev sahibinin'}</b> mobilya kasasından yapılır, eşyalar ona aittir.</div>
           )}
 
           {canDesign && mode === 'build' && showHelp && (
@@ -2112,7 +2169,8 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
               <button onClick={() => setMyCart(null)}>Arabayı bırak</button>
             </div>
           )}
-          {mode === 'walk' && myHolding && (
+          {/* v127: mekânlarda (Belediye vb.) gösterilmez — sol üstteki mekân butonlarını kapatıyordu */}
+          {mode === 'walk' && myHolding && !venue && (
             <div className={`hs-holding${menuVenue ? ' low' : ''}`}>
               <HeldIcon product={myHolding} size={22} /> Elinde: <b>{HOUSE_PRODUCTS[myHolding]?.label}</b>
               <em>👥'dan ısmarlayabilirsin</em>
@@ -2146,7 +2204,8 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                   <b>🛠️ Tasarım yetkisi</b>
                   <button className="hs-x" onClick={() => setPanel(null)}>✕</button>
                 </div>
-                <p className="hs-dim hs-perm-info">Yetki verdiğin arkadaşın, içerideyken Tasarla ile mağazadan ve envanterinden eşya koyup kaldırabilir. <b>Satın alamaz</b>; mağazadan koyduğu eşyalar deneme (saydam) kalır, beğenirsen sen satın alırsın.</p>
+                {!houseDoc?.venue && <FundBox houseId={houseId} fund={fund} player={player} flash={flash} />}
+                <p className="hs-dim hs-perm-info">Yetki verdiğin arkadaşın, içerideyken Tasarla ile eşya koyup kaldırabilir; mobilya kasasındaki parayla senin adına satın alabilir. Kendi cebinden alamaz.</p>
                 {(social.friends || []).length === 0 && <p className="hs-dim">Arkadaş listen boş. ChatsApp'tan arkadaş ekleyebilirsin.</p>}
                 {(social.friends || []).slice(0, 80).map((f) => {
                   const on = houseDoc?.editors?.[f.uid] === true;
@@ -2319,20 +2378,21 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                   <Money gold={cart.gold} gem={cart.gem} />
                 </div>
                 <div className="hs-receipt-bal">
-                  <span>Bakiyen</span>
-                  <Money gold={Number(player?.gold || 0)} gem={Number(player?.emerald || 0)} small />
+                  <span>{isEditor ? '🏦 Mobilya kasası' : 'Bakiyen'}</span>
+                  <Money gold={payGold} gem={payGem} small />
                 </div>
-                {(Number(player?.gold || 0) < cart.gold || Number(player?.emerald || 0) < cart.gem) && (
+                {(payGold < cart.gold || payGem < cart.gem) && (
                   <p className="hs-err">
-                    {Number(player?.gold || 0) < cart.gold ? 'Altının yetmiyor. ' : ''}
-                    {Number(player?.emerald || 0) < cart.gem ? 'Zümrütün yetmiyor (Telefon > Zümrüt Mağazası).' : ''}
+                    {isEditor
+                      ? `Mobilya kasası yetmiyor — ${houseDoc?.ownerName || 'sahibi'} kasaya ekleyebilir.`
+                      : `${payGold < cart.gold ? 'Altının yetmiyor. ' : ''}${payGem < cart.gem ? 'Zümrütün yetmiyor (Telefon > Zümrüt Mağazası).' : ''}`}
                   </p>
                 )}
                 <div className="hh-modal-row">
                   <button className="hs-btn ghost" disabled={busy} onClick={() => setPanel(null)}>Vazgeç</button>
                   <button
                     className="hs-btn gold"
-                    disabled={busy || Number(player?.gold || 0) < cart.gold || Number(player?.emerald || 0) < cart.gem}
+                    disabled={busy || payGold < cart.gold || payGem < cart.gem}
                     onClick={doCheckout}
                   >
                     {busy ? 'İşleniyor…' : 'Onayla ve Satın Al'}

@@ -732,7 +732,7 @@ export function createBelediye({
       let debtNote = '';
       if (amount > 0) {
         const { goldDelta, debtDelta } = splitIncomeForDebt(us.data()?.debtToState, amount);
-        tx.update(uRef, { gold: inc(goldDelta), debtToState: inc(debtDelta), goldTag: goldTag(it.role === 'polis' ? 'polisMaas' : it.role === 'imam' ? 'imam' : 'belediyeMaas') });
+        tx.update(uRef, { gold: inc(goldDelta), debtToState: inc(debtDelta), goldTag: goldTag(it.role === 'polis' ? 'polis' : it.role === 'imam' ? 'imam' : 'belediyeMaas') });
         debtNote = debtDelta < 0 ? ` (${fmt(-debtDelta)} altını devlete olan borcuna gitti)` : '';
       }
       if (salaryDue > 0) {

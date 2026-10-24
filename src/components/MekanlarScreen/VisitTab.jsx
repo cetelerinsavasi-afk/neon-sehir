@@ -28,6 +28,7 @@ const GAME_VENUES = [
   { key: 'araba_galerisi', region: 'araba_galerisi', openKey: 'dealership' },
   { key: 'silah_magazasi', region: 'silah_magazasi', openKey: 'weaponShop' },
   { key: 'modifiye_garaji', region: 'modifiye_garaji', openKey: 'tuningGarage' },
+  { key: 'belediye', region: 'belediye', openKey: 'belediye' }, // v127
 ];
 const GAME_BY_KEY = Object.fromEntries(GAME_VENUES.map((g) => [g.key, g]));
 // işletme türü → oyunun aynı türdeki mekânı

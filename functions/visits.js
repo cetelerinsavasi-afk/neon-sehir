@@ -12,7 +12,7 @@
 // =============================================================================
 import { midnightDayKey } from './businessCatalogData.js';
 
-export const VISIT_VENUES = ['park', 'banka', 'karakol', 'camii', 'gazino', 'araba_galerisi', 'silah_magazasi', 'modifiye_garaji'];
+export const VISIT_VENUES = ['park', 'banka', 'karakol', 'camii', 'gazino', 'araba_galerisi', 'silah_magazasi', 'modifiye_garaji', 'belediye']; // v127: + belediye
 export const houseVisitKey = (houseId) => `h_${houseId}`;
 
 export function createVisits({ db, FieldValue, now = () => Date.now() }) {

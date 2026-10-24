@@ -12,6 +12,8 @@ import ActionMenu from '../ActionMenu/ActionMenu';
 import ReportBlockSheet from '../ReportBlockSheet/ReportBlockSheet';
 import { copyText, useLongPress } from '../ActionMenu/actionMenuUtils';
 import { belediyeAction } from '../../services/gameActions';
+import { useAuth } from '../../contexts/AuthContext';
+import { markBelediyeChatSeen } from '../../hooks/useBelediyeChatUnread';
 import { BELEDIYE } from '../../../functions/belediye.js';
 import '../Gangs/Gangs.css';
 import './Belediye.css';
@@ -49,6 +51,12 @@ export default function BelediyeChat({ channel, isMine, canWrite = true }) {
   useEffect(() => {
     if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
   }, [docs.length, coll]);
+  // v127: bu kanal görüldü → bildirim noktası söner
+  const { user } = useAuth();
+  const latestMs = docs[0]?.createdAtMs || 0;
+  useEffect(() => {
+    markBelediyeChatSeen(user?.uid, channel === 'koord' ? 'koord' : 'genel', latestMs);
+  }, [user?.uid, channel, latestMs]);
 
   const send = async () => {
     const t = text.trim();

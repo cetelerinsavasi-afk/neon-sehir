@@ -401,6 +401,7 @@ function GameShell() {
     dealership: setDealershipOpen,
     weaponShop: setWeaponShopOpen,
     tuningGarage: setTuningGarageOpen,
+    belediye: setBelediyeOpen, // v127
   };
 
   const handleVisitVenue = (openKey) => {

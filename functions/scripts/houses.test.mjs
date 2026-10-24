@@ -249,8 +249,30 @@ test('v92 tasarım yetkisi: sadece arkadaşa verilir, yetkili sahibin envanterin
   // kaldırınca sahibinin envanterine döner
   await h.act('ali', { op: 'save', houseId: id, design: { items: [it('a2', 'piano')] } });
   assert.equal(h.G('houseInventories/zengin').items.sofa3, 1);
-  // satın alamaz
-  await assert.rejects(h.act('ali', { op: 'checkout', houseId: id, design: { items: [it('a2', 'piano')] }, expect: { gold: 0, gem: ITEM_PRICES.piano.v } }), /senin değil/);
+  // v127: kendi cebinden alamaz — sadece sahibin koyduğu mobilya kasasından
+  const pianoGem = ITEM_PRICES.piano.v;
+  const aliGem = Number(h.G('users/ali')?.emerald || 0);
+  await assert.rejects(h.act('ali', { op: 'checkout', houseId: id, design: { items: [it('a2', 'piano')] }, expect: { gold: 0, gem: pianoGem } }), /Mobilya kasasında/);
+  await assert.rejects(h.act('ali', { op: 'fund', houseId: id, dir: 'in', gem: 5 }), /sadece mekânın sahibi/);
+  h.S('users/zengin', { ...h.G('users/zengin'), emerald: pianoGem + 10 });
+  const zg = h.G('users/zengin').gold;
+  await h.act('zengin', { op: 'fund', houseId: id, dir: 'in', gem: pianoGem + 5, gold: 1000 });
+  assert.equal(h.G('users/zengin').emerald, 5);
+  assert.equal(h.G('users/zengin').gold, zg - 1000);
+  assert.equal(h.G(`houseFunds/${id}`).gem, pianoGem + 5);
+  const inv2 = await h.act('ali', { op: 'editInv', houseId: id });
+  assert.equal(inv2.fund.gem, pianoGem + 5, 'yetkili kasa bakiyesini görür');
+  const co = await h.act('ali', { op: 'checkout', houseId: id, design: { items: [it('a2', 'piano')] }, expect: { gold: 0, gem: pianoGem } });
+  assert.equal(co.fromFund, true);
+  assert.equal(h.G(`houseFunds/${id}`).gem, 5, 'kasadan düştü');
+  assert.equal(Number(h.G('users/ali')?.emerald || 0), aliGem, 'yetkilinin cebine dokunulmaz');
+  assert.equal(h.G(`houses/${id}`).items.find((x) => x.i === 'a2').p, 1, 'eşya satın alındı (sahibine ait)');
+  // sahip kalanı bedelsiz geri alır
+  await assert.rejects(h.act('zengin', { op: 'fund', houseId: id, dir: 'out', gem: 6 }), /Kasada o kadar yok/);
+  await h.act('zengin', { op: 'fund', houseId: id, dir: 'out', gem: 5, gold: 1000 });
+  assert.equal(h.G('users/zengin').emerald, 10);
+  assert.equal(h.G('users/zengin').gold, zg);
+  assert.equal(h.G(`houseFunds/${id}`).gem, 0);
   // evde değilken kaydedemez
   h.db._store.delete('housePresence/ali');
   await assert.rejects(h.act('ali', { op: 'save', houseId: id, design: { items: [] } }), /evde olmalısın/);

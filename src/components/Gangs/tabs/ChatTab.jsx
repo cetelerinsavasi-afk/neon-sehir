@@ -18,6 +18,7 @@ import ActionMenu from '../../ActionMenu/ActionMenu';
 import { copyText, useLongPress } from '../../ActionMenu/actionMenuUtils';
 import { useBlocks } from '../../../contexts/BlocksContext';
 import BelediyeChat from '../../Belediye/BelediyeChat';
+import { useBelediyeChatUnread } from '../../../hooks/useBelediyeChatUnread';
 
 // v53: mesaj balonu — avatara/ada dokununca Oyuncu Kartı (İstihbarat'ta yok:
 // anonim); mesaja uzun basınca Kopyala · Profili gör · Bildir menüsü.
@@ -105,8 +106,10 @@ export default function ChatTab({ org, d }) {
 
   // v93: yeni mesaj noktası nabız gibi büyüyüp küçülür (Chips → gx-chip-dot)
   const dot = (id) => Boolean(unread[id] && channel !== id);
+  // v127: Belediye (koordinasyon) kanalında yeni mesaj
+  const bdUnread = useBelediyeChatUnread(actorId, 'koord', isIntel && ranked, (m) => m.authorKind === 'polis' && m.rosterId === d.rid);
   const channels = isIntel
-    ? [{ id: 'genel', label: 'Genel', icon: '💬', dot: dot('genel') }, ...(ranked ? [{ id: 'yonetim', label: 'Rütbeliler', icon: '🔒', dot: dot('yonetim') }, { id: 'belediye', label: 'Belediye', icon: '🏛️' }] : [])]
+    ? [{ id: 'genel', label: 'Genel', icon: '💬', dot: dot('genel') }, ...(ranked ? [{ id: 'yonetim', label: 'Rütbeliler', icon: '🔒', dot: dot('yonetim') }, { id: 'belediye', label: 'Belediye', icon: '🏛️', dot: bdUnread && channel !== 'belediye' }] : [])]
     : [{ id: 'genel', label: 'Çete', icon: '💬', dot: dot('genel') }, ...(ranked ? [{ id: 'yonetim', label: 'Yönetim', icon: '🔒', dot: dot('yonetim') }] : []), { id: 'tum', label: 'Tüm Çeteler', icon: '🌐', dot: dot('tum') }];
 
   if (belediyeCh && ranked) {

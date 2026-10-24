@@ -147,6 +147,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
   };
   const houseRef = (id) => db.collection('houses').doc(id);
   const invRef = (uid) => db.collection('houseInventories').doc(uid);
+  const fundRef = (houseId) => db.collection('houseFunds').doc(houseId); // v127 mobilya kasası
   const presenceRef = (uid) => db.collection('housePresence').doc(uid);
   const userRef = (uid) => db.collection('users').doc(uid);
   const heldRef = (uid) => db.collection('heldItems').doc(uid);
@@ -559,30 +560,39 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     return { gold, gem, lines, surfaces };
   }
 
+  // v127: yetkili (tasarımcı) da satın alabilir — SADECE sahibin bu mekân için
+  // koyduğu mobilya kasasından (houseFunds/{houseId}). Eşyalar sahibine aittir.
   async function checkout(uid, p) {
     const houseId = String(p.houseId || '');
     const design = clean(p.design);
     let result = null;
+    const pre = await loadHouse(houseId);
+    const asEditor = pre.ownerUid !== uid && isEditorOf(pre, uid);
+    if (asEditor && !(await presentIn(uid, houseId))) fail('failed-precondition', 'Satın almak için mekânda olmalısın.');
     await db.runTransaction(async (tx) => {
-      const [hs, is, us] = await Promise.all([tx.get(houseRef(houseId)), tx.get(invRef(uid)), tx.get(userRef(uid))]);
+      const hs = await tx.get(houseRef(houseId));
       if (!hs.exists) fail('not-found', 'Ev bulunamadı.');
       const h = hs.data();
-      if (h.ownerUid !== uid) fail('permission-denied', 'Bu ev senin değil.');
+      const editor = h.ownerUid !== uid && isEditorOf(h, uid);
+      if (h.ownerUid !== uid && !editor) fail('permission-denied', 'Bu ev senin değil.');
+      const owner = h.ownerUid;
+      const [is, us, fs] = await Promise.all([tx.get(invRef(owner)), editor ? Promise.resolve(null) : tx.get(userRef(uid)), editor ? tx.get(fundRef(houseId)) : Promise.resolve(null)]);
       const inv = is.exists ? is.data() : {};
-      const user = us.data() || {};
       const q = quoteOf(h, design, inv);
       const exp = p.expect || {};
       if (Number(exp.gold) !== q.gold || Number(exp.gem) !== q.gem) fail('aborted', 'Sepet tutarı değişti, lütfen tekrar kontrol et.');
       if (q.gold === 0 && q.gem === 0) fail('failed-precondition', 'Sepetin boş.');
-      const gold = Number(user.gold || 0);
-      const emerald = Number(user.emerald || 0);
-      if (gold < q.gold) fail('failed-precondition', `Yetersiz altın (${gold.toLocaleString('tr-TR')} / ${q.gold.toLocaleString('tr-TR')}).`);
-      if (emerald < q.gem) fail('failed-precondition', `Yetersiz zümrüt (${emerald} / ${q.gem}).`);
+      const src = editor ? fs.data() || {} : us.data() || {};
+      const gold = Number(editor ? src.gold || 0 : src.gold || 0);
+      const emerald = Number(editor ? src.gem || 0 : src.emerald || 0);
+      const where = editor ? 'Mobilya kasasında yeterli' : 'Yetersiz';
+      if (gold < q.gold) fail('failed-precondition', editor ? `${where} altın yok (${gold.toLocaleString('tr-TR')} / ${q.gold.toLocaleString('tr-TR')}).` : `Yetersiz altın (${gold.toLocaleString('tr-TR')} / ${q.gold.toLocaleString('tr-TR')}).`);
+      if (emerald < q.gem) fail('failed-precondition', editor ? `${where} zümrüt yok (${emerald} / ${q.gem}).` : `Yetersiz zümrüt (${emerald} / ${q.gem}).`);
       const items = design.items.map((it) => ({ ...it, p: 1 }));
-      // v77: satın alma sırasında gerekli bir mobilya kaldırılmışsa işletme kuralı
-      const closing = await guardBizDesign(tx, { houseId, h, items, allowBizClose: p.allowBizClose === true });
+      // v77: satın alma sırasında gerekli bir mobilya kaldırılmışsa işletme kuralı (yetkili kapatamaz)
+      const closing = await guardBizDesign(tx, { houseId, h, items, allowBizClose: !editor && p.allowBizClose === true });
       // Önce mevcut (satın alınmış) eşyaların envanter farkını uygula, sonra denemeleri satın al.
-      const { invItems } = applyDesignTx(tx, { houseId, h, inv, uid, design });
+      const { invItems } = applyDesignTx(tx, { houseId, h, inv, uid: owner, design });
       if (closing) writeBizClose(tx, { houseId, h, ...closing });
       const walls = [...(inv.walls || [])];
       const floors = [...(inv.floors || [])];
@@ -592,17 +602,21 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       });
       const wall = design.wall || h.wall || FREE_SURFACES.wall[0];
       const floor = design.floor || h.floor || FREE_SURFACES.floor[0];
-      const userPatch = {};
-      if (q.gold) {
-        userPatch.gold = FieldValue.increment(-q.gold);
-        userPatch.goldTag = goldTag('mobilya');
+      if (editor) {
+        tx.set(fundRef(houseId), { ownerUid: owner, gold: FieldValue.increment(-q.gold), gem: FieldValue.increment(-q.gem), updatedAtMs: now(), lastBuyBy: uid }, { merge: true });
+      } else {
+        const userPatch = {};
+        if (q.gold) {
+          userPatch.gold = FieldValue.increment(-q.gold);
+          userPatch.goldTag = goldTag('mobilya');
+        }
+        if (q.gem) userPatch.emerald = FieldValue.increment(-q.gem);
+        tx.update(userRef(uid), userPatch);
       }
-      if (q.gem) userPatch.emerald = FieldValue.increment(-q.gem);
-      tx.update(userRef(uid), userPatch);
-      tx.update(houseRef(houseId), { items, wall, floor, kind: houseKind({ ...h, items, ...(closing ? { biz: null, bizType: null } : {}) }), door: settleDoor(mergeDoor(h, design.door), items), updatedAtMs: now() });
-      tx.set(invRef(uid), { items: invItems, walls, floors, updatedAtMs: now() });
+      tx.update(houseRef(houseId), { items, wall, floor, kind: houseKind({ ...h, items, ...(closing ? { biz: null, bizType: null } : {}) }), door: settleDoor(mergeDoor(h, design.door), items), updatedAtMs: now(), ...(editor ? { lastEditBy: uid } : {}) });
+      tx.set(invRef(owner), { items: invItems, walls, floors, updatedAtMs: now() });
       const cnt = Object.values(q.lines).reduce((a, b) => a + b, 0);
-      result = { ok: true, gold: q.gold, gem: q.gem, count: cnt, wall, floor };
+      result = { ok: true, gold: q.gold, gem: q.gem, count: cnt, wall, floor, ...(editor ? { fromFund: true, inv: { items: invItems, walls, floors } } : {}) };
     });
     return result;
   }
@@ -902,7 +916,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       batch.update(houseRef(houseId), { [`editors.${target}`]: true });
       batch.set(userRef(target).collection('messages').doc(), {
         from: nameOf(me.data()),
-        text: `🛠️ "${h.name || 'ev'}" için sana tasarım yetkisi verdim! İçeri girip Tasarla ile mağazadan ve envanterimden eşya koyup kaldırabilirsin (satın alma bende).`,
+        text: `🛠️ "${h.name || 'ev'}" için sana tasarım yetkisi verdim! İçeri girip Tasarla ile mağazadan ve envanterimden eşya koyup kaldırabilirsin. Mobilya kasasına koyduğum altın ve zümrütle benim adıma mobilya da alabilirsin.`,
         read: false,
         kind: 'houseEditor',
         houseId,
@@ -914,6 +928,43 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     if (h.editors?.[target] !== undefined) await houseRef(houseId).update({ [`editors.${target}`]: FieldValue.delete() });
     return { ok: true, on: false };
   }
+  // v127 — MOBİLYA KASASI: sahip bu mekân için altın / zümrüt koyar; yetkili
+  // tasarımcılar mobilya alırken buradan harcar (eşyalar sahibine aittir).
+  // Sahip istediği zaman bedelsiz geri alır. dir: 'in' (kasaya) · 'out' (geri al)
+  async function fundMove(uid, p) {
+    const houseId = String(p.houseId || '');
+    const dir = p.dir === 'out' ? 'out' : 'in';
+    const gold = Math.floor(Number(p.gold) || 0);
+    const gem = Math.floor(Number(p.gem) || 0);
+    if (gold < 0 || gem < 0 || gold + gem <= 0 || gold > 1e12 || gem > 1e9) fail('invalid-argument', 'Geçersiz tutar.');
+    let out = null;
+    await db.runTransaction(async (tx) => {
+      const [hs, us, fs] = await Promise.all([tx.get(houseRef(houseId)), tx.get(userRef(uid)), tx.get(fundRef(houseId))]);
+      if (!hs.exists) fail('not-found', 'Ev bulunamadı.');
+      if (hs.data().ownerUid !== uid) fail('permission-denied', 'Mobilya kasasını sadece mekânın sahibi yönetir.');
+      if (hs.data().venue) fail('failed-precondition', 'Bu mekânda kasa yok.');
+      const u = us.data() || {};
+      const f = fs.data() || {};
+      const fg = Number(f.gold || 0);
+      const fe = Number(f.gem || 0);
+      if (dir === 'in') {
+        if (Number(u.gold || 0) < gold) fail('failed-precondition', 'Yeterli altının yok.');
+        if (Number(u.emerald || 0) < gem) fail('failed-precondition', 'Yeterli zümrüdün yok.');
+      } else if (fg < gold || fe < gem) fail('failed-precondition', 'Kasada o kadar yok.');
+      const s = dir === 'in' ? 1 : -1;
+      const up = {};
+      if (gold) {
+        up.gold = FieldValue.increment(-s * gold);
+        up.goldTag = goldTag('mobilyaKasa');
+      }
+      if (gem) up.emerald = FieldValue.increment(-s * gem);
+      tx.update(userRef(uid), up);
+      tx.set(fundRef(houseId), { ownerUid: uid, gold: fg + s * gold, gem: fe + s * gem, updatedAtMs: now() }, { merge: true });
+      out = { ok: true, gold: fg + s * gold, gem: fe + s * gem };
+    });
+    return out;
+  }
+
   // Yetkili, sahibinin envanterini görür (envanter belgesi sadece sahibine açık)
   async function editorInventory(uid, p) {
     const houseId = String(p.houseId || '');
@@ -921,7 +972,8 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     if (!isEditorOf(h, uid)) fail('permission-denied', 'Bu evde tasarım yetkin yok.');
     const s = await invRef(h.ownerUid).get();
     const d = s.exists ? s.data() : {};
-    return { ok: true, items: d.items || {}, walls: d.walls || [], floors: d.floors || [] };
+    const f = (await fundRef(houseId).get()).data() || {};
+    return { ok: true, items: d.items || {}, walls: d.walls || [], floors: d.floors || [], fund: { gold: Number(f.gold || 0), gem: Number(f.gem || 0) } };
   }
 
   // ---- v92 Faz 8: oyunun 3D mekânları --------------------------------------------------
@@ -994,6 +1046,8 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
         return setEditor(uid, p);
       case 'editInv':
         return editorInventory(uid, p);
+      case 'fund':
+        return fundMove(uid, p);
       case 'venueEnsure':
         return venueEnsure(p);
       default:
