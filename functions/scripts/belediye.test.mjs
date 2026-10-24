@@ -10,6 +10,7 @@ import { resolveRates, validateNext, rateChanges, DEFAULT_RATES, boundsOf, facto
 import { stateWrite, closeStateDays } from '../stateTreasury.js';
 import { spendableOf } from '../belediyeKasa.js';
 import { bizTax, resaleTax, machineTax, splitSalaryTax, factoryTax, setRatesCache, ratesFor } from '../tax.js';
+import { gazeteTopics, gazeteNews } from '../belediyeGazete.js';
 
 class HttpsError extends Error {
   constructor(code, message) {
@@ -429,6 +430,8 @@ test('v127 gazete: tek taslak (yenisi eskisinin yerine), sadece başkan/yardımc
   assert.equal(p.gazete.byTitle, 'Belediye Başkanı');
   // değişiklik + şikâyet
   await w.act('veli', 'setRate', { id: 'mkKripto', value: 6 });
+  await w.act('veli', 'setRate', { id: 'f4', value: 41 });
+  await w.act('admin', 'setRate', { id: 'polMemur', value: 6000 });
   const r1 = await w.act('can', 'sikayet', { text: 'Sokak lambaları yanmıyor, belediye uyuyor!' });
   await w.act('fatma', 'sikayet', { text: 'Parkta bank yok, yaşlılar ayakta kalıyor.' });
   await w.act('ali', 'sikayetBegen', { id: r1.id });
@@ -444,8 +447,13 @@ test('v127 gazete: tek taslak (yenisi eskisinin yerine), sadece başkan/yardımc
   const g = await w.bel.buildGazete('2026-10-25', () => 0);
   assert.equal(g.ok, true);
   const doc = w.G('belediyeGazete/2026-10-25');
-  const row = doc.rows.find((x) => x.id === 'mkKripto');
-  assert.deepEqual([row.start, row.prev, row.cur, row.today, row.good], [5, 5, 6, true, false]);
+  // sade gazete: önemli konular — manşet polis maaşı, altında fabrika; makine vergisi haber değil
+  assert.equal(doc.rows, undefined);
+  assert.match(doc.headline.d, /Polis Memuru maaşı: 5\.000 → 6\.000/);
+  assert.equal(doc.headline.kind, 'indirim', 'polise zam oyuncu için iyi (yeşil)');
+  assert.equal(doc.items.length, 1);
+  assert.match(doc.items[0].d, /Fabrika vergisi \(10\.000\.000\+ brüt kazanç\): %40 → %41/);
+  assert.ok(!JSON.stringify(doc).includes('Kripto'));
   assert.equal(doc.article.byName, 'ADMIN');
   assert.equal(doc.complaint.likes, 1);
   assert.equal(w.G('belediye/gazeteDraft'), undefined, 'taslak basılınca silinir');
@@ -457,10 +465,23 @@ test('v127 gazete: tek taslak (yenisi eskisinin yerine), sadece başkan/yardımc
   await w.bel.nightlyRoll('2026-10-26');
   await w.bel.buildGazete('2026-10-26', () => 0);
   const d2 = w.G('belediyeGazete/2026-10-26');
-  const r2 = d2.rows.find((x) => x.id === 'mkKripto');
-  assert.deepEqual([r2.start, r2.prev, r2.cur, r2.today], [5, 6, 6, false]);
   assert.equal(d2.headline.kind, 'sakin');
+  assert.deepEqual(d2.items, []);
   assert.equal(d2.complaint, null);
+});
+
+test('v127 gazete haber puanı: tüm rütbelere zam karışık değişiklikten önemli; küçük kalemler haber olmaz', () => {
+  const base = { ...DEFAULT_RATES };
+  const allUp = { ...base, polGenel: base.polGenel + 1000, polAmir: base.polAmir + 1000, polBaskom: base.polBaskom + 1000, polKomiser: base.polKomiser + 1000, polMemur: base.polMemur + 1000 };
+  const t1 = gazeteTopics(base, { ...allUp, isKafe: 11, isBar: 9 });
+  assert.deepEqual(t1.map((t) => [t.topic, t.dir]), [['polis', 'up'], ['isletme', 'mixed']]);
+  const n = gazeteNews({ prev: base, cur: { ...base, sosyal: 12, imam: 12000, piyango: 15 }, rnd: () => 0 });
+  assert.equal(n.headline.kind, 'sakin');
+  assert.equal(n.items.length, 0);
+  const k = gazeteNews({ prev: base, cur: { ...base, bsk: base.bsk + 5000 }, rnd: () => 0 });
+  assert.equal(k.headline.kind, 'zam', 'kadro kendine zam → kırmızı');
+  const c = gazeteNews({ prev: base, cur: base, payrollUnpaid: true, rnd: () => 0 });
+  assert.equal(c.headline.kind, 'kriz');
 });
 
 test('v127 şikâyet: günde 3, 7 gün sonra silinir; defter sadece kadroya', async () => {

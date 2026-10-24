@@ -21,7 +21,7 @@ function groupOf(kind, cat) {
     if (cat === 'vergi_fabrika') return ['sanayi', 'Fabrika vergisi'];
     if (cat === 'vergi_makine') return ['sanayi', 'Makine alım vergisi'];
     if (cat === 'vergi_maasIsci') return ['sanayi', 'Fabrika işçisi maaş vergisi'];
-    if (cat === 'vergi_maas') return ['sanayi', 'Maaş vergileri (v127 öncesi, birleşik)'];
+    if (cat === 'vergi_maas') return ['yonetim', 'Maaş vergileri (güncelleme öncesi birleşik kayıt)'];
     if (cat === 'vergi_yayin' || cat === 'vergi_sanatci') return ['kultur', 'Sosyal medya vergisi'];
     if (cat === 'vergi_maasFutbolcu') return ['kultur', 'Futbolcu maaş vergisi'];
     if (cat === 'vergi_maasMenajer') return ['kultur', 'Menajer maaş vergisi'];

@@ -9,7 +9,7 @@
 //   • kasa özeti (dünün neti, maaşlar)
 // Cümleler her baskıda rastgele seçilir (rnd verilebilir — test).
 // =============================================================================
-import { RATE_ITEMS, fmtRate, isGoodChange, MINISTRIES } from './belediyeRates.js';
+import { RATE_ITEMS, RATE_BY_ID, fmtRate, isGoodChange, MINISTRIES } from './belediyeRates.js';
 
 const pick = (arr, rnd) => arr[Math.floor(rnd() * arr.length) % arr.length];
 const fill = (s, v) => s.replace(/\{(\w+)\}/g, (_, k) => (v[k] != null ? String(v[k]) : ''));
@@ -37,6 +37,11 @@ const HEAD = {
     { t: 'Şehirde Sakin Bir Sabah', s: 'Belediye bu gece fiyatlara dokunmadı. Fırtına öncesi sessizlik mi?' },
     { t: 'Değişiklik Yok, Nefesler Tutuldu', s: 'Vergiler yerinde sayıyor. Gözler belediye koridorlarında.' },
     { t: 'Belediyede Sessiz Gece', s: 'Hiçbir kalem değişmedi; muhalefet "uyuyorlar" diyor, kadro "planlıyoruz".' },
+  ],
+  // v127 (2): sadece küçük kalemler değişti (yayın, imam, piyango…)
+  ufak: [
+    { t: 'Şehirde Sakin Bir Sabah', s: 'Belediye bu gece büyük kararlar almadı; ayrıntılar belediyede.' },
+    { t: 'Büyük Kararlar Rafta', s: 'Bu gece sadece ufak ayarlar yapıldı.' },
   ],
   maasYok: [
     { t: 'Kasa Boş, Maaşlar Ödenemedi!', s: 'Polis, imam ve belediye kadrosu bu gece eli boş yattı.' },
@@ -107,3 +112,134 @@ export function gazeteKasaLine(net, rnd = Math.random) {
 
 export const MINISTRY_SHORT = Object.fromEntries(Object.values(MINISTRIES).map((m) => [m.id, m.short]));
 export const fmtGazeteRate = (v, unit) => fmtRate(v, unit);
+
+// =============================================================================
+// v127 (2) — SADE GAZETE: sadece ÖNEMLİ konular. Bir manşet + altında birkaç
+// önemli haber. Önemli: fabrika, işçi, işletme vergileri; polis ve belediye
+// kadrosu maaşları. Yayın/şarkı, imam, piyango, 2. el, makine vb. haber olmaz.
+// Puan: konu ağırlığı × kapsam (konudaki kalemlerin ne kadarı değişti) ×
+// yön (hepsi aynı yöne → tam; karışık → zayıf) × büyüklük (ortalama % değişim).
+// =============================================================================
+const TOPICS = [
+  { id: 'fabrika', unit: 'dilim', w: 5, ids: ['f1', 'f2', 'f3', 'f4'], name: (it) => `Fabrika vergisi (${it.label})` },
+  { id: 'polis', unit: 'rütbe', w: 5, ids: ['polGenel', 'polAmir', 'polBaskom', 'polKomiser', 'polMemur'], name: (it) => `${it.label} maaşı` },
+  { id: 'isletme', unit: 'işletme türü', w: 4, ids: ['isSilahci', 'isModifiye', 'isKumar', 'isSpor', 'isKafe', 'isBar', 'isInternet', 'isOfis'], name: (it) => `${it.label} vergisi` },
+  { id: 'isci', unit: 'kalem', w: 4, ids: ['fisci'], name: () => 'İşçi maaş vergisi' },
+  { id: 'kadro', unit: 'koltuk', w: 3, ids: ['bsk', 'byrd', 'bakan'], name: (it) => `${it.label} maaşı` },
+];
+
+const NEWS = {
+  fabrika: {
+    up: [
+      { t: 'Fabrikalara Vergi Darbesi!', s: 'Sanayici bu sabah hesap makinesine sarıldı.' },
+      { t: 'Bacalar Tütüyor, Vergi de Artıyor', s: 'Fabrika vergilerinde yeni dönem başladı.' },
+    ],
+    down: [
+      { t: 'Sanayiciye Müjde: Vergi İndi', s: 'Fabrika sahipleri bu sabah gülümsüyor.' },
+      { t: 'Fabrikalar Nefes Aldı', s: 'Belediye sanayinin yükünü hafifletti.' },
+    ],
+    mixed: [{ t: 'Fabrika Vergilerinde Yeni Denge', s: 'Kimi dilime zam, kimine indirim.' }],
+  },
+  polis: {
+    up: [
+      { t: 'Polise Toplu Zam!', s: 'Teşkilatta bayram havası, tüm rütbeler kazançlı.', all: true },
+      { t: 'Emniyete Maaş Müjdesi', s: 'Belediye polisin cebini doldurdu.' },
+    ],
+    down: [
+      { t: 'Polis Maaşlarına Kesinti!', s: 'Teşkilatta huzursuzluk büyüyor.' },
+      { t: 'Emniyette Kemerler Sıkıldı', s: 'Belediye polis bordrosunu budadı.' },
+    ],
+    mixed: [{ t: 'Teşkilatta Maaş Ayarı', s: 'Kimi rütbe kazandı, kimi kaybetti.' }],
+  },
+  isletme: {
+    up: [
+      { t: 'Esnafa Vergi Zammı!', s: 'Dükkân sahipleri tezgâh başında homurdanıyor.' },
+      { t: 'İşletmelere Yeni Fatura', s: 'Belediye esnafın kasasına göz dikti.' },
+    ],
+    down: [
+      { t: 'Esnafa Vergi İndirimi', s: 'Dükkânlarda bu sabah çaylar belediyeden.' },
+      { t: 'İşletmeler Rahatladı', s: 'Esnafın vergi yükü hafifledi.' },
+    ],
+    mixed: [{ t: 'İşletme Vergilerinde Karışık Tablo', s: 'Bazı esnaf kazandı, bazısı kaybetti.' }],
+  },
+  isci: {
+    up: [{ t: 'İşçinin Maaşından Daha Çok Kesilecek', s: 'Fabrika işçisinin vergisi arttı.' }],
+    down: [{ t: 'İşçiye Vergi Müjdesi', s: 'Fabrika işçisinin eline daha çok para geçecek.' }],
+    mixed: [{ t: 'İşçi Vergisi Değişti', s: '' }],
+  },
+  kadro: {
+    up: [
+      { t: 'Belediye Kendi Maaşına Zam Yaptı!', s: 'Halk soruyor: kasa kimin için?' },
+      { t: 'Koltuklar Isındı, Maaşlar Arttı', s: 'Belediye kadrosu kendine zam yaptı.' },
+    ],
+    down: [
+      { t: 'Belediye Kendi Maaşını Kesti', s: 'Kadro kemeri önce kendinde sıktı.' },
+      { t: 'Örnek Karar: Yönetim Maaşları İndi', s: 'Belediye tasarrufa kendinden başladı.' },
+    ],
+    mixed: [{ t: 'Belediye Kadrosunda Maaş Ayarı', s: '' }],
+  },
+};
+
+const PLURAL = { dilim: 'dilimler', rütbe: 'rütbeler', 'işletme türü': 'işletmeler', kalem: 'kalemler', koltuk: 'koltuklar' };
+const pctMove = (from, to) => (from > 0 ? Math.abs(to - from) / from : 1);
+
+/** Önemli konular (puan sırasıyla). prev/cur: tam oran setleri. */
+export function gazeteTopics(prev, cur) {
+  const out = [];
+  for (const tp of TOPICS) {
+    const ch = tp.ids.map((id) => ({ id, it: RATE_BY_ID[id], from: Number(prev?.[id] ?? cur[id]), to: Number(cur[id]) })).filter((c) => c.it && c.from !== c.to);
+    if (!ch.length) continue;
+    const ups = ch.filter((c) => c.to > c.from).length;
+    const dir = ups === ch.length ? 'up' : ups === 0 ? 'down' : 'mixed';
+    const coverage = ch.length / tp.ids.length;
+    const mag = ch.reduce((a, c) => a + pctMove(c.from, c.to), 0) / ch.length;
+    const score = tp.w * (0.4 + 0.6 * coverage) * (dir === 'mixed' ? 0.35 : 1) * (1 + Math.min(1, mag * 3));
+    // temsilci kalem: en büyük oransal değişim
+    const rep = [...ch].sort((a, b) => pctMove(b.from, b.to) - pctMove(a.from, a.to))[0];
+    const good = dir === 'mixed' ? null : isGoodChange(rep.it.unit, rep.id, rep.to - rep.from);
+    out.push({ topic: tp.id, unit: tp.unit, dir, score, good, ch, rep, n: ch.length, all: ch.length === tp.ids.length, name: tp.name });
+  }
+  return out.sort((a, b) => b.score - a.score);
+}
+
+const line = (tp, c) => `${tp.name(c.it)}: ${c.it.unit === 'gold' ? Math.round(c.from).toLocaleString('tr-TR') : fmtRate(c.from, c.it.unit)} → ${fmtRate(c.to, c.it.unit)}`;
+function detail(tp) {
+  if (tp.dir === 'mixed') {
+    const up = tp.ch.filter((c) => c.to > c.from).length;
+    return `${up} ${tp.unit} zam, ${tp.n - up} ${tp.unit} indirim · ${line(tp, tp.rep)}`;
+  }
+  if (tp.n === 1) return line(tp, tp.rep);
+  return `${tp.all ? `Tüm ${PLURAL[tp.unit] || tp.unit}` : `${tp.n} ${tp.unit}`}: ${tp.dir === 'up' ? 'artış' : 'düşüş'} · ${line(tp, tp.rep)}`;
+}
+
+/**
+ * Gazetenin haberleri: { headline: {kind,t,s,d}, items: [{t,d,good}] }
+ * kind: 'zam' (kötü, kırmızı) · 'indirim' (iyi, yeşil) · 'karisik' · 'sakin' · 'kriz'
+ */
+export function gazeteNews({ prev, cur, payrollUnpaid = false, rnd = Math.random, max = 4 }) {
+  const topics = gazeteTopics(prev, cur);
+  const story = (tp) => {
+    const opts = NEWS[tp.topic][tp.dir].filter((x) => !x.all || tp.all);
+    const h = pick(opts, rnd);
+    return { t: h.t, s: h.s, d: detail(tp), good: tp.good, kind: tp.dir === 'mixed' ? 'karisik' : tp.good ? 'indirim' : 'zam' };
+  };
+  let headline;
+  let rest = topics;
+  if (payrollUnpaid) {
+    const h = pick(HEAD.maasYok, rnd);
+    headline = { kind: 'kriz', t: h.t, s: h.s, d: '' };
+  } else if (topics.length) {
+    const st = story(topics[0]);
+    headline = { kind: st.kind, t: st.t, s: st.s, d: st.d };
+    rest = topics.slice(1);
+  } else {
+    const any = RATE_ITEMS.some((it) => prev?.[it.id] != null && Number(prev[it.id]) !== Number(cur[it.id]));
+    const h = pick(any ? HEAD.ufak : HEAD.sakin, rnd);
+    headline = { kind: 'sakin', t: h.t, s: h.s, d: '' };
+  }
+  const items = rest.slice(0, max).map((tp) => {
+    const st = story(tp);
+    return { t: st.t, d: st.d, good: st.good };
+  });
+  return { headline, items };
+}

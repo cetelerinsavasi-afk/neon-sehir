@@ -1,10 +1,11 @@
 // v127 — BELEDİYE RAPORU (herkes görür)
 //   Başkan → (davetliysen) iş teklifi → Toplu Rapor (dünün sonucu) → bugünün
 //   zam / indirimleri → maaş uyarısı → borçlar → bağış + günün bağışçıları
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useDocData } from '../Gangs/GangContext';
-import { AmountInput, Btn, Gold, Logo, Sheet } from '../Gangs/ui';
-import { MINISTRIES, rateDayKey, fmtRate } from '../../../functions/belediyeRates.js';
+import { AmountInput, Btn, Chips, Gold, Logo, Sheet } from '../Gangs/ui';
+import { MINISTRIES, rateDayKey, fmtRate, ministryOfCat, resolveRates } from '../../../functions/belediyeRates.js';
+import { useBelediyeRatesDoc } from '../../hooks/useBelediyeRates';
 import { BELEDIYE, SEATS } from '../../../functions/belediye.js';
 import { useBelediye } from './BelediyeContext';
 import { MIN_ORDER, Person, Signed, Table, dayLabel, hoursLeft, nf, useTick } from './belediyeUi';
@@ -97,25 +98,85 @@ function TopluRapor() {
   );
 }
 
+// v127 — kadro için BUGÜNÜN canlı durumu (≤10 dk gecikmeli; panel çağrısından)
+function BugunCanli() {
+  const { panel, seat } = useBelediye();
+  const t = panel?.kasa?.today;
+  if (!seat || !t) return null;
+  const by = {};
+  for (const k of ['in', 'out'])
+    for (const [cat, n] of Object.entries(t[k] || {})) {
+      const m = ministryOfCat(k, cat);
+      const r = (by[m] ||= { in: 0, out: 0 });
+      r[k] += Math.round(Number(n) || 0);
+    }
+  const rows = MIN_ORDER.filter((m) => by[m] && (by[m].in || by[m].out)).map((m) => ({
+    key: m,
+    m: MINISTRIES[m]?.short || m,
+    in: by[m].in ? `+${nf(by[m].in)}` : '0',
+    out: by[m].out ? `−${nf(by[m].out)}` : '0',
+    net: <Signed v={by[m].in - by[m].out} unit={false} />,
+  }));
+  const net = Number(t.inTotal || 0) - Number(t.outTotal || 0);
+  return (
+    <>
+      <div className="gx-section-head">
+        <span>⏱️ Bugün şu ana kadar</span>
+        <Signed v={net} />
+      </div>
+      {rows.length ? (
+        <Table
+          cols={[
+            { k: 'm', label: 'Bakanlık' },
+            { k: 'in', label: 'Gelir', num: true },
+            { k: 'out', label: 'Gider', num: true },
+            { k: 'net', label: 'Net', num: true },
+          ]}
+          rows={rows}
+          foot={{ m: 'Toplam', in: t.inTotal ? `+${nf(t.inTotal)}` : '0', out: t.outTotal ? `−${nf(t.outTotal)}` : '0', net: <Signed v={net} unit={false} /> }}
+        />
+      ) : (
+        <p className="dim bd-note">Bugün henüz kayıt yok.</p>
+      )}
+      <p className="dim bd-note">En fazla 10 dk gecikmeli · gece 00:00'da toplanan fabrika vergisi ve maaşlar o günün defterine yazılır.</p>
+    </>
+  );
+}
+
+// Bugünün zam / indirimleri — bakanlık sekmeleri; her satırda "göreve gelince" değeri
+const CH_TABS = [
+  { id: 'sanayi', label: 'Sanayi' },
+  { id: 'ticaret', label: 'Ticaret' },
+  { id: 'guvenlik', label: 'Teşkilat' },
+  { id: 'kultur', label: 'Kültür ve Spor' },
+  { id: 'yonetim', label: 'Belediye' },
+];
 function Changes() {
-  const { pub } = useBelediye();
+  const { pub, main } = useBelediye();
+  const { doc: ratesDoc } = useBelediyeRatesDoc();
   const today = rateDayKey();
-  if (pub.changesDay !== today) return null;
-  const list = pub.changes || [];
+  const list = pub.changesDay === today ? pub.changes || [] : [];
+  const counts = Object.fromEntries(CH_TABS.map((t) => [t.id, list.filter((c) => c.m === t.id).length]));
+  const [tab, setTab] = useState(null);
+  const active = tab || CH_TABS.find((t) => counts[t.id] > 0)?.id || 'sanayi';
+  const since = main.seats?.bsk?.uid ? rateDayKey(Number(main.seats.bsk.sinceMs || Date.now())) : null;
+  const start = useMemo(() => (since && ratesDoc ? resolveRates(ratesDoc, since) : null), [since, ratesDoc]);
+  const rows = list.filter((c) => c.m === active);
   return (
     <>
       <div className="gx-section-head">
         <span>📣 Bugünün zam ve indirimleri</span>
       </div>
-      {list.length === 0 ? (
+      <Chips options={CH_TABS.map((t) => ({ ...t, count: counts[t.id] }))} value={active} onChange={setTab} />
+      {rows.length === 0 ? (
         <p className="dim bd-note">Bugün değişiklik yok.</p>
       ) : (
         <div className="gx-card bd-changes">
-          {list.map((c) => (
+          {rows.map((c) => (
             <div key={c.id} className="bd-change">
               <span>
                 {c.label}
-                <small className="dim"> · {MINISTRIES[c.m]?.short || ''}</small>
+                {start && start[c.id] != null && <small className="dim bd-change-start">Göreve gelince: {fmtRate(start[c.id], c.unit)}</small>}
               </span>
               <b className={c.good ? 'bd-up' : 'bd-dn'}>
                 {c.to > c.from ? '▲' : '▼'} {fmtRate(c.from, c.unit)} → {fmtRate(c.to, c.unit)}
@@ -221,6 +282,7 @@ export default function RaporTab() {
         <span>📋 Toplu Rapor</span>
       </div>
       <TopluRapor />
+      <BugunCanli />
       <Changes />
       <PayrollAndDebts />
       <Donations />

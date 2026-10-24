@@ -230,7 +230,9 @@ export function rateChanges(prev, cur) {
 }
 
 // "İyi" yön: maaş artışı oyuncu için iyi (yeşil), vergi artışı kötü (kırmızı)
-export const isGoodChange = (unit, id, delta) => (unit === 'gold' || id === 'soygunPay' ? delta > 0 : delta < 0);
+// v127: belediye kadrosunun (başkan / yardımcı / bakan) maaş artışı kasa için kötü → kırmızı
+export const KADRO_SALARY_IDS = ['bsk', 'byrd', 'bakan'];
+export const isGoodChange = (unit, id, delta) => (KADRO_SALARY_IDS.includes(id) ? delta < 0 : unit === 'gold' || id === 'soygunPay' ? delta > 0 : delta < 0);
 
 export const fmtNum = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
 export function fmtRate(v, unit) {
@@ -247,7 +249,8 @@ export function ministryOfCat(kind, cat) {
   if (kind === 'in') {
     if (/^vergi_(fabrika|makine|maasIsci)/.test(cat)) return 'sanayi';
     if (/^vergi_(yayin|sanatci|maasFutbolcu|maasMenajer)/.test(cat)) return 'kultur';
-    if (cat === 'vergi_maas') return 'sanayi'; // eski (birleşik) maaş vergisi
+    // güncelleme öncesi birleşik maaş vergisi (işçi + futbolcu + menajer ayrılamaz) → genel
+    if (cat === 'vergi_maas') return 'yonetim';
     if (/^(vergi_|gazino_)/.test(cat)) return 'ticaret';
     if (/^(soygun_|kacak_|ist_|rusvet_)/.test(cat)) return 'guvenlik';
     return 'yonetim';

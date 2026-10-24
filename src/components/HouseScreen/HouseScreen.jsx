@@ -1572,14 +1572,28 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   const openCamera = () => {
     const shot = engineRef.current?.captureFrame('image/jpeg', 0.82) || null;
     // v85: kişilerin çekim anındaki durumu da saklanır (paylaşım anındaki konum değil)
-    setCameraShot({ img: shot, pose: engineRef.current?.getCameraPose(), people: engineRef.current?.getPeopleState?.() || null, at: Date.now() });
+    const people = engineRef.current?.getPeopleState?.() || null;
+    // v127: sunucu çekim anındaki kişileri imzalar → paylaşana kadar odadan
+    // çıkan da fotoğrafta kalır (başarısız olursa eski yol)
+    const signed = houseAction({ op: 'photoShot', houseId, people: people || [] })
+      .then((r) => r?.data || null)
+      .catch(() => null);
+    setCameraShot({ img: shot, pose: engineRef.current?.getCameraPose(), people, at: Date.now(), signed });
     setCameraCaption('');
     setPanel('camera');
   };
   const shareCamera = async () => {
     setBusy(true);
     try {
-      await createSixtagramPost(cameraCaption, { type: 'housePhoto', houseId, cam: cameraShot.pose, people: cameraShot.people || undefined, shotAgoMs: Math.max(0, Date.now() - (cameraShot.at || Date.now())) });
+      const sg = await cameraShot.signed;
+      await createSixtagramPost(cameraCaption, {
+        type: 'housePhoto',
+        houseId,
+        cam: cameraShot.pose,
+        people: cameraShot.people || undefined,
+        shotAgoMs: Math.max(0, Date.now() - (cameraShot.at || Date.now())),
+        ...(sg?.shot && sg?.sig ? { shot: sg.shot, sig: sg.sig } : {}),
+      });
       setPanel(null);
       flash("📸 Sixtagram'da paylaşıldı!");
     } catch (err) {

@@ -651,3 +651,10 @@
   opacity: 0.55;
   cursor: default;
 }
+
+/* v127 — bugünün değişiklikleri: göreve gelince değeri */
+.bd-change-start {
+  display: block;
+  font-size: 11px;
+  margin-top: 2px;
+}

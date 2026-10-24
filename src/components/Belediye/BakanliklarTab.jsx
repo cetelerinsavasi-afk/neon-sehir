@@ -40,9 +40,10 @@ function Sanayi({ r, c, rates }) {
           { label: 'İşçi maaş vergisi', value: nf(c.in.vergi_maasIsci), sub: st.isci_n ? `${nf(st.isci_n)} maaş · brüt ${nf(st.isci_brut)}` : null },
         ]}
       />
+      {fRows.length === 0 && <p className="dim bd-note">Fabrika listesi gece 00:00'da tahsil edilen fabrika vergisiyle birlikte hazırlanır.</p>}
       {fRows.length > 0 && (
         <>
-          <h4 className="bd-h">En çok vergi ödeyen fabrikalar</h4>
+          <h4 className="bd-h">En çok vergi ödeyen fabrikalar{f?.prodDay ? ` · ${dayLabel(f.prodDay)} üretimi` : ''}</h4>
           <Table
             cols={[
               { k: 'name', label: 'Fabrika' },
@@ -87,13 +88,24 @@ function Ticaret({ r, c, rates }) {
   const rows = Object.values(byKey)
     .filter((x) => x.n || x.ciro || x.tax)
     .map((x) => ({ key: x.k, name: RATE_BY_ID[x.k].label.replace(' (gazino)', '').replace(' Kazançları', ''), n: x.n != null ? nf(x.n) : '—', ciro: nf(x.ciro), rate: pctOf(rates, x.k), tax: nf(x.tax) }));
-  const bizTax = types.reduce((a, t) => a + taxOfType(t), 0);
+  // güncelleme öncesi türe ayrılmamış işletme vergisi + oyunun kendi mekânları
+  if (c.in.vergi_isletme) rows.push({ key: 'eski', name: 'Tür ayrımı öncesi', n: '—', ciro: '—', rate: '', tax: nf(c.in.vergi_isletme) });
+  if (c.in.vergi_oyun) rows.push({ key: 'oyun', name: 'Oyunun mekânları', n: '—', ciro: '—', rate: '', tax: nf(c.in.vergi_oyun) });
+  const bizTax = types.reduce((a, t) => a + taxOfType(t), 0) + (c.in.vergi_isletme || 0) + (c.in.vergi_oyun || 0);
+  const gz = [
+    ['gazino_slot', 'Slot'],
+    ['gazino_piyango', 'Piyango biletleri'],
+    ['gazino_rulet', 'Rulet'],
+    ['gazino_onNumara', '10 Numara'],
+  ].map(([k, name]) => ({ key: k, name, v: nf(c.in[k]) }));
+  const gzTotal = ['gazino_slot', 'gazino_piyango', 'gazino_rulet', 'gazino_onNumara'].reduce((a, k) => a + (c.in[k] || 0), 0);
   const ie = ['araba', 'silah'].map((k) => ({ key: k, name: IE_LABEL[k], n: nf(st[`ie_${k}_n`]), ciro: nf(st[`ie_${k}_ciro`]), rate: pctOf(rates, k === 'araba' ? 'ikAraba' : 'ikSilah') }));
   return (
     <>
       <Kpis
         items={[
           { label: 'İşletme vergisi', value: nf(bizTax) },
+          { label: 'Oyunun gazinosu', value: nf(gzTotal), sub: 'kârın tamamı devlete' },
           { label: '2. el vergisi', value: nf(c.in.vergi_ikinciEl) },
           { label: 'Piyango vergisi', value: nf(c.in.vergi_piyango), sub: st.pi_bilet ? `${nf(st.pi_bilet)} bilet · ödül ${nf(st.pi_odul)}` : null },
         ]}
@@ -113,6 +125,15 @@ function Ticaret({ r, c, rates }) {
           />
         </>
       )}
+      <h4 className="bd-h">Oyunun gazinosu</h4>
+      <Table
+        cols={[
+          { k: 'name', label: 'Oyun' },
+          { k: 'v', label: 'Devlete giden', num: true },
+        ]}
+        rows={gz}
+        foot={{ name: 'Toplam', v: nf(gzTotal) }}
+      />
       <h4 className="bd-h">2. el satışlar</h4>
       <Table
         cols={[

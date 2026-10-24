@@ -5293,7 +5293,7 @@ export const buyLotteryTicket = onCall(async (request) => {
 
 // ---------------------------------------------------------------------------
 // spinSlot — Gazino > Slot (v124). Çevirme 1.600 altın (oyunun gazinosu; v126:
-// 200'ü devletin kârı → slot kasasında birikir, 00:00'da devlete yatar; 1.400 çöp).
+// v127: 100'ü devletin kârı → slot kasasında birikir, 00:00'da devlete yatar; 1.500 çöp).
 // 3 makara × {boş, yasaklı madde, altın} (functions/casinoRules.js):
 //   2 aynı: boş 0 · yasaklı 1 · altın 1.000   |   3 aynı: boş 0 · yasaklı 3 · altın 10.000
 // Ücretsiz çevirme yok. Kazanç borca gitmez (eskisi gibi).

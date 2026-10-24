@@ -718,8 +718,17 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     // ekran genişliği (etiket ölçeği). Eski istemciler göndermez → kare (1).
     const aspect = num(c.a) !== null ? Math.max(0.4, Math.min(2.5, c.a)) : 1;
     const cw = num(c.cw) !== null ? Math.round(Math.max(200, Math.min(2000, c.cw))) : 400;
-    const pres = await db.collection('housePresence').where('houseId', '==', houseId).limit(16).get();
+    // v127 — çekimde imzalı kare varsa (photoShot) kişiler O ANDAN gelir:
+    // paylaşana kadar odadan çıkan da fotoğrafta kalır, sonradan giren girmez.
     const t = now();
+    const signed = await verifyShot(houseId, a, t);
+    const people = signed || (await shotPeople(uid, houseId, a, num(a?.shotAgoMs), t));
+    return finishPhoto(houseId, h, a, people, { px, py, pz, dx, dy, dz, fov, aspect, cw });
+  }
+
+  // Çekim anındaki oyuncular (presence + istemcinin gönderdiği konumlar + balonlar)
+  async function shotPeople(uid, houseId, a, ago, t) {
+    const pres = await db.collection('housePresence').where('houseId', '==', houseId).limit(16).get();
     const people = [];
     // v85 — çekim ANINDAKİ durum (istemci gönderir): konum, yön, koltuk, yürüme
     // ve o an oynayan hareket (dans...). Eskiden kişiler paylaşım anındaki
@@ -765,7 +774,6 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     });
     // v71 — çekim anında ekranda olan mesaj balonları (sunucudaki ev
     // sohbetinden; istemci metin gönderemez). Balon ekranda 9 sn kalır.
-    const ago = num(a?.shotAgoMs);
     if (ago !== null && people.length) {
       const shotAt = t - Math.max(0, Math.min(PHOTO_SHOT_MAX_AGO_MS, ago));
       try {
@@ -783,6 +791,59 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
         /* balonlar olmadan devam */
       }
     }
+    return people;
+  }
+
+  // ---- v127: imzalı çekim (photoShot) -------------------------------------------------
+  // Deklanşöre basınca sunucu o anki kişileri doğrulayıp HMAC ile imzalar ve
+  // istemciye geri verir (Firestore'a yazılmaz). Paylaşımda imza doğrulanırsa
+  // kişiler bu kareden alınır — presence/sohbet tekrar okunmaz.
+  // node:crypto tembel yüklenir (önizleme bu modülü tarayıcıda da çalıştırır)
+  const cryptoP = () => import('node:crypto');
+  let shotKeyP = null;
+  const shotKey = () =>
+    (shotKeyP ||= db
+      .collection('serverKeys')
+      .doc('housePhoto')
+      .get()
+      .then(async (d) => {
+        const k = d.exists && typeof d.data()?.k === 'string' ? d.data().k : null;
+        if (k) return k;
+        const nk = (await cryptoP()).randomBytes(32).toString('hex');
+        await db.collection('serverKeys').doc('housePhoto').set({ k: nk });
+        return nk;
+      })
+      .catch((e) => {
+        shotKeyP = null;
+        throw e;
+      }));
+  const signShot = async (key, body) => (await cryptoP()).createHmac('sha256', key).update(body).digest('hex');
+
+  async function photoShot(uid, p) {
+    const houseId = String(p.houseId || '');
+    if (!(await presentIn(uid, houseId))) fail('failed-precondition', 'Fotoğraf için evde olmalısın.');
+    const t = now();
+    const people = await shotPeople(uid, houseId, p, 0, t);
+    const body = JSON.stringify({ houseId, at: t, people });
+    return { shot: body, sig: await signShot(await shotKey(), body) };
+  }
+
+  async function verifyShot(houseId, a, t) {
+    if (typeof a?.shot !== 'string' || typeof a?.sig !== 'string' || a.shot.length > 200_000 || !/^[0-9a-f]{64}$/.test(a.sig)) return null;
+    try {
+      const { timingSafeEqual } = await cryptoP();
+      const want = Buffer.from(await signShot(await shotKey(), a.shot), 'hex');
+      const got = Buffer.from(a.sig, 'hex');
+      if (want.length !== got.length || !timingSafeEqual(want, got)) return null;
+      const s = JSON.parse(a.shot);
+      if (s?.houseId !== houseId || !Array.isArray(s.people) || !(t - Number(s.at) <= PHOTO_SHOT_MAX_AGO_MS)) return null;
+      return s.people;
+    } catch {
+      return null;
+    }
+  }
+
+  async function finishPhoto(houseId, h, a, people, { px, py, pz, dx, dy, dz, fov, aspect, cw }) {
     // v92 Faz 8: oyunun mekânında NPC'ler de fotoğrafta (veznedar, barmen…)
     // v95.3: camide imam + dilenciler (sunucu verisinden, istemciyle aynı liste)
     // ve çekim anında NPC'lerin ekrandaki balonları — sadece o NPC'nin gerçekten
@@ -1024,6 +1085,8 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
         return settings(uid, p);
       case 'invite':
         return invite(uid, p);
+      case 'photoShot':
+        return photoShot(uid, p);
       case 'kick':
         return kick(uid, p);
       case 'chat':

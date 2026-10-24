@@ -4,7 +4,7 @@
 // Oyunun kendi gazinosunun kârının TAMAMI devlete gider (kullanıcı kararı).
 // Devlet gazinoya para yatırmaz; gazino zarar ederse devletten para çıkmaz.
 //
-//   SLOT     : çevirme 1.600 altın → 200 devlet kârı, 1.400 maliyet (çöp).
+//   SLOT     : çevirme 1.600 altın → 100 devlet kârı (v127; v126: 200), 1.500 maliyet (çöp).
 //              200'ler gün boyu "slot" kasasında birikir, 00:00'da devlete yatar.
 //   PİYANGO  : bilet 100 → 90 havuza (maliyet), 10 devlet kârı. Gece çekilişte
 //              günün bilet kârı devlete yatar (index.js — çekiliş). Kazananın

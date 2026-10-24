@@ -6,7 +6,7 @@
 //
 // SLOT: 3 makara × {boş, yasaklı madde, altın} — her makara bağımsız, eşit olasılık.
 //   2 aynı: boş 0 · yasaklı 1 adet · altın 1.000      3 aynı: boş 0 · yasaklı 3 · altın 10.000
-//   Oyunun gazinosu: çevirme 1.600 (v126: 200 devlet kârı + 1.400 maliyet/çöp).
+//   Oyunun gazinosu: çevirme 1.600 (v127: 100 devlet kârı + 1.500 maliyet/çöp).
 //   Oyuncu gazinosu: 1.400–1.600 (50'şer).
 //   Oyuncu gazinosunda slotun çalışması için makinede en az 3 yasaklı + 10.000 altın.
 // RULET (kullanıcının örneği Rulet.html ile birebir): 0–12; sayıya veya yeşile (0)
@@ -23,7 +23,7 @@ export const GAME_CASINO_ID = 'game';
 
 // ---- SLOT -------------------------------------------------------------------
 export const SLOT_GAME_COST = 1600;
-export const GAME_SLOT_STATE_CUT = 200; // v126: her çevirmede devletin kârı (kalan 1.400 maliyet → çöp)
+export const GAME_SLOT_STATE_CUT = 100; // v127: her çevirmede devletin kârı 100 (v126: 200; kalan 1.500 maliyet → çöp)
 export const SLOT_PRICE_MIN = 1400;
 export const SLOT_PRICE_MAX = 1600;
 export const SLOT_PRICE_STEP = 50;

@@ -206,6 +206,35 @@ test('v71: ev fotoğrafı en/boy oranını ve çekim anındaki mesaj balonların
   assert.equal(ext.cam.a, 2.5);
 });
 
+test('v127: paylaşana kadar odadan çıkan da fotoğrafta kalır (imzalı çekim)', async () => {
+  const h = setup();
+  const id = await withHouse(h);
+  await h.act('zengin', { op: 'enter', houseId: id });
+  await h.act('veli', { op: 'enter', houseId: id });
+  const cam = { px: 0, py: 2, pz: 5, dx: 0, dy: -0.2, dz: -1, fov: 58 };
+  const people = [
+    { uid: 'zengin', x: 1, z: 1 },
+    { uid: 'veli', x: 2, z: -1, emote: { kind: 'dans', at: 300 } },
+  ];
+  const r = await h.act('zengin', { op: 'photoShot', houseId: id, people });
+  assert.equal(typeof r.sig, 'string');
+  h.db._store.delete('housePresence/veli'); // veli çıktı
+  h.clock.now += 60_000;
+  const att = await h.houses.buildPhotoAttachment('zengin', { houseId: id, cam, shot: r.shot, sig: r.sig, people });
+  const v = att.people.find((p) => p.uid === 'veli');
+  assert.ok(v, 'çekimdeki kişi fotoğrafta');
+  assert.equal(v.displayName, 'Veli');
+  assert.equal(v.x, 2);
+  assert.equal(v.emote.kind, 'dans');
+  // imza bozuksa eski yol: çıkan kişi yok
+  const bad = await h.houses.buildPhotoAttachment('zengin', { houseId: id, cam, shot: r.shot.replace('Veli', 'Hile'), sig: r.sig, people });
+  assert.equal(bad.people.find((p) => p.uid === 'veli'), undefined);
+  // başka eve ait / süresi geçmiş çekim kabul edilmez
+  h.clock.now += 11 * 60_000;
+  const late = await h.houses.buildPhotoAttachment('zengin', { houseId: id, cam, shot: r.shot, sig: r.sig, people });
+  assert.equal(late.people.find((p) => p.uid === 'veli'), undefined);
+});
+
 test('v77: ev fotoğrafında eldeki içecek de görünür (geçersiz ürün yok sayılır)', async () => {
   const h = setup();
   const id = await withHouse(h);

@@ -96,7 +96,6 @@ export default function LotteryScreen({ casinoId = 'game', cut = GAME_LOTTERY_CU
           <p className="lottery-hint">
             Dünün kazananı: <strong>{yesterday.winnerName || 'Bir oyuncu'}</strong> —{' '}
             {yesterday.winnerAmount.toLocaleString('tr-TR')} altın
-            {yesterday.winnerTax ? ` (vergi sonrası ${(yesterday.winnerNet || 0).toLocaleString('tr-TR')})` : ''}
           </p>
         </div>
       )}

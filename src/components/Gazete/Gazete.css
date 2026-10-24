@@ -208,3 +208,41 @@
   color: #6a5f4c;
   font-family: system-ui, sans-serif;
 }
+
+/* v127 (2) — sade gazete: manşet altı detay + önemli haberler */
+.gz-head-d {
+  margin-top: 6px !important;
+  font-style: normal !important;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 12.5px !important;
+  font-weight: 700;
+}
+.gz-news {
+  border-bottom: 1px solid #1d1a15;
+  padding-bottom: 6px;
+}
+.gz-news-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 0;
+  border-bottom: 1px dotted #9a8c70;
+}
+.gz-news-item:last-child {
+  border-bottom: 0;
+}
+.gz-news-item b {
+  font-size: 16px;
+  line-height: 1.2;
+}
+.gz-news-item b.up {
+  color: #1d5a2a;
+}
+.gz-news-item b.dn {
+  color: #8f1d14;
+}
+.gz-news-item span {
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 12px;
+  color: #3a342a;
+}

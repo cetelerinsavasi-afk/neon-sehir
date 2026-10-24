@@ -38,20 +38,20 @@
 export const STATE_SHARDS = 16;
 
 export const STATE_IN = {
-  vergi_isletme: 'Vergi · İşletme gelirleri (eski kalem)',
+  vergi_isletme: 'Vergi · İşletmeler (güncelleme öncesi, türe ayrılmamış)',
   vergi_ikinciEl: 'Vergi · 2. el / vitrin satışları',
   vergi_fabrika: 'Vergi · Fabrika üretimi',
   vergi_yayin: 'Vergi · Yayın bağışları',
   vergi_sanatci: 'Vergi · Şarkı desteği',
   vergi_ofis: 'Vergi · Ofis gelirleri',
-  vergi_maas: 'Vergi · Maaşlar — futbolcu / menajer / fabrika işçisi',
+  vergi_maas: 'Vergi · Maaşlar (güncelleme öncesi birleşik kayıt: işçi + futbolcu + menajer)',
   vergi_piyango: 'Vergi · Piyango kazançları',
   vergi_gazino: 'Vergi · Gazino piyango payı', // v124
   vergi_gazinoCekim: 'Vergi · Gazino kasasından çekim', // v124 Faz 6
   vergi_makine: 'Vergi · Fabrika makinesi alımı', // v125 · v126: %5
   vergi_oyun: 'Vergi · Oyunun kendi mekânları',
   // v126 — oyunun gazinosunun kârı (tamamı devlete; vergi değil, devletin kendi kârı)
-  gazino_slot: 'Oyunun gazinosu · Slot kârı (çevirme başına 200)',
+  gazino_slot: 'Oyunun gazinosu · Slot kârı',
   gazino_piyango: 'Oyunun gazinosu · Piyango bilet kârı (bilet başına 10)',
   gazino_rulet: 'Oyunun gazinosu · Rulet kârı (günlük net, artıdaysa)',
   gazino_onNumara: 'Oyunun gazinosu · 10 Numara kârı (günlük net, artıdaysa)',

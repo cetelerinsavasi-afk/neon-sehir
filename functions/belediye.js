@@ -47,7 +47,7 @@ import {
 } from './belediyeRates.js';
 import { stateWrite, STATE_IN, STATE_OUT } from './stateTreasury.js';
 import { createKasa } from './belediyeKasa.js';
-import { gazeteRows, gazeteHeadline, gazeteKasaLine } from './belediyeGazete.js';
+import { gazeteNews } from './belediyeGazete.js';
 
 export const SEATS = {
   bsk: { id: 'bsk', title: 'Belediye Başkanı', kind: 'bsk' },
@@ -975,10 +975,9 @@ export function createBelediye({
     }
     const cur = resolveRates(ratesDoc, dayKey, ps.data());
     const prev = resolveRates(ratesDoc, addDayKey(dayKey, -1));
-    const rows = gazeteRows({ start: gov?.rates || prev, prev, cur, rnd });
     const payrollUnpaid = pub.payroll?.dayKey === dayKey && pub.payroll.paid === false;
-    const headline = gazeteHeadline({ rows, payrollUnpaid, rnd });
-    const r = pub.report && pub.report.dayKey === addDayKey(dayKey, -1) ? pub.report : null;
+    // v127 (2): sade gazete — bir manşet + birkaç önemli haber (ayrıntı belediyede)
+    const { headline, items } = gazeteNews({ prev, cur, payrollUnpaid, rnd });
     // halkın sesi: yayınlanmamış, en çok beğenilen (7 gün içindeki) şikâyet
     let complaint = null;
     try {
@@ -1000,13 +999,13 @@ export function createBelediye({
       const article = draft?.text ? { text: draft.text, byName: draft.byName, byTitle: draft.byTitle, bySeat: draft.bySeat } : null;
       tx.set(ref, {
         dayKey,
+        v: 2,
         headline,
-        rows,
+        items,
         govSince: gov?.sinceDay || null,
         mayor: bsk ? { name: bsk.name, avatar: bsk.avatar || null } : null,
         article,
         complaint: complaint ? { text: complaint.text, name: complaint.name, likes: complaint.likes } : null,
-        kasa: r ? { dayKey: r.dayKey, in: r.inTotal, out: r.outTotal, net: r.net, line: gazeteKasaLine(r.net, rnd) } : null,
         payrollUnpaid,
         builtAtMs: now(),
       });
@@ -1014,7 +1013,7 @@ export function createBelediye({
       if (complaint) tx.update(sikayetCol.doc(complaint.id), { featuredDay: dayKey });
       printed = true;
     });
-    return { ok: printed, rows: rows.length };
+    return { ok: printed, items: items.length };
   }
 
   // ===========================================================================

@@ -1,6 +1,6 @@
 // v127 — NEON ŞEHİR GAZETESİ (telefon › Gazete). Her gece 00:00'da belediye
-// bir sayı basar (functions/belediye.js buildGazete): manşet, hükümetin
-// kararları (göreve gelince · dün · bugün), başkanlık köşesi, halkın sesi, kasa.
+// bir sayı basar (functions/belediye.js buildGazete). v2 (sade): manşet +
+// birkaç önemli haber + başkanlık köşesi + halkın sesi. Eski sayılar eski düzende.
 // Okuma: açılınca son 5 sayı (tek sorgu).
 import { useEffect, useState } from 'react';
 import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
@@ -63,13 +63,27 @@ function Sayi({ g }) {
 
       <section className={`gz-head ${g.headline?.kind || ''}`}>
         <h2>{g.headline?.t}</h2>
-        <p>{g.headline?.s}</p>
+        {g.headline?.s && <p>{g.headline.s}</p>}
+        {g.headline?.d && <p className="gz-head-d">{g.headline.d}</p>}
       </section>
 
-      <section>
-        <h3 className="gz-h3">🏛️ Hükümetin Kararları</h3>
-        <Kararlar rows={g.rows} govSince={g.govSince} />
-      </section>
+      {g.v === 2 ? (
+        g.items?.length > 0 && (
+          <section className="gz-news">
+            {g.items.map((n, k) => (
+              <div key={k} className="gz-news-item">
+                <b className={n.good === true ? 'up' : n.good === false ? 'dn' : ''}>{n.t}</b>
+                <span>{n.d}</span>
+              </div>
+            ))}
+          </section>
+        )
+      ) : (
+        <section>
+          <h3 className="gz-h3">🏛️ Hükümetin Kararları</h3>
+          <Kararlar rows={g.rows} govSince={g.govSince} />
+        </section>
+      )}
 
       {g.article && (
         <section className="gz-col">
@@ -93,7 +107,7 @@ function Sayi({ g }) {
         </section>
       )}
 
-      {g.kasa && (
+      {g.v !== 2 && g.kasa && (
         <section className="gz-col gz-kasa">
           <h3 className="gz-h3">💰 Kasa</h3>
           <p>{g.kasa.line}</p>
@@ -104,7 +118,7 @@ function Sayi({ g }) {
           {g.payrollUnpaid && <p className="gz-alarm">⚠️ Bu gece maaşlar ödenemedi.</p>}
         </section>
       )}
-      <footer className="gz-foot">Neon Şehir Belediyesi yayın organıdır · Her gece 00:00'da basılır</footer>
+      <footer className="gz-foot">Ayrıntılar Belediye Binası'nda · Her gece 00:00'da basılır</footer>
     </article>
   );
 }

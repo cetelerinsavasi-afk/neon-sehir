@@ -26,9 +26,9 @@ const write = async (db, kind, delta, shard) => {
   await b.commit();
 };
 
-test('slot: 1.600 çevirme, 200 devlete', () => {
+test('slot: 1.600 çevirme, 100 devlete (v127)', () => {
   assert.equal(SLOT_GAME_COST, 1600);
-  assert.equal(GAME_SLOT_STATE_CUT, 200);
+  assert.equal(GAME_SLOT_STATE_CUT, 100);
   assert.ok(STATE_IN.gazino_slot && STATE_IN.gazino_piyango && STATE_IN.gazino_rulet && STATE_IN.gazino_onNumara);
 });
 

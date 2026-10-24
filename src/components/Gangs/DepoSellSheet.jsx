@@ -36,8 +36,13 @@ export default function DepoSellSheet({ free, onClose }) {
           const buy = v?.buy || depoPricesOf(h).buy;
           return { id: d.id, name: h.name || 'Depo', owner: h.ownerName || 'Oyuncu', buy, cap: Number(v?.cap || 0) };
         });
-        list.sort((a, b) => b.buy - a.buy || b.cap - a.cap);
-        if (alive) setRows([...list, game]);
+        // v127: en yüksek fiyatı veren (kasası yeten) depo seçili gelir; eşitse oyunun deposu önce
+        const all = [...list, game].sort((a, b) => b.buy - a.buy || (b.game ? 1 : 0) - (a.game ? 1 : 0) || b.cap - a.cap);
+        const best = all.find((r) => r.cap >= 1) || game;
+        if (alive) {
+          setRows(all);
+          setSel(best.id);
+        }
       } catch {
         if (alive) setRows([game]);
       }
