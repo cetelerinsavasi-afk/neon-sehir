@@ -67,7 +67,7 @@ test('heistStateEntries: diğer dallar değişmedi (ödeme / ceza / kaçak / pol
 });
 
 test('defter kategorileri: soygun_polis_payi gider; soygun_kurtarma eski kayıtlar için etiketli kalır', async () => {
-  assert.equal(STATE_OUT.soygun_polis_payi, 'Polis payı (soygun kurtarma, %25)');
+  assert.equal(STATE_OUT.soygun_polis_payi, 'Polis payı (durdurulan soygunlar)'); // v127: oran artık belediyenin
   assert.match(STATE_IN.soygun_kurtarma, /eski, artık yazılmıyor/);
   const day = '2026-10-23';
   const atMs = Date.parse(`${day}T12:00:00+03:00`);
@@ -91,7 +91,7 @@ test('index.js busted dalı: fines + policeShare yazar, recoveredToState / state
   // dokunulmayan dallar
   assert.ok(plan.includes('heistStateEntries({ fines: perPolicePenalty * participants.length })'), 'sadece-polis şüphe dalı');
   assert.ok(plan.includes('heistStateEntries({ fines: perCivilianPenalty * civilianIdx.length })); // v108'), 'şüpheden yakalanma dalı');
-  assert.ok(plan.includes('heistStateEntries({ paidToCriminals: perPersonAmount * participants.length })'), 'başarılı soygun');
+  assert.ok(plan.includes('heistPayout = perPersonAmount * participants.length;'), 'başarılı soygun (v127: belediye kasasından ödenir)');
 });
 
 // v123 — şüphe 50+ suç kilidi

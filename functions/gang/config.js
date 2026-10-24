@@ -96,7 +96,8 @@ export const GANG = {
   // v125: her çete (yolu olmasa da) günde ÜYE SAYISI × 1.250 altınlık yasaklı madde
   // sipariş edebilir (00:00'daki üye sayısı — gangState.orderBase). Yasaklı madde
   // yolunu tutan çetenin limiti = savaştan kazandığı limit + bu hak.
-  CONTRABAND_ORDER_PER_MEMBER: 1250,
+  // v127: 1.250 → 2.500 (ör. 5 üyeli çete günde 12.500 altınlık = 10 adet)
+  CONTRABAND_ORDER_PER_MEMBER: 2500,
 
   // --- Depo (ONAYLI) --- her alım +100 kapasite, ömürsüz, satılamaz
   DEPOT_PRICE: 100_000,

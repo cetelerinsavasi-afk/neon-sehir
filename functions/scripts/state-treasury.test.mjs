@@ -16,9 +16,11 @@ test('her vergi kaynağı devlet kasasında ayrı gelir kalemi; oyunun mekânlar
   taxLedgerWrite(batch, db, FieldValue, { amount: 0, source: 'isletme', uid: 'u2', atMs: clock.now }); // yazılmaz
   await batch.commit();
   const r = await readStateReport(db, { todayKey: '2026-10-20' });
+  // v127: maaş vergisi işe göre ayrı kalem (ref yoksa fabrika işçisi)
+  const catOf = (src) => (src === 'maas' ? 'vergi_maasIsci' : `vergi_${src}`);
   for (const src of Object.keys(TAX_SOURCES)) {
-    assert.equal(r.today.in[`vergi_${src}`], 100, src);
-    assert.ok(STATE_IN[`vergi_${src}`], `${src} için rapor etiketi var`);
+    assert.equal(r.today.in[catOf(src)], 100, src);
+    assert.ok(STATE_IN[catOf(src)], `${src} için rapor etiketi var`);
   }
   assert.equal(r.today.in.vergi_oyun, 50);
   assert.equal(r.today.inTotal, 100 * Object.keys(TAX_SOURCES).length + 50);
@@ -80,26 +82,31 @@ test('v123: maaş ve piyango vergisi %10 — net + vergi = brüt; devlet kasası
   const clock = { now: ms('2026-10-22') };
   const db = new FakeFirestore({ clock: () => clock.now });
   const b = db.batch();
-  taxLedgerWrite(b, db, FieldValue, { amount: 500, source: 'maas', uid: 'isci', atMs: clock.now });
+  taxLedgerWrite(b, db, FieldValue, { amount: 500, source: 'maas', uid: 'isci', atMs: clock.now, ref: 'fabrika' });
+  taxLedgerWrite(b, db, FieldValue, { amount: 300, source: 'maas', uid: 'fb', atMs: clock.now, ref: 'futbolcu' });
+  taxLedgerWrite(b, db, FieldValue, { amount: 200, source: 'maas', uid: 'mn', atMs: clock.now, ref: 'menajer' });
   taxLedgerWrite(b, db, FieldValue, { amount: 12_345, source: 'piyango', uid: 'talihli', atMs: clock.now });
   await b.commit();
   const r = await readStateReport(db, { todayKey: '2026-10-22' });
-  assert.equal(r.today.in.vergi_maas, 500);
+  // v127: maaş vergileri işe göre ayrı kalem (Sanayi: işçi · Kültür: futbolcu / menajer)
+  assert.equal(r.today.in.vergi_maasIsci, 500);
+  assert.equal(r.today.in.vergi_maasFutbolcu, 300);
+  assert.equal(r.today.in.vergi_maasMenajer, 200);
   assert.equal(r.today.in.vergi_piyango, 12_345);
 });
 
 test('v123 index.js: fabrika işçisi, menajer maaşı ve piyango kazancı vergilendirilir; SMS vergiyi söyler', () => {
   const src = fsV123.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
   const fab = src.slice(src.indexOf('export const produceAtFactory'), src.indexOf('export const resignFromFactory'));
-  assert.ok(fab.includes('workerTax = splitSalaryTax(salary)'));
+  assert.ok(fab.includes("workerTax = splitSalaryTax(salary, 'isci')"));
   assert.ok(fab.includes('increment(workerTax.net)'), 'işçiye net');
   assert.ok(fab.includes("source: 'maas'"));
   assert.ok(fab.includes('increment(-ownerPay)'), 'patron yine tam maaşı öder');
-  const man = src.slice(src.indexOf('menajer maaşından %10 vergi'), src.indexOf('menajer maaşından %10 vergi') + 2500);
+  const man = src.slice(src.indexOf('menajer maaşından %10 vergi'), src.indexOf('menajer maaşından %10 vergi') + 2600);
   assert.ok(man.includes('increment(mTax.net)') && man.includes("source: 'maas'") && man.includes('mTaxNote'));
   const lot = src.slice(src.indexOf('async function resolveStuckLotteryAndChampionship'), src.indexOf('async function resolveStuckLotteryAndChampionship') + 6000);
-  assert.ok(lot.includes('splitLotteryTax(lottery.jackpot)'));
+  assert.ok(lot.includes('splitLotteryTax(lottery.jackpot, lotRates)'), 'v127: piyango gününün oranı');
   assert.ok(lot.includes("source: 'piyango'"));
-  assert.ok(/%10 piyango vergisi/.test(lot), 'SMS bilgilendirir');
+  assert.ok(/pctText\(lotteryTaxRate\(lotRates\)\)\} piyango vergisi/.test(lot), 'SMS bilgilendirir (v127: güncel oran)');
   assert.ok(lot.includes('splitIncomeForDebt(\n            winnerSnap.data()?.debtToState,\n            lotTax.net'), 'borç kesintisi net üzerinden');
 });

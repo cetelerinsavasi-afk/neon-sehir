@@ -53,6 +53,26 @@ export const REPORT_TARGETS = {
     resolveUid: async (db, m, picked) =>
       picked.rosterId ? (await db.doc(`gangWorlds/${m[1]}/intelRosterLinks/${picked.rosterId}`).get()).data()?.actorId || null : null,
   },
+  // v127 — Belediye sohbetleri (kadro · koordinasyon). Polis mesajında uid yok:
+  // kimlik intelRosterLinks'ten çözülür. Bildiren o sohbeti görebilen biri olmalı.
+  belediyeChat: {
+    re: new RegExp(`^belediyeChat_(genel|koord)/${S}$`),
+    hideable: true,
+    pick: (d) => ({ uid: d.uid || null, rosterId: d.rosterId || null, worldId: d.worldId || null, text: d.text }),
+    resolveUid: async (db, m, picked) => {
+      if (picked.uid) return picked.uid;
+      if (!picked.rosterId || !picked.worldId) return null;
+      return (await db.doc(`gangWorlds/${picked.worldId}/intelRosterLinks/${picked.rosterId}`).get()).data()?.actorId || null;
+    },
+    access: async (db, reporterUid, m) => {
+      if ((await db.doc(`belediyeStaff/${reporterUid}`).get()).exists) return true;
+      if (m[1] !== 'koord') return false;
+      const w = (await db.doc('gangSystem/config').get()).data()?.liveWorldId;
+      if (!w) return false;
+      const ms = (await db.doc(`gangWorlds/${w}/memberships/${reporterUid}`).get()).data() || {};
+      return Boolean(ms.intelRosterId) && ['baskan', 'sef', 'uzman'].includes(ms.intelRank);
+    },
+  },
   feedback: { re: new RegExp(`^feedback/${S}$`), hideable: true, pick: (d) => ({ uid: d.uid, text: d.text }) },
   // v60: özel mesaj — yalnızca o sohbetin üyesi bildirebilir
   dmMessage: {

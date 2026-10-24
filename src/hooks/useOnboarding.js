@@ -185,6 +185,11 @@ export function useOnboarding(gangReminders = null) {
     // v108.1: polis rüşvet payı da her gece 00:00'da maaşla otomatik yatar (hatırlatıcı yok)
     // v108: imam maaşı her gece 00:00'da otomatik yatar (hatırlatıcı yok)
 
+    // v127: belediye daveti (24 saat geçerli) — Belediye Binası › Belediye
+    if (Number(player.belediyeInvite?.expiresAtMs || 0) > Date.now()) {
+      list.push({ id: 'belediye', emoji: '🏛️', text: 'Belediyeye uğra' });
+    }
+
     // v38: çete hatırlatıcıları (bkz. components/Gangs/alerts.jsx)
     if (gangReminders?.joinWar) list.push({ id: 'gang-war', emoji: '⚔️', text: 'Savaşa katıl' });
     if (gangReminders?.takeMoney) list.push({ id: 'gang-money', emoji: '💰', text: 'Çeteden para al' });

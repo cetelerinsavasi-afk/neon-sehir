@@ -10,7 +10,9 @@ import { GangProvider, useDocData, useGang, useGangAction, useNow } from '../Gan
 import PoliceApplySheet, { cooldownHoursLeft } from '../Gangs/PoliceApplySheet';
 import { gangExitHoursLeft, gangExitText } from '../Gangs/gangConstants';
 import { Confirm } from '../Gangs/ui';
-import { RANK_LABELS, SALARIES, fmt } from '../Gangs/gangConstants';
+import { RANK_LABELS, fmt } from '../Gangs/gangConstants';
+import { useBelediyeRates } from '../../hooks/useBelediyeRates';
+import { policeSalary } from '../../../functions/belediyeRates.js';
 import '../Gangs/Gangs.css';
 import './PoliceApplicationSection.css';
 
@@ -58,6 +60,7 @@ export default function PoliceApplicationSection() {
 }
 
 function PoliceStatus() {
+  const rates = useBelediyeRates(); // v127: polis maaşları Güvenlik Bakanlığı'nın
   const { path, actorId } = useGang();
   const { player } = usePlayer();
   const { data: membership, loading } = useDocData(path(`memberships/${actorId}`));
@@ -111,7 +114,7 @@ function PoliceStatus() {
         <div className="police-salary-box">
           <span className="police-salary-emoji">💰</span>
           <div className="police-salary-info">
-            <span className="police-salary-title">Maaş + Rüşvet Payı · {fmt(SALARIES[rank] || 0)} altın</span>
+            <span className="police-salary-title">Maaş + Rüşvet Payı · {fmt(policeSalary(rates, rank || 'muhbir'))} altın</span>
             <span className="police-salary-share">Her gece 00:00'da maaşın ve dün Karakol'a bırakılan rüşvetlerden payın birlikte hesabına yatar. Teşkilat: Çeteler › Polis Teşkilatı.</span>
           </div>
         </div>

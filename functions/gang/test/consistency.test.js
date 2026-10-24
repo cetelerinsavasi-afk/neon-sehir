@@ -68,12 +68,15 @@ test('index.js (v108): soygun/kaçak cezaları ve soygun ödemeleri devlet kasas
   assert.ok(!indexSrc.includes('onSuspicionFine'), 'İstihbarat ceza kancası kaldırıldı');
   assert.ok(!indexSrc.includes('onPoliceBustReward'), 'İstihbarat polis prestiji kaldırıldı');
   const heist = indexSrc.slice(indexSrc.indexOf('export const attemptHeist'), indexSrc.indexOf('export const sellContrabandToDepo'));
-  assert.ok(/heistStateEntries\(caught \? \{ fines: penalty \} : \{ paidToCriminals: reward \}\)/.test(heist), 'tek başına soygun: ceza ya da ödeme');
+  // v127: ceza aynı işlemde gelir; başarılı soygunun ödemesi işlemden sonra belediye kasasından (yetmezse borç)
+  assert.ok(/if \(caught\) for \(const e of heistStateEntries\(\{ fines: penalty \}\)\) stateWrite\(tx/.test(heist), 'tek başına soygun: ceza aynı işlemde');
   assert.ok(heist.indexOf('stateWrite(tx') < heist.indexOf('result = {'), 'transaction içinde');
+  assert.ok(/belediye\.spendOrDebt\(\{ cat: 'soygun_odeme', amount: result\.reward/.test(heist), 'tek başına soygun: ödeme belediye kasasından');
   const park = indexSrc.slice(indexSrc.indexOf('export const sellContrabandAtPark'));
   assert.ok(/fines: penaltyAmount, contraband: true/.test(park.slice(0, 4000)));
   const plan = indexSrc.slice(indexSrc.indexOf('export const executeHeistPlan'), indexSrc.indexOf('export const expireHeistPlans'));
-  assert.ok(plan.includes('policeBustSplit(totalReward, policeIdx.length)'));
+  assert.ok(plan.includes("policeBustSplit(totalReward, policeIdx.length, rateFrac(ratesFor(), 'soygunPay'))"), 'v127: polis payı oranı Güvenlik Bakanlığı');
+  assert.ok(plan.indexOf("belediye.spendOrDebt({ cat: 'soygun_odeme', amount: heistPayout") > plan.indexOf('await batch.commit()'), 'v127: ekip soygunu ödemesi commit sonrası belediyeden');
   assert.ok(plan.indexOf('stateWrite(batch') < plan.indexOf('await batch.commit()'), 'aynı batch');
   const hook = plan.indexOf('.onPoliceBust(');
   assert.ok(hook > 0 && plan.slice(hook, hook + 260).includes('.catch('), 'polis kancası hata verse de soygun etkilenmez');

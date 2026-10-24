@@ -7,7 +7,9 @@ import { useEffect, useState } from 'react';
 import { istHour, useGangAction, useNow } from '../GangContext';
 import { Btn, Card, Confirm, Gold, RankBadge, Sheet, Stat } from '../ui';
 import { MemberCard, MidnightLegend, RankTree } from '../shared';
-import { GANG_RULES, INTEL_LEADERS, RANK_ICONS, SALARIES, fmt } from '../gangConstants';
+import { GANG_RULES, INTEL_LEADERS, RANK_ICONS, fmt } from '../gangConstants';
+import { useBelediyeRates } from '../../../hooks/useBelediyeRates';
+import { policeSalary } from '../../../../functions/belediyeRates.js';
 
 const DIRECT = { baskan: ['ajan', 'muhbir'], sef: ['muhbir'] };
 // v61 — istismar önlemi (sunucuyla aynı: functions/gang/config.js INTEL)
@@ -140,7 +142,8 @@ export default function IntelTab({ d }) {
   const lead = INTEL_LEADERS.includes(d.rank);
   const byRank = (r) => d.roster.filter((m) => m.rank === r).sort((a, b) => (b.prestige || 0) - (a.prestige || 0));
   const card = (m) => <MemberCard key={m.id} secret name={m.codeName} rank={m.rank} prestige={m.prestige} me={m.id === d.rid} big={m.rank === 'baskan'} onClick={() => setSel(m)} />;
-  const salary = SALARIES[d.realRank || 'muhbir'] || 0;
+  const rates = useBelediyeRates(); // v127: Güvenlik Bakanlığı belirler
+  const salary = policeSalary(rates, d.realRank || 'muhbir');
 
   return (
     <div className="gx-stack">

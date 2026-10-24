@@ -11,7 +11,9 @@ import { useState } from 'react';
 import { useGang, useGangAction, useNow } from './GangContext';
 import { Btn, Sheet } from './ui';
 import { useMyWallet } from './shared';
-import { GANG_RULES, SALARIES, fmt, gangExitHoursLeft, gangExitText } from './gangConstants';
+import { GANG_RULES, fmt, gangExitHoursLeft, gangExitText } from './gangConstants';
+import { useBelediyeRates } from '../../hooks/useBelediyeRates';
+import { policeSalary } from '../../../functions/belediyeRates.js';
 import { usePlayer } from '../../hooks/usePlayer';
 
 // Kalan yasak süresi (saat) — istifa / atılma sonrası 24 saat
@@ -21,6 +23,7 @@ export function cooldownHoursLeft(membership, now) {
 }
 
 export default function PoliceApplySheet({ onClose, onDone, membership }) {
+  const rates = useBelediyeRates(); // v127: polis maaşları Güvenlik Bakanlığı'nın
   const { run, busy } = useGangAction();
   const { isTest } = useGang();
   const wallet = useMyWallet();
@@ -55,7 +58,7 @@ export default function PoliceApplySheet({ onClose, onDone, membership }) {
       </label>
       <div className="gx-hide-warn">🤫 Teşkilatta herkes seni bu adla tanır — gerçek kimliğin gizli kalır.</div>
       <div className="dim gx-mini">
-        ⚡ Şartları sağlıyorsan anında teşkilata katılırsın — form yok, onay beklemek yok. 🛡️ Katıldıktan sonra 24 saat boyunca teşkilattan atılamazsın. 💼 Maaş: Polis Memuru {fmt(SALARIES.muhbir)} … Emniyet Genel Müdürü {fmt(SALARIES.baskan)} + rüşvet payı (her gece 00:00).
+        ⚡ Şartları sağlıyorsan anında teşkilata katılırsın — form yok, onay beklemek yok. 🛡️ Katıldıktan sonra 24 saat boyunca teşkilattan atılamazsın. 💼 Maaş: Polis Memuru {fmt(policeSalary(rates, 'muhbir'))} … Emniyet Genel Müdürü {fmt(policeSalary(rates, 'baskan'))} + rüşvet payı (her gece 00:00).
       </div>
       <Btn
         block

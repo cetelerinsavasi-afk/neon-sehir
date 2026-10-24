@@ -9,7 +9,7 @@ const PAGES = [
     body: [
       'Neon Şehir\'in tek bir imamı vardır. Cami onun emanetidir.',
       'Polisler imam olamaz. Bir oyuncu ya imam ya polis olabilir.',
-      'Maaşın 10.000 altın, her gece 00:00\'da devletten yatar.',
+      'Maaşını belediye belirler, her gece 00:00\'da belediye kasasından yatar.',
     ],
   },
   {

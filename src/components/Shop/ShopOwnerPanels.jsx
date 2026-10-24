@@ -8,7 +8,9 @@ import { weaponCatalog } from '../../data/weaponCatalog';
 import { vehicleImage, vehicleDisplayName } from '../VehicleCard/VehicleCard';
 import ConfirmButton from '../ConfirmButton/ConfirmButton';
 import PriceField from './PriceField';
-import { BIZ_TAX_RATE, RESALE_TAX_RATE, resaleTax } from '../../../functions/tax.js';
+import { resaleTax } from '../../../functions/tax.js';
+import { useBelediyeRates } from '../../hooks/useBelediyeRates';
+import { bizRateFrac, resaleRateFrac } from '../../../functions/belediyeRates.js';
 import { bizErrText } from '../../lib/bizErrors';
 import { WORKSHOP_MATERIALS, workshopBand, gameWorkshopPrice, clampWorkshopPrice, itemListingBand, lifeCapOf, VEHICLE_WEAPON_MAX_REPAIRS } from '../../../functions/itemRules.js';
 import { BIZ_MATERIALS, midnightDayKey } from '../../../functions/businessCatalogData.js';
@@ -44,6 +46,7 @@ function Gold({ v }) {
 
 // ---- Atölye fiyatları -----------------------------------------------------------
 function MaterialPrices({ houseId, houseDoc, type }) {
+  const bizPct = Math.round(bizRateFrac(useBelediyeRates(), type) * 100); // v127: türüne göre (Ticaret Bakanlığı)
   const mats = WORKSHOP_MATERIALS[type] || [];
   const [draft, setDraft] = useState({});
   const [busy, setBusy] = useState(false);
@@ -107,7 +110,7 @@ function MaterialPrices({ houseId, houseDoc, type }) {
                 <Gold v={d.mat + d.labor} /> <small className="sh-cmp">oyunda {fmt(g.mat + g.labor)}</small>
               </b>
             </div>
-            <p className="bz-hint">🏛️ Kazancından %{Math.round(BIZ_TAX_RATE * 100)} vergi kesilir (örn. 100 altınlık işten sana 90 kalır).</p>
+            <p className="bz-hint">🏛️ Kazancından %{bizPct} vergi kesilir (örn. 100 altınlık işten sana {100 - bizPct} kalır).</p>
           </div>
         );
       })}
@@ -133,6 +136,8 @@ function itemView(kind, it) {
 
 // ---- Vitrindeki ürünler (Fiyatlar sekmesi) ---------------------------------------------
 function VitrinManager({ houseId, kind }) {
+  const rates = useBelediyeRates(); // v127: 2. el vergisi türe göre (Ticaret Bakanlığı)
+  const rTax = (v) => resaleTax(v, kind, rates);
   const { weapons } = useWeapons();
   const { vehicles } = useVehicles();
   const listings = useShopListings(houseId);
@@ -199,8 +204,8 @@ function VitrinManager({ houseId, kind }) {
                     🏷️ İlana koy
                   </button>
                 )}
-                <ConfirmButton className="bz-btn ghost sm" disabled={!!busy} title="Hemen satılsın mı?" lines={[`💰 Eline ${fmt(band.instant - resaleTax(band.instant))} altın geçer`]} confirmLabel="Sat" onConfirm={() => run(`i${it.id}`, { op: 'vitrinInstantSell', itemId: it.id }, `Hemen satıldı: eline ${fmt(band.instant - resaleTax(band.instant))} altın geçti (vergi %1).`)}>
-                  ⚡ Hemen sat ({fmt(band.instant - resaleTax(band.instant))})
+                <ConfirmButton className="bz-btn ghost sm" disabled={!!busy} title="Hemen satılsın mı?" lines={[`💰 Eline ${fmt(band.instant - rTax(band.instant))} altın geçer`]} confirmLabel="Sat" onConfirm={() => run(`i${it.id}`, { op: 'vitrinInstantSell', itemId: it.id }, `Hemen satıldı: eline ${fmt(band.instant - rTax(band.instant))} altın geçti (vergi %${Math.round(resaleRateFrac(rates, kind) * 100)}).`)}>
+                  ⚡ Hemen sat ({fmt(band.instant - rTax(band.instant))})
                 </ConfirmButton>
                 {/* v115 — konduğu gün (00:00'dan önce) bedelsiz; sonrasında onaylı, ömür −1 */}
                 {it.shopAddedDayKey === midnightDayKey(Date.now()) ? (
@@ -215,7 +220,7 @@ function VitrinManager({ houseId, kind }) {
               </div>
               {isOpen && !listing && (
                 <div className="bz-field">
-                  <PriceField label="Satış fiyatı" min={band.min} max={band.max} value={price} onChange={setPrice} refPrice={band.max} refLabel="Önerilen" taxRate={RESALE_TAX_RATE} />
+                  <PriceField label="Satış fiyatı" min={band.min} max={band.max} value={price} onChange={setPrice} refPrice={band.max} refLabel="Önerilen" taxRate={resaleRateFrac(rates, kind)} />
                   <VitrinRuleHint price={price} band={band} />
                   <button className="bz-btn gold wide" disabled={!!busy} onClick={() => run(`l${it.id}`, { op: 'vitrinList', itemId: it.id, price }, 'İlana kondu!')}>
                     🏷️ {fmt(price)} altına ilana koy
@@ -233,6 +238,7 @@ function VitrinManager({ houseId, kind }) {
 
 // ---- Envanterden vitrine ekle (Envanter sekmesi) -----------------------------------------
 function VitrinAdd({ houseId, kind }) {
+  const rates = useBelediyeRates();
   const { weapons } = useWeapons();
   const { vehicles } = useVehicles();
   const all = kind === 'weapon' ? weapons : vehicles;
@@ -296,7 +302,7 @@ function VitrinAdd({ houseId, kind }) {
       </div>
       {sel && band && (
         <div className="bz-field">
-          <PriceField label={`${sel.name || 'Ürün'} — satış fiyatı`} min={band.min} max={band.max} value={price} onChange={setPrice} refPrice={band.max} refLabel="Önerilen" taxRate={RESALE_TAX_RATE} />
+          <PriceField label={`${sel.name || 'Ürün'} — satış fiyatı`} min={band.min} max={band.max} value={price} onChange={setPrice} refPrice={band.max} refLabel="Önerilen" taxRate={resaleRateFrac(rates, kind)} />
           <VitrinRuleHint price={price} band={band} />
           <button className="bz-btn gold wide" disabled={busy} onClick={add}>
             {busy ? 'Ekleniyor…' : `➕ Vitrine koy · ${fmt(price)} altına sat`}

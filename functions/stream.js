@@ -29,7 +29,7 @@
 // SAHİBİ yayın açabilir (başkasının evindeki/dükkânındaki setle yayın yok).
 // =============================================================================
 import { midnightDayKey } from './businessCatalogData.js';
-import { bizTax, taxOf, taxLedgerWrite } from './tax.js';
+import { bizTax, taxOf, taxLedgerWrite, socialTax } from './tax.js';
 import { goldTag } from './moneyLog.js';
 
 export const STREAM_CHAIRS = ['gamer'];
@@ -148,7 +148,7 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
   // dakika ücreti (kafe). YAZMA — okumalar önceden yapılmış olmalı.
   function chargeTx(tx, { houseId, h, uid, os, price }) {
     tx.update(userRef(uid), { gold: FieldValue.increment(-price), goldTag: goldTag('yayin') });
-    const tax = bizTax(price);
+    const tax = bizTax(price, h?.biz?.type || 'studyo'); // v127: oran türüne göre (Stüdyo)
     const { goldDelta, debtDelta } = splitIncomeForDebt(os.data()?.debtToState, price - tax);
     tx.update(userRef(h.ownerUid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('yayin'), debtToState: FieldValue.increment(debtDelta) });
     business?.recordIncomeTx?.(tx, { houseId, h, amount: price, kind: 'service', customerUid: uid, products: { yayin: 1 }, tax });
@@ -157,13 +157,13 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
   // Yayını kapat + bağışları öde. YAZMA (okumalar: stream, liste, yayıncı).
   function finalizeTx(tx, { id, s, us, list, t, viewers, seen, reason = 'stop' }) {
     const donated = Math.max(0, Math.round(Number(s.donated || 0)));
-    const tax = taxOf(donated, DONATION_TAX_RATE);
+    const tax = socialTax(donated); // v127: Sosyal Medya Vergisi (Kültür ve Spor Bakanlığı)
     const net = donated - tax;
     if (net > 0) {
       const { goldDelta, debtDelta } = splitIncomeForDebt(us?.data()?.debtToState, net);
       tx.update(userRef(s.uid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('yayin'), debtToState: FieldValue.increment(debtDelta) });
     }
-    if (tax > 0) taxLedgerWrite(tx, db, FieldValue, { amount: tax, source: 'yayin', uid: s.uid, atMs: t, ref: `yayin:${id}` });
+    if (tax > 0) taxLedgerWrite(tx, db, FieldValue, { amount: tax, source: 'yayin', uid: s.uid, atMs: t, ref: `yayin:${id}`, stat: { sosyal_yayin: donated, sosyal_yayin_n: 1 } });
     const peak = Math.max(Number(s.peak || 0), Number(viewers) || 0);
     const seenN = Math.max(Number(s.seen || 0), Number(seen) || 0);
     const endAt = reason === 'stale' ? Number(s.lastBeatMs || t) : t;

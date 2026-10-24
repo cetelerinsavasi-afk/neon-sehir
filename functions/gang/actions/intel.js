@@ -106,6 +106,8 @@ export function createIntelActions(core) {
     if (wallet.isPolice) return forApplicant ? 'Zaten polissin.' : 'Başvuran zaten polis.';
     if (membership.gangRank === 'baba') return forApplicant ? 'Mafya Babası polis olamaz.' : 'Başvuran artık Mafya Babası — teşkilata alınamaz.';
     if (wallet.isImam) return forApplicant ? 'İmam polis olamaz (önce imamlıktan istifa etmelisin).' : 'Başvuran artık imam — teşkilata alınamaz.';
+    // v127: belediye görevlisi polis olamaz (önce belediyedeki görevinden istifa)
+    if (wallet.belediyeSeat) return forApplicant ? 'Belediye görevlileri polis olamaz (önce belediyedeki görevinden istifa etmelisin).' : 'Başvuran artık belediyede görevli — teşkilata alınamaz.';
     const cd = Number(membership.intelCooldownUntilMs || 0);
     if (forApplicant && cd > now) return `Polislikten yeni ayrıldığın için ${Math.max(1, Math.ceil((cd - now) / 3_600_000))} saat daha başvuru yapamazsın.`;
     // v116: çeteden ayrılan / atılan 24 saat polisliğe başvuramaz
@@ -615,6 +617,8 @@ export function createIntelActions(core) {
 
   async function startBetOperation(ctx, data) {
     const warId = String(data.warId || '');
+    const bel = !ctx.isTest ? core.deps.belediyeRef?.current : null;
+    if (bel) await bel.kasa.liveFresh();
     return core.db.runTransaction(async (tx) => {
       const guard = await core.requestGuard(tx, ctx, data.requestId);
       if (guard.done) return guard.result;
@@ -626,8 +630,11 @@ export function createIntelActions(core) {
       if (!repSnap.exists) fail('failed-precondition', 'Önce bahis ihbar edilmeli.');
       if (repSnap.data().opStarted) fail('already-exists', 'Bu bahse zaten operasyon var.');
       const price = INTEL.BET_OP_PRICE;
-      // v108: operasyon ücretini DEVLET öder (İstihbarat kasası kapandı)
-      core.stateTx(tx, ctx, 'out', 'ist_operasyon', price);
+      // v108: operasyon ücretini DEVLET öder. v127: belediye kasası yetmezse başlatılamaz.
+      const kst = bel ? await bel.kasaReadTx(tx) : null;
+      if (kst && kst.spendable < price) fail('failed-precondition', `Belediyenin kasası boş olduğu için operasyon başlatılamadı (gereken ${price.toLocaleString('tr-TR')} altın).`);
+      if (kst) bel.kasaSpendTx(tx, kst, { cat: 'ist_operasyon', amount: price, atMs: ctx.now, dayKey: ctx.dateKey });
+      else core.stateTx(tx, ctx, 'out', 'ist_operasyon', price);
       tx.update(ctx.ref.betReport(warId), { opStarted: true, opByCode: me.data().codeName, opAtMs: ctx.now, opCost: price });
       core.ledger(tx, ctx, { type: 'intel_bet_op_cost', amount: price, from: { kind: 'state', id: 'main' }, to: { kind: 'burn' }, refId: warId });
       const [a, b] = war.gangIds;

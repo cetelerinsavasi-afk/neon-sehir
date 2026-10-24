@@ -17,6 +17,7 @@ import PlayerCard from '../../PlayerCard/PlayerCard';
 import ActionMenu from '../../ActionMenu/ActionMenu';
 import { copyText, useLongPress } from '../../ActionMenu/actionMenuUtils';
 import { useBlocks } from '../../../contexts/BlocksContext';
+import BelediyeChat from '../../Belediye/BelediyeChat';
 
 // v53: mesaj balonu — avatara/ada dokununca Oyuncu Kartı (İstihbarat'ta yok:
 // anonim); mesaja uzun basınca Kopyala · Profili gör · Bildir menüsü.
@@ -74,7 +75,9 @@ export default function ChatTab({ org, d }) {
   const [reportTarget, setReportTarget] = useState(null);
   const [profileOf, setProfileOf] = useState(null);
   const [menuFor, setMenuFor] = useState(null);
-  const coll = isIntel ? path(`intelChat_${channel}`) : channel === 'tum' ? path('globalChat') : path(`gangs/${d.gangId}/chat_${channel}`);
+  // v127: rütbeli polisler için 3. kanal — Belediye koordinasyon sohbeti (belediyeChat_koord)
+  const belediyeCh = isIntel && channel === 'belediye';
+  const coll = belediyeCh ? null : isIntel ? path(`intelChat_${channel}`) : channel === 'tum' ? path('globalChat') : path(`gangs/${d.gangId}/chat_${channel}`);
   const since = Number((isIntel ? d.membership.intelJoinedAtMs : d.membership.gangJoinedAtMs) || 0);
   const { docs } = useQueryData(coll, () => [where('createdAtMs', '>=', since), orderBy('createdAtMs', 'desc'), limit(60)], `${coll}_${since}`);
   const msgs = [...docs].reverse();
@@ -103,8 +106,17 @@ export default function ChatTab({ org, d }) {
   // v93: yeni mesaj noktası nabız gibi büyüyüp küçülür (Chips → gx-chip-dot)
   const dot = (id) => Boolean(unread[id] && channel !== id);
   const channels = isIntel
-    ? [{ id: 'genel', label: 'Genel', icon: '💬', dot: dot('genel') }, ...(ranked ? [{ id: 'yonetim', label: 'Rütbeliler', icon: '🔒', dot: dot('yonetim') }] : [])]
+    ? [{ id: 'genel', label: 'Genel', icon: '💬', dot: dot('genel') }, ...(ranked ? [{ id: 'yonetim', label: 'Rütbeliler', icon: '🔒', dot: dot('yonetim') }, { id: 'belediye', label: 'Belediye', icon: '🏛️' }] : [])]
     : [{ id: 'genel', label: 'Çete', icon: '💬', dot: dot('genel') }, ...(ranked ? [{ id: 'yonetim', label: 'Yönetim', icon: '🔒', dot: dot('yonetim') }] : []), { id: 'tum', label: 'Tüm Çeteler', icon: '🌐', dot: dot('tum') }];
+
+  if (belediyeCh && ranked) {
+    return (
+      <div className="gx-chat">
+        <Chips options={channels} value={channel} onChange={setChannel} />
+        <BelediyeChat channel="koord" isMine={(m) => m.authorKind === 'polis' && m.rosterId === d.rid} />
+      </div>
+    );
+  }
 
   return (
     <div className="gx-chat">

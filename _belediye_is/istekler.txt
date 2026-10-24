@@ -1,0 +1,109 @@
+belediye binasındaki belediye raporu bilgilerini koru sistemi değiştiriyoruz
+seçimleri vs aktif hale getirmiyoruz fakat siyasi yönetimin nasıl olacağını şekillendiriyoruz
+şu an oyundaki tek admin benim 'Haluk Levent' isimli hesabım
+beni belediye başkanı yap ve ben bi süre belediyeyi yöneteyim, nasıl ilerlediğine şahitlik edeyim istiyorum
+'belediye raporu' butonunda artık sadece 'Belediye' yazsın
+tıkladığımızda
+en başta belediye başkanının adı
+altında ise sana attığım htmldeki toplu rapor kısmı
+yani üstünkörü belediyenin cebine giren para ve çıkan para
+altında da bugün gelen fiyat ve vergi değişiklikleri
+oyundaki tüm vergileri artık belediye düzenleyerek düşürüp arttırabilecek
+gelen smsler ve oyuncudan çıkan para da buna göre çıkacak ve devlete de buna göre para gelecek
+her bakanlığın yönetebildiği maaşlar, vergiler var
+sana attığım protatipte maaşların artma ve düşme miktarların tamamı doğru
+sadece maaş ve vergi miktarları doğru olmayabilir onu da oyunun kodlarından al
+örneğin yayıncılık ve şarkıcılıktan kazanılan paradan %10 vergi ödüyoruz
+belediye bunu bugün %11 veya %9 yapabilir ama yaptığı an yürülüğe girmez
+00.00dan sonra o kanun geçerli olur 
+yani örneğin fabrika vergileri arttıysa fabrikanın vergisini 00.00da ödediğimiz için pahalı halde ödemeyeceğiz
+biz bugünün koşullarına göre üretim yaptığımız için bugünün vergisini vereceğiz 00.00dan sonra yürülüğe giren yeni günün vergisini gün başladıktan sonra vermeye başlayacağız
+örneğin kültür ve spor bakanı sosyal medya vergisini %10ken %9 yapabilir, saat 00.00 olmadan kendisi ya da belediye başkanı girip %11e çıkartabilir
+saat 00.00dan sonra toplu rapora işlenir ve diğer 00.00a kadar belediye yöneticileri değiştirse de değişmez
+
+belediye başkanı oyunda arkadaş olduğu kişileri belediyede bakan ya da başkan yardımcılığı için teklif gönderebilecek
+teklif geldiğinde şöyle olacak. sms gelecek: belediye başkanı seni xxxx bakanlığı görevine davet ediyor. maaş xxxx. kabul etmek için belediyeye uğra
+aynı şekilde smsle beraber hatırlatma eklenecek oyuncuya
+daveti olan oyuncu belediyeye gelip belediye butonuna tıkladığında 
+belediye başkanıyla toplu raporun arasında iş teklifi ve detayları yazacak, onay ya da red yapabilecek
+onaylarsa göreve başlayacak ama onaylayabilmesi için başka devlet görevi yapmıyor olması gerekecek
+yani imamsa veya polisse istifa ederek belediyedeki görevine başlayabilecek
+ilk 24 saat görevden atılamayacak
+24 saat cevap gelmeyen davetler otomatik iptal olacak
+1 bakanlık için aynı anda 1 kişi beklenebilecek, 2 kişiye aynı anda davet atılamayacak
+
+4 bakanlık ve 2 başkan yardımcılığı görevi var
+bakanlıklar kendi görevlerini yapacaklar
+başkan yardımcılarına yetkiyi başkan kendi verecek 
+verebileceği yetkiler
+ayrı ayrı 4 bakanlığın yetkileri
+bakanları işten atma yetkisi
+bakan işe davet etme yetkisi
+
+belediye kadrosu maaşlarını sadece belediye başkanı kontrol edebilecek 
+
+bakanlar her panele bakabilecek ama kendi panelinde işlem yapabilecekler diğer panellerde butonlara basamayacaklar ama inceleybilecekler
+belediye başkanı her panelde her şeyi yapabilecek
+yardımcılar ise izni olan her panelde işlerini yapabilecekler
+
+başkan yardımcılarının izni varsa bakanları atabilir, bakanlar kimseyi atamaz
+başkan yardımcısı diğer başkan yardımcısını atamaz ya da bi başkan yardımcısı göreve davet edemez
+başkan tüm ekibi atabilir, tüm rütbelere davet yapabilir
+
+'belediye' paneli
+çeteler paneline benzer bi yapısı olacak
+belediye panelinin içinde 3 alt sekme bulunacak
+Belediye Raporu - Chat - Bakanlıklar - Borçlar - Başkanlık
+chatte 2 adet chat olacak
+1. chat tüm belediye kadrosunun konuşabildiği ortak chat
+2. belediye kadrosuyla beraber polis teşkilatındaki rütbeli olan (en yüksek 3 rütbedeki)
+7 üye konuşabilecek. bu chatte belediye ve polisler arasında koordinasyon sağlanacak
+polis teşkilatına da bu chati ekleyelim
+başkanlıkta belediye başkanı paneli
+bakanlıklarda bakanlıkların panelleri
+borçlarda ise kasanın yetmediği yerde ödenen borçlar
+belediyede olmayan oyuncu sadece belediye raporu sekmesine göz atabilir
+belediye yönetiminde olan oyuncular tüm sekmelere göz atabilir
+
+imamın son yazdığı nasihat ve kaç saat önce yazdığı bilgisi yazacak
+görevden atılırken atılma nedenini görevden atan belediye yetkilisi yazacak
+vakit kaçırırsa ya da nasihat yazmasa otomatik görevden atılacak eskisi gibi
+belediyenin de imamı görevden atabilmesini isteme sebebim bazı oyuncular nasihatlere özen göstermiyor
+belediye iyi bi imam bulup onu görevde tutmak isteyebilir.
+imam 24 saat görevden alınamasın.
+
+başkan yardımcıları da 24 saat görevden alınamasın ve yetkilerini belediye başkanı anlık değiştirebilsin
+
+toplu raporun en alt kısmında bağış yapma butonu ve günün en çok bağış yapan 3 oyuncusu (ya da çetesi) gözüksün
+çeteler > çeteye gönder butonuna bastığında da belediye seçeneği de çıksın belediyeye bağış yapabilsin
+bağış varsa toplu rapora kalem olarak eklenebilir yoksa eklenmesin
+
+ben başkan olayım admin hesabımla 
+istediğim kişiyi bakan yapabileyim
+devlet kasası aynı şekilde çalışmaya devam etsin
+ayarladığım vergiler ve maaşlar oyuna etki etsin
+
+saat 00.00da belediye tarafından sixtagrama toplu rapordaki zam ve indirimler paylaşılsın
+oyuncular neye zam neye indirim geldiğini sixtagramdan da görebilsin
+hiç zam veya indirim yoksa hiçbi post paylaşılmasın.
+
+belediyenin parası eksiye düşmesin
+yeterli para kasada yoksa maaşlar ödenemesin ve bi sonraki güne aktarılsın (manejerlikte ve futbolculuktaki gibi)
+borçlar sekmesine 'maaşlar' olarak kaydedilsin. 
+ödenemeyen her günün maaş miktarı ve hangi günün maaşı olduğu ayrı şekilde tutulsun
+belediye gün içinde borçlara yazılmış maaşlardan 1 günün tamımını toplu şekilde kapatabilir ama bi kısmını kapatamaz
+saat 00.00ı geçtiğinde kasadaki para yeterse bugünün maaşları ödenir, yettiği kadarıyla da önceden yazılmış maaş borçları ödenir
+yani örneğin bugünkü maaş 500.000 altın önceden de bi 400.000 bi 300.000 maaş var. bugünle beraber en yakın gün olanı öderiz
+diğer kalan borcun tamamı ödenmediği için kasada ya 100.000 altın ya 200.000 altın kalır ve ya 300.000 ya 400.000 altınlık maaş borcu kalır
+gün içinde ödenen maaşlar tüm memurlara (polis -imam -belediye) ödendiği an yatar (maaş alamayan polisler rüşvet almaya devam eder)
+ama maaşını alamayan kişi eninde sonunda maaşını alsın
+işi bıraksa da o maaş para olduğunda yatsın
+maaşlar ödeneceği zaman kasada yeterli para yoksa toplu raporda bugün maaşlar ödenemedi yazsın ve maaşlar ödenemesin
+örneğin 400.000 altın kasada varken 500.000 altınlık bi soygun yapıldıysa 500.000 altın borç yazılsın 400.000 altın çekilmesin
+400.000 altın belediyede kalsın ve 500.000 altın borç yazılsın. 
+maaş borçlarına faiz binmez ama soygunlardan yazılan borçlara 00.00da %1 faiz binecek
+belediyenin borcu ya da borç ödemeleri de toplu raporda belirtilsin
+
+oyun halihazırda aktif bi oyun olduğu için açık veya mantık hatası olmasın
+kodları iyi kontrol edelim
+anlamadığın aklına yatmayan bi şey varsa direkt sor cevaplarım

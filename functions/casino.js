@@ -36,7 +36,7 @@
 // =============================================================================
 
 import { goldTag } from './moneyLog.js';
-import { taxLedgerWrite, splitLotteryTax } from './tax.js';
+import { taxLedgerWrite, splitLotteryTax, ratesFor, casinoTaxRate, lotteryTaxRate, pctText } from './tax.js';
 import { bizDayKey } from './businessCatalogData.js';
 import {
   GAME_CASINO_ID,
@@ -89,9 +89,11 @@ export function casinoPricesOf(h) {
   };
 }
 // Kasadan altın çekerken %10 vergi: { tax, net } (net + tax = brüt)
-export function casinoWithdrawSplit(gross) {
+// v127: oran Ticaret Bakanlığı (Kumarhane) — istemci aynı oranı gönderir (expectTax)
+export function casinoWithdrawSplit(gross, rate = null) {
   const g = Math.max(0, Math.floor(Number(gross) || 0));
-  const tax = Math.min(g, Math.floor(g * CASINO_WITHDRAW_TAX_RATE));
+  const r = rate == null ? casinoTaxRate() : Math.max(0, Number(rate) || 0);
+  const tax = Math.min(g, Math.floor(g * r));
   return { gross: g, tax, net: g - tax };
 }
 export const machineDocId = (houseId, m) => `${houseId}_${m}`;
@@ -265,14 +267,16 @@ export function createCasino({ db, FieldValue, HttpsError, splitIncomeForDebt, n
         const name = L.casinoName || 'Gazino';
         const atMs = now();
         const jackpot = int(L.jackpot);
-        const lot = splitLotteryTax(jackpot);
+        // v127: biletlerin satıldığı günün oranları (Ticaret Bakanlığı)
+        const lr = ratesFor(String(L.dateKey || todayKey));
+        const lot = splitLotteryTax(jackpot, lr);
         // kazanan (silinmiş hesapsa ödeme yapılmaz; çekiliş yine kapanır)
         if (winner && ws?.exists && jackpot > 0) {
           const { goldDelta, debtDelta } = splitIncomeForDebt(ws.data()?.debtToState, lot.net);
           tx.update(userRef(winner.uid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('piyango'), ...(debtDelta ? { debtToState: FieldValue.increment(debtDelta) } : {}) });
-          taxLedgerWrite(tx, db, FieldValue, { amount: lot.tax, source: 'piyango', uid: winner.uid, atMs, ref: `gpiyango_${d.id}` });
+          taxLedgerWrite(tx, db, FieldValue, { amount: lot.tax, source: 'piyango', uid: winner.uid, atMs, ref: `gpiyango_${d.id}`, stat: { pi_bilet: total, pi_odul: jackpot, pi_n: 1 } });
           tx.set(userRef(winner.uid).collection('messages').doc(), {
-            text: `🎟️ Tebrikler! ${name} gazinosunun piyangosundan ${fmt(jackpot)} altın kazandın. %10 piyango vergisi (${fmt(lot.tax)} altın) belediyeye ödendi, hesabına ${fmt(lot.net)} altın yattı.`,
+            text: `🎟️ Tebrikler! ${name} gazinosunun piyangosundan ${fmt(jackpot)} altın kazandın. ${pctText(lotteryTaxRate(lr))} piyango vergisi (${fmt(lot.tax)} altın) belediyeye ödendi, hesabına ${fmt(lot.net)} altın yattı.`,
             createdAt: FieldValue.serverTimestamp(),
             read: false,
             type: 'lottery_win',
@@ -284,7 +288,7 @@ export function createCasino({ db, FieldValue, HttpsError, splitIncomeForDebt, n
           won = winner.uid;
         }
         // sahibin bilet kârı: %10'u devlete, kalanı sahibine + SMS
-        const cut = splitCasinoCut(L.ownerCut);
+        const cut = splitCasinoCut(L.ownerCut, casinoTaxRate(lr));
         if (L.ownerUid && os?.exists && cut.rest + cut.tax > 0) {
           if (cut.rest > 0) {
             const { goldDelta, debtDelta } = splitIncomeForDebt(os.data()?.debtToState, cut.rest);
@@ -292,7 +296,7 @@ export function createCasino({ db, FieldValue, HttpsError, splitIncomeForDebt, n
           }
           taxLedgerWrite(tx, db, FieldValue, { amount: cut.tax, source: 'gazino', uid: L.ownerUid, atMs, ref: `gpiyango_kasa_${d.id}` });
           tx.set(userRef(L.ownerUid).collection('messages').doc(), {
-            text: `🎰 ${name} — dünkü piyango: ${fmt(total)} bilet satıldı. Bilet kârın ${fmt(cut.rest + cut.tax)} altın; %10 vergi (${fmt(cut.tax)} altın) düşüldü, hesabına ${fmt(cut.rest)} altın yattı.`,
+            text: `🎰 ${name} — dünkü piyango: ${fmt(total)} bilet satıldı. Bilet kârın ${fmt(cut.rest + cut.tax)} altın; ${pctText(casinoTaxRate(lr))} vergi (${fmt(cut.tax)} altın) düşüldü, hesabına ${fmt(cut.rest)} altın yattı.`,
             createdAt: FieldValue.serverTimestamp(),
             read: false,
             type: 'casino_lottery',

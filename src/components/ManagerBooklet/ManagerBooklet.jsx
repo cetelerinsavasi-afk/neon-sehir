@@ -39,7 +39,7 @@ const PAGES = [
     body: [
       'Maaşın her gün 19:00’da (maç bitince) otomatik hesabına yatar.',
       'İlk maaşını, göreve başladıktan tam 24 saat sonraki 19:00’da alırsın.',
-      'Maaşından %10 vergi kesilir ve belediye kasasına gider (futbolcu ve fabrika işçisi maaşlarında da aynı).',
+      'Maaşından vergi kesilir ve belediye kasasına gider; oranı belediye belirler (futbolcu ve fabrika işçisi maaşlarında da böyle).',
       'Kasada para yetmezse maaşının eksiği borç olarak birikir — işten atılmazsın, borç kasa müsait olunca kapanır.',
       'Borç yüzünden istersen istifa edebilirsin; istifa edersen o günkü maaşı ve varsa borcunu alamazsın.',
     ],

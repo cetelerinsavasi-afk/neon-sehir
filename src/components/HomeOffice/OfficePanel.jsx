@@ -291,7 +291,7 @@ function ReportCard({ label, d }) {
             <b>{fmt(revenue)}</b>
           </div>
           <div className="of-line">
-            <span>Vergi (%10)</span>
+            <span>Vergi</span>
             <b>−{fmt(tax)}</b>
           </div>
           <div className="of-line strong">

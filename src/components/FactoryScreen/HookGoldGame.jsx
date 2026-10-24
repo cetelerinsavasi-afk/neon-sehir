@@ -427,7 +427,7 @@ export default function HookGoldGame({ onComplete, onClose }) {
                     {resultData?.isSelfEmployed
                       ? ` — ${(resultData.qty ?? 0).toLocaleString('tr-TR')} adet ürün stoğuna eklendi.`
                       : resultData?.salary != null
-                        ? ` — +${(resultData.netSalary ?? resultData.salary).toLocaleString('tr-TR')} altın kazandın${resultData.salaryTax ? ` (%10 vergi: ${resultData.salaryTax.toLocaleString('tr-TR')})` : ''}.`
+                        ? ` — +${(resultData.netSalary ?? resultData.salary).toLocaleString('tr-TR')} altın kazandın${resultData.salaryTax ? ` (vergi: ${resultData.salaryTax.toLocaleString('tr-TR')})` : ''}.`
                         : '.'}
                   </p>
                   <button onClick={onClose}>Kapat</button>

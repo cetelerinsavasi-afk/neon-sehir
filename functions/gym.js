@@ -41,7 +41,7 @@
 // =============================================================================
 
 import { futbolDayKey, prevDayKey, bizOpenAllDay, bizDayStartMs } from './businessCatalogData.js';
-import { bizTax, taxLedgerWrite } from './tax.js';
+import { bizTax, taxLedgerWrite, ratesFor, rateDayKey } from './tax.js';
 import { goldTag } from './moneyLog.js';
 
 export const GAME_GYM_ID = 'game_spor';
@@ -139,7 +139,8 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
   // Salona ödeme (oyunun salonu → oyundan çıkar). YAZMA. ownerSnap önceden okunmalı.
   function payGymTx(tx, { gymId, h, ownerSnap, amount, customerUid, kind, atMs, products }) {
     if (amount <= 0) return;
-    const tax = bizTax(amount); // v77 vergi %10
+    // v77 vergi · v127: oran Ticaret Bakanlığı (Spor Salonu) — ödeme gününün oranı
+    const tax = bizTax(amount, 'spor', ratesFor(rateDayKey(atMs ?? now())));
     if (isGameGym(h)) {
       business?.recordGameIncomeTx?.(tx, { type: 'spor', amount, kind, customerUid, atMs, products, tax });
       return;
@@ -390,11 +391,12 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
       if (hs.exists && hs.data().biz?.type === 'spor' && !isGameGym(hs.data()) && hs.data().ownerUid === m.ownerUid) {
         payGymTx(tx, { gymId: m.gymId, h: hs.data(), ownerSnap: os, amount: m.price, customerUid: uid, kind: 'service', atMs: m.paidAtMs, products: { üyelik: 1 } });
       } else if (m.game && m.price > 0) {
-        business?.recordGameIncomeTx?.(tx, { type: 'spor', amount: m.price, kind: 'service', customerUid: uid, atMs: m.paidAtMs, products: { üyelik: 1 }, tax: bizTax(m.price) });
+        business?.recordGameIncomeTx?.(tx, { type: 'spor', amount: m.price, kind: 'service', customerUid: uid, atMs: m.paidAtMs, products: { üyelik: 1 }, tax: bizTax(m.price, 'spor', ratesFor(rateDayKey(m.paidAtMs || t))) });
       } else if (m.ownerUid && os && m.price > 0) {
         // salon kapanmış/sahibi değişmiş olsa da parası ödenmiş hizmet tamamlandı → sahibe (vergi düşülerek)
-        taxLedgerWrite(tx, db, FieldValue, { amount: bizTax(m.price), source: 'isletme', uid: m.ownerUid, atMs: t, ref: m.gymId });
-        const { goldDelta, debtDelta } = splitIncomeForDebt(os.data()?.debtToState, m.price - bizTax(m.price));
+        const gTax = bizTax(m.price, 'spor', ratesFor(rateDayKey(m.paidAtMs || t)));
+        taxLedgerWrite(tx, db, FieldValue, { amount: gTax, source: 'isletme', uid: m.ownerUid, atMs: t, ref: m.gymId, bizType: 'spor', stat: { isl_spor_ciro: m.price, isl_spor_n: 1 } });
+        const { goldDelta, debtDelta } = splitIncomeForDebt(os.data()?.debtToState, m.price - gTax);
         tx.update(userRef(m.ownerUid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('spor'), debtToState: FieldValue.increment(debtDelta) });
       }
       tx.update(ref, { step: 3, stepStartedAtMs: null, status: 'done', doneAtMs: t, result: training });

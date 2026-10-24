@@ -28,7 +28,7 @@ export function StreamStartSheet({ cafePrice = 0, busy, onStart, onCancel }) {
         <ul className="st-sheet-notes">
           <li>📷 Kamera bilgisayarın üstünde: sen ve arkandaki oda yayında görünür.</li>
           <li>🎮 Yayındayken bilgisayardan oyun oynarsan izleyiciler oyunu da görür.</li>
-          <li>🎁 Bağışlar yayın bitince %10 vergi kesilerek cebine geçer.</li>
+          <li>🎁 Bağışlar yayın bitince vergi kesilerek cebine geçer.</li>
           {cafePrice > 0 ? (
             <li className="warn">
               💳 İnternet kafe yayın seti: dakikası <b>{fmtN(cafePrice)} altın</b>. Altının bitince yayın kapanır.
@@ -636,7 +636,7 @@ export function StreamSummary({ summary, reason, cost = null, streamId = null, o
             <b>{fmtN(s.donated || 0)} altın</b>
           </div>
           <div>
-            <span>Vergi (%10)</span>
+            <span>Vergi</span>
             <b>−{fmtN(s.tax || 0)} altın</b>
           </div>
           <div className="total">

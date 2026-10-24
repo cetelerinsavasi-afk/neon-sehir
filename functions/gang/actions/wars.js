@@ -950,6 +950,8 @@ export function createWarActions(core) {
   }
 
   async function startOneOperation(ctx, reportId, bribe) {
+    const bel = !ctx.isTest ? core.deps.belediyeRef?.current : null;
+    if (bel) await bel.kasa.liveFresh();
     return core.db.runTransaction(async (tx) => {
       const membership = await readMembership(tx, ctx, ctx.actorId);
       const rid = requireIntel(membership);
@@ -975,8 +977,11 @@ export function createWarActions(core) {
       const allies = def?.announced ? await readActiveAllies(tx, ctx, truck.gangId) : [];
       const { price, count } = sabotagePrice(daySnap.data(), 'intel');
       const dg = defGang.data();
-      // v108: operasyon ücretini DEVLET öder (İstihbarat kasası kapandı; kasa eksiye inebilir)
-      core.stateTx(tx, ctx, 'out', 'ist_operasyon', price);
+      // v108: operasyon ücretini DEVLET öder. v127: belediye kasası yetmezse operasyon başlatılamaz.
+      const kst = bel ? await bel.kasaReadTx(tx) : null;
+      if (kst && kst.spendable < price) fail('failed-precondition', `Belediyenin kasası boş olduğu için operasyon başlatılamadı (gereken ${price.toLocaleString('tr-TR')} altın).`);
+      if (kst) bel.kasaSpendTx(tx, kst, { cat: 'ist_operasyon', amount: price, atMs: ctx.now, dayKey: ctx.dateKey });
+      else core.stateTx(tx, ctx, 'out', 'ist_operasyon', price);
       tx.set(ctx.ref.sabotageDay(ctx.dateKey), { count: count + 1 }, { merge: true });
       if (!def) {
         const doc = defenseWarDoc(ctx, truck, dg);

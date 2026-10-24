@@ -188,8 +188,9 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
         return;
       }
       if (!isOwner) {
-        payOwnerTx(tx, os, h.ownerUid, price - bizTax(price), 'isletme'); // v77 vergi %10
-        business?.recordIncomeTx(tx, { houseId, h, amount: price, kind: 'menu', customerUid: uid, products: { [product]: 1 }, tax: bizTax(price) });
+        const mt = bizTax(price, h.biz?.type); // v77 vergi · v127: oran türüne göre (Kafe / Bar / Sinema)
+        payOwnerTx(tx, os, h.ownerUid, price - mt, 'isletme');
+        business?.recordIncomeTx(tx, { houseId, h, amount: price, kind: 'menu', customerUid: uid, products: { [product]: 1 }, tax: mt });
       }
       tx.set(db.collection('heldItems').doc(uid), { itemId: product, venue: 'ev', houseId, untilMs: t + HELD_MS, boughtAtMs: t });
       tx.update(presRef, { holding: product });
@@ -243,7 +244,7 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
   // served: garson teslim etti mi (maaş) · auto: süre doldu (maaş yok)
   function fulfillTx(tx, { o, orderRef, h, os, ws2, custPres, served, t }) {
     const price = Math.max(0, Math.round(Number(o.price) || 0));
-    const tax = bizTax(price);
+    const tax = bizTax(price, h?.biz?.type); // v127: oran türüne göre
     // v92 — mekân sahibi de garson olabilir; kendine maaş almaz (gider de yazılmaz)
     const salary = served && o.waiterUid !== o.ownerUid ? waiterSalary(price) : 0;
     if (h && os?.exists) payOwnerTx(tx, os, o.ownerUid, price - tax - salary, 'isletme');
@@ -360,8 +361,9 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
     const creditUntilMs = from + NET_SLOT_MS;
     if (h.ownerUid !== uid && !free) {
       tx.update(userRef(uid), { gold: FieldValue.increment(-price), goldTag: goldTag(h.biz?.type === 'studyo' ? 'studyo' : 'internet') });
-      payOwnerTx(tx, os, h.ownerUid, price - bizTax(price)); // v77 vergi %10
-      business?.recordIncomeTx(tx, { houseId, h, amount: price, kind: 'service', customerUid: uid, products: { dakika: 1 }, tax: bizTax(price) });
+      const dt = bizTax(price, h.biz?.type); // v77 vergi · v127: oran türüne göre (İnternet Kafe / Stüdyo)
+      payOwnerTx(tx, os, h.ownerUid, price - dt);
+      business?.recordIncomeTx(tx, { houseId, h, amount: price, kind: 'service', customerUid: uid, products: { dakika: 1 }, tax: dt });
     }
     // kredi sürerken gerekli mobilyalar kaldırılamaz.
     // v79 maliyet: kilit 5 dk payla uzatılır → ev belgesi her dakika değil ~5 dk'da

@@ -35,7 +35,7 @@ export function createBusiness({ db, FieldValue, now = () => Date.now() }) {
   // alışverişi müşteri sayılmaz ve rapora yazılmaz.
   // v77 vergi: `tax` → rapora (günlük `tax`) ve vergi defterine (functions/tax.js)
   // v92 — `salary`: garsona ödenen maaş (cafe/bar) → rapordaki gider satırı
-  function recordIncomeTx(tx, { houseId, h, amount, kind, customerUid, products, materialsUsed, materialsIn, atMs, tax = 0, taxSource = 'isletme', salary = 0 }) {
+  function recordIncomeTx(tx, { houseId, h, amount, kind, customerUid, products, materialsUsed, materialsIn, atMs, tax = 0, taxSource = 'isletme', salary = 0, stat = null }) {
     const type = h?.biz?.type;
     if (!type || !houseId) return null;
     if (customerUid && customerUid === h.ownerUid) return null;
@@ -53,10 +53,12 @@ export function createBusiness({ db, FieldValue, now = () => Date.now() }) {
     };
     if (customerUid) patch.cust = { [customerUid]: true };
     const tx10 = Math.max(0, Math.round(Number(tax) || 0));
+    // v127 — Belediye › Ticaret analizi: oyuncu işletmelerinin türe göre cirosu
+    const st = stat || (taxSource === 'isletme' && h.ownerUid !== GAME_VENUE_OWNER && amt > 0 ? { [`isl_${type}_ciro`]: amt, [`isl_${type}_n`]: 1 } : null);
     if (tx10 > 0) {
       patch.tax = FieldValue.increment(tx10);
       patch.taxByKind = { [k]: FieldValue.increment(tx10) };
-      taxLedgerWrite(tx, db, FieldValue, { amount: tx10, source: taxSource, uid: h.ownerUid, atMs: atMs ?? now(), ref: houseId });
+      taxLedgerWrite(tx, db, FieldValue, { amount: tx10, source: taxSource, uid: h.ownerUid, atMs: atMs ?? now(), ref: houseId, bizType: type, stat: st });
     }
     const sal = Math.max(0, Math.round(Number(salary) || 0));
     if (sal > 0) {

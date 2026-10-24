@@ -24,9 +24,10 @@ test('makine alımı: fiyat + %5 vergi (v126; devlete ayrı kalem); fabrika kuru
   const src = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
   assert.match(src, /source: 'makine', uid, atMs: Date\.now\(\), ref: 'fabrika_kurulus'/);
   assert.match(src, /increment\(-\(price \+ tax\)\)/);
-  assert.match(src, /return \{ base: FACTORY_CREATE_COST \+ machines, tax, total: FACTORY_CREATE_COST \+ machines \+ tax \}/);
+  assert.match(src, /return \{ base: FACTORY_CREATE_COST \+ machines, tax, total: FACTORY_CREATE_COST \+ machines \+ tax, stat \}/);
+  assert.match(src, /const mt = machineTax\(p, t\)/, 'v127: makine türüne göre oran');
   const ui = fs.readFileSync(new URL('../../src/components/FactoryScreen/FactoryScreen.jsx', import.meta.url), 'utf8');
-  assert.match(ui, /withMachineTax\(machinePrice\(t, cryptoPrice \|\| 0\)\)/, 'istemci kuruluş bedeli sunucuyla aynı');
+  assert.match(ui, /withMachineTax\(machinePrice\(t, cryptoPrice \|\| 0\), t, rates\)/, 'istemci kuruluş bedeli sunucuyla aynı (v127: belediye oranı)');
 });
 
 test('gazino raporu: verilen 0 olan 10 Numara eli makine raporunu boş haritayla EZMEZ', async () => {

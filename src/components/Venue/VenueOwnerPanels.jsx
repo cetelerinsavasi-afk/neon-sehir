@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { shopAction, streamAction } from '../../services/gameActions';
 import { STREAM_PRICE, STREAM_ROOM_MAX, streamPriceOf, streamSetOf } from '../../../functions/stream.js';
 import PriceField from '../Shop/PriceField';
-import { BIZ_TAX_RATE } from '../../../functions/tax.js';
+import { useBelediyeRates } from '../../hooks/useBelediyeRates';
+import { bizRateFrac } from '../../../functions/belediyeRates.js';
 import HeldIcon from '../HouseScreen/HeldIcon';
 import { bizErrText } from '../../lib/bizErrors';
 import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
@@ -23,6 +24,7 @@ function SaveBtn({ busy, dirty, onClick, label = 'Fiyatları kaydet' }) {
 
 // ---- Cafe / Bar: menü fiyatları ---------------------------------------------------
 export function MenuPriceSection({ houseId, houseDoc }) {
+  const taxRate = bizRateFrac(useBelediyeRates(), houseDoc?.biz?.type); // v127: türüne göre (Ticaret Bakanlığı)
   const products = Object.keys(menuOf(houseDoc?.items));
   const [draft, setDraft] = useState({});
   const [busy, setBusy] = useState(false);
@@ -51,7 +53,7 @@ export function MenuPriceSection({ houseId, houseDoc }) {
           value={draft[k] ?? MENU_PRICE.def}
           refPrice={MENU_PRICE.def}
           refLabel="Varsayılan"
-          taxRate={BIZ_TAX_RATE}
+          taxRate={taxRate}
           saved={menuPriceOf(houseDoc, k)}
           onChange={(v) => setDraft((d) => ({ ...d, [k]: v }))}
         />
@@ -108,6 +110,7 @@ export function MenuInvSection({ houseDoc }) {
 
 // ---- İnternet kafe: dakika ücreti ---------------------------------------------------
 export function NetPriceSection({ houseId, houseDoc }) {
+  const taxRate = bizRateFrac(useBelediyeRates(), houseDoc?.biz?.type);
   const cur = netPriceOf(houseDoc);
   const studio = houseDoc?.biz?.type === 'studyo'; // v93: müzik stüdyosu (mikser konsolu) 100–400
   const NET_MINUTE = minuteBand(houseDoc?.biz?.type);
@@ -126,7 +129,7 @@ export function NetPriceSection({ houseId, houseDoc }) {
         value={v}
         refPrice={NET_MINUTE.def}
         refLabel="Varsayılan"
-        taxRate={BIZ_TAX_RATE}
+        taxRate={taxRate}
         saved={cur}
         onChange={setV}
       />
@@ -156,6 +159,7 @@ export function NetPriceSection({ houseId, houseDoc }) {
 // v80 Yayıncılık — internet kafe "yayın seti" (oyuncu koltuğu + oyuncu bilgisayarı)
 // dakika ücreti ve yayın odası adı. Ücret yayın süresince dakika başı çekilir.
 function StreamSetPriceSection({ houseId, houseDoc }) {
+  const taxRate = bizRateFrac(useBelediyeRates(), houseDoc?.biz?.type || 'studyo');
   const cur = streamPriceOf(houseDoc);
   const curRoom = String(houseDoc?.streamRoom || '');
   const [v, setV] = useState(cur);
@@ -181,7 +185,7 @@ function StreamSetPriceSection({ houseId, houseDoc }) {
         value={v}
         refPrice={STREAM_PRICE.def}
         refLabel="Varsayılan"
-        taxRate={BIZ_TAX_RATE}
+        taxRate={taxRate}
         saved={cur}
         onChange={setV}
       />

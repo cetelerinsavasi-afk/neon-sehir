@@ -34,6 +34,7 @@ export default function PostCard({ post, liked, isOwn, commentsInline = false })
   const [hidden, setHidden] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const official = post.official === 'belediye'; // v127 — Belediye'nin resmî duyurusu
 
   const effectiveLiked = optimisticLiked ?? liked;
   const effectiveCount = optimisticCount ?? post.likeCount ?? 0;
@@ -79,9 +80,9 @@ export default function PostCard({ post, liked, isOwn, commentsInline = false })
   return (
     <div className="six-post">
       <div className="six-post-head">
-        <button className="six-post-authorbtn" onClick={() => setPanelOpen(true)}>
+        <button className="six-post-authorbtn" onClick={() => !official && setPanelOpen(true)}>
           <div className="six-post-avatar">
-            <AvatarSvg avatar={post.authorAvatar} size={36} rounded />
+            {official ? <span className="six-official-badge" aria-hidden="true">🏛️</span> : <AvatarSvg avatar={post.authorAvatar} size={36} rounded />}
           </div>
           <div className="six-post-headinfo">
             <p className="six-post-author">
@@ -105,7 +106,11 @@ export default function PostCard({ post, liked, isOwn, commentsInline = false })
         {!isOwn && <MoreButton onClick={() => setMenuOpen(true)} label="Seçenekler" />}
       </div>
 
-      {post.text && <p className="six-post-text">{post.text}</p>}
+      {post.text && (
+        <p className="six-post-text" style={official ? { whiteSpace: 'pre-line' } : undefined}>
+          {post.text}
+        </p>
+      )}
       <PostAttachment attachment={post.attachment} post={post} />
 
       <div className="six-post-actions">
@@ -137,7 +142,7 @@ export default function PostCard({ post, liked, isOwn, commentsInline = false })
           title={post.authorName || 'Oyuncu'}
           onClose={() => setMenuOpen(false)}
           actions={[
-            { key: 'profile', icon: '👤', label: 'Profili gör', onClick: () => setPanelOpen(true) },
+            ...(official ? [] : [{ key: 'profile', icon: '👤', label: 'Profili gör', onClick: () => setPanelOpen(true) }]),
             ...(commentsInline ? [] : [{ key: 'comments', icon: '💬', label: 'Yorumlar', onClick: () => setCommentsOpen(true) }]),
             { key: 'report', icon: '⚑', label: 'Bildir', subtle: true, onClick: () => setReportOpen(true) },
           ]}
@@ -153,7 +158,7 @@ export default function PostCard({ post, liked, isOwn, commentsInline = false })
         />
       )}
 
-      {panelOpen && (
+      {panelOpen && !official && (
         <PlayerCard
           uid={post.uid}
           name={post.authorName}

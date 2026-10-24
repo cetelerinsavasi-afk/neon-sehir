@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -631,20 +631,33 @@ function StateReport() {
   );
 }
 
+// v127 — "Belediye" herkese açık: tam ekran Belediye (components/Belediye).
+// Eski ayrıntılı devlet defteri sadece yöneticide ("Ayrıntılı defter").
+const BelediyeScreen = lazy(() => import('../Belediye/BelediyeScreen'));
 export function BelediyePart({ panel, setPanel, walk }) {
   const { user } = useAuth();
   const { player } = usePlayer();
   const isAdmin = isAdminUid(user?.uid) || player?.role === 'admin';
-  if (!isAdmin) return null;
+  if (!user) return null;
   return (
     <>
       <Menu show={walk}>
-        <button className="v3-btn" onClick={() => setPanel('report')}>
-          📊 Belediye Raporu
+        <button className="v3-btn" onClick={() => setPanel('belediye')}>
+          🏛️ Belediye
         </button>
+        {isAdmin && (
+          <button className="v3-btn" onClick={() => setPanel('report')}>
+            📊 Ayrıntılı defter
+          </button>
+        )}
       </Menu>
-      {panel === 'report' && (
-        <Sheet title="📊 Belediye Raporu — Devlet Kasası" onClose={() => setPanel(null)} closeLabel="Kapat">
+      {panel === 'belediye' && (
+        <Suspense fallback={null}>
+          <BelediyeScreen onClose={() => setPanel(null)} />
+        </Suspense>
+      )}
+      {isAdmin && panel === 'report' && (
+        <Sheet title="📊 Devlet Kasası — Ayrıntılı Defter" onClose={() => setPanel(null)} closeLabel="Kapat">
           <StateReport />
         </Sheet>
       )}

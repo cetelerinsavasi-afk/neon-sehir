@@ -35,8 +35,8 @@ const PAGES_AFTER_SALARY = [
     body: [
       'Bir soygun ekibine sız ya da kendi ekibini kurup tuzak hazırla.',
       'Ekipte sivil varsa soygun patlar: suçlular yakalanır, cezası anında kesilir.',
-      'Kurtarılan paranın %25\'i senin, gerisi devlete. Ekipte birden fazla polis varsa pay bölünür.',
-      'Üstüne kurtarılan paranın 4 katı prestij (polis sayısına bölünür). Örnek: 2 polis 500.000 kurtarırsa kişi başı 62.500 altın + 1.000.000 prestij.',
+      'Kurtarılan paradan payını (oranını belediye belirler) alırsın, gerisi devlete. Ekipte birden fazla polis varsa pay bölünür.',
+      'Üstüne kurtarılan paranın 4 katı prestij (polis sayısına bölünür). Örnek: 2 polis 500.000 kurtarırsa kişi başı 1.000.000 prestij.',
       'Ama dikkat: ekipten biri kendi şüphesi yüzünden yakalanırsa operasyon boşa gider, ödül yok.',
       'Ekipte kimin polis olduğunu kimse bilmez.',
     ],

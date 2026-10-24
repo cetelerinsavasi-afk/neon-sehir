@@ -28,7 +28,7 @@
 // =============================================================================
 
 import { midnightDayKey } from './businessCatalogData.js';
-import { bizTax, taxOf, taxLedgerWrite } from './tax.js';
+import { bizTax, taxOf, taxLedgerWrite, socialTax } from './tax.js';
 import { goldTag } from './moneyLog.js';
 import { sanitizeSong, songToDoc } from './songData.js';
 import {
@@ -123,7 +123,7 @@ export function createHomeOffice({ db, FieldValue, HttpsError, splitIncomeForDeb
       const spent = Number(ss.exists ? ss.data().amount || 0 : 0);
       if (spent + amount > MESCIT_DAILY_LIMIT) fail('failed-precondition', `limit:${spent}`);
       if (Number(us.data()?.gold || 0) < amount) fail('failed-precondition', 'gold');
-      const tax = bizTax(amount);
+      const tax = bizTax(amount, 'mescit'); // v127: oran Ticaret Bakanlığı (Mescit bağışları)
       tx.update(userRef(uid), { gold: FieldValue.increment(-amount), goldTag: goldTag('mescit') });
       tx.set(spendRef, { houseId, uid, dayKey, amount: FieldValue.increment(amount), updatedAtMs: t }, { merge: true });
       if (os.exists) {
@@ -232,11 +232,11 @@ export function createHomeOffice({ db, FieldValue, HttpsError, splitIncomeForDeb
       if (given + amount > SONG_TIP_DAILY) fail('failed-precondition', `tip-limit:${given}`);
       if (Number(us.data()?.gold || 0) < amount) fail('failed-precondition', 'gold');
       if (!as.exists) fail('not-found', 'Sanatçı bulunamadı.');
-      const tax = taxOf(amount, SONG_TIP_TAX_RATE);
+      const tax = socialTax(amount); // v127: Sosyal Medya Vergisi (Kültür ve Spor Bakanlığı)
       tx.update(userRef(uid), { gold: FieldValue.increment(-amount), goldTag: goldTag('sanatciDestek') });
       const { goldDelta, debtDelta } = splitIncomeForDebt(as.data()?.debtToState, amount - tax);
       tx.update(userRef(artist), { gold: FieldValue.increment(goldDelta), debtToState: FieldValue.increment(debtDelta), goldTag: goldTag('sanatci') });
-      taxLedgerWrite(tx, db, FieldValue, { amount: tax, source: 'sanatci', uid: artist, atMs: t, ref: postId });
+      taxLedgerWrite(tx, db, FieldValue, { amount: tax, source: 'sanatci', uid: artist, atMs: t, ref: postId, stat: { sosyal_sarki: amount, sosyal_sarki_n: 1 } });
       tx.set(tipRef, { dayKey, uid, artist, amount: FieldValue.increment(amount), updatedAtMs: t }, { merge: true });
       tx.set(songRef, { postId, uid, amount: FieldValue.increment(amount), expiresAtMs: Number(ps.data().expiresAtMs || 0) || t + 30 * 864e5, updatedAtMs: t }, { merge: true });
       tx.update(postRef, { tips: FieldValue.increment(amount), tipCount: FieldValue.increment(1), commentCount: FieldValue.increment(1) });

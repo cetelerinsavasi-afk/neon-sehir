@@ -171,6 +171,7 @@ export function createCore(deps) {
       onboarded: ctx.isTest ? u.onboarded !== false : Boolean(u.onboardingRewardClaimed),
       policePending: ctx.isTest ? Boolean(u.policePending) : u.pendingPoliceChange === 'apply',
       isImam: Boolean(u.isImam),
+      belediyeSeat: ctx.isTest ? null : u.belediyeSeat || null, // v127: belediye görevlisi polis olamaz
       suspicion: Number(u.suspicion || 0), // v109: polislik şartı (%0)
     };
   }

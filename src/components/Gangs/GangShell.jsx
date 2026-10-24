@@ -10,7 +10,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useGangAlertsCtx } from './alerts';
 import { useGangData, useIntelData } from './data';
 import { Deadline, Gold, Logo, RankBadge } from './ui';
-import { INTEL_LOGO, INTEL_NAME, SALARIES, fmt } from './gangConstants';
+import { INTEL_LOGO, INTEL_NAME, fmt } from './gangConstants';
+import { useBelediyeRates } from '../../hooks/useBelediyeRates';
+import { policeSalary } from '../../../functions/belediyeRates.js';
 import ListTab from './tabs/ListTab';
 import ChatTab from './tabs/ChatTab';
 import WarsTab from './tabs/WarsTab';
@@ -179,11 +181,12 @@ function GangViews({ membership, tab, onOpen }) {
 
 function IntelViews({ membership, tab, onOpen }) {
   const d = useIntelData(membership);
+  const rates = useBelediyeRates(); // v127: polis maaşları Güvenlik Bakanlığı'nın
   if (tab === 'ceteler') return <ListTab membership={membership} onOpen={onOpen} />;
   return (
     <div className="gx-page">
       {d.underVote && <UnderVoteBanner until={d.underVoteUntilMs} low="Polis Memuru" />}
-      <OrgHeader intel logo={INTEL_LOGO} name={INTEL_NAME} rank={d.rank} prestige={d.me?.prestige} salary={SALARIES[d.realRank || 'muhbir'] || 0} sub={<span className="gx-codename">🪪 {d.me?.codeName || membership.intelCodeName}</span>} />
+      <OrgHeader intel logo={INTEL_LOGO} name={INTEL_NAME} rank={d.rank} prestige={d.me?.prestige} salary={policeSalary(rates, d.realRank || 'muhbir')} sub={<span className="gx-codename">🪪 {d.me?.codeName || membership.intelCodeName}</span>} />
       {tab === 'sohbet' && <ChatTab org="intel" d={d} />}
       {tab === 'savas' && <WarsTab org="intel" d={d} />}
       {tab === 'operasyon' && <OpsTab d={d} />}

@@ -1048,6 +1048,48 @@ service cloud.firestore {
       }
     }
 
+    // ---------------------------------------------------------------------
+    // v127 — BELEDİYE (functions/belediye.js). Yazma YALNIZCA sunucu.
+    //   belediye/main   — kadro, davetler, son hareketler (herkes görür)
+    //   belediye/rates  — yürürlükteki vergi / maaş oranları (herkes görür)
+    //   belediye/public — Toplu Rapor + bugünün değişiklikleri (herkes görür)
+    //   belediye/pending · kasa · otherDebt — sadece sunucu (kadro panel çağrısıyla görür)
+    // ---------------------------------------------------------------------
+    match /belediye/{docId} {
+      allow read: if isSignedIn() && docId in ['main', 'rates', 'public'];
+      allow write: if false;
+    }
+    match /belediyeDays/{d} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    match /belediyeDonations/{d} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    match /belediyeStaff/{uid} {
+      allow read: if isSelf(uid);
+      allow write: if false;
+    }
+    function isBelediyeStaff() {
+      return isSignedIn() && exists(/databases/$(database)/documents/belediyeStaff/$(request.auth.uid));
+    }
+    // Koordinasyon sohbeti: Polis Teşkilatının en üst 3 rütbesi (canlı dünya üyeliği)
+    function isPoliceRanked() {
+      let w = get(/databases/$(database)/documents/gangSystem/config).data.get('liveWorldId', 'yok');
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/gangWorlds/$(w)/memberships/$(request.auth.uid))
+        && get(/databases/$(database)/documents/gangWorlds/$(w)/memberships/$(request.auth.uid)).data.get('intelRank', '') in ['baskan', 'sef', 'uzman'];
+    }
+    match /belediyeChat_genel/{id} {
+      allow read: if isBelediyeStaff();
+      allow write: if false;
+    }
+    match /belediyeChat_koord/{id} {
+      allow read: if isBelediyeStaff() || isPoliceRanked();
+      allow write: if false;
+    }
+
     // Tanımlanmamış her şey varsayılan olarak kapalı.
     match /{document=**} {
       allow read, write: if false;

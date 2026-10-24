@@ -722,3 +722,8 @@ export const streamAction = (payload) => httpsCallable(functions, 'streamAction'
 // paketini sunucuda doğrulatıp yükler (bkz. functions/playBilling.js).
 export const verifyPlayPurchase = (productId, purchaseToken) =>
   httpsCallable(functions, 'verifyPlayPurchase')({ productId, purchaseToken });
+
+// v127 — Belediye (functions/belediye.js): { op, ... }
+//   panel · claimMayor · invite · cancelInvite · respondInvite · fire · resign ·
+//   setPerms · setRate · fireImam · donate · payDebt · payOther · chat
+export const belediyeAction = (data) => httpsCallable(functions, 'belediyeAction')(data);

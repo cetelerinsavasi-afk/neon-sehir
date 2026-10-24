@@ -120,8 +120,9 @@ export function lotteryCutOk(c) {
   return Number.isInteger(n) && n >= LOTTERY_CUT_MIN && n <= LOTTERY_CUT_MAX;
 }
 // Gece: gazinonun toplam payı → { tax (devlete), rest (oyun: çöp · oyuncu: sahibine) }
-export function splitCasinoCut(cutTotal) {
+// v127: oran Ticaret Bakanlığı (Kumarhane) — rate verilmezse varsayılan
+export function splitCasinoCut(cutTotal, rate = CASINO_STATE_TAX_RATE) {
   const g = Math.max(0, Math.floor(Number(cutTotal) || 0));
-  const tax = Math.floor(g * CASINO_STATE_TAX_RATE);
+  const tax = Math.floor(g * Math.max(0, Number(rate) || 0));
   return { tax, rest: g - tax };
 }

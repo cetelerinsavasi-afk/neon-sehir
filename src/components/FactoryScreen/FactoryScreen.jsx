@@ -32,6 +32,8 @@ import NotificationBell from '../NotificationBell/NotificationBell';
 import { factoryDisplayName, computeFactoryValue, rankFactoriesForList } from './factoryHelpers';
 import './FactoryScreen.css';
 import { machineTax, withMachineTax } from '../../../functions/tax.js';
+import { useBelediyeRates } from '../../hooks/useBelediyeRates';
+import { fmtRate, MACHINE_RATE_KEY } from '../../../functions/belediyeRates.js';
 
 const FACTORY_CREATE_COST = 100000;
 const MACHINE_PRICES = { tamirMalzemesi: 50000, silahUpgrade: 50000, arabaGelistirme: 50000, yasakliMadde: 100000 };
@@ -53,12 +55,13 @@ const MACHINE_CATEGORY_TYPES = ['tamirMalzemesi', 'silahUpgrade', 'arabaGelistir
 // v124 — fabrika hisseleri artık satılmıyor (mevcut hisselerin ödemeleri sürer)
 const NO_LISTED_SHARES = Object.freeze({});
 
-// v126: makine fiyatı + %5 vergi (sunucudaki machineTax ile aynı — functions/tax.js)
-function MachineCost({ price }) {
+// v126: makine fiyatı + vergi (sunucudaki machineTax ile aynı — functions/tax.js)
+// v127: oran makine türüne göre, Sanayi Bakanlığı belirler (günün oranı)
+function MachineCost({ price, type, rates }) {
   const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
   return (
     <span className="factory-machine-tax">
-      {fmt(price)} + %5 vergi ({fmt(machineTax(price))})
+      {fmt(price)} + {fmtRate(rates[MACHINE_RATE_KEY[type]], '%')} vergi ({fmt(machineTax(price, type, rates))})
     </span>
   );
 }
@@ -86,17 +89,18 @@ function machineProductionRangeLabel(type) {
 // v77 — fabrika her makineden 1'er tane ile kurulur; bedel kripto fiyatıyla
 // saatlik değişir (sunucudaki factoryStarterCost ile aynı formül).
 const FACTORY_STARTER_MACHINES = ['mining', 'tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme'];
-function factoryStarterCost(cryptoPrice) {
-  // v126: her makine fiyatı + %5 vergi; kuruluş ücretine vergi yok
-  return FACTORY_CREATE_COST + FACTORY_STARTER_MACHINES.reduce((a, t) => a + withMachineTax(machinePrice(t, cryptoPrice || 0)), 0);
+function factoryStarterCost(cryptoPrice, rates) {
+  // v126: her makine fiyatı + vergi; kuruluş ücretine vergi yok · v127: oran türüne göre (belediye)
+  return FACTORY_CREATE_COST + FACTORY_STARTER_MACHINES.reduce((a, t) => a + withMachineTax(machinePrice(t, cryptoPrice || 0), t, rates), 0);
 }
 
 function CreateFactoryModal({ onClose, isEmployed }) {
   const { prices, loading } = useInvestmentPrices();
+  const rates = useBelediyeRates();
   const { player } = usePlayer();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const total = factoryStarterCost(prices.cryptoPrice);
+  const total = factoryStarterCost(prices.cryptoPrice, rates);
   const gold = Number(player?.gold || 0);
   const poor = gold < total;
   const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
@@ -144,9 +148,9 @@ function CreateFactoryModal({ onClose, isEmployed }) {
                 <span className="factory-machine-buy-desc">
                   {type === 'mining' ? `2 × kripto fiyatı · işçi gerekmez` : `İşçi gerekir · günde ${machineProductionRangeLabel(type)} adet`}
                 </span>
-                <MachineCost price={machinePrice(type, prices.cryptoPrice)} />
+                <MachineCost price={machinePrice(type, prices.cryptoPrice)} type={type} rates={rates} />
               </div>
-              <span className="factory-machine-buy-price">{fmt(withMachineTax(machinePrice(type, prices.cryptoPrice)))} altın</span>
+              <span className="factory-machine-buy-price">{fmt(withMachineTax(machinePrice(type, prices.cryptoPrice), type, rates))} altın</span>
             </div>
           ))}
         </div>
@@ -176,6 +180,7 @@ function CreateFactoryModal({ onClose, isEmployed }) {
 // ---------------------------------------------------------------------------
 function BuyMachineModal({ onClose, ownedMiningCount }) {
   const { prices } = useInvestmentPrices();
+  const rates = useBelediyeRates();
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
   // v58: pencere her alımdan sonra kapanmıyor — art arda istenen kadar alınabilir
@@ -219,7 +224,7 @@ function BuyMachineModal({ onClose, ownedMiningCount }) {
                       ? 'İşçi gerekmez · günde 0.01-0.1 kripto üretir'
                       : `İşçi gerekir · günde ${machineProductionRangeLabel(type)} adet üretir`}
                   </span>
-                  <MachineCost price={price} />
+                  <MachineCost price={price} type={type} rates={rates} />
                   {bought[type] > 0 && (
                     <span className="factory-machine-buy-desc factory-machine-bought">✅ {bought[type]} adet alındı</span>
                   )}
@@ -229,7 +234,7 @@ function BuyMachineModal({ onClose, ownedMiningCount }) {
                   disabled={busy !== null}
                   onClick={() => handleBuy(type)}
                 >
-                  {busy === type ? '…' : `${withMachineTax(price).toLocaleString('tr-TR')} altın`}
+                  {busy === type ? '…' : `${withMachineTax(price, type, rates).toLocaleString('tr-TR')} altın`}
                 </button>
               </div>
             );
@@ -866,7 +871,7 @@ function OwnerView({ factory, machines, player, myUid }) {
         <p className="factory-result">
           {produceResult.isSelfEmployed
             ? `Üretim yapıldı: ${produceResult.qty.toLocaleString('tr-TR')} adet ürün stoğuna eklendi.`
-            : `+${(produceResult.netSalary ?? produceResult.salary).toLocaleString('tr-TR')} altın maaş kazandın${produceResult.salaryTax ? ` (%10 vergi: ${produceResult.salaryTax.toLocaleString('tr-TR')})` : ''}`}
+            : `+${(produceResult.netSalary ?? produceResult.salary).toLocaleString('tr-TR')} altın maaş kazandın${produceResult.salaryTax ? ` (vergi: ${produceResult.salaryTax.toLocaleString('tr-TR')})` : ''}`}
         </p>
       )}
       {selfError && <p className="factory-error">{selfError}</p>}
@@ -929,7 +934,9 @@ function DailyReportModal({ factory, onClose }) {
   const electricityToday = factory.dailyElectricityExpense || 0;
   // v87 — vergi: günlük brüt kazanca göre kademeli (%1 / %10 / %20 / %40; net kâra dahil)
   const taxToday = factory.dailyTaxExpense || 0;
-  const taxRatePct = Math.round(factoryTaxRate(grossToday) * 100);
+  // v127: dilim oranı belediyenin — gösterilen oran gerçekten kesilen vergiden
+  const rates = useBelediyeRates();
+  const taxRatePct = grossToday > 0 && taxToday > 0 ? Math.round((taxToday / grossToday) * 100) : Math.round(factoryTaxRate(grossToday, rates) * 100);
   // Yeni kalemler — sadece "varsa" (0'dan büyükse) gösterilir: hisse satışı
   // geliri, hisse kâr payı gideri, sponsorluk gideri (bkz. functions/index.js
   // dailyReset — Part A + dividend bloğu + processFutbolSponsorshipsNightly).
@@ -1006,7 +1013,7 @@ function DailyReportModal({ factory, onClose }) {
             </span>
           </div>
           <div className="factory-report-stat">
-            <span className="factory-report-stat-label" title="Günlük brüt gelire göre: 100.000'e kadar %1 · 1 milyona kadar %10 · 10 milyona kadar %20 · üzeri %40">
+            <span className="factory-report-stat-label" title={`Günlük brüt gelire göre: 100.000'e kadar %${rates.f1} · 1 milyona kadar %${rates.f2} · 10 milyona kadar %${rates.f3} · üzeri %${rates.f4}`}>
               🏛️ Vergi (%{taxRatePct})
             </span>
             <span className="factory-report-stat-value expense">
@@ -1168,7 +1175,7 @@ function WorkerView({ player, myUid }) {
         )}
         {result && (
           <p className="factory-result">
-            +{(result.netSalary ?? result.salary).toLocaleString('tr-TR')} altın maaş kazandın{result.salaryTax ? ` (%10 vergi: ${result.salaryTax.toLocaleString('tr-TR')})` : ''}
+            +{(result.netSalary ?? result.salary).toLocaleString('tr-TR')} altın maaş kazandın{result.salaryTax ? ` (vergi: ${result.salaryTax.toLocaleString('tr-TR')})` : ''}
           </p>
         )}
         {error && <p className="factory-error">{error}</p>}

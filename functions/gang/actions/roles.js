@@ -103,7 +103,50 @@ export function createRoleActions(core, { intel }) {
       return { paid: amount, salary, bribe, toWallet: goldDelta };
     });
   }
+  // v127 — CANLI dünyada maaşları BELEDİYE öder (functions/belediye.js): burada
+  // sadece gecenin polis listesi (biten günün rütbesi + Belediye'nin o günkü
+  // polis maaşları) ve rüşvet payları belirlenir. Kasa yetmezse polis + imam +
+  // belediye kadrosu maaşlarının hiçbiri ödenmez (borç yazılır); rüşvet payı her
+  // durumda yatar. Test dünyası eski yolu kullanır (sabit maaşlar, kasa denetimi yok).
+  async function snapshotPolicePayroll(ctx, safe, belediye) {
+    const midnight = midnightMsOf(ctx.dateKey);
+    const roster = await ctx.ref.rosterCol().get();
+    const eligible = [];
+    for (const d of roster.docs) {
+      if (Number(d.data().joinedAtMs || 0) >= midnight) continue;
+      const actorId = (await intel.linkRef(ctx, d.id).get()).data()?.actorId;
+      if (!actorId) continue;
+      const mark = (await ctx.ref.roleSalaryMark(actorId, ctx.dateKey).get()).data();
+      if (mark && mark.role !== 'polis' && mark.role !== 'intel') continue;
+      eligible.push({ d, actorId });
+    }
+    eligible.sort((a, b) => (a.d.id < b.d.id ? -1 : a.d.id > b.d.id ? 1 : 0));
+    const payout = (await safe(ctx, 'bribe-payout', () => bribePayoutFor(ctx, eligible.map((e) => e.d.id)))) || { perShare: 0 };
+    const shareOf = (rid) => {
+      if (Array.isArray(payout.shareIds) && !payout.shareIds.includes(rid)) return 0;
+      return Number(payout.perShare || 0) + ((payout.extraIds || []).includes(rid) ? 1 : 0);
+    };
+    if (payout.perShare > 0) {
+      await safe(ctx, 'bribe-stats', async () => {
+        const ref = db.doc('gameStats/policeSalaryAvg');
+        const prev = (await ref.get()).data()?.last10Payouts || [];
+        const list = [...prev, payout.perShare].slice(-10);
+        await ref.set({ last10Payouts: list, avgDailyPayout: Math.round(list.reduce((a, b) => a + b, 0) / list.length) }, { merge: true });
+      });
+    }
+    const rates = belediye.ratesFor ? belediye.ratesFor(addDays(ctx.dateKey, -1)) : null;
+    const payees = eligible.map(({ d, actorId }) => {
+      const rank = d.data().rank || 'muhbir';
+      return { rid: d.id, uid: actorId, rank, salary: rates ? belediye.policeSalary(rates, rank) : Number(SALARIES[rank] || 0), bribe: shareOf(d.id) };
+    });
+    await belediye.setPolicePayroll(ctx.dateKey, { worldId: ctx.worldId, payees, bribe: { total: Number(payout.total || 0), policeCount: Number(payout.policeCount || 0) } });
+    await safe(ctx, 'belediye-payroll', () => belediye.tryRunPayroll(ctx.dateKey));
+    return { intel: payees.reduce((a, p) => a + p.salary, 0), bribe: payees.reduce((a, p) => a + p.bribe, 0), viaBelediye: true };
+  }
+
   async function paySalaries(ctx, safe) {
+    const belediye = core.deps.belediyeRef?.current;
+    if (!ctx.isTest && belediye) return snapshotPolicePayroll(ctx, safe, belediye);
     const out = { intel: 0, bribe: 0 };
     const midnight = midnightMsOf(ctx.dateKey);
     const roster = await ctx.ref.rosterCol().get();

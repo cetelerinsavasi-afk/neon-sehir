@@ -1,3 +1,4 @@
+import { useBelediyeRates } from '../../hooks/useBelediyeRates';
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
@@ -38,6 +39,7 @@ const BEGGAR_MAX_SINGLE_DONATION = 10000;
 const BEGGAR_DAILY_EARN_CAP = 10000; // bir dilenciye günde toplam bağış sınırı
 
 export function ImamPanel() {
+  const rates = useBelediyeRates(); // v127: imam maaşı Kültür ve Spor Bakanlığı'nın
   const { user } = useAuth();
   const { player } = usePlayer();
   const { imam } = useImamState();
@@ -153,7 +155,7 @@ export function ImamPanel() {
           </button>
           {nasihatError && <p className="beggar-error">{nasihatError}</p>}
 
-          <p className="mosque-hint">💼 Maaşın (10.000 altın) her gece 00:00'da devletten otomatik yatar — görevlerini (5 vakit + nasihat) yaptığın sürece.</p>
+          <p className="mosque-hint">💼 Maaşın ({(rates.imam || 0).toLocaleString('tr-TR')} altın) her gece 00:00'da belediye kasasından yatar — görevlerini (5 vakit + nasihat) yaptığın sürece.</p>
 
           {!resignAsk ? (
             <button className="beggar-btn imam-resign-btn" onClick={() => setResignAsk(true)}>

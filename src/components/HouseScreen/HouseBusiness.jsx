@@ -1,3 +1,4 @@
+import { useBelediyeRates } from '../../hooks/useBelediyeRates';
 import { useEffect, useState } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -166,10 +167,11 @@ function useBizDaily(houseId, type) {
 
 // v93 — mescitte fiyat yok: bağış kuralları
 function MescitInfoSection() {
+  const rates = useBelediyeRates(); // v127
   return (
     <div className="bz-sec">
       <p className="bz-sec-title">🤲 Bağış kutusu</p>
-      <p className="bz-hint">Kişi başı günde en fazla {fmt(MESCIT_DAILY_LIMIT)} altın · %10 vergi</p>
+      <p className="bz-hint">Kişi başı günde en fazla {fmt(MESCIT_DAILY_LIMIT)} altın · %{rates.isMescit} vergi</p>
     </div>
   );
 }
@@ -234,7 +236,7 @@ function ReportCard({ label, d, type }) {
         </b>
       </div>
       <p className="bz-hint">
-        Vergi: hizmet ve satışlarda %10, vitrinden satılan silah/arabada %1.
+        Vergi oranlarını belediye belirler.
         {(type === 'cafe' || type === 'bar') && ' Garson maaşı: garsonun zamanında getirdiği her siparişin %10’u.'}
       </p>
       <div className="bz-row">
@@ -446,7 +448,7 @@ export function BizRemovePanel({ type, status, busy, onConfirm, onCancel }) {
                 )}
                 {extra.casinoGold > 0 && (
                   <div className="bz-row">
-                    <span>🪙 Makinelerdeki altın (%10 vergi düşülmüş)</span>
+                    <span>🪙 Makinelerdeki altın (vergi düşülmüş)</span>
                     <b>
                       {fmt(extra.casinoGold)} altın · vergi {fmt(extra.casinoTax)}
                     </b>

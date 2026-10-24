@@ -23,11 +23,13 @@ export function crimeLockedBySuspicion(suspicion) {
 // (kurtarılan × 4) / polis sayısı prestij kazanır (Polis Teşkilatı prestiji).
 //   ör. 2 polis 500.000 kurtardı → kişi başı 62.500 altın + 1.000.000 prestij,
 //   devlete 375.000.
-export function policeBustSplit(recovered, policeCount) {
+// v127: pay oranını Güvenlik Bakanlığı belirler (functions/belediyeRates.js soygunPay) — ratio
+export function policeBustSplit(recovered, policeCount, ratio = POLICE.BUST_EARN_RATIO) {
   const total = Math.max(0, Math.floor(Number(recovered) || 0));
   const n = Math.max(0, Math.floor(Number(policeCount) || 0));
   if (!total || !n) return { perEarning: 0, prestigeEach: 0, stateShare: total };
-  const perEarning = Math.floor((total * POLICE.BUST_EARN_RATIO) / n);
+  const r = Math.min(1, Math.max(0, Number(ratio) || 0));
+  const perEarning = Math.floor((total * r) / n);
   const prestigeEach = Math.floor((total * POLICE.BUST_PRESTIGE_PER_GOLD) / n);
   return { perEarning, prestigeEach, stateShare: total - perEarning * n };
 }

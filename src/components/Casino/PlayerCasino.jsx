@@ -14,6 +14,8 @@ import OnNumaraTable from '../OnNumaraScreen/OnNumaraTable';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import PriceField from '../Shop/PriceField';
 import ConfirmButton from '../ConfirmButton/ConfirmButton';
+import { useBelediyeRates } from '../../hooks/useBelediyeRates';
+import { bizRateFrac } from '../../../functions/belediyeRates.js';
 import { CASINO_MACHINES, CASINO_MACHINE_LABEL, CASINO_TEXT, CASINO_TABLE_MAX_BET, casinoPricesOf, casinoWithdrawSplit, slotReady } from '../../../functions/casino.js';
 import { SLOT_PRICE_MIN, SLOT_PRICE_MAX, SLOT_PRICE_STEP, SLOT_MIN_STOCK, SLOT_GAME_COST, GAME_LOTTERY_CUT, LOTTERY_CUT_MIN, LOTTERY_CUT_MAX, lotteryTicketPrice } from '../../../functions/casinoRules.js';
 import '../../styles/bizui.css';
@@ -250,6 +252,7 @@ export function CasinoInvSection({ houseId }) {
   const { player } = usePlayer();
   const { inventory } = useInventory();
   const mcs = useCasinoMachines(houseId);
+  const rates = useBelediyeRates(); // v127: Kumarhane vergisi (Ticaret Bakanlığı) — sunucu expectTax ile denetler
   const [m, setM] = useState('slot');
   const [asset, setAsset] = useState('gold');
   const [qty, setQty] = useState(0);
@@ -266,7 +269,7 @@ export function CasinoInvSection({ houseId }) {
   const inMachine = Math.max(0, Number(mc?.[asset] || 0));
   const mine = asset === 'gold' ? Math.max(0, Number(player?.gold || 0)) : Math.max(0, Number(inventory?.yasakliMadde || 0));
   const unitTxt = asset === 'gold' ? 'altın' : 'adet';
-  const sp = casinoWithdrawSplit(qty);
+  const sp = casinoWithdrawSplit(qty, bizRateFrac(rates, 'gazino'));
   const run = async (sign) => {
     if (!qty) return;
     setBusy(true);
@@ -350,7 +353,7 @@ export function CasinoInvSection({ houseId }) {
           className="bz-btn ghost"
           disabled={busy || !qty || qty > inMachine}
           title={asset === 'gold' ? `${fmt(qty)} altın çekilsin mi?` : `${fmt(qty)} yasaklı madde çekilsin mi?`}
-          lines={asset === 'gold' ? [`🏛️ Vergi (%10): ${fmt(sp.tax)} altın`, `Cebine geçecek: ${fmt(sp.net)} altın`] : []}
+          lines={asset === 'gold' ? [`🏛️ Vergi (%${rates.isKumar}): ${fmt(sp.tax)} altın`, `Cebine geçecek: ${fmt(sp.net)} altın`] : []}
           confirmLabel="Çek"
           onConfirm={() => run(-1)}
         >

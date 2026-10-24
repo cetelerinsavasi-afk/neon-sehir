@@ -1,5 +1,5 @@
-import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https';
-import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { onCall as onCallRaw, onRequest as onRequestRaw, HttpsError } from 'firebase-functions/v2/https';
+import { onSchedule as onScheduleRaw } from 'firebase-functions/v2/scheduler';
 import { onDocumentCreated, onDocumentDeleted, onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { setGlobalOptions } from 'firebase-functions/v2';
 import { defineSecret } from 'firebase-functions/params';
@@ -15,7 +15,9 @@ import { createSocial } from './social.js';
 import { createDeletionRequests } from './deletionRequests.js';
 import { createHouses } from './houses.js';
 import { createBusiness } from './business.js';
-import { resaleTax, factoryTax, factoryTaxRate, taxLedgerWrite, splitSalaryTax, splitLotteryTax, machineTax } from './tax.js';
+import { resaleTax, factoryTax, factoryTaxRate, taxLedgerWrite, taxStatWrite, splitSalaryTax, splitLotteryTax, machineTax, loadRates, ratesFor, pctText, lotteryTaxRate } from './tax.js';
+import { createBelediye } from './belediye.js'; // v127
+import { rateFrac } from './belediyeRates.js'; // v127
 import { SLOT_GAME_COST, GAME_SLOT_STATE_CUT, rollSlotReels, slotOutcome, normalizeRouletteBets, roulettePayout, ROULETTE_ORDER, LOTTERY_TICKET, GAME_LOTTERY_CUT, GAME_CASINO_ID } from './casinoRules.js';
 import { vaultWrite, settleGameCasinoVaults } from './gameCasinoVault.js'; // v126
 import { createVisits } from './visits.js';
@@ -67,6 +69,21 @@ import { policeBustSplit, heistStateEntries, crimeLockedBySuspicion, CRIME_LOCK_
 
 admin.initializeApp();
 const db = admin.firestore();
+
+// v127 — BELEDİYE ORANLARI: her çağrı / zamanlanmış iş başında günün vergi ve
+// maaş oranları önbelleğe alınır (functions/tax.js loadRates — örnek başına günde
+// ~2 okuma). Böylece tüm vergi hesapları belediyenin o günkü oranlarını kullanır.
+const withRates = (fn) => async (...args) => {
+  await loadRates(db);
+  return fn(...args);
+};
+const wrapTrigger = (raw) => (a, b) => (typeof a === 'function' ? raw(withRates(a)) : raw(a, withRates(b)));
+const onCall = wrapTrigger(onCallRaw);
+const onRequest = wrapTrigger(onRequestRaw);
+const onSchedule = wrapTrigger(onScheduleRaw);
+// v127 — çete sistemine (polis maaşı, operasyon ücreti, çete bağışı) belediye bağlantısı;
+// belediye nesnesi dosyanın sonunda (çete fonksiyonlarından sonra) kurulur.
+const belediyeRef = { current: null };
 
 // DİKKAT: Bu bölge, istemcideki VITE_FIREBASE_FUNCTIONS_REGION ile
 // (src/firebase.js) birebir aynı olmalı, yoksa çağrılar 404 döner.
@@ -1137,12 +1154,17 @@ const FACTORY_STARTER_MACHINES = ['mining', 'tamirMalzemesi', 'silahUpgrade', 'a
 function factoryStarterParts(cryptoPrice) {
   let machines = 0;
   let tax = 0;
+  const stat = {};
   for (const t of FACTORY_STARTER_MACHINES) {
     const p = t === 'mining' ? Math.ceil(2 * (cryptoPrice || 0)) : MACHINE_TYPES[t].price;
     machines += p;
-    tax += machineTax(p);
+    const mt = machineTax(p, t); // v127: makine türüne göre (Sanayi Bakanlığı)
+    tax += mt;
+    stat[`mk_${t}_n`] = (stat[`mk_${t}_n`] || 0) + 1;
+    stat[`mk_${t}_ciro`] = (stat[`mk_${t}_ciro`] || 0) + p;
+    stat[`mk_${t}_vergi`] = (stat[`mk_${t}_vergi`] || 0) + mt;
   }
-  return { base: FACTORY_CREATE_COST + machines, tax, total: FACTORY_CREATE_COST + machines + tax };
+  return { base: FACTORY_CREATE_COST + machines, tax, total: FACTORY_CREATE_COST + machines + tax, stat };
 }
 function factoryStarterCost(cryptoPrice) {
   return factoryStarterParts(cryptoPrice).total;
@@ -1210,7 +1232,7 @@ export const createFactory = onCall(async (request) => {
       }
     }
     // v126: makinelerin %5 vergisi devlete (belediye kasası)
-    taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: parts.tax, source: 'makine', uid, atMs: Date.now(), ref: 'fabrika_kurulus' });
+    taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: parts.tax, source: 'makine', uid, atMs: Date.now(), ref: 'fabrika_kurulus', stat: parts.stat });
     tx.set(factoryRef, {
       ownerId: uid,
       ownerName: user.displayName || 'Oyuncu',
@@ -1334,14 +1356,14 @@ export const buyFactoryMachine = onCall(async (request) => {
     } else {
       price = MACHINE_TYPES[machineType].price;
     }
-    // v126: makine fiyatı + %5 vergi (vergi devlete)
-    const tax = machineTax(price);
+    // v126: makine fiyatı + vergi (vergi devlete) · v127: oran makine türüne göre (Sanayi Bakanlığı)
+    const tax = machineTax(price, machineType);
     const user = userSnap.data();
     if (!user || (user.gold || 0) < price + tax) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
     tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-(price + tax)), goldTag: goldTag('fabrika') });
-    taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: tax, source: 'makine', uid, atMs: Date.now(), ref: machineType });
+    taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: tax, source: 'makine', uid, atMs: Date.now(), ref: machineType, stat: { [`mk_${machineType}_n`]: 1, [`mk_${machineType}_ciro`]: price, [`mk_${machineType}_vergi`]: tax } });
     tx.set(machineRef, {
       type: machineType,
       workerId: null,
@@ -1352,7 +1374,7 @@ export const buyFactoryMachine = onCall(async (request) => {
     });
   });
 
-  return { ok: true, machineId: machineRef.id, price, tax: machineTax(price), total: price + machineTax(price) };
+  return { ok: true, machineId: machineRef.id, price, tax: machineTax(price, machineType), total: price + machineTax(price, machineType) };
 });
 
 // setFactorySalary — sadece fabrika sahibi, 1000-5000 altın arası.
@@ -1939,12 +1961,12 @@ export const produceAtFactory = onCall(async (request) => {
       // makine dokümanına ayrıca bakmadan cevaplayabilmesi için.
       // v123: maaştan %10 vergi — patron tam maaşı öder, işçiye %90'ı yatar,
       // %10 devlet kasasına (vergi_maas).
-      workerTax = splitSalaryTax(salary);
+      workerTax = splitSalaryTax(salary, 'isci'); // v127: oran Sanayi Bakanlığı
       tx.update(userRef, {
         gold: admin.firestore.FieldValue.increment(workerTax.net), goldTag: goldTag('fabrika'),
         employmentProducedDateKey: dateKey,
       });
-      taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: workerTax.tax, source: 'maas', uid, atMs: Date.now(), ref: 'fabrika' });
+      taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: workerTax.tax, source: 'maas', uid, atMs: Date.now(), ref: 'fabrika', stat: { isci_n: 1, isci_brut: salary } });
       // Patron: elinden çıkabildiği kadarı düşülür, yetmeyen kısım CEZA/borç olur.
       tx.update(ownerRef, {
         gold: admin.firestore.FieldValue.increment(-ownerPay), goldTag: goldTag('fabrika'),
@@ -2405,7 +2427,9 @@ async function resolveStuckLotteryAndChampionship(dateKey) {
           // v123 — piyango kazancından %10 vergi: kazanana %90'ı yatar, %10
           // belediye (devlet) kasasına gelir yazılır (vergi_piyango). Kazanç,
           // çekiliş işaretlemesi, vergi kaydı ve SMS tek batch'te (yarım kalmaz).
-          const lotTax = splitLotteryTax(lottery.jackpot);
+          // v127: oran Ticaret Bakanlığı — biletlerin satıldığı günün (piyango günü) oranı
+          const lotRates = ratesFor(prevLotterySnap.id);
+          const lotTax = splitLotteryTax(lottery.jackpot, lotRates);
           const { goldDelta, debtDelta } = splitIncomeForDebt(
             winnerSnap.data()?.debtToState,
             lotTax.net
@@ -2424,13 +2448,13 @@ async function resolveStuckLotteryAndChampionship(dateKey) {
             winnerNet: lotTax.net,
             drawnAt: admin.firestore.FieldValue.serverTimestamp(),
           });
-          taxLedgerWrite(lotBatch, db, admin.firestore.FieldValue, { amount: lotTax.tax, source: 'piyango', uid: winnerUid, atMs: Date.now(), ref: `piyango_${prevLotterySnap.id}` });
+          taxLedgerWrite(lotBatch, db, admin.firestore.FieldValue, { amount: lotTax.tax, source: 'piyango', uid: winnerUid, atMs: Date.now(), ref: `piyango_${prevLotterySnap.id}`, stat: { pi_bilet: Number(lottery.totalTickets || 0), pi_odul: Number(lottery.jackpot || 0), pi_n: 1 } });
           // v126 — oyunun gazinosunun bilet payının (biletten 10) TAMAMI devletin kârı
           // (vergi değil; eskiden %10 devlete, kalanı çöpe). Çekiliş gecesi (yeni gün)
           // devlet kasasına yazılır. Aynı batch'te drawnAt yazıldığı için tek sefer çalışır.
           stateWrite(lotBatch, db, admin.firestore.FieldValue, { kind: 'in', cat: 'gazino_piyango', amount: Number(lottery.casinoCut || 0), atMs: Date.now(), dayKey: dateKey });
           lotBatch.set(winnerRef.collection('messages').doc(), {
-            text: `Tebrikler! Piyangodan ${fmtTr(lottery.jackpot)} altın kazandın. %10 piyango vergisi (${fmtTr(lotTax.tax)} altın) belediyeye ödendi, hesabına ${fmtTr(lotTax.net)} altın yattı.`,
+            text: `Tebrikler! Piyangodan ${fmtTr(lottery.jackpot)} altın kazandın. ${pctText(lotteryTaxRate(lotRates))} piyango vergisi (${fmtTr(lotTax.tax)} altın) belediyeye ödendi, hesabına ${fmtTr(lotTax.net)} altın yattı.`,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             read: false,
             type: 'lottery_win',
@@ -2654,6 +2678,17 @@ export const dailyResetRecovery = onSchedule({ schedule: '15,45 0-3 * * *', ...D
 
 async function runDailyResetBody(dateKey, dr) {
   {
+    // v127 — BELEDİYE: gün içinde yapılan vergi/maaş ayarları bugünden itibaren
+    // yürürlükte (rapora + Sixtagram duyurusuna işlenir). Vergi hesapları zaten
+    // günün setini kullanır (belediyeRates.resolveRates) — bu adım kayıt/duyuru.
+    if (!dr.done('belediyeRoll')) {
+      try {
+        await belediye.nightly(dateKey, { step: 'roll' });
+        await dr.mark('belediyeRoll');
+      } catch (err) {
+        console.error('dailyReset belediye oran devri', err);
+      }
+    }
 
     // FABRİKA HİSSE SİSTEMİ İÇİN GECE BOYU PAYLAŞILAN DEĞİŞKENLER — mining
     // üretim bloğu bunları doldurur, "FABRİKA GÜNLÜK GELİR HESABI" bloğu
@@ -3131,11 +3166,37 @@ async function runDailyResetBody(dateKey, dr) {
       // (%1 / %10 / %20 / %40 — functions/tax.js FACTORY_TAX_BRACKETS).
       // Elektrik faturasıyla birlikte sahibin altınından düşülür; yetmezse
       // kalanı devlete borç (ceza) yazılır.
+      // v127: oranlar Sanayi Bakanlığı'nın — üretimin yapıldığı (BİTEN) günün oranlarıyla
+      const prodRates = ratesFor(prevDateKey);
       const factoryTaxByFactory = new Map();
       incomeByFactory.forEach((v, id) => {
-        const t = factoryTax(Math.round(v || 0));
+        const t = factoryTax(Math.round(v || 0), prodRates);
         if (t > 0) factoryTaxByFactory.set(id, t);
       });
+      // v127 — Belediye › Sanayi analizi: en çok vergi ödeyen 4 fabrika + diğerleri
+      // (bu gece tahsil edilen vergi bugünün defterine yazılır → analiz de bugüne)
+      try {
+        const rows = Array.from(incomeByFactory.entries())
+          .map(([id, v]) => ({ id, gross: Math.round(v || 0), tax: factoryTaxByFactory.get(id) || 0 }))
+          .filter((r) => r.gross > 0);
+        rows.sort((a, b) => b.tax - a.tax || b.gross - a.gross);
+        const top = rows.slice(0, 4);
+        const rest = rows.slice(4);
+        const names = await Promise.all(top.map((r) => db.collection('factories').doc(r.id).get().then((d) => (d.exists ? factoryDisplayName(d.data()) : 'Fabrika')).catch(() => 'Fabrika')));
+        await db.collection('belediyeAnalysis').doc(dateKey).set(
+          {
+            factories: {
+              prodDay: prevDateKey,
+              count: rows.length,
+              top: top.map((r, i) => ({ name: names[i], gross: r.gross, ratePct: Math.round(factoryTaxRate(r.gross, prodRates) * 100), tax: r.tax })),
+              others: { count: rest.length, gross: rest.reduce((a, r) => a + r.gross, 0), tax: rest.reduce((a, r) => a + r.tax, 0) },
+            },
+          },
+          { merge: true }
+        );
+      } catch (err) {
+        console.error('belediye fabrika analizi', err?.message || err);
+      }
       const electricityOwnerIds = Array.from(new Set([...electricityBillByFactory.keys(), ...factoryTaxByFactory.keys()]));
       const electricityOwnerSnaps = await Promise.all(
         electricityOwnerIds.map((id) => db.collection('users').doc(id).get())
@@ -3305,7 +3366,7 @@ async function runDailyResetBody(dateKey, dr) {
             ownerId: f.id,
             bill: electricityBill,
             tax: taxAmount,
-            taxRate: factoryTaxRate(Math.round(incomeByFactory.get(f.id) || 0)),
+            taxRate: factoryTaxRate(Math.round(incomeByFactory.get(f.id) || 0), prodRates),
             shortfall,
             newTotalDebt: (electricityOwnerDebt.get(f.id) || 0) + shortfall,
           });
@@ -3842,47 +3903,17 @@ async function runDailyResetBody(dateKey, dr) {
       }
     }
 
-    // 1c) v108 — İMAM MAAŞI: görevini yapıp imamlıkta kalan imama her gece
-    // 00:00'da DEVLET kasasından otomatik + SMS (eskiden Camii'den elle alınırdı).
-    // Dün (gün içinde) imam olan da bu gece maaşını alır. İdempotent:
-    // imamState/meta.salaryPaidDay. v108.1: 00:00'da imam olan alır (00:00'dan
-    // SONRA imam olan bu gece almaz) ve oyuncu başına gecede TEK maaş
-    // (roleSalaryMarks — polis/istihbarat maaşıyla ortak işaret).
-    if (!dr.done('imamSalary')) {
+    // 1c) v108 — İMAM MAAŞI · v127: GECE MAAŞLARI artık BELEDİYE kasasından —
+    // polis + imam + belediye kadrosu birlikte (functions/belediye.js tryRunPayroll).
+    // Kasa yetmezse hiçbiri ödenmez, o günün maaşları borç yazılır. İmam kontrolü
+    // (yukarıda) bittikten SONRA kadro + imam listesi alınır; polis listesi çete
+    // saatinden gelir (hangisi sonra biterse ödemeyi o başlatır).
+    if (!dr.done('belediyePayroll')) {
       try {
-        const midnightMs = Date.parse(`${dateKey}T00:00:00+03:00`);
-        await db.runTransaction(async (tx) => {
-          const curRef = db.collection('imamState').doc('current');
-          const metaRef = db.collection('imamState').doc('meta');
-          const [cur, meta] = await Promise.all([tx.get(curRef), tx.get(metaRef)]);
-          const im = cur.data();
-          if (!im?.uid || meta.data()?.salaryPaidDay === dateKey) return;
-          const becameMs = im.becameImamAt?.toMillis?.() ?? 0;
-          if (becameMs >= midnightMs) return; // 00:00'dan sonra imam oldu
-          const uRef = db.collection('users').doc(im.uid);
-          const markRef = db.collection('roleSalaryMarks').doc(`${dateKey}_${im.uid}`);
-          const [uSnap, markSnap] = await Promise.all([tx.get(uRef), tx.get(markRef)]);
-          const u = uSnap.data();
-          if (!u || markSnap.exists) return;
-          tx.set(markRef, { role: 'imam', amount: IMAM_SALARY, atMs: Date.now() });
-          const { goldDelta, debtDelta } = splitIncomeForDebt(u.debtToState, IMAM_SALARY);
-          tx.update(uRef, {
-            gold: admin.firestore.FieldValue.increment(goldDelta),
-            goldTag: goldTag('imam'),
-            debtToState: admin.firestore.FieldValue.increment(debtDelta),
-          });
-          stateWrite(tx, db, admin.firestore.FieldValue, { kind: 'out', cat: 'maas_imam', amount: IMAM_SALARY, dayKey: dateKey });
-          tx.set(metaRef, { salaryPaidDay: dateKey }, { merge: true });
-          tx.set(uRef.collection('messages').doc(), {
-            text: `💼 İmam maaşın yattı: ${IMAM_SALARY.toLocaleString('tr-TR')} altın.${debtDelta < 0 ? ` (${(-debtDelta).toLocaleString('tr-TR')} altını devlete olan borcuna gitti)` : ''}`,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            read: false,
-            type: 'imam_salary',
-          });
-        });
-        await dr.mark('imamSalary');
+        await belediye.nightly(dateKey, { step: 'payrollSnapshot' });
+        await dr.mark('belediyePayroll');
       } catch (err) {
-        console.error('dailyReset imam maaşı', err);
+        console.error('dailyReset belediye maaşları', err);
       }
     }
 
@@ -3891,6 +3922,20 @@ async function runDailyResetBody(dateKey, dr) {
       await closeStateDays(db, admin.firestore.FieldValue, { todayKey: dateKey });
     } catch (err) {
       console.error('dailyReset devlet kasası kapanışı', err);
+    }
+    // 1e) v127 — BELEDİYE: biten günün Toplu Raporu + bakanlık analizleri (oyunculara
+    // tek belge — belediye/public), soygun borcuna %1 faiz, düşen davetler
+    if (!dr.done('belediyeReport')) {
+      try {
+        const extra = await belediyeReportExtra(dateKey).catch((err) => {
+          console.error('belediye rapor ekleri', err?.message || err);
+          return {};
+        });
+        await belediye.nightly(dateKey, { step: 'report', extra });
+        await dr.mark('belediyeReport');
+      } catch (err) {
+        console.error('dailyReset belediye raporu', err);
+      }
     }
 
     // 2) Banka mevduat faizi — günlük %1 (Bölüm 13)
@@ -5573,6 +5618,8 @@ export const applyForImam = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Polisler imam olamaz. Önce polislikten istifa etmelisin.');
     }
     if (ms.intelAppId) throw new HttpsError('failed-precondition', 'Bekleyen bir polislik başvurun var — yanıtlanana ya da sen geri çekene kadar imam olamazsın.');
+    // v127 — belediye görevlisi imam olamaz (başka devlet görevi)
+    if (user.belediyeSeat) throw new HttpsError('failed-precondition', 'Belediye görevlileri imam olamaz. Önce belediyedeki görevinden istifa etmelisin.');
     // v116 — çeteden ayrılan / atılan 24 saat imam olamaz
     const gangExitBlock = gangExitBlockText(ms, Date.now());
     if (gangExitBlock) throw new HttpsError('failed-precondition', gangExitBlock);
@@ -5601,7 +5648,7 @@ export const applyForImam = onCall(async (request) => {
     // mevcut mesleğinde/işinde kalır.
     tx.update(userRef, { isImam: true });
     tx.set(userRef.collection('messages').doc(), {
-      text: `🕌 Artık Neon Camii'nin imamısın! Görevlerin: her gün 5 vakit ibadet + en az 1 nasihat. Maaşın (${IMAM_SALARY.toLocaleString('tr-TR')} altın) her gece 00:00'da otomatik yatar.`,
+      text: `🕌 Artık Neon Camii'nin imamısın! Görevlerin: her gün 5 vakit ibadet + en az 1 nasihat. Maaşın (${Math.round(ratesFor().imam || IMAM_SALARY).toLocaleString('tr-TR')} altın) her gece 00:00'da belediye kasasından yatar.`,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       read: false,
       type: 'imam_started',
@@ -6118,13 +6165,16 @@ export const attemptHeist = onCall(async (request) => {
     tx.set(dailyRef, { heist: { [target]: true } }, { merge: true });
     // v108 — DEVLET KASASI: başarılı soygunun parasını devlet öder (mekânı
     // koruyamadığı için); yakalanınca ceza devlete gelir yazılır.
-    for (const e of heistStateEntries(caught ? { fines: penalty } : { paidToCriminals: reward })) {
-      stateWrite(tx, db, admin.firestore.FieldValue, { ...e, dayKey: dateKey });
-    }
+    // v127: ödeme işlemden SONRA belediye kasasından (yetmezse borç) — aşağıda.
+    if (caught) for (const e of heistStateEntries({ fines: penalty })) stateWrite(tx, db, admin.firestore.FieldValue, { ...e, dayKey: dateKey });
 
     result = { started: true, success: !caught, caught, reward, penalty, policeDoubled: penaltyMultiplier > 1, newTotalDebt };
   });
 
+  // v127: başarılı soygunun parası belediye kasasından; kasa yetmezse TAMAMI borç (%1 faiz)
+  if (result.success && result.reward > 0) {
+    await belediye.spendOrDebt({ cat: 'soygun_odeme', amount: result.reward, note: `Soygun · ${target}`, dayKey: dateKey }).catch((err) => console.error('belediye soygun ödemesi', err?.message || err));
+  }
   if (result.caught) {
     await sendCaptureSms(uid, result.penalty, result.newTotalDebt, { policeDoubled: result.policeDoubled });
     await logNewsEvent('arrest', { count: 1, totalFine: result.penalty });
@@ -7194,6 +7244,7 @@ export const executeHeistPlan = onCall(async (request) => {
   const policeEarningSmsList = []; // { uid, amount }
   const successSmsList = []; // { uid, amount }
   const stateEntries = []; // v108 — devlet kasası defteri (aynı batch'te yazılır)
+  let heistPayout = 0; // v127 — başarılı ekip soygununda belediyenin ödeyeceği toplam
 
   // ADIM 1 — ÖNCE, polis hiç yokmuş GİBİ, her katılımcının KENDİ
   // şüphesine göre bağımsız bir yakalanma riski test edilir (yakalanma
@@ -7269,7 +7320,7 @@ export const executeHeistPlan = onCall(async (request) => {
     // devlet defterine GİDER yazılır, net devlete %75 kalır); her polis (kurtarılan × 4) / polis sayısı prestij kazanır (Polis
     // Teşkilatı). Soyguncuların cezaları da ANINDA devlete gelir yazılır —
     // suçlunun borcunu ödemesi beklenmez (polisin payı da anında yatar).
-    const bust = policeBustSplit(totalReward, policeIdx.length);
+    const bust = policeBustSplit(totalReward, policeIdx.length, rateFrac(ratesFor(), 'soygunPay')); // v127: oran Güvenlik Bakanlığı
     const perPoliceEarning = bust.perEarning;
     const perCivilianPenalty =
       civilianIdx.length > 0 ? Math.floor(totalReward / civilianIdx.length) : 0;
@@ -7327,8 +7378,8 @@ export const executeHeistPlan = onCall(async (request) => {
       });
       successSmsList.push({ uid: p.uid, amount: perPersonAmount });
     });
-    // v108: başarılı soygunun parasını devlet öder
-    stateEntries.push(...heistStateEntries({ paidToCriminals: perPersonAmount * participants.length }));
+    // v108: başarılı soygunun parasını devlet öder — v127: commit'ten sonra belediye kasasından (yetmezse borç)
+    heistPayout = perPersonAmount * participants.length;
   }
   for (const e of stateEntries) stateWrite(batch, db, admin.firestore.FieldValue, { ...e, dayKey: dateKey });
 
@@ -7343,6 +7394,10 @@ export const executeHeistPlan = onCall(async (request) => {
     result: { busted, caughtBySuspicion, totalReward, policeOnly },
   });
   await batch.commit();
+  // v127: başarılı soygunun parası belediye kasasından; kasa yetmezse TAMAMI borç (%1 faiz)
+  if (heistPayout > 0) {
+    await belediye.spendOrDebt({ cat: 'soygun_odeme', amount: heistPayout, note: `Ekip soygunu · ${plan.target}`, dayKey: dateKey }).catch((err) => console.error('belediye ekip soygunu ödemesi', err?.message || err));
+  }
 
   // v67 — Başarılar: banka soygunu başarılı / polis banka soyguncularını yakaladı
   if (plan.target === 'banka') {
@@ -8054,8 +8109,9 @@ async function settleItemListing(listingRef, nowMs = Date.now()) {
     const label = (isVehicle ? l.vehicleModel : l.weaponName) || (isVehicle ? 'aracın' : 'silahın');
     if (auto) {
       const payout = Math.max(0, Math.floor(Number(l.price) || 0));
-      const tax = resaleTax(payout);
-      taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: tax, source: 'ikinciEl', uid: l.sellerId, atMs: nowMs, ref: listingRef.id });
+      const tax = resaleTax(payout, l.itemType); // v127: araç / silah oranı Ticaret Bakanlığı
+      const ik = isVehicle ? 'araba' : 'silah';
+      taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: tax, source: 'ikinciEl', uid: l.sellerId, atMs: nowMs, ref: listingRef.id, stat: { [`ie_${ik}_n`]: 1, [`ie_${ik}_ciro`]: payout } });
       const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, payout - tax);
       tx.set(
         sellerRef,
@@ -10142,9 +10198,9 @@ export const instantSellListing = onCall(async (request) => {
       }
       const minPrice = itemListingBand('vehicle', v).instant;
       payout = minPrice;
-      // v77 vergi: 2. el satışı %1
-      taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: resaleTax(minPrice), source: 'ikinciEl', uid, atMs: Date.now() });
-      const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, minPrice - resaleTax(minPrice));
+      // v77 vergi: 2. el satışı · v127: oran Ticaret Bakanlığı (araba)
+      taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: resaleTax(minPrice, 'vehicle'), source: 'ikinciEl', uid, atMs: Date.now(), stat: { ie_araba_n: 1, ie_araba_ciro: minPrice } });
+      const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, minPrice - resaleTax(minPrice, 'vehicle'));
       tx.update(sellerRef, {
         gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('ikinciEl'),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
@@ -10200,9 +10256,9 @@ export const instantSellListing = onCall(async (request) => {
       }
       const minPrice = itemListingBand('weapon', w).instant;
       payout = minPrice;
-      // v77 vergi: 2. el satışı %1
-      taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: resaleTax(minPrice), source: 'ikinciEl', uid, atMs: Date.now() });
-      const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, minPrice - resaleTax(minPrice));
+      // v77 vergi: 2. el satışı · v127: oran Ticaret Bakanlığı (silah)
+      taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: resaleTax(minPrice, 'weapon'), source: 'ikinciEl', uid, atMs: Date.now(), stat: { ie_silah_n: 1, ie_silah_ciro: minPrice } });
+      const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, minPrice - resaleTax(minPrice, 'weapon'));
       tx.update(sellerRef, {
         gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('ikinciEl'),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
@@ -10257,9 +10313,9 @@ export const instantSellListing = onCall(async (request) => {
           'Bu makinede biri çalışıyor, önce işçiyi çıkarmalısın.'
         );
       }
-      // v77 vergi: 2. el satışı %1
-      taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: resaleTax(minPrice), source: 'ikinciEl', uid, atMs: Date.now() });
-      const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, minPrice - resaleTax(minPrice));
+      // v77 vergi: 2. el satışı · v127: oran Ticaret Bakanlığı (malzeme / makine)
+      taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: resaleTax(minPrice, 'machine'), source: 'ikinciEl', uid, atMs: Date.now(), stat: { ie_malzeme_n: 1, ie_malzeme_ciro: minPrice } });
+      const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, minPrice - resaleTax(minPrice, 'machine'));
       tx.update(sellerRef, {
         gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('ikinciEl'),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
@@ -10288,7 +10344,7 @@ export const instantSellListing = onCall(async (request) => {
 
   // v124: görev 15 (2. el alışveriş) kaldırıldı.
 
-  return { ok: true, listingId: listingRef.id, payout, tax: resaleTax(payout), net: payout - resaleTax(payout) };
+  return { ok: true, listingId: listingRef.id, payout, tax: resaleTax(payout, itemType), net: payout - resaleTax(payout, itemType) };
 });
 
 export const cancelListing = onCall(async (request) => {
@@ -10524,7 +10580,7 @@ export const buyListing = onCall(async (request) => {
     // kimseye gitmez, oyun ekonomisinden çıkar.
     // v77 vergi: 2. el ve dükkân vitrini satışları %1 (functions/tax.js)
     // v124: malzeme satışında vergi yok (fabrika ⇄ işletme); araç / silah %1
-    const saleTax = isSystemListing || isMaterial ? 0 : resaleTax(cost);
+    const saleTax = isSystemListing || isMaterial ? 0 : resaleTax(cost, listing.itemType); // v127: araç / silah / makine oranı
     if (!isSystemListing) {
       const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, cost - saleTax);
       tx.update(sellerRef, {
@@ -10534,7 +10590,8 @@ export const buyListing = onCall(async (request) => {
     }
     const isShopSale = Boolean(shopHouseSnap?.exists && shopHouseSnap.data().ownerUid === listing.sellerId);
     // dükkân satışında vergi işletme raporuna da yazılır (recordIncomeTx defteri de günceller)
-    if (saleTax > 0 && !isShopSale) taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: saleTax, source: 'ikinciEl', uid: listing.sellerId, atMs: Date.now(), ref: listingRef.id });
+    const ieKind = listing.itemType === 'vehicle' ? 'araba' : listing.itemType === 'weapon' ? 'silah' : 'malzeme';
+    if (saleTax > 0 && !isShopSale) taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: saleTax, source: 'ikinciEl', uid: listing.sellerId, atMs: Date.now(), ref: listingRef.id, stat: { [`ie_${ieKind}_n`]: 1, [`ie_${ieKind}_ciro`]: cost } });
 
     // Ürünü transfer et.
     const shopClear = listing.shopHouseId
@@ -12794,12 +12851,12 @@ async function runFutbolDailyClock() {
         });
         team = { ...team, treasury: treasury - paid, salaryDebt: newDebt, managerFirstSalaryImmediate: false };
         // v123: menajer maaşından %10 vergi (kasa tam öder, menajere %90 yatar)
-        const mTax = splitSalaryTax(paid);
+        const mTax = splitSalaryTax(paid, 'menajer'); // v127: oran Kültür ve Spor Bakanlığı
         if (paid > 0) {
           batch.update(db.collection('users').doc(team.managerUid), { gold: admin.firestore.FieldValue.increment(mTax.net), goldTag: goldTag('futbol') });
-          taxLedgerWrite(batch, db, admin.firestore.FieldValue, { amount: mTax.tax, source: 'maas', uid: team.managerUid, atMs: Date.now(), ref: 'menajer' });
+          taxLedgerWrite(batch, db, admin.firestore.FieldValue, { amount: mTax.tax, source: 'maas', uid: team.managerUid, atMs: Date.now(), ref: 'menajer', stat: { men_brut: paid } });
         }
-        const mTaxNote = mTax.tax > 0 ? ` (%10 vergi: ${mTax.tax.toLocaleString('tr-TR')} · eline geçen: ${mTax.net.toLocaleString('tr-TR')} altın)` : '';
+        const mTaxNote = mTax.tax > 0 ? ` (${pctText(rateFrac(ratesFor(), 'menajer'))} vergi: ${mTax.tax.toLocaleString('tr-TR')} · eline geçen: ${mTax.net.toLocaleString('tr-TR')} altın)` : '';
         if (newDebt > 0) {
           sendFutbolSms(
             batch,
@@ -21052,6 +21109,7 @@ const SIXTAGRAM_COMMENT_MAX_LEN = 280;
 // yazınca kendine bildirim gitmesin).
 async function createSixtagramNotification(toUid, notif) {
   if (!toUid || toUid === notif.fromUid) return;
+  if (String(toUid).startsWith('__')) return; // v127: resmî hesaplar (Belediye) bildirim almaz
   if (await moderation.isBlockedBy(toUid, notif.fromUid)) return; // UGC D1: engellenenden bildirim yok
   await db
     .collection('users')
@@ -22432,9 +22490,106 @@ const gangFunctions = createGangFunctions({
   assertCanSpeak: (uid, content) => moderation.assertCanSpeak(uid, content),
   // v124: çete deposundaki yasaklı maddeyi bir depoya sat (gang/actions/trade.js sellToDepo)
   depo: { readDepotForSale: depo.readDepotForSale, writeDepotSale: depo.writeDepotSale },
+  belediyeRef, // v127: polis maaşları / operasyon ücreti / çete bağışı belediye kasasından
 });
 export const gangAction = gangFunctions.gangAction;
 export const gangClock = gangFunctions.gangClock;
+
+// =============================================================================
+// v127 — BELEDİYE YÖNETİMİ (functions/belediye.js · belediyeKasa.js · belediyeRates.js)
+// =============================================================================
+const BELEDIYE_SIX_UID = '__belediye__';
+// Gece raporu ekleri (biten gün): işletme sayıları, polis rütbeleri, içerik üreticileri
+const BELEDIYE_BIZ_COUNT_TYPES = ['silahci', 'modifiye', 'galeri', 'spor', 'cafe', 'bar', 'internet', 'gazino', 'depo', 'sinema', 'studyo', 'mescit'];
+async function belediyeReportExtra(dateKey) {
+  const y = addDaysToDateKey(dateKey, -1);
+  const out = {};
+  // işletme adetleri (count() — tür başına ~1 okuma)
+  try {
+    const counts = await Promise.all(
+      BELEDIYE_BIZ_COUNT_TYPES.map((t) =>
+        db.collection('houses').where('bizType', '==', t).count().get().then((r) => [t, Number(r.data().count || 0)]).catch(() => [t, null])
+      )
+    );
+    out.bizCounts = Object.fromEntries(counts.filter(([, n]) => n != null));
+  } catch (err) {
+    console.error('belediye işletme sayıları', err?.message || err);
+  }
+  // polis rütbe dağılımı (teşkilatın herkese açık listesi — 1 okuma)
+  try {
+    const cfg = (await db.doc('gangSystem/config').get()).data() || {};
+    if (cfg.liveWorldId) {
+      const v = (await db.doc(`gangWorlds/${cfg.liveWorldId}/intel/main/public/roster`).get()).data() || {};
+      const ranks = {};
+      for (const m of Object.values(v.members || {})) ranks[m.rank || 'muhbir'] = (ranks[m.rank || 'muhbir'] || 0) + 1;
+      out.police = { ranks, count: Number(v.count || 0) };
+    }
+  } catch (err) {
+    console.error('belediye polis sayıları', err?.message || err);
+  }
+  // en çok kazanan içerik üreticileri (yayın + şarkı vergisi — o günün vergi defteri)
+  try {
+    const snap = await db.collection('taxLedger').where('dayKey', '==', y).get();
+    const rows = [];
+    snap.docs.forEach((d) => {
+      const v = d.data();
+      const yayin = Number(v.bySource?.yayin || 0);
+      const sarki = Number(v.bySource?.sanatci || 0);
+      if (yayin + sarki > 0) rows.push({ uid: v.uid, yayin, sarki, tax: yayin + sarki });
+    });
+    rows.sort((a, b) => b.tax - a.tax);
+    const top = rows.slice(0, 3);
+    const rates = ratesFor(y);
+    const sr = Math.max(0.0001, rateFrac(rates, 'sosyal'));
+    const names = await Promise.all(top.map((r) => db.collection('users').doc(r.uid).get().then((u) => u.data()?.displayName || 'Oyuncu').catch(() => 'Oyuncu')));
+    out.creators = top.map((r, i) => ({ name: names[i], kind: r.yayin >= r.sarki ? 'yayın' : 'şarkı', earned: Math.round(r.tax / sr) }));
+    out.payers = snap.size;
+  } catch (err) {
+    console.error('belediye içerik üreticileri', err?.message || err);
+  }
+  return out;
+}
+async function postBelediyeSixtagram(text) {
+  const nowMs = Date.now();
+  const postRef = db.collection('sixtagramPosts').doc();
+  const batch = db.batch();
+  batch.set(postRef, {
+    uid: BELEDIYE_SIX_UID,
+    official: 'belediye',
+    authorName: 'Neon Şehir Belediyesi',
+    authorAvatar: null,
+    text: String(text || '').slice(0, 1900),
+    attachment: null,
+    likeCount: 0,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAtMs: nowMs,
+    expiresAtMs: nowMs + SIXTAGRAM_POST_LIFETIME_MS,
+  });
+  batch.set(db.collection('sixtagramProfiles').doc(BELEDIYE_SIX_UID), { displayName: 'Neon Şehir Belediyesi', avatar: null, official: 'belediye', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  batch.set(db.collection('stats').doc('sixtagram'), { latestMs: nowMs, latestUid: BELEDIYE_SIX_UID });
+  await batch.commit();
+}
+const belediye = createBelediye({
+  db,
+  FieldValue: admin.firestore.FieldValue,
+  HttpsError,
+  requireAuth: (request) => requireAuth(request),
+  onCall,
+  splitIncomeForDebt,
+  goldTag,
+  isAdmin: async (uid, user) => ADMIN_UIDS.includes(uid) || user?.role === 'admin',
+  liveMembership: async (uid, tx) => {
+    const ref = await gangFunctions.system.liveMembershipRef(uid);
+    if (!ref) return null;
+    const snap = tx ? await tx.get(ref) : await ref.get();
+    return { worldId: ref.parent.parent.id, ms: snap.data() || {} };
+  },
+  assertCanSpeak: (uid, content) => moderation.assertCanSpeak(uid, content),
+  postSixtagram: postBelediyeSixtagram,
+  rates: { loadRates, ratesFor },
+});
+belediyeRef.current = belediye;
+export const belediyeAction = belediye.belediyeAction;
 
 // =============================================================================
 // v33 — "BİR FİKRİN Mİ VAR?" (telefon): oyuncular fikir / hata / soru yazar.

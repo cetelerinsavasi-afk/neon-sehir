@@ -158,7 +158,7 @@ test('index.js: Mağaza alıcı/satıcı kontrolü, malzeme vergisi yok, makine 
   assert.ok(create.includes('MACHINE_SALE_TEXT'));
   const buy = src.slice(src.indexOf('export const buyListing')).slice(0, 4000);
   assert.ok(buy.includes("pre?.itemType === 'machine'") && buy.includes('MATERIAL_HOLDER_TEXT'));
-  assert.ok(src.includes('const saleTax = isSystemListing || isMaterial ? 0 : resaleTax(cost);'));
+  assert.ok(src.includes('const saleTax = isSystemListing || isMaterial ? 0 : resaleTax(cost, listing.itemType);'));
   for (const f of ['upgradeVehicle', 'upgradeWeapon', 'repairItem', 'sellMaterial', 'sellSilahMaterial']) {
     const body = src.slice(src.indexOf(`export const ${f} = onCall`)).slice(0, 400);
     assert.ok(body.includes('Bu işlem kaldırıldı'), f);

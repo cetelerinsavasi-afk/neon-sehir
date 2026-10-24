@@ -84,7 +84,7 @@ export const CATS = [
         L('🕌', 'Bütün şehirde tek imam vardır.'),
         L('✨', 'Saygınlığın en az 50, şüphen sıfır olmalı.'),
         L('📿', 'Her gün 5 vakit ibadet et. Bir de nasihat ver.'),
-        L('💰', 'Karşılığı günde 10.000 altın.'),
+        L('💰', 'Karşılığı her gün belediyenin belirlediği maaş.'),
         L('🕳️', 'Bir gün aksatırsan imamlığın biter. 24 saat sonra yeniden başvurabilirsin.'),
         L('🃏', 'Rozet ile cübbe aynı omuzda durmaz: polisler imam olamaz.'),
       ] },

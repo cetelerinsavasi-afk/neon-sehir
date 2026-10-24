@@ -171,8 +171,9 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       if (!isGame) {
         if (cost.shopQty > 0) tx.set(invDoc(h.ownerUid, material), { quantity: FieldValue.increment(-cost.shopQty) }, { merge: true });
         // v77 vergi: cironun %10'u (işçilik ve malzeme ayrı ayrı)
-        const taxLabor = selfService ? 0 : bizTax(cost.labor);
-        const taxMat = selfService ? 0 : bizTax(cost.material);
+        // v127: oran türüne göre (Silahçı / Modifiye — Ticaret Bakanlığı)
+        const taxLabor = selfService ? 0 : bizTax(cost.labor, type);
+        const taxMat = selfService ? 0 : bizTax(cost.material, type);
         if (!selfService && cost.total > 0) {
           const { goldDelta, debtDelta } = splitIncomeForDebt(os.data()?.debtToState, cost.total - taxLabor - taxMat);
           tx.update(userRef(h.ownerUid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('atolye'), debtToState: FieldValue.increment(debtDelta) });
@@ -188,8 +189,8 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       }
       if (isGame && cost.total > 0) {
         // oyunun dükkânı: gelir sadece sıralama için kaydedilir
-        business?.recordGameIncomeTx?.(tx, { type, amount: cost.labor, kind: 'labor', customerUid: uid, products: { [`${action}:${itemType}`]: 1 }, tax: bizTax(cost.labor) });
-        if (cost.material > 0) business?.recordGameIncomeTx?.(tx, { type, amount: cost.material, kind: 'material', customerUid: uid, tax: bizTax(cost.material) });
+        business?.recordGameIncomeTx?.(tx, { type, amount: cost.labor, kind: 'labor', customerUid: uid, products: { [`${action}:${itemType}`]: 1 }, tax: bizTax(cost.labor, type) });
+        if (cost.material > 0) business?.recordGameIncomeTx?.(tx, { type, amount: cost.material, kind: 'material', customerUid: uid, tax: bizTax(cost.material, type) });
       }
       // ürün güncellemesi (eski repairItem / upgradeWeapon / upgradeVehicle ile aynı)
       let patch;
@@ -356,9 +357,10 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       const us = await tx.get(userRef(uid));
       const payout = itemListingBand(itemType, item).instant;
       if (listing) tx.update(listing.ref, { sold: true, cancelled: true, expireAtMs: FieldValue.delete() });
-      // v77 vergi: 2. el / vitrin satışı %1
-      const tax = resaleTax(payout);
-      taxLedgerWrite(tx, db, FieldValue, { amount: tax, source: 'ikinciEl', uid, atMs: now(), ref: String(p.houseId || '') });
+      // v77 vergi: 2. el / vitrin satışı · v127: oran Ticaret Bakanlığı (araba / silah)
+      const tax = resaleTax(payout, itemType);
+      const ik = itemType === 'vehicle' ? 'araba' : 'silah';
+      taxLedgerWrite(tx, db, FieldValue, { amount: tax, source: 'ikinciEl', uid, atMs: now(), ref: String(p.houseId || ''), stat: { [`ie_${ik}_n`]: 1, [`ie_${ik}_ciro`]: payout } });
       const { goldDelta, debtDelta } = splitIncomeForDebt(us.data()?.debtToState, payout - tax);
       tx.update(userRef(uid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('vitrin'), debtToState: FieldValue.increment(debtDelta) });
       const sysRef = listingsRef.doc();

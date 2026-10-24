@@ -114,7 +114,7 @@ function MoneySheet({ kind, d, onClose }) {
     if (kind === 'donate') r = await run('donate', { amount }, { success: `💸 Bağışlandı · +${fmt(amount * GANG_RULES.DONATION_PRESTIGE_PER_GOLD)} prestij`, withRequestId: true });
     if (kind === 'dist') r = await run('createDistribution', { group, perPerson: amount, slots: n }, { success: '💰 Dağıtım açıldı', withRequestId: true });
     if (kind === 'withdraw') r = await run('withdrawToSelf', { amount }, { success: '🏦 Hesabına aktarıldı', withRequestId: true });
-    if (kind === 'transfer') r = await run('transferToGang', { targetGangId: target, amount }, { success: '📤 Gönderildi', withRequestId: true });
+    if (kind === 'transfer') r = await run('transferToGang', { targetGangId: target, amount }, { success: target === '__belediye__' ? '🏛️ Belediyeye bağışlandı' : '📤 Gönderildi', withRequestId: true });
     if (r) onClose();
   };
   return (
@@ -142,6 +142,13 @@ function MoneySheet({ kind, d, onClose }) {
       )}
       {kind === 'transfer' && (
         <div className="gx-pick-list">
+          {/* v127 — belediyeye bağış (sunucu: transferToGang → '__belediye__') */}
+          <button className={`gx-pick${target === '__belediye__' ? ' active' : ''}`} onClick={() => setTarget('__belediye__')}>
+            <span className="gx-logo" style={{ width: 22, height: 22, fontSize: 12, background: '#0d2036', boxShadow: '0 0 0 2px #ffd23f' }} aria-hidden="true">
+              🏛️
+            </span>{' '}
+            Belediye (bağış)
+          </button>
           {gangs
             .filter((g) => g.id !== d.gangId && g.status === 'active')
             .map((g) => (

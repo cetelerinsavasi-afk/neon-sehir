@@ -5,7 +5,7 @@
 //  - v67: sipariş Pzt–Cmt 00:00–12:00; tır sonraki 3 saatlik dilimde yola çıkar,
 //    6 saat ihbar/sabotaj/operasyon penceresi, sonra saldırı, gece 00:00 depoda.
 //    Araba / silah 2. elde (çete adıyla), yasaklı madde "Depoya sat".
-//  - v125: yasaklı madde her çeteye açık (00:00'daki üye × 1.250 / gün; yol sahibine eklenir).
+//  - v125: yasaklı madde her çeteye açık (00:00'daki üye × 2.500 / gün; yol sahibine eklenir).
 //    Yoldaki tırlar (rakipler) Savaş panelinin en altında (RoadTrucks buradan dışa aktarılır).
 //  - Görünürlük: tırları tüm üyeler görür; sipariş/yük içeriği Kıdemli+.
 //    Yönetim (tır/depo al, sipariş, sat/dağıt/2. el) Baba + Sağ Kol.
@@ -56,7 +56,7 @@ function useNextSundayProduct() {
   return nextTradeSunday(now, world?.launchDateKey);
 }
 
-// v125: yasaklı maddede üye hakkı (00:00'daki üye × 1.250; kayıt yoksa şimdiki üye sayısı)
+// v125: yasaklı maddede üye hakkı (00:00'daki üye × 2.500; kayıt yoksa şimdiki üye sayısı)
 export function memberOrderRight(state, today, memberCount) {
   const n = state?.orderBase?.dateKey === today ? Number(state.orderBase.members || 0) : Number(memberCount || 0);
   return Math.max(0, n) * GANG_RULES.CONTRABAND_ORDER_PER_MEMBER;

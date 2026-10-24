@@ -460,7 +460,7 @@ test('v123: futbolcu maaşından %10 vergi — takım tam öder, futbolcuya %90,
   assert.equal(tl[0].total, 500);
   assert.equal(tl[0].bySource.maas, 500);
   const st = [...h.db._store.entries()].filter(([k]) => k.startsWith('stateLedger/')).map(([, v]) => v.data);
-  assert.equal(st.reduce((s, d) => s + Number(d.in?.vergi_maas || 0), 0), 500, 'devlet kasasına vergi_maas geliri');
+  assert.equal(st.reduce((s, d) => s + Number(d.in?.vergi_maasFutbolcu || 0), 0), 500, 'devlet kasasına futbolcu maaş vergisi geliri (v127: işe göre ayrı kalem)');
   const sms = [...h.db._store.entries()].filter(([k]) => k.startsWith('users/ali/messages/')).map(([, v]) => JSON.stringify(v.data));
   assert.ok(sms.some((t) => /%10 vergi: 500/.test(t)), 'maaş SMSinde vergi yazar');
 });

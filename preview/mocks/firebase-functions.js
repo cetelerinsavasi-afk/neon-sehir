@@ -13,6 +13,8 @@ export function httpsCallable(functions, name) {
     const request = { auth: { uid: new URLSearchParams(location.search).get('uid') || PREVIEW_UID }, data };
     try {
       if (name === 'gangAction') return { data: await system.handleAction(request) };
+      // v127 Belediye (önizleme: gerçek functions/belediye.js — preview/belediye-app.jsx kurar)
+      if (name === 'belediyeAction' && window.__belediye) return { data: await window.__belediye.handle(request.auth.uid, data) };
       // v124 Faz 6 oyuncu gazinosu (önizleme: gerçek functions/casino.js)
       const cid = data?.casinoId && data.casinoId !== 'game' ? data.casinoId : null;
       const me = request.auth.uid;

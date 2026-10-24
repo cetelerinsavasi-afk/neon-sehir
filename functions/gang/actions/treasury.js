@@ -258,7 +258,37 @@ export function createTreasuryActions(core) {
   // ---------------------------------------------------------------------------
   // Başka çeteye para gönder (Baba / Sağ Kol, serbest paradan)
   // ---------------------------------------------------------------------------
+  // v127 — Belediyeye bağış (Çetem › Çeteye gönder › 🏛️ Belediye): serbest paradan,
+  // devlet kasasına "bağış" geliri; günün en çok bağış yapanları listesine çete adıyla.
+  async function donateToBelediye(ctx, data) {
+    const amount = posInt(data.amount);
+    const bel = !ctx.isTest ? core.deps.belediyeRef?.current : null;
+    if (!bel) fail('failed-precondition', 'Belediye şu an bağış kabul etmiyor.');
+    if (amount < GANG.MIN_DONATION) fail('invalid-argument', `En az ${fmt(GANG.MIN_DONATION)} altın gönderilebilir.`);
+    return core.db.runTransaction(async (tx) => {
+      const guard = await requestGuard(tx, ctx, data.requestId);
+      if (guard.done) return guard.result;
+      const membership = await readMembership(tx, ctx, ctx.actorId);
+      const gangId = requireGangMember(membership);
+      const [meSnap, stateSnap, myGangSnap] = await Promise.all([tx.get(ctx.ref.member(gangId, ctx.actorId)), tx.get(ctx.ref.gangState(gangId)), tx.get(ctx.ref.gang(gangId))]);
+      const dayDoc = await bel.gangDonationReadTx(tx);
+      const me = meSnap.data();
+      if (!['baba', 'sagkol'].includes(core.effRank(me, ctx))) fail('permission-denied', 'Kasadan parayı sadece Mafya Babası ve Sağ Kol gönderebilir.');
+      const state = stateSnap.data() || {};
+      requireFree(state, ctx.dateKey, amount);
+      const g = myGangSnap.data() || {};
+      tx.update(ctx.ref.gangState(gangId), { kasa: FV.increment(-amount), distributableLeft: FV.increment(-amount) });
+      bel.gangDonationWriteTx(tx, dayDoc, { gangId, name: g.name || 'Çete', logo: g.logo || null, amount });
+      ledger(tx, ctx, { type: 'gang_donate_belediye', amount, from: { kind: 'gang', id: gangId }, to: { kind: 'state', id: 'belediye' }, before: state.kasa });
+      announce(tx, ctx, gangId, '🏛️', `${me.name} (${RANK_LABELS[me.rank]}) belediyeye ${fmt(amount)} altın bağışladı.`);
+      const res = { sent: amount, belediye: true };
+      guard.save(res);
+      return res;
+    });
+  }
+
   async function transferToGang(ctx, data) {
+    if (String(data.targetGangId || '') === '__belediye__') return donateToBelediye(ctx, data);
     const amount = posInt(data.amount);
     const targetGangId = String(data.targetGangId || '');
     return core.db.runTransaction(async (tx) => {

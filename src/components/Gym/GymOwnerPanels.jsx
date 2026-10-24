@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { shopAction } from '../../services/gameActions';
 import PriceField from '../Shop/PriceField';
-import { BIZ_TAX_RATE } from '../../../functions/tax.js';
+import { useBelediyeRates } from '../../hooks/useBelediyeRates';
+import { bizRateFrac } from '../../../functions/belediyeRates.js';
 import { bizErrText } from '../../lib/bizErrors';
 import { GYM_PRICE, GYM_EQUIPMENT, GAME_GYM_PRICE, gymPriceOf } from '../../../functions/gym.js';
 import { EQUIP } from './gymMeta';
@@ -12,6 +13,7 @@ const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
 
 // Spor salonu: günlük üyelik ücreti (500–2.000)
 export function GymPriceSection({ houseId, houseDoc }) {
+  const taxRate = bizRateFrac(useBelediyeRates(), 'spor'); // v127: Spor Salonu vergisi
   const cur = gymPriceOf(houseDoc);
   const [v, setV] = useState(cur);
   const [busy, setBusy] = useState(false);
@@ -28,7 +30,7 @@ export function GymPriceSection({ houseId, houseDoc }) {
         value={v}
         refPrice={GAME_GYM_PRICE}
         refLabel="Oyunun salonu"
-        taxRate={BIZ_TAX_RATE}
+        taxRate={taxRate}
         saved={cur}
         onChange={setV}
       />

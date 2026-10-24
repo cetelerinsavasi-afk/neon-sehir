@@ -64,14 +64,14 @@ export function createOffice({ db, FieldValue, HttpsError, splitIncomeForDebt, n
   // (okumalar — müşteri, sahip, sayaç — önceden yapılmış olmalı).
   //   kind: 'urun' · 'bagis' · 'dakika'
   function chargeTx(tx, { houseId, h, uid, us, os, amount, kind, product, spent, dayKey, t, tag }) {
-    const tax = bizTax(amount);
+    const tax = bizTax(amount, 'ofis'); // v127: oran Ticaret Bakanlığı (Ofis Kazançları)
     tx.update(userRef(uid), { gold: FieldValue.increment(-amount), goldTag: goldTag(tag || 'ofisAlis') });
     tx.set(spendRef(houseId, uid, dayKey), { houseId, uid, dayKey, amount: FieldValue.increment(amount), updatedAtMs: t }, { merge: true });
     if (os?.exists) {
       const { goldDelta, debtDelta } = splitIncomeForDebt(os.data()?.debtToState, amount - tax);
       tx.update(userRef(h.ownerUid), { gold: FieldValue.increment(goldDelta), debtToState: FieldValue.increment(debtDelta), goldTag: goldTag('ofis') });
     }
-    taxLedgerWrite(tx, db, FieldValue, { amount: tax, source: 'ofis', uid: h.ownerUid, atMs: t, ref: houseId });
+    taxLedgerWrite(tx, db, FieldValue, { amount: tax, source: 'ofis', uid: h.ownerUid, atMs: t, ref: houseId, stat: { isl_ofis_ciro: amount, isl_ofis_n: 1 } });
     const patch = {
       houseId,
       ownerUid: h.ownerUid,

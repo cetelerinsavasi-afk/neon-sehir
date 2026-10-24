@@ -38,17 +38,17 @@
 export const STATE_SHARDS = 16;
 
 export const STATE_IN = {
-  vergi_isletme: 'Vergi · İşletme gelirleri (%10)',
-  vergi_ikinciEl: 'Vergi · 2. el / vitrin satışları (%1)',
-  vergi_fabrika: 'Vergi · Fabrika üretimi (kademeli)',
-  vergi_yayin: 'Vergi · Yayın bağışları (%10)',
-  vergi_sanatci: 'Vergi · Şarkı desteği (%10)',
-  vergi_ofis: 'Vergi · Ofis gelirleri (%10)',
-  vergi_maas: 'Vergi · Maaşlar — futbolcu / menajer / fabrika işçisi (%10)',
-  vergi_piyango: 'Vergi · Piyango kazançları (%10)',
-  vergi_gazino: 'Vergi · Gazino piyango payı (%10)', // v124
-  vergi_gazinoCekim: 'Vergi · Gazino kasasından çekim (%10)', // v124 Faz 6
-  vergi_makine: 'Vergi · Fabrika makinesi alımı (%5)', // v125 · v126: %5
+  vergi_isletme: 'Vergi · İşletme gelirleri (eski kalem)',
+  vergi_ikinciEl: 'Vergi · 2. el / vitrin satışları',
+  vergi_fabrika: 'Vergi · Fabrika üretimi',
+  vergi_yayin: 'Vergi · Yayın bağışları',
+  vergi_sanatci: 'Vergi · Şarkı desteği',
+  vergi_ofis: 'Vergi · Ofis gelirleri',
+  vergi_maas: 'Vergi · Maaşlar — futbolcu / menajer / fabrika işçisi',
+  vergi_piyango: 'Vergi · Piyango kazançları',
+  vergi_gazino: 'Vergi · Gazino piyango payı', // v124
+  vergi_gazinoCekim: 'Vergi · Gazino kasasından çekim', // v124 Faz 6
+  vergi_makine: 'Vergi · Fabrika makinesi alımı', // v125 · v126: %5
   vergi_oyun: 'Vergi · Oyunun kendi mekânları',
   // v126 — oyunun gazinosunun kârı (tamamı devlete; vergi değil, devletin kendi kârı)
   gazino_slot: 'Oyunun gazinosu · Slot kârı (çevirme başına 200)',
@@ -66,6 +66,23 @@ export const STATE_IN = {
   ist_iade: 'Polis Teşkilatı · İade / kalan dağıtım',
   ist_kasa_devri: 'İstihbarat kasasının devri (tek seferlik)',
   rusvet_sahipsiz: 'Karakol rüşvetleri (dağıtılamayan pay / o gece polis yoktu)',
+  // v127 — Belediye: maaş vergisi işe göre, işletme vergisi türe göre ayrı kalem
+  vergi_maasIsci: 'Vergi · Fabrika işçisi maaşları',
+  vergi_maasFutbolcu: 'Vergi · Futbolcu maaşları',
+  vergi_maasMenajer: 'Vergi · Menajer maaşları',
+  vergi_isl_silahci: 'Vergi · İşletme · Silahçı',
+  vergi_isl_modifiye: 'Vergi · İşletme · Modifiye',
+  vergi_isl_spor: 'Vergi · İşletme · Spor Salonu',
+  vergi_isl_cafe: 'Vergi · İşletme · Kafe',
+  vergi_isl_bar: 'Vergi · İşletme · Bar',
+  vergi_isl_internet: 'Vergi · İşletme · İnternet Kafe',
+  vergi_isl_sinema: 'Vergi · İşletme · Sinema',
+  vergi_isl_studyo: 'Vergi · İşletme · Stüdyo',
+  vergi_isl_mescit: 'Vergi · İşletme · Mescit bağışları',
+  vergi_isl_galeri: 'Vergi · İşletme · Galeri',
+  vergi_isl_gazino: 'Vergi · İşletme · Kumarhane',
+  bagis: 'Belediyeye bağışlar',
+  borc_acik: 'Kasa açığının borca çevrilmesi (tek seferlik)',
   diger: 'Diğer gelirler',
 };
 export const STATE_OUT = {
@@ -73,10 +90,15 @@ export const STATE_OUT = {
   maas_istihbarat: 'İstihbarat maaşları (kullanılmıyor — v109 tek teşkilat)',
   maas_imam: 'İmam maaşı',
   soygun_odeme: 'Soygun giderleri (suçlulara ödenen)',
-  soygun_polis_payi: 'Polis payı (soygun kurtarma, %25)',
+  soygun_polis_payi: 'Polis payı (durdurulan soygunlar)',
   ist_operasyon: 'Polis Teşkilatı operasyon giderleri',
+  maas_belediye: 'Belediye kadrosu maaşları', // v127
+  borc_maas: 'Maaş borcu ödemeleri', // v127
+  borc_diger: 'Diğer borç ödemeleri (soygun borçları)', // v127
   diger: 'Diğer giderler',
 };
+// v127 — kasa: her canlı gider (out) belediye/kasa.outCum'u da artırır (functions/belediyeKasa.js)
+export const KASA_DOC = 'belediye/kasa';
 
 // İstanbul günü (sabit UTC+3) — functions/gang/time.js ile aynı sonuç
 export function stateDayKey(ms = Date.now()) {
@@ -92,26 +114,51 @@ const cleanCat = (kind, cat) => {
 //   db: Firestore (ya da test sahtesi) · FieldValue · base: kök yol öneki
 //   (canlı: '' → stateLedger/…; test dünyası: 'gangWorlds/test/' → izole)
 // amount ≤ 0 ise hiçbir şey yazmaz. Dönüş: yazılan tutar.
-export function stateWrite(writer, db, FieldValue, { kind = 'in', cat, amount, atMs = Date.now(), dayKey = null, base = '', shard = null }) {
+export function stateWrite(writer, db, FieldValue, { kind = 'in', cat, amount, atMs = Date.now(), dayKey = null, base = '', shard = null, stat = null, noKasa = false }) {
   const amt = Math.max(0, Math.round(Number(amount) || 0));
-  if (!amt || !Number.isFinite(amt)) return 0;
+  if (!amt || !Number.isFinite(amt)) {
+    if (stat) statWrite(writer, db, FieldValue, { atMs, dayKey, base, shard, stat });
+    return 0;
+  }
   const k = kind === 'out' ? 'out' : 'in';
   const c = cleanCat(k, cat);
   const day = dayKey || stateDayKey(atMs);
   const s = shard == null ? Math.floor(Math.random() * STATE_SHARDS) : Math.abs(Number(shard) || 0) % STATE_SHARDS;
   const ref = db.collection(`${base}stateLedger`).doc(`${day}_s${s}`);
-  writer.set(
-    ref,
-    {
-      dayKey: day,
-      [k]: { [c]: FieldValue.increment(amt) },
-      [`${k}Total`]: FieldValue.increment(amt),
-      [`${k}Count`]: FieldValue.increment(1),
-      updatedAtMs: atMs,
-    },
-    { merge: true }
-  );
+  const patch = {
+    dayKey: day,
+    [k]: { [c]: FieldValue.increment(amt) },
+    [`${k}Total`]: FieldValue.increment(amt),
+    [`${k}Count`]: FieldValue.increment(1),
+    updatedAtMs: atMs,
+  };
+  const st = statPatch(FieldValue, stat);
+  if (st) patch.stat = st;
+  writer.set(ref, patch, { merge: true });
+  // v127: canlı defterdeki her gider kasa sayacına da yazılır (kasa denetimi —
+  // functions/belediyeKasa.js). Denetimli ödeme yapan çağıran kendi kasa
+  // yazımında birleştirir (noKasa).
+  if (k === 'out' && !base && !noKasa) writer.set(db.doc(KASA_DOC), { outCum: FieldValue.increment(amt), updatedAtMs: atMs }, { merge: true });
   return amt;
+}
+
+// v127 — analiz sayaçları (vergi olmayan ciro / adet): aynı gün parçasına `stat`
+function statPatch(FieldValue, stat) {
+  if (!stat || typeof stat !== 'object') return null;
+  const out = {};
+  for (const [key, n] of Object.entries(stat)) {
+    const v = Math.round(Number(n) || 0);
+    if (v && /^[A-Za-z0-9_]{1,60}$/.test(key)) out[key] = FieldValue.increment(v);
+  }
+  return Object.keys(out).length ? out : null;
+}
+export function statWrite(writer, db, FieldValue, { atMs = Date.now(), dayKey = null, base = '', shard = null, stat }) {
+  const st = statPatch(FieldValue, stat);
+  if (!st) return 0;
+  const day = dayKey || stateDayKey(atMs);
+  const s = shard == null ? Math.floor(Math.random() * STATE_SHARDS) : Math.abs(Number(shard) || 0) % STATE_SHARDS;
+  writer.set(db.collection(`${base}stateLedger`).doc(`${day}_s${s}`), { dayKey: day, stat: st, updatedAtMs: atMs }, { merge: true });
+  return 1;
 }
 
 // Doğrudan (işlem dışı) yazma — en sonda, hata ana işi bozmaz.
@@ -123,15 +170,16 @@ export async function stateAdd(db, FieldValue, entry) {
 }
 
 // Parça belgelerini gün gün topla
-function foldDocs(docs) {
+export function foldDocs(docs) {
   const days = {};
   for (const d of docs) {
     const v = typeof d.data === 'function' ? d.data() : d;
     const day = v.dayKey;
     if (!day) continue;
-    const t = (days[day] ||= { dayKey: day, in: {}, out: {}, inTotal: 0, outTotal: 0 });
+    const t = (days[day] ||= { dayKey: day, in: {}, out: {}, inTotal: 0, outTotal: 0, stat: {} });
     for (const [c, n] of Object.entries(v.in || {})) t.in[c] = (t.in[c] || 0) + Number(n || 0);
     for (const [c, n] of Object.entries(v.out || {})) t.out[c] = (t.out[c] || 0) + Number(n || 0);
+    for (const [c, n] of Object.entries(v.stat || {})) t.stat[c] = (t.stat[c] || 0) + Number(n || 0);
     t.inTotal += Number(v.inTotal || 0);
     t.outTotal += Number(v.outTotal || 0);
   }
