@@ -7,7 +7,7 @@ import { Btn, Chips, Sheet } from '../Gangs/ui';
 import { useImamState } from '../../hooks/useImamState';
 import { useBelediyeRatesDoc } from '../../hooks/useBelediyeRates';
 import { MINISTRIES, MINISTRY_IDS, RATE_BY_ID, BIZ_RATE_KEY, MACHINE_RATE_KEY, POLICE_RATE_KEY, resolveRates, fmtRate } from '../../../functions/belediyeRates.js';
-import { BELEDIYE, canMinistry } from '../../../functions/belediye.js';
+import { BELEDIYE, canMinistry, ministryReport } from '../../../functions/belediye.js';
 import { useBelediye } from './BelediyeContext';
 import { Kpis, Ledger, Person, RateEditor, Table, dayLabel, hoursLeft, nf, useTick } from './belediyeUi';
 
@@ -265,11 +265,31 @@ function Kultur({ r, c, rates }) {
 
 const VIEWS = { sanayi: Sanayi, ticaret: Ticaret, guvenlik: Guvenlik, kultur: Kultur };
 
+// v127 — BUGÜN (canlı): gece 00:00'da tahsil edilen fabrika vergisi, maaşlar ve
+// gün içindeki tüm gelirler bugünün defterinde. Kaynak: panel (≤1 dk gecikmeli).
+// İşletme adetleri / polis rütbeleri gün içinde değişmediği için dünkü rapordan.
+function todayReport(panel, yest) {
+  const t = panel?.kasa?.today;
+  if (!t) return null;
+  const rep = ministryReport({ in: t.in || {}, out: t.out || {} });
+  const ya = yest?.analysis || {};
+  return {
+    dayKey: t.dayKey,
+    ...rep,
+    stat: t.stat || {},
+    analysis: { bizCounts: ya.bizCounts, police: ya.police, ...(panel.analysisToday || {}) },
+    live: true,
+  };
+}
+
 export default function BakanliklarTab() {
-  const { pub, main } = useBelediye();
+  const { pub, main, panel } = useBelediye();
   const { doc } = useBelediyeRatesDoc();
   const [m, setM] = useState('sanayi');
-  const r = pub.report;
+  const [day, setDay] = useState('bugun');
+  const yest = pub.report;
+  const tod = todayReport(panel, yest);
+  const r = day === 'bugun' && tod ? tod : yest;
   const rates = resolveRates(doc, r?.dayKey || '0000-00-00');
   const c = catsOf(r);
   const View = VIEWS[m];
@@ -281,8 +301,17 @@ export default function BakanliklarTab() {
         <Person name={MINISTRIES[m].label} avatar={holder?.avatar} sub={holder?.uid ? `Bakan · ${holder.name}` : 'Bakan yok'} />
       </div>
       <div className="gx-section-head">
-        <span>📊 Analiz{r ? ` · ${dayLabel(r.dayKey)}` : ''}</span>
+        <span>📊 Analiz</span>
       </div>
+      <Chips
+        options={[
+          { id: 'bugun', label: tod ? `Bugün · ${dayLabel(tod.dayKey)}` : 'Bugün', disabled: !tod },
+          { id: 'dun', label: yest ? `Dün · ${dayLabel(yest.dayKey)}` : 'Dün', disabled: !yest },
+        ]}
+        value={r === tod && tod ? 'bugun' : 'dun'}
+        onChange={setDay}
+      />
+      {r?.live && <p className="dim bd-note">Gün bitmedi, rakamlar canlı (≤1 dk gecikmeli). Gece 00:00'da toplanan fabrika vergisi ve maaşlar bugüne dahil.</p>}
       {r ? (
         <>
           <View r={r} c={c} rates={rates} />

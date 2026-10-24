@@ -68,7 +68,7 @@ export function createKasa({ db, FieldValue, now = () => Date.now() }) {
       balance: Math.round(balance),
       outCumAt,
       atMs: now(),
-      today: t ? { dayKey: todayKey, in: t.in, out: t.out, inTotal: t.inTotal, outTotal: t.outTotal } : { dayKey: todayKey, in: {}, out: {}, inTotal: 0, outTotal: 0 },
+      today: t ? { dayKey: todayKey, in: t.in, out: t.out, inTotal: t.inTotal, outTotal: t.outTotal, stat: t.stat || {} } : { dayKey: todayKey, in: {}, out: {}, inTotal: 0, outTotal: 0, stat: {} },
     };
     await liveRef.set(live);
     // v127 tek seferlik: güncelleme anında kasa eksideyse eksi kısım borca

@@ -484,6 +484,25 @@ test('v127 gazete haber puanı: tüm rütbelere zam karışık değişiklikten �
   assert.equal(c.headline.kind, 'kriz');
 });
 
+test('v127 panel: bugünün canlı defteri (00:00 fabrika vergisi dahil) + bugünün fabrika analizi', async () => {
+  const w = world('2026-10-25', '00:30');
+  await seatAll(w);
+  const b = w.db.batch();
+  stateWrite(b, w.db, FieldValue, { kind: 'in', cat: 'vergi_fabrika', amount: 900_000, atMs: w.clock.now, dayKey: '2026-10-25' });
+  stateWrite(b, w.db, FieldValue, { kind: 'in', cat: 'gazino_slot', amount: 300, atMs: w.clock.now, stat: { isl_cafe_ciro: 5000 } });
+  await b.commit();
+  w.S('belediyeAnalysis/2026-10-25', { factories: { prodDay: '2026-10-24', count: 3, top: [{ name: 'A', gross: 9_000_000, ratePct: 10, tax: 900_000 }], others: { count: 0, gross: 0, tax: 0 } } });
+  w.clock.now += 120_000; // canlı özet en fazla 1 dk eski
+  const p = await w.act('veli', 'panel');
+  assert.equal(p.kasa.today.dayKey, '2026-10-25');
+  assert.equal(p.kasa.today.in.vergi_fabrika, 900_000);
+  assert.equal(p.kasa.today.stat.isl_cafe_ciro, 5000);
+  assert.equal(p.analysisToday.factories.count, 3);
+  const rep = ministryReport(p.kasa.today);
+  assert.equal(rep.ministries.sanayi.in, 900_000);
+  assert.equal(rep.ministries.ticaret.in, 300);
+});
+
 test('v127 şikâyet: günde 3, 7 gün sonra silinir; defter sadece kadroya', async () => {
   const w = world();
   await seatAll(w);

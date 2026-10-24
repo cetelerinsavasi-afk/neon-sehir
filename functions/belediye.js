@@ -838,8 +838,9 @@ export function createBelediye({
     const main = (await mainRef.get()).data() || {};
     const seat = seatOfUid(main, uid);
     if (!seat) fail('permission-denied', 'Belediye kadrosunda değilsin.');
-    const [ps, rs, st, debts, dr] = await Promise.all([pendingRef.get(), ratesRef.get(), kasa.status(), openSalaryDebts(), draftRef.get()]);
     const day = today();
+    // v127: bugünün analizi (gece 00:00'da tahsil edilen fabrika vergisinin listesi bugüne yazılır)
+    const [ps, rs, st, debts, dr, an] = await Promise.all([pendingRef.get(), ratesRef.get(), kasa.status(), openSalaryDebts(), draftRef.get(), db.doc(`belediyeAnalysis/${day}`).get()]);
     const pending = ps.data() || {};
     const ratesDoc = rs.data() || {};
     const cur = resolveRates(ratesDoc, day, pending);
@@ -852,6 +853,7 @@ export function createBelediye({
       next,
       nextBy: pending.nextDay === tomorrow ? pending.by || {} : {},
       kasa: { spendable: st.spendable, reserved: st.reserved, atMs: st.atMs, today: st.today },
+      analysisToday: an.exists ? an.data() : null,
       gazete: dr.exists ? dr.data() : null,
       debts: {
         maas: debts.map((d) => ({ id: d.id, dayKey: d.dayKey, workDay: d.workDay, total: d.total, status: d.status, count: (d.items || []).length })),

@@ -4,7 +4,7 @@
 import { useMemo, useState } from 'react';
 import { useDocData } from '../Gangs/GangContext';
 import { AmountInput, Btn, Chips, Gold, Logo, Sheet } from '../Gangs/ui';
-import { MINISTRIES, rateDayKey, fmtRate, ministryOfCat, resolveRates } from '../../../functions/belediyeRates.js';
+import { MINISTRIES, rateDayKey, fmtRate, ministryOfCat, resolveRates, isGoodChange } from '../../../functions/belediyeRates.js';
 import { useBelediyeRatesDoc } from '../../hooks/useBelediyeRates';
 import { BELEDIYE, SEATS } from '../../../functions/belediye.js';
 import { useBelediye } from './BelediyeContext';
@@ -178,7 +178,8 @@ function Changes() {
                 {c.label}
                 {start && start[c.id] != null && <small className="dim bd-change-start">Göreve gelince: {fmtRate(start[c.id], c.unit)}</small>}
               </span>
-              <b className={c.good ? 'bd-up' : 'bd-dn'}>
+              {/* renk her zaman güncel kuraldan (kayıttaki eski 'good' değil) */}
+              <b className={isGoodChange(c.unit, c.id, c.to - c.from) ? 'bd-up' : 'bd-dn'}>
                 {c.to > c.from ? '▲' : '▼'} {fmtRate(c.from, c.unit)} → {fmtRate(c.to, c.unit)}
               </b>
             </div>
