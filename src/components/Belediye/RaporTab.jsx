@@ -1,13 +1,14 @@
 // v127 — BELEDİYE RAPORU (herkes görür)
 //   Başkan → (davetliysen) iş teklifi → Toplu Rapor (dünün sonucu) → bugünün
 //   zam / indirimleri → maaş uyarısı → borçlar → bağış + günün bağışçıları
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useDocData } from '../Gangs/GangContext';
 import { AmountInput, Btn, Chips, Gold, Logo, Sheet } from '../Gangs/ui';
-import { MINISTRIES, rateDayKey, fmtRate, ministryOfCat, resolveRates, isGoodChange } from '../../../functions/belediyeRates.js';
+import { MINISTRIES, rateDayKey, fmtRate, resolveRates, isGoodChange } from '../../../functions/belediyeRates.js';
 import { useBelediyeRatesDoc } from '../../hooks/useBelediyeRates';
 import { BELEDIYE, SEATS } from '../../../functions/belediye.js';
 import { useBelediye } from './BelediyeContext';
+import { belediyeAction } from '../../services/gameActions';
 import { MIN_ORDER, Person, Signed, Table, dayLabel, hoursLeft, nf, useTick } from './belediyeUi';
 
 function MayorCard() {
@@ -61,16 +62,14 @@ function InviteCard() {
   );
 }
 
-function TopluRapor() {
-  const { pub } = useBelediye();
-  const r = pub.report;
-  if (!r) return <p className="dim bd-note">İlk rapor bu gece 00:00'da hazırlanır.</p>;
+// Toplu Rapor: Bugün (canlı, herkes — belediyeAction 'bugun', ≤3 dk) · Dün (gece raporu)
+function RaporTablo({ r, label }) {
   const ms = r.ministries || {};
   const net = Number(r.net || 0);
   return (
     <>
       <div className={`bd-hero ${net >= 0 ? 'pos' : 'neg'}`}>
-        <small>{dayLabel(r.dayKey)} · belediyenin sonucu</small>
+        <small>{label}</small>
         <b>
           <Signed v={net} unit={false} /> 🪙
         </b>
@@ -92,54 +91,49 @@ function TopluRapor() {
           out: ms[m].out ? `−${nf(ms[m].out)}` : '0',
           net: <Signed v={ms[m].in - ms[m].out} unit={false} />,
         }))}
-        foot={{ m: 'Toplam', in: `+${nf(r.inTotal)}`, out: `−${nf(r.outTotal)}`, net: <Signed v={net} unit={false} /> }}
+        foot={{ m: 'Toplam', in: r.inTotal ? `+${nf(r.inTotal)}` : '0', out: r.outTotal ? `−${nf(r.outTotal)}` : '0', net: <Signed v={net} unit={false} /> }}
       />
-      {r.gecis?.vergi_fabrika > 0 && <p className="dim bd-note">ℹ️ {dayLabel(r.dayKey)} 00:00'da toplanan {nf(r.gecis.vergi_fabrika)} 🪙 fabrika vergisi eski güncelleme yüzünden {dayLabel(r.gecis.from)} defterine yazılmıştı; bu rapora eklendi.</p>}
     </>
   );
 }
 
-// v127 — kadro için BUGÜNÜN canlı durumu (≤10 dk gecikmeli; panel çağrısından)
-function BugunCanli() {
-  const { panel, seat } = useBelediye();
-  const t = panel?.kasa?.today;
-  if (!seat || !t) return null;
-  const by = {};
-  for (const k of ['in', 'out'])
-    for (const [cat, n] of Object.entries(t[k] || {})) {
-      const m = ministryOfCat(k, cat);
-      const r = (by[m] ||= { in: 0, out: 0 });
-      r[k] += Math.round(Number(n) || 0);
-    }
-  const rows = MIN_ORDER.filter((m) => by[m] && (by[m].in || by[m].out)).map((m) => ({
-    key: m,
-    m: MINISTRIES[m]?.short || m,
-    in: by[m].in ? `+${nf(by[m].in)}` : '0',
-    out: by[m].out ? `−${nf(by[m].out)}` : '0',
-    net: <Signed v={by[m].in - by[m].out} unit={false} />,
-  }));
-  const net = Number(t.inTotal || 0) - Number(t.outTotal || 0);
+function TopluRapor() {
+  const { pub } = useBelediye();
+  const [tab, setTab] = useState('bugun');
+  const [today, setToday] = useState(null);
+  const [err, setErr] = useState(false);
+  useEffect(() => {
+    if (tab !== 'bugun') return undefined;
+    let alive = true;
+    belediyeAction({ op: 'bugun' })
+      .then((x) => alive && (setToday(x?.data || null), setErr(false)))
+      .catch(() => alive && setErr(true));
+    return () => {
+      alive = false;
+    };
+  }, [tab]);
+  const y = pub.report;
   return (
     <>
-      <div className="gx-section-head">
-        <span>⏱️ Bugün şu ana kadar</span>
-        <Signed v={net} />
-      </div>
-      {rows.length ? (
-        <Table
-          cols={[
-            { k: 'm', label: 'Bakanlık' },
-            { k: 'in', label: 'Gelir', num: true },
-            { k: 'out', label: 'Gider', num: true },
-            { k: 'net', label: 'Net', num: true },
-          ]}
-          rows={rows}
-          foot={{ m: 'Toplam', in: t.inTotal ? `+${nf(t.inTotal)}` : '0', out: t.outTotal ? `−${nf(t.outTotal)}` : '0', net: <Signed v={net} unit={false} /> }}
-        />
+      <Chips
+        options={[
+          { id: 'bugun', label: 'Bugün' },
+          { id: 'dun', label: y ? `Dün · ${dayLabel(y.dayKey)}` : 'Dün' },
+        ]}
+        value={tab}
+        onChange={setTab}
+      />
+      {tab === 'bugun' ? (
+        today ? (
+          <RaporTablo r={today} label={`${dayLabel(today.dayKey)} · şu ana kadar`} />
+        ) : (
+          <p className="dim bd-note">{err ? 'Şu an yüklenemedi.' : 'Yükleniyor…'}</p>
+        )
+      ) : y ? (
+        <RaporTablo r={y} label={`${dayLabel(y.dayKey)} · günün sonucu`} />
       ) : (
-        <p className="dim bd-note">Bugün henüz kayıt yok.</p>
+        <p className="dim bd-note">İlk rapor bu gece 00:00'da hazırlanır.</p>
       )}
-      <p className="dim bd-note">En fazla 10 dk gecikmeli · gece 00:00'da toplanan fabrika vergisi ve maaşlar o günün defterine yazılır.</p>
     </>
   );
 }
@@ -284,7 +278,6 @@ export default function RaporTab() {
         <span>📋 Toplu Rapor</span>
       </div>
       <TopluRapor />
-      <BugunCanli />
       <Changes />
       <PayrollAndDebts />
       <Donations />

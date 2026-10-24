@@ -880,6 +880,19 @@ export function createBelediye({
     return report.gecis;
   }
 
+  // v127 — Toplu Rapor › BUGÜN (herkes): bugünün canlı defteri, bakanlık
+  // toplamları. En fazla 3 dk eski (defter en fazla 3 dk'da bir toplanır; çağrı başına
+  // genelde 1 okuma). Kalem dökümü yok — sadece bakanlık başına gelir/gider.
+  async function bugun() {
+    const day = today();
+    let live = await kasa.liveFresh(3 * 60 * 1000);
+    if (live?.today?.dayKey !== day) live = await kasa.fold();
+    const t = live?.today || { dayKey: day, in: {}, out: {} };
+    const rep = ministryReport({ in: t.in || {}, out: t.out || {} });
+    const ministries = Object.fromEntries(Object.entries(rep.ministries).map(([m, r]) => [m, { in: r.in, out: r.out }]));
+    return { dayKey: day, ministries, inTotal: rep.inTotal, outTotal: rep.outTotal, net: rep.net, atMs: Number(live?.atMs || now()) };
+  }
+
   async function panel(uid) {
     const main = (await mainRef.get()).data() || {};
     const seat = seatOfUid(main, uid);
@@ -1170,6 +1183,7 @@ export function createBelediye({
     sikayetBegen: (uid, d) => sikayetBegen(uid, d),
     sikayetSil: (uid, d) => sikayetSil(uid, d),
     defter: (uid) => defter(uid),
+    bugun: () => bugun(),
   };
   async function handle(uid, data) {
     const op = String(data?.op || '');

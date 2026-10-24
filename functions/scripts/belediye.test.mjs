@@ -536,6 +536,22 @@ test('v127 geçiş: eski günlerde fabrika vergisi bir gün ileri alınır; 24.1
   assert.equal(df.days.find((d) => d.dayKey === '2026-10-24').in.vergi_fabrika, 1_500_000);
 });
 
+test('v127 toplu rapor › bugün: herkes görür, bakanlık toplamları (kalem yok)', async () => {
+  const w = world('2026-10-25', '10:00');
+  const b = w.db.batch();
+  stateWrite(b, w.db, FieldValue, { kind: 'in', cat: 'vergi_fabrika', amount: 900_000, atMs: w.clock.now, dayKey: '2026-10-25' });
+  stateWrite(b, w.db, FieldValue, { kind: 'in', cat: 'gazino_slot', amount: 4_000, atMs: w.clock.now, dayKey: '2026-10-25' });
+  stateWrite(b, w.db, FieldValue, { kind: 'out', cat: 'maas_polis', amount: 100_000, atMs: w.clock.now, dayKey: '2026-10-25' });
+  await b.commit();
+  const r = await w.act('can', 'bugun'); // kadroda değil
+  assert.equal(r.dayKey, '2026-10-25');
+  assert.equal(r.ministries.sanayi.in, 900_000);
+  assert.equal(r.ministries.ticaret.in, 4_000);
+  assert.equal(r.ministries.guvenlik.out, 100_000);
+  assert.equal(r.net, 804_000);
+  assert.equal(r.ministries.sanayi.lines, undefined);
+});
+
 test('v127 şikâyet: günde 3, 7 gün sonra silinir; defter sadece kadroya', async () => {
   const w = world();
   await seatAll(w);
