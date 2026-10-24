@@ -94,6 +94,7 @@ function TopluRapor() {
         }))}
         foot={{ m: 'Toplam', in: `+${nf(r.inTotal)}`, out: `−${nf(r.outTotal)}`, net: <Signed v={net} unit={false} /> }}
       />
+      {r.gecis?.vergi_fabrika > 0 && <p className="dim bd-note">ℹ️ {dayLabel(r.dayKey)} 00:00'da toplanan {nf(r.gecis.vergi_fabrika)} 🪙 fabrika vergisi eski güncelleme yüzünden {dayLabel(r.gecis.from)} defterine yazılmıştı; bu rapora eklendi.</p>}
     </>
   );
 }

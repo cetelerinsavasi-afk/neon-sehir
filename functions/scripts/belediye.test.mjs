@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { FakeFirestore, FieldValue } from '../gang/test/fakeFirestore.js';
-import { createBelediye, ministryReport, canMinistry, canFireSeat, canInviteSeat } from '../belediye.js';
+import { createBelediye, ministryReport, canMinistry, canFireSeat, canInviteSeat, alignLegacyFactory } from '../belediye.js';
 import { resolveRates, validateNext, rateChanges, DEFAULT_RATES, boundsOf, factoryRateFrac, resaleRateFrac, bizRateFrac, policeSalary, seatSalary } from '../belediyeRates.js';
 import { stateWrite, closeStateDays } from '../stateTreasury.js';
 import { spendableOf } from '../belediyeKasa.js';
@@ -501,6 +501,39 @@ test('v127 panel: bugünün canlı defteri (00:00 fabrika vergisi dahil) + bugü
   const rep = ministryReport(p.kasa.today);
   assert.equal(rep.ministries.sanayi.in, 900_000);
   assert.equal(rep.ministries.ticaret.in, 300);
+});
+
+test('v127 geçiş: eski günlerde fabrika vergisi bir gün ileri alınır; 24.10 raporu bir kez düzeltilir', async () => {
+  const D = (dayKey, fab, other = 0) => ({ dayKey, in: { ...(fab ? { vergi_fabrika: fab } : {}), vergi_yayin: other }, out: { maas_polis: 500 }, inTotal: fab + other, outTotal: 500 });
+  const a = alignLegacyFactory([D('2026-10-22', 100), D('2026-10-23', 300, 10), D('2026-10-24', 0, 20), D('2026-10-25', 900)]);
+  assert.equal(a[0].in.vergi_fabrika, 100, 'önceki günü yoksa dokunulmaz');
+  assert.deepEqual([a[1].in.vergi_fabrika, a[1].inTotal], [100, 110]);
+  assert.deepEqual([a[2].in.vergi_fabrika, a[2].inTotal], [300, 320]);
+  assert.equal(a[3].in.vergi_fabrika, 900, '25.10 ve sonrası olduğu gibi');
+  // varsayım tutmuyorsa (24.10'da fabrika vergisi varsa) kaydırma yok
+  const b = alignLegacyFactory([D('2026-10-23', 300), D('2026-10-24', 50)]);
+  assert.equal(b[1].in.vergi_fabrika, 50);
+
+  const w = world('2026-10-25', '02:00');
+  await seatAll(w);
+  w.S('stateDays/2026-10-23', D('2026-10-23', 1_500_000, 10));
+  w.S('stateDays/2026-10-24', D('2026-10-24', 0, 20));
+  w.S('belediye/public', { reportDay: '2026-10-24', report: { dayKey: '2026-10-24', ...ministryReport(D('2026-10-24', 0, 20)), kasa: 5 } });
+  assert.ok(w.G('belediye/public').report.net < 0);
+  await w.act('veli', 'panel');
+  const r = w.G('belediye/public').report;
+  assert.equal(r.inTotal, 1_500_020);
+  assert.equal(r.net, 1_499_520);
+  assert.equal(r.ministries.sanayi.in, 1_500_000);
+  assert.equal(r.gecis.vergi_fabrika, 1_500_000);
+  assert.equal(r.kasa, 5, 'diğer alanlar korunur');
+  assert.equal(w.G('belediyeDays/2026-10-24').report.gecis.from, '2026-10-23');
+  // ikinci kez değişmez
+  await w.act('veli', 'panel');
+  assert.equal(w.G('belediye/public').report.inTotal, 1_500_020);
+  // defter: 24.10 günü 23.10'un fabrika vergisini gösterir
+  const df = await w.act('veli', 'defter');
+  assert.equal(df.days.find((d) => d.dayKey === '2026-10-24').in.vergi_fabrika, 1_500_000);
 });
 
 test('v127 şikâyet: günde 3, 7 gün sonra silinir; defter sadece kadroya', async () => {

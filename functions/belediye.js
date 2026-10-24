@@ -121,6 +121,34 @@ export const inviteActive = (inv, nowMs) => Boolean(inv?.uid) && Number(inv.expi
 export const ratesEqual = (a, b) => RATE_ITEMS.every((it) => Number(a?.[it.id]) === Number(b?.[it.id]));
 
 // Gece raporu: devlet defteri gününü bakanlıklara böl
+// v127 GEÇİŞ — v126'dan önce gece 00:00'da tahsil edilen fabrika vergisi devlet
+// defterinde BİR ÖNCEKİ güne yazılıyordu (prevDateKey). v126'dan beri tahsil
+// edildiği güne yazılıyor. Bu yüzden ≤ 24.10 günlerinde fabrika vergisi bir gün
+// geride duruyor; 24.10'da hiç yok (23.10'a yazıldı), 25.10'dan itibaren doğru.
+// Gösterimde (rapor + defter) eski günlerin fabrika vergisi bir gün ileri alınır:
+// gösterilen(G) = kayıtlı(G − 1). Para/bakiye etkilenmez (sadece hangi günde
+// göründüğü). Güvenlik: 24.10'un kendi kaydında fabrika vergisi varsa (varsayım
+// tutmuyorsa) hiçbir şey kaydırılmaz.
+export const LEGACY_FACTORY_LAST = '2026-10-24';
+export function alignLegacyFactory(days) {
+  const by = Object.fromEntries((days || []).map((d) => [d.dayKey, d]));
+  const last = by[LEGACY_FACTORY_LAST];
+  if (last && Number(last.in?.vergi_fabrika || 0) > 0) return days;
+  return days.map((d) => {
+    if (!d?.dayKey || d.dayKey > LEGACY_FACTORY_LAST) return d;
+    const prev = by[addDayKey(d.dayKey, -1)];
+    if (!prev) return d; // önceki gün elde yok (pencerenin ilk günü) → dokunma
+    const old = Number(d.in?.vergi_fabrika || 0);
+    const v = Number(prev.in?.vergi_fabrika || 0);
+    if (old === v) return d;
+    const inn = { ...(d.in || {}) };
+    if (v > 0) inn.vergi_fabrika = v;
+    else delete inn.vergi_fabrika;
+    const inTotal = Number(d.inTotal || 0) + v - old;
+    return { ...d, in: inn, inTotal, ...(d.net != null ? { net: inTotal - Number(d.outTotal || 0) } : {}), aligned: true };
+  });
+}
+
 export function ministryReport(day) {
   const by = Object.fromEntries([...MINISTRY_IDS, 'yonetim'].map((m) => [m, { m, in: 0, out: 0, lines: [] }]));
   for (const [cat, v] of Object.entries(day?.in || {})) {
@@ -834,10 +862,29 @@ export function createBelediye({
   // ===========================================================================
   // Panel (kadro) — bekleyen ayarlar, canlı kasa, borçlar
   // ===========================================================================
+  // v127 GEÇİŞ: 24.10 raporu, 23.10 defterine yazılmış 24.10 00:00 fabrika
+  // vergisiyle bir kez yeniden kurulur (sadece 24–26.10 arasında denenir; sonra 0 okuma)
+  async function fixTransitionReport() {
+    if (today() > addDayKey(LEGACY_FACTORY_LAST, 2)) return null;
+    const pub = (await publicRef.get()).data() || {};
+    const r = pub.report;
+    if (!r || r.dayKey !== LEGACY_FACTORY_LAST || r.gecis) return null;
+    const prevKey = addDayKey(LEGACY_FACTORY_LAST, -1);
+    const [a, b] = await Promise.all([db.doc(`stateDays/${prevKey}`).get(), db.doc(`stateDays/${LEGACY_FACTORY_LAST}`).get()]);
+    if (!a.exists || !b.exists) return null;
+    const day = alignLegacyFactory([a.data(), b.data()]).find((d) => d.dayKey === LEGACY_FACTORY_LAST);
+    const added = Number(day.in?.vergi_fabrika || 0) - Number(b.data().in?.vergi_fabrika || 0);
+    const report = { ...r, ...(added > 0 ? ministryReport(day) : {}), gecis: { vergi_fabrika: Math.max(0, added), from: prevKey, atMs: now() } };
+    await publicRef.update({ report });
+    await db.doc(`belediyeDays/${LEGACY_FACTORY_LAST}`).set({ report }, { merge: true });
+    return report.gecis;
+  }
+
   async function panel(uid) {
     const main = (await mainRef.get()).data() || {};
     const seat = seatOfUid(main, uid);
     if (!seat) fail('permission-denied', 'Belediye kadrosunda değilsin.');
+    await fixTransitionReport().catch((e) => console.error('belediye geçiş raporu', e?.message || e));
     const day = today();
     // v127: bugünün analizi (gece 00:00'da tahsil edilen fabrika vergisinin listesi bugüne yazılır)
     const [ps, rs, st, debts, dr, an] = await Promise.all([pendingRef.get(), ratesRef.get(), kasa.status(), openSalaryDebts(), draftRef.get(), db.doc(`belediyeAnalysis/${day}`).get()]);
@@ -1085,14 +1132,17 @@ export function createBelediye({
     }
     await kasa.liveFresh(10 * 60 * 1000).catch(() => null);
     const day = today();
-    const [m, l, days] = await Promise.all([db.doc('stateTreasury/main').get(), kasa.liveRef.get(), db.collection('stateDays').where('dayKey', '>=', addDayKey(day, -29)).get()]);
+    // 30 gün + 1 (geçiş hizalaması için bir önceki gün)
+    const [m, l, days] = await Promise.all([db.doc('stateTreasury/main').get(), kasa.liveRef.get(), db.collection('stateDays').where('dayKey', '>=', addDayKey(day, -30)).get()]);
     const md = m.data() || {};
     const pickDay = (d) => ({ dayKey: d.dayKey, in: d.in || {}, out: d.out || {}, inTotal: Number(d.inTotal || 0), outTotal: Number(d.outTotal || 0) });
     return {
       today: day,
       main: { totals: md.totals || { in: {}, out: {}, inTotal: 0, outTotal: 0 }, closedThrough: md.closedThrough || '', firstDayKey: md.firstDayKey || null },
       live: { today: l.data()?.today ? pickDay(l.data().today) : null, atMs: Number(l.data()?.atMs || 0) },
-      days: days.docs.map((d) => pickDay(d.data())),
+      days: alignLegacyFactory(days.docs.map((d) => pickDay(d.data())))
+        .filter((d) => d.dayKey >= addDayKey(day, -29))
+        .map(({ aligned: _a, ...d }) => d),
     };
   }
 
