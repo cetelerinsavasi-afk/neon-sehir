@@ -2,11 +2,11 @@
 // Eski admin "Ayrıntılı defter"in yerine: devlet defterinin geçmişi, bakanlıklara
 // göre gruplu kalemler ve 30 günlük grafik. Veriler DEĞİŞMEDİ — eski kalemler yeni
 // sistemin adlarıyla birleştirilerek gösterilir (ör. yayın + şarkı → Sosyal medya).
-// Okuma: düğmeyle açılınca bir kez — stateTreasury/main + stateTreasury/live
-// (bugün, ≤10 dk gecikmeli) + son 30 kapanmış gün (stateDays) ≈ 32 okuma.
+// Okuma: düğmeyle açılınca bir kez (sunucu: belediyeAction › defter) — özet +
+// bugün (≤10 dk gecikmeli) + son 30 kapanmış gün ≈ 32 okuma.
 import { useMemo, useState } from 'react';
-import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { belediyeAction } from '../../services/gameActions';
+import { friendlyError } from '../Gangs/gangApi';
 import { Btn, Chips } from '../Gangs/ui';
 import { MINISTRIES } from '../../../functions/belediyeRates.js';
 import { Signed, dayLabel, nf } from './belediyeUi';
@@ -15,7 +15,7 @@ const addDays = (k, n) => new Date(Date.parse(`${k}T12:00:00+03:00`) + n * 86_40
 const todayKey = () => new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
 
 // Defter kalemi → yeni sistemdeki kalem (bakanlık + ad). Aynı adı alanlar birleşir.
-const BIZ = { silahci: 'Silahçı', modifiye: 'Modifiye', spor: 'Spor Salonu', cafe: 'Kafe', bar: 'Bar', internet: 'İnternet Kafe', sinema: 'Sinema', studyo: 'Stüdyo', mescit: 'Mescit bağışları', galeri: 'Galeri', gazino: 'Kumarhane', ofis: 'Ofis' };
+const BIZ = { silahci: 'Silahçı', modifiye: 'Modifiye', spor: 'Spor Salonu', cafe: 'Kafe', bar: 'Bar', internet: 'İnternet Kafe', sinema: 'Ofis', studyo: 'Ofis', mescit: 'Ofis', galeri: 'Galeri', gazino: 'Kumarhane', ofis: 'Ofis' };
 function groupOf(kind, cat) {
   if (kind === 'in') {
     if (cat === 'vergi_fabrika') return ['sanayi', 'Fabrika vergisi'];
@@ -61,18 +61,16 @@ function addInto(acc, d) {
   return acc;
 }
 
+// v127: sunucu üzerinden (belediyeAction › defter) — kadro kontrolü sunucuda
 async function loadDefter() {
-  const today = todayKey();
-  const from = addDays(today, -29);
-  const [m, l, days] = await Promise.all([getDoc(doc(db, 'stateTreasury', 'main')), getDoc(doc(db, 'stateTreasury', 'live')), getDocs(query(collection(db, 'stateDays'), where('dayKey', '>=', from)))]);
-  const main = m.data() || {};
-  const live = l.data() || {};
+  const r = (await belediyeAction({ op: 'defter' }))?.data || {};
   const byDay = {};
-  days.docs.forEach((d) => (byDay[d.data().dayKey] = d.data()));
-  if (live.today?.dayKey && !byDay[live.today.dayKey]) byDay[live.today.dayKey] = live.today;
-  const allTime = addInto(emptyAcc(), main.totals || {});
-  if (live.today?.dayKey > (main.closedThrough || '')) addInto(allTime, live.today);
-  return { today, byDay, allTime, liveAtMs: Number(live.atMs || 0), firstDayKey: main.firstDayKey || null };
+  for (const d of r.days || []) byDay[d.dayKey] = d;
+  const lt = r.live?.today;
+  if (lt?.dayKey && !byDay[lt.dayKey]) byDay[lt.dayKey] = lt;
+  const allTime = addInto(emptyAcc(), r.main?.totals || {});
+  if (lt?.dayKey && lt.dayKey > (r.main?.closedThrough || '')) addInto(allTime, lt);
+  return { today: r.today || todayKey(), byDay, allTime, liveAtMs: Number(r.live?.atMs || 0), firstDayKey: r.main?.firstDayKey || null };
 }
 
 function Chart({ daily, sel, onSel }) {
@@ -189,7 +187,7 @@ export default function Defter() {
     try {
       setData(await loadDefter());
     } catch (e) {
-      setErr(e?.code === 'permission-denied' ? 'Defteri sadece belediye kadrosu görebilir.' : 'Defter yüklenemedi, tekrar dene.');
+      setErr(friendlyError(e));
     } finally {
       setBusy(false);
     }

@@ -11,6 +11,7 @@ import BakanliklarTab from './BakanliklarTab';
 import BorclarTab from './BorclarTab';
 import BaskanlikTab from './BaskanlikTab';
 import BelediyeChat from './BelediyeChat';
+import Sikayet from './Sikayet';
 import { SEATS } from '../../../functions/belediye.js';
 import '../Gangs/Gangs.css';
 import './Belediye.css';
@@ -84,23 +85,42 @@ function Shell() {
   );
 }
 
+function Top({ onClose }) {
+  const [sk, setSk] = useState(false);
+  return (
+    <>
+      <div className="gx-full-top">
+        <span className="gx-full-title">🏛️ Belediye</span>
+        <span className="bd-top-actions">
+          <button className="bd-top-btn" onClick={() => setSk(true)}>
+            📣 Şikâyet
+          </button>
+          <button className="gx-full-close" onClick={onClose} aria-label="Kapat">
+            ✕
+          </button>
+        </span>
+      </div>
+      {sk && (
+        <div className="gx-root bd-root">
+          <Sikayet onClose={() => setSk(false)} />
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function BelediyeScreen({ onClose }) {
   useBackClose(true, onClose);
   return createPortal(
-    <div className="gx-full bd-full" role="dialog" aria-label="Belediye">
-      <div className="gx-full-top">
-        <span className="gx-full-title">🏛️ Belediye</span>
-        <button className="gx-full-close" onClick={onClose} aria-label="Kapat">
-          ✕
-        </button>
-      </div>
-      <div className="gx-full-body">
-        <div className="gx-root bd-root">
-          <BelediyeProvider>
+    <div className="gx-full bd-full bd-root" role="dialog" aria-label="Belediye">
+      <BelediyeProvider>
+        <Top onClose={onClose} />
+        <div className="gx-full-body">
+          <div className="gx-root bd-root">
             <Shell />
-          </BelediyeProvider>
+          </div>
         </div>
-      </div>
+      </BelediyeProvider>
     </div>,
     document.body
   );

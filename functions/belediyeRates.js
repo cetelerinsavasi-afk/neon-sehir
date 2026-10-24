@@ -81,9 +81,6 @@ export const RATE_GROUPS = [
       pct('isBar', 'Bar'),
       pct('isInternet', 'İnternet Kafe'),
       pct('isOfis', 'Ofis Kazançları'),
-      pct('isSinema', 'Sinema'),
-      pct('isStudyo', 'Stüdyo'),
-      pct('isMescit', 'Mescit Bağışları'),
     ],
   },
   { m: 'ticaret', id: 'piyango', title: 'Piyango Vergisi', unit: '%', items: [pct('piyango', 'Piyango Kazancı')] },
@@ -92,7 +89,8 @@ export const RATE_GROUPS = [
     id: 'ikinciel',
     title: '2. El Satış Vergileri',
     unit: '%',
-    items: [pct('ikAraba', '2. El Araba Satışı', 1, 1, 10), pct('ikSilah', '2. El Silah Satışı', 1, 1, 10), pct('ikMalzeme', '2. El Malzeme / Makine Satışı', 1, 1, 10)],
+    // v127: malzeme / makine kalemi kalktı (makine satışı yok, malzeme satışı vergisiz)
+    items: [pct('ikAraba', '2. El Araba Satışı', 1, 1, 10), pct('ikSilah', '2. El Silah Satışı', 1, 1, 10)],
   },
   {
     m: 'guvenlik',
@@ -140,9 +138,11 @@ export const BIZ_RATE_KEY = {
   bar: 'isBar',
   internet: 'isInternet',
   ofis: 'isOfis',
-  sinema: 'isSinema',
-  studyo: 'isStudyo',
-  mescit: 'isMescit',
+  // v127: sinema / stüdyo / mescit oyundan kalktı, hepsi "ofis" altında birleşti —
+  // eski kayıtlarda kalan türler de Ofis oranını kullanır
+  sinema: 'isOfis',
+  studyo: 'isOfis',
+  mescit: 'isOfis',
 };
 // Fabrika makinesi türü → oran anahtarı
 export const MACHINE_RATE_KEY = { mining: 'mkKripto', tamirMalzemesi: 'mkTamir', arabaGelistirme: 'mkAraba', silahUpgrade: 'mkSilah' };
@@ -184,7 +184,8 @@ export const bizRateFrac = (rates, type) => (BIZ_RATE_KEY[type] ? fracOf(rates, 
 export const machineRateFrac = (rates, type) => fracOf(rates, MACHINE_RATE_KEY[type] || 'mkTamir');
 // 2. el: item türü (weapon / vehicle / diğer)
 export const resaleRateKey = (kind) => (kind === 'weapon' || kind === 'silah' ? 'ikSilah' : kind === 'vehicle' || kind === 'araba' ? 'ikAraba' : 'ikMalzeme');
-export const resaleRateFrac = (rates, kind) => fracOf(rates, resaleRateKey(kind));
+// v127: sadece araç ve silah satışı vergilidir; malzeme / makine vergisiz
+export const resaleRateFrac = (rates, kind) => (resaleRateKey(kind) === 'ikMalzeme' ? 0 : fracOf(rates, resaleRateKey(kind)));
 export const FACTORY_BRACKET_FROM = [0, 100_000, 1_000_000, 10_000_000];
 export function factoryRateFrac(rates, gross) {
   const g = Math.max(0, Number(gross) || 0);

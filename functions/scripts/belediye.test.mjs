@@ -104,7 +104,8 @@ test('vergi fonksiyonları belediye oranını kullanır (önbellek / açık set)
   assert.deepEqual(splitSalaryTax(1000, 'isci', r), { gross: 1000, tax: 150, net: 850 });
   assert.equal(factoryTax(500_000, r), 55_000);
   assert.equal(factoryRateFrac(r, 99_999), 0.01);
-  assert.equal(resaleRateFrac(r, 'machine'), 0.01);
+  assert.equal(resaleRateFrac(r, 'machine'), 0, 'v127: malzeme / makine 2. el satışı vergisiz');
+  assert.equal(bizRateFrac({ ...r, isOfis: 7 }, 'sinema'), 0.07, 'v127: sinema / stüdyo / mescit → Ofis oranı');
   assert.equal(bizRateFrac(r, 'bilinmeyen'), 0.1);
   assert.equal(policeSalary(r, 'uzman'), 15_000);
   assert.equal(seatSalary(r, 'kul'), 30_000);
@@ -145,7 +146,7 @@ test('ayar: bakan kendi bakanlığını değiştirir (yarın geçerli), diğerin
   assert.match(e.message, /Gün bitmek üzere/);
 });
 
-test('00:00: ayarlar yürürlüğe girer, Sixtagram\'da duyurulur, sonraki gün sabit kalır; değişiklik yoksa paylaşım yok', async () => {
+test('00:00: ayarlar yürürlüğe girer (v127: Sixtagram yerine gazetede), sonraki gün sabit kalır', async () => {
   const w = world();
   await seatAll(w);
   await w.act('veli', 'setRate', { id: 'mkKripto', value: 6 });
@@ -153,19 +154,17 @@ test('00:00: ayarlar yürürlüğe girer, Sixtagram\'da duyurulur, sonraki gün 
   w.clock.now = ms('2026-10-25', '00:00');
   const r = await w.bel.nightlyRoll('2026-10-25');
   assert.equal(r.changes.length, 2);
-  assert.equal(w.posts.length, 1);
-  assert.match(w.posts[0], /Kripto \(Mining\) Makinesi: %5 → %6/);
-  assert.match(w.posts[0], /Piyango Kazancı: %10 → %9/);
+  assert.equal(w.posts.length, 0, 'Sixtagram paylaşımı yok (gazete)');
   const pub = w.G('belediye/public');
   assert.equal(pub.changesDay, '2026-10-25');
   assert.equal(pub.changes.find((c) => c.id === 'piyango').by, 'AYSE');
   assert.equal(w.G('belediye/rates').byDay['2026-10-25'].mkKripto, 6);
   assert.equal(resolveRates(w.G('belediye/rates'), '2026-10-24').mkKripto, 5, 'dünün oranı korunur (gece tahsilatı için)');
   await w.bel.nightlyRoll('2026-10-25');
-  assert.equal(w.posts.length, 1, 'tekrar çalışınca yeniden paylaşmaz');
+  assert.equal(w.posts.length, 0);
   w.clock.now = ms('2026-10-26', '00:00');
   await w.bel.nightlyRoll('2026-10-26');
-  assert.equal(w.posts.length, 1, 'değişiklik yoksa paylaşım yok');
+  assert.equal(w.posts.length, 0);
   assert.deepEqual(w.G('belediye/public').changes, []);
 });
 
@@ -414,4 +413,67 @@ test('kaynak: polis maaşları canlıda belediyeden, operasyon kasa yetmezse ba�
   assert.ok(idx.includes("if (user.belediyeSeat) throw new HttpsError('failed-precondition', 'Belediye görevlileri imam olamaz."));
   assert.ok(!idx.includes("stateWrite(tx, db, admin.firestore.FieldValue, { kind: 'out', cat: 'maas_imam'"), 'imam maaşı artık belediye bordrosunda');
   assert.ok(idx.includes('await loadRates(db);'), 'her çağrıda günün oranları');
+});
+
+test('v127 gazete: tek taslak (yenisi eskisinin yerine), sadece başkan/yardımcı; 00:00 baskısı değişiklikleri göreve gelince/dün/bugün ile basar', async () => {
+  const w = world();
+  await seatAll(w); // admin bsk, ali yrd1, veli san, ayse tic
+  let e = await w.fails('veli', 'gazeteYaz', { text: 'Sanayi bakanı olarak gazeteye yazmak istiyorum.' });
+  assert.match(e.message, /sadece başkan ve başkan yardımcıları/);
+  e = await w.fails('ali', 'gazeteYaz', { text: 'kısa' });
+  assert.match(e.message, /en az/);
+  await w.act('ali', 'gazeteYaz', { text: 'Yardımcı olarak ilk yazım: kasayı dolduracağız, söz.' });
+  await w.act('admin', 'gazeteYaz', { text: 'Başkan olarak söylüyorum: bu şehir daha güzel olacak.' });
+  let p = await w.act('ali', 'panel');
+  assert.equal(p.gazete.byUid, 'admin', 'tek taslak — son yazan kalır');
+  assert.equal(p.gazete.byTitle, 'Belediye Başkanı');
+  // değişiklik + şikâyet
+  await w.act('veli', 'setRate', { id: 'mkKripto', value: 6 });
+  const r1 = await w.act('can', 'sikayet', { text: 'Sokak lambaları yanmıyor, belediye uyuyor!' });
+  await w.act('fatma', 'sikayet', { text: 'Parkta bank yok, yaşlılar ayakta kalıyor.' });
+  await w.act('ali', 'sikayetBegen', { id: r1.id });
+  await w.act('veli', 'sikayetBegen', { id: r1.id });
+  e = await w.fails('can', 'sikayetBegen', { id: r1.id });
+  assert.match(e.message, /Kendi şikâyetini/);
+  assert.equal(w.G(`belediyeSikayet/${r1.id}`).likeCount, 2);
+  const un = await w.act('veli', 'sikayetBegen', { id: r1.id });
+  assert.equal(un.liked, false, 'ikinci dokunuş beğeniyi geri alır');
+  assert.equal(w.G(`belediyeSikayet/${r1.id}`).likeCount, 1);
+  w.clock.now = ms('2026-10-25', '00:01');
+  await w.bel.nightlyRoll('2026-10-25');
+  const g = await w.bel.buildGazete('2026-10-25', () => 0);
+  assert.equal(g.ok, true);
+  const doc = w.G('belediyeGazete/2026-10-25');
+  const row = doc.rows.find((x) => x.id === 'mkKripto');
+  assert.deepEqual([row.start, row.prev, row.cur, row.today, row.good], [5, 5, 6, true, false]);
+  assert.equal(doc.article.byName, 'ADMIN');
+  assert.equal(doc.complaint.likes, 1);
+  assert.equal(w.G('belediye/gazeteDraft'), undefined, 'taslak basılınca silinir');
+  assert.equal(w.G(`belediyeSikayet/${r1.id}`).featuredDay, '2026-10-25', 'aynı şikâyet bir daha basılmaz');
+  assert.ok(doc.headline.t.length > 3);
+  assert.equal((await w.bel.buildGazete('2026-10-25')).skipped, true, 'idempotent');
+  // ertesi gün: değişiklik yok ama göreve gelinceye göre fark sürüyor
+  w.clock.now = ms('2026-10-26', '00:01');
+  await w.bel.nightlyRoll('2026-10-26');
+  await w.bel.buildGazete('2026-10-26', () => 0);
+  const d2 = w.G('belediyeGazete/2026-10-26');
+  const r2 = d2.rows.find((x) => x.id === 'mkKripto');
+  assert.deepEqual([r2.start, r2.prev, r2.cur, r2.today], [5, 6, 6, false]);
+  assert.equal(d2.headline.kind, 'sakin');
+  assert.equal(d2.complaint, null);
+});
+
+test('v127 şikâyet: günde 3, 7 gün sonra silinir; defter sadece kadroya', async () => {
+  const w = world();
+  await seatAll(w);
+  for (let i = 0; i < 3; i++) await w.act('can', 'sikayet', { text: `Şikâyet numarası ${i} - çöpler toplanmıyor` });
+  const e = await w.fails('can', 'sikayet', { text: 'Dördüncü şikâyet de olsun bari' });
+  assert.match(e.message, /en fazla 3/);
+  w.clock.now += 8 * 86_400_000;
+  assert.equal(await w.bel.sikayetTemizle(), 3);
+  const e2 = await w.fails('can', 'defter');
+  assert.match(e2.message, /sadece belediye kadrosu/);
+  const d = await w.act('veli', 'defter');
+  assert.ok(Array.isArray(d.days));
+  assert.ok(d.main.totals);
 });

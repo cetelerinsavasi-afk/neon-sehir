@@ -467,7 +467,7 @@ function SellForm({ onCreated, onClose, initialItemType }) {
               {(itemType === 'vehicle' || itemType === 'weapon') && priceRange && autoSellsAt(price, priceRange.min, priceRange.max) && (
                 <p className="market-autosell-hint">{AUTO_SELL_HINT}</p>
               )}
-              {price > 0 && (
+              {price > 0 && resaleRateFrac(rates, itemType) > 0 && (
                 <p className="market-price-range-hint">
                   🏛️ Vergi (%{Math.round(resaleRateFrac(rates, itemType) * 100)}): {rTax(price).toLocaleString('tr-TR')} altın · Satılınca eline geçen:{' '}
                   <strong>{(price - rTax(price)).toLocaleString('tr-TR')} altın</strong>

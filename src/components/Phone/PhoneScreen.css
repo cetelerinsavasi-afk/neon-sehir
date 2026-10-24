@@ -576,3 +576,11 @@
     radial-gradient(circle at 30% 20%, rgba(255, 240, 160, 0.7), transparent 55%),
     linear-gradient(160deg, #ffb703, #8a4b00);
 }
+/* v127 — Neon Şehir Gazetesi */
+.tone-neongazete {
+  background: linear-gradient(160deg, #f3ead6, #b9a77f);
+  border: 1px solid #5a4a32;
+}
+.phone-app-body.full > .gz-wrap {
+  overflow-y: auto;
+}

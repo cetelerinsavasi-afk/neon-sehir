@@ -552,3 +552,102 @@
 .bd-chart-legend i.out {
   background: var(--bd-dn);
 }
+
+/* gazete yazısı (Başkanlık) */
+.bd-gz-draft {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #0c1220;
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+.bd-gz-draft p {
+  margin: 0;
+  font-size: 13px;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.bd-gz-del {
+  align-self: flex-end;
+  color: var(--bd-dn);
+}
+.bd-gz-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* şikâyet kutusu */
+.bd-top-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.bd-top-btn {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 210, 63, 0.45);
+  background: rgba(255, 210, 63, 0.08);
+  color: var(--neon-yellow);
+  font-weight: 800;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.bd-sk-list {
+  display: flex;
+  flex-direction: column;
+}
+.bd-sk {
+  display: flex;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid #172036;
+  align-items: flex-start;
+}
+.bd-sk-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.bd-sk-main p {
+  margin: 0;
+  font-size: 13.5px;
+  overflow-wrap: anywhere;
+}
+.bd-sk-acts {
+  display: flex;
+  gap: 8px;
+}
+.bd-sk-acts .gx-link {
+  font-size: 11.5px;
+  padding: 0;
+}
+.bd-sk-like {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 44px;
+  padding: 6px 4px;
+  border-radius: 10px;
+  border: 1px solid #2a3654;
+  background: #111829;
+  color: var(--text);
+  font-size: 16px;
+  cursor: pointer;
+}
+.bd-sk-like span {
+  font-size: 11.5px;
+  font-weight: 800;
+}
+.bd-sk-like.on {
+  border-color: rgba(255, 59, 92, 0.6);
+}
+.bd-sk-like:disabled {
+  opacity: 0.55;
+  cursor: default;
+}

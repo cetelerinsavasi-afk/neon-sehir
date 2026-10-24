@@ -241,7 +241,7 @@ export const VENUES = {
     name: 'Neon Şehir Belediyesi',
     icon: '🏛️',
     loc: 'belediye',
-    v: 1,
+    v: 2, // v127: çaycı tezgâhı
     wall: 'ahsap_panel',
     floor: 'parke_ceviz',
     items: [
@@ -275,6 +275,7 @@ export const VENUES = {
       it('bl_od', 'officedesk', -2.8, 5.0),
       it('bl_fc2', 'filecab', -4.6, 6.6, 4),
       it('bl_wc', 'watercooler', 8.3, 5.8, 6),
+      it('bl_cay', 'caysemaver', -6.4, 6.3, 4), // v127
       it('bl_pl1', 'plantb', 3.6, 6.4),
       it('bl_pl2', 'plantb', 8.3, -6.3),
       it('bl_pl3', 'plantb', -8.3, 6.3),
@@ -491,7 +492,8 @@ export function camiiDynamicNpcs({ imam = null, sermon = false, beggars = [] } =
       z: 5.6,
       seat: `cm_dm${i + 1}:0`,
       station: 'cm_bk',
-      lines: CAMII_BEGGAR_LINES,
+      // v127: dilenci kendi yazdığı notu söyler (not yoksa / gizlendiyse klasik cümleler)
+      lines: String(b.note || '').trim() && !b.hidden ? [String(b.note).trim()] : CAMII_BEGGAR_LINES,
     });
   });
   return list;

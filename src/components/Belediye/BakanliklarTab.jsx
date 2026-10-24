@@ -75,12 +75,20 @@ function Ticaret({ r, c, rates }) {
   const counts = r.analysis?.bizCounts || {};
   const taxOfType = (t) => (c.in[`vergi_isl_${t}`] || 0) + (t === 'ofis' ? c.in.vergi_ofis || 0 : 0) + (t === 'gazino' ? (c.in.vergi_gazino || 0) + (c.in.vergi_gazinoCekim || 0) : 0);
   const types = Object.keys(BIZ_RATE_KEY);
-  const rows = types
-    .map((t) => ({ t, n: counts[t], ciro: st[`isl_${t}_ciro`] || 0, tax: taxOfType(t) }))
+  // v127: aynı orana bağlı türler (ör. sinema / stüdyo / mescit → Ofis) tek satırda
+  const byKey = {};
+  for (const t of types) {
+    const k = BIZ_RATE_KEY[t];
+    const row = (byKey[k] ||= { k, n: null, ciro: 0, tax: 0 });
+    if (counts[t] != null) row.n = (row.n || 0) + counts[t];
+    row.ciro += st[`isl_${t}_ciro`] || 0;
+    row.tax += taxOfType(t);
+  }
+  const rows = Object.values(byKey)
     .filter((x) => x.n || x.ciro || x.tax)
-    .map((x) => ({ key: x.t, name: RATE_BY_ID[BIZ_RATE_KEY[x.t]].label.replace(' (gazino)', ''), n: x.n != null ? nf(x.n) : '—', ciro: nf(x.ciro), rate: pctOf(rates, BIZ_RATE_KEY[x.t]), tax: nf(x.tax) }));
+    .map((x) => ({ key: x.k, name: RATE_BY_ID[x.k].label.replace(' (gazino)', '').replace(' Kazançları', ''), n: x.n != null ? nf(x.n) : '—', ciro: nf(x.ciro), rate: pctOf(rates, x.k), tax: nf(x.tax) }));
   const bizTax = types.reduce((a, t) => a + taxOfType(t), 0);
-  const ie = ['araba', 'silah', 'malzeme'].map((k) => ({ key: k, name: IE_LABEL[k], n: nf(st[`ie_${k}_n`]), ciro: nf(st[`ie_${k}_ciro`]), rate: pctOf(rates, k === 'araba' ? 'ikAraba' : k === 'silah' ? 'ikSilah' : 'ikMalzeme') }));
+  const ie = ['araba', 'silah'].map((k) => ({ key: k, name: IE_LABEL[k], n: nf(st[`ie_${k}_n`]), ciro: nf(st[`ie_${k}_ciro`]), rate: pctOf(rates, k === 'araba' ? 'ikAraba' : 'ikSilah') }));
   return (
     <>
       <Kpis

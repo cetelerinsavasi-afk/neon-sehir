@@ -42,12 +42,12 @@ import {
   seatSalary,
   policeSalary,
   ministryOfCat,
-  fmtRate,
   isGoodChange,
   ratesOfMinistry,
 } from './belediyeRates.js';
 import { stateWrite, STATE_IN, STATE_OUT } from './stateTreasury.js';
 import { createKasa } from './belediyeKasa.js';
+import { gazeteRows, gazeteHeadline, gazeteKasaLine } from './belediyeGazete.js';
 
 export const SEATS = {
   bsk: { id: 'bsk', title: 'Belediye Başkanı', kind: 'bsk' },
@@ -74,6 +74,15 @@ export const BELEDIYE = {
   // Gün sonu kilidi: 23:59:30 – 24:00 arası ayar yapılamaz (gece devriyle yarışmasın)
   DAY_END_LOCK_MS: 30_000,
   POLICE_CHAT_RANKS: ['baskan', 'sef', 'uzman'],
+  // v127 gazete: başkan ve yardımcılar günde TEK yazı (yenisi eskisinin yerine geçer)
+  GAZETE_SEATS: ['bsk', 'yrd1', 'yrd2'],
+  GAZETE_MIN: 20,
+  GAZETE_MAX: 1200,
+  // v127 şikâyet kutusu
+  SIKAYET_MIN: 10,
+  SIKAYET_MAX: 300,
+  SIKAYET_PER_DAY: 3,
+  SIKAYET_TTL_MS: 7 * 24 * 3600_000,
 };
 const ROLE_CAT = { polis: 'maas_polis', imam: 'maas_imam', belediye: 'maas_belediye' };
 const POLICE_RANK_LABEL = { baskan: 'Emniyet Genel Müdürü', sef: 'Emniyet Amiri', uzman: 'Başkomiser', ajan: 'Komiser', muhbir: 'Polis Memuru' };
@@ -163,6 +172,10 @@ export function createBelediye({
   const payrollRef = (day) => db.collection('belediyePayroll').doc(day);
   const debtRef = (id) => db.collection('belediyeDebts').doc(id);
   const donationsRef = (day) => db.collection('belediyeDonations').doc(day);
+  const draftRef = db.doc('belediye/gazeteDraft'); // sadece sunucu (kadro panel çağrısıyla görür)
+  const govRef = db.doc('belediye/gov'); // mevcut başkanın göreve geldiği gündeki oranlar
+  const gazeteRef = (day) => db.collection('belediyeGazete').doc(day);
+  const sikayetCol = db.collection('belediyeSikayet');
   const smsTo = (tx, uid, text, type = 'belediye') =>
     tx.set(userRef(uid).collection('messages').doc(), { text, createdAt: FieldValue.serverTimestamp(), read: false, type });
   const logLine = (main, text) => [{ atMs: now(), text }, ...(Array.isArray(main?.log) ? main.log : [])].slice(0, BELEDIYE.LOG_MAX);
@@ -281,11 +294,7 @@ export function createBelediye({
     const changes = rateChanges(prev, cur).map((c) => ({ ...c, by: by[c.id]?.name || null, good: isGoodChange(c.unit, c.id, c.to - c.from) }));
     await publicRef.set({ changesDay: dayKey, changes, updatedAtMs: now() }, { merge: true });
     if (ratesApi?.loadRates) await ratesApi.loadRates(db, { force: true }).catch(() => {});
-    if (changes.length) {
-      const lines = changes.map((c) => `${c.to > c.from ? '🔺' : '🔻'} ${c.label}: ${fmtRate(c.from, c.unit)} → ${fmtRate(c.to, c.unit)}`);
-      const text = `🏛️ Bugünden itibaren geçerli zam ve indirimler (${dayLabel(dayKey)})\n\n${lines.join('\n')}`.slice(0, 1900);
-      await postSixtagram(text).catch((err) => console.error('belediye sixtagram', err?.message || err));
-    }
+    // v127: zam / indirim duyurusu artık Sixtagram'da değil, gecenin gazetesinde (buildGazete)
     return { changes };
   }
 
@@ -829,7 +838,7 @@ export function createBelediye({
     const main = (await mainRef.get()).data() || {};
     const seat = seatOfUid(main, uid);
     if (!seat) fail('permission-denied', 'Belediye kadrosunda değilsin.');
-    const [ps, rs, st, debts] = await Promise.all([pendingRef.get(), ratesRef.get(), kasa.status(), openSalaryDebts()]);
+    const [ps, rs, st, debts, dr] = await Promise.all([pendingRef.get(), ratesRef.get(), kasa.status(), openSalaryDebts(), draftRef.get()]);
     const day = today();
     const pending = ps.data() || {};
     const ratesDoc = rs.data() || {};
@@ -843,6 +852,7 @@ export function createBelediye({
       next,
       nextBy: pending.nextDay === tomorrow ? pending.by || {} : {},
       kasa: { spendable: st.spendable, reserved: st.reserved, atMs: st.atMs, today: st.today },
+      gazete: dr.exists ? dr.data() : null,
       debts: {
         maas: debts.map((d) => ({ id: d.id, dayKey: d.dayKey, workDay: d.workDay, total: d.total, status: d.status, count: (d.items || []).length })),
         other: st.other,
@@ -903,9 +913,186 @@ export function createBelediye({
       await kasa.fold();
       // yarıda kalmış maaş borcu ödemeleri
       for (const d of await openSalaryDebts()) if (d.status === 'paying') await payDebt(null, { debtId: d.id, auto: true }).catch(() => {});
-      return nightlyReport(dayKey, extra);
+      const rep = await nightlyReport(dayKey, extra);
+      await buildGazete(dayKey).catch((err) => console.error('belediye gazete', err?.message || err));
+      await sikayetTemizle().catch((err) => console.error('belediye şikâyet temizliği', err?.message || err));
+      return rep;
     }
     return null;
+  }
+
+  // ===========================================================================
+  // v127 GAZETE — başkan / yardımcının yazısı (tek taslak, 00:00'da basılır)
+  // ===========================================================================
+  async function gazeteYaz(uid, { text }) {
+    const msg = String(text || '')
+      .replace(/\r/g, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+      .slice(0, BELEDIYE.GAZETE_MAX);
+    if (msg.length < BELEDIYE.GAZETE_MIN) fail('invalid-argument', `Yazı en az ${BELEDIYE.GAZETE_MIN} karakter olmalı.`);
+    await assertCanSpeak(uid, { text: msg });
+    let out = null;
+    await db.runTransaction(async (tx) => {
+      const [ms, me, dr] = await Promise.all([tx.get(mainRef), tx.get(userRef(uid)), tx.get(draftRef)]);
+      const main = ms.data() || {};
+      const seat = seatOfUid(main, uid);
+      if (!BELEDIYE.GAZETE_SEATS.includes(seat)) fail('permission-denied', 'Gazeteye sadece başkan ve başkan yardımcıları yazabilir.');
+      const name = me.data()?.displayName || 'Oyuncu';
+      const prev = dr.data();
+      out = { text: msg, byUid: uid, byName: name, bySeat: seat, byTitle: SEATS[seat].title, atMs: now() };
+      tx.set(draftRef, out);
+      const replaced = prev?.text && prev.byUid !== uid ? ` (${prev.byName} yazısının yerine)` : '';
+      writeMain(tx, main, { log: logLine(main, `📰 ${name} yarının gazetesine yazı yazdı${replaced}`) });
+    });
+    return { ok: true, draft: out };
+  }
+
+  async function gazeteSil(uid) {
+    await db.runTransaction(async (tx) => {
+      const [ms, dr] = await Promise.all([tx.get(mainRef), tx.get(draftRef)]);
+      if (!BELEDIYE.GAZETE_SEATS.includes(seatOfUid(ms.data() || {}, uid))) fail('permission-denied', 'Gazete yazısını sadece başkan ve başkan yardımcıları silebilir.');
+      if (dr.exists) tx.delete(draftRef);
+    });
+    return { ok: true };
+  }
+
+  // 00:00 — günün sayısı (gece raporundan SONRA). İdempotent: belge varsa basılmaz.
+  async function buildGazete(dayKey, rnd = Math.random) {
+    const ref = gazeteRef(dayKey);
+    if ((await ref.get()).exists) return { skipped: true };
+    const [ms, rs, ps, pubS, govS] = await Promise.all([mainRef.get(), ratesRef.get(), pendingRef.get(), publicRef.get(), govRef.get()]);
+    const main = ms.data() || {};
+    const ratesDoc = rs.data() || {};
+    const pub = pubS.data() || {};
+    const bsk = main.seats?.bsk?.uid ? main.seats.bsk : null;
+    let gov = govS.data() || null;
+    // başkan değiştiyse "göreve gelince" seviyesi: göreve başladığı günün oranları
+    if (bsk && gov?.mayorUid !== bsk.uid) {
+      const since = rateDayKey(Number(bsk.sinceMs || now()));
+      gov = { mayorUid: bsk.uid, mayorName: bsk.name, sinceDay: since, rates: resolveRates(ratesDoc, since) };
+      await govRef.set({ ...gov, atMs: now() });
+    }
+    const cur = resolveRates(ratesDoc, dayKey, ps.data());
+    const prev = resolveRates(ratesDoc, addDayKey(dayKey, -1));
+    const rows = gazeteRows({ start: gov?.rates || prev, prev, cur, rnd });
+    const payrollUnpaid = pub.payroll?.dayKey === dayKey && pub.payroll.paid === false;
+    const headline = gazeteHeadline({ rows, payrollUnpaid, rnd });
+    const r = pub.report && pub.report.dayKey === addDayKey(dayKey, -1) ? pub.report : null;
+    // halkın sesi: yayınlanmamış, en çok beğenilen (7 gün içindeki) şikâyet
+    let complaint = null;
+    try {
+      const top = await sikayetCol.orderBy('likeCount', 'desc').limit(15).get();
+      const minMs = now() - BELEDIYE.SIKAYET_TTL_MS;
+      const d = top.docs.find((x) => {
+        const v = x.data();
+        return !v.featuredDay && !v.hidden && Number(v.likeCount || 0) > 0 && Number(v.createdAtMs || 0) >= minMs;
+      });
+      if (d) complaint = { id: d.id, text: d.data().text, name: d.data().name || 'Bir vatandaş', likes: Number(d.data().likeCount || 0) };
+    } catch (err) {
+      console.error('gazete şikâyet', err?.message || err);
+    }
+    let printed = false;
+    await db.runTransaction(async (tx) => {
+      const [ex, dr] = await Promise.all([tx.get(ref), tx.get(draftRef)]);
+      if (ex.exists) return;
+      const draft = dr.data();
+      const article = draft?.text ? { text: draft.text, byName: draft.byName, byTitle: draft.byTitle, bySeat: draft.bySeat } : null;
+      tx.set(ref, {
+        dayKey,
+        headline,
+        rows,
+        govSince: gov?.sinceDay || null,
+        mayor: bsk ? { name: bsk.name, avatar: bsk.avatar || null } : null,
+        article,
+        complaint: complaint ? { text: complaint.text, name: complaint.name, likes: complaint.likes } : null,
+        kasa: r ? { dayKey: r.dayKey, in: r.inTotal, out: r.outTotal, net: r.net, line: gazeteKasaLine(r.net, rnd) } : null,
+        payrollUnpaid,
+        builtAtMs: now(),
+      });
+      if (draft) tx.delete(draftRef);
+      if (complaint) tx.update(sikayetCol.doc(complaint.id), { featuredDay: dayKey });
+      printed = true;
+    });
+    return { ok: printed, rows: rows.length };
+  }
+
+  // ===========================================================================
+  // v127 ŞİKÂYET KUTUSU — herkes yazar, beğenir; 7 gün sonra silinir
+  // ===========================================================================
+  async function sikayet(uid, { text }) {
+    const msg = String(text || '').replace(/\s+/g, ' ').trim().slice(0, BELEDIYE.SIKAYET_MAX);
+    if (msg.length < BELEDIYE.SIKAYET_MIN) fail('invalid-argument', `Şikâyet en az ${BELEDIYE.SIKAYET_MIN} karakter olmalı.`);
+    await assertCanSpeak(uid, { text: msg });
+    const day = today();
+    const limRef = db.collection('belediyeSikayetLimit').doc(uid);
+    const ref = sikayetCol.doc();
+    await db.runTransaction(async (tx) => {
+      const [us, lim] = await Promise.all([tx.get(userRef(uid)), tx.get(limRef)]);
+      const u = us.data();
+      if (!u) fail('failed-precondition', 'Oyuncu bulunamadı.');
+      const n = lim.data()?.day === day ? Number(lim.data()?.n || 0) : 0;
+      if (n >= BELEDIYE.SIKAYET_PER_DAY) fail('resource-exhausted', `Günde en fazla ${BELEDIYE.SIKAYET_PER_DAY} şikâyet yazabilirsin.`);
+      tx.set(limRef, { day, n: n + 1 });
+      const t = now();
+      tx.set(ref, { uid, name: u.displayName || 'Oyuncu', avatar: u.avatar || null, text: msg, createdAtMs: t, expiresAtMs: t + BELEDIYE.SIKAYET_TTL_MS, likeCount: 0, likes: {} });
+    });
+    return { ok: true, id: ref.id };
+  }
+
+  async function sikayetBegen(uid, { id }) {
+    const ref = sikayetCol.doc(String(id || ''));
+    let liked = false;
+    await db.runTransaction(async (tx) => {
+      const s = await tx.get(ref);
+      const d = s.data();
+      if (!d || Number(d.expiresAtMs || 0) <= now()) fail('not-found', 'Şikâyet bulunamadı.');
+      if (d.uid === uid) fail('failed-precondition', 'Kendi şikâyetini beğenemezsin.');
+      liked = !d.likes?.[uid];
+      tx.update(ref, { [`likes.${uid}`]: liked ? true : FieldValue.delete(), likeCount: inc(liked ? 1 : -1) });
+    });
+    return { ok: true, liked };
+  }
+
+  async function sikayetSil(uid, { id }) {
+    const ref = sikayetCol.doc(String(id || ''));
+    const s = await ref.get();
+    if (!s.exists) return { ok: true };
+    // halkın sesi: belediye kadrosu şikâyet silemez (uygunsuz olanlar Bildir ile moderasyona)
+    if (s.data().uid !== uid) fail('permission-denied', 'Sadece kendi şikâyetini silebilirsin.');
+    await ref.delete();
+    return { ok: true };
+  }
+
+  async function sikayetTemizle() {
+    const snap = await sikayetCol.where('createdAtMs', '<', now() - BELEDIYE.SIKAYET_TTL_MS).limit(400).get();
+    if (!snap.size) return 0;
+    const b = db.batch();
+    snap.docs.forEach((d) => b.delete(d.ref));
+    await b.commit();
+    return snap.size;
+  }
+
+  // ===========================================================================
+  // v127 AYRINTILI DEFTER (Belediye › Başkanlık — kadro): geçmiş + bugün
+  // ===========================================================================
+  async function defter(uid) {
+    const main = (await mainRef.get()).data() || {};
+    if (!seatOfUid(main, uid)) {
+      const u = (await userRef(uid).get()).data();
+      if (!(await isAdmin(uid, u))) fail('permission-denied', 'Defteri sadece belediye kadrosu görebilir.');
+    }
+    await kasa.liveFresh(10 * 60 * 1000).catch(() => null);
+    const day = today();
+    const [m, l, days] = await Promise.all([db.doc('stateTreasury/main').get(), kasa.liveRef.get(), db.collection('stateDays').where('dayKey', '>=', addDayKey(day, -29)).get()]);
+    const md = m.data() || {};
+    const pickDay = (d) => ({ dayKey: d.dayKey, in: d.in || {}, out: d.out || {}, inTotal: Number(d.inTotal || 0), outTotal: Number(d.outTotal || 0) });
+    return {
+      today: day,
+      main: { totals: md.totals || { in: {}, out: {}, inTotal: 0, outTotal: 0 }, closedThrough: md.closedThrough || '', firstDayKey: md.firstDayKey || null },
+      live: { today: l.data()?.today ? pickDay(l.data().today) : null, atMs: Number(l.data()?.atMs || 0) },
+      days: days.docs.map((d) => pickDay(d.data())),
+    };
   }
 
   // ===========================================================================
@@ -926,6 +1113,12 @@ export function createBelediye({
     payDebt: (uid, d) => payDebt(uid, { debtId: d?.debtId }),
     payOther: (uid, d) => payOther(uid, d),
     chat: (uid, d) => chat(uid, d),
+    gazeteYaz: (uid, d) => gazeteYaz(uid, d),
+    gazeteSil: (uid) => gazeteSil(uid),
+    sikayet: (uid, d) => sikayet(uid, d),
+    sikayetBegen: (uid, d) => sikayetBegen(uid, d),
+    sikayetSil: (uid, d) => sikayetSil(uid, d),
+    defter: (uid) => defter(uid),
   };
   async function handle(uid, data) {
     const op = String(data?.op || '');
@@ -947,6 +1140,8 @@ export function createBelediye({
     nightly,
     nightlyRoll,
     nightlyReport,
+    buildGazete,
+    sikayetTemizle,
     snapshotStaffAndImam,
     setPolicePayroll,
     tryRunPayroll,

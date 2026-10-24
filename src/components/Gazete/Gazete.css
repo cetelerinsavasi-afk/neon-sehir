@@ -1,0 +1,210 @@
+/* v127 — Neon Şehir Gazetesi: kâğıt görünümü, okunaklı serif başlıklar */
+.gz-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 100%;
+  background: #1b1712;
+  padding: 10px;
+  box-sizing: border-box;
+}
+.gz-issues {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+}
+.gz-issues button {
+  border: 1px solid #5a4a32;
+  background: #2a2318;
+  color: #e8dcc2;
+  border-radius: 999px;
+  padding: 5px 11px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.gz-issues button.on {
+  background: #f3ead6;
+  color: #1a140c;
+}
+.gz-paper {
+  background: #f3ead6;
+  color: #1d1a15;
+  border-radius: 6px;
+  padding: 14px 14px 10px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  font-family: Georgia, 'Times New Roman', serif;
+  line-height: 1.45;
+}
+.gz-mast {
+  border-bottom: 3px double #1d1a15;
+  padding-bottom: 6px;
+  margin-bottom: 10px;
+  text-align: center;
+}
+.gz-mast h1 {
+  margin: 4px 0;
+  font-size: 25px;
+  letter-spacing: 1px;
+  font-weight: 900;
+  line-height: 1.05;
+}
+.gz-mast-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #4a4234;
+  border-top: 1px solid #1d1a15;
+  padding-top: 3px;
+}
+.gz-mast-row:first-child {
+  border-top: 0;
+  border-bottom: 1px solid #1d1a15;
+  padding: 0 0 3px;
+}
+.gz-head {
+  border-bottom: 1px solid #1d1a15;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+}
+.gz-head h2 {
+  margin: 0 0 4px;
+  font-size: 26px;
+  line-height: 1.1;
+  font-weight: 900;
+}
+.gz-head.zam h2,
+.gz-head.kriz h2 {
+  color: #8f1d14;
+}
+.gz-head.indirim h2 {
+  color: #1d5a2a;
+}
+.gz-head p {
+  margin: 0;
+  font-size: 14px;
+  font-style: italic;
+  color: #3a342a;
+}
+.gz-h3 {
+  margin: 12px 0 6px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border-bottom: 2px solid #1d1a15;
+  padding-bottom: 2px;
+}
+.gz-table {
+  font-size: 12px;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+.gz-tr {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 6px 0;
+  border-bottom: 1px dotted #9a8c70;
+  align-items: start;
+}
+.gz-tr > span:not(:first-child) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.gz-th {
+  font-weight: 800;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  color: #4a4234;
+}
+.gz-tr.today {
+  background: rgba(255, 210, 63, 0.18);
+}
+.gz-item {
+  display: flex;
+  flex-direction: column;
+}
+.gz-item small {
+  color: #6a5f4c;
+  font-size: 10.5px;
+}
+.gz-item i {
+  font-family: Georgia, serif;
+  font-size: 11.5px;
+  color: #4a4234;
+}
+.gz-tr .up {
+  color: #1d6a2e;
+  font-weight: 800;
+}
+.gz-tr .dn {
+  color: #a3221a;
+  font-weight: 800;
+}
+.gz-byline {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+.gz-article {
+  margin: 0;
+  font-size: 15px;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.gz-article::first-letter {
+  font-size: 30px;
+  font-weight: 900;
+  float: left;
+  line-height: 0.9;
+  margin: 3px 5px 0 0;
+}
+.gz-quote {
+  margin: 0;
+  font-size: 15px;
+  font-style: italic;
+  border-left: 4px solid #1d1a15;
+  padding: 2px 0 2px 10px;
+  overflow-wrap: anywhere;
+}
+.gz-quote footer {
+  font-style: normal;
+  font-size: 12px;
+  color: #4a4234;
+  margin-top: 4px;
+}
+.gz-kasa p {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+.gz-kasa-nums {
+  font-family: system-ui, sans-serif;
+  font-size: 12px !important;
+  color: #4a4234;
+}
+.gz-alarm {
+  color: #a3221a;
+  font-weight: 800;
+}
+.gz-empty {
+  color: #e8dcc2;
+  text-align: center;
+  margin: 30px 10px;
+  font-family: Georgia, serif;
+}
+.gz-paper .gz-empty {
+  color: #4a4234;
+  margin: 6px 0;
+  text-align: left;
+}
+.gz-foot {
+  margin-top: 12px;
+  border-top: 1px solid #1d1a15;
+  padding-top: 4px;
+  font-size: 10px;
+  text-align: center;
+  color: #6a5f4c;
+  font-family: system-ui, sans-serif;
+}

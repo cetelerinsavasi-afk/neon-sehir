@@ -1162,6 +1162,31 @@ I('simit', 'dukkan', 'Simit Arabası', '🥯', (g) => {
   }
   B(g, 0.84, 0.04, 0.54, '#fff', 0, 1.35, 0);
 }, { box: [0.42, 0.27] });
+// v127 — Çaycı Tezgâhı: semaver + ince belli çay bardakları (çay alınır; Belediye'de de var)
+I('caysemaver', 'dukkan', 'Çaycı Tezgâhı', '🫖', (g) => {
+  B(g, 0.9, 0.8, 0.5, '#6b3f1f', 0, 0, 0, { r: 0.5 });
+  B(g, 0.96, 0.04, 0.56, '#3a2210', 0, 0.8, 0);
+  B(g, 0.8, 0.06, 0.02, '#c9a24a', 0, 0.55, 0.255, { m: 0.6 });
+  // semaver (bakır gövde, musluk, demlik)
+  const sm = sub(g, -0.2, 0.84, -0.05);
+  Cy(sm, 0.11, 0.04, '#8a5a2a', 0, 0, 0, { m: 0.8, r: 0.3 }, 16);
+  Cy(sm, 0.13, 0.32, '#c27a3a', 0, 0.04, 0, { m: 0.85, r: 0.25 }, 20, 0.1);
+  Cy(sm, 0.1, 0.04, '#8a5a2a', 0, 0.36, 0, { m: 0.8, r: 0.3 }, 16);
+  CyZ(sm, 0.015, 0.1, '#c9a24a', 0, 0.1, 0.15);
+  Cy(sm, 0.07, 0.1, '#f4f1e8', 0, 0.4, 0, null, 14, 0.06);
+  Sp(sm, 0.02, '#c9a24a', 0, 0.52, 0, { m: 0.8 }, 8);
+  // tepsi + ince belli çay bardakları
+  Cy(g, 0.17, 0.012, '#d9dde3', 0.22, 0.84, 0.02, { m: 0.8 }, 24);
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * PI * 2;
+    const x = 0.22 + Math.cos(a) * 0.1;
+    const z = 0.02 + Math.sin(a) * 0.1;
+    Cy(g, 0.022, 0.012, '#f4f1e8', x, 0.852, z, null, 10);
+    Cy(g, 0.02, 0.07, K('#b5481c', { op: 0.85 }), x, 0.864, z, null, 10, 0.026);
+  }
+  // şeker kâsesi
+  Cy(g, 0.05, 0.04, '#1f5a8a', 0.4, 0.84, -0.15, null, 12, 0.06);
+}, { box: [0.5, 0.3] });
 
 // ── Benzinlik
 I('pump', 'benzin', 'Akaryakıt Pompası', '⛽', (g) => {

@@ -40,6 +40,7 @@ export const OFFICE_FURN = {
   drinkfridge: { kind: 'product', band: 'food', name: 'İçecek Dolabı', icon: '🥤' },
   icecream: { kind: 'product', band: 'food', name: 'Dondurma Dolabı', icon: '🍦' },
   simit: { kind: 'product', band: 'food', name: 'Simit Arabası', icon: '🥯' },
+  caysemaver: { kind: 'product', band: 'food', name: 'Çaycı Tezgâhı', icon: '🫖' }, // v127
   bar: { kind: 'product', band: 'bar', name: 'Bar Tezgâhı', icon: '🥃' },
   bufe: { kind: 'product', band: 'food', name: 'Büfe Kulübesi', icon: '🌭' },
   popcorn: { kind: 'product', band: 'food', name: 'Patlamış Mısır Makinesi', icon: '🍿' },

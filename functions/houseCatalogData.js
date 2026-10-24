@@ -74,7 +74,8 @@ export const ITEM_PRICES = {
   // Boks
   ring: z(10), speedbag: g(18000), cornerstool: g(6000), gong: g(25000), bleacher: g(60000),
   // Market
-  cart: g(15000), simit: g(30000), beltcheckout: g(30000), // v94 bantlı market kasası
+  cart: g(15000), simit: g(30000), caysemaver: g(35000), // v127 çaycı tezgâhı
+  beltcheckout: g(30000), // v94 bantlı market kasası
   // Benzinlik
   pump: g(50000), canopy: g(120000), airpump: g(20000), cone: g(3000), carwash: z(6), pricesign: g(25000),
   // Yayın seti
@@ -201,6 +202,7 @@ export const HOUSE_TAKEABLES = {
   // v92
   shelf: ['cikolata', 'cips', 'biskuvi', 'makarna', 'kola'],
   simit: ['simit'],
+  caysemaver: ['cay'], // v127
   popcorn: ['misir'],
   mangal: ['kebap'],
   vegbed: ['meyve'],
@@ -208,6 +210,10 @@ export const HOUSE_TAKEABLES = {
   gunrackg: ['altinTabanca'],
   bufe: ['tost', 'sosisli', 'ayran', 'cay'],
 };
+
+// v127 — oyunun mekânlarında (Belediye, Banka, Karakol…) da kullanılan ücretsiz eşyalar:
+// sebilden su, çaycıdan çay. Diğer eşyalardan mekânda ürün alınmaz.
+export const VENUE_FREE_TAKE_KEYS = ['watercooler', 'caysemaver'];
 
 export function priceOf(k) {
   return ITEM_PRICES[k] || null;

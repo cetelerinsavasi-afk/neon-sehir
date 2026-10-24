@@ -1063,6 +1063,15 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if false;
     }
+    // v127 — gazete (her gece basılan sayı) ve şikâyet kutusu: herkes okur
+    match /belediyeGazete/{d} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    match /belediyeSikayet/{d} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
     match /belediyeDonations/{d} {
       allow read: if isSignedIn();
       allow write: if false;

@@ -32,6 +32,9 @@ const PARTS = {
   belediye: BelediyePart,
 };
 
+// motorun konuşma balonu süresi (houseEngine say: 9 sn) + iki konuşma arası sessizlik
+const NPC_BUBBLE_MS = 9000;
+const NPC_GAP_MS = 1500;
 const npcToOther = (n) => ({
   uid: n.id,
   displayName: n.name,
@@ -88,21 +91,30 @@ export default function VenueLayer({ venue, engineRef, interact, mode, onNpcs, a
     };
   }, [user, venue.loc, engineRef]);
 
-  // --- NPC'ler sırayla konuşur (her 6 sn'de bir kişi)
+  // --- NPC'ler sırayla konuşur. v127: bir balon (9 sn) bitmeden yenisi gelmez —
+  // aynı anda tek NPC konuşur, araya kısa bir sessizlik girer.
+  const npcQuietUntil = useRef(0);
+  const npcSay = useCallback(
+    (id, line) => {
+      engineRef.current?.say(id, line);
+      npcQuietUntil.current = Date.now() + NPC_BUBBLE_MS + NPC_GAP_MS;
+    },
+    [engineRef]
+  );
   useEffect(() => {
     let i = 0;
     const iv = setInterval(() => {
-      if (document.hidden) return;
+      if (document.hidden || Date.now() < npcQuietUntil.current) return;
       const list = npcsRef.current.filter((n) => n.lines?.length);
       if (!list.length) return;
       const n = list[i % list.length];
       i += 1;
       const over = sayHookRef.current?.(n);
       const line = over || n.lines[Math.floor(Math.random() * n.lines.length)];
-      engineRef.current?.say(n.id, line);
-    }, 6000);
+      npcSay(n.id, line);
+    }, 1000);
     return () => clearInterval(iv);
-  }, [engineRef]);
+  }, [npcSay]);
 
   // --- NPC'ye dokununca istasyonuna yürü, varınca paneli aç
   const firstAct = useCallback((stationId) => venue.stations?.[stationId]?.[0]?.act || null, [venue.stations]);
@@ -125,8 +137,8 @@ export default function VenueLayer({ venue, engineRef, interact, mode, onNpcs, a
           if (interact?.id === n.station) setPanel(act);
           else if (engineRef.current?.approach(n.station)) pendingRef.current = { station: n.station, act };
           else setPanel(act);
-        } else if (n.lines?.length) {
-          engineRef.current?.say(n.id, n.lines[Math.floor(Math.random() * n.lines.length)]);
+        } else if (n.lines?.length && Date.now() >= npcQuietUntil.current) {
+          npcSay(n.id, n.lines[Math.floor(Math.random() * n.lines.length)]);
         }
         return true;
       },
@@ -135,7 +147,7 @@ export default function VenueLayer({ venue, engineRef, interact, mode, onNpcs, a
     return () => {
       apiRef.current = null;
     };
-  }, [apiRef, engineRef, firstAct, interact, mode]);
+  }, [apiRef, engineRef, firstAct, interact, mode, npcSay]);
 
   if (!Part) return null;
   return (

@@ -7,6 +7,7 @@ import NewspaperScreen from '../NewspaperScreen/NewspaperScreen';
 import FlappyBirdScreen from '../FlappyBirdScreen/FlappyBirdScreen';
 import SixtagramScreen from '../Sixtagram/SixtagramScreen';
 import GuideScreen from '../GuideScreen/GuideScreen';
+import GazeteScreen from '../Gazete/GazeteScreen';
 import IdeasScreen from '../IdeasScreen/IdeasScreen';
 import AchievementsScreen from '../AchievementsScreen/AchievementsScreen';
 import InstallAppButton from '../InstallAppButton/InstallAppButton';
@@ -33,6 +34,7 @@ const APPS = [
   // v124: Casino uygulaması kaldırıldı — kumar oyunları gazinolarda (Casino mekânı + oyuncu gazinoları)
   { id: 'sixtagram', glyph: '📸', note: 'Sixtagram', tone: 'sixtagram' },
   { id: 'flappy', glyph: '🐤', note: 'Flappy Kuş', tone: 'flappy' },
+  { id: 'neon-gazete', glyph: '📰', note: 'Gazete', tone: 'neongazete' }, // v127 belediye gazetesi
 ];
 const EXTRA_APPS = [
   { id: 'altin-magazasi', glyph: '', note: 'Zümrüt Mağazası', tone: 'emerald' },
@@ -75,6 +77,7 @@ const APP_TITLES = {
   rehber: 'Neon Şehir',
   fikir: 'Bi Fikrin mi Var?',
   basarilar: 'Başarılar',
+  'neon-gazete': 'Neon Şehir Gazetesi',
 };
 
 function useClock() {
@@ -189,7 +192,7 @@ export default function PhoneScreen({ onClose, initialApp = null }) {
             )}
           </span>
         </div>
-        <div className={`phone-app-body${openApp === 'rehber' ? ' full' : ''}`}>
+        <div className={`phone-app-body${openApp === 'rehber' || openApp === 'neon-gazete' ? ' full' : ''}`}>
           {openApp === 'sms' && <MessagesScreen />}
           {openApp === 'ikinci-el' && <MarketplaceScreen />}
           {openApp === 'banka' && <BankScreen />}
@@ -203,6 +206,7 @@ export default function PhoneScreen({ onClose, initialApp = null }) {
             </Suspense>
           )}
           {openApp === 'rehber' && <GuideScreen />}
+          {openApp === 'neon-gazete' && <GazeteScreen />}
           {openApp === 'fikir' && <IdeasScreen />}
           {openApp === 'basarilar' && <AchievementsScreen />}
         </div>

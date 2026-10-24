@@ -12,6 +12,7 @@ import { BELEDIYE, SEATS, SEAT_IDS, YRD_PERMS, canFireSeat, canInviteSeat, invit
 import { useBelediye } from './BelediyeContext';
 import { Kpis, RateEditor, hoursLeft, nf, useTick } from './belediyeUi';
 import Defter from './Defter';
+import GazeteYazi from './GazeteYazi';
 
 const PERM_LABEL = { sanayi: 'Sanayi Bakanlığı', ticaret: 'Ticaret Bakanlığı', guvenlik: 'Teşkilat Bakanlığı', kultur: 'Kültür ve Spor Bakanlığı', fire: 'Bakanları görevden alma', invite: 'Bakan davet etme' };
 const SHORT = { bsk: 'Başkan', yrd1: 'Başkan Yrd.', yrd2: 'Başkan Yrd.', san: 'Sanayi', tic: 'Ticaret', guv: 'Teşkilat', kul: 'Kültür ve Spor' };
@@ -211,6 +212,10 @@ export default function BaskanlikTab() {
         <div className="bd-vl" />
         <div className="bd-orow four">{['san', 'tic', 'guv', 'kul'].map((id) => slot(id, 38))}</div>
       </div>
+      <div className="gx-section-head">
+        <span>📰 Gazete</span>
+      </div>
+      <GazeteYazi />
       <div className="gx-section-head">
         <span>💰 Kadro maaşları</span>
       </div>

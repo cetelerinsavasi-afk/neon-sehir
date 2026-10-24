@@ -171,7 +171,7 @@ function MescitInfoSection() {
   return (
     <div className="bz-sec">
       <p className="bz-sec-title">🤲 Bağış kutusu</p>
-      <p className="bz-hint">Kişi başı günde en fazla {fmt(MESCIT_DAILY_LIMIT)} altın · %{rates.isMescit} vergi</p>
+      <p className="bz-hint">Kişi başı günde en fazla {fmt(MESCIT_DAILY_LIMIT)} altın · %{rates.isOfis} vergi</p>
     </div>
   );
 }

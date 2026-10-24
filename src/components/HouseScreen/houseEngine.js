@@ -5,7 +5,7 @@ import { drawPet, isPerchPet, petCollarAt, PET_ART } from '../../lib/cosmeticsAr
 import { CATALOG_MAP, buildItem, itemBoxes, disposeObject, TINTS, M, gunModel, HELD_GUN_SCALE, DOOR_BUILDERS } from './houseCatalog';
 import { DEFAULT_DOOR, sanitizeDoor, doorSpawn, doorLocalToWorld, resolveEntrance } from '../../../functions/houseDoor.js';
 import { FLOORS, WALLS, floorDef, wallDef, surfaceTexture } from './houseTextures';
-import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
+import { HOUSE_PRODUCTS, VENUE_FREE_TAKE_KEYS } from '../../../functions/houseCatalogData.js';
 import { heldCanvas, heldDataUrl } from './heldArt';
 import { cartModel, fillCart, MARKET_PRODUCTS } from './houseCatalogV92';
 
@@ -1551,7 +1551,9 @@ export function createHouseEngine(
   function actionsFor(e) {
     if (venueActs) {
       // mekânda eşyadan ücretsiz ürün / market arabası yok; istasyon butonları var
-      const base = baseActionsFor(e).filter((a) => !['take', 'cart', 'cartadd'].includes(a.kind));
+      // v127: sebil ve çaycı mekânda da çalışır (sunucu: houses.take VENUE_FREE_TAKE_KEYS)
+      const free = VENUE_FREE_TAKE_KEYS.includes(e.data.k);
+      const base = baseActionsFor(e).filter((a) => !['cart', 'cartadd'].includes(a.kind) && (a.kind !== 'take' || free));
       (venueActs[e.data.i] || []).forEach((a) => base.unshift({ kind: 'panel', panel: `v:${a.act}`, label: a.label }));
       return base;
     }

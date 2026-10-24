@@ -108,6 +108,15 @@ const AV = (skin, hair) => ({ skin, hair, shirt: '#1f6feb' });
   }
   await S('stateTreasury/main', { balance: bal, totals, closedThrough: y, firstDayKey: addDayKey(today, -30) });
   await bel.kasa.fold();
+  if (!q.get('empty')) {
+    const k1 = await bel.handle('kaan', { op: 'sikayet', text: 'Sokak lambaları üç gündür yanmıyor, belediye uyuyor mu?' });
+    await bel.handle('mira', { op: 'sikayet', text: 'Parkta oturacak bank kalmadı, yaşlılar ayakta bekliyor.' });
+    await bel.handle('mira', { op: 'sikayetBegen', id: k1.id });
+    await bel.handle('ali', { op: 'sikayetBegen', id: k1.id });
+    await bel.handle('ali', { op: 'gazeteYaz', text: 'Sevgili hemşehrilerim, kasayı doldurmadan rahat uyumayacağız. Kafe vergisindeki küçük artış, yarın sokak lambası olarak size dönecek.' });
+    await bel.buildGazete(today);
+    await bel.handle('previewAdmin', { op: 'gazeteYaz', text: 'Yarın büyük müjdeler var. Takipte kalın!' }).catch(() => {});
+  }
   await S('imamState/current', { uid: 'kaan', displayName: 'Kaan_34', avatar: AV('#8d5524', '#111'), lastNasihat: 'Kazancın helalinden olsun; komşun açken tok yatma.', lastNasihatAt: Timestamp.fromMillis(Date.now() - 3 * 3600e3), becameImamAt: Timestamp.fromMillis(Date.now() - 50 * 3600e3) });
   createRoot(document.getElementById('root')).render(
     <AuthProvider>

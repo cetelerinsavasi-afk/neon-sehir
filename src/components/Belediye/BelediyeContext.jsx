@@ -96,9 +96,11 @@ export function BelediyeProvider({ children }) {
     setPanel((p) => (p ? { ...p, next: { ...p.next, [id]: value } } : p));
   }, []);
 
+  const patchPanel = useCallback((patch) => setPanel((p) => (p ? { ...p, ...patch } : p)), []);
+
   const value = useMemo(
-    () => ({ uid, player, main: main || {}, mainLoading, pub: pub || {}, seat, isAdmin, panel, panelErr, loadPanel, patchNext, run, busy, showToast }),
-    [uid, player, main, mainLoading, pub, seat, isAdmin, panel, panelErr, loadPanel, patchNext, run, busy, showToast]
+    () => ({ uid, player, main: main || {}, mainLoading, pub: pub || {}, seat, isAdmin, panel, panelErr, loadPanel, patchNext, patchPanel, run, busy, showToast }),
+    [uid, player, main, mainLoading, pub, seat, isAdmin, panel, panelErr, loadPanel, patchNext, patchPanel, run, busy, showToast]
   );
   return (
     <Ctx.Provider value={value}>

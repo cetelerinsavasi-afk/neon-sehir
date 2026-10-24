@@ -32,6 +32,7 @@ import {
   surfacePrice,
   HOUSE_TAKEABLES,
   HOUSE_PRODUCTS,
+  VENUE_FREE_TAKE_KEYS,
 } from './houseCatalogData.js';
 import { BIZ_TYPES, BIZ_DEFAULT_NAME, checkBizRequirements } from './businessCatalogData.js';
 import { MENU_TYPES, isMenuProduct } from './venue.js';
@@ -849,7 +850,8 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     if (it.p !== 1) fail('failed-precondition', 'Bu eşya henüz satın alınmamış (deneme).');
     if (!(HOUSE_TAKEABLES[it.k] || []).includes(product) || !HOUSE_PRODUCTS[product]) fail('invalid-argument', 'Bu eşyadan bu ürün alınamaz.');
     // v92 Faz 8: oyunun mekânlarında eşyadan ücretsiz ürün alınmaz (bar/büfe ücretli)
-    if (h.venue) fail('failed-precondition', 'Bu mekânda eşyadan ürün alınmaz.');
+    // v127: sebil ve çaycı mekânlarda da çalışır
+    if (h.venue && !VENUE_FREE_TAKE_KEYS.includes(it.k)) fail('failed-precondition', 'Bu mekânda eşyadan ürün alınmaz.');
     // v77: cafe/bar işletmesinde yiyecek-içecek müşteriye ücretsiz değil → menüden alınır
     if (h.biz?.type && MENU_TYPES.includes(h.biz.type) && isMenuProduct(product) && h.ownerUid !== uid) fail('failed-precondition', 'biz-menu');
     // v100: ofiste ücretli ürün → shopAction officeBuy ile alınır

@@ -73,6 +73,8 @@ export const REPORT_TARGETS = {
       return Boolean(ms.intelRosterId) && ['baskan', 'sef', 'uzman'].includes(ms.intelRank);
     },
   },
+  // v127 — belediye şikâyet kutusu
+  belediyeSikayet: { re: new RegExp(`^belediyeSikayet/${S}$`), hideable: true, pick: (d) => ({ uid: d.uid, text: d.text }) },
   feedback: { re: new RegExp(`^feedback/${S}$`), hideable: true, pick: (d) => ({ uid: d.uid, text: d.text }) },
   // v60: özel mesaj — yalnızca o sohbetin üyesi bildirebilir
   dmMessage: {

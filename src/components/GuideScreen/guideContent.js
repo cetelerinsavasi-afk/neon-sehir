@@ -74,7 +74,7 @@ export const CATS = [
         L('📝', 'Karakol’dan kod adını yaz, şartları sağlıyorsan rozet anında senin. İlk 24 saat seni kimse atamaz.'),
         L('🕶️', 'Teşkilatta herkes kod adıyla bilinir. Gerçek yüzün gizli kalır.'),
         L('💼', 'Rütbene göre maaş + günün rüşvet payı, her gece 00:00’da cebinde.'),
-        L('🚨', 'Bir soygun ekibine sız. Ekipte sivil varsa suçluyu sen yakalarsın, ganimetin dörtte biri senin.'),
+        L('🚨', 'Bir soygun ekibine sız. Ekipte sivil varsa suçluyu sen yakalarsın, ganimetten payını belediye belirler.'),
         L('😈', 'Rozet seni melek yapmaz. Soygun da yapabilirsin — yakalanırsan bedelin iki katı.'),
       ],
       tags: ['⭐ 50 saygınlık', '🧼 %0 şüphe', '🔫 1 silah'] },
@@ -232,6 +232,61 @@ export const CATS = [
   ] },
 
   /* -------------------------------------------------------------- */
+  /* -------------------------------------------------------------- */
+  // v127 — BELEDİYE
+  { id: 'belediye', icon: '🏛️', name: 'Belediye', tag: 'Kasayı kim tutarsa kuralı o yazar', color: '#e8c766', pages: [
+    { type: 'lines', title: 'Şehrin Kasası',
+      kicker: 'Her verginin, her maaşın, her cezanın gittiği tek bir yer var.',
+      lines: [
+        L('🏛️', 'Belediye Binası’na gir, “Belediye”ye dokun. Şehrin defteri önünde.'),
+        L('📋', 'Toplu Rapor: dün kasaya ne girdi, ne çıktı. Bakanlık bakanlık, kuruşu kuruşuna.'),
+        L('📣', 'Bugün neye zam geldi, neye indirim yapıldı — hepsi orada yazıyor.'),
+        L('🎁', 'Kasaya bağış yap. Günün en cömert üç adı herkesin gözü önünde.'),
+      ] },
+    { type: 'pick', title: 'Koltuklar',
+      kicker: 'Yedi koltuk var. Hepsi dolmadan şehir susmaz.',
+      items: [
+        { i: '👑', name: 'Belediye Başkanı', lines: ['Her şeyi yapar. Her vergiye dokunur, herkesi atar, herkesi davet eder.', 'Kadro maaşlarını yalnızca o belirler.'] },
+        { i: '🎖️', name: 'Başkan Yardımcıları', sub: '2 koltuk', lines: ['Başkan hangi yetkiyi verirse onu kullanır: bakanlıklar, bakan atma, bakan davet etme.', 'Borçları her zaman ödeyebilir. İlk 24 saat görevden alınamaz.'] },
+        { i: '🏭', name: 'Sanayi Bakanı', lines: ['Fabrika dilimleri, makine vergileri, işçi maaş vergisi.'] },
+        { i: '🏪', name: 'Ticaret Bakanı', lines: ['İşletme vergileri, piyango, 2. el araç ve silah satışı.'] },
+        { i: '🚓', name: 'Teşkilat Bakanı', lines: ['Polis maaşları ve soygun durdurana düşen pay.'] },
+        { i: '🎭', name: 'Kültür ve Spor Bakanı', lines: ['Sosyal medya, futbolcu ve menajer vergisi, imam maaşı.', 'Nasihatini aksatan imamı gerekçe yazarak görevden alabilir.'] },
+      ] },
+    { type: 'lines', title: 'Kadroya Girmek',
+      kicker: 'Belediyeye başvuru olmaz. Seni çağırırlar.',
+      lines: [
+        L('✉️', 'Başkan seni ancak arkadaşıysan davet eder. Davet SMS’le gelir, 24 saat geçerli.'),
+        L('🏛️', 'Belediyeye uğra, iş teklifini kabul et ya da reddet.'),
+        L('🃏', 'Rozet, cübbe ve koltuk aynı omuzda durmaz: polisler ve imam önce istifa eder.'),
+        L('💼', 'Maaşın her gece 00:00’da belediye kasasından yatar.'),
+      ] },
+    { type: 'lines', title: 'Vergi Masası',
+      kicker: 'Bir imza, bütün şehrin cebine dokunur.',
+      lines: [
+        L('⚖️', 'Her bakan kendi kalemlerini günde bir adım oynatabilir.'),
+        L('🕛', 'Karar anında geçmez. Gece 00:00’da yürürlüğe girer, ertesi gün boyunca değişmez.'),
+        L('🏭', 'Bugün ürettiğinin vergisini bugünün oranıyla ödersin. Yarının zammı seni bugün yakalamaz.'),
+        L('👁️', 'Bakanlar her paneli görür ama yalnızca kendi masasında imza atar.'),
+      ] },
+    { type: 'lines', title: 'Kasa Boşsa',
+      kicker: 'Belediyenin kasası eksiye düşmez. Ama borç kapıyı çalar.',
+      lines: [
+        L('💸', 'Gece kasa yetmezse maaşların hiçbiri ödenmez. O günün bordrosu borca yazılır.'),
+        L('📒', 'Maaş borcu gün gün tutulur. Para gelince işi bırakan bile alacağını alır.'),
+        L('🦹', 'Kasa yetmezken yapılan soygun ödemesi borca yazılır ve her gece %1 faiz biner.'),
+        L('🚓', 'Kasa boşsa Polis Teşkilatı operasyon başlatamaz.'),
+      ] },
+    { type: 'lines', title: 'Gazete ve Şikâyet',
+      kicker: 'Şehir her sabah yeni bir manşetle uyanır.',
+      lines: [
+        L('📰', 'Telefondaki Gazete her gece 00:00’da basılır. Zamlar, indirimler, göreve gelinceki hâli — hepsi yan yana.'),
+        L('✒️', 'Başkan ve yardımcıları gazeteye tek bir yazı bırakabilir. Yenisi eskisini siler.'),
+        L('📣', 'Belediyede sağ üstteki Şikâyet kutusuna derdini yaz. Günde 3 hakkın var.'),
+        L('❤️', 'En çok beğenilen şikâyet ertesi sabah “Halkın Sesi” olur. Şikâyetler 7 gün sonra silinir.'),
+      ] },
+  ] },
+
   { id: 'menajer', icon: '🧢', name: 'Menajerlik', tag: 'Kulüp senin değil. Kaderi senin.', color: '#7cff6b', pages: [
     { type: 'lines', title: 'Ne Yaparsın?',
       kicker: 'Kimse sana takım vermedi. Sen aldın.',
