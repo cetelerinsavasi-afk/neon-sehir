@@ -5,7 +5,8 @@
 import { useEffect, useState } from 'react';
 import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { MINISTRIES, fmtRate } from '../../../functions/belediyeRates.js';
+import { DEFAULT_RATES } from '../../../functions/belediyeRates.js';
+import { gazeteNews } from '../../../functions/belediyeGazete.js';
 import './Gazete.css';
 
 const AYLAR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
@@ -17,36 +18,29 @@ const longDate = (k) => {
 const shortDate = (k) => `${k.slice(8, 10)}.${k.slice(5, 7)}`;
 const nf = (v) => Math.round(Number(v) || 0).toLocaleString('tr-TR');
 
-function Kararlar({ rows, govSince }) {
-  if (!rows?.length) return <p className="gz-empty">Hükümet göreve geldiğinden beri hiçbir vergiye ve maaşa dokunmadı.</p>;
-  return (
-    <div className="gz-table">
-      <div className="gz-tr gz-th">
-        <span>Kalem</span>
-        <span title={govSince ? `Göreve geliş: ${shortDate(govSince)}` : ''}>Göreve gelince</span>
-        <span>Dün</span>
-        <span>Bugün</span>
-      </div>
-      {rows.map((r) => (
-        <div key={r.id} className={`gz-tr${r.today ? ' today' : ''}`}>
-          <span className="gz-item">
-            <b>{r.label}</b>
-            <small>{MINISTRIES[r.m]?.short}</small>
-            {r.note && <i>“{r.note}”</i>}
-          </span>
-          <span>{fmtRate(r.start, r.unit)}</span>
-          <span>{fmtRate(r.prev, r.unit)}</span>
-          <span className={r.today ? (r.good ? 'up' : 'dn') : ''}>
-            {r.today ? (r.cur > r.prev ? '▲ ' : '▼ ') : ''}
-            {fmtRate(r.cur, r.unit)}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
+// Eski düzende basılmış sayı (satır tablosu) → sade düzene çevrilir (istemcide;
+// cümle seçimi güne göre sabit, her açılışta aynı manşet)
+function seeded(key) {
+  let h = 2166136261;
+  for (const ch of String(key)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  return () => {
+    h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0;
+    return (h % 10000) / 10000;
+  };
+}
+function toV2(g) {
+  if (g.v === 2 || !Array.isArray(g.rows)) return g;
+  const prev = { ...DEFAULT_RATES };
+  const cur = { ...DEFAULT_RATES };
+  for (const r of g.rows) {
+    prev[r.id] = Number(r.prev);
+    cur[r.id] = Number(r.cur);
+  }
+  return { ...g, v: 2, ...gazeteNews({ prev, cur, payrollUnpaid: Boolean(g.payrollUnpaid), rnd: seeded(g.dayKey) }) };
 }
 
-function Sayi({ g }) {
+function Sayi({ g: raw }) {
+  const g = toV2(raw);
   return (
     <article className="gz-paper">
       <header className="gz-mast">
@@ -67,21 +61,14 @@ function Sayi({ g }) {
         {g.headline?.d && <p className="gz-head-d">{g.headline.d}</p>}
       </section>
 
-      {g.v === 2 ? (
-        g.items?.length > 0 && (
-          <section className="gz-news">
-            {g.items.map((n, k) => (
-              <div key={k} className="gz-news-item">
-                <b className={n.good === true ? 'up' : n.good === false ? 'dn' : ''}>{n.t}</b>
-                <span>{n.d}</span>
-              </div>
-            ))}
-          </section>
-        )
-      ) : (
-        <section>
-          <h3 className="gz-h3">🏛️ Hükümetin Kararları</h3>
-          <Kararlar rows={g.rows} govSince={g.govSince} />
+      {g.items?.length > 0 && (
+        <section className="gz-news">
+          {g.items.map((n, k) => (
+            <div key={k} className="gz-news-item">
+              <b className={n.good === true ? 'up' : n.good === false ? 'dn' : ''}>{n.t}</b>
+              <span>{n.d}</span>
+            </div>
+          ))}
         </section>
       )}
 
@@ -107,17 +94,6 @@ function Sayi({ g }) {
         </section>
       )}
 
-      {g.v !== 2 && g.kasa && (
-        <section className="gz-col gz-kasa">
-          <h3 className="gz-h3">💰 Kasa</h3>
-          <p>{g.kasa.line}</p>
-          <p className="gz-kasa-nums">
-            Gelir {nf(g.kasa.in)} · Gider {nf(g.kasa.out)} · Net {g.kasa.net >= 0 ? '+' : '−'}
-            {nf(Math.abs(g.kasa.net))}
-          </p>
-          {g.payrollUnpaid && <p className="gz-alarm">⚠️ Bu gece maaşlar ödenemedi.</p>}
-        </section>
-      )}
       <footer className="gz-foot">Ayrıntılar Belediye Binası'nda · Her gece 00:00'da basılır</footer>
     </article>
   );
