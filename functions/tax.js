@@ -28,7 +28,7 @@ export const BIZ_TAX_RATE = 0.1;
 export const RESALE_TAX_RATE = 0.01;
 export const SALARY_TAX_RATE = 0.1; // v123 — futbolcu / menajer / fabrika işçisi maaşı
 export const LOTTERY_TAX_RATE = 0.1; // v123 — piyango kazancı
-export const MACHINE_TAX_RATE = 0.01; // v125 — fabrika makinesi alımı (makine fiyatı + %1)
+export const MACHINE_TAX_RATE = 0.05; // v126 — fabrika makinesi alımı (makine fiyatı + %5; v125'te %1)
 // v125: makine alımında ödenecek vergi ve toplam (istemci de aynı formülü kullanır)
 export const machineTax = (price) => Math.max(0, Math.round((Number(price) || 0) * MACHINE_TAX_RATE));
 export const withMachineTax = (price) => Math.max(0, Math.round(Number(price) || 0)) + machineTax(price);
@@ -75,7 +75,7 @@ export const TAX_SOURCES = {
   piyango: 'Piyango kazancı (%10)', // v123
   gazino: 'Gazino piyango payı (%10)', // v124
   gazinoCekim: 'Gazino kasasından çekim (%10)', // v124 Faz 6 — oyuncu gazinosu makine kasası
-  makine: 'Fabrika makinesi alımı (%1)', // v125
+  makine: 'Fabrika makinesi alımı (%5)', // v125 · v126: %5
 };
 
 // Vergi kaydı. YAZMA (transaction ya da batch). amount ≤ 0 ise yazmaz.

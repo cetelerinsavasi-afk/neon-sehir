@@ -6,20 +6,24 @@
 //
 // SLOT: 3 makara × {boş, yasaklı madde, altın} — her makara bağımsız, eşit olasılık.
 //   2 aynı: boş 0 · yasaklı 1 adet · altın 1.000      3 aynı: boş 0 · yasaklı 3 · altın 10.000
-//   Oyunun gazinosu: çevirme 1.600. Oyuncu gazinosu: 1.400–1.600 (50'şer).
+//   Oyunun gazinosu: çevirme 1.600 (v126: 200 devlet kârı + 1.400 maliyet/çöp).
+//   Oyuncu gazinosu: 1.400–1.600 (50'şer).
 //   Oyuncu gazinosunda slotun çalışması için makinede en az 3 yasaklı + 10.000 altın.
 // RULET (kullanıcının örneği Rulet.html ile birebir): 0–12; sayıya veya yeşile (0)
 //   bahis 12 katı, kırmızı/siyah 2 katı geri gelir.
 // PİYANGO: bilet 100. Oyunun gazinosu biletten 10 alır (90 havuza); oyuncu
 //   gazinosunda sahibi 1–10 belirler. Gece: kazanana havuz − %10 piyango vergisi;
-//   gazinonun payının %10'u devlete, kalanı oyunun gazinosunda çöpe / oyuncu
-//   gazinosunda sahibine.
+//   v126: oyunun gazinosunun payının TAMAMI devlete (kâr, vergi değil) · oyuncu
+//   gazinosunda payın %10'u devlete, kalanı sahibine.
+// v126: oyunun gazinosunun TÜM kârı devlete — bkz. functions/gameCasinoVault.js
+//   (slot 200/çevirme · rulet ve 10 Numara günlük net, artıdaysa).
 // =============================================================================
 
 export const GAME_CASINO_ID = 'game';
 
 // ---- SLOT -------------------------------------------------------------------
 export const SLOT_GAME_COST = 1600;
+export const GAME_SLOT_STATE_CUT = 200; // v126: her çevirmede devletin kârı (kalan 1.400 maliyet → çöp)
 export const SLOT_PRICE_MIN = 1400;
 export const SLOT_PRICE_MAX = 1600;
 export const SLOT_PRICE_STEP = 50;

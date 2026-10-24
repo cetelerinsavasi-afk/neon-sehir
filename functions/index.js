@@ -16,7 +16,8 @@ import { createDeletionRequests } from './deletionRequests.js';
 import { createHouses } from './houses.js';
 import { createBusiness } from './business.js';
 import { resaleTax, factoryTax, factoryTaxRate, taxLedgerWrite, splitSalaryTax, splitLotteryTax, machineTax } from './tax.js';
-import { SLOT_GAME_COST, rollSlotReels, slotOutcome, normalizeRouletteBets, roulettePayout, ROULETTE_ORDER, LOTTERY_TICKET, GAME_LOTTERY_CUT, splitCasinoCut, GAME_CASINO_ID } from './casinoRules.js';
+import { SLOT_GAME_COST, GAME_SLOT_STATE_CUT, rollSlotReels, slotOutcome, normalizeRouletteBets, roulettePayout, ROULETTE_ORDER, LOTTERY_TICKET, GAME_LOTTERY_CUT, GAME_CASINO_ID } from './casinoRules.js';
+import { vaultWrite, settleGameCasinoVaults } from './gameCasinoVault.js'; // v126
 import { createVisits } from './visits.js';
 import { createShop } from './shop.js';
 import { createVenue } from './venue.js';
@@ -1132,7 +1133,7 @@ export const cancelPendingPoliceChange = onCall(async (request) => {
 // gördüğü fiyatı `expect` ile gönderir; fiyat değiştiyse işlem yapılmaz.
 // Önceden kurulmuş fabrikalar olduğu gibi devam eder.
 const FACTORY_STARTER_MACHINES = ['mining', 'tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme'];
-// v125: her makineye %1 vergi (makine fiyatı + %1; kuruluş ücretine vergi yok)
+// v126: her makineye %5 vergi (makine fiyatı + %5; kuruluş ücretine vergi yok)
 function factoryStarterParts(cryptoPrice) {
   let machines = 0;
   let tax = 0;
@@ -1208,7 +1209,7 @@ export const createFactory = onCall(async (request) => {
         );
       }
     }
-    // v125: makinelerin %1 vergisi devlete (belediye kasası)
+    // v126: makinelerin %5 vergisi devlete (belediye kasası)
     taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: parts.tax, source: 'makine', uid, atMs: Date.now(), ref: 'fabrika_kurulus' });
     tx.set(factoryRef, {
       ownerId: uid,
@@ -1333,7 +1334,7 @@ export const buyFactoryMachine = onCall(async (request) => {
     } else {
       price = MACHINE_TYPES[machineType].price;
     }
-    // v125: makine fiyatı + %1 vergi (vergi devlete)
+    // v126: makine fiyatı + %5 vergi (vergi devlete)
     const tax = machineTax(price);
     const user = userSnap.data();
     if (!user || (user.gold || 0) < price + tax) {
@@ -2424,10 +2425,10 @@ async function resolveStuckLotteryAndChampionship(dateKey) {
             drawnAt: admin.firestore.FieldValue.serverTimestamp(),
           });
           taxLedgerWrite(lotBatch, db, admin.firestore.FieldValue, { amount: lotTax.tax, source: 'piyango', uid: winnerUid, atMs: Date.now(), ref: `piyango_${prevLotterySnap.id}` });
-          // v124 — oyunun gazinosunun bilet payı (biletten 10): %10'u devlete, kalanı çöpe.
-          // Aynı batch'te drawnAt yazıldığı için tek sefer çalışır.
-          const cutSplit = splitCasinoCut(lottery.casinoCut);
-          if (cutSplit.tax > 0) taxLedgerWrite(lotBatch, db, admin.firestore.FieldValue, { amount: cutSplit.tax, source: 'gazino', uid: '__game__', atMs: Date.now(), ref: `piyango_kasa_${prevLotterySnap.id}` });
+          // v126 — oyunun gazinosunun bilet payının (biletten 10) TAMAMI devletin kârı
+          // (vergi değil; eskiden %10 devlete, kalanı çöpe). Çekiliş gecesi (yeni gün)
+          // devlet kasasına yazılır. Aynı batch'te drawnAt yazıldığı için tek sefer çalışır.
+          stateWrite(lotBatch, db, admin.firestore.FieldValue, { kind: 'in', cat: 'gazino_piyango', amount: Number(lottery.casinoCut || 0), atMs: Date.now(), dayKey: dateKey });
           lotBatch.set(winnerRef.collection('messages').doc(), {
             text: `Tebrikler! Piyangodan ${fmtTr(lottery.jackpot)} altın kazandın. %10 piyango vergisi (${fmtTr(lotTax.tax)} altın) belediyeye ödendi, hesabına ${fmtTr(lotTax.net)} altın yattı.`,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -3284,7 +3285,10 @@ async function runDailyResetBody(dateKey, dr) {
           const paidFromGold = Math.min(totalBill, ownerGold);
           const shortfall = totalBill - paidFromGold;
           if (taxAmount > 0) {
-            taxLedgerWrite(batch, db, admin.firestore.FieldValue, { amount: taxAmount, source: 'fabrika', uid: f.id, dayKey: prevDateKey, atMs: Date.now() });
+            // v126 (kullanıcı isteği): gece 00:00'da tahsil edilen vergi belediye
+            // raporunda YENİ güne (tahsil edildiği güne) yazılır — eskiden biten güne
+            // (prevDateKey) yazılıyordu, rapor "dün"e kayıyordu.
+            taxLedgerWrite(batch, db, admin.firestore.FieldValue, { amount: taxAmount, source: 'fabrika', uid: f.id, dayKey: dateKey, atMs: Date.now() });
             opCount += 1;
           }
           batch.update(db.collection('users').doc(f.id), {
@@ -3823,6 +3827,19 @@ async function runDailyResetBody(dateKey, dr) {
       // else: becameDateKey > yesterdayKey — imam DÜN'e ait hiçbir vakitten
       // sorumlu değil (göreve ancak bugün başlamış olabilir), bu döngüde
       // hiç kontrol edilmez.
+    }
+
+    // 1b) v126 — OYUNUN GAZİNOSU KASALARI → DEVLET (functions/gameCasinoVault.js):
+    // slot (çevirme başına 500) her gece; rulet ve 10 Numara (ayrı kasalar) sadece
+    // artıdaysa yatar, eksideyse kaldığı eksiden yeni günde devam eder. Gelir YENİ
+    // güne (dateKey) yazılır. İdempotent (kasa belgesinde lastSettledDay).
+    if (!dr.done('gameCasinoVault')) {
+      try {
+        const v = await settleGameCasinoVaults(db, admin.firestore.FieldValue, { dateKey });
+        await dr.mark('gameCasinoVault', { gameCasinoVault: v });
+      } catch (err) {
+        console.error('dailyReset gameCasinoVault', err);
+      }
     }
 
     // 1c) v108 — İMAM MAAŞI: görevini yapıp imamlıkta kalan imama her gece
@@ -5156,8 +5173,8 @@ export const repayStateDebt = onCall(async (request) => {
 // =============================================================================
 //
 // - Bilet: 100 altın. v124: havuz (jackpot) 0'dan başlar; her biletten 90
-//   altın havuza, 10 altın gazinoya (casinoCut). Gece gazinonun payının %10'u
-//   devlete (vergi), kalanı oyunun gazinosu olduğu için çöpe gider.
+//   altın havuza, 10 altın gazinoya (casinoCut). v126: gece gazinonun payının
+//   TAMAMI devlete (devletin kârı; oyunun gazinosunda vergi yok).
 //   (Bkz. functions/casinoRules.js — oyuncu gazinoları Faz 6.)
 // - Kazanma şansı = oyuncunun bilet sayısı / o güne ait toplam bilet sayısı
 //   (ağırlıklı rastgele) — dailyReset içinde (00:00) bir önceki günün
@@ -5230,7 +5247,8 @@ export const buyLotteryTicket = onCall(async (request) => {
 });
 
 // ---------------------------------------------------------------------------
-// spinSlot — Gazino > Slot (v124). Çevirme 1.600 altın (oyunun gazinosu).
+// spinSlot — Gazino > Slot (v124). Çevirme 1.600 altın (oyunun gazinosu; v126:
+// 200'ü devletin kârı → slot kasasında birikir, 00:00'da devlete yatar; 1.400 çöp).
 // 3 makara × {boş, yasaklı madde, altın} (functions/casinoRules.js):
 //   2 aynı: boş 0 · yasaklı 1 · altın 1.000   |   3 aynı: boş 0 · yasaklı 3 · altın 10.000
 // Ücretsiz çevirme yok. Kazanç borca gitmez (eskisi gibi).
@@ -5257,6 +5275,7 @@ export const spinSlot = onCall(async (request) => {
     const user = (await tx.get(userRef)).data();
     if (!user || (user.gold || 0) < cost) throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     tx.update(userRef, { gold: admin.firestore.FieldValue.increment(out.gold - cost), goldTag: goldTag('slot') });
+    vaultWrite(tx, db, admin.firestore.FieldValue, 'slot', { delta: GAME_SLOT_STATE_CUT, gross: { in: cost, out: out.gold } }); // v126
     if (out.yasakliMadde > 0) {
       tx.set(userRef.collection('inventory').doc('yasakliMadde'), { quantity: admin.firestore.FieldValue.increment(out.yasakliMadde) }, { merge: true });
     }
@@ -5292,6 +5311,8 @@ export const spinRoulette = onCall(async (request) => {
     const user = (await tx.get(userRef)).data();
     if (!user || (user.gold || 0) < nb.total) throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     tx.update(userRef, { gold: admin.firestore.FieldValue.increment(payout - nb.total), goldTag: goldTag('rulet') });
+    // v126 — rulet kasası (oyunun gazinosu): kasanın neti; 00:00'da artıdaysa devlete
+    vaultWrite(tx, db, admin.firestore.FieldValue, 'rulet', { delta: nb.total - payout, gross: { in: nb.total, out: payout } });
   });
   return { ok: true, index, number, stake: nb.total, payout, net: payout - nb.total };
 });
@@ -10877,6 +10898,11 @@ export const dealOnNumaraCards = onCall(async (request) => {
       const ref = db.collection('users').doc(u);
       tx.update(ref, { gold: admin.firestore.FieldValue.increment(-table.betAmount), goldTag: goldTag('onNumara') });
     });
+    // v126 — oyunun gazinosu: kesilen bahisler 10 Numara kasasına (kurpiyerin payı gerçek para değil)
+    if (!cst) {
+      const stakes = table.betAmount * eligible.length;
+      vaultWrite(tx, db, admin.firestore.FieldValue, 'onNumara', { delta: stakes, gross: { in: stakes } });
+    }
 
     // Kartları dağıt.
     const hands = {};
@@ -11003,6 +11029,11 @@ async function resolveOnNumaraIfDealerPhase(tableId) {
       });
       // v124 Faz 6 — oyuncu gazinosu: kurpiyerin payı masaya döner, iadeler "verilen"
       if (Number(round.houseStake) > 0) casino.resolveWrite(tx, table, { houseBack: round.houseStake, paidOut: table.betAmount * participants.length });
+      // v126 — oyunun gazinosu: iadeler 10 Numara kasasından çıkar
+      if (!isPlayerCasinoId(table.casinoId)) {
+        const back = table.betAmount * participants.length;
+        vaultWrite(tx, db, admin.firestore.FieldValue, 'onNumara', { delta: -back, gross: { out: back } });
+      }
       tx.update(tableRef, {
         seats: newSeatsRefund,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -11067,6 +11098,11 @@ async function resolveOnNumaraIfDealerPhase(tableId) {
     if (Number(round.houseStake) > 0) {
       const paidOut = humanWinners.length > 0 && share > 0 ? share * humanWinners.length : 0;
       casino.resolveWrite(tx, table, { houseBack: Math.max(0, round.pot - paidOut), paidOut });
+    }
+    // v126 — oyunun gazinosu: oyunculara ödenen pot 10 Numara kasasından çıkar
+    if (!isPlayerCasinoId(table.casinoId)) {
+      const paid = humanWinners.length > 0 && share > 0 ? share * humanWinners.length : 0;
+      if (paid > 0) vaultWrite(tx, db, admin.firestore.FieldValue, 'onNumara', { delta: -paid, gross: { out: paid } });
     }
     tx.update(tableRef, {
       seats: newSeatsWin,

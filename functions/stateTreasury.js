@@ -24,6 +24,8 @@
 //   vergi_piyango — v123: piyango kazançları (%10)
 //   vergi_gazino  — v124: oyuncu gazinolarının piyango payı (%10; oyunun gazinosu vergi_oyun)
 //   vergi_gazinoCekim — v124 Faz 6: oyuncu gazinosu makine kasasından çekimde %10
+//   gazino_*   — v126: oyunun gazinosunun kârı (slot · piyango · rulet · 10 Numara),
+//                gece 00:00'da yeni güne yazılır (functions/gameCasinoVault.js)
 //   ist_*      — istihbaratın kazandığı her şey (savaş, bahis, rüşvet, çökertme…)
 //
 // YAZMA: gün + parça (shard) belgelerine artırma — stateLedger/{gün}_s{0..N}.
@@ -46,8 +48,13 @@ export const STATE_IN = {
   vergi_piyango: 'Vergi · Piyango kazançları (%10)',
   vergi_gazino: 'Vergi · Gazino piyango payı (%10)', // v124
   vergi_gazinoCekim: 'Vergi · Gazino kasasından çekim (%10)', // v124 Faz 6
-  vergi_makine: 'Vergi · Fabrika makinesi alımı (%1)', // v125
+  vergi_makine: 'Vergi · Fabrika makinesi alımı (%5)', // v125 · v126: %5
   vergi_oyun: 'Vergi · Oyunun kendi mekânları',
+  // v126 — oyunun gazinosunun kârı (tamamı devlete; vergi değil, devletin kendi kârı)
+  gazino_slot: 'Oyunun gazinosu · Slot kârı (çevirme başına 200)',
+  gazino_piyango: 'Oyunun gazinosu · Piyango bilet kârı (bilet başına 10)',
+  gazino_rulet: 'Oyunun gazinosu · Rulet kârı (günlük net, artıdaysa)',
+  gazino_onNumara: 'Oyunun gazinosu · 10 Numara kârı (günlük net, artıdaysa)',
   soygun_ceza: 'Soygun cezaları (yakalanan suçlular)',
   kacak_ceza: 'Yasaklı madde cezaları (park)',
   soygun_kurtarma: 'Polisin kurtardığı paranın devlet payı (%75) (eski, artık yazılmıyor)',

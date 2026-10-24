@@ -53,12 +53,12 @@ const MACHINE_CATEGORY_TYPES = ['tamirMalzemesi', 'silahUpgrade', 'arabaGelistir
 // v124 — fabrika hisseleri artık satılmıyor (mevcut hisselerin ödemeleri sürer)
 const NO_LISTED_SHARES = Object.freeze({});
 
-// v125: makine fiyatı + %1 vergi (sunucudaki machineTax ile aynı — functions/tax.js)
+// v126: makine fiyatı + %5 vergi (sunucudaki machineTax ile aynı — functions/tax.js)
 function MachineCost({ price }) {
   const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
   return (
     <span className="factory-machine-tax">
-      {fmt(price)} + %1 vergi ({fmt(machineTax(price))})
+      {fmt(price)} + %5 vergi ({fmt(machineTax(price))})
     </span>
   );
 }
@@ -87,7 +87,7 @@ function machineProductionRangeLabel(type) {
 // saatlik değişir (sunucudaki factoryStarterCost ile aynı formül).
 const FACTORY_STARTER_MACHINES = ['mining', 'tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme'];
 function factoryStarterCost(cryptoPrice) {
-  // v125: her makine fiyatı + %1 vergi; kuruluş ücretine vergi yok
+  // v126: her makine fiyatı + %5 vergi; kuruluş ücretine vergi yok
   return FACTORY_CREATE_COST + FACTORY_STARTER_MACHINES.reduce((a, t) => a + withMachineTax(machinePrice(t, cryptoPrice || 0)), 0);
 }
 

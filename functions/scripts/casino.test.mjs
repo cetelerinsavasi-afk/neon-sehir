@@ -81,5 +81,7 @@ test('index.js: slot 1.600 + yeni semboller, rulet sunucuda, piyango 90/10, ücr
   const buy = src.slice(src.indexOf('export const buyLotteryTicket')).slice(0, 2500);
   assert.ok(buy.includes('LOTTERY_POOL_PER_TICKET') && buy.includes('casinoCut'));
   assert.ok(src.includes('const LOTTERY_BASE_JACKPOT = 0;'));
-  assert.ok(src.includes("source: 'gazino', uid: '__game__'"));
+  // v126: oyunun gazinosunun bilet kârının tamamı devlete (vergi değil)
+  assert.ok(src.includes("cat: 'gazino_piyango', amount: Number(lottery.casinoCut || 0)"));
+  assert.ok(!src.includes("source: 'gazino', uid: '__game__'"));
 });

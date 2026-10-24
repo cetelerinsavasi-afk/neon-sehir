@@ -16,10 +16,10 @@ class HttpsError extends Error {
   }
 }
 
-test('makine alımı: fiyat + %1 vergi (devlete ayrı kalem); fabrika kuruluşunda sadece makinelere', () => {
-  assert.equal(machineTax(50_000), 500);
-  assert.equal(withMachineTax(50_000), 50_500);
-  assert.equal(withMachineTax(123_457), 123_457 + 1235);
+test('makine alımı: fiyat + %5 vergi (v126; devlete ayrı kalem); fabrika kuruluşunda sadece makinelere', () => {
+  assert.equal(machineTax(50_000), 2500);
+  assert.equal(withMachineTax(50_000), 52_500);
+  assert.equal(withMachineTax(123_457), 123_457 + 6173);
   assert.ok(TAX_SOURCES.makine && STATE_IN.vergi_makine);
   const src = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
   assert.match(src, /source: 'makine', uid, atMs: Date\.now\(\), ref: 'fabrika_kurulus'/);
