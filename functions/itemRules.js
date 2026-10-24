@@ -108,7 +108,11 @@ export function weaponPowerAtLevel(basePower, level) {
   return Math.round((basePower || 0) * (level >= 3 ? 2 : level === 2 ? 1.5 : 1));
 }
 
-// --- Amazor fiyatları (malzeme alımının ve tüm Atölye fiyatlarının tabanı) -----
+// --- AMAZOR FİYATLARI ("Amazor fiyatları" denince kastedilen budur) -------------
+// Amazor uygulaması v124'te kaldırıldı ama bu sabit KALIR: 2. el / Mağaza fiyat
+// bantları (en az / en çok), Atölye (tamir · geliştirme) fiyatları, malzeme anında
+// satış (yarı fiyat), zümrüt paketi malzeme karşılığı ve v124 malzeme geçişindeki
+// %75 ödeme hep buna göre hesaplanır. Değiştirirsen bu denklemlerin hepsi değişir.
 export const AMAZOR_PRICES = {
   tamirMalzemesi: 10,
   silahUpgrade: 100,

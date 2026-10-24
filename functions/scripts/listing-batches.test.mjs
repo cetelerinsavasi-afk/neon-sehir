@@ -92,7 +92,7 @@ test('ucuz ilan (7 < 7,5): 7. gün sadece ilk parti otomatik satılır, yeni par
   assert.equal(l.quantity, 100_000);
   assert.equal(l.sold, false);
   assert.equal(l.expireAtMs, t0 + 13 * DAY);
-  assert.equal(G('users/s1').gold, 700_000 - resaleTax(700_000));
+  assert.equal(G('users/s1').gold, 700_000, 'v124: malzeme satışında vergi yok');
   assert.equal(sms.length, 1);
   assert.match(sms[0].text, /otomatik satıldı/);
   // 13. gün: kalan da satılır, ilan kapanır
@@ -101,7 +101,7 @@ test('ucuz ilan (7 < 7,5): 7. gün sadece ilk parti otomatik satılır, yeni par
   assert.equal(l2.sold, true);
   assert.equal(l2.autoSold, true);
   assert.equal(l2.expireAtMs, undefined);
-  assert.equal(G('users/s1').gold, 2 * (700_000 - resaleTax(700_000)));
+  assert.equal(G('users/s1').gold, 2 * 700_000);
 });
 
 test('pahalı ilan (8 ≥ 7,5): süresi dolan parti iade edilir; borçlu satıcıda otomatik satışın yarısı borca', async () => {
@@ -124,7 +124,7 @@ test('pahalı ilan (8 ≥ 7,5): süresi dolan parti iade edilir; borçlu satıc�
     createdAt: Timestamp.fromMillis(t0),
   });
   await fns.settleMaterialListing(db.collection('marketplaceListings').doc('y'), t0 + 7 * DAY);
-  const net = 13_000 - resaleTax(13_000);
+  const net = 13_000; // v124: malzeme satışında vergi yok
   assert.equal(G('users/s2').gold, net - Math.floor(net / 2), 'eski (partisiz) ilan da kurala girer');
   assert.equal(G('users/s2').debtToState, 1_000_000 - Math.floor(net / 2));
 });

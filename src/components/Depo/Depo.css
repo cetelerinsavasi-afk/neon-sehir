@@ -1,0 +1,9 @@
+/* v124 — Depo ekranları (bizui.css üstüne küçük ekler) */
+.dp-root {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.dp-root .bz-tabs button {
+  font-weight: 700;
+}

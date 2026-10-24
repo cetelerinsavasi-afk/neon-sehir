@@ -294,6 +294,19 @@ export async function buildDeletionPlan({ db, auth, uid, email, FieldPath, now =
       ops: ownedHouses.map((d) => ({ phase: PHASES.USER_DOC, type: 'recursiveDelete', path: d.ref.path })),
     });
   }
+  // v124: depo işletmelerinin envanteri + herkese açık görünümü (functions/depo.js)
+  const depoHouses = ownedHouses.filter((d) => d.data().bizType === 'depo');
+  if (depoHouses.length) {
+    const paths = depoHouses.flatMap((d) => [`depots/${d.id}`, `depotView/${d.id}`]);
+    add('delete', { what: 'depots + depotView (depo envanteri)', paths, ops: paths.map((p) => del(p)) });
+  }
+  // v124 Faz 6: gazino makinelerinin envanteri (functions/casino.js). Piyango günleri
+  // (casinoLottery) silinmez: bilet alanların çekilişi gece yine yapılır.
+  const casinoHouses = ownedHouses.filter((d) => d.data().bizType === 'gazino');
+  if (casinoHouses.length) {
+    const paths = casinoHouses.flatMap((d) => ['slot', 'rulet', 'kart'].map((m) => `casinoMachines/${d.id}_${m}`));
+    add('delete', { what: 'casinoMachines (gazino makine envanteri)', paths, ops: paths.map((p) => del(p)) });
+  }
 
   if (user?.redemptionCode) {
     const rc = await counted(db.collection('redemptionCodes').doc(user.redemptionCode).get());

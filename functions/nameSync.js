@@ -8,29 +8,62 @@
 //                            karşılaştırır, farklı olanları düzeltir (önceden
 //                            değişmiş adlar ve anlık eşitlemenin kaçırdıkları).
 // Sadece AD alanı yazılır; başka hiçbir alana dokunulmaz.
+// v124: ad değişikliği bazen çeteye / arkadaş listesine / ChatsApp sohbet
+// listesine yansımıyordu:
+//   • ChatsApp sohbet listesindeki ad (dmChats.names) ve bekleyen arkadaşlık
+//     isteklerindeki ad (friendRequests) hiç eşitlenmiyordu → eklendi.
+//   • Canlı çete dünyası artık gangSystem/config.liveWorldId'den de okunur
+//     (dünya belgesi listede çıkmasa bile).
+//   • Tek bir belgede hata olunca TÜM toplu yazma düşüyordu → hata veren
+//     yazmalar tek tek denenir, biri bozuk olsa da diğerleri yazılır.
+//   • users/{uid}.nameSyncPending: ad değişince true; eşitleme hatasız biterse
+//     silinir. Hata olursa saatlik iş (retryPendingNames) tekrar dener.
 // =============================================================================
 const nameOf = (u) => String(u?.displayName || '').trim();
 
 export function createNameSync({ db, FieldValue }) {
   // [{ ref, field, current }] → farklı olanları toplu yazar
-  async function applyFixes(fixes, nameByUid) {
-    let batch = db.batch();
-    let n = 0;
-    let changed = 0;
-    for (const f of fixes) {
+  // v124: dönüş { changed, failed } — bir parti hata verirse içindekiler tek tek denenir
+  async function applyFixesDetailed(fixes, nameByUid) {
+    const todo = fixes.filter((f) => {
       const want = nameByUid.get(f.uid);
-      if (!want || f.current === want) continue;
-      batch.update(f.ref, { [f.field]: want });
-      changed += 1;
-      n += 1;
-      if (n >= 400) {
+      return want && f.current !== want;
+    });
+    let changed = 0;
+    let failed = 0;
+    for (let i = 0; i < todo.length; i += 400) {
+      const part = todo.slice(i, i + 400);
+      const batch = db.batch();
+      part.forEach((f) => batch.update(f.ref, { [f.field]: nameByUid.get(f.uid) }));
+      try {
         await batch.commit();
-        batch = db.batch();
-        n = 0;
+        changed += part.length;
+      } catch {
+        for (const f of part) {
+          try {
+            await f.ref.update({ [f.field]: nameByUid.get(f.uid) });
+            changed += 1;
+          } catch {
+            failed += 1; // ör. belge bu arada silindi
+          }
+        }
       }
     }
-    if (n) await batch.commit();
-    return changed;
+    return { changed, failed };
+  }
+  async function applyFixes(fixes, nameByUid) {
+    return (await applyFixesDetailed(fixes, nameByUid)).changed;
+  }
+  // Canlı dünya + listedeki dünyalar (tekrarsız)
+  async function worldRefs() {
+    const out = new Map();
+    const cfg = (await db.doc('gangSystem/config').get().catch(() => null))?.data?.() || {};
+    if (cfg.liveWorldId) out.set(cfg.liveWorldId, db.collection('gangWorlds').doc(cfg.liveWorldId));
+    const worlds = await db.collection('gangWorlds').get();
+    worlds.docs.forEach((w) => {
+      if (w.id !== 'test' && !out.has(w.id)) out.set(w.id, w.ref);
+    });
+    return [...out.values()];
   }
 
   async function namesOf(uids) {
@@ -61,14 +94,12 @@ export function createNameSync({ db, FieldValue }) {
     const imam = await db.collection('imamState').doc('current').get();
     if (imam.exists && imam.data()?.uid === uid) add(imam.ref, 'displayName', imam.data().displayName);
 
-    // çeteler (her canlı dünya)
-    const worlds = await db.collection('gangWorlds').get();
-    for (const w of worlds.docs) {
-      if (w.id === 'test') continue;
-      const m = await w.ref.collection('memberships').doc(uid).get();
+    // çeteler (canlı dünya + diğer dünyalar)
+    for (const wRef of await worldRefs()) {
+      const m = await wRef.collection('memberships').doc(uid).get();
       const gid = m.data()?.gangId;
       if (!gid) continue;
-      const gRef = w.ref.collection('gangs').doc(gid);
+      const gRef = wRef.collection('gangs').doc(gid);
       const [ms, gs, rs] = await Promise.all([gRef.collection('members').doc(uid).get(), gRef.get(), gRef.collection('public').doc('roster').get()]);
       if (ms.exists) add(ms.ref, 'name', ms.data().name);
       if (gs.data()?.babaId === uid) add(gs.ref, 'babaName', gs.data().babaName);
@@ -109,8 +140,34 @@ export function createNameSync({ db, FieldValue }) {
       });
     }
 
-    const changed = await applyFixes(fixes, new Map([[uid, name]]));
-    return { changed };
+    // v124: ChatsApp sohbet listesindeki adım + bekleyen arkadaşlık isteklerindeki adım
+    const [dms, reqFrom, reqTo] = await Promise.all([
+      db.collection('dmChats').where('members', 'array-contains', uid).limit(300).get(),
+      db.collection('friendRequests').where('fromUid', '==', uid).limit(100).get(),
+      db.collection('friendRequests').where('toUid', '==', uid).limit(100).get(),
+    ]);
+    dms.forEach((d) => add(d.ref, `names.${uid}`, d.data()?.names?.[uid]));
+    reqFrom.forEach((d) => add(d.ref, 'fromName', d.data().fromName));
+    reqTo.forEach((d) => add(d.ref, 'toName', d.data().toName));
+
+    const { changed, failed } = await applyFixesDetailed(fixes, new Map([[uid, name]]));
+    // hatasız bittiyse "bekleyen eşitleme" işareti kalkar (hata varsa saatlik iş tekrar dener)
+    if (!failed && user.nameSyncPending) await us.ref.update({ nameSyncPending: FieldValue.delete() }).catch(() => {});
+    return { changed, failed };
+  }
+
+  // v124: eşitlemesi yarım kalan oyuncular (saatlik — socialCleanup içinde)
+  async function retryPendingNames(limit = 30) {
+    const snap = await db.collection('users').where('nameSyncPending', '==', true).limit(limit).get();
+    let changed = 0;
+    for (const d of snap.docs) {
+      try {
+        changed += (await syncPlayerName(d.id)).changed;
+      } catch {
+        /* bir sonraki saat tekrar denenir */
+      }
+    }
+    return { pending: snap.size, changed };
   }
 
   // Haftalık tarama: ad kopyalarını topla → users ile karşılaştır → düzelt
@@ -121,10 +178,8 @@ export function createNameSync({ db, FieldValue }) {
     const imam = await db.collection('imamState').doc('current').get();
     if (imam.exists && imam.data()?.uid) add(imam.data().uid, imam.ref, 'displayName', imam.data().displayName);
 
-    const worlds = await db.collection('gangWorlds').get();
-    for (const w of worlds.docs) {
-      if (w.id === 'test') continue;
-      const gangs = await w.ref.collection('gangs').where('status', '==', 'active').get();
+    for (const wRef of await worldRefs()) {
+      const gangs = await wRef.collection('gangs').where('status', '==', 'active').get();
       for (const g of gangs.docs) {
         if (g.data().babaId) add(g.data().babaId, g.ref, 'babaName', g.data().babaName);
         const [members, roster] = await Promise.all([g.ref.collection('members').get(), g.ref.collection('public').doc('roster').get()]);
@@ -160,5 +215,5 @@ export function createNameSync({ db, FieldValue }) {
     return { checked: fixes.length, changed, recent: recent.size, recentChanged };
   }
 
-  return { syncPlayerName, sweepNames };
+  return { syncPlayerName, sweepNames, retryPendingNames };
 }

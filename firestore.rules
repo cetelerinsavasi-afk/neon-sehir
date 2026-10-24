@@ -423,6 +423,30 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if false;
     }
+    // v124 — depolar (functions/depo.js): envanter (altın + yasaklı madde) sadece
+    // sahibine; fiyat + stok + alabileceği adet herkese açık. Yazma sadece sunucu.
+    match /depots/{houseId} {
+      allow read: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
+      allow write: if false;
+    }
+    match /depotView/{houseId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    // v124 Faz 6 — oyuncu gazinoları (functions/casino.js). Makine kasaları herkese
+    // açık (oyunun kuralı: en fazla bahis = masadaki altın); piyango günleri herkese açık.
+    match /casinoMachines/{docId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    match /casinoLottery/{docId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+      match /tickets/{ticketUid} {
+        allow read: if isSignedIn() && request.auth.uid == ticketUid;
+        allow write: if false;
+      }
+    }
     match /businessDaily/{docId} {
       allow read: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
       allow write: if false;

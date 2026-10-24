@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useWeapons } from '../../hooks/useWeapons';
 import { useVehicles } from '../../hooks/useVehicles';
-import { useInventory } from '../../hooks/useInventory';
+import { SharedMaterials } from '../Magaza/Magaza';
 import { useShopListings } from '../../hooks/useShopListings';
 import { shopAction } from '../../services/gameActions';
 import { weaponCatalog } from '../../data/weaponCatalog';
@@ -25,7 +25,7 @@ function VitrinRuleHint({ price, band }) {
 // =============================================================================
 // v77 — Silahçı / Modifiye Garajı / Araba Galerisi: SAHİP ekranları
 //   Fiyatlar sekmesi : atölye fiyatları (malzeme + işçilik) · vitrindeki ürünler
-//   Envanter sekmesi : malzeme stoğu (envanterim ⇄ dükkân) · vitrine ürün ekle
+//   Envanter sekmesi : ortak malzeme envanteri + Mağaza (v124) · vitrine ürün ekle
 // =============================================================================
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
 const weaponImage = (id) => weaponCatalog.find((w) => w.id === id)?.image;
@@ -308,74 +308,8 @@ function VitrinAdd({ houseId, kind }) {
   );
 }
 
-// ---- Malzeme stoğu: envanterim ⇄ dükkân -------------------------------------------------
-function MaterialStock({ houseId, type, inv }) {
-  const { inventory } = useInventory();
-  const mats = WORKSHOP_MATERIALS[type] || [];
-  const [amt, setAmt] = useState({});
-  const [busy, setBusy] = useState(null);
-  const [msg, setMsg] = useState(null);
-  const move = async (k, q) => {
-    setBusy(k);
-    setMsg(null);
-    try {
-      await shopAction({ op: 'stock', houseId, material: k, qty: q });
-      setAmt((a) => ({ ...a, [k]: 0 }));
-      setMsg({ ok: true, k, text: q > 0 ? `✓ ${fmt(q)} adet dükkâna kondu.` : `✓ ${fmt(-q)} adet envanterine alındı.` });
-    } catch (e) {
-      setMsg({ ok: false, k, text: bizErrText(e) });
-    } finally {
-      setBusy(null);
-    }
-  };
-  return (
-    <div className="bz-sec">
-      <p className="bz-sec-title">📦 Malzeme stoğu</p>
-      {mats.map((k) => {
-        const shopN = Number(inv?.materials?.[k] || 0);
-        const mineN = Number(inventory[k] || 0);
-        const a = Math.max(0, Math.floor(Number(amt[k]) || 0));
-        return (
-          <div key={k} className="bz-sec sh-matbox">
-            <p className="bz-sec-title">
-              {BIZ_MATERIALS[k].icon} {BIZ_MATERIALS[k].name}
-            </p>
-            <div className="bz-row">
-              <span>Dükkân stoğunda</span>
-              <b className={shopN === 0 ? 'bz-bad' : ''}>{fmt(shopN)} adet</b>
-            </div>
-            <div className="bz-row">
-              <span>Senin envanterinde</span>
-              <b>{fmt(mineN)} adet</b>
-            </div>
-            <div className="bz-field">
-              <label>Kaç adet?</label>
-              <input className="hh-input sh-num" inputMode="numeric" value={a || ''} placeholder="0" onChange={(e) => setAmt((x) => ({ ...x, [k]: e.target.value.replace(/\D/g, '') }))} />
-              <div className="sh-quick">
-                {[10, 100, 1000].map((q) => (
-                  <button key={q} onClick={() => setAmt((x) => ({ ...x, [k]: (Math.floor(Number(x[k]) || 0) + q).toString() }))}>
-                    +{fmt(q)}
-                  </button>
-                ))}
-                <button onClick={() => setAmt((x) => ({ ...x, [k]: String(mineN) }))}>Envanterimdekinin hepsi</button>
-              </div>
-            </div>
-            <div className="bz-btns">
-              <button className="bz-btn ghost sm" disabled={busy === k || a <= 0 || a > shopN} onClick={() => move(k, -a)}>
-                ← Envanterime al
-              </button>
-              <button className="bz-btn gold sm" disabled={busy === k || a <= 0 || a > mineN} onClick={() => move(k, a)}>
-                Dükkâna koy →
-              </button>
-            </div>
-            {a > mineN && <p className="bz-hint bz-bad">Envanterinde {fmt(mineN)} adet var.</p>}
-            {msg?.k === k && <p className={msg.ok ? 'bz-ok' : 'bz-warn'}>{msg.text}</p>}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+// ---- v124: malzemeler fabrika + işletmelerin ORTAK envanterinde (taşıma yok) ----
+// Atölye bu envanterden kullanır; eksik malzeme Mağaza'dan alınır.
 
 // BizSettings sekmeleri için
 export function ShopPriceSection({ houseId, houseDoc }) {
@@ -387,13 +321,17 @@ export function ShopPriceSection({ houseId, houseDoc }) {
     </>
   );
 }
-export function ShopInvSection({ houseId, houseDoc, inv }) {
+export function ShopInvSection({ houseId, houseDoc }) {
   const type = houseDoc?.biz?.type;
   const parts = useMemo(() => ({ mats: Boolean(WORKSHOP_MATERIALS[type]), vit: VITRIN_KIND[type] }), [type]);
   return (
     <>
       {parts.vit && <VitrinAdd houseId={houseId} kind={parts.vit} />}
-      {parts.mats && <MaterialStock houseId={houseId} type={type} inv={inv} />}
+      {parts.mats && (
+        <div className="bz-sec">
+          <SharedMaterials holder={type} title="📦 Malzeme envanteri" />
+        </div>
+      )}
     </>
   );
 }

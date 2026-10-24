@@ -1,0 +1,176 @@
+/* v124 — Rulet (Rulet.html'in telefona uyarlanmış hâli) */
+.rl-root {
+  --rl-felt-d: #0f5139;
+  --rl-brass: #d2ab55;
+  --rl-red: #b8302a;
+  --rl-blk: #17191b;
+  --rl-green: #1f7a46;
+  --rl-ivory: #f3ecd9;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--rl-ivory);
+  font-family: Georgia, 'Times New Roman', serif;
+}
+.rl-panel {
+  background: var(--rl-felt-d);
+  border: 2px solid var(--rl-brass);
+  border-radius: 14px;
+  padding: 12px;
+}
+.rl-canvas {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+  aspect-ratio: 1;
+  margin: 0 auto;
+}
+.rl-stats {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 1rem;
+}
+.rl-stats b {
+  color: var(--rl-brass);
+}
+.rl-msg {
+  min-height: 2.6em;
+  margin: 8px 0 0;
+  font-size: 0.95rem;
+  line-height: 1.3;
+}
+.rl-hist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.rl-h {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.75rem;
+  color: #fff;
+}
+.rl-h.red,
+.rl-cell.red {
+  background: var(--rl-red);
+}
+.rl-h.black,
+.rl-cell.black {
+  background: var(--rl-blk);
+}
+.rl-h.green,
+.rl-cell.green {
+  background: var(--rl-green);
+}
+.rl-chips {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  align-items: center;
+}
+.rl-chip {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  border: 3px dashed var(--rl-ivory);
+  background: var(--rl-brass);
+  color: #2a1f05;
+  font: 700 0.95rem Georgia, serif;
+  cursor: pointer;
+}
+.rl-chip[aria-pressed='true'] {
+  outline: 3px solid var(--rl-ivory);
+  outline-offset: 2px;
+}
+.rl-board {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-rows: repeat(3, 50px);
+  gap: 3px;
+}
+.rl-cell {
+  position: relative;
+  border: 1px solid var(--rl-ivory);
+  border-radius: 4px;
+  color: var(--rl-ivory);
+  font: 600 0.9rem Georgia, serif;
+  cursor: pointer;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  touch-action: manipulation;
+}
+.rl-cell:disabled {
+  cursor: default;
+}
+.rl-cell.win {
+  box-shadow: 0 0 0 3px var(--rl-brass) inset;
+}
+.rl-amt {
+  position: absolute;
+  right: -3px;
+  top: -6px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 4px;
+  border-radius: 11px;
+  background: var(--rl-brass);
+  color: #2a1f05;
+  font: 700 0.68rem Georgia, serif;
+  display: grid;
+  place-items: center;
+  border: 2px dashed #fff;
+  pointer-events: none;
+}
+.rl-slip {
+  margin-top: 12px;
+  display: grid;
+  gap: 6px;
+  font-size: 0.88rem;
+}
+.rl-slip div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  border-bottom: 1px dashed rgba(243, 236, 217, 0.35);
+  padding-bottom: 4px;
+}
+.rl-slip b {
+  color: var(--rl-brass);
+}
+.rl-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.rl-btn {
+  padding: 11px 12px;
+  border-radius: 8px;
+  border: 2px solid var(--rl-brass);
+  background: transparent;
+  color: var(--rl-ivory);
+  font: 600 0.95rem Georgia, serif;
+  cursor: pointer;
+}
+.rl-btn.main {
+  background: var(--rl-brass);
+  color: #2a1f05;
+  flex: 1;
+}
+.rl-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.rl-note {
+  font-size: 0.8rem;
+  opacity: 0.8;
+  margin: 10px 0 0;
+}

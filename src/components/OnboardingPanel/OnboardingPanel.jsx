@@ -11,11 +11,15 @@ import './OnboardingPanel.css';
 // bitince "Görevler Tamamlandı!" ekranı gelir, "Tamam" butonuna
 // basıldığında panel kalıcı olarak "hatırlatıcı" moduna geçer ve sadece
 // o an geçerli olan hatırlatmalar varsa görünür kalır.
+// Oyuncu bu göreve geldiğinde şart zaten sağlanıyorsa sunucu otomatik geçirir
+const STATUS_TASK_IDS = [5, 9, 11, 12, 13, 16, 19, 20];
+
 export default function OnboardingPanel({ gangReminders = null }) {
   const { user } = useAuth();
   const {
     loading,
     onboardingStep,
+    currentTaskId,
     onboardingRewardClaimed,
     checklistDone,
     reminders,
@@ -39,21 +43,13 @@ export default function OnboardingPanel({ gangReminders = null }) {
   // gibi burada kontrol ediliyor.
   useEffect(() => {
     if (!open || onboardingRewardClaimed) return;
-    if (
-      onboardingStep === 5 ||
-      onboardingStep === 9 ||
-      onboardingStep === 11 ||
-      onboardingStep === 12 ||
-      onboardingStep === 13 ||
-      onboardingStep === 16 ||
-      onboardingStep === 19 ||
-      onboardingStep === 20
-    ) {
+    // v124: görev KİMLİKLERİ (sıra değişti, kimlik değişmedi — functions/onboardingData.js)
+    if (STATUS_TASK_IDS.includes(currentTaskId)) {
       checkOnboardingProgress().catch((err) => {
         console.error('checkOnboardingProgress hatası:', err);
       });
     }
-  }, [open, onboardingStep, onboardingRewardClaimed]);
+  }, [open, currentTaskId, onboardingRewardClaimed]);
 
   // Tamamlanan görev animasyonu — adım ilerlediğinde kısa süreliğine
   // az önce biten görevin satırını vurgula.

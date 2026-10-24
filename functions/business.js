@@ -183,14 +183,22 @@ export function createBusiness({ db, FieldValue, now = () => Date.now() }) {
     for (const d of snap.docs) {
       const h = d.data();
       const items = Object.keys(h.bizShortage?.items || {}).filter((k) => h.bizShortage.items[k]);
-      if (!h.biz?.type || !items.length) {
+      if (!h.biz?.type || !items.length || !h.ownerUid) {
         await d.ref.update({ bizShortagePending: false });
         continue;
       }
       if (h.bizShortage?.smsDay === today) continue;
+      // v124: stok sahibinin ortak envanterinde (Mağaza / fabrika) — dolan malzemenin işareti kalkar
+      const invSnaps = await Promise.all(items.map((k) => db.collection('users').doc(h.ownerUid).collection('inventory').doc(k).get()));
+      const still = items.filter((k, i) => !(Number(invSnaps[i].exists ? invSnaps[i].data().quantity : 0) > 0));
+      if (!still.length) {
+        await d.ref.update({ bizShortage: { items: {}, smsDay: h.bizShortage?.smsDay || null }, bizShortagePending: false });
+        continue;
+      }
+      items.splice(0, items.length, ...still);
       const batch = db.batch();
       batch.set(db.collection('users').doc(h.ownerUid).collection('messages').doc(), {
-        text: `${BIZ_TYPES[h.biz.type]?.icon || '🏪'} ${h.name || 'Dükkân'} — stok bitiyor: ${items.map((k) => MATERIAL_NAMES[k] || k).join(', ')}`,
+        text: `${BIZ_TYPES[h.biz.type]?.icon || '🏪'} ${h.name || 'Dükkân'} — stok bitiyor: ${items.map((k) => MATERIAL_NAMES[k] || k).join(', ')}. Envanter › Mağaza’dan alabilirsin.`,
         createdAt: FieldValue.serverTimestamp(),
         read: false,
         type: 'biz_shortage',

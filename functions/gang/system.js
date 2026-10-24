@@ -204,6 +204,7 @@ export function createGangSystem(deps) {
     advertiseDepotListing: market.advertiseDepotListing,
     buyMarketListing: market.buyMarketListing,
     sellFromDepot: trade.sellFromDepot,
+    sellToDepo: trade.sellToDepo, // v124
     distributeFromDepot: trade.distributeFromDepot,
     // savaş & diplomasi
     rollDice: wars.rollDice,

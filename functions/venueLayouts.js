@@ -173,6 +173,7 @@ export const VENUES = {
       ...Object.fromEntries([0, 1, 2, 3, 4].map((n) => [`gz_sl${n}`, [{ act: 'slot', label: '🎰 Slot oyna' }]])),
       gz_pg: [{ act: 'piyango', label: '🎟️ Piyango bileti' }],
       gz_km: [{ act: 'onnumara', label: '🃏 10 Numara' }],
+      gz_rul: [{ act: 'rulet', label: '🎡 Rulet oyna' }], // v124
       gz_bar: [{ act: 'bar', label: '🍸 Bar' }],
     },
     npcs: [

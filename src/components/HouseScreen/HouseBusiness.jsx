@@ -16,6 +16,10 @@ import BizRequirements, { FillConfirm } from './BizRequirements';
 import { ShopPriceSection, ShopInvSection } from '../Shop/ShopOwnerPanels';
 import { MenuPriceSection, MenuInvSection, NetPriceSection, NetInvSection } from '../Venue/VenueOwnerPanels';
 import { GymPriceSection, GymInvSection } from '../Gym/GymOwnerPanels';
+import { DepoPriceSection, DepoInvSection } from '../Depo/DepoPanels';
+import { CasinoPriceSection, CasinoInvSection, CasinoReportCard } from '../Casino/PlayerCasino';
+import { MagazaButton } from '../Magaza/Magaza';
+import { materialBlockText } from '../../lib/bizErrors';
 import './HouseBusiness.css';
 
 // =============================================================================
@@ -40,6 +44,8 @@ const BIZ_BLURB = {
   internet: 'Dakika ücretiyle oyun cihazı kirala.',
   bar: 'Menündeki içecekleri sat; sahneye piyano koy.',
   cafe: 'Menündeki yiyecek ve içecekleri sat.',
+  depo: 'Yasaklı madde al ve sat.',
+  gazino: 'Slot, rulet, 10 Numara ve piyango oynat.',
   // v93 home ofisler
   mescit: 'Bağış kabul et.',
   sinema: 'İçecek ve patlamış mısır sat.',
@@ -178,6 +184,8 @@ const BIZ_PRICE_SECTIONS = {
   bar: MenuPriceSection,
   internet: NetPriceSection,
   spor: GymPriceSection,
+  depo: DepoPriceSection, // v124
+  gazino: CasinoPriceSection, // v124 Faz 6
   // v93 home ofisler
   sinema: MenuPriceSection,
   studyo: NetPriceSection,
@@ -191,6 +199,8 @@ const BIZ_INV_SECTIONS = {
   bar: MenuInvSection,
   internet: NetInvSection,
   spor: GymInvSection,
+  depo: DepoInvSection, // v124
+  gazino: CasinoInvSection, // v124 Faz 6
   sinema: MenuInvSection,
 };
 
@@ -310,8 +320,17 @@ export function BizSettings({ houseId, houseDoc }) {
       {tab === 'report' && (
         <>
           <p className="bz-hint">Gün {t.day === 'futbol' ? '19:00' : '00:00'}'da kapanır.</p>
-          <ReportCard label="Bugün" d={today} type={type} />
-          <ReportCard label="Dün" d={yesterday} type={type} />
+          {type === 'gazino' ? (
+            <>
+              <CasinoReportCard label="Bugün" d={today} />
+              <CasinoReportCard label="Dün" d={yesterday} />
+            </>
+          ) : (
+            <>
+              <ReportCard label="Bugün" d={today} type={type} />
+              <ReportCard label="Dün" d={yesterday} type={type} />
+            </>
+          )}
         </>
       )}
     </div>
@@ -331,6 +350,39 @@ export function BizRemovePanel({ type, status, busy, onConfirm, onCancel }) {
           <div className="hs-loading">
             <div className="hs-spinner" />
           </div>
+        ) : status.materialBlock?.length > 0 ? (
+          <>
+            <div className="bz-head">
+              <div className="bz-head-main">
+                <h3>📦 İşletme şu an kapatılamaz</h3>
+                <p>
+                  {t.icon} {t.label}
+                </p>
+              </div>
+            </div>
+            <p className="bz-warn">{materialBlockText(status.materialBlock)}</p>
+            <div className="bz-btns">
+              <MagazaButton className="bz-btn gold" />
+              <button className="bz-btn" onClick={onCancel}>
+                Tamam
+              </button>
+            </div>
+          </>
+        ) : extra.casinoOpenTables > 0 ? (
+          <>
+            <div className="bz-head">
+              <div className="bz-head-main">
+                <h3>🃏 Gazino şu an kapatılamaz</h3>
+                <p>
+                  {t.icon} {t.label}
+                </p>
+              </div>
+            </div>
+            <p className="bz-warn">Gazinoda açık 10 Numara masası var. Masalar kapanınca (oyuncular kalkınca) tekrar dene.</p>
+            <button className="bz-btn wide" onClick={onCancel}>
+              Tamam
+            </button>
+          </>
         ) : lock?.locked ? (
           <>
             <div className="bz-head">
@@ -357,7 +409,7 @@ export function BizRemovePanel({ type, status, busy, onConfirm, onCancel }) {
                 <p>Bu mobilya işletme için gerekli. Kaldırırsan işletme kapanır ve burası yeniden ev olur.</p>
               </div>
             </div>
-            {mats.length > 0 || extra.weapons > 0 || extra.vehicles > 0 ? (
+            {mats.length > 0 || extra.weapons > 0 || extra.vehicles > 0 || extra.depotGold > 0 || extra.depotContraband > 0 || extra.casinoGold > 0 || extra.casinoContraband > 0 ? (
               <div className="bz-sec">
                 <p className="bz-sec-title">İşletmedekiler sana geri döner</p>
                 {mats.map(([k, n]) => (
@@ -372,6 +424,32 @@ export function BizRemovePanel({ type, status, busy, onConfirm, onCancel }) {
                   <div className="bz-row">
                     <span>🔫 Vitrindeki silahlar</span>
                     <b className="bz-bad">{fmt(extra.weapons)} adet · ömürleri 1 gün azalır</b>
+                  </div>
+                )}
+                {extra.depotContraband > 0 && (
+                  <div className="bz-row">
+                    <span>💊 Depodaki yasaklı madde</span>
+                    <b>{fmt(extra.depotContraband)} adet</b>
+                  </div>
+                )}
+                {extra.depotGold > 0 && (
+                  <div className="bz-row">
+                    <span>🪙 Deponun kasası</span>
+                    <b>{fmt(extra.depotGold)} altın</b>
+                  </div>
+                )}
+                {extra.casinoContraband > 0 && (
+                  <div className="bz-row">
+                    <span>💊 Slottaki yasaklı madde</span>
+                    <b>{fmt(extra.casinoContraband)} adet</b>
+                  </div>
+                )}
+                {extra.casinoGold > 0 && (
+                  <div className="bz-row">
+                    <span>🪙 Makinelerdeki altın (%10 vergi düşülmüş)</span>
+                    <b>
+                      {fmt(extra.casinoGold)} altın · vergi {fmt(extra.casinoTax)}
+                    </b>
                   </div>
                 )}
                 {extra.vehicles > 0 && (

@@ -35,6 +35,10 @@
   font-size: 11px;
   color: var(--text-dim);
 }
+/* v124 Faz 6: bahis kurpiyerin kasasını aşınca */
+.onnumara-hint.bad {
+  color: #ff6b8a;
+}
 
 .onnumara-capacity-row {
   display: flex;

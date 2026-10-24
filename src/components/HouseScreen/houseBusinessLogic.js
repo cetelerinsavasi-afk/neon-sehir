@@ -14,6 +14,8 @@ export function removalBreaksBiz(houseDoc, items, sel) {
 export function parseBizError(err) {
   const m = String(err?.message || '');
   if (m.startsWith('biz-required')) return { kind: 'required' };
+  // v124: kalan fabrika/işletmelerin kullanamayacağı malzeme var
+  if (m.startsWith('biz-close-materials:')) return { kind: 'materials', list: m.slice('biz-close-materials:'.length).split(',').filter(Boolean) };
   const lk = m.match(/^biz-locked:(\d+):(\d+)/);
   if (lk) return { kind: 'locked', people: Number(lk[1]), untilMs: Number(lk[2]) };
   return null;

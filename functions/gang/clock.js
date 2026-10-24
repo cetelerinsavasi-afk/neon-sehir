@@ -707,6 +707,23 @@ export function createClock(core, actions) {
     return Math.max(Number(m.lastActiveAtMs || m.joinedAtMs || fallback), Number(m.lastChatAtMs || 0), Number(m.lastSocialAtMs || 0), Number(baseline || 0));
   }
 
+  // v125 — "oyuna girme" zamanı (polislikteki kuralla aynı kaynak)
+  async function lastSeenOf(ctx, actorId, tx = null) {
+    const ref = ctx.isTest ? ctx.ref.player(actorId) : db.doc(`users/${actorId}/private/meta`);
+    const s = tx ? await tx.get(ref) : await ref.get();
+    return Number(s.data()?.lastSeenAtMs || 0);
+  }
+  // v125 — 10 gün oyuna girmeme kuralının başlangıcı (ilk çalıştığı an; öncesi sayılmaz)
+  async function loginRuleFrom(ctx) {
+    let fromMs = Number(ctx.world?.gangLoginInactivityFromMs || 0);
+    if (!fromMs) {
+      fromMs = ctx.now;
+      await ctx.ref.world().set({ gangLoginInactivityFromMs: fromMs }, { merge: true });
+      ctx.world = { ...(ctx.world || {}), gangLoginInactivityFromMs: fromMs };
+    }
+    return fromMs;
+  }
+
   async function processInactivity(ctx, gangId) {
     const snap = await ctx.ref.members(gangId).get();
     const midnight = ctx.now;
@@ -734,14 +751,37 @@ export function createClock(core, actions) {
       }
     }
     if (writes > 0) await safe(ctx, `inactive-warn:${gangId}`, () => batch.commit());
+    // v125: 10 gün oyuna girmeyenler (çete aktifliği de 10 günden eskiyse — o zaman okunur)
+    const loginFrom = await loginRuleFrom(ctx);
+    const loginLimit = GANG.LOGIN_INACTIVE_DAYS * MS_DAY;
+    for (const d of snap.docs) {
+      if (toRemove.some((r) => r.id === d.id)) continue;
+      const m = d.data();
+      const base = Math.max(loginFrom, Number(m.joinedAtMs || 0), memberLastActivity(m, baseline, midnight));
+      if (midnight - base < loginLimit) continue;
+      const seen = await lastSeenOf(ctx, d.id).catch(() => 0);
+      // test dünyasının sahte oyuncularında giriş kaydı yok → kural sadece kaydı olana
+      if (ctx.isTest && !seen) continue;
+      if (midnight - Math.max(base, seen) < loginLimit) continue;
+      toRemove.push({ id: d.id, name: m.name, isBaba: m.rank === 'baba', login: true });
+    }
     // Baba en son: halef, aktif kalan üyeler arasından seçilsin
     toRemove.sort((a, b) => Number(a.isBaba) - Number(b.isBaba));
     for (const r of toRemove) {
       await safe(ctx, `inactive-remove:${gangId}:${r.id}`, () =>
         db.runTransaction(async (tx) => {
+          const seenNow = r.login ? await lastSeenOf(ctx, r.id, tx) : 0;
           const plan = await core.planRemoval(tx, ctx, gangId, r.id);
           if (!plan.member) return;
           const last = memberLastActivity(plan.member, baseline, ctx.now);
+          if (r.login) {
+            // v125: 10 gün oyuna girmedi (bu arada girdiyse / aktif olduysa atılmaz)
+            const base = Math.max(Number(ctx.world?.gangLoginInactivityFromMs || 0), Number(plan.member.joinedAtMs || 0), last, seenNow);
+            if (ctx.now - base < GANG.LOGIN_INACTIVE_DAYS * MS_DAY) return;
+            const res = core.applyRemoval(tx, ctx, plan, 'inactive', { notifyText: `⏰ ${GANG.LOGIN_INACTIVE_DAYS} gündür oyuna girmediğin için ${plan.gang?.name || 'çete'} üyeliğin sona erdi.` });
+            if (!res.dissolved) core.announce(tx, ctx, gangId, '⏰', `${plan.member.name} ${GANG.LOGIN_INACTIVE_DAYS} gündür oyuna girmediği için çeteden çıkarıldı.`);
+            return;
+          }
           if (Math.floor((ctx.now - last) / MS_DAY) < GANG.INACTIVE_REMOVE_DAYS) return; // bu arada aktif oldu
           const res = core.applyRemoval(tx, ctx, plan, 'inactive', { notifyText: `💤 ${GANG.INACTIVE_REMOVE_DAYS} gündür savaşa katılmadığın, mesaj yazmadığın ve ibadet etmediğin için ${plan.gang?.name || 'çete'} üyeliğin sona erdi.` });
           if (!res.dissolved) core.announce(tx, ctx, gangId, '💤', `${plan.member.name} ${GANG.INACTIVE_REMOVE_DAYS} gündür hiç aktif olmadığı için çeteden çıkarıldı.`);
@@ -839,6 +879,20 @@ export function createClock(core, actions) {
       core.announce(tx, ctx, gangId, '💊', `Üyeler bugün ${n} adet yasaklı madde sattı, ${amt} haraç toplandı.`);
       tx.update(ref, { announced: true, announcedAtMs: ctx.now });
       return { count: h.count, amount: h.amount };
+    });
+  }
+
+  // v125: 00:00'daki üye sayısı → bugünün yasaklı madde sipariş hakkı (üye × 1.250).
+  // Üye düşmeleri (pasiflik) ve sayı düzeltmesi (refreshGangRoster) bu adımdan ÖNCE.
+  async function snapshotOrderBase(ctx, gangId) {
+    const stateRef = ctx.ref.gangState(gangId);
+    return db.runTransaction(async (tx) => {
+      const [g, s] = await Promise.all([tx.get(ctx.ref.gang(gangId)), tx.get(stateRef)]);
+      if (!g.exists || !s.exists || g.data().status !== 'active') return { skipped: true };
+      if (s.data().orderBase?.dateKey === ctx.dateKey) return { skipped: true };
+      const members = Math.max(0, Number(g.data().memberCount || 0));
+      tx.update(stateRef, { orderBase: { dateKey: ctx.dateKey, members } });
+      return { members };
     });
   }
 
@@ -1518,6 +1572,7 @@ export function createClock(core, actions) {
       await safe(ctx, `harac:${gangId}`, () => announceHarac(ctx, gangId, prev));
       await safe(ctx, `kasa:${gangId}`, () => snapshotKasa(ctx, ctx.ref.gangState(gangId), ctx.ref.gang(gangId)));
       await safe(ctx, `roster:${gangId}`, () => core.refreshGangRoster(ctx, gangId));
+      await safe(ctx, `order-base:${gangId}`, () => snapshotOrderBase(ctx, gangId));
     }
     // 6.5) v108 / v109 — Polis Teşkilatı: polis ↔ teşkilat uzlaştırma (geçiş
     //       bittiyse), 10 gün pasiflik, maaşlar + rüşvet payı (biten günün

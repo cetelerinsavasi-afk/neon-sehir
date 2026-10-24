@@ -1546,6 +1546,8 @@ export function createHouseEngine(
   let venueActs = null;
   // v93 — home ofis: eşya türüne göre ek eylem ({ anahtar: [{ act, label }] }) — bağış kutusu, mikser…
   let bizActs = null;
+  // v124 Faz 6 — oyuncu gazinosu: eşya türüne göre oyun eylemi ({ slotm: [{ act, label }] … })
+  let casinoActs = null;
   function actionsFor(e) {
     if (venueActs) {
       // mekânda eşyadan ücretsiz ürün / market arabası yok; istasyon butonları var
@@ -1560,6 +1562,7 @@ export function createHouseEngine(
     const ctl = e.obj.userData.ctl;
     const acts = [];
     if (bizActs?.[e.data.k] && e.data.p === 1) bizActs[e.data.k].forEach((a) => acts.push({ kind: 'ho', act: a.act, label: a.label, itemId: e.data.i }));
+    if (casinoActs?.[e.data.k] && e.data.p === 1) casinoActs[e.data.k].forEach((a) => acts.unshift({ kind: 'casino', act: a.act, label: a.label, itemId: e.data.i }));
     if (def.seats?.length) acts.push({ kind: 'sit', label: def.stand ? def.seatLabel || '🚿 Duş al' : def.seatLabel || (def.cat === 'araba' ? '🚗 Arabaya bin' : def.cat === 'motor' ? '🏍️ Motora bin' : '🪑 Otur') });
     // v92 — market arabası: al ve it; araba elindeyken raftaki ürünler arabaya gider
     if (def.panel === 'cart' && !self.cart) acts.push({ kind: 'cart', label: '🛒 Arabayı al' });
@@ -3063,6 +3066,11 @@ export function createHouseEngine(
     // v92 Faz 8: oyunun mekânı — istasyon eşyaları (null = normal ev)
     setVenueStations(map) {
       venueActs = map && typeof map === 'object' ? map : null;
+      lastInteractKey = null;
+    },
+    // v124 Faz 6: oyuncu gazinosu oyun eylemleri (null = yok)
+    setCasinoActs(map) {
+      casinoActs = map && typeof map === 'object' ? map : null;
       lastInteractKey = null;
     },
     // v93: home ofis eşya eylemleri (null = yok)

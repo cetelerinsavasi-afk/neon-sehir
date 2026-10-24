@@ -12,13 +12,16 @@ function istanbulDateKey(offsetDays = 0) {
   }).format(new Date(Date.now() + offsetDays * 24 * 60 * 60 * 1000));
 }
 
-function useLotteryDoc(dateKey) {
+// v124 Faz 6: oyuncu gazinosunun piyangosu casinoLottery/{ev}_{gün}
+const lotteryPath = (casinoId, dateKey) => (casinoId && casinoId !== 'game' ? ['casinoLottery', `${casinoId}_${dateKey}`] : ['lottery', dateKey]);
+
+function useLotteryDoc(dateKey, casinoId) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    const ref = doc(db, 'lottery', dateKey);
+    const ref = doc(db, ...lotteryPath(casinoId, dateKey));
     const unsubscribe = onSnapshot(
       ref,
       (snap) => {
@@ -31,7 +34,7 @@ function useLotteryDoc(dateKey) {
       }
     );
     return unsubscribe;
-  }, [dateKey]);
+  }, [dateKey, casinoId]);
 
   return { data, loading };
 }
@@ -40,10 +43,10 @@ function useLotteryDoc(dateKey) {
  * useLottery — bugünün canlı jackpot/bilet durumunu, dünün kazananını ve
  * kendi bugünkü bilet sayımı birlikte döner.
  */
-export function useLottery() {
+export function useLottery(casinoId = 'game') {
   const { user } = useAuth();
-  const today = useLotteryDoc(istanbulDateKey(0));
-  const yesterday = useLotteryDoc(istanbulDateKey(-1));
+  const today = useLotteryDoc(istanbulDateKey(0), casinoId);
+  const yesterday = useLotteryDoc(istanbulDateKey(-1), casinoId);
   const [myTickets, setMyTickets] = useState(0);
 
   useEffect(() => {
@@ -51,14 +54,14 @@ export function useLottery() {
       setMyTickets(0);
       return;
     }
-    const ref = doc(db, 'lottery', istanbulDateKey(0), 'tickets', user.uid);
+    const ref = doc(db, ...lotteryPath(casinoId, istanbulDateKey(0)), 'tickets', user.uid);
     const unsubscribe = onSnapshot(
       ref,
       (snap) => setMyTickets(snap.exists() ? snap.data().count || 0 : 0),
       (err) => console.error('myTickets dinleme hatası:', err)
     );
     return unsubscribe;
-  }, [user]);
+  }, [user, casinoId]);
 
   return { today: today.data, yesterday: yesterday.data, myTickets, loading: today.loading };
 }

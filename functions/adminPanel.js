@@ -280,7 +280,7 @@ export function createAdminPanel({ db, auth, FieldValue, HttpsError, requireAuth
             const n = await tx.get(nameRef);
             if (n.exists && n.data()?.uid === uid) tx.delete(nameRef);
           }
-          tx.update(userRef(uid), { displayName: DEFAULT_PLAYER_NAME, displayNameKey: FieldValue.delete() });
+          tx.update(userRef(uid), { displayName: DEFAULT_PLAYER_NAME, displayNameKey: FieldValue.delete(), nameChangedAtMs: Date.now(), nameSyncPending: true }); // v124: kopyalar saatlik işte eşitlenir
         });
         return { mode: 'reset', before: d.displayName || null };
       }

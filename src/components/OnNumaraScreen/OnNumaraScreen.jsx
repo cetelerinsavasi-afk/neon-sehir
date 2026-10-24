@@ -10,9 +10,11 @@ import './OnNumaraScreen.css';
 const RULES_TEXT =
   "Amaç 10'a en yakın (aşmadan) toplamı yapmak. Kartlar 1-5. 10'u geçersen elenirsin. Hamlen için 10 saniyen var. Kurpiyer de senin kadar ortaya para koyar — sadece oyuncular değil, kurpiyer de yarışır. Herkes bitince kurpiyer 8'e kadar çeker. Kurpiyer tek başına kazanırsa pot kimseye ödenmez, kurpiyerle berabere kalırsan potu paylaşırsın. Sen de kurpiyer de elenirsen berabere sayılır, bahsin iade edilir. 10 Numara kazancı asla otomatik borca gitmez.";
 
-export default function OnNumaraScreen({ onEnterTable }) {
+// v124 Faz 6: casinoId — oyuncu gazinosu (masalar o gazinonun) · maxBet: kurpiyerin
+// (kart masasının) kasası — bahis en fazla bu kadar · blocked: sebep (ör. sahibi)
+export default function OnNumaraScreen({ onEnterTable, casinoId = 'game', maxBet = null, blocked = null }) {
   const { user } = useAuth();
-  const { tables } = useOpenOnNumaraTables();
+  const { tables } = useOpenOnNumaraTables(casinoId);
   const [capacity, setCapacity] = useState(1);
   const [betAmount, setBetAmount] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -28,7 +30,7 @@ export default function OnNumaraScreen({ onEnterTable }) {
     setBusy(true);
     setError(null);
     try {
-      const res = await createOnNumaraTable(capacity, amount);
+      const res = await createOnNumaraTable(capacity, amount, casinoId);
       if (res?.data?.tableId) onEnterTable(res.data.tableId);
     } catch (err) {
       setError(err.message || 'Masa kurulamadı.');
@@ -76,7 +78,13 @@ export default function OnNumaraScreen({ onEnterTable }) {
         </div>
         <p className="onnumara-bet-label">Bahsi Belirle: <strong>{betAmount.toLocaleString('tr-TR')} altın</strong></p>
         <QuantityStepper value={betAmount} onChange={setBetAmount} quickAmounts={[10, 100, 1000, 10000, 100000]} />
-        <button className="onnumara-btn primary" disabled={busy || !betAmount} onClick={handleCreate}>
+        {maxBet != null && (
+          <p className={`onnumara-hint${betAmount > maxBet ? ' bad' : ''}`}>
+            {maxBet > 0 ? `Max bahis: ${maxBet.toLocaleString('tr-TR')} altın` : 'Casinoda yeterli altın olmadığı için masa açılamıyor.'}
+          </p>
+        )}
+        {blocked && <p className="onnumara-error">{blocked}</p>}
+        <button className="onnumara-btn primary" disabled={busy || !betAmount || Boolean(blocked) || (maxBet != null && betAmount > maxBet)} onClick={handleCreate}>
           {betAmount > 0 ? `Masa Kur — ${betAmount.toLocaleString('tr-TR')} altın bahis` : 'Masa Kur'}
         </button>
       </div>
@@ -90,7 +98,7 @@ export default function OnNumaraScreen({ onEnterTable }) {
               {t.capacity} kişilik · Bahis {t.betAmount.toLocaleString('tr-TR')} altın ·{' '}
               {t.seatOrder.length}/{t.capacity} dolu
             </span>
-            <button className="onnumara-btn" disabled={busy} onClick={() => handleJoin(t.id)}>
+            <button className="onnumara-btn" disabled={busy || Boolean(blocked)} onClick={() => handleJoin(t.id)}>
               Katıl
             </button>
           </div>

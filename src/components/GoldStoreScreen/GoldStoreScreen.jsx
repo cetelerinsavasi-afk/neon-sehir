@@ -34,13 +34,13 @@ const BUY_PACKAGES = [
 ];
 
 const SPEND_OFFERS = [
-  { id: 'altin30k', title: '30.000 Altın', cost: 49, image: altin30kImage, lines: ['30.000 Altın'] },
+  { id: 'altin30k', title: '49.000 Altın', cost: 49, image: altin30kImage, lines: ['49.000 Altın'] }, // v124
   {
     id: 'altin100k',
-    title: '100.000 Altın + Ekstra Hediyeler',
+    title: '199.000 Altın ve Ekstra Hediyeler', // v124
     cost: 199,
     image: altin100kImage,
-    lines: ['100.000 Altın', '4 Yasaklı Madde', '1.000 Tamir Malzemesi', '100 Silah Geliştirme Malzemesi', '20 Araba Geliştirme Malzemesi'],
+    lines: ['199.000 Altın', '🎁 Ekstra hediye: 19 Yasaklı Madde'],
   },
 ];
 

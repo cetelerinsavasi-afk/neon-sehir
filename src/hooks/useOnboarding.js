@@ -10,6 +10,7 @@ import { useMyFutbolTeam } from './useMyFutbolTeam';
 import { currentPrayerWindow } from './useMosqueAttendance';
 import { useBizReminders } from './useBizReminders';
 import { SAFE_DAILY_LIMIT } from '../components/ShadyDeal/shadyDeal';
+import { ONBOARDING_ORDER, ONBOARDING_TASK_COUNT, onboardingPosOf, onboardingTaskIdAt } from '../../functions/onboardingData.js';
 
 // Görev listesi/hatırlatıcı paneli — bkz. functions/index.js ONBOARDING
 // bölümü. Sayaç (onboardingStep, 1-20) ve tamamlanma bayrağı
@@ -17,8 +18,9 @@ import { SAFE_DAILY_LIMIT } from '../components/ShadyDeal/shadyDeal';
 // değiştirilmedi, ama artık altın ödülü YOK, sadece "tamamlandı"
 // bayrağı) users/{uid} dokümanında tutuluyor; bu hook sadece OKUR —
 // ilerleme SUNUCUDA (advanceOnboardingStep) yapılıyor.
-export const ONBOARDING_TASK_COUNT = 20;
-const SLOT_FREE_SPINS_PER_DAY = 3;
+// v124: liste functions/onboardingData.js'te (sunucuyla ortak). 17 görev; eski
+// kayıtlı adımlar orada yeni sıraya çevrilir (onboardingPosOf).
+export { ONBOARDING_TASK_COUNT };
 
 function istanbulDateKey() {
   return new Intl.DateTimeFormat('en-CA', {
@@ -31,29 +33,29 @@ function istanbulDateKey() {
 
 // Görevlerin sırayla, sabit metinleriyle tanımı — kullanıcının verdiği
 // başlık ve (i) açıklama metinleri BİREBİR kullanılıyor.
-export const ONBOARDING_TASKS = [
-  { step: 1, emoji: '🏭', title: 'Fabrikada çalış', info: 'Maaşı yüksek olan bi fabrikada çalışarak her gün para kazanabilirsin.' },
-  { step: 2, emoji: '📱', title: 'Telefon > Amazor ya da 2. el satış uygulamasından 1 adet yasaklı madde satın al', info: '2. el satış uygulamasında daha ucuza yasaklı madde bulabilirsin.' },
-  { step: 3, emoji: '🌳', title: 'Parktaki şüpheli adama 1 adet yasaklı madde sat', info: 'Yasaklı madde alıp parkta satarsan, çok hızlı para kazanabilirsin.' },
-  { step: 4, emoji: '🕌', title: "Camii'ye gidip ibadet et", info: 'Günde 5 vakit ibadet ederek şüphe miktarını düşük tut ve saygınlık kazan, şüphen yüksekken polise yakalanırsın.' },
-  { step: 5, emoji: '🔫', title: 'Herhangi bir silah al', info: 'Silah alıp güçlenebilir ve seyyar satıcılardan haraç kesebilirsin.' },
-  { step: 6, emoji: '💸', title: 'Bir seyyar satıcıdan haraç kes', info: 'Seyyar satıcılardan haraç kesip para kazanabilirsin.' },
-  { step: 7, emoji: '🛒', title: 'Bir seyyar satıcıyla alışveriş yap', info: 'Seyyar satıcılarla alışveriş yaparak şüpheni azaltıp saygınlık kazanabilirsin.' },
-  { step: 8, emoji: '🎰', title: "Casino'da slot oyna", info: "Casino'da günlük 3 kere ücretsiz slot hakkın var." },
-  { step: 9, emoji: '🚨', title: "Şüpheni 20'ye çıkart", info: 'Şüphen yükseldikçe yakalanma riskin artar, yakalanırsan para cezası yersin.' },
-  { step: 10, emoji: '🤝', title: 'Polise rüşvet ver', info: 'Rüşvet vermek şüpheyi 20 düşürür.' },
-  { step: 11, emoji: '🚗', title: 'Herhangi bir araba al', info: 'Arabanla yarışlara katılabilirsin.' },
-  { step: 12, emoji: '🏎️', title: 'Yarış pistinden antrenmana gir ve 1. seviyeyi tamamla', info: 'Hem kendini geliştir hem para kazan.' },
-  { step: 13, emoji: '🏆', title: 'Yarış pistinden Şampiyonaya gir', info: 'Günün şampiyonu para ödülünü alır.' },
-  { step: 14, emoji: '🏦', title: 'Bankadan kredi çek', info: 'Kredi puanını yükselterek daha fazla kredi çekebilirsin.' },
-  { step: 15, emoji: '📱', title: "Telefondaki 2. el satış uygulamasından alışveriş yap", info: 'Elindeki ürünleri sat, uygun fiyatlı ürünleri satın al (ilana ürün yüklemek, anında satmak, herhangi bir ürün almak bu görevi tamamlamak için yeterli).' },
-  // v32 — listenin sonuna eklenen görevler (kaldığın yerden devam edersin)
-  { step: 16, emoji: '👤', title: 'Profile gir ve avatarını düzenle', info: "Alttaki Profil sekmesinden avatarını düzenleyebilir, adını değiştirebilirsin." },
-  { step: 17, emoji: '💬', title: 'Telefon > ChatsApp uygulamasına gir ve bi mesaj gönder', info: 'Diğer oyuncularla konuş.' },
-  { step: 18, emoji: '🧰', title: 'Telefon > Amazor ya da 2. el satış uygulamasından silah geliştirme malzemesi satın al', info: 'Silahını geliştirmek için ihtiyacın olacak.' },
-  { step: 19, emoji: '🔧', title: 'Silahçıda silahını geliştir', info: 'Silah Mağazası ya da bir oyuncunun silahçı dükkânında 🛠️ Atölye\'den silahını geliştirerek daha büyük soygunlar yapabilirsin.' },
-  { step: 20, emoji: '🏴', title: 'Bi çeteye gir', info: 'Tüm mafya babaları bu yollardan geçti.' },
-];
+// v124: `id` = görevin sabit kimliği (sunucudaki advanceOnboardingStep numarası),
+// `step` = listedeki sırası (1–17). Kaldırılanlar: slot (8), 2. el alışveriş (15),
+// silah geliştirme malzemesi (18).
+const TASK_DEFS = {
+  1: { emoji: '🏭', title: 'Fabrikada çalış', info: 'Maaşı yüksek olan bi fabrikada çalışarak her gün para kazanabilirsin.' },
+  2: { emoji: '📦', title: "Liman & Depo'ya git ve 1 adet yasaklı madde satın al", info: 'Yasaklı madde ticareti depolarda döner. Haritadan Liman & Depo’ya git, bir depoya gir ve “Yasaklı madde satın al”a bas.' },
+  3: { emoji: '🌳', title: 'Parktaki şüpheli adama 5000 altın karşılığında 1 adet yasaklı madde sat', info: 'Bu görev için RİSKLİ satış yapmalısın (5.000 altın). Şüphen yüksekse yakalanma ihtimalin artar.' },
+  4: { emoji: '🕌', title: "Camii'ye gidip ibadet et", info: 'Günde 5 vakit ibadet ederek şüphe miktarını düşük tut ve saygınlık kazan, şüphen yüksekken polise yakalanırsın.' },
+  5: { emoji: '🔫', title: 'Herhangi bir silah al', info: 'Silah alıp güçlenebilir ve seyyar satıcılardan haraç kesebilirsin.' },
+  6: { emoji: '💸', title: 'Bir seyyar satıcıdan haraç kes', info: 'Seyyar satıcılardan haraç kesip para kazanabilirsin.' },
+  7: { emoji: '🛒', title: 'Bir seyyar satıcıyla alışveriş yap', info: 'Seyyar satıcılarla alışveriş yaparak şüpheni azaltıp saygınlık kazanabilirsin.' },
+  9: { emoji: '🚨', title: "Şüpheni 20'ye çıkart", info: 'Şüphen yükseldikçe yakalanma riskin artar, yakalanırsan para cezası yersin.' },
+  10: { emoji: '🤝', title: 'Polise rüşvet ver', info: 'Rüşvet vermek şüpheyi 20 düşürür.' },
+  11: { emoji: '🚗', title: 'Herhangi bir araba al', info: 'Arabanla yarışlara katılabilirsin.' },
+  12: { emoji: '🏎️', title: 'Yarış pistinden antrenmana gir ve 1. seviyeyi tamamla', info: 'Hem kendini geliştir hem para kazan.' },
+  13: { emoji: '🏆', title: 'Yarış pistinden Şampiyonaya gir', info: 'Günün şampiyonu para ödülünü alır.' },
+  14: { emoji: '🏦', title: 'Bankadan kredi çek', info: 'Kredi puanını yükselterek daha fazla kredi çekebilirsin.' },
+  16: { emoji: '👤', title: 'Profile gir ve avatarını düzenle', info: "Alttaki Profil sekmesinden avatarını düzenleyebilir, adını değiştirebilirsin." },
+  17: { emoji: '💬', title: 'Telefon > ChatsApp uygulamasına gir ve bi mesaj gönder', info: 'Diğer oyuncularla konuş.' },
+  19: { emoji: '🔧', title: 'Silahçıda silahını geliştir', info: 'Silah Mağazası ya da bir oyuncunun silahçı dükkânında 🛠️ Atölye\'den silahını geliştirerek daha büyük soygunlar yapabilirsin.' },
+  20: { emoji: '🏴', title: 'Bi çeteye gir', info: 'Tüm mafya babaları bu yollardan geçti.' },
+};
+export const ONBOARDING_TASKS = ONBOARDING_ORDER.map((id, i) => ({ step: i + 1, id, ...TASK_DEFS[id] }));
 
 /**
  * useOnboarding — anasayfadaki 📋 butonunun tüm verisini tek yerde toplar:
@@ -94,7 +96,9 @@ export function useOnboarding(gangReminders = null) {
   const todayKey = istanbulDateKey();
   const win = currentPrayerWindow();
 
-  const onboardingStep = player?.onboardingStep || 1;
+  // v124: eski kayıtlı adım yeni sıraya çevrilir (sunucuyla aynı formül)
+  const onboardingStep = onboardingPosOf(player);
+  const currentTaskId = onboardingTaskIdAt(onboardingStep);
   const onboardingRewardClaimed = Boolean(player?.onboardingRewardClaimed);
   const checklistDone = onboardingStep > ONBOARDING_TASK_COUNT;
 
@@ -104,9 +108,7 @@ export function useOnboarding(gangReminders = null) {
     if (!player) return [];
     const list = [];
 
-    if ((actions.slotFreeSpinsUsed || 0) < SLOT_FREE_SPINS_PER_DAY) {
-      list.push({ id: 'slot', emoji: '🎰', text: 'Ücretsiz slot haklarını kullan' });
-    }
+    // v124: "Ücretsiz slot haklarını kullan" hatırlatması kaldırıldı (ücretsiz slot yok)
 
     if (!actions.prayedWindows?.[win]) {
       list.push({ id: 'pray', emoji: '🕌', text: 'İbadet et' });
@@ -198,6 +200,7 @@ export function useOnboarding(gangReminders = null) {
     loading: playerLoading || actionsLoading,
     player,
     onboardingStep,
+    currentTaskId, // v124: aktif görevin sabit kimliği (durum görevleri için)
     onboardingRewardClaimed,
     checklistDone,
     reminders,

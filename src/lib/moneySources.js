@@ -29,6 +29,7 @@ export const MONEY_SOURCES = {
   kredi: { icon: '💳', label: 'Kredi' },
   devletBorcu: { icon: '🏛️', label: 'Devlet borcu ödemesi' },
   slot: { icon: '🎰', label: 'Slot makinesi' },
+  rulet: { icon: '🎡', label: 'Rulet' }, // v124
   imam: { icon: '🕌', label: 'İmam maaşı' },
   polis: { icon: '👮', label: 'Polis maaşı' },
   dilenci: { icon: '🤲', label: 'Dilenci bağışı' },
@@ -36,7 +37,10 @@ export const MONEY_SOURCES = {
   seyyar: { icon: '🌭', label: 'Seyyar satıcı' },
   kacak: { icon: '💊', label: 'Kaçak satışı' },
   mekan: { icon: '🍹', label: 'Mekân alışverişi' },
-  liman: { icon: '⚓', label: 'Liman siparişi' },
+  liman: { icon: '⚓', label: 'Liman siparişi / iadesi' },
+  depo: { icon: '📦', label: 'Depo (yasaklı madde)' }, // v124
+  gazino: { icon: '🎰', label: 'Gazino (piyango bilet kârı)' }, // v124 Faz 6
+  gazinoVergi: { icon: '🏛️', label: 'Gazino kasa çekim vergisi (%10)' }, // v124 Faz 6
   soygun: { icon: '💰', label: 'Soygun' },
   yaris: { icon: '🏁', label: 'Yarış' },
   ikinciEl: { icon: '🛒', label: '2. El Pazarı' },

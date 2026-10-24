@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useWeapons } from '../../hooks/useWeapons';
@@ -15,7 +13,6 @@ import {
   clampWorkshopPrice,
   workshopJob,
   workshopCost,
-  autoOwnQty,
   lifeCapOf,
   VEHICLE_WEAPON_MAX_REPAIRS,
   WEAPON_MAX_LEVEL,
@@ -29,9 +26,9 @@ import './Workshop.css';
 // =============================================================================
 // Atölye (silahçı: silah · modifiye garajı: araba) — tamir ve geliştirme.
 // v79 sade akış: 1) sekme seç (Tamir / Geliştir) 2) ürünü seç 3) tek butona bas.
-// Malzeme miktarını oyuncu SEÇMEZ: envanterdeki malzeme önce ve bedava
-// kullanılır, eksik kalan dükkândan alınır; ikisi birlikte yetmiyorsa iş
-// yapılamaz. Tutar sunucuda (shop.js) aynı kuralla (itemRules.js) hesaplanır.
+// v124: müşterinin malzemesi yok — malzeme dükkân sahibinin (fabrika +
+// işletmelerinin) ortak envanterinden düşer; ekranda sadece ürün ve
+// ödeyeceğin tutar görünür. Tutar sunucuda (shop.js) aynı kuralla hesaplanır.
 // shop: { kind:'game', type } | { kind:'player', type, houseId, houseDoc }
 // =============================================================================
 
@@ -61,35 +58,31 @@ export default function Workshop({ shop, onClose }) {
   const [itemId, setItemId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
-  const [stock, setStock] = useState({});
   const [seenPrice, setSeenPrice] = useState(null);
 
-  // dükkânın malzeme stoğu (canlı)
-  useEffect(() => {
-    if (isGame || !shop.houseId) return undefined;
-    return onSnapshot(doc(db, 'businessInventories', shop.houseId), (s) => setStock(s.exists() ? s.data().materials || {} : {}), () => setStock({}));
-  }, [isGame, shop.houseId]);
-
   const items = useMemo(() => (isWeapon ? weapons : vehicles).filter((x) => !x.listed), [isWeapon, weapons, vehicles]);
-  const item = items.find((x) => x.id === itemId) || items[0] || null;
+  // v124: birden çok silah varsa varsayılan seçim EN GÜÇLÜ silah (araçta ilk sıradaki)
+  const defaultItem = useMemo(
+    () => (isWeapon ? items.reduce((best, w) => (!best || Number(w.power || 0) > Number(best.power || 0) ? w : best), null) : items[0] || null),
+    [isWeapon, items]
+  );
+  const item = items.find((x) => x.id === itemId) || defaultItem || null;
   useEffect(() => {
-    if (!itemId && items[0]) setItemId(items[0].id);
-  }, [itemId, items]);
+    if (!itemId && defaultItem) setItemId(defaultItem.id);
+  }, [itemId, defaultItem]);
 
   const job = item ? workshopJob({ itemType, item, action: tab, upgradeType: isWeapon ? undefined : 'level' }) : null;
   const material = job?.material || (tab === 'repair' ? 'tamirMalzemesi' : isWeapon ? 'silahUpgrade' : 'arabaGelistirme');
   const mat = BIZ_MATERIALS[material] || { icon: '📦', name: material };
+  const isOwner = !isGame && shop.houseDoc?.ownerUid === user?.uid;
   const price = isGame ? gameWorkshopPrice(material) : clampWorkshopPrice(material, shop.houseDoc?.bizPrices?.materials?.[material]);
   const priceKey = `${material}:${price.mat}:${price.labor}`;
   const qty = job?.qty || 0;
-  const have = Math.max(0, Number(inventory[material] || 0));
-  const shopHave = isGame ? Infinity : Math.max(0, Number(stock[material] || 0));
-
-  // önce envanter (bedava), eksik kalan dükkândan — oyuncu seçmez
-  const ownQty = autoOwnQty(qty, have);
-  const fromShop = qty - ownQty;
-  const notEnough = qty > 0 && fromShop > shopHave;
-  const cost = workshopCost({ mat: price.mat, labor: price.labor, qty, ownQty });
+  // Stok = dükkân sahibinin ortak envanteri. Sadece sahibi kendi stoğunu görür
+  // (başkasının envanteri okunamaz); müşteride yetmezse sunucu 'shop-short' der.
+  const ownerHave = isOwner ? Math.max(0, Number(inventory[material] || 0)) : Infinity;
+  const notEnough = qty > 0 && qty > ownerHave;
+  const cost = workshopCost({ mat: price.mat, labor: price.labor, qty, ownQty: 0 });
 
   useEffect(() => {
     setMsg(null);
@@ -103,7 +96,6 @@ export default function Workshop({ shop, onClose }) {
   const priceChanged = seenPrice !== null && seenPrice !== priceKey;
 
   const gold = Number(player?.gold || 0);
-  const isOwner = !isGame && shop.houseDoc?.ownerUid === user?.uid;
   const payable = isOwner ? 0 : cost.total;
   const poor = gold < payable;
 
@@ -132,7 +124,7 @@ export default function Workshop({ shop, onClose }) {
 
   let reason = null; // butonun altındaki kırmızı cümle
   if (!block) {
-    if (notEnough) reason = `Malzeme yetmiyor: ${fmt(qty)} lazım, sende ${fmt(have)}, dükkânda ${fmt(shopHave)} var.`;
+    if (notEnough) reason = `Envanterinde yeterli ${mat.name.toLocaleLowerCase('tr-TR')} yok (${fmt(ownerHave)} / ${fmt(qty)}). İşletmenin Envanter › Mağaza bölümünden alabilirsin.`;
     else if (poor) reason = `Altının yetmiyor: ${fmt(payable)} altın lazım, cebinde ${fmt(gold)} var.`;
   }
   const canDo = Boolean(item && job && !block && qty > 0 && !reason && !busy);
@@ -170,7 +162,7 @@ export default function Workshop({ shop, onClose }) {
         setSeenPrice('__stale__');
         setMsg({ ok: false, text: 'Tutar az önce değişti. Butondaki yeni tutarı kontrol edip tekrar bas.' });
       } else if (m === 'gold') setMsg({ ok: false, text: 'Altının yetmiyor.' });
-      else if (m === 'shop-short' || m === 'own-short') setMsg({ ok: false, text: 'Malzeme yetmiyor (az önce azalmış olabilir).' });
+      else if (m === 'shop-short' || m === 'own-short') setMsg({ ok: false, text: isOwner ? 'Envanterinde yeterli malzeme yok.' : 'Bu dükkânda şu an bu iş için yeterli malzeme yok. Dükkân sahibine haber verildi; biraz sonra tekrar dene.' });
       else if (m === 'not-present') setMsg({ ok: false, text: 'Dükkânın içinde olmalısın.' });
       else setMsg({ ok: false, text: m || 'İşlem yapılamadı.' });
     } finally {
@@ -303,38 +295,12 @@ export default function Workshop({ shop, onClose }) {
             <p className={block.ok ? 'bz-ok' : 'bz-warn'}>{block.text}</p>
           ) : (
             <>
-              {/* 2 — malzeme: otomatik paylaştırılır */}
-              <div className="bz-sec">
-                <p className="bz-sec-title">
-                  Gerekli: {mat.icon} {mat.name} × {fmt(qty)}
-                </p>
-                <div className="wk-split">
-                  <div className={`wk-src${ownQty > 0 ? ' on' : ''}`}>
-                    <span>🎒 Envanterinden</span>
-                    <b>{fmt(ownQty)}</b>
-                    <small>{ownQty > 0 ? 'bedava' : 'sende yok'}</small>
-                  </div>
-                  <div className={`wk-src${fromShop > 0 ? ' on' : ''}${notEnough ? ' bad' : ''}`}>
-                    <span>🏪 Dükkândan</span>
-                    <b>{fmt(fromShop)}</b>
-                    <small>{notEnough ? `dükkânda ${fmt(shopHave)} var` : fromShop > 0 ? `tanesi ${fmt(price.mat)} altın` : 'gerek yok'}</small>
-                  </div>
-                </div>
-                <p className="bz-hint">Envanterindeki malzeme önce ve bedava kullanılır, eksik kalan dükkândan alınır.</p>
-              </div>
-
-              {/* 3 — tek buton */}
+              {/* 2 — tek buton */}
               {!notEnough && (
                 <div className={`wk-pay${priceChanged ? ' changed' : ''}`}>
                   <div>
                     <span>Ödeyeceğin</span>
-                    <small>
-                      {isOwner
-                        ? 'Kendi dükkânın: ücret yok, stoktan düşer'
-                        : cost.material > 0
-                          ? `İşçilik ${fmt(cost.labor)} + malzeme ${fmt(cost.material)}`
-                          : `Sadece işçilik (${fmt(qty)} × ${fmt(price.labor)})`}
-                    </small>
+                    {isOwner && <small>Kendi dükkânın: ücret yok</small>}
                   </div>
                   <b className={poor ? 'bz-bad' : ''}>
                     <Gold v={payable} />

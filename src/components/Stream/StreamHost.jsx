@@ -542,7 +542,7 @@ export function StreamTopDonors({ top, isBlocked, className = '' }) {
 }
 
 // v81 — "Oyun oyna": oyun salonu ya da yarış pisti (şampiyona / bahisli / antrenman)
-export function StreamPlaySheet({ onArcade, onRace, onCards, onClose }) {
+export function StreamPlaySheet({ onArcade, onRace, onCasino, onClose }) {
   return (
     <div className="st-sheet-bg st-top-layer" onClick={onClose}>
       <div className="st-sheet" onClick={(e) => e.stopPropagation()}>
@@ -561,11 +561,11 @@ export function StreamPlaySheet({ onArcade, onRace, onCards, onClose }) {
             <b>Yarış Pisti</b>
             <small>Şampiyona · Bahisli Yarış · Antrenman</small>
           </button>
-          {onCards && (
-            <button onClick={onCards} className="wide">
-              <span>🃏</span>
-              <b>10 Numara</b>
-              <small>Kart masası kur ya da bir masaya otur</small>
+          {onCasino && (
+            <button onClick={onCasino} className="wide">
+              <span>🎰</span>
+              <b>Casinolar</b>
+              <small>On Numara · Rulet · Slot</small>
             </button>
           )}
         </div>

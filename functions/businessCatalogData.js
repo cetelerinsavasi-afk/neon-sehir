@@ -105,6 +105,33 @@ export const BIZ_TYPES = {
       { any: ['menuboard'], n: 1 },
     ],
   },
+  // v124 — DEPO: yasaklı madde al/sat (functions/depo.js). Haritada Liman & Depo.
+  depo: {
+    label: 'Depo',
+    icon: '📦',
+    region: 'liman_depo',
+    day: 'midnight',
+    groups: [
+      { any: ['bosstable'], n: 1 },
+      { any: ['crates'], n: 1 },
+      { any: ['officedesk'], n: 1 },
+      { any: ['safe', 'safeg'], n: 1 },
+    ],
+  },
+  // v124 Faz 6 — GAZİNO: slot / rulet / 10 Numara / piyango (functions/casino.js).
+  // Haritada Gazino → gazinolar listesi (oyunun Neon Gazino'su + oyuncu gazinoları).
+  gazino: {
+    label: 'Gazino',
+    icon: '🎰',
+    region: 'casino',
+    day: 'midnight',
+    groups: [
+      { any: ['piyangogise'], n: 1 },
+      { any: ['kartmasa'], n: 1 },
+      { any: ['rulet'], n: 1 },
+      { any: ['slotm'], n: 1 },
+    ],
+  },
   // ── v93 HOME OFİSLER (ho: true) — ev → işletme gibi açılır; Ev › Ayarlar ›
   // Home Ofisler. Haritada ayrı işletme türü değildir; Evler › Home Ofisler'de listelenir.
   mescit: {
@@ -165,6 +192,12 @@ export const BIZ_ITEM_LABELS = {
   car_classic: { name: 'Klasik', icon: '🚗' },
   car_pickup: { name: 'Pikap', icon: '🛻' },
   officedesk: { name: 'Makam Masası', icon: '💼' },
+  bosstable: { name: 'Patron Masası', icon: '🕴️' }, // v124 depo
+  crates: { name: 'Kaçak Kasalar', icon: '📦' }, // v124 depo
+  piyangogise: { name: 'Piyango Gişesi', icon: '🎟️' }, // v124 gazino
+  kartmasa: { name: 'Kart Masası', icon: '🃏' },
+  rulet: { name: 'Rulet Masası', icon: '🎡' },
+  slotm: { name: 'Slot Makinesi', icon: '🎰' },
   watercooler: { name: 'Su Sebili', icon: '🚰' },
   kcoffee: { name: 'Kahve Köşesi', icon: '☕' },
   toolwall: { name: 'Alet Panosu', icon: '🔧' },

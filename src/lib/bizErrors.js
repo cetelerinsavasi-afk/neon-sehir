@@ -1,5 +1,9 @@
 // v77 — İşletme sunucu hata kodlarını oyuncunun anlayacağı cümlelere çevirir.
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
+const MAT_NAMES = { tamirMalzemesi: 'tamir malzemesi', silahUpgrade: 'silah geliştirme malzemesi', arabaGelistirme: 'araba geliştirme malzemesi' };
+// v124 — kapanınca kalan fabrika/işletmelerin kullanamayacağı malzemeler
+export const materialBlockText = (list) =>
+  `Envanterinde ${list.map((k) => MAT_NAMES[k] || k).join(', ')} olduğu için bu işletmeyi kapatamazsın — kalan fabrika / işletmelerin bu malzemeyi kullanamıyor. Önce Envanter › Mağaza'dan anında sat (Mağaza'daki ilanlarını da iptal et).`;
 
 const MAP = {
   gold: 'Altının yetmiyor.',
@@ -43,11 +47,15 @@ const MAP = {
   'office-owner': 'Kendi ofisinde ürünler sana ücretsiz.',
   'office-donate-off': 'Bu bağış kutusu kapalı.',
   'mixer-private': 'Bu mikseri sadece sahibi kullanabilir.',
+  // v124 Faz 6 gazino
+  'biz-casino-table': 'Gazinoda açık 10 Numara masası varken gazino kapatılamaz. Masalar kapanınca tekrar dene.',
+  'casino-short': 'Makinede o kadar yok.',
 };
 
 export function bizErrText(err) {
   const m = String(err?.message || err || '');
   if (MAP[m]) return MAP[m];
+  if (m.startsWith('biz-close-materials:')) return materialBlockText(m.slice('biz-close-materials:'.length).split(',').filter(Boolean));
   if (m.startsWith('price-changed')) return `Fiyat az önce değişti (yeni fiyat: ${fmt(m.split(':')[1])}). Kontrol edip tekrar dene.`;
   if (m.startsWith('limit:')) return `Bir mekânda günde en fazla ${fmt(10000)} altın harcayabilirsin.`;
   if (m.startsWith('tip-limit:')) return `Bir sanatçıya günde en fazla ${fmt(10000)} altın destek verebilirsin (bugün ${fmt(m.split(':')[1])}).`;

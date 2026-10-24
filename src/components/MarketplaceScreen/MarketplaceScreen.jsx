@@ -6,8 +6,7 @@ import { usePlayer } from '../../hooks/usePlayer';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useWeapons } from '../../hooks/useWeapons';
 import { useInventory } from '../../hooks/useInventory';
-import { useMyFactory } from '../../hooks/useMyFactory';
-import { useInvestmentPrices } from '../../hooks/useInvestmentPrices';
+import { useMaterialHoldings } from '../../hooks/useMaterialHoldings';
 import { useMarketplaceListings } from '../../hooks/useMarketplaceListings';
 import {
   createListing,
@@ -15,7 +14,6 @@ import {
   cancelListing,
   buyListing,
   advertiseListing,
-  runMergeLegacyMaterialListings,
 } from '../../services/gameActions';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
 import { weaponCatalog } from '../../data/weaponCatalog';
@@ -25,11 +23,6 @@ import './MarketplaceScreen.css';
 import { ListingCarStats } from '../RaceTrackScreen/CarStats';
 import { autoSellsAt, AUTO_SELL_HINT, itemCancelPenalty, ITEM_CANCEL_PENALTY_TEXT } from '../../lib/autoSell';
 import ConfirmModal from '../ConfirmModal/ConfirmModal';
-
-// Bu oturumda eski (deterministik ID sisteminden önce açılmış) malzeme
-// ilanlarını birleştirme işlemi zaten tetiklendi mi? (Gereksiz tekrar
-// çağrıyı önlemek için — işlem kendisi zararsız/idempotent olsa da.)
-let legacyMaterialMergeTriggered = false;
 
 const MATERIAL_LABELS = {
   tamirMalzemesi: 'Tamir Malzemesi',
@@ -55,19 +48,25 @@ const MATERIAL_EMOJIS = {
 const TABS = [
   { id: 'vehicle', label: 'Araç' },
   { id: 'weapon', label: 'Silah' },
-  { id: 'material', label: 'Malzeme' },
-  { id: 'machine', label: 'Makine' },
 ];
+// v124 — 2. el'de artık sadece araç + silah. Malzemeler "Mağaza"da (fabrika /
+// silahçı / modifiyeci envanterinden açılır); makine ilanı yok.
+const MARKET_TYPES = new Set(TABS.map((t) => t.id));
 
 // CATEGORIES — pazar tasarımı yenilenirken eklendi (kullanıcı revizesi):
 // eski üstteki sekme çubuğu kaldırıldı, yerine ana sayfada 2x2 dizilen 4
 // kare kategori butonu geldi. TABS ile aynı id'leri paylaşıyor (SellForm
 // zaten itemType olarak bunları kullanıyor), sadece görsel/etiket farklı.
+// v124 — "Sıfır": ömrü tam dolu VE tamir hakkı hiç kullanılmamış araç / silah ilanı
+function isBrandNewListing(l) {
+  if (l.itemType === 'vehicle') return Number(l.vehicleLifeDays ?? -1) >= lifeCapOf('vehicle') && Number(l.vehicleRepairsUsed || 0) === 0;
+  if (l.itemType === 'weapon') return Number(l.weaponLifeDays ?? -1) >= lifeCapOf('weapon') && Number(l.weaponRepairsUsed || 0) === 0;
+  return false;
+}
+
 const CATEGORIES = [
   { id: 'vehicle', label: 'Araçlar', emoji: '🚗' },
   { id: 'weapon', label: 'Silahlar', emoji: '🔫' },
-  { id: 'material', label: 'Malzemeler', emoji: '📦' },
-  { id: 'machine', label: 'Makineler', emoji: '⚙️' },
 ];
 
 // AD_DURATION_MS — functions/index.js advertiseListing ile aynı. Ücret v96'dan
@@ -138,10 +137,6 @@ function materialUnitPriceRange(materialType) {
   return { min: Math.floor(max / 2), max };
 }
 
-function machinePriceRange(machineType, cryptoPrice) {
-  const max = machineType === 'mining' ? Math.ceil(2 * cryptoPrice) : MACHINE_PRICES[machineType];
-  return { min: Math.floor(max / 2), max };
-}
 
 // --- v86 — TAHMİNİ DEĞER (araç / silah): ÖMÜR + GELİŞİM ---
 // Değer = mağaza fiyatı × seviye × (kalan ömür birimi / toplam ömür birimi).
@@ -291,31 +286,15 @@ function listingLabel(listing) {
 function SellForm({ onCreated, onClose, initialItemType }) {
   const { vehicles } = useVehicles();
   const { weapons } = useWeapons();
-  const { inventory } = useInventory();
-  const { machines: myMachines } = useMyFactory();
-  const { prices } = useInvestmentPrices();
 
-  const [itemType, setItemType] = useState(initialItemType || 'vehicle');
+  const [itemType, setItemType] = useState(MARKET_TYPES.has(initialItemType) ? initialItemType : 'vehicle');
   const [selectedId, setSelectedId] = useState('');
-  const [materialType, setMaterialType] = useState('tamirMalzemesi');
-  const [quantity, setQuantity] = useState(0);
-  const [machineId, setMachineId] = useState('');
   const [price, setPrice] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
   const sellableVehicles = vehicles.filter((v) => !v.mortgaged && !v.seizedByBank && !v.listed);
   const sellableWeapons = weapons.filter((w) => !w.listed);
-  // v38: yasaklı madde makineleri kaldırıldı — satışa çıkarılamaz (sahibine 100.000 ödenir)
-  const sellableMachines = myMachines.filter((m) => !m.workerId && m.type !== 'yasakliMadde');
-
-  // DÜZELTME (yeni istek): kripto (mining) makineleri artık 2. el listeye
-  // ÇIKARILAMAZ — sadece sabit fiyata "Anında Sat" mümkün (bkz.
-  // functions/index.js createListing'deki aynı kısıtlama). Az makineli
-  // hesaplardan çok makineli hesaplara ucuza makine transferini önlemek
-  // için — bkz. miningMachinePrice'taki kademeli fiyat.
-  const selectedMachineType = itemType === 'machine' ? sellableMachines.find((x) => x.id === machineId)?.type : null;
-  const isMiningSelected = selectedMachineType === 'mining';
 
   const priceRange = (() => {
     if (itemType === 'vehicle') {
@@ -325,13 +304,6 @@ function SellForm({ onCreated, onClose, initialItemType }) {
     if (itemType === 'weapon') {
       const w = sellableWeapons.find((x) => x.id === selectedId);
       return w ? weaponPriceRange(w) : null;
-    }
-    if (itemType === 'material') {
-      return materialUnitPriceRange(materialType);
-    }
-    if (itemType === 'machine') {
-      const m = sellableMachines.find((x) => x.id === machineId);
-      return m ? machinePriceRange(m.type, prices.cryptoPrice) : null;
     }
     return null;
   })();
@@ -349,14 +321,10 @@ function SellForm({ onCreated, onClose, initialItemType }) {
     return null;
   })();
 
-  // Malzemede "anında sat" tutarı adet başına min fiyat × miktar (toplam);
-  // diğer türlerde priceRange.min zaten ürünün toplam min fiyatı.
-  const instantSellTotal =
-    itemType === 'material' && priceRange ? priceRange.min * quantity : priceRange?.min;
+  const instantSellTotal = priceRange?.min;
 
-  // Fiyat, seçim değiştiğinde (araç/silah/malzeme/makine ya da min-max
-  // aralığı) her zaman geçerli aralığın İÇİNDE kalsın — elle "0 altın"da
-  // takılıp "geçersiz fiyat" hatası almayı önler. Seçim yokken sıfırlanır.
+  // Fiyat, seçim değiştiğinde her zaman geçerli aralığın İÇİNDE kalsın —
+  // elle "0 altın"da takılıp "geçersiz fiyat" hatası almayı önler.
   useEffect(() => {
     if (!priceRange) {
       if (price !== 0) setPrice(0);
@@ -369,30 +337,13 @@ function SellForm({ onCreated, onClose, initialItemType }) {
   }, [priceRange?.min, priceRange?.max]);
 
   const handleSubmit = async () => {
-    if (!price || price <= 0) return;
+    if (!price || price <= 0 || !selectedId) return;
     setBusy(true);
     setError(null);
     try {
-      // Sunucu kesinlikle tam sayı bekliyor — QuantityStepper zaten integer
-      // üretiyor ama son bir güvenlik için yuvarlanıyor.
-      const safePrice = Math.round(price);
-      if (itemType === 'machine' && isMiningSelected) return; // güvenlik ağı — bkz. yukarısı
-      if (itemType === 'vehicle') {
-        if (!selectedId) return;
-        await createListing({ itemType, itemId: selectedId, price: safePrice });
-      } else if (itemType === 'weapon') {
-        if (!selectedId) return;
-        await createListing({ itemType, itemId: selectedId, price: safePrice });
-      } else if (itemType === 'material') {
-        if (!quantity || quantity <= 0) return;
-        await createListing({ itemType, materialType, quantity, unitPrice: safePrice });
-      } else if (itemType === 'machine') {
-        if (!machineId) return;
-        await createListing({ itemType, machineId, price: safePrice });
-      }
+      // Sunucu kesinlikle tam sayı bekliyor
+      await createListing({ itemType, itemId: selectedId, price: Math.round(price) });
       setSelectedId('');
-      setQuantity(0);
-      setMachineId('');
       setPrice(0);
       onCreated?.();
       onClose?.();
@@ -404,23 +355,12 @@ function SellForm({ onCreated, onClose, initialItemType }) {
   };
 
   const handleInstantSell = async () => {
-    if (!priceRange) return;
-    if (itemType === 'material' && (!quantity || quantity <= 0)) return;
+    if (!priceRange || !selectedId) return;
     setBusy(true);
     setError(null);
     try {
-      if (itemType === 'vehicle' || itemType === 'weapon') {
-        if (!selectedId) return;
-        await instantSellListing({ itemType, itemId: selectedId });
-      } else if (itemType === 'material') {
-        await instantSellListing({ itemType, materialType, quantity });
-      } else if (itemType === 'machine') {
-        if (!machineId) return;
-        await instantSellListing({ itemType, machineId });
-      }
+      await instantSellListing({ itemType, itemId: selectedId });
       setSelectedId('');
-      setQuantity(0);
-      setMachineId('');
       setPrice(0);
       onCreated?.();
       onClose?.();
@@ -510,118 +450,27 @@ function SellForm({ onCreated, onClose, initialItemType }) {
           </>
         )}
 
-        {itemType === 'material' && (
-          <>
-            <p className="market-step-label">1. Malzeme Seç</p>
-            <div className="market-item-picker compact">
-              {Object.entries(MATERIAL_LABELS).map(([key, label]) => {
-                const selected = materialType === key;
-                return (
-                  <button
-                    key={key}
-                    className={`market-item-card${selected ? ' selected' : ''}`}
-                    onClick={() => setMaterialType(key)}
-                  >
-                    <span className="market-item-emoji-large">{MATERIAL_EMOJIS[key]}</span>
-                    <span className="market-item-name">{label}</span>
-                    <span className="market-item-stats">Elinde: {inventory[key] || 0} adet</span>
-                  </button>
-                );
-              })}
-            </div>
-            <p className="market-step-label">2. Satılacak Miktarı Belirle</p>
-            <p className="market-price-label">
-              <strong>{quantity.toLocaleString('tr-TR')} adet</strong> satılacak
-            </p>
-            <QuantityStepper
-              value={quantity}
-              onChange={setQuantity}
-              max={inventory[materialType] || 0}
-              quickAmounts={materialQuickAmountsFor(materialType)}
-            />
-          </>
-        )}
-
-        {itemType === 'machine' && (
-          <>
-            <p className="market-step-label">1. Makine Seç</p>
-            <div className="market-item-picker">
-              {sellableMachines.length === 0 && (
-                <p className="market-hint">Satışa uygun (boşta, işçisiz) bir makinen yok.</p>
-              )}
-              {sellableMachines.map((m) => {
-                const selected = machineId === m.id;
-                return (
-                  <button
-                    key={m.id}
-                    className={`market-item-card${selected ? ' selected' : ''}`}
-                    onClick={() => setMachineId(m.id)}
-                  >
-                    <span className="market-item-emoji-large">{MATERIAL_EMOJIS[m.type]}</span>
-                    <span className="market-item-name">{MACHINE_LABELS[m.type]}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        )}
-
-        {itemType === 'machine' && isMiningSelected ? (
-          // DÜZELTME (yeni istek): kripto (mining) makinesi seçiliyken 2.
-          // el ilan verme adımı TAMAMEN gizleniyor — sadece sabit fiyata
-          // "Anında Sat" var. Fiyat kullanıcı tarafından belirlenmiyor
-          // (miningMachinePrice() argümansız her zaman taban kademeyi
-          // döner, /2 = sabit 1×KR fiyatı — bkz. functions/index.js).
-          <div className="market-price-form">
-            <p className="market-hint">
-              Kripto (mining) makineleri artık 2. el satışa çıkarılamaz — sadece sabit fiyata anında
-              satılabilir. Anında satılan makine oyundan tamamen silinir, kimse satın alamaz.
-            </p>
-            {priceRange && (
-              <p className="market-price-range-hint">
-                Anında satış fiyatı: <strong>{priceRange.min.toLocaleString('tr-TR')} altın</strong> (1×
-                güncel KR fiyatı)
-              </p>
-            )}
-            <button className="market-instant-sell-btn" disabled={busy || !priceRange} onClick={handleInstantSell}>
-              {(instantSellTotal ?? 0).toLocaleString('tr-TR')} altına Anında Sat (eline geçen {((instantSellTotal ?? 0) - resaleTax(instantSellTotal ?? 0)).toLocaleString('tr-TR')})
-            </button>
-          </div>
-        ) : (
-          <>
-            <p className="market-step-label">
-              {itemType === 'material' ? '3. Adet Fiyatını Belirle' : '2. Satış Fiyatını Belirle'}
-            </p>
+        <>
+            <p className="market-step-label">2. Satış Fiyatını Belirle</p>
             <div className="market-price-form">
               <p className="market-price-label">
                 <strong>{price.toLocaleString('tr-TR')} altına</strong>
-                {itemType === 'material' ? ' adedi satılacak' : ' satılacak'}
+                {' satılacak'}
               </p>
-              {itemType === 'material' && priceRange && autoSellsAt(price, priceRange.min, priceRange.max) && (
-                <p className="market-autosell-hint">{AUTO_SELL_HINT}</p>
-              )}
               {/* v115 — araç/silah: malzemelerdeki gibi, sadece ucuzken "7 gün içinde otomatik satılır" */}
               {(itemType === 'vehicle' || itemType === 'weapon') && priceRange && autoSellsAt(price, priceRange.min, priceRange.max) && (
                 <p className="market-autosell-hint">{AUTO_SELL_HINT}</p>
               )}
-              {itemType === 'material' && quantity > 0 && price > 0 && (
+              {price > 0 && (
                 <p className="market-price-range-hint">
-                  Toplam: {(price * quantity).toLocaleString('tr-TR')} altın ({quantity} adet)
-                </p>
-              )}
-              {price > 0 && (itemType !== 'material' || quantity > 0) && (
-                <p className="market-price-range-hint">
-                  🏛️ Vergi (%1): {resaleTax(price * (itemType === 'material' ? quantity : 1)).toLocaleString('tr-TR')} altın · Satılınca eline geçen:{' '}
-                  <strong>
-                    {(price * (itemType === 'material' ? quantity : 1) - resaleTax(price * (itemType === 'material' ? quantity : 1))).toLocaleString('tr-TR')} altın
-                  </strong>
+                  🏛️ Vergi (%1): {resaleTax(price).toLocaleString('tr-TR')} altın · Satılınca eline geçen:{' '}
+                  <strong>{(price - resaleTax(price)).toLocaleString('tr-TR')} altın</strong>
                 </p>
               )}
               {priceRange && (
                 <p className="market-price-range-hint">
                   İzin verilen aralık: {priceRange.min.toLocaleString('tr-TR')} -{' '}
                   {priceRange.max.toLocaleString('tr-TR')} altın
-                  {itemType === 'material' ? ' (adet başına)' : ''}
                 </p>
               )}
               {sellEstimate && <EstimateLine est={sellEstimate} />}
@@ -630,9 +479,7 @@ function SellForm({ onCreated, onClose, initialItemType }) {
                 onChange={setPrice}
                 min={priceRange?.min || 0}
                 max={priceRange?.max}
-                quickAmounts={
-                  itemType === 'material' ? [1, 10, 50, 100] : [10, 100, 1000, 10000, 100000]
-                }
+                quickAmounts={[10, 100, 1000, 10000, 100000]}
               />
               {priceRange && price > 0 && (price < priceRange.min || price > priceRange.max) && (
                 <p className="market-price-warning">
@@ -646,21 +493,19 @@ function SellForm({ onCreated, onClose, initialItemType }) {
                   !price ||
                   !priceRange ||
                   price < priceRange.min ||
-                  price > priceRange.max ||
-                  (itemType === 'material' && (!quantity || quantity <= 0))
+                  price > priceRange.max
                 }
                 onClick={handleSubmit}
               >
                 İlan Ver
               </button>
-              {priceRange && (itemType !== 'material' || quantity > 0) && (
+              {priceRange && (
                 <button className="market-instant-sell-btn" disabled={busy} onClick={handleInstantSell}>
                   {(instantSellTotal ?? 0).toLocaleString('tr-TR')} altına Anında Sat (eline geçen {((instantSellTotal ?? 0) - resaleTax(instantSellTotal ?? 0)).toLocaleString('tr-TR')})
                 </button>
               )}
             </div>
-          </>
-        )}
+        </>
         {error && <p className="market-error">{error}</p>}
       </div>
     </div>
@@ -851,16 +696,20 @@ export default function MarketplaceScreen() {
   const { user } = useAuth();
   const { player } = usePlayer();
   const gold = player ? Number(player.gold || 0) : null;
-  const { listings: playerListings } = useMarketplaceListings();
+  const { listings: allPlayerListings } = useMarketplaceListings();
+  // v124 — 2. el: sadece araç + silah (malzeme Mağaza'da, makine ilanı yok)
+  const playerListings = allPlayerListings.filter((l) => MARKET_TYPES.has(l.itemType));
   // v70: çete ilanları oyuncu ilanlarıyla aynı listede (aynı kart, avantajlı hesabı dahil)
-  const gangListings = useGangMarketListings();
+  const gangListings = useGangMarketListings().filter((l) => MARKET_TYPES.has(l.itemType));
   const listings = [...playerListings, ...gangListings];
   const adPrice = useAdPrice(gangListings); // v96: reklamdaki ürün sayısına göre
   // view — 'home' (yeni ana sayfa: avantajlı/reklam panelleri + 4 kategori
   // butonu) ya da CATEGORIES id'lerinden biri (kategori içine girildiğinde).
   // Eski üstteki sekme çubuğu kaldırıldı (kullanıcı revizesi).
   const [view, setView] = useState('home');
-  const [materialFilter, setMaterialFilter] = useState('all');
+  // v124: araç/silah kategorisinde "Sıfır" — sadece ömrü tam dolu ve hiç tamir görmemiş ürünler
+  const [onlyNew, setOnlyNew] = useState(false);
+  useEffect(() => setOnlyNew(false), [view]);
   const [showSellForm, setShowSellForm] = useState(false);
   const [buyModalListing, setBuyModalListing] = useState(null);
   const [advertisingId, setAdvertisingId] = useState(null);
@@ -932,17 +781,6 @@ export default function MarketplaceScreen() {
     }
   };
 
-  // Eski (adet-fiyatlı/birleştirme sisteminden önce açılmış) malzeme
-  // ilanlarını, 24 saatlik otomatik temizliği beklemeden şimdi birleştir
-  // — sessizce, sadece bir kez (oturum başına).
-  useEffect(() => {
-    if (!user || legacyMaterialMergeTriggered) return;
-    legacyMaterialMergeTriggered = true;
-    runMergeLegacyMaterialListings().catch((err) => {
-      console.error('Eski ilanlar birleştirilemedi:', err);
-    });
-  }, [user]);
-
   // v67 — Avantajlı ürünler artık ana sayfada değil, her KATEGORİNİN İÇİNDE
   // (o kategorinin en büyük indirimleri en üstte). Reklam paneli ana sayfada.
   const advertisedListings = listings
@@ -954,7 +792,7 @@ export default function MarketplaceScreen() {
       ? []
       : listings
           .filter((l) => l.itemType === view)
-          .filter((l) => view !== 'material' || materialFilter === 'all' || l.materialType === materialFilter);
+          .filter((l) => !onlyNew || isBrandNewListing(l));
   const myListings = categoryListings.filter((l) => l.sellerId === user?.uid);
   const advantageousListings = categoryListings
     .filter((l) => l.sellerId !== user?.uid && isAdvantageousListing(l))
@@ -1033,19 +871,13 @@ export default function MarketplaceScreen() {
             </button>
           </div>
 
-          {view === 'material' && (
-            <select
-              className="market-material-filter"
-              value={materialFilter}
-              onChange={(e) => setMaterialFilter(e.target.value)}
-            >
-              <option value="all">Tüm malzemeler</option>
-              {Object.entries(MATERIAL_LABELS).map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
-                </option>
-              ))}
-            </select>
+          {(view === 'vehicle' || view === 'weapon') && (
+            <div className="market-new-filter">
+              <button className={`market-btn small ${onlyNew ? 'primary' : ''}`} aria-pressed={onlyNew} onClick={() => setOnlyNew((v) => !v)}>
+                ✨ Sıfır
+              </button>
+              <span className="market-hint">{onlyNew ? 'Sadece ömrü ve tamir hakkı tam olanlar' : 'Tümü gösteriliyor'}</span>
+            </div>
           )}
 
           {myListings.length > 0 && (
@@ -1102,6 +934,246 @@ export default function MarketplaceScreen() {
       {buyModalListing && (
         <BuyMaterialModal listing={buyModalListing} gold={gold} onClose={() => setBuyModalListing(null)} />
       )}
+    </div>
+  );
+}
+
+// =============================================================================
+// v124 — MAĞAZA: fabrika / silahçı / modifiyeci sahiplerinin malzeme pazarı.
+// Kurallar sunucuda (functions/index.js createListing / buyListing /
+// instantSellListing + functions/materials.js):
+//   • Sadece kullanabildiğin malzemeleri görür ve alırsın (fabrika: hepsi ·
+//     silahçı: tamir + silah · modifiye: tamir + araba).
+//   • Alınan / satılan malzeme fabrika + işletmelerinin ORTAK envanterinden.
+//   • Malzeme satışında vergi yok; anında satış yarı fiyatına (onaylı).
+//   • 7 gün parti kuralı (ucuz ilan 7 günde oyuna satılır) aynen sürüyor.
+// =============================================================================
+const MAGAZA_MATERIALS = ['tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme'];
+
+function MagazaSellForm({ usable, initialMaterial, onClose }) {
+  const { inventory } = useInventory();
+  // Seçilebilenler: kullanabildiklerin + (eskiden kalmışsa) envanterde olan diğerleri
+  const options = MAGAZA_MATERIALS.filter((k) => usable.has(k) || Number(inventory[k] || 0) > 0);
+  const [materialType, setMaterialType] = useState(options.includes(initialMaterial) ? initialMaterial : options[0] || 'tamirMalzemesi');
+  const [quantity, setQuantity] = useState(0);
+  const range = materialUnitPriceRange(materialType);
+  const [price, setPrice] = useState(range.max);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [askInstant, setAskInstant] = useState(false);
+  const have = Math.max(0, Math.floor(Number(inventory[materialType] || 0)));
+  const canList = usable.has(materialType);
+
+  useEffect(() => {
+    setPrice((p) => (p < range.min || p > range.max ? range.max : p));
+    setQuantity((q) => Math.min(q, have));
+  }, [materialType, range.min, range.max, have]);
+
+  const instantTotal = range.min * quantity;
+
+  const list = async () => {
+    if (!quantity || quantity <= 0 || !price) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await createListing({ itemType: 'material', materialType, quantity, unitPrice: Math.round(price) });
+      onClose();
+    } catch (err) {
+      setError(err.message || 'İlan oluşturulamadı.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const instant = async () => {
+    setAskInstant(false);
+    if (!quantity || quantity <= 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await instantSellListing({ itemType: 'material', materialType, quantity });
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Anında satış başarısız.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="market-sell-backdrop" onClick={onClose}>
+      <div className="market-sell-form" onClick={(e) => e.stopPropagation()}>
+        {askInstant && (
+          <ConfirmModal
+            title="Anında satılsın mı?"
+            message={`${quantity.toLocaleString('tr-TR')} adet ${MATERIAL_LABELS[materialType]}, ${instantTotal.toLocaleString('tr-TR')} altına (adedi ${range.min.toLocaleString('tr-TR')}) oyuna satılacak. Bu işlem geri alınamaz.`}
+            confirmLabel="Evet, Sat"
+            onConfirm={instant}
+            onCancel={() => setAskInstant(false)}
+          />
+        )}
+        <div className="market-sell-header">
+          <p className="market-section-title">İlan Ver</p>
+          <button className="market-sell-close" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+        <p className="market-step-label">1. Malzeme Seç</p>
+        <div className="market-item-picker compact">
+          {options.length === 0 && <p className="market-hint">Envanterinde satılacak malzeme yok.</p>}
+          {options.map((key) => (
+            <button key={key} className={`market-item-card${materialType === key ? ' selected' : ''}`} onClick={() => setMaterialType(key)}>
+              <span className="market-item-emoji-large">{MATERIAL_EMOJIS[key]}</span>
+              <span className="market-item-name">{MATERIAL_LABELS[key]}</span>
+              <span className="market-item-stats">Envanterde: {Number(inventory[key] || 0).toLocaleString('tr-TR')} adet</span>
+            </button>
+          ))}
+        </div>
+        <p className="market-step-label">2. Satılacak Miktarı Belirle</p>
+        <p className="market-price-label">
+          <strong>{quantity.toLocaleString('tr-TR')} adet</strong> satılacak
+        </p>
+        <QuantityStepper value={quantity} onChange={setQuantity} max={have} quickAmounts={materialQuickAmountsFor(materialType)} />
+        {canList && (
+          <>
+            <p className="market-step-label">3. Adet Fiyatını Belirle</p>
+            <div className="market-price-form">
+              <p className="market-price-label">
+                <strong>{price.toLocaleString('tr-TR')} altına</strong> adedi satılacak
+              </p>
+              {autoSellsAt(price, range.min, range.max) && <p className="market-autosell-hint">{AUTO_SELL_HINT}</p>}
+              {quantity > 0 && price > 0 && (
+                <p className="market-price-range-hint">
+                  Toplam: {(price * quantity).toLocaleString('tr-TR')} altın ({quantity.toLocaleString('tr-TR')} adet)
+                </p>
+              )}
+              <QuantityStepper value={price} onChange={setPrice} min={range.min} max={range.max} quickAmounts={[1, 10, 50, 100]} />
+              <button className="market-btn primary" disabled={busy || !price || price < range.min || price > range.max || !quantity} onClick={list}>
+                İlan Ver
+              </button>
+            </div>
+          </>
+        )}
+        {quantity > 0 && (
+          <button className="market-instant-sell-btn" disabled={busy} onClick={() => setAskInstant(true)}>
+            {instantTotal.toLocaleString('tr-TR')} altına Anında Sat
+          </button>
+        )}
+        {error && <p className="market-error">{error}</p>}
+      </div>
+    </div>
+  );
+}
+
+export function MagazaScreen({ onClose }) {
+  const { user } = useAuth();
+  const { player } = usePlayer();
+  const gold = player ? Number(player.gold || 0) : null;
+  const { usable, loading } = useMaterialHoldings();
+  const { listings: all } = useMarketplaceListings();
+  const [filter, setFilter] = useState('all');
+  const [showSell, setShowSell] = useState(false);
+  const [buyModalListing, setBuyModalListing] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const [error, setError] = useState(null);
+  const [noGoldId, setNoGoldId] = useState(null);
+  useEffect(() => {
+    if (!noGoldId) return undefined;
+    const t = setTimeout(() => setNoGoldId(null), NO_GOLD_MS);
+    return () => clearTimeout(t);
+  }, [noGoldId]);
+
+  const visibleMats = MAGAZA_MATERIALS.filter((k) => usable.has(k));
+  const materialListings = all.filter((l) => l.itemType === 'material' && MAGAZA_MATERIALS.includes(l.materialType) && !l.cancelled && Number(l.quantity || 0) > 0);
+  const mine = materialListings.filter((l) => l.sellerId === user?.uid);
+  const others = materialListings
+    .filter((l) => l.sellerId !== user?.uid && usable.has(l.materialType))
+    .filter((l) => filter === 'all' || l.materialType === filter);
+  const advantageous = others
+    .filter(isAdvantageousListing)
+    .sort((a, b) => listingComparablePrice(a) / listingCeilingPrice(a) - listingComparablePrice(b) / listingCeilingPrice(b));
+  const allSorted = [...others].sort((a, b) => listingComparablePrice(a) - listingComparablePrice(b));
+
+  const cancel = async (l) => {
+    setBusy(l.id);
+    setError(null);
+    try {
+      await cancelListing(l.id);
+    } catch (err) {
+      setError(err.message || 'İlan iptal edilemedi.');
+    } finally {
+      setBusy(null);
+    }
+  };
+  const openBuy = (l) => {
+    if (cannotAfford(l, gold)) {
+      setNoGoldId(l.id);
+      return;
+    }
+    setBuyModalListing(l);
+  };
+
+  return (
+    <div className="market-screen magaza-screen">
+      <div className="market-header-row">
+        <button className="market-back-btn" onClick={onClose}>
+          ‹ Geri
+        </button>
+        <p className="market-screen-title">🏬 Mağaza</p>
+        <button className="market-btn primary" onClick={() => setShowSell(true)}>
+          + İlan Ver
+        </button>
+      </div>
+      {loading ? (
+        <p className="market-hint">Yükleniyor…</p>
+      ) : visibleMats.length === 0 ? (
+        <p className="market-hint">Mağazadan malzeme almak için bir fabrikan ya da silahçı / modifiye garajı işletmen olmalı.</p>
+      ) : (
+        <>
+          <p className="market-hint">Aldığın malzemeler fabrika ve işletmelerinin ortak envanterine girer.</p>
+          {visibleMats.length > 1 && (
+            <select className="market-material-filter" value={filter} onChange={(e) => setFilter(e.target.value)}>
+              <option value="all">Tüm malzemeler</option>
+              {visibleMats.map((k) => (
+                <option key={k} value={k}>
+                  {MATERIAL_LABELS[k]}
+                </option>
+              ))}
+            </select>
+          )}
+        </>
+      )}
+
+      {mine.length > 0 && (
+        <>
+          <p className="market-section-title">İlanlarım</p>
+          {mine.map((l) => (
+            <ListingCard key={l.id} listing={l} isMine busy={busy === l.id} onCancel={() => cancel(l)} />
+          ))}
+        </>
+      )}
+
+      {advantageous.length > 0 && (
+        <div className="market-home-panel">
+          <p className="market-section-title">🔥 Avantajlı Ürünler</p>
+          {advantageous.map((l) => (
+            <ListingCard key={l.id} listing={l} isMine={false} busy={busy === l.id} noGold={noGoldId === l.id} onBuy={() => openBuy(l)} />
+          ))}
+        </div>
+      )}
+
+      {visibleMats.length > 0 && (
+        <>
+          <p className="market-section-title">Tüm Ürünler</p>
+          {allSorted.length === 0 && <p className="market-hint">Şu an satışta malzeme yok.</p>}
+          {allSorted.map((l) => (
+            <ListingCard key={l.id} listing={l} isMine={false} busy={busy === l.id} noGold={noGoldId === l.id} onBuy={() => openBuy(l)} />
+          ))}
+        </>
+      )}
+
+      {error && <p className="market-error">{error}</p>}
+      {showSell && <MagazaSellForm usable={usable} initialMaterial={filter} onClose={() => setShowSell(false)} />}
+      {buyModalListing && <BuyMaterialModal listing={buyModalListing} gold={gold} onClose={() => setBuyModalListing(null)} />}
     </div>
   );
 }

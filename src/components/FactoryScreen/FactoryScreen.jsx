@@ -6,7 +6,6 @@ import { useMyFactory } from '../../hooks/useMyFactory';
 import { useOpenFactories, MACHINE_LABELS } from '../../hooks/useOpenFactories';
 import { useEmployerFactory } from '../../hooks/useEmployerFactory';
 import { useInvestmentPrices } from '../../hooks/useInvestmentPrices';
-import { useListedFactoryShares } from '../../hooks/useFactoryShares';
 import FactoryMiniGame from './FactoryMiniGame';
 import {
   createFactory,
@@ -26,7 +25,7 @@ import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import FactoryBadge from './FactoryBadge';
 import FactoryLogoDesigner from './FactoryLogoDesigner';
-import FactoryShareSellModal from './FactoryShareSellModal';
+import { FactoryInventorySheet } from '../Magaza/Magaza';
 import FactoryShareBuyModal from './FactoryShareBuyModal';
 import FactorySponsorModal from './FactorySponsorModal';
 import NotificationBell from '../NotificationBell/NotificationBell';
@@ -49,6 +48,9 @@ const MACHINE_EMOJI = {
 // kategori butonu olarak gösteriliyor (bkz. OwnerView).
 // v38: yasaklı madde makineleri kaldırıldı (yasaklı madde ticareti artık çetelerde).
 const MACHINE_CATEGORY_TYPES = ['tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme'];
+
+// v124 — fabrika hisseleri artık satılmıyor (mevcut hisselerin ödemeleri sürer)
+const NO_LISTED_SHARES = Object.freeze({});
 
 function machinePrice(type, cryptoPrice, ownedMiningCount = 0) {
   if (type !== 'mining') return MACHINE_PRICES[type];
@@ -243,7 +245,9 @@ function BrowseFactoriesModal({ onClose, onJoin, joinBusy, myUid, canJoin }) {
   // collectionGroup('shares') üzerinde çalışıyor ve Firestore indeksi
   // deploy edilmemişse SESSİZCE boş dönüyordu (sadece console.error), bu
   // yüzden `error` de dışa alınıp aşağıda kullanıcıya gösteriliyor.
-  const { byFactoryId, error: shareError } = useListedFactoryShares();
+  // v124: hisse satışı kaldırıldı — "📈 Hisseler" butonu gösterilmez, ilanlar okunmaz
+  const byFactoryId = NO_LISTED_SHARES;
+  const shareError = null;
   const [shareBuyFactory, setShareBuyFactory] = useState(null);
 
   return (
@@ -566,7 +570,7 @@ function OwnerView({ factory, machines, player, myUid }) {
   const [showBuy, setShowBuy] = useState(false);
   const [showManage, setShowManage] = useState(false);
   const [showBrowse, setShowBrowse] = useState(false);
-  const [showShareSell, setShowShareSell] = useState(false);
+  const [showInventory, setShowInventory] = useState(false); // v124: Hisse Sat → Envanter
   const [showReport, setShowReport] = useState(false);
   const [showSponsor, setShowSponsor] = useState(false);
   const [selfBusy, setSelfBusy] = useState(null);
@@ -726,8 +730,8 @@ function OwnerView({ factory, machines, player, myUid }) {
           ◀ Fabrikalar
         </button>
         <div className="factory-top-row-right">
-          <button className="factory-nav-btn" onClick={() => setShowShareSell(true)}>
-            Hisse Sat
+          <button className="factory-nav-btn" onClick={() => setShowInventory(true)}>
+            📦 Envanter
           </button>
           <button className="factory-nav-btn primary" onClick={() => setShowBuy(true)}>
             Makine Al +
@@ -865,9 +869,7 @@ function OwnerView({ factory, machines, player, myUid }) {
       {showBrowse && (
         <BrowseFactoriesModal onClose={() => setShowBrowse(false)} canJoin={false} myUid={factory.id} />
       )}
-      {showShareSell && (
-        <FactoryShareSellModal factory={factory} onClose={() => setShowShareSell(false)} />
-      )}
+      {showInventory && <FactoryInventorySheet onClose={() => setShowInventory(false)} />}
       {showReport && <DailyReportModal factory={factory} onClose={() => setShowReport(false)} />}
       {showSponsor && <FactorySponsorModal onClose={() => setShowSponsor(false)} />}
       {showShiftGame && (
@@ -1191,7 +1193,9 @@ function BrowseView({ myUid }) {
   const { prices } = useInvestmentPrices();
   // v57: değere göre sıralı; 30 gündür hareketsiz fabrikalar gizli (kendi fabrikan hep görünür)
   const factories = rankFactoriesForList(allFactories, prices.cryptoPrice, { keepIds: [myUid] });
-  const { byFactoryId, error: shareError } = useListedFactoryShares();
+  // v124: hisse satışı kaldırıldı — "📈 Hisseler" butonu gösterilmez, ilanlar okunmaz
+  const byFactoryId = NO_LISTED_SHARES;
+  const shareError = null;
   const [showCreate, setShowCreate] = useState(false);
   const [joinBusy, setJoinBusy] = useState(null);
   const [error, setError] = useState(null);

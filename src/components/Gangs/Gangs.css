@@ -3567,3 +3567,21 @@ button.gx-member.gx-member-btn:active {
   min-height: 0;
   padding: 0;
 }
+
+/* v124 — Depoya sat: depo seçimi */
+.gx-depo-pick {
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.gx-depo-pick.on {
+  border-color: var(--neon-cyan, #4ff0ff);
+  border-radius: 8px;
+}
+.gx-depo-pick:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

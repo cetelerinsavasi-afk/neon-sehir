@@ -16,6 +16,7 @@ import ImamBooklet from '../ImamBooklet/ImamBooklet';
 import { ImamPanel, BeggarsSection, WINDOW_HOURS } from '../MosqueScreen/MosqueScreen';
 import BankScreen from '../BankScreen/BankScreen';
 import SlotScreen from '../SlotScreen/SlotScreen';
+import RouletteGame from '../Roulette/RouletteGame';
 import LotteryScreen from '../LotteryScreen/LotteryScreen';
 import OnNumaraScreen from '../OnNumaraScreen/OnNumaraScreen';
 import OnNumaraTable from '../OnNumaraScreen/OnNumaraTable';
@@ -283,6 +284,11 @@ export function GazinoPart({ panel, setPanel, onOpenHeist, flash, walk }) {
       {panel === 'slot' && (
         <Sheet title="🎰 Slot Makinesi" onClose={() => setPanel(null)}>
           <SlotScreen />
+        </Sheet>
+      )}
+      {panel === 'rulet' && (
+        <Sheet title="🎡 Rulet" onClose={() => setPanel(null)}>
+          <RouletteGame />
         </Sheet>
       )}
       {panel === 'piyango' && (

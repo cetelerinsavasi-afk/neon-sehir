@@ -53,7 +53,7 @@ test('başka oyuncu satın alır: para çete kasasına, ürün alıcıya YENİ, 
   assert.ok(h.chat(G.gangId).some((m) => /2\. elden 2 × Şehir Hatchback satıldı: kasaya \+18\.000/.test(m)));
 });
 
-test('canlı dünya: alıcıya 20/20 yeni araç belgesi; yasaklı madde envantere; mevcut marketplaceListings koleksiyonuna dokunulmaz', async () => {
+test('canlı dünya: alıcıya 20/20 yeni araç belgesi; v124: yasaklı madde 2. ele konamaz; mevcut marketplaceListings koleksiyonuna dokunulmaz', async () => {
   const h = await createHarness();
   await h.admin('openLive', { mode: 'fresh', confirm: 'CANLIYA AÇ' });
   const { liveWorldId } = h.raw('gangSystem/config');
@@ -64,25 +64,23 @@ test('canlı dünya: alıcıya 20/20 yeni araç belgesi; yasaklı madde envanter
   const { gangId } = await act('boss', 'createGang', { name: 'Canlı Tüccar', logo: { emoji: '🐺', color: '#ffd23f', bg: '#231c05' } });
   await h.db.doc(`gangWorlds/${liveWorldId}/gangs/${gangId}/private/depot`).set({ items: { 'araba:2': 1, yasakliMadde: 10 }, capacity: 100, usedUnits: 20, reservedUnits: 0 });
   const l1 = await act('boss', 'listDepotItem', { itemKey: 'araba:2', qty: 1, unitPrice: 10_000 });
-  const l2 = await act('boss', 'listDepotItem', { itemKey: 'yasakliMadde', qty: 10, unitPrice: 2000 });
+  await assert.rejects(act('boss', 'listDepotItem', { itemKey: 'yasakliMadde', qty: 10, unitPrice: 2000 }), /2\. elde satılmıyor/);
   await act('buyer', 'buyMarketListing', { listingId: l1.listingId, qty: 1 });
-  await act('buyer', 'buyMarketListing', { listingId: l2.listingId, qty: 4 });
-  assert.equal(h.raw('users/buyer').gold, 100_000 - 10_000 - 8000);
+  assert.equal(h.raw('users/buyer').gold, 100_000 - 10_000);
   const cars = Object.values(h.db._dump('vehicles/')).filter((v) => v.ownerId === 'buyer');
   assert.equal(cars.length, 1);
   assert.equal(cars[0].lifeDays, 20);
   assert.equal(cars[0].repairsUsed, 0);
-  assert.equal(h.raw('users/buyer/inventory/yasakliMadde').quantity, 4);
-  assert.equal(h.raw(`gangWorlds/${liveWorldId}/gangs/${gangId}/private/state`).kasa, 18_000);
+  assert.equal(h.raw(`gangWorlds/${liveWorldId}/gangs/${gangId}/private/state`).kasa, 10_000);
   assert.equal(Object.keys(h.db._dump('marketplaceListings/')).length, 0);
   // onboarding: çete deposundan alım da satın alma görevlerini tetikler
-  assert.deepEqual(h.hooks.filter((x) => x[0] === 'market'), [['market', 'buyer', 'vehicle', null], ['market', 'buyer', 'material', 'yasakliMadde']]);
+  assert.deepEqual(h.hooks.filter((x) => x[0] === 'market'), [['market', 'buyer', 'vehicle', null]]);
 });
 
 test('çete dağılınca açık ilanları kapanır', async () => {
   const h = await createHarness();
   const G = await gangWithStock(h);
-  const { listingId } = await h.act(G.baba, 'listDepotItem', { itemKey: 'yasakliMadde', qty: 5, unitPrice: 1500 });
+  const { listingId } = await h.act(G.baba, 'listDepotItem', { itemKey: 'araba:2', qty: 1, unitPrice: 8000 });
   await h.act(G.ids[0], 'leaveGang');
   await h.act(G.baba, 'leaveGang');
   await h.internal.clock.runClock('test');

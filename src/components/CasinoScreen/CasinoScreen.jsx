@@ -2,12 +2,14 @@ import { useState } from 'react';
 import LotteryScreen from '../LotteryScreen/LotteryScreen';
 import OnNumaraScreen from '../OnNumaraScreen/OnNumaraScreen';
 import SlotScreen from '../SlotScreen/SlotScreen';
+import RouletteGame from '../Roulette/RouletteGame';
 import './CasinoScreen.css';
 
 const CARDS = [
   { id: 'onnumara', label: '10 Numara', emoji: '🃏', desc: 'Kurpiyere karşı 10\'a en yakın toplamı yap.' },
   { id: 'piyango', label: 'Piyango', emoji: '🎟️', desc: 'Bilet al, günün kurası seni seçsin.' },
-  { id: 'slot', label: 'Slot', emoji: '🎰', desc: 'Günün ilk çevirmesi ücretsiz, 3 makarada şansını dene.' },
+  { id: 'rulet', label: 'Rulet', emoji: '🎡', desc: '0–12 çark: sayıya 12 kat, renge 2 kat.' },
+  { id: 'slot', label: 'Slot', emoji: '🎰', desc: '1.600 altına 3 makarada şansını dene.' },
 ];
 
 // Aktif bir masaya girildiğinde tam ekran gösterim App.jsx seviyesinde
@@ -25,6 +27,7 @@ export default function CasinoScreen({ onEnterTable }) {
         {selected === 'onnumara' && <OnNumaraScreen onEnterTable={onEnterTable} />}
         {selected === 'piyango' && <LotteryScreen />}
         {selected === 'slot' && <SlotScreen />}
+        {selected === 'rulet' && <RouletteGame />}
       </div>
     );
   }

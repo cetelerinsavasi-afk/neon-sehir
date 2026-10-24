@@ -33,7 +33,7 @@ export const regions = [
   { id: 'yaris_pisti', name: 'Yarış Pisti', screen: 'yaris-pisti', emoji: '🏁', left: 15.5, top: 53, width: 20, height: 16 },
   { id: 'stadyum', name: 'Stadyum', screen: 'futbol', emoji: '🏟️', left: 50.5, top: 60, width: 30, height: 24 },
   { id: 'ev', name: 'Ev', screen: 'ev', emoji: '🏠', left: 37.5, top: 69, width: 12, height: 11 },
-  { id: 'liman_depo', name: 'Liman', screen: 'liman-depo', emoji: '🚢', left: 8, top: 67, width: 22, height: 18 },
+  { id: 'liman_depo', name: 'Liman & Depo', screen: 'liman-depo', emoji: '🚢', left: 8, top: 67, width: 22, height: 18 },
   { id: 'seyyar_satici_3', name: 'Dönerci', screen: 'seyyar-satici', emoji: '🥙', left: 37.65, top: 38.15, width: 5.7, height: 5.7 },
   { id: 'seyyar_satici_1', name: 'Kokoreçci', screen: 'seyyar-satici', emoji: '🌯', left: 15.15, top: 44.65, width: 5.7, height: 5.7 },
   { id: 'seyyar_satici_2', name: 'Simitçi', screen: 'seyyar-satici', emoji: '🥯', left: 3.15, top: 53.15, width: 5.7, height: 5.7 },

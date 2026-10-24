@@ -1,8 +1,9 @@
-import { system, PREVIEW_UID, fakeDb, houses, shop, futbolPro, visits, raceTa, cosmetics, stream } from './backend.js';
+import { system, PREVIEW_UID, fakeDb, houses, shop, futbolPro, visits, raceTa, cosmetics, stream, casino } from './backend.js';
 import { FieldValue } from '../../functions/gang/test/fakeFirestore.js';
 import { sanitizeDrawing } from '../../functions/drawingData.js';
 import { buildSongAttachment } from '../../functions/homeOffice.js';
 import { nextReaction, replyQuoteOf } from '../../functions/chatExtras.js';
+import { normalizeRouletteBets, roulettePayout, ROULETTE_ORDER, rollSlotReels, slotOutcome, SLOT_GAME_COST } from '../../functions/casinoRules.js';
 export function getFunctions() {
   return {};
 }
@@ -12,6 +13,42 @@ export function httpsCallable(functions, name) {
     const request = { auth: { uid: new URLSearchParams(location.search).get('uid') || PREVIEW_UID }, data };
     try {
       if (name === 'gangAction') return { data: await system.handleAction(request) };
+      // v124 Faz 6 oyuncu gazinosu (önizleme: gerçek functions/casino.js)
+      const cid = data?.casinoId && data.casinoId !== 'game' ? data.casinoId : null;
+      const me = request.auth.uid;
+      if (cid && name === 'spinSlot') return { data: await casino.slotSpin(me, { casinoId: cid, expect: data.expect }, (n) => Math.floor(Math.random() * n)) };
+      if (cid && name === 'spinRoulette') {
+        const nb = normalizeRouletteBets(data.bets);
+        const index = Math.floor(Math.random() * 13);
+        const number = ROULETTE_ORDER[index];
+        const r = await casino.rouletteSpin(me, { casinoId: cid, nb, number });
+        return { data: { ok: true, index, number, stake: nb.total, payout: r.payout, net: r.payout - nb.total } };
+      }
+      if (cid && name === 'buyLotteryTicket') return { data: await casino.buyTickets(me, { casinoId: cid, qty: data.quantity, dateKey: new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10) }) };
+      if (cid && name === 'createOnNumaraTable') {
+        await casino.tableCreateCheck(me, cid, Number(data.betAmount));
+        return { data: { ok: true, tableId: 'tprev' } };
+      }
+      // v124 gazino (önizleme)
+      if (name === 'spinRoulette') {
+        const nb = normalizeRouletteBets(data.bets);
+        if (!nb) throw Object.assign(new Error('Geçersiz bahis.'), { code: 'invalid-argument' });
+        const index = Math.floor(Math.random() * 13);
+        const number = ROULETTE_ORDER[index];
+        const payout = roulettePayout(nb.bets, number);
+        const ref = fakeDb.doc(`users/${PREVIEW_UID}`);
+        const g = (await ref.get()).data().gold;
+        await ref.set({ gold: g + payout - nb.total }, { merge: true });
+        return { data: { ok: true, index, number, stake: nb.total, payout, net: payout - nb.total } };
+      }
+      if (name === 'spinSlot') {
+        const reels = rollSlotReels((n) => Math.floor(Math.random() * n));
+        const o = slotOutcome(reels);
+        const ref = fakeDb.doc(`users/${PREVIEW_UID}`);
+        const g = (await ref.get()).data().gold;
+        await ref.set({ gold: g + o.gold - SLOT_GAME_COST }, { merge: true });
+        return { data: { ok: true, reels, ...o } };
+      }
       if (name === 'cosmeticsAction') return { data: await cosmetics.action(PREVIEW_UID, data) };
       if (name === 'raceHubAction') {
         if (data.action === 'taStart') return { data: await raceTa.start(request) };

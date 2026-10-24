@@ -22,6 +22,8 @@
 //   ör. banka 500.000, 2 polis, 1 suçlu → +500.000 soygun_ceza, −125.000 polis payı = net +375.000
 //   vergi_maas   — v123: futbolcu / menajer / fabrika işçisi maaşları (%10)
 //   vergi_piyango — v123: piyango kazançları (%10)
+//   vergi_gazino  — v124: oyuncu gazinolarının piyango payı (%10; oyunun gazinosu vergi_oyun)
+//   vergi_gazinoCekim — v124 Faz 6: oyuncu gazinosu makine kasasından çekimde %10
 //   ist_*      — istihbaratın kazandığı her şey (savaş, bahis, rüşvet, çökertme…)
 //
 // YAZMA: gün + parça (shard) belgelerine artırma — stateLedger/{gün}_s{0..N}.
@@ -42,6 +44,8 @@ export const STATE_IN = {
   vergi_ofis: 'Vergi · Ofis gelirleri (%10)',
   vergi_maas: 'Vergi · Maaşlar — futbolcu / menajer / fabrika işçisi (%10)',
   vergi_piyango: 'Vergi · Piyango kazançları (%10)',
+  vergi_gazino: 'Vergi · Gazino piyango payı (%10)', // v124
+  vergi_gazinoCekim: 'Vergi · Gazino kasasından çekim (%10)', // v124 Faz 6
   vergi_oyun: 'Vergi · Oyunun kendi mekânları',
   soygun_ceza: 'Soygun cezaları (yakalanan suçlular)',
   kacak_ceza: 'Yasaklı madde cezaları (park)',

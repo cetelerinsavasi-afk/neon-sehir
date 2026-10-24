@@ -320,6 +320,18 @@ export function publishCardsFrame(tableId) {
   if (!STREAM_RT || !streamBroadcast.uid || !tableId) return;
   sendFrame('onnumara', JSON.stringify({ t: String(tableId).slice(0, 128) }), [], 0);
 }
+// v124 Faz 7 — yayında Casinolar (rulet / slot): { k: 'rulet'|'slot', c: gazino adı, st: oyun durumu }
+// (10 Numara masası mevcut publishCardsFrame ile gider). İzleyici aynı ekranı butonsuz çizer.
+export function publishCasinoFrame(payload) {
+  if (!STREAM_RT || !streamBroadcast.uid || !payload) return;
+  let json;
+  try {
+    json = JSON.stringify(payload);
+  } catch {
+    return;
+  }
+  if (json.length < 1500) sendFrame('casino', json, [], 0);
+}
 // v92 — yayında maç izleme: yayıncının o an açık lig/sekme/maç/özet görünümü
 // (~1/sn). İzleyici aynı ekranı kendi verisiyle çizer (FutbolLigler mirror).
 export function publishMatchFrame(view) {

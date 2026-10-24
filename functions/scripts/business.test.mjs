@@ -65,7 +65,11 @@ test('katalog: prompttaki en düşük maliyetler ve şart kontrolü', () => {
   assert.deepEqual(sum('galeri'), [12, 105_000]);
   // bar: disko topu (3💎) gitardan (50.000) ucuz sayılır
   assert.deepEqual(sum('bar'), [9, 89_000]);
-  assert.equal(Object.keys(BIZ_TYPES).length, 10); // 7 işletme + v93 3 home ofis
+  assert.equal(Object.keys(BIZ_TYPES).length, 12); // 7 işletme + v93 3 home ofis + v124 depo + gazino
+  // v124 Faz 6 gazino: slot makinesi 3💎 + rulet masası 6💎 + kart masası 90.000 + piyango gişesi 60.000
+  assert.deepEqual(sum('gazino'), [9, 150_000]);
+  // v124 depo: patron masası 4💎 + kaçak kasalar 20.000 + makam masası 90.000 + çelik kasa 9💎
+  assert.deepEqual(sum('depo'), [13, 110_000]);
   // v93 home ofisler: mescit 4×8.000 + 14.000 + 8.000 + 2💎 · sinema 2💎+5💎, 2×30.000 + 40.000 · stüdyo 4💎, 2×25.000 + 90.000 + 60.000
   assert.deepEqual(sum('mescit'), [2, 54_000]);
   assert.deepEqual(sum('sinema'), [7, 100_000]);

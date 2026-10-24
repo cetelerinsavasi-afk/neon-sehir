@@ -75,8 +75,7 @@ export const renameVehicle = (vehicleId, name) =>
 export const sellMaterial = (materialType, quantity) =>
   httpsCallable(functions, 'sellMaterial')({ materialType, quantity });
 
-export const buyFromAmazor = (materialType, quantity) =>
-  httpsCallable(functions, 'buyFromAmazor')({ materialType, quantity });
+// v124: Amazor kaldırıldı (buyFromAmazor sunucuda kapalı)
 
 export const buyWeapon = (catalogId) =>
   httpsCallable(functions, 'buyWeapon')({ catalogId });
@@ -119,10 +118,13 @@ export const repayStateDebt = (amount) =>
 
 // --- Casino: Piyango (Bölüm 11) ---
 
-export const buyLotteryTicket = (quantity) =>
-  httpsCallable(functions, 'buyLotteryTicket')({ quantity });
+// v124 Faz 6: casinoId — oyuncu gazinosunun kendi piyangosu ('game' = Neon Gazino)
+export const buyLotteryTicket = (quantity, casinoId = 'game', expect = null) =>
+  httpsCallable(functions, 'buyLotteryTicket')(casinoId === 'game' ? { quantity } : { quantity, casinoId, ...(expect != null ? { expect } : {}) });
 
-export const spinSlot = () => httpsCallable(functions, 'spinSlot')();
+export const spinSlot = (casinoId = 'game', expect = null) => httpsCallable(functions, 'spinSlot')(expect == null ? { casinoId } : { casinoId, expect });
+// v124 — rulet: bahisler { red|black|green|n1..n12: altın }, sonuç sunucuda
+export const spinRoulette = (bets, casinoId = 'game') => httpsCallable(functions, 'spinRoulette')({ bets, casinoId });
 
 // --- Telefon: Flappy Bird mini oyunu ---
 
@@ -266,11 +268,9 @@ export const giftHeldItem = (targetUid, venue) => httpsCallable(functions, 'gift
 export const enterInterior = (locationId) =>
   httpsCallable(functions, 'enterInterior')({ locationId });
 
-export const placeLimanOrder = (materialType, quantity) =>
-  httpsCallable(functions, 'placeLimanOrder')({ materialType, quantity });
+// v124: Liman kaldırıldı (placeLimanOrder sunucuda kapalı; bekleyen siparişler iade edildi)
 
-export const cancelLimanOrder = (materialType) =>
-  httpsCallable(functions, 'cancelLimanOrder')({ materialType });
+
 
 // --- Faz 7: Ekip Soygunu ---
 // (Polisin rolü sızmaktır — kendi soygun/plan başlatamaz, ama başkasının
@@ -394,8 +394,8 @@ export const raceChangeGear = (roomId, delta) => raceHub('raceChangeGear', { roo
 
 // --- Casino: "10 Numara" ---
 
-export const createOnNumaraTable = (capacity, betAmount) =>
-  httpsCallable(functions, 'createOnNumaraTable')({ capacity, betAmount });
+export const createOnNumaraTable = (capacity, betAmount, casinoId = 'game') =>
+  httpsCallable(functions, 'createOnNumaraTable')(casinoId === 'game' ? { capacity, betAmount } : { capacity, betAmount, casinoId });
 
 export const joinOnNumaraTable = (tableId) =>
   httpsCallable(functions, 'joinOnNumaraTable')({ tableId });

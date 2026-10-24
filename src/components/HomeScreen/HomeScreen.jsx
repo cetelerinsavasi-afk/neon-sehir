@@ -18,19 +18,6 @@ import AdminPanelEntry from '../AdminPanel/AdminPanelEntry';
 import LegalLinks from '../LegalLinks/LegalLinks';
 import './HomeScreen.css';
 
-const MATERIAL_LABELS = {
-  tamirMalzemesi: 'Tamir Malzemesi',
-  silahUpgrade: 'Silah Geliştirme Malzemesi',
-  arabaGelistirme: 'Araba Geliştirme Malzemesi',
-  yasakliMadde: 'Yasaklı Madde',
-};
-const MATERIAL_EMOJIS = {
-  tamirMalzemesi: '🔧',
-  silahUpgrade: '🔫',
-  arabaGelistirme: '🚗',
-  yasakliMadde: '💊',
-};
-
 function weaponImage(catalogId) {
   return weaponCatalog.find((w) => w.id === catalogId)?.image;
 }
@@ -174,6 +161,14 @@ export default function HomeScreen() {
         </p>
       </div>
 
+      {/* v124: oyuncunun elinde malzeme yok (fabrika/işletme envanterinde) — sadece yasaklı madde */}
+      <div className="home-material-row home-contraband-row">
+        <span className="home-material-emoji">💊</span>
+        <span className="home-hint">
+          Yasaklı madde: <strong>{(inventory.yasakliMadde || 0).toLocaleString('tr-TR')}</strong>
+        </span>
+      </div>
+
       <div className="home-section">
         <p className="home-section-title">Araçların</p>
         {myVehicles.length === 0 && <p className="home-hint">Henüz bir aracın yok.</p>}
@@ -187,18 +182,6 @@ export default function HomeScreen() {
         {myWeapons.length === 0 && <p className="home-hint">Henüz bir silahın yok.</p>}
         {myWeapons.map((w) => (
           <WeaponCard key={w.id} weapon={w} locked={Boolean(w.shopHouseId)} />
-        ))}
-      </div>
-
-      <div className="home-section">
-        <p className="home-section-title">Malzemelerin</p>
-        {Object.entries(MATERIAL_LABELS).map(([key, label]) => (
-          <div key={key} className="home-material-row">
-            <span className="home-material-emoji">{MATERIAL_EMOJIS[key]}</span>
-            <span className="home-hint">
-              {label}: {inventory[key] || 0}
-            </span>
-          </div>
         ))}
       </div>
 

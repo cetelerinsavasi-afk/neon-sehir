@@ -93,6 +93,10 @@ export const GANG = {
   TRUCK_PRICE: 100_000,
   TRUCK_LIFE_DAYS: 21, // gün (sefer değil); v108: son gününde de sipariş verilebilir (ömrü 0 olunca verilemez)
   TRUCK_CAPACITY: { araba: 10, silah: 10, yasakliMadde: 100 }, // tek tür ürün
+  // v125: her çete (yolu olmasa da) günde ÜYE SAYISI × 1.250 altınlık yasaklı madde
+  // sipariş edebilir (00:00'daki üye sayısı — gangState.orderBase). Yasaklı madde
+  // yolunu tutan çetenin limiti = savaştan kazandığı limit + bu hak.
+  CONTRABAND_ORDER_PER_MEMBER: 1250,
 
   // --- Depo (ONAYLI) --- her alım +100 kapasite, ömürsüz, satılamaz
   DEPOT_PRICE: 100_000,
@@ -105,6 +109,9 @@ export const GANG = {
   // --- Aktiflik (ONAYLI: 30 gün hiçbir savaşa katılmayan atılır; Baba dahil) ---
   INACTIVE_WARN_DAYS: 29,
   INACTIVE_REMOVE_DAYS: 30,
+  // v125: 10 gün OYUNA GİRMEYEN üye de çeteden çıkarılır (polislikteki kuralla aynı;
+  // kural ilk çalıştığı andan itibaren sayılır — gangLoginInactivityFromMs)
+  LOGIN_INACTIVE_DAYS: 10,
 
   // --- Oylama (ONAYLI) ---
   DEVIRME_MIN_RATIO: 0.51, // >= %51

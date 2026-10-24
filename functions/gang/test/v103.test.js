@@ -12,51 +12,23 @@ async function gangWithStock(h) {
 }
 const depotOf = (h, g) => h.get(`gangs/${g}/private/depot`);
 
-test('ucuz yasaklı madde ilanı (1500 < 1875): her parti kendi 7. gününde kasaya satılır; pahalı ilan açık kalır', async () => {
+// v124: yasaklı madde artık 2. ele konamaz; çete deposundan "Depoya sat" (functions/depo.js)
+test('v124: çete yasaklı maddeyi 2. ele koyamaz; "Depoya sat" (oyunun deposu 1.500): sadece Baba/Sağ Kol, stok, kasa', async () => {
   const h = await createHarness();
   const G = await gangWithStock(h);
-  const { listingId } = await h.act(G.baba, 'listDepotItem', { itemKey: 'yasakliMadde', qty: 10, unitPrice: 1500 });
-  const pricey = await h.act(G.baba, 'listDepotItem', { itemKey: 'yasakliMadde', qty: 5, unitPrice: 1875 }); // tam %50 → otomatik değil
-  assert.ok(h.get(`market/${listingId}`).autoSellAtMs > 0);
-  assert.equal(h.get(`market/${pricey.listingId}`).autoSellAtMs, undefined);
-  await h.tickTo('2026-09-27', '09:00'); // 6. gün: ikinci parti
-  await h.act(G.baba, 'listDepotItem', { itemKey: 'yasakliMadde', qty: 4, unitPrice: 1500 });
-  assert.equal(h.get(`market/${listingId}`).quantity, 14);
+  await h.fails(G.baba, 'listDepotItem', { itemKey: 'yasakliMadde', qty: 10, unitPrice: 1500 });
   const k0 = h.state(G.gangId).kasa;
-  await h.tickTo('2026-09-28', '09:05'); // ilk partinin 7. günü
-  let l = h.get(`market/${listingId}`);
-  assert.equal(l.quantity, 4, 'sadece ilk 10 satılır');
-  assert.equal(l.status, 'open');
-  assert.equal(h.state(G.gangId).kasa, k0 + 15_000);
-  let d = depotOf(h, G.gangId);
-  assert.equal(d.items.yasakliMadde, 40);
-  assert.equal(d.listed.yasakliMadde, 9);
-  assert.ok(h.chat(G.gangId).some((m) => /10 × .* otomatik satıldı: kasaya \+15\.000/.test(m)));
-  // tekrar çalışmak çift satış yapmaz
-  await h.internal.clock.runClock('test');
-  assert.equal(h.state(G.gangId).kasa, k0 + 15_000);
-  await h.tickTo('2026-10-04', '09:10');
-  l = h.get(`market/${listingId}`);
-  assert.equal(l.status, 'sold');
-  assert.equal(h.state(G.gangId).kasa, k0 + 21_000);
-  assert.equal(h.get(`market/${pricey.listingId}`).status, 'open', '%50 ve üstü ilan eskisi gibi açık');
-  d = depotOf(h, G.gangId);
-  assert.equal(d.listed.yasakliMadde, 5);
-});
-
-test('alıcı önce en eski partiden alır (FIFO)', async () => {
-  const h = await createHarness();
-  const G = await gangWithStock(h);
-  const buyer = await h.persona({ displayName: 'Alıcı', gold: 100_000, power: 1, reputation: 1 });
-  const { listingId } = await h.act(G.baba, 'listDepotItem', { itemKey: 'yasakliMadde', qty: 5, unitPrice: 1300 });
-  await h.tickTo('2026-09-24', '09:00');
-  await h.act(G.baba, 'listDepotItem', { itemKey: 'yasakliMadde', qty: 5, unitPrice: 1300 });
-  await h.act(buyer, 'buyMarketListing', { listingId, qty: 7 });
-  const l = h.get(`market/${listingId}`);
-  assert.equal(l.quantity, 3);
-  assert.equal(l.batches.length, 1, 'ilk parti tükendi');
-  assert.equal(l.batches[0].q, 3);
-  assert.equal(l.autoSellAtMs, l.batches[0].at + 7 * 24 * 3600_000);
+  await h.fails(G.ids[0], 'sellToDepo', { depotId: 'game_depo', qty: 5 }); // Tetikçi değil, çömez
+  await h.fails(G.baba, 'sellToDepo', { depotId: 'game_depo', qty: 51 }); // stok yok
+  await h.fails(G.baba, 'sellToDepo', { depotId: 'oyuncu_deposu', qty: 1 }); // test dünyasında sadece oyunun deposu
+  await h.fails(G.baba, 'sellToDepo', { depotId: 'game_depo', qty: 1, expect: 1600 }); // fiyat değişti
+  const r = await h.act(G.baba, 'sellToDepo', { depotId: 'game_depo', qty: 20, expect: 1500 });
+  assert.deepEqual({ qty: r.qty, unit: r.unit, total: r.total }, { qty: 20, unit: 1500, total: 30_000 });
+  assert.equal(h.state(G.gangId).kasa, k0 + 30_000);
+  const d = depotOf(h, G.gangId);
+  assert.equal(d.items.yasakliMadde, 30);
+  assert.equal(d.usedUnits, 30);
+  assert.ok(h.chat(G.gangId).some((m) => /20 yasaklı maddeyi bir depoya sattı/.test(m)));
 });
 
 test('güvenli satış haracı: üyenin çetesine 500, tekrar yok; çetesizde yanar; 00:00 tek özet mesajı', async () => {

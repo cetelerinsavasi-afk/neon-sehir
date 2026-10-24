@@ -582,7 +582,7 @@ function GameShell() {
           type={businessView.type}
           onClose={() => setBusinessView(null)}
           onOpenGameVenue={(t) => {
-            const open = { silahci: setWeaponShopOpen, galeri: setDealershipOpen, modifiye: setTuningGarageOpen }[t || businessView.type];
+            const open = { silahci: setWeaponShopOpen, galeri: setDealershipOpen, modifiye: setTuningGarageOpen, gazino: setCasinoOpen }[t || businessView.type];
             setBusinessView(null);
             open?.(true);
           }}

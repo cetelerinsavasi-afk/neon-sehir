@@ -69,6 +69,8 @@ export const TAX_SOURCES = {
   ofis: 'Ofis geliri — ücretli mobilyalar (%10)', // v100
   maas: 'Maaş — futbolcu / menajer / fabrika işçisi (%10)', // v123
   piyango: 'Piyango kazancı (%10)', // v123
+  gazino: 'Gazino piyango payı (%10)', // v124
+  gazinoCekim: 'Gazino kasasından çekim (%10)', // v124 Faz 6 — oyuncu gazinosu makine kasası
 };
 
 // Vergi kaydı. YAZMA (transaction ya da batch). amount ≤ 0 ise yazmaz.

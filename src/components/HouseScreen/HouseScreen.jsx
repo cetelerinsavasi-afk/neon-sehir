@@ -16,7 +16,6 @@ import { FLOORS, WALLS } from './houseTextures';
 import { FREE_SURFACES, HOUSE_PRODUCTS, SURFACE_KEYS } from '../../../functions/houseCatalogData.js';
 import { TRACKS, playTrack, stopMusic, unlockAudio, setVolume, getVolume } from './houseAudio';
 import ArcadeHub from '../Arcade/ArcadeHub';
-import OnNumaraScreen from '../OnNumaraScreen/OnNumaraScreen';
 import PhoneScreen from '../Phone/PhoneScreen';
 import PlayerCard from '../PlayerCard/PlayerCard';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
@@ -25,8 +24,11 @@ import { removalBreaksBiz, parseBizError } from './houseBusinessLogic';
 import { BIZ_TYPES, BIZ_TYPE_KEYS, isHomeOffice, checkBizRequirements } from '../../../functions/businessCatalogData.js';
 import { houseKind, officePriceOf, ownedOfficeKeys, isOfficeFurn } from '../../../functions/officeData.js';
 import OfficePanel from '../HomeOffice/OfficePanel';
-import { bizErrText } from '../../lib/bizErrors';
+import { bizErrText, materialBlockText } from '../../lib/bizErrors';
 import Workshop from '../Workshop/Workshop';
+import { DepoTradeSheet } from '../Depo/DepoPanels';
+import { CasinoGamesSheet } from '../Casino/PlayerCasino';
+import { StreamCasinoSheet } from '../Casino/StreamCasino';
 import ShopShowcase from '../Shop/ShopShowcase';
 import MenuPanel from '../Venue/MenuPanel';
 import { WaiterButton, OrdersPanel, NewOrderPop } from '../Venue/WaiterPanel';
@@ -86,6 +88,14 @@ const BIZ_TOP_BUTTONS = {
   cafe: [{ panel: 'menu', label: '🍽️ Menü' }],
   bar: [{ panel: 'menu', label: '🍽️ Menü' }],
   spor: [{ panel: 'gym', label: '🏋️ Spor yap (üyelik)' }],
+  depo: [{ panel: 'depo', label: '💊 Yasaklı madde satın al' }], // v124
+};
+// v124 Faz 6 — oyuncu gazinosu: üst buton yok; oyuncu makinenin yanına gidip oynar
+const CASINO_ITEM_ACTS = {
+  slotm: [{ act: 'slot', label: '🎰 Slot oyna' }],
+  rulet: [{ act: 'rulet', label: '🎡 Rulet oyna' }],
+  kartmasa: [{ act: 'onnumara', label: '🃏 10 Numara' }],
+  piyangogise: [{ act: 'piyango', label: '🎟️ Piyango bileti' }],
 };
 const SAVE_DEBOUNCE_MS = 1200;
 const PRIVACY = [
@@ -361,7 +371,9 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
             setDesign(engineRef.current.getDesign());
           }
           flash(
-            be.kind === 'locked'
+            be.kind === 'materials'
+              ? materialBlockText(be.list)
+              : be.kind === 'locked'
               ? be.people
                 ? `🔒 İçeride ${be.people} müşteri var; gerekli mobilyalar şu an kaldırılamaz.`
                 : '🔒 Süren bir hizmet var (üyelik / antrenman / internet süresi); gerekli mobilyalar şimdi kaldırılamaz.'
@@ -789,6 +801,12 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
       setGymGame(a.equipment);
       return;
     }
+    // v124 Faz 6 — oyuncu gazinosu: mobilyadan oyun
+    if (a.kind === 'casino') {
+      setCasinoGame(a.act);
+      setPanel('casino');
+      return;
+    }
     // v80 — yayın aç
     if (a.kind === 'stream') {
       if (myStream || (!isOwner && bizType !== 'internet')) return;
@@ -1077,6 +1095,11 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
 
   // --- işletme (v77) ------------------------------------------------------------------
   const bizType = houseDoc?.biz?.type || null;
+  // v124 Faz 6 — oyuncu gazinosu: hangi oyun açılsın (null = oyunlar listesi) + mobilya eylemleri
+  const [casinoGame, setCasinoGame] = useState(null);
+  useEffect(() => {
+    engineRef.current?.setCasinoActs?.(bizType === 'gazino' && !venue ? CASINO_ITEM_ACTS : null);
+  }, [bizType, venue, engineKey, phase]);
   // v100 — ofis: ücretli mobilyalar (bağış kutusu / mikser eylemleri HomeOfficeLayer'da)
   const kind = houseKind(houseDoc);
   const officeOwnedKeys = ownedOfficeKeys(houseDoc);
@@ -1183,7 +1206,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   useEffect(() => {
     if (!myStream) return undefined;
     document.body.classList.add('ns-streaming');
-    const iv = setInterval(() => setRaceUp(Boolean(document.querySelector('.region-modal-backdrop, .race-fullscreen, .ta-root:not(.st-race), .onnumara-fullscreen'))), 400);
+    const iv = setInterval(() => setRaceUp(Boolean(document.querySelector('.region-modal-backdrop, .race-fullscreen, ta-root:not(.st-race), .onnumara-fullscreen, .st-casino-sheet'))), 400);
     return () => {
       clearInterval(iv);
       setRaceUp(false);
@@ -1196,10 +1219,11 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     if (a) doAction(a);
     else setPanel('arcade');
   };
-  // v82: 10 Numara — masa lobisi evin içinde, masaya oturunca oyun App'te yayının üstünde açılır
-  const playCards = () => {
+  // v124 Faz 7: Casinolar — gazino seç → On Numara / Rulet / Slot (10 Numara masası App'te
+  // yayının üstünde tam ekran açılır; rulet / slot yayına StreamCasinoSheet'ten gider)
+  const playCasino = () => {
     setPlayAsk(false);
-    setPanel('onnumara');
+    setPanel('streamCasino');
   };
   const playRace = () => {
     setPlayAsk(false);
@@ -1481,7 +1505,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
         setBizFlash(bizType);
         setTimeout(() => setBizFlash(null), 1200);
         flash(be.people ? `🔒 İçeride ${be.people} müşteri var, şu an kapatamazsın.` : '🔒 Süren bir hizmet var (üyelik / antrenman / internet süresi), şu an kapatamazsın.');
-      } else flash(err?.message || 'Olmadı.');
+      } else flash(bizErrText(err));
     } finally {
       setBusy(false);
     }
@@ -1709,6 +1733,20 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                     flash(`${HOUSE_PRODUCTS[r.product]?.emoji || ''} ${r.label}${r.price ? ` −${r.price.toLocaleString('tr-TR')}` : ''}`);
                   }}
                 />
+              </div>
+            </div>
+          )}
+          {panel === 'casino' && bizType === 'gazino' && (
+            <div className="wk-sheet-bg" onClick={() => setPanel(null)}>
+              <div className="wk-sheet" onClick={(e) => e.stopPropagation()}>
+                <CasinoGamesSheet key={casinoGame || 'menu'} casinoId={houseId} houseDoc={houseDoc} initialGame={casinoGame} onClose={() => setPanel(null)} />
+              </div>
+            </div>
+          )}
+          {panel === 'depo' && bizType === 'depo' && (
+            <div className="wk-sheet-bg" onClick={() => setPanel(null)}>
+              <div className="wk-sheet" onClick={(e) => e.stopPropagation()}>
+                <DepoTradeSheet depotId={houseId} houseDoc={houseDoc} onClose={() => setPanel(null)} />
               </div>
             </div>
           )}
@@ -2355,24 +2393,9 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
             />
           )}
           {myStream && streamMatch && <StreamMatchView streamId={myStream.id} onClose={() => setStreamMatch(false)} />}
-          {myStream && playAsk && <StreamPlaySheet onArcade={playArcade} onRace={playRace} onCards={playCards} onClose={() => setPlayAsk(false)} />}
-          {panel === 'onnumara' && (
-            <div className="st-sheet-bg" onClick={() => setPanel(null)}>
-              <div className="st-sheet st-cards-sheet" onClick={(e) => e.stopPropagation()}>
-                <div className="st-cards-head">
-                  <b>🃏 10 Numara</b>
-                  <button className="st-btn ghost" onClick={() => setPanel(null)}>
-                    ✕
-                  </button>
-                </div>
-                <OnNumaraScreen
-                  onEnterTable={(tableId) => {
-                    setPanel(null);
-                    window.dispatchEvent(new CustomEvent('ns:open-table', { detail: tableId }));
-                  }}
-                />
-              </div>
-            </div>
+          {myStream && playAsk && <StreamPlaySheet onArcade={playArcade} onRace={playRace} onCasino={playCasino} onClose={() => setPlayAsk(false)} />}
+          {panel === 'streamCasino' && myStream && (
+            <StreamCasinoSheet onClose={() => setPanel(null)} onEnterTable={(tableId) => window.dispatchEvent(new CustomEvent('ns:open-table', { detail: tableId }))} />
           )}
           {streamSum && <StreamSummary summary={streamSum.summary} reason={streamSum.reason} cost={streamSum.cost} streamId={streamSum.streamId} onClose={() => setStreamSum(null)} />}
           {streamWarn && (

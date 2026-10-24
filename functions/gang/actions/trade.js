@@ -2,6 +2,8 @@
 //  - Sadece ticaret yolu sahibi çete (yol 21 gün elde kalır), o yolun ürününü
 //    mağaza (yasaklı madde: Amazor) fiyatının yarısına sipariş edebilir.
 //    Günlük sipariş limiti = yolu kazanırken kullanılan gücün %1'i (altın) — v39.
+//  - v125: YASAKLI MADDE her çete için açık: günlük limit = 00:00'daki üye sayısı ×
+//    1.250 (yolu tutan çete için savaş limitine EKLENİR).
 //  - v67: Sipariş Pzt–Cmt 00:00–12:00; sadece Mafya Babası + Sağ Kol.
 //  - Tır siparişten sonraki ilk 3 saatlik dilimde (03·06·09·12) yola çıkar,
 //    aynı gecenin 00:00'ında depoya ulaşır. Her tıra günde tek sefer.
@@ -33,6 +35,15 @@ export function createTradeActions(core, treasury) {
   // 2. el pazarında ilanda olan ürünler depoda durur (yer kaplar) ama satılamaz/dağıtılamaz
   function availableOf(depot, key) {
     return Number(depot?.items?.[key] || 0) - Number(depot?.listed?.[key] || 0);
+  }
+
+  // v125: günlük sipariş limiti = (yol sahibiyse savaştan kazanılan limit) + (yasaklı maddede
+  // 00:00'daki üye sayısı × 1.250). 00:00 kaydı yoksa (güncellemenin ilk günü) o anki üye sayısı.
+  function orderLimitOf({ holder, route, isContraband, state, gang, dateKey }) {
+    const routePart = holder ? Number(route?.dailyOrderLimit || 0) : 0;
+    if (!isContraband) return routePart;
+    const members = state?.orderBase?.dateKey === dateKey ? Number(state.orderBase.members || 0) : Number(gang?.memberCount || 0);
+    return routePart + Math.max(0, members) * GANG.CONTRABAND_ORDER_PER_MEMBER;
   }
 
   function truckLifeLeft(truck, dateKey) {
@@ -140,17 +151,23 @@ export function createTradeActions(core, treasury) {
       const guard = await requestGuard(tx, ctx, data.requestId);
       if (guard.done) return guard.result;
       const { gangId, me } = await readGangRole(tx, ctx, 'sagkol', 'Sipariş sadece Mafya Babası ve Sağ Kol tarafından verilebilir.');
-      const [routeSnap, truckSnap, stateSnap, depotSnap, orderSnap, pendingSnap] = await Promise.all([
+      const [routeSnap, truckSnap, stateSnap, depotSnap, orderSnap, pendingSnap, gangSnap] = await Promise.all([
         tx.get(ctx.ref.route(productId)),
         tx.get(ctx.ref.truck(truckId)),
         tx.get(ctx.ref.gangState(gangId)),
         tx.get(ctx.ref.depot(gangId)),
         tx.get(ctx.ref.order(orderId)),
         tx.get(ctx.ref.orders().where('truckId', '==', truckId)),
+        tx.get(ctx.ref.gang(gangId)),
       ]);
       const route = routeSnap.data();
-      if (!route || route.holderType !== 'gang' || route.holderId !== gangId) fail('failed-precondition', 'Bu ticaret yolu çetenizde değil.');
-      if (route.untilDateKey && ctx.dateKey >= route.untilDateKey) fail('failed-precondition', 'Bu ticaret yolunun süresi doldu.');
+      // v125: yasaklı maddeyi her çete üye hakkıyla sipariş edebilir; diğer ürünler sadece yol sahibi
+      const holder = Boolean(route && route.holderType === 'gang' && route.holderId === gangId && !(route.untilDateKey && ctx.dateKey >= route.untilDateKey));
+      const isContraband = productId === 'yasakliMadde';
+      if (!holder && !isContraband) {
+        if (!route || route.holderType !== 'gang' || route.holderId !== gangId) fail('failed-precondition', 'Bu ticaret yolu çetenizde değil.');
+        fail('failed-precondition', 'Bu ticaret yolunun süresi doldu.');
+      }
       const truck = truckSnap.data();
       if (!truck || truck.gangId !== gangId || truck.status === 'retired') fail('failed-precondition', 'Tır bulunamadı.');
       // v108: son günündeki (1 gün ömrü kalan) tır da sipariş alır — sefer aynı gece 00:00'da
@@ -160,7 +177,7 @@ export function createTradeActions(core, treasury) {
       if ((orderSnap.exists && orderSnap.data().status !== 'cancelled') || pendingSnap.docs.some((d) => d.data().status === 'pending')) fail('already-exists', 'Bu tırın bekleyen bir siparişi var.');
       const state = stateSnap.data() || {};
       const spentToday = state.orderSpent?.dateKey === ctx.dateKey ? Number(state.orderSpent.byProduct?.[productId] || 0) : 0;
-      const limit = Number(route.dailyOrderLimit || 0);
+      const limit = orderLimitOf({ holder, route, isContraband, state, gang: gangSnap.data(), dateKey: ctx.dateKey });
       if (spentToday + cost > limit) fail('failed-precondition', `Günlük sipariş limitin: ${fmt(Math.max(0, limit - spentToday))} altın kaldı.`);
       if (Number(state.kasa || 0) < cost) fail('failed-precondition', 'Kasada yeterli para yok.');
       const free = depotFree(depotSnap.data());
@@ -237,6 +254,41 @@ export function createTradeActions(core, treasury) {
       ledger(tx, ctx, { type: 'depot_sell', amount: value, from: { kind: 'system' }, to: { kind: 'gang', id: gangId }, refId: key });
       gangLog(tx, ctx, gangId, '🏷️', `${qty} × ${it.label} satıldı: +${fmt(value)}`);
       const res = { value };
+      guard.save(res);
+      return res;
+    });
+  }
+
+  // v124 — "Depoya sat": çete deposundaki yasaklı maddeyi bir DEPOYA (oyunun ya da
+  // bir oyuncunun) deponun ALIŞ fiyatından anında sat; para çete kasasına girer.
+  // Oyuncu deposunda deponun kasası yettiği kadar satılabilir (functions/depo.js).
+  // Sadece Mafya Babası + Sağ Kol. Test dünyasında yalnız oyunun deposu (1.500).
+  const GAME_DEPO_ID = 'game_depo';
+  const GAME_DEPO_BUY = 1500;
+  async function sellToDepo(ctx, data) {
+    const depotId = String(data.depotId || '');
+    const qty = posInt(data.qty, 'Adet');
+    const key = 'yasakliMadde';
+    const depo = ctx.isTest ? null : core.deps.depo || null;
+    if (!depotId) fail('invalid-argument', 'Depo seçilmedi.');
+    if (!depo && depotId !== GAME_DEPO_ID) fail('failed-precondition', 'Bu depo şu an kullanılamıyor.');
+    return core.db.runTransaction(async (tx) => {
+      const guard = await requestGuard(tx, ctx, data.requestId);
+      if (guard.done) return guard.result;
+      const { gangId, me } = await readGangRole(tx, ctx, 'sagkol', 'Depoya satışı sadece Mafya Babası ve Sağ Kol yapabilir.');
+      const depotSnap = await tx.get(ctx.ref.depot(gangId));
+      const dep = depo ? await depo.readDepotForSale(tx, depotId) : null;
+      if (availableOf(depotSnap.data(), key) < qty) fail('failed-precondition', 'Çete deposunda bu kadar (ilanda olmayan) yasaklı madde yok.');
+      const unitNow = dep ? dep.prices.buy : GAME_DEPO_BUY;
+      if (data.expect != null && Number(data.expect) !== unitNow) fail('aborted', `Deponun alış fiyatı değişti: ${fmt(unitNow)} altın. Tekrar dene.`);
+      // --- yazmalar ---
+      const { unit, total } = dep ? depo.writeDepotSale(tx, dep, qty) : { unit: GAME_DEPO_BUY, total: GAME_DEPO_BUY * qty };
+      tx.update(ctx.ref.depot(gangId), { [`items.${key}`]: FV.increment(-qty), usedUnits: FV.increment(-unitsOfItems({ [key]: qty })) });
+      tx.update(ctx.ref.gangState(gangId), { kasa: FV.increment(total) });
+      ledger(tx, ctx, { type: 'depot_to_depo', amount: total, from: { kind: 'depo', id: depotId }, to: { kind: 'gang', id: gangId }, refId: depotId });
+      gangLog(tx, ctx, gangId, '📦', `${qty} × Yasaklı Madde depoya satıldı (adet ${fmt(unit)}): +${fmt(total)}`);
+      announce(tx, ctx, gangId, '📦', `${me.name}, depodan ${fmt(qty)} yasaklı maddeyi bir depoya sattı: kasaya +${fmt(total)} altın.`);
+      const res = { qty, unit, total };
       guard.save(res);
       return res;
     });
@@ -331,5 +383,5 @@ export function createTradeActions(core, treasury) {
     return atLeast(rank, 'kidemli');
   }
 
-  return { buyTruck, buyDepot, placeOrder, cancelOrder, sellFromDepot, distributeFromDepot, deliverItem, canSeeCargo, truckLifeLeft, availableOf, readGangRole };
+  return { buyTruck, buyDepot, placeOrder, cancelOrder, sellFromDepot, sellToDepo, distributeFromDepot, deliverItem, canSeeCargo, truckLifeLeft, availableOf, readGangRole };
 }

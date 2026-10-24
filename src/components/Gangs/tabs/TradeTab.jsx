@@ -4,7 +4,9 @@
 //    silah mağazası gibi liste (yarı fiyat) ya da yasaklı madde miktarı.
 //  - v67: sipariş Pzt–Cmt 00:00–12:00; tır sonraki 3 saatlik dilimde yola çıkar,
 //    6 saat ihbar/sabotaj/operasyon penceresi, sonra saldırı, gece 00:00 depoda.
-//    Depodaki ürünler anında satılamaz/dağıtılamaz — sadece 2. elde (çete adıyla).
+//    Araba / silah 2. elde (çete adıyla), yasaklı madde "Depoya sat".
+//  - v125: yasaklı madde her çeteye açık (00:00'daki üye × 1.250 / gün; yol sahibine eklenir).
+//    Yoldaki tırlar (rakipler) Savaş panelinin en altında (RoadTrucks buradan dışa aktarılır).
 //  - Görünürlük: tırları tüm üyeler görür; sipariş/yük içeriği Kıdemli+.
 //    Yönetim (tır/depo al, sipariş, sat/dağıt/2. el) Baba + Sağ Kol.
 import { useEffect, useMemo, useState } from 'react';
@@ -16,6 +18,7 @@ import { itemInfo, itemsFor } from '../itemInfo';
 import { nextTradeSunday } from '../tradeSchedule';
 import { useAdPrice } from '../GangMarketSection';
 import { autoSellsAt, AUTO_SELL_HINT } from '../../../lib/autoSell';
+import DepoSellSheet from '../DepoSellSheet';
 
 const GANG_RULES_HARAC_HOUR_LABEL = '21:00'; // v38: haraç/rüşvet son dilim (21:00) başlayana kadar
 
@@ -53,7 +56,13 @@ function useNextSundayProduct() {
   return nextTradeSunday(now, world?.launchDateKey);
 }
 
-function Routes({ routes, gangId, state, today }) {
+// v125: yasaklı maddede üye hakkı (00:00'daki üye × 1.250; kayıt yoksa şimdiki üye sayısı)
+export function memberOrderRight(state, today, memberCount) {
+  const n = state?.orderBase?.dateKey === today ? Number(state.orderBase.members || 0) : Number(memberCount || 0);
+  return Math.max(0, n) * GANG_RULES.CONTRABAND_ORDER_PER_MEMBER;
+}
+function Routes({ routes, gangId, state, today, memberCount }) {
+  const right = memberOrderRight(state, today, memberCount);
   const next = useNextSundayProduct();
   const byId = Object.fromEntries(routes.map((r) => [r.id, r]));
   return (
@@ -69,19 +78,21 @@ function Routes({ routes, gangId, state, today }) {
       <div className="gx-routes">
         {PRODUCTS.map((p) => {
           const r = byId[p.id];
-          const mine = r?.holderType === 'gang' && r.holderId === gangId;
+          const mine = r?.holderType === 'gang' && r.holderId === gangId && (!r.untilDateKey || today < r.untilDateKey);
+          const showLimit = mine || p.id === 'yasakliMadde';
           const spent = state?.orderSpent?.dateKey === today ? Number(state.orderSpent.byProduct?.[p.id] || 0) : 0;
           return (
             <div key={p.id} className={`gx-route${mine ? ' mine' : ''}${r?.holderType ? '' : ' empty'}`}>
               <span className="gx-route-emoji">{p.emoji}</span>
               <span className="gx-route-label">{p.label}</span>
-              {mine ? (
+              {showLimit ? (
                 // v64: kendi yolumuz — logo/"SİZİN" yok; sade istatistikler
+                // v125: yasaklı madde her çetede (üye hakkı; yol bizdeyse eklenir)
                 (() => {
-                  const total = Number(r.dailyOrderLimit || 0);
+                  const total = (mine ? Number(r.dailyOrderLimit || 0) : 0) + (p.id === 'yasakliMadde' ? right : 0);
                   const left = Math.max(0, total - spent);
                   const pct = total > 0 ? Math.round((left / total) * 100) : 0;
-                  const days = r.untilDateKey ? Math.max(0, daysBetween(today, r.untilDateKey)) : null;
+                  const days = mine && r.untilDateKey ? Math.max(0, daysBetween(today, r.untilDateKey)) : null;
                   return (
                     <div className="gx-route-stats">
                       <div className="gx-route-stat">
@@ -94,10 +105,16 @@ function Routes({ routes, gangId, state, today }) {
                       <div className="gx-route-meter" aria-hidden="true">
                         <span style={{ width: `${pct}%` }} />
                       </div>
-                      <div className="gx-route-stat">
-                        <span>Kalan süre</span>
-                        <b>{days == null ? '—' : `${days} gün`}</b>
-                      </div>
+                      {mine ? (
+                        <div className="gx-route-stat">
+                          <span>Kalan süre</span>
+                          <b>{days == null ? '—' : `${days} gün`}</b>
+                        </div>
+                      ) : r?.holderType === 'gang' ? (
+                        <span className="gx-route-holder">
+                          <Logo logo={r.holderLogo} size={16} /> {r.holderName}
+                        </span>
+                      ) : null}
                     </div>
                   );
                 })()
@@ -119,14 +136,17 @@ function Routes({ routes, gangId, state, today }) {
 // ---------------------------------------------------------------------------
 // Sipariş ver: tır → yol → ürünler
 // ---------------------------------------------------------------------------
-function OrderSheet({ trucks, routes, state, depot, gangId, orders, onClose }) {
+function OrderSheet({ trucks, routes, state, depot, gangId, memberCount, orders, onClose }) {
   const { run, busy } = useGangAction();
   const now = useNow(60_000);
   const today = istDateKey(now);
   const pendingTruck = new Set(orders.filter((o) => o.status === 'pending').map((o) => o.truckId));
   const eligible = trucks.filter((t) => t.status !== 'retired' && daysBetween(today, t.expiresDateKey) >= 1 && !pendingTruck.has(t.id) && !(t.status === 'in_transit' && t.departDateKey === today));
   const departAt = nextWindowStart(now);
-  const myRoutes = routes.filter((r) => r.holderType === 'gang' && r.holderId === gangId && (!r.untilDateKey || today < r.untilDateKey));
+  const heldRoutes = routes.filter((r) => r.holderType === 'gang' && r.holderId === gangId && (!r.untilDateKey || today < r.untilDateKey));
+  // v125: yasaklı madde her çeteye açık (üye hakkı)
+  const right = memberOrderRight(state, today, memberCount);
+  const myRoutes = heldRoutes.some((r) => r.id === 'yasakliMadde') || right <= 0 ? heldRoutes : [...heldRoutes, { id: 'yasakliMadde', dailyOrderLimit: 0, memberOnly: true }];
   const [truckId, setTruckId] = useState(eligible[0]?.id || null);
   const [product, setProduct] = useState(myRoutes[0]?.id || null);
   const [qty, setQty] = useState({});
@@ -146,7 +166,7 @@ function OrderSheet({ trucks, routes, state, depot, gangId, orders, onClose }) {
   const cost = Object.entries(qty).reduce((a, [k, q]) => a + q * half(k), 0);
   const cap = GANG_RULES.TRUCK_CAPACITY[product] || 0;
   const spent = state?.orderSpent?.dateKey === today ? Number(state.orderSpent.byProduct?.[product] || 0) : 0;
-  const limitLeft = Math.max(0, Number(route?.dailyOrderLimit || 0) - spent);
+  const limitLeft = Math.max(0, Number(route?.dailyOrderLimit || 0) + (product === 'yasakliMadde' ? right : 0) - spent);
   const free = Math.max(0, Number(depot?.capacity || 0) - Number(depot?.usedUnits || 0) - Number(depot?.reservedUnits || 0));
   const kasa = Number(state?.kasa || 0);
   const over = count > cap || cost > limitLeft || cost > kasa || units > free;
@@ -288,6 +308,7 @@ function DepotItems({ depot, lead, listings }) {
   const [price, setPrice] = useState(0);
   const [group, setGroup] = useState('rutbeli');
   const [adFor, setAdFor] = useState(null); // v71 — reklam onayı
+  const [depoSell, setDepoSell] = useState(null); // v124 — yasaklı madde → depoya sat (serbest adet)
   const entries = Object.entries(depot?.items || {}).filter(([, q]) => q > 0);
   const groups = [
     { id: 'araba', title: '🚗 Arabalar' },
@@ -301,7 +322,6 @@ function DepotItems({ depot, lead, listings }) {
   };
   return (
     <>
-      <p className="dim gx-mini">🏪 Depodaki ürünler anında satılamaz ve dağıtılamaz — 2. el pazarında çetenin adıyla satılır, satış parası kasaya girer.</p>
       {groups.map((g) => {
         const rows = entries.filter(([k]) => itemInfo(k).product === g.id);
         return (
@@ -324,9 +344,15 @@ function DepotItems({ depot, lead, listings }) {
                   <b>{fmt(q)}</b>
                   {lead && free > 0 && (
                     <span className="gx-depot-acts">
-                      <Btn small kind="ghost" onClick={() => open('list', k, it, free)}>
-                        🏪 2. ele koy
-                      </Btn>
+                      {k === 'yasakliMadde' ? (
+                        <Btn small kind="ghost" onClick={() => setDepoSell(free)}>
+                          📦 Depoya sat
+                        </Btn>
+                      ) : (
+                        <Btn small kind="ghost" onClick={() => open('list', k, it, free)}>
+                          🏪 2. ele koy
+                        </Btn>
+                      )}
                     </span>
                   )}
                 </div>
@@ -364,6 +390,7 @@ function DepotItems({ depot, lead, listings }) {
           ))}
         </>
       )}
+      {depoSell != null && <DepoSellSheet free={depoSell} onClose={() => setDepoSell(null)} />}
       {adFor && (
         <AdConfirm
           ad={adFor}
@@ -419,7 +446,7 @@ function DepotItems({ depot, lead, listings }) {
 // ---------------------------------------------------------------------------
 // Yoldaki tırlar (tüm çeteler): sabotaj (Baba/Sağ Kol) · talep (Kıdemli/Tetikçi)
 // ---------------------------------------------------------------------------
-function RoadTrucks({ gangId, rank, alliances, wars }) {
+export function RoadTrucks({ gangId, rank, alliances, wars }) {
   const { path, call } = useGang();
   const { run, busy } = useGangAction();
   const now = useNow();
@@ -557,7 +584,7 @@ export default function TradeTab({ d }) {
 
   return (
     <div className="gx-stack">
-      <Routes routes={routes} gangId={gangId} state={d.state} today={today} />
+      <Routes routes={routes} gangId={gangId} state={d.state} today={today} memberCount={d.gang?.memberCount} />
 
       <div className="gx-section-head">
         <span>🏚️ Depo</span>
@@ -645,9 +672,7 @@ export default function TradeTab({ d }) {
 
       <DepotItems depot={depot} lead={lead} listings={listings} />
 
-      <RoadTrucks gangId={gangId} rank={d.rank} alliances={d.pacts || d.alliances} wars={d.wars} />
-
-      {orderOpen && <OrderSheet trucks={trucks} routes={routes} state={d.state} depot={depot} gangId={gangId} orders={orders} onClose={() => setOrderOpen(false)} />}
+      {orderOpen && <OrderSheet trucks={trucks} routes={routes} state={d.state} depot={depot} gangId={gangId} memberCount={d.gang?.memberCount} orders={orders} onClose={() => setOrderOpen(false)} />}
       {ask && (
         <Confirm
           icon={ask === 'truck' ? '🚚' : '🏚️'}

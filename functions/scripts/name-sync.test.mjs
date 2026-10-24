@@ -64,3 +64,31 @@ test('haftalık tarama eski adda kalan kopyaları düzeltir', async () => {
   assert.equal(h.G('imamState/current').displayName, 'YeniAli');
   assert.equal(h.G('houses/h1').ownerName, 'YeniAli');
 });
+
+test('v124: ChatsApp sohbet adı + bekleyen istekler eşitlenir; bekleyen işaret silinir; bozuk belge diğerlerini engellemez; canlı dünya config’ten', async () => {
+  const h = setup();
+  h.S('users/ali', { ...h.G('users/ali'), nameSyncPending: true });
+  h.S('dmChats/ali__veli', { members: ['ali', 'veli'], names: { ali: 'EskiAli', veli: 'Veli' }, lastText: 'selam' });
+  h.S('friendRequests/ali_zeki', { fromUid: 'ali', toUid: 'zeki', fromName: 'EskiAli', toName: 'Zeki' });
+  h.S('friendRequests/mert_ali', { fromUid: 'mert', toUid: 'ali', fromName: 'Mert', toName: 'EskiAli' });
+  // dünya belgesi YOK ama config canlı dünyayı gösteriyor
+  h.S('gangSystem/config', { liveWorldId: 'live_x' });
+  h.S('gangWorlds/live_x/memberships/ali', { gangId: 'g9' });
+  h.S('gangWorlds/live_x/gangs/g9/members/ali', { name: 'EskiAli', rank: 'comez' });
+  const r = await h.sync.syncPlayerName('ali');
+  assert.equal(r.failed, 0);
+  assert.equal(h.G('dmChats/ali__veli').names.ali, 'YeniAli');
+  assert.equal(h.G('dmChats/ali__veli').names.veli, 'Veli');
+  assert.equal(h.G('dmChats/ali__veli').lastText, 'selam');
+  assert.equal(h.G('friendRequests/ali_zeki').fromName, 'YeniAli');
+  assert.equal(h.G('friendRequests/mert_ali').toName, 'YeniAli');
+  assert.equal(h.G('gangWorlds/live_x/gangs/g9/members/ali').name, 'YeniAli');
+  assert.equal(h.G('users/ali').nameSyncPending, undefined, 'işaret silindi');
+  // saatlik tekrar: bekleyen yoksa iş yapmaz
+  assert.deepEqual(await h.sync.retryPendingNames(), { pending: 0, changed: 0 });
+  h.S('users/veli', { displayName: 'VeliYeni', nameSyncPending: true });
+  const rr = await h.sync.retryPendingNames();
+  assert.equal(rr.pending, 1);
+  assert.equal(h.G('friendships/ali').friends.veli.name, 'VeliYeni');
+  assert.equal(h.G('dmChats/ali__veli').names.veli, 'VeliYeni');
+});

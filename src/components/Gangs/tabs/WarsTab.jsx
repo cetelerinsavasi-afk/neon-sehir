@@ -18,6 +18,7 @@ import { IntelDecisionPanel, VoteCard } from '../shared';
 import { GANG_RULES, INTEL_LEADERS, INTEL_LOGO, INTEL_NAME, LEADERS, appRankLabel, fmt, productOf } from '../gangConstants';
 import { TRADE_COUNTDOWN_WINDOW_MS, nextTradeSunday } from '../tradeSchedule';
 import { BiatSection, biatRowsOf, foldTradeWar, useBiatInfo } from '../Biat';
+import { RoadTrucks } from './TradeTab';
 
 const GANG_RULES_HARAC_HOUR = 21; // v38: son dilim (21:00) başlayana kadar
 // v37: bahis tutarını sadece rütbeliler (Baba · Sağ Kol · Kıdemli) görür —
@@ -1285,6 +1286,9 @@ export default function WarsTab({ org, d }) {
 
       {/* v68: bize ait olmayan savaşları izle */}
       <WatchWarsButton />
+
+      {/* v125: rakip çetelerin yoldaki tırları (eskiden Ticaret panelindeydi) — en altta */}
+      {!isIntel && <RoadTrucks gangId={gangId} rank={d.rank} alliances={d.pacts || d.alliances} wars={d.wars} />}
 
       {/* v108/v109: polislik başvuruları — en altta, sadece inceleme yetkisi olanlar (Emniyet Genel Müdürü + Emniyet Amirleri) */}
       {org === 'intel' && d.canReview && <IntelApplications apps={d.apps || []} />}

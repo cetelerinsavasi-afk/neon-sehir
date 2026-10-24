@@ -199,6 +199,20 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "onNumaraTables",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "casinoId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [

@@ -246,24 +246,6 @@
 }
 
 /* uygulama renkleri */
-.tone-amazor {
-  background: linear-gradient(160deg, #2c3a4d, #131a24);
-  color: #ff9900;
-  font-family: Georgia, 'Times New Roman', serif;
-  font-size: 34px;
-  padding-bottom: 8px;
-  box-sizing: border-box;
-}
-.tone-amazor::after {
-  content: '';
-  position: absolute;
-  left: 16px;
-  right: 14px;
-  bottom: 12px;
-  height: 8px;
-  border-bottom: 3px solid #ff9900;
-  border-radius: 0 0 50% 50%;
-}
 .tone-casino {
   background: linear-gradient(160deg, #a23cff, #4b0f8c);
 }

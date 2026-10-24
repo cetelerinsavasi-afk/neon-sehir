@@ -11,17 +11,18 @@ Oyuncu bir meslek seçiyor (İşçi, Üretici ya da Polis), günlük işini yap�
 ## Meslekler
 
 - **İşçi** — fabrikada çalışıp günde sabit 100 altın kazanıyor.
-- **Üretici** — kendi üretim makinelerini alıp her gün malzeme üretiyor (tamir malzemesi, silah/araba yükseltme malzemesi, yasaklı madde, kripto/mining).
+- **Üretici** — kendi üretim makinelerini alıp her gün malzeme üretiyor (tamir malzemesi, silah/araba yükseltme malzemesi, kripto/mining). Üretilen malzeme fabrikanın envanterine girer (v124).
 - **Polis** — günde 500 altın maaş alıyor ama silah sahibi olmak ve şüphesinin %0 olması şartı var.
 - Ayrıca **İmam** (cami görevlisi, saygınlık ve temiz sicil gerektiriyor) ve **Dilenci** (parası biten oyuncuların girebildiği, başkalarından bağış isteyebildiği bir durum) gibi özel roller de var.
 
 ## Ekonomi ve ticaret
 
 - **Banka**: altın yatırma/çekme, kripto (KR)/hisse senedi/elmas alım-satımı (canlı fiyat grafikleriyle), araç kredisi, devlete olan borcu (ceza) ödeme.
-- **Fabrikalar**: her oyuncu bir kere fabrika kurabiliyor, içine üretim makineleri (mining dahil) alıp işçi çalıştırabiliyor, günlük kâr/zarar raporu görüyor, isterse fabrikasından **hisse** satarak diğer oyuncuları ortak edebiliyor.
-- **2. El Pazar Yeri**: oyuncular arasında araç, silah, malzeme ve makine alım-satımı.
+- **Fabrikalar**: her oyuncu bir kere fabrika kurabiliyor, içine üretim makineleri (mining dahil) alıp işçi çalıştırabiliyor, günlük kâr/zarar raporu görüyor. Fabrika kapatılamaz. v124: yeni hisse alım-satımı kapalı (eski hisselerin ödemesi süresi bitene kadar sürer).
+- **Malzeme (v124)**: oyuncunun cebinde malzeme yok (sadece yasaklı madde). Fabrika + silahçı + modifiyecinin ORTAK envanteri var; malzeme **Mağaza**'dan (işletmeler/fabrikalar arası ilan pazarı) alınıp satılır. Fiyat bantlarının tabanı `functions/itemRules.js` → `AMAZOR_PRICES` ("Amazor fiyatları").
+- **2. El Pazar Yeri**: oyuncular arasında araç ve silah alım-satımı (%1 vergi; "Sıfır" filtresi).
 - **Altın Mağazası**: gerçek parayla altın paketi satın alma.
-- **Amazor / Liman / Depo**: malzeme alışverişi yapılan ayrı market ekranları (liman gemi takvimiyle çalışıyor).
+- **Liman & Depo (v124)**: Amazor ve Liman kalktı. Yasaklı madde ticareti depolarda: oyunun deposu (alış 1.500 / satış 2.250, sınırsız) ve oyuncuların açtığı DEPO işletmeleri (alış 1.500–1.750, satış 2.000–2.250).
 
 ## Suç ve polis dinamiği
 
@@ -43,7 +44,7 @@ Oyuncu bir meslek seçiyor (İşçi, Üretici ya da Polis), günlük işini yap�
 
 - **Flappy Kuş** klonu.
 - **Futbol** — sadece mini oyun değil, kendi başına küçük bir yönetim modu: ligler, puan durumu, fikstür, iddaa, kendi takımını yönetme (kadro, transfer, altyapı, stadyum, forma/logo tasarımı).
-- **Kumarhane** — 10 Numara (blackjack benzeri kart oyunu), Piyango (günlük çekiliş, bilet arttıkça büyüyen ikramiye), Slot makinesi (ilk günlük çevirme ücretsiz).
+- **Gazino (v124)** — Neon Gazino ve oyuncuların açtığı GAZİNO işletmeleri: 10 Numara (blackjack benzeri), Rulet (0–12), Slot (çevirme 1.600; oyuncu gazinosunda 1.400–1.600), gazino başına Piyango (havuz 0'dan başlar, bilet = 90 havuz + gazinonun kârı, gece çekiliş, %10 vergi). Oyuncu gazinolarında makinelerin kendi kasası var; sahibi altın / yasaklı madde ekler, çekerken %10 vergi öder; sahibi kendi gazinosunda oynayamaz. Yayında "Casinolar" ile oynanan oyun izleyicilere yansır.
 - **Yarış Pisti** — şampiyona (tur zamanı), bahisli yarış (başka oyuncuya karşı altın bahsi), ücretsiz antrenman.
 
 ## Sosyal özellikler

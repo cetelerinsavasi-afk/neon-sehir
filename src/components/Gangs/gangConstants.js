@@ -58,6 +58,7 @@ export const GANG_RULES = {
   TRUCK_PRICE: 100_000,
   TRUCK_LIFE_DAYS: 21,
   TRUCK_CAPACITY: { araba: 10, silah: 10, yasakliMadde: 100 },
+  CONTRABAND_ORDER_PER_MEMBER: 1250, // v125: her çete günde 00:00'daki üye × 1.250 altınlık yasaklı madde
   DEPOT_PRICE: 100_000,
   DEPOT_STEP: 100,
   UNIT_SIZE: { araba: 10, silah: 10, yasakliMadde: 1 },

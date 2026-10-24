@@ -2,9 +2,7 @@ import { Suspense, lazy, useEffect, useLayoutEffect, useRef, useState } from 're
 import MessagesScreen from '../MessagesScreen/MessagesScreen';
 import MarketplaceScreen from '../MarketplaceScreen/MarketplaceScreen';
 import BankScreen from '../BankScreen/BankScreen';
-import AmazorScreen from '../AmazorScreen/AmazorScreen';
 import ChatsAppScreen from '../ChatsAppScreen/ChatsAppScreen';
-import CasinoScreen from '../CasinoScreen/CasinoScreen';
 import NewspaperScreen from '../NewspaperScreen/NewspaperScreen';
 import FlappyBirdScreen from '../FlappyBirdScreen/FlappyBirdScreen';
 import SixtagramScreen from '../Sixtagram/SixtagramScreen';
@@ -31,8 +29,8 @@ const GoldStoreScreen = lazy(() => import('../GoldStoreScreen/GoldStoreScreen'))
 //   [ TV (haberler) ]  ←  [ Ana ekran ]  →  [ Altın · Neon Şehir · Bi fikrin mi var? ]
 // id'ler geriye dönük uyumluluk için korunuyor (bkz. initialApp kullanımları).
 const APPS = [
-  { id: 'amazor', glyph: 'a', note: 'Amazor', tone: 'amazor' },
-  { id: 'casino', glyph: '🎰', note: 'Casino', tone: 'casino' },
+  // v124: Amazor uygulaması kaldırıldı (fiyat tablosu AMAZOR_PRICES functions/itemRules.js'te kalır)
+  // v124: Casino uygulaması kaldırıldı — kumar oyunları gazinolarda (Casino mekânı + oyuncu gazinoları)
   { id: 'sixtagram', glyph: '📸', note: 'Sixtagram', tone: 'sixtagram' },
   { id: 'flappy', glyph: '🐤', note: 'Flappy Kuş', tone: 'flappy' },
 ];
@@ -69,9 +67,7 @@ const APP_TITLES = {
   'ikinci-el': 'İkinci El Satış',
   banka: 'Parara Bank',
   sms: 'SMS',
-  amazor: 'Amazor Market',
   chatsapp: 'ChatsApp',
-  casino: 'Casino',
   gazete: 'Neon TV',
   flappy: 'Flappy Kuş',
   sixtagram: 'Sixtagram',
@@ -129,7 +125,7 @@ function AppIcon({ app, badge, dot, onOpen }) {
   );
 }
 
-export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }) {
+export default function PhoneScreen({ onClose, initialApp = null }) {
   const [openApp, setOpenApp] = useState(isAppBlocked(initialApp) ? null : initialApp);
   const [page, setPage] = useState(HOME_PAGE);
   // v68 — Android geri tuşu: önce açık uygulama kapanır, sonra telefon
@@ -197,16 +193,7 @@ export default function PhoneScreen({ onClose, initialApp = null, onEnterTable }
           {openApp === 'sms' && <MessagesScreen />}
           {openApp === 'ikinci-el' && <MarketplaceScreen />}
           {openApp === 'banka' && <BankScreen />}
-          {openApp === 'amazor' && <AmazorScreen />}
           {openApp === 'chatsapp' && <ChatsAppScreen />}
-          {openApp === 'casino' && (
-            <CasinoScreen
-              onEnterTable={(tableId) => {
-                onClose();
-                onEnterTable?.(tableId);
-              }}
-            />
-          )}
           {openApp === 'gazete' && <NewspaperScreen />}
           {openApp === 'flappy' && <FlappyBirdScreen />}
           {openApp === 'sixtagram' && <SixtagramScreen />}

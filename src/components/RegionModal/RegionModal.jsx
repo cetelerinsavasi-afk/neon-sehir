@@ -7,7 +7,6 @@ import BankScreen from '../BankScreen/BankScreen';
 import MosqueScreen from '../MosqueScreen/MosqueScreen';
 import PoliceStationScreen from '../PoliceStationScreen/PoliceStationScreen';
 import VendorScreen from '../VendorScreen/VendorScreen';
-import LimanScreen from '../LimanScreen/LimanScreen';
 import RaceTrackScreen from '../RaceTrackScreen/RaceTrackScreen';
 import CasinoScreen from '../CasinoScreen/CasinoScreen';
 import './RegionModal.css';
@@ -47,8 +46,7 @@ function ScreenContent({ region, onEnterRace, onEnterTable, raceLobbyMode, onRac
       return <PoliceStationScreen />;
     case 'seyyar-satici':
       return <VendorScreen vendorId={region.id} vendorName={region.name} />;
-    case 'liman-depo':
-      return <LimanScreen />;
+    // v124: 'liman-depo' artık depolar listesi (App.jsx → BusinessHub, tür 'depo')
     case 'yaris-pisti':
       return (
         <RaceTrackScreen

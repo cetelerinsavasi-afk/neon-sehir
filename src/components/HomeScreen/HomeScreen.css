@@ -264,3 +264,11 @@
   background: linear-gradient(90deg, rgba(34, 211, 238, 0.16), rgba(57, 255, 136, 0.12));
   font-weight: 700;
 }
+
+/* v124 — yasaklı madde sayısı (araçların üstünde) */
+.home-contraband-row {
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255, 46, 140, 0.08);
+  border: 1px solid rgba(255, 46, 140, 0.25);
+}

@@ -278,3 +278,18 @@ test('v41 başkanlık devri: Baba → Sağ Kol; kabul → 00:00da yeni Baba; ret
   assert.equal(h.get(`gangs/${A.gangId}`).babaId, s2);
   assert.equal(h.get(`gangs/${A.gangId}/public/handover`).status, 'expired');
 });
+
+test('v125: 10 gün oyuna girmeyen çete üyesi çeteden çıkarılır (giren kalır); giriş kaydı olmayan test kişisi etkilenmez', async () => {
+  const h = await createHarness();
+  const G = await setupGang(h, { members: 4 });
+  const [lazy, ...rest] = G.ids;
+  const seen = (id) => h.db.doc(`gangWorlds/test/players/${id}`).update({ lastSeenAtMs: h.clock.now });
+  await seen(lazy);
+  for (let d = 0; d < 12; d++) {
+    for (const id of [G.baba, ...rest]) await seen(id);
+    await h.nextDay();
+  }
+  assert.equal((await h.membership(lazy)).gangId ?? null, null, 'oyuna girmeyen atıldı');
+  for (const id of [G.baba, ...rest]) assert.equal((await h.membership(id)).gangId, G.gangId);
+  assert.ok(h.inbox(lazy).some((t) => /10 gündür oyuna girmediğin için .* üyeliğin sona erdi/.test(t)));
+});

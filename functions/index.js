@@ -16,6 +16,7 @@ import { createDeletionRequests } from './deletionRequests.js';
 import { createHouses } from './houses.js';
 import { createBusiness } from './business.js';
 import { resaleTax, factoryTax, factoryTaxRate, taxLedgerWrite, splitSalaryTax, splitLotteryTax } from './tax.js';
+import { SLOT_GAME_COST, rollSlotReels, slotOutcome, normalizeRouletteBets, roulettePayout, ROULETTE_ORDER, LOTTERY_TICKET, GAME_LOTTERY_CUT, splitCasinoCut, GAME_CASINO_ID } from './casinoRules.js';
 import { createVisits } from './visits.js';
 import { createShop } from './shop.js';
 import { createVenue } from './venue.js';
@@ -46,6 +47,11 @@ import { createCosmetics } from './cosmetics.js';
 import { createPlayBilling, createGooglePlayApi } from './playBilling.js';
 import { createStream } from './stream.js';
 import { createNameSync } from './nameSync.js';
+import { createDepo, combineBizHooks } from './depo.js';
+import { createCasino, isPlayerCasinoId, CASINO_TEXT } from './casino.js';
+import { canUseMaterial, readHoldings, buyoutValue, usableMaterials } from './materials.js';
+import { createV124Migrations } from './v124Migrations.js';
+import { ONBOARDING_V, ONBOARDING_ORDER, ONBOARDING_TASK_COUNT, onboardingPosOf, onboardingTaskIdAt, currentOnboardingTaskId } from './onboardingData.js';
 import { profanityCheck, PROFANITY_WARNING } from './profanity.js';
 import { cleanEquipped } from './cosmeticsData.js';
 import { HOUSE_PRODUCTS } from './houseCatalogData.js';
@@ -68,6 +74,15 @@ setGlobalOptions({ region: 'europe-west1' });
 // UGC moderasyonu (Faz D1): şikâyet, engelleme, susturma — ayrıntı functions/moderation.js
 // v86.1: oyuncu adı değişince kopyalarını (çete, imam, ev sahibi...) güncelle
 const nameSync = createNameSync({ db, FieldValue: admin.firestore.FieldValue });
+// v124 — tek seferlik geçişler (liman iadesi, 2. el yasaklı madde ilanları …) — bkz. functions/v124Migrations.js
+const v124Migrations = createV124Migrations({
+  db,
+  FieldValue: admin.firestore.FieldValue,
+  goldTag,
+  // fabrikası olmayan satıcının ilandaki makinesi: ilan fiyatı (makinenin mağaza fiyatını aşmadan)
+  machineRefund: (l) =>
+    RETIRED_MACHINE_TYPES.includes(l.machineType) ? YASAKLI_MACHINE_COMPENSATION : Math.min(Math.floor(Number(l.price) || 0), Number(MACHINE_TYPES[l.machineType]?.price || 0)),
+});
 // v86.1: susturma kontrolü olmayan yazılı isteklerde sadece küfür kontrolü
 const assertClean = (content) => {
   if (profanityCheck(content)) throw new HttpsError('invalid-argument', PROFANITY_WARNING);
@@ -228,8 +243,24 @@ const homeOffice = createHomeOffice({
   business,
   assertCanSpeak: (uid, content) => moderation.assertCanSpeak(uid, content),
 });
+// v124 — depolar: yasaklı madde ticareti (functions/depo.js) — shopAction op'ları
+const depo = createDepo({
+  db,
+  FieldValue: admin.firestore.FieldValue,
+  HttpsError,
+  splitIncomeForDebt: (debt, amount) => splitIncomeForDebt(debt, amount),
+  business,
+  advanceOnboardingStep: (uid, n) => advanceOnboardingStep(uid, n),
+});
+// v124 Faz 6 — oyuncu gazinoları (functions/casino.js) — shopAction op'ları + oyun fonksiyonları
+const casino = createCasino({
+  db,
+  FieldValue: admin.firestore.FieldValue,
+  HttpsError,
+  splitIncomeForDebt: (debt, amount) => splitIncomeForDebt(debt, amount),
+});
 const shop = createShop({
-  extraOps: { ...venue.ops, ...gym.ops, ...homeOffice.ops, ...office.ops },
+  extraOps: { ...venue.ops, ...gym.ops, ...homeOffice.ops, ...office.ops, ...depo.ops, ...casino.ops },
   db,
   FieldValue: admin.firestore.FieldValue,
   HttpsError,
@@ -249,7 +280,7 @@ export const recordVenueVisit = onCall(async (request) => {
 const houses = createHouses({
   visits,
   officeMigrate: (houseId) => office.migrateOne(houseId),
-  bizHooks: shop.bizHooks,
+  bizHooks: combineBizHooks(shop.bizHooks, depo.bizHooks, casino.bizHooks), // v124: depo / gazino kapanınca kasası + malı sahibine
   db,
   FieldValue: admin.firestore.FieldValue,
   HttpsError,
@@ -308,6 +339,14 @@ export const playerNameSweep = onSchedule({ schedule: '40 4 * * 1', timeZone: 'E
   console.log(JSON.stringify({ nameSweep: res }));
 });
 
+// v124 — tek seferlik geçişler saatte bir denenir; bitenler bayrakla atlanır
+// (her adım idempotent). Tümü bitince bu iş tek belge okuyup çıkar.
+export const v124Migrate = onSchedule({ schedule: 'every 60 minutes', timeoutSeconds: 540 }, async () => {
+  const cfg = (await db.doc('gangSystem/config').get()).data() || {};
+  const r = await v124Migrations.runAll({ liveWorldId: cfg.liveWorldId || null });
+  console.log(JSON.stringify({ v124Migrate: r }));
+});
+
 export const achievementsSweep = onSchedule({ schedule: 'every 60 minutes' }, async () => {
   await achievements.sweep();
 });
@@ -315,6 +354,9 @@ export const achievementsSweep = onSchedule({ schedule: 'every 60 minutes' }, as
 export const socialCleanup = onSchedule({ schedule: 'every 60 minutes' }, async () => {
   const r = await social.cleanup();
   if (r.requests || r.chats) console.log(`socialCleanup: ${r.requests} istek, ${r.chats} sohbet silindi`);
+  // v124: yarım kalan ad eşitlemelerini tekrar dene (çete / arkadaş / ChatsApp)
+  const nr = await nameSync.retryPendingNames().catch((e) => ({ error: e?.message }));
+  if (nr?.pending) console.log(JSON.stringify({ nameRetry: nr }));
 });
 // Süresi dolan banları kaldırır (Auth hesabını yeniden açar) ve 12 aydan eski
 // sonuçlanmış bildirimleri siler (Gizlilik Politikası md. 6) — saatte bir.
@@ -362,7 +404,9 @@ export const adminBanSweep = onSchedule({ schedule: 'every 60 minutes' }, async 
 //   18 · Amazor ya da 2. elden silah geliştirme malzemesi al (1 adet yeter)
 //   19 · Silahını geliştir (2./3. seviye silahı varsa otomatik geçer)
 //   20 · Bi çeteye gir (zaten bir çetedeyse otomatik geçer)
-const ONBOARDING_TASK_COUNT = 20;
+// v124: görev listesi functions/onboardingData.js'e taşındı (istemciyle ortak);
+// 8 / 15 / 18 kaldırıldı → 17 görev. Görev kimlikleri (aşağıdaki çağrılardaki
+// numaralar) ESKİ numaralardır ve değişmedi; sıra ONBOARDING_ORDER'dadır.
 
 // advanceOnboardingStep — SADECE gönderilen `taskNumber`, oyuncunun O AN
 // aktif adımıyla (onboardingStep) birebir eşleşiyorsa 1 ilerletir. Adım
@@ -372,15 +416,17 @@ const ONBOARDING_TASK_COUNT = 20;
 // adım 5/9 — bkz. checkOnboardingProgress). Best-effort: hata olursa asıl
 // oyun akışını bozmasın diye yutuluyor.
 async function advanceOnboardingStep(uid, taskNumber) {
+  if (!ONBOARDING_ORDER.includes(taskNumber)) return; // v124: kaldırılan görev — okuma bile yapma
   try {
     const userRef = db.collection('users').doc(uid);
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(userRef);
       const user = snap.data();
       if (!user) return;
-      const currentStep = user.onboardingStep || 1;
-      if (currentStep !== taskNumber) return;
-      tx.update(userRef, { onboardingStep: currentStep + 1 });
+      // v124: taskNumber = görev KİMLİĞİ; oyuncunun sırası (eski kayıt da olsa) yeni listeye çevrilir
+      const pos = onboardingPosOf(user);
+      if (onboardingTaskIdAt(pos) !== taskNumber) return;
+      tx.update(userRef, { onboardingStep: pos + 1, onboardingV: ONBOARDING_V });
     });
   } catch (err) {
     console.error('advanceOnboardingStep hata:', taskNumber, err);
@@ -416,25 +462,28 @@ export const checkOnboardingProgress = onCall(async (request) => {
     const userSnap = await tx.get(userRef);
     const user = userSnap.data();
     if (!user) return;
-    const currentStep = user.onboardingStep || 1;
+    // v124: görev kimliğine göre (sıra yeni listede); geçince sıra + 1 ve onboardingV yazılır
+    const pos = onboardingPosOf(user);
+    const currentStep = onboardingTaskIdAt(pos);
+    const pass = () => tx.update(userRef, { onboardingStep: pos + 1, onboardingV: ONBOARDING_V });
     if (currentStep === 5) {
       const weaponsSnap = await tx.get(db.collection('weapons').where('ownerId', '==', uid).limit(1));
       if (!weaponsSnap.empty) {
-        tx.update(userRef, { onboardingStep: 6 });
+        pass();
       }
     } else if (currentStep === 9) {
       if ((user.suspicion || 0) >= 20) {
-        tx.update(userRef, { onboardingStep: 10 });
+        pass();
       }
     } else if (currentStep === 11) {
       const vehiclesSnap = await tx.get(db.collection('vehicles').where('ownerId', '==', uid).limit(1));
       if (!vehiclesSnap.empty) {
-        tx.update(userRef, { onboardingStep: 12 });
+        pass();
       }
     } else if (currentStep === 12) {
       const progressSnap = await tx.get(db.collection('trainingProgress').doc(uid));
       if (progressSnap.exists && progressSnap.data()?.beatenLevels?.[1]) {
-        tx.update(userRef, { onboardingStep: 13 });
+        pass();
       }
     } else if (currentStep === 13) {
       const champRoomSnap = await tx.get(
@@ -445,19 +494,19 @@ export const checkOnboardingProgress = onCall(async (request) => {
           .limit(1)
       );
       if (!champRoomSnap.empty) {
-        tx.update(userRef, { onboardingStep: 14 });
+        pass();
       }
     } else if (currentStep === 16) {
       // Avatarını daha önce düzenlemiş (varsayılan değil) → otomatik geç
       if (user.avatar) {
-        tx.update(userRef, { onboardingStep: 17 });
+        pass();
       }
     } else if (currentStep === 19) {
       // Elinde 2. ya da 3. seviye silah varsa → otomatik geç
       // (tek alanlı sorgu — ek composite index gerektirmez)
       const ownedSnap = await tx.get(db.collection('weapons').where('ownerId', '==', uid));
       if (ownedSnap.docs.some((d) => (d.data().level || 1) >= 2)) {
-        tx.update(userRef, { onboardingStep: 20 });
+        pass();
       }
     }
   });
@@ -465,7 +514,7 @@ export const checkOnboardingProgress = onCall(async (request) => {
   // okuma transaction dışında, ilerleme advanceOnboardingStep ile güvenli).
   try {
     const fresh = (await userRef.get()).data();
-    if ((fresh?.onboardingStep || 1) === 20 && (await gangFunctions.system.isInLiveGang(uid))) {
+    if (fresh && currentOnboardingTaskId(fresh) === 20 && (await gangFunctions.system.isInLiveGang(uid))) {
       await advanceOnboardingStep(uid, 20);
     }
   } catch (err) {
@@ -489,7 +538,7 @@ export const completeOnboardingChecklist = onCall(async (request) => {
     if (!user) {
       throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
     }
-    if ((user.onboardingStep || 1) <= ONBOARDING_TASK_COUNT) {
+    if (onboardingPosOf(user) <= ONBOARDING_TASK_COUNT) {
       throw new HttpsError('failed-precondition', 'Henüz tüm görevleri tamamlamadın.');
     }
     if (user.onboardingRewardClaimed) {
@@ -1537,6 +1586,10 @@ export const reassignEmployee = onCall(async (request) => {
 // factories/{ownerId}/shares/{shareId} — bkz. dosya başındaki şema notu.
 // ---------------------------------------------------------------------------
 const SHARE_VALID_DAYS = [10, 20];
+// v124: fabrika hisse satışı kapandı (yeni ilan / alım yok). Satılmış (aktif)
+// hisselerin gece temettü ödemeleri süresi bitene kadar aynen devam eder.
+const SHARE_SALES_CLOSED = true;
+const SHARE_SALES_CLOSED_TEXT = 'Fabrika hisse satışı kaldırıldı. Mevcut hisselerin ödemeleri süresi bitene kadar devam eder.';
 
 function shareFairValue(percent, days, dailyIncome) {
   return (percent / 100) * (dailyIncome || 0) * days;
@@ -1555,6 +1608,7 @@ function shareMinPrice(percent, days, dailyIncome) {
 // satılabilir).
 export const listFactoryShare = onCall(async (request) => {
   const uid = requireAuth(request);
+  if (SHARE_SALES_CLOSED) throw new HttpsError('failed-precondition', SHARE_SALES_CLOSED_TEXT);
   const percent = Number(request.data?.percent);
   const days = Number(request.data?.days);
   const price = Number(request.data?.price);
@@ -1647,6 +1701,7 @@ export const cancelFactoryShareListing = onCall(async (request) => {
 // peşin bedelden DEĞİL).
 export const buyFactoryShare = onCall(async (request) => {
   const uid = requireAuth(request);
+  if (SHARE_SALES_CLOSED) throw new HttpsError('failed-precondition', SHARE_SALES_CLOSED_TEXT);
   const { factoryId, shareId } = request.data || {};
   if (!factoryId || !shareId) {
     throw new HttpsError('invalid-argument', 'factoryId ve shareId gerekli.');
@@ -2356,6 +2411,10 @@ async function resolveStuckLotteryAndChampionship(dateKey) {
             drawnAt: admin.firestore.FieldValue.serverTimestamp(),
           });
           taxLedgerWrite(lotBatch, db, admin.firestore.FieldValue, { amount: lotTax.tax, source: 'piyango', uid: winnerUid, atMs: Date.now(), ref: `piyango_${prevLotterySnap.id}` });
+          // v124 — oyunun gazinosunun bilet payı (biletten 10): %10'u devlete, kalanı çöpe.
+          // Aynı batch'te drawnAt yazıldığı için tek sefer çalışır.
+          const cutSplit = splitCasinoCut(lottery.casinoCut);
+          if (cutSplit.tax > 0) taxLedgerWrite(lotBatch, db, admin.firestore.FieldValue, { amount: cutSplit.tax, source: 'gazino', uid: '__game__', atMs: Date.now(), ref: `piyango_kasa_${prevLotterySnap.id}` });
           lotBatch.set(winnerRef.collection('messages').doc(), {
             text: `Tebrikler! Piyangodan ${fmtTr(lottery.jackpot)} altın kazandın. %10 piyango vergisi (${fmtTr(lotTax.tax)} altın) belediyeye ödendi, hesabına ${fmtTr(lotTax.net)} altın yattı.`,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -2375,6 +2434,14 @@ async function resolveStuckLotteryAndChampionship(dateKey) {
       }
       summary.lotteryDaysResolved += 1;
     }
+  }
+  // v124 Faz 6 — oyuncu gazinolarının piyangoları (her gün belgesi kendi transaction'ında)
+  try {
+    const cs = await casino.drawLotteries(dateKey, { onWin: (winUid) => achievements.grant(winUid, 'piyango') });
+    summary.casinoLotteriesDrawn = cs.drawn;
+    summary.casinoLotteryGoldPaid = cs.paid;
+  } catch (e) {
+    console.error('casino lottery draw', e);
   }
 
   // Şampiyona: geriye doğru son 7 GÜNÜN hepsi kontrol edilir (championshipDaily
@@ -3813,137 +3880,17 @@ async function runDailyResetBody(dateKey, dr) {
     // 3) Yatırım araçları artık günde 1 kez değil, saatte 1 kez ayrı bir
     // Cloud Function (hourlyInvestmentUpdate) tarafından güncelleniyor.
 
-    // 4) Gemi takvimi bir gün ilerler — 4 günlük döngü (Bölüm 12)
+    // 4) v124: Liman kapandı — gemi takvimi, gemi SMS'leri (her döngüde TÜM
+    // oyunculara giden SMS dahil) ve teslimat kaldırıldı. Bekleyen siparişlerin
+    // parası tek seferlik iade edilir (functions/v124Migrations.js; saatlik iş de çalıştırır).
     if (!dr.done('ship')) {
-    const prevShipSnap = await db
-      .collection('shipSchedule')
-      .doc(addDaysToDateKey(dateKey, -1))
-      .get();
-    const prevDay = prevShipSnap.exists ? prevShipSnap.data().dayInCycle : 4;
-    const nextDay = (prevDay % 4) + 1;
-    const statusByDay = {
-      1: 'docking', // gemi şehirde, mal indiriyor
-      2: 'departing', // gemi şehirden ayrılıyor
-      3: 'loading', // gemi gittiği şehirde mal yüklüyor
-      4: 'in_transit', // gemi yolda
-    };
-    await db.collection('shipSchedule').doc(dateKey).set({
-      dayInCycle: nextDay,
-      status: statusByDay[nextDay],
-      // Gerçek şehir listesi Faz 7'de eklenecek.
-      destinationCity: null,
-    });
-
-    // 4b) Gemi diğer şehirde mal yüklemeye başladığında (gün 3) TÜM
-    // oyunculara bilgilendirme SMS'i gönder — bu, ucuz fiyattan sipariş
-    // vermek için son gün (2 gün sonra teslim edilecek).
-    if (nextDay === 3) {
-      const allUsersSnap = await db.collection('users').select().get(); // v95.2: sadece kimlikler (bellek)
-      const smsBatches = [];
-      let currentBatch = db.batch();
-      let opCount = 0;
-      allUsersSnap.forEach((docSnap) => {
-        const msgRef = docSnap.ref.collection('messages').doc();
-        currentBatch.set(msgRef, {
-          text: 'Gemiye mal yükleniyor. Sipariş vermek için son gün — 2 gün sonra teslim edilecek. Tüm ürünler %20 daha ucuz!',
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          read: false,
-          type: 'ship_loading',
-        });
-        opCount += 1;
-        if (opCount >= 400) {
-          smsBatches.push(currentBatch.commit());
-          currentBatch = db.batch();
-          opCount = 0;
-        }
-      });
-      if (opCount > 0) smsBatches.push(currentBatch.commit());
-      await Promise.all(smsBatches);
+    try {
+      const cfg = (await db.doc('gangSystem/config').get()).data() || {};
+      const r = await v124Migrations.runAll({ liveWorldId: cfg.liveWorldId || null });
+      console.log(JSON.stringify({ v124Migrations: r }));
+    } catch (err) {
+      console.error('v124Migrations (dailyReset):', err?.message || err);
     }
-
-    // 5) Liman siparişleri — İKİ KOVA sistemi (Bölüm 12 kullanıcı revizesi):
-    //    - Gemi 'departing'e geçtiğinde (gün 2 başladığında): o ana kadar
-    //      biriken 'pending' siparişler 'loaded' kovasına taşınır (artık bu
-    //      turda gemiye yüklenmiş sayılırlar).
-    //    - Gemi 'docking'e döndüğünde (gün 1): 'loaded' kovası envantere
-    //      teslim edilir + SMS gönderilir, 'pending' kovası DOKUNULMADAN
-    //      kalır (bir sonraki gün 2'de yüklenmeyi bekler).
-    if (nextDay === 2) {
-      const ordersSnap = await db.collection('limanOrders').get();
-      const promotions = [];
-      ordersSnap.forEach((orderDoc) => {
-        const data = orderDoc.data();
-        const pending = data.pending || {};
-        const hasPending = Object.values(pending).some((q) => q > 0);
-        if (!hasPending) return;
-        const updates = {};
-        for (const materialType of ['tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme', 'yasakliMadde']) {
-          const qty = pending[materialType] || 0;
-          if (qty > 0) {
-            updates[`loaded.${materialType}`] = admin.firestore.FieldValue.increment(qty);
-            updates[`pending.${materialType}`] = 0;
-          }
-        }
-        promotions.push(orderDoc.ref.update(updates));
-      });
-      await Promise.all(promotions);
-    }
-
-    if (nextDay === 1) {
-      const ordersSnap = await db.collection('limanOrders').get();
-      const deliveries = [];
-      const deliverySmsList = []; // { uid, summary }
-      for (const orderDoc of ordersSnap.docs) {
-        const data = orderDoc.data();
-        const loaded = data.loaded || {};
-        const targetUid = orderDoc.id;
-        const delivered = [];
-        for (const materialType of ['tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme', 'yasakliMadde']) {
-          const qty = loaded[materialType] || 0;
-          if (qty > 0) {
-            delivered.push({ materialType, qty });
-            const invRef = db
-              .collection('users')
-              .doc(targetUid)
-              .collection('inventory')
-              .doc(materialType);
-            deliveries.push(
-              invRef.set({ quantity: admin.firestore.FieldValue.increment(qty) }, { merge: true })
-            );
-          }
-        }
-        if (delivered.length > 0) {
-          deliveries.push(
-            orderDoc.ref.update({
-              'loaded.tamirMalzemesi': 0,
-              'loaded.silahUpgrade': 0,
-              'loaded.arabaGelistirme': 0,
-              'loaded.yasakliMadde': 0,
-            })
-          );
-          const summary = delivered
-            .map((d) => `${d.qty} adet ${MATERIAL_SMS_LABELS[d.materialType] || d.materialType}`)
-            .join(', ');
-          deliverySmsList.push({ uid: targetUid, summary });
-        }
-      }
-      await Promise.all(deliveries);
-      await Promise.all(
-        deliverySmsList.map((d) =>
-          db
-            .collection('users')
-            .doc(d.uid)
-            .collection('messages')
-            .add({
-              text: `Liman: siparişin geldi! ${d.summary} envanterine eklendi.`,
-              createdAt: admin.firestore.FieldValue.serverTimestamp(),
-              read: false,
-              type: 'liman_delivery',
-            })
-        )
-      );
-    }
-
     await dr.mark('ship');
     }
 
@@ -4435,68 +4382,9 @@ export const renameVehicle = onCall(async (request) => {
 // 2 adet ilgili malzeme harcanır; her geliştirme türü araç başına 1 kez.
 // ---------------------------------------------------------------------------
 export const upgradeVehicle = onCall(async (request) => {
-  const uid = requireAuth(request);
-  // v77: tamir ve geliştirme artık sadece Atölye'de (Silahçı / Modifiye Garajı,
-  // oyuncu dükkânı ya da oyunun kendi dükkânı) — işçilik ücretiyle (bkz. shop.js).
-  // Eski istemciler bu ucu çağırırsa işçiliksiz bedava işlem yapılmasın diye kapalı.
-  if (uid) throw new HttpsError('failed-precondition', 'Tamir ve geliştirme artık Silahçı / Modifiye Garajı Atölyesi\'nde yapılıyor.');
-  const { vehicleId, upgradeType } = request.data || {};
-  if (!['gear', 'tank'].includes(upgradeType)) {
-    throw new HttpsError('invalid-argument', 'Geçersiz geliştirme türü.');
-  }
-
-  const vehicleRef = db.collection('vehicles').doc(vehicleId);
-  // Depo ve Vites Geliştirme Malzemeleri birleştirildi — artık ikisi de
-  // TEK malzeme: "Araba Geliştirme Malzemesi" (arabaGelistirme).
-  const inventoryRef = db.collection('users').doc(uid).collection('inventory').doc('arabaGelistirme');
-
-  await db.runTransaction(async (tx) => {
-    const [vehicleSnap, inventorySnap] = await Promise.all([
-      tx.get(vehicleRef),
-      tx.get(inventoryRef),
-    ]);
-    const vehicle = vehicleSnap.data();
-    if (!vehicleSnap.exists || vehicle.ownerId !== uid) {
-      throw new HttpsError('failed-precondition', 'Bu araç size ait değil.');
-    }
-    const flagField = upgradeType === 'gear' ? 'gearUpgraded' : 'tankUpgraded';
-    if (vehicle[flagField]) {
-      throw new HttpsError('failed-precondition', 'Bu geliştirme zaten uygulanmış.');
-    }
-    // Malzeme gereksinimi aracın GÜNCEL katalog fiyatıyla doğru orantılı
-    // (eski araçlar da fiyat güncellemesinden sonra yeni orana göre
-    // hesaplanır — sadece zaten çekilmiş kredi borçları donmuş kalır):
-    // 1000₺ araba için 2 malzeme, 100.000₺ araba için 200 malzeme (oran:
-    // fiyat/500).
-    const livePrice = VEHICLE_CATALOG[vehicle.catalogId]?.price ?? vehicle.baseGalleryValue ?? 0;
-    const requiredQty = Math.max(2, Math.round(livePrice / 500));
-    const qty = inventorySnap.exists ? inventorySnap.data().quantity || 0 : 0;
-    if (qty < requiredQty) {
-      throw new HttpsError(
-        'failed-precondition',
-        `Yetersiz geliştirme malzemesi (${requiredQty} adet gerekli, ${qty} adedin var).`
-      );
-    }
-
-    tx.set(
-      inventoryRef,
-      { quantity: admin.firestore.FieldValue.increment(-requiredQty) },
-      { merge: true }
-    );
-    if (upgradeType === 'gear') {
-      tx.update(vehicleRef, {
-        gearLevel: admin.firestore.FieldValue.increment(1),
-        gearUpgraded: true,
-      });
-    } else {
-      tx.update(vehicleRef, {
-        tankBonus: admin.firestore.FieldValue.increment(50),
-        tankUpgraded: true,
-      });
-    }
-  });
-
-  return { ok: true };
+  // v124: oyuncuların elinde malzeme yok — tamir / geliştirme işletmelerin atölyesinde (shopAction 'workshop')
+  requireAuth(request);
+  throw new HttpsError('failed-precondition', 'Bu işlem kaldırıldı. Tamir ve geliştirme silahçı / modifiyecide yapılır; malzemeler işletme envanterindedir.');
 });
 
 // ---------------------------------------------------------------------------
@@ -4507,40 +4395,11 @@ export const upgradeVehicle = onCall(async (request) => {
 // ---------------------------------------------------------------------------
 // v77: AMAZOR_PRICES functions/itemRules.js'te (Atölye fiyatlarının tabanı).
 
+// v124: Amazor uygulaması kaldırıldı. Fiyat tablosu (AMAZOR_PRICES, functions/itemRules.js)
+// 2. el / atölye / mağaza fiyat bantlarının tabanı olarak KALIR. Eski istemciler buraya düşer.
 export const buyFromAmazor = onCall(async (request) => {
-  const uid = requireAuth(request);
-  const { materialType, quantity } = request.data || {};
-  if (!AMAZOR_PRICES[materialType]) {
-    throw new HttpsError('invalid-argument', 'Geçersiz malzeme türü.');
-  }
-  const qty = Number(quantity);
-  if (!Number.isInteger(qty) || qty <= 0) {
-    throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
-  }
-  const totalCost = qty * AMAZOR_PRICES[materialType];
-  const userRef = db.collection('users').doc(uid);
-  const inventoryRef = userRef.collection('inventory').doc(materialType);
-
-  await db.runTransaction(async (tx) => {
-    const userSnap = await tx.get(userRef);
-    const user = userSnap.data();
-    if (!user || (user.gold || 0) < totalCost) {
-      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
-    }
-    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-totalCost), goldTag: goldTag('amazor') });
-    tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(qty) }, { merge: true });
-  });
-
-  // Onboarding görev 2 — "Amazor'dan 1 adet yasaklı madde satın al".
-  if (materialType === 'yasakliMadde') {
-    await advanceOnboardingStep(uid, 2);
-  }
-  // Onboarding görev 18 — "silah geliştirme malzemesi satın al".
-  if (materialType === 'silahUpgrade') {
-    await advanceOnboardingStep(uid, 18);
-  }
-
-  return { ok: true };
+  requireAuth(request);
+  throw new HttpsError('failed-precondition', 'Amazor kapandı. Yasaklı madde Liman & Depo’daki depolardan, malzemeler işletme/fabrika Mağaza’sından alınır.');
 });
 
 // ---------------------------------------------------------------------------
@@ -4548,39 +4407,9 @@ export const buyFromAmazor = onCall(async (request) => {
 // satma (Bölüm 8.2 — 250 altın/adet).
 // ---------------------------------------------------------------------------
 export const sellMaterial = onCall(async (request) => {
-  const uid = requireAuth(request);
-  const { materialType, quantity } = request.data || {};
-  const unitPrice = MATERIAL_SELL_PRICE[materialType];
-  const qty = Number(quantity);
-  if (!unitPrice || !Number.isInteger(qty) || qty <= 0) {
-    throw new HttpsError('invalid-argument', 'Geçersiz malzeme veya miktar.');
-  }
-
-  const userRef = db.collection('users').doc(uid);
-  const inventoryRef = userRef.collection('inventory').doc(materialType);
-
-  await db.runTransaction(async (tx) => {
-    const [invSnap, userSnap] = await Promise.all([tx.get(inventoryRef), tx.get(userRef)]);
-    const have = invSnap.exists ? invSnap.data().quantity || 0 : 0;
-    if (have < qty) {
-      throw new HttpsError('failed-precondition', 'Yeterli malzemeniz yok.');
-    }
-    tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-qty) }, { merge: true });
-    const { goldDelta, debtDelta } = splitIncomeForDebt(
-      userSnap.data()?.debtToState,
-      qty * unitPrice
-    );
-    tx.set(
-      userRef,
-      {
-        gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('malzeme'),
-        debtToState: admin.firestore.FieldValue.increment(debtDelta),
-      },
-      { merge: true }
-    );
-  });
-
-  return { ok: true, earned: qty * unitPrice };
+  // v124: oyuncuların elinde malzeme yok — tamir / geliştirme işletmelerin atölyesinde (shopAction 'workshop')
+  requireAuth(request);
+  throw new HttpsError('failed-precondition', 'Bu işlem kaldırıldı. Tamir ve geliştirme silahçı / modifiyecide yapılır; malzemeler işletme envanterindedir.');
 });
 
 // ---------------------------------------------------------------------------
@@ -4639,57 +4468,9 @@ export const buyWeapon = onCall(async (request) => {
 // Her seviye 1 gelişim malzemesi harcar.
 // ---------------------------------------------------------------------------
 export const upgradeWeapon = onCall(async (request) => {
-  const uid = requireAuth(request);
-  // v77: tamir ve geliştirme artık sadece Atölye'de (Silahçı / Modifiye Garajı,
-  // oyuncu dükkânı ya da oyunun kendi dükkânı) — işçilik ücretiyle (bkz. shop.js).
-  // Eski istemciler bu ucu çağırırsa işçiliksiz bedava işlem yapılmasın diye kapalı.
-  if (uid) throw new HttpsError('failed-precondition', 'Tamir ve geliştirme artık Silahçı / Modifiye Garajı Atölyesi\'nde yapılıyor.');
-  const { weaponId } = request.data || {};
-
-  const weaponRef = db.collection('weapons').doc(weaponId);
-  const inventoryRef = db.collection('users').doc(uid).collection('inventory').doc('silahUpgrade');
-
-  await db.runTransaction(async (tx) => {
-    const [weaponSnap, inventorySnap] = await Promise.all([
-      tx.get(weaponRef),
-      tx.get(inventoryRef),
-    ]);
-    const weapon = weaponSnap.data();
-    if (!weaponSnap.exists || weapon.ownerId !== uid) {
-      throw new HttpsError('failed-precondition', 'Bu silah size ait değil.');
-    }
-    if (weapon.level >= 3) {
-      throw new HttpsError('failed-precondition', 'Bu silah zaten maksimum seviyede.');
-    }
-    const qty = inventorySnap.exists ? inventorySnap.data().quantity || 0 : 0;
-    // Bölüm 8.3: "Gereken malzeme miktarı (seviye başı) = silah fiyatı / 100."
-    // Kullanıcı revizesi (silah fiyat güncellemesi): GÜNCEL katalog fiyatı
-    // kullanılıyor (araçlarla aynı desen, bkz. repairItem) — eski silahlar
-    // da fiyat değiştikten sonra yeni fiyata göre hesaplanır.
-    const requiredQty = Math.round((WEAPON_CATALOG[weapon.catalogId]?.price ?? weapon.basePrice ?? 0) / 100);
-    if (qty < requiredQty) {
-      throw new HttpsError(
-        'failed-precondition',
-        `Yetersiz gelişim malzemesi (${requiredQty} adet gerekli, ${qty} adedin var).`
-      );
-    }
-
-    const newLevel = weapon.level + 1;
-    const multiplier = newLevel === 2 ? 1.5 : 2;
-    const newPower = Math.round(weapon.basePower * multiplier);
-
-    tx.set(
-      inventoryRef,
-      { quantity: admin.firestore.FieldValue.increment(-requiredQty) },
-      { merge: true }
-    );
-    tx.update(weaponRef, { level: newLevel, power: newPower });
-  });
-
-  // Onboarding görev 19 — "silahını geliştir".
-  await advanceOnboardingStep(uid, 19);
-
-  return { ok: true };
+  // v124: oyuncuların elinde malzeme yok — tamir / geliştirme işletmelerin atölyesinde (shopAction 'workshop')
+  requireAuth(request);
+  throw new HttpsError('failed-precondition', 'Bu işlem kaldırıldı. Tamir ve geliştirme silahçı / modifiyecide yapılır; malzemeler işletme envanterindedir.');
 });
 
 // ---------------------------------------------------------------------------
@@ -4700,60 +4481,9 @@ export const upgradeWeapon = onCall(async (request) => {
 // silahta basePrice) — silah geliştirmeyle aynı oran.
 // ---------------------------------------------------------------------------
 export const repairItem = onCall(async (request) => {
-  const uid = requireAuth(request);
-  // v77: tamir ve geliştirme artık sadece Atölye'de (Silahçı / Modifiye Garajı,
-  // oyuncu dükkânı ya da oyunun kendi dükkânı) — işçilik ücretiyle (bkz. shop.js).
-  // Eski istemciler bu ucu çağırırsa işçiliksiz bedava işlem yapılmasın diye kapalı.
-  if (uid) throw new HttpsError('failed-precondition', 'Tamir ve geliştirme artık Silahçı / Modifiye Garajı Atölyesi\'nde yapılıyor.');
-  const { itemType, itemId } = request.data || {};
-  if (!['vehicle', 'weapon'].includes(itemType)) {
-    throw new HttpsError('invalid-argument', 'Geçersiz ürün türü.');
-  }
-  const itemRef = db.collection(itemType === 'vehicle' ? 'vehicles' : 'weapons').doc(itemId);
-  const inventoryRef = db.collection('users').doc(uid).collection('inventory').doc('tamirMalzemesi');
-
-  await db.runTransaction(async (tx) => {
-    const [itemSnap, invSnap] = await Promise.all([tx.get(itemRef), tx.get(inventoryRef)]);
-    if (!itemSnap.exists || itemSnap.data().ownerId !== uid) {
-      throw new HttpsError(
-        'failed-precondition',
-        `Bu ${itemType === 'vehicle' ? 'araç' : 'silah'} size ait değil.`
-      );
-    }
-    const item = itemSnap.data();
-    const repairsUsed = item.repairsUsed || 0;
-    if (repairsUsed >= VEHICLE_WEAPON_MAX_REPAIRS) {
-      throw new HttpsError('failed-precondition', 'Tamir hakkı tükendi.');
-    }
-    const price =
-      itemType === 'vehicle'
-        ? VEHICLE_CATALOG[item.catalogId]?.price ?? item.baseGalleryValue ?? 0
-        : WEAPON_CATALOG[item.catalogId]?.price ?? item.basePrice ?? 0;
-    const requiredQty = repairRequiredQty(price);
-    const have = invSnap.exists ? invSnap.data().quantity || 0 : 0;
-    if (have < requiredQty) {
-      throw new HttpsError(
-        'failed-precondition',
-        `Yetersiz tamir malzemesi (${requiredQty} adet gerekli, ${have} adedin var).`
-      );
-    }
-    // v58: silahta tavan 10 / tamir +1, araçta tavan 20 / tamir +2.
-    // Ömür zaten doluyken tamir yapılmaz (malzeme ve tamir hakkı boşa gitmesin).
-    const cap = lifeCapOf(itemType);
-    const currentLife = item.lifeDays ?? cap;
-    if (currentLife >= cap) {
-      throw new HttpsError('failed-precondition', 'Ömrü zaten dolu, tamire gerek yok.');
-    }
-    const newLife = Math.min(cap, currentLife + repairBonusOf(itemType));
-    tx.set(
-      inventoryRef,
-      { quantity: admin.firestore.FieldValue.increment(-requiredQty) },
-      { merge: true }
-    );
-    tx.update(itemRef, { lifeDays: newLife, repairsUsed: repairsUsed + 1 });
-  });
-
-  return { ok: true };
+  // v124: oyuncuların elinde malzeme yok — tamir / geliştirme işletmelerin atölyesinde (shopAction 'workshop')
+  requireAuth(request);
+  throw new HttpsError('failed-precondition', 'Bu işlem kaldırıldı. Tamir ve geliştirme silahçı / modifiyecide yapılır; malzemeler işletme envanterindedir.');
 });
 
 // ---------------------------------------------------------------------------
@@ -4762,33 +4492,9 @@ export const repairItem = onCall(async (request) => {
 // ---------------------------------------------------------------------------
 
 export const sellSilahMaterial = onCall(async (request) => {
-  const uid = requireAuth(request);
-  const qty = Math.max(1, Number(request.data?.quantity) || 1);
-  const userRef = db.collection('users').doc(uid);
-  const inventoryRef = userRef.collection('inventory').doc('silahUpgrade');
-
-  await db.runTransaction(async (tx) => {
-    const [invSnap, userSnap] = await Promise.all([tx.get(inventoryRef), tx.get(userRef)]);
-    const have = invSnap.exists ? invSnap.data().quantity || 0 : 0;
-    if (have < qty) {
-      throw new HttpsError('failed-precondition', 'Satacak yeterli gelişim malzemeniz yok.');
-    }
-    tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(-qty) }, { merge: true });
-    const { goldDelta, debtDelta } = splitIncomeForDebt(
-      userSnap.data()?.debtToState,
-      UPGRADE_MATERIAL_REFUND * qty
-    );
-    tx.set(
-      userRef,
-      {
-        gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('malzeme'),
-        debtToState: admin.firestore.FieldValue.increment(debtDelta),
-      },
-      { merge: true }
-    );
-  });
-
-  return { ok: true };
+  // v124: oyuncuların elinde malzeme yok — tamir / geliştirme işletmelerin atölyesinde (shopAction 'workshop')
+  requireAuth(request);
+  throw new HttpsError('failed-precondition', 'Bu işlem kaldırıldı. Tamir ve geliştirme silahçı / modifiyecide yapılır; malzemeler işletme envanterindedir.');
 });
 
 // =============================================================================
@@ -5417,8 +5123,10 @@ export const repayStateDebt = onCall(async (request) => {
 // CASINO — PİYANGO (Bölüm 11)
 // =============================================================================
 //
-// - Bilet: 100 altın. Günün jackpot'u 1000 altından başlar, satılan her
-//   biletin tam bedeli (100 altın × adet) jackpot'a eklenir.
+// - Bilet: 100 altın. v124: havuz (jackpot) 0'dan başlar; her biletten 90
+//   altın havuza, 10 altın gazinoya (casinoCut). Gece gazinonun payının %10'u
+//   devlete (vergi), kalanı oyunun gazinosu olduğu için çöpe gider.
+//   (Bkz. functions/casinoRules.js — oyuncu gazinoları Faz 6.)
 // - Kazanma şansı = oyuncunun bilet sayısı / o güne ait toplam bilet sayısı
 //   (ağırlıklı rastgele) — dailyReset içinde (00:00) bir önceki günün
 //   çekilişi yapılır, jackpot kazanana verilir (v123: %10 piyango vergisi
@@ -5427,8 +5135,9 @@ export const repayStateDebt = onCall(async (request) => {
 // - lottery/{dateKey}/tickets/{uid}: uid, displayName, count
 // =============================================================================
 
-const LOTTERY_TICKET_PRICE = 100;
-const LOTTERY_BASE_JACKPOT = 1000;
+const LOTTERY_TICKET_PRICE = LOTTERY_TICKET; // 100
+const LOTTERY_BASE_JACKPOT = 0; // v124: havuz 0'dan başlar (eskiden 1000)
+const LOTTERY_POOL_PER_TICKET = LOTTERY_TICKET - GAME_LOTTERY_CUT; // 90
 
 export const buyLotteryTicket = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -5438,6 +5147,13 @@ export const buyLotteryTicket = onCall(async (request) => {
   }
   const cost = qty * LOTTERY_TICKET_PRICE;
   const dateKey = istanbulDateKey();
+  // v124 Faz 6 — oyuncu gazinosunun kendi piyangosu (casinoLottery/{ev}_{gün})
+  const lotCasinoId = String(request.data?.casinoId || GAME_CASINO_ID);
+  if (lotCasinoId !== GAME_CASINO_ID) {
+    if (!isPlayerCasinoId(lotCasinoId) || qty > 10_000) throw new HttpsError('invalid-argument', 'Geçersiz istek.');
+    const r = await casino.buyTickets(uid, { casinoId: lotCasinoId, qty, dateKey, expect: request.data?.expect ?? null });
+    return { ok: true, cost: r.cost, casinoId: lotCasinoId };
+  }
   const userRef = db.collection('users').doc(uid);
   const lotteryRef = db.collection('lottery').doc(dateKey);
   const ticketRef = lotteryRef.collection('tickets').doc(uid);
@@ -5449,9 +5165,12 @@ export const buyLotteryTicket = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
     tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-cost), goldTag: goldTag('piyango') });
+    const pool = qty * LOTTERY_POOL_PER_TICKET;
+    const cut = qty * GAME_LOTTERY_CUT;
     if (!lotterySnap.exists) {
       tx.set(lotteryRef, {
-        jackpot: LOTTERY_BASE_JACKPOT + cost,
+        jackpot: LOTTERY_BASE_JACKPOT + pool,
+        casinoCut: cut,
         totalTickets: qty,
         winnerUid: null,
         winnerAmount: null,
@@ -5459,7 +5178,8 @@ export const buyLotteryTicket = onCall(async (request) => {
       });
     } else {
       tx.update(lotteryRef, {
-        jackpot: admin.firestore.FieldValue.increment(cost),
+        jackpot: admin.firestore.FieldValue.increment(pool),
+        casinoCut: admin.firestore.FieldValue.increment(cut),
         totalTickets: admin.firestore.FieldValue.increment(qty),
       });
     }
@@ -5478,78 +5198,70 @@ export const buyLotteryTicket = onCall(async (request) => {
 });
 
 // ---------------------------------------------------------------------------
-// spinSlot — Casino > Slot. Günde ilk çevirme ücretsiz, sonrası 750 altın.
-// 3 makara, 5 olası sembol, tamamen rastgele. 2 ya da 3 aynı sembol
-// gelirse ödül var; hepsi farklıysa ödül yok.
+// spinSlot — Gazino > Slot (v124). Çevirme 1.600 altın (oyunun gazinosu).
+// 3 makara × {boş, yasaklı madde, altın} (functions/casinoRules.js):
+//   2 aynı: boş 0 · yasaklı 1 · altın 1.000   |   3 aynı: boş 0 · yasaklı 3 · altın 10.000
+// Ücretsiz çevirme yok. Kazanç borca gitmez (eskisi gibi).
+// Oyuncu gazinoları (casinoId = işletme evi) Faz 6'da bu fonksiyona eklenecek.
 // ---------------------------------------------------------------------------
-const SLOT_SPIN_COST = 500;
-const SLOT_FREE_SPINS_PER_DAY = 3;
-// Depo+Vites Geliştirme Malzemeleri "Araba Geliştirme Malzemesi" olarak
-// birleştiği için slot artık 6 değil 5 sembol üzerinden dönüyor.
-const SLOT_SYMBOLS = ['yasakliMadde', 'silahUpgrade', 'tamirMalzemesi', 'arabaGelistirme', 'altin'];
-const SLOT_PRIZES = {
-  tamirMalzemesi: { 2: 100, 3: 500 },
-  silahUpgrade: { 2: 10, 3: 50 },
-  arabaGelistirme: { 2: 2, 3: 10 },
-  yasakliMadde: { 2: 1, 3: 2 },
-  altin: { 2: 1000, 3: 10000 },
-};
+const randInt = (n) => crypto.randomInt(n);
 
 export const spinSlot = onCall(async (request) => {
   const uid = requireAuth(request);
-  const dateKey = istanbulDateKey();
+  const casinoId = String(request.data?.casinoId || GAME_CASINO_ID);
+  // v124 Faz 6 — oyuncu gazinosu: ücret sahibin fiyatı, ödül makineden (functions/casino.js)
+  if (casinoId !== GAME_CASINO_ID) {
+    if (!isPlayerCasinoId(casinoId)) throw new HttpsError('invalid-argument', 'Geçersiz gazino.');
+    const r = await casino.slotSpin(uid, { casinoId, expect: request.data?.expect ?? null }, randInt);
+    const sym = r.gold > 0 ? 'altin' : r.yasakliMadde > 0 ? 'yasakliMadde' : null;
+    return { ok: true, reels: r.reels, cost: r.cost, matchCount: r.matchCount, matchSymbol: r.matchSymbol, gold: r.gold, yasakliMadde: r.yasakliMadde, prizeSymbol: sym, prizeAmount: r.gold || r.yasakliMadde, free: false, freeSpinsLeft: 0, casinoId };
+  }
   const userRef = db.collection('users').doc(uid);
-  const dailyRef = db.collection('dailyActions').doc(`${uid}_${dateKey}`);
+  const reels = rollSlotReels(randInt);
+  const out = slotOutcome(reels);
+  const cost = SLOT_GAME_COST;
 
-  const reels = [0, 1, 2].map(() => SLOT_SYMBOLS[Math.floor(Math.random() * SLOT_SYMBOLS.length)]);
-  const counts = {};
-  reels.forEach((s) => {
-    counts[s] = (counts[s] || 0) + 1;
-  });
-  let prizeSymbol = null;
-  let matchCount = 0;
-  Object.entries(counts).forEach(([symbol, count]) => {
-    if (count >= 2 && count > matchCount) {
-      prizeSymbol = symbol;
-      matchCount = count;
-    }
-  });
-  const prizeAmount = prizeSymbol ? SLOT_PRIZES[prizeSymbol][matchCount] || 0 : 0;
-
-  let usedFreeSpin = false;
-  let freeSpinsLeft = 0;
   await db.runTransaction(async (tx) => {
-    const [userSnap, dailySnap] = await Promise.all([tx.get(userRef), tx.get(dailyRef)]);
-    const user = userSnap.data();
-    const freeSpinsUsed = dailySnap.data()?.slotFreeSpinsUsed || 0;
-    const hasFreeSpin = freeSpinsUsed < SLOT_FREE_SPINS_PER_DAY;
-    const cost = hasFreeSpin ? 0 : SLOT_SPIN_COST;
-    if (!user || (user.gold || 0) < cost) {
-      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
-    }
-    usedFreeSpin = hasFreeSpin;
-
-    if (cost > 0) {
-      tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-cost), goldTag: goldTag('slot') });
-    }
-    if (hasFreeSpin) {
-      tx.set(dailyRef, { slotFreeSpinsUsed: freeSpinsUsed + 1 }, { merge: true });
-      freeSpinsLeft = SLOT_FREE_SPINS_PER_DAY - (freeSpinsUsed + 1);
-    }
-
-    if (prizeSymbol === 'altin') {
-      // Slot kazancı 10 Numara/Piyango gibi asla otomatik borca gitmez.
-      tx.update(userRef, { gold: admin.firestore.FieldValue.increment(prizeAmount), goldTag: goldTag('slot') });
-    } else if (prizeSymbol) {
-      const inventoryRef = userRef.collection('inventory').doc(prizeSymbol);
-      tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(prizeAmount) }, { merge: true });
+    const user = (await tx.get(userRef)).data();
+    if (!user || (user.gold || 0) < cost) throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(out.gold - cost), goldTag: goldTag('slot') });
+    if (out.yasakliMadde > 0) {
+      tx.set(userRef.collection('inventory').doc('yasakliMadde'), { quantity: admin.firestore.FieldValue.increment(out.yasakliMadde) }, { merge: true });
     }
   });
 
-  // Onboarding görev 8 — "Casino'da slot oyna".
-  await advanceOnboardingStep(uid, 8);
+  // eski istemcilerle uyum: prizeSymbol/prizeAmount da döner
+  const prizeSymbol = out.gold > 0 ? 'altin' : out.yasakliMadde > 0 ? 'yasakliMadde' : null;
+  return { ok: true, reels, cost, matchCount: out.matchCount, matchSymbol: out.matchSymbol, gold: out.gold, yasakliMadde: out.yasakliMadde, prizeSymbol, prizeAmount: out.gold || out.yasakliMadde, free: false, freeSpinsLeft: 0 };
+});
 
-  return { ok: true, reels, matchCount, prizeSymbol, prizeAmount, free: usedFreeSpin, freeSpinsLeft };
+// ---------------------------------------------------------------------------
+// spinRoulette — Gazino > Rulet (v124, kullanıcının Rulet.html örneği). 0–12;
+// sayıya / yeşile 12 katı, kırmızı / siyaha 2 katı geri. Bahisler istemcide
+// dizilir, sonuç SUNUCUDA çekilir (tek işlem: bahis düşülür + ödeme eklenir).
+// Tek çevirmede en fazla 100.000 altın bahis. Kazanç borca gitmez (slot gibi).
+// ---------------------------------------------------------------------------
+export const spinRoulette = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const casinoId = String(request.data?.casinoId || GAME_CASINO_ID);
+  if (casinoId !== GAME_CASINO_ID && !isPlayerCasinoId(casinoId)) throw new HttpsError('invalid-argument', 'Geçersiz gazino.');
+  const nb = normalizeRouletteBets(request.data?.bets);
+  if (!nb) throw new HttpsError('invalid-argument', 'Geçersiz bahis (tek çevirmede en fazla 100.000 altın).');
+  const userRef = db.collection('users').doc(uid);
+  const index = randInt(ROULETTE_ORDER.length);
+  const number = ROULETTE_ORDER[index];
+  const payout = roulettePayout(nb.bets, number);
+  // v124 Faz 6 — oyuncu gazinosu: kazanç masadan ödenir, karşılanamayan bahis açılmaz
+  if (casinoId !== GAME_CASINO_ID) {
+    await casino.rouletteSpin(uid, { casinoId, nb, number });
+    return { ok: true, index, number, stake: nb.total, payout, net: payout - nb.total, casinoId };
+  }
+  await db.runTransaction(async (tx) => {
+    const user = (await tx.get(userRef)).data();
+    if (!user || (user.gold || 0) < nb.total) throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(payout - nb.total), goldTag: goldTag('rulet') });
+  });
+  return { ok: true, index, number, stake: nb.total, payout, net: payout - nb.total };
 });
 
 // =============================================================================
@@ -6469,7 +6181,7 @@ async function sellContrabandSafe(uid) {
   outcome.gangCut = PARK_SAFE_GANG_CUT;
   outcome.gangCredited = Boolean(gangRes?.credited);
   outcome.gangName = gangRes?.gangName || null;
-  await advanceOnboardingStep(uid, 3);
+  // v124: görev 3 artık RİSKLİ satış ister (5.000 altına) — güvenli satış görevi ilerletmez
   return { ok: true, ...outcome };
 }
 
@@ -6859,45 +6571,10 @@ export const giftHeldItem = onCall(async (request) => {
 // ---------------------------------------------------------------------------
 const LIMAN_PRICES = { tamirMalzemesi: 8, silahUpgrade: 80, arabaGelistirme: 400, yasakliMadde: 2000 };
 
+// v124: Liman kaldırıldı (bekleyen siparişler v124Migrations.refundLimanOrders ile iade edildi)
 export const placeLimanOrder = onCall(async (request) => {
-  const uid = requireAuth(request);
-  const { materialType } = request.data || {};
-  const qty = Number(request.data?.quantity);
-  if (!LIMAN_PRICES[materialType]) {
-    throw new HttpsError('invalid-argument', 'Geçersiz malzeme.');
-  }
-  if (!Number.isInteger(qty) || qty <= 0) {
-    throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
-  }
-
-  const unitPrice = LIMAN_PRICES[materialType];
-  const totalCost = unitPrice * qty;
-
-  const dateKey = istanbulDateKey();
-  const shipSnap = await db.collection('shipSchedule').doc(dateKey).get();
-  const shipStatus = shipSnap.exists ? shipSnap.data().status : 'docking';
-  const bucket = shipStatus === 'departing' || shipStatus === 'loading' ? 'loaded' : 'pending';
-
-  const userRef = db.collection('users').doc(uid);
-  const orderRef = db.collection('limanOrders').doc(uid);
-
-  await db.runTransaction(async (tx) => {
-    const [userSnap] = await Promise.all([tx.get(userRef)]);
-    const user = userSnap.data();
-
-    if (!user || (user.gold || 0) < totalCost) {
-      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
-    }
-
-    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-totalCost), goldTag: goldTag('liman') });
-    tx.set(
-      orderRef,
-      { [bucket]: { [materialType]: admin.firestore.FieldValue.increment(qty) } },
-      { merge: true }
-    );
-  });
-
-  return { ok: true, bucket };
+  requireAuth(request);
+  throw new HttpsError('failed-precondition', 'Liman kapandı. Yasaklı madde artık Liman & Depo’daki depolardan alınıp satılıyor.');
 });
 
 // cancelLimanOrder — henüz teslim edilmemiş (loaded ya da pending
@@ -8232,7 +7909,7 @@ async function settleMaterialListing(listingRef, nowMs = Date.now()) {
       // hesabı silinmiş satıcı: ödenecek kimse yok, ilan kapanır
     } else if (auto) {
       payout = unitPrice * dueQty;
-      const tax = resaleTax(payout);
+      const tax = 0; // v124: malzeme satışında vergi yok
       taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: tax, source: 'ikinciEl', uid: l.sellerId, atMs: nowMs, ref: listingRef.id });
       const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, payout - tax);
       tx.set(
@@ -8659,7 +8336,8 @@ export const setDisplayName = onCall(async (request) => {
       tx.delete(db.collection('usernames').doc(oldNameKey));
     }
     tx.set(newNameRef, { uid });
-    tx.update(userRef, { displayName: raw, displayNameKey: key, ...(user?.displayName && user.displayName !== raw ? { nameChangedAtMs: Date.now() } : {}) });
+    // v124: nameSyncPending — kopyalar eşitlenene kadar işaretli (hata olursa saatlik iş tekrar dener)
+    tx.update(userRef, { displayName: raw, displayNameKey: key, ...(user?.displayName && user.displayName !== raw ? { nameChangedAtMs: Date.now(), nameSyncPending: true } : {}) });
   });
 
   // v86.1: yeni ad; çete, imam, ev/işletme, fabrika, Sixtagram, arkadaş listelerine de yazılır
@@ -10042,6 +9720,11 @@ export const raceHubAction = onCall({ cpu: 1, concurrency: 10 }, async (request)
 
 const MATERIAL_TYPES = ['tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme', 'yasakliMadde'];
 
+// v124: yasaklı madde 2. elde alınıp satılmaz — depolar (functions/depo.js)
+const CONTRABAND_2EL_TEXT = 'Yasaklı madde artık 2. elde satılmıyor — Liman & Depo’daki depolara satabilirsin.';
+// v124: malzemeler fabrika/işletme envanterinde; makine satışı yok
+const MATERIAL_HOLDER_TEXT = 'Bu malzemeyi kullanabilecek bir fabrikan ya da işletmen (silahçı / modifiyeci) yok.';
+const MACHINE_SALE_TEXT = 'Makine satışı kaldırıldı — fabrikalar hep açık kalır, makineler fabrikada kalır.';
 export const createListing = onCall(async (request) => {
   const uid = requireAuth(request);
   const { itemType, itemId, materialType, quantity, machineType, price, unitPrice } = request.data || {};
@@ -10059,6 +9742,9 @@ export const createListing = onCall(async (request) => {
     if (!MATERIAL_TYPES.includes(materialType)) {
       throw new HttpsError('invalid-argument', 'Geçersiz malzeme türü.');
     }
+    if (materialType === 'yasakliMadde') throw new HttpsError('failed-precondition', CONTRABAND_2EL_TEXT); // v124
+    // v124 — Mağaza: malzemeyi sadece onu kullanabilen (fabrika / silahçı / modifiye) satabilir
+    if (!canUseMaterial(await readHoldings(db, uid), materialType)) throw new HttpsError('failed-precondition', MATERIAL_HOLDER_TEXT);
     const qty = Number(quantity);
     if (!Number.isInteger(qty) || qty <= 0) {
       throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
@@ -10117,9 +9803,7 @@ export const createListing = onCall(async (request) => {
         });
       }
     });
-    // Onboarding görev 15 — "2. el satış uygulamasından alışveriş yap"
-    // (ilana ürün yüklemek de sayılıyor).
-    await advanceOnboardingStep(uid, 15);
+    // v124: görev 15 (2. el alışveriş) kaldırıldı.
     return { ok: true, listingId: mergedListingRef.id };
   }
 
@@ -10240,6 +9924,8 @@ export const createListing = onCall(async (request) => {
       });
     });
   } else if (itemType === 'machine') {
+    throw new HttpsError('failed-precondition', MACHINE_SALE_TEXT); // v124: makine satışı yok (fabrikalar hep açık)
+  } else if (itemType === '__v124_eski_makine__') { // eski makine satış kodu — v124'te kapandı, ileride silinecek
     const machineRef = db.collection('factories').doc(uid).collection('machines').doc(request.data?.machineId);
     const preSnap = await machineRef.get();
     if (!preSnap.exists) {
@@ -10299,9 +9985,7 @@ export const createListing = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'Geçersiz ürün türü.');
   }
 
-  // Onboarding görev 15 — "2. el satış uygulamasından alışveriş yap"
-  // (ilana ürün yüklemek de sayılıyor).
-  await advanceOnboardingStep(uid, 15);
+  // v124: görev 15 (2. el alışveriş) kaldırıldı.
 
   return { ok: true, listingId: listingRef.id };
 });
@@ -10327,6 +10011,7 @@ export const instantSellListing = onCall(async (request) => {
     if (!MATERIAL_TYPES.includes(materialType)) {
       throw new HttpsError('invalid-argument', 'Geçersiz malzeme türü.');
     }
+    if (materialType === 'yasakliMadde') throw new HttpsError('failed-precondition', CONTRABAND_2EL_TEXT); // v124
     const qty = Number(quantity);
     if (!Number.isInteger(qty) || qty <= 0) {
       throw new HttpsError('invalid-argument', 'Geçersiz miktar.');
@@ -10349,8 +10034,8 @@ export const instantSellListing = onCall(async (request) => {
         throw new HttpsError('failed-precondition', 'Yeterli malzemeniz yok.');
       }
       // v77 vergi: 2. el satışı %1
-      taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: resaleTax(payout), source: 'ikinciEl', uid, atMs: Date.now() });
-      const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, payout - resaleTax(payout));
+      // v124: malzeme anında satışında vergi yok
+      const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, payout);
       tx.update(sellerRef, {
         gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('ikinciEl'),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
@@ -10376,10 +10061,8 @@ export const instantSellListing = onCall(async (request) => {
         });
       }
     });
-    // Onboarding görev 15 — "2. el satış uygulamasından alışveriş yap"
-    // (anında satmak da sayılıyor).
-    await advanceOnboardingStep(uid, 15);
-    return { ok: true, listingId: mergedListingRef.id, payout, tax: resaleTax(payout), net: payout - resaleTax(payout) };
+    // v124: görev 15 (2. el alışveriş) kaldırıldı.
+    return { ok: true, listingId: mergedListingRef.id, payout, tax: 0, net: payout };
   }
 
   const listingRef = db.collection('marketplaceListings').doc();
@@ -10489,6 +10172,8 @@ export const instantSellListing = onCall(async (request) => {
       });
     });
   } else if (itemType === 'machine') {
+    throw new HttpsError('failed-precondition', MACHINE_SALE_TEXT); // v124: makine satışı yok (fabrikalar hep açık)
+  } else if (itemType === '__v124_eski_makine__') { // eski makine satış kodu — v124'te kapandı, ileride silinecek
     const machineRef = db.collection('factories').doc(uid).collection('machines').doc(request.data?.machineId);
     const preSnap = await machineRef.get();
     if (!preSnap.exists) {
@@ -10548,9 +10233,7 @@ export const instantSellListing = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'Geçersiz ürün türü.');
   }
 
-  // Onboarding görev 15 — "2. el satış uygulamasından alışveriş yap"
-  // (anında satmak da sayılıyor).
-  await advanceOnboardingStep(uid, 15);
+  // v124: görev 15 (2. el alışveriş) kaldırıldı.
 
   return { ok: true, listingId: listingRef.id, payout, tax: resaleTax(payout), net: payout - resaleTax(payout) };
 });
@@ -10702,6 +10385,14 @@ export const buyListing = onCall(async (request) => {
   const { listingId, quantity } = request.data || {};
   const listingRef = db.collection('marketplaceListings').doc(listingId);
   const buyerRef = db.collection('users').doc(uid);
+  // v124 — Mağaza: malzemeyi sadece kullanabilen alır; makine satışı yok
+  {
+    const pre = (await listingRef.get()).data();
+    if (pre?.itemType === 'machine') throw new HttpsError('failed-precondition', MACHINE_SALE_TEXT);
+    if (pre?.itemType === 'material' && pre.materialType !== 'yasakliMadde' && !canUseMaterial(await readHoldings(db, uid), pre.materialType)) {
+      throw new HttpsError('failed-precondition', MATERIAL_HOLDER_TEXT);
+    }
+  }
 
   let result = {};
 
@@ -10719,6 +10410,7 @@ export const buyListing = onCall(async (request) => {
     }
 
     const isMaterial = listing.itemType === 'material';
+    if (isMaterial && listing.materialType === 'yasakliMadde') throw new HttpsError('failed-precondition', CONTRABAND_2EL_TEXT); // v124
     let qty = null;
     let cost = listing.price;
     let unitPrice = null;
@@ -10778,7 +10470,8 @@ export const buyListing = onCall(async (request) => {
     // "Sistem" ilanlarında satıcı zaten anında ödemesini almıştı — bu para
     // kimseye gitmez, oyun ekonomisinden çıkar.
     // v77 vergi: 2. el ve dükkân vitrini satışları %1 (functions/tax.js)
-    const saleTax = isSystemListing ? 0 : resaleTax(cost);
+    // v124: malzeme satışında vergi yok (fabrika ⇄ işletme); araç / silah %1
+    const saleTax = isSystemListing || isMaterial ? 0 : resaleTax(cost);
     if (!isSystemListing) {
       const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, cost - saleTax);
       tx.update(sellerRef, {
@@ -10902,9 +10595,7 @@ export const buyListing = onCall(async (request) => {
       });
   }
 
-  // Onboarding görev 15 — "2. el satış uygulamasından alışveriş yap"
-  // (herhangi bir ürün almak da sayılıyor).
-  await advanceOnboardingStep(uid, 15);
+  // v124: görev 15 (2. el alışveriş) kaldırıldı.
 
   // Kullanıcı revizesi/sorusu: 2. elden araba/silah almak da görev
   // 11/5'i tamamlar mı? EVET — daha önce sadece checkOnboardingProgress
@@ -10921,9 +10612,6 @@ export const buyListing = onCall(async (request) => {
   } else if (result.itemType === 'material' && result.materialType === 'yasakliMadde') {
     // v32: 2. elden yasaklı madde almak da görev 2'yi tamamlar.
     await advanceOnboardingStep(uid, 2);
-  } else if (result.itemType === 'material' && result.materialType === 'silahUpgrade') {
-    // v32: görev 18 — 2. elden silah geliştirme malzemesi.
-    await advanceOnboardingStep(uid, 18);
   }
 
   return { ok: true, cost: result.cost, quantity: result.quantity };
@@ -11004,12 +10692,18 @@ export const createOnNumaraTable = onCall(async (request) => {
   if (!user || (user.gold || 0) < bet) {
     throw new HttpsError('failed-precondition', 'Yetersiz altın.');
   }
+  // v124 Faz 6 — oyuncu gazinosu: bahis en fazla kart masasındaki (kurpiyerin) altın kadar
+  const tCasinoId = String(request.data?.casinoId || GAME_CASINO_ID);
+  if (tCasinoId !== GAME_CASINO_ID && !isPlayerCasinoId(tCasinoId)) throw new HttpsError('invalid-argument', 'Geçersiz gazino.');
+  const tCasino = tCasinoId === GAME_CASINO_ID ? null : await casino.tableCreateCheck(uid, tCasinoId, bet);
 
   const tableRef = db.collection('onNumaraTables').doc();
   await tableRef.set({
     status: 'open',
     capacity: cap,
     betAmount: bet,
+    casinoId: tCasinoId,
+    ...(tCasino ? { casinoOwnerUid: tCasino.casinoOwnerUid, casinoName: tCasino.casinoName } : {}),
     creatorUid: uid,
     seatOrder: [uid],
     seats: { [uid]: { displayName: user.displayName || 'Oyuncu', netChange: 0 } },
@@ -11037,6 +10731,7 @@ export const joinOnNumaraTable = onCall(async (request) => {
     ]);
     if (!tableSnap.exists) throw new HttpsError('failed-precondition', 'Masa bulunamadı.');
     const table = tableSnap.data();
+    casino.assertJoin(uid, table); // v124 Faz 6: gazino sahibi kendi masasına oturamaz
     if (table.seats[uid]) throw new HttpsError('failed-precondition', 'Zaten bu masadasın.');
     if (table.seatOrder.length >= table.capacity) {
       throw new HttpsError('failed-precondition', 'Masa dolu.');
@@ -11141,6 +10836,10 @@ export const dealOnNumaraCards = onCall(async (request) => {
     if (eligible.length === 0) {
       throw new HttpsError('failed-precondition', 'Masada yeterli altınlı kimse yok.');
     }
+    // v124 Faz 6 — oyuncu gazinosu: kurpiyerin payı kart masasından (yoksa dağıtılamaz)
+    const cst = isPlayerCasinoId(table.casinoId) ? await casino.dealRead(tx, table) : null;
+    if (cst && cst.mc.gold < table.betAmount) throw new HttpsError('failed-precondition', CASINO_TEXT.dealBank);
+    const houseStake = cst ? casino.dealWrite(tx, table, cst, eligible) : 0;
 
     // Bahisleri kes.
     eligible.forEach((u) => {
@@ -11191,6 +10890,7 @@ export const dealOnNumaraCards = onCall(async (request) => {
         // revizesi: "kasa hep daha fazla kazanmaya meyilli" olmasın diye).
         // İyi oynayan tek başına da kurpiyerden para kazanabilsin.
         pot: table.betAmount * (eligible.length + 1),
+        houseStake, // v124 Faz 6: oyuncu gazinosunda masadan konan pay (oyunun gazinosunda 0)
         currentTurnUid: null,
         startedAtMs: startMs,
         // en geç biten oyuncunun süresi (izleyici sayacı / otomatik pas tetikleyicisi)
@@ -11267,6 +10967,8 @@ async function resolveOnNumaraIfDealerPhase(tableId) {
           };
         }
       });
+      // v124 Faz 6 — oyuncu gazinosu: kurpiyerin payı masaya döner, iadeler "verilen"
+      if (Number(round.houseStake) > 0) casino.resolveWrite(tx, table, { houseBack: round.houseStake, paidOut: table.betAmount * participants.length });
       tx.update(tableRef, {
         seats: newSeatsRefund,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -11327,6 +11029,11 @@ async function resolveOnNumaraIfDealerPhase(tableId) {
       });
     }
 
+    // v124 Faz 6 — oyuncu gazinosu: potun oyunculara ödenmeyen kısmı kart masasına döner
+    if (Number(round.houseStake) > 0) {
+      const paidOut = humanWinners.length > 0 && share > 0 ? share * humanWinners.length : 0;
+      casino.resolveWrite(tx, table, { houseBack: Math.max(0, round.pot - paidOut), paidOut });
+    }
     tx.update(tableRef, {
       seats: newSeatsWin,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -20601,14 +20308,16 @@ const GOLD_STORE_PACKAGES = {
 };
 
 // v66: zümrüt harcama paketleri (Zümrüt Mağazası'nın alt bölümü).
+// v124 (kullanıcı isteği): 49 zümrüt → 49.000 altın · 199 zümrüt → 199.000 altın + 19 yasaklı madde.
+// Kimlikler (altin30k / altin100k) eski istemciler için aynı kaldı.
 const EMERALD_SHOP_OFFERS = {
-  altin30k: { id: 'altin30k', name: '30.000 Altın', cost: 49, gold: 30000, items: {} },
+  altin30k: { id: 'altin30k', name: '49.000 Altın', cost: 49, gold: 49000, items: {} },
   altin100k: {
     id: 'altin100k',
-    name: '100.000 Altın + Ekstra Hediyeler',
+    name: '199.000 Altın + 19 Yasaklı Madde',
     cost: 199,
-    gold: 100000,
-    items: { yasakliMadde: 4, tamirMalzemesi: 1000, silahUpgrade: 100, arabaGelistirme: 20 },
+    gold: 199000,
+    items: { yasakliMadde: 19 },
   },
 };
 
@@ -20799,14 +20508,20 @@ export const buyEmeraldOffer = onCall(async (request) => {
   const userRef = db.collection('users').doc(uid);
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(userRef);
+    // v124: malzeme hediyeleri sadece kullanabileceği malzemelerse ortak envantere; diğerleri
+    // AMAZOR fiyatından altın olarak (oyuncunun elinde malzeme tutulmaz). Yasaklı madde envantere.
+    const usable = usableMaterials(await readHoldings(db, uid, { tx }));
     const emerald = Number(snap.data()?.emerald || 0);
     if (emerald < offer.cost) throw new HttpsError('failed-precondition', `Yetersiz zümrüt (${emerald}/${offer.cost}).`);
+    let extraGold = 0;
+    Object.entries(offer.items).forEach(([materialType, qty]) => {
+      if (materialType === 'yasakliMadde' || usable.has(materialType)) {
+        tx.set(userRef.collection('inventory').doc(materialType), { quantity: admin.firestore.FieldValue.increment(qty) }, { merge: true });
+      } else extraGold += Math.floor(qty * (AMAZOR_PRICES[materialType] || 0));
+    });
     tx.update(userRef, {
       emerald: admin.firestore.FieldValue.increment(-offer.cost),
-      gold: admin.firestore.FieldValue.increment(offer.gold), goldTag: goldTag('zumrut'),
-    });
-    Object.entries(offer.items).forEach(([materialType, qty]) => {
-      tx.set(userRef.collection('inventory').doc(materialType), { quantity: admin.firestore.FieldValue.increment(qty) }, { merge: true });
+      gold: admin.firestore.FieldValue.increment(offer.gold + extraGold), goldTag: goldTag('zumrut'),
     });
     tx.set(userRef.collection('messages').doc(), {
       from: 'Zümrüt Mağazası',
@@ -22639,14 +22354,14 @@ const gangFunctions = createGangFunctions({
   onGangJoined: (uid) => advanceOnboardingStep(uid, 20),
   // Çete depolarından (2. el) alım da ilgili satın alma görevlerini tamamlar
   onGangMarketBought: async (uid, res) => {
-    await advanceOnboardingStep(uid, 15);
     if (res.kind === 'vehicle') await advanceOnboardingStep(uid, 11);
     else if (res.kind === 'weapon') await advanceOnboardingStep(uid, 5);
     else if (res.material === 'yasakliMadde') await advanceOnboardingStep(uid, 2);
-    else if (res.material === 'silahUpgrade') await advanceOnboardingStep(uid, 18);
   },
   // UGC D1: susturulmuş oyuncu çete sohbetine/adına/notuna yazamaz
   assertCanSpeak: (uid, content) => moderation.assertCanSpeak(uid, content),
+  // v124: çete deposundaki yasaklı maddeyi bir depoya sat (gang/actions/trade.js sellToDepo)
+  depo: { readDepotForSale: depo.readDepotForSale, writeDepotSale: depo.writeDepotSale },
 });
 export const gangAction = gangFunctions.gangAction;
 export const gangClock = gangFunctions.gangClock;

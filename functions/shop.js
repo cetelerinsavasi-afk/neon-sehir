@@ -7,7 +7,10 @@
 //   houses/{id}.bizPrices.materials[k] = { mat, labor }  — herkes görür
 //   houses/{id}.bizPricesAtMs                           — son fiyat değişimi
 //   houses/{id}.bizShortage = { items:{k:true}, smsDay } + bizShortagePending
-//   businessInventories/{houseId}.materials[k]          — dükkânın malzemesi
+//   businessInventories/{houseId}.materials[k]          — (v124 öncesi) dükkânın malzemesi
+//   v124: dükkânın malzemesi = SAHİBİN ortak envanteri users/{sahip}/inventory/{k}
+//   (fabrika + işletmeler ortak; functions/materials.js). Müşteri malzeme bilmez:
+//   kendi malzemesi kullanılmaz, sadece "hangi ürün, kaç altın".
 //   weapons|vehicles/{id}: shopHouseId, shopListingId, shopAddedDayKey
 //     Vitrindeki ürün her zaman listed:true kalır (oyunun her yerinde "ilanda
 //     = kullanılamaz" kontrolü zaten var). shopListingId doluysa aktif 2. el
@@ -43,7 +46,6 @@ import {
   workshopJob,
   vehicleLevelUpPatch,
   workshopCost,
-  autoOwnQty,
   lifeCapOf,
   repairBonusOf,
   weaponPowerAtLevel,
@@ -64,7 +66,6 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
     throw new HttpsError(code, msg);
   };
   const houseRef = (id) => db.collection('houses').doc(id);
-  const bizInvRef = (id) => db.collection('businessInventories').doc(id);
   const userRef = (uid) => db.collection('users').doc(uid);
   const invDoc = (uid, k) => userRef(uid).collection('inventory').doc(k);
   const listingsRef = db.collection('marketplaceListings');
@@ -93,33 +94,10 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
   const sellerNameOf = (u) => String(u?.displayName || 'Oyuncu').slice(0, 40);
 
   // ---- malzeme stoğu (sahibin envanteri ⇄ işletme envanteri) -------------------
-  async function stock(uid, p) {
-    const houseId = String(p.houseId || '');
-    const material = String(p.material || '');
-    const qty = Number(p.qty);
-    if (!Number.isInteger(qty) || qty === 0 || Math.abs(qty) > 1_000_000) fail('invalid-argument', 'Geçersiz miktar.');
-    let result = null;
-    await db.runTransaction(async (tx) => {
-      const h = await txHouse(tx, houseId);
-      requireOwner(h, uid);
-      const type = requireBiz(h, Object.keys(WORKSHOP_MATERIALS));
-      if (!WORKSHOP_MATERIALS[type].includes(material)) fail('invalid-argument', 'Bu dükkâna bu malzeme konamaz.');
-      const [bi, pi] = await Promise.all([tx.get(bizInvRef(houseId)), tx.get(invDoc(uid, material))]);
-      const shopHave = Math.max(0, Number(bi.exists ? bi.data().materials?.[material] || 0 : 0));
-      const myHave = Math.max(0, Number(pi.exists ? pi.data().quantity || 0 : 0));
-      if (qty > 0 && myHave < qty) fail('failed-precondition', 'stock-mine');
-      if (qty < 0 && shopHave < -qty) fail('failed-precondition', 'stock-shop');
-      tx.set(invDoc(uid, material), { quantity: FieldValue.increment(-qty) }, { merge: true });
-      tx.set(bizInvRef(houseId), { ownerUid: uid, type, materials: { [material]: FieldValue.increment(qty) }, updatedAtMs: now() }, { merge: true });
-      // Stok eklenince o malzemenin "bitti" işareti kalkar
-      if (qty > 0 && h.bizShortage?.items?.[material]) {
-        const items = { ...(h.bizShortage.items || {}) };
-        delete items[material];
-        tx.update(houseRef(houseId), { 'bizShortage.items': items, bizShortagePending: Object.keys(items).length > 0 });
-      }
-      result = { ok: true, shop: shopHave + qty, mine: myHave - qty };
-    });
-    return result;
+  // v124: malzeme ekleme/çekme yok — fabrikanın ürettiği ve Mağaza'dan alınan malzeme
+  // otomatik olarak sahibinin ORTAK envanterine girer (functions/materials.js).
+  async function stock() {
+    fail('failed-precondition', 'Malzemeler artık fabrika ve işletmelerinin ORTAK envanterinde — eklemeye gerek yok. Eksikse Envanter › Mağaza’dan al.');
   }
 
   // ---- atölye fiyatları -----------------------------------------------------------
@@ -175,15 +153,13 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       if (job.block) fail('failed-precondition', `job-${job.block}`);
       const { material, qty } = job;
       const price = isGame ? gameWorkshopPrice(material) : clampWorkshopPrice(material, h.bizPrices?.materials?.[material]);
-      const reads = [tx.get(userRef(uid)), tx.get(invDoc(uid, material))];
-      if (!isGame) reads.push(tx.get(bizInvRef(houseId)), tx.get(userRef(h.ownerUid)));
-      const [us, mi, bi, os] = await Promise.all(reads);
+      const reads = [tx.get(userRef(uid))];
+      if (!isGame) reads.push(tx.get(invDoc(h.ownerUid, material)), tx.get(userRef(h.ownerUid)));
+      const [us, si, os] = await Promise.all(reads);
       const user = us.data() || {};
-      const myHave = Math.max(0, Number(mi.exists ? mi.data().quantity || 0 : 0));
-      const shopHave = isGame ? Infinity : Math.max(0, Number(bi?.exists ? bi.data().materials?.[material] || 0 : 0));
-      // v79: oyuncu miktar seçmez — önce kendi malzemesi (ücretsiz), eksik kalan
-      // dükkândan. İkisi birlikte yetmiyorsa iş yapılamaz. (p.ownQty yok sayılır.)
-      const ownQty = autoOwnQty(qty, myHave);
+      // v124: dükkânın stoğu = sahibin ortak envanteri; müşterinin kendi malzemesi KULLANILMAZ
+      const shopHave = isGame ? Infinity : Math.max(0, Number(si?.exists ? si.data().quantity || 0 : 0));
+      const ownQty = 0;
       if (qty - ownQty > shopHave) fail('failed-precondition', 'shop-short');
       const cost = workshopCost({ mat: price.mat, labor: price.labor, qty, ownQty });
       if (Number(p.expect) !== cost.total) fail('aborted', `price-changed:${cost.total}`);
@@ -192,9 +168,8 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
 
       // --- yazmalar ---
       if (!selfService && cost.total > 0) tx.update(userRef(uid), { gold: FieldValue.increment(-cost.total), goldTag: goldTag('atolye') });
-      if (cost.own > 0) tx.set(invDoc(uid, material), { quantity: FieldValue.increment(-cost.own) }, { merge: true });
       if (!isGame) {
-        if (cost.shopQty > 0) tx.set(bizInvRef(houseId), { materials: { [material]: FieldValue.increment(-cost.shopQty) }, updatedAtMs: now() }, { merge: true });
+        if (cost.shopQty > 0) tx.set(invDoc(h.ownerUid, material), { quantity: FieldValue.increment(-cost.shopQty) }, { merge: true });
         // v77 vergi: cironun %10'u (işçilik ve malzeme ayrı ayrı)
         const taxLabor = selfService ? 0 : bizTax(cost.labor);
         const taxMat = selfService ? 0 : bizTax(cost.material);

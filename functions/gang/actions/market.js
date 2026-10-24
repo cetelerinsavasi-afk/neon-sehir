@@ -31,6 +31,8 @@ export function createMarketActions(core, trade) {
     const unitPrice = posInt(data.unitPrice, 'Fiyat');
     const it = core.parseItemKey(key);
     if (!it) fail('invalid-argument', 'Geçersiz ürün.');
+    // v124: yasaklı madde 2. elde satılmaz — çete deposundan "Depoya sat"
+    if (it.kind === 'material' && it.material === 'yasakliMadde') fail('failed-precondition', 'Yasaklı madde artık 2. elde satılmıyor — Depo › "Depoya sat" ile bir depoya satabilirsin.');
     const { min, max } = priceRange(it);
     if (unitPrice < min || unitPrice > max) fail('invalid-argument', `Adet fiyatı ${fmt(min)} – ${fmt(max)} altın arasında olmalı.`);
     return core.db.runTransaction(async (tx) => {

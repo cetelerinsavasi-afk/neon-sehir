@@ -39,6 +39,7 @@ import { goldTag } from './moneyLog.js';
 import { houseKind, officePriceOf, isLegacyHomeOffice } from './officeData.js';
 import { VENUES, VENUE_OWNER, camiiDynamicNpcs } from './venueLayouts.js';
 import { doorOf, doorSpawn, settleDoor } from './houseDoor.js';
+import { MATERIAL_HOLDER_BIZ, readHoldings, readMaterialInv, closeBlockMaterials } from './materials.js';
 
 // v77 — Ev → İşletme. houses/{id} üzerine eklenen alanlar:
 //   biz: { type, openedAtMs } | null   — açık işletme (yoksa ev)
@@ -353,7 +354,27 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
   async function readBizCloseState(tx, houseId, h) {
     const bizInv = await readBizInv(tx, houseId);
     const hookState = bizHooks.onCloseRead ? await bizHooks.onCloseRead(tx, { houseId, h }) : null;
+    // v124: silahçı / modifiyeci kapanınca KALAN fabrika/işletmelerin kullanamayacağı
+    // malzeme ortak envanterde varsa kapanmaz (önce Mağaza'da anında satılmalı)
+    const materialBlock = await materialCloseBlock(houseId, h, tx);
+    if (materialBlock.length) fail('failed-precondition', `biz-close-materials:${materialBlock.join(',')}`);
     return { bizInv, hookState };
+  }
+  async function materialCloseBlock(houseId, h, tx = null) {
+    if (!MATERIAL_HOLDER_BIZ.includes(h?.biz?.type) || !h.ownerUid) return [];
+    const listedQ = db.collection('marketplaceListings').where('sellerId', '==', h.ownerUid).where('itemType', '==', 'material').where('sold', '==', false).limit(20);
+    const [holdings, inv, listed] = await Promise.all([
+      readHoldings(db, h.ownerUid, { tx, excludeHouseId: houseId }),
+      readMaterialInv(db, h.ownerUid, { tx }),
+      tx ? tx.get(listedQ) : listedQ.get(),
+    ]);
+    // Mağaza'daki açık ilanlar da sayılır (iptal edilince envantere döner)
+    listed.docs.forEach((d) => {
+      const l = d.data();
+      if (l.cancelled) return;
+      if (inv[l.materialType] != null) inv[l.materialType] += Math.max(0, Math.floor(Number(l.quantity) || 0));
+    });
+    return closeBlockMaterials(holdings, inv);
   }
 
   // Yeni tasarım açık işletmenin şartını bozuyorsa: kilit varsa reddet, sahip
@@ -474,7 +495,8 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     const invSnap = await bizInvRef(houseId).get();
     const materials = invSnap.exists ? invSnap.data().materials || {} : {};
     const extra = bizHooks.statusExtra ? await bizHooks.statusExtra({ houseId, h }) : {};
-    return { ok: true, type: h.biz?.type || null, lock, returns: { materials, ...extra } };
+    const materialBlock = await materialCloseBlock(houseId, h); // v124
+    return { ok: true, type: h.biz?.type || null, lock, materialBlock, returns: { materials, ...extra } };
   }
 
   async function save(uid, p) {

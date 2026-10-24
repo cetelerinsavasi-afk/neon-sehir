@@ -17,6 +17,13 @@ import '../HouseScreen/HouseScreen.css';
 import '../../styles/bizui.css';
 import './BusinessHub.css';
 import { retryImport } from '../../lib/lazyRetry';
+import { clampWorkshopPrice, gameWorkshopPrice } from '../../../functions/itemRules.js';
+import { gymPriceOf, GAME_GYM_PRICE } from '../../../functions/gym.js';
+import { netPriceOf } from '../../../functions/venue.js';
+import { streamPriceOf } from '../../../functions/stream.js';
+import { depoPricesOf } from '../../../functions/depo.js';
+import { casinoPricesOf } from '../../../functions/casino.js';
+import { SLOT_GAME_COST, GAME_LOTTERY_CUT, lotteryTicketPrice } from '../../../functions/casinoRules.js';
 
 const HouseScreen = lazy(retryImport(() => import('../HouseScreen/HouseScreen'))); // v102: eski parça → yeniden dene/yenile
 
@@ -29,9 +36,43 @@ const GAME_VENUE = {
   modifiye: { name: 'Neon Modifiye Garajı', loc: 'modifiye_garaji' },
   // spor: oyunun salonu da 3D bir ev (houses/game_spor) — içine girilir
   spor: { name: 'Neon Spor Salonu', house: true },
+  // v124: oyunun deposu da 3D bir ev (houses/game_depo) — sınırsız stok, alış 1.500 · satış 2.250
+  depo: { name: 'Neon Liman Deposu', house: true, ensureOp: 'depoEnsureGame' },
+  // v124 Faz 6: oyunun gazinosu (3D mekân houses/game_gazino — App'teki Neon Gazino ekranı)
+  gazino: { name: 'Neon Gazino' },
 };
 
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
+
+// v124 — listede her işletmenin fiyatı görünsün (müşteri girmeden karşılaştırsın).
+// Silahçı / modifiyeci: malzeme + işçilik, ADET BAŞI toplam (tamir · geliştirme).
+const WORKSHOP_LINES = {
+  silahci: [['Tamir', 'tamirMalzemesi'], ['Geliştirme', 'silahUpgrade']],
+  modifiye: [['Tamir', 'tamirMalzemesi'], ['Geliştirme', 'arabaGelistirme']],
+};
+function bizPriceText(type, h, isGame = false) {
+  if (WORKSHOP_LINES[type]) {
+    return WORKSHOP_LINES[type]
+      .map(([label, m]) => {
+        const p = isGame ? gameWorkshopPrice(m) : clampWorkshopPrice(m, h?.bizPrices?.materials?.[m]);
+        return `${label}: ${fmt(p.mat + p.labor)} altın`;
+      })
+      .join(' · ');
+  }
+  if (type === 'spor') return `Üyelik: ${fmt(isGame ? GAME_GYM_PRICE : gymPriceOf(h))} altın`;
+  if (type === 'internet') return `Yayın: ${fmt(streamPriceOf(h))} altın · Oyun: ${fmt(netPriceOf(h))} altın`;
+  // v124 — depo: müşterinin bakışıyla (Al = depodan alırsın, Sat = depoya satarsın)
+  if (type === 'depo') {
+    const p = depoPricesOf(isGame ? null : h);
+    return `Yasaklı madde · Al: ${fmt(p.sell)} altın · Sat: ${fmt(p.buy)} altın`;
+  }
+  // v124 Faz 6 — gazino: slot ücreti + biletten havuza giden
+  if (type === 'gazino') {
+    const p = isGame ? { slot: SLOT_GAME_COST, cut: GAME_LOTTERY_CUT } : casinoPricesOf(h);
+    return `Slot: ${fmt(p.slot)} altın · Bilet: ${fmt(lotteryTicketPrice(p.cut))} altın`;
+  }
+  return null;
+}
 function Coin({ gem, v, bad }) {
   return (
     <span className={`bh-coin${bad ? ' bad' : ''}`}>
@@ -122,7 +163,7 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
     setBusy(true);
     setMsg(null);
     try {
-      const r = await shopAction({ op: 'gymEnsureGame' });
+      const r = await shopAction({ op: game.ensureOp || 'gymEnsureGame' });
       setHouseId(r.houseId);
     } catch (err) {
       setMsg(bizErrText(err));
@@ -237,6 +278,7 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
               <span className="hh-info">
                 <b>{game.name}</b>
                 <span>Sahibi: Neon Şehir</span>
+                {bizPriceText(type, null, true) && <span className="bh-price">{bizPriceText(type, null, true)}</span>}
               </span>
               <span className={`hh-count${gamePeople ? ' live' : ''}`}>
                 <i />
@@ -255,6 +297,7 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
                 {type === 'spor' && h.gymBonusDay === today && <em className="bh-bonus">🔥 Bonus %10</em>}
               </b>
               <span>Sahibi: {h.ownerName || 'Oyuncu'}{h.mine ? ' (sen)' : ''}</span>
+              {bizPriceText(type, h) && <span className="bh-price">{bizPriceText(type, h)}</span>}
             </span>
             <span className={`hh-count${h.people ? ' live' : ''}`}>
               <i />
