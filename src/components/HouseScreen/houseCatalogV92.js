@@ -1902,7 +1902,11 @@ I('rulet', 'gazino', 'Rulet Masası', '🎡', (g) => {
 I('kartmasa', 'gazino', 'Kart Masası', '🃏', (g) => {
   Cy(g, 0.12, 0.72, '#2b1a0c', 0, 0, 0);
   Cy(g, 0.85, 0.08, '#4a2b12', 0, 0.72, 0, null, 32);
-  Pl(g, 1.5, 1.5, K('#fff', { map: T('felt') }), 0, 0.805, 0).rotation.x = -PI / 2;
+  // v127: yuvarlak masaya yuvarlak örtü (kare örtü kenarlardan taşıyordu)
+  const felt = new THREE.Mesh(new THREE.CircleGeometry(0.78, 48), K('#fff', { map: T('felt') }));
+  felt.position.set(0, 0.805, 0);
+  felt.rotation.x = -PI / 2;
+  g.add(felt);
   for (let i = 0; i < 4; i++) {
     const a = (i * PI) / 2;
     chair(g, Math.sin(a) * 1.2, Math.cos(a) * 1.2, a + PI, '#2b1a0c', '#7a1424');
@@ -2041,9 +2045,17 @@ I('baskanmasa', 'banka', 'Başkanlık Makam Masası', '🏛️', (g) => {
   B(g, 0.9, 0.7, 0.7, wood, 1.75, 0, -0.15);
   B(g, 0.96, 0.04, 0.76, dark, 1.75, 0.7, -0.15);
   // deri sümen, evrak, kalemlik, telefon
+  // v127: evrak ince ve aralıklı — eskiden yüzeyler üst üste biniyordu (z-fighting:
+  // kamera dönünce kağıtlar titreyip "kayıyor" gibi görünüyordu)
   B(g, 1.0, 0.012, 0.6, '#1c3a2a', 0, 0.81, -0.05);
-  B(g, 0.28, 0.03, 0.36, '#f4f1e8', 0.25, 0.82, -0.05);
-  B(g, 0.28, 0.03, 0.36, '#eae3d0', 0.3, 0.85, -0.02);
+  // gölge de kapalı: ince kağıtta gölge haritası kamera döndükçe kayıyordu
+  const paper1 = B(g, 0.28, 0.008, 0.36, '#f4f1e8', 0.25, 0.826, -0.05);
+  const paper2 = B(g, 0.28, 0.008, 0.36, '#eae3d0', 0.3, 0.842, -0.02);
+  paper2.rotation.y = 0.12;
+  for (const pp of [paper1, paper2]) {
+    pp.castShadow = false;
+    pp.receiveShadow = false;
+  }
   Cy(g, 0.05, 0.12, '#c9a24a', -0.85, 0.81, -0.2, { m: 0.7 }, 12);
   for (let i = 0; i < 3; i++) Cy(g, 0.008, 0.16, ['#111', '#123a7a', '#7a1010'][i], -0.86 + i * 0.02, 0.86, -0.2, null, 6);
   B(g, 0.22, 0.07, 0.18, '#1a1a1a', -0.55, 0.81, -0.25);

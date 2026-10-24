@@ -1081,6 +1081,16 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/gangWorlds/$(w)/memberships/$(request.auth.uid))
         && get(/databases/$(database)/documents/gangWorlds/$(w)/memberships/$(request.auth.uid)).data.get('intelRank', '') in ['baskan', 'sef', 'uzman'];
     }
+    // Ayrıntılı defter (Belediye › Başkanlık): kadro devlet defterinin kapanmış
+    // günlerini ve özetini okur (yazma yalnızca sunucu)
+    match /stateDays/{d} {
+      allow read: if isBelediyeStaff();
+      allow write: if false;
+    }
+    match /stateTreasury/{docId} {
+      allow read: if isBelediyeStaff() && docId in ['main', 'live'];
+      allow write: if false;
+    }
     match /belediyeChat_genel/{id} {
       allow read: if isBelediyeStaff();
       allow write: if false;

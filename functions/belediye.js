@@ -2,7 +2,7 @@
 // belediye.js — v127 BELEDİYE YÖNETİMİ
 // -----------------------------------------------------------------------------
 // Kadro: 1 Belediye Başkanı · 2 Başkan Yardımcısı · 4 Bakan (Sanayi, Ticaret,
-// Güvenlik, Kültür ve Spor). Seçim yok — şimdilik başkanlığı yönetici hesabı
+// Teşkilat, Kültür ve Spor). Seçim yok — şimdilik başkanlığı yönetici hesabı
 // devralır ("Başkanlığı devral").
 //
 //   • Davet: başkan (ve "davet" yetkisi olan yardımcı — sadece bakanlıklara)
@@ -55,7 +55,7 @@ export const SEATS = {
   yrd2: { id: 'yrd2', title: 'Belediye Başkan Yardımcısı', kind: 'yrd' },
   san: { id: 'san', title: 'Sanayi Bakanı', kind: 'bakan', m: 'sanayi' },
   tic: { id: 'tic', title: 'Ticaret Bakanı', kind: 'bakan', m: 'ticaret' },
-  guv: { id: 'guv', title: 'Güvenlik Bakanı', kind: 'bakan', m: 'guvenlik' },
+  guv: { id: 'guv', title: 'Teşkilat Bakanı', kind: 'bakan', m: 'guvenlik' },
   kul: { id: 'kul', title: 'Kültür ve Spor Bakanı', kind: 'bakan', m: 'kultur' },
 };
 export const SEAT_IDS = Object.keys(SEATS);

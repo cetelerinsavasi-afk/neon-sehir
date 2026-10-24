@@ -7320,7 +7320,7 @@ export const executeHeistPlan = onCall(async (request) => {
     // devlet defterine GİDER yazılır, net devlete %75 kalır); her polis (kurtarılan × 4) / polis sayısı prestij kazanır (Polis
     // Teşkilatı). Soyguncuların cezaları da ANINDA devlete gelir yazılır —
     // suçlunun borcunu ödemesi beklenmez (polisin payı da anında yatar).
-    const bust = policeBustSplit(totalReward, policeIdx.length, rateFrac(ratesFor(), 'soygunPay')); // v127: oran Güvenlik Bakanlığı
+    const bust = policeBustSplit(totalReward, policeIdx.length, rateFrac(ratesFor(), 'soygunPay')); // v127: oran Teşkilat Bakanlığı
     const perPoliceEarning = bust.perEarning;
     const perCivilianPenalty =
       civilianIdx.length > 0 ? Math.floor(totalReward / civilianIdx.length) : 0;

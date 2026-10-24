@@ -481,3 +481,74 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* ayrıntılı defter */
+.bd-defter-closed {
+  align-items: center;
+  text-align: center;
+  font-size: 12.5px;
+}
+.bd-defter-min {
+  gap: 0;
+}
+.bd-defter-line {
+  font-size: 12.5px;
+  padding: 5px 0;
+}
+.bd-defter-line > span:last-child {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.bd-chart {
+  background: var(--gx-card);
+  border: 1px solid var(--gx-line);
+  border-radius: 12px;
+  padding: 10px 10px 6px;
+}
+.bd-chart svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.bd-chart-base {
+  stroke: #2a3654;
+  stroke-width: 1;
+}
+.bd-chart-hit {
+  fill: transparent;
+  cursor: pointer;
+}
+.bd-chart-day.on .bd-chart-hit {
+  fill: rgba(177, 107, 255, 0.16);
+}
+.bd-chart-in {
+  fill: var(--bd-up);
+}
+.bd-chart-out {
+  fill: var(--bd-dn);
+}
+.bd-chart-lbl {
+  fill: var(--text-dim);
+  font-size: 9px;
+}
+.bd-chart-legend {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  margin-top: 4px;
+  align-items: center;
+}
+.bd-chart-legend i {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  vertical-align: -1px;
+}
+.bd-chart-legend i.in {
+  background: var(--bd-up);
+}
+.bd-chart-legend i.out {
+  background: var(--bd-dn);
+}

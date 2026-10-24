@@ -142,7 +142,7 @@ export default function IntelTab({ d }) {
   const lead = INTEL_LEADERS.includes(d.rank);
   const byRank = (r) => d.roster.filter((m) => m.rank === r).sort((a, b) => (b.prestige || 0) - (a.prestige || 0));
   const card = (m) => <MemberCard key={m.id} secret name={m.codeName} rank={m.rank} prestige={m.prestige} me={m.id === d.rid} big={m.rank === 'baskan'} onClick={() => setSel(m)} />;
-  const rates = useBelediyeRates(); // v127: Güvenlik Bakanlığı belirler
+  const rates = useBelediyeRates(); // v127: Teşkilat Bakanlığı belirler
   const salary = policeSalary(rates, d.realRank || 'muhbir');
 
   return (

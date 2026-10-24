@@ -60,7 +60,7 @@ export default function PoliceApplicationSection() {
 }
 
 function PoliceStatus() {
-  const rates = useBelediyeRates(); // v127: polis maaşları Güvenlik Bakanlığı'nın
+  const rates = useBelediyeRates(); // v127: polis maaşları Teşkilat Bakanlığı'nın
   const { path, actorId } = useGang();
   const { player } = usePlayer();
   const { data: membership, loading } = useDocData(path(`memberships/${actorId}`));

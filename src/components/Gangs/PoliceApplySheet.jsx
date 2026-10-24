@@ -23,7 +23,7 @@ export function cooldownHoursLeft(membership, now) {
 }
 
 export default function PoliceApplySheet({ onClose, onDone, membership }) {
-  const rates = useBelediyeRates(); // v127: polis maaşları Güvenlik Bakanlığı'nın
+  const rates = useBelediyeRates(); // v127: polis maaşları Teşkilat Bakanlığı'nın
   const { run, busy } = useGangAction();
   const { isTest } = useGang();
   const wallet = useMyWallet();

@@ -91,6 +91,23 @@ const AV = (skin, hair) => ({ skin, hair, shirt: '#1f6feb' });
   });
   await S(`belediyeDebts/${addDayKey(today, -3)}`, { kind: 'maas', dayKey: addDayKey(today, -3), workDay: addDayKey(today, -4), total: 400_000, items: [{ uid: 'ali', role: 'belediye', name: 'x', amount: 400_000 }], status: 'open' });
   await S('belediye/otherDebt', { soygun: 500_000, eski: 0, log: [{ atMs: Date.now() - 3600e3, kind: 'soygun', amount: 500_000, note: 'Banka soygunu' }] });
+  // ayrıntılı defter: 30 kapanmış gün + özet + canlı bugün
+  let bal = 3_000_000;
+  const totals = { in: {}, out: {}, inTotal: 0, outTotal: 0 };
+  for (let i = 30; i >= 1; i--) {
+    const k = addDayKey(today, -i);
+    const f = 0.6 + ((i * 37) % 10) / 10;
+    const d = { dayKey: k, in: { vergi_fabrika: Math.round(1_500_000 * f), vergi_yayin: Math.round(60_000 * f), vergi_sanatci: 30_000, vergi_isletme: i > 3 ? 400_000 : 0, vergi_isl_cafe: i <= 3 ? 220_000 : 0, soygun_ceza: i % 4 ? 0 : 2_000_000, gazino_slot: 300_000, gazino_rulet: 90_000 }, out: { maas_polis: 1_200_000, maas_imam: 10_000, soygun_odeme: i % 6 ? 0 : 3_500_000 } };
+    d.inTotal = Object.values(d.in).reduce((x, y) => x + y, 0);
+    d.outTotal = Object.values(d.out).reduce((x, y) => x + y, 0);
+    bal += d.inTotal - d.outTotal;
+    for (const kk of ['in', 'out']) for (const [c, n] of Object.entries(d[kk])) totals[kk][c] = (totals[kk][c] || 0) + n;
+    totals.inTotal += d.inTotal;
+    totals.outTotal += d.outTotal;
+    await S(`stateDays/${k}`, { ...d, net: d.inTotal - d.outTotal, balanceAfter: bal });
+  }
+  await S('stateTreasury/main', { balance: bal, totals, closedThrough: y, firstDayKey: addDayKey(today, -30) });
+  await bel.kasa.fold();
   await S('imamState/current', { uid: 'kaan', displayName: 'Kaan_34', avatar: AV('#8d5524', '#111'), lastNasihat: 'Kazancın helalinden olsun; komşun açken tok yatma.', lastNasihatAt: Timestamp.fromMillis(Date.now() - 3 * 3600e3), becameImamAt: Timestamp.fromMillis(Date.now() - 50 * 3600e3) });
   createRoot(document.getElementById('root')).render(
     <AuthProvider>

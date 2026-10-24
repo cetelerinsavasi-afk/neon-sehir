@@ -31,7 +31,7 @@ function ChatView() {
       <Chips
         options={[
           { id: 'genel', label: 'Belediye', icon: '🏛️' },
-          { id: 'koord', label: 'Koordinasyon', icon: '🚓' },
+          { id: 'koord', label: 'Teşkilat', icon: '🚓' },
         ]}
         value={ch}
         onChange={setCh}

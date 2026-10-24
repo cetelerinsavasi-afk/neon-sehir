@@ -11,9 +11,10 @@ import { seatSalary } from '../../../functions/belediyeRates.js';
 import { BELEDIYE, SEATS, SEAT_IDS, YRD_PERMS, canFireSeat, canInviteSeat, inviteActive } from '../../../functions/belediye.js';
 import { useBelediye } from './BelediyeContext';
 import { Kpis, RateEditor, hoursLeft, nf, useTick } from './belediyeUi';
+import Defter from './Defter';
 
-const PERM_LABEL = { sanayi: 'Sanayi Bakanlığı', ticaret: 'Ticaret Bakanlığı', guvenlik: 'Güvenlik Bakanlığı', kultur: 'Kültür ve Spor Bakanlığı', fire: 'Bakanları görevden alma', invite: 'Bakan davet etme' };
-const SHORT = { bsk: 'Başkan', yrd1: 'Başkan Yrd.', yrd2: 'Başkan Yrd.', san: 'Sanayi', tic: 'Ticaret', guv: 'Güvenlik', kul: 'Kültür ve Spor' };
+const PERM_LABEL = { sanayi: 'Sanayi Bakanlığı', ticaret: 'Ticaret Bakanlığı', guvenlik: 'Teşkilat Bakanlığı', kultur: 'Kültür ve Spor Bakanlığı', fire: 'Bakanları görevden alma', invite: 'Bakan davet etme' };
+const SHORT = { bsk: 'Başkan', yrd1: 'Başkan Yrd.', yrd2: 'Başkan Yrd.', san: 'Sanayi', tic: 'Ticaret', guv: 'Teşkilat', kul: 'Kültür ve Spor' };
 
 function Slot({ id, holder, inv, onOpen, size }) {
   const cls = `bd-slot${id === 'bsk' ? ' big' : ''}${!holder && !inv ? ' empty' : ''}${inv && !holder ? ' pend' : ''}`;
@@ -214,6 +215,10 @@ export default function BaskanlikTab() {
         <span>💰 Kadro maaşları</span>
       </div>
       <RateEditor m="yonetim" />
+      <div className="gx-section-head">
+        <span>📒 Ayrıntılı defter</span>
+      </div>
+      <Defter />
       {main.log?.length > 0 && (
         <>
           <div className="gx-section-head">

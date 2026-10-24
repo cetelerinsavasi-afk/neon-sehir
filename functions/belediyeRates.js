@@ -24,7 +24,7 @@
 export const MINISTRIES = {
   sanayi: { id: 'sanayi', label: 'Sanayi Bakanlığı', short: 'Sanayi', icon: '🏭', seat: 'san' },
   ticaret: { id: 'ticaret', label: 'Ticaret Bakanlığı', short: 'Ticaret', icon: '🏪', seat: 'tic' },
-  guvenlik: { id: 'guvenlik', label: 'Güvenlik Bakanlığı', short: 'Güvenlik', icon: '🚓', seat: 'guv' },
+  guvenlik: { id: 'guvenlik', label: 'Teşkilat Bakanlığı', short: 'Teşkilat', icon: '🚓', seat: 'guv' }, // v127: adı Teşkilat (kimlik 'guvenlik' aynı)
   kultur: { id: 'kultur', label: 'Kültür ve Spor Bakanlığı', short: 'Kültür ve Spor', icon: '🎭', seat: 'kul' },
   yonetim: { id: 'yonetim', label: 'Belediye Yönetimi', short: 'Yönetim', icon: '🏛️', seat: null },
 };

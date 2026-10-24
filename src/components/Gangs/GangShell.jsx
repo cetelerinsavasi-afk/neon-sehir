@@ -181,7 +181,7 @@ function GangViews({ membership, tab, onOpen }) {
 
 function IntelViews({ membership, tab, onOpen }) {
   const d = useIntelData(membership);
-  const rates = useBelediyeRates(); // v127: polis maaşları Güvenlik Bakanlığı'nın
+  const rates = useBelediyeRates(); // v127: polis maaşları Teşkilat Bakanlığı'nın
   if (tab === 'ceteler') return <ListTab membership={membership} onOpen={onOpen} />;
   return (
     <div className="gx-page">
