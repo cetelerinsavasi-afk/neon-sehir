@@ -64,7 +64,7 @@ function bizPriceText(type, h, isGame = false) {
   // v124 — depo: müşterinin bakışıyla (Al = depodan alırsın, Sat = depoya satarsın)
   if (type === 'depo') {
     const p = depoPricesOf(isGame ? null : h);
-    return `Yasaklı madde · Al: ${fmt(p.sell)} altın · Sat: ${fmt(p.buy)} altın`;
+    return `Al: ${fmt(p.sell)} altın · Sat: ${fmt(p.buy)} altın`;
   }
   // v124 Faz 6 — gazino: slot ücreti + biletten havuza giden
   if (type === 'gazino') {

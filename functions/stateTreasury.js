@@ -46,6 +46,7 @@ export const STATE_IN = {
   vergi_piyango: 'Vergi · Piyango kazançları (%10)',
   vergi_gazino: 'Vergi · Gazino piyango payı (%10)', // v124
   vergi_gazinoCekim: 'Vergi · Gazino kasasından çekim (%10)', // v124 Faz 6
+  vergi_makine: 'Vergi · Fabrika makinesi alımı (%1)', // v125
   vergi_oyun: 'Vergi · Oyunun kendi mekânları',
   soygun_ceza: 'Soygun cezaları (yakalanan suçlular)',
   kacak_ceza: 'Yasaklı madde cezaları (park)',

@@ -31,6 +31,7 @@ import FactorySponsorModal from './FactorySponsorModal';
 import NotificationBell from '../NotificationBell/NotificationBell';
 import { factoryDisplayName, computeFactoryValue, rankFactoriesForList } from './factoryHelpers';
 import './FactoryScreen.css';
+import { machineTax, withMachineTax } from '../../../functions/tax.js';
 
 const FACTORY_CREATE_COST = 100000;
 const MACHINE_PRICES = { tamirMalzemesi: 50000, silahUpgrade: 50000, arabaGelistirme: 50000, yasakliMadde: 100000 };
@@ -51,6 +52,16 @@ const MACHINE_CATEGORY_TYPES = ['tamirMalzemesi', 'silahUpgrade', 'arabaGelistir
 
 // v124 — fabrika hisseleri artık satılmıyor (mevcut hisselerin ödemeleri sürer)
 const NO_LISTED_SHARES = Object.freeze({});
+
+// v125: makine fiyatı + %1 vergi (sunucudaki machineTax ile aynı — functions/tax.js)
+function MachineCost({ price }) {
+  const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
+  return (
+    <span className="factory-machine-tax">
+      {fmt(price)} + %1 vergi ({fmt(machineTax(price))})
+    </span>
+  );
+}
 
 function machinePrice(type, cryptoPrice, ownedMiningCount = 0) {
   if (type !== 'mining') return MACHINE_PRICES[type];
@@ -76,7 +87,8 @@ function machineProductionRangeLabel(type) {
 // saatlik değişir (sunucudaki factoryStarterCost ile aynı formül).
 const FACTORY_STARTER_MACHINES = ['mining', 'tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme'];
 function factoryStarterCost(cryptoPrice) {
-  return FACTORY_CREATE_COST + FACTORY_STARTER_MACHINES.reduce((a, t) => a + machinePrice(t, cryptoPrice || 0), 0);
+  // v125: her makine fiyatı + %1 vergi; kuruluş ücretine vergi yok
+  return FACTORY_CREATE_COST + FACTORY_STARTER_MACHINES.reduce((a, t) => a + withMachineTax(machinePrice(t, cryptoPrice || 0)), 0);
 }
 
 function CreateFactoryModal({ onClose, isEmployed }) {
@@ -132,8 +144,9 @@ function CreateFactoryModal({ onClose, isEmployed }) {
                 <span className="factory-machine-buy-desc">
                   {type === 'mining' ? `2 × kripto fiyatı · işçi gerekmez` : `İşçi gerekir · günde ${machineProductionRangeLabel(type)} adet`}
                 </span>
+                <MachineCost price={machinePrice(type, prices.cryptoPrice)} />
               </div>
-              <span className="factory-machine-buy-price">{fmt(machinePrice(type, prices.cryptoPrice))} altın</span>
+              <span className="factory-machine-buy-price">{fmt(withMachineTax(machinePrice(type, prices.cryptoPrice)))} altın</span>
             </div>
           ))}
         </div>
@@ -206,6 +219,7 @@ function BuyMachineModal({ onClose, ownedMiningCount }) {
                       ? 'İşçi gerekmez · günde 0.01-0.1 kripto üretir'
                       : `İşçi gerekir · günde ${machineProductionRangeLabel(type)} adet üretir`}
                   </span>
+                  <MachineCost price={price} />
                   {bought[type] > 0 && (
                     <span className="factory-machine-buy-desc factory-machine-bought">✅ {bought[type]} adet alındı</span>
                   )}
@@ -215,7 +229,7 @@ function BuyMachineModal({ onClose, ownedMiningCount }) {
                   disabled={busy !== null}
                   onClick={() => handleBuy(type)}
                 >
-                  {busy === type ? '…' : `${price.toLocaleString('tr-TR')} altın`}
+                  {busy === type ? '…' : `${withMachineTax(price).toLocaleString('tr-TR')} altın`}
                 </button>
               </div>
             );

@@ -149,7 +149,7 @@ test('liman iadesi: yüklenmiş + bekleyen kovalar (eski anahtarlar dahil); tek 
   S('limanOrders/gone', { pending: { tamirMalzemesi: 5 } }); // silinmiş hesap
   const m = createV124Migrations({ db, FieldValue, goldTag, log: () => {} });
   const r = await m.refundLimanOrders();
-  assert.deepEqual(r, { refunded: 1, gold: 240 + 4000 }, 'silinmiş hesabın siparişi kapanır, ödeme yapılacak kimse yok');
+  assert.deepEqual([r.refunded, r.gold], [1, 240 + 4000], 'silinmiş hesabın siparişi kapanır, ödeme yapılacak kimse yok');
   assert.deepEqual(G('limanOrders/gone').pending, {});
   assert.equal(G('users/a').gold, 4240);
   assert.equal(G('users/b').gold, 5);

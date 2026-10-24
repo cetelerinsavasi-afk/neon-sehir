@@ -59,3 +59,28 @@ test('süre: geç gelen kart çekme pas sayılır; otomatik pas sadece süresi d
   assert.deepEqual(z.hands.b.cards, [4, 1, 1]);
   assert.equal(apply(r, z.hands).phase, 'dealer');
 });
+
+// v125 — akıllı kurpiyer (hilesiz): sadece açık ellere bakar, kartlar rastgele
+import { dealerBestMove, onnHouseNet } from '../onNumara.js';
+test('v125 akıllı kurpiyer: zaten kazanıyorsa durur, kaybediyorsa çeker; beraberlik paylaşılır', () => {
+  // kasa net (bahis=1): tek oyuncu 9, kurpiyer 10 → kurpiyer kazanır, pot (2) kasada → +1
+  assert.equal(onnHouseNet(10, [9], 1), 1);
+  // berabere 9–9 → pot ikiye bölünür: oyuncuya 1, kasaya 1 → 0
+  assert.equal(onnHouseNet(9, [9], 1), 0);
+  // kurpiyer battı, oyuncu ayakta → oyuncu potu alır → kasa −1
+  assert.equal(onnHouseNet(11, [7], 1), -1);
+  // herkes battı → berabere, iade
+  assert.equal(onnHouseNet(12, [], 1), 0);
+  assert.equal(dealerBestMove(8, [7], 1), 'stand', 'önde: dur');
+  assert.equal(dealerBestMove(8, [9], 1), 'hit', 'geride: çek (eskiden 8’de duruyordu)');
+  assert.equal(dealerBestMove(5, [], 1), 'stand', 'oyuncu battıysa risk alma');
+  assert.equal(dealerBestMove(10, [10], 1), 'stand');
+  // 7'de, oyuncu 6: önde → dur
+  assert.equal(dealerBestMove(7, [6], 1), 'stand');
+});
+test('v125 akıllı kurpiyer: index.js el sonucunda dealerBestMove kullanılır, sabit 8 kuralı kalktı', async () => {
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
+  assert.match(src, /dealerBestMove\(total, openTotals, participants\.length\) === 'stand'/);
+  assert.doesNotMatch(src, /ON_NUMARA_DEALER_STAND_AT/);
+});

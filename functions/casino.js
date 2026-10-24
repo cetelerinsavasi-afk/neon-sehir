@@ -141,7 +141,10 @@ export function createCasino({ db, FieldValue, HttpsError, splitIncomeForDebt, n
       if (n) g[k] = FieldValue.increment(n);
     }
     if (count) g.n = FieldValue.increment(count);
-    const patch = { houseId: casinoId, ownerUid, type: CASINO_TYPE, dayKey, casino: { [game]: g }, updatedAtMs: now() };
+    // DİKKAT: merge'de boş harita ({}) alanın TAMAMINI boşaltır → raporu sıfırlıyordu
+    // (10 Numara'da kurpiyer kazanınca "verilen 0" yazımı). Boşsa makine alanı yazılmaz.
+    const patch = { houseId: casinoId, ownerUid, type: CASINO_TYPE, dayKey, updatedAtMs: now() };
+    if (Object.keys(g).length) patch.casino = { [game]: g };
     const revenue = Math.max(0, Math.round(Number(inc.in) || 0));
     if (revenue) {
       patch.revenue = FieldValue.increment(revenue);

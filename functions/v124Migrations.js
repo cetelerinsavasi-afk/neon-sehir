@@ -52,6 +52,25 @@ export function createV124Migrations({ db, FieldValue, goldTag, now = () => Date
   const sms = (tx, uid, text, type) =>
     tx.set(db.collection('users').doc(uid).collection('messages').doc(), { text, type, createdAt: FieldValue.serverTimestamp(), read: false });
 
+  // v125: kayıt başına güvenli işlem — bir kayıt hata verirse adım DURMAZ; hata
+  // sayılır, adım bayrağı yazılmaz (sonraki turda sadece kalanlar tekrar denenir).
+  async function safeTx(errs, id, fn) {
+    try {
+      return await db.runTransaction(fn);
+    } catch (err) {
+      errs.push(`${id}: ${String(err?.message || err).slice(0, 160)}`);
+      return null;
+    }
+  }
+  async function finish(name, errs, info) {
+    if (errs.length) {
+      log({ v124: `${name}_errors`, count: errs.length, first: errs.slice(0, 5) });
+      return { ...info, errors: errs.length, firstErrors: errs.slice(0, 5) };
+    }
+    await markDone(name, info);
+    return info;
+  }
+
   async function done(name) {
     return (await flagRef(name).get()).exists;
   }
@@ -65,8 +84,9 @@ export function createV124Migrations({ db, FieldValue, goldTag, now = () => Date
     const snap = await db.collection('limanOrders').get();
     let refunded = 0;
     let gold = 0;
+    const errs = [];
     for (const d of snap.docs) {
-      const res = await db.runTransaction(async (tx) => {
+      const res = await safeTx(errs, d.id, async (tx) => {
         const os = await tx.get(d.ref);
         if (!os.exists) return null;
         const order = os.data();
@@ -89,9 +109,8 @@ export function createV124Migrations({ db, FieldValue, goldTag, now = () => Date
         gold += res.refund;
       }
     }
-    await markDone('liman', { refunded, gold, orders: snap.size });
     log({ v124: 'liman_refund', refunded, gold });
-    return { refunded, gold };
+    return finish('liman', errs, { refunded, gold, orders: snap.size });
   }
 
   // ---- 2) 2. eldeki yasaklı madde ilanları ------------------------------------------
@@ -99,10 +118,11 @@ export function createV124Migrations({ db, FieldValue, goldTag, now = () => Date
     if (await done('contraband2el')) return { skipped: true };
     let players = 0;
     let qtyBack = 0;
+    const errs = [];
     // a) oyuncu ilanları (tek alanlı sorgu → ek indeks gerekmez)
     const snap = await db.collection('marketplaceListings').where('materialType', '==', CONTRABAND).get();
     for (const d of snap.docs) {
-      const res = await db.runTransaction(async (tx) => {
+      const res = await safeTx(errs, d.id, async (tx) => {
         const ls = await tx.get(d.ref);
         if (!ls.exists) return null;
         const l = ls.data();
@@ -127,20 +147,20 @@ export function createV124Migrations({ db, FieldValue, goldTag, now = () => Date
       const base = db.collection('gangWorlds').doc(liveWorldId);
       const gs = await base.collection('market').where('itemKey', '==', CONTRABAND).get();
       for (const d of gs.docs) {
-        const ok = await db.runTransaction(async (tx) => {
+        const ok = await safeTx(errs, `gang:${d.id}`, async (tx) => {
           const ls = await tx.get(d.ref);
           const l = ls.data();
           if (!l || l.status !== 'open') return false;
           tx.update(d.ref, { status: 'cancelled', cancelledAtMs: now(), cancelReason: 'v124_depo', ...(l.autoSellAtMs != null ? { autoSellAtMs: FieldValue.delete() } : {}) });
-          tx.update(base.collection('gangs').doc(l.gangId).collection('private').doc('depot'), { [`listed.${l.itemKey}`]: FieldValue.increment(-Math.max(0, Number(l.quantity) || 0)) });
+          // v125: set+merge (depo belgesi yoksa — dağılmış çete — işlem düşmesin)
+          if (l.gangId) tx.set(base.collection('gangs').doc(l.gangId).collection('private').doc('depot'), { listed: { [l.itemKey]: FieldValue.increment(-Math.max(0, Number(l.quantity) || 0)) } }, { merge: true });
           return true;
         });
         if (ok) gangs += 1;
       }
     }
-    await markDone('contraband2el', { players, qtyBack, gangs });
     log({ v124: 'contraband_2el', players, qtyBack, gangs });
-    return { players, qtyBack, gangs };
+    return finish('contraband2el', errs, { players, qtyBack, gangs });
   }
 
   // ---- 3) 2. eldeki malzeme ilanları → satıcının ortak envanterine -----------------
@@ -149,9 +169,10 @@ export function createV124Migrations({ db, FieldValue, goldTag, now = () => Date
     const snap = await db.collection('marketplaceListings').where('itemType', '==', 'material').get();
     let n = 0;
     let qty = 0;
+    const errs = [];
     for (const d of snap.docs) {
       if (!MATERIAL_KEYS.includes(d.data().materialType)) continue; // yasaklı madde ayrı adımda
-      const res = await db.runTransaction(async (tx) => {
+      const res = await safeTx(errs, d.id, async (tx) => {
         const ls = await tx.get(d.ref);
         const l = ls.data();
         if (!l || l.sold || l.cancelled) return null;
@@ -168,9 +189,8 @@ export function createV124Migrations({ db, FieldValue, goldTag, now = () => Date
         qty += res.q;
       }
     }
-    await markDone('materialListings', { listings: n, qty });
     log({ v124: 'material_listings', n, qty });
-    return { listings: n, qty };
+    return finish('materialListings', errs, { listings: n, qty });
   }
 
   // ---- 4) 2. eldeki makine ilanları → fabrikaya ------------------------------------
@@ -179,8 +199,9 @@ export function createV124Migrations({ db, FieldValue, goldTag, now = () => Date
     const snap = await db.collection('marketplaceListings').where('itemType', '==', 'machine').get();
     let back = 0;
     let paid = 0;
+    const errs = [];
     for (const d of snap.docs) {
-      const res = await db.runTransaction(async (tx) => {
+      const res = await safeTx(errs, d.id, async (tx) => {
         const ls = await tx.get(d.ref);
         const l = ls.data();
         if (!l || l.sold || l.cancelled) return null;
@@ -201,9 +222,8 @@ export function createV124Migrations({ db, FieldValue, goldTag, now = () => Date
       if (res?.back) back += 1;
       if (res?.paid) paid += res.paid;
     }
-    await markDone('machineListings', { back, paid });
     log({ v124: 'machine_listings', back, paid });
-    return { back, paid };
+    return finish('machineListings', errs, { back, paid });
   }
 
   // ---- 5) işletme envanterleri → sahibinin ortak envanteri ------------------------
@@ -211,8 +231,9 @@ export function createV124Migrations({ db, FieldValue, goldTag, now = () => Date
     if (await done('bizInventories')) return { skipped: true };
     const snap = await db.collection('businessInventories').get();
     let moved = 0;
+    const errs = [];
     for (const d of snap.docs) {
-      const ok = await db.runTransaction(async (tx) => {
+      const ok = await safeTx(errs, d.id, async (tx) => {
         const bs = await tx.get(d.ref);
         const b = bs.data();
         const owner = String(b?.ownerUid || '');
@@ -227,9 +248,8 @@ export function createV124Migrations({ db, FieldValue, goldTag, now = () => Date
       });
       if (ok) moved += 1;
     }
-    await markDone('bizInventories', { moved });
     log({ v124: 'biz_inventories', moved });
-    return { moved };
+    return finish('bizInventories', errs, { moved });
   }
 
   // ---- 6) yeri olmayan malzemeler: AMAZOR × %75 ödenip silinir ---------------------
@@ -244,11 +264,12 @@ export function createV124Migrations({ db, FieldValue, goldTag, now = () => Date
     let users = 0;
     let gold = 0;
     let last = cursor;
+    const errs = [];
     for (const uid of ids) {
       if (now() - t0 > timeBudgetMs) break;
       const invSnaps = await Promise.all(MATERIAL_KEYS.map((k) => db.collection('users').doc(uid).collection('inventory').doc(k).get()));
       if (invSnaps.some((s) => Number(s.exists ? s.data().quantity : 0) > 0)) {
-        const res = await db.runTransaction(async (tx) => {
+        const res = await safeTx(errs, uid, async (tx) => {
           const holdings = await readHoldings(db, uid, { tx });
           const ok = usableMaterials(holdings);
           const refs = MATERIAL_KEYS.map((k) => db.collection('users').doc(uid).collection('inventory').doc(k));
@@ -281,8 +302,14 @@ export function createV124Migrations({ db, FieldValue, goldTag, now = () => Date
     }
     const finished = last === (ids[ids.length - 1] ?? last);
     await curRef.set({ lastUid: last, updatedAtMs: now() }, { merge: true });
-    if (finished) await markDone('materialsBuyout', { lastUid: last });
     log({ v124: 'materials_buyout', users, gold, finished });
+    // hatalı kullanıcılar: imleç yine ilerler; bayrak yazılmaz → sonraki tur baştan (sadece
+    // elinde hâlâ kullanamadığı malzeme olanlar işlenir, diğerleri tek okumayla geçilir)
+    if (errs.length) {
+      if (finished) await curRef.set({ lastUid: '', updatedAtMs: now() }, { merge: true });
+      return { users, gold, finished, errors: errs.length, firstErrors: errs.slice(0, 5) };
+    }
+    if (finished) await markDone('materialsBuyout', { lastUid: last });
     return { users, gold, finished };
   }
 
@@ -296,11 +323,17 @@ export function createV124Migrations({ db, FieldValue, goldTag, now = () => Date
       ['bizInventories', () => moveBizInventories()],
       ['materialsBuyout', () => buyoutUnusableMaterials()],
     ]) {
+      // v125: bir adımın hatası diğer adımları DURDURMAZ (eskiden ilk hata tüm geçişi
+      // kilitliyordu). Tek istisna: malzeme alımı (buyout) — iade / taşıma adımlarında
+      // hata kaldıysa o tur çalışmaz (önce malzemeler sahiplerine dönmeli).
+      if (name === 'materialsBuyout' && ['materialListings', 'bizInventories'].some((k) => out[k]?.error || out[k]?.errors)) {
+        out[name] = { waiting: true };
+        continue;
+      }
       try {
         out[name] = await fn();
       } catch (err) {
         out[name] = { error: String(err?.message || err) }; // bir sonraki turda tekrar denenir
-        break; // sıra önemli: hata varsa sonraki adımlar bu turda çalışmaz
       }
     }
     return out;

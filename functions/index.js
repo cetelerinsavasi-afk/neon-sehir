@@ -15,7 +15,7 @@ import { createSocial } from './social.js';
 import { createDeletionRequests } from './deletionRequests.js';
 import { createHouses } from './houses.js';
 import { createBusiness } from './business.js';
-import { resaleTax, factoryTax, factoryTaxRate, taxLedgerWrite, splitSalaryTax, splitLotteryTax } from './tax.js';
+import { resaleTax, factoryTax, factoryTaxRate, taxLedgerWrite, splitSalaryTax, splitLotteryTax, machineTax } from './tax.js';
 import { SLOT_GAME_COST, rollSlotReels, slotOutcome, normalizeRouletteBets, roulettePayout, ROULETTE_ORDER, LOTTERY_TICKET, GAME_LOTTERY_CUT, splitCasinoCut, GAME_CASINO_ID } from './casinoRules.js';
 import { createVisits } from './visits.js';
 import { createShop } from './shop.js';
@@ -57,7 +57,7 @@ import { cleanEquipped } from './cosmeticsData.js';
 import { HOUSE_PRODUCTS } from './houseCatalogData.js';
 import { sanitizeDrawing } from './drawingData.js';
 import { createHomeOffice, buildSongAttachment } from './homeOffice.js';
-import { simulAct, simulAutoStand, simulDeal, simulState } from './onNumara.js';
+import { simulAct, simulAutoStand, simulDeal, simulState, dealerBestMove } from './onNumara.js';
 import { isMsgId, nextReaction, replyQuoteOf } from './chatExtras.js';
 import { VENUES } from './venueLayouts.js';
 import { goldTag, recordGoldChange, cleanupMoneyLog, realizeSale, realizeBankWithdraw } from './moneyLog.js';
@@ -1132,12 +1132,19 @@ export const cancelPendingPoliceChange = onCall(async (request) => {
 // gördüğü fiyatı `expect` ile gönderir; fiyat değiştiyse işlem yapılmaz.
 // Önceden kurulmuş fabrikalar olduğu gibi devam eder.
 const FACTORY_STARTER_MACHINES = ['mining', 'tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme'];
-function factoryStarterCost(cryptoPrice) {
-  let total = FACTORY_CREATE_COST;
+// v125: her makineye %1 vergi (makine fiyatı + %1; kuruluş ücretine vergi yok)
+function factoryStarterParts(cryptoPrice) {
+  let machines = 0;
+  let tax = 0;
   for (const t of FACTORY_STARTER_MACHINES) {
-    total += t === 'mining' ? Math.ceil(2 * (cryptoPrice || 0)) : MACHINE_TYPES[t].price;
+    const p = t === 'mining' ? Math.ceil(2 * (cryptoPrice || 0)) : MACHINE_TYPES[t].price;
+    machines += p;
+    tax += machineTax(p);
   }
-  return total;
+  return { base: FACTORY_CREATE_COST + machines, tax, total: FACTORY_CREATE_COST + machines + tax };
+}
+function factoryStarterCost(cryptoPrice) {
+  return factoryStarterParts(cryptoPrice).total;
 }
 
 export const createFactory = onCall(async (request) => {
@@ -1152,7 +1159,8 @@ export const createFactory = onCall(async (request) => {
   const prices = await getCurrentPrices();
   const cryptoPrice = prices.cryptoPrice || 0;
   if (!(cryptoPrice > 0)) throw new HttpsError('unavailable', 'Kripto fiyatı alınamadı, biraz sonra tekrar dene.');
-  const cost = factoryStarterCost(cryptoPrice);
+  const parts = factoryStarterParts(cryptoPrice);
+  const cost = parts.total;
   if (Math.round(expect) !== cost) {
     throw new HttpsError('aborted', `Fiyat güncellendi: yeni kuruluş bedeli ${cost.toLocaleString('tr-TR')} altın. Kontrol edip tekrar dene.`);
   }
@@ -1200,6 +1208,8 @@ export const createFactory = onCall(async (request) => {
         );
       }
     }
+    // v125: makinelerin %1 vergisi devlete (belediye kasası)
+    taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: parts.tax, source: 'makine', uid, atMs: Date.now(), ref: 'fabrika_kurulus' });
     tx.set(factoryRef, {
       ownerId: uid,
       ownerName: user.displayName || 'Oyuncu',
@@ -1323,11 +1333,14 @@ export const buyFactoryMachine = onCall(async (request) => {
     } else {
       price = MACHINE_TYPES[machineType].price;
     }
+    // v125: makine fiyatı + %1 vergi (vergi devlete)
+    const tax = machineTax(price);
     const user = userSnap.data();
-    if (!user || (user.gold || 0) < price) {
+    if (!user || (user.gold || 0) < price + tax) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
-    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-price), goldTag: goldTag('fabrika') });
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-(price + tax)), goldTag: goldTag('fabrika') });
+    taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: tax, source: 'makine', uid, atMs: Date.now(), ref: machineType });
     tx.set(machineRef, {
       type: machineType,
       workerId: null,
@@ -1338,7 +1351,7 @@ export const buyFactoryMachine = onCall(async (request) => {
     });
   });
 
-  return { ok: true, machineId: machineRef.id, price };
+  return { ok: true, machineId: machineRef.id, price, tax: machineTax(price), total: price + machineTax(price) };
 });
 
 // setFactorySalary — sadece fabrika sahibi, 1000-5000 altın arası.
@@ -2524,6 +2537,25 @@ async function resolveStuckLotteryAndChampionship(dateKey) {
 // dailyReset kendi içindeki aynı mantıkla zaten her gece bunu otomatik
 // yapmaya devam edecek.
 const MAINTENANCE_SECRET = '854f8bf3de15bf540bd36a26a3cce7e5';
+
+// v125 — v124 tek seferlik geçişlerini (2. el ilan iadeleri, liman iadesi, malzeme
+// taşıma…) saatlik işi beklemeden ELLE çalıştırır ve sonucu JSON döner (hangi adım
+// ne yaptı / hata verdi). Her adım idempotent: tekrar açmak zarar vermez.
+// Kullanım: tarayıcıda …/runV124MigrationsNow?secret=MAINTENANCE_SECRET
+export const runV124MigrationsNow = onRequest({ timeoutSeconds: 540 }, async (req, res) => {
+  if (!req.query.secret || req.query.secret !== MAINTENANCE_SECRET) {
+    res.status(403).json({ error: 'Yetkisiz.' });
+    return;
+  }
+  try {
+    const cfg = (await db.doc('gangSystem/config').get()).data() || {};
+    const r = await v124Migrations.runAll({ liveWorldId: cfg.liveWorldId || null });
+    console.log(JSON.stringify({ v124MigrateManual: r }));
+    res.status(200).json({ ok: true, liveWorldId: cfg.liveWorldId || null, ...r });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err?.message || String(err) });
+  }
+});
 
 export const resolveStuckRewardsNow = onRequest(async (req, res) => {
   if (!req.query.secret || req.query.secret !== MAINTENANCE_SECRET) {
@@ -10636,7 +10668,7 @@ export const buyListing = onCall(async (request) => {
 //     Oyuncular birbirinin sonradan çektiği kartları el bitene kadar görmez
 //     (ilk 2 kart ve kurpiyerin ilk 2 kartı herkese açık). Herkes bitirince
 //     kurpiyer oynar ve tüm kartlar açılır.
-//   - Herkes bitince kurpiyer otomatik oynar (8'e kadar çeker). Kazanan(lar)
+//   - Herkes bitince kurpiyer otomatik oynar (v125: açılan ellere göre en iyi hamle — dealerBestMove). Kazanan(lar)
 //     — kurpiyer dahil en yüksek (elenmemiş) toplamı yapan(lar) — arasında
 //     kurpiyer varsa pot kimseye ödenmez (kasaya gider); sadece insan
 //     oyuncular kazandıysa pot aralarında eşit bölünür.
@@ -10647,7 +10679,6 @@ export const buyListing = onCall(async (request) => {
 // =============================================================================
 
 const ON_NUMARA_TARGET = 10;
-const ON_NUMARA_DEALER_STAND_AT = 8;
 const ON_NUMARA_TURN_SECONDS = 10;
 const ON_NUMARA_EMOJIS = ['😂', '😢', '😡', '😮', '👍', '🔥'];
 const RACE_EMOJIS = ['😂', '😢', '😡', '😮', '👍', '🔥'];
@@ -10929,7 +10960,12 @@ async function resolveOnNumaraIfDealerPhase(tableId) {
     const round = table.round;
     if (!round || round.phase !== 'dealer') return;
 
-    // Kurpiyer: 8'e ulaşana ya da patlayana kadar çeker.
+    const participants = round.participants;
+    const hands = round.hands;
+    // v125 — akıllı kurpiyer (hilesiz): kartlar rastgele; kurpiyer bu aşamada AÇILAN
+    // oyuncu ellerine bakıp her adımda "dur / çek"in beklenen kazancını hesaplar
+    // (functions/onNumara.js dealerBestMove). Beraberlik kuralı aynı (pot paylaşılır).
+    const openTotals = participants.filter((u) => hands[u].status !== 'bust').map((u) => sumCards(hands[u].cards));
     let dealerCards = [...round.dealerCards];
     let dealerStatus = 'playing';
     while (true) {
@@ -10938,15 +10974,13 @@ async function resolveOnNumaraIfDealerPhase(tableId) {
         dealerStatus = 'bust';
         break;
       }
-      if (total >= ON_NUMARA_DEALER_STAND_AT) {
+      if (dealerBestMove(total, openTotals, participants.length) === 'stand') {
         dealerStatus = 'stand';
         break;
       }
       dealerCards.push(drawOnNumaraCard());
     }
 
-    const participants = round.participants;
-    const hands = round.hands;
     const contenders = participants.filter((u) => hands[u].status !== 'bust');
     const dealerIn = dealerStatus !== 'bust';
     const dealerSum = sumCards(dealerCards);

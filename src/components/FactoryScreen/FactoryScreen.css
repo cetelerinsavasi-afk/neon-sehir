@@ -265,6 +265,12 @@
   font-size: 10px;
   color: var(--text-dim);
 }
+/* v125: makine fiyatı + %1 vergi */
+.factory-machine-tax {
+  font-size: 10px;
+  color: var(--neon-yellow, #ffd34d);
+  opacity: 0.85;
+}
 
 .factory-machine-grid {
   display: grid;
