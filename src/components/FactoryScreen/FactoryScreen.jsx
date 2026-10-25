@@ -25,7 +25,7 @@ import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import FactoryBadge from './FactoryBadge';
 import FactoryLogoDesigner from './FactoryLogoDesigner';
-import { FactoryInventorySheet } from '../Magaza/Magaza';
+import { MagazaOverlay } from '../Magaza/Magaza';
 import FactoryShareBuyModal from './FactoryShareBuyModal';
 import FactorySponsorModal from './FactorySponsorModal';
 import NotificationBell from '../NotificationBell/NotificationBell';
@@ -347,237 +347,183 @@ function BrowseFactoriesModal({ onClose, onJoin, joinBusy, myUid, canJoin }) {
 }
 
 // ---------------------------------------------------------------------------
-// Yönetim paneli (sadece fabrika sahibi) — maaş belirleme + çalışan listesi
+// v128 — "Yönetim" paneli kaldırıldı; işlevleri yerinde:
+//   ✏️ fabrika adının yanında → ad + logo · ✏️ maaşın yanında → maaş
+//   makine kartında (işçi varsa) → Kov / Taşı
 // ---------------------------------------------------------------------------
-function ManagementModal({ factory, machines, onClose }) {
-  const [salary, setSalary] = useState(factory.salary || 1000);
-  const [showSalaryPanel, setShowSalaryPanel] = useState(false);
-  const [salaryBusy, setSalaryBusy] = useState(false);
-  const [salaryError, setSalaryError] = useState(null);
-  const [fireBusy, setFireBusy] = useState(null);
-  const [error, setError] = useState(null);
-  const [name, setName] = useState(factory.name || '');
-  const [nameBusy, setNameBusy] = useState(false);
-  const [nameError, setNameError] = useState(null);
-  const [nameMessage, setNameMessage] = useState('');
-  const [showLogoDesigner, setShowLogoDesigner] = useState(false);
-  const dateKey = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Istanbul',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date());
-
-  const employees = machines.filter((m) => m.workerId);
-  const openMachines = machines.filter((m) => m.type !== 'mining' && !m.workerId);
-  const [reassignTarget, setReassignTarget] = useState({});
-  const [reassignBusy, setReassignBusy] = useState(null);
-
-  const handleSalary = async () => {
-    setSalaryBusy(true);
-    setSalaryError(null);
-    try {
-      await setFactorySalary(salary);
-      setShowSalaryPanel(false);
-    } catch (err) {
-      setSalaryError(err.message || 'Maaş güncellenemedi.');
-    } finally {
-      setSalaryBusy(false);
-    }
-  };
-
-  const handleFire = async (machineId) => {
-    setFireBusy(machineId);
-    setError(null);
-    try {
-      await fireEmployee(machineId);
-    } catch (err) {
-      setError(err.message || 'İşten çıkarılamadı.');
-    } finally {
-      setFireBusy(null);
-    }
-  };
-
-  const handleReassign = async (machineId) => {
-    const targetMachineId = reassignTarget[machineId];
-    if (!targetMachineId) return;
-    setReassignBusy(machineId);
-    setError(null);
-    try {
-      await reassignEmployee(machineId, targetMachineId);
-    } catch (err) {
-      setError(err.message || 'İşçi taşınamadı.');
-    } finally {
-      setReassignBusy(null);
-    }
-  };
-
-  const handleNameSave = async () => {
-    const trimmed = name.trim();
-    if (!trimmed) {
-      setNameError('Fabrika adı boş olamaz.');
-      return;
-    }
-    setNameBusy(true);
-    setNameError(null);
-    setNameMessage('');
-    try {
-      await setFactoryName(trimmed);
-      setNameMessage('Kaydedildi ✓');
-    } catch (err) {
-      setNameError(err.message || 'Fabrika adı güncellenemedi.');
-    } finally {
-      setNameBusy(false);
-    }
-  };
-
+function FactoryModalShell({ title, onClose, children }) {
   return (
-    <>
     <div className="factory-modal-backdrop" onClick={onClose}>
       <div className="factory-modal" onClick={(e) => e.stopPropagation()}>
         <div className="factory-modal-header">
-          <p className="factory-modal-title">Yönetim</p>
+          <p className="factory-modal-title">{title}</p>
           <button className="factory-modal-close" onClick={onClose}>
             ✕
           </button>
         </div>
+        {children}
+      </div>
+    </div>
+  );
+}
 
-        <div className="factory-name-section">
-          <div className="factory-name-badge-row">
-            <FactoryBadge logo={factory.logo} name={factoryDisplayName(factory)} size={56} />
-            <p className="factory-step-label" style={{ borderTop: 'none', paddingTop: 0, margin: 0 }}>
-              Fabrika Adını Değiştir
-            </p>
-          </div>
-          <div className="factory-name-row">
-            <input
-              className="factory-name-input"
-              type="text"
-              maxLength={22}
-              value={name}
-              placeholder={`${factory.ownerName}'in Fabrikası`}
-              onChange={(e) => {
-                setName(e.target.value);
-                setNameMessage('');
-              }}
-            />
-            <button className="factory-btn small" disabled={nameBusy} onClick={handleNameSave}>
-              {nameBusy ? '…' : 'Kaydet'}
-            </button>
-          </div>
-          {nameMessage && <p className="factory-result small">{nameMessage}</p>}
-          {nameError && <p className="factory-error">{nameError}</p>}
-          <button
-            className="factory-btn small factory-logo-open-btn"
-            onClick={() => setShowLogoDesigner(true)}
-          >
-            🎨 Logo Tasarla
+function FactoryNameModal({ factory, onClose }) {
+  const [name, setName] = useState(factory.name || '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [showLogoDesigner, setShowLogoDesigner] = useState(false);
+  const save = async () => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError('Fabrika adı boş olamaz.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await setFactoryName(trimmed);
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Fabrika adı güncellenemedi.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (showLogoDesigner) return <FactoryLogoDesigner factory={factory} onClose={() => setShowLogoDesigner(false)} />;
+  return (
+    <FactoryModalShell title="Fabrika Adı ve Logosu" onClose={onClose}>
+      <div className="factory-name-section">
+        <button type="button" className="factory-logo-edit" onClick={() => setShowLogoDesigner(true)} aria-label="Logoyu değiştir">
+          <FactoryBadge logo={factory.logo} name={factoryDisplayName(factory)} size={64} />
+          <span className="factory-logo-edit-pen" aria-hidden="true">🎨</span>
+        </button>
+        <div className="factory-name-row">
+          <input
+            className="factory-name-input"
+            type="text"
+            maxLength={22}
+            value={name}
+            placeholder={`${factory.ownerName}'in Fabrikası`}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus
+          />
+          <button className="factory-btn primary small" disabled={busy} onClick={save}>
+            {busy ? '…' : 'Kaydet'}
           </button>
-        </div>
-
-        <div className="factory-salary-section">
-          <div className="factory-salary-summary">
-            <span className="factory-salary-current">
-              Güncel maaş: <strong>{(factory.salary || 0).toLocaleString('tr-TR')} altın</strong>
-            </span>
-            <button
-              className="factory-btn small"
-              onClick={() => setShowSalaryPanel((v) => !v)}
-            >
-              {showSalaryPanel ? 'Kapat' : 'Maaş Belirle'}
-            </button>
-          </div>
-          {showSalaryPanel && (
-            <>
-              <p className="factory-step-label">Maaş Belirle (1.000 - 5.000 altın)</p>
-              <p className="factory-price-label">
-                <strong>{salary.toLocaleString('tr-TR')} altın</strong>
-              </p>
-              <QuantityStepper
-                value={salary}
-                onChange={setSalary}
-                max={5000}
-                quickAmounts={[100, 500, 1000]}
-              />
-              <button className="factory-btn primary small" disabled={salaryBusy} onClick={handleSalary}>
-                {salaryBusy ? '…' : 'Maaşı Güncelle'}
-              </button>
-              {salaryError && <p className="factory-error">{salaryError}</p>}
-            </>
-          )}
-        </div>
-
-        <p className="factory-step-label">Çalışanlar ({employees.length})</p>
-        {employees.length === 0 && <p className="factory-hint">Henüz çalışanın yok.</p>}
-        <div className="factory-employee-list">
-          {employees.map((m) => {
-            const producedToday = m.lastProducedDateKey === dateKey;
-            // v56: kendi fabrikasını kurup ayrılan işçi — adı 00:00'a kadar görünür
-            const leftForOwn = Boolean(m.workerLeftDateKey);
-            const availableTargets = openMachines.filter((om) => om.id !== m.id);
-            const canReassign = !leftForOwn && !producedToday && availableTargets.length > 0;
-            return (
-              <div key={m.id} className="factory-employee-row-wrap">
-                <div className="factory-employee-row">
-                  <div className="factory-employee-info">
-                    <span className="factory-employee-name">{m.workerName}</span>
-                    <span className="factory-employee-meta">
-                      {MACHINE_EMOJI[m.type]} {MACHINE_LABELS[m.type]} ·{' '}
-                      {producedToday ? `bugün ${m.lastProducedQty} adet üretti` : 'bugün henüz üretmedi'}
-                    </span>
-                    {leftForOwn && (
-                      <span className="factory-employee-meta">
-                        🏭 Kendi fabrikasını kurdu · makine 00:00'da boşalacak
-                      </span>
-                    )}
-                  </div>
-                  {!leftForOwn && (
-                    <button
-                      className="factory-fire-btn"
-                      disabled={producedToday || fireBusy === m.id}
-                      onClick={() => handleFire(m.id)}
-                      title={producedToday ? 'Bugün üretim yaptı, işten atamazsın' : 'İşten at'}
-                    >
-                      {fireBusy === m.id ? '…' : 'İşten At'}
-                    </button>
-                  )}
-                </div>
-                {canReassign && (
-                  <div className="factory-reassign-row">
-                    <select
-                      className="factory-reassign-select"
-                      value={reassignTarget[m.id] || ''}
-                      onChange={(e) =>
-                        setReassignTarget((prev) => ({ ...prev, [m.id]: e.target.value }))
-                      }
-                    >
-                      <option value="">Başka makineye taşı…</option>
-                      {availableTargets.map((om) => (
-                        <option key={om.id} value={om.id}>
-                          {MACHINE_EMOJI[om.type]} {MACHINE_LABELS[om.type]}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      className="factory-btn small"
-                      disabled={!reassignTarget[m.id] || reassignBusy === m.id}
-                      onClick={() => handleReassign(m.id)}
-                    >
-                      {reassignBusy === m.id ? '…' : 'Taşı'}
-                    </button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
         </div>
         {error && <p className="factory-error">{error}</p>}
       </div>
+    </FactoryModalShell>
+  );
+}
+
+function FactorySalaryModal({ factory, onClose }) {
+  const [salary, setSalary] = useState(factory.salary || 1000);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await setFactorySalary(salary);
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Maaş güncellenemedi.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <FactoryModalShell title="İşçi Maaşı" onClose={onClose}>
+      <p className="factory-step-label">1.000 – 5.000 altın</p>
+      <p className="factory-price-label">
+        <strong>{salary.toLocaleString('tr-TR')} altın</strong>
+      </p>
+      <QuantityStepper value={salary} onChange={setSalary} max={5000} quickAmounts={[100, 500, 1000]} />
+      <button className="factory-btn primary small" disabled={busy} onClick={save}>
+        {busy ? '…' : 'Maaşı Güncelle'}
+      </button>
+      {error && <p className="factory-error">{error}</p>}
+    </FactoryModalShell>
+  );
+}
+
+// Makine kartındaki işçi işlemleri (sadece sahip). Bugün üreten işçi kovulamaz/taşınamaz.
+function WorkerActions({ m, machines, dateKey }) {
+  const [mode, setMode] = useState(null); // null | 'fire' | 'move'
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  if (m.workerLeftDateKey) {
+    return <span className="factory-machine-status">🏭 Kendi fabrikasını kurdu · makine 00:00'da boşalacak</span>;
+  }
+  const workedToday = m.lastProducedDateKey === dateKey;
+  const targets = MACHINE_CATEGORY_TYPES.filter((t) => t !== m.type).map((t) => ({
+    type: t,
+    free: machines.find((x) => x.type === t && !x.workerId && x.id !== m.id) || null,
+  }));
+  const run = async (fn) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+      setMode(null);
+    } catch (err) {
+      setError(err.message || 'İşlem yapılamadı.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="fw-actions">
+      {mode === null && (
+        <div className="fw-row">
+          <button className="fw-btn fire" disabled={workedToday} onClick={() => setMode('fire')}>
+            ✖ Kov
+          </button>
+          <button className="fw-btn move" disabled={workedToday} onClick={() => setMode('move')}>
+            ⇄ Taşı
+          </button>
+        </div>
+      )}
+      {workedToday && mode === null && <span className="fw-note">🔒 Bugün çalıştı · 00:00'dan sonra</span>}
+      {mode === 'fire' && (
+        <div className="fw-confirm">
+          <span>
+            <b>{m.workerName}</b> işten atılsın mı?
+          </span>
+          <div className="fw-row">
+            <button className="fw-btn" disabled={busy} onClick={() => setMode(null)}>
+              Vazgeç
+            </button>
+            <button className="fw-btn fire solid" disabled={busy} onClick={() => run(() => fireEmployee(m.id))}>
+              {busy ? '…' : 'Evet, kov'}
+            </button>
+          </div>
+        </div>
+      )}
+      {mode === 'move' && (
+        <div className="fw-confirm">
+          <div className="fw-row">
+            {targets.map((t) => (
+              <button
+                key={t.type}
+                className="fw-target"
+                disabled={busy || !t.free}
+                onClick={() => run(() => reassignEmployee(m.id, t.free.id))}
+              >
+                <span className="fw-target-emoji">{MACHINE_EMOJI[t.type]}</span>
+                <span>{MACHINE_LABELS[t.type].replace(/ Makinesi$/, '')}</span>
+                {!t.free && <em>boş makine yok</em>}
+              </button>
+            ))}
+          </div>
+          <button className="fw-btn" disabled={busy} onClick={() => setMode(null)}>
+            Vazgeç
+          </button>
+        </div>
+      )}
+      {error && <p className="factory-error">{error}</p>}
     </div>
-    {showLogoDesigner && (
-      <FactoryLogoDesigner factory={factory} onClose={() => setShowLogoDesigner(false)} />
-    )}
-    </>
   );
 }
 
@@ -587,9 +533,10 @@ function ManagementModal({ factory, machines, onClose }) {
 function OwnerView({ factory, machines, player, myUid }) {
   const { prices } = useInvestmentPrices();
   const [showBuy, setShowBuy] = useState(false);
-  const [showManage, setShowManage] = useState(false);
+  const [showNameEdit, setShowNameEdit] = useState(false); // v128
+  const [showSalaryEdit, setShowSalaryEdit] = useState(false); // v128
+  const [showMagaza, setShowMagaza] = useState(false); // v128: Envanter → Mağaza
   const [showBrowse, setShowBrowse] = useState(false);
-  const [showInventory, setShowInventory] = useState(false); // v124: Hisse Sat → Envanter
   const [showReport, setShowReport] = useState(false);
   const [showSponsor, setShowSponsor] = useState(false);
   const [selfBusy, setSelfBusy] = useState(null);
@@ -718,10 +665,13 @@ function OwnerView({ factory, machines, player, myUid }) {
             )}
           </div>
         ) : m.workerId ? (
-          <span className="factory-machine-status worker">
-            👤 {m.workerName}
-            {producedToday && ` · bugün ${m.lastProducedQty} adet`}
-          </span>
+          <>
+            <span className="factory-machine-status worker">
+              👤 {m.workerName}
+              {producedToday && ` · bugün ${m.lastProducedQty} adet`}
+            </span>
+            <WorkerActions m={m} machines={otherMachines} dateKey={dateKey} />
+          </>
         ) : hasAnyEmployment ? (
           <span className="factory-machine-status empty">İşçi bekliyor</span>
         ) : (
@@ -749,8 +699,8 @@ function OwnerView({ factory, machines, player, myUid }) {
           ◀ Fabrikalar
         </button>
         <div className="factory-top-row-right">
-          <button className="factory-nav-btn" onClick={() => setShowInventory(true)}>
-            📦 Envanter
+          <button className="factory-nav-btn" onClick={() => setShowMagaza(true)}>
+            🏬 Mağaza
           </button>
           <button className="factory-nav-btn primary" onClick={() => setShowBuy(true)}>
             Makine Al +
@@ -762,14 +712,14 @@ function OwnerView({ factory, machines, player, myUid }) {
         <div className="factory-owner-heading">
           <FactoryBadge logo={factory.logo} name={factoryDisplayName(factory)} size={40} />
           <p className="factory-owner-title">{factoryDisplayName(factory)}</p>
+          <button type="button" className="factory-pen" onClick={() => setShowNameEdit(true)} aria-label="Fabrika adını ve logosunu değiştir">
+            ✏️
+          </button>
         </div>
         <div className="factory-owner-header-actions">
           <div className="factory-owner-header-actions-row">
             <button className="factory-manage-btn" onClick={() => setShowReport(true)}>
               📊 Günlük Rapor
-            </button>
-            <button className="factory-manage-btn" onClick={() => setShowManage(true)}>
-              ⚙️ Yönetim
             </button>
           </div>
           <button className="factory-manage-btn" onClick={() => setShowSponsor(true)}>
@@ -777,8 +727,11 @@ function OwnerView({ factory, machines, player, myUid }) {
           </button>
         </div>
       </div>
-      <p className="factory-hint">
+      <p className="factory-hint factory-salary-line">
         Maaş: <strong>{(factory.salary || 0).toLocaleString('tr-TR')} altın</strong>
+        <button type="button" className="factory-pen small" onClick={() => setShowSalaryEdit(true)} aria-label="Maaşı değiştir">
+          ✏️
+        </button>
       </p>
       <div className="factory-hint factory-value-row">
         <span>
@@ -882,13 +835,12 @@ function OwnerView({ factory, machines, player, myUid }) {
           ownedMiningCount={machines.filter((m) => m.type === 'mining').length}
         />
       )}
-      {showManage && (
-        <ManagementModal factory={factory} machines={machines} onClose={() => setShowManage(false)} />
-      )}
+      {showNameEdit && <FactoryNameModal factory={factory} onClose={() => setShowNameEdit(false)} />}
+      {showSalaryEdit && <FactorySalaryModal factory={factory} onClose={() => setShowSalaryEdit(false)} />}
       {showBrowse && (
         <BrowseFactoriesModal onClose={() => setShowBrowse(false)} canJoin={false} myUid={factory.id} />
       )}
-      {showInventory && <FactoryInventorySheet onClose={() => setShowInventory(false)} />}
+      {showMagaza && <MagazaOverlay onClose={() => setShowMagaza(false)} />}
       {showReport && <DailyReportModal factory={factory} onClose={() => setShowReport(false)} />}
       {showSponsor && <FactorySponsorModal onClose={() => setShowSponsor(false)} />}
       {showShiftGame && (

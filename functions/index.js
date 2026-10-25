@@ -42,6 +42,8 @@ import {
 import { createAchievements } from './achievements.js';
 import { trainingBotRun, vehicleRaceLevel, carStats } from './raceSim.js';
 import { createRaceTa } from './raceTa.js';
+import { createChampionshipV2 } from './championshipV2.js';
+import { CHAMP_V2_START_DAY } from './championshipPrizes.js';
 import { championshipPodium } from './championshipPrizes.js';
 import { adPriceFor, countActiveAds } from './marketAds.js';
 import { gangExitBlockText } from './gang/config.js';
@@ -345,6 +347,15 @@ export const goldLedger = onDocumentUpdated('users/{uid}', async (event) => {
 
 // v67 — Başarılar (bkz. functions/achievements.js)
 const achievements = createAchievements({ db, FieldValue: admin.firestore.FieldValue });
+// v128 — Şampiyona (yeni sistem): süreye göre ödül + günün / tüm zamanlar listesi
+const champV2 = createChampionshipV2({
+  db,
+  FieldValue: admin.firestore.FieldValue,
+  splitIncomeForDebt: (debt, amount) => splitIncomeForDebt(debt, amount),
+  goldTag,
+  catalog: VEHICLE_CATALOG,
+  grantAchievement: (uid, id) => achievements.grant(uid, id),
+});
 export const syncAchievements = onCall(async (request) => {
   const uid = requireAuth(request);
   await achievements.syncUser(uid);
@@ -363,6 +374,22 @@ export const v124Migrate = onSchedule({ schedule: 'every 60 minutes', timeoutSec
   const cfg = (await db.doc('gangSystem/config').get()).data() || {};
   const r = await v124Migrations.runAll({ liveWorldId: cfg.liveWorldId || null });
   console.log(JSON.stringify({ v124Migrate: r }));
+});
+
+// v128 — şampiyona geçişi: yeni sistem yüklenmeden önce bugün (eski sistemle)
+// koşulmuş yarışlar süresine göre ödüllendirilip yeni listeye eklenir. Saatte bir
+// (idempotent — her oda bir kez ödenir); geçiş penceresi bitince hiçbir şey yapmaz.
+async function runChampV2Migration() {
+  const today = istanbulDateKey();
+  const out = [];
+  for (const day of [addDaysToDateKey(today, -1), today]) {
+    out.push(await champV2.migrateLegacyDay(day, { todayKey: today }));
+  }
+  return out;
+}
+export const champV2Migrate = onSchedule({ schedule: 'every 60 minutes', timeoutSeconds: 540 }, async () => {
+  const r = await runChampV2Migration();
+  console.log(JSON.stringify({ champV2Migrate: r }));
 });
 
 export const achievementsSweep = onSchedule({ schedule: 'every 60 minutes' }, async () => {
@@ -940,6 +967,12 @@ const MATERIAL_SMS_LABELS = {
 // Her yerde (işçilik, satış, soygun, yarış, faiz, vb.) kazanılan altın bu
 // fonksiyondan geçirilip {goldDelta, debtDelta} olarak uygulanmalı.
 // ---------------------------------------------------------------------------
+// v129 — banka faizi: günlük %1, en fazla 100.000 altın (10 milyon üstü bakiye faiz getirmez)
+const BANK_INTEREST_CAP = 100000;
+function bankDailyInterest(balance) {
+  return Math.min(BANK_INTEREST_CAP, Math.max(0, Math.floor((Number(balance) || 0) * 0.01)));
+}
+
 function splitIncomeForDebt(currentDebt, amount) {
   const debt = currentDebt || 0;
   if (debt <= 0 || amount <= 0) {
@@ -2486,11 +2519,22 @@ async function resolveStuckLotteryAndChampionship(dateKey) {
   // dokümanında lottery'deki gibi baştan `finalized:false` yazılmıyor, bu
   // yüzden geniş bir `where` sorgusu yerine sınırlı bir gün penceresinde
   // doğrudan doküman ID'siyle kontrol ediyoruz).
+  // v128 — yeni şampiyona: dünkü (geçiş günündeki) eski yarışları süreye göre öde,
+  // dünün listesini kesinleştir. Yeni sistemin devraldığı günlere eski "ilk 3"
+  // ödemesi YAPILMAZ (aşağıdaki döngü atlar).
+  try {
+    const prevKey = addDaysToDateKey(dateKey, -1);
+    summary.champV2 = await champV2.migrateLegacyDay(prevKey, { todayKey: dateKey });
+    summary.champV2Final = await champV2.finalizeDay(prevKey);
+  } catch (e) {
+    console.error('champV2 gece', e);
+  }
   {
     const catalogIds = Object.keys(VEHICLE_CATALOG);
     const CHAMPIONSHIP_CATCHUP_DAYS = 7;
     for (let daysAgo = 1; daysAgo <= CHAMPIONSHIP_CATCHUP_DAYS; daysAgo += 1) {
       const champPrevDateKey = addDaysToDateKey(dateKey, -daysAgo);
+      if (champPrevDateKey >= CHAMP_V2_START_DAY && (await champV2.ownsLegacyDay(champPrevDateKey))) continue;
       for (const catalogId of catalogIds) {
         const champRef = db.collection('championshipDaily').doc(`${catalogId}_${champPrevDateKey}`);
         const champSnap = await champRef.get();
@@ -2577,6 +2621,23 @@ export const runV124MigrationsNow = onRequest({ timeoutSeconds: 540 }, async (re
     const r = await v124Migrations.runAll({ liveWorldId: cfg.liveWorldId || null });
     console.log(JSON.stringify({ v124MigrateManual: r }));
     res.status(200).json({ ok: true, liveWorldId: cfg.liveWorldId || null, ...r });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err?.message || String(err) });
+  }
+});
+
+// v128 — şampiyona geçişini saatlik işi beklemeden ELLE çalıştırır (deploy sonrası
+// bir kez). İdempotent: tekrar açmak çift ödeme yapmaz.
+// Kullanım: …/runChampV2MigrationNow?secret=MAINTENANCE_SECRET
+export const runChampV2MigrationNow = onRequest({ timeoutSeconds: 540 }, async (req, res) => {
+  if (!req.query.secret || req.query.secret !== MAINTENANCE_SECRET) {
+    res.status(403).json({ error: 'Yetkisiz.' });
+    return;
+  }
+  try {
+    const r = await runChampV2Migration();
+    console.log(JSON.stringify({ champV2MigrateManual: r }));
+    res.status(200).json({ ok: true, days: r });
   } catch (err) {
     res.status(500).json({ ok: false, error: err?.message || String(err) });
   }
@@ -3951,7 +4012,8 @@ async function runDailyResetBody(dateKey, dr) {
       let n = 0;
       bankDocs.slice(i, i + 200).forEach((docSnap) => {
         const balance = docSnap.data().bankBalance || 0;
-        const interest = Math.floor(balance * 0.01);
+        // v129: günlük faiz en fazla 100.000 (10.000.000 üstü bakiye faiz getirmez)
+        const interest = bankDailyInterest(balance);
         if (interest <= 0) return;
         bankBatch.update(docSnap.ref, {
           gold: admin.firestore.FieldValue.increment(interest),
@@ -7311,6 +7373,12 @@ export const executeHeistPlan = onCall(async (request) => {
       });
     });
     stateEntries.push(...heistStateEntries({ fines: perCivilianPenalty * civilianIdx.length })); // v108
+    // v128 — ekipteki (sızmış) polisin de şüphesi artar; ceza / ödül yok.
+    policeIdx.forEach((i) => {
+      batch.update(db.collection('users').doc(participants[i].uid), {
+        suspicion: clampSuspicion(suspicions[i] + config.suspicionCost),
+      });
+    });
   } else if (busted) {
     // ADIM 2 — Şüpheden yakalanmadılar AMA ekipte sızmış polis varsa,
     // polis artık YÜZDE YÜZ yakalar (kendi başarısı sayesinde); soyguncular
@@ -7331,7 +7399,10 @@ export const executeHeistPlan = onCall(async (request) => {
     policeIdx.forEach((i) => {
       const currentDebt = userSnaps[i].data()?.debtToState || 0;
       const { goldDelta, debtDelta } = splitIncomeForDebt(currentDebt, perPoliceEarning);
+      // v128 — KULLANICI İSTEĞİ: soygunu durduran polisin de şüphesi (soyguncular
+      // kadar) artar — soygun ekibinde olduğu için görünüşte o da soyguna katıldı.
       batch.update(db.collection('users').doc(participants[i].uid), {
+        suspicion: clampSuspicion(suspicions[i] + config.suspicionCost),
         gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('soygun'),
         debtToState: admin.firestore.FieldValue.increment(debtDelta),
       });
@@ -9523,6 +9594,7 @@ async function doRaceChangeGear(request) {
 async function doCreateChampionshipRace(request) {
   const uid = requireAuth(request);
   const { vehicleId } = request.data || {};
+  if (typeof vehicleId !== 'string' || !vehicleId) throw new HttpsError('invalid-argument', 'Geçersiz araç.');
   const vehicle = await getVehicleForRace(uid, vehicleId);
   if (vehicle.seizedByBank) {
     throw new HttpsError('failed-precondition', 'Bu araç bankaya el konulmuş durumda.');
@@ -9534,7 +9606,21 @@ async function doCreateChampionshipRace(request) {
 
   const dateKey = istanbulDateKey();
   const dailyRef = db.collection('dailyActions').doc(`${uid}_${dateKey}`);
+  const vehicleRef = db.collection('vehicles').doc(vehicleId);
+  // v129: aynı MODELDEN günde 1 giriş (dailyActions.championship_{catalogId}) ve
+  // sadece o modelin EN YÜKSEK seviyeli (yarışabilir) arabasıyla. Ayrıca araç
+  // başına champDay: satılan araç aynı gün başka hesapta da yarışamaz.
   const dailyField = `championship_${catalogId}`;
+  {
+    const mine = await db.collection('vehicles').where('ownerId', '==', uid).get();
+    const raceable = mine.docs
+      .map((d) => d.data())
+      .filter((v) => Number(v.catalogId) === catalogId && !v.listed && !v.seizedByBank && (v.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS) > 0);
+    const best = raceable.reduce((m, v) => Math.max(m, vehicleRaceLevel(v)), 0);
+    if (vehicleRaceLevel(vehicle) < best) {
+      throw new HttpsError('failed-precondition', 'Bu modelden daha yüksek seviyeli araban var — şampiyonaya onunla katılabilirsin.');
+    }
+  }
 
   const userSnap = await db.collection('users').doc(uid).get();
   const user = userSnap.data();
@@ -9542,10 +9628,16 @@ async function doCreateChampionshipRace(request) {
   const roomRef = db.collection('raceRooms').doc();
 
   await db.runTransaction(async (tx) => {
+    const vSnap = await tx.get(vehicleRef);
+    const v = vSnap.data();
+    if (!v || v.ownerId !== uid) throw new HttpsError('failed-precondition', 'Bu araç size ait değil.');
+    if (v.listed) throw new HttpsError('failed-precondition', 'Bu araç şu an 2. el sitesinde satışta, yarışa bu araçla giremezsin.');
+    if (v.champDay === dateKey) throw new HttpsError('failed-precondition', 'Bu araçla bugün şampiyonada yarıştın.');
     const dailySnap = await tx.get(dailyRef);
     if (dailySnap.exists && dailySnap.data()[dailyField]) {
-      throw new HttpsError('failed-precondition', 'Bu araçla bugün şampiyonaya zaten katıldın.');
+      throw new HttpsError('failed-precondition', 'Bu modelle bugün şampiyonaya zaten katıldın.');
     }
+    tx.update(vehicleRef, { champDay: dateKey });
     tx.set(dailyRef, { [dailyField]: true }, { merge: true });
     tx.set(roomRef, {
       status: 'racing',
@@ -9558,6 +9650,7 @@ async function doCreateChampionshipRace(request) {
       finalTurnFor: null,
       winnerUid: null,
       isChampionship: true,
+      champV: 2, // v128 — süreye göre ödül (bitince hemen)
       engine: 'ta', // v78 — en hızlı süre kazanır
       startedAtMs: Date.now(),
       championshipCatalogId: catalogId,
@@ -9566,11 +9659,11 @@ async function doCreateChampionshipRace(request) {
       // localMode — bkz. doCreateTrainingRace'teki aynı isimli notun
       // birebir aynısı: şampiyonada da rakip olmadığı için sunucunun tur
       // başına araya girmesine gerek yok, sadece BAŞINDA (hak kontrolü)
-      // ve SONUNDA (liderlik tablosu — doFinishSoloRace) devrede.
+      // ve SONUNDA (taFinish) devrede.
       localMode: true,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       players: {
-        [uid]: taPlayerState(user?.displayName || 'Oyuncu', vehicleId, vehicle),
+        [uid]: taPlayerState(user?.displayName || 'Oyuncu', vehicleId, v),
       },
     });
   });
@@ -9756,6 +9849,7 @@ const raceTa = createRaceTa({
   requireAuth,
   finalizeRace,
   processTrainingReward,
+  champ: champV2, // v128 — süreye göre ödül + listeler
 });
 
 // raceHubAction — yukarıdaki 7 yarış aksiyonunun (rollDice, training,

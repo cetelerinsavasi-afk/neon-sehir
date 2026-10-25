@@ -53,7 +53,8 @@ import {
   itemListingFields,
 } from './itemRules.js';
 import { goldTag } from './moneyLog.js';
-import { itemListingTimeFields } from './listingBatches.js';
+import { itemListingTimeFields, batchesOf, consumeBatches, nextExpireAtMs } from './listingBatches.js';
+import { planAutoSupply, planGameSupply, AUTO_SUPPLY_MAT_NAMES } from './autoSupply.js';
 
 export const SHOP_MAX_ITEMS = 10;
 export const VITRIN_ITEM_TYPE = { silahci: 'weapon', galeri: 'vehicle' };
@@ -125,6 +126,66 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
     return result;
   }
 
+  // v128/v129 — tedarikte kullanılan ilanları düş, satıcılara öde (malzeme satışında
+  // vergi yok — buyListing ile aynı). Kendi ilanından alınan kısım (own) parasız.
+  function applySupplyListingsTx(tx, { supply, buyerId }) {
+    const credit = {};
+    for (const t of supply.takes) {
+      const l = t.listing;
+      const lref = listingsRef.doc(l.id);
+      const remaining = Number(l.quantity || 0) - t.qty;
+      const hasBatches = Array.isArray(l.batches);
+      if (remaining <= 0) {
+        tx.update(lref, {
+          quantity: 0,
+          price: 0,
+          sold: true,
+          buyerId,
+          soldAt: FieldValue.serverTimestamp(),
+          ...(hasBatches ? { batches: [], expireAtMs: FieldValue.delete() } : {}),
+        });
+      } else if (hasBatches) {
+        const batches = consumeBatches(batchesOf(l), t.qty);
+        tx.update(lref, { quantity: remaining, price: t.unit * remaining, batches, expireAtMs: nextExpireAtMs(batches) ?? FieldValue.delete() });
+      } else {
+        tx.update(lref, { quantity: remaining, price: t.unit * remaining });
+      }
+      if (!t.own && l.sellerId && l.sellerId !== 'system') {
+        const c = (credit[l.sellerId] = credit[l.sellerId] || { amount: 0, qty: 0 });
+        c.amount += t.unit * t.qty;
+        c.qty += t.qty;
+      }
+    }
+    for (const [sid, c] of Object.entries(credit)) {
+      const ss = supply.sellerSnaps?.[sid];
+      if (!ss?.exists) continue;
+      const { goldDelta, debtDelta } = splitIncomeForDebt(ss.data()?.debtToState, c.amount);
+      tx.update(userRef(sid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('ikinciEl'), debtToState: FieldValue.increment(debtDelta) });
+      tx.set(userRef(sid).collection('messages').doc(), {
+        text: `2. El: "${c.qty} adet malzeme" ilanın ${c.amount.toLocaleString('tr-TR')} altına satıldı. Vergi (%1): 0 · Eline geçen: ${c.amount.toLocaleString('tr-TR')} altın.`,
+        createdAt: FieldValue.serverTimestamp(),
+        read: false,
+        type: 'marketplace_sale',
+      });
+    }
+  }
+  // dükkân sahibine bilgi (oyuncu dükkânı)
+  function ownerSupplySms(tx, { supply, h, houseId, material, type }) {
+    const matName = AUTO_SUPPLY_MAT_NAMES[material] || 'malzeme';
+    const fmtN = (n) => Number(n || 0).toLocaleString('tr-TR');
+    const shopName = String(h.name || BIZ_TYPES[type]?.label || 'Dükkân').slice(0, 40);
+    const parts = [];
+    if (supply.ownQty > 0) parts.push(`kendi Mağaza ilanından ${fmtN(supply.ownQty)} adet kullanıldı`);
+    if (supply.extQty > 0) parts.push(`Mağaza'dan ${fmtN(supply.extQty)} adet otomatik alındı (${fmtN(supply.cost)} altın, vergi sonrası kârın ${fmtN(supply.profit)} altın)`);
+    tx.set(userRef(h.ownerUid).collection('messages').doc(), {
+      text: `${BIZ_TYPES[type]?.icon || '🏪'} ${shopName} dükkânında ${matName} olmadığı için ${parts.join(', ')}. Müşterinin işi yapıldı.`,
+      createdAt: FieldValue.serverTimestamp(),
+      read: false,
+      type: 'biz_auto_supply',
+      houseId,
+    });
+  }
+
   // ---- ATÖLYE: tamir / geliştirme ---------------------------------------------------
   // p: { shop: houseId | 'game', shopType ('silahci'|'modifiye', oyun dükkânı için),
   //      itemId, action:'repair'|'upgrade', upgradeType?, expect }
@@ -160,23 +221,64 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       // v124: dükkânın stoğu = sahibin ortak envanteri; müşterinin kendi malzemesi KULLANILMAZ
       const shopHave = isGame ? Infinity : Math.max(0, Number(si?.exists ? si.data().quantity || 0 : 0));
       const ownQty = 0;
-      if (qty - ownQty > shopHave) fail('failed-precondition', 'shop-short');
       const cost = workshopCost({ mat: price.mat, labor: price.labor, qty, ownQty });
-      if (Number(p.expect) !== cost.total) fail('aborted', `price-changed:${cost.total}`);
       const selfService = !isGame && h.ownerUid === uid;
+      // v128 — OTOMATİK TEDARİK: envanterde eksik varsa Mağaza'daki (2. el malzeme
+      // ilanları) sahibin malzeme fiyatı VE ALTI ilanlardan en ucuzdan (eşitse
+      // stoğu az olandan) eksik kadar alınır; parası sahibin bu işten kazancından
+      // ödenir. Vergiden sonra sahip en az +1 altın kâr etmiyorsa alım yapılmaz
+      // ("malzeme yok"). Sahibin kendi işi (selfService) için otomatik alım yok.
+      let supply = null;
+      const readListings = async () => {
+        const lsnap = await tx.get(listingsRef.where('itemType', '==', 'material').where('materialType', '==', material).where('sold', '==', false));
+        return lsnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      };
+      if (isGame) {
+        // v129 — oyunun dükkânının envanteri yok: malzeme Mağaza'dan en ucuzdan,
+        // yetmeyen kısım tavan fiyatından (sonsuz) tamamlanır.
+        supply = planGameSupply({ listings: qty > 0 ? await readListings() : [], qty, maxUnit: price.mat });
+      } else if (qty - ownQty > shopHave) {
+        if (selfService) fail('failed-precondition', 'shop-short');
+        supply = planAutoSupply({
+          listings: await readListings(),
+          need: qty - ownQty - shopHave,
+          have: shopHave,
+          qty,
+          mat: price.mat,
+          labor: price.labor,
+          ownerUid: h.ownerUid,
+          taxOf: (amount) => bizTax(amount, type),
+        });
+        if (!supply) fail('failed-precondition', 'shop-short');
+      }
+      if (supply) {
+        // satıcıların borç durumu (okumalar yazmalardan önce)
+        supply.sellerSnaps = {};
+        for (const sid of [...new Set(supply.takes.filter((t) => !t.own).map((t) => t.listing.sellerId))]) {
+          if (sid && sid !== 'system') supply.sellerSnaps[sid] = await tx.get(userRef(sid));
+        }
+      }
+      if (Number(p.expect) !== cost.total) fail('aborted', `price-changed:${cost.total}`);
       if (!selfService && Number(user.gold || 0) < cost.total) fail('failed-precondition', 'gold');
 
       // --- yazmalar ---
       if (!selfService && cost.total > 0) tx.update(userRef(uid), { gold: FieldValue.increment(-cost.total), goldTag: goldTag('atolye') });
       if (!isGame) {
-        if (cost.shopQty > 0) tx.set(invDoc(h.ownerUid, material), { quantity: FieldValue.increment(-cost.shopQty) }, { merge: true });
+        const fromInv = cost.shopQty - (supply ? supply.need : 0); // v128: eksik kısım Mağaza'dan
+        if (fromInv > 0) tx.set(invDoc(h.ownerUid, material), { quantity: FieldValue.increment(-fromInv) }, { merge: true });
         // v77 vergi: cironun %10'u (işçilik ve malzeme ayrı ayrı)
         // v127: oran türüne göre (Silahçı / Modifiye — Ticaret Bakanlığı)
         const taxLabor = selfService ? 0 : bizTax(cost.labor, type);
         const taxMat = selfService ? 0 : bizTax(cost.material, type);
         if (!selfService && cost.total > 0) {
-          const { goldDelta, debtDelta } = splitIncomeForDebt(os.data()?.debtToState, cost.total - taxLabor - taxMat);
+          // v128: otomatik alınan malzemenin parası sahibin kazancından düşer (kâr ≥ 1 garantili)
+          const net = cost.total - taxLabor - taxMat - (supply ? supply.cost : 0);
+          const { goldDelta, debtDelta } = splitIncomeForDebt(os.data()?.debtToState, net);
           tx.update(userRef(h.ownerUid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('atolye'), debtToState: FieldValue.increment(debtDelta) });
+        }
+        if (supply) {
+          applySupplyListingsTx(tx, { supply, buyerId: h.ownerUid });
+          ownerSupplySms(tx, { supply, h, houseId, material, type });
         }
         business?.recordIncomeTx(tx, { houseId, h, amount: cost.labor, kind: 'labor', customerUid: uid, products: { [`${action}:${itemType}`]: 1 }, tax: taxLabor });
         if (cost.material > 0) business?.recordIncomeTx(tx, { houseId, h, amount: cost.material, kind: 'material', customerUid: uid, materialsUsed: { [material]: cost.shopQty }, tax: taxMat });
@@ -187,10 +289,16 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
           tx.update(houseRef(houseId), { [`bizShortage.items.${material}`]: true, bizShortagePending: true });
         }
       }
+      let gameTax = 0;
       if (isGame && cost.total > 0) {
-        // oyunun dükkânı: gelir sadece sıralama için kaydedilir
-        business?.recordGameIncomeTx?.(tx, { type, amount: cost.labor, kind: 'labor', customerUid: uid, products: { [`${action}:${itemType}`]: 1 }, tax: bizTax(cost.labor, type) });
-        if (cost.material > 0) business?.recordGameIncomeTx?.(tx, { type, amount: cost.material, kind: 'material', customerUid: uid, tax: bizTax(cost.material, type) });
+        // v129 — oyunun dükkânı: malzeme parası ilan sahiplerine (fabrikalara);
+        // KÂR (müşterinin ödediği − malzeme masrafı) vergi oranıyla belediyeye,
+        // kalanı oyundan çıkar. Gelir sıralama için kaydedilir.
+        if (supply?.takes?.length) applySupplyListingsTx(tx, { supply, buyerId: 'game' });
+        const profit = Math.max(0, cost.total - (supply?.cost || 0));
+        gameTax = bizTax(profit, type);
+        business?.recordGameIncomeTx?.(tx, { type, amount: cost.labor, kind: 'labor', customerUid: uid, products: { [`${action}:${itemType}`]: 1 }, tax: gameTax });
+        if (cost.material > 0) business?.recordGameIncomeTx?.(tx, { type, amount: cost.material, kind: 'material', customerUid: uid, tax: 0 });
       }
       // ürün güncellemesi (eski repairItem / upgradeWeapon / upgradeVehicle ile aynı)
       let patch;
@@ -205,7 +313,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
         patch = vehicleLevelUpPatch(item);
       }
       tx.update(itemRef, patch);
-      result = { ok: true, action, itemType, qty, own: cost.own, shopQty: cost.shopQty, labor: cost.labor, material: cost.material, total: cost.total };
+      result = { ok: true, action, itemType, qty, own: cost.own, shopQty: cost.shopQty, labor: cost.labor, material: cost.material, total: cost.total, autoSupplied: isGame ? 0 : supply ? supply.need : 0, ...(isGame && supply ? { boughtQty: supply.boughtQty, virtualQty: supply.virtualQty, materialCost: supply.cost, tax: gameTax } : {}) };
     });
     // Onboarding görev 19 — "silahını geliştir"
     if (result.action === 'upgrade' && result.itemType === 'weapon') await advanceOnboardingStep(uid, 19).catch(() => {});

@@ -205,7 +205,6 @@ export default function ComposeModal({ onClose, onPosted }) {
   const investmentPortfolioAvailable =
     (player?.diamondHoldings || 0) > 0 || (player?.stockHoldings || 0) > 0 || (player?.cryptoHoldings || 0) > 0;
   const heistAvailable = (player?.heistSuccessCount || 0) > 0;
-  const materialsAvailable = Object.values(inventory || {}).some((qty) => qty > 0);
 
   const ATTACHMENT_TYPES = [
     // "Röportaj Yap" — KULLANICI İSTEĞİ: görsel ekle seçeneklerinin en
@@ -224,7 +223,6 @@ export default function ComposeModal({ onClose, onPosted }) {
     { id: 'gold', label: 'Param', emoji: '💰', available: true },
     { id: 'investmentPortfolio', label: 'Yatırım Portföyüm', emoji: '💹', available: investmentPortfolioAvailable },
     { id: 'heist', label: 'Soygunlarım', emoji: '🥷', available: heistAvailable },
-    { id: 'materials', label: 'Malzemelerim', emoji: '📦', available: materialsAvailable },
     { id: 'investment', label: 'Yatırım Grafiği', emoji: '📈', available: true },
     { id: 'fine', label: 'Cezam', emoji: '🚨', available: fineAvailable },
     { id: 'debt', label: 'Toplam Borcum', emoji: '💸', available: debtAvailable },

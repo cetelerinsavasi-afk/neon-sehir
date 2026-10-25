@@ -956,6 +956,29 @@ export default function MarketplaceScreen() {
 //   • 7 gün parti kuralı (ucuz ilan 7 günde oyuna satılır) aynen sürüyor.
 // =============================================================================
 const MAGAZA_MATERIALS = ['tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme'];
+// v128 — Mağaza'nın üstünde ortak envanter (3 malzeme yan yana, adetleriyle)
+const MAGAZA_MAT_ICON = { tamirMalzemesi: '🔧', silahUpgrade: '🔫', arabaGelistirme: '🚗' };
+const MAGAZA_MAT_SHORT = { tamirMalzemesi: 'Tamir', silahUpgrade: 'Silah Gel.', arabaGelistirme: 'Araba Gel.' };
+function MagazaInventoryStrip({ mats }) {
+  const { inventory } = useInventory();
+  return (
+    <div className="mg-strip" aria-label="Envanterim">
+      <span className="mg-strip-label">📦 Envanterin</span>
+      <div className="mg-strip-row">
+        {mats.map((k) => {
+          const n = Math.max(0, Number(inventory[k] || 0));
+          return (
+            <div key={k} className={`mg-strip-cell${n === 0 ? ' zero' : ''}`} title={MATERIAL_LABELS[k]}>
+              <span className="mg-strip-icon">{MAGAZA_MAT_ICON[k]}</span>
+              <b>{n.toLocaleString('tr-TR')}</b>
+              <em>{MAGAZA_MAT_SHORT[k]}</em>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function MagazaSellForm({ usable, initialMaterial, onClose }) {
   const { inventory } = useInventory();
@@ -1133,6 +1156,7 @@ export function MagazaScreen({ onClose }) {
           + İlan Ver
         </button>
       </div>
+      {!loading && visibleMats.length > 0 && <MagazaInventoryStrip mats={visibleMats} />}
       {loading ? (
         <p className="market-hint">Yükleniyor…</p>
       ) : visibleMats.length === 0 ? (

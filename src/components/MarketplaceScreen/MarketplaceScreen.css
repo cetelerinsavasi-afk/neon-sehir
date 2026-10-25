@@ -633,3 +633,54 @@
 .market-new-filter .market-hint {
   margin: 0;
 }
+
+/* v128 — Mağaza üstünde envanter şeridi */
+.mg-strip {
+  margin: 4px 0 8px;
+  padding: 8px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(25, 232, 255, 0.08), rgba(255, 210, 63, 0.06));
+  border: 1px solid rgba(25, 232, 255, 0.25);
+}
+.mg-strip-label {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim, #8a93a8);
+  margin: 0 2px 6px;
+}
+.mg-strip-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 6px;
+}
+.mg-strip-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 8px 4px;
+  border-radius: 10px;
+  background: rgba(7, 10, 18, 0.7);
+  border: 1px solid var(--panel-border, #1f2a40);
+  min-width: 0;
+}
+.mg-strip-icon {
+  font-size: 18px;
+}
+.mg-strip-cell b {
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--text, #fff);
+}
+.mg-strip-cell em {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--text-dim, #8a93a8);
+  white-space: nowrap;
+}
+.mg-strip-cell.zero b {
+  color: #ff6b6b;
+}

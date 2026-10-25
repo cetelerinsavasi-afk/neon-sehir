@@ -165,14 +165,14 @@ test('index.js: Mağaza alıcı/satıcı kontrolü, malzeme vergisi yok, makine 
   }
 });
 
-test('istemci (v124 4b): 2. el sadece araç+silah, Mağaza ayrı, fabrikada Envanter, hisse satışı kapalı', () => {
+test('istemci (v124 4b): 2. el sadece araç+silah, Mağaza ayrı, fabrikada Mağaza (v128), hisse satışı kapalı', () => {
   const rd = (p) => fs.readFileSync(new URL(`../../src/${p}`, import.meta.url), 'utf8');
   const mk = rd('components/MarketplaceScreen/MarketplaceScreen.jsx');
   const cats = mk.slice(mk.indexOf('const CATEGORIES = ['), mk.indexOf('];', mk.indexOf('const CATEGORIES = [')));
   assert.ok(!cats.includes("'material'") && !cats.includes("'machine'"));
   assert.ok(mk.includes('export function MagazaScreen') && !mk.includes('runMergeLegacyMaterialListings'));
   const fac = rd('components/FactoryScreen/FactoryScreen.jsx');
-  assert.ok(fac.includes('📦 Envanter') && !fac.includes('Hisse Sat\n') && !fac.includes('useListedFactoryShares'));
+  assert.ok(fac.includes('🏬 Mağaza') && fac.includes('MagazaOverlay') && !fac.includes('Hisse Sat\n') && !fac.includes('useListedFactoryShares'));
   const src = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
   for (const f of ['listFactoryShare', 'buyFactoryShare']) {
     const body = src.slice(src.indexOf(`export const ${f} = onCall`)).slice(0, 300);

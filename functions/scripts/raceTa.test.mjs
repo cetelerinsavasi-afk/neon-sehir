@@ -3,6 +3,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeFirestore, FieldValue } from '../gang/test/fakeFirestore.js';
 import { createRaceTa, decideTaWinner } from '../raceTa.js';
+import { createChampionshipV2 } from '../championshipV2.js';
+import { championshipTimePrize } from '../championshipPrizes.js';
+import { VEHICLE_CATALOG } from '../catalogData.js';
 import * as R from '../raceSim.js';
 import { workshopJob, vehicleLevelUpPatch, itemListingBand } from '../itemRules.js';
 
@@ -45,6 +48,13 @@ function setup() {
     Object.keys(players).forEach((u) => (upd[`players.${u}`] = players[u]));
     tx.update(roomRef, upd);
   }
+  const splitIncomeForDebt = (debt, amount) => {
+    const d = debt || 0;
+    if (d <= 0 || amount <= 0) return { goldDelta: amount, debtDelta: 0 };
+    const repay = Math.min(Math.floor(amount / 2), d);
+    return { goldDelta: amount - repay, debtDelta: -repay };
+  };
+  const champ = createChampionshipV2({ db, FieldValue, splitIncomeForDebt, goldTag: (s) => s, catalog: VEHICLE_CATALOG, now: () => clock.now });
   const ta = createRaceTa({
     db,
     FieldValue,
@@ -52,6 +62,7 @@ function setup() {
     requireAuth: (r) => r.auth.uid,
     finalizeRace,
     processTrainingReward: async (id) => rewards.push(id),
+    champ,
     now: () => clock.now,
   });
   const call = (uid, fn, data) => ta[fn]({ auth: { uid }, data });
@@ -132,10 +143,12 @@ test('taFinish antrenman: süre sunucuda hesaplanır, bot süresiyle karşılaş
   assert.deepEqual(h.rewards, ['t1']);
 });
 
-test('taFinish şampiyona: günün en hızlısı lider olur', async () => {
+test('taFinish şampiyona (v128): süreye göre ödül hemen yatar, günün + tüm zamanlar listesi', async () => {
   const h = setup();
+  await h.db.doc('users/ali').set({ gold: 0 });
+  await h.db.doc('users/veli').set({ gold: 0, debtToState: 1_000_000 });
   const mk = async (id, uid, lv) => {
-    await h.db.doc(`raceRooms/${id}`).set({ engine: 'ta', status: 'racing', isChampionship: true, championshipCatalogId: 3, championshipDateKey: '2026-10-09', creatorUid: uid, participantUids: [uid], players: { [uid]: pl(uid, 3, lv) } });
+    await h.db.doc(`raceRooms/${id}`).set({ engine: 'ta', status: 'racing', isChampionship: true, champV: 2, championshipCatalogId: 3, championshipDateKey: '2026-10-09', creatorUid: uid, participantUids: [uid], players: { [uid]: pl(uid, 3, lv) } });
     await h.call(uid, 'start', { roomId: id });
   };
   await mk('c1', 'ali', 1);
@@ -143,12 +156,36 @@ test('taFinish şampiyona: günün en hızlısı lider olur', async () => {
   const a = playerRun(3, 1);
   const v = playerRun(3, 3);
   h.clock.now += 5 * 60_000;
+  const ra = await h.call('ali', 'finish', { roomId: 'c1', runs: a.runs });
+  assert.equal(ra.prize, championshipTimePrize(a.ms));
+  assert.ok(ra.prize > 0);
+  assert.equal(h.G('users/ali').gold, ra.prize, 'ödül hemen yattı');
+  assert.equal(h.G('raceRooms/c1').championshipPrize, ra.prize);
+  assert.equal(h.G('championshipDaily/3_2026-10-09'), undefined, 'eski günlük belge yazılmaz');
+  const rv = await h.call('veli', 'finish', { roomId: 'c2', runs: v.runs });
+  assert.equal(h.G('users/veli').gold, rv.prize - Math.floor(rv.prize / 2), 'borçluya yarısı');
+  const b = h.G('championshipBoard/2026-10-09');
+  assert.equal(b.runs, 2);
+  assert.equal(b.entries.ali.timeMs, a.ms);
+  assert.equal(b.entries.veli.timeMs, v.ms);
+  assert.equal(b.paidBy.ali, ra.prize, 'bugün kazanılan toplam');
+  const all = h.G('championshipBoard/allTime').top;
+  assert.deepEqual(all.map((e) => e.uid), ['veli', 'ali'], 'seviye 3 araç daha hızlı');
+  // tekrar bitirme çağrısı ikinci kez ödemez
   await h.call('ali', 'finish', { roomId: 'c1', runs: a.runs });
-  assert.equal(h.G('championshipDaily/3_2026-10-09').leaderUid, 'ali');
-  await h.call('veli', 'finish', { roomId: 'c2', runs: v.runs });
-  const d = h.G('championshipDaily/3_2026-10-09');
-  assert.equal(d.leaderUid, 'veli', 'seviye 3 araç daha hızlı');
-  assert.equal(d.leaderTimeMs, v.ms);
+  assert.equal(h.G('users/ali').gold, ra.prize);
+});
+
+test('taFinish şampiyona: bitiremeyen ödül almaz, listeye girmez', async () => {
+  const h = setup();
+  await h.db.doc('users/ali').set({ gold: 0 });
+  await h.db.doc('raceRooms/d1').set({ engine: 'ta', status: 'racing', isChampionship: true, champV: 2, championshipCatalogId: 3, championshipDateKey: '2026-10-09', creatorUid: 'ali', participantUids: ['ali'], players: { ali: pl('ali', 3, 1) } });
+  await h.call('ali', 'start', { roomId: 'd1' });
+  const r = await h.call('ali', 'finish', { roomId: 'd1', dnf: true });
+  assert.equal(r.prize, 0);
+  assert.equal(h.G('users/ali').gold, 0);
+  assert.equal(h.G('raceRooms/d1').championshipResult, 'dnf');
+  assert.equal(h.G('championshipBoard/2026-10-09'), undefined);
 });
 
 test('taFinish bahisli: kısa süre kazanır, bahis ödenir; geride kalan vazgeçince hemen biter', async () => {

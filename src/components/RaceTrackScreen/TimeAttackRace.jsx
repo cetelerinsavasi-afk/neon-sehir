@@ -3,6 +3,7 @@ import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { carStats, trainingBotRun, gradeOf, RACE_CAR_LOOKS, FPS } from '../../../functions/raceSim.js';
 import { createTimeAttackGame, makeSampler, fmtRace } from './timeAttackGame';
+import { championshipTimePrize } from '../../../functions/championshipPrizes.js';
 import { taStart, taFinish, taTimeout, createTrainingRace, forfeitRace } from '../../services/gameActions';
 import { streamBroadcast, publishRaceFrame, clearGameFrame } from '../Stream/streamShared';
 import './TimeAttackRace.css';
@@ -578,15 +579,25 @@ function ResultBody({ mode, phase, room, me, myUid, other, bot, myMs, grade, gra
     );
   }
 
-  // şampiyona
+  // şampiyona — v128: ödül süreye göre, yarış biter bitmez
+  const champPrize = finished && room.champPrizePaid ? Number(room.championshipPrize || 0) : championshipTimePrize(myMs);
   return (
     <>
       <div className="lbl">{myMs ? 'ŞAMPİYONA TURU TAMAMLANDI' : 'ŞAMPİYONA'}</div>
       {timeBlock}
+      {myMs ? (
+        <p className={`ta-gold ${champPrize > 0 ? 'win' : ''}`}>
+          {champPrize > 0 ? `🏆 +${fmtGold(champPrize)} altın` : 'Ödül için 1 dakikanın altına in'}
+        </p>
+      ) : null}
       <p className="sub">
         {myMs
-          ? `Bugün bu araçla en hızlı süreyi yapan gece 00:00'da ${fmtGold(carStats(me.catalogId || 1).price / 5)} altın ödülü kazanır.`
-          : 'Bu deneme tamamlanmadı — bu araçla yarın tekrar katılabilirsin.'}
+          ? finished
+            ? champPrize > 0
+              ? 'Ödülün hesabına yattı. Günün listesinde yerini gör.'
+              : 'Daha hızlı bir arabayla ya da daha iyi bir turla tekrar dene.'
+            : 'Sonuç doğrulanıyor…'
+          : 'Bu deneme tamamlanmadı — bu arabanın bugünkü hakkı kullanıldı.'}
       </p>
     </>
   );

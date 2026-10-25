@@ -1233,3 +1233,139 @@
   grid-template-columns: repeat(5, 1fr);
   font-size: 12px;
 }
+
+/* v128 — Yönetim paneli yerine yerinde düzenleme */
+.factory-pen {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.factory-pen.small {
+  width: 24px;
+  height: 24px;
+  font-size: 11px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.factory-pen:hover {
+  border-color: var(--neon-cyan);
+}
+.factory-salary-line {
+  display: flex;
+  align-items: center;
+}
+.factory-salary-line strong {
+  margin-left: 4px;
+}
+.factory-logo-edit {
+  position: relative;
+  align-self: center;
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+}
+.factory-logo-edit-pen {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--panel);
+  border: 1px solid var(--neon-cyan);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+}
+
+/* makine kartı: işçi işlemleri */
+.fw-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+.fw-row {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+}
+.fw-btn {
+  flex: 1;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.fw-btn.fire {
+  border-color: rgba(255, 46, 140, 0.6);
+  color: var(--neon-pink);
+  background: rgba(255, 46, 140, 0.08);
+}
+.fw-btn.fire.solid {
+  background: var(--neon-pink);
+  color: #fff;
+}
+.fw-btn.move {
+  border-color: rgba(25, 232, 255, 0.5);
+  color: var(--neon-cyan);
+  background: rgba(25, 232, 255, 0.07);
+}
+.fw-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.fw-note {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.fw-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+}
+.fw-target {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  border-radius: 10px;
+  border: 1px solid rgba(25, 232, 255, 0.45);
+  background: rgba(25, 232, 255, 0.06);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.fw-target-emoji {
+  font-size: 20px;
+}
+.fw-target em {
+  font-style: normal;
+  font-size: 9px;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+.fw-target:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-color: var(--panel-border);
+}

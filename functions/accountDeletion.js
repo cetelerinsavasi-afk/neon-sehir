@@ -434,6 +434,9 @@ export async function buildDeletionPlan({ db, auth, uid, email, FieldPath, now =
 
   const champs = await counted(getDocs(db.collection('championshipDaily').where('leaderUid', '==', uid)));
   if (champs.length) add('anonymize', { what: 'Günlük şampiyona lideri kaydı', paths: champs.map((d) => d.ref.path), fields: ['leaderName'] });
+  // v128 — şampiyona listeleri (günün listesi + tüm zamanlar)
+  const boards = (await counted(getDocs(db.collection('championshipBoard')))).filter((d) => d.data()?.entries?.[uid] || (Array.isArray(d.data()?.top) && d.data().top.some((e) => e?.uid === uid)));
+  if (boards.length) add('anonymize', { what: 'Şampiyona listeleri', paths: boards.map((d) => d.ref.path), fields: [`entries.${uid}.name`, 'top[].name'] });
 
   // Soygun planları (açık)
   const openPlans = await counted(getDocs(db.collection('heistPlans').where('status', '==', 'open')));

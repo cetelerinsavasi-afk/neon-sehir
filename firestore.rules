@@ -235,6 +235,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // v128 — championshipBoard/{dateKey} (günün listesi) ve
+    // championshipBoard/allTime (tüm zamanlar). Yazma sadece Cloud Functions.
+    match /championshipBoard/{docId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
     // lottery/{dateKey} — piyango. Herkes güncel jackpot'u ve geçmiş
     // kazananları görebilmeli; yazma sadece Cloud Functions ile.
     match /lottery/{dateKey} {

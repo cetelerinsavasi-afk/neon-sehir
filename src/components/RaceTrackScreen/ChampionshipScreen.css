@@ -1,0 +1,443 @@
+/* v128 — Şampiyona (yeni sistem) */
+.cl-screen {
+  gap: 14px;
+}
+
+/* ---- üst: başlık + ödül merdiveni ---- */
+.cl-hero {
+  position: relative;
+  border-radius: 14px;
+  padding: 12px 12px 10px;
+  background:
+    radial-gradient(120% 90% at 100% 0%, rgba(255, 210, 63, 0.16), transparent 55%),
+    radial-gradient(90% 80% at 0% 100%, rgba(255, 46, 140, 0.14), transparent 60%),
+    #070a14;
+  border: 1px solid rgba(255, 210, 63, 0.28);
+  overflow: hidden;
+}
+.cl-hero-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cl-hero-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: #fff3c4;
+  text-shadow: 0 0 14px rgba(255, 210, 63, 0.45);
+}
+.cl-hero-badges {
+  display: inline-flex;
+  gap: 6px;
+}
+.cl-pill {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(25, 232, 255, 0.1);
+  border: 1px solid rgba(25, 232, 255, 0.35);
+  color: #bff7ff;
+  white-space: nowrap;
+}
+.cl-pill.gold {
+  background: rgba(255, 210, 63, 0.12);
+  border-color: rgba(255, 210, 63, 0.4);
+  color: #ffe9a3;
+}
+
+.cl-ladder-wrap {
+  margin-top: 10px;
+}
+.cl-ladder-axis {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.cl-ladder-arrow {
+  flex: 1;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, rgba(138, 147, 168, 0.3), #ffd23f);
+  position: relative;
+}
+.cl-ladder-arrow::after {
+  content: '';
+  position: absolute;
+  right: -2px;
+  top: -4px;
+  border: 5px solid transparent;
+  border-left-color: #ffd23f;
+  border-right: 0;
+}
+.cl-ladder {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(34px, 1fr);
+  gap: 3px;
+  height: 128px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.cl-ladder::-webkit-scrollbar {
+  display: none;
+}
+.cl-step {
+  display: grid;
+  grid-template-rows: 16px 1fr 14px;
+  align-items: end;
+  justify-items: center;
+  min-width: 0;
+}
+.cl-step-prize {
+  font-size: 9.5px;
+  font-weight: 900;
+  color: #ffd23f;
+  white-space: nowrap;
+  align-self: end;
+}
+.cl-step-bar {
+  position: relative;
+  width: 100%;
+  border-radius: 6px 6px 2px 2px;
+  background: linear-gradient(180deg, rgba(255, 210, 63, 0.85), rgba(255, 140, 30, 0.35));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  opacity: 0.55;
+}
+.cl-step.top .cl-step-bar {
+  opacity: 0.95;
+  background: linear-gradient(180deg, #fff1a6, #ffb627 55%, #ff7a18);
+  box-shadow: 0 0 14px rgba(255, 190, 40, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.cl-step.me .cl-step-bar {
+  opacity: 1;
+  background: linear-gradient(180deg, #8ffcff, #19e8ff 50%, #ff2e8c);
+  box-shadow: 0 0 16px rgba(25, 232, 255, 0.65);
+}
+.cl-step-you {
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  transform: translateX(-50%);
+  font-size: 8.5px;
+  font-weight: 900;
+  color: #04121a;
+  letter-spacing: 0.04em;
+}
+.cl-step-time {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-dim);
+  white-space: nowrap;
+  font-family: ui-monospace, Consolas, Menlo, monospace;
+}
+.cl-step.me .cl-step-time {
+  color: var(--neon-cyan);
+}
+
+/* ---- ortak bölüm başlığı ---- */
+.cl-garage,
+.cl-board {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cl-board-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cl-board-title {
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+.cl-chip {
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+/* giriş hakkı biletleri */
+.cl-tickets {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 60%;
+}
+.cl-tickets i {
+  width: 9px;
+  height: 14px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #19e8ff, #0a8bff);
+  box-shadow: 0 0 6px rgba(25, 232, 255, 0.5);
+}
+.cl-tickets i.used {
+  background: #1b2236;
+  box-shadow: none;
+}
+.cl-tickets b {
+  margin-left: 4px;
+  font-size: 11px;
+  color: #bff7ff;
+}
+
+/* ---- arabalarım ---- */
+.cl-cars {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cl-car {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #0b1020, #060810);
+  border: 1px solid var(--panel-border);
+}
+.cl-car.blocked {
+  opacity: 0.6;
+}
+.cl-car-pic {
+  width: 96px;
+  aspect-ratio: 4 / 3;
+  border-radius: 9px;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 60%, #1b2148, #090b19);
+}
+.cl-car-pic img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.cl-car-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.cl-car-name {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.cl-car-name b {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cl-join {
+  margin-top: 2px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  border: 0;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: #1a0710;
+  background: linear-gradient(90deg, #ff2e8c, #ffb627);
+  box-shadow: 0 4px 14px rgba(255, 46, 140, 0.3);
+  cursor: pointer;
+}
+.cl-join:disabled {
+  cursor: default;
+  color: var(--text-dim);
+  background: #151b2c;
+  box-shadow: none;
+}
+
+/* ---- boş durumlar ---- */
+.cl-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--panel-border);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.cl-empty > span {
+  font-size: 18px;
+}
+.cl-empty.big {
+  flex-direction: column;
+  text-align: center;
+  padding: 18px 12px;
+  font-size: 13px;
+  color: var(--text);
+}
+.cl-empty.big > span {
+  font-size: 28px;
+}
+.cl-empty.big em {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--neon-cyan);
+}
+.cl-empty.done {
+  border-style: solid;
+  border-color: rgba(109, 255, 156, 0.3);
+  background: rgba(109, 255, 156, 0.05);
+}
+
+/* ---- sıralama satırları ---- */
+.cl-row {
+  display: grid;
+  grid-template-columns: 30px 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #070a12;
+  border: 1px solid var(--panel-border);
+}
+.cl-row.p1 {
+  border-color: rgba(255, 210, 63, 0.55);
+  background: linear-gradient(90deg, rgba(255, 210, 63, 0.12), #070a12 70%);
+}
+.cl-row.p2 {
+  border-color: rgba(200, 212, 230, 0.4);
+}
+.cl-row.p3 {
+  border-color: rgba(205, 127, 50, 0.45);
+}
+.cl-row.me {
+  border-color: var(--neon-cyan);
+  background: linear-gradient(90deg, rgba(25, 232, 255, 0.14), #070a12 75%);
+  box-shadow: 0 0 12px rgba(25, 232, 255, 0.18);
+}
+.cl-rank {
+  font-size: 14px;
+  font-weight: 900;
+  text-align: center;
+  color: var(--text-dim);
+  font-family: ui-monospace, Consolas, Menlo, monospace;
+}
+.cl-row.me .cl-rank {
+  color: var(--neon-cyan);
+}
+.cl-who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+.cl-who b {
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cl-row.me .cl-who b {
+  color: var(--neon-cyan);
+  letter-spacing: 0.06em;
+}
+.cl-who em {
+  font-style: normal;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cl-time {
+  font-family: ui-monospace, Consolas, Menlo, monospace;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #e9f6ff;
+}
+.cl-prize {
+  font-size: 11.5px;
+  font-weight: 900;
+  color: #ffd23f;
+  min-width: 58px;
+  text-align: right;
+}
+.cl-prize.none {
+  color: var(--text-dim);
+}
+.cl-gap {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 0 2px;
+}
+.cl-gap i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--panel-border);
+}
+
+@media (max-width: 380px) {
+  .cl-car {
+    grid-template-columns: 78px 1fr;
+  }
+  .cl-car-pic {
+    width: 78px;
+  }
+  .cl-prize {
+    min-width: 50px;
+  }
+}
+
+/* v129 — bugün şampiyonadan kazanılan */
+.cl-earned {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.1;
+  padding: 4px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: rgba(7, 10, 18, 0.7);
+}
+.cl-earned em {
+  font-style: normal;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.cl-earned b {
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--text-dim);
+}
+.cl-earned.on {
+  border-color: rgba(255, 210, 63, 0.5);
+  box-shadow: 0 0 12px rgba(255, 210, 63, 0.25);
+}
+.cl-earned.on b {
+  color: #ffd23f;
+}

@@ -300,7 +300,7 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
           <strong className="bank-highlight">{bankBalance.toLocaleString('tr-TR')}</strong>
         </div>
         {/* v95: faiz birikmez — her gün 00:00'da cebine yatar */}
-        <p className="bank-hint">Günlük faiz: +{Math.floor(bankBalance * 0.01).toLocaleString('tr-TR')} altın · 00:00&apos;da cebine</p>
+        <p className="bank-hint">Günlük faiz: +{Math.min(100000, Math.floor(bankBalance * 0.01)).toLocaleString('tr-TR')} altın · 00:00&apos;da cebine{bankBalance > 10000000 ? ' · günlük faiz en fazla 100.000 (10 milyon üstü faiz getirmez)' : ''}</p>
         <TradeToggle
           buyLabel="Yatır"
           sellLabel="Çek"

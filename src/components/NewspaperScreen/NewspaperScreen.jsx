@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNewspaper } from '../../hooks/useNewspaper';
 import { useLottery } from '../../hooks/useLottery';
-import { useChampionshipDaily } from '../../hooks/useChampionshipDaily';
+import { useChampionshipYesterdayWinner } from '../../hooks/useChampionshipBoard';
 import { useNewspaperBulletin } from '../../hooks/useNewspaperBulletin';
 import { useFutbolLeagues } from '../../hooks/useFutbolLeagues';
 import { useFutbolTeams } from '../../hooks/useFutbolTeams';
@@ -22,7 +22,10 @@ import './NewspaperScreen.css';
 // bkz. components/Broadcast/) formatına çevrildi. Röportaj özelliğiyle
 // (madde 1) AYNI motor kullanılıyor, ikinci kez YAZILMADI.
 
-const UST_CABRIO_CATALOG_ID = 10;
+const fmtChampTime = (ms) => {
+  const v = Math.max(0, Math.round(Number(ms) || 0));
+  return `${String(Math.floor(v / 60000)).padStart(2, '0')}:${String(Math.floor(v / 1000) % 60).padStart(2, '0')}.${String(v % 1000).padStart(3, '0')}`;
+};
 
 const HEIST_TARGET_LABELS = {
   banka: 'Banka',
@@ -219,13 +222,12 @@ const CHANNELS = [
 export default function NewspaperScreen() {
   const { events, editionDateKey } = useNewspaper();
   const { yesterday: lotteryYesterday } = useLottery();
-  const { byCatalogId } = useChampionshipDaily();
+  const champYesterday = useChampionshipYesterdayWinner(); // v128
   const { bulletin } = useNewspaperBulletin();
   const { leagues } = useFutbolLeagues();
   const [channel, setChannel] = useState('haber');
   const [muted, setMuted] = useState(true);
 
-  const cabrioYesterday = byCatalogId[String(UST_CABRIO_CATALOG_ID)]?.yesterday;
   const topTierLeague = leagues.find((l) => l.tier === 1) || null;
   const { teams: topTierTeams } = useFutbolTeams(topTierLeague?.id);
 
@@ -330,9 +332,9 @@ export default function NewspaperScreen() {
     if (bulletin) {
       lines.push('Piyasalarda son durumu Yatırım kanalımızdan takip edebilirsiniz.');
     }
-    if (cabrioYesterday?.winnerUid) {
+    if (champYesterday?.uid) {
       lines.push(
-        `Üstün Cabrio şampiyonasında dünün galibi ${cabrioYesterday.winnerName}, pisti ${cabrioYesterday.winnerTurns} turda tamamlayarak zirveye oturdu.`
+        `Şampiyonada dünün en hızlısı ${champYesterday.name || 'bir oyuncu'} oldu: ${champYesterday.vehicleModel || 'arabasıyla'} pisti ${fmtChampTime(champYesterday.timeMs)} sürede tamamladı.`
       );
     }
     if (lotteryYesterday?.winnerUid) {
@@ -345,7 +347,7 @@ export default function NewspaperScreen() {
   }, [
     onboardingPoliceRuleEvent, seasonEndEvent, cupFinalEvent, newSeasonEvent, biggestHeist, heistEvents.length,
     stoppedCount, arrestCount, arrestFine, columnPiece, matchEvents.length, cupMatchEvents.length, bulletin,
-    cabrioYesterday, lotteryYesterday,
+    champYesterday, lotteryYesterday,
   ]);
 
   const sportsScript = useMemo(() => {

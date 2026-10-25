@@ -331,3 +331,148 @@ test('stok uyarısı: günde en fazla bir SMS, eksikler tek mesajda; v124: ortak
   assert.deepEqual(h.G(`houses/${id}`).bizShortage.items, {});
   assert.equal(h.G(`houses/${id}`).bizShortagePending, false);
 });
+
+// ---------------------------------------------------------------------------
+// v128 — eksik malzemeyi Mağaza'dan otomatik tamamlama
+// ---------------------------------------------------------------------------
+import { planAutoSupply } from '../autoSupply.js';
+
+const matListing = (h, id, sellerId, unitPrice, quantity, extra = {}) =>
+  h.S(`marketplaceListings/${id}`, { itemType: 'material', materialType: 'tamirMalzemesi', sellerId, sellerName: sellerId, unitPrice, quantity, price: unitPrice * quantity, sold: false, createdAtMs: 1, ...extra });
+
+test('v128 otomatik tedarik: en ucuz → eşitse stoğu az olan; sahibin fiyatı üstü / iptal kullanılmaz; paralar doğru yere', async () => {
+  const h = setup();
+  const id = await openShop(h, 'silahci');
+  await h.act('usta', { op: 'prices', houseId: id, materials: { tamirMalzemesi: { mat: 8, labor: 2 } } });
+  h.S('users/usta/inventory/tamirMalzemesi', { quantity: 4 });
+  h.S('users/zeki', { displayName: 'Zeki', gold: 0 });
+  h.S('users/nur', { displayName: 'Nur', gold: 0, debtToState: 1000 });
+  matListing(h, 'L1', 'veli', 7, 30);
+  matListing(h, 'L2', 'zeki', 6, 5);
+  matListing(h, 'L3', 'nur', 6, 2, { batches: [{ q: 2, at: 5 }], expireAtMs: 999 });
+  matListing(h, 'L4', 'veli', 9, 50); // sahibin fiyatından (8) pahalı
+  matListing(h, 'L6', 'veli', 4, 50, { cancelled: true });
+  weapon(h, 'w1', 'ali');
+  h.present('ali', id);
+  const usta0 = h.G('users/usta').gold;
+  const r = await h.act('ali', { op: 'workshop', shop: id, itemId: 'w1', action: 'repair', expect: 100 });
+  assert.equal(r.autoSupplied, 6);
+  assert.equal(h.G('users/ali').gold, 100_000 - 100, 'müşteri aynı fiyatı öder');
+  // 2 adet nur (6, stoğu az) + 4 adet zeki (6) = 36 altın
+  assert.equal(h.G('marketplaceListings/L3').sold, true);
+  assert.equal(h.G('marketplaceListings/L2').quantity, 1);
+  assert.equal(h.G('marketplaceListings/L2').price, 6);
+  assert.equal(h.G('marketplaceListings/L1').quantity, 30, 'pahalı ilana dokunulmaz');
+  assert.equal(h.G('users/zeki').gold, 24);
+  assert.equal(h.G('users/nur').gold, 6, 'borçlu satıcıya yarısı');
+  assert.equal(h.G('users/nur').debtToState, 994);
+  assert.equal(inv(h, 'usta', 'tamirMalzemesi'), 0, 'envanterdeki 4 kullanıldı, eksi olmaz');
+  // vergi %10: 2 + 8 = 10 · sahip: 100 − 10 − 36
+  assert.equal(h.G('users/usta').gold, usta0 + 100 - 10 - 36);
+  assert.equal(h.G('weapons/w1').lifeDays, 6);
+  const msgs = [...h.db._store.keys()].filter((k) => k.startsWith('users/usta/messages/')).map((k) => h.G(k));
+  assert.ok(msgs.some((m) => m.type === 'biz_auto_supply' && /tamir malzemesi olmadığı için Mağaza'dan 6 adet otomatik alındı/.test(m.text)));
+  assert.equal(h.G(`houses/${id}`).bizShortagePending, true, 'stok ekle hatırlatması sürer');
+});
+
+test('v128 otomatik tedarik: sahip zarar edecekse ya da kâr 0 ise alınmaz ("malzeme yok"); +1 ise alınır', async () => {
+  const h = setup();
+  const id = await openShop(h, 'silahci');
+  await h.act('usta', { op: 'prices', houseId: id, materials: { tamirMalzemesi: { mat: 8, labor: 1 } } });
+  h.S('users/usta/inventory/tamirMalzemesi', { quantity: 9 }); // 10 lazım → 1 eksik
+  matListing(h, 'L1', 'veli', 8, 10); // 9 gelir − 1 vergi − 8 = 0 → alınmaz
+  weapon(h, 'w1', 'ali');
+  h.present('ali', id);
+  const req = { op: 'workshop', shop: id, itemId: 'w1', action: 'repair', expect: 90 };
+  await assert.rejects(h.act('ali', req), /shop-short/);
+  assert.equal(h.G('marketplaceListings/L1').quantity, 10);
+  matListing(h, 'L2', 'veli', 7, 10); // +1 kâr → alınır
+  const usta0 = h.G('users/usta').gold;
+  const r = await h.act('ali', req);
+  assert.equal(r.autoSupplied, 1);
+  assert.equal(h.G('marketplaceListings/L2').quantity, 9);
+  assert.equal(h.G('users/usta').gold, usta0 + 90 - 9 - 7, 'vergi 1 + 8 = 9, alış 7');
+});
+
+test('v128 otomatik tedarik: eksiğin tamamı yoksa hiç alınmaz; sahibin kendi işinde otomatik alım yok', async () => {
+  const h = setup();
+  const id = await openShop(h, 'silahci');
+  await h.act('usta', { op: 'prices', houseId: id, materials: { tamirMalzemesi: { mat: 8, labor: 2 } } });
+  matListing(h, 'L1', 'veli', 5, 4); // 10 lazım, 4 var
+  weapon(h, 'w1', 'ali');
+  weapon(h, 'w2', 'usta');
+  h.present('ali', id);
+  h.present('usta', id);
+  await assert.rejects(h.act('ali', { op: 'workshop', shop: id, itemId: 'w1', action: 'repair', expect: 100 }), /shop-short/);
+  assert.equal(h.G('marketplaceListings/L1').quantity, 4);
+  matListing(h, 'L2', 'veli', 5, 40);
+  await assert.rejects(h.act('usta', { op: 'workshop', shop: id, itemId: 'w2', action: 'repair', expect: 100 }), /shop-short/);
+  assert.equal(h.G('marketplaceListings/L2').quantity, 40);
+});
+
+test('v128 planAutoSupply: kullanıcının örneği (vergi %20, işçilik 1, malzeme 8)', () => {
+  const tax20 = (a) => Math.max(0, Math.round(a * 0.2));
+  const base = { need: 1, have: 0, qty: 1, mat: 8, labor: 1, ownerUid: 'o', taxOf: tax20 };
+  const L = (unitPrice, quantity = 5, extra = {}) => ({ id: `l${unitPrice}_${quantity}`, itemType: 'material', sellerId: 's', unitPrice, quantity, sold: false, ...extra });
+  assert.equal(planAutoSupply({ ...base, listings: [L(8)] }), null, '9 − 2 vergi − 8 = −1 → yok');
+  assert.equal(planAutoSupply({ ...base, listings: [L(7)] }), null, '0 kâr → yok');
+  const ok = planAutoSupply({ ...base, listings: [L(7), L(6, 9), L(6, 3)] });
+  assert.equal(ok.profit, 1);
+  assert.equal(ok.takes[0].listing.id, 'l6_3', 'aynı fiyatta stoğu az olan önce');
+});
+
+test('v129 otomatik tedarik: envanter bitince önce sahibin KENDİ ilanı kullanılır (para el değiştirmez), sonra başkası', async () => {
+  const h = setup();
+  const id = await openShop(h, 'silahci');
+  await h.act('usta', { op: 'prices', houseId: id, materials: { tamirMalzemesi: { mat: 8, labor: 2 } } });
+  h.S('users/usta/inventory/tamirMalzemesi', { quantity: 2 });
+  h.S('users/zeki', { displayName: 'Zeki', gold: 0 });
+  matListing(h, 'OWN', 'usta', 9, 5); // kendi ilanı (fiyatı önemli değil)
+  matListing(h, 'Z', 'zeki', 7, 10);
+  weapon(h, 'w1', 'ali');
+  h.present('ali', id);
+  const usta0 = h.G('users/usta').gold;
+  const r = await h.act('ali', { op: 'workshop', shop: id, itemId: 'w1', action: 'repair', expect: 100 });
+  assert.equal(r.autoSupplied, 8);
+  assert.equal(h.G('marketplaceListings/OWN').sold, true, '5 adet kendi ilanından');
+  assert.equal(h.G('marketplaceListings/Z').quantity, 7, '3 adet zekiden');
+  assert.equal(h.G('users/zeki').gold, 21);
+  assert.equal(inv(h, 'usta', 'tamirMalzemesi'), 0);
+  assert.equal(h.G('users/usta').gold, usta0 + 100 - 10 - 21, 'kendi ilanı için para ödenmez');
+});
+
+test('v129 oyunun dükkânı: envanter yok — Mağaza\'dan en ucuz alınır, parası ilan sahibine; kâr vergisi belediyeye; yetmezse tavan fiyattan sonsuz', async () => {
+  const h = setup();
+  h.S('users/fab', { displayName: 'Fabrikacı', gold: 0 });
+  h.S('users/fab2', { displayName: 'Fabrikacı 2', gold: 0 });
+  vehicle(h, 'v1', 'ali');
+  // tamir 100 malzeme × 13 = 1.300 · Mağaza: 60 adet 7'den, 30 adet 8'den → 10 eksik tavandan (10)
+  matListing(h, 'A', 'fab', 7, 60);
+  matListing(h, 'B', 'fab2', 8, 30);
+  matListing(h, 'C', 'fab2', 6, 5, { materialType: 'silahUpgrade' }); // başka malzeme
+  const r = await h.act('ali', { op: 'workshop', shop: 'game', shopType: 'modifiye', itemId: 'v1', action: 'repair', expect: 1300 });
+  assert.equal(h.G('users/ali').gold, 100_000 - 1300);
+  assert.equal(r.boughtQty, 90);
+  assert.equal(r.virtualQty, 10);
+  assert.equal(r.materialCost, 60 * 7 + 30 * 8 + 10 * 10);
+  assert.equal(h.G('users/fab').gold, 420);
+  assert.equal(h.G('users/fab2').gold, 240);
+  assert.equal(h.G('marketplaceListings/A').sold, true);
+  assert.equal(h.G('marketplaceListings/C').quantity, 5);
+  // kâr 1300 − 760 = 540 → vergi %10 = 54
+  assert.equal(r.tax, 54);
+  const led = [...h.db._store.keys()].filter((k) => k.startsWith('taxLedger/')).map((k) => h.G(k));
+  assert.equal(led.reduce((a, x) => a + Number(x.amount || x.total || 0), 0) > 0, true, 'vergi deftere yazıldı');
+});
+
+test('v129 oyunun dükkânı: kullanıcının örneği — 100 tamir malzemesi 7\'den, 1.300 ödendi → vergi kâr üzerinden', async () => {
+  const h = setup();
+  h.S('users/fab', { displayName: 'Fabrikacı', gold: 0 });
+  vehicle(h, 'v1', 'ali');
+  matListing(h, 'A', 'fab', 7, 500);
+  const r = await h.act('ali', { op: 'workshop', shop: 'game', shopType: 'modifiye', itemId: 'v1', action: 'repair', expect: 1300 });
+  assert.equal(r.virtualQty, 0);
+  assert.equal(h.G('users/fab').gold, 700);
+  assert.equal(r.tax, 60, 'kâr 600 × %10');
+  assert.equal(h.G('marketplaceListings/A').quantity, 400);
+});

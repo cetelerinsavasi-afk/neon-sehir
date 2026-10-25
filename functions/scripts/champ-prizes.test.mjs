@@ -31,3 +31,102 @@ test('podyum: ilk 3 + ödül; eski kayıt (top yok) → lider 1.', () => {
   assert.deepEqual(old.map((x) => [x.uid, x.place, x.reward]), [['z', 1, 25000]]);
   assert.deepEqual(championshipPodium(null, 1), []);
 });
+
+// ---------------------------------------------------------------------------
+// v128 — süreye göre ödül + geçiş
+// ---------------------------------------------------------------------------
+import { championshipTimePrize, rankChampionshipBoard, CHAMP_V2_START_DAY } from '../championshipPrizes.js';
+import { createChampionshipV2 } from '../championshipV2.js';
+import { FakeFirestore, FieldValue } from '../gang/test/fakeFirestore.js';
+import { VEHICLE_CATALOG } from '../catalogData.js';
+
+test('v128 ödül tablosu (süre → altın)', () => {
+  const s = (sec) => championshipTimePrize(Math.round(sec * 1000));
+  assert.equal(s(60), 1000);
+  assert.equal(s(60.001), 0, '1 dakikanın üstü ödülsüz');
+  assert.equal(s(57), 1000);
+  assert.equal(s(55), 1000, 'sınır: tam 55 sn üst kademede');
+  assert.equal(s(54.999), 2500);
+  assert.equal(s(50), 2500);
+  assert.equal(s(47), 5000);
+  assert.equal(s(42), 10000);
+  assert.equal(s(38), 20000);
+  assert.equal(s(34), 40000);
+  assert.equal(s(31), 60000);
+  assert.equal(s(29.5), 80000);
+  assert.equal(s(28.5), 120000);
+  assert.equal(s(27.5), 160000);
+  assert.equal(s(26.5), 200000);
+  assert.equal(s(25.5), 250000);
+  assert.equal(s(22), 500000);
+  assert.equal(s(18), 500000);
+  assert.equal(championshipTimePrize(0), 0);
+  assert.equal(championshipTimePrize(null), 0);
+});
+
+test('v128 günün listesi sıralaması', () => {
+  const r = rankChampionshipBoard({ a: { timeMs: 40000, at: 2 }, b: { timeMs: 35000, at: 3 }, c: { timeMs: 40000, at: 1 } });
+  assert.deepEqual(r.map((e) => e.uid), ['b', 'c', 'a']);
+});
+
+function champSetup() {
+  const db = new FakeFirestore({ yieldEvery: false });
+  const S = (p, d) => db._store.set(p, { data: d, version: 1 });
+  const G = (p) => db._store.get(p)?.data;
+  const split = (debt, amount) => ({ goldDelta: amount, debtDelta: 0 });
+  const grants = [];
+  const champ = createChampionshipV2({ db, FieldValue, splitIncomeForDebt: split, goldTag: (x) => x, catalog: VEHICLE_CATALOG, grantAchievement: async (u, id) => grants.push([u, id]) });
+  return { db, S, G, champ, grants };
+}
+const legacyRoom = (uid, vehicleId, catalogId, timeMs, day, extra = {}) => ({
+  engine: 'ta', status: 'finished', isChampionship: true, creatorUid: uid, participantUids: [uid],
+  championshipCatalogId: catalogId, championshipDateKey: day, championshipResult: timeMs ? 'completed' : 'dnf', championshipTimeMs: timeMs || null,
+  players: { [uid]: { displayName: uid.toUpperCase(), vehicleId, vehicleModel: 'Araç', catalogId, level: 1 } }, ...extra,
+});
+
+test('v128 geçiş: bugünkü eski yarışlar süresine göre ödenir, listeye girer, araç işaretlenir, tekrar çalıştırmak çift ödemez', async () => {
+  const h = champSetup();
+  const day = CHAMP_V2_START_DAY;
+  h.S('users/ali', { gold: 0 });
+  h.S('users/veli', { gold: 0 });
+  h.S('vehicles/va1', { ownerId: 'ali', catalogId: 3 });
+  h.S('vehicles/va2', { ownerId: 'ali', catalogId: 3 });
+  h.S('vehicles/vv1', { ownerId: 'veli', catalogId: 10 });
+  h.S('raceRooms/r1', legacyRoom('ali', 'va1', 3, 47000, day));
+  h.S('raceRooms/r2', legacyRoom('veli', 'vv1', 10, 31000, day));
+  h.S('raceRooms/r3', legacyRoom('ali', 'va2', 3, null, day)); // yarım kaldı
+  h.S('raceRooms/r4', legacyRoom('ali', 'va2', 3, 20000, day, { champV: 2, champPrizePaid: true })); // yeni sistem — dokunulmaz
+  h.S(`championshipDaily/3_${day}`, { catalogId: 3, dateKey: day, top: [{ uid: 'ali', timeMs: 47000 }] });
+  const r = await h.champ.migrateLegacyDay(day, { todayKey: day });
+  assert.equal(r.paid, 2);
+  assert.equal(h.G('users/ali').gold, 5000);
+  assert.equal(h.G('users/veli').gold, 60000);
+  assert.equal(h.G(`championshipBoard/${day}`).entries.veli.timeMs, 31000);
+  assert.equal(h.G(`championshipBoard/${day}`).legacyOwned, true);
+  assert.equal(h.G('championshipBoard/allTime').top[0].uid, 'veli');
+  assert.equal(h.G('vehicles/va1').champDay, day);
+  assert.equal(h.G('vehicles/va2').champDay, day, 'yarım kalan yarışın aracı da kullanılmış sayılır');
+  assert.equal(h.G(`championshipDaily/3_${day}`).finalized, true, 'eski gece ödemesi yapılmaz');
+  assert.equal(await h.champ.ownsLegacyDay(day), true);
+  await h.champ.migrateLegacyDay(day, { todayKey: day });
+  assert.equal(h.G('users/ali').gold, 5000, 'çift ödeme yok');
+  assert.equal(h.G(`championshipBoard/${day}`).runs, 2);
+  // gece: liste kesinleşir; 1. Üstün Cabrio ile → başarı
+  await h.champ.finalizeDay(day);
+  assert.equal(h.G(`championshipBoard/${day}`).winnerUid, 'veli');
+  assert.deepEqual(h.grants, [['veli', 'cabrioSampiyon']]);
+});
+
+test('v128 geçiş: eski sistemle gece ödenmiş güne dokunmaz; pencere dışı gün atlanır', async () => {
+  const h = champSetup();
+  const day = CHAMP_V2_START_DAY;
+  h.S('users/ali', { gold: 0 });
+  h.S('raceRooms/r1', legacyRoom('ali', 'va1', 3, 47000, day));
+  h.S(`championshipDaily/3_${day}`, { catalogId: 3, dateKey: day, finalized: true, winners: [{ uid: 'ali' }] });
+  const r = await h.champ.migrateLegacyDay(day, { todayKey: '2026-10-26' });
+  assert.equal(r.skipped, 'old-paid');
+  assert.equal(h.G('users/ali').gold, 0);
+  assert.equal(await h.champ.ownsLegacyDay(day), false);
+  assert.equal((await h.champ.migrateLegacyDay('2026-10-01')).skipped, 'window');
+  assert.equal((await h.champ.migrateLegacyDay('2027-01-01')).skipped, 'window');
+});

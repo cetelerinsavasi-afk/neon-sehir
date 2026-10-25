@@ -8,13 +8,12 @@
 //             oynatılır, süre SUNUCUDA hesaplanır. dnf: bitiremedi / rakibin
 //             süresini geçti / vazgeçti.
 //               antrenman  : bot süresinden kısaysa kazanır (ödül aynı)
-//               şampiyona  : günün en hızlısı lider (championshipDaily)
+//               şampiyona  : süreye göre ödül hemen + günün / tüm zamanlar listesi (v128)
 //               bahisli    : iki süre de gelince kısa olan kazanır
 //   taTimeout { roomId }                 → bahisli yarışta 4 dk doldu: bitiren
 //                                          kazanır, ikisi de bitirmediyse iade
 // =============================================================================
 import { replayRun, trainingBotRun, gradeOf } from './raceSim.js';
-import { mergeChampionshipTop } from './championshipPrizes.js';
 
 export function decideTaWinner(room, players) {
   const [a, b] = room.participantUids;
@@ -30,7 +29,7 @@ export function decideTaWinner(room, players) {
   return 'draw';
 }
 
-export function createRaceTa({ db, FieldValue, HttpsError, requireAuth, finalizeRace, processTrainingReward, now = () => Date.now() }) {
+export function createRaceTa({ db, FieldValue, HttpsError, requireAuth, finalizeRace, processTrainingReward, champ = null, now = () => Date.now() }) {
   async function finalizeBetRoom(tx, roomRef, room, players) {
     const userRefs = {};
     const userSnaps = {};
@@ -114,44 +113,40 @@ export function createRaceTa({ db, FieldValue, HttpsError, requireAuth, finalize
     }
 
     // --- Şampiyona ---
+    // v128: ödül SÜREYE göre ve hemen (championshipV2.writeRunTx); günün ve tüm
+    // zamanların listesi aynı transaction'da güncellenir. Eski "araç başına
+    // günün ilk 3'ü" (championshipDaily) artık yazılmaz.
     if (room0.isChampionship) {
       if (room0.creatorUid !== uid) throw new HttpsError('failed-precondition', 'Bu oda size ait değil.');
-      const champDailyRef = db.collection('championshipDaily').doc(`${room0.championshipCatalogId}_${room0.championshipDateKey}`);
+      const dateKey = room0.championshipDateKey;
+      let prize = 0;
       await db.runTransaction(async (tx) => {
         const snap = await tx.get(roomRef);
-        const champDailySnap = await tx.get(champDailyRef);
-        if (snap.data()?.status !== 'racing') return;
-        tx.update(roomRef, {
+        const room = snap.data();
+        if (room?.status !== 'racing' || room.champPrizePaid) return;
+        const reads = finishMs && champ ? await champ.readRunTx(tx, { uid, dateKey }) : null;
+        const upd = {
           status: 'finished',
           winnerUid: finishMs ? uid : null,
           championshipResult: finishMs ? 'completed' : 'dnf',
           championshipTimeMs: finishMs,
           finishedAt: FieldValue.serverTimestamp(),
           [`players.${uid}`]: meDone,
-        });
-        if (!finishMs) return;
-        const champDaily = champDailySnap.exists ? champDailySnap.data() : null;
-        const entry = { uid, name: me0.displayName, vehicleModel: me0.vehicleModel, timeMs: finishMs, level: me0.level };
-        // v96: günün ilk 10'u tutulur (ilk 3 ödül alır) — tek yazımda
-        const top = mergeChampionshipTop(champDaily?.top, { ...entry, at: Date.now() });
-        const upd = { catalogId: room0.championshipCatalogId, dateKey: room0.championshipDateKey, mode: 'time', top, updatedAt: FieldValue.serverTimestamp() };
-        const best = Number(champDaily?.leaderTimeMs) || 0;
-        if (!best || finishMs < best) {
-          Object.assign(upd, {
-            leaderUid: uid,
-            leaderName: me0.displayName,
-            leaderVehicleModel: me0.vehicleModel,
-            leaderTimeMs: finishMs,
-            leaderTurns: FieldValue.delete(),
-            leaders: [entry],
-          });
-        } else if (finishMs === best) {
-          const existing = Array.isArray(champDaily.leaders) ? champDaily.leaders : [];
-          if (!existing.some((l) => l.uid === uid)) upd.leaders = [...existing, entry];
+        };
+        if (reads) {
+          prize = champ.writeRunTx(tx, reads, {
+            uid,
+            name: me0.displayName,
+            vehicleModel: me0.vehicleModel,
+            catalogId: me0.catalogId || room0.championshipCatalogId,
+            timeMs: finishMs,
+            dateKey,
+          }).prize;
+          Object.assign(upd, { champPrizePaid: true, championshipPrize: prize });
         }
-        tx.set(champDailyRef, upd, { merge: true });
+        tx.update(roomRef, upd);
       });
-      return { ok: true, finishMs };
+      return { ok: true, finishMs, prize };
     }
 
     // --- Bahisli (çevrimiçi) ---

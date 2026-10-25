@@ -122,8 +122,9 @@ export function useOnboarding(gangReminders = null) {
     const raceableVehicles = vehicles.filter(
       (v) => !v.listed && !v.seizedByBank && (v.lifeDays ?? 20) > 0
     );
+    // v129: şampiyona hakkı MODEL başına (championship_{catalogId})
     const hasUnracedVehicleToday = raceableVehicles.some(
-      (v) => !actions[`championship_${v.catalogId}`]
+      (v) => !actions[`championship_${v.catalogId}`] && !raceableVehicles.some((x) => x.catalogId === v.catalogId && x.champDay === todayKey)
     );
     if (raceableVehicles.length > 0 && hasUnracedVehicleToday) {
       list.push({ id: 'championship', emoji: '🏁', text: 'Şampiyonaya katıl' });
