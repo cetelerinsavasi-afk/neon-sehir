@@ -452,3 +452,90 @@
   font-size: 12px;
   opacity: 0.85;
 }
+
+/* v130 — silahçı / galeri stoğu (Fiyatlar + Vitrine ekle) */
+.sk-row {
+  align-items: center;
+}
+.sk-off .bz-thumb {
+  opacity: 0.55;
+}
+.sk-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+.sk-meta .bz-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.sk-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  min-width: 0;
+}
+.sk-step input[type='range'] {
+  flex: 1 1 auto;
+  min-width: 0;
+  accent-color: #f5c542;
+}
+.sk-step .pf-step {
+  width: 30px;
+  height: 30px;
+  font-size: 16px;
+}
+.sk-step-val {
+  flex: 0 0 auto;
+  min-width: 74px;
+  text-align: right;
+}
+.sk-qty {
+  flex: 0 0 auto;
+  font-weight: 800;
+  font-size: 14px;
+  min-width: 38px;
+  text-align: center;
+}
+.sk-plus {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+/* v130 — internet kafe: yayın seti görseli (oyuncu koltuğu + oyuncu bilgisayarı) */
+.vo-set {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 8px;
+}
+.vo-set-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.vo-set-item small {
+  font-size: 10px;
+  opacity: 0.75;
+  text-align: center;
+}
+.vo-set-item .hs-thumb {
+  width: 100%;
+  height: 100%;
+}
+.vo-set-op {
+  font-size: 20px;
+  opacity: 0.7;
+}
+.vo-set-n {
+  margin-left: auto;
+}

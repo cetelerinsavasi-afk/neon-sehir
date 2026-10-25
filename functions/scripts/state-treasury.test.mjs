@@ -17,7 +17,7 @@ test('her vergi kaynağı devlet kasasında ayrı gelir kalemi; oyunun mekânlar
   await batch.commit();
   const r = await readStateReport(db, { todayKey: '2026-10-20' });
   // v127: maaş vergisi işe göre ayrı kalem (ref yoksa fabrika işçisi)
-  const catOf = (src) => (src === 'maas' ? 'vergi_maasIsci' : `vergi_${src}`);
+  const catOf = (src) => (src === 'maas' ? 'vergi_maasIsci' : src === 'sifir' ? 'vergi_sifirSilah' : `vergi_${src}`); // v130: sıfır satış kâr vergisi
   for (const src of Object.keys(TAX_SOURCES)) {
     assert.equal(r.today.in[catOf(src)], 100, src);
     assert.ok(STATE_IN[catOf(src)], `${src} için rapor etiketi var`);

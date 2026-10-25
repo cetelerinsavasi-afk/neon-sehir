@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { shopAction, streamAction } from '../../services/gameActions';
-import { STREAM_PRICE, STREAM_ROOM_MAX, streamPriceOf, streamSetOf } from '../../../functions/stream.js';
+import { STREAM_PRICE, streamPriceOf, streamSetOf } from '../../../functions/stream.js';
 import PriceField from '../Shop/PriceField';
 import { useBelediyeRates } from '../../hooks/useBelediyeRates';
 import { bizRateFrac } from '../../../functions/belediyeRates.js';
 import HeldIcon from '../HouseScreen/HeldIcon';
+import ItemThumb from '../HouseScreen/ItemThumb';
+import { CATALOG_MAP } from '../HouseScreen/houseCatalog';
 import { bizErrText } from '../../lib/bizErrors';
 import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
 import { menuOf, menuPriceOf, menuBand, minuteBand, NET_DEVICE_CAP, netPriceOf } from '../../../functions/venue.js';
@@ -12,12 +14,11 @@ import { BIZ_ITEM_LABELS } from '../../../functions/businessCatalogData.js';
 import '../../styles/bizui.css';
 import '../Shop/Shop.css';
 
-const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
 
-function SaveBtn({ busy, dirty, onClick, label = 'Fiyatları kaydet' }) {
+function SaveBtn({ busy, dirty, onClick, label = 'Kaydet' }) {
   return (
     <button className="bz-btn gold wide" disabled={busy || !dirty} onClick={onClick}>
-      {busy ? 'Kaydediliyor…' : dirty ? `💾 ${label}` : '✓ Kayıtlı'}
+      {busy ? '…' : dirty ? `💾 ${label}` : '✓ Kayıtlı'}
     </button>
   );
 }
@@ -67,7 +68,7 @@ export function MenuPriceSection({ houseId, houseDoc }) {
             setMsg(null);
             try {
               await shopAction({ op: 'menuPrices', houseId, prices: draft });
-              setMsg({ ok: true, text: '✓ Menü fiyatların kaydedildi.' });
+              setMsg({ ok: true, text: '✓ Kaydedildi' });
             } catch (e) {
               setMsg({ ok: false, text: bizErrText(e) });
             } finally {
@@ -136,13 +137,13 @@ export function NetPriceSection({ houseId, houseDoc }) {
       <SaveBtn
         busy={busy}
         dirty={v !== cur}
-        label="Ücreti kaydet"
+        label="Kaydet"
         onClick={async () => {
           setBusy(true);
           setMsg(null);
           try {
             await shopAction({ op: 'netPrice', houseId, price: v });
-            setMsg({ ok: true, text: `✓ Dakika ücreti ${fmt(v)} altın olarak kaydedildi.` });
+            setMsg({ ok: true, text: '✓ Kaydedildi' });
           } catch (e) {
             setMsg({ ok: false, text: bizErrText(e) });
           } finally {
@@ -157,26 +158,36 @@ export function NetPriceSection({ houseId, houseDoc }) {
 }
 
 // v80 Yayıncılık — internet kafe "yayın seti" (oyuncu koltuğu + oyuncu bilgisayarı)
-// dakika ücreti ve yayın odası adı. Ücret yayın süresince dakika başı çekilir.
+// dakika ücreti. Ücret yayın süresince dakika başı çekilir. (v130: oda adı ayarı kaldırıldı)
 function StreamSetPriceSection({ houseId, houseDoc }) {
   const taxRate = bizRateFrac(useBelediyeRates(), houseDoc?.biz?.type || 'studyo');
   const cur = streamPriceOf(houseDoc);
-  const curRoom = String(houseDoc?.streamRoom || '');
   const [v, setV] = useState(cur);
-  const [room, setRoom] = useState(curRoom);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   useEffect(() => setV(cur), [cur]);
-  useEffect(() => setRoom(curRoom), [curRoom]);
   const items = houseDoc?.items || [];
   const sets = items.filter((it) => it.p === 1 && streamSetOf(items, it.i)).length;
   return (
     <div style={{ marginTop: 14 }}>
       <p className="bz-sec-title">🔴 Yayın seti</p>
-      <p className="bz-note">
-        Oyuncu koltuğu ile oyuncu bilgisayarı yan yanaysa orası bir yayın setidir. Müşterin sette ister yayın açsın ister sadece oyun oynasın, dakika başı bu ücreti öder (yayın + oyun birlikte tek ücret). Diğer cihazlar normal dakika ücretiyle çalışır.
-        {sets > 0 ? ` Mekânında ${sets} yayın seti var.` : ' Şu an mekânında yayın seti yok (oyuncu koltuğunu bir oyuncu bilgisayarının yanına koy).'}
-      </p>
+      {/* v130: yazı yerine görsel — oyuncu koltuğu + oyuncu bilgisayarı = yayın seti */}
+      <div className="vo-set">
+        <span className="vo-set-item">
+          <span className="bz-thumb">
+            <ItemThumb k="gamer" icon={CATALOG_MAP.gamer?.icon || '🪑'} />
+          </span>
+          <small>{CATALOG_MAP.gamer?.name || 'Oyuncu Koltuğu'}</small>
+        </span>
+        <b className="vo-set-op">+</b>
+        <span className="vo-set-item">
+          <span className="bz-thumb">
+            <ItemThumb k="pc" icon={CATALOG_MAP.pc?.icon || '🖥️'} />
+          </span>
+          <small>{CATALOG_MAP.pc?.name || 'Oyuncu Bilgisayarı'}</small>
+        </span>
+        <span className={`bz-tag ${sets > 0 ? 'ok' : 'warn'} vo-set-n`}>🔴 {sets}</span>
+      </div>
       <PriceField
         label="Yayın seti dakikası"
         min={STREAM_PRICE.min}
@@ -189,27 +200,17 @@ function StreamSetPriceSection({ houseId, houseDoc }) {
         saved={cur}
         onChange={setV}
       />
-      <label className="bz-note" style={{ display: 'block', marginTop: 8 }}>
-        Yayın odası adı (izleyiciler görür, isteğe bağlı)
-        <input
-          className="ws-chat-input"
-          style={{ width: '100%', marginTop: 4, boxSizing: 'border-box' }}
-          maxLength={STREAM_ROOM_MAX}
-          placeholder="örn. Turnuva Odası"
-          value={room}
-          onChange={(e) => setRoom(e.target.value)}
-        />
-      </label>
       <SaveBtn
         busy={busy}
-        dirty={v !== cur || room.trim() !== curRoom}
-        label="Yayın setini kaydet"
+        dirty={v !== cur}
+        label="Kaydet"
         onClick={async () => {
           setBusy(true);
           setMsg(null);
           try {
-            await streamAction({ op: 'price', houseId, price: v, room: room.trim() });
-            setMsg({ ok: true, text: `✓ Yayın dakikası ${fmt(v)} altın olarak kaydedildi.` });
+            // v130: yayın odası adı ayarı kaldırıldı — kayıtlı ad olduğu gibi kalır
+            await streamAction({ op: 'price', houseId, price: v });
+            setMsg({ ok: true, text: '✓ Kaydedildi' });
           } catch (e) {
             setMsg({ ok: false, text: bizErrText(e) });
           } finally {
@@ -234,7 +235,7 @@ export function NetInvSection({ houseDoc }) {
           <span>
             {BIZ_ITEM_LABELS[it.k]?.icon || '🖥️'} {BIZ_ITEM_LABELS[it.k]?.name || it.k}
           </span>
-          <b>aynı anda {NET_DEVICE_CAP[it.k]} kişi</b>
+          <b>👤 {NET_DEVICE_CAP[it.k]}</b>
         </div>
       ))}
     </div>

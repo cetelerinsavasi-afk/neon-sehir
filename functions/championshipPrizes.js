@@ -58,6 +58,12 @@ export const CHAMP_PRIZE_TIERS = [
   [60001, 1000],
 ];
 
+// v130 — "Üstün Cabrio şampiyonu" başarısı: Üstün Cabrio (katalog 10) ile 250.000 ya da
+// 500.000 altınlık ödül (pisti 26 sn'nin altında bitirmek)
+export const CABRIO_CATALOG_ID = 10;
+export const CABRIO_ACH_MIN_PRIZE = 250000;
+export const earnsCabrioAchievement = (catalogId, prize) => Number(catalogId) === CABRIO_CATALOG_ID && Number(prize) >= CABRIO_ACH_MIN_PRIZE;
+
 export function championshipTimePrize(ms) {
   const t = Number(ms);
   if (!Number.isFinite(t) || t <= 0) return 0;

@@ -100,6 +100,14 @@ function Ticaret({ r, c, rates }) {
   ].map(([k, name]) => ({ key: k, name, v: nf(c.in[k]) }));
   const gzTotal = ['gazino_slot', 'gazino_piyango', 'gazino_rulet', 'gazino_onNumara'].reduce((a, k) => a + (c.in[k] || 0), 0);
   const ie = ['araba', 'silah'].map((k) => ({ key: k, name: IE_LABEL[k], n: nf(st[`ie_${k}_n`]), ciro: nf(st[`ie_${k}_ciro`]), rate: pctOf(rates, k === 'araba' ? 'ikAraba' : 'ikSilah') }));
+  // v130 — sıfır (stoktan) satışlar: sadece kârdan vergi (oyuncu dükkânları + oyunun mağazaları)
+  const sf = [
+    ['sf_silah', 'Silahçılar', 'sfSilah'],
+    ['sf_araba', 'Galeriler', 'sfAraba'],
+    ['sfg_silah', 'Oyunun silahçısı', 'sfSilah'],
+    ['sfg_araba', 'Oyunun galerisi', 'sfAraba'],
+  ].map(([k, name, rid]) => ({ key: k, name, n: nf(st[`${k}_n`]), ciro: nf(st[`${k}_ciro`]), kar: nf(st[`${k}_kar`]), rate: pctOf(rates, rid), tax: nf(st[`${k}_vergi`]) }));
+  const sfTax = (c.in.vergi_sifirSilah || 0) + (c.in.vergi_sifirAraba || 0);
   return (
     <>
       <Kpis
@@ -107,6 +115,7 @@ function Ticaret({ r, c, rates }) {
           { label: 'İşletme vergisi', value: nf(bizTax) },
           { label: 'Oyunun gazinosu', value: nf(gzTotal), sub: 'kârın tamamı devlete' },
           { label: '2. el vergisi', value: nf(c.in.vergi_ikinciEl) },
+          { label: 'Sıfır satış vergisi', value: nf(sfTax), sub: 'kârdan' },
           { label: 'Piyango vergisi', value: nf(c.in.vergi_piyango), sub: st.pi_bilet ? `${nf(st.pi_bilet)} bilet · ödül ${nf(st.pi_odul)}` : null },
         ]}
       />
@@ -133,6 +142,18 @@ function Ticaret({ r, c, rates }) {
         ]}
         rows={gz}
         foot={{ name: 'Toplam', v: nf(gzTotal) }}
+      />
+      <h4 className="bd-h">Sıfır satışlar</h4>
+      <Table
+        cols={[
+          { k: 'name', label: 'Dükkân' },
+          { k: 'n', label: 'Satış', num: true },
+          { k: 'ciro', label: 'Ciro', num: true },
+          { k: 'kar', label: 'Kâr', num: true },
+          { k: 'rate', label: 'Oran', num: true },
+          { k: 'tax', label: 'Vergi', num: true },
+        ]}
+        rows={sf}
       />
       <h4 className="bd-h">2. el satışlar</h4>
       <Table

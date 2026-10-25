@@ -46,7 +46,6 @@ export function SharedMaterials({ holder = 'factory', title = '📦 Envanter' })
         <p className="mg-inv-title">{title}</p>
         <MagazaButton />
       </div>
-      <p className="mg-hint">Fabrikanın ve işletmelerinin ortak envanteri. Atölyedeki tamir ve geliştirmeler buradan kullanılır.</p>
       {mats.map((k) => {
         const n = Number(inventory[k] || 0);
         return (

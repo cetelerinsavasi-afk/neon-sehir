@@ -485,6 +485,7 @@ export function createBelediye({
       const main = ms.data() || {};
       const seat = seatOfUid(main, uid);
       if (!seat) fail('failed-precondition', 'Belediyede görevli değilsin.');
+      if (seat === 'bsk') fail('failed-precondition', 'Belediye başkanı şimdilik istifa edemez.'); // v130
       const h = main.seats[seat];
       removeFromSeat(tx, main, seat, `🚪 ${h.name} ${SEATS[seat].title} görevinden istifa etti`);
       const bsk = main.seats?.bsk;

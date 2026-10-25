@@ -17,27 +17,57 @@ import GazeteYazi from './GazeteYazi';
 const PERM_LABEL = { sanayi: 'Sanayi Bakanlığı', ticaret: 'Ticaret Bakanlığı', guvenlik: 'Teşkilat Bakanlığı', kultur: 'Kültür ve Spor Bakanlığı', fire: 'Bakanları görevden alma', invite: 'Bakan davet etme' };
 const SHORT = { bsk: 'Başkan', yrd1: 'Başkan Yrd.', yrd2: 'Başkan Yrd.', san: 'Sanayi', tic: 'Ticaret', guv: 'Teşkilat', kul: 'Kültür ve Spor' };
 
-function Slot({ id, holder, inv, onOpen, size }) {
-  const cls = `bd-slot${id === 'bsk' ? ' big' : ''}${!holder && !inv ? ' empty' : ''}${inv && !holder ? ' pend' : ''}`;
+const PERM_ICON = { sanayi: '🏭', ticaret: '🏪', guvenlik: '🚓', kultur: '🎭', fire: '⛔', invite: '✉️' };
+
+function Slot({ id, holder, inv, onOpen, size, readOnly = false }) {
+  const showInv = !readOnly && inv && !holder;
+  const cls = `bd-slot${id === 'bsk' ? ' big' : ''}${!holder && !showInv ? ' empty' : ''}${showInv ? ' pend' : ''}${readOnly ? ' ro' : ''}`;
   const permN = holder?.perms ? YRD_PERMS.filter((p) => holder.perms[p]).length : null;
+  const Tag = readOnly ? 'div' : 'button';
   return (
-    <button className={cls} onClick={() => onOpen(id)}>
+    <Tag className={cls} {...(readOnly ? {} : { onClick: () => onOpen(id) })}>
       {holder ? (
         <AvatarSvg avatar={holder.avatar} size={size} rounded />
-      ) : inv ? (
+      ) : showInv ? (
         <span className="bd-slot-pend">
           <AvatarSvg avatar={inv.avatar} size={size} rounded />
         </span>
       ) : (
         <span className="bd-plus" style={{ width: size, height: size }}>
-          +
+          {readOnly ? '·' : '+'}
         </span>
       )}
-      <b>{holder?.name || inv?.name || 'Boş'}</b>
+      <b>{holder?.name || (showInv ? inv.name : null) || 'Boş'}</b>
       <small>{SHORT[id]}</small>
-      {inv && !holder && <span className="bd-badge">Davet bekliyor</span>}
-      {holder && permN != null && <span className="bd-badge">{permN} yetki</span>}
-    </button>
+      {showInv && <span className="bd-badge">Davet bekliyor</span>}
+      {holder && permN != null &&
+        (readOnly ? (
+          permN > 0 && <span className="bd-badge bd-perm-icons">{YRD_PERMS.filter((p) => holder.perms[p]).map((p) => PERM_ICON[p]).join(' ')}</span>
+        ) : (
+          <span className="bd-badge">{permN} yetki</span>
+        ))}
+    </Tag>
+  );
+}
+
+// v130 — kadro şeması (Başkanlık sekmesi ve herkese açık "Belediye kadrosu" penceresi)
+export function OrgChart({ onOpen = () => {}, readOnly = false }) {
+  const { main } = useBelediye();
+  const now = useTick(60_000);
+  const seats = main.seats || {};
+  const invOf = (id) => (inviteActive(main.invites?.[id], now) ? main.invites[id] : null);
+  const slot = (id, size) => <Slot key={id} id={id} holder={seats[id]?.uid ? seats[id] : null} inv={invOf(id)} onOpen={onOpen} size={size} readOnly={readOnly} />;
+  return (
+    <div className="bd-org">
+      <div className="bd-orow one">{slot('bsk', 64)}</div>
+      <div className="bd-vl" />
+      <div className="bd-orow two">
+        {slot('yrd1', 50)}
+        {slot('yrd2', 50)}
+      </div>
+      <div className="bd-vl" />
+      <div className="bd-orow four">{['san', 'tic', 'guv', 'kul'].map((id) => slot(id, 38))}</div>
+    </div>
   );
 }
 
@@ -93,9 +123,11 @@ function SeatSheet({ id, onClose }) {
           </div>
         )}
         {isMe ? (
-          <Btn kind="danger" block onClick={() => setAsk('resign')}>
-            İstifa et
-          </Btn>
+          id !== 'bsk' && (
+            <Btn kind="danger" block onClick={() => setAsk('resign')}>
+              İstifa et
+            </Btn>
+          )
         ) : (
           canFireSeat(main, mySeat, id) && (
             <Btn kind="danger" block disabled={guarded} onClick={() => setAsk('fire')}>
@@ -184,16 +216,44 @@ function SeatSheet({ id, onClose }) {
   );
 }
 
+// v130 — sekmenin en altında: başkan dışındaki kadro istifa edebilir. Tekrar
+// göreve dönmek için yeni davet gerekir (davet kabulde silinir).
+function ResignBox() {
+  const { seat, run, busy } = useBelediye();
+  const [ask, setAsk] = useState(false);
+  if (!seat || seat === 'bsk') return null;
+  return (
+    <div className="bd-resign">
+      <Btn kind="danger" block onClick={() => setAsk(true)}>
+        🚪 İstifa et
+      </Btn>
+      {ask && (
+        <Confirm
+          icon="🚪"
+          danger
+          title="İstifa etmek istediğine emin misin?"
+          confirmLabel="İstifa et"
+          busy={busy === 'resign'}
+          onCancel={() => setAsk(false)}
+          onConfirm={async () => {
+            await run('resign', {}, { success: 'İstifa ettin.' });
+            setAsk(false);
+          }}
+        >
+          <p className="dim bd-note">{SEATS[seat]?.title} · geri dönmek için yeni davet gerekir</p>
+        </Confirm>
+      )}
+    </div>
+  );
+}
+
 export default function BaskanlikTab() {
   const { main } = useBelediye();
   const rates = useBelediyeRates();
-  const now = useTick(60_000);
   const [open, setOpen] = useState(null);
   const seats = main.seats || {};
-  const invOf = (id) => (inviteActive(main.invites?.[id], now) ? main.invites[id] : null);
   const filled = SEAT_IDS.filter((s) => seats[s]?.uid);
   const bill = filled.reduce((a, s) => a + seatSalary(rates, s), 0);
-  const slot = (id, size) => <Slot key={id} id={id} holder={seats[id]?.uid ? seats[id] : null} inv={invOf(id)} onOpen={setOpen} size={size} />;
   return (
     <div className="gx-page">
       <Kpis
@@ -202,16 +262,7 @@ export default function BaskanlikTab() {
           { label: 'Günlük maaş', value: `${nf(bill)} 🪙` },
         ]}
       />
-      <div className="bd-org">
-        <div className="bd-orow one">{slot('bsk', 64)}</div>
-        <div className="bd-vl" />
-        <div className="bd-orow two">
-          {slot('yrd1', 50)}
-          {slot('yrd2', 50)}
-        </div>
-        <div className="bd-vl" />
-        <div className="bd-orow four">{['san', 'tic', 'guv', 'kul'].map((id) => slot(id, 38))}</div>
-      </div>
+      <OrgChart onOpen={setOpen} />
       <div className="gx-section-head">
         <span>📰 Gazete</span>
       </div>
@@ -238,6 +289,7 @@ export default function BaskanlikTab() {
           </div>
         </>
       )}
+      <ResignBox />
       {open && <SeatSheet id={open} onClose={() => setOpen(null)} />}
     </div>
   );

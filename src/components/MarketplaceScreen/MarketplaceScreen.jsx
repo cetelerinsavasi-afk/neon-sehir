@@ -716,7 +716,12 @@ export default function MarketplaceScreen() {
   const [view, setView] = useState('home');
   // v124: araç/silah kategorisinde "Sıfır" — sadece ömrü tam dolu ve hiç tamir görmemiş ürünler
   const [onlyNew, setOnlyNew] = useState(false);
-  useEffect(() => setOnlyNew(false), [view]);
+  // v130: "En pahalı" — ilanlar en pahalıdan ucuza (tek liste)
+  const [priciest, setPriciest] = useState(false);
+  useEffect(() => {
+    setOnlyNew(false);
+    setPriciest(false);
+  }, [view]);
   const [showSellForm, setShowSellForm] = useState(false);
   const [buyModalListing, setBuyModalListing] = useState(null);
   const [advertisingId, setAdvertisingId] = useState(null);
@@ -802,10 +807,11 @@ export default function MarketplaceScreen() {
           .filter((l) => !onlyNew || isBrandNewListing(l));
   const myListings = categoryListings.filter((l) => l.sellerId === user?.uid);
   const advantageousListings = categoryListings
-    .filter((l) => l.sellerId !== user?.uid && isAdvantageousListing(l))
+    .filter((l) => !priciest && l.sellerId !== user?.uid && isAdvantageousListing(l))
     .sort((a, b) => listingComparablePrice(a) / listingCeilingPrice(a) - listingComparablePrice(b) / listingCeilingPrice(b));
   const advantageousIds = new Set(advantageousListings.map((l) => l.id));
   const otherListings = categoryListings.filter((l) => l.sellerId !== user?.uid && !advantageousIds.has(l.id));
+  if (priciest) otherListings.sort((a, b) => listingComparablePrice(b) - listingComparablePrice(a));
 
   const buyOrOpenModal = (l) => {
     if (cannotAfford(l, gold)) {
@@ -883,7 +889,9 @@ export default function MarketplaceScreen() {
               <button className={`market-btn small ${onlyNew ? 'primary' : ''}`} aria-pressed={onlyNew} onClick={() => setOnlyNew((v) => !v)}>
                 ✨ Sıfır
               </button>
-              <span className="market-hint">{onlyNew ? 'Sadece ömrü ve tamir hakkı tam olanlar' : 'Tümü gösteriliyor'}</span>
+              <button className={`market-btn small ${priciest ? 'primary' : ''}`} aria-pressed={priciest} onClick={() => setPriciest((v) => !v)}>
+                💎 En pahalı
+              </button>
             </div>
           )}
 
@@ -915,7 +923,7 @@ export default function MarketplaceScreen() {
             </div>
           )}
 
-          <p className="market-section-title">Diğer İlanlar</p>
+          <p className="market-section-title">{priciest ? '💎 En pahalıdan ucuza' : 'Diğer İlanlar'}</p>
           {otherListings.length === 0 && <p className="market-hint">{advantageousListings.length ? 'Bu kategoride başka ilan yok.' : 'Bu kategoride ilan yok.'}</p>}
           {otherListings.map((l) => (
             <ListingCard

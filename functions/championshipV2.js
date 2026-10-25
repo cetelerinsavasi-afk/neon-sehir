@@ -21,6 +21,7 @@ import {
   rankChampionshipBoard,
   CHAMP_V2_START_DAY,
   CHAMP_V2_MIGRATE_UNTIL,
+  earnsCabrioAchievement,
 } from './championshipPrizes.js';
 
 const fmtTr = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
@@ -88,7 +89,13 @@ export function createChampionshipV2({ db, FieldValue, splitIncomeForDebt, goldT
     const nextTop = mergeChampionshipTop(allTop, { uid: run.uid, ...entry, dateKey: run.dateKey });
     if (JSON.stringify(nextTop) !== JSON.stringify(allTop)) tx.set(allTimeRef(), { top: nextTop, updatedAtMs: at }, { merge: true });
 
-    return { prize };
+    // v130: başarı transaction bittikten sonra verilir (grantRunAchievements)
+    return { prize, cabrio: earnsCabrioAchievement(run.catalogId, prize) };
+  }
+
+  // v130 — yarış sonrası (transaction DIŞINDA): Üstün Cabrio ile 250.000+ ödül → başarı
+  async function grantRunAchievements(uid, r) {
+    if (uid && r?.cabrio) await grantAchievement(uid, 'cabrioSampiyon').catch(() => {});
   }
 
   // ---------------------------------------------------------------------------
@@ -131,6 +138,7 @@ export function createChampionshipV2({ db, FieldValue, splitIncomeForDebt, goldT
         if (marked) out.vehicles += 1;
       }
       if (room0.champPrizePaid || room0.championshipResult !== 'completed' || !(Number(room0.championshipTimeMs) > 0) || !uid) continue;
+      let cabrioUid = null;
       const prize = await db.runTransaction(async (tx) => {
         const rs = await tx.get(d.ref);
         const room = rs.data();
@@ -147,8 +155,10 @@ export function createChampionshipV2({ db, FieldValue, splitIncomeForDebt, goldT
           legacy: true,
         });
         tx.update(d.ref, { champPrizePaid: true, championshipPrize: r.prize });
+        cabrioUid = r.cabrio ? uid : cabrioUid;
         return r.prize;
       });
+      if (cabrioUid) await grantRunAchievements(cabrioUid, { cabrio: true });
       if (prize !== null) {
         out.paid += 1;
         out.gold += prize;
@@ -161,7 +171,8 @@ export function createChampionshipV2({ db, FieldValue, splitIncomeForDebt, goldT
     return out;
   }
 
-  // Gece: biten günün listesi kesinleşir (günün 1.'si Üstün Cabrio ile ise başarı)
+  // Gece: biten günün listesi kesinleşir. v130: günün listesinde Üstün Cabrio ile
+  // 250.000+ ödül alan herkese başarı (yarış anında verilemediyse yedek).
   async function finalizeDay(dayKey) {
     const ref = boardRef(dayKey);
     const s = await ref.get();
@@ -169,7 +180,7 @@ export function createChampionshipV2({ db, FieldValue, splitIncomeForDebt, goldT
     const ranked = rankChampionshipBoard(s.data().entries);
     const first = ranked[0] || null;
     await ref.set({ finalized: true, winnerUid: first?.uid || null, winnerName: first?.name || null, winnerTimeMs: first?.timeMs || null }, { merge: true });
-    if (first && Number(first.catalogId) === 10) await grantAchievement(first.uid, 'cabrioSampiyon').catch(() => {});
+    for (const e of ranked) if (earnsCabrioAchievement(e.catalogId, e.prize)) await grantAchievement(e.uid, 'cabrioSampiyon').catch(() => {});
     return { ok: true, winnerUid: first?.uid || null };
   }
 
@@ -180,5 +191,5 @@ export function createChampionshipV2({ db, FieldValue, splitIncomeForDebt, goldT
     return Boolean(s.exists && s.data().legacyOwned);
   }
 
-  return { readRunTx, writeRunTx, migrateLegacyDay, finalizeDay, ownsLegacyDay, boardRef, allTimeRef };
+  return { readRunTx, writeRunTx, grantRunAchievements, migrateLegacyDay, finalizeDay, ownsLegacyDay, boardRef, allTimeRef };
 }

@@ -479,10 +479,10 @@ export const CATS = [
       kicker: 'Hangi kapının ardında hangi para?',
       items: [
         { i: '🔫', name: 'Silahçı', lines: [
-          'Vitrine silahlarını diz, fiyatı sen koy.',
+          'Stoğu ucuza al, vitrine diz, fiyatı sen koy.',
           'Tezgâhta tamir ve geliştirme. Usta sensin.' ] },
         { i: '🚗', name: 'Araba Galerisi', lines: [
-          'Arabalarını vitrine çıkar. Sokak bakar, cüzdan karar verir.' ] },
+          'Sıfır arabaları stoğa al, vitrine çıkar. Sokak bakar, cüzdan karar verir.' ] },
         { i: '🔧', name: 'Modifiye Garajı', lines: [
           'Yorgun motorlar sana gelir. Tamir et, seviye atlat.' ] },
         { i: '🏋️', name: 'Spor Salonu', lines: [

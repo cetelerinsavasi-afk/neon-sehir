@@ -30,6 +30,7 @@ function groupOf(kind, cat) {
     if (cat.startsWith('vergi_isl_')) return ['ticaret', `İşletme vergisi · ${BIZ[cat.slice(10)] || cat.slice(10)}`];
     if (cat === 'vergi_isletme') return ['ticaret', 'İşletme vergisi (tür ayrımı öncesi)'];
     if (cat === 'vergi_ikinciEl') return ['ticaret', '2. el satış vergisi'];
+    if (cat === 'vergi_sifirSilah' || cat === 'vergi_sifirAraba') return ['ticaret', 'Sıfır satış kâr vergisi']; // v130
     if (cat === 'vergi_piyango') return ['ticaret', 'Piyango vergisi'];
     if (cat === 'vergi_oyun') return ['ticaret', 'Oyunun mekânları vergisi'];
     if (cat.startsWith('gazino_')) return ['ticaret', 'Oyunun gazinosu kârı'];

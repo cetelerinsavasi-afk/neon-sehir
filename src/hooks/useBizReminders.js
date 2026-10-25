@@ -2,15 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { collection, doc, limit, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { useVehicles } from './useVehicles';
-import { useWeapons } from './useWeapons';
 import { useFootballer, useMyGymMembership } from './useGym';
 import { CASINO_MACHINES, CASINO_LOW_GOLD } from '../../functions/casino.js';
 import { SLOT_MIN_STOCK } from '../../functions/casinoRules.js';
 
 // =============================================================================
 // v92 — Hatırlatıcı (📋) ek maddeleri
-//   • Araba galerim var ama vitrinde hiç araba yok → "1 araba ekle"
+//   • v130: Araba galerim / silahçım var ama stokta hiç ürün yok → "ekle"
 //   • Silahçım var ama vitrinde silah / dükkânda tamir ya da silah geliştirme
 //     malzemesi yok → her eksik için ayrı madde
 //   • v124 Faz 6: gazinomda slotta 3 yasaklı / 10.000 altın yok, rulet / kart masasında
@@ -22,8 +20,6 @@ import { SLOT_MIN_STOCK } from '../../functions/casinoRules.js';
 export function useBizReminders() {
   const { user } = useAuth();
   const uid = user?.uid || null;
-  const { vehicles } = useVehicles();
-  const { weapons } = useWeapons();
   const { fb, loading: fbLoading } = useFootballer(uid);
   const { today: gymToday } = useMyGymMembership();
   const [shops, setShops] = useState([]); // galeri + silahçı işletmelerim
@@ -85,6 +81,24 @@ export function useBizReminders() {
     return () => offs.forEach((f) => f());
   }, [depoIds]);
 
+  // v130 — silahçı / galeri stoğu (dükkân başına 1 belge)
+  const [shopStock, setShopStock] = useState({});
+  const stockIds = shops.filter((h) => h.type === 'galeri' || h.type === 'silahci').map((h) => h.id).join(',');
+  useEffect(() => {
+    if (!stockIds) {
+      setShopStock({});
+      return undefined;
+    }
+    const offs = stockIds.split(',').map((id) =>
+      onSnapshot(
+        doc(db, 'shopStocks', id),
+        (s) => setShopStock((m) => ({ ...m, [id]: Object.values((s.exists() ? s.data().items : null) || {}).reduce((a, n) => a + (Number(n) || 0), 0) })),
+        () => {}
+      )
+    );
+    return () => offs.forEach((f) => f());
+  }, [stockIds]);
+
   // v124 Faz 6 — gazinolarım: makine kasaları (gazino başına 3 belge: slot, rulet, kart)
   const [casinoMc, setCasinoMc] = useState({});
   const casinoIds = shops.filter((h) => h.type === 'gazino').map((h) => h.id).join(',');
@@ -111,8 +125,8 @@ export function useBizReminders() {
     for (const h of shops) {
       // aynı türden birden çok dükkân varsa hangisi olduğu yazılır
       const tag = shops.filter((x) => x.type === h.type).length > 1 && h.name ? ` (${h.name})` : '';
-      if (h.type === 'galeri' && !vehicles.some((v) => v.shopHouseId === h.id)) {
-        list.push({ id: `galeri-car-${h.id}`, emoji: '🚗', text: '1 araba galerinin envanterine ekle' + tag });
+      if (h.type === 'galeri' && shopStock[h.id] === 0) {
+        list.push({ id: `galeri-car-${h.id}`, emoji: '🚗', text: 'Galerine araba ekle (Envanter › Vitrine ekle)' + tag });
       }
       if (h.type === 'depo') {
         const v = depoView[h.id];
@@ -128,7 +142,7 @@ export function useBizReminders() {
         if (mc('kart') && Number(mc('kart').gold || 0) < CASINO_LOW_GOLD) list.push({ id: `gz-kart-${h.id}`, emoji: '🃏', text: '10 Numara (kart masası) için altın ekle' + tag });
       }
       if (h.type === 'silahci') {
-        if (!weapons.some((w) => w.shopHouseId === h.id)) list.push({ id: `silah-gun-${h.id}`, emoji: '🔫', text: 'Silahçının envanterine silah ekle' + tag });
+        if (shopStock[h.id] === 0) list.push({ id: `silah-gun-${h.id}`, emoji: '🔫', text: 'Silahçına silah ekle (Envanter › Vitrine ekle)' + tag });
         // ortak envanter tek — malzeme maddeleri bir kez yazılır
         if (stock && !gunMatsDone) {
           gunMatsDone = true;
@@ -141,5 +155,5 @@ export function useBizReminders() {
       list.push({ id: 'gym', emoji: '🏋️', text: 'Spor salonunda günlük antrenmanını yap' });
     }
     return list;
-  }, [shops, stock, depoView, casinoMc, vehicles, weapons, uid, fb, fbLoading, gymToday]);
+  }, [shops, stock, depoView, casinoMc, shopStock, uid, fb, fbLoading, gymToday]);
 }

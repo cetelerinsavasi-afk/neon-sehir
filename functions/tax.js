@@ -25,7 +25,7 @@
 // =============================================================================
 import { midnightDayKey } from './businessCatalogData.js';
 import { stateWrite, statWrite } from './stateTreasury.js';
-import { resolveRates, rateDayKey, bizRateFrac, resaleRateFrac, factoryRateFrac, machineRateFrac, rateFrac, DEFAULT_RATES, FACTORY_BRACKET_FROM } from './belediyeRates.js';
+import { resolveRates, rateDayKey, bizRateFrac, resaleRateFrac, newSaleRateFrac, factoryRateFrac, machineRateFrac, rateFrac, DEFAULT_RATES, FACTORY_BRACKET_FROM } from './belediyeRates.js';
 
 // ---------------------------------------------------------------------------
 // Oran önbelleği (sunucu). Bir günün oranları o gün içinde DEĞİŞMEZ (gün içi
@@ -75,6 +75,9 @@ export const bizTax = (amount, type, rates = ratesFor()) => taxOf(amount, bizRat
 // 2. el / vitrin: kind = 'weapon' | 'vehicle' | diğer (malzeme / makine)
 export const resaleTaxRate = (kind, rates = ratesFor()) => resaleRateFrac(rates, kind);
 export const resaleTax = (amount, kind = 'vehicle', rates = ratesFor()) => taxOf(amount, resaleRateFrac(rates, kind));
+// v130: sıfır (stoktan) silah / araba satışı — sadece KÂRDAN vergi. kind 'weapon' | 'vehicle'
+export const newSaleTaxRate = (kind, rates = ratesFor()) => newSaleRateFrac(rates, kind);
+export const newSaleTax = (profit, kind, rates = ratesFor()) => taxOf(Math.max(0, Number(profit) || 0), newSaleRateFrac(rates, kind));
 // Fabrika (kademeli) — dayKey: kazancın ait olduğu gün (gece tahsilatında biten gün)
 export function factoryTaxRate(grossIncome, rates = ratesFor()) {
   return factoryRateFrac(rates, grossIncome);
@@ -121,10 +124,13 @@ export const TAX_SOURCES = {
   gazino: 'Gazino piyango payı', // v124
   gazinoCekim: 'Gazino kasasından çekim', // v124 Faz 6 — oyuncu gazinosu makine kasası
   makine: 'Fabrika makinesi alımı', // v125
+  sifir: 'Sıfır silah / araba satış kârı', // v130
 };
 
 // v127: devlet defterinde kalem — maaş vergisi işe göre, işletme vergisi türe göre
 function stateCatOf(source, uid, ref, bizType) {
+  // v130: oyuncu dükkânı da oyunun dükkânı da aynı kalem (sıfır satış kâr vergisi)
+  if (source === 'sifir') return bizType === 'galeri' ? 'vergi_sifirAraba' : 'vergi_sifirSilah';
   if (uid === '__game__') return 'vergi_oyun';
   if (source === 'maas') return ref === 'futbolcu' ? 'vergi_maasFutbolcu' : ref === 'menajer' ? 'vergi_maasMenajer' : 'vergi_maasIsci';
   if (source === 'isletme' && bizType) return `vergi_isl_${bizType}`;

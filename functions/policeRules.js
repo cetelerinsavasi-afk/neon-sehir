@@ -13,6 +13,9 @@ import { POLICE } from './gang/config.js';
 // satışı (riskli ve güvenli). Şüphe gece düştükçe kilit kendiliğinden kalkar.
 export const CRIME_SUSPICION_LOCK = 50;
 export const CRIME_LOCK_TEXT = 'Şüphen 50+ iken suç işleyemezsin.';
+// v130: belediye kadrosu (başkan, yardımcılar, bakanlar) soygun / haraç yapamaz, ekip kuramaz / katılamaz
+export const BELEDIYE_CRIME_TEXT = 'Belediye görevlileri soygun yapamaz, haraç kesemez ve soygun ekibine katılamaz.';
+export const BELEDIYE_CRIME_TEAM_TEXT = 'Ekipte belediye görevlisi var ({names}) — belediye görevlileri soygun yapamaz, soygun başlatılamaz.';
 export const CRIME_LOCK_TEAM_TEXT = 'Ekipte şüphesi 50+ olan var ({names}) — şüphesi 50+ olan oyuncu suç işleyemez, soygun başlatılamaz.';
 export function crimeLockedBySuspicion(suspicion) {
   return Number(suspicion || 0) >= CRIME_SUSPICION_LOCK;

@@ -22,7 +22,8 @@ const BUY_FEEDBACK_MS = 2500;
 // hatalı şekilde engel oluyordu). Artık böyle bir kısıtlama yok, galeriden
 // istediğin kadar aynı modeli alabilirsin — sunucu tarafı (buyVehicle)
 // da aynı şekilde güncellendi.
-export default function VehicleGalleryScreen() {
+// v130 — oyuncu galerisi de aynı ekranı kullanır: items = [{ ...katalog, price }] · onBuy(katalog) · disabledText
+export default function VehicleGalleryScreen({ items = null, onBuy = null, disabledText = null }) {
   const { user } = useAuth();
   const { player } = usePlayer();
   const [busy, setBusy] = useState(null);
@@ -43,11 +44,13 @@ export default function VehicleGalleryScreen() {
 
   const gold = player?.gold ?? 0;
 
-  const handleBuy = async (catalogId) => {
+  const list = items || vehicleCatalog;
+  const handleBuy = async (car) => {
+    const catalogId = car.id;
     setBusy(catalogId);
     setError(null);
     try {
-      await buyVehicle(catalogId);
+      await (onBuy ? onBuy(car) : buyVehicle(catalogId));
       setJustBoughtIds((prev) => new Set(prev).add(catalogId));
       if (feedbackTimeouts.current[catalogId]) {
         clearTimeout(feedbackTimeouts.current[catalogId]);
@@ -68,7 +71,7 @@ export default function VehicleGalleryScreen() {
 
   return (
     <div className="vehicle-gallery">
-      {vehicleCatalog.map((car) => {
+      {list.map((car) => {
         const justBought = justBoughtIds.has(car.id);
         return (
           <div key={car.id} className="vehicle-card">
@@ -80,10 +83,10 @@ export default function VehicleGalleryScreen() {
             </div>
             <button
               className={`vehicle-card-buy${justBought ? ' bought' : ''}`}
-              disabled={busy === car.id || justBought || gold < car.price}
-              onClick={() => handleBuy(car.id)}
+              disabled={Boolean(disabledText) || busy === car.id || justBought || gold < car.price}
+              onClick={() => handleBuy(car)}
             >
-              {busy === car.id ? '…' : justBought ? 'Satın Alındı ✓' : 'Satın Al'}
+              {busy === car.id ? '…' : justBought ? 'Satın Alındı ✓' : disabledText || 'Satın Al'}
             </button>
           </div>
         );

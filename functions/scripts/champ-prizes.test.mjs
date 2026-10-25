@@ -111,10 +111,27 @@ test('v128 geçiş: bugünkü eski yarışlar süresine göre ödenir, listeye g
   await h.champ.migrateLegacyDay(day, { todayKey: day });
   assert.equal(h.G('users/ali').gold, 5000, 'çift ödeme yok');
   assert.equal(h.G(`championshipBoard/${day}`).runs, 2);
-  // gece: liste kesinleşir; 1. Üstün Cabrio ile → başarı
+  // gece: liste kesinleşir. v130: Üstün Cabrio ile birinci olmak yetmez — 250.000+ ödül gerekir (31 sn → 60.000)
   await h.champ.finalizeDay(day);
   assert.equal(h.G(`championshipBoard/${day}`).winnerUid, 'veli');
-  assert.deepEqual(h.grants, [['veli', 'cabrioSampiyon']]);
+  assert.deepEqual(h.grants, []);
+});
+
+test('v130 Üstün Cabrio başarısı: Cabrio ile 250.000 / 500.000 ödül (26 sn altı) → başarı; başka araç ya da yavaş süre → yok', async () => {
+  const h = champSetup();
+  const day = CHAMP_V2_START_DAY;
+  for (const u of ['ali', 'veli', 'can', 'ece']) h.S(`users/${u}`, { gold: 0 });
+  h.S('raceRooms/c1', legacyRoom('ali', 'x1', 10, 25500, day)); // 250.000 → başarı
+  h.S('raceRooms/c2', legacyRoom('veli', 'x2', 10, 24000, day)); // 500.000 → başarı
+  h.S('raceRooms/c3', legacyRoom('can', 'x3', 10, 26500, day)); // 200.000 → yok
+  h.S('raceRooms/c4', legacyRoom('ece', 'x4', 9, 24000, day)); // başka araç → yok
+  await h.champ.migrateLegacyDay(day, { todayKey: day });
+  assert.deepEqual(h.grants.map((g) => g[0]).sort(), ['ali', 'veli']);
+  assert.ok(h.grants.every((g) => g[1] === 'cabrioSampiyon'));
+  // gece yedeği aynı kişilere (başarı verme tekrarı zararsız)
+  h.grants.length = 0;
+  await h.champ.finalizeDay(day);
+  assert.deepEqual(h.grants.map((g) => g[0]).sort(), ['ali', 'veli']);
 });
 
 test('v128 geçiş: eski sistemle gece ödenmiş güne dokunmaz; pencere dışı gün atlanır', async () => {

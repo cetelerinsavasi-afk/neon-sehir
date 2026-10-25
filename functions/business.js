@@ -93,9 +93,10 @@ export function createBusiness({ db, FieldValue, now = () => Date.now() }) {
     return dayKey;
   }
   // Oyunun dükkânının geliri (sadece sıralama için). YAZMA.
-  function recordGameIncomeTx(tx, { type, amount, kind, customerUid, products, materialsUsed, atMs, tax = 0 }) {
+  // v130: taxSource / stat — oyunun silahçısı / galerisinin kâr vergisi ('sifir')
+  function recordGameIncomeTx(tx, { type, amount, kind, customerUid, products, materialsUsed, atMs, tax = 0, taxSource = 'isletme', stat = null }) {
     if (!GAME_VENUE_TYPES.includes(type)) return null;
-    return recordIncomeTx(tx, { houseId: gameVenueId(type), h: { biz: { type }, ownerUid: GAME_VENUE_OWNER }, amount, kind, customerUid, products, materialsUsed, atMs, tax });
+    return recordIncomeTx(tx, { houseId: gameVenueId(type), h: { biz: { type }, ownerUid: GAME_VENUE_OWNER }, amount, kind, customerUid, products, materialsUsed, atMs, tax, taxSource, stat });
   }
 
   // Gün kapanışı: türün gün sınırı geçtiyse dünkü kazanca göre sıra yazılır.

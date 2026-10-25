@@ -120,7 +120,9 @@ export function createRaceTa({ db, FieldValue, HttpsError, requireAuth, finalize
       if (room0.creatorUid !== uid) throw new HttpsError('failed-precondition', 'Bu oda size ait değil.');
       const dateKey = room0.championshipDateKey;
       let prize = 0;
+      let run = null;
       await db.runTransaction(async (tx) => {
+        run = null;
         const snap = await tx.get(roomRef);
         const room = snap.data();
         if (room?.status !== 'racing' || room.champPrizePaid) return;
@@ -134,18 +136,20 @@ export function createRaceTa({ db, FieldValue, HttpsError, requireAuth, finalize
           [`players.${uid}`]: meDone,
         };
         if (reads) {
-          prize = champ.writeRunTx(tx, reads, {
+          run = champ.writeRunTx(tx, reads, {
             uid,
             name: me0.displayName,
             vehicleModel: me0.vehicleModel,
             catalogId: me0.catalogId || room0.championshipCatalogId,
             timeMs: finishMs,
             dateKey,
-          }).prize;
+          });
+          prize = run.prize;
           Object.assign(upd, { champPrizePaid: true, championshipPrize: prize });
         }
         tx.update(roomRef, upd);
       });
+      if (run?.cabrio && champ.grantRunAchievements) await champ.grantRunAchievements(uid, run); // v130
       return { ok: true, finishMs, prize };
     }
 

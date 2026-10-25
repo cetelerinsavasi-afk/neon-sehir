@@ -81,6 +81,8 @@ export const STATE_IN = {
   vergi_isl_mescit: 'Vergi · İşletme · Mescit bağışları',
   vergi_isl_galeri: 'Vergi · İşletme · Galeri',
   vergi_isl_gazino: 'Vergi · İşletme · Kumarhane',
+  vergi_sifirSilah: 'Vergi · Sıfır silah satış kârı', // v130
+  vergi_sifirAraba: 'Vergi · Sıfır araba satış kârı', // v130
   bagis: 'Belediyeye bağışlar',
   borc_acik: 'Kasa açığının borca çevrilmesi (tek seferlik)',
   diger: 'Diğer gelirler',

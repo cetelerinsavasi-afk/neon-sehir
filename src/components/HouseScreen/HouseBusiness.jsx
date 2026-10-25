@@ -1,4 +1,5 @@
 import { useBelediyeRates } from '../../hooks/useBelediyeRates';
+import { useShopStock } from '../../hooks/useShopStock';
 import { useEffect, useState } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -39,7 +40,7 @@ const hhmm = (ms) => new Date(ms).toLocaleTimeString('tr-TR', { hour: '2-digit',
 // Kısa tanıtım (işletme listesinde)
 const BIZ_BLURB = {
   silahci: 'Silah sat, silah tamir et ve geliştir.',
-  galeri: 'Arabalarını vitrine koy ve sat.',
+  galeri: 'Araba sat.',
   modifiye: 'Araba tamiri, vites ve depo geliştirmesi yap.',
   spor: 'Günlük üyelik sat; oyuncular ve takımlar burada antrenman yapar.',
   internet: 'Dakika ücretiyle oyun cihazı kirala.',
@@ -53,8 +54,13 @@ const BIZ_BLURB = {
   studyo: 'Dakika ücretiyle müzik yaptır.',
 };
 
-export function BizListPanel({ keys = BIZ_TYPE_KEYS, title = '🏪 İşletmeler', items, invItems, houseDoc, busy, gold = 0, gem = 0, onOpenBiz, onCloseBiz, onFillMissing, onClose, flashType }) {
+export function BizListPanel({ keys = BIZ_TYPE_KEYS, title = '🏪 İşletmeler', items, invItems, houseDoc, houseId = null, busy, gold = 0, gem = 0, onOpenBiz, onCloseBiz, onFillMissing, onClose, flashType }) {
   const open = houseDoc?.biz?.type || null;
+  // v130: silahçı / galeri kapanmadan önce uyarı — stoğun alış parası iade edilir
+  const stock = useShopStock(open === 'silahci' || open === 'galeri' ? houseId : null);
+  const stockN = Object.values(stock?.items || {}).reduce((a, n) => a + (Number(n) || 0), 0);
+  const stockRefund = Object.values(stock?.paid || {}).reduce((a, n) => a + (Number(n) || 0), 0);
+  const closeLines = stockN > 0 ? [`📦 Stoktaki ${fmt(stockN)} ürün kalkar`, `🪙 Alış parası iade: ${fmt(stockRefund)} altın`] : [];
   const intent = houseDoc?.bizIntent || null;
   const order = [...keys].sort((a, b) => {
     const w = (k) => (k === open ? 0 : k === intent ? 1 : 2);
@@ -106,7 +112,7 @@ export function BizListPanel({ keys = BIZ_TYPE_KEYS, title = '🏪 İşletmeler'
                     <BizRequirements type={type} placedItems={items} invItems={invItems} />
                     {blocked && <p className="bz-note">Önce {BIZ_TYPES[open].label} kapanmalı.</p>}
                     {isOpen ? (
-                      <ConfirmButton className="bz-btn danger wide" disabled={busy} danger title="İşletme kapatılsın mı?" confirmLabel="Kapat" onConfirm={onCloseBiz}>
+                      <ConfirmButton className="bz-btn danger wide" disabled={busy} danger title="İşletme kapatılsın mı?" lines={closeLines} confirmLabel="Kapat" onConfirm={onCloseBiz}>
                         İşletmeyi kapat
                       </ConfirmButton>
                     ) : (
@@ -235,10 +241,6 @@ function ReportCard({ label, d, type }) {
           {fmt((Number(d?.revenue) || 0) - (Number(d?.tax) || 0) - (Number(d?.salary) || 0))} altın
         </b>
       </div>
-      <p className="bz-hint">
-        Vergi oranlarını belediye belirler.
-        {(type === 'cafe' || type === 'bar') && ' Garson maaşı: garsonun zamanında getirdiği her siparişin %10’u.'}
-      </p>
       <div className="bz-row">
         <span>Müşteri sayısı</span>
         <b>{fmt(customers)}</b>
@@ -270,13 +272,7 @@ function ReportCard({ label, d, type }) {
         </div>
       )}
       {type === 'spor' && d?.bonusRef && (
-        <p className={d.bonusRef.on ? 'bz-ok' : 'bz-note'}>
-          {d.bonusRef.eligible === false
-            ? '🔥 Yeni salon: bonus için bir tam gün (bir sonraki 19:00) beklemelisin.'
-            : d.bonusRef.on
-              ? `🔥 Bugün bonusluyuz! Dünkü kazancın (${fmt(d.bonusRef.yesterday)}) en çok kazananın yarısından (${fmt(d.bonusRef.threshold)}) azdı; üyelerin %10 fazla gelişir.`
-              : `Bugün bonus yok: dünkü kazancın (${fmt(d.bonusRef.yesterday)}) bonus sınırının (${fmt(d.bonusRef.threshold)}) üstündeydi.`}
-        </p>
+        <p className={d.bonusRef.on ? 'bz-ok' : 'bz-note'}>{d.bonusRef.on ? '🔥 Bugün bonus var' : 'Bugün bonus yok'}</p>
       )}
       {!d && <p className="bz-hint">Henüz kayıt yok.</p>}
     </div>
@@ -321,7 +317,6 @@ export function BizSettings({ houseId, houseDoc }) {
       {tab === 'inv' && InvSection && <InvSection houseId={houseId} houseDoc={houseDoc} inv={inv} />}
       {tab === 'report' && (
         <>
-          <p className="bz-hint">Gün {t.day === 'futbol' ? '19:00' : '00:00'}'da kapanır.</p>
           {type === 'gazino' ? (
             <>
               <CasinoReportCard label="Bugün" d={today} />
@@ -411,7 +406,7 @@ export function BizRemovePanel({ type, status, busy, onConfirm, onCancel }) {
                 <p>Bu mobilya işletme için gerekli. Kaldırırsan işletme kapanır ve burası yeniden ev olur.</p>
               </div>
             </div>
-            {mats.length > 0 || extra.weapons > 0 || extra.vehicles > 0 || extra.depotGold > 0 || extra.depotContraband > 0 || extra.casinoGold > 0 || extra.casinoContraband > 0 ? (
+            {mats.length > 0 || extra.weapons > 0 || extra.vehicles > 0 || extra.stockRefund > 0 || extra.depotGold > 0 || extra.depotContraband > 0 || extra.casinoGold > 0 || extra.casinoContraband > 0 ? (
               <div className="bz-sec">
                 <p className="bz-sec-title">İşletmedekiler sana geri döner</p>
                 {mats.map(([k, n]) => (
@@ -426,6 +421,12 @@ export function BizRemovePanel({ type, status, busy, onConfirm, onCancel }) {
                   <div className="bz-row">
                     <span>🔫 Vitrindeki silahlar</span>
                     <b className="bz-bad">{fmt(extra.weapons)} adet · ömürleri 1 gün azalır</b>
+                  </div>
+                )}
+                {extra.stockRefund > 0 && (
+                  <div className="bz-row">
+                    <span>📦 Stok (alış fiyatı iade)</span>
+                    <b>{fmt(extra.stockRefund)} altın</b>
                   </div>
                 )}
                 {extra.depotContraband > 0 && (

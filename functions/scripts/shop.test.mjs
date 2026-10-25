@@ -204,114 +204,114 @@ test('atölye (oyunun dükkânı): %130, sınırsız malzeme; v124: müşterinin
   await assert.rejects(h.act('ali', { op: 'workshop', shop: 'game', shopType: 'modifiye', itemId: 'v2', action: 'repair', ownQty: 0, expect: 1300 }), /not-owner/);
 });
 
-test('vitrin: ekle (bant, 10 sınırı, ömür 0, polis), ilan kaldır cezasız, geri çek: aynı gün bedelsiz, sonra ömür −1, hemen tekrar konabilir', async () => {
+// ---------------------------------------------------------------------------
+// v130 — vitrin kalktı: silahçı / galeri stoğu oyunun mağazasından alınır
+// ---------------------------------------------------------------------------
+import { stockUnitCost, stockPriceBand } from '../shopStockRules.js';
+
+test('v130 vitrin kapalı: envanterden vitrine ürün konamaz / yeniden ilan yok', async () => {
   const h = setup();
   const id = await openShop(h, 'silahci');
   weapon(h, 'w1', 'usta', { lifeDays: 8 });
-  const band = itemListingBand('weapon', h.G('weapons/w1'));
-  await assert.rejects(h.act('usta', { op: 'vitrinAdd', houseId: id, itemId: 'w1', price: band.max + 1 }), /price-band/);
-  const r = await h.act('usta', { op: 'vitrinAdd', houseId: id, itemId: 'w1', price: band.max });
-  const w = h.G('weapons/w1');
-  assert.equal(w.listed, true);
-  assert.equal(w.shopHouseId, id);
-  const l = h.G(`marketplaceListings/${r.listingId}`);
-  assert.equal(l.shopHouseId, id);
-  assert.equal(l.sellerId, 'usta');
-  assert.equal(l.weaponName, 'Tabanca');
-  // galeriye silah konmaz, başkasının silahı konmaz, ömrü 0 konmaz
-  weapon(h, 'w0', 'usta', { lifeDays: 0 });
-  await assert.rejects(h.act('usta', { op: 'vitrinAdd', houseId: id, itemId: 'w0', price: 1 }), /life0/);
-  weapon(h, 'wx', 'ali');
-  await assert.rejects(h.act('usta', { op: 'vitrinAdd', houseId: id, itemId: 'wx', price: 500 }), /not-owner/);
-  // ilanı kaldır: vitrinde kalır (listed:true), ceza yok
-  await h.act('usta', { op: 'vitrinUnlist', houseId: id, itemId: 'w1' });
-  assert.equal(h.G(`marketplaceListings/${r.listingId}`).sold, true);
-  assert.equal(h.G('weapons/w1').listed, true);
-  assert.equal(h.G('weapons/w1').shopListingId, null);
-  assert.equal(h.G('weapons/w1').lifeDays, 8);
-  // yeniden ilan
-  const r2 = await h.act('usta', { op: 'vitrinList', houseId: id, itemId: 'w1', price: band.min });
-  assert.equal(h.G('weapons/w1').shopListingId, r2.listingId);
-  assert.equal(l.listedDayKey, '2026-10-07');
-  assert.equal(l.expireAtMs, h.clock.now + 7 * 24 * 60 * 60 * 1000);
-  assert.equal(l.bandMax, band.max);
-  // v115: aynı gün (00:00'dan önce) geri çek → bedelsiz, ilan kapanır, yasak yok
-  await h.act('usta', { op: 'vitrinRemove', houseId: id, itemId: 'w1' });
-  let back = h.G('weapons/w1');
-  assert.equal(back.listed, false);
-  assert.equal(back.shopHouseId, undefined);
-  assert.equal(back.lifeDays, 8);
-  assert.equal(back.shopBanDayKey, undefined);
-  assert.equal(h.G(`marketplaceListings/${r2.listingId}`).sold, true);
-  // tekrar koy, 00:00 geçsin → onaysız reddedilir, onaylıysa ömür −1
-  await h.act('usta', { op: 'vitrinAdd', houseId: id, itemId: 'w1', price: band.min });
-  h.clock.now += 13 * 60 * 60 * 1000; // ertesi gün 01:00
-  await assert.rejects(h.act('usta', { op: 'vitrinRemove', houseId: id, itemId: 'w1' }), /remove-penalty/);
-  await h.act('usta', { op: 'vitrinRemove', houseId: id, itemId: 'w1', confirmPenalty: true });
-  back = h.G('weapons/w1');
-  assert.equal(back.listed, false);
-  assert.equal(back.lifeDays, 7);
-  // v115: cezayla geri alınan ürün hemen tekrar konabilir (yasak yok)
-  const b2 = itemListingBand('weapon', h.G('weapons/w1'));
-  await h.act('usta', { op: 'vitrinAdd', houseId: id, itemId: 'w1', price: b2.min });
-  // 10 sınırı
-  for (let n = 0; n < SHOP_MAX_ITEMS - 1; n++) {
-    weapon(h, `wm${n}`, 'usta');
-    await h.act('usta', { op: 'vitrinAdd', houseId: id, itemId: `wm${n}`, price: itemListingBand('weapon', h.G(`weapons/wm${n}`)).min });
-  }
-  weapon(h, 'wlast', 'usta');
-  await assert.rejects(h.act('usta', { op: 'vitrinAdd', houseId: id, itemId: 'wlast', price: 500 }), /vitrin-full/);
+  await assert.rejects(h.act('usta', { op: 'vitrinAdd', houseId: id, itemId: 'w1', price: 900 }), /vitrin-closed/);
+  await assert.rejects(h.act('usta', { op: 'vitrinList', houseId: id, itemId: 'w1', price: 900 }), /vitrin-closed/);
+  assert.equal(h.G('weapons/w1').listed, undefined);
 });
 
-test('vitrin: polisin son silahı konamaz; vitrinden anında sat (2. el ile aynı ödeme + sistem ilanı)', async () => {
+test('v130 stok: sahip %75e ekler, fiyat %80–100, müşteri alır; vergi sadece kârdan; stok biter', async () => {
   const h = setup();
   const id = await openShop(h, 'silahci');
-  h.S('users/usta', { ...h.G('users/usta'), profession: 'polis' });
-  weapon(h, 'p1', 'usta');
-  await assert.rejects(h.act('usta', { op: 'vitrinAdd', houseId: id, itemId: 'p1', price: 500 }), /police-last/);
-  weapon(h, 'p2', 'usta');
-  await h.act('usta', { op: 'vitrinAdd', houseId: id, itemId: 'p2', price: itemListingBand('weapon', h.G('weapons/p2')).min });
-  // anında sat
+  const c6 = WEAPON_CATALOG[6]; // 100.000
+  const gold0 = h.G('users/usta').gold;
+  await h.act('usta', { op: 'stockAdd', houseId: id, catalogId: 6 });
+  await h.act('usta', { op: 'stockAdd', houseId: id, catalogId: 6 });
+  assert.equal(stockUnitCost(c6.price), 75_000);
+  assert.equal(h.G('users/usta').gold, gold0 - 150_000, 'para oyundan çıkar');
+  assert.equal(h.G(`shopStocks/${id}`).items['6'], 2);
+  // başkası stok ekleyemez, galeri aracı silahçıya eklenemez, yetersiz altın
+  await assert.rejects(h.act('ali', { op: 'stockAdd', houseId: id, catalogId: 6 }), /senin değil/);
+  await assert.rejects(h.act('usta', { op: 'stockAdd', houseId: id, catalogId: 9 }), /Geçersiz ürün/);
+  h.S('users/usta', { ...h.G('users/usta'), gold: 1000 });
+  await assert.rejects(h.act('usta', { op: 'stockAdd', houseId: id, catalogId: 6 }), /gold/);
+  h.S('users/usta', { ...h.G('users/usta'), gold: gold0 });
+  // fiyat bandı
+  const b = stockPriceBand(c6.price);
+  assert.deepEqual(b, { min: 80_000, max: 100_000 });
+  await assert.rejects(h.act('usta', { op: 'stockPrices', houseId: id, prices: { 6: 79_999 } }), /price-band/);
+  await assert.rejects(h.act('usta', { op: 'stockPrices', houseId: id, prices: { 6: 90_050 } }), /price-band/, '100\'ün katı olmalı');
+  await h.act('usta', { op: 'stockPrices', houseId: id, prices: { 6: 90_000 } });
+  // müşteri: dükkânda olmalı, fiyat değişmişse reddedilir, sahip kendinden alamaz
+  h.S('users/ali', { ...h.G('users/ali'), gold: 500_000 });
+  await assert.rejects(h.act('ali', { op: 'stockBuy', houseId: id, catalogId: 6, expect: 90_000 }), /not-present/);
+  h.present('ali', id);
+  await assert.rejects(h.act('ali', { op: 'stockBuy', houseId: id, catalogId: 6, expect: 100_000 }), /price-changed:90000/);
+  await assert.rejects(h.act('usta', { op: 'stockBuy', houseId: id, catalogId: 6, expect: 90_000 }), /own-shop/);
+  await assert.rejects(h.act('ali', { op: 'stockBuy', houseId: id, catalogId: 1, expect: 1000 }), /stock-out/);
   const before = h.G('users/usta').gold;
-  const r = await h.act('usta', { op: 'vitrinInstantSell', houseId: id, itemId: 'p2' });
-  assert.equal(r.payout, itemListingBand('weapon', h.G('weapons/p2')).instant);
-  // v77 vergi: 2. el / vitrin %1
-  assert.equal(r.tax, Math.round(r.payout * 0.01));
-  assert.equal(h.G('users/usta').gold, before + r.payout - r.tax);
-  const p2 = h.G('weapons/p2');
-  assert.equal(p2.listed, true);
-  assert.equal(p2.shopHouseId, undefined);
-  const sys = h.keys('marketplaceListings/').map((k) => h.G(k)).find((l) => l.sellerId === 'system');
-  assert.equal(sys.weaponId, 'p2');
-  assert.equal(sys.price, Math.ceil(r.payout * 1.1));
+  const r = await h.act('ali', { op: 'stockBuy', houseId: id, catalogId: 6, expect: 90_000 });
+  assert.equal(h.G('users/ali').gold, 410_000);
+  // kâr 15.000 → %10 = 1.500 vergi
+  assert.equal(h.G('users/usta').gold, before + 90_000 - 1_500);
+  const w = h.G(`weapons/${r.itemId}`);
+  assert.equal(w.ownerId, 'ali');
+  assert.equal(w.name, c6.name);
+  assert.equal(w.level, 1);
+  assert.equal(w.listed, undefined);
+  assert.equal(h.G(`shopStocks/${id}`).items['6'], 1);
+  assert.equal(h.G(`shopStocks/${id}`).paid['6'], 75_000);
+  const daily = h.keys('businessDaily/').map((k) => h.G(k)).find((d) => d.houseId === id);
+  assert.equal(daily.revenue, 90_000);
+  assert.equal(daily.tax, 1_500);
+  assert.deepEqual(h.onboard.at(-1), ['ali', 5]);
+  // kapanınca kalan stoğun ödenen tutarı iade
+  h.S(`housePresence/ali`, { houseId: 'baska' });
+  const st = await h.hact('usta', { op: 'bizStatus', houseId: id });
+  assert.equal(st.returns.stockRefund, 75_000);
+  const g = h.G('users/usta').gold;
+  const c = await h.hact('usta', { op: 'bizClose', houseId: id });
+  assert.equal(c.returned.stockRefund, 75_000);
+  assert.equal(h.G('users/usta').gold, g + 75_000);
+  assert.equal(h.G(`shopStocks/${id}`), undefined);
 });
 
-test('işletme kapanınca vitrindeki ürünler sahibine döner (00:00 geçtiyse ömür −1; bugün konan bedelsiz), ilanlar kapanır; bizStatus sayar', async () => {
+test('v130 galeri stoğu: araç oyunun galerisindekiyle aynı belge; kredi SMS + görev', async () => {
   const h = setup();
   const id = await openShop(h, 'galeri');
-  vehicle(h, 'v1', 'usta');
-  vehicle(h, 'v2', 'usta');
-  vehicle(h, 'v3', 'usta');
-  const a = await h.act('usta', { op: 'vitrinAdd', houseId: id, itemId: 'v1', price: itemListingBand('vehicle', h.G('vehicles/v1')).max });
-  await h.act('usta', { op: 'vitrinAdd', houseId: id, itemId: 'v2', price: itemListingBand('vehicle', h.G('vehicles/v2')).max });
-  await h.act('usta', { op: 'vitrinUnlist', houseId: id, itemId: 'v2' });
-  h.clock.now += 24 * 60 * 60 * 1000; // ertesi gün 12:00
-  await h.act('usta', { op: 'vitrinAdd', houseId: id, itemId: 'v3', price: itemListingBand('vehicle', h.G('vehicles/v3')).max });
-  const st = await h.hact('usta', { op: 'bizStatus', houseId: id });
-  assert.equal(st.returns.vehicles, 3);
-  const c = await h.hact('usta', { op: 'bizClose', houseId: id });
-  assert.equal(c.returned.vehicles, 3);
-  for (const v of ['v1', 'v2']) {
-    const d = h.G(`vehicles/${v}`);
-    assert.equal(d.listed, false);
-    assert.equal(d.shopHouseId, undefined);
-    assert.equal(d.lifeDays, 9, 'vitrinden çekmekle aynı: ömür −1');
-  }
-  const d3 = h.G('vehicles/v3');
-  assert.equal(d3.listed, false);
-  assert.equal(d3.lifeDays, 10, 'bugün konan bedelsiz döner');
-  assert.equal(h.G(`marketplaceListings/${a.listingId}`).cancelled, true);
-  await assert.rejects(h.act('usta', { op: 'vitrinAdd', houseId: id, itemId: 'v1', price: 5000 }), /biz-closed/);
+  await h.act('usta', { op: 'stockAdd', houseId: id, catalogId: 2 });
+  h.present('ali', id);
+  const r = await h.act('ali', { op: 'stockBuy', houseId: id, catalogId: 2, expect: VEHICLE_CATALOG[2].price });
+  const v = h.G(`vehicles/${r.itemId}`);
+  assert.equal(v.ownerId, 'ali');
+  assert.equal(v.model, VEHICLE_CATALOG[2].name);
+  assert.equal(v.mortgaged, false);
+  assert.ok(h.keys('users/ali/messages/').map((k) => h.G(k)).some((m) => m.type === 'loan_offer'));
+  assert.deepEqual(h.onboard.at(-1), ['ali', 11]);
+  // kâr 2.500 → vergi 250
+  assert.equal(h.G(`shopStocks/${id}`).items['2'], 0);
+});
+
+test('v130 geçiş: ilandaki vitrin ürünü 2. elde satışta kalır, ilansız olan envantere döner; ömür değişmez; bir kez', async () => {
+  const h = setup();
+  const id = await openShop(h, 'silahci');
+  weapon(h, 'w1', 'usta', { lifeDays: 6, listed: true, shopHouseId: id, shopListingId: 'L1', shopAddedDayKey: '2026-10-01' });
+  weapon(h, 'w2', 'usta', { lifeDays: 4, listed: true, shopHouseId: id, shopListingId: null, shopAddedDayKey: '2026-10-01' });
+  h.S('marketplaceListings/L1', { sellerId: 'usta', itemType: 'weapon', weaponId: 'w1', price: 900, sold: false, shopHouseId: id, shopName: 'Dükkân' });
+  const shop2 = createShop({ db: h.db, FieldValue, HttpsError, requireAuth: (r) => r.auth.uid, onCall: (fn) => fn, splitIncomeForDebt, business: h.business, now: () => h.clock.now });
+  const r = await shop2.migrateVitrin();
+  assert.equal(r.items, 2);
+  const w1 = h.G('weapons/w1');
+  assert.equal(w1.listed, true);
+  assert.equal(w1.shopHouseId, undefined);
+  assert.equal(w1.lifeDays, 6);
+  const l = h.G('marketplaceListings/L1');
+  assert.equal(l.sold, false);
+  assert.equal(l.shopHouseId, undefined);
+  const w2 = h.G('weapons/w2');
+  assert.equal(w2.listed, false);
+  assert.equal(w2.shopHouseId, undefined);
+  assert.equal(w2.lifeDays, 4);
+  assert.ok(h.keys('users/usta/messages/').map((k) => h.G(k)).some((m) => m.type === 'biz_shop_v130'));
+  assert.deepEqual(await shop2.migrateVitrin(), { skipped: true });
 });
 
 test('stok uyarısı: günde en fazla bir SMS, eksikler tek mesajda; v124: ortak envantere stok gelince işaret kalkar', async () => {

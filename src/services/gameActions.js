@@ -701,7 +701,7 @@ export const repayCredit = (amount) => httpsCallable(functions, 'repayCredit')({
 export const syncAchievements = () => httpsCallable(functions, 'syncAchievements')({});
 
 // v77 — İşletmeler Faz 2: Atölye (tamir/geliştirme) + vitrin + dükkân stoğu/fiyatları
-// op: 'workshop' | 'stock' | 'prices' | 'vitrinAdd' | 'vitrinList' | 'vitrinUnlist' | 'vitrinRemove' | 'vitrinInstantSell'
+// op: 'workshop' | 'prices' | v130: 'stockAdd' | 'stockPrices' | 'stockBuy' (eski vitrin işlemleri kapalı)
 export const shopAction = (payload) => httpsCallable(functions, 'shopAction')(payload).then((r) => r.data);
 
 // v77 Faz 4 — takım antrenmanı: bir spor salonuna mevki kutusu ödemesi

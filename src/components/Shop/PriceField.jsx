@@ -43,10 +43,10 @@ export default function PriceField({ label, hint, value, min, max, step = 1, onC
       </div>
       {taxRate > 0 && (
         <p className="pf-tax">
-          🏛️ Vergi (%{Math.round(taxRate * 100)}): {fmt(taxOf(value, taxRate))} · Eline geçen: <b>{fmt(value - taxOf(value, taxRate))} {unit}</b>
+          🏛️ %{Math.round(taxRate * 100)} · 🪙 <b>{fmt(value - taxOf(value, taxRate))}</b>
         </p>
       )}
-      {saved !== undefined && saved !== value && <p className="pf-dirty">Şu an kayıtlı fiyat: {fmt(saved)} {unit} — değişikliği kaydetmeyi unutma.</p>}
+      {saved !== undefined && saved !== value && <p className="pf-dirty">💾 {fmt(saved)} → {fmt(value)}</p>}
     </div>
   );
 }

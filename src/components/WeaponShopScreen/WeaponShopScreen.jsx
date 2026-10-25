@@ -8,7 +8,9 @@ import './WeaponShopScreen.css';
 
 // Silah Mağazası SADECE silah SATIN ALMA yeri — geliştirme Profil'den
 // yapılıyor.
-export default function WeaponShopScreen() {
+// v130 — oyuncu silahçısı da aynı ekranı kullanır: items = [{ ...katalog, price }]
+// (sadece stokta olanlar, dükkânın fiyatıyla) · onBuy(katalog) · disabledText
+export default function WeaponShopScreen({ items = null, onBuy = null, disabledText = null }) {
   const { user } = useAuth();
   const { player } = usePlayer();
   const [busy, setBusy] = useState(null);
@@ -31,10 +33,12 @@ export default function WeaponShopScreen() {
   };
 
   const gold = player?.gold ?? 0;
+  const list = items || weaponCatalog;
+  const buy = onBuy || ((w) => buyWeapon(w.id));
 
   return (
     <div className="weapon-shop">
-      {weaponCatalog.map((w) => (
+      {list.map((w) => (
         <div key={w.id} className="weapon-card">
           <img className="weapon-card-image" src={w.image} alt={w.name} />
           <div className="weapon-card-info">
@@ -45,10 +49,10 @@ export default function WeaponShopScreen() {
           </div>
           <button
             className="weapon-card-buy"
-            disabled={busy === `buy-${w.id}` || gold < w.price}
-            onClick={() => run(`buy-${w.id}`, () => buyWeapon(w.id))}
+            disabled={Boolean(disabledText) || busy === `buy-${w.id}` || gold < w.price}
+            onClick={() => run(`buy-${w.id}`, () => buy(w))}
           >
-            {busy === `buy-${w.id}` ? '…' : 'Satın Al'}
+            {busy === `buy-${w.id}` ? '…' : disabledText || 'Satın Al'}
           </button>
         </div>
       ))}

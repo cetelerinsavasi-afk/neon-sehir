@@ -437,6 +437,11 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if false;
     }
+    // v130 — silahçı / galeri stoğu + satış fiyatları (functions/shop.js). Müşteri de görür.
+    match /shopStocks/{houseId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
     // v124 — depolar (functions/depo.js): envanter (altın + yasaklı madde) sadece
     // sahibine; fiyat + stok + alabileceği adet herkese açık. Yazma sadece sunucu.
     match /depots/{houseId} {

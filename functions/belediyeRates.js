@@ -93,6 +93,14 @@ export const RATE_GROUPS = [
     items: [pct('ikAraba', '2. El Araba Satışı', 1, 1, 10), pct('ikSilah', '2. El Silah Satışı', 1, 1, 10)],
   },
   {
+    m: 'ticaret',
+    id: 'sifir',
+    title: 'Sıfır Satış Kâr Vergileri',
+    unit: '%',
+    // v130: silahçı / galeri stoktan satış — sadece KÂRDAN (satış − alış) vergi
+    items: [pct('sfAraba', 'Sıfır Araba Satış Kâr Vergisi', 10, 10, 20), pct('sfSilah', 'Sıfır Silah Satış Kâr Vergisi', 10, 10, 20)],
+  },
+  {
     m: 'guvenlik',
     id: 'polis',
     title: 'Polis Maaşları',
@@ -186,6 +194,9 @@ export const machineRateFrac = (rates, type) => fracOf(rates, MACHINE_RATE_KEY[t
 export const resaleRateKey = (kind) => (kind === 'weapon' || kind === 'silah' ? 'ikSilah' : kind === 'vehicle' || kind === 'araba' ? 'ikAraba' : 'ikMalzeme');
 // v127: sadece araç ve silah satışı vergilidir; malzeme / makine vergisiz
 export const resaleRateFrac = (rates, kind) => (resaleRateKey(kind) === 'ikMalzeme' ? 0 : fracOf(rates, resaleRateKey(kind)));
+// v130: sıfır (stoktan) satış kâr vergisi — kind 'weapon' | 'vehicle'
+export const newSaleRateKey = (kind) => (kind === 'vehicle' || kind === 'araba' ? 'sfAraba' : 'sfSilah');
+export const newSaleRateFrac = (rates, kind) => fracOf(rates, newSaleRateKey(kind));
 export const FACTORY_BRACKET_FROM = [0, 100_000, 1_000_000, 10_000_000];
 export function factoryRateFrac(rates, gross) {
   const g = Math.max(0, Number(gross) || 0);

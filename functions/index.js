@@ -15,13 +15,14 @@ import { createSocial } from './social.js';
 import { createDeletionRequests } from './deletionRequests.js';
 import { createHouses } from './houses.js';
 import { createBusiness } from './business.js';
-import { resaleTax, factoryTax, factoryTaxRate, taxLedgerWrite, taxStatWrite, splitSalaryTax, splitLotteryTax, machineTax, loadRates, ratesFor, pctText, lotteryTaxRate } from './tax.js';
+import { newSaleTax, resaleTax, factoryTax, factoryTaxRate, taxLedgerWrite, taxStatWrite, splitSalaryTax, splitLotteryTax, machineTax, loadRates, ratesFor, pctText, lotteryTaxRate } from './tax.js';
 import { createBelediye } from './belediye.js'; // v127
 import { rateFrac } from './belediyeRates.js'; // v127
 import { SLOT_GAME_COST, GAME_SLOT_STATE_CUT, rollSlotReels, slotOutcome, normalizeRouletteBets, roulettePayout, ROULETTE_ORDER, LOTTERY_TICKET, GAME_LOTTERY_CUT, GAME_CASINO_ID } from './casinoRules.js';
 import { vaultWrite, settleGameCasinoVaults } from './gameCasinoVault.js'; // v126
 import { createVisits } from './visits.js';
-import { createShop } from './shop.js';
+import { createShop, newSaleStat } from './shop.js';
+import { stockUnitCost } from './shopStockRules.js'; // v130
 import { createVenue } from './venue.js';
 import { createOffice } from './office.js';
 import { createPresenceSummary } from './presenceSummary.js';
@@ -67,7 +68,7 @@ import { isMsgId, nextReaction, replyQuoteOf } from './chatExtras.js';
 import { VENUES } from './venueLayouts.js';
 import { goldTag, recordGoldChange, cleanupMoneyLog, realizeSale, realizeBankWithdraw } from './moneyLog.js';
 import { stateWrite, closeStateDays, readStateReport } from './stateTreasury.js';
-import { policeBustSplit, heistStateEntries, crimeLockedBySuspicion, CRIME_LOCK_TEXT, CRIME_LOCK_TEAM_TEXT } from './policeRules.js';
+import { policeBustSplit, heistStateEntries, crimeLockedBySuspicion, CRIME_LOCK_TEXT, CRIME_LOCK_TEAM_TEXT, BELEDIYE_CRIME_TEXT, BELEDIYE_CRIME_TEAM_TEXT } from './policeRules.js';
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -390,6 +391,12 @@ async function runChampV2Migration() {
 export const champV2Migrate = onSchedule({ schedule: 'every 60 minutes', timeoutSeconds: 540 }, async () => {
   const r = await runChampV2Migration();
   console.log(JSON.stringify({ champV2Migrate: r }));
+});
+
+// v130 — silahçı / galeri vitrin → stok geçişi (bir kez; saatlik iş + deploy sonrası elle)
+export const shopV130Migrate = onSchedule({ schedule: 'every 60 minutes', timeoutSeconds: 540 }, async () => {
+  const r = await shop.migrateVitrin();
+  console.log(JSON.stringify({ shopV130Migrate: r }));
 });
 
 export const achievementsSweep = onSchedule({ schedule: 'every 60 minutes' }, async () => {
@@ -2643,6 +2650,21 @@ export const runChampV2MigrationNow = onRequest({ timeoutSeconds: 540 }, async (
   }
 });
 
+// v130 — Kullanım: …/runShopV130MigrationNow?secret=MAINTENANCE_SECRET
+export const runShopV130MigrationNow = onRequest({ timeoutSeconds: 540 }, async (req, res) => {
+  if (!req.query.secret || req.query.secret !== MAINTENANCE_SECRET) {
+    res.status(403).json({ error: 'Yetkisiz.' });
+    return;
+  }
+  try {
+    const r = await shop.migrateVitrin({ force: req.query.force === '1' });
+    console.log(JSON.stringify({ shopV130MigrateManual: r }));
+    res.status(200).json({ ok: true, ...r });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err?.message || String(err) });
+  }
+});
+
 export const resolveStuckRewardsNow = onRequest(async (req, res) => {
   if (!req.query.secret || req.query.secret !== MAINTENANCE_SECRET) {
     res.status(403).json({ error: 'Yetkisiz.' });
@@ -4454,7 +4476,12 @@ export const buyVehicle = onCall(async (request) => {
       { gold: admin.firestore.FieldValue.increment(-catalogEntry.price), goldTag: goldTag('arac') },
       { merge: true }
     );
-    business.recordGameIncomeTx(tx, { type: 'galeri', amount: catalogEntry.price, kind: 'sale', customerUid: uid, products: { [catalogEntry.name]: 1 } });
+    // v130: oyunun galerisi — kâr (fiyatın %25'i) üzerinden sıfır araba kâr vergisi belediyeye, kalanı oyundan çıkar
+    {
+      const profit = catalogEntry.price - stockUnitCost(catalogEntry.price);
+      const tax = newSaleTax(profit, 'vehicle');
+      business.recordGameIncomeTx(tx, { type: 'galeri', amount: catalogEntry.price, kind: 'sale', customerUid: uid, products: { [catalogEntry.name]: 1 }, tax, taxSource: 'sifir', stat: newSaleStat('vehicle', { price: catalogEntry.price, profit, tax, game: true }) });
+    }
     const newVehicleRef = vehiclesRef.doc();
     tx.set(newVehicleRef, {
       ownerId: uid,
@@ -4595,7 +4622,12 @@ export const buyWeapon = onCall(async (request) => {
       { gold: admin.firestore.FieldValue.increment(-catalogEntry.price), goldTag: goldTag('silah') },
       { merge: true }
     );
-    business.recordGameIncomeTx(tx, { type: 'silahci', amount: catalogEntry.price, kind: 'sale', customerUid: uid, products: { [catalogEntry.name]: 1 } });
+    // v130: oyunun silahçısı — kâr (fiyatın %25'i) üzerinden sıfır silah kâr vergisi belediyeye, kalanı oyundan çıkar
+    {
+      const profit = catalogEntry.price - stockUnitCost(catalogEntry.price);
+      const tax = newSaleTax(profit, 'weapon');
+      business.recordGameIncomeTx(tx, { type: 'silahci', amount: catalogEntry.price, kind: 'sale', customerUid: uid, products: { [catalogEntry.name]: 1 }, tax, taxSource: 'sifir', stat: newSaleStat('weapon', { price: catalogEntry.price, profit, tax, game: true }) });
+    }
     const newWeaponRef = weaponsRef.doc();
     tx.set(newWeaponRef, {
       ownerId: uid,
@@ -6165,8 +6197,10 @@ export const attemptHeist = onCall(async (request) => {
   }
 
   // v123: şüphe 50+ iken tek başına soygun / haraç yok
-  if (crimeLockedBySuspicion((await userRef.get()).data()?.suspicion)) {
-    throw new HttpsError('failed-precondition', CRIME_LOCK_TEXT);
+  {
+    const pre = (await userRef.get()).data() || {};
+    if (pre.belediyeSeat) throw new HttpsError('failed-precondition', BELEDIYE_CRIME_TEXT); // v130
+    if (crimeLockedBySuspicion(pre.suspicion)) throw new HttpsError('failed-precondition', CRIME_LOCK_TEXT);
   }
 
   const maxPower = await getMaxWeaponPower(uid);
@@ -6190,6 +6224,7 @@ export const attemptHeist = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
     }
     const suspicion = user.suspicion || 0;
+    if (user.belediyeSeat) throw new HttpsError('failed-precondition', BELEDIYE_CRIME_TEXT); // v130 (yarış)
     if (crimeLockedBySuspicion(suspicion)) throw new HttpsError('failed-precondition', CRIME_LOCK_TEXT); // v123 (yarış)
     const caught = Math.random() < captureRiskPercent(suspicion) / 100;
     const reward = config.reward;
@@ -6861,6 +6896,7 @@ export const createHeistPlan = onCall(async (request) => {
 
   const userSnap = await db.collection('users').doc(uid).get();
   const user = userSnap.data();
+  if (user?.belediyeSeat) throw new HttpsError('failed-precondition', BELEDIYE_CRIME_TEXT); // v130
   // v124: şüphesi 50+ olan da ekip KURABİLİR / katılabilir — sadece soygun
   // başlatılamaz (bkz. executeHeistPlan şüphe kilidi).
   // KULLANICI REVİZESİ (polis suç sistemi): polisler de plan kurabilir
@@ -7055,6 +7091,7 @@ export const joinHeistPlan = onCall(async (request) => {
       'Bu ekipten ayrıldın/atıldın, tekrar katılamazsın.'
     );
   }
+  if ((await db.collection('users').doc(uid).get()).data()?.belediyeSeat) throw new HttpsError('failed-precondition', BELEDIYE_CRIME_TEXT); // v130
   if (plan.creatorUid !== uid && (await isAlreadyInActiveHeistPlanForTarget(uid, plan.target))) {
     throw new HttpsError(
       'failed-precondition',
@@ -7244,6 +7281,15 @@ export const executeHeistPlan = onCall(async (request) => {
   const userSnaps = await Promise.all(
     participants.map((p) => db.collection('users').doc(p.uid).get())
   );
+  // v130: ekipte belediye görevlisi varsa soygun BAŞLATILAMAZ (plan açık kalır)
+  {
+    const officials = userSnaps.map((s, i) => (s.data()?.belediyeSeat ? participants[i] : null)).filter(Boolean);
+    if (officials.length) {
+      if (officials.length === 1 && officials[0].uid === uid) throw new HttpsError('failed-precondition', BELEDIYE_CRIME_TEXT);
+      const names = officials.map((p) => (p.uid === uid ? 'sen' : String(p.displayName || 'Oyuncu').slice(0, 30))).join(', ');
+      throw new HttpsError('failed-precondition', BELEDIYE_CRIME_TEAM_TEXT.replace('{names}', names));
+    }
+  }
   // v123: ekipte şüphesi 50+ olan biri varsa soygun BAŞLATILAMAZ (plan açık
   // kalır; kimsenin şüphesi / günlük hakkı değişmez).
   // v124: kim olduğu söylenir (herkesin şüphesi zaten soygun ekranında yazıyor).

@@ -2365,6 +2365,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
               onOpenBiz={openBiz}
               onCloseBiz={closeBiz}
               onClose={() => setPanel(null)}
+              houseId={houseId}
             />
           )}
           {bizRemove && (

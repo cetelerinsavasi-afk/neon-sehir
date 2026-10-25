@@ -205,7 +205,6 @@ export function DepoPriceSection({ houseId, houseDoc }) {
         refPrice={GAME_DEPO_PRICES.buy}
         saved={saved.buy}
       />
-      <p className="bz-hint">Oyuncular deponda en fazla stoğundaki kadar alabilir; sana en fazla kasandaki altının yettiği kadar satabilir.</p>
       {msg && <p className={msg.ok ? 'bz-ok' : 'bz-warn'}>{msg.text}</p>}
       <button className="bz-btn gold wide" disabled={!dirty || busy} onClick={save}>
         {busy ? 'Kaydediliyor…' : 'Fiyatları kaydet'}
@@ -259,7 +258,6 @@ export function DepoInvSection({ houseId }) {
         <span>🪙 Kasa (altın)</span>
         <b>{inv ? <Gold v={inv.gold} /> : '…'}</b>
       </div>
-      <p className="bz-hint">Ekleme ve çekmede vergi yok. Müşteri aldıkça kasa dolar, sattıkça (sen ondan aldıkça) kasa boşalır.</p>
       <div className="bz-tabs">
         <button className={asset === 'yasakliMadde' ? 'on' : ''} onClick={() => setAsset('yasakliMadde')}>
           💊 Yasaklı madde

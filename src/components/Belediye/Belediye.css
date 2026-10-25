@@ -658,3 +658,26 @@
   font-size: 11px;
   margin-top: 2px;
 }
+
+/* v130 — başkan kartına dokununca belediye kadrosu (salt okunur şema) */
+.bd-mayor-btn {
+  display: block;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.bd-slot.ro {
+  cursor: default;
+}
+.bd-perm-icons {
+  letter-spacing: 1px;
+}
+.bd-resign {
+  margin-top: 18px;
+}

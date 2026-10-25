@@ -50,6 +50,10 @@ const MAP = {
   // v124 Faz 6 gazino
   'biz-casino-table': 'Gazinoda açık 10 Numara masası varken gazino kapatılamaz. Masalar kapanınca tekrar dene.',
   'casino-short': 'Makinede o kadar yok.',
+  // v130 silahçı / galeri stoğu
+  'vitrin-closed': 'Vitrin yenilendi: stok artık Envanter › Vitrine ekle’den alınıyor.',
+  'stock-out': 'Bu ürün az önce tükendi.',
+  'own-shop': 'Kendi dükkânından alamazsın.',
 };
 
 export function bizErrText(err) {

@@ -9,15 +9,24 @@ import { useBelediyeRatesDoc } from '../../hooks/useBelediyeRates';
 import { BELEDIYE, SEATS } from '../../../functions/belediye.js';
 import { useBelediye } from './BelediyeContext';
 import { belediyeAction } from '../../services/gameActions';
+import { OrgChart } from './BaskanlikTab';
 import { MIN_ORDER, Person, Signed, Table, dayLabel, hoursLeft, nf, useTick } from './belediyeUi';
 
 function MayorCard() {
   const { main, isAdmin, seat, run, busy } = useBelediye();
   const bsk = main.seats?.bsk;
+  const [tree, setTree] = useState(false); // v130: dokununca belediye kadrosu (herkes görür)
   return (
     <div className="gx-card bd-mayor">
+      {tree && (
+        <Sheet title="Belediye kadrosu" icon="🏛️" onClose={() => setTree(false)}>
+          <OrgChart readOnly />
+        </Sheet>
+      )}
       {bsk?.uid ? (
-        <Person name={bsk.name} avatar={bsk.avatar} sub="Belediye Başkanı" size={56} right={<span className="bd-crown">👑</span>} />
+        <button type="button" className="bd-mayor-btn" onClick={() => setTree(true)} aria-label="Belediye kadrosunu gör">
+          <Person name={bsk.name} avatar={bsk.avatar} sub="Belediye Başkanı" size={56} right={<span className="bd-crown">👑 ›</span>} />
+        </button>
       ) : (
         <div className="bd-mayor-empty">
           <span className="bd-crown">🏛️</span>

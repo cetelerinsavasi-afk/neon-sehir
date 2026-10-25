@@ -6,7 +6,7 @@ export const ACHIEVEMENTS = [
   { id: 'piyango', emoji: '🎟️', title: 'Piyango kazan', desc: 'Günün piyangosunu kazan.', reward: 1 },
   { id: 'bankaSoy', emoji: '🏦', title: 'Banka soy', desc: 'Bankayı yakalanmadan soy (tek başına ya da ekiple).', reward: 2 },
   { id: 'sixtagram100', emoji: '❤️', title: "Sixtagram'da 100 beğeni", desc: "Sixtagram gönderilerin toplam 100 beğeniye ulaşsın.", reward: 2 },
-  { id: 'cabrioSampiyon', emoji: '🏎️', title: 'Üstün Cabrio şampiyonu', desc: 'Üstün Cabrio şampiyonasını kazan.', reward: 3 },
+  { id: 'cabrioSampiyon', emoji: '🏎️', title: 'Üstün Cabrio şampiyonu', desc: 'Üstün Cabrio ile şampiyonayı 26 saniyenin altında bitir (250.000 / 500.000 ödül).', reward: 3 },
   { id: 'polisBanka', emoji: '🚔', title: 'Banka soyguncusunu yakala', desc: 'Polis olarak bir banka soygununda suçluları yakala.', reward: 3 },
   { id: 'mafyaBabasi', emoji: '🕴️', title: 'Mafya Babası ol', desc: 'Bir çetenin Mafya Babası ol.', reward: 4 },
   { id: 'istihbaratBaskani', emoji: '⭐', title: 'Emniyet Genel Müdürü ol', desc: 'Polis Teşkilatının başına geç.', reward: 4 },
