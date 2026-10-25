@@ -146,23 +146,38 @@ test('v38 geçiş: aktiflik kuralı devreye girdiği an herkes için taze başla
   assert.ok(Number(h.raw('gangWorlds/test').activityV38StartMs) > 0);
 });
 
-test('v116: ayrılan da atılan da 24 saat HİÇBİR çeteye giremez, çete kuramaz; 00:00 yetmez, 24 saat sonra girer', async () => {
+test('v127: ayrılan / atılan SADECE ayrıldığı çeteye 24 saat giremez; başka çeteye girer, çete kurar', async () => {
   const h = await createHarness();
-  const G = await setupGang(h, { members: 2 });
+  const G = await setupGang(h, { members: 3 });
   const O = await setupGang(h, { members: 0, name: 'Öteki' });
-  const [leaver, kicked] = G.ids;
+  const [leaver, kicked, founder] = G.ids;
   await h.act(leaver, 'leaveGang');
-  assert.match((await h.fails(leaver, 'joinGang', { gangId: G.gangId })).message, /24 saat geçmeden tekrar giremezsin/);
+  assert.match((await h.fails(leaver, 'joinGang', { gangId: G.gangId })).message, /bu çeteye 24 saat giremezsin/);
   await h.act(G.baba, 'kickMember', { targetId: kicked });
-  assert.match((await h.fails(kicked, 'joinGang', { gangId: G.gangId })).message, /24 saat geçmeden/);
-  assert.match((await h.fails(kicked, 'joinGang', { gangId: O.gangId })).message, /24 saat geçmeden/, 'başka çete de yasak');
-  assert.match((await h.fails(kicked, 'createGang', { name: 'Yenisi', logo: { emoji: '💀', color: '#ff2e8c', bg: '#1a0610' } })).message, /24 saat geçmeden/);
+  assert.match((await h.fails(kicked, 'joinGang', { gangId: G.gangId })).message, /bu çeteye 24 saat giremezsin/);
+  await h.act(kicked, 'joinGang', { gangId: O.gangId }); // başka çete serbest
+  assert.ok(h.member(O.gangId, kicked));
+  await h.act(founder, 'leaveGang');
+  await h.setPersona(founder, { reputation: 100, gold: 50_000_000, power: 50_000_000 });
+  await h.act(founder, 'createGang', { name: 'Yenisi', logo: { emoji: '💀', color: '#ff2e8c', bg: '#1a0610' }, confirmLeave: true }).catch((e) => {
+    assert.doesNotMatch(e.message, /24 saat/, 'çete kurma yasağı yok');
+  });
   await h.nextDay(); // 00:05 — 24 saat dolmadı
-  assert.match((await h.fails(kicked, 'joinGang', { gangId: O.gangId })).message, /saat kaldı/);
+  assert.match((await h.fails(leaver, 'joinGang', { gangId: G.gangId })).message, /saat kaldı/);
   await h.nextDay('09:30'); // 24 saati geçti
-  await h.act(kicked, 'joinGang', { gangId: G.gangId });
-  assert.equal(h.member(G.gangId, kicked).prestige, 0);
-  await h.act(leaver, 'joinGang', { gangId: O.gangId });
+  await h.act(leaver, 'joinGang', { gangId: G.gangId });
+  assert.equal(h.member(G.gangId, leaver).prestige, 0);
+});
+
+test('v127: eski kayıt (gangCooldownGangId yok) — yasak ayrılış günü gangExitDay’deki çeteye', async () => {
+  const { gangRejoinHoursLeft } = await import('../config.js');
+  const now = Date.parse('2026-10-25T10:00:00+03:00');
+  const ms = { gangCooldownUntilMs: Date.parse('2026-10-26T08:00:00+03:00'), gangExitDay: { A: '2026-10-25', B: '2026-10-20' } };
+  assert.equal(gangRejoinHoursLeft(ms, 'A', now), 22);
+  assert.equal(gangRejoinHoursLeft(ms, 'B', now), 0);
+  assert.equal(gangRejoinHoursLeft(ms, 'C', now), 0);
+  assert.equal(gangRejoinHoursLeft({ ...ms, gangCooldownGangId: 'C' }, 'C', now), 22);
+  assert.equal(gangRejoinHoursLeft({ ...ms, gangCooldownGangId: 'C' }, 'A', now), 0);
 });
 
 test('dağılan çete: kasa yakılır, tırlar emekli, ticaret yolu boşa çıkar, bekleyen bahis iade', async () => {

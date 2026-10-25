@@ -132,4 +132,6 @@ export function gangExitHoursLeft(membership, now = Date.now()) {
   const until = Number(membership?.gangCooldownUntilMs || 0);
   return until > now ? Math.max(1, Math.ceil((until - now) / 3_600_000)) : 0;
 }
-export const gangExitText = (h) => `🔒 Çeteden ayrıldıktan ya da atıldıktan sonra 24 saat geçmeden tekrar giremezsin (${h} saat kaldı).`;
+export const gangExitText = (h) => `🔒 Çeteden ayrıldıktan ya da atıldıktan sonra 24 saat polisliğe ya da imamlığa giremezsin (${h} saat kaldı).`;
+// v127: çete yasağı sadece ayrılınan çeteye (sunucu: functions/gang/config.js gangRejoinHoursLeft)
+export { gangRejoinHoursLeft } from '../../../functions/gang/config.js';

@@ -399,7 +399,7 @@ test('v116: çeteden ayrılan / atılan 24 saat polisliğe başvuramaz; süre do
   await h.act(G.baba, 'kickMember', { targetId: kicked });
   for (const id of [leaver, kicked]) {
     assert.equal((await h.membership(id)).gangCooldownUntilMs, h.clock.now + 24 * 3600_000);
-    assert.match((await h.fails(id, 'applyIntel', { codeName: `P${id.slice(-4)}`, ...NO_GANG })).message, /24 saat geçmeden tekrar giremezsin/);
+    assert.match((await h.fails(id, 'applyIntel', { codeName: `P${id.slice(-4)}`, ...NO_GANG })).message, /24 saat polisliğe ya da imamlığa giremezsin/);
   }
   h.setTime(h.clock.now + 24 * 3600_000 + 1);
   const r = await h.act(leaver, 'applyIntel', { codeName: 'Donus', ...NO_GANG });

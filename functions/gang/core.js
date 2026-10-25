@@ -433,7 +433,8 @@ export function createCore(deps) {
     intelDecisionDeadline: null,
     intelAppId: null, // v108: bekleyen teşkilat başvurusu
     intelCooldownUntilMs: null, // v109: ayrılan / atılan 24 saat yeniden başvuramaz
-    gangCooldownUntilMs: null, // v116: çeteden ayrılan / atılan 24 saat çete-polis-imam olamaz
+    gangCooldownUntilMs: null, // v116: çeteden ayrılan / atılan 24 saat polis-imam olamaz
+    gangCooldownGangId: null, // v127: ve sadece AYRILDIĞI çeteye 24 saat giremez
   };
 
   async function readMembership(tx, ctx, actorId) {
@@ -493,7 +494,10 @@ export function createCore(deps) {
     const msUpdate = { gangId: null, gangRank: null, gangJoinedAtMs: null, gangStint: null, ...(lockOut ? { gangExitDay: { [gangId]: ctx.dateKey } } : {}) };
     // v116: kendi isteğiyle ayrılan ('left') ya da atılan (gece sonuçlanan oylama
     // dahil) 24 saat çeteye / polisliğe / imamlığa giremez.
-    if (reason === 'left' || isKickReason(reason)) msUpdate.gangCooldownUntilMs = ctx.now + GANG_EXIT_COOLDOWN_MS;
+    if (reason === 'left' || isKickReason(reason)) {
+      msUpdate.gangCooldownUntilMs = ctx.now + GANG_EXIT_COOLDOWN_MS;
+      msUpdate.gangCooldownGangId = gangId; // v127: çete yasağı sadece bu çeteye
+    }
     if (plan.membership.intelDecisionGangId === gangId) {
       msUpdate.intelDecisionGangId = null;
       msUpdate.intelDecisionDeadline = null;

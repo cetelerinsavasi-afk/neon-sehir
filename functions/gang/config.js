@@ -277,9 +277,22 @@ export const WAR_SHARDS = 8;
 // memberships/{uid}.gangCooldownUntilMs. Başka çeteye doğrudan geçiş / yeni
 // çete kurarken eski çeteden çıkmak ve aktiflik temizliği bu yasağı koymaz.
 export const GANG_EXIT_COOLDOWN_MS = 24 * MS_HOUR;
+// v127 (kullanıcı kararı): ÇETE yasağı sadece AYRILINAN / ATILAN çete için —
+// başka çeteye girebilir, yeni çete kurabilir. Polislik / imamlık yasağı aynı.
 export function gangExitBlockText(membership, now = Date.now()) {
   const until = Number(membership?.gangCooldownUntilMs || 0);
   if (!(until > now)) return null;
   const hrs = Math.max(1, Math.ceil((until - now) / MS_HOUR));
-  return `Çeteden ayrıldıktan ya da atıldıktan sonra 24 saat geçmeden tekrar giremezsin (${hrs} saat kaldı). Bu sürede çeteye, polisliğe ya da imamlığa giremezsin.`;
+  return `Çeteden ayrıldıktan ya da atıldıktan sonra 24 saat polisliğe ya da imamlığa giremezsin (${hrs} saat kaldı).`;
 }
+const istDay = (ms) => new Date(ms + 3 * MS_HOUR).toISOString().slice(0, 10);
+// Bu çeteye yeniden girme yasağı (kalan saat; 0 = serbest). gangCooldownGangId
+// yoksa (v127 öncesi kayıt): ayrılış günü gangExitDay'de bu çete yazılıysa yasak.
+export function gangRejoinHoursLeft(membership, gangId, now = Date.now()) {
+  const until = Number(membership?.gangCooldownUntilMs || 0);
+  if (!(until > now) || !gangId) return 0;
+  const id = membership?.gangCooldownGangId;
+  const hit = id ? id === gangId : membership?.gangExitDay?.[gangId] === istDay(until - GANG_EXIT_COOLDOWN_MS);
+  return hit ? Math.max(1, Math.ceil((until - now) / MS_HOUR)) : 0;
+}
+export const gangRejoinBlockText = (h) => `Ayrıldığın ya da atıldığın bu çeteye 24 saat giremezsin (${h} saat kaldı).`;

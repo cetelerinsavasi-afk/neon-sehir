@@ -100,7 +100,7 @@ test('ayaklanma: %66dan fazla gerekir; başarılıysa Baba görevden alınır; b
   assert.equal(h.member(G.gangId, rebel), undefined, 'başlatan atıldı');
   assert.equal(h.get(`gangs/${G.gangId}`).babaId, s2);
   // v116: 00:00'da oylamayla çıkarılan da 24 saat giremez
-  assert.match((await h.fails(rebel, 'joinGang', { gangId: G.gangId })).message, /24 saat geçmeden/);
+  assert.match((await h.fails(rebel, 'joinGang', { gangId: G.gangId })).message, /bu çeteye 24 saat giremezsin/);
   h.clock.now += 24 * 60 * 60 * 1000 + 60_000;
   await h.act(rebel, 'joinGang', { gangId: G.gangId });
   assert.equal(h.member(G.gangId, rebel).prestige, 0);
@@ -140,7 +140,7 @@ test('çıkarma oylaması geçer → hedef atılır; oy kullanmayan sayılmaz; 0
   const late = await h.fails(G.ids[1], 'castVote', { voteId: v.id, choice: 'no' });
   assert.match(late.message, /kapandı/);
   // v116: 00:00'da sonuçlanan oylamayla atılan da 24 saat giremez
-  assert.match((await h.fails(target, 'joinGang', { gangId: G.gangId })).message, /24 saat geçmeden/);
+  assert.match((await h.fails(target, 'joinGang', { gangId: G.gangId })).message, /bu çeteye 24 saat giremezsin/);
   h.clock.now += 24 * 60 * 60 * 1000 + 60_000;
   await h.act(target, 'joinGang', { gangId: G.gangId });
   assert.equal(h.member(G.gangId, target).rank, 'comez');
@@ -277,7 +277,7 @@ test('ayrılan hedef 00:00 sonrası geri girse de eski oylamanın sonucu yeni ü
   await voteAll(h, G, voteId, [[G.baba, 'yes'], [G.ids[0], 'yes']]);
   await h.act(target, 'leaveGang');
   const same = await h.fails(target, 'joinGang', { gangId: G.gangId });
-  assert.match(same.message, /24 saat geçmeden/);
+  assert.match(same.message, /bu çeteye 24 saat giremezsin/);
   h.at('2026-09-22', '09:30'); // v116: 24 saat doldu; saat turu henüz çalışmadı
   await h.act(target, 'joinGang', { gangId: G.gangId });
   await h.internal.clock.runClock('test');
@@ -332,7 +332,7 @@ test('v52: çıkarma — kalan herkes Hayır dese bile geçiyorsa oylama anında
   assert.ok(h.chat(G.gangId).some((m) => /erken bitti/.test(m)), 'duyuruda erken bittiği yazar');
   await h.fails(G.ids[4], 'castVote', { voteId, choice: 'no' }); // oylama kapandı
   // v116: atılan 24 saat giremez
-  assert.match((await h.fails(s1, 'joinGang', { gangId: G.gangId })).message, /24 saat geçmeden/);
+  assert.match((await h.fails(s1, 'joinGang', { gangId: G.gangId })).message, /bu çeteye 24 saat giremezsin/);
   // aynı gece 00:00'da tekrar sonuçlanmaz
   await h.nextDay();
   assert.equal(h.get(`gangs/${G.gangId}/votes/${voteId}`).resolvedAtMs, vote.resolvedAtMs);
