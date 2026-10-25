@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { FakeFirestore, Timestamp } from '../gang/test/fakeFirestore.js';
 import { createPresenceSummary } from '../presenceSummary.js';
 
-test('presence özeti: aktifleri sayar, değişmediyse yazmaz, 10 dk sonra canlılık için yazar', async () => {
+test('presence özeti: aktifleri sayar, değişmediyse yazmaz, 8 dk sonra canlılık için yazar', async () => {
   const db = new FakeFirestore({ yieldEvery: false });
   const S = (p, d) => db._store.set(p, { data: d, version: 1 });
   const G = (p) => db._store.get(p)?.data;
@@ -16,7 +16,7 @@ test('presence özeti: aktifleri sayar, değişmediyse yazmaz, 10 dk sonra canl�
   S('interiorPresence/d', { locationId: 'banka', updatedAt: ts(1_000) });
   S('housePresence/e', { houseId: 'h1', updatedAt: ts(1_000) });
   S('housePresence/f', { houseId: 'h2', updatedAt: ts(50_000) }); // v82: aktiflik penceresi 60 sn
-  S('housePresence/g', { houseId: 'h3', updatedAt: ts(70_000) }); // v82: 60 sn'yi aştı → sayılmaz
+  S('housePresence/g', { houseId: 'h3', updatedAt: ts(100_000) }); // v130: aktiflik penceresi 90 sn'yi aştı → sayılmaz
   const job = createPresenceSummary({ db, Timestamp, now: () => clock.t });
   let r = await job.run();
   assert.equal(r.written, true);

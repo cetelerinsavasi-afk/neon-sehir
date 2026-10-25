@@ -3,12 +3,13 @@ import { collection, doc, limit, onSnapshot, query, where } from 'firebase/fires
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { usePolledPresence } from './usePolledPresence';
+import { useCachedQuery } from '../lib/cachedQuery';
 
 // v77 — useBusinessList: bir türdeki açık işletmeler (houses.bizType == type)
 // ve içlerinde kaç kişi olduğu. Sıra: dünkü kazanç sırası (bizRank, sunucu
 // gece yazar; kazanç tutarı istemciye hiç gelmez). Sırası henüz olmayan (bugün
 // açılan) işletmeler en alta, açılış sırasıyla.
-const PRESENCE_STALE_MS = 60_000;
+const PRESENCE_STALE_MS = 90_000; // v130
 
 export function useBusinessList(type, { enabled = true, includeGame = false } = {}) {
   const { user } = useAuth();
@@ -29,26 +30,22 @@ export function useBusinessList(type, { enabled = true, includeGame = false } = 
     );
   }, [enabled, user, type]);
 
+  // v130 maliyet: liste canlı dinlenmez — önbellekli tek okuma (60 sn; işletme açılıp
+  // kapanınca önbellek temizlenir). İçerideki kişi sayıları yine canlı (stats/presence).
+  const q = useCachedQuery(type ? `houses:biz:${type}` : null, () => query(collection(db, 'houses'), where('bizType', '==', type), limit(200)), { enabled: enabled && Boolean(user) && Boolean(type), ttlMs: 60_000 });
   useEffect(() => {
     if (!enabled || !user || !type) {
       setLoading(false);
-      return undefined;
+      return;
     }
-    setLoading(true);
-    return onSnapshot(
-      query(collection(db, 'houses'), where('bizType', '==', type), limit(200)),
-      (s) => {
-        setRows(s.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setRowsType(type);
-        setLoading(false);
-      },
-      (e) => {
-        console.error('useBusinessList:', e);
-        setRowsType(type);
-        setLoading(false);
-      }
-    );
-  }, [enabled, user, type]);
+    if (q.loading) {
+      setLoading(true);
+      return;
+    }
+    setRows(q.docs);
+    setRowsType(type);
+    setLoading(false);
+  }, [enabled, user, type, q.docs, q.loading]);
 
   return useMemo(() => {
     const now = Date.now();

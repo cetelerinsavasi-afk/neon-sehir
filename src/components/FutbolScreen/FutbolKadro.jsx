@@ -366,25 +366,13 @@ export default function FutbolKadro({ team, role }) {
 
       {!isComplete && (
         <p className="futbol-admin-error">
-          {flatLineup.length}/{totalNeeded} oyuncu seçildi — tüm slotları doldurunca otomatik kaydedilir.
+          {flatLineup.length}/{totalNeeded} oyuncu seçildi
         </p>
       )}
       {message && <p className="futbol-placeholder">{message}</p>}
       <button className="futbol-admin-submit" disabled={busy || !isComplete} onClick={handleSave}>
         {busy ? 'Kaydediliyor...' : 'Şimdi Kaydet'}
       </button>
-      <p className="futbol-placeholder futbol-kadro-note">
-        Kadron otomatik kaydedilir — bir değişiklik yaptığında kısa bir
-        süre sonra kendiliğinden kaydolur, bu butona basmana gerek yok
-        (istersen anında kaydetmek için kullanabilirsin).
-      </p>
-      <p className="futbol-placeholder futbol-kadro-note">
-        Not: seçtiğin oyunculardan biri formu %50&apos;nin altına düşerse ya
-        da SAKATLANIRSA, o maç için otomatik olarak (denenebilecek ilk
-        uygun dizilimle) en formda/sağlıklı kadroya geri dönülür. Hiçbir
-        dizilimle sağlıklı 6 kişi çıkaramazsan takım elinden alınır.
-        Antrenmandaki ve sakat oyuncular ilk 11&apos;e seçilemez.
-      </p>
 
       {pickerFor && (
         <PlayerPicker

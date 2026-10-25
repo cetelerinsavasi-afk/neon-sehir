@@ -9,13 +9,13 @@
 //   stats/presence = { park: n, int: { locationId: n }, house: { houseId: n }, atMs }
 // =============================================================================
 // v81: aktiflik penceresi 90 → 60 sn (istemci presence'ı ~15–20 sn'de bir tazeler)
-export const PRESENCE_SUMMARY_ACTIVE_MS = 60_000;
+export const PRESENCE_SUMMARY_ACTIVE_MS = 90_000; // v130: istemci Firestore nabzı 30–40 sn
 // v81 — ANINDA GÜNCELLEME: biri mekâna girince (presence belgesi oluşur) ya da
 // çıkınca (silinir) özet hemen yeniden sayılır; art arda girişlerde en fazla
 // PRESENCE_NUDGE_GAP_MS'de bir sayılır (maliyet sınırlı). Zamanlanmış iş (2 dk)
 // sadece uygulaması kapanıp nabzı kesilenleri düşürmek için kalır.
-export const PRESENCE_NUDGE_GAP_MS = 8_000;
-export const PRESENCE_SUMMARY_KEEPALIVE_MS = 10 * 60 * 1000;
+export const PRESENCE_NUDGE_GAP_MS = 15_000; // v130 maliyet: 8 → 15 sn (her sayım tüm aktif kayıtları okur)
+export const PRESENCE_SUMMARY_KEEPALIVE_MS = 8 * 60 * 1000; // v130: iş 10 dk'da bir → her turda canlılık yazılır (istemci 15 dk'yı bayat sayar)
 
 const sorted = (o) => Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 

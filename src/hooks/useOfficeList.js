@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
-import { collection, limit, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, limit, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { usePolledPresence } from './usePolledPresence';
+import { useCachedQuery } from '../lib/cachedQuery';
 import { useYesterdayVisits } from './useYesterdayVisits';
 
 // v100 — Evler › Ofisler: ücretli mobilyası olan evler (kind 'ofis'). Göç bitene
 // kadar eski home ofisler (bizType mescit/sinema/stüdyo) da listelenir.
 // Sıra: içerideki kişi sayısı, eşitlikte dünün ziyaret sayısı, sonra önce açılan.
-const PRESENCE_STALE_MS = 60_000;
+const PRESENCE_STALE_MS = 90_000; // v130
 const LEGACY = ['mescit', 'sinema', 'studyo'];
 
 export function useOfficeList({ enabled = true } = {}) {
@@ -20,30 +21,18 @@ export function useOfficeList({ enabled = true } = {}) {
   const presence = usePolledPresence('housePresence', { enabled: on, max: 400 });
   const yVisits = useYesterdayVisits(on);
 
+  // v130 maliyet: ofis listesi canlı dinlenmez — önbellekli tek okuma (2 dk)
+  const q1 = useCachedQuery('houses:ofis', () => query(collection(db, 'houses'), where('kind', '==', 'ofis'), limit(200)), { enabled: on, ttlMs: 120_000 });
+  const q2 = useCachedQuery('houses:ofisLegacy', () => query(collection(db, 'houses'), where('bizType', 'in', LEGACY), limit(100)), { enabled: on, ttlMs: 120_000 });
   useEffect(() => {
     if (!on) {
       setLoading(false);
-      return undefined;
+      return;
     }
-    setLoading(true);
-    const err = (e) => {
-      console.error('useOfficeList:', e);
-      setLoading(false);
-    };
-    const u1 = onSnapshot(
-      query(collection(db, 'houses'), where('kind', '==', 'ofis'), limit(200)),
-      (s) => {
-        setRows(s.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setLoading(false);
-      },
-      err
-    );
-    const u2 = onSnapshot(query(collection(db, 'houses'), where('bizType', 'in', LEGACY), limit(100)), (s) => setLegacy(s.docs.map((d) => ({ id: d.id, ...d.data() }))), err);
-    return () => {
-      u1();
-      u2();
-    };
-  }, [on]);
+    setRows(q1.docs);
+    setLegacy(q2.docs);
+    setLoading(q1.loading);
+  }, [on, q1.docs, q2.docs, q1.loading]);
 
   return useMemo(() => {
     const now = Date.now();

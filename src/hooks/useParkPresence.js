@@ -19,7 +19,7 @@ import { liveRemove } from '../lib/liveNet';
 // çok sıkı tutulursa (ör. nabız aralığına çok yakın), sadece ekranı
 // kararan/hafifçe geciken bir arkadaş bile anlık olarak "kayboluyor"
 // gibi görünüyordu.
-const STALE_MS = 45_000;
+const STALE_MS = 90_000; // v130: Firestore nabzı ~30–40 sn
 
 // Aynı anda parkta çok fazla kişi olsa bile (viral bir an, bot saldırısı
 // vb.) her istemcinin dinleyeceği doküman sayısını üst sınırlıyoruz —

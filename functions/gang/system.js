@@ -601,7 +601,8 @@ export function createGangSystem(deps) {
       cfg = await getConfig();
     }
     const out = {};
-    const worlds = [TEST_WORLD];
+    // v130 maliyet: test dünyası sadece admin/test modu açıkken (canlıda adminUids boş → 5 dk'da bir boşuna tur yok)
+    const worlds = adminUids.length ? [TEST_WORLD] : [];
     if (cfg.liveWorldId) worlds.push(cfg.liveWorldId);
     // v109 — tek seferlik birleşme geçişi (canlı; bayraklı). Saat turlarından
     // ÖNCE: 00:00 turundaki maaş / uzlaştırma yeni düzene göre çalışsın.

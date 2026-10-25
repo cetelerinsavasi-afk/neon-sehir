@@ -137,7 +137,6 @@ function GymPicker({ gyms, selected, onSelect }) {
               <span className="futbol-gym-name">
                 {selected === g.id ? '✓ ' : ''}
                 {g.name}
-                {g.bizGame ? ' (oyunun)' : ''}
               </span>
               {isBonus(g) && <em className="futbol-gym-bonus">🔥 +%10</em>}
               <b>

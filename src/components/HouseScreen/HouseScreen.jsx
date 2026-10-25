@@ -77,7 +77,7 @@ import { doorKey, isDoorItemKey, resolveEntrance } from '../../../functions/hous
 //   odadakileri çıkarma, davet.
 // =============================================================================
 
-const PRESENCE_STALE_MS = 45_000;
+const PRESENCE_STALE_MS = 90_000; // v130: nabız 30 sn
 // v77 — işletmeye girince üstte çıkan butonlar
 const BIZ_TOP_BUTTONS = {
   silahci: [
@@ -773,14 +773,14 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
           lastLiveAt = now;
         }
         const stopped = moving && !changed;
-        if (keyChanged || stopped || now - lastFsAt >= 15_000) writeFs();
+        if (keyChanged || stopped || now - lastFsAt >= 30_000) writeFs(); // v130: nabız 15 → 30 sn
         moving = changed && !keyChanged;
         last = sig;
         lastKey = keySig;
         return;
       }
       // RTDB yoksa eski yol (v73): yürürken ~0,65 sn'de bir Firestore
-      if (sig === last && now - lastFsAt < 15_000) return;
+      if (sig === last && now - lastFsAt < 30_000) return;
       if (sig !== last && keySig === lastKey && now - lastFsAt < 650) return;
       last = sig;
       lastKey = keySig;

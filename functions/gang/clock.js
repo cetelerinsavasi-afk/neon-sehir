@@ -1800,7 +1800,9 @@ export function createClock(core, actions) {
     if (last >= ctx0.dateKey) {
       // v86.1: Pazar savaşındaki biat bağları her saat turunda (5 dk) yenilenir —
       // yayından önce kabul edilmiş ya da başka yoldan değişmiş biatlar da hemen birleşir
-      await safe(ctx0, 'biat-repair', () => repairBiatFlags(ctx0));
+      // v130 maliyet: onarım saatte bir (tüm biatlar + tüm çeteler okunuyordu, 5 dk'da bir)
+      const hourTurn = ctx0.isTest || new Date(core.deps.realNow ? core.deps.realNow() : Date.now()).getUTCMinutes() < 5;
+      if (hourTurn) await safe(ctx0, 'biat-repair', () => repairBiatFlags(ctx0));
       await safe(ctx0, 'trade-biat', () => warActions.refreshTradeBiat(ctx0));
       await safe(ctx0, 'depart-orders', () => departOrders(ctx0));
       await safe(ctx0, 'announce-attacks', () => announceAttacks(ctx0));

@@ -10,7 +10,7 @@ import { liveRemove } from '../lib/liveNet';
 // useParkPresence.js ile BİREBİR aynı desen (bkz. o dosyadaki yorumlar) —
 // tek fark, Banka/Karakol/Camii/Gazino'nun hepsi `locationId` alanıyla
 // ayrılan TEK bir `interiorPresence` koleksiyonunu paylaşıyor (madde 17).
-const STALE_MS = 45_000;
+const STALE_MS = 90_000; // v130: Firestore nabzı ~30–40 sn
 const MAX_PRESENCE_DOCS = 40;
 
 /**

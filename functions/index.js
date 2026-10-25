@@ -382,10 +382,13 @@ export const v124Migrate = onSchedule({ schedule: 'every 60 minutes', timeoutSec
 // (idempotent — her oda bir kez ödenir); geçiş penceresi bitince hiçbir şey yapmaz.
 async function runChampV2Migration() {
   const today = istanbulDateKey();
-  const out = [];
-  for (const day of [addDaysToDateKey(today, -1), today]) {
-    out.push(await champV2.migrateLegacyDay(day, { todayKey: today }));
-  }
+  // v130 maliyet: eski sistemle koşulan yarışlar sadece geçiş günündeydi (CHAMP_V2_START_DAY).
+  // Eskiden her saat bugünün + dünün TÜM şampiyona odaları okunuyordu. Artık sadece o gün
+  // taranır; gün bitip bir tur daha tamamlanınca bayrak yazılır, sonra hiç okuma yapılmaz.
+  const flagRef = db.collection('migrations').doc('champV2Legacy');
+  if ((await flagRef.get()).data()?.doneAtMs) return [{ skipped: 'done' }];
+  const out = [await champV2.migrateLegacyDay(CHAMP_V2_START_DAY, { todayKey: today })];
+  if (today > CHAMP_V2_START_DAY && !out[0]?.error) await flagRef.set({ doneAtMs: Date.now(), last: out[0] || null }, { merge: true });
   return out;
 }
 export const champV2Migrate = onSchedule({ schedule: 'every 60 minutes', timeoutSeconds: 540 }, async () => {
@@ -399,7 +402,8 @@ export const shopV130Migrate = onSchedule({ schedule: 'every 60 minutes', timeou
   console.log(JSON.stringify({ shopV130Migrate: r }));
 });
 
-export const achievementsSweep = onSchedule({ schedule: 'every 60 minutes' }, async () => {
+// v130 maliyet: 1 → 3 saat (oyuncu Başarılar'ı açınca kendi durumu zaten anında kontrol edilir)
+export const achievementsSweep = onSchedule({ schedule: 'every 3 hours' }, async () => {
   await achievements.sweep();
 });
 // Süresi dolan arkadaşlık istekleri (48 sa) ve 7 gündür sessiz sohbetler — saatte bir
@@ -6604,7 +6608,9 @@ export const expireInteriorPresence = onSchedule({ schedule: 'every 5 minutes' }
 
 // v79 maliyet: "kaç kişi var" sayıları tek belgede (bkz. functions/presenceSummary.js)
 const presenceSummaryJob = createPresenceSummary({ db, Timestamp: admin.firestore.Timestamp });
-export const presenceSummary = onSchedule({ schedule: 'every 2 minutes' }, async () => {
+// v130 maliyet: 2 → 10 dk. Giriş/çıkış zaten anında sayılır (tetikleyiciler); bayat kayıtlar
+// 5 dk'lık süpürmede silinince yine tetiklenir. Bu iş sadece canlılık (keepalive) için.
+export const presenceSummary = onSchedule({ schedule: 'every 10 minutes' }, async () => {
   await presenceSummaryJob.run();
 });
 // v81 — mekâna giriş/çıkışta sayılar hemen güncellenir (en fazla ~8 sn'de bir sayım).
@@ -21390,7 +21396,7 @@ function parkNpcEntity(originX, originY, radius) {
 // mekanlardaki diğer GERÇEK oyuncuları da kareye ekliyor; öncesinde
 // interiorPhoto'da bu mantık hiç yoktu (yalnızca fotoğrafı çeken vardı).
 async function buildPresenceEntities({ uid, presenceCollection, locationFilter, radius, includeNpc }) {
-  const PRESENCE_STALE_MS = 60_000;
+  const PRESENCE_STALE_MS = 90_000; // v130: istemci nabzı 30–40 sn
   const BUBBLE_STALE_MS = 25_000;
   const ALLOWED_POSES = ['idle', 'walk1', 'walk2', 'sit'];
   const safePose = (p) => (ALLOWED_POSES.includes(p) ? p : 'idle');
@@ -21491,7 +21497,7 @@ const PHOTO_EMOTES = ['dans', 'selam', 'alkis', 'zipla', 'kalp'];
 const PHOTO_EMOTE_MS = 3200;
 async function buildFrameFromClient({ uid, frame, presenceCollection, locationFilter, radius, includeNpc }) {
   if (!frame || typeof frame !== 'object' || !Array.isArray(frame.entities)) return null;
-  const PRESENCE_STALE_MS = 60_000;
+  const PRESENCE_STALE_MS = 90_000; // v130: istemci nabzı 30–40 sn
   const ALLOWED_POSES = ['idle', 'walk1', 'walk2', 'sit'];
   const ALLOWED_FACINGS = ['up', 'down', 'left', 'right'];
   const fin = (v) => typeof v === 'number' && Number.isFinite(v);

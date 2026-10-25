@@ -18,7 +18,7 @@ import { db } from '../firebase';
 //   housePresence → [{ uid, houseId }]
 // =============================================================================
 const POLL_MS = 30_000;
-const ACTIVE_MS = 60_000;
+const ACTIVE_MS = 90_000; // v130
 const SUMMARY_FRESH_MS = 15 * 60_000;
 
 // --- paylaşımlı özet aboneliği ------------------------------------------------------

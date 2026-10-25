@@ -4,11 +4,12 @@ import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { useSocial } from '../contexts/SocialContext';
 import { usePolledPresence } from './usePolledPresence';
+import { useCachedQuery } from '../lib/cachedQuery';
 
 // v66 — useHouseList: Ev listesi (kendi evlerim + girebileceğim evler) ve her
 // evde şu an kaç kişi olduğu. Hem Ev ekranı (HouseHub) hem Mekanlar > Ziyaret
 // sekmesi kullanır.
-const PRESENCE_STALE_MS = 60_000;
+const PRESENCE_STALE_MS = 90_000; // v130
 
 const houseCache = new Map(); // id → { at, data }
 async function cachedHouse(id) {
@@ -33,6 +34,11 @@ export function useHouseList({ enabled = true, onlyLive = false } = {}) {
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
   const presence = usePolledPresence('housePresence', { enabled: enabled && Boolean(user), max: 400 });
+  // v130 maliyet: herkese açık evler canlı dinlenmez — önbellekli tek okuma (lib/cachedQuery)
+  const openQ = useCachedQuery('houses:open', () => query(collection(db, 'houses'), where('privacy', 'in', ['public', 'friends']), limit(200)), { enabled: enabled && !onlyLive && Boolean(user), ttlMs: 120_000 });
+  useEffect(() => {
+    if (!onlyLive) setOpen(openQ.docs);
+  }, [openQ.docs, onlyLive]);
 
   // onlyLive: içinde kişi olan evlerin belgeleri (önbellekli, 60 sn)
   const liveIds = useMemo(() => [...new Set(presence.map((p) => p.houseId).filter(Boolean))].sort().join(','), [presence]);
@@ -68,9 +74,6 @@ export function useHouseList({ enabled = true, onlyLive = false } = {}) {
         setMine(s.docs.map((d) => ({ id: d.id, ...d.data() })));
         setLoading(false);
       }, err('mine')),
-      onSnapshot(query(collection(db, 'houses'), where('privacy', 'in', ['public', 'friends']), limit(200)), (s) => {
-        setOpen(s.docs.map((d) => ({ id: d.id, ...d.data() })));
-      }, err('open')),
       onSnapshot(query(collection(db, 'houses'), where(`invites.${uid}`, '>', Date.now()), limit(50)), (s) => {
         setInvited(s.docs.map((d) => ({ id: d.id, ...d.data() })));
       }, err('invited')),

@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { liveReady, liveWrite, liveRemove, watchLive, mergeLive } from './liveNet';
 
-export const FS_REFRESH_MS = 20_000;
+export const FS_REFRESH_MS = 30_000; // v130 maliyet: 20 → 30 sn (konum zaten RTDB'den akar)
 const MOVE_KEYS = new Set(['x', 'y', 'z', 'facing', 'pose', 'seat', 'left']);
 const same = (a, b) => a === b || (a == null && b == null) || JSON.stringify(a) === JSON.stringify(b);
 

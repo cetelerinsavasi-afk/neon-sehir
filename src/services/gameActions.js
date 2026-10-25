@@ -1,3 +1,4 @@
+import { invalidateCachedQueries } from '../lib/cachedQuery';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebase';
 
@@ -683,7 +684,13 @@ export const adminAction = (action, payload = {}) => httpsCallable(functions, 'a
 
 // --- Ev (3D ev tasarımı, v65) — tek callable: functions/houses.js ---
 // op: 'enter' | 'save' | 'invite' | 'uninvite' | 'chat'
-export const houseAction = (payload) => httpsCallable(functions, 'houseAction')(payload);
+// v130: ev / işletme listesini değiştiren işlemlerden sonra liste önbelleği temizlenir (lib/cachedQuery)
+const HOUSE_LIST_OPS = new Set(['buy', 'save', 'checkout', 'settings', 'invite', 'kick', 'bizOpen', 'bizClose', 'buyItems', 'venueEnsure']);
+export const houseAction = (payload) =>
+  httpsCallable(functions, 'houseAction')(payload).then((r) => {
+    if (HOUSE_LIST_OPS.has(payload?.op)) invalidateCachedQueries('houses:');
+    return r;
+  });
 export const recordVenueVisit = (venue) => httpsCallable(functions, 'recordVenueVisit')({ venue });
 
 // v66 — Zümrüt Mağazası: zümrüt karşılığı altın paketi
