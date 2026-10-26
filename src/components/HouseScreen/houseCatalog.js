@@ -185,29 +185,51 @@ TINTS.frameLight = FRAME_COLORS;
 TINTS.frameDark = [FRAME_COLORS[1], FRAME_COLORS[0], ...FRAME_COLORS.slice(2)];
 const tintHex = (ctx, fallback) => (ctx.tint ? ctx.tint.c : fallback);
 
-export const CATEGORIES = [
-  { key: 'oturma', name: 'Oturma', icon: '🛋️' },
-  { key: 'masa', name: 'Masalar', icon: '🪑' },
-  { key: 'mutfak', name: 'Mutfak', icon: '🍳' },
-  { key: 'banyo', name: 'Banyo', icon: '🚽' },
-  { key: 'yatak', name: 'Yatak Odası', icon: '🛏️' },
-  { key: 'elektronik', name: 'Elektronik', icon: '📺' },
-  { key: 'dukkan', name: 'Dükkan & Kafe', icon: '🏪' },
-  { key: 'silah', name: 'Silahlık', icon: '🔫' },
-  { key: 'araba', name: 'Arabalar', icon: '🏎️' },
-  { key: 'motor', name: 'Motorlar', icon: '🏍️' },
-  { key: 'garaj', name: 'Garaj & Benzinlik', icon: '🔧' },
-  { key: 'dekor', name: 'Dekor', icon: '🪴' },
-  { key: 'duvar', name: 'Duvar Süsleri', icon: '🖼️' },
-  { key: 'hali', name: 'Halılar', icon: '🟥' },
-  { key: 'tavan', name: 'Tavanlar', icon: '☁️' },
-  { key: 'luks', name: 'Lüks', icon: '💎' },
-  { key: 'spor', name: 'Spor & Oyun', icon: '🎱' },
-  { key: 'dis', name: 'Dış Mekan & Havuz', icon: '🌳' },
-  { key: 'yapi', name: 'Yapı', icon: '🧱' },
-  { key: 'kapi', name: 'Kapılar', icon: '🚪' },
-  ...V92_CATEGORIES,
+// v132 — kategoriler 4 grupta (g): 1 işletme konseptleri · 2 araç & kurum · 3 ev eşyası · 4 yapı.
+// "Duvar & Zemin" (yuzey) HouseScreen'de en sonda ayrı buton.
+const CAT_BY_KEY = Object.fromEntries(
+  [
+    { key: 'oturma', name: 'Oturma', icon: '🛋️' },
+    { key: 'masa', name: 'Masalar', icon: '🪑' },
+    { key: 'mutfak', name: 'Mutfak', icon: '🍳' },
+    { key: 'banyo', name: 'Banyo', icon: '🚽' },
+    { key: 'yatak', name: 'Yatak Odası', icon: '🛏️' },
+    { key: 'elektronik', name: 'Elektronik', icon: '📺' },
+    { key: 'dukkan', name: 'Dükkan & Kafe', icon: '🏪' },
+    { key: 'silah', name: 'Silahlık', icon: '🔫' },
+    { key: 'araba', name: 'Arabalar', icon: '🏎️' },
+    { key: 'motor', name: 'Motorlar', icon: '🏍️' },
+    { key: 'garaj', name: 'Garaj & Benzinlik', icon: '🔧' },
+    { key: 'dekor', name: 'Dekor', icon: '🪴' },
+    { key: 'duvar', name: 'Duvar Süsleri', icon: '🖼️' },
+    { key: 'hali', name: 'Halılar', icon: '🟥' },
+    { key: 'tavan', name: 'Tavanlar', icon: '☁️' },
+    { key: 'luks', name: 'Lüks', icon: '💎' },
+    { key: 'spor', name: 'Spor', icon: '🏋️' },
+    { key: 'dis', name: 'Dış Mekan & Havuz', icon: '🌳' },
+    { key: 'yapi', name: 'Yapı', icon: '🧱' },
+    { key: 'kapi', name: 'Kapılar', icon: '🚪' },
+    ...V92_CATEGORIES,
+  ].map((c) => [c.key, c])
+);
+const CAT_ORDER = [
+  ['dukkan', 'silah', 'elektronik', 'spor', 'eglence', 'luks', 'garaj', 'studyo'],
+  ['araba', 'motor', 'banka', 'ciftlik', 'hapis', 'cami'],
+  ['oturma', 'masa', 'yatak', 'banyo', 'mutfak', 'dekor', 'hali', 'duvar', 'dis'],
+  ['yapi', 'kapi', 'tavan', 'zemin_parca', 'duvar_parca'],
 ];
+export const CATEGORIES = CAT_ORDER.flatMap((keys, g) => keys.filter((k) => CAT_BY_KEY[k]).map((k) => ({ ...CAT_BY_KEY[k], g: g + 1 })));
+// listede olmayan bir kategori kalırsa (ileride eklenen) 3. grubun sonuna
+Object.keys(CAT_BY_KEY).forEach((k) => {
+  if (!CATEGORIES.some((c) => c.key === k) && k !== 'mafya') CATEGORIES.push({ ...CAT_BY_KEY[k], g: 3 });
+});
+// v132 — eşyaların yeni yerleri (kategori kimlikleri aynı, sadece eşya taşındı)
+const CAT_MOVE = {
+  safe: 'luks', safeg: 'luks', // Çelik / Altın Kasa
+  pool: 'luks', pingpong: 'luks', foosball: 'luks', // Bilardo, Masa Tenisi, Langırt
+  guitar: 'studyo', piano: 'studyo', // Elektro Gitar, Kuyruklu Piyano
+  cinescreen: 'luks', cineseat: 'luks', popcorn: 'luks', // sinema mobilyaları
+};
 
 // =============================================================================
 // OTURMA
@@ -3090,6 +3112,13 @@ function tileEntries() {
   return out;
 }
 
+// v132 — bot platformu (NPC'nin başlangıç yeri)
+function botPad(g) {
+  C(g, 0.34, 0.36, 0.035, 0, 0.0175, 0, M('#15171d', 0.45, 0.4));
+  TOR(g, 0.3, 0.014, 0, 0.038, 0, M('#22d3ee', 0.35, 0, { emissive: '#22d3ee', emissiveIntensity: 1.4 }), [Math.PI / 2, 0, 0]);
+  C(g, 0.12, 0.12, 0.006, 0, 0.038, 0, M('#ff2e88', 0.35, 0, { emissive: '#ff2e88', emissiveIntensity: 1.1 }));
+}
+
 export const CATALOG = [
   // OTURMA
   { k: 'sofa3', name: "3'lü Koltuk", cat: 'oturma', icon: '🛋️', price: G(15000), tints: 'fabric', build: sofaBuild(2.6), box: [1.3, 0.48], seats: sofaSeats(2.6) },
@@ -3263,6 +3292,8 @@ export const CATALOG = [
   { k: 'filecab', name: 'Dosya Dolabı', cat: 'dukkan', icon: '🗂️', tints: 'appliance', build: fileCabinet, box: [0.26, 0.31] },
   { k: 'watercooler', name: 'Su Sebili', cat: 'dukkan', icon: '🚰', build: waterCooler, box: [0.2, 0.2] },
   { k: 'atm', name: 'ATM', cat: 'luks', icon: '🏧', build: atmMachine, box: [0.41, 0.31] },
+  // v132 — BOT: yerde küçük neon platform; satın alınınca üstünde düzenlenebilir bir NPC durur
+  { k: 'bot', name: 'Bot', cat: 'luks', icon: '🤖', build: botPad, nobox: true, flat: true },
   { k: 'piano', name: 'Kuyruklu Piyano', cat: 'luks', icon: '🎹', build: piano, box: [0.75, 0.85], seats: [[0, 0.58, 1.4]] },
   { k: 'vase', name: 'Çiçekli Vazo', cat: 'dekor', icon: '💐', tints: 'neon', build: vase, box: [0.14, 0.14] },
   { k: 'trash', name: 'Çöp Kutusu', cat: 'dekor', icon: '🗑️', tints: 'appliance', build: trashBin, box: [0.18, 0.18] },
@@ -3300,6 +3331,8 @@ export const CATALOG = [
 
 // v66: fiyatlar ve eşyadan alınabilen ürünler TEK kaynaktan (sunucuyla ortak dosya)
 CATALOG.forEach((d) => {
+  if (CAT_MOVE[d.k]) d.cat = CAT_MOVE[d.k];
+  if (d.cat === 'mafya') d.cat = 'eglence'; // v132: Mafya → Gazino
   d.price = ITEM_PRICES[d.k] || null;
   d.takes = HOUSE_TAKEABLES[d.k] || null;
 });

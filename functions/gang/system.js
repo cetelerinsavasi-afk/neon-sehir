@@ -769,8 +769,25 @@ export function createGangSystem(deps) {
     return Boolean(m?.gangId);
   }
 
+  // v132 — silahçı / galeri stoğu için çete ilanları (functions/shop.js stockAdd)
+  // Canlı dünya kapalıysa null döner (çete kaynağı yok sayılır).
+  async function stockSourceCtx(actorId) {
+    const cfg = await getConfig();
+    if (!cfg.liveOpen || !cfg.liveWorldId) return null;
+    const world = await core.loadWorld(cfg.liveWorldId);
+    if (!world) return null;
+    return core.makeCtx(cfg.liveWorldId, world, { actorId, authUid: actorId });
+  }
+  const stockSource = {
+    ctx: stockSourceCtx,
+    candidates: market.stockCandidates,
+    validate: market.stockValidate,
+    write: market.stockWrite,
+    flush: (ctx) => core.flushLogs(ctx),
+  };
+
   // Testler için iç erişim (production'da kullanılmaz)
   const _internal = { core, membership, treasury, trade, market, wars, votes, intel, roles, clock, HANDLERS };
 
-  return { handleAction, handleAdmin, runAllClocks, onPoliceBust, resignPolice, liveMembershipRef, getRoleStatus, onContrabandHarac, isInLiveGang, ensureLiveWorld, onPlayerActivity, touchSocialActivity, _internal };
+  return { handleAction, handleAdmin, runAllClocks, onPoliceBust, resignPolice, liveMembershipRef, getRoleStatus, onContrabandHarac, isInLiveGang, ensureLiveWorld, onPlayerActivity, touchSocialActivity, stockSource, _internal };
 }

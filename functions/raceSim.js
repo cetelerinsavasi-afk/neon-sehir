@@ -274,7 +274,8 @@ export function stepCar(S, st, inp, steerIn = null) {
   const ry = dsin(S.a);
   let fwd = S.vx * fx + S.vy * fy;
   let lat = S.vx * rx + S.vy * ry;
-  const thr = inp & IN_G || nos;
+  // v132: nitro tuşu (nitro bitmiş olsa da) gaz sayılır
+  const thr = inp & IN_G || inp & IN_N;
   const vm = st.vmax * (nos ? st.nvm : 1);
   const brake = inp & IN_B;
   if (thr) {

@@ -227,10 +227,10 @@ test('bonus: dünkü kazancı en çok kazananın yarısından az olan bonuslu; y
   assert.equal(g.bizGame, true);
   assert.equal(g.items.filter((x) => x.k === 'bag').length, 2);
   h.present('ali', GAME_GYM_ID);
-  const r = await h.act('ali', { op: 'gymStart', houseId: GAME_GYM_ID, expect: 2000, position: 'MID' });
-  assert.equal(r.bonus, false);
-  await doSteps(h, 'ali', GAME_GYM_ID);
-  assert.equal(h.G('users/ali').gold, 8_000);
+  // v132: oyunun salonu kapalı — yeni üyelik alınamaz (salonun geliri yine sıralamaya girer)
+  await assert.rejects(h.act('ali', { op: 'gymStart', houseId: GAME_GYM_ID, expect: 2000, position: 'MID' }), /gym-closed/);
+  assert.equal(h.G('users/ali').gold, 10_000);
+  await h.db.runTransaction(async (tx) => h.business.recordGameIncomeTx(tx, { type: 'spor', amount: 2000, kind: 'service', customerUid: 'ali', atMs: h.clock.now }));
   // oyunun salonu da kazancına göre sıralanır (7 Ekim günü: oyun 2.000, salonlar 0)
   h.clock.now = at(8, 19, 5);
   await h.business.rollover(['spor']);

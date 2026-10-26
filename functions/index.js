@@ -67,8 +67,8 @@ import { simulAct, simulAutoStand, simulDeal, simulState, dealerMove } from './o
 import { isMsgId, nextReaction, replyQuoteOf } from './chatExtras.js';
 import { VENUES } from './venueLayouts.js';
 import { goldTag, recordGoldChange, cleanupMoneyLog, realizeSale, realizeBankWithdraw } from './moneyLog.js';
-import { stateWrite, closeStateDays, readStateReport } from './stateTreasury.js';
-import { policeBustSplit, heistStateEntries, crimeLockedBySuspicion, CRIME_LOCK_TEXT, CRIME_LOCK_TEAM_TEXT, BELEDIYE_CRIME_TEXT, BELEDIYE_CRIME_TEAM_TEXT } from './policeRules.js';
+import { stateWrite, statWrite, closeStateDays, readStateReport } from './stateTreasury.js';
+import { policeBustSplit, heistStateEntries, heistStat, crimeLockedBySuspicion, CRIME_LOCK_TEXT, CRIME_LOCK_TEAM_TEXT, BELEDIYE_CRIME_TEXT, BELEDIYE_CRIME_TEAM_TEXT } from './policeRules.js';
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -280,7 +280,10 @@ const casino = createCasino({
   HttpsError,
   splitIncomeForDebt: (debt, amount) => splitIncomeForDebt(debt, amount),
 });
+// v132: silahçı / galeri stoğu çete deposu ilanlarından da alınır (çete sistemi aşağıda kurulunca bağlanır)
+const shopGangSource = { current: null };
 const shop = createShop({
+  gangSource: shopGangSource,
   extraOps: { ...venue.ops, ...gym.ops, ...homeOffice.ops, ...office.ops, ...depo.ops, ...casino.ops },
   db,
   FieldValue: admin.firestore.FieldValue,
@@ -4459,71 +4462,14 @@ const MATERIAL_SELL_PRICE = { arabaGelistirme: 250, tamirMalzemesi: 8 }; // Böl
 // ---------------------------------------------------------------------------
 export const buyVehicle = onCall(async (request) => {
   const uid = requireAuth(request);
-  const { catalogId } = request.data || {};
-  const catalogEntry = VEHICLE_CATALOG[catalogId];
-  if (!catalogEntry) {
+  const { catalogId, expect } = request.data || {};
+  if (!VEHICLE_CATALOG[catalogId]) {
     throw new HttpsError('invalid-argument', 'Geçersiz araç.');
   }
-
-  const userRef = db.collection('users').doc(uid);
-  const vehiclesRef = db.collection('vehicles');
-
-  await db.runTransaction(async (tx) => {
-    const userSnap = await tx.get(userRef);
-    const user = userSnap.data();
-    if (!user || (user.gold || 0) < catalogEntry.price) {
-      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
-    }
-
-    tx.set(
-      userRef,
-      { gold: admin.firestore.FieldValue.increment(-catalogEntry.price), goldTag: goldTag('arac') },
-      { merge: true }
-    );
-    // v130: oyunun galerisi — kâr (fiyatın %25'i) üzerinden sıfır araba kâr vergisi belediyeye, kalanı oyundan çıkar
-    {
-      const profit = catalogEntry.price - stockUnitCost(catalogEntry.price);
-      const tax = newSaleTax(profit, 'vehicle');
-      business.recordGameIncomeTx(tx, { type: 'galeri', amount: catalogEntry.price, kind: 'sale', customerUid: uid, products: { [catalogEntry.name]: 1 }, tax, taxSource: 'sifir', stat: newSaleStat('vehicle', { price: catalogEntry.price, profit, tax, game: true }) });
-    }
-    const newVehicleRef = vehiclesRef.doc();
-    tx.set(newVehicleRef, {
-      ownerId: uid,
-      catalogId: Number(catalogId),
-      model: catalogEntry.name,
-      baseGalleryValue: catalogEntry.price,
-      gearLevel: catalogEntry.gearLevel,
-      baseTank: catalogEntry.baseTank,
-      tankBonus: 0,
-      gearUpgraded: false,
-      tankUpgraded: false,
-      storage: catalogEntry.storage,
-      turboCount: catalogEntry.turboCount,
-      mortgaged: false,
-      seizedByBank: false,
-      lifeDays: VEHICLE_WEAPON_INITIAL_LIFE_DAYS,
-      repairsUsed: 0,
-      purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-  });
-
-  await db
-    .collection('users')
-    .doc(uid)
-    .collection('messages')
-    .add({
-      text: `Banka: yeni ${catalogEntry.name} aracınızı ipotek ederek kredi çekebilirsiniz. Detaylar için Banka'ya uğrayın.`,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      read: false,
-      type: 'loan_offer',
-    });
-
-  // Onboarding görev 11 — "herhangi bir araba al" (durum görevi olarak da
-  // çalışır, bkz. checkOnboardingProgress — bu sadece eylem yoluyla
-  // ilerleyen tarafı).
-  await advanceOnboardingStep(uid, 11);
-
-  return { ok: true };
+  // v132: oyunun galerisi stoğu olan en ucuz oyuncu galerisini satar (yoksa kendisi) — functions/shop.js
+  const r = await shop.gameStoreBuy(uid, 'vehicle', catalogId, expect ?? null);
+  await shop.afterItemBuy(uid, 'vehicle', r.name);
+  return { ok: true, price: r.price };
 });
 
 // ---------------------------------------------------------------------------
@@ -4606,52 +4552,14 @@ export const sellMaterial = onCall(async (request) => {
 // ---------------------------------------------------------------------------
 export const buyWeapon = onCall(async (request) => {
   const uid = requireAuth(request);
-  const { catalogId } = request.data || {};
-  const catalogEntry = WEAPON_CATALOG[catalogId];
-  if (!catalogEntry) {
+  const { catalogId, expect } = request.data || {};
+  if (!WEAPON_CATALOG[catalogId]) {
     throw new HttpsError('invalid-argument', 'Geçersiz silah.');
   }
-
-  const userRef = db.collection('users').doc(uid);
-  const weaponsRef = db.collection('weapons');
-
-  await db.runTransaction(async (tx) => {
-    const userSnap = await tx.get(userRef);
-    const user = userSnap.data();
-    if (!user || (user.gold || 0) < catalogEntry.price) {
-      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
-    }
-    tx.set(
-      userRef,
-      { gold: admin.firestore.FieldValue.increment(-catalogEntry.price), goldTag: goldTag('silah') },
-      { merge: true }
-    );
-    // v130: oyunun silahçısı — kâr (fiyatın %25'i) üzerinden sıfır silah kâr vergisi belediyeye, kalanı oyundan çıkar
-    {
-      const profit = catalogEntry.price - stockUnitCost(catalogEntry.price);
-      const tax = newSaleTax(profit, 'weapon');
-      business.recordGameIncomeTx(tx, { type: 'silahci', amount: catalogEntry.price, kind: 'sale', customerUid: uid, products: { [catalogEntry.name]: 1 }, tax, taxSource: 'sifir', stat: newSaleStat('weapon', { price: catalogEntry.price, profit, tax, game: true }) });
-    }
-    const newWeaponRef = weaponsRef.doc();
-    tx.set(newWeaponRef, {
-      ownerId: uid,
-      catalogId: Number(catalogId),
-      name: catalogEntry.name,
-      basePrice: catalogEntry.price,
-      basePower: catalogEntry.power,
-      power: catalogEntry.power,
-      level: 1,
-      lifeDays: WEAPON_INITIAL_LIFE_DAYS,
-      repairsUsed: 0,
-      purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-  });
-
-  // Onboarding görev 5 — "herhangi bir silah al" (event tabanlı yol; adım
-  // 5'e zaten silahla gelenler için ayrıca bkz. checkOnboardingProgress).
-  await advanceOnboardingStep(uid, 5);
-
-  return { ok: true };
+  // v132: oyunun silah mağazası stoğu olan en ucuz oyuncu silahçısını satar (yoksa kendisi) — functions/shop.js
+  const r = await shop.gameStoreBuy(uid, 'weapon', catalogId, expect ?? null);
+  await shop.afterItemBuy(uid, 'weapon', r.name);
+  return { ok: true, price: r.price };
 });
 
 // ---------------------------------------------------------------------------
@@ -6268,6 +6176,8 @@ export const attemptHeist = onCall(async (request) => {
     // koruyamadığı için); yakalanınca ceza devlete gelir yazılır.
     // v127: ödeme işlemden SONRA belediye kasasından (yetmezse borç) — aşağıda.
     if (caught) for (const e of heistStateEntries({ fines: penalty })) stateWrite(tx, db, admin.firestore.FieldValue, { ...e, dayKey: dateKey });
+    // v132: Teşkilat Bakanlığı soygun analizi
+    statWrite(tx, db, admin.firestore.FieldValue, { dayKey: dateKey, stat: heistStat(target, caught ? { outcome: 'caught', fine: penalty } : { outcome: 'success', paid: reward }) });
 
     result = { started: true, success: !caught, caught, reward, penalty, policeDoubled: penaltyMultiplier > 1, newTotalDebt };
   });
@@ -7358,6 +7268,7 @@ export const executeHeistPlan = onCall(async (request) => {
   const successSmsList = []; // { uid, amount }
   const stateEntries = []; // v108 — devlet kasası defteri (aynı batch'te yazılır)
   let heistPayout = 0; // v127 — başarılı ekip soygununda belediyenin ödeyeceği toplam
+  let teamHeistStat = null; // v132 — Teşkilat Bakanlığı soygun analizi
 
   // ADIM 1 — ÖNCE, polis hiç yokmuş GİBİ, her katılımcının KENDİ
   // şüphesine göre bağımsız bir yakalanma riski test edilir (yakalanma
@@ -7402,6 +7313,7 @@ export const executeHeistPlan = onCall(async (request) => {
       });
     });
     stateEntries.push(...heistStateEntries({ fines: perPolicePenalty * participants.length })); // v108
+    teamHeistStat = heistStat(plan.target, { outcome: 'caught', team: true, fine: perPolicePenalty * participants.length }); // v132
   } else if (caughtBySuspicion) {
     // Şüpheden yakalandılar. Ceza sadece SİVİLLERE uygulanır (varsa
     // sızmış polis bu turda ne ödül alır ne cezalandırılır — kimliği
@@ -7425,6 +7337,7 @@ export const executeHeistPlan = onCall(async (request) => {
       });
     });
     stateEntries.push(...heistStateEntries({ fines: perCivilianPenalty * civilianIdx.length })); // v108
+    teamHeistStat = heistStat(plan.target, { outcome: 'caught', team: true, fine: perCivilianPenalty * civilianIdx.length }); // v132
     // v128 — ekipteki (sızmış) polisin de şüphesi artar; ceza / ödül yok.
     policeIdx.forEach((i) => {
       batch.update(db.collection('users').doc(participants[i].uid), {
@@ -7447,6 +7360,7 @@ export const executeHeistPlan = onCall(async (request) => {
     // payı cezanın içinden çıkan komisyondur ve GİDER yazılır (eskiden ceza +
     // "kurtarılan %75" ikisi birden gelir yazılıyordu — çift sayım).
     stateEntries.push(...heistStateEntries({ fines: perCivilianPenalty * civilianIdx.length, policeShare: perPoliceEarning * policeIdx.length }));
+    teamHeistStat = heistStat(plan.target, { outcome: 'stopped', team: true, recovered: totalReward, fine: perCivilianPenalty * civilianIdx.length, policeShare: perPoliceEarning * policeIdx.length }); // v132
 
     policeIdx.forEach((i) => {
       const currentDebt = userSnaps[i].data()?.debtToState || 0;
@@ -7502,8 +7416,10 @@ export const executeHeistPlan = onCall(async (request) => {
     });
     // v108: başarılı soygunun parasını devlet öder — v127: commit'ten sonra belediye kasasından (yetmezse borç)
     heistPayout = perPersonAmount * participants.length;
+    teamHeistStat = heistStat(plan.target, { outcome: 'success', team: true, paid: heistPayout }); // v132
   }
   for (const e of stateEntries) stateWrite(batch, db, admin.firestore.FieldValue, { ...e, dayKey: dateKey });
+  if (teamHeistStat) statWrite(batch, db, admin.firestore.FieldValue, { dayKey: dateKey, stat: teamHeistStat }); // v132: Teşkilat analizi
 
   // Herkesin (polis dahil) o hedef için günlük hakkı bugün için tükenir.
   participants.forEach((p) => {
@@ -10736,7 +10652,8 @@ export const buyListing = onCall(async (request) => {
     const isShopSale = Boolean(shopHouseSnap?.exists && shopHouseSnap.data().ownerUid === listing.sellerId);
     // dükkân satışında vergi işletme raporuna da yazılır (recordIncomeTx defteri de günceller)
     const ieKind = listing.itemType === 'vehicle' ? 'araba' : listing.itemType === 'weapon' ? 'silah' : 'malzeme';
-    if (saleTax > 0 && !isShopSale) taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: saleTax, source: 'ikinciEl', uid: listing.sellerId, atMs: Date.now(), ref: listingRef.id, stat: { [`ie_${ieKind}_n`]: 1, [`ie_${ieKind}_ciro`]: cost } });
+    // v132: 2. el vergisiz — analiz sayaçları (adet / ciro) yine yazılır (taxLedgerWrite 0 tutarda sadece sayaç)
+    if ((saleTax > 0 || (!isSystemListing && (listing.itemType === 'vehicle' || listing.itemType === 'weapon'))) && !isShopSale) taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: saleTax, source: 'ikinciEl', uid: listing.sellerId, atMs: Date.now(), ref: listingRef.id, stat: { [`ie_${ieKind}_n`]: 1, [`ie_${ieKind}_ciro`]: cost } });
 
     // Ürünü transfer et.
     const shopClear = listing.shopHouseId
@@ -10843,7 +10760,10 @@ export const buyListing = onCall(async (request) => {
       .doc(result.sellerId)
       .collection('messages')
       .add({
-        text: `2. El: "${itemLabel}" ilanın ${result.cost.toLocaleString('tr-TR')} altına satıldı. Vergi (%1): ${(result.tax || 0).toLocaleString('tr-TR')} · Eline geçen: ${(result.cost - (result.tax || 0)).toLocaleString('tr-TR')} altın.`,
+        // v132: 2. el satış vergisi kaldırıldı
+        text: result.tax > 0
+          ? `2. El: "${itemLabel}" ilanın ${result.cost.toLocaleString('tr-TR')} altına satıldı. Vergi: ${result.tax.toLocaleString('tr-TR')} · Eline geçen: ${(result.cost - result.tax).toLocaleString('tr-TR')} altın.`
+          : `2. El: "${itemLabel}" ilanın ${result.cost.toLocaleString('tr-TR')} altına satıldı, hesabına yattı.`,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         read: false,
         type: 'marketplace_sale',
@@ -15264,7 +15184,7 @@ async function assignFutbolBotTraining() {
   // salon varsa HEPSİ eşit tercih edilir ve takımlar aralarında sırayla bölünür
   // (ör. 9 takım / 2 salon → 5–4). Eskiden 🔥 bonuslu salon "etkin fiyatla" %10
   // ucuz sayıldığından aynı fiyattaki salonlar arasında hep o seçiliyordu.
-  const gyms = gymsSnap.docs
+  let gyms = gymsSnap.docs
     .map((d) => {
       const h = d.data();
       const bonus = !h.bizGame && h.gymBonusDay === dayKey;
@@ -15272,6 +15192,8 @@ async function assignFutbolBotTraining() {
       return { id: d.id, h, price, bonus };
     })
     .filter((g) => g.h.biz?.type === 'spor');
+  // v132: oyunun salonu kapalı — oyuncu salonu varken botlar da oraya gitmez
+  if (gyms.some((g) => !g.h.bizGame)) gyms = gyms.filter((g) => !g.h.bizGame);
   if (!gyms.length) return;
   const cheapPool = botGymPool(gyms);
   const minPrice = cheapPool[0].price;
@@ -18217,6 +18139,7 @@ export const payFutbolTrainingSlot = onCall(async (request) => {
     if (futbolTrainingSlotPaid(team, position)) throw new HttpsError('failed-precondition', 'slot-paid');
     const g = gymSnap.exists ? gymSnap.data() : null;
     if (!g || g.biz?.type !== 'spor') throw new HttpsError('failed-precondition', 'biz-closed');
+    if (g.bizGame) throw new HttpsError('failed-precondition', 'gym-closed'); // v132: oyunun salonu kapalı
     const ownerSnap = g.bizGame ? null : await tx.get(db.collection('users').doc(g.ownerUid));
     const price = gymPriceOf(g);
     if (Number(expect) !== price) throw new HttpsError('aborted', `price-changed:${price}`);
@@ -22637,6 +22560,7 @@ const gangFunctions = createGangFunctions({
 });
 export const gangAction = gangFunctions.gangAction;
 export const gangClock = gangFunctions.gangClock;
+shopGangSource.current = gangFunctions.system.stockSource; // v132
 
 // =============================================================================
 // v127 — BELEDİYE YÖNETİMİ (functions/belediye.js · belediyeKasa.js · belediyeRates.js)

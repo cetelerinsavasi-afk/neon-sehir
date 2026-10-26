@@ -286,6 +286,15 @@ export const VENUES = {
     npcs: [
       { id: 'npc_zabita', name: 'Zabıta Rıza', x: 6.7, z: 5.6, av: AV.zabita, lines: ['Makamda sessiz olalım lütfen.', 'Maket camına dokunmayın!', 'Belediye hizmetinizde.', 'İyi günler.'] },
     ],
+    // v132 — çaycı tezgâhının yanında geleneksel çaycı garson bot (sol üstte 🛎️ Garson)
+    bots: [
+      {
+        i: 'bl_bot_cay',
+        x: -5.6,
+        z: 5.5,
+        cfg: { o: 'cayci', g: 'erkek', t: 2, s: '#c68863', h: '#2b2118', md: 'smile', n: 'Çaycı Hasan', l: ['Çaylar taze, demli! Bir çay söyle, getireyim.', '*Tepsiyi dengeleyip ince belliyi doldurur*', 'Belediyenin çayı bizden, afiyet olsun!'], mv: 'sabit', w: true },
+      },
+    ],
   },
 
   araba_galerisi: {

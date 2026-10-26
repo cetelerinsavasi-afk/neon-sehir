@@ -72,13 +72,9 @@ function SuspicionBadge() {
   );
 }
 
-function HeistBtn({ onOpenHeist, target }) {
-  if (!onOpenHeist) return null;
-  return (
-    <button className="v3-btn heist" onClick={() => onOpenHeist(target)}>
-      🦹 Soygun
-    </button>
-  );
+// v132: mekânların içindeki soygun butonları kaldırıldı (soygun Mekanlar › Soygun'dan)
+function HeistBtn() {
+  return null;
 }
 
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -512,7 +508,8 @@ export function BelediyePart({ panel, setPanel, walk }) {
   if (!user) return null;
   return (
     <>
-      <Menu show={walk}>
+      {/* v132: sol üst garson butonuna yer açmak için sağ üstte */}
+      <Menu show={walk} right>
         <button className="v3-btn" onClick={() => setPanel('belediye')}>
           🏛️ Belediye
         </button>

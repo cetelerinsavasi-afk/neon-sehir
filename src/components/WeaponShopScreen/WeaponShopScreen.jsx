@@ -4,6 +4,8 @@ import { usePlayer } from '../../hooks/usePlayer';
 import { weaponCatalog } from '../../data/weaponCatalog';
 import { buyWeapon } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
+import { useShopOffers, withOfferPrices } from '../../hooks/useShopOffers';
+import { priceChangedText } from '../../lib/priceChanged';
 import './WeaponShopScreen.css';
 
 // Silah Mağazası SADECE silah SATIN ALMA yeri — geliştirme Profil'den
@@ -15,6 +17,8 @@ export default function WeaponShopScreen({ items = null, onBuy = null, disabledT
   const { player } = usePlayer();
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
+  // v132: oyunun mağazası — en ucuz oyuncu silahçısının fiyatı
+  const best = useShopOffers('weapon', { enabled: !items && Boolean(user) });
 
   if (!user) {
     return <SignInPrompt message="Silah satın almak için giriş yapmalısın." />;
@@ -26,15 +30,15 @@ export default function WeaponShopScreen({ items = null, onBuy = null, disabledT
     try {
       await fn();
     } catch (err) {
-      setError(err.message || 'İşlem başarısız.');
+      setError(priceChangedText(err) || err.message || 'İşlem başarısız.');
     } finally {
       setBusy(null);
     }
   };
 
   const gold = player?.gold ?? 0;
-  const list = items || weaponCatalog;
-  const buy = onBuy || ((w) => buyWeapon(w.id));
+  const list = items || withOfferPrices(weaponCatalog, best);
+  const buy = onBuy || ((w) => buyWeapon(w.id, w.price));
 
   return (
     <div className="weapon-shop">

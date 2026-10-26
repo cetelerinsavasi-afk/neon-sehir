@@ -225,6 +225,8 @@ export function createCore(deps) {
       if (v) patch[k] = FV.increment(v);
     }
     tx.set(ctx.ref.intelRecord(rosterId), patch, { merge: true });
+    // v132: günlük kopya (sicilde "Son 1 hafta" raporu; 15 günden eskisi gece silinir)
+    tx.set(ctx.ref.intelStat(rosterId, ctx.dateKey), { ...patch, dateKey: ctx.dateKey }, { merge: true });
   }
   // ---------------------------------------------------------------------------
   // v108 — DEVLET KASASI (functions/stateTreasury.js). Test dünyası kendi

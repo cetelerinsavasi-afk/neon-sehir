@@ -61,8 +61,9 @@ export const buyFactoryShare = (factoryId, shareId) =>
 
 // --- Faz 3: Araba ve Silah Sistemi ---
 
-export const buyVehicle = (catalogId) =>
-  httpsCallable(functions, 'buyVehicle')({ catalogId });
+// v132: expect = ekranda görünen fiyat (oyuncu galerisinden satılıyorsa daha ucuz olabilir)
+export const buyVehicle = (catalogId, expect) =>
+  httpsCallable(functions, 'buyVehicle')({ catalogId, ...(expect ? { expect } : {}) });
 
 export const upgradeVehicle = (vehicleId, upgradeType) =>
   httpsCallable(functions, 'upgradeVehicle')({ vehicleId, upgradeType });
@@ -78,8 +79,8 @@ export const sellMaterial = (materialType, quantity) =>
 
 // v124: Amazor kaldırıldı (buyFromAmazor sunucuda kapalı)
 
-export const buyWeapon = (catalogId) =>
-  httpsCallable(functions, 'buyWeapon')({ catalogId });
+export const buyWeapon = (catalogId, expect) =>
+  httpsCallable(functions, 'buyWeapon')({ catalogId, ...(expect ? { expect } : {}) });
 
 export const upgradeWeapon = (weaponId) =>
   httpsCallable(functions, 'upgradeWeapon')({ weaponId });

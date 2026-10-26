@@ -60,7 +60,7 @@ export const currentRates = () => ratesFor();
 
 // Varsayılanlar (geriye uyum — yeni kod oranı ratesFor/fonksiyonlardan alır)
 export const BIZ_TAX_RATE = DEFAULT_RATES.isKafe / 100;
-export const RESALE_TAX_RATE = DEFAULT_RATES.ikAraba / 100;
+export const RESALE_TAX_RATE = 0; // v132: 2. el vergisiz
 export const SALARY_TAX_RATE = DEFAULT_RATES.fisci / 100;
 export const LOTTERY_TAX_RATE = DEFAULT_RATES.piyango / 100;
 export const MACHINE_TAX_RATE = DEFAULT_RATES.mkTamir / 100;
@@ -143,7 +143,12 @@ function stateCatOf(source, uid, ref, bizType) {
 //   stat: { anahtar: artış } — v127 belediye analizi sayaçları (aynı parça belgesine)
 export function taxLedgerWrite(writer, db, FieldValue, { amount, source, uid, atMs = Date.now(), dayKey, ref, bizType, stat }) {
   const amt = Math.max(0, Math.round(Number(amount) || 0));
-  if (!amt || !uid) return 0;
+  // v132: vergisiz (0) hareketin analiz sayaçları yine yazılır (ör. 2. el satışlar)
+  if (!amt) {
+    if (stat) statWrite(writer, db, FieldValue, { atMs, dayKey: dayKey || midnightDayKey(atMs), stat });
+    return 0;
+  }
+  if (!uid) return 0;
   const day = dayKey || midnightDayKey(atMs);
   const src = TAX_SOURCES[source] ? source : 'isletme';
   const patch = {

@@ -41,6 +41,8 @@ import { houseKind, officePriceOf, isLegacyHomeOffice } from './officeData.js';
 import { VENUES, VENUE_OWNER, camiiDynamicNpcs } from './venueLayouts.js';
 import { doorOf, doorSpawn, settleDoor } from './houseDoor.js';
 import { MATERIAL_HOLDER_BIZ, readHoldings, readMaterialInv, closeBlockMaterials } from './materials.js';
+import { createFurnMarket } from './furnMarket.js';
+import { cleanBotConfig, BOT_ITEM_KEY } from './botData.js';
 
 // v77 — Ev → İşletme. houses/{id} üzerine eklenen alanlar:
 //   biz: { type, openedAtMs } | null   — açık işletme (yoksa ev)
@@ -112,6 +114,8 @@ export function cleanDesign(raw) {
     const row = { i, k, x: Math.round(x * 1000) / 1000, z: Math.round(z * 1000) / 1000, r, c };
     if (typeof it.o === 'boolean') row.o = it.o;
     if (it.p === 1 || it.p === true) row.p = 1;
+    // v132 — pazardan konan deneme eşyası: ilan kimliği (satın alınınca kalkar)
+    else if (typeof it.m === 'string' && /^[A-Za-z0-9]{1,40}$/.test(it.m)) row.m = it.m;
     out.push(row);
   }
   const wall = KEY_RE.test(String(d.wall || '')) && SURFACE_KEYS.wall.includes(d.wall) ? d.wall : null;
@@ -142,6 +146,7 @@ const ownsSurface = (inv, type, key) => FREE_SURFACES[type].includes(key) || (in
 
 // deps: { db, FieldValue, HttpsError, requireAuth, onCall, isAdmin, assertCanSpeak, isFriend, now? }
 export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, isAdmin, assertCanSpeak, isFriend, now = () => Date.now(), bizHooks = {}, visits = null, officeMigrate = null }) {
+  const furn = createFurnMarket({ db, FieldValue, HttpsError, now }); // v132 mobilya pazarı
   const fail = (code, msg) => {
     throw new HttpsError(code, msg);
   };
@@ -537,7 +542,9 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
   }
 
   // ---- sepeti tamamla ---------------------------------------------------------------
-  function quoteOf(h, design, inv) {
+  // v132: pre = furn.readForCheckout (pazar ilanları) — pazardan konan eşya ilan fiyatıyla;
+  // ilanı kapanmışsa (satıldı / iptal) sepete girmez ve satın alınmaz.
+  function quoteOf(h, design, inv, pre = null) {
     let gold = 0;
     let gem = 0;
     const lines = {};
@@ -547,7 +554,23 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       else gold += price.v;
       lines[label] = (lines[label] || 0) + 1;
     };
-    design.items.filter((it) => it.p !== 1).forEach((it) => add(ITEM_PRICES[it.k], it.k));
+    const market = [];
+    const drop = new Set();
+    design.items
+      .filter((it) => it.p !== 1)
+      .forEach((it) => {
+        if (it.m) {
+          const l = pre ? furn.marketOf(pre, it) : null;
+          if (!l || market.includes(l.id)) {
+            drop.add(it.i);
+            return;
+          }
+          market.push(l.id);
+          add({ t: l.t, v: l.v }, `m:${l.id}`);
+          return;
+        }
+        add(ITEM_PRICES[it.k], it.k);
+      });
     const surfaces = [];
     if (design.wall && !ownsSurface(inv, 'wall', design.wall)) {
       add(surfacePrice('wall', design.wall), `wall:${design.wall}`);
@@ -557,7 +580,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       add(surfacePrice('floor', design.floor), `floor:${design.floor}`);
       surfaces.push(['floor', design.floor]);
     }
-    return { gold, gem, lines, surfaces };
+    return { gold, gem, lines, surfaces, market, drop };
   }
 
   // v127: yetkili (tasarımcı) da satın alabilir — SADECE sahibin bu mekân için
@@ -578,7 +601,8 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       const owner = h.ownerUid;
       const [is, us, fs] = await Promise.all([tx.get(invRef(owner)), editor ? Promise.resolve(null) : tx.get(userRef(uid)), editor ? tx.get(fundRef(houseId)) : Promise.resolve(null)]);
       const inv = is.exists ? is.data() : {};
-      const q = quoteOf(h, design, inv);
+      const pre = await furn.readForCheckout(tx, design.items, editor ? owner : uid);
+      const q = quoteOf(h, design, inv, pre);
       const exp = p.expect || {};
       if (Number(exp.gold) !== q.gold || Number(exp.gem) !== q.gem) fail('aborted', 'Sepet tutarı değişti, lütfen tekrar kontrol et.');
       if (q.gold === 0 && q.gem === 0) fail('failed-precondition', 'Sepetin boş.');
@@ -588,12 +612,14 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       const where = editor ? 'Mobilya kasasında yeterli' : 'Yetersiz';
       if (gold < q.gold) fail('failed-precondition', editor ? `${where} altın yok (${gold.toLocaleString('tr-TR')} / ${q.gold.toLocaleString('tr-TR')}).` : `Yetersiz altın (${gold.toLocaleString('tr-TR')} / ${q.gold.toLocaleString('tr-TR')}).`);
       if (emerald < q.gem) fail('failed-precondition', editor ? `${where} zümrüt yok (${emerald} / ${q.gem}).` : `Yetersiz zümrüt (${emerald} / ${q.gem}).`);
-      const items = design.items.map((it) => ({ ...it, p: 1 }));
+      // v132: ilanı kapanmış pazar eşyaları odadan kalkar; alınanların ilan işareti silinir
+      const items = design.items.filter((it) => !q.drop.has(it.i)).map(({ m: _m, ...it }) => ({ ...it, p: 1 }));
       // v77: satın alma sırasında gerekli bir mobilya kaldırılmışsa işletme kuralı (yetkili kapatamaz)
       const closing = await guardBizDesign(tx, { houseId, h, items, allowBizClose: !editor && p.allowBizClose === true });
       // Önce mevcut (satın alınmış) eşyaların envanter farkını uygula, sonra denemeleri satın al.
       const { invItems } = applyDesignTx(tx, { houseId, h, inv, uid: owner, design });
       if (closing) writeBizClose(tx, { houseId, h, ...closing });
+      furn.writeCheckout(tx, pre, q.market, { buyerUid: editor ? owner : uid, houseId });
       const walls = [...(inv.walls || [])];
       const floors = [...(inv.floors || [])];
       q.surfaces.forEach(([type, key]) => {
@@ -626,7 +652,8 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     const design = clean(p.design);
     const h = await loadOwnedHouse(uid, houseId);
     const is = await invRef(uid).get();
-    const q = quoteOf(h, design, is.exists ? is.data() : {});
+    const pre = await db.runTransaction((tx) => furn.readForCheckout(tx, design.items, uid)); // v132 (salt okuma)
+    const q = quoteOf(h, design, is.exists ? is.data() : {}, pre);
     return { gold: q.gold, gem: q.gem, lines: q.lines };
   }
 
@@ -914,6 +941,39 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     return { ok: true };
   }
 
+  // ---- v132 BOT ayarı (Lüks › Bot): görünüm, ad, 3 söz, hareket, garsonluk ---------------
+  // houses/{id}.bots = { eşyaKimliği: ayar } — satın alınmış bot eşyası olmalı. Sahip ve
+  // tasarım yetkilisi düzenler. Odada olmayan botların eski ayarları temizlenir.
+  async function botSet(uid, p) {
+    const houseId = String(p.houseId || '');
+    const i = String(p.i || '');
+    if (!ID_RE.test(i)) fail('invalid-argument', 'Geçersiz bot.');
+    const cfg = cleanBotConfig(p.cfg);
+    const text = [cfg.n, ...cfg.l].filter(Boolean).join(' · ');
+    if (text) await assertCanSpeak(uid, text);
+    let result = null;
+    await db.runTransaction(async (tx) => {
+      const hs = await tx.get(houseRef(houseId));
+      if (!hs.exists) fail('not-found', 'Ev bulunamadı.');
+      const h = hs.data();
+      if (h.venue) fail('permission-denied', 'Bu mekân düzenlenemez.');
+      if (h.ownerUid !== uid && !isEditorOf(h, uid)) fail('permission-denied', 'Bu ev senin değil.');
+      const items = h.items || [];
+      const it = items.find((x) => x.i === i && x.k === BOT_ITEM_KEY);
+      if (!it) fail('failed-precondition', 'bot-unsaved');
+      if (it.p !== 1) fail('failed-precondition', 'bot-trial');
+      const live = new Set(items.filter((x) => x.k === BOT_ITEM_KEY).map((x) => x.i));
+      const bots = {};
+      Object.entries(h.bots || {}).forEach(([k, v]) => {
+        if (live.has(k)) bots[k] = v;
+      });
+      bots[i] = cfg;
+      tx.update(houseRef(houseId), { bots, updatedAtMs: now() });
+      result = { ok: true, cfg };
+    });
+    return result;
+  }
+
   // ---- eşyadan ürün al (yiyecek/içecek/silah) -----------------------------------------
   async function take(uid, p) {
     const houseId = String(p.houseId || '');
@@ -1113,6 +1173,13 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
         return fundMove(uid, p);
       case 'venueEnsure':
         return venueEnsure(p);
+      // v132 — mobilya pazarı
+      case 'furnList':
+        return furn.list(uid, p);
+      case 'furnCancel':
+        return furn.cancel(uid, p);
+      case 'botSet':
+        return botSet(uid, p);
       default:
         return fail('invalid-argument', 'Bilinmeyen işlem.');
     }

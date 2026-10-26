@@ -11,7 +11,7 @@ import { bizRateFrac } from '../../../functions/belediyeRates.js';
 import { bizErrText } from '../../lib/bizErrors';
 import { WORKSHOP_MATERIALS, workshopBand, gameWorkshopPrice, clampWorkshopPrice } from '../../../functions/itemRules.js';
 import { BIZ_MATERIALS } from '../../../functions/businessCatalogData.js';
-import { STOCK_PRICE_STEP, stockUnitCost, stockPriceBand, clampStockPrice, stockUnitPaid, stockQty } from '../../../functions/shopStockRules.js';
+import { stockUnitCost, stockPriceBand, clampStockPrice, stockUnitPaid, stockQty } from '../../../functions/shopStockRules.js';
 import '../../styles/bizui.css';
 import './Shop.css';
 
@@ -148,7 +148,7 @@ function StockPrices({ houseId, kind }) {
       <p className="bz-sec-title">{KIND_TXT[kind].icon} Fiyatlar</p>
       {catalog.map((c) => {
         const b = stockPriceBand(c.price);
-        const step = STOCK_PRICE_STEP;
+        const step = b.step; // v132: fiyata göre 10 / 100 / 1.000 / 10.000
         const v = draft[c.id] ?? savedOf(c);
         const clamp = (x) => Math.min(b.max, Math.max(b.min, Math.round(x / step) * step));
         const qty = stockQty(stock, String(c.id));
@@ -199,15 +199,31 @@ function StockAdd({ houseId, kind }) {
   const [msg, setMsg] = useState(null);
   const gold = Number(player?.gold || 0);
   const total = catalog.reduce((a, c) => a + stockQty(stock, String(c.id)), 0);
+  // v132: alış fiyatı 2. el / çete deposundaki sıfır ilanlara göre değişebilir (sunucu teklifi)
+  const [quote, setQuote] = useState(null);
+  const loadQuote = async () => {
+    try {
+      const r = await shopAction({ op: 'stockQuote', houseId });
+      setQuote(r?.prices || null);
+    } catch {
+      setQuote(null);
+    }
+  };
+  useEffect(() => {
+    if (open) loadQuote();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, houseId]);
+  const costOf = (c) => Math.min(stockUnitCost(c.price), Number(quote?.[String(c.id)]) || Infinity);
   const add = async (c) => {
     setBusy(c.id);
     setMsg(null);
     try {
-      await shopAction({ op: 'stockAdd', houseId, catalogId: c.id, qty: 1, expect: stockUnitCost(c.price) });
+      await shopAction({ op: 'stockAdd', houseId, catalogId: c.id, qty: 1, expect: costOf(c) });
     } catch (e) {
       setMsg({ ok: false, text: bizErrText(e) });
     } finally {
       setBusy(null);
+      loadQuote();
     }
   };
   return (
@@ -218,7 +234,7 @@ function StockAdd({ houseId, kind }) {
       {open && (
         <div className="bz-list">
           {catalog.map((c) => {
-            const cost = stockUnitCost(c.price);
+            const cost = costOf(c);
             return (
               <div key={c.id} className="bz-item sk-row">
                 <StockThumb c={c} kind={kind} />

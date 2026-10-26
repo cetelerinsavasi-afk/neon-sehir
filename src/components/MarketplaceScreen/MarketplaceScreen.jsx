@@ -507,7 +507,7 @@ function SellForm({ onCreated, onClose, initialItemType }) {
               </button>
               {priceRange && (
                 <button className="market-instant-sell-btn" disabled={busy} onClick={handleInstantSell}>
-                  {(instantSellTotal ?? 0).toLocaleString('tr-TR')} altına Anında Sat (eline geçen {((instantSellTotal ?? 0) - rTax(instantSellTotal ?? 0)).toLocaleString('tr-TR')})
+                  {(instantSellTotal ?? 0).toLocaleString('tr-TR')} altına Anında Sat{rTax(instantSellTotal ?? 0) > 0 ? ` (eline geçen ${((instantSellTotal ?? 0) - rTax(instantSellTotal ?? 0)).toLocaleString('tr-TR')})` : ''}
                 </button>
               )}
             </div>

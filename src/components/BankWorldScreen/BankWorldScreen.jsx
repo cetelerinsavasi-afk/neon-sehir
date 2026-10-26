@@ -893,9 +893,7 @@ export default function BankWorldScreen({ onExit, onOpenHeist }) {
   return (
     <div className="ws-fullscreen" style={{ '--ws-bg': '#dcd6c8', '--ws-panel-bg': '#1c1c24' }}>
       <Hud suspicion={player?.suspicion ?? 0} reputation={player?.reputation ?? 0} gold={player?.gold ?? 0} />
-      {onOpenHeist && (
-        <button className="ws-heist-btn" onClick={() => onOpenHeist('banka')}>Soygun</button>
-      )}
+      {/* v132: mekân içi soygun butonu kaldırıldı */}
       <button className="ws-exit-btn" onClick={onExit}>✕</button>
 
       <div className="ws-canvas-wrap">

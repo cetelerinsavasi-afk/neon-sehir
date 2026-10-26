@@ -58,7 +58,7 @@ import { planAutoSupply, planGameSupply, AUTO_SUPPLY_MAT_NAMES } from './autoSup
 import { VEHICLE_CATALOG, WEAPON_CATALOG } from './catalogData.js';
 import { VEHICLE_WEAPON_INITIAL_LIFE_DAYS, WEAPON_INITIAL_LIFE_DAYS } from './itemRules.js';
 import { newSaleTax } from './tax.js';
-import { STOCK_KIND, STOCK_ADD_MAX, stockUnitCost, stockPriceBand, validStockPrice, clampStockPrice, stockUnitPaid, stockQty } from './shopStockRules.js';
+import { STOCK_KIND, STOCK_ADD_MAX, stockUnitCost, stockPriceBand, validStockPrice, clampStockPrice, stockUnitPaid, stockQty, isPristineItem, isPristineListing, sourceOrder, bestStockPrice } from './shopStockRules.js';
 
 // v130 — oyunun mağazasındakiyle AYNI yeni ürün belgesi (index.js buyWeapon / buyVehicle de kullanır)
 export function newWeaponDoc(uid, catalogId, FieldValue) {
@@ -110,7 +110,7 @@ const PRESENCE_ACTIVE_MS = 2 * 60 * 1000;
 const isId = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);
 const coll = (itemType) => (itemType === 'vehicle' ? 'vehicles' : 'weapons');
 
-export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, splitIncomeForDebt, business, advanceOnboardingStep = async () => {}, now = () => Date.now(), extraOps = {} }) {
+export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, splitIncomeForDebt, business, advanceOnboardingStep = async () => {}, now = () => Date.now(), extraOps = {}, gangSource = { current: null } }) {
   const fail = (code, msg) => {
     throw new HttpsError(code, msg);
   };
@@ -380,33 +380,179 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
     const d = snap?.exists ? snap.data() : null;
     return d && d.type === type ? d : { items: {}, paid: {}, prices: {} };
   };
+  const TYPE_OF_KIND = { weapon: 'silahci', vehicle: 'galeri' };
 
-  // Sahip: oyunun mağazasından stoğa ekle (mağaza fiyatının %75'i, para oyundan çıkar)
+  // ---- v132 TEKLİF DİZİNİ: shopOffers/{weapon|vehicle} -------------------------------
+  // Oyunun mağazası artık stoğu olan oyuncu dükkânlarının EN UCUZUNU satar (para o
+  // dükkâna gider). Her müşterinin tüm stokları okumaması için tek belgelik dizin:
+  //   { v: 1, offers: { katalogId: { houseId: satışFiyatı } }, updatedAtMs }
+  // Sadece stoğu (≥1) olan dükkânlar yer alır. Stok / fiyat değiştikçe aynı işlemde
+  // güncellenir (okumadan, birleştirerek yazılır). Bozuk kayıt satın alma anında
+  // doğrulanır ve düzeltilir (kapanmış dükkân, biten stok, değişmiş fiyat).
+  const offersRef = (kind) => db.collection('shopOffers').doc(kind);
+  function offerWrite(tx, kind, houseId, cid, price) {
+    tx.set(offersRef(kind), { offers: { [cid]: { [houseId]: price > 0 ? price : FieldValue.delete() } }, updatedAtMs: now() }, { merge: true });
+  }
+  // İlk kullanımda (v132 geçişi) mevcut stoklardan bir kez kurulur
+  async function ensureOffers(kind) {
+    const ref = offersRef(kind);
+    const s0 = await ref.get();
+    if (s0.exists && s0.data()?.v === 1) return;
+    await db.runTransaction(async (tx) => {
+      const s = await tx.get(ref);
+      if (s.exists && s.data()?.v === 1) return;
+      const type = TYPE_OF_KIND[kind];
+      const ss = await tx.get(db.collection('shopStocks').where('type', '==', type));
+      const offers = {};
+      for (const d of ss.docs) {
+        const st = d.data();
+        for (const cid of Object.keys(st.items || {})) {
+          if (!catalogOf(kind)[cid] || stockQty(st, cid) < 1) continue;
+          (offers[cid] ||= {})[d.id] = clampStockPrice(catalogOf(kind)[cid].price, st.prices?.[cid]);
+        }
+      }
+      tx.set(ref, { v: 1, offers, updatedAtMs: now() });
+    });
+  }
+
+  // ---- v132 KAYNAK: 2. el (oyuncu) + çete deposu ilanları ------------------------------
+  // gangSource: functions/gang/system.js stockSource (index.js sonradan bağlar)
+  const listingAt = (l) => l.createdAt?.toMillis?.() ?? Number(l.createdAtMs || 0);
+  async function playerCandidates(get, kind, catalogId = null) {
+    let q = listingsRef.where('sold', '==', false).where('itemType', '==', kind);
+    if (catalogId != null) q = q.where(kind === 'vehicle' ? 'vehicleCatalogId' : 'weaponCatalogId', '==', Number(catalogId));
+    const snap = await get(q);
+    return snap.docs
+      .map((d) => ({ id: d.id, ref: d.ref, l: d.data() }))
+      .filter(({ l }) => isPristineListing(l) && Number(l.price) > 0)
+      .map(({ id, ref, l }) => ({ src: 'p', id, ref, l, catalogId: Number(kind === 'vehicle' ? l.vehicleCatalogId : l.weaponCatalogId), price: Math.floor(Number(l.price)), qty: 1, at: listingAt(l) }));
+  }
+  async function gangCandidates(get, gctx, kind, catalogId = null) {
+    const g = gangSource.current;
+    if (!g || !gctx) return [];
+    try {
+      return await g.candidates(get, gctx, kind, catalogId);
+    } catch (err) {
+      console.error('stok: çete ilanları okunamadı', err?.message || err);
+      return [];
+    }
+  }
+
+  // Sahip: "Vitrine ekle" fiyatları — her ürün için 1 adedin alış fiyatı (2. el / çete
+  // ilanı varsa onun fiyatı, yoksa oyunun alış fiyatı). İşlem değil, düz okuma.
+  async function stockQuote(uid, p) {
+    const houseId = String(p.houseId || '');
+    const hs = await houseRef(houseId).get();
+    const h = hs.exists ? hs.data() : null;
+    if (!h || h.ownerUid !== uid) fail('permission-denied', 'Bu dükkân senin değil.');
+    const type = requireBiz(h, Object.keys(STOCK_KIND));
+    const kind = STOCK_KIND[type];
+    const gctx = gangSource.current ? await gangSource.current.ctx(uid).catch(() => null) : null;
+    const get = (q) => q.get();
+    const cands = [...(await playerCandidates(get, kind)), ...(await gangCandidates(get, gctx, kind))];
+    const prices = {};
+    for (const cid of Object.keys(catalogOf(kind))) {
+      prices[cid] = bestStockPrice(catalogOf(kind)[cid].price, cands.filter((c) => c.catalogId === Number(cid)));
+    }
+    return { ok: true, kind, prices };
+  }
+
+  // Sahip: stoğa ekle. v132: önce alış fiyatına eşit / daha ucuz en ucuz sıfır ilanlar
+  // (2. el + çete deposu), kalanı oyunun mağazasından (%75; para oyundan çıkar).
   async function stockAdd(uid, p) {
     const houseId = String(p.houseId || '');
     const qty = Math.floor(Number(p.qty ?? 1));
     if (!Number.isInteger(qty) || qty < 1 || qty > STOCK_ADD_MAX) fail('invalid-argument', 'Geçersiz adet.');
+    // dizin + çete bağlamı işlemden önce (işlem içinde yeniden okunur / doğrulanır)
+    const pre = (await houseRef(houseId).get()).data();
+    const preKind = STOCK_KIND[pre?.biz?.type];
+    if (preKind) await ensureOffers(preKind);
+    const gctx = gangSource.current ? await gangSource.current.ctx(uid).catch(() => null) : null;
     let result = null;
+    const smsList = [];
     await db.runTransaction(async (tx) => {
+      smsList.length = 0;
       const h = await txHouse(tx, houseId);
       requireOwner(h, uid);
       const type = requireBiz(h, Object.keys(STOCK_KIND));
       const kind = STOCK_KIND[type];
       const cid = cleanCid(kind, p.catalogId);
+      const e = catalogOf(kind)[cid];
+      const unit = stockUnitCost(e.price);
       const [us, ss] = await Promise.all([tx.get(userRef(uid)), tx.get(stockRef(houseId))]);
-      const unit = stockUnitCost(catalogOf(kind)[cid].price);
-      const cost = unit * qty;
+      // kaynaklar: fiyatı alış fiyatını geçmeyenler, ucuzdan pahalıya
+      const get = (q) => tx.get(q);
+      const cands = [...(await playerCandidates(get, kind, cid)), ...(await gangCandidates(get, gctx, kind, cid))].filter((c) => c.price <= unit).sort(sourceOrder);
+      const picks = [];
+      let need = qty;
+      for (const c of cands) {
+        if (need <= 0) break;
+        if (c.src === 'p') {
+          const itemRef = db.collection(coll(kind)).doc(String(kind === 'vehicle' ? c.l.vehicleId : c.l.weaponId || ''));
+          const sys = c.l.sellerId === 'system';
+          const [is, sl] = await Promise.all([tx.get(itemRef), sys ? null : tx.get(userRef(c.l.sellerId))]);
+          const it = is.exists ? is.data() : null;
+          if (!it || !it.listed || it.shopHouseId || (!sys && it.ownerId !== c.l.sellerId) || Number(it.catalogId) !== Number(cid) || !isPristineItem(kind, it)) continue;
+          picks.push({ c, take: 1, itemRef, sys, seller: sl });
+          need -= 1;
+        } else {
+          if (picks.some((x) => x.c.src === 'g' && x.c.l.gangId === c.l.gangId)) continue; // çete başına tek ilan (tek yazım)
+          const have = await gangSource.current.validate(tx, gctx, c);
+          const take = Math.min(have, need);
+          if (take < 1) continue;
+          picks.push({ c, take });
+          need -= take;
+        }
+      }
+      const fromListings = picks.reduce((a, x) => a + x.c.price * x.take, 0);
+      const cost = fromListings + unit * need;
       if (Number(p.expect) && Number(p.expect) !== cost) fail('aborted', `price-changed:${cost}`);
       if (Number(us.data()?.gold || 0) < cost) fail('failed-precondition', 'gold');
+      // --- yazmalar --- (aynı belgeye tek yazım: satıcı ödemeleri toplanır)
+      const shopName = String(h.name || BIZ_TYPES[type]?.label || 'Dükkân').slice(0, 40);
+      const ik = kind === 'vehicle' ? 'araba' : 'silah';
+      const pay = new Map(); // satıcı uid → { gold, debt }
+      let ieN = 0;
+      let ieCiro = 0;
+      for (const x of picks) {
+        if (x.c.src === 'p') {
+          const l = x.c.l;
+          tx.update(x.c.ref, { sold: true, buyerId: uid, stockHouseId: houseId, soldAt: FieldValue.serverTimestamp(), ...(l.expireAtMs != null ? { expireAtMs: FieldValue.delete() } : {}) });
+          tx.delete(x.itemRef);
+          ieN += 1;
+          ieCiro += x.c.price;
+          if (!x.sys && x.seller?.exists) {
+            // 2. el satışı vergisiz (v132); satıcının devlete borcu varsa kuralı aynı
+            const { goldDelta, debtDelta } = splitIncomeForDebt(x.seller.data()?.debtToState, x.c.price);
+            const cur = pay.get(l.sellerId) || { gold: 0, debt: 0 };
+            pay.set(l.sellerId, { gold: cur.gold + goldDelta, debt: cur.debt + debtDelta });
+            smsList.push({ uid: l.sellerId, text: `2. El: "${(kind === 'vehicle' ? l.vehicleModel : l.weaponName) || e.name}" ilanın ${x.c.price.toLocaleString('tr-TR')} altına ${shopName} dükkânına satıldı, hesabına yattı.` });
+          }
+        } else {
+          gangSource.current.write(tx, gctx, x.c, x.take, { shopName });
+        }
+      }
+      if (ieN) taxLedgerWrite(tx, db, FieldValue, { amount: 0, source: 'ikinciEl', uid, atMs: now(), stat: { [`ie_${ik}_n`]: ieN, [`ie_${ik}_ciro`]: ieCiro } });
+      const mine = pay.get(uid) || { gold: 0, debt: 0 }; // kendi ilanını aldıysa
+      pay.delete(uid);
+      for (const [sid, v] of pay) tx.update(userRef(sid), { gold: FieldValue.increment(v.gold), goldTag: goldTag('ikinciEl'), ...(v.debt ? { debtToState: FieldValue.increment(v.debt) } : {}) });
+      tx.update(userRef(uid), { gold: FieldValue.increment(mine.gold - cost), goldTag: goldTag('stok'), ...(mine.debt ? { debtToState: FieldValue.increment(mine.debt) } : {}) });
       const st = stockOf(ss, type);
       const items = { ...(st.items || {}) };
       const paid = { ...(st.paid || {}) };
       items[cid] = stockQty(st, cid) + qty;
       paid[cid] = Math.max(0, Math.round(Number(paid[cid]) || 0)) + cost;
-      tx.update(userRef(uid), { gold: FieldValue.increment(-cost), goldTag: goldTag('stok') });
       tx.set(stockRef(houseId), { ownerUid: h.ownerUid, type, items, paid, prices: st.prices || {}, updatedAtMs: now() });
-      result = { ok: true, catalogId: cid, qty: items[cid], cost };
+      offerWrite(tx, kind, houseId, cid, clampStockPrice(e.price, st.prices?.[cid]));
+      result = { ok: true, catalogId: cid, qty: items[cid], cost, fromListings: picks.reduce((a, x) => a + x.take, 0) };
     });
+    if (gctx) gangSource.current?.flush?.(gctx);
+    for (const m of smsList) {
+      await userRef(m.uid)
+        .collection('messages')
+        .add({ text: m.text, createdAt: FieldValue.serverTimestamp(), read: false, type: 'marketplace_sale' })
+        .catch(() => {});
+    }
     return result;
   }
 
@@ -414,6 +560,8 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
   async function stockPrices(uid, p) {
     const houseId = String(p.houseId || '');
     const input = p.prices && typeof p.prices === 'object' ? p.prices : {};
+    const pre = (await houseRef(houseId).get()).data();
+    if (STOCK_KIND[pre?.biz?.type]) await ensureOffers(STOCK_KIND[pre.biz.type]);
     let result = null;
     await db.runTransaction(async (tx) => {
       const h = await txHouse(tx, houseId);
@@ -427,60 +575,169 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
         const cid = cleanCid(kind, k);
         const b = stockPriceBand(catalogOf(kind)[cid].price);
         const price = Number(v);
-        if (!validStockPrice(catalogOf(kind)[cid].price, price)) fail('invalid-argument', `price-band:${b.min}:${b.max}`); // v130: 100'ün katı
+        if (!validStockPrice(catalogOf(kind)[cid].price, price)) fail('invalid-argument', `price-band:${b.min}:${b.max}`); // v132: fiyata göre adım
         prices[cid] = price;
       }
       tx.set(stockRef(houseId), { ownerUid: h.ownerUid, type, items: st.items || {}, paid: st.paid || {}, prices, updatedAtMs: now() });
+      for (const cid of Object.keys(input)) {
+        const c = cleanCid(kind, cid);
+        if (stockQty(st, c) > 0) offerWrite(tx, kind, houseId, c, prices[c]);
+      }
       result = { ok: true, prices };
     });
     return result;
   }
 
+  // Bir stoktan 1 adet satışın YAZMALARI (dükkânın içinden ya da oyunun mağazasından).
+  // ownerSnap okunmuş olmalı. Müşteri dükkân sahibinin kendisiyse (v132: kendi
+  // dükkânından alabilir) tek yazım + vergi doğrudan deftere (ciro sayılmaz).
+  function stockSaleTx(tx, { houseId, h, type, kind, cid, st, price, buyerUid, ownerSnap }) {
+    const e = catalogOf(kind)[cid];
+    const qty = stockQty(st, cid);
+    const unitPaid = stockUnitPaid(st, cid, e.price);
+    const profit = Math.max(0, price - unitPaid);
+    const tax = newSaleTax(profit, kind);
+    const own = buyerUid === h.ownerUid;
+    const itemTag = goldTag(kind === 'vehicle' ? 'arac' : 'silah');
+    if (own) {
+      const { goldDelta, debtDelta } = ownerSnap?.exists ? splitIncomeForDebt(ownerSnap.data()?.debtToState, price - tax) : { goldDelta: 0, debtDelta: 0 };
+      tx.update(userRef(buyerUid), { gold: FieldValue.increment(goldDelta - price), goldTag: itemTag, ...(debtDelta ? { debtToState: FieldValue.increment(debtDelta) } : {}) });
+      taxLedgerWrite(tx, db, FieldValue, { amount: tax, source: 'sifir', uid: h.ownerUid, atMs: now(), ref: houseId, bizType: type, stat: newSaleStat(kind, { price, profit, tax }) });
+    } else {
+      tx.update(userRef(buyerUid), { gold: FieldValue.increment(-price), goldTag: itemTag });
+      if (ownerSnap?.exists) {
+        const { goldDelta, debtDelta } = splitIncomeForDebt(ownerSnap.data()?.debtToState, price - tax);
+        tx.update(userRef(h.ownerUid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('isletme'), debtToState: FieldValue.increment(debtDelta) });
+      }
+      business?.recordIncomeTx(tx, { houseId, h, amount: price, kind: 'sale', customerUid: buyerUid, products: { [e.name]: 1 }, tax, taxSource: 'sifir', stat: newSaleStat(kind, { price, profit, tax }) });
+    }
+    const itemRef = db.collection(coll(kind)).doc();
+    tx.set(itemRef, kind === 'vehicle' ? newVehicleDoc(buyerUid, cid, FieldValue) : newWeaponDoc(buyerUid, cid, FieldValue));
+    const items = { ...(st.items || {}), [cid]: qty - 1 };
+    const paid = { ...(st.paid || {}), [cid]: qty - 1 > 0 ? Math.max(0, Math.round(Number(st.paid?.[cid]) || 0) - unitPaid) : 0 };
+    tx.set(stockRef(houseId), { ownerUid: h.ownerUid, type, items, paid, prices: st.prices || {}, updatedAtMs: now() });
+    offerWrite(tx, kind, houseId, cid, qty - 1 > 0 ? price : 0);
+    return { itemRef, tax, own };
+  }
+
+  // Satın alma sonrası (oyunun mağazasından alınca olanlar: onboarding + araç kredi SMS'i)
+  async function afterItemBuy(uid, kind, name) {
+    if (kind === 'vehicle') {
+      await userRef(uid)
+        .collection('messages')
+        .add({ text: `Banka: yeni ${name} aracınızı ipotek ederek kredi çekebilirsiniz. Detaylar için Banka'ya uğrayın.`, createdAt: FieldValue.serverTimestamp(), read: false, type: 'loan_offer' })
+        .catch(() => {});
+      await advanceOnboardingStep(uid, 11).catch(() => {});
+    } else await advanceOnboardingStep(uid, 5).catch(() => {});
+  }
+
   // Müşteri: stoktan satın al. p: { houseId, catalogId, expect (fiyat) }
+  // v132: dükkân sahibi de kendi dükkânından alabilir.
   async function stockBuy(uid, p) {
     const houseId = String(p.houseId || '');
+    const pre = (await houseRef(houseId).get()).data();
+    if (STOCK_KIND[pre?.biz?.type]) await ensureOffers(STOCK_KIND[pre.biz.type]);
     let result = null;
     await db.runTransaction(async (tx) => {
       const h = await txHouse(tx, houseId);
       const type = requireBiz(h, Object.keys(STOCK_KIND));
       const kind = STOCK_KIND[type];
       const cid = cleanCid(kind, p.catalogId);
-      if (h.ownerUid === uid) fail('failed-precondition', 'own-shop');
       if (!(await txPresent(tx, uid, houseId))) fail('failed-precondition', 'not-present');
       const [ss, us, os] = await Promise.all([tx.get(stockRef(houseId)), tx.get(userRef(uid)), tx.get(userRef(h.ownerUid))]);
       const st = stockOf(ss, type);
-      const qty = stockQty(st, cid);
-      if (qty < 1) fail('failed-precondition', 'stock-out');
+      if (stockQty(st, cid) < 1) fail('failed-precondition', 'stock-out');
       const e = catalogOf(kind)[cid];
       const price = clampStockPrice(e.price, st.prices?.[cid]);
       if (Number(p.expect) !== price) fail('aborted', `price-changed:${price}`);
       if (Number(us.data()?.gold || 0) < price) fail('failed-precondition', 'gold');
-      const unitPaid = stockUnitPaid(st, cid, e.price);
-      const profit = Math.max(0, price - unitPaid);
-      const tax = newSaleTax(profit, kind);
-      // yazmalar
-      tx.update(userRef(uid), { gold: FieldValue.increment(-price), goldTag: goldTag(kind === 'vehicle' ? 'arac' : 'silah') });
-      const itemRef = db.collection(coll(kind)).doc();
-      tx.set(itemRef, kind === 'vehicle' ? newVehicleDoc(uid, cid, FieldValue) : newWeaponDoc(uid, cid, FieldValue));
-      const items = { ...(st.items || {}), [cid]: qty - 1 };
-      const paid = { ...(st.paid || {}), [cid]: qty - 1 > 0 ? Math.max(0, Math.round(Number(st.paid?.[cid]) || 0) - unitPaid) : 0 };
-      tx.set(stockRef(houseId), { ownerUid: h.ownerUid, type, items, paid, prices: st.prices || {}, updatedAtMs: now() });
-      if (os.exists) {
-        const { goldDelta, debtDelta } = splitIncomeForDebt(os.data()?.debtToState, price - tax);
-        tx.update(userRef(h.ownerUid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('isletme'), debtToState: FieldValue.increment(debtDelta) });
-      }
-      business?.recordIncomeTx(tx, { houseId, h, amount: price, kind: 'sale', customerUid: uid, products: { [e.name]: 1 }, tax, taxSource: 'sifir', stat: newSaleStat(kind, { price, profit, tax }) });
+      const { itemRef } = stockSaleTx(tx, { houseId, h, type, kind, cid, st, price, buyerUid: uid, ownerSnap: os });
       result = { ok: true, kind, catalogId: cid, name: e.name, price, itemId: itemRef.id };
     });
-    // oyunun mağazasından alınca olanlar (onboarding + araç kredi SMS'i)
-    if (result.kind === 'vehicle') {
-      await userRef(uid)
-        .collection('messages')
-        .add({ text: `Banka: yeni ${result.name} aracınızı ipotek ederek kredi çekebilirsiniz. Detaylar için Banka'ya uğrayın.`, createdAt: FieldValue.serverTimestamp(), read: false, type: 'loan_offer' })
-        .catch(() => {});
-      await advanceOnboardingStep(uid, 11).catch(() => {});
-    } else await advanceOnboardingStep(uid, 5).catch(() => {});
+    await afterItemBuy(uid, result.kind, result.name);
     return result;
+  }
+
+  // ---- v132 OYUNUN MAĞAZASI (Silah Mağazası / Araba Galerisi) -------------------------
+  // Stoğu olan oyuncu dükkânlarının en ucuzu satılır; fiyat eşitse dünkü kazanç
+  // sırasında en altta olan (en az kazanan; sırası yoksa en alt sayılır) kazanır.
+  // Hiçbir dükkânda yoksa oyunun kendisi satar (eski davranış). Ekranda sadece fiyat
+  // farklı görünür; satıcı belli olmaz.
+  //   expect: istemcinin gösterdiği fiyat (eski istemci göndermez → en ucuz fiyattan)
+  const RANK_LAST = Number.MAX_SAFE_INTEGER;
+  const rankOf = (h) => (Number.isFinite(Number(h?.bizRank)) && Number(h.bizRank) > 0 ? Number(h.bizRank) : RANK_LAST);
+  async function gameStoreBuy(uid, kind, catalogId, expect = null) {
+    const cid = cleanCid(kind, catalogId);
+    const e = catalogOf(kind)[cid];
+    const type = TYPE_OF_KIND[kind];
+    await ensureOffers(kind);
+    let result = null;
+    await db.runTransaction(async (tx) => {
+      const [os, us] = await Promise.all([tx.get(offersRef(kind)), tx.get(userRef(uid))]);
+      const map = os.data()?.offers?.[cid] || {};
+      const groups = new Map();
+      for (const [hid, pr] of Object.entries(map)) {
+        const v = Math.floor(Number(pr) || 0);
+        if (!isId(hid) || v <= 0) continue;
+        if (!groups.has(v)) groups.set(v, []);
+        groups.get(v).push(hid);
+      }
+      const prices = [...groups.keys()].sort((a, b) => a - b);
+      const fixes = []; // [houseId, doğruFiyat|0]
+      let pick = null;
+      let looked = 0;
+      for (const pr of prices) {
+        if (looked >= 12) break; // en fazla 12 dükkân doğrulanır (kalanı sonraki alışta)
+        const ids = groups.get(pr).slice(0, 12 - looked);
+        looked += ids.length;
+        const snaps = await Promise.all(ids.map((hid) => Promise.all([tx.get(houseRef(hid)), tx.get(stockRef(hid))])));
+        const valid = [];
+        ids.forEach((hid, i) => {
+          const [hs, ss] = snaps[i];
+          const h = hs.exists ? hs.data() : null;
+          const st = h && h.biz?.type === type ? stockOf(ss, type) : null;
+          const qty = st ? stockQty(st, cid) : 0;
+          const real = st && qty > 0 ? clampStockPrice(e.price, st.prices?.[cid]) : 0;
+          if (!real || real !== pr) fixes.push([hid, real]);
+          else valid.push({ hid, h, st });
+        });
+        if (valid.length) {
+          valid.sort((a, b) => rankOf(b.h) - rankOf(a.h) || a.hid.localeCompare(b.hid));
+          pick = { ...valid[0], price: pr };
+          break;
+        }
+      }
+      const price = pick ? pick.price : e.price;
+      const fixAll = () => fixes.forEach(([hid, real]) => offerWrite(tx, kind, hid, cid, real));
+      if (expect != null && Number(expect) !== price) {
+        fixAll();
+        result = { ok: false, priceChanged: true, price };
+        return;
+      }
+      if (Number(us.data()?.gold || 0) < price) {
+        fixAll();
+        result = { ok: false, gold: true, price };
+        return;
+      }
+      if (pick) {
+        const ownerSnap = await tx.get(userRef(pick.h.ownerUid));
+        fixAll();
+        stockSaleTx(tx, { houseId: pick.hid, h: pick.h, type, kind, cid, st: pick.st, price, buyerUid: uid, ownerSnap });
+        result = { ok: true, price, fromShop: true };
+        return;
+      }
+      // oyunun kendi dükkânı — kâr (fiyatın %25'i) üzerinden sıfır satış kâr vergisi belediyeye, kalanı oyundan çıkar
+      fixAll();
+      tx.update(userRef(uid), { gold: FieldValue.increment(-price), goldTag: goldTag(kind === 'vehicle' ? 'arac' : 'silah') });
+      const profit = price - stockUnitCost(price);
+      const tax = newSaleTax(profit, kind);
+      business?.recordGameIncomeTx(tx, { type, amount: price, kind: 'sale', customerUid: uid, products: { [e.name]: 1 }, tax, taxSource: 'sifir', stat: newSaleStat(kind, { price, profit, tax, game: true }) });
+      tx.set(db.collection(coll(kind)).doc(), kind === 'vehicle' ? newVehicleDoc(uid, cid, FieldValue) : newWeaponDoc(uid, cid, FieldValue));
+      result = { ok: true, price, fromShop: false };
+    });
+    if (result.priceChanged) fail('aborted', `price-changed:${result.price}`);
+    if (result.gold) fail('failed-precondition', 'Yetersiz altın.');
+    return { ...result, name: e.name };
   }
 
   // v130 — GEÇİŞ (bir kez): eski vitrin ürünleri sahibine döner. İlanı açık olan
@@ -728,7 +985,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
     const pack = (snap, kind) => snap.docs.map((d) => ({ ref: d.ref, life: d.data().lifeDays ?? lifeCapOf(kind), penalty: removePenalty(d.data()) }));
     // v130: stok — ödenen tutar sahibine iade edilir, belge silinir
     const ss = await tx.get(stockRef(houseId));
-    const stock = ss.exists ? { ref: ss.ref, refund: Object.values(ss.data().paid || {}).reduce((a, n) => a + Math.max(0, Math.round(Number(n) || 0)), 0) } : null;
+    const stock = ss.exists ? { ref: ss.ref, refund: Object.values(ss.data().paid || {}).reduce((a, n) => a + Math.max(0, Math.round(Number(n) || 0)), 0), kind: STOCK_KIND[ss.data().type] || null, cids: Object.keys(ss.data().items || {}) } : null;
     return { weapons: pack(ws, 'weapon'), vehicles: pack(vs, 'vehicle'), listings: ls.docs.map((d) => d.ref), stock };
   }
   function onCloseWrite(tx, { h, state }) {
@@ -738,6 +995,8 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       stockRefund = state.stock.refund;
       if (stockRefund > 0 && h?.ownerUid) tx.update(userRef(h.ownerUid), { gold: FieldValue.increment(stockRefund), goldTag: goldTag('stok') });
       tx.delete(state.stock.ref);
+      // v132: oyunun mağazasındaki tekliflerden de düşer
+      if (state.stock.kind) for (const cid of state.stock.cids || []) offerWrite(tx, state.stock.kind, state.stock.ref.id, cid, 0);
     }
     // v115: bugün konan ürün bedelsiz döner (vitrinden çekmekle aynı kural)
     [...state.weapons, ...state.vehicles].forEach(({ ref, life, penalty = true }) =>
@@ -788,6 +1047,8 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
         return stockPrices(uid, p);
       case 'stockBuy':
         return stockBuy(uid, p);
+      case 'stockQuote':
+        return stockQuote(uid, p);
       default:
         // v77 Faz 3: cafe/bar menüsü + internet kafe (functions/venue.js)
         if (Object.prototype.hasOwnProperty.call(extraOps, p.op)) return extraOps[p.op](uid, p);
@@ -795,5 +1056,5 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
     }
   });
 
-  return { shopAction, migrateVitrin, bizHooks: { onCloseRead, onCloseWrite, statusExtra } };
+  return { shopAction, migrateVitrin, gameStoreBuy, afterItemBuy, bizHooks: { onCloseRead, onCloseWrite, statusExtra } };
 }

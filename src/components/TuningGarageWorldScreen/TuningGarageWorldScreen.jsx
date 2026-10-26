@@ -880,9 +880,7 @@ export default function TuningGarageWorldScreen({ onExit, onOpenHeist }) {
   return (
     <div className="ws-fullscreen" style={{ '--ws-bg': '#1c1d1f', '--ws-panel-bg': '#191a1e', '--ws-accent': ACCENT }}>
       <Hud suspicion={player?.suspicion ?? 0} reputation={player?.reputation ?? 0} gold={player?.gold ?? 0} />
-      {onOpenHeist && (
-        <button className="ws-heist-btn" onClick={() => onOpenHeist('modifiye_garaji')}>Soygun</button>
-      )}
+      {/* v132: mekân içi soygun butonu kaldırıldı */}
       <button className="ws-exit-btn" onClick={onExit}>✕</button>
       {/* v91 KULLANICI İSTEĞİ: oyuncu modifiyecileri gibi üstte hızlı buton. */}
       {ready && !panel && (

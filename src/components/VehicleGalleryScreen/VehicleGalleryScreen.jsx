@@ -6,6 +6,8 @@ import { buyVehicle } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import './VehicleGalleryScreen.css';
 import { CarStatBars } from '../RaceTrackScreen/CarStats';
+import { useShopOffers, withOfferPrices } from '../../hooks/useShopOffers';
+import { priceChangedText } from '../../lib/priceChanged';
 
 // Kullanıcı revizesi: "galeriden araba satın aldığımızda bi süre butonda
 // satın alındı yazsın, araba aldığımı anlayamadım oyuncular yanlışlıkla
@@ -30,6 +32,8 @@ export default function VehicleGalleryScreen({ items = null, onBuy = null, disab
   const [error, setError] = useState(null);
   const [justBoughtIds, setJustBoughtIds] = useState(() => new Set());
   const feedbackTimeouts = useRef({});
+  // v132: oyunun galerisi — en ucuz oyuncu galerisinin fiyatı
+  const best = useShopOffers('vehicle', { enabled: !items && Boolean(user) });
 
   useEffect(
     () => () => {
@@ -44,13 +48,13 @@ export default function VehicleGalleryScreen({ items = null, onBuy = null, disab
 
   const gold = player?.gold ?? 0;
 
-  const list = items || vehicleCatalog;
+  const list = items || withOfferPrices(vehicleCatalog, best);
   const handleBuy = async (car) => {
     const catalogId = car.id;
     setBusy(catalogId);
     setError(null);
     try {
-      await (onBuy ? onBuy(car) : buyVehicle(catalogId));
+      await (onBuy ? onBuy(car) : buyVehicle(catalogId, car.price));
       setJustBoughtIds((prev) => new Set(prev).add(catalogId));
       if (feedbackTimeouts.current[catalogId]) {
         clearTimeout(feedbackTimeouts.current[catalogId]);
@@ -63,7 +67,7 @@ export default function VehicleGalleryScreen({ items = null, onBuy = null, disab
         });
       }, BUY_FEEDBACK_MS);
     } catch (err) {
-      setError(err.message || 'Satın alma başarısız.');
+      setError(priceChangedText(err) || err.message || 'Satın alma başarısız.');
     } finally {
       setBusy(null);
     }

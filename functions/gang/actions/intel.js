@@ -378,7 +378,20 @@ export function createIntelActions(core) {
     const joinedAtMs = Number(t.joinedAtMs || rec.joinedAtMs || 0);
     const joinedDaysAgo = joinedAtMs ? Math.max(0, Math.round((midnightMsOf(ctx.dateKey) - midnightMsOf(dateKeyOf(joinedAtMs))) / 86_400_000)) : null;
     const rank = t.rank || 'muhbir';
+    // v132 — son 7 gün (bugün dahil): günlük kayıtlardan
+    const days = Array.from({ length: 7 }, (_, i) => addDays(ctx.dateKey, -i));
+    const daySnaps = await Promise.all(days.map((d) => ctx.ref.intelStat(targetId, d).get()));
+    const week = { wars: 0 };
+    const warSet = new Set();
+    for (const s of daySnaps) {
+      const v = s.exists ? s.data() : null;
+      if (!v || v.rosterId !== targetId) continue;
+      Object.keys(v.wars || {}).forEach((w) => warSet.add(w));
+      for (const k of ['power', 'truckReports', 'betReports', 'truckLeaks', 'betLeaks', 'heistsStopped', 'goldRecovered', 'goldEarned', 'bustPrestige']) week[k] = (week[k] || 0) + Number(v[k] || 0);
+    }
+    week.wars = warSet.size;
     return {
+      week,
       rosterId: targetId,
       codeName: t.codeName || '',
       rank,

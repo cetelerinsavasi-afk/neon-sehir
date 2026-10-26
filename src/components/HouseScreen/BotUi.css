@@ -1,0 +1,237 @@
+/* v132 — Bot arayüzü (garson siparişi + bot düzenleyici) */
+.bt-order {
+  max-width: 460px;
+}
+.bt-order-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.bt-order-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+.bt-order-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 10px 6px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  font-size: 12.5px;
+}
+.bt-order-item:active {
+  transform: scale(0.96);
+  border-color: rgba(57, 255, 136, 0.75);
+}
+.bt-order-emoji {
+  font-size: 26px;
+}
+.bt-order-price {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #ffd76a;
+  font-weight: 700;
+}
+.bt-order-free {
+  color: #7dffb0;
+  font-weight: 700;
+  font-size: 11.5px;
+}
+
+.bt-ed {
+  max-width: 460px;
+  width: calc(100% - 24px);
+  max-height: calc(100dvh - 24px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.bt-ed-stage {
+  position: relative;
+  height: 200px;
+  flex: 0 0 auto;
+  border-radius: 14px;
+  overflow: hidden;
+  background: radial-gradient(120% 80% at 50% 0, color-mix(in srgb, var(--jc, #22d3ee) 30%, #0a0e1a), #05070d 72%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.bt-ed-av {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  height: 100%;
+  width: 120px;
+  transform: translateX(-50%);
+}
+.bt-ed-plate {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 12px;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #f1e6d8;
+}
+.bt-ed-x {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+.bt-tabs {
+  display: flex;
+  gap: 5px;
+  margin: 10px 0 8px;
+  flex: 0 0 auto;
+}
+.bt-tabs button {
+  flex: 1;
+  padding: 7px 4px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.bt-tabs button.on,
+.bt-chips button.on,
+.bt-row button.on,
+.bt-moves button.on,
+.bt-waiter.on {
+  border-color: #22d3ee;
+  background: rgba(34, 211, 238, 0.16);
+  color: #dff9ff;
+  font-weight: 700;
+}
+.bt-pane {
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+  padding-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.bt-chips,
+.bt-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.bt-chips button,
+.bt-row button {
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font-size: 12.5px;
+}
+.bt-row button {
+  font-size: 18px;
+  padding: 4px 12px;
+}
+.bt-outfits,
+.bt-types {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+.bt-of {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  text-align: left;
+}
+.bt-of.on {
+  border-color: #22d3ee;
+  box-shadow: 0 0 0 1px #22d3ee inset;
+}
+.bt-of b {
+  font-size: 11.5px;
+}
+.bt-of-av {
+  display: block;
+  height: 86px;
+  border-radius: 8px;
+  background: #080b13;
+  overflow: hidden;
+}
+.bt-of-av.small {
+  height: 70px;
+}
+.bt-sw {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.bt-sw i {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+}
+.bt-sw i.on {
+  border-color: #22d3ee;
+  outline: 2px solid #22d3ee;
+}
+.bt-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.3);
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+}
+.bt-moves {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.bt-moves button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 4px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font-size: 12px;
+}
+.bt-moves button span {
+  font-size: 24px;
+}
+.bt-waiter {
+  padding: 11px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font-weight: 700;
+}
+.hs-selbar-actions .hs-bot-edit {
+  border-color: rgba(34, 211, 238, 0.6);
+  color: #b9f3ff;
+}

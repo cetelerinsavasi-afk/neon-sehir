@@ -102,7 +102,8 @@ export default function RegionModal({
 
   if (!region) return null;
 
-  const heistTarget = getHeistTarget(region);
+  // v132: sadece seyyar satıcıda "Haraç Kes" kalır (fabrika / mekân soygun butonları kaldırıldı)
+  const heistTarget = region.screen === 'seyyar-satici' ? getHeistTarget(region) : null;
 
   const handleBackdropClick = () => {
     if (Date.now() - openedAtRef.current < GHOST_CLICK_GUARD_MS) return;

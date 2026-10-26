@@ -53,3 +53,39 @@ export function heistStateEntries({ paidToCriminals = 0, fines = 0, policeShare 
   if (policeShare > 0) out.push({ kind: 'out', cat: 'soygun_polis_payi', amount: Math.floor(policeShare) });
   return out;
 }
+
+// v132 — Teşkilat Bakanlığı raporu: soygun analiz sayaçları (stateLedger.stat).
+// Haraç (seyyar satıcı) ayrı tutulur. Hedef: banka, casino, araba_galerisi,
+// modifiye_garaji, fabrika… (seyyar satıcılar tek kalem: seyyar).
+//   outcome: 'success' | 'caught' (şüpheden yakalandı) | 'stopped' (polis durdurdu)
+//   paid: suçlulara ödenen · fine: yazılan cezalar · recovered: polisin kurtardığı · policeShare: polise giden pay
+export const HEIST_STAT_TARGETS = ['banka', 'casino', 'araba_galerisi', 'modifiye_garaji', 'fabrika', 'seyyar'];
+export function heistTargetKey(target) {
+  const t = String(target || '');
+  if (t.startsWith('seyyar_satici')) return 'seyyar';
+  return HEIST_STAT_TARGETS.includes(t) ? t : 'diger';
+}
+export function heistStat(target, { outcome, team = false, paid = 0, fine = 0, recovered = 0, policeShare = 0 } = {}) {
+  const t = heistTargetKey(target);
+  const p = t === 'seyyar' ? 'har' : 'soy';
+  const n = (v) => Math.max(0, Math.floor(Number(v) || 0));
+  const st = { [`${p}_n`]: 1, [`sh_${t}_n`]: 1 };
+  if (team) st.soy_ekip_n = 1;
+  if (outcome === 'success') {
+    st[`${p}_bas_n`] = 1;
+    st[`${p}_bas_tutar`] = n(paid);
+    st[`sh_${t}_bas`] = 1;
+    st[`sh_${t}_odeme`] = n(paid);
+  } else if (outcome === 'caught') {
+    st[`${p}_yak_n`] = 1;
+    st[`${p}_yak_ceza`] = n(fine);
+    st[`sh_${t}_yak`] = 1;
+  } else if (outcome === 'stopped') {
+    st.soy_dur_n = 1;
+    st.soy_dur_tutar = n(recovered);
+    st.soy_dur_ceza = n(fine);
+    st.soy_pol_pay = n(policeShare);
+    st[`sh_${t}_dur`] = 1;
+  }
+  return st;
+}

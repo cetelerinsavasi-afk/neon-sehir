@@ -20,7 +20,9 @@ Oyuncu bir meslek seçiyor (İşçi, Üretici ya da Polis), günlük işini yap�
 - **Banka**: altın yatırma/çekme, kripto (KR)/hisse senedi/elmas alım-satımı (canlı fiyat grafikleriyle), araç kredisi, devlete olan borcu (ceza) ödeme.
 - **Fabrikalar**: her oyuncu bir kere fabrika kurabiliyor, içine üretim makineleri (mining dahil) alıp işçi çalıştırabiliyor, günlük kâr/zarar raporu görüyor. Fabrika kapatılamaz. v124: yeni hisse alım-satımı kapalı (eski hisselerin ödemesi süresi bitene kadar sürer).
 - **Malzeme (v124)**: oyuncunun cebinde malzeme yok (sadece yasaklı madde). Fabrika + silahçı + modifiyecinin ORTAK envanteri var; malzeme **Mağaza**'dan (işletmeler/fabrikalar arası ilan pazarı) alınıp satılır. Fiyat bantlarının tabanı `functions/itemRules.js` → `AMAZOR_PRICES` ("Amazor fiyatları").
-- **2. El Pazar Yeri**: oyuncular arasında araç ve silah alım-satımı (%1 vergi; "Sıfır" filtresi).
+- **2. El Pazar Yeri**: oyuncular arasında araç ve silah alım-satımı (v132: vergisiz; "Sıfır" filtresi). Silahçı / galeri vitrine eklerken alış fiyatına eşit / ucuz sıfır ilanları (çete ilanları dahil) otomatik alır.
+- **Oyunun Silah Mağazası / Galerisi (v132)**: stoğu olan en ucuz oyuncu dükkânının fiyatıyla satar, para o dükkâna gider (eşitlikte dün en az kazanan); kimsede yoksa oyun satar.
+- **Mobilya Pazarı (v132)**: Tasarla › Pazar — kullanılmayan mobilyalar oyuncular arasında satılır (mağaza fiyatının yarısı – 1 birim altı).
 - **Altın Mağazası**: gerçek parayla altın paketi satın alma.
 - **Liman & Depo (v124)**: Amazor ve Liman kalktı. Yasaklı madde ticareti depolarda: oyunun deposu (alış 1.500 / satış 2.250, sınırsız) ve oyuncuların açtığı DEPO işletmeleri (alış 1.500–1.750, satış 2.000–2.250).
 

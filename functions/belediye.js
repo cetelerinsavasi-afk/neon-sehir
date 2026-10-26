@@ -552,7 +552,7 @@ export function createBelediye({
     const top = Object.entries(donors)
       .map(([k, v]) => ({ key: k, ...v }))
       .sort((a, b) => b.amount - a.amount)
-      .slice(0, 3);
+      .slice(0, 10); // v132: en çok bağış yapan 10
     tx.set(donationsRef(day), { dayKey: day, donors, top, total: inc(amount), count: inc(1), updatedAtMs: now() }, { merge: true });
     stateWrite(tx, db, FieldValue, { kind: 'in', cat: 'bagis', amount, atMs: now(), dayKey: day, stat: { bagis_n: 1 } });
   }

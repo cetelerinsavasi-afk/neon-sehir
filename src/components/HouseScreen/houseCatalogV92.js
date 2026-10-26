@@ -2305,10 +2305,10 @@ I('guvercin', 'dis', 'Güvercinler', '🐦', (g) => {
 export const V92_CATEGORIES = [
   { key: 'zemin_parca', name: 'Zemin Parçaları', icon: '🧩' },
   { key: 'duvar_parca', name: 'Duvar Panelleri', icon: '🖼️' },
-  { key: 'studyo', name: 'Stüdyo & Yayın', icon: '🎛️' },
-  { key: 'eglence', name: 'Sinema & Gazino', icon: '🎬' },
-  { key: 'mafya', name: 'Mafya', icon: '🕴️' },
-  { key: 'hapis', name: 'Karakol & Hapis', icon: '⛓️' },
+  { key: 'studyo', name: 'Stüdyo', icon: '🎛️' }, // v132 adlar sadeleşti
+  { key: 'eglence', name: 'Gazino', icon: '🎰' }, // v132: sinema → Lüks, Mafya buraya katıldı
+  { key: 'mafya', name: 'Mafya', icon: '🕴️' }, // v132: kategori kalktı (eşyaları Gazino'da)
+  { key: 'hapis', name: 'Karakol', icon: '🚔' },
   { key: 'ciftlik', name: 'Çiftlik & Kamp', icon: '🚜' },
   { key: 'cami', name: 'Camii', icon: '🕌' },
   { key: 'banka', name: 'Banka', icon: '🏦' },

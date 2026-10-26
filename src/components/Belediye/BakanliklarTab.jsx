@@ -14,6 +14,8 @@ import { Kpis, Ledger, Person, RateEditor, Table, dayLabel, hoursLeft, nf, useTi
 const RANK_LABEL = { baskan: 'Emniyet Genel Müdürü', sef: 'Emniyet Amiri', uzman: 'Başkomiser', ajan: 'Komiser', muhbir: 'Polis Memuru' };
 const MACHINE_LABEL = { mining: 'Kripto', tamirMalzemesi: 'Tamir Malz.', arabaGelistirme: 'Araba Gel.', silahUpgrade: 'Silah Gel.' };
 const IE_LABEL = { araba: '2. el araba', silah: '2. el silah', malzeme: 'Malzeme / makine' };
+// v132 — soygun hedefleri (functions/policeRules.js heistTargetKey)
+const HEIST_LABEL = { banka: '🏦 Banka', casino: '🎰 Casino', araba_galerisi: '🚗 Galeri', modifiye_garaji: '🔧 Modifiye', fabrika: '🏭 Fabrika', seyyar: '🥙 Haraç', diger: 'Diğer' };
 
 // Raporun gelir/gider kalemleri: { in: {cat: n}, out: {cat: n} }
 function catsOf(report) {
@@ -99,7 +101,10 @@ function Ticaret({ r, c, rates }) {
     ['gazino_onNumara', '10 Numara'],
   ].map(([k, name]) => ({ key: k, name, v: nf(c.in[k]) }));
   const gzTotal = ['gazino_slot', 'gazino_piyango', 'gazino_rulet', 'gazino_onNumara'].reduce((a, k) => a + (c.in[k] || 0), 0);
-  const ie = ['araba', 'silah'].map((k) => ({ key: k, name: IE_LABEL[k], n: nf(st[`ie_${k}_n`]), ciro: nf(st[`ie_${k}_ciro`]), rate: pctOf(rates, k === 'araba' ? 'ikAraba' : 'ikSilah') }));
+  // v132: 2. el satışlar vergisiz
+  const ie = ['araba', 'silah'].map((k) => ({ key: k, name: IE_LABEL[k], n: nf(st[`ie_${k}_n`]), ciro: nf(st[`ie_${k}_ciro`]) }));
+  const ieCiro = (st.ie_araba_ciro || 0) + (st.ie_silah_ciro || 0);
+  const ieN = (st.ie_araba_n || 0) + (st.ie_silah_n || 0);
   // v130 — sıfır (stoktan) satışlar: sadece kârdan vergi (oyuncu dükkânları + oyunun mağazaları)
   const sf = [
     ['sf_silah', 'Silahçılar', 'sfSilah'],
@@ -114,7 +119,7 @@ function Ticaret({ r, c, rates }) {
         items={[
           { label: 'İşletme vergisi', value: nf(bizTax) },
           { label: 'Oyunun gazinosu', value: nf(gzTotal), sub: 'kârın tamamı devlete' },
-          { label: '2. el vergisi', value: nf(c.in.vergi_ikinciEl) },
+          c.in.vergi_ikinciEl ? { label: '2. el vergisi', value: nf(c.in.vergi_ikinciEl) } : { label: '2. el satış', value: nf(ieCiro), sub: ieN ? `${nf(ieN)} satış` : null },
           { label: 'Sıfır satış vergisi', value: nf(sfTax), sub: 'kârdan' },
           { label: 'Piyango vergisi', value: nf(c.in.vergi_piyango), sub: st.pi_bilet ? `${nf(st.pi_bilet)} bilet · ödül ${nf(st.pi_odul)}` : null },
         ]}
@@ -161,10 +166,54 @@ function Ticaret({ r, c, rates }) {
           { k: 'name', label: 'Kalem' },
           { k: 'n', label: 'Satış', num: true },
           { k: 'ciro', label: 'Tutar', num: true },
-          { k: 'rate', label: 'Oran', num: true },
         ]}
         rows={ie}
       />
+    </>
+  );
+}
+
+// v132 — soygun analizi (stateLedger.stat: soy_* / har_* / sh_{hedef}_*)
+function Soygunlar({ st, c }) {
+  const keys = Object.keys(HEIST_LABEL).filter((t) => st[`sh_${t}_n`]);
+  const rows = keys.map((t) => ({
+    key: t,
+    name: HEIST_LABEL[t],
+    n: nf(st[`sh_${t}_n`]),
+    bas: nf(st[`sh_${t}_bas`]),
+    odeme: nf(st[`sh_${t}_odeme`]),
+    yak: nf(st[`sh_${t}_yak`]),
+    dur: nf(st[`sh_${t}_dur`]),
+  }));
+  const paid = (c.out.soygun_odeme || 0) || (st.soy_bas_tutar || 0) + (st.har_bas_tutar || 0);
+  const total = (st.soy_n || 0) + (st.har_n || 0);
+  const ok = (st.soy_bas_n || 0) + (st.har_bas_n || 0);
+  const caught = (st.soy_yak_n || 0) + (st.har_yak_n || 0);
+  return (
+    <>
+      <h4 className="bd-h">Soygunlar</h4>
+      <Kpis
+        items={[
+          { label: 'Soygun', value: nf(total), sub: `${nf(ok)} başarılı${st.soy_ekip_n ? ` · ${nf(st.soy_ekip_n)} ekip` : ''}` },
+          { label: 'Soygunlara giden', value: nf(paid) },
+          { label: 'Polis durdurdu', value: nf(st.soy_dur_n), sub: `kurtarılan ${nf(st.soy_dur_tutar)}` },
+          { label: 'Polise giden pay', value: nf(c.out.soygun_polis_payi || st.soy_pol_pay) },
+          { label: 'Yakalanan', value: nf(caught), sub: `ceza ${nf(c.in.soygun_ceza)}` },
+        ]}
+      />
+      {rows.length > 0 && (
+        <Table
+          cols={[
+            { k: 'name', label: 'Hedef' },
+            { k: 'n', label: 'Deneme', num: true },
+            { k: 'bas', label: 'Başarılı', num: true },
+            { k: 'odeme', label: 'Ödenen', num: true },
+            { k: 'yak', label: 'Yakalanan', num: true },
+            { k: 'dur', label: 'Durduruldu', num: true },
+          ]}
+          rows={rows}
+        />
+      )}
     </>
   );
 }
@@ -195,6 +244,7 @@ function Guvenlik({ r, c, rates }) {
         ]}
         rows={rows}
       />
+      <Soygunlar st={r.stat || {}} c={c} />
     </>
   );
 }

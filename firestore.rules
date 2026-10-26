@@ -442,6 +442,20 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if false;
     }
+    // v132 — mobilya pazarı (functions/furnMarket.js): ilanlar + vitrin (en ucuzlar)
+    match /furnListings/{id} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    match /furnMarket/{doc} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    // v132 — oyunun mağazasındaki en ucuz oyuncu teklifleri (functions/shop.js shopOffers)
+    match /shopOffers/{kind} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
     // v124 — depolar (functions/depo.js): envanter (altın + yasaklı madde) sadece
     // sahibine; fiyat + stok + alabileceği adet herkese açık. Yazma sadece sunucu.
     match /depots/{houseId} {

@@ -13,6 +13,8 @@ const MAP = {
   'remove-penalty': 'Saat 00:00 geçti — vitrinden geri alırsan ömrü 1 gün kısalır. Tekrar dene ve onayla.',
   'biz-closed': 'Bu işletme kapalı.',
   'device-full': 'Bu cihaz dolu, başka bir cihaz dene.',
+  'waiter-closed': 'Garsonluk artık botlarda; oyuncular garson olamaz.',
+  'gym-closed': 'Bu salon kapandı. Oyuncuların salonlarından birine git.',
   'gym-equipment': 'Salonda yeterli alet yok (en az 3 farklı alet gerekli).',
   'in-team': 'Takımdaki oyuncu salonda bireysel antrenman yapamaz.',
   life0: 'Ömrü bitmiş ürün vitrine konamaz.',

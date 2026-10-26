@@ -194,6 +194,8 @@ function TrainingSection({ teamId, players, allPlayers, trainingPlayerIds, train
           ? 'Takım kasasında yeterli para yok.'
           : m === 'gold'
             ? 'Altının yetmiyor.'
+            : m === 'gym-closed'
+            ? 'Bu salon kapandı, başka bir salon seç.'
             : m.startsWith('price-changed')
               ? 'Salonun fiyatı az önce değişti; tekrar kontrol edip öde.'
               : m || 'Ödenemedi.'

@@ -235,7 +235,13 @@ function Donations() {
   const [open, setOpen] = useState(false);
   const gold = Math.floor(Number(player?.gold || 0));
   const [amt, setAmt] = useState(BELEDIYE.MIN_DONATION);
-  const top = data?.top || [];
+  // v132: ilk 10 (eski günlerde sadece 3'ü kayıtlıysa bağışçı listesinden hesaplanır)
+  const top = data?.donors
+    ? Object.entries(data.donors)
+        .map(([key, v]) => ({ key, ...v }))
+        .sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0))
+        .slice(0, 10)
+    : data?.top || [];
   const give = async () => {
     const r = await run('donate', { amount: amt }, { success: (x) => `🏛️ ${nf(x.amount)} altın bağışladın. Teşekkürler!` });
     if (r) setOpen(false);
@@ -250,7 +256,7 @@ function Donations() {
         <div className="gx-card bd-donors">
           {top.map((t, i) => (
             <div key={t.key} className="bd-donor">
-              <span className="bd-medal">{['🥇', '🥈', '🥉'][i]}</span>
+              <span className="bd-medal">{['🥇', '🥈', '🥉'][i] || `${i + 1}.`}</span>
               {t.kind === 'gang' && <Logo logo={t.logo} size={22} />}
               <span className="bd-donor-name">{t.name}</span>
               <Gold value={t.amount} />

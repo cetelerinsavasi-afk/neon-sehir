@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useBackClose } from '../../lib/backStack';
 import { collection, doc, getDoc, limit, onSnapshot, orderBy, query, setDoc, deleteDoc, serverTimestamp, where } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -11,6 +11,10 @@ import { useHeldItem } from '../../hooks/useHeldItem';
 import { houseAction, giftHeldItem, createSixtagramPost } from '../../services/gameActions';
 import { createHouseEngine, EMOTES, CART_MAX } from './houseEngine';
 import ItemThumb from './ItemThumb';
+import { MarketShelf, SellSheet, useFurnBest, useListingWatch } from './FurnMarket'; // v132 mobilya pazarı
+import { useHouseBots } from './houseBots'; // v132 botlar
+import { BotWaiterButton, BotEditor } from './BotUi';
+import { furnPriceBand } from '../../../functions/furnMarket.js';
 import { CATALOG, CATALOG_MAP, CATEGORIES, TINTS } from './houseCatalog';
 import { FLOORS, WALLS } from './houseTextures';
 import { FREE_SURFACES, HOUSE_PRODUCTS, SURFACE_KEYS } from '../../../functions/houseCatalogData.js';
@@ -32,8 +36,6 @@ import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import { StreamCasinoSheet } from '../Casino/StreamCasino';
 import ShopShowcase from '../Shop/ShopShowcase';
 import MenuPanel from '../Venue/MenuPanel';
-import { WaiterButton, OrdersPanel, NewOrderPop } from '../Venue/WaiterPanel';
-import { useWaiterRole } from '../../hooks/useWaiter';
 import NetCreditRing from '../Venue/NetCreditRing';
 import PianoPanel from '../Piano/PianoPanel';
 import DrumPanel, { drumKey } from '../Piano/DrumPanel';
@@ -202,6 +204,8 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   const hoApiRef = useRef(null); // v93 home ofis katmanı
   const venueNpcsRef = useRef([]);
   const itemNpcsRef = useRef([]); // v100: büfe kulübesinin içindeki büfeci (evlerde)
+  const botNpcsRef = useRef([]); // v132: botlar (houseBots.js)
+  const botsApiRef = useRef(null);
   const itemNpcKeyRef = useRef('');
   const mountRef = useRef(null);
   const seenSelfRef = useRef(false);
@@ -220,7 +224,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   const [sel, setSel] = useState(null);
   const [interact, setInteract] = useState(null);
   const [tab, setTab] = useState('magaza');
-  const [cat, setCat] = useState('oturma');
+  const [cat, setCat] = useState(CATEGORIES[0]?.key || 'oturma'); // v132: ilk kategori (Dükkan & Kafe)
   const [shelfOpen, setShelfOpen] = useState(true);
   const [saveState, setSaveState] = useState('saved');
   const [design, setDesign] = useState(null);
@@ -294,16 +298,22 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   canDesignRef.current = canDesign;
   const [realLook, setRealLook] = useState(false); // v92 — göz: denemeleri gerçek göster
   // v114 — tavan modu (Tasarla): açıkken sadece tavan eşyalarına dokunulur
-  const [ceilMode, setCeilModeState] = useState(false);
-  const [ceilNote, setCeilNote] = useState(0); // "Tavan modu açıldı" yazısı (anahtar)
-  const ceilModeRef = useRef(false);
-  const setCeil = useCallback((on) => {
-    const v = Boolean(on);
-    if (v && !ceilModeRef.current) setCeilNote(Date.now());
+  // v132 — zemin modu da var: açıkken sadece zemin parçalarına dokunulur (katman: 'ceil' | 'floor' | null)
+  const [layer, setLayerState] = useState(null);
+  const ceilMode = layer === 'ceil';
+  const floorMode = layer === 'floor';
+  const [ceilNote, setCeilNote] = useState(0); // "Tavan / Zemin modu açıldı" yazısı (anahtar)
+  const layerRef = useRef(null);
+  const setLayer = useCallback((l) => {
+    const v = l === 'ceil' || l === 'floor' ? l : null;
+    if (v && layerRef.current !== v) setCeilNote(Date.now());
     if (!v) setCeilNote(0);
-    ceilModeRef.current = v;
-    setCeilModeState(v);
+    layerRef.current = v;
+    setLayerState(v);
   }, []);
+  const setCeil = useCallback((on) => setLayer(on ? 'ceil' : null), [setLayer]);
+  // kategori / eşya → katman (Tavanlar → tavan, Zemin Parçaları → zemin, diğerleri kapalı)
+  const layerOfCat = (k) => (k === 'tavan' ? 'ceil' : k === 'zemin_parca' ? 'floor' : null);
   // v101.1 — sunucudaki son duvar/zemin/kapı (her biri AYRI karşılaştırılır) ve
   // bu evde senin en son denediğin kaplamalar (motor yeniden kurulsa da kaybolmasın)
   const lastRemoteSurfRef = useRef(null);
@@ -440,6 +450,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
       onPlayerTap: (uid) => {
         // v92 Faz 8: mekân NPC'si → istasyonuna git / paneli aç.
         // v93: oyuncuya dokununca profil AÇILMAZ (profil: 👥 kişiler listesinden).
+        if (String(uid).startsWith('npc_bot_')) return Boolean(botsApiRef.current?.tap(uid)); // v132
         return Boolean(String(uid).startsWith('npc_') && venueApiRef.current?.npcTap(uid));
       },
       onFreeCamChange: setFreeCam,
@@ -596,7 +607,8 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   }, [realLook, engineKey]);
   useEffect(() => {
     engineRef.current?.setCeilMode?.(ceilMode && mode === 'build');
-  }, [ceilMode, mode, engineKey]);
+    engineRef.current?.setFloorMode?.(floorMode && mode === 'build');
+  }, [ceilMode, floorMode, mode, engineKey]);
   // v92 — yetkili: sahibin envanteri (belge sadece sahibine açık → sunucudan)
   const houseUpdatedAt = houseDoc?.updatedAtMs || 0;
   useEffect(() => {
@@ -657,7 +669,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   const liveMapRef = useRef({});
   const pushOthers = useCallback(() => {
     const merged = fsOthersRef.current.map((p) => mergeLive(p, liveMapRef.current[p.uid], p.updatedAt?.toMillis?.() ?? 0));
-    const extra = [...venueNpcsRef.current, ...itemNpcsRef.current];
+    const extra = [...venueNpcsRef.current, ...itemNpcsRef.current, ...botNpcsRef.current];
     engineRef.current?.setOthers(extra.length ? [...merged, ...extra] : merged);
   }, []);
   // v100 — eşya NPC'leri: satın alınmış her büfe kulübesinin içinde bir büfeci durur
@@ -676,6 +688,10 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     itemNpcsRef.current = list;
     pushOthers();
   }, [houseDoc?.items, venue, pushOthers]);
+  // v132 — botlar (Lüks › Bot; belediyede çaycı garson)
+  const bots = useHouseBots({ engineRef, engineKey, phase, houseId, houseDoc, venue, mode, isOwner, user, npcsRef: botNpcsRef, pushOthers, flash });
+  botsApiRef.current = bots;
+  const [botEdit, setBotEdit] = useState(null); // { i }
   const onVenueNpcs = useCallback(
     (list) => {
       venueNpcsRef.current = list || [];
@@ -1030,12 +1046,12 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     if (m === 'walk') setSel(null);
     if (m === 'build') setPanel(null);
     // v114 — tavan modu sadece Tasarla'da; geri dönünce Tavanlar açıksa yine açık
-    setCeil(m === 'build' && tab === 'magaza' && cat === 'tavan');
+    setLayer(m === 'build' && tab === 'magaza' ? layerOfCat(cat) : null);
   };
-  // v114 — kategori değişince: Tavanlar → tavan modu açık, diğerleri → kapalı
+  // v114 — kategori değişince: Tavanlar → tavan modu açık, diğerleri → kapalı (v132: Zemin Parçaları → zemin modu)
   const pickCat = (k) => {
     setCat(k);
-    setCeil(k === 'tavan');
+    setLayer(layerOfCat(k));
   };
   // v77: 3 görünüm sırayla — 3D (varsayılan) → 2D (kuş bakışı) → Göz (karakterin gözünden)
   const toggleView = () => {
@@ -1049,6 +1065,59 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   // --- sepet / envanter ------------------------------------------------------------
   const serverOwned = useMemo(() => ownedCount(houseDoc?.items), [houseDoc?.items]);
   const localOwned = useMemo(() => ownedCount(design?.items), [design?.items]);
+  // v132 — odadaki pazar eşyaları: ilanları dinlenir; satılınca / iptal edilince odadan kalkar
+  const marketIds = useMemo(() => (design?.items || []).filter((it) => it.p !== 1 && it.m).map((it) => it.m), [design?.items]);
+  const marketWatch = useListingWatch(canDesign ? marketIds : []);
+  const marketPriceRef = useRef({});
+  useEffect(() => {
+    const closed = Object.values(marketWatch).filter((l) => l.status && l.status !== 'open').map((l) => l.id);
+    if (!closed.length || !canDesign) return;
+    const n = engineRef.current?.removeMarketItems?.(closed) || 0;
+    if (n) flash(`🛋️ Pazardaki ${n > 1 ? `${n} eşya` : 'eşya'} satıldı ya da kaldırıldı; odadan çıktı.`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [marketWatch]);
+  const furnBest = useFurnBest(canDesign && mode === 'build' && shelfOpen && tab === 'pazar');
+  const placeFromMarket = (k, b) => {
+    if ((design?.items || []).some((it) => it.m === b.id && it.p !== 1)) {
+      flash('🛋️ Bu ilan zaten odanda.');
+      return;
+    }
+    marketPriceRef.current[b.id] = { t: b.t, v: b.v };
+    setLayer(layerOfCat(CATALOG_MAP[k]?.cat));
+    const r = engineRef.current?.addItem(k, 0, { market: b.id });
+    if (r === 'limit') flash('Eşya sınırına ulaştın (500).');
+  };
+  // v132 — odadaki satın alınmış eşyayı pazara koy (önce envantere döner, sonra ilan)
+  const [sellAsk, setSellAsk] = useState(null); // { k }
+  const [sellBusy, setSellBusy] = useState(false);
+  const doSell = async (v) => {
+    const eng = engineRef.current;
+    if (!eng || !sellAsk || !sel || sel.k !== sellAsk.k || sel.p !== 1) {
+      setSellAsk(null);
+      return;
+    }
+    if (removalBreaksBiz(houseDoc, design?.items, sel)) {
+      setSellAsk(null);
+      flash('🔒 Bu mobilya işletme için gerekli.');
+      return;
+    }
+    setSellBusy(true);
+    const k = sellAsk.k;
+    try {
+      eng.deleteSelected();
+      await flushSave();
+      await enqueue(() => houseAction({ op: 'furnList', k, v }));
+      setSellAsk(null);
+      flash(`🏷️ ${CATALOG_MAP[k]?.name || 'Mobilya'} pazarda satışta.`);
+    } catch (err) {
+      const m = String(err?.message || '').match(/furn-price:(\d+):(\d+)/);
+      flash(m ? `Fiyat ${m[1]} – ${m[2]} arasında olmalı.` : err?.message || 'Satışa konamadı; eşya envanterinde.');
+      setSellAsk(null);
+    } finally {
+      setSellBusy(false);
+    }
+  };
+
   const invView = useMemo(() => {
     const out = {};
     const keys = new Set([...Object.keys(inv.items || {}), ...Object.keys(serverOwned), ...Object.keys(localOwned)]);
@@ -1071,7 +1140,15 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
       else gold += price.v;
     };
     (design?.items || []).forEach((it) => {
-      if (it.p !== 1) add(it.k, CATALOG_MAP[it.k]?.name || it.k, CATALOG_MAP[it.k]?.price);
+      if (it.p === 1) return;
+      // v132: pazardan konan eşya ilan fiyatıyla (ilan kapandıysa odadan kalkar)
+      if (it.m) {
+        const l = marketWatch[it.m];
+        const pr = l && l.status === 'open' ? { t: l.t, v: l.v } : marketPriceRef.current[it.m];
+        if (pr) add(`m:${it.m}`, `${CATALOG_MAP[it.k]?.name || it.k} (pazar)`, pr);
+        return;
+      }
+      add(it.k, CATALOG_MAP[it.k]?.name || it.k, CATALOG_MAP[it.k]?.price);
     });
     if (design?.wall && !ownsSurface('wall', design.wall)) {
       const w = WALLS.find((x) => x.key === design.wall);
@@ -1083,7 +1160,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     }
     return { lines: Object.values(lines), gold, gem, count: Object.values(lines).reduce((a, l) => a + l.n, 0) };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [design, inv.walls, inv.floors]);
+  }, [design, inv.walls, inv.floors, marketWatch]);
 
   // satın alırken kullanılacak bakiye: sahip → kendi cebi · yetkili → mobilya kasası
   const payGold = isEditor ? fund.gold : Number(player?.gold || 0);
@@ -1098,7 +1175,8 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     try {
       const res = await enqueue(() => houseAction({ op: 'checkout', houseId, design: { items: dsg.items, wall: dsg.wall, floor: dsg.floor, door: dsg.door }, expect: { gold: cart.gold, gem: cart.gem } }));
       if (res.data?.inv) setInv(res.data.inv); // v127: yetkili — sahibin güncel envanteri
-      const owned = { ...dsg, items: dsg.items.map((it) => ({ ...it, p: 1 })) };
+      // v132: pazar ilanı kapanmış eşyalar sunucuda alınmadı → odadan da kalkar
+      const owned = { ...dsg, items: dsg.items.filter((it) => !it.m || marketWatch[it.m]?.status === 'open' || !marketWatch[it.m]).map(({ m: _m, ...it }) => ({ ...it, p: 1 })) };
       eng.deselect();
       eng.setDesign(owned);
       setDesign(eng.getDesign());
@@ -1163,18 +1241,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   const paidPriceOf = (product) => (!isOwner && !venue && houseDoc ? officePriceOf(houseDoc, product) : 0);
   // v92 — garson (cafe/bar)
   const menuVenue = Boolean(bizType && MENU_TYPES.includes(bizType));
-  const waiterRole = useWaiterRole({ houseId, enabled: phase === 'ready' && menuVenue, user, online, flash });
-  waiterLeaveRef.current = waiterRole.leave;
-  const [orderPopId, setOrderPopId] = useState(null);
-  const orderIdsKey = waiterRole.orders.map((o) => o.id).join(',');
-  const seenOrdersRef = useRef(new Set());
-  useEffect(() => {
-    const fresh = waiterRole.orders.filter((o) => !seenOrdersRef.current.has(o.id));
-    waiterRole.orders.forEach((o) => seenOrdersRef.current.add(o.id));
-    if (fresh.length && panel !== 'orders') setOrderPopId(fresh[fresh.length - 1].id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderIdsKey]);
-  const orderPop = waiterRole.orders.find((o) => o.id === orderPopId) || null;
+  // v132: oyuncu garsonluğu kaldırıldı — garsonluk botlarda (useHouseBots / BotWaiter)
 
   // --- v80 — YAYINCILIK -----------------------------------------------------------------
   const myStreamDoc = useStreamDoc(myStream?.id || null);
@@ -1706,7 +1773,21 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
               </svg>
             </button>
           )}
-          {ceilNote > 0 && ceilMode && mode === 'build' && <CeilNote key={ceilNote} onDone={() => setCeilNote(0)} />}
+          {/* v132 — ZEMİN MODU: zemin parçalarını seç/taşı (tavan modunun altında) */}
+          {canDesign && mode === 'build' && (
+            <button
+              className={`hs-eye-btn hs-floor-btn${floorMode ? ' on' : ''}`}
+              onClick={() => setLayer(floorMode ? null : 'floor')}
+              title="Zemin modu: zemin parçalarını düzenle"
+              aria-pressed={floorMode}
+            >
+              <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true">
+                <path d="M12 7.2 21 12l-9 4.8L3 12z" fill="currentColor" fillOpacity={floorMode ? 0.28 : 0.1} stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+                <path d="M7.5 9.6 16.5 14.4M16.5 9.6 7.5 14.4" fill="none" stroke="currentColor" strokeWidth="1" strokeOpacity="0.55" />
+              </svg>
+            </button>
+          )}
+          {ceilNote > 0 && layer && mode === 'build' && <CeilNote key={ceilNote} floor={floorMode} onDone={() => setCeilNote(0)} />}
 
           {/* v92 Faz 8 — oyunun 3D mekânı: menü, NPC'ler, istasyon panelleri */}
           {venue && (
@@ -1728,53 +1809,15 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
           {/* v77 — MEKÂN ÜST BUTONLARI (işletme türüne göre) */}
           {bizType && mode === 'walk' && BIZ_TOP_BUTTONS[bizType] && (
             <div className="hb-topbtns">
-              {BIZ_TOP_BUTTONS[bizType].map((b) =>
-                b.panel === 'menu' && waiterRole.isMe ? (
-                  <button key="orders" className={`hb-topbtn${waiterRole.orders.length ? ' vn-orders-hot' : ''}`} onClick={() => setPanel('orders')}>
-                    📋 Siparişler ({waiterRole.orders.length})
-                  </button>
-                ) : (
-                  <button key={b.panel} className="hb-topbtn" onClick={() => (b.panel.startsWith('ho:') ? hoApiRef.current?.open(b.panel.slice(3)) : setPanel(b.panel))}>
-                    {b.label}
-                  </button>
-                )
-              )}
+              {BIZ_TOP_BUTTONS[bizType].map((b) => (
+                <button key={b.panel} className="hb-topbtn" onClick={() => (b.panel.startsWith('ho:') ? hoApiRef.current?.open(b.panel.slice(3)) : setPanel(b.panel))}>
+                  {b.label}
+                </button>
+              ))}
             </div>
           )}
-          {/* v92 — GARSON (sol üst) */}
-          {menuVenue && mode === 'walk' && (
-            <div className="vn-waiter-wrap">
-              <WaiterButton
-                waiter={waiterRole.waiter}
-                present={waiterRole.present}
-                isMe={waiterRole.isMe}
-                busy={waiterRole.busy}
-                onJoin={waiterRole.join}
-                onQuit={waiterRole.quit}
-              />
-            </div>
-          )}
-          {waiterRole.isMe && mode === 'walk' && panel !== 'orders' && orderPop && (
-            <NewOrderPop
-              order={orderPop}
-              busy={waiterRole.busyId === orderPop.id}
-              onOpen={() => {
-                setOrderPopId(null);
-                setPanel('orders');
-              }}
-              onDeliver={async (o) => {
-                await waiterRole.deliver(o);
-                setOrderPopId(null);
-              }}
-            />
-          )}
-          {panel === 'orders' && waiterRole.isMe && (
-            <div className="wk-sheet-bg" onClick={() => setPanel(null)}>
-              <div className="wk-sheet" onClick={(e) => e.stopPropagation()}>
-                <OrdersPanel orders={waiterRole.orders} busyId={waiterRole.busyId} onDeliver={waiterRole.deliver} isOwner={isOwner} onClose={() => setPanel(null)} />
-              </div>
-            </div>
-          )}
+          {/* v132 — GARSON BOT (sol üst): içeride garson bot + yiyecek/içecek varsa sipariş */}
+          {bots.waiterReady && mode === 'walk' && <BotWaiterButton bots={bots} />}
           {panel === 'workshop' && bizType && (
             <div className="wk-sheet-bg" onClick={() => setPanel(null)}>
               <div className="wk-sheet" onClick={(e) => e.stopPropagation()}>
@@ -1955,6 +1998,14 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                     <button className="hs-main-door" onClick={() => engineRef.current?.setDoor({ main: sel.i })}>⭐ Ana kapı yap</button>
                   ))}
                 <button className={`danger${removalBreaksBiz(houseDoc, design?.items, sel) ? ' cue-lock' : ''}`} onClick={requestDelete}>{sel.p === 1 ? '📦 Envantere' : '🗑 Kaldır'}</button>
+                {/* v132 — bot: görünüm / sözler / hareket / garson */}
+                {sel.k === 'bot' && sel.p === 1 && !venue && (
+                  <button className="hs-bot-edit" onClick={() => setBotEdit({ i: sel.i })}>✏️ Düzenle</button>
+                )}
+                {/* v132 — pazara koy (sadece sahibi; fiyatı yarısı – 1 birim altı) */}
+                {isOwner && sel.p === 1 && furnPriceBand(sel.k) && !venue && (
+                  <button className="hs-sell-btn" onClick={() => setSellAsk({ k: sel.k })}>🏷️ Sat</button>
+                )}
               </div>
             </div>
           )}
@@ -1967,6 +2018,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                 <button className={tab === 'envanter' ? 'on' : ''} onClick={() => { setTab('envanter'); setShelfOpen(true); }}>
                   📦 {isOwner ? 'Envanter' : 'Sahibin envanteri'}{invList.length > 0 && <i>{invList.reduce((a, x) => a + x.n, 0)}</i>}
                 </button>
+                <button className={tab === 'pazar' ? 'on' : ''} onClick={() => { setTab('pazar'); setShelfOpen(true); setLayer(null); }}>🛒 Pazar</button>
                 {isOwner && (
                   <button className={`hs-undo hs-perm-btn${Object.keys(houseDoc?.editors || {}).length ? ' has' : ''}`} onClick={() => setPanel('editors')} title="Arkadaşlarına tasarım yetkisi ver">
                     ＋
@@ -1978,10 +2030,14 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
               {shelfOpen && tab === 'magaza' && (
                 <>
                   <div className="hs-shelf-tabs">
-                    {CATEGORIES.map((c) => (
-                      <button key={c.key} className={cat === c.key ? 'on' : ''} onClick={() => pickCat(c.key)}>
-                        {c.icon} {c.name}
-                      </button>
+                    {/* v132: kategoriler 4 grupta (işletme · araç & kurum · ev · yapı), aralarında ince çizgi */}
+                    {CATEGORIES.map((c, i) => (
+                      <Fragment key={c.key}>
+                        {i > 0 && CATEGORIES[i - 1].g !== c.g && <i className="hs-shelf-sep" aria-hidden="true" />}
+                        <button className={cat === c.key ? 'on' : ''} onClick={() => pickCat(c.key)}>
+                          {c.icon} {c.name}
+                        </button>
+                      </Fragment>
                     ))}
                     <button className={cat === 'yuzey' ? 'on' : ''} onClick={() => pickCat('yuzey')}>🎨 Duvar & Zemin</button>
                   </div>
@@ -2032,6 +2088,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                   )}
                 </>
               )}
+              {shelfOpen && tab === 'pazar' && <MarketShelf uid={user?.uid} best={furnBest} Price={PriceTag} onPlace={placeFromMarket} flash={flash} />}
               {shelfOpen && tab === 'envanter' && (
                 <div className="hs-shelf-items">
                   {invList.length === 0 && !isOwner && <p className="hs-dim hs-inv-empty">Ev sahibinin envanteri boş. Mağazadan deneme eşya koyabilirsin; satın almayı sahibi yapar.</p>}
@@ -2042,7 +2099,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                       className="hs-card"
                       onClick={() => {
                         // v114: envanterden tavan eşyası konunca tavan modu açılır, diğerlerinde kapanır
-                        setCeil(def.cat === 'tavan');
+                        setLayer(layerOfCat(def.cat));
                         engineRef.current?.addItem(def.k, 0, { owned: true });
                       }}
                     >
@@ -2178,14 +2235,14 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
           )}
 
           {mode === 'walk' && myCart && (
-            <div className={`hs-holding hs-mcart${menuVenue ? ' low' : ''}`}>
+            <div className={`hs-holding hs-mcart${menuVenue || bots.waiterReady ? ' low' : ''}`}>
               🛒 Market arabası · <b>{myCart.length}</b>/{CART_MAX} ürün
               <button onClick={() => setMyCart(null)}>Arabayı bırak</button>
             </div>
           )}
           {/* v127: mekânlarda (Belediye vb.) gösterilmez — sol üstteki mekân butonlarını kapatıyordu */}
           {mode === 'walk' && myHolding && !venue && (
-            <div className={`hs-holding${menuVenue ? ' low' : ''}`}>
+            <div className={`hs-holding${menuVenue || bots.waiterReady ? ' low' : ''}`}>
               <HeldIcon product={myHolding} size={22} /> Elinde: <b>{HOUSE_PRODUCTS[myHolding]?.label}</b>
               <em>👥'dan ısmarlayabilirsin</em>
             </div>
@@ -2368,6 +2425,8 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
               houseId={houseId}
             />
           )}
+          {botEdit && <BotEditor houseId={houseId} itemId={botEdit.i} cfg={houseDoc?.bots?.[botEdit.i] || null} flash={flash} onClose={() => setBotEdit(null)} />}
+          {sellAsk && <SellSheet k={sellAsk.k} Price={PriceTag} busy={sellBusy} onConfirm={doSell} onClose={() => setSellAsk(null)} />}
           {bizRemove && (
             <BizRemovePanel type={bizRemove.type} status={bizRemove.status} busy={busy} onConfirm={confirmBizRemove} onCancel={() => setBizRemove(null)} />
           )}
@@ -2573,7 +2632,7 @@ const ChatBox = memo(function ChatBox({ busy, onSend, onTyping }) {
 });
 
 // v114 — "Tavan modu açıldı": dokununca ya da 3 sn sonra kendiliğinden kaybolur
-function CeilNote({ onDone }) {
+function CeilNote({ onDone, floor = false }) {
   const doneRef = useRef(onDone);
   doneRef.current = onDone;
   useEffect(() => {
@@ -2586,7 +2645,7 @@ function CeilNote({ onDone }) {
   };
   return (
     <div className="hs-toast ceilnote tappable" onClick={close} onPointerDown={(e) => e.stopPropagation()}>
-      🧊 Tavan modu açıldı
+      {floor ? '🧩 Zemin modu açıldı' : '🧊 Tavan modu açıldı'}
     </div>
   );
 }

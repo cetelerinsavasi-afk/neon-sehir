@@ -5,7 +5,7 @@
 // süresiz. v123: başvuru formu kaldırıldı — sicilde form bilgisi yok.
 import { useEffect, useState } from 'react';
 import { istHour, useGangAction, useNow } from '../GangContext';
-import { Btn, Card, Confirm, Gold, RankBadge, Sheet, Stat } from '../ui';
+import { Btn, Card, Chips, Confirm, Gold, RankBadge, Sheet, Stat } from '../ui';
 import { MemberCard, MidnightLegend, RankTree } from '../shared';
 import { GANG_RULES, INTEL_LEADERS, RANK_ICONS, fmt } from '../gangConstants';
 import { useBelediyeRates } from '../../../hooks/useBelediyeRates';
@@ -28,8 +28,9 @@ function voteAllowed(my, t) {
 // Rütbeliler herkesinkini, herkes kendisininkini görür.
 function MemberReport({ member }) {
   const { run } = useGangAction();
-  const [r, setR] = useState(null);
+  const [data, setR] = useState(null);
   const [err, setErr] = useState(false);
+  const [span, setSpan] = useState('week'); // v132: Son 1 hafta / Tüm zamanlar
   useEffect(() => {
     let alive = true;
     run('intelMemberReport', { rosterId: member.id }, { key: `rep_${member.id}` }).then((res) => {
@@ -43,13 +44,24 @@ function MemberReport({ member }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [member.id]);
   if (err) return <p className="dim gx-mini">Sicil alınamadı.</p>;
-  if (!r) return <p className="dim gx-mini">Sicil yükleniyor…</p>;
+  if (!data) return <p className="dim gx-mini">Sicil yükleniyor…</p>;
+  const all = data;
+  const r = span === 'week' && data.week ? { ...all, ...data.week } : all;
   return (
     <div className="gx-stack">
       <div className="gx-section-head">
         <span>📋 Sicil</span>
-        <span className="dim gx-mini">Teşkilata girdiğinden beri</span>
       </div>
+      {all.week && (
+        <Chips
+          options={[
+            { id: 'week', label: 'Son 1 hafta' },
+            { id: 'all', label: 'Tüm zamanlar' },
+          ]}
+          value={span}
+          onChange={setSpan}
+        />
+      )}
       <Stat icon="📅" label="Teşkilata girişi">
         {fmtDay(r.joinedAtMs)} {r.joinedDaysAgo == null ? '' : r.joinedDaysAgo === 0 ? '(bugün)' : `(${r.joinedDaysAgo} gün önce)`}
       </Stat>

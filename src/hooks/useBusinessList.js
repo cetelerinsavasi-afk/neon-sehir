@@ -57,7 +57,8 @@ export function useBusinessList(type, { enabled = true, includeGame = false } = 
     });
     const uid = user?.uid;
     const list = rows
-      .filter((h) => (includeGame || !h.bizGame) && !(Number(h.kicked?.[uid] || 0) > now))
+      // v132: oyunun spor salonu kapalı (arka planda duruyor, listede görünmez)
+      .filter((h) => (includeGame || !h.bizGame) && !(h.bizGame && h.bizType === 'spor') && !(Number(h.kicked?.[uid] || 0) > now))
       .map((h) => ({ ...h, people: counts[h.id] || 0, mine: h.ownerUid === uid }));
     const rank = (h) => (Number.isFinite(h.bizRank) && h.bizRank > 0 ? h.bizRank : Infinity);
     list.sort((a, b) => rank(a) - rank(b) || (a.biz?.openedAtMs || 0) - (b.biz?.openedAtMs || 0));

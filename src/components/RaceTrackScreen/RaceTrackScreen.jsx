@@ -7,7 +7,7 @@ import { warmUpRaceHub } from '../../services/gameActions';
 import './RaceTrackScreen.css';
 
 const CARDS = [
-  { id: 'championship', label: 'Şampiyona', emoji: '🏆', desc: 'Her arabanla günde 1 tur. Ne kadar hızlıysan o kadar altın — anında.' },
+  { id: 'championship', label: 'Şampiyona', emoji: '🏆', desc: 'Ne kadar hızlıysan o kadar altın' },
   { id: 'bet', label: 'Bahisli Yarış', emoji: '🏁', desc: 'Başka bir oyuncuyla aynı anda yarış; kısa sürede bitiren bahsi alır.' },
   { id: 'training', label: 'Antrenman', emoji: '🎓', desc: '10 seviye: her seviyede bir üst galeri aracını süren bota karşı yarış.' },
 ];

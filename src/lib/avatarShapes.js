@@ -719,6 +719,34 @@ function heldItemShape(s) {
   }
 }
 
+// v132 — BOT kıyafet üstü çizimleri (functions/botData.js BOT_OUTFITS.ov). SADECE beyaz
+// listedeki anahtarlar; renk hex, yaka kartı yazısı sabit listeden — oyuncu verisi değil.
+const OV_HEX = /^#[0-9a-fA-F]{6}$/;
+const OV_BADGES = ['GÜVENLİK', 'SEKRETER', 'PERSONEL', 'STAJYER', 'MÜDÜR', 'KASA'];
+const BOT_OV = {
+  tray: () => `<g transform="translate(250,352)"><ellipse cy="9" rx="52" ry="7" fill="#c0c4cc" stroke="#7d828c" stroke-width="2"/>` + [-30, 0, 30].map((x) => `<g transform="translate(${x},0)"><ellipse cy="6" rx="12" ry="3" fill="#e8e6df"/><path d="M-7,-14 Q-9,0 -4,5 L4,5 Q9,0 7,-14Z" fill="#b3261e"/><path d="M-7,-14H7" stroke="#fff" stroke-width="1.5" opacity=".7"/><path d="M0,-18q-3,-5 0,-9" stroke="#fff" fill="none" opacity=".5" stroke-width="2"/></g>`).join('') + `</g>`,
+  apron: (c) => (OV_HEX.test(c || '') ? `<path d="M126,300H194L206,380H114Z" fill="${c}"/><path d="M128,262L136,300M192,262L184,300" stroke="${c}" stroke-width="5"/><rect x="142" y="336" width="36" height="22" rx="3" fill="#000" opacity=".18"/>` : ''),
+  badge: (t, c) => (OV_BADGES.includes(t) && OV_HEX.test(c || '') ? `<rect x="188" y="284" width="44" height="15" rx="3" fill="${c}" stroke="#fff" stroke-width="1"/><text x="210" y="295" font-size="7.5" font-family="sans-serif" font-weight="700" text-anchor="middle" fill="#fff">${t}</text>` : ''),
+  star: () => `<text x="204" y="302" font-size="24" fill="#d4af37" text-anchor="middle">★</text>`,
+  radio: () => `<rect x="104" y="272" width="12" height="20" rx="2" fill="#111"/><path d="M108,272V256" stroke="#111" stroke-width="2"/><circle cx="110" cy="280" r="2" fill="#4ade80"/>`,
+  cards: () => `<g transform="translate(262,336)">` + [-22, 0, 22].map((a) => `<g transform="rotate(${a})"><rect x="-11" y="-32" width="22" height="32" rx="3" fill="#f5f2e8" stroke="#999"/><text y="-12" font-size="14" text-anchor="middle" fill="#c81d3f">♥</text></g>`).join('') + `</g>`,
+  clip: () => `<g transform="translate(246,322) rotate(-8)"><rect width="34" height="46" rx="3" fill="#8a5a2b"/><rect x="4" y="7" width="26" height="35" fill="#f5f2e8"/><path d="M8,16h18M8,23h18M8,30h12" stroke="#7d828c" stroke-width="2"/><rect x="11" y="2" width="12" height="8" rx="2" fill="#c0c4cc"/></g>`,
+  wrench: () => `<g transform="translate(262,306) rotate(25)"><rect x="-3" width="6" height="52" rx="3" fill="#c0c4cc"/><circle r="9" fill="#c0c4cc"/><rect x="-3" y="-10" width="6" height="9" fill="#2b3550"/></g>`,
+  oil: () => `<ellipse cx="120" cy="340" rx="14" ry="8" opacity=".3"/><ellipse cx="196" cy="312" rx="9" ry="5" opacity=".3"/><ellipse cx="170" cy="366" rx="12" ry="6" opacity=".3"/>`,
+  bandolier: () => `<path d="M96,266L226,374" stroke="#5c3a21" stroke-width="12"/>` + [0.2, 0.4, 0.6, 0.8].map((t) => `<circle cx="${96 + 130 * t}" cy="${266 + 108 * t}" r="3.6" fill="#d4af37"/>`).join(''),
+};
+function botOverlayShape(s) {
+  if (!Array.isArray(s.botOv)) return '';
+  return s.botOv
+    .slice(0, 4)
+    .map((v) => {
+      const p = String(v).split(':');
+      const fn = Object.prototype.hasOwnProperty.call(BOT_OV, p[0]) ? BOT_OV[p[0]] : null;
+      return fn ? fn(...p.slice(1)) : '';
+    })
+    .join('');
+}
+
 // buildAvatarSvgInner — tüm parçaları birleştirip <svg> içine konacak
 // markup'ı üretir.
 //
@@ -759,6 +787,7 @@ export function buildAvatarSvgInner(rawState, opts = {}) {
   upperBody += hairFrontShape(s);
   upperBody += hatShape(s);
   upperBody += faceAccShape(s);
+  upperBody += botOverlayShape(s); // v132 — bot kıyafet çizimleri
   upperBody += L.front;
 
   let svg = '';

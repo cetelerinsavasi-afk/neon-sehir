@@ -241,6 +241,9 @@
 }
 .bd-medal {
   font-size: 18px;
+  min-width: 26px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 /* oran ayarı */

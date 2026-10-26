@@ -129,3 +129,52 @@ test('v71: çete ilanına reklam — sadece Baba/Sağ Kol, kasadan 1000, 24 saat
   await h.fundKasa(G.gangId, 10_000);
   await h.fails(G.baba, 'advertiseDepotListing', { listingId: l2 });
 });
+
+// v132 — silahçı / galeri "Vitrine ekle": çete deposundaki sıfır ürün, alış fiyatına
+// eşit / ucuzsa otomatik alınır (functions/shop.js stockAdd → system.stockSource)
+import { FieldValue as FV2 } from './fakeFirestore.js';
+import { createShop } from '../../shop.js';
+import { createBusiness } from '../../business.js';
+import { createHouses } from '../../houses.js';
+import { BIZ_TYPES } from '../../businessCatalogData.js';
+
+test('v132 stok kaynağı: ucuz çete ilanı silahçının vitrinine alınır; para çete kasasına, depodan düşer', async () => {
+  const h = await createHarness({ yieldEvery: false });
+  const G = await gangWithStock(h);
+  const { listingId } = await h.act(G.baba, 'listDepotItem', { itemKey: 'araba:2', qty: 2, unitPrice: 7000 }); // alış 7.500
+  await h.act(G.baba, 'listDepotItem', { itemKey: 'araba:2', qty: 1, unitPrice: 8000 }); // alıştan pahalı
+  const src = h.system.stockSource;
+  const world = h.raw('gangWorlds/test');
+  const gangSource = { current: { ...src, ctx: async (uid) => h.internal.core.makeCtx('test', world, { actorId: uid }) } };
+  const now = () => h.clock.now;
+  const business = createBusiness({ db: h.db, FieldValue: FV2, now });
+  const shop = createShop({ db: h.db, FieldValue: FV2, HttpsError: Error, requireAuth: (r) => r.auth.uid, onCall: (fn) => fn, splitIncomeForDebt: (d, a) => ({ goldDelta: a, debtDelta: 0 }), business, now, gangSource });
+  const houses = createHouses({ db: h.db, FieldValue: FV2, HttpsError: Error, requireAuth: (r) => r.auth.uid, onCall: (fn) => fn, isAdmin: () => false, assertCanSpeak: async () => {}, isFriend: async () => false, now, bizHooks: shop.bizHooks });
+  await h.db.doc('users/galerici').set({ displayName: 'Galerici', gold: 2_000_000, emerald: 100 });
+  const { houseId } = await houses.houseAction({ auth: { uid: 'galerici' }, data: { op: 'buy', bizIntent: 'galeri' } });
+  const items = [];
+  let n = 0;
+  BIZ_TYPES.galeri.groups.forEach((g) => {
+    for (let i = 0; i < g.n; i++) items.push({ i: `z${n++}`, k: g.any[0], x: 0, z: 0, r: 0, c: 0, p: 1 });
+  });
+  await h.db.doc(`houses/${houseId}`).set({ ...h.raw(`houses/${houseId}`), items });
+  await houses.houseAction({ auth: { uid: 'galerici' }, data: { op: 'bizOpen', houseId, type: 'galeri' } });
+  const act = (data) => shop.shopAction({ auth: { uid: 'galerici' }, data });
+  const q = await act({ op: 'stockQuote', houseId });
+  assert.equal(q.prices['2'], 7000);
+  const k0 = h.state(G.gangId).kasa;
+  const g0 = h.raw('users/galerici').gold;
+  await act({ op: 'stockAdd', houseId, catalogId: 2, expect: 7000 });
+  await act({ op: 'stockAdd', houseId, catalogId: 2, expect: 7000 });
+  assert.equal(h.state(G.gangId).kasa, k0 + 14_000);
+  assert.equal(h.raw('users/galerici').gold, g0 - 14_000);
+  assert.equal(h.get(`market/${listingId}`).status, 'sold');
+  const d = depotOf(h, G.gangId);
+  assert.equal(d.items['araba:2'], 1);
+  assert.equal(d.listed['araba:2'], 1);
+  assert.equal(h.raw(`shopStocks/${houseId}`).items['2'], 2);
+  // kalan çete ilanı 8.000 > 7.500 → oyundan
+  await act({ op: 'stockAdd', houseId, catalogId: 2, expect: 7500 });
+  assert.equal(depotOf(h, G.gangId).items['araba:2'], 1);
+  assert.ok(h.chat(G.gangId).some((m) => /2\. elden 1 × Şehir Hatchback satıldı/.test(m)));
+});

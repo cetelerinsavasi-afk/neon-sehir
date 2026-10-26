@@ -35,7 +35,8 @@ const GAME_VENUE = {
   galeri: { name: 'Neon Araba Galerisi', loc: 'araba_galerisi' },
   modifiye: { name: 'Neon Modifiye Garajı', loc: 'modifiye_garaji' },
   // spor: oyunun salonu da 3D bir ev (houses/game_spor) — içine girilir
-  spor: { name: 'Neon Spor Salonu', house: true },
+  // v132: oyunun salonu kapalı (gizli) — sadece oyuncuların salonları listelenir
+  spor: { name: 'Neon Spor Salonu', house: true, hidden: true },
   // v124: oyunun deposu da 3D bir ev (houses/game_depo) — sınırsız stok, alış 1.500 · satış 2.250
   depo: { name: 'Neon Liman Deposu', house: true, ensureOp: 'depoEnsureGame' },
   // v124 Faz 6: oyunun gazinosu (3D mekân houses/game_gazino — App'teki Neon Gazino ekranı)
@@ -155,7 +156,7 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
 
   const gold = Number(player?.gold || 0);
   const gem = Number(player?.emerald || 0);
-  const game = GAME_VENUE[type];
+  const game = GAME_VENUE[type]?.hidden ? null : GAME_VENUE[type];
 
   const today = futbolDayKey(Date.now());
   const openGame = async () => {

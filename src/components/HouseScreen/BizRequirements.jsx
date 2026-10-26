@@ -117,7 +117,7 @@ export function FillConfirm({ type, m: baseM, gold = 0, gem = 0, busy, onConfirm
             <h3>
               🛒 {t.icon} {t.label} için eksik mobilyalar
             </h3>
-            <p>Onaylamadan hiçbir şey satın alınmaz.{note ? ` ${note}` : ''}</p>
+            {note && <p>{note}</p>}
           </div>
           <button className="bz-x" onClick={onCancel} disabled={busy}>
             ✕
@@ -128,7 +128,6 @@ export function FillConfirm({ type, m: baseM, gold = 0, gem = 0, busy, onConfirm
             <p className="bz-sec-title">
               Hangisini alalım? {g.buy > 1 ? `(${g.buy} tane)` : ''}
             </p>
-            <p className="bz-hint">Bu seçeneklerden herhangi biri olur. Dokunarak seç:</p>
             <div className="fc-pick">
               {g.any.map((k) => {
                 const on = g.buyKey === k;

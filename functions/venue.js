@@ -154,7 +154,8 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
       const dayKey = midnightDayKey(t);
       const spendRef = db.collection('bizSpend').doc(`${houseId}_${uid}_${dayKey}`);
       // v92 — mekânda (içeride olan) bir garson varsa sipariş garsona gider
-      const ws = isOwner || !WAITER_TYPES.includes(h.biz.type) ? null : await tx.get(waiterRef(houseId));
+      // v132: oyuncu garsonluğu kaldırıldı (garson artık bot) — sipariş hep anında
+      const ws = null;
       const waiter = ws?.exists ? ws.data() : null;
       const waiterHere = waiter && waiter.uid !== uid ? await txPresence(tx, waiter.uid, houseId) : null;
       const [us, os, ss] = await Promise.all([tx.get(userRef(uid)), isOwner ? null : tx.get(userRef(h.ownerUid)), isOwner ? null : tx.get(spendRef)]);
@@ -208,28 +209,11 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
   const waiterRef = (houseId) => db.collection('venueWaiters').doc(houseId);
   const ordersQ = (houseId) => db.collection('venueOrders').where('houseId', '==', houseId).where('status', '==', 'pending').limit(50);
 
+  // v132: oyuncular artık garsonluk yapamaz (garsonluk botlarda)
+  // eslint-disable-next-line no-unused-vars
   async function waiterJoin(uid, p) {
-    const houseId = String(p.houseId || '');
-    let result = null;
-    await db.runTransaction(async (tx) => {
-      await txHouse(tx, houseId, WAITER_TYPES);
-      const presRef = await txPresence(tx, uid, houseId);
-      if (!presRef) fail('failed-precondition', 'not-present');
-      const ws = await tx.get(waiterRef(houseId));
-      const cur = ws.exists ? ws.data() : null;
-      if (cur?.uid === uid) {
-        result = { ok: true, already: true };
-        return;
-      }
-      if (cur && (await txPresence(tx, cur.uid, houseId))) fail('failed-precondition', `waiter-taken:${cur.name || 'Garson'}`);
-      const us = await tx.get(userRef(uid));
-      const name = String(us.data()?.displayName || 'Garson').slice(0, 40);
-      tx.set(waiterRef(houseId), { houseId, uid, name, sinceMs: now() });
-      result = { ok: true, name };
-    });
-    return result;
+    return fail('failed-precondition', 'waiter-closed');
   }
-
   async function waiterQuit(uid, p) {
     const houseId = String(p.houseId || '');
     if (!isId(houseId)) fail('invalid-argument', 'Geçersiz mekân.');

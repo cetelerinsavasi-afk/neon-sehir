@@ -262,7 +262,8 @@ export function createMembershipActions(core, intelHelpers) {
       tx.update(ctx.ref.gangState(gangId), { kasa: FV.increment(amount) });
       tx.update(ctx.ref.member(gangId, ctx.actorId), { prestige: FV.increment(prestige) });
       ledger(tx, ctx, { type: 'gang_donation', amount, from: { kind: 'player', id: ctx.actorId }, to: { kind: 'gang', id: gangId }, before });
-      gangLog(tx, ctx, gangId, '💸', `${memberSnap.data().name} kasaya ${amount.toLocaleString('tr-TR')} altın bağışladı.`);
+      // v132: bağış çetenin genel sohbetinde de görünür
+      core.announce(tx, ctx, gangId, '💸', `${memberSnap.data().name} kasaya ${amount.toLocaleString('tr-TR')} altın bağışladı.`);
       ctx.logs.push({ gang: 'prestige', world: ctx.worldId, event: 'donation', gangId, memberId: ctx.actorId, amount: prestige });
       const result = { donated: amount, prestige };
       guard.save(result);

@@ -795,6 +795,7 @@ export function createHouseEngine(
   // v114 — tavan modu (Tasarla): açıkken sadece tavan eşyaları seçilir ve yerde izleri
   // görünür; kapalıyken tavan eşyaları yerde görünmez, dokunulamaz (sadece tavanda)
   let ceilMode = false;
+  let floorMode = false; // v132 — zemin modu: sadece zemin parçaları
   renderer.__onLost = snapshot ? null : () => onContextLost?.();
   let perfTier = snapshot || spectate ? 0 : readPerfTier();
   const tierDpr = () => (snapshot ? 1 : Math.min(window.devicePixelRatio || 1, spectate ? 1.5 : PERF_TIERS[perfTier].dpr));
@@ -1354,6 +1355,9 @@ export function createHouseEngine(
     return outdoor ? null : !(mode === 'build' && ceilMode);
   }
   const isCeilItem = (id) => CATALOG_MAP[objs.get(id)?.data.k]?.tile === 'ceil';
+  const isFloorTile = (id) => CATALOG_MAP[objs.get(id)?.data.k]?.tile === 'floor';
+  // v132 — Tasarla'da dokunulabilen katman: tavan modu → tavan, zemin modu → zemin parçaları, ikisi kapalı → diğerleri
+  const layerOk = (id) => (isCeilItem(id) ? ceilMode : isFloorTile(id) ? floorMode : !ceilMode && !floorMode);
   function updateWalls() {
     const p = camera.position;
     walls.forEach((w) => {
@@ -1752,7 +1756,7 @@ export function createHouseEngine(
       const id = h.object.userData.itemId;
       if (!id) continue;
       // v114 — tavan modu açıkken sadece tavan eşyaları, kapalıyken sadece diğerleri
-      if (mode === 'build' && isCeilItem(id) !== ceilMode) continue;
+      if (mode === 'build' && !layerOk(id)) continue;
       const def = CATALOG_MAP[objs.get(id)?.data.k];
       if (def?.flat) {
         flatHit = flatHit || id;
@@ -2796,7 +2800,13 @@ export function createHouseEngine(
     },
     setCeilMode(v) {
       ceilMode = Boolean(v);
-      if (selectedId && objs.has(selectedId) && isCeilItem(selectedId) !== ceilMode) select(null);
+      if (ceilMode) floorMode = false;
+      if (selectedId && objs.has(selectedId) && !layerOk(selectedId)) select(null);
+    },
+    setFloorMode(v) {
+      floorMode = Boolean(v);
+      if (floorMode) ceilMode = false;
+      if (selectedId && objs.has(selectedId) && !layerOk(selectedId)) select(null);
     },
     setRealLook(v) {
       realLook = Boolean(v);
@@ -2868,12 +2878,13 @@ export function createHouseEngine(
     getDesign() {
       return design;
     },
-    addItem(k, ti = 0, { owned: isOwned = false } = {}) {
+    addItem(k, ti = 0, { owned: isOwned = false, market = null } = {}) {
       if (!canEdit || !CATALOG_MAP[k]) return null;
       if (objs.size >= MAX_ITEMS) return 'limit';
       pushUndo();
       const data = { i: newItemId(), k, x: orbit.tx, z: orbit.tz, r: 0, c: ti || 0 };
       if (isOwned) data.p = 1;
+      else if (market) data.m = market; // v132: pazardan (ilan kimliği)
       const def = CATALOG_MAP[k];
       if (!def.wall) {
         // v77: toplu ekleme (işletme "Hepsini al") için daha geniş boş yer araması
@@ -2969,6 +2980,7 @@ export function createHouseEngine(
         const data = { ...e.data, i: newItemId(), x, z };
         delete data.p;
         delete data.o;
+        delete data.m; // v132: kopya mağazadan (pazar ilanı tek)
         normalizePlacement(data);
         const ne = buildEntry(data);
         objs.set(data.i, ne);
@@ -2981,6 +2993,7 @@ export function createHouseEngine(
       const data = { ...e.data, i: newItemId(), x: e.data.x + 0.75, z: e.data.z + 0.75 };
       delete data.p;
       delete data.o;
+      delete data.m; // v132: kopya mağazadan (pazar ilanı tek)
       normalizePlacement(data);
       const ne = buildEntry(data);
       objs.set(data.i, ne);
@@ -2996,6 +3009,16 @@ export function createHouseEngine(
       removeEntry(selectedId);
       select(null);
       emitDesign();
+    },
+    // v132 — pazar ilanı kapanan (satılan / iptal) deneme eşyaları odadan kalkar
+    removeMarketItems(ids) {
+      const set = new Set(ids || []);
+      const gone = [...objs.values()].filter((e) => e.data.p !== 1 && e.data.m && set.has(e.data.m));
+      if (!gone.length) return 0;
+      gone.forEach((e) => removeEntry(e.data.i));
+      if (selectedId && !objs.has(selectedId)) select(null);
+      emitDesign();
+      return gone.length;
     },
     removeTrials() {
       if (!canEdit) return;
@@ -3107,6 +3130,49 @@ export function createHouseEngine(
       if (mode !== 'walk' || !objs.has(id)) return false;
       approachItem(id);
       return true;
+    },
+    // ---- v132 BOTLAR (HouseScreen › houseBots.js) -----------------------------------
+    // Eşyaların etrafından dolaşan yol (A*). Ulaşılamazsa null.
+    botPath(sx, sz, tx, tz) {
+      try {
+        return findPath(sx, sz, tx, tz);
+      } catch {
+        return null;
+      }
+    },
+    // (x, z) çevresinde r yarıçapında rastgele boş nokta (bulamazsa null)
+    botFreePoint(x, z, r, rnd = Math.random) {
+      obstCache = null;
+      for (let k = 0; k < 14; k++) {
+        const a = rnd() * Math.PI * 2;
+        const d = r * Math.sqrt(rnd());
+        const px = clamp(x + Math.cos(a) * d, -W / 2 + 0.6, W / 2 - 0.6);
+        const pz = clamp(z + Math.sin(a) * d, -D / 2 + 0.6, D / 2 - 0.6);
+        if (!blockedAt(px, pz)) return { x: px, z: pz };
+      }
+      return null;
+    },
+    // Boş oturma yerleri (satın alınmış; duş / araç hariç), yakından uzağa.
+    // ignore: bu kimlikteki figürün kendi koltuğu boş sayılır.
+    botSeats(x, z, r, ignore = null) {
+      const out = [];
+      const v = new THREE.Vector3();
+      objs.forEach((e) => {
+        const def = CATALOG_MAP[e.data.k];
+        if (!def?.seats?.length || e.data.p !== 1 || def.stand || def.cat === 'araba' || def.cat === 'motor') return;
+        def.seats.forEach((sp, idx) => {
+          const taken = (self.seat?.id === e.data.i && self.seat?.idx === idx) || [...others.entries()].some(([uid, o]) => uid !== ignore && o.seat?.id === e.data.i && o.seat?.idx === idx);
+          if (taken) return;
+          v.set(sp[0], 0, sp[2]);
+          e.obj.localToWorld(v);
+          const d = Math.hypot(v.x - x, v.z - z);
+          if (d <= r) out.push({ id: e.data.i, idx, x: v.x, z: v.z, d });
+        });
+      });
+      return out.sort((a, b) => a.d - b.d);
+    },
+    get roomSize() {
+      return { W, D };
     },
     // v77: kimliğiyle seç (önizleme/test ve ileride "eksik mobilyayı göster" için)
     selectById(id) {

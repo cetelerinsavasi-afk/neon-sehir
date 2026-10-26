@@ -69,6 +69,7 @@ export const ITEM_PRICES = {
   bars: g(8000), celldoor: g(15000), bunk: g(30000), guarddesk: g(45000), canteen: g(35000), searchlight: g(40000), wire: g(6000), interrog: g(30000),
   // Helikopter
   helipad: g(150000), helicopter: z(40), windsock: g(12000), padlight: g(5000),
+  bot: z(5), // v132 — Bot (Lüks)
   // Havuz & bahçe
   poolout: z(15), lounger: g(20000), umbrella: g(12000), diveboard: g(30000), lifeguard: g(40000), mangal: g(35000), flamingo: g(10000),
   // Boks

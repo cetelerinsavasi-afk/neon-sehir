@@ -78,7 +78,9 @@ test('oranlar: varsayılanlar oyunun mevcut değerleri; tek adım; bağımlı s�
   assert.equal(r.polGenel, 25_000);
   assert.equal(r.imam, 10_000);
   assert.equal(r.soygunPay, 25);
-  assert.equal(r.ikAraba, 1);
+  assert.equal(r.ikAraba, undefined, 'v132: 2. el vergisi kalktı');
+  assert.deepEqual(boundsOf(r, r, 'sfSilah'), [9, 11]);
+  assert.deepEqual(boundsOf({ ...r, sfSilah: 1 }, { ...r, sfSilah: 1 }, 'sfSilah'), [1, 2], 'v132: sıfır satış vergisi %1\'e iner');
   assert.equal(validateNext(r, { ...r, sosyal: 11 }), null);
   assert.equal(validateNext(r, { ...r, sosyal: 9 }), null);
   assert.match(validateNext(r, { ...r, sosyal: 12 }), /en fazla/);
@@ -99,8 +101,8 @@ test('vergi fonksiyonları belediye oranını kullanır (önbellek / açık set)
   const r = { ...DEFAULT_RATES, isKafe: 12, ikSilah: 3, mkKripto: 8, fisci: 15, f2: 11 };
   assert.equal(bizTax(1000, 'cafe', r), 120);
   assert.equal(bizTax(1000, 'bar', r), 100);
-  assert.equal(resaleTax(1000, 'weapon', r), 30);
-  assert.equal(resaleTax(1000, 'vehicle', r), 10);
+  assert.equal(resaleTax(1000, 'weapon', r), 0, 'v132: 2. el vergisiz');
+  assert.equal(resaleTax(1000, 'vehicle', r), 0);
   assert.equal(machineTax(10_000, 'mining', r), 800);
   assert.deepEqual(splitSalaryTax(1000, 'isci', r), { gross: 1000, tax: 150, net: 850 });
   assert.equal(factoryTax(500_000, r), 55_000);
@@ -355,7 +357,7 @@ test('gece maaşları: en yeni günden başlar, yetmeyende durur', async () => {
   assert.equal((await w.bel.kasa.status()).spendable, 40_000);
 });
 
-test('bağış: en az 100, günün ilk 3\'ü; devlet defterine bağış geliri', async () => {
+test('bağış: en az 100, günün ilk 10\'u (v132); devlet defterine bağış geliri', async () => {
   const w = world();
   let e = await w.fails('ali', 'donate', { amount: 50 });
   assert.match(e.message, /En az/);
@@ -365,7 +367,7 @@ test('bağış: en az 100, günün ilk 3\'ü; devlet defterine bağış geliri',
   await w.act('can', 'donate', { amount: 100 });
   await w.act('veli', 'donate', { amount: 4000 });
   const d = w.G('belediyeDonations/2026-10-24');
-  assert.deepEqual(d.top.map((x) => [x.name, x.amount]), [['AYSE', 9000], ['VELI', 6000], ['ALI', 5000]]);
+  assert.deepEqual(d.top.map((x) => [x.name, x.amount]), [['AYSE', 9000], ['VELI', 6000], ['ALI', 5000], ['CAN', 100]]);
   assert.equal(d.total, 20_100);
   assert.equal(w.G('users/ali').gold, 995_000);
   assert.equal((await w.bel.kasa.fold()).today.in.bagis, 20_100);

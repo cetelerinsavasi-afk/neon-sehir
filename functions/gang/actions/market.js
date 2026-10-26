@@ -235,5 +235,45 @@ export function createMarketActions(core, trade) {
     return { settled: n };
   }
 
-  return { listDepotItem, cancelDepotListing, advertiseDepotListing, buyMarketListing, settleDepotAutoSales, priceRange, MAX_LIST: GANG.DEPOT_CAPACITY_PER_PURCHASE };
+  // ---------------------------------------------------------------------------
+  // v132 — SİLAHÇI / GALERİ STOK KAYNAĞI: çete deposundaki araç / silah her zaman
+  // sıfırdır (alıcıya yeni ürün verilir). Silahçı / galeri "Vitrine ekle" dediğinde,
+  // fiyatı alış fiyatına eşit ya da daha ucuz olan en ucuz çete ilanı otomatik alınır
+  // (functions/shop.js stockAdd). get: tx.get ya da (teklif için) düz okuma.
+  // ---------------------------------------------------------------------------
+  const stockKeyOf = (kind, catalogId) => `${kind === 'vehicle' ? 'araba' : 'silah'}:${Number(catalogId)}`;
+  async function stockCandidates(get, ctx, kind, catalogId = null) {
+    const base = ctx.ref.listings().where('status', '==', 'open');
+    const snap = await get(catalogId == null ? base.where('itemType', '==', kind) : base.where('itemKey', '==', stockKeyOf(kind, catalogId)));
+    return snap.docs
+      .map((d) => ({ id: d.id, ref: d.ref, l: d.data() }))
+      .filter(({ l }) => l.itemType === kind && Number(l.quantity || 0) > 0 && Number(l.unitPrice) > 0)
+      .map(({ id, ref, l }) => ({ src: 'g', id, ref, l, catalogId: Number(l.catalogId), price: Number(l.unitPrice), qty: Number(l.quantity), at: Number(l.createdAtMs || 0) }));
+  }
+  // İşlem içinde: çete aktif mi, depoda ürün var mı → kaç adet alınabilir
+  async function stockValidate(tx, ctx, cand) {
+    const [ls, gs, ds] = await Promise.all([tx.get(cand.ref), tx.get(ctx.ref.gang(cand.l.gangId)), tx.get(ctx.ref.depot(cand.l.gangId))]);
+    const l = ls.data();
+    if (!l || l.status !== 'open' || gs.data()?.status !== 'active') return 0;
+    const have = Number(ds.data()?.items?.[l.itemKey] || 0);
+    return Math.max(0, Math.min(Number(l.quantity || 0), have));
+  }
+  // İşlem içinde YAZMA: qty adet → çete kasasına para, depodan düş, ilan güncelle
+  function stockWrite(tx, ctx, cand, qty, { shopName = 'Bir dükkân' } = {}) {
+    const l = cand.l;
+    const cost = Number(l.unitPrice) * qty;
+    tx.update(ctx.ref.gangState(l.gangId), { kasa: FV.increment(cost) });
+    tx.update(ctx.ref.depot(l.gangId), {
+      [`items.${l.itemKey}`]: FV.increment(-qty),
+      [`listed.${l.itemKey}`]: FV.increment(-qty),
+      usedUnits: FV.increment(-unitsOfItems({ [l.itemKey]: qty })),
+    });
+    const left = Number(l.quantity) - qty;
+    tx.update(cand.ref, { quantity: left, soldQty: FV.increment(qty), status: left <= 0 ? 'sold' : 'open', lastSoldAtMs: ctx.now });
+    ledger(tx, ctx, { type: 'gang_market_sale', amount: cost, from: { kind: 'player', id: ctx.actorId }, to: { kind: 'gang', id: l.gangId }, refId: cand.id });
+    announce(tx, ctx, l.gangId, '💵', `2. elden ${qty} × ${l.label} satıldı (${String(shopName).slice(0, 40)}): kasaya +${fmt(cost)}.`);
+    return cost;
+  }
+
+  return { listDepotItem, cancelDepotListing, advertiseDepotListing, buyMarketListing, settleDepotAutoSales, priceRange, MAX_LIST: GANG.DEPOT_CAPACITY_PER_PURCHASE, stockCandidates, stockValidate, stockWrite };
 }

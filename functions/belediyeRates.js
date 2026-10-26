@@ -84,21 +84,15 @@ export const RATE_GROUPS = [
     ],
   },
   { m: 'ticaret', id: 'piyango', title: 'Piyango Vergisi', unit: '%', items: [pct('piyango', 'Piyango Kazancı')] },
-  {
-    m: 'ticaret',
-    id: 'ikinciel',
-    title: '2. El Satış Vergileri',
-    unit: '%',
-    // v127: malzeme / makine kalemi kalktı (makine satışı yok, malzeme satışı vergisiz)
-    items: [pct('ikAraba', '2. El Araba Satışı', 1, 1, 10), pct('ikSilah', '2. El Silah Satışı', 1, 1, 10)],
-  },
+  // v132: 2. el satış vergisi kaldırıldı (araç / silah / malzeme 2. el satışları vergisiz)
   {
     m: 'ticaret',
     id: 'sifir',
     title: 'Sıfır Satış Kâr Vergileri',
     unit: '%',
     // v130: silahçı / galeri stoktan satış — sadece KÂRDAN (satış − alış) vergi
-    items: [pct('sfAraba', 'Sıfır Araba Satış Kâr Vergisi', 10, 10, 20), pct('sfSilah', 'Sıfır Silah Satış Kâr Vergisi', 10, 10, 20)],
+    // v132: en az %1'e inebilir
+    items: [pct('sfAraba', 'Sıfır Araba Satış Kâr Vergisi', 10, 1, 20), pct('sfSilah', 'Sıfır Silah Satış Kâr Vergisi', 10, 1, 20)],
   },
   {
     m: 'guvenlik',
@@ -192,8 +186,9 @@ export const bizRateFrac = (rates, type) => (BIZ_RATE_KEY[type] ? fracOf(rates, 
 export const machineRateFrac = (rates, type) => fracOf(rates, MACHINE_RATE_KEY[type] || 'mkTamir');
 // 2. el: item türü (weapon / vehicle / diğer)
 export const resaleRateKey = (kind) => (kind === 'weapon' || kind === 'silah' ? 'ikSilah' : kind === 'vehicle' || kind === 'araba' ? 'ikAraba' : 'ikMalzeme');
-// v127: sadece araç ve silah satışı vergilidir; malzeme / makine vergisiz
-export const resaleRateFrac = (rates, kind) => (resaleRateKey(kind) === 'ikMalzeme' ? 0 : fracOf(rates, resaleRateKey(kind)));
+// v132: 2. el satışlar vergisiz (eski kayıtlarda kalan oran yok sayılır)
+// eslint-disable-next-line no-unused-vars
+export const resaleRateFrac = (rates, kind) => 0;
 // v130: sıfır (stoktan) satış kâr vergisi — kind 'weapon' | 'vehicle'
 export const newSaleRateKey = (kind) => (kind === 'vehicle' || kind === 'araba' ? 'sfAraba' : 'sfSilah');
 export const newSaleRateFrac = (rates, kind) => fracOf(rates, newSaleRateKey(kind));
