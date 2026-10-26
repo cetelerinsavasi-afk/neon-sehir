@@ -1,7 +1,9 @@
-# Neon Sehir v131 - Firebase maliyet optimizasyonu (okuma/yazma azaltma), futbol kadro yazilari,
-#                   antrenman listesinde "(oyunun)" kaldirildi
+# Neon Sehir v133 - v132'nin TAMAMI + duzeltmeler:
+#   botlar (tasarla'da platform/bot, bota dokununca secilir, yeni tipler, dans yok, fotografta botlar,
+#   "... Bot" adi, ziyaretcide garson butonu / ofis urunleri), oyunun silah/araba magazasi en ucuz fiyat,
+#   sampiyona odulleri, yeni soygun paneli, "elinde" paneli kalkti, bankada sira numarasi elde
 #
-#   Cift tikla: deploy-v131.bat   (ya da: powershell -ExecutionPolicy Bypass -File .\deploy-v131.ps1)
+#   Cift tikla: deploy-v133.bat   (ya da: powershell -ExecutionPolicy Bypass -File .\deploy-v133.ps1)
 #
 # Sira onemli (oyuncu magdur olmasin diye):
 #   1) Firestore kurallari
@@ -44,11 +46,11 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host ""
 Write-Host "===== git commit + push (arayuz) =====" -ForegroundColor Cyan
 # eski deploy betikleri artik gereksiz
-foreach ($f in @('deploy-v130.ps1','deploy-v130.bat')) {
+foreach ($f in @('deploy-v130.ps1','deploy-v130.bat','deploy-v131.ps1','deploy-v131.bat','deploy-v132.ps1','deploy-v132.bat')) {
   if (Test-Path $f) { git rm -q -f -- $f 2>$null; if (Test-Path $f) { Remove-Item -Force $f } }
 }
 git add -A
-git commit -q -m "v131: Firebase maliyet optimizasyonu, futbol kadro yazilari, antrenman listesi" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -m "Claude-Session: https://claude.ai/code/session_01JAuxvFjksP5qb7Z4Vdvt6G"
+git commit -q -m "v133: v132 + bot duzeltmeleri, magaza en ucuz fiyat, sampiyona odulleri, yeni soygun paneli, sira numarasi elde" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -m "Claude-Session: https://claude.ai/code/session_01RoR8v3wbem97FBA1vtPaXJ"
 git push
 if ($LASTEXITCODE -ne 0) {
   Write-Host "git push basarisiz. Ciktiyi Claude'a gonder." -ForegroundColor Red
@@ -56,4 +58,4 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host ""
-Write-Host "TAMAM: v131 canlida." -ForegroundColor Green
+Write-Host "TAMAM: v133 canlida." -ForegroundColor Green

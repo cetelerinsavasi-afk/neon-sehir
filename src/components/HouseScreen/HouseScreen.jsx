@@ -689,7 +689,8 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     pushOthers();
   }, [houseDoc?.items, venue, pushOthers]);
   // v132 — botlar (Lüks › Bot; belediyede çaycı garson)
-  const bots = useHouseBots({ engineRef, engineKey, phase, houseId, houseDoc, venue, mode, isOwner, user, npcsRef: botNpcsRef, pushOthers, flash });
+  const botDesignItems = mode === 'build' ? design?.items || houseDoc?.items || null : null; // v132.1: Tasarla'da platformla birlikte
+  const bots = useHouseBots({ engineRef, engineKey, phase, houseId, houseDoc, designItems: botDesignItems, venue, mode, isOwner, user, npcsRef: botNpcsRef, pushOthers, flash });
   botsApiRef.current = bots;
   const [botEdit, setBotEdit] = useState(null); // { i }
   const onVenueNpcs = useCallback(
@@ -2240,13 +2241,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
               <button onClick={() => setMyCart(null)}>Arabayı bırak</button>
             </div>
           )}
-          {/* v127: mekânlarda (Belediye vb.) gösterilmez — sol üstteki mekân butonlarını kapatıyordu */}
-          {mode === 'walk' && myHolding && !venue && (
-            <div className={`hs-holding${menuVenue || bots.waiterReady ? ' low' : ''}`}>
-              <HeldIcon product={myHolding} size={22} /> Elinde: <b>{HOUSE_PRODUCTS[myHolding]?.label}</b>
-              <em>👥'dan ısmarlayabilirsin</em>
-            </div>
-          )}
+          {/* v132.1: "Elinde: … · 👥'dan ısmarlayabilirsin" paneli kaldırıldı (gereksiz; ürün avatarın elinde görünüyor) */}
 
           {/* SOHBET */}
           <div className={`hs-chat${mode === 'build' ? ' build' : ''}${chatExpanded ? ' expanded' : ''}`}>

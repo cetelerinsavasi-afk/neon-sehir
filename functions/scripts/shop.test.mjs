@@ -637,3 +637,14 @@ test('v132 vitrine ekle: ürün ilanla tutarsızsa (tamir görmüş / sahibi de�
   assert.equal(h.G('marketplaceListings/L2').sold, true);
   assert.equal(h.G('users/usta').gold, g0, 'kendi ilanı: para kendinden kendine');
 });
+
+test('v132.1 teklif dizini yoksa offersEnsure mevcut stoklardan kurar (müşteri ekranı ucuz fiyatı görür)', async () => {
+  const h = gameSetup();
+  const a = await stockedShop(h, 'usta', 82_000);
+  h.db._store.delete('shopOffers/weapon');
+  assert.ok(!h.G('shopOffers/weapon')?.v);
+  await h.act('ali', { op: 'offersEnsure', kind: 'weapon' });
+  assert.equal(h.G('shopOffers/weapon').v, 1);
+  assert.equal(h.G('shopOffers/weapon').offers['6'][a], 82_000);
+  await assert.rejects(h.act('ali', { op: 'offersEnsure', kind: 'x' }), /Geçersiz/);
+});

@@ -183,29 +183,37 @@ function PlanCard({ plan, myUid, onChanged }) {
     }
   };
 
+  const creator = participants.find((p) => p.uid === plan.creatorUid);
   return (
-    <div className="heist-plan-card">
-      <p className="heist-plan-meta">
-        {participants.length}/4 kişi · Toplam güç {totalPower.toLocaleString('tr-TR')} /{' '}
-        {required.toLocaleString('tr-TR')}
-      </p>
+    <div className={`heist-plan-card${isMember ? ' mine' : ''}`}>
+      <div className="hp-plan-head">
+        <b>👑 {creator?.displayName || 'Kurucu'}</b>
+        <span>{participants.length}/4 kişi</span>
+      </div>
+      <div className="hp-plan-power">
+        <div className="sg-meter">
+          <i style={{ width: `${Math.min(100, required > 0 ? (totalPower / required) * 100 : 0)}%` }} />
+        </div>
+        <span className={totalPower >= required ? 'ok' : ''}>
+          ⚔️ {totalPower.toLocaleString('tr-TR')} / {required.toLocaleString('tr-TR')}
+        </span>
+      </div>
       <ul className="heist-plan-members">
         {participants.map((p) => (
           <li key={p.uid}>
             <span className="heist-plan-member-name">
-              <AvatarSvg avatar={p.avatar} size={22} rounded />
-              {p.displayName} ({(p.weaponPower || 0).toLocaleString('tr-TR')} güç)
+              <span className="hp-av">
+                <AvatarSvg avatar={p.avatar} size={26} rounded />
+              </span>
+              <span className="hp-mem-txt">
+                {p.displayName}
+                <small>⚔️ {(p.weaponPower || 0).toLocaleString('tr-TR')}</small>
+              </span>
             </span>
-            <span className={`heist-suspicion-badge ${suspicionClass(p.suspicion || 0)}`}>
-              şüphe {suspicionLabel(p.suspicion || 0)}
-            </span>
+            <span className={`heist-suspicion-badge ${suspicionClass(p.suspicion || 0)}`}>🕵️ {suspicionLabel(p.suspicion || 0)}</span>
             {isCreator && p.uid !== myUid && (
-              <button
-                className="heist-plan-kick"
-                disabled={busy}
-                onClick={() => run(() => kickFromHeistPlan(plan.id, p.uid))}
-              >
-                çıkar
+              <button className="heist-plan-kick" disabled={busy} onClick={() => run(() => kickFromHeistPlan(plan.id, p.uid))} aria-label="Çıkar">
+                ✕
               </button>
             )}
           </li>
@@ -218,7 +226,7 @@ function PlanCard({ plan, myUid, onChanged }) {
             <textarea
               className="heist-plan-note-input"
               maxLength={200}
-              placeholder="Örn: 'Şüphen düşmeden başlatma', 'şu kişi polis olabilir dikkat et'…"
+              placeholder="Örn: 'Şüphen düşmeden başlatma'…"
               value={noteDraft}
               onChange={(e) => setNoteDraft(e.target.value)}
             />
@@ -239,34 +247,24 @@ function PlanCard({ plan, myUid, onChanged }) {
             </div>
           </>
         ) : (
-          <>
-            {plan.note ? (
-              <p className="heist-plan-note-text">
-                📌 {plan.note}
-                {plan.noteUpdatedBy && (
-                  <span className="heist-plan-note-author"> — {plan.noteUpdatedBy}</span>
-                )}
-              </p>
-            ) : (
-              <p className="heist-plan-note-text muted">Henüz not yok.</p>
-            )}
+          <div className="hp-note-row">
+            <p className={`heist-plan-note-text${plan.note ? '' : ' muted'}`}>
+              📝 {plan.note || 'Henüz not yok.'}
+              {plan.note && plan.noteUpdatedBy && <span className="heist-plan-note-author"> — {plan.noteUpdatedBy}</span>}
+            </p>
             {(isMember || isCreator) && (
-              <button className="heist-plan-note-edit-btn" onClick={() => setEditingNote(true)}>
-                ✏️ Not {plan.note ? 'düzenle' : 'ekle'}
+              <button className="heist-plan-note-edit-btn" onClick={() => setEditingNote(true)} aria-label="Not">
+                ✏️
               </button>
             )}
-          </>
+          </div>
         )}
       </div>
 
       <div className="heist-plan-actions">
         {!isMember && (
-          <button
-            className="heist-plan-btn"
-            disabled={busy || participants.length >= 4}
-            onClick={() => run(() => joinHeistPlan(plan.id))}
-          >
-            {participants.length >= 4 ? 'Dolu' : 'Katıl'}
+          <button className="heist-plan-btn primary" disabled={busy || participants.length >= 4} onClick={() => run(() => joinHeistPlan(plan.id))}>
+            {participants.length >= 4 ? 'Dolu' : '🤝 Katıl'}
           </button>
         )}
         {isMember && !isCreator && (
@@ -275,21 +273,13 @@ function PlanCard({ plan, myUid, onChanged }) {
           </button>
         )}
         {isCreator && (
-          <button
-            className="heist-plan-btn primary"
-            disabled={busy || totalPower < required}
-            onClick={() => run(() => executeHeistPlan(plan.id))}
-          >
-            {totalPower < required ? 'Güç yetersiz' : 'Soygunu Başlat'}
+          <button className="heist-plan-btn primary" disabled={busy || totalPower < required} onClick={() => run(() => executeHeistPlan(plan.id))}>
+            {totalPower < required ? 'Güç yetersiz' : '💰 Başlat'}
           </button>
         )}
         {isCreator && (
-          <button
-            className="heist-plan-btn danger"
-            disabled={busy}
-            onClick={() => run(() => cancelHeistPlan(plan.id))}
-          >
-            Planı İptal Et
+          <button className="heist-plan-btn danger" disabled={busy} onClick={() => run(() => cancelHeistPlan(plan.id))}>
+            Planı sil
           </button>
         )}
       </div>
@@ -364,73 +354,73 @@ export default function HeistPanel({ target }) {
     }
   };
 
+  const pw = Math.min(100, meta.requiredPower > 0 ? (myPower / meta.requiredPower) * 100 : 0);
   return (
     <div className="heist-panel">
-      <p className="heist-panel-title">
-        {meta.emoji ? `${meta.emoji} ` : ''}
-        {meta.title}
-        <InfoIcon text={isPolice ? POLICE_RULES_TEXT : RULES_TEXT} />
-      </p>
-      <p className="heist-panel-risk">
-        Ödül: {meta.reward.toLocaleString('tr-TR')} altın · Şüphe +{meta.suspicionCost} · Gerekli
-        güç: {meta.requiredPower.toLocaleString('tr-TR')}
-      </p>
+      <div className="hp-hero">
+        <span className="hp-info">
+          <InfoIcon text={isPolice ? POLICE_RULES_TEXT : RULES_TEXT} />
+        </span>
+        <div className="hp-big">{meta.emoji}</div>
+        <h2>{meta.title}</h2>
+        <div className="hp-gold">
+          {meta.reward.toLocaleString('tr-TR')} <span className="gold-coin-icon" style={{ width: 22, height: 22 }} />
+        </div>
+        <small>olası ödül</small>
+      </div>
+      <div className="hp-stats">
+        <div className="sg-st">
+          <small>Gerekli güç</small>
+          <b>⚔️ {meta.requiredPower.toLocaleString('tr-TR')}</b>
+        </div>
+        <div className="sg-st">
+          <small>Götürdüğü şüphe</small>
+          <b>🕵️ +{meta.suspicionCost}</b>
+        </div>
+      </div>
+      <div className="sg-st">
+        <small>
+          Gücün {myPower.toLocaleString('tr-TR')} / {meta.requiredPower.toLocaleString('tr-TR')}
+        </small>
+        <div className="sg-meter big">
+          <i style={{ width: `${pw}%` }} />
+        </div>
+      </div>
+
+      {crimeLocked && !error && <p className="hp-note bad">⛔ Şüphen 50+ iken suç işleyemezsin. Ekip kurabilir, ekibe katılabilirsin ama soygun başlatılamaz.</p>}
 
       {needsTeam ? (
-        !alreadyInThisTarget && (
-          <button className="heist-panel-btn secondary" disabled={done || busy} onClick={handleCreatePlan}>
-            Ekip Kur
+        alreadyInThisTarget ? (
+          <p className="hp-note">✅ Bu hedefte ekibin var, aşağıdan yönet.</p>
+        ) : (
+          <button className="hp-cta sec" disabled={done || busy} onClick={handleCreatePlan}>
+            👥 EKİP KUR
           </button>
         )
       ) : (
-        <button className="heist-panel-btn primary" disabled={done || busy || crimeLocked} onClick={handleAttempt}>
-          {done
-            ? actions.vendorPurchases?.[target]
-              ? 'Bugün buradan alışveriş yaptın'
-              : 'Bugün zaten denedin'
-            : busy
-              ? 'Soyuluyor…'
-              : 'Soygun Yap'}
+        <button className="hp-cta" disabled={done || busy || crimeLocked} onClick={handleAttempt}>
+          {done ? (actions.vendorPurchases?.[target] ? 'Bugün buradan alışveriş yaptın' : 'Bugün zaten denedin') : busy ? 'Soyuluyor…' : '💰 SOYGUN YAP'}
         </button>
       )}
 
       {result && (
-        <p
-          className={`heist-panel-result ${
-            result.started &&
-            !result.caught &&
-            !result.caughtBySuspicion &&
-            (!result.busted || result.viaPoliceTrap)
-              ? 'success'
-              : ''
-          }`}
-        >
+        <p className={`heist-panel-result ${result.started && !result.caught && !result.caughtBySuspicion && (!result.busted || result.viaPoliceTrap) ? 'success' : ''}`}>
           {resultMessage(result)}
         </p>
       )}
-      {crimeLocked && !error && <p className="heist-panel-error">⛔ Şüphen 50+ iken suç işleyemezsin (ekip kurabilir, ekibe katılabilirsin ama soygun başlatılamaz).</p>}
       {error && <p className="heist-panel-error">{error}</p>}
 
       {result && result.started && (
-        <ResultModal
-          title={resultTitle(result)}
-          message={resultMessage(result)}
-          tone={isResultSuccess(result) ? 'success' : 'fail'}
-          onClose={() => setResult(null)}
-        />
+        <ResultModal title={resultTitle(result)} message={resultMessage(result)} tone={isResultSuccess(result) ? 'success' : 'fail'} onClose={() => setResult(null)} />
       )}
 
       {(needsTeam || showTeamForming || plans.length > 0) && (
         <div className="heist-plan-list">
-          <p className="heist-plan-list-title">Ekip Soygunları ({plans.length})</p>
+          <p className="heist-plan-list-title">Ekip soygunları ({plans.length})</p>
           {plans.map((plan) => (
-            <PlanCard
-              key={plan.id}
-              plan={plan}
-              myUid={user.uid}
-              onChanged={(data) => data && setResult(data)}
-            />
+            <PlanCard key={plan.id} plan={plan} myUid={user.uid} onChanged={(data) => data && setResult(data)} />
           ))}
+          {!plans.length && <p className="hp-note">Henüz açık plan yok. İlk ekibi sen kur.</p>}
         </div>
       )}
     </div>

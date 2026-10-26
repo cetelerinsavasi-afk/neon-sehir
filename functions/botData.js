@@ -80,19 +80,25 @@ export const BOT_OUTFITS = [
 ];
 export const BOT_OUTFIT_BY_ID = Object.fromEntries(BOT_OUTFITS.map((o) => [o.id, o]));
 
-// Her cinsiyet için 4 yüz / saç tipi
+// Her cinsiyet için 6 yüz / saç tipi (v132.1: daha düzgün + havalı tipler).
+// Sıra önemli: kayıtlı botlar tipi dizinle (t) tutar — 0–3 eski kayıtlar da geçerli.
+const TY = (n, a, hc) => ({ n, a: { eyeShape: 'almond', noseShape: 'straight', eyelash: 'none', ...a }, hc });
 export const BOT_TYPES = {
   erkek: [
-    { n: 'Düzgün', a: { hairStyle: 'short', faceShape: 'oval', facialHair: 'none', eyebrowShape: 'straight', eyelash: 'none', build: 'standart' }, hc: '#2b2118' },
-    { n: 'Sakallı', a: { hairStyle: 'slick', faceShape: 'square', facialHair: 'short', eyebrowShape: 'thick', eyelash: 'none', build: 'iri' }, hc: '#0d0a08' },
-    { n: 'Bıyıklı', a: { hairStyle: 'wavy', faceShape: 'long', facialHair: 'mustache', eyebrowShape: 'angled', eyelash: 'none', build: 'zayif' }, hc: '#5c3a21' },
-    { n: 'Kel Keçisakal', a: { hairStyle: 'kel', faceShape: 'diamond', facialHair: 'goatee', eyebrowShape: 'thick', eyelash: 'none', build: 'standart' }, hc: '#2b2118' },
+    TY('Klasik', { hairStyle: 'short', faceShape: 'oval', facialHair: 'none', eyebrowShape: 'straight', build: 'standart' }, '#2b2118'),
+    TY('Jilet', { hairStyle: 'undercut', faceShape: 'square', facialHair: 'short', eyebrowShape: 'thick', eyeShape: 'narrow', build: 'standart' }, '#0d0a08'),
+    TY('Bıyıklı Usta', { hairStyle: 'slick', faceShape: 'oval', facialHair: 'mustache', eyebrowShape: 'thick', noseShape: 'aquiline', build: 'iri' }, '#2b2118'),
+    TY('Sakallı Kel', { hairStyle: 'kel', faceShape: 'square', facialHair: 'full', eyebrowShape: 'thick', eyeShape: 'hooded', build: 'iri' }, '#0d0a08'),
+    TY('Yakışıklı', { hairStyle: 'wavy', faceShape: 'oval', facialHair: 'vandyke', eyebrowShape: 'angled', build: 'standart' }, '#5c3a21'),
+    TY('Genç', { hairStyle: 'curly', faceShape: 'round', facialHair: 'none', eyebrowShape: 'straight', eyeShape: 'round', noseShape: 'small', build: 'zayif' }, '#2b2118'),
   ],
   kadin: [
-    { n: 'Uzun Saç', a: { hairStyle: 'long', faceShape: 'heart', facialHair: 'none', eyebrowShape: 'arched', eyelash: 'natural', build: 'zayif', lipColor: '#c9636b' }, hc: '#5c3a21' },
-    { n: 'Topuz', a: { hairStyle: 'bun', faceShape: 'round', facialHair: 'none', eyebrowShape: 'thin', eyelash: 'long', build: 'standart', lipColor: '#8a3a3a' }, hc: '#8a6a3a' },
-    { n: 'Pixie', a: { hairStyle: 'pixie', faceShape: 'diamond', facialHair: 'none', eyebrowShape: 'arched', eyelash: 'natural', build: 'standart', lipColor: '#7a3048' }, hc: '#0d0a08' },
-    { n: 'Kıvırcık', a: { hairStyle: 'curly', faceShape: 'oval', facialHair: 'none', eyebrowShape: 'thick', eyelash: 'long', build: 'iri', lipColor: '#e8998a' }, hc: '#2b2118' },
+    TY('Uzun Düz', { hairStyle: 'long', faceShape: 'oval', facialHair: 'none', eyebrowShape: 'arched', eyelash: 'natural', noseShape: 'small', build: 'standart', lipColor: '#b5525c' }, '#2b2118'),
+    TY('Topuz', { hairStyle: 'bun', faceShape: 'heart', facialHair: 'none', eyebrowShape: 'arched', eyelash: 'long', noseShape: 'small', build: 'standart', lipColor: '#9a3f4a' }, '#5c3a21'),
+    TY('Kısa Kesim', { hairStyle: 'pixie', faceShape: 'oval', facialHair: 'none', eyebrowShape: 'angled', eyelash: 'natural', noseShape: 'button', build: 'standart', lipColor: '#7a3048' }, '#0d0a08'),
+    TY('At Kuyruğu', { hairStyle: 'ponytail', faceShape: 'oval', facialHair: 'none', eyebrowShape: 'arched', eyelash: 'long', eyeShape: 'wide', noseShape: 'small', build: 'standart', lipColor: '#c9636b' }, '#8a6a3a'),
+    TY('Kıvırcık', { hairStyle: 'afro', faceShape: 'oval', facialHair: 'none', eyebrowShape: 'thick', eyelash: 'long', noseShape: 'small', build: 'standart', lipColor: '#a8484f' }, '#2b2118'),
+    TY('Örgülü', { hairStyle: 'braids', faceShape: 'heart', facialHair: 'none', eyebrowShape: 'arched', eyelash: 'dramatic', noseShape: 'small', build: 'zayif', lipColor: '#8a3a3a' }, '#0d0a08'),
   ],
 };
 
@@ -153,5 +159,18 @@ export function botAvatar(cfg) {
     shoeStyle: x.s,
     botOv: BOT_OUTFIT_BY_ID[c.o].ov,
   };
+}
+// v132.1 — ad etiketi: 'Hasan Usta' → 'Hasan Usta Bot' (zaten "bot" ile bitiyorsa eklenmez)
+export const botLabel = (name) => {
+  const n = String(name || '').trim();
+  return /(^|\s)bot$/i.test(n) ? n : `${n} Bot`.trim();
+};
+// Garson botun servis sözleri (fotoğrafta balon olarak da kabul edilir)
+export const BOT_SERVE_LINES = ['Afiyet olsun!', 'Buyurun, siparişiniz.', 'Taze taze, afiyet olsun!', 'Başka bir şey olursa seslenin.', 'Kusura bakma, olmadı…'];
+// Botun söyleyebileceği tüm sözler (yeni bot: mesleğin sözleri)
+export function botAllowedLines(raw) {
+  const c = cleanBotConfig(raw);
+  const own = raw ? c.l.filter(Boolean) : BOT_JOB_BY_ID[BOT_OUTFIT_BY_ID[c.o].job].lines;
+  return [...own, ...BOT_SERVE_LINES];
 }
 export const botJobOf = (cfg) => BOT_JOB_BY_ID[BOT_OUTFIT_BY_ID[cleanBotConfig(cfg).o].job];

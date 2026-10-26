@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import { houseAction } from '../../services/gameActions';
 import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
-import { BOT_JOBS, BOT_JOB_BY_ID, BOT_OUTFITS, BOT_OUTFIT_BY_ID, BOT_TYPES, BOT_SKINS, BOT_HAIRS, BOT_MOODS, BOT_MOVES, BOT_LINES, BOT_LINE_MAX, BOT_NAME_MAX, botAvatar, botDefaults, cleanBotConfig } from '../../../functions/botData.js';
+import { BOT_JOBS, BOT_JOB_BY_ID, BOT_OUTFITS, BOT_OUTFIT_BY_ID, BOT_TYPES, BOT_SKINS, BOT_HAIRS, BOT_MOODS, BOT_MOVES, BOT_LINES, BOT_LINE_MAX, BOT_NAME_MAX, botAvatar, botDefaults, botLabel, cleanBotConfig } from '../../../functions/botData.js';
 import '../Venue/Venue.css';
 import './BotUi.css';
 
@@ -93,7 +93,7 @@ export function BotEditor({ houseId, itemId, cfg: initial, onClose, flash }) {
     setBusy(true);
     try {
       await houseAction({ op: 'botSet', houseId, i: itemId, cfg: { ...c, l: lines } });
-      flash?.(`🤖 ${c.n || jobOf.names[c.g]} hazır.`);
+      flash?.(`🤖 ${botLabel(c.n || jobOf.names[c.g])} hazır.`);
       onClose();
     } catch (err) {
       const m = String(err?.message || '');
@@ -110,7 +110,7 @@ export function BotEditor({ houseId, itemId, cfg: initial, onClose, flash }) {
             <AvatarSvg avatar={av} variant="full" />
           </div>
           <div className="bt-ed-plate">
-            {jobOf.e} {c.n || jobOf.names[c.g]}
+            {jobOf.e} {botLabel(c.n || jobOf.names[c.g])}
             {c.w ? ' · 🛎️' : ''}
           </div>
           <button className="bz-x bt-ed-x" disabled={busy} onClick={onClose} aria-label="Kapat">

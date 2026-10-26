@@ -186,6 +186,11 @@ export function BankaPart({ panel, setPanel, engineRef, onOpenHeist, flash, walk
   const [myNumber, setMyNumber] = useState(null);
   const timers = useRef([]);
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
+  // v132.1 — sıra numarası elde (beyaz kâğıdın üstünde numara)
+  useEffect(() => {
+    engineRef.current?.setSelfTicket?.(myNumber);
+  }, [myNumber, engineRef]);
+  useEffect(() => () => engineRef.current?.setSelfTicket?.(null), [engineRef]);
   useEffect(() => {
     if (panel !== 'number') return;
     setPanel(null);

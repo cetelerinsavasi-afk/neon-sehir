@@ -1,272 +1,318 @@
+/* v132.1 — Soygun detay paneli (prototip: Soygun Sekmesi · hero + istatistik + ekipler) */
 .heist-panel {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  background: #140508;
-  border: 1px solid rgba(255, 46, 140, 0.35);
-  border-radius: 10px;
-  padding: 12px;
-  margin-top: 4px;
+  gap: 12px;
+  --sg-ok: #34d399;
+  --sg-bad: #ef4444;
+  --sg-gold: #f2b632;
 }
-
-.heist-panel-title {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--neon-pink);
+.hp-hero {
+  position: relative;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 46, 140, 0.45);
+  padding: 18px 16px 14px;
+  text-align: center;
+  background: radial-gradient(120% 90% at 50% 0, rgba(255, 46, 140, 0.24), var(--panel));
+  overflow: hidden;
 }
-
-.heist-panel-risk {
-  margin: 0;
-  font-size: 11px;
-  color: var(--text-dim);
+.hp-hero::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--neon-pink), var(--neon-cyan), transparent);
+  opacity: 0.7;
 }
-
-.heist-panel-hint {
-  margin: 0;
-  font-size: 10px;
-  color: var(--text-dim);
-  line-height: 1.4;
-  opacity: 0.8;
+.hp-info {
+  position: absolute;
+  top: 10px;
+  right: 10px;
 }
-
-.heist-panel-btn {
-  padding: 10px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 46, 140, 0.5);
-  background: rgba(255, 46, 140, 0.12);
+.hp-big {
+  font-size: 54px;
+  line-height: 1;
+  filter: drop-shadow(0 6px 16px rgba(255, 46, 140, 0.35));
+}
+.hp-hero h2 {
+  margin: 8px 0 2px;
+  font-size: 19px;
   color: var(--text);
-  font-size: 13px;
+}
+.hp-gold {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--sg-gold);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.hp-hero small {
+  display: block;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.hp-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.hp-stats .sg-st {
+  text-align: center;
+}
+.hp-stats .sg-st b {
+  font-size: 16px;
+}
+.hp-cta {
+  width: 100%;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--neon-pink);
+  background: linear-gradient(180deg, rgba(255, 46, 140, 0.4), rgba(255, 46, 140, 0.16));
+  color: var(--text);
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.04em;
   cursor: pointer;
-  margin-top: 4px;
+  box-shadow: 0 0 18px rgba(255, 46, 140, 0.18);
 }
-
-.heist-panel-btn:hover:not(:disabled) {
-  background: rgba(255, 46, 140, 0.22);
+.hp-cta.sec {
+  border-color: var(--neon-cyan);
+  background: rgba(25, 232, 255, 0.14);
+  box-shadow: 0 0 18px rgba(25, 232, 255, 0.12);
 }
-
-.heist-panel-btn:disabled {
-  opacity: 0.5;
+.hp-cta:disabled {
+  opacity: 0.45;
   cursor: default;
+  box-shadow: none;
 }
-
+.hp-note {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text-dim);
+}
+.hp-note.bad {
+  border-color: var(--sg-bad);
+  color: var(--sg-bad);
+}
 .heist-panel-result {
-  margin: 4px 0 0;
+  margin: 0;
   font-size: 12px;
   font-weight: 600;
+  color: var(--text-dim);
 }
-
 .heist-panel-result.success {
   color: var(--neon-yellow);
 }
-
-.heist-panel-result.fail {
-  color: var(--text-dim);
-}
-
-.heist-panel-solo-row {
-  display: flex;
-  gap: 8px;
-}
-
-.heist-panel-solo-row .heist-panel-btn {
-  flex: 1;
-  margin-top: 0;
-}
-
-.heist-panel-btn.secondary {
-  background: transparent;
-  border-style: dashed;
-}
-
 .heist-panel-error {
-  color: var(--neon-pink);
-  font-size: 11px;
   margin: 0;
+  font-size: 12px;
+  color: #ff6b6b;
 }
 
+/* --- ekip planları ------------------------------------------------------ */
 .heist-plan-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-top: 6px;
-  padding-top: 8px;
-  border-top: 1px dashed rgba(255, 46, 140, 0.3);
 }
-
 .heist-plan-list-title {
-  margin: 0;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-dim);
+  margin: 4px 0 0;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text);
 }
-
 .heist-plan-card {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  background: #0a0308;
-  border: 1px solid rgba(255, 46, 140, 0.25);
-  border-radius: 8px;
-  padding: 8px 10px;
+  gap: 8px;
 }
-
-.heist-plan-meta {
-  margin: 0;
-  font-size: 11px;
+.heist-plan-card.mine {
+  border-color: rgba(25, 232, 255, 0.55);
+}
+.hp-plan-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
   color: var(--text-dim);
 }
-
-.heist-plan-meta.police-trap-hint {
-  margin-top: 4px;
-  color: #ffb454;
+.hp-plan-head b {
+  color: var(--text);
 }
-
+.hp-plan-power {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.hp-plan-power .sg-meter {
+  flex: 1;
+  margin: 0;
+}
+.hp-plan-power .ok {
+  color: var(--sg-ok);
+  font-weight: 700;
+}
 .heist-plan-members {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 11px;
 }
-
 .heist-plan-members li {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--panel-border);
+  font-size: 13px;
 }
-
+.heist-plan-members li:first-child {
+  border-top: none;
+}
 .heist-plan-member-name {
   display: flex;
   align-items: center;
-  gap: 6px;
-}
-
-.heist-plan-kick {
-  border: none;
-  background: none;
-  color: var(--neon-pink);
-  font-size: 10px;
-  cursor: pointer;
-  text-decoration: underline;
-  padding: 0;
-}
-
-.heist-suspicion-badge {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  white-space: nowrap;
-}
-
-.heist-suspicion-low {
-  background: rgba(25, 232, 255, 0.12);
-  color: var(--neon-cyan);
-}
-
-.heist-suspicion-mid {
-  background: rgba(255, 210, 63, 0.15);
-  color: #ffd23f;
-}
-
-.heist-suspicion-high {
-  background: rgba(255, 46, 140, 0.15);
-  color: var(--neon-pink);
-}
-
-.heist-plan-actions {
-  display: flex;
-  gap: 6px;
-}
-
-.heist-plan-btn {
+  gap: 8px;
+  min-width: 0;
   flex: 1;
-  padding: 6px;
-  border-radius: 6px;
-  border: 1px solid var(--panel-border);
-  background: var(--panel);
-  color: var(--text);
-  font-size: 11px;
-  cursor: pointer;
 }
-
-.heist-plan-btn:hover:not(:disabled) {
-  border-color: var(--neon-cyan);
+.hp-av {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex: none;
+  background: var(--panel-border);
+  display: grid;
+  place-items: center;
 }
-
-.heist-plan-btn.primary {
-  border-color: rgba(255, 46, 140, 0.5);
-  background: rgba(255, 46, 140, 0.12);
-}
-
-.heist-plan-btn.danger {
-  color: var(--neon-pink);
-}
-
-.heist-plan-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.heist-plan-note {
+.hp-mem-txt {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: rgba(255, 210, 63, 0.06);
-  border: 1px solid var(--panel-border);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
 }
-
-.heist-plan-note-text {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-.heist-plan-note-text.muted {
-  color: var(--text-dim);
-  font-style: italic;
-}
-
-.heist-plan-note-author {
+.hp-mem-txt small {
   font-size: 10px;
   color: var(--text-dim);
 }
-
-.heist-plan-note-edit-btn {
-  align-self: flex-start;
+.heist-suspicion-badge {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 99px;
+  white-space: nowrap;
+}
+.heist-suspicion-low {
+  background: rgba(52, 211, 153, 0.14);
+  color: var(--sg-ok);
+}
+.heist-suspicion-mid {
+  background: rgba(242, 182, 50, 0.14);
+  color: var(--sg-gold);
+}
+.heist-suspicion-high {
+  background: rgba(239, 68, 68, 0.14);
+  color: var(--sg-bad);
+}
+.heist-plan-kick {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
   background: none;
-  border: none;
-  color: var(--neon-cyan);
+  color: var(--text-dim);
   font-size: 11px;
   cursor: pointer;
-  padding: 0;
+  flex: none;
 }
-
-.heist-plan-note-input {
-  width: 100%;
-  min-height: 56px;
-  padding: 8px;
-  border-radius: 8px;
-  border: 1px solid var(--panel-border);
-  background: #05070c;
-  color: var(--text);
-  font-size: 12px;
-  font-family: inherit;
-  resize: vertical;
-  box-sizing: border-box;
-}
-
-.heist-plan-note-actions {
+.hp-note-row {
   display: flex;
+  align-items: flex-start;
   gap: 6px;
 }
-
-.heist-plan-note-actions .heist-plan-btn {
+.heist-plan-note-text {
   flex: 1;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg);
+  font-size: 12px;
+  color: var(--text);
+  word-break: break-word;
+}
+.heist-plan-note-text.muted {
+  color: var(--text-dim);
+}
+.heist-plan-note-author {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.heist-plan-note-edit-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: none;
+  cursor: pointer;
+  flex: none;
+}
+.heist-plan-note-input {
+  width: 100%;
+  min-height: 60px;
+  resize: vertical;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg);
+  color: var(--text);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+.heist-plan-note-actions,
+.heist-plan-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.heist-plan-btn {
+  flex: 1;
+  padding: 9px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: none;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.heist-plan-btn.primary {
+  border-color: var(--neon-pink);
+  background: rgba(255, 46, 140, 0.14);
+  font-weight: 800;
+}
+.heist-plan-btn.danger {
+  color: #ff6b6b;
+}
+.heist-plan-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
 }

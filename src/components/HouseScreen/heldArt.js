@@ -808,6 +808,50 @@ ART.oralet = (g) => {
 ART.altinTabanca = (g) => gun(g, { body: '#d4a62a', grip: '#8a6a12', accent: '#fff1a8' });
 
 // Ürünün 128×128 tuvali (önbellekli)
+// v132.1 — bankadan alınan sıra numarası: elde beyaz kâğıt, üstünde numara
+function drawQueueTicket(g, num) {
+  g.save();
+  g.translate(S / 2, S / 2);
+  g.rotate(-0.12);
+  const w = 74;
+  const h = 100;
+  g.fillStyle = 'rgba(0,0,0,0.28)';
+  g.fillRect(-w / 2 + 4, -h / 2 + 5, w, h);
+  g.fillStyle = '#fbfaf6';
+  g.strokeStyle = '#9aa0aa';
+  g.lineWidth = 3;
+  g.beginPath();
+  g.rect(-w / 2, -h / 2, w, h);
+  g.fill();
+  g.stroke();
+  // yırtık alt kenar
+  g.fillStyle = '#fbfaf6';
+  for (let x = -w / 2; x < w / 2; x += 8) {
+    g.beginPath();
+    g.moveTo(x, h / 2 - 1);
+    g.lineTo(x + 4, h / 2 + 4);
+    g.lineTo(x + 8, h / 2 - 1);
+    g.fill();
+  }
+  g.fillStyle = '#c81d3f';
+  g.fillRect(-w / 2, -h / 2, w, 22);
+  g.fillStyle = '#fff';
+  g.font = 'bold 15px system-ui, sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText('SIRA', 0, -h / 2 + 11.5);
+  g.fillStyle = '#14161c';
+  g.font = `bold ${num.length > 2 ? 34 : 44}px system-ui, sans-serif`;
+  g.fillText(num, 0, 10);
+  g.strokeStyle = '#c9ccd3';
+  g.lineWidth = 2;
+  g.beginPath();
+  g.moveTo(-w / 2 + 10, h / 2 - 14);
+  g.lineTo(w / 2 - 10, h / 2 - 14);
+  g.stroke();
+  g.restore();
+}
+
 export function heldCanvas(product) {
   if (cache.has(product)) return cache.get(product);
   const c = document.createElement('canvas');
@@ -816,7 +860,9 @@ export function heldCanvas(product) {
   g.lineJoin = 'round';
   g.lineCap = 'round';
   const fn = ART[product];
-  if (fn) fn(g);
+  const sira = /^sira:(\d{1,3})$/.exec(String(product));
+  if (sira) drawQueueTicket(g, sira[1]);
+  else if (fn) fn(g);
   else {
     g.textAlign = 'center';
     g.textBaseline = 'middle';

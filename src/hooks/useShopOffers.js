@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
+import { shopAction } from '../services/gameActions';
+
+// v132.1 — dizin hiç kurulmamışsa (ilk sürüm geçişi) sunucuya bir kez kurdurulur
+const ensured = new Set();
 
 // v132 — oyunun Silah Mağazası / Araba Galerisi fiyatları: stoğu olan oyuncu
 // dükkânlarının en ucuzu (functions/shop.js shopOffers/{weapon|vehicle}, tek belge).
@@ -12,6 +16,10 @@ export function useShopOffers(kind, { enabled = true } = {}) {
     return onSnapshot(
       doc(db, 'shopOffers', kind),
       (s) => {
+        if ((!s.exists() || s.data()?.v !== 1) && !ensured.has(kind)) {
+          ensured.add(kind);
+          shopAction({ op: 'offersEnsure', kind }).catch(() => ensured.delete(kind));
+        }
         const out = {};
         for (const [cid, m] of Object.entries(s.data()?.offers || {})) {
           for (const v of Object.values(m || {})) {

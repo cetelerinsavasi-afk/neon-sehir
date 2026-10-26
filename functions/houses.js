@@ -42,7 +42,7 @@ import { VENUES, VENUE_OWNER, camiiDynamicNpcs } from './venueLayouts.js';
 import { doorOf, doorSpawn, settleDoor } from './houseDoor.js';
 import { MATERIAL_HOLDER_BIZ, readHoldings, readMaterialInv, closeBlockMaterials } from './materials.js';
 import { createFurnMarket } from './furnMarket.js';
-import { cleanBotConfig, BOT_ITEM_KEY } from './botData.js';
+import { cleanBotConfig, BOT_ITEM_KEY, botAvatar, botDefaults, botLabel, botAllowedLines } from './botData.js';
 
 // v77 — Ev → İşletme. houses/{id} üzerine eklenen alanlar:
 //   biz: { type, openedAtMs } | null   — açık işletme (yoksa ev)
@@ -876,15 +876,40 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     // ve çekim anında NPC'lerin ekrandaki balonları — sadece o NPC'nin gerçekten
     // söyleyebileceği cümleler kabul edilir (istemci serbest metin yazamaz).
     const vn = h.venue ? VENUES[h.venue] : null;
+    const npcSays = new Map();
+    const npcShot = new Map(); // v132.1: botların çekim anındaki konumu (istemci)
+    if (Array.isArray(a?.people)) {
+      a.people.slice(0, 60).forEach((q) => {
+        if (!q || typeof q.uid !== 'string' || !/^npc_[A-Za-z0-9_-]{1,60}$/.test(q.uid)) return;
+        if (Array.isArray(q.says)) npcSays.set(q.uid, q.says);
+        npcShot.set(q.uid, q);
+      });
+    }
+    // v132.1 — BOTLAR fotoğrafta: ad / avatar / sözler sunucudaki bot ayarından; istemciden
+    // sadece konum (kelepçeli), yön, koltuk ve o botun gerçekten söyleyebileceği balonlar.
+    const botSrc = vn ? (vn.bots || []).map((b) => ({ i: b.i, x: b.x, z: b.z, cfg: b.cfg })) : (h.items || []).filter((it) => it.k === BOT_ITEM_KEY && it.p === 1).slice(0, 12).map((it) => ({ i: it.i, x: it.x, z: it.z, cfg: h.bots?.[it.i] || null }));
+    botSrc.forEach((bt) => {
+      const uidB = `npc_bot_${bt.i}`;
+      const q = npcShot.get(uidB) || {};
+      const qx = num(q.x);
+      const qz = num(q.z);
+      const okPos = qx !== null && qz !== null && Math.abs(qx) <= 40 && Math.abs(qz) <= 40;
+      const allowed = new Set(botAllowedLines(bt.cfg).map((l) => String(l).slice(0, 200)));
+      const says = (npcSays.get(uidB) || []).map((x) => String(x)).filter((x) => allowed.has(x)).slice(-3);
+      people.push({
+        uid: uidB,
+        displayName: botLabel(botDefaults(bt.cfg).name),
+        avatar: botAvatar(bt.cfg),
+        x: okPos ? qx : Number(bt.x) || 0,
+        z: okPos ? qz : Number(bt.z) || 0,
+        left: !!q.left,
+        seat: typeof q.seat === 'string' && /^[A-Za-z0-9_-]{1,40}:\d{1,2}$/.test(q.seat) ? q.seat : null,
+        ...(says.length ? { says } : {}),
+      });
+    });
     if (vn) {
       const npcs = [...(vn.npcs || [])];
       if (h.venue === 'camii') npcs.push(...(await camiiNpcsNow()));
-      const npcSays = new Map();
-      if (Array.isArray(a?.people)) {
-        a.people.slice(0, 40).forEach((q) => {
-          if (q && typeof q.uid === 'string' && /^npc_[A-Za-z0-9_-]{1,60}$/.test(q.uid) && Array.isArray(q.says)) npcSays.set(q.uid, q.says);
-        });
-      }
       npcs.forEach((n) => {
         const allowed = new Set((n.lines || []).map((l) => String(l).slice(0, 200)));
         const says = (npcSays.get(n.id) || []).map((x) => String(x)).filter((x) => allowed.has(x)).slice(-3);

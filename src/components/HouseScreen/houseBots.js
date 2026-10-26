@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { houseAction, shopAction } from '../../services/gameActions';
-import { botAvatar, botDefaults, botJobOf, cleanBotConfig, BOT_ITEM_KEY } from '../../../functions/botData.js';
+import { botAvatar, botDefaults, botJobOf, botLabel, cleanBotConfig, BOT_ITEM_KEY, BOT_SERVE_LINES } from '../../../functions/botData.js';
 import { HOUSE_PRODUCTS, HOUSE_TAKEABLES, VENUE_FREE_TAKE_KEYS } from '../../../functions/houseCatalogData.js';
 import { MENU_TYPES, isMenuProduct, menuPriceOf } from '../../../functions/venue.js';
 import { officePriceOf } from '../../../functions/officeData.js';
@@ -23,7 +23,7 @@ const DELIVER_DIST = 1.0;
 const DELIVER_TIMEOUT_MS = 14_000;
 const STUCK_MS = 12_000;
 const MAX_BOTS = 12;
-const SERVE_LINES = ['Afiyet olsun!', 'Buyurun, siparişiniz.', 'Taze taze, afiyet olsun!', 'Başka bir şey olursa seslenin.'];
+const SERVE_LINES = BOT_SERVE_LINES.slice(0, 4);
 const rnd = Math.random;
 const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
 const between = (a, b) => a + rnd() * (b - a);
@@ -44,22 +44,29 @@ export function waiterMenu(houseDoc, { venue, isOwner, uid }) {
       if (!venue && menuBiz && houseDoc.ownerUid !== uid) {
         kind = 'menu';
         price = menuPriceOf(houseDoc, prod);
-      } else if (!venue && !isOwner && officePriceOf(houseDoc, prod) > 0) continue; // ofisin ücretli ürünü (garsonla değil)
+      } else if (!venue && !isOwner && officePriceOf(houseDoc, prod) > 0) {
+        // v132.1: ofisin ücretli ürünü de garsonla gelir (ziyaretçide buton yoktu)
+        kind = 'office';
+        price = officePriceOf(houseDoc, prod);
+      }
       out[prod] = { product: prod, itemId: it.i, price, kind };
     }
   }
   return out;
 }
 
-export function useHouseBots({ engineRef, engineKey, phase, houseId, houseDoc, venue, mode, isOwner, user, npcsRef, pushOthers, flash }) {
+export function useHouseBots({ engineRef, engineKey, phase, houseId, houseDoc, designItems, venue, mode, isOwner, user, npcsRef, pushOthers, flash }) {
   // --- bot listesi (sunucudaki kayıtlı hâl) ------------------------------------------
   const defs = useMemo(() => {
     const list = [];
     if (venue) {
       (venue.bots || []).forEach((b) => list.push({ i: b.i, x: b.x, z: b.z, cfg: cleanBotConfig(b.cfg), fresh: false }));
     } else {
-      (houseDoc?.items || []).forEach((it) => {
-        if (it.k !== BOT_ITEM_KEY || it.p !== 1) return;
+      // v132.1: Tasarla'da odadaki (henüz satın alınmamış dahil) her platformda bot
+      // görünür ve platformla birlikte taşınır; Gez'de sadece satın alınmış botlar.
+      const build = mode === 'build' && Array.isArray(designItems);
+      (build ? designItems : houseDoc?.items || []).forEach((it) => {
+        if (it.k !== BOT_ITEM_KEY || (!build && it.p !== 1)) return;
         const raw = houseDoc?.bots?.[it.i];
         list.push({ i: it.i, x: it.x, z: it.z, cfg: cleanBotConfig(raw), fresh: !raw });
       });
@@ -69,9 +76,9 @@ export function useHouseBots({ engineRef, engineKey, phase, houseId, houseDoc, v
       const { name } = botDefaults(d.cfg);
       // hiç düzenlenmemiş bot mesleğinin sözlerini söyler; düzenlenince sadece yazılanlar
       const lines = d.fresh ? job.lines : d.cfg.l.filter(Boolean);
-      return { ...d, uid: `npc_bot_${d.i}`, name, lines, avatar: botAvatar(d.cfg), waiter: d.cfg.w };
+      return { ...d, ck: JSON.stringify(d.cfg), uid: `npc_bot_${d.i}`, name: botLabel(name), lines, avatar: botAvatar(d.cfg), waiter: d.cfg.w };
     });
-  }, [venue, houseDoc?.items, houseDoc?.bots]);
+  }, [venue, houseDoc?.items, houseDoc?.bots, mode, designItems]);
   const defsKey = defs.map((d) => `${d.uid}:${d.x}:${d.z}:${JSON.stringify(d.cfg)}`).join('|');
 
   const stRef = useRef(new Map()); // uid → durum
@@ -123,6 +130,7 @@ export function useHouseBots({ engineRef, engineKey, phase, houseId, houseDoc, v
       last = now;
       const build = mode === 'build';
       const out = [];
+      const keys = [];
       stRef.current.forEach((st, uid) => {
         const d = st.def;
         if (build) {
@@ -136,7 +144,8 @@ export function useHouseBots({ engineRef, engineKey, phase, houseId, houseDoc, v
         } else {
           tick(st, uid, d, now, dt);
         }
-        out.push({ uid, displayName: d.name, avatar: d.avatar, x: Math.round(st.x * 100) / 100, z: Math.round(st.z * 100) / 100, left: st.left, seat: st.seat ? `${st.seat.id}:${st.seat.idx}` : null, holdingVisible: null, ...(st.emote ? { emote: st.emote.kind, emoteTs: st.emote.ts } : {}) });
+        out.push({ uid, displayName: d.name, avatar: d.avatar, x: Math.round(st.x * 100) / 100, z: Math.round(st.z * 100) / 100, left: st.left, seat: st.seat ? `${st.seat.id}:${st.seat.idx}` : null, holdingVisible: null });
+        keys.push(d.ck);
         // konuşma (sırayla, aralıklı)
         if (!build && d.lines.length && now >= st.sayAt) {
           eng.say(uid, d.lines[st.sayIdx % d.lines.length]);
@@ -144,7 +153,7 @@ export function useHouseBots({ engineRef, engineKey, phase, houseId, houseDoc, v
           st.sayAt = now + between(22_000, 38_000);
         }
       });
-      const key = out.map((o) => `${o.uid}:${o.x}:${o.z}:${o.seat}:${o.left}:${o.emoteTs || 0}`).join('|');
+      const key = out.map((o, n) => `${o.uid}:${o.displayName}:${keys[n]}:${o.x}:${o.z}:${o.seat}:${o.left}`).join('|');
       if (key !== npcsRef.current.key) {
         npcsRef.current = out;
         npcsRef.current.key = key;
@@ -256,12 +265,7 @@ export function useHouseBots({ engineRef, engineKey, phase, houseId, houseDoc, v
         }
       }
       if (now < st.next) return;
-      // arada bir el sallar / alkışlar / dans eder (otururken değil)
-      if (!st.seat && rnd() < 0.12) {
-        st.emote = { kind: pick(['selam', 'alkis', 'dans', 'kalp']), ts: now };
-        st.next = now + between(4000, 7000);
-        return;
-      }
+      // v132.1: botlar dans / el sallama gibi hareketler YAPMAZ (sadece yürür, oturur)
       standUp(st);
       const roam = mv === 'serbest';
       const { W, D } = eng.roomSize || { W: 18, D: 14 };
@@ -315,6 +319,7 @@ export function useHouseBots({ engineRef, engineKey, phase, houseId, houseDoc, v
       try {
         let r;
         if (o.kind === 'menu') r = await shopAction({ op: 'menuBuy', houseId, product: o.product, expect: o.price });
+        else if (o.kind === 'office') r = await shopAction({ op: 'officeBuy', houseId, itemId: o.itemId, product: o.product, expect: o.price });
         else r = await houseAction({ op: 'take', houseId, itemId: o.itemId, product: o.product });
         const data = r?.data || r || {};
         eng?.say(uid, pick(SERVE_LINES));
@@ -323,7 +328,7 @@ export function useHouseBots({ engineRef, engineKey, phase, houseId, houseDoc, v
       } catch (err) {
         const m = String(err?.message || '');
         eng?.say(uid, 'Kusura bakma, olmadı…');
-        flash?.(m === 'gold' ? 'Altının yetmiyor.' : m.startsWith('limit') ? 'Bu mekânda bugünkü harcama sınırına ulaştın.' : m.startsWith('price-changed') ? 'Fiyat az önce değişti, tekrar söyle.' : m === 'not-present' ? 'Mekânda değilsin.' : m || 'Sipariş verilemedi.');
+        flash?.(m === 'gold' ? 'Altının yetmiyor.' : m.startsWith('limit') || m.startsWith('office-limit') ? 'Bu mekânda bugünkü harcama sınırına ulaştın.' : m.startsWith('price-changed') ? 'Fiyat az önce değişti, tekrar söyle.' : m === 'not-present' ? 'Mekânda değilsin.' : m || 'Sipariş verilemedi.');
       } finally {
         busyRef.current = false;
         force((n) => n + 1);

@@ -1049,6 +1049,15 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
         return stockBuy(uid, p);
       case 'stockQuote':
         return stockQuote(uid, p);
+      case 'offersEnsure': {
+        // v132.1: teklif dizini hiç kurulmadıysa (hiçbir dükkân sahibi işlem yapmadan)
+        // oyunun mağazası en pahalı fiyatı gösteriyordu → ilk açan müşteri kurdurur.
+        // Kuruluysa tek okuma; kurulumda sadece o türün stok belgeleri okunur.
+        const kind = p.kind === 'vehicle' ? 'vehicle' : p.kind === 'weapon' ? 'weapon' : null;
+        if (!kind) return fail('invalid-argument', 'Geçersiz tür.');
+        await ensureOffers(kind);
+        return { ok: true };
+      }
       default:
         // v77 Faz 3: cafe/bar menüsü + internet kafe (functions/venue.js)
         if (Object.prototype.hasOwnProperty.call(extraOps, p.op)) return extraOps[p.op](uid, p);

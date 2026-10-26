@@ -386,6 +386,34 @@
   object-fit: contain;
   display: block;
 }
+.hs-thumb-bot {
+  position: relative;
+  margin: 0 auto;
+}
+.hs-thumb-bot-pad {
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  width: 46%;
+  height: 12%;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(closest-side, #ff2e88 0 22%, #15171d 26% 70%, #22d3ee 74% 84%, transparent 88%);
+  box-shadow: 0 0 10px rgba(34, 211, 238, 0.45);
+}
+.hs-thumb-bot-av {
+  position: absolute;
+  left: 50%;
+  bottom: 5%;
+  height: 100%;
+  aspect-ratio: 320 / 580;
+  transform: translateX(-50%);
+}
+.hs-thumb-bot-av svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
 .hs-thumb-emoji {
   display: flex;
   align-items: center;

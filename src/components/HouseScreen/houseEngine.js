@@ -1272,6 +1272,7 @@ export function createHouseEngine(
     obj.userData.itemId = data.i;
     if (CATALOG_MAP[data.k]?.tile === 'ceil') ctl?.setCeil?.(ceilView());
     scene.add(obj);
+    if (data.k === 'bot') obj.visible = mode === 'build' && !snapshot; // v132.1: bot platformu sadece Tasarla'da
     const entry = { obj, data: { ...data }, sig: sigOf(data) };
     applyTransform(entry);
     if (isOwned && ctl?.setOn && typeof data.o === 'boolean') ctl.setOn(data.o);
@@ -1744,7 +1745,22 @@ export function createHouseEngine(
       return Math.abs(lx) <= hx + margin && Math.abs(lz) <= hz + margin;
     });
   }
+  // v132.1 — Tasarla'da botun kendisine dokununca platformu seçilir
+  function pickBotItem(e) {
+    if (mode !== 'build') return null;
+    setNdc(e);
+    const planes = [];
+    others.forEach((o, uid) => {
+      if (String(uid).startsWith('npc_bot_') && o.fig.plane.visible) planes.push(o.fig.plane);
+    });
+    if (!planes.length) return null;
+    const uid = ray.intersectObjects(planes, false)[0]?.object.userData.playerUid;
+    const id = uid ? String(uid).slice(8) : null;
+    return id && objs.has(id) && layerOk(id) ? id : null;
+  }
   function pickItem(e) {
+    const botId = pickBotItem(e);
+    if (botId) return botId;
     setNdc(e);
     const list = [];
     objs.forEach((en) => {
@@ -1772,6 +1788,7 @@ export function createHouseEngine(
   function hitsSelected(e) {
     if (!selectedId || !objs.has(selectedId)) return false;
     const en = objs.get(selectedId);
+    if (en.data.k === 'bot' && pickBotItem(e) === selectedId) return true;
     setNdc(e);
     const hits = ray.intersectObject(en.obj, true);
     if (hits.length) return true;
@@ -2820,6 +2837,9 @@ export function createHouseEngine(
       if (!canEdit && m === 'build') return;
       mode = m;
       grid.visible = m === 'build';
+      objs.forEach((e) => {
+        if (e.data.k === 'bot') e.obj.visible = m === 'build' && !snapshot; // v132.1
+      });
       if (m === 'walk') {
         select(null);
         firstFrame = true;
@@ -3249,6 +3269,7 @@ export function createHouseEngine(
         self.fig.x = self.x;
         self.fig.z = self.z;
         if (self.cart) self.fig.setCart(self.cart);
+        if (self.heldProduct || self.ticket) self.fig.setHolding(self.heldProduct || self.ticket);
       } else self.fig.setIdentity(name, avatar);
     },
     setSelfPos(x, z) {
@@ -3260,7 +3281,14 @@ export function createHouseEngine(
       }
     },
     setSelfHolding(product) {
-      self.fig?.setHolding(product);
+      self.heldProduct = product || null;
+      self.fig?.setHolding(self.heldProduct || self.ticket || null);
+    },
+    // v132.1 — bankadaki sıra numarası elde beyaz kâğıt olarak (sadece kendi ekranında;
+    // elinde ürün varsa ürün önce gelir)
+    setSelfTicket(n) {
+      self.ticket = n != null && Number.isFinite(Number(n)) ? `sira:${String(Math.floor(Number(n))).padStart(2, '0').slice(0, 3)}` : null;
+      self.fig?.setHolding(self.heldProduct || self.ticket || null);
     },
     // v92 — market arabası (null = yok)
     setSelfCart(items) {

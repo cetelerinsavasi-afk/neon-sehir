@@ -46,17 +46,17 @@ test('v128 ödül tablosu (süre → altın)', () => {
   assert.equal(s(60.001), 0, '1 dakikanın üstü ödülsüz');
   assert.equal(s(57), 1000);
   assert.equal(s(55), 1000, 'sınır: tam 55 sn üst kademede');
-  assert.equal(s(54.999), 2500);
-  assert.equal(s(50), 2500);
-  assert.equal(s(47), 5000);
-  assert.equal(s(42), 10000);
-  assert.equal(s(38), 20000);
-  assert.equal(s(34), 40000);
-  assert.equal(s(31), 60000);
-  assert.equal(s(29.5), 80000);
-  assert.equal(s(28.5), 120000);
-  assert.equal(s(27.5), 160000);
-  assert.equal(s(26.5), 200000);
+  assert.equal(s(54.999), 2000);
+  assert.equal(s(50), 2000);
+  assert.equal(s(47), 4000);
+  assert.equal(s(42), 7000);
+  assert.equal(s(38), 10000);
+  assert.equal(s(34), 20000);
+  assert.equal(s(31), 30000);
+  assert.equal(s(29.5), 40000);
+  assert.equal(s(28.5), 50000);
+  assert.equal(s(27.5), 100000);
+  assert.equal(s(26.5), 150000);
   assert.equal(s(25.5), 250000);
   assert.equal(s(22), 500000);
   assert.equal(s(18), 500000);
@@ -99,8 +99,8 @@ test('v128 geçiş: bugünkü eski yarışlar süresine göre ödenir, listeye g
   h.S(`championshipDaily/3_${day}`, { catalogId: 3, dateKey: day, top: [{ uid: 'ali', timeMs: 47000 }] });
   const r = await h.champ.migrateLegacyDay(day, { todayKey: day });
   assert.equal(r.paid, 2);
-  assert.equal(h.G('users/ali').gold, 5000);
-  assert.equal(h.G('users/veli').gold, 60000);
+  assert.equal(h.G('users/ali').gold, 4000);
+  assert.equal(h.G('users/veli').gold, 30000);
   assert.equal(h.G(`championshipBoard/${day}`).entries.veli.timeMs, 31000);
   assert.equal(h.G(`championshipBoard/${day}`).legacyOwned, true);
   assert.equal(h.G('championshipBoard/allTime').top[0].uid, 'veli');
@@ -109,9 +109,9 @@ test('v128 geçiş: bugünkü eski yarışlar süresine göre ödenir, listeye g
   assert.equal(h.G(`championshipDaily/3_${day}`).finalized, true, 'eski gece ödemesi yapılmaz');
   assert.equal(await h.champ.ownsLegacyDay(day), true);
   await h.champ.migrateLegacyDay(day, { todayKey: day });
-  assert.equal(h.G('users/ali').gold, 5000, 'çift ödeme yok');
+  assert.equal(h.G('users/ali').gold, 4000, 'çift ödeme yok');
   assert.equal(h.G(`championshipBoard/${day}`).runs, 2);
-  // gece: liste kesinleşir. v130: Üstün Cabrio ile birinci olmak yetmez — 250.000+ ödül gerekir (31 sn → 60.000)
+  // gece: liste kesinleşir. v130: Üstün Cabrio ile birinci olmak yetmez — 250.000+ ödül gerekir (31 sn → 30.000)
   await h.champ.finalizeDay(day);
   assert.equal(h.G(`championshipBoard/${day}`).winnerUid, 'veli');
   assert.deepEqual(h.grants, []);

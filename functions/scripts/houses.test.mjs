@@ -447,3 +447,31 @@ test('v102: varsayılan kapı ancak başka kapı varken kalkar; ana kapı seçil
   pr = h.G('housePresence/veli');
   assert.deepEqual([pr.x, pr.z], [5, 3.8]);
 });
+
+test('v132.1: satın alınmış botlar fotoğrafta (ad + "Bot", konum istemciden kelepçeli, sadece kendi sözleri)', async () => {
+  const h = setup();
+  const id = await withHouse(h);
+  await h.act('zengin', { op: 'enter', houseId: id });
+  const house = h.G(`houses/${id}`);
+  h.S(`houses/${id}`, {
+    ...house,
+    items: [{ i: 'b1', k: 'bot', x: 1, z: 1, r: 0, c: 0, p: 1 }, { i: 'b2', k: 'bot', x: -1, z: 0, r: 0, c: 0, p: 1 }, { i: 'b3', k: 'bot', x: 3, z: 3, r: 0, c: 0 }],
+    bots: { b1: { o: 'garson1', g: 'erkek', t: 1, n: 'Hasan Usta', l: ['Hoş geldin!'], mv: 'serbest', w: true } },
+  });
+  const cam = { px: 0, py: 2, pz: 5, dx: 0, dy: -0.2, dz: -1, fov: 58 };
+  const people = [
+    { uid: 'zengin', x: 0, z: 0 },
+    { uid: 'npc_bot_b1', x: 2.5, z: -2, left: true, says: ['Hoş geldin!', 'hile metni'] },
+    { uid: 'npc_bot_b2', x: 999, z: 0 },
+  ];
+  const att = await h.houses.buildPhotoAttachment('zengin', { houseId: id, cam, people });
+  const b1 = att.people.find((p) => p.uid === 'npc_bot_b1');
+  assert.equal(b1.displayName, 'Hasan Usta Bot');
+  assert.equal(b1.x, 2.5);
+  assert.deepEqual(b1.says, ['Hoş geldin!']);
+  assert.equal(b1.avatar.clothing, 'vest');
+  const b2 = att.people.find((p) => p.uid === 'npc_bot_b2');
+  assert.equal(b2.displayName, 'Hasan Usta Bot', 'ayarsız bot: mesleğin varsayılan adı');
+  assert.equal(b2.x, -1, 'geçersiz konum → platform');
+  assert.equal(att.people.find((p) => p.uid === 'npc_bot_b3'), undefined, 'satın alınmamış bot fotoğrafta yok');
+});

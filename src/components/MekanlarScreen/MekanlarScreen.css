@@ -74,104 +74,213 @@
   background: rgba(255, 46, 140, 0.08);
 }
 
-/* --- Soygun sekmesi (eskiden HeistScreen.css) --------------------------- */
-
-.heist-screen-header {
+/* --- Soygun sekmesi — v132.1 görsel tasarım (prototip: Soygun Sekmesi) ---- */
+.mekanlar-soygun-tab {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 12px;
+  --sg-ok: #34d399;
+  --sg-bad: #ef4444;
+  --sg-gold: #f2b632;
+}
+.sg-status {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
-
-.heist-screen-power {
-  margin: 0;
-  font-size: 14px;
+.sg-st {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  min-width: 0;
+}
+.sg-st small {
   color: var(--text-dim);
+  font-size: 11px;
+  display: block;
 }
-
-.heist-screen-power strong {
+.sg-st b {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.sg-st.warn {
+  border-color: var(--sg-bad);
+}
+.sg-st.warn b {
+  color: var(--sg-bad);
+}
+.sg-meter {
+  height: 6px;
+  border-radius: 9px;
+  background: var(--panel-border);
+  margin-top: 6px;
+  overflow: hidden;
+  position: relative;
+  display: block;
+}
+.sg-meter.big {
+  height: 10px;
+}
+.sg-meter i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 9px;
+  background: linear-gradient(90deg, var(--neon-cyan), var(--neon-pink));
+}
+.sg-meter u {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: var(--text);
+  opacity: 0.7;
+}
+.sg-myplan {
+  width: 100%;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px dashed var(--neon-cyan);
+  background: rgba(25, 232, 255, 0.1);
   color: var(--neon-cyan);
+  font-weight: 700;
+  cursor: pointer;
 }
-
 .heist-screen-list {
   display: flex;
   flex-direction: column;
+  gap: 4px;
+}
+.sg-grp {
+  margin: 10px 0 2px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
   gap: 8px;
 }
-
-.heist-target-card {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  text-align: left;
-  background: #05070c;
-  border: 1px solid var(--panel-border);
-  border-radius: 10px;
-  padding: 12px;
-  cursor: pointer;
-  color: var(--text);
+.sg-grp::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--panel-border);
 }
-
-.heist-target-card:hover {
+.sg-group:first-child .sg-grp {
+  margin-top: 2px;
+}
+.sg-card {
+  width: 100%;
+  text-align: left;
+  display: grid;
+  grid-template-columns: 48px 1fr auto;
+  gap: 2px 12px;
+  align-items: center;
+  padding: 12px;
+  margin-top: 8px;
+  border-radius: 14px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  position: relative;
+  cursor: pointer;
+  font: inherit;
+}
+.sg-card:hover,
+.sg-card:focus-visible {
+  border-color: var(--neon-pink);
+}
+.sg-card.ready {
+  border-color: rgba(52, 211, 153, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.08);
+}
+.sg-em {
+  grid-row: span 2;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-size: 26px;
+  background: radial-gradient(circle at 50% 35%, rgba(255, 46, 140, 0.22), var(--bg));
+  border: 1px solid var(--panel-border);
+}
+.sg-nm {
+  font-weight: 700;
+  font-size: 14px;
+  min-width: 0;
+}
+.sg-rw {
+  font-weight: 800;
+  color: var(--sg-gold);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+.sg-sub {
+  grid-column: 2 / 4;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.sg-sub .sg-meter {
+  flex: 1;
+  margin: 0;
+  min-width: 30px;
+}
+.sg-tag {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 99px;
+  border: 1px solid var(--panel-border);
+  white-space: nowrap;
+}
+.sg-tag.ok {
+  color: var(--sg-ok);
+  border-color: var(--sg-ok);
+}
+.sg-tag.tm {
+  color: var(--neon-cyan);
   border-color: var(--neon-cyan);
 }
-
-.heist-target-name {
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.heist-target-plan-badge {
-  margin-left: 6px;
-  color: #ffd23f;
+.sg-badge {
+  position: absolute;
+  top: -7px;
+  right: 10px;
+  background: var(--neon-cyan);
+  color: #001;
+  font-size: 10px;
   font-weight: 800;
+  border-radius: 99px;
+  padding: 1px 8px;
 }
-
-.heist-target-meta {
-  font-size: 11px;
-  color: var(--text-dim);
-}
-
-.heist-screen-myplans-hint {
-  margin: 0 0 4px;
-  font-size: 12px;
-  color: var(--text-dim);
-}
-
-.heist-target-status {
-  font-size: 11px;
-  color: var(--neon-pink);
-}
-
-.heist-target-status.ready {
+.sg-back {
+  align-self: flex-start;
+  background: none;
+  border: none;
   color: var(--neon-cyan);
+  padding: 4px 0;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
 }
-
 .heist-screen-detail {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
-
-.heist-screen-back {
-  align-self: flex-start;
-  background: transparent;
-  border: 1px solid var(--panel-border);
-  color: var(--text);
-  border-radius: 8px;
-  padding: 6px 12px;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.heist-screen-myplan-btn {
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: 1px solid #ffd23f;
-  background: rgba(255, 210, 63, 0.1);
-  color: #ffd23f;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
+@media (max-width: 360px) {
+  .sg-tag {
+    display: none;
+  }
 }
