@@ -12,10 +12,13 @@
 import { GANG } from '../config.js';
 import { adPriceFor, countActiveAds } from '../../marketAds.js';
 import { LISTING_TTL_MS as LISTING_TTL, autoSellsAt, batchesOf, addBatch, consumeBatches, splitDue, nextExpireAtMs } from '../../listingBatches.js';
+import { isPristineListing, bestStockPrice } from '../../shopStockRules.js';
 
 // v103: depodaki MALZEME (yasaklı madde) ilanı, adet fiyatı aralığın %50'sinin
 // altındaysa her parti 7 gün sonra satılmamışsa oyuna satılır (para kasaya).
 // %50 ve üstü ilanlar eskisi gibi açık kalır. Bkz. functions/listingBatches.js
+// v134: aynı kural depodaki ARABA / SİLAH ilanları için de geçerli (fabrika
+// malzeme satışıyla aynı): fiyat avantajlıysa 7 gün sonra oyuna satılır.
 
 export function createMarketActions(core, trade) {
   const { FV, fail, readWallet, debitGold, ledger, announce, notify, posInt, requestGuard, unitsOfItems } = core;
@@ -48,15 +51,17 @@ export function createMarketActions(core, trade) {
       const g = gangSnap.data();
       // v70: aynı ürün aynı fiyatla zaten ilandaysa yeni ilan açılmaz, mevcut ilana eklenir
       const same = sameSnap.docs.find((d) => Number(d.data().unitPrice) === unitPrice);
-      const isMat = it.kind === 'material';
-      const autoSell = isMat && autoSellsAt(unitPrice, min, max);
+      const autoSell = autoSellsAt(unitPrice, min, max);
       if (same) {
         const cur = same.data();
-        const batches = isMat ? addBatch(batchesOf(cur, cur.createdAtMs), qty, ctx.now) : null;
+        // partisiz eski araba/silah ilanının mevcut adedi için 7 gün bugünden başlar
+        const base = Array.isArray(cur.batches) || it.kind === 'material' ? batchesOf(cur, cur.createdAtMs) : batchesOf(cur, ctx.now);
+        const batches = addBatch(base, qty, ctx.now);
         tx.update(same.ref, {
           quantity: FV.increment(qty),
           listedQty: FV.increment(qty),
-          ...(isMat ? { batches, ...(autoSell ? { autoSellAtMs: nextExpireAtMs(batches) } : {}) } : {}),
+          batches,
+          ...(autoSell ? { autoSellAtMs: nextExpireAtMs(batches) } : {}),
         });
         tx.update(ctx.ref.depot(gangId), { [`listed.${key}`]: FV.increment(qty) });
         announce(tx, ctx, gangId, '🏷️', `${me.name} 2. eldeki ${it.label} ilanına ${qty} adet ekledi (adet ${fmt(unitPrice)}).`);
@@ -83,7 +88,8 @@ export function createMarketActions(core, trade) {
         status: 'open',
         createdByName: me.name,
         createdAtMs: ctx.now,
-        ...(isMat ? { batches: [{ q: qty, at: ctx.now }], ...(autoSell ? { autoSellAtMs: ctx.now + LISTING_TTL } : {}) } : {}),
+        batches: [{ q: qty, at: ctx.now }],
+        ...(autoSell ? { autoSellAtMs: ctx.now + LISTING_TTL } : {}),
       });
       tx.update(ctx.ref.depot(gangId), { [`listed.${key}`]: FV.increment(qty) });
       announce(tx, ctx, gangId, '🏷️', `${me.name} depodan 2. ele ${qty} × ${it.label} koydu (adet ${fmt(unitPrice)}).`);
@@ -189,7 +195,7 @@ export function createMarketActions(core, trade) {
       const lRef = ctx.ref.listing(listingId);
       const l = (await tx.get(lRef)).data();
       if (!l) return { skipped: 'missing' };
-      if (l.status !== 'open' || l.itemType !== 'material') {
+      if (l.status !== 'open' || !['material', 'weapon', 'vehicle'].includes(l.itemType)) {
         if (l.autoSellAtMs != null) tx.update(lRef, { autoSellAtMs: FV.delete() });
         return { skipped: 'closed' };
       }
@@ -269,11 +275,49 @@ export function createMarketActions(core, trade) {
       usedUnits: FV.increment(-unitsOfItems({ [l.itemKey]: qty })),
     });
     const left = Number(l.quantity) - qty;
-    tx.update(cand.ref, { quantity: left, soldQty: FV.increment(qty), status: left <= 0 ? 'sold' : 'open', lastSoldAtMs: ctx.now });
+    // v134: partili ilanda satış en eski partiden düşer (otomatik satış zamanı da güncellenir)
+    const batchPatch = {};
+    if (Array.isArray(l.batches)) {
+      const batches = left > 0 ? consumeBatches(batchesOf(l, l.createdAtMs), qty) : [];
+      batchPatch.batches = batches;
+      if (l.autoSellAtMs != null) batchPatch.autoSellAtMs = left > 0 ? nextExpireAtMs(batches) ?? FV.delete() : FV.delete();
+    }
+    tx.update(cand.ref, { quantity: left, soldQty: FV.increment(qty), status: left <= 0 ? 'sold' : 'open', lastSoldAtMs: ctx.now, ...batchPatch });
     ledger(tx, ctx, { type: 'gang_market_sale', amount: cost, from: { kind: 'player', id: ctx.actorId }, to: { kind: 'gang', id: l.gangId }, refId: cand.id });
     announce(tx, ctx, l.gangId, '💵', `2. elden ${qty} × ${l.label} satıldı (${String(shopName).slice(0, 40)}): kasaya +${fmt(cost)}.`);
     return cost;
   }
 
-  return { listDepotItem, cancelDepotListing, advertiseDepotListing, buyMarketListing, settleDepotAutoSales, priceRange, MAX_LIST: GANG.DEPOT_CAPACITY_PER_PURCHASE, stockCandidates, stockValidate, stockWrite };
+  // v134 — PİYASA DEĞERİ (ilana koyarken gösterilir): galericinin / silahçının
+  // "Vitrine ekle" deyince bu ürüne ödeyeceği fiyat = alış fiyatı (mağaza fiyatının
+  // %75'i) ya da daha ucuza satıştaki en ucuz sıfır ilan (başka çeteler + 2. el).
+  // Bu fiyata ya da altına konan ilanı dükkân oyundan önce alır.
+  async function quoteMarketValue(ctx, data) {
+    const it = core.parseItemKey(String(data.itemKey || ''));
+    if (!it) fail('invalid-argument', 'Geçersiz ürün.');
+    if (it.kind !== 'weapon' && it.kind !== 'vehicle') return { value: null };
+    const m = await core.readMembership(null, ctx, ctx.actorId);
+    const own = m?.gangId || null;
+    const sources = [];
+    try {
+      for (const c of await stockCandidates((q) => q.get(), ctx, it.kind, it.catalogId)) if (c.l.gangId !== own) sources.push({ price: c.price });
+    } catch (err) {
+      ctx.logs.push({ gang: 'market_value_error', src: 'gang', err: String(err?.message || err) });
+    }
+    if (!ctx.isTest) {
+      try {
+        const field = it.kind === 'vehicle' ? 'vehicleCatalogId' : 'weaponCatalogId';
+        const snap = await core.db.collection('marketplaceListings').where('sold', '==', false).where('itemType', '==', it.kind).where(field, '==', Number(it.catalogId)).get();
+        for (const d of snap.docs) {
+          const l = d.data();
+          if (isPristineListing(l) && Number(l.price) > 0) sources.push({ price: Math.floor(Number(l.price)) });
+        }
+      } catch (err) {
+        ctx.logs.push({ gang: 'market_value_error', src: 'player', err: String(err?.message || err) });
+      }
+    }
+    return { value: bestStockPrice(it.storePrice, sources) };
+  }
+
+  return { quoteMarketValue, listDepotItem, cancelDepotListing, advertiseDepotListing, buyMarketListing, settleDepotAutoSales, priceRange, MAX_LIST: GANG.DEPOT_CAPACITY_PER_PURCHASE, stockCandidates, stockValidate, stockWrite };
 }

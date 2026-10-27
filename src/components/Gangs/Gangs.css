@@ -3552,6 +3552,18 @@ button.gx-member.gx-member-btn:active {
   font-size: 11px;
   font-weight: 700;
 }
+/* v134 — piyasa değeri (dokununca fiyat ona ayarlanır) */
+.gx-market-value {
+  align-self: flex-start;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(34, 211, 238, 0.12);
+  border: 1px solid rgba(34, 211, 238, 0.45);
+  color: #a5f3fc;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
 
 /* v108/v109 — polislik başvuru formu (sicilde görünüm) */
 .gx-app-form-view {

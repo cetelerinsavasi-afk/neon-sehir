@@ -1,11 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useYesterdayVisits } from '../../hooks/useYesterdayVisits';
 import { usePolledPresence } from '../../hooks/usePolledPresence';
 import { useAuth } from '../../contexts/AuthContext';
 import { regionEmojis, regionLabels } from '../../data/regions';
-import GuestOverlay from '../GuestOverlay/GuestOverlay';
+import GuestVenue from '../Guest/GuestVenue';
+import { guestPlaces } from '../../lib/guestApi';
 import { useHouseList } from '../../hooks/useHouseList';
 import { useBusinessList } from '../../hooks/useBusinessList';
+import { useOfficeList } from '../../hooks/useOfficeList';
+import { houseKind } from '../../../functions/officeData.js';
 import PlaceTypePicker from '../PlaceTypePicker/PlaceTypePicker';
 import { BIZ_TYPES, BIZ_TYPE_KEYS } from '../../../functions/businessCatalogData.js';
 import './VisitTab.css';
@@ -39,13 +42,35 @@ const OPTIONS = [
   { key: 'popular', icon: '🔥', label: 'Popüler' },
   { key: 'game', icon: '🏙️', label: 'Oyunun mekânları' },
   ...BIZ_TYPE_KEYS.map((k) => ({ key: k, icon: BIZ_TYPES[k].icon, label: BIZ_TYPES[k].label })),
+  { key: 'offices', icon: '🏢', label: 'Ofisler' },
   { key: 'houses', icon: '🏠', label: 'Evler' },
 ];
 
+// v134 — misafir: popüler / evler yok (canlı sayılar girişli); oyunun mekânları,
+// işletmeler ve ofisler sunucudan gelen salt-okuma listeyle gezilir
+const GUEST_OPTIONS = OPTIONS.filter((o) => o.key !== 'popular' && o.key !== 'houses');
+
 export default function VisitTab({ onVisitVenue, onVisitHouse }) {
-  const { user } = useAuth();
-  const [filter, setFilter] = useState('popular');
+  const { user, loading: authLoading } = useAuth();
+  const isGuest = !user && !authLoading;
+  const [filter, setFilter] = useState(isGuest ? 'game' : 'popular');
+  useEffect(() => {
+    if (isGuest && (filter === 'popular' || filter === 'houses')) setFilter('game');
+  }, [isGuest, filter]);
   const isBiz = Boolean(BIZ_TYPES[filter]);
+  const guestType = isGuest && (isBiz || filter === 'offices') ? (filter === 'offices' ? 'ofis' : filter) : null;
+  const [guestLists, setGuestLists] = useState({});
+  const [guestHouseId, setGuestHouseId] = useState(null);
+  useEffect(() => {
+    if (!guestType || guestLists[guestType]) return undefined;
+    let alive = true;
+    guestPlaces(guestType)
+      .then((l) => alive && setGuestLists((m) => ({ ...m, [guestType]: l })))
+      .catch(() => alive && setGuestLists((m) => ({ ...m, [guestType]: [] })));
+    return () => {
+      alive = false;
+    };
+  }, [guestType, guestLists]);
   // v73 — maliyet: canlı dinleyici yerine 30 sn'de bir aktif oyuncu sorgusu
   const houseList = useHouseList({ onlyLive: true });
   // v78 — Evler filtresi: içinde kimse olmasa da girebileceğim tüm evler
@@ -55,6 +80,7 @@ export default function VisitTab({ onVisitVenue, onVisitHouse }) {
   const interiorList = usePolledPresence('interiorPresence', { max: 400 });
   const yVisits = useYesterdayVisits(Boolean(user) && (filter === 'popular' || filter === 'houses'));
   const biz = useBusinessList(isBiz ? filter : null, { enabled: isBiz, includeGame: true });
+  const offices = useOfficeList({ enabled: filter === 'offices' });
 
   const venuePeople = useMemo(() => {
     const out = { park: parkList.length };
@@ -90,6 +116,24 @@ export default function VisitTab({ onVisitVenue, onVisitHouse }) {
 
   const items = useMemo(() => {
     const byPeople = (a, b) => b.people - a.people || b.yv - a.yv;
+    if (isGuest) {
+      if (filter === 'game') return GAME_VENUES.map((g) => gameItem(g.key));
+      const gl = guestType ? guestLists[guestType] : null;
+      if (!gl) return [];
+      const rank = (r) => (Number.isFinite(r) && r > 0 ? r : 9999);
+      const list = gl.map((h, i) => ({
+        id: `h_${h.id}`,
+        icon: h.bizType ? BIZ_TYPES[h.bizType]?.icon || '🏪' : h.emoji || '🏢',
+        name: h.name || (filter === 'offices' ? 'Ofis' : BIZ_TYPES[filter]?.label || 'İşletme'),
+        sub: `Sahibi: ${h.ownerName || 'Oyuncu'}`,
+        people: 0,
+        yv: -rank(h.bizRank) - i * 1e-6,
+        open: () => setGuestHouseId(h.id),
+      }));
+      const gk = GAME_OF_TYPE[filter];
+      if (gk) list.push({ ...gameItem(gk), sub: 'Sahibi: Neon Şehir', yv: -rank(null) });
+      return list.sort(byPeople);
+    }
     if (filter === 'popular') {
       const yv = Object.fromEntries(yVisits.map((r) => [r.key, r]));
       const cand = new Map();
@@ -113,6 +157,10 @@ export default function VisitTab({ onVisitVenue, onVisitHouse }) {
       return [...cand.values()].sort(byPeople).slice(0, POPULAR_N);
     }
     if (filter === 'game') return GAME_VENUES.map((g) => gameItem(g.key)).sort(byPeople);
+    if (filter === 'offices') {
+      if (offices.loading) return [];
+      return offices.list.map((h) => ({ ...houseItem(h, h.yv), icon: h.office?.emoji || '🏢', sub: `Sahibi: ${h.ownerName || 'Oyuncu'}` }));
+    }
     if (filter === 'houses') {
       // v78: dolu evler kişi sayısına göre en üstte; ardından boş ama girilebilir
       // evler dünün ziyaretine göre (en popüler 8; "tümünü göster" ile hepsi).
@@ -120,7 +168,7 @@ export default function VisitTab({ onVisitVenue, onVisitHouse }) {
       const seen = new Set();
       const all = [];
       [...liveHouses, ...allHouses.mine, ...allHouses.enterable].forEach((h) => {
-        if (!h?.id || seen.has(h.id) || h.biz?.type || h.bizType || h.bizGame) return;
+        if (!h?.id || seen.has(h.id) || h.biz?.type || h.bizType || h.bizGame || houseKind(h) === 'ofis') return;
         seen.add(h.id);
         const people = Math.max(h.people || 0, allHouses.counts?.[h.id] || 0);
         all.push(houseItem({ ...h, people }, yv[`h_${h.id}`] || 0));
@@ -142,13 +190,13 @@ export default function VisitTab({ onVisitVenue, onVisitHouse }) {
     if (gk) list.push({ ...gameItem(gk), sub: 'Sahibi: Neon Şehir', yv: -rank(biz.gameRank) });
     return list.sort(byPeople);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter, yVisits, venuePeople, liveHouses, biz.list, biz.gameRank, biz.loading, allHouses, showAllHouses]);
+  }, [filter, yVisits, venuePeople, liveHouses, biz.list, biz.gameRank, biz.loading, allHouses, showAllHouses, offices, isGuest, guestType, guestLists]);
   const hiddenEmpty = filter === 'houses' ? items.hiddenEmpty || 0 : 0;
 
   return (
     <div className="visit-tab">
-      <GuestOverlay>
-        <PlaceTypePicker options={OPTIONS} value={filter} onChange={setFilter} />
+      <>
+        <PlaceTypePicker options={isGuest ? GUEST_OPTIONS : OPTIONS} value={filter} onChange={setFilter} />
         <p className="visit-hint">
           {filter === 'popular'
             ? 'En kalabalık mekânlar üstte; boşsa dünün en çok ziyaret edilenleri.'
@@ -174,7 +222,7 @@ export default function VisitTab({ onVisitVenue, onVisitHouse }) {
           )}
           {items.length === 0 && (
             <p className="visit-hint">
-              {(isBiz && biz.loading) || (filter === 'houses' && allHouses.loading)
+              {(isBiz && biz.loading) || (filter === 'houses' && allHouses.loading) || (filter === 'offices' && offices.loading) || (guestType && !guestLists[guestType])
                 ? 'Yükleniyor…'
                 : filter === 'houses'
                   ? 'Girebileceğin bir ev yok.'
@@ -182,7 +230,8 @@ export default function VisitTab({ onVisitVenue, onVisitHouse }) {
             </p>
           )}
         </div>
-      </GuestOverlay>
+      </>
+      {guestHouseId && <GuestVenue houseId={guestHouseId} onExit={() => setGuestHouseId(null)} />}
     </div>
   );
 }

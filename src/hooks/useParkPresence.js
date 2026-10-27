@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useBlocks } from '../contexts/BlocksContext';
 import { createPresenceWriter, useLiveMerge, useLiveRoomCleanup } from '../lib/livePresence';
 import { liveRemove } from '../lib/liveNet';
+import { presenceNow } from '../lib/presenceClock';
 
 // Bir presence kaydı ne kadar süre güncellenmezse "hayalet" (terk
 // edilmiş sekme/çökme) sayılıp listeden düşürülür. Sunucu tarafında da
@@ -53,7 +54,7 @@ export function useParkPresence() {
     const unsubscribe = onSnapshot(
       ref,
       (snap) => {
-        const now = Date.now();
+        const now = presenceNow(snap, user.uid);
         const list = [];
         snap.forEach((d) => {
           if (d.id === user.uid) return;

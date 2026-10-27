@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { weaponCatalog } from '../../data/weaponCatalog';
@@ -12,11 +12,21 @@ import './WeaponShopScreen.css';
 // yapılıyor.
 // v130 — oyuncu silahçısı da aynı ekranı kullanır: items = [{ ...katalog, price }]
 // (sadece stokta olanlar, dükkânın fiyatıyla) · onBuy(katalog) · disabledText
+const BUY_FEEDBACK_MS = 2500; // satın alınca butonda bir süre "Satın Alındı ✓"
+
 export default function WeaponShopScreen({ items = null, onBuy = null, disabledText = null }) {
   const { user } = useAuth();
   const { player } = usePlayer();
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
+  const [justBought, setJustBought] = useState(() => new Set());
+  const timers = useRef({});
+  useEffect(
+    () => () => {
+      Object.values(timers.current).forEach(clearTimeout);
+    },
+    []
+  );
   // v132: oyunun mağazası — en ucuz oyuncu silahçısının fiyatı
   const best = useShopOffers('weapon', { enabled: !items && Boolean(user) });
 
@@ -38,7 +48,19 @@ export default function WeaponShopScreen({ items = null, onBuy = null, disabledT
 
   const gold = player?.gold ?? 0;
   const list = items || withOfferPrices(weaponCatalog, best);
-  const buy = onBuy || ((w) => buyWeapon(w.id, w.price));
+  const rawBuy = onBuy || ((w) => buyWeapon(w.id, w.price));
+  const buy = async (w) => {
+    await rawBuy(w);
+    setJustBought((prev) => new Set(prev).add(w.id));
+    clearTimeout(timers.current[w.id]);
+    timers.current[w.id] = setTimeout(() => {
+      setJustBought((prev) => {
+        const next = new Set(prev);
+        next.delete(w.id);
+        return next;
+      });
+    }, BUY_FEEDBACK_MS);
+  };
 
   return (
     <div className="weapon-shop">
@@ -52,11 +74,11 @@ export default function WeaponShopScreen({ items = null, onBuy = null, disabledT
             </span>
           </div>
           <button
-            className="weapon-card-buy"
-            disabled={Boolean(disabledText) || busy === `buy-${w.id}` || gold < w.price}
+            className={`weapon-card-buy${justBought.has(w.id) ? ' bought' : ''}`}
+            disabled={Boolean(disabledText) || busy === `buy-${w.id}` || justBought.has(w.id) || gold < w.price}
             onClick={() => run(`buy-${w.id}`, () => buy(w))}
           >
-            {busy === `buy-${w.id}` ? '…' : disabledText || 'Satın Al'}
+            {busy === `buy-${w.id}` ? '…' : justBought.has(w.id) ? 'Satın Alındı ✓' : disabledText || 'Satın Al'}
           </button>
         </div>
       ))}

@@ -203,6 +203,7 @@ export function createGangSystem(deps) {
     cancelDepotListing: market.cancelDepotListing,
     advertiseDepotListing: market.advertiseDepotListing,
     buyMarketListing: market.buyMarketListing,
+    quoteMarketValue: market.quoteMarketValue, // v134: ilana koyarken piyasa değeri
     sellFromDepot: trade.sellFromDepot,
     sellToDepo: trade.sellToDepo, // v124
     distributeFromDepot: trade.distributeFromDepot,
@@ -346,7 +347,49 @@ export function createGangSystem(deps) {
     return new deps.HttpsError('internal', 'Bir şeyler ters gitti, tekrar dene.');
   }
 
+  // v134 — MİSAFİR (giriş yapmamış) görünümü: çete listesi + Polis Teşkilatı özeti +
+  // devam eden savaşlar (watchWars ile aynı gizlilik). Giriş gerekmez; 60 sn önbellek.
+  const guestCache = { at: 0, world: null, data: null };
+  async function guestView() {
+    const cfg = await getConfig();
+    if (!cfg.liveOpen || !cfg.liveWorldId) return { ok: true, closed: true };
+    const t = Date.now();
+    if (guestCache.data && guestCache.world === cfg.liveWorldId && t - guestCache.at < 60_000) return guestCache.data;
+    const world = await core.loadWorld(cfg.liveWorldId);
+    if (!world) return { ok: true, closed: true };
+    const ctx = core.makeCtx(cfg.liveWorldId, world, { actorId: 'guest' });
+    const [gs, is, ww] = await Promise.all([ctx.ref.gangs().where('status', '==', 'active').limit(100).get(), ctx.ref.intel().get(), watchWars(ctx).catch(() => ({ wars: [] }))]);
+    const gangs = gs.docs.map((d) => {
+      const g = d.data();
+      return {
+        id: d.id,
+        name: g.name || '',
+        logo: g.logo || null,
+        note: g.note || '',
+        memberCount: Number(g.memberCount || 0),
+        lastSundayPower: Number(g.lastSundayPower || 0),
+        lastSundayBiat: Boolean(g.lastSundayBiat),
+        babaName: g.babaName || '',
+        routeProducts: Array.isArray(g.routeProducts) ? g.routeProducts : [],
+        biat: g.biat?.name ? { name: g.biat.name, logo: g.biat.logo || null } : null,
+        kasaAtMidnight: Number(g.kasaAtMidnight || 0),
+      };
+    });
+    const i = is.data() || {};
+    const data = {
+      ok: true,
+      gangs,
+      intel: { note: i.note || '', memberCount: Number(i.memberCount || 0), lastSundayPower: Number(i.lastSundayPower || 0), baskanCode: i.baskanCode || '' },
+      wars: (ww.wars || []).map((w) => ({ ...w, mine: false })),
+    };
+    guestCache.at = t;
+    guestCache.world = cfg.liveWorldId;
+    guestCache.data = data;
+    return data;
+  }
+
   async function handleAction(request) {
+    if (request.data?.action === 'guestView') return guestView();
     const uid = requireAuth(request);
     const data = request.data || {};
     if (data.action === 'hello' && data.world !== 'test') {

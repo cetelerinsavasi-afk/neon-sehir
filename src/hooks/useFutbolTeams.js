@@ -4,7 +4,7 @@ import { db } from '../firebase';
 
 // Puan tablosu sıralaması: puan → averaj → attığı gol → yediği gol
 // (az olan önde) → takım adı (alfabetik). Bkz. kullanıcı promptu.
-function compareStandings(a, b) {
+export function compareStandings(a, b) {
   if (b.stats.points !== a.stats.points) return b.stats.points - a.stats.points;
   const gdA = a.stats.gf - a.stats.ga;
   const gdB = b.stats.gf - b.stats.ga;

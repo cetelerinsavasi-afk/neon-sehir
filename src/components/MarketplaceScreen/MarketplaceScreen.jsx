@@ -988,7 +988,19 @@ function MagazaInventoryStrip({ mats }) {
   );
 }
 
-function MagazaSellForm({ usable, initialMaterial, onClose }) {
+// v134 — malzemenin piyasa değeri: atölye mağazada malzeme bulamayınca en ucuz
+// ilandan alır → diğer satıcıların en ucuz adet fiyatı; hiç ilan yoksa oyunun fiyatı.
+function materialMarketValue(listings, materialType, myUid) {
+  let best = 0;
+  for (const l of listings) {
+    if (l.materialType !== materialType || l.sellerId === myUid) continue;
+    const p = listingComparablePrice(l);
+    if (p > 0 && (!best || p < best)) best = p;
+  }
+  return best || materialUnitPriceRange(materialType).max;
+}
+
+function MagazaSellForm({ usable, initialMaterial, onClose, listings = [], myUid = null }) {
   const { inventory } = useInventory();
   // Seçilebilenler: kullanabildiklerin + (eskiden kalmışsa) envanterde olan diğerleri
   const options = MAGAZA_MATERIALS.filter((k) => usable.has(k) || Number(inventory[k] || 0) > 0);
@@ -1001,6 +1013,7 @@ function MagazaSellForm({ usable, initialMaterial, onClose }) {
   const [askInstant, setAskInstant] = useState(false);
   const have = Math.max(0, Math.floor(Number(inventory[materialType] || 0)));
   const canList = usable.has(materialType);
+  const marketValue = materialMarketValue(listings, materialType, myUid);
 
   useEffect(() => {
     setPrice((p) => (p < range.min || p > range.max ? range.max : p));
@@ -1078,6 +1091,9 @@ function MagazaSellForm({ usable, initialMaterial, onClose }) {
               <p className="market-price-label">
                 <strong>{price.toLocaleString('tr-TR')} altına</strong> adedi satılacak
               </p>
+              <button type="button" className="market-value-chip" onClick={() => setPrice(Math.min(range.max, Math.max(range.min, marketValue)))}>
+                📈 Piyasa değeri: <b>{marketValue.toLocaleString('tr-TR')}</b>
+              </button>
               {autoSellsAt(price, range.min, range.max) && <p className="market-autosell-hint">{AUTO_SELL_HINT}</p>}
               {quantity > 0 && price > 0 && (
                 <p className="market-price-range-hint">
@@ -1214,7 +1230,7 @@ export function MagazaScreen({ onClose }) {
       )}
 
       {error && <p className="market-error">{error}</p>}
-      {showSell && <MagazaSellForm usable={usable} initialMaterial={filter} onClose={() => setShowSell(false)} />}
+      {showSell && <MagazaSellForm usable={usable} initialMaterial={filter} listings={materialListings} myUid={user?.uid} onClose={() => setShowSell(false)} />}
       {buyModalListing && <BuyMaterialModal listing={buyModalListing} gold={gold} sellerLabel={labelOf(buyModalListing)} onClose={() => setBuyModalListing(null)} />}
     </div>
   );

@@ -17,6 +17,8 @@ import '../HouseScreen/HouseScreen.css';
 import '../../styles/bizui.css';
 import './BusinessHub.css';
 import { retryImport } from '../../lib/lazyRetry';
+import { guestPlaces } from '../../lib/guestApi';
+import GuestVenue from '../Guest/GuestVenue';
 import { clampWorkshopPrice, gameWorkshopPrice } from '../../../functions/itemRules.js';
 import { gymPriceOf, GAME_GYM_PRICE } from '../../../functions/gym.js';
 import { netPriceOf } from '../../../functions/venue.js';
@@ -96,10 +98,26 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
   const openedAtRef = useRef(Date.now());
   const settled = () => Date.now() - openedAtRef.current > 450;
   const t = BIZ_TYPES[type];
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { player } = usePlayer();
   const [houseId, setHouseId] = useState(null);
-  const { list, loading, gameRank, gamePeople: gameHousePeople } = useBusinessList(type, { enabled: Boolean(user) && !houseId });
+  const { list: userList, loading: userLoading, gameRank, gamePeople: gameHousePeople } = useBusinessList(type, { enabled: Boolean(user) && !houseId });
+  // v134 — misafir: işletmeler sunucudan (salt okuma), içine girip gezer
+  const isGuest = !user && !authLoading;
+  const [guestList, setGuestList] = useState(null);
+  const [guestHouseId, setGuestHouseId] = useState(null);
+  useEffect(() => {
+    if (!isGuest || !type) return undefined;
+    let alive = true;
+    guestPlaces(type)
+      .then((l) => alive && setGuestList(l))
+      .catch(() => alive && setGuestList([]));
+    return () => {
+      alive = false;
+    };
+  }, [isGuest, type]);
+  const list = user ? userList : (guestList || []).map((h) => ({ ...h, people: 0, guest: true }));
+  const loading = user ? userLoading : guestList === null;
   // oyunun ev olmayan dükkânları (silahçı/galeri/modifiye): içerideki kişi sayısı
   const gameLoc = GAME_VENUE[type]?.loc || null;
   const interior = usePolledPresence('interiorPresence', { enabled: Boolean(user && gameLoc && !houseId), max: 400 });
@@ -131,6 +149,8 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
 
   if (!t) return null;
 
+  if (guestHouseId) return <GuestVenue houseId={guestHouseId} onExit={() => setGuestHouseId(null)} />;
+
   if (houseId) {
     return (
       <Suspense
@@ -156,7 +176,7 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
 
   const gold = Number(player?.gold || 0);
   const gem = Number(player?.emerald || 0);
-  const game = GAME_VENUE[type]?.hidden ? null : GAME_VENUE[type];
+  const game = GAME_VENUE[type]?.hidden || (!user && GAME_VENUE[type]?.house) ? null : GAME_VENUE[type];
 
   const today = futbolDayKey(Date.now());
   const openGame = async () => {
@@ -254,9 +274,8 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
 
       <div className="hh-body">
         {msg && !openAsk && <p className="hs-err">{msg}</p>}
-        {!user && <p className="hs-dim hh-empty">İşletmeleri görmek için giriş yap.</p>}
-        {user && loading && <p className="hs-dim">Yükleniyor…</p>}
-        {user && !loading && list.length === 0 && !game && (
+        {loading && <p className="hs-dim">Yükleniyor…</p>}
+        {!loading && list.length === 0 && !game && (
           <div className="bh-empty">
             <span>{t.icon}</span>
             <b>Henüz açık {t.label.toLocaleLowerCase('tr-TR')} yok. İlk sen aç!</b>
@@ -265,7 +284,7 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
         {/* v91 KULLANICI İSTEĞİ ("haksız rekabet olmasın"): oyuncu dükkânları
             yüklenmeden oyunun dükkânı tek başına listede görünmesin — hepsi
             AYNI ANDA gelir. */}
-        {!(user && loading) && (() => {
+        {!loading && (() => {
           // önce içerideki kişi sayısı, eşitlikte dünkü ciro sırası (bizRank; oyunun dükkânı dahil)
           const rank = (r) => (Number.isFinite(r) && r > 0 ? r : Infinity);
           const rows = list.map((h, i) => ({ kind: 'h', h, people: h.people || 0, r: rank(h.bizRank), i }));
@@ -287,7 +306,7 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
               </span>
             </button>
           ) : (
-          <button key={h.id} className={`hh-row${h.mine ? ' mine' : ''}`} onClick={() => settled() && setHouseId(h.id)}>
+          <button key={h.id} className={`hh-row${h.mine ? ' mine' : ''}`} onClick={() => settled() && (h.guest ? setGuestHouseId(h.id) : setHouseId(h.id))}>
             <span className="hh-avatar">
               <AvatarSvg avatar={h.ownerAvatar} size={42} rounded />
             </span>
@@ -298,7 +317,7 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
                 {type === 'spor' && h.gymBonusDay === today && <em className="bh-bonus">🔥 Bonus %10</em>}
               </b>
               <span>Sahibi: {h.ownerName || 'Oyuncu'}{h.mine ? ' (sen)' : ''}</span>
-              {bizPriceText(type, h) && <span className="bh-price">{bizPriceText(type, h)}</span>}
+              {!h.guest && bizPriceText(type, h) && <span className="bh-price">{bizPriceText(type, h)}</span>}
             </span>
             <span className={`hh-count${h.people ? ' live' : ''}`}>
               <i />

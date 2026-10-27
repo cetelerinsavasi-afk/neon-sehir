@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useShopStock } from '../../hooks/useShopStock';
 import { shopAction } from '../../services/gameActions';
@@ -19,15 +20,33 @@ export default function ShopShowcase({ houseId, kind, onClose }) {
   const stock = useShopStock(houseId);
   const isW = kind === 'weapon';
   const catalog = isW ? weaponCatalog : vehicleCatalog;
+  // son adet alınınca ürün hemen kaybolmasın — butonda "Satın Alındı ✓" görünsün
+  const [recent, setRecent] = useState({});
+  const timers = useRef({});
+  useEffect(
+    () => () => {
+      Object.values(timers.current).forEach(clearTimeout);
+    },
+    []
+  );
   const items = catalog
-    .filter((c) => stockQty(stock, String(c.id)) > 0)
-    .map((c) => ({ ...c, price: clampStockPrice(c.price, stock?.prices?.[String(c.id)]) }));
+    .filter((c) => stockQty(stock, String(c.id)) > 0 || recent[c.id])
+    .map((c) => ({ ...c, price: stockQty(stock, String(c.id)) > 0 ? clampStockPrice(c.price, stock?.prices?.[String(c.id)]) : recent[c.id] }));
   const onBuy = async (c) => {
     try {
       await shopAction({ op: 'stockBuy', houseId, catalogId: c.id, expect: c.price });
     } catch (e) {
       throw new Error(bizErrText(e));
     }
+    setRecent((r) => ({ ...r, [c.id]: c.price }));
+    clearTimeout(timers.current[c.id]);
+    timers.current[c.id] = setTimeout(() => {
+      setRecent((r) => {
+        const next = { ...r };
+        delete next[c.id];
+        return next;
+      });
+    }, 2600);
   };
   const Screen = isW ? WeaponShopScreen : VehicleGalleryScreen;
   return (

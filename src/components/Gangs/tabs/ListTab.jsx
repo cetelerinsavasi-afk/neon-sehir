@@ -71,7 +71,7 @@ function CreateGangSheet({ onClose, membership }) {
 }
 
 // v38: çetelerin kasası listede 00:00'daki haliyle görünür (anlık kasa sadece o çetenin Tetikçi+ rütbelerine)
-function GangKasa({ gang }) {
+export function GangKasa({ gang }) {
   return (
     <span className="gx-kasa-midnight">
       <Gold value={gang?.kasaAtMidnight} />
@@ -80,7 +80,7 @@ function GangKasa({ gang }) {
   );
 }
 
-function OrgCard({ logo, name, note, kasa, power, powerNote, members, leader, leaderIcon, routes = [], action, mine, rankNo, biat = null }) {
+export function OrgCard({ logo, name, note, kasa, power, powerNote, members, leader, leaderIcon, routes = [], action, mine, rankNo, biat = null }) {
   return (
     <Card className={`gx-gang-card${mine ? ' mine' : ''}`}>
       <div className="gx-gang-card-rank">#{rankNo}</div>

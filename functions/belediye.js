@@ -1054,6 +1054,14 @@ export function createBelediye({
     } catch (err) {
       console.error('gazete şikâyet', err?.message || err);
     }
+    // günün (biten gün) en büyük belediye bağışçısı
+    let donor = null;
+    try {
+      const top0 = (await donationsRef(addDayKey(dayKey, -1)).get()).data()?.top?.[0];
+      if (top0 && Number(top0.amount) > 0) donor = { name: String(top0.name || 'Bir vatandaş'), kind: top0.kind === 'gang' ? 'gang' : 'player', amount: Number(top0.amount) };
+    } catch (err) {
+      console.error('gazete bağışçı', err?.message || err);
+    }
     let printed = false;
     await db.runTransaction(async (tx) => {
       const [ex, dr] = await Promise.all([tx.get(ref), tx.get(draftRef)]);
@@ -1069,6 +1077,7 @@ export function createBelediye({
         mayor: bsk ? { name: bsk.name, avatar: bsk.avatar || null } : null,
         article,
         complaint: complaint ? { text: complaint.text, name: complaint.name, likes: complaint.likes } : null,
+        donor,
         payrollUnpaid,
         builtAtMs: now(),
       });

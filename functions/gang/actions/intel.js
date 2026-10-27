@@ -66,7 +66,8 @@ export function createIntelActions(core) {
     const [rosterSnap, user] = await Promise.all([tx.get(ctx.ref.roster(membership.intelRosterId)), readPoliceUser(tx, ctx, actorId)]);
     return { rosterId: membership.intelRosterId, roster: rosterSnap.data() || null, actorId, membership, user };
   }
-  // YAZMALAR. notifyText: oyuncuya özel SMS (gizlilik: teşkilata "X ayrıldı" denmez).
+  // YAZMALAR. notifyText: oyuncuya özel SMS (gizlilik: zorunlu çıkışlarda — çete
+  // babalığı kararı, atılma — teşkilata "X ayrıldı" denmez; bkz. leaveIntel).
   function applyIntelLeave(tx, ctx, plan, { actorId = null, notifyText = null, cooldown = true } = {}) {
     const who = actorId || plan.actorId;
     tx.delete(ctx.ref.roster(plan.rosterId));
@@ -90,7 +91,6 @@ export function createIntelActions(core) {
     if (plan.user) setPoliceProfession(tx, ctx, who, plan.user, false);
     if (notifyText) notify(tx, ctx, who, notifyText, 'intel');
     ctx.logs.push({ gang: 'intel_membership', world: ctx.worldId, event: 'leave' });
-    // Gizlilik: kimseye "X ayrıldı" bildirimi GÖNDERİLMEZ.
   }
 
   function parseCodeName(v) {
@@ -342,6 +342,8 @@ export function createIntelActions(core) {
       requireIntel(membership);
       const plan = await planIntelLeave(tx, ctx, membership);
       applyIntelLeave(tx, ctx, plan, { notifyText: `🚪 Polislikten istifa ettin. ${INTEL.REJOIN_COOLDOWN_MS / 3_600_000} saat boyunca yeniden başvuru yapamazsın.` });
+      // v134: kendi isteğiyle istifa teşkilat sohbetinde görünür ("katıldı" mesajının karşılığı)
+      if (plan.roster?.codeName) systemChat(tx, ctx, ctx.ref.intelChat('genel'), `🚪 ${plan.roster.codeName} polislikten istifa etti.`);
       return { left: true };
     });
   }

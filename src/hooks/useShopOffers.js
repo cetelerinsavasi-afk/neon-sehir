@@ -9,7 +9,8 @@ const ensured = new Set();
 // v132 — oyunun Silah Mağazası / Araba Galerisi fiyatları: stoğu olan oyuncu
 // dükkânlarının en ucuzu (functions/shop.js shopOffers/{weapon|vehicle}, tek belge).
 // Dönen: { katalogId: en ucuz fiyat } — oyunun fiyatından pahalı olan sayılmaz.
-export function useShopOffers(kind, { enabled = true } = {}) {
+// exclude: bu dükkân sayılmaz (v134: sahibin "piyasa değeri" — diğer dükkânların en ucuzu)
+export function useShopOffers(kind, { enabled = true, exclude = null } = {}) {
   const [best, setBest] = useState({});
   useEffect(() => {
     if (!enabled || !kind) return undefined;
@@ -22,7 +23,8 @@ export function useShopOffers(kind, { enabled = true } = {}) {
         }
         const out = {};
         for (const [cid, m] of Object.entries(s.data()?.offers || {})) {
-          for (const v of Object.values(m || {})) {
+          for (const [hid, v] of Object.entries(m || {})) {
+            if (exclude && hid === exclude) continue;
             const p = Math.floor(Number(v) || 0);
             if (p > 0 && (!out[cid] || p < out[cid])) out[cid] = p;
           }
@@ -31,7 +33,7 @@ export function useShopOffers(kind, { enabled = true } = {}) {
       },
       () => setBest({})
     );
-  }, [kind, enabled]);
+  }, [kind, enabled, exclude]);
   return best;
 }
 

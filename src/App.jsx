@@ -69,6 +69,8 @@ const CasinoWorldScreen = lazyScreen(() => import('./components/CasinoWorldScree
 const CarDealershipWorldScreen = lazyScreen(() => import('./components/CarDealershipWorldScreen/CarDealershipWorldScreen'));
 const WeaponShopWorldScreen = lazyScreen(() => import('./components/WeaponShopWorldScreen/WeaponShopWorldScreen'));
 const TuningGarageWorldScreen = lazyScreen(() => import('./components/TuningGarageWorldScreen/TuningGarageWorldScreen'));
+// v134 — misafir (giriş yapmamış) oyuncu oyunun mekânlarını yeni 3D hâliyle gezer
+const GuestVenue = lazyScreen(() => import('./components/Guest/GuestVenue'));
 
 function prefetchScreens() {
   let i = 0;
@@ -309,8 +311,7 @@ function GameShell() {
     }
     // v108 — Belediye Binası: başkanlık makam odası (3D, şimdilik sadece gezilir)
     if (regionMeta?.screen === 'belediye') {
-      if (user) setBelediyeOpen(true);
-      else showComingSoon(regionMeta.name);
+      setBelediyeOpen(true); // v134: misafir de girip gezer
       return;
     }
     if (regionMeta?.screen === 'park') {
@@ -610,7 +611,7 @@ function GameShell() {
         user ? (
           <VenueHouseScreen venue="park" onExit={() => closeVenueMaybeReturnToVisit(setParkOpen)} fallback={<ParkWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setParkOpen)} />} />
         ) : (
-        <ParkWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setParkOpen)} />
+        <GuestVenue venueKey="park" onExit={() => closeVenueMaybeReturnToVisit(setParkOpen)} />
         )
       )}
 
@@ -618,10 +619,7 @@ function GameShell() {
         user ? (
           <VenueHouseScreen venue="banka" onExit={() => closeVenueMaybeReturnToVisit(setBankOpen)} onOpenHeist={openHeistScreen} fallback={<BankWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setBankOpen)} onOpenHeist={openHeistScreen} />} />
         ) : (
-        <BankWorldScreen
-          onExit={() => closeVenueMaybeReturnToVisit(setBankOpen)}
-          onOpenHeist={openHeistScreen}
-        />
+        <GuestVenue venueKey="banka" onExit={() => closeVenueMaybeReturnToVisit(setBankOpen)} />
         )
       )}
 
@@ -629,7 +627,7 @@ function GameShell() {
         user ? (
           <VenueHouseScreen venue="karakol" onExit={() => closeVenueMaybeReturnToVisit(setKarakolOpen)} fallback={<KarakolWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setKarakolOpen)} />} />
         ) : (
-        <KarakolWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setKarakolOpen)} />
+        <GuestVenue venueKey="karakol" onExit={() => closeVenueMaybeReturnToVisit(setKarakolOpen)} />
         )
       )}
 
@@ -640,12 +638,13 @@ function GameShell() {
           fallback={<VenueFallbackNotice onDone={() => { setBelediyeOpen(false); showComingSoon('Belediye Binası'); }} />}
         />
       )}
+      {belediyeOpen && !user && <GuestVenue venueKey="belediye" onExit={() => closeVenueMaybeReturnToVisit(setBelediyeOpen)} />}
 
       {mosqueOpen && (
         user ? (
           <VenueHouseScreen venue="camii" onExit={() => closeVenueMaybeReturnToVisit(setMosqueOpen)} fallback={<MosqueWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setMosqueOpen)} />} />
         ) : (
-        <MosqueWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setMosqueOpen)} />
+        <GuestVenue venueKey="camii" onExit={() => closeVenueMaybeReturnToVisit(setMosqueOpen)} />
         )
       )}
 
@@ -653,10 +652,7 @@ function GameShell() {
         user ? (
           <VenueHouseScreen venue="gazino" onExit={() => closeVenueMaybeReturnToVisit(setCasinoOpen)} onOpenHeist={openHeistScreen} fallback={<CasinoWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setCasinoOpen)} onOpenHeist={openHeistScreen} />} />
         ) : (
-        <CasinoWorldScreen
-          onExit={() => closeVenueMaybeReturnToVisit(setCasinoOpen)}
-          onOpenHeist={openHeistScreen}
-        />
+        <GuestVenue venueKey="gazino" onExit={() => closeVenueMaybeReturnToVisit(setCasinoOpen)} />
         )
       )}
 
@@ -664,10 +660,7 @@ function GameShell() {
         user ? (
           <VenueHouseScreen venue="araba_galerisi" onExit={() => closeVenueMaybeReturnToVisit(setDealershipOpen)} onOpenHeist={openHeistScreen} fallback={<CarDealershipWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setDealershipOpen)} onOpenHeist={openHeistScreen} />} />
         ) : (
-        <CarDealershipWorldScreen
-          onExit={() => closeVenueMaybeReturnToVisit(setDealershipOpen)}
-          onOpenHeist={openHeistScreen}
-        />
+        <GuestVenue venueKey="araba_galerisi" onExit={() => closeVenueMaybeReturnToVisit(setDealershipOpen)} />
         )
       )}
 
@@ -675,7 +668,7 @@ function GameShell() {
         user ? (
           <VenueHouseScreen venue="silah_magazasi" onExit={() => closeVenueMaybeReturnToVisit(setWeaponShopOpen)} fallback={<WeaponShopWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setWeaponShopOpen)} />} />
         ) : (
-        <WeaponShopWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setWeaponShopOpen)} />
+        <GuestVenue venueKey="silah_magazasi" onExit={() => closeVenueMaybeReturnToVisit(setWeaponShopOpen)} />
         )
       )}
 
@@ -683,10 +676,7 @@ function GameShell() {
         user ? (
           <VenueHouseScreen venue="modifiye_garaji" onExit={() => closeVenueMaybeReturnToVisit(setTuningGarageOpen)} onOpenHeist={openHeistScreen} fallback={<TuningGarageWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setTuningGarageOpen)} onOpenHeist={openHeistScreen} />} />
         ) : (
-        <TuningGarageWorldScreen
-          onExit={() => closeVenueMaybeReturnToVisit(setTuningGarageOpen)}
-          onOpenHeist={openHeistScreen}
-        />
+        <GuestVenue venueKey="modifiye_garaji" onExit={() => closeVenueMaybeReturnToVisit(setTuningGarageOpen)} />
         )
       )}
 

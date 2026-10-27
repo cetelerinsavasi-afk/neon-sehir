@@ -303,7 +303,9 @@ function OrderSheet({ trucks, routes, state, depot, gangId, memberCount, orders,
 // ---------------------------------------------------------------------------
 function DepotItems({ depot, lead, listings }) {
   const { run, busy } = useGangAction();
+  const { call } = useGang();
   const [act, setAct] = useState(null);
+  const [marketValue, setMarketValue] = useState(null); // { key, value } — v134 piyasa değeri
   const [qty, setQty] = useState(0);
   const [price, setPrice] = useState(0);
   const [group, setGroup] = useState('rutbeli');
@@ -319,6 +321,12 @@ function DepotItems({ depot, lead, listings }) {
     setAct({ type, key: k, it, max: free });
     setQty(type === 'list' ? Math.min(1, free) : free);
     setPrice(it.storePrice);
+    setMarketValue(null);
+    if (type === 'list' && /^(silah|araba):/.test(k)) {
+      call('quoteMarketValue', { itemKey: k })
+        .then((r) => Number(r?.value) > 0 && setMarketValue({ key: k, value: Number(r.value) }))
+        .catch(() => {});
+    }
   };
   return (
     <>
@@ -430,11 +438,14 @@ function DepotItems({ depot, lead, listings }) {
           {act.type === 'list' && (
             <>
               <span className="dim gx-mini">💰 Adet fiyatı</span>
-              <AmountInput value={price} onChange={setPrice} max={act.it.storePrice} min={Math.floor(act.it.storePrice / 2)} quick={[100, 1000, 10_000, 100_000]} />
-              {/* v103: ucuz malzeme ilanı 7 gün içinde satılmazsa oyuna satılır (para kasaya) */}
-              {!/^(silah|araba):/.test(act.key) && autoSellsAt(price, Math.floor(act.it.storePrice / 2), act.it.storePrice) && (
-                <span className="gx-autosell-hint">{AUTO_SELL_HINT}</span>
+              {marketValue?.key === act.key && (
+                <button type="button" className="gx-market-value" onClick={() => setPrice(Math.max(Math.floor(act.it.storePrice / 2), Math.min(act.it.storePrice, marketValue.value)))}>
+                  📈 Piyasa değeri: <b>{fmt(marketValue.value)}</b>
+                </button>
               )}
+              <AmountInput value={price} onChange={setPrice} max={act.it.storePrice} min={Math.floor(act.it.storePrice / 2)} quick={[100, 1000, 10_000, 100_000]} />
+              {/* v103 (+v134 araba/silah): ucuz ilan 7 gün içinde satılmazsa oyuna satılır (para kasaya) */}
+              {autoSellsAt(price, Math.floor(act.it.storePrice / 2), act.it.storePrice) && <span className="gx-autosell-hint">{AUTO_SELL_HINT}</span>}
             </>
           )}
         </Confirm>

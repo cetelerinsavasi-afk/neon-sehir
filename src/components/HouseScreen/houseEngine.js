@@ -3,7 +3,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes';
 import { drawPet, isPerchPet, petCollarAt, PET_ART } from '../../lib/cosmeticsArt';
 import { CATALOG_MAP, buildItem, itemBoxes, disposeObject, TINTS, M, gunModel, HELD_GUN_SCALE, DOOR_BUILDERS } from './houseCatalog';
-import { DEFAULT_DOOR, sanitizeDoor, doorSpawn, doorLocalToWorld, resolveEntrance } from '../../../functions/houseDoor.js';
+import { DEFAULT_DOOR, sanitizeDoor, doorSpawn, doorSpawnYaw, doorLocalToWorld, resolveEntrance } from '../../../functions/houseDoor.js';
 import { FLOORS, WALLS, floorDef, wallDef, surfaceTexture } from './houseTextures';
 import { HOUSE_PRODUCTS, VENUE_FREE_TAKE_KEYS } from '../../../functions/houseCatalogData.js';
 import { heldCanvas, heldDataUrl } from './heldArt';
@@ -1810,8 +1810,9 @@ export function createHouseEngine(
   function pickPlayer(e) {
     setNdc(e);
     const planes = [];
-    others.forEach((o) => {
-      if (o.fig.plane.visible) planes.push(o.fig.plane);
+    // mekân botlarına (npc_bot_*) dokunulmaz — dokunuş arkalarındaki zemine/eşyaya gider
+    others.forEach((o, uid) => {
+      if (o.fig.plane.visible && !String(uid).startsWith('npc_bot_')) planes.push(o.fig.plane);
     });
     const hit = ray.intersectObjects(planes, false)[0];
     return hit?.object.userData.playerUid || null;
@@ -2890,6 +2891,13 @@ export function createHouseEngine(
           self.x = sp.x;
           self.z = sp.z;
           self.target = null;
+          // ana kapı hangi yöne bakıyorsa oyuncu da o yöne dönük
+          self.camYaw = doorSpawnYaw(door, design.items);
+          if (view === '2d') {
+            top.az = self.camYaw;
+            topCur.az = top.az;
+          }
+          firstFrame = true;
         }
       }
       if (wallChanged) setSurfaces();

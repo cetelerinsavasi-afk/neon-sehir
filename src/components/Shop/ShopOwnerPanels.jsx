@@ -5,6 +5,7 @@ import { weaponCatalog } from '../../data/weaponCatalog';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useShopStock } from '../../hooks/useShopStock';
+import { useShopOffers } from '../../hooks/useShopOffers';
 import PriceField from './PriceField';
 import { useBelediyeRates } from '../../hooks/useBelediyeRates';
 import { bizRateFrac } from '../../../functions/belediyeRates.js';
@@ -119,6 +120,10 @@ function StockThumb({ c, kind }) {
 // Fiyatlar sekmesi: her ürün (stokta olmasa da) — stok, değer, satış fiyatı
 function StockPrices({ houseId, kind }) {
   const stock = useShopStock(houseId);
+  // v134 piyasa değeri: oyunun mağazasının bu ürünü sattığı fiyat = diğer dükkânların
+  // en ucuzu (stoğu olan), kimsede yoksa oyunun fiyatı
+  const offers = useShopOffers(kind, { exclude: houseId });
+  const marketOf = (c) => (offers[String(c.id)] && offers[String(c.id)] < c.price ? offers[String(c.id)] : c.price);
   const catalog = catalogOfKind(kind);
   const [draft, setDraft] = useState({});
   const [busy, setBusy] = useState(false);
@@ -160,9 +165,9 @@ function StockPrices({ houseId, kind }) {
               <b>{c.name}</b>
               <span className="sk-meta">
                 <span className="bz-tag">📦 {qty}</span>
-                <span className="bz-tag">
-                  Değer <Gold v={c.price} />
-                </span>
+                <button type="button" className="bz-tag sk-market" onClick={() => setDraft((x) => ({ ...x, [c.id]: clamp(marketOf(c)) }))}>
+                  Piyasa değeri <Gold v={marketOf(c)} />
+                </button>
                 <span className={`bz-tag ${profit > 0 ? 'ok' : 'bad'}`}>Kâr +{fmt(profit)}</span>
               </span>
               <div className="sk-step">
@@ -245,7 +250,7 @@ function StockAdd({ houseId, kind }) {
                       Değer <Gold v={c.price} />
                     </span>
                     <span className="bz-tag warn">
-                      Alış <Gold v={cost} />
+                      Alış {cost < stockUnitCost(c.price) && <s className="sk-was">{fmt(stockUnitCost(c.price))}</s>} <Gold v={cost} />
                     </span>
                   </span>
                 </div>

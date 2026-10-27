@@ -94,6 +94,16 @@ function Sayi({ g: raw }) {
         </section>
       )}
 
+      {g.donor && (
+        <section className="gz-col">
+          <h3 className="gz-h3">🤲 Günün Bağışçısı</h3>
+          <p className="gz-donor">
+            <b>{g.donor.kind === 'gang' ? `${g.donor.name} çetesi` : g.donor.name}</b>
+            <span>belediye kasasına {nf(g.donor.amount)} altın bağışladı</span>
+          </p>
+        </section>
+      )}
+
       <footer className="gz-foot">Ayrıntılar Belediye Binası'nda · Her gece 00:00'da basılır</footer>
     </article>
   );

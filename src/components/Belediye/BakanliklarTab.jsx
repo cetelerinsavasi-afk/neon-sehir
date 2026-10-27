@@ -103,8 +103,6 @@ function Ticaret({ r, c, rates }) {
   const gzTotal = ['gazino_slot', 'gazino_piyango', 'gazino_rulet', 'gazino_onNumara'].reduce((a, k) => a + (c.in[k] || 0), 0);
   // v132: 2. el satışlar vergisiz
   const ie = ['araba', 'silah'].map((k) => ({ key: k, name: IE_LABEL[k], n: nf(st[`ie_${k}_n`]), ciro: nf(st[`ie_${k}_ciro`]) }));
-  const ieCiro = (st.ie_araba_ciro || 0) + (st.ie_silah_ciro || 0);
-  const ieN = (st.ie_araba_n || 0) + (st.ie_silah_n || 0);
   // v130 — sıfır (stoktan) satışlar: sadece kârdan vergi (oyuncu dükkânları + oyunun mağazaları)
   const sf = [
     ['sf_silah', 'Silahçılar', 'sfSilah'],
@@ -119,7 +117,6 @@ function Ticaret({ r, c, rates }) {
         items={[
           { label: 'İşletme vergisi', value: nf(bizTax) },
           { label: 'Oyunun gazinosu', value: nf(gzTotal), sub: 'kârın tamamı devlete' },
-          c.in.vergi_ikinciEl ? { label: '2. el vergisi', value: nf(c.in.vergi_ikinciEl) } : { label: '2. el satış', value: nf(ieCiro), sub: ieN ? `${nf(ieN)} satış` : null },
           { label: 'Sıfır satış vergisi', value: nf(sfTax), sub: 'kârdan' },
           { label: 'Piyango vergisi', value: nf(c.in.vergi_piyango), sub: st.pi_bilet ? `${nf(st.pi_bilet)} bilet · ödül ${nf(st.pi_odul)}` : null },
         ]}

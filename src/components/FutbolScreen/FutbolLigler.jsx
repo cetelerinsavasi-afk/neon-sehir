@@ -601,7 +601,7 @@ export default function FutbolLigler({ initialTab = 'puan', chatReadOnly = false
   );
 }
 
-function StandingsTable({ teams, onSelectTeam }) {
+export function StandingsTable({ teams, onSelectTeam }) {
   return (
     <table className="futbol-standings">
       <thead>

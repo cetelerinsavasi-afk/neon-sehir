@@ -1,6 +1,7 @@
 import { useAuth } from '../../contexts/AuthContext';
 import GuestOverlay from '../GuestOverlay/GuestOverlay';
 import FutbolShell from './FutbolShell';
+import GuestFutbol from './GuestFutbol';
 import './FutbolFullScreen.css';
 
 /**
@@ -17,7 +18,9 @@ import './FutbolFullScreen.css';
  * z-index'te) ayrıca render edilir; görsel olarak aynı köşede oturur.
  */
 export default function FutbolFullScreen({ onClose }) {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  // v134: misafir liglerin puan durumlarını inceler (veriler sunucudan)
+  if (!user && !loading) return <GuestFutbol onClose={onClose} />;
 
   return (
     <>

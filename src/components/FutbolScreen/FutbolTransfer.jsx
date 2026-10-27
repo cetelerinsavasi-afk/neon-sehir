@@ -108,6 +108,7 @@ export default function FutbolTransfer({ team, role }) {
     setError('');
     try {
       await instantSellFutbolPlayer(playerId);
+      setListingId(null);
       await loadMarket();
     } catch (err) {
       setError(err?.message || 'Satış başarısız.');
@@ -233,6 +234,9 @@ export default function FutbolTransfer({ team, role }) {
                           max={maxPrice}
                           quickAmounts={PLAYER_PRICE_QUICK_AMOUNTS}
                         />
+                        <button className="futbol-admin-reset" disabled={busyId === p.id} onClick={() => handleInstantSell(p.id)}>
+                          Anında Sat ({instantPrice.toLocaleString('tr-TR')})
+                        </button>
                         <p className="futbol-buy-meta">
                           İzin verilen aralık: {instantPrice.toLocaleString('tr-TR')} -{' '}
                           {maxPrice.toLocaleString('tr-TR')}
@@ -247,15 +251,8 @@ export default function FutbolTransfer({ team, role }) {
                       </div>
                     ) : (
                       <div className="futbol-transfer-actions">
-                        <button
-                          className="futbol-admin-reset"
-                          disabled={busyId === p.id}
-                          onClick={() => handleInstantSell(p.id)}
-                        >
-                          Anında Sat ({instantPrice.toLocaleString('tr-TR')})
-                        </button>
                         <button className="futbol-admin-submit" onClick={() => openListing(p.id)}>
-                          Listele
+                          Oyuncuyu Sat
                         </button>
                       </div>
                     )}

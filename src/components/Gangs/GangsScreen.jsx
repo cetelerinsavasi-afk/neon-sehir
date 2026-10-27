@@ -9,6 +9,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { GangProvider, useDocData, useGang } from './GangContext';
 import { callGang } from './gangApi';
 import GangShell from './GangShell';
+import GuestGangs from './GuestGangs';
 import { Btn } from './ui';
 import './Gangs.css';
 
@@ -36,7 +37,7 @@ export function GangHome() {
 }
 
 export default function GangsScreen() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { data: config, loading } = useDocData(user ? 'gangSystem/config' : null);
   const [hello, setHello] = useState(null);
   const [retry, setRetry] = useState(0);
@@ -57,11 +58,8 @@ export default function GangsScreen() {
   const liveMode = useMemo(() => ({ world: 'live', worldId: liveWorldId, actorId: user?.uid }), [liveWorldId, user?.uid]);
 
   if (!user) {
-    return (
-      <div className="gx-root">
-        <Maintenance icon="🔒" title="Giriş yap" />
-      </div>
-    );
+    // v134: misafir çeteleri ve savaşları izleyebilir
+    return <div className="gx-root">{authLoading ? <div className="gx-loading">Yükleniyor…</div> : <GuestGangs />}</div>;
   }
   const closed = config?.autoOpened && !config.liveOpen;
   return (

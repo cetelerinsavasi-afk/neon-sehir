@@ -1152,9 +1152,92 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     return { ok: true, houseId: vn.houseId };
   }
 
+  // ===========================================================================
+  // v134 — MİSAFİR (giriş yapmamış) GEZİNTİ: oyuncuların açtığı işletme / ofis
+  // listesi ve tasarımı (salt okuma). Giriş gerekmez; sonuçlar sunucu belleğinde
+  // önbelleklenir (Firestore okuması düşük kalsın). Ev (özel konut) gösterilmez.
+  // ===========================================================================
+  const guestCache = new Map();
+  async function guestCached(key, ttlMs, fn) {
+    const hit = guestCache.get(key);
+    const t = now();
+    if (hit && t - hit.at < ttlMs) return hit.data;
+    if (guestCache.size > 400) guestCache.clear();
+    const data = await fn();
+    guestCache.set(key, { at: t, data });
+    return data;
+  }
+  const guestPublic = (h) => Boolean(h) && !h.venue && (h.privacy || 'public') === 'public' && (Boolean(h.biz?.type || h.bizType) || houseKind(h) === 'ofis');
+  async function guestPlaces(p) {
+    const type = String(p.type || '');
+    const isOffice = type === 'ofis';
+    if (!isOffice && !(BIZ_TYPES[type] && !BIZ_TYPES[type].ho)) fail('invalid-argument', 'Geçersiz tür.');
+    return guestCached(`list:${type}`, 5 * 60 * 1000, async () => {
+      const q = isOffice ? db.collection('houses').where('kind', '==', 'ofis') : db.collection('houses').where('bizType', '==', type);
+      const snap = await q.limit(100).get();
+      const list = snap.docs
+        .map((d) => ({ id: d.id, h: d.data() }))
+        .filter(({ h }) => !h.bizGame && guestPublic(h))
+        .map(({ id, h }) => ({
+          id,
+          name: String(h.name || (isOffice ? 'Ofis' : BIZ_TYPES[type]?.label) || '').slice(0, 40),
+          ownerName: String(h.ownerName || 'Oyuncu').slice(0, 40),
+          ownerAvatar: h.ownerAvatar || null,
+          bizType: h.biz?.type || h.bizType || null,
+          emoji: h.office?.emoji || null,
+          bizRank: Number.isFinite(Number(h.bizRank)) ? Number(h.bizRank) : null,
+        }));
+      return { ok: true, list };
+    });
+  }
+  async function guestHouse(p) {
+    const houseId = String(p.houseId || '');
+    if (!isHouseId(houseId)) fail('invalid-argument', 'Geçersiz mekân.');
+    return guestCached(`house:${houseId}`, 2 * 60 * 1000, async () => {
+      const s = await db.collection('houses').doc(houseId).get();
+      const h = s.exists ? s.data() : null;
+      if (!guestPublic(h)) return { ok: false };
+      return {
+        ok: true,
+        house: {
+          id: houseId,
+          name: String(h.name || '').slice(0, 40),
+          ownerName: String(h.ownerName || 'Oyuncu').slice(0, 40),
+          bizType: h.biz?.type || h.bizType || null,
+          emoji: h.office?.emoji || null,
+          items: Array.isArray(h.items) ? h.items : [],
+          wall: h.wall || null,
+          floor: h.floor || null,
+          door: h.door || null,
+        },
+      };
+    });
+  }
+
+  // Stadyum: lig puan durumları (misafir)
+  const STAT_KEYS = ['played', 'won', 'drawn', 'lost', 'gf', 'ga', 'points'];
+  async function guestLeagues() {
+    return guestCached('leagues', 5 * 60 * 1000, async () => {
+      const ls = await db.collection('futbolLeagues').orderBy('tier', 'asc').get();
+      const leagues = ls.docs.map((d) => ({ id: d.id, name: String(d.data().name || ''), tier: Number(d.data().tier || 0) }));
+      const snaps = await Promise.all(leagues.map((l) => db.collection('futbolTeams').where('leagueId', '==', l.id).get()));
+      const teams = {};
+      leagues.forEach((l, i) => {
+        teams[l.id] = snaps[i].docs.map((d) => {
+          const t = d.data();
+          return { id: d.id, name: String(t.name || ''), logo: t.logo || null, stats: Object.fromEntries(STAT_KEYS.map((k) => [k, Number(t.stats?.[k] || 0)])) };
+        });
+      });
+      return { ok: true, leagues, teams };
+    });
+  }
+
   const houseAction = onCall(async (request) => {
-    const uid = requireAuth(request);
     const p = request.data || {};
+    if (p.op === 'guestPlaces') return guestPlaces(p);
+    if (p.op === 'guestHouse') return guestHouse(p);
+    if (p.op === 'guestLeagues') return guestLeagues();
+    const uid = requireAuth(request);
     switch (p.op) {
       case 'buy':
         return buy(uid, p);

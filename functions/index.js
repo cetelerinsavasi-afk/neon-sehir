@@ -4327,6 +4327,8 @@ function recordInvestmentTrade(writer, { assetType, uid, type, goldAmount }) {
 // investmentHistory koleksiyonuna çizgi grafik için kaydedilir. 30
 // günden eski geçmiş kayıtları otomatik temizlenir.
 // =============================================================================
+const CRYPTO_LOW_BAND = 50000;
+const CRYPTO_HIGH_BAND = 400000;
 export const hourlyInvestmentUpdate = onSchedule(
   { schedule: 'every 1 hours', timeZone: 'Europe/Istanbul' },
   async () => {
@@ -4365,14 +4367,17 @@ export const hourlyInvestmentUpdate = onSchedule(
     // düşüş aralıkları EŞİT: kripto %1-20 / %1-20, hisse %1-10 / %1-10,
     // elmas %1-5 / %1-5. Normal rejim aynı kaldı.
     const pct = (lo, hi) => Math.random() * (hi - lo) + lo;
-    const move = (reversed, normalUp, normalDown, revMax) => {
-      const up = Math.random() < 0.5;
+    const move = (reversed, normalUp, normalDown, revMax, upProb = 0.5) => {
+      const up = Math.random() < upProb;
       if (reversed) return up ? pct(0.01, revMax) : -pct(0.01, revMax);
       return up ? pct(0.01, normalUp) : -pct(0.01, normalDown);
     };
     const diamondChangePct = move(diamondRegime.reversed, 0.05, 0.04, 0.05);
     const stockChangePct = move(stockRegime.reversed, 0.1, 0.08, 0.1);
-    const cryptoChangePct = move(cryptoRegime.reversed, 0.2, 0.16, 0.2);
+    // Kripto sınır eğilimi: 50.000 altında %75 ihtimalle yukarı, 400.000 üstünde
+    // %75 ihtimalle aşağı (aralıklar/rejim aynı; sadece yön olasılığı değişir).
+    const cryptoUpProb = prev.cryptoPrice < CRYPTO_LOW_BAND ? 0.75 : prev.cryptoPrice > CRYPTO_HIGH_BAND ? 0.25 : 0.5;
+    const cryptoChangePct = move(cryptoRegime.reversed, 0.2, 0.16, 0.2, cryptoUpProb);
 
     const diamondPrice = Math.max(1, Math.round(prev.diamondPrice * (1 + diamondChangePct)));
     const stockPrice = Math.max(1, Math.round((prev.stockPrice ?? 10000) * (1 + stockChangePct)));

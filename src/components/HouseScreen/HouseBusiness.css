@@ -218,6 +218,10 @@
   gap: 8px;
   z-index: 9;
 }
+.hb-topbtns.left {
+  right: auto;
+  left: 8px;
+}
 .hb-topbtn {
   padding: 9px 16px;
   border-radius: 14px;

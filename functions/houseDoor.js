@@ -107,3 +107,14 @@ export function doorSpawn(door, items) {
   }
   return { x: Math.round(p.x * 100) / 100, z: Math.round(p.z * 100) / 100 };
 }
+
+// Girişte bakılan yön (kamera yaw'ı): kapıdan odanın içine doğru — ana kapı
+// hangi yöne bakıyorsa oyuncu da o yöne dönük doğar. houseEngine'de kameranın
+// ileri yönü (-sin(yaw), -cos(yaw)).
+export function doorSpawnYaw(door, items) {
+  const e = resolveEntrance(door, items);
+  const a = e.kind === 'item' ? (Number(e.item.r) || 0) * (Math.PI / 4) : (WALLS[e.door.w] || WALLS[2]).ry;
+  const fx = Math.sin(a);
+  const fz = Math.cos(a);
+  return Math.atan2(-fx, -fz);
+}

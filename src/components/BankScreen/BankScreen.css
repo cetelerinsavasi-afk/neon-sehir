@@ -115,6 +115,11 @@
   color: var(--text-dim);
 }
 
+.bank-max-tag {
+  color: var(--neon-yellow);
+  font-weight: 800;
+}
+
 .bank-trade {
   display: flex;
   flex-direction: column;

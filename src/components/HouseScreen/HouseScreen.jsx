@@ -1,5 +1,6 @@
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useBackClose } from '../../lib/backStack';
+import { presenceNow, serverNow } from '../../lib/presenceClock';
 import { collection, doc, getDoc, limit, onSnapshot, orderBy, query, setDoc, deleteDoc, serverTimestamp, where } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { liveReady, liveWrite, liveRemove, watchLive, mergeLive } from '../../lib/liveNet';
@@ -80,6 +81,7 @@ import { doorKey, isDoorItemKey, resolveEntrance } from '../../../functions/hous
 // =============================================================================
 
 const PRESENCE_STALE_MS = 90_000; // v130: nabız 30 sn
+const CHAT_TTL_MS = 60 * 60 * 1000; // mekân sohbet mesajları 1 saat görünür
 // v77 — işletmeye girince üstte çıkan butonlar
 const BIZ_TOP_BUTTONS = {
   silahci: [
@@ -237,6 +239,13 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   const [online, setOnline] = useState([]);
   const onlineKeyRef = useRef('');
   const [messages, setMessages] = useState([]);
+  // mekân sohbeti: 1 saatten eski mesajlar görünmez
+  const [chatClock, setChatClock] = useState(() => serverNow());
+  useEffect(() => {
+    const t = setInterval(() => setChatClock(serverNow()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+  const liveMessages = useMemo(() => messages.filter((m) => Number(m.createdAtMs || 0) > chatClock - CHAT_TTL_MS), [messages, chatClock]);
   const [chatBusy, setChatBusy] = useState(false);
   const [chatExpanded, setChatExpanded] = useState(false);
   const [panel, setPanel] = useState(null); // people | settings | checkout | arcade | jukebox | camera | phone | emotes
@@ -713,7 +722,8 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     return onSnapshot(
       q,
       (snap) => {
-        const now = Date.now();
+        // bayatlık sunucu saatine göre (cihaz saati yanlış olan oyuncu kimseyi görmüyordu)
+        const now = presenceNow(snap, user.uid);
         const list = [];
         let meThere = false;
         snap.forEach((d) => {
@@ -820,6 +830,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
         snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
         list.reverse();
         setMessages(list.filter((m) => !isBlocked(m.uid)));
+        setChatClock(serverNow());
         list.forEach((m) => {
           if (seenMsgRef.current.has(m.id)) return;
           seenMsgRef.current.add(m.id);
@@ -1808,8 +1819,9 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
             <HomeOfficeLayer apiRef={hoApiRef} houseId={houseId} houseDoc={houseDoc} isOwner={isOwner} engineRef={engineRef} engineKey={engineKey} online={online} flash={flash} />
           )}
           {/* v77 — MEKÂN ÜST BUTONLARI (işletme türüne göre) */}
-          {bizType && mode === 'walk' && BIZ_TOP_BUTTONS[bizType] && (
-            <div className="hb-topbtns">
+          {/* cafe/bar: garson varsa menü butonu yok (garson aynı işi görür); yoksa menü solda */}
+          {bizType && mode === 'walk' && BIZ_TOP_BUTTONS[bizType] && !(MENU_TYPES.includes(bizType) && bots.waiterReady) && (
+            <div className={`hb-topbtns${MENU_TYPES.includes(bizType) ? ' left' : ''}`}>
               {BIZ_TOP_BUTTONS[bizType].map((b) => (
                 <button key={b.panel} className="hb-topbtn" onClick={() => (b.panel.startsWith('ho:') ? hoApiRef.current?.open(b.panel.slice(3)) : setPanel(b.panel))}>
                   {b.label}
@@ -2246,12 +2258,12 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
           {/* SOHBET */}
           <div className={`hs-chat${mode === 'build' ? ' build' : ''}${chatExpanded ? ' expanded' : ''}`}>
             <div className="hs-chat-feed" onClick={() => setChatExpanded((v) => !v)}>
-              {(chatExpanded ? messages : messages.slice(-4)).map((m) => (
+              {(chatExpanded ? liveMessages : liveMessages.slice(-4)).map((m) => (
                 <div key={m.id} className={`hs-msg${m.uid === user.uid ? ' me' : ''}`}>
                   <b>{m.name}:</b> {m.text}
                 </div>
               ))}
-              {messages.length === 0 && <div className="hs-msg dim">{venue ? 'Buradakilerle' : 'Evdekilerle'} sohbet et 👋</div>}
+              {liveMessages.length === 0 && <div className="hs-msg dim">{venue ? 'Buradakilerle' : 'Evdekilerle'} sohbet et 👋</div>}
             </div>
             <ChatBox busy={chatBusy} onSend={sendChat} onTyping={(on) => engineRef.current?.setTyping?.(on)} />
           </div>
@@ -2509,7 +2521,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
           {myStream && myStreamDoc && (
             <StreamHostPanel
               stream={myStreamDoc}
-              roomChat={messages}
+              roomChat={liveMessages}
               pose={streamPoseNow}
               engineRef={engineRef}
               statsRef={streamStatsRef}

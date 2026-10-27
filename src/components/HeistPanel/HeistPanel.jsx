@@ -17,7 +17,6 @@ import {
   refreshHeistPlanParticipants,
   updateHeistPlanNote,
 } from '../../services/gameActions';
-import InfoIcon from '../InfoIcon/InfoIcon';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import ResultModal from '../ResultModal/ResultModal';
 import { regionEmojis } from '../../data/regions';
@@ -50,15 +49,6 @@ export const HEIST_LABELS = {
   seyyar_satici_3: { title: 'Dönerciye Haraç', emoji: regionEmojis.seyyar_satici_3, requiredPower: 1500, reward: 2000, suspicionCost: 5 },
   seyyar_satici_4: { title: 'Köfteciye Haraç', emoji: regionEmojis.seyyar_satici_4, requiredPower: 1000, reward: 1000, suspicionCost: 5 },
 };
-
-// v113: RP diliyle, kısa ve net (sayılar sunucuyla aynı: functions/policeRules.js)
-const RULES_TEXT =
-  'Tek başına girersen yakalanma ihtimalin şüphen kadardır. Ekip en fazla 4 kişi, plan 24 saat açık kalır. Ekipten biri dikkat çekerse ya da aranızda gizli bir polis varsa hepiniz yakalanırsınız. Ceza cebinden kesilmez, devlete borç yazılır: Banka\'dan ödeyebilirsin, ödemezsen kazandığın her paranın yarısı borca gider.';
-
-// POLICE_RULES_TEXT — polisler de soygun yapabilir; yakalanırsa ceza 2 katı.
-// Ekipte sivil varsa polis onları yakalar: kurtarılan paranın %25'i polislere.
-const POLICE_RULES_TEXT =
-  'Rozetin olması soygun yapamayacağın anlamına gelmez — ama yakalanırsan ceza 2 katı. Ekipte sadece polisler varsa bu gerçek bir soygundur: ganimet bölüşülür, yakalanırsanız herkes 2 kat ceza yer. Ekipte bir sivil bile varsa sen suçluları yakalarsın: kurtarılan paranın %25\'i polislere bölünür, gerisi devlete gider. Ama önce şüphe konuşur: suçlulardan biri kendi dikkatsizliğinden yakalanırsa ödül yok.';
 
 const fmtGold = (n) => Number(n || 0).toLocaleString('tr-TR');
 
@@ -314,9 +304,6 @@ export default function HeistPanel({ target }) {
     (max, w) => (!w.listed && (w.lifeDays ?? INITIAL_LIFE_DAYS) > 0 ? Math.max(max, w.power || 0) : max),
     0
   );
-  // KULLANICI İSTEĞİ (polis suç sistemi): polisler de artık gücü yeten yeri
-  // tek başına soyabilir — herkes için aynı kural: güç yetmiyorsa ekip.
-  const isPolice = player?.profession === 'polis';
   // v123: şüphe 50+ iken suç yok (sunucu: functions/policeRules.js CRIME_SUSPICION_LOCK)
   // v124: ekip kurmak / katılmak serbest; tek başına soygun ve ekip soygununu başlatmak yasak
   const crimeLocked = Number(player?.suspicion || 0) >= 50;
@@ -354,13 +341,13 @@ export default function HeistPanel({ target }) {
     }
   };
 
+  // ekibinde olduğum plan en üstte
+  const myPlanIds = new Set(myActivePlans.map((p) => p.planId));
+  const sortedPlans = [...plans].sort((a, b) => Number(myPlanIds.has(b.id)) - Number(myPlanIds.has(a.id)));
   const pw = Math.min(100, meta.requiredPower > 0 ? (myPower / meta.requiredPower) * 100 : 0);
   return (
     <div className="heist-panel">
       <div className="hp-hero">
-        <span className="hp-info">
-          <InfoIcon text={isPolice ? POLICE_RULES_TEXT : RULES_TEXT} />
-        </span>
         <div className="hp-big">{meta.emoji}</div>
         <h2>{meta.title}</h2>
         <div className="hp-gold">
@@ -417,7 +404,7 @@ export default function HeistPanel({ target }) {
       {(needsTeam || showTeamForming || plans.length > 0) && (
         <div className="heist-plan-list">
           <p className="heist-plan-list-title">Ekip soygunları ({plans.length})</p>
-          {plans.map((plan) => (
+          {sortedPlans.map((plan) => (
             <PlanCard key={plan.id} plan={plan} myUid={user.uid} onChanged={(data) => data && setResult(data)} />
           ))}
           {!plans.length && <p className="hp-note">Henüz açık plan yok. İlk ekibi sen kur.</p>}

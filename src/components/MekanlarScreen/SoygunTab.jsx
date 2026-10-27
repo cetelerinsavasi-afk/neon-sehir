@@ -22,7 +22,8 @@ const GROUPS = [
   ['Orta boy iş', ['modifiye_garaji', 'fabrika']],
   ['Sokak haracı', ['seyyar_satici_1', 'seyyar_satici_2', 'seyyar_satici_3', 'seyyar_satici_4']],
 ];
-const MAX_POWER = Math.max(...Object.values(HEIST_LABELS).map((m) => m.requiredPower));
+// oyundaki en yüksek silah gücü (Gücün çubuğu bu değerde dolar)
+const MAX_POWER = 40000;
 
 const n = (x) => Number(x || 0).toLocaleString('tr-TR');
 const pct = (a, b) => `${Math.max(0, Math.min(100, b > 0 ? (a / b) * 100 : 0))}%`;

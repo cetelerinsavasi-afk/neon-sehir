@@ -27,7 +27,7 @@ function SideRow({ s, top }) {
   );
 }
 
-function WarCard({ w }) {
+export function WarCard({ w }) {
   const k = KIND[w.type] || KIND.trade;
   const sides = [...(w.sides || [])].sort((a, b) => b.power - a.power);
   const max = sides[0]?.power || 0;

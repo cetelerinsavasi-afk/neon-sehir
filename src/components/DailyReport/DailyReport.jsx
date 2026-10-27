@@ -72,7 +72,6 @@ export default function DailyReport({ onBack }) {
         </button>
         <div className="dr-title">
           <b>📊 Günlük Rapor</b>
-          <small>Cebine giren ve çıkan altın · gün 00:00’da yenilenir</small>
         </div>
       </div>
 
@@ -160,7 +159,6 @@ export default function DailyReport({ onBack }) {
             })}
           </div>
         )}
-        <p className="dr-note">Bugün, dün ve önceki gün tutulur. Yatırıma / bankaya para yatırıp çekmek sayılmaz; sadece satışta oluşan kâr / zarar, komisyon ve faiz yazılır. “Diğer”: kaynağı ayrıca kaydedilmeyen küçük hareketler (iade, ceza, ödül…).</p>
       </div>
     </div>
   );

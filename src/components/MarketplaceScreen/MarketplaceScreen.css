@@ -684,3 +684,17 @@
 .mg-strip-cell.zero b {
   color: #ff6b6b;
 }
+/* v134 — piyasa değeri (dokununca fiyat ona ayarlanır) */
+.market-value-chip {
+  align-self: flex-start;
+  margin: 2px 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(34, 211, 238, 0.12);
+  border: 1px solid rgba(34, 211, 238, 0.45);
+  color: #a5f3fc;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
