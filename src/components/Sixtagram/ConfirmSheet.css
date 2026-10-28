@@ -1,0 +1,65 @@
+.ig-cf-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: ig-cf-in 0.12s ease-out;
+}
+.ig-cf {
+  width: min(300px, 100%);
+  background: #262626;
+  color: #f5f5f5;
+  border-radius: 14px;
+  overflow: hidden;
+  font-family: -apple-system, 'Helvetica Neue', 'Segoe UI', Roboto, Arial, sans-serif;
+  text-align: center;
+  animation: ig-cf-pop 0.16s ease-out;
+}
+.ig-cf-txt {
+  padding: 26px 22px 20px;
+}
+.ig-cf-txt b {
+  display: block;
+  font-size: 18px;
+  font-weight: 600;
+}
+.ig-cf-txt p {
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: #a8a8a8;
+  line-height: 1.4;
+}
+.ig-cf-btn {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-top: 1px solid #363636;
+  background: none;
+  color: #f5f5f5;
+  font: inherit;
+  font-size: 14px;
+  padding: 13px;
+  cursor: pointer;
+}
+.ig-cf-btn.danger {
+  color: #ed4956;
+  font-weight: 700;
+}
+.ig-cf-btn:active {
+  background: rgba(255, 255, 255, 0.06);
+}
+@keyframes ig-cf-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes ig-cf-pop {
+  from {
+    transform: scale(1.12);
+    opacity: 0;
+  }
+}

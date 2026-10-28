@@ -3508,6 +3508,16 @@ export function createHouseEngine(
       others.forEach((o, uid) => list.push({ uid, x: r(o.fig.x), z: r(o.fig.z), left: !!o.fig.facingLeft, seat: seatStr(o.seat), moving: !!o.fig.moving, wp: wp(o.fig), emote: em(o.fig), says: says(o.fig) }));
       return list;
     },
+    // v135 — çekim anında saydamlaşmış (kameranın önündeki) eşyalar: fotoğrafta da saydam
+    getFadedIds() {
+      const out = [];
+      objs.forEach((e, id) => e.faded && out.push(id));
+      return out.slice(0, 30);
+    },
+    setFadedIds(ids) {
+      const set = new Set(Array.isArray(ids) ? ids : []);
+      objs.forEach((e, id) => setFaded(e, set.has(id)));
+    },
     getCameraPose() {
       const dir = new THREE.Vector3();
       camera.getWorldDirection(dir);

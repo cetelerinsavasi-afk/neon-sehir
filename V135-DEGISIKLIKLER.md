@@ -28,6 +28,18 @@ Bu paketteki dosyaları proje klasörünün (neon-sehir) üstüne kopyala (aynı
 | Fotoğraf dikey (telefon ekranı); üstüne yazı (renk/boy/kutulu, sürükleyerek yer) ve çizim | PhotoStoryEditor.jsx, photoOverlay.js |
 | **Çekilen = paylaşılan**: deklanşörde sunucu sahneyi (tasarım + kişiler + kamera) imzalı ek olarak döndürür; önizleme bu ekten çizilir, paylaşımda aynısı kullanılır | houses.js (`photoShot`, `buildPhotoAttachment`), HousePhoto.jsx, HouseScreen.jsx |
 
+## v135.1 ekleri
+| Madde | Nerede |
+|---|---|
+| Hikâye editörü Instagram gibi: 6 yazı tipi (Klasik, Modern, Neon, Daktilo, Güçlü, El yazısı), soldaki çubukla boy, çerçeve (yok / dolu / yarı saydam) + ayrı çerçeve rengi, hizalama, sürüklerken ortaya yapışma (mavi çizgi), iki parmakla büyütme/döndürme, çöpe sürükleyip silme, boş yere dokununca yazı | PhotoStoryEditor.jsx, photoOverlay.js |
+| Çizim: kalem / fosforlu / neon / silgi, kalınlık çubuğu, geri al | aynı |
+| Fotoğrafta, çekim anında kameranın önünde saydamlaşan eşyalar da saydam (çekilen = paylaşılan) | houseEngine.js, houses.js, HousePhoto.jsx |
+| Sixtagram yeni Instagram görünümü: kalp bildirim, simgeli alt sekmeler + profil fotoğrafı, gönderide "• Takip et", hikâyesi olanın halkası, çift dokunuşla beğeni, sayılar ikon yanında | PostCard.jsx/.css, SixtagramScreen, igIcons.jsx |
+| Yorumlar paneli ve bildirimler sayfası Instagram gibi (Bugün / Bu hafta / Daha önce, takip et düğmesi, avatarlar) | CommentsPanel, NotificationsPanel |
+| Gönderi ve hikâye silme onaylı | ConfirmSheet.jsx |
+| Medya'dayken Medya'ya tekrar basınca sıradaki kategori | SixtagramScreen.jsx |
+| Mekânlardaki sağ 5 buton özel çizim ikonlar | SideIcons.jsx, HouseScreen.css |
+
 ## Firestore tasarrufu
 - Sekmeler aynı akış isteğini kullanır (son 150 gönderi, 90 sn önbellek) — yeni dinleyici yok.
 - Takip edilenler/takipçiler zaten dinlenen `sixtagramUserLikes/{uid}` belgesinde; başka oyuncunun profil sayaçları bir kez okunur, 2 dk önbellekte.

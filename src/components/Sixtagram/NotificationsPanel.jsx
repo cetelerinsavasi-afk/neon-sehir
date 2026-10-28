@@ -1,96 +1,106 @@
 import { useEffect } from 'react';
-import { X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import { useSixtagramNotifications } from '../../hooks/useSixtagramNotifications';
 import { useBlocks } from '../../contexts/BlocksContext';
 import { markAllSixtagramNotificationsRead } from '../../services/gameActions';
+import { IgIcon } from './igIcons';
+import { FollowButton } from './SixProfile';
 import './NotificationsPanel.css';
 
-function timeAgo(createdAtMs) {
-  if (!createdAtMs) return '';
-  const diffMs = Date.now() - createdAtMs;
-  const mins = Math.floor(diffMs / 60000);
-  if (mins < 1) return 'az önce';
-  if (mins < 60) return `${mins} dk`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} sa`;
-  return `${Math.floor(hours / 24)} gün`;
+// v135 — Instagram (yeni) bildirimler sayfası: Bugün / Bu hafta / Daha önce,
+// avatar + kalın ad + kısa zaman; takip bildiriminde "Takip et" düğmesi.
+function ago(ms) {
+  const m = Math.floor((Date.now() - Number(ms || 0)) / 60000);
+  if (m < 1) return 'şimdi';
+  if (m < 60) return `${m} dk`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} sa`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d} g`;
+  return `${Math.floor(d / 7)} hf`;
 }
-
-function notifText(n) {
-  if (n.type === 'like') return `${n.fromName} gönderini beğendi.`;
-  if (n.type === 'comment')
-    return `${n.fromName} gönderine yorum yaptı: "${n.textPreview || ''}"`;
-  if (n.type === 'reply') return `${n.fromName} yorumuna yanıt verdi: "${n.textPreview || ''}"`;
-  // v135 — takip ve bağış bildirimleri (SMS yerine)
-  if (n.type === 'follow') return `${n.fromName} seni takip etmeye başladı.`;
-  if (n.type === 'tip') return `${n.fromName} ${n.what || 'gönderine'} ${Number(n.amount || 0).toLocaleString('tr-TR')} altın destek verdi.${n.textPreview ? ` "${n.textPreview}"` : ''}`;
-  return `${n.fromName} bir etkileşimde bulundu.`;
+function body(n) {
+  const q = n.textPreview ? ` ${n.textPreview}` : '';
+  if (n.type === 'like') return 'gönderini beğendi.';
+  if (n.type === 'comment') return `yorum yaptı:${q}`;
+  if (n.type === 'reply') return `yorumuna yanıt verdi:${q}`;
+  if (n.type === 'follow') return 'seni takip etmeye başladı.';
+  if (n.type === 'tip') return `${n.what || 'gönderine'} ${Number(n.amount || 0).toLocaleString('tr-TR')} altın destek verdi.${q}`;
+  return 'bir etkileşimde bulundu.';
 }
-
-function notifEmoji(type) {
-  if (type === 'like') return '❤️';
-  if (type === 'comment') return '💬';
-  if (type === 'reply') return '↩️';
-  if (type === 'follow') return '👤';
-  if (type === 'tip') return '💛';
-  return '🔔';
-}
+const GROUPS = [
+  ['Bugün', 864e5],
+  ['Bu hafta', 7 * 864e5],
+  ['Daha önce', Infinity],
+];
 
 export default function NotificationsPanel({ onClose, onOpenPost, onOpenProfile }) {
-  const { notifications: allNotifications } = useSixtagramNotifications();
+  const { notifications: all } = useSixtagramNotifications();
   const { isBlocked } = useBlocks();
-  // UGC D2: engellediğin oyuncudan gelen (engellemeden önceki) bildirimler de gizlenir
-  const notifications = allNotifications.filter((n) => !isBlocked(n.fromUid));
+  const list = all.filter((n) => !isBlocked(n.fromUid)).sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
 
   useEffect(() => {
-    markAllSixtagramNotificationsRead().catch((err) =>
-      console.error('Bildirimler okundu işaretlenemedi:', err)
-    );
+    markAllSixtagramNotificationsRead().catch((err) => console.error('Bildirimler okundu işaretlenemedi:', err));
   }, []);
 
-  // v103: her bildirim (beğeni dahil) ilgili gönderiyi açar; yorum/yanıtta
-  // o yorum vurgulanır ve doğrudan yanıt verilebilir.
-  const handleClick = (n) => {
-    if (n.type === 'follow' && n.fromUid && onOpenProfile) {
-      onOpenProfile({ uid: n.fromUid, name: n.fromName });
-      return;
-    }
-    if (n.postId) {
-      onOpenPost?.(n.postId, n.type === 'like' ? null : n.commentId || null);
-      return;
-    }
-    onClose();
+  const open = (n) => {
+    if (n.type === 'follow' && n.fromUid && onOpenProfile) return onOpenProfile({ uid: n.fromUid, name: n.fromName, avatar: n.fromAvatar || null });
+    if (n.postId) return onOpenPost?.(n.postId, n.type === 'like' ? null : n.commentId || null);
+    return undefined;
   };
+  const now = Date.now();
+  let prev = 0;
+  const sections = GROUPS.map(([label, lim]) => {
+    const rows = list.filter((n) => {
+      const age = now - Number(n.createdAtMs || 0);
+      return age >= prev && age < lim;
+    });
+    prev = lim;
+    return { label, rows };
+  }).filter((g) => g.rows.length);
 
-  return (
-    <div className="six-notif-backdrop" onClick={onClose}>
-      <div className="six-notif-panel" onClick={(e) => e.stopPropagation()}>
-        <div className="six-notif-head">
-          <p className="six-notif-title">Bildirimler</p>
-          <button className="six-notif-close" onClick={onClose}>
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="six-notif-list">
-          {notifications.length === 0 && (
-            <p className="six-notif-hint">Henüz bir bildirimin yok.</p>
-          )}
-          {notifications.map((n) => (
-            <button
-              key={n.id}
-              className={`six-notif-row ${n.read ? '' : 'unread'}`}
-              onClick={() => handleClick(n)}
-            >
-              <span className="six-notif-emoji">{notifEmoji(n.type)}</span>
-              <div className="six-notif-body">
-                <p className="six-notif-text">{notifText(n)}</p>
-                <p className="six-notif-time">{timeAgo(n.createdAtMs)}</p>
+  return createPortal(
+    <div className="ig-nt" role="dialog" aria-label="Bildirimler" onPointerDown={(e) => e.stopPropagation()}>
+      <header className="ig-nt-head">
+        <button className="ig-nt-back" onClick={onClose} aria-label="Geri">
+          <IgIcon n="back" size={24} />
+        </button>
+        <b>Bildirimler</b>
+      </header>
+      <div className="ig-nt-list">
+        {list.length === 0 && (
+          <div className="ig-nt-empty">
+            <span className="ig-nt-empty-ic">
+              <IgIcon n="heart" size={44} stroke={1.5} />
+            </span>
+            <b>Gönderilerindeki etkinlikler</b>
+            <span>Biri gönderini beğendiğinde, yorum yaptığında ya da seni takip ettiğinde burada görürsün.</span>
+          </div>
+        )}
+        {sections.map((g) => (
+          <section key={g.label}>
+            <h3>{g.label}</h3>
+            {g.rows.map((n) => (
+              <div key={n.id} className={`ig-nt-row${n.read ? '' : ' new'}`}>
+                <button
+                  className="ig-nt-av"
+                  onClick={() => n.fromUid && onOpenProfile?.({ uid: n.fromUid, name: n.fromName, avatar: n.fromAvatar || null })}
+                  aria-label={n.fromName}
+                >
+                  {n.fromAvatar ? <AvatarSvg avatar={n.fromAvatar} size={44} rounded /> : <span className="ig-nt-ini">{String(n.fromName || '?').slice(0, 1).toUpperCase()}</span>}
+                  {n.type === 'tip' && <i className="ig-nt-badge">💛</i>}
+                </button>
+                <button className="ig-nt-txt" onClick={() => open(n)}>
+                  <b>{n.fromName}</b> {body(n)} <span className="ig-nt-time">{ago(n.createdAtMs)}</span>
+                </button>
+                {n.type === 'follow' && n.fromUid && <FollowButton uid={n.fromUid} name={n.fromName} small />}
               </div>
-            </button>
-          ))}
-        </div>
+            ))}
+          </section>
+        ))}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

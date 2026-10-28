@@ -22338,6 +22338,7 @@ export const createSixtagramComment = onCall(async (request) => {
     commentId: commentRef.id,
     fromUid: uid,
     fromName,
+    fromAvatar: user.avatar || null,
     textPreview: cleanText.slice(0, 80),
   });
 
@@ -22351,6 +22352,7 @@ export const createSixtagramComment = onCall(async (request) => {
       commentId: commentRef.id,
       fromUid: uid,
       fromName,
+      fromAvatar: user.avatar || null,
       textPreview: cleanText.slice(0, 80),
     });
   }
@@ -22397,6 +22399,7 @@ export const toggleSixtagramLike = onCall(async (request) => {
   let liked = false;
   let postOwnerUid = null;
   let fromName = 'Bir oyuncu';
+  let fromAvatar = null;
   await db.runTransaction(async (tx) => {
     const [postSnap, likeSnap, myUserSnap] = await Promise.all([
       tx.get(postRef),
@@ -22412,6 +22415,7 @@ export const toggleSixtagramLike = onCall(async (request) => {
     }
     postOwnerUid = post.uid;
     fromName = myUserSnap.data()?.displayName || 'Bir oyuncu';
+    fromAvatar = myUserSnap.data()?.avatar || null;
     const profileRef = db.collection('sixtagramProfiles').doc(post.uid);
 
     if (likeSnap.exists) {
@@ -22445,6 +22449,7 @@ export const toggleSixtagramLike = onCall(async (request) => {
       postId,
       fromUid: uid,
       fromName,
+      fromAvatar,
       textPreview: null,
     });
   }

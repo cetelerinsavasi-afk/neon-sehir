@@ -304,6 +304,7 @@ export function createHomeOffice({ db, FieldValue, HttpsError, splitIncomeForDeb
         postId,
         fromUid: uid,
         fromName: String(us.data()?.displayName || 'Bir oyuncu').slice(0, 30),
+        fromAvatar: us.data()?.avatar || null,
         amount,
         what: TIP_LABEL[atype] || 'gönderine',
         textPreview: note ? note.slice(0, 80) : null,

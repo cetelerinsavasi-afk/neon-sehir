@@ -8,6 +8,7 @@ import PlayerCard from '../PlayerCard/PlayerCard';
 import ActionMenu from '../ActionMenu/ActionMenu';
 import { copyText, useLongPress } from '../ActionMenu/actionMenuUtils';
 import { useAuth } from '../../contexts/AuthContext';
+import { usePlayer } from '../../hooks/usePlayer';
 import { useBlocks } from '../../contexts/BlocksContext';
 import { isHiddenForMe } from '../../lib/ugcVisibility';
 import './CommentsPanel.css';
@@ -29,7 +30,7 @@ function ReplyRow({ r, onProfile, onMenu, focusId }) {
   return (
     <div className={`six-comment-row six-comment-reply-row${focusId === r.id ? ' focused' : ''}`} data-comment-id={r.id}>
       <button type="button" className="six-comment-avatar pc-trigger" onClick={() => onProfile(r)} aria-label={`${r.authorName || 'Oyuncu'} profilini gör`}>
-        <AvatarSvg avatar={r.authorAvatar} size={24} rounded />
+        <AvatarSvg avatar={r.authorAvatar} size={28} rounded />
       </button>
       <div className="six-comment-body" {...press}>
         <p className="six-comment-head">
@@ -49,7 +50,7 @@ function CommentRow({ comment, onReply, onProfile, onMenu, focusId }) {
   return (
     <div className={`six-comment-row${focusId === comment.id ? ' focused' : ''}`} data-comment-id={comment.id}>
       <button type="button" className="six-comment-avatar pc-trigger" onClick={() => onProfile(comment)} aria-label={`${comment.authorName || 'Oyuncu'} profilini gör`}>
-        <AvatarSvg avatar={comment.authorAvatar} size={28} rounded />
+        <AvatarSvg avatar={comment.authorAvatar} size={34} rounded />
       </button>
       <div className="six-comment-body">
         <div {...press} className={comment.tip ? `six-tipcard${comment.tip >= 1000 ? ' big' : ''}` : undefined}>
@@ -88,6 +89,7 @@ function CommentRow({ comment, onReply, onProfile, onMenu, focusId }) {
 export default function CommentsPanel({ postId, onClose, header = null, title = 'Yorumlar', focusCommentId = null }) {
   const { comments: allComments, loading } = useSixtagramComments(postId);
   const { user } = useAuth();
+  const { player } = usePlayer();
   const { isBlocked } = useBlocks();
   const [reportTarget, setReportTarget] = useState(null);
   const [profileOf, setProfileOf] = useState(null);
@@ -135,10 +137,12 @@ export default function CommentsPanel({ postId, onClose, header = null, title = 
   return (
     <div className="six-comments-backdrop" onClick={onClose}>
       <div className={`six-comments-panel${header ? ' with-post' : ''}`} onClick={(e) => e.stopPropagation()}>
+        <div className="six-comments-grab" aria-hidden="true" />
         <div className="six-comments-head">
+          <span className="six-comments-close" />
           <p className="six-comments-title">{title}</p>
-          <button className="six-comments-close" onClick={onClose}>
-            <X size={18} />
+          <button className="six-comments-close" onClick={onClose} aria-label="Kapat">
+            <X size={20} />
           </button>
         </div>
 
@@ -147,7 +151,10 @@ export default function CommentsPanel({ postId, onClose, header = null, title = 
           {header && <p className="six-comments-subtitle">💬 Yorumlar</p>}
           {loading && <p className="six-comments-hint">Yükleniyor…</p>}
           {!loading && comments.length === 0 && (
-            <p className="six-comments-hint">Henüz yorum yok — ilk yorumu sen yaz!</p>
+            <div className="six-comments-empty">
+              <b>Henüz yorum yok</b>
+              <span>Sohbeti başlat.</span>
+            </div>
           )}
           {comments.map((c) => (
             <CommentRow
@@ -175,11 +182,21 @@ export default function CommentsPanel({ postId, onClose, header = null, title = 
           </div>
         )}
 
+        <div className="six-comments-emojis">
+          {['❤️', '🙌', '🔥', '👏', '😢', '😍', '😮', '😂'].map((em) => (
+            <button key={em} onClick={() => setText((t) => (t + em).slice(0, 280))} aria-label={em}>
+              {em}
+            </button>
+          ))}
+        </div>
         <div className="six-comments-compose">
+          <span className="six-comments-me">
+            <AvatarSvg avatar={player?.avatar} size={34} rounded />
+          </span>
           <input
             ref={inputRef}
             className="six-comments-input"
-            placeholder={replyTo ? 'Yanıt yaz…' : 'Yorum yaz…'}
+            placeholder={replyTo ? `${replyTo.authorName} kullanıcısına yanıt ver…` : 'Yorum ekle…'}
             value={text}
             maxLength={280}
             onChange={(e) => setText(e.target.value)}
@@ -190,7 +207,7 @@ export default function CommentsPanel({ postId, onClose, header = null, title = 
             onClick={handleSubmit}
             disabled={posting || !text.trim()}
           >
-            {posting ? '…' : 'Gönder'}
+            {posting ? '…' : 'Paylaş'}
           </button>
         </div>
       </div>

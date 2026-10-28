@@ -871,6 +871,12 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       const h = await loadHouse(houseId);
       const att = await finishPhoto(houseId, h, p, people, camOf(p));
       if (p.vert) att.vert = true;
+      // v135 — çekimde kameranın önünde saydamlaşan eşyalar fotoğrafta da saydam
+      if (Array.isArray(p.fade)) {
+        const ids = new Set((att.design?.items || []).map((it) => it.i));
+        const fade = p.fade.filter((x) => typeof x === 'string' && ids.has(x)).slice(0, 30);
+        if (fade.length) att.fade = fade;
+      }
       const body = JSON.stringify({ houseId, at: t, att });
       if (body.length > 190_000) fail('resource-exhausted', 'Fotoğraf çok kalabalık.');
       return { shot: body, sig: await signShot(await shotKey(), body), att };

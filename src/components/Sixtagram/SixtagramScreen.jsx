@@ -1,5 +1,4 @@
-import { useMemo, useState } from 'react';
-import { Bell, Clapperboard, House, SquarePlus, User, Users } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { invalidateSixtagramFeed, useSixtagramFeed } from '../../hooks/useSixtagramFeed';
@@ -16,6 +15,9 @@ import PostDetailPanel from './PostDetailPanel';
 import { StoryRow, StoryViewer, buildStoryGroups, isStoryPost } from './SixStories';
 import { MyProfile, UserProfileSheet } from './SixProfile';
 import { SixNavContext } from './sixNav';
+import { IgIcon } from './igIcons';
+import AvatarSvg from '../AvatarSvg/AvatarSvg';
+import { ensureOverlayFonts } from '../../../functions/photoOverlay.js';
 import './SixtagramScreen.css';
 
 // =============================================================================
@@ -28,12 +30,13 @@ import './SixtagramScreen.css';
 const MEDIA_TYPES = { song: 'Şarkılar', interview: 'Röportajlar', drawing: 'Resimler' };
 const isMediaPost = (p) => Boolean(p?.attachment && MEDIA_TYPES[p.attachment.type]);
 const TABS = [
-  { id: 'home', label: 'Anasayfa', Icon: House },
-  { id: 'media', label: 'Medya', Icon: Clapperboard },
-  { id: 'share', label: 'Paylaş', Icon: SquarePlus },
-  { id: 'follow', label: 'Takip', Icon: Users },
-  { id: 'profile', label: 'Profil', Icon: User },
+  { id: 'home', label: 'Anasayfa', icon: 'home' },
+  { id: 'media', label: 'Medya', icon: 'reels' },
+  { id: 'share', label: 'Paylaş', icon: 'plus' },
+  { id: 'follow', label: 'Takip', icon: 'users' },
+  { id: 'profile', label: 'Profil', icon: null },
 ];
+const MEDIA_ORDER = Object.keys(MEDIA_TYPES);
 
 export default function SixtagramScreen() {
   const { user } = useAuth();
@@ -72,11 +75,16 @@ export default function SixtagramScreen() {
   const followList = feedPosts.filter((p) => !isStoryPost(p) && !isMediaPost(p) && followSet.has(p.uid));
   const mediaList = feedPosts.filter((p) => p.attachment?.type === media);
 
+  useEffect(() => {
+    ensureOverlayFonts(); // logo yazı tipi
+  }, []);
   const go = (id) => {
     if (id === 'share') {
       if (user) setComposeOpen(true);
       return;
     }
+    // Medya'dayken tekrar Medya'ya basınca sıradaki kategori (Şarkılar → Röportajlar → Resimler)
+    if (id === 'media' && tab === 'media' && !profile) setMedia((m) => MEDIA_ORDER[(MEDIA_ORDER.indexOf(m) + 1) % MEDIA_ORDER.length]);
     setProfile(null);
     setTab(id);
     if (id === 'home' || id === 'follow' || id === 'media') setHomeRefreshKey((k) => k + 1);
@@ -84,8 +92,14 @@ export default function SixtagramScreen() {
   const nav = useMemo(
     () => ({
       openProfile: (t) => t?.uid && setProfile(t),
+      // gönderideki avatar: hikâyesi varsa halka + dokununca hikâye
+      storyOf: (uid) => homeStories.find((g) => g.uid === uid) || null,
+      openStory: (uid) => {
+        const i = homeStories.findIndex((g) => g.uid === uid);
+        if (i >= 0) setViewer({ groups: homeStories, start: i, startPi: null });
+      },
     }),
-    []
+    [homeStories]
   );
   const openStories = (groups, i, startPi = null) => groups[i] && setViewer({ groups, start: i, startPi });
   const groupOf = (uid) => homeStories.find((g) => g.uid === uid) || null;
@@ -104,10 +118,10 @@ export default function SixtagramScreen() {
     <SixNavContext.Provider value={nav}>
       <div className="sixtagram ig">
         <header className="six-top">
-          {tab === 'home' ? <h1 className="six-logo">Sixtagram</h1> : <h1 className="six-title">{TABS.find((t) => t.id === tab)?.label}</h1>}
+          {tab === 'home' ? <h1 className="six-logo">Sixtagram</h1> : <h1 className="six-title">{tab === 'profile' ? player?.displayName || 'Profil' : TABS.find((t) => t.id === tab)?.label}</h1>}
           <button className="six-ic six-bell" onClick={() => setNotifOpen(true)} disabled={!user} aria-label="Bildirimler">
-            <Bell size={22} />
-            {unreadCount > 0 && <span className="six-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+            <IgIcon n="heart" size={26} />
+            {unreadCount > 0 && <span className="six-badge-dot" />}
           </button>
         </header>
 
@@ -151,12 +165,20 @@ export default function SixtagramScreen() {
         </main>
 
         <nav className="six-tabbar">
-          {TABS.map(({ id, label, Icon }) => (
-            <button key={id} className={`six-tabbtn${tab === id && !profile ? ' on' : ''}`} onClick={() => go(id)} aria-label={label} disabled={id === 'share' && !user}>
-              <Icon size={24} strokeWidth={tab === id ? 2.6 : 1.9} />
-              <span>{label}</span>
-            </button>
-          ))}
+          {TABS.map(({ id, label, icon }) => {
+            const on = tab === id && !profile;
+            return (
+              <button key={id} className={`six-tabbtn${on ? ' on' : ''}`} onClick={() => go(id)} aria-label={label} title={label} disabled={id === 'share' && !user}>
+                {icon ? (
+                  <IgIcon n={icon} size={26} fill={on && icon === 'home'} stroke={on ? 2.4 : 1.9} />
+                ) : (
+                  <span className={`six-tab-av${on ? ' on' : ''}`}>
+                    <AvatarSvg avatar={player?.avatar} size={26} rounded />
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </nav>
 
         {profile && (

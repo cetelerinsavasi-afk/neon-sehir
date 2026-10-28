@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createHouseEngine } from './houseEngine';
-import { drawPhotoOverlay, PHOTO_ASPECT } from '../../../functions/photoOverlay.js';
+import { drawPhotoOverlay, ensureOverlayFonts, PHOTO_ASPECT } from '../../../functions/photoOverlay.js';
 
 // =============================================================================
 // HousePhoto — Sixtagram'da paylaşılan ev fotoğrafı ('housePhoto' eki).
@@ -78,6 +78,7 @@ function renderHousePhoto(att, key) {
       try {
         eng = createHouseEngine(host, { canEdit: false, selfUid: null, snapshot: true });
         eng.setDesign(att.design || { items: [] }, { force: true });
+        if (Array.isArray(att.fade) && att.fade.length) eng.setFadedIds(att.fade);
         // v85: çekim anındaki hareket (dans vb.) ve yürüme adımı dondurulmuş gelir
         eng.setOthers((att.people || []).map((p) => ({ ...p, holdingVisible: p.holding || null, frozen: { moving: !!p.moving, wp: p.wp ? 1 : 0, emote: p.emote || null } })));
         const t0 = Date.now();
@@ -86,6 +87,7 @@ function renderHousePhoto(att, key) {
         (att.people || []).forEach((p) => (Array.isArray(p.says) ? p.says : []).slice(-3).forEach((t) => eng.say(p.uid, String(t))));
         const url = eng.renderPose(cam, w, h);
         if (!att.overlay) return url;
+        await ensureOverlayFonts();
         return await withOverlay(url, att.overlay, w, h);
       } finally {
         try {

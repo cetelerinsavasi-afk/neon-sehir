@@ -169,9 +169,14 @@ test('v135 hikâye görüntülenme: görenler listesine eklenir, tekrarlar sayı
 });
 
 test('v135 hikâye fotoğrafı katmanı: yazı/çizim doğrulanır ve kırpılır', () => {
-  const ok = sanitizeOverlay({ texts: [{ t: '  Selam  ', x: 2000, y: -5, c: 3, s: 9, b: 1 }, { t: '', x: 1, y: 1 }], strokes: [{ c: 1, s: 0, p: [0, 0, 1000, PHOTO_H] }] });
-  assert.deepEqual(ok.overlay.texts, [{ t: 'Selam', x: 1000, y: 0, c: 3, s: 1, b: 1 }]);
-  assert.equal(ok.overlay.strokes.length, 1);
+  const ok = sanitizeOverlay({ texts: [{ t: '  Selam  ', x: 2000, y: -5, c: 3, z: 999, f: 2, b: 2, bc: 14, a: 1, r: 400 }, { t: '', x: 1, y: 1 }], strokes: [{ c: 1, k: 2, w: 500, p: [0, 0, 1000, PHOTO_H] }] });
+  assert.deepEqual(ok.overlay.texts, [{ t: 'Selam', x: 1000, y: 0, c: 3, z: 240, f: 2, b: 2, bc: 14, a: 1, r: 180 }]);
+  assert.deepEqual(ok.overlay.strokes[0], { c: 1, k: 2, w: 80, p: [0, 0, 1000, PHOTO_H] });
+  // ilk sürüm kayıtları (s = boy / kalınlık indeksi) hâlâ geçerli
+  const old = sanitizeOverlay({ texts: [{ t: 'Eski', x: 5, y: 5, c: 0, s: 2, b: 1 }], strokes: [{ c: 4, s: 0, p: [1, 1] }] });
+  assert.equal(old.overlay.texts[0].z, 96);
+  assert.equal(old.overlay.texts[0].b, 1);
+  assert.equal(old.overlay.strokes[0].w, 6);
   assert.equal(sanitizeOverlay(null).overlay, null);
   assert.equal(sanitizeOverlay({ texts: [], strokes: [] }).overlay, null);
   assert.ok(sanitizeOverlay({ strokes: [{ c: 99, s: 0, p: [1, 1] }] }).error);

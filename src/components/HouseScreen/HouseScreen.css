@@ -1057,14 +1057,26 @@
   width: 50px;
   height: 50px;
   border-radius: 50%;
-  border: 1px solid #d4af37;
-  background: rgba(20, 20, 20, 0.85);
+  border: 1px solid rgba(212, 175, 55, 0.85);
+  /* v135 — koyu cam gövde + üstte ışık yansıması, ikonlar özel çizim */
+  background: radial-gradient(120% 90% at 50% 0%, rgba(255, 230, 163, 0.16), rgba(255, 230, 163, 0) 55%), linear-gradient(180deg, rgba(34, 32, 28, 0.94), rgba(10, 10, 12, 0.94));
   color: #e8c766;
   font-size: 21px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 236, 180, 0.22), inset 0 -2px 6px rgba(0, 0, 0, 0.5);
+  transition: transform 0.12s ease;
+}
+.hs-side-btn svg {
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6));
+}
+.hs-side-btn:active {
+  transform: scale(0.92);
 }
 .hs-side-btn.on {
-  background: rgba(212, 175, 55, 0.3);
+  background: radial-gradient(120% 90% at 50% 0%, rgba(255, 230, 163, 0.35), rgba(255, 230, 163, 0) 60%), linear-gradient(180deg, rgba(90, 72, 22, 0.95), rgba(40, 32, 10, 0.95));
+  box-shadow: 0 0 14px rgba(212, 175, 55, 0.55), inset 0 1px 0 rgba(255, 236, 180, 0.3);
 }
 .hs-side-count {
   position: absolute;

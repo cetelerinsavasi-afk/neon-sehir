@@ -49,7 +49,7 @@ export function createSixtagramSocial({ db, FieldValue, HttpsError, isBlockedBy 
         tx.set(likesRef(target), { followers: { [uid]: { n: myName, ms: t } } }, { merge: true });
         tx.set(profRef(uid), { followingCount: FieldValue.increment(1) }, { merge: true });
         tx.set(profRef(target), { followerCount: FieldValue.increment(1) }, { merge: true });
-        notify = { fromName: myName };
+        notify = { fromName: myName, fromAvatar: me.data()?.avatar || null };
       } else {
         tx.set(likesRef(uid), { following: { [target]: FieldValue.delete() } }, { merge: true });
         tx.set(likesRef(target), { followers: { [uid]: FieldValue.delete() } }, { merge: true });
@@ -63,7 +63,7 @@ export function createSixtagramSocial({ db, FieldValue, HttpsError, isBlockedBy 
       await userRef(target)
         .collection('sixtagramNotifications')
         .doc(`follow_${uid}`)
-        .set({ type: 'follow', fromUid: uid, fromName: notify.fromName, postId: null, textPreview: null, read: false, createdAt: FieldValue.serverTimestamp(), createdAtMs: now() })
+        .set({ type: 'follow', fromUid: uid, fromName: notify.fromName, fromAvatar: notify.fromAvatar, postId: null, textPreview: null, read: false, createdAt: FieldValue.serverTimestamp(), createdAtMs: now() })
         .catch(() => {});
     }
     return result;

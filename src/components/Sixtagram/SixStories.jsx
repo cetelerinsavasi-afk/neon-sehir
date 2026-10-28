@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Eye, Trash2, X } from 'lucide-react';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import PostAttachment from './PostAttachment';
+import ConfirmSheet from './ConfirmSheet';
 import { deleteSixtagramPost } from '../../services/gameActions';
 import { patchSixtagramFeedPost } from '../../hooks/useSixtagramFeed';
 import { flushStoryViews, isStorySeen, markStorySeen } from '../../hooks/useSixtagramSocial';
@@ -133,6 +134,7 @@ export function StoryViewer({ groups, start, startPi = null, myUid, onClose, onO
   const [pi, setPi] = useState(() => (startPi != null ? startPi : groups[start]?.uid === myUid ? 0 : firstUnseen(groups[start])));
   const [ready, setReady] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [askDel, setAskDel] = useState(false);
   const [deleted, setDeleted] = useState({});
   const posts = useMemo(() => (g ? g.posts.filter((p) => !deleted[p.id]) : []), [g, deleted]);
   const post = posts[Math.min(pi, posts.length - 1)] || null;
@@ -192,16 +194,9 @@ export function StoryViewer({ groups, start, startPi = null, myUid, onClose, onO
   if (!g || !post) return null;
   const pct = Math.min(1, elapsed.current / STORY_MS);
   const remove = async () => {
-    setPaused(true);
-    try {
-      await deleteSixtagramPost(post.id);
-      patchSixtagramFeedPost(post.id, null);
-      setDeleted((d) => ({ ...d, [post.id]: true }));
-    } catch {
-      /* yoksay */
-    } finally {
-      setPaused(false);
-    }
+    await deleteSixtagramPost(post.id);
+    patchSixtagramFeedPost(post.id, null);
+    setDeleted((d) => ({ ...d, [post.id]: true }));
   };
   return (
     <div className="six-sv" role="dialog" aria-label="Hikâye">
@@ -218,8 +213,8 @@ export function StoryViewer({ groups, start, startPi = null, myUid, onClose, onO
       <div
         className="six-sv-stage"
         onPointerDown={() => setPaused(true)}
-        onPointerUp={() => setPaused(false)}
-        onPointerLeave={() => setPaused(false)}
+        onPointerUp={() => !askDel && setPaused(false)}
+        onPointerLeave={() => !askDel && setPaused(false)}
       >
         <StoryContent key={post.id} post={post} onReady={() => setReady(true)} />
         {post.text && <p className="six-sv-caption">{post.text}</p>}
@@ -240,12 +235,30 @@ export function StoryViewer({ groups, start, startPi = null, myUid, onClose, onO
             <span className="six-sv-views">
               <Eye size={16} /> {(post.viewers || []).length.toLocaleString('tr-TR')}
             </span>
-            <button className="six-sv-del" onClick={remove} aria-label="Hikâyeyi sil">
+            <button
+              className="six-sv-del"
+              onClick={() => {
+                setPaused(true);
+                setAskDel(true);
+              }}
+              aria-label="Hikâyeyi sil"
+            >
               <Trash2 size={16} />
             </button>
           </>
         )}
       </div>
+      {askDel && (
+        <ConfirmSheet
+          title="Hikâye silinsin mi?"
+          text="Bu hikâye kalıcı olarak silinecek."
+          onConfirm={remove}
+          onClose={() => {
+            setAskDel(false);
+            setPaused(false);
+          }}
+        />
+      )}
     </div>
   );
 }
