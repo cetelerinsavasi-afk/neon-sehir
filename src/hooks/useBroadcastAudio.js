@@ -30,6 +30,19 @@ function makeNoiseBuffer(ctx, seconds = 2) {
 // sesi (kuş cikcikleri, korna, telsiz bip'i, tık, ding). Camii'de KASITLI
 // olarak müzik/efekt YOK — sadece çok hafif bir iç mekan yankısı (madde 2b).
 const AMBIENCE_PRESETS = {
+  // v135 — haber stüdyosu: çok hafif klima uğultusu + arada haber jeneriği "ding"i
+  haber: {
+    filter: { type: 'lowpass', frequency: 260, Q: 0.4 },
+    noiseGain: 0.03,
+    event: {
+      minMs: 12000,
+      maxMs: 22000,
+      play: (ctx, dest) => {
+        scheduleBlip(ctx, dest, { delayMs: 0, freq: 880, type: 'sine', durMs: 110, gain: 0.04 });
+        scheduleBlip(ctx, dest, { delayMs: 130, freq: 1320, type: 'sine', durMs: 160, gain: 0.035 });
+      },
+    },
+  },
   park: {
     filter: { type: 'lowpass', frequency: 700, Q: 0.5 },
     noiseGain: 0.05,

@@ -684,3 +684,10 @@
   color: var(--muted);
   font-size: 12px;
 }
+/* v135 — resim / röportaj desteği (kompakt) */
+.sv-card.ptb {
+  padding: 8px 12px;
+  border-radius: 12px;
+  margin-top: 8px;
+  gap: 6px;
+}

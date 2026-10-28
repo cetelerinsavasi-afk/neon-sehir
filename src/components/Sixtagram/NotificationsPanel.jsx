@@ -21,6 +21,9 @@ function notifText(n) {
   if (n.type === 'comment')
     return `${n.fromName} gönderine yorum yaptı: "${n.textPreview || ''}"`;
   if (n.type === 'reply') return `${n.fromName} yorumuna yanıt verdi: "${n.textPreview || ''}"`;
+  // v135 — takip ve bağış bildirimleri (SMS yerine)
+  if (n.type === 'follow') return `${n.fromName} seni takip etmeye başladı.`;
+  if (n.type === 'tip') return `${n.fromName} ${n.what || 'gönderine'} ${Number(n.amount || 0).toLocaleString('tr-TR')} altın destek verdi.${n.textPreview ? ` "${n.textPreview}"` : ''}`;
   return `${n.fromName} bir etkileşimde bulundu.`;
 }
 
@@ -28,10 +31,12 @@ function notifEmoji(type) {
   if (type === 'like') return '❤️';
   if (type === 'comment') return '💬';
   if (type === 'reply') return '↩️';
+  if (type === 'follow') return '👤';
+  if (type === 'tip') return '💛';
   return '🔔';
 }
 
-export default function NotificationsPanel({ onClose, onOpenPost }) {
+export default function NotificationsPanel({ onClose, onOpenPost, onOpenProfile }) {
   const { notifications: allNotifications } = useSixtagramNotifications();
   const { isBlocked } = useBlocks();
   // UGC D2: engellediğin oyuncudan gelen (engellemeden önceki) bildirimler de gizlenir
@@ -46,6 +51,10 @@ export default function NotificationsPanel({ onClose, onOpenPost }) {
   // v103: her bildirim (beğeni dahil) ilgili gönderiyi açar; yorum/yanıtta
   // o yorum vurgulanır ve doğrudan yanıt verilebilir.
   const handleClick = (n) => {
+    if (n.type === 'follow' && n.fromUid && onOpenProfile) {
+      onOpenProfile({ uid: n.fromUid, name: n.fromName });
+      return;
+    }
     if (n.postId) {
       onOpenPost?.(n.postId, n.type === 'like' ? null : n.commentId || null);
       return;

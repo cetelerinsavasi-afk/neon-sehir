@@ -293,7 +293,7 @@ export default function StudioScreen({ houseId, price, isOwner, onClose, flash }
           onChange={onSongChange}
           getSongRef={getSongRef}
           title="🎛️ Müzik Stüdyosu"
-          subtitle={isOwner ? 'Kendi stüdyon: ücretsiz · otomatik kaydedilir' : `${fmt(price)} altın / dakika · otomatik kaydedilir`}
+          subtitle={isOwner ? null : `${fmt(price)} / dk`}
           topRight={saveChip}
           onCancel={() => closeWith(null)}
           toolbar={
@@ -381,7 +381,7 @@ export default function StudioScreen({ houseId, price, isOwner, onClose, flash }
         </button>
         <div className="ho-studio-title">
           <b>🎛️ Müzik Stüdyosu</b>
-          <small>{isOwner ? 'Kendi stüdyon: ücretsiz' : `${fmt(price)} altın / dakika — süre işliyor`}</small>
+          {!isOwner && <small>{fmt(price)} / dk</small>}
         </div>
       </div>
       <div className="ho-studio-body">

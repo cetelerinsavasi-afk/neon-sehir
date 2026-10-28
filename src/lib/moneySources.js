@@ -59,8 +59,11 @@ export const MONEY_SOURCES = {
   mescit: { icon: '🕌', label: 'Mescit bağışı' },
   sinema: { icon: '🍿', label: 'Sinema büfesi' },
   studyo: { icon: '🎛️', label: 'Müzik stüdyosu' },
-  sanatci: { icon: '🎵', label: 'Şarkı desteği (gelen)' },
-  sanatciDestek: { icon: '💛', label: 'Şarkı desteği (verilen)' },
+  sanatci: { icon: '🎵', label: 'Sixtagram desteği (gelen)' },
+  sanatciDestek: { icon: '💛', label: 'Sixtagram desteği (verilen)' },
+  // v135 haber stüdyosu / tuval
+  haberStudyo: { icon: '📺', label: 'Haber stüdyosu' },
+  resimAtolye: { icon: '🎨', label: 'Resim atölyesi' },
   // v100 ofisler
   ofis: { icon: '🏢', label: 'Ofis geliri' },
   ofisAlis: { icon: '🛍️', label: 'Ofis alışverişi' },

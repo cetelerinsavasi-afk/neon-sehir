@@ -6,13 +6,13 @@ import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
 import {
   OFFICE_FURN,
   OFFICE_BANDS,
-  OFFICE_DONATE_AMOUNTS,
   OFFICE_EMOJIS,
   ownedOfficeKeys,
   activeOfficeKeys,
   officeProductsOf,
   productBand,
   officeMinuteOf,
+  minuteBandOf,
   houseKind,
 } from '../../../functions/officeData.js';
 import './HomeOffice.css';
@@ -23,7 +23,7 @@ import './HomeOffice.css';
 // Herhangi biri ücretliyse ev OFİS olur (Evler › Ofisler'de listelenir).
 // =============================================================================
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
-const KIND_LABEL = { urun: '🛍️ Ürün satışı', bagis: '🤲 Bağış', dakika: '🎛️ Mikser (dakika)' };
+const KIND_LABEL = { urun: '🛍️ Ürün satışı', bagis: '🤲 Bağış', dakika: '⏱️ Dakika ücreti (mikser · haber · tuval)' };
 
 // v102 — ofiste ⚙️ Ayarlar doğrudan bu paneli açar: ad + simge, fiyatlar, rapor,
 // en altta İşletmeler (ofisi işletmeye dönüştürmek için).
@@ -109,7 +109,6 @@ export default function OfficePanel({ houseId, houseDoc, onClose, flash, onRenam
           <div className="of-list">
             <ReportCard label="Bugün" d={today} />
             <ReportCard label="Dün" d={yesterday} />
-            <p className="of-hint">Gün 00:00'da kapanır.</p>
           </div>
         )}
         {!isBiz && onOpenBiz && (
@@ -144,7 +143,7 @@ export default function OfficePanel({ houseId, houseDoc, onClose, flash, onRenam
 function statusOf(k, on, houseDoc) {
   const f = OFFICE_FURN[k];
   if (f.kind === 'donate') return on ? { t: 'Açık', c: 'paid' } : { t: 'Kapalı', c: 'off' };
-  if (f.kind === 'minute') return on ? { t: `${fmt(officeMinuteOf(houseDoc))} / dk`, c: 'paid' } : { t: 'Sadece sen', c: 'off' };
+  if (f.kind === 'minute') return on ? { t: `${fmt(officeMinuteOf(houseDoc, k))} / dk`, c: 'paid' } : { t: 'Sadece sen', c: 'off' };
   return on ? { t: 'Ücretli', c: 'paid' } : { t: 'Ücretsiz', c: 'free' };
 }
 
@@ -155,7 +154,8 @@ function OfficeRow({ k, houseId, houseDoc, on, open, onToggle, flash }) {
   const savedPrices = houseDoc?.office?.prices || {};
   const [draftOn, setDraftOn] = useState(on);
   const [prices, setPrices] = useState(() => Object.fromEntries(products.map((p) => [p, Number(savedPrices[p]) || productBand(p).def])));
-  const [minute, setMinute] = useState(officeMinuteOf(houseDoc));
+  const mb = minuteBandOf(k);
+  const [minute, setMinute] = useState(officeMinuteOf(houseDoc, k));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   // satır her açılışta kayıtlı ayardan başlar
@@ -163,7 +163,7 @@ function OfficeRow({ k, houseId, houseDoc, on, open, onToggle, flash }) {
     if (!open) return;
     setDraftOn(on);
     setPrices(Object.fromEntries(products.map((p) => [p, Number(houseDoc?.office?.prices?.[p]) || productBand(p).def])));
-    setMinute(officeMinuteOf(houseDoc));
+    setMinute(officeMinuteOf(houseDoc, k));
     setErr('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -184,7 +184,10 @@ function OfficeRow({ k, houseId, houseDoc, on, open, onToggle, flash }) {
     try {
       const payload = { op: 'officeSet', houseId, keys: { [k]: draftOn } };
       if (f.kind === 'product' && draftOn) payload.prices = prices;
-      if (f.kind === 'minute' && draftOn) payload.minute = minute;
+      if (f.kind === 'minute' && draftOn) {
+        if (k === 'mixer') payload.minute = minute;
+        else payload.minutes = { [k]: minute };
+      }
       const r = await shopAction(payload);
       flash?.(draftOn ? `${f.icon} ${f.name} ${f.kind === 'donate' ? 'açıldı' : 'ücretli'}${r.kind === 'ofis' ? ' · burası artık ofis' : ''}` : `${f.icon} ${f.name} ${f.kind === 'product' ? 'ücretsiz' : 'kapalı'}`);
       onToggle();
@@ -211,9 +214,8 @@ function OfficeRow({ k, houseId, houseDoc, on, open, onToggle, flash }) {
         <div className="of-row-body">
           <label className="of-switch">
             <input type="checkbox" checked={draftOn} onChange={(e) => setDraftOn(e.target.checked)} />
-            <span>{f.kind === 'donate' ? 'Bağış kutusu açık' : f.kind === 'minute' ? 'Diğer oyuncular da ücretle kullanabilsin' : 'Ücretli yap'}</span>
+            <span>{f.kind === 'donate' ? 'Bağış kutusu açık' : 'Ücretli yap'}</span>
           </label>
-          {f.kind === 'donate' && <p className="of-hint">Ziyaretçiler {OFFICE_DONATE_AMOUNTS.map(fmt).join(' / ')} altın bağışlayabilir.</p>}
           {f.kind === 'product' && draftOn && (
             <div className="of-prices">
               {products.map((p) => {
@@ -237,28 +239,22 @@ function OfficeRow({ k, houseId, houseDoc, on, open, onToggle, flash }) {
                   </div>
                 );
               })}
-              <p className="of-hint">
-                Fiyat {fmt(productBand(products[0]).min)}–{fmt(productBand(products[0]).max)} altın.
-              </p>
             </div>
           )}
           {f.kind === 'minute' && draftOn && (
             <div className="of-prices">
               <div className="of-price">
-                <span className="of-price-name">🎛️ Dakika ücreti</span>
+                <span className="of-price-name">{f.icon} Dakika ücreti</span>
                 <span className="of-stepper">
-                  <button onClick={() => setMinute((m) => Math.max(OFFICE_BANDS.minute.min, m - 50))} disabled={minute <= OFFICE_BANDS.minute.min} aria-label="Azalt">
+                  <button onClick={() => setMinute((m) => Math.max(mb.min, m - 50))} disabled={minute <= mb.min} aria-label="Azalt">
                     −
                   </button>
                   <b>{fmt(minute)}</b>
-                  <button onClick={() => setMinute((m) => Math.min(OFFICE_BANDS.minute.max, m + 50))} disabled={minute >= OFFICE_BANDS.minute.max} aria-label="Artır">
+                  <button onClick={() => setMinute((m) => Math.min(mb.max, m + 50))} disabled={minute >= mb.max} aria-label="Artır">
                     +
                   </button>
                 </span>
               </div>
-              <p className="of-hint">
-                {fmt(OFFICE_BANDS.minute.min)}–{fmt(OFFICE_BANDS.minute.max)} altın / dakika. Sen her zaman ücretsiz kullanırsın.
-              </p>
             </div>
           )}
           {err && <p className="ho-err">{err}</p>}

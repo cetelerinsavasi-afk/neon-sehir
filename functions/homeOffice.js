@@ -43,6 +43,7 @@ import {
   SONG_TIP_PER_SONG,
   SONG_TIP_TAX_RATE,
   SONG_TIP_NOTE_MAX,
+  INTERVIEW_MAX_TEXT,
 } from './homeOfficeData.js';
 
 const PRESENCE_ACTIVE_MS = 2 * 60 * 1000;
@@ -84,6 +85,52 @@ export async function buildSongAttachment(db, uid, attachment, now = Date.now())
   const title = String(song.title || proj?.title || '').slice(0, 40);
   return { song: songToDoc({ ...song, title }), deleteProjectId: proj ? projectId : null };
 }
+
+// v135 — Haber Stüdyosu (röportaj) ve Tuval (resim) paylaşımı: o mekânda yakın
+// zamanda (30 dk) ilgili mobilyada oturum olmalı (sahip kendi mobilyasında ücretsiz
+// oturum açar; başkaları sadece mobilya ücretliyse). Arka plan / tuval sunucudan.
+export const MINUTE_PUBLISH_GRACE_MS = 30 * 60 * 1000;
+async function recentMinuteSession(db, uid, houseId, key, now) {
+  if (!isId(houseId)) return null;
+  const [ss, hs] = await Promise.all([db.collection('netSessions').doc(`${houseId}_${uid}`).get(), db.collection('houses').doc(houseId).get()]);
+  if (!hs.exists) return null;
+  const h = hs.data();
+  if (!(h.items || []).some((it) => it.k === key && it.p === 1)) return null;
+  const sd = ss.exists ? ss.data() : null;
+  if (!sd || sd.deviceKey !== key || !(Number(sd.creditUntilMs || 0) + MINUTE_PUBLISH_GRACE_MS > now)) return null;
+  return h;
+}
+export async function buildNewsInterviewAttachment(db, uid, attachment, now = Date.now()) {
+  const houseId = String(attachment?.houseId || '');
+  const text = typeof attachment?.text === 'string' ? attachment.text.replace(/[\u0000-\u0009\u000b-\u001f]/g, ' ').trim().slice(0, INTERVIEW_MAX_TEXT) : '';
+  if (!text) return { error: 'Röportaj için bir metin yazmalısın.' };
+  const h = await recentMinuteSession(db, uid, houseId, 'newsdesk', now);
+  if (!h) return { error: 'Röportajlar haber stüdyolarında yapılıyor. Bir haber masasına oturup oradan paylaş.' };
+  const us = await db.collection('users').doc(uid).get();
+  const u = us.data() || {};
+  if (!u.avatar) return { error: 'Önce Profil > Avatar Oluştur ile bir avatar oluşturmalısın.' };
+  return {
+    type: 'interview',
+    locationId: 'haber',
+    text,
+    avatar: u.avatar,
+    displayName: String(u.displayName || 'Oyuncu').slice(0, 30),
+    houseId,
+    channel: String(h.name || 'Haber').slice(0, 30),
+    channelEmoji: h.office?.emoji || null,
+  };
+}
+export async function buildPaintingAttachment(db, uid, attachment, sanitize, now = Date.now()) {
+  const houseId = String(attachment?.houseId || '');
+  const h = await recentMinuteSession(db, uid, houseId, 'easel', now);
+  if (!h) return { error: 'Resimler resim atölyelerinde çiziliyor. Bir tuvale yaklaşıp oradan paylaş.' };
+  const r = sanitize(attachment);
+  if (r.error) return r;
+  return { drawing: { ...r.drawing, houseId, atelier: String(h.name || 'Atölye').slice(0, 30) } };
+}
+// v135 — destek (bağış) verilebilen Sixtagram içerikleri
+export const TIP_TYPES = ['song', 'drawing', 'interview'];
+const TIP_LABEL = { song: 'şarkına', drawing: 'resmine', interview: 'röportajına' };
 
 export function createHomeOffice({ db, FieldValue, HttpsError, splitIncomeForDebt, business, assertCanSpeak = null, now = () => Date.now() }) {
   const fail = (code, msg) => {
@@ -218,9 +265,10 @@ export function createHomeOffice({ db, FieldValue, HttpsError, splitIncomeForDeb
     await db.runTransaction(async (tx) => {
       const postRef = db.collection('sixtagramPosts').doc(postId);
       const ps = await tx.get(postRef);
-      if (!ps.exists || ps.data().attachment?.type !== 'song') fail('not-found', 'Şarkı bulunamadı.');
+      const atype = ps.data()?.attachment?.type;
+      if (!ps.exists || !TIP_TYPES.includes(atype)) fail('not-found', 'Gönderi bulunamadı.');
       const artist = ps.data().uid;
-      if (!artist || artist === uid) fail('failed-precondition', 'Kendi şarkına destek veremezsin.');
+      if (!artist || artist === uid) fail('failed-precondition', `Kendi ${TIP_LABEL[atype] || 'gönderine'} destek veremezsin.`);
       const t = now();
       const dayKey = midnightDayKey(t);
       const tipRef = db.collection('songTips').doc(`${dayKey}_${uid}_${artist}`);
@@ -250,11 +298,18 @@ export function createHomeOffice({ db, FieldValue, HttpsError, splitIncomeForDeb
         createdAt: FieldValue.serverTimestamp(),
         createdAtMs: t,
       });
-      tx.set(userRef(artist).collection('messages').doc(), {
-        text: `🎵 ${String(us.data()?.displayName || 'Bir dinleyici').slice(0, 30)} "${String(ps.data().attachment?.title || 'şarkın').slice(0, 40)}" şarkına ${amount.toLocaleString('tr-TR')} altın destek verdi.${note ? ` “${note.slice(0, 80)}”` : ''}`,
-        createdAt: FieldValue.serverTimestamp(),
+      // v135 — SMS değil, Sixtagram bildirimi
+      tx.set(userRef(artist).collection('sixtagramNotifications').doc(), {
+        type: 'tip',
+        postId,
+        fromUid: uid,
+        fromName: String(us.data()?.displayName || 'Bir oyuncu').slice(0, 30),
+        amount,
+        what: TIP_LABEL[atype] || 'gönderine',
+        textPreview: note ? note.slice(0, 80) : null,
         read: false,
-        type: 'song_tip',
+        createdAt: FieldValue.serverTimestamp(),
+        createdAtMs: t,
       });
       result = { ok: true, amount, given: given + amount, limit: SONG_TIP_DAILY, onSong: onSong + amount, songLimit: SONG_TIP_PER_SONG };
     });
@@ -275,6 +330,6 @@ export function createHomeOffice({ db, FieldValue, HttpsError, splitIncomeForDeb
     return { projects: old.size, plays: plays.size, tips: tips.size };
   }
 
-  const ops = { mescitDonate, songSave, songDelete, songPlay, songTip };
+  const ops = { mescitDonate, songSave, songDelete, songPlay, songTip, postTip: songTip };
   return { ops, cleanup, studioSessionOk };
 }

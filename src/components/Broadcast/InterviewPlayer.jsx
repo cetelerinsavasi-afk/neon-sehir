@@ -17,7 +17,8 @@ import './InterviewPlayer.css';
 // oyunun içindeki NPC'leri değil, sabit bir "stüdyo arka planı" gösteriyor
 // (bkz. TalkingAvatarScene.jsx). Prop yine de kabul ediliyor (sunucudan
 // gelen veriyi kırmamak için), sadece görselde kullanılmıyor.
-export default function InterviewPlayer({ locationId, text, avatar, displayName, extra: _extra }) {
+export default function InterviewPlayer({ locationId, text, avatar, displayName, channel = null, channelEmoji = null, extra: _extra }) {
+  const news = locationId === 'haber';
   const [muted, setMuted] = useState(true);
   const { triggerMumble } = useBroadcastAudio(locationId, { muted });
   const { currentSentence, mouthOpen, progress, elapsedSec } = useTalkingBroadcast(text, {
@@ -28,7 +29,7 @@ export default function InterviewPlayer({ locationId, text, avatar, displayName,
     <div className="interview-player">
       <BroadcastFrame
         subtitle={currentSentence}
-        kicker={`📍 ${INTERVIEW_LOCATION_LABELS[locationId] || 'Röportaj'}`}
+        kicker={news ? `${channelEmoji || '📺'} ${channel || 'Neon Haber'} · ${displayName || 'Konuk'}` : `📍 ${INTERVIEW_LOCATION_LABELS[locationId] || 'Röportaj'}`}
         progress={progress}
         elapsedSec={elapsedSec}
         muted={muted}
@@ -36,7 +37,7 @@ export default function InterviewPlayer({ locationId, text, avatar, displayName,
       >
         <TalkingAvatarScene locationId={locationId} avatar={avatar} mouthOpen={mouthOpen} />
       </BroadcastFrame>
-      {displayName && <p className="interview-player-name">🎤 {displayName} ile röportaj</p>}
+      {displayName && <p className="interview-player-name">{news ? `🎙️ ${displayName} · ${channel || 'Neon Haber'}` : `🎤 ${displayName} ile röportaj`}</p>}
     </div>
   );
 }

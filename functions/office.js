@@ -35,6 +35,8 @@ import {
   isLegacyHomeOffice,
   officeFromLegacy,
   isOfficeEmoji,
+  isMinuteKey,
+  minuteBandOf,
 } from './officeData.js';
 
 const PRESENCE_ACTIVE_MS = 2 * 60 * 1000;
@@ -98,12 +100,12 @@ export function createOffice({ db, FieldValue, HttpsError, splitIncomeForDebt, n
 
   // Mikser dakika ücreti (venue.js netStart/netTick). OKUMA + YAZMA: sayaç okunur.
   // Döner: { ok:true } ya da { limit:true, spent }
-  async function chargeMinuteTx(tx, { houseId, h, uid, us, os, price, t }) {
+  async function chargeMinuteTx(tx, { houseId, h, uid, us, os, price, t, tag = 'studyo' }) {
     const dayKey = midnightDayKey(t);
     const ss = await tx.get(spendRef(houseId, uid, dayKey));
     const spent = Number(ss.exists ? ss.data().amount || 0 : 0);
     if (spent + price > OFFICE_DAILY_LIMIT) return { limit: true, spent };
-    chargeTx(tx, { houseId, h, uid, us, os, amount: price, kind: 'dakika', product: null, spent, dayKey, t, tag: 'studyo' });
+    chargeTx(tx, { houseId, h, uid, us, os, amount: price, kind: 'dakika', product: null, spent, dayKey, t, tag });
     return { ok: true, spent: spent + price };
   }
 
@@ -123,6 +125,7 @@ export function createOffice({ db, FieldValue, HttpsError, splitIncomeForDebt, n
         keys: { ...(h0.office?.keys || {}) },
         prices: { ...(h0.office?.prices || {}) },
         minute: Number(h0.office?.minute) || OFFICE_BANDS.minute.def,
+        minutes: { ...(h0.office?.minutes || {}) },
         emoji: h0.office?.emoji || null,
         sinceMs: h0.office?.sinceMs || null,
       };
@@ -156,6 +159,16 @@ export function createOffice({ db, FieldValue, HttpsError, splitIncomeForDebt, n
         const b = OFFICE_BANDS.minute;
         if (!Number.isInteger(n) || n < b.min || n > b.max) fail('invalid-argument', `price-band:${b.min}:${b.max}`);
         office.minute = n;
+      }
+      // v135 — haber masası / tuval dakika ücretleri
+      if (p.minutes && typeof p.minutes === 'object') {
+        for (const [k, v] of Object.entries(p.minutes)) {
+          if (!isMinuteKey(k) || k === 'mixer') fail('invalid-argument', 'Geçersiz mobilya.');
+          const n = Number(v);
+          const b = minuteBandOf(k);
+          if (!Number.isInteger(n) || n < b.min || n > b.max) fail('invalid-argument', `price-band:${b.min}:${b.max}`);
+          office.minutes[k] = n;
+        }
       }
       if (p.emoji !== undefined) {
         if (p.emoji !== null && !isOfficeEmoji(p.emoji)) fail('invalid-argument', 'Geçersiz emoji.');

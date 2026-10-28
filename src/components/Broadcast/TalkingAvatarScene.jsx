@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import { DEFAULT_AVATAR } from '../../lib/avatarShapes';
-import { drawBroadcastBackdrop, BROADCAST_BACKDROP_W, BROADCAST_BACKDROP_H } from '../../lib/broadcastBackdrops';
+import { drawBroadcastBackdrop, drawNewsDeskForeground, BROADCAST_BACKDROP_W, BROADCAST_BACKDROP_H } from '../../lib/broadcastBackdrops';
 import './TalkingAvatarScene.css';
 
 // TalkingAvatarScene — röportaj (madde 1) VE TV spikeri (madde 3) için
@@ -21,6 +21,8 @@ import './TalkingAvatarScene.css';
 // oyuncunun gerçek/seçili mouthShape'ine dönülüyor.
 export default function TalkingAvatarScene({ locationId, avatar, mouthOpen, studio = false }) {
   const canvasRef = useRef(null);
+  const deskRef = useRef(null);
+  const news = locationId === 'haber';
 
   useEffect(() => {
     // studio modda (TV) arka plan sabit bir CSS gradyanı kullanıyor (bkz.
@@ -32,9 +34,16 @@ export default function TalkingAvatarScene({ locationId, avatar, mouthOpen, stud
     const ctx = canvas.getContext('2d');
     let raf;
     const startedAt = performance.now();
+    const dctx = deskRef.current?.getContext('2d') || null;
+    let last = 0;
     const draw = (now) => {
-      const t = (now - startedAt) / 1000;
-      drawBroadcastBackdrop(ctx, locationId, t);
+      // v135: ~30 fps yeter (akışta birden fazla röportaj olabilir)
+      if (now - last > 32) {
+        last = now;
+        const t = (now - startedAt) / 1000;
+        drawBroadcastBackdrop(ctx, locationId, t);
+        if (dctx) drawNewsDeskForeground(dctx, t);
+      }
       raf = requestAnimationFrame(draw);
     };
     raf = requestAnimationFrame(draw);
@@ -47,7 +56,7 @@ export default function TalkingAvatarScene({ locationId, avatar, mouthOpen, stud
   };
 
   return (
-    <div className={`talking-scene${studio ? ' talking-scene-studio' : ''}`}>
+    <div className={`talking-scene${studio ? ' talking-scene-studio' : ''}${news ? ' talking-scene-news' : ''}`}>
       {!studio && (
         <canvas
           ref={canvasRef}
@@ -62,6 +71,7 @@ export default function TalkingAvatarScene({ locationId, avatar, mouthOpen, stud
             bir kamera çekimi hissi için. */}
         <AvatarSvg avatar={talkingAvatar} variant="bust" pose="idle" />
       </div>
+      {news && !studio && <canvas ref={deskRef} width={BROADCAST_BACKDROP_W} height={BROADCAST_BACKDROP_H} className="talking-scene-canvas talking-scene-desk" />}
     </div>
   );
 }

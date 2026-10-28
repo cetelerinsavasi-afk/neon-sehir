@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import { Heart, MessageCircle, Trash2 } from 'lucide-react';
+import { SixNavContext } from './sixNav';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import PostAttachment from './PostAttachment';
 import PlayerCard from '../PlayerCard/PlayerCard';
@@ -35,6 +36,13 @@ export default function PostCard({ post, liked, isOwn, commentsInline = false })
   const [reportOpen, setReportOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const official = post.official === 'belediye'; // v127 — Belediye'nin resmî duyurusu
+  // v135 — Sixtagram içinde avatara dokununca oyuncunun Sixtagram profili açılır
+  const nav = useContext(SixNavContext);
+  const openProfile = () => {
+    if (official) return;
+    if (nav?.openProfile) nav.openProfile({ uid: post.uid, name: post.authorName, avatar: post.authorAvatar });
+    else setPanelOpen(true);
+  };
 
   const effectiveLiked = optimisticLiked ?? liked;
   const effectiveCount = optimisticCount ?? post.likeCount ?? 0;
@@ -80,15 +88,14 @@ export default function PostCard({ post, liked, isOwn, commentsInline = false })
   return (
     <div className="six-post">
       <div className="six-post-head">
-        <button className="six-post-authorbtn" onClick={() => !official && setPanelOpen(true)}>
+        <button className="six-post-authorbtn" onClick={openProfile}>
           <div className="six-post-avatar">
             {official ? <span className="six-official-badge" aria-hidden="true">🏛️</span> : <AvatarSvg avatar={post.authorAvatar} size={36} rounded />}
           </div>
           <div className="six-post-headinfo">
             <p className="six-post-author">
-              {post.authorName} {isOwn && <span className="six-post-you">(sen)</span>}
+              {post.authorName} <span className="six-post-time">· {timeAgo(post.createdAtMs)}</span>
             </p>
-            <p className="six-post-time">{timeAgo(post.createdAtMs)}</p>
           </div>
         </button>
 
@@ -106,8 +113,8 @@ export default function PostCard({ post, liked, isOwn, commentsInline = false })
         {!isOwn && <MoreButton onClick={() => setMenuOpen(true)} label="Seçenekler" />}
       </div>
 
-      {post.text && (
-        <p className="six-post-text" style={official ? { whiteSpace: 'pre-line' } : undefined}>
+      {post.text && !post.attachment && (
+        <p className="six-post-text big" style={official ? { whiteSpace: 'pre-line' } : undefined}>
           {post.text}
         </p>
       )}
@@ -135,6 +142,11 @@ export default function PostCard({ post, liked, isOwn, commentsInline = false })
           <span>{post.commentCount || 0}</span>
         </button>
       </div>
+      {post.text && post.attachment && (
+        <p className="six-post-text">
+          <b onClick={openProfile}>{post.authorName}</b> {post.text}
+        </p>
+      )}
 
       {/* v53: ⋯ → önce olumlu seçenekler, "Bildir" en altta ve soluk */}
       {menuOpen && (
@@ -142,7 +154,7 @@ export default function PostCard({ post, liked, isOwn, commentsInline = false })
           title={post.authorName || 'Oyuncu'}
           onClose={() => setMenuOpen(false)}
           actions={[
-            ...(official ? [] : [{ key: 'profile', icon: '👤', label: 'Profili gör', onClick: () => setPanelOpen(true) }]),
+            ...(official ? [] : [{ key: 'profile', icon: '👤', label: 'Profili gör', onClick: openProfile }, { key: 'card', icon: '🪪', label: 'Oyuncu kartı', onClick: () => setPanelOpen(true) }]),
             ...(commentsInline ? [] : [{ key: 'comments', icon: '💬', label: 'Yorumlar', onClick: () => setCommentsOpen(true) }]),
             { key: 'report', icon: '⚑', label: 'Bildir', subtle: true, onClick: () => setReportOpen(true) },
           ]}

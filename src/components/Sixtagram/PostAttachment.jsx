@@ -19,6 +19,7 @@ import { drawGarageSceneBackground } from '../TuningGarageWorldScreen/TuningGara
 import InterviewPlayer from '../Broadcast/InterviewPlayer';
 import DrawingView from './DrawingView';
 import SongView from './SongView';
+import PostTipBar from './PostTipBar';
 import { songFromDoc } from '../../../functions/songData.js';
 import './PostAttachment.css';
 import { vehicleRaceLine } from '../RaceTrackScreen/CarStats';
@@ -551,6 +552,8 @@ export default function PostAttachment({ attachment, post = null }) {
         <div className="post-att-parkphoto-frame post-att-drawing">
           <DrawingView drawing={attachment} />
         </div>
+        {attachment.atelier && <p className="post-att-parkphoto-names">🎨 {attachment.atelier}</p>}
+        {post && attachment.houseId && <PostTipBar post={post} label="Ressama destek" />}
       </div>
     );
   }
@@ -582,12 +585,15 @@ export default function PostAttachment({ attachment, post = null }) {
           text={attachment.text}
           avatar={attachment.avatar}
           displayName={attachment.displayName}
+          channel={attachment.channel || null}
+          channelEmoji={attachment.channelEmoji || null}
           extra={
             attachment.locationId === 'camii'
               ? { imam: attachment.imam || null, beggars: attachment.beggars || [] }
               : undefined
           }
         />
+        {post && attachment.locationId === 'haber' && <PostTipBar post={post} label="Destek ol" />}
       </div>
     );
   }

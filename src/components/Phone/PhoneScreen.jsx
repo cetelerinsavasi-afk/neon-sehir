@@ -192,7 +192,7 @@ export default function PhoneScreen({ onClose, initialApp = null }) {
             )}
           </span>
         </div>
-        <div className={`phone-app-body${openApp === 'rehber' || openApp === 'neon-gazete' ? ' full' : ''}`}>
+        <div className={`phone-app-body${openApp === 'rehber' || openApp === 'neon-gazete' || openApp === 'sixtagram' ? ' full' : ''}`}>
           {openApp === 'sms' && <MessagesScreen />}
           {openApp === 'ikinci-el' && <MarketplaceScreen />}
           {openApp === 'banka' && <BankScreen />}

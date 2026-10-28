@@ -38,6 +38,9 @@ export const SONG_TIP_TAX_RATE = 0.1;
 // v99.2 — destekle birlikte yazılan not (yorum olarak görünür)
 export const SONG_TIP_NOTE_MAX = 120;
 
+// v135 — haber stüdyosu röportaj metni (sunucu: homeOffice.js buildNewsInterviewAttachment)
+export const INTERVIEW_MAX_TEXT = 500;
+
 // İndirilen ses dosyasının adı: "PROJEADI - cetelerinsavasi.com.mp3"
 export function songFileName(title) {
   const t = String(title || '')

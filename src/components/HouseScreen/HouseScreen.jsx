@@ -67,6 +67,8 @@ import { streamBroadcast, clearGameFrame, closeStreamChannel, streamPose, useLiv
 import { streamPriceOf, cafeDevicePrice, isStreamSetPc } from '../../../functions/stream.js';
 import { attachHScroll } from '../../lib/hscroll';
 import HomeOfficeLayer from '../HomeOffice/HomeOfficeLayer';
+import PhotoStoryEditor from './PhotoStoryEditor';
+import { invalidateSixtagramFeed } from '../../hooks/useSixtagramFeed';
 import EntranceDoorBar from './EntranceDoorPicker';
 import { armStallWatchdog } from '../../hooks/useFirestoreResume';
 import { doorKey, isDoorItemKey, resolveEntrance } from '../../../functions/houseDoor.js';
@@ -278,7 +280,6 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   const [bizRemove, setBizRemove] = useState(null);
   const [bizFlash, setBizFlash] = useState(null);
   const allowBizCloseRef = useRef(false);
-  const [cameraCaption, setCameraCaption] = useState('');
   const [muted, setMuted] = useState(getVolume() === 0);
   const [showHelp, setShowHelp] = useState(() => {
     try {
@@ -1648,33 +1649,35 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   };
 
   // --- kamera ------------------------------------------------------------------------
+  // v135 — fotoğraf telefon ekranı gibi DİKEY çekilir ve HİKÂYE olarak paylaşılır.
+  // Deklanşöre basınca sunucu o anki sahneyi (tasarım + kişiler + kamera) imzalı bir
+  // ek olarak döndürür; önizleme bu ekten çizilir → paylaşılan = görülen.
   const openCamera = () => {
-    const shot = engineRef.current?.captureFrame('image/jpeg', 0.82) || null;
-    // v85: kişilerin çekim anındaki durumu da saklanır (paylaşım anındaki konum değil)
-    const people = engineRef.current?.getPeopleState?.() || null;
-    // v127: sunucu çekim anındaki kişileri imzalar → paylaşana kadar odadan
-    // çıkan da fotoğrafta kalır (başarısız olursa eski yol)
-    const signed = houseAction({ op: 'photoShot', houseId, people: people || [] })
-      .then((r) => r?.data || null)
-      .catch(() => null);
-    setCameraShot({ img: shot, pose: engineRef.current?.getCameraPose(), people, at: Date.now(), signed });
-    setCameraCaption('');
+    const eng = engineRef.current;
+    const pose = eng?.getCameraPose() || null;
+    const people = eng?.getPeopleState?.() || [];
+    const at = Date.now();
+    setCameraShot({ loading: true, at });
     setPanel('camera');
+    houseAction({ op: 'photoShot', houseId, people, cam: pose, vert: true })
+      .then(async (r) => {
+        const d = r?.data || r || null;
+        if (!d?.att || !d?.shot || !d?.sig) throw new Error('Fotoğraf çekilemedi, tekrar dene.');
+        const { renderHousePhotoUrl } = await import('./HousePhoto');
+        const img = await renderHousePhotoUrl(d.att);
+        setCameraShot((c) => (c?.at === at ? { at, img, shot: d.shot, sig: d.sig } : c));
+      })
+      .catch((err) => setCameraShot((c) => (c?.at === at ? { at, error: err?.message || 'Fotoğraf çekilemedi.' } : c)));
   };
-  const shareCamera = async () => {
+  const shareCamera = async (overlay) => {
+    if (!cameraShot?.shot) return;
     setBusy(true);
     try {
-      const sg = await cameraShot.signed;
-      await createSixtagramPost(cameraCaption, {
-        type: 'housePhoto',
-        houseId,
-        cam: cameraShot.pose,
-        people: cameraShot.people || undefined,
-        shotAgoMs: Math.max(0, Date.now() - (cameraShot.at || Date.now())),
-        ...(sg?.shot && sg?.sig ? { shot: sg.shot, sig: sg.sig } : {}),
-      });
+      await createSixtagramPost('', { type: 'housePhoto', houseId, shot: cameraShot.shot, sig: cameraShot.sig, ...(overlay ? { overlay } : {}) });
+      invalidateSixtagramFeed();
       setPanel(null);
-      flash("📸 Sixtagram'da paylaşıldı!");
+      setCameraShot(null);
+      flash('📸 Hikâyende paylaşıldı!');
     } catch (err) {
       flash(err?.message || 'Paylaşılamadı.');
     } finally {
@@ -2560,17 +2563,18 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
 
           {/* KAMERA */}
           {panel === 'camera' && cameraShot && (
-            <div className="hs-modal-bg" onClick={() => !busy && setPanel(null)}>
-              <div className="hs-modal" onClick={(e) => e.stopPropagation()}>
-                <div className="hs-modal-head">
-                  <b>📷 Fotoğraf Çek</b>
-                  <button className="hs-x" onClick={() => setPanel(null)}>✕</button>
-                </div>
-                {cameraShot.img && <img className="hs-shot" src={cameraShot.img} alt="" />}
-                <input className="hh-input" value={cameraCaption} maxLength={200} placeholder="Fotoğrafa bir açıklama yaz…" onChange={(e) => setCameraCaption(e.target.value)} />
-                <button className="hs-btn gold wide" disabled={busy} onClick={shareCamera}>{busy ? 'Paylaşılıyor…' : "📤 Sixtagram'da Paylaş"}</button>
-              </div>
-            </div>
+            <PhotoStoryEditor
+              img={cameraShot.img || null}
+              loading={!cameraShot.img && !cameraShot.error}
+              error={cameraShot.error || null}
+              busy={busy}
+              onShare={shareCamera}
+              onClose={() => {
+                if (busy) return;
+                setPanel(null);
+                setCameraShot(null);
+              }}
+            />
           )}
 
           {panel === 'phone' && (

@@ -32,7 +32,9 @@ import { midnightDayKey } from './businessCatalogData.js';
 import { bizTax } from './tax.js';
 import { goldTag } from './moneyLog.js';
 import { CINEMA_PRICE, STUDIO_MINUTE, STUDIO_DEVICE_CAP } from './homeOfficeData.js';
-import { activeOfficeKeys, officeMinuteOf } from './officeData.js';
+import { activeOfficeKeys, officeMinuteOf, isMinuteKey } from './officeData.js';
+// v135 — ofis dakika mobilyalarının (mikser · haber masası · tuval) para kaydı etiketi
+const MINUTE_TAG = { mixer: 'studyo', newsdesk: 'haberStudyo', easel: 'resimAtolye' };
 
 // v93: sinema (home ofis) da menülü mekân — içecek dolabı / patlamış mısır ücretli.
 // Garson sadece cafe/bar'da.
@@ -364,13 +366,14 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
     if (!s.exists) fail('not-found', 'Mekân bulunamadı.');
     const h = s.data();
     const dev = deviceId ? (h.items || []).find((it) => it.i === deviceId && it.p === 1) : null;
-    const mix = dev?.k === 'mixer' && h.biz?.type !== 'studyo' && !h.venue;
+    const mix = isMinuteKey(dev?.k) && (dev.k !== 'mixer' || h.biz?.type !== 'studyo') && !h.venue;
     if (!mix && (!h.biz?.type || !NET_TYPES.includes(h.biz.type))) fail('failed-precondition', 'biz-closed');
     return { h, mix };
   }
   async function mixStart(tx, { uid, houseId, h, dev, deviceId, p }) {
     const isOwner = h.ownerUid === uid;
-    if (!isOwner && !activeOfficeKeys(h).includes('mixer')) fail('failed-precondition', 'mixer-private');
+    const key = dev.k;
+    if (!isOwner && !activeOfficeKeys(h).includes(key)) fail('failed-precondition', 'mixer-private');
     if (!(await txPresence(tx, uid, houseId))) fail('failed-precondition', 'not-present');
     const t = now();
     const occ = await tx.get(db.collection('netSessions').where('houseId', '==', houseId).where('deviceId', '==', deviceId));
@@ -381,12 +384,14 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
     const sess = ss.exists ? ss.data() : null;
     let creditUntilMs = Number(sess?.creditUntilMs || 0);
     let charged = 0;
-    const price = isOwner ? 0 : officeMinuteOf(h);
+    // v135: cihaz değişince (mikser → haber masası) kalan kredi yeni cihazın fiyatıyla sayılmaz
+    if (sess?.deviceKey && sess.deviceKey !== key) creditUntilMs = Math.min(creditUntilMs, t);
+    const price = isOwner ? 0 : officeMinuteOf(h, key);
     if (creditUntilMs <= t) {
       if (!isOwner) {
         if (Number(p.expect) !== price) fail('aborted', `price-changed:${price}`);
         if (Number(us.data()?.gold || 0) < price) fail('failed-precondition', 'gold');
-        const c = await office.chargeMinuteTx(tx, { houseId, h, uid, us, os, price, t });
+        const c = await office.chargeMinuteTx(tx, { houseId, h, uid, us, os, price, t, tag: MINUTE_TAG[key] });
         if (c.limit) fail('failed-precondition', `office-limit:${c.spent}`);
         charged = price;
       }
@@ -460,9 +465,10 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
       if (mix) {
         // v100 — ofis mikseri: sahip ücretsiz; mikser kapatıldıysa / sınır dolduysa biter
         const isOwner = h.ownerUid === uid;
+        const key = sess.deviceKey || 'mixer';
         let creditUntilMs = Number(sess.creditUntilMs || 0);
         let charged = 0;
-        const price = isOwner ? 0 : officeMinuteOf(h);
+        const price = isOwner ? 0 : officeMinuteOf(h, key);
         if (creditUntilMs - t <= 3000) {
           if (!isOwner) {
             const [us, os] = await Promise.all([tx.get(userRef(uid)), tx.get(userRef(h.ownerUid))]);
@@ -470,9 +476,9 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
               tx.update(ref, { deviceId: null, lastSeenMs: t, updatedAtMs: t });
               result = { ok: true, stopped: why, creditUntilMs };
             };
-            if (!activeOfficeKeys(h).includes('mixer')) return stop('closed');
+            if (!activeOfficeKeys(h).includes(key)) return stop('closed');
             if (Number(us.data()?.gold || 0) < price) return stop('gold');
-            const c = await office.chargeMinuteTx(tx, { houseId, h, uid, us, os, price, t });
+            const c = await office.chargeMinuteTx(tx, { houseId, h, uid, us, os, price, t, tag: MINUTE_TAG[key] });
             if (c.limit) return stop('limit');
             charged = price;
           }

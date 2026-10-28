@@ -1,5 +1,5 @@
 import { emoteMotion } from './worldEmotes.js';
-import { drawOwnerPet, drawAuraFx } from './cosmeticsArt.js';
+import { drawOwnerPet, drawAuraFx, drawAuraBackFx } from './cosmeticsArt.js';
 // canvasWorldKit.js — TAMAMEN jenerik (mekana özel HİÇBİR şey bilmeyen)
 // canvas-dünya yardımcıları: yuvarlak dikdörtgen, avatar sprite çizimi,
 // elde-tutulan ürün ikonu, konuşma baloncuğu düzeni, engel/çarpışma
@@ -152,6 +152,7 @@ export function drawAvatarSprite(ctx, entity, getAvatarImage, { showName = true,
   const h = SPRITE_H * scale;
   const w = h * SPRITE_ASPECT;
 
+  if (entity.avatar?.acc?.aura === 'fire') drawAuraBackFx(ctx, entity.avatar.acc, entity.x, entity.baseY - (mo ? mo.lift * h : 0), h);
   ctx.save();
   ctx.translate(entity.x, entity.baseY - (mo ? mo.lift * h : 0));
   if (mo?.tilt) ctx.rotate(mo.tilt);

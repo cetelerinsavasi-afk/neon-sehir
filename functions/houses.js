@@ -23,6 +23,7 @@
 //     olmayan eşyayı "satın alınmış" diye koyamaz.
 // =============================================================================
 
+import { sanitizeOverlay, overlayText } from './photoOverlay.js';
 import {
   HOUSE_PRICE,
   MAX_ITEMS_PER_HOUSE,
@@ -733,10 +734,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
 
   // Sixtagram "ev fotoğrafı": o anki tasarım + evdekiler dondurulur (istemci
   // görüntü yükleyemez → uygunsuz görsel riski yok; kare telefonlarda yeniden çizilir).
-  async function buildPhotoAttachment(uid, a) {
-    const houseId = String(a?.houseId || '');
-    const h = await loadHouse(houseId);
-    if (!(await presentIn(uid, houseId))) fail('failed-precondition', 'Fotoğraf için evde olmalısın.');
+  function camOf(a) {
     const c = a?.cam || {};
     const nums = ['px', 'py', 'pz', 'dx', 'dy', 'dz', 'fov'].map((k) => num(c[k]));
     if (nums.some((v) => v === null) || nums.slice(0, 3).some((v) => Math.abs(v) > 40)) fail('invalid-argument', 'Geçersiz kamera.');
@@ -745,12 +743,28 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     // ekran genişliği (etiket ölçeği). Eski istemciler göndermez → kare (1).
     const aspect = num(c.a) !== null ? Math.max(0.4, Math.min(2.5, c.a)) : 1;
     const cw = num(c.cw) !== null ? Math.round(Math.max(200, Math.min(2000, c.cw))) : 400;
+    return { px, py, pz, dx, dy, dz, fov, aspect, cw };
+  }
+  async function buildPhotoAttachment(uid, a) {
+    const houseId = String(a?.houseId || '');
+    const t = now();
+    // v135 — imzalı çekim TAM eki taşıyorsa (photoShot: tasarım + kişiler + kamera)
+    // paylaşılan fotoğraf çekimde önizlenenle BİREBİR aynıdır; üstüne yazı/çizim eklenir.
+    const signed = await verifyShot(houseId, a, t);
+    if (signed?.att && signed.att.type === 'housePhoto' && signed.att.houseId === houseId) {
+      const ov = sanitizeOverlay(a?.overlay);
+      if (ov.error) fail('invalid-argument', ov.error);
+      const text = overlayText(ov.overlay);
+      if (text) await assertCanSpeak(uid, text);
+      return { ...signed.att, ...(ov.overlay ? { overlay: ov.overlay } : {}) };
+    }
+    const h = await loadHouse(houseId);
+    if (!(await presentIn(uid, houseId))) fail('failed-precondition', 'Fotoğraf için evde olmalısın.');
+    const cam = camOf(a);
     // v127 — çekimde imzalı kare varsa (photoShot) kişiler O ANDAN gelir:
     // paylaşana kadar odadan çıkan da fotoğrafta kalır, sonradan giren girmez.
-    const t = now();
-    const signed = await verifyShot(houseId, a, t);
-    const people = signed || (await shotPeople(uid, houseId, a, num(a?.shotAgoMs), t));
-    return finishPhoto(houseId, h, a, people, { px, py, pz, dx, dy, dz, fov, aspect, cw });
+    const people = signed?.people || (await shotPeople(uid, houseId, a, num(a?.shotAgoMs), t));
+    return finishPhoto(houseId, h, a, people, cam);
   }
 
   // Çekim anındaki oyuncular (presence + istemcinin gönderdiği konumlar + balonlar)
@@ -851,6 +865,16 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     if (!(await presentIn(uid, houseId))) fail('failed-precondition', 'Fotoğraf için evde olmalısın.');
     const t = now();
     const people = await shotPeople(uid, houseId, p, 0, t);
+    // v135 — kamera da gelirse (yeni istemci) eki BURADA kurup imzalar: önizleme
+    // bu ekle çizilir, paylaşımda aynısı kullanılır (çekilen = paylaşılan).
+    if (p.cam) {
+      const h = await loadHouse(houseId);
+      const att = await finishPhoto(houseId, h, p, people, camOf(p));
+      if (p.vert) att.vert = true;
+      const body = JSON.stringify({ houseId, at: t, att });
+      if (body.length > 190_000) fail('resource-exhausted', 'Fotoğraf çok kalabalık.');
+      return { shot: body, sig: await signShot(await shotKey(), body), att };
+    }
     const body = JSON.stringify({ houseId, at: t, people });
     return { shot: body, sig: await signShot(await shotKey(), body) };
   }
@@ -863,8 +887,8 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       const got = Buffer.from(a.sig, 'hex');
       if (want.length !== got.length || !timingSafeEqual(want, got)) return null;
       const s = JSON.parse(a.shot);
-      if (s?.houseId !== houseId || !Array.isArray(s.people) || !(t - Number(s.at) <= PHOTO_SHOT_MAX_AGO_MS)) return null;
-      return s.people;
+      if (s?.houseId !== houseId || !(Array.isArray(s.people) || s.att) || !(t - Number(s.at) <= PHOTO_SHOT_MAX_AGO_MS)) return null;
+      return s;
     } catch {
       return null;
     }

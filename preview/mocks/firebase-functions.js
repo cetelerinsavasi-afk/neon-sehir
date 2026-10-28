@@ -1,7 +1,7 @@
 import { system, PREVIEW_UID, fakeDb, houses, shop, futbolPro, visits, raceTa, cosmetics, stream, casino } from './backend.js';
 import { FieldValue } from '../../functions/gang/test/fakeFirestore.js';
 import { sanitizeDrawing } from '../../functions/drawingData.js';
-import { buildSongAttachment } from '../../functions/homeOffice.js';
+import { buildSongAttachment, buildNewsInterviewAttachment, buildPaintingAttachment } from '../../functions/homeOffice.js';
 import { nextReaction, replyQuoteOf } from '../../functions/chatExtras.js';
 import { normalizeRouletteBets, roulettePayout, ROULETTE_ORDER, rollSlotReels, slotOutcome, SLOT_GAME_COST } from '../../functions/casinoRules.js';
 export function getFunctions() {
@@ -119,17 +119,25 @@ export function httpsCallable(functions, name) {
       if (name === 'createSixtagramPost') {
         let attachment = null;
         if (data.attachment?.type === 'drawing') {
-          const r = sanitizeDrawing(data.attachment);
+          const r = await buildPaintingAttachment(fakeDb, request.auth.uid, data.attachment, sanitizeDrawing);
           if (r.error) throw Object.assign(new Error(r.error), { code: 'invalid-argument' });
           attachment = r.drawing;
         }
+        // v135 — haber stüdyosu röportajı + hikâye fotoğrafı (gerçek sunucu kodu)
+        if (data.attachment?.type === 'interview') {
+          const r = await buildNewsInterviewAttachment(fakeDb, request.auth.uid, data.attachment);
+          if (r.error) throw Object.assign(new Error(r.error), { code: 'invalid-argument' });
+          attachment = r;
+        }
+        if (data.attachment?.type === 'housePhoto') attachment = await houses.buildPhotoAttachment(request.auth.uid, data.attachment);
+        const story = attachment?.type === 'housePhoto';
         if (data.attachment?.type === 'song') {
           const r = await buildSongAttachment(fakeDb, request.auth.uid, data.attachment);
           if (r.error) throw Object.assign(new Error(r.error), { code: 'invalid-argument' });
           attachment = r.song;
         }
         const now = Date.now();
-        await fakeDb.collection('sixtagramPosts').doc().set({ uid: request.auth.uid, authorName: request.auth.uid === PREVIEW_UID ? 'Önizleme Admin' : 'Misafir Ali', authorAvatar: null, text: data.text || '', attachment, likeCount: 0, createdAt: FieldValue.serverTimestamp(), createdAtMs: now, expiresAtMs: now + 86400000 });
+        await fakeDb.collection('sixtagramPosts').doc().set({ uid: request.auth.uid, authorName: request.auth.uid === PREVIEW_UID ? 'Önizleme Admin' : 'Misafir Ali', authorAvatar: null, text: data.text || '', attachment, ...(story ? { story: true, viewers: [], authorFollowers: 0 } : {}), likeCount: 0, createdAt: FieldValue.serverTimestamp(), createdAtMs: now, expiresAtMs: now + 86400000 });
         return { data: { ok: true } };
       }
       return { data: { ok: true } };

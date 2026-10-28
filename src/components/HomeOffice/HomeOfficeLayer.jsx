@@ -6,8 +6,9 @@ import { useOfficeSpend, useNetOccupancy } from '../../hooks/useVenueData';
 import { shopAction } from '../../services/gameActions';
 import { bizErrText } from '../../lib/bizErrors';
 import { NET_SEEN_MS } from '../../../functions/venue.js';
-import { OFFICE_DAILY_LIMIT, OFFICE_DONATE_AMOUNTS, activeOfficeKeys, ownedOfficeKeys, officeMinuteOf } from '../../../functions/officeData.js';
+import { OFFICE_DAILY_LIMIT, OFFICE_DONATE_AMOUNTS, activeOfficeKeys, ownedOfficeKeys, officeMinuteOf, MINUTE_KEYS } from '../../../functions/officeData.js';
 import StudioScreen from './StudioScreen';
+import { InterviewStudio, PaintStudio } from './MinuteStudios';
 import './HomeOffice.css';
 
 // =============================================================================
@@ -21,74 +22,87 @@ import './HomeOffice.css';
 // =============================================================================
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
 
+// v135 — dakika ücretli ofis mobilyaları: mikser (müzik) · haber masası (röportaj,
+// oturunca) · tuval (resim). Hepsinde sahip ücretsiz; başkaları ücretliyse.
+const DEV = {
+  mixer: { act: 'studio', icon: '🎛️', verb: 'Müzik yap', busy: 'müzik yapıyor', badge: '🎵 Müzik yapıyor', none: 'Burada mikser konsolu yok.' },
+  newsdesk: { act: 'interview', icon: '🎙️', verb: 'Röportaj yap', busy: 'röportaj yapıyor', badge: '🎙️ Röportaj yapıyor', none: 'Burada haber stüdyosu yok.', seated: true },
+  easel: { act: 'paint', icon: '🎨', verb: 'Resim çiz', busy: 'resim çiziyor', badge: '🎨 Resim çiziyor', none: 'Burada tuval yok.' },
+};
+const ACT_KEY = Object.fromEntries(Object.entries(DEV).map(([k, d]) => [d.act, k]));
+
 export default function HomeOfficeLayer({ apiRef, houseId, houseDoc, isOwner, engineRef, engineKey, online, flash }) {
   const { user } = useAuth();
   const { player } = usePlayer();
   const [donate, setDonate] = useState(false);
-  const [studio, setStudio] = useState(false);
+  const [open, setOpen] = useState(null); // { key, deviceId }
   const [busy, setBusy] = useState(false);
   const active = activeOfficeKeys(houseDoc);
   const owned = ownedOfficeKeys(houseDoc);
   const donateOn = active.includes('bagiskutusu');
-  const mixerPaid = active.includes('mixer');
-  const mixerHere = owned.includes('mixer');
-  const studioOn = mixerHere && (isOwner || mixerPaid);
-  const occ = useNetOccupancy(houseId, owned.includes('mixer'));
-  const price = isOwner ? 0 : officeMinuteOf(houseDoc);
-  // eşyalara eylem: bağış kutusu (açıksa), mikser (sahipse ya da ücretliyse)
-  const actsKey = `${donateOn ? 'd' : ''}${studioOn ? 's' : ''}`;
+  // bu odada kullanılabilir dakika mobilyaları (sahipse hepsi; değilse ücretli olanlar)
+  const usable = MINUTE_KEYS.filter((k) => owned.includes(k) && (isOwner || active.includes(k)));
+  const anyMinuteHere = MINUTE_KEYS.some((k) => owned.includes(k));
+  const occ = useNetOccupancy(houseId, anyMinuteHere);
+  const priceOf = (k) => (isOwner ? 0 : officeMinuteOf(houseDoc, k));
+  const actsKey = `${donateOn ? 'd' : ''}|${usable.join(',')}`;
   useEffect(() => {
     const map = {};
-    if (actsKey.includes('d')) map.bagiskutusu = [{ act: 'donate', label: '🤲 Bağış yap' }];
-    if (actsKey.includes('s')) map.mixer = [{ act: 'studio', label: '🎛️ Müzik yap' }];
+    if (donateOn) map.bagiskutusu = [{ act: 'donate', label: '🤲 Bağış yap' }];
+    usable.forEach((k) => {
+      map[k] = [{ act: DEV[k].act, label: `${DEV[k].icon} ${DEV[k].verb}`, ...(DEV[k].seated ? { seated: true } : {}) }];
+    });
     engineRef.current?.setBizActs?.(Object.keys(map).length ? map : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actsKey, engineRef, engineKey]);
   useEffect(() => () => engineRef.current?.setBizActs?.(null), [engineRef]);
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    if (!mixerHere) return undefined;
+    if (!anyMinuteHere) return undefined;
     const iv = setInterval(() => setTick((n) => n + 1), 5000);
     return () => clearInterval(iv);
-  }, [mixerHere]);
+  }, [anyMinuteHere]);
 
-  // mikserde çalışanlar (taze nabız)
+  // dakika mobilyasında çalışanlar (taze nabız)
   const working = (() => {
     void tick;
     const t = Date.now();
-    return occ.filter((s) => s.deviceKey === 'mixer' && s.deviceId && t - Number(s.lastSeenMs || 0) < NET_SEEN_MS && Number(s.creditUntilMs || 0) + 5000 > t);
+    return occ.filter((s) => DEV[s.deviceKey] && s.deviceId && t - Number(s.lastSeenMs || 0) < NET_SEEN_MS && Number(s.creditUntilMs || 0) + 5000 > t);
   })();
   const occupantOf = (deviceId) => working.find((s) => s.deviceId === deviceId && s.uid !== user?.uid) || null;
   const nameOf = (uid) => online?.find((o) => o.uid === uid)?.displayName || 'Biri';
 
-  // başlarında "🎵 Müzik yapıyor"
-  const workKey = working.map((s) => s.uid).sort().join(',');
+  // başlarında "🎵 Müzik yapıyor" / "🎙️ Röportaj yapıyor" / "🎨 Resim çiziyor"
+  const workKey = working.map((s) => `${s.uid}:${s.deviceKey}`).sort().join(',');
   useEffect(() => {
     const eng = engineRef.current;
-    if (!eng?.setActivityBadge || !mixerHere) return undefined;
-    const uids = workKey ? workKey.split(',') : [];
-    const apply = () => uids.forEach((uid) => eng.setActivityBadge(uid, '🎵 Müzik yapıyor'));
+    if (!eng?.setActivityBadge || !anyMinuteHere) return undefined;
+    const rows = workKey ? workKey.split(',').map((x) => x.split(':')) : [];
+    const apply = () => rows.forEach(([uid, k]) => eng.setActivityBadge(uid, DEV[k]?.badge || null));
     apply();
     const iv = setInterval(apply, 2000); // sonradan yüklenen figürler için
     return () => {
       clearInterval(iv);
-      uids.forEach((uid) => eng.setActivityBadge(uid, null));
+      rows.forEach(([uid]) => eng.setActivityBadge(uid, null));
     };
-  }, [workKey, mixerHere, engineRef, engineKey]);
+  }, [workKey, anyMinuteHere, engineRef, engineKey]);
 
-  const startStudio = async (deviceId) => {
-    const mixer = deviceId || (houseDoc?.items || []).find((it) => it.k === 'mixer' && it.p === 1)?.i;
-    if (!mixer) return flash?.('🎛️ Burada mikser konsolu yok.');
-    const o = occupantOf(mixer);
-    if (o) return flash?.(`🎛️ Konsol dolu — şu an ${nameOf(o.uid)} müzik yapıyor.`);
+  const startDevice = async (key, deviceId) => {
+    const d = DEV[key];
+    const dev = deviceId || (houseDoc?.items || []).find((it) => it.k === key && it.p === 1)?.i;
+    if (!dev) return flash?.(`${d.icon} ${d.none}`);
+    const o = occupantOf(dev);
+    if (o) return flash?.(`${d.icon} Dolu — şu an ${nameOf(o.uid)} ${d.busy}.`);
+    const price = priceOf(key);
     setBusy(true);
     try {
-      const r = await shopAction({ op: 'netStart', houseId, itemId: mixer, expect: price });
-      if (r.charged) flash?.(`🎛️ Stüdyo süren başladı: −${fmt(r.charged)} altın / dakika`);
-      setStudio(true);
+      const r = await shopAction({ op: 'netStart', houseId, itemId: dev, expect: price });
+      if (r.charged) flash?.(`${d.icon} Süren başladı: −${fmt(r.charged)} altın / dakika`);
+      setOpen({ key, deviceId: dev });
     } catch (err) {
       const m = String(err?.message || '');
-      if (m === 'device-full') flash?.('🎛️ Konsol dolu, biraz sonra tekrar dene.');
-      else if (m === 'mixer-private') flash?.('🎛️ Bu mikseri sadece sahibi kullanabilir.');
+      if (m === 'device-full') flash?.(`${d.icon} Dolu, biraz sonra tekrar dene.`);
+      else if (m === 'mixer-private') flash?.(`${d.icon} Bunu sadece sahibi kullanabilir.`);
       else if (m.startsWith('price-changed')) flash?.(`💲 Dakika ücreti değişti: ${fmt(m.split(':')[1])} altın. Tekrar dene.`);
       else flash?.(bizErrText(err));
     } finally {
@@ -100,49 +114,47 @@ export default function HomeOfficeLayer({ apiRef, houseId, houseDoc, isOwner, en
     apiRef,
     () => ({
       label(a) {
-        if (a.act === 'studio') {
+        const key = ACT_KEY[a.act];
+        if (key) {
+          const d = DEV[key];
           const o = occupantOf(a.itemId);
-          if (o) return `🎛️ Dolu — ${nameOf(o.uid)} müzik yapıyor`;
-          return isOwner ? '🎛️ Müzik yap (ücretsiz)' : `🎛️ Müzik yap · ${fmt(price)} / dakika`;
+          if (o) return `${d.icon} Dolu — ${nameOf(o.uid)} ${d.busy}`;
+          return isOwner ? `${d.icon} ${d.verb} (ücretsiz)` : `${d.icon} ${d.verb} · ${fmt(priceOf(key))} / dakika`;
         }
         if (a.act === 'donate') return isOwner ? '🤲 Bağış kutusu (senin)' : '🤲 Bağış yap';
         return a.label;
       },
       dim(a) {
-        return a.act === 'studio' && Boolean(occupantOf(a.itemId));
+        return Boolean(ACT_KEY[a.act]) && Boolean(occupantOf(a.itemId));
       },
       act(a) {
         if (a.act === 'donate') setDonate(true);
-        else if (a.act === 'studio') startStudio(a.itemId);
+        else if (ACT_KEY[a.act]) startDevice(ACT_KEY[a.act], a.itemId);
       },
       // üst buton: en yakın ilgili eşyaya yürü (yaklaşınca eylem butonu çıkar)
       open(kind) {
-        const k = kind === 'donate' ? 'bagiskutusu' : 'mixer';
+        const k = kind === 'donate' ? 'bagiskutusu' : ACT_KEY[kind] || 'mixer';
         if (!engineRef.current?.approachNearest?.(k)) {
           if (kind === 'donate') setDonate(true);
-          else startStudio(null);
+          else startDevice(k, null);
         }
       },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isOwner, price, workKey, online, houseDoc]
+    [isOwner, workKey, online, houseDoc]
   );
 
+  const close = (msg) => {
+    setOpen(null);
+    if (msg) flash?.(msg);
+  };
+  const common = open ? { houseId, houseDoc, price: priceOf(open.key), isOwner, flash, onClose: close } : null;
   return (
     <>
       {donate && <DonateSheet houseId={houseId} houseDoc={houseDoc} isOwner={isOwner} gold={Number(player?.gold || 0)} onClose={() => setDonate(false)} flash={flash} />}
-      {studio && (
-        <StudioScreen
-          houseId={houseId}
-          price={price}
-          isOwner={isOwner}
-          flash={flash}
-          onClose={(msg) => {
-            setStudio(false);
-            if (msg) flash?.(msg);
-          }}
-        />
-      )}
+      {open?.key === 'mixer' && <StudioScreen {...common} />}
+      {open?.key === 'newsdesk' && <InterviewStudio {...common} />}
+      {open?.key === 'easel' && <PaintStudio {...common} />}
       {busy && <div className="ho-busy" aria-hidden="true" />}
     </>
   );

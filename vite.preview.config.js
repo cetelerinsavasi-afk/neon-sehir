@@ -15,6 +15,7 @@ export default defineConfig({
       { find: /^firebase\/firestore$/, replacement: m('firebase-firestore.js') },
       { find: /^firebase\/database$/, replacement: m('firebase-database.js') },
       { find: /^crypto$/, replacement: m('crypto.js') },
+      { find: /^node:crypto$/, replacement: m('crypto.js') },
       { find: /.*\/config\/admin(\.js)?$/, replacement: m('admin-config.js') },
     ],
   },

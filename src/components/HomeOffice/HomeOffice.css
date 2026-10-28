@@ -648,3 +648,38 @@ textarea.ho-input {
 .ho-share-mode small {
   opacity: 0.75;
 }
+
+/* v135 — haber stüdyosu / tuval */
+.ho-interview-text {
+  min-height: 150px;
+  resize: vertical;
+}
+.ho-count {
+  text-align: right;
+  margin: -4px 0 6px;
+  font-size: 11px;
+}
+.ho-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 30px 0;
+  text-align: center;
+}
+.ho-done-big {
+  font-size: 54px;
+  margin: 0;
+}
+.ho-studio-body > .ho-input {
+  width: 100%;
+  display: block;
+  margin: 10px 0 8px;
+  font: inherit;
+}
+.ho-studio-body > .ho-btn.gold {
+  width: 100%;
+}
+.ho-studio-body > .ho-row {
+  margin-top: 6px;
+}

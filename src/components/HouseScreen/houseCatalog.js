@@ -3,6 +3,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { labelTexture, cityTexture, viewTexture, WINDOW_VIEWS, FLOORS as SURF_FLOORS, WALLS as SURF_WALLS, tileBaseTexture, skyCeilTexture, SKY_CEILINGS } from './houseTextures';
 import { ITEM_PRICES, HOUSE_TAKEABLES, FLOOR_TILE_KEYS, WALL_PANEL_KEYS, CEIL_TILE_KEYS, CEIL_TILE } from '../../../functions/houseCatalogData.js';
 import { v92CatalogEntries, V92_CATEGORIES, BOSSTABLE_TINTS, V92_TINTS, marketShelfV92 } from './houseCatalogV92';
+import { v135CatalogEntries, V135_TINTS } from './houseCatalogV135';
 
 // =============================================================================
 // houseCatalog.js — Ev eşyaları kataloğu.
@@ -164,6 +165,7 @@ export const TINTS = {
 
 TINTS.bosstable = BOSSTABLE_TINTS; // v92 — Patron Masası renkleri
 Object.assign(TINTS, V92_TINTS); // v100 — şezlong, şemsiye, park çöp kutusu…
+Object.assign(TINTS, V135_TINTS); // v135 — tuval desenleri, konteyner, tır
 // v100 — Kafe masası: masa (c) + sandalyeler (s). İlk 6 = eski görünüm (ahşap masa, siyah sandalye)
 const CAFE_CHAIRS = [
   ['Kırmızı', '#b8141e'], ['Beyaz', '#eeeeee'], ['Hardal', '#b8862e'], ['Zümrüt', '#1d4d3c'], ['Lacivert', '#1f2a48'], ['Pudra', '#cf9a98'], ['Turkuaz', '#1f9fa8'], ['Taba', '#7a4a2a'],
@@ -210,11 +212,14 @@ const CAT_BY_KEY = Object.fromEntries(
     { key: 'yapi', name: 'Yapı', icon: '🧱' },
     { key: 'kapi', name: 'Kapılar', icon: '🚪' },
     ...V92_CATEGORIES,
+    // v135
+    { key: 'liman', name: 'Liman & Depo', icon: '⚓' },
+    { key: 'resim', name: 'Resim Atölyesi', icon: '🎨' },
   ].map((c) => [c.key, c])
 );
 const CAT_ORDER = [
-  ['dukkan', 'silah', 'elektronik', 'spor', 'eglence', 'luks', 'garaj', 'studyo'],
-  ['araba', 'motor', 'banka', 'ciftlik', 'hapis', 'cami'],
+  ['dukkan', 'silah', 'elektronik', 'spor', 'eglence', 'luks', 'garaj', 'studyo', 'liman'],
+  ['araba', 'motor', 'banka', 'ciftlik', 'hapis', 'cami', 'resim'],
   ['oturma', 'masa', 'yatak', 'banyo', 'mutfak', 'dekor', 'hali', 'duvar', 'dis'],
   ['yapi', 'kapi', 'tavan', 'zemin_parca', 'duvar_parca'],
 ];
@@ -229,6 +234,7 @@ const CAT_MOVE = {
   pool: 'luks', pingpong: 'luks', foosball: 'luks', // Bilardo, Masa Tenisi, Langırt
   guitar: 'studyo', piano: 'studyo', // Elektro Gitar, Kuyruklu Piyano
   cinescreen: 'luks', cineseat: 'luks', popcorn: 'luks', // sinema mobilyaları
+  bosstable: 'liman', crates: 'liman', bulb: 'liman', // v135 — Gazino → Liman & Depo
 };
 
 // =============================================================================
@@ -3325,6 +3331,8 @@ export const CATALOG = [
   { k: 'planter', name: 'Çiçeklik', cat: 'dis', icon: '🌷', tints: 'appliance', build: planter, box: [0.6, 0.2] },
   // v92 — Dekor Atölyesi mobilyaları (houseCatalogV92.js)
   ...v92CatalogEntries({ neonBuild }),
+  // v135 — haber stüdyosu, resim atölyesi, liman & depo (houseCatalogV135.js)
+  ...v135CatalogEntries(),
   // v92 — zemin parçaları ve duvar panelleri (yan yana döşenir)
   ...tileEntries(),
 ];

@@ -62,7 +62,8 @@ import { profanityCheck, PROFANITY_WARNING } from './profanity.js';
 import { cleanEquipped } from './cosmeticsData.js';
 import { HOUSE_PRODUCTS } from './houseCatalogData.js';
 import { sanitizeDrawing } from './drawingData.js';
-import { createHomeOffice, buildSongAttachment } from './homeOffice.js';
+import { createHomeOffice, buildSongAttachment, buildNewsInterviewAttachment, buildPaintingAttachment } from './homeOffice.js';
+import { createSixtagramSocial } from './sixtagramSocial.js';
 import { simulAct, simulAutoStand, simulDeal, simulState, dealerMove } from './onNumara.js';
 import { isMsgId, nextReaction, replyQuoteOf } from './chatExtras.js';
 import { VENUES } from './venueLayouts.js';
@@ -264,6 +265,13 @@ const homeOffice = createHomeOffice({
   business,
   assertCanSpeak: (uid, content) => moderation.assertCanSpeak(uid, content),
 });
+// v135 — Sixtagram takip sistemi + hikâye görüntülenmeleri (shopAction op'ları)
+const sixSocial = createSixtagramSocial({
+  db,
+  FieldValue: admin.firestore.FieldValue,
+  HttpsError,
+  isBlockedBy: (owner, other) => moderation.isBlockedBy(owner, other),
+});
 // v124 — depolar: yasaklı madde ticareti (functions/depo.js) — shopAction op'ları
 const depo = createDepo({
   db,
@@ -284,7 +292,7 @@ const casino = createCasino({
 const shopGangSource = { current: null };
 const shop = createShop({
   gangSource: shopGangSource,
-  extraOps: { ...venue.ops, ...gym.ops, ...homeOffice.ops, ...office.ops, ...depo.ops, ...casino.ops },
+  extraOps: { ...venue.ops, ...gym.ops, ...homeOffice.ops, ...office.ops, ...depo.ops, ...casino.ops, ...sixSocial.ops },
   db,
   FieldValue: admin.firestore.FieldValue,
   HttpsError,
@@ -21155,12 +21163,7 @@ export const adminManualCreditPackage = onRequest(
 
 const SIXTAGRAM_MAX_TEXT_LEN = 280;
 const SIXTAGRAM_POST_LIFETIME_MS = 24 * 60 * 60 * 1000;
-// INTERVIEW_* — RÖPORTAJ özelliği (madde 1): Sixtagram > paylaş > "Röportaj
-// Yap". Metin normal gönderi metninden AYRI ve biraz daha uzun (video gibi
-// cümle cümle okunacağı için), mekan listesi istemcideki
-// lib/interviewLocations.js ile BİREBİR AYNI olmak zorunda.
-const INTERVIEW_MAX_TEXT_LEN = 500;
-const INTERVIEW_LOCATIONS = ['park', 'karakol', 'camii', 'banka', 'sehir', 'gazino'];
+// v135 — röportajlar haber stüdyolarında yapılır (functions/homeOffice.js buildNewsInterviewAttachment)
 const SIXTAGRAM_ASSET_LABELS = { diamond: 'Elmas', stock: 'Hisse Senedi', crypto: 'Kripto' };
 // SIXTAGRAM_MATERIAL_LABELS — KULLANICI İSTEĞİ: "elimizdeki malzemeleri
 // paylaşabilelim" (madde — yeni paylaşılabilir türler). users/{uid}/
@@ -21602,8 +21605,9 @@ async function buildSixtagramAttachment(uid, attachment) {
   }
 
   // v72: "Resim Çiz" — fırça darbeleri doğrulanıp olduğu gibi saklanır (görsel yüklenmez)
+  // v135: resimler sadece resim atölyelerinde (tuval mobilyası) çizilir
   if (type === 'drawing') {
-    const r = sanitizeDrawing(attachment);
+    const r = await buildPaintingAttachment(db, uid, attachment, sanitizeDrawing);
     if (r.error) throw new HttpsError('invalid-argument', r.error);
     return r.drawing;
   }
@@ -21627,34 +21631,12 @@ async function buildSixtagramAttachment(uid, attachment) {
   // özelliğiyle BİREBİR AYNI şekilde (bkz. buildMosqueNpcSnapshot), o anki
   // imam/dilenci verisi dondurulup gömülüyor — röportaj videosu daha sonra
   // imam azledilse/dilencinin günü bitse bile o anı göstermeye devam eder.
+  // v135: röportajlar sadece haber stüdyolarında (haber masası) yapılır; arka plan
+  // her zaman haber stüdyosu (locationId 'haber'). Eski mekânlı röportajlar kapandı.
   if (type === 'interview') {
-    const locationId = attachment.locationId;
-    if (!INTERVIEW_LOCATIONS.includes(locationId)) {
-      throw new HttpsError('invalid-argument', 'Geçersiz röportaj mekanı.');
-    }
-    const cleanInterviewText = typeof attachment.text === 'string'
-      ? attachment.text.trim().slice(0, INTERVIEW_MAX_TEXT_LEN)
-      : '';
-    if (!cleanInterviewText) {
-      throw new HttpsError('invalid-argument', 'Röportaj için bir metin yazmalısın.');
-    }
-    const userSnap = await db.collection('users').doc(uid).get();
-    const user = userSnap.data() || {};
-    if (!user.avatar) {
-      throw new HttpsError(
-        'failed-precondition',
-        'Önce Profil > Avatar Oluştur ile bir avatar oluşturmalısın.'
-      );
-    }
-    const mosqueNpc = locationId === 'camii' ? await buildMosqueNpcSnapshot() : null;
-    return {
-      type: 'interview',
-      locationId,
-      text: cleanInterviewText,
-      avatar: user.avatar,
-      displayName: user.displayName || 'Oyuncu',
-      ...(mosqueNpc ? { imam: mosqueNpc.imam, beggars: mosqueNpc.beggars } : {}),
-    };
+    const r = await buildNewsInterviewAttachment(db, uid, attachment);
+    if (r.error) throw new HttpsError('invalid-argument', r.error);
+    return r;
   }
 
   if (type === 'vehicle') {
@@ -22231,6 +22213,7 @@ async function buildSixtagramAttachment(uid, attachment) {
   throw new HttpsError('invalid-argument', 'Geçersiz ek türü.');
 }
 
+const STORY_TYPES = ['housePhoto', 'parkPhoto', 'interiorPhoto'];
 // createSixtagramPost — yeni bir gönderi paylaşır. `text` ve/veya
 // `attachment` verilebilir, ikisi de boşsa reddedilir.
 export const createSixtagramPost = onCall(async (request) => {
@@ -22247,12 +22230,15 @@ export const createSixtagramPost = onCall(async (request) => {
     );
   }
 
-  const userSnap = await db.collection('users').doc(uid).get();
+  const profileRef = db.collection('sixtagramProfiles').doc(uid);
+  // v135 — mekânda çekilen fotoğraflar HİKÂYE olarak paylaşılır (Anasayfa/Takip üstü);
+  // hikâyeler yazarın takipçi sayısına göre sıralanır (paylaşım anındaki sayı)
+  const isStory = Boolean(builtAttachment && STORY_TYPES.includes(builtAttachment.type));
+  const [userSnap, profSnap] = await Promise.all([db.collection('users').doc(uid).get(), isStory ? profileRef.get() : Promise.resolve(null)]);
   const user = userSnap.data() || {};
   const nowMs = Date.now();
 
   const postRef = db.collection('sixtagramPosts').doc();
-  const profileRef = db.collection('sixtagramProfiles').doc(uid);
   const batch = db.batch();
   batch.set(postRef, {
     uid,
@@ -22260,6 +22246,7 @@ export const createSixtagramPost = onCall(async (request) => {
     authorAvatar: user.avatar || null,
     text: cleanText,
     attachment: builtAttachment,
+    ...(isStory ? { story: true, viewers: [], authorFollowers: Math.max(0, Number(profSnap?.data()?.followerCount || 0)) } : {}),
     likeCount: 0,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     createdAtMs: nowMs,

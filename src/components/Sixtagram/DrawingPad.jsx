@@ -11,7 +11,7 @@ import './DrawingPad.css';
 // =============================================================================
 const MIN_STEP = 5; // ardışık iki nokta arası en az mesafe (mantıksal birim)
 
-export default function DrawingPad({ initial, onDone, onCancel }) {
+export default function DrawingPad({ initial, onDone, onCancel, title = '🎨 Resim Çiz', subtitle = null }) {
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
   const strokesRef = useRef(initial?.strokes ? initial.strokes.map((s) => ({ ...s, p: [...s.p] })) : []);
@@ -141,7 +141,10 @@ export default function DrawingPad({ initial, onDone, onCancel }) {
           <button className="dp-head-btn" onClick={onCancel}>
             Vazgeç
           </button>
-          <span className="dp-title">🎨 Resim Çiz</span>
+          <span className="dp-title">
+            {title}
+            {subtitle && <small className="dp-sub">{subtitle}</small>}
+          </span>
           <button className="dp-head-btn primary" disabled={!count} onClick={done}>
             Bitti
           </button>

@@ -761,7 +761,7 @@ export function buildAvatarSvgInner(rawState, opts = {}) {
   // v78 — kuşanılmış aksesuarlar (avatar.acc): arka katman (pelerin/kanat/aura)
   // avatarın arkasına, ön katman (şapka/gözlük/kolye) üstüne. Aynı yuvadaki
   // avatar parçası (şapka, yüz/boyun aksesuarı) gizlenir.
-  const L = accLayers(s.acc, { animAura: Boolean(opts.animAura) });
+  const L = accLayers(s.acc, { animAura: Boolean(opts.animAura), animFire: Boolean(opts.animFire) });
   if (L.hideHat) s.hat = 'none';
   if (L.hideFace) s.faceAcc = 'none';
   if (L.hideNeck) s.neckAcc = 'none';

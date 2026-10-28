@@ -29,6 +29,7 @@ const sesame = [...Array(14)]
   .join('');
 const star = (x, y, r, fill) =>
   `<path d="M${x},${y - r * 1.6} L${x + r * 0.5},${y - r * 0.5} L${x + r * 1.6},${y} L${x + r * 0.5},${y + r * 0.5} L${x},${y + r * 1.6} L${x - r * 0.5},${y + r * 0.5} L${x - r * 1.6},${y} L${x - r * 0.5},${y - r * 0.5} Z" fill="${fill}"/>`;
+const FIRE_XS = [60, 96, 132, 172, 212, 252];
 const flame = (x, h, c1, c2) =>
   `<path d="M${x - 16},562 Q${x - 20},${562 - h * 0.5} ${x},${562 - h} Q${x + 4},${562 - h * 0.6} ${x + 14},${562 - h * 0.7} Q${x + 22},${562 - h * 0.3} ${x + 16},562 Z" fill="${c1}"/><path d="M${x - 8},562 Q${x - 8},${562 - h * 0.4} ${x + 2},${562 - h * 0.62} Q${x + 10},${562 - h * 0.3} ${x + 8},562 Z" fill="${c2}"/>`;
 
@@ -100,13 +101,23 @@ export const ACC_ART = {
   dragonw: { b: `<g transform="translate(40,0) scale(0.75,1)">${dragonWing}<g transform="translate(320,0) scale(-1,1)">${dragonWing}</g></g>` },
   ring: { b: '<ellipse cx="160" cy="560" rx="96" ry="20" fill="none" stroke="#22d3ee" stroke-width="10" opacity=".25"/><ellipse cx="160" cy="560" rx="96" ry="20" fill="none" stroke="#22d3ee" stroke-width="4"/><ellipse cx="160" cy="556" rx="118" ry="26" fill="none" stroke="#ff2e88" stroke-width="3" opacity=".8"/>' },
   spark: { b: [star(70, 230, 6, '#ffe566'), star(256, 190, 5, '#fff6a8'), star(46, 380, 4, '#ffd23f'), star(278, 330, 6, '#ffe566'), star(96, 120, 4, '#fff6a8'), star(232, 450, 5, '#ffd23f'), star(60, 520, 4, '#ffe566'), star(272, 520, 3, '#fff6a8')].join('') },
-  fire: { b: '<ellipse cx="160" cy="560" rx="100" ry="16" fill="#ff6a1a" opacity=".25"/>' + [60, 96, 132, 172, 212, 252].map((x, i) => flame(x, 60 + ((i * 37) % 50), '#ff6a1a', '#ffd23f')).join('') },
+  // v135 — ateş aurası hareketli: satır içi SVG'de (SMIL) alevler titrer; canvas
+  // dünyaları ve 3D evler drawFireAura ile kendisi canlandırır
+  fire: {
+    b:
+      '<ellipse cx="160" cy="560" rx="100" ry="16" fill="#ff6a1a" opacity=".25"><animate attributeName="opacity" values=".18;.34;.22;.3;.18" dur="1.3s" repeatCount="indefinite"/></ellipse>' +
+      FIRE_XS.map(
+        (x, i) =>
+          `<g transform="translate(${x},562)"><g><animateTransform attributeName="transform" type="scale" values="1 1;${(1.06 - (i % 2) * 0.1).toFixed(2)} ${(0.8 + (i % 3) * 0.04).toFixed(2)};${(0.94 + (i % 2) * 0.08).toFixed(2)} ${(1.14 - (i % 3) * 0.04).toFixed(2)};1 1" dur="${(0.7 + (i % 3) * 0.15).toFixed(2)}s" begin="-${(i * 0.13).toFixed(2)}s" repeatCount="indefinite"/><g transform="translate(${-x},-562)">${flame(x, 60 + ((i * 37) % 50), '#ff6a1a', '#ffd23f')}</g></g></g>`
+      ).join(''),
+  },
 };
 
 // avatar.acc → { back, front } SVG; çakışan avatar parçaları (şapka, yüz/boyun aksesuarı) gizlenir
 // animAura: canvas dünyaları yıldız tozunu kendisi canlandırır (drawAuraFx) →
 // SVG'deki sabit yıldızlar çizilmez.
-export function accLayers(acc, { animAura = false } = {}) {
+// animFire (v135): 3D evler ateş aurasını kendisi canlandırır (sabit alevler çizilmez)
+export function accLayers(acc, { animAura = false, animFire = false } = {}) {
   const out = { back: '', front: '', hideHat: false, hideFace: false, hideNeck: false };
   if (!acc || typeof acc !== 'object') return out;
   for (const slot of ['aura', 'back', 'neck', 'face', 'head']) {
@@ -115,6 +126,7 @@ export function accLayers(acc, { animAura = false } = {}) {
     const art = ACC_ART[id];
     if (!meta || meta.slot !== slot || !art) continue;
     if (animAura && id === 'spark') continue;
+    if ((animAura || animFire) && id === 'fire') continue;
     out.back += art.b || '';
     out.front += art.f || '';
     if (slot === 'head') out.hideHat = true;
@@ -1381,6 +1393,66 @@ export function drawOwnerPet(ctx, { key, x, baseY, facing, h, w, pet, moving = f
 
 // --- Canlı aura efektleri (canvas) — örnekteki yıldız tozu ---------------------------
 // x, baseY: avatarın ayak noktası · h: ekrandaki avatar boyu
+// v135 — hareketli ateş aurası. SVG koordinatlarında (avatar 320×580, ayak y=562)
+// çizer: ox, oy = ekranda (160, 562) noktası · s = SVG birimi başına piksel.
+export function drawFireAura(ctx, ox, oy, s, now = performance.now()) {
+  ctx.save();
+  ctx.translate(ox, oy);
+  ctx.scale(s, s);
+  ctx.translate(-160, -562);
+  const tt = now / 1000;
+  ctx.globalAlpha = 0.22 + 0.08 * Math.sin(tt * 5);
+  ctx.fillStyle = '#ff6a1a';
+  ctx.beginPath();
+  ctx.ellipse(160, 560, 100, 16, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  const tongue = (x, h, w, c) => {
+    ctx.fillStyle = c;
+    ctx.beginPath();
+    ctx.moveTo(x - w, 562);
+    ctx.quadraticCurveTo(x - w * 1.25, 562 - h * 0.5, x, 562 - h);
+    ctx.quadraticCurveTo(x + w * 0.25, 562 - h * 0.6, x + w * 0.88, 562 - h * 0.7);
+    ctx.quadraticCurveTo(x + w * 1.38, 562 - h * 0.3, x + w, 562);
+    ctx.closePath();
+    ctx.fill();
+  };
+  FIRE_XS.forEach((x0, i) => {
+    const base = 60 + ((i * 37) % 50);
+    const f = 0.82 + 0.22 * Math.sin(tt * (7 + (i % 3)) + i * 1.7) + 0.08 * Math.sin(tt * 13 + i);
+    const sway = Math.sin(tt * 3.1 + i * 0.9) * 5;
+    const x = x0 + sway * 0.4;
+    // uç kısmı rüzgârla hafif yana
+    ctx.save();
+    ctx.translate(x, 562);
+    ctx.transform(1, 0, sway * 0.012, 1, 0, 0);
+    ctx.translate(-x, -562);
+    tongue(x, base * f, 16, '#ff6a1a');
+    tongue(x + 2, base * f * 0.62, 8, '#ffd23f');
+    ctx.restore();
+  });
+  // yükselen kıvılcımlar
+  ctx.fillStyle = '#ffd23f';
+  for (let i = 0; i < 10; i++) {
+    const p = (tt * (0.5 + (i % 4) * 0.12) + i * 0.37) % 1;
+    const ex = 60 + ((i * 53) % 200) + Math.sin(tt * 2 + i) * 8;
+    const ey = 560 - p * 170;
+    ctx.globalAlpha = Math.max(0, 1 - p) * 0.9;
+    ctx.beginPath();
+    ctx.arc(ex, ey, 3.2 * (1 - p * 0.6), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// Avatarın ARKASINDA çizilen canlı auralar (ateş). x, baseY: resmin alt-orta
+// noktası · h: resmin (320×580) ekrandaki boyu. Avatar çizilmeden ÖNCE çağrılır.
+export function drawAuraBackFx(ctx, acc, x, baseY, h, now = performance.now()) {
+  if (acc?.aura !== 'fire') return;
+  const s = h / 580;
+  drawFireAura(ctx, x, baseY - 18 * s, s, now);
+}
+
 export function drawAuraFx(ctx, acc, x, baseY, h, now = performance.now()) {
   if (acc?.aura !== 'spark') return;
   const k = h / 159;

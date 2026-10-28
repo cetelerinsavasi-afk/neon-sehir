@@ -81,8 +81,12 @@ export const ITEM_PRICES = {
   pump: g(50000), canopy: g(120000), airpump: g(20000), cone: g(3000), carwash: z(6), pricesign: g(25000),
   // Yayın seti
   cyc: g(50000), softbox: g(15000), ringlight: g(10000), streamcam: g(20000), streamdesk: z(3),
-  // Mafya
+  // Mafya (v135: Liman & Depo kategorisinde)
   bosstable: z(4), crates: g(20000), bulb: g(4000),
+  // v135 — Haber Stüdyosu (tek parça, röportaj) · Resim Atölyesi · Liman & Depo
+  newsdesk: z(10),
+  easel: g(40000), painttable: g(25000), artstool: g(5000), artshelf: g(30000), dropcloth: g(8000), paintbuckets: g(6000), clay: g(20000), artlamp: g(15000),
+  container: g(100000), truck: g(50000), crane: g(80000), forklift: g(45000), pallets: g(6000), bollard: g(8000), portlight: g(25000),
   // Sinema
   cinescreen: z(5), cineseat: g(30000), popcorn: g(40000),
   // Çiftlik

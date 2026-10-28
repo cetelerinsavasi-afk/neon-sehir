@@ -1,0 +1,203 @@
+.pse-root {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: #000;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.pse-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+}
+.pse-sp {
+  flex: 1;
+}
+.pse-ic {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.pse-ic.on {
+  background: #fff;
+  color: #000;
+}
+.pse-ic:disabled {
+  opacity: 0.35;
+}
+.pse-aa {
+  font-weight: 800;
+  font-size: 16px;
+}
+.pse-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+}
+.pse-photo {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #111;
+}
+.pse-photo img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+.pse-canvas {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+}
+.pse-canvas.draw {
+  cursor: crosshair;
+}
+.pse-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 44px;
+  animation: pse-pulse 1s ease-in-out infinite;
+}
+.pse-err {
+  font-size: 14px;
+  padding: 20px;
+  text-align: center;
+  animation: none;
+}
+@keyframes pse-pulse {
+  50% {
+    opacity: 0.4;
+    transform: scale(0.92);
+  }
+}
+.pse-tools {
+  padding: 8px 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pse-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.pse-sw {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  padding: 0;
+}
+.pse-sw.on {
+  transform: scale(1.22);
+  box-shadow: 0 0 0 2px #000, 0 0 0 4px #fff;
+}
+.pse-size {
+  width: 40px;
+  height: 32px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.pse-size span {
+  border-radius: 50%;
+  display: block;
+}
+.pse-size.on {
+  border-color: #fff;
+  background: rgba(255, 255, 255, 0.2);
+}
+.pse-bottom {
+  padding: 12px 14px 14px;
+  display: flex;
+  justify-content: flex-end;
+}
+.pse-share {
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 22px;
+  background: #fff;
+  color: #000;
+  font-weight: 800;
+  font-size: 15px;
+  cursor: pointer;
+}
+.pse-share:disabled {
+  opacity: 0.5;
+}
+.pse-text-bg {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+.pse-text {
+  width: min(92%, 420px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pse-text textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  outline: none;
+  resize: none;
+  text-align: center;
+  font-weight: 800;
+  font-family: inherit;
+  padding: 10px 14px;
+  border-radius: 14px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+.pse-chip {
+  min-width: 38px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+  padding: 0 10px;
+}
+.pse-chip.on {
+  background: #fff;
+  color: #000;
+}
+.pse-chip.done {
+  background: #0095f6;
+  border-color: #0095f6;
+}

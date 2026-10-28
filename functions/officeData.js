@@ -30,6 +30,9 @@ export const OFFICE_BANDS = {
   food: { min: 10, max: 200, def: 50 },
   bar: { min: 100, max: 500, def: 200 },
   minute: { min: 100, max: 500, def: 200 },
+  // v135 — haber masası (röportaj) ve tuval (resim) dakika ücretleri
+  news: { min: 200, max: 800, def: 400 },
+  paint: { min: 100, max: 400, def: 200 },
 };
 
 // kind: 'product' (içindeki ürünler satılır) · 'donate' (bağış kutusu) · 'minute' (dakika ücreti)
@@ -46,6 +49,10 @@ export const OFFICE_FURN = {
   popcorn: { kind: 'product', band: 'food', name: 'Patlamış Mısır Makinesi', icon: '🍿' },
   bagiskutusu: { kind: 'donate', name: 'Bağış Kutusu', icon: '🤲' },
   mixer: { kind: 'minute', band: 'minute', name: 'Mikser Konsolu', icon: '🎛️' },
+  // v135 — Haber Stüdyosu (röportaj) ve Tuval (resim): mikser gibi sahip ücretsiz,
+  // başkaları sadece ücretliyse dakika ücretiyle kullanır
+  newsdesk: { kind: 'minute', band: 'news', name: 'Haber Stüdyosu', icon: '📺', act: 'interview' },
+  easel: { kind: 'minute', band: 'paint', name: 'Tuval', icon: '🎨', act: 'paint' },
 };
 export const OFFICE_FURN_KEYS = Object.keys(OFFICE_FURN);
 export const isOfficeFurn = (k) => Object.prototype.hasOwnProperty.call(OFFICE_FURN, k);
@@ -87,7 +94,13 @@ export function officePriceOf(h, product) {
   if (!active.some((k) => officeProductsOf(k).includes(product))) return 0;
   return clampInt(h?.office?.prices?.[product], productBand(product));
 }
-export const officeMinuteOf = (h) => clampInt(h?.office?.minute, OFFICE_BANDS.minute);
+// v135 — dakika ücretli mobilyalar (mikser · haber masası · tuval): her birinin kendi
+// fiyatı var. Mikser eski alan (office.minute), diğerleri office.minutes[k].
+export const MINUTE_KEYS = Object.keys(OFFICE_FURN).filter((k) => OFFICE_FURN[k].kind === 'minute');
+export const isMinuteKey = (k) => MINUTE_KEYS.includes(k);
+export const minuteBandOf = (key = 'mixer') => OFFICE_BANDS[OFFICE_FURN[key]?.band] || OFFICE_BANDS.minute;
+export const officeMinuteOf = (h, key = 'mixer') => (key === 'mixer' ? clampInt(h?.office?.minute, OFFICE_BANDS.minute) : clampInt(h?.office?.minutes?.[key], minuteBandOf(key)));
+export const minuteStepOf = () => 50;
 
 const LEGACY_HO = ['mescit', 'sinema', 'studyo'];
 export const isLegacyHomeOffice = (h) => LEGACY_HO.includes(h?.biz?.type || h?.bizType);
@@ -143,5 +156,7 @@ export const OFFICE_EMOJIS = [
   '😀', '😎', '🤩', '🥳', '😇', '🤠', '👻', '👽', '🤖', '💀', '😈', '🤡', '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '💖',
   // din / kültür
   '🕌', '🕋', '📿', '🤲', '🙏', '☪️', '🧿',
+  // v135 haber / atölye / liman
+  '📺', '📰', '🎙️', '🖌️', '🖍️', '🚢', '🏗️', '📦', '🚛', '🛳️',
 ];
 export const isOfficeEmoji = (e) => OFFICE_EMOJIS.includes(e);

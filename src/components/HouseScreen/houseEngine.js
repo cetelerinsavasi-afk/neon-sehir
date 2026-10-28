@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes';
-import { drawPet, isPerchPet, petCollarAt, PET_ART } from '../../lib/cosmeticsArt';
+import { drawPet, isPerchPet, petCollarAt, PET_ART, drawFireAura } from '../../lib/cosmeticsArt';
 import { CATALOG_MAP, buildItem, itemBoxes, disposeObject, TINTS, M, gunModel, HELD_GUN_SCALE, DOOR_BUILDERS } from './houseCatalog';
 import { DEFAULT_DOOR, sanitizeDoor, doorSpawn, doorSpawnYaw, doorLocalToWorld, resolveEntrance } from '../../../functions/houseDoor.js';
 import { FLOORS, WALLS, floorDef, wallDef, surfaceTexture } from './houseTextures';
@@ -249,7 +249,8 @@ function avatarTextures(avatar) {
   const poses = ['idle', 'walk1', 'walk2', 'sit'];
   let left = poses.length;
   poses.forEach((pose) => {
-    const markup = buildFullAvatarSvgMarkup(av, { pose }).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, '');
+    // v135: ateş aurası figürün arkasında ayrıca canlandırılır (FireAuraFx)
+    const markup = buildFullAvatarSvgMarkup(av, { pose, animFire: av?.acc?.aura === 'fire' }).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, '');
     const img = new Image();
     img.onload = () => {
       const c = document.createElement('canvas');
@@ -431,6 +432,43 @@ class PetFollower {
   }
 }
 
+// v135 — hareketli ateş aurası: avatar düzleminin hemen arkasında aynı boyda bir
+// düzlem; doku ~20 fps yeniden çizilir (drawFireAura, SVG ölçüsünün yarısı).
+const FIRE_CW = 160;
+const FIRE_CH = 290;
+class FireAuraFx {
+  constructor(parent) {
+    this.cv = document.createElement('canvas');
+    this.cv.width = FIRE_CW;
+    this.cv.height = FIRE_CH;
+    this.ctx = this.cv.getContext('2d');
+    this.tex = new THREE.CanvasTexture(this.cv);
+    this.tex.colorSpace = THREE.SRGBColorSpace;
+    this.mat = new THREE.MeshBasicMaterial({ map: this.tex, transparent: true, depthWrite: false, toneMapped: false, side: THREE.DoubleSide });
+    this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(AV_PLANE_W, AV_PLANE_H), this.mat);
+    this.mesh.position.z = -0.012;
+    this.mesh.renderOrder = -1;
+    this.mesh.raycast = () => {};
+    parent.add(this.mesh);
+    this.parent = parent;
+    this.last = -1e9;
+  }
+  update(now, visible) {
+    this.mesh.visible = visible;
+    if (!visible || now - this.last < 50) return;
+    this.last = now;
+    this.ctx.clearRect(0, 0, FIRE_CW, FIRE_CH);
+    drawFireAura(this.ctx, FIRE_CW / 2, (562 / 580) * FIRE_CH, FIRE_CW / 320, now);
+    this.tex.needsUpdate = true;
+  }
+  dispose() {
+    this.parent.remove(this.mesh);
+    this.mesh.geometry.dispose();
+    this.mat.dispose();
+    this.tex.dispose();
+  }
+}
+
 class AvatarFigure {
   constructor(scene, labelLayer, { uid, name, avatar, isSelf }) {
     this.scene = scene;
@@ -482,6 +520,13 @@ class AvatarFigure {
     if (key !== this.avKey) {
       this.avKey = key;
       this.tex = avatarTextures(avatar);
+    }
+    // v135 — hareketli ateş aurası
+    const fire = avatar?.acc?.aura === 'fire';
+    if (fire && !this.fireFx) this.fireFx = new FireAuraFx(this.plane);
+    else if (!fire && this.fireFx) {
+      this.fireFx.dispose();
+      this.fireFx = null;
     }
     // v78 evcil hayvan
     const pet = avatar?.pet && PET_ART[avatar.pet.id] ? avatar.pet : null;
@@ -635,6 +680,7 @@ class AvatarFigure {
       this.plane.visible = true;
     }
     this.plane.scale.set(this.facingLeft ? -1 : 1, 1, 1);
+    this.fireFx?.update(now, this.plane.visible);
     if (this.holding) {
       // el hizası: gövdenin yanında, kameraya doğru biraz önde
       const side = this.facingLeft ? -1 : 1;
@@ -695,6 +741,8 @@ class AvatarFigure {
     return v.set(this.x, top, this.z);
   }
   dispose(scene) {
+    this.fireFx?.dispose();
+    this.fireFx = null;
     scene.remove(this.group);
     this.plane.geometry.dispose();
     this.mat.dispose();
@@ -1568,7 +1616,8 @@ export function createHouseEngine(
     const def = CATALOG_MAP[e.data.k];
     const ctl = e.obj.userData.ctl;
     const acts = [];
-    if (bizActs?.[e.data.k] && e.data.p === 1) bizActs[e.data.k].forEach((a) => acts.push({ kind: 'ho', act: a.act, label: a.label, itemId: e.data.i }));
+    // v135: seated → eylem sadece o eşyada OTURURKEN (haber masası: "Röportaj yap")
+    if (bizActs?.[e.data.k] && e.data.p === 1) bizActs[e.data.k].forEach((a) => (!a.seated || self.seat?.id === e.data.i) && acts.push({ kind: 'ho', act: a.act, label: a.label, itemId: e.data.i }));
     if (casinoActs?.[e.data.k] && e.data.p === 1) casinoActs[e.data.k].forEach((a) => acts.unshift({ kind: 'casino', act: a.act, label: a.label, itemId: e.data.i }));
     if (def.seats?.length) acts.push({ kind: 'sit', label: def.stand ? def.seatLabel || '🚿 Duş al' : def.seatLabel || (def.cat === 'araba' ? '🚗 Arabaya bin' : def.cat === 'motor' ? '🏍️ Motora bin' : '🪑 Otur') });
     // v92 — market arabası: al ve it; araba elindeyken raftaki ürünler arabaya gider
@@ -1639,7 +1688,7 @@ export function createHouseEngine(
         let dd = 3.2;
         if (sp) {
           objs.forEach((o) => {
-            if (!bizActs[o.data.k] || o.data.p !== 1) return;
+            if (!bizActs[o.data.k] || o.data.p !== 1 || bizActs[o.data.k].every((a) => a.seated)) return;
             const d = Math.hypot(o.data.x - sp.x, o.data.z - sp.z);
             if (d < dd) {
               dd = d;
@@ -1647,7 +1696,7 @@ export function createHouseEngine(
             }
           });
         }
-        if (dev) bizActs[dev.data.k].forEach((a) => acts.push({ kind: 'ho', act: a.act, label: a.label, itemId: dev.data.i }));
+        if (dev) bizActs[dev.data.k].forEach((a) => !a.seated && acts.push({ kind: 'ho', act: a.act, label: a.label, itemId: dev.data.i }));
       }
       return { id: self.seat.id, name: CATALOG_MAP[e.data.k].name, actions: acts };
     }

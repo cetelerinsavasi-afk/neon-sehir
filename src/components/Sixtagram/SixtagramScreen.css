@@ -1,149 +1,642 @@
-.sixtagram {
+/* v135 — Sixtagram: Instagram (koyu) görünümü — alt sekmeler, hikâyeler, profiller */
+.sixtagram.ig {
+  --ig-bg: #000;
+  --ig-fg: #f5f5f5;
+  --ig-mute: #a8a8a8;
+  --ig-line: #262626;
+  --ig-card: #1a1a1a;
+  --ig-blue: #0095f6;
+  --ig-red: #ff3040;
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  height: 100%;
+  min-height: 0;
+  background: var(--ig-bg);
+  color: var(--ig-fg);
+  font-family: -apple-system, 'Helvetica Neue', 'Segoe UI', Roboto, Arial, sans-serif;
+  overflow: hidden;
 }
-
-.sixtagram-topbar {
+.six-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--ig-line);
+  flex: 0 0 auto;
 }
-
-.sixtagram-topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.six-logo {
+  margin: 0;
+  font: italic 600 26px Georgia, 'Times New Roman', serif;
+  letter-spacing: -0.5px;
 }
-
-.sixtagram-tabs {
-  display: flex;
-  gap: 6px;
-  background: var(--panel);
-  border: 1px solid var(--panel-border);
-  border-radius: 999px;
-  padding: 3px;
-}
-
-.sixtagram-tab {
-  padding: 6px 14px;
-  border-radius: 999px;
-  border: none;
-  background: transparent;
-  color: var(--text-dim);
-  font-size: 12px;
+.six-title {
+  margin: 0;
+  font-size: 18px;
   font-weight: 700;
+}
+.six-ic {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  background: none;
+  color: inherit;
+  display: grid;
+  place-items: center;
   cursor: pointer;
-}
-
-.sixtagram-tab.active {
-  background: rgba(255, 46, 140, 0.16);
-  color: var(--neon-pink);
-}
-
-.sixtagram-compose-btn {
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid var(--neon-pink);
-  background: rgba(255, 46, 140, 0.1);
-  color: var(--neon-pink);
-  font-size: 12px;
-  font-weight: 800;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.sixtagram-compose-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.sixtagram-notif-btn {
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  border: 1px solid var(--panel-border);
-  background: var(--panel);
-  color: var(--text);
-  cursor: pointer;
+  padding: 0;
 }
-
-.sixtagram-notif-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
+.six-ic:disabled {
+  opacity: 0.4;
 }
-
-.sixtagram-notif-badge {
+.six-badge {
   position: absolute;
-  top: -4px;
-  right: -4px;
+  top: 3px;
+  right: 2px;
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
   border-radius: 999px;
-  background: var(--neon-pink);
+  background: var(--ig-red);
   color: #fff;
   font-size: 10px;
   font-weight: 800;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+}
+.six-main {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.six-tabbar {
+  flex: 0 0 auto;
+  display: flex;
+  border-top: 1px solid var(--ig-line);
+  background: var(--ig-bg);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.six-tabbtn {
+  flex: 1;
+  background: none;
+  border: 0;
+  color: var(--ig-mute);
+  padding: 7px 0 5px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+.six-tabbtn.on {
+  color: var(--ig-fg);
+  font-weight: 700;
+}
+.six-tabbtn:disabled {
+  opacity: 0.4;
+}
+.six-hint {
+  margin: 0;
+  padding: 36px 24px;
+  text-align: center;
+  color: var(--ig-mute);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.six-err {
+  margin: 4px 0 0;
+  color: var(--ig-red);
+  font-size: 12px;
+}
+.six-sp {
+  flex: 1;
+}
+
+/* --- hikâye halkaları --- */
+.six-stories {
+  display: flex;
+  gap: 12px;
+  padding: 12px 12px 10px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--ig-line);
+  scrollbar-width: none;
+}
+.six-stories::-webkit-scrollbar {
+  display: none;
+}
+.six-story {
+  flex: 0 0 auto;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font: inherit;
+}
+.six-ring {
+  position: relative;
+  border-radius: 50%;
+  padding: 3px;
+  box-sizing: border-box;
+  background: linear-gradient(45deg, #feda75, #fa7e1e, #d62976, #962fbf, #4f5bd5);
+  display: block;
+}
+.six-ring.seen {
+  background: #3a3a3a;
+}
+.six-ring-in {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 3px solid var(--ig-bg, #000);
+  box-sizing: border-box;
+  overflow: hidden;
+  background: #111;
+}
+.six-ring-in > * {
+  width: 100% !important;
+  height: 100% !important;
+}
+.six-ring-plus {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--ig-blue, #0095f6);
+  border: 2px solid #000;
+  color: #fff;
+  font-size: 13px;
+  display: grid;
+  place-items: center;
+}
+.six-story-name {
+  font-size: 11.5px;
+  max-width: 70px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ig-fg, #f5f5f5);
+}
+
+/* --- akış (gönderiler) --- */
+.six-feed {
+  display: flex;
+  flex-direction: column;
+}
+.sixtagram.ig .six-post {
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--ig-line);
+  border-radius: 0;
+  padding: 10px 0 12px;
+  gap: 6px;
+}
+.sixtagram.ig .six-post-head {
+  padding: 0 12px;
+}
+.sixtagram.ig .six-post-avatar {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  box-shadow: 0 0 0 2px #000, 0 0 0 3.5px #d62976;
+}
+.sixtagram.ig .six-post-author {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ig-fg);
+}
+.sixtagram.ig .six-post-time {
+  font-weight: 400;
+  color: var(--ig-mute);
+  font-size: 12.5px;
+}
+.sixtagram.ig .six-post-text {
+  padding: 0 12px;
+  font-size: 14px;
+  color: var(--ig-fg);
+}
+.sixtagram.ig .six-post-text b {
+  font-weight: 700;
+  cursor: pointer;
+}
+.sixtagram.ig .six-post-text.big {
+  font-size: 16px;
+  line-height: 1.45;
+  padding: 4px 14px 2px;
+}
+.sixtagram.ig .post-att {
+  margin-top: 4px;
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  border-color: var(--ig-line);
+}
+.sixtagram.ig .six-post-actions {
+  padding: 0 8px;
+  gap: 2px;
+}
+.sixtagram.ig .six-like-btn,
+.sixtagram.ig .six-comment-btn,
+.sixtagram.ig .six-like-static {
+  border: 0;
+  background: none;
+  color: var(--ig-fg);
+  font-size: 13.5px;
+  padding: 6px;
+  gap: 5px;
+}
+.sixtagram.ig .six-like-btn svg,
+.sixtagram.ig .six-comment-btn svg,
+.sixtagram.ig .six-like-static svg {
+  width: 24px;
+  height: 24px;
+}
+.sixtagram.ig .six-like-btn.liked {
+  color: var(--ig-red);
+  background: none;
+}
+
+/* --- medya sekmesi --- */
+.six-chips {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--ig-line);
+}
+.six-chip {
+  border: 0;
+  border-radius: 9px;
+  padding: 7px 14px;
+  background: var(--ig-card);
+  color: var(--ig-fg);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.six-chip.on {
+  background: var(--ig-fg);
+  color: var(--ig-bg);
+}
+
+/* --- profil --- */
+.six-profile,
+.six-sheet-body {
+  display: flex;
+  flex-direction: column;
+}
+.six-prof-head {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 16px 14px 8px;
+}
+.six-prof-av {
+  border-radius: 50%;
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+.six-prof-head .six-story {
+  flex: 0 0 auto;
+}
+.six-stats {
+  flex: 1;
+  display: flex;
+  justify-content: space-around;
+}
+.six-stat {
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+.six-stat:disabled {
+  cursor: default;
+  opacity: 1;
+}
+.six-stat b {
+  font-size: 17px;
+}
+.six-stat span {
+  font-size: 12px;
+  color: var(--ig-fg);
+}
+.six-prof-name {
+  margin: 0;
+  padding: 0 14px;
+  font-weight: 700;
+  font-size: 14px;
+}
+.six-prof-sub {
+  margin: 14px 0 6px;
+  padding: 0 14px;
+  font-size: 12px;
+  color: var(--ig-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.six-prof-btns {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px 0;
+}
+.six-prof-btns > * {
+  flex: 1;
+}
+.six-follow {
+  border: 0;
+  border-radius: 9px;
+  padding: 8px 16px;
+  background: var(--ig-blue, #0095f6);
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+}
+.six-follow.on,
+.six-follow.alt {
+  background: var(--ig-card, #1a1a1a);
+  color: var(--ig-fg, #f5f5f5);
+}
+.six-follow.sm {
+  padding: 6px 12px;
+  font-size: 13px;
+  flex: 0 0 auto;
+}
+.six-follow:disabled {
+  opacity: 0.6;
+}
+.six-prof-stories {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  padding: 0 0 8px;
+}
+.six-prof-story {
+  aspect-ratio: 9 / 16;
+  border: 0;
+  background: linear-gradient(160deg, #2a1745, #0f1b3a);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 26px;
+  cursor: pointer;
+}
+.six-prof-story small {
+  font-size: 12px;
+}
+
+/* --- tam ekran sayfalar (profil, listeler) --- */
+.six-sheet {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  background: var(--ig-bg, #000);
+  display: flex;
+  flex-direction: column;
+}
+.six-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--ig-line);
+}
+.six-sheet-head b {
+  font-size: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.six-sheet-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 16px;
+}
+.six-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+}
+.six-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.six-row-main b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+.six-initial {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  background: linear-gradient(135deg, #6228d7, #ee2a7b);
+  color: #fff;
+}
+
+/* --- hikâye izleyici --- */
+.six-sv {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  color: #fff;
+  user-select: none;
+}
+.six-sv-bars {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px 0;
+}
+.six-sv-bars i {
+  flex: 1;
+  height: 2.5px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.35);
+  overflow: hidden;
+}
+.six-sv-bars b {
+  display: block;
+  height: 100%;
+  background: #fff;
+}
+.six-sv-close {
+  position: absolute;
+  top: 16px;
+  right: 8px;
+  z-index: 3;
+  background: none;
+  border: 0;
+  color: #fff;
+  cursor: pointer;
+  padding: 6px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+}
+.six-sv-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 6px;
+}
+.six-sv-photo {
+  height: 100%;
+  max-width: 100%;
+  aspect-ratio: 9 / 16;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #111;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-
-.sixtagram-feed {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.six-sv-photo.square {
+  height: auto;
+  width: 100%;
+  aspect-ratio: auto;
+  background: none;
 }
-
-.sixtagram-hint {
-  margin: 8px 0;
+.six-sv-photo.square .post-att {
+  width: 100%;
+  border: 0;
+}
+.six-sv-hp,
+.six-sv-hp img {
+  width: 100%;
+  height: 100%;
+}
+.six-sv-hp img {
+  object-fit: cover;
+  display: block;
+}
+.six-sv-wait {
+  font-size: 40px;
+  opacity: 0.6;
+}
+.six-sv-caption {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 24px;
+  margin: 0;
   text-align: center;
-  font-size: 12px;
-  color: var(--text-dim);
+  font-size: 15px;
+  font-weight: 600;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
 }
-
-.sixtagram-profile {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+.six-sv-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  z-index: 2;
 }
-
-.sixtagram-profile-head {
+.six-sv-zone.l {
+  left: 0;
+  width: 35%;
+}
+.six-sv-zone.r {
+  right: 0;
+  width: 65%;
+}
+.six-sv-foot {
   display: flex;
   align-items: center;
-  gap: 12px;
-  background: var(--panel);
-  border: 1px solid var(--panel-border);
-  border-radius: 14px;
-  padding: 14px;
+  gap: 10px;
+  padding: 8px 12px 12px;
 }
-
-.sixtagram-profile-avatar {
-  width: 64px;
-  height: 64px;
+.six-sv-who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: 0;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+  min-width: 0;
+}
+.six-sv-who b {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.six-sv-who small {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+}
+.six-sv-av {
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   overflow: hidden;
-  border: 2px solid var(--neon-pink);
-  flex-shrink: 0;
+  flex: 0 0 auto;
+  box-shadow: 0 0 0 1.5px #fff;
 }
-
-.sixtagram-profile-name {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 800;
-  color: var(--text);
-}
-
-.sixtagram-profile-likes {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: var(--neon-pink);
+.six-sv-views {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
   font-weight: 700;
+}
+.six-sv-del {
+  background: rgba(255, 255, 255, 0.12);
+  border: 0;
+  color: #fff;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.post-att-housephoto-img.vert {
+  object-fit: cover;
 }

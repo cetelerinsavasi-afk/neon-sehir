@@ -43,3 +43,12 @@
   width: 96%;
   max-width: 360px;
 }
+
+/* v135 — haber stüdyosu: sunucu ortada, masa ön planda alt kenarda ince bir şerit */
+.talking-scene-news .talking-scene-avatar {
+  width: 64%;
+  bottom: 13%;
+}
+.talking-scene-desk {
+  pointer-events: none;
+}

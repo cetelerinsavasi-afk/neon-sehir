@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePlayer } from '../../hooks/usePlayer';
 import { cosmeticsAction } from '../../services/gameActions';
 import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes';
-import { ACC_ART, drawPet, drawOwnerPet, drawAuraFx, PET_ART } from '../../lib/cosmeticsArt';
+import { ACC_ART, drawPet, drawOwnerPet, drawAuraFx, drawAuraBackFx, PET_ART } from '../../lib/cosmeticsArt';
 import { PETS, ACCESSORIES, ACC_SLOTS, RARITY, LEASH_COLORS, priceOf } from '../../../functions/cosmeticsData.js';
 import './AccessoryShop.css';
 
@@ -151,6 +151,7 @@ function Stage({ avatar, onPet, sayRef }) {
       const av = avRef.current;
       const im = img(av, pose) || lastImg;
       if (im) lastImg = im;
+      if (av.acc?.aura === 'fire') drawAuraBackFx(ctx, av.acc, x, baseY, h, now);
       ctx.save();
       ctx.translate(x, baseY);
       if (P.dir < 0) ctx.scale(-1, 1);
