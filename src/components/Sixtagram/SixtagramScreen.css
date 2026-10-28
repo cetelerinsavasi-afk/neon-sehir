@@ -594,3 +594,37 @@
 .post-att-housephoto-img.vert {
   object-fit: cover;
 }
+/* v135.2 — hikâyede kişiler arası kaydırma */
+.six-sv-stage {
+  perspective: 900px;
+  touch-action: pan-y;
+}
+.six-sv-slide {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.18s ease-out, opacity 0.18s;
+}
+.six-sv-slide.drag {
+  transition: none;
+}
+.six-sv-slide.in-r {
+  animation: six-sv-in-r 0.26s ease-out;
+}
+.six-sv-slide.in-l {
+  animation: six-sv-in-l 0.26s ease-out;
+}
+@keyframes six-sv-in-r {
+  from {
+    transform: translateX(60%) rotateY(-25deg);
+    opacity: 0.3;
+  }
+}
+@keyframes six-sv-in-l {
+  from {
+    transform: translateX(-60%) rotateY(25deg);
+    opacity: 0.3;
+  }
+}

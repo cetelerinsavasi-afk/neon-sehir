@@ -135,6 +135,9 @@ export function StoryViewer({ groups, start, startPi = null, myUid, onClose, onO
   const [ready, setReady] = useState(false);
   const [paused, setPaused] = useState(false);
   const [askDel, setAskDel] = useState(false);
+  const [dragX, setDragX] = useState(0);
+  const [slide, setSlide] = useState('');
+  const blockClick = useRef(false);
   const [deleted, setDeleted] = useState({});
   const posts = useMemo(() => (g ? g.posts.filter((p) => !deleted[p.id]) : []), [g, deleted]);
   const post = posts[Math.min(pi, posts.length - 1)] || null;
@@ -164,6 +167,46 @@ export function StoryViewer({ groups, start, startPi = null, myUid, onClose, onO
       setGi(gi - 1);
       setPi(0);
     } else elapsed.current = 0;
+  };
+  // v135.2 — kişiler arası geçiş: sağa/sola kaydır (o kişinin kalan hikâyeleri atlanır)
+  const goGroup = (d) => {
+    const ng = gi + d;
+    if (ng < 0) {
+      setDragX(0);
+      return;
+    }
+    if (ng >= groups.length) return onClose();
+    setSlide(d > 0 ? 'in-r' : 'in-l');
+    setGi(ng);
+    setPi(groups[ng].uid === myUid ? 0 : firstUnseen(groups[ng]));
+    setDragX(0);
+    return undefined;
+  };
+  const swipe = useRef(null);
+  const onSwDown = (e) => {
+    setPaused(true);
+    swipe.current = { x: e.clientX, y: e.clientY, t: Date.now(), drag: false };
+  };
+  const onSwMove = (e) => {
+    const sw = swipe.current;
+    if (!sw) return;
+    const dx = e.clientX - sw.x;
+    const dy = e.clientY - sw.y;
+    if (!sw.drag && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) sw.drag = true;
+    if (sw.drag) setDragX(dx);
+  };
+  const onSwUp = (e) => {
+    const sw = swipe.current;
+    swipe.current = null;
+    if (!askDel) setPaused(false);
+    if (!sw?.drag) return;
+    blockClick.current = true;
+    setTimeout(() => (blockClick.current = false), 50);
+    const dx = e.clientX - sw.x;
+    const fast = Math.abs(dx) / Math.max(1, Date.now() - sw.t) > 0.5;
+    if (dx < -70 || (fast && dx < -25)) goGroup(1);
+    else if (dx > 70 || (fast && dx > 25)) goGroup(-1);
+    else setDragX(0);
   };
   // süre (duraklatılabilir)
   useEffect(() => {
@@ -212,14 +255,18 @@ export function StoryViewer({ groups, start, startPi = null, myUid, onClose, onO
       </button>
       <div
         className="six-sv-stage"
-        onPointerDown={() => setPaused(true)}
-        onPointerUp={() => !askDel && setPaused(false)}
-        onPointerLeave={() => !askDel && setPaused(false)}
+        onPointerDown={onSwDown}
+        onPointerMove={onSwMove}
+        onPointerUp={onSwUp}
+        onPointerCancel={onSwUp}
+        onPointerLeave={(e) => swipe.current && onSwUp(e)}
       >
-        <StoryContent key={post.id} post={post} onReady={() => setReady(true)} />
+        <div key={g.uid} className={`six-sv-slide ${slide}${dragX ? ' drag' : ''}`} style={dragX ? { transform: `translateX(${dragX}px) rotateY(${-dragX / 18}deg)`, opacity: Math.max(0.35, 1 - Math.abs(dragX) / 500) } : undefined} onAnimationEnd={() => setSlide('')}>
+          <StoryContent key={post.id} post={post} onReady={() => setReady(true)} />
+        </div>
         {post.text && <p className="six-sv-caption">{post.text}</p>}
-        <button className="six-sv-zone l" onClick={prev} aria-label="Önceki" />
-        <button className="six-sv-zone r" onClick={next} aria-label="Sonraki" />
+        <button className="six-sv-zone l" onClick={() => !blockClick.current && prev()} aria-label="Önceki" />
+        <button className="six-sv-zone r" onClick={() => !blockClick.current && next()} aria-label="Sonraki" />
       </div>
       <div className="six-sv-foot">
         <button className="six-sv-who" onClick={() => onOpenProfile?.({ uid: g.uid, name: g.name, avatar: g.avatar })}>

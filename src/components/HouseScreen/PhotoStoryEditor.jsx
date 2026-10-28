@@ -18,6 +18,7 @@ import {
   OVERLAY_Z_MAX,
   OVERLAY_W_MIN,
   OVERLAY_W_MAX,
+  OVERLAY_WRAP_W,
   isLightColor,
 } from '../../../functions/photoOverlay.js';
 import './PhotoStoryEditor.css';
@@ -507,7 +508,7 @@ export default function PhotoStoryEditor({ img, loading, error, busy, onShare, o
               </div>
               <SideSlider value={edit.z} min={OVERLAY_Z_MIN} max={OVERLAY_Z_MAX} onChange={(z) => setEdit((x) => ({ ...x, z }))} preview={<b className="pse-knob-a">A</b>} />
               <div className="pse-editwrap">
-                <div className="pse-editbox" style={editStyle}>
+                <div className="pse-editbox" lang="tr" style={{ ...editStyle, width: OVERLAY_WRAP_W * kpx }}>
                   {/* görünen katman (çerçeve satır satır) + üstte saydam yazı alanı */}
                   <div className="pse-editshow" aria-hidden="true">
                     <span style={spanStyle}>{edit.t || ' '}</span>

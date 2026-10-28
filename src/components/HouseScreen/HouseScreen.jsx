@@ -68,7 +68,6 @@ import { streamPriceOf, cafeDevicePrice, isStreamSetPc } from '../../../function
 import { attachHScroll } from '../../lib/hscroll';
 import HomeOfficeLayer from '../HomeOffice/HomeOfficeLayer';
 import PhotoStoryEditor from './PhotoStoryEditor';
-import { IcEmotes, IcPeople, IcChat, IcPhone, IcCamera } from './SideIcons';
 import { invalidateSixtagramFeed } from '../../hooks/useSixtagramFeed';
 import EntranceDoorBar from './EntranceDoorPicker';
 import { armStallWatchdog } from '../../hooks/useFirestoreResume';
@@ -2134,7 +2133,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
           {/* GEZ: sağ buton sütunu */}
           {mode === 'walk' && (
             <div className="hs-side">
-              <button className={`hs-side-btn${panel === 'emotes' ? ' on' : ''}`} onClick={() => setPanel(panel === 'emotes' ? null : 'emotes')} title="Hareketler" aria-label="Hareketler"><IcEmotes /></button>
+              <button className={`hs-side-btn${panel === 'emotes' ? ' on' : ''}`} onClick={() => setPanel(panel === 'emotes' ? null : 'emotes')} title="Hareketler">😀</button>
               {panel === 'emotes' && (
                 <div className="hs-emotes">
                   {EMOTES.map((e) => (
@@ -2145,12 +2144,12 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                   ))}
                 </div>
               )}
-              <button className="hs-side-btn" onClick={() => setPanel('people')} title="Odadakiler" aria-label="Odadakiler">
-                <IcPeople />{others.length > 0 && <span className="hs-side-count">{others.length}</span>}
+              <button className="hs-side-btn" onClick={() => setPanel('people')} title="Odadakiler">
+                👥{others.length > 0 && <span className="hs-side-count">{others.length}</span>}
               </button>
-              <button className="hs-side-btn" onClick={() => { setPhoneApp('chatsapp'); setPanel('phone'); }} title="ChatsApp" aria-label="ChatsApp"><IcChat /></button>
-              <button className="hs-side-btn" onClick={() => { setPhoneApp(null); setPanel('phone'); }} title="Telefon" aria-label="Telefon"><IcPhone /></button>
-              <button className="hs-side-btn" onClick={openCamera} title="Fotoğraf çek" aria-label="Fotoğraf çek"><IcCamera /></button>
+              <button className="hs-side-btn" onClick={() => { setPhoneApp('chatsapp'); setPanel('phone'); }} title="ChatsApp">💬</button>
+              <button className="hs-side-btn" onClick={() => { setPhoneApp(null); setPanel('phone'); }} title="Telefon">📱</button>
+              <button className="hs-side-btn" onClick={openCamera} title="Fotoğraf çek">📷</button>
             </div>
           )}
 

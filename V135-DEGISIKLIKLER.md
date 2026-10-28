@@ -31,6 +31,7 @@ Bu paketteki dosyaları proje klasörünün (neon-sehir) üstüne kopyala (aynı
 ## v135.1 ekleri
 | Madde | Nerede |
 |---|---|
+| Hikâyede sağa/sola kaydırarak kişiler arası geçiş (kalan hikâyeler atlanır) · yazı düzenlerken ve fotoğrafta aynı satırlara bölünür | SixStories.jsx, photoOverlay.js |
 | Hikâye editörü Instagram gibi: 6 yazı tipi (Klasik, Modern, Neon, Daktilo, Güçlü, El yazısı), soldaki çubukla boy, çerçeve (yok / dolu / yarı saydam) + ayrı çerçeve rengi, hizalama, sürüklerken ortaya yapışma (mavi çizgi), iki parmakla büyütme/döndürme, çöpe sürükleyip silme, boş yere dokununca yazı | PhotoStoryEditor.jsx, photoOverlay.js |
 | Çizim: kalem / fosforlu / neon / silgi, kalınlık çubuğu, geri al | aynı |
 | Fotoğrafta, çekim anında kameranın önünde saydamlaşan eşyalar da saydam (çekilen = paylaşılan) | houseEngine.js, houses.js, HousePhoto.jsx |
@@ -38,7 +39,6 @@ Bu paketteki dosyaları proje klasörünün (neon-sehir) üstüne kopyala (aynı
 | Yorumlar paneli ve bildirimler sayfası Instagram gibi (Bugün / Bu hafta / Daha önce, takip et düğmesi, avatarlar) | CommentsPanel, NotificationsPanel |
 | Gönderi ve hikâye silme onaylı | ConfirmSheet.jsx |
 | Medya'dayken Medya'ya tekrar basınca sıradaki kategori | SixtagramScreen.jsx |
-| Mekânlardaki sağ 5 buton özel çizim ikonlar | SideIcons.jsx, HouseScreen.css |
 
 ## Firestore tasarrufu
 - Sekmeler aynı akış isteğini kullanır (son 150 gönderi, 90 sn önbellek) — yeni dinleyici yok.

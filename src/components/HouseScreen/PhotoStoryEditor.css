@@ -237,8 +237,8 @@
 }
 .pse-editwrap {
   position: absolute;
-  left: 48px;
-  right: 16px;
+  left: 0;
+  right: 0;
   top: 16%;
   bottom: 30%;
   display: flex;
@@ -248,12 +248,12 @@
 }
 .pse-editbox {
   position: relative;
-  width: 100%;
+  flex: 0 0 auto;
   line-height: 1.22;
 }
 .pse-editshow {
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: anywhere;
   min-height: 1.22em;
   padding: 0;
 }
@@ -279,7 +279,7 @@
   text-transform: inherit;
   letter-spacing: inherit;
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: anywhere;
   padding: 0.06em 0.3em;
   margin: 0;
 }

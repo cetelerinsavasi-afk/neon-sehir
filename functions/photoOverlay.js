@@ -39,6 +39,8 @@ export const OVERLAY_FONTS = [
 ];
 export const OVERLAY_FONT_URL = 'https://fonts.googleapis.com/css2?family=Oswald:wght@500&family=Pacifico&family=Courier+Prime:wght@700&family=Caveat:wght@700&family=Grand+Hotel&display=swap';
 
+// Yazının sarılacağı genişlik (mantıksal birim): düzenleyicideki yazı kutusu ile AYNI
+export const OVERLAY_WRAP_W = 880;
 const isIdx = (v, n) => Number.isInteger(v) && v >= 0 && v < n;
 const num = (v, min, max) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(Math.max(min, Math.min(max, v))) : null);
 
@@ -59,15 +61,21 @@ export function sanitizeOverlay(raw) {
     if (!s || x === null || y === null) continue;
     const z = num(t.z, OVERLAY_Z_MIN, OVERLAY_Z_MAX) ?? (isIdx(t.s, 3) ? LEGACY_SIZES[t.s] : 66);
     const b = isIdx(t.b, 3) ? t.b : t.b ? 1 : 0;
+    let c = isIdx(t.c, OVERLAY_COLORS.length) ? t.c : 1;
+    let bc = isIdx(t.bc, OVERLAY_COLORS.length) ? t.bc : null;
+    if (bc === null) {
+      bc = b ? c : 1; // eski kayıt: çerçeve yazının rengindeydi
+      if (b) c = isLightColor(OVERLAY_COLORS[bc]) ? 0 : 1;
+    }
     texts.push({
       t: s,
       x,
       y,
-      c: isIdx(t.c, OVERLAY_COLORS.length) ? t.c : 1,
+      c,
       z,
       f: isIdx(t.f, OVERLAY_FONTS.length) ? t.f : 0,
       b,
-      bc: isIdx(t.bc, OVERLAY_COLORS.length) ? t.bc : 1,
+      bc,
       a: isIdx(t.a, 3) ? t.a : 0,
       r: num(t.r, -180, 180) ?? 0,
     });
@@ -114,14 +122,45 @@ export function layoutText(ctx, t, k = 1) {
   const font = OVERLAY_FONTS[t.f] || OVERLAY_FONTS[0];
   const size = zOf(t) * (font.k || 1) * k;
   ctx.font = font.css(size);
-  const raw = String(t.t).split(/\n/).slice(0, 6);
-  const lines = font.upper ? raw.map((l) => l.toLocaleUpperCase('tr-TR')) : raw;
-  const widths = lines.map((l) => ctx.measureText(l).width + (font.ls ? font.ls * size * l.length : 0));
+  const ls = font.ls ? font.ls * size : 0;
+  const measure = (l) => ctx.measureText(l).width + ls * l.length;
+  // düzenleyicideki gibi kelime kelime sar (yazı kutusu genişliği − iç boşluk)
+  const maxW = Math.max(size, OVERLAY_WRAP_W * k - size * 0.6);
+  const raw = String(t.t).split(/\n/);
+  const lines = [];
+  for (const para0 of raw) {
+    const para = font.upper ? para0.toLocaleUpperCase('tr-TR') : para0;
+    if (!para) {
+      lines.push('');
+      continue;
+    }
+    let cur = '';
+    for (const word of para.split(/(\s+)/)) {
+      if (!word) continue;
+      const next = cur + word;
+      if (!cur || measure(next.trimEnd()) <= maxW) {
+        cur = next;
+        continue;
+      }
+      lines.push(cur.trimEnd());
+      cur = word.trimStart();
+      // tek kelime bile sığmıyorsa harf harf böl
+      while (cur && measure(cur) > maxW) {
+        let n = cur.length - 1;
+        while (n > 1 && measure(cur.slice(0, n)) > maxW) n -= 1;
+        lines.push(cur.slice(0, n));
+        cur = cur.slice(n);
+      }
+    }
+    lines.push(cur.trimEnd());
+  }
+  const shown = lines.slice(0, 12);
+  const widths = shown.map(measure);
   const lh = size * 1.22;
   const pad = t.b ? size * 0.32 : 0;
   const w = Math.max(...widths, size * 0.3) + pad * 2;
-  const h = lines.length * lh + (t.b ? pad * 0.6 : 0);
-  return { font, size, lines, widths, lh, pad, w, h };
+  const h = shown.length * lh + (t.b ? pad * 0.6 : 0);
+  return { font, size, lines: shown, widths, lh, pad, w, h };
 }
 function rr(ctx, x, y, w, h, r) {
   ctx.beginPath();
@@ -134,8 +173,10 @@ function rr(ctx, x, y, w, h, r) {
 }
 export function drawOverlayText(ctx, t, k, ky = k) {
   const L = layoutText(ctx, t, k);
-  const col = OVERLAY_COLORS[t.c] || '#fff';
-  const boxCol = OVERLAY_COLORS[t.bc] || '#fff';
+  // eski kayıt (bc yok): çerçeve yazının rengi, yazı okunur renkte
+  const legacyBox = t.b && !Number.isInteger(t.bc);
+  const boxCol = legacyBox ? OVERLAY_COLORS[t.c] || '#fff' : OVERLAY_COLORS[t.bc] || '#fff';
+  const col = legacyBox ? (isLightColor(boxCol) ? '#111111' : '#ffffff') : OVERLAY_COLORS[t.c] || '#fff';
   ctx.save();
   ctx.translate(t.x * k, t.y * ky);
   if (t.r) ctx.rotate((t.r * Math.PI) / 180);
