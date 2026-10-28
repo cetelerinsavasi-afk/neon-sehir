@@ -752,6 +752,8 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     // paylaşılan fotoğraf çekimde önizlenenle BİREBİR aynıdır; üstüne yazı/çizim eklenir.
     const signed = await verifyShot(houseId, a, t);
     if (signed?.att && signed.att.type === 'housePhoto' && signed.att.houseId === houseId) {
+      // v136 — "Gönderi" olarak paylaşılırsa kare (dikey karenin üstü/altı kırpılır), yazı katmanı yok
+      if (a?.asPost === true) return { ...signed.att, sq: true };
       const ov = sanitizeOverlay(a?.overlay);
       if (ov.error) fail('invalid-argument', ov.error);
       const text = overlayText(ov.overlay);

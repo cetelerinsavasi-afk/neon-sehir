@@ -1760,9 +1760,11 @@ export function createHouseEngine(
     return ray.ray.intersectPlane(floorPlane, out);
   }
   // v97: oturulamayan, 2,5 m'den geniş eşya (perde, sahne seti…)
-  function isBigSetPiece(en) {
+  function isBigSetPiece(en, tallHit = false) {
     const def = CATALOG_MAP[en.data.k];
-    if (!def || def.seats?.length) return false;
+    // v136: oturulan büyük setlerde (haber stüdyosu gibi) de, dokunuş yüksekteki
+    // bir parçaya (arka duvar, vinç kolu…) geldiyse arkadaki zemine sayılır
+    if (!def || (def.seats?.length && !tallHit)) return false;
     const boxes = itemBoxes(def);
     if (!boxes.length) return false;
     let minX = Infinity;
@@ -1807,6 +1809,7 @@ export function createHouseEngine(
     const id = uid ? String(uid).slice(8) : null;
     return id && objs.has(id) && layerOk(id) ? id : null;
   }
+  let pickHitY = 0;
   function pickItem(e) {
     const botId = pickBotItem(e);
     if (botId) return botId;
@@ -1817,16 +1820,21 @@ export function createHouseEngine(
     });
     const hits = ray.intersectObjects(list, true);
     let flatHit = null;
+    pickHitY = 0;
     for (const h of hits) {
       const id = h.object.userData.itemId;
       if (!id) continue;
       // v114 — tavan modu açıkken sadece tavan eşyaları, kapalıyken sadece diğerleri
       if (mode === 'build' && !layerOk(id)) continue;
+      // v136: Gez'de saydamlaşmış (oyuncunun önünü kapattığı için x-ray) eşya
+      // dokunuşu yakalamaz — arkasında görünen zemine yürünür
+      if (mode !== 'build' && objs.get(id)?.faded) continue;
       const def = CATALOG_MAP[objs.get(id)?.data.k];
       if (def?.flat) {
         flatHit = flatHit || id;
         continue;
       }
+      pickHitY = h.point.y;
       return id;
     }
     return flatHit;
@@ -2100,7 +2108,7 @@ export function createHouseEngine(
         // geniş) önüne geçtiğinde dokunuş arkasındaki boş zemine sayılır; yaklaşınca
         // işlem butonu zaten çıkar. Oturulan eşyalar dokununca yine eşyaya götürür.
         const fp0 = floorPoint(e);
-        const aimedPast = en.data.p === 1 && Boolean(fp0) && isBigSetPiece(en) && !nearFootprint(id, fp0, 0.2);
+        const aimedPast = en.data.p === 1 && Boolean(fp0) && isBigSetPiece(en, pickHitY > 1.3) && !nearFootprint(id, fp0, 0.2);
         if (!aimedPast) {
           approachItem(id);
           return;
@@ -3026,7 +3034,7 @@ export function createHouseEngine(
       select(data.i);
       emitDesign();
     },
-    duplicateSelected(dir) {
+    duplicateSelected(dir, fromInv = false) {
       const e = selectedId && objs.get(selectedId);
       if (!e || !canEdit || objs.size >= MAX_ITEMS) return;
       // v92 — parça zemin/duvar: seçilenin hemen yanına (boş ilk hücreye) bir parça daha
@@ -3058,6 +3066,7 @@ export function createHouseEngine(
         delete data.p;
         delete data.o;
         delete data.m; // v132: kopya mağazadan (pazar ilanı tek)
+        if (fromInv) data.p = 1; // v136: envanterde varsa oradan
         normalizePlacement(data);
         const ne = buildEntry(data);
         objs.set(data.i, ne);
@@ -3066,11 +3075,12 @@ export function createHouseEngine(
         return;
       }
       pushUndo();
-      // kopya her zaman "deneme" olarak eklenir (satın alınmadan kullanılamaz)
+      // kopya "deneme" olarak eklenir; v136: envanterde aynısından varsa oradan (satın alınmış)
       const data = { ...e.data, i: newItemId(), x: e.data.x + 0.75, z: e.data.z + 0.75 };
       delete data.p;
       delete data.o;
       delete data.m; // v132: kopya mağazadan (pazar ilanı tek)
+      if (fromInv) data.p = 1;
       normalizePlacement(data);
       const ne = buildEntry(data);
       objs.set(data.i, ne);

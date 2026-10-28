@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { invalidateSixtagramFeed, useSixtagramFeed } from '../../hooks/useSixtagramFeed';
@@ -18,6 +18,7 @@ import { SixNavContext } from './sixNav';
 import { IgIcon } from './igIcons';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import { ensureOverlayFonts } from '../../../functions/photoOverlay.js';
+import { PullSpinner, usePullRefresh } from './usePullRefresh';
 import './SixtagramScreen.css';
 
 // =============================================================================
@@ -37,6 +38,15 @@ const TABS = [
   { id: 'profile', label: 'Profil', icon: null },
 ];
 const MEDIA_ORDER = Object.keys(MEDIA_TYPES);
+// v136 — Medya'da yeni içerik işareti: her kategoriye en son ne zaman bakıldığı (cihazda)
+const MEDIA_SEEN_KEY = 'sixMediaSeen_v1';
+function loadMediaSeen() {
+  try {
+    return JSON.parse(localStorage.getItem(MEDIA_SEEN_KEY) || '{}') || {};
+  } catch {
+    return {};
+  }
+}
 
 export default function SixtagramScreen() {
   const { user } = useAuth();
@@ -78,6 +88,35 @@ export default function SixtagramScreen() {
   useEffect(() => {
     ensureOverlayFonts(); // logo yazı tipi
   }, []);
+
+  // yeni medya işareti (başkalarının, son bakıştan sonra paylaştığı şarkı / röportaj / resim)
+  const [mediaSeen, setMediaSeen] = useState(loadMediaSeen);
+  const mediaNew = useMemo(() => {
+    const out = {};
+    feedPosts.forEach((p) => {
+      const k = p.attachment?.type;
+      if (MEDIA_TYPES[k] && p.uid !== myUid && Number(p.createdAtMs || 0) > Number(mediaSeen[k] || 0)) out[k] = true;
+    });
+    return out;
+  }, [feedPosts, mediaSeen, myUid]);
+  useEffect(() => {
+    if (tab !== 'media' || profile || !mediaNew[media]) return;
+    setMediaSeen((cur) => {
+      const nx = { ...cur, [media]: Date.now() };
+      try {
+        localStorage.setItem(MEDIA_SEEN_KEY, JSON.stringify(nx));
+      } catch {
+        /* depolama kapalı */
+      }
+      return nx;
+    });
+  }, [tab, media, profile, mediaNew]);
+  const anyMediaNew = Object.keys(mediaNew).length > 0;
+
+  // aşağı çekip yenileme (Anasayfa / Takip / Medya)
+  const mainRef = useRef(null);
+  const refresh = useCallback(() => setHomeRefreshKey((k) => k + 1), []);
+  const p2r = usePullRefresh(mainRef, refresh, tab !== 'profile' && !profile);
   const go = (id) => {
     if (id === 'share') {
       if (user) setComposeOpen(true);
@@ -125,7 +164,8 @@ export default function SixtagramScreen() {
           </button>
         </header>
 
-        <main className="six-main">
+        <main className="six-main" ref={mainRef}>
+          <PullSpinner {...p2r} />
           {tab === 'home' && (
             <>
               <StoryRow groups={homeStories} myUid={myUid} onOpen={(i) => openStories(homeStories, i)} />
@@ -138,6 +178,7 @@ export default function SixtagramScreen() {
                 {Object.entries(MEDIA_TYPES).map(([k, label]) => (
                   <button key={k} className={`six-chip${media === k ? ' on' : ''}`} onClick={() => setMedia(k)}>
                     {label}
+                    {mediaNew[k] && media !== k && <i className="six-chip-dot" aria-label="yeni" />}
                   </button>
                 ))}
               </div>
@@ -170,7 +211,10 @@ export default function SixtagramScreen() {
             return (
               <button key={id} className={`six-tabbtn${on ? ' on' : ''}`} onClick={() => go(id)} aria-label={label} title={label} disabled={id === 'share' && !user}>
                 {icon ? (
-                  <IgIcon n={icon} size={26} fill={on && icon === 'home'} stroke={on ? 2.4 : 1.9} />
+                  <span className="six-tab-ic">
+                    <IgIcon n={icon} size={26} fill={on && icon === 'home'} stroke={on ? 2.4 : 1.9} />
+                    {id === 'media' && anyMediaNew && !(tab === 'media' && !profile) && <i className="six-tab-dot" aria-label="yeni medya" />}
+                  </span>
                 ) : (
                   <span className={`six-tab-av${on ? ' on' : ''}`}>
                     <AvatarSvg avatar={player?.avatar} size={26} rounded />

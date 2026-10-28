@@ -1131,15 +1131,40 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     }
   };
 
+  // v136 — envanter + bu evdeki satın alınmış eşya toplamı kayıt boyunca değişmez; envanter ve ev
+  // anlık görüntüleri ayrı ayrı geldiği için ara anlarda yanlış sayı görünmesin diye toplam
+  // kısa bir süre oturduktan sonra kabul edilir (sayı zıplaması / kart kaybolup gelmesi yok).
+  const rawTotals = useMemo(() => {
+    const out = {};
+    new Set([...Object.keys(inv.items || {}), ...Object.keys(serverOwned)]).forEach((k) => {
+      out[k] = (inv.items?.[k] || 0) + (serverOwned[k] || 0);
+    });
+    return out;
+  }, [inv.items, serverOwned]);
+  const [stableTotals, setStableTotals] = useState(null);
+  const rawTotalsKey = JSON.stringify(rawTotals);
+  useEffect(() => {
+    const next = JSON.parse(rawTotalsKey);
+    let t;
+    setStableTotals((cur) => {
+      if (!cur) return next;
+      t = setTimeout(() => setStableTotals(next), 1500);
+      return cur;
+    });
+    return () => clearTimeout(t);
+  }, [rawTotalsKey]);
+  // kartların yeri sabit: ilk görüldüğü sırada kalır
+  const invOrderRef = useRef(new Map());
   const invView = useMemo(() => {
     const out = {};
-    const keys = new Set([...Object.keys(inv.items || {}), ...Object.keys(serverOwned), ...Object.keys(localOwned)]);
+    const totals = stableTotals || rawTotals;
+    const keys = new Set([...Object.keys(totals), ...Object.keys(localOwned)]);
     keys.forEach((k) => {
-      const n = (inv.items?.[k] || 0) - ((localOwned[k] || 0) - (serverOwned[k] || 0));
+      const n = (totals[k] || 0) - (localOwned[k] || 0);
       if (n > 0) out[k] = n;
     });
     return out;
-  }, [inv.items, serverOwned, localOwned]);
+  }, [stableTotals, rawTotals, localOwned]);
   const ownsSurface = (type, key) => FREE_SURFACES[type].includes(key) || (type === 'wall' ? inv.walls : inv.floors).includes(key);
   const cart = useMemo(() => {
     const lines = {};
@@ -1670,15 +1695,16 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
       })
       .catch((err) => setCameraShot((c) => (c?.at === at ? { at, error: err?.message || 'Fotoğraf çekilemedi.' } : c)));
   };
-  const shareCamera = async (overlay) => {
+  // v136 — Hikâye (dikey, yazı/çizimli) ya da Gönderi (kare, açıklamalı)
+  const shareCamera = async (overlay, { asPost = false, caption = '' } = {}) => {
     if (!cameraShot?.shot) return;
     setBusy(true);
     try {
-      await createSixtagramPost('', { type: 'housePhoto', houseId, shot: cameraShot.shot, sig: cameraShot.sig, ...(overlay ? { overlay } : {}) });
+      await createSixtagramPost(asPost ? caption : '', { type: 'housePhoto', houseId, shot: cameraShot.shot, sig: cameraShot.sig, ...(asPost ? { asPost: true } : overlay ? { overlay } : {}) });
       invalidateSixtagramFeed();
       setPanel(null);
       setCameraShot(null);
-      flash('📸 Hikâyende paylaşıldı!');
+      flash(asPost ? '📸 Gönderin paylaşıldı!' : '📸 Hikâyende paylaşıldı!');
     } catch (err) {
       flash(err?.message || 'Paylaşılamadı.');
     } finally {
@@ -1687,7 +1713,16 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   };
 
   const shelfItems = useMemo(() => CATALOG.filter((d) => d.cat === cat && !d.venueOnly), [cat]);
-  const invList = useMemo(() => Object.entries(invView).map(([k, n]) => ({ def: CATALOG_MAP[k], n })).filter((x) => x.def), [invView]);
+  const invList = useMemo(() => {
+    const ord = invOrderRef.current;
+    Object.keys(invView).forEach((k) => {
+      if (!ord.has(k)) ord.set(k, ord.size);
+    });
+    return Object.entries(invView)
+      .map(([k, n]) => ({ def: CATALOG_MAP[k], n }))
+      .filter((x) => x.def)
+      .sort((a, b) => ord.get(a.def.k) - ord.get(b.def.k));
+  }, [invView]);
   const others = online.filter((o) => o.uid !== user?.uid);
   const houseName = houseDoc?.name || info?.name || 'Ev';
   const myHolding = held?.itemId || null;
@@ -1999,13 +2034,13 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                 {/* v92 — parça zemin / duvar paneli: yanına bir parça daha (yön okları) */}
                 {sel.def?.tile ? (
                   <span className="hs-tile-dirs" title="Yanına bir parça daha ekle">
-                    <button onClick={() => engineRef.current?.duplicateSelected('l')} aria-label="Sola ekle">◀</button>
-                    {sel.def.tile !== 'wall' && <button onClick={() => engineRef.current?.duplicateSelected('u')} aria-label="İleri ekle">▲</button>}
-                    {sel.def.tile !== 'wall' && <button onClick={() => engineRef.current?.duplicateSelected('d')} aria-label="Geri ekle">▼</button>}
-                    <button onClick={() => engineRef.current?.duplicateSelected('r')} aria-label="Sağa ekle">▶</button>
+                    <button onClick={() => engineRef.current?.duplicateSelected('l', invView[sel.k] > 0)} aria-label="Sola ekle">◀</button>
+                    {sel.def.tile !== 'wall' && <button onClick={() => engineRef.current?.duplicateSelected('u', invView[sel.k] > 0)} aria-label="İleri ekle">▲</button>}
+                    {sel.def.tile !== 'wall' && <button onClick={() => engineRef.current?.duplicateSelected('d', invView[sel.k] > 0)} aria-label="Geri ekle">▼</button>}
+                    <button onClick={() => engineRef.current?.duplicateSelected('r', invView[sel.k] > 0)} aria-label="Sağa ekle">▶</button>
                   </span>
                 ) : (
-                  <button onClick={() => engineRef.current?.duplicateSelected()}>⧉ Bir tane daha</button>
+                  <button onClick={() => engineRef.current?.duplicateSelected(null, invView[sel.k] > 0)}>⧉ Bir tane daha</button>
                 )}
                 {/* v102 — satın alınmış kapı: ana (giriş) kapı yap */}
                 {!venue && sel.p === 1 && isDoorItemKey(sel.k) &&

@@ -130,7 +130,7 @@ export function httpsCallable(functions, name) {
           attachment = r;
         }
         if (data.attachment?.type === 'housePhoto') attachment = await houses.buildPhotoAttachment(request.auth.uid, data.attachment);
-        const story = attachment?.type === 'housePhoto';
+        const story = attachment?.type === 'housePhoto' && !attachment.sq;
         if (data.attachment?.type === 'song') {
           const r = await buildSongAttachment(fakeDb, request.auth.uid, data.attachment);
           if (r.error) throw Object.assign(new Error(r.error), { code: 'invalid-argument' });

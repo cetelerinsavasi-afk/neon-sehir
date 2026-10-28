@@ -436,11 +436,13 @@
   flex-direction: column;
   color: #fff;
   user-select: none;
+  overflow: hidden;
+  transition: transform 0.2s ease-out, opacity 0.2s;
 }
 .six-sv-bars {
   display: flex;
   gap: 4px;
-  padding: 8px 10px 0;
+  padding: 8px 8px 0;
 }
 .six-sv-bars i {
   flex: 1;
@@ -455,16 +457,34 @@
   background: #fff;
 }
 .six-sv-close {
-  position: absolute;
-  top: 16px;
-  right: 8px;
-  z-index: 3;
   background: none;
   border: 0;
   color: #fff;
   cursor: pointer;
-  padding: 6px;
+  padding: 4px;
+  display: grid;
+  place-items: center;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+}
+/* v136 — Instagram gibi: çubukların altında üst solda fotoğraf + ad + süre, sağda kapat */
+.six-sv-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  padding-bottom: 18px;
+  background: linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0));
+  pointer-events: none;
+}
+.six-sv-top button {
+  pointer-events: auto;
+}
+.six-sv-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 0 12px;
 }
 .six-sv-stage {
   position: relative;
@@ -542,7 +562,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px 12px;
+  padding: 6px 12px 14px;
 }
 .six-sv-who {
   display: flex;
@@ -554,42 +574,153 @@
   font: inherit;
   cursor: pointer;
   min-width: 0;
+  padding: 0;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
 }
 .six-sv-who b {
   font-size: 14px;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .six-sv-who small {
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 12px;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 13px;
 }
 .six-sv-av {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   overflow: hidden;
   flex: 0 0 auto;
-  box-shadow: 0 0 0 1.5px #fff;
+  background: #222;
 }
 .six-sv-views {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  border: 0;
+  background: none;
+  color: #fff;
+  font: inherit;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
+  padding: 4px 2px;
+  cursor: pointer;
+}
+.six-sv-views-av {
+  display: inline-flex;
+}
+.six-vh {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #222;
+  box-shadow: 0 0 0 2px #000;
+  margin-right: -7px;
+  display: grid;
+  place-items: center;
+}
+.six-sv-views-av:not(:empty) {
+  margin-right: 10px;
 }
 .six-sv-del {
-  background: rgba(255, 255, 255, 0.12);
+  background: none;
   border: 0;
   color: #fff;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   display: grid;
   place-items: center;
   cursor: pointer;
+}
+/* görüntüleyenler */
+.six-vw-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-end;
+  animation: six-vw-fade 0.15s ease-out;
+}
+.six-vw {
+  width: 100%;
+  max-height: 72%;
+  background: #262626;
+  border-radius: 16px 16px 0 0;
+  display: flex;
+  flex-direction: column;
+  animation: six-vw-up 0.22s ease-out;
+}
+.six-vw-grab {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: #555;
+  margin: 8px auto 4px;
+}
+.six-vw-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px 12px;
+  border-bottom: 1px solid #363636;
+  font-size: 15px;
+}
+.six-vw-head span {
+  margin-left: auto;
+  color: #a8a8a8;
+  font-size: 13px;
+}
+.six-vw-list {
+  overflow-y: auto;
+  padding: 6px 0 18px;
+}
+.six-vw-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  border: 0;
+  background: none;
+  color: #f5f5f5;
+  font: inherit;
+  font-size: 14px;
+  padding: 7px 16px;
+  cursor: pointer;
+  text-align: left;
+}
+.six-vw-row b {
+  font-weight: 600;
+}
+.six-vw-av {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #111;
+  flex: 0 0 auto;
+}
+.six-vw-empty {
+  text-align: center;
+  color: #a8a8a8;
+  font-size: 14px;
+  padding: 26px 16px;
+  margin: 0;
+}
+@keyframes six-vw-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes six-vw-fade {
+  from {
+    opacity: 0;
+  }
 }
 .post-att-housephoto-img.vert {
   object-fit: cover;
@@ -597,7 +728,7 @@
 /* v135.2 — hikâyede kişiler arası kaydırma */
 .six-sv-stage {
   perspective: 900px;
-  touch-action: pan-y;
+  touch-action: none;
 }
 .six-sv-slide {
   height: 100%;
@@ -627,4 +758,49 @@
     transform: translateX(-60%) rotateY(25deg);
     opacity: 0.3;
   }
+}
+
+/* v136 — aşağı çekip yenile */
+.six-p2r {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.six-p2r-ic.spin {
+  animation: six-p2r-spin 0.9s steps(12) infinite;
+}
+@keyframes six-p2r-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+/* v136 — yeni medya işareti */
+.six-tab-ic {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+}
+.six-tab-dot {
+  position: absolute;
+  left: 50%;
+  bottom: -8px;
+  margin-left: -2.5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ig-red);
+}
+.six-chip {
+  position: relative;
+}
+.six-chip-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ig-red);
+  box-shadow: 0 0 0 2px var(--ig-bg);
 }

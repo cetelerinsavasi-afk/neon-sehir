@@ -144,7 +144,7 @@ export function useHouseBots({ engineRef, engineKey, phase, houseId, houseDoc, d
         } else {
           tick(st, uid, d, now, dt);
         }
-        out.push({ uid, displayName: d.name, avatar: d.avatar, x: Math.round(st.x * 100) / 100, z: Math.round(st.z * 100) / 100, left: st.left, seat: st.seat ? `${st.seat.id}:${st.seat.idx}` : null, holdingVisible: null });
+        out.push({ uid, displayName: d.name, avatar: d.avatar, x: Math.round(st.x * 100) / 100, z: Math.round(st.z * 100) / 100, left: st.left, seat: st.seat ? `${st.seat.id}:${st.seat.idx}` : null, holdingVisible: build ? null : st.task?.carry || null });
         keys.push(d.ck);
         // konuşma (sırayla, aralıklı)
         if (!build && d.lines.length && now >= st.sayAt) {
@@ -153,7 +153,7 @@ export function useHouseBots({ engineRef, engineKey, phase, houseId, houseDoc, d
           st.sayAt = now + between(22_000, 38_000);
         }
       });
-      const key = out.map((o, n) => `${o.uid}:${o.displayName}:${keys[n]}:${o.x}:${o.z}:${o.seat}:${o.left}`).join('|');
+      const key = out.map((o, n) => `${o.uid}:${o.displayName}:${keys[n]}:${o.x}:${o.z}:${o.seat}:${o.left}:${o.holdingVisible || ''}`).join('|');
       if (key !== npcsRef.current.key) {
         npcsRef.current = out;
         npcsRef.current.key = key;
@@ -169,7 +169,7 @@ export function useHouseBots({ engineRef, engineKey, phase, houseId, houseDoc, d
         if (o) {
           o.botUid = uid;
           ordersRef.current = ordersRef.current.filter((x) => x !== o);
-          st.task = { kind: 'deliver', order: o, since: now, lastAim: 0 };
+          st.task = { kind: 'deliver', order: o, since: now, lastAim: 0, carry: o.product || null }; // v136: sipariş elinde
           standUp(st);
           st.path = [];
         }
@@ -187,7 +187,7 @@ export function useHouseBots({ engineRef, engineKey, phase, houseId, houseDoc, d
           }
           st.path = [];
           const o = st.task.order;
-          st.task = { kind: 'serving', until: now + 2500 };
+          st.task = { kind: 'serving', until: now + 2500, carry: o.product || null };
           serve(uid, d, o);
           return;
         }
@@ -214,6 +214,7 @@ export function useHouseBots({ engineRef, engineKey, phase, houseId, houseDoc, d
         return;
       }
       if (st.task?.kind === 'serving') {
+        if (st.task.carry && now > st.task.until - 1600) st.task.carry = null; // ürün oyuncuya verildi
         if (now < st.task.until) return;
         st.task = null;
         st.next = now; // hemen yerine / gezmeye

@@ -67,10 +67,13 @@ function renderHousePhoto(att, key) {
       // dikey açı korunur (yanlardan kırpılır).
       // v135 — hikâye fotoğrafı dikey (9:16), telefon ekranı gibi
       const a = housePhotoAspect(att);
-      const vert = Boolean(att.vert);
+      // v136 — gönderi (sq): dikey karenin ortası, kare
+      const vert = Boolean(att.vert) && !att.sq;
       const w = 540;
       const h = vert ? 960 : 540;
-      const cam = cropCam(att.cam || {}, a, vert ? PHOTO_ASPECT : 1);
+      let cam = cropCam(att.cam || {}, a, vert ? PHOTO_ASPECT : 1);
+      // gönderi: önizlenen dikey karenin tam ortası (üst/alt kırpılır)
+      if (att.sq && att.vert) cam = cropCam(cropCam(att.cam || {}, a, PHOTO_ASPECT), PHOTO_ASPECT, 1);
       const host = document.createElement('div');
       host.style.cssText = `position:fixed;left:-10000px;top:0;width:${w}px;height:${h}px;pointer-events:none;`;
       document.body.appendChild(host);
@@ -105,7 +108,7 @@ function renderHousePhoto(att, key) {
 }
 
 export default function HousePhoto({ attachment }) {
-  const key = JSON.stringify([attachment.houseId, attachment.cam, attachment.vert ? 1 : 0, attachment.overlay ? JSON.stringify(attachment.overlay).length : 0, attachment.people?.length, attachment.design?.items?.length, (attachment.people || []).map((p) => `${p.says?.length || 0}${p.holding || ''}${p.emote?.kind || ''}${p.emote?.at || ''}${p.x},${p.z}`)]);
+  const key = JSON.stringify([attachment.houseId, attachment.cam, attachment.vert ? 1 : 0, attachment.sq ? 1 : 0, attachment.overlay ? JSON.stringify(attachment.overlay).length : 0, attachment.people?.length, attachment.design?.items?.length, (attachment.people || []).map((p) => `${p.says?.length || 0}${p.holding || ''}${p.emote?.kind || ''}${p.emote?.at || ''}${p.x},${p.z}`)]);
   const [src, setSrc] = useState(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -120,5 +123,5 @@ export default function HousePhoto({ attachment }) {
   }, [key]);
   if (failed) return <div className="post-att-housephoto-empty">🏠</div>;
   if (!src) return <div className="post-att-housephoto-empty">Fotoğraf yükleniyor…</div>;
-  return <img className={`post-att-housephoto-img${attachment.vert ? ' vert' : ''}`} src={src} alt={attachment.houseName || 'Ev'} />;
+  return <img className={`post-att-housephoto-img${attachment.vert && !attachment.sq ? ' vert' : ''}`} src={src} alt={attachment.houseName || 'Ev'} />;
 }

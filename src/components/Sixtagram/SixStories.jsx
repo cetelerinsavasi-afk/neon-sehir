@@ -5,7 +5,7 @@ import PostAttachment from './PostAttachment';
 import ConfirmSheet from './ConfirmSheet';
 import { deleteSixtagramPost } from '../../services/gameActions';
 import { patchSixtagramFeedPost } from '../../hooks/useSixtagramFeed';
-import { flushStoryViews, isStorySeen, markStorySeen } from '../../hooks/useSixtagramSocial';
+import { flushStoryViews, isStorySeen, markStorySeen, useSixtagramPublicProfile } from '../../hooks/useSixtagramSocial';
 
 const HousePhoto = lazy(() => import('../HouseScreen/HousePhoto'));
 
@@ -14,7 +14,8 @@ const HousePhoto = lazy(() => import('../HouseScreen/HousePhoto'));
 //   • Sıra: önce kendi hikâyen, sonra izlemediklerin, en sonda izlediklerin;
 //     her grup kendi içinde takipçisi çoktan aza.
 //   • İzlenmemiş halka renkli, izlenmiş gri. Anasayfada izlenen, Takip'te de izlenmiş sayılır.
-//   • Hikâyede altta küçük fotoğraf + ad; kendi hikâyende kaç kişinin gördüğü.
+//   • Hikâyede üst solda fotoğraf + ad (Instagram gibi); kendi hikâyende altta kaç kişinin
+//     gördüğü, basınca görenler listesi.
 // =============================================================================
 const STORY_MS = 5500;
 export const isStoryPost = (p) => Boolean(p?.story);
@@ -127,15 +128,40 @@ function HousePhotoReady({ attachment, onReady }) {
   );
 }
 
-export function StoryViewer({ groups, start, startPi = null, myUid, onClose, onOpenProfile }) {
-  const [gi, setGi] = useState(start);
+// v136 — izlenecek sıra açılışta bir kez kurulur:
+//   • izlenmemiş (ya da kendi) hikâyeden açılınca: sadece izlenmemiş hikâyeler; bitince kapanır
+//   • izlenmiş birine basınca: o kişinin tüm hikâyeleri, sonra sıradaki izlenmiş kişiler
+function buildQueue(groups, start, myUid) {
+  const g0 = groups[start];
+  if (!g0) return [];
+  const unseenOf = (g) => g.posts.filter((p) => !isStorySeen(p, myUid));
+  const own = g0.uid === myUid;
+  if (!own && g0.seen) return groups.slice(start).filter((g) => g.uid !== myUid).map((g) => ({ ...g, posts: g.posts }));
+  const first = { ...g0, posts: own ? g0.posts : unseenOf(g0) };
+  const rest = groups
+    .slice(start + 1)
+    .filter((g) => g.uid !== myUid)
+    .map((g) => ({ ...g, posts: unseenOf(g) }))
+    .filter((g) => g.posts.length);
+  return [first, ...rest].filter((g) => g.posts.length);
+}
+
+export function StoryViewer({ groups: allGroups, start, startPi = null, myUid, onClose, onOpenProfile }) {
+  const [groups] = useState(() => {
+    const q = buildQueue(allGroups, start, myUid);
+    // gönderi avatarından belirli bir hikâyeyle açıldıysa (startPi) o kişinin tamamı
+    if (startPi != null && allGroups[start]) return [allGroups[start]];
+    return q.length ? q : allGroups[start] ? [allGroups[start]] : [];
+  });
+  const [gi, setGi] = useState(0);
   const g = groups[gi];
-  const firstUnseen = (grp) => Math.max(0, grp ? grp.posts.findIndex((p) => !isStorySeen(p, myUid)) : 0);
-  const [pi, setPi] = useState(() => (startPi != null ? startPi : groups[start]?.uid === myUid ? 0 : firstUnseen(groups[start])));
+  const [pi, setPi] = useState(() => startPi || 0);
   const [ready, setReady] = useState(false);
   const [paused, setPaused] = useState(false);
   const [askDel, setAskDel] = useState(false);
+  const [viewersOpen, setViewersOpen] = useState(false);
   const [dragX, setDragX] = useState(0);
+  const [dragY, setDragY] = useState(0);
   const [slide, setSlide] = useState('');
   const blockClick = useRef(false);
   const [deleted, setDeleted] = useState({});
@@ -157,53 +183,60 @@ export function StoryViewer({ groups, start, startPi = null, myUid, onClose, onO
   const next = () => {
     if (pi < posts.length - 1) setPi(pi + 1);
     else if (gi < groups.length - 1) {
+      setSlide('in-r');
       setGi(gi + 1);
-      setPi(groups[gi + 1].uid === myUid ? 0 : firstUnseen(groups[gi + 1]));
+      setPi(0);
     } else onClose();
   };
   const prev = () => {
     if (pi > 0) setPi(pi - 1);
     else if (gi > 0) {
+      setSlide('in-l');
       setGi(gi - 1);
       setPi(0);
     } else elapsed.current = 0;
   };
-  // v135.2 — kişiler arası geçiş: sağa/sola kaydır (o kişinin kalan hikâyeleri atlanır)
+  // kişiler arası geçiş: sağa/sola kaydır (o kişinin kalan hikâyeleri atlanır) · aşağı kaydır: kapat
   const goGroup = (d) => {
     const ng = gi + d;
-    if (ng < 0) {
-      setDragX(0);
-      return;
-    }
+    setDragX(0);
+    if (ng < 0) return undefined;
     if (ng >= groups.length) return onClose();
     setSlide(d > 0 ? 'in-r' : 'in-l');
     setGi(ng);
-    setPi(groups[ng].uid === myUid ? 0 : firstUnseen(groups[ng]));
-    setDragX(0);
+    setPi(0);
     return undefined;
   };
   const swipe = useRef(null);
   const onSwDown = (e) => {
     setPaused(true);
-    swipe.current = { x: e.clientX, y: e.clientY, t: Date.now(), drag: false };
+    swipe.current = { x: e.clientX, y: e.clientY, t: Date.now(), drag: null };
   };
   const onSwMove = (e) => {
     const sw = swipe.current;
     if (!sw) return;
     const dx = e.clientX - sw.x;
     const dy = e.clientY - sw.y;
-    if (!sw.drag && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) sw.drag = true;
-    if (sw.drag) setDragX(dx);
+    if (!sw.drag && Math.max(Math.abs(dx), Math.abs(dy)) > 12) sw.drag = Math.abs(dx) > Math.abs(dy) ? 'x' : dy > 0 ? 'y' : null;
+    if (sw.drag === 'x') setDragX(dx);
+    if (sw.drag === 'y') setDragY(Math.max(0, dy));
   };
   const onSwUp = (e) => {
     const sw = swipe.current;
     swipe.current = null;
-    if (!askDel) setPaused(false);
+    if (!askDel && !viewersOpen) setPaused(false);
     if (!sw?.drag) return;
     blockClick.current = true;
     setTimeout(() => (blockClick.current = false), 50);
     const dx = e.clientX - sw.x;
-    const fast = Math.abs(dx) / Math.max(1, Date.now() - sw.t) > 0.5;
+    const dy = e.clientY - sw.y;
+    const dt = Math.max(1, Date.now() - sw.t);
+    if (sw.drag === 'y') {
+      if (dy > 110 || (dy > 35 && dy / dt > 0.5)) onClose();
+      else setDragY(0);
+      return;
+    }
+    const fast = Math.abs(dx) / dt > 0.5;
     if (dx < -70 || (fast && dx < -25)) goGroup(1);
     else if (dx > 70 || (fast && dx > 25)) goGroup(-1);
     else setDragX(0);
@@ -233,6 +266,10 @@ export function StoryViewer({ groups, start, startPi = null, myUid, onClose, onO
     if (g && !posts.length) next();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [posts.length]);
+  useEffect(() => {
+    if (!g) onClose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [g]);
 
   if (!g || !post) return null;
   const pct = Math.min(1, elapsed.current / STORY_MS);
@@ -241,18 +278,32 @@ export function StoryViewer({ groups, start, startPi = null, myUid, onClose, onO
     patchSixtagramFeedPost(post.id, null);
     setDeleted((d) => ({ ...d, [post.id]: true }));
   };
+  const viewers = post.viewers || [];
+  const openWho = () => onOpenProfile?.({ uid: g.uid, name: g.name, avatar: g.avatar });
   return (
-    <div className="six-sv" role="dialog" aria-label="Hikâye">
-      <div className="six-sv-bars">
-        {posts.map((p, i) => (
-          <i key={p.id}>
-            <b style={{ width: `${i < pi ? 100 : i === pi ? pct * 100 : 0}%` }} />
-          </i>
-        ))}
+    <div className="six-sv" role="dialog" aria-label="Hikâye" style={dragY ? { transform: `translateY(${dragY}px) scale(${Math.max(0.85, 1 - dragY / 1600)})`, borderRadius: 18, opacity: Math.max(0.4, 1 - dragY / 700), transition: 'none' } : undefined}>
+      <div className="six-sv-top">
+        <div className="six-sv-bars">
+          {posts.map((p, i) => (
+            <i key={p.id}>
+              <b style={{ width: `${i < pi ? 100 : i === pi ? pct * 100 : 0}%` }} />
+            </i>
+          ))}
+        </div>
+        <div className="six-sv-head">
+          <button className="six-sv-who" onClick={openWho}>
+            <span className="six-sv-av">
+              <AvatarSvg avatar={g.avatar} size={32} rounded variant="headshot" />
+            </span>
+            <b>{own ? 'Hikâyen' : g.name}</b>
+            <small>{timeAgo(post.createdAtMs)}</small>
+          </button>
+          <span className="six-sp" />
+          <button className="six-sv-close" onClick={onClose} aria-label="Kapat">
+            <X size={26} />
+          </button>
+        </div>
       </div>
-      <button className="six-sv-close" onClick={onClose} aria-label="Kapat">
-        <X size={22} />
-      </button>
       <div
         className="six-sv-stage"
         onPointerDown={onSwDown}
@@ -268,33 +319,46 @@ export function StoryViewer({ groups, start, startPi = null, myUid, onClose, onO
         <button className="six-sv-zone l" onClick={() => !blockClick.current && prev()} aria-label="Önceki" />
         <button className="six-sv-zone r" onClick={() => !blockClick.current && next()} aria-label="Sonraki" />
       </div>
-      <div className="six-sv-foot">
-        <button className="six-sv-who" onClick={() => onOpenProfile?.({ uid: g.uid, name: g.name, avatar: g.avatar })}>
-          <span className="six-sv-av">
-            <AvatarSvg avatar={g.avatar} size={30} rounded variant="headshot" />
-          </span>
-          <b>{own ? 'Hikâyen' : g.name}</b>
-          <small>{timeAgo(post.createdAtMs)}</small>
-        </button>
-        <span className="six-sp" />
-        {own && (
-          <>
-            <span className="six-sv-views">
-              <Eye size={16} /> {(post.viewers || []).length.toLocaleString('tr-TR')}
+      {own && (
+        <div className="six-sv-foot">
+          <button
+            className="six-sv-views"
+            onClick={() => {
+              setPaused(true);
+              setViewersOpen(true);
+            }}
+          >
+            <span className="six-sv-views-av">
+              {viewers.slice(0, 3).map((u) => (
+                <ViewerHead key={u} uid={u} />
+              ))}
             </span>
-            <button
-              className="six-sv-del"
-              onClick={() => {
-                setPaused(true);
-                setAskDel(true);
-              }}
-              aria-label="Hikâyeyi sil"
-            >
-              <Trash2 size={16} />
-            </button>
-          </>
-        )}
-      </div>
+            <Eye size={17} />
+            <span>{viewers.length ? `${viewers.length.toLocaleString('tr-TR')} kişi gördü` : 'Henüz gören yok'}</span>
+          </button>
+          <span className="six-sp" />
+          <button
+            className="six-sv-del"
+            onClick={() => {
+              setPaused(true);
+              setAskDel(true);
+            }}
+            aria-label="Hikâyeyi sil"
+          >
+            <Trash2 size={18} />
+          </button>
+        </div>
+      )}
+      {viewersOpen && (
+        <ViewersSheet
+          uids={viewers}
+          onClose={() => {
+            setViewersOpen(false);
+            setPaused(false);
+          }}
+          onOpenProfile={onOpenProfile}
+        />
+      )}
       {askDel && (
         <ConfirmSheet
           title="Hikâye silinsin mi?"
@@ -306,6 +370,62 @@ export function StoryViewer({ groups, start, startPi = null, myUid, onClose, onO
           }}
         />
       )}
+    </div>
+  );
+}
+
+function ViewerHead({ uid }) {
+  const prof = useSixtagramPublicProfile(uid);
+  return (
+    <span className="six-vh">
+      <AvatarSvg avatar={prof?.avatar || null} size={22} rounded variant="headshot" />
+    </span>
+  );
+}
+function ViewerRow({ uid, onOpen }) {
+  const prof = useSixtagramPublicProfile(uid);
+  const name = prof?.displayName || '…';
+  return (
+    <button className="six-vw-row" onClick={() => onOpen({ uid, name, avatar: prof?.avatar || null })}>
+      <span className="six-vw-av">
+        <AvatarSvg avatar={prof?.avatar || null} size={44} rounded variant="headshot" />
+      </span>
+      <b>{name}</b>
+    </button>
+  );
+}
+// kendi hikâyeni görenler (Instagram "Etkinlik" sayfası gibi alttan açılır)
+function ViewersSheet({ uids, onClose, onOpenProfile }) {
+  const [shown, setShown] = useState(30);
+  const list = [...uids].reverse(); // en son görenler üstte
+  return (
+    <div className="six-vw-bg" onClick={onClose} onPointerDown={(e) => e.stopPropagation()}>
+      <div className="six-vw" onClick={(e) => e.stopPropagation()}>
+        <i className="six-vw-grab" />
+        <div className="six-vw-head">
+          <Eye size={18} /> <b>{uids.length.toLocaleString('tr-TR')}</b>
+          <span>Görüntüleyenler</span>
+        </div>
+        <div
+          className="six-vw-list"
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            if (el.scrollTop + el.clientHeight > el.scrollHeight - 80) setShown((n) => Math.min(list.length, n + 30));
+          }}
+        >
+          {list.length === 0 && <p className="six-vw-empty">Hikâyeni henüz kimse görmedi.</p>}
+          {list.slice(0, shown).map((u) => (
+            <ViewerRow
+              key={u}
+              uid={u}
+              onOpen={(t) => {
+                onClose();
+                onOpenProfile?.(t);
+              }}
+            />
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

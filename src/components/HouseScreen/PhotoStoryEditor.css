@@ -391,3 +391,98 @@
 .pse-send:disabled {
   opacity: 0.5;
 }
+
+/* v136 — Hikâye / Gönderi seçimi */
+.pse-kinds {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+  gap: 26px;
+  padding: 10px 0 12px;
+}
+.pse-kinds button {
+  border: 0;
+  background: none;
+  color: rgba(255, 255, 255, 0.5);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+.pse-kinds button.on {
+  color: #fff;
+}
+.pse-post {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  margin: 0 auto;
+  max-height: 100%;
+  overflow-y: auto;
+}
+.pse-top.static {
+  position: static;
+  background: none;
+  padding: 6px 4px 10px;
+}
+.pse-post-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-left: 4px;
+}
+.pse-post-share {
+  border: 0;
+  background: none;
+  color: #4a9cff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.pse-post-share:disabled {
+  opacity: 0.45;
+}
+.pse-post-photo {
+  position: relative;
+  flex: 0 0 auto;
+  overflow: hidden;
+  background: #111;
+}
+.pse-post-photo > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  pointer-events: none;
+}
+.pse-post-cap {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 14px 8px;
+  border-bottom: 1px solid #262626;
+  touch-action: auto;
+}
+.pse-post-cap textarea {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: none;
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.4;
+  padding: 4px 0;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.pse-post-cap textarea::placeholder {
+  color: #8e8e8e;
+}

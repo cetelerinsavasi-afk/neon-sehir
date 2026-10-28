@@ -201,6 +201,11 @@ test('v135 hikâye fotoğrafı: çekimde imzalanan ek paylaşımda AYNEN kullan�
   assert.deepEqual(att.people, shot.att.people);
   assert.deepEqual(att.design, shot.att.design);
   assert.equal(att.overlay.texts[0].t, 'Selam');
+  // v136 — gönderi olarak: kare, yazı katmanı yok, aynı kare
+  const post = await h.houses.buildPhotoAttachment('sahip', { houseId: id, shot: shot.shot, sig: shot.sig, asPost: true, overlay: { texts: [{ t: 'Yok', x: 1, y: 1 }] } });
+  assert.equal(post.sq, true);
+  assert.equal(post.overlay, undefined);
+  assert.deepEqual(post.people, shot.att.people);
   // imza bozulursa eski yol (odada olmak gerekir)
   await assert.rejects(h.houses.buildPhotoAttachment('sahip', { houseId: id, shot: shot.shot.replace('Foto', 'Fot0'), sig: shot.sig, cam }), /evde olmalısın/);
 });

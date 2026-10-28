@@ -148,6 +148,8 @@ export default function PhotoStoryEditor({ img, loading, error, busy, onShare, o
   const [pen, setPen] = useState({ c: 1, k: 0, w: 14 }); // k: 0 kalem · 1 fosforlu · 2 neon · 3 silgi
   const [guide, setGuide] = useState({ v: false, h: false });
   const [trash, setTrash] = useState(null); // null | { hot }
+  const [kind, setKind] = useState('story'); // v136: 'story' (dikey, yazı/çizim) | 'post' (kare, açıklama)
+  const [caption, setCaption] = useState('');
   const [, setFontTick] = useState(0);
   const curRef = useRef(null);
   const ptrs = useRef(new Map());
@@ -322,7 +324,7 @@ export default function PhotoStoryEditor({ img, loading, error, busy, onShare, o
       patchText(g.i, { z: Math.round(clamp((g.z0 * d) / Math.max(10, g.d0), OVERLAY_Z_MIN, OVERLAY_Z_MAX)), r: Math.round(r) });
       return;
     }
-    if (g.pinch) return;
+    if (g.pinch || !Number.isFinite(g.sx) || !Number.isFinite(g.ox)) return;
     const dx = x - g.sx;
     const dy = y - g.sy;
     if (!g.moved && Math.hypot(dx, dy) < 10) return;
@@ -357,7 +359,13 @@ export default function PhotoStoryEditor({ img, loading, error, busy, onShare, o
     }
     const g = gest.current;
     if (ptrs.current.size > 0) {
-      if (g?.pinch) gest.current = { ...g, pinch: false, i: g.i, done: true };
+      // v136: iki parmaktan biri kalkınca kalan parmak yazıyı kaldığı yerden sürükler
+      // (önceden başlangıç noktası kayboluyordu → yazı sol üste fırlıyordu)
+      if (g?.pinch && g.i >= 0 && textsRef.current[g.i]) {
+        const rest = [...ptrs.current.values()][0];
+        const t = textsRef.current[g.i];
+        gest.current = { i: g.i, sx: rest.x, sy: rest.y, ox: t.x, oy: t.y, t0: 0, moved: true, done: true };
+      }
       return;
     }
     gest.current = null;
@@ -380,7 +388,7 @@ export default function PhotoStoryEditor({ img, loading, error, busy, onShare, o
     patchText(i, { z: Math.round(clamp(t.z * (e.deltaY < 0 ? 1.08 : 0.93), OVERLAY_Z_MIN, OVERLAY_Z_MAX)) });
   };
 
-  const share = () => onShare(texts.length || strokes.length ? { texts, strokes } : null);
+  const share = () => (kind === 'post' ? onShare(null, { asPost: true, caption: caption.trim() }) : onShare(texts.length || strokes.length ? { texts, strokes } : null));
 
   // ---- yazı düzenleme önizlemesi (DOM — aynı yazı tipi/renk) --------------------------
   const ef = edit ? OVERLAY_FONTS[edit.f] || OVERLAY_FONTS[0] : null;
@@ -401,6 +409,32 @@ export default function PhotoStoryEditor({ img, loading, error, busy, onShare, o
   return createPortal(
     <div className="pse-root" onClick={halt} onPointerDown={halt} role="dialog" aria-label="Hikâye fotoğrafı">
       <div className="pse-stage" ref={stageRef}>
+        {kind === 'post' && mode === 'view' && (
+          <div className="pse-post" style={{ width: size.w }}>
+            <div className="pse-top static">
+              <button className="pse-ic" onClick={onClose} aria-label="Kapat">
+                <I n="close" />
+              </button>
+              <b className="pse-post-title">Yeni gönderi</b>
+              <span className="pse-sp" />
+              <button className="pse-post-share" disabled={!img || busy} onClick={share}>
+                {busy ? 'Paylaşılıyor…' : 'Paylaş'}
+              </button>
+            </div>
+            <div className="pse-post-photo" style={{ width: size.w, height: size.w }}>
+              {img && <img src={img} alt="" draggable={false} />}
+              {loading && <div className="pse-loading">📸</div>}
+              {error && !loading && <div className="pse-loading pse-err">{error}</div>}
+            </div>
+            <div className="pse-post-cap" onPointerDown={halt}>
+              <span className="pse-story-av">
+                <AvatarSvg avatar={player?.avatar} size={30} rounded />
+              </span>
+              <textarea value={caption} maxLength={500} placeholder="Açıklama ekle…" onChange={(e) => setCaption(e.target.value)} rows={3} />
+            </div>
+          </div>
+        )}
+        {!(kind === 'post' && mode === 'view') && (
         <div className="pse-photo" style={{ width: size.w, height: size.h }}>
           {img && <img src={img} alt="" draggable={false} />}
           {loading && <div className="pse-loading">📸</div>}
@@ -551,7 +585,19 @@ export default function PhotoStoryEditor({ img, loading, error, busy, onShare, o
             </div>
           )}
         </div>
+        )}
       </div>
+      {/* v136 — Instagram gibi: çekimden sonra nasıl paylaşılacağı altta seçilir */}
+      {mode === 'view' && !trash && (
+        <div className="pse-kinds">
+          <button className={kind === 'post' ? 'on' : ''} onClick={() => setKind('post')}>
+            GÖNDERİ
+          </button>
+          <button className={kind === 'story' ? 'on' : ''} onClick={() => setKind('story')}>
+            HİKÂYE
+          </button>
+        </div>
+      )}
     </div>,
     document.body
   );

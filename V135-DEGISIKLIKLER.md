@@ -40,10 +40,25 @@ Bu paketteki dosyaları proje klasörünün (neon-sehir) üstüne kopyala (aynı
 | Gönderi ve hikâye silme onaylı | ConfirmSheet.jsx |
 | Medya'dayken Medya'ya tekrar basınca sıradaki kategori | SixtagramScreen.jsx |
 
+## v136 eklemeleri
+| Değişiklik | Dosya |
+|---|---|
+| Tasarla: envanterden eşya koyarken kartlar yer değiştirmiyor, sayı zıplamıyor (kartlar ilk görüldüğü sırada sabit; envanter ve ev kaydı arasındaki ara anlar yok sayılır) | HouseScreen.jsx |
+| "Bir tane daha" / parça yön okları: envanterde aynısı varsa oradan konur (yeniden satın alınmaz) | HouseScreen.jsx, houseEngine.js |
+| Gez: oyuncunun önünde saydamlaşan eşya dokunuşu yakalamaz; büyük setlerin (haber stüdyosu duvarı, vinç) yüksek kısmına dokununca arkadaki zemine yürünür | houseEngine.js |
+| Fotoğraf: altta HİKÂYE / GÖNDERİ seçimi; gönderi kare (dikey karenin ortası), açıklamalı, akışta normal gönderi | PhotoStoryEditor, HouseScreen, HousePhoto, houses.js, index.js |
+| Hikâye yazısı iki parmakla büyütülürken bir parmak kalkınca sol üste fırlaması düzeltildi | PhotoStoryEditor.jsx |
+| Hikâyede ad + fotoğraf üst solda; kendi hikâyende altta "X kişi gördü", basınca görenler listesi | SixStories.jsx, SixtagramScreen.css |
+| İzlenmemiş hikâyeden açınca sadece yeniler oynar, bitince kapanır; izlenmişe basınca o kişinin hepsi | SixStories.jsx |
+| Hikâyeyi aşağı kaydırınca kapanır · bildirimlerde sol kenardan sağa çekince geri | SixStories.jsx, NotificationsPanel |
+| Akışı aşağı çekince Instagram'daki dönen yuvarlak (önbelleği zorlamaz) | usePullRefresh.jsx (yeni) |
+| Medya'da yeni şarkı / röportaj / resim varsa alt Medya ikonunda ve kategoride kırmızı nokta | SixtagramScreen.jsx |
+| Garson siparişi getirirken elinde taşır | houseBots.js |
+
 ## Firestore tasarrufu
 - Sekmeler aynı akış isteğini kullanır (son 150 gönderi, 90 sn önbellek) — yeni dinleyici yok.
 - Takip edilenler/takipçiler zaten dinlenen `sixtagramUserLikes/{uid}` belgesinde; başka oyuncunun profil sayaçları bir kez okunur, 2 dk önbellekte.
 - Hikâye "izlendi": cihazda tutulur, görüntülenmeler izleyici kapanınca TEK istekle gönderilir; okuma yapılmaz.
 
-Kontrol: oxlint (hata yok), vite build başarılı, functions testleri 511/511 (yeni: scripts/v135.test.mjs).
+Kontrol: oxlint (hata yok), vite build başarılı, functions testleri 511/511 (v136 gönderi testi eklendi) (yeni: scripts/v135.test.mjs).
 Önizleme: `npm run preview:gangs` → /v135-house.html (stüdyo, tuval, kamera) · /v135-six.html (Sixtagram).

@@ -22233,7 +22233,8 @@ export const createSixtagramPost = onCall(async (request) => {
   const profileRef = db.collection('sixtagramProfiles').doc(uid);
   // v135 — mekânda çekilen fotoğraflar HİKÂYE olarak paylaşılır (Anasayfa/Takip üstü);
   // hikâyeler yazarın takipçi sayısına göre sıralanır (paylaşım anındaki sayı)
-  const isStory = Boolean(builtAttachment && STORY_TYPES.includes(builtAttachment.type));
+  // v136: kare (sq) ev fotoğrafı normal gönderidir
+  const isStory = Boolean(builtAttachment && STORY_TYPES.includes(builtAttachment.type) && !builtAttachment.sq);
   const [userSnap, profSnap] = await Promise.all([db.collection('users').doc(uid).get(), isStory ? profileRef.get() : Promise.resolve(null)]);
   const user = userSnap.data() || {};
   const nowMs = Date.now();

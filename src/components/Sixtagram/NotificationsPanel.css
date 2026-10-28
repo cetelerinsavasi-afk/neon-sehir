@@ -12,6 +12,12 @@
   font-family: -apple-system, 'Helvetica Neue', 'Segoe UI', Roboto, Arial, sans-serif;
   padding-top: env(safe-area-inset-top, 0px);
   animation: ig-nt-in 0.2s ease-out;
+  touch-action: pan-y;
+  transition: transform 0.2s ease-out;
+  box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
+}
+.ig-nt.drag:not(.leaving) {
+  transition: none;
 }
 @keyframes ig-nt-in {
   from {
