@@ -166,7 +166,7 @@ export default function ListTab({ membership, official = null, onOpen }) {
             members={intel?.memberCount || 0}
             leader={intel?.baskanCode}
             leaderIcon="⭐"
-            mine={Boolean(ms.intelRosterId)}
+            mine={Boolean(ms.intelRosterId || official)}
             action={
               ms.intelRosterId ? (
                 <Btn small onClick={() => onOpen('intel')}>
@@ -174,7 +174,7 @@ export default function ListTab({ membership, official = null, onOpen }) {
                 </Btn>
               ) : official ? (
                 <Btn small onClick={() => onOpen('intel')}>
-                  🏛️ Yetkili gir
+                  Aç
                 </Btn>
               ) : ms.intelAppId ? (
                 <Btn small kind="ghost" onClick={() => setCancelApp(true)}>

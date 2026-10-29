@@ -24,6 +24,7 @@ import IntelTab from './tabs/IntelTab';
 import { WatchWarsList } from './WatchWars';
 import { BiatTag } from './Biat';
 import { useBelediyeChatUnread } from '../../hooks/useBelediyeChatUnread';
+import { usePlayerSelect } from '../../hooks/usePlayer';
 
 const OFFICIAL_TITLES = { bsk: 'Belediye Başkanı', yrd1: 'Belediye Başkan Yardımcısı', yrd2: 'Belediye Başkan Yardımcısı', guv: 'Teşkilat Bakanı' };
 
@@ -49,7 +50,9 @@ export default function GangShell({ membership }) {
   // v136: Belediye Başkanı / yardımcıları / Teşkilat Bakanı — teşkilata YETKİLİ olarak girer
   const { actorId, world } = useGang();
   const { data: staff } = useDocData(!realIntel && world === 'live' && actorId ? `belediyeStaff/${actorId}` : null);
-  const official = !realIntel && OFFICIAL_TITLES[staff?.seat] ? { seat: staff.seat, title: OFFICIAL_TITLES[staff.seat] } : null;
+  const mySeat = usePlayerSelect((p) => p?.belediyeSeat || null); // users.belediyeSeat (yedek)
+  const seat = world === 'live' ? (OFFICIAL_TITLES[staff?.seat] ? staff.seat : OFFICIAL_TITLES[mySeat] ? mySeat : null) : null;
+  const official = !realIntel && seat ? { seat, title: OFFICIAL_TITLES[seat] } : null;
   const inIntel = realIntel || Boolean(official);
   const [org, setOrg] = useState(inGang || !inIntel ? 'gang' : 'intel');
   // v110: Çeteler butonuna basınca her zaman 'Çeteler' sekmesi açık gelir
@@ -95,7 +98,7 @@ export default function GangShell({ membership }) {
     <div className="gx-shell">
       <div className="gx-shell-body">
         {org === 'gang' && inGang ? (
-          <GangViews membership={ms} tab={activeTab} onOpen={open} />
+          <GangViews membership={ms} official={official} tab={activeTab} onOpen={open} />
         ) : org === 'intel' && inIntel ? (
           <IntelViews membership={ms} official={official} tab={activeTab} onOpen={open} />
         ) : !member && activeTab === 'savas' ? (
@@ -169,9 +172,9 @@ function OrgHeader({ logo, name, rank, prestige, kasa, kasaMidnight = false, int
   );
 }
 
-function GangViews({ membership, tab, onOpen }) {
+function GangViews({ membership, official = null, tab, onOpen }) {
   const d = useGangData(membership);
-  if (tab === 'ceteler') return <ListTab membership={membership} onOpen={onOpen} />;
+  if (tab === 'ceteler') return <ListTab membership={membership} official={official} onOpen={onOpen} />;
   if (!d.gang) return <div className="gx-loading">Yükleniyor…</div>;
   if (d.gang.status !== 'active') return <div className="gx-loading">Bu çete dağıldı.</div>;
   return (

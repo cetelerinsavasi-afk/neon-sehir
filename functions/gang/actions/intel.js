@@ -493,8 +493,9 @@ export function createIntelActions(core) {
   const OFFICIAL_SEATS = { bsk: 'Belediye Başkanı', yrd1: 'Belediye Başkan Yardımcısı', yrd2: 'Belediye Başkan Yardımcısı', guv: 'Teşkilat Bakanı' };
   async function officialOf(uid, tx = null) {
     const ref = core.db.doc(`belediyeStaff/${uid}`);
-    const s = tx ? await tx.get(ref) : await ref.get();
-    const seat = s.data()?.seat;
+    const uref = core.db.doc(`users/${uid}`);
+    const [s, u] = tx ? await Promise.all([tx.get(ref), tx.get(uref)]) : await Promise.all([ref.get(), uref.get()]);
+    const seat = OFFICIAL_SEATS[s.data()?.seat] ? s.data().seat : u.data()?.belediyeSeat; // yedek: users.belediyeSeat
     return OFFICIAL_SEATS[seat] ? { seat, title: OFFICIAL_SEATS[seat] } : null;
   }
 

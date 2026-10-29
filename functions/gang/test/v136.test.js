@@ -59,6 +59,11 @@ test('v136: belediye yetkilisi teşkilat Genel sohbetine yazar (ad + unvan), rü
   assert.equal(msg.uid, may1);
   await h.fails(may1, 'sendIntelChat', { channel: 'yonetim', text: 'x' });
   await h.fails(clerk, 'sendIntelChat', { channel: 'genel', text: 'x' });
+  // yedek: belediyeStaff belgesi yoksa users.belediyeSeat
+  const yrd = await h.persona({ displayName: 'Yard', gold: 1_000_000, power: 1000, reputation: 50 });
+  await h.db.doc(`users/${yrd}`).set({ displayName: 'Yard', belediyeSeat: 'yrd1' }, { merge: true });
+  await h.act(yrd, 'sendIntelChat', { channel: 'genel', text: 'yardımcı' });
+  assert.ok(Object.values(h.db._dump('gangWorlds/test/intelChat_genel/')).some((m) => m.text === 'yardımcı' && m.title === 'Belediye Başkan Yardımcısı'));
 });
 
 async function cop(h, name, rank, prestige) {
