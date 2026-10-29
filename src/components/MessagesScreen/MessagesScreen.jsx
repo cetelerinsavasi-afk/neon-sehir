@@ -5,7 +5,7 @@ import './MessagesScreen.css';
 
 function formatTime(ts) {
   if (!ts?.toDate) return '';
-  return ts.toDate().toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' });
+  return ts.toDate().toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul', dateStyle: 'short', timeStyle: 'short' });
 }
 
 export default function MessagesScreen() {

@@ -1,11 +1,16 @@
 // Platform tespiti (Web / Android TWA) — diğer tüm modüllerden ÖNCE,
 // render'dan önce bir kez çalışsın diye en üstte. Sadece okur, UI'a
 // dokunmaz (bkz. src/lib/platform.js).
+// v137 — ortak saat: Date.now() sunucu saatine göre düzeltilir (en önce yüklenmeli)
+import './lib/serverClock.js'
 import './lib/platform.js'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
+import { startServerClockSync } from './lib/serverClockSync.js'
+
+startServerClockSync()
 
 // PWA — "ana ekrana ekle" davranışının çalışabilmesi için minimal bir
 // service worker kaydediyoruz (bkz. public/sw.js).

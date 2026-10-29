@@ -8,7 +8,7 @@ function istanbulDateKey() {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(new Date());
+  }).format(new Date(Date.now()));
 }
 
 // Backend'deki istanbulPrayerWindow() ile birebir aynı mantık: günü 5
@@ -19,7 +19,7 @@ export function currentPrayerWindow() {
       timeZone: 'Europe/Istanbul',
       hour: '2-digit',
       hour12: false,
-    }).format(new Date())
+    }).format(new Date(Date.now()))
   );
   if (hour < 12) return 1;
   if (hour < 15) return 2;

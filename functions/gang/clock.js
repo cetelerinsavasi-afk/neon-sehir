@@ -17,6 +17,7 @@ import { readBiatLinks, foldBiatTotals, biatWarPatch } from './actions/wars.js';
 
 const LIVE_GRACE_MS = 45 * 1000; // canlıda 00:00'dan sonra geç kalan zar yazımları için tampon
 const TICK_LEASE_MS = 9 * 60 * 1000;
+const TICK_MAX_FAILED_ATTEMPTS = 3; // v137: bundan sonra hatalı gün de kapanır
 const MAX_CATCHUP_DAYS = 40;
 
 export function createClock(core, actions) {
@@ -55,7 +56,7 @@ export function createClock(core, actions) {
       const snap = await tx.get(ref);
       const t = snap.data();
       const real = core.deps.realNow ? core.deps.realNow() : Date.now();
-      if (t?.status === 'done') return 'done';
+      if (t?.status === 'done' || t?.status === 'done_with_errors') return 'done';
       if (t?.status === 'running' && t.leaseUntil > real) return 'busy';
       tx.set(ref, { status: 'running', leaseUntil: real + TICK_LEASE_MS, attempts: FV.increment(1), startedAt: real }, { merge: true });
       return 'acquired';
@@ -1635,11 +1636,17 @@ export function createClock(core, actions) {
     });
     await safe(ctx, 'trucks-depart', () => departTrucks(ctx));
 
-    const ok = !(ctx.errors && ctx.errors.length);
+    const clean = !(ctx.errors && ctx.errors.length);
+    // v137: aynı gün 3 denemede de bir adım hata verdiyse gün yine de kapanır (hatalar
+    // kayıtta kalır) — tek bir bozuk adım yüzünden bütün çete dünyası (kalkışlar,
+    // duyurular, saldırılar) durmasın. Geçici hatalar ilk denemelerde düzelir.
+    const attempts = clean ? 0 : Number((await ctx.ref.tick(dayKey).get()).data()?.attempts || 0);
+    const ok = clean || attempts >= TICK_MAX_FAILED_ATTEMPTS;
     await ctx.ref.tick(dayKey).set(
-      { status: ok ? 'done' : 'failed', leaseUntil: 0, finishedAtMs: Date.now(), errors: ctx.errors || [], prev },
+      { status: clean ? 'done' : ok ? 'done_with_errors' : 'failed', leaseUntil: 0, finishedAtMs: Date.now(), errors: ctx.errors || [], prev },
       { merge: true }
     );
+    if (!clean) console.error('gang tick hatalı', worldId, dayKey, `deneme ${attempts}`, JSON.stringify(ctx.errors));
     if (ok) {
       await db.runTransaction(async (tx) => {
         const w = await tx.get(ctx.ref.world());

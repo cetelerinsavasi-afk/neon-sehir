@@ -86,7 +86,7 @@ export default function DeleteAccountRequest() {
       <p className="home-section-title">Hesap</p>
       {pending ? (
         <p className="del-acc-pending">
-          🗑️ Hesap silme talebin alındı ({new Date(pending.createdAtMs || Date.now()).toLocaleDateString('tr-TR')}). Yönetici inceledikten sonra hesabın
+          🗑️ Hesap silme talebin alındı ({new Date(pending.createdAtMs || Date.now()).toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul' })}). Yönetici inceledikten sonra hesabın
           silinecek; vazgeçtiysen {SUPPORT_EMAIL} adresine yaz.
         </p>
       ) : null}

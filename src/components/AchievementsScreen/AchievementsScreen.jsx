@@ -46,7 +46,7 @@ export default function AchievementsScreen() {
               <span className="ach-body">
                 <b>{a.title}</b>
                 <span>{a.desc}</span>
-                {at && <em>✓ {new Date(at).toLocaleDateString('tr-TR')} tarihinde kazanıldı</em>}
+                {at && <em>✓ {new Date(at).toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul' })} tarihinde kazanıldı</em>}
               </span>
               <span className="ach-reward">
                 {at ? '✓' : `+${a.reward}`}

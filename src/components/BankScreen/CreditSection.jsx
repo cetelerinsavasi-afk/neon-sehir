@@ -182,7 +182,7 @@ export default function CreditSection() {
                   <span>{termDays} günde geri ödeyeceğin</span>
                   <b>{fmt(owed)}</b>
                   <span>Son ödeme</span>
-                  <b>{new Date(Date.now() + termDays * 86_400_000).toLocaleDateString('tr-TR')}</b>
+                  <b>{new Date(Date.now() + termDays * 86_400_000).toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul' })}</b>
                 </div>
               )}
               <button
@@ -211,7 +211,7 @@ export default function CreditSection() {
                   {vehicleDisplayName(v)} {v.seizedByBank && <em className="cr-seized">EL KONULDU</em>}
                 </span>
                 <span className="cr-note">
-                  Kalan borç: {fmt(remaining)} · Vade: {v.loanDueAt?.toDate?.().toLocaleDateString('tr-TR') || '-'}
+                  Kalan borç: {fmt(remaining)} · Vade: {v.loanDueAt?.toDate?.().toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul' }) || '-'}
                 </span>
                 <QuantityStepper
                   value={legacyRepay[v.id] || 0}

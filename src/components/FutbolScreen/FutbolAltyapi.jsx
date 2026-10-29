@@ -51,8 +51,7 @@ function dayKeyOf(entry) {
     ? entry.createdAt.seconds * 1000
     : null;
   if (!ms) return null;
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  return new Date(ms + 3 * 3600_000).toISOString().slice(0, 10); // v137: İstanbul günü
 }
 
 function GrowthLogSection({ teamId }) {

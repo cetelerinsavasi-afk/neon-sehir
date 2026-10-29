@@ -125,7 +125,7 @@ function gaveSermonToday(imam) {
   if (!imam?.lastNasihatAt) return false;
   const at = imam.lastNasihatAt.toDate?.() ?? null;
   if (!at) return false;
-  return istanbulDateKey(at) === istanbulDateKey(new Date());
+  return istanbulDateKey(at) === istanbulDateKey(new Date(Date.now()));
 }
 
 function drawFloor(c) {

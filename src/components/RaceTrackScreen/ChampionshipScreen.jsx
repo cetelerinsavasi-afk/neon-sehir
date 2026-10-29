@@ -42,7 +42,7 @@ function tierLabel(i) {
 }
 
 function untilMidnight() {
-  const now = new Date();
+  const now = new Date(Date.now());
   const ist = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
   const next = new Date(ist);
   next.setHours(24, 0, 0, 0);

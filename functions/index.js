@@ -8383,6 +8383,12 @@ export const expireOldFactoryShareListings = onSchedule({ schedule: 'every 60 mi
 });
 
 // ---------------------------------------------------------------------------
+// v137 — ORTAK SAAT: istemci telefon saatini sunucu saatine göre düzeltir
+// (src/lib/serverClock.js). Okuma/yazma yok; oturum başına birkaç çağrı.
+// ---------------------------------------------------------------------------
+export const serverTime = onCallRaw({ memory: '128MiB', timeoutSeconds: 10 }, () => ({ now: Date.now() }));
+
+// ---------------------------------------------------------------------------
 // markMessageRead — SMS gelen kutusundaki bir mesajı okundu olarak işaretler.
 // ---------------------------------------------------------------------------
 export const markMessageRead = onCall(async (request) => {

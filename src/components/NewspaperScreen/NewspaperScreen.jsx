@@ -53,7 +53,7 @@ function todayLongDate() {
     month: 'long',
     year: 'numeric',
     weekday: 'long',
-  }).format(new Date());
+  }).format(new Date(Date.now()));
 }
 
 // stableIndex — basit, deterministik bir "sözde-rastgele" seçici (AYNI

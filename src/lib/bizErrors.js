@@ -68,7 +68,7 @@ export function bizErrText(err) {
   if (m.startsWith('tip-song-limit:')) return `Bir şarkıya en fazla ${fmt(5000)} altın destek verebilirsin (bu şarkıya ${fmt(m.split(':')[1])}).`;
   if (m.startsWith('project-max:')) return `En fazla ${fmt(m.split(':')[1])} projen olabilir. Eski bir projeni sil.`;
   if (m.startsWith('membership-open')) return 'Bitmemiş bir üyeliğin var; önce onu tamamla (ya da süresi dolsun).';
-  if (m.startsWith('position-lock:')) return `Mevkini ${new Date(Number(m.split(':')[1])).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })} tarihine kadar değiştiremezsin.`;
+  if (m.startsWith('position-lock:')) return `Mevkini ${new Date(Number(m.split(':')[1])).toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul', day: 'numeric', month: 'long' })} tarihine kadar değiştiremezsin.`;
   if (m.startsWith('office-limit:')) return `Bir mekânın ücretli ürünlerine günde en fazla ${fmt(10000)} altın harcayabilirsin (bugün ${fmt(m.split(':')[1])}).`;
   if (m.startsWith('office-paid:')) return `Bu ürün ücretli (${fmt(m.split(':')[1])} altın).`;
   if (m.startsWith('price-band:') && m.split(':').length === 3) return `Fiyat ${fmt(m.split(':')[1])}–${fmt(m.split(':')[2])} arasında olmalı.`;

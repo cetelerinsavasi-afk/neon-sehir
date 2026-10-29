@@ -29,7 +29,7 @@ export default function TaskTree({ membership, onTapCurrent }) {
       {membership.bonus && <span className="gy-tree-sub hot">🔥 +%10 güç</span>}
       {membership.expiresAtMs > 0 && (
         <span className="gy-tree-sub">
-          Son saat: {new Date(membership.expiresAtMs).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+          Son saat: {new Date(membership.expiresAtMs).toLocaleTimeString('tr-TR', { timeZone: 'Europe/Istanbul', hour: '2-digit', minute: '2-digit' })}
         </span>
       )}
     </div>

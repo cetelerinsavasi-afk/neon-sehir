@@ -6,7 +6,7 @@
 // (functions/index.js) ile AYNI mantık — sabit bir UTC ofseti VARSAYILMIYOR,
 // Intl ile gerçek Europe/Istanbul saati okunuyor.
 
-function istanbulHMS(date = new Date()) {
+function istanbulHMS(date = new Date(Date.now())) {
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Europe/Istanbul',
     hour: '2-digit',
@@ -84,6 +84,6 @@ export function nextSponsorshipSettleLabel(now = Date.now()) {
 }
 
 // v103 — İstanbul günü anahtarı ("YYYY-MM-DD"), sunucudaki istanbulDateKey ile aynı.
-export function istanbulDateKey(date = new Date()) {
+export function istanbulDateKey(date = new Date(Date.now())) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
 }

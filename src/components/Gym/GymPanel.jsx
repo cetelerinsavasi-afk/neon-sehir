@@ -12,7 +12,7 @@ import './Gym.css';
 
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
 const f1 = (v) => Number(v || 0).toFixed(1).replace('.0', '');
-const hhmm = (ms) => new Date(ms).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+const hhmm = (ms) => new Date(ms).toLocaleTimeString('tr-TR', { timeZone: 'Europe/Istanbul', hour: '2-digit', minute: '2-digit' });
 
 // v77 — Spor salonu üyeliği: mevki seç → öde → 3 görevlik antrenman başlar.
 export default function GymPanel({ houseId, houseDoc, onClose, onStarted }) {

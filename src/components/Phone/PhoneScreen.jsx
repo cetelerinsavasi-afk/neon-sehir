@@ -81,9 +81,9 @@ const APP_TITLES = {
 };
 
 function useClock() {
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState(() => new Date(Date.now()));
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 15_000);
+    const t = setInterval(() => setNow(new Date(Date.now())), 15_000);
     return () => clearInterval(t);
   }, []);
   const time = new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', hour: '2-digit', minute: '2-digit' }).format(now);

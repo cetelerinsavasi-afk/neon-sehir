@@ -34,7 +34,7 @@ function dayWord(ms, now = Date.now()) {
   const k = (x) => new Date(x + 3 * H).toISOString().slice(0, 10);
   if (k(ms) === k(now)) return 'bugün';
   if (k(ms) === k(now + 24 * H)) return 'yarın';
-  return new Date(ms).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+  return new Date(ms).toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul', day: 'numeric', month: 'short' });
 }
 
 export default function FutbolFutbolcu() {
@@ -434,7 +434,7 @@ function ContractPanel({ contract, busy, run }) {
     <div className="fp-card">
       <p className="fp-title">
         📝 Sözleşme
-        <small className="fp-dim fp-small">· {new Date(contract.contractSince).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}&apos;den beri</small>
+        <small className="fp-dim fp-small">· {new Date(contract.contractSince).toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul', day: 'numeric', month: 'short' })}&apos;den beri</small>
       </p>
       {contract.raiseRequest ? (
         <p className="fp-pending">⏳ Zam isteğin bekliyor: {fmt(contract.raiseRequest.salary)}/gün</p>

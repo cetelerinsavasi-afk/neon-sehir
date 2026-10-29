@@ -85,7 +85,7 @@ function istanbulDateKey(d) {
 }
 function gaveSermonToday(imam) {
   const at = imam?.lastNasihatAt?.toDate?.() ?? null;
-  return Boolean(at) && istanbulDateKey(at) === istanbulDateKey(new Date());
+  return Boolean(at) && istanbulDateKey(at) === istanbulDateKey(new Date(Date.now()));
 }
 
 // ── CAMİİ ──────────────────────────────────────────────────────────────────────

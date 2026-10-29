@@ -18,7 +18,7 @@ function istanbulDateKey() {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(new Date());
+  }).format(new Date(Date.now()));
 }
 
 // shareFairValue/shareMinPrice/shareMaxPrice — functions/index.js'deki

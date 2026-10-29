@@ -560,7 +560,7 @@ function OwnerView({ factory, machines, player, myUid }) {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(new Date());
+  }).format(new Date(Date.now()));
 
   const hasAnyEmployment = !!player?.employment;
   const miningMachines = machines.filter((m) => m.type === 'mining');
@@ -1065,7 +1065,7 @@ function WorkerView({ player, myUid }) {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(new Date());
+  }).format(new Date(Date.now()));
   const producedToday = player.employmentProducedDateKey === dateKey;
 
   // handleShiftGameComplete — FactoryShiftGame'e `onComplete` olarak

@@ -2644,10 +2644,10 @@ function wallClock(g) {
   const sh = hand(0.23, 0.006, M('#c8141e'));
   return {
     tick() {
-      const d = new Date();
-      const s = d.getSeconds();
-      const m = d.getMinutes() + s / 60;
-      const h = (d.getHours() % 12) + m / 60;
+      const d = new Date(Date.now() + 3 * 3600_000); // v137: İstanbul saati (UTC+3)
+      const s = d.getUTCSeconds();
+      const m = d.getUTCMinutes() + s / 60;
+      const h = (d.getUTCHours() % 12) + m / 60;
       sh.rotation.z = -(s / 60) * Math.PI * 2;
       mh.rotation.z = -(m / 60) * Math.PI * 2;
       hh.rotation.z = -(h / 12) * Math.PI * 2;
