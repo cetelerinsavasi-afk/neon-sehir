@@ -57,7 +57,9 @@ export const GANG = {
   BET_MAX_RATIO_OF_SMALLER_MIDNIGHT_KASA: 0.25,
   BET_OFFERS_PER_DAY: 1, // ONAYLI: çete başına günde 1 teklif
   // ONAYLI: bahis teklifi Cumartesi ve Pazar gönderilemez (Pzt–Cum açık).
-  BET_OFFER_WEEKDAYS: [1, 2, 3, 4, 5],
+  // v136: ticaret yolu savaşı Cumartesi'ye taşındı → bahis Pazar–Perşembe (24 saatlik
+  // bahis savaş gününe taşmasın diye Cuma ve Cumartesi kapalı).
+  BET_OFFER_WEEKDAYS: [0, 1, 2, 3, 4],
   // v35: kabul edilen bahis bir sonraki saldırı diliminde başlar, 24 saat (v38: 8 dilim) sürer
   BET_DURATION_MS: 24 * MS_HOUR,
   // İstihbarat ihbar/açma/operasyon için son an: v38'de ilk 2 dilimin (6 saat) sonu
@@ -85,7 +87,10 @@ export const GANG = {
   // dilimde (03·06·09·12) yola çıkar, o gecenin 00:00'ında depoya varır.
   // Yola çıktıktan sonraki 6 saat: ihbar / içerik sızdırma / sabotaj / operasyon.
   // Ardından saldırı (savunma) başlar ve 24:00'te biter. Haraç/rüşvet 21:00'e kadar.
-  ORDER_WEEKDAYS: [1, 2, 3, 4, 5, 6],
+  // v136: savaş günü Cumartesi → sipariş Pazar–Cuma (Cumartesi kapalı)
+  ORDER_WEEKDAYS: [0, 1, 2, 3, 4, 5],
+  // v136: ticaret yolu savaşı günü (0 = Pazar … 6 = Cumartesi). Eskiden Pazar.
+  TRADE_WAR_WEEKDAY: 6,
   ORDER_DEADLINE_HOUR: 12,
   TRUCK_INTEL_WINDOW_MS: 6 * MS_HOUR,
 
@@ -170,7 +175,10 @@ export const INTEL = {
   KICK_MIN_RATIO: 0.51, // diğerleri: >= %51
   // v61 (istismar önlemi): İstihbaratta en az bu kadar üye yoksa kimse atılamaz,
   // çıkarma oylaması başlatılamaz/uygulanmaz (kendi isteğiyle ayrılmak serbest).
-  KICK_MIN_MEMBERS: 8,
+  KICK_MIN_MEMBERS: 8, // v136: KALDIRILDI (artık kullanılmıyor) — yerine günlük atma hakkı
+  // v136: doğrudan atma günde sınırlı (00:00'da yenilenir). Oylama sınırsız; doğrudan
+  // atabildiği rütbeler için oylama başlatılamaz (hak bitse de).
+  DIRECT_KICK_PER_DAY: { baskan: 2, sef: 1 },
   // v61: dağıtım yapılabilmesi için hedef grupta en az bu kadar üye olmalı
   // (Rütbeliler / Ajanlar / Muhbirler / Tüm üyeler — her biri ayrı sayılır).
   DIST_MIN_GROUP_MEMBERS: 5,

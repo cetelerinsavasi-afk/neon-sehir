@@ -54,7 +54,11 @@ export function createMembershipActions(core, intelHelpers) {
       }
       if (removalPlan) applyRemoval(tx, ctx, removalPlan, 'left_for_new_gang');
       // v109: teşkilattan ayrılmak polislikten de ayrılmak demek (24 saat yeniden başvurulamaz)
-      if (intelPlan) intelHelpers.applyIntelLeave(tx, ctx, intelPlan, { notifyText: '🚪 Çete kurduğun için polislikten ayrıldın (Mafya Babası polis olamaz).' });
+      if (intelPlan) {
+        intelHelpers.applyIntelLeave(tx, ctx, intelPlan, { notifyText: '🚪 Çete kurduğun için polislikten ayrıldın (Mafya Babası polis olamaz).' });
+        // v136: teşkilat sohbetinde kendi isteğiyle ayrılış (atılma değil)
+        if (intelPlan.roster?.codeName) systemChat(tx, ctx, ctx.ref.intelChat('genel'), `🚪 ${intelPlan.roster.codeName} polislikten istifa etti.`);
+      }
 
       const gangRef = ctx.ref.gangs().doc();
       const gangId = gangRef.id;

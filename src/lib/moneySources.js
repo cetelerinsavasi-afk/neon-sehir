@@ -35,6 +35,7 @@ export const MONEY_SOURCES = {
   polis: { icon: '👮', label: 'Polis maaşı' },
   belediyeMaas: { icon: '🏛️', label: 'Belediye maaşı' }, // v127
   belediyeBagis: { icon: '🎁', label: 'Belediyeye bağış' }, // v127
+  adaylik: { icon: '🗳️', label: 'Belediye başkanlığı adaylık ücreti' }, // v136
   mobilyaKasa: { icon: '🏦', label: 'Mobilya kasası' }, // v127
   dilenci: { icon: '🤲', label: 'Dilenci bağışı' },
   rusvet: { icon: '🤝', label: 'Rüşvet' },

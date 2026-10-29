@@ -11,7 +11,7 @@ import { Btn, Card, Confirm, Empty, Logo, Sheet } from './ui';
 import { LEADERS, fmt } from './gangConstants';
 
 export const BIAT_SUMMARY =
-  'Biat ettiğin çeteyle birbirinize saldıramazsınız ve onun tırlarını savunabilirsiniz. Pazar ticaret yolu savaşına kendi adınıza katılamazsınız: üyelerinizin tüm hasarı biat ettiğiniz çetenin gücüne eklenir. Bahisli savaşlara katkınız olmaz.';
+  'Biat ettiğin çeteyle birbirinize saldıramazsınız ve onun tırlarını savunabilirsiniz. Cumartesi ticaret yolu savaşına kendi adınıza katılamazsınız: üyelerinizin tüm hasarı biat ettiğiniz çetenin gücüne eklenir. Bahisli savaşlara katkınız olmaz.';
 export const BIAT_TIMING = "Karşı çetenin Mafya Babası ya da Sağ Kolu kabul ederse 00:00'da başlar; iki tarafın da Mafya Babası ya da Sağ Kolu bozabilir, bozulursa 00:00'da biter. Biat ittifaktan bağımsızdır: ittifakınız olsa da olmasa da biat edebilir, biatı bozunca ittifak sürer.";
 
 const STATUS_LABEL = {
@@ -95,7 +95,7 @@ export function BiatSheet({ gangId, blockedIds = [], onClose }) {
           icon="⛓️"
           title={`${target.name} çetesine biat edilsin mi?`}
           lines={[
-            `⚔️ Pazar savaşında ${target.name} adına savaşırsınız`,
+            `⚔️ Cumartesi savaşında ${target.name} adına savaşırsınız`,
             '🛡️ Birbirinize saldıramazsınız, tırlarını savunabilirsiniz',
             "🕛 Kabul edilirse 00:00'da başlar",
           ]}
@@ -141,9 +141,9 @@ export function BiatStatus({ d, info }) {
           </div>
           <div className="gx-biat-card-note">
             {['active', 'ending'].includes(mine.status)
-              ? `Pazar ticaret yolu savaşında ${mine.names?.[mine.overlordId]} adına savaşıyorsunuz — hasarınız onların gücüne eklenir. Tırlarını savunabilirsiniz.`
+              ? `Cumartesi ticaret yolu savaşında ${mine.names?.[mine.overlordId]} adına savaşıyorsunuz — hasarınız onların gücüne eklenir. Tırlarını savunabilirsiniz.`
               : mine.status === 'accepted'
-                ? `Kabul edildi. 00:00'dan itibaren Pazar savaşında ${mine.names?.[mine.overlordId]} adına savaşacaksınız.`
+                ? `Kabul edildi. 00:00'dan itibaren Cumartesi savaşında ${mine.names?.[mine.overlordId]} adına savaşacaksınız.`
                 : 'Teklif gönderildi. Karşı çetenin Mafya Babası ya da Sağ Kolu kabul edebilir.'}
           </div>
         </Card>
@@ -165,7 +165,7 @@ export function BiatStatus({ d, info }) {
               )}
             </div>
           ))}
-          <div className="gx-biat-card-note">Pazar savaşında bu çetelerin hasarı sizin gücünüze eklenir; tırlarınızı savunabilirler.</div>
+          <div className="gx-biat-card-note">Cumartesi savaşında bu çetelerin hasarı sizin gücünüze eklenir; tırlarınızı savunabilirler.</div>
         </Card>
       )}
       {end && (

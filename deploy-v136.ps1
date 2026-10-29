@@ -1,9 +1,17 @@
-# Neon Sehir v133 - v132'nin TAMAMI + duzeltmeler:
-#   botlar (tasarla'da platform/bot, bota dokununca secilir, yeni tipler, dans yok, fotografta botlar,
-#   "... Bot" adi, ziyaretcide garson butonu / ofis urunleri), oyunun silah/araba magazasi en ucuz fiyat,
-#   sampiyona odulleri, yeni soygun paneli, "elinde" paneli kalkti, bankada sira numarasi elde
+﻿# Neon Sehir v136 - SECIM + DARBE SISTEMI + CUMARTESI SAVASI
+#   Cuma 00:00 imza donemi, Pazar secim, 21:00-24:00 sayim, Pazartesi 00:00 yeni baskan,
+#   anasayfa secim butonu, belediyede Imza / Secimler, gazetede secim haberleri.
+#   Darbe: EGM baslatir (Paz/Pzt), rutbeli oylamasi, 24 saat halk destegi, yonetim/erken secim karari.
+#   Darbe kilidi: EGM darbe bitene kadar istifa edemez/atilamaz/rutbesi dusmez; darbede Polis Memuru 1 guc.
+#   Belediye Baskani / yardimcilar / Teskilat Bakani teskilata YETKILI olarak girer (genel+belediye sohbeti, izleme).
+#   Ticaret yolu savasi Cumartesi; siparis Paz-Cum; bahis Paz-Per.
+#   + polis gunluk atma hakki (EGM 2, Amir 1), baskan istifasi (2 adim), soygun paneli notlari,
+#   + teskilat istifa mesajlari, admin: eski polis mesajinin yazari + sixtagram gonderi onizleme,
+#   + ilk acilista yuklenmeyen ekranlar, magaza listesi, 2. el paneli, sixtagram cek-kapat.
+#   Yeni fonksiyonlar: politicsAction, politicsClock (dakikada bir).
 #
-#   Cift tikla: deploy-v133.bat   (ya da: powershell -ExecutionPolicy Bypass -File .\deploy-v133.ps1)
+#   BU AKSAM 23:00'TEN ONCE calistirilmali (ilk imzalar Cuma 00:00'da).
+#   Cift tikla: deploy-v136.bat   (ya da: powershell -ExecutionPolicy Bypass -File .\deploy-v136.ps1)
 #
 # Sira onemli (oyuncu magdur olmasin diye):
 #   1) Firestore kurallari
@@ -46,11 +54,11 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host ""
 Write-Host "===== git commit + push (arayuz) =====" -ForegroundColor Cyan
 # eski deploy betikleri artik gereksiz
-foreach ($f in @('deploy-v130.ps1','deploy-v130.bat','deploy-v131.ps1','deploy-v131.bat','deploy-v132.ps1','deploy-v132.bat')) {
+foreach ($f in @('deploy-v133.ps1','deploy-v133.bat')) {
   if (Test-Path $f) { git rm -q -f -- $f 2>$null; if (Test-Path $f) { Remove-Item -Force $f } }
 }
 git add -A
-git commit -q -m "v133: v132 + bot duzeltmeleri, magaza en ucuz fiyat, sampiyona odulleri, yeni soygun paneli, sira numarasi elde" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -m "Claude-Session: https://claude.ai/code/session_01RoR8v3wbem97FBA1vtPaXJ"
+git commit -q -m "v136: secim sistemi (imza, oylama, sayim, devir), Cumartesi ticaret yolu savasi" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -m "Claude-Session: https://claude.ai/code/session_01YQymXL8cfx35Wbv219jG6U"
 git push
 if ($LASTEXITCODE -ne 0) {
   Write-Host "git push basarisiz. Ciktiyi Claude'a gonder." -ForegroundColor Red
@@ -58,4 +66,4 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host ""
-Write-Host "TAMAM: v133 canlida." -ForegroundColor Green
+Write-Host "TAMAM: v136 canlida." -ForegroundColor Green

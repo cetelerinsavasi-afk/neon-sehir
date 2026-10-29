@@ -60,7 +60,7 @@ function GuestGangsInner() {
               note={x.g.note}
               kasa={<GangKasa gang={x.g} />}
               power={x.power}
-              powerNote={x.g.lastSundayBiat ? 'Son Pazar savaşında biat ettiği çete adına verdiği hasar' : null}
+              powerNote={x.g.lastSundayBiat ? 'Son Cumartesi savaşında biat ettiği çete adına verdiği hasar' : null}
               biat={x.g.biat}
               members={x.g.memberCount}
               leader={x.g.babaName}

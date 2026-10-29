@@ -72,6 +72,20 @@ function Sayi({ g: raw }) {
         </section>
       )}
 
+      {g.politics?.items?.length > 0 && (
+        <section className="gz-col">
+          <h3 className="gz-h3">🗳️ Seçim</h3>
+          <div className="gz-news">
+            {g.politics.items.map((n, k) => (
+              <div key={k} className="gz-news-item">
+                <b>{n.t}</b>
+                <span>{n.d}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {g.article && (
         <section className="gz-col">
           <h3 className="gz-h3">✒️ Başkanlık Köşesi</h3>

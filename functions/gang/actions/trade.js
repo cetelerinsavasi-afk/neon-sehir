@@ -136,7 +136,7 @@ export function createTradeActions(core, treasury) {
     const productId = String(data.product || '');
     const product = productById(productId);
     if (!product) fail('invalid-argument', 'Geçersiz ürün.');
-    if (!GANG.ORDER_WEEKDAYS.includes(ctx.weekday)) fail('failed-precondition', 'Sipariş sadece Pazartesi–Cumartesi verilebilir.');
+    if (!GANG.ORDER_WEEKDAYS.includes(ctx.weekday)) fail('failed-precondition', 'Cumartesi savaş günü — sipariş Pazar–Cuma verilebilir.');
     if (ctx.hour >= GANG.ORDER_DEADLINE_HOUR) fail('deadline-exceeded', `Sipariş sadece 00:00–${GANG.ORDER_DEADLINE_HOUR}:00 arasında verilebilir.`);
     const departAtMs = nextWindowStartMs(ctx.now);
     const items = parseOrderItems(productId, data.items);

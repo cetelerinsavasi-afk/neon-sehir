@@ -674,7 +674,7 @@ export function createWarActions(core) {
       const startDateKey = addDays(ctx.dateKey, 1);
       tx.update(ctx.ref.alliance(biatId), { status: 'accepted', startDateKey, acceptedAtMs: ctx.now, acceptedByName: me.name });
       announce(tx, ctx, gangId, '⛓️', `${me.name}, ${al.names[vassalId]} çetesinin biatını kabul etti — 00:00'da başlıyor.`);
-      announce(tx, ctx, vassalId, '⛓️', `${al.names[gangId]} biatınızı kabul etti — 00:00'da başlıyor. Pazar savaşında artık ${al.names[gangId]} adına savaşacaksınız.`);
+      announce(tx, ctx, vassalId, '⛓️', `${al.names[gangId]} biatınızı kabul etti — 00:00'da başlıyor. Cumartesi savaşında artık ${al.names[gangId]} adına savaşacaksınız.`);
       ctx.logs.push({ gang: 'biat_accepted', world: ctx.worldId, vassal: vassalId, overlord: gangId });
       return { accepted: true, startDateKey };
     });

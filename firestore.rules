@@ -834,12 +834,19 @@ service cloud.firestore {
     function intelRankIn(w, ranks) {
       return inIntel(w) && gmem(w).get('intelRank', '') in ranks;
     }
+    // v136 — belediye yetkilisi (başkan · yardımcılar · Teşkilat Bakanı) teşkilat
+    // panelini polis olmadan görür: genel sohbet, savaşlar, ihbarlar, kod adı listesi
+    function isPoliceOfficial() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/belediyeStaff/$(request.auth.uid))
+        && get(/databases/$(database)/documents/belediyeStaff/$(request.auth.uid)).data.get('seat', '') in ['bsk', 'yrd1', 'yrd2', 'guv'];
+    }
     function warReadable(w, war) {
       return liveGangWorld(w) && (
         war.visibility == 'public'
         || myGangIn(w, war.gangIds)
         || myGangIn(w, war.activeGangIds)
-        || (war.intelInvolved == true && inIntel(w))
+        || (war.intelInvolved == true && (inIntel(w) || isPoliceOfficial()))
       );
     }
 
@@ -916,9 +923,9 @@ service cloud.firestore {
         match /log/{id} {
           allow read: if inIntel(w);
         }
-        // v38: kod adı listesi (00:00 prestiji) — İstihbarat üyeleri
+        // v38: kod adı listesi (00:00 prestiji) — İstihbarat üyeleri (v136: + belediye yetkilisi)
         match /public/{p} {
-          allow read: if inIntel(w);
+          allow read: if inIntel(w) || (liveGangWorld(w) && isPoliceOfficial());
         }
         // Atma oylaması talebi 00:00'a kadar GİZLİ: sadece başlatan (kod adı kimliğiyle)
         match /pending/{id} {
@@ -946,14 +953,15 @@ service cloud.firestore {
         allow read: if inIntel(w) && r == gmem(w).intelRosterId;
       }
       match /intelReports/{r} {
-        allow read: if inIntel(w);
+        allow read: if inIntel(w) || (liveGangWorld(w) && isPoliceOfficial());
       }
       // v33: ihbar edilen bahisler (tutar sadece içerik açılınca yazılır)
       match /betReports/{r} {
-        allow read: if inIntel(w);
+        allow read: if inIntel(w) || (liveGangWorld(w) && isPoliceOfficial());
       }
       match /intelChat_genel/{id} {
-        allow read: if inIntel(w) && resource.data.createdAtMs >= gmem(w).intelJoinedAtMs;
+        allow read: if (inIntel(w) && resource.data.createdAtMs >= gmem(w).intelJoinedAtMs)
+          || (liveGangWorld(w) && isPoliceOfficial());
       }
       match /intelChat_yonetim/{id} {
         allow read: if intelRankIn(w, ['baskan', 'sef', 'uzman'])
@@ -1139,6 +1147,36 @@ service cloud.firestore {
     }
     match /belediyeChat_koord/{id} {
       allow read: if isBelediyeStaff() || isPoliceRanked();
+      allow write: if false;
+    }
+
+    // v136 — SEÇİM (functions/politics.js). Yazma YALNIZCA sunucu.
+    //   politics/state                 — evre, döngü, hükümet (herkes görür)
+    //   politicsCycles/{F}             — adaylar + imza sayıları + aday yazıları (herkes)
+    //   politicsCycles/{F}/live/count  — sayım (sadece 21:00'dan sonra yazılır; herkes)
+    //   politicsVoters · politicsBallots · politicsPrivate — GİZLİ (kural yok → kapalı)
+    match /politics/{docId} {
+      allow read: if isSignedIn() && docId == 'state';
+      allow write: if false;
+    }
+    match /politicsCycles/{c} {
+      allow read: if isSignedIn();
+      allow write: if false;
+      match /live/{d} {
+        allow read: if isSignedIn() && d == 'count';
+        allow write: if false;
+      }
+    }
+
+    // v136 — DARBE (functions/politicsCoup.js). Plan ve polis oylaması GİZLİ: sadece
+    // Polis Teşkilatının rütbelileri (EGM · Amir · Başkomiser) görür. Oylar (ballots)
+    // ve halkın tarafları (politicsCoupVotes) kural yok → kapalı.
+    match /coupPlans/{docId} {
+      allow read: if docId == 'current' && isPoliceRanked();
+      allow write: if false;
+    }
+    match /politicsCoups/{id} {
+      allow read: if isSignedIn();
       allow write: if false;
     }
 

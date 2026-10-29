@@ -117,11 +117,11 @@ test('v38 aktiflik: savaş, herhangi bir sohbet ya da ibadet aktif sayılır; 29
   const [lazy, warrior, chatter, prayer] = G.ids;
   const Solo = await setupGang(h, { members: 0, name: 'Tek Kişilik' });
   await h.db.doc('gangWorlds/test').set({ activityV38StartMs: 1 }, { merge: true }); // geçiş tabanı eskide
-  h.at('2026-10-17', '12:00');
+  h.at('2026-10-16', '12:00');
   await h.act(chatter, 'sendGangChat', { text: 'buradayım' }); // v38: sohbet sayılır
   await h.system.touchSocialActivity('test', prayer); // camide ibadet / ChatsApp kancası
-  await h.tickTo('2026-10-18', '12:00'); // Pazar: ticaret savaşı
-  await h.act(warrior, 'rollDice', { warId: 'trade_2026-10-18' });
+  await h.tickTo('2026-10-17', '12:00'); // Cumartesi: ticaret savaşı (v136)
+  await h.act(warrior, 'rollDice', { warId: 'trade_2026-10-17' });
   await h.tickTo('2026-10-21', '00:05'); // 29 tam gün
   assert.equal(h.member(G.gangId, lazy).inactiveWarn, true);
   for (const id of [warrior, chatter, prayer]) assert.equal(h.member(G.gangId, id).inactiveWarn, false);

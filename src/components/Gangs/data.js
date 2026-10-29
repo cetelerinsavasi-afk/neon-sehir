@@ -78,15 +78,16 @@ export function useGangData(membership) {
   };
 }
 
-export function useIntelData(membership) {
+export function useIntelData(membership, { official = null } = {}) {
   const { path } = useGang();
   const rid = membership?.intelRosterId || null;
+  const viewer = Boolean(rid || official); // v136: belediye yetkilisi de listeyi / savaşları görür
   const now = useNow(30_000);
   const { data: intel } = useDocData(path('intel/main'));
   const { data: state } = useDocData(path('intel/main/private/state'));
   const { data: me } = useDocData(rid ? path(`intelRoster/${rid}`) : null);
   // v38: kod adı listesi 00:00 prestijiyle; kendi satırın anlık
-  const { data: rosterDoc } = useDocData(rid ? path('intel/main/public/roster') : null);
+  const { data: rosterDoc } = useDocData(viewer ? path('intel/main/public/roster') : null);
   useEnsurePublicView(rid && rosterDoc !== undefined && (!rosterDoc || !rosterDoc.members?.[rid]), `i_${rid}`);
   const roster = useMemo(() => {
     const list = Object.entries(rosterDoc?.members || {}).map(([id, v]) => ({ id, ...v, prestigeIsMidnight: true }));
@@ -97,7 +98,7 @@ export function useIntelData(membership) {
   const realRank = me?.rank || membership?.intelRank || null;
   const rank = underVote ? 'muhbir' : realRank;
   const canSeeVotes = ['baskan', 'sef', 'uzman', 'ajan'].includes(realRank); // v52: asıl rütbe
-  const wars = useWarLists({ intel: Boolean(rid) });
+  const wars = useWarLists({ intel: viewer });
   const { docs: votes } = useQueryData(rid && canSeeVotes ? path('intel/main/votes') : null, () => [where('status', '==', 'active'), limit(20)], `iv_${rid}_${canSeeVotes}`);
   const { docs: myPending } = useQueryData(rid ? path('intel/main/pending') : null, () => [where('initiatorRosterId', '==', rid), limit(10)], `ip_${rid}`);
   const { docs: dists } = useQueryData(rid ? path('distributions') : null, () => [where('orgType', '==', 'intel'), where('status', '==', 'open'), limit(30)], `idist_${rid}`);
@@ -108,6 +109,7 @@ export function useIntelData(membership) {
   const today = istDateKey(now);
   return {
     rid,
+    official,
     canReview,
     apps: [...apps].sort((a, b) => (a.createdAtMs || 0) - (b.createdAtMs || 0)),
     intel,

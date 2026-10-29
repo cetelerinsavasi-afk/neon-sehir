@@ -46,6 +46,8 @@ export function createCore(deps) {
     return {
       worldId,
       isTest,
+      // v136: test dünyasında darbe kilidi denemesi (politics/state) — sadece testler açar
+      coupCheckInTest: isTest && Boolean(worldData.coupCheckInTest),
       world: worldData,
       now,
       dateKey,

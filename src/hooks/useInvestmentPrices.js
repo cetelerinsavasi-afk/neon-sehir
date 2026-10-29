@@ -17,11 +17,12 @@ export function useInvestmentPrices() {
 
   useEffect(() => {
     const ref = doc(db, 'investments', 'current');
-    const done = armStallWatchdog(); // v102: veri gelmezse bağlantıyı tazele
+    const done = armStallWatchdog(4000); // v102: veri gelmezse bağlantıyı tazele
     const unsubscribe = onSnapshot(
       ref,
+      { includeMetadataChanges: true },
       (snap) => {
-        done();
+        if (!snap.metadata.fromCache) done(); // v136: önbellekten gelen eski veri "geldi" sayılmaz
         setPrices(snap.exists() ? snap.data() : DEFAULT_PRICES);
         setLoading(false);
       },

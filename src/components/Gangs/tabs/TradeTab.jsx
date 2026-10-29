@@ -72,7 +72,7 @@ function Routes({ routes, gangId, state, today, memberCount }) {
       </div>
       {next && (
         <div className="gx-next-war">
-          ⚔️ {next.today ? 'Bugün' : 'Bu Pazar'}: {next.product.emoji} <b>{next.product.label}</b> savaşı
+          ⚔️ {next.today ? 'Bugün' : 'Bu Cumartesi'}: {next.product.emoji} <b>{next.product.label}</b> savaşı
         </div>
       )}
       <div className="gx-routes">
@@ -630,7 +630,7 @@ export default function TradeTab({ d }) {
             )}
           </Btn>
           <Btn small disabled={!orderDay} onClick={() => setOrderOpen(true)}>
-            {orderDay ? 'Sipariş ver +' : '🔒 Sipariş: Pzt–Cmt 00:00–12:00'}
+            {orderDay ? 'Sipariş ver +' : '🔒 Sipariş: Paz–Cum 00:00–12:00'}
           </Btn>
         </div>
       )}

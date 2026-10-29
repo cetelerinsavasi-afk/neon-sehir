@@ -191,15 +191,18 @@ test('bahis: Baba+Sağ Kol; günde 1 teklif; küçük kasa sınırı; ret ve cev
   assert.equal(h.state(A.gangId).kasa, 1_000_000);
   const late = await h.fails(B.baba, 'respondBet', { warId: w2.warId, accept: true });
   assert.match(late.message, /geçerli değil|süresi/);
-  // Cumartesi ve Pazar teklif yok; Cuma açık (savaş Cumartesi)
-  for (const day of ['2026-09-26', '2026-09-27']) {
+  // v136: savaş Cumartesi → Cuma ve Cumartesi teklif yok; Pazar ve Perşembe açık
+  for (const day of ['2026-09-25', '2026-09-26']) {
     await h.tickTo(day, '10:00');
     const err = await h.fails(A.baba, 'offerBet', { targetGangId: B.gangId, stake: 10_000 });
     assert.match(err.message, /Bugün bahis yapamazsın/);
   }
-  await h.tickTo('2026-10-02', '10:00'); // Cuma
-  const fri = await h.act(A.baba, 'offerBet', { targetGangId: B.gangId, stake: 10_000 });
-  assert.equal(h.get(`wars/${fri.warId}`).dateKey, '2026-10-03');
+  await h.tickTo('2026-09-27', '10:00'); // Pazar
+  const sun = await h.act(A.baba, 'offerBet', { targetGangId: C.gangId, stake: 10_000 });
+  await h.act(A.baba, 'withdrawBet', { warId: sun.warId });
+  await h.tickTo('2026-10-01', '10:00'); // Perşembe
+  const thu = await h.act(A.baba, 'offerBet', { targetGangId: B.gangId, stake: 10_000 });
+  assert.equal(h.get(`wars/${thu.warId}`).dateKey, '2026-10-02');
 });
 
 test('Pazar ticaret yolu savaşı: yasaklı madde→silah→araba; kazanan yolu 21 gün alır, limit = tüm çetelerin toplam gücünün %0,5i (v75); kaybeden de prestij kazanır', async () => {
@@ -208,36 +211,36 @@ test('Pazar ticaret yolu savaşı: yasaklı madde→silah→araba; kazanan yolu 
   const B = await setupGang(h, { members: 0, name: 'Beta' });
   await h.setPersona(A.baba, { power: 50_000 });
   await h.setPersona(B.baba, { power: 50_000 });
-  await h.tickTo('2026-09-27', '00:10');
-  const warId = 'trade_2026-09-27';
+  await h.tickTo('2026-09-26', '00:10');
+  const warId = 'trade_2026-09-26';
   const war = h.get(`wars/${warId}`);
   assert.equal(war.status, 'active');
   assert.equal(war.product, 'yasakliMadde', 'ilk pazar: yasaklı madde');
   await h.act(A.baba, 'rollDice', { warId }); // 10 × 50k = 500k
   await h.act(B.baba, 'rollDice', { warId }); // 2 × 50k = 100k
   const pB = h.member(B.gangId, B.baba).prestige;
-  await h.tickTo('2026-09-28', '00:05');
+  await h.tickTo('2026-09-27', '00:05');
   const route = h.get('routes/yasakliMadde');
   assert.equal(route.holderId, A.gangId);
   assert.equal(route.powerUsed, 500_000);
   assert.equal(route.totalWarPower, 600_000);
   assert.equal(route.dailyOrderLimit, 3_000, 'v75: (500k + 100k) × %0,5');
   assert.equal(h.get(`wars/${warId}`).result.orderLimit, 3_000);
-  assert.equal(route.untilDateKey, '2026-10-19', '21 gün');
+  assert.equal(route.untilDateKey, '2026-10-18', '21 gün');
   assert.deepEqual(h.get(`gangs/${A.gangId}`).routeProducts, ['yasakliMadde']);
   assert.equal(h.member(B.gangId, B.baba).prestige, pB, 'kaybeden katkı prestijini korur');
   assert.equal(pB, 10_000_000 + 50_000, 'v38: prestij = hasarın yarısı');
   assert.equal(h.get(`gangs/${A.gangId}`).lastSundayPower, 500_000);
   assert.equal(h.get(`gangs/${B.gangId}`).lastSundayPower, 100_000);
   // rotasyon: yasaklı madde → silah → araba → yasaklı madde
-  await h.tickTo('2026-10-04', '00:05');
-  assert.equal(h.get('wars/trade_2026-10-04').product, 'silah');
-  await h.tickTo('2026-10-11', '00:05');
-  assert.equal(h.get('wars/trade_2026-10-11').product, 'araba');
-  await h.tickTo('2026-10-18', '00:05');
-  assert.equal(h.get('wars/trade_2026-10-18').product, 'yasakliMadde');
+  await h.tickTo('2026-10-03', '00:05');
+  assert.equal(h.get('wars/trade_2026-10-03').product, 'silah');
+  await h.tickTo('2026-10-10', '00:05');
+  assert.equal(h.get('wars/trade_2026-10-10').product, 'araba');
+  await h.tickTo('2026-10-17', '00:05');
+  assert.equal(h.get('wars/trade_2026-10-17').product, 'yasakliMadde');
   assert.equal(h.get('routes/yasakliMadde').holderId, A.gangId, 'savaş sürerken yol hâlâ elde');
-  await h.tickTo('2026-10-19', '00:05'); // kimse katılmadı → 21 gün doldu, yol boşa çıktı
+  await h.tickTo('2026-10-18', '00:05'); // kimse katılmadı → 21 gün doldu, yol boşa çıktı
   assert.equal(h.get('routes/yasakliMadde').holderId, null);
   assert.deepEqual(h.get(`gangs/${A.gangId}`).routeProducts, []);
 });
@@ -250,12 +253,12 @@ test('v75: sipariş limiti = İstihbarat dahil tüm tarafların toplam gücünü
   await h.setPersona(B.baba, { power: 100_000 });
   const spy = await h.persona({ displayName: 'Casus', gold: 10, power: 100_000, reputation: 50 });
   await h.act(spy, 'joinIntel', { codeName: 'Baykuş' });
-  await h.tickTo('2026-09-27', '00:10');
-  const warId = 'trade_2026-09-27';
+  await h.tickTo('2026-09-26', '00:10');
+  const warId = 'trade_2026-09-26';
   await h.act(A.baba, 'rollDice', { warId }); // 12 × 100k = 1.2M
   await h.act(spy, 'rollDice', { warId, side: 'intel' }); // 6 × 100k = 600k
   await h.act(B.baba, 'rollDice', { warId }); // 2 × 100k = 200k
-  await h.tickTo('2026-09-28', '00:05');
+  await h.tickTo('2026-09-27', '00:05');
   const route = h.get('routes/yasakliMadde');
   assert.equal(route.holderId, A.gangId);
   assert.equal(route.powerUsed, 1_200_000);
@@ -268,11 +271,11 @@ test('İstihbarat pazar savaşını kazanırsa yol kimseye verilmez, (v108) devl
   const A = await setupGang(h, { members: 0, name: 'Alfa' });
   const spy = await h.persona({ displayName: 'Casus', gold: 10, power: 100_000, reputation: 50 });
   await h.act(spy, 'joinIntel', { codeName: 'Baykuş' });
-  await h.tickTo('2026-09-27', '00:10');
-  const warId = 'trade_2026-09-27';
+  await h.tickTo('2026-09-26', '00:10');
+  const warId = 'trade_2026-09-26';
   await h.act(spy, 'rollDice', { warId, side: 'intel' }); // 12 × 100k = 1.2M
   await h.act(A.baba, 'rollDice', { warId });
-  await h.tickTo('2026-09-28', '00:05');
+  await h.tickTo('2026-09-27', '00:05');
   const route = h.get('routes/yasakliMadde');
   assert.equal(route.holderType, null);
   assert.equal(route.lastWinner, 'intel');
@@ -324,12 +327,12 @@ test('hem çetede hem İstihbaratta olan üye: bir pencerede ya çetesi ya İsti
   const x = A.ids[0];
   await h.setPersona(x, { reputation: 90, power: 30_000 });
   await h.act(x, 'joinIntel', { codeName: 'Çiftci' });
-  await h.tickTo('2026-09-27', '00:10'); // Pazar ticaret yolu savaşı
-  const warId = 'trade_2026-09-27';
+  await h.tickTo('2026-09-26', '00:10'); // Pazar ticaret yolu savaşı
+  const warId = 'trade_2026-09-26';
   await h.act(x, 'rollDice', { warId });
   const other = await h.fails(x, 'rollDice', { warId, side: 'intel' });
   assert.match(other.message, /dilimde/);
-  h.at('2026-09-27', '06:00');
+  h.at('2026-09-26', '06:00');
   await h.act(x, 'rollDice', { warId, side: 'intel' });
   await h.fails(x, 'rollDice', { warId });
 });

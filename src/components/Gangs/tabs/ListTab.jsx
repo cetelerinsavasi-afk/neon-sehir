@@ -89,7 +89,7 @@ export function OrgCard({ logo, name, note, kasa, power, powerNote, members, lea
         <div className="gx-gang-card-name">{name}</div>
         <div className="gx-gang-card-meta">
           {kasa != null && <span>{kasa}</span>}
-          <span title={powerNote || 'Son Pazar savaşı gücü'}>
+          <span title={powerNote || 'Son Cumartesi savaşı gücü'}>
             ⚔️ {fmt(power)}
             {powerNote ? ' ⛓️' : ''}
           </span>
@@ -119,7 +119,7 @@ export function OrgCard({ logo, name, note, kasa, power, powerNote, members, lea
   );
 }
 
-export default function ListTab({ membership, onOpen }) {
+export default function ListTab({ membership, official = null, onOpen }) {
   const { path } = useGang();
   const { run, busy } = useGangAction();
   const ms = membership || {};
@@ -172,6 +172,10 @@ export default function ListTab({ membership, onOpen }) {
                 <Btn small onClick={() => onOpen('intel')}>
                   Aç
                 </Btn>
+              ) : official ? (
+                <Btn small onClick={() => onOpen('intel')}>
+                  🏛️ Yetkili gir
+                </Btn>
               ) : ms.intelAppId ? (
                 <Btn small kind="ghost" onClick={() => setCancelApp(true)}>
                   ⏳ İnceleniyor
@@ -192,7 +196,7 @@ export default function ListTab({ membership, onOpen }) {
             note={x.g.note}
             kasa={<GangKasa gang={x.g} />}
             power={x.power}
-            powerNote={x.g.lastSundayBiat ? 'Son Pazar savaşında biat ettiği çete adına verdiği hasar' : null}
+            powerNote={x.g.lastSundayBiat ? 'Son Cumartesi savaşında biat ettiği çete adına verdiği hasar' : null}
             biat={x.g.biat}
             members={x.g.memberCount}
             leader={x.g.babaName}

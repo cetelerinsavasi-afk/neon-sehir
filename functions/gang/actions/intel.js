@@ -20,6 +20,7 @@ import { GANG, INTEL, SALARIES, atLeast, gangExitBlockText } from '../config.js'
 import { addDays, midnightMsOf, dateKeyOf, truckTimes } from '../time.js';
 import { decidedOutcome } from './votes.js';
 import { intelReviewRanks } from '../ranks.js';
+import { coupLock } from '../../politicsCoup.js';
 
 const CODENAME_RE = /^[\p{L}\p{N}_\-. ]+$/u;
 
@@ -60,9 +61,27 @@ export function createIntelActions(core) {
   }
   const cooldownUntilOf = (ctx) => ctx.now + INTEL.REJOIN_COOLDOWN_MS;
 
+  // v136 — DARBE KİLİDİ: darbe sürerken (ve polis oylaması geçip darbe başlamak
+  // üzereyken) darbeyi yapan Emniyet Genel Müdürü istifa edemez, atılamaz, hakkında
+  // çıkarma oylaması açılamaz; rütbesi düşmez (clock.recomputeIntelRanks).
+  // Sadece canlı dünya (politics/state canlıdır). 2 okuma.
+  async function readCoupLock(ctx, tx = null, { rankOnly = false } = {}) {
+    if (ctx.isTest && !ctx.coupCheckInTest) return null;
+    const g = (r) => (tx ? tx.get(r) : r.get());
+    const [s, p] = await Promise.all([g(core.db.doc('politics/state')), g(core.db.doc('coupPlans/current'))]);
+    return coupLock({ state: s.data(), plan: p.data(), now: ctx.now, rankOnly });
+  }
+  const COUP_LOCK_TEXT = 'Darbe sürerken (ve başarılı darbeden sonra karar verilene kadar) darbeyi yapan Emniyet Genel Müdürü istifa edemez ve teşkilattan çıkarılamaz.';
+  async function assertNotCoupLocked(tx, ctx, rosterId, { force = false } = {}) {
+    if (force || !rosterId) return;
+    const lock = await readCoupLock(ctx, tx);
+    if (lock && lock.rid === rosterId) fail('failed-precondition', COUP_LOCK_TEXT);
+  }
+
   // --- Teşkilattan ayrılma: prestij + sicil silinir, kod adı serbest, polislik
   // biter, 24 saat yeniden başvurulamaz (v109). OKUMALAR burada. ---
-  async function planIntelLeave(tx, ctx, membership, actorId = ctx.actorId) {
+  async function planIntelLeave(tx, ctx, membership, actorId = ctx.actorId, { force = false } = {}) {
+    await assertNotCoupLocked(tx, ctx, membership.intelRosterId, { force });
     const [rosterSnap, user] = await Promise.all([tx.get(ctx.ref.roster(membership.intelRosterId)), readPoliceUser(tx, ctx, actorId)]);
     return { rosterId: membership.intelRosterId, roster: rosterSnap.data() || null, actorId, membership, user };
   }
@@ -72,6 +91,9 @@ export function createIntelActions(core) {
     const who = actorId || plan.actorId;
     tx.delete(ctx.ref.roster(plan.rosterId));
     tx.delete(linkRef(ctx, plan.rosterId));
+    // v136: kod adı → oyuncu bağı arşivlenir (sadece sunucu okur) — ayrıldıktan sonra
+    // şikâyet edilen eski teşkilat mesajının yazarı yönetim panelinde görünsün
+    if (who) tx.set(core.db.doc(`gangWorlds/${ctx.worldId}/intelRosterArchive/${plan.rosterId}`), { actorId: who, codeName: plan.roster?.codeName || null, leftAtMs: ctx.now });
     tx.delete(ctx.ref.intelRecord(plan.rosterId)); // v108: sicil üye çıkınca silinir
     if (plan.roster?.codeName) tx.delete(ctx.ref.codeName(core.nameKeyOf(plan.roster.codeName)));
     tx.set(
@@ -182,6 +204,10 @@ export function createIntelActions(core) {
     return intelReviewRanks();
   }
 
+  // v136: darbe sürerken (24 saat) polislik başvurusu yapılamaz — belediye darbeyi durdurmak
+  // için oyuncuları polis yapamasın (politics/state.coup — functions/politicsCoup.js)
+  // (v136 ilk sürümdeki "darbe sürerken polislik başvurusu yok" yasağı kaldırıldı:
+  // darbede yeni polis Polis Memuru olduğu için halk gücündedir — politicsCoup.coupPowerOf)
   async function applyIntel(ctx, data) {
     const { codeName, key } = parseCodeName(data.codeName);
     const weapon = await hasWeaponOf(ctx, ctx.actorId);
@@ -336,15 +362,36 @@ export function createIntelActions(core) {
     return { pending: apps.length, accepted, noReviewers };
   }
 
+  // NOT: ikinci parametre istemci verisidir — zorla çıkış SADECE forceLeaveIntel ile
   async function leaveIntel(ctx) {
+    return leaveIntelTx(ctx, { force: false });
+  }
+  // v136: başarılı darbecinin "devletin başına geç" kararı (karar beklerken kilitli)
+  async function forceLeaveIntel(ctx) {
+    return leaveIntelTx(ctx, { force: true });
+  }
+  async function leaveIntelTx(ctx, { force }) {
     return core.db.runTransaction(async (tx) => {
       const membership = await readMembership(tx, ctx, ctx.actorId);
       requireIntel(membership);
-      const plan = await planIntelLeave(tx, ctx, membership);
+      const plan = await planIntelLeave(tx, ctx, membership, ctx.actorId, { force });
       applyIntelLeave(tx, ctx, plan, { notifyText: `🚪 Polislikten istifa ettin. ${INTEL.REJOIN_COOLDOWN_MS / 3_600_000} saat boyunca yeniden başvuru yapamazsın.` });
       // v134: kendi isteğiyle istifa teşkilat sohbetinde görünür ("katıldı" mesajının karşılığı)
       if (plan.roster?.codeName) systemChat(tx, ctx, ctx.ref.intelChat('genel'), `🚪 ${plan.roster.codeName} polislikten istifa etti.`);
       return { left: true };
+    });
+  }
+
+  // v136 — sistemin bir polisi teşkilattan çıkarması (ör. başarısız darbe → Emniyet
+  // Genel Müdürü görevden alınır). Atılma gibi: 24 saat yasak, prestij silinir.
+  async function systemRemove(ctx, uid, { notifyText, chatText } = {}) {
+    return core.db.runTransaction(async (tx) => {
+      const membership = await readMembership(tx, ctx, uid);
+      if (!membership.intelRosterId) return { notMember: true };
+      const plan = await planIntelLeave(tx, ctx, membership, uid, { force: true }); // darbe sonucu: kilit yok
+      applyIntelLeave(tx, ctx, plan, { actorId: uid, notifyText: notifyText || '🚫 Polislikten alındın.' });
+      if (chatText) announceIntel(tx, ctx, '🚫', chatText.replace(/\{code\}/g, plan.roster?.codeName || 'Bir polis'));
+      return { removed: true, codeName: plan.roster?.codeName || null };
     });
   }
 
@@ -370,10 +417,12 @@ export function createIntelActions(core) {
     const targetId = String(data.rosterId || '');
     if (!targetId) fail('invalid-argument', 'Üye seçilmedi.');
     const membership = await core.db.runTransaction((tx) => readMembership(tx, ctx, ctx.actorId));
-    const rid = requireIntel(membership);
-    const [meSnap, tSnap, recSnap] = await Promise.all([ctx.ref.roster(rid).get(), ctx.ref.roster(targetId).get(), ctx.ref.intelRecord(targetId).get()]);
-    const me = meSnap.data();
-    if (!me || (targetId !== rid && !['baskan', 'sef', 'uzman'].includes(core.effRank(me, ctx, 'muhbir')))) fail('permission-denied', 'Polis sicillerini sadece rütbeliler görebilir.');
+    // v136: belediye yetkilisi (başkan · yardımcılar · Teşkilat Bakanı) sicilleri görür
+    const official = !membership.intelRosterId ? await officialOf(ctx.actorId) : null;
+    const rid = official ? null : requireIntel(membership);
+    const [meSnap, tSnap, recSnap] = await Promise.all([rid ? ctx.ref.roster(rid).get() : Promise.resolve(null), ctx.ref.roster(targetId).get(), ctx.ref.intelRecord(targetId).get()]);
+    const me = meSnap?.data();
+    if (!official && (!me || (targetId !== rid && !['baskan', 'sef', 'uzman'].includes(core.effRank(me, ctx, 'muhbir'))))) fail('permission-denied', 'Polis sicillerini sadece rütbeliler görebilir.');
     const t = tSnap.data();
     if (!t) fail('not-found', 'Üye bulunamadı.');
     const rec = recSnap.data() || {};
@@ -438,6 +487,17 @@ export function createIntelActions(core) {
     });
   }
 
+  // v136 — BELEDİYE YETKİLİSİ teşkilatta: başkan, yardımcılar ve Teşkilat Bakanı
+  // polis olmadan teşkilat panelini görür (genel + belediye sohbeti, savaşlar,
+  // ihbarlı tırlar, siciller). Kimliği gizli değildir; kimseyi atamaz, savaşa girmez.
+  const OFFICIAL_SEATS = { bsk: 'Belediye Başkanı', yrd1: 'Belediye Başkan Yardımcısı', yrd2: 'Belediye Başkan Yardımcısı', guv: 'Teşkilat Bakanı' };
+  async function officialOf(uid, tx = null) {
+    const ref = core.db.doc(`belediyeStaff/${uid}`);
+    const s = tx ? await tx.get(ref) : await ref.get();
+    const seat = s.data()?.seat;
+    return OFFICIAL_SEATS[seat] ? { seat, title: OFFICIAL_SEATS[seat] } : null;
+  }
+
   // Teşkilat sohbeti: genel (tüm üyeler) + yonetim (EGM, Amir, Başkomiser).
   async function sendIntelChat(ctx, data) {
     const channel = String(data.channel || 'genel');
@@ -445,6 +505,16 @@ export function createIntelActions(core) {
     const text = cleanText(data.text, { min: 1, max: GANG.CHAT_MAX, field: 'Mesaj' });
     return core.db.runTransaction(async (tx) => {
       const membership = await readMembership(tx, ctx, ctx.actorId);
+      if (!membership.intelRosterId) {
+        // v136: belediye yetkilisi — sadece Genel kanal, adı ve unvanıyla
+        const [off, us, lim] = await Promise.all([officialOf(ctx.actorId, tx), tx.get(core.db.doc(`users/${ctx.actorId}`)), tx.get(core.db.doc(`belediyeChatLimits/${ctx.actorId}`))]);
+        if (!off) fail('failed-precondition', 'Polis Teşkilatı üyesi değilsin.');
+        if (channel !== 'genel') fail('permission-denied', 'Rütbeliler sohbeti polislere özel.');
+        if (ctx.now - Number(lim.data()?.atMs || 0) < GANG.CHAT_MIN_INTERVAL_MS) fail('resource-exhausted', 'Biraz yavaş!');
+        tx.set(core.db.doc(`belediyeChatLimits/${ctx.actorId}`), { atMs: ctx.now });
+        tx.set(ctx.ref.intelChat('genel').doc(), { official: true, uid: ctx.actorId, name: us.data()?.displayName || 'Oyuncu', title: off.title, seat: off.seat, text, createdAtMs: ctx.now });
+        return { sent: true };
+      }
       const rid = requireIntel(membership);
       const me = (await tx.get(ctx.ref.roster(rid))).data();
       if (!me) fail('failed-precondition', 'Polis Teşkilatı üyesi değilsin.');
@@ -711,6 +781,7 @@ export function createIntelActions(core) {
       if (meSnap.data()?.rank !== 'baba' || gangSnap.data()?.status !== 'active') fail('failed-precondition', 'Artık Mafya Babası değilsin.');
       if (choice === 'stay') {
         applyIntelLeave(tx, ctx, plan, { notifyText: '🚪 Çetenin başında kalmayı seçtin — polislikten ayrıldın.' });
+        if (plan.roster?.codeName) systemChat(tx, ctx, ctx.ref.intelChat('genel'), `🚪 ${plan.roster.codeName} polislikten istifa etti.`);
         return { choice };
       }
       const gang = gangSnap.data();
@@ -752,7 +823,8 @@ export function createIntelActions(core) {
     return { passed, ratio };
   }
 
-  async function removeFromIntel(tx, ctx, rosterId, roster, reasonText) {
+  async function removeFromIntel(tx, ctx, rosterId, roster, reasonText, { force = false } = {}) {
+    await assertNotCoupLocked(tx, ctx, rosterId, { force });
     const link = await tx.get(linkRef(ctx, rosterId));
     const actorId = link.data()?.actorId || null;
     const ms = actorId ? await readMembership(tx, ctx, actorId) : null;
@@ -779,8 +851,8 @@ export function createIntelActions(core) {
     const left = joined + INTEL.NEW_MEMBER_KICK_GUARD_MS - ctx.now;
     return left > 0 ? Math.max(1, Math.ceil(left / 3_600_000)) : 0;
   }
+  // v136: "≤7 polis varken kimse atılamaz" kuralı kaldırıldı (yerine günlük atma hakkı)
   function kickBlockReason(ctx, rosterSize, target) {
-    if (rosterSize < INTEL.KICK_MIN_MEMBERS) return `Teşkilatta ${INTEL.KICK_MIN_MEMBERS - 1} ya da daha az polis varken kimse çıkarılamaz.`;
     const h = newMemberGuardHoursLeft(ctx, target);
     if (h) return `Yeni katılan polis ${INTEL.NEW_MEMBER_KICK_GUARD_MS / 3_600_000} saat boyunca çıkarılamaz (${h} saat kaldı).`;
     return null;
@@ -794,11 +866,17 @@ export function createIntelActions(core) {
       if (!targetRosterId || targetRosterId === rid) fail('invalid-argument', 'Geçersiz üye.');
       const [me, target, rosterSnap] = await Promise.all([tx.get(ctx.ref.roster(rid)), tx.get(ctx.ref.roster(targetRosterId)), tx.get(ctx.ref.rosterCol())]);
       if (!target.exists) fail('failed-precondition', 'Bu polis artık teşkilatta değil.');
-      if (!(DIRECT_KICK[core.effRank(me.data(), ctx, 'muhbir')] || []).includes(target.data().rank)) fail('permission-denied', 'Bu üyeyi doğrudan atamazsın (oylama gerekir).');
+      const myRank = core.effRank(me.data(), ctx, 'muhbir');
+      if (!(DIRECT_KICK[myRank] || []).includes(target.data().rank)) fail('permission-denied', 'Bu üyeyi doğrudan atamazsın (oylama gerekir).');
       const blocked = kickBlockReason(ctx, rosterSnap.size, target.data());
       if (blocked) fail('failed-precondition', blocked);
+      // v136: günlük atma hakkı (Emniyet Genel Müdürü 2 · Emniyet Amiri 1; 00:00'da yenilenir)
+      const limit = Number(INTEL.DIRECT_KICK_PER_DAY[myRank] || 0);
+      const used = me.data().kickDay === ctx.dateKey ? Number(me.data().kickCount || 0) : 0;
+      if (used >= limit) fail('resource-exhausted', `Bugünkü atma hakkın bitti (${limit}/${limit}). 00:00'da yenilenir.`);
       const apply = await removeFromIntel(tx, ctx, targetRosterId, target.data(), '🚫 Polis Teşkilatından atıldın ve polislikten alındın. Prestijin silindi.');
       apply();
+      tx.update(ctx.ref.roster(rid), { kickDay: ctx.dateKey, kickCount: used + 1 }); // okumalardan sonra
       announceIntel(tx, ctx, '🚫', `${target.data().codeName}, ${me.data().codeName} tarafından teşkilattan atıldı.`);
       return { kicked: true };
     });
@@ -822,6 +900,8 @@ export function createIntelActions(core) {
         tx.get(lockRef),
       ]);
       if (!target.exists) fail('failed-precondition', 'Bu polis artık teşkilatta değil.');
+      const coupL = await readCoupLock(ctx, tx);
+      if (coupL && coupL.rid === targetRosterId) fail('failed-precondition', 'Darbe sürerken Emniyet Genel Müdürü hakkında çıkarma oylaması açılamaz.');
       if (!intelKickVoteAllowed(core.effRank(me.data(), ctx, 'muhbir'), target.data().rank)) fail('permission-denied', 'Bu üye için çıkarma oylaması başlatamazsın.');
       const blocked = kickBlockReason(ctx, rosterSnap.size, target.data());
       if (blocked) fail('failed-precondition', blocked);
@@ -899,7 +979,15 @@ export function createIntelActions(core) {
           if (!vote || vote.status !== 'active') return { skipped: true };
           const endedEarly = vote.endsAtMs > ctx.now;
           if (endedEarly && !(early && decidedOutcome(vote, intelVoteOutcome))) return { skipped: true };
-          const [target, rosterSnap] = await Promise.all([tx.get(ctx.ref.roster(vote.targetRosterId)), tx.get(ctx.ref.rosterCol())]);
+          const target = await tx.get(ctx.ref.roster(vote.targetRosterId));
+          // v136: darbe başladıktan sonra biten oylama darbeciyi çıkaramaz (darbe başlamadan
+          // — polis oylaması süresince — biten oylama çıkarır; darbe de başlamaz)
+          const coupL = await readCoupLock(ctx, tx);
+          if (coupL && coupL.rid === vote.targetRosterId && Math.min(ctx.now, vote.endsAtMs) > coupL.startMs) {
+            tx.update(d.ref, { status: 'cancelled', cancelReason: 'coup', resolvedAtMs: ctx.now });
+            if (target.exists) tx.update(ctx.ref.roster(vote.targetRosterId), { underVoteUntilMs: 0 });
+            return { cancelled: true };
+          }
           const { passed, ratio } = intelVoteOutcome(vote);
           const pct = `%${Math.round(ratio * 100)}${endedEarly ? ' · sonuç kesinleşti, oylama erken bitti' : ''}`;
           const result = { passed, ratio, yes: vote.yes || 0, no: vote.no || 0, endedEarly };
@@ -907,15 +995,8 @@ export function createIntelActions(core) {
             tx.update(d.ref, { status: 'cancelled', cancelReason: 'member_left', resolvedAtMs: ctx.now, result });
             return { cancelled: true };
           }
-          // v61: sonuçlanma anında üye sayısı 7 ya da altına düştüyse çıkarma uygulanmaz
-          if (passed && rosterSnap.size < INTEL.KICK_MIN_MEMBERS) {
-            tx.update(d.ref, { status: 'cancelled', cancelReason: 'min_members', resolvedAtMs: ctx.now, result });
-            if (Number(target.data().underVoteUntilMs || 0) > ctx.now) tx.update(ctx.ref.roster(vote.targetRosterId), { underVoteUntilMs: 0 });
-            announceIntel(tx, ctx, '🗳️', `${vote.targetCode} için çıkarma oylaması geçti ama teşkilatta ${INTEL.KICK_MIN_MEMBERS - 1} ya da daha az polis kaldığı için uygulanmadı.`);
-            return { cancelled: true, reason: 'min_members' };
-          }
           let apply = null;
-          if (passed) apply = await removeFromIntel(tx, ctx, vote.targetRosterId, target.data(), `🗳️ Oylama sonucu Polis Teşkilatından çıkarıldın ve polislikten alındın (${pct}).`);
+          if (passed) apply = await removeFromIntel(tx, ctx, vote.targetRosterId, target.data(), `🗳️ Oylama sonucu Polis Teşkilatından çıkarıldın ve polislikten alındın (${pct}).`, { force: true });
           tx.update(d.ref, { status: 'resolved', resolvedAtMs: ctx.now, result });
           if (apply) apply();
           // v52: erken bittiyse ve hedef kaldıysa "oylama altında (Muhbir yetkisi)" durumu biter
@@ -948,6 +1029,7 @@ export function createIntelActions(core) {
           tx.get(ctx.ref.rosterCol()),
           tx.get(ctx.ref.intelVotes().where('status', '==', 'active')),
         ]);
+        const coupL = await readCoupLock(ctx, tx); // v136: darbeci hakkında oylama başlamaz
         const roster = new Map(rosterSnap.docs.map((d) => [d.id, d.data()]));
         const voters = [...roster.entries()].filter(([, r]) => ['baskan', 'sef', 'uzman'].includes(r.rank)).map(([id]) => id);
         const pend = pendSnap.docs.map((d) => ({ ref: d.ref, ...d.data() })).filter((p) => p.requestedAtMs < ctx.now);
@@ -956,7 +1038,7 @@ export function createIntelActions(core) {
         for (const p of pend) {
           const ini = roster.get(p.initiatorRosterId);
           const tgt = roster.get(p.targetRosterId);
-          if (!ini || !tgt || started.has(p.targetRosterId) || !intelKickVoteAllowed(ini.rank, tgt.rank) || kickBlockReason(ctx, roster.size, tgt)) {
+          if (!ini || !tgt || coupL?.rid === p.targetRosterId || started.has(p.targetRosterId) || !intelKickVoteAllowed(ini.rank, tgt.rank) || kickBlockReason(ctx, roster.size, tgt)) {
             tx.update(p.ref, { status: 'cancelled', cancelReason: 'invalid_at_midnight' });
             continue;
           }
@@ -984,11 +1066,15 @@ export function createIntelActions(core) {
 
   return {
     planIntelLeave,
+    readCoupLock,
     applyIntelLeave,
     joinIntel,
     leaveIntel,
+    forceLeaveIntel,
     changeCodeName,
     kickIntelMember,
+    systemRemove,
+    officialOf,
     requestIntelKickVote,
     cancelIntelVoteRequest,
     castIntelVote,

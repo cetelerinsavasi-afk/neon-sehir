@@ -14,7 +14,7 @@ import './OnboardingPanel.css';
 // Oyuncu bu göreve geldiğinde şart zaten sağlanıyorsa sunucu otomatik geçirir
 const STATUS_TASK_IDS = [5, 9, 11, 12, 13, 16, 19, 20];
 
-export default function OnboardingPanel({ gangReminders = null }) {
+export default function OnboardingPanel({ gangReminders = null, slotBottom = null, onVisibleChange = null }) {
   const { user } = useAuth();
   const {
     loading,
@@ -64,6 +64,12 @@ export default function OnboardingPanel({ gangReminders = null }) {
     prevStepRef.current = onboardingStep;
   }, [onboardingStep]);
 
+  // v136: sol alt sütun (Görevler → CANLI → Seçim) boşlukları alta kaydırır
+  const visible = Boolean(user) && !loading && !shouldHideButton;
+  useEffect(() => {
+    onVisibleChange?.(visible);
+  }, [visible, onVisibleChange]);
+
   if (!user || loading) return null;
   if (shouldHideButton) return null;
 
@@ -96,6 +102,7 @@ export default function OnboardingPanel({ gangReminders = null }) {
         className={`onboarding-btn${!onboardingRewardClaimed ? ' onboarding-btn-attention' : ''}${
           rewardReady ? ' onboarding-btn-reward-ready' : ''
         }`}
+        style={slotBottom ? { bottom: slotBottom } : undefined}
         onClick={() => setOpen(true)}
         aria-label="Görevler"
         title="Görevler"

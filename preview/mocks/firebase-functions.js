@@ -15,6 +15,8 @@ export function httpsCallable(functions, name) {
       if (name === 'gangAction') return { data: await system.handleAction(request) };
       // v127 Belediye (önizleme: gerçek functions/belediye.js — preview/belediye-app.jsx kurar)
       if (name === 'belediyeAction' && window.__belediye) return { data: await window.__belediye.handle(request.auth.uid, data) };
+      // v136 seçim (önizleme: gerçek functions/politics.js — preview/politics-app.jsx kurar)
+      if (name === 'politicsAction' && window.__politics) return { data: await window.__politics.handle(request.auth.uid, data) };
       // v124 Faz 6 oyuncu gazinosu (önizleme: gerçek functions/casino.js)
       const cid = data?.casinoId && data.casinoId !== 'game' ? data.casinoId : null;
       const me = request.auth.uid;

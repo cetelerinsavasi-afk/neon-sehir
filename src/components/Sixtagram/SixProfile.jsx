@@ -67,7 +67,7 @@ export function MyProfile({ player, myProfile, posts, storyGroup, onOpenStory, l
           </span>
         )}
         <div className="six-stats">
-          <Stat n={posts.length} label="gönderi" />
+          <Stat n={feedPosts.length} label="gönderi" />
           <Stat n={nFollowers} label="takipçi" onClick={() => setList('followers')} />
           <Stat n={nFollowing} label="takip" onClick={() => setList('following')} />
           <Stat n={myProfile?.totalLikes} label="beğeni" />
@@ -75,18 +75,9 @@ export function MyProfile({ player, myProfile, posts, storyGroup, onOpenStory, l
       </div>
       <p className="six-prof-name">{player?.displayName || 'Oyuncu'}</p>
       <p className="six-prof-sub">Son 24 saatte paylaştıkların</p>
-      {storyGroup && (
-        <div className="six-prof-stories">
-          {storyGroup.posts.map((p, i) => (
-            <button key={p.id} className="six-prof-story" onClick={() => onOpenStory(i)}>
-              <span>📸</span>
-              <small>👁 {fmt((p.viewers || []).length)}</small>
-            </button>
-          ))}
-        </div>
-      )}
+      {/* v136: hikâyeler burada listelenmez — profil fotoğrafına (halka) dokununca açılır */}
       <div className="six-feed">
-        {feedPosts.length === 0 && !storyGroup && <p className="six-hint">Henüz bir paylaşımın yok.</p>}
+        {feedPosts.length === 0 && <p className="six-hint">Henüz bir paylaşımın yok.</p>}
         {feedPosts.map((p) => (
           <PostCard key={p.id} post={p} liked={likedIds.has(p.id)} isOwn />
         ))}
@@ -163,7 +154,7 @@ export function UserProfileSheet({ target, posts, storyGroup, onOpenStory, liked
             </span>
           )}
           <div className="six-stats">
-            <Stat n={theirs.length} label="gönderi" />
+            <Stat n={feedPosts.length} label="gönderi" />
             <Stat n={prof?.followerCount} label="takipçi" />
             <Stat n={prof?.followingCount} label="takip" />
             <Stat n={prof?.totalLikes} label="beğeni" />

@@ -693,13 +693,22 @@ export function createGangSystem(deps) {
   // v109 — polislikten istifa (functions/index.js resignFromPolice; Karakol):
   // teşkilattan ayrılmakla aynı (prestij + sicil silinir, 24 saat başvuru yasağı).
   // Canlı dünya kapalıysa { skipped }.
-  async function resignPolice(uid) {
+  async function resignPolice(uid, { force = false } = {}) {
     const ctx = await liveCtx(uid);
     if (!ctx) return { skipped: 'no_live' };
     const m = await core.readMembership(null, ctx, uid);
     if (!m.intelRosterId) return { notMember: true };
-    const res = await intel.leaveIntel(ctx);
+    const res = force ? await intel.forceLeaveIntel(ctx) : await intel.leaveIntel(ctx);
     await core.refreshIntelRoster(ctx).catch(() => {});
+    core.flushLogs(ctx);
+    return res;
+  }
+  // v136 — darbe: başarısız darbede Emniyet Genel Müdürü görevden alınır
+  async function removePolice(uid, opts = {}) {
+    const ctx = await liveCtx(uid);
+    if (!ctx) return { skipped: 'no_live' };
+    const res = await intel.systemRemove(ctx, uid, opts);
+    if (res?.removed) await core.refreshIntelRoster(ctx).catch(() => {});
     core.flushLogs(ctx);
     return res;
   }
@@ -832,5 +841,5 @@ export function createGangSystem(deps) {
   // Testler için iç erişim (production'da kullanılmaz)
   const _internal = { core, membership, treasury, trade, market, wars, votes, intel, roles, clock, HANDLERS };
 
-  return { handleAction, handleAdmin, runAllClocks, onPoliceBust, resignPolice, liveMembershipRef, getRoleStatus, onContrabandHarac, isInLiveGang, ensureLiveWorld, onPlayerActivity, touchSocialActivity, stockSource, _internal };
+  return { handleAction, handleAdmin, runAllClocks, onPoliceBust, resignPolice, removePolice, liveMembershipRef, getRoleStatus, onContrabandHarac, isInLiveGang, ensureLiveWorld, onPlayerActivity, touchSocialActivity, stockSource, _internal };
 }

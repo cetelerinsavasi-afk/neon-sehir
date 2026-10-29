@@ -52,7 +52,7 @@ export const GANG_RULES = {
   DIST_RANKED_SLOTS: 7,
   DIST_MIN_SLOTS: 7,
   ORDER_LIMIT_RATIO: 0.005, // v75: savaşa katılan tüm tarafların (Polis Teşkilatı dahil) toplam gücünün %0,5'i
-  ORDER_WEEKDAYS: [1, 2, 3, 4, 5, 6], // v67: Pzt–Cmt
+  ORDER_WEEKDAYS: [0, 1, 2, 3, 4, 5], // v136: Paz–Cum (Cumartesi savaş günü)
   ORDER_DEADLINE_HOUR: 12, // v67: sipariş 00:00–12:00
   ROUTE_DAYS: 21,
   TRUCK_PRICE: 100_000,
@@ -63,7 +63,7 @@ export const GANG_RULES = {
   DEPOT_STEP: 100,
   UNIT_SIZE: { araba: 10, silah: 10, yasakliMadde: 1 },
   BET_MIN: 10_000,
-  BET_OFFER_WEEKDAYS: [1, 2, 3, 4, 5],
+  BET_OFFER_WEEKDAYS: [0, 1, 2, 3, 4], // v136: Paz–Per (24 saatlik bahis Cumartesi savaşına taşmasın)
   NAME_MIN: 3,
   NAME_MAX: 24,
   NOTE_MAX: 160,
@@ -88,7 +88,7 @@ export const SALARIES = { baskan: 25_000, sef: 20_000, uzman: 15_000, ajan: 10_0
 export const INTEL_RANKED = ['baskan', 'sef', 'uzman'];
 export const ROLE_INACTIVE_DAYS = 10;
 
-// Ticaret ürünleri — her Pazar sıradaki: yasaklı madde → silah → araba
+// Ticaret ürünleri — her Cumartesi (v136; eskiden Pazar) sıradaki: yasaklı madde → silah → araba
 export const PRODUCTS = [
   { id: 'yasakliMadde', label: 'Yasaklı Madde', emoji: '💊', kind: 'material', storePrice: 2500 },
   { id: 'silah', label: 'Silah', emoji: '🔫', kind: 'weapon' },

@@ -247,6 +247,63 @@ function ResignBox() {
   );
 }
 
+// v136 — BAŞKAN İSTİFASI (iki adım): 1. basış 24 saat kilit, sonra 24 saat içinde
+// son basış hükümeti düşürür; basılmazsa süreç başa döner.
+function MayorResign() {
+  const { seat, main, run, busy } = useBelediye();
+  const now = useTick(30_000);
+  const [ask, setAsk] = useState(null); // 'start' | 'final'
+  if (seat !== 'bsk') return null;
+  const r = main.resign || null;
+  const stage = !r?.startedAtMs ? 'none' : now < r.unlockAtMs ? 'locked' : now < r.expiresAtMs ? 'open' : 'none';
+  const lines = ['👥 Sen, başkan yardımcıları ve bakanlar — tüm ekip görevden alınır'];
+  return (
+    <div className="bd-resign">
+      {stage === 'none' && (
+        <Btn kind="danger" block onClick={() => setAsk('start')}>
+          🚪 Başkanlıktan istifa et
+        </Btn>
+      )}
+      {stage === 'locked' && (
+        <div className="gx-card">
+          <b>⏳ İstifa süreci başladı</b>
+          <small className="dim">{hoursLeft(r.unlockAtMs, now)} saat sonra son adım açılır · bu sürede görevine devam ediyorsun</small>
+          <Btn small kind="ghost" busy={busy === 'mayorResign'} onClick={() => run('mayorResign', { step: 'cancel' }, { success: 'İstifadan vazgeçtin.' })}>
+            Vazgeç
+          </Btn>
+        </div>
+      )}
+      {stage === 'open' && (
+        <div className="gx-card">
+          <b>🚪 İstifanı onaylayabilirsin</b>
+          <small className="dim">{hoursLeft(r.expiresAtMs, now)} saat içinde onaylamazsan süreç başa döner</small>
+          <Btn kind="danger" block onClick={() => setAsk('final')}>
+            İstifayı onayla
+          </Btn>
+          <Btn small kind="ghost" busy={busy === 'mayorResign'} onClick={() => run('mayorResign', { step: 'cancel' }, { success: 'İstifadan vazgeçtin.' })}>
+            Vazgeç
+          </Btn>
+        </div>
+      )}
+      {ask && (
+        <Confirm
+          icon="🚪"
+          danger
+          title={ask === 'start' ? 'Başkanlıktan istifa' : 'Hükümet düşsün mü?'}
+          lines={ask === 'start' ? [...lines, '⏳ 24 saat daha göreve devam edersin; sonra tekrar istifa et dersen hükümet düşer'] : [...lines, '🔒 İstifa edersen bu kararı geri alamazsın']}
+          confirmLabel={ask === 'start' ? 'Süreci başlat' : 'İstifa et'}
+          busy={busy === 'mayorResign'}
+          onCancel={() => setAsk(null)}
+          onConfirm={async () => {
+            await run('mayorResign', { step: ask }, { success: ask === 'start' ? 'İstifa süreci başladı.' : 'İstifa ettin. Hükümet düştü.' });
+            setAsk(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 export default function BaskanlikTab() {
   const { main } = useBelediye();
   const rates = useBelediyeRates();
@@ -290,6 +347,7 @@ export default function BaskanlikTab() {
         </>
       )}
       <ResignBox />
+      <MayorResign />
       {open && <SeatSheet id={open} onClose={() => setOpen(null)} />}
     </div>
   );

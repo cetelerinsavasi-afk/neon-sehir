@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
+import { readWithKick } from './useFirestoreResume';
 
 const MACHINE_LABELS = {
   mining: 'Mining Makinesi',
@@ -31,7 +32,7 @@ const machineCache = new Map(); // factoryId → { at, list }
 async function machinesOf(id) {
   const c = machineCache.get(id);
   if (c && Date.now() - c.at < REFRESH_MS) return c.list;
-  const snap = await getDocs(collection(db, 'factories', id, 'machines'));
+  const snap = await readWithKick(() => getDocs(collection(db, 'factories', id, 'machines')));
   const list = snap.docs.map((md) => ({ id: md.id, ...md.data() }));
   machineCache.set(id, { at: Date.now(), list });
   return list;
@@ -49,7 +50,7 @@ export function useOpenFactories() {
       if (busyRef.current || document.hidden) return;
       busyRef.current = true;
       try {
-        const snap = await getDocs(collection(db, 'factories'));
+        const snap = await readWithKick(() => getDocs(collection(db, 'factories'))); // v136: durağan bağlantıda takılmasın
         if (!alive) return;
         const next = {};
         snap.forEach((d) => {

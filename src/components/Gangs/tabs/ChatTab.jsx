@@ -44,7 +44,7 @@ function GangMsg({ m, mine, rank, isIntel, channel, onProfile, onMenu }) {
               </button>
             ) : (
               <>
-                {RANK_ICONS[rank] || ''} {isIntel ? m.codeName : m.authorName}
+                {m.official ? `🏛️ ${m.name} · ${m.title}` : <>{RANK_ICONS[rank] || ''} {isIntel ? m.codeName : m.authorName}</>}
               </>
             )}
             {channel === 'tum' && m.gangName && (
@@ -66,6 +66,7 @@ export default function ChatTab({ org, d }) {
   const { run, busy } = useGangAction();
   const isIntel = org === 'intel';
   const ranked = isIntel ? ['baskan', 'sef', 'uzman'].includes(d.rank) : atLeast(d.rank, 'kidemli');
+  const official = isIntel && Boolean(d.official); // v136: belediye yetkilisi (Genel + Belediye kanalı)
   const [channel, setChannel] = useState('genel');
   const [text, setText] = useState('');
   const listRef = useRef(null);
@@ -79,7 +80,7 @@ export default function ChatTab({ org, d }) {
   // v127: rütbeli polisler için 3. kanal — Belediye koordinasyon sohbeti (belediyeChat_koord)
   const belediyeCh = isIntel && channel === 'belediye';
   const coll = belediyeCh ? null : isIntel ? path(`intelChat_${channel}`) : channel === 'tum' ? path('globalChat') : path(`gangs/${d.gangId}/chat_${channel}`);
-  const since = Number((isIntel ? d.membership.intelJoinedAtMs : d.membership.gangJoinedAtMs) || 0);
+  const since = official ? 0 : Number((isIntel ? d.membership.intelJoinedAtMs : d.membership.gangJoinedAtMs) || 0);
   const { docs } = useQueryData(coll, () => [where('createdAtMs', '>=', since), orderBy('createdAtMs', 'desc'), limit(60)], `${coll}_${since}`);
   const msgs = [...docs].reverse();
   const canWrite = channel === 'genel' || ranked;
@@ -107,16 +108,16 @@ export default function ChatTab({ org, d }) {
   // v93: yeni mesaj noktası nabız gibi büyüyüp küçülür (Chips → gx-chip-dot)
   const dot = (id) => Boolean(unread[id] && channel !== id);
   // v127: Belediye (koordinasyon) kanalında yeni mesaj
-  const bdUnread = useBelediyeChatUnread(actorId, 'koord', isIntel && ranked, (m) => m.authorKind === 'polis' && m.rosterId === d.rid);
+  const bdUnread = useBelediyeChatUnread(actorId, 'koord', isIntel && (ranked || official), (m) => (official ? m.uid === actorId : m.authorKind === 'polis' && m.rosterId === d.rid));
   const channels = isIntel
-    ? [{ id: 'genel', label: 'Genel', icon: '💬', dot: dot('genel') }, ...(ranked ? [{ id: 'yonetim', label: 'Rütbeliler', icon: '🔒', dot: dot('yonetim') }, { id: 'belediye', label: 'Belediye', icon: '🏛️', dot: bdUnread && channel !== 'belediye' }] : [])]
+    ? [{ id: 'genel', label: 'Genel', icon: '💬', dot: dot('genel') }, ...(ranked ? [{ id: 'yonetim', label: 'Rütbeliler', icon: '🔒', dot: dot('yonetim') }] : []), ...(ranked || official ? [{ id: 'belediye', label: 'Belediye', icon: '🏛️', dot: bdUnread && channel !== 'belediye' }] : [])]
     : [{ id: 'genel', label: 'Çete', icon: '💬', dot: dot('genel') }, ...(ranked ? [{ id: 'yonetim', label: 'Yönetim', icon: '🔒', dot: dot('yonetim') }] : []), { id: 'tum', label: 'Tüm Çeteler', icon: '🌐', dot: dot('tum') }];
 
-  if (belediyeCh && ranked) {
+  if (belediyeCh && (ranked || official)) {
     return (
       <div className="gx-chat">
         <Chips options={channels} value={channel} onChange={setChannel} />
-        <BelediyeChat channel="koord" isMine={(m) => m.authorKind === 'polis' && m.rosterId === d.rid} />
+        <BelediyeChat channel="koord" isMine={(m) => (official ? m.uid === actorId : m.authorKind === 'polis' && m.rosterId === d.rid)} />
       </div>
     );
   }
@@ -134,7 +135,7 @@ export default function ChatTab({ org, d }) {
               </div>
             );
           }
-          const mine = isIntel ? m.rosterId === d.rid : m.authorId === actorId;
+          const mine = isIntel ? (m.official ? m.uid === actorId : Boolean(d.rid) && m.rosterId === d.rid) : m.authorId === actorId;
           const rank = isIntel ? m.rank : m.authorRank;
           // Şikâyetlerle otomatik gizlenen mesaj (İstihbarat dahil)
           if (m.hidden && !mine) {
@@ -168,7 +169,7 @@ export default function ChatTab({ org, d }) {
           actions={[
             { key: 'copy', icon: '📋', label: 'Kopyala', onClick: () => copyText(menuFor.text || '') },
             ...(!isIntel && menuFor.authorId && menuFor.authorId !== actorId ? [{ key: 'profile', icon: '👤', label: 'Profili gör', onClick: () => setProfileOf(menuFor) }] : []),
-            ...((isIntel ? menuFor.rosterId !== d.rid : menuFor.authorId !== actorId) ? [{ key: 'report', icon: '⚑', label: 'Bildir', subtle: true, onClick: () => setReportTarget(menuFor) }] : []),
+            ...(!(isIntel ? (menuFor.official ? menuFor.uid === actorId : Boolean(d.rid) && menuFor.rosterId === d.rid) : menuFor.authorId === actorId) ? [{ key: 'report', icon: '⚑', label: 'Bildir', subtle: true, onClick: () => setReportTarget(menuFor) }] : []),
           ]}
         />
       )}

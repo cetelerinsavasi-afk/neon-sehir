@@ -4,6 +4,7 @@ import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import { useSixtagramComments } from '../../hooks/useSixtagramComments';
 import { createSixtagramComment } from '../../services/gameActions';
 import ReportBlockSheet from '../ReportBlockSheet/ReportBlockSheet';
+import { useSheetDrag } from './useSheetDrag';
 import PlayerCard from '../PlayerCard/PlayerCard';
 import ActionMenu from '../ActionMenu/ActionMenu';
 import { copyText, useLongPress } from '../ActionMenu/actionMenuUtils';
@@ -105,6 +106,7 @@ export default function CommentsPanel({ postId, onClose, header = null, title = 
   const listRef = useRef(null);
   const inputRef = useRef(null);
   const focusedOnceRef = useRef(false);
+  const drag = useSheetDrag(onClose); // v136: aşağı çekerek kapat
 
   useEffect(() => {
     if (!focusCommentId || loading || focusedOnceRef.current) return;
@@ -136,7 +138,7 @@ export default function CommentsPanel({ postId, onClose, header = null, title = 
 
   return (
     <div className="six-comments-backdrop" onClick={onClose}>
-      <div className={`six-comments-panel${header ? ' with-post' : ''}`} onClick={(e) => e.stopPropagation()}>
+      <div ref={drag.ref} style={drag.style} className={`six-comments-panel${header ? ' with-post' : ''}`} onClick={(e) => e.stopPropagation()}>
         <div className="six-comments-grab" aria-hidden="true" />
         <div className="six-comments-head">
           <span className="six-comments-close" />
@@ -146,7 +148,7 @@ export default function CommentsPanel({ postId, onClose, header = null, title = 
           </button>
         </div>
 
-        <div className="six-comments-list" ref={listRef}>
+        <div className="six-comments-list" ref={listRef} data-sheet-scroll>
           {header}
           {header && <p className="six-comments-subtitle">💬 Yorumlar</p>}
           {loading && <p className="six-comments-hint">Yükleniyor…</p>}

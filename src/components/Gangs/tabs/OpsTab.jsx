@@ -28,7 +28,7 @@ function BetOps({ d }) {
   const hourKey = Math.floor(now / 3600_000) * 3600_000;
   const { docs: repsAll } = useQueryData(path('betReports'), () => [where('intelDeadlineMs', '>', hourKey), limit(50)], `betrep_${hourKey}`);
   const reports = repsAll.filter((r) => now < r.intelDeadlineMs);
-  const inGang = Boolean(ms.gangId);
+  const inGang = Boolean(ms.gangId) && !d.official; // v136: yetkili sadece izler
   const canReport = inGang && atLeast(ms.gangRank, 'tetikci');
   const canLeak = inGang && atLeast(ms.gangRank, 'kidemli');
   // Çetemin bahisleri: hem teklif eden hem kabul eden çetenin İstihbaratçısı görür
@@ -150,7 +150,7 @@ export default function OpsTab({ d }) {
   // v67: her tırın kendi penceresi — yola çıkıştan 6 saat sonra saldırı başlar
   const isOpen = (x) => now < truckAttackAt(x);
   const { docs: reports } = useQueryData(path('intelReports'), () => [where('departDateKey', '==', today), limit(100)], `rep_${today}`);
-  const canReport = Boolean(ms.gangId) && atLeast(ms.gangRank, 'tetikci');
+  const canReport = !d.official && Boolean(ms.gangId) && atLeast(ms.gangRank, 'tetikci');
   const { docs: myTrucks } = useQueryData(canReport ? path('trucks') : null, () => [where('gangId', '==', ms.gangId), limit(50)], `mytrucks_${ms.gangId}_${canReport}`);
   const [op, setOp] = useState(null);
   const [bribe, setBribe] = useState(0);
@@ -176,7 +176,7 @@ export default function OpsTab({ d }) {
       )}
       {reports.length === 0 && <Empty icon="📡" text="İhbar yok." />}
       {reports.map((r) => {
-        const inThatGang = ms.gangId === r.gangId && atLeast(ms.gangRank, 'kidemli');
+        const inThatGang = !d.official && ms.gangId === r.gangId && atLeast(ms.gangRank, 'kidemli');
         const atk = truckAttackAt(r);
         const open = now < atk;
         return (

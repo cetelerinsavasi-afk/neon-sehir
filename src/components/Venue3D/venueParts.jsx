@@ -8,6 +8,7 @@ import { useBeggars } from '../../hooks/useBeggars';
 import { useDailyActions } from '../../hooks/useDailyActions';
 import { useInventory } from '../../hooks/useInventory';
 import { usePlayer } from '../../hooks/usePlayer';
+import { usePoliticsState } from '../../hooks/usePolitics'; // v136
 import { prayAtMosque, buyFromGazinoBar, leaveOnNumaraTable, buyFromBufe, sellContrabandAtPark } from '../../services/gameActions';
 import SimpleActionScreen from '../SimpleActionScreen/SimpleActionScreen';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
@@ -508,8 +509,15 @@ export function ParkPart({ panel, setPanel, flash, walk }) {
 // v127 — "Belediye" herkese açık: tam ekran Belediye (components/Belediye).
 // Ayrıntılı defter: Belediye › Başkanlık (components/Belediye/Defter.jsx).
 const BelediyeScreen = lazy(() => import('../Belediye/BelediyeScreen'));
+const PoliticsScreen = lazy(() => import('../Politics/PoliticsScreen'));
+const CoupScreen = lazy(() => import('../Politics/Coup').then((m) => ({ default: m.CoupScreen })));
+// v136: seçim sürecinde Belediye butonunun hemen altında: İmza (Cuma–Pazar) ·
+// Seçimler (Pazar 00:00 – Salı 00:00). Anasayfadaki buton oy verince kaybolur, bu durur.
+const POL_BTN = { signup: '✍️ İmza', election: '🗳️ Seçimler', counting: '🗳️ Seçimler', results: '🗳️ Seçimler' };
 export function BelediyePart({ panel, setPanel, walk }) {
   const { user } = useAuth();
+  const { phase, state } = usePoliticsState();
+  const coupOn = Boolean(state?.coup); // v136: darbe sürerken (ve karar beklenirken) Belediye altında ⚡ Darbe
   if (!user) return null;
   return (
     <>
@@ -518,10 +526,30 @@ export function BelediyePart({ panel, setPanel, walk }) {
         <button className="v3-btn" onClick={() => setPanel('belediye')}>
           🏛️ Belediye
         </button>
+        {coupOn && (
+          <button className="v3-btn" onClick={() => setPanel('darbe')}>
+            ⚡ Darbe
+          </button>
+        )}
+        {POL_BTN[phase] && (
+          <button className="v3-btn" onClick={() => setPanel('secim')}>
+            {POL_BTN[phase]}
+          </button>
+        )}
       </Menu>
       {panel === 'belediye' && (
         <Suspense fallback={null}>
           <BelediyeScreen onClose={() => setPanel(null)} />
+        </Suspense>
+      )}
+      {panel === 'darbe' && (
+        <Suspense fallback={null}>
+          <CoupScreen onClose={() => setPanel(null)} />
+        </Suspense>
+      )}
+      {panel === 'secim' && (
+        <Suspense fallback={null}>
+          <PoliticsScreen onClose={() => setPanel(null)} />
         </Suspense>
       )}
     </>

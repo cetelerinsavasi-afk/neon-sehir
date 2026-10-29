@@ -13,7 +13,6 @@ import { Kpis, Ledger, Person, RateEditor, Table, dayLabel, hoursLeft, nf, useTi
 
 const RANK_LABEL = { baskan: 'Emniyet Genel Müdürü', sef: 'Emniyet Amiri', uzman: 'Başkomiser', ajan: 'Komiser', muhbir: 'Polis Memuru' };
 const MACHINE_LABEL = { mining: 'Kripto', tamirMalzemesi: 'Tamir Malz.', arabaGelistirme: 'Araba Gel.', silahUpgrade: 'Silah Gel.' };
-const IE_LABEL = { araba: '2. el araba', silah: '2. el silah', malzeme: 'Malzeme / makine' };
 // v132 — soygun hedefleri (functions/policeRules.js heistTargetKey)
 const HEIST_LABEL = { banka: '🏦 Banka', casino: '🎰 Casino', araba_galerisi: '🚗 Galeri', modifiye_garaji: '🔧 Modifiye', fabrika: '🏭 Fabrika', seyyar: '🥙 Haraç', diger: 'Diğer' };
 
@@ -101,8 +100,6 @@ function Ticaret({ r, c, rates }) {
     ['gazino_onNumara', '10 Numara'],
   ].map(([k, name]) => ({ key: k, name, v: nf(c.in[k]) }));
   const gzTotal = ['gazino_slot', 'gazino_piyango', 'gazino_rulet', 'gazino_onNumara'].reduce((a, k) => a + (c.in[k] || 0), 0);
-  // v132: 2. el satışlar vergisiz
-  const ie = ['araba', 'silah'].map((k) => ({ key: k, name: IE_LABEL[k], n: nf(st[`ie_${k}_n`]), ciro: nf(st[`ie_${k}_ciro`]) }));
   // v130 — sıfır (stoktan) satışlar: sadece kârdan vergi (oyuncu dükkânları + oyunun mağazaları)
   const sf = [
     ['sf_silah', 'Silahçılar', 'sfSilah'],
@@ -157,15 +154,7 @@ function Ticaret({ r, c, rates }) {
         ]}
         rows={sf}
       />
-      <h4 className="bd-h">2. el satışlar</h4>
-      <Table
-        cols={[
-          { k: 'name', label: 'Kalem' },
-          { k: 'n', label: 'Satış', num: true },
-          { k: 'ciro', label: 'Tutar', num: true },
-        ]}
-        rows={ie}
-      />
+      {/* v136: 2. el satışlar vergisiz — Ticaret Bakanlığında 2. el paneli gösterilmez */}
     </>
   );
 }

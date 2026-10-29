@@ -735,3 +735,5 @@ export const verifyPlayPurchase = (productId, purchaseToken) =>
 //   panel · claimMayor · invite · cancelInvite · respondInvite · fire · resign ·
 //   setPerms · setRate · fireImam · donate · payDebt · payOther · chat
 export const belediyeAction = (data) => httpsCallable(functions, 'belediyeAction')(data);
+// v136 — seçim (functions/politics.js): { op: 'apply' | 'sign' | 'vote' | 'setText', ... }
+export const politicsAction = (data) => httpsCallable(functions, 'politicsAction')(data);

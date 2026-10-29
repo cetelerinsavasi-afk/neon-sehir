@@ -3,6 +3,8 @@ import { Eye, Trash2, X } from 'lucide-react';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import PostAttachment from './PostAttachment';
 import ConfirmSheet from './ConfirmSheet';
+import ReportBlockSheet from '../ReportBlockSheet/ReportBlockSheet';
+import { useSheetDrag } from './useSheetDrag'; // v136
 import { deleteSixtagramPost } from '../../services/gameActions';
 import { patchSixtagramFeedPost } from '../../hooks/useSixtagramFeed';
 import { flushStoryViews, isStorySeen, markStorySeen, useSixtagramPublicProfile } from '../../hooks/useSixtagramSocial';
@@ -160,6 +162,7 @@ export function StoryViewer({ groups: allGroups, start, startPi = null, myUid, o
   const [paused, setPaused] = useState(false);
   const [askDel, setAskDel] = useState(false);
   const [viewersOpen, setViewersOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false); // v136: başkasının hikâyesini bildir
   const [dragX, setDragX] = useState(0);
   const [dragY, setDragY] = useState(0);
   const [slide, setSlide] = useState('');
@@ -217,14 +220,14 @@ export function StoryViewer({ groups: allGroups, start, startPi = null, myUid, o
     if (!sw) return;
     const dx = e.clientX - sw.x;
     const dy = e.clientY - sw.y;
-    if (!sw.drag && Math.max(Math.abs(dx), Math.abs(dy)) > 12) sw.drag = Math.abs(dx) > Math.abs(dy) ? 'x' : dy > 0 ? 'y' : null;
+    if (!sw.drag && Math.max(Math.abs(dx), Math.abs(dy)) > 12) sw.drag = Math.abs(dx) > Math.abs(dy) ? 'x' : dy > 0 ? 'y' : own ? 'up' : null;
     if (sw.drag === 'x') setDragX(dx);
     if (sw.drag === 'y') setDragY(Math.max(0, dy));
   };
   const onSwUp = (e) => {
     const sw = swipe.current;
     swipe.current = null;
-    if (!askDel && !viewersOpen) setPaused(false);
+    if (!askDel && !viewersOpen && !reportOpen) setPaused(false);
     if (!sw?.drag) return;
     blockClick.current = true;
     setTimeout(() => (blockClick.current = false), 50);
@@ -234,6 +237,14 @@ export function StoryViewer({ groups: allGroups, start, startPi = null, myUid, o
     if (sw.drag === 'y') {
       if (dy > 110 || (dy > 35 && dy / dt > 0.5)) onClose();
       else setDragY(0);
+      return;
+    }
+    // v136: kendi hikâyende yukarı kaydır → görüntüleyenler
+    if (sw.drag === 'up') {
+      if (dy < -60 || (dy < -25 && -dy / dt > 0.5)) {
+        setPaused(true);
+        setViewersOpen(true);
+      }
       return;
     }
     const fast = Math.abs(dx) / dt > 0.5;
@@ -299,6 +310,18 @@ export function StoryViewer({ groups: allGroups, start, startPi = null, myUid, o
             <small>{timeAgo(post.createdAtMs)}</small>
           </button>
           <span className="six-sp" />
+          {!own && (
+            <button
+              className="six-sv-close six-sv-report"
+              onClick={() => {
+                setPaused(true);
+                setReportOpen(true);
+              }}
+              aria-label="Hikâyeyi bildir"
+            >
+              ⚑
+            </button>
+          )}
           <button className="six-sv-close" onClick={onClose} aria-label="Kapat">
             <X size={26} />
           </button>
@@ -359,6 +382,18 @@ export function StoryViewer({ groups: allGroups, start, startPi = null, myUid, o
           onOpenProfile={onOpenProfile}
         />
       )}
+      {reportOpen && (
+        <ReportBlockSheet
+          targetUid={g.uid}
+          targetName={g.name || 'Oyuncu'}
+          canBlock={false}
+          items={[{ label: 'Hikâyeyi bildir', targetType: 'sixtagramPost', targetPath: `sixtagramPosts/${post.id}`, preview: post.text }]}
+          onClose={() => {
+            setReportOpen(false);
+            setPaused(false);
+          }}
+        />
+      )}
       {askDel && (
         <ConfirmSheet
           title="Hikâye silinsin mi?"
@@ -397,10 +432,11 @@ function ViewerRow({ uid, onOpen }) {
 // kendi hikâyeni görenler (Instagram "Etkinlik" sayfası gibi alttan açılır)
 function ViewersSheet({ uids, onClose, onOpenProfile }) {
   const [shown, setShown] = useState(30);
+  const drag = useSheetDrag(onClose); // v136: aşağı çekerek kapat
   const list = [...uids].reverse(); // en son görenler üstte
   return (
     <div className="six-vw-bg" onClick={onClose} onPointerDown={(e) => e.stopPropagation()}>
-      <div className="six-vw" onClick={(e) => e.stopPropagation()}>
+      <div className="six-vw" ref={drag.ref} style={drag.style} onClick={(e) => e.stopPropagation()}>
         <i className="six-vw-grab" />
         <div className="six-vw-head">
           <Eye size={18} /> <b>{uids.length.toLocaleString('tr-TR')}</b>
@@ -408,6 +444,7 @@ function ViewersSheet({ uids, onClose, onOpenProfile }) {
         </div>
         <div
           className="six-vw-list"
+          data-sheet-scroll
           onScroll={(e) => {
             const el = e.currentTarget;
             if (el.scrollTop + el.clientHeight > el.scrollHeight - 80) setShown((n) => Math.min(list.length, n + 30));

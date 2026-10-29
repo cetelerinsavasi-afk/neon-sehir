@@ -84,6 +84,12 @@
 .gz-head.indirim h2 {
   color: #1d5a2a;
 }
+/* v136 — seçim manşeti */
+.gz-head.secim h2 {
+  color: #14306b;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
 .gz-head p {
   margin: 0;
   font-size: 14px;

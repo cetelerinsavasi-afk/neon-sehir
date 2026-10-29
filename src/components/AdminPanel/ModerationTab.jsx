@@ -1,4 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../firebase';
+
+const PostAttachment = lazy(() => import('../Sixtagram/PostAttachment'));
 import { adminAction } from '../../services/gameActions';
 import { REASON_LABELS, TYPE_LABELS, effectLabel, errText, fmtDate } from './adminLabels';
 
@@ -128,6 +132,13 @@ function ReportCard({ g, status, onOpenUser, onDone }) {
         </span>
       </div>
       <blockquote className="adm-quote">{g.textSnapshot || <em className="adm-dim">(metin yok)</em>}</blockquote>
+      {/* v136: Sixtagram gönderisi — fotoğraf / çizim / şarkı eki dahil gönderinin kendisi */}
+      {g.targetType === 'sixtagramPost' && g.exists && <PostPreview path={g.targetPath} />}
+      {g.targetUid && status === 'open' && (
+        <button className="adm-btn ghost small" onClick={() => onOpenUser(g.targetUid)}>
+          🔇 Sustur / ⛔ Banla{g.lateResolved ? ' (teşkilattan ayrılmış)' : ''}
+        </button>
+      )}
       <div className="adm-tags">
         {Object.entries(g.reasons).map(([k, n]) => (
           <span key={k} className="adm-tag">
@@ -262,6 +273,42 @@ function ContextView({ ctx, g }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// v136 — şikâyet edilen Sixtagram gönderisinin önizlemesi (dokununca yüklenir)
+function PostPreview({ path }) {
+  const [post, setPost] = useState(undefined);
+  const load = async () => {
+    setPost(null);
+    try {
+      const snap = await getDoc(doc(db, path));
+      setPost(snap.exists() ? { id: snap.id, ...snap.data() } : false);
+    } catch {
+      setPost(false);
+    }
+  };
+  if (post === undefined)
+    return (
+      <button className="adm-btn ghost small" onClick={load}>
+        🖼️ Gönderiyi gör
+      </button>
+    );
+  if (post === null) return <p className="adm-dim">Yükleniyor…</p>;
+  if (post === false) return <p className="adm-dim">Gönderi açılamadı.</p>;
+  return (
+    <div className="adm-post">
+      <p className="adm-dim">
+        {post.authorName || 'Oyuncu'} · {fmtDate(post.createdAtMs)}
+        {post.story ? ' · hikâye' : ''}
+      </p>
+      {post.attachment && (
+        <Suspense fallback={<p className="adm-dim">Yükleniyor…</p>}>
+          <PostAttachment attachment={post.attachment} post={post} />
+        </Suspense>
+      )}
+      {post.text && <p className="adm-post-text">{post.text}</p>}
     </div>
   );
 }

@@ -324,7 +324,7 @@ test('v52: İstihbarat çıkarma oylaması sonuç kesinleşince hemen biter (hed
   assert.ok(h.intelChat().some((m) => /erken bitti/.test(m)));
 });
 
-test('v61: İstihbaratta 7 ya da daha az üye varken atma/oylama yok; yeni üye 24 saat atılamaz (v123); sonuçlanırken 7ye düşerse uygulanmaz', async () => {
+test('v136: üye sayısı sınırı yok; günlük atma hakkı (EGM 2 · Amir 1, 00:00 yenilenir); doğrudan atılabilen için oylama yok; yeni üye 24 saat atılamaz', async () => {
   const h = await createHarness();
   const mk = async (name, prestige, rank, old = true) => {
     const id = await h.persona({ displayName: name, gold: 1, power: 1000, reputation: 60 });
@@ -335,36 +335,27 @@ test('v61: İstihbaratta 7 ya da daha az üye varken atma/oylama yok; yeni üye 
   };
   const B = await mk('Baskan', 9_000_000, 'baskan');
   const S1 = await mk('Sef1', 8_000_000, 'sef');
-  const S2 = await mk('Sef2', 7_500_000, 'sef');
-  const U = await mk('Uzman', 7_000_000, 'uzman');
   const fill = [];
-  for (let i = 0; i < 3; i++) fill.push(await mk(`Dolgu${i}`, 0, 'muhbir'));
-  // 7 üye → atma ve oylama yok
-  assert.match((await h.fails(B.id, 'kickIntelMember', { targetRosterId: fill[0].rid })).message, /7 ya da daha az/);
-  assert.match((await h.fails(S1.id, 'requestIntelKickVote', { targetRosterId: S2.rid })).message, /7 ya da daha az/);
-  // 8. üye bugün katıldı → 8 üye var ama yeni üye atılamaz; eski üye atılabilir
+  for (let i = 0; i < 5; i++) fill.push(await mk(`Dolgu${i}`, 0, 'muhbir'));
+  // 7 üye: artık atılabilir
+  await h.act(B.id, 'kickIntelMember', { targetRosterId: fill[0].rid });
+  await h.act(B.id, 'kickIntelMember', { targetRosterId: fill[1].rid });
+  assert.match((await h.fails(B.id, 'kickIntelMember', { targetRosterId: fill[2].rid })).message, /atma hakkın bitti \(2\/2\)/);
+  // doğrudan atabildiği rütbe için oylama başlatamaz (hak bitse de)
+  assert.match((await h.fails(B.id, 'requestIntelKickVote', { targetRosterId: fill[2].rid })).message, /oylaması başlatamazsın/);
+  await h.act(S1.id, 'kickIntelMember', { targetRosterId: fill[2].rid });
+  assert.match((await h.fails(S1.id, 'kickIntelMember', { targetRosterId: fill[3].rid })).message, /\(1\/1\)/);
+  // Amir, EGM için oylama başlatabilir (4 üye kaldı)
+  await h.act(S1.id, 'requestIntelKickVote', { targetRosterId: B.rid });
+  // yeni üye 24 saat atılamaz
   const N = await mk('Yeni', 0, 'muhbir', false);
-  assert.match((await h.fails(B.id, 'kickIntelMember', { targetRosterId: N.rid })).message, /Yeni katılan polis 24 saat boyunca çıkarılamaz/);
-  // oylama başlat (8 üye), sonra biri kendi isteğiyle ayrılır → 7 → oylama geçse de uygulanmaz
-  const { voteId } = await h.act(S1.id, 'requestIntelKickVote', { targetRosterId: S2.rid });
-  await h.act(fill[1].id, 'leaveIntel'); // kendi çıkmak serbest
-  await h.act(S1.id, 'castIntelVote', { voteId, choice: 'yes' });
-  await h.act(B.id, 'castIntelVote', { voteId, choice: 'yes' });
-  await h.act(U.id, 'castIntelVote', { voteId, choice: 'yes' });
-  const v = h.get(`intel/main/votes/${voteId}`);
-  assert.equal(v.status, 'cancelled');
-  assert.equal(v.cancelReason, 'min_members');
-  assert.ok(h.get(`intelRoster/${S2.rid}`), 'hedef İstihbaratta kaldı');
-  assert.ok(h.intelChat().some((m) => /uygulanmadı/.test(m)));
-  // v123: 00:00 geçmesi yetmez — katıldığı andan 24 saat sonra atılabilir (8 üye olunca)
-  await mk('Dolgu9', 0, 'muhbir');
   await h.nextDay();
   if (h.clock.now < h.get(`intelRoster/${N.rid}`).joinedAtMs + 24 * 3600_000) {
     assert.match((await h.fails(B.id, 'kickIntelMember', { targetRosterId: N.rid })).message, /24 saat boyunca/);
-    h.setTime(h.get(`intelRoster/${N.rid}`).joinedAtMs + 24 * 3600_000);
   }
-  await h.act(B.id, 'kickIntelMember', { targetRosterId: N.rid });
-  assert.equal(h.get(`intelRoster/${N.rid}`), undefined);
+  // ertesi gün hak yenilendi
+  await h.act(B.id, 'kickIntelMember', { targetRosterId: fill[3].rid });
+  assert.equal(h.get(`intelRoster/${fill[3].rid}`), undefined);
 });
 
 test('v108: üye sicili — süresiz (bugün dahil), sadece rütbeliler başkasınınkini görür; ihbar / içerik / savaş / güç / maaş / form', async () => {

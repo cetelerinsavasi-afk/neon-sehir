@@ -573,3 +573,18 @@ p.adm-dim {
 .adm-ctx-tag.rep {
   background: rgba(60, 200, 255, 0.35);
 }
+
+/* v136 — şikâyet edilen Sixtagram gönderisi önizlemesi */
+.adm-post {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 8px;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.adm-post-text {
+  margin: 0;
+  white-space: pre-line;
+}

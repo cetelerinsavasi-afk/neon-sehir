@@ -307,6 +307,7 @@ export default function HeistPanel({ target }) {
   // v123: şüphe 50+ iken suç yok (sunucu: functions/policeRules.js CRIME_SUSPICION_LOCK)
   // v124: ekip kurmak / katılmak serbest; tek başına soygun ve ekip soygununu başlatmak yasak
   const crimeLocked = Number(player?.suspicion || 0) >= 50;
+  const official = Boolean(player?.belediyeSeat); // v130: belediye görevlisi soygun yapamaz
   const needsTeam = myPower < meta.requiredPower;
   // Kısıtlama HEDEFE ÖZEL: bu hedefte zaten bir ekibim varsa yeni bir
   // tane kuramam, ama başka hedeflerdeki ekiplerim bunu etkilemez.
@@ -376,16 +377,23 @@ export default function HeistPanel({ target }) {
 
       {crimeLocked && !error && <p className="hp-note bad">⛔ Şüphen 50+ iken suç işleyemezsin. Ekip kurabilir, ekibe katılabilirsin ama soygun başlatılamaz.</p>}
 
+      {/* v136: bugün bu mekânı soyduysan / belediye görevlisiysen butonun üstünde kısa not */}
+      {official ? (
+        <p className="hp-note bad">🏛️ Belediye görevlileri soygun yapamaz.</p>
+      ) : (
+        done && <p className="hp-note">✅ {actions.vendorPurchases?.[target] && !actions.heist?.[target] ? 'Bugün buradan alışveriş yaptın.' : 'Bugün bu mekânı soydun.'}</p>
+      )}
+
       {needsTeam ? (
         alreadyInThisTarget ? (
           <p className="hp-note">✅ Bu hedefte ekibin var, aşağıdan yönet.</p>
         ) : (
-          <button className="hp-cta sec" disabled={done || busy} onClick={handleCreatePlan}>
+          <button className="hp-cta sec" disabled={done || busy || official} onClick={handleCreatePlan}>
             👥 EKİP KUR
           </button>
         )
       ) : (
-        <button className="hp-cta" disabled={done || busy || crimeLocked} onClick={handleAttempt}>
+        <button className="hp-cta" disabled={done || busy || crimeLocked || official} onClick={handleAttempt}>
           {done ? (actions.vendorPurchases?.[target] ? 'Bugün buradan alışveriş yaptın' : 'Bugün zaten denedin') : busy ? 'Soyuluyor…' : '💰 SOYGUN YAP'}
         </button>
       )}

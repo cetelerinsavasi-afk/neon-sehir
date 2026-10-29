@@ -48,6 +48,8 @@ import {
 import { stateWrite, STATE_IN, STATE_OUT } from './stateTreasury.js';
 import { createKasa } from './belediyeKasa.js';
 import { gazeteNews } from './belediyeGazete.js';
+import { politicsNews } from './politicsGazete.js'; // v136
+import { fridayAfter } from './politicsRules.js'; // v136
 
 export const SEATS = {
   bsk: { id: 'bsk', title: 'Belediye Başkanı', kind: 'bsk' },
@@ -62,6 +64,9 @@ export const SEAT_IDS = Object.keys(SEATS);
 export const YRD_PERMS = ['sanayi', 'ticaret', 'guvenlik', 'kultur', 'fire', 'invite'];
 export const BELEDIYE = {
   INVITE_TTL_MS: 24 * 3600_000,
+  // v136 başkan istifası: 1. basış → 24 saat kilit (göreve devam) → 24 saat içinde 2. basış hükümeti düşürür
+  RESIGN_LOCK_MS: 24 * 3600_000,
+  RESIGN_WINDOW_MS: 24 * 3600_000,
   GUARD_MS: 24 * 3600_000, // ilk 24 saat görevden alınamaz (kadro ve imam)
   IMAM_GUARD_MS: 24 * 3600_000,
   IMAM_REAPPLY_COOLDOWN_MS: 24 * 3600_000,
@@ -234,7 +239,7 @@ export function createBelediye({
   // belediye/main TAM yazılır (işlem içinde okunduktan sonra) — iç içe haritalarda
   // merge silinen anahtarları bırakmasın diye.
   function writeMain(tx, main, patch) {
-    tx.set(mainRef, { seats: main.seats || {}, invites: main.invites || {}, log: main.log || [], ...patch, updatedAtMs: now() });
+    tx.set(mainRef, { seats: main.seats || {}, invites: main.invites || {}, log: main.log || [], ...(main.install ? { install: main.install } : {}), ...(main.resign ? { resign: main.resign } : {}), ...(main.fall ? { fall: main.fall } : {}), ...patch, updatedAtMs: now() });
   }
 
   // Oyuncunun başka devlet görevi var mı? (polis / bekleyen polislik / imam)
@@ -337,6 +342,8 @@ export function createBelediye({
       const user = us.data();
       if (!user) fail('failed-precondition', 'Oyuncu bulunamadı.');
       if (!(await isAdmin(uid, user))) fail('permission-denied', 'Başkanlığı sadece yönetici hesabı devralabilir.');
+      // v136: seçim sistemi başladıktan sonra başkan sadece seçimle (ya da darbeyle) gelir
+      if ((await tx.get(db.doc('politics/state'))).exists) fail('failed-precondition', 'Belediye başkanı artık seçimle belirleniyor.');
       if (main.seats?.bsk?.uid) fail('failed-precondition', 'Belediyenin zaten bir başkanı var.');
       if (seatOfUid(main, uid)) fail('failed-precondition', 'Zaten belediyede görevlisin.');
       const block = await stateJobBlock(tx, uid, user);
@@ -448,6 +455,53 @@ export function createBelediye({
     return res;
   }
 
+  // v136 — SEÇİM / DARBE DEVRİ: eski kadronun tamamı görevden alınır, kazanan
+  // belediye başkanı olur (yeniden seçilen başkan da koltuğunda yeni dönemle kalır;
+  // ekibini yeniden kurar). Bekleyen davetler düşer. İdempotent (key).
+  async function installElected(uid, { key, source = 'election', name = null } = {}) {
+    if (!uid || !key) fail('invalid-argument', 'Geçersiz devir.');
+    const t = now();
+    let res = null;
+    await db.runTransaction(async (tx) => {
+      const [ms, us] = await Promise.all([tx.get(mainRef), tx.get(userRef(uid))]);
+      const main = ms.data() || {};
+      if (main.install?.key === key) {
+        res = { skipped: true };
+        return;
+      }
+      const user = us.data() || {};
+      const winnerName = user.displayName || name || 'Oyuncu';
+      const touched = new Set([uid]);
+      const why = source === 'coup' ? 'Darbe sonucu yeni yönetim göreve geldi' : 'Seçimle yeni belediye başkanı göreve geldi';
+      for (const id of SEAT_IDS) {
+        const h = main.seats?.[id];
+        if (!h?.uid || h.uid === uid) continue;
+        touched.add(h.uid);
+        tx.set(userRef(h.uid), { belediyeSeat: FieldValue.delete(), belediyeInvite: FieldValue.delete() }, { merge: true });
+        tx.delete(staffRef(h.uid));
+        smsTo(tx, h.uid, `🏛️ ${why}: ${SEATS[id].title} görevin sona erdi.`);
+      }
+      for (const inv of Object.values(main.invites || {})) {
+        if (!inv?.uid || touched.has(inv.uid)) continue;
+        touched.add(inv.uid);
+        tx.set(userRef(inv.uid), { belediyeInvite: FieldValue.delete() }, { merge: true });
+      }
+      const seat = { uid, name: winnerName, avatar: user.avatar || null, sinceMs: t, guardUntilMs: t + BELEDIYE.GUARD_MS, via: source };
+      const seats = Object.fromEntries(SEAT_IDS.map((id) => [id, null]));
+      seats.bsk = seat;
+      writeMain(tx, main, {
+        seats,
+        invites: {},
+        install: { key, uid, source, atMs: t },
+        log: logLine(main, source === 'coup' ? `⚡ ${winnerName} darbeyle yönetime geldi` : `🗳️ ${winnerName} seçimle belediye başkanı oldu`),
+      });
+      tx.set(userRef(uid), { belediyeSeat: 'bsk', belediyeInvite: FieldValue.delete() }, { merge: true });
+      tx.set(staffRef(uid), { seat: 'bsk', sinceMs: t });
+      res = { ok: true, removed: touched.size - 1 };
+    });
+    return res;
+  }
+
   function removeFromSeat(tx, main, seat, logText) {
     const h = main.seats?.[seat];
     const { invites, expired } = splitInvites(main);
@@ -485,7 +539,7 @@ export function createBelediye({
       const main = ms.data() || {};
       const seat = seatOfUid(main, uid);
       if (!seat) fail('failed-precondition', 'Belediyede görevli değilsin.');
-      if (seat === 'bsk') fail('failed-precondition', 'Belediye başkanı şimdilik istifa edemez.'); // v130
+      if (seat === 'bsk') fail('failed-precondition', 'Başkan istifası için Başkanlık sekmesindeki istifa adımlarını kullan.'); // v136: mayorResign
       const h = main.seats[seat];
       removeFromSeat(tx, main, seat, `🚪 ${h.name} ${SEATS[seat].title} görevinden istifa etti`);
       const bsk = main.seats?.bsk;
@@ -493,6 +547,90 @@ export function createBelediye({
       smsTo(tx, uid, `🏛️ ${SEATS[seat].title} görevinden istifa ettin.`);
     });
     return { ok: true };
+  }
+
+  // v136 — BAŞKAN İSTİFASI (iki adım):
+  //   1) İlk basış: 24 saat kilit — başkan göreve devam eder, buton kilitli.
+  //   2) Kilit açılınca 24 saat içinde tekrar basarsa hükümet düşer (tüm kadro gider,
+  //      belediye başkansız kalır, bir sonraki Cuma imza dönemi başlar).
+  //   24 saatte basmazsa süreç başa döner (yeniden başvurur, yeniden 24 saat bekler).
+  const resignStage = (r, t) => (!r?.startedAtMs ? 'none' : t < r.unlockAtMs ? 'locked' : t < r.expiresAtMs ? 'open' : 'none');
+  async function mayorResign(uid, { step } = {}) {
+    const t = now();
+    let out = null;
+    await db.runTransaction(async (tx) => {
+      const [ms, ps] = await Promise.all([tx.get(mainRef), tx.get(db.doc('politics/state'))]);
+      const main = ms.data() || {};
+      if (seatOfUid(main, uid) !== 'bsk') fail('permission-denied', 'Sadece belediye başkanı bu işlemi yapabilir.');
+      const stage = resignStage(main.resign, t);
+      if (step === 'start') {
+        if (stage === 'locked') fail('failed-precondition', 'İstifa süreci zaten başladı.');
+        if (stage === 'open') fail('failed-precondition', 'İstifa onayın açık — son adımı kullan.');
+        const resign = { startedAtMs: t, unlockAtMs: t + BELEDIYE.RESIGN_LOCK_MS, expiresAtMs: t + BELEDIYE.RESIGN_LOCK_MS + BELEDIYE.RESIGN_WINDOW_MS };
+        writeMain(tx, main, { resign, log: logLine(main, '🚪 Belediye başkanı istifa sürecini başlattı') });
+        out = { ok: true, stage: 'locked', ...resign };
+        return;
+      }
+      if (step === 'cancel') {
+        if (stage === 'none') fail('failed-precondition', 'İstifa süreci yok.');
+        writeMain(tx, main, { resign: null, log: logLine(main, '↩️ Belediye başkanı istifadan vazgeçti') });
+        out = { ok: true, stage: 'none' };
+        return;
+      }
+      if (step !== 'final') fail('invalid-argument', 'Geçersiz adım.');
+      if (stage !== 'open') fail('failed-precondition', stage === 'locked' ? 'İstifa kilidi henüz açılmadı.' : 'Önce istifa sürecini başlatmalısın.');
+      const removed = [];
+      for (const id of SEAT_IDS) {
+        const h = main.seats?.[id];
+        if (!h?.uid) continue;
+        removed.push(h.uid);
+        tx.set(userRef(h.uid), { belediyeSeat: FieldValue.delete() }, { merge: true });
+        tx.delete(staffRef(h.uid));
+        smsTo(tx, h.uid, id === 'bsk' ? '🏛️ İstifa ettin; hükümet düştü. Yeni başkan seçimle gelecek.' : `🏛️ Belediye başkanı istifa etti; hükümet düştü. ${SEATS[id].title} görevin sona erdi.`);
+      }
+      for (const inv of Object.values(main.invites || {})) if (inv?.uid && !removed.includes(inv.uid)) tx.set(userRef(inv.uid), { belediyeInvite: FieldValue.delete() }, { merge: true });
+      const name = main.seats?.bsk?.name || 'Başkan';
+      writeMain(tx, main, { seats: Object.fromEntries(SEAT_IDS.map((id) => [id, null])), invites: {}, resign: null, log: logLine(main, `🏚️ ${name} istifa etti — hükümet düştü`) });
+      // seçim takvimi: hükümet yok → bir sonraki Cuma imza dönemi (seçim sürüyorsa dokunulmaz)
+      const pst = ps.data();
+      const today = rateDayKey(t);
+      const patch = { gov: null, govFell: { day: today, reason: 'resign', name }, updatedAtMs: t };
+      if (pst) {
+        if (pst.phase === 'idle') patch.nextSignupDay = fridayAfter(today);
+        tx.set(db.doc('politics/state'), patch, { merge: true });
+      }
+      out = { ok: true, stage: 'fallen', removed: removed.length };
+    });
+    return out;
+  }
+
+  // v136 — darbe başarılı: tüm kadro anında görevden alınır, belediye başkansız kalır.
+  // (seçim takvimi functions/politicsCoup.js'te). İdempotent (key).
+  async function govFall({ key, reason = 'coup' } = {}) {
+    let res = null;
+    await db.runTransaction(async (tx) => {
+      const ms = await tx.get(mainRef);
+      const main = ms.data() || {};
+      if (main.fall?.key === key) {
+        res = { skipped: true };
+        return;
+      }
+      let n = 0;
+      const seen = new Set();
+      for (const id of SEAT_IDS) {
+        const h = main.seats?.[id];
+        if (!h?.uid) continue;
+        n += 1;
+        seen.add(h.uid);
+        tx.set(userRef(h.uid), { belediyeSeat: FieldValue.delete(), belediyeInvite: FieldValue.delete() }, { merge: true });
+        tx.delete(staffRef(h.uid));
+        smsTo(tx, h.uid, reason === 'coup' ? `⚡ Darbe başarılı oldu — ${SEATS[id].title} görevin sona erdi.` : `🏛️ Hükümet düştü — ${SEATS[id].title} görevin sona erdi.`);
+      }
+      for (const inv of Object.values(main.invites || {})) if (inv?.uid && !seen.has(inv.uid)) tx.set(userRef(inv.uid), { belediyeInvite: FieldValue.delete() }, { merge: true });
+      writeMain(tx, main, { seats: Object.fromEntries(SEAT_IDS.map((id) => [id, null])), invites: {}, resign: null, fall: { key, reason, atMs: now() }, log: logLine(main, reason === 'coup' ? '⚡ Darbe başarılı — hükümet devrildi' : '🏚️ Hükümet düştü') });
+      res = { ok: true, removed: n };
+    });
+    return res;
   }
 
   async function setPerms(uid, { seat, perms }) {
@@ -1054,6 +1192,15 @@ export function createBelediye({
     } catch (err) {
       console.error('gazete şikâyet', err?.message || err);
     }
+    // v136: seçim günlerinde manşet seçimdir (vergi manşeti habere iner)
+    let pol = null;
+    try {
+      const ps = (await db.doc('politics/state').get()).data() || null;
+      const cyc = ps?.cycle ? (await db.doc(`politicsCycles/${ps.cycle}`).get()).data() || null : null;
+      pol = politicsNews({ day: dayKey, state: ps, cycle: cyc, rnd });
+    } catch (err) {
+      console.error('gazete seçim', err?.message || err);
+    }
     // günün (biten gün) en büyük belediye bağışçısı
     let donor = null;
     try {
@@ -1068,11 +1215,13 @@ export function createBelediye({
       if (ex.exists) return;
       const draft = dr.data();
       const article = draft?.text ? { text: draft.text, byName: draft.byName, byTitle: draft.byTitle, bySeat: draft.bySeat } : null;
+      const taxAsItem = pol && headline?.kind !== 'sakin' ? [{ t: headline.t, d: headline.d || headline.s || '', good: headline.kind === 'indirim' ? true : headline.kind === 'zam' || headline.kind === 'kriz' ? false : null }] : [];
       tx.set(ref, {
         dayKey,
         v: 2,
-        headline,
-        items,
+        headline: pol ? pol.headline : headline,
+        items: pol ? [...taxAsItem, ...items] : items,
+        ...(pol?.items?.length ? { politics: { items: pol.items } } : {}),
         govSince: gov?.sinceDay || null,
         mayor: bsk ? { name: bsk.name, avatar: bsk.avatar || null } : null,
         article,
@@ -1180,6 +1329,7 @@ export function createBelediye({
     respondInvite: (uid, d) => respondInvite(uid, d),
     fire: (uid, d) => fire(uid, d),
     resign: (uid) => resign(uid),
+    mayorResign: (uid, d) => mayorResign(uid, d),
     setPerms: (uid, d) => setPerms(uid, d),
     setRate: (uid, d) => setRate(uid, d),
     fireImam: (uid, d) => fireImam(uid, d),
@@ -1211,6 +1361,8 @@ export function createBelediye({
   return {
     belediyeAction,
     handle,
+    installElected,
+    govFall,
     kasa,
     nightly,
     nightlyRoll,

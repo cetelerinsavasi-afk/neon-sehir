@@ -35,10 +35,15 @@ export function computeGangRanks(members, babaId) {
 
 // Kurucusu olmayan teşkilat (Polis Teşkilatı — eski İstihbarat): 1 · 2 · 4 · kalan uygunlar · altı.
 // names: [1., 2., 3., 4. kademe, en alt]
-function computeOrgRanks(roster, [top, second, third, fourth, low]) {
+function computeOrgRanks(roster, [top, second, third, fourth, low], { lockTopId = null } = {}) {
   const out = {};
   let i = 0;
-  for (const r of sortByPrestige(roster)) {
+  // v136: darbe kilidi — darbeyi yapan Emniyet Genel Müdürü prestijinden bağımsız en üstte
+  if (lockTopId && roster.some((r) => r.id === lockTopId)) {
+    out[lockTopId] = top;
+    i = 1;
+  }
+  for (const r of sortByPrestige(roster.filter((x) => x.id !== lockTopId))) {
     const eligible = (Number(r.prestige) || 0) >= GANG.RANK_THRESHOLD;
     if (!eligible) out[r.id] = low;
     else if (i < 1) out[r.id] = top;
@@ -50,8 +55,8 @@ function computeOrgRanks(roster, [top, second, third, fourth, low]) {
   return out;
 }
 
-export function computeIntelRanks(roster) {
-  return computeOrgRanks(roster, ['baskan', 'sef', 'uzman', 'ajan', 'muhbir']);
+export function computeIntelRanks(roster, opts = {}) {
+  return computeOrgRanks(roster, ['baskan', 'sef', 'uzman', 'ajan', 'muhbir'], opts);
 }
 
 // v108 — İstihbarat başvurularını SADECE Başkan + Şefler inceler. İkisi de

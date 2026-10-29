@@ -4,7 +4,7 @@
 // oylaması, istifa. Kasa yok — maaşı devlet öder (her gece 00:00). Sicil
 // süresiz. v123: başvuru formu kaldırıldı — sicilde form bilgisi yok.
 import { useEffect, useState } from 'react';
-import { istHour, useGangAction, useNow } from '../GangContext';
+import { istDateKey, istHour, useGangAction, useNow } from '../GangContext';
 import { Btn, Card, Chips, Confirm, Gold, RankBadge, Sheet, Stat } from '../ui';
 import { MemberCard, MidnightLegend, RankTree } from '../shared';
 import { GANG_RULES, INTEL_LEADERS, RANK_ICONS, fmt } from '../gangConstants';
@@ -12,8 +12,8 @@ import { useBelediyeRates } from '../../../hooks/useBelediyeRates';
 import { policeSalary } from '../../../../functions/belediyeRates.js';
 
 const DIRECT = { baskan: ['ajan', 'muhbir'], sef: ['muhbir'] };
-// v61 — istismar önlemi (sunucuyla aynı: functions/gang/config.js INTEL)
-const KICK_MIN_MEMBERS = 8;
+// v136 — günlük doğrudan atma hakkı (sunucu: functions/gang/config.js INTEL.DIRECT_KICK_PER_DAY)
+const KICK_PER_DAY = { baskan: 2, sef: 1 };
 // v123: yeni katılan polis katıldığı andan 24 saat atılamaz (sunucu: INTEL.NEW_MEMBER_KICK_GUARD_MS)
 const NEW_MEMBER_GUARD_MS = 24 * 3600_000;
 const fmtDay = (ms) => (ms ? new Date(ms + 3 * 3600_000).toISOString().slice(0, 10).split('-').reverse().join('.') : '—');
@@ -90,17 +90,18 @@ function MemberReport({ member }) {
   );
 }
 
-function MemberSheet({ member, myRank, rosterSize, onClose, self = false }) {
+function MemberSheet({ member, myRank, kicksUsed = 0, onClose, self = false, official = false }) {
   const { run, busy } = useGangAction();
   const [ask, setAsk] = useState(null);
   const now = useNow(30_000);
   const canKick = !self && (DIRECT[myRank] || []).includes(member.rank);
   const canVote = !self && voteAllowed(myRank, member.rank);
   const voteOpen = istHour(now) < 12;
-  const tooFew = rosterSize < KICK_MIN_MEMBERS;
+  const kickLimit = KICK_PER_DAY[myRank] || 0;
+  const kicksLeft = Math.max(0, kickLimit - kicksUsed);
   const newLeftMs = Number(member.joinedAtMs || 0) > 0 ? Number(member.joinedAtMs) + NEW_MEMBER_GUARD_MS - now : 0;
   const newLeftH = newLeftMs > 0 ? Math.max(1, Math.ceil(newLeftMs / 3_600_000)) : 0;
-  const lockReason = tooFew ? `🔒 ${KICK_MIN_MEMBERS - 1} ya da daha az polis varken kimse çıkarılamaz` : newLeftH ? `🔒 Yeni katılan polis 24 saat boyunca çıkarılamaz (${newLeftH} saat kaldı)` : null;
+  const lockReason = newLeftH ? `🔒 Yeni katılan polis 24 saat boyunca çıkarılamaz (${newLeftH} saat kaldı)` : null;
   return (
     <Sheet title={member.codeName} icon={RANK_ICONS[member.rank]} onClose={onClose}>
       <div className="gx-member-detail">
@@ -109,8 +110,8 @@ function MemberSheet({ member, myRank, rosterSize, onClose, self = false }) {
       </div>
       <div className="gx-stack">
         {canKick && (
-          <Btn block kind="danger" disabled={Boolean(lockReason)} onClick={() => setAsk('kick')}>
-            🚫 Teşkilattan at
+          <Btn block kind="danger" disabled={Boolean(lockReason) || kicksLeft <= 0} onClick={() => setAsk('kick')}>
+            🚫 Teşkilattan at · {kicksLeft}/{kickLimit}
           </Btn>
         )}
         {canVote && (
@@ -119,7 +120,7 @@ function MemberSheet({ member, myRank, rosterSize, onClose, self = false }) {
           </Btn>
         )}
         {(canKick || canVote) && lockReason && <div className="dim gx-mini">{lockReason}</div>}
-        {(self || ['baskan', 'sef', 'uzman'].includes(myRank)) && <MemberReport member={member} />}
+        {(self || official || ['baskan', 'sef', 'uzman'].includes(myRank)) && <MemberReport member={member} />}
       </div>
       {ask && (
         <Confirm
@@ -156,6 +157,26 @@ export default function IntelTab({ d }) {
   const card = (m) => <MemberCard key={m.id} secret name={m.codeName} rank={m.rank} prestige={m.prestige} me={m.id === d.rid} big={m.rank === 'baskan'} onClick={() => setSel(m)} />;
   const rates = useBelediyeRates(); // v127: Teşkilat Bakanlığı belirler
   const salary = policeSalary(rates, d.realRank || 'muhbir');
+
+  // v136: belediye yetkilisi — sadece görüntüleme (kod adları + siciller), atma yok
+  if (d.official) {
+    return (
+      <div className="gx-stack">
+        <Card>
+          <div className="gx-note-row">
+            <span className="gx-note-quote">“{d.intel?.note || '…'}”</span>
+          </div>
+          <div className="dim gx-mini">🏛️ {d.official.title} olarak görüntülüyorsun · kimseyi atamazsın</div>
+        </Card>
+        <div className="gx-section-head">
+          <span>🚓 Teşkilat ({d.roster.length})</span>
+          <MidnightLegend />
+        </div>
+        <RankTree rows={[byRank('baskan'), byRank('sef'), byRank('uzman')]} rows2={[{ title: 'Komiserler', items: byRank('ajan') }, { title: 'Polis Memurları', items: byRank('muhbir') }]} renderCard={card} />
+        {sel && <MemberSheet member={sel} official myRank={null} onClose={() => setSel(null)} />}
+      </div>
+    );
+  }
 
   return (
     <div className="gx-stack">
@@ -196,7 +217,7 @@ export default function IntelTab({ d }) {
           member={sel}
           self={sel.id === d.rid}
           myRank={d.rank}
-          rosterSize={d.roster.length}
+          kicksUsed={d.me?.kickDay === istDateKey(Date.now()) ? Number(d.me?.kickCount || 0) : 0}
           onClose={() => setSel(null)}
         />
       )}

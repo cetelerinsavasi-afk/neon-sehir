@@ -804,3 +804,7 @@
   background: var(--ig-red);
   box-shadow: 0 0 0 2px var(--ig-bg);
 }
+.six-sv-report {
+  font-size: 20px;
+  line-height: 1;
+}

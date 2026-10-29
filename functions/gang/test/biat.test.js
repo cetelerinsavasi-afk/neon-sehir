@@ -84,14 +84,14 @@ test('biat: Pazar savaşında biat eden çete biat ettiği çete adına savaşı
   for (const id of [A.baba, A.ids[0], B.baba, C.baba]) await h.setPersona(id, { power: 100_000 });
   const { biatId } = await h.act(A.baba, 'requestBiat', { targetGangId: B.gangId });
   await h.act(B.baba, 'respondBiat', { biatId, accept: true });
-  await h.tickTo('2026-09-27', '00:10');
-  const warId = 'trade_2026-09-27';
+  await h.tickTo('2026-09-26', '00:10');
+  const warId = 'trade_2026-09-26';
   const r1 = await h.act(A.baba, 'rollDice', { warId }); // 10 × 100k = 1M → Beta hanesine
   assert.equal(r1.sideKey, B.gangId);
   assert.equal(r1.forGangName, 'Beta');
   await h.act(B.baba, 'rollDice', { warId }); // 6 × 100k = 600k
   await h.act(C.baba, 'rollDice', { warId }); // 12 × 100k = 1.2M
-  h.at('2026-09-27', '03:00');
+  h.at('2026-09-26', '03:00');
   await h.act(A.ids[0], 'rollDice', { warId }); // rastgele zar
   const war = h.get(`wars/${warId}`);
   assert.equal(war.sides[A.gangId], undefined, 'biat eden çetenin kendi hanesi yok');
@@ -99,7 +99,7 @@ test('biat: Pazar savaşında biat eden çete biat ettiği çete adına savaşı
   assert.ok(war.biatDisplay[A.gangId] >= 1_000_000 + 200_000);
   assert.equal(war.biatSides[A.gangId].overlordId, B.gangId);
   assert.equal(war.display[B.gangId], 600_000 + war.biatDisplay[A.gangId], 'biat edenin gücü biat edilene eklenir');
-  const roll = h.get(`wars/${warId}/rolls/${A.baba}_2026-09-27_w0`);
+  const roll = h.get(`wars/${warId}/rolls/${A.baba}_2026-09-26_w0`);
   assert.equal(roll.viaGangId, A.gangId);
   // izleme: biat katkısı herkese açık
   const watcher = await h.persona({ displayName: 'İzleyici', gold: 1, power: 1, reputation: 1 });
@@ -109,7 +109,7 @@ test('biat: Pazar savaşında biat eden çete biat ettiği çete adına savaşı
   assert.equal(tw.biat[0].forName, 'Beta');
 
   const totalB = war.display[B.gangId];
-  await h.tickTo('2026-09-28', '00:05');
+  await h.tickTo('2026-09-27', '00:05');
   const route = h.get('routes/yasakliMadde');
   assert.equal(route.holderId, B.gangId, 'biat sayesinde Beta kazandı (Gama 1.2M)');
   assert.equal(route.powerUsed, totalB);
@@ -172,8 +172,8 @@ test('biat: bahisli savaşa katkı yok; biat edilenin tırını savunabilir; boz
   assert.equal(h.get(`alliances/${biatId}`).status, 'ended');
   assert.equal(h.get(`gangs/${A.gangId}`).biat, undefined);
   assert.equal(h.get(`gangs/${B.gangId}`).vassals?.[A.gangId], undefined);
-  await h.tickTo('2026-09-27', '00:10');
-  const r = await h.act(A.baba, 'rollDice', { warId: 'trade_2026-09-27' });
+  await h.tickTo('2026-09-26', '00:10');
+  const r = await h.act(A.baba, 'rollDice', { warId: 'trade_2026-09-26' });
   assert.equal(r.sideKey, A.gangId, 'biat bitince kendi adına savaşır');
 });
 
@@ -183,8 +183,8 @@ test('v86: Pazar günü kabul edilen biat o günün savaşında sayılır — bi
   const B = await setupRankedGang(h, 'Beta');
   await h.setPersona(A.baba, { power: 100_000 });
   await h.setPersona(B.baba, { power: 100_000 });
-  await h.tickTo('2026-09-27', '00:10');
-  const warId = 'trade_2026-09-27';
+  await h.tickTo('2026-09-26', '00:10');
+  const warId = 'trade_2026-09-26';
   await h.act(A.baba, 'rollDice', { warId }); // biat henüz yok → kendi adına (1.2M)
   await h.act(B.baba, 'rollDice', { warId });
   const { biatId } = await h.act(A.baba, 'requestBiat', { targetGangId: B.gangId });
@@ -195,7 +195,7 @@ test('v86: Pazar günü kabul edilen biat o günün savaşında sayılır — bi
   assert.equal(live.display[B.gangId], 1_200_000 + 200_000);
   assert.equal(live.biatDisplay[A.gangId], 1_200_000);
   assert.equal(live.biatLinks[A.gangId].overlordId, B.gangId);
-  await h.tickTo('2026-09-28', '00:05');
+  await h.tickTo('2026-09-27', '00:05');
   const done = h.get(`wars/${warId}`);
   assert.equal(done.result.winnerKey, B.gangId, 'birleşik güçle biat edilen kazanır');
   assert.deepEqual(h.get(`gangs/${B.gangId}`).routeProducts, ['yasakliMadde']);
@@ -205,16 +205,16 @@ test('v86: Pazar günü kabul edilen biat o günün savaşında sayılır — bi
   assert.equal(h.get(`gangs/${A.gangId}`).lastSundayBiat, true);
   // temizlik: sonraki senaryo için biatı bitir
   await h.act(A.baba, 'endBiat', { biatId });
-  await h.tickTo('2026-09-28', '23:59');
+  await h.tickTo('2026-09-27', '23:59');
 
   // dağılma: C → B biatı aktifken B dağılır
   const C = await setupRankedGang(h, 'Gama');
   const c = await h.act(C.baba, 'requestBiat', { targetGangId: B.gangId });
   await h.act(B.baba, 'respondBiat', { biatId: c.biatId, accept: true });
-  await h.tickTo('2026-09-29', '00:05');
+  await h.tickTo('2026-09-28', '00:05');
   assert.equal(h.get(`gangs/${C.gangId}`).biat.gangId, B.gangId);
   await h.db.doc(`gangWorlds/test/gangs/${B.gangId}`).update({ status: 'disbanded', cleanupDone: false });
-  await h.tickTo('2026-09-29', '00:15');
+  await h.tickTo('2026-09-28', '00:15');
   assert.equal(h.get(`alliances/${c.biatId}`).status, 'ended');
   assert.equal(h.get(`gangs/${C.gangId}`).biat, undefined);
   void ist;
@@ -311,14 +311,14 @@ test('v86.1: Pazar günü kabul edilen biatta biat edenin sonraki zarları doğr
   const A = await setupRankedGang(h, 'Alfa');
   const B = await setupRankedGang(h, 'Beta');
   await h.setPersona(A.baba, { power: 1000 });
-  await h.tickTo('2026-09-27', '00:10');
-  const warId = 'trade_2026-09-27';
+  await h.tickTo('2026-09-26', '00:10');
+  const warId = 'trade_2026-09-26';
   const r1 = await h.act(A.baba, 'rollDice', { warId });
   assert.equal(r1.sideKey, A.gangId, 'biat yokken kendi adına');
   const { biatId } = await h.act(A.baba, 'requestBiat', { targetGangId: B.gangId });
   await h.act(B.baba, 'respondBiat', { biatId, accept: true });
   assert.equal(h.get(`alliances/${biatId}`).status, 'accepted');
-  await h.tickTo('2026-09-27', '03:10'); // sonraki 3 saatlik dilim
+  await h.tickTo('2026-09-26', '03:10'); // sonraki 3 saatlik dilim
   const r2 = await h.act(A.baba, 'rollDice', { warId });
   assert.equal(r2.sideKey, B.gangId, 'kabul edilmiş biat: Beta adına');
   assert.equal(r2.forGangId, B.gangId);
@@ -328,7 +328,7 @@ test('v86.1: Pazar günü kabul edilen biatta biat edenin sonraki zarları doğr
   assert.equal(w.biatDisplay[A.gangId], 12_000);
   // bağ silinse bile saat turu yeniden yazar
   await h.db.doc(`gangWorlds/test/wars/${warId}`).update({ biatLinks: {} });
-  await h.tickTo('2026-09-27', '03:20');
+  await h.tickTo('2026-09-26', '03:20');
   assert.equal(h.get(`wars/${warId}`).biatLinks[A.gangId].overlordId, B.gangId);
 });
 
@@ -350,7 +350,7 @@ test('v86.2: işaretleri eksik aktif biat saat turunda onarılır (eski sunucu i
   assert.equal(h.get(`gangs/${C.gangId}`).biat, undefined, 'sahipsiz işaret silindi');
   // Pazar savaşında da biat edilen adına
   await h.setPersona(M.baba, { power: 1000 });
-  await h.tickTo('2026-09-27', '00:10');
-  const r = await h.act(M.baba, 'rollDice', { warId: 'trade_2026-09-27' });
+  await h.tickTo('2026-09-26', '00:10');
+  const r = await h.act(M.baba, 'rollDice', { warId: 'trade_2026-09-26' });
   assert.equal(r.sideKey, B.gangId);
 });

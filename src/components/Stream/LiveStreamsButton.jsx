@@ -11,7 +11,7 @@ import './Stream.css';
 // birden fazla → başlık, önizleme görüntüsü ve izleyici sayısıyla liste.
 // Yayın yoksa buton hiç görünmez. Liste tek belgeden okunur (stats/streams).
 // =============================================================================
-export default function LiveStreamsButton({ onWatch, className = '' }) {
+export default function LiveStreamsButton({ onWatch, className = '', slotBottom = null, onVisibleChange = null }) {
   const { user } = useAuth();
   const items = useLiveStreams(Boolean(user));
   const [open, setOpen] = useState(false);
@@ -36,6 +36,10 @@ export default function LiveStreamsButton({ onWatch, className = '' }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, list.map((x) => x.id).join(',')]);
 
+  const visible = Boolean(user) && list.length > 0;
+  useEffect(() => {
+    onVisibleChange?.(visible);
+  }, [visible, onVisibleChange]);
   if (!user || !list.length) return null;
   const click = () => {
     if (list.length === 1) onWatch(list[0].id);
@@ -43,7 +47,7 @@ export default function LiveStreamsButton({ onWatch, className = '' }) {
   };
   return (
     <>
-      <button className={`st-live-btn ${className}`} onClick={click} aria-label="Canlı yayınlar">
+      <button className={`st-live-btn ${className}`} style={slotBottom ? { bottom: slotBottom } : undefined} onClick={click} aria-label="Canlı yayınlar">
         <span className="st-live-dot" />
         CANLI
         {list.length > 1 && <b>{list.length}</b>}

@@ -19,11 +19,12 @@ export function useInvestmentHistory() {
       orderBy('createdAt', 'desc'),
       limit(HISTORY_LIMIT)
     );
-    const done = armStallWatchdog(); // v102: veri gelmezse bağlantıyı tazele
+    const done = armStallWatchdog(4000); // v102: veri gelmezse bağlantıyı tazele
     const unsubscribe = onSnapshot(
       q,
+      { includeMetadataChanges: true },
       (snap) => {
-        if (!snap.metadata.fromCache || snap.size) done();
+        if (!snap.metadata.fromCache) done(); // v136: önbellekten gelen eski veri "geldi" sayılmaz
         const items = snap.docs.map((d) => ({ id: d.id, ...d.data() })).reverse();
         setHistory(items);
         setLoading(false);

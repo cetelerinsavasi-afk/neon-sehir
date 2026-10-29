@@ -282,16 +282,20 @@ export function createClock(core, actions) {
   // ---------------------------------------------------------------------------
   // 3) PAZAR TİCARET YOLU SAVAŞI
   // ---------------------------------------------------------------------------
-  function productForSunday(world, sundayKey) {
-    const launch = world.launchDateKey || sundayKey;
+  // v136: savaş Pazar'dan Cumartesi'ye taşındı. Ürün sırası HAFTA sayısıyla
+  // devam eder: açılıştan sonraki ilk pazardan itibaren geçen gün / 7 YUVARLANIR
+  // (Cumartesi = bir sonraki pazarın haftası; ör. 25.10 Pazar = k → 31.10 Cumartesi = k+1).
+  // İstemci: src/components/Gangs/tradeSchedule.js (aynı kural).
+  function productForSunday(world, warKey) {
+    const launch = world.launchDateKey || warKey;
     const wd = weekdayOfKey(launch);
     const firstSunday = addDays(launch, (7 - wd) % 7);
-    const weeks = Math.max(0, Math.floor(daysBetweenKeys(firstSunday, sundayKey) / 7));
+    const weeks = Math.max(0, Math.round(daysBetweenKeys(firstSunday, warKey) / 7));
     return TRADE_PRODUCTS[weeks % TRADE_PRODUCTS.length];
   }
 
   async function createTradeWar(ctx, dayKey) {
-    if (weekdayOfKey(dayKey) !== 0) return null;
+    if (weekdayOfKey(dayKey) !== GANG.TRADE_WAR_WEEKDAY) return null;
     const warId = `trade_${dayKey}`;
     const product = productForSunday(ctx.world, dayKey);
     return db.runTransaction(async (tx) => {
@@ -383,7 +387,7 @@ export function createClock(core, actions) {
       if (winnerKey === 'intel') {
         intelIncome = Math.floor(totalWarPower * INTEL.WAR_WIN_KASA_TOTAL_RATIO);
         const cr = intelK?.exists && intelIncome > 0 ? core.creditIntel(tx, ctx, intelK, intelIncome, { type: 'intel_trade_war_win', refId: warId }) : { credited: 0, burned: 0 };
-        intelLog(tx, ctx, '🏆', `Pazar savaşını Polis Teşkilatı kazandı! Yol kimseye verilmedi, devlet kasasına +${cr.credited.toLocaleString('tr-TR')}.`);
+        intelLog(tx, ctx, '🏆', `Ticaret yolu savaşını Polis Teşkilatı kazandı! Yol kimseye verilmedi, devlet kasasına +${cr.credited.toLocaleString('tr-TR')}.`);
       }
       // v84: biat edenlerin katkısı — kendi günlüklerine ve biat ettikleri çetenin günlüğüne
       const biatSides = { ...(w.biatSides || {}) };
@@ -391,8 +395,8 @@ export function createClock(core, actions) {
       for (const [vid, p] of Object.entries(via || {})) {
         const sd = biatSides[vid] || {};
         const won = winnerGang && sd.overlordId === winnerGang.id;
-        gangLog(tx, ctx, vid, won ? '🏆' : '⛓️', `Pazar savaşında ${sd.overlordName || 'biat ettiğiniz çete'} adına ${p.toLocaleString('tr-TR')} hasar verdiniz${won ? ` — ${war.productLabel} yolunu kazandılar!` : '.'}`);
-        if (sd.overlordId) gangLog(tx, ctx, sd.overlordId, '⛓️', `${sd.name || 'Biat eden çete'} Pazar savaşında sizin adınıza ${p.toLocaleString('tr-TR')} hasar verdi.`);
+        gangLog(tx, ctx, vid, won ? '🏆' : '⛓️', `Cumartesi savaşında ${sd.overlordName || 'biat ettiğiniz çete'} adına ${p.toLocaleString('tr-TR')} hasar verdiniz${won ? ` — ${war.productLabel} yolunu kazandılar!` : '.'}`);
+        if (sd.overlordId) gangLog(tx, ctx, sd.overlordId, '⛓️', `${sd.name || 'Biat eden çete'} Cumartesi savaşında sizin adınıza ${p.toLocaleString('tr-TR')} hasar verdi.`);
       }
       const sidesPatch = {};
       for (const l of Object.values(links)) if (totals[l.overlordId] > 0 && !w.sides?.[l.overlordId]) sidesPatch[`sides.${l.overlordId}`] = { orgType: 'gang', orgId: l.overlordId, name: l.overlordName, logo: l.overlordLogo };
@@ -920,7 +924,9 @@ export function createClock(core, actions) {
       return;
     }
     const roster = rosterSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    const ranks = computeIntelRanks(roster);
+    // v136: darbe sürerken darbeyi yapan EGM'nin rütbesi düşmez (politicsCoup.coupLock)
+    const lock = intelActions.readCoupLock ? await intelActions.readCoupLock(ctx, null, { rankOnly: true }).catch(() => null) : null;
+    const ranks = computeIntelRanks(roster, { lockTopId: lock?.rid || null });
     // Çeteler listesindeki İstihbarat kartı için Başkanın KOD ADI (kimlik değil)
     const baskan = roster.find((r) => ranks[r.id] === 'baskan');
     await ctx.ref.intel().set({ baskanCode: baskan?.codeName || null }, { merge: true });
@@ -1112,6 +1118,29 @@ export function createClock(core, actions) {
     await ctx.ref.world().set({ routeLimitV75: true }, { merge: true });
     ctx.world = { ...(ctx.world || {}), routeLimitV75: true };
     return { routes: routes.size };
+  }
+
+  // v136 — TEK SEFERLİK: ticaret yolu savaşı Pazar → Cumartesi. Pazar savaşıyla
+  // alınmış yollar Pazartesi biter (untilDateKey = Pazartesi); artık yeni savaş
+  // Cumartesi gecesi (Pazar 00:00) sonuçlandığı için bitiş bir gün öne alınır →
+  // eski sahip Pazar 00:00 ile savaşın sonuçlanması arasında sipariş veremez.
+  // Sadece Pazartesi biten yollar kaydırılır (tekrar çalışsa da etkisiz).
+  async function ensureRouteSaturdayV136(ctx) {
+    if (ctx.world?.routeSaturdayV136) return { skipped: true };
+    const routes = await ctx.ref.routes().get();
+    let shifted = 0;
+    for (const r of routes.docs) {
+      const ok = await db.runTransaction(async (tx) => {
+        const d = (await tx.get(r.ref)).data();
+        if (!d?.holderId || !d.untilDateKey || weekdayOfKey(d.untilDateKey) !== 1) return false;
+        tx.update(r.ref, { untilDateKey: addDays(d.untilDateKey, -1), untilShiftV136: d.untilDateKey });
+        return true;
+      });
+      if (ok) shifted += 1;
+    }
+    await ctx.ref.world().set({ routeSaturdayV136: ctx.now }, { merge: true });
+    ctx.world = { ...(ctx.world || {}), routeSaturdayV136: true };
+    return { routes: routes.size, shifted };
   }
 
   // v108 — TEK SEFERLİK: İstihbarat kasası kapandı. İçindeki para DEVLET kasasına
@@ -1378,8 +1407,8 @@ export function createClock(core, actions) {
     tx.update(ref, { status: 'active', activeSinceDateKey: ctx.dateKey });
     tx.update(ctx.ref.gang(a.vassalId), { biat: { gangId: a.overlordId, name: o.name || '', logo: o.logo || null, sinceDateKey: ctx.dateKey } });
     tx.update(ctx.ref.gang(a.overlordId), { [`vassals.${a.vassalId}`]: { name: v.name || '', logo: v.logo || null, sinceDateKey: ctx.dateKey } });
-    core.announce(tx, ctx, a.vassalId, '⛓️', `${o.name} çetesine biatınız başladı. Pazar savaşında ${o.name} adına savaşacaksınız; tırlarını da savunabilirsiniz.`);
-    core.announce(tx, ctx, a.overlordId, '⛓️', `${v.name} çetesi size biat etti! Pazar savaşında güçleri sizin hanenize yazılacak.`);
+    core.announce(tx, ctx, a.vassalId, '⛓️', `${o.name} çetesine biatınız başladı. Cumartesi savaşında ${o.name} adına savaşacaksınız; tırlarını da savunabilirsiniz.`);
+    core.announce(tx, ctx, a.overlordId, '⛓️', `${v.name} çetesi size biat etti! Cumartesi savaşında güçleri sizin hanenize yazılacak.`);
   }
 
   // v86.2 — BİAT İŞARET ONARIMI (her saat turunda). Aktif / bozulan biatın çete
@@ -1785,6 +1814,7 @@ export function createClock(core, actions) {
     await safe(ctx0, 'intel-kasa-closed-v108', () => ensureIntelKasaClosedV108(ctx0));
     await safe(ctx0, 'intel-records-v108', () => ensureIntelRecordsV108(ctx0));
     await safe(ctx0, 'sunday-power-own-v111', () => ensureSundayPowerOwnV111(ctx0));
+    await safe(ctx0, 'route-saturday-v136', () => ensureRouteSaturdayV136(ctx0));
     const results = [];
     let n = 0;
     while (last < ctx0.dateKey && n < maxDays) {
@@ -1844,5 +1874,5 @@ export function createClock(core, actions) {
     return { ticks: results, errors: ctx0.errors || [] };
   }
 
-  return { runClock, runDailyTick, cleanupGang, resolveTruckTrip, productForSunday, dateKeyOf, processBets, resolveVoteEarly, safe, ensureSundayPowerOwnV111 };
+  return { runClock, runDailyTick, cleanupGang, resolveTruckTrip, productForSunday, dateKeyOf, processBets, resolveVoteEarly, safe, ensureSundayPowerOwnV111, ensureRouteSaturdayV136 };
 }

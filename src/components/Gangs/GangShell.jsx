@@ -8,7 +8,7 @@
 // "Çeteler" sekmesinden.
 import { useEffect, useRef, useState } from 'react';
 import { useGangAlertsCtx } from './alerts';
-import { useGang } from './GangContext';
+import { useDocData, useGang } from './GangContext';
 import { useGangData, useIntelData } from './data';
 import { Deadline, Gold, Logo, RankBadge } from './ui';
 import { INTEL_LOGO, INTEL_NAME, fmt } from './gangConstants';
@@ -24,6 +24,8 @@ import IntelTab from './tabs/IntelTab';
 import { WatchWarsList } from './WatchWars';
 import { BiatTag } from './Biat';
 import { useBelediyeChatUnread } from '../../hooks/useBelediyeChatUnread';
+
+const OFFICIAL_TITLES = { bsk: 'Belediye Başkanı', yrd1: 'Belediye Başkan Yardımcısı', yrd2: 'Belediye Başkan Yardımcısı', guv: 'Teşkilat Bakanı' };
 
 const GANG_TABS = [
   { id: 'ceteler', icon: '🏴', label: 'Çeteler' },
@@ -43,7 +45,12 @@ const INTEL_TABS = [
 export default function GangShell({ membership }) {
   const ms = membership || {};
   const inGang = Boolean(ms.gangId);
-  const inIntel = Boolean(ms.intelRosterId);
+  const realIntel = Boolean(ms.intelRosterId);
+  // v136: Belediye Başkanı / yardımcıları / Teşkilat Bakanı — teşkilata YETKİLİ olarak girer
+  const { actorId, world } = useGang();
+  const { data: staff } = useDocData(!realIntel && world === 'live' && actorId ? `belediyeStaff/${actorId}` : null);
+  const official = !realIntel && OFFICIAL_TITLES[staff?.seat] ? { seat: staff.seat, title: OFFICIAL_TITLES[staff.seat] } : null;
+  const inIntel = realIntel || Boolean(official);
   const [org, setOrg] = useState(inGang || !inIntel ? 'gang' : 'intel');
   // v110: Çeteler butonuna basınca her zaman 'Çeteler' sekmesi açık gelir
   const [tab, setTab] = useState('ceteler');
@@ -66,9 +73,8 @@ export default function GangShell({ membership }) {
   const cur = alerts ? (org === 'intel' ? alerts.intel : alerts.gang) : {};
   const other = alerts ? (org === 'intel' ? alerts.gang : alerts.intel) : {};
   // v127: rütbeli polis — Belediye koordinasyon sohbetinde yeni mesaj → Sohbet noktası
-  const { actorId } = useGang();
   const policeRanked = inIntel && ['baskan', 'sef', 'uzman'].includes(ms.intelRank);
-  const bdUnread = useBelediyeChatUnread(actorId, 'koord', policeRanked, (m) => m.authorKind === 'polis' && m.rosterId === ms.intelRosterId);
+  const bdUnread = useBelediyeChatUnread(actorId, 'koord', policeRanked || Boolean(official), (m) => (official ? m.uid === actorId : m.authorKind === 'polis' && m.rosterId === ms.intelRosterId));
   const dotOf = (id) =>
     id === 'ceteler'
       ? Object.values(other || {}).some(Boolean) && (org === 'intel' ? inGang : inIntel)
@@ -91,7 +97,7 @@ export default function GangShell({ membership }) {
         {org === 'gang' && inGang ? (
           <GangViews membership={ms} tab={activeTab} onOpen={open} />
         ) : org === 'intel' && inIntel ? (
-          <IntelViews membership={ms} tab={activeTab} onOpen={open} />
+          <IntelViews membership={ms} official={official} tab={activeTab} onOpen={open} />
         ) : !member && activeTab === 'savas' ? (
           // v68: çetesi olmayan oyuncu savaşları izleyebilir (katılamaz)
           <div className="gx-page">
@@ -101,7 +107,7 @@ export default function GangShell({ membership }) {
             <WatchWarsList />
           </div>
         ) : (
-          <ListTab membership={ms} onOpen={open} />
+          <ListTab membership={ms} official={official} onOpen={open} />
         )}
       </div>
       <nav className="gx-subnav" role="tablist">
@@ -135,19 +141,19 @@ function UnderVoteBanner({ until, low }) {
   );
 }
 
-function OrgHeader({ logo, name, rank, prestige, kasa, kasaMidnight = false, intel = false, sub, salary = null }) {
+function OrgHeader({ logo, name, rank, prestige, kasa, kasaMidnight = false, intel = false, sub, salary = null, noKasa = false }) {
   return (
     <div className={`gx-header${intel ? ' intel' : ''}`} style={{ '--gx-accent': logo?.color || '#19e8ff' }}>
       <Logo logo={logo} size={46} />
       <div className="gx-header-main">
         <div className="gx-header-name">{name}</div>
         <div className="gx-header-row">
-          <RankBadge rank={rank} small />
-          <span className="gx-prestige">✦ {fmt(prestige)}</span>
+          {rank && <RankBadge rank={rank} small />}
+          {rank && <span className="gx-prestige">✦ {fmt(prestige)}</span>}
           {sub}
         </div>
       </div>
-      {salary != null ? (
+      {noKasa ? null : salary != null ? (
         // v108: Polis Teşkilatının kasası yok — maaşı devlet öder (her gece 00:00)
         <div className="gx-header-kasa">
           <span className="dim">Maaş · 00:00</span>
@@ -188,10 +194,21 @@ function GangViews({ membership, tab, onOpen }) {
   );
 }
 
-function IntelViews({ membership, tab, onOpen }) {
-  const d = useIntelData(membership);
+function IntelViews({ membership, official = null, tab, onOpen }) {
+  const d = useIntelData(membership, { official });
   const rates = useBelediyeRates(); // v127: polis maaşları Teşkilat Bakanlığı'nın
-  if (tab === 'ceteler') return <ListTab membership={membership} onOpen={onOpen} />;
+  if (tab === 'ceteler') return <ListTab membership={membership} official={official} onOpen={onOpen} />;
+  if (official) {
+    return (
+      <div className="gx-page">
+        <OrgHeader intel logo={INTEL_LOGO} name={INTEL_NAME} rank={null} noKasa sub={<span className="gx-codename">🏛️ Yetkili · {official.title}</span>} />
+        {tab === 'sohbet' && <ChatTab org="intel" d={d} />}
+        {tab === 'savas' && <WarsTab org="intel" d={d} />}
+        {tab === 'operasyon' && <OpsTab d={d} />}
+        {tab === 'istihbarat' && <IntelTab d={d} />}
+      </div>
+    );
+  }
   return (
     <div className="gx-page">
       {d.underVote && <UnderVoteBanner until={d.underVoteUntilMs} low="Polis Memuru" />}

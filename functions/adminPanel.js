@@ -176,8 +176,20 @@ export function createAdminPanel({ db, auth, FieldValue, HttpsError, requireAuth
     const list = [...groups.values()].sort((a, b) => sortKey(b) - sortKey(a)).slice(0, ADMIN_LIMITS.QUEUE_GROUPS);
     await Promise.all(
       list.map(async (g) => {
-        const [t, u] = await Promise.all([db.doc(g.targetPath).get(), g.targetUid ? userRef(g.targetUid).get() : null]);
+        const [t, u0] = await Promise.all([db.doc(g.targetPath).get(), g.targetUid ? userRef(g.targetUid).get() : null]);
+        let u = u0;
         g.exists = t.exists;
+        // v136: anonim teşkilat mesajı — yazar şikâyet anında çözülemediyse (ör. teşkilattan
+        // ayrılmıştı) şimdi bağ / arşivden çözülür
+        const spec = reportTargets[g.targetType];
+        if (!g.targetUid && t.exists && spec?.resolveUid) {
+          const m = String(g.targetPath).match(spec.re);
+          if (m) g.targetUid = (await spec.resolveUid(db, m, spec.pick(t.data() || {}, m) || {}).catch(() => null)) || null;
+          if (g.targetUid) {
+            g.lateResolved = true;
+            u = await userRef(g.targetUid).get();
+          }
+        }
         g.hidden = Boolean(t.data()?.hidden);
         g.hiddenBy = t.data()?.hiddenBy || null;
         g.targetName = u?.data()?.displayName || (g.targetUid ? DEFAULT_PLAYER_NAME : null);

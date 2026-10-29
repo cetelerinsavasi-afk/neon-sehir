@@ -58,7 +58,7 @@ export const STATE_IN = {
   soygun_ceza: 'Soygun cezaları (yakalanan suçlular)',
   kacak_ceza: 'Yasaklı madde cezaları (park)',
   soygun_kurtarma: 'Polisin kurtardığı paranın devlet payı (%75) (eski, artık yazılmıyor)',
-  ist_savas: 'Polis Teşkilatı · Pazar savaşı zaferi',
+  ist_savas: 'Polis Teşkilatı · ticaret yolu savaşı zaferi',
   ist_bahis: 'Polis Teşkilatı · Bahisli savaş kazancı',
   ist_operasyon: 'Polis Teşkilatı · Tır operasyonu tahsilatı',
   ist_rusvet: 'Polis Teşkilatı · Çetelerin ödediği rüşvet',
@@ -84,6 +84,7 @@ export const STATE_IN = {
   vergi_sifirSilah: 'Vergi · Sıfır silah satış kârı', // v130
   vergi_sifirAraba: 'Vergi · Sıfır araba satış kârı', // v130
   bagis: 'Belediyeye bağışlar',
+  adaylik: 'Belediye başkanlığı adaylık ücretleri', // v136
   borc_acik: 'Kasa açığının borca çevrilmesi (tek seferlik)',
   diger: 'Diğer gelirler',
 };

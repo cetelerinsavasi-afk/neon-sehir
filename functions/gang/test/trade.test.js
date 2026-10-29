@@ -60,7 +60,7 @@ test('depo: 100.000 = +100 kapasite, her alımda genişler; sadece Baba/Sağ Kol
   assert.equal(h.state(G.gangId).kasa, 5_000_000 - 200_000);
   assert.ok(h.chat(G.gangId).some((m) => /kapasite 200/.test(m)));
 });
-test('sipariş: yol sahibi, yarı fiyat, Pzt–Cmt 00:00–12:00, tır kapasitesi 10/10/100, tek tür, depo yeri, günlük limit, iptal', async () => {
+test('sipariş: yol sahibi, yarı fiyat, Paz–Cum 00:00–12:00 (v136), tır kapasitesi 10/10/100, tek tür, depo yeri, günlük limit, iptal', async () => {
   const h = await createHarness();
   const G = await setupTradeGang(h, 'Alfa', { depot: 0 });
   const { truckId } = await h.act(G.baba, 'buyTruck');
@@ -108,29 +108,29 @@ test('sipariş: yol sahibi, yarı fiyat, Pzt–Cmt 00:00–12:00, tır kapasites
   h.at('2026-09-21', '12:00');
   const noon = await h.fails(G.baba, 'placeOrder', { truckId: t2, product: 'silah', items: { 'silah:1': 1 } });
   assert.match(noon.message, /00:00–12:00/);
-  // Pazar sipariş yok
-  h.at('2026-09-27', '10:00');
+  // v136: Cumartesi (savaş günü) sipariş yok
+  h.at('2026-09-26', '10:00');
   const we = await h.fails(G.baba, 'placeOrder', { truckId: t2, product: 'silah', items: { 'silah:1': 1 } });
-  assert.match(we.message, /Pazartesi–Cumartesi/);
+  assert.match(we.message, /Pazar–Cuma/);
 });
 
-test('v67: Cumartesi sipariş verilir; yola çıkan tır aynı gün iptal edilemez ve ikinci kez yüklenemez', async () => {
+test('v136: Pazar sipariş verilir; yola çıkan tır aynı gün iptal edilemez ve ikinci kez yüklenemez', async () => {
   const h = await createHarness();
   const G = await setupTradeGang(h);
   await h.giveRoute(G.gangId, 'araba', 1_000_000);
   const { truckId } = await h.act(G.baba, 'buyTruck');
-  await h.tickTo('2026-09-26', '02:10'); // Cumartesi
+  await h.tickTo('2026-09-27', '02:10'); // Pazar (v136)
   await h.act(G.baba, 'placeOrder', { truckId, product: 'araba', items: { 'araba:1': 2 } });
-  await h.tickTo('2026-09-26', '03:01');
+  await h.tickTo('2026-09-27', '03:01');
   const t = h.get(`trucks/${truckId}`);
   assert.equal(t.status, 'in_transit');
-  assert.equal(t.departAtMs, ist('2026-09-26', '03:00'));
-  assert.equal(t.attackAtMs, ist('2026-09-26', '09:00'));
-  const c = await h.fails(G.baba, 'cancelOrder', { orderId: `${truckId}_2026-09-26` });
+  assert.equal(t.departAtMs, ist('2026-09-27', '03:00'));
+  assert.equal(t.attackAtMs, ist('2026-09-27', '09:00'));
+  const c = await h.fails(G.baba, 'cancelOrder', { orderId: `${truckId}_2026-09-27` });
   assert.match(c.message, /iptal edilemez/);
   const again = await h.fails(G.baba, 'placeOrder', { truckId, product: 'araba', items: { 'araba:1': 1 } });
   assert.match(again.message, /zaten yola çıktı/);
-  await h.tickTo('2026-09-27', '00:05');
+  await h.tickTo('2026-09-28', '00:05');
   assert.equal(depotOf(h, G.gangId).items['araba:1'], 2, 'gece 00:00 teslim');
 });
 

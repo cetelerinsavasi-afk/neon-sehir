@@ -82,6 +82,25 @@ export function armStallWatchdog(ms = 6000) {
   return () => clearTimeout(t);
 }
 
+// v136 — tek seferlik okuma (getDocs/getDoc) ms içinde dönmezse bağlantı tazelenip
+// bir kez daha denenir. Durağan bağlantıda ilk açılışta liste/değer gelmiyor, "çık-gir"
+// gerekiyordu (soygun ekipleri, fabrikalar listesi).
+export async function readWithKick(fn, ms = 5000) {
+  let timer = null;
+  const stall = new Promise((_, rej) => {
+    timer = setTimeout(() => rej(new Error('__stall__')), ms);
+  });
+  try {
+    return await Promise.race([fn(), stall]);
+  } catch (err) {
+    if (err?.message !== '__stall__') throw err;
+    kickFirestore();
+    return fn();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function triggerReconnect() {
   const now = Date.now();
   if (now - lastTriggeredAt < MIN_INTERVAL_MS) return;

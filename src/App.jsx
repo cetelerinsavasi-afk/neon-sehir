@@ -14,6 +14,7 @@ import { GangAlertsContext, useGangAlerts } from './components/Gangs/alerts';
 import { useUnreadNotifications } from './hooks/useUnreadNotifications';
 import TopNotificationBanner from './components/TopNotificationBanner/TopNotificationBanner';
 import OnboardingPanel from './components/OnboardingPanel/OnboardingPanel';
+import PoliticsHomeButton, { leftSlotBottom } from './components/Politics/PoliticsHomeButton'; // v136
 import { usePlayerSelect } from './hooks/usePlayer';
 const selectHud = (p) => `${p?.suspicion ?? 0}|${p?.reputation ?? 0}|${p?.gold ?? 0}`;
 import { useMyActiveRaceRoom } from './hooks/useMyActiveRaceRoom';
@@ -195,6 +196,9 @@ function GameShell() {
   // comingSoon — "Çok yakında" mesajı (mekan adı), 2 sn sonra kendiliğinden kapanır.
   const [comingSoon, setComingSoon] = useState(null);
   const [watchStreamId, setWatchStreamId] = useState(null);
+  // v136 — sol alt sütun: hangi butonlar görünüyor (boşluklar alta kayar)
+  const [obVisible, setObVisible] = useState(false);
+  const [liveVisible, setLiveVisible] = useState(false);
   const comingSoonTimer = useRef(null);
   const showComingSoon = (name) => {
     setComingSoon(name);
@@ -541,11 +545,14 @@ function GameShell() {
 
       {/* Yeni görev/hatırlatıcı paneli — ChatsApp butonunun tam simetriği,
           sol altta aynı boyut/konumda (bkz. OnboardingPanel.css). */}
-      <OnboardingPanel gangReminders={gangAlerts?.reminders} />
+      {/* v136: sol alt sütun alttan yukarı Görevler → CANLI → 🗳️ Seçim; görünmeyenin
+          yeri boş kalmaz (üsttekiler alta kayar). */}
+      <OnboardingPanel gangReminders={gangAlerts?.reminders} slotBottom={leftSlotBottom(0)} onVisibleChange={setObVisible} />
 
       {/* v80 Yayıncılık — canlı yayın varken Görevler'in tam üstünde (telefonun
           karşısında) 🔴 CANLI; yoksa görünmez. */}
-      <LiveStreamsButton className="map-live-btn" onWatch={setWatchStreamId} />
+      <LiveStreamsButton className="map-live-btn" onWatch={setWatchStreamId} slotBottom={leftSlotBottom(obVisible ? 1 : 0)} onVisibleChange={setLiveVisible} />
+      <PoliticsHomeButton slot={(obVisible ? 1 : 0) + (liveVisible ? 1 : 0)} />
       {watchStreamId && <StreamViewer streamId={watchStreamId} onClose={() => setWatchStreamId(null)} />}
 
       {phoneOpen && (

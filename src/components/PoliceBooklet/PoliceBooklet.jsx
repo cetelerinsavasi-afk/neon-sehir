@@ -23,7 +23,7 @@ const PAGES_BEFORE_SALARY = [
       'Teşkilatta herkes kod adıyla tanınır. Gerçek kimliğin gizli kalır.',
       'Çeteden ayrılmak zorunda değilsin — içeriden çalışan bir köstebek olabilirsin.',
       'Çetenin tırını ihbar et ya da yükünü sızdır: her biri +500.000 prestij.',
-      'Pazar savaşlarına ve operasyonlara teşkilat adına katıl, güç göster, prestij topla.',
+      'Cumartesi savaşlarına ve operasyonlara teşkilat adına katıl, güç göster, prestij topla.',
       'Prestij rütbeni belirler: Emniyet Genel Müdürü, Emniyet Amiri, Başkomiser, Komiser, Polis Memuru.',
     ],
   },

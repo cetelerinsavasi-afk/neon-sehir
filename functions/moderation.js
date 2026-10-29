@@ -49,9 +49,9 @@ export const REPORT_TARGETS = {
     // sunucuda (intelRosterLinks) çözülür ve rapora yazılır; kimseye gösterilmez.
     re: new RegExp(`^gangWorlds/${S}/intelChat_(genel|yonetim)/${S}$`),
     hideable: true,
-    pick: (d) => ({ rosterId: d.rosterId, text: d.text }),
-    resolveUid: async (db, m, picked) =>
-      picked.rosterId ? (await db.doc(`gangWorlds/${m[1]}/intelRosterLinks/${picked.rosterId}`).get()).data()?.actorId || null : null,
+    pick: (d) => ({ uid: d.official ? d.uid || null : null, rosterId: d.rosterId, text: d.text }),
+    // v136: belediye yetkilisinin mesajında uid var (kimliği gizli değil)
+    resolveUid: async (db, m, picked) => picked.uid || rosterUid(db, m[1], picked.rosterId),
   },
   // v127 — Belediye sohbetleri (kadro · koordinasyon). Polis mesajında uid yok:
   // kimlik intelRosterLinks'ten çözülür. Bildiren o sohbeti görebilen biri olmalı.
@@ -62,7 +62,7 @@ export const REPORT_TARGETS = {
     resolveUid: async (db, m, picked) => {
       if (picked.uid) return picked.uid;
       if (!picked.rosterId || !picked.worldId) return null;
-      return (await db.doc(`gangWorlds/${picked.worldId}/intelRosterLinks/${picked.rosterId}`).get()).data()?.actorId || null;
+      return rosterUid(db, picked.worldId, picked.rosterId);
     },
     access: async (db, reporterUid, m) => {
       if ((await db.doc(`belediyeStaff/${reporterUid}`).get()).exists) return true;
@@ -92,6 +92,14 @@ export const REPORT_TARGETS = {
   beggarNote: { re: new RegExp(`^beggars/${S}/entries/${S}$`), hideable: false, pick: (d, m) => ({ uid: m[2], text: d.note }) },
   nasihat: { re: /^imamState\/current$/, hideable: false, pick: (d) => ({ uid: d.uid, text: d.lastNasihat }) },
 };
+
+// v136: kod adının sahibi — teşkilattaysa bağ belgesinden, ayrıldıysa arşivden
+export async function rosterUid(db, worldId, rosterId) {
+  if (!worldId || !rosterId) return null;
+  const link = (await db.doc(`gangWorlds/${worldId}/intelRosterLinks/${rosterId}`).get()).data()?.actorId;
+  if (link) return link;
+  return (await db.doc(`gangWorlds/${worldId}/intelRosterArchive/${rosterId}`).get()).data()?.actorId || null;
+}
 
 const hashPath = (p) => crypto.createHash('sha1').update(p).digest('hex').slice(0, 24);
 const isUid = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);

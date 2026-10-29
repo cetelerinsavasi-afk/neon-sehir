@@ -17,6 +17,7 @@ import { createHouses } from './houses.js';
 import { createBusiness } from './business.js';
 import { newSaleTax, resaleTax, factoryTax, factoryTaxRate, taxLedgerWrite, taxStatWrite, splitSalaryTax, splitLotteryTax, machineTax, loadRates, ratesFor, pctText, lotteryTaxRate } from './tax.js';
 import { createBelediye } from './belediye.js'; // v127
+import { createPolitics } from './politics.js'; // v136 seçim sistemi
 import { rateFrac } from './belediyeRates.js'; // v127
 import { SLOT_GAME_COST, GAME_SLOT_STATE_CUT, rollSlotReels, slotOutcome, normalizeRouletteBets, roulettePayout, ROULETTE_ORDER, LOTTERY_TICKET, GAME_LOTTERY_CUT, GAME_CASINO_ID } from './casinoRules.js';
 import { vaultWrite, settleGameCasinoVaults } from './gameCasinoVault.js'; // v126
@@ -4012,6 +4013,18 @@ async function runDailyResetBody(dateKey, dr) {
         await dr.mark('belediyePayroll');
       } catch (err) {
         console.error('dailyReset belediye maaşları', err);
+      }
+    }
+
+    // 1c2) v136 — SEÇİM: Cuma imza dönemi · Pazar seçim (ya da seçim yok) · Pazartesi
+    // sonuç + kadro devri. Maaş listesi (biten günün kadrosu) alındıktan SONRA; gazete
+    // (belediyeReport) bundan sonra basılır → seçim haberleri aynı gecenin sayısında.
+    if (!dr.done('politics')) {
+      try {
+        const r = await politics.nightly(dateKey);
+        await dr.mark('politics', { politics: JSON.parse(JSON.stringify(r || [])) });
+      } catch (err) {
+        console.error('dailyReset seçim', err);
       }
     }
 
@@ -22655,6 +22668,30 @@ const belediye = createBelediye({
 });
 belediyeRef.current = belediye;
 export const belediyeAction = belediye.belediyeAction;
+
+// =============================================================================
+// v136 — SEÇİM SİSTEMİ (functions/politics.js · politicsRules.js · politicsGazete.js)
+//   Cuma 00:00 imza · Pazar 00:00–21:00 oylama · 21:00–24:00 sayım · Pazartesi 00:00 devir
+//   Gece geçişleri dailyReset'te (belediye maaş listesinden SONRA); sayım ve gecikme
+//   telafisi dakikalık saat turunda (politicsClock).
+// =============================================================================
+const politics = createPolitics({
+  db,
+  FieldValue: admin.firestore.FieldValue,
+  HttpsError,
+  requireAuth: (request) => requireAuth(request),
+  onCall,
+  goldTag,
+  assertCanSpeak: (uid, content) => moderation.assertCanSpeak(uid, content),
+  belediye,
+  resignPolice: (uid, opts) => gangFunctions.system.resignPolice(uid, opts),
+  removePolice: (uid, opts) => gangFunctions.system.removePolice(uid, opts),
+});
+export const politicsAction = politics.politicsAction;
+export const politicsClock = onSchedule({ schedule: 'every 1 minutes', timeZone: 'Europe/Istanbul', timeoutSeconds: 120 }, async () => {
+  const r = await politics.clock();
+  if (r && (r.counting || r.nightly)) console.log(JSON.stringify({ politicsClock: r }));
+});
 
 // =============================================================================
 // v33 — "BİR FİKRİN Mİ VAR?" (telefon): oyuncular fikir / hata / soru yazar.

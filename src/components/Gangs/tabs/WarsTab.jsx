@@ -8,6 +8,7 @@
 //  - İttifak çetenin tırı: müttefik savunmasına katıl
 //  - Gelen bahis/ittifak teklifleri (Baba/Sağ Kol karar, Kıdemli/Tetikçi öneri)
 //  - Oylamalar, ardından dağıtım "Al" butonları
+import { CoupPanel } from '../../Politics/Coup'; // v136 darbe paneli (Polis Teşkilatı)
 import { WatchWarsButton } from '../WatchWars';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { limit, orderBy } from 'firebase/firestore';
@@ -89,9 +90,9 @@ function PendingBetCard({ war, us, rank, children }) {
     </Card>
   );
 }
-// v50 — PAZAR SAVAŞI GERİ SAYIMI: savaştan 24 saat önce (Cumartesi 00:00)
+// v50 — TİCARET YOLU SAVAŞI GERİ SAYIMI: savaştan 24 saat önce (v136: Cuma 00:00)
 // görünür; saat/dakika/saniye + bu haftanın ticaret yolu. Savaş belgesi
-// sunucuda Pazar 00:00 turunda açılır; o ana kadar kısa "başlıyor" satırı.
+// sunucuda Cumartesi 00:00 turunda açılır; o ana kadar kısa "başlıyor" satırı.
 function splitHms(ms) {
   const s = Math.max(0, Math.floor(ms / 1000));
   return [Math.floor(s / 3600), Math.floor((s % 3600) / 60), s % 60];
@@ -110,7 +111,7 @@ function UpcomingTradeWar({ hasActiveTrade, fightingFor }) {
   const pad = (n) => String(n).padStart(2, '0');
   return (
     <Card className={`gx-upcoming-war${left > 0 && left < 3600_000 ? ' hot' : ''}`}>
-      <div className="gx-upcoming-tag">⚔️ PAZAR TİCARET YOLU SAVAŞI</div>
+      <div className="gx-upcoming-tag">⚔️ CUMARTESİ TİCARET YOLU SAVAŞI</div>
       <div className="gx-upcoming-route">
         <span className="gx-upcoming-emoji" aria-hidden="true">
           {p.emoji}
@@ -143,7 +144,7 @@ function UpcomingTradeWar({ hasActiveTrade, fightingFor }) {
           ⛓️ Biat ettiniz — bu savaşa <b>{fightingFor.name}</b> adına katılacaksınız
         </div>
       )}
-      <div className="gx-upcoming-foot dim">Pazar 00:00 – 24:00 · kazanan çete yolu {GANG_RULES.ROUTE_DAYS} gün alır</div>
+      <div className="gx-upcoming-foot dim">Cumartesi 00:00 – 24:00 · kazanan çete yolu {GANG_RULES.ROUTE_DAYS} gün alır</div>
     </Card>
   );
 }
@@ -596,7 +597,7 @@ function OfferCard({ kind, item, rank }) {
           </div>
         </div>
       )}
-      {isBiatOffer && <div className="gx-biat-card-note">Kabul ederseniz {other?.name} Pazar savaşında sizin adınıza savaşır, gücü sizin gücünüze eklenir; birbirinize saldıramazsınız.</div>}
+      {isBiatOffer && <div className="gx-biat-card-note">Kabul ederseniz {other?.name} Cumartesi savaşında sizin adınıza savaşır, gücü sizin gücünüze eklenir; birbirinize saldıramazsınız.</div>}
       {kind === 'bet' && (
         <div className="gx-betcard-row">
           <BetAmount war={item} canSee={canSee} />
@@ -646,7 +647,7 @@ function OfferCard({ kind, item, rank }) {
                   ? 'İttifak kabul edilsin mi?'
                   : 'İttifak reddedilsin mi?'
           }
-          lines={isBiatOffer && ask === 'accept' ? ["🕛 00:00'da başlar", '⚔️ Pazar savaşında gücü sizin gücünüze eklenir', '🛡️ Birbirinize saldıramazsınız; tırlarınızı savunabilir'] : []}
+          lines={isBiatOffer && ask === 'accept' ? ["🕛 00:00'da başlar", '⚔️ Cumartesi savaşında gücü sizin gücünüze eklenir', '🛡️ Birbirinize saldıramazsınız; tırlarınızı savunabilir'] : []}
           confirmLabel={ask === 'accept' ? 'Kabul' : 'Reddet'}
           busy={Boolean(busy)}
           onCancel={() => setAsk(null)}
@@ -974,6 +975,7 @@ export default function WarsTab({ org, d }) {
   const [truckDetail, setTruckDetail] = useState(null); // v74
   const [propose, setPropose] = useState(null);
   const isIntel = org === 'intel'; // v109: Polis Teşkilatı (eski İstihbarat)
+  const viewOnly = Boolean(d.official); // v136: belediye yetkilisi savaşları sadece görür
   const sideName = INTEL_NAME;
   const gangId = d.gangId;
   const lead = isIntel ? INTEL_LEADERS.includes(d.rank) : LEADERS.includes(d.rank);
@@ -1051,6 +1053,7 @@ export default function WarsTab({ org, d }) {
 
   return (
     <div className="gx-stack">
+      {isIntel && !viewOnly && <CoupPanel rank={d.realRank || d.rank} rosterId={d.rid} />}
       {!isIntel && d.membership.intelDecisionGangId === gangId && d.membership.intelRosterId && d.rank === 'baba' && <IntelDecisionPanel />}
       {joinableWars(L, slot.now).length > 0 && <WindowBanner slot={slot} />}
       {!isIntel && lead && (
@@ -1085,7 +1088,7 @@ export default function WarsTab({ org, d }) {
             tone={ff ? 'biat' : undefined}
             slotUsed={slot.used}
             onOpen={() => setDetail({ war: w, side: myKey })}
-            onJoin={() => join(w, isIntel ? { side: 'intel' } : {}, isIntel ? sideName : ff ? `${d.gang?.name} ⛓️ ${ff.name} adına` : d.gang?.name)}
+            onJoin={viewOnly ? undefined : () => join(w, isIntel ? { side: 'intel' } : {}, isIntel ? sideName : ff ? `${d.gang?.name} ⛓️ ${ff.name} adına` : d.gang?.name)}
           >
             {ff && (
               <div className="gx-biat-banner">
@@ -1118,7 +1121,7 @@ export default function WarsTab({ org, d }) {
             war={w}
             slotUsed={slot.used}
             onOpen={() => setDetail({ war: w, side: mine })}
-            onJoin={() => join(w, isIntel ? { side: 'intel' } : {}, isIntel ? sideName : d.gang?.name)}
+            onJoin={viewOnly ? undefined : () => join(w, isIntel ? { side: 'intel' } : {}, isIntel ? sideName : d.gang?.name)}
           >
             {w.sides?.intel ? (
               <ThreeWay war={w} mine={mine} />
@@ -1143,7 +1146,7 @@ export default function WarsTab({ org, d }) {
         const defTotal = sum(w.display);
         const topPower = top?.display?.attacker || 0;
         return (
-          <WarRow key={w.id} war={w} tone="alert" slotUsed={slot.used} onOpen={() => setAttackersOf(w)} onJoin={() => join(w, { side: 'defense' }, d.gang?.name)} joinLabel="SAVUN">
+          <WarRow key={w.id} war={w} tone="alert" slotUsed={slot.used} onOpen={() => setAttackersOf(w)} onJoin={viewOnly ? undefined : () => join(w, { side: 'defense' }, d.gang?.name)} joinLabel="SAVUN">
             {top ? (
               <div className="gx-top-attacker">
                 En güçlü: <b>{top.type === 'intelop' ? '🚓 Polis' : top.sides?.attacker?.name}</b> ⚔️ {fmt(topPower)}
@@ -1170,7 +1173,7 @@ export default function WarsTab({ org, d }) {
       {(L.myAttacks || []).map((w) => {
         const def = wars.all.find((x) => x.id === w.defenseWarId);
         return (
-          <WarRow key={w.id} war={w} slotUsed={slot.used} onOpen={() => setTruckDetail({ defId: w.defenseWarId, attackId: w.id, side: w.id })} onJoin={() => join(w, {}, d.gang?.name)} joinLabel="SALDIR">
+          <WarRow key={w.id} war={w} slotUsed={slot.used} onOpen={() => setTruckDetail({ defId: w.defenseWarId, attackId: w.id, side: w.id })} onJoin={viewOnly ? undefined : () => join(w, {}, d.gang?.name)} joinLabel="SALDIR">
             <div className="dim gx-mini">🏴 {w.sides?.defender?.name}</div>
             <div className="gx-vs">
               <span>⚔️ {fmt(w.display?.attacker)}</span>
@@ -1195,7 +1198,7 @@ export default function WarsTab({ org, d }) {
             war={w}
             slotUsed={slot.used}
             onOpen={() => setTruckDetail({ defId: w.id, side: gangId })}
-            onJoin={() => join(w, { side: 'defense' }, d.gang?.name)}
+            onJoin={viewOnly ? undefined : () => join(w, { side: 'defense' }, d.gang?.name)}
             joinLabel="SAVUN"
           >
             <div className="dim gx-mini">
@@ -1213,7 +1216,7 @@ export default function WarsTab({ org, d }) {
       {(L.ops || []).map((w) => {
         const def = wars.all.find((x) => x.id === w.defenseWarId);
         return (
-          <WarRow key={w.id} war={w} slotUsed={slot.used} onOpen={() => setDetail({ war: w, side: 'attacker' })} onJoin={() => join(w, {}, sideName)} joinLabel="SALDIR">
+          <WarRow key={w.id} war={w} slotUsed={slot.used} onOpen={() => setDetail({ war: w, side: 'attacker' })} onJoin={viewOnly ? undefined : () => join(w, {}, sideName)} joinLabel="SALDIR">
             <div className="dim gx-mini">🏴 {w.sides?.defender?.name}</div>
             <div className="gx-vs">
               <span>⚔️ {fmt(w.display?.attacker)}</span>

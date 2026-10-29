@@ -1145,7 +1145,9 @@ export function MagazaScreen({ onClose }) {
   const advantageous = others
     .filter(isAdvantageousListing)
     .sort((a, b) => listingComparablePrice(a) / listingCeilingPrice(a) - listingComparablePrice(b) / listingCeilingPrice(b));
-  const allSorted = [...others].sort((a, b) => listingComparablePrice(a) - listingComparablePrice(b));
+  // v136: avantajlı ürünler "Diğer Ürünler"de tekrar görünmez
+  const advIds = new Set(advantageous.map((l) => l.id));
+  const allSorted = others.filter((l) => !advIds.has(l.id)).sort((a, b) => listingComparablePrice(a) - listingComparablePrice(b));
   // v125: satıcı adı yerine fabrika (yoksa silahçı / modifiye) adı
   const shopName = useSellerShopNames(others.map((l) => l.sellerId));
   const labelOf = (l) => shopName(l.sellerId, l.sellerName);
@@ -1221,8 +1223,8 @@ export function MagazaScreen({ onClose }) {
 
       {visibleMats.length > 0 && (
         <>
-          <p className="market-section-title">Tüm Ürünler</p>
-          {allSorted.length === 0 && <p className="market-hint">Şu an satışta malzeme yok.</p>}
+          <p className="market-section-title">{advantageous.length ? 'Diğer Ürünler' : 'Ürünler'}</p>
+          {allSorted.length === 0 && <p className="market-hint">{advantageous.length ? 'Başka ürün yok.' : 'Şu an satışta malzeme yok.'}</p>}
           {allSorted.map((l) => (
             <ListingCard key={l.id} listing={l} isMine={false} busy={busy === l.id} noGold={noGoldId === l.id} onBuy={() => openBuy(l)} sellerLabel={labelOf(l)} />
           ))}
