@@ -1357,18 +1357,6 @@ export function createClock(core, actions) {
       ctx.ref.alliances().where('status', '==', 'accepted').get(),
       ctx.ref.alliances().where('status', '==', 'ending').get(),
     ]);
-    for (const d of acc.docs) {
-      if (d.data().startDateKey > ctx.dateKey) continue;
-      await safe(ctx, `alliance-start:${d.id}`, () =>
-        db.runTransaction(async (tx) => {
-          const a = (await tx.get(d.ref)).data();
-          if (a?.status !== 'accepted' || a.startDateKey > ctx.dateKey) return;
-          if (a.kind === 'biat' || (a.vassalId && a.overlordId)) return startBiat(tx, ctx, d.ref, a); // v86.2: biat alanları olan belge her zaman biat
-          tx.update(d.ref, { status: 'active', activeSinceDateKey: ctx.dateKey });
-          for (const g of a.gangIds) gangLog(tx, ctx, g, '🤝', `İttifak aktif: ${a.names[a.gangIds.find((x) => x !== g)]}`);
-        })
-      );
-    }
     for (const d of ending.docs) {
       if (d.data().endDateKey > ctx.dateKey) continue;
       await safe(ctx, `alliance-end:${d.id}`, () =>
@@ -1378,6 +1366,19 @@ export function createClock(core, actions) {
           if (a.kind === 'biat' || (a.vassalId && a.overlordId)) return finishBiat(tx, ctx, d.ref, a, 'ended');
           tx.update(d.ref, { status: 'ended', endedAtMs: ctx.now });
           for (const g of a.gangIds) gangLog(tx, ctx, g, '💔', `İttifak sona erdi: ${a.names[a.gangIds.find((x) => x !== g)]}`);
+        })
+      );
+    }
+    // v137: bitenler ÖNCE (bozulan biat 00:00'da biter, yerine kabul edilmiş yeni biat başlar)
+    for (const d of acc.docs) {
+      if (d.data().startDateKey > ctx.dateKey) continue;
+      await safe(ctx, `alliance-start:${d.id}`, () =>
+        db.runTransaction(async (tx) => {
+          const a = (await tx.get(d.ref)).data();
+          if (a?.status !== 'accepted' || a.startDateKey > ctx.dateKey) return;
+          if (a.kind === 'biat' || (a.vassalId && a.overlordId)) return startBiat(tx, ctx, d.ref, a); // v86.2: biat alanları olan belge her zaman biat
+          tx.update(d.ref, { status: 'active', activeSinceDateKey: ctx.dateKey });
+          for (const g of a.gangIds) gangLog(tx, ctx, g, '🤝', `İttifak aktif: ${a.names[a.gangIds.find((x) => x !== g)]}`);
         })
       );
     }

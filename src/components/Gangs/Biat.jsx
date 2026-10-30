@@ -26,13 +26,15 @@ export function useBiatInfo(d) {
   return useMemo(() => {
     const list = d?.biats || [];
     const gangId = d?.gangId;
-    const mine = list.find((b) => b.vassalId === gangId) || null; // biat ettiğimiz (ya da teklif ettiğimiz) çete
+    // v137: bozulan (00:00'da biten) biat varken yeni biat süreci olabilir → ikisi birden
+    const mines = list.filter((b) => b.vassalId === gangId).sort((a, b) => (a.status === 'ending' ? -1 : 0) - (b.status === 'ending' ? -1 : 0));
+    const mine = mines.find((b) => ['active', 'ending'].includes(b.status)) || mines[0] || null; // biat ettiğimiz (ya da teklif ettiğimiz) çete
     const vassals = list.filter((b) => b.overlordId === gangId && b.status !== 'requested'); // bize biat edenler
     const incoming = list.filter((b) => b.overlordId === gangId && b.status === 'requested');
     const fightingFor = mine && ['active', 'ending'].includes(mine.status) && d?.gang?.biat?.gangId === mine.overlordId ? d.gang.biat : null;
     const noRoute = (d?.gang?.routeProducts || []).length === 0;
-    const canBiat = d?.rank === 'baba' && noRoute && !mine && vassals.length === 0;
-    return { mine, vassals, incoming, fightingFor, canBiat, noRoute };
+    const canBiat = d?.rank === 'baba' && noRoute && !mines.some((b) => b.status !== 'ending') && !vassals.some((b) => b.status !== 'ending');
+    return { mine, mines, vassals, incoming, fightingFor, canBiat, noRoute };
   }, [d?.biats, d?.gangId, d?.gang?.biat, d?.gang?.routeProducts, d?.rank]);
 }
 
@@ -58,7 +60,7 @@ export function BiatSheet({ gangId, blockedIds = [], onClose }) {
     .filter((g) => g.id !== gangId && g.status === 'active')
     .map((g) => ({
       g,
-      reason: g.biat?.gangId ? `${g.biat.name || 'başka bir çete'} çetesine biat etmiş` : blockedIds.includes(g.id) ? 'Aranızda biat süreci/bahis var' : null,
+      reason: g.biat?.gangId && !g.biat.endDateKey ? `${g.biat.name || 'başka bir çete'} çetesine biat etmiş` : blockedIds.includes(g.id) ? 'Aranızda biat süreci/bahis var' : null,
     }))
     .sort((a, b) => Number(Boolean(a.reason)) - Number(Boolean(b.reason)) || Number(b.g.lastSundayPower || 0) - Number(a.g.lastSundayPower || 0));
   return (
@@ -118,13 +120,13 @@ export function BiatStatus({ d, info }) {
   const { run, busy } = useGangAction();
   const [end, setEnd] = useState(null);
   const lead = LEADERS.includes(d.rank);
-  const { mine, vassals } = info;
-  if (!mine && vassals.length === 0) return null;
+  const { mines, vassals } = info;
+  if (mines.length === 0 && vassals.length === 0) return null;
   const otherOf = (b) => (b.vassalId === d.gangId ? b.overlordId : b.vassalId);
   return (
     <>
-      {mine && (
-        <Card className={`gx-biat-card${mine.status === 'requested' ? ' waiting' : ''}`}>
+      {mines.map((mine) => (
+        <Card key={mine.id} className={`gx-biat-card${mine.status === 'requested' ? ' waiting' : ''}`}>
           <div className="gx-biat-card-tag">⛓️ BİAT</div>
           <div className="gx-biat-card-row">
             <Logo logo={mine.logos?.[mine.overlordId]} size={36} />
@@ -147,7 +149,7 @@ export function BiatStatus({ d, info }) {
                 : 'Teklif gönderildi. Karşı çetenin Mafya Babası ya da Sağ Kolu kabul edebilir.'}
           </div>
         </Card>
-      )}
+      ))}
       {vassals.length > 0 && (
         <Card className="gx-biat-card overlord">
           <div className="gx-biat-card-tag">⛓️ SİZE BİAT EDENLER</div>
@@ -206,7 +208,7 @@ export function BiatPanel({ d }) {
       ...wars.filter((w) => w.type === 'bet' && ['offered', 'accepted', 'active'].includes(w.status)).flatMap((w) => w.gangIds || []),
     ]),
   ];
-  if (!info.canBiat && !info.mine && info.vassals.length === 0) return null;
+  if (!info.canBiat && info.mines.length === 0 && info.vassals.length === 0) return null;
   return (
     <>
       <div className="gx-section-head">
@@ -214,7 +216,7 @@ export function BiatPanel({ d }) {
       </div>
       {info.canBiat && (
         <Btn block small kind="ghost" onClick={() => setOpen(true)}>
-          ⛓️ Biat et
+          ⛓️ {info.mines.length || info.vassals.length ? "Yeni biat (00:00'da başlar)" : 'Biat et'}
         </Btn>
       )}
       <BiatStatus d={d} info={info} />

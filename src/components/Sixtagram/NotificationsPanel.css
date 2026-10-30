@@ -19,6 +19,11 @@
 .ig-nt.drag:not(.leaving) {
   transition: none;
 }
+/* v137: yatay çekerken liste kaymasın */
+.ig-nt.drag .ig-nt-list {
+  overflow: hidden;
+  touch-action: none;
+}
 @keyframes ig-nt-in {
   from {
     transform: translateX(24px);

@@ -25,12 +25,29 @@ export const isBiat = (a) => a?.kind === 'biat';
 export const BIAT_TRADE_STATUSES = ['accepted', 'active', 'ending'];
 
 // { biatEdenId: { overlordId, name, logo, overlordName, overlordLogo } }
+// v137: bozulan (ending) biat 00:00'a kadar sürerken yeni bir biat kabul edilebilir
+// (00:00'da başlar). Savaş gününde önce süren (active/ending) biatlar sayılır;
+// henüz başlamamış (accepted) biat sadece taraflardan biri süren bir biatın
+// içinde değilse sayılır (çift biat / zincir olmasın).
+export function tradeBiatList(all) {
+  const list = (all || []).filter((a) => isBiat(a) && a.vassalId && a.overlordId && BIAT_TRADE_STATUSES.includes(a.status));
+  const live = list.filter((a) => ['active', 'ending'].includes(a.status));
+  const asVassal = new Set(live.map((a) => a.vassalId));
+  const asOver = new Set(live.map((a) => a.overlordId));
+  const ok = [...live];
+  for (const a of list.filter((x) => x.status === 'accepted')) {
+    if (asVassal.has(a.vassalId) || asOver.has(a.vassalId) || asVassal.has(a.overlordId)) continue;
+    ok.push(a);
+    asVassal.add(a.vassalId);
+    asOver.add(a.overlordId);
+  }
+  return ok;
+}
+
 export async function readBiatLinks(ctx) {
   const snap = await ctx.ref.alliances().where('kind', '==', 'biat').get();
   const links = {};
-  snap.forEach((d) => {
-    const a = d.data();
-    if (!BIAT_TRADE_STATUSES.includes(a.status) || !a.vassalId || !a.overlordId) return;
+  tradeBiatList(snap.docs.map((d) => d.data())).forEach((a) => {
     links[a.vassalId] = {
       overlordId: a.overlordId,
       name: a.names?.[a.vassalId] || '',
@@ -141,9 +158,20 @@ export function createWarActions(core) {
           // v84 — biat eden çete Pazar savaşına biat ettiği çete adına katılır
           // v86.1: sadece başlamış (aktif) biat değil, KABUL EDİLMİŞ biat da sayılır
           // (Pazar günü kabul edilen biat o günün savaşında geçerli — bkz. BIAT_TRADE_STATUSES)
-          const [gs, mine] = await Promise.all([tx.get(ctx.ref.gang(gangId)), tx.get(ctx.ref.alliances().where('vassalId', '==', gangId))]);
+          // v137: bozulan biat 00:00'a kadar geçerli; yeni (kabul edilmiş) biat sadece
+          // çakışma yoksa sayılır (bkz. tradeBiatList)
+          const [gs, mine] = await Promise.all([tx.get(ctx.ref.gang(gangId)), tx.get(ctx.ref.alliances().where('gangIds', 'array-contains', gangId))]);
           const g = gs.data();
-          const a = mine.docs.map((d) => d.data()).find((x) => isBiat(x) && BIAT_TRADE_STATUSES.includes(x.status)) || null;
+          const cand = mine.docs.map((d) => d.data()).filter((x) => isBiat(x));
+          let a = cand.find((x) => x.vassalId === gangId && ['active', 'ending'].includes(x.status)) || null;
+          if (!a) {
+            const acc = cand.find((x) => x.vassalId === gangId && x.status === 'accepted') || null;
+            const overLive = cand.some((x) => x.overlordId === gangId && ['active', 'ending'].includes(x.status));
+            if (acc && !overLive) {
+              const theirs = await tx.get(ctx.ref.alliances().where('vassalId', '==', acc.overlordId));
+              if (!theirs.docs.some((d) => isBiat(d.data()) && ['active', 'ending'].includes(d.data().status))) a = acc;
+            }
+          }
           const overlordId = a?.overlordId || null;
           if (overlordId) {
             const og = await tx.get(ctx.ref.gang(overlordId));
@@ -600,9 +628,10 @@ export function createWarActions(core) {
   async function readBiats(tx, ctx, gangId) {
     const snap = await tx.get(ctx.ref.alliances().where('gangIds', 'array-contains', gangId));
     const all = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((a) => isBiat(a) && BIAT_LIVE.includes(a.status));
+    // v137: bozulmuş (ending — 00:00'da biten) biat yeni biata engel değil; yeni biat 00:00'da başlar
     return {
-      asVassal: all.find((a) => a.vassalId === gangId) || null,
-      vassals: all.filter((a) => a.overlordId === gangId && ALLIANCE_BLOCKING.includes(a.status)),
+      asVassal: all.find((a) => a.vassalId === gangId && a.status !== 'ending') || null,
+      vassals: all.filter((a) => a.overlordId === gangId && ['accepted', 'active'].includes(a.status)),
     };
   }
 
@@ -700,7 +729,11 @@ export function createWarActions(core) {
       }
       if (al.status !== 'active') fail('failed-precondition', 'Biat zaten bitiyor.');
       const endDateKey = addDays(ctx.dateKey, 1);
+      // v137: herkese açık işarete "bitiyor" notu (listelerde biat edilebilir görünsün)
+      const [vg, og] = await Promise.all([tx.get(ctx.ref.gang(al.vassalId)), tx.get(ctx.ref.gang(al.overlordId))]);
       tx.update(ctx.ref.alliance(biatId), { status: 'ending', endDateKey, endRequestedBy: gangId });
+      if (vg.data()?.biat?.gangId === al.overlordId) tx.update(ctx.ref.gang(al.vassalId), { 'biat.endDateKey': endDateKey });
+      if (og.data()?.vassals?.[al.vassalId]) tx.update(ctx.ref.gang(al.overlordId), { [`vassals.${al.vassalId}.endDateKey`]: endDateKey });
       announce(tx, ctx, other, '💔', `${al.names[gangId]} biatı bozdu — 00:00'da sona erecek.`);
       announce(tx, ctx, gangId, '💔', `${me.name}, ${al.names[other]} ile biatı bozdu — 00:00'da sona erecek.`);
       return { ending: true, endDateKey };

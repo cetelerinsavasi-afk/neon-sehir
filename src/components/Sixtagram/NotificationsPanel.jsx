@@ -61,50 +61,98 @@ export default function NotificationsPanel({ onClose, onOpenPost, onOpenProfile 
   }).filter((g) => g.rows.length);
 
   // v136 — iOS'taki gibi: sol kenardan sağa çekince geri (bildirimlerden çık)
+  // v137: yatay çekme başlayınca liste aşağı-yukarı KAYMAZ (dokunmada touchmove
+  // preventDefault — pasif olmayan dinleyici; fare için pointer olayları)
   const [dx, setDx] = useState(0);
   const [leaving, setLeaving] = useState(false);
   const edge = useRef(null);
-  const onDown = (e) => {
-    e.stopPropagation();
-    const r = e.currentTarget.getBoundingClientRect();
-    edge.current = e.clientX - r.left < 36 ? { x: e.clientX, y: e.clientY, t: Date.now(), on: false } : null;
+  const rootRef = useRef(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  const start = (x, y, left) => {
+    edge.current = x - left < 36 ? { x, y, t: Date.now(), on: false } : null;
   };
-  const onMove = (e) => {
+  const move = (x, y) => {
     const g = edge.current;
-    if (!g) return;
-    const ddx = e.clientX - g.x;
-    const ddy = e.clientY - g.y;
+    if (!g) return false;
+    const ddx = x - g.x;
+    const ddy = y - g.y;
     if (!g.on) {
-      if (Math.abs(ddy) > 14 && Math.abs(ddy) > Math.abs(ddx)) {
-        edge.current = null;
-        return;
+      // ilk harekette yön belli olur: yataysa hemen yakalanır (kaydırma hiç başlamaz)
+      if (Math.abs(ddy) > Math.abs(ddx)) {
+        if (Math.abs(ddy) > 4) edge.current = null;
+        return false;
       }
-      if (ddx > 10) {
-        g.on = true;
-        try {
-          e.currentTarget.setPointerCapture(e.pointerId);
-        } catch {
-          /* yoksay */
-        }
-      }
+      if (ddx > 1) g.on = true;
     }
     if (g.on) setDx(Math.max(0, ddx));
+    return g.on;
   };
-  const onUp = (e) => {
+  const end = (x) => {
     const g = edge.current;
     edge.current = null;
     if (!g?.on) return;
-    const ddx = e.clientX - g.x;
+    const ddx = x - g.x;
     const fast = ddx / Math.max(1, Date.now() - g.t) > 0.5;
     if (ddx > 110 || (fast && ddx > 40)) {
       setLeaving(true);
       setDx(window.innerWidth);
-      setTimeout(onClose, 180);
+      setTimeout(() => closeRef.current?.(), 180);
     } else setDx(0);
+  };
+  const moveRef = useRef(move);
+  moveRef.current = move;
+  const endRef = useRef(end);
+  endRef.current = end;
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return undefined;
+    let lastX = 0;
+    const ts = (e) => {
+      const t = e.touches[0];
+      lastX = t.clientX;
+      start(t.clientX, t.clientY, el.getBoundingClientRect().left);
+    };
+    const tm = (e) => {
+      const t = e.touches[0];
+      lastX = t.clientX;
+      if (moveRef.current(t.clientX, t.clientY) && e.cancelable) e.preventDefault();
+    };
+    const te = () => endRef.current(lastX);
+    el.addEventListener('touchstart', ts, { passive: true });
+    el.addEventListener('touchmove', tm, { passive: false });
+    el.addEventListener('touchend', te);
+    el.addEventListener('touchcancel', te);
+    return () => {
+      el.removeEventListener('touchstart', ts);
+      el.removeEventListener('touchmove', tm);
+      el.removeEventListener('touchend', te);
+      el.removeEventListener('touchcancel', te);
+    };
+  }, []);
+  const onDown = (e) => {
+    e.stopPropagation();
+    if (e.pointerType !== 'mouse') return; // dokunma: yukarıdaki touch dinleyicileri
+    start(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect().left);
+  };
+  const onMove = (e) => {
+    if (e.pointerType !== 'mouse') return;
+    if (move(e.clientX, e.clientY)) {
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        /* yoksay */
+      }
+    }
+  };
+  const onUp = (e) => {
+    if (e.pointerType !== 'mouse') return;
+    end(e.clientX);
   };
 
   return createPortal(
     <div
+      ref={rootRef}
       className={`ig-nt${dx ? ' drag' : ''}${leaving ? ' leaving' : ''}`}
       role="dialog"
       aria-label="Bildirimler"

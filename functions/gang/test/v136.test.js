@@ -113,3 +113,52 @@ test('v136 darbe kilidi: polis oylaması geçip bittiyse (darbe bu gece başlıy
   assert.equal(h.get(`intelRoster/${egm.rid}`).rank, 'sef', 'oylama geçmedi — normal hesap');
   assert.equal(h.get(`intelRoster/${amir.rid}`).rank, 'baskan');
 });
+
+// v137 — bozulan biat 00:00'a kadar sürerken yeni biat teklifi / kabulü
+async function rankedGang(h, name) {
+  const G = await setupGang(h, { members: 2, name });
+  await h.setPrestige(G.gangId, G.ids[0], 5_000_000);
+  await h.setRank(G.gangId, G.ids[0], 'sagkol');
+  return G;
+}
+test('v137 biat: bozulan biat gece yarısına kadar sürer; bu arada başka çeteye biat teklifi/kabulü olur, 00:00da yenisi başlar', async () => {
+  const h = await createHarness();
+  const A = await rankedGang(h, 'Alfa');
+  const B = await rankedGang(h, 'Beta');
+  const C = await rankedGang(h, 'Gama');
+  const D = await rankedGang(h, 'Delta');
+  const { biatId: ab } = await h.act(A.baba, 'requestBiat', { targetGangId: B.gangId });
+  await h.act(B.baba, 'respondBiat', { biatId: ab, accept: true });
+  const { biatId: db_ } = await h.act(D.baba, 'requestBiat', { targetGangId: C.gangId });
+  await h.act(C.baba, 'respondBiat', { biatId: db_, accept: true });
+  await h.tickTo('2026-09-22', '00:05');
+  assert.equal(h.get(`alliances/${ab}`).status, 'active');
+  // A biatı bozar → aynı gün C'ye teklif, C kabul eder
+  await h.act(A.baba, 'endBiat', { biatId: ab });
+  assert.equal(h.get(`gangs/${A.gangId}`).biat.endDateKey, '2026-09-23');
+  const { biatId: ac } = await h.act(A.baba, 'requestBiat', { targetGangId: C.gangId });
+  await h.act(C.baba, 'respondBiat', { biatId: ac, accept: true });
+  // biat edilen taraf: C, D'nin biatını bozar → C artık başkasına biat edebilir (A'nın biatı kabul edilmiş olsa da hayır: ona biat eden var)
+  await h.act(C.baba, 'endBiat', { biatId: db_ });
+  // B (A'nın eski efendisi) — A bozdu; B başkasına biat edebilir (D'ye)
+  const { biatId: bd } = await h.act(B.baba, 'requestBiat', { targetGangId: D.gangId });
+  await h.act(D.baba, 'respondBiat', { biatId: bd, accept: true });
+  await h.tickTo('2026-09-23', '00:05');
+  assert.equal(h.get(`alliances/${ab}`).status, 'ended');
+  assert.equal(h.get(`alliances/${ac}`).status, 'active');
+  assert.equal(h.get(`gangs/${A.gangId}`).biat.gangId, C.gangId);
+  assert.equal(h.get(`alliances/${bd}`).status, 'active');
+  assert.equal(h.get(`gangs/${B.gangId}`).biat.gangId, D.gangId);
+  assert.equal(h.get(`alliances/${db_}`).status, 'ended');
+});
+
+test('v137 biat: savaş gününde bozulan biat geçerli, yeni kabul edilen sayılmaz', async () => {
+  const { tradeBiatList } = await import('../actions/wars.js');
+  const L = tradeBiatList([
+    { kind: 'biat', vassalId: 'A', overlordId: 'B', status: 'ending' },
+    { kind: 'biat', vassalId: 'A', overlordId: 'C', status: 'accepted' },
+    { kind: 'biat', vassalId: 'E', overlordId: 'F', status: 'accepted' },
+    { kind: 'biat', vassalId: 'B', overlordId: 'G', status: 'accepted' },
+  ]);
+  assert.deepEqual(L.map((a) => `${a.vassalId}>${a.overlordId}`).sort(), ['A>B', 'E>F']);
+});

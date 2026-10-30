@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { collection, doc, limit, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, doc, documentId, getDocs, limit, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
@@ -46,6 +46,35 @@ const GAME_VENUE = {
 };
 
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
+
+// v137 — depo listesinde stok: yasaklı maddesi 0 olan depoya "Mal yok" etiketi
+// (depotView herkese açık; liste açılınca 30'arlı tek okuma, canlı dinleme yok)
+function useDepoStocks(ids, enabled) {
+  const [stocks, setStocks] = useState({});
+  const key = enabled ? ids.join(',') : '';
+  useEffect(() => {
+    if (!key) return undefined;
+    let alive = true;
+    const list = key.split(',');
+    const chunks = [];
+    for (let i = 0; i < list.length; i += 30) chunks.push(list.slice(i, i + 30));
+    Promise.all(chunks.map((c) => getDocs(query(collection(db, 'depotView'), where(documentId(), 'in', c)))))
+      .then((snaps) => {
+        if (!alive) return;
+        const out = {};
+        snaps.forEach((sn) => sn.forEach((d) => (out[d.id] = Math.max(0, Number(d.data().stock) || 0))));
+        list.forEach((id) => {
+          if (!(id in out)) out[id] = 0;
+        });
+        setStocks(out);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [key]);
+  return stocks;
+}
 
 // v124 — listede her işletmenin fiyatı görünsün (müşteri girmeden karşılaştırsın).
 // Silahçı / modifiyeci: malzeme + işçilik, ADET BAŞI toplam (tamir · geliştirme).
@@ -122,6 +151,10 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
   const gameLoc = GAME_VENUE[type]?.loc || null;
   const interior = usePolledPresence('interiorPresence', { enabled: Boolean(user && gameLoc && !houseId), max: 400 });
   const gamePeople = gameLoc ? interior.filter((p) => p.locationId === gameLoc).length : gameHousePeople;
+  const depoStocks = useDepoStocks(
+    list.filter((h) => !h.guest).map((h) => h.id),
+    type === 'depo' && Boolean(user) && !houseId && !loading
+  );
   const [openAsk, setOpenAsk] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -315,6 +348,7 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
               <b className="bh-name-row">
                 <span className="bh-name">{h.name || t.label}</span>
                 {type === 'spor' && h.gymBonusDay === today && <em className="bh-bonus">🔥 Bonus %10</em>}
+                {type === 'depo' && depoStocks[h.id] === 0 && <em className="bh-bonus bh-empty">Mal yok</em>}
               </b>
               <span>Sahibi: {h.ownerName || 'Oyuncu'}{h.mine ? ' (sen)' : ''}</span>
               {!h.guest && bizPriceText(type, h) && <span className="bh-price">{bizPriceText(type, h)}</span>}
