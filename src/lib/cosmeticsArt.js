@@ -167,6 +167,12 @@ export const PET_ART = {
   aslan: { k: 'q', c: '#d9a441', c2: '#f3dca8', mane: '#8a4b12', s: 66, ear: 'rd', tail: 'lg', snout: 'cat', tuft: '#8a4b12', big: 1 },
   kurt: { k: 'q', c: '#101826', c2: '#1d3a4a', stripe: '#22d3ee', glow: '#22d3ee', s: 64, ear: 'pt', tail: 'fl', snout: 'fox', eye: '#22d3ee', tip: '#22d3ee', inner: '#22d3ee', lean: 1 },
   ejder: { k: 'q', c: '#2fae5f', c2: '#f4d27a', wing: '#1d7a42', horn: '#f4d27a', fire: 1, s: 62, ear: 'pt', tail: 'lg', snout: 'dog', spikes: '#f4d27a', scales: 1 },
+  // v137 — ev hayvanları (Mobilya › Hayvanlar) için ek türler
+  kangal: { k: 'q', c: '#dcc69c', c2: '#f1e4c6', ec: '#2a2018', s: 62, ear: 'dr', tail: 'fl', snout: 'dog', tip: '#dcc69c' },
+  mops: { k: 'q', c: '#d9b98a', c2: '#f1dfc4', ec: '#231a14', s: 40, ear: 'rd', tail: 'sh', snout: 'flat', stocky: 1 },
+  at: { k: 'q', c: '#7a4a2a', c2: '#9b6644', s: 96, ear: 'pt', tail: 'fl', snout: 'horse', tip: '#2a1a10', hoof: '#2a1a10', lean: 1 },
+  tavuk: { k: 'b', c: '#f6efe2', c2: '#e6dac6', beak: '#f2b632', comb: '#d62828', s: 36 },
+  ordek: { k: 'b', c: '#f4f2ea', c2: '#ddd8ca', beak: '#f59e0b', duck: 1, s: 38 },
 };
 
 const shadeHex = (h, a) => {
@@ -1193,11 +1199,28 @@ function bird(c, p, s, st, t, flying) {
     c.ellipse(0.2 * s, -0.64 * s, 0.03 * s, 0.06 * s, 0, 0, 7);
     c.fill();
   }
+  if (p.comb) {
+    // v137 — tavuk ibiği + gerdan
+    c.fillStyle = p.comb;
+    for (const [dx, r] of [[0.04, 0.045], [0.1, 0.055], [0.16, 0.045]]) {
+      c.beginPath();
+      c.arc(dx * s, -0.9 * s, r * s, 0, 7);
+      c.fill();
+    }
+    c.beginPath();
+    c.ellipse(0.22 * s, -0.66 * s, 0.03 * s, 0.05 * s, 0, 0, 7);
+    c.fill();
+  }
   c.fillStyle = p.beak;
   c.beginPath();
-  c.moveTo(0.21 * s, -0.78 * s);
-  c.lineTo(0.34 * s, -0.74 * s);
-  c.lineTo(0.21 * s, -0.7 * s);
+  if (p.duck) {
+    // v137 — ördek gagası: yassı, yuvarlak uçlu
+    c.ellipse(0.27 * s, -0.74 * s, 0.11 * s, 0.04 * s, 0.05, 0, 7);
+  } else {
+    c.moveTo(0.21 * s, -0.78 * s);
+    c.lineTo(0.34 * s, -0.74 * s);
+    c.lineTo(0.21 * s, -0.7 * s);
+  }
   c.fill();
   c.fillStyle = '#111';
   c.beginPath();
@@ -1232,7 +1255,7 @@ function drawBody(c, p, s, st, t, flying, collar) {
 }
 
 function frameFor(id, p, s, scale, kind, k, collar) {
-  const key = `${id}|${Math.round(s * scale)}|${kind}${k}|${collar || ''}`;
+  const key = `${id}|${Math.round(s * scale)}|${kind}${k}|${collar || ''}|${p.c}|${p.c2}`;
   let fr = FRAME_CACHE.get(key);
   if (fr) return fr;
   const px = s * scale;
@@ -1264,9 +1287,11 @@ function frameFor(id, p, s, scale, kind, k, collar) {
 }
 
 // x,y = zemin noktası. size: piksel boyu (yoksa prototip boyu). opts: { moving, flip, flying, collar, live }
-export function drawPet(c, id, x, y, t, { moving = false, flip = false, flying = false, collar = null, size = null, live = false } = {}) {
-  const p = PET_ART[id];
-  if (!p) return;
+// tint (v137): { c, c2 } — ev hayvanlarının renk seçeneği (gövde / açık renk)
+export function drawPet(c, id, x, y, t, { moving = false, flip = false, flying = false, collar = null, size = null, live = false, tint = null } = {}) {
+  const base = PET_ART[id];
+  if (!base) return;
+  const p = tint && (tint.c || tint.c2) ? { ...base, ...(tint.c ? { c: tint.c } : {}), ...(tint.c2 ? { c2: tint.c2 } : {}) } : base;
   const s = size || p.s;
   c.save();
   c.translate(x, y);

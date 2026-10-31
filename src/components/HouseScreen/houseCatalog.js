@@ -4,6 +4,7 @@ import { labelTexture, cityTexture, viewTexture, WINDOW_VIEWS, FLOORS as SURF_FL
 import { ITEM_PRICES, HOUSE_TAKEABLES, FLOOR_TILE_KEYS, WALL_PANEL_KEYS, CEIL_TILE_KEYS, CEIL_TILE } from '../../../functions/houseCatalogData.js';
 import { v92CatalogEntries, V92_CATEGORIES, BOSSTABLE_TINTS, V92_TINTS, marketShelfV92 } from './houseCatalogV92';
 import { v135CatalogEntries, V135_TINTS } from './houseCatalogV135';
+import { petCatalogEntries, PET_CATEGORIES, PET_TINTS, PETSHOP_TINTS } from './houseCatalogPets'; // v137
 
 // =============================================================================
 // houseCatalog.js — Ev eşyaları kataloğu.
@@ -166,6 +167,7 @@ export const TINTS = {
 TINTS.bosstable = BOSSTABLE_TINTS; // v92 — Patron Masası renkleri
 Object.assign(TINTS, V92_TINTS); // v100 — şezlong, şemsiye, park çöp kutusu…
 Object.assign(TINTS, V135_TINTS); // v135 — tuval desenleri, konteyner, tır
+Object.assign(TINTS, PET_TINTS, PETSHOP_TINTS); // v137 — hayvan renkleri, petshop
 // v100 — Kafe masası: masa (c) + sandalyeler (s). İlk 6 = eski görünüm (ahşap masa, siyah sandalye)
 const CAFE_CHAIRS = [
   ['Kırmızı', '#b8141e'], ['Beyaz', '#eeeeee'], ['Hardal', '#b8862e'], ['Zümrüt', '#1d4d3c'], ['Lacivert', '#1f2a48'], ['Pudra', '#cf9a98'], ['Turkuaz', '#1f9fa8'], ['Taba', '#7a4a2a'],
@@ -215,12 +217,13 @@ const CAT_BY_KEY = Object.fromEntries(
     // v135
     { key: 'liman', name: 'Liman & Depo', icon: '⚓' },
     { key: 'resim', name: 'Resim Atölyesi', icon: '🎨' },
+    ...PET_CATEGORIES, // v137 — Hayvanlar, Petshop
   ].map((c) => [c.key, c])
 );
 const CAT_ORDER = [
   ['dukkan', 'silah', 'elektronik', 'spor', 'eglence', 'luks', 'garaj', 'studyo', 'liman'],
   ['araba', 'motor', 'banka', 'ciftlik', 'hapis', 'cami', 'resim'],
-  ['oturma', 'masa', 'yatak', 'banyo', 'mutfak', 'dekor', 'hali', 'duvar', 'dis'],
+  ['oturma', 'masa', 'yatak', 'banyo', 'mutfak', 'dekor', 'hali', 'duvar', 'dis', 'hayvan', 'petshop'],
   ['yapi', 'kapi', 'tavan', 'zemin_parca', 'duvar_parca'],
 ];
 export const CATEGORIES = CAT_ORDER.flatMap((keys, g) => keys.filter((k) => CAT_BY_KEY[k]).map((k) => ({ ...CAT_BY_KEY[k], g: g + 1 })));
@@ -3333,6 +3336,8 @@ export const CATALOG = [
   ...v92CatalogEntries({ neonBuild }),
   // v135 — haber stüdyosu, resim atölyesi, liman & depo (houseCatalogV135.js)
   ...v135CatalogEntries(),
+  // v137 — Hayvanlar (pati platformu + gezen hayvan) · Petshop (houseCatalogPets.js)
+  ...petCatalogEntries(),
   // v92 — zemin parçaları ve duvar panelleri (yan yana döşenir)
   ...tileEntries(),
 ];

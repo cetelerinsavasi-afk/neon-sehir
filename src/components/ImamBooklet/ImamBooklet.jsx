@@ -15,7 +15,7 @@ const PAGES = [
   {
     title: 'Kürsüye Çıkmak',
     body: [
-      'Aranan: 📋 temel görevlerin tamamı, 50 saygınlık ve %0 şüphe.',
+      'Aranan: 📋 temel görevlerin tamamı, 25 saygınlık ve %0 şüphe.',
       'Bu şartlar sadece başvururken aranır.',
       'Kürsü boşsa başvurduğun an imam olursun.',
       'Bekleyen bir polislik başvurun varsa önce onun sonuçlanmasını beklemelisin.',

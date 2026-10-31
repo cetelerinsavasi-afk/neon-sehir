@@ -110,7 +110,7 @@ export function ImamPanel() {
         <div className="imam-apply-box">
           <p className="mosque-hint">
             Şu an imam yok — başvurursan şartları sağlıyorsan hemen imam olursun. Şartlar: başlangıç görevleri,
-            50 saygınlık ve %0 şüphe. Polisler ve polislik başvurusu bekleyenler imam olamaz
+            25 saygınlık ve %0 şüphe. Polisler ve polislik başvurusu bekleyenler imam olamaz
             (detaylar için 📖'ye bak).
           </p>
           <button className="imam-apply-btn" disabled={applying} onClick={handleApply}>

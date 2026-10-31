@@ -39,7 +39,7 @@ export default function PoliceApplicationSection() {
       <div className="police-app-header">
         <p className="police-app-title">
           Polis Teşkilatına Katıl
-          <InfoIcon text="Polis olmak için kod adını yazman yeterli — form ya da onay yok. Şartlar: başlangıç görevleri, 50 saygınlık, %0 şüphe ve en az 1 silah; imam ve Mafya Babası olamaz. Şartları sağlıyorsan anında teşkilata girersin ve ilk 24 saat atılamazsın. İstifa edersen ya da atılırsan 24 saat tekrar giremezsin." />
+          <InfoIcon text="Polis olmak için kod adını yazman yeterli — form ya da onay yok. Şartlar: başlangıç görevleri, 25 saygınlık, %0 şüphe ve en az 1 silah; imam ve Mafya Babası olamaz. Şartları sağlıyorsan anında teşkilata girersin ve ilk 24 saat atılamazsın. İstifa edersen ya da atılırsan 24 saat tekrar giremezsin." />
         </p>
         <button className="police-app-booklet-btn" onClick={() => setShowBooklet(true)}>
           📖 Kitapçık

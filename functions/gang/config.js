@@ -14,7 +14,7 @@ export const MS_DAY = 24 * MS_HOUR;
 export const GANG = {
   // --- Kurma (ONAYLI şartlar) ---
   CREATE_MIN_GOLD: 1_000_000,
-  CREATE_MIN_REPUTATION: 100,
+  CREATE_MIN_REPUTATION: 50, // v137 (eskiden 100)
   CREATE_MIN_POWER: 40_000,
   // VARSAYIM: 1.000.000 altın şartı aynı zamanda kuruluş ücreti olarak
   // düşülür (para sistemden çıkar). 0 yapılırsa sadece "sahip olma" şartı olur.
@@ -142,7 +142,7 @@ export const GANG = {
 // mevcut üyelerin verisine dokunulmadı. Teşkilat üyesi = polis
 // (users.profession === 'polis'); katılım/ayrılık mesleği de birlikte değiştirir.
 export const INTEL = {
-  JOIN_MIN_REPUTATION: 50, // ONAYLI
+  JOIN_MIN_REPUTATION: 25, // v137 (eskiden 50)
   JOIN_MAX_SUSPICION: 0, // v109: polis olmak için şüphe %0 olmalı
   // v109: istifa eden / atılan / oylamayla çıkarılan / pasiflikten görevden alınan
   // 24 saat yeniden başvuramaz (memberships/{uid}.intelCooldownUntilMs)

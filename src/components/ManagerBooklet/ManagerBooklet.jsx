@@ -18,7 +18,7 @@ const PAGES = [
   {
     title: '✅ Menajer Olmak İçin',
     body: [
-      'En az 50 saygınlığın olmalı (sadece başvuru anında bakılır).',
+      'En az 25 saygınlığın olmalı (sadece başvuru anında bakılır).',
       'Menajeri olmayan bir takıma dilediğin an başvurabilirsin — bot takımlarda anında kabul edilirsin.',
       'Menajeri olan bir takıma ancak o menajerden seviyece kesin olarak yükseksen talep gönderebilirsin.',
       'Aynı anda sadece bir takımı yönetebilirsin — yeni bir takıma geçmek için önce istifa etmen gerekir.',

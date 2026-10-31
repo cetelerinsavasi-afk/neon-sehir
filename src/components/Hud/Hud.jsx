@@ -1,4 +1,3 @@
-import InfoIcon from '../InfoIcon/InfoIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { IS_ANDROID_APP } from '../../lib/platform';
 import './Hud.css';
@@ -26,7 +25,6 @@ export default function Hud({ suspicion = 0, reputation = 0, gold = 0, onGoldCli
         <div className="hud-stat-label">
           <span>
             Şüphe
-            <InfoIcon text="Şüphen arttıkça yakalanma riskin de artar" />
           </span>
           <span>{suspicion}%</span>
         </div>
@@ -42,7 +40,6 @@ export default function Hud({ suspicion = 0, reputation = 0, gold = 0, onGoldCli
         <div className="hud-stat-label">
           <span>
             Saygınlık
-            <InfoIcon text="Ekip soygunlarına polis sızarsa esnaflar seni uyarabilir" />
           </span>
           <span>{reputation}%</span>
         </div>

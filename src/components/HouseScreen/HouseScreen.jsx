@@ -15,6 +15,9 @@ import ItemThumb from './ItemThumb';
 import { MarketShelf, SellSheet, useFurnBest, useListingWatch } from './FurnMarket'; // v132 mobilya pazarı
 import { useHouseBots } from './houseBots'; // v132 botlar
 import { BotWaiterButton, BotEditor } from './BotUi';
+import { useHousePets } from './housePets'; // v137 ev hayvanları
+import { PetEditor } from './PetUi';
+import { isAnimalKey } from '../../../functions/animalData.js';
 import { furnPriceBand } from '../../../functions/furnMarket.js';
 import { CATALOG, CATALOG_MAP, CATEGORIES, TINTS } from './houseCatalog';
 import { FLOORS, WALLS } from './houseTextures';
@@ -210,6 +213,8 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   const itemNpcsRef = useRef([]); // v100: büfe kulübesinin içindeki büfeci (evlerde)
   const botNpcsRef = useRef([]); // v132: botlar (houseBots.js)
   const botsApiRef = useRef(null);
+  const petNpcsRef = useRef([]); // v137: ev hayvanları (housePets.js)
+  const petsApiRef = useRef(null);
   const itemNpcKeyRef = useRef('');
   const mountRef = useRef(null);
   const seenSelfRef = useRef(false);
@@ -461,6 +466,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
         // v92 Faz 8: mekân NPC'si → istasyonuna git / paneli aç.
         // v93: oyuncuya dokununca profil AÇILMAZ (profil: 👥 kişiler listesinden).
         if (String(uid).startsWith('npc_bot_')) return Boolean(botsApiRef.current?.tap(uid)); // v132
+        if (String(uid).startsWith('npc_pet_')) return Boolean(petsApiRef.current?.tap(uid)); // v137
         return Boolean(String(uid).startsWith('npc_') && venueApiRef.current?.npcTap(uid));
       },
       onFreeCamChange: setFreeCam,
@@ -679,7 +685,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   const liveMapRef = useRef({});
   const pushOthers = useCallback(() => {
     const merged = fsOthersRef.current.map((p) => mergeLive(p, liveMapRef.current[p.uid], p.updatedAt?.toMillis?.() ?? 0));
-    const extra = [...venueNpcsRef.current, ...itemNpcsRef.current, ...botNpcsRef.current];
+    const extra = [...venueNpcsRef.current, ...itemNpcsRef.current, ...botNpcsRef.current, ...petNpcsRef.current];
     engineRef.current?.setOthers(extra.length ? [...merged, ...extra] : merged);
   }, []);
   // v100 — eşya NPC'leri: satın alınmış her büfe kulübesinin içinde bir büfeci durur
@@ -702,6 +708,9 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   const botDesignItems = mode === 'build' ? design?.items || houseDoc?.items || null : null; // v132.1: Tasarla'da platformla birlikte
   const bots = useHouseBots({ engineRef, engineKey, phase, houseId, houseDoc, designItems: botDesignItems, venue, mode, isOwner, user, npcsRef: botNpcsRef, pushOthers, flash });
   botsApiRef.current = bots;
+  const pets = useHousePets({ engineRef, engineKey, phase, houseDoc, designItems: botDesignItems, venue, mode, npcsRef: petNpcsRef, pushOthers });
+  petsApiRef.current = pets;
+  const [petEdit, setPetEdit] = useState(null); // { i, k, c }
   const [botEdit, setBotEdit] = useState(null); // { i }
   const onVenueNpcs = useCallback(
     (list) => {
@@ -2054,6 +2063,10 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                 {sel.k === 'bot' && sel.p === 1 && !venue && (
                   <button className="hs-bot-edit" onClick={() => setBotEdit({ i: sel.i })}>✏️ Düzenle</button>
                 )}
+                {/* v137 — ev hayvanı: ad / sözler / hareket */}
+                {isAnimalKey(sel.k) && sel.p === 1 && !venue && (
+                  <button className="hs-bot-edit" onClick={() => setPetEdit({ i: sel.i, k: sel.k, c: sel.c || 0 })}>✏️ Düzenle</button>
+                )}
                 {/* v132 — pazara koy (sadece sahibi; fiyatı yarısı – 1 birim altı) */}
                 {isOwner && sel.p === 1 && furnPriceBand(sel.k) && !venue && (
                   <button className="hs-sell-btn" onClick={() => setSellAsk({ k: sel.k })}>🏷️ Sat</button>
@@ -2471,6 +2484,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
               houseId={houseId}
             />
           )}
+          {petEdit && <PetEditor houseId={houseId} item={petEdit} cfg={houseDoc?.pets?.[petEdit.i] || null} flash={flash} onClose={() => setPetEdit(null)} />}
           {botEdit && <BotEditor houseId={houseId} itemId={botEdit.i} cfg={houseDoc?.bots?.[botEdit.i] || null} flash={flash} onClose={() => setBotEdit(null)} />}
           {sellAsk && <SellSheet k={sellAsk.k} Price={PriceTag} busy={sellBusy} onConfirm={doSell} onClose={() => setSellAsk(null)} />}
           {bizRemove && (

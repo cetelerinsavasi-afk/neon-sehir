@@ -44,6 +44,7 @@ import { doorOf, doorSpawn, settleDoor } from './houseDoor.js';
 import { MATERIAL_HOLDER_BIZ, readHoldings, readMaterialInv, closeBlockMaterials } from './materials.js';
 import { createFurnMarket } from './furnMarket.js';
 import { cleanBotConfig, BOT_ITEM_KEY, botAvatar, botDefaults, botLabel, botAllowedLines } from './botData.js';
+import { cleanPetConfig, isAnimalKey, ANIMAL_BY_KEY, MAX_ROOM_PETS, petLines, petName, petTintOf } from './animalData.js';
 
 // v77 — Ev → İşletme. houses/{id} üzerine eklenen alanlar:
 //   biz: { type, openedAtMs } | null   — açık işletme (yoksa ev)
@@ -939,6 +940,23 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
         ...(says.length ? { says } : {}),
       });
     });
+    // v137 — EV HAYVANLARI fotoğrafta: ad / tür / renk sunucudaki eşyadan; istemciden konum + balon
+    if (!vn) {
+      (h.items || [])
+        .filter((it) => isAnimalKey(it.k) && it.p === 1)
+        .slice(0, MAX_ROOM_PETS)
+        .forEach((it) => {
+          const uidP = `npc_pet_${it.i}`;
+          const q = npcShot.get(uidP) || {};
+          const qx = num(q.x);
+          const qz = num(q.z);
+          const okPos = qx !== null && qz !== null && Math.abs(qx) <= 40 && Math.abs(qz) <= 40;
+          const raw = h.pets?.[it.i] || null;
+          const allowed = new Set(petLines(it.k, raw).map((l) => String(l).slice(0, 200)));
+          const says = (npcSays.get(uidP) || []).map((x) => String(x)).filter((x) => allowed.has(x)).slice(-2);
+          people.push({ uid: uidP, displayName: petName(it.k, raw), pet: { id: ANIMAL_BY_KEY[it.k].art, tint: petTintOf(it.k, it.c) }, x: okPos ? qx : Number(it.x) || 0, z: okPos ? qz : Number(it.z) || 0, left: !!q.left, seat: null, ...(says.length ? { says } : {}) });
+        });
+    }
     if (vn) {
       const npcs = [...(vn.npcs || [])];
       if (h.venue === 'camii') npcs.push(...(await camiiNpcsNow()));
@@ -1026,6 +1044,39 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       });
       bots[i] = cfg;
       tx.update(houseRef(houseId), { bots, updatedAtMs: now() });
+      result = { ok: true, cfg };
+    });
+    return result;
+  }
+
+  // ---- v137 EV HAYVANI ayarı (Mobilya › Hayvanlar): ad, 3 söz, hareket --------------------
+  // houses/{id}.pets = { eşyaKimliği: ayar } — satın alınmış hayvan eşyası olmalı. Renk:
+  // eşyanın renk seçeneği (items[].c). Odada olmayan hayvanların eski ayarları temizlenir.
+  async function petSet(uid, p) {
+    const houseId = String(p.houseId || '');
+    const i = String(p.i || '');
+    if (!ID_RE.test(i)) fail('invalid-argument', 'Geçersiz hayvan.');
+    const cfg = cleanPetConfig(p.cfg);
+    const text = [cfg.n, ...cfg.l].filter(Boolean).join(' · ');
+    if (text) await assertCanSpeak(uid, text);
+    let result = null;
+    await db.runTransaction(async (tx) => {
+      const hs = await tx.get(houseRef(houseId));
+      if (!hs.exists) fail('not-found', 'Ev bulunamadı.');
+      const h = hs.data();
+      if (h.venue) fail('permission-denied', 'Bu mekân düzenlenemez.');
+      if (h.ownerUid !== uid && !isEditorOf(h, uid)) fail('permission-denied', 'Bu ev senin değil.');
+      const items = h.items || [];
+      const it = items.find((x) => x.i === i && isAnimalKey(x.k));
+      if (!it) fail('failed-precondition', 'pet-unsaved');
+      if (it.p !== 1) fail('failed-precondition', 'pet-trial');
+      const live = new Set(items.filter((x) => isAnimalKey(x.k)).map((x) => x.i));
+      const pets = {};
+      Object.entries(h.pets || {}).forEach(([k, v]) => {
+        if (live.has(k)) pets[k] = v;
+      });
+      pets[i] = cfg;
+      tx.update(houseRef(houseId), { pets, updatedAtMs: now() });
       result = { ok: true, cfg };
     });
     return result;
@@ -1320,6 +1371,8 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
         return furn.cancel(uid, p);
       case 'botSet':
         return botSet(uid, p);
+      case 'petSet':
+        return petSet(uid, p);
       default:
         return fail('invalid-argument', 'Bilinmeyen işlem.');
     }

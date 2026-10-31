@@ -9,7 +9,7 @@
 //   - her ayrılış (istifa, atılma, oylama, pasiflik, çete kurma, karar paneli)
 //     mesleği de alır ve 24 saat yeniden başvuru yasağı koyar
 //     (memberships.intelCooldownUntilMs).
-//   Şartlar: başlangıç görevleri + 50 saygınlık + %0 şüphe + 1 silah; imam ve
+//   Şartlar: başlangıç görevleri + 25 saygınlık + %0 şüphe + 1 silah; imam ve
 //   Mafya Babası katılamaz. Soygun durdurma prestiji de bu teşkilata yazılır.
 // v123: BAŞVURU FORMU KALDIRILDI. Oyuncu sadece kod adını yazar; şartları
 //   sağlıyorsa ANINDA teşkilata alınır (inceleme / onay yok). Yeni katılan

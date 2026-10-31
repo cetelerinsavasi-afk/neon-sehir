@@ -3,7 +3,7 @@
 // Çeteler › Polis Teşkilatı kartından hem Karakol'dan açılır.
 //   Başvuru FORMU KALDIRILDI: oyuncu sadece kod adını yazar; şartları
 //   sağlıyorsa ANINDA polis olur (inceleme / onay yok).
-//   Şartlar (sunucu doğrular): başlangıç görevleri · 50 saygınlık · %0 şüphe ·
+//   Şartlar (sunucu doğrular): başlangıç görevleri · 25 saygınlık · %0 şüphe ·
 //   en az 1 silah · imam ve Mafya Babası olmamak · son 24 saatte polislikten
 //   ayrılmamış / atılmamış olmak.
 //   Yeni katılan polis 24 saat boyunca teşkilattan atılamaz.
@@ -11,9 +11,7 @@ import { useState } from 'react';
 import { useGang, useGangAction, useNow } from './GangContext';
 import { Btn, Sheet } from './ui';
 import { useMyWallet } from './shared';
-import { GANG_RULES, fmt, gangExitHoursLeft, gangExitText } from './gangConstants';
-import { useBelediyeRates } from '../../hooks/useBelediyeRates';
-import { policeSalary } from '../../../functions/belediyeRates.js';
+import { GANG_RULES, gangExitHoursLeft, gangExitText } from './gangConstants';
 import { usePlayer } from '../../hooks/usePlayer';
 
 // Kalan yasak süresi (saat) — istifa / atılma sonrası 24 saat
@@ -23,7 +21,6 @@ export function cooldownHoursLeft(membership, now) {
 }
 
 export default function PoliceApplySheet({ onClose, onDone, membership }) {
-  const rates = useBelediyeRates(); // v127: polis maaşları Teşkilat Bakanlığı'nın
   const { run, busy } = useGangAction();
   const { isTest } = useGang();
   const wallet = useMyWallet();
@@ -57,9 +54,6 @@ export default function PoliceApplySheet({ onClose, onDone, membership }) {
         <input className="gx-input" maxLength={GANG_RULES.CODENAME_MAX} value={code} onChange={(e) => setCode(e.target.value)} placeholder="ör. Atmaca" />
       </label>
       <div className="gx-hide-warn">🤫 Teşkilatta herkes seni bu adla tanır — gerçek kimliğin gizli kalır.</div>
-      <div className="dim gx-mini">
-        ⚡ Şartları sağlıyorsan anında teşkilata katılırsın — form yok, onay beklemek yok. 🛡️ Katıldıktan sonra 24 saat boyunca teşkilattan atılamazsın. 💼 Maaş: Polis Memuru {fmt(policeSalary(rates, 'muhbir'))} … Emniyet Genel Müdürü {fmt(policeSalary(rates, 'baskan'))} + rüşvet payı (her gece 00:00).
-      </div>
       <Btn
         block
         disabled={!ok || code.trim().length < GANG_RULES.CODENAME_MIN}

@@ -235,3 +235,18 @@
   border-color: rgba(34, 211, 238, 0.6);
   color: #b9f3ff;
 }
+
+/* v137 — ev hayvanı düzenleyici */
+.pt-ed-pet {
+  position: absolute;
+  left: 50%;
+  bottom: 34px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.pt-hint {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  opacity: 0.6;
+  text-align: center;
+}

@@ -5451,17 +5451,15 @@ function clampSuspicion(v) {
 // ---------------------------------------------------------------------------
 // Kademeli saygınlık kazanımı — ibadet ve seyyar satıcı alışverişi ortak
 // kullanır. Saygınlık yükseldikçe kazanmak zorlaşır:
-//   0–49  → +5
-//   50–79 → +3
-//   80+   → +1
+//   0–49  → +3   (v137; eskiden +5)
+//   50–100 → +1  (v137; eskiden 50–79 +3, 80+ +1)
 // Kazanım, eylem ANINDAKİ saygınlığa göre belirlenir; sonuç 0–100 aralığında
 // tutulur.
 // ---------------------------------------------------------------------------
 function reputationGainFor(currentReputation) {
   const rep = currentReputation || 0;
-  if (rep >= 80) return 1;
-  if (rep >= 50) return 3;
-  return 5;
+  if (rep >= 50) return 1;
+  return 3;
 }
 
 function nextReputationAfterGain(currentReputation) {
@@ -5471,7 +5469,7 @@ function nextReputationAfterGain(currentReputation) {
 
 // ---------------------------------------------------------------------------
 // prayAtMosque — Camii: vakit başına 1 kez, ücretsiz, şüphe -5 VE saygınlık
-// artışı (kademeli: 0-49 → +5, 50-79 → +3, 80+ → +1 — bkz. reputationGainFor).
+// artışı (kademeli: 0-49 → +3, 50+ → +1 — bkz. reputationGainFor).
 // ---------------------------------------------------------------------------
 export const prayAtMosque = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -5601,7 +5599,7 @@ async function computeTotalWealth(uid, userData, prices) {
 // eksikse dailyReset tarafından imamlıktan atılır (bkz. dailyReset).
 // ---------------------------------------------------------------------------
 const IMAM_SALARY = 10000;
-const IMAM_REPUTATION_REQUIRED = 50;
+const IMAM_REPUTATION_REQUIRED = 25; // v137 (eskiden 50)
 // KULLANICI REVİZESİ: imamlıktan atılan biri artık "yerine başkası imam
 // olup o da atılana kadar" değil, atıldığı andan (dailyReset'teki 00:00
 // azli) itibaren TAM 24 saat boyunca tekrar imam olamaz — bkz. applyForImam.
@@ -5939,7 +5937,7 @@ export const claimPoliceSalary = onCall(async (request) => {
 // ---------------------------------------------------------------------------
 // buyFromVendor — Seyyar Satıcı: her satıcının KENDİ günlük hakkı var
 // (Kokoreçci, Simitçi, Dönerci, Köfteci birbirinden bağımsız), 1000 altın,
-// şüphe -5, saygınlık artışı kademeli (0-49 → +5, 50-79 → +3, 80+ → +1 —
+// şüphe -5, saygınlık artışı kademeli (0-49 → +3, 50+ → +1 —
 // bkz. reputationGainFor).
 // ---------------------------------------------------------------------------
 const VENDOR_COST = 1000;
@@ -12142,7 +12140,7 @@ function futbolApplyManagerLossStreak(batch, teamRef, team, lost) {
   batch.update(teamRef, { managerConsecutiveLosses: next });
 }
 
-const FUTBOL_MANAGER_REPUTATION_REQUIRED = 50;
+const FUTBOL_MANAGER_REPUTATION_REQUIRED = 25; // v137 (eskiden 50)
 
 // --- Harcama Yönlendirme (transfer/doktor/vb.) ---
 // computeFutbolSpendPlan — SAF (yan etkisiz) hesap fonksiyonu: bir harcamanın

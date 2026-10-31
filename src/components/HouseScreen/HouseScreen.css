@@ -1965,3 +1965,17 @@
   font-size: 12px;
   opacity: 0.85;
 }
+
+/* v137 — hayvan küçük resmi (katalog): pati platformu + hayvan çizimi */
+.hs-thumb-pet {
+  position: relative;
+  margin: 0 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+}
+.hs-thumb-pet canvas {
+  max-width: 100%;
+  max-height: 100%;
+}

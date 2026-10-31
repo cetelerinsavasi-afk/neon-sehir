@@ -56,13 +56,13 @@ test('v123 katılım: form yok — sadece kod adı; şartlar tutuyorsa ANINDA po
   const memur = await member(h, 'Kulak');
   const a = await h.persona({ displayName: 'Aday', gold: 0, power: 5_000, reputation: 60 });
   const b = await h.persona({ displayName: 'Aday2', gold: 0, power: 5_000, reputation: 60 });
-  const weak = await h.persona({ displayName: 'Zayıf', gold: 0, power: 5_000, reputation: 49 });
+  const weak = await h.persona({ displayName: 'Zayıf', gold: 0, power: 5_000, reputation: 24 });
   const sus = await h.persona({ displayName: 'Şüpheli', gold: 0, power: 5_000, reputation: 90 });
   await h.db.doc(`gangWorlds/test/players/${sus}`).update({ suspicion: 3 });
   const imam = await h.persona({ displayName: 'Hoca', gold: 0, power: 5_000, reputation: 90 });
   await h.db.doc(`gangWorlds/test/players/${imam}`).update({ isImam: true });
   const unarmed = await h.persona({ displayName: 'Silahsız', gold: 0, power: 0, reputation: 90 });
-  assert.match((await h.fails(weak, 'applyIntel', { codeName: 'Mavi' })).message, /50 saygınlık/);
+  assert.match((await h.fails(weak, 'applyIntel', { codeName: 'Mavi' })).message, /25 saygınlık/);
   assert.match((await h.fails(sus, 'applyIntel', { codeName: 'Mavi' })).message, /şüphen %0/);
   assert.match((await h.fails(imam, 'applyIntel', { codeName: 'Mavi' })).message, /İmam polis olamaz/);
   assert.match((await h.fails(unarmed, 'applyIntel', { codeName: 'Mavi' })).message, /silah/);

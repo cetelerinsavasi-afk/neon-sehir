@@ -7,7 +7,7 @@ const LOGO = { emoji: '🐍', color: '#19e8ff', bg: '#06222b' };
 test('çete kurma şartları: altın / saygınlık / güç', async () => {
   const h = await createHarness();
   const poor = await h.persona({ displayName: 'Fakir', gold: 999_999, power: 50_000, reputation: 100 });
-  const lowRep = await h.persona({ displayName: 'Şüpheli', gold: 2_000_000, power: 50_000, reputation: 99 });
+  const lowRep = await h.persona({ displayName: 'Şüpheli', gold: 2_000_000, power: 50_000, reputation: 49 });
   const weak = await h.persona({ displayName: 'Zayıf', gold: 2_000_000, power: 39_999, reputation: 100 });
   assert.match((await h.fails(poor, 'createGang', { name: 'Aaa', logo: LOGO })).message, /altın/);
   assert.match((await h.fails(lowRep, 'createGang', { name: 'Bbb', logo: LOGO })).message, /saygınlık/);

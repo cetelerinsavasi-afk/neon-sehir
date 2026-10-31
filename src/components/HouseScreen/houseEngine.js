@@ -8,6 +8,7 @@ import { FLOORS, WALLS, floorDef, wallDef, surfaceTexture } from './houseTexture
 import { HOUSE_PRODUCTS, VENUE_FREE_TAKE_KEYS } from '../../../functions/houseCatalogData.js';
 import { heldCanvas, heldDataUrl } from './heldArt';
 import { cartModel, fillCart, MARKET_PRODUCTS } from './houseCatalogV92';
+import { isAnimalKey } from '../../../functions/animalData.js';
 
 // v92 — market arabası: elde itilen araba ve içindeki ürünler (en fazla 12)
 export const CART_MAX = 12;
@@ -757,6 +758,138 @@ class AvatarFigure {
   }
 }
 
+// v137 — ODADA GEZEN EV HAYVANI (Mobilya › Hayvanlar). `others` listesinde bir NPC gibi
+// durur (uid: npc_pet_<eşya>): ad etiketi + konuşma balonları + kameraya dönük çizim
+// (cosmeticsArt drawPet; renk seçeneği = tint). AvatarFigure ile aynı arayüz.
+const RP_CV = 256;
+const RP_PX = 110; // canvas'ta hayvan boyu
+const RP_OX = 128;
+const RP_OY = 200;
+class RoomPetFigure {
+  constructor(scene, labelLayer, { uid, name, pet }) {
+    this.scene = scene;
+    this.uid = uid;
+    this.isSelf = false;
+    this.isPet = true;
+    this.group = new THREE.Group();
+    this.pivot = new THREE.Group();
+    this.group.add(this.pivot);
+    this.cv = document.createElement('canvas');
+    this.cv.width = this.cv.height = RP_CV;
+    this.ctx = this.cv.getContext('2d');
+    this.texMap = new THREE.CanvasTexture(this.cv);
+    this.texMap.colorSpace = THREE.SRGBColorSpace;
+    this.mat = new THREE.MeshBasicMaterial({ map: this.texMap, transparent: true, alphaTest: 0.2, toneMapped: false, side: THREE.DoubleSide });
+    this.plane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), this.mat);
+    this.plane.userData.playerUid = uid;
+    this.pivot.add(this.plane);
+    scene.add(this.group);
+    this.tex = { ready: true };
+    this.x = this.z = this.tx = this.tz = 0;
+    this.moving = false;
+    this.walkT = 0;
+    this.facingLeft = false;
+    this.bubbles = [];
+    this.emote = null;
+    this.holding = null;
+    this.lastDraw = -1e9;
+    this.label = null;
+    if (labelLayer) {
+      this.label = document.createElement('div');
+      this.label.className = 'hs-label pet';
+      this.bubbleBox = document.createElement('div');
+      this.bubbleBox.className = 'hs-bubbles';
+      this.nameEl = document.createElement('div');
+      this.nameEl.className = 'hs-name';
+      this.label.append(this.bubbleBox, this.nameEl);
+      labelLayer.appendChild(this.label);
+    }
+    this.setIdentity(name);
+    this.setPet(pet);
+  }
+  setIdentity(name) {
+    this.name = name || 'Hayvan';
+    if (this.nameEl) this.nameEl.textContent = `🐾 ${this.name}`;
+  }
+  setPet(pet) {
+    const id = pet?.id && PET_ART[pet.id] ? pet.id : 'sokak';
+    const key = `${id}|${pet?.tint?.c || ''}|${pet?.tint?.c2 || ''}`;
+    if (key === this.petKey) return;
+    this.petKey = key;
+    this.petId = id;
+    this.tint = pet?.tint || null;
+    // oyundaki boy (sahibinin yanındaki hayvan gibi; odada biraz daha belirgin)
+    this.sm = ((PET_ART[id]?.s || 40) * 0.72 * 1.75 * 1.2) / 159;
+    const k = (RP_CV / RP_PX) * this.sm;
+    this.k = k;
+    this.plane.scale.set(k, k, 1);
+    this.plane.position.y = ((RP_OY - RP_CV / 2) / RP_CV) * k;
+    this.lastDraw = -1e9;
+  }
+  setHolding() {}
+  setCart() {}
+  playEmote() {}
+  say(text) {
+    const b = { el: null, text: String(text || ''), until: performance.now() + 7000 };
+    if (this.bubbleBox) {
+      const el = document.createElement('div');
+      el.className = 'hs-bubble';
+      el.textContent = b.text;
+      this.bubbleBox.appendChild(el);
+      b.el = el;
+    }
+    this.bubbles.push(b);
+    while (this.bubbles.length > 2) this.bubbles.shift().el?.remove();
+  }
+  update(dt, camera, now) {
+    const dx = this.tx - this.x;
+    const dz = this.tz - this.z;
+    const d = Math.hypot(dx, dz);
+    if (d > 4) {
+      this.x = this.tx;
+      this.z = this.tz;
+    } else if (d > 0.001) {
+      const step = Math.min(d, Math.max(0.7, d * 2.2) * dt);
+      this.x += (dx / d) * step;
+      this.z += (dz / d) * step;
+    }
+    this.moving = this.frozenMoving != null ? this.frozenMoving : d > 0.04;
+    this.group.position.set(this.x, 0, this.z);
+    const bbYaw = camera.userData.billboardYaw;
+    const ang = bbYaw != null ? bbYaw : Math.atan2(camera.position.x - this.x, camera.position.z - this.z);
+    const hd = Math.hypot(camera.position.x - this.x, camera.position.z - this.z);
+    const el = bbYaw != null ? camera.userData.billboardEl : Math.atan2(camera.position.y - 0.3, hd);
+    const back = el > 0.35 ? Math.min(el - 0.35, 1.05) : 0;
+    this.pivot.rotation.order = 'YXZ';
+    this.pivot.rotation.set(-back, ang, 0);
+    if (now - this.lastDraw > 50) {
+      this.lastDraw = now;
+      this.walkT += this.moving ? dt : 0;
+      const c = this.ctx;
+      c.clearRect(0, 0, RP_CV, RP_CV);
+      drawPet(c, this.petId, RP_OX, RP_OY, now, { moving: this.moving, flip: this.facingLeft, size: RP_PX, tint: this.tint });
+      this.texMap.needsUpdate = true;
+    }
+    this.bubbles = this.bubbles.filter((b) => {
+      if (now > b.until) {
+        b.el?.remove();
+        return false;
+      }
+      return true;
+    });
+  }
+  headWorld(v) {
+    return v.set(this.x, this.sm * 1.15 + 0.08, this.z);
+  }
+  dispose(scene) {
+    scene.remove(this.group);
+    this.plane.geometry.dispose();
+    this.mat.dispose();
+    this.texMap.dispose();
+    this.label?.remove();
+  }
+}
+
 // --- Küçük resimler (katalog rafı) ------------------------------------------
 let thumbCtx = null;
 const thumbCache = new Map();
@@ -1320,7 +1453,7 @@ export function createHouseEngine(
     obj.userData.itemId = data.i;
     if (CATALOG_MAP[data.k]?.tile === 'ceil') ctl?.setCeil?.(ceilView());
     scene.add(obj);
-    if (data.k === 'bot') obj.visible = mode === 'build' && !snapshot; // v132.1: bot platformu sadece Tasarla'da
+    if (data.k === 'bot' || isAnimalKey(data.k)) obj.visible = mode === 'build' && !snapshot; // v132.1: bot platformu sadece Tasarla'da (v137: hayvan platformu da)
     const entry = { obj, data: { ...data }, sig: sigOf(data) };
     applyTransform(entry);
     if (isOwned && ctl?.setOn && typeof data.o === 'boolean') ctl.setOn(data.o);
@@ -1802,7 +1935,7 @@ export function createHouseEngine(
     setNdc(e);
     const planes = [];
     others.forEach((o, uid) => {
-      if (String(uid).startsWith('npc_bot_') && o.fig.plane.visible) planes.push(o.fig.plane);
+      if ((String(uid).startsWith('npc_bot_') || String(uid).startsWith('npc_pet_')) && o.fig.plane.visible) planes.push(o.fig.plane);
     });
     if (!planes.length) return null;
     const uid = ray.intersectObjects(planes, false)[0]?.object.userData.playerUid;
@@ -2896,7 +3029,7 @@ export function createHouseEngine(
       mode = m;
       grid.visible = m === 'build';
       objs.forEach((e) => {
-        if (e.data.k === 'bot') e.obj.visible = m === 'build' && !snapshot; // v132.1
+        if (e.data.k === 'bot' || isAnimalKey(e.data.k)) e.obj.visible = m === 'build' && !snapshot; // v132.1 · v137
       });
       if (m === 'walk') {
         select(null);
@@ -3380,13 +3513,20 @@ export function createHouseEngine(
         if (!p?.uid || p.uid === selfUid) return;
         seen.add(p.uid);
         let o = others.get(p.uid);
+        if (o && Boolean(o.fig.isPet) !== Boolean(p.pet)) {
+          o.fig.dispose(scene);
+          others.delete(p.uid);
+          o = null;
+        }
         if (!o) {
-          o = { fig: new AvatarFigure(scene, labelLayer, { uid: p.uid, name: p.displayName, avatar: p.avatar, isSelf: false }), emoteTs: p.emoteTs || 0 };
+          const fig = p.pet ? new RoomPetFigure(scene, labelLayer, { uid: p.uid, name: p.displayName, pet: p.pet }) : new AvatarFigure(scene, labelLayer, { uid: p.uid, name: p.displayName, avatar: p.avatar, isSelf: false });
+          o = { fig, emoteTs: p.emoteTs || 0 };
           o.fig.x = o.fig.tx = Number(p.x) || 0;
           o.fig.z = o.fig.tz = Number(p.z) || 0;
           others.set(p.uid, o);
         }
         o.fig.setIdentity(p.displayName, p.avatar);
+        if (p.pet) o.fig.setPet(p.pet);
         o.fig.tx = Number(p.x) || 0;
         o.fig.tz = Number(p.z) || 0;
         o.fig.facingLeft = !!p.left;

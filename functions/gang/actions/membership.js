@@ -15,7 +15,7 @@ export function createMembershipActions(core, intelHelpers) {
   }
 
   // ---------------------------------------------------------------------------
-  // createGang — şartlar: 1M altın, 100 saygınlık, 40.000 güç.
+  // createGang — şartlar: 1M altın, 50 saygınlık, 40.000 güç.
   // Başka çetedeyse o çeteden çıkar (prestij silinir), İstihbarattaysa
   // İstihbarattan da çıkar. Kurucu = Mafya Babası, 10.000.000 prestij.
   // ---------------------------------------------------------------------------

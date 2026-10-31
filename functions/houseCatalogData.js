@@ -100,6 +100,14 @@ export const ITEM_PRICES = {
   polismasa: g(70000), bayrak: g(12000), aranan: g(8000),
   carplatform: g(120000), showroom: g(30000), hedef: g(10000), carlift: z(3),
   fiskiye: z(4), kaydirak: g(45000), salincak: g(40000), bufe: g(90000), copkutusu: g(4000), guvercin: g(6000),
+  // v137 — HAYVANLAR (iyileri zümrütle) · PETSHOP (hayvan eşyaları)
+  hy_hamster: g(3000), hy_tavuk: g(4000), hy_ordek: g(5000), hy_sokak: g(6000), hy_tavsan: g(8000), hy_hindi: g(8000),
+  hy_mops: g(12000), hy_marti: g(10000), hy_karakedi: g(12000), hy_golden: g(18000), hy_baykus: g(20000), hy_kangal: g(22000),
+  hy_dalmacyali: g(22000), hy_penguen: g(25000), hy_tilki: g(30000), hy_papagan: g(30000), hy_maymun: g(40000), hy_at: g(45000),
+  hy_bulldog: z(2), hy_zengin: z(2), hy_panda: z(3), hy_aslan: z(4), hy_ejder: z(6), hy_kurt: z(6), hy_midilli: z(8),
+  ps_mama: g(1500), ps_su: g(1000), ps_kumkabi: g(2000), ps_cuval: g(2500), ps_oyuncak: g(1500), ps_tasma: g(3000),
+  ps_yatak: g(4000), ps_cark: g(5000), ps_kafes: g(7000), ps_tirmalama: g(9000), ps_kulube: g(12000), ps_kumes: g(15000),
+  ps_ahir: g(25000), ps_saray: z(2),
   // YAPI
   wall2: g(10000), wall4: g(20000), walldoor: g(30000), glassdiv: g(50000), column: g(100000), podium: z(5), doordeco: g(20000), garagedoor: g(150000),
   // v101 — kapılar

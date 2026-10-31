@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { getThumb } from './houseEngine';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import { botAvatar } from '../../../functions/botData.js';
+import { ANIMAL_BY_KEY, petTintOf } from '../../../functions/animalData.js';
+import { PetCanvas } from './PetUi';
 
 // v132.1 — Bot mobilyası: platform yerine üstündeki başlangıç botu (boydan) görünür
 const BOT_THUMB_AV = botAvatar(null);
@@ -39,6 +41,12 @@ function pumpThumbs() {
 }
 export default function ItemThumb({ k, ti = 0, icon }) {
   if (k === 'bot') return <BotThumb />;
+  // v137 — hayvan: platform yerine hayvanın kendisi (seçili renkte)
+  if (ANIMAL_BY_KEY[k]) return (
+    <span className="hs-thumb hs-thumb-pet" aria-hidden="true">
+      <PetCanvas art={ANIMAL_BY_KEY[k].art} tint={petTintOf(k, ti)} size={34} still />
+    </span>
+  );
   return <ThumbImg k={k} ti={ti} icon={icon} />;
 }
 function ThumbImg({ k, ti, icon }) {

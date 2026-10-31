@@ -30,12 +30,12 @@ async function intelChief(h, name = 'Şef') {
 
 test('katılım (v109): 50 saygınlık + %0 şüphe + silah + başlangıç görevleri; imam katılamaz; katılan polis olur, ayrılan polislikten çıkar + 24 saat yasak; kod adı benzersiz; Baba katılamaz', async () => {
   const h = await createHarness();
-  const low = await h.persona({ displayName: 'Düşük', gold: 1, power: 1, reputation: 49 });
+  const low = await h.persona({ displayName: 'Düşük', gold: 1, power: 1, reputation: 24 });
   const civ = await h.persona({ displayName: 'Sivil', gold: 1, power: 1, reputation: 50, isPolice: false });
   const cop = await h.persona({ displayName: 'Polis', gold: 1, power: 1, reputation: 80, isPolice: true });
   const civ2 = await h.persona({ displayName: 'Sivil2', gold: 1, power: 1, reputation: 80 });
   const noGun = await h.persona({ displayName: 'Silahsız', gold: 1, power: 0, reputation: 80 });
-  assert.match((await h.fails(low, 'joinIntel', { codeName: 'Kurt' })).message, /50/);
+  assert.match((await h.fails(low, 'joinIntel', { codeName: 'Kurt' })).message, /25/);
   assert.match((await h.fails(noGun, 'joinIntel', { codeName: 'Kurt' })).message, /silah/);
   await h.db.doc(`gangWorlds/test/players/${civ2}`).update({ onboarded: false });
   assert.match((await h.fails(civ2, 'joinIntel', { codeName: 'Kurt' })).message, /başlangıç görevleri/);
