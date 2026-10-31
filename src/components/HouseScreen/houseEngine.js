@@ -793,15 +793,21 @@ class RoomPetFigure {
     this.emote = null;
     this.holding = null;
     this.lastDraw = -1e9;
+    this.y = 0;
+    this.ty = 0; // yükseklik (yatak / raf / kafes); koltukta seatPos
+    this.pose = 'stand'; // stand | sit | eat | bed
+    this.hidden = false; // kulübe / kümes içinde
     this.label = null;
     if (labelLayer) {
       this.label = document.createElement('div');
       this.label.className = 'hs-label pet';
       this.bubbleBox = document.createElement('div');
       this.bubbleBox.className = 'hs-bubbles';
+      this.emoteEl = document.createElement('div');
+      this.emoteEl.className = 'hs-emote';
       this.nameEl = document.createElement('div');
       this.nameEl.className = 'hs-name';
-      this.label.append(this.bubbleBox, this.nameEl);
+      this.label.append(this.bubbleBox, this.emoteEl, this.nameEl);
       labelLayer.appendChild(this.label);
     }
     this.setIdentity(name);
@@ -829,6 +835,16 @@ class RoomPetFigure {
   setHolding() {}
   setCart() {}
   playEmote() {}
+  // v137.1 — sevilince kalpler
+  love() {
+    this.loveAt = performance.now();
+    if (this.emoteEl) {
+      this.emoteEl.textContent = '💖';
+      this.emoteEl.classList.remove('on');
+      void this.emoteEl.offsetWidth;
+      this.emoteEl.classList.add('on');
+    }
+  }
   say(text) {
     const b = { el: null, text: String(text || ''), until: performance.now() + 7000 };
     if (this.bubbleBox) {
@@ -841,20 +857,40 @@ class RoomPetFigure {
     this.bubbles.push(b);
     while (this.bubbles.length > 2) this.bubbles.shift().el?.remove();
   }
-  update(dt, camera, now) {
-    const dx = this.tx - this.x;
-    const dz = this.tz - this.z;
-    const d = Math.hypot(dx, dz);
-    if (d > 4) {
-      this.x = this.tx;
-      this.z = this.tz;
-    } else if (d > 0.001) {
-      const step = Math.min(d, Math.max(0.7, d * 2.2) * dt);
-      this.x += (dx / d) * step;
-      this.z += (dz / d) * step;
+  update(dt, camera, now, seatPos) {
+    let d = 0;
+    if (seatPos) {
+      // koltukta: oturağın üstünde (biraz arkaya)
+      this.x = seatPos.x;
+      this.z = seatPos.z;
+      this.y += (seatPos.y - 0.05 - this.y) * Math.min(1, dt * 8);
+    } else {
+      const dx = this.tx - this.x;
+      const dz = this.tz - this.z;
+      d = Math.hypot(dx, dz);
+      if (d > 4) {
+        this.x = this.tx;
+        this.z = this.tz;
+      } else if (d > 0.001) {
+        const step = Math.min(d, Math.max(0.7, d * 2.2) * dt);
+        this.x += (dx / d) * step;
+        this.z += (dz / d) * step;
+      }
+      // yüksekliğe (raf / yatak) zıplar gibi geçiş
+      this.y += ((this.ty || 0) - this.y) * Math.min(1, dt * (d < 0.3 ? 7 : 2));
     }
-    this.moving = this.frozenMoving != null ? this.frozenMoving : d > 0.04;
-    this.group.position.set(this.x, 0, this.z);
+    this.moving = this.frozenMoving != null ? this.frozenMoving : d > 0.04 || this.pose === 'run';
+    const loving = this.loveAt && now - this.loveAt < 1600;
+    const hop = loving ? Math.abs(Math.sin((now - this.loveAt) / 130)) * 0.06 : 0;
+    this.group.position.set(this.x, this.y + hop, this.z);
+    this.group.visible = !this.hidden;
+    if (this.label) this.label.style.display = this.hidden ? 'none' : '';
+    // duruş: oturunca / yatınca biraz basık, yerken başı aşağı-yukarı
+    const sit = !this.moving && (seatPos || this.pose === 'sit' || this.pose === 'bed');
+    const sy = sit ? (this.pose === 'bed' ? 0.8 : 0.88) : 1;
+    const eatBob = !this.moving && this.pose === 'eat' ? Math.abs(Math.sin(now / 260)) * 0.05 : 0;
+    this.plane.scale.set(this.k * (sit ? 1.06 : 1), this.k * sy, 1);
+    this.plane.position.y = ((RP_OY - RP_CV / 2) / RP_CV) * this.k * sy - eatBob * this.k * 0.3;
     const bbYaw = camera.userData.billboardYaw;
     const ang = bbYaw != null ? bbYaw : Math.atan2(camera.position.x - this.x, camera.position.z - this.z);
     const hd = Math.hypot(camera.position.x - this.x, camera.position.z - this.z);
@@ -879,7 +915,7 @@ class RoomPetFigure {
     });
   }
   headWorld(v) {
-    return v.set(this.x, this.sm * 1.15 + 0.08, this.z);
+    return v.set(this.x, this.y + this.sm * 1.15 + 0.08, this.z);
   }
   dispose(scene) {
     scene.remove(this.group);
@@ -1376,6 +1412,60 @@ export function createHouseEngine(
     if (wi === 3) Object.assign(data, { x: -W / 2 + 0.005, r: 2, z: clamp(data.z, -D / 2 + m, D / 2 - m) });
     if (wi === 1) Object.assign(data, { x: W / 2 - 0.005, r: 6, z: clamp(data.z, -D / 2 + m, D / 2 - m) });
   }
+  // v137.1 — KAPI: duvara (dış duvar / bölme yüzü) takılır ya da odanın ortasında durur.
+  // Bölmenin ucuna yaklaşınca onunla aynı hizaya (bitişik) oturur → odayı ikiye bölen
+  // duvarın ortasına kapı konabilir. Ortada duran kapı döndürülebilir.
+  const onOuterWall = (d) => Math.abs(d.z + D / 2) < 0.05 || Math.abs(d.z - D / 2) < 0.05 || Math.abs(d.x + W / 2) < 0.05 || Math.abs(d.x - W / 2) < 0.05;
+  function onDividerFace(d) {
+    let on = false;
+    objs.forEach((e) => {
+      if (on || !DIVIDER_SEGS[e.data.k] || e.data.i === d.i) return;
+      const { lx, lz } = toLocal(e.data, d.x, d.z);
+      if (Math.abs(Math.abs(lz) - (DIV_FACE + 0.005)) < 0.03 && DIVIDER_SEGS[e.data.k].some(([a0, a1]) => lx >= a0 - 0.05 && lx <= a1 + 0.05)) on = true;
+    });
+    return on;
+  }
+  const isFreeDoor = (d) => Boolean(CATALOG_MAP[d.k]?.door) && !onOuterWall(d) && !onDividerFace(d);
+  function snapDoor(data) {
+    const half = CATALOG_MAP[data.k]?.wallW || 0.45;
+    const outer = Math.min(data.z + D / 2, W / 2 - data.x, D / 2 - data.z, data.x + W / 2);
+    // bölme ucuna bitişik (aynı hizada) yer
+    let best = null;
+    let face = 99;
+    objs.forEach((e) => {
+      const segs = DIVIDER_SEGS[e.data.k];
+      if (!segs || e.data.i === data.i) return;
+      const { lx, lz } = toLocal(e.data, data.x, data.z);
+      const a0 = Math.min(...segs.map((q) => q[0]));
+      const a1 = Math.max(...segs.map((q) => q[1]));
+      [
+        [a1 + half, 1],
+        [a0 - half, -1],
+      ].forEach(([tx]) => {
+        const d = Math.hypot(lx - tx, lz);
+        if (d < 0.75 && (!best || d < best.d)) best = { d, div: e.data, tx };
+      });
+      segs.forEach(([b0, b1]) => {
+        if (lx >= b0 && lx <= b1) face = Math.min(face, Math.abs(Math.abs(lz) - DIV_FACE));
+      });
+    });
+    if (best && best.d < outer) {
+      const w = toWorld(best.div, best.tx, 0);
+      const r0 = best.div.r || 0;
+      // kapının yüzü oyuncunun geldiği tarafa: önceki yönüne yakın olan (r0 ya da r0+4)
+      const cur = data.r || 0;
+      const diff = (a, b) => Math.min(((a - b) % 8 + 8) % 8, ((b - a) % 8 + 8) % 8);
+      Object.assign(data, { x: w.x, z: w.z, r: diff(cur, r0) <= diff(cur, (r0 + 4) % 8) ? r0 : (r0 + 4) % 8 });
+      return;
+    }
+    if (outer < 0.9 || face < 0.3) {
+      snapToWall(data);
+      return;
+    }
+    // odanın ortasında serbest
+    data.x = clamp(data.x, -W / 2 + half + 0.05, W / 2 - half - 0.05);
+    data.z = clamp(data.z, -D / 2 + half + 0.05, D / 2 - half - 0.05);
+  }
   // v92 — 1 m'lik ızgara hücresinin merkezi (oda kenarından itibaren)
   const cellX = (x) => clamp(Math.floor(x + W / 2), 0, W - 1) + 0.5 - W / 2;
   const cellZ = (z) => clamp(Math.floor(z + D / 2), 0, D - 1) + 0.5 - D / 2;
@@ -1397,7 +1487,8 @@ export function createHouseEngine(
     }
     data.x = snap(data.x);
     data.z = snap(data.z);
-    if (def?.wall) {
+    if (def?.door) snapDoor(data);
+    else if (def?.wall) {
       snapToWall(data);
       // duvar paneli: dış duvar boyunca 1 m'lik dilime oturur
       if (def.tile === 'wall') {
@@ -1414,6 +1505,13 @@ export function createHouseEngine(
     obj.position.set(data.x, 0, data.z);
     obj.rotation.y = (data.r || 0) * (Math.PI / 4);
     obj.updateMatrixWorld(true);
+    // v137.1 — kapı: karanlık boşluk sadece dış duvarda (oda içinde açılınca arkası görünür)
+    if (CATALOG_MAP[data.k]?.door) {
+      const outer = onOuterWall(data);
+      obj.traverse((m) => {
+        if (m.userData?.doorVoid) m.visible = outer;
+      });
+    }
     if (CATALOG_MAP[data.k]?.tile) updateTileUV(obj, data);
   }
   // v92 — parça zemin / duvar paneli: doku dünya konumundan → yan yana parçalar kesintisiz
@@ -3147,7 +3245,7 @@ export function createHouseEngine(
     rotateSelected(dir = 1) {
       const e = selectedId && objs.get(selectedId);
       if (!e || !canEdit) return;
-      if (CATALOG_MAP[e.data.k].wall) return;
+      if (CATALOG_MAP[e.data.k].wall && !isFreeDoor(e.data)) return; // v137.1: ortadaki kapı döner
       pushUndo();
       const att = isDivider(e.data.k) ? attachedWallItems(e.data) : null;
       e.data.r = ((((e.data.r || 0) + dir) % 8) + 8) % 8;
@@ -3526,7 +3624,12 @@ export function createHouseEngine(
           others.set(p.uid, o);
         }
         o.fig.setIdentity(p.displayName, p.avatar);
-        if (p.pet) o.fig.setPet(p.pet);
+        if (p.pet) {
+          o.fig.setPet(p.pet);
+          o.fig.ty = Number(p.y) || 0;
+          o.fig.pose = p.pose || 'stand';
+          o.fig.hidden = Boolean(p.hidden);
+        }
         o.fig.tx = Number(p.x) || 0;
         o.fig.tz = Number(p.z) || 0;
         o.fig.facingLeft = !!p.left;
@@ -3554,6 +3657,10 @@ export function createHouseEngine(
     say(uid, text) {
       if (uid === selfUid) self.fig?.say(text);
       else others.get(uid)?.fig.say(text);
+    },
+    // v137.1 — ev hayvanını sev (kalpler)
+    petLove(uid) {
+      others.get(uid)?.fig.love?.();
     },
     // v80 — yayın kamerası (izleyici): { px,py,pz, tx,ty,tz, fov } | null
     // v81: yayıncının ana ekranında da kullanılır (yayın tüm ekranı kaplar);

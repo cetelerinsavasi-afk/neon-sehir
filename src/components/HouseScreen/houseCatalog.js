@@ -1996,8 +1996,10 @@ function doorDecor(g) {
 // Aynı görünümler evin giriş kapısı için de kullanılır (DOOR_BUILDERS).
 // =============================================================================
 const smooth = (k) => k * k * (3 - 2 * k);
+// v137.1: karanlık kapı boşluğu sadece DIŞ duvarda görünür (arkası yok); oda içinde /
+// bölmede duran kapı açılınca arkası görünür (motor: applyTransform → userData.doorVoid)
 function doorVoid(g, w, h) {
-  B(g, w, h, 0.01, 0, h / 2, 0.006, M('#07080b', 0.95));
+  B(g, w, h, 0.01, 0, h / 2, 0.006, M('#07080b', 0.95)).userData.doorVoid = true;
 }
 function doorFrame(g, w, h, m, t = 0.08, d = 0.14) {
   [-1, 1].forEach((s) => B(g, t, h + t, d, s * (w / 2 + t / 2), (h + t) / 2, d / 2, m));
@@ -2275,8 +2277,8 @@ function garageDoor(g, ctx) {
   const frame = M('#2a2c31', 0.45, 0.4);
   B(g, Wd + 0.2, 0.18, 0.12, 0, Hd + 0.09, 0.06, frame);
   [-1, 1].forEach((sx) => B(g, 0.1, Hd + 0.18, 0.12, sx * (Wd / 2 + 0.05), (Hd + 0.18) / 2, 0.06, frame));
-  // açılınca görünen karanlık iç
-  B(g, Wd, Hd, 0.01, 0, Hd / 2, 0.012, M('#07080b', 0.95));
+  // açılınca görünen karanlık iç (v137.1: sadece dış duvarda — oda içinde arkası görünür)
+  B(g, Wd, Hd, 0.01, 0, Hd / 2, 0.012, M('#07080b', 0.95)).userData.doorVoid = true;
   const panel = new THREE.Group();
   panel.position.set(0, Hd, 0.06);
   g.add(panel);
@@ -3348,6 +3350,8 @@ CATALOG.forEach((d) => {
   if (d.cat === 'mafya') d.cat = 'eglence'; // v132: Mafya → Gazino
   d.price = ITEM_PRICES[d.k] || null;
   d.takes = HOUSE_TAKEABLES[d.k] || null;
+  // v137.1 — kapılar: duvara takılır YA DA odanın ortasında (bölmeler arasında) durur
+  if (d.k.startsWith('door_') || d.k === 'garagedoor') d.door = true;
 });
 CATALOG.find((d) => d.k === 'arcade').panel = 'arcade';
 // v75 — oyun salonu: bu eşyalardan (ve karşılarındaki koltuklardan) oyun oynanır

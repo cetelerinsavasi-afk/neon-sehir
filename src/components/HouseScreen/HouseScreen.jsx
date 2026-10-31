@@ -286,14 +286,6 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   const [bizFlash, setBizFlash] = useState(null);
   const allowBizCloseRef = useRef(false);
   const [muted, setMuted] = useState(getVolume() === 0);
-  const [showHelp, setShowHelp] = useState(() => {
-    try {
-      return !localStorage.getItem('hs_help_seen');
-    } catch {
-      return true;
-    }
-  });
-
   const pendingDesignRef = useRef(null);
   const saveTimerRef = useRef(null);
   const writeChainRef = useRef(Promise.resolve());
@@ -1879,6 +1871,12 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
           )}
           {/* v132 — GARSON BOT (sol üst): içeride garson bot + yiyecek/içecek varsa sipariş */}
           {bots.waiterReady && mode === 'walk' && <BotWaiterButton bots={bots} />}
+          {/* v137.1 — ev hayvanına yaklaşınca: sev */}
+          {pets.nearPet && mode === 'walk' && (
+            <button className="hs-pet-love" onClick={() => pets.love(pets.nearPet.uid)}>
+              🤗 <b>{pets.nearPet.name}</b> · Sev
+            </button>
+          )}
           {panel === 'workshop' && bizType && (
             <div className="wk-sheet-bg" onClick={() => setPanel(null)}>
               <div className="wk-sheet" onClick={(e) => e.stopPropagation()}>
@@ -2001,25 +1999,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
             <div className="hs-editor-note">🛠️ Tasarım yetkin var · alışveriş <b>{houseDoc?.ownerName || 'ev sahibinin'}</b> mobilya kasasından yapılır, eşyalar ona aittir.</div>
           )}
 
-          {canDesign && mode === 'build' && showHelp && (
-            <div
-              className="hs-help"
-              onClick={() => {
-                setShowHelp(false);
-                try {
-                  localStorage.setItem('hs_help_seen', '1');
-                } catch {
-                  /* */
-                }
-              }}
-            >
-              <b>Nasıl tasarlanır?</b>
-              <span><b>Mağaza</b>'dan ürün seç → odaya <b>deneme</b> olarak gelir (yarı saydam). Beğendiklerini sepetten satın al.</span>
-              <span>Önce eşyaya <b>dokun</b>: seç (döndür, renk, kaldır) · sonra <b>seçili eşyayı sürükle</b>: taşı. Kaldırdığın satın alınmış eşya <b>Envanter</b>'e gider.</span>
-              <span>Boş alanı ya da seçili olmayan eşyayı sürükle: kamerayı çevir · İki parmak: yakınlaş/kaydır.</span>
-              <i>Kapatmak için dokun</i>
-            </div>
-          )}
+          {/* v137.1: "Nasıl tasarlanır?" açıklaması kaldırıldı */}
 
           {/* SEÇİLİ EŞYA */}
           {canDesign && mode === 'build' && sel && (

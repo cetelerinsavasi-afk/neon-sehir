@@ -14,6 +14,11 @@
 export const PET_NAME_MAX = 20;
 export const PET_LINE_MAX = 80;
 export const PET_LINES = 3;
+// v137.1 — sabit modda duruş
+export const PET_POSES = [
+  { id: 'ayakta', label: 'Ayakta', icon: '🧍' },
+  { id: 'otur', label: 'Otur', icon: '🪑' },
+];
 export const PET_MOVES = [
   { id: 'sabit', label: 'Sabit dur', icon: '🧍' },
   { id: 'hareket', label: 'Hareket et', icon: '🐾' },
@@ -21,7 +26,17 @@ export const PET_MOVES = [
 ];
 
 // art: src/lib/cosmeticsArt.js PET_ART kimliği · kind: q dört ayaklı, b kuş, m iki ayaklı
-const A = (art, name, icon, kind, lines) => ({ k: `hy_${art}`, art, name, icon, kind, lines });
+const A = (art, name, icon, kind, lines) => ({ k: `hy_${art}`, art, name, icon, kind, lines, g: PET_GROUP[art] || 'diger' });
+// v137.1 — tür grupları (petshop eşyalarıyla etkileşim: kedi tırmalama ağacına çıkar,
+// köpek kulübesine, tavuk kümese girer, at ahıra, hamster çarkta koşar…)
+const PET_GROUP = {
+  sokak: 'kedi', karakedi: 'kedi', zengin: 'kedi',
+  golden: 'kopek', kangal: 'kopek', dalmacyali: 'kopek', mops: 'kopek', bulldog: 'kopek',
+  tavuk: 'kumes', ordek: 'kumes', hindi: 'kumes',
+  papagan: 'kafes', baykus: 'kafes',
+  at: 'at', midilli: 'at',
+  hamster: 'kemirgen', tavsan: 'kemirgen',
+};
 export const ANIMALS = [
   A('hamster', 'Hamster', '🐹', 'm', ['*yanakları dolu*', 'Çark nerede?', '*burnunu kıpırdatır*']),
   A('tavuk', 'Tavuk', '🐔', 'b', ['Gıt gıt gıdak!', '*yemleri eşeler*', 'Bugün yumurta var mı?']),
@@ -92,18 +107,26 @@ export function petTintOf(k, ti) {
   return t.c ? { c: t.c, c2: t.c2 } : null;
 }
 
-// Petshop eşyaları: hayvanlar bunların yanına gider (spot: yemek / yatmak / tırmanmak)
+// Petshop eşyalarıyla etkileşim (v137.1). p: eşyanın yerel konumu [x, z] (önü +z),
+// y: yükseklik (yatak / raf / kafes çubuğu), act: eat | drink | bed (yatar) | enter
+// (içeri girer, bir süre görünmez) | perch (üstüne çıkar) | play | stall (ahırda durur).
+// who: hangi tür grupları (yoksa herkes)
 export const PETSHOP_SPOTS = {
-  ps_mama: 'eat',
-  ps_su: 'eat',
-  ps_kulube: 'rest',
-  ps_yatak: 'rest',
-  ps_tirmalama: 'rest',
-  ps_kumes: 'rest',
-  ps_ahir: 'rest',
-  ps_saray: 'rest',
-  ps_oyuncak: 'play',
-  ps_cark: 'play',
+  ps_mama: { act: 'eat', p: [0, 0.2] },
+  ps_su: { act: 'drink', p: [0, 0.2] },
+  ps_yatak: { act: 'bed', p: [0, 0], y: 0.1, who: ['kedi', 'kopek', 'kemirgen', 'diger'] },
+  ps_kulube: { act: 'enter', p: [0, 0.6], who: ['kopek'] },
+  ps_kumes: { act: 'enter', p: [0.2, 0.8], who: ['kumes'] },
+  ps_ahir: { act: 'stall', p: [-0.35, 0.05], who: ['at'] },
+  ps_saray: { act: 'perch', p: [-0.34, -0.04], y: 0.7, who: ['kedi'] },
+  ps_tirmalama: { act: 'perch', p: [-0.12, 0], y: 0.66, who: ['kedi'] },
+  ps_kafes: { act: 'perch', p: [0, 0], y: 1.03, who: ['kafes'] },
+  ps_cark: { act: 'play', p: [0, 0], y: 0.08, who: ['kemirgen'] },
+  ps_oyuncak: { act: 'play', p: [0, 0.15], who: ['kopek', 'kedi'] },
+};
+export const spotFor = (k, group) => {
+  const s = PETSHOP_SPOTS[k];
+  return s && (!s.who || s.who.includes(group)) ? s : null;
 };
 
 const clip = (v, max) =>
@@ -120,7 +143,8 @@ export function cleanPetConfig(raw) {
   const l = (Array.isArray(r.l) ? r.l : []).slice(0, PET_LINES).map((x) => clip(x, PET_LINE_MAX));
   while (l.length && !l[l.length - 1]) l.pop();
   const mv = PET_MOVES.some((m) => m.id === r.mv) ? r.mv : 'hareket';
-  return { n, l, mv };
+  const ps = r.ps === 'otur' ? 'otur' : 'ayakta';
+  return { n, l, mv, ps };
 }
 // Ad (düzenlenmemişse türün adı) ve sözler (düzenlenmemişse türün sesleri)
 export function petName(k, cfg) {

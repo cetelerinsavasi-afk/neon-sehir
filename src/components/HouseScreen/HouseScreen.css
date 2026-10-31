@@ -1979,3 +1979,33 @@
   max-width: 100%;
   max-height: 100%;
 }
+
+/* v137.1 — ev hayvanını sev */
+.hs-pet-love {
+  position: absolute;
+  left: 50%;
+  bottom: calc(150px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 30;
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 122, 184, 0.6);
+  background: linear-gradient(135deg, rgba(255, 46, 136, 0.92), rgba(255, 140, 90, 0.92));
+  color: #fff;
+  font-size: 14px;
+  box-shadow: 0 6px 22px rgba(255, 46, 136, 0.4);
+  animation: hs-pet-love-in 0.25s ease-out;
+  max-width: 80vw;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hs-pet-love:active {
+  transform: translateX(-50%) scale(0.95);
+}
+@keyframes hs-pet-love-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px);
+  }
+}

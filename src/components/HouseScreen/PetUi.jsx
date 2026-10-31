@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { houseAction } from '../../services/gameActions';
 import { drawPet } from '../../lib/cosmeticsArt';
-import { ANIMAL_BY_KEY, PET_LINES, PET_LINE_MAX, PET_MOVES, PET_NAME_MAX, cleanPetConfig, petTintOf } from '../../../functions/animalData.js';
+import { ANIMAL_BY_KEY, PET_LINES, PET_LINE_MAX, PET_MOVES, PET_NAME_MAX, PET_POSES, cleanPetConfig, petTintOf } from '../../../functions/animalData.js';
 import './BotUi.css';
 
 // =============================================================================
@@ -106,14 +106,25 @@ export function PetEditor({ houseId, item, cfg: initial, onClose, flash }) {
             </>
           )}
           {tab === 'move' && (
-            <div className="bt-moves">
-              {PET_MOVES.map((m) => (
-                <button key={m.id} className={c.mv === m.id ? 'on' : ''} onClick={() => set({ mv: m.id })}>
-                  <span>{m.icon}</span>
-                  {m.label}
-                </button>
-              ))}
-            </div>
+            <>
+              <div className="bt-moves">
+                {PET_MOVES.map((m) => (
+                  <button key={m.id} className={c.mv === m.id ? 'on' : ''} onClick={() => set({ mv: m.id })}>
+                    <span>{m.icon}</span>
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+              {c.mv === 'sabit' && (
+                <div className="bt-row pt-poses">
+                  {PET_POSES.map((m) => (
+                    <button key={m.id} className={c.ps === m.id ? 'on' : ''} onClick={() => set({ ps: m.id })}>
+                      {m.icon} {m.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
           )}
           <p className="pt-hint">🎨 Rengi: Tasarla'da hayvanı seçip alttaki renklerden</p>
         </div>
