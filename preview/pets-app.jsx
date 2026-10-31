@@ -43,12 +43,13 @@ const me = (data) => houses.houseAction({ auth: { uid: 'previewAdmin' }, data })
     // v137.1 — koltuk (kedi sabit · otur), odayı bölen duvar + ortasında kapı, açık garaj kapısı
     P('s1', 'sofa3', -1, -1.2),
     P('a13', 'hy_zengin', -1, -1.0),
+    P('a14', 'hy_dalmacyali', -1.7, -1.2),
     P('w1', 'wall4', -6.2, 2),
     P('w2', 'wall4', -0.9, 2),
     P('d1', 'door_beyaz', -3.55, 2),
     { ...P('g1', 'garagedoor', 1.3, -0.2), o: true },
   ];
-  await fakeDb.doc(`houses/${houseId}`).set({ items, pets: { a1: { n: 'Karabaş', l: ['Hav hav!', 'Top atar mısın?'], mv: 'serbest' }, a7: { n: 'Rüzgar', l: ['İhahaha!'], mv: 'sabit' }, a13: { n: 'Paşa', l: ['Şampanya!'], mv: 'sabit', ps: 'otur' }, a10: { mv: 'sabit', ps: 'otur' } } }, { merge: true });
+  await fakeDb.doc(`houses/${houseId}`).set({ items, pets: { a1: { n: 'Karabaş', l: ['Hav hav!', 'Top atar mısın?'], mv: 'serbest' }, a7: { n: 'Rüzgar', l: ['İhahaha!'], mv: 'sabit' }, a13: { n: 'Paşa', l: ['Şampanya!'], mv: 'sabit', ps: 'otur' }, a10: { mv: 'sabit', ps: 'otur' }, a5: { n: 'Aslan', mv: 'sabit', ps: 'otur' }, a14: { n: 'Benek', mv: 'sabit', ps: 'ayakta' }, a6: { mv: 'sabit', ps: 'otur' } } }, { merge: true });
   await me({ op: 'enter', houseId });
   window.__houseId = houseId;
   createRoot(document.getElementById('root')).render(

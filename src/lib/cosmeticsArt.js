@@ -251,16 +251,29 @@ function QUAD_COLLAR(p) {
 }
 
 // --- Dört ayaklı (yan görünüm, sağa bakar; zemin y=0) -------------------------------
-function quad(c, p, s, st, t, collar) {
+function quad(c, p, s, st, t, collar, sit = false) {
   const S = (v) => v * s;
   const leg = p.leg || p.c;
   const farLeg = shadeHex(leg[0] === '#' ? leg : '#888888', -0.22);
   const ec = p.ec || p.c;
   const lean = p.lean ? 0.9 : p.stocky ? 1.12 : 1;
   const hipY = -0.42;
-  const legLen = p.stocky ? 0.36 : 0.42;
+  const legLen0 = p.stocky ? 0.36 : 0.42;
   const by = p.stocky ? -0.4 : -0.46; // gövde merkezi
   const { hx, hy, hr } = quadHead(p); // baş merkezi / yarıçapı
+  const backX = -0.27 * lean;
+  const frontX = 0.24 * lean;
+  // v137.2 — oturma: gövde kalçadan geriye yatar (popo yerde), ön ayaklar dik,
+  // arka ayaklar katlanır, baş öne bakar
+  const SA = sit ? 0.52 : 0;
+  const SD = 0.21;
+  if (sit) {
+    st = 0;
+    c.save();
+    c.translate(S(backX), S(hipY + SD));
+    c.rotate(-SA);
+    c.translate(S(-backX), S(-hipY));
+  }
 
   // ejder kanadı (arkada)
   if (p.wing) {
@@ -374,6 +387,20 @@ function quad(c, p, s, st, t, collar) {
     c.fillStyle = col;
     const w0 = p.stocky ? 0.13 : 0.11;
     const w1 = p.stocky ? 0.1 : p.lean ? 0.06 : 0.075;
+    let legLen = legLen0;
+    if (sit) {
+      c.rotate(SA); // dünyaya göre dik
+      const hipW = hipY + SD - (lx - backX) * Math.sin(SA); // kalça/omuz yüksekliği
+      if (!front) {
+        // katlanmış arka bacak: kalın uyluk + yerde öne uzanan pati
+        oval(c, S(0.05), S(-hipW * 0.45), S(0.15), S(Math.max(0.1, -hipW * 0.55)));
+        c.fillStyle = p.hoof || col;
+        oval(c, S(0.1), S(-hipW - 0.03), S(0.11), S(0.035));
+        c.restore();
+        return;
+      }
+      legLen = -hipW;
+    }
     c.beginPath();
     c.moveTo(S(-w0 / 2), 0);
     c.lineTo(S(w0 / 2), 0);
@@ -387,8 +414,6 @@ function quad(c, p, s, st, t, collar) {
     oval(c, S(0.02), S(legLen - 0.03), S(w1 * 0.8), S(0.035));
     c.restore();
   };
-  const backX = -0.27 * lean;
-  const frontX = 0.24 * lean;
   drawLeg(backX + 0.09, -1, farLeg, false);
   drawLeg(frontX + 0.08, 1, farLeg, true);
 
@@ -482,6 +507,13 @@ function quad(c, p, s, st, t, collar) {
   drawLeg(backX, 1, leg, false);
   drawLeg(frontX, -1, leg, true);
 
+  if (sit) {
+    // baş öne/yukarı baksın
+    c.save();
+    c.translate(S(hx), S(hy));
+    c.rotate(SA * 0.8);
+    c.translate(S(-hx), S(-hy));
+  }
   // aslan yelesi (başın arkasında, dalgalı)
   if (p.mane) {
     c.fillStyle = p.mane;
@@ -677,7 +709,9 @@ function quad(c, p, s, st, t, collar) {
     c.fillStyle = '#d4af37';
     c.fillRect(S(hx - 0.07), S(hy - hr - 0.06), S(0.13), S(0.03));
   }
+  if (sit) c.restore();
   if (collar || p.chain) collarBand(c, s, ...QUAD_COLLAR(p), collar, p.chain);
+  if (sit) c.restore();
 }
 
 // --- İki ayak üstünde yürüyenler (maymun, tavşan, hamster, panda) ------------------
@@ -1244,18 +1278,18 @@ const BOX = { x0: -0.95, x1: 0.95, y0: -1.45, y1: 0.2 }; // hayvanın kaplayabil
 const TAU2 = Math.PI * 2;
 const canOffscreen = typeof document !== 'undefined';
 
-function drawBody(c, p, s, st, t, flying, collar) {
+function drawBody(c, p, s, st, t, flying, collar, sit) {
   if (p.glow) {
     c.shadowColor = p.glow;
     c.shadowBlur = Math.max(6, s * 0.25);
   }
   if (p.k === 'b') bird(c, p, s, st, t, flying);
   else if (p.k === 'm') biped(c, p, s, st, t, collar);
-  else quad(c, p, s, st, t, collar);
+  else quad(c, p, s, st, t, collar, sit);
 }
 
-function frameFor(id, p, s, scale, kind, k, collar) {
-  const key = `${id}|${Math.round(s * scale)}|${kind}${k}|${collar || ''}|${p.c}|${p.c2}`;
+function frameFor(id, p, s, scale, kind, k, collar, sit) {
+  const key = `${id}|${Math.round(s * scale)}|${kind}${k}${sit ? 's' : ''}|${collar || ''}|${p.c}|${p.c2}`;
   let fr = FRAME_CACHE.get(key);
   if (fr) return fr;
   const px = s * scale;
@@ -1279,7 +1313,7 @@ function frameFor(id, p, s, scale, kind, k, collar) {
     t = ph * 85; // kuyruk/kulak yürümeyle uyumlu sallanır
   } else if (kind === 'f') t = ((k + 0.5) / 8) * TAU2 * 55;
   else t = k * 100;
-  drawBody(c, p, s, st, t, kind === 'f', collar);
+  drawBody(c, p, s, st, t, kind === 'f', collar, sit);
   fr = { cv, ox: ox / scale, oy: oy / scale, w: cv.width / scale, h: cv.height / scale };
   FRAME_CACHE.set(key, fr);
   if (FRAME_CACHE.size > FRAME_MAX) FRAME_CACHE.delete(FRAME_CACHE.keys().next().value);
@@ -1288,7 +1322,7 @@ function frameFor(id, p, s, scale, kind, k, collar) {
 
 // x,y = zemin noktası. size: piksel boyu (yoksa prototip boyu). opts: { moving, flip, flying, collar, live }
 // tint (v137): { c, c2 } — ev hayvanlarının renk seçeneği (gövde / açık renk)
-export function drawPet(c, id, x, y, t, { moving = false, flip = false, flying = false, collar = null, size = null, live = false, tint = null } = {}) {
+export function drawPet(c, id, x, y, t, { moving = false, flip = false, flying = false, collar = null, size = null, live = false, tint = null, sit = false } = {}) {
   const base = PET_ART[id];
   if (!base) return;
   const p = tint && (tint.c || tint.c2) ? { ...base, ...(tint.c ? { c: tint.c } : {}), ...(tint.c2 ? { c2: tint.c2 } : {}) } : base;
@@ -1304,7 +1338,7 @@ export function drawPet(c, id, x, y, t, { moving = false, flip = false, flying =
   }
   c.translate(0, moving && !flying ? -Math.abs(Math.sin(t / 85)) * s * 0.05 : Math.sin(t / 450) * s * 0.012);
   if (live || !canOffscreen) {
-    drawBody(c, p, s, moving ? Math.sin(t / 85) : 0, t, flying, collar);
+    drawBody(c, p, s, moving ? Math.sin(t / 85) : 0, t, flying, collar, sit);
   } else {
     // ekrandaki ölçek (dpr/kamera yakınlaştırması) → keskin kare
     const m = c.getTransform ? c.getTransform() : null;
@@ -1318,7 +1352,7 @@ export function drawPet(c, id, x, y, t, { moving = false, flip = false, flying =
       kind = 'm';
       k = Math.floor(((((t / 85) % TAU2) + TAU2) % TAU2) / TAU2 * 8);
     }
-    const fr = frameFor(id, p, s, scale, kind, k, collar);
+    const fr = frameFor(id, p, s, scale, kind, k, collar, sit && !moving && !flying);
     c.drawImage(fr.cv, -fr.ox, -fr.oy, fr.w, fr.h);
   }
   c.restore();

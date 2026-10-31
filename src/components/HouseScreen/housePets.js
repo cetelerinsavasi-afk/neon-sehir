@@ -129,6 +129,10 @@ export function useHousePets({ engineRef, engineKey, phase, houseDoc, designItem
           st.x = st.hx;
           st.z = st.hz;
           st.settledAt = 0;
+          st.homeDone = false;
+          // koltuğun üstüne konduysa tasarlarken de üstünde dursun
+          const hs = homeSeat(st, uid);
+          st.act = hs ? { seat: hs, pose: d.mv === 'sabit' && d.ps !== 'otur' ? 'stand' : 'sit' } : null;
         } else tick(st, uid, now, dt);
         const a = st.act;
         out.push({
@@ -167,6 +171,11 @@ export function useHousePets({ engineRef, engineKey, phase, houseDoc, designItem
       }
     }, TICK_MS);
 
+    // v137.2 — platform bir koltuğun / kanepenin üstündeyse o oturak
+    function homeSeat(st, uid) {
+      return engineRef.current?.botSeats?.(st.hx, st.hz, 0.6, uid)?.[0] || null;
+    }
+
     // sabit: ayakta / otur (yanında koltuk varsa koltukta; yatağın / rafın üstündeyse orada)
     function still(st, uid, now) {
       st.x = st.hx;
@@ -175,6 +184,12 @@ export function useHousePets({ engineRef, engineKey, phase, houseDoc, designItem
       st.settledAt = now;
       const eng = engineRef.current;
       const on = spotsFor(st.def.g).find((s) => (s.act === 'bed' || s.act === 'perch') && Math.hypot(s.x - st.hx, s.z - st.hz) < 0.4);
+      const hs = homeSeat(st, uid);
+      if (hs) {
+        // koltuğun üstünde: ayakta durur ya da oturur
+        st.act = { seat: hs, pose: st.def.ps === 'otur' ? 'sit' : 'stand' };
+        return;
+      }
       if (st.def.ps === 'otur') {
         if (st.act?.seat) return;
         const seat = st.def.g !== 'at' ? eng?.botSeats?.(st.hx, st.hz, 0.8, uid)?.[0] : null;
@@ -215,6 +230,15 @@ export function useHousePets({ engineRef, engineKey, phase, houseDoc, designItem
         st.act = null;
         st.next = now + between(800, 2500);
         return;
+      }
+      // koltuğun üstüne konduysa ilk önce orada oturur
+      if (!st.homeDone) {
+        st.homeDone = true;
+        const hs = homeSeat(st, uid);
+        if (hs && Math.hypot(st.x - st.hx, st.z - st.hz) < 0.2) {
+          st.act = { seat: hs, pose: 'sit', until: now + between(10_000, 25_000) };
+          return;
+        }
       }
       if (now < st.next) return;
       const eng = engineRef.current;

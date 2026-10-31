@@ -823,6 +823,7 @@ class RoomPetFigure {
     if (key === this.petKey) return;
     this.petKey = key;
     this.petId = id;
+    this.quadArt = !['b', 'm'].includes(PET_ART[id]?.k);
     this.tint = pet?.tint || null;
     // oyundaki boy (sahibinin yanındaki hayvan gibi; odada biraz daha belirgin)
     this.sm = ((PET_ART[id]?.s || 40) * 0.72 * 1.75 * 1.2) / 159;
@@ -863,7 +864,7 @@ class RoomPetFigure {
       // koltukta: oturağın üstünde (biraz arkaya)
       this.x = seatPos.x;
       this.z = seatPos.z;
-      this.y += (seatPos.y - 0.05 - this.y) * Math.min(1, dt * 8);
+      this.y += (seatPos.y + 0.01 - this.y) * Math.min(1, dt * 8);
     } else {
       const dx = this.tx - this.x;
       const dz = this.tz - this.z;
@@ -875,21 +876,35 @@ class RoomPetFigure {
         const step = Math.min(d, Math.max(0.7, d * 2.2) * dt);
         this.x += (dx / d) * step;
         this.z += (dz / d) * step;
+        // ekrana göre sağa/sola: hareketin kameranın sağ eksenine izdüşümü
+        if (d > 0.05) {
+          const cy = camera.userData.billboardYaw != null ? camera.userData.billboardYaw : Math.atan2(camera.position.x - this.x, camera.position.z - this.z);
+          const sx = dx * Math.cos(cy) - dz * Math.sin(cy);
+          if (Math.abs(sx) > 0.02 * d) this.facingLeft = sx < 0;
+        }
       }
       // yüksekliğe (raf / yatak) zıplar gibi geçiş
       this.y += ((this.ty || 0) - this.y) * Math.min(1, dt * (d < 0.3 ? 7 : 2));
     }
     this.moving = this.frozenMoving != null ? this.frozenMoving : d > 0.04 || this.pose === 'run';
     const loving = this.loveAt && now - this.loveAt < 1600;
+    // kalp 4 sn sonra kaybolur
+    if (this.loveAt && now - this.loveAt > 4000 && this.emoteEl) {
+      this.loveAt = 0;
+      this.emoteEl.classList.remove('on');
+      this.emoteEl.textContent = '';
+    }
     const hop = loving ? Math.abs(Math.sin((now - this.loveAt) / 130)) * 0.06 : 0;
     this.group.position.set(this.x, this.y + hop, this.z);
     this.group.visible = !this.hidden;
     if (this.label) this.label.style.display = this.hidden ? 'none' : '';
-    // duruş: oturunca / yatınca biraz basık, yerken başı aşağı-yukarı
-    const sit = !this.moving && (seatPos || this.pose === 'sit' || this.pose === 'bed');
-    const sy = sit ? (this.pose === 'bed' ? 0.8 : 0.88) : 1;
+    // duruş: dört ayaklılar gerçekten oturur (arka ayaklar üstünde); kuş / iki ayaklılar
+    // biraz basık; yerken başı aşağı-yukarı
+    const sit = !this.moving && (this.pose === 'sit' || this.pose === 'bed');
+    this.sitDraw = sit && this.quadArt;
+    const sy = sit && !this.quadArt ? (this.pose === 'bed' ? 0.8 : 0.88) : 1;
     const eatBob = !this.moving && this.pose === 'eat' ? Math.abs(Math.sin(now / 260)) * 0.05 : 0;
-    this.plane.scale.set(this.k * (sit ? 1.06 : 1), this.k * sy, 1);
+    this.plane.scale.set(this.k * (sit && !this.quadArt ? 1.06 : 1), this.k * sy, 1);
     this.plane.position.y = ((RP_OY - RP_CV / 2) / RP_CV) * this.k * sy - eatBob * this.k * 0.3;
     const bbYaw = camera.userData.billboardYaw;
     const ang = bbYaw != null ? bbYaw : Math.atan2(camera.position.x - this.x, camera.position.z - this.z);
@@ -903,7 +918,7 @@ class RoomPetFigure {
       this.walkT += this.moving ? dt : 0;
       const c = this.ctx;
       c.clearRect(0, 0, RP_CV, RP_CV);
-      drawPet(c, this.petId, RP_OX, RP_OY, now, { moving: this.moving, flip: this.facingLeft, size: RP_PX, tint: this.tint });
+      drawPet(c, this.petId, RP_OX, RP_OY, now, { moving: this.moving, flip: this.facingLeft, size: RP_PX, tint: this.tint, sit: this.sitDraw });
       this.texMap.needsUpdate = true;
     }
     this.bubbles = this.bubbles.filter((b) => {
@@ -3632,7 +3647,11 @@ export function createHouseEngine(
         }
         o.fig.tx = Number(p.x) || 0;
         o.fig.tz = Number(p.z) || 0;
-        o.fig.facingLeft = !!p.left;
+        // v137.2 — hayvan yönünü kameraya göre kendisi hesaplar (geri geri yürümesin)
+        if (!o.fig.isPet || o.fig.faceInit == null) {
+          o.fig.facingLeft = !!p.left;
+          o.fig.faceInit = true;
+        }
         o.fig.setHolding(p.holdingVisible || null);
         o.fig.setCart(p.cart ?? null);
         const [sid, sidx] = typeof p.seat === 'string' ? p.seat.split(':') : [];
@@ -3660,7 +3679,16 @@ export function createHouseEngine(
     },
     // v137.1 — ev hayvanını sev (kalpler)
     petLove(uid) {
-      others.get(uid)?.fig.love?.();
+      const f = others.get(uid)?.fig;
+      if (!f) return;
+      // sevene dönsün (ekrana göre)
+      if (self.fig) {
+        const cy = camera.userData.billboardYaw != null ? camera.userData.billboardYaw : Math.atan2(camera.position.x - f.x, camera.position.z - f.z);
+        const sx = (self.x - f.x) * Math.cos(cy) - (self.z - f.z) * Math.sin(cy);
+        if (Math.abs(sx) > 0.05) f.facingLeft = sx < 0;
+        f.lastDraw = -1e9;
+      }
+      f.love?.();
     },
     // v80 — yayın kamerası (izleyici): { px,py,pz, tx,ty,tz, fov } | null
     // v81: yayıncının ana ekranında da kullanılır (yayın tüm ekranı kaplar);
