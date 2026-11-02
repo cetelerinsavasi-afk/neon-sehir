@@ -286,12 +286,18 @@ test('v141 Şüphe › Kafe & Bar: harcama çubuğu (2.000 tavan, sıfırlanmaz)
   assert.equal(r.suspicion, 15);
   assert.equal(h.G('users/ali').suspicion, 15);
   assert.equal(h.G('users/ali').cafeSpend, 0);
-  // çubuk yeniden dolsa bile aynı gün ikinci kez kullanılmaz
+  // kullanılan gün harcama çubuğu doldurmaz, ikinci kez de kullanılamaz
+  await h.act('ali', { op: 'menuBuy', houseId: id, product: 'pasta', expect: 900 });
+  assert.equal(h.G('users/ali').cafeSpend, 0, 'bugün çubuk dolmaz');
   h.S('users/ali', { ...h.G('users/ali'), suspicion: 30, cafeSpend: CAFE_CALM_AT });
   await assert.rejects(h.act('ali', { op: 'cafeCalm' }), /bugün kullandın/);
-  assert.equal(h.G('users/ali').cafeSpend, CAFE_CALM_AT, 'çubuk boşa gitmez');
-  // İstanbul 00:00'dan sonra (21:00 UTC) yeniden kullanılır
+  // İstanbul 00:00'dan sonra (21:00 UTC) çubuk yine dolar ve kullanılır
   h.clock.now = Date.UTC(2026, 9, 7, 21, 1);
+  h.S('users/ali', { ...h.G('users/ali'), cafeSpend: 0 });
+  h.present('ali', id);
+  await h.act('ali', { op: 'menuBuy', houseId: id, product: 'pasta', expect: 900 });
+  assert.equal(h.G('users/ali').cafeSpend, 900, 'yeni günde dolmaya başlar');
+  h.S('users/ali', { ...h.G('users/ali'), cafeSpend: CAFE_CALM_AT });
   assert.equal((await h.act('ali', { op: 'cafeCalm' })).suspicion, 20);
   // şüphe 0 iken kullanılmaz (çubuk boşa gitmez)
   h.clock.now = Date.UTC(2026, 9, 8, 21, 1);

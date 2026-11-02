@@ -45,7 +45,8 @@ export const menuBand = (type) => (type === 'sinema' ? CINEMA_PRICE : MENU_PRICE
 export const MENU_DAILY_LIMIT = 10_000;
 // v141 — Şüphe › Kafe & Bar: kafe / bardaki yiyecek-içecek harcaması users.cafeSpend'e
 // birikir (en fazla CAFE_CALM_AT; kendiliğinden sıfırlanmaz). Dolunca oyuncu -10 şüphe
-// alır, çubuk sıfırlanır. Düğme günde 1 kez (İstanbul 00:00'da yenilenir).
+// alır, çubuk sıfırlanır. Düğme günde 1 kez (İstanbul 00:00'da yenilenir); kullanılan gün
+// çubuk dolmaz, 00:00'dan sonra sıfırdan dolmaya başlar.
 export const CAFE_CALM_TYPES = ['cafe', 'bar'];
 export const CAFE_CALM_AT = 2000;
 export const CAFE_CALM_SUSPICION = 10;
@@ -166,14 +167,16 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
       const ws = null;
       const waiter = ws?.exists ? ws.data() : null;
       const waiterHere = waiter && waiter.uid !== uid ? await txPresence(tx, waiter.uid, houseId) : null;
-      const [us, os, ss] = await Promise.all([tx.get(userRef(uid)), isOwner ? null : tx.get(userRef(h.ownerUid)), isOwner ? null : tx.get(spendRef)]);
+      // v141: kafe / bar — bugün Kafe & Bar şüphe düşürme kullanıldıysa çubuk 00:00'a kadar dolmaz
+      const calmRef = !isOwner && CAFE_CALM_TYPES.includes(h.biz.type) ? db.collection('dailyActions').doc(`${uid}_${dayKey}`) : null;
+      const [us, os, ss, cs] = await Promise.all([tx.get(userRef(uid)), isOwner ? null : tx.get(userRef(h.ownerUid)), isOwner ? null : tx.get(spendRef), calmRef ? tx.get(calmRef) : null]);
       const spent = Number(ss?.exists ? ss.data().amount || 0 : 0);
       if (!isOwner) {
         if (spent + price > MENU_DAILY_LIMIT) fail('failed-precondition', `limit:${spent}`);
         if (Number(us.data()?.gold || 0) < price) fail('failed-precondition', 'gold');
         const upd = { gold: FieldValue.increment(-price), goldTag: goldTag(h.biz.type === 'sinema' ? 'sinema' : 'menu') };
         // v141: kafe / bar harcaması şüphe çubuğuna (doluysa artmaz)
-        if (CAFE_CALM_TYPES.includes(h.biz.type) && price > 0) {
+        if (calmRef && price > 0 && !(cs?.exists && cs.data()?.cafeCalm)) {
           const cur = Math.max(0, Number(us.data()?.cafeSpend) || 0);
           if (cur < CAFE_CALM_AT) upd.cafeSpend = Math.min(CAFE_CALM_AT, cur + price);
         }

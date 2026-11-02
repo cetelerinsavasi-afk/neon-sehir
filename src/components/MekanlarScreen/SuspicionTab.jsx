@@ -110,6 +110,7 @@ export default function SuspicionTab() {
 
   // v141 — Kafe & Bar: kafe / bardaki yiyecek-içecek harcaması çubuğu doldurur (2.000 altın).
   // Kendiliğinden sıfırlanmaz, dolunca artmaz; butona basınca -10 şüphe, çubuk sıfırlanır.
+  // Günde 1 kez; kullanılan gün çubuk dolmaz.
   const cafeSpend = Math.min(CAFE_CALM_AT, Math.max(0, Number(player?.cafeSpend) || 0));
   const cafeUsedToday = Boolean(actions.cafeCalm); // günde 1 kez, 00:00'da yenilenir
   const cafeReady = cafeSpend >= CAFE_CALM_AT && !cafeUsedToday;
@@ -124,42 +125,7 @@ export default function SuspicionTab() {
     return 0;
   });
 
-  return (
-    <div className="suspicion-tab">
-      <p className="suspicion-current">
-        🕵️ Şüphe Puanın: <strong>%{player?.suspicion ?? 0}</strong>
-      </p>
-      <p className="suspicion-hint">
-        Aşağıdaki mekanlara hiç gitmeden, doğrudan buradan şüpheni düşürebilirsin.
-      </p>
-      <GuestOverlay>
-        <div className="suspicion-list">
-          <div className={`suspicion-card cafe-card${cafeReady ? ' available' : ''}`}>
-            <div className="suspicion-card-main cafe-main">
-              <span className="suspicion-card-emoji">☕</span>
-              <div className="suspicion-card-info cafe-info">
-                <span className="suspicion-card-name">Kafe &amp; Bar</span>
-                <span className="suspicion-card-meta">Kafe ve barlarda yiyecek-içecek aldıkça dolar · günde 1 kez</span>
-                <span className="cafe-bar" role="progressbar" aria-valuemin={0} aria-valuemax={CAFE_CALM_AT} aria-valuenow={cafeSpend}>
-                  <i style={{ width: `${(cafeSpend / CAFE_CALM_AT) * 100}%` }} />
-                </span>
-                <span className="cafe-amount">
-                  {cafeSpend.toLocaleString('tr-TR')} / {CAFE_CALM_AT.toLocaleString('tr-TR')} altın
-                </span>
-              </div>
-            </div>
-            {cafeUsedToday ? (
-              <div className="suspicion-card-cooldown">
-                <span className="suspicion-card-countdown">⏳ {formatCountdown(msUntilIstanbulMidnight())}</span>
-                <span className="suspicion-card-note">Bugün kullandın</span>
-              </div>
-            ) : (
-              <button className="suspicion-card-btn" disabled={!cafeReady || busyKey === 'cafe'} onClick={cafeCalm}>
-                {busyKey === 'cafe' ? '…' : `-${CAFE_CALM_SUSPICION} şüphe`}
-              </button>
-            )}
-          </div>
-          {sorted.map((item) => (
+  const renderItem = (item) => (
             <div key={item.key} className={`suspicion-card ${item.available ? 'available' : ''}`}>
               <div className="suspicion-card-main">
                 <span className="suspicion-card-emoji">{item.emoji}</span>
@@ -190,7 +156,58 @@ export default function SuspicionTab() {
                 </div>
               )}
             </div>
-          ))}
+  );
+  // v141 — Kafe & Bar kartı: kullanılmadıysa kullanılabilirlerin, kullanıldıysa
+  // kullanılanların en altında. Kullanılan gün çubuk gizlenir (sunucu da doldurmaz);
+  // 00:00'dan sonra sıfırdan dolmaya başlar.
+  const cafeCard = (
+    <div key="cafe" className={`suspicion-card cafe-card${cafeReady ? ' available' : ''}${cafeUsedToday ? ' used' : ''}`}>
+      <div className="suspicion-card-main cafe-main">
+        <span className="suspicion-card-emoji">☕</span>
+        <div className="suspicion-card-info cafe-info">
+          <span className="suspicion-card-name">Kafe &amp; Bar</span>
+          {cafeUsedToday ? (
+            <span className="suspicion-card-meta">Şüphe -{CAFE_CALM_SUSPICION} · 00:00'dan sonra çubuk yeniden dolmaya başlar</span>
+          ) : (
+            <>
+              <span className="suspicion-card-meta">Şüphe -{CAFE_CALM_SUSPICION} · kafe ve barlarda yiyecek-içecek aldıkça dolar · günde 1 kez</span>
+              <span className="cafe-bar" role="progressbar" aria-valuemin={0} aria-valuemax={CAFE_CALM_AT} aria-valuenow={cafeSpend}>
+                <i style={{ width: `${(cafeSpend / CAFE_CALM_AT) * 100}%` }} />
+              </span>
+              <span className="cafe-amount">
+                {cafeSpend.toLocaleString('tr-TR')} / {CAFE_CALM_AT.toLocaleString('tr-TR')} altın
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+      {cafeUsedToday ? (
+        <div className="suspicion-card-cooldown">
+          <span className="suspicion-card-countdown">⏳ {formatCountdown(msUntilIstanbulMidnight())}</span>
+          <span className="suspicion-card-note">Bugün kullandın</span>
+        </div>
+      ) : (
+        <button className="suspicion-card-btn" disabled={!cafeReady || busyKey === 'cafe'} onClick={cafeCalm}>
+          {busyKey === 'cafe' ? '…' : `-${CAFE_CALM_SUSPICION} şüphe`}
+        </button>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="suspicion-tab">
+      <p className="suspicion-current">
+        🕵️ Şüphe Puanın: <strong>%{player?.suspicion ?? 0}</strong>
+      </p>
+      <p className="suspicion-hint">
+        Aşağıdaki mekanlara hiç gitmeden, doğrudan buradan şüpheni düşürebilirsin.
+      </p>
+      <GuestOverlay>
+        <div className="suspicion-list">
+          {sorted.filter((i) => i.available).map(renderItem)}
+          {!cafeUsedToday && cafeCard}
+          {sorted.filter((i) => !i.available).map(renderItem)}
+          {cafeUsedToday && cafeCard}
         </div>
       </GuestOverlay>
       {errorMsg && <p className="suspicion-error">{errorMsg}</p>}

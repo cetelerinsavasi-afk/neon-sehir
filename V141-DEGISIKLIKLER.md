@@ -16,7 +16,8 @@
 ## 3. Şüphe › Kafe & Bar
 - Oyuncu kafelerinde ve barlarında yiyecek-içecek aldıkça çubuk dolar (`users.cafeSpend`). Sinema ve mekân sahibinin bedava alımları saymaz.
 - 2.000 altında dolar ve daha artmaz. Gece sıfırlanmaz.
-- Doluyken **-10 şüphe** düğmesi açılır. **Günde 1 kez** kullanılır; kullanınca 00:00'a (İstanbul) kadar sayaç görünür. Çubuk o arada yine dolabilir, ertesi gün kullanılır. Basınca şüphe 10 düşer (0'ın altına inmez), çubuk sıfırlanır. Şüphe 0 iken basılamaz (çubuk boşa gitmesin).
+- Doluyken **-10 şüphe** düğmesi açılır. **Günde 1 kez** kullanılır. Kullanılan gün çubuk gizlenir ve harcamalar onu doldurmaz; 00:00'a (İstanbul) kadar sayaç görünür. 00:00'dan sonra çubuk sıfırdan dolmaya başlar.
+- Sıralama: kullanılmadıysa kullanılabilir olanların en altında, kullanıldıysa kullanılmışların en altında. Basınca şüphe 10 düşer (0'ın altına inmez), çubuk sıfırlanır. Şüphe 0 iken basılamaz (çubuk boşa gitmesin).
 
 ## 4. Seyyar satıcı haraçları +1.000
 Kokoreççi 4.000 → 5.000 · Simitçi 3.000 → 4.000 · Dönerci 2.000 → 3.000 · Köfteci 1.000 → 2.000

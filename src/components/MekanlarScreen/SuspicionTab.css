@@ -129,7 +129,7 @@
 }
 
 /* v141 — Kafe & Bar harcama çubuğu */
-.suspicion-card.cafe-card {
+.suspicion-card.cafe-card:not(.used) {
   opacity: 1;
 }
 .cafe-main,
