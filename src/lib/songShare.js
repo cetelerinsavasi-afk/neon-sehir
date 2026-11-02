@@ -1,7 +1,5 @@
 // v105 — "Paylaşınca nasıl çalacak?" bilgisi (kural: functions/songData.js shareModeOf)
-import { shareModeOf } from '../../functions/songData.js';
-
-const L = 'ABCD';
+import { shareModeOf, SONG_LETTERS as L } from '../../functions/songData.js';
 
 export function songShareInfo(song) {
   const sm = shareModeOf(song);

@@ -691,3 +691,202 @@
   margin-top: 8px;
   gap: 6px;
 }
+
+/* v140 — 8 bölüm, 5 kanal, uzun nota, oktav, sıfırla, enstrüman grupları */
+.bm-head h2 .bm-sub {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  margin-left: 4px;
+}
+.bm-head-btns {
+  display: flex;
+  gap: 6px;
+}
+.bm-pchips {
+  flex-wrap: nowrap;
+}
+.bm-root .bm-pchips .bm-chip {
+  flex: 1 1 0;
+  max-width: 56px;
+  min-width: 0;
+  padding: 8px 0 !important;
+}
+.bm-root .bm-pchips .bm-chip[aria-checked='true'] {
+  background: var(--pc, var(--chip-on));
+  color: #231e45;
+}
+.bm-root .bm-chip.add,
+.bm-root .bm-ttab.add {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--cell);
+  color: var(--muted);
+}
+.bm-root .bm-ttab.add {
+  flex: 0 0 52px;
+  border-bottom-color: transparent;
+}
+.bm-ttab small {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bm-root .bm-ttab {
+  min-width: 0;
+}
+.bm-cats {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  margin-bottom: 10px;
+  border-radius: 14px;
+  background: var(--bg);
+}
+.bm-root .bm-cat {
+  flex: 1;
+  padding: 7px 4px;
+  border-radius: 11px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.bm-root .bm-cat[aria-selected='true'] {
+  background: var(--cell);
+  color: var(--text);
+}
+.bm-tool {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  margin: 4px 0 6px;
+  border-radius: 14px;
+  background: var(--bg);
+}
+.bm-root .bm-tool button {
+  flex: 1;
+  padding: 9px 6px;
+  border-radius: 11px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.bm-root .bm-tool button[aria-checked='true'] {
+  background: var(--chip-on);
+  color: var(--chip-on-text);
+}
+.bm-tool-ic {
+  display: inline-block;
+  width: 18px;
+  text-align: center;
+}
+.bm-tool-ic.long {
+  letter-spacing: -2px;
+}
+.bm-tool-help {
+  margin: 0 4px 10px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+.bm-oct {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.bm-oct .bm-glabel {
+  margin: 0 2px 0 4px;
+}
+.bm-label sub {
+  font-size: 9px;
+  opacity: 0.65;
+  margin-left: 1px;
+  vertical-align: baseline;
+}
+.bm-row.tonic .bm-label {
+  color: var(--text);
+}
+/* uzun nota: kutular birbirine bağlanır */
+.bm-root .bm-cell {
+  position: relative;
+}
+.bm-root .bm-cell.cl,
+.bm-root .bm-wide .bm-cell.cl,
+.bm-root .bm-rows.dense .bm-cell.cl {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+.bm-root .bm-cell.cr,
+.bm-root .bm-wide .bm-cell.cr,
+.bm-root .bm-rows.dense .bm-cell.cr {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.bm-root .bm-cell.cl::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -6px;
+  width: 7px;
+  background: var(--on);
+}
+.bm-root .bm-cell.cl.gs::before {
+  left: -11px;
+  width: 12px;
+}
+.bm-root .bm-cell[aria-pressed='true'].now.cl::before {
+  box-shadow: 0 -3px 0 var(--text), 0 3px 0 var(--text);
+}
+/* 16 adım birlikte */
+.bm-wide .bm-cells {
+  gap: 6px;
+}
+.bm-wide .bm-grp {
+  gap: 3px;
+}
+.bm-root .bm-wide .bm-cell {
+  height: 34px;
+  border-radius: 7px;
+}
+.bm-root .bm-wide .bm-cell.cl::before {
+  left: -4px;
+  width: 5px;
+}
+.bm-root .bm-wide .bm-cell.cl.gs::before {
+  left: -7px;
+  width: 8px;
+}
+.bm-wide .bm-label {
+  width: 44px;
+  font-size: 12px;
+}
+.bm-wide .bm-row {
+  gap: 4px;
+}
+.bm-root .bm-rows.dense .bm-cell {
+  height: 28px;
+}
+.bm-rows.dense .bm-row {
+  margin-bottom: 4px;
+}
+@media (max-width: 400px) {
+  .bm-root .bm-pchips .bm-chip {
+    font-size: 15px !important;
+  }
+  .bm-wide .bm-label {
+    width: 36px;
+    font-size: 11px;
+  }
+}
+
+/* uzun nota birleşimi her görünümde köşesiz (yukarıdaki köşe kurallarından sonra gelmeli) */
+.bm-root .bm-cell.cl {
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+}
+.bm-root .bm-cell.cr {
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+}

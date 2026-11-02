@@ -100,7 +100,7 @@ export default function StudioScreen({ houseId, price, isOwner, onClose, flash }
     dirtyRef.current = false;
     const song = latestRef.current;
     setSave('saving');
-    const p = shopAction({ op: 'songSave', houseId, projectId: projectIdRef.current, song: { ...song, type: 'song', v: 1 } });
+    const p = shopAction({ op: 'songSave', houseId, projectId: projectIdRef.current, song: { ...song, type: 'song', v: 2 } });
     savingRef.current = p;
     try {
       const r = await p;
@@ -260,7 +260,7 @@ export default function StudioScreen({ houseId, price, isOwner, onClose, flash }
       await createSixtagramPost(String(publish?.text || '').trim(), {
         type: 'song',
         houseId,
-        song: { ...song, mode: sm.mode, cp: sm.cp, type: 'song', v: 1 },
+        song: { ...song, mode: sm.mode, cp: sm.cp, type: 'song', v: 2 },
         ...(projectIdRef.current ? { projectId: projectIdRef.current } : {}),
       });
       clearTimeout(timerRef.current);

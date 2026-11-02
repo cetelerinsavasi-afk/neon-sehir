@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { SONG_INSTS, SONG_KITS, SONG_SCALES, SONG_NOTE_NAMES, songDurationSec } from '../../../functions/songData.js';
+import { SONG_INSTS, SONG_KITS, SONG_SCALES, SONG_NOTE_NAMES, songDurationSec, normalizeSong } from '../../../functions/songData.js';
 import { startSong, bit } from '../../lib/songEngine';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
@@ -13,13 +13,16 @@ import './SongMaker.css';
 // Beat Atölyesi motoruyla çalınır (aynı anda tek şarkı çalar). Bölüm modundaki
 // şarkı 4 tur, şarkı modundaki şarkı sıradaki bölümlerle bir kez çalar.
 // =============================================================================
-const PAT_COLORS = ['#ff6f91', '#6aaeff', '#4fe3b3', '#ffd447'];
+const PAT_COLORS = ['#ff6f91', '#6aaeff', '#4fe3b3', '#ffd447', '#c38bff', '#ff9f5a', '#5fd4ff', '#b8e05a'];
+const TRK_COLORS = ['hsl(260,78%,66%)', 'hsl(150,78%,60%)', 'hsl(195,78%,62%)', 'hsl(30,85%,62%)', 'hsl(330,78%,66%)'];
 const fmtSec = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 // v93 — post verilirse: dinlenme sayısı (en az 3 sn dinlenince sayılır; hesap başı en
 // fazla 5), destek butonu (v100: 100/500/1000/5000; şarkı başı 5.000, sanatçıya günde 10.000) ve
 // sanatçının kendisine MP3 indirme.
-export default function SongView({ song, post = null }) {
+export default function SongView({ song: rawSong, post = null }) {
+  // v140: eski (v1) şarkılar da yeni biçime çevrilip çalınır
+  const song = useMemo(() => normalizeSong(rawSong), [rawSong]);
   const { user } = useAuth();
   const { player } = usePlayer();
   const isArtist = Boolean(post && user && post.uid === user.uid);
@@ -118,7 +121,7 @@ export default function SongView({ song, post = null }) {
     { c: '#ff6f91', m: P.d[0] | P.d[5] },
     { c: '#ff8a5c', m: P.d[1] | P.d[4] },
     { c: '#ffb347', m: P.d[2] | P.d[3] | P.d[6] },
-    ...P.t.map((rows, k) => ({ c: ['hsl(260,78%,66%)', 'hsl(150,78%,60%)', 'hsl(195,78%,62%)'][k], m: rows.reduce((a, b) => a | b, 0) })),
+    ...P.t.map((rows, k) => ({ c: TRK_COLORS[k % TRK_COLORS.length], m: rows.reduce((a, b) => a | b, 0) })),
   ];
   const insts = [...new Set(song.tr.filter((t, k) => !t.m && P.t[k].some(Boolean)).map((t) => SONG_INSTS[t.i]?.name))].slice(0, 3);
   const pct = playing ? Math.min(100, (pos.n / stepsTotal) * 100) : 0;
