@@ -42,6 +42,16 @@ const mine = new Map(); // kategori -> { key, n }  (aynı yere iki bileşen gire
 let hidden = typeof document !== 'undefined' && document.hidden;
 let broken = !DB_URL;
 
+// v141.3 — HAYALET KAYIT DÜZELTMESİ: aynı kayıt için "gir" ve "çık" yazımları eskiden aynı
+// anda koşabiliyordu (hızlı gir-çık, uygulamayı arka plana alıp geri getirme). "Çık"
+// önce bitip onDisconnect'i iptal edince geç gelen "gir" kaydı yazıyordu → kayıt silinmeden
+// kalıyor, mekânda sürekli "1 kişi" görünüyordu. Artık her kayıt için yazımlar SIRAYLA
+// yapılır ve sadece en son istenen durum uygulanır. Ayrıca içerideki oyuncu kaydını
+// OCC_BEAT_MS'de bir tazeler; sayarken OCC_STALE_MS'den eski kayıtlar sayılmaz (eski
+// sürümden kalmış hayaletler de böylece hemen kaybolur).
+export const OCC_BEAT_MS = 2 * 60 * 1000;
+export const OCC_STALE_MS = 5 * 60 * 1000;
+
 // Bağlantı koparsa onDisconnect kayıtları siler; geri gelince açık kayıtlar yeniden yazılır.
 let watchingConn = false;
 function watchConnection(m, db) {
@@ -58,7 +68,7 @@ function watchConnection(m, db) {
   });
 }
 
-async function put(key, on) {
+async function apply(key, on) {
   const uid = auth.currentUser?.uid;
   if (broken || !uid || !key) return;
   try {
@@ -70,11 +80,34 @@ async function put(key, on) {
       await m.set(r, m.serverTimestamp());
     } else {
       await m.remove(r);
-      m.onDisconnect(r).cancel().catch(() => {});
+      await m.onDisconnect(r).cancel().catch(() => {});
     }
   } catch {
     /* tek bir kaydın reddi diğerlerini durdurmaz; sayım eski yola düşmez, sadece bu kişi sayılmaz */
   }
+}
+// Kayıt başına sıra: çalışırken gelen istekler beklenir, sonunda en son istenen durum yazılır.
+const want = new Map(); // key -> true/false (en son istenen)
+const running = new Map(); // key -> Promise
+function put(key, on) {
+  if (!key) return;
+  want.set(key, on);
+  if (running.has(key)) return;
+  const run = (async () => {
+    // istek değişmeyi bırakana kadar (her tur bir sunucu yazımı; sonsuza gitmez)
+    for (;;) {
+      const target = want.get(key);
+      await apply(key, target);
+      if (want.get(key) === target) break;
+    }
+  })().finally(() => running.delete(key));
+  running.set(key, run);
+}
+// içerideyken kaydı tazele (sayımda bayat sayılmasın)
+if (typeof window !== 'undefined') {
+  setInterval(() => {
+    if (!hidden) mine.forEach(({ key }) => put(key, true));
+  }, OCC_BEAT_MS);
 }
 
 // Mekâna girişte çağır; dönen fonksiyon çıkışta çağrılır.
@@ -128,22 +161,36 @@ function start() {
   rt()
     .then(({ m, db }) => {
       if (!alive) return;
+      let raw = {};
+      // bayat (OCC_STALE_MS'den eski) kayıtlar sayılmaz; zaman geçtikçe de yeniden hesaplanır
+      const recount = () => {
+        const now = serverNow();
+        const counts = {};
+        const rooms = {};
+        for (const [key, people] of Object.entries(raw)) {
+          const ids = Object.entries(people || {})
+            .filter(([, t]) => typeof t !== 'number' || now - t < OCC_STALE_MS)
+            .map(([id]) => id);
+          if (!ids.length) continue;
+          counts[key] = ids.length;
+          rooms[key] = new Set(ids);
+        }
+        shared.state = 'ok';
+        shared.counts = counts;
+        shared.rooms = rooms;
+        emit();
+      };
+      const iv = setInterval(() => shared.state === 'ok' && recount(), 30_000);
+      const prevOff = shared.off;
+      shared.off = () => {
+        clearInterval(iv);
+        prevOff();
+      };
       unsub = m.onValue(
         m.ref(db, 'occ'),
         (snap) => {
-          const v = snap.val() || {};
-          const counts = {};
-          const rooms = {};
-          for (const [key, people] of Object.entries(v)) {
-            const ids = Object.keys(people || {});
-            if (!ids.length) continue;
-            counts[key] = ids.length;
-            rooms[key] = new Set(ids);
-          }
-          shared.state = 'ok';
-          shared.counts = counts;
-          shared.rooms = rooms;
-          emit();
+          raw = snap.val() || {};
+          recount();
         },
         () => {
           shared.state = 'off';

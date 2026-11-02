@@ -167,10 +167,10 @@ export default function SuspicionTab() {
         <div className="suspicion-card-info cafe-info">
           <span className="suspicion-card-name">Kafe &amp; Bar</span>
           {cafeUsedToday ? (
-            <span className="suspicion-card-meta">Şüphe -{CAFE_CALM_SUSPICION} · 00:00'dan sonra çubuk yeniden dolmaya başlar</span>
+            <span className="suspicion-card-meta">Şüphe -{CAFE_CALM_SUSPICION}</span>
           ) : (
             <>
-              <span className="suspicion-card-meta">Şüphe -{CAFE_CALM_SUSPICION} · kafe ve barlarda yiyecek-içecek aldıkça dolar · günde 1 kez</span>
+              <span className="suspicion-card-meta">Şüphe -{CAFE_CALM_SUSPICION}</span>
               <span className="cafe-bar" role="progressbar" aria-valuemin={0} aria-valuemax={CAFE_CALM_AT} aria-valuenow={cafeSpend}>
                 <i style={{ width: `${(cafeSpend / CAFE_CALM_AT) * 100}%` }} />
               </span>
