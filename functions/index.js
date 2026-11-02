@@ -43,6 +43,7 @@ import {
   itemListingBand,
 } from './itemRules.js';
 import { createAchievements } from './achievements.js';
+import { REFERRAL_STEPS, REFERRAL_STEP_EMERALD } from './achievementsData.js';
 import { trainingBotRun, vehicleRaceLevel, carStats } from './raceSim.js';
 import { createRaceTa } from './raceTa.js';
 import { createChampionshipV2 } from './championshipV2.js';
@@ -1125,6 +1126,12 @@ export const applyReferralCode = onCall(async (request) => {
 
     const REFERRAL_NEW_PLAYER_BONUS = 2000;
     const REFERRAL_REFERRER_BONUS = 10000;
+    // v141 — "Referans kodunla arkadaşını davet et" başarısı: ilk 10 davette ayrıca 1 zümrüt.
+    // referralCount v141'den itibaren sayılır; 10. davette başarı tamamlanır.
+    const refData = referrerSnap.data() || {};
+    const prevCount = Math.max(0, Number(refData.referralCount) || 0);
+    const stepNo = prevCount + 1;
+    const stepEmerald = prevCount < REFERRAL_STEPS && !refData.achievements?.davet ? REFERRAL_STEP_EMERALD : 0;
 
     tx.update(userRef, {
       gold: admin.firestore.FieldValue.increment(REFERRAL_NEW_PLAYER_BONUS), goldTag: goldTag('referans'),
@@ -1136,17 +1143,37 @@ export const applyReferralCode = onCall(async (request) => {
       referrerSnap.data()?.debtToState,
       REFERRAL_REFERRER_BONUS
     );
-    tx.update(referrerRef, {
+    const refPatch = {
       gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('referans'),
       debtToState: admin.firestore.FieldValue.increment(debtDelta),
-    });
+      referralCount: admin.firestore.FieldValue.increment(1),
+    };
+    if (stepEmerald) {
+      refPatch.emerald = admin.firestore.FieldValue.increment(stepEmerald);
+      if (stepNo >= REFERRAL_STEPS) {
+        refPatch['achievements.davet'] = Date.now();
+        refPatch['achievementRewards.davet'] = REFERRAL_STEPS * REFERRAL_STEP_EMERALD;
+      }
+    }
+    tx.update(referrerRef, refPatch);
     const smsRef = referrerRef.collection('messages').doc();
     tx.set(smsRef, {
-      text: `${user.displayName || 'Yeni bir oyuncu'} senin referans kodunla katıldı! 10.000 altın bonus kazandın.`,
+      text: stepEmerald
+        ? `${user.displayName || 'Yeni bir oyuncu'} senin referans kodunla katıldı! 1 zümrüt + 10.000 altın bonus kazandın. (Davet başarısı: ${Math.min(stepNo, REFERRAL_STEPS)}/${REFERRAL_STEPS})`
+        : `${user.displayName || 'Yeni bir oyuncu'} senin referans kodunla katıldı! 10.000 altın bonus kazandın.`,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       read: false,
       type: 'referral_bonus',
     });
+    if (stepEmerald && stepNo >= REFERRAL_STEPS) {
+      tx.set(referrerRef.collection('messages').doc(), {
+        from: 'Başarılar',
+        text: `🏆 Başarı tamamlandı: 🤝 Referans kodunla arkadaşını davet et! 10 davetin hepsi bitti, toplam ${REFERRAL_STEPS * REFERRAL_STEP_EMERALD} zümrüt kazandın.`,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        read: false,
+        type: 'achievement',
+      });
+    }
   });
 
   return { ok: true };
@@ -6039,11 +6066,11 @@ const HEIST_CONFIG = {
   modifiye_garaji: { suspicionCost: 20, reward: 25000, requiredPower: 20000 },
   fabrika: { suspicionCost: 10, reward: 10000, requiredPower: 10000 },
   // Ödüller (kullanıcı revizesi) — Kokoreçci/Simitçi/Dönerci/Köfteci
-  // ödülleri güncellendi, gereken güç eşiklerine dokunulmadı.
-  seyyar_satici_1: { suspicionCost: 5, reward: 4000, requiredPower: 4500 }, // Kokoreçci
-  seyyar_satici_2: { suspicionCost: 5, reward: 3000, requiredPower: 3000 }, // Simitçi
-  seyyar_satici_3: { suspicionCost: 5, reward: 2000, requiredPower: 1500 }, // Dönerci
-  seyyar_satici_4: { suspicionCost: 5, reward: 1000, requiredPower: 1000 }, // Köfteci
+  // ödülleri güncellendi, gereken güç eşiklerine dokunulmadı. v141: hepsi +1000.
+  seyyar_satici_1: { suspicionCost: 5, reward: 5000, requiredPower: 4500 }, // Kokoreçci
+  seyyar_satici_2: { suspicionCost: 5, reward: 4000, requiredPower: 3000 }, // Simitçi
+  seyyar_satici_3: { suspicionCost: 5, reward: 3000, requiredPower: 1500 }, // Dönerci
+  seyyar_satici_4: { suspicionCost: 5, reward: 2000, requiredPower: 1000 }, // Köfteci
 };
 
 // captureRiskPercent — yakalanma ihtimalini şüphe yüzdesi olarak hesaplar.
@@ -22694,6 +22721,7 @@ const belediye = createBelediye({
   assertCanSpeak: (uid, content) => moderation.assertCanSpeak(uid, content),
   postSixtagram: postBelediyeSixtagram,
   rates: { loadRates, ratesFor },
+  onInstalled: (uid) => achievements.grant(uid, 'belediyeBaskani'), // v141 — Başarılar
 });
 belediyeRef.current = belediye;
 export const belediyeAction = belediye.belediyeAction;

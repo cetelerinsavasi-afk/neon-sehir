@@ -44,10 +44,10 @@ export const HEIST_LABELS = {
     suspicionCost: 20,
   },
   fabrika: { title: 'Fabrika Soygunu', emoji: regionEmojis.fabrika, requiredPower: 10000, reward: 10000, suspicionCost: 10 },
-  seyyar_satici_1: { title: 'Kokoreçciye Haraç', emoji: regionEmojis.seyyar_satici_1, requiredPower: 4500, reward: 4000, suspicionCost: 5 },
-  seyyar_satici_2: { title: 'Simitçiye Haraç', emoji: regionEmojis.seyyar_satici_2, requiredPower: 3000, reward: 3000, suspicionCost: 5 },
-  seyyar_satici_3: { title: 'Dönerciye Haraç', emoji: regionEmojis.seyyar_satici_3, requiredPower: 1500, reward: 2000, suspicionCost: 5 },
-  seyyar_satici_4: { title: 'Köfteciye Haraç', emoji: regionEmojis.seyyar_satici_4, requiredPower: 1000, reward: 1000, suspicionCost: 5 },
+  seyyar_satici_1: { title: 'Kokoreçciye Haraç', emoji: regionEmojis.seyyar_satici_1, requiredPower: 4500, reward: 5000, suspicionCost: 5 },
+  seyyar_satici_2: { title: 'Simitçiye Haraç', emoji: regionEmojis.seyyar_satici_2, requiredPower: 3000, reward: 4000, suspicionCost: 5 },
+  seyyar_satici_3: { title: 'Dönerciye Haraç', emoji: regionEmojis.seyyar_satici_3, requiredPower: 1500, reward: 3000, suspicionCost: 5 },
+  seyyar_satici_4: { title: 'Köfteciye Haraç', emoji: regionEmojis.seyyar_satici_4, requiredPower: 1000, reward: 2000, suspicionCost: 5 },
 };
 
 const fmtGold = (n) => Number(n || 0).toLocaleString('tr-TR');

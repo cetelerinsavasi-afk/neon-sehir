@@ -189,6 +189,7 @@ export function createBelediye({
   assertCanSpeak = async () => {},
   postSixtagram = async () => {},
   rates: ratesApi, // { loadRates, ratesFor }
+  onInstalled = async () => {}, // v141: seçim / darbe ile başkan oldu (Başarılar)
   now = () => Date.now(),
 }) {
   const fail = (code, msg) => {
@@ -499,6 +500,7 @@ export function createBelediye({
       tx.set(staffRef(uid), { seat: 'bsk', sinceMs: t });
       res = { ok: true, removed: touched.size - 1 };
     });
+    if (res?.ok) await Promise.resolve(onInstalled(uid, source)).catch(() => {});
     return res;
   }
 

@@ -1,7 +1,10 @@
 // v67 — Başarılar: hem sunucu (functions/achievements.js) hem istemci
 // (src/components/AchievementsScreen) aynı listeyi kullanır.
 // reward = zümrüt. Her başarı oyuncu başına BİR kez kazanılır.
+// v141: steps → aşamalı başarı (her aşama 1 zümrüt; hepsi bitince tamamlanır).
+// Liste sırası = ekrandaki sıra: davet en üstte, belediye başkanı en altta.
 export const ACHIEVEMENTS = [
+  { id: 'davet', emoji: '🤝', title: 'Referans kodunla arkadaşını davet et', desc: 'Kodunla katılan her yeni oyuncu 1 aşama: 1 zümrüt. 10 aşamada toplam 10 zümrüt.', reward: 10, steps: 10 },
   { id: 'imam', emoji: '🕌', title: 'İmam ol', desc: 'Şehrin imamı ol.', reward: 1 },
   { id: 'piyango', emoji: '🎟️', title: 'Piyango kazan', desc: 'Günün piyangosunu kazan.', reward: 1 },
   { id: 'bankaSoy', emoji: '🏦', title: 'Banka soy', desc: 'Bankayı yakalanmadan soy (tek başına ya da ekiple).', reward: 2 },
@@ -12,8 +15,12 @@ export const ACHIEVEMENTS = [
   { id: 'istihbaratBaskani', emoji: '⭐', title: 'Emniyet Genel Müdürü ol', desc: 'Polis Teşkilatının başına geç.', reward: 4 },
   { id: 'superKupa', emoji: '🏆', title: 'Süper Kupa', desc: 'Sahip olduğun takımla süper kupayı kazan.', reward: 5 },
   { id: 'ligSampiyonu', emoji: '🥇', title: '1. Lig şampiyonu', desc: 'Sahibi olduğun takımla 1. Lig şampiyonu ol.', reward: 5 },
+  { id: 'belediyeBaskani', emoji: '🏛️', title: 'Belediye başkanı ol', desc: 'Seçimi kazanarak ya da darbe yaparak belediye başkanı ol.', reward: 10 },
 ];
-// v74: ödüller artırıldı (toplam 30). Önceden kazanılanlara fark VERİLMEZ;
+// v141 — davet başarısı: referans sahibine ilk 10 davette 1 zümrüt (+ her davette 10.000 altın)
+export const REFERRAL_STEP_EMERALD = 1;
+export const REFERRAL_STEPS = 10;
+// v74: ödüller artırıldı (toplam 30). v141: davet + belediye başkanı ile toplam 50. Önceden kazanılanlara fark VERİLMEZ;
 // o başarılarda ekranda kazanılan eski ödül gösterilir (users.achievementRewards
 // yoksa bu tablo kullanılır).
 export const LEGACY_ACHIEVEMENT_REWARDS = { imam: 1, piyango: 1, bankaSoy: 1, sixtagram100: 1, cabrioSampiyon: 1, polisBanka: 1, mafyaBabasi: 2, istihbaratBaskani: 3, superKupa: 4, ligSampiyonu: 5 };

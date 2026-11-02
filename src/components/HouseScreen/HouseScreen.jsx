@@ -10,7 +10,7 @@ import { useBlocks } from '../../contexts/BlocksContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useHeldItem } from '../../hooks/useHeldItem';
 import { houseAction, giftHeldItem, createSixtagramPost } from '../../services/gameActions';
-import { createHouseEngine, EMOTES, CART_MAX } from './houseEngine';
+import { createHouseEngine, EMOTES, CART_MAX, lowerPerfAfterContextLoss } from './houseEngine';
 import ItemThumb from './ItemThumb';
 import { MarketShelf, SellSheet, useFurnBest, useListingWatch } from './FurnMarket'; // v132 mobilya pazarı
 import { useHouseBots } from './houseBots'; // v132 botlar
@@ -223,6 +223,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   const houseDocRef = useRef(null);
   const engineRef = useRef(null);
   const [engineKey, setEngineKey] = useState(0);
+  const lostAtRef = useRef(0); // v141: son grafik bağlamı kaybı
   const [phase, setPhase] = useState('loading');
   const [errMsg, setErrMsg] = useState('');
   const [info, setInfo] = useState(null);
@@ -466,6 +467,11 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
       },
       onFreeCamChange: setFreeCam,
       onContextLost: () => {
+        // v141: grafik kaybı tekrarlanırsa (iOS) bir sonraki kurulum daha hafif seviyeden başlar
+        const t = Date.now();
+        const severe = t - lostAtRef.current < 180_000;
+        lostAtRef.current = t;
+        lowerPerfAfterContextLoss(severe);
         flash('Grafikler yeniden yükleniyor…');
         setTimeout(() => setEngineKey((k) => k + 1), 400);
       },
@@ -1751,6 +1757,10 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
         <div className="hs-loading">
           <div className="hs-spinner" />
           <p>{venue ? `${venue.name} — giriliyor…` : 'Eve giriliyor…'}</p>
+          {/* v141: giriş takılırsa ekranda kalınmasın */}
+          <button className="hs-btn" onClick={() => exit()}>
+            Vazgeç
+          </button>
         </div>
       )}
 

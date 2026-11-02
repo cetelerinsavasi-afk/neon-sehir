@@ -127,3 +127,37 @@
   opacity: 1;
   cursor: not-allowed;
 }
+
+/* v141 — Kafe & Bar harcama çubuğu */
+.suspicion-card.cafe-card {
+  opacity: 1;
+}
+.cafe-main,
+.cafe-info {
+  flex: 1;
+}
+.cafe-bar {
+  display: block;
+  height: 7px;
+  margin-top: 4px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.cafe-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #ffb347, #39ff88);
+  transition: width 0.3s;
+}
+.cafe-amount {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.cafe-card .suspicion-card-btn:disabled {
+  border-color: var(--panel-border);
+  color: var(--text-dim);
+  background: transparent;
+}

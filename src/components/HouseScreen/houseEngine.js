@@ -168,6 +168,13 @@ function readPerfTier() {
   }
   return PERF_DEFAULT;
 }
+// v141 — grafik bağlamı kaybolduysa (iOS bellek / grafik süreci sorunu) sonraki kurulum
+// daha hafif seviyeden başlar: ilk kayıpta "düşük" (gölgesiz), tekrarında "en düşük".
+// Cihaz rahatsa kalite her zamanki gibi kendiliğinden tekrar yükselir (perfSample).
+export function lowerPerfAfterContextLoss(severe = false) {
+  const cur = readPerfTier();
+  savePerfTier(Math.min(PERF_TIERS.length - 1, Math.max(cur + 1, severe ? 3 : 2)));
+}
 // v107: "bu seviye ağır geldi" bilgisi 1 gün hatırlanır → her mekân girişinde aynı
 // üst seviye tekrar tekrar denenip kısa takılma yaşanmaz
 const PERF_FAIL_KEY = 'hs-perf-fail-v1';

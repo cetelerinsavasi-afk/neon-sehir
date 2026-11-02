@@ -6,7 +6,7 @@ import { ACHIEVEMENTS, ACHIEVEMENT_MAP, LEGACY_ACHIEVEMENT_REWARDS } from './ach
 export function createAchievements({ db, FieldValue, now = () => Date.now() }) {
   async function grant(uid, id) {
     const a = ACHIEVEMENT_MAP[id];
-    if (!a || !uid || typeof uid !== 'string') return false;
+    if (!a || a.steps || !uid || typeof uid !== 'string') return false; // aşamalı başarılar kendi yerinde verilir
     try {
       const ref = db.collection('users').doc(uid);
       return await db.runTransaction(async (tx) => {
@@ -50,7 +50,7 @@ export function createAchievements({ db, FieldValue, now = () => Date.now() }) {
         let total = 0;
         const lines = [];
         for (const a of ACHIEVEMENTS) {
-          if (!done[a.id] || got[a.id] != null) continue;
+          if (a.steps || !done[a.id] || got[a.id] != null) continue;
           const old = LEGACY_ACHIEVEMENT_REWARDS[a.id] ?? a.reward;
           patch[`achievementRewards.${a.id}`] = a.reward;
           const diff = a.reward - old;
@@ -88,7 +88,7 @@ export function createAchievements({ db, FieldValue, now = () => Date.now() }) {
     let users = 0;
     let emerald = 0;
     for (const a of ACHIEVEMENTS) {
-      if (a.reward <= (LEGACY_ACHIEVEMENT_REWARDS[a.id] ?? a.reward)) continue;
+      if (a.steps || a.reward <= (LEGACY_ACHIEVEMENT_REWARDS[a.id] ?? a.reward)) continue;
       let last = null;
       for (let page = 0; page < 50; page++) {
         let q = db.collection('users').where(`achievements.${a.id}`, '>', 0).orderBy(`achievements.${a.id}`).limit(300);
@@ -124,15 +124,23 @@ export function createAchievements({ db, FieldValue, now = () => Date.now() }) {
     return cfg.liveOpen && cfg.liveWorldId ? cfg.liveWorldId : null;
   }
 
+  // v141 — seçimle ya da darbeyle gelen belediye başkanı (belediye/main seats.bsk.via)
+  const electedMayor = (main) => {
+    const b = main?.seats?.bsk;
+    return b?.uid && (b.via === 'election' || b.via === 'coup') ? b.uid : null;
+  };
+
   async function syncUser(uid) {
-    const [userSnap, imamSnap, world] = await Promise.all([
+    const [userSnap, imamSnap, world, belSnap] = await Promise.all([
       db.collection('users').doc(uid).get(),
       db.collection('imamState').doc('current').get(),
       liveWorldId(),
+      db.doc('belediye/main').get(),
     ]);
     if (!userSnap.exists) return;
     await topupUser(uid); // v76: eski başarıların farkı (bir kez)
     if (imamSnap.exists && imamSnap.data()?.uid === uid) await grant(uid, 'imam');
+    if (electedMayor(belSnap.data()) === uid) await grant(uid, 'belediyeBaskani');
     if (world) {
       const m = (await db.doc(`gangWorlds/${world}/memberships/${uid}`).get()).data();
       if (m?.gangId && m.gangRank === 'baba') await grant(uid, 'mafyaBabasi');
@@ -147,6 +155,8 @@ export function createAchievements({ db, FieldValue, now = () => Date.now() }) {
     await topupAll().catch((err) => console.error('achievements topupAll', err?.message || err));
     const imamSnap = await db.collection('imamState').doc('current').get();
     if (imamSnap.exists) await grant(imamSnap.data()?.uid, 'imam');
+    const mayor = electedMayor((await db.doc('belediye/main').get()).data());
+    if (mayor) await grant(mayor, 'belediyeBaskani');
     const world = await liveWorldId();
     if (!world) return;
     const babas = await db.collection(`gangWorlds/${world}/memberships`).where('gangRank', '==', 'baba').limit(200).get();

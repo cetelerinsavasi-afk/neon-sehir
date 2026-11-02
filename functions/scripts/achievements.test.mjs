@@ -13,9 +13,33 @@ function setup() {
   return { db, S, G, sms, a: createAchievements({ db, FieldValue }) };
 }
 
-test('10 başarı, ödüller', () => {
-  assert.equal(ACHIEVEMENTS.length, 10);
-  assert.deepEqual(ACHIEVEMENTS.map((x) => x.reward), [1, 1, 2, 2, 3, 3, 4, 4, 5, 5]);
+test('12 başarı, ödüller (v141: davet en üstte, belediye başkanı en altta; toplam 50)', () => {
+  assert.equal(ACHIEVEMENTS.length, 12);
+  assert.deepEqual(ACHIEVEMENTS.map((x) => x.reward), [10, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 10]);
+  assert.equal(ACHIEVEMENTS[0].id, 'davet');
+  assert.equal(ACHIEVEMENTS[0].steps, 10);
+  assert.equal(ACHIEVEMENTS.at(-1).id, 'belediyeBaskani');
+  assert.equal(ACHIEVEMENTS.reduce((s, a) => s + a.reward, 0), 50);
+});
+
+test('v141: davet (aşamalı) grant ile verilmez; belediye başkanı sadece seçim / darbe ile', async () => {
+  const { S, G, a } = setup();
+  ['u1', 'u2', 'u3'].forEach((u) => S(`users/${u}`, { emerald: 0 }));
+  assert.equal(await a.grant('u1', 'davet'), false);
+  assert.equal(G('users/u1').emerald, 0);
+  // yönetici devri (via yok) → sayılmaz
+  S('belediye/main', { seats: { bsk: { uid: 'u2', name: 'Admin' } } });
+  await a.syncUser('u2');
+  assert.equal(G('users/u2').emerald, 0);
+  // seçimle gelen başkan → 10 zümrüt (ekranı açınca ya da taramada), bir kez
+  S('belediye/main', { seats: { bsk: { uid: 'u3', name: 'Seçilen', via: 'election' } } });
+  await a.sweep();
+  assert.equal(G('users/u3').emerald, 10);
+  await a.syncUser('u3');
+  assert.equal(G('users/u3').emerald, 10);
+  S('belediye/main', { seats: { bsk: { uid: 'u1', name: 'Darbeci', via: 'coup' } } });
+  await a.syncUser('u1');
+  assert.equal(G('users/u1').achievementRewards.belediyeBaskani, 10);
 });
 
 test('başarı bir kez verilir; zümrüt + SMS', async () => {
